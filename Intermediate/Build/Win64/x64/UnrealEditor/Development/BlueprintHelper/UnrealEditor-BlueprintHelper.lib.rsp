@@ -1,0 +1,16 @@
+/NOLOGO
+/errorReport:prompt
+/MACHINE:x64
+/SUBSYSTEM:WINDOWS
+/DEF
+/NAME:"UnrealEditor-BlueprintHelper.dll"
+/IGNORE:4221
+/NODEFAULTLIB
+"G:/UnrealPractise/MrStone/Intermediate/Build/Win64/x64/MrStoneEditor/Development/UnrealEd/SharedPCH.UnrealEd.Project.ValApi.ValExpApi.Cpp20.h.obj"
+"G:/UnrealPractise/MrStone/Plugins/BlueprintHelper/Intermediate/Build/Win64/x64/UnrealEditor/Development/BlueprintHelper/BlueprintHelper.cpp.obj"
+"G:/UnrealPractise/MrStone/Plugins/BlueprintHelper/Intermediate/Build/Win64/x64/UnrealEditor/Development/BlueprintHelper/BlueprintTextConverter.cpp.obj"
+"G:/UnrealPractise/MrStone/Plugins/BlueprintHelper/Intermediate/Build/Win64/x64/UnrealEditor/Development/BlueprintHelper/SHelperMainWidget.cpp.obj"
+"G:/UnrealPractise/MrStone/Plugins/BlueprintHelper/Intermediate/Build/Win64/x64/UnrealEditor/Development/BlueprintHelper/TextToBlueprintGenerator.cpp.obj"
+"G:/UnrealPractise/MrStone/Plugins/BlueprintHelper/Intermediate/Build/Win64/x64/UnrealEditor/Development/BlueprintHelper/PerModuleInline.gen.cpp.obj"
+"G:/UnrealPractise/MrStone/Plugins/BlueprintHelper/Intermediate/Build/Win64/x64/UnrealEditor/Development/BlueprintHelper/Default.rc2.res"
+/OUT:"G:/UnrealPractise/MrStone/Plugins/BlueprintHelper/Intermediate/Build/Win64/x64/UnrealEditor/Development/BlueprintHelper/UnrealEditor-BlueprintHelper.lib"
