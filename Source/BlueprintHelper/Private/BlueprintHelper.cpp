@@ -8,7 +8,29 @@
 #include "Interfaces/IPluginManager.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "NodeHandlers/BlueprintNodeHandler.h"
+#include "NodeHandlers/BranchNodeHandler.h"
+#include "NodeHandlers/CallFunctionNodeHandler.h"
+#include "NodeHandlers/MacroInstanceNodeHandler.h"
+#include "NodeHandlers/SequenceNodeHandler.h"
+#include "NodeHandlers/VariableGetNodeHandler.h"
+#include "NodeHandlers/VariableSetNodeHandler.h"
+#include "NodeHandlers/CustomEventNodeHandler.h"
+#include "NodeHandlers/EventNodeHandler.h"
+#include "NodeHandlers/CallDelegateNodeHandler.h"
+#include "NodeHandlers/AddDelegateNodeHandler.h"
+#include "NodeHandlers/RemoveDelegateNodeHandler.h"
+#include "NodeHandlers/ClearDelegateNodeHandler.h"
+#include "NodeHandlers/AssignDelegateNodeHandler.h"
+#include "NodeHandlers/CreateDelegateNodeHandler.h"
+#include "NodeHandlers/MakeContainerNodeHandler.h"
+#include "NodeHandlers/StructOperationNodeHandler.h"
+#include "OperationHandlers/BlueprintOperationHandler.h"
+#include "OperationHandlers/AddMemberVariableHandler.h"
+#include "OperationHandlers/AddFunctionGraphHandler.h"
+#include "OperationHandlers/AddEventDispatcherHandler.h"
 #include "SHelperMainWidget.h"
+#include "Styling/AppStyle.h"
 #include "Subsystems/AssetEditorSubsystem.h"
 #include "ToolMenus.h"
 #include "Widgets/Docking/SDockTab.h"
@@ -30,6 +52,29 @@ void FBlueprintHelperModule::StartupModule()
 {
 	UE_LOG(LogBlueprintHelperEditor, Log, TEXT("BlueprintHelper StartupModule begin."));
 
+	FBlueprintNodeHandlerRegistry& Registry = FBlueprintNodeHandlerRegistry::Get();
+	Registry.Register(MakeShared<FCallFunctionNodeHandler>());
+	Registry.Register(MakeShared<FVariableGetNodeHandler>());
+	Registry.Register(MakeShared<FVariableSetNodeHandler>());
+	Registry.Register(MakeShared<FMacroInstanceNodeHandler>());
+	Registry.Register(MakeShared<FBranchNodeHandler>());
+	Registry.Register(MakeShared<FSequenceNodeHandler>());
+	Registry.Register(MakeShared<FCustomEventNodeHandler>());
+	Registry.Register(MakeShared<FEventNodeHandler>());
+	Registry.Register(MakeShared<FCallDelegateNodeHandler>());
+	Registry.Register(MakeShared<FAddDelegateNodeHandler>());
+	Registry.Register(MakeShared<FRemoveDelegateNodeHandler>());
+	Registry.Register(MakeShared<FClearDelegateNodeHandler>());
+	Registry.Register(MakeShared<FAssignDelegateNodeHandler>());
+	Registry.Register(MakeShared<FCreateDelegateNodeHandler>());
+	Registry.Register(MakeShared<FMakeContainerNodeHandler>());
+	Registry.Register(MakeShared<FStructOperationNodeHandler>());
+
+	FBlueprintOperationHandlerRegistry& OpRegistry = FBlueprintOperationHandlerRegistry::Get();
+	OpRegistry.Register(MakeShared<FAddMemberVariableHandler>());
+	OpRegistry.Register(MakeShared<FAddFunctionGraphHandler>());
+	OpRegistry.Register(MakeShared<FAddEventDispatcherHandler>());
+
 	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(HelperTabName, FOnSpawnTab::CreateRaw(this, &FBlueprintHelperModule::OnSpawnPluginTab))
 		.SetDisplayName(LOCTEXT("BlueprintHelperTabTitle", "Blueprint Helper"))
 		.SetTooltipText(LOCTEXT("BlueprintHelperTabTooltip", "打开 Blueprint Helper 工具窗口。"))
@@ -42,6 +87,9 @@ void FBlueprintHelperModule::StartupModule()
 
 void FBlueprintHelperModule::ShutdownModule()
 {
+	FBlueprintNodeHandlerRegistry::Get().Reset();
+	FBlueprintOperationHandlerRegistry::Get().Reset();
+
 	if (UToolMenus::TryGet())
 	{
 		UToolMenus::UnRegisterStartupCallback(this);
@@ -130,7 +178,13 @@ void FBlueprintHelperModule::RegisterMenus()
 {
 	FToolMenuOwnerScoped OwnerScoped(this);
 	UE_LOG(LogBlueprintHelperEditor, Log, TEXT("BlueprintHelper RegisterMenus invoked."));
+	RegisterLevelEditorMenus();
+	RegisterBlueprintEditorToolbar();
+	UToolMenus::Get()->RefreshAllWidgets();
+}
 
+void FBlueprintHelperModule::RegisterLevelEditorMenus()
+{
 	UToolMenu* WindowMenu = UToolMenus::Get()->ExtendMenu(TEXT("LevelEditor.MainMenu.Window"));
 	FToolMenuSection& WindowSection = WindowMenu->FindOrAddSection(TEXT("WindowLayout"));
 	WindowSection.AddMenuEntry(
@@ -149,7 +203,22 @@ void FBlueprintHelperModule::RegisterMenus()
 		FSlateIcon(),
 		FUIAction(FExecuteAction::CreateRaw(this, &FBlueprintHelperModule::OpenMainWindow)));
 
-	UToolMenus::Get()->RefreshAllWidgets();
+}
+
+void FBlueprintHelperModule::RegisterBlueprintEditorToolbar()
+{
+	UToolMenu* BlueprintToolbarMenu = UToolMenus::Get()->ExtendMenu(TEXT("AssetEditor.BlueprintEditor.ToolBar"));
+	FToolMenuSection& BlueprintToolbarSection = BlueprintToolbarMenu->FindOrAddSection(TEXT("Asset"));
+
+	FToolMenuEntry ToolbarEntry = FToolMenuEntry::InitToolBarButton(
+		TEXT("OpenBlueprintHelperToolbar"),
+		FUIAction(FExecuteAction::CreateRaw(this, &FBlueprintHelperModule::OpenMainWindow)),
+		LOCTEXT("BlueprintHelperToolbarLabel", "Blueprint Helper"),
+		LOCTEXT("BlueprintHelperToolbarTooltip", "打开 Blueprint Helper 工具窗口。"),
+		FSlateIcon(FAppStyle::GetAppStyleSetName(), TEXT("Kismet.Tabs.Palette")));
+	ToolbarEntry.StyleNameOverride = TEXT("CalloutToolbar");
+	BlueprintToolbarSection.AddEntry(ToolbarEntry);
+
 }
 
 TSharedRef<SDockTab> FBlueprintHelperModule::OnSpawnPluginTab(const FSpawnTabArgs& SpawnTabArgs)

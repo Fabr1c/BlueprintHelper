@@ -16,7 +16,22 @@ enum class EParsedBlueprintNodeType : uint8
 	CallFunction,
 	VariableGet,
 	VariableSet,
-	MacroInstance
+	MacroInstance,
+	Branch,
+	Sequence,
+	CustomEvent,
+	Event,
+	CallDelegate,
+	AddDelegate,
+	RemoveDelegate,
+	ClearDelegate,
+	AssignDelegate,
+	CreateDelegate,
+	MakeArray,
+	MakeMap,
+	MakeSet,
+	MakeStruct,
+	BreakStruct
 };
 
 /**
@@ -130,6 +145,72 @@ struct FParsedMacroReference
 };
 
 /**
+ * 自定义事件/引擎事件参数描述。
+ */
+struct FParsedEventParam
+{
+	/** 参数名称。 */
+	FString Name;
+
+	/** 参数引脚类型。 */
+	FParsedPinType PinType;
+};
+
+/**
+ * 事件节点引用描述。
+ */
+struct FParsedEventReference
+{
+	/** 事件名称（CustomEvent 用 event_name，Event 用引擎事件名如 ReceiveBeginPlay）。 */
+	FString EventName;
+
+	/** 自定义事件参数列表。 */
+	TArray<FParsedEventParam> Params;
+};
+
+/**
+ * 委托节点引用描述。
+ */
+struct FParsedDelegateReference
+{
+	/** 事件分发器属性名称。 */
+	FString DelegatePropertyName;
+
+	/** 绑定的函数名称（用于 CreateDelegate / AssignDelegate）。 */
+	FString FunctionName;
+};
+
+/**
+ * 容器构造节点引用描述（MakeArray / MakeSet / MakeMap）。
+ */
+struct FParsedContainerReference
+{
+	/** MakeArray / MakeSet：元素数量。 */
+	int32 NumInputs = 0;
+
+	/** MakeMap：键值对数量。 */
+	int32 NumPairs = 0;
+
+	/** MakeArray / MakeSet 的元素类型。 */
+	FParsedPinType ElementType;
+
+	/** MakeMap 的键类型。 */
+	FParsedPinType KeyType;
+
+	/** MakeMap 的值类型。 */
+	FParsedPinType ValueType;
+};
+
+/**
+ * 结构体操作节点引用描述（MakeStruct / BreakStruct）。
+ */
+struct FParsedStructReference
+{
+	/** 结构体路径，例如 "/Script/CoreUObject.Vector"。 */
+	FString StructPath;
+};
+
+/**
  * 本地变量声明描述。
  */
 struct FParsedLocalVariableDeclaration
@@ -196,6 +277,18 @@ struct FParsedNode
 
 	/** 宏节点引用数据。 */
 	FParsedMacroReference MacroReference;
+
+	/** 事件节点引用数据。 */
+	FParsedEventReference EventReference;
+
+	/** 委托节点引用数据。 */
+	FParsedDelegateReference DelegateReference;
+
+	/** 容器构造节点引用数据。 */
+	FParsedContainerReference ContainerReference;
+
+	/** 结构体操作节点引用数据。 */
+	FParsedStructReference StructReference;
 };
 
 /**
@@ -279,6 +372,12 @@ public:
 	/** 为目标节点应用默认值。 */
 	static void ApplyDefaultValues(UK2Node* TargetNode, const TMap<FString, FString>& DefaultValues);
 
+	/** 确保目标函数图中存在指定本地变量。失败时填写 OutErrorMessage。 */
+	static bool EnsureLocalVariableExists(UEdGraph* TargetGraph, const FParsedLocalVariableDeclaration& Declaration, FString& OutErrorMessage);
+
+	/** 将轻量引脚类型转换为 UE 引脚类型。 */
+	static bool ConvertToEdGraphPinType(const FParsedPinType& InPinType, struct FEdGraphPinType& OutPinType, FString& OutErrorMessage);
+
 private:
 	/** 解析 JSON 中的节点类型字段。 */
 	static EParsedBlueprintNodeType ResolveNodeType(const TSharedPtr<class FJsonObject>& NodeObject);
@@ -301,12 +400,6 @@ private:
 	/** 解析顶层本地变量声明。 */
 	static void ResolveLocalVariableDeclarations(const TSharedPtr<class FJsonObject>& JsonObject, TArray<FParsedLocalVariableDeclaration>& OutDeclarations);
 
-	/** 将轻量引脚类型转换为 UE 引脚类型。 */
-	static bool ConvertToEdGraphPinType(const FParsedPinType& InPinType, struct FEdGraphPinType& OutPinType, FString& OutErrorMessage);
-
-	/** 确保目标函数图中存在指定本地变量。 */
-	static bool EnsureLocalVariableExists(UEdGraph* TargetGraph, const FParsedLocalVariableDeclaration& Declaration, FString& OutErrorMessage);
-
 	/** 从图表解析本地变量作用域结构。 */
 	static class UStruct* ResolveLocalVariableScope(UEdGraph* TargetGraph, FString& OutErrorMessage);
 
@@ -315,6 +408,18 @@ private:
 
 	/** 查找标准宏图。 */
 	static class UEdGraph* ResolveMacroGraph(const FParsedMacroReference& MacroReference, FString& OutErrorMessage);
+
+	/** 解析 JSON 中的事件引用描述。 */
+	static FParsedEventReference ResolveEventReference(const TSharedPtr<class FJsonObject>& NodeObject);
+
+	/** 解析 JSON 中的委托引用描述。 */
+	static FParsedDelegateReference ResolveDelegateReference(const TSharedPtr<class FJsonObject>& NodeObject);
+
+	/** 解析 JSON 中的容器构造引用描述。 */
+	static FParsedContainerReference ResolveContainerReference(const TSharedPtr<class FJsonObject>& NodeObject);
+
+	/** 解析 JSON 中的结构体操作引用描述。 */
+	static FParsedStructReference ResolveStructReference(const TSharedPtr<class FJsonObject>& NodeObject);
 
 	/** 根据别名查找节点引脚。 */
 	static class UEdGraphPin* FindPinByAlias(UK2Node* TargetNode, const FString& RequestedPinName);

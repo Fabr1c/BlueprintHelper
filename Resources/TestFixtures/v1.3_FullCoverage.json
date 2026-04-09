@@ -1,0 +1,385 @@
+{
+  "version": "1.3",
+  "schema": "BlueprintHelper.JsonToBlueprint",
+  "declarations": {
+    "local_variables": [
+      {
+        "name": "LoopCounter",
+        "ensure_exists": true,
+        "pin_type": { "category": "int" },
+        "default_value": "0"
+      },
+      {
+        "name": "bShouldContinue",
+        "ensure_exists": true,
+        "pin_type": { "category": "bool" },
+        "default_value": "true"
+      },
+      {
+        "name": "ResultMessage",
+        "ensure_exists": true,
+        "pin_type": { "category": "string" },
+        "default_value": ""
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "id": "Node_Sequence_0",
+      "type": "K2Node_ExecutionSequence",
+      "name": "Sequence",
+      "x": 0,
+      "y": 0,
+      "inputs": {
+        "num_outputs": "4"
+      }
+    },
+
+    {
+      "id": "Node_Print_Hello",
+      "type": "K2Node_CallFunction",
+      "function_name": "PrintString",
+      "name": "PrintString",
+      "x": 400,
+      "y": -400,
+      "inputs": {
+        "InString": "=== v1.3 Full Coverage Test ==="
+      }
+    },
+
+    {
+      "id": "Node_Branch_0",
+      "type": "K2Node_IfThenElse",
+      "name": "Branch",
+      "x": 400,
+      "y": -100,
+      "inputs": {}
+    },
+    {
+      "id": "Node_GetShouldContinue",
+      "type": "K2Node_VariableGet",
+      "name": "bShouldContinue",
+      "x": 100,
+      "y": -50,
+      "variable": {
+        "scope": "local",
+        "name": "bShouldContinue",
+        "ensure_exists": true,
+        "pin_type": { "category": "bool" },
+        "default_value": "true"
+      }
+    },
+    {
+      "id": "Node_Print_True",
+      "type": "K2Node_CallFunction",
+      "function_name": "PrintString",
+      "name": "PrintString",
+      "x": 700,
+      "y": -200,
+      "inputs": {
+        "InString": "Branch: Condition is TRUE"
+      }
+    },
+    {
+      "id": "Node_Print_False",
+      "type": "K2Node_CallFunction",
+      "function_name": "PrintString",
+      "name": "PrintString",
+      "x": 700,
+      "y": 0,
+      "inputs": {
+        "InString": "Branch: Condition is FALSE"
+      }
+    },
+
+    {
+      "id": "Node_ForLoop_0",
+      "type": "K2Node_MacroInstance",
+      "name": "ForLoop",
+      "x": 400,
+      "y": 200,
+      "macro": { "library": "standard", "name": "ForLoop" },
+      "inputs": {
+        "first_index": "0",
+        "last_index": "4"
+      }
+    },
+    {
+      "id": "Node_SetLoopCounter",
+      "type": "K2Node_VariableSet",
+      "name": "LoopCounter",
+      "x": 750,
+      "y": 200,
+      "variable": {
+        "scope": "local",
+        "name": "LoopCounter",
+        "ensure_exists": true,
+        "pin_type": { "category": "int" }
+      },
+      "inputs": {}
+    },
+    {
+      "id": "Node_GetLoopIndex",
+      "type": "K2Node_VariableGet",
+      "name": "LoopCounter",
+      "x": 500,
+      "y": 320,
+      "variable": {
+        "scope": "local",
+        "name": "LoopCounter",
+        "ensure_exists": true,
+        "pin_type": { "category": "int" }
+      }
+    },
+
+    {
+      "id": "Node_ForLoopBreak_0",
+      "type": "K2Node_MacroInstance",
+      "name": "ForLoopWithBreak",
+      "x": 400,
+      "y": 550,
+      "macro": { "library": "standard", "name": "ForLoopWithBreak" },
+      "inputs": {
+        "first_index": "0",
+        "last_index": "9"
+      }
+    },
+    {
+      "id": "Node_Print_LoopBreak",
+      "type": "K2Node_CallFunction",
+      "function_name": "PrintString",
+      "name": "PrintString",
+      "x": 750,
+      "y": 550,
+      "inputs": {
+        "InString": "ForLoopWithBreak body"
+      }
+    },
+
+    {
+      "id": "Node_WhileLoop_0",
+      "type": "K2Node_MacroInstance",
+      "name": "WhileLoop",
+      "x": 400,
+      "y": 800,
+      "macro": { "library": "standard", "name": "WhileLoop" },
+      "inputs": {}
+    },
+    {
+      "id": "Node_Print_While",
+      "type": "K2Node_CallFunction",
+      "function_name": "PrintString",
+      "name": "PrintString",
+      "x": 750,
+      "y": 800,
+      "inputs": {
+        "InString": "WhileLoop body"
+      }
+    },
+
+    {
+      "id": "Node_FlipFlop_0",
+      "type": "K2Node_MacroInstance",
+      "name": "FlipFlop",
+      "x": 1200,
+      "y": -400,
+      "macro": { "library": "standard", "name": "FlipFlop" },
+      "inputs": {}
+    },
+    {
+      "id": "Node_Print_FlipA",
+      "type": "K2Node_CallFunction",
+      "function_name": "PrintString",
+      "name": "PrintString",
+      "x": 1550,
+      "y": -500,
+      "inputs": {
+        "InString": "FlipFlop: A"
+      }
+    },
+    {
+      "id": "Node_Print_FlipB",
+      "type": "K2Node_CallFunction",
+      "function_name": "PrintString",
+      "name": "PrintString",
+      "x": 1550,
+      "y": -300,
+      "inputs": {
+        "InString": "FlipFlop: B"
+      }
+    },
+
+    {
+      "id": "Node_DoOnce_0",
+      "type": "K2Node_MacroInstance",
+      "name": "DoOnce",
+      "x": 1200,
+      "y": -100,
+      "macro": { "library": "standard", "name": "DoOnce" },
+      "inputs": {}
+    },
+    {
+      "id": "Node_Print_DoOnce",
+      "type": "K2Node_CallFunction",
+      "function_name": "PrintString",
+      "name": "PrintString",
+      "x": 1550,
+      "y": -100,
+      "inputs": {
+        "InString": "DoOnce: Triggered"
+      }
+    },
+
+    {
+      "id": "Node_DoN_0",
+      "type": "K2Node_MacroInstance",
+      "name": "DoN",
+      "x": 1200,
+      "y": 100,
+      "macro": { "library": "standard", "name": "DoN" },
+      "inputs": { "n": "3" }
+    },
+    {
+      "id": "Node_Print_DoN",
+      "type": "K2Node_CallFunction",
+      "function_name": "PrintString",
+      "name": "PrintString",
+      "x": 1550,
+      "y": 100,
+      "inputs": {
+        "InString": "DoN: Executed"
+      }
+    },
+
+    {
+      "id": "Node_Gate_0",
+      "type": "K2Node_MacroInstance",
+      "name": "Gate",
+      "x": 1200,
+      "y": 350,
+      "macro": { "library": "standard", "name": "Gate" },
+      "inputs": {}
+    },
+    {
+      "id": "Node_Print_Gate",
+      "type": "K2Node_CallFunction",
+      "function_name": "PrintString",
+      "name": "PrintString",
+      "x": 1550,
+      "y": 350,
+      "inputs": {
+        "InString": "Gate: Passed"
+      }
+    },
+
+    {
+      "id": "Node_IsValid_0",
+      "type": "K2Node_MacroInstance",
+      "name": "IsValid",
+      "x": 1200,
+      "y": 600,
+      "macro": { "library": "standard", "name": "IsValid" },
+      "inputs": {}
+    },
+    {
+      "id": "Node_Print_Valid",
+      "type": "K2Node_CallFunction",
+      "function_name": "PrintString",
+      "name": "PrintString",
+      "x": 1550,
+      "y": 550,
+      "inputs": {
+        "InString": "IsValid: Object is valid"
+      }
+    },
+    {
+      "id": "Node_Print_NotValid",
+      "type": "K2Node_CallFunction",
+      "function_name": "PrintString",
+      "name": "PrintString",
+      "x": 1550,
+      "y": 700,
+      "inputs": {
+        "InString": "IsValid: Object is NOT valid"
+      }
+    },
+
+    {
+      "id": "Node_SetResult",
+      "type": "K2Node_VariableSet",
+      "name": "ResultMessage",
+      "x": 1900,
+      "y": 0,
+      "variable": {
+        "scope": "local",
+        "name": "ResultMessage",
+        "ensure_exists": true,
+        "pin_type": { "category": "string" }
+      },
+      "inputs": {
+        "value": "All v1.3 nodes generated successfully"
+      }
+    },
+    {
+      "id": "Node_GetResult",
+      "type": "K2Node_VariableGet",
+      "name": "ResultMessage",
+      "x": 1900,
+      "y": 120,
+      "variable": {
+        "scope": "local",
+        "name": "ResultMessage",
+        "ensure_exists": true,
+        "pin_type": { "category": "string" }
+      }
+    },
+    {
+      "id": "Node_Print_Final",
+      "type": "K2Node_CallFunction",
+      "function_name": "PrintString",
+      "name": "PrintString",
+      "x": 2200,
+      "y": 0,
+      "inputs": {}
+    }
+  ],
+  "links": [
+    { "from_id": "Node_Sequence_0", "from_pin": "Then 0", "to_id": "Node_Print_Hello", "to_pin": "execute" },
+    { "from_id": "Node_Sequence_0", "from_pin": "Then 1", "to_id": "Node_Branch_0", "to_pin": "execute" },
+    { "from_id": "Node_Sequence_0", "from_pin": "Then 2", "to_id": "Node_ForLoop_0", "to_pin": "execute" },
+    { "from_id": "Node_Sequence_0", "from_pin": "Then 3", "to_id": "Node_ForLoopBreak_0", "to_pin": "execute" },
+
+    { "from_id": "Node_GetShouldContinue", "from_pin": "bShouldContinue", "to_id": "Node_Branch_0", "to_pin": "Condition" },
+    { "from_id": "Node_Branch_0", "from_pin": "Then", "to_id": "Node_Print_True", "to_pin": "execute" },
+    { "from_id": "Node_Branch_0", "from_pin": "Else", "to_id": "Node_Print_False", "to_pin": "execute" },
+
+    { "from_id": "Node_ForLoop_0", "from_pin": "LoopBody", "to_id": "Node_SetLoopCounter", "to_pin": "execute" },
+    { "from_id": "Node_ForLoop_0", "from_pin": "Index", "to_id": "Node_SetLoopCounter", "to_pin": "value" },
+
+    { "from_id": "Node_ForLoopBreak_0", "from_pin": "LoopBody", "to_id": "Node_Print_LoopBreak", "to_pin": "execute" },
+
+    { "from_id": "Node_ForLoop_0", "from_pin": "Completed", "to_id": "Node_WhileLoop_0", "to_pin": "execute" },
+    { "from_id": "Node_WhileLoop_0", "from_pin": "LoopBody", "to_id": "Node_Print_While", "to_pin": "execute" },
+
+    { "from_id": "Node_Print_Hello", "from_pin": "then", "to_id": "Node_FlipFlop_0", "to_pin": "execute" },
+    { "from_id": "Node_FlipFlop_0", "from_pin": "A", "to_id": "Node_Print_FlipA", "to_pin": "execute" },
+    { "from_id": "Node_FlipFlop_0", "from_pin": "B", "to_id": "Node_Print_FlipB", "to_pin": "execute" },
+
+    { "from_id": "Node_Print_FlipA", "from_pin": "then", "to_id": "Node_DoOnce_0", "to_pin": "execute" },
+    { "from_id": "Node_DoOnce_0", "from_pin": "Completed", "to_id": "Node_Print_DoOnce", "to_pin": "execute" },
+
+    { "from_id": "Node_Print_DoOnce", "from_pin": "then", "to_id": "Node_DoN_0", "to_pin": "execute" },
+    { "from_id": "Node_DoN_0", "from_pin": "then", "to_id": "Node_Print_DoN", "to_pin": "execute" },
+
+    { "from_id": "Node_Print_DoN", "from_pin": "then", "to_id": "Node_Gate_0", "to_pin": "Enter" },
+    { "from_id": "Node_Gate_0", "from_pin": "Exit", "to_id": "Node_Print_Gate", "to_pin": "execute" },
+
+    { "from_id": "Node_Print_True", "from_pin": "then", "to_id": "Node_IsValid_0", "to_pin": "execute" },
+    { "from_id": "Node_IsValid_0", "from_pin": "Is Valid", "to_id": "Node_Print_Valid", "to_pin": "execute" },
+    { "from_id": "Node_IsValid_0", "from_pin": "Is Not Valid", "to_id": "Node_Print_NotValid", "to_pin": "execute" },
+
+    { "from_id": "Node_Print_Gate", "from_pin": "then", "to_id": "Node_SetResult", "to_pin": "execute" },
+    { "from_id": "Node_SetResult", "from_pin": "then", "to_id": "Node_Print_Final", "to_pin": "execute" },
+    { "from_id": "Node_GetResult", "from_pin": "ResultMessage", "to_id": "Node_Print_Final", "to_pin": "InString" }
+  ]
+}

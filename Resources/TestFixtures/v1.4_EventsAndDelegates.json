@@ -1,0 +1,234 @@
+{
+  "version": "1.4",
+  "schema": "BlueprintHelper.JsonToBlueprint",
+  "_test_notes": {
+    "description": "v1.4 Events & Delegates 全覆盖测试",
+    "prerequisites": [
+      "测试蓝图中需要手动创建 Boolean 成员变量 'bIsAlive'（默认值 true）",
+      "测试蓝图中需要手动创建 Event Dispatcher 'OnHealthChanged'",
+      "EventGraph 中只能使用 scope:member 的变量，不可使用 local_variables"
+    ]
+  },
+  "nodes": [
+    {
+      "id": "Node_BeginPlay",
+      "type": "K2Node_Event",
+      "name": "BeginPlay",
+      "x": 0,
+      "y": 0,
+      "event": {
+        "event_name": "BeginPlay"
+      }
+    },
+
+    {
+      "id": "Node_CustomEvent_OnDamage",
+      "type": "K2Node_CustomEvent",
+      "name": "OnDamageReceived",
+      "x": 0,
+      "y": 300,
+      "event": {
+        "event_name": "OnDamageReceived",
+        "params": [
+          { "name": "DamageAmount", "pin_type": { "category": "float" } },
+          { "name": "DamageInstigator", "pin_type": { "category": "object", "object_path": "/Script/Engine.Actor" } }
+        ]
+      }
+    },
+
+    {
+      "id": "Node_CustomEvent_OnHeal",
+      "type": "K2Node_CustomEvent",
+      "name": "OnHealReceived",
+      "x": 0,
+      "y": 600,
+      "event": {
+        "event_name": "OnHealReceived",
+        "params": [
+          { "name": "HealAmount", "pin_type": { "category": "float" } }
+        ]
+      }
+    },
+
+    {
+      "id": "Node_Print_Start",
+      "type": "K2Node_CallFunction",
+      "function_name": "PrintString",
+      "name": "PrintString",
+      "x": 400,
+      "y": 0,
+      "inputs": {
+        "InString": "=== v1.4 Events & Delegates Test ==="
+      }
+    },
+
+    {
+      "id": "Node_Branch_Alive",
+      "type": "K2Node_IfThenElse",
+      "name": "Branch",
+      "x": 400,
+      "y": 300,
+      "inputs": {}
+    },
+    {
+      "id": "Node_Get_IsAlive",
+      "type": "K2Node_VariableGet",
+      "name": "bIsAlive",
+      "x": 200,
+      "y": 350,
+      "variable": {
+        "scope": "member",
+        "name": "bIsAlive"
+      }
+    },
+
+    {
+      "id": "Node_Print_Alive",
+      "type": "K2Node_CallFunction",
+      "function_name": "PrintString",
+      "name": "PrintString",
+      "x": 700,
+      "y": 250,
+      "inputs": {
+        "InString": "Character is alive, applying damage"
+      }
+    },
+    {
+      "id": "Node_Print_Dead",
+      "type": "K2Node_CallFunction",
+      "function_name": "PrintString",
+      "name": "PrintString",
+      "x": 700,
+      "y": 400,
+      "inputs": {
+        "InString": "Character is dead, ignoring damage"
+      }
+    },
+
+    {
+      "id": "Node_CallDelegate_Health",
+      "type": "K2Node_CallDelegate",
+      "name": "OnHealthChanged",
+      "x": 1000,
+      "y": 250,
+      "delegate": {
+        "property_name": "OnHealthChanged"
+      }
+    },
+
+    {
+      "id": "Node_AddDelegate_Health",
+      "type": "K2Node_AddDelegate",
+      "name": "OnHealthChanged",
+      "x": 400,
+      "y": -200,
+      "delegate": {
+        "property_name": "OnHealthChanged"
+      }
+    },
+
+    {
+      "id": "Node_CreateDelegate_0",
+      "type": "K2Node_CreateDelegate",
+      "name": "CreateDelegate",
+      "x": 200,
+      "y": -200,
+      "delegate": {
+        "function_name": "OnHealReceived"
+      }
+    },
+
+    {
+      "id": "Node_RemoveDelegate_Health",
+      "type": "K2Node_RemoveDelegate",
+      "name": "OnHealthChanged",
+      "x": 1000,
+      "y": -200,
+      "delegate": {
+        "property_name": "OnHealthChanged"
+      }
+    },
+
+    {
+      "id": "Node_ClearDelegate_Health",
+      "type": "K2Node_ClearDelegate",
+      "name": "OnHealthChanged",
+      "x": 1300,
+      "y": -200,
+      "delegate": {
+        "property_name": "OnHealthChanged"
+      }
+    },
+
+    {
+      "id": "Node_AssignDelegate_Health",
+      "type": "K2Node_AssignDelegate",
+      "name": "OnHealthChanged",
+      "x": 400,
+      "y": 600,
+      "delegate": {
+        "property_name": "OnHealthChanged"
+      }
+    },
+
+    {
+      "id": "Node_Print_Heal",
+      "type": "K2Node_CallFunction",
+      "function_name": "PrintString",
+      "name": "PrintString",
+      "x": 400,
+      "y": 700,
+      "inputs": {
+        "InString": "Heal event received"
+      }
+    },
+
+    {
+      "id": "Node_Set_IsAlive",
+      "type": "K2Node_VariableSet",
+      "name": "bIsAlive",
+      "x": 1000,
+      "y": 400,
+      "variable": {
+        "scope": "member",
+        "name": "bIsAlive"
+      },
+      "inputs": {
+        "value": "false"
+      }
+    },
+
+    {
+      "id": "Node_Print_Final",
+      "type": "K2Node_CallFunction",
+      "function_name": "PrintString",
+      "name": "PrintString",
+      "x": 1600,
+      "y": -200,
+      "inputs": {
+        "InString": "All delegates cleared"
+      }
+    }
+  ],
+  "links": [
+    { "from_id": "Node_BeginPlay", "from_pin": "then", "to_id": "Node_Print_Start", "to_pin": "execute" },
+    { "from_id": "Node_Print_Start", "from_pin": "then", "to_id": "Node_AddDelegate_Health", "to_pin": "execute" },
+
+    { "from_id": "Node_CreateDelegate_0", "from_pin": "output_delegate", "to_id": "Node_AddDelegate_Health", "to_pin": "Delegate" },
+
+    { "from_id": "Node_CustomEvent_OnDamage", "from_pin": "then", "to_id": "Node_Branch_Alive", "to_pin": "execute" },
+    { "from_id": "Node_Get_IsAlive", "from_pin": "bIsAlive", "to_id": "Node_Branch_Alive", "to_pin": "Condition" },
+    { "from_id": "Node_Branch_Alive", "from_pin": "Then", "to_id": "Node_Print_Alive", "to_pin": "execute" },
+    { "from_id": "Node_Branch_Alive", "from_pin": "Else", "to_id": "Node_Print_Dead", "to_pin": "execute" },
+
+    { "from_id": "Node_Print_Alive", "from_pin": "then", "to_id": "Node_CallDelegate_Health", "to_pin": "execute" },
+    { "from_id": "Node_Print_Dead", "from_pin": "then", "to_id": "Node_Set_IsAlive", "to_pin": "execute" },
+
+    { "from_id": "Node_AddDelegate_Health", "from_pin": "then", "to_id": "Node_RemoveDelegate_Health", "to_pin": "execute" },
+    { "from_id": "Node_RemoveDelegate_Health", "from_pin": "then", "to_id": "Node_ClearDelegate_Health", "to_pin": "execute" },
+    { "from_id": "Node_ClearDelegate_Health", "from_pin": "then", "to_id": "Node_Print_Final", "to_pin": "execute" },
+
+    { "from_id": "Node_CustomEvent_OnHeal", "from_pin": "then", "to_id": "Node_AssignDelegate_Health", "to_pin": "execute" },
+    { "from_id": "Node_AssignDelegate_Health", "from_pin": "then", "to_id": "Node_Print_Heal", "to_pin": "execute" }
+  ]
+}

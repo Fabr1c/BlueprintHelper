@@ -8,6 +8,68 @@
 namespace
 {
 	/**
+	 * 清洗 T3D 导出的默认值文本，便于内部统一复用。
+	 */
+	FString NormalizeExportTextValue(const FString& InValue)
+	{
+		FString Result = InValue.TrimStartAndEnd();
+		Result.RemoveFromStart(TEXT("\""));
+		Result.RemoveFromEnd(TEXT("\""));
+		Result.RemoveFromStart(TEXT("("));
+		Result.RemoveFromEnd(TEXT(")"));
+		return Result.TrimStartAndEnd();
+	}
+
+	/**
+	 * 从导出文本中提取对象路径，兼容 Class'/Game/...' 这类格式。
+	 */
+	FString ExtractObjectPathFromExportValue(const FString& InValue)
+	{
+		FString Result = NormalizeExportTextValue(InValue);
+
+		const int32 QuoteIndex = Result.Find(TEXT("'"), ESearchCase::IgnoreCase, ESearchDir::FromStart);
+		const int32 LastQuoteIndex = Result.Find(TEXT("'"), ESearchCase::IgnoreCase, ESearchDir::FromEnd);
+		if (QuoteIndex != INDEX_NONE && LastQuoteIndex != INDEX_NONE && LastQuoteIndex > QuoteIndex)
+		{
+			Result = Result.Mid(QuoteIndex + 1, LastQuoteIndex - QuoteIndex - 1);
+		}
+
+		Result.ReplaceInline(TEXT("\""), TEXT(""));
+		return Result.TrimStartAndEnd();
+	}
+
+	/**
+	 * 归一化节点类型名称，统一转成 K2Node_xxx 形式。
+	 */
+	FString NormalizeNodeTypeName(const FString& InValue)
+	{
+		FString Result = NormalizeExportTextValue(InValue);
+		Result.ReplaceInline(TEXT("\""), TEXT(""));
+
+		const int32 LastSlashIndex = Result.Find(TEXT("/"), ESearchCase::IgnoreCase, ESearchDir::FromEnd);
+		if (LastSlashIndex != INDEX_NONE)
+		{
+			Result = Result.Mid(LastSlashIndex + 1);
+		}
+
+		const int32 LastDotIndex = Result.Find(TEXT("."), ESearchCase::IgnoreCase, ESearchDir::FromEnd);
+		if (LastDotIndex != INDEX_NONE)
+		{
+			Result = Result.Mid(LastDotIndex + 1);
+		}
+
+		return Result.TrimStartAndEnd();
+	}
+
+	/**
+	 * 判断节点类型是否匹配指定短名。
+	 */
+	bool IsNodeTypeMatch(const FString& InNodeType, const TCHAR* ExpectedType)
+	{
+		return NormalizeNodeTypeName(InNodeType).Equals(ExpectedType, ESearchCase::IgnoreCase);
+	}
+
+	/**
 	 * 解析正则的第一个捕获结果。
 	 */
 	FString MatchFirstGroup(const FString& SourceText, const FString& Pattern)
@@ -33,6 +95,28 @@ namespace
 				&& Pin.PinCategory != TEXT("exec")
 				&& !Pin.PinName.Equals(TEXT("self"), ESearchCase::IgnoreCase);
 		};
+
+		if (IsNodeTypeMatch(Node.NodeType, TEXT("K2Node_VariableGet")))
+		{
+			for (const FMinimalPin& Pin : Node.Outputs)
+			{
+				if (IsCandidatePin(Pin))
+				{
+					return &Pin;
+				}
+			}
+		}
+
+		if (IsNodeTypeMatch(Node.NodeType, TEXT("K2Node_VariableSet")))
+		{
+			for (const FMinimalPin& Pin : Node.Inputs)
+			{
+				if (IsCandidatePin(Pin))
+				{
+					return &Pin;
+				}
+			}
+		}
 
 		for (const FMinimalPin& Pin : Node.Inputs)
 		{
@@ -120,7 +204,7 @@ void FBlueprintToTextConverter::ParseVariableReferenceLine(const FString& Line, 
 {
 	Node.DisplayName = NormalizeExportValue(MatchFirstGroup(Line, TEXT("MemberName=\"([^\"]+)\"")));
 	Node.VariableScopeGraphName = NormalizeExportValue(MatchFirstGroup(Line, TEXT("MemberScope=\"([^\"]+)\"")));
-	Node.VariableOwnerClassPath = NormalizeExportValue(MatchFirstGroup(Line, TEXT("MemberParent=([^,)]+)")));
+	Node.VariableOwnerClassPath = ExtractObjectPathFromExportValue(MatchFirstGroup(Line, TEXT("MemberParent=([^,)]+)")));
 
 	const FString SelfContextString = MatchFirstGroup(Line, TEXT("bSelfContext=(true|false|True|False)"));
 	if (!SelfContextString.IsEmpty())
@@ -145,16 +229,7 @@ void FBlueprintToTextConverter::ParseMacroReferenceLine(const FString& Line, FMi
 		return;
 	}
 
-	const int32 QuoteIndex = MacroGraphValue.Find(TEXT("'"), ESearchCase::IgnoreCase, ESearchDir::FromStart);
-	const int32 LastQuoteIndex = MacroGraphValue.Find(TEXT("'"), ESearchCase::IgnoreCase, ESearchDir::FromEnd);
-	if (QuoteIndex != INDEX_NONE && LastQuoteIndex != INDEX_NONE && LastQuoteIndex > QuoteIndex)
-	{
-		Node.MacroAssetPath = MacroGraphValue.Mid(QuoteIndex + 1, LastQuoteIndex - QuoteIndex - 1);
-	}
-	else
-	{
-		Node.MacroAssetPath = MacroGraphValue;
-	}
+	Node.MacroAssetPath = ExtractObjectPathFromExportValue(MacroGraphValue);
 
 	const FString SourcePath = Node.MacroAssetPath.IsEmpty() ? MacroGraphValue : Node.MacroAssetPath;
 	int32 MacroNameIndex = SourcePath.Find(TEXT(":"), ESearchCase::IgnoreCase, ESearchDir::FromEnd);
@@ -165,6 +240,11 @@ void FBlueprintToTextConverter::ParseMacroReferenceLine(const FString& Line, FMi
 
 	Node.MacroName = MacroNameIndex != INDEX_NONE ? SourcePath.Mid(MacroNameIndex + 1) : SourcePath;
 	Node.MacroName = NormalizeExportValue(Node.MacroName);
+	if (MacroNameIndex != INDEX_NONE)
+	{
+		Node.MacroAssetPath = SourcePath.Left(MacroNameIndex);
+	}
+	Node.MacroAssetPath = NormalizeExportValue(Node.MacroAssetPath);
 	if (!Node.MacroName.IsEmpty())
 	{
 		Node.DisplayName = Node.MacroName;
@@ -195,9 +275,7 @@ void FBlueprintToTextConverter::ParseT3DToNodes(const FString& T3DText, TMap<FSt
 					FParse::Value(*Line, TEXT("Name="), NodeName);
 					NodeName = NormalizeExportValue(NodeName);
 
-					const int32 LastSlash = ClassPath.Find(TEXT("/"), ESearchCase::IgnoreCase, ESearchDir::FromEnd);
-					FString CleanType = (LastSlash != INDEX_NONE) ? ClassPath.Mid(LastSlash + 1) : ClassPath;
-					CleanType = CleanType.Replace(TEXT("\""), TEXT(""));
+					const FString CleanType = NormalizeNodeTypeName(ClassPath);
 
 					FMinimalNode NewNode;
 					NewNode.InternalName = NodeName;
@@ -218,10 +296,7 @@ void FBlueprintToTextConverter::ParseT3DToNodes(const FString& T3DText, TMap<FSt
 				{
 					if (CurrentNode->DisplayName.IsEmpty())
 					{
-						if ((CurrentNode->NodeType == TEXT("K2Node_VariableGet") || CurrentNode->NodeType == TEXT("K2Node_VariableSet")) && !CurrentNode->DisplayName.IsEmpty())
-						{
-						}
-						else if (!CurrentNode->MacroName.IsEmpty())
+						if (!CurrentNode->MacroName.IsEmpty())
 						{
 							CurrentNode->DisplayName = CurrentNode->MacroName;
 						}
@@ -255,13 +330,13 @@ void FBlueprintToTextConverter::ParseT3DToNodes(const FString& T3DText, TMap<FSt
 			FParse::Value(*Line, TEXT("NodePosY="), CurrentNode->NodePosY);
 		}
 
-		if ((CurrentNode->NodeType == TEXT("K2Node_VariableGet") || CurrentNode->NodeType == TEXT("K2Node_VariableSet")) && Line.Contains(TEXT("VariableReference=")))
+		if ((IsNodeTypeMatch(CurrentNode->NodeType, TEXT("K2Node_VariableGet")) || IsNodeTypeMatch(CurrentNode->NodeType, TEXT("K2Node_VariableSet"))) && Line.Contains(TEXT("VariableReference=")))
 		{
 			ParseVariableReferenceLine(Line, *CurrentNode);
 			continue;
 		}
 
-		if (CurrentNode->NodeType == TEXT("K2Node_MacroInstance") && (Line.Contains(TEXT("MacroGraphReference=")) || Line.Contains(TEXT("MacroGraph="))))
+		if (IsNodeTypeMatch(CurrentNode->NodeType, TEXT("K2Node_MacroInstance")) && (Line.Contains(TEXT("MacroGraphReference=")) || Line.Contains(TEXT("MacroGraph="))))
 		{
 			ParseMacroReferenceLine(Line, *CurrentNode);
 			continue;
@@ -336,7 +411,7 @@ void FBlueprintToTextConverter::ParseT3DToNodes(const FString& T3DText, TMap<FSt
 FString FBlueprintToTextConverter::FormatNodesToJson(const TMap<FString, FMinimalNode>& Nodes)
 {
 	TSharedRef<FJsonObject> RootObject = MakeShared<FJsonObject>();
-	RootObject->SetStringField(TEXT("version"), TEXT("1.1"));
+	RootObject->SetStringField(TEXT("version"), TEXT("2.0"));
 	RootObject->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.JsonToBlueprint"));
 
 	TMap<FString, TPair<FString, FString>> PinIdToNodePin;
@@ -379,7 +454,7 @@ FString FBlueprintToTextConverter::FormatNodesToJson(const TMap<FString, FMinima
 		}
 		NodeObject->SetObjectField(TEXT("inputs"), InputsObject);
 
-		if (Node.NodeType == TEXT("K2Node_VariableGet") || Node.NodeType == TEXT("K2Node_VariableSet"))
+		if (IsNodeTypeMatch(Node.NodeType, TEXT("K2Node_VariableGet")) || IsNodeTypeMatch(Node.NodeType, TEXT("K2Node_VariableSet")))
 		{
 			TSharedRef<FJsonObject> VariableObject = MakeShared<FJsonObject>();
 			VariableObject->SetStringField(TEXT("scope"), Node.VariableScopeType.IsEmpty() ? TEXT("member") : Node.VariableScopeType);
@@ -437,7 +512,7 @@ FString FBlueprintToTextConverter::FormatNodesToJson(const TMap<FString, FMinima
 
 			NodeObject->SetObjectField(TEXT("variable"), VariableObject);
 		}
-		else if (Node.NodeType == TEXT("K2Node_MacroInstance"))
+		else if (IsNodeTypeMatch(Node.NodeType, TEXT("K2Node_MacroInstance")))
 		{
 			TSharedRef<FJsonObject> MacroObject = MakeShared<FJsonObject>();
 			MacroObject->SetStringField(TEXT("name"), Node.MacroName.IsEmpty() ? Node.DisplayName : Node.MacroName);
@@ -517,11 +592,6 @@ FString FBlueprintToTextConverter::FormatNodesToJson(const TMap<FString, FMinima
 
 FString FBlueprintToTextConverter::NormalizeExportValue(const FString& InValue)
 {
-	FString Result = InValue.TrimStartAndEnd();
-	Result.RemoveFromStart(TEXT("\""));
-	Result.RemoveFromEnd(TEXT("\""));
-	Result.RemoveFromStart(TEXT("("));
-	Result.RemoveFromEnd(TEXT(")"));
-	return Result.TrimStartAndEnd();
+	return NormalizeExportTextValue(InValue);
 }
 

@@ -36,6 +36,12 @@ private:
 	/** 注册编辑器菜单。 */
 	void RegisterMenus();
 
+	/** 注册主编辑器菜单入口。 */
+	void RegisterLevelEditorMenus();
+
+	/** 注册蓝图编辑器工具栏入口。 */
+	void RegisterBlueprintEditorToolbar();
+
 	/** 生成插件主页签。 */
 	TSharedRef<SDockTab> OnSpawnPluginTab(const FSpawnTabArgs& SpawnTabArgs);
 

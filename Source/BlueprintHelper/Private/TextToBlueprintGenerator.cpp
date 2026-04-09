@@ -1,5 +1,7 @@
 ﻿#include "TextToBlueprintGenerator.h"
 
+#include "NodeHandlers/BlueprintNodeHandler.h"
+#include "OperationHandlers/BlueprintOperationHandler.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Engine/Blueprint.h"
 #include "EdGraph/EdGraph.h"
@@ -21,6 +23,40 @@ namespace
 {
 	/** 标准宏库资产路径。 */
 	const TCHAR* StandardMacroLibraryPath = TEXT("/Engine/EditorBlueprintResources/StandardMacros.StandardMacros");
+
+	/**
+	 * 归一化节点类型名称，统一转成 K2Node_xxx 形式。
+	 */
+	FString NormalizeNodeTypeName(const FString& InNodeType)
+	{
+		FString Result = InNodeType;
+		Result.TrimStartAndEndInline();
+		Result.ReplaceInline(TEXT("\""), TEXT(""));
+
+		const int32 LastSlashIndex = Result.Find(TEXT("/"), ESearchCase::IgnoreCase, ESearchDir::FromEnd);
+		if (LastSlashIndex != INDEX_NONE)
+		{
+			Result = Result.Mid(LastSlashIndex + 1);
+		}
+
+		const int32 LastDotIndex = Result.Find(TEXT("."), ESearchCase::IgnoreCase, ESearchDir::FromEnd);
+		if (LastDotIndex != INDEX_NONE)
+		{
+			Result = Result.Mid(LastDotIndex + 1);
+		}
+
+		return Result.TrimStartAndEnd();
+	}
+
+	/**
+	 * 判断宏名称是否仍是占位符。
+	 */
+	bool IsPlaceholderMacroName(const FString& InMacroName)
+	{
+		return InMacroName.Equals(TEXT("BlueprintGraph.MacroInstance"), ESearchCase::IgnoreCase)
+			|| InMacroName.Equals(TEXT("K2Node_MacroInstance"), ESearchCase::IgnoreCase)
+			|| InMacroName.Equals(TEXT("MacroInstance"), ESearchCase::IgnoreCase);
+	}
 
 	/**
 	 * 归一化引脚名称，便于做别名比较。
@@ -58,25 +94,120 @@ EParsedBlueprintNodeType TextToBlueprintGenerator::ResolveNodeType(const TShared
 
 	FString NodeTypeString;
 	NodeObject->TryGetStringField(TEXT("type"), NodeTypeString);
+	const FString NormalizedNodeType = NormalizeNodeTypeName(NodeTypeString);
 
-	if (NodeTypeString.Equals(TEXT("K2Node_CallFunction"), ESearchCase::IgnoreCase))
+	if (NormalizedNodeType.Equals(TEXT("K2Node_CallFunction"), ESearchCase::IgnoreCase))
 	{
 		return EParsedBlueprintNodeType::CallFunction;
 	}
 
-	if (NodeTypeString.Equals(TEXT("K2Node_VariableGet"), ESearchCase::IgnoreCase))
+	if (NormalizedNodeType.Equals(TEXT("K2Node_VariableGet"), ESearchCase::IgnoreCase))
 	{
 		return EParsedBlueprintNodeType::VariableGet;
 	}
 
-	if (NodeTypeString.Equals(TEXT("K2Node_VariableSet"), ESearchCase::IgnoreCase))
+	if (NormalizedNodeType.Equals(TEXT("K2Node_VariableSet"), ESearchCase::IgnoreCase))
 	{
 		return EParsedBlueprintNodeType::VariableSet;
 	}
 
-	if (NodeTypeString.Equals(TEXT("K2Node_MacroInstance"), ESearchCase::IgnoreCase))
+	if (NormalizedNodeType.Equals(TEXT("K2Node_MacroInstance"), ESearchCase::IgnoreCase))
 	{
 		return EParsedBlueprintNodeType::MacroInstance;
+	}
+
+	if (NormalizedNodeType.Equals(TEXT("K2Node_IfThenElse"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("Branch"), ESearchCase::IgnoreCase))
+	{
+		return EParsedBlueprintNodeType::Branch;
+	}
+
+	if (NormalizedNodeType.Equals(TEXT("K2Node_ExecutionSequence"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("Sequence"), ESearchCase::IgnoreCase))
+	{
+		return EParsedBlueprintNodeType::Sequence;
+	}
+
+	if (NormalizedNodeType.Equals(TEXT("K2Node_CustomEvent"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("CustomEvent"), ESearchCase::IgnoreCase))
+	{
+		return EParsedBlueprintNodeType::CustomEvent;
+	}
+
+	if (NormalizedNodeType.Equals(TEXT("K2Node_Event"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("Event"), ESearchCase::IgnoreCase))
+	{
+		return EParsedBlueprintNodeType::Event;
+	}
+
+	if (NormalizedNodeType.Equals(TEXT("K2Node_CallDelegate"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("CallDelegate"), ESearchCase::IgnoreCase))
+	{
+		return EParsedBlueprintNodeType::CallDelegate;
+	}
+
+	if (NormalizedNodeType.Equals(TEXT("K2Node_AddDelegate"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("AddDelegate"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("BindEvent"), ESearchCase::IgnoreCase))
+	{
+		return EParsedBlueprintNodeType::AddDelegate;
+	}
+
+	if (NormalizedNodeType.Equals(TEXT("K2Node_RemoveDelegate"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("RemoveDelegate"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("UnbindEvent"), ESearchCase::IgnoreCase))
+	{
+		return EParsedBlueprintNodeType::RemoveDelegate;
+	}
+
+	if (NormalizedNodeType.Equals(TEXT("K2Node_ClearDelegate"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("ClearDelegate"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("UnbindAll"), ESearchCase::IgnoreCase))
+	{
+		return EParsedBlueprintNodeType::ClearDelegate;
+	}
+
+	if (NormalizedNodeType.Equals(TEXT("K2Node_AssignDelegate"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("AssignDelegate"), ESearchCase::IgnoreCase))
+	{
+		return EParsedBlueprintNodeType::AssignDelegate;
+	}
+
+	if (NormalizedNodeType.Equals(TEXT("K2Node_CreateDelegate"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("CreateDelegate"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("CreateEvent"), ESearchCase::IgnoreCase))
+	{
+		return EParsedBlueprintNodeType::CreateDelegate;
+	}
+
+	if (NormalizedNodeType.Equals(TEXT("K2Node_MakeArray"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("MakeArray"), ESearchCase::IgnoreCase))
+	{
+		return EParsedBlueprintNodeType::MakeArray;
+	}
+
+	if (NormalizedNodeType.Equals(TEXT("K2Node_MakeMap"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("MakeMap"), ESearchCase::IgnoreCase))
+	{
+		return EParsedBlueprintNodeType::MakeMap;
+	}
+
+	if (NormalizedNodeType.Equals(TEXT("K2Node_MakeSet"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("MakeSet"), ESearchCase::IgnoreCase))
+	{
+		return EParsedBlueprintNodeType::MakeSet;
+	}
+
+	if (NormalizedNodeType.Equals(TEXT("K2Node_MakeStruct"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("MakeStruct"), ESearchCase::IgnoreCase))
+	{
+		return EParsedBlueprintNodeType::MakeStruct;
+	}
+
+	if (NormalizedNodeType.Equals(TEXT("K2Node_BreakStruct"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("BreakStruct"), ESearchCase::IgnoreCase))
+	{
+		return EParsedBlueprintNodeType::BreakStruct;
 	}
 
 	if (NodeObject->HasField(TEXT("macro")))
@@ -91,7 +222,7 @@ EParsedBlueprintNodeType TextToBlueprintGenerator::ResolveNodeType(const TShared
 			return NodeObject->GetBoolField(TEXT("set")) ? EParsedBlueprintNodeType::VariableSet : EParsedBlueprintNodeType::VariableGet;
 		}
 
-		if (NodeTypeString.Contains(TEXT("set"), ESearchCase::IgnoreCase))
+		if (NormalizedNodeType.Contains(TEXT("set"), ESearchCase::IgnoreCase))
 		{
 			return EParsedBlueprintNodeType::VariableSet;
 		}
@@ -99,7 +230,12 @@ EParsedBlueprintNodeType TextToBlueprintGenerator::ResolveNodeType(const TShared
 		return EParsedBlueprintNodeType::VariableGet;
 	}
 
-	return EParsedBlueprintNodeType::CallFunction;
+	if (NormalizedNodeType.IsEmpty() || NormalizedNodeType.Equals(TEXT("K2Node_CallFunction"), ESearchCase::IgnoreCase))
+	{
+		return EParsedBlueprintNodeType::CallFunction;
+	}
+
+	return EParsedBlueprintNodeType::Unknown;
 }
 
 FString TextToBlueprintGenerator::ConvertJsonValueToString(const TSharedPtr<FJsonValue>& JsonValue)
@@ -243,9 +379,158 @@ FParsedMacroReference TextToBlueprintGenerator::ResolveMacroReference(const TSha
 		NodeObject->TryGetStringField(TEXT("name"), Result.MacroName);
 	}
 
+	if (Result.MacroName.IsEmpty() || IsPlaceholderMacroName(Result.MacroName))
+	{
+		NodeObject->TryGetStringField(TEXT("function_name"), Result.MacroName);
+	}
+
+	if (IsPlaceholderMacroName(Result.MacroName))
+	{
+		Result.MacroName.Reset();
+	}
+
 	if (Result.LibraryType.IsEmpty())
 	{
 		Result.LibraryType = TEXT("standard");
+	}
+
+	return Result;
+}
+
+FParsedEventReference TextToBlueprintGenerator::ResolveEventReference(const TSharedPtr<FJsonObject>& NodeObject)
+{
+	FParsedEventReference Result;
+	if (!NodeObject.IsValid())
+	{
+		return Result;
+	}
+
+	const TSharedPtr<FJsonObject>* EventObject = nullptr;
+	if (NodeObject->TryGetObjectField(TEXT("event"), EventObject) && EventObject && EventObject->IsValid())
+	{
+		(*EventObject)->TryGetStringField(TEXT("event_name"), Result.EventName);
+
+		const TArray<TSharedPtr<FJsonValue>>* ParamsArray = nullptr;
+		if ((*EventObject)->TryGetArrayField(TEXT("params"), ParamsArray) && ParamsArray)
+		{
+			for (const TSharedPtr<FJsonValue>& ParamValue : *ParamsArray)
+			{
+				const TSharedPtr<FJsonObject> ParamObject = ParamValue->AsObject();
+				if (!ParamObject.IsValid())
+				{
+					continue;
+				}
+
+				FParsedEventParam Param;
+				ParamObject->TryGetStringField(TEXT("name"), Param.Name);
+				const TSharedPtr<FJsonObject>* PinTypeObject = nullptr;
+				if (ParamObject->TryGetObjectField(TEXT("pin_type"), PinTypeObject) && PinTypeObject)
+				{
+					Param.PinType = ResolvePinType(*PinTypeObject);
+				}
+				if (!Param.Name.IsEmpty())
+				{
+					Result.Params.Add(Param);
+				}
+			}
+		}
+	}
+
+	if (Result.EventName.IsEmpty())
+	{
+		NodeObject->TryGetStringField(TEXT("name"), Result.EventName);
+	}
+
+	return Result;
+}
+
+FParsedDelegateReference TextToBlueprintGenerator::ResolveDelegateReference(const TSharedPtr<FJsonObject>& NodeObject)
+{
+	FParsedDelegateReference Result;
+	if (!NodeObject.IsValid())
+	{
+		return Result;
+	}
+
+	const TSharedPtr<FJsonObject>* DelegateObject = nullptr;
+	if (NodeObject->TryGetObjectField(TEXT("delegate"), DelegateObject) && DelegateObject && DelegateObject->IsValid())
+	{
+		(*DelegateObject)->TryGetStringField(TEXT("property_name"), Result.DelegatePropertyName);
+		(*DelegateObject)->TryGetStringField(TEXT("function_name"), Result.FunctionName);
+	}
+
+	if (Result.DelegatePropertyName.IsEmpty())
+	{
+		NodeObject->TryGetStringField(TEXT("delegate_property"), Result.DelegatePropertyName);
+	}
+
+	if (Result.DelegatePropertyName.IsEmpty())
+	{
+		NodeObject->TryGetStringField(TEXT("name"), Result.DelegatePropertyName);
+	}
+
+	return Result;
+}
+
+FParsedContainerReference TextToBlueprintGenerator::ResolveContainerReference(const TSharedPtr<FJsonObject>& NodeObject)
+{
+	FParsedContainerReference Result;
+	if (!NodeObject.IsValid())
+	{
+		return Result;
+	}
+
+	const TSharedPtr<FJsonObject>* ContainerObject = nullptr;
+	if (NodeObject->TryGetObjectField(TEXT("container"), ContainerObject) && ContainerObject && ContainerObject->IsValid())
+	{
+		if ((*ContainerObject)->HasField(TEXT("num_inputs")))
+		{
+			Result.NumInputs = static_cast<int32>((*ContainerObject)->GetNumberField(TEXT("num_inputs")));
+		}
+		if ((*ContainerObject)->HasField(TEXT("num_pairs")))
+		{
+			Result.NumPairs = static_cast<int32>((*ContainerObject)->GetNumberField(TEXT("num_pairs")));
+		}
+
+		const TSharedPtr<FJsonObject>* ElementTypeObject = nullptr;
+		if ((*ContainerObject)->TryGetObjectField(TEXT("element_type"), ElementTypeObject) && ElementTypeObject && ElementTypeObject->IsValid())
+		{
+			Result.ElementType = ResolvePinType(*ElementTypeObject);
+		}
+
+		const TSharedPtr<FJsonObject>* KeyTypeObject = nullptr;
+		if ((*ContainerObject)->TryGetObjectField(TEXT("key_type"), KeyTypeObject) && KeyTypeObject && KeyTypeObject->IsValid())
+		{
+			Result.KeyType = ResolvePinType(*KeyTypeObject);
+		}
+
+		const TSharedPtr<FJsonObject>* ValueTypeObject = nullptr;
+		if ((*ContainerObject)->TryGetObjectField(TEXT("value_type"), ValueTypeObject) && ValueTypeObject && ValueTypeObject->IsValid())
+		{
+			Result.ValueType = ResolvePinType(*ValueTypeObject);
+		}
+	}
+
+	return Result;
+}
+
+FParsedStructReference TextToBlueprintGenerator::ResolveStructReference(const TSharedPtr<FJsonObject>& NodeObject)
+{
+	FParsedStructReference Result;
+	if (!NodeObject.IsValid())
+	{
+		return Result;
+	}
+
+	const TSharedPtr<FJsonObject>* StructObject = nullptr;
+	if (NodeObject->TryGetObjectField(TEXT("struct"), StructObject) && StructObject && StructObject->IsValid())
+	{
+		(*StructObject)->TryGetStringField(TEXT("struct_path"), Result.StructPath);
+	}
+
+	if (Result.StructPath.IsEmpty())
+	{
+		NodeObject->TryGetStringField(TEXT("struct_path"), Result.StructPath);
 	}
 
 	return Result;
@@ -727,6 +1012,56 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateBlueprintFromJson(UEd
 		return Result;
 	}
 
+	// === Schema 2.0：蓝图级操作 ===
+	const TArray<TSharedPtr<FJsonValue>>* BlueprintOpsArray = nullptr;
+	if (JsonObject->TryGetArrayField(TEXT("blueprint_operations"), BlueprintOpsArray) && BlueprintOpsArray && BlueprintOpsArray->Num() > 0)
+	{
+		UBlueprint* Blueprint = FBlueprintEditorUtils::FindBlueprintForGraph(TargetGraph);
+		if (!Blueprint)
+		{
+			Result.Message = TEXT("无法从目标图表获取蓝图对象，blueprint_operations 无法执行。");
+			return Result;
+		}
+
+		for (const TSharedPtr<FJsonValue>& OpValue : *BlueprintOpsArray)
+		{
+			const TSharedPtr<FJsonObject> OpObject = OpValue->AsObject();
+			if (!OpObject.IsValid())
+			{
+				continue;
+			}
+
+			FString OpName;
+			OpObject->TryGetStringField(TEXT("op"), OpName);
+			if (OpName.IsEmpty())
+			{
+				continue;
+			}
+
+			IBlueprintOperationHandler* OpHandler = FBlueprintOperationHandlerRegistry::Get().FindHandler(OpName);
+			if (!OpHandler)
+			{
+				TSharedPtr<FUnresolvedNodeItem> UnresolvedItem = MakeShared<FUnresolvedNodeItem>();
+				UnresolvedItem->DisplayText = FString::Printf(TEXT("BlueprintOp: %s"), *OpName);
+				UnresolvedItem->Reason = FString::Printf(TEXT("未识别的蓝图级操作：%s"), *OpName);
+				OutUnresolvedNodes.Add(UnresolvedItem);
+				continue;
+			}
+
+			FString OpError;
+			if (!OpHandler->Execute(Blueprint, OpObject, OpError))
+			{
+				TSharedPtr<FUnresolvedNodeItem> UnresolvedItem = MakeShared<FUnresolvedNodeItem>();
+				UnresolvedItem->DisplayText = FString::Printf(TEXT("BlueprintOp: %s"), *OpName);
+				UnresolvedItem->Reason = OpError;
+				OutUnresolvedNodes.Add(UnresolvedItem);
+			}
+		}
+
+		// 蓝图级操作完成后编译骨架，确保后续节点可引用新创建的变量/函数/分发器
+		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+	}
+
 	TArray<FParsedNode> ParsedNodes;
 	TArray<FParsedLink> ParsedLinks;
 	TArray<FParsedLocalVariableDeclaration> ParsedLocalVariableDeclarations;
@@ -746,12 +1081,17 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateBlueprintFromJson(UEd
 			FParsedNode ParsedNode;
 			ParsedNode.Id = NodeObject->GetStringField(TEXT("id"));
 			NodeObject->TryGetStringField(TEXT("type"), ParsedNode.SourceType);
+			ParsedNode.SourceType = NormalizeNodeTypeName(ParsedNode.SourceType);
 			ParsedNode.NodeType = ResolveNodeType(NodeObject);
 			ParsedNode.FunctionName = ResolveNodeFunctionName(NodeObject);
 			ParsedNode.X = NodeObject->HasField(TEXT("x")) ? static_cast<float>(NodeObject->GetNumberField(TEXT("x"))) : 0.0f;
 			ParsedNode.Y = NodeObject->HasField(TEXT("y")) ? static_cast<float>(NodeObject->GetNumberField(TEXT("y"))) : 0.0f;
 			ParsedNode.VariableReference = ResolveVariableReference(NodeObject);
 			ParsedNode.MacroReference = ResolveMacroReference(NodeObject);
+			ParsedNode.EventReference = ResolveEventReference(NodeObject);
+			ParsedNode.DelegateReference = ResolveDelegateReference(NodeObject);
+			ParsedNode.ContainerReference = ResolveContainerReference(NodeObject);
+			ParsedNode.StructReference = ResolveStructReference(NodeObject);
 
 			const TSharedPtr<FJsonObject>* PositionObject = nullptr;
 			if (NodeObject->TryGetObjectField(TEXT("position"), PositionObject) && PositionObject && PositionObject->IsValid())
@@ -834,55 +1174,16 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateBlueprintFromJson(UEd
 		UK2Node* SpawnedNode = nullptr;
 		FString SpawnErrorMessage;
 
-		if (ParsedNode.NodeType == EParsedBlueprintNodeType::CallFunction)
+		IBlueprintNodeHandler* Handler = FBlueprintNodeHandlerRegistry::Get().FindHandler(ParsedNode.NodeType);
+		if (Handler)
 		{
-			UFunction* TargetFunction = FindFunctionByName(ParsedNode.FunctionName);
-			if (!TargetFunction)
-			{
-				SpawnErrorMessage = FString::Printf(TEXT("未找到蓝图函数：%s"), *ParsedNode.FunctionName);
-			}
-			else
-			{
-				SpawnedNode = SpawnFunctionNode(TargetGraph, TargetFunction, ParsedNode);
-			}
+			SpawnedNode = Handler->Spawn(TargetGraph, ParsedNode, SpawnErrorMessage);
 		}
-		else if (ParsedNode.NodeType == EParsedBlueprintNodeType::VariableGet)
+		else
 		{
-			if (ParsedNode.VariableReference.IsLocalVariable() && ParsedNode.VariableReference.bEnsureExists)
-			{
-				FParsedLocalVariableDeclaration LocalDeclaration;
-				LocalDeclaration.Name = ParsedNode.VariableReference.VariableName;
-				LocalDeclaration.PinType = ParsedNode.VariableReference.PinType;
-				LocalDeclaration.DefaultValue = ParsedNode.VariableReference.DefaultValue;
-				LocalDeclaration.bEnsureExists = true;
-				EnsureLocalVariableExists(TargetGraph, LocalDeclaration, SpawnErrorMessage);
-			}
-
-			if (SpawnErrorMessage.IsEmpty())
-			{
-				SpawnedNode = SpawnVariableGetNode(TargetGraph, ParsedNode, SpawnErrorMessage);
-			}
-		}
-		else if (ParsedNode.NodeType == EParsedBlueprintNodeType::VariableSet)
-		{
-			if (ParsedNode.VariableReference.IsLocalVariable() && ParsedNode.VariableReference.bEnsureExists)
-			{
-				FParsedLocalVariableDeclaration LocalDeclaration;
-				LocalDeclaration.Name = ParsedNode.VariableReference.VariableName;
-				LocalDeclaration.PinType = ParsedNode.VariableReference.PinType;
-				LocalDeclaration.DefaultValue = ParsedNode.VariableReference.DefaultValue;
-				LocalDeclaration.bEnsureExists = true;
-				EnsureLocalVariableExists(TargetGraph, LocalDeclaration, SpawnErrorMessage);
-			}
-
-			if (SpawnErrorMessage.IsEmpty())
-			{
-				SpawnedNode = SpawnVariableSetNode(TargetGraph, ParsedNode, SpawnErrorMessage);
-			}
-		}
-		else if (ParsedNode.NodeType == EParsedBlueprintNodeType::MacroInstance)
-		{
-			SpawnedNode = SpawnMacroNode(TargetGraph, ParsedNode, SpawnErrorMessage);
+			SpawnErrorMessage = ParsedNode.SourceType.IsEmpty()
+				? TEXT("未识别的节点类型，且缺少可用的函数/变量/宏描述。")
+				: FString::Printf(TEXT("未识别的节点类型：%s"), *ParsedNode.SourceType);
 		}
 
 		if (SpawnedNode)
@@ -928,12 +1229,21 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateBlueprintFromJson(UEd
 	}
 	TargetGraph->NotifyGraphChanged();
 
-	Result.bSucceed = GeneratedNodeCount > 0 || OutUnresolvedNodes.Num() > 0;
+	Result.bSucceed = GeneratedNodeCount > 0;
 	Result.GeneratedNodeCount = GeneratedNodeCount;
 	Result.UnresolvedNodeCount = OutUnresolvedNodes.Num();
-	Result.Message = Result.bSucceed
-		? FString::Printf(TEXT("生成完成：成功 %d 个，未匹配 %d 个。"), Result.GeneratedNodeCount, Result.UnresolvedNodeCount)
-		: TEXT("未生成任何节点，请检查 JSON 内容是否符合规则。");
+	if (Result.bSucceed)
+	{
+		Result.Message = FString::Printf(TEXT("生成完成：成功 %d 个，未匹配 %d 个。"), Result.GeneratedNodeCount, Result.UnresolvedNodeCount);
+	}
+	else if (Result.UnresolvedNodeCount > 0)
+	{
+		Result.Message = FString::Printf(TEXT("未生成任何节点：共有 %d 个节点未匹配，请检查 JSON 类型与描述字段。"), Result.UnresolvedNodeCount);
+	}
+	else
+	{
+		Result.Message = TEXT("未生成任何节点，请检查 JSON 内容是否符合规则。");
+	}
 	return Result;
 }
 
@@ -1070,7 +1380,7 @@ UK2Node* TextToBlueprintGenerator::SpawnMacroNode(UEdGraph* TargetGraph, const F
 
 	if (NodeData.MacroReference.MacroName.IsEmpty())
 	{
-		OutErrorMessage = TEXT("宏节点生成失败：宏名称为空。");
+		OutErrorMessage = TEXT("宏节点生成失败：缺少 macro.name，标准宏请提供真实宏名，例如 ForLoop。");
 		return nullptr;
 	}
 
