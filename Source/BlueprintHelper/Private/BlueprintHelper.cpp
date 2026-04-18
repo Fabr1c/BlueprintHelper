@@ -25,11 +25,37 @@
 #include "NodeHandlers/CreateDelegateNodeHandler.h"
 #include "NodeHandlers/MakeContainerNodeHandler.h"
 #include "NodeHandlers/StructOperationNodeHandler.h"
+#include "NodeHandlers/SelfNodeHandler.h"
+#include "NodeHandlers/DynamicCastNodeHandler.h"
+#include "NodeHandlers/SpawnActorNodeHandler.h"
+#include "NodeHandlers/FormatTextNodeHandler.h"
+#include "NodeHandlers/GetArrayItemNodeHandler.h"
+#include "NodeHandlers/TimelineNodeHandler.h"
+#include "NodeHandlers/KnotNodeHandler.h"
+#include "NodeHandlers/LiteralNodeHandler.h"
+#include "NodeHandlers/EnumNameNodeHandler.h"
+#include "NodeHandlers/ComponentBoundEventNodeHandler.h"
 #include "OperationHandlers/BlueprintOperationHandler.h"
 #include "OperationHandlers/AddMemberVariableHandler.h"
 #include "OperationHandlers/AddFunctionGraphHandler.h"
 #include "OperationHandlers/AddEventDispatcherHandler.h"
+#include "OperationHandlers/AddMacroGraphHandler.h"
+#include "OperationHandlers/RemoveGraphHandler.h"
+#include "OperationHandlers/RemoveMemberVariableHandler.h"
 #include "SHelperMainWidget.h"
+#include "Services/BlueprintHelperGraphResolver.h"
+#include "Services/BlueprintHelperValidationService.h"
+#include "Services/BlueprintHelperExportService.h"
+#include "Services/BlueprintHelperImportService.h"
+#include "Services/BlueprintHelperCompileService.h"
+#include "Services/BlueprintHelperContextService.h"
+#include "Services/BlueprintHelperAssetBrowseService.h"
+#include "Services/BlueprintHelperBlueprintStructureService.h"
+#include "Services/BlueprintHelperWidgetService.h"
+#include "Services/BlueprintHelperPropertyReflectionService.h"
+#include "Services/BlueprintHelperDataTableService.h"
+#include "Bridge/BlueprintHelperBridgeRouter.h"
+#include "Bridge/BlueprintHelperBridgeServer.h"
 #include "Styling/AppStyle.h"
 #include "Subsystems/AssetEditorSubsystem.h"
 #include "ToolMenus.h"
@@ -42,6 +68,9 @@
 DEFINE_LOG_CATEGORY_STATIC(LogBlueprintHelperEditor, Log, All);
 
 const FName FBlueprintHelperModule::HelperTabName(TEXT("BlueprintHelper.MainWindow"));
+
+FBlueprintHelperModule::FBlueprintHelperModule() = default;
+FBlueprintHelperModule::~FBlueprintHelperModule() = default;
 
 FBlueprintHelperModule& FBlueprintHelperModule::Get()
 {
@@ -69,11 +98,45 @@ void FBlueprintHelperModule::StartupModule()
 	Registry.Register(MakeShared<FCreateDelegateNodeHandler>());
 	Registry.Register(MakeShared<FMakeContainerNodeHandler>());
 	Registry.Register(MakeShared<FStructOperationNodeHandler>());
+	Registry.Register(MakeShared<FSelfNodeHandler>());
+	Registry.Register(MakeShared<FDynamicCastNodeHandler>());
+	Registry.Register(MakeShared<FSpawnActorNodeHandler>());
+	Registry.Register(MakeShared<FFormatTextNodeHandler>());
+	Registry.Register(MakeShared<FGetArrayItemNodeHandler>());
+	Registry.Register(MakeShared<FTimelineNodeHandler>());
+	// v2.3 — 全覆盖收尾
+	Registry.Register(MakeShared<FKnotNodeHandler>());
+	Registry.Register(MakeShared<FLiteralNodeHandler>());
+	Registry.Register(MakeShared<FEnumNameNodeHandler>());
+	Registry.Register(MakeShared<FComponentBoundEventNodeHandler>());
 
 	FBlueprintOperationHandlerRegistry& OpRegistry = FBlueprintOperationHandlerRegistry::Get();
 	OpRegistry.Register(MakeShared<FAddMemberVariableHandler>());
 	OpRegistry.Register(MakeShared<FAddFunctionGraphHandler>());
 	OpRegistry.Register(MakeShared<FAddEventDispatcherHandler>());
+	OpRegistry.Register(MakeShared<FAddMacroGraphHandler>());
+	OpRegistry.Register(MakeShared<FRemoveGraphHandler>());
+	OpRegistry.Register(MakeShared<FRemoveMemberVariableHandler>());
+
+	// ─── Service Layer 初始化 ───
+	GraphResolver    = MakeUnique<FBlueprintHelperGraphResolver>();
+	ValidationService = MakeUnique<FBlueprintHelperValidationService>();
+	ExportService    = MakeUnique<FBlueprintHelperExportService>(*GraphResolver);
+	CompileService   = MakeUnique<FBlueprintHelperCompileService>(*GraphResolver);
+	ImportService    = MakeUnique<FBlueprintHelperImportService>(*GraphResolver, *ValidationService);
+	ImportService->SetCompileService(CompileService.Get());
+	AssetBrowseService = MakeUnique<FBlueprintHelperAssetBrowseService>();
+	StructureService = MakeUnique<FBlueprintHelperBlueprintStructureService>(*GraphResolver);
+	WidgetService  = MakeUnique<FBlueprintHelperWidgetService>();
+	PropertyReflectionService = MakeUnique<FBlueprintHelperPropertyReflectionService>();
+	DataTableService = MakeUnique<FBlueprintHelperDataTableService>();
+
+	// ─── Bridge Layer 初始化 ───
+	ContextService = MakeUnique<FBlueprintHelperContextService>(*GraphResolver);
+	BridgeRouter = MakeUnique<FBlueprintHelperBridgeRouter>(
+		*ImportService, *ExportService, *CompileService, *ValidationService, *ContextService, *AssetBrowseService, *StructureService, *WidgetService, *PropertyReflectionService, *DataTableService);
+	BridgeServer = MakeUnique<FBlueprintHelperBridgeServer>(*BridgeRouter);
+	BridgeServer->Start();
 
 	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(HelperTabName, FOnSpawnTab::CreateRaw(this, &FBlueprintHelperModule::OnSpawnPluginTab))
 		.SetDisplayName(LOCTEXT("BlueprintHelperTabTitle", "Blueprint Helper"))
@@ -87,6 +150,24 @@ void FBlueprintHelperModule::StartupModule()
 
 void FBlueprintHelperModule::ShutdownModule()
 {
+	// ─── Bridge Layer 销毁 ───
+	if (BridgeServer) { BridgeServer->Shutdown(); }
+	BridgeServer.Reset();
+	BridgeRouter.Reset();
+	ContextService.Reset();
+
+	// ─── Service Layer 销毁（逆序）───
+	DataTableService.Reset();
+	PropertyReflectionService.Reset();
+	StructureService.Reset();
+	WidgetService.Reset();
+	AssetBrowseService.Reset();
+	ImportService.Reset();
+	CompileService.Reset();
+	ExportService.Reset();
+	ValidationService.Reset();
+	GraphResolver.Reset();
+
 	FBlueprintNodeHandlerRegistry::Get().Reset();
 	FBlueprintOperationHandlerRegistry::Get().Reset();
 
@@ -227,6 +308,8 @@ TSharedRef<SDockTab> FBlueprintHelperModule::OnSpawnPluginTab(const FSpawnTabArg
 		.TabRole(ETabRole::NomadTab)
 		[
 			SNew(SHelperMainWidget)
+			.ImportService(ImportService.Get())
+			.GraphResolver(GraphResolver.Get())
 		];
 }
 

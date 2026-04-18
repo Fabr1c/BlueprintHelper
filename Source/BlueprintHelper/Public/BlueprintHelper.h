@@ -7,6 +7,19 @@
 class SDockTab;
 class UEdGraph;
 class FSpawnTabArgs;
+class FBlueprintHelperGraphResolver;
+class FBlueprintHelperValidationService;
+class FBlueprintHelperExportService;
+class FBlueprintHelperImportService;
+class FBlueprintHelperCompileService;
+class FBlueprintHelperContextService;
+class FBlueprintHelperBridgeRouter;
+class FBlueprintHelperBridgeServer;
+class FBlueprintHelperAssetBrowseService;
+class FBlueprintHelperBlueprintStructureService;
+class FBlueprintHelperWidgetService;
+class FBlueprintHelperPropertyReflectionService;
+class FBlueprintHelperDataTableService;
 
 /**
  * BlueprintHelper 模块，负责注册编辑器窗口与提供当前蓝图图表访问能力。
@@ -14,6 +27,9 @@ class FSpawnTabArgs;
 class BLUEPRINTHELPER_API FBlueprintHelperModule : public IModuleInterface
 {
 public:
+	FBlueprintHelperModule();
+	~FBlueprintHelperModule() override;
+
 	/** 获取模块实例。 */
 	static FBlueprintHelperModule& Get();
 
@@ -32,6 +48,19 @@ public:
 	/** 读取 Json -> 蓝图规则 Markdown。 */
 	FString GetJsonToBlueprintRuleMarkdown() const;
 
+	// ─── Service Layer 访问 ───
+
+	const FBlueprintHelperGraphResolver& GetGraphResolver() const { return *GraphResolver; }
+	const FBlueprintHelperValidationService& GetValidationService() const { return *ValidationService; }
+	const FBlueprintHelperExportService& GetExportService() const { return *ExportService; }
+	const FBlueprintHelperImportService& GetImportService() const { return *ImportService; }
+	const FBlueprintHelperCompileService& GetCompileService() const { return *CompileService; }
+	const FBlueprintHelperAssetBrowseService& GetAssetBrowseService() const { return *AssetBrowseService; }
+	const FBlueprintHelperBlueprintStructureService& GetStructureService() const { return *StructureService; }
+	const FBlueprintHelperWidgetService& GetWidgetService() const { return *WidgetService; }
+	const FBlueprintHelperPropertyReflectionService& GetPropertyReflectionService() const { return *PropertyReflectionService; }
+	const FBlueprintHelperDataTableService& GetDataTableService() const { return *DataTableService; }
+
 private:
 	/** 注册编辑器菜单。 */
 	void RegisterMenus();
@@ -48,4 +77,21 @@ private:
 private:
 	/** 插件主页签名称。 */
 	static const FName HelperTabName;
+
+	// ─── Service Layer ───
+	TUniquePtr<FBlueprintHelperGraphResolver> GraphResolver;
+	TUniquePtr<FBlueprintHelperValidationService> ValidationService;
+	TUniquePtr<FBlueprintHelperExportService> ExportService;
+	TUniquePtr<FBlueprintHelperImportService> ImportService;
+	TUniquePtr<FBlueprintHelperCompileService> CompileService;
+	TUniquePtr<FBlueprintHelperAssetBrowseService> AssetBrowseService;
+	TUniquePtr<FBlueprintHelperBlueprintStructureService> StructureService;
+	TUniquePtr<FBlueprintHelperWidgetService> WidgetService;
+	TUniquePtr<FBlueprintHelperPropertyReflectionService> PropertyReflectionService;
+	TUniquePtr<FBlueprintHelperDataTableService> DataTableService;
+
+	// ─── Bridge Layer ───
+	TUniquePtr<FBlueprintHelperContextService> ContextService;
+	TUniquePtr<FBlueprintHelperBridgeRouter> BridgeRouter;
+	TUniquePtr<FBlueprintHelperBridgeServer> BridgeServer;
 };

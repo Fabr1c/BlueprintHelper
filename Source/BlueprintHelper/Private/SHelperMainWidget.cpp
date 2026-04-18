@@ -5,6 +5,8 @@
 
 #include "BlueprintHelper.h"
 #include "BlueprintTextConverter.h"
+#include "Services/BlueprintHelperGraphResolver.h"
+#include "Services/BlueprintHelperImportService.h"
 #include "HAL/PlatformApplicationMisc.h"
 #include "ScopedTransaction.h"
 #include "SlateOptMacros.h"
@@ -21,6 +23,9 @@ BEGIN_SLATE_FUNCTION_BUILD_OPTIMIZATION
 
 void SHelperMainWidget::Construct(const FArguments& InArgs)
 {
+	ImportService = InArgs._ImportService;
+	GraphResolverPtr = InArgs._GraphResolver;
+
 	// 初始化所有函数库
 	FunctionSource = TextToBlueprintGenerator::GetAllBlueprintFunctions();
 	FilteredFunctionSource = FunctionSource;
@@ -337,6 +342,10 @@ FString SHelperMainWidget::ResolveBlueprintSourceText() const
 
 UEdGraph* SHelperMainWidget::GetCurrentTargetGraph() const
 {
+	if (GraphResolverPtr)
+	{
+		return GraphResolverPtr->GetFocusedGraph();
+	}
 	return FBlueprintHelperModule::Get().GetActiveBlueprintGraph();
 }
 

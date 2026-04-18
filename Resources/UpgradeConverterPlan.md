@@ -304,9 +304,9 @@ private:
 | v1.4 | 事件与委托 | CustomEvent / EventDispatcher / Bind / Unbind / Call | 1.4 | ✅ 已完成 |
 | v1.5 | 完整宏与容器 | 所有标准宏 + ForEachLoop / Array / Map / Set 操作函数 | 1.5 | ✅ 已完成 |
 | v2.0 | 蓝图级操作 | 创建变量 / 函数 / 事件分发器 / Schema 2.0 | 2.0 | ✅ 已完成 |
-| v2.1 | 图表管理 | 创建/删除函数图 / 宏图 / 导出整图 | 2.0 |
-| v2.2 | 高级节点 | Timeline / SpawnActor / Cast / Interface / Struct 操作 | 2.0 |
-| v2.3 | 全覆盖收尾 | Tunnel / Composite / 动画蓝图节点 / 数学表达式节点 | 2.0 |
+| v2.1 | 图表管理 | 创建/删除函数图 / 宏图 / 多图导入 / 完整导出 | 2.1 | ✅ 已完成 |
+| v2.2 | 高级节点 | Self / DynamicCast / SpawnActor / FormatText / GetArrayItem / Timeline | 2.2 | ✅ 已完成 |
+| v2.3 | 全覆盖收尾 | Knot / Comment / Literal / EnumName / ComponentBoundEvent | 2.0 | ✅ 已完成 |
 
 ---
 
@@ -622,21 +622,46 @@ public:
 
 ---
 
-### v2.1 — 图表管理
+### v2.1 — 图表管理 ✅ 已完成
 
 **目标**：支持多图操作、整图导出、图表创建删除。
 
-#### 新增能力
+#### 已实现能力
 
-- 导出整个蓝图为 JSON（所有图表 + 所有变量 + 所有函数签名）
-- 指定目标图表（EventGraph / 自定义函数名）
-- 在 JSON 中描述多个图表的节点
+- **3 个新 Operation Handler**：`add_macro_graph`（创建宏图 + Tunnel 引脚）、`remove_graph`（删除函数/宏图，禁止删除 EventGraph）、`remove_member_variable`（删除成员变量）
+- **多图导入**：`GenerateMultiGraphFromJson` + `FindGraphByName` + `GenerateNodesAndLinksForGraph`，支持 `graphs` 数组向不同图表分别生成节点，向后兼容单图模式
+- **完整蓝图导出**：`ExportBlueprintToJson` 导出成员变量、函数签名（输入/输出/is_pure）、宏图、事件分发器为 `blueprint_operations`，所有图表（EventGraph + 函数 + 宏）的节点和连线为 `graphs` 数组
+- **单图导出**：`ConvertGraphToJson` 导出单个图表的节点和连线
+- `IdentifyNodeType` 识别 21 种 K2Node 子类
+- `PinTypeToJson` 导出完整引脚类型（category / sub_category / object_path / container_type / is_reference / is_const）
+- 导出跳过 FunctionEntry / FunctionResult（在函数签名中表达）和 UserConstructionScript
 
-#### JSON 格式扩展
+#### 文件落点
+
+| 新增文件 | 说明 |
+|---------|------|
+| `Public/OperationHandlers/AddMacroGraphHandler.h` | 宏图创建 Handler |
+| `Private/OperationHandlers/AddMacroGraphHandler.cpp` | 实现 |
+| `Public/OperationHandlers/RemoveGraphHandler.h` | 图表删除 Handler |
+| `Private/OperationHandlers/RemoveGraphHandler.cpp` | 实现 |
+| `Public/OperationHandlers/RemoveMemberVariableHandler.h` | 变量删除 Handler |
+| `Private/OperationHandlers/RemoveMemberVariableHandler.cpp` | 实现 |
+| `Resources/TestFixtures/v2.1_GraphManagement.json` | 测试 fixture |
+
+#### 修改文件
+
+| 文件 | 改动 |
+|------|------|
+| `TextToBlueprintGenerator.h/cpp` | 新增 GenerateMultiGraphFromJson / FindGraphByName / GenerateNodesAndLinksForGraph |
+| `BlueprintTextConverter.h/cpp` | 新增 ExportBlueprintToJson / ConvertGraphToJson / PinTypeToJson / ExportGraphNodesAndLinks / IdentifyNodeType |
+| `BlueprintHelper.cpp` | 注册 3 个新 Operation Handler（共 6 个） |
+| `JsonToBlueprintRules.md` | 新增 v2.1 操作文档、graphs 数组格式、导出说明 |
+
+#### JSON Schema 2.1
 
 ```json
 {
-  "version": "2.0",
+  "version": "2.1",
   "graphs": [
     {
       "graph": "EventGraph",
@@ -654,52 +679,84 @@ public:
 
 ---
 
-### v2.2 — 高级节点
+### v2.2 — 高级节点 ✅ 已完成
 
 **目标**：覆盖日常蓝图开发中频繁使用的高级节点。
 
-#### 新增节点支持
+#### 已实现节点
 
-| 节点类型 | K2Node 类 | 难度 |
+| 节点类型 | K2Node 类 | 状态 |
 |---------|----------|------|
-| SpawnActor | `K2Node_SpawnActor` | 中 |
-| Cast | `K2Node_DynamicCast` | 低 |
-| Interface Call | `K2Node_CallParentFunction` | 中 |
-| Self | `K2Node_Self` | 低 |
-| Get/Set by Index (Array) | `K2Node_GetArrayItem` | 低 |
-| Timeline | `K2Node_Timeline` | 高 |
-| Format Text | `K2Node_FormatText` | 中 |
-| Promote to Variable | N/A（编辑器操作） | 中 |
-| Construct Object | `K2Node_ConstructObjectFromClass` | 中 |
-| Validate Get | `K2Node_CallFunction` IsValid | 低 |
-| Math Expression | `K2Node_MathExpression` | 高 |
+| Self | `K2Node_Self` | ✅ |
+| DynamicCast | `K2Node_DynamicCast` | ✅ |
+| SpawnActorFromClass | `K2Node_SpawnActorFromClass` | ✅ |
+| FormatText | `K2Node_FormatText` | ✅ |
+| GetArrayItem | `K2Node_GetArrayItem` | ✅ |
+| Timeline | `K2Node_Timeline` | ✅（基本支持，不含曲线关键帧） |
 
-#### Timeline 特殊处理
+#### 推迟到后续版本
 
-Timeline 是最复杂的单个节点：
-- 需要创建 `UTimelineTemplate` 子对象
-- 包含 Float/Vector/Color/Event 曲线轨道
-- 每条轨道有关键帧数据
+| 节点类型 | 原因 |
+|---------|------|
+| CallParentFunction | 现有 CallFunction handler 可处理 |
+| ConstructObjectFromClass | 抽象类，SpawnActorFromClass 是具体实现 |
+| MathExpression | 复杂度高，推迟到 v2.3 |
+| Promote to Variable | 编辑器操作，非节点 |
 
-建议通过 JSON 定义轨道结构，在 Handler 中调用 `FBlueprintEditorUtils::AddTimeline` + 填充曲线数据。
+#### 新增文件
+- `SelfNodeHandler.h / .cpp`
+- `DynamicCastNodeHandler.h / .cpp`
+- `SpawnActorNodeHandler.h / .cpp`
+- `FormatTextNodeHandler.h / .cpp`
+- `GetArrayItemNodeHandler.h / .cpp`
+- `TimelineNodeHandler.h / .cpp`
+
+#### 修改文件
+- `TextToBlueprintGenerator.h` — 新增 6 个枚举值 + 4 个引用结构体 + 4 个 FParsedNode 字段 + 4 个 Resolve 声明
+- `TextToBlueprintGenerator.cpp` — ResolveNodeType 6 条 + 4 个 Resolve 实现 + 两处解析块扩展
+- `BlueprintHelper.cpp` — 6 个 handler includes + 6 个 Register 调用
+- `BlueprintTextConverter.cpp` — 6 个 K2Node includes + 6 个 Cast 检测 + 版本号 2.1 → 2.2
+- `PinAliases.json` — 6 组新节点引脚别名
+- `JsonToBlueprintRules.md` — v2.2 高级节点完整文档及示例
 
 ---
 
-### v2.3 — 全覆盖收尾
+### v2.3 — 全覆盖收尾 ✅ 已完成
 
 **目标**：覆盖剩余长尾节点类型，达成"可表达任何蓝图操作"。
 
-#### 覆盖列表
+#### 已实现节点
 
-| 类别 | 包含节点 |
-|------|---------|
-| Tunnel / Composite | `K2Node_Tunnel`、`K2Node_Composite` |
-| Component Getter | `K2Node_ComponentBoundEvent`、`K2Node_VariableGet` 组件变量 |
-| Literal | `K2Node_Literal`（对象引用常量） |
-| Enum | `K2Node_GetEnumeratorName`、`K2Node_GetEnumeratorNameAsString` |
-| 注释 | `UEdGraphNode_Comment` |
-| 重新路由 | `K2Node_Knot` |
-| AnimGraph 节点 | 视需求扩展 |
+| 节点类型 | K2Node 类 | 状态 |
+|---------|----------|------|
+| Knot（布线转接） | `K2Node_Knot` | ✅ |
+| Comment（注释框） | `UEdGraphNode_Comment` | ✅（非 K2Node，内联处理） |
+| Literal（对象引用常量） | `K2Node_Literal` | ✅ |
+| GetEnumeratorName | `K2Node_GetEnumeratorName` | ✅ |
+| GetEnumeratorNameAsString | `K2Node_GetEnumeratorNameAsString` | ✅ |
+| ComponentBoundEvent | `K2Node_ComponentBoundEvent` | ✅ |
+
+#### 推迟到后续版本
+
+| 节点类型 | 原因 |
+|---------|------|
+| Tunnel / Composite | 引擎内部节点，编辑器自动管理，手动创建复杂度极高 |
+| MathExpression | 复杂度高，UE5.6 未找到标准头文件位置 |
+| AnimGraph 节点 | 极度特化，需 AnimGraph 模块依赖 |
+
+#### 新增文件
+- `KnotNodeHandler.h / .cpp`
+- `LiteralNodeHandler.h / .cpp`
+- `EnumNameNodeHandler.h / .cpp`（同时处理 GetEnumeratorName 和 GetEnumeratorNameAsString）
+- `ComponentBoundEventNodeHandler.h / .cpp`
+
+#### 修改文件
+- `TextToBlueprintGenerator.h` — 新增 6 个枚举值 + 3 个引用结构体 + 3 个 FParsedNode 字段 + 3 个 Resolve 声明
+- `TextToBlueprintGenerator.cpp` — ResolveNodeType 6 条 + 3 个 Resolve 实现 + Comment 内联生成 + 两处解析块扩展
+- `BlueprintHelper.cpp` — 4 个 handler includes + 4 个 Register 调用
+- `BlueprintTextConverter.cpp` — 7 个 includes + 8 个 Cast 检测 + Comment/Literal/ComponentBoundEvent 导出
+- `PinAliases.json` — 5 组新节点引脚别名 + 修复文件截断
+- `JsonToBlueprintRules.md` — v2.3 节点完整文档及示例
 
 ---
 
@@ -714,9 +771,9 @@ Timeline 是最复杂的单个节点：
 | v1.4 | 识别事件/委托节点，导出 event / delegate 字段 |
 | v1.5 | 识别 MakeArray / MakeMap 等容器字面量节点 |
 | v2.0 | 导出蓝图级信息：变量列表、函数列表、事件分发器列表 |
-| v2.1 | 导出多图结构 |
-| v2.2 | 识别 Timeline、SpawnActor 等高级节点属性 |
-| v2.3 | 导出 Comment、Knot、Tunnel 等 |
+| v2.1 | 导出多图结构 + 完整蓝图导出（ExportBlueprintToJson）✅ |
+| v2.2 | 识别 Self / DynamicCast / SpawnActor / FormatText / GetArrayItem / Timeline 高级节点 ✅ |
+| v2.3 | 导出 Comment、Knot、Literal、ComponentBoundEvent、EnumName 节点 ✅ |
 
 ---
 
@@ -731,6 +788,7 @@ Timeline 是最复杂的单个节点：
 ### 回归测试策略
 
 每版新增的 fixture 文件命名规范：
+每个版本都编译一遍插件，生成一套测试 JSON，覆盖该版本新增的节点类型和功能点。
 每个版本生成一段测试Json，包含该版本新增的节点类型和功能点，命名为 `v{version}_{feature}.json`，放在 `Resources/TestFixtures/` 目录下。
 ```
 Resources/TestFixtures/

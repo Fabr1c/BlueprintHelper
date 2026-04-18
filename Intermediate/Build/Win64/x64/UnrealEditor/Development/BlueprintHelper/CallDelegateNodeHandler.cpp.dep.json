@@ -6,7 +6,7 @@
         "PCH": "g:\\unrealpractise\\mrstone\\intermediate\\build\\win64\\x64\\mrstoneeditor\\development\\unrealed\\sharedpch.unrealed.project.valapi.valexpapi.cpp20.h.pch",
         "Includes": [
             "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\intermediate\\build\\win64\\x64\\unrealeditor\\development\\blueprinthelper\\definitions.blueprinthelper.h",
-            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\private\\nodehandlers\\calldelegatenodehandler.h",
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\nodehandlers\\calldelegatenodehandler.h",
             "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\nodehandlers\\blueprintnodehandler.h",
             "f:\\ue_5.6\\engine\\source\\editor\\blueprintgraph\\classes\\k2node_calldelegate.h",
             "f:\\ue_5.6\\engine\\source\\editor\\blueprintgraph\\classes\\k2node_basemcdelegate.h",

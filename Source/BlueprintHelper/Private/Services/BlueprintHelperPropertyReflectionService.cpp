@@ -1,0 +1,146 @@
+// BlueprintHelper Service Layer — 通用 UObject 属性反射服务实现
+
+#include "Services/BlueprintHelperPropertyReflectionService.h"
+#include "UObject/UnrealType.h"
+#include "UObject/Package.h"
+#include "Engine/AssetManager.h"
+#include "FileHelpers.h"
+
+// ═══════════════════════════════════════════════════════════
+// 内部工具
+// ═══════════════════════════════════════════════════════════
+
+UObject* FBlueprintHelperPropertyReflectionService::ResolveAsset(
+	const FString& AssetPath, FString& OutError) const
+{
+	if (AssetPath.IsEmpty())
+	{
+		OutError = TEXT("asset_path 不能为空。");
+		return nullptr;
+	}
+
+	UObject* Obj = StaticLoadObject(UObject::StaticClass(), nullptr, *AssetPath);
+	if (!Obj)
+	{
+		OutError = FString::Printf(TEXT("无法加载资产: %s"), *AssetPath);
+		return nullptr;
+	}
+	return Obj;
+}
+
+FString FBlueprintHelperPropertyReflectionService::BuildFlagsSummary(uint64 PropertyFlags)
+{
+	TArray<FString> Tags;
+	if (PropertyFlags & CPF_Edit)              Tags.Add(TEXT("Edit"));
+	if (PropertyFlags & CPF_BlueprintVisible)  Tags.Add(TEXT("BlueprintVisible"));
+	if (PropertyFlags & CPF_BlueprintReadOnly) Tags.Add(TEXT("BlueprintReadOnly"));
+	if (PropertyFlags & CPF_EditConst)         Tags.Add(TEXT("EditConst"));
+	if (PropertyFlags & CPF_Config)            Tags.Add(TEXT("Config"));
+	if (PropertyFlags & CPF_Transient)         Tags.Add(TEXT("Transient"));
+	if (PropertyFlags & CPF_SaveGame)          Tags.Add(TEXT("SaveGame"));
+	return FString::Join(Tags, TEXT(", "));
+}
+
+// ═══════════════════════════════════════════════════════════
+// GetObjectProperties
+// ═══════════════════════════════════════════════════════════
+
+FBlueprintHelperObjectPropertiesResult FBlueprintHelperPropertyReflectionService::GetObjectProperties(
+	const FString& AssetPath) const
+{
+	FBlueprintHelperObjectPropertiesResult Result;
+
+	UObject* Obj = ResolveAsset(AssetPath, Result.ErrorMessage);
+	if (!Obj)
+	{
+		return Result;
+	}
+
+	Result.ClassName = Obj->GetClass()->GetName();
+	Result.AssetPath = AssetPath;
+
+	for (TFieldIterator<FProperty> It(Obj->GetClass()); It; ++It)
+	{
+		FProperty* Prop = *It;
+		if (!Prop) continue;
+
+		// 跳过没有 Edit / BlueprintVisible 标志的属性
+		if (!(Prop->PropertyFlags & (CPF_Edit | CPF_BlueprintVisible)))
+		{
+			continue;
+		}
+
+		FBlueprintHelperObjectPropertyInfo Info;
+		Info.Name = Prop->GetName();
+		Info.TypeName = Prop->GetCPPType();
+
+		// 导出当前值
+		const void* ValuePtr = Prop->ContainerPtrToValuePtr<void>(Obj);
+		Prop->ExportTextItem_Direct(Info.Value, ValuePtr, nullptr, Obj, PPF_None);
+
+		// 元数据：Category
+		if (Prop->HasMetaData(TEXT("Category")))
+		{
+			Info.Category = Prop->GetMetaData(TEXT("Category"));
+		}
+
+		Info.Flags = BuildFlagsSummary(Prop->PropertyFlags);
+		Result.Properties.Add(MoveTemp(Info));
+	}
+
+	Result.bSuccess = true;
+	return Result;
+}
+
+// ═══════════════════════════════════════════════════════════
+// SetObjectProperty
+// ═══════════════════════════════════════════════════════════
+
+FBlueprintHelperSetPropertyResult FBlueprintHelperPropertyReflectionService::SetObjectProperty(
+	const FString& AssetPath,
+	const FString& PropertyName,
+	const FString& Value) const
+{
+	FBlueprintHelperSetPropertyResult Result;
+	Result.PropertyName = PropertyName;
+
+	FString LoadError;
+	UObject* Obj = ResolveAsset(AssetPath, LoadError);
+	if (!Obj)
+	{
+		Result.ErrorMessage = LoadError;
+		return Result;
+	}
+
+	FProperty* Prop = Obj->GetClass()->FindPropertyByName(*PropertyName);
+	if (!Prop)
+	{
+		Result.ErrorMessage = FString::Printf(
+			TEXT("在 %s 上未找到属性: %s"), *Obj->GetClass()->GetName(), *PropertyName);
+		return Result;
+	}
+
+	void* ValuePtr = Prop->ContainerPtrToValuePtr<void>(Obj);
+
+	// 导出旧值
+	Prop->ExportTextItem_Direct(Result.OldValue, ValuePtr, nullptr, Obj, PPF_None);
+
+	// 导入新值
+	const TCHAR* ImportResult = Prop->ImportText_Direct(*Value, ValuePtr, Obj, PPF_None);
+	if (!ImportResult)
+	{
+		Result.ErrorMessage = FString::Printf(
+			TEXT("属性 %s 值导入失败，输入: \"%s\""), *PropertyName, *Value);
+		return Result;
+	}
+
+	// 标记脏
+	Obj->MarkPackageDirty();
+	Obj->PostEditChange();
+
+	// 导出新值确认
+	Prop->ExportTextItem_Direct(Result.NewValue, ValuePtr, nullptr, Obj, PPF_None);
+
+	Result.bSuccess = true;
+	return Result;
+}

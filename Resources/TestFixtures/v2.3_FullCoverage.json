@@ -1,0 +1,88 @@
+{
+  "version": "2.3",
+  "schema": "BlueprintHelper.JsonToBlueprint",
+  "nodes": [
+    {
+      "id": "knot_1",
+      "type": "K2Node_Knot",
+      "x": 200,
+      "y": 100
+    },
+    {
+      "id": "comment_1",
+      "type": "Comment",
+      "x": -100,
+      "y": -200,
+      "comment": {
+        "text": "Main Logic Section",
+        "width": 600,
+        "height": 200,
+        "font_size": 18,
+        "color": "(R=0.2,G=0.6,B=1.0,A=1.0)"
+      }
+    },
+    {
+      "id": "literal_1",
+      "type": "K2Node_Literal",
+      "x": 0,
+      "y": 300,
+      "literal": {
+        "object_path": "/Script/Engine.Default__Actor"
+      }
+    },
+    {
+      "id": "enum_name_1",
+      "type": "K2Node_GetEnumeratorName",
+      "x": 400,
+      "y": 0
+    },
+    {
+      "id": "enum_string_1",
+      "type": "K2Node_GetEnumeratorNameAsString",
+      "x": 400,
+      "y": 200
+    },
+    {
+      "id": "comp_event_1",
+      "type": "K2Node_ComponentBoundEvent",
+      "x": 0,
+      "y": 500,
+      "component_event": {
+        "delegate_property": "OnComponentBeginOverlap",
+        "delegate_owner_class": "/Script/Engine.PrimitiveComponent",
+        "component_property": "CollisionComponent"
+      }
+    },
+    {
+      "id": "knot_alias",
+      "type": "Reroute",
+      "x": 300,
+      "y": 400
+    },
+    {
+      "id": "comment_alias",
+      "type": "EdGraphNode_Comment",
+      "x": 500,
+      "y": -200,
+      "comment": {
+        "text": "Comment using full class name alias",
+        "width": 400,
+        "height": 100
+      }
+    }
+  ],
+  "links": [
+    {
+      "source": { "node": "comp_event_1", "pin": "then" },
+      "target": { "node": "knot_1", "pin": "input" }
+    },
+    {
+      "source": { "node": "knot_1", "pin": "output" },
+      "target": { "node": "knot_alias", "pin": "input" }
+    },
+    {
+      "source": { "node": "enum_name_1", "pin": "output" },
+      "target": { "node": "enum_string_1", "pin": "input" }
+    }
+  ]
+}

@@ -31,7 +31,9 @@ public class BlueprintHelper : ModuleRules
 				"BlueprintGraph",
 				"UnrealEd",
 				"GraphEditor",
-				"Kismet"
+				"Kismet",
+				"UMG",
+				"UMGEditor"
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);
@@ -50,6 +52,8 @@ public class BlueprintHelper : ModuleRules
 				"WorkspaceMenuStructure",
 				"LevelEditor",
 				"Projects",
+				"Sockets",
+				"Networking",
 				// ... add private dependencies that you statically link with here ...
 			}
 			);

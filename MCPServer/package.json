@@ -1,0 +1,20 @@
+{
+  "name": "blueprint-helper-mcp-server",
+  "version": "0.1.0",
+  "description": "MCP Server bridging IDE AI to BlueprintHelper UE5 plugin",
+  "type": "module",
+  "main": "build/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node build/index.js",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "zod": "^3.25.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.17",
+    "typescript": "^5.8.0"
+  }
+}

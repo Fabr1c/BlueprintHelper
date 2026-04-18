@@ -4,7 +4,8 @@
 该规则用于约束外部大模型输出 **BlueprintHelper 可直接解析的 JSON**，再由插件在当前蓝图图表中生成节点。
 
 当前版本支持以下闭环：
-- Blueprint T3D -> JSON
+- Blueprint -> JSON（完整蓝图导出，含多图表、变量、函数签名）
+- JSON -> Blueprint（多图表导入，含 blueprint_operations + graphs 数组）
 - JSON -> `UK2Node_CallFunction`
 - JSON -> `K2Node_VariableGet / K2Node_VariableSet`
 - JSON -> 标准宏 `K2Node_MacroInstance`（ForLoop / ForLoopWithBreak / ForEachLoop / ForEachLoopWithBreak / WhileLoop / FlipFlop / DoOnce / DoN / Gate / IsValid）
@@ -22,8 +23,12 @@
 - JSON -> `K2Node_MakeStruct / K2Node_BreakStruct`（结构体操作）
 - JSON -> `declarations.local_variables` 本地变量声明/确保存在
 - **v2.0 新增** `blueprint_operations` 蓝图级操作：创建成员变量 / 函数图 / 事件分发器
+- **v2.1 新增** `blueprint_operations` 扩展：创建宏图 / 删除图表 / 删除成员变量
+- **v2.1 新增** `graphs` 多图表支持：单个 JSON 可向多个图表生成节点
+- **v2.1 新增** `ExportBlueprintToJson` 完整蓝图导出（变量、函数签名、宏、所有图表节点和连线）
+- **v2.2 新增** 高级节点：`K2Node_Self`、`K2Node_DynamicCast`、`K2Node_SpawnActorFromClass`、`K2Node_FormatText`、`K2Node_GetArrayItem`、`K2Node_Timeline`
 
-> 当前仍不保证完整支持 `Timeline`、`Select`、`Switch`、自定义宏库等更复杂节点。
+> 当前仍不保证完整支持 `Select`、`Switch`、`MathExpression`、自定义宏库等更复杂节点。
 
 ---
 
@@ -43,7 +48,7 @@
 }
 ```
 
-### Schema 2.0（蓝图级操作 + 节点操作）
+### Schema 2.0（蓝图级操作 + 单图表节点操作）
 ```json
 {
   "version": "2.0",
@@ -57,21 +62,58 @@
 }
 ```
 
+### Schema 2.1（多图表操作）
+```json
+{
+  "version": "2.1",
+  "schema": "BlueprintHelper.JsonToBlueprint",
+  "blueprint_operations": [],
+  "graphs": [
+    {
+      "graph": "EventGraph",
+      "declarations": { "local_variables": [] },
+      "nodes": [],
+      "links": []
+    },
+    {
+      "graph": "MyFunction",
+      "declarations": { "local_variables": [] },
+      "nodes": [],
+      "links": []
+    }
+  ]
+}
+```
+
+> **向后兼容**：如果 JSON 中没有 `graphs` 数组而有顶层 `nodes`/`links`，插件自动按单图表模式处理（默认写入 EventGraph），完全兼容 1.x / 2.0 格式。
+
 ### 字段说明
-- `version`: 当前版本 `"2.0"`，1.x 版的 JSON 也兼容
+- `version`: 当前版本 `"2.2"`，1.x / 2.0 / 2.1 版的 JSON 也兼容
 - `schema`: 固定填 `"BlueprintHelper.JsonToBlueprint"`
 - `blueprint_operations`: **v2.0 新增**，蓝图级操作数组（可选），在节点生成之前执行
 - `declarations`: 声明区，可选，目前用于本地变量声明
-- `nodes`: 节点数组
-- `links`: 节点连线数组
+- `nodes`: 节点数组（单图表模式）
+- `links`: 节点连线数组（单图表模式）
+- `graphs`: **v2.1 新增**，多图表数组，每项包含 `graph`（图表名）、`declarations`、`nodes`、`links`
 
 ### 执行顺序
-1. `blueprint_operations`（创建变量、函数、事件分发器等蓝图资产级操作）
-2. `declarations.local_variables`（确保本地变量存在）
-3. `nodes`（生成节点）
-4. `links`（连线）
+1. `blueprint_operations`（创建/删除变量、函数、宏图、事件分发器等蓝图资产级操作）
+2. 对每个图表（单图表模式或 `graphs` 数组中的每个图表）：
+   - `declarations.local_variables`（确保本地变量存在）
+   - `nodes`（生成节点）
+   - `links`（连线）
 
-此顺序保证引用完整性：节点可以引用刚由 blueprint_operations 创建的变量或函数。
+此顺序保证引用完整性：节点可以引用刚由 blueprint_operations 创建的变量、函数或宏图。
+
+### graphs 数组字段说明
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `graph` | 是 | 目标图表名称（如 `EventGraph`、函数名、宏名） |
+| `declarations` | 否 | 该图表的声明区（local_variables 等） |
+| `nodes` | 是 | 该图表的节点数组 |
+| `links` | 是 | 该图表的连线数组 |
+
+> **图表查找顺序**：UbergraphPages → FunctionGraphs → MacroGraphs → DelegateSignatureGraphs
 
 ---
 
@@ -190,6 +232,64 @@
 | `params` | 否 | 签名参数数组，每项含 `name` + `pin_type` |
 
 **幂等**：若同名事件分发器已存在则跳过。创建后可立即在 `nodes` 中使用 `K2Node_CallDelegate` / `K2Node_AddDelegate` 等委托节点引用该分发器。
+
+### add_macro_graph — 创建宏图（v2.1）
+
+```json
+{
+  "op": "add_macro_graph",
+  "name": "MyMacro",
+  "inputs": [
+    { "name": "InExec", "pin_type": { "category": "exec" } },
+    { "name": "InValue", "pin_type": { "category": "float" } }
+  ],
+  "outputs": [
+    { "name": "OutExec", "pin_type": { "category": "exec" } },
+    { "name": "OutResult", "pin_type": { "category": "float" } }
+  ]
+}
+```
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `op` | 是 | 固定 `"add_macro_graph"` |
+| `name` | 是 | 宏图名称 |
+| `inputs` | 否 | Tunnel 输入引脚数组，每项含 `name` + `pin_type`。默认类型 `exec` |
+| `outputs` | 否 | Tunnel 输出引脚数组，每项含 `name` + `pin_type`。默认类型 `exec` |
+
+**幂等**：若同名宏图已存在则跳过。
+
+### remove_graph — 删除图表（v2.1）
+
+```json
+{
+  "op": "remove_graph",
+  "name": "OldFunction"
+}
+```
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `op` | 是 | 固定 `"remove_graph"` |
+| `name` | 是 | 要删除的函数图或宏图名称 |
+
+**禁止删除 EventGraph。** 若目标图表不存在，操作视为成功（幂等）。
+
+### remove_member_variable — 删除成员变量（v2.1）
+
+```json
+{
+  "op": "remove_member_variable",
+  "name": "OldHealth"
+}
+```
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `op` | 是 | 固定 `"remove_member_variable"` |
+| `name` | 是 | 要删除的成员变量名（包括事件分发器属性） |
+
+**幂等**：若变量不存在，操作视为成功。
 
 ---
 
@@ -794,6 +894,267 @@ Pin: `execute`, `input_object`, `is_valid`, `is_not_valid`
 
 ---
 
+## 高级节点（v2.2）
+
+### K2Node_Self（自身引用）
+最简单的纯节点，输出当前蓝图实例的 self 引用。
+
+```json
+{
+  "id": "self_1",
+  "type": "K2Node_Self",
+  "x": 0, "y": 0
+}
+```
+
+无需任何额外字段。
+
+### K2Node_DynamicCast（类型转换）
+
+```json
+{
+  "id": "cast_1",
+  "type": "K2Node_DynamicCast",
+  "x": 200, "y": 0,
+  "cast": {
+    "target_class_path": "/Script/Engine.Character"
+  }
+}
+```
+
+| 字段 | 说明 |
+|------|------|
+| `cast.target_class_path` | 目标类路径，例如 `/Script/Engine.Character`、`/Script/MyProject.MyActor`。也可以使用顶层 `target_class_path` |
+
+**Pin Alias**：`object`（输入对象）、`cast_result`（转换结果）、`success`（布尔输出）、`valid`（转换成功执行）、`invalid`（转换失败执行）
+
+### K2Node_SpawnActorFromClass（生成 Actor）
+
+```json
+{
+  "id": "spawn_1",
+  "type": "K2Node_SpawnActorFromClass",
+  "x": 400, "y": 0,
+  "spawn": {
+    "class_path": "/Script/Engine.StaticMeshActor"
+  },
+  "default_values": {
+    "SpawnTransform": "()"
+  }
+}
+```
+
+| 字段 | 说明 |
+|------|------|
+| `spawn.class_path` | 要生成的 Actor 类路径。也可以使用顶层 `class_path` |
+
+**Pin Alias**：`class`、`spawn_transform`、`return_value`、`collision_handling_override`、`owner`、`instigator`
+
+### K2Node_FormatText（格式化文本）
+纯节点，根据格式字符串中的 `{ArgName}` 占位符动态创建参数引脚。
+
+```json
+{
+  "id": "fmt_1",
+  "type": "K2Node_FormatText",
+  "x": 600, "y": 0,
+  "format_text": {
+    "format_string": "Hello {Name}, you have {Count} items!"
+  },
+  "default_values": {
+    "Name": "World",
+    "Count": "5"
+  }
+}
+```
+
+| 字段 | 说明 |
+|------|------|
+| `format_text.format_string` | 格式字符串，使用 `{ArgName}` 标记占位符。占位符名称会自动创建对应的输入引脚 |
+
+**Pin Alias**：`format`（格式字符串输入）、`result`（格式化后的文本输出）
+
+### K2Node_GetArrayItem（通过索引获取数组元素）
+纯节点，通配符引脚。
+
+```json
+{
+  "id": "arr_get_1",
+  "type": "K2Node_GetArrayItem",
+  "x": 800, "y": 0,
+  "default_values": {
+    "Dimension 1": "0"
+  }
+}
+```
+
+**Pin Alias**：`array`（输入数组）、`index`（索引）、`element`（输出元素）
+
+### K2Node_Timeline（时间轴）
+创建时间轴节点及其关联的 UTimelineTemplate。支持基本配置（名称、自动播放、循环）和轨道定义。
+
+```json
+{
+  "id": "tl_1",
+  "type": "K2Node_Timeline",
+  "x": 0, "y": 200,
+  "timeline": {
+    "name": "MyTimeline",
+    "auto_play": false,
+    "loop": true,
+    "float_tracks": ["Alpha", "Speed"],
+    "vector_tracks": ["Location"],
+    "event_tracks": ["OnHalfway"]
+  }
+}
+```
+
+| 字段 | 说明 |
+|------|------|
+| `timeline.name` | 时间轴名称（可选，默认自动分配唯一名称） |
+| `timeline.auto_play` | 是否自动播放（默认 false） |
+| `timeline.loop` | 是否循环（默认 false） |
+| `timeline.float_tracks` | Float 轨道名称数组，每个名称对应一个 float 输出引脚 |
+| `timeline.vector_tracks` | Vector 轨道名称数组 |
+| `timeline.event_tracks` | Event 轨道名称数组，每个名称对应一个执行输出引脚 |
+
+**Pin Alias**：`play`、`play_from_start`、`stop`、`reverse`、`reverse_from_end`、`update`、`finished`、`direction`、`set_new_time`、`new_time`
+
+> 注意：当前不支持在 JSON 中定义轨道曲线关键帧数据，轨道创建后需要在编辑器中手动配置曲线。
+
+---
+
+## v2.3 — 全覆盖收尾节点
+
+### K2Node_Knot（重新路由 / 布线转接）
+纯视觉布线节点，无特殊字段。
+
+```json
+{
+  "id": "Knot_0",
+  "type": "K2Node_Knot",
+  "x": 200, "y": 100
+}
+```
+别名：`Knot`、`Reroute`。
+
+**Pin Alias**：`input`→InputPin、`output`→OutputPin
+
+---
+
+### EdGraphNode_Comment（注释框）
+非 K2Node，不参与连线。
+
+```json
+{
+  "id": "Comment_0",
+  "type": "Comment",
+  "x": 0, "y": -100,
+  "comment": {
+    "text": "这里是主要逻辑",
+    "width": 600,
+    "height": 200,
+    "font_size": 18,
+    "color": "(R=1.0,G=1.0,B=1.0,A=1.0)"
+  }
+}
+```
+别名：`Comment`、`EdGraphNode_Comment`。
+
+| 字段 | 说明 |
+|------|------|
+| `comment.text` | 注释文本（必填） |
+| `comment.width` | 注释框宽度（默认 400） |
+| `comment.height` | 注释框高度（默认 100） |
+| `comment.font_size` | 字体大小（默认 18） |
+| `comment.color` | 注释框颜色，FLinearColor 格式 `(R=,G=,B=,A=)` |
+
+也可使用扁平格式：`"comment_text": "..."` 省略嵌套对象。
+
+---
+
+### K2Node_Literal（对象引用常量）
+用于在图中引用固定的 UObject 对象（Actor、DataAsset 等）。
+
+```json
+{
+  "id": "Literal_0",
+  "type": "K2Node_Literal",
+  "x": 0, "y": 0,
+  "literal": {
+    "object_path": "/Game/Blueprints/BP_MyActor.BP_MyActor_C"
+  }
+}
+```
+别名：`Literal`。
+
+| 字段 | 说明 |
+|------|------|
+| `literal.object_path` | 对象资产路径（必填，格式同 UE 资产路径） |
+
+也可使用扁平格式：`"object_path": "..."` 省略嵌套对象。
+
+---
+
+### K2Node_GetEnumeratorName（枚举名获取器 → FName）
+纯节点，接受枚举字节输入，输出 FName。
+
+```json
+{
+  "id": "EnumName_0",
+  "type": "K2Node_GetEnumeratorName",
+  "x": 300, "y": 0
+}
+```
+别名：`GetEnumeratorName`。
+
+**Pin Alias**：`input`→EnumeratorValue、`output`→ReturnValue
+
+---
+
+### K2Node_GetEnumeratorNameAsString（枚举名获取器 → FString）
+纯节点，接受枚举字节输入，输出 FString。
+
+```json
+{
+  "id": "EnumString_0",
+  "type": "K2Node_GetEnumeratorNameAsString",
+  "x": 300, "y": 200
+}
+```
+别名：`GetEnumeratorNameAsString`。
+
+**Pin Alias**：`input`→EnumeratorValue、`output`→ReturnValue
+
+---
+
+### K2Node_ComponentBoundEvent（组件绑定事件）
+将组件上的多播委托绑定为事件图中的事件节点。
+
+```json
+{
+  "id": "CompEvent_0",
+  "type": "K2Node_ComponentBoundEvent",
+  "x": 0, "y": 0,
+  "component_event": {
+    "delegate_property": "OnComponentBeginOverlap",
+    "delegate_owner_class": "/Script/Engine.PrimitiveComponent",
+    "component_property": "CollisionComponent"
+  }
+}
+```
+别名：`ComponentBoundEvent`。
+
+| 字段 | 说明 |
+|------|------|
+| `component_event.delegate_property` | 委托属性名称（必填，如 `OnComponentBeginOverlap`） |
+| `component_event.delegate_owner_class` | 委托所属类路径（可选，不填时从组件类推断） |
+| `component_event.component_property` | 蓝图上的组件属性名称（必填） |
+
+也可使用扁平格式：`"delegate_property": "..."`, `"component_property": "..."`, `"delegate_owner_class": "..."` 省略嵌套对象。
+
+---
+
 ## 容器操作函数快查表
 
 以下操作函数为 `K2Node_CallFunction`，使用标准函数调用节点即可。
@@ -963,8 +1324,9 @@ Pin: `execute`, `input_object`, `is_valid`, `is_not_valid`
 要求：
 1. 只输出 JSON，不要输出解释文字。
 2. 顶层必须包含 version、schema、nodes、links。可选包含 blueprint_operations 和 declarations。
-3. schema 固定为 BlueprintHelper.JsonToBlueprint，version 固定为 "2.0"。
-4. `blueprint_operations` 在节点之前执行，可创建成员变量（add_member_variable）、函数图（add_function_graph）、事件分发器（add_event_dispatcher）。
+3. schema 固定为 BlueprintHelper.JsonToBlueprint，version 固定为 "2.1"。
+4. `blueprint_operations` 在节点之前执行，可创建成员变量（add_member_variable）、函数图（add_function_graph）、事件分发器（add_event_dispatcher）、宏图（add_macro_graph），也可删除图表（remove_graph）、删除成员变量（remove_member_variable）。
+4b. 多图表模式可使用 `graphs` 数组替代顶层 `nodes`/`links`，每项指定 `graph` 名+对应节点和连线。
 5. `type` 可使用 `K2Node_CallFunction`、`K2Node_VariableGet`、`K2Node_VariableSet`、`K2Node_MacroInstance`、`K2Node_IfThenElse`、`K2Node_ExecutionSequence`、`K2Node_CustomEvent`、`K2Node_Event`、`K2Node_CallDelegate`、`K2Node_AddDelegate`、`K2Node_RemoveDelegate`、`K2Node_ClearDelegate`、`K2Node_AssignDelegate`、`K2Node_CreateDelegate`、`K2Node_MakeArray`、`K2Node_MakeSet`、`K2Node_MakeMap`、`K2Node_MakeStruct`、`K2Node_BreakStruct`。
 6. `function_name` 优先使用 Unreal 可蓝图调用函数的原生函数名。
 7. 函数图中的本地变量可写入 `declarations.local_variables`，或在变量节点上写 `ensure_exists=true`。EventGraph 中只能使用成员变量（`scope: "member"`），不得使用 `local_variables`。
@@ -976,11 +1338,29 @@ Pin: `execute`, `input_object`, `is_valid`, `is_not_valid`
 
 ---
 
+## 蓝图完整导出（v2.1）
+
+插件提供 `ExportBlueprintToJson` 和 `ConvertGraphToJson` 两个导出功能：
+
+- **ExportBlueprintToJson**：导出整个蓝图，输出包含 `blueprint_operations`（成员变量、函数图签名、宏图、事件分发器）和 `graphs` 数组（EventGraph + 函数图 + 宏图的节点和连线）。
+- **ConvertGraphToJson**：导出单个图表的节点和连线。
+
+导出的 JSON 格式完全兼容导入规则，可直接用于重建蓝图。
+
+> 注意：导出跳过 FunctionEntry / FunctionResult 节点（它们在 `add_function_graph` 签名中表达），也跳过 UserConstructionScript。
+
+---
+
 ## 当前插件限制
 - 当前生成端稳定支持 `CallFunction`、成员/本地变量 `Get/Set`、标准宏（ForLoop 全系、FlipFlop、DoOnce、DoN、Gate、WhileLoop、IsValid）、`Branch`、`Sequence`、`CustomEvent`、引擎事件（`Event`）、委托操作（`CallDelegate`、`AddDelegate`、`RemoveDelegate`、`ClearDelegate`、`AssignDelegate`、`CreateDelegate`）、容器构造（`MakeArray`、`MakeSet`、`MakeMap`）、结构体操作（`MakeStruct`、`BreakStruct`）。
+- **v2.2 高级节点**：新增 `K2Node_Self`、`K2Node_DynamicCast`、`K2Node_SpawnActorFromClass`、`K2Node_FormatText`、`K2Node_GetArrayItem`、`K2Node_Timeline`。
+- **v2.3 全覆盖收尾**：新增 `K2Node_Knot`（布线转接）、`UEdGraphNode_Comment`（注释框）、`K2Node_Literal`（对象引用常量）、`K2Node_GetEnumeratorName`、`K2Node_GetEnumeratorNameAsString`、`K2Node_ComponentBoundEvent`（组件绑定事件）。
 - **v2.0 蓝图级操作**：支持 `add_member_variable`、`add_function_graph`、`add_event_dispatcher` 三种 blueprint_operations。
+- **v2.1 蓝图级操作扩展**：新增 `add_macro_graph`、`remove_graph`、`remove_member_variable`。
+- **v2.1 多图表导入**：`graphs` 数组支持向不同图表（EventGraph / 函数 / 宏）分别生成节点和连线。
+- **v2.1 蓝图完整导出**：`ExportBlueprintToJson` 输出可直接重建的完整 JSON。
 - **图表作用域约束**：
-  - `declarations.local_variables` 和 `scope: "local"` 仅在**函数图**中有效，EventGraph 中使用会直接失败。
+  - `declarations.local_variables` 和 `scope: "local"` 仅在**函数图/宏图**中有效，EventGraph 中使用会直接失败。
   - 成员变量（`scope: "member"`）可通过 `add_member_variable` 操作自动创建，也可手动在蓝图中创建。
   - 事件节点（`K2Node_Event`、`K2Node_CustomEvent`）只能在 EventGraph 中使用。
 - 事件分发器可通过 `add_event_dispatcher` 操作自动创建，创建后委托节点可立即引用。

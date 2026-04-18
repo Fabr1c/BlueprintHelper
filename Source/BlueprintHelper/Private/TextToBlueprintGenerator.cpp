@@ -12,12 +12,15 @@
 #include "K2Node_MacroInstance.h"
 #include "K2Node_VariableGet.h"
 #include "K2Node_VariableSet.h"
+#include "K2Node_FunctionEntry.h"
+#include "K2Node_FunctionResult.h"
 #include "ScopedTransaction.h"
 #include "Serialization/JsonTypes.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "UObject/SoftObjectPath.h"
 #include "UObject/UObjectIterator.h"
+#include "EdGraphNode_Comment.h"
 
 namespace
 {
@@ -208,6 +211,87 @@ EParsedBlueprintNodeType TextToBlueprintGenerator::ResolveNodeType(const TShared
 		|| NormalizedNodeType.Equals(TEXT("BreakStruct"), ESearchCase::IgnoreCase))
 	{
 		return EParsedBlueprintNodeType::BreakStruct;
+	}
+
+	if (NormalizedNodeType.Equals(TEXT("K2Node_Self"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("Self"), ESearchCase::IgnoreCase))
+	{
+		return EParsedBlueprintNodeType::Self;
+	}
+
+	if (NormalizedNodeType.Equals(TEXT("K2Node_DynamicCast"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("DynamicCast"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("Cast"), ESearchCase::IgnoreCase))
+	{
+		return EParsedBlueprintNodeType::DynamicCast;
+	}
+
+	if (NormalizedNodeType.Equals(TEXT("K2Node_SpawnActorFromClass"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("SpawnActorFromClass"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("SpawnActor"), ESearchCase::IgnoreCase))
+	{
+		return EParsedBlueprintNodeType::SpawnActorFromClass;
+	}
+
+	if (NormalizedNodeType.Equals(TEXT("K2Node_FormatText"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("FormatText"), ESearchCase::IgnoreCase))
+	{
+		return EParsedBlueprintNodeType::FormatText;
+	}
+
+	if (NormalizedNodeType.Equals(TEXT("K2Node_GetArrayItem"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("GetArrayItem"), ESearchCase::IgnoreCase))
+	{
+		return EParsedBlueprintNodeType::GetArrayItem;
+	}
+
+	if (NormalizedNodeType.Equals(TEXT("K2Node_Timeline"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("Timeline"), ESearchCase::IgnoreCase))
+	{
+		return EParsedBlueprintNodeType::Timeline;
+	}
+
+	// v2.3 — Knot 族（别名: "Reroute"）
+	if (NormalizedNodeType.Equals(TEXT("K2Node_Knot"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("Knot"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("Reroute"), ESearchCase::IgnoreCase))
+	{
+		return EParsedBlueprintNodeType::Knot;
+	}
+
+	// v2.3 — Comment 族
+	if (NormalizedNodeType.Equals(TEXT("EdGraphNode_Comment"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("Comment"), ESearchCase::IgnoreCase))
+	{
+		return EParsedBlueprintNodeType::Comment;
+	}
+
+	// v2.3 — Literal 族
+	if (NormalizedNodeType.Equals(TEXT("K2Node_Literal"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("Literal"), ESearchCase::IgnoreCase))
+	{
+		return EParsedBlueprintNodeType::Literal;
+	}
+
+	// v2.3 — GetEnumeratorName 族
+	if (NormalizedNodeType.Equals(TEXT("K2Node_GetEnumeratorName"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("GetEnumeratorName"), ESearchCase::IgnoreCase))
+	{
+		return EParsedBlueprintNodeType::GetEnumeratorName;
+	}
+
+	// v2.3 — GetEnumeratorNameAsString 族
+	if (NormalizedNodeType.Equals(TEXT("K2Node_GetEnumeratorNameAsString"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("GetEnumeratorNameAsString"), ESearchCase::IgnoreCase))
+	{
+		return EParsedBlueprintNodeType::GetEnumeratorNameAsString;
+	}
+
+	// v2.3 — ComponentBoundEvent 族
+	if (NormalizedNodeType.Equals(TEXT("K2Node_ComponentBoundEvent"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("ComponentBoundEvent"), ESearchCase::IgnoreCase))
+	{
+		return EParsedBlueprintNodeType::ComponentBoundEvent;
 	}
 
 	if (NodeObject->HasField(TEXT("macro")))
@@ -531,6 +615,207 @@ FParsedStructReference TextToBlueprintGenerator::ResolveStructReference(const TS
 	if (Result.StructPath.IsEmpty())
 	{
 		NodeObject->TryGetStringField(TEXT("struct_path"), Result.StructPath);
+	}
+
+	return Result;
+}
+
+FParsedCastReference TextToBlueprintGenerator::ResolveCastReference(const TSharedPtr<FJsonObject>& NodeObject)
+{
+	FParsedCastReference Result;
+	if (!NodeObject.IsValid())
+	{
+		return Result;
+	}
+
+	const TSharedPtr<FJsonObject>* CastObject = nullptr;
+	if (NodeObject->TryGetObjectField(TEXT("cast"), CastObject) && CastObject && CastObject->IsValid())
+	{
+		(*CastObject)->TryGetStringField(TEXT("target_class_path"), Result.TargetClassPath);
+	}
+
+	if (Result.TargetClassPath.IsEmpty())
+	{
+		NodeObject->TryGetStringField(TEXT("target_class_path"), Result.TargetClassPath);
+	}
+
+	return Result;
+}
+
+FParsedSpawnReference TextToBlueprintGenerator::ResolveSpawnReference(const TSharedPtr<FJsonObject>& NodeObject)
+{
+	FParsedSpawnReference Result;
+	if (!NodeObject.IsValid())
+	{
+		return Result;
+	}
+
+	const TSharedPtr<FJsonObject>* SpawnObject = nullptr;
+	if (NodeObject->TryGetObjectField(TEXT("spawn"), SpawnObject) && SpawnObject && SpawnObject->IsValid())
+	{
+		(*SpawnObject)->TryGetStringField(TEXT("class_path"), Result.ClassPath);
+	}
+
+	if (Result.ClassPath.IsEmpty())
+	{
+		NodeObject->TryGetStringField(TEXT("class_path"), Result.ClassPath);
+	}
+
+	return Result;
+}
+
+FParsedFormatTextReference TextToBlueprintGenerator::ResolveFormatTextReference(const TSharedPtr<FJsonObject>& NodeObject)
+{
+	FParsedFormatTextReference Result;
+	if (!NodeObject.IsValid())
+	{
+		return Result;
+	}
+
+	const TSharedPtr<FJsonObject>* FormatObject = nullptr;
+	if (NodeObject->TryGetObjectField(TEXT("format_text"), FormatObject) && FormatObject && FormatObject->IsValid())
+	{
+		(*FormatObject)->TryGetStringField(TEXT("format_string"), Result.FormatString);
+	}
+
+	if (Result.FormatString.IsEmpty())
+	{
+		NodeObject->TryGetStringField(TEXT("format_string"), Result.FormatString);
+	}
+
+	return Result;
+}
+
+FParsedTimelineReference TextToBlueprintGenerator::ResolveTimelineReference(const TSharedPtr<FJsonObject>& NodeObject)
+{
+	FParsedTimelineReference Result;
+	if (!NodeObject.IsValid())
+	{
+		return Result;
+	}
+
+	const TSharedPtr<FJsonObject>* TLObject = nullptr;
+	if (NodeObject->TryGetObjectField(TEXT("timeline"), TLObject) && TLObject && TLObject->IsValid())
+	{
+		(*TLObject)->TryGetStringField(TEXT("name"), Result.TimelineName);
+		(*TLObject)->TryGetBoolField(TEXT("auto_play"), Result.bAutoPlay);
+		(*TLObject)->TryGetBoolField(TEXT("loop"), Result.bLoop);
+
+		const TArray<TSharedPtr<FJsonValue>>* FloatArray = nullptr;
+		if ((*TLObject)->TryGetArrayField(TEXT("float_tracks"), FloatArray) && FloatArray)
+		{
+			for (const TSharedPtr<FJsonValue>& V : *FloatArray)
+			{
+				Result.FloatTracks.Add(V->AsString());
+			}
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* VectorArray = nullptr;
+		if ((*TLObject)->TryGetArrayField(TEXT("vector_tracks"), VectorArray) && VectorArray)
+		{
+			for (const TSharedPtr<FJsonValue>& V : *VectorArray)
+			{
+				Result.VectorTracks.Add(V->AsString());
+			}
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* EventArray = nullptr;
+		if ((*TLObject)->TryGetArrayField(TEXT("event_tracks"), EventArray) && EventArray)
+		{
+			for (const TSharedPtr<FJsonValue>& V : *EventArray)
+			{
+				Result.EventTracks.Add(V->AsString());
+			}
+		}
+	}
+
+	return Result;
+}
+
+FParsedLiteralReference TextToBlueprintGenerator::ResolveLiteralReference(const TSharedPtr<FJsonObject>& NodeObject)
+{
+	FParsedLiteralReference Result;
+	if (!NodeObject.IsValid())
+	{
+		return Result;
+	}
+
+	const TSharedPtr<FJsonObject>* LiteralObject = nullptr;
+	if (NodeObject->TryGetObjectField(TEXT("literal"), LiteralObject) && LiteralObject && LiteralObject->IsValid())
+	{
+		(*LiteralObject)->TryGetStringField(TEXT("object_path"), Result.ObjectPath);
+	}
+
+	if (Result.ObjectPath.IsEmpty())
+	{
+		NodeObject->TryGetStringField(TEXT("object_path"), Result.ObjectPath);
+	}
+
+	return Result;
+}
+
+FParsedComponentBoundEventReference TextToBlueprintGenerator::ResolveComponentBoundEventReference(const TSharedPtr<FJsonObject>& NodeObject)
+{
+	FParsedComponentBoundEventReference Result;
+	if (!NodeObject.IsValid())
+	{
+		return Result;
+	}
+
+	const TSharedPtr<FJsonObject>* EventObject = nullptr;
+	if (NodeObject->TryGetObjectField(TEXT("component_event"), EventObject) && EventObject && EventObject->IsValid())
+	{
+		(*EventObject)->TryGetStringField(TEXT("delegate_property"), Result.DelegatePropertyName);
+		(*EventObject)->TryGetStringField(TEXT("delegate_owner_class"), Result.DelegateOwnerClassPath);
+		(*EventObject)->TryGetStringField(TEXT("component_property"), Result.ComponentPropertyName);
+	}
+
+	if (Result.DelegatePropertyName.IsEmpty())
+	{
+		NodeObject->TryGetStringField(TEXT("delegate_property"), Result.DelegatePropertyName);
+	}
+	if (Result.ComponentPropertyName.IsEmpty())
+	{
+		NodeObject->TryGetStringField(TEXT("component_property"), Result.ComponentPropertyName);
+	}
+	if (Result.DelegateOwnerClassPath.IsEmpty())
+	{
+		NodeObject->TryGetStringField(TEXT("delegate_owner_class"), Result.DelegateOwnerClassPath);
+	}
+
+	return Result;
+}
+
+FParsedCommentReference TextToBlueprintGenerator::ResolveCommentReference(const TSharedPtr<FJsonObject>& NodeObject)
+{
+	FParsedCommentReference Result;
+	if (!NodeObject.IsValid())
+	{
+		return Result;
+	}
+
+	const TSharedPtr<FJsonObject>* CommentObject = nullptr;
+	if (NodeObject->TryGetObjectField(TEXT("comment"), CommentObject) && CommentObject && CommentObject->IsValid())
+	{
+		(*CommentObject)->TryGetStringField(TEXT("text"), Result.CommentText);
+		(*CommentObject)->TryGetStringField(TEXT("color"), Result.CommentColor);
+		if ((*CommentObject)->HasField(TEXT("width")))
+		{
+			Result.Width = static_cast<float>((*CommentObject)->GetNumberField(TEXT("width")));
+		}
+		if ((*CommentObject)->HasField(TEXT("height")))
+		{
+			Result.Height = static_cast<float>((*CommentObject)->GetNumberField(TEXT("height")));
+		}
+		if ((*CommentObject)->HasField(TEXT("font_size")))
+		{
+			Result.FontSize = static_cast<int32>((*CommentObject)->GetNumberField(TEXT("font_size")));
+		}
+	}
+
+	if (Result.CommentText.IsEmpty())
+	{
+		NodeObject->TryGetStringField(TEXT("comment_text"), Result.CommentText);
 	}
 
 	return Result;
@@ -1012,6 +1297,19 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateBlueprintFromJson(UEd
 		return Result;
 	}
 
+	// v2.1 多图 JSON 需要走 Blueprint 级入口，否则 graphs 数组中的节点不会被分发到对应图表。
+	if (JsonObject->HasField(TEXT("graphs")))
+	{
+		UBlueprint* Blueprint = FBlueprintEditorUtils::FindBlueprintForGraph(TargetGraph);
+		if (!Blueprint)
+		{
+			Result.Message = TEXT("无法从目标图表获取蓝图对象，graphs 数组无法执行。");
+			return Result;
+		}
+
+		return GenerateMultiGraphFromJson(Blueprint, TrimmedJsonString, OutUnresolvedNodes);
+	}
+
 	// === Schema 2.0：蓝图级操作 ===
 	const TArray<TSharedPtr<FJsonValue>>* BlueprintOpsArray = nullptr;
 	if (JsonObject->TryGetArrayField(TEXT("blueprint_operations"), BlueprintOpsArray) && BlueprintOpsArray && BlueprintOpsArray->Num() > 0)
@@ -1092,6 +1390,13 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateBlueprintFromJson(UEd
 			ParsedNode.DelegateReference = ResolveDelegateReference(NodeObject);
 			ParsedNode.ContainerReference = ResolveContainerReference(NodeObject);
 			ParsedNode.StructReference = ResolveStructReference(NodeObject);
+			ParsedNode.CastReference = ResolveCastReference(NodeObject);
+			ParsedNode.SpawnReference = ResolveSpawnReference(NodeObject);
+			ParsedNode.FormatTextReference = ResolveFormatTextReference(NodeObject);
+			ParsedNode.TimelineReference = ResolveTimelineReference(NodeObject);
+			ParsedNode.LiteralReference = ResolveLiteralReference(NodeObject);
+			ParsedNode.ComponentBoundEventReference = ResolveComponentBoundEventReference(NodeObject);
+			ParsedNode.CommentReference = ResolveCommentReference(NodeObject);
 
 			const TSharedPtr<FJsonObject>* PositionObject = nullptr;
 			if (NodeObject->TryGetObjectField(TEXT("position"), PositionObject) && PositionObject && PositionObject->IsValid())
@@ -1171,6 +1476,30 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateBlueprintFromJson(UEd
 	int32 GeneratedNodeCount = 0;
 	for (const FParsedNode& ParsedNode : ParsedNodes)
 	{
+		// v2.3 — Comment 节点特殊处理（UEdGraphNode_Comment 不是 UK2Node）
+		if (ParsedNode.NodeType == EParsedBlueprintNodeType::Comment)
+		{
+			UEdGraphNode_Comment* CommentNode = NewObject<UEdGraphNode_Comment>(TargetGraph);
+			TargetGraph->AddNode(CommentNode, true, false);
+			CommentNode->CreateNewGuid();
+			CommentNode->NodePosX = static_cast<int32>(ParsedNode.X);
+			CommentNode->NodePosY = static_cast<int32>(ParsedNode.Y);
+			CommentNode->NodeComment = ParsedNode.CommentReference.CommentText;
+			CommentNode->FontSize = ParsedNode.CommentReference.FontSize;
+			CommentNode->NodeWidth = static_cast<int32>(ParsedNode.CommentReference.Width);
+			CommentNode->NodeHeight = static_cast<int32>(ParsedNode.CommentReference.Height);
+			if (!ParsedNode.CommentReference.CommentColor.IsEmpty())
+			{
+				FLinearColor Color;
+				if (Color.InitFromString(ParsedNode.CommentReference.CommentColor))
+				{
+					CommentNode->CommentColor = Color;
+				}
+			}
+			++GeneratedNodeCount;
+			continue;
+		}
+
 		UK2Node* SpawnedNode = nullptr;
 		FString SpawnErrorMessage;
 
@@ -1200,6 +1529,19 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateBlueprintFromJson(UEd
 			: FString::Printf(TEXT("%s (%s)"), *ParsedNode.FunctionName, *ParsedNode.Id);
 		UnresolvedItem->Reason = SpawnErrorMessage.IsEmpty() ? TEXT("不支持的节点类型或配置不完整。") : SpawnErrorMessage;
 		OutUnresolvedNodes.Add(UnresolvedItem);
+	}
+
+	// 将图中已有的 FunctionEntry / FunctionResult 注入 ID 映射，以便连线恢复
+	for (UEdGraphNode* ExistingNode : TargetGraph->Nodes)
+	{
+		if (UK2Node_FunctionEntry* Entry = Cast<UK2Node_FunctionEntry>(ExistingNode))
+		{
+			IdToSpawnedNode.FindOrAdd(TEXT("__function_entry__"), Entry);
+		}
+		else if (UK2Node_FunctionResult* ResultNode = Cast<UK2Node_FunctionResult>(ExistingNode))
+		{
+			IdToSpawnedNode.FindOrAdd(TEXT("__function_result__"), ResultNode);
+		}
 	}
 
 	const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
@@ -1243,6 +1585,444 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateBlueprintFromJson(UEd
 	else
 	{
 		Result.Message = TEXT("未生成任何节点，请检查 JSON 内容是否符合规则。");
+	}
+	return Result;
+}
+
+// ============================================================================
+// v2.1 — 多图支持
+// ============================================================================
+
+UEdGraph* TextToBlueprintGenerator::FindGraphByName(UBlueprint* Blueprint, const FString& GraphName)
+{
+	if (!Blueprint || GraphName.IsEmpty())
+	{
+		return nullptr;
+	}
+
+	// EventGraph：搜索 UbergraphPages
+	if (GraphName.Equals(TEXT("EventGraph"), ESearchCase::IgnoreCase))
+	{
+		for (UEdGraph* Graph : Blueprint->UbergraphPages)
+		{
+			if (Graph)
+			{
+				return Graph;
+			}
+		}
+		return nullptr;
+	}
+
+	// 也在 UbergraphPages 中按精确名称搜索
+	for (UEdGraph* Graph : Blueprint->UbergraphPages)
+	{
+		if (Graph && Graph->GetFName() == FName(*GraphName))
+		{
+			return Graph;
+		}
+	}
+
+	// 函数图
+	for (UEdGraph* Graph : Blueprint->FunctionGraphs)
+	{
+		if (Graph && Graph->GetFName() == FName(*GraphName))
+		{
+			return Graph;
+		}
+	}
+
+	// 宏图
+	for (UEdGraph* Graph : Blueprint->MacroGraphs)
+	{
+		if (Graph && Graph->GetFName() == FName(*GraphName))
+		{
+			return Graph;
+		}
+	}
+
+	// 委托签名图
+	for (UEdGraph* Graph : Blueprint->DelegateSignatureGraphs)
+	{
+		if (Graph && Graph->GetFName() == FName(*GraphName))
+		{
+			return Graph;
+		}
+	}
+
+	return nullptr;
+}
+
+FBlueprintGenerateResult TextToBlueprintGenerator::GenerateNodesAndLinksForGraph(
+	UEdGraph* TargetGraph, const TSharedPtr<FJsonObject>& GraphJsonObject,
+	TArray<TSharedPtr<FUnresolvedNodeItem>>& OutUnresolvedNodes)
+{
+	FBlueprintGenerateResult Result;
+	Result.Message = TEXT("生成失败。");
+
+	if (!TargetGraph || !GraphJsonObject.IsValid())
+	{
+		Result.Message = TEXT("目标图表或 JSON 对象无效。");
+		return Result;
+	}
+
+	// 解析本地变量声明
+	TArray<FParsedLocalVariableDeclaration> ParsedLocalVariableDeclarations;
+	ResolveLocalVariableDeclarations(GraphJsonObject, ParsedLocalVariableDeclarations);
+
+	// 解析节点
+	TArray<FParsedNode> ParsedNodes;
+	const TArray<TSharedPtr<FJsonValue>>* NodesArray = nullptr;
+	if (GraphJsonObject->TryGetArrayField(TEXT("nodes"), NodesArray) && NodesArray)
+	{
+		for (const TSharedPtr<FJsonValue>& NodeValue : *NodesArray)
+		{
+			const TSharedPtr<FJsonObject> NodeObject = NodeValue->AsObject();
+			if (!NodeObject.IsValid())
+			{
+				continue;
+			}
+
+			FParsedNode ParsedNode;
+			ParsedNode.Id = NodeObject->GetStringField(TEXT("id"));
+			NodeObject->TryGetStringField(TEXT("type"), ParsedNode.SourceType);
+			ParsedNode.SourceType = NormalizeNodeTypeName(ParsedNode.SourceType);
+			ParsedNode.NodeType = ResolveNodeType(NodeObject);
+			ParsedNode.FunctionName = ResolveNodeFunctionName(NodeObject);
+			ParsedNode.X = NodeObject->HasField(TEXT("x")) ? static_cast<float>(NodeObject->GetNumberField(TEXT("x"))) : 0.0f;
+			ParsedNode.Y = NodeObject->HasField(TEXT("y")) ? static_cast<float>(NodeObject->GetNumberField(TEXT("y"))) : 0.0f;
+			ParsedNode.VariableReference = ResolveVariableReference(NodeObject);
+			ParsedNode.MacroReference = ResolveMacroReference(NodeObject);
+			ParsedNode.EventReference = ResolveEventReference(NodeObject);
+			ParsedNode.DelegateReference = ResolveDelegateReference(NodeObject);
+			ParsedNode.ContainerReference = ResolveContainerReference(NodeObject);
+			ParsedNode.StructReference = ResolveStructReference(NodeObject);
+			ParsedNode.CastReference = ResolveCastReference(NodeObject);
+			ParsedNode.SpawnReference = ResolveSpawnReference(NodeObject);
+			ParsedNode.FormatTextReference = ResolveFormatTextReference(NodeObject);
+			ParsedNode.TimelineReference = ResolveTimelineReference(NodeObject);
+			ParsedNode.LiteralReference = ResolveLiteralReference(NodeObject);
+			ParsedNode.ComponentBoundEventReference = ResolveComponentBoundEventReference(NodeObject);
+			ParsedNode.CommentReference = ResolveCommentReference(NodeObject);
+
+			const TSharedPtr<FJsonObject>* PositionObject = nullptr;
+			if (NodeObject->TryGetObjectField(TEXT("position"), PositionObject) && PositionObject && PositionObject->IsValid())
+			{
+				ParsedNode.X = (*PositionObject)->HasField(TEXT("x")) ? static_cast<float>((*PositionObject)->GetNumberField(TEXT("x"))) : ParsedNode.X;
+				ParsedNode.Y = (*PositionObject)->HasField(TEXT("y")) ? static_cast<float>((*PositionObject)->GetNumberField(TEXT("y"))) : ParsedNode.Y;
+			}
+
+			const TSharedPtr<FJsonObject>* InputsObject = nullptr;
+			if (NodeObject->TryGetObjectField(TEXT("inputs"), InputsObject) && InputsObject && InputsObject->IsValid())
+			{
+				for (const auto& Pair : (*InputsObject)->Values)
+				{
+					ParsedNode.DefaultValues.Add(Pair.Key, ConvertJsonValueToString(Pair.Value));
+				}
+			}
+
+			const TSharedPtr<FJsonObject>* DefaultValuesObject = nullptr;
+			if (NodeObject->TryGetObjectField(TEXT("default_values"), DefaultValuesObject) && DefaultValuesObject && DefaultValuesObject->IsValid())
+			{
+				for (const auto& Pair : (*DefaultValuesObject)->Values)
+				{
+					ParsedNode.DefaultValues.FindOrAdd(Pair.Key) = ConvertJsonValueToString(Pair.Value);
+				}
+			}
+
+			ParsedNodes.Add(ParsedNode);
+		}
+	}
+
+	// 解析连线
+	TArray<FParsedLink> ParsedLinks;
+	const TArray<TSharedPtr<FJsonValue>>* LinksArray = nullptr;
+	if (GraphJsonObject->TryGetArrayField(TEXT("links"), LinksArray) && LinksArray)
+	{
+		for (const TSharedPtr<FJsonValue>& LinkValue : *LinksArray)
+		{
+			const TSharedPtr<FJsonObject> LinkObject = LinkValue->AsObject();
+			if (!LinkObject.IsValid())
+			{
+				continue;
+			}
+
+			FParsedLink ParsedLink;
+			ParsedLink.FromId = LinkObject->GetStringField(TEXT("from_id"));
+			ParsedLink.FromPin = LinkObject->GetStringField(TEXT("from_pin"));
+			ParsedLink.ToId = LinkObject->GetStringField(TEXT("to_id"));
+			ParsedLink.ToPin = LinkObject->GetStringField(TEXT("to_pin"));
+			ParsedLinks.Add(ParsedLink);
+		}
+	}
+
+	if (ParsedNodes.Num() == 0)
+	{
+		Result.bSucceed = true;
+		Result.Message = TEXT("图表无节点数据，跳过。");
+		return Result;
+	}
+
+	const FScopedTransaction Transaction(FText::FromString(TEXT("Generate Graph Nodes from JSON")));
+	TargetGraph->Modify();
+
+	for (const FParsedLocalVariableDeclaration& Declaration : ParsedLocalVariableDeclarations)
+	{
+		if (!Declaration.bEnsureExists)
+		{
+			continue;
+		}
+		FString EnsureErrorMessage;
+		if (!EnsureLocalVariableExists(TargetGraph, Declaration, EnsureErrorMessage))
+		{
+			TSharedPtr<FUnresolvedNodeItem> UnresolvedItem = MakeShared<FUnresolvedNodeItem>();
+			UnresolvedItem->DisplayText = FString::Printf(TEXT("LocalVariable %s"), *Declaration.Name);
+			UnresolvedItem->Reason = EnsureErrorMessage;
+			OutUnresolvedNodes.Add(UnresolvedItem);
+		}
+	}
+
+	TMap<FString, UK2Node*> IdToSpawnedNode;
+	int32 GeneratedNodeCount = 0;
+	for (const FParsedNode& ParsedNode : ParsedNodes)
+	{
+		// v2.3 — Comment 节点特殊处理（UEdGraphNode_Comment 不是 UK2Node）
+		if (ParsedNode.NodeType == EParsedBlueprintNodeType::Comment)
+		{
+			UEdGraphNode_Comment* CommentNode = NewObject<UEdGraphNode_Comment>(TargetGraph);
+			TargetGraph->AddNode(CommentNode, true, false);
+			CommentNode->CreateNewGuid();
+			CommentNode->NodePosX = static_cast<int32>(ParsedNode.X);
+			CommentNode->NodePosY = static_cast<int32>(ParsedNode.Y);
+			CommentNode->NodeComment = ParsedNode.CommentReference.CommentText;
+			CommentNode->FontSize = ParsedNode.CommentReference.FontSize;
+			CommentNode->NodeWidth = static_cast<int32>(ParsedNode.CommentReference.Width);
+			CommentNode->NodeHeight = static_cast<int32>(ParsedNode.CommentReference.Height);
+			if (!ParsedNode.CommentReference.CommentColor.IsEmpty())
+			{
+				FLinearColor Color;
+				if (Color.InitFromString(ParsedNode.CommentReference.CommentColor))
+				{
+					CommentNode->CommentColor = Color;
+				}
+			}
+			++GeneratedNodeCount;
+			continue;
+		}
+
+		UK2Node* SpawnedNode = nullptr;
+		FString SpawnErrorMessage;
+
+		IBlueprintNodeHandler* Handler = FBlueprintNodeHandlerRegistry::Get().FindHandler(ParsedNode.NodeType);
+		if (Handler)
+		{
+			SpawnedNode = Handler->Spawn(TargetGraph, ParsedNode, SpawnErrorMessage);
+		}
+		else
+		{
+			SpawnErrorMessage = ParsedNode.SourceType.IsEmpty()
+				? TEXT("未识别的节点类型，且缺少可用的函数/变量/宏描述。")
+				: FString::Printf(TEXT("未识别的节点类型：%s"), *ParsedNode.SourceType);
+		}
+
+		if (SpawnedNode)
+		{
+			IdToSpawnedNode.Add(ParsedNode.Id, SpawnedNode);
+			++GeneratedNodeCount;
+			continue;
+		}
+
+		TSharedPtr<FUnresolvedNodeItem> UnresolvedItem = MakeShared<FUnresolvedNodeItem>();
+		UnresolvedItem->NodeData = ParsedNode;
+		UnresolvedItem->DisplayText = ParsedNode.FunctionName.IsEmpty()
+			? FString::Printf(TEXT("%s (%s)"), *ParsedNode.SourceType, *ParsedNode.Id)
+			: FString::Printf(TEXT("%s (%s)"), *ParsedNode.FunctionName, *ParsedNode.Id);
+		UnresolvedItem->Reason = SpawnErrorMessage.IsEmpty() ? TEXT("不支持的节点类型或配置不完整。") : SpawnErrorMessage;
+		OutUnresolvedNodes.Add(UnresolvedItem);
+	}
+
+	// 将图中已有的 FunctionEntry / FunctionResult 注入 ID 映射，以便连线恢复
+	for (UEdGraphNode* ExistingNode : TargetGraph->Nodes)
+	{
+		if (UK2Node_FunctionEntry* Entry = Cast<UK2Node_FunctionEntry>(ExistingNode))
+		{
+			IdToSpawnedNode.FindOrAdd(TEXT("__function_entry__"), Entry);
+		}
+		else if (UK2Node_FunctionResult* ResultNode = Cast<UK2Node_FunctionResult>(ExistingNode))
+		{
+			IdToSpawnedNode.FindOrAdd(TEXT("__function_result__"), ResultNode);
+		}
+	}
+
+	const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
+	for (const FParsedLink& ParsedLink : ParsedLinks)
+	{
+		if (!Schema || !IdToSpawnedNode.Contains(ParsedLink.FromId) || !IdToSpawnedNode.Contains(ParsedLink.ToId))
+		{
+			continue;
+		}
+
+		UK2Node* FromNode = IdToSpawnedNode[ParsedLink.FromId];
+		UK2Node* ToNode = IdToSpawnedNode[ParsedLink.ToId];
+		UEdGraphPin* FromPin = FindPinByAlias(FromNode, ParsedLink.FromPin);
+		UEdGraphPin* ToPin = FindPinByAlias(ToNode, ParsedLink.ToPin);
+		if (FromPin && ToPin)
+		{
+			Schema->TryCreateConnection(FromPin, ToPin);
+		}
+	}
+
+	for (const auto& Pair : IdToSpawnedNode)
+	{
+		if (Pair.Value)
+		{
+			TargetGraph->GetSchema()->ReconstructNode(*Pair.Value);
+		}
+	}
+	TargetGraph->NotifyGraphChanged();
+
+	Result.bSucceed = GeneratedNodeCount > 0;
+	Result.GeneratedNodeCount = GeneratedNodeCount;
+	Result.UnresolvedNodeCount = OutUnresolvedNodes.Num();
+	if (Result.bSucceed)
+	{
+		Result.Message = FString::Printf(TEXT("生成完成：成功 %d 个，未匹配 %d 个。"), Result.GeneratedNodeCount, Result.UnresolvedNodeCount);
+	}
+	return Result;
+}
+
+FBlueprintGenerateResult TextToBlueprintGenerator::GenerateMultiGraphFromJson(
+	UBlueprint* Blueprint, const FString& JsonString,
+	TArray<TSharedPtr<FUnresolvedNodeItem>>& OutUnresolvedNodes)
+{
+	FBlueprintGenerateResult Result;
+	Result.Message = TEXT("生成失败。");
+
+	if (!Blueprint)
+	{
+		Result.Message = TEXT("蓝图对象无效。");
+		return Result;
+	}
+
+	OutUnresolvedNodes.Empty();
+	const FString TrimmedJsonString = JsonString.TrimStartAndEnd();
+	if (TrimmedJsonString.IsEmpty() || !TrimmedJsonString.StartsWith(TEXT("{")))
+	{
+		Result.Message = TEXT("JSON 文本无效。");
+		return Result;
+	}
+
+	TSharedPtr<FJsonObject> JsonObject;
+	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(TrimmedJsonString);
+	if (!FJsonSerializer::Deserialize(Reader, JsonObject) || !JsonObject.IsValid())
+	{
+		Result.Message = FString::Printf(TEXT("JSON 解析失败：%s"), *Reader->GetErrorMessage());
+		return Result;
+	}
+
+	// === 蓝图级操作 ===
+	const TArray<TSharedPtr<FJsonValue>>* BlueprintOpsArray = nullptr;
+	if (JsonObject->TryGetArrayField(TEXT("blueprint_operations"), BlueprintOpsArray) && BlueprintOpsArray && BlueprintOpsArray->Num() > 0)
+	{
+		for (const TSharedPtr<FJsonValue>& OpValue : *BlueprintOpsArray)
+		{
+			const TSharedPtr<FJsonObject> OpObject = OpValue->AsObject();
+			if (!OpObject.IsValid())
+			{
+				continue;
+			}
+
+			FString OpName;
+			OpObject->TryGetStringField(TEXT("op"), OpName);
+			if (OpName.IsEmpty())
+			{
+				continue;
+			}
+
+			IBlueprintOperationHandler* OpHandler = FBlueprintOperationHandlerRegistry::Get().FindHandler(OpName);
+			if (!OpHandler)
+			{
+				TSharedPtr<FUnresolvedNodeItem> UnresolvedItem = MakeShared<FUnresolvedNodeItem>();
+				UnresolvedItem->DisplayText = FString::Printf(TEXT("BlueprintOp: %s"), *OpName);
+				UnresolvedItem->Reason = FString::Printf(TEXT("未识别的蓝图级操作：%s"), *OpName);
+				OutUnresolvedNodes.Add(UnresolvedItem);
+				continue;
+			}
+
+			FString OpError;
+			if (!OpHandler->Execute(Blueprint, OpObject, OpError))
+			{
+				TSharedPtr<FUnresolvedNodeItem> UnresolvedItem = MakeShared<FUnresolvedNodeItem>();
+				UnresolvedItem->DisplayText = FString::Printf(TEXT("BlueprintOp: %s"), *OpName);
+				UnresolvedItem->Reason = OpError;
+				OutUnresolvedNodes.Add(UnresolvedItem);
+			}
+		}
+
+		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+	}
+
+	// === 多图模式（graphs 数组） ===
+	int32 TotalGenerated = 0;
+	const TArray<TSharedPtr<FJsonValue>>* GraphsArray = nullptr;
+	if (JsonObject->TryGetArrayField(TEXT("graphs"), GraphsArray) && GraphsArray && GraphsArray->Num() > 0)
+	{
+		for (const TSharedPtr<FJsonValue>& GraphValue : *GraphsArray)
+		{
+			const TSharedPtr<FJsonObject> GraphObject = GraphValue->AsObject();
+			if (!GraphObject.IsValid())
+			{
+				continue;
+			}
+
+			FString GraphName;
+			GraphObject->TryGetStringField(TEXT("graph"), GraphName);
+			if (GraphName.IsEmpty())
+			{
+				continue;
+			}
+
+			UEdGraph* TargetGraph = FindGraphByName(Blueprint, GraphName);
+			if (!TargetGraph)
+			{
+				TSharedPtr<FUnresolvedNodeItem> UnresolvedItem = MakeShared<FUnresolvedNodeItem>();
+				UnresolvedItem->DisplayText = FString::Printf(TEXT("Graph: %s"), *GraphName);
+				UnresolvedItem->Reason = FString::Printf(TEXT("未找到名为 '%s' 的图表，请先通过 blueprint_operations 创建。"), *GraphName);
+				OutUnresolvedNodes.Add(UnresolvedItem);
+				continue;
+			}
+
+			FBlueprintGenerateResult GraphResult = GenerateNodesAndLinksForGraph(TargetGraph, GraphObject, OutUnresolvedNodes);
+			TotalGenerated += GraphResult.GeneratedNodeCount;
+		}
+	}
+	else if (JsonObject->HasField(TEXT("nodes")))
+	{
+		// 单图回退：使用默认 EventGraph
+		UEdGraph* DefaultGraph = FindGraphByName(Blueprint, TEXT("EventGraph"));
+		if (!DefaultGraph)
+		{
+			Result.Message = TEXT("蓝图中未找到 EventGraph。");
+			return Result;
+		}
+
+		FBlueprintGenerateResult GraphResult = GenerateNodesAndLinksForGraph(DefaultGraph, JsonObject, OutUnresolvedNodes);
+		TotalGenerated = GraphResult.GeneratedNodeCount;
+	}
+
+	Result.bSucceed = TotalGenerated > 0;
+	Result.GeneratedNodeCount = TotalGenerated;
+	Result.UnresolvedNodeCount = OutUnresolvedNodes.Num();
+	if (Result.bSucceed)
+	{
+		Result.Message = FString::Printf(TEXT("多图生成完成：成功 %d 个节点，未匹配 %d 个。"), Result.GeneratedNodeCount, Result.UnresolvedNodeCount);
+	}
+	else if (Result.UnresolvedNodeCount > 0)
+	{
+		Result.Message = FString::Printf(TEXT("未生成任何节点：共有 %d 个未匹配项。"), Result.UnresolvedNodeCount);
+	}
+	else
+	{
+		Result.Message = TEXT("未生成任何节点。");
 	}
 	return Result;
 }

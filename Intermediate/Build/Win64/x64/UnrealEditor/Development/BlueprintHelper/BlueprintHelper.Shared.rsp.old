@@ -283,6 +283,8 @@
 /I "Editor/SceneDepthPickerMode/Public"
 /I "../Intermediate/Build/Win64/UnrealEditor/Inc/AnimationEditMode/UHT"
 /I "Editor/AnimationEditMode/Public"
+/I "Editor/WorkspaceMenuStructure/Public"
+/I "Editor/EditorStyle/Public"
 /I "G:/UnrealPractise/MrStone/Plugins/BlueprintHelper/Source"
 /I "G:/UnrealPractise/MrStone/Plugins/BlueprintHelper/Source/BlueprintHelper/Public"
 /I "G:/UnrealPractise/MrStone/Intermediate/Build/Win64/x64/MrStoneEditor/Development/UnrealEd"

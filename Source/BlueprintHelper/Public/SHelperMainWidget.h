@@ -10,6 +10,9 @@ class SListViewBase;
 class SMultiLineEditableTextBox;
 class SSearchBox;
 class STextBlock;
+class FBlueprintHelperImportService;
+class FBlueprintHelperExportService;
+class FBlueprintHelperGraphResolver;
 template <typename ItemType> class SListView;
 
 /**
@@ -19,8 +22,13 @@ class BLUEPRINTHELPER_API SHelperMainWidget : public SCompoundWidget
 {
 public:
 	SLATE_BEGIN_ARGS(SHelperMainWidget)
+		: _ImportService(nullptr)
+		, _GraphResolver(nullptr)
 		{
 		}
+
+	SLATE_ARGUMENT(const FBlueprintHelperImportService*, ImportService)
+	SLATE_ARGUMENT(const FBlueprintHelperGraphResolver*, GraphResolver)
 
 	SLATE_END_ARGS()
 
@@ -94,4 +102,8 @@ private:
 	TSharedPtr<STextBlock> StatusTextBlock;
 	/** 当前选中的未匹配节点。 */
 	TSharedPtr<FUnresolvedNodeItem> CurrentSelectedUnresolved;
+
+	/** Service 层引用（由 Module 通过 SLATE_ARGUMENT 传入）。 */
+	const FBlueprintHelperImportService* ImportService = nullptr;
+	const FBlueprintHelperGraphResolver* GraphResolverPtr = nullptr;
 };

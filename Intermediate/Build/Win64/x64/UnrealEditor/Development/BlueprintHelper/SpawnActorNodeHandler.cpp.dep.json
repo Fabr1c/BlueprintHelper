@@ -1,0 +1,25 @@
+{
+    "Version": "1.2",
+    "Data": {
+        "Source": "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\private\\nodehandlers\\spawnactornodehandler.cpp",
+        "ProvidedModule": "",
+        "PCH": "g:\\unrealpractise\\mrstone\\intermediate\\build\\win64\\x64\\mrstoneeditor\\development\\unrealed\\sharedpch.unrealed.project.valapi.valexpapi.cpp20.h.pch",
+        "Includes": [
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\intermediate\\build\\win64\\x64\\unrealeditor\\development\\blueprinthelper\\definitions.blueprinthelper.h",
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\nodehandlers\\spawnactornodehandler.h",
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\nodehandlers\\blueprintnodehandler.h",
+            "f:\\ue_5.6\\engine\\source\\editor\\blueprintgraph\\classes\\k2node_spawnactorfromclass.h",
+            "f:\\ue_5.6\\engine\\source\\editor\\blueprintgraph\\classes\\k2node_constructobjectfromclass.h",
+            "f:\\ue_5.6\\engine\\intermediate\\build\\win64\\unrealeditor\\inc\\blueprintgraph\\uht\\k2node_constructobjectfromclass.generated.h",
+            "f:\\ue_5.6\\engine\\source\\editor\\blueprintgraph\\classes\\k2node_genericcreateobject.h",
+            "f:\\ue_5.6\\engine\\intermediate\\build\\win64\\unrealeditor\\inc\\blueprintgraph\\uht\\k2node_genericcreateobject.generated.h",
+            "f:\\ue_5.6\\engine\\source\\editor\\kismetcompiler\\public\\kismetcompilermisc.h",
+            "f:\\ue_5.6\\engine\\source\\editor\\kismetcompiler\\public\\bpterminal.h",
+            "f:\\ue_5.6\\engine\\source\\editor\\kismetcompiler\\public\\blueprintcompiledstatement.h",
+            "f:\\ue_5.6\\engine\\intermediate\\build\\win64\\unrealeditor\\inc\\blueprintgraph\\uht\\k2node_spawnactorfromclass.generated.h",
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\texttoblueprintgenerator.h"
+        ],
+        "ImportedModules": [],
+        "ImportedHeaderUnits": []
+    }
+}

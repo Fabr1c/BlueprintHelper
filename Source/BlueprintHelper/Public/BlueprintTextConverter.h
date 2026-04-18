@@ -53,7 +53,11 @@ public:
 
 	/** 判断文本是否为 Blueprint T3D 导出内容。 */
 	static bool IsBlueprintT3DText(const FString& SourceText);
+	/** 从图表对象直接导出节点和连线为 JSON。v2.1 */
+	static FString ConvertGraphToJson(class UEdGraph* TargetGraph);
 
+	/** 导出完整蓝图结构为 JSON（所有变量 + 函数签名 + 事件分发器 + 所有图表节点/连线）。v2.1 */
+	static FString ExportBlueprintToJson(class UBlueprint* Blueprint);
 private:
 	/** 解析 T3D 文本到轻量节点结构。 */
 	static void ParseT3DToNodes(const FString& T3DText, TMap<FString, FMinimalNode>& OutNodes);
@@ -69,4 +73,13 @@ private:
 
 	/** 清洗 T3D 导出的默认值文本，便于写回 JSON。 */
 	static FString NormalizeExportValue(const FString& InValue);
+
+	/** 将 EdGraphPinType 转换为 JSON pin_type 对象。v2.1 */
+	static TSharedPtr<class FJsonObject> PinTypeToJson(const struct FEdGraphPinType& PinType);
+
+	/** 导出单个图表的节点和连线为 JSON 数组。v2.1 */
+	static void ExportGraphNodesAndLinks(class UEdGraph* Graph, TArray<TSharedPtr<class FJsonValue>>& OutNodes, TArray<TSharedPtr<class FJsonValue>>& OutLinks);
+
+	/** 识别 K2Node 的类型字符串。v2.1 */
+	static FString IdentifyNodeType(class UEdGraphNode* Node);
 };

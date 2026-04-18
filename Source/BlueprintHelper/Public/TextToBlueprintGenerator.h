@@ -31,7 +31,21 @@ enum class EParsedBlueprintNodeType : uint8
 	MakeMap,
 	MakeSet,
 	MakeStruct,
-	BreakStruct
+	BreakStruct,
+	// v2.2 — 高级节点
+	Self,
+	DynamicCast,
+	SpawnActorFromClass,
+	FormatText,
+	GetArrayItem,
+	Timeline,
+	// v2.3 — 全覆盖收尾
+	Knot,
+	Comment,
+	Literal,
+	GetEnumeratorName,
+	GetEnumeratorNameAsString,
+	ComponentBoundEvent
 };
 
 /**
@@ -211,6 +225,102 @@ struct FParsedStructReference
 };
 
 /**
+ * v2.2 — Cast 节点引用描述。
+ */
+struct FParsedCastReference
+{
+	/** 目标类路径，例如 "/Script/Engine.Character"。 */
+	FString TargetClassPath;
+};
+
+/**
+ * v2.2 — SpawnActor 节点引用描述。
+ */
+struct FParsedSpawnReference
+{
+	/** 要生成的 Actor 类路径。 */
+	FString ClassPath;
+};
+
+/**
+ * v2.2 — FormatText 节点引用描述。
+ */
+struct FParsedFormatTextReference
+{
+	/** 格式化字符串，例如 "{Name} has {Count} items"。 */
+	FString FormatString;
+};
+
+/**
+ * v2.2 — Timeline 节点引用描述。
+ */
+struct FParsedTimelineReference
+{
+	/** Timeline 名称。 */
+	FString TimelineName;
+
+	/** 是否自动播放。 */
+	bool bAutoPlay = false;
+
+	/** 是否循环。 */
+	bool bLoop = false;
+
+	/** 浮点轨道名称列表。 */
+	TArray<FString> FloatTracks;
+
+	/** 向量轨道名称列表。 */
+	TArray<FString> VectorTracks;
+
+	/** 事件轨道名称列表。 */
+	TArray<FString> EventTracks;
+};
+
+/**
+ * v2.3 — Literal 节点引用描述（对象引用常量）。
+ */
+struct FParsedLiteralReference
+{
+	/** 对象引用路径，例如 "/Script/Engine.Actor:DefaultSubobjectName"。 */
+	FString ObjectPath;
+};
+
+/**
+ * v2.3 — ComponentBoundEvent 节点引用描述。
+ */
+struct FParsedComponentBoundEventReference
+{
+	/** 委托属性名称。 */
+	FString DelegatePropertyName;
+
+	/** 委托所属类路径。 */
+	FString DelegateOwnerClassPath;
+
+	/** 组件属性名称。 */
+	FString ComponentPropertyName;
+};
+
+/**
+ * v2.3 — Comment 节点引用描述。
+ */
+struct FParsedCommentReference
+{
+	/** 注释文本。 */
+	FString CommentText;
+
+	/** 注释框宽度。 */
+	float Width = 400.0f;
+
+	/** 注释框高度。 */
+	float Height = 100.0f;
+
+	/** 注释框颜色（R,G,B,A 格式字符串）。 */
+	FString CommentColor;
+
+	/** 字体大小。 */
+	int32 FontSize = 18;
+};
+
+/**
  * 本地变量声明描述。
  */
 struct FParsedLocalVariableDeclaration
@@ -289,6 +399,27 @@ struct FParsedNode
 
 	/** 结构体操作节点引用数据。 */
 	FParsedStructReference StructReference;
+
+	/** v2.2 — Cast 节点引用数据。 */
+	FParsedCastReference CastReference;
+
+	/** v2.2 — SpawnActor 节点引用数据。 */
+	FParsedSpawnReference SpawnReference;
+
+	/** v2.2 — FormatText 节点引用数据。 */
+	FParsedFormatTextReference FormatTextReference;
+
+	/** v2.2 — Timeline 节点引用数据。 */
+	FParsedTimelineReference TimelineReference;
+
+	/** v2.3 — Literal 节点引用数据。 */
+	FParsedLiteralReference LiteralReference;
+
+	/** v2.3 — ComponentBoundEvent 节点引用数据。 */
+	FParsedComponentBoundEventReference ComponentBoundEventReference;
+
+	/** v2.3 — Comment 节点引用数据。 */
+	FParsedCommentReference CommentReference;
 };
 
 /**
@@ -353,6 +484,12 @@ public:
 
 	/** 根据 JSON 在目标图表中生成蓝图节点。 */
 	static FBlueprintGenerateResult GenerateBlueprintFromJson(UEdGraph* TargetGraph, const FString& JsonString, TArray<TSharedPtr<FUnresolvedNodeItem>>& OutUnresolvedNodes);
+
+	/** 在蓝图的多个图表中根据 JSON 生成节点（支持 graphs 数组和单图模式）。v2.1 */
+	static FBlueprintGenerateResult GenerateMultiGraphFromJson(UBlueprint* Blueprint, const FString& JsonString, TArray<TSharedPtr<FUnresolvedNodeItem>>& OutUnresolvedNodes);
+
+	/** 按名称查找蓝图中的图表（EventGraph / 函数图 / 宏图）。v2.1 */
+	static UEdGraph* FindGraphByName(UBlueprint* Blueprint, const FString& GraphName);
 
 	/** 获取所有可用于蓝图调用的函数列表。 */
 	static TArray<TSharedPtr<FEngineFunctionItem>> GetAllBlueprintFunctions();
@@ -420,6 +557,30 @@ private:
 
 	/** 解析 JSON 中的结构体操作引用描述。 */
 	static FParsedStructReference ResolveStructReference(const TSharedPtr<class FJsonObject>& NodeObject);
+
+	/** 解析 JSON 中的类型转换引用描述。v2.2 */
+	static FParsedCastReference ResolveCastReference(const TSharedPtr<class FJsonObject>& NodeObject);
+
+	/** 解析 JSON 中的 SpawnActor 引用描述。v2.2 */
+	static FParsedSpawnReference ResolveSpawnReference(const TSharedPtr<class FJsonObject>& NodeObject);
+
+	/** 解析 JSON 中的 FormatText 引用描述。v2.2 */
+	static FParsedFormatTextReference ResolveFormatTextReference(const TSharedPtr<class FJsonObject>& NodeObject);
+
+	/** 解析 JSON 中的 Timeline 引用描述。v2.2 */
+	static FParsedTimelineReference ResolveTimelineReference(const TSharedPtr<class FJsonObject>& NodeObject);
+
+	/** 解析 JSON 中的 Literal 引用描述。v2.3 */
+	static FParsedLiteralReference ResolveLiteralReference(const TSharedPtr<class FJsonObject>& NodeObject);
+
+	/** 解析 JSON 中的 ComponentBoundEvent 引用描述。v2.3 */
+	static FParsedComponentBoundEventReference ResolveComponentBoundEventReference(const TSharedPtr<class FJsonObject>& NodeObject);
+
+	/** 解析 JSON 中的 Comment 引用描述。v2.3 */
+	static FParsedCommentReference ResolveCommentReference(const TSharedPtr<class FJsonObject>& NodeObject);
+
+	/** 在指定图表中根据 JSON 子对象生成节点和连线（内部辅助）。v2.1 */
+	static FBlueprintGenerateResult GenerateNodesAndLinksForGraph(UEdGraph* TargetGraph, const TSharedPtr<class FJsonObject>& GraphJsonObject, TArray<TSharedPtr<FUnresolvedNodeItem>>& OutUnresolvedNodes);
 
 	/** 根据别名查找节点引脚。 */
 	static class UEdGraphPin* FindPinByAlias(UK2Node* TargetNode, const FString& RequestedPinName);

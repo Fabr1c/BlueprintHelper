@@ -132,6 +132,59 @@
 		"K2Node_MakeStruct": {
 		},
 		"K2Node_BreakStruct": {
-		}
+			},
+			"K2Node_DynamicCast": {
+				"object": "Object",
+				"cast_result": "As {TargetType}",
+				"success": "bSuccess",
+				"valid": "then",
+				"invalid": "CastFailed"
+			},
+			"K2Node_SpawnActorFromClass": {
+				"class": "Class",
+				"spawn_transform": "SpawnTransform",
+				"return_value": "ReturnValue",
+				"collision_handling_override": "Collision Handling Override",
+				"owner": "Owner",
+				"instigator": "Instigator"
+			},
+			"K2Node_FormatText": {
+				"format": "Format",
+				"result": "Result"
+			},
+			"K2Node_GetArrayItem": {
+				"array": "Array",
+				"index": "Dimension 1",
+				"element": "Output"
+			},
+			"K2Node_Timeline": {
+				"play": "Play",
+				"play_from_start": "Play from Start",
+				"stop": "Stop",
+				"reverse": "Reverse",
+				"reverse_from_end": "Reverse from End",
+				"update": "Update",
+				"finished": "Finished",
+				"direction": "Direction",
+				"set_new_time": "Set New Time",
+				"new_time": "New Time"
+			},
+			"K2Node_Knot": {
+				"input": "InputPin",
+				"output": "OutputPin"
+			},
+			"K2Node_GetEnumeratorName": {
+				"input": "EnumeratorValue",
+				"output": "ReturnValue"
+			},
+			"K2Node_GetEnumeratorNameAsString": {
+				"input": "EnumeratorValue",
+				"output": "ReturnValue"
+			},
+			"K2Node_Literal": {
+				"output": "ObjectRef"
+			},
+			"K2Node_ComponentBoundEvent": {
+			}
 	}
 }
