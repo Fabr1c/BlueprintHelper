@@ -1,6 +1,6 @@
 # BlueprintHelper 插件文档
 
-> 版本 2.7 · 2026-04-18 · Unreal Engine 5.6
+> 版本 2.8 · 2026-04-18 · Unreal Engine 5.6
 
 ---
 
@@ -48,14 +48,14 @@ BlueprintHelper 是一个 **UE5 编辑器插件**，核心能力是通过 JSON �
 | 组件 | 能力 |
 |------|------|
 | **BridgeServer** | TCP 127.0.0.1:54321，4 字节大端帧 + UTF-8 JSON，单客户端顺序处理 |
-| **BridgeRouter** | 路由 32 条命令：Phase 1-3 基础 6 条 + Phase 4 资产浏览 5 条 + Phase 5 蓝图结构 9 条 + Phase 6 Widget 6 条 + Phase 7 数据资产 6 条 |
+| **BridgeRouter** | 路由 38 条命令：Phase 1-3 基础 6 条 + Phase 4 资产浏览 5 条 + Phase 5 蓝图结构 9 条 + Phase 6 Widget 6 条 + Phase 7 数据资产 6 条 + Phase 8 编辑器命令 6 条 |
 | **BridgeProtocol** | 请求解析、响应序列化、9 种错误码 |
 
 ### 2.3 Phase 3 — MCP Server ✅
 
 | 组件 | 能力 |
 |------|------|
-| **32 个 MCP Tools** | Phase 1-3 基础 6 个 + Phase 4 资产浏览 5 个 + Phase 5 蓝图结构 9 个 + Phase 6 Widget 6 个 + Phase 7 数据资产 6 个（详见 2.4–2.7） |
+| **38 个 MCP Tools** | Phase 1-3 基础 6 个 + Phase 4 资产浏览 5 个 + Phase 5 蓝图结构 9 个 + Phase 6 Widget 6 个 + Phase 7 数据资产 6 个 + Phase 8 编辑器命令 6 个（详见 2.4–2.8） |
 | **2 个 MCP Resources** | `blueprint://rules/json-to-blueprint`（规则文档） / `blueprint://context/active-graph`（上下文） |
 | **Bridge Client** | TCP 帧协议客户端，每次请求独立连接 |
 
@@ -122,7 +122,22 @@ BlueprintHelper 是一个 **UE5 编辑器插件**，核心能力是通过 JSON �
 | `update_datatable_row` | `blueprint_update_datatable_row` | 更新已有行的指定字段（部分更新） |
 | `delete_datatable_row` | `blueprint_delete_datatable_row` | 删除 DataTable 行 |
 
-### 2.8 支持的节点类型（27 个 Handler）
+### 2.8 Phase 8 — Editor Commands ✅
+
+| 服务 | 能力 |
+|------|------|
+| **EditorCommandService** | Undo/Redo、PIE 控制、蓝图创建、控制台命令 |
+
+| Bridge 命令 | MCP Tool | 说明 |
+|-------------|----------|------|
+| `undo` | `blueprint_undo` | 撤销上一步编辑器操作 |
+| `redo` | `blueprint_redo` | 重做上一步撤销 |
+| `play_in_editor` | `blueprint_play_in_editor` | 启动 Play In Editor (PIE) 会话 |
+| `stop_pie` | `blueprint_stop_pie` | 停止当前 PIE 会话 |
+| `create_blueprint` | `blueprint_create_blueprint` | 创建新蓝图资产（支持指定父类） |
+| `exec_console_command` | `blueprint_exec_console_command` | 执行 UE 编辑器控制台命令并返回输出 |
+
+### 2.9 支持的节点类型（27 个 Handler）
 
 | 类别 | 节点 |
 |------|------|
@@ -136,7 +151,7 @@ BlueprintHelper 是一个 **UE5 编辑器插件**，核心能力是通过 JSON �
 | **结构体** | `K2Node_MakeStruct`、`K2Node_BreakStruct` |
 | **其他** | `K2Node_Self`、`K2Node_DynamicCast`、`K2Node_SpawnActorFromClass`、`K2Node_FormatText`、`K2Node_Timeline`、`K2Node_Literal`、`K2Node_Knot` |
 
-### 2.9 蓝图级操作（JSON `blueprint_operations`，Import 路径可用）
+### 2.10 蓝图级操作（JSON `blueprint_operations`，Import 路径可用）
 
 | 操作 | 说明 |
 |------|------|
@@ -166,7 +181,7 @@ BlueprintHelper 是一个 **UE5 编辑器插件**，核心能力是通过 JSON �
 |------|------|------|--------|
 | 按路径打开蓝图并聚焦编辑器 | ✅ Phase 4 `open_asset` | — | — |
 | 列出 Content Browser 资产 | ✅ Phase 4 `list_assets` | — | — |
-| 创建新蓝图资产 | ❌ 无 | 需 `create_blueprint` 命令（FKismetEditorUtilities） | 🟡 中 |
+| 创建新蓝图资产 | ✅ Phase 8 `create_blueprint` | — | — |
 | 保存蓝图 | ✅ Phase 4 `save_asset` | — | — |
 | 删除资产 | ❌ 无 | 需 `delete_asset` 命令 | 🟢 低 |
 | 复制/重命名资产 | ❌ 无 | 需 `rename_asset` / `duplicate_asset` | 🟢 低 |
@@ -222,9 +237,9 @@ BlueprintHelper 是一个 **UE5 编辑器插件**，核心能力是通过 JSON �
 |------|------|------|--------|
 | 搜索资产（名称/类型/标签） | ✅ Phase 4 `search_assets` | — | — |
 | 获取资产依赖/引用关系 | ❌ 无 | 需 `get_references`（AssetRegistry） | 🟢 低 |
-| Undo / Redo | ⚠️ Import 有事务包裹 | 需暴露全局 `undo` / `redo` 命令 | 🟡 中 |
-| PIE 启动/停止 | ❌ 无 | 需 `play_in_editor` / `stop_pie` | 🟢 低 |
-| 执行控制台命令 | ❌ 无 | 需 `exec_console_command` | 🟢 低 |
+| Undo / Redo | ✅ Phase 8 `undo` / `redo` | — | — |
+| PIE 启动/停止 | ✅ Phase 8 `play_in_editor` / `stop_pie` | — | — |
+| 执行控制台命令 | ✅ Phase 8 `exec_console_command` | — | — |
 
 ### 3.7 Bridge/MCP 基础设施
 
@@ -242,21 +257,21 @@ BlueprintHelper 是一个 **UE5 编辑器插件**，核心能力是通过 JSON �
 ```
 当前已覆盖                             目标全覆盖
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-██████████████████████████████████████████░░░░░░░░░░░░░░
-~75%                                                100%
+███████████████████████████████████████████████░░░░░░░░░
+~83%                                                100%
 
-已有：32 个 Bridge 命令 / 32 个 MCP Tool / 2 个 MCP Resource
-目标：~42 个 Bridge 命令 / ~42 个 MCP Tool / ~8 个 MCP Resource
+已有：38 个 Bridge 命令 / 38 个 MCP Tool / 2 个 MCP Resource
+目标：~46 个 Bridge 命令 / ~46 个 MCP Tool / ~8 个 MCP Resource
 ```
 
 | 领域 | 已有命令 | 缺少命令 | 覆盖率 |
 |------|----------|----------|--------|
 | 蓝图图表操作 | 15 | 1 | 94% |
-| 资产浏览与管理 | 5 | 3 | 63% |
+| 资产浏览与管理 | 6 | 2 | 75% |
 | UMG Widget | 6 | 3 | 67% |
 | DataAsset | 2 | 0 | 100% |
 | DataTable | 4 | 2 | 67% |
-| 通用编辑器 | 0 | 4 | 0% |
+| 通用编辑器 | 5 | 1 | 83% |
 | 基础设施升级 | 1 项 | 3 项 | — |
 
 ---
@@ -359,9 +374,18 @@ BlueprintHelper 是一个 **UE5 编辑器插件**，核心能力是通过 JSON �
 
 ---
 
-### Phase 8 — 事件推送与高级基础设施
+### Phase 8 — 编辑器命令与基础设施 ✅ 已完成（命令部分）
 
 **目标**：从请求-响应升级为实时协作。
+
+**实际实现**：6 个命令（编辑器命令部分），新建 `EditorCommandService`。
+事件推送、多客户端、任务池等基础设施项目延后到 Phase 9。
+核心技术：
+- `GEditor->UndoTransaction()` / `RedoTransaction()` 用于全局撤销/重做
+- `FRequestPlaySessionParams` + `GEditor->RequestPlaySession()` 用于 PIE 启动
+- `GEditor->RequestEndPlayMap()` 用于 PIE 停止
+- `FKismetEditorUtilities::CreateBlueprint()` + `FAssetRegistryModule::AssetCreated()` 用于蓝图创建
+- `GEditor->Exec()` + `FStringOutputDevice` 用于控制台命令执行与输出捕获
 
 | ID | 项目 | 实现要点 | 工作量 |
 |----|------|----------|--------|
@@ -369,10 +393,12 @@ BlueprintHelper 是一个 **UE5 编辑器插件**，核心能力是通过 JSON �
 | 8.2 | MCP `resources/updated` 通知 | 将 UE 事件转换为 MCP 资源变更通知 | 中 |
 | 8.3 | 任务池与异步结果 | `get_task_result` 命令，长任务进度查询 | 中 |
 | 8.4 | 多客户端支持 | BridgeServer 升级为连接池 | 中 |
-| 8.5 | Undo / Redo 命令 | `GEditor->Trans->Undo()` / `Redo()` | 小 |
-| 8.6 | PIE 控制 | `GEditor->PlayInEditor()` / `EndPlayMap()` | 小 |
+| 8.5 | Undo / Redo 命令 | `GEditor->UndoTransaction()` / `RedoTransaction()` | 小 | ✅ 已完成 |
+| 8.6 | PIE 控制 | `RequestPlaySession()` / `RequestEndPlayMap()` | 小 | ✅ 已完成 |
+| 8.7 | 创建蓝图资产 | `FKismetEditorUtilities::CreateBlueprint()` | 小 | ✅ 已完成 |
+| 8.8 | 控制台命令 | `GEditor->Exec()` + `FStringOutputDevice` | 小 | ✅ 已完成 |
 
-**完成标志**：AI 可感知编辑器状态变化，不再需要轮询。
+**完成标志**：AI 可撤销/重做、启停 PIE、创建蓝图、执行控制台命令。事件推送等基础设施延后。
 
 ---
 
@@ -380,15 +406,15 @@ BlueprintHelper 是一个 **UE5 编辑器插件**，核心能力是通过 JSON �
 
 ```
 Phase 4 ─── Phase 5 ─── Phase 6 ─── Phase 7 ─── Phase 8
-资产浏览     蓝图补全     UMG Widget   数据资产     事件推送
-  ✅           ✅           ✅           ✅
-  ├── 5 命令    ├── 9 命令    ├── 6 命令    ├── 6 命令    ├── 6 项
-  ├── 1 Service ├── 1 Service ├── 1 Service ├── 2 Service ├── 基础设施
+资产浏览     蓝图补全     UMG Widget   数据资产     编辑器命令
+  ✅           ✅           ✅           ✅           ✅
+  ├── 5 命令    ├── 9 命令    ├── 6 命令    ├── 6 命令    ├── 6 命令
+  ├── 1 Service ├── 1 Service ├── 1 Service ├── 2 Service ├── 1 Service
   │             │             │             │             │
   ▼             ▼             ▼             ▼             ▼
-"AI 能找到     "AI 能精细   "AI 能搭建   "AI 能改     "AI 实时
- 并打开任何     编辑蓝图     UI 界面"     数据表和     感知编辑器
- 资产"         逻辑"                     数据资产"    变化"
+“AI 能找到     “AI 能精细   “AI 能搭建   “AI 能改     “AI 能撤销
+ 并打开任何     编辑蓝图     UI 界面”     数据表和     、PIE、
+ 资产”         逻辑”                     数据资产”    创建蓝图”
 ```
 
 | Phase | 新增命令 | 新增 Service | 核心技术 | 相对工作量 | 状态 |
@@ -397,16 +423,16 @@ Phase 4 ─── Phase 5 ─── Phase 6 ─── Phase 7 ─── Phase 8
 | **5 — 蓝图补全** | 9 | BlueprintStructureService | BridgeRouter + OperationHandler 委托 | ★★☆☆☆ | ✅ |
 | **6 — UMG Widget** | 6 | WidgetService | UWidgetTree + 属性反射 | ★★★★☆ | ✅ |
 | **7 — 数据资产** | 6 | PropertyReflectionService + DataTableService | 通用 FProperty 反射 | ★★★☆☆ | ✅ |
-| **8 — 事件推送** | 6 项 | 基础设施改造 | 长连接 + 事件分发 | ★★★☆☆ | ⬜ 下一步 |
+| **8 — 编辑器命令** | 6 | EditorCommandService | GEditor API + FKismetEditorUtilities | ★☆☆☆☆ | ✅ |
 
-**关键路径**：Phase 4 → Phase 5 → Phase 6 → Phase 7 已全部完成；Phase 8 为基础设施升级，可独立启动。
+**关键路径**：Phase 4 → Phase 5 → Phase 6 → Phase 7 → Phase 8 已全部完成；剩余基础设施升级（事件推送、多客户端、任务池）可作为 Phase 9 独立启动。
 
 ---
 
 ## 七、推荐起步顺序
 
-**已完成**：Phase 4 + Phase 5 + Phase 6 + Phase 7。AI 已具备资产浏览、打开、保存能力，蓝图增量编辑能力，UMG Widget 层级操作能力，以及 DataAsset/DataTable 数据读写能力。
+**已完成**：Phase 4 + Phase 5 + Phase 6 + Phase 7 + Phase 8。AI 已具备资产浏览、打开、保存能力，蓝图增量编辑能力，UMG Widget 层级操作能力，DataAsset/DataTable 数据读写能力，以及 Undo/Redo、PIE 控制、蓝图创建、控制台命令能力。
 
-**下一步**：Phase 8（事件推送与高级基础设施）。完成后 AI 可感知编辑器状态变化，不再需要轮询。
+**下一步**：Phase 9（事件推送与高级基础设施）。完成后 AI 可感知编辑器状态变化，不再需要轮询。
 
-**完整路径**：~~Phase 4 → 5 → 6 → 7~~ → 8，剩余约 **8 个新命令 + 基础设施改造**，覆盖率从当前 75% 提升至约 95%。
+**完整路径**：~~Phase 4 → 5 → 6 → 7 → 8~~，剩余约 **基础设施改造 + 8 个工具命令**，覆盖率从当前 83% 提升至约 95%。

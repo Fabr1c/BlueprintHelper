@@ -45,7 +45,16 @@ enum class EParsedBlueprintNodeType : uint8
 	Literal,
 	GetEnumeratorName,
 	GetEnumeratorNameAsString,
-	ComponentBoundEvent
+	ComponentBoundEvent,
+	// v2.9 — Enhanced Input / 数学运算 / 流程控制
+	EnhancedInputAction,
+	PromotableOperator,
+	CommutativeAssociativeBinaryOperator,
+	SwitchInteger,
+	SwitchString,
+	SwitchName,
+	SwitchEnum,
+	Select
 };
 
 /**
@@ -321,6 +330,45 @@ struct FParsedCommentReference
 };
 
 /**
+ * v2.9 — Enhanced Input Action 节点引用描述。
+ */
+struct FParsedEnhancedInputActionReference
+{
+	/** 输入动作资产路径，例如 "/Game/Input/IA_Jump"。 */
+	FString InputActionPath;
+};
+
+/**
+ * v2.9 — Switch 节点引用描述。
+ */
+struct FParsedSwitchReference
+{
+	/** Switch 分支的 case 值列表。 */
+	TArray<FString> CaseValues;
+
+	/** 是否包含 Default 引脚，默认 true。 */
+	bool bHasDefaultPin = true;
+
+	/** SwitchEnum 的枚举路径。 */
+	FString EnumPath;
+
+	/** SwitchInteger 的起始索引。 */
+	int32 StartIndex = 0;
+};
+
+/**
+ * v2.9 — Select 节点引用描述。
+ */
+struct FParsedSelectReference
+{
+	/** 选项数量。 */
+	int32 NumOptions = 2;
+
+	/** 绑定的枚举路径（可选，如果基于枚举选择）。 */
+	FString EnumPath;
+};
+
+/**
  * 本地变量声明描述。
  */
 struct FParsedLocalVariableDeclaration
@@ -420,6 +468,15 @@ struct FParsedNode
 
 	/** v2.3 — Comment 节点引用数据。 */
 	FParsedCommentReference CommentReference;
+
+	/** v2.9 — Enhanced Input Action 节点引用数据。 */
+	FParsedEnhancedInputActionReference EnhancedInputActionReference;
+
+	/** v2.9 — Switch 节点引用数据。 */
+	FParsedSwitchReference SwitchReference;
+
+	/** v2.9 — Select 节点引用数据。 */
+	FParsedSelectReference SelectReference;
 };
 
 /**
@@ -578,6 +635,15 @@ private:
 
 	/** 解析 JSON 中的 Comment 引用描述。v2.3 */
 	static FParsedCommentReference ResolveCommentReference(const TSharedPtr<class FJsonObject>& NodeObject);
+
+	/** 解析 JSON 中的 Enhanced Input Action 引用描述。v2.9 */
+	static FParsedEnhancedInputActionReference ResolveEnhancedInputActionReference(const TSharedPtr<class FJsonObject>& NodeObject);
+
+	/** 解析 JSON 中的 Switch 引用描述。v2.9 */
+	static FParsedSwitchReference ResolveSwitchReference(const TSharedPtr<class FJsonObject>& NodeObject);
+
+	/** 解析 JSON 中的 Select 引用描述。v2.9 */
+	static FParsedSelectReference ResolveSelectReference(const TSharedPtr<class FJsonObject>& NodeObject);
 
 	/** 在指定图表中根据 JSON 子对象生成节点和连线（内部辅助）。v2.1 */
 	static FBlueprintGenerateResult GenerateNodesAndLinksForGraph(UEdGraph* TargetGraph, const TSharedPtr<class FJsonObject>& GraphJsonObject, TArray<TSharedPtr<FUnresolvedNodeItem>>& OutUnresolvedNodes);

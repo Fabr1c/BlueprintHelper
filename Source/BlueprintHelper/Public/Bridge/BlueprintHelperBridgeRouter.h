@@ -15,6 +15,7 @@ class FBlueprintHelperBlueprintStructureService;
 class FBlueprintHelperWidgetService;
 class FBlueprintHelperPropertyReflectionService;
 class FBlueprintHelperDataTableService;
+class FBlueprintHelperEditorCommandService;
 
 /**
  * 命令路由器，将 Bridge 请求分发到对应的 Service 方法。
@@ -33,7 +34,8 @@ public:
 		const FBlueprintHelperBlueprintStructureService& InStructure,
 		const FBlueprintHelperWidgetService& InWidget,
 		const FBlueprintHelperPropertyReflectionService& InPropertyReflection,
-		const FBlueprintHelperDataTableService& InDataTable);
+		const FBlueprintHelperDataTableService& InDataTable,
+		const FBlueprintHelperEditorCommandService& InEditorCommand);
 
 	/** 路由并执行命令。必须在 GameThread 调用。 */
 	FBlueprintHelperBridgeResponse HandleRequest(const FBlueprintHelperBridgeRequest& Request) const;
@@ -80,6 +82,15 @@ private:
 	FBlueprintHelperBridgeResponse HandleUpdateDataTableRow(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleDeleteDataTableRow(const FBlueprintHelperBridgeRequest& Req) const;
 
+	// ─── Phase 8: 编辑器命令 ───
+	FBlueprintHelperBridgeResponse HandleUndo(const FBlueprintHelperBridgeRequest& Req) const;
+	FBlueprintHelperBridgeResponse HandleRedo(const FBlueprintHelperBridgeRequest& Req) const;
+	FBlueprintHelperBridgeResponse HandlePlayInEditor(const FBlueprintHelperBridgeRequest& Req) const;
+	FBlueprintHelperBridgeResponse HandleStopPIE(const FBlueprintHelperBridgeRequest& Req) const;
+	FBlueprintHelperBridgeResponse HandleCreateBlueprint(const FBlueprintHelperBridgeRequest& Req) const;
+	FBlueprintHelperBridgeResponse HandleExecConsoleCommand(const FBlueprintHelperBridgeRequest& Req) const;
+	FBlueprintHelperBridgeResponse HandleCloseEditor(const FBlueprintHelperBridgeRequest& Req) const;
+
 	const FBlueprintHelperImportService& ImportService;
 	const FBlueprintHelperExportService& ExportService;
 	const FBlueprintHelperCompileService& CompileService;
@@ -90,4 +101,5 @@ private:
 	const FBlueprintHelperWidgetService& WidgetService;
 	const FBlueprintHelperPropertyReflectionService& PropertyReflectionService;
 	const FBlueprintHelperDataTableService& DataTableService;
+	const FBlueprintHelperEditorCommandService& EditorCommandService;
 };

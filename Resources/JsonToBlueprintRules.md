@@ -54,6 +54,7 @@
   "version": "2.0",
   "schema": "BlueprintHelper.JsonToBlueprint",
   "blueprint_operations": [],
+  "existing_node_refs": [],
   "declarations": {
     "local_variables": []
   },
@@ -71,12 +72,14 @@
   "graphs": [
     {
       "graph": "EventGraph",
+      "existing_node_refs": [],
       "declarations": { "local_variables": [] },
       "nodes": [],
       "links": []
     },
     {
       "graph": "MyFunction",
+      "existing_node_refs": [],
       "declarations": { "local_variables": [] },
       "nodes": [],
       "links": []
@@ -88,13 +91,14 @@
 > **向后兼容**：如果 JSON 中没有 `graphs` 数组而有顶层 `nodes`/`links`，插件自动按单图表模式处理（默认写入 EventGraph），完全兼容 1.x / 2.0 格式。
 
 ### 字段说明
-- `version`: 当前版本 `"2.2"`，1.x / 2.0 / 2.1 版的 JSON 也兼容
+- `version`: 当前版本 `"2.9"`，1.x / 2.0 / 2.1 版的 JSON 也兼容
 - `schema`: 固定填 `"BlueprintHelper.JsonToBlueprint"`
 - `blueprint_operations`: **v2.0 新增**，蓝图级操作数组（可选），在节点生成之前执行
 - `declarations`: 声明区，可选，目前用于本地变量声明
 - `nodes`: 节点数组（单图表模式）
 - `links`: 节点连线数组（单图表模式）
-- `graphs`: **v2.1 新增**，多图表数组，每项包含 `graph`（图表名）、`declarations`、`nodes`、`links`
+- `graphs`: **v2.1 新增**，多图表数组，每项包含 `graph`（图表名）、`existing_node_refs`、`declarations`、`nodes`、`links`
+- `existing_node_refs`: **v2.9 新增**，引用图中已有节点的数组（可选），用于增量导入时连线到已有节点
 
 ### 执行顺序
 1. `blueprint_operations`（创建/删除变量、函数、宏图、事件分发器等蓝图资产级操作）
@@ -1155,6 +1159,235 @@ Pin: `execute`, `input_object`, `is_valid`, `is_not_valid`
 
 ---
 
+### K2Node_EnhancedInputAction（增强输入动作，v2.9）
+生成 Enhanced Input 系统的输入动作事件节点。
+
+```json
+{
+  "id": "InputAction_0",
+  "type": "K2Node_EnhancedInputAction",
+  "x": 0, "y": 0,
+  "input_action_path": "/Game/Input/IA_Jump"
+}
+```
+
+别名：`EnhancedInputAction`、`InputAction`。
+
+| 字段 | 说明 |
+|------|------|
+| `input_action_path` | InputAction 资产路径（必填） |
+
+也可使用嵌套格式：`"input_action": { "path": "/Game/Input/IA_Jump" }`。
+
+---
+
+### K2Node_PromotableOperator（可提升运算符，v2.9）
+UE5 的数学运算符节点（加减乘除、比较等），通过 `function_name` 指定运算函数。
+
+```json
+{
+  "id": "Add_0",
+  "type": "K2Node_PromotableOperator",
+  "function_name": "Add_IntInt",
+  "x": 0, "y": 0
+}
+```
+
+别名：`PromotableOperator`。
+
+常用运算函数名：
+
+| 运算 | function_name（整数）| function_name（浮点）| function_name（向量）|
+|------|---------------------|---------------------|---------------------|
+| 加法 | `Add_IntInt` | `Add_FloatFloat` | `Add_VectorVector` |
+| 减法 | `Subtract_IntInt` | `Subtract_FloatFloat` | `Subtract_VectorVector` |
+| 乘法 | `Multiply_IntInt` | `Multiply_FloatFloat` | `Multiply_VectorFloat` |
+| 除法 | `Divide_IntInt` | `Divide_FloatFloat` | `Divide_VectorFloat` |
+| 等于 | `EqualEqual_IntInt` | `EqualEqual_FloatFloat` | `EqualEqual_VectorVector` |
+| 不等 | `NotEqual_IntInt` | `NotEqual_FloatFloat` | `NotEqual_VectorVector` |
+| 大于 | `Greater_IntInt` | `Greater_FloatFloat` | — |
+| 小于 | `Less_IntInt` | `Less_FloatFloat` | — |
+| 大于等于 | `GreaterEqual_IntInt` | `GreaterEqual_FloatFloat` | — |
+| 小于等于 | `LessEqual_IntInt` | `LessEqual_FloatFloat` | — |
+
+> **提示**：对于简单的数学运算，也可以使用 `K2Node_CallFunction` + `function_name` 直接调用 `UKismetMathLibrary` 中的函数，效果等价。
+
+---
+
+### K2Node_CommutativeAssociativeBinaryOperator（交换结合律二元运算符，v2.9）
+支持可动态添加输入引脚的运算节点（如多参数加法、乘法）。
+
+```json
+{
+  "id": "MultiAdd_0",
+  "type": "K2Node_CommutativeAssociativeBinaryOperator",
+  "function_name": "Add_IntInt",
+  "x": 0, "y": 0
+}
+```
+
+别名：`CommutativeAssociativeBinaryOperator`。
+
+---
+
+### K2Node_SwitchInteger（整数Switch，v2.9）
+
+```json
+{
+  "id": "SwitchInt_0",
+  "type": "K2Node_SwitchInteger",
+  "x": 0, "y": 0,
+  "switch": {
+    "case_values": ["0", "1", "2"],
+    "has_default": true,
+    "start_index": 0
+  }
+}
+```
+
+别名：`SwitchInteger`、`SwitchOnInt`。
+
+### K2Node_SwitchString（字符串Switch，v2.9）
+
+```json
+{
+  "id": "SwitchStr_0",
+  "type": "K2Node_SwitchString",
+  "x": 0, "y": 0,
+  "switch": {
+    "case_values": ["Hello", "World", "Foo"],
+    "has_default": true
+  }
+}
+```
+
+别名：`SwitchString`、`SwitchOnString`。
+
+### K2Node_SwitchName（名称Switch，v2.9）
+
+```json
+{
+  "id": "SwitchName_0",
+  "type": "K2Node_SwitchName",
+  "x": 0, "y": 0,
+  "switch": {
+    "case_values": ["Name1", "Name2"],
+    "has_default": true
+  }
+}
+```
+
+别名：`SwitchName`、`SwitchOnName`。
+
+### K2Node_SwitchEnum（枚举Switch，v2.9）
+
+```json
+{
+  "id": "SwitchEnum_0",
+  "type": "K2Node_SwitchEnum",
+  "x": 0, "y": 0,
+  "switch": {
+    "enum_path": "/Script/Engine.ECollisionChannel",
+    "has_default": true
+  }
+}
+```
+
+别名：`SwitchEnum`、`SwitchOnEnum`。
+
+---
+
+### K2Node_Select（条件选择，v2.9）
+
+```json
+{
+  "id": "Select_0",
+  "type": "K2Node_Select",
+  "x": 0, "y": 0,
+  "select": {
+    "num_options": 3,
+    "enum_path": ""
+  }
+}
+```
+
+别名：`Select`。
+
+| 字段 | 说明 |
+|------|------|
+| `select.num_options` | 选项数量（默认 2） |
+| `select.enum_path` | 绑定的枚举路径（可选，基于枚举选择时填写） |
+
+---
+
+## 数学运算常用函数快查表（v2.9）
+
+以下数学运算可使用 `K2Node_CallFunction` + `function_name` 直接调用，无需特殊节点类型。
+
+### 基础数学（UKismetMathLibrary）
+
+| 操作 | function_name | 备注 |
+|------|--------------|------|
+| 绝对值 | `Abs` / `Abs_Int` | |
+| 取整 | `FFloor` / `FCeil` / `Round` | |
+| 最大/最小 | `Max` / `Min` / `FMax` / `FMin` | |
+| Clamp | `Clamp` / `FClamp` | |
+| 幂运算 | `FPower` | |
+| 平方根 | `Sqrt` | |
+| 线性插值 | `Lerp` | |
+| 映射范围 | `MapRangeClamped` / `MapRangeUnclamped` | |
+| 取模 | `Percent_IntInt` / `Percent_FloatFloat` | |
+| 随机数 | `RandomInteger` / `RandomFloat` / `RandomIntegerInRange` / `RandomFloatInRange` | |
+| 三角函数 | `Sin` / `Cos` / `Tan` / `Asin` / `Acos` / `Atan` / `Atan2` | 弧度 |
+| 角度转弧度 | `DegreesToRadians` | |
+| 弧度转角度 | `RadiansToDegrees` | |
+
+### 向量运算（UKismetMathLibrary）
+
+| 操作 | function_name | 备注 |
+|------|--------------|------|
+| 向量加法 | `Add_VectorVector` | |
+| 向量减法 | `Subtract_VectorVector` | |
+| 向量缩放 | `Multiply_VectorFloat` / `Multiply_VectorVector` | |
+| 点积 | `Dot_VectorVector` | |
+| 叉积 | `Cross_VectorVector` | |
+| 长度 | `VSize` | |
+| 长度平方 | `VSizeSquared` | |
+| 2D 长度 | `VSize2D` | |
+| 归一化 | `Normal` | |
+| 距离 | `Vector_Distance` | |
+| 距离 2D | `Vector_Distance2D` | |
+| 向量插值 | `VLerp` | |
+| 随机向量 | `RandomUnitVector` | |
+| 向量旋转 | `RotateAngleAxis` | |
+| 向量投影 | `ProjectVectorOnToVector` | |
+
+### 旋转器运算（UKismetMathLibrary）
+
+| 操作 | function_name | 备注 |
+|------|--------------|------|
+| 旋转器加法 | `ComposeRotators` | |
+| 旋转器插值 | `RLerp` | |
+| 从 X/Y/Z 获取旋转 | `MakeRotFromX` / `MakeRotFromY` / `MakeRotFromZ` | |
+| 查找朝向旋转 | `FindLookAtRotation` | |
+| 旋转器转向量 | `GetForwardVector` / `GetRightVector` / `GetUpVector` | |
+| 分解旋转器 | `BreakRotator` / `BreakRotIntoComponents` | |
+| 构造旋转器 | `MakeRotator` | |
+
+### Transform 运算（UKismetMathLibrary）
+
+| 操作 | function_name | 备注 |
+|------|--------------|------|
+| 构造 Transform | `MakeTransform` | |
+| 分解 Transform | `BreakTransform` | |
+| Transform 合成 | `ComposeTransforms` | |
+| 反转 Transform | `InvertTransform` | |
+| 变换位置 | `TransformLocation` | |
+| 变换方向 | `TransformDirection` | |
+| Transform 插值 | `TLerp` | |
+
+---
+
 ## 容器操作函数快查表
 
 以下操作函数为 `K2Node_CallFunction`，使用标准函数调用节点即可。
@@ -1327,7 +1560,7 @@ Pin: `execute`, `input_object`, `is_valid`, `is_not_valid`
 3. schema 固定为 BlueprintHelper.JsonToBlueprint，version 固定为 "2.1"。
 4. `blueprint_operations` 在节点之前执行，可创建成员变量（add_member_variable）、函数图（add_function_graph）、事件分发器（add_event_dispatcher）、宏图（add_macro_graph），也可删除图表（remove_graph）、删除成员变量（remove_member_variable）。
 4b. 多图表模式可使用 `graphs` 数组替代顶层 `nodes`/`links`，每项指定 `graph` 名+对应节点和连线。
-5. `type` 可使用 `K2Node_CallFunction`、`K2Node_VariableGet`、`K2Node_VariableSet`、`K2Node_MacroInstance`、`K2Node_IfThenElse`、`K2Node_ExecutionSequence`、`K2Node_CustomEvent`、`K2Node_Event`、`K2Node_CallDelegate`、`K2Node_AddDelegate`、`K2Node_RemoveDelegate`、`K2Node_ClearDelegate`、`K2Node_AssignDelegate`、`K2Node_CreateDelegate`、`K2Node_MakeArray`、`K2Node_MakeSet`、`K2Node_MakeMap`、`K2Node_MakeStruct`、`K2Node_BreakStruct`。
+5. `type` 可使用 `K2Node_CallFunction`、`K2Node_VariableGet`、`K2Node_VariableSet`、`K2Node_MacroInstance`、`K2Node_IfThenElse`、`K2Node_ExecutionSequence`、`K2Node_CustomEvent`、`K2Node_Event`、`K2Node_CallDelegate`、`K2Node_AddDelegate`、`K2Node_RemoveDelegate`、`K2Node_ClearDelegate`、`K2Node_AssignDelegate`、`K2Node_CreateDelegate`、`K2Node_MakeArray`、`K2Node_MakeSet`、`K2Node_MakeMap`、`K2Node_MakeStruct`、`K2Node_BreakStruct`、`K2Node_EnhancedInputAction`、`K2Node_PromotableOperator`、`K2Node_CommutativeAssociativeBinaryOperator`、`K2Node_SwitchInteger`、`K2Node_SwitchString`、`K2Node_SwitchName`、`K2Node_SwitchEnum`、`K2Node_Select`。
 6. `function_name` 优先使用 Unreal 可蓝图调用函数的原生函数名。
 7. 函数图中的本地变量可写入 `declarations.local_variables`，或在变量节点上写 `ensure_exists=true`。EventGraph 中只能使用成员变量（`scope: "member"`），不得使用 `local_variables`。
 8. 若需要在 EventGraph 中使用成员变量或事件分发器，先在 `blueprint_operations` 中创建。
@@ -1349,16 +1582,63 @@ Pin: `execute`, `input_object`, `is_valid`, `is_not_valid`
 
 > 注意：导出跳过 FunctionEntry / FunctionResult 节点（它们在 `add_function_graph` 签名中表达），也跳过 UserConstructionScript。
 
+> **v2.9 新增**：导出的每个节点现在包含 `node_guid` 字段（32 位十六进制 GUID），可在增量导入的 `existing_node_refs` 中精确引用。
+
+---
+
+## 增量导入 — 引用已有节点（v2.9）
+
+在增量导入场景中，新生成的节点可能需要连接到图表中已有的节点。使用 `existing_node_refs` 数组声明对已有节点的引用，之后即可在 `links` 中使用这些引用 ID。
+
+### 字段说明
+
+```json
+{
+  "existing_node_refs": [
+    {
+      "id": "ref_begin_play",
+      "node_title": "Event BeginPlay"
+    },
+    {
+      "id": "ref_existing_node",
+      "node_guid": "A1B2C3D4E5F6789012345678ABCDEF01"
+    }
+  ],
+  "nodes": [...],
+  "links": [
+    { "from_id": "ref_begin_play", "from_pin": "then", "to_id": "new_node_1", "to_pin": "execute" }
+  ]
+}
+```
+
+| 字段 | 说明 |
+|------|------|
+| `id` | 引用 ID，在 `links` 中使用 |
+| `node_guid` | 精确匹配 UE 节点的 `NodeGuid`（优先级最高）。可从导出 JSON 的 `node_guid` 字段获取 |
+| `node_title` | 子串匹配节点标题（`GetNodeTitle(ListView)` 的结果）。匹配第一个命中的节点 |
+
+> **注意**：`__function_entry__` 和 `__function_result__` 已自动注入，无需在 `existing_node_refs` 中声明。
+
+> **注意**：如 JSON `nodes` 数组中包含 `id` 为 `__function_entry__` / `__function_result__` 或 `type` 为 `K2Node_FunctionEntry` / `K2Node_FunctionResult` 的节点，导入时会静默跳过（不报错、不生成），连线通过图表中已有节点自动恢复。
+
 ---
 
 ## 当前插件限制
+
+> **完整已知 Bug 与限制清单**请参见 [KnownBugs.md](KnownBugs.md)。
 - 当前生成端稳定支持 `CallFunction`、成员/本地变量 `Get/Set`、标准宏（ForLoop 全系、FlipFlop、DoOnce、DoN、Gate、WhileLoop、IsValid）、`Branch`、`Sequence`、`CustomEvent`、引擎事件（`Event`）、委托操作（`CallDelegate`、`AddDelegate`、`RemoveDelegate`、`ClearDelegate`、`AssignDelegate`、`CreateDelegate`）、容器构造（`MakeArray`、`MakeSet`、`MakeMap`）、结构体操作（`MakeStruct`、`BreakStruct`）。
 - **v2.2 高级节点**：新增 `K2Node_Self`、`K2Node_DynamicCast`、`K2Node_SpawnActorFromClass`、`K2Node_FormatText`、`K2Node_GetArrayItem`、`K2Node_Timeline`。
 - **v2.3 全覆盖收尾**：新增 `K2Node_Knot`（布线转接）、`UEdGraphNode_Comment`（注释框）、`K2Node_Literal`（对象引用常量）、`K2Node_GetEnumeratorName`、`K2Node_GetEnumeratorNameAsString`、`K2Node_ComponentBoundEvent`（组件绑定事件）。
+- **v2.9 Enhanced Input / 数学运算 / 流程控制**：新增 `K2Node_EnhancedInputAction`、`K2Node_PromotableOperator`、`K2Node_CommutativeAssociativeBinaryOperator`、`K2Node_SwitchInteger` / `SwitchString` / `SwitchName` / `SwitchEnum`、`K2Node_Select`。增量导入支持（`existing_node_refs`、`node_guid`）、虚拟节点容错、ReconstructNode 时序修正。
+- **v2.10 DynamicCast 引脚别名修复**：`valid`、`invalid`、`cast_result`、`success` 等别名现在正确映射到 DynamicCast 的实际引脚。
+- **v2.10 编辑器生命周期工具**：新增 `blueprint_close_editor`（关闭编辑器）、`blueprint_build_project`（编译项目）、`blueprint_open_editor`（启动编辑器并等待 Bridge 可用）。用于替代 LiveCoding，避免热编译导致的重复类问题。
 - **v2.0 蓝图级操作**：支持 `add_member_variable`、`add_function_graph`、`add_event_dispatcher` 三种 blueprint_operations。
 - **v2.1 蓝图级操作扩展**：新增 `add_macro_graph`、`remove_graph`、`remove_member_variable`。
 - **v2.1 多图表导入**：`graphs` 数组支持向不同图表（EventGraph / 函数 / 宏）分别生成节点和连线。
 - **v2.1 蓝图完整导出**：`ExportBlueprintToJson` 输出可直接重建的完整 JSON。
+- **v2.9 增量引用**：`existing_node_refs` 支持引用图中已有节点（按 `node_guid` 或 `node_title` 匹配）。
+- **v2.9 虚拟节点容错**：导入时静默跳过 `__function_entry__` / `__function_result__` 节点声明。
+- **v2.9 导出 GUID**：导出 JSON 的每个节点包含 `node_guid` 字段，便于增量导入精确引用。
 - **图表作用域约束**：
   - `declarations.local_variables` 和 `scope: "local"` 仅在**函数图/宏图**中有效，EventGraph 中使用会直接失败。
   - 成员变量（`scope: "member"`）可通过 `add_member_variable` 操作自动创建，也可手动在蓝图中创建。

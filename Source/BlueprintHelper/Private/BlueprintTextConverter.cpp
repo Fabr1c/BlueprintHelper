@@ -38,6 +38,15 @@
 #include "K2Node_GetEnumeratorName.h"
 #include "K2Node_GetEnumeratorNameAsString.h"
 #include "K2Node_ComponentBoundEvent.h"
+#include "K2Node_EnhancedInputAction.h"
+#include "InputAction.h"
+#include "K2Node_PromotableOperator.h"
+#include "K2Node_CommutativeAssociativeBinaryOperator.h"
+#include "K2Node_SwitchInteger.h"
+#include "K2Node_SwitchString.h"
+#include "K2Node_SwitchName.h"
+#include "K2Node_SwitchEnum.h"
+#include "K2Node_Select.h"
 #include "EdGraphNode_Comment.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "HAL/PlatformApplicationMisc.h"
@@ -720,6 +729,15 @@ FString FBlueprintToTextConverter::IdentifyNodeType(UEdGraphNode* Node)
 	if (Cast<UK2Node_GetEnumeratorName>(Node)) return TEXT("K2Node_GetEnumeratorName");
 	if (Cast<UK2Node_FunctionEntry>(Node)) return TEXT("K2Node_FunctionEntry");
 	if (Cast<UK2Node_FunctionResult>(Node)) return TEXT("K2Node_FunctionResult");
+	// v2.9 — 子类在前：PromotableOperator 和 CommutativeAssociativeBinaryOperator 均继承自 CallFunction
+	if (Cast<UK2Node_EnhancedInputAction>(Node)) return TEXT("K2Node_EnhancedInputAction");
+	if (Cast<UK2Node_PromotableOperator>(Node)) return TEXT("K2Node_PromotableOperator");
+	if (Cast<UK2Node_CommutativeAssociativeBinaryOperator>(Node)) return TEXT("K2Node_CommutativeAssociativeBinaryOperator");
+	if (Cast<UK2Node_SwitchEnum>(Node)) return TEXT("K2Node_SwitchEnum");
+	if (Cast<UK2Node_SwitchInteger>(Node)) return TEXT("K2Node_SwitchInteger");
+	if (Cast<UK2Node_SwitchString>(Node)) return TEXT("K2Node_SwitchString");
+	if (Cast<UK2Node_SwitchName>(Node)) return TEXT("K2Node_SwitchName");
+	if (Cast<UK2Node_Select>(Node)) return TEXT("K2Node_Select");
 	if (Cast<UK2Node_CallFunction>(Node)) return TEXT("K2Node_CallFunction");
 	if (Cast<UEdGraphNode_Comment>(Node)) return TEXT("EdGraphNode_Comment");
 
@@ -766,6 +784,7 @@ void FBlueprintToTextConverter::ExportGraphNodesAndLinks(
 		TSharedPtr<FJsonObject> NodeObj = MakeShared<FJsonObject>();
 		NodeObj->SetStringField(TEXT("id"), NodeId);
 		NodeObj->SetStringField(TEXT("type"), IdentifyNodeType(Node));
+		NodeObj->SetStringField(TEXT("node_guid"), Node->NodeGuid.ToString(EGuidFormats::Digits));
 		NodeObj->SetNumberField(TEXT("x"), Node->NodePosX);
 		NodeObj->SetNumberField(TEXT("y"), Node->NodePosY);
 
@@ -860,6 +879,71 @@ void FBlueprintToTextConverter::ExportGraphNodesAndLinks(
 			CommentObj->SetNumberField(TEXT("font_size"), CommentNode->FontSize);
 			CommentObj->SetStringField(TEXT("color"), CommentNode->CommentColor.ToString());
 			NodeObj->SetObjectField(TEXT("comment"), CommentObj);
+		}
+		// v2.9 — Enhanced Input Action
+		if (UK2Node_EnhancedInputAction* InputActionNode = Cast<UK2Node_EnhancedInputAction>(Node))
+		{
+			const UInputAction* IA = InputActionNode->InputAction;
+			if (IA)
+			{
+				NodeObj->SetStringField(TEXT("input_action_path"), IA->GetPathName());
+			}
+		}
+		// v2.9 — PromotableOperator（继承自 CallFunction，type 已被识别，但仍导出 function_name）
+		// v2.9 — Switch 系列
+		if (UK2Node_SwitchEnum* SwitchEnum = Cast<UK2Node_SwitchEnum>(Node))
+		{
+			TSharedPtr<FJsonObject> SwitchObj = MakeShared<FJsonObject>();
+			SwitchObj->SetBoolField(TEXT("has_default"), SwitchEnum->bHasDefaultPin);
+			if (SwitchEnum->GetEnum())
+			{
+				SwitchObj->SetStringField(TEXT("enum_path"), SwitchEnum->GetEnum()->GetPathName());
+			}
+			NodeObj->SetObjectField(TEXT("switch"), SwitchObj);
+		}
+		else if (UK2Node_SwitchInteger* SwitchInt = Cast<UK2Node_SwitchInteger>(Node))
+		{
+			TSharedPtr<FJsonObject> SwitchObj = MakeShared<FJsonObject>();
+			SwitchObj->SetBoolField(TEXT("has_default"), SwitchInt->bHasDefaultPin);
+			SwitchObj->SetNumberField(TEXT("start_index"), SwitchInt->StartIndex);
+			NodeObj->SetObjectField(TEXT("switch"), SwitchObj);
+		}
+		else if (UK2Node_SwitchString* SwitchStr = Cast<UK2Node_SwitchString>(Node))
+		{
+			TSharedPtr<FJsonObject> SwitchObj = MakeShared<FJsonObject>();
+			SwitchObj->SetBoolField(TEXT("has_default"), SwitchStr->bHasDefaultPin);
+			TArray<TSharedPtr<FJsonValue>> CaseArray;
+			for (const FName& PinName : SwitchStr->PinNames)
+			{
+				CaseArray.Add(MakeShared<FJsonValueString>(PinName.ToString()));
+			}
+			SwitchObj->SetArrayField(TEXT("case_values"), CaseArray);
+			NodeObj->SetObjectField(TEXT("switch"), SwitchObj);
+		}
+		else if (UK2Node_SwitchName* SwitchNameNode = Cast<UK2Node_SwitchName>(Node))
+		{
+			TSharedPtr<FJsonObject> SwitchObj = MakeShared<FJsonObject>();
+			SwitchObj->SetBoolField(TEXT("has_default"), SwitchNameNode->bHasDefaultPin);
+			TArray<TSharedPtr<FJsonValue>> CaseArray;
+			for (const FName& PinName : SwitchNameNode->PinNames)
+			{
+				CaseArray.Add(MakeShared<FJsonValueString>(PinName.ToString()));
+			}
+			SwitchObj->SetArrayField(TEXT("case_values"), CaseArray);
+			NodeObj->SetObjectField(TEXT("switch"), SwitchObj);
+		}
+		// v2.9 — Select
+		if (UK2Node_Select* SelectNode = Cast<UK2Node_Select>(Node))
+		{
+			TSharedPtr<FJsonObject> SelectObj = MakeShared<FJsonObject>();
+			TArray<UEdGraphPin*> OptionPins;
+			SelectNode->GetOptionPins(OptionPins);
+			SelectObj->SetNumberField(TEXT("num_options"), OptionPins.Num());
+			if (SelectNode->GetEnum())
+			{
+				SelectObj->SetStringField(TEXT("enum_path"), SelectNode->GetEnum()->GetPathName());
+			}
+			NodeObj->SetObjectField(TEXT("select"), SelectObj);
 		}
 
 		// 输入引脚默认值

@@ -35,6 +35,11 @@
 #include "NodeHandlers/LiteralNodeHandler.h"
 #include "NodeHandlers/EnumNameNodeHandler.h"
 #include "NodeHandlers/ComponentBoundEventNodeHandler.h"
+#include "NodeHandlers/EnhancedInputActionNodeHandler.h"
+#include "NodeHandlers/PromotableOperatorNodeHandler.h"
+#include "NodeHandlers/CommutativeAssociativeBinaryOperatorNodeHandler.h"
+#include "NodeHandlers/SwitchNodeHandler.h"
+#include "NodeHandlers/SelectNodeHandler.h"
 #include "OperationHandlers/BlueprintOperationHandler.h"
 #include "OperationHandlers/AddMemberVariableHandler.h"
 #include "OperationHandlers/AddFunctionGraphHandler.h"
@@ -54,6 +59,7 @@
 #include "Services/BlueprintHelperWidgetService.h"
 #include "Services/BlueprintHelperPropertyReflectionService.h"
 #include "Services/BlueprintHelperDataTableService.h"
+#include "Services/BlueprintHelperEditorCommandService.h"
 #include "Bridge/BlueprintHelperBridgeRouter.h"
 #include "Bridge/BlueprintHelperBridgeServer.h"
 #include "Styling/AppStyle.h"
@@ -109,6 +115,12 @@ void FBlueprintHelperModule::StartupModule()
 	Registry.Register(MakeShared<FLiteralNodeHandler>());
 	Registry.Register(MakeShared<FEnumNameNodeHandler>());
 	Registry.Register(MakeShared<FComponentBoundEventNodeHandler>());
+	// v2.9 — Enhanced Input / 数学运算 / 流程控制
+	Registry.Register(MakeShared<FEnhancedInputActionNodeHandler>());
+	Registry.Register(MakeShared<FPromotableOperatorNodeHandler>());
+	Registry.Register(MakeShared<FCommutativeAssociativeBinaryOperatorNodeHandler>());
+	Registry.Register(MakeShared<FSwitchNodeHandler>());
+	Registry.Register(MakeShared<FSelectNodeHandler>());
 
 	FBlueprintOperationHandlerRegistry& OpRegistry = FBlueprintOperationHandlerRegistry::Get();
 	OpRegistry.Register(MakeShared<FAddMemberVariableHandler>());
@@ -130,11 +142,12 @@ void FBlueprintHelperModule::StartupModule()
 	WidgetService  = MakeUnique<FBlueprintHelperWidgetService>();
 	PropertyReflectionService = MakeUnique<FBlueprintHelperPropertyReflectionService>();
 	DataTableService = MakeUnique<FBlueprintHelperDataTableService>();
+	EditorCommandService = MakeUnique<FBlueprintHelperEditorCommandService>();
 
 	// ─── Bridge Layer 初始化 ───
 	ContextService = MakeUnique<FBlueprintHelperContextService>(*GraphResolver);
 	BridgeRouter = MakeUnique<FBlueprintHelperBridgeRouter>(
-		*ImportService, *ExportService, *CompileService, *ValidationService, *ContextService, *AssetBrowseService, *StructureService, *WidgetService, *PropertyReflectionService, *DataTableService);
+		*ImportService, *ExportService, *CompileService, *ValidationService, *ContextService, *AssetBrowseService, *StructureService, *WidgetService, *PropertyReflectionService, *DataTableService, *EditorCommandService);
 	BridgeServer = MakeUnique<FBlueprintHelperBridgeServer>(*BridgeRouter);
 	BridgeServer->Start();
 
@@ -157,6 +170,7 @@ void FBlueprintHelperModule::ShutdownModule()
 	ContextService.Reset();
 
 	// ─── Service Layer 销毁（逆序）───
+	EditorCommandService.Reset();
 	DataTableService.Reset();
 	PropertyReflectionService.Reset();
 	StructureService.Reset();

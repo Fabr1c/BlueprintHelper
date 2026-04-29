@@ -294,6 +294,61 @@ EParsedBlueprintNodeType TextToBlueprintGenerator::ResolveNodeType(const TShared
 		return EParsedBlueprintNodeType::ComponentBoundEvent;
 	}
 
+	// v2.9 — Enhanced Input Action
+	if (NormalizedNodeType.Equals(TEXT("K2Node_EnhancedInputAction"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("EnhancedInputAction"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("InputAction"), ESearchCase::IgnoreCase))
+	{
+		return EParsedBlueprintNodeType::EnhancedInputAction;
+	}
+
+	// v2.9 — PromotableOperator（加减乘除、比较等可提升运算符）
+	if (NormalizedNodeType.Equals(TEXT("K2Node_PromotableOperator"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("PromotableOperator"), ESearchCase::IgnoreCase))
+	{
+		return EParsedBlueprintNodeType::PromotableOperator;
+	}
+
+	// v2.9 — CommutativeAssociativeBinaryOperator（交换结合律二元运算符）
+	if (NormalizedNodeType.Equals(TEXT("K2Node_CommutativeAssociativeBinaryOperator"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("CommutativeAssociativeBinaryOperator"), ESearchCase::IgnoreCase))
+	{
+		return EParsedBlueprintNodeType::CommutativeAssociativeBinaryOperator;
+	}
+
+	// v2.9 — Switch 族
+	if (NormalizedNodeType.Equals(TEXT("K2Node_SwitchInteger"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("SwitchInteger"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("SwitchOnInt"), ESearchCase::IgnoreCase))
+	{
+		return EParsedBlueprintNodeType::SwitchInteger;
+	}
+	if (NormalizedNodeType.Equals(TEXT("K2Node_SwitchString"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("SwitchString"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("SwitchOnString"), ESearchCase::IgnoreCase))
+	{
+		return EParsedBlueprintNodeType::SwitchString;
+	}
+	if (NormalizedNodeType.Equals(TEXT("K2Node_SwitchName"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("SwitchName"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("SwitchOnName"), ESearchCase::IgnoreCase))
+	{
+		return EParsedBlueprintNodeType::SwitchName;
+	}
+	if (NormalizedNodeType.Equals(TEXT("K2Node_SwitchEnum"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("SwitchEnum"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("SwitchOnEnum"), ESearchCase::IgnoreCase))
+	{
+		return EParsedBlueprintNodeType::SwitchEnum;
+	}
+
+	// v2.9 — Select
+	if (NormalizedNodeType.Equals(TEXT("K2Node_Select"), ESearchCase::IgnoreCase)
+		|| NormalizedNodeType.Equals(TEXT("Select"), ESearchCase::IgnoreCase))
+	{
+		return EParsedBlueprintNodeType::Select;
+	}
+
 	if (NodeObject->HasField(TEXT("macro")))
 	{
 		return EParsedBlueprintNodeType::MacroInstance;
@@ -821,6 +876,117 @@ FParsedCommentReference TextToBlueprintGenerator::ResolveCommentReference(const 
 	return Result;
 }
 
+// v2.9 — Enhanced Input Action 引用
+FParsedEnhancedInputActionReference TextToBlueprintGenerator::ResolveEnhancedInputActionReference(const TSharedPtr<FJsonObject>& NodeObject)
+{
+	FParsedEnhancedInputActionReference Result;
+	if (!NodeObject.IsValid())
+	{
+		return Result;
+	}
+
+	// 尝试从 "input_action" 对象读取
+	const TSharedPtr<FJsonObject>* InputActionObject = nullptr;
+	if (NodeObject->TryGetObjectField(TEXT("input_action"), InputActionObject) && InputActionObject && InputActionObject->IsValid())
+	{
+		(*InputActionObject)->TryGetStringField(TEXT("path"), Result.InputActionPath);
+	}
+
+	// 回退到直接字段
+	if (Result.InputActionPath.IsEmpty())
+	{
+		NodeObject->TryGetStringField(TEXT("input_action_path"), Result.InputActionPath);
+	}
+	if (Result.InputActionPath.IsEmpty())
+	{
+		NodeObject->TryGetStringField(TEXT("input_action"), Result.InputActionPath);
+	}
+
+	return Result;
+}
+
+// v2.9 — Switch 引用
+FParsedSwitchReference TextToBlueprintGenerator::ResolveSwitchReference(const TSharedPtr<FJsonObject>& NodeObject)
+{
+	FParsedSwitchReference Result;
+	if (!NodeObject.IsValid())
+	{
+		return Result;
+	}
+
+	const TSharedPtr<FJsonObject>* SwitchObject = nullptr;
+	if (NodeObject->TryGetObjectField(TEXT("switch"), SwitchObject) && SwitchObject && SwitchObject->IsValid())
+	{
+		// case_values 数组
+		const TArray<TSharedPtr<FJsonValue>>* CaseArray = nullptr;
+		if ((*SwitchObject)->TryGetArrayField(TEXT("case_values"), CaseArray) && CaseArray)
+		{
+			for (const TSharedPtr<FJsonValue>& CaseValue : *CaseArray)
+			{
+				Result.CaseValues.Add(CaseValue->AsString());
+			}
+		}
+
+		(*SwitchObject)->TryGetBoolField(TEXT("has_default"), Result.bHasDefaultPin);
+		(*SwitchObject)->TryGetStringField(TEXT("enum_path"), Result.EnumPath);
+		if ((*SwitchObject)->HasField(TEXT("start_index")))
+		{
+			Result.StartIndex = static_cast<int32>((*SwitchObject)->GetNumberField(TEXT("start_index")));
+		}
+	}
+
+	// 回退：直接从顶层字段读取
+	if (Result.CaseValues.Num() == 0)
+	{
+		const TArray<TSharedPtr<FJsonValue>>* CaseArray = nullptr;
+		if (NodeObject->TryGetArrayField(TEXT("case_values"), CaseArray) && CaseArray)
+		{
+			for (const TSharedPtr<FJsonValue>& CaseValue : *CaseArray)
+			{
+				Result.CaseValues.Add(CaseValue->AsString());
+			}
+		}
+	}
+	if (Result.EnumPath.IsEmpty())
+	{
+		NodeObject->TryGetStringField(TEXT("enum_path"), Result.EnumPath);
+	}
+
+	return Result;
+}
+
+// v2.9 — Select 引用
+FParsedSelectReference TextToBlueprintGenerator::ResolveSelectReference(const TSharedPtr<FJsonObject>& NodeObject)
+{
+	FParsedSelectReference Result;
+	if (!NodeObject.IsValid())
+	{
+		return Result;
+	}
+
+	const TSharedPtr<FJsonObject>* SelectObject = nullptr;
+	if (NodeObject->TryGetObjectField(TEXT("select"), SelectObject) && SelectObject && SelectObject->IsValid())
+	{
+		if ((*SelectObject)->HasField(TEXT("num_options")))
+		{
+			Result.NumOptions = static_cast<int32>((*SelectObject)->GetNumberField(TEXT("num_options")));
+		}
+		(*SelectObject)->TryGetStringField(TEXT("enum_path"), Result.EnumPath);
+	}
+
+	// 回退到直接字段
+	if (Result.EnumPath.IsEmpty())
+	{
+		NodeObject->TryGetStringField(TEXT("enum_path"), Result.EnumPath);
+	}
+	if (NodeObject->HasField(TEXT("num_options")))
+	{
+		Result.NumOptions = static_cast<int32>(NodeObject->GetNumberField(TEXT("num_options")));
+	}
+
+	return Result;
+}
+
 void TextToBlueprintGenerator::ResolveLocalVariableDeclarations(const TSharedPtr<FJsonObject>& JsonObject, TArray<FParsedLocalVariableDeclaration>& OutDeclarations)
 {
 	OutDeclarations.Empty();
@@ -1189,6 +1355,42 @@ UEdGraphPin* TextToBlueprintGenerator::FindPinByAlias(UK2Node* TargetNode, const
 		}
 	}
 
+	// ── DynamicCast 别名 ──
+	if (NormalizedKey == NormalizePinKey(TEXT("valid")) || NormalizedKey == NormalizePinKey(TEXT("cast_succeeded")))
+	{
+		if (UEdGraphPin* ValidPin = TargetNode->FindPin(UEdGraphSchema_K2::PN_CastSucceeded))
+		{
+			return ValidPin;
+		}
+	}
+
+	if (NormalizedKey == NormalizePinKey(TEXT("invalid")) || NormalizedKey == NormalizePinKey(TEXT("cast_failed")))
+	{
+		if (UEdGraphPin* FailedPin = TargetNode->FindPin(TEXT("CastFailed")))
+		{
+			return FailedPin;
+		}
+	}
+
+	if (NormalizedKey == NormalizePinKey(TEXT("cast_result")))
+	{
+		for (UEdGraphPin* Pin : TargetNode->Pins)
+		{
+			if (Pin && Pin->Direction == EGPD_Output && Pin->PinName.ToString().StartsWith(TEXT("As")))
+			{
+				return Pin;
+			}
+		}
+	}
+
+	if (NormalizedKey == NormalizePinKey(TEXT("success")) || NormalizedKey == NormalizePinKey(TEXT("bsuccess")) || NormalizedKey == NormalizePinKey(TEXT("bool_success")))
+	{
+		if (UEdGraphPin* SuccessPin = TargetNode->FindPin(TEXT("bSuccess")))
+		{
+			return SuccessPin;
+		}
+	}
+
 	return nullptr;
 }
 
@@ -1397,6 +1599,9 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateBlueprintFromJson(UEd
 			ParsedNode.LiteralReference = ResolveLiteralReference(NodeObject);
 			ParsedNode.ComponentBoundEventReference = ResolveComponentBoundEventReference(NodeObject);
 			ParsedNode.CommentReference = ResolveCommentReference(NodeObject);
+			ParsedNode.EnhancedInputActionReference = ResolveEnhancedInputActionReference(NodeObject);
+			ParsedNode.SwitchReference = ResolveSwitchReference(NodeObject);
+			ParsedNode.SelectReference = ResolveSelectReference(NodeObject);
 
 			const TSharedPtr<FJsonObject>* PositionObject = nullptr;
 			if (NodeObject->TryGetObjectField(TEXT("position"), PositionObject) && PositionObject && PositionObject->IsValid())
@@ -1476,6 +1681,14 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateBlueprintFromJson(UEd
 	int32 GeneratedNodeCount = 0;
 	for (const FParsedNode& ParsedNode : ParsedNodes)
 	{
+		// v2.9 — 跳过虚拟入口/结果节点（导出不生成它们，但 AI 可能手动写入；导入时从图表中自动发现）
+		if (ParsedNode.Id == TEXT("__function_entry__") || ParsedNode.Id == TEXT("__function_result__")
+			|| ParsedNode.SourceType.Equals(TEXT("K2Node_FunctionEntry"), ESearchCase::IgnoreCase)
+			|| ParsedNode.SourceType.Equals(TEXT("K2Node_FunctionResult"), ESearchCase::IgnoreCase))
+		{
+			continue;
+		}
+
 		// v2.3 — Comment 节点特殊处理（UEdGraphNode_Comment 不是 UK2Node）
 		if (ParsedNode.NodeType == EParsedBlueprintNodeType::Comment)
 		{
@@ -1544,7 +1757,61 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateBlueprintFromJson(UEd
 		}
 	}
 
+	// v2.9 — existing_node_refs：允许增量导入引用图中已有节点
+	const TArray<TSharedPtr<FJsonValue>>* ExistingRefsArray = nullptr;
+	if (JsonObject->TryGetArrayField(TEXT("existing_node_refs"), ExistingRefsArray) && ExistingRefsArray)
+	{
+		for (const TSharedPtr<FJsonValue>& RefValue : *ExistingRefsArray)
+		{
+			const TSharedPtr<FJsonObject> RefObject = RefValue->AsObject();
+			if (!RefObject.IsValid()) continue;
+
+			FString RefId;
+			RefObject->TryGetStringField(TEXT("id"), RefId);
+			if (RefId.IsEmpty()) continue;
+
+			FString MatchTitle;
+			RefObject->TryGetStringField(TEXT("node_title"), MatchTitle);
+			FString MatchGuid;
+			RefObject->TryGetStringField(TEXT("node_guid"), MatchGuid);
+
+			for (UEdGraphNode* RefCandidate : TargetGraph->Nodes)
+			{
+				UK2Node* K2Existing = Cast<UK2Node>(RefCandidate);
+				if (!K2Existing) continue;
+				if (IdToSpawnedNode.FindKey(K2Existing)) continue; // 已经被映射
+
+				bool bMatched = false;
+				if (!MatchGuid.IsEmpty())
+				{
+					bMatched = RefCandidate->NodeGuid.ToString(EGuidFormats::Digits) == MatchGuid;
+				}
+				else if (!MatchTitle.IsEmpty())
+				{
+					const FString Title = RefCandidate->GetNodeTitle(ENodeTitleType::ListView).ToString();
+					bMatched = Title.Contains(MatchTitle);
+				}
+
+				if (bMatched)
+				{
+					IdToSpawnedNode.Add(RefId, K2Existing);
+					break;
+				}
+			}
+		}
+	}
+
+	// v2.9 — 先 Reconstruct 新生成的节点以确保引脚完整，再连线（避免连线后 Reconstruct 破坏连接）
+	for (const auto& Pair : IdToSpawnedNode)
+	{
+		if (Pair.Value)
+		{
+			TargetGraph->GetSchema()->ReconstructNode(*Pair.Value);
+		}
+	}
+
 	const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
+	int32 CreatedConnectionCount = 0;
 	for (const FParsedLink& ParsedLink : ParsedLinks)
 	{
 		if (!Schema || !IdToSpawnedNode.Contains(ParsedLink.FromId) || !IdToSpawnedNode.Contains(ParsedLink.ToId))
@@ -1558,25 +1825,18 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateBlueprintFromJson(UEd
 		UEdGraphPin* ToPin = FindPinByAlias(ToNode, ParsedLink.ToPin);
 		if (FromPin && ToPin)
 		{
-			Schema->TryCreateConnection(FromPin, ToPin);
+			CreatedConnectionCount += Schema->TryCreateConnection(FromPin, ToPin) ? 1 : 0;
 		}
 	}
 
-	for (const auto& Pair : IdToSpawnedNode)
-	{
-		if (Pair.Value)
-		{
-			TargetGraph->GetSchema()->ReconstructNode(*Pair.Value);
-		}
-	}
 	TargetGraph->NotifyGraphChanged();
 
-	Result.bSucceed = GeneratedNodeCount > 0;
+	Result.bSucceed = GeneratedNodeCount > 0 || CreatedConnectionCount > 0;
 	Result.GeneratedNodeCount = GeneratedNodeCount;
 	Result.UnresolvedNodeCount = OutUnresolvedNodes.Num();
 	if (Result.bSucceed)
 	{
-		Result.Message = FString::Printf(TEXT("生成完成：成功 %d 个，未匹配 %d 个。"), Result.GeneratedNodeCount, Result.UnresolvedNodeCount);
+		Result.Message = FString::Printf(TEXT("生成完成：成功 %d 个节点，建立 %d 条连线，未匹配 %d 个。"), Result.GeneratedNodeCount, CreatedConnectionCount, Result.UnresolvedNodeCount);
 	}
 	else if (Result.UnresolvedNodeCount > 0)
 	{
@@ -1703,6 +1963,9 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateNodesAndLinksForGraph
 			ParsedNode.LiteralReference = ResolveLiteralReference(NodeObject);
 			ParsedNode.ComponentBoundEventReference = ResolveComponentBoundEventReference(NodeObject);
 			ParsedNode.CommentReference = ResolveCommentReference(NodeObject);
+			ParsedNode.EnhancedInputActionReference = ResolveEnhancedInputActionReference(NodeObject);
+			ParsedNode.SwitchReference = ResolveSwitchReference(NodeObject);
+			ParsedNode.SelectReference = ResolveSelectReference(NodeObject);
 
 			const TSharedPtr<FJsonObject>* PositionObject = nullptr;
 			if (NodeObject->TryGetObjectField(TEXT("position"), PositionObject) && PositionObject && PositionObject->IsValid())
@@ -1785,6 +2048,14 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateNodesAndLinksForGraph
 	int32 GeneratedNodeCount = 0;
 	for (const FParsedNode& ParsedNode : ParsedNodes)
 	{
+		// v2.9 — 跳过虚拟入口/结果节点（导出不生成它们，但 AI 可能手动写入；导入时从图表中自动发现）
+		if (ParsedNode.Id == TEXT("__function_entry__") || ParsedNode.Id == TEXT("__function_result__")
+			|| ParsedNode.SourceType.Equals(TEXT("K2Node_FunctionEntry"), ESearchCase::IgnoreCase)
+			|| ParsedNode.SourceType.Equals(TEXT("K2Node_FunctionResult"), ESearchCase::IgnoreCase))
+		{
+			continue;
+		}
+
 		// v2.3 — Comment 节点特殊处理（UEdGraphNode_Comment 不是 UK2Node）
 		if (ParsedNode.NodeType == EParsedBlueprintNodeType::Comment)
 		{
@@ -1853,7 +2124,61 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateNodesAndLinksForGraph
 		}
 	}
 
+	// v2.9 — existing_node_refs：允许增量导入引用图中已有节点
+	const TArray<TSharedPtr<FJsonValue>>* ExistingRefsArray = nullptr;
+	if (GraphJsonObject->TryGetArrayField(TEXT("existing_node_refs"), ExistingRefsArray) && ExistingRefsArray)
+	{
+		for (const TSharedPtr<FJsonValue>& RefValue : *ExistingRefsArray)
+		{
+			const TSharedPtr<FJsonObject> RefObject = RefValue->AsObject();
+			if (!RefObject.IsValid()) continue;
+
+			FString RefId;
+			RefObject->TryGetStringField(TEXT("id"), RefId);
+			if (RefId.IsEmpty()) continue;
+
+			FString MatchTitle;
+			RefObject->TryGetStringField(TEXT("node_title"), MatchTitle);
+			FString MatchGuid;
+			RefObject->TryGetStringField(TEXT("node_guid"), MatchGuid);
+
+			for (UEdGraphNode* RefCandidate : TargetGraph->Nodes)
+			{
+				UK2Node* K2Existing = Cast<UK2Node>(RefCandidate);
+				if (!K2Existing) continue;
+				if (IdToSpawnedNode.FindKey(K2Existing)) continue; // 已经被映射
+
+				bool bMatched = false;
+				if (!MatchGuid.IsEmpty())
+				{
+					bMatched = RefCandidate->NodeGuid.ToString(EGuidFormats::Digits) == MatchGuid;
+				}
+				else if (!MatchTitle.IsEmpty())
+				{
+					const FString Title = RefCandidate->GetNodeTitle(ENodeTitleType::ListView).ToString();
+					bMatched = Title.Contains(MatchTitle);
+				}
+
+				if (bMatched)
+				{
+					IdToSpawnedNode.Add(RefId, K2Existing);
+					break;
+				}
+			}
+		}
+	}
+
+	// v2.9 — 先 Reconstruct 新生成的节点以确保引脚完整，再连线（避免连线后 Reconstruct 破坏连接）
+	for (const auto& Pair : IdToSpawnedNode)
+	{
+		if (Pair.Value)
+		{
+			TargetGraph->GetSchema()->ReconstructNode(*Pair.Value);
+		}
+	}
+
 	const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
+	int32 CreatedConnectionCount = 0;
 	for (const FParsedLink& ParsedLink : ParsedLinks)
 	{
 		if (!Schema || !IdToSpawnedNode.Contains(ParsedLink.FromId) || !IdToSpawnedNode.Contains(ParsedLink.ToId))
@@ -1867,25 +2192,18 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateNodesAndLinksForGraph
 		UEdGraphPin* ToPin = FindPinByAlias(ToNode, ParsedLink.ToPin);
 		if (FromPin && ToPin)
 		{
-			Schema->TryCreateConnection(FromPin, ToPin);
+			CreatedConnectionCount += Schema->TryCreateConnection(FromPin, ToPin) ? 1 : 0;
 		}
 	}
 
-	for (const auto& Pair : IdToSpawnedNode)
-	{
-		if (Pair.Value)
-		{
-			TargetGraph->GetSchema()->ReconstructNode(*Pair.Value);
-		}
-	}
 	TargetGraph->NotifyGraphChanged();
 
-	Result.bSucceed = GeneratedNodeCount > 0;
+	Result.bSucceed = GeneratedNodeCount > 0 || CreatedConnectionCount > 0;
 	Result.GeneratedNodeCount = GeneratedNodeCount;
 	Result.UnresolvedNodeCount = OutUnresolvedNodes.Num();
 	if (Result.bSucceed)
 	{
-		Result.Message = FString::Printf(TEXT("生成完成：成功 %d 个，未匹配 %d 个。"), Result.GeneratedNodeCount, Result.UnresolvedNodeCount);
+		Result.Message = FString::Printf(TEXT("生成完成：成功 %d 个节点，建立 %d 条连线，未匹配 %d 个。"), Result.GeneratedNodeCount, CreatedConnectionCount, Result.UnresolvedNodeCount);
 	}
 	return Result;
 }

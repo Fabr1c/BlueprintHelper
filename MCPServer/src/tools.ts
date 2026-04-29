@@ -1,17 +1,26 @@
 /**
  * MCP Tools 注册
  *
- * 将 32 个 Bridge 命令映射为 MCP 工具，供 IDE AI 调用。
+ * 将 38 个 Bridge 命令映射为 MCP 工具，供 IDE AI 调用。
  * Phase 1-3: 6 个蓝图操作工具
  * Phase 4:   5 个资产浏览工具
  * Phase 5:   9 个蓝图结构操作工具
  * Phase 6:   6 个 UMG Widget 操作工具
  * Phase 7:   6 个 DataAsset & DataTable 操作工具
+ * Phase 8:   6 个编辑器命令工具
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { BridgeClient, BridgeResponse } from './bridge-client.js';
+import { execFile, spawn } from 'node:child_process';
+import * as path from 'node:path';
+
+/** 编辑器/引擎路径配置 */
+export interface EditorConfig {
+  ueEngineDir: string;
+  ueProjectFile: string;
+}
 
 /** 将 Bridge 响应转换为 MCP tool result */
 function toToolResult(resp: BridgeResponse, isError = false) {
@@ -30,13 +39,12 @@ function toErrorResult(err: unknown) {
   };
 }
 
-export function registerTools(server: McpServer, bridge: BridgeClient): void {
-
+export function registerTools(server: McpServer, bridge: BridgeClient, config: EditorConfig): void {
   // ─── 1. get_rule_markdown ───
   server.registerTool(
     'blueprint_get_rule_markdown',
     {
-      description: 'Get the JSON-to-Blueprint conversion rule document in Markdown format.',
+      description: 'Get the JSON-to-Blueprint conversion rule document in Markdown format.before you get rule md,you should read AGENT.md first',
       inputSchema: z.object({}),
     },
     async () => {
@@ -836,4 +844,397 @@ export function registerTools(server: McpServer, bridge: BridgeClient): void {
       }
     },
   );
+
+  // ═══════════════════════════════════════════════
+  // Phase 8: 编辑器命令 (6 tools)
+  // ═══════════════════════════════════════════════
+
+  // ─── 33. undo ───
+  server.registerTool(
+    'blueprint_undo',
+    {
+      description: 'Undo the last editor action.',
+      inputSchema: z.object({}),
+    },
+    async () => {
+      try {
+        const resp = await bridge.sendCommand('undo', {});
+        return toToolResult(resp);
+      } catch (err) {
+        return toErrorResult(err);
+      }
+    },
+  );
+
+  // ─── 34. redo ───
+  server.registerTool(
+    'blueprint_redo',
+    {
+      description: 'Redo the last undone editor action.',
+      inputSchema: z.object({}),
+    },
+    async () => {
+      try {
+        const resp = await bridge.sendCommand('redo', {});
+        return toToolResult(resp);
+      } catch (err) {
+        return toErrorResult(err);
+      }
+    },
+  );
+
+  // ─── 35. play_in_editor ───
+  server.registerTool(
+    'blueprint_play_in_editor',
+    {
+      description: 'Start a Play In Editor (PIE) session.',
+      inputSchema: z.object({}),
+    },
+    async () => {
+      try {
+        const resp = await bridge.sendCommand('play_in_editor', {});
+        return toToolResult(resp);
+      } catch (err) {
+        return toErrorResult(err);
+      }
+    },
+  );
+
+  // ─── 36. stop_pie ───
+  server.registerTool(
+    'blueprint_stop_pie',
+    {
+      description: 'Stop the currently running PIE session.',
+      inputSchema: z.object({}),
+    },
+    async () => {
+      try {
+        const resp = await bridge.sendCommand('stop_pie', {});
+        return toToolResult(resp);
+      } catch (err) {
+        return toErrorResult(err);
+      }
+    },
+  );
+
+  // ─── 37. create_blueprint ───
+  server.registerTool(
+    'blueprint_create_blueprint',
+    {
+      description: 'Create a new Blueprint asset in the project.',
+      inputSchema: z.object({
+        asset_path: z.string().describe('Full asset path, e.g. /Game/Blueprints/BP_MyActor'),
+        parent_class: z.string().optional().default('Actor').describe('Parent class name (Actor, Pawn, Character, etc.)'),
+      }),
+    },
+    async ({ asset_path, parent_class }) => {
+      try {
+        const resp = await bridge.sendCommand('create_blueprint', { asset_path, parent_class });
+        return toToolResult(resp);
+      } catch (err) {
+        return toErrorResult(err);
+      }
+    },
+  );
+
+  // ─── 38. exec_console_command ───
+  server.registerTool(
+    'blueprint_exec_console_command',
+    {
+      description: 'Execute an Unreal Editor console command and return its output.',
+      inputSchema: z.object({
+        command: z.string().describe('The console command to execute'),
+      }),
+    },
+    async ({ command }) => {
+      try {
+        const resp = await bridge.sendCommand('exec_console_command', { command });
+        return toToolResult(resp);
+      } catch (err) {
+        return toErrorResult(err);
+      }
+    },
+  );
+
+  // ═══════════════════════════════════════════════════════════
+  // Editor Lifecycle Tools (39-41)
+  // ═══════════════════════════════════════════════════════════
+
+  // ─── 39. close_editor ───
+  server.registerTool(
+    'blueprint_close_editor',
+    {
+      description:
+        'Save all dirty assets and close the Unreal Editor. The editor will exit on the next frame after the response is sent. Use this before building to avoid LiveCoding duplicate-class issues.',
+      inputSchema: z.object({
+        save_all: z
+          .boolean()
+          .optional()
+          .describe('Whether to save all dirty packages before closing (default true)'),
+      }),
+    },
+    async ({ save_all }) => {
+      try {
+        const payload: Record<string, unknown> = {};
+        if (save_all !== undefined) payload['save_all'] = save_all;
+        const resp = await bridge.sendCommand('close_editor', payload);
+        return toToolResult(resp);
+      } catch (err) {
+        return toErrorResult(err);
+      }
+    },
+  );
+
+  // ─── 40. build_project ───
+  server.registerTool(
+    'blueprint_build_project',
+    {
+      description:
+        'Build the Unreal project using UnrealBuildTool. The editor must be closed first. Returns build output. Requires UE_ENGINE_DIR and UE_PROJECT_FILE env vars.',
+      inputSchema: z.object({
+        target: z
+          .string()
+          .optional()
+          .describe('Build target name (default: derived from project filename + "Editor", e.g. MrStoneEditor)'),
+        configuration: z
+          .enum(['Development', 'DebugGame', 'Debug', 'Shipping', 'Test'])
+          .optional()
+          .describe('Build configuration (default: Development)'),
+        platform: z.string().optional().describe('Target platform (default: Win64)'),
+      }),
+    },
+    async ({ target, configuration, platform }) => {
+      if (!config.ueEngineDir || !config.ueProjectFile) {
+        return toErrorResult(
+          new Error(
+            'UE_ENGINE_DIR and UE_PROJECT_FILE environment variables must be set for build_project.',
+          ),
+        );
+      }
+
+      const buildBat = path.join(config.ueEngineDir, 'Engine', 'Build', 'BatchFiles', 'Build.bat');
+      const projectName = path.basename(config.ueProjectFile, '.uproject');
+      const buildTarget = target ?? `${projectName}Editor`;
+      const buildConfig = configuration ?? 'Development';
+      const buildPlatform = platform ?? 'Win64';
+
+      return new Promise((resolve) => {
+        console.error(
+          `[BlueprintHelper MCP] Building: ${buildBat} ${buildTarget} ${buildPlatform} ${buildConfig} "${config.ueProjectFile}" -WaitMutex`,
+        );
+
+        execFile(
+          buildBat,
+          [buildTarget, buildPlatform, buildConfig, config.ueProjectFile, '-WaitMutex'],
+          { maxBuffer: 10 * 1024 * 1024, timeout: 600_000 },
+          (error, stdout, stderr) => {
+            const output = (stdout || '') + (stderr ? `\n--- stderr ---\n${stderr}` : '');
+            if (error) {
+              resolve({
+                content: [
+                  {
+                    type: 'text' as const,
+                    text: JSON.stringify(
+                      {
+                        success: false,
+                        exit_code: error.code ?? -1,
+                        message: `Build failed: ${error.message}`,
+                        output: output.slice(-8000),
+                      },
+                      null,
+                      2,
+                    ),
+                  },
+                ],
+                isError: true,
+              });
+            } else {
+              resolve({
+                content: [
+                  {
+                    type: 'text' as const,
+                    text: JSON.stringify(
+                      {
+                        success: true,
+                        message: 'Build succeeded.',
+                        output: output.slice(-4000),
+                      },
+                      null,
+                      2,
+                    ),
+                  },
+                ],
+                isError: false,
+              });
+            }
+          },
+        );
+      });
+    },
+  );
+
+  // ─── 41. open_editor ───
+  server.registerTool(
+  'blueprint_open_editor',
+  {
+    description:
+      'Launch Unreal Editor for the current project by opening its .uproject file, then wait for the BlueprintHelper Bridge server to become available. Requires UE_ENGINE_DIR and UE_PROJECT_FILE env vars. UE_PROJECT_FILE must point to the current project .uproject file, not only a project directory.',
+    inputSchema: z.object({
+      wait_timeout_ms: z
+        .number()
+        .optional()
+        .describe('Max time in ms to wait for the editor Bridge to become available (default 120000)'),
+    }),
+  },
+  async ({ wait_timeout_ms }) => {
+    if (!config.ueEngineDir || !config.ueProjectFile) {
+      return toErrorResult(
+        new Error(
+          [
+            'UE_ENGINE_DIR and UE_PROJECT_FILE environment variables must be set for blueprint_open_editor.',
+            'UE_PROJECT_FILE must point to the current Unreal project .uproject file.',
+            'Agent instruction: resolve the current project path, locate the .uproject file, set UE_PROJECT_FILE to that absolute path, then call blueprint_open_editor again.',
+          ].join('\n'),
+        ),
+      );
+    }
+
+    const uprojectFile = path.resolve(config.ueProjectFile);
+
+    if (path.extname(uprojectFile).toLowerCase() !== '.uproject') {
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify(
+              {
+                success: false,
+                code: 'UE_PROJECT_FILE_NOT_UPROJECT',
+                message:
+                  'UE_PROJECT_FILE must point to a .uproject file for the current Unreal project.',
+                received_ue_project_file: config.ueProjectFile,
+                resolved_project_file: uprojectFile,
+                agent_instruction:
+                  'Resolve the current project path, find the matching .uproject file, set UE_PROJECT_FILE to that absolute .uproject path, then call blueprint_open_editor again.',
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+        isError: true,
+      };
+    }
+
+    const editorExe = path.join(
+      config.ueEngineDir,
+      'Engine',
+      'Binaries',
+      'Win64',
+      'UnrealEditor.exe',
+    );
+
+    const timeoutMs = wait_timeout_ms ?? 120_000;
+
+    const launchCommand = `"${editorExe}" "${uprojectFile}"`;
+
+    console.error(`[BlueprintHelper MCP] Launching editor with project file: ${launchCommand}`);
+
+    let child;
+    try {
+      // 启动当前项目的 .uproject，而不是打开裸 Unreal Editor。
+      child = spawn(editorExe, [uprojectFile], {
+        detached: true,
+        stdio: 'ignore',
+      });
+
+      child.unref();
+    } catch (err) {
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify(
+              {
+                success: false,
+                code: 'EDITOR_LAUNCH_FAILED',
+                message: 'Failed to launch Unreal Editor with the current project .uproject.',
+                editor_exe: editorExe,
+                uproject_path: uprojectFile,
+                launch_command: launchCommand,
+                agent_instruction:
+                  'Verify UE_ENGINE_DIR and UE_PROJECT_FILE. UE_PROJECT_FILE must be the absolute path to the current project .uproject.',
+                error: err instanceof Error ? err.message : String(err),
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+        isError: true,
+      };
+    }
+
+    // 轮询 Bridge 直到可用。
+    const startTime = Date.now();
+    const pollIntervalMs = 3000;
+
+    while (Date.now() - startTime < timeoutMs) {
+      await new Promise((r) => setTimeout(r, pollIntervalMs));
+
+      const alive = await bridge.ping();
+      if (alive) {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  code: 'EDITOR_BRIDGE_AVAILABLE',
+                  message:
+                    'Unreal Editor was launched with the current project .uproject and BlueprintHelper Bridge is available.',
+                  editor_exe: editorExe,
+                  uproject_path: uprojectFile,
+                  launch_command: launchCommand,
+                  elapsed_ms: Date.now() - startTime,
+                  agent_instruction:
+                    'The editor and Bridge are ready. Editor-bound BlueprintHelper MCP tools may now be used. Prefer explicit asset_path and target_graph arguments for write operations.',
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+          isError: false,
+        };
+      }
+    }
+
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: JSON.stringify(
+            {
+              success: false,
+              code: 'EDITOR_STARTED_BRIDGE_TIMEOUT',
+              message:
+                `Unreal Editor was started with the current project .uproject, but BlueprintHelper Bridge did not become available within ${timeoutMs}ms. The editor may still be loading.`,
+              editor_exe: editorExe,
+              uproject_path: uprojectFile,
+              launch_command: launchCommand,
+              elapsed_ms: Date.now() - startTime,
+              agent_instruction:
+                'Do not use editor-bound BlueprintHelper MCP tools yet. Wait for Unreal Editor to finish loading, then check Bridge/status or call blueprint_open_editor again with a longer wait_timeout_ms.',
+            },
+            null,
+            2,
+          ),
+        },
+      ],
+      isError: true,
+    };
+  },
+);
 }

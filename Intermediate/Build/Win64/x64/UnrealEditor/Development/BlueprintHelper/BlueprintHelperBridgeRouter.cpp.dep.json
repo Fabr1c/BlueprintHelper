@@ -20,7 +20,8 @@
             "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\services\\blueprinthelperblueprintstructureservice.h",
             "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\services\\blueprinthelperwidgetservice.h",
             "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\services\\blueprinthelperpropertyreflectionservice.h",
-            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\services\\blueprinthelperdatatableservice.h"
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\services\\blueprinthelperdatatableservice.h",
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\services\\blueprinthelpereditorcommandservice.h"
         ],
         "ImportedModules": [],
         "ImportedHeaderUnits": []

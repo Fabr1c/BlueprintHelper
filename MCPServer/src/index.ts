@@ -15,6 +15,8 @@ import { registerResources } from './resources.js';
 
 const BRIDGE_HOST = process.env['BRIDGE_HOST'] ?? '127.0.0.1';
 const BRIDGE_PORT = parseInt(process.env['BRIDGE_PORT'] ?? '54321', 10);
+const UE_ENGINE_DIR = process.env['UE_ENGINE_DIR'] ?? '';
+const UE_PROJECT_FILE = process.env['UE_PROJECT_FILE'] ?? '';
 
 // ─── 启动 ───
 
@@ -29,7 +31,7 @@ async function main() {
   });
 
   // 注册工具与资源
-  registerTools(server, bridge);
+  registerTools(server, bridge, { ueEngineDir: UE_ENGINE_DIR, ueProjectFile: UE_PROJECT_FILE });
   registerResources(server, bridge);
 
   // stdio 传输

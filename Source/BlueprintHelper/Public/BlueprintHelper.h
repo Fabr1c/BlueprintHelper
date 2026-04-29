@@ -20,6 +20,7 @@ class FBlueprintHelperBlueprintStructureService;
 class FBlueprintHelperWidgetService;
 class FBlueprintHelperPropertyReflectionService;
 class FBlueprintHelperDataTableService;
+class FBlueprintHelperEditorCommandService;
 
 /**
  * BlueprintHelper 模块，负责注册编辑器窗口与提供当前蓝图图表访问能力。
@@ -60,6 +61,7 @@ public:
 	const FBlueprintHelperWidgetService& GetWidgetService() const { return *WidgetService; }
 	const FBlueprintHelperPropertyReflectionService& GetPropertyReflectionService() const { return *PropertyReflectionService; }
 	const FBlueprintHelperDataTableService& GetDataTableService() const { return *DataTableService; }
+	const FBlueprintHelperEditorCommandService& GetEditorCommandService() const { return *EditorCommandService; }
 
 private:
 	/** 注册编辑器菜单。 */
@@ -89,6 +91,7 @@ private:
 	TUniquePtr<FBlueprintHelperWidgetService> WidgetService;
 	TUniquePtr<FBlueprintHelperPropertyReflectionService> PropertyReflectionService;
 	TUniquePtr<FBlueprintHelperDataTableService> DataTableService;
+	TUniquePtr<FBlueprintHelperEditorCommandService> EditorCommandService;
 
 	// ─── Bridge Layer ───
 	TUniquePtr<FBlueprintHelperContextService> ContextService;

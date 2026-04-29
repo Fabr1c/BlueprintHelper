@@ -51,6 +51,7 @@ bool FBlueprintHelperValidationService::ValidateNodeIds(const TSharedPtr<FJsonOb
 {
 	TSet<FString> AllNodeIds;
 	bool bHasDuplicates = false;
+	bool bHasExistingRefs = false;
 
 	auto CollectNodeIds = [&](const TArray<TSharedPtr<FJsonValue>>& NodesArray)
 	{
@@ -74,11 +75,47 @@ bool FBlueprintHelperValidationService::ValidateNodeIds(const TSharedPtr<FJsonOb
 		}
 	};
 
+	auto CollectExistingRefIds = [&](const TArray<TSharedPtr<FJsonValue>>& ExistingRefsArray)
+	{
+		for (const TSharedPtr<FJsonValue>& RefVal : ExistingRefsArray)
+		{
+			const TSharedPtr<FJsonObject>* RefObj = nullptr;
+			if (!RefVal->TryGetObject(RefObj) || !(*RefObj)->HasField(TEXT("id")))
+			{
+				continue;
+			}
+
+			const FString Id = (*RefObj)->GetStringField(TEXT("id"));
+			if (Id.IsEmpty())
+			{
+				continue;
+			}
+
+			bHasExistingRefs = true;
+			if (AllNodeIds.Contains(Id))
+			{
+				OutDiag.Add(EBlueprintHelperDiagnosticSeverity::Error,
+					FString::Printf(TEXT("节点 ID 重复：'%s'。"), *Id));
+				bHasDuplicates = true;
+			}
+			else
+			{
+				AllNodeIds.Add(Id);
+			}
+		}
+	};
+
 	// 顶层 nodes
 	const TArray<TSharedPtr<FJsonValue>>* NodesArray = nullptr;
 	if (Root->TryGetArrayField(TEXT("nodes"), NodesArray))
 	{
 		CollectNodeIds(*NodesArray);
+	}
+
+	const TArray<TSharedPtr<FJsonValue>>* ExistingRefsArray = nullptr;
+	if (Root->TryGetArrayField(TEXT("existing_node_refs"), ExistingRefsArray))
+	{
+		CollectExistingRefIds(*ExistingRefsArray);
 	}
 
 	// graphs 中的 nodes
@@ -95,13 +132,19 @@ bool FBlueprintHelperValidationService::ValidateNodeIds(const TSharedPtr<FJsonOb
 				{
 					CollectNodeIds(*GraphNodes);
 				}
+
+				const TArray<TSharedPtr<FJsonValue>>* GraphExistingRefs = nullptr;
+				if ((*GraphObj)->TryGetArrayField(TEXT("existing_node_refs"), GraphExistingRefs))
+				{
+					CollectExistingRefIds(*GraphExistingRefs);
+				}
 			}
 		}
 	}
 
 	// 如果既无节点也无 blueprint_operations，报错
 	const TArray<TSharedPtr<FJsonValue>>* OpsArray = nullptr;
-	if (AllNodeIds.Num() == 0 && !Root->TryGetArrayField(TEXT("blueprint_operations"), OpsArray))
+	if (AllNodeIds.Num() == 0 && !bHasExistingRefs && !Root->TryGetArrayField(TEXT("blueprint_operations"), OpsArray))
 	{
 		OutDiag.Add(EBlueprintHelperDiagnosticSeverity::Error, TEXT("JSON 中缺少 nodes 数组或 graphs 数组。"));
 		return false;
@@ -127,10 +170,32 @@ bool FBlueprintHelperValidationService::ValidateLinkReferences(const TSharedPtr<
 		}
 	};
 
+	auto CollectExistingRefIds = [&](const TArray<TSharedPtr<FJsonValue>>& ExistingRefsArray)
+	{
+		for (const TSharedPtr<FJsonValue>& RefVal : ExistingRefsArray)
+		{
+			const TSharedPtr<FJsonObject>* RefObj = nullptr;
+			if (RefVal->TryGetObject(RefObj) && (*RefObj)->HasField(TEXT("id")))
+			{
+				const FString Id = (*RefObj)->GetStringField(TEXT("id"));
+				if (!Id.IsEmpty())
+				{
+					AllNodeIds.Add(Id);
+				}
+			}
+		}
+	};
+
 	const TArray<TSharedPtr<FJsonValue>>* NodesArray = nullptr;
 	if (Root->TryGetArrayField(TEXT("nodes"), NodesArray))
 	{
 		CollectIds(*NodesArray);
+	}
+
+	const TArray<TSharedPtr<FJsonValue>>* ExistingRefsArray = nullptr;
+	if (Root->TryGetArrayField(TEXT("existing_node_refs"), ExistingRefsArray))
+	{
+		CollectExistingRefIds(*ExistingRefsArray);
 	}
 
 	const TArray<TSharedPtr<FJsonValue>>* GraphsArray = nullptr;
@@ -145,6 +210,12 @@ bool FBlueprintHelperValidationService::ValidateLinkReferences(const TSharedPtr<
 				if ((*GraphObj)->TryGetArrayField(TEXT("nodes"), GraphNodes))
 				{
 					CollectIds(*GraphNodes);
+				}
+
+				const TArray<TSharedPtr<FJsonValue>>* GraphExistingRefs = nullptr;
+				if ((*GraphObj)->TryGetArrayField(TEXT("existing_node_refs"), GraphExistingRefs))
+				{
+					CollectExistingRefIds(*GraphExistingRefs);
 				}
 			}
 		}

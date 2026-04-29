@@ -54,6 +54,8 @@ public class BlueprintHelper : ModuleRules
 				"Projects",
 				"Sockets",
 				"Networking",
+				"EnhancedInput",
+				"InputBlueprintNodes",
 				// ... add private dependencies that you statically link with here ...
 			}
 			);

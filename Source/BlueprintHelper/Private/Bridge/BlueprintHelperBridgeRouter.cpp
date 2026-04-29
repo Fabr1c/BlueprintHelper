@@ -13,6 +13,7 @@
 #include "Services/BlueprintHelperWidgetService.h"
 #include "Services/BlueprintHelperPropertyReflectionService.h"
 #include "Services/BlueprintHelperDataTableService.h"
+#include "Services/BlueprintHelperEditorCommandService.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 
@@ -26,7 +27,8 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	const FBlueprintHelperBlueprintStructureService& InStructure,
 	const FBlueprintHelperWidgetService& InWidget,
 	const FBlueprintHelperPropertyReflectionService& InPropertyReflection,
-	const FBlueprintHelperDataTableService& InDataTable)
+	const FBlueprintHelperDataTableService& InDataTable,
+	const FBlueprintHelperEditorCommandService& InEditorCommand)
 	: ImportService(InImport)
 	, ExportService(InExport)
 	, CompileService(InCompile)
@@ -37,6 +39,7 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	, WidgetService(InWidget)
 	, PropertyReflectionService(InPropertyReflection)
 	, DataTableService(InDataTable)
+	, EditorCommandService(InEditorCommand)
 {
 }
 
@@ -173,6 +176,35 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequest(
 	if (Request.Command == TEXT("delete_datatable_row"))
 	{
 		return HandleDeleteDataTableRow(Request);
+	}
+	// ─── Phase 8: 编辑器命令 ───
+	if (Request.Command == TEXT("undo"))
+	{
+		return HandleUndo(Request);
+	}
+	if (Request.Command == TEXT("redo"))
+	{
+		return HandleRedo(Request);
+	}
+	if (Request.Command == TEXT("play_in_editor"))
+	{
+		return HandlePlayInEditor(Request);
+	}
+	if (Request.Command == TEXT("stop_pie"))
+	{
+		return HandleStopPIE(Request);
+	}
+	if (Request.Command == TEXT("create_blueprint"))
+	{
+		return HandleCreateBlueprint(Request);
+	}
+	if (Request.Command == TEXT("exec_console_command"))
+	{
+		return HandleExecConsoleCommand(Request);
+	}
+	if (Request.Command == TEXT("close_editor"))
+	{
+		return HandleCloseEditor(Request);
 	}
 
 	return FBlueprintHelperBridgeResponse::Error(
@@ -1412,5 +1444,165 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleDeleteDataTab
 	auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
 	Resp.Result = MakeShared<FJsonObject>();
 	Resp.Result->SetStringField(TEXT("row_name"), Result.AffectedRow.ToString());
+	return Resp;
+}
+
+// ═══════════════════════════════════════════════════════════
+// Phase 8: 编辑器命令
+// ═══════════════════════════════════════════════════════════
+
+// ─── undo ───
+
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleUndo(
+	const FBlueprintHelperBridgeRequest& Req) const
+{
+	FBlueprintHelperCommandResult Result = EditorCommandService.Undo();
+	if (!Result.bSuccess)
+	{
+		return FBlueprintHelperBridgeResponse::Error(
+			Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, Result.ErrorMessage);
+	}
+
+	auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
+	Resp.Result = MakeShared<FJsonObject>();
+	Resp.Result->SetStringField(TEXT("message"), Result.Message);
+	return Resp;
+}
+
+// ─── redo ───
+
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRedo(
+	const FBlueprintHelperBridgeRequest& Req) const
+{
+	FBlueprintHelperCommandResult Result = EditorCommandService.Redo();
+	if (!Result.bSuccess)
+	{
+		return FBlueprintHelperBridgeResponse::Error(
+			Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, Result.ErrorMessage);
+	}
+
+	auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
+	Resp.Result = MakeShared<FJsonObject>();
+	Resp.Result->SetStringField(TEXT("message"), Result.Message);
+	return Resp;
+}
+
+// ─── play_in_editor ───
+
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandlePlayInEditor(
+	const FBlueprintHelperBridgeRequest& Req) const
+{
+	FBlueprintHelperCommandResult Result = EditorCommandService.PlayInEditor();
+	if (!Result.bSuccess)
+	{
+		return FBlueprintHelperBridgeResponse::Error(
+			Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, Result.ErrorMessage);
+	}
+
+	auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
+	Resp.Result = MakeShared<FJsonObject>();
+	Resp.Result->SetStringField(TEXT("message"), Result.Message);
+	return Resp;
+}
+
+// ─── stop_pie ───
+
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleStopPIE(
+	const FBlueprintHelperBridgeRequest& Req) const
+{
+	FBlueprintHelperCommandResult Result = EditorCommandService.StopPIE();
+	if (!Result.bSuccess)
+	{
+		return FBlueprintHelperBridgeResponse::Error(
+			Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, Result.ErrorMessage);
+	}
+
+	auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
+	Resp.Result = MakeShared<FJsonObject>();
+	Resp.Result->SetStringField(TEXT("message"), Result.Message);
+	return Resp;
+}
+
+// ─── create_blueprint ───
+
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleCreateBlueprint(
+	const FBlueprintHelperBridgeRequest& Req) const
+{
+	const FString AssetPath = GetRequiredStringField(Req.Payload, TEXT("asset_path"));
+	if (AssetPath.IsEmpty())
+	{
+		return FBlueprintHelperBridgeResponse::Error(
+			Req.RequestId, EBlueprintHelperBridgeError::InvalidRequest,
+			TEXT("payload 缺少 asset_path 字段。"));
+	}
+
+	FString ParentClass = TEXT("Actor");
+	if (Req.Payload.IsValid() && Req.Payload->HasField(TEXT("parent_class")))
+	{
+		ParentClass = Req.Payload->GetStringField(TEXT("parent_class"));
+	}
+
+	FBlueprintHelperCreateBlueprintResult Result = EditorCommandService.CreateBlueprint(AssetPath, ParentClass);
+	if (!Result.bSuccess)
+	{
+		return FBlueprintHelperBridgeResponse::Error(
+			Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, Result.ErrorMessage);
+	}
+
+	auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
+	Resp.Result = MakeShared<FJsonObject>();
+	Resp.Result->SetStringField(TEXT("asset_path"), Result.AssetPath);
+	Resp.Result->SetStringField(TEXT("blueprint_name"), Result.BlueprintName);
+	Resp.Result->SetStringField(TEXT("parent_class"), Result.ParentClassName);
+	return Resp;
+}
+
+// ─── exec_console_command ───
+
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleExecConsoleCommand(
+	const FBlueprintHelperBridgeRequest& Req) const
+{
+	const FString Command = GetRequiredStringField(Req.Payload, TEXT("command"));
+	if (Command.IsEmpty())
+	{
+		return FBlueprintHelperBridgeResponse::Error(
+			Req.RequestId, EBlueprintHelperBridgeError::InvalidRequest,
+			TEXT("payload 缺少 command 字段。"));
+	}
+
+	FBlueprintHelperCommandResult Result = EditorCommandService.ExecConsoleCommand(Command);
+	if (!Result.bSuccess)
+	{
+		return FBlueprintHelperBridgeResponse::Error(
+			Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, Result.ErrorMessage);
+	}
+
+	auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
+	Resp.Result = MakeShared<FJsonObject>();
+	Resp.Result->SetStringField(TEXT("output"), Result.Message);
+	return Resp;
+}
+
+// ─── close_editor ───
+
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleCloseEditor(
+	const FBlueprintHelperBridgeRequest& Req) const
+{
+	bool bSaveAll = true;
+	if (Req.Payload.IsValid() && Req.Payload->HasField(TEXT("save_all")))
+	{
+		bSaveAll = Req.Payload->GetBoolField(TEXT("save_all"));
+	}
+
+	FBlueprintHelperCommandResult Result = EditorCommandService.CloseEditor(bSaveAll);
+	if (!Result.bSuccess)
+	{
+		return FBlueprintHelperBridgeResponse::Error(
+			Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, Result.ErrorMessage);
+	}
+
+	auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
+	Resp.Result = MakeShared<FJsonObject>();
+	Resp.Result->SetStringField(TEXT("message"), Result.Message);
 	return Resp;
 }
