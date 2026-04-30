@@ -1,8 +1,8 @@
 /**
  * MCP Tools 注册
  *
- * 将 38 个 Bridge 命令映射为 MCP 工具，供 IDE AI 调用。
- * Phase 1-3: 6 个蓝图操作工具
+ * 将 42 个 Bridge 命令映射为 MCP 工具，另提供 2 个本地生命周期工具。
+ * Phase 1-3: 8 个蓝图操作/逻辑读取工具
  * Phase 4:   5 个资产浏览工具
  * Phase 5:   9 个蓝图结构操作工具
  * Phase 6:   6 个 UMG Widget 操作工具
@@ -28,6 +28,55 @@ function toToolResult(resp: BridgeResponse, isError = false) {
     content: [{ type: 'text' as const, text: JSON.stringify(resp, null, 2) }],
     isError: isError || !resp.success,
   };
+}
+
+const SAFETY_RESULT_FIELDS = [
+  'effective_scope',
+  'status',
+  'operations_applied',
+  'nodes_created',
+  'links_connected',
+  'warnings',
+  'errors',
+  'rolled_back',
+] as const;
+
+type SafetyResultField = typeof SAFETY_RESULT_FIELDS[number];
+
+function collectSafetyResultFields(resp: BridgeResponse) {
+  const safetyFields: Partial<Record<SafetyResultField, unknown>> = {};
+  const result = resp.result;
+
+  for (const field of SAFETY_RESULT_FIELDS) {
+    if (result?.[field] !== undefined) {
+      safetyFields[field] = result[field];
+    }
+  }
+
+  const responseRecord = resp as unknown as Record<string, unknown>;
+  for (const field of SAFETY_RESULT_FIELDS) {
+    if (safetyFields[field] === undefined && responseRecord[field] !== undefined) {
+      safetyFields[field] = responseRecord[field];
+    }
+  }
+
+  if (Object.keys(safetyFields).length === 0) {
+    return undefined;
+  }
+
+  return {
+    success: resp.success,
+    result: safetyFields,
+  };
+}
+
+function toMarkdownToolResult(resp: BridgeResponse, markdown: string) {
+  const content = [{ type: 'text' as const, text: markdown }];
+  const safetyFields = collectSafetyResultFields(resp);
+  if (safetyFields) {
+    content.push({ type: 'text' as const, text: JSON.stringify(safetyFields, null, 2) });
+  }
+  return { content };
 }
 
 /** 将 Bridge 错误转换为 MCP tool error result */
@@ -102,14 +151,14 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
   server.registerTool(
     'blueprint_export_to_json',
     {
-      description: 'Export a blueprint graph to the plugin JSON format.',
+      description: 'Export a blueprint graph to raw BlueprintHelper JSON that can be written back or replayed with blueprint_import_json_to_graph. Use blueprint_get_logic for read-only logic summaries.',
       inputSchema: z.object({
         target_blueprint: z.string().optional()
           .describe('Blueprint asset path, e.g. /Game/BP/BP_Test.BP_Test. Omit to use the active blueprint.'),
         target_graph: z.string().optional()
           .describe('Graph name to export. Omit to use the active graph.'),
-        scope: z.enum(['full_graph', 'selection']).optional().default('full_graph')
-          .describe('Export scope: full_graph or selection'),
+        scope: z.enum(['graph', 'blueprint', 'selection', 'full_graph', 'full_blueprint']).optional().default('graph')
+          .describe('Export scope: graph, blueprint, or selection. Legacy full_graph/full_blueprint are accepted.'),
       }),
     },
     async ({ target_blueprint, target_graph, scope }) => {
@@ -126,7 +175,117 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 5. import_json_to_graph ───
+  // ─── 5. get_logic ───
+  server.registerTool(
+    'blueprint_get_logic',
+    {
+      description: 'Read the current Blueprint logic as Agent-friendly Markdown. This is for understanding and review only; it is not importable raw BlueprintHelper JSON.',
+      inputSchema: z.object({
+        target_blueprint: z.string().optional()
+          .describe('Blueprint asset path, e.g. /Game/BP/BP_Test.BP_Test. Omit to use the active blueprint.'),
+        target_graph: z.string().optional()
+          .describe('Graph name to inspect. Omit to use the active graph.'),
+        scope: z.enum(['single_graph', 'full_blueprint']).optional().default('single_graph')
+          .describe('Logic read scope: single_graph or full_blueprint'),
+        detail: z.enum(['brief', 'normal', 'debug']).optional().default('normal')
+          .describe('Detail level for the logic summary'),
+        include_data_dependencies: z.boolean().optional().default(true)
+          .describe('Whether to include data dependencies in the logic summary'),
+        include_orphans: z.boolean().optional().default(true)
+          .describe('Whether to include orphan nodes in the logic summary'),
+      }),
+    },
+    async ({
+      target_blueprint,
+      target_graph,
+      scope,
+      detail,
+      include_data_dependencies,
+      include_orphans,
+    }) => {
+      try {
+        const payload: Record<string, unknown> = {
+          format: 'logic_md',
+          scope: scope ?? 'single_graph',
+          detail: detail ?? 'normal',
+          include_data_dependencies: include_data_dependencies ?? true,
+          include_orphans: include_orphans ?? true,
+        };
+        if (target_blueprint) payload.target_blueprint = target_blueprint;
+        if (target_graph) payload.target_graph = target_graph;
+
+        const resp = await bridge.sendCommand('export_logic', payload);
+        const markdown = resp.result?.['markdown'];
+        if (resp.success && typeof markdown === 'string') {
+          return toMarkdownToolResult(resp, markdown);
+        }
+        return toToolResult(resp);
+      } catch (err) {
+        return toErrorResult(err);
+      }
+    },
+  );
+
+  // ─── 6. get_logic_json ───
+  server.registerTool(
+    'blueprint_get_logic_json',
+    {
+      description: 'Read the current Blueprint logic as structured logic JSON for analysis. This is not raw BlueprintHelper JSON and must not be passed directly to blueprint_import_json_to_graph.',
+      inputSchema: z.object({
+        target_blueprint: z.string().optional()
+          .describe('Blueprint asset path, e.g. /Game/BP/BP_Test.BP_Test. Omit to use the active blueprint.'),
+        target_graph: z.string().optional()
+          .describe('Graph name to inspect. Omit to use the active graph.'),
+        scope: z.enum(['single_graph', 'full_blueprint']).optional().default('single_graph')
+          .describe('Logic read scope: single_graph or full_blueprint'),
+        detail: z.enum(['brief', 'normal', 'debug']).optional().default('normal')
+          .describe('Detail level for the logic JSON'),
+        include_data_dependencies: z.boolean().optional().default(true)
+          .describe('Whether to include data dependencies in the logic JSON'),
+        include_orphans: z.boolean().optional().default(true)
+          .describe('Whether to include orphan nodes in the logic JSON'),
+        include_node_ids: z.boolean().optional().default(false)
+          .describe('Whether to include stable node identifiers where available'),
+        include_positions: z.boolean().optional().default(false)
+          .describe('Whether to include graph node positions'),
+        include_raw_node_types: z.boolean().optional().default(false)
+          .describe('Whether to include raw Unreal node type names'),
+      }),
+    },
+    async ({
+      target_blueprint,
+      target_graph,
+      scope,
+      detail,
+      include_data_dependencies,
+      include_orphans,
+      include_node_ids,
+      include_positions,
+      include_raw_node_types,
+    }) => {
+      try {
+        const payload: Record<string, unknown> = {
+          format: 'logic_json',
+          scope: scope ?? 'single_graph',
+          detail: detail ?? 'normal',
+          include_data_dependencies: include_data_dependencies ?? true,
+          include_orphans: include_orphans ?? true,
+          include_node_ids: include_node_ids ?? false,
+          include_positions: include_positions ?? false,
+          include_raw_node_types: include_raw_node_types ?? false,
+        };
+        if (target_blueprint) payload.target_blueprint = target_blueprint;
+        if (target_graph) payload.target_graph = target_graph;
+
+        const resp = await bridge.sendCommand('export_logic', payload);
+        return toToolResult(resp);
+      } catch (err) {
+        return toErrorResult(err);
+      }
+    },
+  );
+
+  // ─── 7. import_json_to_graph ───
   server.registerTool(
     'blueprint_import_json_to_graph',
     {
@@ -139,11 +298,20 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
           .describe('Target graph name. Omit to use the active graph.'),
         compile_after_import: z.boolean().optional().default(true)
           .describe('Whether to compile the blueprint after import'),
+        strict: z.boolean().optional().default(true)
+          .describe('When true, any import error, no-op, partial node generation, or link failure rolls back the transaction'),
+        allow_partial: z.boolean().optional().default(false)
+          .describe('Only meaningful with strict=false; explicitly allows partial success to remain applied'),
       }),
     },
-    async ({ json, target_blueprint, target_graph, compile_after_import }) => {
+    async ({ json, target_blueprint, target_graph, compile_after_import, strict, allow_partial }) => {
       try {
-        const payload: Record<string, unknown> = { json, compile_after_import };
+        const payload: Record<string, unknown> = {
+          json,
+          compile_after_import,
+          strict: strict ?? true,
+          allow_partial: allow_partial ?? false,
+        };
         if (target_blueprint) payload.target_blueprint = target_blueprint;
         if (target_graph) payload.target_graph = target_graph;
         const resp = await bridge.sendCommand('import_json', payload);
@@ -154,7 +322,78 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 6. compile_blueprint ───
+  // ─── 8. import_agent_graph ───
+  const agentImportNodeSchema = z.object({
+    id: z.string().describe('Local semantic node id'),
+    kind: z.enum([
+      'event',
+      'custom_event',
+      'call',
+      'get',
+      'set',
+      'branch',
+      'sequence',
+      'comment',
+    ]).describe('Semantic node kind supported by AgentImportGraph v1'),
+  }).passthrough();
+
+  const agentImportLinkSchema = z.object({
+    kind: z.enum(['exec', 'data']).describe('Link kind: exec or data'),
+    from: z.string().optional().describe('Shorthand source endpoint, e.g. begin_play.then'),
+    to: z.string().optional().describe('Shorthand target endpoint, e.g. print.execute'),
+    from_node: z.string().optional().describe('Structured source node id'),
+    from_pin: z.string().optional().describe('Structured source pin name'),
+    to_node: z.string().optional().describe('Structured target node id'),
+    to_pin: z.string().optional().describe('Structured target pin name'),
+  }).passthrough();
+
+  server.registerTool(
+    'blueprint_import_agent_graph',
+    {
+      description:
+        'Import an Agent-facing semantic BlueprintHelper.AgentImportGraph object. This creates Blueprint nodes from intent-level event/call/get/set/branch/sequence/comment nodes and auto-generates layout. It does not replace blueprint_import_json_to_graph for raw JSON replay.',
+      inputSchema: z.object({
+        schema: z.literal('BlueprintHelper.AgentImportGraph').default('BlueprintHelper.AgentImportGraph'),
+        version: z.literal('1.0').default('1.0'),
+        target_blueprint: z.string()
+          .describe('Required Blueprint asset path, e.g. /Game/BP/BP_Player.BP_Player'),
+        target_graph: z.string()
+          .describe('Required graph name, e.g. EventGraph'),
+        mode: z.literal('append').default('append'),
+        layout: z.enum(['auto', 'append_right']).optional().default('auto'),
+        declarations: z.object({
+          variables: z.array(z.object({
+            name: z.string(),
+            type: z.string().describe('Pin type category, e.g. bool, int, float, string'),
+            default: z.union([z.string(), z.number(), z.boolean()]).optional(),
+            default_value: z.string().optional(),
+            editable: z.boolean().optional(),
+            category: z.string().optional(),
+          }).passthrough()).optional(),
+        }).passthrough().optional(),
+        nodes: z.array(agentImportNodeSchema),
+        links: z.array(agentImportLinkSchema).optional().default([]),
+        options: z.object({
+          compile: z.boolean().optional().default(true),
+          save: z.boolean().optional().default(false),
+          strict: z.boolean().optional().default(true),
+          dry_run: z.boolean().optional().default(false),
+          create_missing_variables: z.boolean().optional().default(true),
+          reconstruct_existing_nodes: z.boolean().optional().default(false),
+        }).passthrough().optional(),
+      }).passthrough(),
+    },
+    async (payload) => {
+      try {
+        const resp = await bridge.sendCommand('import_agent_graph', payload);
+        return toToolResult(resp, resp.result?.['success'] === false);
+      } catch (err) {
+        return toErrorResult(err);
+      }
+    },
+  );
+
+  // ─── 9. compile_blueprint ───
   server.registerTool(
     'blueprint_compile_blueprint',
     {
@@ -180,7 +419,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
   // Phase 4 — 资产浏览工具
   // ═══════════════════════════════════════════════════════════
 
-  // ─── 7. open_asset ───
+  // ─── 9. open_asset ───
   server.registerTool(
     'blueprint_open_asset',
     {
@@ -199,7 +438,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 8. list_assets ───
+  // ─── 10. list_assets ───
   server.registerTool(
     'blueprint_list_assets',
     {
@@ -233,7 +472,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 9. search_assets ───
+  // ─── 11. search_assets ───
   server.registerTool(
     'blueprint_search_assets',
     {
@@ -262,7 +501,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 10. save_asset ───
+  // ─── 12. save_asset ───
   server.registerTool(
     'blueprint_save_asset',
     {
@@ -281,7 +520,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 11. get_asset_info ───
+  // ─── 13. get_asset_info ───
   server.registerTool(
     'blueprint_get_asset_info',
     {
@@ -311,7 +550,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
       .describe('Graph name. Omit to use the active/default graph.'),
   };
 
-  // ─── 12. list_graphs ───
+  // ─── 14. list_graphs ───
   server.registerTool(
     'blueprint_list_graphs',
     {
@@ -332,7 +571,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 13. list_variables ───
+  // ─── 15. list_variables ───
   server.registerTool(
     'blueprint_list_variables',
     {
@@ -353,7 +592,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 14. list_event_dispatchers ───
+  // ─── 16. list_event_dispatchers ───
   server.registerTool(
     'blueprint_list_event_dispatchers',
     {
@@ -374,7 +613,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 15. add_variable ───
+  // ─── 17. add_variable ───
   server.registerTool(
     'blueprint_add_variable',
     {
@@ -412,7 +651,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 16. remove_variable ───
+  // ─── 18. remove_variable ───
   server.registerTool(
     'blueprint_remove_variable',
     {
@@ -434,7 +673,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 17. add_graph ───
+  // ─── 19. add_graph ───
   server.registerTool(
     'blueprint_add_graph',
     {
@@ -482,7 +721,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 18. remove_graph ───
+  // ─── 20. remove_graph ───
   server.registerTool(
     'blueprint_remove_graph',
     {
@@ -504,7 +743,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 19. add_event_dispatcher ───
+  // ─── 21. add_event_dispatcher ───
   server.registerTool(
     'blueprint_add_event_dispatcher',
     {
@@ -536,7 +775,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 20. delete_nodes ───
+  // ─── 22. delete_nodes ───
   server.registerTool(
     'blueprint_delete_nodes',
     {
@@ -566,7 +805,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
   const widgetAssetPath = z.string()
     .describe('WidgetBlueprint asset path, e.g. /Game/UI/WBP_Main.WBP_Main');
 
-  // ─── 21. get_widget_tree ───
+  // ─── 23. get_widget_tree ───
   server.registerTool(
     'blueprint_get_widget_tree',
     {
@@ -585,7 +824,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 22. add_widget ───
+  // ─── 24. add_widget ───
   server.registerTool(
     'blueprint_add_widget',
     {
@@ -613,7 +852,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 23. remove_widget ───
+  // ─── 25. remove_widget ───
   server.registerTool(
     'blueprint_remove_widget',
     {
@@ -633,7 +872,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 24. move_widget ───
+  // ─── 26. move_widget ───
   server.registerTool(
     'blueprint_move_widget',
     {
@@ -658,7 +897,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 25. get_widget_properties ───
+  // ─── 27. get_widget_properties ───
   server.registerTool(
     'blueprint_get_widget_properties',
     {
@@ -678,7 +917,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 26. set_widget_property ───
+  // ─── 28. set_widget_property ───
   server.registerTool(
     'blueprint_set_widget_property',
     {
@@ -703,7 +942,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
   );
 
   // ═══════════════════════════════════════════════════════════
-  // Phase 7 — DataAsset & DataTable 操作 (Tools 27–32)
+  // Phase 7 — DataAsset & DataTable 操作 (Tools 29–34)
   // ═══════════════════════════════════════════════════════════
 
   const objectAssetPath = z.string()
@@ -712,7 +951,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
   const dataTableAssetPath = z.string()
     .describe('DataTable asset path, e.g. /Game/Data/DT_Items.DT_Items');
 
-  // ─── 27. get_object_properties ───
+  // ─── 29. get_object_properties ───
   server.registerTool(
     'blueprint_get_object_properties',
     {
@@ -731,7 +970,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 28. set_object_property ───
+  // ─── 30. set_object_property ───
   server.registerTool(
     'blueprint_set_object_property',
     {
@@ -754,7 +993,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 29. get_datatable_rows ───
+  // ─── 31. get_datatable_rows ───
   server.registerTool(
     'blueprint_get_datatable_rows',
     {
@@ -777,7 +1016,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 30. add_datatable_row ───
+  // ─── 32. add_datatable_row ───
   server.registerTool(
     'blueprint_add_datatable_row',
     {
@@ -801,7 +1040,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 31. update_datatable_row ───
+  // ─── 33. update_datatable_row ───
   server.registerTool(
     'blueprint_update_datatable_row',
     {
@@ -825,7 +1064,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 32. delete_datatable_row ───
+  // ─── 34. delete_datatable_row ───
   server.registerTool(
     'blueprint_delete_datatable_row',
     {
@@ -849,7 +1088,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
   // Phase 8: 编辑器命令 (6 tools)
   // ═══════════════════════════════════════════════
 
-  // ─── 33. undo ───
+  // ─── 35. undo ───
   server.registerTool(
     'blueprint_undo',
     {
@@ -866,7 +1105,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 34. redo ───
+  // ─── 36. redo ───
   server.registerTool(
     'blueprint_redo',
     {
@@ -883,7 +1122,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 35. play_in_editor ───
+  // ─── 37. play_in_editor ───
   server.registerTool(
     'blueprint_play_in_editor',
     {
@@ -900,7 +1139,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 36. stop_pie ───
+  // ─── 38. stop_pie ───
   server.registerTool(
     'blueprint_stop_pie',
     {
@@ -917,7 +1156,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 37. create_blueprint ───
+  // ─── 39. create_blueprint ───
   server.registerTool(
     'blueprint_create_blueprint',
     {
@@ -937,7 +1176,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 38. exec_console_command ───
+  // ─── 40. exec_console_command ───
   server.registerTool(
     'blueprint_exec_console_command',
     {
@@ -957,10 +1196,10 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
   );
 
   // ═══════════════════════════════════════════════════════════
-  // Editor Lifecycle Tools (39-41)
+  // Editor Lifecycle Tools (41-43)
   // ═══════════════════════════════════════════════════════════
 
-  // ─── 39. close_editor ───
+  // ─── 41. close_editor ───
   server.registerTool(
     'blueprint_close_editor',
     {
@@ -985,7 +1224,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 40. build_project ───
+  // ─── 42. build_project ───
   server.registerTool(
     'blueprint_build_project',
     {
@@ -1073,7 +1312,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 41. open_editor ───
+  // ─── 43. open_editor ───
   server.registerTool(
   'blueprint_open_editor',
   {

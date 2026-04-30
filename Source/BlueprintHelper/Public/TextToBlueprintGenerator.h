@@ -495,6 +495,32 @@ struct FUnresolvedNodeItem
 };
 
 /**
+ * JSON 生成阶段的结构化诊断。
+ */
+struct FBlueprintGeneratorDiagnostic
+{
+	/** severity: info / warning / error。 */
+	FString Severity;
+
+	/** 稳定错误码，供服务层和 MCP 客户端识别。 */
+	FString Code;
+
+	/** JSON 节点 ID。 */
+	FString NodeId;
+
+	/** 相关引脚名称。 */
+	FString PinName;
+
+	/** 面向人的诊断信息。 */
+	FString Message;
+
+	bool IsError() const
+	{
+		return Severity.Equals(TEXT("error"), ESearchCase::IgnoreCase);
+	}
+};
+
+/**
  * 引擎函数列表数据，供右侧搜索与映射选择使用。
  */
 struct FEngineFunctionItem
@@ -522,6 +548,33 @@ struct FBlueprintGenerateResult
 
 	/** 成功生成的节点数量。 */
 	int32 GeneratedNodeCount = 0;
+
+	/** 请求应用的默认值数量。 */
+	int32 RequestedDefaultValueCount = 0;
+
+	/** 成功应用的默认值数量。 */
+	int32 AppliedDefaultValueCount = 0;
+
+	/** 默认值应用诊断。 */
+	TArray<FBlueprintGeneratorDiagnostic> DefaultValueDiagnostics;
+
+	/** 请求解析的 pin_type 数量。 */
+	int32 RequestedPinTypeCount = 0;
+
+	/** 成功解析的 pin_type 数量。 */
+	int32 ResolvedPinTypeCount = 0;
+
+	/** pin_type 解析诊断。 */
+	TArray<FBlueprintGeneratorDiagnostic> PinTypeDiagnostics;
+
+	/** 请求建立的连线数量。 */
+	int32 RequestedConnectionCount = 0;
+
+	/** 成功建立的连线数量。 */
+	int32 CreatedConnectionCount = 0;
+
+	/** 连线创建诊断。 */
+	TArray<FBlueprintGeneratorDiagnostic> ConnectionDiagnostics;
 
 	/** 未匹配节点数量。 */
 	int32 UnresolvedNodeCount = 0;
@@ -563,14 +616,20 @@ public:
 	/** 在目标图表中生成一个宏节点。 */
 	static UK2Node* SpawnMacroNode(UEdGraph* TargetGraph, const FParsedNode& NodeData, FString& OutErrorMessage);
 
-	/** 为目标节点应用默认值。 */
-	static void ApplyDefaultValues(UK2Node* TargetNode, const TMap<FString, FString>& DefaultValues);
+	/** 为目标节点应用默认值，并返回结构化诊断。 */
+	static TArray<FBlueprintGeneratorDiagnostic> ApplyDefaultValues(
+		UK2Node* TargetNode,
+		const TMap<FString, FString>& DefaultValues,
+		const FString& NodeId = TEXT(""));
 
 	/** 确保目标函数图中存在指定本地变量。失败时填写 OutErrorMessage。 */
 	static bool EnsureLocalVariableExists(UEdGraph* TargetGraph, const FParsedLocalVariableDeclaration& Declaration, FString& OutErrorMessage);
 
 	/** 将轻量引脚类型转换为 UE 引脚类型。 */
 	static bool ConvertToEdGraphPinType(const FParsedPinType& InPinType, struct FEdGraphPinType& OutPinType, FString& OutErrorMessage);
+
+	/** 根据别名查找节点引脚。 */
+	static class UEdGraphPin* FindPinByAlias(UK2Node* TargetNode, const FString& RequestedPinName);
 
 private:
 	/** 解析 JSON 中的节点类型字段。 */
@@ -648,9 +707,10 @@ private:
 	/** 在指定图表中根据 JSON 子对象生成节点和连线（内部辅助）。v2.1 */
 	static FBlueprintGenerateResult GenerateNodesAndLinksForGraph(UEdGraph* TargetGraph, const TSharedPtr<class FJsonObject>& GraphJsonObject, TArray<TSharedPtr<FUnresolvedNodeItem>>& OutUnresolvedNodes);
 
-	/** 根据别名查找节点引脚。 */
-	static class UEdGraphPin* FindPinByAlias(UK2Node* TargetNode, const FString& RequestedPinName);
-
 	/** 设置单个引脚默认值。 */
-	static bool ApplyPinDefaultValue(class UEdGraphPin* TargetPin, const FString& InValue);
+	static bool ApplyPinDefaultValue(
+		class UEdGraphPin* TargetPin,
+		const FString& InValue,
+		FString& OutDiagnosticCode,
+		FString& OutMessage);
 };

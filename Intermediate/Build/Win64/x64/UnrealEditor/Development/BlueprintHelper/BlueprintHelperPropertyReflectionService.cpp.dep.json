@@ -7,6 +7,8 @@
         "Includes": [
             "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\intermediate\\build\\win64\\x64\\unrealeditor\\development\\blueprinthelper\\definitions.blueprinthelper.h",
             "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\services\\blueprinthelperpropertyreflectionservice.h",
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\services\\blueprinthelperscopedassetmutation.h",
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\services\\blueprinthelperservicetypes.h",
             "f:\\ue_5.6\\engine\\source\\runtime\\engine\\classes\\engine\\assetmanager.h",
             "f:\\ue_5.6\\engine\\source\\runtime\\engine\\classes\\engine\\assetmanagertypes.h",
             "f:\\ue_5.6\\engine\\intermediate\\build\\win64\\unrealeditor\\inc\\engine\\uht\\assetmanagertypes.generated.h",

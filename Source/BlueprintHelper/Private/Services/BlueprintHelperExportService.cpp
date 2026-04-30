@@ -12,6 +12,18 @@ FBlueprintHelperExportService::FBlueprintHelperExportService(const FBlueprintHel
 FBlueprintHelperExportResult FBlueprintHelperExportService::Export(const FBlueprintHelperExportRequest& Request) const
 {
 	FBlueprintHelperExportResult Result;
+	switch (Request.Scope)
+	{
+	case EBlueprintHelperExportScope::FullBlueprint:
+		Result.EffectiveScope = TEXT("blueprint");
+		break;
+	case EBlueprintHelperExportScope::Selection:
+		Result.EffectiveScope = TEXT("selection");
+		break;
+	default:
+		Result.EffectiveScope = TEXT("graph");
+		break;
+	}
 
 	if (Request.Scope == EBlueprintHelperExportScope::FullBlueprint)
 	{
@@ -30,6 +42,12 @@ FBlueprintHelperExportResult FBlueprintHelperExportService::Export(const FBluepr
 	}
 	else
 	{
+		if (Request.Scope == EBlueprintHelperExportScope::Selection)
+		{
+			Result.Diagnostics.Add(EBlueprintHelperDiagnosticSeverity::Warning,
+				TEXT("selection scope 当前按目标图表导出。"), TEXT(""), TEXT("selection_scope_degraded"));
+		}
+
 		UEdGraph* Graph = Resolver.ResolveGraph(Request.Target, Result.Diagnostics);
 		if (!Graph)
 		{

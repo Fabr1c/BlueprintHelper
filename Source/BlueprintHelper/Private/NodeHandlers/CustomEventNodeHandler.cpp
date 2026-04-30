@@ -24,6 +24,19 @@ UK2Node* FCustomEventNodeHandler::Spawn(UEdGraph* TargetGraph, const FParsedNode
 		return nullptr;
 	}
 
+	TArray<TPair<FString, FEdGraphPinType>> ConvertedParams;
+	for (const FParsedEventParam& Param : NodeData.EventReference.Params)
+	{
+		FEdGraphPinType PinType;
+		FString ConvertError;
+		if (!TextToBlueprintGenerator::ConvertToEdGraphPinType(Param.PinType, PinType, ConvertError))
+		{
+			OutError = FString::Printf(TEXT("CustomEvent 参数 '%s' 类型转换失败：%s"), *Param.Name, *ConvertError);
+			return nullptr;
+		}
+		ConvertedParams.Add(TPair<FString, FEdGraphPinType>(Param.Name, PinType));
+	}
+
 	UK2Node_CustomEvent* EventNode = NewObject<UK2Node_CustomEvent>(TargetGraph);
 	TargetGraph->AddNode(EventNode, true, false);
 	EventNode->CreateNewGuid();
@@ -33,16 +46,9 @@ UK2Node* FCustomEventNodeHandler::Spawn(UEdGraph* TargetGraph, const FParsedNode
 	EventNode->NodePosY = static_cast<int32>(NodeData.Y);
 	EventNode->AllocateDefaultPins();
 
-	for (const FParsedEventParam& Param : NodeData.EventReference.Params)
+	for (const TPair<FString, FEdGraphPinType>& Param : ConvertedParams)
 	{
-		FEdGraphPinType PinType;
-		FString ConvertError;
-		if (!TextToBlueprintGenerator::ConvertToEdGraphPinType(Param.PinType, PinType, ConvertError))
-		{
-			OutError = FString::Printf(TEXT("CustomEvent 参数 '%s' 类型转换失败：%s"), *Param.Name, *ConvertError);
-			return EventNode;
-		}
-		EventNode->CreateUserDefinedPin(*Param.Name, PinType, EGPD_Output);
+		EventNode->CreateUserDefinedPin(*Param.Key, Param.Value, EGPD_Output);
 	}
 
 	TextToBlueprintGenerator::ApplyDefaultValues(EventNode, NodeData.DefaultValues);

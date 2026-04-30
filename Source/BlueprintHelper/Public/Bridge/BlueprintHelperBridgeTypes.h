@@ -17,6 +17,8 @@ enum class EBlueprintHelperBridgeError : uint8
 	AssetNotFound,
 	GraphNotFound,
 	JsonParseFailed,
+	Unauthorized,
+	CommandDisabled,
 	ExecutionFailed,
 	InternalError
 };
@@ -33,6 +35,8 @@ inline const TCHAR* BridgeErrorToString(EBlueprintHelperBridgeError Error)
 	case EBlueprintHelperBridgeError::AssetNotFound:    return TEXT("asset_not_found");
 	case EBlueprintHelperBridgeError::GraphNotFound:    return TEXT("graph_not_found");
 	case EBlueprintHelperBridgeError::JsonParseFailed:  return TEXT("json_parse_failed");
+	case EBlueprintHelperBridgeError::Unauthorized:     return TEXT("unauthorized");
+	case EBlueprintHelperBridgeError::CommandDisabled:  return TEXT("command_disabled");
 	case EBlueprintHelperBridgeError::ExecutionFailed:  return TEXT("execution_failed");
 	case EBlueprintHelperBridgeError::InternalError:    return TEXT("internal_error");
 	default:                                            return TEXT("unknown");
@@ -49,6 +53,9 @@ struct FBlueprintHelperBridgeRequest
 
 	/** 命令名称，例如 "import_json"、"compile_blueprint"。 */
 	FString Command;
+
+	/** 可选会话 token。写命令和高危命令需要携带。 */
+	FString AuthToken;
 
 	/** 业务参数。 */
 	TSharedPtr<FJsonObject> Payload;

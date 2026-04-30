@@ -11,16 +11,31 @@ import * as net from 'node:net';
 export interface BridgeRequest {
   request_id: string;
   command: string;
+  auth_token?: string;
   payload: Record<string, unknown>;
 }
 
+/** Optional safety/result fields returned by newer Bridge commands. */
+export interface BridgeSafetyResultFields {
+  effective_scope?: string;
+  status?: string;
+  operations_applied?: number;
+  nodes_created?: number;
+  links_connected?: number;
+  warnings?: unknown[];
+  errors?: unknown[];
+  rolled_back?: boolean;
+}
+
+export type BridgeResult = Record<string, unknown> & Partial<BridgeSafetyResultFields>;
+
 /** Bridge 响应 */
-export interface BridgeResponse {
+export interface BridgeResponse extends Partial<BridgeSafetyResultFields> {
   request_id: string;
   success: boolean;
   error_code?: string;
   message?: string;
-  result?: Record<string, unknown>;
+  result?: BridgeResult;
 }
 
 /** 连接配置 */
@@ -62,7 +77,13 @@ export class BridgeClient {
     payload: Record<string, unknown> = {},
   ): Promise<BridgeResponse> {
     const requestId = this.nextRequestId();
-    const request: BridgeRequest = { request_id: requestId, command, payload };
+    const token = process.env.BLUEPRINTHELPER_BRIDGE_TOKEN;
+    const request: BridgeRequest = {
+      request_id: requestId,
+      command,
+      payload,
+      ...(token ? { auth_token: token } : {}),
+    };
     return this.sendRaw(request);
   }
 

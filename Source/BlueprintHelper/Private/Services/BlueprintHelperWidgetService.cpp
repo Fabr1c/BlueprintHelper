@@ -5,13 +5,198 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/CanvasPanel.h"
+#include "Components/CanvasPanelSlot.h"
+#include "Components/PanelSlot.h"
 #include "Components/PanelWidget.h"
 #include "Components/Widget.h"
 #include "Kismet2/BlueprintEditorUtils.h"
+#include "Services/BlueprintHelperScopedAssetMutation.h"
+#include "Services/BlueprintHelperServiceTypes.h"
 #include "WidgetBlueprint.h"
 #include "UObject/UObjectIterator.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogWidgetService, Log, All);
+
+namespace
+{
+struct FBlueprintHelperSlotSnapshot
+{
+	UPanelWidget* Parent = nullptr;
+	int32 ChildIndex = INDEX_NONE;
+	UClass* SlotClass = nullptr;
+	TMap<FName, FString> SlotPropertyValues;
+	bool bHasSlotZOrder = false;
+	int32 SlotZOrder = 0;
+	bool bHasCanvasSlotValues = false;
+	FAnchorData CanvasLayout;
+	bool bCanvasAutoSize = false;
+	int32 CanvasZOrder = 0;
+};
+
+bool CaptureSlotSnapshot(UWidget* Widget, FBlueprintHelperSlotSnapshot& OutSnapshot, FString& OutError)
+{
+	if (!Widget || !Widget->Slot)
+	{
+		OutError = TEXT("Widget 没有关联的 Slot，无法快照。");
+		return false;
+	}
+
+	OutSnapshot.Parent = UWidgetTree::FindWidgetParent(Widget, OutSnapshot.ChildIndex);
+	if (!OutSnapshot.Parent)
+	{
+		OutError = TEXT("不允许移动 RootWidget 或无父节点的 Widget。");
+		return false;
+	}
+
+	OutSnapshot.SlotClass = Widget->Slot->GetClass();
+	if (const FIntProperty* ZOrderProperty = FindFProperty<FIntProperty>(OutSnapshot.SlotClass, TEXT("ZOrder")))
+	{
+		OutSnapshot.bHasSlotZOrder = true;
+		OutSnapshot.SlotZOrder = ZOrderProperty->GetPropertyValue_InContainer(Widget->Slot);
+	}
+
+	if (const UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(Widget->Slot))
+	{
+		OutSnapshot.bHasCanvasSlotValues = true;
+		OutSnapshot.CanvasLayout = CanvasSlot->GetLayout();
+		OutSnapshot.bCanvasAutoSize = CanvasSlot->GetAutoSize();
+		if (const FIntProperty* ZOrderProperty = FindFProperty<FIntProperty>(CanvasSlot->GetClass(), TEXT("ZOrder")))
+		{
+			OutSnapshot.CanvasZOrder = ZOrderProperty->GetPropertyValue_InContainer(CanvasSlot);
+		}
+		else
+		{
+			OutSnapshot.CanvasZOrder = CanvasSlot->GetZOrder();
+		}
+	}
+
+	for (TFieldIterator<FProperty> It(OutSnapshot.SlotClass); It; ++It)
+	{
+		FProperty* Prop = *It;
+		if (!Prop || !Prop->HasAnyPropertyFlags(CPF_Edit) || Prop->HasAnyPropertyFlags(CPF_Transient))
+		{
+			continue;
+		}
+
+		const void* ValuePtr = Prop->ContainerPtrToValuePtr<void>(Widget->Slot);
+		FString Value;
+		Prop->ExportText_Direct(Value, ValuePtr, nullptr, Widget->Slot, PPF_None);
+		OutSnapshot.SlotPropertyValues.Add(Prop->GetFName(), MoveTemp(Value));
+	}
+
+	return true;
+}
+
+bool ApplySlotSnapshotToSlot(UPanelSlot* Slot, const FBlueprintHelperSlotSnapshot& Snapshot, bool bModifySlot, FString& OutError)
+{
+	if (!Slot)
+	{
+		OutError = TEXT("恢复 Widget 旧 Slot 失败：Slot 为空。");
+		return false;
+	}
+
+	if (Snapshot.SlotClass && Slot->GetClass() != Snapshot.SlotClass)
+	{
+		OutError = FString::Printf(
+			TEXT("恢复 Widget 旧 Slot 失败：期望 %s，实际 %s。"),
+			*Snapshot.SlotClass->GetName(),
+			*Slot->GetClass()->GetName());
+		return false;
+	}
+
+	if (bModifySlot)
+	{
+		Slot->Modify();
+	}
+
+	for (const TPair<FName, FString>& Pair : Snapshot.SlotPropertyValues)
+	{
+		if (Snapshot.bHasCanvasSlotValues
+			&& (Pair.Key == TEXT("LayoutData") || Pair.Key == TEXT("bAutoSize") || Pair.Key == TEXT("ZOrder")))
+		{
+			continue;
+		}
+
+		FProperty* Prop = Slot->GetClass()->FindPropertyByName(Pair.Key);
+		if (!Prop)
+		{
+			OutError = FString::Printf(TEXT("恢复 Slot 属性失败：未找到属性 %s。"), *Pair.Key.ToString());
+			return false;
+		}
+
+		void* ValuePtr = Prop->ContainerPtrToValuePtr<void>(Slot);
+		const TCHAR* ImportResult = Prop->ImportText_Direct(*Pair.Value, ValuePtr, Slot, PPF_None);
+		if (!ImportResult)
+		{
+			OutError = FString::Printf(TEXT("恢复 Slot 属性失败：无法导入属性 %s。"), *Pair.Key.ToString());
+			return false;
+		}
+	}
+
+	if (Snapshot.bHasCanvasSlotValues)
+	{
+		UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(Slot);
+		if (!CanvasSlot)
+		{
+			OutError = TEXT("恢复 Canvas Slot 属性失败：恢复后的 Slot 不是 CanvasPanelSlot。");
+			return false;
+		}
+
+		CanvasSlot->SetLayout(Snapshot.CanvasLayout);
+		CanvasSlot->SetAutoSize(Snapshot.bCanvasAutoSize);
+		CanvasSlot->SetZOrder(Snapshot.CanvasZOrder);
+	}
+
+	if (Snapshot.bHasSlotZOrder)
+	{
+		if (FIntProperty* ZOrderProperty = FindFProperty<FIntProperty>(Slot->GetClass(), TEXT("ZOrder")))
+		{
+			ZOrderProperty->SetPropertyValue_InContainer(Slot, Snapshot.SlotZOrder);
+		}
+
+		if (UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(Slot))
+		{
+			CanvasSlot->SetZOrder(Snapshot.SlotZOrder);
+		}
+	}
+
+	Slot->SynchronizeProperties();
+	return true;
+}
+
+bool RestoreSlotSnapshot(UWidget* Widget, const FBlueprintHelperSlotSnapshot& Snapshot, FString& OutError)
+{
+	if (!Widget || !Snapshot.Parent)
+	{
+		OutError = TEXT("恢复 Widget 旧父节点失败：快照无效。");
+		return false;
+	}
+
+	int32 CurrentChildIndex = INDEX_NONE;
+	if (UPanelWidget* CurrentParent = UWidgetTree::FindWidgetParent(Widget, CurrentChildIndex))
+	{
+		CurrentParent->RemoveChild(Widget);
+	}
+
+	UPanelSlot* RestoredSlot = nullptr;
+	if (Snapshot.ChildIndex >= 0 && Snapshot.ChildIndex <= Snapshot.Parent->GetChildrenCount())
+	{
+		RestoredSlot = Snapshot.Parent->InsertChildAt(Snapshot.ChildIndex, Widget);
+	}
+	else
+	{
+		RestoredSlot = Snapshot.Parent->AddChild(Widget);
+	}
+
+	if (!RestoredSlot)
+	{
+		OutError = TEXT("恢复 Widget 旧父节点失败：无法重新添加到旧父节点。");
+		return false;
+	}
+
+	return ApplySlotSnapshotToSlot(RestoredSlot, Snapshot, true, OutError);
+}
+}
 
 // ═══════════════════════════════════════════════════════════
 // 内部工具
@@ -232,14 +417,16 @@ FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::AddWidget(
 	// 确定名称
 	FName NewName = WidgetName.IsEmpty() ? NAME_None : FName(*WidgetName);
 
-	// 使用事务操作
-	WBP->Modify();
+	FBlueprintHelperScopedAssetMutation Mutation(
+		FText::FromString(TEXT("BlueprintHelper Add Widget")), WBP);
+	Mutation.Modify(Tree);
 
 	// 构造新 Widget
 	UWidget* NewWidget = Tree->ConstructWidget<UWidget>(Cls, NewName);
 	if (!NewWidget)
 	{
 		Result.ErrorMessage = FString::Printf(TEXT("无法创建 Widget 类 '%s' 的实例。"), *WidgetClass);
+		Mutation.Rollback();
 		return Result;
 	}
 
@@ -249,6 +436,7 @@ FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::AddWidget(
 		if (!Slot)
 		{
 			Result.ErrorMessage = TEXT("AddChild 返回 null，可能面板已满或类型不兼容。");
+			Mutation.Rollback();
 			return Result;
 		}
 	}
@@ -259,6 +447,7 @@ FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::AddWidget(
 	}
 
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(WBP);
+	Mutation.Commit();
 
 	Result.bSuccess = true;
 	Result.AffectedWidget = NewWidget->GetName();
@@ -284,19 +473,23 @@ FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::RemoveWidget
 	// 不允许删除根 Widget（除非显式指定）
 	if (Widget == Tree->RootWidget)
 	{
-		WBP->Modify();
-		Tree->RootWidget = nullptr;
+		Result.ErrorMessage = TEXT("不允许通过 remove_widget 删除 RootWidget。需要显式 root 删除策略。");
+		return Result;
 	}
 
-	WBP->Modify();
+	FBlueprintHelperScopedAssetMutation Mutation(
+		FText::FromString(TEXT("BlueprintHelper Remove Widget")), WBP);
+	Mutation.Modify(Tree);
 	const bool bRemoved = Tree->RemoveWidget(Widget);
 	if (!bRemoved)
 	{
 		Result.ErrorMessage = FString::Printf(TEXT("无法从 WidgetTree 移除 '%s'。"), *WidgetName);
+		Mutation.Rollback();
 		return Result;
 	}
 
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(WBP);
+	Mutation.Commit();
 
 	Result.bSuccess = true;
 	Result.AffectedWidget = WidgetName;
@@ -337,27 +530,65 @@ FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::MoveWidget(
 		return Result;
 	}
 
-	WBP->Modify();
-
-	// 先从旧父节点移除
-	int32 OldChildIndex = -1;
-	UPanelWidget* OldParent = UWidgetTree::FindWidgetParent(Widget, OldChildIndex);
-	if (OldParent)
+	FBlueprintHelperSlotSnapshot OldSlotSnapshot;
+	if (!CaptureSlotSnapshot(Widget, OldSlotSnapshot, Result.ErrorMessage))
 	{
-		OldParent->RemoveChild(Widget);
+		return Result;
+	}
+
+	UWidgetTree* Tree = WBP->WidgetTree;
+	if (!Tree)
+	{
+		Result.ErrorMessage = TEXT("WidgetBlueprint 没有 WidgetTree。");
+		return Result;
+	}
+
+	FBlueprintHelperScopedAssetMutation Mutation(
+		FText::FromString(TEXT("BlueprintHelper Move Widget")), WBP);
+	Mutation.Modify(Tree);
+	Mutation.Modify(OldSlotSnapshot.Parent);
+	Mutation.Modify(NewParent);
+
+	if (OldSlotSnapshot.Parent)
+	{
+		OldSlotSnapshot.Parent->RemoveChild(Widget);
 	}
 
 	// 添加到新父节点
+	UPanelSlot* NewSlot = nullptr;
 	if (InsertIndex >= 0 && InsertIndex <= NewParent->GetChildrenCount())
 	{
-		NewParent->InsertChildAt(InsertIndex, Widget);
+		NewSlot = NewParent->InsertChildAt(InsertIndex, Widget);
 	}
 	else
 	{
-		NewParent->AddChild(Widget);
+		NewSlot = NewParent->AddChild(Widget);
+	}
+
+	if (!NewSlot)
+	{
+		FString RestoreError;
+		if (!RestoreSlotSnapshot(Widget, OldSlotSnapshot, RestoreError))
+		{
+			Result.ErrorMessage = FString::Printf(TEXT("移动 Widget 失败，且恢复旧 Slot 失败: %s"), *RestoreError);
+			Mutation.Rollback();
+			return Result;
+		}
+		Mutation.Rollback();
+		RestoreError.Reset();
+		if (!RestoreSlotSnapshot(Widget, OldSlotSnapshot, RestoreError))
+		{
+			Result.ErrorMessage = FString::Printf(TEXT("移动 Widget 失败，事务取消后恢复旧 Slot 失败: %s"), *RestoreError);
+			Mutation.RestorePrimaryPackageDirtyState();
+			return Result;
+		}
+		Mutation.RestorePrimaryPackageDirtyState();
+		Result.ErrorMessage = TEXT("移动 Widget 失败，已恢复旧父节点、索引和 Slot 属性。");
+		return Result;
 	}
 
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(WBP);
+	Mutation.Commit();
 
 	Result.bSuccess = true;
 	Result.AffectedWidget = WidgetName;
@@ -439,26 +670,34 @@ FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::SetWidgetPro
 		return Result;
 	}
 
-	// 安全检查：不修改只读属性
-	if (Prop->HasAnyPropertyFlags(CPF_BlueprintReadOnly) && !Prop->HasAnyPropertyFlags(CPF_Edit))
+	if (!FBlueprintHelperEditablePropertyPolicy::AllowsWrite(Prop))
 	{
-		Result.ErrorMessage = FString::Printf(TEXT("属性 '%s' 是只读的。"), *PropertyName);
+		Result.ErrorMessage = FString::Printf(
+			TEXT("属性 '%s' 不是编辑器中可安全写入的属性。Flags: %s"),
+			*PropertyName,
+			*FBlueprintHelperEditablePropertyPolicy::BuildFlagsSummary(Prop->PropertyFlags));
 		return Result;
 	}
 
-	WBP->Modify();
-	Widget->Modify();
+	FBlueprintHelperScopedAssetMutation Mutation(
+		FText::FromString(TEXT("BlueprintHelper Set Widget Property")), WBP);
+	Mutation.Modify(Widget);
 
 	void* ValuePtr = Prop->ContainerPtrToValuePtr<void>(Widget);
+	FString OldValue;
+	Prop->ExportText_Direct(OldValue, ValuePtr, nullptr, Widget, PPF_None);
 	const TCHAR* ImportResult = Prop->ImportText_Direct(*Value, ValuePtr, Widget, PPF_None);
 	if (!ImportResult)
 	{
+		Prop->ImportText_Direct(*OldValue, ValuePtr, Widget, PPF_None);
+		Mutation.Rollback();
 		Result.ErrorMessage = FString::Printf(
 			TEXT("无法将 '%s' 设置为 '%s'。值格式可能不正确。"), *PropertyName, *Value);
 		return Result;
 	}
 
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(WBP);
+	Mutation.Commit();
 
 	Result.bSuccess = true;
 	Result.AffectedWidget = WidgetName;

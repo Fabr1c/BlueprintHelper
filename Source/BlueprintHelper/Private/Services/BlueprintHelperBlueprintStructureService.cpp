@@ -2,6 +2,7 @@
 
 #include "Services/BlueprintHelperBlueprintStructureService.h"
 #include "Services/BlueprintHelperGraphResolver.h"
+#include "Services/BlueprintHelperScopedAssetMutation.h"
 #include "OperationHandlers/BlueprintOperationHandler.h"
 #include "Engine/Blueprint.h"
 #include "EdGraph/EdGraph.h"
@@ -11,9 +12,17 @@
 #include "K2Node_FunctionResult.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Dom/JsonObject.h"
-#include "ScopedTransaction.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogBlueprintHelperStructure, Log, All);
+
+namespace
+{
+bool ParseStableNodeGuid(const FString& NodeId, FGuid& OutGuid)
+{
+	return FGuid::ParseExact(NodeId, EGuidFormats::Digits, OutGuid)
+		|| FGuid::ParseExact(NodeId, EGuidFormats::DigitsWithHyphens, OutGuid);
+}
+}
 
 FBlueprintHelperBlueprintStructureService::FBlueprintHelperBlueprintStructureService(
 	const FBlueprintHelperGraphResolver& InResolver)
@@ -371,46 +380,65 @@ bool FBlueprintHelperBlueprintStructureService::DeleteNodes(
 		return false;
 	}
 
-	// 构建节点索引到 ID 的映射（与导出一致：Node_0, Node_1, ...）
-	TMap<FString, UEdGraphNode*> IdToNode;
-	for (int32 i = 0; i < Graph->Nodes.Num(); ++i)
-	{
-		if (Graph->Nodes[i])
-		{
-			IdToNode.Add(FString::Printf(TEXT("Node_%d"), i), Graph->Nodes[i]);
-		}
-	}
-
-	// 同时支持特殊 ID
+	TMap<FGuid, UEdGraphNode*> GuidToNode;
 	for (UEdGraphNode* Node : Graph->Nodes)
 	{
-		if (Cast<UK2Node_FunctionEntry>(Node))
+		if (!Node)
 		{
-			IdToNode.Add(TEXT("__function_entry__"), Node);
+			continue;
 		}
-		else if (Cast<UK2Node_FunctionResult>(Node))
-		{
-			IdToNode.Add(TEXT("__function_result__"), Node);
-		}
+		GuidToNode.Add(Node->NodeGuid, Node);
 	}
-
-	FScopedTransaction Transaction(FText::FromString(TEXT("BlueprintHelper Delete Nodes")));
-	Graph->Modify();
 
 	TArray<UEdGraphNode*> NodesToRemove;
+	TSet<FGuid> SeenGuids;
 	for (const FString& NodeId : NodeIds)
 	{
-		UEdGraphNode** Found = IdToNode.Find(NodeId);
-		if (Found && *Found)
+		if (NodeId.StartsWith(TEXT("Node_")))
 		{
-			// 保护 FunctionEntry / FunctionResult
-			if (Cast<UK2Node_FunctionEntry>(*Found) || Cast<UK2Node_FunctionResult>(*Found))
-			{
-				continue;
-			}
-			NodesToRemove.Add(*Found);
+			OutError = FString::Printf(TEXT("delete_nodes 不再接受不稳定 ID '%s'。请使用 node_guid。"), *NodeId);
+			return false;
 		}
+
+		FGuid NodeGuid;
+		if (!ParseStableNodeGuid(NodeId, NodeGuid))
+		{
+			OutError = FString::Printf(TEXT("delete_nodes 只接受稳定 node_guid，收到: %s"), *NodeId);
+			return false;
+		}
+
+		if (SeenGuids.Contains(NodeGuid))
+		{
+			OutError = FString::Printf(TEXT("delete_nodes 包含重复 node_guid: %s"), *NodeId);
+			return false;
+		}
+		SeenGuids.Add(NodeGuid);
+
+		UEdGraphNode** Found = GuidToNode.Find(NodeGuid);
+		if (!Found || !*Found)
+		{
+			OutError = FString::Printf(TEXT("未找到 node_guid: %s"), *NodeId);
+			return false;
+		}
+
+		if (Cast<UK2Node_FunctionEntry>(*Found) || Cast<UK2Node_FunctionResult>(*Found))
+		{
+			OutError = FString::Printf(TEXT("受保护节点不能删除: %s"), *NodeId);
+			return false;
+		}
+
+		NodesToRemove.Add(*Found);
 	}
+
+	if (NodesToRemove.Num() != NodeIds.Num())
+	{
+		OutError = TEXT("delete_nodes 目标数量与解析数量不一致。");
+		return false;
+	}
+
+	FBlueprintHelperScopedAssetMutation Mutation(
+		FText::FromString(TEXT("BlueprintHelper Delete Nodes")), BP);
+	Mutation.Modify(Graph);
 
 	for (UEdGraphNode* Node : NodesToRemove)
 	{
@@ -423,5 +451,6 @@ bool FBlueprintHelperBlueprintStructureService::DeleteNodes(
 		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(BP);
 	}
 
+	Mutation.Commit();
 	return true;
 }

@@ -6,6 +6,7 @@
   "main": "build/index.js",
   "scripts": {
     "build": "tsc",
+    "test": "npm run build && node --test build/tools.regression.test.js",
     "start": "node build/index.js",
     "dev": "tsc --watch"
   },

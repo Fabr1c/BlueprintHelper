@@ -11,7 +11,9 @@
             "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\services\\blueprinthelpergraphresolver.h",
             "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\services\\blueprinthelpervalidationservice.h",
             "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\services\\blueprinthelpercompileservice.h",
-            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\texttoblueprintgenerator.h"
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\texttoblueprintgenerator.h",
+            "f:\\ue_5.6\\engine\\source\\editor\\unrealed\\public\\kismet2\\blueprinteditorutils.h",
+            "f:\\ue_5.6\\engine\\source\\editor\\classviewer\\public\\classviewermodule.h"
         ],
         "ImportedModules": [],
         "ImportedHeaderUnits": []

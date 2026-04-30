@@ -184,16 +184,40 @@ UEdGraph* FBlueprintHelperGraphResolver::FindGraph(UBlueprint* Blueprint, const 
 	UEdGraph* Graph = TextToBlueprintGenerator::FindGraphByName(Blueprint, GraphName);
 	if (!Graph)
 	{
-		OutDiag.Add(EBlueprintHelperDiagnosticSeverity::Error,
-			FString::Printf(TEXT("蓝图 %s 中未找到图表 '%s'。"), *Blueprint->GetName(), *GraphName));
-
-		// 尝试降级到 EventGraph
-		UEdGraph* EventGraph = TextToBlueprintGenerator::FindGraphByName(Blueprint, TEXT("EventGraph"));
-		if (EventGraph)
+		TArray<FString> AvailableGraphs;
+		if (Blueprint)
 		{
-			OutDiag.Add(EBlueprintHelperDiagnosticSeverity::Warning, TEXT("已降级到 EventGraph。"));
-			return EventGraph;
+			for (UEdGraph* Candidate : Blueprint->UbergraphPages)
+			{
+				if (Candidate)
+				{
+					AvailableGraphs.Add(Candidate->GetName());
+				}
+			}
+			for (UEdGraph* Candidate : Blueprint->FunctionGraphs)
+			{
+				if (Candidate)
+				{
+					AvailableGraphs.Add(Candidate->GetName());
+				}
+			}
+			for (UEdGraph* Candidate : Blueprint->MacroGraphs)
+			{
+				if (Candidate)
+				{
+					AvailableGraphs.Add(Candidate->GetName());
+				}
+			}
 		}
+
+		OutDiag.Add(EBlueprintHelperDiagnosticSeverity::Error,
+			FString::Printf(TEXT("蓝图 %s 中未找到图表 '%s'。可用图表：%s"),
+				Blueprint ? *Blueprint->GetName() : TEXT("<null>"),
+				*GraphName,
+				*FString::Join(AvailableGraphs, TEXT(", "))),
+			TEXT(""),
+			TEXT("graph_not_found"),
+			TEXT("target_graph"));
 	}
 	return Graph;
 }

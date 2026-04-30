@@ -1,6 +1,8 @@
 // BlueprintHelper Service Layer — 通用 UObject 属性反射服务实现
 
 #include "Services/BlueprintHelperPropertyReflectionService.h"
+#include "Services/BlueprintHelperScopedAssetMutation.h"
+#include "Services/BlueprintHelperServiceTypes.h"
 #include "UObject/UnrealType.h"
 #include "UObject/Package.h"
 #include "Engine/AssetManager.h"
@@ -30,15 +32,7 @@ UObject* FBlueprintHelperPropertyReflectionService::ResolveAsset(
 
 FString FBlueprintHelperPropertyReflectionService::BuildFlagsSummary(uint64 PropertyFlags)
 {
-	TArray<FString> Tags;
-	if (PropertyFlags & CPF_Edit)              Tags.Add(TEXT("Edit"));
-	if (PropertyFlags & CPF_BlueprintVisible)  Tags.Add(TEXT("BlueprintVisible"));
-	if (PropertyFlags & CPF_BlueprintReadOnly) Tags.Add(TEXT("BlueprintReadOnly"));
-	if (PropertyFlags & CPF_EditConst)         Tags.Add(TEXT("EditConst"));
-	if (PropertyFlags & CPF_Config)            Tags.Add(TEXT("Config"));
-	if (PropertyFlags & CPF_Transient)         Tags.Add(TEXT("Transient"));
-	if (PropertyFlags & CPF_SaveGame)          Tags.Add(TEXT("SaveGame"));
-	return FString::Join(Tags, TEXT(", "));
+	return FBlueprintHelperEditablePropertyPolicy::BuildFlagsSummary(PropertyFlags);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -120,23 +114,36 @@ FBlueprintHelperSetPropertyResult FBlueprintHelperPropertyReflectionService::Set
 		return Result;
 	}
 
+	if (!FBlueprintHelperEditablePropertyPolicy::AllowsWrite(Prop))
+	{
+		Result.ErrorMessage = FString::Printf(
+			TEXT("属性 %s 不是编辑器中可安全写入的属性。Flags: %s"),
+			*PropertyName,
+			*BuildFlagsSummary(Prop->PropertyFlags));
+		return Result;
+	}
+
 	void* ValuePtr = Prop->ContainerPtrToValuePtr<void>(Obj);
 
 	// 导出旧值
 	Prop->ExportTextItem_Direct(Result.OldValue, ValuePtr, nullptr, Obj, PPF_None);
 
+	FBlueprintHelperScopedAssetMutation Mutation(
+		FText::FromString(TEXT("BlueprintHelper Set Object Property")), Obj);
+
 	// 导入新值
 	const TCHAR* ImportResult = Prop->ImportText_Direct(*Value, ValuePtr, Obj, PPF_None);
 	if (!ImportResult)
 	{
+		Prop->ImportText_Direct(*Result.OldValue, ValuePtr, Obj, PPF_None);
+		Mutation.Rollback();
 		Result.ErrorMessage = FString::Printf(
 			TEXT("属性 %s 值导入失败，输入: \"%s\""), *PropertyName, *Value);
 		return Result;
 	}
 
-	// 标记脏
-	Obj->MarkPackageDirty();
 	Obj->PostEditChange();
+	Mutation.Commit();
 
 	// 导出新值确认
 	Prop->ExportTextItem_Direct(Result.NewValue, ValuePtr, nullptr, Obj, PPF_None);

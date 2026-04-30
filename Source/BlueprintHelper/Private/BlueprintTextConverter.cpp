@@ -218,6 +218,54 @@ namespace
 			PinTypeObject->SetBoolField(TEXT("is_const"), true);
 		}
 	}
+
+	bool IsExecPin(const UEdGraphPin* Pin)
+	{
+		return Pin && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec;
+	}
+
+	bool HasReadablePinCategory(const UEdGraphPin* Pin)
+	{
+		return Pin && !Pin->PinType.PinCategory.IsNone();
+	}
+
+	FString GetLinkKind(const UEdGraphPin* SourcePin, const UEdGraphPin* TargetPin)
+	{
+		if (IsExecPin(SourcePin) || IsExecPin(TargetPin))
+		{
+			return TEXT("exec");
+		}
+
+		if (HasReadablePinCategory(SourcePin) && HasReadablePinCategory(TargetPin))
+		{
+			return TEXT("data");
+		}
+
+		return TEXT("unknown");
+	}
+
+	FString GetPinCategoryString(const UEdGraphPin* Pin)
+	{
+		return HasReadablePinCategory(Pin) ? Pin->PinType.PinCategory.ToString() : TEXT("unknown");
+	}
+
+	FString GetPinDirectionString(const UEdGraphPin* Pin)
+	{
+		if (!Pin)
+		{
+			return TEXT("unknown");
+		}
+
+		switch (Pin->Direction)
+		{
+		case EGPD_Input:
+			return TEXT("input");
+		case EGPD_Output:
+			return TEXT("output");
+		default:
+			return TEXT("unknown");
+		}
+	}
 }
 
 FString FBlueprintToTextConverter::ConvertClipboardToMinimalText()
@@ -1016,6 +1064,11 @@ void FBlueprintToTextConverter::ExportGraphNodesAndLinks(
 				LinkObj->SetStringField(TEXT("from_pin"), Pin->PinName.ToString());
 				LinkObj->SetStringField(TEXT("to_id"), *TargetId);
 				LinkObj->SetStringField(TEXT("to_pin"), LinkedPin->PinName.ToString());
+				LinkObj->SetStringField(TEXT("kind"), GetLinkKind(Pin, LinkedPin));
+				LinkObj->SetStringField(TEXT("from_pin_type"), GetPinCategoryString(Pin));
+				LinkObj->SetStringField(TEXT("to_pin_type"), GetPinCategoryString(LinkedPin));
+				LinkObj->SetStringField(TEXT("from_direction"), GetPinDirectionString(Pin));
+				LinkObj->SetStringField(TEXT("to_direction"), GetPinDirectionString(LinkedPin));
 				OutLinks.Add(MakeShared<FJsonValueObject>(LinkObj));
 			}
 		}

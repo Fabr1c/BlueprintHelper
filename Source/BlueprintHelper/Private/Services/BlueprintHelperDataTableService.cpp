@@ -1,8 +1,10 @@
 // BlueprintHelper Service Layer — DataTable 操作服务实现
 
 #include "Services/BlueprintHelperDataTableService.h"
+#include "Services/BlueprintHelperScopedAssetMutation.h"
 #include "Engine/DataTable.h"
 #include "DataTableEditorUtils.h"
+#include "Misc/ScopeExit.h"
 #include "UObject/UnrealType.h"
 
 // ═══════════════════════════════════════════════════════════
@@ -180,12 +182,17 @@ FBlueprintHelperDataTableMutationResult FBlueprintHelperDataTableService::AddDat
 		return Result;
 	}
 
+	FBlueprintHelperScopedAssetMutation Mutation(
+		FText::FromString(TEXT("BlueprintHelper Add DataTable Row")), DT);
+
 	// 使用 FDataTableEditorUtils 添加行（会自动初始化结构体）
 	FDataTableEditorUtils::BroadcastPreChange(DT, FDataTableEditorUtils::EDataTableChangeInfo::RowList);
 	uint8* NewRowData = FDataTableEditorUtils::AddRow(DT, RowFName);
 	if (!NewRowData)
 	{
 		Result.ErrorMessage = FString::Printf(TEXT("添加行 '%s' 失败。"), *RowName);
+		FDataTableEditorUtils::BroadcastPostChange(DT, FDataTableEditorUtils::EDataTableChangeInfo::RowList);
+		Mutation.Rollback();
 		return Result;
 	}
 
@@ -199,12 +206,13 @@ FBlueprintHelperDataTableMutationResult FBlueprintHelperDataTableService::AddDat
 			DT->RemoveRow(RowFName);
 			Result.ErrorMessage = FieldError;
 			FDataTableEditorUtils::BroadcastPostChange(DT, FDataTableEditorUtils::EDataTableChangeInfo::RowList);
+			Mutation.Rollback();
 			return Result;
 		}
 	}
 
-	DT->MarkPackageDirty();
 	FDataTableEditorUtils::BroadcastPostChange(DT, FDataTableEditorUtils::EDataTableChangeInfo::RowList);
+	Mutation.Commit();
 
 	Result.bSuccess = true;
 	return Result;
@@ -241,19 +249,31 @@ FBlueprintHelperDataTableMutationResult FBlueprintHelperDataTableService::Update
 		return Result;
 	}
 
-	FDataTableEditorUtils::BroadcastPreChange(DT, FDataTableEditorUtils::EDataTableChangeInfo::RowData);
-
 	FString FieldError;
-	if (!ApplyFieldsToRow(RowStruct, RowData, Fields, DT, FieldError))
+	const int32 RowSize = RowStruct->GetStructureSize();
+	TArray<uint8> CandidateRow;
+	CandidateRow.SetNumZeroed(RowSize);
+	uint8* CandidateData = CandidateRow.GetData();
+	RowStruct->InitializeStruct(CandidateData);
+	ON_SCOPE_EXIT
+	{
+		RowStruct->DestroyStruct(CandidateData);
+	};
+
+	RowStruct->CopyScriptStruct(CandidateData, RowData);
+	if (!ApplyFieldsToRow(RowStruct, CandidateData, Fields, DT, FieldError))
 	{
 		Result.ErrorMessage = FieldError;
-		FDataTableEditorUtils::BroadcastPostChange(DT, FDataTableEditorUtils::EDataTableChangeInfo::RowData);
 		return Result;
 	}
 
+	FBlueprintHelperScopedAssetMutation Mutation(
+		FText::FromString(TEXT("BlueprintHelper Update DataTable Row")), DT);
+	FDataTableEditorUtils::BroadcastPreChange(DT, FDataTableEditorUtils::EDataTableChangeInfo::RowData);
+	RowStruct->CopyScriptStruct(RowData, CandidateData);
 	DT->HandleDataTableChanged(RowFName);
-	DT->MarkPackageDirty();
 	FDataTableEditorUtils::BroadcastPostChange(DT, FDataTableEditorUtils::EDataTableChangeInfo::RowData);
+	Mutation.Commit();
 
 	Result.bSuccess = true;
 	return Result;
@@ -281,17 +301,20 @@ FBlueprintHelperDataTableMutationResult FBlueprintHelperDataTableService::Delete
 		return Result;
 	}
 
+	FBlueprintHelperScopedAssetMutation Mutation(
+		FText::FromString(TEXT("BlueprintHelper Delete DataTable Row")), DT);
 	FDataTableEditorUtils::BroadcastPreChange(DT, FDataTableEditorUtils::EDataTableChangeInfo::RowList);
 
 	if (!FDataTableEditorUtils::RemoveRow(DT, RowFName))
 	{
 		Result.ErrorMessage = FString::Printf(TEXT("删除行 '%s' 失败。"), *RowName);
 		FDataTableEditorUtils::BroadcastPostChange(DT, FDataTableEditorUtils::EDataTableChangeInfo::RowList);
+		Mutation.Rollback();
 		return Result;
 	}
 
-	DT->MarkPackageDirty();
 	FDataTableEditorUtils::BroadcastPostChange(DT, FDataTableEditorUtils::EDataTableChangeInfo::RowList);
+	Mutation.Commit();
 
 	Result.bSuccess = true;
 	return Result;

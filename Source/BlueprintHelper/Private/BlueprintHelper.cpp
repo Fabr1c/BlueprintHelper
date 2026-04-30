@@ -52,6 +52,7 @@
 #include "Services/BlueprintHelperValidationService.h"
 #include "Services/BlueprintHelperExportService.h"
 #include "Services/BlueprintHelperImportService.h"
+#include "Services/BlueprintHelperAgentImportService.h"
 #include "Services/BlueprintHelperCompileService.h"
 #include "Services/BlueprintHelperContextService.h"
 #include "Services/BlueprintHelperAssetBrowseService.h"
@@ -138,6 +139,7 @@ void FBlueprintHelperModule::StartupModule()
 	ImportService    = MakeUnique<FBlueprintHelperImportService>(*GraphResolver, *ValidationService);
 	ImportService->SetCompileService(CompileService.Get());
 	AssetBrowseService = MakeUnique<FBlueprintHelperAssetBrowseService>();
+	AgentImportService = MakeUnique<FBlueprintHelperAgentImportService>(*GraphResolver, *CompileService, *AssetBrowseService);
 	StructureService = MakeUnique<FBlueprintHelperBlueprintStructureService>(*GraphResolver);
 	WidgetService  = MakeUnique<FBlueprintHelperWidgetService>();
 	PropertyReflectionService = MakeUnique<FBlueprintHelperPropertyReflectionService>();
@@ -147,7 +149,7 @@ void FBlueprintHelperModule::StartupModule()
 	// ─── Bridge Layer 初始化 ───
 	ContextService = MakeUnique<FBlueprintHelperContextService>(*GraphResolver);
 	BridgeRouter = MakeUnique<FBlueprintHelperBridgeRouter>(
-		*ImportService, *ExportService, *CompileService, *ValidationService, *ContextService, *AssetBrowseService, *StructureService, *WidgetService, *PropertyReflectionService, *DataTableService, *EditorCommandService);
+		*ImportService, *AgentImportService, *ExportService, *CompileService, *ValidationService, *ContextService, *AssetBrowseService, *StructureService, *WidgetService, *PropertyReflectionService, *DataTableService, *EditorCommandService);
 	BridgeServer = MakeUnique<FBlueprintHelperBridgeServer>(*BridgeRouter);
 	BridgeServer->Start();
 
@@ -175,6 +177,7 @@ void FBlueprintHelperModule::ShutdownModule()
 	PropertyReflectionService.Reset();
 	StructureService.Reset();
 	WidgetService.Reset();
+	AgentImportService.Reset();
 	AssetBrowseService.Reset();
 	ImportService.Reset();
 	CompileService.Reset();

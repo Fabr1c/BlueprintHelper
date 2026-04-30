@@ -86,6 +86,72 @@ namespace
 
 		return UEdGraphSchema_K2::PC_Float;
 	}
+
+	FBlueprintGeneratorDiagnostic MakeGeneratorDiagnostic(
+		const FString& Code,
+		const FString& NodeId,
+		const FString& PinName,
+		const FString& Message,
+		const FString& Severity = TEXT("error"))
+	{
+		FBlueprintGeneratorDiagnostic Diagnostic;
+		Diagnostic.Severity = Severity;
+		Diagnostic.Code = Code;
+		Diagnostic.NodeId = NodeId;
+		Diagnostic.PinName = PinName;
+		Diagnostic.Message = Message;
+		return Diagnostic;
+	}
+
+	bool IsInvalidPinTypeFailure(const FString& ErrorMessage)
+	{
+		return ErrorMessage.Contains(TEXT("类型转换失败"))
+			|| ErrorMessage.Contains(TEXT("引脚类型无效"))
+			|| ErrorMessage.Contains(TEXT("暂不支持的引脚类型"))
+			|| ErrorMessage.Contains(TEXT("无法加载引脚子分类对象"));
+	}
+
+	FString FindDiagnosticPinName(const FParsedNode& NodeData, const FString& ErrorMessage)
+	{
+		for (const FParsedEventParam& Param : NodeData.EventReference.Params)
+		{
+			if (!Param.Name.IsEmpty() && ErrorMessage.Contains(Param.Name))
+			{
+				return Param.Name;
+			}
+		}
+
+		return TEXT("");
+	}
+
+	int32 CountRequestedPinTypes(const FParsedNode& NodeData)
+	{
+		int32 Count = 0;
+		if (NodeData.VariableReference.PinType.IsValid())
+		{
+			++Count;
+		}
+		if (NodeData.ContainerReference.ElementType.IsValid())
+		{
+			++Count;
+		}
+		if (NodeData.ContainerReference.KeyType.IsValid())
+		{
+			++Count;
+		}
+		if (NodeData.ContainerReference.ValueType.IsValid())
+		{
+			++Count;
+		}
+		for (const FParsedEventParam& Param : NodeData.EventReference.Params)
+		{
+			if (Param.PinType.IsValid())
+			{
+				++Count;
+			}
+		}
+		return Count;
+	}
 }
 
 EParsedBlueprintNodeType TextToBlueprintGenerator::ResolveNodeType(const TSharedPtr<FJsonObject>& NodeObject)
@@ -1394,35 +1460,91 @@ UEdGraphPin* TextToBlueprintGenerator::FindPinByAlias(UK2Node* TargetNode, const
 	return nullptr;
 }
 
-bool TextToBlueprintGenerator::ApplyPinDefaultValue(UEdGraphPin* TargetPin, const FString& InValue)
+bool TextToBlueprintGenerator::ApplyPinDefaultValue(
+	UEdGraphPin* TargetPin,
+	const FString& InValue,
+	FString& OutDiagnosticCode,
+	FString& OutMessage)
 {
+	OutDiagnosticCode.Reset();
+	OutMessage.Reset();
+
 	if (!TargetPin)
 	{
+		OutDiagnosticCode = TEXT("default_pin_not_found");
+		OutMessage = TEXT("默认值应用失败：目标引脚无效。");
+		return false;
+	}
+
+	const UEdGraphSchema_K2* K2Schema = GetDefault<UEdGraphSchema_K2>();
+	if (!K2Schema)
+	{
+		OutDiagnosticCode = TEXT("default_value_rejected");
+		OutMessage = TEXT("默认值应用失败：K2 Schema 无效。");
 		return false;
 	}
 
 	if (TargetPin->PinType.PinCategory == UEdGraphSchema_K2::PC_Object || TargetPin->PinType.PinCategory == UEdGraphSchema_K2::PC_Class)
 	{
-		if (!InValue.IsEmpty())
+		UObject* DefaultObject = nullptr;
+		const bool bNoneValue = InValue.IsEmpty()
+			|| InValue.Equals(TEXT("None"), ESearchCase::IgnoreCase)
+			|| InValue.Equals(TEXT("null"), ESearchCase::IgnoreCase)
+			|| InValue.Equals(TEXT("nullptr"), ESearchCase::IgnoreCase);
+
+		if (!bNoneValue)
 		{
-			if (UObject* DefaultObject = LoadObject<UObject>(nullptr, *InValue))
+			DefaultObject = LoadObject<UObject>(nullptr, *InValue);
+			if (!DefaultObject)
 			{
-				TargetPin->DefaultObject = DefaultObject;
-				return true;
+				OutDiagnosticCode = TEXT("default_value_object_not_found");
+				OutMessage = FString::Printf(TEXT("默认值对象或类无法加载：%s。"), *InValue);
+				return false;
 			}
 		}
 
-		TargetPin->DefaultValue = InValue;
+		FString ValidationMessage;
+		if (!K2Schema->DefaultValueSimpleValidation(TargetPin->PinType, TargetPin->PinName, FString(), DefaultObject, FText::GetEmpty(), &ValidationMessage))
+		{
+			OutDiagnosticCode = TEXT("default_value_rejected");
+			OutMessage = ValidationMessage.IsEmpty()
+				? FString::Printf(TEXT("Schema 拒绝默认值：%s。"), *InValue)
+				: ValidationMessage;
+			return false;
+		}
+
+		TargetPin->GetSchema()->TrySetDefaultObject(*TargetPin, DefaultObject);
 		return true;
 	}
 
 	if (TargetPin->PinType.PinCategory == UEdGraphSchema_K2::PC_Text)
 	{
-		TargetPin->DefaultTextValue = FText::FromString(InValue);
+		const FText TextValue = FText::FromString(InValue);
+		FString ValidationMessage;
+		if (!K2Schema->DefaultValueSimpleValidation(TargetPin->PinType, TargetPin->PinName, FString(), nullptr, TextValue, &ValidationMessage))
+		{
+			OutDiagnosticCode = TEXT("default_value_rejected");
+			OutMessage = ValidationMessage.IsEmpty()
+				? FString::Printf(TEXT("Schema 拒绝文本默认值：%s。"), *InValue)
+				: ValidationMessage;
+			return false;
+		}
+
+		TargetPin->GetSchema()->TrySetDefaultText(*TargetPin, TextValue);
 		return true;
 	}
 
-	TargetPin->DefaultValue = InValue;
+	FString ValidationMessage;
+	if (!K2Schema->DefaultValueSimpleValidation(TargetPin->PinType, TargetPin->PinName, InValue, nullptr, FText::GetEmpty(), &ValidationMessage))
+	{
+		OutDiagnosticCode = TEXT("default_value_rejected");
+		OutMessage = ValidationMessage.IsEmpty()
+			? FString::Printf(TEXT("Schema 拒绝默认值：%s。"), *InValue)
+			: ValidationMessage;
+		return false;
+	}
+
+	TargetPin->GetSchema()->TrySetDefaultValue(*TargetPin, InValue);
 	return true;
 }
 
@@ -1565,6 +1687,9 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateBlueprintFromJson(UEd
 	TArray<FParsedNode> ParsedNodes;
 	TArray<FParsedLink> ParsedLinks;
 	TArray<FParsedLocalVariableDeclaration> ParsedLocalVariableDeclarations;
+	TArray<FBlueprintGeneratorDiagnostic> DefaultValueDiagnostics;
+	TArray<FBlueprintGeneratorDiagnostic> PinTypeDiagnostics;
+	TArray<FBlueprintGeneratorDiagnostic> ConnectionDiagnostics;
 	ResolveLocalVariableDeclarations(JsonObject, ParsedLocalVariableDeclarations);
 
 	const TArray<TSharedPtr<FJsonValue>>* NodesArray = nullptr;
@@ -1657,6 +1782,21 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateBlueprintFromJson(UEd
 		}
 	}
 
+	int32 RequestedDefaultValueCount = 0;
+	int32 RequestedPinTypeCount = 0;
+	for (const FParsedLocalVariableDeclaration& Declaration : ParsedLocalVariableDeclarations)
+	{
+		if (Declaration.PinType.IsValid())
+		{
+			++RequestedPinTypeCount;
+		}
+	}
+	for (const FParsedNode& ParsedNode : ParsedNodes)
+	{
+		RequestedDefaultValueCount += ParsedNode.DefaultValues.Num();
+		RequestedPinTypeCount += CountRequestedPinTypes(ParsedNode);
+	}
+
 	const FScopedTransaction Transaction(FText::FromString(TEXT("Generate Blueprint from JSON")));
 	TargetGraph->Modify();
 
@@ -1670,6 +1810,15 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateBlueprintFromJson(UEd
 		FString EnsureErrorMessage;
 		if (!EnsureLocalVariableExists(TargetGraph, Declaration, EnsureErrorMessage))
 		{
+			if (IsInvalidPinTypeFailure(EnsureErrorMessage))
+			{
+				PinTypeDiagnostics.Add(MakeGeneratorDiagnostic(
+					TEXT("invalid_pin_type"),
+					Declaration.Name,
+					Declaration.Name,
+					EnsureErrorMessage));
+			}
+
 			TSharedPtr<FUnresolvedNodeItem> UnresolvedItem = MakeShared<FUnresolvedNodeItem>();
 			UnresolvedItem->DisplayText = FString::Printf(TEXT("LocalVariable %s"), *Declaration.Name);
 			UnresolvedItem->Reason = EnsureErrorMessage;
@@ -1733,6 +1882,15 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateBlueprintFromJson(UEd
 			IdToSpawnedNode.Add(ParsedNode.Id, SpawnedNode);
 			++GeneratedNodeCount;
 			continue;
+		}
+
+		if (IsInvalidPinTypeFailure(SpawnErrorMessage))
+		{
+			PinTypeDiagnostics.Add(MakeGeneratorDiagnostic(
+				TEXT("invalid_pin_type"),
+				ParsedNode.Id,
+				FindDiagnosticPinName(ParsedNode, SpawnErrorMessage),
+				SpawnErrorMessage));
 		}
 
 		TSharedPtr<FUnresolvedNodeItem> UnresolvedItem = MakeShared<FUnresolvedNodeItem>();
@@ -1810,22 +1968,93 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateBlueprintFromJson(UEd
 		}
 	}
 
-	const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
-	int32 CreatedConnectionCount = 0;
-	for (const FParsedLink& ParsedLink : ParsedLinks)
+	int32 AppliedDefaultValueCount = 0;
+	for (const FParsedNode& ParsedNode : ParsedNodes)
 	{
-		if (!Schema || !IdToSpawnedNode.Contains(ParsedLink.FromId) || !IdToSpawnedNode.Contains(ParsedLink.ToId))
+		UK2Node** SpawnedNodePtr = IdToSpawnedNode.Find(ParsedNode.Id);
+		if (!SpawnedNodePtr || !*SpawnedNodePtr)
 		{
 			continue;
 		}
 
-		UK2Node* FromNode = IdToSpawnedNode[ParsedLink.FromId];
-		UK2Node* ToNode = IdToSpawnedNode[ParsedLink.ToId];
+		TArray<FBlueprintGeneratorDiagnostic> NodeDiagnostics = ApplyDefaultValues(*SpawnedNodePtr, ParsedNode.DefaultValues, ParsedNode.Id);
+		AppliedDefaultValueCount += FMath::Max(0, ParsedNode.DefaultValues.Num() - NodeDiagnostics.Num());
+		DefaultValueDiagnostics.Append(NodeDiagnostics);
+	}
+
+	const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
+	int32 CreatedConnectionCount = 0;
+	for (const FParsedLink& ParsedLink : ParsedLinks)
+	{
+		if (!Schema)
+		{
+			ConnectionDiagnostics.Add(MakeGeneratorDiagnostic(
+				TEXT("link_connection_rejected"),
+				ParsedLink.FromId,
+				ParsedLink.FromPin,
+				TEXT("连线创建失败：K2 Schema 无效。")));
+			continue;
+		}
+
+		UK2Node** FromNodePtr = IdToSpawnedNode.Find(ParsedLink.FromId);
+		UK2Node** ToNodePtr = IdToSpawnedNode.Find(ParsedLink.ToId);
+		if (!FromNodePtr || !*FromNodePtr)
+		{
+			ConnectionDiagnostics.Add(MakeGeneratorDiagnostic(
+				TEXT("link_node_not_found"),
+				ParsedLink.FromId,
+				ParsedLink.FromPin,
+				FString::Printf(TEXT("连线来源节点未找到：%s。"), *ParsedLink.FromId)));
+			continue;
+		}
+		if (!ToNodePtr || !*ToNodePtr)
+		{
+			ConnectionDiagnostics.Add(MakeGeneratorDiagnostic(
+				TEXT("link_node_not_found"),
+				ParsedLink.ToId,
+				ParsedLink.ToPin,
+				FString::Printf(TEXT("连线目标节点未找到：%s。"), *ParsedLink.ToId)));
+			continue;
+		}
+
+		UK2Node* FromNode = *FromNodePtr;
+		UK2Node* ToNode = *ToNodePtr;
 		UEdGraphPin* FromPin = FindPinByAlias(FromNode, ParsedLink.FromPin);
 		UEdGraphPin* ToPin = FindPinByAlias(ToNode, ParsedLink.ToPin);
-		if (FromPin && ToPin)
+		if (!FromPin)
 		{
-			CreatedConnectionCount += Schema->TryCreateConnection(FromPin, ToPin) ? 1 : 0;
+			ConnectionDiagnostics.Add(MakeGeneratorDiagnostic(
+				TEXT("link_pin_not_found"),
+				ParsedLink.FromId,
+				ParsedLink.FromPin,
+				FString::Printf(TEXT("连线来源引脚未找到：%s.%s。"), *ParsedLink.FromId, *ParsedLink.FromPin)));
+			continue;
+		}
+		if (!ToPin)
+		{
+			ConnectionDiagnostics.Add(MakeGeneratorDiagnostic(
+				TEXT("link_pin_not_found"),
+				ParsedLink.ToId,
+				ParsedLink.ToPin,
+				FString::Printf(TEXT("连线目标引脚未找到：%s.%s。"), *ParsedLink.ToId, *ParsedLink.ToPin)));
+			continue;
+		}
+
+		const FPinConnectionResponse ConnectionResponse = Schema->CanCreateConnection(FromPin, ToPin);
+		if (Schema->TryCreateConnection(FromPin, ToPin))
+		{
+			++CreatedConnectionCount;
+		}
+		else
+		{
+			ConnectionDiagnostics.Add(MakeGeneratorDiagnostic(
+				TEXT("link_connection_rejected"),
+				ParsedLink.FromId,
+				ParsedLink.FromPin,
+				ConnectionResponse.Message.IsEmpty()
+					? FString::Printf(TEXT("Schema 拒绝连线：%s.%s -> %s.%s。"),
+						*ParsedLink.FromId, *ParsedLink.FromPin, *ParsedLink.ToId, *ParsedLink.ToPin)
+					: ConnectionResponse.Message.ToString()));
 		}
 	}
 
@@ -1833,6 +2062,15 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateBlueprintFromJson(UEd
 
 	Result.bSucceed = GeneratedNodeCount > 0 || CreatedConnectionCount > 0;
 	Result.GeneratedNodeCount = GeneratedNodeCount;
+	Result.RequestedDefaultValueCount = RequestedDefaultValueCount;
+	Result.AppliedDefaultValueCount = AppliedDefaultValueCount;
+	Result.DefaultValueDiagnostics = MoveTemp(DefaultValueDiagnostics);
+	Result.RequestedPinTypeCount = RequestedPinTypeCount;
+	Result.ResolvedPinTypeCount = FMath::Max(0, RequestedPinTypeCount - PinTypeDiagnostics.Num());
+	Result.PinTypeDiagnostics = MoveTemp(PinTypeDiagnostics);
+	Result.RequestedConnectionCount = ParsedLinks.Num();
+	Result.CreatedConnectionCount = CreatedConnectionCount;
+	Result.ConnectionDiagnostics = MoveTemp(ConnectionDiagnostics);
 	Result.UnresolvedNodeCount = OutUnresolvedNodes.Num();
 	if (Result.bSucceed)
 	{
@@ -1927,6 +2165,9 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateNodesAndLinksForGraph
 
 	// 解析本地变量声明
 	TArray<FParsedLocalVariableDeclaration> ParsedLocalVariableDeclarations;
+	TArray<FBlueprintGeneratorDiagnostic> DefaultValueDiagnostics;
+	TArray<FBlueprintGeneratorDiagnostic> PinTypeDiagnostics;
+	TArray<FBlueprintGeneratorDiagnostic> ConnectionDiagnostics;
 	ResolveLocalVariableDeclarations(GraphJsonObject, ParsedLocalVariableDeclarations);
 
 	// 解析节点
@@ -2018,10 +2259,29 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateNodesAndLinksForGraph
 		}
 	}
 
+	int32 RequestedDefaultValueCount = 0;
+	int32 RequestedPinTypeCount = 0;
+	for (const FParsedLocalVariableDeclaration& Declaration : ParsedLocalVariableDeclarations)
+	{
+		if (Declaration.PinType.IsValid())
+		{
+			++RequestedPinTypeCount;
+		}
+	}
+	for (const FParsedNode& ParsedNode : ParsedNodes)
+	{
+		RequestedDefaultValueCount += ParsedNode.DefaultValues.Num();
+		RequestedPinTypeCount += CountRequestedPinTypes(ParsedNode);
+	}
+
 	if (ParsedNodes.Num() == 0)
 	{
 		Result.bSucceed = true;
 		Result.Message = TEXT("图表无节点数据，跳过。");
+		Result.RequestedDefaultValueCount = RequestedDefaultValueCount;
+		Result.RequestedPinTypeCount = RequestedPinTypeCount;
+		Result.ResolvedPinTypeCount = RequestedPinTypeCount;
+		Result.RequestedConnectionCount = ParsedLinks.Num();
 		return Result;
 	}
 
@@ -2037,6 +2297,15 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateNodesAndLinksForGraph
 		FString EnsureErrorMessage;
 		if (!EnsureLocalVariableExists(TargetGraph, Declaration, EnsureErrorMessage))
 		{
+			if (IsInvalidPinTypeFailure(EnsureErrorMessage))
+			{
+				PinTypeDiagnostics.Add(MakeGeneratorDiagnostic(
+					TEXT("invalid_pin_type"),
+					Declaration.Name,
+					Declaration.Name,
+					EnsureErrorMessage));
+			}
+
 			TSharedPtr<FUnresolvedNodeItem> UnresolvedItem = MakeShared<FUnresolvedNodeItem>();
 			UnresolvedItem->DisplayText = FString::Printf(TEXT("LocalVariable %s"), *Declaration.Name);
 			UnresolvedItem->Reason = EnsureErrorMessage;
@@ -2100,6 +2369,15 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateNodesAndLinksForGraph
 			IdToSpawnedNode.Add(ParsedNode.Id, SpawnedNode);
 			++GeneratedNodeCount;
 			continue;
+		}
+
+		if (IsInvalidPinTypeFailure(SpawnErrorMessage))
+		{
+			PinTypeDiagnostics.Add(MakeGeneratorDiagnostic(
+				TEXT("invalid_pin_type"),
+				ParsedNode.Id,
+				FindDiagnosticPinName(ParsedNode, SpawnErrorMessage),
+				SpawnErrorMessage));
 		}
 
 		TSharedPtr<FUnresolvedNodeItem> UnresolvedItem = MakeShared<FUnresolvedNodeItem>();
@@ -2177,22 +2455,93 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateNodesAndLinksForGraph
 		}
 	}
 
-	const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
-	int32 CreatedConnectionCount = 0;
-	for (const FParsedLink& ParsedLink : ParsedLinks)
+	int32 AppliedDefaultValueCount = 0;
+	for (const FParsedNode& ParsedNode : ParsedNodes)
 	{
-		if (!Schema || !IdToSpawnedNode.Contains(ParsedLink.FromId) || !IdToSpawnedNode.Contains(ParsedLink.ToId))
+		UK2Node** SpawnedNodePtr = IdToSpawnedNode.Find(ParsedNode.Id);
+		if (!SpawnedNodePtr || !*SpawnedNodePtr)
 		{
 			continue;
 		}
 
-		UK2Node* FromNode = IdToSpawnedNode[ParsedLink.FromId];
-		UK2Node* ToNode = IdToSpawnedNode[ParsedLink.ToId];
+		TArray<FBlueprintGeneratorDiagnostic> NodeDiagnostics = ApplyDefaultValues(*SpawnedNodePtr, ParsedNode.DefaultValues, ParsedNode.Id);
+		AppliedDefaultValueCount += FMath::Max(0, ParsedNode.DefaultValues.Num() - NodeDiagnostics.Num());
+		DefaultValueDiagnostics.Append(NodeDiagnostics);
+	}
+
+	const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
+	int32 CreatedConnectionCount = 0;
+	for (const FParsedLink& ParsedLink : ParsedLinks)
+	{
+		if (!Schema)
+		{
+			ConnectionDiagnostics.Add(MakeGeneratorDiagnostic(
+				TEXT("link_connection_rejected"),
+				ParsedLink.FromId,
+				ParsedLink.FromPin,
+				TEXT("连线创建失败：K2 Schema 无效。")));
+			continue;
+		}
+
+		UK2Node** FromNodePtr = IdToSpawnedNode.Find(ParsedLink.FromId);
+		UK2Node** ToNodePtr = IdToSpawnedNode.Find(ParsedLink.ToId);
+		if (!FromNodePtr || !*FromNodePtr)
+		{
+			ConnectionDiagnostics.Add(MakeGeneratorDiagnostic(
+				TEXT("link_node_not_found"),
+				ParsedLink.FromId,
+				ParsedLink.FromPin,
+				FString::Printf(TEXT("连线来源节点未找到：%s。"), *ParsedLink.FromId)));
+			continue;
+		}
+		if (!ToNodePtr || !*ToNodePtr)
+		{
+			ConnectionDiagnostics.Add(MakeGeneratorDiagnostic(
+				TEXT("link_node_not_found"),
+				ParsedLink.ToId,
+				ParsedLink.ToPin,
+				FString::Printf(TEXT("连线目标节点未找到：%s。"), *ParsedLink.ToId)));
+			continue;
+		}
+
+		UK2Node* FromNode = *FromNodePtr;
+		UK2Node* ToNode = *ToNodePtr;
 		UEdGraphPin* FromPin = FindPinByAlias(FromNode, ParsedLink.FromPin);
 		UEdGraphPin* ToPin = FindPinByAlias(ToNode, ParsedLink.ToPin);
-		if (FromPin && ToPin)
+		if (!FromPin)
 		{
-			CreatedConnectionCount += Schema->TryCreateConnection(FromPin, ToPin) ? 1 : 0;
+			ConnectionDiagnostics.Add(MakeGeneratorDiagnostic(
+				TEXT("link_pin_not_found"),
+				ParsedLink.FromId,
+				ParsedLink.FromPin,
+				FString::Printf(TEXT("连线来源引脚未找到：%s.%s。"), *ParsedLink.FromId, *ParsedLink.FromPin)));
+			continue;
+		}
+		if (!ToPin)
+		{
+			ConnectionDiagnostics.Add(MakeGeneratorDiagnostic(
+				TEXT("link_pin_not_found"),
+				ParsedLink.ToId,
+				ParsedLink.ToPin,
+				FString::Printf(TEXT("连线目标引脚未找到：%s.%s。"), *ParsedLink.ToId, *ParsedLink.ToPin)));
+			continue;
+		}
+
+		const FPinConnectionResponse ConnectionResponse = Schema->CanCreateConnection(FromPin, ToPin);
+		if (Schema->TryCreateConnection(FromPin, ToPin))
+		{
+			++CreatedConnectionCount;
+		}
+		else
+		{
+			ConnectionDiagnostics.Add(MakeGeneratorDiagnostic(
+				TEXT("link_connection_rejected"),
+				ParsedLink.FromId,
+				ParsedLink.FromPin,
+				ConnectionResponse.Message.IsEmpty()
+					? FString::Printf(TEXT("Schema 拒绝连线：%s.%s -> %s.%s。"),
+						*ParsedLink.FromId, *ParsedLink.FromPin, *ParsedLink.ToId, *ParsedLink.ToPin)
+					: ConnectionResponse.Message.ToString()));
 		}
 	}
 
@@ -2200,6 +2549,15 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateNodesAndLinksForGraph
 
 	Result.bSucceed = GeneratedNodeCount > 0 || CreatedConnectionCount > 0;
 	Result.GeneratedNodeCount = GeneratedNodeCount;
+	Result.RequestedDefaultValueCount = RequestedDefaultValueCount;
+	Result.AppliedDefaultValueCount = AppliedDefaultValueCount;
+	Result.DefaultValueDiagnostics = MoveTemp(DefaultValueDiagnostics);
+	Result.RequestedPinTypeCount = RequestedPinTypeCount;
+	Result.ResolvedPinTypeCount = FMath::Max(0, RequestedPinTypeCount - PinTypeDiagnostics.Num());
+	Result.PinTypeDiagnostics = MoveTemp(PinTypeDiagnostics);
+	Result.RequestedConnectionCount = ParsedLinks.Num();
+	Result.CreatedConnectionCount = CreatedConnectionCount;
+	Result.ConnectionDiagnostics = MoveTemp(ConnectionDiagnostics);
 	Result.UnresolvedNodeCount = OutUnresolvedNodes.Num();
 	if (Result.bSucceed)
 	{
@@ -2281,6 +2639,12 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateMultiGraphFromJson(
 
 	// === 多图模式（graphs 数组） ===
 	int32 TotalGenerated = 0;
+	int32 TotalRequestedDefaultValues = 0;
+	int32 TotalAppliedDefaultValues = 0;
+	int32 TotalRequestedPinTypes = 0;
+	int32 TotalResolvedPinTypes = 0;
+	int32 TotalRequestedConnections = 0;
+	int32 TotalCreatedConnections = 0;
 	const TArray<TSharedPtr<FJsonValue>>* GraphsArray = nullptr;
 	if (JsonObject->TryGetArrayField(TEXT("graphs"), GraphsArray) && GraphsArray && GraphsArray->Num() > 0)
 	{
@@ -2311,6 +2675,15 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateMultiGraphFromJson(
 
 			FBlueprintGenerateResult GraphResult = GenerateNodesAndLinksForGraph(TargetGraph, GraphObject, OutUnresolvedNodes);
 			TotalGenerated += GraphResult.GeneratedNodeCount;
+			TotalRequestedDefaultValues += GraphResult.RequestedDefaultValueCount;
+			TotalAppliedDefaultValues += GraphResult.AppliedDefaultValueCount;
+			Result.DefaultValueDiagnostics.Append(GraphResult.DefaultValueDiagnostics);
+			TotalRequestedPinTypes += GraphResult.RequestedPinTypeCount;
+			TotalResolvedPinTypes += GraphResult.ResolvedPinTypeCount;
+			Result.PinTypeDiagnostics.Append(GraphResult.PinTypeDiagnostics);
+			TotalRequestedConnections += GraphResult.RequestedConnectionCount;
+			TotalCreatedConnections += GraphResult.CreatedConnectionCount;
+			Result.ConnectionDiagnostics.Append(GraphResult.ConnectionDiagnostics);
 		}
 	}
 	else if (JsonObject->HasField(TEXT("nodes")))
@@ -2325,10 +2698,25 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateMultiGraphFromJson(
 
 		FBlueprintGenerateResult GraphResult = GenerateNodesAndLinksForGraph(DefaultGraph, JsonObject, OutUnresolvedNodes);
 		TotalGenerated = GraphResult.GeneratedNodeCount;
+		TotalRequestedDefaultValues = GraphResult.RequestedDefaultValueCount;
+		TotalAppliedDefaultValues = GraphResult.AppliedDefaultValueCount;
+		Result.DefaultValueDiagnostics = MoveTemp(GraphResult.DefaultValueDiagnostics);
+		TotalRequestedPinTypes = GraphResult.RequestedPinTypeCount;
+		TotalResolvedPinTypes = GraphResult.ResolvedPinTypeCount;
+		Result.PinTypeDiagnostics = MoveTemp(GraphResult.PinTypeDiagnostics);
+		TotalRequestedConnections = GraphResult.RequestedConnectionCount;
+		TotalCreatedConnections = GraphResult.CreatedConnectionCount;
+		Result.ConnectionDiagnostics = MoveTemp(GraphResult.ConnectionDiagnostics);
 	}
 
 	Result.bSucceed = TotalGenerated > 0;
 	Result.GeneratedNodeCount = TotalGenerated;
+	Result.RequestedDefaultValueCount = TotalRequestedDefaultValues;
+	Result.AppliedDefaultValueCount = TotalAppliedDefaultValues;
+	Result.RequestedPinTypeCount = TotalRequestedPinTypes;
+	Result.ResolvedPinTypeCount = TotalResolvedPinTypes;
+	Result.RequestedConnectionCount = TotalRequestedConnections;
+	Result.CreatedConnectionCount = TotalCreatedConnections;
 	Result.UnresolvedNodeCount = OutUnresolvedNodes.Num();
 	if (Result.bSucceed)
 	{
@@ -2496,8 +2884,8 @@ UK2Node* TextToBlueprintGenerator::SpawnMacroNode(UEdGraph* TargetGraph, const F
 	MacroNode->NodePosX = static_cast<int32>(NodeData.X);
 	MacroNode->NodePosY = static_cast<int32>(NodeData.Y);
 	MacroNode->AllocateDefaultPins();
-	ApplyDefaultValues(MacroNode, NodeData.DefaultValues);
 	TargetGraph->GetSchema()->ReconstructNode(*MacroNode);
+	ApplyDefaultValues(MacroNode, NodeData.DefaultValues, NodeData.Id);
 	return MacroNode;
 }
 
@@ -2516,23 +2904,55 @@ UK2Node_CallFunction* TextToBlueprintGenerator::SpawnFunctionNode(UEdGraph* Targ
 	CallFunctionNode->NodePosX = static_cast<int32>(NodeData.X);
 	CallFunctionNode->NodePosY = static_cast<int32>(NodeData.Y);
 	CallFunctionNode->AllocateDefaultPins();
-	ApplyDefaultValues(CallFunctionNode, NodeData.DefaultValues);
 	TargetGraph->GetSchema()->ReconstructNode(*CallFunctionNode);
+	ApplyDefaultValues(CallFunctionNode, NodeData.DefaultValues, NodeData.Id);
 	return CallFunctionNode;
 }
 
-void TextToBlueprintGenerator::ApplyDefaultValues(UK2Node* TargetNode, const TMap<FString, FString>& DefaultValues)
+TArray<FBlueprintGeneratorDiagnostic> TextToBlueprintGenerator::ApplyDefaultValues(
+	UK2Node* TargetNode,
+	const TMap<FString, FString>& DefaultValues,
+	const FString& NodeId)
 {
+	TArray<FBlueprintGeneratorDiagnostic> Diagnostics;
 	if (!TargetNode)
 	{
-		return;
+		for (const auto& Pair : DefaultValues)
+		{
+			Diagnostics.Add(MakeGeneratorDiagnostic(
+				TEXT("default_pin_not_found"),
+				NodeId,
+				Pair.Key,
+				FString::Printf(TEXT("默认值 '%s' 无法应用：目标节点无效。"), *Pair.Key)));
+		}
+		return Diagnostics;
 	}
 
 	for (const auto& Pair : DefaultValues)
 	{
-		if (UEdGraphPin* Pin = FindPinByAlias(TargetNode, Pair.Key))
+		UEdGraphPin* Pin = FindPinByAlias(TargetNode, Pair.Key);
+		if (!Pin)
 		{
-			ApplyPinDefaultValue(Pin, Pair.Value);
+			Diagnostics.Add(MakeGeneratorDiagnostic(
+				TEXT("default_pin_not_found"),
+				NodeId,
+				Pair.Key,
+				FString::Printf(TEXT("默认值引脚未找到：%s。"), *Pair.Key)));
+			continue;
+		}
+
+		FString DiagnosticCode;
+		FString DiagnosticMessage;
+		if (!ApplyPinDefaultValue(Pin, Pair.Value, DiagnosticCode, DiagnosticMessage))
+		{
+			Diagnostics.Add(MakeGeneratorDiagnostic(
+				DiagnosticCode.IsEmpty() ? TEXT("default_value_rejected") : DiagnosticCode,
+				NodeId,
+				Pair.Key,
+				DiagnosticMessage.IsEmpty()
+					? FString::Printf(TEXT("默认值被拒绝：%s。"), *Pair.Value)
+					: DiagnosticMessage));
 		}
 	}
+	return Diagnostics;
 }

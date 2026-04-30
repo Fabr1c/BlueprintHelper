@@ -6,6 +6,7 @@
 #include "Bridge/BlueprintHelperBridgeTypes.h"
 
 class FBlueprintHelperImportService;
+class FBlueprintHelperAgentImportService;
 class FBlueprintHelperExportService;
 class FBlueprintHelperCompileService;
 class FBlueprintHelperValidationService;
@@ -26,6 +27,7 @@ class BLUEPRINTHELPER_API FBlueprintHelperBridgeRouter
 public:
 	FBlueprintHelperBridgeRouter(
 		const FBlueprintHelperImportService& InImport,
+		const FBlueprintHelperAgentImportService& InAgentImport,
 		const FBlueprintHelperExportService& InExport,
 		const FBlueprintHelperCompileService& InCompile,
 		const FBlueprintHelperValidationService& InValidation,
@@ -45,7 +47,9 @@ private:
 	FBlueprintHelperBridgeResponse HandleGetEditorContext(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleValidateJson(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleExportToJson(const FBlueprintHelperBridgeRequest& Req) const;
+	FBlueprintHelperBridgeResponse HandleExportLogic(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleImportJson(const FBlueprintHelperBridgeRequest& Req) const;
+	FBlueprintHelperBridgeResponse HandleImportAgentGraph(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleCompileBlueprint(const FBlueprintHelperBridgeRequest& Req) const;
 
 	// ─── Phase 4: 资产浏览 ───
@@ -92,6 +96,7 @@ private:
 	FBlueprintHelperBridgeResponse HandleCloseEditor(const FBlueprintHelperBridgeRequest& Req) const;
 
 	const FBlueprintHelperImportService& ImportService;
+	const FBlueprintHelperAgentImportService& AgentImportService;
 	const FBlueprintHelperExportService& ExportService;
 	const FBlueprintHelperCompileService& CompileService;
 	const FBlueprintHelperValidationService& ValidationService;

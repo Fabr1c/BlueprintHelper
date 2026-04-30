@@ -16,21 +16,25 @@ TOptional<FBlueprintHelperBridgeRequest> FBlueprintHelperBridgeProtocol::ParseRe
 	}
 
 	FBlueprintHelperBridgeRequest Req;
-	Req.RequestId = Root->GetStringField(TEXT("request_id"));
-	Req.Command = Root->GetStringField(TEXT("command"));
+	Root->TryGetStringField(TEXT("request_id"), Req.RequestId);
+	if (!Root->TryGetStringField(TEXT("command"), Req.Command) || Req.Command.IsEmpty())
+	{
+		return {};
+	}
+	Root->TryGetStringField(TEXT("auth_token"), Req.AuthToken);
 
 	if (Root->HasField(TEXT("payload")))
 	{
-		Req.Payload = Root->GetObjectField(TEXT("payload"));
+		const TSharedPtr<FJsonObject>* PayloadObject = nullptr;
+		if (!Root->TryGetObjectField(TEXT("payload"), PayloadObject) || !PayloadObject || !PayloadObject->IsValid())
+		{
+			return {};
+		}
+		Req.Payload = *PayloadObject;
 	}
 	else
 	{
 		Req.Payload = MakeShared<FJsonObject>();
-	}
-
-	if (Req.Command.IsEmpty())
-	{
-		return {};
 	}
 
 	return Req;

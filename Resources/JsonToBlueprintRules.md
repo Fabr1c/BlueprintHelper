@@ -4,7 +4,8 @@
 该规则用于约束外部大模型输出 **BlueprintHelper 可直接解析的 JSON**，再由插件在当前蓝图图表中生成节点。
 
 当前版本支持以下闭环：
-- Blueprint -> JSON（完整蓝图导出，含多图表、变量、函数签名）
+- Blueprint -> raw JSON（完整蓝图导出，含多图表、变量、函数签名，可用于导入回放）
+- Blueprint -> logic Markdown / logic JSON（只读逻辑理解输出，不用于导入）
 - JSON -> Blueprint（多图表导入，含 blueprint_operations + graphs 数组）
 - JSON -> `UK2Node_CallFunction`
 - JSON -> `K2Node_VariableGet / K2Node_VariableSet`
@@ -1584,6 +1585,13 @@ UE5 的数学运算符节点（加减乘除、比较等），通过 `function_na
 
 > **v2.9 新增**：导出的每个节点现在包含 `node_guid` 字段（32 位十六进制 GUID），可在增量导入的 `existing_node_refs` 中精确引用。
 
+### MCP 导出工具边界
+
+- `blueprint_export_to_json` 调用 raw JSON 导出，返回符合本规则的 BlueprintHelper JSON，可保存、修改后通过 `blueprint_import_json_to_graph` 写回或回放。
+- `blueprint_get_logic` 调用 `export_logic` 且使用 `format=logic_md`，返回面向 Agent 阅读的 Markdown 逻辑摘要，只用于理解、审查和规划。
+- `blueprint_get_logic_json` 调用 `export_logic` 且使用 `format=logic_json`，返回结构化逻辑信息，只用于分析；它不是本规则定义的导入 JSON。
+- 不得将 logic Markdown 或 logic JSON 直接传给 `blueprint_import_json_to_graph`。如需写回蓝图，必须生成或使用符合本规则的 raw JSON。
+
 ---
 
 ## 增量导入 — 引用已有节点（v2.9）
@@ -1632,6 +1640,7 @@ UE5 的数学运算符节点（加减乘除、比较等），通过 `function_na
 - **v2.9 Enhanced Input / 数学运算 / 流程控制**：新增 `K2Node_EnhancedInputAction`、`K2Node_PromotableOperator`、`K2Node_CommutativeAssociativeBinaryOperator`、`K2Node_SwitchInteger` / `SwitchString` / `SwitchName` / `SwitchEnum`、`K2Node_Select`。增量导入支持（`existing_node_refs`、`node_guid`）、虚拟节点容错、ReconstructNode 时序修正。
 - **v2.10 DynamicCast 引脚别名修复**：`valid`、`invalid`、`cast_result`、`success` 等别名现在正确映射到 DynamicCast 的实际引脚。
 - **v2.10 编辑器生命周期工具**：新增 `blueprint_close_editor`（关闭编辑器）、`blueprint_build_project`（编译项目）、`blueprint_open_editor`（启动编辑器并等待 Bridge 可用）。用于替代 LiveCoding，避免热编译导致的重复类问题。
+- **AgentImportGraph 语义导入**：`blueprint_import_agent_graph` 接收 `BlueprintHelper.AgentImportGraph` 对象，用于 Agent 以 `event`、`call`、`get`、`set`、`branch` 等高层节点表达新增蓝图逻辑。该协议不是 raw JSON 回放格式，不得传给 `blueprint_import_json_to_graph`。
 - **v2.0 蓝图级操作**：支持 `add_member_variable`、`add_function_graph`、`add_event_dispatcher` 三种 blueprint_operations。
 - **v2.1 蓝图级操作扩展**：新增 `add_macro_graph`、`remove_graph`、`remove_member_variable`。
 - **v2.1 多图表导入**：`graphs` 数组支持向不同图表（EventGraph / 函数 / 宏）分别生成节点和连线。
