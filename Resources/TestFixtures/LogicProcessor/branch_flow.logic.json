@@ -1,0 +1,73 @@
+{
+  "version": "1.0",
+  "schema": "BlueprintHelper.LogicGraph",
+  "source_schema": "BlueprintHelper.JsonToBlueprint",
+  "stats": {
+    "nodes": 4,
+    "exec_links": 3,
+    "data_links": 0,
+    "entry_points": 1,
+    "orphans": 0
+  },
+  "graphs": [
+    {
+      "name": "Graph",
+      "stats": {
+        "nodes": 4,
+        "exec_links": 3,
+        "data_links": 0,
+        "entry_points": 1,
+        "orphans": 0
+      },
+      "nodes": [
+        {
+          "ref": "ReceiveTick",
+          "category": "event"
+        },
+        {
+          "ref": "Branch",
+          "category": "branch"
+        },
+        {
+          "ref": "Print True",
+          "category": "call"
+        },
+        {
+          "ref": "Print False",
+          "category": "call"
+        }
+      ],
+      "entry_points": [
+        "ReceiveTick"
+      ],
+      "exec_flow": [
+        {
+          "from": "ReceiveTick",
+          "from_pin": "then",
+          "to": "Branch",
+          "to_pin": "execute",
+          "kind": "exec",
+          "confidence": "explicit"
+        },
+        {
+          "from": "Branch",
+          "from_pin": "true",
+          "to": "Print True",
+          "to_pin": "execute",
+          "kind": "exec",
+          "confidence": "explicit"
+        },
+        {
+          "from": "Branch",
+          "from_pin": "false",
+          "to": "Print False",
+          "to_pin": "execute",
+          "kind": "exec",
+          "confidence": "explicit"
+        }
+      ],
+      "data_dependencies": [],
+      "orphans": []
+    }
+  ]
+}

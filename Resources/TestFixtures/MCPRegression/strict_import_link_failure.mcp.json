@@ -1,0 +1,52 @@
+{
+  "case": "strict_import_link_failure",
+  "tool": "blueprint_import_json_to_graph",
+  "description": "Explicit strict import with a bad link endpoint should fail and roll back.",
+  "mcp_args": {
+    "target_blueprint": "/Game/BP/BP_Player.BP_Player",
+    "target_graph": "EventGraph",
+    "compile_after_import": false,
+    "strict": true,
+    "allow_partial": false
+  },
+  "blueprint_json": {
+    "version": "2.2",
+    "schema": "BlueprintHelper.JsonToBlueprint",
+    "nodes": [
+      {
+        "id": "Node_BeginPlay",
+        "type": "K2Node_Event",
+        "name": "ReceiveBeginPlay",
+        "inputs": {}
+      },
+      {
+        "id": "Node_PrintString",
+        "type": "K2Node_CallFunction",
+        "name": "PrintString",
+        "inputs": {
+          "InString": "Strict failure fixture"
+        }
+      }
+    ],
+    "links": [
+      {
+        "from_id": "Node_BeginPlay",
+        "from_pin": "then",
+        "to_id": "Node_PrintString",
+        "to_pin": "not_a_pin",
+        "kind": "exec"
+      }
+    ]
+  },
+  "expected_bridge_command": "import_json",
+  "expected_result_fields": [
+    "status",
+    "operations_applied",
+    "nodes_created",
+    "links_connected",
+    "warnings",
+    "errors",
+    "rolled_back"
+  ],
+  "expected_behavior": "status is failed and rolled_back is true"
+}

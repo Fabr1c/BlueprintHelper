@@ -1,0 +1,57 @@
+{
+  "schema": "BlueprintHelper.AgentImportGraph",
+  "version": "1.0",
+  "target_blueprint": "/Game/BP/BP_Player.BP_Player",
+  "target_graph": "EventGraph",
+  "mode": "append",
+  "layout": "auto",
+  "nodes": [
+    {
+      "id": "begin_play",
+      "kind": "event",
+      "event": "ReceiveBeginPlay"
+    },
+    {
+      "id": "branch_alive",
+      "kind": "branch"
+    },
+    {
+      "id": "print_true",
+      "kind": "call",
+      "function": "PrintString",
+      "inputs": {
+        "InString": "True branch"
+      }
+    },
+    {
+      "id": "print_false",
+      "kind": "call",
+      "function": "PrintString",
+      "inputs": {
+        "InString": "False branch"
+      }
+    }
+  ],
+  "links": [
+    {
+      "kind": "exec",
+      "from": "begin_play.then",
+      "to": "branch_alive.execute"
+    },
+    {
+      "kind": "exec",
+      "from": "branch_alive.true",
+      "to": "print_true.execute"
+    },
+    {
+      "kind": "exec",
+      "from": "branch_alive.false",
+      "to": "print_false.execute"
+    }
+  ],
+  "options": {
+    "compile": true,
+    "save": false
+  }
+}
+

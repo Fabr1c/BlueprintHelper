@@ -1,0 +1,17 @@
+{
+  "case": "legacy_full_blueprint_scope",
+  "tool": "blueprint_export_to_json",
+  "description": "Legacy full_blueprint remains accepted by the MCP schema and is expected to resolve to blueprint scope in Bridge results.",
+  "mcp_args": {
+    "target_blueprint": "/Game/BP/BP_Player.BP_Player",
+    "scope": "full_blueprint"
+  },
+  "expected_bridge_command": "export_to_json",
+  "expected_bridge_payload": {
+    "target_blueprint": "/Game/BP/BP_Player.BP_Player",
+    "scope": "full_blueprint"
+  },
+  "expected_result_fields": {
+    "effective_scope": "blueprint"
+  }
+}

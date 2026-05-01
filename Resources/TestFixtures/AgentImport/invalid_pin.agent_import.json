@@ -1,0 +1,35 @@
+{
+  "schema": "BlueprintHelper.AgentImportGraph",
+  "version": "1.0",
+  "target_blueprint": "/Game/BP/BP_Player.BP_Player",
+  "target_graph": "EventGraph",
+  "mode": "append",
+  "layout": "auto",
+  "nodes": [
+    {
+      "id": "begin_play",
+      "kind": "event",
+      "event": "ReceiveBeginPlay"
+    },
+    {
+      "id": "print_hello",
+      "kind": "call",
+      "function": "PrintString",
+      "inputs": {
+        "InString": "Hello"
+      }
+    }
+  ],
+  "links": [
+    {
+      "kind": "exec",
+      "from": "begin_play.then",
+      "to": "print_hello.not_a_pin"
+    }
+  ],
+  "options": {
+    "compile": false,
+    "save": false
+  }
+}
+
