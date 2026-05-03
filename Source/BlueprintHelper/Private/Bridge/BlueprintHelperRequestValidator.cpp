@@ -623,6 +623,20 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 		};
 		return ValidateRules(Payload, Rules, OutError);
 	}
+	if (CommandEquals(Command, TEXT("convert_blueprint_helper_block_to_user_owned")))
+	{
+		const FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("ownership_scope"), EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("graph"), EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("block_id"), EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("graph_id"), EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("block_ref"), EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("already_user_owned_policy"), EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("dry_run"), EBlueprintHelperJsonExpectedType::Bool, false},
+		};
+		return ValidateRules(Payload, Rules, OutError);
+	}
 	return true;
 }
 
@@ -706,6 +720,7 @@ TEXT("create_blueprint"),
 	TEXT("merge_blueprint_graph"),
 	TEXT("cleanup_blueprint_helper_block"),
 	TEXT("rollback_cleanup_transaction"),
+	TEXT("convert_blueprint_helper_block_to_user_owned"),
 	};
 
 	return WriteCommands.Contains(Command.ToLower());
