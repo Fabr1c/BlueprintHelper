@@ -91,3 +91,53 @@ TSharedRef<FJsonObject> FBlueprintHelperRemoveMemberVariablesResultData::ToJson(
 	J->SetObjectField(TEXT("remove_result"), RemoveResult.ToJson());
 	return J;
 }
+
+TSharedRef<FJsonObject> FBlueprintHelperReadLocalVariablesResultData::ToJson() const
+{
+	TSharedRef<FJsonObject> J = MakeShared<FJsonObject>();
+	J->SetStringField(TEXT("schema"), Schema);
+	J->SetStringField(TEXT("function_name"), FunctionName);
+	TArray<TSharedPtr<FJsonValue>> A; for (const auto& V : LocalVariables) A.Add(MakeShared<FJsonValueObject>(V.ToJson()));
+	J->SetArrayField(TEXT("local_variables"), A);
+	return J;
+}
+
+TSharedRef<FJsonObject> FBlueprintHelperAddLocalVariableResultData::ToJson() const
+{
+	TSharedRef<FJsonObject> J = MakeShared<FJsonObject>();
+	J->SetStringField(TEXT("schema"), Schema);
+	J->SetObjectField(TEXT("add_result"), AddResult.ToJson());
+	return J;
+}
+
+TSharedRef<FJsonObject> FBlueprintHelperAddLocalVariablesResultData::ToJson() const
+{
+	TSharedRef<FJsonObject> J = MakeShared<FJsonObject>();
+	J->SetStringField(TEXT("schema"), Schema);
+	J->SetObjectField(TEXT("add_result"), AddResult.ToJson());
+	return J;
+}
+
+TSharedRef<FJsonObject> FBlueprintHelperSetLocalVariablePropertiesResultData::ToJson() const
+{
+	TSharedRef<FJsonObject> J = MakeShared<FJsonObject>();
+	J->SetStringField(TEXT("schema"), Schema);
+	J->SetObjectField(TEXT("properties_result"), PropertiesResult.ToJson());
+	return J;
+}
+
+TSharedRef<FJsonObject> FBlueprintHelperRemoveLocalVariableResultData::ToJson() const
+{
+	TSharedRef<FJsonObject> J = MakeShared<FJsonObject>();
+	J->SetStringField(TEXT("schema"), Schema);
+	J->SetObjectField(TEXT("remove_result"), RemoveResult.ToJson());
+	return J;
+}
+
+TSharedRef<FJsonObject> FBlueprintHelperRemoveLocalVariablesResultData::ToJson() const
+{
+	TSharedRef<FJsonObject> J = MakeShared<FJsonObject>();
+	J->SetStringField(TEXT("schema"), Schema);
+	J->SetObjectField(TEXT("remove_result"), RemoveResult.ToJson());
+	return J;
+}

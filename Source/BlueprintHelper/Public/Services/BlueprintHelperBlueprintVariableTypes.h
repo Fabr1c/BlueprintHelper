@@ -198,3 +198,78 @@ struct FBlueprintHelperRemoveMemberVariablesResultData
 
 	TSharedRef<FJsonObject> ToJson() const;
 };
+
+// ─── LocalVariable ───
+
+struct FBlueprintHelperLocalVariableItem
+{
+	FString VariableName;
+	FBlueprintHelperVariableType VariableType;
+	TOptional<FString> DefaultValue;
+
+	TSharedRef<FJsonObject> ToJson() const
+	{
+		TSharedRef<FJsonObject> J = MakeShared<FJsonObject>();
+		J->SetStringField(TEXT("variable_name"), VariableName);
+		J->SetObjectField(TEXT("variable_type"), VariableType.ToJson());
+		if (DefaultValue.IsSet()) J->SetStringField(TEXT("default_value"), *DefaultValue);
+		return J;
+	}
+};
+
+// ─── ReadLocalVariables ───
+
+struct FBlueprintHelperReadLocalVariablesResultData
+{
+	FString Schema = TEXT("ReadLocalVariables.v1");
+	FString FunctionName;
+	TArray<FBlueprintHelperLocalVariableItem> LocalVariables;
+
+	TSharedRef<FJsonObject> ToJson() const;
+};
+
+// ─── AddLocalVariable ───
+
+struct FBlueprintHelperAddLocalVariableResultData
+{
+	FString Schema = TEXT("AddLocalVariable.v1");
+	FBlueprintHelperVariableSingleResult AddResult;
+
+	TSharedRef<FJsonObject> ToJson() const;
+};
+
+struct FBlueprintHelperAddLocalVariablesResultData
+{
+	FString Schema = TEXT("AddLocalVariables.v1");
+	FBlueprintHelperVariableBatchResult AddResult;
+
+	TSharedRef<FJsonObject> ToJson() const;
+};
+
+// ─── SetLocalVariableProperties ───
+
+struct FBlueprintHelperSetLocalVariablePropertiesResultData
+{
+	FString Schema = TEXT("SetLocalVariableProperties.v1");
+	FBlueprintHelperVariableBatchResult PropertiesResult;
+
+	TSharedRef<FJsonObject> ToJson() const;
+};
+
+// ─── RemoveLocalVariable ───
+
+struct FBlueprintHelperRemoveLocalVariableResultData
+{
+	FString Schema = TEXT("RemoveLocalVariable.v1");
+	FBlueprintHelperVariableSingleResult RemoveResult;
+
+	TSharedRef<FJsonObject> ToJson() const;
+};
+
+struct FBlueprintHelperRemoveLocalVariablesResultData
+{
+	FString Schema = TEXT("RemoveLocalVariables.v1");
+	FBlueprintHelperVariableBatchResult RemoveResult;
+
+	TSharedRef<FJsonObject> ToJson() const;
+};

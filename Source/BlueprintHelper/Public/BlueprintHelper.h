@@ -38,6 +38,7 @@ class FBlueprintHelperRollbackCleanupTransactionService;
 class FBlueprintHelperConvertBlockToUserOwnedService;
 class FBlueprintHelperCompileAssetService;
 class FBlueprintHelperTransactionQueryService;
+class FBlueprintHelperBlueprintVariableService;
 class FBlueprintHelperBlockIdService;
 class FBlueprintHelperOwnershipService;
 class FBlueprintHelperTransactionJournalService;
@@ -155,6 +156,7 @@ private:
 	TUniquePtr<FBlueprintHelperConvertBlockToUserOwnedService> ConvertBlockService;
 	TUniquePtr<FBlueprintHelperCompileAssetService> CompileAssetService;
 	TUniquePtr<FBlueprintHelperTransactionQueryService> TransactionQueryService;
+	TUniquePtr<FBlueprintHelperBlueprintVariableService> VariableService;
 
 	// ─── Bridge Layer ───
 	TUniquePtr<FBlueprintHelperContextService> ContextService;
