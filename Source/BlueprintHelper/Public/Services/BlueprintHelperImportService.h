@@ -29,6 +29,9 @@ private:
 	/** 判断 JSON 是否需要走多图路径（有 graphs 数组或 blueprint_operations）。 */
 	bool NeedsMultiGraphPath(const FString& JsonText) const;
 
+	/** 解析 ImportRequest 中的 JsonText。优先使用 JsonText，若为空则从 JsonObject 序列化。 */
+	FString ResolveImportJsonText(const FBlueprintHelperImportRequest& Request, FBlueprintHelperImportResult& Result) const;
+
 	const FBlueprintHelperGraphResolver& Resolver;
 	const FBlueprintHelperValidationService& Validator;
 	const FBlueprintHelperCompileService* CompileService = nullptr;

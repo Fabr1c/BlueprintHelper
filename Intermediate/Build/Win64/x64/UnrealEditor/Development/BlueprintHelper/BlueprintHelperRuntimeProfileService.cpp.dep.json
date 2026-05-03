@@ -1,0 +1,25 @@
+{
+    "Version": "1.2",
+    "Data": {
+        "Source": "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\private\\services\\blueprinthelperruntimeprofileservice.cpp",
+        "ProvidedModule": "",
+        "PCH": "g:\\unrealpractise\\mrstone\\intermediate\\build\\win64\\x64\\mrstoneeditor\\development\\unrealed\\sharedpch.unrealed.project.valapi.valexpapi.cpp20.h.pch",
+        "Includes": [
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\intermediate\\build\\win64\\x64\\unrealeditor\\development\\blueprinthelper\\definitions.blueprinthelper.h",
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\services\\blueprinthelperruntimeprofileservice.h",
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\services\\blueprinthelperruntimeprofiletypes.h",
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\services\\blueprinthelpertoolresulttypes.h",
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\services\\blueprinthelperservicetypes.h",
+            "f:\\ue_5.6\\engine\\source\\runtime\\projects\\public\\interfaces\\ipluginmanager.h",
+            "f:\\ue_5.6\\engine\\source\\runtime\\projects\\public\\plugindescriptor.h",
+            "f:\\ue_5.6\\engine\\source\\runtime\\projects\\public\\custombuildsteps.h",
+            "f:\\ue_5.6\\engine\\source\\runtime\\projects\\public\\localizationdescriptor.h",
+            "f:\\ue_5.6\\engine\\source\\runtime\\projects\\public\\moduledescriptor.h",
+            "f:\\ue_5.6\\engine\\source\\runtime\\projects\\public\\plugindisalloweddescriptor.h",
+            "f:\\ue_5.6\\engine\\source\\runtime\\projects\\public\\pluginreferencedescriptor.h",
+            "f:\\ue_5.6\\engine\\source\\runtime\\projects\\public\\versescope.h"
+        ],
+        "ImportedModules": [],
+        "ImportedHeaderUnits": []
+    }
+}

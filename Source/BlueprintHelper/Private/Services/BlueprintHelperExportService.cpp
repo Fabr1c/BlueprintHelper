@@ -33,8 +33,8 @@ FBlueprintHelperExportResult FBlueprintHelperExportService::Export(const FBluepr
 			return Result;
 		}
 
-		Result.JsonText = FBlueprintToTextConverter::ExportBlueprintToJson(Blueprint);
-		Result.bSuccess = !Result.JsonText.IsEmpty();
+		Result.JsonObject = FBlueprintToTextConverter::ExportBlueprintToJsonObject(Blueprint);
+		Result.bSuccess = Result.JsonObject.IsValid() && Result.JsonObject->Values.Num() > 0;
 		if (!Result.bSuccess)
 		{
 			Result.Diagnostics.Add(EBlueprintHelperDiagnosticSeverity::Error, TEXT("蓝图导出 JSON 失败。"));
@@ -54,12 +54,17 @@ FBlueprintHelperExportResult FBlueprintHelperExportService::Export(const FBluepr
 			return Result;
 		}
 
-		Result.JsonText = FBlueprintToTextConverter::ConvertGraphToJson(Graph);
-		Result.bSuccess = !Result.JsonText.IsEmpty();
+		Result.JsonObject = FBlueprintToTextConverter::ConvertGraphToJsonObject(Graph);
+		Result.bSuccess = Result.JsonObject.IsValid() && Result.JsonObject->Values.Num() > 0;
 		if (!Result.bSuccess)
 		{
 			Result.Diagnostics.Add(EBlueprintHelperDiagnosticSeverity::Error, TEXT("图表导出 JSON 失败。"));
 		}
+	}
+
+	if (Result.bSuccess && Request.bIncludeJsonText)
+	{
+		Result.JsonText = FBlueprintToTextConverter::SerializeJsonObject(Result.JsonObject);
 	}
 
 	return Result;

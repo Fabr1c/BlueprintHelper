@@ -17,6 +17,8 @@ BlueprintHelper MCP 的能力可以按功能域理解，而不是按单个工具
 
 注意：`open_editor` 和 `build_project` 属于 MCP Server 本地进程能力，不是 UE Bridge 命令。调用它们前必须确认环境变量已配置。
 
+**强制要求：** `UE_ENGINE_DIR` 和 `UE_PROJECT_FILE` 必须使用**绝对路径**（如 `F:/UE_5.6` 和 `G:/UnrealPractise/MrStone/MrStone.uproject`）。不支持相对路径。MCP Server v0.4.0+ 会自动展开 `${workspaceFolder}` 等模板变量，但最终值必须是绝对路径。
+
 ## 3. 资产浏览与资产信息
 
 用途：查找、打开、保存、获取资产元信息。
@@ -63,6 +65,25 @@ search asset -> inspect asset info -> open asset if needed -> perform specific o
 | `raw_json` | 导入、回放、精确节点/Pin/GUID 操作 | 否，仅精修时用 |
 
 原则：读逻辑用 logic；准备精确写回或兼容导入时才用 raw。
+
+### Bridge 响应格式 (v2.2+)
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `payload` | object | 结构化 RawJson 对象（主要字段，可直接使用） |
+| `json` | object | 兼容性别名，与 payload 内容相同，同为对象 |
+| `json_text` | string | 仅在请求 `include_json_text: true` 时出现的序列化字符串（兼容旧消费者） |
+| `format` | string | `"raw_json"` |
+| `schema` | string | `"BlueprintHelper.JsonToBlueprint.v2.2"` |
+| `importable` | boolean | 对于 RawJson 始终为 `true`；对于 LogicJson/LogicMD 始终为 `false` |
+| `stats` | object | `{ nodes: N, links: M }` 统计信息 |
+| `diagnostics` | array | 诊断消息数组 |
+
+### 旧消费者迁移
+
+- **旧：** `JSON.parse(result.json)`
+- **新：** `result.payload ?? result.json`
+- **兼容模式：** 请求 `include_json_text: true` 或使用 MCP `legacy_text_json` 模式
 
 ## 6. UMG Widget 能力
 

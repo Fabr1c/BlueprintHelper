@@ -82,6 +82,8 @@ read target graph logic_json/raw_json
 
 只有使用兼容 JsonToBlueprint 的 raw JSON 时才导入。
 
+`blueprint_import_json_to_graph` 现在同时接受结构化 RawJson **对象**和**字符串**形式。建议直接传入对象以简化调用。
+
 流程：
 
 ```text
@@ -99,6 +101,8 @@ validate json
 - `logic_md`
 - `logic_json`
 - 由 LLM 随意生成且未校验 schema 的 JSON
+- `importable=false` 的 JSON（MCP 层和 C++ 层双重守卫拒绝）
+- `schema` 以 `BlueprintHelper.Logic` 开头的 JSON
 
 ## 8. 写后报告模板
 

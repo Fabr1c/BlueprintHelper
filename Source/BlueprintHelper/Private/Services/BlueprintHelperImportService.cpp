@@ -185,8 +185,15 @@ FBlueprintHelperImportResult FBlueprintHelperImportService::Import(const FBluepr
 	FBlueprintHelperImportResult Result;
 	Result.Status = TEXT("failed");
 
+	// 0. 解析 JsonText（优先 string，否则从 JsonObject 序列化）
+	const FString EffectiveJsonText = ResolveImportJsonText(Request, Result);
+	if (EffectiveJsonText.IsEmpty() && Result.Diagnostics.HasErrors())
+	{
+		return Result; // Schema/importable 守卫已拒绝
+	}
+
 	// 1. 校验
-	FBlueprintHelperValidationResult ValResult = Validator.Validate(Request.JsonText);
+	FBlueprintHelperValidationResult ValResult = Validator.Validate(EffectiveJsonText);
 	if (!ValResult.bValid)
 	{
 		Result.Diagnostics = MoveTemp(ValResult.Diagnostics);
@@ -196,7 +203,7 @@ FBlueprintHelperImportResult FBlueprintHelperImportService::Import(const FBluepr
 	// 2. 根据 JSON 结构选择单图/多图路径
 	TArray<TSharedPtr<FUnresolvedNodeItem>> Unresolved;
 	FBlueprintGenerateResult GenResult;
-	const bool bNeedsMultiGraph = NeedsMultiGraphPath(Request.JsonText);
+	const bool bNeedsMultiGraph = NeedsMultiGraphPath(EffectiveJsonText);
 	FGraphNodeSnapshot NodeSnapshot;
 	FPackageDirtySnapshot DirtySnapshot;
 
@@ -214,7 +221,7 @@ FBlueprintHelperImportResult FBlueprintHelperImportService::Import(const FBluepr
 		TArray<UEdGraph*> SnapshotGraphs = CollectBlueprintGraphs(Blueprint);
 		NodeSnapshot = CaptureGraphNodeSnapshot(SnapshotGraphs);
 		DirtySnapshot = CapturePackageDirtySnapshot(SnapshotGraphs);
-		GenResult = TextToBlueprintGenerator::GenerateMultiGraphFromJson(Blueprint, Request.JsonText, Unresolved);
+		GenResult = TextToBlueprintGenerator::GenerateMultiGraphFromJson(Blueprint, EffectiveJsonText, Unresolved);
 	}
 	else
 	{
@@ -228,7 +235,7 @@ FBlueprintHelperImportResult FBlueprintHelperImportService::Import(const FBluepr
 		SnapshotGraphs.Add(Graph);
 		NodeSnapshot = CaptureGraphNodeSnapshot(SnapshotGraphs);
 		DirtySnapshot = CapturePackageDirtySnapshot(SnapshotGraphs);
-		GenResult = TextToBlueprintGenerator::GenerateBlueprintFromJson(Graph, Request.JsonText, Unresolved);
+		GenResult = TextToBlueprintGenerator::GenerateBlueprintFromJson(Graph, EffectiveJsonText, Unresolved);
 	}
 
 	// 4. 转换结果
@@ -316,4 +323,52 @@ bool FBlueprintHelperImportService::NeedsMultiGraphPath(const FString& JsonText)
 	}
 
 	return Root->HasField(TEXT("graphs")) || Root->HasField(TEXT("blueprint_operations"));
+}
+
+FString FBlueprintHelperImportService::ResolveImportJsonText(
+	const FBlueprintHelperImportRequest& Request,
+	FBlueprintHelperImportResult& Result) const
+{
+	// 优先使用已有 JsonText
+	if (!Request.JsonText.IsEmpty())
+	{
+		return Request.JsonText;
+	}
+
+	// 从 JsonObject 序列化
+	if (Request.JsonObject.IsValid())
+	{
+		// Schema 守卫：拒绝 LogicJson / LogicMarkdown
+		FString SchemaValue;
+		if (Request.JsonObject->TryGetStringField(TEXT("schema"), SchemaValue))
+		{
+			if (SchemaValue.StartsWith(TEXT("BlueprintHelper.Logic")))
+			{
+				Result.Diagnostics.Add(EBlueprintHelperDiagnosticSeverity::Error,
+					FString::Printf(TEXT("导入被拒绝：schema=%s 是只读逻辑视图（LogicJson/LogicMD），不能作为 RawJson 导入。"),
+						*SchemaValue),
+					TEXT(""), TEXT("import_rejected_logic_schema"));
+				return FString();
+			}
+		}
+
+		// Importable 守卫
+		bool bImportable = true;
+		if (Request.JsonObject->TryGetBoolField(TEXT("importable"), bImportable) && !bImportable)
+		{
+			Result.Diagnostics.Add(EBlueprintHelperDiagnosticSeverity::Error,
+				TEXT("导入被拒绝：importable=false，该 JSON 是只读视图，不可导入。"),
+				TEXT(""), TEXT("import_rejected_not_importable"));
+			return FString();
+		}
+
+		// 序列化为字符串
+		FString OutputString;
+		const TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutputString);
+		FJsonSerializer::Serialize(Request.JsonObject.ToSharedRef(), Writer);
+		return OutputString;
+	}
+
+	// 都没有 → 校验阶段会捕获
+	return FString();
 }

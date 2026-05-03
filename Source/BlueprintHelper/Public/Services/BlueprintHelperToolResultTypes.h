@@ -517,23 +517,6 @@ struct FBlueprintHelperValidationMessage
 	}
 };
 
-// ─── 7.7a FBlueprintHelperValidationHint（仅 should_compile/should_save，不输出 compiled/saved） ───
-
-/** Validation 轻量提示，仅用于 DataAsset/DataTable/UMG 写工具。 */
-struct FBlueprintHelperValidationHint
-{
-	bool bShouldCompile = false;
-	bool bShouldSave = false;
-
-	TSharedRef<FJsonObject> ToJson() const
-	{
-		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
-		Json->SetBoolField(TEXT("should_compile"), bShouldCompile);
-		Json->SetBoolField(TEXT("should_save"), bShouldSave);
-		return Json;
-	}
-};
-
 // ─── 7.7 FBlueprintHelperValidationSummary ───
 
 /** Validation 摘要。 */
@@ -560,27 +543,12 @@ struct FBlueprintHelperValidationSummary
 	/** Validation 级警告。 */
 	TArray<FBlueprintHelperValidationMessage> Warnings;
 
-	/** 序列化到 JSON。 */
+	/** 序列化到 JSON。Common Envelope 协议：仅输出 should_compile/should_save。 */
 	TSharedRef<FJsonObject> ToJson() const
 	{
 		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
 		Json->SetBoolField(TEXT("should_compile"), bShouldCompile);
 		Json->SetBoolField(TEXT("should_save"), bShouldSave);
-		Json->SetBoolField(TEXT("compiled"), bCompiled);
-		Json->SetBoolField(TEXT("saved"), bSaved);
-		Json->SetBoolField(TEXT("compile_success"), bCompileSuccess);
-		if (Errors.Num() > 0)
-		{
-			TArray<TSharedPtr<FJsonValue>> Arr;
-			for (const auto& E : Errors) { Arr.Add(MakeShared<FJsonValueObject>(E.ToJson())); }
-			Json->SetArrayField(TEXT("errors"), Arr);
-		}
-		if (Warnings.Num() > 0)
-		{
-			TArray<TSharedPtr<FJsonValue>> Arr;
-			for (const auto& W : Warnings) { Arr.Add(MakeShared<FJsonValueObject>(W.ToJson())); }
-			Json->SetArrayField(TEXT("warnings"), Arr);
-		}
 		return Json;
 	}
 };
@@ -724,11 +692,8 @@ struct FBlueprintHelperToolResultBase
 	/** Review 摘要。写工具按需设置。 */
 	TOptional<FBlueprintHelperReviewSummary> Review;
 
-	/** Validation 摘要。写工具 / validate / compile / save 设置。 */
+	/** Validation 提示。写工具成功时按需设置。仅 should_compile/should_save。 */
 	TOptional<FBlueprintHelperValidationSummary> Validation;
-
-	/** Validation 轻量提示（仅 should_compile/should_save，不含 compiled/saved）。 */
-	TOptional<FBlueprintHelperValidationHint> ValidationHint;
 
 	/** 错误信息。失败时设置，成功时不出现。 */
 	TOptional<FBlueprintHelperToolError> Error;
@@ -753,8 +718,7 @@ struct FBlueprintHelperToolResultBase
 		if (CustomTargetJson.IsValid()) { Json->SetObjectField(TEXT("target"), CustomTargetJson); }
 		else if (Target.IsSet()) { Json->SetObjectField(TEXT("target"), Target->ToJson()); }
 		if (Data.IsValid()) { Json->SetObjectField(TEXT("data"), Data); }
-		if (ValidationHint.IsSet()) { Json->SetObjectField(TEXT("validation"), ValidationHint->ToJson()); }
-		else if (Validation.IsSet()) { Json->SetObjectField(TEXT("validation"), Validation->ToJson()); }
+		if (Validation.IsSet()) { Json->SetObjectField(TEXT("validation"), Validation->ToJson()); }
 		if (Error.IsSet()) { Json->SetObjectField(TEXT("error"), Error->ToJson()); }
 
 		return Json;

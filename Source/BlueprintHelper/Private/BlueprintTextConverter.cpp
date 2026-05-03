@@ -1075,11 +1075,11 @@ void FBlueprintToTextConverter::ExportGraphNodesAndLinks(
 	}
 }
 
-FString FBlueprintToTextConverter::ConvertGraphToJson(UEdGraph* TargetGraph)
+TSharedPtr<FJsonObject> FBlueprintToTextConverter::ConvertGraphToJsonObject(UEdGraph* TargetGraph)
 {
 	if (!TargetGraph)
 	{
-		return TEXT("{}");
+		return MakeShared<FJsonObject>();
 	}
 
 	TSharedRef<FJsonObject> RootObject = MakeShared<FJsonObject>();
@@ -1093,17 +1093,19 @@ FString FBlueprintToTextConverter::ConvertGraphToJson(UEdGraph* TargetGraph)
 	RootObject->SetArrayField(TEXT("nodes"), NodesArray);
 	RootObject->SetArrayField(TEXT("links"), LinksArray);
 
-	FString OutputString;
-	const TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutputString);
-	FJsonSerializer::Serialize(RootObject, Writer);
-	return OutputString;
+	return RootObject;
 }
 
-FString FBlueprintToTextConverter::ExportBlueprintToJson(UBlueprint* Blueprint)
+FString FBlueprintToTextConverter::ConvertGraphToJson(UEdGraph* TargetGraph)
+{
+	return SerializeJsonObject(ConvertGraphToJsonObject(TargetGraph));
+}
+
+TSharedPtr<FJsonObject> FBlueprintToTextConverter::ExportBlueprintToJsonObject(UBlueprint* Blueprint)
 {
 	if (!Blueprint)
 	{
-		return TEXT("{}");
+		return MakeShared<FJsonObject>();
 	}
 
 	TSharedRef<FJsonObject> RootObject = MakeShared<FJsonObject>();
@@ -1337,9 +1339,23 @@ FString FBlueprintToTextConverter::ExportBlueprintToJson(UBlueprint* Blueprint)
 
 	RootObject->SetArrayField(TEXT("graphs"), GraphsArray);
 
+	return RootObject;
+}
+
+FString FBlueprintToTextConverter::ExportBlueprintToJson(UBlueprint* Blueprint)
+{
+	return SerializeJsonObject(ExportBlueprintToJsonObject(Blueprint));
+}
+
+FString FBlueprintToTextConverter::SerializeJsonObject(const TSharedPtr<FJsonObject>& JsonObject)
+{
+	if (!JsonObject.IsValid())
+	{
+		return TEXT("{}");
+	}
 	FString OutputString;
 	const TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutputString);
-	FJsonSerializer::Serialize(RootObject, Writer);
+	FJsonSerializer::Serialize(JsonObject.ToSharedRef(), Writer);
 	return OutputString;
 }
 

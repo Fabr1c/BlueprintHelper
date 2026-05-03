@@ -66,6 +66,16 @@
 - 用户仅需要知道蓝图功能。
 - Agent 还没有明确改动目标。
 
+### 5.1 读取优先级
+
+1. **`blueprint_get_logic` (LogicMd)** — 快速审阅蓝图逻辑，默认推荐。
+2. **`blueprint_get_logic_json` (LogicJson)** — 结构化分析执行流和数据依赖。
+3. **`blueprint_export_to_json` (RawJson)** — 仅用于回放、导入、连线调试场景。RawJson 不应作为默认读取方式。
+
+### 5.2 MCP 默认输出
+
+`blueprint_export_to_json` 默认返回 `raw_json_ref` (resource link)，而非内联完整 JSON 文本。通过 resource 读取时，RawJson 本体直接返回（不再包裹在 `{ json: ... }` 层中）。这可以避免上下文膨胀。
+
 ## 6. 读取后的输出模板
 
 Agent 给用户回复时建议包含：
