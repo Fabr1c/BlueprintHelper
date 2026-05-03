@@ -578,6 +578,17 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 		};
 		return ValidateRules(Payload, Rules, OutError);
 	}
+	if (CommandEquals(Command, TEXT("patch_blueprint_graph")))
+	{
+		const FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("target"), EBlueprintHelperJsonExpectedType::Object, true},
+			{TEXT("patch_type"), EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("patched_ref"), EBlueprintHelperJsonExpectedType::Object, true},
+			{TEXT("patch"), EBlueprintHelperJsonExpectedType::Object, true},
+			{TEXT("dry_run"), EBlueprintHelperJsonExpectedType::Bool, false},
+		};
+		return ValidateRules(Payload, Rules, OutError);
+	}
 	return true;
 }
 
@@ -657,6 +668,7 @@ TEXT("create_blueprint"),
 	TEXT("set_class_default_properties"),
 	TEXT("append_blueprint_graph"),
 	TEXT("replace_blueprint_graph"),
+	TEXT("patch_blueprint_graph"),
 	};
 
 	return WriteCommands.Contains(Command.ToLower());
