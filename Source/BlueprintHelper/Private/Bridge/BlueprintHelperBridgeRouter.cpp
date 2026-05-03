@@ -46,6 +46,7 @@
 #include "Services/BlueprintHelperConvertBlockToUserOwnedTypes.h"
 #include "Services/BlueprintHelperCompileAssetService.h"
 #include "Services/BlueprintHelperCompileAssetTypes.h"
+#include "Services/BlueprintHelperSaveAssetTypes.h"
 #include "Services/BlueprintHelperToolResultTypes.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -1988,18 +1989,41 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleSaveAsset(
 			TEXT("payload 缺少 asset_path 字段。"));
 	}
 
-	FBlueprintHelperSaveResult SaveResult = AssetBrowseService.SaveAsset(AssetPath);
+	const FString TraceId = FBlueprintHelperToolResultBuilder::GenerateTraceId();
+	TSharedRef<FJsonObject> Tgt = MakeShared<FJsonObject>();
+	Tgt->SetStringField(TEXT("asset_path"), AssetPath);
+
+	const FBlueprintHelperSaveResult SaveResult = AssetBrowseService.SaveAsset(AssetPath);
 	if (!SaveResult.bSuccess)
 	{
-		return FBlueprintHelperBridgeResponse::Error(
-			Req.RequestId,
-			EBlueprintHelperBridgeError::ExecutionFailed,
-			SaveResult.ErrorMessage);
+		FBlueprintHelperToolError Err;
+		Err.Code = TEXT("save_failed");
+		Err.Stage = EBlueprintHelperToolStage::Execute;
+		Err.Message = SaveResult.ErrorMessage;
+		Err.bRetryable = true;
+		FBlueprintHelperToolResultBase Fail = FBlueprintHelperToolResultBuilder::Failure(TEXT("save_asset"), TraceId, Err);
+		Fail.CustomTargetJson = Tgt;
+		auto Resp = FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, SaveResult.ErrorMessage);
+		Resp.Result = Fail.ToJson();
+		return Resp;
 	}
 
+	FBlueprintHelperToolResultBase Result;
+	Result.bOk = true;
+	Result.Schema = TEXT("BlueprintHelper.McpToolResult.v1");
+	Result.Operation = TEXT("save_asset");
+	Result.TraceId = TraceId;
+	Result.Status = EBlueprintHelperToolStatus::Completed;
+	Result.bModified = false;
+	Result.CustomTargetJson = Tgt;
+
+	FBlueprintHelperSaveAssetResultData Data;
+	Data.SaveResult.bSaved = true;
+	Data.SaveResult.bWasDirty = true;
+	Result.Data = Data.ToJson();
+
 	auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
-	Resp.Result = MakeShared<FJsonObject>();
-	Resp.Result->SetStringField(TEXT("saved"), AssetPath);
+	Resp.Result = Result.ToJson();
 	return Resp;
 }
 
