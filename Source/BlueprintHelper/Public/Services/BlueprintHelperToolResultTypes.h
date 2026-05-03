@@ -7,6 +7,15 @@
 #include "Dom/JsonObject.h"
 #include "Services/BlueprintHelperServiceTypes.h"
 
+// ─── 协议常量 ───
+
+namespace BlueprintHelperProtocol
+{
+	static const TCHAR* ToolResultSchema = TEXT("BlueprintHelper.McpToolResult.v1");
+	namespace Status { static const TCHAR* Completed = TEXT("completed"); static const TCHAR* Applied = TEXT("applied"); static const TCHAR* NoOp = TEXT("no_op"); static const TCHAR* DryRun = TEXT("dry_run"); static const TCHAR* Failed = TEXT("failed"); }
+	namespace DryRunResult { static const TCHAR* Passed = TEXT("passed"); static const TCHAR* Blocked = TEXT("blocked"); static const TCHAR* Failed = TEXT("failed"); }
+}
+
 // ─── 状态枚举 ───
 
 /** 工具调用结果状态。 */
@@ -508,6 +517,23 @@ struct FBlueprintHelperValidationMessage
 	}
 };
 
+// ─── 7.7a FBlueprintHelperValidationHint（仅 should_compile/should_save，不输出 compiled/saved） ───
+
+/** Validation 轻量提示，仅用于 DataAsset/DataTable/UMG 写工具。 */
+struct FBlueprintHelperValidationHint
+{
+	bool bShouldCompile = false;
+	bool bShouldSave = false;
+
+	TSharedRef<FJsonObject> ToJson() const
+	{
+		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+		Json->SetBoolField(TEXT("should_compile"), bShouldCompile);
+		Json->SetBoolField(TEXT("should_save"), bShouldSave);
+		return Json;
+	}
+};
+
 // ─── 7.7 FBlueprintHelperValidationSummary ───
 
 /** Validation 摘要。 */
@@ -701,6 +727,9 @@ struct FBlueprintHelperToolResultBase
 	/** Validation 摘要。写工具 / validate / compile / save 设置。 */
 	TOptional<FBlueprintHelperValidationSummary> Validation;
 
+	/** Validation 轻量提示（仅 should_compile/should_save，不含 compiled/saved）。 */
+	TOptional<FBlueprintHelperValidationHint> ValidationHint;
+
 	/** 错误信息。失败时设置，成功时不出现。 */
 	TOptional<FBlueprintHelperToolError> Error;
 
@@ -724,7 +753,8 @@ struct FBlueprintHelperToolResultBase
 		if (CustomTargetJson.IsValid()) { Json->SetObjectField(TEXT("target"), CustomTargetJson); }
 		else if (Target.IsSet()) { Json->SetObjectField(TEXT("target"), Target->ToJson()); }
 		if (Data.IsValid()) { Json->SetObjectField(TEXT("data"), Data); }
-		if (Validation.IsSet()) { Json->SetObjectField(TEXT("validation"), Validation->ToJson()); }
+		if (ValidationHint.IsSet()) { Json->SetObjectField(TEXT("validation"), ValidationHint->ToJson()); }
+		else if (Validation.IsSet()) { Json->SetObjectField(TEXT("validation"), Validation->ToJson()); }
 		if (Error.IsSet()) { Json->SetObjectField(TEXT("error"), Error->ToJson()); }
 
 		return Json;
