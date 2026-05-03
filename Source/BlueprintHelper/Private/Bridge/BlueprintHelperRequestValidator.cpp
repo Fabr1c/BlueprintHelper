@@ -589,6 +589,17 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 		};
 		return ValidateRules(Payload, Rules, OutError);
 	}
+	if (CommandEquals(Command, TEXT("merge_blueprint_graph")))
+	{
+		const FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("target"), EBlueprintHelperJsonExpectedType::Object, true},
+			{TEXT("anchor"), EBlueprintHelperJsonExpectedType::Object, true},
+			{TEXT("inserted"), EBlueprintHelperJsonExpectedType::Object, true},
+			{TEXT("sequence_order"), EBlueprintHelperJsonExpectedType::Array, false},
+			{TEXT("dry_run"), EBlueprintHelperJsonExpectedType::Bool, false},
+		};
+		return ValidateRules(Payload, Rules, OutError);
+	}
 	return true;
 }
 
@@ -669,6 +680,7 @@ TEXT("create_blueprint"),
 	TEXT("append_blueprint_graph"),
 	TEXT("replace_blueprint_graph"),
 	TEXT("patch_blueprint_graph"),
+	TEXT("merge_blueprint_graph"),
 	};
 
 	return WriteCommands.Contains(Command.ToLower());
