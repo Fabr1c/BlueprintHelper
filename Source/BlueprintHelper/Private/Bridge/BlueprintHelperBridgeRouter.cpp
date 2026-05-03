@@ -38,6 +38,8 @@
 #include "Services/BlueprintHelperPatchGraphTypes.h"
 #include "Services/BlueprintHelperMergeBlueprintGraphService.h"
 #include "Services/BlueprintHelperMergeGraphTypes.h"
+#include "Services/BlueprintHelperCleanupBlueprintHelperBlockService.h"
+#include "Services/BlueprintHelperCleanupBlockTypes.h"
 #include "Services/BlueprintHelperToolResultTypes.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -593,7 +595,8 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	const FBlueprintHelperAppendBlueprintGraphService& InAppendGraphService,
 	const FBlueprintHelperReplaceBlueprintGraphService& InReplaceGraphService,
 	const FBlueprintHelperPatchBlueprintGraphService& InPatchGraphService,
-	const FBlueprintHelperMergeBlueprintGraphService& InMergeGraphService)
+	const FBlueprintHelperMergeBlueprintGraphService& InMergeGraphService,
+	const FBlueprintHelperCleanupBlueprintHelperBlockService& InCleanupBlockService)
 	: ImportService(InImport)
 	, AgentImportService(InAgentImport)
 	, ExportService(InExport)
@@ -617,6 +620,7 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	, ReplaceGraphService(InReplaceGraphService)
 	, PatchGraphService(InPatchGraphService)
 	, MergeGraphService(InMergeGraphService)
+	, CleanupBlockService(InCleanupBlockService)
 {
 }
 
@@ -890,6 +894,11 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequest(
 	if (Request.Command == TEXT("merge_blueprint_graph"))
 	{
 		return HandleMergeBlueprintGraph(Request);
+	}
+	// ─── CleanupBlueprintHelperBlock ───
+	if (Request.Command == TEXT("cleanup_blueprint_helper_block"))
+	{
+		return HandleCleanupBlueprintHelperBlock(Request);
 	}
 	return FBlueprintHelperBridgeResponse::Error(
 		Request.RequestId,
@@ -1641,6 +1650,29 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleMergeBlueprin
 			Req.RequestId,
 			EBlueprintHelperBridgeError::ExecutionFailed,
 			Result.Error.IsSet() ? Result.Error->Message : TEXT("merge_blueprint_graph 执行失败。"));
+
+	Resp.Result = Result.ToJson();
+	return Resp;
+}
+
+// ─── cleanup_blueprint_helper_block ───
+
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleCleanupBlueprintHelperBlock(
+	const FBlueprintHelperBridgeRequest& Req) const
+{
+	if (!Req.Payload.IsValid())
+	{
+		return FBlueprintHelperBridgeResponse::Error(
+			Req.RequestId, EBlueprintHelperBridgeError::InvalidRequest, TEXT("payload 缺失。"));
+	}
+
+	const FBlueprintHelperToolResultBase Result = CleanupBlockService.Execute(Req.Payload);
+
+	FBlueprintHelperBridgeResponse Resp = Result.bOk
+		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
+		: FBlueprintHelperBridgeResponse::Error(
+			Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed,
+			Result.Error.IsSet() ? Result.Error->Message : TEXT("cleanup_blueprint_helper_block 执行失败。"));
 
 	Resp.Result = Result.ToJson();
 	return Resp;

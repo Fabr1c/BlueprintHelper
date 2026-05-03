@@ -600,6 +600,18 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 		};
 		return ValidateRules(Payload, Rules, OutError);
 	}
+	if (CommandEquals(Command, TEXT("cleanup_blueprint_helper_block")))
+	{
+		const FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("block_id"), EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("graph"), EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("block_ref"), EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("missing_policy"), EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("dry_run"), EBlueprintHelperJsonExpectedType::Bool, false},
+		};
+		return ValidateRules(Payload, Rules, OutError);
+	}
 	return true;
 }
 
@@ -681,6 +693,7 @@ TEXT("create_blueprint"),
 	TEXT("replace_blueprint_graph"),
 	TEXT("patch_blueprint_graph"),
 	TEXT("merge_blueprint_graph"),
+	TEXT("cleanup_blueprint_helper_block"),
 	};
 
 	return WriteCommands.Contains(Command.ToLower());

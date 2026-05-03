@@ -28,6 +28,7 @@ class FBlueprintHelperAppendBlueprintGraphService;
 class FBlueprintHelperReplaceBlueprintGraphService;
 class FBlueprintHelperPatchBlueprintGraphService;
 class FBlueprintHelperMergeBlueprintGraphService;
+class FBlueprintHelperCleanupBlueprintHelperBlockService;
 
 /**
  * 命令路由器，将 Bridge 请求分发到对应的 Service 方法。
@@ -59,7 +60,8 @@ public:
 		const FBlueprintHelperAppendBlueprintGraphService& InAppendGraphService,
 		const FBlueprintHelperReplaceBlueprintGraphService& InReplaceGraphService,
 	const FBlueprintHelperPatchBlueprintGraphService& InPatchGraphService,
-	const FBlueprintHelperMergeBlueprintGraphService& InMergeGraphService);
+	const FBlueprintHelperMergeBlueprintGraphService& InMergeGraphService,
+	const FBlueprintHelperCleanupBlueprintHelperBlockService& InCleanupBlockService);
 
 	/** 路由并执行命令。必须在 GameThread 调用。 */
 	FBlueprintHelperBridgeResponse HandleRequest(const FBlueprintHelperBridgeRequest& Request) const;
@@ -148,6 +150,9 @@ private:
 	// ─── MergeBlueprintGraph ───
 	FBlueprintHelperBridgeResponse HandleMergeBlueprintGraph(const FBlueprintHelperBridgeRequest& Req) const;
 
+	// ─── CleanupBlueprintHelperBlock ───
+	FBlueprintHelperBridgeResponse HandleCleanupBlueprintHelperBlock(const FBlueprintHelperBridgeRequest& Req) const;
+
 	const FBlueprintHelperImportService& ImportService;
 	const FBlueprintHelperAgentImportService& AgentImportService;
 	const FBlueprintHelperExportService& ExportService;
@@ -171,4 +176,5 @@ private:
 	const FBlueprintHelperReplaceBlueprintGraphService& ReplaceGraphService;
 	const FBlueprintHelperPatchBlueprintGraphService& PatchGraphService;
 	const FBlueprintHelperMergeBlueprintGraphService& MergeGraphService;
+	const FBlueprintHelperCleanupBlueprintHelperBlockService& CleanupBlockService;
 };

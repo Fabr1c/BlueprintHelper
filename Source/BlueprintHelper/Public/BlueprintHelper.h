@@ -33,6 +33,7 @@ class FBlueprintHelperAppendBlueprintGraphService;
 class FBlueprintHelperReplaceBlueprintGraphService;
 class FBlueprintHelperPatchBlueprintGraphService;
 class FBlueprintHelperMergeBlueprintGraphService;
+class FBlueprintHelperCleanupBlueprintHelperBlockService;
 class FBlueprintHelperBlockIdService;
 class FBlueprintHelperOwnershipService;
 class FBlueprintHelperTransactionJournalService;
@@ -145,6 +146,7 @@ private:
 	TUniquePtr<FBlueprintHelperLogicJsonPathService> LogicJsonPathService;
 	TUniquePtr<FBlueprintHelperPatchBlueprintGraphService> PatchGraphService;
 	TUniquePtr<FBlueprintHelperMergeBlueprintGraphService> MergeGraphService;
+	TUniquePtr<FBlueprintHelperCleanupBlueprintHelperBlockService> CleanupBlockService;
 
 	// ─── Bridge Layer ───
 	TUniquePtr<FBlueprintHelperContextService> ContextService;
