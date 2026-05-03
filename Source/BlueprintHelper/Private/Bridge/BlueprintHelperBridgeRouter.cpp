@@ -40,6 +40,8 @@
 #include "Services/BlueprintHelperMergeGraphTypes.h"
 #include "Services/BlueprintHelperCleanupBlueprintHelperBlockService.h"
 #include "Services/BlueprintHelperCleanupBlockTypes.h"
+#include "Services/BlueprintHelperRollbackCleanupTransactionService.h"
+#include "Services/BlueprintHelperRollbackCleanupTypes.h"
 #include "Services/BlueprintHelperToolResultTypes.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -596,7 +598,8 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	const FBlueprintHelperReplaceBlueprintGraphService& InReplaceGraphService,
 	const FBlueprintHelperPatchBlueprintGraphService& InPatchGraphService,
 	const FBlueprintHelperMergeBlueprintGraphService& InMergeGraphService,
-	const FBlueprintHelperCleanupBlueprintHelperBlockService& InCleanupBlockService)
+	const FBlueprintHelperCleanupBlueprintHelperBlockService& InCleanupBlockService,
+	const FBlueprintHelperRollbackCleanupTransactionService& InRollbackCleanupService)
 	: ImportService(InImport)
 	, AgentImportService(InAgentImport)
 	, ExportService(InExport)
@@ -621,6 +624,7 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	, PatchGraphService(InPatchGraphService)
 	, MergeGraphService(InMergeGraphService)
 	, CleanupBlockService(InCleanupBlockService)
+	, RollbackCleanupService(InRollbackCleanupService)
 {
 }
 
@@ -899,6 +903,11 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequest(
 	if (Request.Command == TEXT("cleanup_blueprint_helper_block"))
 	{
 		return HandleCleanupBlueprintHelperBlock(Request);
+	}
+	// ─── RollbackCleanupTransaction ───
+	if (Request.Command == TEXT("rollback_cleanup_transaction"))
+	{
+		return HandleRollbackCleanupTransaction(Request);
 	}
 	return FBlueprintHelperBridgeResponse::Error(
 		Request.RequestId,
@@ -1673,6 +1682,25 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleCleanupBluepr
 		: FBlueprintHelperBridgeResponse::Error(
 			Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed,
 			Result.Error.IsSet() ? Result.Error->Message : TEXT("cleanup_blueprint_helper_block 执行失败。"));
+
+	Resp.Result = Result.ToJson();
+	return Resp;
+}
+
+// ─── rollback_cleanup_transaction ───
+
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRollbackCleanupTransaction(
+	const FBlueprintHelperBridgeRequest& Req) const
+{
+	if (!Req.Payload.IsValid())
+		return FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::InvalidRequest, TEXT("payload 缺失。"));
+
+	const FBlueprintHelperToolResultBase Result = RollbackCleanupService.Execute(Req.Payload);
+
+	FBlueprintHelperBridgeResponse Resp = Result.bOk
+		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
+		: FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed,
+			Result.Error.IsSet() ? Result.Error->Message : TEXT("rollback_cleanup_transaction 执行失败。"));
 
 	Resp.Result = Result.ToJson();
 	return Resp;

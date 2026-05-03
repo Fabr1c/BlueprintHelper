@@ -612,6 +612,17 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 		};
 		return ValidateRules(Payload, Rules, OutError);
 	}
+	if (CommandEquals(Command, TEXT("rollback_cleanup_transaction")))
+	{
+		const FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("transaction_id"), EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("rollback_scope"), EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("already_rolled_back_policy"), EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("dry_run"), EBlueprintHelperJsonExpectedType::Bool, false},
+		};
+		return ValidateRules(Payload, Rules, OutError);
+	}
 	return true;
 }
 
@@ -694,6 +705,7 @@ TEXT("create_blueprint"),
 	TEXT("patch_blueprint_graph"),
 	TEXT("merge_blueprint_graph"),
 	TEXT("cleanup_blueprint_helper_block"),
+	TEXT("rollback_cleanup_transaction"),
 	};
 
 	return WriteCommands.Contains(Command.ToLower());

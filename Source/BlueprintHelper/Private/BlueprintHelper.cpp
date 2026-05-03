@@ -73,6 +73,7 @@
 #include "Services/BlueprintHelperPatchBlueprintGraphService.h"
 #include "Services/BlueprintHelperMergeBlueprintGraphService.h"
 #include "Services/BlueprintHelperCleanupBlueprintHelperBlockService.h"
+#include "Services/BlueprintHelperRollbackCleanupTransactionService.h"
 #include "Services/BlueprintHelperBlockIdService.h"
 #include "Services/BlueprintHelperOwnershipService.h"
 #include "Services/BlueprintHelperTransactionJournalService.h"
@@ -185,11 +186,13 @@ void FBlueprintHelperModule::StartupModule()
 		*GraphResolver, *LogicJsonPathService, *JournalService);
 	CleanupBlockService = MakeUnique<FBlueprintHelperCleanupBlueprintHelperBlockService>(
 		*GraphResolver, *JournalService);
+	RollbackCleanupService = MakeUnique<FBlueprintHelperRollbackCleanupTransactionService>(
+		*GraphResolver, *JournalService);
 
 	// ─── Bridge Layer 初始化 ───
 	ContextService = MakeUnique<FBlueprintHelperContextService>(*GraphResolver);
 	BridgeRouter = MakeUnique<FBlueprintHelperBridgeRouter>(
-		*ImportService, *AgentImportService, *ExportService, *CompileService, *ValidationService, *ContextService, *AssetBrowseService, *StructureService, *WidgetService, *PropertyReflectionService, *DataTableService, *EditorCommandService, *RuntimeProfileService, *DiagnosticsService, *LogicMdReadService, *LogicJsonReadService, *AssetFactoryService, *ComponentService, *ClassSettingsService, *AppendGraphService, *ReplaceGraphService, *PatchGraphService, *MergeGraphService, *CleanupBlockService);
+		*ImportService, *AgentImportService, *ExportService, *CompileService, *ValidationService, *ContextService, *AssetBrowseService, *StructureService, *WidgetService, *PropertyReflectionService, *DataTableService, *EditorCommandService, *RuntimeProfileService, *DiagnosticsService, *LogicMdReadService, *LogicJsonReadService, *AssetFactoryService, *ComponentService, *ClassSettingsService, *AppendGraphService, *ReplaceGraphService, *PatchGraphService, *MergeGraphService, *CleanupBlockService, *RollbackCleanupService);
 	BridgeServer = MakeUnique<FBlueprintHelperBridgeServer>(*BridgeRouter);
 	BridgeServer->Start();
 
