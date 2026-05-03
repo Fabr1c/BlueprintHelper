@@ -31,10 +31,12 @@ class FBlueprintHelperComponentService;
 class FBlueprintHelperClassSettingsService;
 class FBlueprintHelperAppendBlueprintGraphService;
 class FBlueprintHelperReplaceBlueprintGraphService;
+class FBlueprintHelperPatchBlueprintGraphService;
 class FBlueprintHelperBlockIdService;
 class FBlueprintHelperOwnershipService;
 class FBlueprintHelperTransactionJournalService;
 class FBlueprintHelperGraphSnapshotService;
+class FBlueprintHelperLogicJsonPathService;
 
 /**
  * BlueprintHelper 模块，负责注册编辑器窗口与提供当前蓝图图表访问能力。
@@ -139,6 +141,8 @@ private:
 	TUniquePtr<FBlueprintHelperGraphSnapshotService> SnapshotService;
 	TUniquePtr<FBlueprintHelperAppendBlueprintGraphService> AppendGraphService;
 	TUniquePtr<FBlueprintHelperReplaceBlueprintGraphService> ReplaceGraphService;
+	TUniquePtr<FBlueprintHelperLogicJsonPathService> LogicJsonPathService;
+	TUniquePtr<FBlueprintHelperPatchBlueprintGraphService> PatchGraphService;
 
 	// ─── Bridge Layer ───
 	TUniquePtr<FBlueprintHelperContextService> ContextService;

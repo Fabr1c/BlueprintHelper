@@ -70,10 +70,12 @@
 #include "Services/BlueprintHelperClassSettingsService.h"
 #include "Services/BlueprintHelperAppendBlueprintGraphService.h"
 #include "Services/BlueprintHelperReplaceBlueprintGraphService.h"
+#include "Services/BlueprintHelperPatchBlueprintGraphService.h"
 #include "Services/BlueprintHelperBlockIdService.h"
 #include "Services/BlueprintHelperOwnershipService.h"
 #include "Services/BlueprintHelperTransactionJournalService.h"
 #include "Services/BlueprintHelperGraphSnapshotService.h"
+#include "Services/BlueprintHelperLogicJsonPathService.h"
 #include "Bridge/BlueprintHelperBridgeRouter.h"
 #include "Bridge/BlueprintHelperBridgeServer.h"
 #include "Styling/AppStyle.h"
@@ -174,11 +176,14 @@ void FBlueprintHelperModule::StartupModule()
 		*GraphResolver, *AgentImportService, *BlockIdService, *OwnershipService, *JournalService);
 	ReplaceGraphService = MakeUnique<FBlueprintHelperReplaceBlueprintGraphService>(
 		*GraphResolver, *AgentImportService, *BlockIdService, *OwnershipService, *JournalService, *SnapshotService);
+	LogicJsonPathService = MakeUnique<FBlueprintHelperLogicJsonPathService>();
+	PatchGraphService = MakeUnique<FBlueprintHelperPatchBlueprintGraphService>(
+		*GraphResolver, *LogicJsonPathService, *JournalService);
 
 	// ─── Bridge Layer 初始化 ───
 	ContextService = MakeUnique<FBlueprintHelperContextService>(*GraphResolver);
 	BridgeRouter = MakeUnique<FBlueprintHelperBridgeRouter>(
-		*ImportService, *AgentImportService, *ExportService, *CompileService, *ValidationService, *ContextService, *AssetBrowseService, *StructureService, *WidgetService, *PropertyReflectionService, *DataTableService, *EditorCommandService, *RuntimeProfileService, *DiagnosticsService, *LogicMdReadService, *LogicJsonReadService, *AssetFactoryService, *ComponentService, *ClassSettingsService, *AppendGraphService, *ReplaceGraphService);
+		*ImportService, *AgentImportService, *ExportService, *CompileService, *ValidationService, *ContextService, *AssetBrowseService, *StructureService, *WidgetService, *PropertyReflectionService, *DataTableService, *EditorCommandService, *RuntimeProfileService, *DiagnosticsService, *LogicMdReadService, *LogicJsonReadService, *AssetFactoryService, *ComponentService, *ClassSettingsService, *AppendGraphService, *ReplaceGraphService, *PatchGraphService);
 	BridgeServer = MakeUnique<FBlueprintHelperBridgeServer>(*BridgeRouter);
 	BridgeServer->Start();
 

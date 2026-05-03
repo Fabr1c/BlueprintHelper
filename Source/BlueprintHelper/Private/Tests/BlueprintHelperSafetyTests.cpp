@@ -32,10 +32,12 @@
 #include "Services/BlueprintHelperClassSettingsService.h"
 #include "Services/BlueprintHelperAppendBlueprintGraphService.h"
 #include "Services/BlueprintHelperReplaceBlueprintGraphService.h"
+#include "Services/BlueprintHelperPatchBlueprintGraphService.h"
 #include "Services/BlueprintHelperBlockIdService.h"
 #include "Services/BlueprintHelperOwnershipService.h"
 #include "Services/BlueprintHelperTransactionJournalService.h"
 #include "Services/BlueprintHelperGraphSnapshotService.h"
+#include "Services/BlueprintHelperLogicJsonPathService.h"
 #include "Services/BlueprintHelperExportService.h"
 #include "Services/BlueprintHelperGraphResolver.h"
 #include "Services/BlueprintHelperImportService.h"
@@ -341,6 +343,9 @@ bool FBlueprintHelperBridgeExportEffectiveScopeTest::RunTest(const FString& Para
 	FBlueprintHelperGraphSnapshotService SnapshotService;
 	FBlueprintHelperReplaceBlueprintGraphService ReplaceGraphService(
 		GraphResolver, AgentImportService, BlockIdService, OwnershipService, JournalService, SnapshotService);
+	FBlueprintHelperLogicJsonPathService LogicJsonPathService;
+	FBlueprintHelperPatchBlueprintGraphService PatchGraphService(
+		GraphResolver, LogicJsonPathService, JournalService);
 	FBlueprintHelperBridgeRouter Router(
 		ImportService,
 		AgentImportService,
@@ -362,7 +367,8 @@ bool FBlueprintHelperBridgeExportEffectiveScopeTest::RunTest(const FString& Para
 		ComponentService,
 		ClassSettingsService,
 		AppendGraphService,
-		ReplaceGraphService);
+		ReplaceGraphService,
+		PatchGraphService);
 
 	FBlueprintHelperBridgeRequest Request;
 	Request.RequestId = TEXT("effective-scope-test");
