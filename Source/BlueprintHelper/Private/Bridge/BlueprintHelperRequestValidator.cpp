@@ -644,6 +644,24 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 		};
 		return ValidateRules(Payload, Rules, OutError);
 	}
+	if (CommandEquals(Command, TEXT("list_blueprint_helper_transactions")))
+	{
+		const FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("query_scope"), EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("limit"), EBlueprintHelperJsonExpectedType::Number, false},
+			{TEXT("cursor"), EBlueprintHelperJsonExpectedType::String, false},
+		};
+		return ValidateRules(Payload, Rules, OutError);
+	}
+	if (CommandEquals(Command, TEXT("read_blueprint_helper_transaction")))
+	{
+		const FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("transaction_id"), EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("detail_level"), EBlueprintHelperJsonExpectedType::String, false},
+		};
+		return ValidateRules(Payload, Rules, OutError);
+	}
 	return true;
 }
 

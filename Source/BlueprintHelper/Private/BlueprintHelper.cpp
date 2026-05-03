@@ -76,6 +76,7 @@
 #include "Services/BlueprintHelperRollbackCleanupTransactionService.h"
 #include "Services/BlueprintHelperConvertBlockToUserOwnedService.h"
 #include "Services/BlueprintHelperCompileAssetService.h"
+#include "Services/BlueprintHelperTransactionQueryService.h"
 #include "Services/BlueprintHelperBlockIdService.h"
 #include "Services/BlueprintHelperOwnershipService.h"
 #include "Services/BlueprintHelperTransactionJournalService.h"
@@ -193,11 +194,12 @@ void FBlueprintHelperModule::StartupModule()
 	ConvertBlockService = MakeUnique<FBlueprintHelperConvertBlockToUserOwnedService>(
 		*GraphResolver, *OwnershipService, *JournalService);
 	CompileAssetService = MakeUnique<FBlueprintHelperCompileAssetService>(*CompileService);
+	TransactionQueryService = MakeUnique<FBlueprintHelperTransactionQueryService>();
 
 	// ─── Bridge Layer 初始化 ───
 	ContextService = MakeUnique<FBlueprintHelperContextService>(*GraphResolver);
 	BridgeRouter = MakeUnique<FBlueprintHelperBridgeRouter>(
-		*ImportService, *AgentImportService, *ExportService, *CompileService, *ValidationService, *ContextService, *AssetBrowseService, *StructureService, *WidgetService, *PropertyReflectionService, *DataTableService, *EditorCommandService, *RuntimeProfileService, *DiagnosticsService, *LogicMdReadService, *LogicJsonReadService, *AssetFactoryService, *ComponentService, *ClassSettingsService, *AppendGraphService, *ReplaceGraphService, *PatchGraphService, *MergeGraphService, *CleanupBlockService, *RollbackCleanupService, *ConvertBlockService, *CompileAssetService);
+		*ImportService, *AgentImportService, *ExportService, *CompileService, *ValidationService, *ContextService, *AssetBrowseService, *StructureService, *WidgetService, *PropertyReflectionService, *DataTableService, *EditorCommandService, *RuntimeProfileService, *DiagnosticsService, *LogicMdReadService, *LogicJsonReadService, *AssetFactoryService, *ComponentService, *ClassSettingsService, *AppendGraphService, *ReplaceGraphService, *PatchGraphService, *MergeGraphService, *CleanupBlockService, *RollbackCleanupService, *ConvertBlockService, *CompileAssetService, *TransactionQueryService);
 	BridgeServer = MakeUnique<FBlueprintHelperBridgeServer>(*BridgeRouter);
 	BridgeServer->Start();
 

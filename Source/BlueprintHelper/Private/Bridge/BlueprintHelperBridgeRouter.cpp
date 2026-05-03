@@ -47,6 +47,8 @@
 #include "Services/BlueprintHelperCompileAssetService.h"
 #include "Services/BlueprintHelperCompileAssetTypes.h"
 #include "Services/BlueprintHelperSaveAssetTypes.h"
+#include "Services/BlueprintHelperTransactionQueryService.h"
+#include "Services/BlueprintHelperTransactionQueryTypes.h"
 #include "Services/BlueprintHelperToolResultTypes.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -606,7 +608,8 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	const FBlueprintHelperCleanupBlueprintHelperBlockService& InCleanupBlockService,
 	const FBlueprintHelperRollbackCleanupTransactionService& InRollbackCleanupService,
 	const FBlueprintHelperConvertBlockToUserOwnedService& InConvertBlockService,
-	const FBlueprintHelperCompileAssetService& InCompileAssetService)
+	const FBlueprintHelperCompileAssetService& InCompileAssetService,
+	const FBlueprintHelperTransactionQueryService& InTransactionQueryService)
 	: ImportService(InImport)
 	, AgentImportService(InAgentImport)
 	, ExportService(InExport)
@@ -634,6 +637,7 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	, RollbackCleanupService(InRollbackCleanupService)
 	, ConvertBlockService(InConvertBlockService)
 	, CompileAssetService(InCompileAssetService)
+	, TransactionQueryService(InTransactionQueryService)
 {
 }
 
@@ -927,6 +931,15 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequest(
 	if (Request.Command == TEXT("compile_blueprint_asset"))
 	{
 		return HandleCompileBlueprintAsset(Request);
+	}
+	// ─── Transaction Query ───
+	if (Request.Command == TEXT("list_blueprint_helper_transactions"))
+	{
+		return HandleListTransactions(Request);
+	}
+	if (Request.Command == TEXT("read_blueprint_helper_transaction"))
+	{
+		return HandleReadTransaction(Request);
 	}
 	return FBlueprintHelperBridgeResponse::Error(
 		Request.RequestId,
@@ -1759,6 +1772,34 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleCompileBluepr
 		: FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed,
 			Result.Error.IsSet() ? Result.Error->Message : TEXT("compile_blueprint_asset 执行失败。"));
 
+	Resp.Result = Result.ToJson();
+	return Resp;
+}
+
+// ─── list_blueprint_helper_transactions ───
+
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleListTransactions(
+	const FBlueprintHelperBridgeRequest& Req) const
+{
+	const FBlueprintHelperToolResultBase Result = TransactionQueryService.List(Req.Payload);
+	auto Resp = Result.bOk
+		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
+		: FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed,
+			Result.Error.IsSet() ? Result.Error->Message : TEXT("list transactions failed"));
+	Resp.Result = Result.ToJson();
+	return Resp;
+}
+
+// ─── read_blueprint_helper_transaction ───
+
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadTransaction(
+	const FBlueprintHelperBridgeRequest& Req) const
+{
+	const FBlueprintHelperToolResultBase Result = TransactionQueryService.Read(Req.Payload);
+	auto Resp = Result.bOk
+		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
+		: FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed,
+			Result.Error.IsSet() ? Result.Error->Message : TEXT("read transaction failed"));
 	Resp.Result = Result.ToJson();
 	return Resp;
 }
