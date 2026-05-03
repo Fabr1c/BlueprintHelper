@@ -42,6 +42,8 @@
 #include "Services/BlueprintHelperCleanupBlockTypes.h"
 #include "Services/BlueprintHelperRollbackCleanupTransactionService.h"
 #include "Services/BlueprintHelperRollbackCleanupTypes.h"
+#include "Services/BlueprintHelperConvertBlockToUserOwnedService.h"
+#include "Services/BlueprintHelperConvertBlockToUserOwnedTypes.h"
 #include "Services/BlueprintHelperToolResultTypes.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -599,7 +601,8 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	const FBlueprintHelperPatchBlueprintGraphService& InPatchGraphService,
 	const FBlueprintHelperMergeBlueprintGraphService& InMergeGraphService,
 	const FBlueprintHelperCleanupBlueprintHelperBlockService& InCleanupBlockService,
-	const FBlueprintHelperRollbackCleanupTransactionService& InRollbackCleanupService)
+	const FBlueprintHelperRollbackCleanupTransactionService& InRollbackCleanupService,
+	const FBlueprintHelperConvertBlockToUserOwnedService& InConvertBlockService)
 	: ImportService(InImport)
 	, AgentImportService(InAgentImport)
 	, ExportService(InExport)
@@ -625,6 +628,7 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	, MergeGraphService(InMergeGraphService)
 	, CleanupBlockService(InCleanupBlockService)
 	, RollbackCleanupService(InRollbackCleanupService)
+	, ConvertBlockService(InConvertBlockService)
 {
 }
 
@@ -908,6 +912,11 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequest(
 	if (Request.Command == TEXT("rollback_cleanup_transaction"))
 	{
 		return HandleRollbackCleanupTransaction(Request);
+	}
+	// ─── ConvertBlockToUserOwned ───
+	if (Request.Command == TEXT("convert_blueprint_helper_block_to_user_owned"))
+	{
+		return HandleConvertBlockToUserOwned(Request);
 	}
 	return FBlueprintHelperBridgeResponse::Error(
 		Request.RequestId,
@@ -1701,6 +1710,25 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRollbackClean
 		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
 		: FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed,
 			Result.Error.IsSet() ? Result.Error->Message : TEXT("rollback_cleanup_transaction 执行失败。"));
+
+	Resp.Result = Result.ToJson();
+	return Resp;
+}
+
+// ─── convert_blueprint_helper_block_to_user_owned ───
+
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleConvertBlockToUserOwned(
+	const FBlueprintHelperBridgeRequest& Req) const
+{
+	if (!Req.Payload.IsValid())
+		return FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::InvalidRequest, TEXT("payload 缺失。"));
+
+	const FBlueprintHelperToolResultBase Result = ConvertBlockService.Execute(Req.Payload);
+
+	FBlueprintHelperBridgeResponse Resp = Result.bOk
+		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
+		: FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed,
+			Result.Error.IsSet() ? Result.Error->Message : TEXT("convert_blueprint_helper_block_to_user_owned 执行失败。"));
 
 	Resp.Result = Result.ToJson();
 	return Resp;
