@@ -44,6 +44,8 @@
 #include "Services/BlueprintHelperRollbackCleanupTypes.h"
 #include "Services/BlueprintHelperConvertBlockToUserOwnedService.h"
 #include "Services/BlueprintHelperConvertBlockToUserOwnedTypes.h"
+#include "Services/BlueprintHelperCompileAssetService.h"
+#include "Services/BlueprintHelperCompileAssetTypes.h"
 #include "Services/BlueprintHelperToolResultTypes.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -602,7 +604,8 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	const FBlueprintHelperMergeBlueprintGraphService& InMergeGraphService,
 	const FBlueprintHelperCleanupBlueprintHelperBlockService& InCleanupBlockService,
 	const FBlueprintHelperRollbackCleanupTransactionService& InRollbackCleanupService,
-	const FBlueprintHelperConvertBlockToUserOwnedService& InConvertBlockService)
+	const FBlueprintHelperConvertBlockToUserOwnedService& InConvertBlockService,
+	const FBlueprintHelperCompileAssetService& InCompileAssetService)
 	: ImportService(InImport)
 	, AgentImportService(InAgentImport)
 	, ExportService(InExport)
@@ -629,6 +632,7 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	, CleanupBlockService(InCleanupBlockService)
 	, RollbackCleanupService(InRollbackCleanupService)
 	, ConvertBlockService(InConvertBlockService)
+	, CompileAssetService(InCompileAssetService)
 {
 }
 
@@ -917,6 +921,11 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequest(
 	if (Request.Command == TEXT("convert_blueprint_helper_block_to_user_owned"))
 	{
 		return HandleConvertBlockToUserOwned(Request);
+	}
+	// ─── CompileBlueprintAsset ───
+	if (Request.Command == TEXT("compile_blueprint_asset"))
+	{
+		return HandleCompileBlueprintAsset(Request);
 	}
 	return FBlueprintHelperBridgeResponse::Error(
 		Request.RequestId,
@@ -1729,6 +1738,25 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleConvertBlockT
 		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
 		: FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed,
 			Result.Error.IsSet() ? Result.Error->Message : TEXT("convert_blueprint_helper_block_to_user_owned 执行失败。"));
+
+	Resp.Result = Result.ToJson();
+	return Resp;
+}
+
+// ─── compile_blueprint_asset ───
+
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleCompileBlueprintAsset(
+	const FBlueprintHelperBridgeRequest& Req) const
+{
+	if (!Req.Payload.IsValid())
+		return FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::InvalidRequest, TEXT("payload 缺失。"));
+
+	const FBlueprintHelperToolResultBase Result = CompileAssetService.Execute(Req.Payload);
+
+	FBlueprintHelperBridgeResponse Resp = Result.bOk
+		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
+		: FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed,
+			Result.Error.IsSet() ? Result.Error->Message : TEXT("compile_blueprint_asset 执行失败。"));
 
 	Resp.Result = Result.ToJson();
 	return Resp;

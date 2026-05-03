@@ -37,6 +37,7 @@
 #include "Services/BlueprintHelperCleanupBlueprintHelperBlockService.h"
 #include "Services/BlueprintHelperRollbackCleanupTransactionService.h"
 #include "Services/BlueprintHelperConvertBlockToUserOwnedService.h"
+#include "Services/BlueprintHelperCompileAssetService.h"
 #include "Services/BlueprintHelperBlockIdService.h"
 #include "Services/BlueprintHelperOwnershipService.h"
 #include "Services/BlueprintHelperTransactionJournalService.h"
@@ -358,6 +359,7 @@ bool FBlueprintHelperBridgeExportEffectiveScopeTest::RunTest(const FString& Para
 		GraphResolver, JournalService);
 	FBlueprintHelperConvertBlockToUserOwnedService ConvertBlockService(
 		GraphResolver, OwnershipService, JournalService);
+	FBlueprintHelperCompileAssetService CompileAssetService(CompileService);
 	FBlueprintHelperBridgeRouter Router(
 		ImportService,
 		AgentImportService,
@@ -384,7 +386,8 @@ bool FBlueprintHelperBridgeExportEffectiveScopeTest::RunTest(const FString& Para
 		MergeGraphService,
 		CleanupBlockService,
 		RollbackCleanupService,
-		ConvertBlockService);
+		ConvertBlockService,
+		CompileAssetService);
 
 	FBlueprintHelperBridgeRequest Request;
 	Request.RequestId = TEXT("effective-scope-test");

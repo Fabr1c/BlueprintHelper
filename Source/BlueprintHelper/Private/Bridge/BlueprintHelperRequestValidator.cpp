@@ -637,6 +637,13 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 		};
 		return ValidateRules(Payload, Rules, OutError);
 	}
+	if (CommandEquals(Command, TEXT("compile_blueprint_asset")))
+	{
+		const FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
+		};
+		return ValidateRules(Payload, Rules, OutError);
+	}
 	return true;
 }
 
