@@ -32,6 +32,8 @@
 #include "Services/BlueprintHelperClassSettingsTypes.h"
 #include "Services/BlueprintHelperAppendBlueprintGraphService.h"
 #include "Services/BlueprintHelperAppendGraphTypes.h"
+#include "Services/BlueprintHelperReplaceBlueprintGraphService.h"
+#include "Services/BlueprintHelperReplaceGraphTypes.h"
 #include "Services/BlueprintHelperToolResultTypes.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -584,7 +586,8 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	const FBlueprintHelperAssetFactoryService& InAssetFactory,
 	const FBlueprintHelperComponentService& InComponentService,
 	const FBlueprintHelperClassSettingsService& InClassSettings,
-	const FBlueprintHelperAppendBlueprintGraphService& InAppendGraphService)
+	const FBlueprintHelperAppendBlueprintGraphService& InAppendGraphService,
+	const FBlueprintHelperReplaceBlueprintGraphService& InReplaceGraphService)
 	: ImportService(InImport)
 	, AgentImportService(InAgentImport)
 	, ExportService(InExport)
@@ -605,6 +608,7 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	, ComponentService(InComponentService)
 	, ClassSettingsService(InClassSettings)
 	, AppendGraphService(InAppendGraphService)
+	, ReplaceGraphService(InReplaceGraphService)
 {
 }
 
@@ -863,6 +867,11 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequest(
 	if (Request.Command == TEXT("append_blueprint_graph"))
 	{
 		return HandleAppendBlueprintGraph(Request);
+	}
+	// ─── ReplaceBlueprintGraph ───
+	if (Request.Command == TEXT("replace_blueprint_graph"))
+	{
+		return HandleReplaceBlueprintGraph(Request);
 	}
 	return FBlueprintHelperBridgeResponse::Error(
 		Request.RequestId,
@@ -1536,6 +1545,32 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleAppendBluepri
 			Req.RequestId,
 			EBlueprintHelperBridgeError::ExecutionFailed,
 			Result.Error.IsSet() ? Result.Error->Message : TEXT("append_blueprint_graph 执行失败。"));
+
+	Resp.Result = Result.ToJson();
+	return Resp;
+}
+
+// ─── replace_blueprint_graph ───
+
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReplaceBlueprintGraph(
+	const FBlueprintHelperBridgeRequest& Req) const
+{
+	if (!Req.Payload.IsValid())
+	{
+		return FBlueprintHelperBridgeResponse::Error(
+			Req.RequestId,
+			EBlueprintHelperBridgeError::InvalidRequest,
+			TEXT("payload 缺失。"));
+	}
+
+	const FBlueprintHelperToolResultBase Result = ReplaceGraphService.Execute(Req.Payload);
+
+	FBlueprintHelperBridgeResponse Resp = Result.bOk
+		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
+		: FBlueprintHelperBridgeResponse::Error(
+			Req.RequestId,
+			EBlueprintHelperBridgeError::ExecutionFailed,
+			Result.Error.IsSet() ? Result.Error->Message : TEXT("replace_blueprint_graph 执行失败。"));
 
 	Resp.Result = Result.ToJson();
 	return Resp;
