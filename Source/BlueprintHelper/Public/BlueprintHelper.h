@@ -22,6 +22,17 @@ class FBlueprintHelperWidgetService;
 class FBlueprintHelperPropertyReflectionService;
 class FBlueprintHelperDataTableService;
 class FBlueprintHelperEditorCommandService;
+class FBlueprintHelperRuntimeProfileService;
+class FBlueprintHelperDiagnosticsService;
+class FBlueprintHelperLogicMdReadService;
+class FBlueprintHelperLogicJsonReadService;
+class FBlueprintHelperAssetFactoryService;
+class FBlueprintHelperComponentService;
+class FBlueprintHelperClassSettingsService;
+class FBlueprintHelperAppendBlueprintGraphService;
+class FBlueprintHelperBlockIdService;
+class FBlueprintHelperOwnershipService;
+class FBlueprintHelperTransactionJournalService;
 
 /**
  * BlueprintHelper 模块，负责注册编辑器窗口与提供当前蓝图图表访问能力。
@@ -64,6 +75,8 @@ public:
 	const FBlueprintHelperPropertyReflectionService& GetPropertyReflectionService() const { return *PropertyReflectionService; }
 	const FBlueprintHelperDataTableService& GetDataTableService() const { return *DataTableService; }
 	const FBlueprintHelperEditorCommandService& GetEditorCommandService() const { return *EditorCommandService; }
+	const FBlueprintHelperComponentService& GetComponentService() const { return *ComponentService; }
+	const FBlueprintHelperClassSettingsService& GetClassSettingsService() const { return *ClassSettingsService; }
 
 private:
 	/** 注册编辑器菜单。 */
@@ -95,6 +108,33 @@ private:
 	TUniquePtr<FBlueprintHelperPropertyReflectionService> PropertyReflectionService;
 	TUniquePtr<FBlueprintHelperDataTableService> DataTableService;
 	TUniquePtr<FBlueprintHelperEditorCommandService> EditorCommandService;
+
+	// ─── Runtime Profile ───
+	TUniquePtr<FBlueprintHelperRuntimeProfileService> RuntimeProfileService;
+
+	// ─── Diagnostics ───
+	TUniquePtr<FBlueprintHelperDiagnosticsService> DiagnosticsService;
+
+	// ─── Logic MD ───
+	TUniquePtr<FBlueprintHelperLogicMdReadService> LogicMdReadService;
+
+	// ─── Logic Json ───
+	TUniquePtr<FBlueprintHelperLogicJsonReadService> LogicJsonReadService;
+
+	// ─── Asset Factory ───
+	TUniquePtr<FBlueprintHelperAssetFactoryService> AssetFactoryService;
+
+	// ─── Component ───
+	TUniquePtr<FBlueprintHelperComponentService> ComponentService;
+
+	// ─── Class Settings ───
+	TUniquePtr<FBlueprintHelperClassSettingsService> ClassSettingsService;
+
+	// ─── AppendBlueprintGraph ───
+	TUniquePtr<FBlueprintHelperBlockIdService> BlockIdService;
+	TUniquePtr<FBlueprintHelperOwnershipService> OwnershipService;
+	TUniquePtr<FBlueprintHelperTransactionJournalService> JournalService;
+	TUniquePtr<FBlueprintHelperAppendBlueprintGraphService> AppendGraphService;
 
 	// ─── Bridge Layer ───
 	TUniquePtr<FBlueprintHelperContextService> ContextService;
