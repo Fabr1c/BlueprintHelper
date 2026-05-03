@@ -1001,6 +1001,23 @@ FBlueprintHelperLogicResult FBlueprintHelperLogicProcessor::ProcessRawJson(
 		return Result;
 	}
 
+	return ProcessRawJsonObject(RootObject, Options);
+}
+
+FBlueprintHelperLogicResult FBlueprintHelperLogicProcessor::ProcessRawJsonObject(
+	const TSharedPtr<FJsonObject>& RawJsonObject,
+	const FBlueprintHelperLogicOptions& Options)
+{
+	FBlueprintHelperLogicResult Result;
+
+	if (!RawJsonObject.IsValid())
+	{
+		Result.ErrorMessage = TEXT("JSON parse failed: input is not a valid JSON object.");
+		return Result;
+	}
+
+	const TSharedPtr<FJsonObject>& RootObject = RawJsonObject;
+
 	TArray<FLogicGraph> Graphs;
 	const TArray<TSharedPtr<FJsonValue>>* GraphsArray = nullptr;
 	if (RootObject->TryGetArrayField(TEXT("graphs"), GraphsArray) && GraphsArray)

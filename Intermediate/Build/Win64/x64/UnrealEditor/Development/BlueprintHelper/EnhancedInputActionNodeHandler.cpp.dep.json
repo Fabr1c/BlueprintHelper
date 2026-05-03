@@ -1,0 +1,30 @@
+{
+    "Version": "1.2",
+    "Data": {
+        "Source": "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\private\\nodehandlers\\enhancedinputactionnodehandler.cpp",
+        "ProvidedModule": "",
+        "PCH": "g:\\unrealpractise\\mrstone\\intermediate\\build\\win64\\x64\\mrstoneeditor\\development\\unrealed\\sharedpch.unrealed.project.valapi.valexpapi.cpp20.h.pch",
+        "Includes": [
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\intermediate\\build\\win64\\x64\\unrealeditor\\development\\blueprinthelper\\definitions.blueprinthelper.h",
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\nodehandlers\\enhancedinputactionnodehandler.h",
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\nodehandlers\\blueprintnodehandler.h",
+            "f:\\ue_5.6\\engine\\plugins\\enhancedinput\\source\\inputblueprintnodes\\public\\k2node_enhancedinputaction.h",
+            "f:\\ue_5.6\\engine\\source\\editor\\blueprintgraph\\classes\\k2node_eventnodeinterface.h",
+            "f:\\ue_5.6\\engine\\intermediate\\build\\win64\\unrealeditor\\inc\\blueprintgraph\\uht\\k2node_eventnodeinterface.generated.h",
+            "f:\\ue_5.6\\engine\\source\\editor\\blueprintgraph\\public\\blueprintnodespawner.h",
+            "f:\\ue_5.6\\engine\\intermediate\\build\\win64\\unrealeditor\\inc\\blueprintgraph\\uht\\blueprintnodespawner.generated.h",
+            "f:\\ue_5.6\\engine\\plugins\\enhancedinput\\intermediate\\build\\win64\\unrealeditor\\inc\\inputblueprintnodes\\uht\\k2node_enhancedinputaction.generated.h",
+            "f:\\ue_5.6\\engine\\plugins\\enhancedinput\\source\\enhancedinput\\public\\inputaction.h",
+            "f:\\ue_5.6\\engine\\plugins\\enhancedinput\\source\\enhancedinput\\public\\inputmodifiers.h",
+            "f:\\ue_5.6\\engine\\plugins\\enhancedinput\\source\\enhancedinput\\public\\inputactionvalue.h",
+            "f:\\ue_5.6\\engine\\plugins\\enhancedinput\\intermediate\\build\\win64\\unrealeditor\\inc\\enhancedinput\\uht\\inputactionvalue.generated.h",
+            "f:\\ue_5.6\\engine\\plugins\\enhancedinput\\intermediate\\build\\win64\\unrealeditor\\inc\\enhancedinput\\uht\\inputmodifiers.generated.h",
+            "f:\\ue_5.6\\engine\\plugins\\enhancedinput\\source\\enhancedinput\\public\\inputtriggers.h",
+            "f:\\ue_5.6\\engine\\plugins\\enhancedinput\\intermediate\\build\\win64\\unrealeditor\\inc\\enhancedinput\\uht\\inputtriggers.generated.h",
+            "f:\\ue_5.6\\engine\\plugins\\enhancedinput\\intermediate\\build\\win64\\unrealeditor\\inc\\enhancedinput\\uht\\inputaction.generated.h",
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\texttoblueprintgenerator.h"
+        ],
+        "ImportedModules": [],
+        "ImportedHeaderUnits": []
+    }
+}

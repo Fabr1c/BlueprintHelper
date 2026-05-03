@@ -110,3 +110,21 @@ For any editor-asset mutation:
 7. Report errors without repeated blind retries.
 
 Do not rely on the currently focused editor tab for destructive operations unless the user explicitly asks for active-context editing.
+
+## Bridge 协议 (v2.2+)
+
+BlueprintHelper Bridge 使用 object-first 协议传递 RawJson 数据。
+
+### 导出
+- `payload` — 结构化 RawJson 对象（主要字段）
+- `json` — 兼容性别名
+- `json_text` — 仅 `include_json_text: true` 时出现
+
+### 导入
+- 接受 `json` 为 object 或 string
+- 拒绝 LogicJson/LogicMD（`importable=false` 或 `schema` 以 `BlueprintHelper.Logic` 开头）
+
+### MCP 默认行为
+- `blueprint_export_to_json` 返回 `raw_json_ref` (resource link)
+- RawJson resource 直接返回 RawJson 本体（不额外包裹）
+- `legacy_text_json` 模式用于兼容/调试

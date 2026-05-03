@@ -2,6 +2,8 @@
 
 #include "CoreMinimal.h"
 
+class FJsonObject;
+
 enum class EBlueprintHelperLogicOutputFormat : uint8
 {
 	LogicJson,
@@ -43,5 +45,10 @@ class BLUEPRINTHELPER_API FBlueprintHelperLogicProcessor
 public:
 	static FBlueprintHelperLogicResult ProcessRawJson(
 		const FString& RawJsonText,
+		const FBlueprintHelperLogicOptions& Options);
+
+	/** 直接从 FJsonObject 生成逻辑视图。调用方负责保证对象有效。 */
+	static FBlueprintHelperLogicResult ProcessRawJsonObject(
+		const TSharedPtr<FJsonObject>& RawJsonObject,
 		const FBlueprintHelperLogicOptions& Options);
 };

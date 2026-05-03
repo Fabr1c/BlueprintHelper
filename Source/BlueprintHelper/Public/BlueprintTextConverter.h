@@ -58,6 +58,15 @@ public:
 
 	/** 导出完整蓝图结构为 JSON（所有变量 + 函数签名 + 事件分发器 + 所有图表节点/连线）。v2.1 */
 	static FString ExportBlueprintToJson(class UBlueprint* Blueprint);
+
+	/** 从图表对象直接导出节点和连线为 FJsonObject。v2.2 */
+	static TSharedPtr<class FJsonObject> ConvertGraphToJsonObject(class UEdGraph* TargetGraph);
+
+	/** 导出完整蓝图结构为 FJsonObject。v2.2 */
+	static TSharedPtr<class FJsonObject> ExportBlueprintToJsonObject(class UBlueprint* Blueprint);
+
+	/** 将 FJsonObject 序列化为 JSON 字符串。 */
+	static FString SerializeJsonObject(const TSharedPtr<class FJsonObject>& JsonObject);
 private:
 	/** 解析 T3D 文本到轻量节点结构。 */
 	static void ParseT3DToNodes(const FString& T3DText, TMap<FString, FMinimalNode>& OutNodes);
