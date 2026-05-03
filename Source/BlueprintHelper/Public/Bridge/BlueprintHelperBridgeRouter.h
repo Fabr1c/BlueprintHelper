@@ -32,6 +32,7 @@ class FBlueprintHelperCleanupBlueprintHelperBlockService;
 class FBlueprintHelperRollbackCleanupTransactionService;
 class FBlueprintHelperConvertBlockToUserOwnedService;
 class FBlueprintHelperCompileAssetService;
+class FBlueprintHelperTransactionQueryService;
 
 /**
  * 命令路由器，将 Bridge 请求分发到对应的 Service 方法。
@@ -67,7 +68,8 @@ public:
 	const FBlueprintHelperCleanupBlueprintHelperBlockService& InCleanupBlockService,
 	const FBlueprintHelperRollbackCleanupTransactionService& InRollbackCleanupService,
 	const FBlueprintHelperConvertBlockToUserOwnedService& InConvertBlockService,
-	const FBlueprintHelperCompileAssetService& InCompileAssetService);
+	const FBlueprintHelperCompileAssetService& InCompileAssetService,
+	const FBlueprintHelperTransactionQueryService& InTransactionQueryService);
 
 	/** 路由并执行命令。必须在 GameThread 调用。 */
 	FBlueprintHelperBridgeResponse HandleRequest(const FBlueprintHelperBridgeRequest& Request) const;
@@ -168,6 +170,10 @@ private:
 	// ─── CompileBlueprintAsset ───
 	FBlueprintHelperBridgeResponse HandleCompileBlueprintAsset(const FBlueprintHelperBridgeRequest& Req) const;
 
+	// ─── Transaction Query ───
+	FBlueprintHelperBridgeResponse HandleListTransactions(const FBlueprintHelperBridgeRequest& Req) const;
+	FBlueprintHelperBridgeResponse HandleReadTransaction(const FBlueprintHelperBridgeRequest& Req) const;
+
 	const FBlueprintHelperImportService& ImportService;
 	const FBlueprintHelperAgentImportService& AgentImportService;
 	const FBlueprintHelperExportService& ExportService;
@@ -195,4 +201,5 @@ private:
 	const FBlueprintHelperRollbackCleanupTransactionService& RollbackCleanupService;
 	const FBlueprintHelperConvertBlockToUserOwnedService& ConvertBlockService;
 	const FBlueprintHelperCompileAssetService& CompileAssetService;
+	const FBlueprintHelperTransactionQueryService& TransactionQueryService;
 };
