@@ -36,6 +36,8 @@
 #include "Services/BlueprintHelperReplaceGraphTypes.h"
 #include "Services/BlueprintHelperPatchBlueprintGraphService.h"
 #include "Services/BlueprintHelperPatchGraphTypes.h"
+#include "Services/BlueprintHelperMergeBlueprintGraphService.h"
+#include "Services/BlueprintHelperMergeGraphTypes.h"
 #include "Services/BlueprintHelperToolResultTypes.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -590,7 +592,8 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	const FBlueprintHelperClassSettingsService& InClassSettings,
 	const FBlueprintHelperAppendBlueprintGraphService& InAppendGraphService,
 	const FBlueprintHelperReplaceBlueprintGraphService& InReplaceGraphService,
-	const FBlueprintHelperPatchBlueprintGraphService& InPatchGraphService)
+	const FBlueprintHelperPatchBlueprintGraphService& InPatchGraphService,
+	const FBlueprintHelperMergeBlueprintGraphService& InMergeGraphService)
 	: ImportService(InImport)
 	, AgentImportService(InAgentImport)
 	, ExportService(InExport)
@@ -613,6 +616,7 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	, AppendGraphService(InAppendGraphService)
 	, ReplaceGraphService(InReplaceGraphService)
 	, PatchGraphService(InPatchGraphService)
+	, MergeGraphService(InMergeGraphService)
 {
 }
 
@@ -881,6 +885,11 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequest(
 	if (Request.Command == TEXT("patch_blueprint_graph"))
 	{
 		return HandlePatchBlueprintGraph(Request);
+	}
+	// ─── MergeBlueprintGraph ───
+	if (Request.Command == TEXT("merge_blueprint_graph"))
+	{
+		return HandleMergeBlueprintGraph(Request);
 	}
 	return FBlueprintHelperBridgeResponse::Error(
 		Request.RequestId,
@@ -1606,6 +1615,32 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandlePatchBlueprin
 			Req.RequestId,
 			EBlueprintHelperBridgeError::ExecutionFailed,
 			Result.Error.IsSet() ? Result.Error->Message : TEXT("patch_blueprint_graph 执行失败。"));
+
+	Resp.Result = Result.ToJson();
+	return Resp;
+}
+
+// ─── merge_blueprint_graph ───
+
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleMergeBlueprintGraph(
+	const FBlueprintHelperBridgeRequest& Req) const
+{
+	if (!Req.Payload.IsValid())
+	{
+		return FBlueprintHelperBridgeResponse::Error(
+			Req.RequestId,
+			EBlueprintHelperBridgeError::InvalidRequest,
+			TEXT("payload 缺失。"));
+	}
+
+	const FBlueprintHelperToolResultBase Result = MergeGraphService.Execute(Req.Payload);
+
+	FBlueprintHelperBridgeResponse Resp = Result.bOk
+		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
+		: FBlueprintHelperBridgeResponse::Error(
+			Req.RequestId,
+			EBlueprintHelperBridgeError::ExecutionFailed,
+			Result.Error.IsSet() ? Result.Error->Message : TEXT("merge_blueprint_graph 执行失败。"));
 
 	Resp.Result = Result.ToJson();
 	return Resp;

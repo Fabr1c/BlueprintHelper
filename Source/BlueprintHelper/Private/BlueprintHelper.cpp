@@ -71,6 +71,7 @@
 #include "Services/BlueprintHelperAppendBlueprintGraphService.h"
 #include "Services/BlueprintHelperReplaceBlueprintGraphService.h"
 #include "Services/BlueprintHelperPatchBlueprintGraphService.h"
+#include "Services/BlueprintHelperMergeBlueprintGraphService.h"
 #include "Services/BlueprintHelperBlockIdService.h"
 #include "Services/BlueprintHelperOwnershipService.h"
 #include "Services/BlueprintHelperTransactionJournalService.h"
@@ -179,11 +180,13 @@ void FBlueprintHelperModule::StartupModule()
 	LogicJsonPathService = MakeUnique<FBlueprintHelperLogicJsonPathService>();
 	PatchGraphService = MakeUnique<FBlueprintHelperPatchBlueprintGraphService>(
 		*GraphResolver, *LogicJsonPathService, *JournalService);
+	MergeGraphService = MakeUnique<FBlueprintHelperMergeBlueprintGraphService>(
+		*GraphResolver, *LogicJsonPathService, *JournalService);
 
 	// ─── Bridge Layer 初始化 ───
 	ContextService = MakeUnique<FBlueprintHelperContextService>(*GraphResolver);
 	BridgeRouter = MakeUnique<FBlueprintHelperBridgeRouter>(
-		*ImportService, *AgentImportService, *ExportService, *CompileService, *ValidationService, *ContextService, *AssetBrowseService, *StructureService, *WidgetService, *PropertyReflectionService, *DataTableService, *EditorCommandService, *RuntimeProfileService, *DiagnosticsService, *LogicMdReadService, *LogicJsonReadService, *AssetFactoryService, *ComponentService, *ClassSettingsService, *AppendGraphService, *ReplaceGraphService, *PatchGraphService);
+		*ImportService, *AgentImportService, *ExportService, *CompileService, *ValidationService, *ContextService, *AssetBrowseService, *StructureService, *WidgetService, *PropertyReflectionService, *DataTableService, *EditorCommandService, *RuntimeProfileService, *DiagnosticsService, *LogicMdReadService, *LogicJsonReadService, *AssetFactoryService, *ComponentService, *ClassSettingsService, *AppendGraphService, *ReplaceGraphService, *PatchGraphService, *MergeGraphService);
 	BridgeServer = MakeUnique<FBlueprintHelperBridgeServer>(*BridgeRouter);
 	BridgeServer->Start();
 
