@@ -746,6 +746,18 @@ TEXT("create_blueprint"),
 	TEXT("cleanup_blueprint_helper_block"),
 	TEXT("rollback_cleanup_transaction"),
 	TEXT("convert_blueprint_helper_block_to_user_owned"),
+	TEXT("add_blueprint_member_variable"),
+	TEXT("add_blueprint_member_variables"),
+	TEXT("set_blueprint_member_variable_properties"),
+	TEXT("remove_blueprint_member_variable"),
+	TEXT("remove_blueprint_member_variables"),
+	TEXT("set_blueprint_member_default"),
+	TEXT("set_blueprint_member_defaults"),
+	TEXT("add_blueprint_local_variable"),
+	TEXT("add_blueprint_local_variables"),
+	TEXT("set_blueprint_local_variable_properties"),
+	TEXT("remove_blueprint_local_variable"),
+	TEXT("remove_blueprint_local_variables"),
 	};
 
 	return WriteCommands.Contains(Command.ToLower());

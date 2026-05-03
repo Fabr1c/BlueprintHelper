@@ -33,6 +33,7 @@ class FBlueprintHelperRollbackCleanupTransactionService;
 class FBlueprintHelperConvertBlockToUserOwnedService;
 class FBlueprintHelperCompileAssetService;
 class FBlueprintHelperTransactionQueryService;
+class FBlueprintHelperBlueprintVariableService;
 
 /**
  * 命令路由器，将 Bridge 请求分发到对应的 Service 方法。
@@ -69,7 +70,8 @@ public:
 	const FBlueprintHelperRollbackCleanupTransactionService& InRollbackCleanupService,
 	const FBlueprintHelperConvertBlockToUserOwnedService& InConvertBlockService,
 	const FBlueprintHelperCompileAssetService& InCompileAssetService,
-	const FBlueprintHelperTransactionQueryService& InTransactionQueryService);
+	const FBlueprintHelperTransactionQueryService& InTransactionQueryService,
+	const FBlueprintHelperBlueprintVariableService& InVariableService);
 
 	/** 路由并执行命令。必须在 GameThread 调用。 */
 	FBlueprintHelperBridgeResponse HandleRequest(const FBlueprintHelperBridgeRequest& Request) const;
@@ -101,6 +103,23 @@ private:
 	FBlueprintHelperBridgeResponse HandleListEventDispatchers(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleAddVariable(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleRemoveVariable(const FBlueprintHelperBridgeRequest& Req) const;
+
+	// ─── Blueprint Variable Service ───
+	FBlueprintHelperBridgeResponse HandleReadMemberVariables(const FBlueprintHelperBridgeRequest& Req) const;
+	FBlueprintHelperBridgeResponse HandleAddMemberVariable(const FBlueprintHelperBridgeRequest& Req) const;
+	FBlueprintHelperBridgeResponse HandleAddMemberVariables(const FBlueprintHelperBridgeRequest& Req) const;
+	FBlueprintHelperBridgeResponse HandleSetMemberVariableProperties(const FBlueprintHelperBridgeRequest& Req) const;
+	FBlueprintHelperBridgeResponse HandleRemoveMemberVariable(const FBlueprintHelperBridgeRequest& Req) const;
+	FBlueprintHelperBridgeResponse HandleRemoveMemberVariables(const FBlueprintHelperBridgeRequest& Req) const;
+	FBlueprintHelperBridgeResponse HandleReadMemberDefaults(const FBlueprintHelperBridgeRequest& Req) const;
+	FBlueprintHelperBridgeResponse HandleSetMemberDefault(const FBlueprintHelperBridgeRequest& Req) const;
+	FBlueprintHelperBridgeResponse HandleSetMemberDefaults(const FBlueprintHelperBridgeRequest& Req) const;
+	FBlueprintHelperBridgeResponse HandleReadLocalVariables(const FBlueprintHelperBridgeRequest& Req) const;
+	FBlueprintHelperBridgeResponse HandleAddLocalVariable(const FBlueprintHelperBridgeRequest& Req) const;
+	FBlueprintHelperBridgeResponse HandleAddLocalVariables(const FBlueprintHelperBridgeRequest& Req) const;
+	FBlueprintHelperBridgeResponse HandleSetLocalVariableProperties(const FBlueprintHelperBridgeRequest& Req) const;
+	FBlueprintHelperBridgeResponse HandleRemoveLocalVariable(const FBlueprintHelperBridgeRequest& Req) const;
+	FBlueprintHelperBridgeResponse HandleRemoveLocalVariables(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleAddGraph(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleRemoveGraph(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleAddEventDispatcher(const FBlueprintHelperBridgeRequest& Req) const;
@@ -200,6 +219,7 @@ private:
 	const FBlueprintHelperCleanupBlueprintHelperBlockService& CleanupBlockService;
 	const FBlueprintHelperRollbackCleanupTransactionService& RollbackCleanupService;
 	const FBlueprintHelperConvertBlockToUserOwnedService& ConvertBlockService;
+	const FBlueprintHelperBlueprintVariableService& VariableService;
 	const FBlueprintHelperCompileAssetService& CompileAssetService;
 	const FBlueprintHelperTransactionQueryService& TransactionQueryService;
 };

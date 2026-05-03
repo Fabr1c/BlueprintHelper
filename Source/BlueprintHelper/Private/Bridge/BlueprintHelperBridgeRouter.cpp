@@ -49,6 +49,8 @@
 #include "Services/BlueprintHelperSaveAssetTypes.h"
 #include "Services/BlueprintHelperTransactionQueryService.h"
 #include "Services/BlueprintHelperTransactionQueryTypes.h"
+#include "Services/BlueprintHelperBlueprintVariableService.h"
+#include "Services/BlueprintHelperBlueprintVariableTypes.h"
 #include "Services/BlueprintHelperToolResultTypes.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -609,7 +611,8 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	const FBlueprintHelperRollbackCleanupTransactionService& InRollbackCleanupService,
 	const FBlueprintHelperConvertBlockToUserOwnedService& InConvertBlockService,
 	const FBlueprintHelperCompileAssetService& InCompileAssetService,
-	const FBlueprintHelperTransactionQueryService& InTransactionQueryService)
+	const FBlueprintHelperTransactionQueryService& InTransactionQueryService,
+	const FBlueprintHelperBlueprintVariableService& InVariableService)
 	: ImportService(InImport)
 	, AgentImportService(InAgentImport)
 	, ExportService(InExport)
@@ -638,6 +641,7 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	, ConvertBlockService(InConvertBlockService)
 	, CompileAssetService(InCompileAssetService)
 	, TransactionQueryService(InTransactionQueryService)
+	, VariableService(InVariableService)
 {
 }
 
@@ -727,6 +731,38 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequest(
 	{
 		return HandleListGraphs(Request);
 	}
+	// ─── Blueprint Variable Service (new commands) ───
+	if (Request.Command == TEXT("read_blueprint_member_variables"))
+		return HandleReadMemberVariables(Request);
+	if (Request.Command == TEXT("add_blueprint_member_variable"))
+		return HandleAddMemberVariable(Request);
+	if (Request.Command == TEXT("add_blueprint_member_variables"))
+		return HandleAddMemberVariables(Request);
+	if (Request.Command == TEXT("set_blueprint_member_variable_properties"))
+		return HandleSetMemberVariableProperties(Request);
+	if (Request.Command == TEXT("remove_blueprint_member_variable"))
+		return HandleRemoveMemberVariable(Request);
+	if (Request.Command == TEXT("remove_blueprint_member_variables"))
+		return HandleRemoveMemberVariables(Request);
+	if (Request.Command == TEXT("read_blueprint_member_defaults"))
+		return HandleReadMemberDefaults(Request);
+	if (Request.Command == TEXT("set_blueprint_member_default"))
+		return HandleSetMemberDefault(Request);
+	if (Request.Command == TEXT("set_blueprint_member_defaults"))
+		return HandleSetMemberDefaults(Request);
+	if (Request.Command == TEXT("read_blueprint_local_variables"))
+		return HandleReadLocalVariables(Request);
+	if (Request.Command == TEXT("add_blueprint_local_variable"))
+		return HandleAddLocalVariable(Request);
+	if (Request.Command == TEXT("add_blueprint_local_variables"))
+		return HandleAddLocalVariables(Request);
+	if (Request.Command == TEXT("set_blueprint_local_variable_properties"))
+		return HandleSetLocalVariableProperties(Request);
+	if (Request.Command == TEXT("remove_blueprint_local_variable"))
+		return HandleRemoveLocalVariable(Request);
+	if (Request.Command == TEXT("remove_blueprint_local_variables"))
+		return HandleRemoveLocalVariables(Request);
+	// ─── (legacy commands, migrated to new service) ───
 	if (Request.Command == TEXT("list_variables"))
 	{
 		return HandleListVariables(Request);
@@ -2168,41 +2204,12 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleListGraphs(
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleListVariables(
 	const FBlueprintHelperBridgeRequest& Req) const
 {
-	const FBlueprintHelperGraphTarget Target = ParseTargetFromPayload(Req.Payload);
-	FBlueprintHelperListVariablesResult Result = StructureService.ListVariables(Target);
-
-	if (!Result.bSuccess)
-	{
-		return FBlueprintHelperBridgeResponse::Error(
-			Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, Result.ErrorMessage);
-	}
-
-	auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
-	Resp.Result = MakeShared<FJsonObject>();
-
-	TArray<TSharedPtr<FJsonValue>> VarArray;
-	for (const FBlueprintHelperVariableInfo& Info : Result.Variables)
-	{
-		TSharedPtr<FJsonObject> Obj = MakeShared<FJsonObject>();
-		Obj->SetStringField(TEXT("name"), Info.Name);
-		Obj->SetStringField(TEXT("type_category"), Info.TypeCategory);
-		if (!Info.SubCategoryObject.IsEmpty())
-		{
-			Obj->SetStringField(TEXT("sub_category_object"), Info.SubCategoryObject);
-		}
-		Obj->SetStringField(TEXT("container_type"), Info.ContainerType);
-		if (!Info.DefaultValue.IsEmpty())
-		{
-			Obj->SetStringField(TEXT("default_value"), Info.DefaultValue);
-		}
-		if (!Info.Category.IsEmpty())
-		{
-			Obj->SetStringField(TEXT("category"), Info.Category);
-		}
-		VarArray.Add(MakeShared<FJsonValueObject>(Obj));
-	}
-	Resp.Result->SetArrayField(TEXT("variables"), VarArray);
-	Resp.Result->SetNumberField(TEXT("count"), Result.Variables.Num());
+	// Migrated to VariableService
+	const FBlueprintHelperToolResultBase Result = VariableService.ReadMemberVariables(Req.Payload);
+	auto Resp = Result.bOk ? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
+		: FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed,
+			Result.Error.IsSet() ? Result.Error->Message : TEXT("list_variables failed"));
+	Resp.Result = Result.ToJson();
 	return Resp;
 }
 
@@ -2247,32 +2254,12 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleListEventDisp
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleAddVariable(
 	const FBlueprintHelperBridgeRequest& Req) const
 {
-	FBlueprintHelperBridgeValidationError ParseError;
-	FString VarName;
-	if (!TryReadStringField(Req.Payload, TEXT("name"), true, VarName, ParseError))
-	{
-		return ValidationErrorResponse(Req.RequestId, ParseError);
-	}
-
-	if (!Req.Payload.IsValid() || !Req.Payload->HasField(TEXT("name")))
-	{
-		return FBlueprintHelperBridgeResponse::Error(
-			Req.RequestId, EBlueprintHelperBridgeError::InvalidRequest,
-			TEXT("payload 缺少 name 字段。"));
-	}
-
-	const FBlueprintHelperGraphTarget Target = ParseTargetFromPayload(Req.Payload);
-	FString Error;
-	const bool bOk = StructureService.AddVariable(Target, Req.Payload, Error);
-	if (!bOk)
-	{
-		return FBlueprintHelperBridgeResponse::Error(
-			Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, Error);
-	}
-
-	auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
-	Resp.Result = MakeShared<FJsonObject>();
-	Resp.Result->SetStringField(TEXT("added_variable"), VarName);
+	// Migrated to VariableService
+	const FBlueprintHelperToolResultBase Result = VariableService.AddMemberVariable(Req.Payload);
+	auto Resp = Result.bOk ? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
+		: FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed,
+			Result.Error.IsSet() ? Result.Error->Message : TEXT("add_variable failed"));
+	Resp.Result = Result.ToJson();
 	return Resp;
 }
 
@@ -2281,34 +2268,47 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleAddVariable(
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRemoveVariable(
 	const FBlueprintHelperBridgeRequest& Req) const
 {
-	FBlueprintHelperBridgeValidationError ParseError;
-	FString VarName;
-	if (!TryReadStringField(Req.Payload, TEXT("name"), true, VarName, ParseError))
-	{
-		return ValidationErrorResponse(Req.RequestId, ParseError);
-	}
-
-	if (VarName.IsEmpty())
-	{
-		return FBlueprintHelperBridgeResponse::Error(
-			Req.RequestId, EBlueprintHelperBridgeError::InvalidRequest,
-			TEXT("payload 缺少 name 字段。"));
-	}
-
-	const FBlueprintHelperGraphTarget Target = ParseTargetFromPayload(Req.Payload);
-	FString Error;
-	const bool bOk = StructureService.RemoveVariable(Target, VarName, Error);
-	if (!bOk)
-	{
-		return FBlueprintHelperBridgeResponse::Error(
-			Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, Error);
-	}
-
-	auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
-	Resp.Result = MakeShared<FJsonObject>();
-	Resp.Result->SetStringField(TEXT("removed_variable"), VarName);
+	// Migrated to VariableService
+	const FBlueprintHelperToolResultBase Result = VariableService.RemoveMemberVariable(Req.Payload);
+	auto Resp = Result.bOk ? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
+		: FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed,
+			Result.Error.IsSet() ? Result.Error->Message : TEXT("remove_variable failed"));
+	Resp.Result = Result.ToJson();
 	return Resp;
 }
+
+// ─── Blueprint Variable Service (new handlers) ───
+
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadMemberVariables(const FBlueprintHelperBridgeRequest& Req) const
+{ auto R = VariableService.ReadMemberVariables(Req.Payload); auto Resp = R.bOk ? FBlueprintHelperBridgeResponse::Success(Req.RequestId) : FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, R.Error.IsSet() ? R.Error->Message : TEXT("failed")); Resp.Result = R.ToJson(); return Resp; }
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleAddMemberVariable(const FBlueprintHelperBridgeRequest& Req) const
+{ auto R = VariableService.AddMemberVariable(Req.Payload); auto Resp = R.bOk ? FBlueprintHelperBridgeResponse::Success(Req.RequestId) : FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, R.Error.IsSet() ? R.Error->Message : TEXT("failed")); Resp.Result = R.ToJson(); return Resp; }
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleAddMemberVariables(const FBlueprintHelperBridgeRequest& Req) const
+{ auto R = VariableService.AddMemberVariables(Req.Payload); auto Resp = R.bOk ? FBlueprintHelperBridgeResponse::Success(Req.RequestId) : FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, R.Error.IsSet() ? R.Error->Message : TEXT("failed")); Resp.Result = R.ToJson(); return Resp; }
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleSetMemberVariableProperties(const FBlueprintHelperBridgeRequest& Req) const
+{ auto R = VariableService.SetMemberVariableProperties(Req.Payload); auto Resp = R.bOk ? FBlueprintHelperBridgeResponse::Success(Req.RequestId) : FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, R.Error.IsSet() ? R.Error->Message : TEXT("failed")); Resp.Result = R.ToJson(); return Resp; }
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRemoveMemberVariable(const FBlueprintHelperBridgeRequest& Req) const
+{ auto R = VariableService.RemoveMemberVariable(Req.Payload); auto Resp = R.bOk ? FBlueprintHelperBridgeResponse::Success(Req.RequestId) : FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, R.Error.IsSet() ? R.Error->Message : TEXT("failed")); Resp.Result = R.ToJson(); return Resp; }
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRemoveMemberVariables(const FBlueprintHelperBridgeRequest& Req) const
+{ auto R = VariableService.RemoveMemberVariables(Req.Payload); auto Resp = R.bOk ? FBlueprintHelperBridgeResponse::Success(Req.RequestId) : FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, R.Error.IsSet() ? R.Error->Message : TEXT("failed")); Resp.Result = R.ToJson(); return Resp; }
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadMemberDefaults(const FBlueprintHelperBridgeRequest& Req) const
+{ auto R = VariableService.ReadMemberDefaults(Req.Payload); auto Resp = R.bOk ? FBlueprintHelperBridgeResponse::Success(Req.RequestId) : FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, R.Error.IsSet() ? R.Error->Message : TEXT("failed")); Resp.Result = R.ToJson(); return Resp; }
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleSetMemberDefault(const FBlueprintHelperBridgeRequest& Req) const
+{ auto R = VariableService.SetMemberDefault(Req.Payload); auto Resp = R.bOk ? FBlueprintHelperBridgeResponse::Success(Req.RequestId) : FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, R.Error.IsSet() ? R.Error->Message : TEXT("failed")); Resp.Result = R.ToJson(); return Resp; }
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleSetMemberDefaults(const FBlueprintHelperBridgeRequest& Req) const
+{ auto R = VariableService.SetMemberDefaults(Req.Payload); auto Resp = R.bOk ? FBlueprintHelperBridgeResponse::Success(Req.RequestId) : FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, R.Error.IsSet() ? R.Error->Message : TEXT("failed")); Resp.Result = R.ToJson(); return Resp; }
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadLocalVariables(const FBlueprintHelperBridgeRequest& Req) const
+{ auto R = VariableService.ReadLocalVariables(Req.Payload); auto Resp = R.bOk ? FBlueprintHelperBridgeResponse::Success(Req.RequestId) : FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, R.Error.IsSet() ? R.Error->Message : TEXT("failed")); Resp.Result = R.ToJson(); return Resp; }
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleAddLocalVariable(const FBlueprintHelperBridgeRequest& Req) const
+{ auto R = VariableService.AddLocalVariable(Req.Payload); auto Resp = R.bOk ? FBlueprintHelperBridgeResponse::Success(Req.RequestId) : FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, R.Error.IsSet() ? R.Error->Message : TEXT("failed")); Resp.Result = R.ToJson(); return Resp; }
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleAddLocalVariables(const FBlueprintHelperBridgeRequest& Req) const
+{ auto R = VariableService.AddLocalVariables(Req.Payload); auto Resp = R.bOk ? FBlueprintHelperBridgeResponse::Success(Req.RequestId) : FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, R.Error.IsSet() ? R.Error->Message : TEXT("failed")); Resp.Result = R.ToJson(); return Resp; }
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleSetLocalVariableProperties(const FBlueprintHelperBridgeRequest& Req) const
+{ auto R = VariableService.SetLocalVariableProperties(Req.Payload); auto Resp = R.bOk ? FBlueprintHelperBridgeResponse::Success(Req.RequestId) : FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, R.Error.IsSet() ? R.Error->Message : TEXT("failed")); Resp.Result = R.ToJson(); return Resp; }
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRemoveLocalVariable(const FBlueprintHelperBridgeRequest& Req) const
+{ auto R = VariableService.RemoveLocalVariable(Req.Payload); auto Resp = R.bOk ? FBlueprintHelperBridgeResponse::Success(Req.RequestId) : FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, R.Error.IsSet() ? R.Error->Message : TEXT("failed")); Resp.Result = R.ToJson(); return Resp; }
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRemoveLocalVariables(const FBlueprintHelperBridgeRequest& Req) const
+{ auto R = VariableService.RemoveLocalVariables(Req.Payload); auto Resp = R.bOk ? FBlueprintHelperBridgeResponse::Success(Req.RequestId) : FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, R.Error.IsSet() ? R.Error->Message : TEXT("failed")); Resp.Result = R.ToJson(); return Resp; }
 
 // ─── add_graph ───
 
