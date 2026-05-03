@@ -193,6 +193,7 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 	{
 		const FBlueprintHelperFieldRule Rules[] = {
 			{TEXT("scope"), EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("include_json_text"), EBlueprintHelperJsonExpectedType::Bool, false},
 		};
 		return ValidateRules(Payload, Rules, OutError);
 	}
@@ -219,8 +220,23 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 	}
 	if (CommandEquals(Command, TEXT("import_json")))
 	{
+		// json 字段接受 string 或 object（拒绝 array / bool / number）
+		{
+			const TSharedPtr<FJsonValue>* FoundValue = Payload->Values.Find(TEXT("json"));
+			if (!FoundValue)
+			{
+				SetValidationError(OutError, TEXT("payload.json"), TEXT("string 或 object"), TEXT("missing"));
+				return false;
+			}
+			const auto JsonVal = *FoundValue;
+			if (!JsonVal.IsValid() || (JsonVal->Type != EJson::String && JsonVal->Type != EJson::Object))
+			{
+				SetValidationError(OutError, TEXT("payload.json"), TEXT("string 或 object"), ActualJsonTypeToString(JsonVal));
+				return false;
+			}
+		}
+
 		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("json"), EBlueprintHelperJsonExpectedType::String, true},
 			{TEXT("compile_after_import"), EBlueprintHelperJsonExpectedType::Bool, false},
 			{TEXT("strict"), EBlueprintHelperJsonExpectedType::Bool, false},
 			{TEXT("allow_partial"), EBlueprintHelperJsonExpectedType::Bool, false},
@@ -430,6 +446,128 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 		return ValidateRules(Payload, Rules, OutError);
 	}
 
+	// ─── Blueprint Component 命令校验 ───
+
+	if (CommandEquals(Command, TEXT("read_components")))
+	{
+		const FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
+		};
+		return ValidateRules(Payload, Rules, OutError);
+	}
+	if (CommandEquals(Command, TEXT("add_component")))
+	{
+		const FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("component_name"), EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("component_class"), EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("parent_component"), EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("socket_name"), EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("attach_rule"), EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("name_collision_policy"), EBlueprintHelperJsonExpectedType::String, false},
+		};
+		return ValidateRules(Payload, Rules, OutError);
+	}
+	if (CommandEquals(Command, TEXT("set_component_property")))
+	{
+		const FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("component_name"), EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("property_path"), EBlueprintHelperJsonExpectedType::String, true},
+		};
+		if (!ValidateRules(Payload, Rules, OutError)) return false;
+		if (!Payload->HasField(TEXT("value")))
+		{
+			OutError.Code = TEXT("invalid_request");
+			OutError.Field = TEXT("payload.value");
+			OutError.ExpectedType = TEXT("any");
+			OutError.ActualType = TEXT("missing");
+			OutError.Message = TEXT("value 缺失。");
+			return false;
+		}
+		return true;
+	}
+	if (CommandEquals(Command, TEXT("set_component_properties")))
+	{
+		const FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("component_name"), EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("settings"), EBlueprintHelperJsonExpectedType::Array, true},
+		};
+		return ValidateRules(Payload, Rules, OutError);
+	}
+	if (CommandEquals(Command, TEXT("remove_component")))
+	{
+		const FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("component_name"), EBlueprintHelperJsonExpectedType::String, true},
+		};
+		return ValidateRules(Payload, Rules, OutError);
+	}
+
+	// ─── Phase 9: Blueprint Class Settings ───
+	if (CommandEquals(Command, TEXT("read_class_settings")))
+	{
+		const FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
+		};
+		return ValidateRules(Payload, Rules, OutError);
+	}
+	if (CommandEquals(Command, TEXT("add_implemented_interface")) ||
+		CommandEquals(Command, TEXT("remove_implemented_interface")))
+	{
+		const FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("interface_path"), EBlueprintHelperJsonExpectedType::String, true},
+		};
+		return ValidateRules(Payload, Rules, OutError);
+	}
+	if (CommandEquals(Command, TEXT("add_implemented_interfaces")) ||
+		CommandEquals(Command, TEXT("remove_implemented_interfaces")))
+	{
+		const FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("interface_paths"), EBlueprintHelperJsonExpectedType::Array, true},
+		};
+		return ValidateRules(Payload, Rules, OutError);
+	}
+	if (CommandEquals(Command, TEXT("set_class_default_property")))
+	{
+		const FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("property_path"), EBlueprintHelperJsonExpectedType::String, true},
+		};
+		if (!ValidateRules(Payload, Rules, OutError)) return false;
+		if (!Payload->HasField(TEXT("value")))
+		{
+			OutError.Code = TEXT("invalid_request");
+			OutError.Field = TEXT("payload.value");
+			OutError.ExpectedType = TEXT("any");
+			OutError.ActualType = TEXT("missing");
+			OutError.Message = TEXT("value 缺失。");
+			return false;
+		}
+		return true;
+	}
+	if (CommandEquals(Command, TEXT("set_class_default_properties")))
+	{
+		const FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("settings"), EBlueprintHelperJsonExpectedType::Array, true},
+		};
+		return ValidateRules(Payload, Rules, OutError);
+	}
+	if (CommandEquals(Command, TEXT("append_blueprint_graph")))
+	{
+		const FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("target"), EBlueprintHelperJsonExpectedType::Object, true},
+			{TEXT("feature_name"), EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("nodes"), EBlueprintHelperJsonExpectedType::Array, true},
+			{TEXT("links"), EBlueprintHelperJsonExpectedType::Array, false},
+			{TEXT("dry_run"), EBlueprintHelperJsonExpectedType::Bool, false},
+		};
+		return ValidateRules(Payload, Rules, OutError);
+	}
 	return true;
 }
 
@@ -496,7 +634,18 @@ bool FBlueprintHelperRequestValidator::IsWriteCommand(const FString& Command)
 		TEXT("redo"),
 		TEXT("play_in_editor"),
 		TEXT("stop_pie"),
-		TEXT("create_blueprint")
+TEXT("create_blueprint"),
+	TEXT("add_component"),
+	TEXT("set_component_property"),
+	TEXT("set_component_properties"),
+	TEXT("remove_component"),
+	TEXT("add_implemented_interface"),
+	TEXT("add_implemented_interfaces"),
+	TEXT("remove_implemented_interface"),
+	TEXT("remove_implemented_interfaces"),
+	TEXT("set_class_default_property"),
+	TEXT("set_class_default_properties"),
+	TEXT("append_blueprint_graph"),
 	};
 
 	return WriteCommands.Contains(Command.ToLower());

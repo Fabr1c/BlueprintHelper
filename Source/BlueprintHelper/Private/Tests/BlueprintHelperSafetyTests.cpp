@@ -23,6 +23,17 @@
 #include "Services/BlueprintHelperContextService.h"
 #include "Services/BlueprintHelperDataTableService.h"
 #include "Services/BlueprintHelperEditorCommandService.h"
+#include "Services/BlueprintHelperRuntimeProfileService.h"
+#include "Services/BlueprintHelperDiagnosticsService.h"
+#include "Services/BlueprintHelperLogicMdReadService.h"
+#include "Services/BlueprintHelperLogicJsonReadService.h"
+#include "Services/BlueprintHelperAssetFactoryService.h"
+#include "Services/BlueprintHelperComponentService.h"
+#include "Services/BlueprintHelperClassSettingsService.h"
+#include "Services/BlueprintHelperAppendBlueprintGraphService.h"
+#include "Services/BlueprintHelperBlockIdService.h"
+#include "Services/BlueprintHelperOwnershipService.h"
+#include "Services/BlueprintHelperTransactionJournalService.h"
 #include "Services/BlueprintHelperExportService.h"
 #include "Services/BlueprintHelperGraphResolver.h"
 #include "Services/BlueprintHelperImportService.h"
@@ -312,6 +323,19 @@ bool FBlueprintHelperBridgeExportEffectiveScopeTest::RunTest(const FString& Para
 	FBlueprintHelperPropertyReflectionService PropertyReflectionService;
 	FBlueprintHelperDataTableService DataTableService;
 	FBlueprintHelperEditorCommandService EditorCommandService;
+	FBlueprintHelperRuntimeProfileService RuntimeProfileService;
+	FBlueprintHelperDiagnosticsService DiagnosticsService;
+	FBlueprintHelperLogicMdReadService LogicMdReadService;
+	FBlueprintHelperLogicJsonReadService LogicJsonReadService;
+	FBlueprintHelperAssetFactoryService AssetFactoryService;
+	FBlueprintHelperGraphResolver GraphResolver;
+	FBlueprintHelperComponentService ComponentService(GraphResolver);
+	FBlueprintHelperClassSettingsService ClassSettingsService(GraphResolver);
+	FBlueprintHelperBlockIdService BlockIdService;
+	FBlueprintHelperOwnershipService OwnershipService;
+	FBlueprintHelperTransactionJournalService JournalService;
+	FBlueprintHelperAppendBlueprintGraphService AppendGraphService(
+		GraphResolver, AgentImportService, BlockIdService, OwnershipService, JournalService);
 	FBlueprintHelperBridgeRouter Router(
 		ImportService,
 		AgentImportService,
@@ -324,7 +348,15 @@ bool FBlueprintHelperBridgeExportEffectiveScopeTest::RunTest(const FString& Para
 		WidgetService,
 		PropertyReflectionService,
 		DataTableService,
-		EditorCommandService);
+		EditorCommandService,
+		RuntimeProfileService,
+		DiagnosticsService,
+		LogicMdReadService,
+		LogicJsonReadService,
+		AssetFactoryService,
+		ComponentService,
+		ClassSettingsService,
+		AppendGraphService);
 
 	FBlueprintHelperBridgeRequest Request;
 	Request.RequestId = TEXT("effective-scope-test");

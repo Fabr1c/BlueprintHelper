@@ -61,6 +61,17 @@
 #include "Services/BlueprintHelperPropertyReflectionService.h"
 #include "Services/BlueprintHelperDataTableService.h"
 #include "Services/BlueprintHelperEditorCommandService.h"
+#include "Services/BlueprintHelperRuntimeProfileService.h"
+#include "Services/BlueprintHelperDiagnosticsService.h"
+#include "Services/BlueprintHelperLogicMdReadService.h"
+#include "Services/BlueprintHelperLogicJsonReadService.h"
+#include "Services/BlueprintHelperAssetFactoryService.h"
+#include "Services/BlueprintHelperComponentService.h"
+#include "Services/BlueprintHelperClassSettingsService.h"
+#include "Services/BlueprintHelperAppendBlueprintGraphService.h"
+#include "Services/BlueprintHelperBlockIdService.h"
+#include "Services/BlueprintHelperOwnershipService.h"
+#include "Services/BlueprintHelperTransactionJournalService.h"
 #include "Bridge/BlueprintHelperBridgeRouter.h"
 #include "Bridge/BlueprintHelperBridgeServer.h"
 #include "Styling/AppStyle.h"
@@ -145,11 +156,24 @@ void FBlueprintHelperModule::StartupModule()
 	PropertyReflectionService = MakeUnique<FBlueprintHelperPropertyReflectionService>();
 	DataTableService = MakeUnique<FBlueprintHelperDataTableService>();
 	EditorCommandService = MakeUnique<FBlueprintHelperEditorCommandService>();
+	RuntimeProfileService = MakeUnique<FBlueprintHelperRuntimeProfileService>();
+	DiagnosticsService = MakeUnique<FBlueprintHelperDiagnosticsService>();
+	LogicMdReadService = MakeUnique<FBlueprintHelperLogicMdReadService>();
+	LogicJsonReadService = MakeUnique<FBlueprintHelperLogicJsonReadService>();
+	AssetFactoryService = MakeUnique<FBlueprintHelperAssetFactoryService>();
+	ComponentService = MakeUnique<FBlueprintHelperComponentService>(*GraphResolver);
+	ClassSettingsService = MakeUnique<FBlueprintHelperClassSettingsService>(*GraphResolver);
+
+	BlockIdService = MakeUnique<FBlueprintHelperBlockIdService>();
+	OwnershipService = MakeUnique<FBlueprintHelperOwnershipService>();
+	JournalService = MakeUnique<FBlueprintHelperTransactionJournalService>();
+	AppendGraphService = MakeUnique<FBlueprintHelperAppendBlueprintGraphService>(
+		*GraphResolver, *AgentImportService, *BlockIdService, *OwnershipService, *JournalService);
 
 	// ─── Bridge Layer 初始化 ───
 	ContextService = MakeUnique<FBlueprintHelperContextService>(*GraphResolver);
 	BridgeRouter = MakeUnique<FBlueprintHelperBridgeRouter>(
-		*ImportService, *AgentImportService, *ExportService, *CompileService, *ValidationService, *ContextService, *AssetBrowseService, *StructureService, *WidgetService, *PropertyReflectionService, *DataTableService, *EditorCommandService);
+		*ImportService, *AgentImportService, *ExportService, *CompileService, *ValidationService, *ContextService, *AssetBrowseService, *StructureService, *WidgetService, *PropertyReflectionService, *DataTableService, *EditorCommandService, *RuntimeProfileService, *DiagnosticsService, *LogicMdReadService, *LogicJsonReadService, *AssetFactoryService, *ComponentService, *ClassSettingsService, *AppendGraphService);
 	BridgeServer = MakeUnique<FBlueprintHelperBridgeServer>(*BridgeRouter);
 	BridgeServer->Start();
 
@@ -173,6 +197,13 @@ void FBlueprintHelperModule::ShutdownModule()
 
 	// ─── Service Layer 销毁（逆序）───
 	EditorCommandService.Reset();
+	ClassSettingsService.Reset();
+	ComponentService.Reset();
+	AssetFactoryService.Reset();
+	LogicJsonReadService.Reset();
+	LogicMdReadService.Reset();
+	DiagnosticsService.Reset();
+	RuntimeProfileService.Reset();
 	DataTableService.Reset();
 	PropertyReflectionService.Reset();
 	StructureService.Reset();
