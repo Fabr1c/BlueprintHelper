@@ -34,6 +34,7 @@
 #include "Services/BlueprintHelperReplaceBlueprintGraphService.h"
 #include "Services/BlueprintHelperPatchBlueprintGraphService.h"
 #include "Services/BlueprintHelperMergeBlueprintGraphService.h"
+#include "Services/BlueprintHelperCleanupBlueprintHelperBlockService.h"
 #include "Services/BlueprintHelperBlockIdService.h"
 #include "Services/BlueprintHelperOwnershipService.h"
 #include "Services/BlueprintHelperTransactionJournalService.h"
@@ -349,6 +350,8 @@ bool FBlueprintHelperBridgeExportEffectiveScopeTest::RunTest(const FString& Para
 		GraphResolver, LogicJsonPathService, JournalService);
 	FBlueprintHelperMergeBlueprintGraphService MergeGraphService(
 		GraphResolver, LogicJsonPathService, JournalService);
+	FBlueprintHelperCleanupBlueprintHelperBlockService CleanupBlockService(
+		GraphResolver, JournalService);
 	FBlueprintHelperBridgeRouter Router(
 		ImportService,
 		AgentImportService,
@@ -372,7 +375,8 @@ bool FBlueprintHelperBridgeExportEffectiveScopeTest::RunTest(const FString& Para
 		AppendGraphService,
 		ReplaceGraphService,
 		PatchGraphService,
-		MergeGraphService);
+		MergeGraphService,
+		CleanupBlockService);
 
 	FBlueprintHelperBridgeRequest Request;
 	Request.RequestId = TEXT("effective-scope-test");
