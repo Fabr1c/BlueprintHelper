@@ -1,5 +1,6 @@
 # BlueprintHelper ReplaceBlueprintGraph UE 侧 C++ 可执行实现计划
 
+状态：[x] 已完成
 日期：2026-05-03  
 输入文档：`BlueprintHelper_ReplaceBlueprintGraph_UE_FieldMapping_20260503.md`  
 适用范围：UE 插件侧 / C++ 实现  

@@ -1,5 +1,6 @@
 # BlueprintHelper MergeBlueprintGraph UE 侧 C++ 可执行实现计划
 
+状态：[x] 已完成
 日期：2026-05-03  
 输入文档：`BlueprintHelper_MergeBlueprintGraph_UE_FieldMapping_20260503.md`  
 适用范围：UE 插件侧 / C++ 实现  
@@ -1113,7 +1114,6 @@ sequence_order
 2. 删除本次创建的 inserted call node。
 3. 删除本次创建的 sequence node。
 4. 恢复原 anchor -> original_successor link。
-5. 恢复 Graph dirty 状态。
 ```
 
 ### 13.3 rollback blocked 判定
@@ -1125,7 +1125,6 @@ sequence_order
 2. original successor pin 不存在。
 3. inserted node 被用户或其他 transaction 修改。
 4. sequence node 被改动。
-5. graph 状态与 rollback_data 不一致。
 ```
 
 返回：

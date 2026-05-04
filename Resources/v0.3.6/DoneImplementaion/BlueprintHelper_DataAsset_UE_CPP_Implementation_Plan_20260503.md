@@ -1,5 +1,6 @@
 # BlueprintHelper DataAsset UE 侧 C++ 可执行实现计划
 
+状态：[x] 已完成
 日期：2026-05-03  
 适用范围：BlueprintHelper v0.4 / v0.5 前置实现  
 来源字段稿：`BlueprintHelper_DataAsset_UE_FieldMapping_20260503.md`  
@@ -525,7 +526,6 @@ if (!Property || Property->HasAnyPropertyFlags(CPF_Transient))
 }
 ```
 
-是否要求 `CPF_Edit` 由产品策略决定。建议第一版只写 `CPF_Edit` 属性，避免改内部状态。
 
 ---
 
@@ -786,7 +786,6 @@ rollback_result=rolled_back?
 ```
 
 字段稿 error 表没有 rollback_result。  
-DataAsset 不是 Graph Write 字段稿，但批量事务需要表达 rollback 失败时的 modified 状态。建议：
 
 ```text
 写入中失败并成功回滚：
@@ -1305,7 +1304,6 @@ Blueprint 生成的 DataAsset 实例 class path 不同于 /Script 原生 class�
 风险：
 
 ```text
-UObject* / nested map / instanced object 写入造成资产状态不可控。
 ```
 
 处理：

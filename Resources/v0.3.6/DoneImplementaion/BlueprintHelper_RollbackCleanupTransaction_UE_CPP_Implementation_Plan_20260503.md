@@ -1,5 +1,6 @@
 # BlueprintHelper RollbackCleanupTransaction UE 侧 C++ 可执行实现计划
 
+状态：[x] 已完成
 日期：2026-05-03  
 输入依据：`BlueprintHelper_RollbackCleanupTransaction_UE_FieldMapping_20260503.md`  
 适用范围：BlueprintHelper v0.4 / v0.5 前置实现  
@@ -292,7 +293,6 @@ failed
 
 ```text
 error.rollback_result 表示“本次 rollback 写操作自身失败后是否撤销了部分恢复动作”。
-data.rollback_result.rollback_status 表示“目标 cleanup transaction 的回滚状态”。
 两者不能混用。
 ```
 
@@ -473,7 +473,6 @@ class settings write
 
 ```text
 rollback_data 存在
-rollback_data 未 compact 到不可恢复状态
 rollback_data schema 版本可读
 节点 snapshot 可用
 连线 snapshot 可用
@@ -486,7 +485,6 @@ metadata snapshot 可用
 blocked_by = rollback_data_unavailable
 ```
 
-正式调用若跳过 dry_run 或状态变化导致不可用，则失败：
 
 ```text
 error.code = rollback_data_unavailable
@@ -507,7 +505,6 @@ dry_run 必须执行以下检查：
 3. rollback_data 是否完整可用。
 4. transaction 是否已经 rollback。
 5. target assets 是否存在。
-6. 当前资产状态是否仍可安全恢复。
 7. 目标图表是否存在或可恢复。
 8. 是否存在用户或后续 transaction 修改冲突。
 9. 待恢复 block_id 是否与当前资产中已有 block 冲突。
@@ -736,7 +733,6 @@ rollback 不是重新创建一个新 owned block，而是恢复被 cleanup 删�
 
 ## 11. 冲突检测
 
-正式执行前必须重新读取当前资产状态，不能直接信任 dry_run 结果。
 
 需要阻断的冲突：
 
@@ -745,7 +741,6 @@ rollback 不是重新创建一个新 owned block，而是恢复被 cleanup 删�
 2. 同 block_id / block_ref 已存在，且不是同一 cleanup transaction 的恢复对象。
 3. 目标节点 GUID / fallback identity 已被其他节点占用。
 4. 目标位置被用户或后续 transaction 修改。
-5. 原 cleanup transaction 后已有 accepted transaction 依赖被删除 block 的缺失状态。
 6. rollback_data 与当前资产 schema 不兼容。
 7. 恢复链接会连接到不存在或类型不兼容的 Pin。
 8. ownership metadata 无法恢复。
@@ -926,7 +921,6 @@ modified=true 时，Agent 必须 stop_and_report。
 
 ## 14. Journal 写入
 
-正式成功时应写两类状态：
 
 ### 14.1 新 rollback transaction
 
@@ -956,7 +950,6 @@ modified=true 时，Agent 必须 stop_and_report。
 }
 ```
 
-### 14.2 原 cleanup transaction 状态更新
 
 ```json
 {
@@ -1150,7 +1143,6 @@ Rollback this rollback operation on failure
 
 ```text
 成功恢复 cleanup 删除的 owned block。
-失败不残留半恢复状态。
 ```
 
 ### Commit 5：Journal / Review 更新

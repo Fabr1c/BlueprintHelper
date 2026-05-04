@@ -1,5 +1,6 @@
 # BlueprintHelper compile_blueprint_asset UE 侧 C++ 可执行实现计划
 
+状态：[x] 已完成
 日期：2026-05-03  
 适用范围：BlueprintHelper v0.4 / v0.5 前置实现  
 来源字段稿：`BlueprintHelper_CompileBlueprintAsset_UE_FieldMapping_20260503.md`  
@@ -312,7 +313,6 @@ if (!Blueprint)
 }
 ```
 
-编译后通过 Blueprint 状态判断结果：
 
 ```cpp
 const bool bCompileSucceeded =
@@ -354,7 +354,6 @@ compile 工具默认：
 "modified": false
 ```
 
-注意：UE 编译可能刷新 GeneratedClass 或内部状态，但对 Agent-facing 工具语义不视为项目写操作，不生成 transaction，不写 Journal，不返回 modified=true。
 
 ---
 
@@ -619,7 +618,6 @@ Conservative：允许 compile。
 ```
 
 如果项目策略认为 compile 属于非持久验证动作，则可在 ReadOnly 下允许。  
-如果 ReadOnly 严格禁止任何可能改变 Editor 状态的动作，则返回：
 
 ```text
 ProfilePolicyViolation

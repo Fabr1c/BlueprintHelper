@@ -1,5 +1,6 @@
 # BlueprintHelper get_runtime_profile UE 侧 C++ 可执行实现计划
 
+状态：[x] 已完成
 日期：2026-05-03  
 适用范围：BlueprintHelper v0.4 / v0.5 前置实现  
 来源字段稿：`BlueprintHelper_RuntimeProfile_UE_FieldMapping_20260503.md`  
@@ -15,11 +16,6 @@
 它聚合：
 
 ```text
-UE 插件运行状态
-UE Bridge 状态
-settings.json 运行时配置状态
-write_permission / Token 状态
-risk_command 状态
 不可用工具簇能力
 ```
 
@@ -66,7 +62,6 @@ settings.json 读取逻辑
 tool registry / command registry
 ```
 
-如果当前 runtime profile 需要同时聚合 MCP Server 状态，则 MCP 侧可以在 UE 返回结果之外补充 MCP 自身状态。但本计划只定义 UE 侧 C++ 返回与 UE Bridge 侧能力聚合。
 
 ---
 
@@ -350,10 +345,8 @@ struct FBlueprintHelperRuntimeFacts
 
 ## 5. Phase D：运行时事实采集
 
-### 5.1 Bridge 状态
 
 UE 侧 runtime profile 被调用时，通常说明 Bridge 已经连通。  
-但仍可检查内部 Bridge/session 状态：
 
 ```cpp
 Facts.bBridgeConnected = BridgeState.IsConnected();
@@ -373,7 +366,6 @@ unavailable:
 
 注意：如果 Bridge 断开到连工具都无法调用，则该工具可能根本无法返回。MCP 侧可自行返回同形结构。本计划只处理 UE 能返回的场景。
 
-### 5.2 settings.json / config 状态
 
 复用 SettingsService：
 
@@ -397,7 +389,6 @@ unavailable:
 
 不要在 runtime profile 中展开 settings 细节、缺失字段、路径。
 
-### 5.3 write_permission / Token 状态
 
 写权限由现有 token gate / profile gate 计算：
 
@@ -425,7 +416,6 @@ unavailable:
 write_permission.reason=safety_profile_read_only
 ```
 
-### 5.4 risk_command 状态
 
 risk command gate 计算：
 
@@ -551,7 +541,6 @@ unavailable
 
 ### 6.4 config_unavailable / bridge_disconnected
 
-字段稿允许将具体状态放在 status 中：
 
 ```text
 config_unavailable

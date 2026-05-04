@@ -1,5 +1,6 @@
 # BlueprintHelper UMG / Widget Blueprint UE 侧 C++ 可执行实现计划
 
+状态：[x] 已完成
 日期：2026-05-03  
 适用范围：BlueprintHelper v0.4 / v0.5 前置实现  
 来源字段稿：`BlueprintHelper_UMG_WidgetBlueprint_UE_FieldMapping_20260503.md`  

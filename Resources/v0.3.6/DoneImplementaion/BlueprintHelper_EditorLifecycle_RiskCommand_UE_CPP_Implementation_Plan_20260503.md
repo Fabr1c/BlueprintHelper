@@ -1,5 +1,6 @@
 # BlueprintHelper Editor Lifecycle / PIE / Risk Command UE 侧 C++ 可执行实现计划
 
+状态：[x] 已完成
 日期：2026-05-03  
 适用范围：BlueprintHelper v0.4 / v0.5 前置实现  
 来源字段稿：`BlueprintHelper_EditorLifecycle_RiskCommand_UE_FieldMapping_20260503.md`  
@@ -22,7 +23,6 @@ close_editor
 该簇负责：
 
 ```text
-读取 UE 编辑器生命周期状态
 启动 PIE
 停止 PIE
 在明确授权下请求关闭编辑器
@@ -410,7 +410,6 @@ public:
 };
 ```
 
-### 5.3 PIE 状态
 
 优先：
 
@@ -1081,7 +1080,6 @@ close_editor：必须 risk_command 授权，不使用普通 write token 替代�
 }
 ```
 
-普通蓝图写入不应因为 `close_editor` blocked 而整体 blocked。该状态应是：
 
 ```text
 runtime_profile.status=degraded
@@ -1224,7 +1222,6 @@ Implement StartPie / StopPie wrappers
 验收：
 
 ```text
-能稳定读取生命周期状态。
 PIE API 与 UE5.3 编译通过。
 ```
 

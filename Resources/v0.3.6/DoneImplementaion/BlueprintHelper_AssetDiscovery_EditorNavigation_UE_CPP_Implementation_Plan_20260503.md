@@ -1,5 +1,6 @@
 # BlueprintHelper Asset Discovery / Editor Navigation UE 侧 C++ 可执行实现计划
 
+状态：[x] 已完成
 日期：2026-05-03  
 适用范围：BlueprintHelper v0.4 / v0.5 前置实现  
 来源字段稿：`BlueprintHelper_AssetDiscovery_EditorNavigation_UE_FieldMapping_20260503.md`  
@@ -556,7 +557,6 @@ Summary.bLoaded = AssetData.IsAssetLoaded();
 ### 6.4 不加载资产
 
 `read_asset_summary` 应优先只读 AssetRegistry，不主动加载资产。  
-`loaded` 通过 AssetData / UObject 状态判断。若无法准确判断，可使用：
 
 ```cpp
 AssetData.IsAssetLoaded()
@@ -1403,7 +1403,6 @@ Agent 把 %{path_filter}/... 直接传给写工具。
 风险：
 
 ```text
-打开资产改变编辑器 UI 状态，但不应视为资产修改。
 ```
 
 处理：
