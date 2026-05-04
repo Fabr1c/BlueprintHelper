@@ -1,5 +1,6 @@
 # BlueprintHelper PatchBlueprintGraph UE 侧 C++ 可执行实现计划
 
+状态：[x] 已完成
 日期：2026-05-03  
 输入文档：`BlueprintHelper_PatchBlueprintGraph_UE_FieldMapping_20260503.md`  
 适用范围：UE 插件侧 / C++ 实现  
@@ -560,7 +561,6 @@ UE 侧解析 `link_ref` 时：
 
 ## 7. Phase E：expected_old_state / before-after 读取
 
-Patch 不强制所有场景携带 expected_old_state，但 UE 侧必须执行前读取当前状态，并在 Journal / Review 中记录 before / after。
 
 新增：
 
@@ -590,7 +590,6 @@ struct FBlueprintHelperPatchAfterState
 | `set_node_property` | 目标属性值、属性类型、是否 writable。 |
 | `set_node_comment` | 原 NodeComment。 |
 | `set_node_position` | NodePosX / NodePosY。 |
-| `connect_pins` | 两端 Pin 当前连接状态。 |
 | `disconnect_link` | link 的 from/to Pin、Pin 类型。 |
 | `replace_link` | 原 link from/to、新目标 Pin 预检信息。 |
 | `set_call_target` | 原 function/event target。 |
@@ -1032,7 +1031,6 @@ unsupported_patch_type
 
 ### 11.1 No-op 处理
 
-如果目标状态已经等于新状态：
 
 ```text
 ok=true
@@ -1141,7 +1139,6 @@ Patch 成功或 no-op 均应写 Journal。Journal 不是 Agent-facing 成功结�
 |---|---|
 | `set_pin_default` | 原 Pin 默认值 / DefaultObject / DefaultTextValue。 |
 | `set_node_property` | 原属性值。 |
-| `set_node_comment` | 原 NodeComment / comment bubble 状态。 |
 | `set_node_position` | 原 NodePosX / NodePosY。 |
 | `connect_pins` | 新连接 from/to，用于 rollback 时断开。 |
 | `disconnect_link` | 原连接 from/to，用于 rollback 时重连。 |
@@ -1212,7 +1209,6 @@ Agent-facing error：
 }
 ```
 
-此状态下后续 compile/save/patch/merge/replace 必须停止。
 
 ---
 

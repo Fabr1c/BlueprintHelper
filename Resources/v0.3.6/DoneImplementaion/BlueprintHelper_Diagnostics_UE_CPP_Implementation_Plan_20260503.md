@@ -1,5 +1,6 @@
 # BlueprintHelper Diagnostics / Static & Runtime Diagnostics UE 侧 C++ 可执行实现计划
 
+状态：[x] 已完成
 日期：2026-05-03  
 来源字段稿：`BlueprintHelper_Diagnostics_UE_FieldMapping_20260503.md`  
 实现范围：UE 插件侧 C++ + MCP diagnostics 命令桥接  
@@ -1061,7 +1062,6 @@ secret
 
 风险：Markdown 中加入 Suggested action。
 
-处理：Diagnostics 只报告状态 code，Agent 自己根据场景转述。
 
 ### 19.4 泄露本地路径或配置
 

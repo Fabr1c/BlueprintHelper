@@ -1,5 +1,6 @@
 # BlueprintHelper save_asset UE 侧 C++ 可执行实现计划
 
+状态：[x] 已完成
 日期：2026-05-03  
 适用范围：BlueprintHelper v0.4 / v0.5 前置实现  
 来源字段稿：`BlueprintHelper_SaveAsset_UE_FieldMapping_20260503.md`  
@@ -41,7 +42,6 @@ rollback
 
 ```text
 save 本身不代表 Agent 修改资产内容。
-保存只是把已有 dirty 状态落盘。
 ```
 
 ---

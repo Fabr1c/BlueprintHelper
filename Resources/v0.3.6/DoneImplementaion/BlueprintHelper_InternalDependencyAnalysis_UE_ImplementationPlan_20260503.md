@@ -1,8 +1,8 @@
 # BlueprintHelper Internal Dependency Analysis UE 实现计划
 
+状态：[x] 已完成
 日期：2026-05-03  
 适用范围：BlueprintHelper v0.4 / v0.5 前置协议收敛  
-状态：Internal Dependency Analysis 字段确认稿  
 本文边界：确认 Dependency / Referencer / External Dependent Analysis 不导出为独立 Agent-facing MCP 工具簇，而作为 UE 插件内部辅助分析器实现，并服务 Cleanup / Replace / Remove / high-risk dry_run 等调用方工具。
 
 ---

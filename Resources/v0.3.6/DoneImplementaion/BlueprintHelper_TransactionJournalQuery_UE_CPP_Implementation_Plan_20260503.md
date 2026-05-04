@@ -1,5 +1,6 @@
 # BlueprintHelper Transaction Journal / Review Query UE 侧 C++ 可执行实现计划
 
+状态：[x] 已完成
 日期：2026-05-03  
 适用范围：BlueprintHelper v0.4 / v0.5 前置实现  
 来源字段稿：`BlueprintHelper_TransactionJournalQuery_UE_FieldMapping_20260503.md`  
@@ -22,7 +23,6 @@ read_blueprint_helper_transaction
 ```text
 用户明确查询事务
 Debug
-Review 状态查看
 Rollback 定位
 失败排查
 审计摘要查看
@@ -726,7 +726,6 @@ rollback_data_status
 rollback_available = rollback_data exists && not compacted && status=applied
 ```
 
-Review 状态为 accepted / rejected 不必直接决定 rollback_available。是否允许 rollback 由具体 rollback 工具再做检查。
 
 ---
 
@@ -1279,7 +1278,6 @@ review write actions
 后续异步维护 index.json。
 ```
 
-### 18.2 Review 状态缺失
 
 风险：
 
@@ -1299,7 +1297,6 @@ review_status=unknown。
 风险：
 
 ```text
-list 显示 rollback_available=true，但正式 rollback 被当前资产状态阻止。
 ```
 
 处理：

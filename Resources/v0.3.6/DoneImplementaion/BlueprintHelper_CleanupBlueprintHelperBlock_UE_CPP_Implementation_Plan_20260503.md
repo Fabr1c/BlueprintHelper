@@ -1,10 +1,10 @@
 # BlueprintHelper CleanupBlueprintHelperBlock UE 侧 C++ 可执行实现计划
 
+状态：[x] 已完成
 日期：2026-05-03  
 适用范围：BlueprintHelper v0.4 / v0.5 前置实现  
 来源字段稿：`BlueprintHelper_CleanupBlueprintHelperBlock_UE_FieldMapping_20260503.md`  
 实现范围：UE 插件侧 C++  
-状态：可执行实现计划
 
 ---
 

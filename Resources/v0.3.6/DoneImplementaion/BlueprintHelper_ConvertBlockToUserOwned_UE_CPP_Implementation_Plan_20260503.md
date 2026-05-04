@@ -1,5 +1,6 @@
 # BlueprintHelper ConvertBlueprintHelperBlockToUserOwned UE 侧 C++ 可执行实现计划
 
+状态：[x] 已完成
 日期：2026-05-03  
 适用范围：BlueprintHelper v0.4 / v0.5 前置实现  
 来源字段稿：`BlueprintHelper_ConvertBlockToUserOwned_UE_FieldMapping_20260503.md`  
@@ -17,7 +18,6 @@
 ```text
 BlueprintHelper ownership metadata
 NodeComment 中的 BlueprintHelper managed 标记
-Journal / Review 中的 ownership 状态
 rollback_data
 ```
 
@@ -560,9 +560,7 @@ dry_run passed 条件：
 3. ownership_scope=block。
 4. block 能唯一解析。
 5. block 内节点全部 BlueprintHelper-owned。
-6. block 未处于已 user-owned 状态。
 7. 当前 Safety Profile 允许 ownership 转换。
-8. 当前资产状态可读取。
 ```
 
 返回极简：
@@ -646,7 +644,6 @@ can_execute=true
 Blueprint 存在
 Graph 存在
 block 唯一
-ownership 状态仍匹配
 already_user_owned_policy
 ```
 
@@ -1134,7 +1131,6 @@ Handle rollback_failed modified=true
 验收：
 
 ```text
-写入失败不残留半转换状态。
 rollback failed 时 modified=true。
 ```
 
@@ -1265,7 +1261,6 @@ next
 风险：
 
 ```text
-Journal 写失败但 metadata 已清理，导致管理状态丢失。
 ```
 
 处理：
@@ -1302,6 +1297,5 @@ Cleanup / ReplaceOwned / PatchOwned 只靠 Journal 判断 ownership。
 处理：
 
 ```text
-后续工具必须以节点 metadata 当前状态为准。
 Journal 只作为审计历史，不作为当前 ownership 唯一事实。
 ```

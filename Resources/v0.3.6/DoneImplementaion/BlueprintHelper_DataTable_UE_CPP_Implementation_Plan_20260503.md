@@ -1,5 +1,6 @@
 # BlueprintHelper DataTable UE 侧 C++ 可执行实现计划
 
+状态：[x] 已完成
 日期：2026-05-03  
 适用范围：BlueprintHelper v0.4 / v0.5 前置实现  
 来源字段稿：`BlueprintHelper_DataTable_UE_FieldMapping_20260503.md`  
@@ -801,7 +802,6 @@ RowStruct->CopyScriptStruct(Bytes.GetData(), ExistingRow);
 RowStruct->CopyScriptStruct(ExistingRow, Snapshot.RowBytes.GetData());
 ```
 
-注意析构/内存生命周期：如果 snapshot 保存复杂属性，需要使用 `InitializeStruct` / `DestroyStruct` 辅助管理。更稳妥可用 `FStructOnScope` 列表保存 before 状态。
 
 ### 10.5 changed/no_op 计算
 

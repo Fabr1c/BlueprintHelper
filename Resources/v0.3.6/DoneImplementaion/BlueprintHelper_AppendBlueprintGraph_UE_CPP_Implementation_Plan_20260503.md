@@ -1,10 +1,10 @@
 # BlueprintHelper AppendBlueprintGraph UE 侧 C++ 可执行实现计划
 
+状态：[x] 已完成
 日期：2026-05-03  
 适用范围：BlueprintHelper UE 插件侧 / UE5.3+  
 目标版本：v0.4 / v0.5 前置实现  
 依据文档：`BlueprintHelper_AppendBlueprintGraph_UE_FieldMapping_20260503_synced.md`  
-状态：可执行开发计划
 
 ---
 
@@ -1335,7 +1335,6 @@ ownership metadata / NodeComment 是 Append 成功语义的一部分。失败必
 
 ### 17.5 Graph 创建失败要纳入 rollback
 
-如果新图表创建成功但后续节点创建或连线失败，rollback 必须删除该图表或恢复到写入前状态。
 
 ---
 

@@ -1,5 +1,6 @@
 # BlueprintHelper Project Context / Project Marker / Setup State UE 侧 C++ 可执行实现计划
 
+状态：[x] 已完成
 日期：2026-05-03  
 适用范围：BlueprintHelper v0.4 / v0.5 前置实现  
 来源字段稿：`BlueprintHelper_ProjectContext_SetupState_UE_FieldMapping_20260503.md`  
@@ -24,7 +25,6 @@ check_setup_state
 识别当前是否处于 UE 项目上下文
 检查 BlueprintHelper Project Marker 是否存在且有效
 检查 BlueprintHelper setup/runtime 配置是否可用
-向 Agent 提供最小工作流状态
 ```
 
 它不用于：
@@ -77,7 +77,6 @@ modified=false
 
 ### 1.2 与 runtime_profile 的关系
 
-`get_runtime_profile` 负责当前运行链路状态：
 
 ```text
 Bridge
@@ -87,7 +86,6 @@ config_status
 unavailable capabilities
 ```
 
-本簇负责项目/marker/setup 的最小只读状态：
 
 ```text
 project_detected
@@ -102,7 +100,6 @@ setup_state
 
 `diagnostics` 返回 Markdown 报告，用于安装、配置和运行链路排查。
 
-本簇返回机器可读极简状态：
 
 ```text
 ok / degraded / blocked
@@ -410,7 +407,6 @@ private:
 };
 ```
 
-### 5.3 内部项目状态
 
 ```cpp
 struct FBlueprintHelperDetectedProjectState
@@ -454,7 +450,6 @@ const bool bProjectDetected =
 
 ### 6.2 未识别项目
 
-工具成功完成检查，但状态 blocked：
 
 ```text
 ok=true
@@ -667,7 +662,6 @@ workflow_enabled
 ```
 
 不建议在该工具里同步展开 setup_state。  
-如果 setup 状态影响 workflow_enabled，可以只在内部影响 status/reason，但不要返回 setup_state 对象。
 
 推荐第一版：
 
@@ -901,7 +895,6 @@ modified=false
 
 ## 15. Phase M：隐私与白名单序列化
 
-### 15.1 禁止直接序列化内部状态
 
 不要直接序列化：
 
@@ -1095,7 +1088,6 @@ Suppress marker body/path/line output
 验收：
 
 ```text
-marker 状态准确。
 隐私字段不泄露。
 ```
 
@@ -1124,7 +1116,6 @@ Return ok/degraded/blocked project_context
 验收：
 
 ```text
-workflow_enabled 与 marker 状态一致。
 ```
 
 ### Commit 6：Bridge / Validator / Auth
@@ -1375,5 +1366,4 @@ read_project_context 返回 write_permission/tool_capabilities。
 处理：
 
 ```text
-只返回 project_context 状态。
 runtime 链路交给 get_runtime_profile。
