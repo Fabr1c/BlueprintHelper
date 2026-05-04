@@ -31,6 +31,7 @@
 #include "Services/BlueprintHelperClassSettingsService.h"
 #include "Services/BlueprintHelperClassSettingsTypes.h"
 #include "Services/BlueprintHelperAppendBlueprintGraphService.h"
+#include "Services/BlueprintHelperTaskRuntimeService.h"
 #include "Services/BlueprintHelperAppendGraphTypes.h"
 #include "Services/BlueprintHelperReplaceBlueprintGraphService.h"
 #include "Services/BlueprintHelperReplaceGraphTypes.h"
@@ -633,15 +634,16 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	, ComponentService(InComponentService)
 	, ClassSettingsService(InClassSettings)
 	, AppendGraphService(InAppendGraphService)
+	, TaskRuntimeService(InAppendGraphService)
 	, ReplaceGraphService(InReplaceGraphService)
 	, PatchGraphService(InPatchGraphService)
 	, MergeGraphService(InMergeGraphService)
 	, CleanupBlockService(InCleanupBlockService)
 	, RollbackCleanupService(InRollbackCleanupService)
 	, ConvertBlockService(InConvertBlockService)
+	, VariableService(InVariableService)
 	, CompileAssetService(InCompileAssetService)
 	, TransactionQueryService(InTransactionQueryService)
-	, VariableService(InVariableService)
 {
 }
 
@@ -927,6 +929,19 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequest(
 	if (Request.Command == TEXT("set_class_default_properties"))
 	{
 		return HandleSetClassDefaultProperties(Request);
+	}
+	// ─── Task Runtime ───
+	if (Request.Command == TEXT("preview_task_plan"))
+	{
+		return HandlePreviewTaskPlan(Request);
+	}
+	if (Request.Command == TEXT("execute_task_plan"))
+	{
+		return HandleExecuteTaskPlan(Request);
+	}
+	if (Request.Command == TEXT("get_task_run_journal"))
+	{
+		return HandleGetTaskRunJournal(Request);
 	}
 	// ─── AppendBlueprintGraph ───
 	if (Request.Command == TEXT("append_blueprint_graph"))
@@ -1625,6 +1640,61 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleImportAgentGr
 
 	auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId, ImportResult.GetSummaryText());
 	Resp.Result = AgentImportResultToJson(ImportResult);
+	return Resp;
+}
+
+// ─── Task Runtime ───
+
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandlePreviewTaskPlan(
+	const FBlueprintHelperBridgeRequest& Req) const
+{
+	const FBlueprintHelperToolResultBase Result = TaskRuntimeService.PreviewTaskPlan(Req.Payload);
+
+	FBlueprintHelperBridgeResponse Resp = Result.bOk
+		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
+		: FBlueprintHelperBridgeResponse::Error(
+			Req.RequestId,
+			EBlueprintHelperBridgeError::ExecutionFailed,
+			Result.Error.IsSet() ? Result.Error->Message : TEXT("preview_task_plan 执行失败。"));
+
+	Resp.Result = Result.ToJson();
+	return Resp;
+}
+
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleExecuteTaskPlan(
+	const FBlueprintHelperBridgeRequest& Req) const
+{
+	const FBlueprintHelperToolResultBase Result = TaskRuntimeService.ExecuteTaskPlan(Req.Payload);
+
+	FBlueprintHelperBridgeResponse Resp = Result.bOk
+		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
+		: FBlueprintHelperBridgeResponse::Error(
+			Req.RequestId,
+			EBlueprintHelperBridgeError::ExecutionFailed,
+			Result.Error.IsSet() ? Result.Error->Message : TEXT("execute_task_plan 执行失败。"));
+
+	Resp.Result = Result.ToJson();
+	return Resp;
+}
+
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleGetTaskRunJournal(
+	const FBlueprintHelperBridgeRequest& Req) const
+{
+	FString TaskRunId;
+	if (Req.Payload.IsValid())
+	{
+		Req.Payload->TryGetStringField(TEXT("task_run_id"), TaskRunId);
+	}
+
+	const FBlueprintHelperToolResultBase Result = TaskRuntimeService.GetTaskRunJournal(TaskRunId);
+	FBlueprintHelperBridgeResponse Resp = Result.bOk
+		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
+		: FBlueprintHelperBridgeResponse::Error(
+			Req.RequestId,
+			EBlueprintHelperBridgeError::ExecutionFailed,
+			Result.Error.IsSet() ? Result.Error->Message : TEXT("get_task_run_journal 执行失败。"));
+
+	Resp.Result = Result.ToJson();
 	return Resp;
 }
 

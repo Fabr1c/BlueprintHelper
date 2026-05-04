@@ -2,9 +2,41 @@
 
 ## 1. 总览
 
-BlueprintHelper MCP 的能力可以按功能域理解，而不是按单个工具死记。实际工具名称以 MCP `tools/list` 返回为准；本索引用于指导 Agent 选择工具类别。
+BlueprintHelper MCP 的能力应先按任务编排层理解，再按底层能力簇理解。普通 Agent 默认面对少量任务级工具；底层能力入口仍保留，但主要作为 UE Task Runtime 内部 capability、debug / expert 工具和自动化测试入口。实际工具名称以 MCP `tools/list` 返回为准；本索引用于指导 Agent 选择工具类别。
 
-## 2. 连接与编辑器控制
+## 2. Agent-facing 任务级工具
+
+默认主线：
+
+```text
+Agent -> MCP Task Tools -> Python/MCP Task Compiler -> UE Task Runtime -> Existing Capability Clusters
+```
+
+普通 Agent 默认使用：
+
+```text
+blueprinthelper_get_runtime_profile
+blueprinthelper_diagnostics
+blueprinthelper_read_task_context
+blueprinthelper_preview_task
+blueprinthelper_execute_task
+blueprinthelper_get_task_result
+```
+
+职责分层：
+
+| 工具 | 用途 |
+|---|---|
+| `blueprinthelper_get_runtime_profile` | 读取版本、Bridge、写权限、安全档位和不可用能力 |
+| `blueprinthelper_diagnostics` | 读取静态或运行时诊断，不写资产 |
+| `blueprinthelper_read_task_context` | 返回 TaskContextPack，供 Agent 生成 TaskSpec |
+| `blueprinthelper_preview_task` | 校验 TaskSpec，生成 TaskPlan 摘要，执行 dry_run / preflight |
+| `blueprinthelper_execute_task` | 执行已通过 preview 的 TaskSpec 所编译出的 TaskPlan，返回任务级摘要 |
+| `blueprinthelper_get_task_result` | 查询 task_run_id 对应的任务结果、验证状态和必要摘要 |
+
+TaskSpec 是 Agent-facing 的语义任务规格，普通 Agent 提交 TaskSpec，不提交 TaskPlan。TaskPlan 是 Task Compiler 输出给 UE Task Runtime 的执行计划。TaskRunJournal 是 UE 侧记录一次任务执行和多个 child transaction 的审计容器。
+
+## 3. 连接与编辑器控制
 
 用途：确认 Bridge 可用、启动编辑器、关闭编辑器、执行控制台命令、PIE 启停、Undo / Redo。
 
@@ -19,9 +51,9 @@ BlueprintHelper MCP 的能力可以按功能域理解，而不是按单个工具
 
 **强制要求：** `UE_ENGINE_DIR` 和 `UE_PROJECT_FILE` 必须使用**绝对路径**（如 `F:/UE_5.6` 和 `G:/UnrealPractise/MrStone/MrStone.uproject`）。不支持相对路径。MCP Server v0.4.0+ 会自动展开 `${workspaceFolder}` 等模板变量，但最终值必须是绝对路径。
 
-## 3. 资产浏览与资产信息
+## 4. 资产浏览与资产信息
 
-用途：查找、打开、保存、获取资产元信息。
+用途：查找、打开、保存、获取资产元信息。普通 Agent 生成 TaskSpec 前，应优先通过 `blueprinthelper_read_task_context` 获取压缩上下文；底层资产浏览工具用于上下文服务、debug / expert 模式或失败定位。
 
 典型场景：
 
@@ -29,15 +61,15 @@ BlueprintHelper MCP 的能力可以按功能域理解，而不是按单个工具
 - 需要确认目标资产是否存在。
 - 写入后保存指定资产。
 
-默认流程：
+底层 debug / expert 流程：
 
 ```text
 search asset -> inspect asset info -> open asset if needed -> perform specific operation -> save asset
 ```
 
-## 4. 蓝图结构能力
+## 5. 蓝图结构能力
 
-用途：读取和修改 Blueprint 内部结构。
+用途：读取和修改 Blueprint 内部结构。普通 Agent 不应直接把复杂编辑拆成多个结构工具调用；应把意图写入 TaskSpec，由 Task Compiler 生成 TaskPlan，再交给 UE Task Runtime 调用这些能力。
 
 包含：
 
@@ -52,9 +84,9 @@ search asset -> inspect asset info -> open asset if needed -> perform specific o
 - 导出 / 导入蓝图 JSON。
 - 编译蓝图。
 
-默认要求：图表级操作必须指定资产路径和图表名。
+能力要求：图表级操作必须指定资产路径和图表名。作为 TaskPlan step 调用时，这些字段由 Task Compiler 明确展开。
 
-## 5. JSON / Logic 视图能力
+## 6. JSON / Logic 视图能力
 
 用途：在 raw JSON、logic JSON、logic MD 之间选择合适的 Agent 读写格式。
 
@@ -85,9 +117,9 @@ search asset -> inspect asset info -> open asset if needed -> perform specific o
 - **新：** `result.payload ?? result.json`
 - **兼容模式：** 请求 `include_json_text: true` 或使用 MCP `legacy_text_json` 模式
 
-## 6. UMG Widget 能力
+## 7. UMG Widget 能力
 
-用途：读取 WidgetTree、添加/删除/移动控件、读写 Widget 属性。
+用途：读取 WidgetTree、添加/删除/移动控件、读写 Widget 属性。普通 Agent 应通过 TaskSpec 表达目标、范围、资源和验证策略；底层 UMG 工具由 Task Runtime 或 debug / expert 模式使用。
 
 典型场景：
 
@@ -97,7 +129,7 @@ search asset -> inspect asset info -> open asset if needed -> perform specific o
 
 风险点：UMG 属性路径和控件命名必须明确，批量删除前必须读取树结构。
 
-## 7. UObject / DataAsset 属性能力
+## 8. UObject / DataAsset 属性能力
 
 用途：读取和写入 UObject / DataAsset 的属性。
 
@@ -109,7 +141,7 @@ search asset -> inspect asset info -> open asset if needed -> perform specific o
 
 风险点：需要先读取属性类型和当前值，不要把字符串猜成软引用、枚举或结构体。
 
-## 8. DataTable 能力
+## 9. DataTable 能力
 
 用途：读取、添加、更新、删除 DataTable 行。
 
@@ -121,13 +153,26 @@ search asset -> inspect asset info -> open asset if needed -> perform specific o
 
 风险点：必须先读取表结构或样例行，确认字段名、字段类型、RowName。
 
-## 9. 编译、校验与保存
+## 10. Function / Event Signature 能力
+
+用途：读取和管理 Blueprint 函数 / Custom Event 的声明与签名层。
+
+当前定位：
+
+- 作为未来 UE Capability Cluster 保留。
+- 由 TaskPlan step 调用，不作为普通 Agent 主流程入口。
+- 只处理声明、签名和非签名属性，不写函数体 / 事件体逻辑，不接入执行流。
+
+函数体、事件体、执行流仍归属 Graph Write / Replace / Patch / Merge 能力簇。
+
+## 11. 编译、校验与保存
 
 用途：写操作后验证结果。
 
 默认规则：
 
-- 改蓝图结构后编译蓝图。
-- 改 UMG / DataAsset / DataTable 后读取回查并保存。
-- 导入 JSON 后必须执行校验与编译。
+- TaskSpec 的 validation 字段使用 `validation.should_compile` / `validation.should_save` 描述是否编译、保存；diagnostics 策略后续随 Task Runtime 能力扩展。
+- TaskPlan 的 execution_policy 字段使用 `execution_policy.should_compile` / `execution_policy.should_save` 承接编译、保存策略。
+- UE Task Runtime 负责按 TaskPlan 执行 compile / diagnostics / save。
+- 底层写工具的 validation 只提示 `validation.should_compile` / `validation.should_save`，不代表已完成编译或保存。
 - 如果编译失败，报告错误，不要继续叠加写入。

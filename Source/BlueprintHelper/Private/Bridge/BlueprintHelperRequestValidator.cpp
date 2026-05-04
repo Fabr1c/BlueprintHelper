@@ -557,6 +557,21 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 		};
 		return ValidateRules(Payload, Rules, OutError);
 	}
+	if (CommandEquals(Command, TEXT("preview_task_plan")) ||
+		CommandEquals(Command, TEXT("execute_task_plan")))
+	{
+		const FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("task_plan"), EBlueprintHelperJsonExpectedType::Object, true},
+		};
+		return ValidateRules(Payload, Rules, OutError);
+	}
+	if (CommandEquals(Command, TEXT("get_task_run_journal")))
+	{
+		const FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("task_run_id"), EBlueprintHelperJsonExpectedType::String, true},
+		};
+		return ValidateRules(Payload, Rules, OutError);
+	}
 	if (CommandEquals(Command, TEXT("append_blueprint_graph")))
 	{
 		const FBlueprintHelperFieldRule Rules[] = {
@@ -739,6 +754,7 @@ TEXT("create_blueprint"),
 	TEXT("remove_implemented_interfaces"),
 	TEXT("set_class_default_property"),
 	TEXT("set_class_default_properties"),
+	TEXT("execute_task_plan"),
 	TEXT("append_blueprint_graph"),
 	TEXT("replace_blueprint_graph"),
 	TEXT("patch_blueprint_graph"),

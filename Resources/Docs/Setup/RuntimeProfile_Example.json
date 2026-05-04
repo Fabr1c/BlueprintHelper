@@ -1,0 +1,24 @@
+{
+  "schema": "BlueprintHelper.RuntimeProfile.v1",
+  "version": "0.5.0-dev",
+  "bridge_status": "connected",
+  "config_status": "valid",
+  "write_permission": {
+    "enabled": true,
+    "reason": "ok"
+  },
+  "risk_command": {
+    "enabled": false,
+    "reason": "risk_command_missing"
+  },
+  "active_profile": {
+    "safety_profile": "Conservative",
+    "missing_capability_policy": "stop_and_report",
+    "agent_entry_mode": "task_spec_first",
+    "fallback_when_task_tools_unavailable": "stop_and_report"
+  },
+  "tool_capabilities": {
+    "mode": "unavailable_only",
+    "unavailable": []
+  }
+}
