@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Bridge/BlueprintHelperBridgeTypes.h"
+#include "Services/BlueprintHelperTaskRuntimeService.h"
 
 class FBlueprintHelperImportService;
 class FBlueprintHelperAgentImportService;
@@ -166,6 +167,9 @@ private:
 	FBlueprintHelperBridgeResponse HandleSetClassDefaultProperties(const FBlueprintHelperBridgeRequest& Req) const;
 
 	// ─── AppendBlueprintGraph ───
+	FBlueprintHelperBridgeResponse HandlePreviewTaskPlan(const FBlueprintHelperBridgeRequest& Req) const;
+	FBlueprintHelperBridgeResponse HandleExecuteTaskPlan(const FBlueprintHelperBridgeRequest& Req) const;
+	FBlueprintHelperBridgeResponse HandleGetTaskRunJournal(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleAppendBlueprintGraph(const FBlueprintHelperBridgeRequest& Req) const;
 
 	// ─── ReplaceBlueprintGraph ───
@@ -213,6 +217,7 @@ private:
 	const FBlueprintHelperComponentService& ComponentService;
 	const FBlueprintHelperClassSettingsService& ClassSettingsService;
 	const FBlueprintHelperAppendBlueprintGraphService& AppendGraphService;
+	FBlueprintHelperTaskRuntimeService TaskRuntimeService;
 	const FBlueprintHelperReplaceBlueprintGraphService& ReplaceGraphService;
 	const FBlueprintHelperPatchBlueprintGraphService& PatchGraphService;
 	const FBlueprintHelperMergeBlueprintGraphService& MergeGraphService;

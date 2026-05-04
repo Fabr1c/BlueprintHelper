@@ -50,9 +50,9 @@ C. 两者都有 -> 先分解任务，源码部分不用 MCP，资产部分用 MC
 | 必需信息 | 示例 | 原因 |
 |---|---|---|
 | 资产路径 | `/Game/Blueprints/BP_Player` | 防止误改当前焦点资产 |
-| 图表名称 | `EventGraph` | 防止节点写入错误图表 |
-| 操作类型 | 添加变量 / 删除节点 / 设置属性 | 降低破坏面 |
-| 验证方式 | 编译 / 导出 / 读取回查 | 确认结果可用 |
+| 图表名称或等价 TaskSpec 目标 | `EventGraph` | 防止节点写入错误图表 |
+| 允许修改范围 | `allow_modify_user_nodes=false` | 降低破坏面 |
+| 验证方式 | TaskSpec `validation.should_compile` / `validation.should_save`，必要时包含 diagnostics 策略 | 确认结果可用 |
 
 对于删除、重命名、断线、批量移动等破坏性操作，必须先读取现状并列出将要影响的对象。
 
@@ -62,10 +62,10 @@ C. 两者都有 -> 先分解任务，源码部分不用 MCP，资产部分用 MC
 Understand user request
  -> decide MCP or normal code tool
  -> if MCP: preflight Bridge/editor/asset path
- -> read current state
- -> create minimal edit plan
- -> perform edit
- -> compile/validate
- -> save if appropriate
- -> report exact changes and remaining risks
+ -> get_runtime_profile
+ -> read_task_context
+ -> produce TaskSpec
+ -> preview_task
+ -> execute_task only after preview passes
+ -> report task summary and remaining risks
 ```

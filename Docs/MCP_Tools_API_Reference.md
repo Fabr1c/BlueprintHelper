@@ -1,31 +1,45 @@
 # BlueprintHelper MCP Tools API Reference
 
-文档版本：2026-04-30
+文档版本：2026-05-04
 
-This reference is aligned with `MCPServer/src/tools.ts` in the current source tree. It covers 44 registered MCP tools.
+This reference is aligned with the current documentation mainline, where ordinary Agents use TaskSpec-first orchestration. The existing low-level MCP tools remain documented for compatibility, debug / expert workflows, internal Task Runtime capability mapping, and automation tests.
 
 ## Common Return Shape
 
-Bridge-backed tools usually return a text MCP result containing a JSON object:
+Agent-facing task tools use `BlueprintHelper.McpToolResult.v1` as the outer envelope. The same envelope remains the public shape for normalized tool results:
 
 ```json
 {
-  "request_id": "mcp_1_1710000000000",
-  "success": true,
-  "message": "optional message",
-  "result": {}
+  "ok": true,
+  "schema": "BlueprintHelper.McpToolResult.v1",
+  "operation": "preview_task",
+  "trace_id": "trace_20260504_0001",
+  "status": "completed",
+  "modified": false,
+  "data": {
+    "schema": "TaskPreview.v1"
+  }
 }
 ```
 
-Failure shape:
+TaskSpec validation, semantic, policy, capability, preview, and execution failures are returned as task-level errors. A failed TaskSpec does not require the Agent to inspect raw Bridge / UE operation errors by default:
 
 ```json
 {
-  "request_id": "mcp_1_1710000000000",
-  "success": false,
-  "error_code": "OPTIONAL_CODE",
-  "message": "failure details",
-  "result": {}
+  "ok": false,
+  "schema": "BlueprintHelper.McpToolResult.v1",
+  "operation": "preview_task",
+  "trace_id": "trace_20260504_0002",
+  "status": "failed",
+  "modified": false,
+  "error": {
+    "code": "taskspec_semantic_invalid",
+    "category": "semantic_error",
+    "message": "TaskSpec contains contradictory instructions.",
+    "retryable": true,
+    "agent_action": "fix_taskspec_and_retry",
+    "issues": []
+  }
 }
 ```
 
@@ -35,23 +49,51 @@ Transport or Bridge connection failure:
 Bridge error: Bridge connection error: connect ECONNREFUSED 127.0.0.1:54321
 ```
 
-Some newer write commands may include safety fields:
+## Tool Audience Summary
 
-```json
-{
-  "success": true,
-  "result": {
-    "effective_scope": "graph",
-    "status": "applied",
-    "operations_applied": 3,
-    "nodes_created": 2,
-    "links_connected": 1,
-    "warnings": [],
-    "errors": [],
-    "rolled_back": false
-  }
-}
-```
+Default Agent-facing tools:
+
+- `blueprinthelper_read_task_context`
+- `blueprinthelper_preview_task`
+- `blueprinthelper_execute_task`
+- `blueprinthelper_get_task_result`
+- `blueprint_get_runtime_profile`
+- `blueprinthelper_diagnostics`
+
+Legacy/internal/debug/expert tools remain registered for compatibility, direct capability debugging, Task Runtime capability mapping, and automation tests. Ordinary Agents should prefer the default tools above unless the user explicitly asks for a low-level tool or a failure investigation needs raw capability detail.
+
+Legacy/internal/debug/expert inventory:
+
+- Context, rules, and diagnostics: `blueprint_get_rule_markdown`, `blueprint_get_editor_context`, `blueprinthelper_diagnostics_runtime`
+- Direct logic/raw reads and validation: `blueprint_get_logic_md`, `blueprint_validate_json`, `blueprint_export_to_json`, `blueprint_get_logic`, `blueprint_get_logic_json`
+- Asset and component capabilities: `blueprint_create_asset`, `blueprint_read_components`, `blueprint_add_component`, `blueprint_set_component_property`, `blueprint_set_component_properties`, `blueprint_remove_component`, `blueprint_open_asset`, `blueprint_list_assets`, `blueprint_search_assets`, `blueprint_save_asset`, `blueprint_get_asset_info`
+- Blueprint graph/member capabilities: `blueprint_import_json_to_graph`, `blueprint_import_agent_graph`, `blueprint_compile_blueprint`, `blueprint_list_graphs`, `blueprint_list_variables`, `blueprint_list_event_dispatchers`, `blueprint_add_variable`, `blueprint_remove_variable`, `blueprint_add_graph`, `blueprint_remove_graph`, `blueprint_add_event_dispatcher`, `blueprint_delete_nodes`
+- UMG, UObject, and DataTable capabilities: `blueprint_get_widget_tree`, `blueprint_add_widget`, `blueprint_remove_widget`, `blueprint_move_widget`, `blueprint_get_widget_properties`, `blueprint_set_widget_property`, `blueprint_get_object_properties`, `blueprint_set_object_property`, `blueprint_get_datatable_rows`, `blueprint_add_datatable_row`, `blueprint_update_datatable_row`, `blueprint_delete_datatable_row`
+- Editor lifecycle and local process tools: `blueprint_undo`, `blueprint_redo`, `blueprint_play_in_editor`, `blueprint_stop_pie`, `blueprint_create_blueprint`, `blueprint_exec_console_command`, `blueprint_close_editor`, `blueprint_build_project`, `blueprint_open_editor`
+
+## Task-Level Tool Reference
+
+This is the documented target surface for ordinary Agents. Some entries may be ahead of the currently checked-in TypeScript implementation while the Task Compiler and UE Task Runtime are being introduced.
+
+| Tool | Type | Purpose | Writes Assets | Notes |
+|---|---|---|---:|---|
+| `blueprinthelper_get_runtime_profile` | Read | Returns version, Bridge state, write permission, safety profile, and unavailable capabilities | No | Call at session start or before write planning |
+| `blueprinthelper_diagnostics` | Read | Returns static/runtime diagnostics | No | Blocking diagnostics are business state, not transport failure |
+| `blueprinthelper_read_task_context` | Read | Returns `BlueprintHelper.TaskContextPack.v1` for a target and intent | No | Should be compact; does not default to full RawJson |
+| `blueprinthelper_preview_task` | Preview | Validates `BlueprintHelper.TaskSpec.v1`, compiles `BlueprintHelper.TaskPlan.v1`, and dry-runs/preflights | No | Returns suggested patches for schema/semantic errors when possible |
+| `blueprinthelper_execute_task` | Mutate | Executes an approved TaskPlan through UE Task Runtime | Yes | Returns task-level summary and validation result |
+| `blueprinthelper_get_task_result` | Query | Reads `BlueprintHelper.TaskRunJournal.v1` task result summary | No | Used for async/follow-up result lookup or audit summaries |
+
+Primary data structures:
+
+| Schema | Consumer | Purpose |
+|---|---|---|
+| `BlueprintHelper.TaskContextPack.v1` | Agent | Context summary used to write a TaskSpec |
+| `BlueprintHelper.TaskSpec.v1` | Python / MCP Task Compiler | Agent-authored semantic task specification |
+| `BlueprintHelper.TaskPlan.v1` | UE Task Runtime | Executable plan generated from TaskSpec |
+| `BlueprintHelper.TaskRunJournal.v1` | UE / MCP query | Task-level journal grouping child transactions |
+
+Raw Bridge / UE operation errors are internal facts. Python / MCP normalizes them into task-level errors for ordinary Agent consumption. Debug / expert mode may expose raw trace references or summarized operation errors.
 
 ## Token And Setup State
 
@@ -72,7 +114,9 @@ Unless noted otherwise, Bridge-backed tools require Unreal Editor to be running 
 | High | Deletes, imports, creates assets, or changes data |
 | Critical | Can run arbitrary editor commands, close editor, or build project |
 
-## Tool Reference
+## Existing Low-Level Tool Reference
+
+The following entries describe the current low-level inventory. Ordinary Agents should not use this table as the default planning surface for complex edits. These tools are legacy/internal/debug/expert capability entries unless a user explicitly requests direct use or a failure investigation requires it.
 
 | Tool | Type | Bridge | Inputs | Success example | Failure example | Risk | Preconditions | Token/session |
 |---|---|---:|---|---|---|---|---|---|
@@ -123,7 +167,7 @@ Unless noted otherwise, Bridge-backed tools require Unreal Editor to be running 
 
 ## Write Tools Summary
 
-The following tools modify assets or editor state:
+The following low-level tools modify assets or editor state. They remain documented for legacy/internal/debug/expert use and for Task Runtime capability mapping:
 
 ```text
 blueprint_import_json_to_graph
@@ -156,7 +200,17 @@ blueprint_build_project
 blueprint_open_editor
 ```
 
-Use read -> plan -> write -> compile/validate -> save for editor-asset mutations.
+For ordinary Agent editor-asset mutations, use TaskSpec-first orchestration:
+
+```text
+blueprinthelper_get_runtime_profile
+ -> blueprinthelper_read_task_context
+ -> blueprinthelper_preview_task
+ -> blueprinthelper_execute_task
+ -> blueprinthelper_get_task_result when needed
+```
+
+The TaskSpec should state the exact target asset, target graph when relevant, allowed modification scope, resource references, failure policy, and validation policy.
 
 ## Input Notes
 

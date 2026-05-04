@@ -2,6 +2,8 @@
 
 This guide connects a local Unreal Editor project, the BlueprintHelper Bridge, the BlueprintHelper MCP Server, and an AI agent.
 
+Task orchestration mainline: Agent -> MCP Task Tools -> Python/MCP Task Compiler -> UE Task Runtime -> Existing Capability Clusters.
+
 ## Prerequisites
 
 - Unreal Engine 5.3 or newer.
@@ -30,7 +32,7 @@ Open the project in Unreal Editor, enable BlueprintHelper if needed, and rebuild
 ## 2. Build The MCP Server
 
 ```powershell
-cd G:\UnrealPractise\MrStone\Plugins\BlueprintHelper_MCP_Server
+cd G:\UnrealPractise\MrStone\Plugins\BlueprintHelper\BlueprintHelper_MCP_Server
 npm install
 npm run build
 ```
@@ -88,7 +90,7 @@ The MCP Server uses stdio transport. Most MCP clients launch it directly.
 Manual command:
 
 ```powershell
-node G:\UnrealPractise\MrStone\Plugins\BlueprintHelper_MCP_Server\build\index.js
+node G:\UnrealPractise\MrStone\Plugins\BlueprintHelper\BlueprintHelper_MCP_Server\build\index.js
 ```
 
 Using npm:
@@ -110,7 +112,7 @@ Generic MCP client configuration:
     "blueprint-helper": {
       "command": "node",
       "args": [
-        "G:\\UnrealPractise\\MrStone\\Plugins\\BlueprintHelper_MCP_Server\\build\\index.js"
+        "G:\\UnrealPractise\\MrStone\\Plugins\\BlueprintHelper\\BlueprintHelper_MCP_Server\\build\\index.js"
       ],
       "env": {
         "UE_ENGINE_DIR": "F:\\UE_5.6",
@@ -130,7 +132,7 @@ For Codex, Claude, or IDE agents, use the same command, args, and env fields in 
 Repository verification:
 
 ```powershell
-cd G:\UnrealPractise\MrStone\Plugins\BlueprintHelper_MCP_Server
+cd G:\UnrealPractise\MrStone\Plugins\BlueprintHelper\BlueprintHelper_MCP_Server
 npm test
 ```
 
@@ -172,14 +174,16 @@ Use LogicMD or LogicJson for review and planning. Use raw JSON only for precise 
 
 ## 9. Safe Write Checklist
 
-Before using any mutate tool:
+For ordinary Agent editor-asset mutations, use the TaskSpec-first flow:
 
 - Confirm the Bridge is reachable.
-- Confirm the exact `asset_path`.
-- Confirm the exact `target_graph` for graph edits.
-- Read the current asset state.
-- Produce a small write plan.
-- Run compile, validation, or save as required.
+- Call `blueprinthelper_get_runtime_profile`.
+- Call `blueprinthelper_read_task_context`.
+- Produce `BlueprintHelper.TaskSpec.v1` with exact `asset_path`, target graph when relevant, allowed scope, resource references, failure policy, `validation.should_compile`, and `validation.should_save`.
+- Do not submit TaskPlan directly; it is produced by the Python/MCP Task Compiler.
+- Run `blueprinthelper_preview_task` and stop on blocked / failed preview.
+- Run `blueprinthelper_execute_task` only after preview passes.
+- Let UE Task Runtime handle TaskPlan execution, `execution_policy.should_compile` / `execution_policy.should_save`, transaction grouping, rollback, and diagnostics.
 - Report partial failures and do not retry blindly.
 
-Tools that modify assets are marked in [MCP_Tools_API_Reference.md](MCP_Tools_API_Reference.md).
+Low-level tools that modify assets are marked in [MCP_Tools_API_Reference.md](MCP_Tools_API_Reference.md) for legacy/internal/debug/expert use.

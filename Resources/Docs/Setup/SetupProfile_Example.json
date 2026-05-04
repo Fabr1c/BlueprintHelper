@@ -1,0 +1,38 @@
+{
+  "schema": "BlueprintHelper.SetupProfile.v1",
+  "profile_id": "default",
+  "agent": {
+    "default_client": "Claude Code",
+    "agent_entry_mode": "task_spec_first",
+    "fallback_when_task_tools_unavailable": "stop_and_report",
+    "missing_capability_policy": "stop_and_report"
+  },
+  "safety": {
+    "safety_profile": "Conservative",
+    "preview_required": true,
+    "allow_auto_save": false,
+    "allow_high_risk_editor_commands": false,
+    "allow_temporary_profile_override": false
+  },
+  "blueprint_cpp_boundary": {
+    "agent_may_modify_cpp": false,
+    "agent_may_modify_uassets": true,
+    "parent_class_modification": "unsupported_stop_and_report"
+  },
+  "graph_write": {
+    "default_new_event_graph_pattern": "EG_{FeatureName}",
+    "allow_modify_user_nodes_by_default": false,
+    "allow_merge_existing_execution_flow_by_default": false
+  },
+  "enhanced_input": {
+    "allow_auto_create_input_action": false,
+    "allow_auto_edit_mapping_context": false,
+    "require_explicit_input_action_path": true
+  },
+  "review": {
+    "enable_transaction_journal": true,
+    "enable_review_store": true,
+    "rollback_data_retention": "KeepFullUntilAccepted",
+    "accept_default": "keep_managed"
+  }
+}
