@@ -10,8 +10,8 @@
 #include "Components/PanelWidget.h"
 #include "Components/Widget.h"
 #include "Kismet2/BlueprintEditorUtils.h"
-#include "Services/BlueprintHelperScopedAssetMutation.h"
-#include "Services/BlueprintHelperServiceTypes.h"
+#include "GraphSupport/BlueprintHelperScopedAssetMutation.h"
+#include "Structure/BlueprintHelperServiceTypes.h"
 #include "WidgetBlueprint.h"
 #include "UObject/UObjectIterator.h"
 

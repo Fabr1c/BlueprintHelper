@@ -3,9 +3,9 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Services/BlueprintHelperPatchGraphTypes.h"
-#include "Services/BlueprintHelperLogicJsonPathService.h"
-#include "Services/BlueprintHelperToolResultTypes.h"
+#include "Structure/BlueprintHelperPatchGraphTypes.h"
+#include "Logic/BlueprintHelperLogicJsonPathService.h"
+#include "Structure/BlueprintHelperToolResultTypes.h"
 
 class FBlueprintHelperGraphResolver;
 class FBlueprintHelperLogicJsonPathService;

@@ -2,12 +2,12 @@
 
 #include "Services/BlueprintHelperAppendBlueprintGraphService.h"
 #include "Services/BlueprintHelperAgentImportService.h"
-#include "Services/BlueprintHelperBlockIdService.h"
-#include "Services/BlueprintHelperOwnershipService.h"
-#include "Services/BlueprintHelperTransactionJournalService.h"
-#include "Services/BlueprintHelperGraphResolver.h"
-#include "Services/BlueprintHelperScopedAssetMutation.h"
-#include "Services/BlueprintHelperToolResultTypes.h"
+#include "GraphSupport/BlueprintHelperBlockIdService.h"
+#include "GraphSupport/BlueprintHelperOwnershipService.h"
+#include "Transactions/BlueprintHelperTransactionJournalService.h"
+#include "GraphSupport/BlueprintHelperGraphResolver.h"
+#include "GraphSupport/BlueprintHelperScopedAssetMutation.h"
+#include "Structure/BlueprintHelperToolResultTypes.h"
 
 #include "Engine/Blueprint.h"
 #include "EdGraph/EdGraph.h"

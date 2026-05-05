@@ -368,34 +368,54 @@ feature_name
 
 ### 8.1 TaskSpec 最小骨架
 
+固定字段以 `Resources/Docs/TaskSpec_TaskPlan_Contract_20260504.md` 为准。当前实现切片只固定 GraphWrite Append。
+
 ```json
 {
   "schema": "BlueprintHelper.TaskSpec.v1",
   "context_id": "ctx_20260504_0001",
-  "task_type": "create_blueprint_feature",
+  "task_type": "edit_blueprint_graph",
   "feature_name": "PhysicsDoor",
   "target": {
     "asset_path": "/Game/BlueprintHelperTest/Door/BP_BH_PhysicsDoor",
     "target_type": "blueprint"
   },
   "scope_policy": {
-    "prefer_new_graph": true,
     "graph_name": "EG_PhysicsDoor",
-    "allow_modify_user_nodes": false,
-    "allow_merge_existing_execution_flow": false,
-    "allow_create_assets": true,
-    "allow_edit_input_mapping": false
+    "allow_modify_user_nodes": false
   },
-  "asset_policy": {
-    "if_target_asset_missing": "fail",
-    "if_referenced_asset_missing": "fail",
-    "if_component_exists": "reuse_if_type_matches",
-    "if_graph_exists_non_empty": "fail"
+  "behavior": {
+    "graph_strategy": "append_new_owned_graph",
+    "entries": [
+      {
+        "entry_type": "custom_event",
+        "name": "InitializePhysicsDoor",
+        "body": {
+          "schema": "BlueprintLogicSpec.v1",
+          "statements": [
+            {
+              "kind": "call_function",
+              "name": "PrintString",
+              "args": {
+                "InString": {
+                  "kind": "literal",
+                  "value_type": "string",
+                  "value": "Physics door initialized"
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "execution_policy": {
+    "dry_run_mode": "full",
+    "on_missing_capability": "stop_and_report"
   },
   "validation": {
-    "compile": true,
-    "run_diagnostics": true,
-    "save": false
+    "should_compile": true,
+    "should_save": false
   }
 }
 ```
@@ -476,8 +496,7 @@ target_assets
 applied_steps
 created_assets
 modified_assets
-validation.compiled
-validation.saved
+validation summary with compiled / saved status when runtime reports it
 ```
 
 普通用户报告不展开：

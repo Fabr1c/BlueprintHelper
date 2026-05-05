@@ -33,8 +33,8 @@ Current source metadata:
 
 | Component | Current value |
 |---|---|
-| Unreal plugin `BlueprintHelper.uplugin` | `VersionName` 0.2.9 |
-| MCP Server `BlueprintHelper_MCP_Server/package.json` | 0.1.0 |
+| Unreal plugin `BlueprintHelper.uplugin` | `VersionName` 0.3.8 |
+| MCP Server `BlueprintHelper_MCP_Server/package.json` | 0.3.8 |
 | Documentation batch | 2026-05-04 TaskSpec mainline |
 | Intended UE version | UE 5.3 or newer |
 
@@ -101,11 +101,12 @@ For full setup details, read [Docs/Install_MCP_QuickStart.md](Docs/Install_MCP_Q
 Agents should read these in order:
 
 1. [AGENTS.md](AGENTS.md)
-2. [Resources/AgentGuide/00_Agent_Onboarding_Index_20260430.md](Resources/AgentGuide/00_Agent_Onboarding_Index_20260430.md)
+2. [Resources/AgentGuide/00_Agent_Onboarding_Index_20260504.md](Resources/AgentGuide/00_Agent_Onboarding_Index_20260504.md)
 3. [Resources/Setup/Setup_Questionnaire_20260430.md](Resources/Setup/Setup_Questionnaire_20260430.md)
 4. [Resources/Setup/Setup_Profile_Schema_20260430.md](Resources/Setup/Setup_Profile_Schema_20260430.md)
-5. [Resources/Plan/BlueprintHelper_Hybrid_TaskSpec_TaskPlan_Architecture_20260504.md](Resources/Plan/BlueprintHelper_Hybrid_TaskSpec_TaskPlan_Architecture_20260504.md)
-6. [Docs/MCP_Tools_API_Reference.md](Docs/MCP_Tools_API_Reference.md)
+5. [Resources/Docs/TaskSpec_TaskPlan_Contract_20260504.md](Resources/Docs/TaskSpec_TaskPlan_Contract_20260504.md)
+6. [Resources/Plan/BlueprintHelper_Hybrid_TaskSpec_TaskPlan_Architecture_20260504.md](Resources/Plan/BlueprintHelper_Hybrid_TaskSpec_TaskPlan_Architecture_20260504.md)
+7. [Docs/MCP_Tools_API_Reference.md](Docs/MCP_Tools_API_Reference.md)
 
 Claude-style agents can also load [.claude/skills/blueprinthelper/SKILL.md](.claude/skills/blueprinthelper/SKILL.md).
 
@@ -136,20 +137,16 @@ For ordinary Agent editor-asset mutations, use the TaskSpec-first loop:
 
 Do not rely on the currently focused editor tab for destructive operations unless the user explicitly asks for active-context editing.
 
-## Bridge 协议 (v2.2+)
+## Bridge 鍗忚 (v2.2+)
 
-BlueprintHelper Bridge 使用 object-first 协议传递 RawJson 数据。
+BlueprintHelper Bridge 浣跨敤 object-first 鍗忚浼犻€?RawJson 鏁版嵁銆?
+### 瀵煎嚭
+- `payload` 鈥?缁撴瀯鍖?RawJson 瀵硅薄锛堜富瑕佸瓧娈碉級
+- `json` 鈥?鍏煎鎬у埆鍚?- `json_text` 鈥?浠?`include_json_text: true` 鏃跺嚭鐜?
+### 瀵煎叆
+- 鎺ュ彈 `json` 涓?object 鎴?string
+- 鎷掔粷 LogicJson/LogicMD锛坄importable=false` 鎴?`schema` 浠?`BlueprintHelper.Logic` 寮€澶达級
 
-### 导出
-- `payload` — 结构化 RawJson 对象（主要字段）
-- `json` — 兼容性别名
-- `json_text` — 仅 `include_json_text: true` 时出现
-
-### 导入
-- 接受 `json` 为 object 或 string
-- 拒绝 LogicJson/LogicMD（`importable=false` 或 `schema` 以 `BlueprintHelper.Logic` 开头）
-
-### MCP 默认行为
-- `blueprint_export_to_json` 返回 `raw_json_ref` (resource link)
-- RawJson resource 直接返回 RawJson 本体（不额外包裹）
-- `legacy_text_json` 模式用于兼容/调试
+### MCP 榛樿琛屼负
+- `blueprint_export_to_json` 杩斿洖 `raw_json_ref` (resource link)
+- RawJson resource 鐩存帴杩斿洖 RawJson 鏈綋锛堜笉棰濆鍖呰９锛?- `legacy_text_json` 妯″紡鐢ㄤ簬鍏煎/璋冭瘯

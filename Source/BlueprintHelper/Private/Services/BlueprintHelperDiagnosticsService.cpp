@@ -1,9 +1,9 @@
 // BlueprintHelper Service Layer — Diagnostics 服务实现（Runtime）
 
 #include "Services/BlueprintHelperDiagnosticsService.h"
-#include "Services/BlueprintHelperDiagnosticsTypes.h"
-#include "Services/BlueprintHelperRuntimeProfileTypes.h"
-#include "Services/BlueprintHelperToolResultTypes.h"
+#include "Structure/BlueprintHelperDiagnosticsTypes.h"
+#include "Structure/BlueprintHelperRuntimeProfileTypes.h"
+#include "Structure/BlueprintHelperToolResultTypes.h"
 #include "Interfaces/IPluginManager.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Misc/Paths.h"

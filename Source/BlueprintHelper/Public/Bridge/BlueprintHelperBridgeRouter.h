@@ -4,7 +4,8 @@
 
 #include "CoreMinimal.h"
 #include "Bridge/BlueprintHelperBridgeTypes.h"
-#include "Services/BlueprintHelperTaskRuntimeService.h"
+#include "Safety/BlueprintHelperDependencyAnalysisService.h"
+#include "TaskRuntime/BlueprintHelperTaskRuntimeService.h"
 
 class FBlueprintHelperImportService;
 class FBlueprintHelperAgentImportService;
@@ -65,14 +66,14 @@ public:
 		const FBlueprintHelperClassSettingsService& InClassSettings,
 		const FBlueprintHelperAppendBlueprintGraphService& InAppendGraphService,
 		const FBlueprintHelperReplaceBlueprintGraphService& InReplaceGraphService,
-	const FBlueprintHelperPatchBlueprintGraphService& InPatchGraphService,
-	const FBlueprintHelperMergeBlueprintGraphService& InMergeGraphService,
-	const FBlueprintHelperCleanupBlueprintHelperBlockService& InCleanupBlockService,
-	const FBlueprintHelperRollbackCleanupTransactionService& InRollbackCleanupService,
-	const FBlueprintHelperConvertBlockToUserOwnedService& InConvertBlockService,
-	const FBlueprintHelperCompileAssetService& InCompileAssetService,
-	const FBlueprintHelperTransactionQueryService& InTransactionQueryService,
-	const FBlueprintHelperBlueprintVariableService& InVariableService);
+		const FBlueprintHelperPatchBlueprintGraphService& InPatchGraphService,
+		const FBlueprintHelperMergeBlueprintGraphService& InMergeGraphService,
+		const FBlueprintHelperCleanupBlueprintHelperBlockService& InCleanupBlockService,
+		const FBlueprintHelperRollbackCleanupTransactionService& InRollbackCleanupService,
+		const FBlueprintHelperConvertBlockToUserOwnedService& InConvertBlockService,
+		const FBlueprintHelperCompileAssetService& InCompileAssetService,
+		const FBlueprintHelperTransactionQueryService& InTransactionQueryService,
+		const FBlueprintHelperBlueprintVariableService& InVariableService);
 
 	/** 路由并执行命令。必须在 GameThread 调用。 */
 	FBlueprintHelperBridgeResponse HandleRequest(const FBlueprintHelperBridgeRequest& Request) const;
@@ -82,6 +83,7 @@ private:
 	FBlueprintHelperBridgeResponse HandleGetEditorContext(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleGetRuntimeProfile(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleDiagnosticsRuntime(const FBlueprintHelperBridgeRequest& Req) const;
+	FBlueprintHelperBridgeResponse HandleReadReferenceContext(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleReadBlueprintLogicMd(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleReadBlueprintLogicJson(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleValidateJson(const FBlueprintHelperBridgeRequest& Req) const;
@@ -217,7 +219,6 @@ private:
 	const FBlueprintHelperComponentService& ComponentService;
 	const FBlueprintHelperClassSettingsService& ClassSettingsService;
 	const FBlueprintHelperAppendBlueprintGraphService& AppendGraphService;
-	FBlueprintHelperTaskRuntimeService TaskRuntimeService;
 	const FBlueprintHelperReplaceBlueprintGraphService& ReplaceGraphService;
 	const FBlueprintHelperPatchBlueprintGraphService& PatchGraphService;
 	const FBlueprintHelperMergeBlueprintGraphService& MergeGraphService;
@@ -225,6 +226,8 @@ private:
 	const FBlueprintHelperRollbackCleanupTransactionService& RollbackCleanupService;
 	const FBlueprintHelperConvertBlockToUserOwnedService& ConvertBlockService;
 	const FBlueprintHelperBlueprintVariableService& VariableService;
+	FBlueprintHelperDependencyAnalysisService DependencyAnalysisService;
+	FBlueprintHelperTaskRuntimeService TaskRuntimeService;
 	const FBlueprintHelperCompileAssetService& CompileAssetService;
 	const FBlueprintHelperTransactionQueryService& TransactionQueryService;
 };

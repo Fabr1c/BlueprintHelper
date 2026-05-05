@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Bridge/BlueprintHelperBridgeTypes.h"
-#include "Services/BlueprintHelperServiceTypes.h"
+#include "Structure/BlueprintHelperServiceTypes.h"
 
 struct BLUEPRINTHELPER_API FBlueprintHelperBridgeValidationError
 {

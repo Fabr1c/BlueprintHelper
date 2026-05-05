@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "BlueprintHelperServiceTypes.h"
+#include "Structure/BlueprintHelperServiceTypes.h"
 
 class FBlueprintHelperAssetBrowseService;
 class FBlueprintHelperCompileService;

@@ -31,7 +31,7 @@ import {
   type ToolResultBase,
   type DiagnosticsMarkdownReport,
 } from './tool-result.js';
-import { registerTaskTools } from './task-tools.js';
+import { registerTaskTools, type TaskToolsConfig } from './task-tools.js';
 import { execFile, spawn } from 'node:child_process';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
@@ -40,6 +40,7 @@ import * as fs from 'node:fs';
 export interface EditorConfig {
   ueEngineDir: string;
   ueProjectFile: string;
+  taskCompiler?: TaskToolsConfig['taskCompiler'];
 }
 
 /** RawJson input: accepts structured object or legacy JSON string */

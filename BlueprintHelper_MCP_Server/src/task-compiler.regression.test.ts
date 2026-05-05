@@ -67,6 +67,44 @@ function makeTaskSpec(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function makeVariableTaskSpec(overrides: Record<string, unknown> = {}) {
+  return {
+    schema: 'BlueprintHelper.TaskSpec.v1',
+    context_id: 'ctx_variables',
+    task_type: 'edit_blueprint_variables',
+    feature_name: 'DoorVariables',
+    target: {
+      asset_path: '/Game/BP/BP_Door',
+      target_type: 'blueprint',
+    },
+    behavior: {
+      variable_strategy: 'member_variables',
+      variables: [
+        {
+          op: 'ensure_member_variable',
+          name: 'bDoorOpen',
+          pin_type: {
+            category: 'bool',
+          },
+          category: 'Door',
+          flags: {
+            expose_on_spawn: false,
+          },
+        },
+      ],
+    },
+    execution_policy: {
+      dry_run_mode: 'full',
+      on_missing_capability: 'stop_and_report',
+    },
+    validation: {
+      should_compile: true,
+      should_save: false,
+    },
+    ...overrides,
+  };
+}
+
 describe('TaskSpec schema validation', () => {
   it('rejects missing schema', () => {
     const spec = makeTaskSpec();
@@ -157,6 +195,129 @@ describe('TaskSpec schema validation', () => {
 });
 
 describe('TaskSpec GraphWrite Append compiler', () => {
+  it('accepts replace_blueprint_graph TaskPlan steps from the GraphWrite capability family', () => {
+    const taskPlan = {
+      schema: 'BlueprintHelper.TaskPlan.v1',
+      task_name: 'DoorBodyRewrite',
+      task_type: 'edit_blueprint_graph',
+      context_id: 'ctx_replace',
+      target_assets: ['/Game/BP/BP_Door'],
+      execution_policy: {
+        dry_run_mode: 'full',
+        should_compile: true,
+        should_save: false,
+      },
+      steps: [
+        {
+          step_id: 'step_001',
+          operation: 'replace_blueprint_graph',
+          target: {
+            asset_path: '/Game/BP/BP_Door',
+            graph: 'EventGraph',
+            replace_scope: 'custom_event_body',
+          },
+          args: {
+            selector: {
+              entry_name: 'ToggleDoor',
+              node_path: 'logic.groups[0].entry.node_path',
+            },
+            replacement: {
+              nodes: [],
+              links: [],
+            },
+            options: {
+              strict: true,
+              preserve_layout: false,
+            },
+          },
+        },
+      ],
+    };
+
+    assert.doesNotThrow(() => TaskPlanSchema.parse(taskPlan));
+  });
+
+  it('accepts patch_blueprint_graph TaskPlan steps from the GraphWrite capability family', () => {
+    const taskPlan = {
+      schema: 'BlueprintHelper.TaskPlan.v1',
+      task_name: 'DoorConditionPatch',
+      task_type: 'edit_blueprint_graph',
+      context_id: 'ctx_patch',
+      target_assets: ['/Game/BP/BP_Door'],
+      execution_policy: {
+        dry_run_mode: 'full',
+        should_compile: true,
+        should_save: true,
+      },
+      steps: [
+        {
+          step_id: 'step_001',
+          operation: 'patch_blueprint_graph',
+          target: {
+            asset_path: '/Game/BP/BP_Door',
+            graph: 'EventGraph',
+            patch_scope: 'pin_default',
+          },
+          args: {
+            patch_type: 'set_pin_default',
+            patched_ref: {
+              graph_id: 'EventGraph',
+              node_ref: 'Branch0',
+              pin_ref: 'Condition',
+            },
+            patch: {
+              value: true,
+            },
+            expected_old_state: {
+              value: false,
+            },
+          },
+        },
+      ],
+    };
+
+    assert.doesNotThrow(() => TaskPlanSchema.parse(taskPlan));
+  });
+
+  it('accepts merge_blueprint_graph TaskPlan steps from the GraphWrite capability family', () => {
+    const taskPlan = {
+      schema: 'BlueprintHelper.TaskPlan.v1',
+      task_name: 'DoorFlowMerge',
+      task_type: 'edit_blueprint_graph',
+      context_id: 'ctx_merge',
+      target_assets: ['/Game/BP/BP_Door'],
+      execution_policy: {
+        dry_run_mode: 'quick',
+        should_compile: true,
+        should_save: true,
+      },
+      steps: [
+        {
+          step_id: 'step_001',
+          operation: 'merge_blueprint_graph',
+          target: {
+            asset_path: '/Game/BP/BP_Door',
+            graph: 'EventGraph',
+            merge_scope: 'owned_block_call',
+            insert_strategy: 'insert_between',
+          },
+          args: {
+            anchor: {
+              group_entry_node_path: 'logic.groups[0].entry.node_path',
+              node_ref: 'BeginPlay0',
+              pin_ref: 'Then',
+            },
+            inserted: {
+              block_id: 'EG_DoorFeature_ToggleDoor0',
+            },
+          },
+        },
+      ],
+    };
+
+    assert.doesNotThrow(() => TaskPlanSchema.parse(taskPlan));
+  });
+
   it('rejects non-append graph strategies', () => {
     const spec = makeTaskSpec({
       behavior: {
@@ -207,14 +368,55 @@ describe('TaskSpec GraphWrite Append compiler', () => {
     );
   });
 
-  it('compiles call_function statements into append_blueprint_graph payload', () => {
+  it('compiles call_function statements into structured graph_write IR and lowers to append bridge payload', () => {
     const plan = compileTaskSpecToTaskPlan(TaskSpecSchema.parse(makeTaskSpec()));
     const payload = taskPlanToAppendBridgePayload(plan, true);
+    const step = plan.steps[0];
 
     assert.deepEqual(plan.execution_policy, {
       dry_run_mode: 'full',
       should_compile: false,
       should_save: false,
+    });
+    assert.ok(step && 'capability' in step);
+    assert.equal(Object.hasOwn(step as Record<string, unknown>, 'operation'), false);
+    assert.deepEqual(step, {
+      step_id: 'step_001',
+      capability: 'graph_write',
+      target: {
+        asset_path: '/Game/BP/BP_Door',
+        graph: 'EG_DoorFeature',
+      },
+      write: {
+        strategy: 'owned_graph_edit',
+        ops: [
+          {
+            op: 'ensure_entry',
+            entry_type: 'custom_event',
+            name: 'ToggleDoor',
+            body: {
+              schema: 'BlueprintLogicSpec.v1',
+              statements: [
+                {
+                  kind: 'call_function',
+                  name: 'PrintString',
+                  args: {
+                    InString: {
+                      kind: 'literal',
+                      value_type: 'string',
+                      value: 'hello',
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+      constraints: {
+        allow_modify_user_nodes: false,
+        ownership_scope: 'blueprinthelper_owned',
+      },
     });
 
     assert.deepEqual(payload, {
@@ -237,6 +439,66 @@ describe('TaskSpec GraphWrite Append compiler', () => {
       ],
       dry_run: true,
     });
+  });
+
+  it('emits one ensure_entry op per custom_event entry', () => {
+    const spec = makeTaskSpec({
+      behavior: {
+        graph_strategy: 'append_new_owned_graph',
+        entries: [
+          {
+            entry_type: 'custom_event',
+            name: 'ToggleDoor',
+            body: {
+              schema: 'BlueprintLogicSpec.v1',
+              statements: [
+                {
+                  kind: 'call_function',
+                  name: 'PrintString',
+                  args: {
+                    InString: {
+                      kind: 'literal',
+                      value_type: 'string',
+                      value: 'hello',
+                    },
+                  },
+                },
+              ],
+            },
+          },
+          {
+            entry_type: 'custom_event',
+            name: 'CloseDoor',
+            body: {
+              schema: 'BlueprintLogicSpec.v1',
+              statements: [
+                {
+                  kind: 'set_member_variable',
+                  name: 'bDoorOpen',
+                  value: {
+                    kind: 'literal',
+                    value_type: 'bool',
+                    value: false,
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    const plan = compileTaskSpecToTaskPlan(TaskSpecSchema.parse(spec));
+    const step = plan.steps[0];
+
+    assert.ok(step && 'capability' in step);
+    assert.deepEqual(step.write.ops.map((op) => ({
+      op: op.op,
+      name: (op as Record<string, unknown>).name,
+    })), [
+      { op: 'ensure_entry', name: 'ToggleDoor' },
+      { op: 'ensure_entry', name: 'CloseDoor' },
+    ]);
   });
 
   it('compiles set_member_variable statements into append_blueprint_graph payload', () => {
@@ -279,5 +541,226 @@ describe('TaskSpec GraphWrite Append compiler', () => {
       },
     ]);
     assert.equal(payload.dry_run, false);
+  });
+});
+
+describe('TaskSpec Blueprint Variables compiler', () => {
+  it('compiles ensure_member_variable into structured blueprint_variable IR', () => {
+    const plan = compileTaskSpecToTaskPlan(TaskSpecSchema.parse(makeVariableTaskSpec()));
+    const step = plan.steps[0];
+
+    assert.deepEqual(plan.execution_policy, {
+      dry_run_mode: 'full',
+      should_compile: true,
+      should_save: false,
+    });
+    assert.ok(step && 'capability' in step);
+    assert.equal(Object.hasOwn(step as Record<string, unknown>, 'operation'), false);
+    assert.deepEqual(step, {
+      step_id: 'step_001',
+      capability: 'blueprint_variable',
+      target: {
+        asset_path: '/Game/BP/BP_Door',
+      },
+      write: {
+        strategy: 'member_variables',
+        ops: [
+          {
+            op: 'ensure_member_variable',
+            name: 'bDoorOpen',
+            pin_type: {
+              category: 'bool',
+            },
+            category: 'Door',
+            flags: {
+              expose_on_spawn: false,
+            },
+          },
+        ],
+      },
+      constraints: {
+        allow_remove_referenced_variables: false,
+      },
+    });
+  });
+
+  it('rejects unsupported variable strategies', () => {
+    const spec = makeVariableTaskSpec({
+      behavior: {
+        variable_strategy: 'graph_reference_rewrite',
+        variables: [
+          {
+            op: 'ensure_member_variable',
+            name: 'TempValue',
+            pin_type: { category: 'float' },
+          },
+        ],
+      },
+    });
+
+    assert.throws(
+      () => compileTaskSpecToTaskPlan(TaskSpecSchema.parse(spec)),
+      (err: unknown) => {
+        if (!(err instanceof TaskSpecCompileError)) return false;
+        const compileError = err as TaskSpecCompileError;
+        return compileError.code === 'unsupported_variable_strategy' &&
+          compileError.issues[0]?.path === 'behavior.variable_strategy';
+      },
+    );
+  });
+
+  it('rejects unsupported variable ops', () => {
+    const spec = makeVariableTaskSpec({
+      behavior: {
+        variable_strategy: 'member_variables',
+        variables: [
+          {
+            op: 'remove_member_variable',
+            name: 'bDoorOpen',
+          },
+        ],
+      },
+    });
+
+    assert.throws(
+      () => compileTaskSpecToTaskPlan(TaskSpecSchema.parse(spec)),
+      (err: unknown) => {
+        if (!(err instanceof TaskSpecCompileError)) return false;
+        const compileError = err as TaskSpecCompileError;
+        return compileError.code === 'unsupported_variable_op' &&
+          compileError.issues[0]?.path === 'behavior.variables[0].op';
+      },
+    );
+  });
+
+  it('compiles semantic member variable changes into structured blueprint_variable IR', () => {
+    const spec = makeVariableTaskSpec({
+      behavior: {
+        variable_strategy: 'member_variables',
+        changes: [
+          {
+            kind: 'ensure_member_variable',
+            name: 'Health',
+            variable_type: { category: 'float' },
+            category: 'Stats',
+          },
+          {
+            kind: 'configure_member_variable',
+            name: 'Health',
+            properties: [
+              {
+                property_path: 'Tooltip',
+                value: 'Current health.',
+              },
+            ],
+          },
+          {
+            kind: 'remove_member_variable',
+            name: 'DeprecatedHealth',
+          },
+        ],
+      },
+    });
+
+    const plan = compileTaskSpecToTaskPlan(TaskSpecSchema.parse(spec));
+    const step = plan.steps[0];
+
+    assert.ok(step && 'capability' in step);
+    assert.equal(Object.hasOwn(step as Record<string, unknown>, 'operation'), false);
+    assert.deepEqual(step.write, {
+      strategy: 'member_variables',
+      ops: [
+        {
+          op: 'ensure_member_variable',
+          name: 'Health',
+          pin_type: { category: 'float' },
+          category: 'Stats',
+        },
+        {
+          op: 'set_member_variable_properties',
+          name: 'Health',
+          settings: [
+            {
+              property_path: 'Tooltip',
+              value: 'Current health.',
+            },
+          ],
+        },
+        {
+          op: 'remove_member_variable',
+          name: 'DeprecatedHealth',
+        },
+      ],
+    });
+  });
+
+  it('compiles member defaults and local variable changes into structured blueprint_variable IR', () => {
+    const defaultsPlan = compileTaskSpecToTaskPlan(TaskSpecSchema.parse(makeVariableTaskSpec({
+      behavior: {
+        variable_strategy: 'member_defaults',
+        defaults: [
+          {
+            name: 'Health',
+            value: {
+              kind: 'literal',
+              value_type: 'float',
+              value: 100,
+            },
+          },
+        ],
+      },
+    })));
+    const defaultsStep = defaultsPlan.steps[0];
+    assert.ok(defaultsStep && 'capability' in defaultsStep);
+    assert.deepEqual(defaultsStep.write, {
+      strategy: 'member_defaults',
+      ops: [
+        {
+          op: 'set_member_default',
+          name: 'Health',
+          value: 100,
+        },
+      ],
+    });
+
+    const localPlan = compileTaskSpecToTaskPlan(TaskSpecSchema.parse(makeVariableTaskSpec({
+      behavior: {
+        variable_strategy: 'local_variables',
+        function_name: 'CalculateDamage',
+        changes: [
+          {
+            kind: 'ensure_local_variable',
+            name: 'DamageScale',
+            variable_type: { category: 'float' },
+          },
+          {
+            kind: 'remove_local_variable',
+            name: 'OldDamageScale',
+          },
+        ],
+      },
+    })));
+    const localStep = localPlan.steps[0];
+    assert.ok(localStep && 'capability' in localStep);
+    assert.deepEqual(localStep.target, {
+      asset_path: '/Game/BP/BP_Door',
+      function_name: 'CalculateDamage',
+    });
+    assert.deepEqual(localStep.write, {
+      strategy: 'local_variables',
+      ops: [
+        {
+          op: 'ensure_local_variable',
+          function_name: 'CalculateDamage',
+          name: 'DamageScale',
+          pin_type: { category: 'float' },
+        },
+        {
+          op: 'remove_local_variable',
+          function_name: 'CalculateDamage',
+          name: 'OldDamageScale',
+        },
+      ],
+    });
   });
 });

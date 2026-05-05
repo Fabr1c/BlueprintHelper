@@ -3,8 +3,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Services/BlueprintHelperConvertBlockToUserOwnedTypes.h"
-#include "Services/BlueprintHelperToolResultTypes.h"
+#include "Structure/BlueprintHelperConvertBlockToUserOwnedTypes.h"
+#include "Structure/BlueprintHelperToolResultTypes.h"
 
 class FBlueprintHelperGraphResolver;
 class FBlueprintHelperOwnershipService;

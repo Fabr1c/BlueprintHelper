@@ -8,9 +8,11 @@ from .errors import TaskSpecCompileError
 from .graph_write_append import (
     TASK_COMPILER_RESULT_SCHEMA,
     TASK_PLAN_SCHEMA,
+    compile_task_spec,
     compile_graph_write_append,
     summarize_task_plan,
     task_plan_to_append_bridge_payload,
+    validate_graph_write_task_plan,
 )
 
 
@@ -18,17 +20,19 @@ __all__ = [
     "TASK_COMPILER_RESULT_SCHEMA",
     "TASK_PLAN_SCHEMA",
     "TaskSpecCompileError",
+    "compile_task_spec",
     "compile_graph_write_append",
     "main",
     "summarize_task_plan",
     "task_plan_to_append_bridge_payload",
+    "validate_graph_write_task_plan",
 ]
 
 
 def main(argv: List[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     command = args[0] if args else ""
-    if command != "compile-graph-write-append":
+    if command not in {"compile-task-spec", "compile-graph-write-append"}:
         _write_json({
             "ok": False,
             "error": {
@@ -41,7 +45,8 @@ def main(argv: List[str] | None = None) -> int:
 
     try:
         request = json.load(sys.stdin)
-        result = compile_graph_write_append(
+        compiler = compile_task_spec if command == "compile-task-spec" else compile_graph_write_append
+        result = compiler(
             request["task_spec"],
             bool(request.get("dry_run", True)),
         )

@@ -3,8 +3,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Services/BlueprintHelperMergeGraphTypes.h"
-#include "Services/BlueprintHelperToolResultTypes.h"
+#include "Structure/BlueprintHelperMergeGraphTypes.h"
+#include "Structure/BlueprintHelperToolResultTypes.h"
 
 class FBlueprintHelperGraphResolver;
 class FBlueprintHelperLogicJsonPathService;

@@ -1,7 +1,80 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { BridgeResponse } from './bridge-client.js';
-import { invokeTool, registerWithBridge } from './test-harness.js';
+import {
+  compileTaskSpecToTaskPlan,
+  summarizeTaskPlan,
+} from './task-compiler.js';
+import type { TaskCompiler } from './task-tools.js';
+import {
+  type TaskPlan,
+  type TaskSpec,
+  TaskSpecSchema,
+} from './task-schemas.js';
+import {
+  invokeTool,
+  registerWithBridge as registerWithBridgeBase,
+} from './test-harness.js';
+
+const taskCompilerForTaskToolTests: TaskCompiler = async (taskSpec, dryRun) => {
+  const task_plan = compileTaskSpecForTaskToolTests(taskSpec);
+  return {
+    schema: 'BlueprintHelper.TaskCompilerResult.v1',
+    task_plan,
+    bridge_payload: {
+      task_plan,
+      dry_run: dryRun,
+    },
+    task_plan_summary: summarizeTaskPlan(task_plan),
+  };
+};
+
+function registerWithBridge(
+  sendCommand: (command: string, payload?: Record<string, unknown>) => Promise<BridgeResponse>,
+) {
+  return registerWithBridgeBase(sendCommand, { taskCompiler: taskCompilerForTaskToolTests });
+}
+
+function compileTaskSpecForTaskToolTests(taskSpec: TaskSpec): TaskPlan {
+  if (taskSpec.task_type !== 'create_asset') {
+    return compileTaskSpecToTaskPlan(TaskSpecSchema.parse(taskSpec));
+  }
+
+  const behavior = taskSpec.behavior as Record<string, unknown>;
+  const asset = behavior.asset as Record<string, unknown>;
+  return {
+    schema: 'BlueprintHelper.TaskPlan.v1',
+    task_name: taskSpec.feature_name,
+    task_type: taskSpec.task_type,
+    context_id: taskSpec.context_id,
+    target_assets: [taskSpec.target.asset_path],
+    execution_policy: {
+      dry_run_mode: taskSpec.execution_policy.dry_run_mode,
+      should_compile: taskSpec.validation.should_compile,
+      should_save: taskSpec.validation.should_save,
+    },
+    steps: [
+      {
+        step_id: 'step_001',
+        capability: 'asset_factory',
+        target: {
+          asset_path: taskSpec.target.asset_path,
+        },
+        write: {
+          strategy: 'asset_create',
+          ops: [
+            {
+              op: 'create_asset',
+              asset_type: asset.asset_type,
+              value_type: asset.value_type,
+              collision: asset.collision_policy,
+            },
+          ],
+        },
+      },
+    ],
+  };
+}
 
 function makeTaskSpec() {
   return {
@@ -53,11 +126,72 @@ function makeTaskSpec() {
   };
 }
 
+function makeVariableTaskSpec() {
+  return {
+    schema: 'BlueprintHelper.TaskSpec.v1',
+    context_id: 'ctx_variables',
+    task_type: 'edit_blueprint_variables',
+    feature_name: 'DoorVariables',
+    target: {
+      asset_path: '/Game/BP/BP_Door',
+      target_type: 'blueprint',
+    },
+    behavior: {
+      variable_strategy: 'member_variables',
+      variables: [
+        {
+          op: 'ensure_member_variable',
+          name: 'bDoorOpen',
+          pin_type: { category: 'bool' },
+        },
+      ],
+    },
+    execution_policy: {
+      dry_run_mode: 'full',
+      on_missing_capability: 'stop_and_report',
+    },
+    validation: {
+      should_compile: true,
+      should_save: false,
+    },
+  };
+}
+
+function makeAssetFactoryTaskSpec() {
+  return {
+    schema: 'BlueprintHelper.TaskSpec.v1',
+    context_id: 'ctx_asset_factory',
+    task_type: 'create_asset',
+    feature_name: 'InteractInput',
+    target: {
+      asset_path: '/Game/Input/IA_Interact',
+      target_type: 'asset',
+    },
+    behavior: {
+      asset_strategy: 'ensure_asset',
+      asset: {
+        asset_type: 'input_action',
+        value_type: 'bool',
+        collision_policy: 'reuse_if_exists',
+      },
+    },
+    execution_policy: {
+      dry_run_mode: 'full',
+      on_missing_capability: 'stop_and_report',
+    },
+    validation: {
+      should_compile: false,
+      should_save: true,
+    },
+  };
+}
+
 test('task-level tools are registered without removing legacy tools', () => {
   const tools = registerWithBridge(async () => ({ request_id: 'test', success: true }));
 
   for (const name of [
     'blueprinthelper_read_task_context',
+    'blueprinthelper_read_reference_context',
     'blueprinthelper_preview_task',
     'blueprinthelper_execute_task',
     'blueprinthelper_get_task_result',
@@ -65,6 +199,149 @@ test('task-level tools are registered without removing legacy tools', () => {
   ]) {
     assert.equal(tools.has(name), true, name);
   }
+});
+
+test('preview_task compiles P1 AssetFactory TaskSpec and previews a UE TaskPlan', async () => {
+  const calls: Array<{ command: string; payload: Record<string, unknown> | undefined }> = [];
+  const tools = registerWithBridge(async (command, payload) => {
+    calls.push({ command, payload });
+    return {
+      request_id: 'test',
+      success: true,
+      result: {
+        status: 'dry_run',
+        data: {
+          schema: 'BlueprintHelper.TaskRuntimeResult.v1',
+          dry_run: { can_execute: true, warnings: [], conflicts: [], errors: [] },
+          steps: [],
+        },
+      },
+    };
+  });
+
+  const tool = tools.get('blueprinthelper_preview_task');
+  assert.ok(tool);
+
+  const result = await invokeTool(tool, { task_spec: makeAssetFactoryTaskSpec() });
+
+  assert.equal(result.isError, false);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0]?.command, 'preview_task_plan');
+  const taskPlan = calls[0]?.payload?.task_plan as Record<string, unknown>;
+  const steps = taskPlan.steps as Array<Record<string, unknown>>;
+  assert.equal(steps[0]?.capability, 'asset_factory');
+  assert.equal(Object.hasOwn(steps[0] ?? {}, 'operation'), false);
+  assert.deepEqual((steps[0]?.write as Record<string, unknown>)?.strategy, 'asset_create');
+  assert.deepEqual(taskPlan.execution_policy, {
+    dry_run_mode: 'full',
+    should_compile: false,
+    should_save: true,
+  });
+});
+
+test('read_reference_context forwards compact read request to the Bridge', async () => {
+  const calls: Array<{ command: string; payload: Record<string, unknown> | undefined }> = [];
+  const tools = registerWithBridge(async (command, payload): Promise<BridgeResponse> => {
+    calls.push({ command, payload });
+    return {
+      request_id: 'reference_context',
+      success: true,
+      result: {
+        ok: true,
+        schema: 'BlueprintHelper.McpToolResult.v1',
+        operation: 'read_reference_context',
+        trace_id: 'trace_reference_context',
+        status: 'completed',
+        modified: false,
+        target: {
+          target_type: 'asset',
+          asset_path: '/Game/BP/BP_Door',
+        },
+        data: {
+          schema: 'BlueprintHelper.ReferenceContextPack.v1',
+          context_id: 'refctx_001',
+          analysis: {
+            scope: 'safety_context',
+            partial: true,
+            truncated: false,
+            max_results: 50,
+            unsupported_checks: ['blueprint_calls'],
+          },
+          summary: {
+            dependency_count: 0,
+            referencer_count: 1,
+            external_dependent_count: 0,
+            blocking_dependent_count: 0,
+            warning_count: 1,
+          },
+          dependencies: [],
+          referencers: [
+            {
+              asset_path: '/Game/BP/BP_DoorUser',
+              asset_type: 'Blueprint',
+              reference_kind: 'package',
+              evidence_path: '/Game/BP/BP_DoorUser',
+              confidence: 'high',
+            },
+          ],
+          external_dependents: [],
+          agent_hints: {
+            can_edit_safely: false,
+            requires_preview: true,
+            recommended_task_strategy: 'preview_before_write',
+            blockers: ['external_referencers_exist'],
+          },
+          large_payload_ref: null,
+        },
+      },
+    };
+  });
+
+  const tool = tools.get('blueprinthelper_read_reference_context');
+  assert.ok(tool);
+
+  const result = await invokeTool(tool, {
+    asset_path: '/Game/BP/BP_Door',
+    target_type: 'asset',
+    scope: 'safety_context',
+    max_results: 50,
+    include_samples: true,
+  });
+
+  assert.equal(result.isError, false);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0]?.command, 'read_reference_context');
+  assert.deepEqual(calls[0]?.payload, {
+    asset_path: '/Game/BP/BP_Door',
+    target_type: 'asset',
+    scope: 'safety_context',
+    max_results: 50,
+    include_samples: true,
+  });
+  assert.equal(result.structuredContent?.operation, 'read_reference_context');
+  assert.equal(result.structuredContent?.modified, false);
+  assert.equal((result.structuredContent?.data as Record<string, unknown>)?.schema, 'BlueprintHelper.ReferenceContextPack.v1');
+});
+
+test('read_reference_context maps failed Bridge response as MCP error', async () => {
+  const tools = registerWithBridge(async (): Promise<BridgeResponse> => ({
+    request_id: 'reference_context_failed',
+    success: false,
+    error_code: 'asset_not_found',
+    message: 'Target asset was not found.',
+  }));
+
+  const tool = tools.get('blueprinthelper_read_reference_context');
+  assert.ok(tool);
+
+  const result = await invokeTool(tool, {
+    asset_path: '/Game/Missing/BP_Missing',
+  });
+
+  assert.equal(result.isError, true);
+  assert.equal(result.structuredContent?.ok, false);
+  assert.equal(result.structuredContent?.operation, 'read_reference_context');
+  assert.equal((result.structuredContent?.error as Record<string, unknown>)?.code, 'asset_not_found');
 });
 
 test('preview_task compiles append GraphWrite TaskSpec and previews a UE TaskPlan', async () => {
@@ -103,6 +380,47 @@ test('preview_task compiles append GraphWrite TaskSpec and previews a UE TaskPla
   assert.equal(Object.hasOwn(calls[0]?.payload ?? {}, 'dry_run'), false);
   assert.equal(result.structuredContent?.operation, 'preview_task');
   assert.equal((result.structuredContent?.data as Record<string, unknown>)?.schema, 'BlueprintHelper.TaskPreview.v1');
+});
+
+test('preview_task compiles Blueprint Variables TaskSpec and previews a UE TaskPlan', async () => {
+  const calls: Array<{ command: string; payload: Record<string, unknown> | undefined }> = [];
+  const tools = registerWithBridge(async (command, payload) => {
+    calls.push({ command, payload });
+    return {
+      request_id: 'test',
+      success: true,
+      result: {
+        status: 'dry_run',
+        data: {
+          schema: 'BlueprintHelper.TaskRuntimeResult.v1',
+          dry_run: { can_execute: true, warnings: [], conflicts: [], errors: [] },
+          steps: [
+            {
+              step_id: 'step_001',
+              capability: 'blueprint_variable',
+              operation: 'blueprint_variable',
+              adapter_operation: 'add_blueprint_member_variables',
+              status: 'dry_run',
+            },
+          ],
+        },
+      },
+    };
+  });
+
+  const tool = tools.get('blueprinthelper_preview_task');
+  assert.ok(tool);
+
+  const result = await invokeTool(tool, { task_spec: makeVariableTaskSpec() });
+
+  assert.equal(result.isError, false);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0]?.command, 'preview_task_plan');
+  const taskPlan = calls[0]?.payload?.task_plan as Record<string, unknown>;
+  const step = (taskPlan.steps as Array<Record<string, unknown>>)[0];
+  assert.equal(step?.capability, 'blueprint_variable');
+  assert.equal(Object.hasOwn(step ?? {}, 'operation'), false);
+  assert.deepEqual(step?.target, { asset_path: '/Game/BP/BP_Door' });
 });
 
 test('execute_task previews before writing and stores a task result', async () => {

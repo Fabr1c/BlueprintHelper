@@ -1,7 +1,7 @@
 // BlueprintHelper Service Layer — 编译服务实现
 
 #include "Services/BlueprintHelperCompileService.h"
-#include "Services/BlueprintHelperGraphResolver.h"
+#include "GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Kismet2/CompilerResultsLog.h"
 

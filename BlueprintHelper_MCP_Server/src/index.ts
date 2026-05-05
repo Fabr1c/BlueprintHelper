@@ -1,8 +1,8 @@
 /**
- * BlueprintHelper MCP Server — 入口
+ * BlueprintHelper MCP Server 鈥?鍏ュ彛
  *
- * stdio 模式运行，通过 TCP 连接 UE5 Bridge (127.0.0.1:54321)。
- * 输出日志用 console.error（stdout 保留给 JSON-RPC）。
+ * stdio 妯″紡杩愯锛岄€氳繃 TCP 杩炴帴 UE5 Bridge (127.0.0.1:54321)銆?
+ * 杈撳嚭鏃ュ織鐢?console.error锛坰tdout 淇濈暀缁?JSON-RPC锛夈€?
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -11,12 +11,12 @@ import { BridgeClient } from './bridge-client.js';
 import { registerTools } from './tools.js';
 import { registerResources } from './resources.js';
 
-// ─── 配置 ───
+// 鈹€鈹€鈹€ 閰嶇疆 鈹€鈹€鈹€
 
 const BRIDGE_HOST = process.env['BRIDGE_HOST'] ?? '127.0.0.1';
 const BRIDGE_PORT = parseInt(process.env['BRIDGE_PORT'] ?? '54321', 10);
 
-// 展开常见的模板变量（如 ${workspaceFolder}），确保路径可用
+// 灞曞紑甯歌鐨勬ā鏉垮彉閲忥紙濡?${workspaceFolder}锛夛紝纭繚璺緞鍙敤
 function expandTemplateVars(raw: string): string {
   return raw
     .replace(/\$\{workspaceFolder\}/gi, process.cwd())
@@ -27,7 +27,7 @@ function expandTemplateVars(raw: string): string {
 const UE_ENGINE_DIR = expandTemplateVars(process.env['UE_ENGINE_DIR'] ?? '');
 const UE_PROJECT_FILE = expandTemplateVars(process.env['UE_PROJECT_FILE'] ?? '');
 
-// ─── 启动 ───
+// 鈹€鈹€鈹€ 鍚姩 鈹€鈹€鈹€
 
 async function main() {
   console.error(`[BlueprintHelper MCP] Starting... Bridge target: ${BRIDGE_HOST}:${BRIDGE_PORT}`);
@@ -36,21 +36,21 @@ async function main() {
 
   const server = new McpServer({
     name: 'blueprint-helper',
-    version: '0.1.0',
+    version: '0.3.8',
   });
 
-  // 注册工具与资源
+  // 娉ㄥ唽宸ュ叿涓庤祫婧?
   registerTools(server, bridge, { ueEngineDir: UE_ENGINE_DIR, ueProjectFile: UE_PROJECT_FILE });
   registerResources(server, bridge);
 
-  // stdio 传输
+  // stdio 浼犺緭
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
   console.error('[BlueprintHelper MCP] Server running (stdio mode)');
 }
 
-// ─── 优雅退出 ───
+// 鈹€鈹€鈹€ 浼橀泤閫€鍑?鈹€鈹€鈹€
 
 process.on('SIGINT', () => {
   console.error('[BlueprintHelper MCP] Received SIGINT, shutting down...');

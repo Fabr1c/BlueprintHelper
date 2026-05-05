@@ -2,7 +2,7 @@
 
 #include "Services/BlueprintHelperCompileAssetService.h"
 #include "Services/BlueprintHelperCompileService.h"
-#include "Services/BlueprintHelperServiceTypes.h"
+#include "Structure/BlueprintHelperServiceTypes.h"
 
 #include "Engine/Blueprint.h"
 #include "EdGraph/EdGraphNode.h"

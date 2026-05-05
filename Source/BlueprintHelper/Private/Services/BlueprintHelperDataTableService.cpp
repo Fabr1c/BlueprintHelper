@@ -1,7 +1,7 @@
 // BlueprintHelper Service Layer — DataTable 操作服务实现
 
 #include "Services/BlueprintHelperDataTableService.h"
-#include "Services/BlueprintHelperScopedAssetMutation.h"
+#include "GraphSupport/BlueprintHelperScopedAssetMutation.h"
 #include "Engine/DataTable.h"
 #include "DataTableEditorUtils.h"
 #include "Misc/ScopeExit.h"

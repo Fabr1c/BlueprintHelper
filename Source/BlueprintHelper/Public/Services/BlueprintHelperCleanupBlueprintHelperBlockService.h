@@ -3,8 +3,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Services/BlueprintHelperCleanupBlockTypes.h"
-#include "Services/BlueprintHelperToolResultTypes.h"
+#include "Structure/BlueprintHelperCleanupBlockTypes.h"
+#include "Structure/BlueprintHelperToolResultTypes.h"
 
 class FBlueprintHelperGraphResolver;
 class FBlueprintHelperTransactionJournalService;

@@ -1,12 +1,13 @@
 {
   "name": "blueprint-helper-mcp-server",
-  "version": "0.1.0",
+  "version": "0.3.8",
   "description": "MCP Server bridging IDE AI to BlueprintHelper UE5 plugin",
   "type": "module",
   "main": "build/index.js",
   "scripts": {
     "build": "tsc",
-    "test": "npm run build && npm run test:python && node --test build/*.test.js",
+    "test": "npm run build && npm run test:python && npm run test:node",
+    "test:node": "node scripts/run-node-tests.mjs",
     "test:python": "python -m unittest discover -s python/tests -t python",
     "start": "node build/index.js",
     "dev": "tsc --watch"

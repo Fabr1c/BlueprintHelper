@@ -496,8 +496,8 @@ TaskSpec 是 Agent 提交的语义级任务规格。
     "on_write_partial_failure": "rollback_and_report"
   },
   "validation": {
-    "compile": true,
-    "save": false,
+    "should_compile": true,
+    "should_save": false,
     "run_asset_diagnostics": true
   }
 }
@@ -510,6 +510,8 @@ TaskSpec 是 Agent 提交的语义级任务规格。
 TaskPlan 是 Python / MCP Task Compiler 输出给 UE Task Runtime 的计划。它比 TaskSpec 更接近 UE 执行层。
 
 TaskPlan 不应该包含 Agent-facing suggested_patch，也不应该包含自然语言意图推理。
+
+TaskPlan step 的主面是能力簇结构化 IR，例如 `capability`、`target`、`write`、`constraints`。`append_blueprint_graph` 这类 Bridge adapter operation 只属于 UE Task Runtime lowering 和 journal child fact，不应该作为 GraphWrite TaskPlan IR step 字段出现。
 
 示例：
 
@@ -524,27 +526,31 @@ TaskPlan 不应该包含 Agent-facing suggested_patch，也不应该包含自然
   ],
   "execution_policy": {
     "dry_run_mode": "full",
-    "compile": true,
-    "save": false,
+    "should_compile": true,
+    "should_save": false,
     "on_write_partial_failure": "rollback_and_report"
   },
   "steps": [
     {
       "step_id": "step_001",
-      "operation": "asset_create",
-      "condition": "if_missing",
+      "capability": "asset_write",
       "target": {
         "asset_path": "/Game/BlueprintHelperTest/Interaction/BPI_BH_Interactable",
         "asset_type": "blueprint_interface"
+      },
+      "write": {
+        "strategy": "ensure_asset",
+        "create_if_missing": true
       }
     },
     {
       "step_id": "step_002",
-      "operation": "add_component",
+      "capability": "component_write",
       "target": {
         "asset_path": "/Game/BlueprintHelperTest/Door/BP_BH_PhysicsDoor"
       },
-      "args": {
+      "write": {
+        "strategy": "ensure_component",
         "component_name": "DoorMesh",
         "component_class": "StaticMeshComponent",
         "attach_to": "SceneRoot",
@@ -553,13 +559,14 @@ TaskPlan 不应该包含 Agent-facing suggested_patch，也不应该包含自然
     },
     {
       "step_id": "step_003",
-      "operation": "set_component_properties",
+      "capability": "component_write",
       "depends_on": ["step_002"],
       "target": {
         "asset_path": "/Game/BlueprintHelperTest/Door/BP_BH_PhysicsDoor",
         "component_name": "DoorMesh"
       },
-      "args": {
+      "write": {
+        "strategy": "set_properties",
         "properties": {
           "StaticMesh": "/Game/BlueprintHelperTest/Meshes/SM_Door",
           "BodyInstance.bSimulatePhysics": true
@@ -568,17 +575,34 @@ TaskPlan 不应该包含 Agent-facing suggested_patch，也不应该包含自然
     },
     {
       "step_id": "step_004",
-      "operation": "append_blueprint_graph",
+      "capability": "graph_write",
       "target": {
         "asset_path": "/Game/BlueprintHelperTest/Door/BP_BH_PhysicsDoor",
         "graph": "EG_PhysicsDoor"
       },
-      "args": {
-        "entries": [
-          "TogglePhysicsDoor",
-          "OpenPhysicsDoor",
-          "ClosePhysicsDoor"
+      "write": {
+        "strategy": "owned_graph_edit",
+        "ops": [
+          {
+            "op": "ensure_entry",
+            "entry_type": "custom_event",
+            "name": "TogglePhysicsDoor"
+          },
+          {
+            "op": "ensure_entry",
+            "entry_type": "custom_event",
+            "name": "OpenPhysicsDoor"
+          },
+          {
+            "op": "ensure_entry",
+            "entry_type": "custom_event",
+            "name": "ClosePhysicsDoor"
+          }
         ]
+      },
+      "constraints": {
+        "allow_modify_user_nodes": false,
+        "ownership_scope": "blueprinthelper_owned"
       }
     }
   ]
@@ -629,7 +653,9 @@ TaskRunJournal 是 TaskSpec / TaskPlan 执行后的任务级审计记录。
     },
     {
       "step_id": "step_003",
-      "operation": "append_blueprint_graph",
+      "capability": "graph_write",
+      "operation": "graph_write",
+      "adapter_operation": "append_blueprint_graph",
       "status": "applied",
       "transaction_id": "tx_006"
     }

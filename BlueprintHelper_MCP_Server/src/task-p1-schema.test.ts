@@ -1,0 +1,198 @@
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+import {
+  TaskPlanSchema,
+  TaskSpecSchema,
+} from './task-schemas.js';
+
+function baseSpec(taskType: string, behavior: Record<string, unknown>, overrides: Record<string, unknown> = {}) {
+  return {
+    schema: 'BlueprintHelper.TaskSpec.v1',
+    context_id: `ctx_${taskType}`,
+    task_type: taskType,
+    feature_name: 'P1Feature',
+    target: {
+      asset_path: '/Game/Blueprints/BP_Door',
+      target_type: 'blueprint',
+    },
+    behavior,
+    execution_policy: {
+      dry_run_mode: 'full',
+      on_missing_capability: 'stop_and_report',
+    },
+    validation: {
+      should_compile: true,
+      should_save: false,
+    },
+    ...overrides,
+  };
+}
+
+describe('P1 TaskSpec schema validation', () => {
+  it('accepts TaskSpec shapes for TaskPlan-ready capability clusters', () => {
+    const specs = [
+      baseSpec('create_asset', {
+        asset_strategy: 'ensure_asset',
+        asset: {
+          asset_type: 'input_action',
+          value_type: 'bool',
+          collision_policy: 'reuse_if_exists',
+        },
+      }, {
+        target: {
+          asset_path: '/Game/Input/IA_Interact',
+          target_type: 'asset',
+        },
+      }),
+      baseSpec('edit_blueprint_components', {
+        component_strategy: 'component_tree',
+        changes: [
+          {
+            kind: 'ensure_component_present',
+            name: 'DoorMesh',
+            class: 'StaticMeshComponent',
+          },
+        ],
+      }),
+      baseSpec('edit_blueprint_class_settings', {
+        class_settings_strategy: 'class_settings',
+        interfaces: {
+          ensure_present: ['/Game/Interfaces/BPI_Interact'],
+        },
+      }),
+      baseSpec('edit_umg_widget', {
+        widget_strategy: 'widget_blueprint_edit',
+        changes: [
+          {
+            kind: 'create_widget',
+            widget_class: 'TextBlock',
+            widget_name: 'TitleText',
+          },
+        ],
+      }, {
+        target: {
+          asset_path: '/Game/UI/WBP_MainMenu',
+          target_type: 'widget_blueprint',
+        },
+      }),
+      baseSpec('edit_data_table', {
+        row_strategy: 'row_edit',
+        rows: [
+          {
+            action: 'add',
+            row_name: 'Pistol',
+            fields: {
+              Damage: '12',
+            },
+          },
+        ],
+      }, {
+        target: {
+          asset_path: '/Game/Data/DT_Weapons',
+          target_type: 'data_table',
+        },
+      }),
+    ];
+
+    for (const spec of specs) {
+      assert.doesNotThrow(() => TaskSpecSchema.parse(spec));
+    }
+  });
+
+  it('rejects TaskPlan and adapter language in Agent-facing P1 TaskSpec shapes', () => {
+    assert.throws(() => TaskSpecSchema.parse(baseSpec('create_asset', {
+      asset_strategy: 'asset_create',
+      asset: {
+        asset_type: 'input_action',
+      },
+    }, {
+      target: {
+        asset_path: '/Game/Input/IA_Interact',
+        target_type: 'asset',
+      },
+    })));
+
+    assert.throws(() => TaskSpecSchema.parse(baseSpec('edit_data_table', {
+      row_strategy: 'row_edit',
+      rows: [
+        {
+          op: 'add_row',
+          row_name: 'Pistol',
+          fields: {
+            Damage: '12',
+          },
+        },
+      ],
+    }, {
+      target: {
+        asset_path: '/Game/Data/DT_Weapons',
+        target_type: 'data_table',
+      },
+    })));
+  });
+});
+
+describe('P1 TaskPlan schema validation', () => {
+  it('accepts structured IR steps for P1 capability clusters without adapter operation fields', () => {
+    const taskPlan = {
+      schema: 'BlueprintHelper.TaskPlan.v1',
+      task_name: 'P1Feature',
+      task_type: 'p1_multi_capability_probe',
+      target_assets: ['/Game/Blueprints/BP_Door'],
+      execution_policy: {
+        dry_run_mode: 'full',
+        should_compile: true,
+        should_save: false,
+      },
+      steps: [
+        {
+          step_id: 'step_001',
+          capability: 'asset_factory',
+          target: { asset_path: '/Game/Input/IA_Interact' },
+          write: {
+            strategy: 'asset_create',
+            ops: [{ op: 'create_asset', asset_type: 'input_action' }],
+          },
+        },
+        {
+          step_id: 'step_002',
+          capability: 'blueprint_component',
+          target: { asset_path: '/Game/Blueprints/BP_Door' },
+          write: {
+            strategy: 'component_tree',
+            ops: [{ op: 'remove_component', component_name: 'DoorMesh' }],
+          },
+        },
+        {
+          step_id: 'step_003',
+          capability: 'blueprint_class_settings',
+          target: { asset_path: '/Game/Blueprints/BP_Door' },
+          write: {
+            strategy: 'class_settings',
+            ops: [{ op: 'remove_implemented_interfaces', interface_paths: ['/Game/BPI_Door'] }],
+          },
+        },
+        {
+          step_id: 'step_004',
+          capability: 'umg_widget',
+          target: { asset_path: '/Game/UI/WBP_MainMenu' },
+          write: {
+            strategy: 'widget_tree_edit',
+            ops: [{ op: 'remove_widget', widget_name: 'OldButton' }],
+          },
+        },
+        {
+          step_id: 'step_005',
+          capability: 'data_table',
+          target: { asset_path: '/Game/Data/DT_Weapons' },
+          write: {
+            strategy: 'row_edit',
+            ops: [{ op: 'delete_row', row_name: 'OldPistol' }],
+          },
+        },
+      ],
+    };
+
+    assert.doesNotThrow(() => TaskPlanSchema.parse(taskPlan));
+  });
+});

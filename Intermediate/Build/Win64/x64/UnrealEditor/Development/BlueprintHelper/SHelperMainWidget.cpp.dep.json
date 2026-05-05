@@ -1,0 +1,28 @@
+{
+    "Version": "1.2",
+    "Data": {
+        "Source": "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\private\\shelpermainwidget.cpp",
+        "ProvidedModule": "",
+        "PCH": "g:\\unrealpractise\\mrstone\\intermediate\\build\\win64\\x64\\mrstoneeditor\\development\\unrealed\\sharedpch.unrealed.project.valapi.valexpapi.cpp20.h.pch",
+        "Includes": [
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\intermediate\\build\\win64\\x64\\unrealeditor\\development\\blueprinthelper\\definitions.blueprinthelper.h",
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\shelpermainwidget.h",
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\texttoblueprintgenerator.h",
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\blueprinthelper.h",
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\blueprinttextconverter.h",
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\graphsupport\\blueprinthelpergraphresolver.h",
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\structure\\blueprinthelperservicetypes.h",
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\services\\blueprinthelperimportservice.h",
+            "f:\\ue_5.6\\engine\\source\\runtime\\applicationcore\\public\\hal\\platformapplicationmisc.h",
+            "f:\\ue_5.6\\engine\\source\\runtime\\applicationcore\\public\\windows\\windowsplatformapplicationmisc.h",
+            "f:\\ue_5.6\\engine\\source\\runtime\\applicationcore\\public\\genericplatform\\genericplatformapplicationmisc.h",
+            "f:\\ue_5.6\\engine\\source\\runtime\\slate\\public\\widgets\\input\\smultilineeditabletextbox.h",
+            "f:\\ue_5.6\\engine\\source\\runtime\\slate\\public\\widgets\\text\\smultilineeditabletext.h",
+            "f:\\ue_5.6\\engine\\source\\runtime\\slate\\public\\framework\\text\\slatetextlayoutfactory.h",
+            "f:\\ue_5.6\\engine\\source\\runtime\\slate\\public\\framework\\text\\slatetextlayout.h",
+            "f:\\ue_5.6\\engine\\source\\runtime\\slate\\public\\widgets\\input\\ssearchbox.h"
+        ],
+        "ImportedModules": [],
+        "ImportedHeaderUnits": []
+    }
+}

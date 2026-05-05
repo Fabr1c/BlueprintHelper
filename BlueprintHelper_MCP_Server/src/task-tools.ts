@@ -1,11 +1,15 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { z } from 'zod';
 import type { BridgeClient, BridgeResponse } from './bridge-client.js';
 import { buildTaskContextPack } from './task-context.js';
 import {
   TaskSpecCompileError,
   summarizeTaskPlan,
 } from './task-compiler.js';
-import { compileGraphWriteAppendWithPython } from './task-python-orchestrator.js';
+import {
+  compileTaskSpecWithPython,
+  type PythonTaskCompilerResult,
+} from './task-python-orchestrator.js';
 import {
   ExecuteTaskInputSchema,
   GetTaskResultInputSchema,
@@ -36,9 +40,46 @@ import {
 export interface TaskToolsConfig {
   ueEngineDir: string;
   ueProjectFile: string;
+  taskCompiler?: TaskCompiler;
 }
 
-export function registerTaskTools(server: McpServer, bridge: BridgeClient, _config: TaskToolsConfig): void {
+export type TaskCompiler = (taskSpec: TaskSpec, dryRun: boolean) => Promise<PythonTaskCompilerResult>;
+
+const ReadReferenceContextInputSchema = z.object({
+  asset_path: z.string(),
+  target_type: z.enum([
+    'asset',
+    'blueprint',
+    'graph',
+    'function',
+    'event',
+    'custom_event',
+    'member_variable',
+    'block',
+    'widget',
+    'data_table_row',
+    'interface',
+  ]).optional().default('asset'),
+  target_name: z.string().optional(),
+  graph_name: z.string().optional(),
+  block_id: z.string().optional(),
+  widget_name: z.string().optional(),
+  row_name: z.string().optional(),
+  interface_path: z.string().optional(),
+  scope: z.enum([
+    'safety_context',
+    'dependencies',
+    'referencers',
+    'external_dependents',
+    'all',
+  ]).optional().default('safety_context'),
+  max_results: z.number().int().positive().max(500).optional().default(50),
+  include_samples: z.boolean().optional().default(true),
+});
+
+export function registerTaskTools(server: McpServer, bridge: BridgeClient, config: TaskToolsConfig): void {
+  const taskCompiler = config.taskCompiler ?? compileTaskSpecWithPython;
+
   server.registerTool(
     'blueprinthelper_read_task_context',
     {
@@ -60,6 +101,22 @@ export function registerTaskTools(server: McpServer, bridge: BridgeClient, _conf
   );
 
   server.registerTool(
+    'blueprinthelper_read_reference_context',
+    {
+      description: 'Read a compact BlueprintHelper.ReferenceContextPack.v1 for explicit reference questions, preview-blocked explanations, or high-risk remove/replace/rename impact checks.',
+      inputSchema: ReadReferenceContextInputSchema,
+    },
+    async (input) => {
+      try {
+        const response = await bridge.sendCommand('read_reference_context', input);
+        return toMcpResult(referenceContextToolResult(response, input.asset_path));
+      } catch (err) {
+        return toMcpResult(taskFailure('read_reference_context', 'bridge_error', 'bridge_error', err));
+      }
+    },
+  );
+
+  server.registerTool(
     'blueprinthelper_preview_task',
     {
       description: 'Validate BlueprintHelper.TaskSpec.v1, compile a TaskPlan, and dry-run the first GraphWrite Append slice.',
@@ -67,7 +124,7 @@ export function registerTaskTools(server: McpServer, bridge: BridgeClient, _conf
     },
     async ({ task_spec }) => {
       try {
-        const preview = await previewTask(bridge, task_spec);
+        const preview = await previewTask(bridge, task_spec, taskCompiler);
         return toMcpResult(preview.toolResult);
       } catch (err) {
         return toMcpResult(taskErrorFromUnknown('preview_task', err));
@@ -83,7 +140,7 @@ export function registerTaskTools(server: McpServer, bridge: BridgeClient, _conf
     },
     async ({ task_spec }) => {
       try {
-        const preview = await previewTask(bridge, task_spec);
+        const preview = await previewTask(bridge, task_spec, taskCompiler);
         if (!preview.passed) {
           return toMcpResult(taskFailure(
             'execute_task',
@@ -185,14 +242,14 @@ async function getBridgeTaskRunJournal(
   }
 }
 
-async function previewTask(bridge: BridgeClient, taskSpec: TaskSpec): Promise<{
+async function previewTask(bridge: BridgeClient, taskSpec: TaskSpec, taskCompiler: TaskCompiler): Promise<{
   previewId: string;
   taskPlan: TaskPlan;
   passed: boolean;
   issues: TaskIssue[];
   toolResult: ToolResultBase;
 }> {
-  const compiled = await compileGraphWriteAppendWithPython(taskSpec, true);
+  const compiled = await taskCompiler(taskSpec, true);
   const taskPlan = compiled.task_plan;
   const previewId = nextPreviewId();
   const previewResponse = await bridge.sendCommand('preview_task_plan', {
@@ -245,6 +302,28 @@ async function previewTask(bridge: BridgeClient, taskSpec: TaskSpec): Promise<{
       },
     },
   };
+}
+
+function referenceContextToolResult(response: BridgeResponse, assetPath: string): ToolResultBase {
+  const raw = asRecord(response.result);
+  if (raw && typeof raw['ok'] === 'boolean' && raw['schema'] === TOOL_RESULT_SCHEMA) {
+    return raw as unknown as ToolResultBase;
+  }
+
+  if (!response.success) {
+    return taskFailure(
+      'read_reference_context',
+      response.error_code ?? 'bridge_error',
+      'bridge_error',
+      response.message ?? 'Bridge read_reference_context failed.',
+    );
+  }
+
+  return successRead(
+    'read_reference_context',
+    { target_type: 'asset', asset_path: assetPath },
+    raw ?? {},
+  ) as ToolResultBase;
 }
 
 function taskErrorFromUnknown(operation: string, err: unknown): ToolResultBase {

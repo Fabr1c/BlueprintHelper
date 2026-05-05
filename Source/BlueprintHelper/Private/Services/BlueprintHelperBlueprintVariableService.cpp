@@ -1,9 +1,9 @@
 // BlueprintHelper Service Layer — BlueprintVariableService 实现
 
 #include "Services/BlueprintHelperBlueprintVariableService.h"
-#include "Services/BlueprintHelperGraphResolver.h"
+#include "GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Services/BlueprintHelperBlueprintStructureService.h"
-#include "Services/BlueprintHelperServiceTypes.h"
+#include "Structure/BlueprintHelperServiceTypes.h"
 
 #include "Dom/JsonObject.h"
 

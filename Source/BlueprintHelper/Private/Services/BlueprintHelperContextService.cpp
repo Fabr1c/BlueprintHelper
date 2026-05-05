@@ -1,7 +1,7 @@
 // BlueprintHelper Service Layer — 编辑器上下文查询服务实现
 
 #include "Services/BlueprintHelperContextService.h"
-#include "Services/BlueprintHelperGraphResolver.h"
+#include "GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Engine/Blueprint.h"
 #include "EdGraph/EdGraph.h"
 

@@ -2,7 +2,15 @@
 
 文档版本：2026-05-04
 
-This reference is aligned with the current documentation mainline, where ordinary Agents use TaskSpec-first orchestration. The existing low-level MCP tools remain documented for compatibility, debug / expert workflows, internal Task Runtime capability mapping, and automation tests.
+This reference is aligned with the current documentation mainline, where ordinary Agents use TaskSpec-first orchestration.
+
+Architecture baseline:
+
+```text
+Agent -> TaskSpec semantic task -> MCP Task Tools -> Python/MCP Task Compiler -> TaskPlan structured edit language / IR -> Bridge task-level preview/execute -> UE Task Runtime lowering -> Existing UE capability clusters / Bridge commands
+```
+
+Ordinary Agents author `BlueprintHelper.TaskSpec.v1` only. The existing low-level MCP tools remain documented for compatibility, debug / expert workflows, internal Task Runtime capability mapping, and automation tests.
 
 ## Common Return Shape
 
@@ -80,9 +88,9 @@ This is the documented target surface for ordinary Agents. Some entries may be a
 | `blueprinthelper_get_runtime_profile` | Read | Returns version, Bridge state, write permission, safety profile, and unavailable capabilities | No | Call at session start or before write planning |
 | `blueprinthelper_diagnostics` | Read | Returns static/runtime diagnostics | No | Blocking diagnostics are business state, not transport failure |
 | `blueprinthelper_read_task_context` | Read | Returns `BlueprintHelper.TaskContextPack.v1` for a target and intent | No | Should be compact; does not default to full RawJson |
-| `blueprinthelper_preview_task` | Preview | Validates `BlueprintHelper.TaskSpec.v1`, compiles `BlueprintHelper.TaskPlan.v1`, and dry-runs/preflights | No | Returns suggested patches for schema/semantic errors when possible |
-| `blueprinthelper_execute_task` | Mutate | Executes an approved TaskPlan through UE Task Runtime | Yes | Returns task-level summary and validation result |
-| `blueprinthelper_get_task_result` | Query | Reads `BlueprintHelper.TaskRunJournal.v1` task result summary | No | Used for async/follow-up result lookup or audit summaries |
+| `blueprinthelper_preview_task` | Preview | Validates `BlueprintHelper.TaskSpec.v1`, compiles `BlueprintHelper.TaskPlan.v1`, and dry-runs/preflights | No | Returns GraphWrite IR summary when compilation succeeds and suggested patches for schema/semantic errors when possible |
+| `blueprinthelper_execute_task` | Mutate | Executes an approved TaskPlan through Bridge task-level execute and UE Task Runtime lowering | Yes | Returns task-level summary and validation result |
+| `blueprinthelper_get_task_result` | Query | Reads `BlueprintHelper.TaskRunJournal.v1` task result summary | No | Used for async/follow-up result lookup, audit summaries, and optional adapter child result inspection |
 
 Primary data structures:
 
@@ -90,10 +98,89 @@ Primary data structures:
 |---|---|---|
 | `BlueprintHelper.TaskContextPack.v1` | Agent | Context summary used to write a TaskSpec |
 | `BlueprintHelper.TaskSpec.v1` | Python / MCP Task Compiler | Agent-authored semantic task specification |
-| `BlueprintHelper.TaskPlan.v1` | UE Task Runtime | Executable plan generated from TaskSpec |
+| `BlueprintHelper.TaskPlan.v1` | Bridge task-level preview/execute, UE Task Runtime | Compiler-owned structured edit language / IR generated from TaskSpec |
 | `BlueprintHelper.TaskRunJournal.v1` | UE / MCP query | Task-level journal grouping child transactions |
+| `BlueprintHelper.TaskProtocolContract.v1` | Docs / tests | Versioned contract metadata for fixed TaskSpec and TaskPlan fields |
+
+## Internal GraphWrite TaskPlan IR And Lowering
+
+Ordinary Agents submit `BlueprintHelper.TaskSpec.v1`. They must not author `BlueprintHelper.TaskPlan.v1` directly. TaskPlan is a compiler-owned structured edit language / IR executed by UE Task Runtime through existing capability clusters.
+
+Primary GraphWrite TaskPlan IR fields:
+
+| Field | Meaning |
+|---|---|
+| `capability` | `graph_write` |
+| `target.asset_path` | Target Blueprint asset |
+| `target.graph` | Target graph or graph family |
+| `write.strategy` | Structural write strategy such as `owned_graph_edit` |
+| `write.ops[]` | Ordered structural edit ops such as `ensure_entry`, `replace_body`, `set_pin_default`, `set_node_comment`, `set_node_position`, `insert_flow` |
+| `constraints.allow_modify_user_nodes` | Whether user-owned graph nodes may be modified |
+| `constraints.ownership_scope` | Ownership boundary, for example `blueprinthelper_owned` |
+
+Compiled first-class GraphWrite IR example:
+
+```json
+{
+  "step_id": "step_001",
+  "capability": "graph_write",
+  "target": {
+    "asset_path": "/Game/Blueprints/BP_StoneGate",
+    "graph": "BH_StoneGateActivation"
+  },
+  "write": {
+    "strategy": "owned_graph_edit",
+    "ops": [
+      {
+        "op": "ensure_entry",
+        "entry_type": "custom_event",
+        "name": "InitializeStoneGate"
+      },
+      {
+        "op": "replace_body",
+        "entry_name": "InitializeStoneGate",
+        "body": {
+          "schema": "BlueprintLogicSpec.v1",
+          "statements": [
+            {
+              "kind": "call_function",
+              "name": "PrintString"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "constraints": {
+    "allow_modify_user_nodes": false,
+    "ownership_scope": "blueprinthelper_owned"
+  }
+}
+```
+
+The following commands are Runtime lowering adapter targets, not the primary TaskPlan abstraction:
+
+| Operation | Target fields | Args fields | Bridge dry-run placement |
+|---|---|---|---|
+| `append_blueprint_graph` | `asset_path`, `graph` | `feature_name`, `nodes`, `links` | root `dry_run` |
+| `replace_blueprint_graph` | `asset_path`, `graph`, `replace_scope` | `selector`, `replacement.nodes`, `replacement.links`, `options.strict`, `options.preserve_layout` | `options.dry_run` |
+| `patch_blueprint_graph` | `asset_path`, `graph`, `patch_scope` | `patch_type`, `patched_ref`, `patch`, `expected_old_state` | root `dry_run` |
+| `merge_blueprint_graph` | `asset_path`, `graph`, `merge_scope`, `insert_strategy` | `anchor`, `inserted`, `sequence_order` | root `dry_run` |
+
+Custom Event creation remains part of GraphWrite IR via an `ensure_entry` op and is lowered to `append_blueprint_graph` when appropriate. It is not a separate default Agent-facing tool, and the default TaskSpec-first surface does not add a separate custom-event mutation tool or event-listing tool.
 
 Raw Bridge / UE operation errors are internal facts. Python / MCP normalizes them into task-level errors for ordinary Agent consumption. Debug / expert mode may expose raw trace references or summarized operation errors.
+
+Current TaskSpec-first write slices:
+
+| TaskSpec task_type | TaskPlan capability | Runtime adapter | Scope |
+|---|---|---|---|
+| `edit_blueprint_graph` | `graph_write` | `append_blueprint_graph` | `ensure_entry(custom_event)` plus supported simple statements |
+| `edit_blueprint_variables` | `blueprint_variable` | `add_blueprint_member_variables` | `ensure_member_variable` only |
+
+For `blueprint_variable`, preview is handled at UE Task Runtime level and does not call the mutating variable adapter during dry-run.
+
+Canonical field contract: `Resources/Docs/TaskSpec_TaskPlan_Contract_20260504.md`.
 
 ## Token And Setup State
 
@@ -245,6 +332,8 @@ Typical categories include `bool`, `int`, `float`, `real`, `byte`, `name`, `stri
 ### AgentImportGraph shape
 
 `blueprint_import_agent_graph` expects semantic graph input:
+
+This is a legacy/expert tool schema. Its `options.compile` and `options.save` fields are not TaskSpec fields and are not aliases for `validation.should_compile` / `validation.should_save`.
 
 ```json
 {

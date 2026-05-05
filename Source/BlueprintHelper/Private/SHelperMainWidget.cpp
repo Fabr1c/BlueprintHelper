@@ -1,11 +1,11 @@
-﻿// This Project Is Made By Fabric
+// This Project Is Made By Fabric
 
 
 #include "SHelperMainWidget.h"
 
 #include "BlueprintHelper.h"
 #include "BlueprintTextConverter.h"
-#include "Services/BlueprintHelperGraphResolver.h"
+#include "GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Services/BlueprintHelperImportService.h"
 #include "HAL/PlatformApplicationMisc.h"
 #include "ScopedTransaction.h"

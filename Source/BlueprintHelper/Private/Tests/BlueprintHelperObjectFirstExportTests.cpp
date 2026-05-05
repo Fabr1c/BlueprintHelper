@@ -1,8 +1,8 @@
 #include "Misc/AutomationTest.h"
 #include "BlueprintTextConverter.h"
 #include "Services/BlueprintHelperExportService.h"
-#include "Services/BlueprintHelperGraphResolver.h"
-#include "Services/BlueprintHelperServiceTypes.h"
+#include "GraphSupport/BlueprintHelperGraphResolver.h"
+#include "Structure/BlueprintHelperServiceTypes.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
 

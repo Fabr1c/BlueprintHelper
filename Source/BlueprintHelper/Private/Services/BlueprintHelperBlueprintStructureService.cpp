@@ -1,8 +1,8 @@
 // BlueprintHelper Service Layer — 蓝图结构查询与操作服务实现
 
 #include "Services/BlueprintHelperBlueprintStructureService.h"
-#include "Services/BlueprintHelperGraphResolver.h"
-#include "Services/BlueprintHelperScopedAssetMutation.h"
+#include "GraphSupport/BlueprintHelperGraphResolver.h"
+#include "GraphSupport/BlueprintHelperScopedAssetMutation.h"
 #include "OperationHandlers/BlueprintOperationHandler.h"
 #include "Engine/Blueprint.h"
 #include "EdGraph/EdGraph.h"

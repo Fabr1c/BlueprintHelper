@@ -3,7 +3,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { BridgeClient, BridgeResponse } from './bridge-client.js';
 import { registerResources } from './resources.js';
-import { registerTools } from './tools.js';
+import { registerTools, type EditorConfig } from './tools.js';
 
 export type ToolHandler = (args: Record<string, unknown>) => Promise<{
   content: Array<{
@@ -36,6 +36,7 @@ export interface RegisteredResource {
 
 export function registerWithBridge(
   sendCommand: (command: string, payload?: Record<string, unknown>) => Promise<BridgeResponse>,
+  config: Partial<EditorConfig> = {},
 ): Map<string, RegisteredTool> {
   const tools = new Map<string, RegisteredTool>();
   const server = {
@@ -45,7 +46,7 @@ export function registerWithBridge(
   } as unknown as McpServer;
 
   const bridge = { sendCommand } as unknown as BridgeClient;
-  registerTools(server, bridge, { ueEngineDir: '', ueProjectFile: '' });
+  registerTools(server, bridge, { ueEngineDir: '', ueProjectFile: '', ...config });
   return tools;
 }
 
