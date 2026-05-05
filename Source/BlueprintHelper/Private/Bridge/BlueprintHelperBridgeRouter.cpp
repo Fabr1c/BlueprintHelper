@@ -1,4 +1,4 @@
-// BlueprintHelper Bridge Layer — 命令路由实现
+// BlueprintHelper Bridge Layer 。命令路由实现
 
 #include "Bridge/BlueprintHelperBridgeRouter.h"
 #include "Bridge/BlueprintHelperBridgeProtocol.h"
@@ -8,51 +8,51 @@
 #include "Services/BlueprintHelperAgentImportService.h"
 #include "Services/BlueprintHelperExportService.h"
 #include "Logic/BlueprintHelperLogicProcessor.h"
-#include "Services/BlueprintHelperCompileService.h"
-#include "Services/BlueprintHelperValidationService.h"
-#include "Services/BlueprintHelperContextService.h"
-#include "Services/BlueprintHelperAssetBrowseService.h"
+#include "Services/RuntimeDiagnostics/BlueprintHelperCompileService.h"
+#include "Services/RuntimeDiagnostics/BlueprintHelperValidationService.h"
+#include "Services/RuntimeDiagnostics/BlueprintHelperContextService.h"
+#include "Services/RuntimeDiagnostics/BlueprintHelperAssetBrowseService.h"
 #include "Services/BlueprintHelperBlueprintStructureService.h"
-#include "Services/BlueprintHelperWidgetService.h"
-#include "Services/BlueprintHelperPropertyReflectionService.h"
-#include "Services/BlueprintHelperDataTableService.h"
-#include "Services/BlueprintHelperEditorCommandService.h"
-#include "Services/BlueprintHelperRuntimeProfileService.h"
-#include "Structure/BlueprintHelperRuntimeProfileTypes.h"
-#include "Services/BlueprintHelperDiagnosticsService.h"
-#include "Structure/BlueprintHelperDiagnosticsTypes.h"
+#include "Services/UMGWidget/BlueprintHelperWidgetService.h"
+#include "Services/DataAssetObjectProperty/BlueprintHelperPropertyReflectionService.h"
+#include "Services/DataTable/BlueprintHelperDataTableService.h"
+#include "Services/RuntimeDiagnostics/BlueprintHelperEditorCommandService.h"
+#include "Services/RuntimeDiagnostics/BlueprintHelperRuntimeProfileService.h"
+#include "Structure/RuntimeDiagnostics/BlueprintHelperRuntimeProfileTypes.h"
+#include "Services/RuntimeDiagnostics/BlueprintHelperDiagnosticsService.h"
+#include "Structure/RuntimeDiagnostics/BlueprintHelperDiagnosticsTypes.h"
 #include "Structure/BlueprintHelperDependencyAnalysisTypes.h"
 #include "Logic/BlueprintHelperLogicMdReadService.h"
 #include "Structure/BlueprintHelperLogicMdTypes.h"
 #include "Logic/BlueprintHelperLogicJsonReadService.h"
 #include "Logic/BlueprintHelperLogicGroupBuilder.h"
-#include "Services/BlueprintHelperAssetFactoryService.h"
-#include "Structure/BlueprintHelperAssetFactoryTypes.h"
-#include "Services/BlueprintHelperComponentService.h"
-#include "Services/BlueprintHelperClassSettingsService.h"
-#include "Structure/BlueprintHelperClassSettingsTypes.h"
-#include "Services/BlueprintHelperAppendBlueprintGraphService.h"
+#include "Services/AssetFactory/BlueprintHelperAssetFactoryService.h"
+#include "Structure/AssetFactory/BlueprintHelperAssetFactoryTypes.h"
+#include "Services/BlueprintComponent/BlueprintHelperComponentService.h"
+#include "Services/BlueprintClassSettings/BlueprintHelperClassSettingsService.h"
+#include "Structure/BlueprintClassSettings/BlueprintHelperClassSettingsTypes.h"
+#include "Services/GraphWrite/BlueprintHelperAppendBlueprintGraphService.h"
 #include "TaskRuntime/BlueprintHelperTaskRuntimeService.h"
-#include "Structure/BlueprintHelperAppendGraphTypes.h"
-#include "Services/BlueprintHelperReplaceBlueprintGraphService.h"
-#include "Structure/BlueprintHelperReplaceGraphTypes.h"
-#include "Services/BlueprintHelperPatchBlueprintGraphService.h"
-#include "Structure/BlueprintHelperPatchGraphTypes.h"
-#include "Services/BlueprintHelperMergeBlueprintGraphService.h"
-#include "Structure/BlueprintHelperMergeGraphTypes.h"
-#include "Services/BlueprintHelperCleanupBlueprintHelperBlockService.h"
-#include "Structure/BlueprintHelperCleanupBlockTypes.h"
-#include "Services/BlueprintHelperRollbackCleanupTransactionService.h"
-#include "Structure/BlueprintHelperRollbackCleanupTypes.h"
-#include "Services/BlueprintHelperConvertBlockToUserOwnedService.h"
-#include "Structure/BlueprintHelperConvertBlockToUserOwnedTypes.h"
-#include "Services/BlueprintHelperCompileAssetService.h"
-#include "Structure/BlueprintHelperCompileAssetTypes.h"
-#include "Structure/BlueprintHelperSaveAssetTypes.h"
-#include "Transactions/BlueprintHelperTransactionQueryService.h"
-#include "Structure/BlueprintHelperTransactionQueryTypes.h"
-#include "Services/BlueprintHelperBlueprintVariableService.h"
-#include "Structure/BlueprintHelperBlueprintVariableTypes.h"
+#include "Structure/GraphWrite/BlueprintHelperAppendGraphTypes.h"
+#include "Services/GraphWrite/BlueprintHelperReplaceBlueprintGraphService.h"
+#include "Structure/GraphWrite/BlueprintHelperReplaceGraphTypes.h"
+#include "Services/GraphWrite/BlueprintHelperPatchBlueprintGraphService.h"
+#include "Structure/GraphWrite/BlueprintHelperPatchGraphTypes.h"
+#include "Services/GraphWrite/BlueprintHelperMergeBlueprintGraphService.h"
+#include "Structure/GraphWrite/BlueprintHelperMergeGraphTypes.h"
+#include "Services/CleanupOwnership/BlueprintHelperCleanupBlueprintHelperBlockService.h"
+#include "Structure/CleanupOwnership/BlueprintHelperCleanupBlockTypes.h"
+#include "Services/CleanupOwnership/BlueprintHelperRollbackCleanupTransactionService.h"
+#include "Structure/CleanupOwnership/BlueprintHelperRollbackCleanupTypes.h"
+#include "Services/CleanupOwnership/BlueprintHelperConvertBlockToUserOwnedService.h"
+#include "Structure/CleanupOwnership/BlueprintHelperConvertBlockToUserOwnedTypes.h"
+#include "Services/RuntimeDiagnostics/BlueprintHelperCompileAssetService.h"
+#include "Structure/RuntimeDiagnostics/BlueprintHelperCompileAssetTypes.h"
+#include "Structure/RuntimeDiagnostics/BlueprintHelperSaveAssetTypes.h"
+#include "Transactions/Transactions/BlueprintHelperTransactionQueryService.h"
+#include "Structure/Transactions/BlueprintHelperTransactionQueryTypes.h"
+#include "Services/BlueprintVariables/BlueprintHelperBlueprintVariableService.h"
+#include "Structure/BlueprintVariables/BlueprintHelperBlueprintVariableTypes.h"
 #include "Structure/BlueprintHelperToolResultTypes.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -510,7 +510,7 @@ namespace
 			OutError.Field = FString(TEXT("payload.")) + FieldName;
 			OutError.ExpectedType = TEXT("object 或 string");
 			OutError.ActualType = TEXT("missing");
-			OutError.Message = FString::Printf(TEXT("%s 缺失。"), *OutError.Field);
+			OutError.Message = FString::Printf(TEXT("%s 缺失，需要 object 或 string。"), *OutError.Field);
 			return false;
 		}
 
@@ -537,7 +537,7 @@ namespace
 
 	// ─── Asset Factory 辅助函数 ───
 
-	/** 构建 AssetFactory 错误对象。 */
+	/** 构建 AssetFactory 错误对象。*/
 	FBlueprintHelperToolError MakeAssetFactoryError(
 		const FString& Code, EBlueprintHelperToolStage Stage,
 		const FString& Message, bool bRetryable)
@@ -551,7 +551,7 @@ namespace
 		return Error;
 	}
 
-	/** 填充 ToolResultBase 的 Asset Factory target/data/validation。 */
+	/** 填充 ToolResultBase 。Asset Factory target/data/validation。*/
 	void BuildAssetFactoryResult(
 		FBlueprintHelperToolResultBase& Result,
 		const FBlueprintHelperAssetFactoryData& Data,
@@ -968,7 +968,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequest(
 	{
 		return HandleDeleteDataTableRow(Request);
 	}
-	// ─── Phase 8: 编辑器命令 ───
+	// ─── Phase 8: 编辑器命。───
 	if (Request.Command == TEXT("undo"))
 	{
 		return HandleUndo(Request);
@@ -1158,7 +1158,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleGetRuntimePro
 {
 	FBlueprintHelperRuntimeProfileData ProfileData = RuntimeProfileService.GetRuntimeProfile();
 
-	// 使用 ToolResultBuilder 构建标准化的返回体
+	// 使用 ToolResultBuilder 构建标准化的返回。
 	const FString TraceId = FBlueprintHelperToolResultBuilder::GenerateTraceId();
 	FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Completed(
 		TEXT("get_runtime_profile"), TraceId);
@@ -1176,7 +1176,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleDiagnosticsRu
 {
 	FBlueprintHelperDiagnosticsData DiagnosticsData = DiagnosticsService.RunRuntimeDiagnostics();
 
-	// 使用 ToolResultBuilder 构建标准化的返回体
+	// 使用 ToolResultBuilder 构建标准化的返回。
 	const FString TraceId = FBlueprintHelperToolResultBuilder::GenerateTraceId();
 	FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Completed(
 		TEXT("diagnostics_runtime"), TraceId);
@@ -1359,7 +1359,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadBlueprint
 	// 调用 LogicMdReadService
 	FBlueprintHelperLogicMdData LogicMdData = LogicMdReadService.ReadLogicMd(Target);
 
-	// 使用 ToolResultBuilder 构建标准化的返回体
+	// 使用 ToolResultBuilder 构建标准化的返回。
 	const FString TraceId = FBlueprintHelperToolResultBuilder::GenerateTraceId();
 	FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Completed(
 		TEXT("read_blueprint_logic_md_by_target"), TraceId);
@@ -1694,7 +1694,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleExportLogic(
 		return FBlueprintHelperBridgeResponse::Error(
 			Req.RequestId,
 			EBlueprintHelperBridgeError::JsonParseFailed,
-			TEXT("LogicProcessor 返回的 logic_json 无法解析。"));
+			TEXT("LogicProcessor 返回。logic_json 无法解析。"));
 	}
 
 	Resp.Result->SetObjectField(TEXT("logic"), LogicObject);
@@ -1761,7 +1761,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleImportJson(
 		return ValidationErrorResponse(Req.RequestId, ParseError);
 	}
 
-	// ImportService.ResolveImportJsonText() 会处理 JsonObject/JsonText 解析和 schema/importable 守卫
+	// ImportService.ResolveImportJsonText() 会处。JsonObject/JsonText 解析。schema/importable 守卫
 	FBlueprintHelperImportResult ImportResult = ImportService.Import(ImportReq);
 
 	if (!ImportResult.bSuccess && ImportResult.Diagnostics.HasErrors())
@@ -2023,7 +2023,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleCleanupBluepr
 	if (!Req.Payload.IsValid())
 	{
 		return FBlueprintHelperBridgeResponse::Error(
-			Req.RequestId, EBlueprintHelperBridgeError::InvalidRequest, TEXT("payload 缺失。"));
+			Req.RequestId, EBlueprintHelperBridgeError::InvalidRequest, TEXT("缺少 asset_path 参数。"));
 	}
 
 	const FBlueprintHelperToolResultBase Result = CleanupBlockService.Execute(Req.Payload);
@@ -2162,10 +2162,8 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleCompileBluepr
 	return Resp;
 }
 
-// ═══════════════════════════════════════════════════════════
-// Phase 4 — 资产浏览命令
-// ═══════════════════════════════════════════════════════════
-
+// ══════════════════════════════════════════════════════════。// Phase 4 。资产浏览命令
+// ══════════════════════════════════════════════════════════。
 // ─── open_asset ───
 
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleOpenAsset(
@@ -2435,10 +2433,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleGetAssetInfo(
 	return Resp;
 }
 
-// ═══════════════════════════════════════════════════════════
-// Phase 5 — 蓝图结构查询与操作
-// ═══════════════════════════════════════════════════════════
-
+// ══════════════════════════════════════════════════════════。// Phase 5 。蓝图结构查询与操。// ══════════════════════════════════════════════════════════。
 static FBlueprintHelperGraphTarget ParseTargetFromPayload(const TSharedPtr<FJsonObject>& Payload)
 {
 	FBlueprintHelperGraphTarget Target;
@@ -2742,10 +2737,8 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleDeleteNodes(
 	return Resp;
 }
 
-// ═══════════════════════════════════════════════════════════
-// Phase 6 — UMG Widget 操作
-// ═══════════════════════════════════════════════════════════
-
+// ══════════════════════════════════════════════════════════。// Phase 6 。UMG Widget 操作
+// ══════════════════════════════════════════════════════════。
 static FString GetRequiredStringField(const TSharedPtr<FJsonObject>& Payload, const FString& Field)
 {
 	FString Value;
@@ -2860,7 +2853,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRemoveWidget(
 	{
 		return FBlueprintHelperBridgeResponse::Error(
 			Req.RequestId, EBlueprintHelperBridgeError::InvalidRequest,
-			TEXT("payload 缺少 asset_path 或 widget_name 字段。"));
+			TEXT("payload 缺少 asset_path 。widget_name 字段。"));
 	}
 
 	FBlueprintHelperWidgetMutationResult Result = WidgetService.RemoveWidget(AssetPath, WidgetName);
@@ -2930,7 +2923,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleGetWidgetProp
 	{
 		return FBlueprintHelperBridgeResponse::Error(
 			Req.RequestId, EBlueprintHelperBridgeError::InvalidRequest,
-			TEXT("payload 缺少 asset_path 或 widget_name 字段。"));
+			TEXT("payload 缺少 asset_path 。widget_name 字段。"));
 	}
 
 	FBlueprintHelperWidgetPropertyResult Result = WidgetService.GetWidgetProperties(AssetPath, WidgetName);
@@ -2974,7 +2967,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleSetWidgetProp
 			TEXT("payload 缺少 asset_path / widget_name / property_name 字段。"));
 	}
 
-	// value 可以为空字符串（合法值），所以不检查 IsEmpty
+	// value 可以为空字符串（合法值），所以不检。IsEmpty
 	const FString Value = GetRequiredStringField(Req.Payload, TEXT("value"));
 
 	FBlueprintHelperWidgetMutationResult Result = WidgetService.SetWidgetProperty(AssetPath, WidgetName, PropertyName, Value);
@@ -2992,10 +2985,8 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleSetWidgetProp
 	return Resp;
 }
 
-// ═══════════════════════════════════════════════════════════
-// Phase 7 — DataAsset & DataTable 操作
-// ═══════════════════════════════════════════════════════════
-
+// ══════════════════════════════════════════════════════════。// Phase 7 。DataAsset & DataTable 操作
+// ══════════════════════════════════════════════════════════。
 // ─── get_object_properties ───
 
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleGetObjectProperties(
@@ -3212,7 +3203,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleUpdateDataTab
 	{
 		return FBlueprintHelperBridgeResponse::Error(
 			Req.RequestId, EBlueprintHelperBridgeError::InvalidRequest,
-			TEXT("payload 中 fields 对象为空，至少需要一个字段。"));
+			TEXT("payload 。fields 对象为空，至少需要一个字段。"));
 	}
 
 	FBlueprintHelperDataTableMutationResult Result = DataTableService.UpdateDataTableRow(AssetPath, RowName, Fields);
@@ -3256,10 +3247,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleDeleteDataTab
 	return Resp;
 }
 
-// ═══════════════════════════════════════════════════════════
-// Phase 8: 编辑器命令
-// ═══════════════════════════════════════════════════════════
-
+// ══════════════════════════════════════════════════════════。// Phase 8: 编辑器命。// ══════════════════════════════════════════════════════════。
 // ─── undo ───
 
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleUndo(
@@ -3395,8 +3383,8 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleCreateAsset(
 		if (FactoryData.Collision.Policy == EBlueprintHelperAssetCollisionPolicy::ReuseIfExists
 			&& FactoryData.Collision.bHandled)
 		{
-			// reuse_if_exists 命中同类型
-			FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::NoOp(
+			// reuse_if_exists 命中同类。
+FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::NoOp(
 				TEXT("create_asset"), TraceId);
 			BuildAssetFactoryResult(Result, FactoryData, AssetPath, AssetType);
 			auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);

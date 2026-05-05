@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "TextToBlueprintGenerator.h"
+#include "GraphWrite/TextToBlueprintGenerator.h"
 #include "Widgets/SCompoundWidget.h"
 
 class SListViewBase;

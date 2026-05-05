@@ -8,79 +8,81 @@
 #include "Interfaces/IPluginManager.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
-#include "NodeHandlers/BlueprintNodeHandler.h"
-#include "NodeHandlers/BranchNodeHandler.h"
-#include "NodeHandlers/CallFunctionNodeHandler.h"
-#include "NodeHandlers/MacroInstanceNodeHandler.h"
-#include "NodeHandlers/SequenceNodeHandler.h"
-#include "NodeHandlers/VariableGetNodeHandler.h"
-#include "NodeHandlers/VariableSetNodeHandler.h"
-#include "NodeHandlers/CustomEventNodeHandler.h"
-#include "NodeHandlers/EventNodeHandler.h"
-#include "NodeHandlers/CallDelegateNodeHandler.h"
-#include "NodeHandlers/AddDelegateNodeHandler.h"
-#include "NodeHandlers/RemoveDelegateNodeHandler.h"
-#include "NodeHandlers/ClearDelegateNodeHandler.h"
-#include "NodeHandlers/AssignDelegateNodeHandler.h"
-#include "NodeHandlers/CreateDelegateNodeHandler.h"
-#include "NodeHandlers/MakeContainerNodeHandler.h"
-#include "NodeHandlers/StructOperationNodeHandler.h"
-#include "NodeHandlers/SelfNodeHandler.h"
-#include "NodeHandlers/DynamicCastNodeHandler.h"
-#include "NodeHandlers/SpawnActorNodeHandler.h"
-#include "NodeHandlers/FormatTextNodeHandler.h"
-#include "NodeHandlers/GetArrayItemNodeHandler.h"
-#include "NodeHandlers/TimelineNodeHandler.h"
-#include "NodeHandlers/KnotNodeHandler.h"
-#include "NodeHandlers/LiteralNodeHandler.h"
-#include "NodeHandlers/EnumNameNodeHandler.h"
-#include "NodeHandlers/ComponentBoundEventNodeHandler.h"
-#include "NodeHandlers/EnhancedInputActionNodeHandler.h"
-#include "NodeHandlers/PromotableOperatorNodeHandler.h"
-#include "NodeHandlers/CommutativeAssociativeBinaryOperatorNodeHandler.h"
-#include "NodeHandlers/SwitchNodeHandler.h"
-#include "NodeHandlers/SelectNodeHandler.h"
+#include "NodeHandlers/GraphWrite/BlueprintNodeHandler.h"
+#include "NodeHandlers/GraphWrite/BranchNodeHandler.h"
+#include "NodeHandlers/GraphWrite/CallFunctionNodeHandler.h"
+#include "NodeHandlers/GraphWrite/MacroInstanceNodeHandler.h"
+#include "NodeHandlers/GraphWrite/SequenceNodeHandler.h"
+#include "NodeHandlers/GraphWrite/VariableGetNodeHandler.h"
+#include "NodeHandlers/GraphWrite/VariableSetNodeHandler.h"
+#include "NodeHandlers/GraphWrite/CustomEventNodeHandler.h"
+#include "NodeHandlers/GraphWrite/EventNodeHandler.h"
+#include "NodeHandlers/GraphWrite/CallDelegateNodeHandler.h"
+#include "NodeHandlers/GraphWrite/AddDelegateNodeHandler.h"
+#include "NodeHandlers/GraphWrite/RemoveDelegateNodeHandler.h"
+#include "NodeHandlers/GraphWrite/ClearDelegateNodeHandler.h"
+#include "NodeHandlers/GraphWrite/AssignDelegateNodeHandler.h"
+#include "NodeHandlers/GraphWrite/CreateDelegateNodeHandler.h"
+#include "NodeHandlers/GraphWrite/MakeContainerNodeHandler.h"
+#include "NodeHandlers/GraphWrite/StructOperationNodeHandler.h"
+#include "NodeHandlers/GraphWrite/SelfNodeHandler.h"
+#include "NodeHandlers/GraphWrite/DynamicCastNodeHandler.h"
+#include "NodeHandlers/GraphWrite/SpawnActorNodeHandler.h"
+#include "NodeHandlers/GraphWrite/FormatTextNodeHandler.h"
+#include "NodeHandlers/GraphWrite/GetArrayItemNodeHandler.h"
+#include "NodeHandlers/GraphWrite/TimelineNodeHandler.h"
+#include "NodeHandlers/GraphWrite/KnotNodeHandler.h"
+#include "NodeHandlers/GraphWrite/LiteralNodeHandler.h"
+#include "NodeHandlers/GraphWrite/EnumNameNodeHandler.h"
+#include "NodeHandlers/GraphWrite/ComponentBoundEventNodeHandler.h"
+#include "NodeHandlers/GraphWrite/EnhancedInputActionNodeHandler.h"
+#include "NodeHandlers/GraphWrite/PromotableOperatorNodeHandler.h"
+#include "NodeHandlers/GraphWrite/CommutativeAssociativeBinaryOperatorNodeHandler.h"
+#include "NodeHandlers/GraphWrite/SwitchNodeHandler.h"
+#include "NodeHandlers/GraphWrite/SelectNodeHandler.h"
 #include "OperationHandlers/BlueprintOperationHandler.h"
-#include "OperationHandlers/AddMemberVariableHandler.h"
-#include "OperationHandlers/AddFunctionGraphHandler.h"
-#include "OperationHandlers/AddEventDispatcherHandler.h"
-#include "OperationHandlers/AddMacroGraphHandler.h"
-#include "OperationHandlers/RemoveGraphHandler.h"
-#include "OperationHandlers/RemoveMemberVariableHandler.h"
+#include "OperationHandlers/BlueprintVariables/AddMemberVariableHandler.h"
+#include "OperationHandlers/GraphWrite/AddFunctionGraphHandler.h"
+#include "OperationHandlers/GraphWrite/AddEventDispatcherHandler.h"
+#include "OperationHandlers/GraphWrite/AddMacroGraphHandler.h"
+#include "OperationHandlers/BlueprintVariables/BlueprintLocalVariableMutationHandler.h"
+#include "OperationHandlers/BlueprintVariables/BlueprintMemberVariableMutationHandler.h"
+#include "OperationHandlers/GraphWrite/RemoveGraphHandler.h"
+#include "OperationHandlers/BlueprintVariables/RemoveMemberVariableHandler.h"
 #include "SHelperMainWidget.h"
 #include "GraphSupport/BlueprintHelperGraphResolver.h"
-#include "Services/BlueprintHelperValidationService.h"
+#include "Services/RuntimeDiagnostics/BlueprintHelperValidationService.h"
 #include "Services/BlueprintHelperExportService.h"
 #include "Services/BlueprintHelperImportService.h"
 #include "Services/BlueprintHelperAgentImportService.h"
-#include "Services/BlueprintHelperCompileService.h"
-#include "Services/BlueprintHelperContextService.h"
-#include "Services/BlueprintHelperAssetBrowseService.h"
+#include "Services/RuntimeDiagnostics/BlueprintHelperCompileService.h"
+#include "Services/RuntimeDiagnostics/BlueprintHelperContextService.h"
+#include "Services/RuntimeDiagnostics/BlueprintHelperAssetBrowseService.h"
 #include "Services/BlueprintHelperBlueprintStructureService.h"
-#include "Services/BlueprintHelperWidgetService.h"
-#include "Services/BlueprintHelperPropertyReflectionService.h"
-#include "Services/BlueprintHelperDataTableService.h"
-#include "Services/BlueprintHelperEditorCommandService.h"
-#include "Services/BlueprintHelperRuntimeProfileService.h"
-#include "Services/BlueprintHelperDiagnosticsService.h"
+#include "Services/UMGWidget/BlueprintHelperWidgetService.h"
+#include "Services/DataAssetObjectProperty/BlueprintHelperPropertyReflectionService.h"
+#include "Services/DataTable/BlueprintHelperDataTableService.h"
+#include "Services/RuntimeDiagnostics/BlueprintHelperEditorCommandService.h"
+#include "Services/RuntimeDiagnostics/BlueprintHelperRuntimeProfileService.h"
+#include "Services/RuntimeDiagnostics/BlueprintHelperDiagnosticsService.h"
 #include "Logic/BlueprintHelperLogicMdReadService.h"
 #include "Logic/BlueprintHelperLogicJsonReadService.h"
-#include "Services/BlueprintHelperAssetFactoryService.h"
-#include "Services/BlueprintHelperComponentService.h"
-#include "Services/BlueprintHelperClassSettingsService.h"
-#include "Services/BlueprintHelperAppendBlueprintGraphService.h"
-#include "Services/BlueprintHelperReplaceBlueprintGraphService.h"
-#include "Services/BlueprintHelperPatchBlueprintGraphService.h"
-#include "Services/BlueprintHelperMergeBlueprintGraphService.h"
-#include "Services/BlueprintHelperCleanupBlueprintHelperBlockService.h"
-#include "Services/BlueprintHelperRollbackCleanupTransactionService.h"
-#include "Services/BlueprintHelperConvertBlockToUserOwnedService.h"
-#include "Services/BlueprintHelperCompileAssetService.h"
-#include "Transactions/BlueprintHelperTransactionQueryService.h"
-#include "Services/BlueprintHelperBlueprintVariableService.h"
+#include "Services/AssetFactory/BlueprintHelperAssetFactoryService.h"
+#include "Services/BlueprintComponent/BlueprintHelperComponentService.h"
+#include "Services/BlueprintClassSettings/BlueprintHelperClassSettingsService.h"
+#include "Services/GraphWrite/BlueprintHelperAppendBlueprintGraphService.h"
+#include "Services/GraphWrite/BlueprintHelperReplaceBlueprintGraphService.h"
+#include "Services/GraphWrite/BlueprintHelperPatchBlueprintGraphService.h"
+#include "Services/GraphWrite/BlueprintHelperMergeBlueprintGraphService.h"
+#include "Services/CleanupOwnership/BlueprintHelperCleanupBlueprintHelperBlockService.h"
+#include "Services/CleanupOwnership/BlueprintHelperRollbackCleanupTransactionService.h"
+#include "Services/CleanupOwnership/BlueprintHelperConvertBlockToUserOwnedService.h"
+#include "Services/RuntimeDiagnostics/BlueprintHelperCompileAssetService.h"
+#include "Transactions/Transactions/BlueprintHelperTransactionQueryService.h"
+#include "Services/BlueprintVariables/BlueprintHelperBlueprintVariableService.h"
 #include "GraphSupport/BlueprintHelperBlockIdService.h"
 #include "GraphSupport/BlueprintHelperOwnershipService.h"
-#include "Transactions/BlueprintHelperTransactionJournalService.h"
+#include "Transactions/Transactions/BlueprintHelperTransactionJournalService.h"
 #include "GraphSupport/BlueprintHelperGraphSnapshotService.h"
 #include "Logic/BlueprintHelperLogicJsonPathService.h"
 #include "Bridge/BlueprintHelperBridgeRouter.h"
@@ -133,12 +135,12 @@ void FBlueprintHelperModule::StartupModule()
 	Registry.Register(MakeShared<FFormatTextNodeHandler>());
 	Registry.Register(MakeShared<FGetArrayItemNodeHandler>());
 	Registry.Register(MakeShared<FTimelineNodeHandler>());
-	// v2.3 — 全覆盖收尾
+	// v2.3 。全覆盖收。
 	Registry.Register(MakeShared<FKnotNodeHandler>());
 	Registry.Register(MakeShared<FLiteralNodeHandler>());
 	Registry.Register(MakeShared<FEnumNameNodeHandler>());
 	Registry.Register(MakeShared<FComponentBoundEventNodeHandler>());
-	// v2.9 — Enhanced Input / 数学运算 / 流程控制
+	// v2.9 。Enhanced Input / 数学运算 / 流程控制
 	Registry.Register(MakeShared<FEnhancedInputActionNodeHandler>());
 	Registry.Register(MakeShared<FPromotableOperatorNodeHandler>());
 	Registry.Register(MakeShared<FCommutativeAssociativeBinaryOperatorNodeHandler>());
@@ -152,8 +154,10 @@ void FBlueprintHelperModule::StartupModule()
 	OpRegistry.Register(MakeShared<FAddMacroGraphHandler>());
 	OpRegistry.Register(MakeShared<FRemoveGraphHandler>());
 	OpRegistry.Register(MakeShared<FRemoveMemberVariableHandler>());
+	OpRegistry.Register(MakeShared<FBlueprintHelperMemberVariableMutationHandler>());
+	OpRegistry.Register(MakeShared<FBlueprintHelperLocalVariableMutationHandler>());
 
-	// ─── Service Layer 初始化 ───
+	// ─── Service Layer 初始。───
 	GraphResolver    = MakeUnique<FBlueprintHelperGraphResolver>();
 	ValidationService = MakeUnique<FBlueprintHelperValidationService>();
 	ExportService    = MakeUnique<FBlueprintHelperExportService>(*GraphResolver);
@@ -198,7 +202,7 @@ void FBlueprintHelperModule::StartupModule()
 	TransactionQueryService = MakeUnique<FBlueprintHelperTransactionQueryService>();
 	VariableService = MakeUnique<FBlueprintHelperBlueprintVariableService>(*GraphResolver, *StructureService);
 
-	// ─── Bridge Layer 初始化 ───
+	// ─── Bridge Layer 初始。───
 	ContextService = MakeUnique<FBlueprintHelperContextService>(*GraphResolver);
 	BridgeRouter = MakeUnique<FBlueprintHelperBridgeRouter>(
 		*ImportService, *AgentImportService, *ExportService, *CompileService, *ValidationService, *ContextService, *AssetBrowseService, *StructureService, *WidgetService, *PropertyReflectionService, *DataTableService, *EditorCommandService, *RuntimeProfileService, *DiagnosticsService, *LogicMdReadService, *LogicJsonReadService, *AssetFactoryService, *ComponentService, *ClassSettingsService, *AppendGraphService, *ReplaceGraphService, *PatchGraphService, *MergeGraphService, *CleanupBlockService, *RollbackCleanupService, *ConvertBlockService, *CompileAssetService, *TransactionQueryService, *VariableService);
@@ -217,7 +221,7 @@ void FBlueprintHelperModule::StartupModule()
 
 void FBlueprintHelperModule::ShutdownModule()
 {
-	// ─── Bridge Layer 销毁 ───
+	// ─── Bridge Layer 销。───
 	if (BridgeServer) { BridgeServer->Shutdown(); }
 	BridgeServer.Reset();
 	BridgeRouter.Reset();

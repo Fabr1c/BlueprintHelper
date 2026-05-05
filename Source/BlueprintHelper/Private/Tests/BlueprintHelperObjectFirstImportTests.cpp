@@ -1,7 +1,7 @@
 #include "Misc/AutomationTest.h"
 #include "Services/BlueprintHelperImportService.h"
 #include "GraphSupport/BlueprintHelperGraphResolver.h"
-#include "Services/BlueprintHelperValidationService.h"
+#include "Services/RuntimeDiagnostics/BlueprintHelperValidationService.h"
 #include "Structure/BlueprintHelperServiceTypes.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"

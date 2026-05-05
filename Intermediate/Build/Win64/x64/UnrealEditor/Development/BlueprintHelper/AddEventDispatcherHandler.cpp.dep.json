@@ -1,12 +1,12 @@
 {
     "Version": "1.2",
     "Data": {
-        "Source": "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\private\\operationhandlers\\addeventdispatcherhandler.cpp",
+        "Source": "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\private\\operationhandlers\\graphwrite\\addeventdispatcherhandler.cpp",
         "ProvidedModule": "",
         "PCH": "g:\\unrealpractise\\mrstone\\intermediate\\build\\win64\\x64\\mrstoneeditor\\development\\unrealed\\sharedpch.unrealed.project.valapi.valexpapi.cpp20.h.pch",
         "Includes": [
             "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\intermediate\\build\\win64\\x64\\unrealeditor\\development\\blueprinthelper\\definitions.blueprinthelper.h",
-            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\operationhandlers\\addeventdispatcherhandler.h",
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\operationhandlers\\graphwrite\\addeventdispatcherhandler.h",
             "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\operationhandlers\\blueprintoperationhandler.h",
             "f:\\ue_5.6\\engine\\source\\editor\\blueprintgraph\\classes\\k2node_functionentry.h",
             "f:\\ue_5.6\\engine\\source\\editor\\blueprintgraph\\classes\\k2node_functionterminator.h",
@@ -15,7 +15,7 @@
             "f:\\ue_5.6\\engine\\source\\editor\\kismetcompiler\\public\\bpterminal.h",
             "f:\\ue_5.6\\engine\\source\\editor\\kismetcompiler\\public\\blueprintcompiledstatement.h",
             "f:\\ue_5.6\\engine\\intermediate\\build\\win64\\unrealeditor\\inc\\blueprintgraph\\uht\\k2node_functionentry.generated.h",
-            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\texttoblueprintgenerator.h",
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\graphwrite\\texttoblueprintgenerator.h",
             "f:\\ue_5.6\\engine\\source\\editor\\unrealed\\public\\kismet2\\blueprinteditorutils.h",
             "f:\\ue_5.6\\engine\\source\\editor\\classviewer\\public\\classviewermodule.h"
         ],

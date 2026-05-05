@@ -1,31 +1,487 @@
 // BlueprintHelper Service Layer - TaskPlan runtime executor
 
 #include "TaskRuntime/BlueprintHelperTaskRuntimeService.h"
-#include "Services/BlueprintHelperAppendBlueprintGraphService.h"
-#include "Services/BlueprintHelperMergeBlueprintGraphService.h"
-#include "Services/BlueprintHelperPatchBlueprintGraphService.h"
-#include "Services/BlueprintHelperReplaceBlueprintGraphService.h"
-#include "Services/BlueprintHelperBlueprintVariableService.h"
-#include "Services/BlueprintHelperAssetFactoryService.h"
-#include "Structure/BlueprintHelperAssetFactoryTypes.h"
-#include "Services/BlueprintHelperClassSettingsService.h"
-#include "Services/BlueprintHelperCompileAssetService.h"
-#include "Services/BlueprintHelperComponentService.h"
-#include "Services/BlueprintHelperDataTableService.h"
-#include "Services/BlueprintHelperWidgetService.h"
-#include "Services/BlueprintHelperAssetBrowseService.h"
-#include "Structure/BlueprintHelperSaveAssetTypes.h"
-#include "TaskRuntime/TaskPlanAdapters/BlueprintHelperAssetFactoryTaskPlanAdapter.h"
-#include "TaskRuntime/TaskPlanAdapters/BlueprintHelperBlueprintVariableTaskPlanAdapter.h"
-#include "TaskRuntime/TaskPlanAdapters/BlueprintHelperClassSettingsTaskPlanAdapter.h"
-#include "TaskRuntime/TaskPlanAdapters/BlueprintHelperComponentTaskPlanAdapter.h"
-#include "TaskRuntime/TaskPlanAdapters/BlueprintHelperDataTableTaskPlanAdapter.h"
-#include "TaskRuntime/TaskPlanAdapters/BlueprintHelperWidgetTaskPlanAdapter.h"
+#include "Services/GraphWrite/BlueprintHelperAppendBlueprintGraphService.h"
+#include "Services/GraphWrite/BlueprintHelperMergeBlueprintGraphService.h"
+#include "Services/GraphWrite/BlueprintHelperPatchBlueprintGraphService.h"
+#include "Services/GraphWrite/BlueprintHelperReplaceBlueprintGraphService.h"
+#include "Services/BlueprintVariables/BlueprintHelperBlueprintVariableService.h"
+#include "Services/AssetFactory/BlueprintHelperAssetFactoryService.h"
+#include "Structure/AssetFactory/BlueprintHelperAssetFactoryTypes.h"
+#include "Services/BlueprintClassSettings/BlueprintHelperClassSettingsService.h"
+#include "Services/RuntimeDiagnostics/BlueprintHelperCompileAssetService.h"
+#include "Services/BlueprintComponent/BlueprintHelperComponentService.h"
+#include "Services/DataTable/BlueprintHelperDataTableService.h"
+#include "Services/UMGWidget/BlueprintHelperWidgetService.h"
+#include "Services/RuntimeDiagnostics/BlueprintHelperAssetBrowseService.h"
+#include "Structure/RuntimeDiagnostics/BlueprintHelperSaveAssetTypes.h"
+#include "TaskRuntime/TaskPlanAdapters/AssetFactory/BlueprintHelperAssetFactoryTaskPlanAdapter.h"
+#include "TaskRuntime/TaskPlanAdapters/BlueprintVariables/BlueprintHelperBlueprintVariableTaskPlanAdapter.h"
+#include "TaskRuntime/TaskPlanAdapters/BlueprintClassSettings/BlueprintHelperClassSettingsTaskPlanAdapter.h"
+#include "TaskRuntime/TaskPlanAdapters/BlueprintComponent/BlueprintHelperComponentTaskPlanAdapter.h"
+#include "TaskRuntime/TaskPlanAdapters/DataTable/BlueprintHelperDataTableTaskPlanAdapter.h"
+#include "TaskRuntime/TaskPlanAdapters/UMGWidget/BlueprintHelperWidgetTaskPlanAdapter.h"
 
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+
+const TCHAR* FBlueprintHelperBlueprintVariableTaskPlanAdapter::CapabilityBlueprintVariable = TEXT("blueprint_variable");
+const TCHAR* FBlueprintHelperBlueprintVariableTaskPlanAdapter::RuntimeOperationBlueprintVariable = TEXT("blueprint_variable");
+
+const TCHAR* FBlueprintHelperBlueprintVariableTaskPlanAdapter::StrategyMemberVariables = TEXT("member_variables");
+const TCHAR* FBlueprintHelperBlueprintVariableTaskPlanAdapter::StrategyMemberDefaults = TEXT("member_defaults");
+const TCHAR* FBlueprintHelperBlueprintVariableTaskPlanAdapter::StrategyLocalVariables = TEXT("local_variables");
+
+const TCHAR* FBlueprintHelperBlueprintVariableTaskPlanAdapter::AdapterOperationAddMemberVariables = TEXT("add_blueprint_member_variables");
+const TCHAR* FBlueprintHelperBlueprintVariableTaskPlanAdapter::AdapterOperationVariableBatch = TEXT("blueprint_variable_batch");
+
+const TCHAR* FBlueprintHelperBlueprintVariableTaskPlanAdapter::OpEnsureMemberVariable = TEXT("ensure_member_variable");
+const TCHAR* FBlueprintHelperBlueprintVariableTaskPlanAdapter::OpSetMemberVariableProperties = TEXT("set_member_variable_properties");
+const TCHAR* FBlueprintHelperBlueprintVariableTaskPlanAdapter::OpRemoveMemberVariable = TEXT("remove_member_variable");
+const TCHAR* FBlueprintHelperBlueprintVariableTaskPlanAdapter::OpSetMemberDefault = TEXT("set_member_default");
+const TCHAR* FBlueprintHelperBlueprintVariableTaskPlanAdapter::OpEnsureLocalVariable = TEXT("ensure_local_variable");
+const TCHAR* FBlueprintHelperBlueprintVariableTaskPlanAdapter::OpSetLocalVariableProperties = TEXT("set_local_variable_properties");
+const TCHAR* FBlueprintHelperBlueprintVariableTaskPlanAdapter::OpRemoveLocalVariable = TEXT("remove_local_variable");
+
+namespace BlueprintVariableTaskPlanAdapterImpl
+{
+	FBlueprintHelperToolError MakeVariableTaskPlanError(
+		const FString& Code,
+		const FString& Message,
+		const FString& Field)
+	{
+		FBlueprintHelperToolError Error;
+		Error.Code = Code;
+		Error.Stage = EBlueprintHelperToolStage::ParseInput;
+		Error.Message = Message;
+		Error.bRetryable = false;
+		Error.RollbackResult = EBlueprintHelperRollbackResult::NotNeeded;
+		Error.Field = Field;
+		return Error;
+	}
+
+	FString BuildStepFieldPath(const FString& Suffix)
+	{
+		return Suffix.IsEmpty()
+			? FString(TEXT("task_plan.steps[0]"))
+			: FString::Printf(TEXT("task_plan.steps[0].%s"), *Suffix);
+	}
+
+	FString BuildOpFieldPath(int32 OpIndex, const FString& Suffix)
+	{
+		return Suffix.IsEmpty()
+			? FString::Printf(TEXT("task_plan.steps[0].write.ops[%d]"), OpIndex)
+			: FString::Printf(TEXT("task_plan.steps[0].write.ops[%d].%s"), OpIndex, *Suffix);
+	}
+
+	bool TryReadRequiredString(
+		const TSharedPtr<FJsonObject>& Object,
+		const TCHAR* FieldName,
+		const FString& FieldPath,
+		FString& OutValue,
+		FBlueprintHelperToolError& OutError)
+	{
+		OutValue.Empty();
+		if (!Object.IsValid() || !Object->TryGetStringField(FieldName, OutValue) || OutValue.IsEmpty())
+		{
+			OutError = MakeVariableTaskPlanError(
+				TEXT("invalid_variable_op"),
+				FString::Printf(TEXT("Blueprint variable op requires %s."), FieldName),
+				FieldPath);
+			return false;
+		}
+		return true;
+	}
+
+	bool TryReadRequiredObject(
+		const TSharedPtr<FJsonObject>& Object,
+		const TCHAR* FieldName,
+		const FString& FieldPath,
+		FBlueprintHelperToolError& OutError)
+	{
+		const TSharedPtr<FJsonObject>* ObjectPtr = nullptr;
+		if (!Object.IsValid() ||
+			!Object->TryGetObjectField(FieldName, ObjectPtr) ||
+			!ObjectPtr || !ObjectPtr->IsValid())
+		{
+			OutError = MakeVariableTaskPlanError(
+				TEXT("invalid_variable_op"),
+				FString::Printf(TEXT("Blueprint variable op requires %s object."), FieldName),
+				FieldPath);
+			return false;
+		}
+		return true;
+	}
+
+	bool TryReadRequiredArray(
+		const TSharedPtr<FJsonObject>& Object,
+		const TCHAR* FieldName,
+		const FString& FieldPath,
+		FBlueprintHelperToolError& OutError)
+	{
+		const TArray<TSharedPtr<FJsonValue>>* ArrayPtr = nullptr;
+		if (!Object.IsValid() ||
+			!Object->TryGetArrayField(FieldName, ArrayPtr) ||
+			!ArrayPtr || ArrayPtr->Num() == 0)
+		{
+			OutError = MakeVariableTaskPlanError(
+				TEXT("invalid_variable_op"),
+				FString::Printf(TEXT("Blueprint variable op requires non-empty %s array."), FieldName),
+				FieldPath);
+			return false;
+		}
+		return true;
+	}
+
+	bool TryRequireValueField(
+		const TSharedPtr<FJsonObject>& Object,
+		const FString& FieldPath,
+		FBlueprintHelperToolError& OutError)
+	{
+		if (!Object.IsValid() || !Object->Values.Contains(TEXT("value")))
+		{
+			OutError = MakeVariableTaskPlanError(
+				TEXT("invalid_variable_op"),
+				TEXT("set_member_default requires value."),
+				FieldPath);
+			return false;
+		}
+		return true;
+	}
+
+	void CopyObjectFieldsExceptOp(
+		const TSharedPtr<FJsonObject>& Source,
+		const TSharedRef<FJsonObject>& Destination)
+	{
+		if (!Source.IsValid())
+		{
+			return;
+		}
+
+		for (const TPair<FString, TSharedPtr<FJsonValue>>& Field : Source->Values)
+		{
+			if (Field.Key != TEXT("op"))
+			{
+				Destination->SetField(Field.Key, Field.Value);
+			}
+		}
+	}
+
+	TSharedRef<FJsonObject> CopyOpForBatch(
+		const TSharedPtr<FJsonObject>& Source,
+		const FString& LocalFunctionName)
+	{
+		TSharedRef<FJsonObject> Destination = MakeShared<FJsonObject>();
+		if (Source.IsValid())
+		{
+			for (const TPair<FString, TSharedPtr<FJsonValue>>& Field : Source->Values)
+			{
+				Destination->SetField(Field.Key, Field.Value);
+			}
+		}
+		if (!LocalFunctionName.IsEmpty() && !Destination->HasField(TEXT("function_name")))
+		{
+			Destination->SetStringField(TEXT("function_name"), LocalFunctionName);
+		}
+		return Destination;
+	}
+
+	bool TryValidateMemberVariableOp(
+		const FString& OpName,
+		const TSharedPtr<FJsonObject>& OpObject,
+		int32 OpIndex,
+		FBlueprintHelperToolError& OutError)
+	{
+		FString Ignored;
+		if (OpName == FBlueprintHelperBlueprintVariableTaskPlanAdapter::OpEnsureMemberVariable)
+		{
+			return TryReadRequiredString(OpObject, TEXT("name"), BuildOpFieldPath(OpIndex, TEXT("name")), Ignored, OutError) &&
+				TryReadRequiredObject(OpObject, TEXT("pin_type"), BuildOpFieldPath(OpIndex, TEXT("pin_type")), OutError);
+		}
+		if (OpName == FBlueprintHelperBlueprintVariableTaskPlanAdapter::OpSetMemberVariableProperties)
+		{
+			return TryReadRequiredString(OpObject, TEXT("name"), BuildOpFieldPath(OpIndex, TEXT("name")), Ignored, OutError) &&
+				TryReadRequiredArray(OpObject, TEXT("settings"), BuildOpFieldPath(OpIndex, TEXT("settings")), OutError);
+		}
+		if (OpName == FBlueprintHelperBlueprintVariableTaskPlanAdapter::OpRemoveMemberVariable)
+		{
+			return TryReadRequiredString(OpObject, TEXT("name"), BuildOpFieldPath(OpIndex, TEXT("name")), Ignored, OutError);
+		}
+
+		OutError = MakeVariableTaskPlanError(
+			TEXT("unsupported_variable_op"),
+			FString::Printf(TEXT("Unsupported member variable op: %s."), *OpName),
+			BuildOpFieldPath(OpIndex, TEXT("op")));
+		return false;
+	}
+
+	bool TryValidateMemberDefaultOp(
+		const FString& OpName,
+		const TSharedPtr<FJsonObject>& OpObject,
+		int32 OpIndex,
+		FBlueprintHelperToolError& OutError)
+	{
+		if (OpName != FBlueprintHelperBlueprintVariableTaskPlanAdapter::OpSetMemberDefault)
+		{
+			OutError = MakeVariableTaskPlanError(
+				TEXT("unsupported_variable_op"),
+				FString::Printf(TEXT("Unsupported member default op: %s."), *OpName),
+				BuildOpFieldPath(OpIndex, TEXT("op")));
+			return false;
+		}
+
+		FString Ignored;
+		return TryReadRequiredString(OpObject, TEXT("name"), BuildOpFieldPath(OpIndex, TEXT("name")), Ignored, OutError) &&
+			TryRequireValueField(OpObject, BuildOpFieldPath(OpIndex, TEXT("value")), OutError);
+	}
+
+	bool TryValidateLocalVariableOp(
+		const FString& OpName,
+		const TSharedPtr<FJsonObject>& OpObject,
+		const FString& FunctionName,
+		int32 OpIndex,
+		FBlueprintHelperToolError& OutError)
+	{
+		FString OpFunctionName;
+		if (OpObject.IsValid() &&
+			OpObject->TryGetStringField(TEXT("function_name"), OpFunctionName) &&
+			!OpFunctionName.IsEmpty() &&
+			OpFunctionName != FunctionName)
+		{
+			OutError = MakeVariableTaskPlanError(
+				TEXT("invalid_variable_op"),
+				TEXT("Local variable op function_name must match target.function_name."),
+				BuildOpFieldPath(OpIndex, TEXT("function_name")));
+			return false;
+		}
+
+		FString Ignored;
+		if (OpName == FBlueprintHelperBlueprintVariableTaskPlanAdapter::OpEnsureLocalVariable)
+		{
+			return TryReadRequiredString(OpObject, TEXT("name"), BuildOpFieldPath(OpIndex, TEXT("name")), Ignored, OutError) &&
+				TryReadRequiredObject(OpObject, TEXT("pin_type"), BuildOpFieldPath(OpIndex, TEXT("pin_type")), OutError);
+		}
+		if (OpName == FBlueprintHelperBlueprintVariableTaskPlanAdapter::OpSetLocalVariableProperties)
+		{
+			return TryReadRequiredString(OpObject, TEXT("name"), BuildOpFieldPath(OpIndex, TEXT("name")), Ignored, OutError) &&
+				TryReadRequiredArray(OpObject, TEXT("settings"), BuildOpFieldPath(OpIndex, TEXT("settings")), OutError);
+		}
+		if (OpName == FBlueprintHelperBlueprintVariableTaskPlanAdapter::OpRemoveLocalVariable)
+		{
+			return TryReadRequiredString(OpObject, TEXT("name"), BuildOpFieldPath(OpIndex, TEXT("name")), Ignored, OutError);
+		}
+
+		OutError = MakeVariableTaskPlanError(
+			TEXT("unsupported_variable_op"),
+			FString::Printf(TEXT("Unsupported local variable op: %s."), *OpName),
+			BuildOpFieldPath(OpIndex, TEXT("op")));
+		return false;
+	}
+}
+
+bool FBlueprintHelperBlueprintVariableTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(
+	const TSharedPtr<FJsonObject>& StepObject,
+	bool bDryRun,
+	FBlueprintHelperBlueprintVariableTaskPlanPayload& OutPayload,
+	FBlueprintHelperToolError& OutError)
+{
+	using namespace BlueprintVariableTaskPlanAdapterImpl;
+
+	if (!StepObject.IsValid())
+	{
+		OutError = MakeVariableTaskPlanError(
+			TEXT("invalid_taskplan_step"),
+			TEXT("TaskPlan step must be an object."),
+			BuildStepFieldPath(TEXT("")));
+		return false;
+	}
+
+	FString AdapterOperation;
+	if (StepObject->TryGetStringField(TEXT("operation"), AdapterOperation))
+	{
+		OutError = MakeVariableTaskPlanError(
+			TEXT("unsupported_blueprint_variable_operation_field"),
+			TEXT("Blueprint variable IR TaskPlan steps use capability/write; adapter operation fields are runtime lowering details."),
+			BuildStepFieldPath(TEXT("operation")));
+		return false;
+	}
+
+	FString Capability;
+	if (!StepObject->TryGetStringField(TEXT("capability"), Capability) || Capability != CapabilityBlueprintVariable)
+	{
+		OutError = MakeVariableTaskPlanError(
+			TEXT("unsupported_blueprint_variable_capability"),
+			TEXT("Blueprint variable adapter only supports capability blueprint_variable."),
+			BuildStepFieldPath(TEXT("capability")));
+		return false;
+	}
+
+	const TSharedPtr<FJsonObject>* TargetObjectPtr = nullptr;
+	if (!StepObject->TryGetObjectField(TEXT("target"), TargetObjectPtr) ||
+		!TargetObjectPtr || !TargetObjectPtr->IsValid())
+	{
+		OutError = MakeVariableTaskPlanError(
+			TEXT("invalid_taskplan_step_target"),
+			TEXT("Blueprint variable TaskPlan step target object is required."),
+			BuildStepFieldPath(TEXT("target")));
+		return false;
+	}
+
+	FString AssetPath;
+	if (!(*TargetObjectPtr)->TryGetStringField(TEXT("asset_path"), AssetPath) || AssetPath.IsEmpty())
+	{
+		OutError = MakeVariableTaskPlanError(
+			TEXT("invalid_taskplan_step_target"),
+			TEXT("Blueprint variable TaskPlan step target requires asset_path."),
+			BuildStepFieldPath(TEXT("target.asset_path")));
+		return false;
+	}
+
+	const TSharedPtr<FJsonObject>* WriteObjectPtr = nullptr;
+	if (!StepObject->TryGetObjectField(TEXT("write"), WriteObjectPtr) ||
+		!WriteObjectPtr || !WriteObjectPtr->IsValid())
+	{
+		OutError = MakeVariableTaskPlanError(
+			TEXT("invalid_variable_write"),
+			TEXT("blueprint_variable TaskPlan step requires write object."),
+			BuildStepFieldPath(TEXT("write")));
+		return false;
+	}
+
+	FString Strategy;
+	if (!(*WriteObjectPtr)->TryGetStringField(TEXT("strategy"), Strategy) ||
+		(Strategy != StrategyMemberVariables &&
+			Strategy != StrategyMemberDefaults &&
+			Strategy != StrategyLocalVariables))
+	{
+		OutError = MakeVariableTaskPlanError(
+			TEXT("unsupported_variable_strategy"),
+			TEXT("Blueprint variable TaskPlan step requires a supported write.strategy."),
+			BuildStepFieldPath(TEXT("write.strategy")));
+		return false;
+	}
+
+	FString FunctionName;
+	if (Strategy == StrategyLocalVariables &&
+		(!(*TargetObjectPtr)->TryGetStringField(TEXT("function_name"), FunctionName) || FunctionName.IsEmpty()))
+	{
+		OutError = MakeVariableTaskPlanError(
+			TEXT("invalid_taskplan_step_target"),
+			TEXT("local_variables TaskPlan step target requires function_name."),
+			BuildStepFieldPath(TEXT("target.function_name")));
+		return false;
+	}
+
+	const TArray<TSharedPtr<FJsonValue>>* OpsArray = nullptr;
+	if (!(*WriteObjectPtr)->TryGetArrayField(TEXT("ops"), OpsArray) || !OpsArray || OpsArray->Num() == 0)
+	{
+		OutError = MakeVariableTaskPlanError(
+			TEXT("invalid_variable_ops"),
+			TEXT("blueprint_variable TaskPlan step requires write.ops array."),
+			BuildStepFieldPath(TEXT("write.ops")));
+		return false;
+	}
+
+	bool bAllEnsureMemberVariables = Strategy == StrategyMemberVariables;
+	TArray<TSharedPtr<FJsonValue>> BatchOps;
+	TArray<TSharedPtr<FJsonValue>> MemberVariables;
+
+	for (int32 OpIndex = 0; OpIndex < OpsArray->Num(); ++OpIndex)
+	{
+		const TSharedPtr<FJsonObject> OpObject =
+			(*OpsArray)[OpIndex].IsValid()
+				? (*OpsArray)[OpIndex]->AsObject()
+				: nullptr;
+		if (!OpObject.IsValid())
+		{
+			OutError = MakeVariableTaskPlanError(
+				TEXT("invalid_variable_op"),
+				TEXT("Blueprint variable op must be an object."),
+				BuildOpFieldPath(OpIndex, TEXT("")));
+			return false;
+		}
+
+		FString OpName;
+		if (!OpObject->TryGetStringField(TEXT("op"), OpName) || OpName.IsEmpty())
+		{
+			OutError = MakeVariableTaskPlanError(
+				TEXT("invalid_variable_op"),
+				TEXT("Blueprint variable op requires op."),
+				BuildOpFieldPath(OpIndex, TEXT("op")));
+			return false;
+		}
+
+		bool bOpValid = false;
+		if (Strategy == StrategyMemberVariables)
+		{
+			bOpValid = TryValidateMemberVariableOp(OpName, OpObject, OpIndex, OutError);
+			bAllEnsureMemberVariables = bAllEnsureMemberVariables && OpName == OpEnsureMemberVariable;
+		}
+		else if (Strategy == StrategyMemberDefaults)
+		{
+			bOpValid = TryValidateMemberDefaultOp(OpName, OpObject, OpIndex, OutError);
+			bAllEnsureMemberVariables = false;
+		}
+		else
+		{
+			bOpValid = TryValidateLocalVariableOp(OpName, OpObject, FunctionName, OpIndex, OutError);
+			bAllEnsureMemberVariables = false;
+		}
+
+		if (!bOpValid)
+		{
+			return false;
+		}
+
+		if (bAllEnsureMemberVariables)
+		{
+			TSharedRef<FJsonObject> Variable = MakeShared<FJsonObject>();
+			CopyObjectFieldsExceptOp(OpObject, Variable);
+			MemberVariables.Add(MakeShared<FJsonValueObject>(Variable));
+		}
+
+		BatchOps.Add(MakeShared<FJsonValueObject>(CopyOpForBatch(OpObject, FunctionName)));
+	}
+
+	OutPayload.Capability = CapabilityBlueprintVariable;
+	OutPayload.RuntimeOperation = RuntimeOperationBlueprintVariable;
+	OutPayload.bAdapterDryRunSupported = false;
+
+	if (bAllEnsureMemberVariables)
+	{
+		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+		Payload->SetStringField(TEXT("asset_path"), AssetPath);
+		Payload->SetArrayField(TEXT("variables"), MemberVariables);
+		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
+
+		OutPayload.AdapterOperation = AdapterOperationAddMemberVariables;
+		OutPayload.Payload = Payload;
+		return true;
+	}
+
+	TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+	Payload->SetStringField(TEXT("asset_path"), AssetPath);
+	Payload->SetStringField(TEXT("strategy"), Strategy);
+	Payload->SetBoolField(TEXT("dry_run"), bDryRun);
+	Payload->SetArrayField(TEXT("ops"), BatchOps);
+	if (!FunctionName.IsEmpty())
+	{
+		Payload->SetStringField(TEXT("function_name"), FunctionName);
+	}
+
+	const TSharedPtr<FJsonObject>* ConstraintsObjectPtr = nullptr;
+	if (StepObject->TryGetObjectField(TEXT("constraints"), ConstraintsObjectPtr) &&
+		ConstraintsObjectPtr && ConstraintsObjectPtr->IsValid())
+	{
+		Payload->SetObjectField(TEXT("constraints"), *ConstraintsObjectPtr);
+	}
+
+	OutPayload.AdapterOperation = AdapterOperationVariableBatch;
+	OutPayload.Payload = Payload;
+	return true;
+}
 
 namespace
 {
@@ -519,143 +975,6 @@ namespace
 		return true;
 	}
 
-	bool TryBuildBlueprintVariablePayload(
-		const TSharedPtr<FJsonObject>& StepObject,
-		bool bDryRun,
-		TSharedPtr<FJsonObject>& OutPayload,
-		FBlueprintHelperToolError& OutError)
-	{
-		const TSharedPtr<FJsonObject>* TargetObjectPtr = nullptr;
-		if (!StepObject.IsValid() ||
-			!StepObject->TryGetObjectField(TEXT("target"), TargetObjectPtr) ||
-			!TargetObjectPtr || !TargetObjectPtr->IsValid())
-		{
-			OutError = MakeTaskRuntimeError(
-				TEXT("invalid_taskplan_step_target"),
-				EBlueprintHelperToolStage::ParseInput,
-				TEXT("Blueprint variable TaskPlan step target object is required."),
-				TEXT("task_plan.steps[0].target"));
-			return false;
-		}
-
-		FString AssetPath;
-		(*TargetObjectPtr)->TryGetStringField(TEXT("asset_path"), AssetPath);
-		if (AssetPath.IsEmpty())
-		{
-			OutError = MakeTaskRuntimeError(
-				TEXT("invalid_taskplan_step_target"),
-				EBlueprintHelperToolStage::ParseInput,
-				TEXT("Blueprint variable TaskPlan step target requires asset_path."),
-				TEXT("task_plan.steps[0].target.asset_path"));
-			return false;
-		}
-
-		const TSharedPtr<FJsonObject>* WriteObjectPtr = nullptr;
-		if (!StepObject->TryGetObjectField(TEXT("write"), WriteObjectPtr) ||
-			!WriteObjectPtr || !WriteObjectPtr->IsValid())
-		{
-			OutError = MakeTaskRuntimeError(
-				TEXT("invalid_variable_write"),
-				EBlueprintHelperToolStage::ParseInput,
-				TEXT("blueprint_variable TaskPlan step requires write object."),
-				TEXT("task_plan.steps[0].write"));
-			return false;
-		}
-
-		FString Strategy;
-		if (!(*WriteObjectPtr)->TryGetStringField(TEXT("strategy"), Strategy) ||
-			Strategy != TEXT("member_variables"))
-		{
-			OutError = MakeTaskRuntimeError(
-				TEXT("unsupported_variable_strategy"),
-				EBlueprintHelperToolStage::ParseInput,
-				TEXT("Blueprint variable Task Runtime currently supports member_variables only."),
-				TEXT("task_plan.steps[0].write.strategy"));
-			return false;
-		}
-
-		const TArray<TSharedPtr<FJsonValue>>* OpsArray = nullptr;
-		if (!(*WriteObjectPtr)->TryGetArrayField(TEXT("ops"), OpsArray) || !OpsArray || OpsArray->Num() == 0)
-		{
-			OutError = MakeTaskRuntimeError(
-				TEXT("invalid_variable_ops"),
-				EBlueprintHelperToolStage::ParseInput,
-				TEXT("blueprint_variable TaskPlan step requires write.ops array."),
-				TEXT("task_plan.steps[0].write.ops"));
-			return false;
-		}
-
-		TArray<TSharedPtr<FJsonValue>> Variables;
-		for (int32 OpIndex = 0; OpIndex < OpsArray->Num(); ++OpIndex)
-		{
-			const TSharedPtr<FJsonObject> OpObject =
-				(*OpsArray)[OpIndex].IsValid()
-					? (*OpsArray)[OpIndex]->AsObject()
-					: nullptr;
-			if (!OpObject.IsValid())
-			{
-				OutError = MakeTaskRuntimeError(
-					TEXT("invalid_variable_op"),
-					EBlueprintHelperToolStage::ParseInput,
-					TEXT("Blueprint variable op must be an object."),
-					FString::Printf(TEXT("task_plan.steps[0].write.ops[%d]"), OpIndex));
-				return false;
-			}
-
-			FString OpName;
-			OpObject->TryGetStringField(TEXT("op"), OpName);
-			if (OpName != TEXT("ensure_member_variable"))
-			{
-				OutError = MakeTaskRuntimeError(
-					TEXT("unsupported_variable_op"),
-					EBlueprintHelperToolStage::ParseInput,
-					TEXT("Blueprint variable Task Runtime currently supports ensure_member_variable only."),
-					FString::Printf(TEXT("task_plan.steps[0].write.ops[%d].op"), OpIndex));
-				return false;
-			}
-
-			FString VariableName;
-			if (!OpObject->TryGetStringField(TEXT("name"), VariableName) || VariableName.IsEmpty())
-			{
-				OutError = MakeTaskRuntimeError(
-					TEXT("invalid_variable_op"),
-					EBlueprintHelperToolStage::ParseInput,
-					TEXT("ensure_member_variable requires name."),
-					FString::Printf(TEXT("task_plan.steps[0].write.ops[%d].name"), OpIndex));
-				return false;
-			}
-
-			const TSharedPtr<FJsonObject>* PinTypeObjectPtr = nullptr;
-			if (!OpObject->TryGetObjectField(TEXT("pin_type"), PinTypeObjectPtr) ||
-				!PinTypeObjectPtr || !PinTypeObjectPtr->IsValid())
-			{
-				OutError = MakeTaskRuntimeError(
-					TEXT("invalid_variable_op"),
-					EBlueprintHelperToolStage::ParseInput,
-					TEXT("ensure_member_variable requires pin_type."),
-					FString::Printf(TEXT("task_plan.steps[0].write.ops[%d].pin_type"), OpIndex));
-				return false;
-			}
-
-			TSharedRef<FJsonObject> Variable = MakeShared<FJsonObject>();
-			for (const TPair<FString, TSharedPtr<FJsonValue>>& Field : OpObject->Values)
-			{
-				if (Field.Key != TEXT("op"))
-				{
-					Variable->SetField(Field.Key, Field.Value);
-				}
-			}
-			Variables.Add(MakeShared<FJsonValueObject>(Variable));
-		}
-
-		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
-		Payload->SetStringField(TEXT("asset_path"), AssetPath);
-		Payload->SetArrayField(TEXT("variables"), Variables);
-		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
-		OutPayload = Payload;
-		return true;
-	}
-
 	struct FTaskPlanStepPayloadParts
 	{
 		TSharedPtr<FJsonObject> TargetObject;
@@ -696,7 +1015,7 @@ namespace
 		if (OutParts.AssetPath.IsEmpty() || OutParts.GraphName.IsEmpty())
 		{
 			OutErrorCode = TEXT("invalid_taskplan_step_target");
-			OutErrorMessage = TEXT("TaskPlan step target 需要 asset_path 和 graph。");
+			OutErrorMessage = TEXT("TaskPlan step target 需。asset_path 。graph。");
 			OutErrorField = TEXT("task_plan.steps[0].target");
 			return false;
 		}
