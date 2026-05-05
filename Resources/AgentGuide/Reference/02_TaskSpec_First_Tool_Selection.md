@@ -4,10 +4,14 @@
 
 ```text
 blueprinthelper_get_runtime_profile
-blueprinthelper_read_task_context
+blueprinthelper_read_agent_guide
+blueprinthelper_read_context
+blueprinthelper_read_reference_context
 blueprinthelper_preview_task
 blueprinthelper_execute_task
 blueprinthelper_get_task_result
+blueprinthelper_open_editor
+blueprinthelper_close_editor
 ```
 
 只读诊断使用：

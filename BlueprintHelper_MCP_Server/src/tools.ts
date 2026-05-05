@@ -50,7 +50,13 @@ const rawJsonInputSchema = z.union([
 ]).describe('The BlueprintHelper RawJson object (nodes, links, version, schema) or legacy JSON string to import');
 
 const LEGACY_TOOL_GUIDANCE =
-  'Normal Agents should prefer blueprinthelper_read_task_context -> blueprinthelper_preview_task -> blueprinthelper_execute_task.';
+  'Normal Agents should prefer blueprinthelper_read_agent_guide, blueprinthelper_read_context, blueprinthelper_preview_task, and blueprinthelper_execute_task.';
+
+const AGENT_GUIDE_INDEX_RELATIVE_PATH = path.join(
+  'Resources',
+  'AgentGuide',
+  '00_Agent_Onboarding_Index_20260504.md',
+);
 
 function legacyDebugExpertDescription(description: string): string {
   return `[Legacy/internal/debug/expert] ${description} ${LEGACY_TOOL_GUIDANCE}`;
@@ -74,6 +80,49 @@ const responseModeSchema = z.enum([
   'resource_ref',
   'legacy_text_json',
 ]).optional();
+
+const readContextInputSchema = z.object({
+  schema: z.literal('BlueprintHelper.ReadSpec.v1'),
+  read_type: z.enum([
+    'asset_context',
+    'blueprint_logic',
+    'component_context',
+    'variable_context',
+    'graph_context',
+    'widget_context',
+    'data_table_context',
+    'object_property_context',
+  ]),
+  target: z.object({
+    asset_path: z.string(),
+    asset_type: z.string().optional(),
+    target_type: z.enum([
+      'asset',
+      'blueprint',
+      'graph',
+      'function',
+      'event',
+      'custom_event',
+      'component',
+      'member_variable',
+      'event_dispatcher',
+      'widget',
+      'data_table_row',
+      'block',
+    ]).optional().default('blueprint'),
+    target_name: z.string().optional(),
+    block_id: z.string().optional(),
+  }),
+  view: z.object({
+    format: z.enum(['logic_md', 'logic_json', 'summary', 'schema']).optional().default('logic_md'),
+    max_items: z.number().int().positive().optional(),
+    detail: z.enum(['brief', 'normal', 'full', 'debug']).optional(),
+  }).optional().default({ format: 'logic_md' }),
+  context: z.object({
+    context_id: z.string().optional(),
+    task_run_id: z.string().optional(),
+  }).optional(),
+});
 
 const BlueprintLogicMdOutputSchema = z.object({
   format: z.literal('logic_md'),
@@ -189,25 +238,243 @@ function toErrorResult(err: unknown) {
   };
 }
 
+function resolvePluginResourcePath(relativePath: string): string {
+  const cwd = process.cwd();
+  const candidates = [
+    cwd,
+    path.resolve(cwd, '..'),
+    path.resolve(cwd, 'Plugins', 'BlueprintHelper'),
+    path.resolve(cwd, '..', 'Plugins', 'BlueprintHelper'),
+  ];
+
+  for (const root of candidates) {
+    const candidate = path.resolve(root, relativePath);
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  throw new Error(`Unable to find ${relativePath} from ${cwd}`);
+}
+
+function readAgentGuideIndexMarkdown(): string {
+  return fs.readFileSync(resolvePluginResourcePath(AGENT_GUIDE_INDEX_RELATIVE_PATH), 'utf8');
+}
+
+function makeReadTraceId(): string {
+  return `trace_read_context_${Date.now()}`;
+}
+
+function stripBlueprintHelperPrefix(schema: unknown): unknown {
+  if (typeof schema !== 'string') return schema;
+  return schema.startsWith('BlueprintHelper.') ? schema.slice('BlueprintHelper.'.length) : schema;
+}
+
+function normalizeReadPayloadSchema(payload: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...payload,
+    schema: stripBlueprintHelperPrefix(payload['schema']),
+  };
+}
+
+function buildReadContextTarget(target: z.infer<typeof readContextInputSchema>['target']) {
+  return omitUndefined({
+    asset_path: target.asset_path,
+    asset_type: target.asset_type,
+    target_type: target.target_type,
+    target_name: target.target_name,
+    block_id: target.block_id,
+  });
+}
+
+function inferBlueprintLogicScope(targetType: string): string {
+  if (targetType === 'blueprint' || targetType === 'asset') return 'blueprint';
+  if (targetType === 'function') return 'target_function';
+  if (targetType === 'event') return 'target_event';
+  if (targetType === 'custom_event') return 'target_custom_event';
+  return 'target_graph';
+}
+
+function buildBlueprintLogicReadPayload(input: z.infer<typeof readContextInputSchema>) {
+  const payload: Record<string, unknown> = {
+    asset_path: input.target.asset_path,
+  };
+
+  const targetName = input.target.target_name;
+  switch (input.target.target_type) {
+    case 'graph':
+      if (targetName) payload['graph'] = targetName;
+      break;
+    case 'function':
+      if (targetName) payload['function'] = targetName;
+      break;
+    case 'event':
+    case 'custom_event':
+      if (targetName) payload['event'] = targetName;
+      break;
+    case 'block':
+      if (input.target.block_id ?? targetName) payload['block_id'] = input.target.block_id ?? targetName;
+      break;
+  }
+
+  payload['scope'] = inferBlueprintLogicScope(input.target.target_type);
+  return payload;
+}
+
+function makeBlueprintLogicSchemaPayload() {
+  return {
+    schema: 'BlueprintLogicReadSchema.v1',
+    read_type: 'blueprint_logic',
+    target_types: ['blueprint', 'graph', 'function', 'event', 'custom_event', 'block'],
+    formats: ['logic_md', 'logic_json', 'summary', 'schema'],
+    target_name_semantics: {
+      graph: 'Graph name',
+      function: 'Function name',
+      event: 'Event name',
+      custom_event: 'Custom Event name',
+    },
+  };
+}
+
+function toReadContextMcpResult(input: {
+  target: z.infer<typeof readContextInputSchema>['target'];
+  readType: string;
+  format: string;
+  payload: Record<string, unknown>;
+  status?: string;
+  ok?: boolean;
+}) {
+  const ok = input.ok ?? true;
+  const payload = normalizeReadPayloadSchema(input.payload);
+  const scope = typeof payload['scope'] === 'string'
+    ? payload['scope']
+    : inferBlueprintLogicScope(input.target.target_type);
+  const structured = {
+    ok,
+    schema: 'BlueprintHelper.McpToolResult.v1',
+    operation: 'read_context',
+    trace_id: makeReadTraceId(),
+    status: input.status ?? (ok ? 'completed' : 'failed'),
+    modified: false,
+    target: buildReadContextTarget(input.target),
+    data: {
+      schema: 'ReadContextPack.v1',
+      read_type: input.readType,
+      format: input.format,
+      scope,
+      payload,
+      stats: isRecord(payload['stats']) ? payload['stats'] : {},
+      truncated: false,
+      large_payload_ref: null,
+    },
+  };
+
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text: `read_context ${structured.status}: ${input.target.asset_path}, read_type=${input.readType}, format=${input.format}.`,
+      },
+    ],
+    isError: !ok,
+    structuredContent: structured,
+  };
+}
+
+function extractReadPayloadFromBridgeResult(result: unknown): {
+  ok: boolean;
+  status?: string;
+  payload: Record<string, unknown>;
+} {
+  const normalized = normalizeBlueprintPayload(result);
+  const raw = isRecord(normalized) ? normalized : {};
+  const ok = typeof raw['ok'] === 'boolean' ? raw['ok'] : true;
+  const data = isRecord(raw['data']) ? raw['data'] : raw;
+  return {
+    ok,
+    status: typeof raw['status'] === 'string' ? raw['status'] : undefined,
+    payload: data,
+  };
+}
+
 export function registerTools(server: McpServer, bridge: BridgeClient, config: EditorConfig): void {
   registerTaskTools(server, bridge, config);
 
-  // ─── 1. get_rule_markdown ───
+  // ─── 1. read_agent_guide ───
   server.registerTool(
-    'blueprint_get_rule_markdown',
+    'blueprinthelper_read_agent_guide',
     {
-      description: legacyDebugExpertDescription('Get the JSON-to-Blueprint conversion rule document in Markdown format.before you get rule md,you should read AGENT.md first'),
+      description: 'Read the BlueprintHelper AgentGuide onboarding index Markdown. Use this as the Agent-facing entry for supported capability surface and schema guide paths.',
       inputSchema: z.object({}),
     },
     async () => {
       try {
-        const resp = await bridge.sendCommand('get_rule_markdown');
-        if (resp.success && resp.result?.['markdown']) {
-          return {
-            content: [{ type: 'text', text: resp.result['markdown'] as string }],
-          };
+        return {
+          content: [{ type: 'text' as const, text: readAgentGuideIndexMarkdown() }],
+        };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return {
+          content: [{ type: 'text' as const, text: `AgentGuide error: ${message}` }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  server.registerTool(
+    'blueprinthelper_read_context',
+    {
+      description: 'Read UE asset context through BlueprintHelper.ReadSpec.v1. First slice supports blueprint_logic with logic_md, logic_json, summary, and schema formats.',
+      inputSchema: readContextInputSchema,
+    },
+    async (input) => {
+      try {
+        if (input.read_type !== 'blueprint_logic') {
+          return toMcpResult(normalizeToolResult(
+            {
+              request_id: 'read_context',
+              success: false,
+              error_code: 'unsupported_read_type',
+              message: `read_context currently supports blueprint_logic only, got ${input.read_type}.`,
+            },
+            'read_context',
+          ));
         }
-        return toToolResult(resp);
+
+        const format = input.view?.format ?? 'logic_md';
+        if (format === 'schema') {
+          return toReadContextMcpResult({
+            target: input.target,
+            readType: input.read_type,
+            format,
+            payload: makeBlueprintLogicSchemaPayload(),
+          });
+        }
+
+        const bridgeFormat = format === 'logic_json' ? 'logic_json' : 'logic_md';
+        const command = bridgeFormat === 'logic_json'
+          ? 'read_blueprint_logic_json'
+          : 'read_blueprint_logic_md';
+        const payload = buildBlueprintLogicReadPayload(input);
+
+        const resp = await bridge.sendCommand(command, payload);
+        if (!resp.success) {
+          return toMcpResult(normalizeToolResult(resp, 'read_context', {
+            target: buildReadContextTarget(input.target) as never,
+            modified: false,
+          }));
+        }
+
+        const readPayload = extractReadPayloadFromBridgeResult(resp.result);
+        return toReadContextMcpResult({
+          target: input.target,
+          readType: input.read_type,
+          format,
+          payload: readPayload.payload,
+          status: readPayload.status,
+          ok: readPayload.ok,
+        });
       } catch (err) {
         return toErrorResult(err);
       }

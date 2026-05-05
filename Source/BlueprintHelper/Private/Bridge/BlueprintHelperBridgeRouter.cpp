@@ -741,6 +741,7 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 		InPatchGraphService,
 		InMergeGraphService,
 		InVariableService,
+		InStructure,
 		InAssetFactory,
 		InComponentService,
 		InClassSettings,
@@ -1405,6 +1406,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadBlueprint
 			else if (ScopeStr.Equals(TEXT("target_graph"), ESearchCase::IgnoreCase)) { Target.TargetType = EBlueprintHelperTargetType::Graph; }
 			else if (ScopeStr.Equals(TEXT("target_function"), ESearchCase::IgnoreCase)) { Target.TargetType = EBlueprintHelperTargetType::Function; }
 			else if (ScopeStr.Equals(TEXT("target_event"), ESearchCase::IgnoreCase)) { Target.TargetType = EBlueprintHelperTargetType::Event; }
+			else if (ScopeStr.Equals(TEXT("target_custom_event"), ESearchCase::IgnoreCase)) { Target.TargetType = EBlueprintHelperTargetType::CustomEvent; }
 		}
 	}
 

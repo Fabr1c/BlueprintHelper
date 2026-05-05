@@ -10,6 +10,7 @@ class FBlueprintHelperReplaceBlueprintGraphService;
 class FBlueprintHelperPatchBlueprintGraphService;
 class FBlueprintHelperMergeBlueprintGraphService;
 class FBlueprintHelperBlueprintVariableService;
+class FBlueprintHelperBlueprintStructureService;
 class FBlueprintHelperAssetFactoryService;
 class FBlueprintHelperComponentService;
 class FBlueprintHelperClassSettingsService;
@@ -54,6 +55,7 @@ public:
 		const FBlueprintHelperPatchBlueprintGraphService& InPatchGraphService,
 		const FBlueprintHelperMergeBlueprintGraphService& InMergeGraphService,
 		const FBlueprintHelperBlueprintVariableService& InVariableService,
+		const FBlueprintHelperBlueprintStructureService& InStructureService,
 		const FBlueprintHelperAssetFactoryService& InAssetFactoryService,
 		const FBlueprintHelperComponentService& InComponentService,
 		const FBlueprintHelperClassSettingsService& InClassSettingsService,
@@ -113,6 +115,7 @@ private:
 	const FBlueprintHelperPatchBlueprintGraphService& PatchGraphService;
 	const FBlueprintHelperMergeBlueprintGraphService& MergeGraphService;
 	const FBlueprintHelperBlueprintVariableService& VariableService;
+	const FBlueprintHelperBlueprintStructureService& StructureService;
 	const FBlueprintHelperAssetFactoryService& AssetFactoryService;
 	const FBlueprintHelperComponentService& ComponentService;
 	const FBlueprintHelperClassSettingsService& ClassSettingsService;

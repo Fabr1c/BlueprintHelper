@@ -7,6 +7,8 @@ import {
   blueprintVariableTaskSpecFixtures,
   graphWriteAppendExpectedTaskPlanFixture,
   graphWriteAppendTaskSpecFixture,
+  graphWriteExpectedTaskPlanFixtures,
+  graphWriteTaskSpecFixtures,
   p1TaskPlanFixtures,
   p1TaskSpecFixtures,
 } from './task-protocol.fixtures.js';
@@ -17,6 +19,27 @@ describe('Task protocol fixtures', () => {
     const taskPlan = compileTaskSpecToTaskPlan(taskSpec);
 
     assert.deepEqual(taskPlan, graphWriteAppendExpectedTaskPlanFixture);
+  });
+
+  it('parses and compiles canonical GraphWrite TaskSpec fixtures into structured IR TaskPlans', () => {
+    assert.equal(graphWriteTaskSpecFixtures.length, graphWriteExpectedTaskPlanFixtures.length);
+
+    for (let index = 0; index < graphWriteTaskSpecFixtures.length; index++) {
+      const taskSpec = TaskSpecSchema.parse(graphWriteTaskSpecFixtures[index]);
+      const expectedTaskPlan = graphWriteExpectedTaskPlanFixtures[index];
+      const taskPlan = compileTaskSpecToTaskPlan(taskSpec);
+
+      assert.deepEqual(taskPlan, expectedTaskPlan);
+      assert.doesNotThrow(() => TaskPlanSchema.parse(taskPlan));
+      for (const step of taskPlan.steps) {
+        assert.ok('capability' in step);
+        assert.ok(
+          step.capability === 'graph_write' || step.capability === 'blueprint_signature',
+          `${taskPlan.task_name}.${step.step_id}.${step.capability}`,
+        );
+        assert.equal(Object.hasOwn(step as Record<string, unknown>, 'operation'), false, taskPlan.task_name);
+      }
+    }
   });
 
   it('uses should_compile and should_save instead of legacy compile and save fields', () => {

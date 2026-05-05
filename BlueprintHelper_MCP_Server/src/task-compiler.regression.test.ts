@@ -105,6 +105,115 @@ function makeVariableTaskSpec(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function makeCompositePhysicsDoorTaskSpec(overrides: Record<string, unknown> = {}) {
+  return {
+    schema: 'BlueprintHelper.TaskSpec.v1',
+    context_id: 'ctx_physics_door',
+    task_type: 'create_blueprint_feature',
+    feature_name: 'PhysicsDoor',
+    target: {
+      asset_path: '/Game/BlueprintHelperTest/Door/BP_BH_PhysicsDoor',
+      target_type: 'blueprint',
+    },
+    scope_policy: {
+      prefer_new_graph: true,
+      graph_name: 'EG_PhysicsDoor',
+      allow_modify_user_nodes: false,
+      allow_create_assets: false,
+    },
+    asset_policy: {
+      if_target_asset_missing: 'fail',
+      if_referenced_asset_missing: 'fail',
+      if_component_exists: 'reuse_if_type_matches',
+    },
+    resources: {
+      static_meshes: {
+        door_mesh: '/Game/BlueprintHelperTest/Meshes/SM_Door',
+      },
+    },
+    components: [
+      {
+        name: 'SceneRoot',
+        class: 'SceneComponent',
+        set_as_root: true,
+      },
+      {
+        name: 'DoorMesh',
+        class: 'StaticMeshComponent',
+        attach_to: 'SceneRoot',
+        properties: {
+          StaticMesh: '$resources.static_meshes.door_mesh',
+          Mobility: 'Movable',
+          CollisionProfileName: 'PhysicsActor',
+          'BodyInstance.bSimulatePhysics': true,
+        },
+      },
+    ],
+    variables: [
+      {
+        name: 'bDoorOpen',
+        type: 'bool',
+        default: false,
+        category: 'Door',
+      },
+      {
+        name: 'OpenImpulse',
+        type: 'float',
+        default: 50000.0,
+        category: 'Door',
+      },
+    ],
+    class_settings: {
+      implemented_interfaces: [
+        '/Game/BlueprintHelperTest/Interaction/BPI_BH_Interactable',
+      ],
+    },
+    behavior: {
+      graph_strategy: 'append_new_owned_graph',
+      entries: [
+        {
+          entry_type: 'custom_event',
+          name: 'OpenPhysicsDoor',
+          body: {
+            schema: 'BlueprintLogicSpec.v1',
+            statements: [
+              {
+                kind: 'set_member_variable',
+                name: 'bDoorOpen',
+                value: {
+                  kind: 'literal',
+                  value_type: 'bool',
+                  value: true,
+                },
+              },
+              {
+                kind: 'call_function',
+                name: 'DoorMesh.AddAngularImpulseInDegrees',
+                args: {
+                  VelChange: {
+                    kind: 'literal',
+                    value_type: 'bool',
+                    value: true,
+                  },
+                },
+              },
+            ],
+          },
+        },
+      ],
+    },
+    execution_policy: {
+      dry_run_mode: 'full',
+      on_missing_capability: 'stop_and_report',
+    },
+    validation: {
+      should_compile: true,
+      should_save: false,
+    },
+    ...overrides,
+  };
+}
+
 describe('TaskSpec schema validation', () => {
   it('rejects missing schema', () => {
     const spec = makeTaskSpec();
@@ -182,15 +291,176 @@ describe('TaskSpec schema validation', () => {
       preview_id: 'preview_test',
       task_type: 'edit_blueprint_graph',
       feature_name: 'DoorFeature',
-      status: 'completed',
+      status: 'partial_failure',
       target_assets: ['/Game/BP/BP_Door'],
-      steps: [{
-        step_id: 'step_append_graph',
-        operation: 'append_blueprint_graph',
-        status: 'applied',
-      }],
+      steps: [
+        {
+          step_id: 'step_append_graph',
+          operation: 'graph_write',
+          adapter_operation: 'append_blueprint_graph',
+          status: 'failed',
+        },
+        {
+          step_id: 'step_configure_variable',
+          operation: 'blueprint_variable',
+          depends_on: ['step_append_graph'],
+          status: 'blocked',
+          blocked_by_step_ids: ['step_append_graph'],
+          blocked_reason: 'dependency_failed',
+          error: null,
+        },
+        {
+          step_id: 'step_create_asset',
+          operation: 'asset_factory',
+          status: 'completed',
+        },
+      ],
+      recovery: {
+        recommended_action: 'inspect_task_result_then_submit_followup_taskspec',
+        safe_to_retry: false,
+        rollback_available: false,
+        notes: [],
+      },
       bridge_result: {},
     }));
+  });
+});
+
+describe('Composite create_blueprint_feature compiler', () => {
+  it('compiles composite create_blueprint_feature into existing capability TaskPlan steps', () => {
+    const taskPlan = compileTaskSpecToTaskPlan(TaskSpecSchema.parse(makeCompositePhysicsDoorTaskSpec()));
+    const steps = taskPlan.steps as Array<Record<string, any>>;
+
+    assert.equal(taskPlan.task_type, 'create_blueprint_feature');
+    assert.deepEqual(taskPlan.target_assets, ['/Game/BlueprintHelperTest/Door/BP_BH_PhysicsDoor']);
+    assert.deepEqual(
+      steps.map((step) => ('capability' in step ? step['capability'] : step['operation'])),
+      [
+        'blueprint_component',
+        'blueprint_component',
+        'blueprint_component',
+        'blueprint_variable',
+        'blueprint_variable',
+        'blueprint_class_settings',
+        'blueprint_signature',
+        'graph_write',
+      ],
+    );
+
+    assert.equal(steps[0]['write'].ops[0].op, 'add_component');
+    assert.equal(steps[1]['write'].ops[0].op, 'add_component');
+    assert.equal(steps[2]['write'].ops[0].op, 'set_component_properties');
+    assert.deepEqual(steps[2]['depends_on'], ['step_002']);
+    assert.equal(steps[3]['write'].strategy, 'member_variables');
+    assert.equal(steps[3]['write'].ops.length, 2);
+    assert.equal(steps[4]['write'].strategy, 'member_defaults');
+    assert.equal(steps[4]['write'].ops[1].value, 50000);
+    assert.equal(steps[5]['write'].ops[0].op, 'add_implemented_interfaces');
+    assert.equal(steps[6]['write'].ops[0].op, 'ensure_custom_event');
+    assert.equal(steps[7]['target'].graph, 'EG_PhysicsDoor');
+    assert.equal(steps[7]['write'].ops[0].op, 'ensure_entry');
+    assert.deepEqual(steps[7]['depends_on'], ['step_007']);
+  });
+
+  it('compiles composite interface integration through signature and graph_write capability steps', () => {
+    const spec = makeCompositePhysicsDoorTaskSpec({
+      class_settings: undefined,
+      integration: {
+        interface: {
+          interface_asset: '/Game/BlueprintHelperTest/Interaction/BPI_BH_Interactable',
+          function: 'Interact',
+          implementation: {
+            call: 'OpenPhysicsDoor',
+          },
+        },
+      },
+    });
+
+    const taskPlan = compileTaskSpecToTaskPlan(TaskSpecSchema.parse(spec));
+    const steps = taskPlan.steps as Array<Record<string, any>>;
+
+    assert.deepEqual(
+      steps.map((step) => step['capability']),
+      [
+        'blueprint_component',
+        'blueprint_component',
+        'blueprint_component',
+        'blueprint_variable',
+        'blueprint_variable',
+        'blueprint_signature',
+        'graph_write',
+        'blueprint_class_settings',
+        'blueprint_signature',
+        'graph_write',
+      ],
+    );
+    assert.equal(steps[5]['write'].ops[0].op, 'ensure_custom_event');
+    assert.equal(steps[6]['write'].ops[0].op, 'ensure_entry');
+    assert.deepEqual(steps[6]['depends_on'], ['step_006']);
+    assert.deepEqual(steps[7]['write'].ops[0], {
+      op: 'add_implemented_interfaces',
+      interface_paths: ['/Game/BlueprintHelperTest/Interaction/BPI_BH_Interactable'],
+    });
+    assert.deepEqual(steps[8]['write'].ops[0], {
+      op: 'ensure_function',
+      function_name: 'Interact',
+      interface_path: '/Game/BlueprintHelperTest/Interaction/BPI_BH_Interactable',
+      name_collision_policy: 'reuse_if_exists',
+    });
+    assert.deepEqual(steps[8]['depends_on'], ['step_008']);
+    assert.deepEqual(steps[9]['target'], {
+      asset_path: '/Game/BlueprintHelperTest/Door/BP_BH_PhysicsDoor',
+      graph: 'Interact',
+    });
+    assert.deepEqual(steps[9]['depends_on'], ['step_009']);
+    assert.equal(steps[9]['write'].ops[0].op, 'replace_body');
+    assert.equal(steps[9]['write'].ops[0].replace_scope, 'function_body');
+    assert.deepEqual(steps[9]['write'].ops[0].selector, { function_name: 'Interact' });
+    assert.deepEqual(steps[9]['write'].ops[0].replacement.nodes, [
+      {
+        id: 'interface_Interact_stmt_1',
+        kind: 'call',
+        function: 'OpenPhysicsDoor',
+        inputs: {},
+      },
+    ]);
+  });
+
+  it('rejects unsupported composite input integration instead of silently ignoring it', () => {
+    const spec = makeCompositePhysicsDoorTaskSpec({
+      integration: {
+        input: {
+          mode: 'reference_existing_input_action',
+          input_action: '/Game/Input/IA_Interact',
+        },
+      },
+    });
+
+    assert.throws(
+      () => compileTaskSpecToTaskPlan(TaskSpecSchema.parse(spec)),
+      /unsupported composite integration/i,
+    );
+  });
+
+  it('rejects composite property settings that omit value', () => {
+    const spec = makeCompositePhysicsDoorTaskSpec({
+      components: [
+        {
+          name: 'DoorMesh',
+          class: 'StaticMeshComponent',
+          properties: [
+            {
+              property_path: 'Mobility',
+            },
+          ],
+        },
+      ],
+    });
+
+    assert.throws(
+      () => compileTaskSpecToTaskPlan(TaskSpecSchema.parse(spec)),
+      /Property setting requires value/,
+    );
   });
 });
 
@@ -343,6 +613,184 @@ describe('TaskSpec GraphWrite Append compiler', () => {
     );
   });
 
+  it('compiles replace_owned_graph into structured graph_write IR', () => {
+    const spec = makeTaskSpec({
+      behavior: {
+        graph_strategy: 'replace_owned_graph',
+        replace: {
+          scope: 'custom_event_body',
+          selector: {
+            entry_name: 'ToggleDoor',
+            node_path: 'logic.groups[0].entry.node_path',
+          },
+          body: {
+            schema: 'BlueprintLogicSpec.v1',
+            statements: [
+              {
+                kind: 'call_function',
+                name: 'PrintString',
+                args: {
+                  InString: {
+                    kind: 'literal',
+                    value_type: 'string',
+                    value: 'replaced',
+                  },
+                },
+              },
+            ],
+          },
+          options: {
+            strict: true,
+            preserve_layout: false,
+          },
+        },
+      },
+    });
+
+    const plan = compileTaskSpecToTaskPlan(TaskSpecSchema.parse(spec));
+    const step = plan.steps[0];
+
+    assert.ok(step && 'capability' in step);
+    assert.equal(Object.hasOwn(step as Record<string, unknown>, 'operation'), false);
+    assert.equal(step.capability, 'graph_write');
+    assert.equal(step.write.strategy, 'owned_graph_edit');
+    assert.deepEqual(step.write.ops, [
+      {
+        op: 'replace_body',
+        replace_scope: 'custom_event_body',
+        selector: {
+          entry_name: 'ToggleDoor',
+          node_path: 'logic.groups[0].entry.node_path',
+        },
+        replacement: {
+          nodes: [
+            {
+              id: 'replace_stmt_1',
+              kind: 'call',
+              function: 'PrintString',
+              inputs: {
+                InString: 'replaced',
+              },
+            },
+          ],
+          links: [],
+        },
+        options: {
+          strict: true,
+          preserve_layout: false,
+        },
+      },
+    ]);
+  });
+
+  it('compiles patch_owned_graph into structured graph_write IR', () => {
+    const spec = makeTaskSpec({
+      behavior: {
+        graph_strategy: 'patch_owned_graph',
+        patches: [
+          {
+            kind: 'set_pin_default',
+            scope: 'pin_default',
+            target_ref: {
+              graph_id: 'EventGraph',
+              node_ref: 'Branch0',
+              pin_ref: 'Condition',
+            },
+            value: {
+              kind: 'literal',
+              value_type: 'bool',
+              value: true,
+            },
+            expected_old_state: {
+              value: {
+                kind: 'literal',
+                value_type: 'bool',
+                value: false,
+              },
+            },
+          },
+        ],
+      },
+    });
+
+    const plan = compileTaskSpecToTaskPlan(TaskSpecSchema.parse(spec));
+    const step = plan.steps[0];
+
+    assert.ok(step && 'capability' in step);
+    assert.equal(Object.hasOwn(step as Record<string, unknown>, 'operation'), false);
+    assert.deepEqual(step.write.ops, [
+      {
+        op: 'set_pin_default',
+        patch_scope: 'pin_default',
+        patched_ref: {
+          graph_id: 'EventGraph',
+          node_ref: 'Branch0',
+          pin_ref: 'Condition',
+        },
+        patch: {
+          value: true,
+        },
+        expected_old_state: {
+          value: false,
+        },
+      },
+    ]);
+  });
+
+  it('compiles merge_owned_graph into structured graph_write IR', () => {
+    const spec = makeTaskSpec({
+      behavior: {
+        graph_strategy: 'merge_owned_graph',
+        merges: [
+          {
+            kind: 'insert_flow',
+            scope: 'owned_block_call',
+            insert_strategy: 'insert_between',
+            anchor: {
+              node_ref: 'BeginPlay0',
+              pin_ref: 'Then',
+              node_path: 'logic.groups[0].entry.node_path',
+            },
+            inserted: {
+              block_id: 'BH_DoorFeature_ToggleDoor',
+              block_ref: 'block:BH_DoorFeature_ToggleDoor',
+            },
+            sequence_order: [
+              'BeginPlay0',
+              'BH_DoorFeature_ToggleDoor',
+            ],
+          },
+        ],
+      },
+    });
+
+    const plan = compileTaskSpecToTaskPlan(TaskSpecSchema.parse(spec));
+    const step = plan.steps[0];
+
+    assert.ok(step && 'capability' in step);
+    assert.equal(Object.hasOwn(step as Record<string, unknown>, 'operation'), false);
+    assert.deepEqual(step.write.ops, [
+      {
+        op: 'insert_flow',
+        merge_scope: 'owned_block_call',
+        insert_strategy: 'insert_between',
+        anchor: {
+          node_ref: 'BeginPlay0',
+          pin_ref: 'Then',
+          node_path: 'logic.groups[0].entry.node_path',
+        },
+        inserted: {
+          block_id: 'BH_DoorFeature_ToggleDoor',
+          block_ref: 'block:BH_DoorFeature_ToggleDoor',
+        },
+        sequence_order: [
+          'BeginPlay0',
+          'BH_DoorFeature_ToggleDoor',
+        ],
+      },
+    ]);
+  });
+
   it('rejects non-custom-event entries', () => {
     const spec = makeTaskSpec({
       behavior: {
@@ -371,17 +819,21 @@ describe('TaskSpec GraphWrite Append compiler', () => {
   it('compiles call_function statements into structured graph_write IR and lowers to append bridge payload', () => {
     const plan = compileTaskSpecToTaskPlan(TaskSpecSchema.parse(makeTaskSpec()));
     const payload = taskPlanToAppendBridgePayload(plan, true);
-    const step = plan.steps[0];
+    const signatureStep = plan.steps[0] as Record<string, any>;
+    const step = plan.steps[1] as Record<string, any>;
 
     assert.deepEqual(plan.execution_policy, {
       dry_run_mode: 'full',
       should_compile: false,
       should_save: false,
     });
+    assert.equal(signatureStep.capability, 'blueprint_signature');
+    assert.equal(signatureStep.write.ops[0].op, 'ensure_custom_event');
+    assert.equal(Object.hasOwn(signatureStep, 'operation'), false);
     assert.ok(step && 'capability' in step);
-    assert.equal(Object.hasOwn(step as Record<string, unknown>, 'operation'), false);
+    assert.equal(Object.hasOwn(step, 'operation'), false);
     assert.deepEqual(step, {
-      step_id: 'step_001',
+      step_id: 'step_002',
       capability: 'graph_write',
       target: {
         asset_path: '/Game/BP/BP_Door',
@@ -417,6 +869,7 @@ describe('TaskSpec GraphWrite Append compiler', () => {
         allow_modify_user_nodes: false,
         ownership_scope: 'blueprinthelper_owned',
       },
+      depends_on: ['step_001'],
     });
 
     assert.deepEqual(payload, {
@@ -441,7 +894,7 @@ describe('TaskSpec GraphWrite Append compiler', () => {
     });
   });
 
-  it('emits one ensure_entry op per custom_event entry', () => {
+  it('emits signature dependencies before graph_write ensure_entry ops for custom_event entries', () => {
     const spec = makeTaskSpec({
       behavior: {
         graph_strategy: 'append_new_owned_graph',
@@ -489,12 +942,24 @@ describe('TaskSpec GraphWrite Append compiler', () => {
     });
 
     const plan = compileTaskSpecToTaskPlan(TaskSpecSchema.parse(spec));
-    const step = plan.steps[0];
+    const steps = plan.steps as Array<Record<string, unknown>>;
+    const signatureSteps = steps.filter((step) => step.capability === 'blueprint_signature');
+    const graphWriteStep = steps.find((step) => step.capability === 'graph_write');
 
-    assert.ok(step && 'capability' in step);
-    assert.deepEqual(step.write.ops.map((op) => ({
+    assert.deepEqual(signatureSteps.map((step) => ({
+      step_id: step.step_id,
+      strategy: ((step.write as Record<string, unknown>).strategy),
+      op: (((step.write as Record<string, unknown>).ops as Array<Record<string, unknown>>)[0]).op,
+      name: (((step.write as Record<string, unknown>).ops as Array<Record<string, unknown>>)[0]).event_name,
+    })), [
+      { step_id: 'step_001', strategy: 'custom_event_signature', op: 'ensure_custom_event', name: 'ToggleDoor' },
+      { step_id: 'step_002', strategy: 'custom_event_signature', op: 'ensure_custom_event', name: 'CloseDoor' },
+    ]);
+    assert.ok(graphWriteStep);
+    assert.deepEqual((graphWriteStep as Record<string, unknown>).depends_on, ['step_001', 'step_002']);
+    assert.deepEqual(((graphWriteStep.write as Record<string, unknown>).ops as Array<Record<string, unknown>>).map((op) => ({
       op: op.op,
-      name: (op as Record<string, unknown>).name,
+      name: op.name,
     })), [
       { op: 'ensure_entry', name: 'ToggleDoor' },
       { op: 'ensure_entry', name: 'CloseDoor' },

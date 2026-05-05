@@ -25,6 +25,7 @@ def compile_graph_write_append(task_spec: Dict[str, Any], dry_run: bool) -> Dict
     scope_policy = task_spec["scope_policy"]
     execution_policy = task_spec.get("execution_policy", {})
     validation = task_spec.get("validation", {})
+    ops = _compile_graph_write_ops(task_spec["behavior"])
 
     task_plan = {
         "schema": TASK_PLAN_SCHEMA,
@@ -37,44 +38,94 @@ def compile_graph_write_append(task_spec: Dict[str, Any], dry_run: bool) -> Dict
             "should_compile": validation.get("should_compile", False),
             "should_save": validation.get("should_save", False),
         },
-        "steps": [
-            {
-                "step_id": "step_001",
-                "capability": "graph_write",
-                "target": {
-                    "asset_path": target["asset_path"],
-                    "graph": scope_policy["graph_name"],
-                },
-                "write": {
-                    "strategy": "owned_graph_edit",
-                    "ops": [
-                        {
-                            "op": "ensure_entry",
-                            "entry_type": entry["entry_type"],
-                            "name": entry["name"],
-                            "body": entry["body"],
-                        }
-                        for entry in task_spec["behavior"]["entries"]
-                    ],
-                },
-                "constraints": {
-                    "allow_modify_user_nodes": scope_policy["allow_modify_user_nodes"],
-                    "ownership_scope": "blueprinthelper_owned",
-                },
-            },
-        ],
+        "steps": _make_graph_write_task_plan_steps(task_spec, ops),
     }
 
     return {
         "schema": TASK_COMPILER_RESULT_SCHEMA,
         "task_plan": _omit_none_deep(task_plan),
-        "bridge_payload": task_plan_to_append_bridge_payload(task_plan, dry_run),
+        "bridge_payload": (
+            task_plan_to_append_bridge_payload(task_plan, dry_run)
+            if task_spec["behavior"]["graph_strategy"] == "append_new_owned_graph"
+            else {"task_plan": _omit_none_deep(task_plan)}
+        ),
         "task_plan_summary": summarize_task_plan(task_plan),
     }
 
 
+def _make_graph_write_task_plan_steps(task_spec: Dict[str, Any], ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    target = task_spec["target"]
+    scope_policy = task_spec["scope_policy"]
+    strategy = task_spec["behavior"]["graph_strategy"]
+    if strategy == "append_new_owned_graph":
+        signature_steps = []
+        for index, op in enumerate([
+            op for op in ops
+            if op.get("op") == "ensure_entry" and op.get("entry_type") == "custom_event"
+        ]):
+            signature_steps.append({
+                "step_id": f"step_{index + 1:03d}",
+                "capability": "blueprint_signature",
+                "target": {
+                    "asset_path": target["asset_path"],
+                },
+                "write": {
+                    "strategy": "custom_event_signature",
+                    "ops": [{
+                        "op": "ensure_custom_event",
+                        "event_name": op["name"],
+                        "graph_name": scope_policy["graph_name"],
+                        "name_collision_policy": "reuse_if_exists",
+                    }],
+                },
+            })
+
+        graph_write_step = {
+            "step_id": f"step_{len(signature_steps) + 1:03d}",
+            "capability": "graph_write",
+            "target": {
+                "asset_path": target["asset_path"],
+                "graph": scope_policy["graph_name"],
+            },
+            "write": {
+                "strategy": "owned_graph_edit",
+                "ops": ops,
+            },
+            "constraints": {
+                "allow_modify_user_nodes": scope_policy["allow_modify_user_nodes"],
+                "ownership_scope": "blueprinthelper_owned",
+            },
+        }
+        if signature_steps:
+            graph_write_step["depends_on"] = [step["step_id"] for step in signature_steps]
+        return signature_steps + [graph_write_step]
+
+    op_batches = [ops] if strategy == "append_new_owned_graph" else [[op] for op in ops]
+    return [
+        {
+            "step_id": f"step_{index + 1:03d}",
+            "capability": "graph_write",
+            "target": {
+                "asset_path": target["asset_path"],
+                "graph": scope_policy["graph_name"],
+            },
+            "write": {
+                "strategy": "owned_graph_edit",
+                "ops": batch,
+            },
+            "constraints": {
+                "allow_modify_user_nodes": scope_policy["allow_modify_user_nodes"],
+                "ownership_scope": "blueprinthelper_owned",
+            },
+        }
+        for index, batch in enumerate(op_batches)
+    ]
+
+
 def compile_task_spec(task_spec: Dict[str, Any], dry_run: bool) -> Dict[str, Any]:
     task_type = task_spec.get("task_type")
+    if task_type == "create_blueprint_feature":
+        return compile_blueprint_feature(task_spec, dry_run)
     if task_type == "edit_blueprint_graph":
         return compile_graph_write_append(task_spec, dry_run)
     if task_type == "edit_blueprint_variables":
@@ -91,6 +142,53 @@ def compile_task_spec(task_spec: Dict[str, Any], dry_run: bool) -> Dict[str, Any
             "message": "Use a supported BlueprintHelper TaskSpec task_type.",
         }],
     )
+
+
+def compile_blueprint_feature(task_spec: Dict[str, Any], dry_run: bool) -> Dict[str, Any]:
+    _assert_supported_composite_blueprint_feature_task_spec(task_spec)
+
+    steps: List[Dict[str, Any]] = []
+    steps.extend(_compile_composite_component_steps(task_spec, dry_run))
+    steps.extend(_compile_composite_variable_steps(task_spec, dry_run))
+    steps.extend(_compile_composite_class_settings_steps(task_spec, dry_run))
+    steps.extend(_compile_composite_graph_write_steps(task_spec, dry_run))
+    steps.extend(_compile_composite_integration_steps(task_spec, dry_run))
+
+    if not steps:
+        raise TaskSpecCompileError(
+            "taskspec_semantic_invalid",
+            "create_blueprint_feature did not produce any TaskPlan steps.",
+            [{
+                "code": "empty_composite_feature",
+                "path": "task_spec",
+                "message": "Provide components, variables, class_settings, or behavior.",
+            }],
+        )
+
+    execution_policy = task_spec.get("execution_policy", {})
+    validation = task_spec.get("validation", {})
+    task_plan = {
+        "schema": TASK_PLAN_SCHEMA,
+        "task_name": task_spec.get("feature_name"),
+        "task_type": task_spec["task_type"],
+        "context_id": task_spec.get("context_id"),
+        "target_assets": [_target_asset_path(task_spec)],
+        "execution_policy": {
+            "dry_run_mode": execution_policy.get("dry_run_mode", "full") if isinstance(execution_policy, dict) else "full",
+            "should_compile": validation.get("should_compile", False) if isinstance(validation, dict) else False,
+            "should_save": validation.get("should_save", False) if isinstance(validation, dict) else False,
+        },
+        "steps": _renumber_steps(steps),
+    }
+
+    return {
+        "schema": TASK_COMPILER_RESULT_SCHEMA,
+        "task_plan": _omit_none_deep(task_plan),
+        "bridge_payload": {
+            "task_plan": _omit_none_deep(task_plan),
+        },
+        "task_plan_summary": summarize_task_plan(task_plan),
+    }
 
 
 def compile_blueprint_variables(task_spec: Dict[str, Any], dry_run: bool) -> Dict[str, Any]:
@@ -143,24 +241,515 @@ def compile_blueprint_variables(task_spec: Dict[str, Any], dry_run: bool) -> Dic
     }
 
 
+def _assert_supported_composite_blueprint_feature_task_spec(task_spec: Dict[str, Any]) -> None:
+    _assert_no_legacy_validation_fields(task_spec)
+    integration = task_spec.get("integration")
+    if isinstance(integration, dict) and integration:
+        unsupported_keys = [key for key in integration.keys() if key != "interface"]
+        if unsupported_keys:
+            raise TaskSpecCompileError(
+                "unsupported_composite_integration",
+                "Unsupported composite integration fields.",
+                [{
+                    "code": "unsupported_composite_integration",
+                    "path": f"integration.{unsupported_keys[0]}",
+                    "message": "Input binding and other integration fields need dedicated capability clusters; keep only integration.interface for this slice.",
+                }],
+            )
+        if not isinstance(integration.get("interface"), dict):
+            raise TaskSpecCompileError(
+                "unsupported_composite_integration",
+                "Unsupported composite integration fields.",
+                [{
+                    "code": "unsupported_composite_integration",
+                    "path": "integration",
+                    "message": "integration currently supports only an interface object.",
+                }],
+            )
+
+    if integration is not None and not isinstance(integration, dict):
+        raise TaskSpecCompileError(
+            "unsupported_composite_integration",
+            "Unsupported composite integration fields.",
+            [{
+                "code": "unsupported_composite_integration",
+                "path": "integration",
+                "message": "integration currently supports only an interface object.",
+            }],
+        )
+
+    scope_policy = task_spec.get("scope_policy")
+    if isinstance(scope_policy, dict) and scope_policy.get("allow_create_assets") is True:
+        raise TaskSpecCompileError(
+            "unsupported_composite_asset_creation",
+            "Composite asset creation is not supported in this slice.",
+            [{
+                "code": "unsupported_composite_asset_creation",
+                "path": "scope_policy.allow_create_assets",
+                "message": "Set allow_create_assets=false and reference existing assets, or split asset creation into create_asset TaskSpecs.",
+            }],
+        )
+
+
+def _compile_composite_component_steps(task_spec: Dict[str, Any], dry_run: bool) -> List[Dict[str, Any]]:
+    components = task_spec.get("components")
+    if not isinstance(components, list) or not components:
+        return []
+
+    asset_policy = task_spec.get("asset_policy") if isinstance(task_spec.get("asset_policy"), dict) else {}
+    name_collision_policy = _normalize_component_collision_policy(asset_policy.get("if_component_exists"))
+    changes: List[Dict[str, Any]] = []
+    for index, raw_component in enumerate(components):
+        path = f"components[{index}]"
+        if not isinstance(raw_component, dict):
+            raise TaskSpecCompileError(
+                "taskspec_semantic_invalid",
+                "Component entry must be an object.",
+                [{"code": "invalid_component", "path": path, "message": "Component entry must be an object."}],
+            )
+        component = raw_component
+        add_change = _omit_none({
+            "kind": "ensure_component_present",
+            "name": _required_string(component, "name", f"{path}.name"),
+            "class": _required_string(component, "class", f"{path}.class"),
+            "attach": _composite_component_attach(component),
+            "on_name_conflict": (
+                _normalize_component_collision_policy(component.get("on_name_conflict"))
+                or name_collision_policy
+            ),
+        })
+        changes.append(add_change)
+
+        settings = _composite_settings_array(component.get("properties"), f"{path}.properties", task_spec)
+        if settings:
+            changes.append({
+                "kind": "configure_component",
+                "name": add_change["name"],
+                "properties": settings,
+            })
+
+    sub_spec = _composite_sub_spec(task_spec, "edit_blueprint_components", {
+        "component_strategy": "component_tree",
+        "changes": changes,
+    })
+    return compile_p1_task_spec(sub_spec, dry_run)["task_plan"]["steps"]
+
+
+def _compile_composite_variable_steps(task_spec: Dict[str, Any], dry_run: bool) -> List[Dict[str, Any]]:
+    variables = task_spec.get("variables")
+    if not isinstance(variables, list) or not variables:
+        return []
+
+    variable_changes: List[Dict[str, Any]] = []
+    default_changes: List[Dict[str, Any]] = []
+    for index, raw_variable in enumerate(variables):
+        path = f"variables[{index}]"
+        if not isinstance(raw_variable, dict):
+            raise TaskSpecCompileError(
+                "taskspec_semantic_invalid",
+                "Variable entry must be an object.",
+                [{"code": "invalid_variable", "path": path, "message": "Variable entry must be an object."}],
+            )
+        variable = raw_variable
+        name = _required_string(variable, "name", f"{path}.name")
+        variable_changes.append(_omit_none({
+            "kind": "ensure_member_variable",
+            "name": name,
+            "pin_type": _composite_variable_pin_type(variable, path),
+            "category": variable.get("category"),
+            "tooltip": variable.get("tooltip"),
+            "flags": variable.get("flags"),
+            "metadata": variable.get("metadata"),
+        }))
+        if "default" in variable:
+            default_changes.append({
+                "kind": "set_member_default",
+                "name": name,
+                "value": _literal_value(variable.get("default")),
+            })
+
+    steps: List[Dict[str, Any]] = []
+    if variable_changes:
+        steps.extend(compile_blueprint_variables(_composite_sub_spec(task_spec, "edit_blueprint_variables", {
+            "variable_strategy": "member_variables",
+            "changes": variable_changes,
+        }), dry_run)["task_plan"]["steps"])
+    if default_changes:
+        steps.extend(compile_blueprint_variables(_composite_sub_spec(task_spec, "edit_blueprint_variables", {
+            "variable_strategy": "member_defaults",
+            "defaults": default_changes,
+        }), dry_run)["task_plan"]["steps"])
+    return steps
+
+
+def _compile_composite_class_settings_steps(task_spec: Dict[str, Any], dry_run: bool) -> List[Dict[str, Any]]:
+    class_settings = task_spec.get("class_settings")
+    if not isinstance(class_settings, dict):
+        return []
+
+    behavior: Dict[str, Any] = {
+        "class_settings_strategy": "class_settings",
+    }
+    interfaces = class_settings.get("implemented_interfaces")
+    if isinstance(interfaces, list) and interfaces:
+        behavior["interfaces"] = {
+            "ensure_present": [
+                _resolve_composite_reference(value, task_spec)
+                for value in interfaces
+            ],
+        }
+
+    class_defaults = _composite_settings_array(class_settings.get("class_defaults"), "class_settings.class_defaults", task_spec)
+    if class_defaults:
+        behavior["class_defaults"] = class_defaults
+
+    if len(behavior) == 1:
+        return []
+    return compile_p1_task_spec(_composite_sub_spec(task_spec, "edit_blueprint_class_settings", behavior), dry_run)["task_plan"]["steps"]
+
+
+def _compile_composite_graph_write_steps(task_spec: Dict[str, Any], dry_run: bool) -> List[Dict[str, Any]]:
+    behavior = task_spec.get("behavior")
+    if not isinstance(behavior, dict):
+        return []
+
+    scope_policy = task_spec.get("scope_policy")
+    if not isinstance(scope_policy, dict):
+        raise TaskSpecCompileError(
+            "taskspec_semantic_invalid",
+            "create_blueprint_feature behavior requires scope_policy.",
+            [{"code": "missing_scope_policy", "path": "scope_policy", "message": "Provide scope_policy.graph_name and allow_modify_user_nodes."}],
+        )
+
+    graph_spec = _composite_sub_spec(task_spec, "edit_blueprint_graph", behavior)
+    graph_spec["scope_policy"] = {
+        "graph_name": _required_string(scope_policy, "graph_name", "scope_policy.graph_name"),
+        "allow_modify_user_nodes": scope_policy.get("allow_modify_user_nodes") is True,
+    }
+    return compile_graph_write_append(graph_spec, dry_run)["task_plan"]["steps"]
+
+
+def _compile_composite_integration_steps(task_spec: Dict[str, Any], dry_run: bool) -> List[Dict[str, Any]]:
+    integration = task_spec.get("integration")
+    if not isinstance(integration, dict):
+        return []
+    interface_integration = integration.get("interface")
+    if not isinstance(interface_integration, dict):
+        return []
+
+    interface_path = _resolve_composite_reference(
+        _required_string(interface_integration, "interface_asset", "integration.interface.interface_asset"),
+        task_spec,
+    )
+    function_name = _required_string(interface_integration, "function", "integration.interface.function")
+
+    steps: List[Dict[str, Any]] = []
+    class_settings_step_id = None
+    if not _composite_class_settings_contains_interface(task_spec, interface_path):
+        class_settings_step = _make_capability_step(
+            len(steps) + 1,
+            "blueprint_class_settings",
+            _target_asset_path(task_spec),
+            "class_settings",
+            [{
+                "op": "add_implemented_interfaces",
+                "interface_paths": [interface_path],
+            }],
+        )
+        class_settings_step_id = class_settings_step["step_id"]
+        steps.append(class_settings_step)
+
+    signature_step = _make_capability_step(
+        len(steps) + 1,
+        "blueprint_signature",
+        _target_asset_path(task_spec),
+        "function_signature",
+        [{
+            "op": "ensure_function",
+            "function_name": function_name,
+            "interface_path": interface_path,
+            "name_collision_policy": "reuse_if_exists",
+        }],
+    )
+    if class_settings_step_id:
+        signature_step["depends_on"] = [class_settings_step_id]
+    steps.append(signature_step)
+
+    steps.append({
+        "step_id": f"step_{len(steps) + 1:03d}",
+        "capability": "graph_write",
+        "target": {
+            "asset_path": _target_asset_path(task_spec),
+            "graph": function_name,
+        },
+        "write": {
+            "strategy": "owned_graph_edit",
+            "ops": [
+                {
+                    "op": "replace_body",
+                    "replace_scope": "function_body",
+                    "selector": {
+                        "function_name": function_name,
+                    },
+                    "replacement": _compile_composite_interface_implementation_replacement(interface_integration, function_name),
+                    "options": {
+                        "strict": True,
+                        "preserve_layout": False,
+                    },
+                },
+            ],
+        },
+        "constraints": {
+            "allow_modify_user_nodes": False,
+            "ownership_scope": "blueprinthelper_owned",
+        },
+        "depends_on": [signature_step["step_id"]],
+    })
+    return steps
+
+
+def _make_capability_step(index: int, capability: str, asset_path: str, strategy: str, ops: List[Dict[str, Any]]) -> Dict[str, Any]:
+    return {
+        "step_id": f"step_{index:03d}",
+        "capability": capability,
+        "target": {
+            "asset_path": asset_path,
+        },
+        "write": {
+            "strategy": strategy,
+            "ops": ops,
+        },
+    }
+
+
+def _composite_class_settings_contains_interface(task_spec: Dict[str, Any], interface_path: str) -> bool:
+    class_settings = task_spec.get("class_settings")
+    if not isinstance(class_settings, dict):
+        return False
+    interfaces = class_settings.get("implemented_interfaces")
+    if not isinstance(interfaces, list):
+        return False
+    return any(
+        isinstance(value, str) and _resolve_composite_reference(value, task_spec) == interface_path
+        for value in interfaces
+    )
+
+
+def _compile_composite_interface_implementation_replacement(
+    interface_integration: Dict[str, Any],
+    function_name: str,
+) -> Dict[str, Any]:
+    body = _composite_interface_implementation_body(interface_integration, function_name)
+    _validate_supported_statements(body["statements"], "integration.interface.implementation.body.statements")
+    return _compile_logic_body_to_import_payload(
+        body,
+        f"interface_{function_name}",
+        "integration.interface.implementation.body",
+    )
+
+
+def _composite_interface_implementation_body(
+    interface_integration: Dict[str, Any],
+    function_name: str,
+) -> Dict[str, List[Dict[str, Any]]]:
+    implementation = _required_object(interface_integration, "implementation", "integration.interface.implementation")
+    if isinstance(implementation.get("body"), dict):
+        return _required_logic_body(implementation, "body", "integration.interface.implementation.body")
+    if isinstance(implementation.get("statements"), list):
+        return {"statements": implementation["statements"]}
+    if isinstance(implementation.get("call"), str) and implementation["call"].strip():
+        return {
+            "statements": [
+                {
+                    "kind": "call_function",
+                    "name": implementation["call"],
+                    "args": implementation.get("args"),
+                },
+            ],
+        }
+    raise TaskSpecCompileError(
+        "taskspec_semantic_invalid",
+        "integration.interface.implementation must provide call, body, or statements.",
+        [{
+            "code": "missing_interface_implementation",
+            "path": "integration.interface.implementation",
+            "message": f"Provide implementation.call=\"{function_name}\" target logic or a BlueprintLogicSpec body.",
+        }],
+    )
+
+
+def _composite_sub_spec(task_spec: Dict[str, Any], task_type: str, behavior: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "schema": task_spec.get("schema", "BlueprintHelper.TaskSpec.v1"),
+        "context_id": task_spec.get("context_id"),
+        "task_type": task_type,
+        "feature_name": task_spec.get("feature_name"),
+        "target": task_spec.get("target"),
+        "behavior": behavior,
+        "execution_policy": task_spec.get("execution_policy", {}),
+        "validation": task_spec.get("validation", {}),
+    }
+
+
+def _renumber_steps(steps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    old_ids = [step.get("step_id") for step in steps]
+    new_ids = [f"step_{index + 1:03d}" for index, _ in enumerate(steps)]
+    out = []
+    for index, step in enumerate(steps):
+        copied = dict(step)
+        copied["step_id"] = new_ids[index]
+        depends_on = copied.get("depends_on")
+        if isinstance(depends_on, list):
+            mapped_depends_on = []
+            for step_id in depends_on:
+                mapped_id = step_id
+                for candidate in range(index - 1, -1, -1):
+                    if old_ids[candidate] == step_id:
+                        mapped_id = new_ids[candidate]
+                        break
+                mapped_depends_on.append(mapped_id)
+            copied["depends_on"] = mapped_depends_on
+        out.append(copied)
+    return out
+
+
+def _composite_component_attach(component: Dict[str, Any]) -> Dict[str, Any] | None:
+    attach: Dict[str, Any] = {}
+    raw_attach = component.get("attach")
+    if isinstance(raw_attach, dict):
+        attach.update(raw_attach)
+    if isinstance(component.get("attach_to"), str) and component["attach_to"]:
+        attach["parent"] = component["attach_to"]
+    if isinstance(component.get("attach_rule"), str) and component["attach_rule"]:
+        attach["rule"] = component["attach_rule"]
+    return attach or None
+
+
+def _normalize_component_collision_policy(value: Any) -> str | None:
+    if value in {"reuse_if_type_matches", "reuse_if_exists"}:
+        return "reuse_if_exists"
+    if value == "fail_if_exists":
+        return "fail_if_exists"
+    return None
+
+
+def _composite_variable_pin_type(variable: Dict[str, Any], path: str) -> Dict[str, Any]:
+    if isinstance(variable.get("pin_type"), dict):
+        return variable["pin_type"]
+    if isinstance(variable.get("variable_type"), dict):
+        return variable["variable_type"]
+    if isinstance(variable.get("type"), str) and variable["type"].strip():
+        return {"category": variable["type"]}
+    raise TaskSpecCompileError(
+        "taskspec_semantic_invalid",
+        "Blueprint variable type is required.",
+        [{
+            "code": "missing_variable_pin_type",
+            "path": f"{path}.type",
+            "message": 'Provide type or variable_type, for example {"category":"bool"}.',
+        }],
+    )
+
+
+def _composite_settings_array(raw_settings: Any, path: str, task_spec: Dict[str, Any]) -> List[Dict[str, Any]]:
+    if raw_settings is None:
+        return []
+    if isinstance(raw_settings, list):
+        settings = []
+        for index, raw_setting in enumerate(raw_settings):
+            setting_path = f"{path}[{index}]"
+            if not isinstance(raw_setting, dict):
+                raise TaskSpecCompileError(
+                    "taskspec_semantic_invalid",
+                    "Property setting must be an object.",
+                    [{"code": "invalid_property_setting", "path": setting_path, "message": "Use {property_path, value}."}],
+            )
+            property_path = _required_string(raw_setting, "property_path", f"{setting_path}.property_path")
+            if "value" not in raw_setting:
+                raise TaskSpecCompileError(
+                    "taskspec_semantic_invalid",
+                    "Property setting requires value.",
+                    [{"code": "missing_property_value", "path": f"{setting_path}.value", "message": "Provide value."}],
+                )
+            settings.append({
+                **raw_setting,
+                "property_path": property_path,
+                "value": _resolve_composite_value(raw_setting.get("value"), task_spec),
+            })
+        return settings
+    if isinstance(raw_settings, dict):
+        return [
+            {
+                "property_path": key,
+                "value": _resolve_composite_value(value, task_spec),
+            }
+            for key, value in raw_settings.items()
+        ]
+    raise TaskSpecCompileError(
+        "taskspec_semantic_invalid",
+        f"{path} must be an object or array.",
+        [{"code": "invalid_property_settings", "path": path, "message": "Use an object map or a settings array."}],
+    )
+
+
+def _resolve_composite_value(value: Any, task_spec: Dict[str, Any]) -> Any:
+    if isinstance(value, str):
+        return _resolve_composite_reference(value, task_spec)
+    if isinstance(value, list):
+        return [_resolve_composite_value(item, task_spec) for item in value]
+    if isinstance(value, dict):
+        if value.get("kind") == "literal":
+            return _literal_value(value)
+        return {
+            key: _resolve_composite_value(item, task_spec)
+            for key, item in value.items()
+        }
+    return value
+
+
+def _resolve_composite_reference(value: Any, task_spec: Dict[str, Any]) -> Any:
+    if not isinstance(value, str) or not value.startswith("$resources."):
+        return value
+    resources = task_spec.get("resources")
+    if not isinstance(resources, dict):
+        return value
+    cursor: Any = resources
+    for segment in value[len("$resources."):].split("."):
+        if not isinstance(cursor, dict) or segment not in cursor:
+            return value
+        cursor = cursor[segment]
+    if isinstance(cursor, str):
+        return cursor
+    if isinstance(cursor, dict) and isinstance(cursor.get("asset_path"), str):
+        return cursor["asset_path"]
+    return value
+
+
 def task_plan_to_append_bridge_payload(task_plan: Dict[str, Any], dry_run: bool) -> Dict[str, Any]:
     steps = task_plan.get("steps", [])
-    first_step = steps[0] if steps else None
-    if not first_step:
+    append_step = next(
+        (
+            step for step in steps
+            if isinstance(step, dict)
+            and (step.get("capability") == "graph_write" or step.get("operation") == "append_blueprint_graph")
+        ),
+        None,
+    )
+    if not append_step:
         raise TaskSpecCompileError(
             "unsupported_taskplan_operation",
             "TaskPlan does not contain an append_blueprint_graph step.",
             [{
                 "code": "unsupported_taskplan_operation",
-                "path": "steps[0]",
-                "message": "TaskPlan requires a first GraphWrite step.",
+                "path": "steps",
+                "message": "TaskPlan requires a GraphWrite append step.",
             }],
         )
 
-    if first_step.get("capability") == "graph_write":
-        return _graph_write_taskplan_to_append_bridge_payload(task_plan, first_step, dry_run)
+    if append_step.get("capability") == "graph_write":
+        return _graph_write_taskplan_to_append_bridge_payload(task_plan, append_step, dry_run)
 
-    if first_step.get("operation") != "append_blueprint_graph":
+    if append_step.get("operation") != "append_blueprint_graph":
         raise TaskSpecCompileError(
             "unsupported_taskplan_operation",
             "TaskPlan does not contain an append_blueprint_graph step.",
@@ -171,11 +760,11 @@ def task_plan_to_append_bridge_payload(task_plan: Dict[str, Any], dry_run: bool)
             }],
         )
 
-    args = first_step["args"]
+    args = append_step["args"]
     return _omit_none({
         "target": {
-            "asset_path": first_step["target"]["asset_path"],
-            "graph": first_step["target"]["graph"],
+            "asset_path": append_step["target"]["asset_path"],
+            "graph": append_step["target"]["graph"],
         },
         "feature_name": args.get("feature_name"),
         "nodes": args["nodes"],
@@ -227,14 +816,17 @@ def summarize_task_plan(task_plan: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _summarize_task_plan_step(step: Dict[str, Any]) -> Dict[str, Any]:
-    if step.get("capability") in {"graph_write", "blueprint_variable"}:
-        return {
+    if step.get("capability") and isinstance(step.get("write"), dict):
+        summary = {
             "step_id": step["step_id"],
             "capability": step["capability"],
             "target": step["target"],
             "strategy": step["write"]["strategy"],
             "ops": len(step["write"]["ops"]),
         }
+        if isinstance(step.get("depends_on"), list):
+            summary["depends_on"] = list(step["depends_on"])
+        return summary
 
     args = step.get("args", {})
     replacement = args.get("replacement", {}) if isinstance(args, dict) else {}
@@ -268,6 +860,9 @@ def _validate_graph_write_step(step: Any, path: str) -> None:
     _required_string(step, "step_id", f"{path}.step_id")
     if step.get("capability") == "graph_write":
         _validate_graph_write_ir_step(step, path)
+        return
+    if step.get("capability") == "blueprint_signature":
+        _validate_blueprint_signature_step(step, path)
         return
 
     operation = _required_string(step, "operation", f"{path}.operation")
@@ -340,6 +935,36 @@ def _validate_graph_write_ir_step(step: Dict[str, Any], path: str) -> None:
             f"{path}.constraints.allow_modify_user_nodes",
         )
     _required_string(constraints, "ownership_scope", f"{path}.constraints.ownership_scope")
+
+
+def _validate_blueprint_signature_step(step: Dict[str, Any], path: str) -> None:
+    if "operation" in step:
+        _raise_taskplan_invalid(
+            "unsupported_signature_operation_field",
+            "blueprint_signature IR TaskPlan steps use capability/write; adapter operation fields are runtime lowering details.",
+            f"{path}.operation",
+        )
+
+    target = step.get("target")
+    if not isinstance(target, dict):
+        _raise_taskplan_invalid("missing_taskplan_step_target", "TaskPlan step requires target.", f"{path}.target")
+    _required_string(target, "asset_path", f"{path}.target.asset_path")
+
+    write = step.get("write")
+    if not isinstance(write, dict):
+        _raise_taskplan_invalid("missing_signature_write", "Blueprint signature TaskPlan step requires write.", f"{path}.write")
+    strategy = _required_string(write, "strategy", f"{path}.write.strategy")
+    if strategy not in ("function_signature", "custom_event_signature"):
+        _raise_taskplan_invalid(
+            "unsupported_signature_strategy",
+            f"Unsupported blueprint_signature strategy: {strategy}.",
+            f"{path}.write.strategy",
+        )
+    ops = _required_list(write, "ops", f"{path}.write.ops", min_length=1)
+    for index, op in enumerate(ops):
+        if not isinstance(op, dict):
+            _raise_taskplan_invalid("invalid_signature_op", "Blueprint signature op must be an object.", f"{path}.write.ops[{index}]")
+        _required_string(op, "op", f"{path}.write.ops[{index}].op")
 
 
 def _graph_write_taskplan_to_append_bridge_payload(
@@ -471,6 +1096,31 @@ def _raise_taskplan_invalid(code: str, message: str, path: str) -> None:
     )
 
 
+def _assert_no_legacy_validation_fields(task_spec: Dict[str, Any]) -> None:
+    validation = task_spec.get("validation", {})
+    if isinstance(validation, dict) and ("compile" in validation or "save" in validation):
+        raise TaskSpecCompileError(
+            "unsupported_validation_fields",
+            "Use validation.should_compile / validation.should_save; validation.compile / validation.save are not TaskSpec fields.",
+            [{
+                "code": "unsupported_validation_fields",
+                "path": "validation",
+                "message": "Replace validation.compile with validation.should_compile and validation.save with validation.should_save.",
+            }],
+        )
+
+
+def _target_asset_path(task_spec: Dict[str, Any]) -> str:
+    target = task_spec.get("target")
+    if isinstance(target, dict):
+        return _required_string(target, "asset_path", "target.asset_path")
+    raise TaskSpecCompileError(
+        "taskspec_semantic_invalid",
+        "target must be an object.",
+        [{"code": "missing_target", "path": "target", "message": "Provide target.asset_path."}],
+    )
+
+
 def _assert_supported_task_spec(task_spec: Dict[str, Any]) -> None:
     validation = task_spec.get("validation", {})
     if isinstance(validation, dict) and ("compile" in validation or "save" in validation):
@@ -490,14 +1140,15 @@ def _assert_supported_task_spec(task_spec: Dict[str, Any]) -> None:
         )
 
     behavior = task_spec.get("behavior", {})
-    if behavior.get("graph_strategy") != "append_new_owned_graph":
+    strategy = behavior.get("graph_strategy")
+    if strategy not in {"append_new_owned_graph", "replace_owned_graph", "patch_owned_graph", "merge_owned_graph"}:
         raise TaskSpecCompileError(
             "unsupported_graph_strategy",
-            "Only append_new_owned_graph is supported in the first MCP slice.",
+            "Unsupported GraphWrite graph_strategy.",
             [{
                 "code": "unsupported_graph_strategy",
                 "path": "behavior.graph_strategy",
-                "message": 'Use behavior.graph_strategy="append_new_owned_graph" for this milestone.',
+                "message": "Use append_new_owned_graph, replace_owned_graph, patch_owned_graph, or merge_owned_graph.",
                 "suggested_patch": {
                     "op": "replace",
                     "path": "/behavior/graph_strategy",
@@ -510,11 +1161,11 @@ def _assert_supported_task_spec(task_spec: Dict[str, Any]) -> None:
     if scope_policy.get("allow_modify_user_nodes"):
         raise TaskSpecCompileError(
             "unsupported_scope_policy",
-            "Modifying user nodes is not supported for append_new_owned_graph.",
+            "Modifying user nodes is not supported for GraphWrite owned strategies.",
             [{
                 "code": "unsupported_scope_policy",
                 "path": "scope_policy.allow_modify_user_nodes",
-                "message": "Set allow_modify_user_nodes=false and target a new or empty graph.",
+                "message": "Set allow_modify_user_nodes=false and target BlueprintHelper-owned graph logic.",
                 "suggested_patch": {
                     "op": "replace",
                     "path": "/scope_policy/allow_modify_user_nodes",
@@ -523,11 +1174,56 @@ def _assert_supported_task_spec(task_spec: Dict[str, Any]) -> None:
             }],
         )
 
-    for entry_index, entry in enumerate(behavior.get("entries", [])):
-        if entry.get("entry_type") != "custom_event":
+    _compile_graph_write_ops(behavior)
+
+
+def _compile_graph_write_ops(behavior: Dict[str, Any]) -> List[Dict[str, Any]]:
+    strategy = _required_string(behavior, "graph_strategy", "behavior.graph_strategy")
+    if strategy == "append_new_owned_graph":
+        return _compile_append_graph_write_ops(behavior)
+    if strategy == "replace_owned_graph":
+        return [_compile_replace_graph_write_op(behavior)]
+    if strategy == "patch_owned_graph":
+        return _compile_patch_graph_write_ops(behavior)
+    if strategy == "merge_owned_graph":
+        return _compile_merge_graph_write_ops(behavior)
+
+    raise TaskSpecCompileError(
+        "unsupported_graph_strategy",
+        "Unsupported GraphWrite graph_strategy.",
+        [{
+            "code": "unsupported_graph_strategy",
+            "path": "behavior.graph_strategy",
+            "message": "Use append_new_owned_graph, replace_owned_graph, patch_owned_graph, or merge_owned_graph.",
+            "suggested_patch": {
+                "op": "replace",
+                "path": "/behavior/graph_strategy",
+                "value": "append_new_owned_graph",
+            },
+        }],
+    )
+
+
+def _compile_append_graph_write_ops(behavior: Dict[str, Any]) -> List[Dict[str, Any]]:
+    entries = _required_non_empty_list(behavior, "entries", "behavior.entries")
+    ops = []
+    for entry_index, entry_value in enumerate(entries):
+        if not isinstance(entry_value, dict):
+            raise TaskSpecCompileError(
+                "taskspec_semantic_invalid",
+                "GraphWrite entry must be an object.",
+                [{
+                    "code": "invalid_graph_write_entry",
+                    "path": f"behavior.entries[{entry_index}]",
+                    "message": "GraphWrite entry must be an object.",
+                }],
+            )
+
+        entry_type = _required_string(entry_value, "entry_type", f"behavior.entries[{entry_index}].entry_type")
+        if entry_type != "custom_event":
             raise TaskSpecCompileError(
                 "unsupported_entry_type",
-                "Only custom_event entries are supported in the first MCP slice.",
+                "Only custom_event entries are supported in this GraphWrite slice.",
                 [{
                     "code": "unsupported_entry_type",
                     "path": f"behavior.entries[{entry_index}].entry_type",
@@ -540,18 +1236,188 @@ def _assert_supported_task_spec(task_spec: Dict[str, Any]) -> None:
                 }],
             )
 
-        statements = entry.get("body", {}).get("statements", [])
-        for statement_index, statement in enumerate(statements):
-            if statement.get("kind") not in {"call_function", "set_member_variable"}:
-                raise TaskSpecCompileError(
-                    "unsupported_statement_kind",
-                    "Only call_function and set_member_variable statements are supported in the first MCP slice.",
-                    [{
-                        "code": "unsupported_statement_kind",
-                        "path": f"behavior.entries[{entry_index}].body.statements[{statement_index}].kind",
-                        "message": "Use call_function or set_member_variable, or split this work into a later GraphWrite capability.",
-                    }],
-                )
+        body = _required_logic_body(entry_value, "body", f"behavior.entries[{entry_index}].body")
+        _validate_supported_statements(body["statements"], f"behavior.entries[{entry_index}].body.statements")
+        ops.append({
+            "op": "ensure_entry",
+            "entry_type": entry_type,
+            "name": _required_string(entry_value, "name", f"behavior.entries[{entry_index}].name"),
+            "body": entry_value["body"],
+        })
+    return ops
+
+
+def _compile_replace_graph_write_op(behavior: Dict[str, Any]) -> Dict[str, Any]:
+    replace = _required_object(behavior, "replace", "behavior.replace")
+    body = _required_logic_body(replace, "body", "behavior.replace.body")
+    _validate_supported_statements(body["statements"], "behavior.replace.body.statements")
+    replacement = _compile_logic_body_to_import_payload(body, "replace", "behavior.replace.body")
+    if len(replacement["nodes"]) == 0:
+        raise TaskSpecCompileError(
+            "taskspec_semantic_invalid",
+            "replace_owned_graph requires at least one replacement statement.",
+            [{
+                "code": "empty_replacement",
+                "path": "behavior.replace.body.statements",
+                "message": "Provide at least one replacement statement.",
+            }],
+        )
+
+    return _omit_none({
+        "op": "replace_body",
+        "replace_scope": _required_string(replace, "scope", "behavior.replace.scope"),
+        "selector": _required_object(replace, "selector", "behavior.replace.selector"),
+        "replacement": replacement,
+        "options": replace.get("options") if isinstance(replace.get("options"), dict) else None,
+    })
+
+
+def _compile_patch_graph_write_ops(behavior: Dict[str, Any]) -> List[Dict[str, Any]]:
+    patches = _required_non_empty_list(behavior, "patches", "behavior.patches")
+    ops = []
+    for index, patch_value in enumerate(patches):
+        path = f"behavior.patches[{index}]"
+        if not isinstance(patch_value, dict):
+            raise TaskSpecCompileError(
+                "taskspec_semantic_invalid",
+                "GraphWrite patch must be an object.",
+                [{
+                    "code": "invalid_graph_write_patch",
+                    "path": path,
+                    "message": "GraphWrite patch must be an object.",
+                }],
+            )
+        kind = _required_string(patch_value, "kind", f"{path}.kind")
+        if kind not in {"set_pin_default", "set_node_comment", "set_node_position"}:
+            raise TaskSpecCompileError(
+                "unsupported_graph_write_patch",
+                f"Unsupported GraphWrite patch kind: {kind}",
+                [{
+                    "code": "unsupported_graph_write_patch",
+                    "path": f"{path}.kind",
+                    "message": "Use set_pin_default, set_node_comment, or set_node_position.",
+                }],
+            )
+        ops.append(_omit_none({
+            "op": kind,
+            "patch_scope": patch_value.get("scope") if isinstance(patch_value.get("scope"), str) and patch_value.get("scope") else _default_patch_scope(kind),
+            "patched_ref": _required_object(patch_value, "target_ref", f"{path}.target_ref"),
+            "patch": _compile_patch_payload(patch_value, path),
+            "expected_old_state": _literal_record_values(patch_value["expected_old_state"]) if isinstance(patch_value.get("expected_old_state"), dict) else None,
+        }))
+    return ops
+
+
+def _compile_merge_graph_write_ops(behavior: Dict[str, Any]) -> List[Dict[str, Any]]:
+    merges = _required_non_empty_list(behavior, "merges", "behavior.merges")
+    ops = []
+    for index, merge_value in enumerate(merges):
+        path = f"behavior.merges[{index}]"
+        if not isinstance(merge_value, dict):
+            raise TaskSpecCompileError(
+                "taskspec_semantic_invalid",
+                "GraphWrite merge must be an object.",
+                [{
+                    "code": "invalid_graph_write_merge",
+                    "path": path,
+                    "message": "GraphWrite merge must be an object.",
+                }],
+            )
+        kind = _required_string(merge_value, "kind", f"{path}.kind")
+        if kind != "insert_flow":
+            raise TaskSpecCompileError(
+                "unsupported_graph_write_merge",
+                f"Unsupported GraphWrite merge kind: {kind}",
+                [{
+                    "code": "unsupported_graph_write_merge",
+                    "path": f"{path}.kind",
+                    "message": "Use insert_flow.",
+                }],
+            )
+        ops.append(_omit_none({
+            "op": "insert_flow",
+            "merge_scope": _required_string(merge_value, "scope", f"{path}.scope"),
+            "insert_strategy": _required_string(merge_value, "insert_strategy", f"{path}.insert_strategy"),
+            "anchor": _required_object(merge_value, "anchor", f"{path}.anchor"),
+            "inserted": _required_object(merge_value, "inserted", f"{path}.inserted"),
+            "sequence_order": merge_value.get("sequence_order") if isinstance(merge_value.get("sequence_order"), list) else None,
+        }))
+    return ops
+
+
+def _validate_supported_statements(statements: List[Dict[str, Any]], path: str) -> None:
+    for statement_index, statement in enumerate(statements):
+        if statement.get("kind") not in {"call_function", "set_member_variable"}:
+            raise TaskSpecCompileError(
+                "unsupported_statement_kind",
+                "Only call_function and set_member_variable statements are supported in this GraphWrite slice.",
+                [{
+                    "code": "unsupported_statement_kind",
+                    "path": f"{path}[{statement_index}].kind",
+                    "message": "Use call_function or set_member_variable, or split this work into a later GraphWrite capability.",
+                }],
+            )
+
+
+def _compile_logic_body_to_import_payload(
+    body: Dict[str, List[Dict[str, Any]]],
+    prefix: str,
+    path: str,
+) -> Dict[str, List[Dict[str, Any]]]:
+    nodes: List[Dict[str, Any]] = []
+    links: List[Dict[str, Any]] = []
+    previous_node_id = None
+    for statement_index, statement in enumerate(body["statements"]):
+        node_id = f"{_to_id_segment(prefix)}_stmt_{statement_index + 1}"
+        node = _compile_statement_node(statement, node_id, f"{path}.statements[{statement_index}]")
+        nodes.append(node)
+        if previous_node_id:
+            links.append({"kind": "exec", "from": f"{previous_node_id}.then", "to": f"{node_id}.execute"})
+        previous_node_id = node_id
+    return {"nodes": nodes, "links": links}
+
+
+def _default_patch_scope(kind: str) -> str:
+    if kind == "set_node_comment":
+        return "node_comment"
+    if kind == "set_node_position":
+        return "node_position"
+    return "pin_default"
+
+
+def _compile_patch_payload(patch: Dict[str, Any], path: str) -> Dict[str, Any]:
+    if isinstance(patch.get("patch"), dict):
+        return _literal_record_values(patch["patch"])
+    if "value" in patch:
+        return {"value": _literal_value(patch.get("value"))}
+    raise TaskSpecCompileError(
+        "taskspec_semantic_invalid",
+        "GraphWrite patch requires patch or value.",
+        [{
+            "code": "missing_patch_payload",
+            "path": f"{path}.patch",
+            "message": "Provide patch or value.",
+        }],
+    )
+
+
+def _literal_record_values(record: Dict[str, Any]) -> Dict[str, Any]:
+    return {key: _literal_value(value) for key, value in record.items()}
+
+
+def _required_object(record: Dict[str, Any], field: str, path: str) -> Dict[str, Any]:
+    value = record.get(field)
+    if isinstance(value, dict):
+        return value
+    raise TaskSpecCompileError(
+        "taskspec_semantic_invalid",
+        f"{path} must be an object.",
+        [{
+            "code": "missing_required_object",
+            "path": path,
+            "message": f"{path} must be an object.",
+        }],
+    )
 
 
 def _assert_supported_blueprint_variables_task_spec(task_spec: Dict[str, Any]) -> None:

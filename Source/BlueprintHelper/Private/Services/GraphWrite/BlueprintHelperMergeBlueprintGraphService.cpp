@@ -285,6 +285,26 @@ FBlueprintHelperToolResultBase FBlueprintHelperMergeBlueprintGraphService::Execu
 		Data.DryRun.BlockedBy = Pre.BlockedBy;
 		for (const auto& C : Pre.Conflicts) Data.DryRun.Conflicts.Add(C);
 		for (const auto& E : Pre.Errors) Data.DryRun.Errors.Add(E);
+
+		const FBlueprintHelperDryRunIssue* FirstIssue = Pre.Conflicts.Num() > 0
+			? &Pre.Conflicts[0]
+			: (Pre.Errors.Num() > 0 ? &Pre.Errors[0] : nullptr);
+
+		FBlueprintHelperToolError Error;
+		Error.Code = Pre.BlockedBy.Num() > 0 ? Pre.BlockedBy[0] : TEXT("preflight_failed");
+		Error.Stage = EBlueprintHelperToolStage::Preflight;
+		Error.Message = FirstIssue && !FirstIssue->Message.IsEmpty()
+			? FirstIssue->Message
+			: TEXT("Merge dry-run preflight blocked execution.");
+		Error.Field = FirstIssue && !FirstIssue->Source.IsEmpty()
+			? FirstIssue->Source
+			: (Error.Code == TEXT("target_blueprint_not_found") ? TEXT("target.asset_path") : TEXT("target.graph"));
+		Error.bRetryable = false;
+		Error.RollbackResult = EBlueprintHelperRollbackResult::NotNeeded;
+
+		Result = FBlueprintHelperToolResultBuilder::Failure(
+			TEXT("merge_blueprint_graph"), TraceId, Error);
+		Result.CustomTargetJson = MTarget.ToJson();
 		Result.Data = Data.ToJson();
 	}
 	return Result;

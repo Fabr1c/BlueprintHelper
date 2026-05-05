@@ -450,6 +450,26 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 		DryRunData.DryRun.BlockedBy = PreflightResult.BlockedBy;
 		DryRunData.DryRun.Conflicts = PreflightResult.Conflicts;
 		DryRunData.DryRun.Errors = PreflightResult.Errors;
+
+		const FBlueprintHelperDryRunIssue* FirstIssue = PreflightResult.Conflicts.Num() > 0
+			? &PreflightResult.Conflicts[0]
+			: (PreflightResult.Errors.Num() > 0 ? &PreflightResult.Errors[0] : nullptr);
+
+		FBlueprintHelperToolError Error;
+		Error.Code = PreflightResult.BlockedBy.Num() > 0 ? PreflightResult.BlockedBy[0] : TEXT("preflight_failed");
+		Error.Stage = EBlueprintHelperToolStage::Preflight;
+		Error.Message = FirstIssue && !FirstIssue->Message.IsEmpty()
+			? FirstIssue->Message
+			: TEXT("Append dry-run preflight blocked execution.");
+		Error.Field = FirstIssue && !FirstIssue->Source.IsEmpty()
+			? FirstIssue->Source
+			: TEXT("target.graph");
+		Error.bRetryable = false;
+		Error.RollbackResult = EBlueprintHelperRollbackResult::NotNeeded;
+
+		Result = FBlueprintHelperToolResultBuilder::Failure(
+			TEXT("append_blueprint_graph"), TraceId, Error);
+		Result.Target = TargetRef;
 		Result.Data = DryRunData.ToJson();
 	}
 

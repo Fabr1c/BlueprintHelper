@@ -136,12 +136,199 @@ FBlueprintHelperLogicJsonPayload FBlueprintHelperLogicGroupBuilder::BuildGroups(
 	return Payload;
 }
 
+FBlueprintHelperLogicJsonPayload FBlueprintHelperLogicGroupBuilder::BuildTargetEntry(
+	const TSharedPtr<FJsonObject>& RawJson,
+	const FString& AssetPath,
+	const FString& GraphName,
+	const FString& TargetName,
+	EBlueprintHelperLogicScope Scope) const
+{
+	FBlueprintHelperLogicJsonPayload Payload;
+	Payload.AssetPath = AssetPath;
+	Payload.Graph = GraphName;
+	if (Scope == EBlueprintHelperLogicScope::TargetEvent ||
+		Scope == EBlueprintHelperLogicScope::TargetCustomEvent)
+	{
+		Payload.Event = TargetName;
+	}
+
+	if (!RawJson.IsValid())
+	{
+		return Payload;
+	}
+
+	auto ExtractGraphName = [](const TSharedPtr<FJsonObject>& GraphObj, int32 GraphIndex) -> FString
+	{
+		if (!GraphObj.IsValid())
+		{
+			return GraphIndex == 0 ? TEXT("Graph") : FString::Printf(TEXT("Graph_%d"), GraphIndex + 1);
+		}
+
+		FString Name;
+		if (GraphObj->TryGetStringField(TEXT("graph"), Name) && !Name.IsEmpty())
+		{
+			return Name;
+		}
+		if (GraphObj->TryGetStringField(TEXT("name"), Name) && !Name.IsEmpty())
+		{
+			return Name;
+		}
+		if (GraphObj->TryGetStringField(TEXT("graph_name"), Name) && !Name.IsEmpty())
+		{
+			return Name;
+		}
+		return GraphIndex == 0 ? TEXT("Graph") : FString::Printf(TEXT("Graph_%d"), GraphIndex + 1);
+	};
+
+	auto ExtractEventName = [](const TSharedPtr<FJsonObject>& NodeObj) -> FString
+	{
+		if (!NodeObj.IsValid())
+		{
+			return TEXT("");
+		}
+
+		const TSharedPtr<FJsonObject>* EventObj = nullptr;
+		FString EventName;
+		if (NodeObj->TryGetObjectField(TEXT("event"), EventObj) && EventObj && EventObj->IsValid())
+		{
+			if ((*EventObj)->TryGetStringField(TEXT("event_name"), EventName) && !EventName.IsEmpty())
+			{
+				return EventName;
+			}
+		}
+		if (NodeObj->TryGetStringField(TEXT("event_name"), EventName) && !EventName.IsEmpty())
+		{
+			return EventName;
+		}
+		return TEXT("");
+	};
+
+	auto MatchesScope = [Scope](EBlueprintHelperLogicNodeKind Kind) -> bool
+	{
+		switch (Scope)
+		{
+		case EBlueprintHelperLogicScope::TargetCustomEvent:
+			return Kind == EBlueprintHelperLogicNodeKind::CustomEvent;
+		case EBlueprintHelperLogicScope::TargetEvent:
+			return Kind == EBlueprintHelperLogicNodeKind::Event || Kind == EBlueprintHelperLogicNodeKind::CustomEvent;
+		default:
+			return true;
+		}
+	};
+
+	auto MatchesTargetName = [&TargetName, &ExtractEventName](const TSharedPtr<FJsonObject>& NodeObj) -> bool
+	{
+		if (TargetName.IsEmpty())
+		{
+			return true;
+		}
+
+		const FString NodeName = ExtractNodeName(NodeObj);
+		if (NodeName.Equals(TargetName, ESearchCase::IgnoreCase))
+		{
+			return true;
+		}
+
+		const FString EventName = ExtractEventName(NodeObj);
+		return EventName.Equals(TargetName, ESearchCase::IgnoreCase);
+	};
+
+	auto TryBuildFromGraph = [this, &Payload, &MatchesScope, &MatchesTargetName](
+		const TSharedPtr<FJsonObject>& GraphObj,
+		const FString& EffectiveGraphName) -> bool
+	{
+		const TArray<TSharedPtr<FJsonValue>>* NodesArray = nullptr;
+		if (!GraphObj.IsValid() || !GraphObj->TryGetArrayField(TEXT("nodes"), NodesArray) || !NodesArray)
+		{
+			return false;
+		}
+
+		int32 EntryIndex = INDEX_NONE;
+		for (int32 i = 0; i < NodesArray->Num(); ++i)
+		{
+			const TSharedPtr<FJsonValue>& NodeVal = (*NodesArray)[i];
+			const TSharedPtr<FJsonObject>* NodeObjPtr = nullptr;
+			if (!NodeVal.IsValid() || !NodeVal->TryGetObject(NodeObjPtr) || !NodeObjPtr) continue;
+
+			const EBlueprintHelperLogicNodeKind Kind = IdentifyNodeKind(*NodeObjPtr);
+			if (IsEntryNode(*NodeObjPtr) && MatchesScope(Kind) && MatchesTargetName(*NodeObjPtr))
+			{
+				EntryIndex = i;
+				break;
+			}
+		}
+
+		if (EntryIndex == INDEX_NONE)
+		{
+			return false;
+		}
+
+		Payload.Graph = EffectiveGraphName;
+		Payload.Entry.Reset();
+		Payload.Nodes.Reset();
+		Payload.Groups.Reset();
+
+		for (int32 i = 0; i < NodesArray->Num(); ++i)
+		{
+			const TSharedPtr<FJsonValue>& NodeVal = (*NodesArray)[i];
+			const TSharedPtr<FJsonObject>* NodeObjPtr = nullptr;
+			if (!NodeVal.IsValid() || !NodeVal->TryGetObject(NodeObjPtr) || !NodeObjPtr) continue;
+
+			if (i == EntryIndex)
+			{
+				FBlueprintHelperLogicEntry Entry;
+				Entry.Kind = IdentifyNodeKind(*NodeObjPtr);
+				Entry.Name = ExtractNodeName(*NodeObjPtr);
+				Entry.NodeRef = FString::Printf(TEXT("nodes[%d]"), i);
+				Entry.NodePath = FString::Printf(TEXT("$.graphs[%s].%s"), *EffectiveGraphName, *Entry.NodeRef);
+				Payload.Entry = Entry;
+			}
+
+			Payload.Nodes.Add(ConvertNode(*NodeObjPtr, i));
+		}
+
+		return true;
+	};
+
+	const TArray<TSharedPtr<FJsonValue>>* GraphsArray = nullptr;
+	if (RawJson->TryGetArrayField(TEXT("graphs"), GraphsArray) && GraphsArray)
+	{
+		for (int32 GraphIndex = 0; GraphIndex < GraphsArray->Num(); ++GraphIndex)
+		{
+			const TSharedPtr<FJsonObject>* GraphObjPtr = nullptr;
+			const TSharedPtr<FJsonValue>& GraphVal = (*GraphsArray)[GraphIndex];
+			if (!GraphVal.IsValid() || !GraphVal->TryGetObject(GraphObjPtr) || !GraphObjPtr) continue;
+
+			const FString EffectiveGraphName = ExtractGraphName(*GraphObjPtr, GraphIndex);
+			if (!GraphName.IsEmpty() && !EffectiveGraphName.Equals(GraphName, ESearchCase::IgnoreCase))
+			{
+				continue;
+			}
+
+			if (TryBuildFromGraph(*GraphObjPtr, EffectiveGraphName))
+			{
+				return Payload;
+			}
+		}
+
+		return Payload;
+	}
+
+	const FString EffectiveGraphName = GraphName.IsEmpty() ? TEXT("EventGraph") : GraphName;
+	TryBuildFromGraph(RawJson, EffectiveGraphName);
+	return Payload;
+}
+
 EBlueprintHelperLogicNodeKind FBlueprintHelperLogicGroupBuilder::IdentifyNodeKind(const TSharedPtr<FJsonObject>& NodeObj)
 {
 	if (!NodeObj.IsValid()) return EBlueprintHelperLogicNodeKind::Unknown;
 
 	FString ClassName;
 	NodeObj->TryGetStringField(TEXT("class"), ClassName);
+	if (ClassName.IsEmpty())
+	{
+		NodeObj->TryGetStringField(TEXT("type"), ClassName);
+	}
 	FString MemberName;
 	NodeObj->TryGetStringField(TEXT("member_name"), MemberName);
 
@@ -214,7 +401,16 @@ FString FBlueprintHelperLogicGroupBuilder::ExtractNodeName(const TSharedPtr<FJso
 	FString Name;
 	if (NodeObj->TryGetStringField(TEXT("name"), Name) && !Name.IsEmpty()) return Name;
 	if (NodeObj->TryGetStringField(TEXT("member_name"), Name) && !Name.IsEmpty()) return Name;
+	const TSharedPtr<FJsonObject>* EventObj = nullptr;
+	if (NodeObj->TryGetObjectField(TEXT("event"), EventObj) && EventObj && EventObj->IsValid())
+	{
+		if ((*EventObj)->TryGetStringField(TEXT("event_name"), Name) && !Name.IsEmpty()) return Name;
+	}
 	NodeObj->TryGetStringField(TEXT("class"), Name);
+	if (Name.IsEmpty())
+	{
+		NodeObj->TryGetStringField(TEXT("type"), Name);
+	}
 	return Name.IsEmpty() ? TEXT("Unknown") : Name;
 }
 

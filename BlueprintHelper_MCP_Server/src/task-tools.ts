@@ -119,7 +119,7 @@ export function registerTaskTools(server: McpServer, bridge: BridgeClient, confi
   server.registerTool(
     'blueprinthelper_preview_task',
     {
-      description: 'Validate BlueprintHelper.TaskSpec.v1, compile a TaskPlan, and dry-run the first GraphWrite Append slice.',
+      description: 'Validate BlueprintHelper.TaskSpec.v1, compile a TaskPlan, and dry-run supported TaskSpec-first slices including composite Blueprint features.',
       inputSchema: PreviewTaskInputSchema,
     },
     async ({ task_spec }) => {
@@ -135,7 +135,7 @@ export function registerTaskTools(server: McpServer, bridge: BridgeClient, confi
   server.registerTool(
     'blueprinthelper_execute_task',
     {
-      description: 'Preview and execute the first BlueprintHelper TaskSpec GraphWrite Append slice.',
+      description: 'Preview and execute supported BlueprintHelper TaskSpec-first slices including composite Blueprint features.',
       inputSchema: ExecuteTaskInputSchema,
     },
     async ({ task_spec }) => {
@@ -155,11 +155,12 @@ export function registerTaskTools(server: McpServer, bridge: BridgeClient, confi
           task_plan: preview.taskPlan,
         });
         if (!writeResponse.success) {
-          return toMcpResult(taskFailure(
+          return toMcpResult(taskFailureFromBridgeResponse(
             'execute_task',
-            writeResponse.error_code ?? 'bridge_error',
+            writeResponse,
             'bridge_error',
-            writeResponse.message ?? 'Bridge write failed.',
+            'Bridge write failed.',
+            'bridge.execute_task_plan',
           ));
         }
 
@@ -257,21 +258,36 @@ async function previewTask(bridge: BridgeClient, taskSpec: TaskSpec, taskCompile
   });
 
   if (!previewResponse.success) {
+    const failure = bridgeFailureFromResponse(
+      previewResponse,
+      'bridge_error',
+      'Bridge dry-run failed.',
+      'bridge.preview_task_plan',
+    );
+    const toolResult = taskFailure(
+      'preview_task',
+      failure.code,
+      'bridge_error',
+      failure.message,
+      failure.issues,
+      failure.error,
+    );
+    toolResult.target = { target_type: 'blueprint', asset_path: taskPlan.target_assets[0] };
+    toolResult.data = {
+      schema: TASK_PREVIEW_SCHEMA,
+      preview_id: previewId,
+      passed: false,
+      blocked: true,
+      task_plan: summarizeTaskPlan(taskPlan),
+      issues: failure.issues,
+    };
+
     return {
       previewId,
       taskPlan,
       passed: false,
-      issues: [{
-        code: previewResponse.error_code ?? 'bridge_error',
-        path: 'bridge.append_blueprint_graph',
-        message: previewResponse.message ?? 'Bridge dry-run failed.',
-      }],
-      toolResult: taskFailure(
-        'preview_task',
-        previewResponse.error_code ?? 'bridge_error',
-        'bridge_error',
-        previewResponse.message ?? 'Bridge dry-run failed.',
-      ),
+      issues: failure.issues,
+      toolResult,
     };
   }
 
@@ -333,26 +349,89 @@ function taskErrorFromUnknown(operation: string, err: unknown): ToolResultBase {
   return taskFailure(operation, 'task_internal_error', 'internal_error', err);
 }
 
+function taskFailureFromBridgeResponse(
+  operation: string,
+  response: BridgeResponse,
+  fallbackCode: string,
+  fallbackMessage: string,
+  fallbackIssuePath: string,
+): ToolResultBase {
+  const failure = bridgeFailureFromResponse(response, fallbackCode, fallbackMessage, fallbackIssuePath);
+  return taskFailure(
+    operation,
+    failure.code,
+    'bridge_error',
+    failure.message,
+    failure.issues,
+    failure.error,
+  );
+}
+
 function taskFailure(
   operation: string,
   code: string,
   category: string,
   error: unknown,
   issues: TaskIssue[] = [],
+  errorDetails: Partial<ToolResultError> = {},
 ): ToolResultBase {
   const message = error instanceof Error ? error.message : String(error);
   const toolError = {
     code,
     category,
-    stage: category === 'bridge_error' ? 'bridge' : 'parse_input',
+    stage: errorDetails.stage ?? (category === 'bridge_error' ? 'bridge' : 'parse_input'),
     message,
-    retryable: category !== 'internal_error',
-    rollback_result: 'not_needed',
+    retryable: errorDetails.retryable ?? category !== 'internal_error',
+    rollback_result: errorDetails.rollback_result ?? 'not_needed',
     agent_action: category === 'semantic_error' ? 'fix_taskspec_and_retry' : 'stop_and_report',
     issues,
+    ...(errorDetails.field ? { field: errorDetails.field } : {}),
+    ...(errorDetails.expected ? { expected: errorDetails.expected } : {}),
+    ...(errorDetails.actual ? { actual: errorDetails.actual } : {}),
   } as ToolResultError;
 
   return failureResult(operation, toolError);
+}
+
+function bridgeFailureFromResponse(
+  response: BridgeResponse,
+  fallbackCode: string,
+  fallbackMessage: string,
+  fallbackIssuePath: string,
+): {
+  code: string;
+  message: string;
+  issues: TaskIssue[];
+  error: Partial<ToolResultError>;
+} {
+  const result = asRecord(response.result);
+  const nestedError = asRecord(result?.['error']);
+  const code = readString(nestedError?.['code']) ?? response.error_code ?? fallbackCode;
+  const responseMessage = readNonEmptyString(response.message);
+  const message = readString(nestedError?.['message']) ?? responseMessage ?? fallbackMessage;
+  const field = readString(nestedError?.['field']);
+  const dryRunIssues = extractDryRun(response).issues;
+  const issues = dryRunIssues.length > 0
+    ? dryRunIssues
+    : [{
+      code,
+      path: field ?? fallbackIssuePath,
+      message,
+    }];
+
+  return {
+    code,
+    message,
+    issues,
+    error: {
+      stage: readToolStage(nestedError?.['stage']) ?? 'bridge',
+      retryable: typeof nestedError?.['retryable'] === 'boolean' ? nestedError['retryable'] : false,
+      rollback_result: readRollbackResult(nestedError?.['rollback_result']) ?? 'not_needed',
+      ...(field ? { field } : {}),
+      ...(readString(nestedError?.['expected']) ? { expected: readString(nestedError?.['expected']) } : {}),
+      ...(readString(nestedError?.['actual']) ? { actual: readString(nestedError?.['actual']) } : {}),
+    },
+  };
 }
 
 function extractUeTaskRunId(writeResponse: BridgeResponse): string | undefined {
@@ -406,6 +485,46 @@ function arrayOfRecords(value: unknown): Array<Record<string, unknown>> {
   return Array.isArray(value)
     ? value.filter((item): item is Record<string, unknown> => item !== null && typeof item === 'object' && !Array.isArray(item))
     : [];
+}
+
+function readString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function readNonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
+}
+
+function readToolStage(value: unknown): ToolResultError['stage'] | undefined {
+  if (typeof value !== 'string') return undefined;
+  return [
+    'parse_input',
+    'auth',
+    'runtime_profile',
+    'resolve_target',
+    'preflight',
+    'dry_run',
+    'execute',
+    'validate',
+    'review',
+    'rollback',
+    'bridge',
+    'mcp_wrap',
+  ].includes(value)
+    ? value as ToolResultError['stage']
+    : undefined;
+}
+
+function readRollbackResult(value: unknown): ToolResultError['rollback_result'] | undefined {
+  if (typeof value !== 'string') return undefined;
+  return [
+    'not_needed',
+    'rolled_back',
+    'rollback_failed',
+    'unavailable',
+  ].includes(value)
+    ? value as ToolResultError['rollback_result']
+    : undefined;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {

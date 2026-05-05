@@ -47,7 +47,7 @@ export function storeTaskResult(input: {
             ...(stepCapability ? { capability: stepCapability } : {}),
             operation: stepOperation,
             ...(adapterOperation ? { adapter_operation: adapterOperation } : {}),
-            status: input.status === 'completed' ? 'applied' : 'failed',
+            status: input.status === 'completed' ? 'completed' : 'failed',
             ...(transactionId ? { transaction_id: transactionId } : {}),
           },
         ]

@@ -93,6 +93,7 @@ def _compile_component_task_plan(task_spec: Dict[str, Any]) -> Dict[str, Any]:
     components = _required_non_empty_list(behavior, "changes", "behavior.changes")
 
     steps = []
+    planned_component_step_ids: Dict[str, str] = {}
     for index, raw_op in enumerate(components):
         path = f"behavior.changes[{index}]"
         op = _required_object_value(raw_op, path)
@@ -111,8 +112,11 @@ def _compile_component_task_plan(task_spec: Dict[str, Any]) -> Dict[str, Any]:
                 "Use ensure_component_present, configure_component, or remove_component.",
             )
 
-        compiled = {"op": op_name}
-        _copy_required_string_as(op, compiled, "name", "component_name", f"{path}.name")
+        component_name = _required_string(op, "name", f"{path}.name")
+        compiled = {
+            "op": op_name,
+            "component_name": component_name,
+        }
         if op_name == "add_component":
             _copy_required_string_as(op, compiled, "class", "component_class", f"{path}.class")
             attach = op.get("attach")
@@ -124,13 +128,18 @@ def _compile_component_task_plan(task_spec: Dict[str, Any]) -> Dict[str, Any]:
         elif op_name == "set_component_properties":
             compiled["settings"] = _validate_settings(op, "properties", f"{path}.properties")
 
-        steps.append(_make_step(
+        step = _make_step(
             index + 1,
             "blueprint_component",
             _target_asset_path(task_spec),
             "component_tree",
             [compiled],
-        ))
+        )
+        if op_name == "add_component":
+            planned_component_step_ids[component_name] = step["step_id"]
+        elif op_name in {"set_component_properties", "remove_component"} and component_name in planned_component_step_ids:
+            step["depends_on"] = [planned_component_step_ids[component_name]]
+        steps.append(step)
     return _make_task_plan(task_spec, steps)
 
 
@@ -349,19 +358,25 @@ def _make_step(index: int, capability: str, asset_path: str, strategy: str, ops:
 
 
 def _summarize_task_plan(task_plan: Dict[str, Any]) -> Dict[str, Any]:
+    def summarize_step(step: Dict[str, Any]) -> Dict[str, Any]:
+        summary = {
+            "step_id": step["step_id"],
+            "capability": step["capability"],
+            "target": step["target"],
+            "strategy": step["write"]["strategy"],
+            "ops": len(step["write"]["ops"]),
+        }
+        if isinstance(step.get("depends_on"), list):
+            summary["depends_on"] = list(step["depends_on"])
+        return summary
+
     return {
         "schema": task_plan["schema"],
         "task_name": task_plan.get("task_name"),
         "task_type": task_plan["task_type"],
         "target_assets": task_plan["target_assets"],
         "steps": [
-            {
-                "step_id": step["step_id"],
-                "capability": step["capability"],
-                "target": step["target"],
-                "strategy": step["write"]["strategy"],
-                "ops": len(step["write"]["ops"]),
-            }
+            summarize_step(step)
             for step in task_plan["steps"]
         ],
     }
