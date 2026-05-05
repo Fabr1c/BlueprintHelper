@@ -502,6 +502,6 @@ bool FBlueprintHelperComponentTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(
 	OutPayload.RuntimeOperation = RuntimeOperationBlueprintComponent;
 	OutPayload.AdapterOperation = AdapterOperation;
 	OutPayload.Payload = Payload;
-	OutPayload.bAdapterDryRunSupported = false;
+	OutPayload.bAdapterDryRunSupported = true;
 	return true;
 }

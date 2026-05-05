@@ -253,6 +253,7 @@ bool FBlueprintHelperClassSettingsTaskPlanAdapter::IsParentClassOp(const FString
 
 bool FBlueprintHelperClassSettingsTaskPlanAdapter::TryBuildAdapterPayload(
 	const TSharedPtr<FJsonObject>& StepObject,
+	bool bDryRun,
 	TSharedPtr<FJsonObject>& OutPayload,
 	FString& OutAdapterOperation,
 	FBlueprintHelperToolError& OutError)
@@ -309,6 +310,7 @@ bool FBlueprintHelperClassSettingsTaskPlanAdapter::TryBuildAdapterPayload(
 
 	TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
 	Payload->SetStringField(TEXT("asset_path"), AssetPath);
+	Payload->SetBoolField(TEXT("dry_run"), bDryRun);
 
 	if (OpName == AddImplementedInterfacesOp || OpName == RemoveImplementedInterfacesOp)
 	{
@@ -342,8 +344,6 @@ bool FBlueprintHelperClassSettingsTaskPlanAdapter::TryLowerTaskPlanStep(
 	FBlueprintHelperToolError& OutError)
 {
 	static_cast<void>(TaskPlan);
-	static_cast<void>(bDryRun);
-
 	OutLoweredStep = FBlueprintHelperTaskRuntimeLoweredStep();
 	OutError = FBlueprintHelperToolError();
 
@@ -385,7 +385,7 @@ bool FBlueprintHelperClassSettingsTaskPlanAdapter::TryLowerTaskPlanStep(
 
 	TSharedPtr<FJsonObject> Payload;
 	FString AdapterOperation;
-	if (!TryBuildAdapterPayload(StepObject, Payload, AdapterOperation, OutError))
+	if (!TryBuildAdapterPayload(StepObject, bDryRun, Payload, AdapterOperation, OutError))
 	{
 		return false;
 	}
@@ -394,6 +394,6 @@ bool FBlueprintHelperClassSettingsTaskPlanAdapter::TryLowerTaskPlanStep(
 	OutLoweredStep.RuntimeOperation = RuntimeOperationName;
 	OutLoweredStep.AdapterOperation = AdapterOperation;
 	OutLoweredStep.Payload = Payload;
-	OutLoweredStep.bAdapterDryRunSupported = false;
+	OutLoweredStep.bAdapterDryRunSupported = true;
 	return true;
 }

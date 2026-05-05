@@ -355,9 +355,11 @@ FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::AddWidget(
 	const FString& AssetPath,
 	const FString& ParentName,
 	const FString& WidgetClass,
-	const FString& WidgetName) const
+	const FString& WidgetName,
+	bool bDryRun) const
 {
 	FBlueprintHelperWidgetMutationResult Result;
+	Result.bDryRun = bDryRun;
 
 	UWidgetBlueprint* WBP = ResolveWidgetBlueprint(AssetPath, Result.ErrorMessage);
 	if (!WBP) return Result;
@@ -417,6 +419,13 @@ FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::AddWidget(
 	// 确定名称
 	FName NewName = WidgetName.IsEmpty() ? NAME_None : FName(*WidgetName);
 
+	if (bDryRun)
+	{
+		Result.bSuccess = true;
+		Result.AffectedWidget = WidgetName;
+		return Result;
+	}
+
 	FBlueprintHelperScopedAssetMutation Mutation(
 		FText::FromString(TEXT("BlueprintHelper Add Widget")), WBP);
 	Mutation.Modify(Tree);
@@ -458,9 +467,11 @@ FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::AddWidget(
 
 FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::RemoveWidget(
 	const FString& AssetPath,
-	const FString& WidgetName) const
+	const FString& WidgetName,
+	bool bDryRun) const
 {
 	FBlueprintHelperWidgetMutationResult Result;
+	Result.bDryRun = bDryRun;
 
 	UWidgetBlueprint* WBP = ResolveWidgetBlueprint(AssetPath, Result.ErrorMessage);
 	if (!WBP) return Result;
@@ -474,6 +485,13 @@ FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::RemoveWidget
 	if (Widget == Tree->RootWidget)
 	{
 		Result.ErrorMessage = TEXT("不允许通过 remove_widget 删除 RootWidget。需要显。root 删除策略。");
+		return Result;
+	}
+
+	if (bDryRun)
+	{
+		Result.bSuccess = true;
+		Result.AffectedWidget = WidgetName;
 		return Result;
 	}
 
@@ -653,9 +671,11 @@ FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::SetWidgetPro
 	const FString& AssetPath,
 	const FString& WidgetName,
 	const FString& PropertyName,
-	const FString& Value) const
+	const FString& Value,
+	bool bDryRun) const
 {
 	FBlueprintHelperWidgetMutationResult Result;
+	Result.bDryRun = bDryRun;
 
 	UWidgetBlueprint* WBP = ResolveWidgetBlueprint(AssetPath, Result.ErrorMessage);
 	if (!WBP) return Result;
@@ -676,6 +696,26 @@ FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::SetWidgetPro
 			TEXT("属性 '%s' 不是编辑器中可安全写入的属性。Flags: %s"),
 			*PropertyName,
 			*FBlueprintHelperEditablePropertyPolicy::BuildFlagsSummary(Prop->PropertyFlags));
+		return Result;
+	}
+
+	if (bDryRun)
+	{
+		void* TempValue = FMemory_Alloca(Prop->GetSize());
+		Prop->InitializeValue(TempValue);
+		const TCHAR* ImportResult = Prop->ImportText_Direct(*Value, TempValue, Widget, PPF_None);
+		Prop->DestroyValue(TempValue);
+		if (!ImportResult)
+		{
+			Result.ErrorMessage = FString::Printf(
+				TEXT("Cannot import widget property '%s' value '%s'."),
+				*PropertyName,
+				*Value);
+			return Result;
+		}
+
+		Result.bSuccess = true;
+		Result.AffectedWidget = WidgetName;
 		return Result;
 	}
 

@@ -79,7 +79,7 @@ bool FBlueprintHelperTaskPlanComponentAdapterAddComponentTest::RunTest(const FSt
 	TestEqual(TEXT("capability preserved"), BuiltPayload.Capability, FString(FBlueprintHelperComponentTaskPlanAdapter::CapabilityBlueprintComponent));
 	TestEqual(TEXT("runtime operation reports component capability"), BuiltPayload.RuntimeOperation, FString(FBlueprintHelperComponentTaskPlanAdapter::RuntimeOperationBlueprintComponent));
 	TestEqual(TEXT("adapter operation is add_component"), BuiltPayload.AdapterOperation, FString(FBlueprintHelperComponentTaskPlanAdapter::AdapterOperationAddComponent));
-	TestFalse(TEXT("component adapter dry-run is not supported by current service"), BuiltPayload.bAdapterDryRunSupported);
+	TestTrue(TEXT("component adapter supports true service dry-run"), BuiltPayload.bAdapterDryRunSupported);
 	TestNotNull(TEXT("payload exists"), BuiltPayload.Payload.Get());
 
 	FString AssetPath;
@@ -143,6 +143,7 @@ bool FBlueprintHelperTaskPlanComponentAdapterSetPropertiesTest::RunTest(const FS
 
 	TestTrue(TEXT("set_component_properties lowers successfully"), bBuilt);
 	TestEqual(TEXT("adapter operation is set_component_properties"), BuiltPayload.AdapterOperation, FString(FBlueprintHelperComponentTaskPlanAdapter::AdapterOperationSetComponentProperties));
+	TestTrue(TEXT("set_component_properties adapter supports true service dry-run"), BuiltPayload.bAdapterDryRunSupported);
 	TestNotNull(TEXT("payload exists"), BuiltPayload.Payload.Get());
 
 	FString AssetPath;
@@ -195,6 +196,7 @@ bool FBlueprintHelperTaskPlanComponentAdapterRemoveComponentTest::RunTest(const 
 
 	TestTrue(TEXT("remove_component lowers successfully"), bBuilt);
 	TestEqual(TEXT("adapter operation is remove_component"), BuiltPayload.AdapterOperation, FString(FBlueprintHelperComponentTaskPlanAdapter::AdapterOperationRemoveComponent));
+	TestTrue(TEXT("remove_component adapter supports true service dry-run"), BuiltPayload.bAdapterDryRunSupported);
 
 	FString AssetPath;
 	FString ComponentName;

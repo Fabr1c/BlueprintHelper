@@ -1,12 +1,23 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
+#include "AssetRegistry/AssetRegistryModule.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "Modules/ModuleManager.h"
 #include "Misc/AutomationTest.h"
+#include "Services/AssetFactory/BlueprintHelperAssetFactoryService.h"
 #include "TaskRuntime/TaskPlanAdapters/AssetFactory/BlueprintHelperAssetFactoryTaskPlanAdapter.h"
+#include "UObject/SoftObjectPath.h"
 
 namespace
 {
+	bool AssetFactoryTestAssetExists(const FString& AssetPath)
+	{
+		FAssetRegistryModule& AssetRegistry =
+			FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+		return AssetRegistry.Get().GetAssetByObjectPath(FSoftObjectPath(AssetPath)).IsValid();
+	}
+
 	TSharedPtr<FJsonObject> MakeAssetFactoryCreateAssetStep()
 	{
 		TSharedPtr<FJsonObject> Step = MakeShared<FJsonObject>();
@@ -77,6 +88,35 @@ bool FBlueprintHelperTaskPlanAssetFactoryAdapterBuildsCreateAssetPayloadTest::Ru
 	TestEqual(TEXT("value_type is preserved"), ValueType, FString(TEXT("bool")));
 	TestEqual(TEXT("existing collision field name is preserved"), Collision, FString(TEXT("reuse_if_exists")));
 	TestTrue(TEXT("preview dry_run is preserved"), bDryRun);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperAssetFactoryServiceDryRunDoesNotCreateAssetTest,
+	"BlueprintHelper.Safety.AssetFactory.DryRunDoesNotCreateAsset",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperAssetFactoryServiceDryRunDoesNotCreateAssetTest::RunTest(const FString& Parameters)
+{
+	const FString AssetPath = FString::Printf(
+		TEXT("/Game/BlueprintHelperSafety/IA_DryRun_%s"),
+		*FGuid::NewGuid().ToString(EGuidFormats::Digits));
+
+	TestFalse(TEXT("test asset does not exist before dry-run"), AssetFactoryTestAssetExists(AssetPath));
+
+	const FBlueprintHelperAssetFactoryService Service;
+	const FBlueprintHelperAssetFactoryData Data = Service.CreateAsset(
+		AssetPath,
+		EBlueprintHelperAssetType::InputAction,
+		TEXT(""),
+		TEXT("bool"),
+		EBlueprintHelperAssetCollisionPolicy::FailIfExists,
+		true);
+
+	TestFalse(TEXT("dry-run does not report a real created asset"), Data.Asset.bCreated);
+	TestFalse(TEXT("dry-run target was not already present"), Data.Asset.bAlreadyExisted);
+	TestFalse(TEXT("dry-run does not create an asset registry entry"), AssetFactoryTestAssetExists(AssetPath));
 
 	return true;
 }

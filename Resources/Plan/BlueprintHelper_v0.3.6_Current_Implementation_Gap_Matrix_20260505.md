@@ -73,9 +73,9 @@ Agent 仍不应直接调用底层 MCP 原子工具；默认入口仍是 TaskSpec
 - [x] BlueprintVariableService 已重新收敛为 ToolResultBase façade / 编排层；member default 与 member property mutation 细节已迁入 `FBlueprintHelperMemberVariableMutationHandler`。
 - [x] `FBlueprintHelperMemberVariableMutationHandler` 已注册到 `FBlueprintOperationHandlerRegistry`，覆盖 `set_member_default` / `set_member_defaults` / `set_member_variable_properties`。
 - [x] MCP 回归已通过 `npm.cmd test`：Node 90/90，Python 23/23。
-- [x] 11 类工具簇目录分类已完成；源码 UTF-8/TEXT() 修复后，项目级 `Build.bat` 已通过验证（`Build.bat MrStoneEditor Win64 Development -Project=G:\UnrealPractise\MrStone\MrStone.uproject`），无 sandbox 写权限阻塞。
-- [ ] BlueprintVariableService 的 local variable add/set/remove 仍是未完整实现或 stub。
-- [ ] Component / AssetFactory / Widget / DataTable / ClassSettings 的 dry-run 仍需逐项确认是真 dry-run 还是 synthetic preview。
+- [x] 11 类工具簇目录分类已完成；源码 UTF-8/TEXT() 修复后，用户本地已确认项目级 `Build.bat` 通过（`Build.bat MrStoneEditor Win64 Development -Project=G:\UnrealPractise\MrStone\MrStone.uproject`）。Codex 沙盒复跑会被 MrStone 工程级 `Intermediate` 写权限限制阻塞。
+- [x] BlueprintVariableService 的 local variable read/add/set/remove 已接入真实 Service/OperationHandler 路径；local variable TaskPlan preview 走真实 dry-run，不再走 synthetic preview。
+- [x] Component / AssetFactory / Widget / DataTable / ClassSettings 已从 Runtime synthetic preview 升级为服务级 true dry-run；TaskPlan preview 会调用对应 Service preflight，但不会进入实际 mutation/Modify/dirty 路径。
 
 ## 总体差距矩阵
 
@@ -90,9 +90,9 @@ Agent 仍不应直接调用底层 MCP 原子工具；默认入口仍是 TaskSpec
 | Cleanup BlueprintHelper Block | Done + FieldMapping | 完成 | `CleanupBlueprintHelperBlockService` 完成 | `cleanup_blueprint_helper_block` 完成 | 缺失 | 缺失 | 部分 | 作为 `graph_cleanup` 或 `ownership_cleanup` capability 接入 Runtime |
 | Rollback Cleanup Transaction | Done + FieldMapping | 完成 | `RollbackCleanupTransactionService` 完成 | `rollback_cleanup_transaction` 完成 | 缺失 | 缺失 | 部分 | 作为 task rollback/journal 能力接入 Runtime，不作为普通写入默认步骤 |
 | Convert Block To User Owned | Done + FieldMapping | 完成 | `ConvertBlockToUserOwnedService` 完成 | `convert_blueprint_helper_block_to_user_owned` 完成 | 缺失 | 缺失 | 部分 | 接入 `ownership` capability，并在高风险 replace/remove 前可由 TaskPlan 调用 |
-| Blueprint Variables/Defaults/Local Variables | Done | 完成 | `BlueprintVariableService` 已支持 member add/remove、member property settings 首片与 member default(s) 首片；member mutation 已迁入 `FBlueprintHelperMemberVariableMutationHandler`，Service 保持 ToolResultBase façade；local variables 仍是 stub | 变量相关 command 完成 | 完成变量 IR lowering：ensure-only -> `add_blueprint_member_variables`，混合 member/default/local -> `blueprint_variable_batch` | 完成 TaskSpec 编译：member changes/defaults/local variables | 部分 | 补 `BlueprintVariableService` 真实执行：local variables；扩默认值和属性设置更多类型；项目级 `Build.bat` 已通过 |
+| Blueprint Variables/Defaults/Local Variables | Done | 完成 | `BlueprintVariableService` 已支持 member add/remove、member property settings 首片、member default(s) 首片，以及 local variable read/add/set/remove；member/local mutation 细节已迁入 OperationHandler，Service 保持 ToolResultBase façade | 变量相关 command 完成 | 完成变量 IR lowering：ensure-only -> `add_blueprint_member_variables`，混合 member/default/local -> `blueprint_variable_batch`；local_variables preview 支持真实 dry-run | 完成 TaskSpec 编译：member changes/defaults/local variables | TaskSpec-ready 首片 | 扩默认值和属性设置更多类型；补更多 UE automation/smoke 覆盖；用户本地项目级 `Build.bat` 已通过 |
 | Function/Event Signature Management | Plan 文档 | 计划存在 | 缺失 | 缺失 | 缺失 | 缺失 | 缺失 | 下一批高优先级 UE capability，作为 TaskPlan step 调用，不作为 Agent 原子入口 |
-| AssetFactory | FieldMapping | 完成 | `AssetFactoryService` 完成 | `create_asset` 完成 | 完成 adapter，支持 `asset_factory/asset_create/create_asset` | 完成 `create_asset` TaskSpec 编译 | TaskSpec-ready 首片 | 确认 dry-run 是否真实 |
+| AssetFactory | FieldMapping | 完成 | `AssetFactoryService` 完成，支持 dry-run 冲突/创建预检且不创建资产 | `create_asset` 完成 | 完成 adapter，支持 `asset_factory/asset_create/create_asset`；preview 调 Service true dry-run | 完成 `create_asset` TaskSpec 编译 | TaskSpec-ready 首片 | 后续扩 DataTable/WidgetBlueprint/Material 等资产类型 |
 | AssetDiscovery/EditorNavigation | Done + FieldMapping | 完成 | `AssetBrowseService` 完成 | `list_assets` / `search_assets` / `open_asset` / `get_asset_info` 完成 | 不需要默认写入 Runtime | `read_task_context` 只用一部分 | 部分 | 保持只读/导航能力，补 TaskContextPack 中更稳定的 asset summary |
 | ProjectContext/SetupState | Done + FieldMapping | 类型存在 | `ContextService` 基础存在 | `get_editor_context` 等入口存在 | 不属于写 Runtime | `read_task_context` 使用部分上下文 | 部分 | 合并到 TaskContextPack，不扩 Agent 工具面 |
 | RuntimeProfile | Done + FieldMapping | 完成 | `RuntimeProfileService` 完成 | `get_runtime_profile` 完成 | 不属于写 Runtime | MCP 默认工具已有 runtime profile | 完成 | 保持 Agent preflight 只读入口 |
@@ -102,10 +102,10 @@ Agent 仍不应直接调用底层 MCP 原子工具；默认入口仍是 TaskSpec
 | EditorLifecycle/RiskCommand | Done + FieldMapping | 完成 | `EditorCommandService` 完成 | undo/redo/PIE/close/console 完成 | 不应默认进入写 Runtime | 缺失 | 内部/debug | 保持 high-risk/debug/expert，不纳入普通 TaskSpec |
 | DebugExport/LargePayload | Done + FieldMapping | 类型存在 | 缺少完整 Service | 缺少完整 command | 缺失 | task context 中只保留 `large_payload_ref` 概念 | 部分 | 建立 debug export service，供失败定位和大 payload 分页 |
 | DataAsset/Object Property | Done + FieldMapping | 类型存在 | `PropertyReflectionService` 完成通用 UObject 属性读写 | `get_object_properties` / `set_object_property` 完成 | 缺失 | 缺失 | 部分 | 接入 `data_asset` 或 `object_property` capability，统一 property path/value 字段 |
-| DataTable | Done + FieldMapping | 完成 | `DataTableService` 完成 | get/add/update/delete row 完成 | 完成 adapter，支持 add/update/delete row | 完成 `edit_data_table` TaskSpec 编译 | TaskSpec-ready 首片 | 确认 read 行为仍只读，不混入写 TaskPlan；确认 dry-run |
-| UMG WidgetBlueprint | Done + FieldMapping | 完成 | `WidgetService` 完成 | get/add/remove/move/get_properties/set_property 完成 | 部分 adapter，支持 add/set_property/remove，不支持 move/read | 完成 `edit_umg_widget` TaskSpec 编译，不支持 move_widget | TaskSpec-ready 首片 | Runtime adapter 扩 move_widget 或保持明确不支持；确认 dry-run |
-| Blueprint Component | FieldMapping | 当前结构在 Service header 内，未完全拆到 Structure | `ComponentService` 完成，已统一 ToolResultBase | read/add/set/remove command 完成 | 部分 adapter，支持 add/set_properties/remove，preview 为 synthetic dry-run | 完成 `edit_blueprint_components` TaskSpec 编译 | TaskSpec-ready 首片但 dry-run 弱 | 把 component DTO 进一步迁到 Structure；实现真实 dry-run 或标注 preview limitation |
-| Blueprint Class Settings | FieldMapping | 完成 | `ClassSettingsService` 完成 | read/add/remove interface/set class defaults 完成 | 部分 adapter，支持 interface/default property，不支持 reparent | 完成 `edit_blueprint_class_settings` TaskSpec 编译，reparent 明确拒绝 | TaskSpec-ready 首片 | reparent 作为 future 或并入 Function/Event/Class signature 能力 |
+| DataTable | Done + FieldMapping | 完成 | `DataTableService` 完成，add/update/delete row 支持 true dry-run | get/add/update/delete row 完成 | 完成 adapter，支持 add/update/delete row；preview 调 Service true dry-run | 完成 `edit_data_table` TaskSpec 编译 | TaskSpec-ready 首片 | 确认 read 行为仍只读，不混入写 TaskPlan；扩更完整 row schema/field 类型覆盖 |
+| UMG WidgetBlueprint | Done + FieldMapping | 完成 | `WidgetService` 完成，add/set_property/remove 支持 true dry-run | get/add/remove/move/get_properties/set_property 完成 | 部分 adapter，支持 add/set_property/remove，不支持 move/read；preview 调 Service true dry-run | 完成 `edit_umg_widget` TaskSpec 编译，不支持 move_widget | TaskSpec-ready 首片 | Runtime adapter 扩 move_widget 或保持明确不支持 |
+| Blueprint Component | FieldMapping | 当前结构在 Service header 内，未完全拆到 Structure | `ComponentService` 完成，已统一 ToolResultBase，add/set/remove 支持 true dry-run | read/add/set/remove command 完成 | 部分 adapter，支持 add/set_properties/remove；preview 调 Service true dry-run | 完成 `edit_blueprint_components` TaskSpec 编译 | TaskSpec-ready 首片 | 把 component DTO 进一步迁到 Structure |
+| Blueprint Class Settings | FieldMapping | 完成 | `ClassSettingsService` 完成，interface/default property 写入支持 true dry-run | read/add/remove interface/set class defaults 完成 | 部分 adapter，支持 interface/default property，不支持 reparent；preview 调 Service true dry-run | 完成 `edit_blueprint_class_settings` TaskSpec 编译，reparent 明确拒绝 | TaskSpec-ready 首片 | reparent 作为 future 或并入 Function/Event/Class signature 能力 |
 | Internal Dependency Analysis / Reference Context | Done | 完成 | `Safety/DependencyAnalysisService` 部分完成 | `read_reference_context` 完成 | 不属于默认写 Runtime | MCP 只读工具已存在 | 部分/内部 | 保持 Agent 只读引用查看器；后续让高风险 remove/replace preview 可引用其 summary |
 | LogicMD/LogicJson Read | FieldMapping + 架构文档 | 完成 | `Logic` 层完成 | read logic md/json command 完成 | 不属于写 Runtime | 用于上下文/调试，非默认写入口 | 内部/只读 | 后续由 Task Compiler 使用，避免 Agent 为写流程直读大量底层 JSON |
 | TransactionJournalQuery | Done + FieldMapping | 完成 | `Transactions` 层完成 query | list/read transaction command 完成 | TaskRunJournal 目前是单独内存 journal | 缺失 | 部分 | 统一 child transaction 与 TaskRunJournal，补持久 task journal |
@@ -121,13 +121,13 @@ Agent 仍不应直接调用底层 MCP 原子工具；默认入口仍是 TaskSpec
 3. **[x] P1 Python Compiler 覆盖已补齐首片。**
    Python/MCP TaskSpec 已覆盖 `asset_factory`、`blueprint_component`、`blueprint_class_settings`、`umg_widget`、`data_table`，并保持 Agent-facing 字段为语义层，不暴露 adapter operation。
 
-4. **部分 adapter 的 preview 不是严格 dry-run。**
-   Component adapter 明确存在 synthetic dry-run。AssetFactory、Widget、DataTable、ClassSettings 也需要逐项确认 dry-run 是否只预检不修改。
+4. **[x] P1 adapter dry-run 已升级为服务级 true dry-run。**
+   AssetFactory、BlueprintComponent、BlueprintClassSettings、UMGWidget、DataTable 的 TaskPlan adapter 已标记 true dry-run 支持，并在 preview 时调用对应 Service preflight。dry-run 路径会解析目标资产、类/接口/属性/row/widget/component 等执行前置条件，但不会进入 `FBlueprintHelperScopedAssetMutation`、`Modify`、实际 Add/Remove/ImportText 写入、MarkBlueprint、AssetRegistry 创建或 DataTable row mutation 路径。Runtime synthetic preview 仍保留给尚未完成 true dry-run 的其他 adapter。
 
 5. **部分 UE Service 仍是 stub 或只有 DTO / 底层 Bridge。**
-   BlueprintVariableService 的 member property settings 与 member defaults 已完成首片真实执行，且实际 mutation 已迁入 `FBlueprintHelperMemberVariableMutationHandler`；local variables 仍未完整执行；DebugExport/LargePayload、Function/Event Signature Management、DataAsset TaskPlan、Cleanup/Rollback/Ownership TaskPlan 还没有进入 TaskSpec-first 闭环。
+   BlueprintVariableService 的 member property settings、member defaults、local variables 已完成首片真实执行，且实际 mutation 已迁入 OperationHandler；DebugExport/LargePayload、Function/Event Signature Management、DataAsset TaskPlan、Cleanup/Rollback/Ownership TaskPlan 还没有进入 TaskSpec-first 闭环。
 6. **UE 构建验证状态。**
-   后续统一使用项目级 `Build.bat`。本轮已按 `Build.bat MrStoneEditor Win64 Development -Project=G:\UnrealPractise\MrStone\MrStone.uproject` 重跑，构建通过（确认无权限阻塞）；MCP 回归已通过。
+   后续统一使用项目级 `Build.bat`。源码 UTF-8/TEXT() 修复后，用户本地已确认 `Build.bat MrStoneEditor Win64 Development -Project=G:\UnrealPractise\MrStone\MrStone.uproject` 构建通过；当前 Codex 沙盒复跑会因 MrStone 工程级 `Intermediate` 写权限限制停在 UBT cache 写入阶段。MCP 回归已通过。
 
 ## 优先级建议
 
@@ -166,7 +166,6 @@ Agent 仍不应直接调用底层 MCP 原子工具；默认入口仍是 TaskSpec
 
 | 任务 | 写入范围 | 是否冲突 | 建议模型 |
 | --- | --- | --- | --- |
-| BlueprintVariableService local variable 执行能力 | `Source/BlueprintHelper/Public|Private/Services`，必要时 `Structure`，Bridge tests；避免回退已迁入 OperationHandler 的 member mutation | 与 Runtime adapter 低冲突 | 5.5 xhigh |
 | GraphWrite replace/patch/merge TaskSpec compiler | `BlueprintHelper_MCP_Server/python`，`src/task-schemas.ts`，测试 | 与 UE 不冲突 | 5.5 xhigh |
 | Preview blocker / ReferenceContextPack 集成 | `TaskRuntime`、`DependencyAnalysisService`、MCP task result | 与 Runtime 改动冲突 | 5.5 xhigh |
 | Function/Event Signature UE 能力设计落地 | `Source/BlueprintHelper/Public|Private/Services`，`Structure`，Bridge，Tests | 与 Runtime 基础低冲突 | 5.5 xhigh |
@@ -174,13 +173,12 @@ Agent 仍不应直接调用底层 MCP 原子工具；默认入口仍是 TaskSpec
 
 ## 推荐下一步
 
-P0 与 P1 首片已经完成，变量簇 member property/default 首片已经落到 UE Service + OperationHandler。下一步优先补变量簇 local variable 真实执行能力，并继续在可写环境用项目级 `Build.bat` 复验，再进入更大 UE 新能力簇：
+P0 与 P1 首片已经完成，变量簇 member property/default/local variable 首片已经落到 UE Service + OperationHandler；AssetFactory、Component、ClassSettings、UMG、DataTable 也已完成服务级 true dry-run。下一步优先进入 GraphWrite replace/patch/merge TaskSpec compiler，或开始更大 UE 新能力簇：
 
 ```text
-BlueprintVariableService local variables
--> GraphWrite replace/patch/merge TaskSpec compiler
+GraphWrite replace/patch/merge TaskSpec compiler
 -> Function/Event Signature Management
 -> DataAsset/ObjectProperty / Cleanup/Ownership / DebugExport
 ```
 
-这样能先把已经进入 TaskSpec-first 闭环的变量簇打实，再继续扩 UE 能力面，不会退回到底层工具膨胀。
+这样能继续沿 TaskSpec -> TaskPlan -> Runtime lowering 的结构化编辑语言方向扩展，不会退回到底层工具膨胀。

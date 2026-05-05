@@ -72,6 +72,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperWidgetMutationResult
 	bool bSuccess = false;
 	FString ErrorMessage;
 	FString AffectedWidget;
+	bool bDryRun = false;
 };
 
 /**
@@ -98,12 +99,14 @@ public:
 		const FString& AssetPath,
 		const FString& ParentName,
 		const FString& WidgetClass,
-		const FString& WidgetName) const;
+		const FString& WidgetName,
+		bool bDryRun = false) const;
 
 	/** 从 Widget 树中移除指定 Widget（及其子树）。 */
 	FBlueprintHelperWidgetMutationResult RemoveWidget(
 		const FString& AssetPath,
-		const FString& WidgetName) const;
+		const FString& WidgetName,
+		bool bDryRun = false) const;
 
 	/**
 	 * 将 Widget 移动到新的父面板下。
@@ -128,7 +131,8 @@ public:
 		const FString& AssetPath,
 		const FString& WidgetName,
 		const FString& PropertyName,
-		const FString& Value) const;
+		const FString& Value,
+		bool bDryRun = false) const;
 
 #pragma endregion API
 

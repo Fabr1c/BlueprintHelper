@@ -904,15 +904,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::RemoveM
 		AddVariableWriteValidation(Result);
 	}
 	return Result;
-#if 0
-	return FBlueprintHelperToolResultBuilder::Failure(TEXT("remove_blueprint_member_variables"), TraceId,
-		{TEXT("invalid_request"), EBlueprintHelperToolStage::ParseInput, TEXT("批量删除暂未实现。"), false});
 }
 
 // ─── Member Defaults ───
-
-#endif
-}
 
 FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::ReadMemberDefaults(
 	const TSharedPtr<FJsonObject>& Payload) const
@@ -1351,9 +1345,6 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::ReadLoc
 	Data.LocalVariables = MoveTemp(LocalVariables);
 	Result.Data = Data.ToJson();
 	return Result;
-	(void)Payload;
-	return FBlueprintHelperToolResultBuilder::Failure(TEXT("read_blueprint_local_variables"), TraceId,
-		{TEXT("invalid_request"), EBlueprintHelperToolStage::ParseInput, TEXT("Local Variable 读取暂未实现。"), false});
 }
 
 FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::AddLocalVariable(
@@ -1480,9 +1471,6 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::AddLoca
 		AddVariableWriteValidation(Result);
 	}
 	return Result;
-	(void)Payload;
-	return FBlueprintHelperToolResultBuilder::Failure(TEXT("add_blueprint_local_variable"), TraceId,
-		{TEXT("invalid_request"), EBlueprintHelperToolStage::ParseInput, TEXT("Local Variable 创建暂未实现。"), false});
 }
 
 FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::AddLocalVariables(
@@ -1609,9 +1597,6 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::AddLoca
 		AddVariableWriteValidation(Result);
 	}
 	return Result;
-	(void)Payload;
-	return FBlueprintHelperToolResultBuilder::Failure(TEXT("add_blueprint_local_variables"), TraceId,
-		{TEXT("invalid_request"), EBlueprintHelperToolStage::ParseInput, TEXT("批量 Local Variable 创建暂未实现。"), false});
 }
 
 FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetLocalVariableProperties(
@@ -1775,9 +1760,6 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetLoca
 		AddVariableWriteValidation(Result);
 	}
 	return Result;
-	(void)Payload;
-	return FBlueprintHelperToolResultBuilder::Failure(TEXT("set_blueprint_local_variable_properties"), TraceId,
-		{TEXT("unsupported_variable_type"), EBlueprintHelperToolStage::Execute, TEXT("Local Variable 属性修改暂未实现。"), false});
 }
 
 FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::RemoveLocalVariable(
@@ -1912,9 +1894,6 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::RemoveL
 		AddVariableWriteValidation(Result);
 	}
 	return Result;
-	(void)Payload;
-	return FBlueprintHelperToolResultBuilder::Failure(TEXT("remove_blueprint_local_variable"), TraceId,
-		{TEXT("invalid_request"), EBlueprintHelperToolStage::ParseInput, TEXT("Local Variable 删除暂未实现。"), false});
 }
 
 FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::RemoveLocalVariables(
@@ -2053,7 +2032,4 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::RemoveL
 		AddVariableWriteValidation(Result);
 	}
 	return Result;
-	(void)Payload;
-	return FBlueprintHelperToolResultBuilder::Failure(TEXT("remove_blueprint_local_variables"), TraceId,
-		{TEXT("invalid_request"), EBlueprintHelperToolStage::ParseInput, TEXT("批量 Local Variable 删除暂未实现。"), false});
 }

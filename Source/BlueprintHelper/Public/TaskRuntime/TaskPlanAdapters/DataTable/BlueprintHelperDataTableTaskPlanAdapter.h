@@ -17,7 +17,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperDataTableTaskPlanPayload
 	FString RuntimeOperation;
 	FString AdapterOperation;
 	TSharedPtr<FJsonObject> Payload;
-	bool bAdapterDryRunSupported = false;
+	bool bAdapterDryRunSupported = true;
 };
 
 class BLUEPRINTHELPER_API FBlueprintHelperDataTableTaskPlanAdapter

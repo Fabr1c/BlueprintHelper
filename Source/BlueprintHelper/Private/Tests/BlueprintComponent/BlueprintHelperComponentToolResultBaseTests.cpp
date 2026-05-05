@@ -1,12 +1,118 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Dom/JsonObject.h"
+#include "Dom/JsonValue.h"
+#include "Engine/Blueprint.h"
+#include "Engine/BlueprintGeneratedClass.h"
+#include "Engine/SCS_Node.h"
+#include "Engine/SimpleConstructionScript.h"
+#include "GameFramework/Actor.h"
 #include "Misc/AutomationTest.h"
 #include "Services/BlueprintComponent/BlueprintHelperComponentService.h"
 #include "GraphSupport/BlueprintHelperGraphResolver.h"
+#include "Kismet2/KismetEditorUtilities.h"
+#include "UObject/Package.h"
+#include "UObject/UnrealType.h"
 
 namespace
 {
+	FString MakeComponentServiceTestObjectName(const FString& Prefix)
+	{
+		return FString::Printf(TEXT("%s_%s"), *Prefix, *FGuid::NewGuid().ToString(EGuidFormats::Digits));
+	}
+
+	UPackage* MakeComponentServiceTestPackage(const FString& Prefix)
+	{
+		UPackage* Package = CreatePackage(*FString::Printf(
+			TEXT("/Game/BlueprintHelperComponent/%s"),
+			*MakeComponentServiceTestObjectName(Prefix)));
+		Package->SetDirtyFlag(false);
+		return Package;
+	}
+
+	UBlueprint* MakeComponentServiceActorBlueprint(const FString& Prefix)
+	{
+		UPackage* Package = MakeComponentServiceTestPackage(Prefix);
+		UBlueprint* Blueprint = FKismetEditorUtilities::CreateBlueprint(
+			AActor::StaticClass(),
+			Package,
+			*MakeComponentServiceTestObjectName(TEXT("BP_ComponentService")),
+			BPTYPE_Normal,
+			UBlueprint::StaticClass(),
+			UBlueprintGeneratedClass::StaticClass(),
+			TEXT("BlueprintHelperComponentToolResultBaseTests"));
+		Package->SetDirtyFlag(false);
+		return Blueprint;
+	}
+
+	USCS_Node* FindComponentServiceTestNode(UBlueprint* Blueprint, const FString& ComponentName)
+	{
+		if (!Blueprint || !Blueprint->SimpleConstructionScript)
+		{
+			return nullptr;
+		}
+
+		for (USCS_Node* Node : Blueprint->SimpleConstructionScript->GetAllNodes())
+		{
+			if (Node && Node->GetVariableName().ToString() == ComponentName)
+			{
+				return Node;
+			}
+		}
+		return nullptr;
+	}
+
+	FBoolProperty* FindWritableBoolProperty(UObject* Object, FString& OutPropertyName)
+	{
+		if (!Object)
+		{
+			return nullptr;
+		}
+
+		for (TFieldIterator<FProperty> It(Object->GetClass()); It; ++It)
+		{
+			FBoolProperty* BoolProperty = CastField<FBoolProperty>(*It);
+			if (BoolProperty && FBlueprintHelperEditablePropertyPolicy::AllowsWrite(BoolProperty))
+			{
+				OutPropertyName = BoolProperty->GetName();
+				return BoolProperty;
+			}
+		}
+		return nullptr;
+	}
+
+	bool ReadBoolPropertyValue(UObject* Object, FBoolProperty* Property)
+	{
+		return Object && Property
+			? Property->GetPropertyValue(Property->ContainerPtrToValuePtr<void>(Object))
+			: false;
+	}
+
+	void WriteBoolPropertyValue(UObject* Object, FBoolProperty* Property, bool bValue)
+	{
+		if (Object && Property)
+		{
+			Property->SetPropertyValue(Property->ContainerPtrToValuePtr<void>(Object), bValue);
+		}
+	}
+
+	void AssertComponentDryRunResult(
+		FAutomationTestBase& Test,
+		const FBlueprintHelperToolResultBase& Result,
+		const FString& ExpectedOperation)
+	{
+		Test.TestTrue(TEXT("component dry-run succeeds"), Result.bOk);
+		Test.TestEqual(TEXT("component dry-run status"), Result.Status, EBlueprintHelperToolStatus::DryRun);
+		Test.TestEqual(TEXT("component dry-run operation"), Result.Operation, ExpectedOperation);
+		Test.TestFalse(TEXT("component dry-run does not mark modified"), Result.bModified);
+		Test.TestTrue(TEXT("component dry-run returns validation"), Result.Validation.IsSet());
+		if (Result.Validation.IsSet())
+		{
+			Test.TestFalse(TEXT("component dry-run does not request compile"), Result.Validation->bShouldCompile);
+			Test.TestFalse(TEXT("component dry-run does not request save"), Result.Validation->bShouldSave);
+		}
+	}
+
 	void AssertComponentToolResultBaseEnvelope(
 		FAutomationTestBase& Test,
 		const FBlueprintHelperToolResultBase& Result,
@@ -93,6 +199,145 @@ bool FBlueprintHelperComponentToolResultBaseWriteEnvelopeTest::RunTest(const FSt
 		ComponentService.RemoveComponent(RemoveRequest),
 		TEXT("remove_component"));
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperComponentAddDryRunDoesNotCreateTest,
+	"BlueprintHelper.Component.DryRun.AddComponentDoesNotCreate",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperComponentAddDryRunDoesNotCreateTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeComponentServiceActorBlueprint(TEXT("AddDryRun"));
+	TestNotNull(TEXT("test Blueprint is created"), Blueprint);
+	TestNotNull(TEXT("test Blueprint has SimpleConstructionScript"), Blueprint ? Blueprint->SimpleConstructionScript : nullptr);
+	if (!Blueprint || !Blueprint->SimpleConstructionScript)
+	{
+		return false;
+	}
+
+	const int32 BeforeNodeCount = Blueprint->SimpleConstructionScript->GetAllNodes().Num();
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperComponentService ComponentService(Resolver);
+
+	FBlueprintHelperAddComponentRequest Request;
+	Request.AssetPath = Blueprint->GetPathName();
+	Request.ComponentName = TEXT("DryRunActorComponent");
+	Request.ComponentClass = TEXT("SceneComponent");
+	Request.bDryRun = true;
+
+	const FBlueprintHelperToolResultBase Result = ComponentService.AddComponent(Request);
+
+	AssertComponentDryRunResult(*this, Result, TEXT("add_component"));
+	TestNull(TEXT("dry-run add does not create component node"),
+		FindComponentServiceTestNode(Blueprint, TEXT("DryRunActorComponent")));
+	TestEqual(TEXT("dry-run add leaves SCS node count unchanged"),
+		Blueprint->SimpleConstructionScript->GetAllNodes().Num(),
+		BeforeNodeCount);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperComponentSetPropertiesDryRunDoesNotWriteTest,
+	"BlueprintHelper.Component.DryRun.SetComponentPropertiesDoesNotWrite",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperComponentSetPropertiesDryRunDoesNotWriteTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeComponentServiceActorBlueprint(TEXT("SetPropertiesDryRun"));
+	TestNotNull(TEXT("test Blueprint is created"), Blueprint);
+	if (!Blueprint)
+	{
+		return false;
+	}
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperComponentService ComponentService(Resolver);
+
+	FBlueprintHelperAddComponentRequest AddRequest;
+	AddRequest.AssetPath = Blueprint->GetPathName();
+	AddRequest.ComponentName = TEXT("DryRunEditableComponent");
+	AddRequest.ComponentClass = TEXT("SceneComponent");
+	const FBlueprintHelperToolResultBase AddResult = ComponentService.AddComponent(AddRequest);
+	TestTrue(TEXT("component is added before property dry-run"), AddResult.bOk);
+	TestEqual(TEXT("component add applies change"), AddResult.Status, EBlueprintHelperToolStatus::Applied);
+
+	USCS_Node* Node = FindComponentServiceTestNode(Blueprint, TEXT("DryRunEditableComponent"));
+	TestNotNull(TEXT("component node exists before property dry-run"), Node);
+	TestNotNull(TEXT("component template exists before property dry-run"), Node ? Node->ComponentTemplate : nullptr);
+	if (!Node || !Node->ComponentTemplate)
+	{
+		return false;
+	}
+
+	FString PropertyName;
+	FBoolProperty* BoolProperty = FindWritableBoolProperty(Node->ComponentTemplate, PropertyName);
+	TestNotNull(TEXT("component template has a writable bool property"), BoolProperty);
+	if (!BoolProperty)
+	{
+		return false;
+	}
+
+	WriteBoolPropertyValue(Node->ComponentTemplate, BoolProperty, true);
+	TestTrue(TEXT("test bool property starts true"),
+		ReadBoolPropertyValue(Node->ComponentTemplate, BoolProperty));
+
+	FBlueprintHelperSetComponentPropertiesRequest SetRequest;
+	SetRequest.AssetPath = Blueprint->GetPathName();
+	SetRequest.ComponentName = TEXT("DryRunEditableComponent");
+	SetRequest.bDryRun = true;
+
+	FBlueprintHelperComponentPropertySetting Setting;
+	Setting.PropertyPath = PropertyName;
+	Setting.Value = MakeShared<FJsonValueBoolean>(false);
+	SetRequest.Settings.Add(MoveTemp(Setting));
+
+	const FBlueprintHelperToolResultBase SetResult = ComponentService.SetComponentProperties(SetRequest);
+
+	AssertComponentDryRunResult(*this, SetResult, TEXT("set_component_properties"));
+	TestTrue(TEXT("dry-run property write validates property but leaves value unchanged"),
+		ReadBoolPropertyValue(Node->ComponentTemplate, BoolProperty));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperComponentRemoveDryRunDoesNotDeleteTest,
+	"BlueprintHelper.Component.DryRun.RemoveComponentDoesNotDelete",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperComponentRemoveDryRunDoesNotDeleteTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeComponentServiceActorBlueprint(TEXT("RemoveDryRun"));
+	TestNotNull(TEXT("test Blueprint is created"), Blueprint);
+	if (!Blueprint)
+	{
+		return false;
+	}
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperComponentService ComponentService(Resolver);
+
+	FBlueprintHelperAddComponentRequest AddRequest;
+	AddRequest.AssetPath = Blueprint->GetPathName();
+	AddRequest.ComponentName = TEXT("DryRunRemoveComponent");
+	AddRequest.ComponentClass = TEXT("SceneComponent");
+	const FBlueprintHelperToolResultBase AddResult = ComponentService.AddComponent(AddRequest);
+	TestTrue(TEXT("component is added before remove dry-run"), AddResult.bOk);
+	TestEqual(TEXT("component add applies change"), AddResult.Status, EBlueprintHelperToolStatus::Applied);
+	TestNotNull(TEXT("component node exists before remove dry-run"),
+		FindComponentServiceTestNode(Blueprint, TEXT("DryRunRemoveComponent")));
+
+	FBlueprintHelperRemoveComponentRequest RemoveRequest;
+	RemoveRequest.AssetPath = Blueprint->GetPathName();
+	RemoveRequest.ComponentName = TEXT("DryRunRemoveComponent");
+	RemoveRequest.bDryRun = true;
+
+	const FBlueprintHelperToolResultBase RemoveResult = ComponentService.RemoveComponent(RemoveRequest);
+
+	AssertComponentDryRunResult(*this, RemoveResult, TEXT("remove_component"));
+	TestNotNull(TEXT("dry-run remove leaves component node in SCS"),
+		FindComponentServiceTestNode(Blueprint, TEXT("DryRunRemoveComponent")));
 	return true;
 }
 

@@ -25,6 +25,7 @@ public:
 
 	static bool TryBuildAdapterPayload(
 		const TSharedPtr<FJsonObject>& StepObject,
+		bool bDryRun,
 		TSharedPtr<FJsonObject>& OutPayload,
 		FString& OutAdapterOperation,
 		FBlueprintHelperToolError& OutError);

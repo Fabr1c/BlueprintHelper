@@ -20,7 +20,8 @@ FBlueprintHelperAssetFactoryData FBlueprintHelperAssetFactoryService::CreateAsse
 	EBlueprintHelperAssetType AssetType,
 	const FString& ParentClass,
 	const FString& ValueType,
-	EBlueprintHelperAssetCollisionPolicy CollisionPolicy) const
+	EBlueprintHelperAssetCollisionPolicy CollisionPolicy,
+	bool bDryRun) const
 {
 	FBlueprintHelperAssetFactoryData Data;
 	Data.Factory.AssetType = AssetType;
@@ -55,6 +56,12 @@ FBlueprintHelperAssetFactoryData FBlueprintHelperAssetFactoryService::CreateAsse
 		// FailIfExists：不创建
 		Data.Asset.bCreated = false;
 		Data.Collision.bHandled = false;
+		return Data;
+	}
+
+	if (bDryRun)
+	{
+		Data.Asset.bCreated = false;
 		return Data;
 	}
 
