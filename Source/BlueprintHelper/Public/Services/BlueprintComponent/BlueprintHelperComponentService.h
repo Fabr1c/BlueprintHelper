@@ -93,6 +93,7 @@ struct FBlueprintHelperSetComponentPropertiesRequest
 	FString ComponentName;
 	EBlueprintHelperComponentPropertyMode Mode = EBlueprintHelperComponentPropertyMode::Batch;
 	TArray<FBlueprintHelperComponentPropertySetting> Settings;
+	bool bDryRun = false;
 };
 
 struct FBlueprintHelperAddComponentRequest
@@ -104,12 +105,14 @@ struct FBlueprintHelperAddComponentRequest
 	FString SocketName;
 	EBlueprintHelperAttachRule AttachRule = EBlueprintHelperAttachRule::KeepRelative;
 	EBlueprintHelperComponentNameCollisionPolicy NameCollisionPolicy = EBlueprintHelperComponentNameCollisionPolicy::FailIfExists;
+	bool bDryRun = false;
 };
 
 struct FBlueprintHelperRemoveComponentRequest
 {
 	FString AssetPath;
 	FString ComponentName;
+	bool bDryRun = false;
 };
 
 // ─── 返回子结构体 ───

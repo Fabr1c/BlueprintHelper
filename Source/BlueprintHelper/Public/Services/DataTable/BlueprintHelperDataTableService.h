@@ -38,6 +38,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperDataTableRowsResult
 struct BLUEPRINTHELPER_API FBlueprintHelperDataTableMutationResult
 {
 	bool bSuccess = false;
+	bool bDryRun = false;
 	FString ErrorMessage;
 	FName AffectedRow;
 };
@@ -58,18 +59,21 @@ public:
 	FBlueprintHelperDataTableMutationResult AddDataTableRow(
 		const FString& AssetPath,
 		const FString& RowName,
-		const TMap<FString, FString>& Fields) const;
+		const TMap<FString, FString>& Fields,
+		bool bDryRun = false) const;
 
 	/** 更新已有行的字段。 */
 	FBlueprintHelperDataTableMutationResult UpdateDataTableRow(
 		const FString& AssetPath,
 		const FString& RowName,
-		const TMap<FString, FString>& Fields) const;
+		const TMap<FString, FString>& Fields,
+		bool bDryRun = false) const;
 
 	/** 删除行。 */
 	FBlueprintHelperDataTableMutationResult DeleteDataTableRow(
 		const FString& AssetPath,
-		const FString& RowName) const;
+		const FString& RowName,
+		bool bDryRun = false) const;
 
 private:
 	/** 根据资产路径加载 DataTable。 */
@@ -79,6 +83,14 @@ private:
 	static bool ApplyFieldsToRow(
 		const UScriptStruct* RowStruct,
 		uint8* RowData,
+		const TMap<FString, FString>& Fields,
+		UObject* Owner,
+		FString& OutError);
+
+	/** 将字段值应用到临时候选行，用于 dry-run 和预校验。 */
+	static bool ApplyFieldsToCandidateRow(
+		const UScriptStruct* RowStruct,
+		const uint8* SourceRowData,
 		const TMap<FString, FString>& Fields,
 		UObject* Owner,
 		FString& OutError);

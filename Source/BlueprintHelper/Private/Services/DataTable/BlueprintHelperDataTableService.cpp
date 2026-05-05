@@ -103,6 +103,37 @@ bool FBlueprintHelperDataTableService::ApplyFieldsToRow(
 	return true;
 }
 
+bool FBlueprintHelperDataTableService::ApplyFieldsToCandidateRow(
+	const UScriptStruct* RowStruct,
+	const uint8* SourceRowData,
+	const TMap<FString, FString>& Fields,
+	UObject* Owner,
+	FString& OutError)
+{
+	if (!RowStruct)
+	{
+		OutError = TEXT("DataTable 没有关联的行结构体。");
+		return false;
+	}
+
+	const int32 RowSize = RowStruct->GetStructureSize();
+	TArray<uint8> CandidateRow;
+	CandidateRow.SetNumZeroed(RowSize);
+	uint8* CandidateData = CandidateRow.GetData();
+	RowStruct->InitializeStruct(CandidateData);
+	ON_SCOPE_EXIT
+	{
+		RowStruct->DestroyStruct(CandidateData);
+	};
+
+	if (SourceRowData)
+	{
+		RowStruct->CopyScriptStruct(CandidateData, SourceRowData);
+	}
+
+	return ApplyFieldsToRow(RowStruct, CandidateData, Fields, Owner, OutError);
+}
+
 // ═══════════════════════════════════════════════════════════
 // GetDataTableRows
 // ═══════════════════════════════════════════════════════════
@@ -158,15 +189,24 @@ FBlueprintHelperDataTableRowsResult FBlueprintHelperDataTableService::GetDataTab
 FBlueprintHelperDataTableMutationResult FBlueprintHelperDataTableService::AddDataTableRow(
 	const FString& AssetPath,
 	const FString& RowName,
-	const TMap<FString, FString>& Fields) const
+	const TMap<FString, FString>& Fields,
+	bool bDryRun) const
 {
 	FBlueprintHelperDataTableMutationResult Result;
+	Result.bDryRun = bDryRun;
 
 	UDataTable* DT = ResolveDataTable(AssetPath, Result.ErrorMessage);
 	if (!DT) return Result;
 
 	const FName RowFName(*RowName);
 	Result.AffectedRow = RowFName;
+
+	const UScriptStruct* RowStruct = DT->GetRowStruct();
+	if (bDryRun && !RowStruct)
+	{
+		Result.ErrorMessage = TEXT("DataTable 没有关联的行结构体。");
+		return Result;
+	}
 
 	// 检查行是否已存在
 	if (DT->FindRowUnchecked(RowFName))
@@ -175,10 +215,22 @@ FBlueprintHelperDataTableMutationResult FBlueprintHelperDataTableService::AddDat
 		return Result;
 	}
 
-	const UScriptStruct* RowStruct = DT->GetRowStruct();
 	if (!RowStruct)
 	{
 		Result.ErrorMessage = TEXT("DataTable 没有关联的行结构体。");
+		return Result;
+	}
+
+	if (bDryRun)
+	{
+		FString FieldError;
+		if (!ApplyFieldsToCandidateRow(RowStruct, nullptr, Fields, DT, FieldError))
+		{
+			Result.ErrorMessage = FieldError;
+			return Result;
+		}
+
+		Result.bSuccess = true;
 		return Result;
 	}
 
@@ -225,9 +277,11 @@ FBlueprintHelperDataTableMutationResult FBlueprintHelperDataTableService::AddDat
 FBlueprintHelperDataTableMutationResult FBlueprintHelperDataTableService::UpdateDataTableRow(
 	const FString& AssetPath,
 	const FString& RowName,
-	const TMap<FString, FString>& Fields) const
+	const TMap<FString, FString>& Fields,
+	bool bDryRun) const
 {
 	FBlueprintHelperDataTableMutationResult Result;
+	Result.bDryRun = bDryRun;
 
 	UDataTable* DT = ResolveDataTable(AssetPath, Result.ErrorMessage);
 	if (!DT) return Result;
@@ -259,11 +313,16 @@ FBlueprintHelperDataTableMutationResult FBlueprintHelperDataTableService::Update
 	{
 		RowStruct->DestroyStruct(CandidateData);
 	};
-
 	RowStruct->CopyScriptStruct(CandidateData, RowData);
 	if (!ApplyFieldsToRow(RowStruct, CandidateData, Fields, DT, FieldError))
 	{
 		Result.ErrorMessage = FieldError;
+		return Result;
+	}
+
+	if (bDryRun)
+	{
+		Result.bSuccess = true;
 		return Result;
 	}
 
@@ -285,9 +344,11 @@ FBlueprintHelperDataTableMutationResult FBlueprintHelperDataTableService::Update
 
 FBlueprintHelperDataTableMutationResult FBlueprintHelperDataTableService::DeleteDataTableRow(
 	const FString& AssetPath,
-	const FString& RowName) const
+	const FString& RowName,
+	bool bDryRun) const
 {
 	FBlueprintHelperDataTableMutationResult Result;
+	Result.bDryRun = bDryRun;
 
 	UDataTable* DT = ResolveDataTable(AssetPath, Result.ErrorMessage);
 	if (!DT) return Result;
@@ -295,9 +356,21 @@ FBlueprintHelperDataTableMutationResult FBlueprintHelperDataTableService::Delete
 	const FName RowFName(*RowName);
 	Result.AffectedRow = RowFName;
 
+	if (bDryRun && !DT->GetRowStruct())
+	{
+		Result.ErrorMessage = TEXT("DataTable 没有关联的行结构体。");
+		return Result;
+	}
+
 	if (!DT->FindRowUnchecked(RowFName))
 	{
 		Result.ErrorMessage = FString::Printf(TEXT("未找到行: %s"), *RowName);
+		return Result;
+	}
+
+	if (bDryRun)
+	{
+		Result.bSuccess = true;
 		return Result;
 	}
 

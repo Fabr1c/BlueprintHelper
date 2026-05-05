@@ -44,6 +44,13 @@ namespace
 		int32 ComponentCount = 0;
 		int32 RootComponentCount = 0;
 
+		bool bDryRun = false;
+		int32 WouldChangeCount = 0;
+		int32 WouldCreateCount = 0;
+		int32 WouldUpdateCount = 0;
+		int32 WouldRemoveCount = 0;
+		int32 WouldNoOpCount = 0;
+
 		bool bShouldCompile = false;
 		bool bShouldSave = false;
 
@@ -101,6 +108,20 @@ namespace
 		return Target;
 	}
 
+	TSharedRef<FJsonObject> MakeComponentDryRunJson(const FBlueprintHelperComponentOperationState& State)
+	{
+		TSharedRef<FJsonObject> DryRun = MakeShared<FJsonObject>();
+		DryRun->SetStringField(TEXT("preview_kind"), TEXT("service"));
+		DryRun->SetBoolField(TEXT("can_execute"), State.bOk);
+		DryRun->SetStringField(TEXT("result"), State.bOk ? TEXT("passed") : TEXT("blocked"));
+		DryRun->SetNumberField(TEXT("would_change_count"), State.WouldChangeCount);
+		DryRun->SetNumberField(TEXT("would_create_count"), State.WouldCreateCount);
+		DryRun->SetNumberField(TEXT("would_update_count"), State.WouldUpdateCount);
+		DryRun->SetNumberField(TEXT("would_remove_count"), State.WouldRemoveCount);
+		DryRun->SetNumberField(TEXT("would_no_op_count"), State.WouldNoOpCount);
+		return DryRun;
+	}
+
 	TSharedRef<FJsonObject> MakeComponentDataJson(const FBlueprintHelperComponentOperationState& State)
 	{
 		TSharedRef<FJsonObject> Data = MakeShared<FJsonObject>();
@@ -135,6 +156,11 @@ namespace
 			Data->SetObjectField(TEXT("component"), State.Component.ToJson(false));
 		}
 
+		if (State.bDryRun)
+		{
+			Data->SetObjectField(TEXT("dry_run"), MakeComponentDryRunJson(State));
+		}
+
 		return Data;
 	}
 
@@ -156,7 +182,9 @@ namespace
 				? FBlueprintHelperToolResultBuilder::Applied(State.Operation, TraceId)
 				: State.Status == TEXT("no_op")
 					? FBlueprintHelperToolResultBuilder::NoOp(State.Operation, TraceId)
-					: FBlueprintHelperToolResultBuilder::Completed(State.Operation, TraceId);
+					: State.Status == TEXT("dry_run")
+						? FBlueprintHelperToolResultBuilder::DryRun(State.Operation, TraceId)
+						: FBlueprintHelperToolResultBuilder::Completed(State.Operation, TraceId);
 
 		Result.bModified = State.bModified;
 		Result.CustomTargetJson = MakeComponentTargetJson(State);
@@ -333,6 +361,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::AddComponent(
 	Result.AssetPath = Request.AssetPath;
 	Result.TargetType = TEXT("component");
 	Result.ComponentName = Request.ComponentName;
+	Result.bDryRun = Request.bDryRun;
 	Result.ComponentClass = Request.ComponentClass;
 	Result.NameCollision.Policy = Request.NameCollisionPolicy;
 	Result.Attachment.ParentComponent = Request.ParentComponent;
@@ -397,10 +426,14 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::AddComponent(
 		}
 
 		Result.bOk = true;
-		Result.Status = TEXT("no_op");
+		Result.Status = Request.bDryRun ? TEXT("dry_run") : TEXT("no_op");
 		Result.bModified = false;
 		Result.bShouldCompile = false;
 		Result.bShouldSave = false;
+		if (Request.bDryRun)
+		{
+			Result.WouldNoOpCount = 1;
+		}
 		return BuildComponentToolResult(Result);
 	}
 
@@ -418,6 +451,21 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::AddComponent(
 			Result.ErrorMessage = FString::Printf(TEXT("未找到父组件: %s"), *Request.ParentComponent);
 			return BuildComponentToolResult(Result);
 		}
+	}
+
+	if (Request.bDryRun)
+	{
+		Result.bOk = true;
+		Result.Status = TEXT("dry_run");
+		Result.bModified = false;
+		Result.Component.ComponentName = Request.ComponentName;
+		Result.Component.ComponentClass = GetShortComponentClassName(ComponentClass);
+		Result.Component.bCreated = false;
+		Result.bShouldCompile = false;
+		Result.bShouldSave = false;
+		Result.WouldChangeCount = 1;
+		Result.WouldCreateCount = 1;
+		return BuildComponentToolResult(Result);
 	}
 
 	// 创建组件
@@ -650,6 +698,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::SetComponentPro
 	Result.ComponentName = Request.ComponentName;
 	Result.PropertyResult.Mode = EBlueprintHelperComponentPropertyMode::Batch;
 	Result.PropertyResult.RequestedCount = Request.Settings.Num();
+	Result.bDryRun = Request.bDryRun;
 
 	FString Error;
 	UBlueprint* Blueprint = ResolveBlueprint(Request.AssetPath, Error);
@@ -676,6 +725,108 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::SetComponentPro
 
 	Result.Component.ComponentName = Request.ComponentName;
 	Result.Component.ComponentClass = GetShortComponentClassName(Node->ComponentTemplate->GetClass());
+
+	if (Request.bDryRun)
+	{
+		for (const auto& Setting : Request.Settings)
+		{
+			FBlueprintHelperInvalidComponentPropertySetting Invalid;
+			Invalid.PropertyPath = Setting.PropertyPath;
+
+			FProperty* Property = nullptr;
+			void* ValuePtr = nullptr;
+			FString ExpectedType, ErrorCode, ErrorMessage;
+
+			if (!ResolvePropertyPath(Node->ComponentTemplate, Setting.PropertyPath,
+				Property, ValuePtr, ExpectedType, ErrorCode, ErrorMessage))
+			{
+				Invalid.Code = ErrorCode;
+				Invalid.ExpectedType = ExpectedType;
+				Invalid.ValueSummary = ErrorMessage.Left(128);
+				Result.PropertyResult.InvalidSettings.Add(MoveTemp(Invalid));
+				continue;
+			}
+
+			Invalid.ExpectedType = ExpectedType;
+			if (!FBlueprintHelperEditablePropertyPolicy::AllowsWrite(Property))
+			{
+				Invalid.Code = TEXT("property_not_writable");
+				Result.PropertyResult.InvalidSettings.Add(MoveTemp(Invalid));
+				continue;
+			}
+
+			FString ImportText, Summary, ConvertError;
+			if (!JsonValueToImportText(Setting.Value, ImportText, Summary, ConvertError))
+			{
+				Invalid.Code = TEXT("type_mismatch");
+				Invalid.ValueSummary = ConvertError.Left(128);
+				Result.PropertyResult.InvalidSettings.Add(MoveTemp(Invalid));
+				continue;
+			}
+
+			bool bWouldChange = true;
+			if (FBoolProperty* BoolProperty = CastField<FBoolProperty>(Property))
+			{
+				if (Setting.Value.IsValid() && Setting.Value->Type == EJson::Boolean)
+				{
+					const bool bCurrent = BoolProperty->GetPropertyValue(ValuePtr);
+					bWouldChange = bCurrent != Setting.Value->AsBool();
+				}
+			}
+			else if (FNumericProperty* NumericProperty = CastField<FNumericProperty>(Property))
+			{
+				if (Setting.Value.IsValid() && Setting.Value->Type == EJson::Number)
+				{
+					if (NumericProperty->IsFloatingPoint())
+					{
+						bWouldChange = NumericProperty->GetFloatingPointPropertyValue(ValuePtr) != Setting.Value->AsNumber();
+					}
+					else if (NumericProperty->IsInteger())
+					{
+						bWouldChange = NumericProperty->GetSignedIntPropertyValue(ValuePtr) != static_cast<int64>(Setting.Value->AsNumber());
+					}
+				}
+			}
+			else if (FStrProperty* StringProperty = CastField<FStrProperty>(Property))
+			{
+				if (Setting.Value.IsValid() && Setting.Value->Type == EJson::String)
+				{
+					bWouldChange = StringProperty->GetPropertyValue(ValuePtr) != Setting.Value->AsString();
+				}
+			}
+
+			if (bWouldChange)
+			{
+				++Result.WouldChangeCount;
+				++Result.WouldUpdateCount;
+			}
+			else
+			{
+				++Result.WouldNoOpCount;
+			}
+		}
+
+		if (Result.PropertyResult.InvalidSettings.Num() > 0)
+		{
+			Result.bOk = false;
+			Result.Status = TEXT("failed");
+			Result.bModified = false;
+			Result.ErrorCode = TEXT("invalid_component_property_settings");
+			Result.ErrorStage = TEXT("preflight");
+			Result.ErrorMessage = TEXT("One or more component property settings are invalid.");
+			Result.PropertyResult.AppliedCount = 0;
+			Result.PropertyResult.ChangedCount = 0;
+			Result.PropertyResult.NoOpCount = 0;
+			return BuildComponentToolResult(Result);
+		}
+
+		Result.bOk = true;
+		Result.Status = TEXT("dry_run");
+		Result.bModified = false;
+		Result.bShouldCompile = false;
+		Result.bShouldSave = false;
+		return BuildComponentToolResult(Result);
+	}
 
 	// Preflight: 检查所有属性设置
 	for (const auto& Setting : Request.Settings)
@@ -816,6 +967,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::RemoveComponent
 	Result.AssetPath = Request.AssetPath;
 	Result.TargetType = TEXT("component");
 	Result.ComponentName = Request.ComponentName;
+	Result.bDryRun = Request.bDryRun;
 
 	FString Error;
 	UBlueprint* Blueprint = ResolveBlueprint(Request.AssetPath, Error);
@@ -852,6 +1004,19 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::RemoveComponent
 
 	Result.Component.ComponentName = Request.ComponentName;
 	Result.Component.ComponentClass = GetShortComponentClassName(Node->ComponentTemplate->GetClass());
+
+	if (Request.bDryRun)
+	{
+		Result.bOk = true;
+		Result.Status = TEXT("dry_run");
+		Result.bModified = false;
+		Result.Component.bRemoved = false;
+		Result.bShouldCompile = false;
+		Result.bShouldSave = false;
+		Result.WouldChangeCount = 1;
+		Result.WouldRemoveCount = 1;
+		return BuildComponentToolResult(Result);
+	}
 
 	FBlueprintHelperScopedAssetMutation Mutation(
 		FText::FromString(TEXT("BlueprintHelper Remove Component")), Blueprint);

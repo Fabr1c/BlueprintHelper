@@ -447,7 +447,7 @@ bool FBlueprintHelperBlueprintVariableTaskPlanAdapter::TryBuildPayloadFromTaskPl
 
 	OutPayload.Capability = CapabilityBlueprintVariable;
 	OutPayload.RuntimeOperation = RuntimeOperationBlueprintVariable;
-	OutPayload.bAdapterDryRunSupported = false;
+	OutPayload.bAdapterDryRunSupported = Strategy == StrategyLocalVariables;
 
 	if (bAllEnsureMemberVariables)
 	{
@@ -655,7 +655,13 @@ namespace
 		TSharedRef<FJsonObject> Data = MakeShared<FJsonObject>();
 		TSharedRef<FJsonObject> DryRun = MakeShared<FJsonObject>();
 		DryRun->SetBoolField(TEXT("can_execute"), true);
-		DryRun->SetArrayField(TEXT("warnings"), {});
+		DryRun->SetStringField(TEXT("preview_kind"), TEXT("synthetic"));
+		DryRun->SetStringField(TEXT("validated_scope"), TEXT("taskplan_lowering_only"));
+		DryRun->SetStringField(TEXT("limitation"), TEXT("Adapter service dry-run is not implemented; target asset state and service preflight were not validated."));
+		TArray<TSharedPtr<FJsonValue>> Warnings;
+		Warnings.Add(MakeShared<FJsonValueString>(
+			TEXT("Synthetic preview only validates TaskPlan lowering. Execute may still fail in the underlying service preflight.")));
+		DryRun->SetArrayField(TEXT("warnings"), MoveTemp(Warnings));
 		DryRun->SetArrayField(TEXT("conflicts"), {});
 		DryRun->SetArrayField(TEXT("errors"), {});
 		Data->SetObjectField(TEXT("dry_run"), DryRun);
@@ -1521,6 +1527,7 @@ namespace
 		FString ParentClass;
 		FString ValueType;
 		FString CollisionText;
+		bool bDryRun = false;
 		if (Payload.IsValid())
 		{
 			Payload->TryGetStringField(TEXT("asset_path"), AssetPath);
@@ -1528,6 +1535,7 @@ namespace
 			Payload->TryGetStringField(TEXT("parent_class"), ParentClass);
 			Payload->TryGetStringField(TEXT("value_type"), ValueType);
 			Payload->TryGetStringField(TEXT("collision"), CollisionText);
+			Payload->TryGetBoolField(TEXT("dry_run"), bDryRun);
 		}
 
 		EBlueprintHelperAssetType AssetType = EBlueprintHelperAssetType::Unknown;
@@ -1547,7 +1555,8 @@ namespace
 			AssetType,
 			ParentClass,
 			ValueType,
-			Collision);
+			Collision,
+			bDryRun);
 
 		const FString TraceId = FBlueprintHelperToolResultBuilder::GenerateTraceId();
 		FBlueprintHelperToolResultBase Result;
@@ -1556,7 +1565,9 @@ namespace
 			if (FactoryData.Collision.Policy == EBlueprintHelperAssetCollisionPolicy::ReuseIfExists &&
 				FactoryData.Collision.bHandled)
 			{
-				Result = FBlueprintHelperToolResultBuilder::NoOp(TEXT("create_asset"), TraceId);
+				Result = bDryRun
+					? FBlueprintHelperToolResultBuilder::DryRun(TEXT("create_asset"), TraceId)
+					: FBlueprintHelperToolResultBuilder::NoOp(TEXT("create_asset"), TraceId);
 			}
 			else
 			{
@@ -1573,13 +1584,15 @@ namespace
 		}
 		else if (!FactoryData.Asset.bCreated)
 		{
-			Result = FBlueprintHelperToolResultBuilder::Failure(
-				TEXT("create_asset"),
-				TraceId,
-				MakeTaskRuntimeError(
-					TEXT("creation_failed"),
-					EBlueprintHelperToolStage::Execute,
-					TEXT("Failed to create asset.")));
+			Result = bDryRun
+				? FBlueprintHelperToolResultBuilder::DryRun(TEXT("create_asset"), TraceId)
+				: FBlueprintHelperToolResultBuilder::Failure(
+					TEXT("create_asset"),
+					TraceId,
+					MakeTaskRuntimeError(
+						TEXT("creation_failed"),
+						EBlueprintHelperToolStage::Execute,
+						TEXT("Failed to create asset.")));
 		}
 		else
 		{
@@ -1587,6 +1600,10 @@ namespace
 		}
 
 		ApplyAssetFactoryResultData(Result, FactoryData, AssetPath, AssetType);
+		if (bDryRun && Result.Data.IsValid())
+		{
+			Result.Data->SetBoolField(TEXT("dry_run"), true);
+		}
 		return Result;
 	}
 
@@ -1668,6 +1685,7 @@ namespace
 
 		Payload->TryGetStringField(TEXT("asset_path"), Request.AssetPath);
 		Payload->TryGetStringField(TEXT("component_name"), Request.ComponentName);
+		Payload->TryGetBoolField(TEXT("dry_run"), Request.bDryRun);
 
 		const TArray<TSharedPtr<FJsonValue>>* SettingsArray = nullptr;
 		if (Payload->TryGetArrayField(TEXT("settings"), SettingsArray) && SettingsArray)
@@ -1724,6 +1742,11 @@ namespace
 			Payload->TryGetStringField(TEXT("asset_path"), AssetPath);
 			Payload->TryGetStringField(TEXT("function_name"), FunctionName);
 		}
+		bool bDryRun = false;
+		if (Payload.IsValid())
+		{
+			Payload->TryGetBoolField(TEXT("dry_run"), bDryRun);
+		}
 
 		const TArray<TSharedPtr<FJsonValue>>* Ops = nullptr;
 		if (AssetPath.IsEmpty() ||
@@ -1740,6 +1763,7 @@ namespace
 		}
 
 		int32 AppliedCount = 0;
+		int32 DryRunCount = 0;
 		int32 NoOpCount = 0;
 		for (int32 OpIndex = 0; OpIndex < Ops->Num(); ++OpIndex)
 		{
@@ -1760,6 +1784,7 @@ namespace
 			FString OpName;
 			OpObject->TryGetStringField(TEXT("op"), OpName);
 			const TSharedRef<FJsonObject> OpPayload = MakeBlueprintVariableOpPayload(AssetPath, FunctionName, OpObject);
+			OpPayload->SetBoolField(TEXT("dry_run"), bDryRun);
 
 			FBlueprintHelperToolResultBase OpResult;
 			if (OpName == FBlueprintHelperBlueprintVariableTaskPlanAdapter::OpEnsureMemberVariable)
@@ -1809,6 +1834,10 @@ namespace
 			{
 				++AppliedCount;
 			}
+			else if (OpResult.Status == EBlueprintHelperToolStatus::DryRun)
+			{
+				++DryRunCount;
+			}
 			else
 			{
 				++NoOpCount;
@@ -1816,23 +1845,28 @@ namespace
 		}
 
 		const FString TraceId = FBlueprintHelperToolResultBuilder::GenerateTraceId();
-		FBlueprintHelperToolResultBase Result = AppliedCount > 0
-			? FBlueprintHelperToolResultBuilder::Applied(
+		FBlueprintHelperToolResultBase Result = (bDryRun || DryRunCount > 0)
+			? FBlueprintHelperToolResultBuilder::DryRun(
 				FBlueprintHelperBlueprintVariableTaskPlanAdapter::AdapterOperationVariableBatch,
 				TraceId)
-			: FBlueprintHelperToolResultBuilder::NoOp(
-				FBlueprintHelperBlueprintVariableTaskPlanAdapter::AdapterOperationVariableBatch,
-				TraceId);
+			: (AppliedCount > 0
+				? FBlueprintHelperToolResultBuilder::Applied(
+					FBlueprintHelperBlueprintVariableTaskPlanAdapter::AdapterOperationVariableBatch,
+					TraceId)
+				: FBlueprintHelperToolResultBuilder::NoOp(
+					FBlueprintHelperBlueprintVariableTaskPlanAdapter::AdapterOperationVariableBatch,
+					TraceId));
 
 		Result.CustomTargetJson = MakeRuntimeTarget(AssetPath, TEXT("blueprint"));
 		TSharedRef<FJsonObject> Data = MakeShared<FJsonObject>();
 		Data->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.BlueprintVariableBatchResult.v1"));
 		Data->SetNumberField(TEXT("requested_count"), Ops->Num());
 		Data->SetNumberField(TEXT("applied_count"), AppliedCount);
+		Data->SetNumberField(TEXT("dry_run_count"), DryRunCount);
 		Data->SetNumberField(TEXT("no_op_count"), NoOpCount);
 		Result.Data = Data;
 
-		if (AppliedCount > 0)
+		if (!bDryRun && AppliedCount > 0)
 		{
 			FBlueprintHelperValidationSummary Validation;
 			Validation.bShouldCompile = true;
@@ -1857,6 +1891,7 @@ namespace
 				Payload->TryGetStringField(TEXT("component_class"), Request.ComponentClass);
 				Payload->TryGetStringField(TEXT("parent_component"), Request.ParentComponent);
 				Payload->TryGetStringField(TEXT("socket_name"), Request.SocketName);
+				Payload->TryGetBoolField(TEXT("dry_run"), Request.bDryRun);
 
 				FString AttachRule;
 				if (Payload->TryGetStringField(TEXT("attach_rule"), AttachRule))
@@ -1884,6 +1919,7 @@ namespace
 			{
 				Payload->TryGetStringField(TEXT("asset_path"), Request.AssetPath);
 				Payload->TryGetStringField(TEXT("component_name"), Request.ComponentName);
+				Payload->TryGetBoolField(TEXT("dry_run"), Request.bDryRun);
 			}
 			return Service.RemoveComponent(Request);
 		}
@@ -1901,22 +1937,24 @@ namespace
 		const TSharedPtr<FJsonObject>& Payload)
 	{
 		FString AssetPath;
+		bool bDryRun = false;
 		if (Payload.IsValid())
 		{
 			Payload->TryGetStringField(TEXT("asset_path"), AssetPath);
+			Payload->TryGetBoolField(TEXT("dry_run"), bDryRun);
 		}
 
 		if (AdapterOperation == FBlueprintHelperClassSettingsTaskPlanAdapter::AddImplementedInterfacesOp)
 		{
-			return Service.AddImplementedInterfaces(AssetPath, ReadStringArrayField(Payload, TEXT("interface_paths")));
+			return Service.AddImplementedInterfaces(AssetPath, ReadStringArrayField(Payload, TEXT("interface_paths")), bDryRun);
 		}
 		if (AdapterOperation == FBlueprintHelperClassSettingsTaskPlanAdapter::RemoveImplementedInterfacesOp)
 		{
-			return Service.RemoveImplementedInterfaces(AssetPath, ReadStringArrayField(Payload, TEXT("interface_paths")));
+			return Service.RemoveImplementedInterfaces(AssetPath, ReadStringArrayField(Payload, TEXT("interface_paths")), bDryRun);
 		}
 		if (AdapterOperation == FBlueprintHelperClassSettingsTaskPlanAdapter::SetClassDefaultPropertiesOp)
 		{
-			return Service.SetClassDefaultProperties(AssetPath, ReadClassDefaultSettings(Payload));
+			return Service.SetClassDefaultProperties(AssetPath, ReadClassDefaultSettings(Payload), bDryRun);
 		}
 
 		return MakeFailure(
@@ -1933,7 +1971,9 @@ namespace
 	{
 		const FString TraceId = FBlueprintHelperToolResultBuilder::GenerateTraceId();
 		FBlueprintHelperToolResultBase Result = MutationResult.bSuccess
-			? FBlueprintHelperToolResultBuilder::Applied(Operation, TraceId)
+			? (MutationResult.bDryRun
+				? FBlueprintHelperToolResultBuilder::DryRun(Operation, TraceId)
+				: FBlueprintHelperToolResultBuilder::Applied(Operation, TraceId))
 			: FBlueprintHelperToolResultBuilder::Failure(
 				Operation,
 				TraceId,
@@ -1955,6 +1995,7 @@ namespace
 
 		TSharedRef<FJsonObject> Data = MakeShared<FJsonObject>();
 		Data->SetStringField(TEXT("schema"), TEXT("WidgetMutation.v1"));
+		Data->SetBoolField(TEXT("dry_run"), MutationResult.bDryRun);
 		if (!MutationResult.AffectedWidget.IsEmpty())
 		{
 			Data->SetStringField(TEXT("widget_name"), MutationResult.AffectedWidget);
@@ -1978,6 +2019,7 @@ namespace
 		FString WidgetName;
 		FString PropertyName;
 		FString Value;
+		bool bDryRun = false;
 		if (Payload.IsValid())
 		{
 			Payload->TryGetStringField(TEXT("asset_path"), AssetPath);
@@ -1986,22 +2028,23 @@ namespace
 			Payload->TryGetStringField(TEXT("widget_name"), WidgetName);
 			Payload->TryGetStringField(TEXT("property_name"), PropertyName);
 			Payload->TryGetStringField(TEXT("value"), Value);
+			Payload->TryGetBoolField(TEXT("dry_run"), bDryRun);
 		}
 
 		if (AdapterOperation == BlueprintHelperWidgetTaskPlan::AdapterOperation::AddWidget)
 		{
 			return MakeWidgetMutationResult(AdapterOperation, Payload,
-				Service.AddWidget(AssetPath, ParentName, WidgetClass, WidgetName));
+				Service.AddWidget(AssetPath, ParentName, WidgetClass, WidgetName, bDryRun));
 		}
 		if (AdapterOperation == BlueprintHelperWidgetTaskPlan::AdapterOperation::SetWidgetProperty)
 		{
 			return MakeWidgetMutationResult(AdapterOperation, Payload,
-				Service.SetWidgetProperty(AssetPath, WidgetName, PropertyName, Value));
+				Service.SetWidgetProperty(AssetPath, WidgetName, PropertyName, Value, bDryRun));
 		}
 		if (AdapterOperation == BlueprintHelperWidgetTaskPlan::AdapterOperation::RemoveWidget)
 		{
 			return MakeWidgetMutationResult(AdapterOperation, Payload,
-				Service.RemoveWidget(AssetPath, WidgetName));
+				Service.RemoveWidget(AssetPath, WidgetName, bDryRun));
 		}
 
 		return MakeFailure(
@@ -2018,7 +2061,9 @@ namespace
 	{
 		const FString TraceId = FBlueprintHelperToolResultBuilder::GenerateTraceId();
 		FBlueprintHelperToolResultBase Result = MutationResult.bSuccess
-			? FBlueprintHelperToolResultBuilder::Applied(Operation, TraceId)
+			? (MutationResult.bDryRun
+				? FBlueprintHelperToolResultBuilder::DryRun(Operation, TraceId)
+				: FBlueprintHelperToolResultBuilder::Applied(Operation, TraceId))
 			: FBlueprintHelperToolResultBuilder::Failure(
 				Operation,
 				TraceId,
@@ -2038,6 +2083,7 @@ namespace
 
 		TSharedRef<FJsonObject> Data = MakeShared<FJsonObject>();
 		Data->SetStringField(TEXT("schema"), TEXT("DataTableMutation.v1"));
+		Data->SetBoolField(TEXT("dry_run"), MutationResult.bDryRun);
 		Data->SetStringField(TEXT("row_name"), MutationResult.AffectedRow.ToString());
 		Result.Data = Data;
 		return Result;
@@ -2050,26 +2096,28 @@ namespace
 	{
 		FString AssetPath;
 		FString RowName;
+		bool bDryRun = false;
 		if (Payload.IsValid())
 		{
 			Payload->TryGetStringField(TEXT("asset_path"), AssetPath);
 			Payload->TryGetStringField(TEXT("row_name"), RowName);
+			Payload->TryGetBoolField(TEXT("dry_run"), bDryRun);
 		}
 
 		if (AdapterOperation == FBlueprintHelperDataTableTaskPlanAdapter::AdapterOperationAddRow)
 		{
 			return MakeDataTableMutationResult(AdapterOperation, Payload,
-				Service.AddDataTableRow(AssetPath, RowName, ReadStringFieldsObject(Payload)));
+				Service.AddDataTableRow(AssetPath, RowName, ReadStringFieldsObject(Payload), bDryRun));
 		}
 		if (AdapterOperation == FBlueprintHelperDataTableTaskPlanAdapter::AdapterOperationUpdateRow)
 		{
 			return MakeDataTableMutationResult(AdapterOperation, Payload,
-				Service.UpdateDataTableRow(AssetPath, RowName, ReadStringFieldsObject(Payload)));
+				Service.UpdateDataTableRow(AssetPath, RowName, ReadStringFieldsObject(Payload), bDryRun));
 		}
 		if (AdapterOperation == FBlueprintHelperDataTableTaskPlanAdapter::AdapterOperationDeleteRow)
 		{
 			return MakeDataTableMutationResult(AdapterOperation, Payload,
-				Service.DeleteDataTableRow(AssetPath, RowName));
+				Service.DeleteDataTableRow(AssetPath, RowName, bDryRun));
 		}
 
 		return MakeFailure(
@@ -2235,7 +2283,7 @@ bool FBlueprintHelperTaskRuntimeService::TryLowerTaskPlanStep(
 		OutLoweredStep.RuntimeOperation = FBlueprintHelperAssetFactoryTaskPlanAdapter::SupportedCapability;
 		OutLoweredStep.AdapterOperation = FBlueprintHelperAssetFactoryTaskPlanAdapter::AdapterOperation;
 		OutLoweredStep.Payload = Payload;
-		OutLoweredStep.bAdapterDryRunSupported = false;
+		OutLoweredStep.bAdapterDryRunSupported = true;
 		return true;
 	}
 

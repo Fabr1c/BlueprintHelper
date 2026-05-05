@@ -26,33 +26,39 @@ public:
 	/** 添加单个 Implemented Interface。*/
 	FBlueprintHelperToolResultBase AddImplementedInterface(
 		const FString& AssetPath,
-		const FString& InterfacePath) const;
+		const FString& InterfacePath,
+		bool bDryRun = false) const;
 
 	/** 批量添加 Implemented Interfaces，事务式：任一无效则全部不应用。*/
 	FBlueprintHelperToolResultBase AddImplementedInterfaces(
 		const FString& AssetPath,
-		const TArray<FString>& InterfacePaths) const;
+		const TArray<FString>& InterfacePaths,
+		bool bDryRun = false) const;
 
 	/** 移除单个 Implemented Interface。*/
 	FBlueprintHelperToolResultBase RemoveImplementedInterface(
 		const FString& AssetPath,
-		const FString& InterfacePath) const;
+		const FString& InterfacePath,
+		bool bDryRun = false) const;
 
 	/** 批量移除 Implemented Interfaces，事务式：任一无效则全部不应用。*/
 	FBlueprintHelperToolResultBase RemoveImplementedInterfaces(
 		const FString& AssetPath,
-		const TArray<FString>& InterfacePaths) const;
+		const TArray<FString>& InterfacePaths,
+		bool bDryRun = false) const;
 
 	/** 设置单个 Class Default 属性值。*/
 	FBlueprintHelperToolResultBase SetClassDefaultProperty(
 		const FString& AssetPath,
 		const FString& PropertyPath,
-		const TSharedPtr<FJsonValue>& Value) const;
+		const TSharedPtr<FJsonValue>& Value,
+		bool bDryRun = false) const;
 
 	/** 批量设置 Class Default 属性值，事务式：任一无效则全部不应用。*/
 	FBlueprintHelperToolResultBase SetClassDefaultProperties(
 		const FString& AssetPath,
-		const TArray<FBlueprintHelperClassDefaultPropertySetting>& Settings) const;
+		const TArray<FBlueprintHelperClassDefaultPropertySetting>& Settings,
+		bool bDryRun = false) const;
 
 private:
 	UBlueprint* ResolveBlueprint(const FString& AssetPath, FString& OutErrorCode, FString& OutErrorMessage) const;

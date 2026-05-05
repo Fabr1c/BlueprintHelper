@@ -2,8 +2,12 @@
 
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "Engine/DataTable.h"
 #include "Misc/AutomationTest.h"
+#include "Services/DataTable/BlueprintHelperDataTableService.h"
 #include "TaskRuntime/TaskPlanAdapters/DataTable/BlueprintHelperDataTableTaskPlanAdapter.h"
+#include "UObject/NoExportTypes.h"
+#include "UObject/Package.h"
 
 namespace
 {
@@ -55,6 +59,43 @@ namespace
 		Fields->SetStringField(TEXT("Cooldown"), TEXT("0.25"));
 		return Fields;
 	}
+
+	FString MakeDataTableTestObjectName(const FString& Prefix)
+	{
+		return FString::Printf(TEXT("%s_%s"), *Prefix, *FGuid::NewGuid().ToString(EGuidFormats::Digits));
+	}
+
+	UPackage* MakeDataTableTestPackage(const FString& Prefix)
+	{
+		UPackage* Package = CreatePackage(*FString::Printf(
+			TEXT("/Game/BlueprintHelperDataTableTests/%s"),
+			*MakeDataTableTestObjectName(Prefix)));
+		Package->SetDirtyFlag(false);
+		return Package;
+	}
+
+	UDataTable* MakeVectorDataTable(
+		UPackage* Package,
+		const FName TableName,
+		const FName RowName,
+		const FVector& InitialValue)
+	{
+		UDataTable* DataTable = NewObject<UDataTable>(Package, TableName, RF_Public | RF_Standalone | RF_Transactional);
+		TMap<FName, const uint8*> RawRows;
+		RawRows.Add(RowName, reinterpret_cast<const uint8*>(&InitialValue));
+		DataTable->CreateTableFromRawData(RawRows, TBaseStructure<FVector>::Get());
+		Package->SetDirtyFlag(false);
+		return DataTable;
+	}
+
+	TMap<FString, FString> MakeVectorFields(const double X, const double Y, const double Z)
+	{
+		TMap<FString, FString> Fields;
+		Fields.Add(TEXT("X"), FString::SanitizeFloat(X));
+		Fields.Add(TEXT("Y"), FString::SanitizeFloat(Y));
+		Fields.Add(TEXT("Z"), FString::SanitizeFloat(Z));
+		return Fields;
+	}
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -83,7 +124,7 @@ bool FBlueprintHelperTaskPlanDataTableAdapterAddRowTest::RunTest(const FString& 
 	TestEqual(TEXT("capability preserved"), BuiltPayload.Capability, FString(FBlueprintHelperDataTableTaskPlanAdapter::CapabilityDataTable));
 	TestEqual(TEXT("runtime operation reports data_table capability"), BuiltPayload.RuntimeOperation, FString(FBlueprintHelperDataTableTaskPlanAdapter::RuntimeOperationDataTable));
 	TestEqual(TEXT("adapter operation is add_datatable_row"), BuiltPayload.AdapterOperation, FString(FBlueprintHelperDataTableTaskPlanAdapter::AdapterOperationAddRow));
-	TestFalse(TEXT("current DataTable adapter does not support true dry-run"), BuiltPayload.bAdapterDryRunSupported);
+	TestTrue(TEXT("DataTable adapter supports service dry-run"), BuiltPayload.bAdapterDryRunSupported);
 	TestNotNull(TEXT("payload exists"), BuiltPayload.Payload.Get());
 
 	FString AssetPath;
@@ -129,6 +170,7 @@ bool FBlueprintHelperTaskPlanDataTableAdapterUpdateRowTest::RunTest(const FStrin
 
 	TestTrue(TEXT("update_row lowers successfully"), bBuilt);
 	TestEqual(TEXT("adapter operation is update_datatable_row"), BuiltPayload.AdapterOperation, FString(FBlueprintHelperDataTableTaskPlanAdapter::AdapterOperationUpdateRow));
+	TestTrue(TEXT("DataTable adapter supports service dry-run"), BuiltPayload.bAdapterDryRunSupported);
 
 	FString AssetPath;
 	FString RowName;
@@ -168,6 +210,7 @@ bool FBlueprintHelperTaskPlanDataTableAdapterDeleteRowTest::RunTest(const FStrin
 
 	TestTrue(TEXT("delete_row lowers successfully"), bBuilt);
 	TestEqual(TEXT("adapter operation is delete_datatable_row"), BuiltPayload.AdapterOperation, FString(FBlueprintHelperDataTableTaskPlanAdapter::AdapterOperationDeleteRow));
+	TestTrue(TEXT("DataTable adapter supports service dry-run"), BuiltPayload.bAdapterDryRunSupported);
 
 	FString AssetPath;
 	FString RowName;
@@ -179,6 +222,123 @@ bool FBlueprintHelperTaskPlanDataTableAdapterDeleteRowTest::RunTest(const FStrin
 	TestEqual(TEXT("row_name preserved"), RowName, FString(TEXT("Pistol")));
 	TestTrue(TEXT("preview dry_run is recorded"), bDryRun);
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperDataTableServiceAddRowDryRunDoesNotCreateRowTest,
+	"BlueprintHelper.TaskPlan.DataTableAdapter.ServiceDryRun.AddRowDoesNotCreateRow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperDataTableServiceAddRowDryRunDoesNotCreateRowTest::RunTest(const FString& Parameters)
+{
+	const FName ExistingRowName(TEXT("ExistingRow"));
+	const FName NewRowName(TEXT("DryRunRow"));
+	const FVector InitialValue(1.0, 2.0, 3.0);
+
+	UPackage* Package = MakeDataTableTestPackage(TEXT("AddRowDryRun"));
+	UDataTable* DataTable = MakeVectorDataTable(
+		Package,
+		*MakeDataTableTestObjectName(TEXT("DT_VectorRows")),
+		ExistingRowName,
+		InitialValue);
+	TestNotNull(TEXT("test DataTable is created"), DataTable);
+
+	FBlueprintHelperDataTableService Service;
+	const FBlueprintHelperDataTableMutationResult Result = Service.AddDataTableRow(
+		DataTable->GetPathName(),
+		NewRowName.ToString(),
+		MakeVectorFields(10.0, 20.0, 30.0),
+		true);
+
+	TestTrue(TEXT("add row dry-run validates successfully"), Result.bSuccess);
+	TestTrue(TEXT("mutation result marks dry-run"), Result.bDryRun);
+	TestEqual(TEXT("affected row is reported"), Result.AffectedRow, NewRowName);
+	TestFalse(TEXT("dry-run add does not create row"), DataTable->FindRowUnchecked(NewRowName) != nullptr);
+	TestTrue(TEXT("existing row remains present"), DataTable->FindRowUnchecked(ExistingRowName) != nullptr);
+	TestEqual(TEXT("row count is unchanged"), DataTable->GetRowMap().Num(), 1);
+	TestFalse(TEXT("dry-run add does not dirty the package"), Package->IsDirty());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperDataTableServiceUpdateRowDryRunDoesNotModifyRowTest,
+	"BlueprintHelper.TaskPlan.DataTableAdapter.ServiceDryRun.UpdateRowDoesNotModifyRow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperDataTableServiceUpdateRowDryRunDoesNotModifyRowTest::RunTest(const FString& Parameters)
+{
+	const FName RowName(TEXT("ExistingRow"));
+	const FVector InitialValue(1.0, 2.0, 3.0);
+
+	UPackage* Package = MakeDataTableTestPackage(TEXT("UpdateRowDryRun"));
+	UDataTable* DataTable = MakeVectorDataTable(
+		Package,
+		*MakeDataTableTestObjectName(TEXT("DT_VectorRows")),
+		RowName,
+		InitialValue);
+	TestNotNull(TEXT("test DataTable is created"), DataTable);
+
+	FBlueprintHelperDataTableService Service;
+	const FBlueprintHelperDataTableMutationResult Result = Service.UpdateDataTableRow(
+		DataTable->GetPathName(),
+		RowName.ToString(),
+		MakeVectorFields(10.0, 20.0, 30.0),
+		true);
+
+	TestTrue(TEXT("update row dry-run validates successfully"), Result.bSuccess);
+	TestTrue(TEXT("mutation result marks dry-run"), Result.bDryRun);
+
+	const FVector* RowAfter = reinterpret_cast<const FVector*>(DataTable->FindRowUnchecked(RowName));
+	TestNotNull(TEXT("row still exists"), RowAfter);
+	if (RowAfter)
+	{
+		TestEqual(TEXT("X remains unchanged"), RowAfter->X, InitialValue.X);
+		TestEqual(TEXT("Y remains unchanged"), RowAfter->Y, InitialValue.Y);
+		TestEqual(TEXT("Z remains unchanged"), RowAfter->Z, InitialValue.Z);
+	}
+	TestFalse(TEXT("dry-run update does not dirty the package"), Package->IsDirty());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperDataTableServiceDeleteRowDryRunDoesNotRemoveRowTest,
+	"BlueprintHelper.TaskPlan.DataTableAdapter.ServiceDryRun.DeleteRowDoesNotRemoveRow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperDataTableServiceDeleteRowDryRunDoesNotRemoveRowTest::RunTest(const FString& Parameters)
+{
+	const FName RowName(TEXT("ExistingRow"));
+	const FVector InitialValue(1.0, 2.0, 3.0);
+
+	UPackage* Package = MakeDataTableTestPackage(TEXT("DeleteRowDryRun"));
+	UDataTable* DataTable = MakeVectorDataTable(
+		Package,
+		*MakeDataTableTestObjectName(TEXT("DT_VectorRows")),
+		RowName,
+		InitialValue);
+	TestNotNull(TEXT("test DataTable is created"), DataTable);
+
+	FBlueprintHelperDataTableService Service;
+	const FBlueprintHelperDataTableMutationResult Result = Service.DeleteDataTableRow(
+		DataTable->GetPathName(),
+		RowName.ToString(),
+		true);
+
+	TestTrue(TEXT("delete row dry-run validates successfully"), Result.bSuccess);
+	TestTrue(TEXT("mutation result marks dry-run"), Result.bDryRun);
+	TestEqual(TEXT("affected row is reported"), Result.AffectedRow, RowName);
+
+	const FVector* RowAfter = reinterpret_cast<const FVector*>(DataTable->FindRowUnchecked(RowName));
+	TestNotNull(TEXT("dry-run delete keeps row"), RowAfter);
+	if (RowAfter)
+	{
+		TestEqual(TEXT("X remains unchanged"), RowAfter->X, InitialValue.X);
+		TestEqual(TEXT("Y remains unchanged"), RowAfter->Y, InitialValue.Y);
+		TestEqual(TEXT("Z remains unchanged"), RowAfter->Z, InitialValue.Z);
+	}
+	TestEqual(TEXT("row count is unchanged"), DataTable->GetRowMap().Num(), 1);
+	TestFalse(TEXT("dry-run delete does not dirty the package"), Package->IsDirty());
 	return true;
 }
 

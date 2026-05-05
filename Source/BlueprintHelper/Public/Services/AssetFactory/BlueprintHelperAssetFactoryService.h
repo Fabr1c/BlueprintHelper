@@ -32,7 +32,8 @@ public:
 		EBlueprintHelperAssetType AssetType,
 		const FString& ParentClass = TEXT(""),
 		const FString& ValueType = TEXT(""),
-		EBlueprintHelperAssetCollisionPolicy CollisionPolicy = EBlueprintHelperAssetCollisionPolicy::FailIfExists) const;
+		EBlueprintHelperAssetCollisionPolicy CollisionPolicy = EBlueprintHelperAssetCollisionPolicy::FailIfExists,
+		bool bDryRun = false) const;
 
 	/** 根据 asset_type 确定是否需要编译。*/
 	static bool ShouldCompile(EBlueprintHelperAssetType AssetType);

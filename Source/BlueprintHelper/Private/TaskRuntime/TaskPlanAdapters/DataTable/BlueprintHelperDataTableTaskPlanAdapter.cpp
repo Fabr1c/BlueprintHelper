@@ -287,7 +287,7 @@ bool FBlueprintHelperDataTableTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(
 	OutPayload.RuntimeOperation = RuntimeOperationDataTable;
 	OutPayload.AdapterOperation = AdapterOperation;
 	OutPayload.Payload = Payload;
-	OutPayload.bAdapterDryRunSupported = false;
+	OutPayload.bAdapterDryRunSupported = true;
 	return true;
 }
 

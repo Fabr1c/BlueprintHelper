@@ -47,8 +47,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperWidgetTaskPlanLoweredStep
 	FString RuntimeOperation;
 	TArray<FBlueprintHelperWidgetTaskPlanLoweredOp> Ops;
 
-	// Current FBlueprintHelperWidgetService methods do not expose true dry-run execution.
-	bool bAdapterDryRunSupported = false;
+	bool bAdapterDryRunSupported = true;
 };
 
 struct BLUEPRINTHELPER_API FBlueprintHelperWidgetTaskPlanPayload
@@ -57,7 +56,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperWidgetTaskPlanPayload
 	FString RuntimeOperation;
 	FString AdapterOperation;
 	TSharedPtr<FJsonObject> Payload;
-	bool bAdapterDryRunSupported = false;
+	bool bAdapterDryRunSupported = true;
 };
 
 class BLUEPRINTHELPER_API FBlueprintHelperWidgetTaskPlanAdapter

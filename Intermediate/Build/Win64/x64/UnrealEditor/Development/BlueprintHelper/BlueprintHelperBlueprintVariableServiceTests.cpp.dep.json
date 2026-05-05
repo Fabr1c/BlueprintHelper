@@ -21,7 +21,8 @@
             "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\services\\blueprinthelperblueprintstructureservice.h",
             "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\services\\blueprintvariables\\blueprinthelperblueprintvariableservice.h",
             "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\structure\\blueprintvariables\\blueprinthelperblueprintvariabletypes.h",
-            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\structure\\blueprinthelpertoolresulttypes.h"
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\structure\\blueprinthelpertoolresulttypes.h",
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\taskruntime\\taskplanadapters\\blueprintvariables\\blueprinthelperblueprintvariabletaskplanadapter.h"
         ],
         "ImportedModules": [],
         "ImportedHeaderUnits": []

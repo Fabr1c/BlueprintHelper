@@ -579,6 +579,6 @@ bool FBlueprintHelperWidgetTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(
 	OutPayload.RuntimeOperation = BlueprintHelperWidgetTaskPlan::Capability::UMGWidget;
 	OutPayload.AdapterOperation = AdapterOperation;
 	OutPayload.Payload = Payload;
-	OutPayload.bAdapterDryRunSupported = false;
+	OutPayload.bAdapterDryRunSupported = true;
 	return true;
 }

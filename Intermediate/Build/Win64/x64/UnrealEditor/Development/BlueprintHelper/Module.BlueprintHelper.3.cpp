@@ -31,5 +31,3 @@
 #include "G:/UnrealPractise/MrStone/Plugins/BlueprintHelper/Source/BlueprintHelper/Private/TaskRuntime/TaskPlanAdapters/UMGWidget/BlueprintHelperWidgetTaskPlanAdapter.cpp"
 #include "G:/UnrealPractise/MrStone/Plugins/BlueprintHelper/Source/BlueprintHelper/Private/Tests/AssetFactory/BlueprintHelperTaskPlanAssetFactoryAdapterTests.cpp"
 #include "G:/UnrealPractise/MrStone/Plugins/BlueprintHelper/Source/BlueprintHelper/Private/Tests/BlueprintClassSettings/BlueprintHelperTaskPlanClassSettingsAdapterTests.cpp"
-#include "G:/UnrealPractise/MrStone/Plugins/BlueprintHelper/Source/BlueprintHelper/Private/Tests/BlueprintComponent/BlueprintHelperComponentToolResultBaseTests.cpp"
-#include "G:/UnrealPractise/MrStone/Plugins/BlueprintHelper/Source/BlueprintHelper/Private/Tests/BlueprintComponent/BlueprintHelperTaskPlanComponentAdapterTests.cpp"

@@ -14,8 +14,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperComponentTaskPlanPayload
 	FString AdapterOperation;
 	TSharedPtr<FJsonObject> Payload;
 
-	// Current component service payloads do not implement true dry-run handling.
-	bool bAdapterDryRunSupported = false;
+	bool bAdapterDryRunSupported = true;
 };
 
 class BLUEPRINTHELPER_API FBlueprintHelperComponentTaskPlanAdapter

@@ -308,7 +308,8 @@ bool FBlueprintHelperClassSettingsService::RemoveInterfaceFromBlueprint(
 
 FBlueprintHelperToolResultBase FBlueprintHelperClassSettingsService::AddImplementedInterfaces(
 	const FString& AssetPath,
-	const TArray<FString>& InterfacePaths) const
+	const TArray<FString>& InterfacePaths,
+	bool bDryRun) const
 {
 	const FString TraceId = FBlueprintHelperToolResultBuilder::GenerateTraceId();
 
@@ -377,16 +378,36 @@ FBlueprintHelperToolResultBase FBlueprintHelperClassSettingsService::AddImplemen
 	const int32 ToApplyCount = InterfaceClasses.Num() - InterfaceResult.AlreadyImplementedCount;
 	if (ToApplyCount <= 0)
 	{
+		if (bDryRun)
+		{
+			Data->SetBoolField(TEXT("dry_run"), true);
+		}
 		Data->SetObjectField(TEXT("interface_result"), InterfaceResult.ToJson());
 
-		FBlueprintHelperToolResultBase NoOp = FBlueprintHelperToolResultBuilder::NoOp(
-			TEXT("add_implemented_interfaces"), TraceId);
+		FBlueprintHelperToolResultBase NoOp = bDryRun
+			? FBlueprintHelperToolResultBuilder::DryRun(TEXT("add_implemented_interfaces"), TraceId)
+			: FBlueprintHelperToolResultBuilder::NoOp(TEXT("add_implemented_interfaces"), TraceId);
 		NoOp.Target = FBlueprintHelperTargetRef();
 		NoOp.Target->AssetPath = AssetPath;
 		NoOp.Target->TargetType = EBlueprintHelperTargetType::Blueprint;
 		NoOp.Data = Data;
 		NoOp.Validation = MakeValidation(false, false);
 		return NoOp;
+	}
+
+	if (bDryRun)
+	{
+		InterfaceResult.AppliedCount = ToApplyCount;
+		Data->SetBoolField(TEXT("dry_run"), true);
+		Data->SetObjectField(TEXT("interface_result"), InterfaceResult.ToJson());
+
+		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::DryRun(
+			TEXT("add_implemented_interfaces"), TraceId);
+		Result.Target = FBlueprintHelperTargetRef();
+		Result.Target->AssetPath = AssetPath;
+		Result.Target->TargetType = EBlueprintHelperTargetType::Blueprint;
+		Result.Data = Data;
+		return Result;
 	}
 
 	// 执行添加。
@@ -424,10 +445,11 @@ FBlueprintHelperToolResultBase FBlueprintHelperClassSettingsService::AddImplemen
 
 FBlueprintHelperToolResultBase FBlueprintHelperClassSettingsService::AddImplementedInterface(
 	const FString& AssetPath,
-	const FString& InterfacePath) const
+	const FString& InterfacePath,
+	bool bDryRun) const
 {
 	// 委托到批量内部实现，传入 Mode=Single。
-	FBlueprintHelperToolResultBase Result = AddImplementedInterfaces(AssetPath, { InterfacePath });
+	FBlueprintHelperToolResultBase Result = AddImplementedInterfaces(AssetPath, { InterfacePath }, bDryRun);
 	Result.Operation = TEXT("add_implemented_interface");
 	if (Result.Target.IsSet())
 	{
@@ -449,7 +471,8 @@ FBlueprintHelperToolResultBase FBlueprintHelperClassSettingsService::AddImplemen
 
 FBlueprintHelperToolResultBase FBlueprintHelperClassSettingsService::RemoveImplementedInterfaces(
 	const FString& AssetPath,
-	const TArray<FString>& InterfacePaths) const
+	const TArray<FString>& InterfacePaths,
+	bool bDryRun) const
 {
 	const FString TraceId = FBlueprintHelperToolResultBuilder::GenerateTraceId();
 
@@ -517,16 +540,36 @@ FBlueprintHelperToolResultBase FBlueprintHelperClassSettingsService::RemoveImple
 
 	if (InterfaceResult.AlreadyImplementedCount == 0)
 	{
+		if (bDryRun)
+		{
+			Data->SetBoolField(TEXT("dry_run"), true);
+		}
 		Data->SetObjectField(TEXT("interface_result"), InterfaceResult.ToJson());
 
-		FBlueprintHelperToolResultBase NoOp = FBlueprintHelperToolResultBuilder::NoOp(
-			TEXT("remove_implemented_interfaces"), TraceId);
+		FBlueprintHelperToolResultBase NoOp = bDryRun
+			? FBlueprintHelperToolResultBuilder::DryRun(TEXT("remove_implemented_interfaces"), TraceId)
+			: FBlueprintHelperToolResultBuilder::NoOp(TEXT("remove_implemented_interfaces"), TraceId);
 		NoOp.Target = FBlueprintHelperTargetRef();
 		NoOp.Target->AssetPath = AssetPath;
 		NoOp.Target->TargetType = EBlueprintHelperTargetType::Blueprint;
 		NoOp.Data = Data;
 		NoOp.Validation = MakeValidation(false, false);
 		return NoOp;
+	}
+
+	if (bDryRun)
+	{
+		InterfaceResult.RemovedCount = InterfaceResult.AlreadyImplementedCount;
+		Data->SetBoolField(TEXT("dry_run"), true);
+		Data->SetObjectField(TEXT("interface_result"), InterfaceResult.ToJson());
+
+		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::DryRun(
+			TEXT("remove_implemented_interfaces"), TraceId);
+		Result.Target = FBlueprintHelperTargetRef();
+		Result.Target->AssetPath = AssetPath;
+		Result.Target->TargetType = EBlueprintHelperTargetType::Blueprint;
+		Result.Data = Data;
+		return Result;
 	}
 
 	// 执行移除。
@@ -564,9 +607,10 @@ FBlueprintHelperToolResultBase FBlueprintHelperClassSettingsService::RemoveImple
 
 FBlueprintHelperToolResultBase FBlueprintHelperClassSettingsService::RemoveImplementedInterface(
 	const FString& AssetPath,
-	const FString& InterfacePath) const
+	const FString& InterfacePath,
+	bool bDryRun) const
 {
-	FBlueprintHelperToolResultBase Result = RemoveImplementedInterfaces(AssetPath, { InterfacePath });
+	FBlueprintHelperToolResultBase Result = RemoveImplementedInterfaces(AssetPath, { InterfacePath }, bDryRun);
 	Result.Operation = TEXT("remove_implemented_interface");
 	if (Result.Target.IsSet())
 	{
@@ -806,7 +850,8 @@ bool FBlueprintHelperClassSettingsService::ValidateClassDefaultSetting(
 
 FBlueprintHelperToolResultBase FBlueprintHelperClassSettingsService::SetClassDefaultProperties(
 	const FString& AssetPath,
-	const TArray<FBlueprintHelperClassDefaultPropertySetting>& Settings) const
+	const TArray<FBlueprintHelperClassDefaultPropertySetting>& Settings,
+	bool bDryRun) const
 {
 	const FString TraceId = FBlueprintHelperToolResultBuilder::GenerateTraceId();
 
@@ -863,6 +908,80 @@ FBlueprintHelperToolResultBase FBlueprintHelperClassSettingsService::SetClassDef
 		Failed.Target->TargetType = EBlueprintHelperTargetType::Blueprint;
 		Failed.Data = Data;
 		return Failed;
+	}
+
+	if (bDryRun)
+	{
+		for (const FBlueprintHelperClassDefaultPropertySetting& Setting : Settings)
+		{
+			FProperty* Property = nullptr;
+			void* ValuePtr = nullptr;
+			FString ExpectedType;
+			FString ResolveCode;
+			FString ResolveMessage;
+
+			if (!ResolvePropertyPath(CDO, Setting.PropertyPath, Property, ValuePtr, ExpectedType, ResolveCode, ResolveMessage))
+			{
+				return FBlueprintHelperToolResultBuilder::Failure(
+					TEXT("set_class_default_properties"),
+					TraceId,
+					MakeError(ResolveCode, EBlueprintHelperToolStage::DryRun, ResolveMessage));
+			}
+
+			FString Before;
+			Property->ExportTextItem_Direct(Before, ValuePtr, nullptr, CDO, PPF_None);
+
+			FString ImportText;
+			FString Summary;
+			FString ActualType;
+			FString ConvertError;
+			if (!JsonValueToImportText(Setting.Value, ImportText, Summary, ActualType, ConvertError))
+			{
+				return FBlueprintHelperToolResultBuilder::Failure(
+					TEXT("set_class_default_properties"),
+					TraceId,
+					MakeError(TEXT("invalid_class_default_property_settings"), EBlueprintHelperToolStage::DryRun, ConvertError));
+			}
+
+			void* TempValue = FMemory_Alloca(Property->GetSize());
+			Property->InitializeValue(TempValue);
+			const TCHAR* ImportEnd = Property->ImportText_Direct(*ImportText, TempValue, CDO, PPF_None);
+			if (!ImportEnd)
+			{
+				Property->DestroyValue(TempValue);
+				return FBlueprintHelperToolResultBuilder::Failure(
+					TEXT("set_class_default_properties"),
+					TraceId,
+					MakeError(TEXT("invalid_class_default_property_settings"), EBlueprintHelperToolStage::DryRun,
+						FString::Printf(TEXT("属性预览写入失败: %s"), *Setting.PropertyPath)));
+			}
+
+			FString After;
+			Property->ExportTextItem_Direct(After, TempValue, nullptr, CDO, PPF_None);
+			Property->DestroyValue(TempValue);
+
+			++PropertyResult.AppliedCount;
+			if (Before == After)
+			{
+				++PropertyResult.NoOpCount;
+			}
+			else
+			{
+				++PropertyResult.ChangedCount;
+			}
+		}
+
+		Data->SetBoolField(TEXT("dry_run"), true);
+		Data->SetObjectField(TEXT("default_property_result"), PropertyResult.ToJson());
+
+		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::DryRun(
+			TEXT("set_class_default_properties"), TraceId);
+		Result.Target = FBlueprintHelperTargetRef();
+		Result.Target->AssetPath = AssetPath;
+		Result.Target->TargetType = EBlueprintHelperTargetType::Blueprint;
+		Result.Data = Data;
+		Result.Validation = MakeValidation(false, false);
+		return Result;
 	}
 
 	// 执行写入。
@@ -961,13 +1080,14 @@ FBlueprintHelperToolResultBase FBlueprintHelperClassSettingsService::SetClassDef
 FBlueprintHelperToolResultBase FBlueprintHelperClassSettingsService::SetClassDefaultProperty(
 	const FString& AssetPath,
 	const FString& PropertyPath,
-	const TSharedPtr<FJsonValue>& Value) const
+	const TSharedPtr<FJsonValue>& Value,
+	bool bDryRun) const
 {
 	FBlueprintHelperClassDefaultPropertySetting Setting;
 	Setting.PropertyPath = PropertyPath;
 	Setting.Value = Value;
 
-	FBlueprintHelperToolResultBase Result = SetClassDefaultProperties(AssetPath, { Setting });
+	FBlueprintHelperToolResultBase Result = SetClassDefaultProperties(AssetPath, { Setting }, bDryRun);
 	Result.Operation = TEXT("set_class_default_property");
 	if (Result.Target.IsSet())
 	{
