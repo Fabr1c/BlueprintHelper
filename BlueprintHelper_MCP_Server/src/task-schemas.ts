@@ -68,7 +68,29 @@ export const GraphWriteTaskSpecSchema = TaskSpecBaseSchema.extend({
       entry_type: z.string(),
       name: z.string().min(1),
       body: BlueprintLogicSpecSchema,
-    }).passthrough()).min(1),
+    }).passthrough()).min(1).optional(),
+    replace: z.object({
+      scope: z.string().min(1),
+      selector: z.record(z.unknown()),
+      body: BlueprintLogicSpecSchema,
+      options: z.record(z.unknown()).optional(),
+    }).passthrough().optional(),
+    patches: z.array(z.object({
+      kind: z.string().min(1),
+      scope: z.string().min(1).optional(),
+      target_ref: z.record(z.unknown()).optional(),
+      value: z.unknown().optional(),
+      patch: z.record(z.unknown()).optional(),
+      expected_old_state: z.record(z.unknown()).optional(),
+    }).passthrough()).min(1).optional(),
+    merges: z.array(z.object({
+      kind: z.string().min(1),
+      scope: z.string().min(1),
+      insert_strategy: z.string().min(1),
+      anchor: z.record(z.unknown()),
+      inserted: z.record(z.unknown()),
+      sequence_order: z.array(z.string()).optional(),
+    }).passthrough()).min(1).optional(),
   }).passthrough(),
 }).passthrough();
 
@@ -173,7 +195,93 @@ export const DataTableTaskSpecSchema = TaskSpecBaseSchema.extend({
   }).passthrough(),
 }).passthrough();
 
+export const CompositeBlueprintFeatureTaskSpecSchema = TaskSpecBaseSchema.extend({
+  task_type: z.literal('create_blueprint_feature'),
+  scope_policy: z.object({
+    graph_name: z.string().min(1).optional(),
+    prefer_new_graph: z.boolean().optional(),
+    allow_modify_user_nodes: z.boolean().optional().default(false),
+    allow_merge_existing_execution_flow: z.boolean().optional().default(false),
+    allow_create_assets: z.boolean().optional().default(false),
+    allow_edit_input_mapping: z.boolean().optional().default(false),
+  }).passthrough().optional(),
+  asset_policy: z.record(z.unknown()).optional(),
+  resources: z.record(z.unknown()).optional(),
+  components: z.array(z.object({
+    name: z.string().min(1),
+    class: z.string().min(1),
+    attach_to: z.string().min(1).nullable().optional(),
+    attach: z.record(z.unknown()).optional(),
+    set_as_root: z.boolean().optional(),
+    properties: z.union([
+      z.record(z.unknown()),
+      z.array(z.record(z.unknown())),
+    ]).optional(),
+  }).passthrough()).optional(),
+  variables: z.array(z.object({
+    name: z.string().min(1),
+    type: z.string().min(1).optional(),
+    pin_type: z.record(z.unknown()).optional(),
+    variable_type: z.record(z.unknown()).optional(),
+    default: z.unknown().optional(),
+    category: z.string().optional(),
+    tooltip: z.string().optional(),
+    flags: z.record(z.unknown()).optional(),
+    metadata: z.record(z.unknown()).optional(),
+  }).passthrough()).optional(),
+  class_settings: z.object({
+    implemented_interfaces: z.array(z.string().min(1)).optional(),
+    class_defaults: z.union([
+      z.record(z.unknown()),
+      z.array(z.record(z.unknown())),
+    ]).optional(),
+  }).passthrough().optional(),
+  behavior: z.object({
+    graph_strategy: z.string(),
+    entries: z.array(z.object({
+      entry_type: z.string(),
+      name: z.string().min(1),
+      body: BlueprintLogicSpecSchema,
+    }).passthrough()).min(1).optional(),
+    replace: z.object({
+      scope: z.string().min(1),
+      selector: z.record(z.unknown()),
+      body: BlueprintLogicSpecSchema,
+      options: z.record(z.unknown()).optional(),
+    }).passthrough().optional(),
+    patches: z.array(z.object({
+      kind: z.string().min(1),
+      scope: z.string().min(1).optional(),
+      target_ref: z.record(z.unknown()).optional(),
+      value: z.unknown().optional(),
+      patch: z.record(z.unknown()).optional(),
+      expected_old_state: z.record(z.unknown()).optional(),
+    }).passthrough()).min(1).optional(),
+    merges: z.array(z.object({
+      kind: z.string().min(1),
+      scope: z.string().min(1),
+      insert_strategy: z.string().min(1),
+      anchor: z.record(z.unknown()),
+      inserted: z.record(z.unknown()),
+      sequence_order: z.array(z.string()).optional(),
+    }).passthrough()).min(1).optional(),
+  }).passthrough().optional(),
+  integration: z.record(z.unknown()).optional(),
+}).passthrough().superRefine((value, ctx) => {
+  const hasComponents = Array.isArray(value.components) && value.components.length > 0;
+  const hasVariables = Array.isArray(value.variables) && value.variables.length > 0;
+  const hasClassSettings = value.class_settings !== undefined;
+  const hasBehavior = value.behavior !== undefined;
+  if (!hasComponents && !hasVariables && !hasClassSettings && !hasBehavior) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'create_blueprint_feature requires at least one of components, variables, class_settings, or behavior.',
+    });
+  }
+});
+
 export const TaskSpecSchema = z.union([
+  CompositeBlueprintFeatureTaskSpecSchema,
   GraphWriteTaskSpecSchema,
   BlueprintVariableTaskSpecSchema,
   AssetFactoryTaskSpecSchema,
@@ -421,6 +529,11 @@ export const BlueprintClassSettingsTaskPlanStepSchema = structuredCapabilityStep
   ['class_settings'],
 );
 
+export const BlueprintSignatureTaskPlanStepSchema = structuredCapabilityStepSchema(
+  'blueprint_signature',
+  ['function_signature', 'custom_event_signature'],
+);
+
 export const UMGWidgetTaskPlanStepSchema = structuredCapabilityStepSchema(
   'umg_widget',
   ['widget_tree_edit', 'widget_property_edit'],
@@ -437,6 +550,7 @@ export const TaskPlanStepSchema = z.union([
   AssetFactoryTaskPlanStepSchema,
   BlueprintComponentTaskPlanStepSchema,
   BlueprintClassSettingsTaskPlanStepSchema,
+  BlueprintSignatureTaskPlanStepSchema,
   UMGWidgetTaskPlanStepSchema,
   DataTableTaskPlanStepSchema,
 ]);
@@ -470,17 +584,28 @@ export const TaskErrorSchema = z.object({
 export const TaskRunJournalSchema = z.object({
   schema: z.literal(TASK_RUN_JOURNAL_SCHEMA),
   task_run_id: z.string().min(1),
-  preview_id: z.string().min(1),
+  preview_id: z.string().min(1).optional(),
   task_type: z.string().min(1),
   feature_name: z.string().optional(),
-  status: z.enum(['completed', 'failed']),
+  status: z.enum(['completed', 'failed', 'partial_failure']),
   target_assets: z.array(z.string().min(1)),
   steps: z.array(z.object({
     step_id: z.string().min(1),
     operation: z.string().min(1),
-    status: z.string().min(1),
+    status: z.enum(['completed', 'failed', 'blocked', 'skipped']),
+    depends_on: z.array(z.string().min(1)).optional(),
+    blocked_by_step_ids: z.array(z.string().min(1)).optional(),
+    blocked_reason: z.string().min(1).optional(),
     transaction_id: z.string().optional(),
+    result: z.record(z.unknown()).optional(),
+    error: z.unknown().nullable().optional(),
   }).passthrough()),
+  recovery: z.object({
+    recommended_action: z.string().min(1),
+    safe_to_retry: z.boolean(),
+    rollback_available: z.boolean(),
+    notes: z.array(z.string()),
+  }).optional(),
   bridge_result: z.record(z.unknown()).optional(),
 }).passthrough();
 
@@ -502,6 +627,7 @@ export type BlueprintVariableTaskPlanStep = z.infer<typeof BlueprintVariableTask
 export type AssetFactoryTaskPlanStep = z.infer<typeof AssetFactoryTaskPlanStepSchema>;
 export type BlueprintComponentTaskPlanStep = z.infer<typeof BlueprintComponentTaskPlanStepSchema>;
 export type BlueprintClassSettingsTaskPlanStep = z.infer<typeof BlueprintClassSettingsTaskPlanStepSchema>;
+export type BlueprintSignatureTaskPlanStep = z.infer<typeof BlueprintSignatureTaskPlanStepSchema>;
 export type UMGWidgetTaskPlanStep = z.infer<typeof UMGWidgetTaskPlanStepSchema>;
 export type DataTableTaskPlanStep = z.infer<typeof DataTableTaskPlanStepSchema>;
 export type TaskPlanStep = z.infer<typeof TaskPlanStepSchema>;

@@ -87,6 +87,24 @@ export const graphWriteAppendExpectedTaskPlanFixture = {
   steps: [
     {
       step_id: 'step_001',
+      capability: 'blueprint_signature',
+      target: {
+        asset_path: '/Game/Blueprints/BP_StoneGate',
+      },
+      write: {
+        strategy: 'custom_event_signature',
+        ops: [
+          {
+            op: 'ensure_custom_event',
+            event_name: 'InitializeStoneGate',
+            graph_name: 'BH_StoneGateActivation',
+            name_collision_policy: 'reuse_if_exists',
+          },
+        ],
+      },
+    },
+    {
+      step_id: 'step_002',
       capability: 'graph_write',
       target: {
         asset_path: '/Game/Blueprints/BP_StoneGate',
@@ -140,6 +158,309 @@ export const graphWriteAppendExpectedTaskPlanFixture = {
                 },
               ],
             },
+          },
+        ],
+      },
+      constraints: {
+        allow_modify_user_nodes: false,
+        ownership_scope: 'blueprinthelper_owned',
+      },
+      depends_on: ['step_001'],
+    },
+  ],
+} satisfies TaskPlan;
+
+export const graphWriteReplaceTaskSpecFixture = {
+  schema: 'BlueprintHelper.TaskSpec.v1',
+  context_id: 'ctx_stone_gate_replace',
+  task_type: 'edit_blueprint_graph',
+  feature_name: 'StoneGateActivationReplace',
+  target: {
+    asset_path: '/Game/Blueprints/BP_StoneGate',
+    target_type: 'blueprint',
+  },
+  scope_policy: {
+    graph_name: 'EventGraph',
+    allow_modify_user_nodes: false,
+  },
+  behavior: {
+    graph_strategy: 'replace_owned_graph',
+    replace: {
+      scope: 'custom_event_body',
+      selector: {
+        entry_name: 'InitializeStoneGate',
+        node_path: 'logic.groups[0].entry.node_path',
+      },
+      body: {
+        schema: 'BlueprintLogicSpec.v1',
+        statements: [
+          {
+            kind: 'call_function',
+            name: 'PrintString',
+            args: {
+              InString: {
+                kind: 'literal',
+                value_type: 'string',
+                value: 'Stone gate replaced',
+              },
+            },
+          },
+        ],
+      },
+      options: {
+        strict: true,
+        preserve_layout: false,
+      },
+    },
+  },
+  execution_policy: {
+    dry_run_mode: 'full',
+    on_missing_capability: 'stop_and_report',
+  },
+  validation: {
+    should_compile: true,
+    should_save: false,
+  },
+} satisfies TaskSpec;
+
+export const graphWriteReplaceExpectedTaskPlanFixture = {
+  schema: 'BlueprintHelper.TaskPlan.v1',
+  task_name: 'StoneGateActivationReplace',
+  task_type: 'edit_blueprint_graph',
+  context_id: 'ctx_stone_gate_replace',
+  target_assets: ['/Game/Blueprints/BP_StoneGate'],
+  execution_policy: {
+    dry_run_mode: 'full',
+    should_compile: true,
+    should_save: false,
+  },
+  steps: [
+    {
+      step_id: 'step_001',
+      capability: 'graph_write',
+      target: {
+        asset_path: '/Game/Blueprints/BP_StoneGate',
+        graph: 'EventGraph',
+      },
+      write: {
+        strategy: 'owned_graph_edit',
+        ops: [
+          {
+            op: 'replace_body',
+            replace_scope: 'custom_event_body',
+            selector: {
+              entry_name: 'InitializeStoneGate',
+              node_path: 'logic.groups[0].entry.node_path',
+            },
+            replacement: {
+              nodes: [
+                {
+                  id: 'replace_stmt_1',
+                  kind: 'call',
+                  function: 'PrintString',
+                  inputs: {
+                    InString: 'Stone gate replaced',
+                  },
+                },
+              ],
+              links: [],
+            },
+            options: {
+              strict: true,
+              preserve_layout: false,
+            },
+          },
+        ],
+      },
+      constraints: {
+        allow_modify_user_nodes: false,
+        ownership_scope: 'blueprinthelper_owned',
+      },
+    },
+  ],
+} satisfies TaskPlan;
+
+export const graphWritePatchTaskSpecFixture = {
+  schema: 'BlueprintHelper.TaskSpec.v1',
+  context_id: 'ctx_stone_gate_patch',
+  task_type: 'edit_blueprint_graph',
+  feature_name: 'StoneGateActivationPatch',
+  target: {
+    asset_path: '/Game/Blueprints/BP_StoneGate',
+    target_type: 'blueprint',
+  },
+  scope_policy: {
+    graph_name: 'EventGraph',
+    allow_modify_user_nodes: false,
+  },
+  behavior: {
+    graph_strategy: 'patch_owned_graph',
+    patches: [
+      {
+        kind: 'set_pin_default',
+        scope: 'pin_default',
+        target_ref: {
+          graph_id: 'EventGraph',
+          node_ref: 'Branch0',
+          pin_ref: 'Condition',
+        },
+        value: {
+          kind: 'literal',
+          value_type: 'bool',
+          value: true,
+        },
+        expected_old_state: {
+          value: {
+            kind: 'literal',
+            value_type: 'bool',
+            value: false,
+          },
+        },
+      },
+    ],
+  },
+  execution_policy: {
+    dry_run_mode: 'full',
+    on_missing_capability: 'stop_and_report',
+  },
+  validation: {
+    should_compile: true,
+    should_save: false,
+  },
+} satisfies TaskSpec;
+
+export const graphWritePatchExpectedTaskPlanFixture = {
+  schema: 'BlueprintHelper.TaskPlan.v1',
+  task_name: 'StoneGateActivationPatch',
+  task_type: 'edit_blueprint_graph',
+  context_id: 'ctx_stone_gate_patch',
+  target_assets: ['/Game/Blueprints/BP_StoneGate'],
+  execution_policy: {
+    dry_run_mode: 'full',
+    should_compile: true,
+    should_save: false,
+  },
+  steps: [
+    {
+      step_id: 'step_001',
+      capability: 'graph_write',
+      target: {
+        asset_path: '/Game/Blueprints/BP_StoneGate',
+        graph: 'EventGraph',
+      },
+      write: {
+        strategy: 'owned_graph_edit',
+        ops: [
+          {
+            op: 'set_pin_default',
+            patch_scope: 'pin_default',
+            patched_ref: {
+              graph_id: 'EventGraph',
+              node_ref: 'Branch0',
+              pin_ref: 'Condition',
+            },
+            patch: {
+              value: true,
+            },
+            expected_old_state: {
+              value: false,
+            },
+          },
+        ],
+      },
+      constraints: {
+        allow_modify_user_nodes: false,
+        ownership_scope: 'blueprinthelper_owned',
+      },
+    },
+  ],
+} satisfies TaskPlan;
+
+export const graphWriteMergeTaskSpecFixture = {
+  schema: 'BlueprintHelper.TaskSpec.v1',
+  context_id: 'ctx_stone_gate_merge',
+  task_type: 'edit_blueprint_graph',
+  feature_name: 'StoneGateActivationMerge',
+  target: {
+    asset_path: '/Game/Blueprints/BP_StoneGate',
+    target_type: 'blueprint',
+  },
+  scope_policy: {
+    graph_name: 'EventGraph',
+    allow_modify_user_nodes: false,
+  },
+  behavior: {
+    graph_strategy: 'merge_owned_graph',
+    merges: [
+      {
+        kind: 'insert_flow',
+        scope: 'owned_block_call',
+        insert_strategy: 'insert_between',
+        anchor: {
+          node_ref: 'BeginPlay0',
+          pin_ref: 'Then',
+          node_path: 'logic.groups[0].entry.node_path',
+        },
+        inserted: {
+          block_id: 'BH_StoneGateActivation_InitializeStoneGate',
+          block_ref: 'block:BH_StoneGateActivation_InitializeStoneGate',
+        },
+        sequence_order: [
+          'BeginPlay0',
+          'BH_StoneGateActivation_InitializeStoneGate',
+        ],
+      },
+    ],
+  },
+  execution_policy: {
+    dry_run_mode: 'full',
+    on_missing_capability: 'stop_and_report',
+  },
+  validation: {
+    should_compile: true,
+    should_save: false,
+  },
+} satisfies TaskSpec;
+
+export const graphWriteMergeExpectedTaskPlanFixture = {
+  schema: 'BlueprintHelper.TaskPlan.v1',
+  task_name: 'StoneGateActivationMerge',
+  task_type: 'edit_blueprint_graph',
+  context_id: 'ctx_stone_gate_merge',
+  target_assets: ['/Game/Blueprints/BP_StoneGate'],
+  execution_policy: {
+    dry_run_mode: 'full',
+    should_compile: true,
+    should_save: false,
+  },
+  steps: [
+    {
+      step_id: 'step_001',
+      capability: 'graph_write',
+      target: {
+        asset_path: '/Game/Blueprints/BP_StoneGate',
+        graph: 'EventGraph',
+      },
+      write: {
+        strategy: 'owned_graph_edit',
+        ops: [
+          {
+            op: 'insert_flow',
+            merge_scope: 'owned_block_call',
+            insert_strategy: 'insert_between',
+            anchor: {
+              node_ref: 'BeginPlay0',
+              pin_ref: 'Then',
+              node_path: 'logic.groups[0].entry.node_path',
+            },
+            inserted: {
+              block_id: 'BH_StoneGateActivation_InitializeStoneGate',
+              block_ref: 'block:BH_StoneGateActivation_InitializeStoneGate',
+            },
+            sequence_order: [
+              'BeginPlay0',
+              'BH_StoneGateActivation_InitializeStoneGate',
+            ],
           },
         ],
       },
@@ -432,8 +753,22 @@ export const graphWriteLoweringAdapterTaskPlanFixtures = [
   graphWriteMergeTaskPlanFixture,
 ] satisfies TaskPlan[];
 
-export const graphWriteTaskPlanFixtures = [
+export const graphWriteTaskSpecFixtures = [
+  graphWriteAppendTaskSpecFixture,
+  graphWriteReplaceTaskSpecFixture,
+  graphWritePatchTaskSpecFixture,
+  graphWriteMergeTaskSpecFixture,
+] satisfies TaskSpec[];
+
+export const graphWriteExpectedTaskPlanFixtures = [
   graphWriteAppendExpectedTaskPlanFixture,
+  graphWriteReplaceExpectedTaskPlanFixture,
+  graphWritePatchExpectedTaskPlanFixture,
+  graphWriteMergeExpectedTaskPlanFixture,
+] satisfies TaskPlan[];
+
+export const graphWriteTaskPlanFixtures = [
+  ...graphWriteExpectedTaskPlanFixtures,
   graphWriteStructuredIrTaskPlanFixture,
   ...graphWriteLoweringAdapterTaskPlanFixtures,
 ] satisfies TaskPlan[];

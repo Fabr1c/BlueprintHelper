@@ -25,10 +25,23 @@ Agent-facing task tools use `BlueprintHelper.McpToolResult.v1` as the outer enve
   "status": "completed",
   "modified": false,
   "data": {
-    "schema": "TaskPreview.v1"
+    "schema": "TaskPreviewResult.v1"
   }
 }
 ```
+
+Default Agent-facing payload schemas:
+
+| Tool | Result shape |
+|---|---|
+| `blueprinthelper_read_agent_guide` | Markdown text only |
+| `blueprinthelper_read_context` | `McpToolResult.v1` with `data.schema = ReadContextPack.v1` |
+| `blueprinthelper_read_reference_context` | `McpToolResult.v1` with `data.schema = ReferenceContextPack.v1` |
+| `blueprinthelper_preview_task` | `McpToolResult.v1` with `data.schema = TaskPreviewResult.v1` |
+| `blueprinthelper_execute_task` | `McpToolResult.v1` with `data.schema = TaskRunSummary.v1` or `TaskRunJournal.v1` |
+| `blueprinthelper_get_task_result` | `McpToolResult.v1` with `data.schema = TaskRunJournal.v1` |
+
+UE façade results use `FBlueprintHelperToolResultBase`; MCP normalizes them into the public `McpToolResult.v1` envelope. Compact debug facts belong under `data.debug`; large details should use `large_payload_ref`.
 
 TaskSpec validation, semantic, policy, capability, preview, and execution failures are returned as task-level errors. A failed TaskSpec does not require the Agent to inspect raw Bridge / UE operation errors by default:
 
@@ -61,18 +74,22 @@ Bridge error: Bridge connection error: connect ECONNREFUSED 127.0.0.1:54321
 
 Default Agent-facing tools:
 
-- `blueprinthelper_read_task_context`
+- `blueprinthelper_read_agent_guide`
+- `blueprinthelper_get_runtime_profile`
+- `blueprinthelper_diagnostics`
+- `blueprinthelper_read_context`
+- `blueprinthelper_read_reference_context`
 - `blueprinthelper_preview_task`
 - `blueprinthelper_execute_task`
 - `blueprinthelper_get_task_result`
-- `blueprint_get_runtime_profile`
-- `blueprinthelper_diagnostics`
+- `blueprinthelper_open_editor`
+- `blueprinthelper_close_editor`
 
-Legacy/internal/debug/expert tools remain registered for compatibility, direct capability debugging, Task Runtime capability mapping, and automation tests. Ordinary Agents should prefer the default tools above unless the user explicitly asks for a low-level tool or a failure investigation needs raw capability detail.
+Legacy/internal/debug/expert tools remain registered only until their TaskSpec / ReadSpec replacements are complete. Capabilities that already have a TaskPlan adapter and TaskSpec compiler coverage should have their old Agent-facing atomic MCP write tools removed first. Remaining old tools stay legacy/internal/debug/expert/test until their adapter and TaskSpec support lands, then they are removed in the same slice. Ordinary Agents should prefer the default tools above unless the user explicitly asks for a low-level debug path or a failure investigation needs raw capability detail.
 
 Legacy/internal/debug/expert inventory:
 
-- Context, rules, and diagnostics: `blueprint_get_rule_markdown`, `blueprint_get_editor_context`, `blueprinthelper_diagnostics_runtime`
+- Context, guide, and diagnostics: `blueprinthelper_read_agent_guide`, `blueprint_get_editor_context`, `blueprinthelper_diagnostics_runtime`
 - Direct logic/raw reads and validation: `blueprint_get_logic_md`, `blueprint_validate_json`, `blueprint_export_to_json`, `blueprint_get_logic`, `blueprint_get_logic_json`
 - Asset and component capabilities: `blueprint_create_asset`, `blueprint_read_components`, `blueprint_add_component`, `blueprint_set_component_property`, `blueprint_set_component_properties`, `blueprint_remove_component`, `blueprint_open_asset`, `blueprint_list_assets`, `blueprint_search_assets`, `blueprint_save_asset`, `blueprint_get_asset_info`
 - Blueprint graph/member capabilities: `blueprint_import_json_to_graph`, `blueprint_import_agent_graph`, `blueprint_compile_blueprint`, `blueprint_list_graphs`, `blueprint_list_variables`, `blueprint_list_event_dispatchers`, `blueprint_add_variable`, `blueprint_remove_variable`, `blueprint_add_graph`, `blueprint_remove_graph`, `blueprint_add_event_dispatcher`, `blueprint_delete_nodes`
@@ -87,7 +104,9 @@ This is the documented target surface for ordinary Agents. Some entries may be a
 |---|---|---|---:|---|
 | `blueprinthelper_get_runtime_profile` | Read | Returns version, Bridge state, write permission, safety profile, and unavailable capabilities | No | Call at session start or before write planning |
 | `blueprinthelper_diagnostics` | Read | Returns static/runtime diagnostics | No | Blocking diagnostics are business state, not transport failure |
-| `blueprinthelper_read_task_context` | Read | Returns `BlueprintHelper.TaskContextPack.v1` for a target and intent | No | Should be compact; does not default to full RawJson |
+| `blueprinthelper_read_agent_guide` | Read | Returns the AgentGuide onboarding index Markdown | No | Documentation entry for capability surface and schema guide paths |
+| `blueprinthelper_read_context` | Read | Executes `BlueprintHelper.ReadSpec.v1` through the generic read router | No | Default asset-domain read entry |
+| `blueprinthelper_read_reference_context` | Read | Returns compact reference impact context | No | Independent reference viewer; not part of every write flow |
 | `blueprinthelper_preview_task` | Preview | Validates `BlueprintHelper.TaskSpec.v1`, compiles `BlueprintHelper.TaskPlan.v1`, and dry-runs/preflights | No | Returns GraphWrite IR summary when compilation succeeds and suggested patches for schema/semantic errors when possible |
 | `blueprinthelper_execute_task` | Mutate | Executes an approved TaskPlan through Bridge task-level execute and UE Task Runtime lowering | Yes | Returns task-level summary and validation result |
 | `blueprinthelper_get_task_result` | Query | Reads `BlueprintHelper.TaskRunJournal.v1` task result summary | No | Used for async/follow-up result lookup, audit summaries, and optional adapter child result inspection |
@@ -96,7 +115,7 @@ Primary data structures:
 
 | Schema | Consumer | Purpose |
 |---|---|---|
-| `BlueprintHelper.TaskContextPack.v1` | Agent | Context summary used to write a TaskSpec |
+| `BlueprintHelper.ReadSpec.v1` | MCP / Python Read Router | Agent-authored generic read request |
 | `BlueprintHelper.TaskSpec.v1` | Python / MCP Task Compiler | Agent-authored semantic task specification |
 | `BlueprintHelper.TaskPlan.v1` | Bridge task-level preview/execute, UE Task Runtime | Compiler-owned structured edit language / IR generated from TaskSpec |
 | `BlueprintHelper.TaskRunJournal.v1` | UE / MCP query | Task-level journal grouping child transactions |
@@ -207,7 +226,7 @@ The following entries describe the current low-level inventory. Ordinary Agents 
 
 | Tool | Type | Bridge | Inputs | Success example | Failure example | Risk | Preconditions | Token/session |
 |---|---|---:|---|---|---|---|---|---|
-| `blueprint_get_rule_markdown` | Read | Yes | none | `{ "success": true, "result": { "markdown": "..." } }` or Markdown text | Bridge unavailable | Low | Editor Bridge reachable | Optional Bridge token |
+| `blueprinthelper_read_agent_guide` | Read | No | none | AgentGuide onboarding index Markdown | AgentGuide index file missing | Low | MCP Server can read plugin `Resources` | None |
 | `blueprint_get_editor_context` | Read | Yes | none | `{ "success": true, "result": { "active_blueprint": "...", "active_graph": "..." } }` | No active editor context or Bridge unavailable | Low | Editor Bridge reachable | Optional Bridge token |
 | `blueprint_validate_json` | Read | Yes | `json` string | `{ "success": true, "result": { "valid": true } }` | Invalid JSON or rule violation | Low | Editor Bridge reachable | Optional Bridge token |
 | `blueprint_export_to_json` | Read | Yes | optional `target_blueprint`, optional `target_graph`, optional `scope` | `{ "success": true, "result": { "json": "..." } }` | Target asset or graph not found | Low | Editor Bridge reachable, target asset for explicit reads | Optional Bridge token |
@@ -290,8 +309,9 @@ blueprint_open_editor
 For ordinary Agent editor-asset mutations, use TaskSpec-first orchestration:
 
 ```text
-blueprinthelper_get_runtime_profile
- -> blueprinthelper_read_task_context
+blueprinthelper_read_agent_guide
+ -> blueprinthelper_get_runtime_profile
+ -> blueprinthelper_read_context
  -> blueprinthelper_preview_task
  -> blueprinthelper_execute_task
  -> blueprinthelper_get_task_result when needed
@@ -370,4 +390,4 @@ blueprint://rules/json-to-blueprint
 blueprint://context/active-graph
 ```
 
-Use `blueprint_get_rule_markdown` when a tool call is more convenient than reading the rules resource. Use `blueprint_get_editor_context` when a tool call is more convenient than reading the active graph resource.
+Use `blueprinthelper_read_agent_guide` when a tool call is more convenient than opening the AgentGuide index file. Use `blueprint_get_editor_context` when a tool call is more convenient than reading the active graph resource. The JSON-to-Blueprint rules resource remains a legacy/debug reference for raw JSON workflows.

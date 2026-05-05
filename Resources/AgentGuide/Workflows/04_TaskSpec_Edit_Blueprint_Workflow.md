@@ -4,10 +4,10 @@
 
 ```text
 1. get_runtime_profile
-2. read_task_context
+2. read_context / read_reference_context as needed
 3. build TaskSpec
 4. preview_task
-5. 如果 context_required/context_stale：重新 read_task_context
+5. 如果 context_required/context_stale：重新 read_context / read_reference_context
 6. 如果 TaskSpec error：按 suggested_patch 修正
 7. 如果 preview_blocked：stop_and_report 或修改 TaskSpec
 8. execute_task

@@ -6,6 +6,7 @@
 #include "Services/GraphWrite/BlueprintHelperPatchBlueprintGraphService.h"
 #include "Services/GraphWrite/BlueprintHelperReplaceBlueprintGraphService.h"
 #include "Services/BlueprintVariables/BlueprintHelperBlueprintVariableService.h"
+#include "Services/BlueprintHelperBlueprintStructureService.h"
 #include "Services/AssetFactory/BlueprintHelperAssetFactoryService.h"
 #include "Structure/AssetFactory/BlueprintHelperAssetFactoryTypes.h"
 #include "Services/BlueprintClassSettings/BlueprintHelperClassSettingsService.h"
@@ -20,6 +21,7 @@
 #include "TaskRuntime/TaskPlanAdapters/BlueprintClassSettings/BlueprintHelperClassSettingsTaskPlanAdapter.h"
 #include "TaskRuntime/TaskPlanAdapters/BlueprintComponent/BlueprintHelperComponentTaskPlanAdapter.h"
 #include "TaskRuntime/TaskPlanAdapters/DataTable/BlueprintHelperDataTableTaskPlanAdapter.h"
+#include "TaskRuntime/TaskPlanAdapters/BlueprintSignature/BlueprintHelperSignatureTaskPlanAdapter.h"
 #include "TaskRuntime/TaskPlanAdapters/UMGWidget/BlueprintHelperWidgetTaskPlanAdapter.h"
 
 #include "Dom/JsonObject.h"
@@ -1203,6 +1205,321 @@ namespace
 		return Payload;
 	}
 
+	bool TryReadRequiredGraphWriteOpObject(
+		const TSharedPtr<FJsonObject>& OpObject,
+		const FString& FieldName,
+		const FString& FieldPath,
+		TSharedPtr<FJsonObject>& OutObject,
+		FBlueprintHelperToolError& OutError)
+	{
+		const TSharedPtr<FJsonObject>* ObjectPtr = nullptr;
+		if (!OpObject.IsValid() ||
+			!OpObject->TryGetObjectField(FieldName, ObjectPtr) ||
+			!ObjectPtr || !ObjectPtr->IsValid())
+		{
+			OutError = MakeTaskRuntimeError(
+				TEXT("invalid_graph_write_ir_op"),
+				EBlueprintHelperToolStage::ParseInput,
+				FString::Printf(TEXT("GraphWrite structural op requires %s object."), *FieldName),
+				FieldPath);
+			return false;
+		}
+
+		OutObject = *ObjectPtr;
+		return true;
+	}
+
+	TSharedRef<FJsonObject> BuildGraphWriteIrTargetPayload(
+		const TSharedPtr<FJsonObject>& TargetObject,
+		const FString& AssetPath,
+		const FString& GraphName)
+	{
+		TSharedRef<FJsonObject> BridgeTarget = MakeShared<FJsonObject>();
+		CopyObjectFields(TargetObject, BridgeTarget);
+		BridgeTarget->SetStringField(TEXT("asset_path"), AssetPath);
+		BridgeTarget->SetStringField(TEXT("graph"), GraphName);
+		return BridgeTarget;
+	}
+
+	bool TryBuildGraphWriteIrReplacePayload(
+		const TSharedPtr<FJsonObject>& TargetObject,
+		const FString& AssetPath,
+		const FString& GraphName,
+		const TSharedPtr<FJsonObject>& OpObject,
+		bool bDryRun,
+		TSharedPtr<FJsonObject>& OutPayload,
+		FBlueprintHelperToolError& OutError)
+	{
+		FString ReplaceScope;
+		if (!OpObject.IsValid() ||
+			!OpObject->TryGetStringField(TEXT("replace_scope"), ReplaceScope) ||
+			ReplaceScope.IsEmpty())
+		{
+			OutError = MakeTaskRuntimeError(
+				TEXT("invalid_graph_write_ir_op"),
+				EBlueprintHelperToolStage::ParseInput,
+				TEXT("replace_body requires replace_scope."),
+				BuildOpFieldPath(0, TEXT("replace_scope")));
+			return false;
+		}
+
+		TSharedPtr<FJsonObject> Selector;
+		TSharedPtr<FJsonObject> Replacement;
+		if (!TryReadRequiredGraphWriteOpObject(OpObject, TEXT("selector"), BuildOpFieldPath(0, TEXT("selector")), Selector, OutError) ||
+			!TryReadRequiredGraphWriteOpObject(OpObject, TEXT("replacement"), BuildOpFieldPath(0, TEXT("replacement")), Replacement, OutError))
+		{
+			return false;
+		}
+
+		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+		TSharedRef<FJsonObject> BridgeTarget = BuildGraphWriteIrTargetPayload(TargetObject, AssetPath, GraphName);
+		BridgeTarget->SetStringField(TEXT("replace_scope"), ReplaceScope);
+		Payload->SetObjectField(TEXT("target"), BridgeTarget);
+		Payload->SetObjectField(TEXT("selector"), Selector);
+		Payload->SetObjectField(TEXT("replacement"), Replacement);
+
+		TSharedRef<FJsonObject> Options = MakeShared<FJsonObject>();
+		const TSharedPtr<FJsonObject>* OptionsObject = nullptr;
+		if (OpObject->TryGetObjectField(TEXT("options"), OptionsObject) &&
+			OptionsObject && OptionsObject->IsValid())
+		{
+			CopyObjectFields(*OptionsObject, Options);
+		}
+		Options->SetBoolField(TEXT("dry_run"), bDryRun);
+		Payload->SetObjectField(TEXT("options"), Options);
+
+		OutPayload = Payload;
+		return true;
+	}
+
+	FString DefaultPatchScopeForGraphWriteOp(const FString& OpName)
+	{
+		if (OpName == TEXT("set_node_comment"))
+		{
+			return TEXT("node_comment");
+		}
+		if (OpName == TEXT("set_node_position"))
+		{
+			return TEXT("node_position");
+		}
+		return TEXT("pin_default");
+	}
+
+	bool TryBuildGraphWriteIrPatchPayload(
+		const TSharedPtr<FJsonObject>& TargetObject,
+		const FString& AssetPath,
+		const FString& GraphName,
+		const TSharedPtr<FJsonObject>& OpObject,
+		const FString& OpName,
+		bool bDryRun,
+		TSharedPtr<FJsonObject>& OutPayload,
+		FBlueprintHelperToolError& OutError)
+	{
+		TSharedPtr<FJsonObject> PatchedRef;
+		TSharedPtr<FJsonObject> Patch;
+		if (!TryReadRequiredGraphWriteOpObject(OpObject, TEXT("patched_ref"), BuildOpFieldPath(0, TEXT("patched_ref")), PatchedRef, OutError) ||
+			!TryReadRequiredGraphWriteOpObject(OpObject, TEXT("patch"), BuildOpFieldPath(0, TEXT("patch")), Patch, OutError))
+		{
+			return false;
+		}
+
+		FString PatchScope;
+		if (!OpObject->TryGetStringField(TEXT("patch_scope"), PatchScope) || PatchScope.IsEmpty())
+		{
+			PatchScope = DefaultPatchScopeForGraphWriteOp(OpName);
+		}
+
+		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+		TSharedRef<FJsonObject> BridgeTarget = BuildGraphWriteIrTargetPayload(TargetObject, AssetPath, GraphName);
+		BridgeTarget->SetStringField(TEXT("patch_scope"), PatchScope);
+		Payload->SetObjectField(TEXT("target"), BridgeTarget);
+		Payload->SetStringField(TEXT("patch_type"), OpName);
+		Payload->SetObjectField(TEXT("patched_ref"), PatchedRef);
+		Payload->SetObjectField(TEXT("patch"), Patch);
+		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
+
+		const TSharedPtr<FJsonObject>* ExpectedOldState = nullptr;
+		if (OpObject->TryGetObjectField(TEXT("expected_old_state"), ExpectedOldState) &&
+			ExpectedOldState && ExpectedOldState->IsValid())
+		{
+			Payload->SetObjectField(TEXT("expected_old_state"), *ExpectedOldState);
+		}
+
+		OutPayload = Payload;
+		return true;
+	}
+
+	bool TryBuildGraphWriteIrMergePayload(
+		const TSharedPtr<FJsonObject>& TargetObject,
+		const FString& AssetPath,
+		const FString& GraphName,
+		const TSharedPtr<FJsonObject>& OpObject,
+		bool bDryRun,
+		TSharedPtr<FJsonObject>& OutPayload,
+		FBlueprintHelperToolError& OutError)
+	{
+		FString MergeScope;
+		FString InsertStrategy;
+		if (!OpObject.IsValid() ||
+			!OpObject->TryGetStringField(TEXT("merge_scope"), MergeScope) ||
+			MergeScope.IsEmpty())
+		{
+			OutError = MakeTaskRuntimeError(
+				TEXT("invalid_graph_write_ir_op"),
+				EBlueprintHelperToolStage::ParseInput,
+				TEXT("insert_flow requires merge_scope."),
+				BuildOpFieldPath(0, TEXT("merge_scope")));
+			return false;
+		}
+		if (!OpObject->TryGetStringField(TEXT("insert_strategy"), InsertStrategy) ||
+			InsertStrategy.IsEmpty())
+		{
+			OutError = MakeTaskRuntimeError(
+				TEXT("invalid_graph_write_ir_op"),
+				EBlueprintHelperToolStage::ParseInput,
+				TEXT("insert_flow requires insert_strategy."),
+				BuildOpFieldPath(0, TEXT("insert_strategy")));
+			return false;
+		}
+
+		TSharedPtr<FJsonObject> Anchor;
+		TSharedPtr<FJsonObject> Inserted;
+		if (!TryReadRequiredGraphWriteOpObject(OpObject, TEXT("anchor"), BuildOpFieldPath(0, TEXT("anchor")), Anchor, OutError) ||
+			!TryReadRequiredGraphWriteOpObject(OpObject, TEXT("inserted"), BuildOpFieldPath(0, TEXT("inserted")), Inserted, OutError))
+		{
+			return false;
+		}
+
+		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+		TSharedRef<FJsonObject> BridgeTarget = BuildGraphWriteIrTargetPayload(TargetObject, AssetPath, GraphName);
+		BridgeTarget->SetStringField(TEXT("merge_scope"), MergeScope);
+		BridgeTarget->SetStringField(TEXT("insert_strategy"), InsertStrategy);
+		Payload->SetObjectField(TEXT("target"), BridgeTarget);
+		Payload->SetObjectField(TEXT("anchor"), Anchor);
+		Payload->SetObjectField(TEXT("inserted"), Inserted);
+		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
+
+		const TArray<TSharedPtr<FJsonValue>>* SequenceOrder = nullptr;
+		if (OpObject->TryGetArrayField(TEXT("sequence_order"), SequenceOrder) && SequenceOrder)
+		{
+			Payload->SetArrayField(TEXT("sequence_order"), *SequenceOrder);
+		}
+
+		OutPayload = Payload;
+		return true;
+	}
+
+	bool TryBuildGraphWriteIrPayload(
+		const TSharedPtr<FJsonObject>& TaskPlan,
+		const TSharedPtr<FJsonObject>& StepObject,
+		bool bDryRun,
+		TSharedPtr<FJsonObject>& OutPayload,
+		FString& OutAdapterOperation,
+		FBlueprintHelperToolError& OutError)
+	{
+		TSharedPtr<FJsonObject> TargetObject;
+		FString AssetPath;
+		FString GraphName;
+		if (!TryReadStepTarget(StepObject, TargetObject, AssetPath, GraphName, OutError))
+		{
+			return false;
+		}
+
+		const TSharedPtr<FJsonObject>* WriteObjectPtr = nullptr;
+		if (!StepObject.IsValid() ||
+			!StepObject->TryGetObjectField(TEXT("write"), WriteObjectPtr) ||
+			!WriteObjectPtr || !WriteObjectPtr->IsValid())
+		{
+			OutError = MakeTaskRuntimeError(
+				TEXT("invalid_taskplan_step_write"),
+				EBlueprintHelperToolStage::ParseInput,
+				TEXT("graph_write TaskPlan step requires write object."),
+				BuildStepFieldPath(TEXT("write")));
+			return false;
+		}
+
+		FString Strategy;
+		if (!(*WriteObjectPtr)->TryGetStringField(TEXT("strategy"), Strategy) ||
+			Strategy != TEXT("owned_graph_edit"))
+		{
+			OutError = MakeTaskRuntimeError(
+				TEXT("unsupported_graph_write_strategy"),
+				EBlueprintHelperToolStage::ParseInput,
+				TEXT("GraphWrite Task Runtime currently supports owned_graph_edit only."),
+				BuildStepFieldPath(TEXT("write.strategy")));
+			return false;
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* OpsArray = nullptr;
+		if (!(*WriteObjectPtr)->TryGetArrayField(TEXT("ops"), OpsArray) || !OpsArray || OpsArray->Num() == 0)
+		{
+			OutError = MakeTaskRuntimeError(
+				TEXT("invalid_graph_write_ops"),
+				EBlueprintHelperToolStage::ParseInput,
+				TEXT("graph_write TaskPlan step requires non-empty write.ops array."),
+				BuildStepFieldPath(TEXT("write.ops")));
+			return false;
+		}
+
+		const TSharedPtr<FJsonObject> FirstOpObject =
+			(*OpsArray)[0].IsValid()
+				? (*OpsArray)[0]->AsObject()
+				: nullptr;
+		FString OpName;
+		if (!FirstOpObject.IsValid() ||
+			!FirstOpObject->TryGetStringField(TEXT("op"), OpName) ||
+			OpName.IsEmpty())
+		{
+			OutError = MakeTaskRuntimeError(
+				TEXT("invalid_graph_write_ir_op"),
+				EBlueprintHelperToolStage::ParseInput,
+				TEXT("GraphWrite write.ops entry requires op."),
+				BuildOpFieldPath(0, TEXT("op")));
+			return false;
+		}
+
+		if (OpName == TEXT("ensure_entry"))
+		{
+			OutAdapterOperation = TEXT("append_blueprint_graph");
+			return TryBuildGraphWriteIrAppendPayload(TaskPlan, StepObject, bDryRun, OutPayload, OutError);
+		}
+
+		if (OpsArray->Num() != 1)
+		{
+			OutError = MakeTaskRuntimeError(
+				TEXT("unsupported_graph_write_ir_op_batch"),
+				EBlueprintHelperToolStage::ParseInput,
+				TEXT("GraphWrite replace/patch/merge IR supports one structural op per TaskPlan step."),
+				BuildStepFieldPath(TEXT("write.ops")));
+			return false;
+		}
+
+		if (OpName == TEXT("replace_body"))
+		{
+			OutAdapterOperation = TEXT("replace_blueprint_graph");
+			return TryBuildGraphWriteIrReplacePayload(TargetObject, AssetPath, GraphName, FirstOpObject, bDryRun, OutPayload, OutError);
+		}
+		if (OpName == TEXT("set_pin_default") ||
+			OpName == TEXT("set_node_comment") ||
+			OpName == TEXT("set_node_position"))
+		{
+			OutAdapterOperation = TEXT("patch_blueprint_graph");
+			return TryBuildGraphWriteIrPatchPayload(TargetObject, AssetPath, GraphName, FirstOpObject, OpName, bDryRun, OutPayload, OutError);
+		}
+		if (OpName == TEXT("insert_flow"))
+		{
+			OutAdapterOperation = TEXT("merge_blueprint_graph");
+			return TryBuildGraphWriteIrMergePayload(TargetObject, AssetPath, GraphName, FirstOpObject, bDryRun, OutPayload, OutError);
+		}
+
+		OutError = MakeTaskRuntimeError(
+			TEXT("unsupported_graph_write_ir_op"),
+			EBlueprintHelperToolStage::ParseInput,
+			TEXT("GraphWrite Task Runtime does not support this structural op."),
+			BuildOpFieldPath(0, TEXT("op")));
+		return false;
+	}
+
 	TSharedRef<FJsonObject> MakeStepResultJson(
 		const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
 		const FBlueprintHelperToolResultBase& StepResult)
@@ -1257,6 +1574,174 @@ namespace
 			}
 		}
 		return false;
+	}
+
+	enum class EBlueprintHelperTaskJournalStepStatus : uint8
+	{
+		Completed,
+		Failed,
+		Blocked,
+		Skipped
+	};
+
+	const TCHAR* TaskJournalStepStatusToString(EBlueprintHelperTaskJournalStepStatus Status)
+	{
+		switch (Status)
+		{
+		case EBlueprintHelperTaskJournalStepStatus::Completed:
+			return TEXT("completed");
+		case EBlueprintHelperTaskJournalStepStatus::Failed:
+			return TEXT("failed");
+		case EBlueprintHelperTaskJournalStepStatus::Blocked:
+			return TEXT("blocked");
+		case EBlueprintHelperTaskJournalStepStatus::Skipped:
+			return TEXT("skipped");
+		default:
+			return TEXT("unknown");
+		}
+	}
+
+	TArray<FString> ReadStepDependsOn(const TSharedPtr<FJsonObject>& StepObject)
+	{
+		TArray<FString> DependsOn;
+		const TArray<TSharedPtr<FJsonValue>>* DependsOnValues = nullptr;
+		if (!StepObject.IsValid() ||
+			!StepObject->TryGetArrayField(TEXT("depends_on"), DependsOnValues) ||
+			!DependsOnValues)
+		{
+			return DependsOn;
+		}
+
+		for (const TSharedPtr<FJsonValue>& DependsOnValue : *DependsOnValues)
+		{
+			if (!DependsOnValue.IsValid())
+			{
+				continue;
+			}
+
+			const FString StepId = DependsOnValue->AsString();
+			if (!StepId.IsEmpty())
+			{
+				DependsOn.Add(StepId);
+			}
+		}
+
+		return DependsOn;
+	}
+
+	TArray<TSharedPtr<FJsonValue>> MakeStringArray(const TArray<FString>& Values)
+	{
+		TArray<TSharedPtr<FJsonValue>> Result;
+		for (const FString& Value : Values)
+		{
+			Result.Add(MakeShared<FJsonValueString>(Value));
+		}
+		return Result;
+	}
+
+	FString GetTaskPlanStepId(const TSharedPtr<FJsonObject>& StepObject, int32 StepIndex)
+	{
+		FString StepId;
+		if (StepObject.IsValid() && StepObject->TryGetStringField(TEXT("step_id"), StepId) && !StepId.IsEmpty())
+		{
+			return StepId;
+		}
+
+		return FString::Printf(TEXT("step_%03d"), StepIndex + 1);
+	}
+
+	FString GetTaskPlanStepOperation(const TSharedPtr<FJsonObject>& StepObject)
+	{
+		FString Capability;
+		if (StepObject.IsValid() &&
+			StepObject->TryGetStringField(TEXT("capability"), Capability) &&
+			!Capability.IsEmpty())
+		{
+			return Capability;
+		}
+
+		FString Operation;
+		if (StepObject.IsValid() &&
+			StepObject->TryGetStringField(TEXT("operation"), Operation) &&
+			!Operation.IsEmpty())
+		{
+			return Operation;
+		}
+
+		return TEXT("unknown");
+	}
+
+	TSharedRef<FJsonObject> MakeTaskJournalRecoveryJson()
+	{
+		TSharedRef<FJsonObject> Recovery = MakeShared<FJsonObject>();
+		Recovery->SetStringField(
+			TEXT("recommended_action"),
+			TEXT("inspect_task_result_then_submit_followup_taskspec"));
+		Recovery->SetBoolField(TEXT("safe_to_retry"), false);
+		Recovery->SetBoolField(TEXT("rollback_available"), false);
+		Recovery->SetArrayField(TEXT("notes"), {});
+		return Recovery;
+	}
+
+	TSharedRef<FJsonObject> MakeTaskJournalStepJson(
+		const TSharedPtr<FJsonObject>& PlannedStep,
+		const FBlueprintHelperTaskRuntimeStepRecord* ExecutedStep,
+		const FString& StepId,
+		EBlueprintHelperTaskJournalStepStatus StepStatus,
+		const TArray<FString>& DependsOn,
+		const TArray<FString>& BlockedByStepIds,
+		const FString& BlockedReason)
+	{
+		TSharedRef<FJsonObject> StepJson = MakeShared<FJsonObject>();
+		StepJson->SetStringField(TEXT("step_id"), StepId);
+
+		FString Capability;
+		if (ExecutedStep && !ExecutedStep->Step.Capability.IsEmpty())
+		{
+			Capability = ExecutedStep->Step.Capability;
+		}
+		else if (PlannedStep.IsValid())
+		{
+			PlannedStep->TryGetStringField(TEXT("capability"), Capability);
+		}
+		if (!Capability.IsEmpty())
+		{
+			StepJson->SetStringField(TEXT("capability"), Capability);
+		}
+
+		const FString Operation = ExecutedStep
+			? (ExecutedStep->Step.RuntimeOperation.IsEmpty() ? GetTaskPlanStepOperation(PlannedStep) : ExecutedStep->Step.RuntimeOperation)
+			: GetTaskPlanStepOperation(PlannedStep);
+		StepJson->SetStringField(TEXT("operation"), Operation);
+
+		if (ExecutedStep && !ExecutedStep->Step.AdapterOperation.IsEmpty())
+		{
+			StepJson->SetStringField(TEXT("adapter_operation"), ExecutedStep->Step.AdapterOperation);
+		}
+
+		if (DependsOn.Num() > 0)
+		{
+			StepJson->SetArrayField(TEXT("depends_on"), MakeStringArray(DependsOn));
+		}
+
+		StepJson->SetStringField(TEXT("status"), TaskJournalStepStatusToString(StepStatus));
+
+		if (ExecutedStep)
+		{
+			StepJson->SetObjectField(TEXT("result"), ExecutedStep->Result.ToJson());
+		}
+		else
+		{
+			StepJson->SetField(TEXT("error"), MakeShared<FJsonValueNull>());
+		}
+
+		if (StepStatus == EBlueprintHelperTaskJournalStepStatus::Blocked)
+		{
+			StepJson->SetArrayField(TEXT("blocked_by_step_ids"), MakeStringArray(BlockedByStepIds));
+			StepJson->SetStringField(TEXT("blocked_reason"), BlockedReason);
+		}
+
+		return StepJson;
 	}
 
 	TSharedRef<FJsonObject> MakeRuntimeData(
@@ -1356,11 +1841,6 @@ namespace
 		TSharedRef<FJsonObject> Journal = MakeShared<FJsonObject>();
 		Journal->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.TaskRunJournal.v1"));
 		Journal->SetStringField(TEXT("task_run_id"), TaskRunId);
-		Journal->SetStringField(
-			TEXT("status"),
-			bRuntimeFailed || HasFailedStep(StepRecords) || HasFailedPostOperation(PostOperationRecords)
-				? TEXT("failed")
-				: TEXT("completed"));
 
 		if (TaskPlan.IsValid())
 		{
@@ -1381,12 +1861,136 @@ namespace
 			}
 		}
 
-		TArray<TSharedPtr<FJsonValue>> Steps;
+		TMap<FString, const FBlueprintHelperTaskRuntimeStepRecord*> StepRecordsById;
 		for (const FBlueprintHelperTaskRuntimeStepRecord& StepRecord : StepRecords)
 		{
-			Steps.Add(MakeShared<FJsonValueObject>(MakeStepResultJson(StepRecord.Step, StepRecord.Result)));
+			StepRecordsById.Add(StepRecord.Step.StepId, &StepRecord);
+		}
+
+		TArray<TSharedPtr<FJsonValue>> Steps;
+		TSet<FString> ConsumedStepIds;
+		TMap<FString, EBlueprintHelperTaskJournalStepStatus> JournalStepStatuses;
+		bool bHasBlockedJournalStep = false;
+		bool bHasFailedJournalStep = false;
+		const TArray<TSharedPtr<FJsonValue>>* PlannedSteps = nullptr;
+		if (TaskPlan.IsValid() &&
+			TaskPlan->TryGetArrayField(TEXT("steps"), PlannedSteps) &&
+			PlannedSteps)
+		{
+			for (int32 StepIndex = 0; StepIndex < PlannedSteps->Num(); ++StepIndex)
+			{
+				const TSharedPtr<FJsonObject> PlannedStep =
+					(*PlannedSteps)[StepIndex].IsValid()
+						? (*PlannedSteps)[StepIndex]->AsObject()
+						: nullptr;
+				const FString StepId = GetTaskPlanStepId(PlannedStep, StepIndex);
+				const TArray<FString> DependsOn = ReadStepDependsOn(PlannedStep);
+
+				const FBlueprintHelperTaskRuntimeStepRecord* const* ExecutedStepPtr = StepRecordsById.Find(StepId);
+				const FBlueprintHelperTaskRuntimeStepRecord* ExecutedStep = ExecutedStepPtr ? *ExecutedStepPtr : nullptr;
+
+				EBlueprintHelperTaskJournalStepStatus StepStatus = EBlueprintHelperTaskJournalStepStatus::Skipped;
+				TArray<FString> BlockedByStepIds;
+				FString BlockedReason;
+				if (ExecutedStep)
+				{
+					StepStatus = ExecutedStep->Result.bOk
+						? EBlueprintHelperTaskJournalStepStatus::Completed
+						: EBlueprintHelperTaskJournalStepStatus::Failed;
+					ConsumedStepIds.Add(StepId);
+				}
+				else
+				{
+					bool bBlockedByFailedDependency = false;
+					bool bBlockedByBlockedDependency = false;
+					for (const FString& DependsOnStepId : DependsOn)
+					{
+						const EBlueprintHelperTaskJournalStepStatus* DependsOnStatus = JournalStepStatuses.Find(DependsOnStepId);
+						if (!DependsOnStatus)
+						{
+							continue;
+						}
+
+						if (*DependsOnStatus == EBlueprintHelperTaskJournalStepStatus::Failed)
+						{
+							bBlockedByFailedDependency = true;
+							BlockedByStepIds.Add(DependsOnStepId);
+						}
+						else if (*DependsOnStatus == EBlueprintHelperTaskJournalStepStatus::Blocked)
+						{
+							bBlockedByBlockedDependency = true;
+							BlockedByStepIds.Add(DependsOnStepId);
+						}
+					}
+
+					if (BlockedByStepIds.Num() > 0)
+					{
+						StepStatus = EBlueprintHelperTaskJournalStepStatus::Blocked;
+						BlockedReason = bBlockedByFailedDependency
+							? TEXT("dependency_failed")
+							: TEXT("dependency_blocked");
+					}
+				}
+
+				if (StepStatus == EBlueprintHelperTaskJournalStepStatus::Failed)
+				{
+					bHasFailedJournalStep = true;
+				}
+				else if (StepStatus == EBlueprintHelperTaskJournalStepStatus::Blocked)
+				{
+					bHasBlockedJournalStep = true;
+				}
+
+				JournalStepStatuses.Add(StepId, StepStatus);
+				Steps.Add(MakeShared<FJsonValueObject>(MakeTaskJournalStepJson(
+					PlannedStep,
+					ExecutedStep,
+					StepId,
+					StepStatus,
+					DependsOn,
+					BlockedByStepIds,
+					BlockedReason)));
+			}
+		}
+
+		for (const FBlueprintHelperTaskRuntimeStepRecord& StepRecord : StepRecords)
+		{
+			if (ConsumedStepIds.Contains(StepRecord.Step.StepId))
+			{
+				continue;
+			}
+
+			const EBlueprintHelperTaskJournalStepStatus StepStatus = StepRecord.Result.bOk
+				? EBlueprintHelperTaskJournalStepStatus::Completed
+				: EBlueprintHelperTaskJournalStepStatus::Failed;
+			if (StepStatus == EBlueprintHelperTaskJournalStepStatus::Failed)
+			{
+				bHasFailedJournalStep = true;
+			}
+
+			Steps.Add(MakeShared<FJsonValueObject>(MakeTaskJournalStepJson(
+				nullptr,
+				&StepRecord,
+				StepRecord.Step.StepId,
+				StepStatus,
+				{},
+				{},
+				TEXT(""))));
 		}
 		Journal->SetArrayField(TEXT("steps"), Steps);
+
+		const bool bHasPartialFailure =
+			bRuntimeFailed ||
+			bHasFailedJournalStep ||
+			bHasBlockedJournalStep ||
+			HasFailedPostOperation(PostOperationRecords);
+		Journal->SetStringField(
+			TEXT("status"),
+			bHasPartialFailure ? TEXT("partial_failure") : TEXT("completed"));
+		if (bHasPartialFailure)
+		{
+			Journal->SetObjectField(TEXT("recovery"), MakeTaskJournalRecoveryJson());
+		}
 
 		if (PostOperationRecords.Num() > 0)
 		{
@@ -1455,6 +2059,126 @@ namespace
 			Target->SetStringField(TEXT("property_path"), PropertyPath);
 		}
 		return Target;
+	}
+
+	FString MakePlannedComponentKey(
+		const FString& AssetPath,
+		const FString& ComponentName)
+	{
+		return FString::Printf(TEXT("%s\n%s"), *AssetPath, *ComponentName);
+	}
+
+	bool TryReadComponentPayloadIdentity(
+		const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
+		FString& OutAssetPath,
+		FString& OutComponentName)
+	{
+		OutAssetPath.Empty();
+		OutComponentName.Empty();
+		if (!LoweredStep.Payload.IsValid())
+		{
+			return false;
+		}
+
+		LoweredStep.Payload->TryGetStringField(TEXT("asset_path"), OutAssetPath);
+		LoweredStep.Payload->TryGetStringField(TEXT("component_name"), OutComponentName);
+		return !OutAssetPath.IsEmpty() && !OutComponentName.IsEmpty();
+	}
+
+	bool IsPlannedComponentPropertyDryRun(
+		const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
+		const FBlueprintHelperToolResultBase& StepResult,
+		const TSet<FString>& PlannedComponentKeys)
+	{
+		if (LoweredStep.AdapterOperation != FBlueprintHelperComponentTaskPlanAdapter::AdapterOperationSetComponentProperties ||
+			StepResult.bOk ||
+			!StepResult.Error.IsSet() ||
+			StepResult.Error->Code != TEXT("component_not_found"))
+		{
+			return false;
+		}
+
+		bool bDryRun = false;
+		if (!LoweredStep.Payload.IsValid() ||
+			!LoweredStep.Payload->TryGetBoolField(TEXT("dry_run"), bDryRun) ||
+			!bDryRun)
+		{
+			return false;
+		}
+
+		FString AssetPath;
+		FString ComponentName;
+		return TryReadComponentPayloadIdentity(LoweredStep, AssetPath, ComponentName) &&
+			PlannedComponentKeys.Contains(MakePlannedComponentKey(AssetPath, ComponentName));
+	}
+
+	FBlueprintHelperToolResultBase MakePlannedComponentPropertyDryRunResult(
+		const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep)
+	{
+		FString AssetPath;
+		FString ComponentName;
+		TryReadComponentPayloadIdentity(LoweredStep, AssetPath, ComponentName);
+
+		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::DryRun(
+			LoweredStep.AdapterOperation,
+			FBlueprintHelperToolResultBuilder::GenerateTraceId());
+
+		TSharedRef<FJsonObject> Target = MakeShared<FJsonObject>();
+		if (!AssetPath.IsEmpty())
+		{
+			Target->SetStringField(TEXT("asset_path"), AssetPath);
+		}
+		Target->SetStringField(TEXT("target_type"), TEXT("component"));
+		if (!ComponentName.IsEmpty())
+		{
+			Target->SetStringField(TEXT("component_name"), ComponentName);
+		}
+		Result.CustomTargetJson = Target;
+
+		int32 SettingsCount = 0;
+		const TArray<TSharedPtr<FJsonValue>>* Settings = nullptr;
+		if (LoweredStep.Payload.IsValid() &&
+			LoweredStep.Payload->TryGetArrayField(TEXT("settings"), Settings) &&
+			Settings)
+		{
+			SettingsCount = Settings->Num();
+		}
+
+		TSharedRef<FJsonObject> DryRun = MakeShared<FJsonObject>();
+		DryRun->SetStringField(TEXT("preview_kind"), TEXT("task_runtime_planned_component"));
+		DryRun->SetBoolField(TEXT("can_execute"), true);
+		DryRun->SetStringField(TEXT("result"), TEXT("passed"));
+		DryRun->SetNumberField(TEXT("would_change_count"), SettingsCount);
+		DryRun->SetNumberField(TEXT("would_create_count"), 0);
+		DryRun->SetNumberField(TEXT("would_update_count"), SettingsCount);
+		DryRun->SetNumberField(TEXT("would_remove_count"), 0);
+		DryRun->SetNumberField(TEXT("would_no_op_count"), 0);
+		DryRun->SetStringField(
+			TEXT("limitation"),
+			TEXT("Component property validation is deferred because the component is created by an earlier dry-run step."));
+
+		TSharedRef<FJsonObject> Warning = MakeShared<FJsonObject>();
+		Warning->SetStringField(TEXT("code"), TEXT("planned_component_property_validation_deferred"));
+		Warning->SetStringField(TEXT("target"), ComponentName);
+		Warning->SetStringField(
+			TEXT("message"),
+			TEXT("The component does not exist in the asset during preview, but a prior TaskPlan step plans to create it."));
+		TArray<TSharedPtr<FJsonValue>> Warnings;
+		Warnings.Add(MakeShared<FJsonValueObject>(Warning));
+		DryRun->SetArrayField(TEXT("warnings"), Warnings);
+		DryRun->SetArrayField(TEXT("conflicts"), {});
+		DryRun->SetArrayField(TEXT("errors"), {});
+
+		TSharedRef<FJsonObject> Data = MakeShared<FJsonObject>();
+		Data->SetStringField(TEXT("schema"), TEXT("BlueprintComponent.v1"));
+		Data->SetObjectField(TEXT("dry_run"), DryRun);
+		Result.Data = Data;
+
+		FBlueprintHelperValidationSummary Validation;
+		Validation.bShouldCompile = false;
+		Validation.bShouldSave = false;
+		Result.Validation = Validation;
+		return Result;
 	}
 
 	bool TryParseAssetFactoryType(const FString& AssetTypeText, EBlueprintHelperAssetType& OutAssetType)
@@ -2126,6 +2850,240 @@ namespace
 			EBlueprintHelperToolStage::ParseInput,
 			TEXT("Unsupported DataTable adapter operation."));
 	}
+
+	FBlueprintHelperValidationSummary MakeSignatureValidation(bool bShouldCompile, bool bShouldSave)
+	{
+		FBlueprintHelperValidationSummary Validation;
+		Validation.bShouldCompile = bShouldCompile;
+		Validation.bShouldSave = bShouldSave;
+		return Validation;
+	}
+
+	TSharedRef<FJsonObject> MakeSignatureResultData(
+		bool bDryRun,
+		const TCHAR* ResultField = TEXT("function_result"),
+		bool bDeferredToGraphWrite = false)
+	{
+		TSharedRef<FJsonObject> Data = MakeShared<FJsonObject>();
+		Data->SetStringField(TEXT("schema"), TEXT("BlueprintSignature.v1"));
+		if (bDryRun)
+		{
+			Data->SetBoolField(TEXT("dry_run"), true);
+		}
+
+		TSharedRef<FJsonObject> FunctionResult = MakeShared<FJsonObject>();
+		FunctionResult->SetBoolField(TEXT("success"), true);
+		if (bDeferredToGraphWrite)
+		{
+			FunctionResult->SetBoolField(TEXT("deferred_to_graph_write"), true);
+		}
+		Data->SetObjectField(FString(ResultField), FunctionResult);
+		return Data;
+	}
+
+	void SetSignatureFunctionTarget(
+		FBlueprintHelperToolResultBase& Result,
+		const FString& AssetPath,
+		const FString& FunctionName)
+	{
+		Result.Target = FBlueprintHelperTargetRef();
+		Result.Target->AssetPath = AssetPath;
+		Result.Target->TargetType = EBlueprintHelperTargetType::Function;
+		Result.Target->Function = FunctionName;
+	}
+
+	void SetSignatureCustomEventTarget(
+		FBlueprintHelperToolResultBase& Result,
+		const FString& AssetPath,
+		const FString& GraphName,
+		const FString& EventName)
+	{
+		Result.Target = FBlueprintHelperTargetRef();
+		Result.Target->AssetPath = AssetPath;
+		Result.Target->TargetType = EBlueprintHelperTargetType::CustomEvent;
+		Result.Target->Graph = GraphName;
+		Result.Target->Event = EventName;
+	}
+
+	bool SignatureFunctionExists(
+		const FBlueprintHelperBlueprintStructureService& Service,
+		const FString& AssetPath,
+		const FString& FunctionName,
+		FString& OutError)
+	{
+		FBlueprintHelperGraphTarget Target;
+		Target.BlueprintPath = AssetPath;
+		const FBlueprintHelperListGraphsResult Graphs = Service.ListGraphs(Target);
+		if (!Graphs.bSuccess)
+		{
+			OutError = Graphs.ErrorMessage.IsEmpty()
+				? FString::Printf(TEXT("Unable to list Blueprint graphs for %s."), *AssetPath)
+				: Graphs.ErrorMessage;
+			return false;
+		}
+
+		for (const FBlueprintHelperGraphInfo& Graph : Graphs.Graphs)
+		{
+			if (Graph.GraphType == TEXT("Function") && Graph.Name == FunctionName)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	FBlueprintHelperToolResultBase ExecuteSignatureTaskPlanStep(
+		const FBlueprintHelperBlueprintStructureService& Service,
+		const FString& AdapterOperation,
+		const TSharedPtr<FJsonObject>& Payload)
+	{
+		const bool bEnsureFunction = AdapterOperation == FBlueprintHelperSignatureTaskPlanAdapter::AdapterOperationEnsureFunction;
+		const bool bEnsureCustomEvent = AdapterOperation == FBlueprintHelperSignatureTaskPlanAdapter::AdapterOperationEnsureCustomEvent;
+		if (!bEnsureFunction && !bEnsureCustomEvent)
+		{
+			return MakeFailure(
+				TEXT("blueprint_signature"),
+				TEXT("unsupported_signature_adapter_operation"),
+				EBlueprintHelperToolStage::ParseInput,
+				TEXT("Unsupported signature adapter operation."));
+		}
+
+		FString AssetPath;
+		FString FunctionName;
+		FString EventName;
+		FString GraphName;
+		FString NameCollisionPolicy = TEXT("reuse_if_exists");
+		bool bDryRun = false;
+		if (Payload.IsValid())
+		{
+			Payload->TryGetStringField(TEXT("asset_path"), AssetPath);
+			Payload->TryGetStringField(TEXT("function_name"), FunctionName);
+			Payload->TryGetStringField(TEXT("event_name"), EventName);
+			Payload->TryGetStringField(TEXT("graph_name"), GraphName);
+			Payload->TryGetStringField(TEXT("name_collision_policy"), NameCollisionPolicy);
+			Payload->TryGetBoolField(TEXT("dry_run"), bDryRun);
+		}
+
+		if (AssetPath.IsEmpty() ||
+			(bEnsureFunction && FunctionName.IsEmpty()) ||
+			(bEnsureCustomEvent && (EventName.IsEmpty() || GraphName.IsEmpty())))
+		{
+			const FString Operation = bEnsureCustomEvent ? TEXT("ensure_custom_event") : TEXT("ensure_function");
+			const FString Message = bEnsureCustomEvent
+				? TEXT("ensure_custom_event requires asset_path, graph_name, and event_name.")
+				: TEXT("ensure_function requires asset_path and function_name.");
+			return MakeFailure(
+				Operation,
+				TEXT("invalid_signature_payload"),
+				EBlueprintHelperToolStage::ParseInput,
+				Message,
+				TEXT("task_plan.steps[0].write.ops[0]"));
+		}
+
+		if (bEnsureCustomEvent)
+		{
+			FString ListError;
+			SignatureFunctionExists(Service, AssetPath, TEXT("__BlueprintHelperTargetProbe__"), ListError);
+			if (!ListError.IsEmpty())
+			{
+				return MakeFailure(
+					TEXT("ensure_custom_event"),
+					TEXT("target_blueprint_not_found"),
+					EBlueprintHelperToolStage::ResolveTarget,
+					ListError,
+					TEXT("asset_path"));
+			}
+
+			if (bDryRun)
+			{
+				FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::DryRun(
+					TEXT("ensure_custom_event"),
+					FBlueprintHelperToolResultBuilder::GenerateTraceId());
+				SetSignatureCustomEventTarget(Result, AssetPath, GraphName, EventName);
+				Result.Data = MakeSignatureResultData(true, TEXT("custom_event_result"), true);
+				Result.Validation = MakeSignatureValidation(false, false);
+				return Result;
+			}
+
+			FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::NoOp(
+				TEXT("ensure_custom_event"),
+				FBlueprintHelperToolResultBuilder::GenerateTraceId());
+			SetSignatureCustomEventTarget(Result, AssetPath, GraphName, EventName);
+			Result.Data = MakeSignatureResultData(false, TEXT("custom_event_result"), true);
+			Result.Validation = MakeSignatureValidation(false, false);
+			return Result;
+		}
+
+		FString ListError;
+		const bool bExists = SignatureFunctionExists(Service, AssetPath, FunctionName, ListError);
+		if (!ListError.IsEmpty())
+		{
+			return MakeFailure(
+				TEXT("ensure_function"),
+				TEXT("target_blueprint_not_found"),
+				EBlueprintHelperToolStage::ResolveTarget,
+				ListError,
+				TEXT("asset_path"));
+		}
+
+		if (bExists && NameCollisionPolicy == TEXT("fail_if_exists"))
+		{
+			return MakeFailure(
+				TEXT("ensure_function"),
+				TEXT("function_already_exists"),
+				EBlueprintHelperToolStage::Preflight,
+				FString::Printf(TEXT("Function already exists: %s"), *FunctionName),
+				TEXT("function_name"));
+		}
+
+		if (bDryRun)
+		{
+			FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::DryRun(
+				TEXT("ensure_function"),
+				FBlueprintHelperToolResultBuilder::GenerateTraceId());
+			SetSignatureFunctionTarget(Result, AssetPath, FunctionName);
+			Result.Data = MakeSignatureResultData(true);
+			Result.Validation = MakeSignatureValidation(!bExists, !bExists);
+			return Result;
+		}
+
+		if (bExists)
+		{
+			FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::NoOp(
+				TEXT("ensure_function"),
+				FBlueprintHelperToolResultBuilder::GenerateTraceId());
+			SetSignatureFunctionTarget(Result, AssetPath, FunctionName);
+			Result.Data = MakeSignatureResultData(false);
+			Result.Validation = MakeSignatureValidation(false, false);
+			return Result;
+		}
+
+		FBlueprintHelperGraphTarget Target;
+		Target.BlueprintPath = AssetPath;
+
+		TSharedPtr<FJsonObject> Params = MakeShared<FJsonObject>();
+		Params->SetStringField(TEXT("name"), FunctionName);
+		Params->SetStringField(TEXT("graph_type"), TEXT("Function"));
+
+		FString Error;
+		if (!Service.AddGraph(Target, Params, Error))
+		{
+			return MakeFailure(
+				TEXT("ensure_function"),
+				TEXT("function_create_failed"),
+				EBlueprintHelperToolStage::Execute,
+				Error.IsEmpty() ? TEXT("Failed to create Blueprint function graph.") : Error,
+				TEXT("function_name"));
+		}
+
+		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Applied(
+			TEXT("ensure_function"),
+			FBlueprintHelperToolResultBuilder::GenerateTraceId());
+		SetSignatureFunctionTarget(Result, AssetPath, FunctionName);
+		Result.Data = MakeSignatureResultData(false);
+		Result.Validation = MakeSignatureValidation(true, true);
+		return Result;
+	}
 }
 
 FBlueprintHelperTaskRuntimeService::FBlueprintHelperTaskRuntimeService(
@@ -2134,6 +3092,7 @@ FBlueprintHelperTaskRuntimeService::FBlueprintHelperTaskRuntimeService(
 	const FBlueprintHelperPatchBlueprintGraphService& InPatchGraphService,
 	const FBlueprintHelperMergeBlueprintGraphService& InMergeGraphService,
 	const FBlueprintHelperBlueprintVariableService& InVariableService,
+	const FBlueprintHelperBlueprintStructureService& InStructureService,
 	const FBlueprintHelperAssetFactoryService& InAssetFactoryService,
 	const FBlueprintHelperComponentService& InComponentService,
 	const FBlueprintHelperClassSettingsService& InClassSettingsService,
@@ -2146,6 +3105,7 @@ FBlueprintHelperTaskRuntimeService::FBlueprintHelperTaskRuntimeService(
 	, PatchGraphService(InPatchGraphService)
 	, MergeGraphService(InMergeGraphService)
 	, VariableService(InVariableService)
+	, StructureService(InStructureService)
 	, AssetFactoryService(InAssetFactoryService)
 	, ComponentService(InComponentService)
 	, ClassSettingsService(InClassSettingsService)
@@ -2215,8 +3175,8 @@ bool FBlueprintHelperTaskRuntimeService::TryLowerTaskPlanStep(
 	StepObject->TryGetStringField(TEXT("capability"), Capability);
 	if (Capability == TEXT("graph_write"))
 	{
-		FString AdapterOperation;
-		if (StepObject->TryGetStringField(TEXT("operation"), AdapterOperation))
+		FString OperationField;
+		if (StepObject->TryGetStringField(TEXT("operation"), OperationField))
 		{
 			OutError = MakeTaskRuntimeError(
 				TEXT("unsupported_graph_write_operation_field"),
@@ -2227,14 +3187,15 @@ bool FBlueprintHelperTaskRuntimeService::TryLowerTaskPlanStep(
 		}
 
 		TSharedPtr<FJsonObject> Payload;
-		if (!TryBuildGraphWriteIrAppendPayload(TaskPlan, StepObject, bDryRun, Payload, OutError))
+		FString AdapterOperation;
+		if (!TryBuildGraphWriteIrPayload(TaskPlan, StepObject, bDryRun, Payload, AdapterOperation, OutError))
 		{
 			return false;
 		}
 
 		OutLoweredStep.Capability = TEXT("graph_write");
 		OutLoweredStep.RuntimeOperation = TEXT("graph_write");
-		OutLoweredStep.AdapterOperation = TEXT("append_blueprint_graph");
+		OutLoweredStep.AdapterOperation = AdapterOperation;
 		OutLoweredStep.Payload = Payload;
 		return true;
 	}
@@ -2307,6 +3268,16 @@ bool FBlueprintHelperTaskRuntimeService::TryLowerTaskPlanStep(
 	if (Capability == FBlueprintHelperClassSettingsTaskPlanAdapter::CapabilityName)
 	{
 		return FBlueprintHelperClassSettingsTaskPlanAdapter::TryLowerTaskPlanStep(
+			TaskPlan,
+			StepObject,
+			bDryRun,
+			OutLoweredStep,
+			OutError);
+	}
+
+	if (Capability == FBlueprintHelperSignatureTaskPlanAdapter::CapabilityName)
+	{
+		return FBlueprintHelperSignatureTaskPlanAdapter::TryLowerTaskPlanStep(
 			TaskPlan,
 			StepObject,
 			bDryRun,
@@ -2496,6 +3467,11 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 	TArray<FBlueprintHelperTaskRuntimePostOperationRecord> PostOperationRecords;
 	FBlueprintHelperValidationSummary BaseValidation;
 	bool bSawStepValidation = false;
+	TMap<FString, EBlueprintHelperTaskJournalStepStatus> StepExecutionStatuses;
+	TSet<FString> DryRunPlannedComponentKeys;
+	bool bSawExecutionFailure = false;
+	bool bHasFirstExecutionError = false;
+	FBlueprintHelperToolError FirstExecutionError;
 
 	auto NormalizeErrorField = [](FBlueprintHelperToolError& Error, int32 StepIndex)
 	{
@@ -2509,10 +3485,14 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 
 	auto BuildFailureResult = [&](const FBlueprintHelperToolError& Error) -> FBlueprintHelperToolResultBase
 	{
-		FBlueprintHelperToolResultBase RuntimeResult = FBlueprintHelperToolResultBuilder::Failure(
-			RuntimeOperation,
-			FBlueprintHelperToolResultBuilder::GenerateTraceId(),
-			Error);
+		FBlueprintHelperToolResultBase RuntimeResult = (bDryRun && StepRecords.Num() > 0)
+			? FBlueprintHelperToolResultBuilder::DryRun(
+				RuntimeOperation,
+				FBlueprintHelperToolResultBuilder::GenerateTraceId())
+			: FBlueprintHelperToolResultBuilder::Failure(
+				RuntimeOperation,
+				FBlueprintHelperToolResultBuilder::GenerateTraceId(),
+				Error);
 
 		if (bSawStepValidation || HasExecutionPolicyValidationFields(*TaskPlanPtr))
 		{
@@ -2527,6 +3507,38 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 				StepRecords,
 				PostOperationRecords,
 				bDryRun);
+		}
+
+		if (bDryRun && StepRecords.Num() > 0 && RuntimeResult.Data.IsValid())
+		{
+			const TSharedPtr<FJsonObject>* DryRunObject = nullptr;
+			const bool bHasDryRunObject =
+				RuntimeResult.Data->TryGetObjectField(TEXT("dry_run"), DryRunObject) &&
+				DryRunObject && DryRunObject->IsValid();
+			if (!bHasDryRunObject)
+			{
+				TSharedRef<FJsonObject> DryRun = MakeShared<FJsonObject>();
+				DryRun->SetStringField(TEXT("result"), TEXT("blocked"));
+				DryRun->SetBoolField(TEXT("can_execute"), false);
+				DryRun->SetArrayField(TEXT("conflicts"), {});
+
+				TSharedRef<FJsonObject> Issue = MakeShared<FJsonObject>();
+				Issue->SetStringField(TEXT("code"), Error.Code.IsEmpty() ? TEXT("task_preview_blocked") : Error.Code);
+				if (!Error.Message.IsEmpty())
+				{
+					Issue->SetStringField(TEXT("message"), Error.Message);
+				}
+				if (!Error.Field.IsEmpty())
+				{
+					Issue->SetStringField(TEXT("target"), Error.Field);
+				}
+				Issue->SetStringField(TEXT("source"), TEXT("task_runtime"));
+
+				TArray<TSharedPtr<FJsonValue>> Errors;
+				Errors.Add(MakeShared<FJsonValueObject>(Issue));
+				DryRun->SetArrayField(TEXT("errors"), Errors);
+				RuntimeResult.Data->SetObjectField(TEXT("dry_run"), DryRun);
+			}
 		}
 
 		if (!bDryRun && !TaskRunId.IsEmpty() && (StepRecords.Num() > 0 || PostOperationRecords.Num() > 0))
@@ -2589,6 +3601,10 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		{
 			return ExecuteClassSettingsTaskPlanStep(ClassSettingsService, LoweredStep.AdapterOperation, LoweredStep.Payload);
 		}
+		if (LoweredStep.Capability == FBlueprintHelperSignatureTaskPlanAdapter::CapabilityName)
+		{
+			return ExecuteSignatureTaskPlanStep(StructureService, LoweredStep.AdapterOperation, LoweredStep.Payload);
+		}
 		if (LoweredStep.Capability == BlueprintHelperWidgetTaskPlan::Capability::UMGWidget)
 		{
 			return ExecuteWidgetTaskPlanStep(WidgetService, LoweredStep.AdapterOperation, LoweredStep.Payload);
@@ -2623,6 +3639,31 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 				FString::Printf(TEXT("task_plan.steps[%d]"), StepIndex)));
 		}
 
+		const FString PlannedStepId = GetTaskPlanStepId(StepObject, StepIndex);
+		if (!bDryRun)
+		{
+			const TArray<FString> DependsOn = ReadStepDependsOn(StepObject);
+			bool bBlockedByDependency = false;
+			for (const FString& DependsOnStepId : DependsOn)
+			{
+				const EBlueprintHelperTaskJournalStepStatus* DependencyStatus = StepExecutionStatuses.Find(DependsOnStepId);
+				if (DependencyStatus &&
+					(*DependencyStatus == EBlueprintHelperTaskJournalStepStatus::Failed ||
+					 *DependencyStatus == EBlueprintHelperTaskJournalStepStatus::Blocked))
+				{
+					bBlockedByDependency = true;
+					break;
+				}
+			}
+
+			if (bBlockedByDependency)
+			{
+				StepExecutionStatuses.Add(PlannedStepId, EBlueprintHelperTaskJournalStepStatus::Blocked);
+				bSawExecutionFailure = true;
+				continue;
+			}
+		}
+
 		FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
 		FBlueprintHelperToolError LoweringError;
 		if (!TryLowerTaskPlanStep(*TaskPlanPtr, StepObject, bDryRun, LoweredStep, LoweringError))
@@ -2641,7 +3682,27 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		}
 
 		FBlueprintHelperToolResultBase StepResult = ExecuteLoweredStep(LoweredStep);
+		if (bDryRun && IsPlannedComponentPropertyDryRun(LoweredStep, StepResult, DryRunPlannedComponentKeys))
+		{
+			StepResult = MakePlannedComponentPropertyDryRunResult(LoweredStep);
+		}
 		StepRecords.Add({LoweredStep, StepResult});
+		StepExecutionStatuses.Add(
+			LoweredStep.StepId,
+			StepResult.bOk
+				? EBlueprintHelperTaskJournalStepStatus::Completed
+				: EBlueprintHelperTaskJournalStepStatus::Failed);
+		if (bDryRun &&
+			StepResult.bOk &&
+			LoweredStep.AdapterOperation == FBlueprintHelperComponentTaskPlanAdapter::AdapterOperationAddComponent)
+		{
+			FString PlannedAssetPath;
+			FString PlannedComponentName;
+			if (TryReadComponentPayloadIdentity(LoweredStep, PlannedAssetPath, PlannedComponentName))
+			{
+				DryRunPlannedComponentKeys.Add(MakePlannedComponentKey(PlannedAssetPath, PlannedComponentName));
+			}
+		}
 
 		if (StepResult.Validation.IsSet())
 		{
@@ -2652,11 +3713,23 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 
 		if (!StepResult.bOk)
 		{
-			return BuildFailureResult(
-				StepResult.Error.IsSet()
+			if (!bHasFirstExecutionError)
+			{
+				FirstExecutionError = StepResult.Error.IsSet()
 					? *StepResult.Error
-					: MakeTaskRuntimeError(TEXT("task_step_failed"), EBlueprintHelperToolStage::Execute, TEXT("TaskPlan step failed.")));
+					: MakeTaskRuntimeError(TEXT("task_step_failed"), EBlueprintHelperToolStage::Execute, TEXT("TaskPlan step failed."));
+				bHasFirstExecutionError = true;
+			}
+			bSawExecutionFailure = true;
 		}
+	}
+
+	if (bSawExecutionFailure)
+	{
+		return BuildFailureResult(
+			bHasFirstExecutionError
+				? FirstExecutionError
+				: MakeTaskRuntimeError(TEXT("task_step_failed"), EBlueprintHelperToolStage::Execute, TEXT("TaskPlan step failed.")));
 	}
 
 	if (!bDryRun)

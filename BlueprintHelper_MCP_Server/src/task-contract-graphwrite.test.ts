@@ -3,16 +3,27 @@ import { describe, it } from 'node:test';
 import { TASK_PROTOCOL_CONTRACT_V1 } from './task-contract.js';
 
 describe('GraphWrite TaskPlan contract metadata', () => {
-  it('keeps the Agent-facing TaskSpec first slice append-only', () => {
+  it('keeps the Agent-facing GraphWrite slice semantic and TaskSpec-first', () => {
     assert.deepEqual(TASK_PROTOCOL_CONTRACT_V1.supported_first_slice, {
       task_type: 'edit_blueprint_graph',
       target_type: 'blueprint',
-      graph_strategy: 'append_new_owned_graph',
+      graph_strategies: [
+        'append_new_owned_graph',
+        'replace_owned_graph',
+        'patch_owned_graph',
+        'merge_owned_graph',
+      ],
       entry_types: ['custom_event'],
       statement_kinds: ['call_function', 'set_member_variable'],
       task_plan_capability: 'graph_write',
-      runtime_lowering_adapters: ['append_blueprint_graph'],
-      max_task_plan_steps: 1,
+      task_plan_dependency_capabilities: ['blueprint_signature'],
+      runtime_lowering_adapters: [
+        'append_blueprint_graph',
+        'replace_blueprint_graph',
+        'patch_blueprint_graph',
+        'merge_blueprint_graph',
+      ],
+      step_batching: 'append custom_event entries compile signature dependency steps before one graph_write body step; replace/patch/merge compile to one structural op per step',
     });
   });
 
@@ -40,6 +51,11 @@ describe('GraphWrite TaskPlan contract metadata', () => {
     ]);
     assert.deepEqual(irContract.runtime_supported_structural_ops, [
       'ensure_entry',
+      'replace_body',
+      'set_pin_default',
+      'set_node_comment',
+      'set_node_position',
+      'insert_flow',
     ]);
     assert.equal(irContract.supported_structural_ops.includes('append_blueprint_graph'), false);
     assert.equal(irContract.supported_structural_ops.includes('replace_blueprint_graph'), false);

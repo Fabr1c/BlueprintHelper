@@ -27,7 +27,253 @@ def make_base_spec(task_type, behavior, **overrides):
     return spec
 
 
+def make_composite_physics_door_spec(**overrides):
+    spec = {
+        "schema": "BlueprintHelper.TaskSpec.v1",
+        "context_id": "ctx_physics_door",
+        "task_type": "create_blueprint_feature",
+        "feature_name": "PhysicsDoor",
+        "target": {
+            "asset_path": "/Game/BlueprintHelperTest/Door/BP_BH_PhysicsDoor",
+            "target_type": "blueprint",
+        },
+        "scope_policy": {
+            "prefer_new_graph": True,
+            "graph_name": "EG_PhysicsDoor",
+            "allow_modify_user_nodes": False,
+            "allow_create_assets": False,
+        },
+        "asset_policy": {
+            "if_target_asset_missing": "fail",
+            "if_referenced_asset_missing": "fail",
+            "if_component_exists": "reuse_if_type_matches",
+        },
+        "resources": {
+            "static_meshes": {
+                "door_mesh": "/Game/BlueprintHelperTest/Meshes/SM_Door",
+            },
+        },
+        "components": [
+            {
+                "name": "SceneRoot",
+                "class": "SceneComponent",
+                "set_as_root": True,
+            },
+            {
+                "name": "DoorMesh",
+                "class": "StaticMeshComponent",
+                "attach_to": "SceneRoot",
+                "properties": {
+                    "StaticMesh": "$resources.static_meshes.door_mesh",
+                    "Mobility": "Movable",
+                    "CollisionProfileName": "PhysicsActor",
+                    "BodyInstance.bSimulatePhysics": True,
+                },
+            },
+        ],
+        "variables": [
+            {
+                "name": "bDoorOpen",
+                "type": "bool",
+                "default": False,
+                "category": "Door",
+            },
+            {
+                "name": "OpenImpulse",
+                "type": "float",
+                "default": 50000.0,
+                "category": "Door",
+            },
+        ],
+        "class_settings": {
+            "implemented_interfaces": [
+                "/Game/BlueprintHelperTest/Interaction/BPI_BH_Interactable",
+            ],
+        },
+        "behavior": {
+            "graph_strategy": "append_new_owned_graph",
+            "entries": [
+                {
+                    "entry_type": "custom_event",
+                    "name": "OpenPhysicsDoor",
+                    "body": {
+                        "schema": "BlueprintLogicSpec.v1",
+                        "statements": [
+                            {
+                                "kind": "set_member_variable",
+                                "name": "bDoorOpen",
+                                "value": {
+                                    "kind": "literal",
+                                    "value_type": "bool",
+                                    "value": True,
+                                },
+                            },
+                            {
+                                "kind": "call_function",
+                                "name": "DoorMesh.AddAngularImpulseInDegrees",
+                                "args": {
+                                    "VelChange": {
+                                        "kind": "literal",
+                                        "value_type": "bool",
+                                        "value": True,
+                                    },
+                                },
+                            },
+                        ],
+                    },
+                },
+            ],
+        },
+        "execution_policy": {
+            "dry_run_mode": "full",
+            "on_missing_capability": "stop_and_report",
+        },
+        "validation": {
+            "should_compile": True,
+            "should_save": False,
+        },
+    }
+    spec.update(overrides)
+    return spec
+
+
 class P1TaskCompilerTests(unittest.TestCase):
+    def test_compiles_composite_create_blueprint_feature_to_existing_capability_steps(self):
+        result = compile_task_spec(make_composite_physics_door_spec(), dry_run=True)
+
+        task_plan = result["task_plan"]
+        self.assertEqual(task_plan["task_type"], "create_blueprint_feature")
+        self.assertEqual(task_plan["target_assets"], ["/Game/BlueprintHelperTest/Door/BP_BH_PhysicsDoor"])
+        self.assertEqual(
+            [step["capability"] for step in task_plan["steps"]],
+            [
+                "blueprint_component",
+                "blueprint_component",
+                "blueprint_component",
+                "blueprint_variable",
+                "blueprint_variable",
+                "blueprint_class_settings",
+                "blueprint_signature",
+                "graph_write",
+            ],
+        )
+
+        self.assertEqual(task_plan["steps"][0]["write"]["ops"][0]["op"], "add_component")
+        self.assertEqual(task_plan["steps"][1]["write"]["ops"][0]["op"], "add_component")
+        self.assertEqual(task_plan["steps"][2]["write"]["ops"][0]["op"], "set_component_properties")
+        self.assertEqual(task_plan["steps"][2]["depends_on"], ["step_002"])
+        self.assertEqual(task_plan["steps"][3]["write"]["strategy"], "member_variables")
+        self.assertEqual(len(task_plan["steps"][3]["write"]["ops"]), 2)
+        self.assertEqual(task_plan["steps"][4]["write"]["strategy"], "member_defaults")
+        self.assertEqual(task_plan["steps"][4]["write"]["ops"][1]["value"], 50000.0)
+        self.assertEqual(task_plan["steps"][5]["write"]["ops"][0]["op"], "add_implemented_interfaces")
+        self.assertEqual(task_plan["steps"][6]["write"]["ops"][0]["op"], "ensure_custom_event")
+        self.assertEqual(task_plan["steps"][7]["target"]["graph"], "EG_PhysicsDoor")
+        self.assertEqual(task_plan["steps"][7]["write"]["ops"][0]["op"], "ensure_entry")
+        self.assertEqual(task_plan["steps"][7]["depends_on"], ["step_007"])
+        self.assertEqual(result["bridge_payload"], {"task_plan": task_plan})
+
+    def test_compiles_composite_interface_integration_to_signature_and_graph_steps(self):
+        spec = make_composite_physics_door_spec(
+            class_settings=None,
+            integration={
+                "interface": {
+                    "interface_asset": "/Game/BlueprintHelperTest/Interaction/BPI_BH_Interactable",
+                    "function": "Interact",
+                    "implementation": {
+                        "call": "OpenPhysicsDoor",
+                    },
+                },
+            },
+        )
+
+        result = compile_task_spec(spec, dry_run=True)
+        task_plan = result["task_plan"]
+        steps = task_plan["steps"]
+
+        self.assertEqual(
+            [step["capability"] for step in steps],
+            [
+                "blueprint_component",
+                "blueprint_component",
+                "blueprint_component",
+                "blueprint_variable",
+                "blueprint_variable",
+                "blueprint_signature",
+                "graph_write",
+                "blueprint_class_settings",
+                "blueprint_signature",
+                "graph_write",
+            ],
+        )
+        self.assertEqual(steps[5]["write"]["ops"][0]["op"], "ensure_custom_event")
+        self.assertEqual(steps[6]["write"]["ops"][0]["op"], "ensure_entry")
+        self.assertEqual(steps[6]["depends_on"], ["step_006"])
+        self.assertEqual(steps[7]["write"]["ops"][0], {
+            "op": "add_implemented_interfaces",
+            "interface_paths": ["/Game/BlueprintHelperTest/Interaction/BPI_BH_Interactable"],
+        })
+        self.assertEqual(steps[8]["write"]["ops"][0], {
+            "op": "ensure_function",
+            "function_name": "Interact",
+            "interface_path": "/Game/BlueprintHelperTest/Interaction/BPI_BH_Interactable",
+            "name_collision_policy": "reuse_if_exists",
+        })
+        self.assertEqual(steps[8]["depends_on"], ["step_008"])
+        self.assertEqual(steps[9]["target"], {
+            "asset_path": "/Game/BlueprintHelperTest/Door/BP_BH_PhysicsDoor",
+            "graph": "Interact",
+        })
+        self.assertEqual(steps[9]["depends_on"], ["step_009"])
+        self.assertEqual(steps[9]["write"]["ops"][0]["op"], "replace_body")
+        self.assertEqual(steps[9]["write"]["ops"][0]["replace_scope"], "function_body")
+        self.assertEqual(steps[9]["write"]["ops"][0]["selector"], {"function_name": "Interact"})
+        self.assertEqual(steps[9]["write"]["ops"][0]["replacement"]["nodes"], [
+            {
+                "id": "interface_Interact_stmt_1",
+                "kind": "call",
+                "function": "OpenPhysicsDoor",
+                "inputs": {},
+            },
+        ])
+
+    def test_rejects_composite_input_integration_until_input_cluster_is_supported(self):
+        spec = make_composite_physics_door_spec(
+            integration={
+                "input": {
+                    "mode": "reference_existing_input_action",
+                    "input_action": "/Game/Input/IA_Interact",
+                },
+            },
+        )
+
+        with self.assertRaises(TaskSpecCompileError) as ctx:
+            compile_task_spec(spec, dry_run=True)
+
+        self.assertEqual(ctx.exception.code, "unsupported_composite_integration")
+        self.assertEqual(ctx.exception.issues[0]["path"], "integration.input")
+
+    def test_rejects_composite_property_settings_that_omit_value(self):
+        spec = make_composite_physics_door_spec(
+            components=[
+                {
+                    "name": "DoorMesh",
+                    "class": "StaticMeshComponent",
+                    "properties": [
+                        {
+                            "property_path": "Mobility",
+                        },
+                    ],
+                },
+            ],
+        )
+
+        with self.assertRaises(TaskSpecCompileError) as ctx:
+            compile_task_spec(spec, dry_run=True)
+
+        self.assertEqual(ctx.exception.code, "taskspec_semantic_invalid")
+        self.assertEqual(ctx.exception.issues[0]["path"], "components[0].properties[0].value")
+
     def test_compiles_asset_factory_create_asset_taskspec(self):
         result = compile_task_spec(make_base_spec(
             "create_asset",
@@ -104,6 +350,7 @@ class P1TaskCompilerTests(unittest.TestCase):
         self.assertEqual([step["step_id"] for step in steps], ["step_001", "step_002"])
         self.assertEqual([step["capability"] for step in steps], ["blueprint_component", "blueprint_component"])
         self.assertEqual([step["write"]["ops"][0]["op"] for step in steps], ["add_component", "set_component_properties"])
+        self.assertEqual(steps[1]["depends_on"], ["step_001"])
         self.assertNotIn("operation", steps[0])
         self.assertNotIn("operation", steps[1])
 

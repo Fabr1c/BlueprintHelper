@@ -68,7 +68,7 @@ Setup 不应让 Agent 在单次工具调用里临时覆盖安全档位。安全�
 6. diagnostics 可返回 data.markdown。
 7. SetupProfile 已保存。
 8. Agent Skill 或项目 Marker 指向 BlueprintHelper Agent Guide。
-9. Agent 默认使用 read_task_context → preview_task → execute_task。
+9. Agent 默认使用 read_context / read_reference_context → preview_task → execute_task。
 ```
 
 ---
@@ -477,7 +477,7 @@ Marker 应保持短小：
 This project uses BlueprintHelper for UE Editor asset operations.
 
 Agent default workflow:
-get_runtime_profile → read_task_context → build TaskSpec → preview_task → execute_task → report summary.
+get_runtime_profile → read_context / read_reference_context → build TaskSpec → preview_task → execute_task → report summary.
 
 Do not use BlueprintHelper MCP to edit C++ / Config / Build.cs / Target.cs files.
 Use BlueprintHelper only for Unreal Editor asset operations.
@@ -562,7 +562,7 @@ Blocking 写在 `data.markdown`。
 ```text
 1. get_runtime_profile。
 2. diagnostics_runtime。
-3. read_task_context 读取一个用户指定或测试 Blueprint。
+3. read_context 读取一个用户指定或测试 Blueprint；必要时 read_reference_context 读取引用影响面。
 4. preview_task 一个不写资产的只读或 dry_run 示例。
 5. 若用户允许，执行一个低风险测试任务，并编译但不自动保存。
 ```
@@ -664,7 +664,7 @@ Agent 生成 TaskSpec
 | `version.mismatch` | UE 插件与 MCP Server 不兼容 | 升级或回退版本 | 不继续 setup / 写入 |
 | `project_marker.missing` | 未生成 CLAUDE.md / AGENTS.md | 可选择生成 | 不自动写项目文件 |
 | `preview_blocked` | TaskSpec 合法但策略或状态阻断 | 修改目标或授权 | 修 TaskSpec 或 stop |
-| `context_stale` | 上下文过期 | 无需手动处理 | 重新 read_task_context |
+| `context_stale` | 上下文过期 | 无需手动处理 | 重新 read_context / read_reference_context |
 | `ProfilePolicyViolation` | 工具参数与 SetupProfile 冲突 | 通过 Setup Wizard 调整 | 不自动降级执行 |
 
 ---

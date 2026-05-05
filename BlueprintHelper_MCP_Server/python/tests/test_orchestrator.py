@@ -246,6 +246,24 @@ class GraphWriteAppendCompilerTests(unittest.TestCase):
         self.assertEqual(result["task_plan"]["steps"], [
             {
                 "step_id": "step_001",
+                "capability": "blueprint_signature",
+                "target": {
+                    "asset_path": "/Game/BP/BP_Door",
+                },
+                "write": {
+                    "strategy": "custom_event_signature",
+                    "ops": [
+                        {
+                            "op": "ensure_custom_event",
+                            "event_name": "ToggleDoor",
+                            "graph_name": "EG_DoorFeature",
+                            "name_collision_policy": "reuse_if_exists",
+                        },
+                    ],
+                },
+            },
+            {
+                "step_id": "step_002",
                 "capability": "graph_write",
                 "target": {
                     "asset_path": "/Game/BP/BP_Door",
@@ -281,6 +299,7 @@ class GraphWriteAppendCompilerTests(unittest.TestCase):
                     "allow_modify_user_nodes": False,
                     "ownership_scope": "blueprinthelper_owned",
                 },
+                "depends_on": ["step_001"],
             },
         ])
         self.assertEqual(result["bridge_payload"], {
@@ -304,7 +323,7 @@ class GraphWriteAppendCompilerTests(unittest.TestCase):
             "dry_run": True,
         })
 
-    def test_emits_one_ensure_entry_op_per_custom_event_entry(self):
+    def test_emits_signature_dependencies_before_graph_write_ensure_entry_ops_for_custom_event_entries(self):
         spec = make_task_spec(behavior={
             "graph_strategy": "append_new_owned_graph",
             "entries": [
@@ -350,8 +369,42 @@ class GraphWriteAppendCompilerTests(unittest.TestCase):
         })
 
         result = compile_graph_write_append(spec, dry_run=False)
+        signature_steps = [
+            step for step in result["task_plan"]["steps"]
+            if step["capability"] == "blueprint_signature"
+        ]
+        graph_write_step = next(
+            step for step in result["task_plan"]["steps"]
+            if step["capability"] == "graph_write"
+        )
         self.assertEqual(
-            [{"op": op["op"], "name": op["name"]} for op in result["task_plan"]["steps"][0]["write"]["ops"]],
+            [
+                {
+                    "step_id": step["step_id"],
+                    "strategy": step["write"]["strategy"],
+                    "op": step["write"]["ops"][0]["op"],
+                    "name": step["write"]["ops"][0]["event_name"],
+                }
+                for step in signature_steps
+            ],
+            [
+                {
+                    "step_id": "step_001",
+                    "strategy": "custom_event_signature",
+                    "op": "ensure_custom_event",
+                    "name": "ToggleDoor",
+                },
+                {
+                    "step_id": "step_002",
+                    "strategy": "custom_event_signature",
+                    "op": "ensure_custom_event",
+                    "name": "CloseDoor",
+                },
+            ],
+        )
+        self.assertEqual(graph_write_step["depends_on"], ["step_001", "step_002"])
+        self.assertEqual(
+            [{"op": op["op"], "name": op["name"]} for op in graph_write_step["write"]["ops"]],
             [
                 {"op": "ensure_entry", "name": "ToggleDoor"},
                 {"op": "ensure_entry", "name": "CloseDoor"},
@@ -376,6 +429,175 @@ class GraphWriteAppendCompilerTests(unittest.TestCase):
         self.assertEqual(ctx.exception.code, "unsupported_graph_strategy")
         self.assertEqual(ctx.exception.issues[0]["path"], "behavior.graph_strategy")
 
+    def test_compiles_replace_owned_graph_to_structured_ir(self):
+        spec = make_task_spec(behavior={
+            "graph_strategy": "replace_owned_graph",
+            "replace": {
+                "scope": "custom_event_body",
+                "selector": {
+                    "entry_name": "ToggleDoor",
+                    "node_path": "logic.groups[0].entry.node_path",
+                },
+                "body": {
+                    "schema": "BlueprintLogicSpec.v1",
+                    "statements": [
+                        {
+                            "kind": "call_function",
+                            "name": "PrintString",
+                            "args": {
+                                "InString": {
+                                    "kind": "literal",
+                                    "value_type": "string",
+                                    "value": "replaced",
+                                },
+                            },
+                        },
+                    ],
+                },
+                "options": {
+                    "strict": True,
+                    "preserve_layout": False,
+                },
+            },
+        })
+
+        result = compile_graph_write_append(spec, dry_run=True)
+        step = result["task_plan"]["steps"][0]
+
+        self.assertNotIn("operation", step)
+        self.assertEqual(step["capability"], "graph_write")
+        self.assertEqual(step["write"]["strategy"], "owned_graph_edit")
+        self.assertEqual(step["write"]["ops"], [
+            {
+                "op": "replace_body",
+                "replace_scope": "custom_event_body",
+                "selector": {
+                    "entry_name": "ToggleDoor",
+                    "node_path": "logic.groups[0].entry.node_path",
+                },
+                "replacement": {
+                    "nodes": [
+                        {
+                            "id": "replace_stmt_1",
+                            "kind": "call",
+                            "function": "PrintString",
+                            "inputs": {
+                                "InString": "replaced",
+                            },
+                        },
+                    ],
+                    "links": [],
+                },
+                "options": {
+                    "strict": True,
+                    "preserve_layout": False,
+                },
+            },
+        ])
+        self.assertEqual(result["bridge_payload"], {
+            "task_plan": result["task_plan"],
+        })
+
+    def test_compiles_patch_owned_graph_to_structured_ir(self):
+        spec = make_task_spec(behavior={
+            "graph_strategy": "patch_owned_graph",
+            "patches": [
+                {
+                    "kind": "set_pin_default",
+                    "scope": "pin_default",
+                    "target_ref": {
+                        "graph_id": "EventGraph",
+                        "node_ref": "Branch0",
+                        "pin_ref": "Condition",
+                    },
+                    "value": {
+                        "kind": "literal",
+                        "value_type": "bool",
+                        "value": True,
+                    },
+                    "expected_old_state": {
+                        "value": {
+                            "kind": "literal",
+                            "value_type": "bool",
+                            "value": False,
+                        },
+                    },
+                },
+            ],
+        })
+
+        result = compile_graph_write_append(spec, dry_run=True)
+        step = result["task_plan"]["steps"][0]
+
+        self.assertNotIn("operation", step)
+        self.assertEqual(step["write"]["ops"], [
+            {
+                "op": "set_pin_default",
+                "patch_scope": "pin_default",
+                "patched_ref": {
+                    "graph_id": "EventGraph",
+                    "node_ref": "Branch0",
+                    "pin_ref": "Condition",
+                },
+                "patch": {
+                    "value": True,
+                },
+                "expected_old_state": {
+                    "value": False,
+                },
+            },
+        ])
+
+    def test_compiles_merge_owned_graph_to_structured_ir(self):
+        spec = make_task_spec(behavior={
+            "graph_strategy": "merge_owned_graph",
+            "merges": [
+                {
+                    "kind": "insert_flow",
+                    "scope": "owned_block_call",
+                    "insert_strategy": "insert_between",
+                    "anchor": {
+                        "node_ref": "BeginPlay0",
+                        "pin_ref": "Then",
+                        "node_path": "logic.groups[0].entry.node_path",
+                    },
+                    "inserted": {
+                        "block_id": "BH_DoorFeature_ToggleDoor",
+                        "block_ref": "block:BH_DoorFeature_ToggleDoor",
+                    },
+                    "sequence_order": [
+                        "BeginPlay0",
+                        "BH_DoorFeature_ToggleDoor",
+                    ],
+                },
+            ],
+        })
+
+        result = compile_graph_write_append(spec, dry_run=True)
+        step = result["task_plan"]["steps"][0]
+
+        self.assertNotIn("operation", step)
+        self.assertEqual(step["write"]["ops"], [
+            {
+                "op": "insert_flow",
+                "merge_scope": "owned_block_call",
+                "insert_strategy": "insert_between",
+                "anchor": {
+                    "node_ref": "BeginPlay0",
+                    "pin_ref": "Then",
+                    "node_path": "logic.groups[0].entry.node_path",
+                },
+                "inserted": {
+                    "block_id": "BH_DoorFeature_ToggleDoor",
+                    "block_ref": "block:BH_DoorFeature_ToggleDoor",
+                },
+                "sequence_order": [
+                    "BeginPlay0",
+                    "BH_DoorFeature_ToggleDoor",
+                ],
+            },
+        ])
+
     def test_rejects_legacy_validation_compile_save_fields(self):
         spec = make_task_spec(validation={
             "compile": True,
@@ -390,13 +612,17 @@ class GraphWriteAppendCompilerTests(unittest.TestCase):
 
     def test_rejects_structured_graph_write_ir_with_adapter_operation_field(self):
         task_plan = compile_graph_write_append(make_task_spec(), dry_run=True)["task_plan"]
-        task_plan["steps"][0]["operation"] = "append_blueprint_graph"
+        graph_write_index = next(
+            index for index, step in enumerate(task_plan["steps"])
+            if step["capability"] == "graph_write"
+        )
+        task_plan["steps"][graph_write_index]["operation"] = "append_blueprint_graph"
 
         with self.assertRaises(TaskSpecCompileError) as ctx:
             validate_graph_write_task_plan(task_plan)
 
         self.assertEqual(ctx.exception.code, "unsupported_graph_write_operation_field")
-        self.assertEqual(ctx.exception.issues[0]["path"], "steps[0].operation")
+        self.assertEqual(ctx.exception.issues[0]["path"], f"steps[{graph_write_index}].operation")
 
     def test_compiles_blueprint_variable_taskspec_to_structured_ir(self):
         result = compile_task_spec(make_variable_task_spec(), dry_run=True)

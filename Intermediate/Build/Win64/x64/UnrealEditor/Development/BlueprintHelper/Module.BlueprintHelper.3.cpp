@@ -27,7 +27,4 @@
 #include "G:/UnrealPractise/MrStone/Plugins/BlueprintHelper/Source/BlueprintHelper/Private/TaskRuntime/TaskPlanAdapters/AssetFactory/BlueprintHelperAssetFactoryTaskPlanAdapter.cpp"
 #include "G:/UnrealPractise/MrStone/Plugins/BlueprintHelper/Source/BlueprintHelper/Private/TaskRuntime/TaskPlanAdapters/BlueprintClassSettings/BlueprintHelperClassSettingsTaskPlanAdapter.cpp"
 #include "G:/UnrealPractise/MrStone/Plugins/BlueprintHelper/Source/BlueprintHelper/Private/TaskRuntime/TaskPlanAdapters/BlueprintComponent/BlueprintHelperComponentTaskPlanAdapter.cpp"
-#include "G:/UnrealPractise/MrStone/Plugins/BlueprintHelper/Source/BlueprintHelper/Private/TaskRuntime/TaskPlanAdapters/DataTable/BlueprintHelperDataTableTaskPlanAdapter.cpp"
-#include "G:/UnrealPractise/MrStone/Plugins/BlueprintHelper/Source/BlueprintHelper/Private/TaskRuntime/TaskPlanAdapters/UMGWidget/BlueprintHelperWidgetTaskPlanAdapter.cpp"
-#include "G:/UnrealPractise/MrStone/Plugins/BlueprintHelper/Source/BlueprintHelper/Private/Tests/AssetFactory/BlueprintHelperTaskPlanAssetFactoryAdapterTests.cpp"
-#include "G:/UnrealPractise/MrStone/Plugins/BlueprintHelper/Source/BlueprintHelper/Private/Tests/BlueprintClassSettings/BlueprintHelperTaskPlanClassSettingsAdapterTests.cpp"
+#include "G:/UnrealPractise/MrStone/Plugins/BlueprintHelper/Source/BlueprintHelper/Private/TaskRuntime/TaskPlanAdapters/BlueprintSignature/BlueprintHelperSignatureTaskPlanAdapter.cpp"

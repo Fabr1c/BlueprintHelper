@@ -12,14 +12,22 @@ describe('GraphWrite TaskPlan canonical fixtures', () => {
   it('treats append TaskSpec compilation as structured GraphWrite IR first', () => {
     assert.doesNotThrow(() => TaskPlanSchema.parse(graphWriteAppendExpectedTaskPlanFixture));
 
-    const step = graphWriteAppendExpectedTaskPlanFixture.steps[0];
-    assert.ok(step && 'capability' in step);
-    assert.equal(step.capability, 'graph_write');
-    assert.equal(Object.hasOwn(step as Record<string, unknown>, 'operation'), false);
-    assert.equal(step.target.graph, 'BH_StoneGateActivation');
-    assert.equal(step.write.strategy, 'owned_graph_edit');
-    assert.deepEqual(step.write.ops.map((op) => op.op), ['ensure_entry']);
-    assert.deepEqual(step.constraints, {
+    const signatureStep = graphWriteAppendExpectedTaskPlanFixture.steps[0];
+    assert.ok(signatureStep && 'capability' in signatureStep);
+    assert.equal(signatureStep.capability, 'blueprint_signature');
+    assert.equal(Object.hasOwn(signatureStep as Record<string, unknown>, 'operation'), false);
+    assert.equal((signatureStep as Record<string, any>).write.strategy, 'custom_event_signature');
+    assert.deepEqual((signatureStep as Record<string, any>).write.ops.map((op: Record<string, unknown>) => op.op), ['ensure_custom_event']);
+
+    const graphWriteStep = graphWriteAppendExpectedTaskPlanFixture.steps[1];
+    assert.ok(graphWriteStep && 'capability' in graphWriteStep);
+    assert.equal(graphWriteStep.capability, 'graph_write');
+    assert.equal(Object.hasOwn(graphWriteStep as Record<string, unknown>, 'operation'), false);
+    assert.equal((graphWriteStep as Record<string, any>).target.graph, 'BH_StoneGateActivation');
+    assert.equal((graphWriteStep as Record<string, any>).write.strategy, 'owned_graph_edit');
+    assert.deepEqual((graphWriteStep as Record<string, any>).write.ops.map((op: Record<string, unknown>) => op.op), ['ensure_entry']);
+    assert.deepEqual((graphWriteStep as Record<string, any>).depends_on, ['step_001']);
+    assert.deepEqual((graphWriteStep as Record<string, any>).constraints, {
       allow_modify_user_nodes: false,
       ownership_scope: 'blueprinthelper_owned',
     });
@@ -27,7 +35,7 @@ describe('GraphWrite TaskPlan canonical fixtures', () => {
 
   it('rejects structured GraphWrite IR steps that carry adapter operation compatibility fields', () => {
     const taskPlan = structuredClone(graphWriteAppendExpectedTaskPlanFixture);
-    const step = taskPlan.steps[0] as Record<string, unknown>;
+    const step = taskPlan.steps[1] as Record<string, unknown>;
     step.operation = 'append_blueprint_graph';
 
     assert.throws(() => TaskPlanSchema.parse(taskPlan), /operation/);

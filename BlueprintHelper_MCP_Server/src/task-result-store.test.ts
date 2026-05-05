@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getTaskResult, storeTaskResult } from './task-result-store.js';
-import type { TaskPlan } from './task-schemas.js';
+import { TaskRunJournalSchema, type TaskPlan } from './task-schemas.js';
 
 test('stores GraphWrite IR task results without requiring adapter operation on the TaskPlan step', () => {
   const taskPlan = {
@@ -77,6 +77,8 @@ test('stores GraphWrite IR task results without requiring adapter operation on t
   assert.equal(step?.capability, 'graph_write');
   assert.equal(step?.operation, 'graph_write');
   assert.equal(step?.adapter_operation, 'append_blueprint_graph');
+  assert.equal(step?.status, 'completed');
   assert.equal(step?.transaction_id, 'tx_graphwrite_ir_store');
+  assert.doesNotThrow(() => TaskRunJournalSchema.parse(journal));
   assert.deepEqual(getTaskResult('task_graphwrite_ir_store'), journal);
 });

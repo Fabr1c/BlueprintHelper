@@ -40,6 +40,194 @@ test('blueprint_import_json_to_graph defaults to strict import without manual au
   assert.equal(Object.hasOwn(calls[0].payload ?? {}, 'auth_token'), false);
 });
 
+test('blueprinthelper_read_agent_guide returns the AgentGuide onboarding index without Bridge', async () => {
+  const calls: Array<{ command: string; payload: Record<string, unknown> | undefined }> = [];
+  const tools = registerWithBridge(async (command, payload) => {
+    calls.push({ command, payload });
+    return { request_id: 'test', success: false, message: 'Bridge should not be called for AgentGuide' };
+  });
+
+  assert.equal(tools.has('blueprint_get_rule_markdown'), false);
+  const tool = tools.get('blueprinthelper_read_agent_guide');
+  assert.ok(tool);
+
+  const result = await invokeTool(tool, {});
+  const expected = readFileSync(
+    path.resolve(process.cwd(), '..', 'Resources', 'AgentGuide', '00_Agent_Onboarding_Index_20260504.md'),
+    'utf8',
+  );
+
+  assert.equal(result.isError, undefined);
+  assert.equal(result.content[0].type, 'text');
+  assert.equal(result.content[0].text, expected);
+  assert.deepEqual(calls, []);
+});
+
+test('blueprinthelper_read_context reads blueprint logic as LogicMd through ReadContextPack', async () => {
+  const calls: Array<{ command: string; payload: Record<string, unknown> | undefined }> = [];
+  const tools = registerWithBridge(async (command, payload) => {
+    calls.push({ command, payload });
+    return {
+      request_id: 'test',
+      success: true,
+      result: {
+        ok: true,
+        schema: 'BlueprintHelper.ToolResultBase.v1',
+        operation: 'read_blueprint_logic_md',
+        status: 'completed',
+        modified: false,
+        target: {
+          asset_path: '/Game/BP/BP_PhysicsDoor',
+          target_type: 'graph',
+          graph: 'EventGraph',
+        },
+        data: {
+          schema: 'LogicMd.v1',
+          markdown: '# EventGraph',
+          scope: 'target_graph',
+          stats: { nodes: 3 },
+        },
+      },
+    };
+  });
+
+  const tool = tools.get('blueprinthelper_read_context');
+  assert.ok(tool);
+
+  const result = await invokeTool(tool, {
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'blueprint_logic',
+    target: {
+      asset_path: '/Game/BP/BP_PhysicsDoor',
+      target_type: 'graph',
+      target_name: 'EventGraph',
+    },
+    view: {
+      format: 'logic_md',
+    },
+  });
+
+  assert.deepEqual(calls, [
+    {
+      command: 'read_blueprint_logic_md',
+      payload: {
+        asset_path: '/Game/BP/BP_PhysicsDoor',
+        graph: 'EventGraph',
+        scope: 'target_graph',
+      },
+    },
+  ]);
+  assert.equal(result.isError, false);
+  assert.equal(result.structuredContent?.schema, 'BlueprintHelper.McpToolResult.v1');
+  assert.equal(result.structuredContent?.operation, 'read_context');
+  assert.equal(result.structuredContent?.modified, false);
+  assert.equal((result.structuredContent?.data as Record<string, unknown>)?.schema, 'ReadContextPack.v1');
+  assert.equal((result.structuredContent?.data as Record<string, unknown>)?.format, 'logic_md');
+  assert.deepEqual((result.structuredContent?.data as Record<string, unknown>)?.payload, {
+    schema: 'LogicMd.v1',
+    markdown: '# EventGraph',
+    scope: 'target_graph',
+    stats: { nodes: 3 },
+  });
+});
+
+test('blueprinthelper_read_context reads blueprint logic as LogicJson by custom event target', async () => {
+  const calls: Array<{ command: string; payload: Record<string, unknown> | undefined }> = [];
+  const tools = registerWithBridge(async (command, payload) => {
+    calls.push({ command, payload });
+    return {
+      request_id: 'test',
+      success: true,
+      result: {
+        ok: true,
+        schema: 'BlueprintHelper.ToolResultBase.v1',
+        operation: 'read_blueprint_logic_json',
+        status: 'completed',
+        modified: false,
+        target: {
+          asset_path: '/Game/BP/BP_PhysicsDoor',
+          target_type: 'custom_event',
+          event: 'OpenDoor',
+        },
+        data: {
+          schema: 'LogicJson.v1',
+          logic: { nodes: [{ id: 'OpenDoor_entry' }] },
+          scope: 'target_custom_event',
+        },
+      },
+    };
+  });
+
+  const tool = tools.get('blueprinthelper_read_context');
+  assert.ok(tool);
+
+  const result = await invokeTool(tool, {
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'blueprint_logic',
+    target: {
+      asset_path: '/Game/BP/BP_PhysicsDoor',
+      target_type: 'custom_event',
+      target_name: 'OpenDoor',
+    },
+    view: {
+      format: 'logic_json',
+    },
+  });
+
+  assert.deepEqual(calls, [
+    {
+      command: 'read_blueprint_logic_json',
+      payload: {
+        asset_path: '/Game/BP/BP_PhysicsDoor',
+        event: 'OpenDoor',
+        scope: 'target_custom_event',
+      },
+    },
+  ]);
+  assert.equal(result.isError, false);
+  assert.equal((result.structuredContent?.data as Record<string, unknown>)?.schema, 'ReadContextPack.v1');
+  assert.equal((result.structuredContent?.data as Record<string, unknown>)?.format, 'logic_json');
+  assert.deepEqual((result.structuredContent?.data as Record<string, unknown>)?.payload, {
+    schema: 'LogicJson.v1',
+    logic: { nodes: [{ id: 'OpenDoor_entry' }] },
+    scope: 'target_custom_event',
+  });
+});
+
+test('blueprinthelper_read_context returns blueprint logic schema without Bridge', async () => {
+  const calls: Array<{ command: string; payload: Record<string, unknown> | undefined }> = [];
+  const tools = registerWithBridge(async (command, payload) => {
+    calls.push({ command, payload });
+    return { request_id: 'test', success: false, message: 'Bridge should not be called for schema format' };
+  });
+
+  const tool = tools.get('blueprinthelper_read_context');
+  assert.ok(tool);
+
+  const result = await invokeTool(tool, {
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'blueprint_logic',
+    target: {
+      asset_path: '/Game/BP/BP_PhysicsDoor',
+      target_type: 'blueprint',
+    },
+    view: {
+      format: 'schema',
+    },
+  });
+
+  assert.deepEqual(calls, []);
+  assert.equal(result.isError, false);
+  assert.equal((result.structuredContent?.data as Record<string, unknown>)?.schema, 'ReadContextPack.v1');
+  assert.equal((result.structuredContent?.data as Record<string, unknown>)?.format, 'schema');
+  assert.deepEqual(((result.structuredContent?.data as Record<string, unknown>)?.payload as Record<string, unknown>)?.formats, [
+    'logic_md',
+    'logic_json',
+    'summary',
+    'schema',
+  ]);
+});
+
 test('blueprint_get_logic keeps markdown first when no structured metadata is available', async () => {
   const tools = registerWithBridge(async () => ({
     request_id: 'test',

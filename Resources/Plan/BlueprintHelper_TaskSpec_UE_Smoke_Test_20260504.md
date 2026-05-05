@@ -29,7 +29,7 @@ This smoke covers the first implemented slice only:
 - `TaskPlan.steps[0].write.ops[0].op = ensure_entry`
 - UE Task Runtime lowers the GraphWrite IR to the existing `append_blueprint_graph` adapter command.
 
-This smoke does not cover asset creation, replace/patch/merge graph strategies, function signatures, event signatures, UMG, DataAsset, or DataTable clusters.
+This smoke is the append-focused GraphWrite smoke. It does not cover asset creation, replace/patch/merge graph strategies, function signatures, event signatures, UMG, DataAsset, or DataTable clusters.
 
 ## Preconditions
 
@@ -314,8 +314,8 @@ Recommended cleanup:
 
 ## Known Limits
 
-- The first slice supports one TaskPlan step.
-- The first slice supports `ensure_entry(custom_event)` only for runtime lowering.
+- This smoke uses one TaskPlan step because `append_new_owned_graph` can batch custom-event entries into one structured GraphWrite step.
+- The broader GraphWrite compiler now also supports replace/patch/merge strategies, but those need separate smoke fixtures.
 - `call_function` and `set_member_variable` are the supported statement kinds, but this smoke uses only `call_function` to avoid depending on a pre-existing Blueprint variable.
 - The compiler-owned GraphWrite TaskPlan step must not carry `operation = append_blueprint_graph`; that value is reserved for runtime adapter details such as `adapter_operation` and child results.
 - Function/event signature management is a future UE capability cluster.

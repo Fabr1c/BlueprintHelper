@@ -8,7 +8,7 @@ Agent 应先判断任务是否可以表达为 TaskSpec。普通编辑任务默�
 
 ```text
 get_runtime_profile
- -> read_task_context
+ -> read_context / read_reference_context as needed
  -> produce TaskSpec
  -> preview_task
  -> execute_task
@@ -22,7 +22,7 @@ get_runtime_profile
 | “查看这个蓝图做什么” | 资产搜索 + 逻辑导出 | 直接 raw JSON 全量读取 |
 | “给蓝图加一个变量” | TaskSpec + preview_task + execute_task | 直接调用变量底层工具作为普通主线 |
 | “给 EventGraph 加节点” | TaskSpec 描述目标图表、范围、锚点和验证 | 当前焦点图表写入 |
-| “把 Widget 里按钮文案改掉” | TaskSpec；必要时 read_task_context 包含 WidgetTree 摘要 | 蓝图节点导入 |
+| “把 Widget 里按钮文案改掉” | TaskSpec；必要时 read_context 包含 WidgetTree 摘要 | 蓝图节点导入 |
 | “改 DataTable 这一行” | TaskSpec；必要时读取表结构作为上下文 | 资产源码文件编辑 |
 | “写一个 C++ 类” | 普通代码工具 | BlueprintHelper MCP |
 | “编译整个项目” | MCP Server build_project 或普通构建命令 | 蓝图编译工具 |
@@ -41,6 +41,8 @@ Need import/replay?      -> raw_json-compatible JsonToBlueprint protocol
 ## 4. 写格式选择
 
 普通 Agent 优先提交 TaskSpec，不提交 TaskPlan。TaskSpec 描述目标资产、允许修改范围、资源引用、组件/变量/行为/集成策略、失败策略和验证策略。架构主线是 Agent -> MCP Task Tools -> Python/MCP Task Compiler -> UE Task Runtime -> Existing Capability Clusters。Python / MCP Task Compiler 负责把 TaskSpec 编译为 TaskPlan，UE Task Runtime 负责调用底层能力簇。
+
+当前 smoke-verified 写入边界：GraphWrite 只确认 `append_new_owned_graph + 新图名` 可执行，变量簇确认 `edit_blueprint_variables` 可执行。Replace/Patch/Merge、Component、Composite 等路径可能已有 TaskSpec/TaskPlan 合同，但必须以 preview 结果为准；preview blocked 时停止报告，不回退到底层原子写工具。
 
 底层能力入口只在以下场景作为直接入口：
 
@@ -79,7 +81,7 @@ Need import/replay?      -> raw_json-compatible JsonToBlueprint protocol
 - Bridge 不可用：报告编辑器或 Bridge 状态问题，提示需要启动编辑器或检查端口。
 - TaskSpec schema / semantic 错误：根据 `error.issues[].path` 和 `suggested_patches` 修正 TaskSpec。
 - preview blocked：不得继续 execute；报告 blocked_by / conflicts 或调整 TaskSpec。
-- context_required：重新调用 `blueprinthelper_read_task_context` 后再生成 TaskSpec。
+- context_required：重新调用 `blueprinthelper_read_context` 或相关只读工具后再生成 TaskSpec。
 - 资产找不到：先通过上下文或资产搜索消歧，不要凭空创建同名资产，除非 TaskSpec 明确允许创建。
 - 图表找不到：在 TaskSpec 中修正目标图表或让用户确认；不要自动新建同名图表，除非 scope_policy / asset_policy 明确允许。
 - 编译失败：停止继续写入，返回错误摘要和可能原因。

@@ -116,6 +116,50 @@ namespace
 		TaskPlan->SetArrayField(TEXT("steps"), Steps);
 		return TaskPlan;
 	}
+
+	TSharedPtr<FJsonObject> MakeTaskPlanWithSteps(
+		const TArray<TSharedPtr<FJsonObject>>& StepsToAdd,
+		const FString& TaskName = TEXT("StoneGateActivation"),
+		const FString& TaskType = TEXT("edit_blueprint_graph"))
+	{
+		TSharedPtr<FJsonObject> TaskPlan = MakeGraphWriteTaskPlan(StepsToAdd.Num() > 0 ? StepsToAdd[0] : MakeGraphWriteEnsureEntryStep());
+		TaskPlan->SetStringField(TEXT("task_name"), TaskName);
+		TaskPlan->SetStringField(TEXT("task_type"), TaskType);
+
+		TArray<TSharedPtr<FJsonValue>> Steps;
+		for (const TSharedPtr<FJsonObject>& Step : StepsToAdd)
+		{
+			Steps.Add(MakeShared<FJsonValueObject>(Step.ToSharedRef()));
+		}
+		TaskPlan->SetArrayField(TEXT("steps"), Steps);
+		return TaskPlan;
+	}
+
+	TSharedPtr<FJsonObject> MakeGraphWriteStepWithSingleOp(const TSharedPtr<FJsonObject>& Op)
+	{
+		TSharedPtr<FJsonObject> Step = MakeShared<FJsonObject>();
+		Step->SetStringField(TEXT("step_id"), TEXT("step_001"));
+		Step->SetStringField(TEXT("capability"), TEXT("graph_write"));
+
+		TSharedPtr<FJsonObject> Target = MakeShared<FJsonObject>();
+		Target->SetStringField(TEXT("asset_path"), TEXT("/Game/Blueprints/BP_StoneGate"));
+		Target->SetStringField(TEXT("graph"), TEXT("EventGraph"));
+		Step->SetObjectField(TEXT("target"), Target);
+
+		TArray<TSharedPtr<FJsonValue>> Ops;
+		Ops.Add(MakeShared<FJsonValueObject>(Op.ToSharedRef()));
+
+		TSharedPtr<FJsonObject> Write = MakeShared<FJsonObject>();
+		Write->SetStringField(TEXT("strategy"), TEXT("owned_graph_edit"));
+		Write->SetArrayField(TEXT("ops"), Ops);
+		Step->SetObjectField(TEXT("write"), Write);
+
+		TSharedPtr<FJsonObject> Constraints = MakeShared<FJsonObject>();
+		Constraints->SetBoolField(TEXT("allow_modify_user_nodes"), false);
+		Constraints->SetStringField(TEXT("ownership_scope"), TEXT("blueprinthelper_owned"));
+		Step->SetObjectField(TEXT("constraints"), Constraints);
+		return Step;
+	}
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -554,6 +598,143 @@ bool FBlueprintHelperContractTaskRuntimeAggregatesMultipleStepsTest::RunTest(con
 	FString JournalStatus;
 	TestTrue(TEXT("journal status exists"), Journal->TryGetStringField(TEXT("status"), JournalStatus));
 	TestEqual(TEXT("all successful steps complete journal"), JournalStatus, FString(TEXT("completed")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperContractTaskRuntimePartialFailureJournalTest,
+	"BlueprintHelper.ObjectFirst.Contract.TaskRuntimePartialFailureJournal",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperContractTaskRuntimePartialFailureJournalTest::RunTest(const FString& Parameters)
+{
+	auto MakeCapabilityStep = [](const FString& StepId, const FString& Capability, const TArray<FString>& DependsOn)
+	{
+		TSharedPtr<FJsonObject> Step = MakeShared<FJsonObject>();
+		Step->SetStringField(TEXT("step_id"), StepId);
+		Step->SetStringField(TEXT("capability"), Capability);
+
+		if (DependsOn.Num() > 0)
+		{
+			TArray<TSharedPtr<FJsonValue>> DependsOnValues;
+			for (const FString& DependsOnStepId : DependsOn)
+			{
+				DependsOnValues.Add(MakeShared<FJsonValueString>(DependsOnStepId));
+			}
+			Step->SetArrayField(TEXT("depends_on"), DependsOnValues);
+		}
+
+		return Step;
+	};
+
+	const TArray<FString> NoDependencies;
+	TArray<FString> FailedStepDependency;
+	FailedStepDependency.Add(TEXT("step_append_graph"));
+	const TSharedPtr<FJsonObject> FailedPlanStep = MakeCapabilityStep(
+		TEXT("step_append_graph"),
+		TEXT("graph_write"),
+		NoDependencies);
+	const TSharedPtr<FJsonObject> BlockedPlanStep = MakeCapabilityStep(
+		TEXT("step_configure_variable"),
+		TEXT("blueprint_variable"),
+		FailedStepDependency);
+	const TSharedPtr<FJsonObject> IndependentPlanStep = MakeCapabilityStep(
+		TEXT("step_create_asset"),
+		TEXT("asset_factory"),
+		NoDependencies);
+	TArray<TSharedPtr<FJsonObject>> PlannedSteps;
+	PlannedSteps.Add(FailedPlanStep);
+	PlannedSteps.Add(BlockedPlanStep);
+	PlannedSteps.Add(IndependentPlanStep);
+	const TSharedPtr<FJsonObject> TaskPlan = MakeTaskPlanWithSteps(
+		PlannedSteps,
+		TEXT("DoorFeature"),
+		TEXT("create_blueprint_feature"));
+
+	FBlueprintHelperTaskRuntimeLoweredStep FailedStep;
+	FailedStep.StepId = TEXT("step_append_graph");
+	FailedStep.Capability = TEXT("graph_write");
+	FailedStep.RuntimeOperation = TEXT("graph_write");
+	FailedStep.AdapterOperation = TEXT("append_blueprint_graph");
+
+	FBlueprintHelperToolError FailedError;
+	FailedError.Code = TEXT("append_failed");
+	FailedError.Stage = EBlueprintHelperToolStage::Execute;
+	FailedError.Message = TEXT("append step failed");
+	FailedError.bRetryable = false;
+	FailedError.RollbackResult = EBlueprintHelperRollbackResult::NotNeeded;
+	FBlueprintHelperToolResultBase FailedResult = FBlueprintHelperToolResultBuilder::Failure(
+		TEXT("append_blueprint_graph"),
+		TEXT("trace_failed_step"),
+		FailedError);
+
+	FBlueprintHelperTaskRuntimeLoweredStep IndependentStep;
+	IndependentStep.StepId = TEXT("step_create_asset");
+	IndependentStep.Capability = TEXT("asset_factory");
+	IndependentStep.RuntimeOperation = TEXT("asset_factory");
+	IndependentStep.AdapterOperation = TEXT("create_asset");
+	FBlueprintHelperToolResultBase IndependentResult = FBlueprintHelperToolResultBuilder::Applied(
+		TEXT("create_asset"),
+		TEXT("trace_independent_step"));
+
+	TArray<FBlueprintHelperTaskRuntimeStepRecord> StepRecords;
+	StepRecords.Add({FailedStep, FailedResult});
+	StepRecords.Add({IndependentStep, IndependentResult});
+
+	const TSharedRef<FJsonObject> Journal = FBlueprintHelperTaskRuntimeService::BuildTaskRunJournalForSteps(
+		TEXT("task_partial_failure"),
+		TaskPlan,
+		StepRecords,
+		{});
+
+	FString JournalStatus;
+	TestTrue(TEXT("journal status exists"), Journal->TryGetStringField(TEXT("status"), JournalStatus));
+	TestEqual(TEXT("failed step produces partial_failure journal"), JournalStatus, FString(TEXT("partial_failure")));
+
+	const TSharedPtr<FJsonObject>* Recovery = nullptr;
+	TestTrue(TEXT("partial failure journal includes recovery"), Journal->TryGetObjectField(TEXT("recovery"), Recovery));
+	FString RecommendedAction;
+	bool bSafeToRetry = true;
+	bool bRollbackAvailable = true;
+	const TArray<TSharedPtr<FJsonValue>>* RecoveryNotes = nullptr;
+	TestTrue(TEXT("recovery includes recommended_action"), (*Recovery)->TryGetStringField(TEXT("recommended_action"), RecommendedAction));
+	TestTrue(TEXT("recovery includes safe_to_retry"), (*Recovery)->TryGetBoolField(TEXT("safe_to_retry"), bSafeToRetry));
+	TestTrue(TEXT("recovery includes rollback_available"), (*Recovery)->TryGetBoolField(TEXT("rollback_available"), bRollbackAvailable));
+	TestTrue(TEXT("recovery includes notes array"), (*Recovery)->TryGetArrayField(TEXT("notes"), RecoveryNotes));
+	TestEqual(TEXT("recovery action matches contract"), RecommendedAction, FString(TEXT("inspect_task_result_then_submit_followup_taskspec")));
+	TestFalse(TEXT("partial failure journal is not marked safe to retry"), bSafeToRetry);
+	TestFalse(TEXT("partial failure journal does not promise rollback"), bRollbackAvailable);
+	TestEqual(TEXT("recovery notes may be empty"), RecoveryNotes ? RecoveryNotes->Num() : -1, 0);
+
+	const TArray<TSharedPtr<FJsonValue>>* JournalSteps = nullptr;
+	TestTrue(TEXT("journal exposes all task plan steps"), Journal->TryGetArrayField(TEXT("steps"), JournalSteps));
+	TestEqual(TEXT("journal keeps failed, blocked, and independent steps"), JournalSteps ? JournalSteps->Num() : 0, 3);
+
+	const TSharedPtr<FJsonObject> FirstJournalStep = (*JournalSteps)[0]->AsObject();
+	const TSharedPtr<FJsonObject> SecondJournalStep = (*JournalSteps)[1]->AsObject();
+	const TSharedPtr<FJsonObject> ThirdJournalStep = (*JournalSteps)[2]->AsObject();
+
+	FString FirstStatus;
+	FString SecondStatus;
+	FString ThirdStatus;
+	TestTrue(TEXT("first journal step has status"), FirstJournalStep->TryGetStringField(TEXT("status"), FirstStatus));
+	TestTrue(TEXT("second journal step has status"), SecondJournalStep->TryGetStringField(TEXT("status"), SecondStatus));
+	TestTrue(TEXT("third journal step has status"), ThirdJournalStep->TryGetStringField(TEXT("status"), ThirdStatus));
+	TestEqual(TEXT("failed step remains failed"), FirstStatus, FString(TEXT("failed")));
+	TestEqual(TEXT("dependent step is blocked"), SecondStatus, FString(TEXT("blocked")));
+	TestEqual(TEXT("independent step still completes"), ThirdStatus, FString(TEXT("completed")));
+
+	const TArray<TSharedPtr<FJsonValue>>* BlockedDependsOn = nullptr;
+	const TArray<TSharedPtr<FJsonValue>>* BlockedBy = nullptr;
+	FString BlockedReason;
+	TestTrue(TEXT("blocked step keeps depends_on"), SecondJournalStep->TryGetArrayField(TEXT("depends_on"), BlockedDependsOn));
+	TestTrue(TEXT("blocked step records blocked_by_step_ids"), SecondJournalStep->TryGetArrayField(TEXT("blocked_by_step_ids"), BlockedBy));
+	TestTrue(TEXT("blocked step records blocked_reason"), SecondJournalStep->TryGetStringField(TEXT("blocked_reason"), BlockedReason));
+	TestEqual(TEXT("blocked step keeps one depends_on entry"), BlockedDependsOn ? BlockedDependsOn->Num() : 0, 1);
+	TestEqual(TEXT("blocked step keeps one blocking dependency"), BlockedBy ? BlockedBy->Num() : 0, 1);
+	TestEqual(TEXT("blocked reason is dependency_failed"), BlockedReason, FString(TEXT("dependency_failed")));
+	TestTrue(TEXT("blocked step includes explicit null error field"), SecondJournalStep->HasField(TEXT("error")));
 
 	return true;
 }
@@ -1032,6 +1213,166 @@ bool FBlueprintHelperContractTaskRuntimeGraphWriteIrUnsupportedOpTest::RunTest(c
 	TestEqual(TEXT("unsupported op reports graph_write IR error code"), Error.Code, FString(TEXT("unsupported_graph_write_ir_op")));
 	TestEqual(TEXT("unsupported op reports parse_input stage"), Error.Stage, EBlueprintHelperToolStage::ParseInput);
 	TestEqual(TEXT("unsupported op points at write.ops entry"), Error.Field, FString(TEXT("task_plan.steps[0].write.ops[1].op")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperContractTaskRuntimeGraphWriteIrReplaceLoweringTest,
+	"BlueprintHelper.ObjectFirst.Contract.TaskRuntimeGraphWriteIrReplaceLowering",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperContractTaskRuntimeGraphWriteIrReplaceLoweringTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FJsonObject> Selector = MakeShared<FJsonObject>();
+	Selector->SetStringField(TEXT("entry_name"), TEXT("ToggleDoor"));
+	Selector->SetStringField(TEXT("node_path"), TEXT("logic.groups[0].entry.node_path"));
+
+	TSharedPtr<FJsonObject> Replacement = MakeShared<FJsonObject>();
+	Replacement->SetArrayField(TEXT("nodes"), {});
+	Replacement->SetArrayField(TEXT("links"), {});
+
+	TSharedPtr<FJsonObject> Options = MakeShared<FJsonObject>();
+	Options->SetBoolField(TEXT("strict"), true);
+	Options->SetBoolField(TEXT("preserve_layout"), false);
+
+	TSharedPtr<FJsonObject> Op = MakeShared<FJsonObject>();
+	Op->SetStringField(TEXT("op"), TEXT("replace_body"));
+	Op->SetStringField(TEXT("replace_scope"), TEXT("custom_event_body"));
+	Op->SetObjectField(TEXT("selector"), Selector);
+	Op->SetObjectField(TEXT("replacement"), Replacement);
+	Op->SetObjectField(TEXT("options"), Options);
+
+	const TSharedPtr<FJsonObject> Step = MakeGraphWriteStepWithSingleOp(Op);
+	const TSharedPtr<FJsonObject> TaskPlan = MakeGraphWriteTaskPlan(Step);
+
+	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
+	FBlueprintHelperToolError Error;
+	const bool bLowered = FBlueprintHelperTaskRuntimeService::TryLowerTaskPlanStep(
+		TaskPlan,
+		Step,
+		true,
+		LoweredStep,
+		Error);
+
+	TestTrue(TEXT("replace_body lowers successfully"), bLowered);
+	TestEqual(TEXT("replace_body lowers to replace adapter"), LoweredStep.AdapterOperation, FString(TEXT("replace_blueprint_graph")));
+
+	const TSharedPtr<FJsonObject>* Target = nullptr;
+	TestTrue(TEXT("replace payload has target"), LoweredStep.Payload->TryGetObjectField(TEXT("target"), Target));
+	FString ReplaceScope;
+	TestTrue(TEXT("replace target has replace_scope"), (*Target)->TryGetStringField(TEXT("replace_scope"), ReplaceScope));
+	TestEqual(TEXT("replace_scope preserved"), ReplaceScope, FString(TEXT("custom_event_body")));
+
+	const TSharedPtr<FJsonObject>* PayloadOptions = nullptr;
+	TestTrue(TEXT("replace payload has options"), LoweredStep.Payload->TryGetObjectField(TEXT("options"), PayloadOptions));
+	bool bDryRun = false;
+	TestTrue(TEXT("replace options inject dry_run"), (*PayloadOptions)->TryGetBoolField(TEXT("dry_run"), bDryRun));
+	TestTrue(TEXT("replace dry_run=true"), bDryRun);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperContractTaskRuntimeGraphWriteIrPatchLoweringTest,
+	"BlueprintHelper.ObjectFirst.Contract.TaskRuntimeGraphWriteIrPatchLowering",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperContractTaskRuntimeGraphWriteIrPatchLoweringTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FJsonObject> PatchedRef = MakeShared<FJsonObject>();
+	PatchedRef->SetStringField(TEXT("node_ref"), TEXT("Branch0"));
+	PatchedRef->SetStringField(TEXT("pin_ref"), TEXT("Condition"));
+
+	TSharedPtr<FJsonObject> Patch = MakeShared<FJsonObject>();
+	Patch->SetBoolField(TEXT("value"), true);
+
+	TSharedPtr<FJsonObject> Op = MakeShared<FJsonObject>();
+	Op->SetStringField(TEXT("op"), TEXT("set_pin_default"));
+	Op->SetStringField(TEXT("patch_scope"), TEXT("pin_default"));
+	Op->SetObjectField(TEXT("patched_ref"), PatchedRef);
+	Op->SetObjectField(TEXT("patch"), Patch);
+
+	const TSharedPtr<FJsonObject> Step = MakeGraphWriteStepWithSingleOp(Op);
+	const TSharedPtr<FJsonObject> TaskPlan = MakeGraphWriteTaskPlan(Step);
+
+	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
+	FBlueprintHelperToolError Error;
+	const bool bLowered = FBlueprintHelperTaskRuntimeService::TryLowerTaskPlanStep(
+		TaskPlan,
+		Step,
+		true,
+		LoweredStep,
+		Error);
+
+	TestTrue(TEXT("set_pin_default lowers successfully"), bLowered);
+	TestEqual(TEXT("set_pin_default lowers to patch adapter"), LoweredStep.AdapterOperation, FString(TEXT("patch_blueprint_graph")));
+
+	FString PatchType;
+	TestTrue(TEXT("patch payload has patch_type"), LoweredStep.Payload->TryGetStringField(TEXT("patch_type"), PatchType));
+	TestEqual(TEXT("patch_type preserved"), PatchType, FString(TEXT("set_pin_default")));
+
+	bool bDryRun = false;
+	TestTrue(TEXT("patch payload injects dry_run"), LoweredStep.Payload->TryGetBoolField(TEXT("dry_run"), bDryRun));
+	TestTrue(TEXT("patch dry_run=true"), bDryRun);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperContractTaskRuntimeGraphWriteIrMergeLoweringTest,
+	"BlueprintHelper.ObjectFirst.Contract.TaskRuntimeGraphWriteIrMergeLowering",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperContractTaskRuntimeGraphWriteIrMergeLoweringTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FJsonObject> Anchor = MakeShared<FJsonObject>();
+	Anchor->SetStringField(TEXT("node_ref"), TEXT("BeginPlay0"));
+	Anchor->SetStringField(TEXT("pin_ref"), TEXT("Then"));
+
+	TSharedPtr<FJsonObject> Inserted = MakeShared<FJsonObject>();
+	Inserted->SetStringField(TEXT("block_id"), TEXT("BH_DoorFeature_ToggleDoor"));
+	Inserted->SetStringField(TEXT("block_ref"), TEXT("block:BH_DoorFeature_ToggleDoor"));
+
+	TArray<TSharedPtr<FJsonValue>> SequenceOrder;
+	SequenceOrder.Add(MakeShared<FJsonValueString>(TEXT("BeginPlay0")));
+	SequenceOrder.Add(MakeShared<FJsonValueString>(TEXT("BH_DoorFeature_ToggleDoor")));
+
+	TSharedPtr<FJsonObject> Op = MakeShared<FJsonObject>();
+	Op->SetStringField(TEXT("op"), TEXT("insert_flow"));
+	Op->SetStringField(TEXT("merge_scope"), TEXT("owned_block_call"));
+	Op->SetStringField(TEXT("insert_strategy"), TEXT("insert_between"));
+	Op->SetObjectField(TEXT("anchor"), Anchor);
+	Op->SetObjectField(TEXT("inserted"), Inserted);
+	Op->SetArrayField(TEXT("sequence_order"), SequenceOrder);
+
+	const TSharedPtr<FJsonObject> Step = MakeGraphWriteStepWithSingleOp(Op);
+	const TSharedPtr<FJsonObject> TaskPlan = MakeGraphWriteTaskPlan(Step);
+
+	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
+	FBlueprintHelperToolError Error;
+	const bool bLowered = FBlueprintHelperTaskRuntimeService::TryLowerTaskPlanStep(
+		TaskPlan,
+		Step,
+		true,
+		LoweredStep,
+		Error);
+
+	TestTrue(TEXT("insert_flow lowers successfully"), bLowered);
+	TestEqual(TEXT("insert_flow lowers to merge adapter"), LoweredStep.AdapterOperation, FString(TEXT("merge_blueprint_graph")));
+
+	const TSharedPtr<FJsonObject>* Target = nullptr;
+	TestTrue(TEXT("merge payload has target"), LoweredStep.Payload->TryGetObjectField(TEXT("target"), Target));
+	FString MergeScope;
+	FString InsertStrategy;
+	TestTrue(TEXT("merge target has merge_scope"), (*Target)->TryGetStringField(TEXT("merge_scope"), MergeScope));
+	TestTrue(TEXT("merge target has insert_strategy"), (*Target)->TryGetStringField(TEXT("insert_strategy"), InsertStrategy));
+	TestEqual(TEXT("merge_scope preserved"), MergeScope, FString(TEXT("owned_block_call")));
+	TestEqual(TEXT("insert_strategy preserved"), InsertStrategy, FString(TEXT("insert_between")));
+
+	bool bDryRun = false;
+	TestTrue(TEXT("merge payload injects dry_run"), LoweredStep.Payload->TryGetBoolField(TEXT("dry_run"), bDryRun));
+	TestTrue(TEXT("merge dry_run=true"), bDryRun);
 
 	return true;
 }

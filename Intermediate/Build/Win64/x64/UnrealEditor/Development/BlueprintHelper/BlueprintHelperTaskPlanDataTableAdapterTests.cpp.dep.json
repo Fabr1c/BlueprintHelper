@@ -6,9 +6,16 @@
         "PCH": "g:\\unrealpractise\\mrstone\\intermediate\\build\\win64\\x64\\mrstoneeditor\\development\\unrealed\\sharedpch.unrealed.project.valapi.valexpapi.cpp20.h.pch",
         "Includes": [
             "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\intermediate\\build\\win64\\x64\\unrealeditor\\development\\blueprinthelper\\definitions.blueprinthelper.h",
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\services\\datatable\\blueprinthelperdatatableservice.h",
             "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\taskruntime\\taskplanadapters\\datatable\\blueprinthelperdatatabletaskplanadapter.h",
             "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\structure\\blueprinthelpertoolresulttypes.h",
-            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\structure\\blueprinthelperservicetypes.h"
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\structure\\blueprinthelperservicetypes.h",
+            "f:\\ue_5.6\\engine\\source\\runtime\\coreuobject\\public\\uobject\\noexporttypes.h",
+            "f:\\ue_5.6\\engine\\source\\runtime\\coreuobject\\public\\uobject\\propertyaccessutil.h",
+            "f:\\ue_5.6\\engine\\source\\runtime\\coreuobject\\public\\serialization\\testundeclaredscriptstructobjectreferences.h",
+            "f:\\ue_5.6\\engine\\source\\runtime\\core\\public\\math\\unitconversion.h",
+            "f:\\ue_5.6\\engine\\source\\runtime\\core\\public\\math\\unitconversion.inl",
+            "f:\\ue_5.6\\engine\\source\\runtime\\core\\public\\internationalization\\polyglottextdata.h"
         ],
         "ImportedModules": [],
         "ImportedHeaderUnits": []

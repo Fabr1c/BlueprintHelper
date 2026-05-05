@@ -12,6 +12,30 @@
 
 FBlueprintHelperLogicJsonReadService::FBlueprintHelperLogicJsonReadService() = default;
 
+namespace
+{
+	bool IsTargetEntryScope(EBlueprintHelperLogicScope Scope)
+	{
+		return Scope == EBlueprintHelperLogicScope::TargetFunction ||
+			Scope == EBlueprintHelperLogicScope::TargetEvent ||
+			Scope == EBlueprintHelperLogicScope::TargetCustomEvent;
+	}
+
+	FString GetTargetEntryName(const FBlueprintHelperTargetRef& Target, EBlueprintHelperLogicScope Scope)
+	{
+		switch (Scope)
+		{
+		case EBlueprintHelperLogicScope::TargetFunction:
+			return Target.Function;
+		case EBlueprintHelperLogicScope::TargetEvent:
+		case EBlueprintHelperLogicScope::TargetCustomEvent:
+			return Target.Event;
+		default:
+			return TEXT("");
+		}
+	}
+}
+
 FBlueprintHelperLogicJsonData FBlueprintHelperLogicJsonReadService::ReadLogicJson(const FBlueprintHelperTargetRef& Target) const
 {
 	FBlueprintHelperLogicJsonData Data;
@@ -27,7 +51,9 @@ FBlueprintHelperLogicJsonData FBlueprintHelperLogicJsonReadService::ReadLogicJso
 	{
 		ExportReq.Target.GraphName = Target.Graph;
 	}
-	ExportReq.Scope = ScopeToExportScope(Scope);
+	ExportReq.Scope = IsTargetEntryScope(Scope) && Target.Graph.IsEmpty()
+		? EBlueprintHelperExportScope::FullBlueprint
+		: ScopeToExportScope(Scope);
 
 	const FBlueprintHelperModule& Module = FBlueprintHelperModule::Get();
 	const FBlueprintHelperExportResult ExportResult = Module.GetExportService().Export(ExportReq);
@@ -37,9 +63,22 @@ FBlueprintHelperLogicJsonData FBlueprintHelperLogicJsonReadService::ReadLogicJso
 		return Data;
 	}
 
-	// 使用 GroupBuilder 构建分组内容
+	// 使用 GroupBuilder 构建分组内容。单入口 target 在未指定图表时扫描完整蓝图，
+	// 避免 custom_event / function / event 读回被默认 EventGraph 吞掉。
 	const FString GraphName = Target.Graph.IsEmpty() ? TEXT("EventGraph") : Target.Graph;
-	Data.Logic = GroupBuilder.BuildGroups(ExportResult.JsonObject, Target.AssetPath, GraphName, Scope);
+	if (IsTargetEntryScope(Scope))
+	{
+		Data.Logic = GroupBuilder.BuildTargetEntry(
+			ExportResult.JsonObject,
+			Target.AssetPath,
+			Target.Graph,
+			GetTargetEntryName(Target, Scope),
+			Scope);
+	}
+	else
+	{
+		Data.Logic = GroupBuilder.BuildGroups(ExportResult.JsonObject, Target.AssetPath, GraphName, Scope);
+	}
 
 	// ─── Stats ───
 	// 通过 LogicProcessor 获取统计

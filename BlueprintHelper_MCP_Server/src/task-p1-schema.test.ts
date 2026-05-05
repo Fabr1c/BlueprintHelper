@@ -99,6 +99,92 @@ describe('P1 TaskSpec schema validation', () => {
     }
   });
 
+  it('accepts the composite create_blueprint_feature TaskSpec shape', () => {
+    const spec = {
+      schema: 'BlueprintHelper.TaskSpec.v1',
+      context_id: 'ctx_physics_door',
+      task_type: 'create_blueprint_feature',
+      feature_name: 'PhysicsDoor',
+      target: {
+        asset_path: '/Game/BlueprintHelperTest/Door/BP_BH_PhysicsDoor',
+        target_type: 'blueprint',
+      },
+      scope_policy: {
+        prefer_new_graph: true,
+        graph_name: 'EG_PhysicsDoor',
+        allow_modify_user_nodes: false,
+        allow_create_assets: false,
+      },
+      asset_policy: {
+        if_target_asset_missing: 'fail',
+        if_referenced_asset_missing: 'fail',
+        if_component_exists: 'reuse_if_type_matches',
+      },
+      resources: {
+        static_meshes: {
+          door_mesh: '/Game/BlueprintHelperTest/Meshes/SM_Door',
+        },
+      },
+      components: [
+        {
+          name: 'DoorMesh',
+          class: 'StaticMeshComponent',
+          attach_to: 'SceneRoot',
+          properties: {
+            StaticMesh: '$resources.static_meshes.door_mesh',
+            Mobility: 'Movable',
+          },
+        },
+      ],
+      variables: [
+        {
+          name: 'bDoorOpen',
+          type: 'bool',
+          default: false,
+          category: 'Door',
+        },
+      ],
+      class_settings: {
+        implemented_interfaces: [
+          '/Game/BlueprintHelperTest/Interaction/BPI_BH_Interactable',
+        ],
+      },
+      behavior: {
+        graph_strategy: 'append_new_owned_graph',
+        entries: [
+          {
+            entry_type: 'custom_event',
+            name: 'OpenPhysicsDoor',
+            body: {
+              schema: 'BlueprintLogicSpec.v1',
+              statements: [
+                {
+                  kind: 'set_member_variable',
+                  name: 'bDoorOpen',
+                  value: {
+                    kind: 'literal',
+                    value_type: 'bool',
+                    value: true,
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+      execution_policy: {
+        dry_run_mode: 'full',
+        on_missing_capability: 'stop_and_report',
+      },
+      validation: {
+        should_compile: true,
+        should_save: false,
+      },
+    };
+
+    assert.doesNotThrow(() => TaskSpecSchema.parse(spec));
+  });
+
   it('rejects TaskPlan and adapter language in Agent-facing P1 TaskSpec shapes', () => {
     assert.throws(() => TaskSpecSchema.parse(baseSpec('create_asset', {
       asset_strategy: 'asset_create',

@@ -24,7 +24,12 @@ export class TaskSpecCompileError extends Error {
   }
 }
 
+type TaskPlanStep = TaskPlan['steps'][number];
+
 export function compileTaskSpecToTaskPlan(taskSpec: TaskSpec): TaskPlan {
+  if (taskSpec.task_type === 'create_blueprint_feature') {
+    return compileCompositeBlueprintFeatureTaskSpecToTaskPlan(taskSpec);
+  }
   if (taskSpec.task_type === 'edit_blueprint_variables') {
     return compileBlueprintVariablesTaskSpecToTaskPlan(taskSpec);
   }
@@ -39,6 +44,8 @@ export function compileTaskSpecToTaskPlan(taskSpec: TaskSpec): TaskPlan {
   }
 
   assertSupportedTaskSpec(taskSpec);
+  const behavior = taskSpec.behavior as Record<string, unknown>;
+  const graphWriteOps = compileGraphWriteOps(behavior);
 
   return {
     schema: TASK_PLAN_SCHEMA,
@@ -51,9 +58,441 @@ export function compileTaskSpecToTaskPlan(taskSpec: TaskSpec): TaskPlan {
       should_compile: taskSpec.validation.should_compile,
       should_save: taskSpec.validation.should_save,
     },
-    steps: [
+    steps: makeGraphWriteTaskPlanSteps(taskSpec, graphWriteOps),
+  };
+}
+
+function compileCompositeBlueprintFeatureTaskSpecToTaskPlan(
+  taskSpec: Extract<TaskSpec, { task_type: 'create_blueprint_feature' }>,
+): TaskPlan {
+  assertSupportedCompositeBlueprintFeatureTaskSpec(taskSpec);
+
+  const steps: TaskPlanStep[] = [];
+  steps.push(...compileCompositeComponentSteps(taskSpec));
+  steps.push(...compileCompositeVariableSteps(taskSpec));
+  steps.push(...compileCompositeClassSettingsSteps(taskSpec));
+  steps.push(...compileCompositeGraphWriteSteps(taskSpec));
+  steps.push(...compileCompositeIntegrationSteps(taskSpec));
+
+  if (steps.length === 0) {
+    throw new TaskSpecCompileError('taskspec_semantic_invalid', 'create_blueprint_feature did not produce any TaskPlan steps.', [
       {
-        step_id: 'step_001',
+        code: 'empty_composite_feature',
+        path: 'task_spec',
+        message: 'Provide components, variables, class_settings, or behavior.',
+      },
+    ]);
+  }
+
+  return {
+    schema: TASK_PLAN_SCHEMA,
+    task_name: taskSpec.feature_name,
+    task_type: taskSpec.task_type,
+    context_id: taskSpec.context_id,
+    target_assets: [taskSpec.target.asset_path],
+    execution_policy: {
+      dry_run_mode: taskSpec.execution_policy.dry_run_mode,
+      should_compile: taskSpec.validation.should_compile,
+      should_save: taskSpec.validation.should_save,
+    },
+    steps: renumberSteps(steps),
+  };
+}
+
+function assertSupportedCompositeBlueprintFeatureTaskSpec(taskSpec: Extract<TaskSpec, { task_type: 'create_blueprint_feature' }>): void {
+  const integration = asRecord((taskSpec as Record<string, unknown>)['integration']);
+  if (integration) {
+    const unsupportedKeys = Object.keys(integration).filter((key) => key !== 'interface');
+    if (unsupportedKeys.length > 0) {
+      throw new TaskSpecCompileError('unsupported_composite_integration', 'Unsupported composite integration fields.', [
+        {
+          code: 'unsupported_composite_integration',
+          path: `integration.${unsupportedKeys[0]}`,
+          message: 'Input binding and other integration fields need dedicated capability clusters; keep only integration.interface for this slice.',
+        },
+      ]);
+    }
+  }
+
+  const interfaceIntegration = asRecord(integration?.['interface']);
+  if (integration && !interfaceIntegration) {
+    throw new TaskSpecCompileError('unsupported_composite_integration', 'Unsupported composite integration fields.', [
+      {
+        code: 'unsupported_composite_integration',
+        path: 'integration',
+        message: 'integration currently supports only an interface object.',
+      },
+    ]);
+  }
+
+  const scopePolicy = asRecord((taskSpec as Record<string, unknown>)['scope_policy']);
+  if (scopePolicy?.['allow_create_assets'] === true) {
+    throw new TaskSpecCompileError('unsupported_composite_asset_creation', 'Composite asset creation is not supported in this slice.', [
+      {
+        code: 'unsupported_composite_asset_creation',
+        path: 'scope_policy.allow_create_assets',
+        message: 'Set allow_create_assets=false and reference existing assets, or split asset creation into create_asset TaskSpecs.',
+      },
+    ]);
+  }
+}
+
+function compileCompositeComponentSteps(taskSpec: Extract<TaskSpec, { task_type: 'create_blueprint_feature' }>): TaskPlanStep[] {
+  const rawComponents = (taskSpec as Record<string, unknown>)['components'];
+  if (!Array.isArray(rawComponents) || rawComponents.length === 0) return [];
+
+  const assetPolicy = asRecord((taskSpec as Record<string, unknown>)['asset_policy']);
+  const nameCollisionPolicy = normalizeComponentCollisionPolicy(assetPolicy?.['if_component_exists']);
+  const steps: TaskPlanStep[] = [];
+  rawComponents.forEach((rawComponent, componentIndex) => {
+    if (!isRecord(rawComponent)) {
+      throw new TaskSpecCompileError('taskspec_semantic_invalid', 'Component entry must be an object.', [
+        {
+          code: 'invalid_component',
+          path: `components[${componentIndex}]`,
+          message: 'Component entry must be an object.',
+        },
+      ]);
+    }
+    const component = rawComponent as Record<string, unknown>;
+    const addOp = omitUndefined({
+      op: 'add_component',
+      component_name: getRequiredString(component, 'name', `components[${componentIndex}].name`),
+      component_class: getRequiredString(component, 'class', `components[${componentIndex}].class`),
+      parent_component: compositeComponentParent(component),
+      socket_name: compositeComponentSocket(component),
+      attach_rule: compositeComponentAttachRule(component),
+      name_collision_policy: normalizeComponentCollisionPolicy(component['on_name_conflict']) ?? nameCollisionPolicy,
+    });
+    const addStep = makeCompositeCapabilityStep(steps.length + 1, 'blueprint_component', taskSpec.target.asset_path, 'component_tree', [addOp]);
+    steps.push(addStep);
+
+    const settings = compositeSettingsArray(component['properties'], `components[${componentIndex}].properties`, taskSpec);
+    if (settings.length > 0) {
+      steps.push({
+        ...makeCompositeCapabilityStep(steps.length + 1, 'blueprint_component', taskSpec.target.asset_path, 'component_tree', [{
+        op: 'set_component_properties',
+        component_name: addOp.component_name,
+        settings,
+        }]),
+        depends_on: [addStep.step_id],
+      } as TaskPlanStep);
+    }
+  });
+  return steps;
+}
+
+function compileCompositeVariableSteps(taskSpec: Extract<TaskSpec, { task_type: 'create_blueprint_feature' }>): TaskPlanStep[] {
+  const rawVariables = (taskSpec as Record<string, unknown>)['variables'];
+  if (!Array.isArray(rawVariables) || rawVariables.length === 0) return [];
+
+  const ensureOps: Record<string, unknown>[] = [];
+  const defaultOps: Record<string, unknown>[] = [];
+  rawVariables.forEach((rawVariable, variableIndex) => {
+    if (!isRecord(rawVariable)) {
+      throw new TaskSpecCompileError('taskspec_semantic_invalid', 'Variable entry must be an object.', [
+        {
+          code: 'invalid_variable',
+          path: `variables[${variableIndex}]`,
+          message: 'Variable entry must be an object.',
+        },
+      ]);
+    }
+    const variable = rawVariable as Record<string, unknown>;
+    const name = getRequiredString(variable, 'name', `variables[${variableIndex}].name`);
+    ensureOps.push(omitUndefined({
+      op: 'ensure_member_variable',
+      name,
+      pin_type: compositeVariablePinType(variable, `variables[${variableIndex}]`),
+      category: variable['category'],
+      tooltip: variable['tooltip'],
+      flags: variable['flags'],
+      metadata: variable['metadata'],
+    }));
+    if (Object.hasOwn(variable, 'default')) {
+      defaultOps.push({
+        op: 'set_member_default',
+        name,
+        value: literalValue(variable['default']),
+      });
+    }
+  });
+
+  const steps: TaskPlanStep[] = [];
+  if (ensureOps.length > 0) {
+    steps.push({
+      step_id: 'step_001',
+      capability: 'blueprint_variable',
+      target: { asset_path: taskSpec.target.asset_path },
+      write: { strategy: 'member_variables', ops: ensureOps },
+      constraints: { allow_remove_referenced_variables: false },
+    } as TaskPlanStep);
+  }
+  if (defaultOps.length > 0) {
+    steps.push({
+      step_id: 'step_001',
+      capability: 'blueprint_variable',
+      target: { asset_path: taskSpec.target.asset_path },
+      write: { strategy: 'member_defaults', ops: defaultOps },
+      constraints: { allow_remove_referenced_variables: false },
+    } as TaskPlanStep);
+  }
+  return steps;
+}
+
+function compileCompositeClassSettingsSteps(taskSpec: Extract<TaskSpec, { task_type: 'create_blueprint_feature' }>): TaskPlanStep[] {
+  const classSettings = asRecord((taskSpec as Record<string, unknown>)['class_settings']);
+  if (!classSettings) return [];
+
+  const steps: TaskPlanStep[] = [];
+  const rawInterfaces = classSettings['implemented_interfaces'];
+  if (Array.isArray(rawInterfaces) && rawInterfaces.length > 0) {
+    steps.push(makeCompositeCapabilityStep(steps.length + 1, 'blueprint_class_settings', taskSpec.target.asset_path, 'class_settings', [{
+      op: 'add_implemented_interfaces',
+      interface_paths: rawInterfaces.map((value, index) => {
+        if (typeof value !== 'string' || value.length === 0) {
+          throw new TaskSpecCompileError('taskspec_semantic_invalid', 'implemented_interfaces must contain path strings.', [
+            {
+              code: 'invalid_interface_path',
+              path: `class_settings.implemented_interfaces[${index}]`,
+              message: 'Provide an interface asset path string.',
+            },
+          ]);
+        }
+        return resolveCompositeReference(value, taskSpec);
+      }),
+    }]));
+  }
+
+  const classDefaults = compositeSettingsArray(classSettings['class_defaults'], 'class_settings.class_defaults', taskSpec);
+  if (classDefaults.length > 0) {
+    steps.push(makeCompositeCapabilityStep(steps.length + 1, 'blueprint_class_settings', taskSpec.target.asset_path, 'class_settings', [{
+      op: 'set_class_default_properties',
+      settings: classDefaults,
+    }]));
+  }
+
+  return steps;
+}
+
+function compileCompositeGraphWriteSteps(taskSpec: Extract<TaskSpec, { task_type: 'create_blueprint_feature' }>): TaskPlanStep[] {
+  const behavior = asRecord((taskSpec as Record<string, unknown>)['behavior']);
+  if (!behavior) return [];
+  const scopePolicy = asRecord((taskSpec as Record<string, unknown>)['scope_policy']);
+  if (!scopePolicy) {
+    throw new TaskSpecCompileError('taskspec_semantic_invalid', 'create_blueprint_feature behavior requires scope_policy.', [
+      {
+        code: 'missing_scope_policy',
+        path: 'scope_policy',
+        message: 'Provide scope_policy.graph_name and allow_modify_user_nodes.',
+      },
+    ]);
+  }
+  const graphName = getRequiredString(scopePolicy, 'graph_name', 'scope_policy.graph_name');
+  const graphTaskSpec = {
+    ...taskSpec,
+    task_type: 'edit_blueprint_graph',
+    scope_policy: {
+      graph_name: graphName,
+      allow_modify_user_nodes: scopePolicy['allow_modify_user_nodes'] === true,
+    },
+    behavior,
+  } as Extract<TaskSpec, { task_type: 'edit_blueprint_graph' }>;
+  assertSupportedTaskSpec(graphTaskSpec);
+  return makeGraphWriteTaskPlanSteps(graphTaskSpec, compileGraphWriteOps(behavior));
+}
+
+function compileCompositeIntegrationSteps(taskSpec: Extract<TaskSpec, { task_type: 'create_blueprint_feature' }>): TaskPlanStep[] {
+  const integration = asRecord((taskSpec as Record<string, unknown>)['integration']);
+  const interfaceIntegration = asRecord(integration?.['interface']);
+  if (!interfaceIntegration) return [];
+
+  const interfacePath = resolveCompositeReference(
+    getRequiredString(interfaceIntegration, 'interface_asset', 'integration.interface.interface_asset'),
+    taskSpec,
+  );
+  const functionName = getRequiredString(interfaceIntegration, 'function', 'integration.interface.function');
+  const steps: TaskPlanStep[] = [];
+  let classSettingsStepId: string | undefined;
+
+  if (!compositeClassSettingsIncludesInterface(taskSpec, interfacePath)) {
+    const classSettingsStep = makeCompositeCapabilityStep(steps.length + 1, 'blueprint_class_settings', taskSpec.target.asset_path, 'class_settings', [{
+      op: 'add_implemented_interfaces',
+      interface_paths: [interfacePath],
+    }]);
+    classSettingsStepId = classSettingsStep.step_id;
+    steps.push(classSettingsStep);
+  }
+
+  const signatureStep = {
+    ...makeCompositeCapabilityStep(steps.length + 1, 'blueprint_signature', taskSpec.target.asset_path, 'function_signature', [{
+    op: 'ensure_function',
+    function_name: functionName,
+    interface_path: interfacePath,
+    name_collision_policy: 'reuse_if_exists',
+    }]),
+    ...(classSettingsStepId ? { depends_on: [classSettingsStepId] } : {}),
+  } as TaskPlanStep;
+  steps.push(signatureStep);
+
+  steps.push({
+    step_id: `step_${String(steps.length + 1).padStart(3, '0')}`,
+    capability: 'graph_write',
+    target: {
+      asset_path: taskSpec.target.asset_path,
+      graph: functionName,
+    },
+    write: {
+      strategy: 'owned_graph_edit',
+      ops: [
+        {
+          op: 'replace_body',
+          replace_scope: 'function_body',
+          selector: {
+            function_name: functionName,
+          },
+          replacement: compileCompositeInterfaceImplementationReplacement(interfaceIntegration, functionName),
+          options: {
+            strict: true,
+            preserve_layout: false,
+          },
+        },
+      ],
+    },
+    constraints: {
+      allow_modify_user_nodes: false,
+      ownership_scope: 'blueprinthelper_owned',
+    },
+    depends_on: [signatureStep.step_id],
+  } as TaskPlanStep);
+
+  return steps;
+}
+
+function makeCompositeCapabilityStep(
+  index: number,
+  capability: string,
+  assetPath: string,
+  strategy: string,
+  ops: Record<string, unknown>[],
+): TaskPlanStep {
+  return {
+    step_id: `step_${String(index).padStart(3, '0')}`,
+    capability,
+    target: { asset_path: assetPath },
+    write: { strategy, ops },
+  } as TaskPlanStep;
+}
+
+function compositeClassSettingsIncludesInterface(
+  taskSpec: Extract<TaskSpec, { task_type: 'create_blueprint_feature' }>,
+  interfacePath: string,
+): boolean {
+  const classSettings = asRecord((taskSpec as Record<string, unknown>)['class_settings']);
+  const rawInterfaces = classSettings?.['implemented_interfaces'];
+  return Array.isArray(rawInterfaces) && rawInterfaces.some((value) => (
+    typeof value === 'string' && resolveCompositeReference(value, taskSpec) === interfacePath
+  ));
+}
+
+function compileCompositeInterfaceImplementationReplacement(
+  interfaceIntegration: Record<string, unknown>,
+  functionName: string,
+): { nodes: AgentImportNode[]; links: AgentImportLink[] } {
+  const body = compositeInterfaceImplementationBody(interfaceIntegration, functionName);
+  validateSupportedStatements(body.statements, 'integration.interface.implementation.body.statements');
+  return compileLogicBodyToImportPayload(
+    body,
+    `interface_${functionName}`,
+    'integration.interface.implementation.body',
+  );
+}
+
+function compositeInterfaceImplementationBody(
+  interfaceIntegration: Record<string, unknown>,
+  functionName: string,
+): { statements: BlueprintLogicStatement[] } {
+  const implementation = requiredRecord(interfaceIntegration, 'implementation', 'integration.interface.implementation');
+  if (isRecord(implementation['body'])) {
+    return getRequiredLogicBody(implementation, 'body', 'integration.interface.implementation.body');
+  }
+  if (Array.isArray(implementation['statements'])) {
+    return {
+      statements: implementation['statements'] as BlueprintLogicStatement[],
+    };
+  }
+  if (typeof implementation['call'] === 'string' && implementation['call'].trim().length > 0) {
+    return {
+      statements: [
+        {
+          kind: 'call_function',
+          name: implementation['call'],
+          args: implementation['args'],
+        } as BlueprintLogicStatement,
+      ],
+    };
+  }
+  throw new TaskSpecCompileError('taskspec_semantic_invalid', 'integration.interface.implementation must provide call, body, or statements.', [
+    {
+      code: 'missing_interface_implementation',
+      path: 'integration.interface.implementation',
+      message: `Provide implementation.call="${functionName}" target logic or a BlueprintLogicSpec body.`,
+    },
+  ]);
+}
+
+function renumberSteps(steps: TaskPlanStep[]): TaskPlanStep[] {
+  const oldIds = steps.map((step) => step.step_id);
+  const newIds = steps.map((_, index) => `step_${String(index + 1).padStart(3, '0')}`);
+
+  return steps.map((step, index) => ({
+    ...step,
+    step_id: newIds[index],
+    ...('depends_on' in step && Array.isArray(step.depends_on)
+      ? {
+          depends_on: step.depends_on.map((id) => {
+            for (let candidate = index - 1; candidate >= 0; candidate -= 1) {
+              if (oldIds[candidate] === id) return newIds[candidate];
+            }
+            return id;
+          }),
+        }
+      : {}),
+  }));
+}
+
+function makeGraphWriteTaskPlanSteps(
+  taskSpec: Extract<TaskSpec, { task_type: 'edit_blueprint_graph' }>,
+  graphWriteOps: GraphWriteCompiledOp[],
+): TaskPlanStep[] {
+  const behavior = taskSpec.behavior as Record<string, unknown>;
+  const strategy = String(behavior['graph_strategy']);
+  if (strategy === 'append_new_owned_graph') {
+    const signatureSteps = graphWriteOps
+      .filter((op) => op.op === 'ensure_entry' && op.entry_type === 'custom_event')
+      .map((op, index) => ({
+        step_id: `step_${String(index + 1).padStart(3, '0')}`,
+        capability: 'blueprint_signature' as const,
+        target: {
+          asset_path: taskSpec.target.asset_path,
+        },
+        write: {
+          strategy: 'custom_event_signature',
+          ops: [
+            {
+              op: 'ensure_custom_event',
+              event_name: op.name,
+              graph_name: taskSpec.scope_policy.graph_name,
+              name_collision_policy: 'reuse_if_exists',
+            },
+          ],
+        },
+      } as TaskPlanStep));
+
+    return [
+      ...signatureSteps,
+      {
+        step_id: `step_${String(signatureSteps.length + 1).padStart(3, '0')}`,
         capability: 'graph_write',
         target: {
           asset_path: taskSpec.target.asset_path,
@@ -61,20 +500,39 @@ export function compileTaskSpecToTaskPlan(taskSpec: TaskSpec): TaskPlan {
         },
         write: {
           strategy: 'owned_graph_edit',
-          ops: taskSpec.behavior.entries.map((entry) => ({
-            op: 'ensure_entry',
-            entry_type: entry.entry_type,
-            name: entry.name,
-            body: entry.body,
-          })),
+          ops: graphWriteOps,
         },
         constraints: {
           allow_modify_user_nodes: taskSpec.scope_policy.allow_modify_user_nodes,
           ownership_scope: 'blueprinthelper_owned',
         },
-      },
-    ],
-  };
+        ...(signatureSteps.length > 0
+          ? { depends_on: signatureSteps.map((step) => step.step_id) }
+          : {}),
+      } as TaskPlanStep,
+    ];
+  }
+
+  const opBatches = strategy === 'append_new_owned_graph'
+    ? [graphWriteOps]
+    : graphWriteOps.map((op) => [op]);
+
+  return opBatches.map((ops, index) => ({
+    step_id: `step_${String(index + 1).padStart(3, '0')}`,
+    capability: 'graph_write',
+    target: {
+      asset_path: taskSpec.target.asset_path,
+      graph: taskSpec.scope_policy.graph_name,
+    },
+    write: {
+      strategy: 'owned_graph_edit',
+      ops,
+    },
+    constraints: {
+      allow_modify_user_nodes: taskSpec.scope_policy.allow_modify_user_nodes,
+      ownership_scope: 'blueprinthelper_owned',
+    },
+  }));
 }
 
 function compileBlueprintVariablesTaskSpecToTaskPlan(taskSpec: Extract<TaskSpec, { task_type: 'edit_blueprint_variables' }>): TaskPlan {
@@ -117,13 +575,16 @@ function compileBlueprintVariablesTaskSpecToTaskPlan(taskSpec: Extract<TaskSpec,
 }
 
 export function taskPlanToAppendBridgePayload(taskPlan: TaskPlan, dryRun: boolean): AppendBridgePayload {
-  const step = taskPlan.steps[0];
+  const step = taskPlan.steps.find((candidate) => (
+    ('capability' in candidate && candidate.capability === 'graph_write') ||
+    ('operation' in candidate && candidate.operation === 'append_blueprint_graph')
+  ));
   if (!step) {
     throw new TaskSpecCompileError('unsupported_taskplan_operation', 'TaskPlan does not contain an append_blueprint_graph step.', [
       {
         code: 'unsupported_taskplan_operation',
-        path: 'steps[0]',
-        message: 'TaskPlan requires a first GraphWrite step.',
+        path: 'steps',
+        message: 'TaskPlan requires a GraphWrite append step.',
       },
     ]);
   }
@@ -216,6 +677,7 @@ function summarizeTaskPlanStep(step: TaskPlan['steps'][number]) {
       target: step.target,
       strategy: step.write.strategy,
       ops: step.write.ops.length,
+      ...('depends_on' in step && Array.isArray(step.depends_on) ? { depends_on: step.depends_on } : {}),
     };
   }
 
@@ -293,31 +755,76 @@ function assertSupportedTaskSpec(taskSpec: TaskSpec) {
     ]);
   }
 
-  if (taskSpec.behavior.graph_strategy !== 'append_new_owned_graph') {
-    throw new TaskSpecCompileError('unsupported_graph_strategy', 'Only append_new_owned_graph is supported in the first MCP slice.', [
+  const behavior = taskSpec.behavior as Record<string, unknown>;
+  const strategy = getRequiredString(behavior, 'graph_strategy', 'behavior.graph_strategy');
+  if (!['append_new_owned_graph', 'replace_owned_graph', 'patch_owned_graph', 'merge_owned_graph'].includes(strategy)) {
+    throw new TaskSpecCompileError('unsupported_graph_strategy', 'Unsupported GraphWrite graph_strategy.', [
       {
         code: 'unsupported_graph_strategy',
         path: 'behavior.graph_strategy',
-        message: 'Use behavior.graph_strategy="append_new_owned_graph" for this milestone.',
+        message: 'Use append_new_owned_graph, replace_owned_graph, patch_owned_graph, or merge_owned_graph.',
         suggested_patch: { op: 'replace', path: '/behavior/graph_strategy', value: 'append_new_owned_graph' },
       },
     ]);
   }
 
   if (taskSpec.scope_policy.allow_modify_user_nodes) {
-    throw new TaskSpecCompileError('unsupported_scope_policy', 'Modifying user nodes is not supported for append_new_owned_graph.', [
+    throw new TaskSpecCompileError('unsupported_scope_policy', 'Modifying user nodes is not supported for GraphWrite owned strategies.', [
       {
         code: 'unsupported_scope_policy',
         path: 'scope_policy.allow_modify_user_nodes',
-        message: 'Set allow_modify_user_nodes=false and target a new or empty graph.',
+        message: 'Set allow_modify_user_nodes=false and target BlueprintHelper-owned graph logic.',
         suggested_patch: { op: 'replace', path: '/scope_policy/allow_modify_user_nodes', value: false },
       },
     ]);
   }
 
-  for (const [entryIndex, entry] of taskSpec.behavior.entries.entries()) {
-    if (entry.entry_type !== 'custom_event') {
-      throw new TaskSpecCompileError('unsupported_entry_type', 'Only custom_event entries are supported in the first MCP slice.', [
+  compileGraphWriteOps(behavior);
+}
+
+type GraphWriteCompiledOp = Record<string, unknown> & { op: string };
+
+function compileGraphWriteOps(behavior: Record<string, unknown>): GraphWriteCompiledOp[] {
+  const strategy = getRequiredString(behavior, 'graph_strategy', 'behavior.graph_strategy');
+  if (strategy === 'append_new_owned_graph') {
+    return compileAppendGraphWriteOps(behavior);
+  }
+  if (strategy === 'replace_owned_graph') {
+    return [compileReplaceGraphWriteOp(behavior)];
+  }
+  if (strategy === 'patch_owned_graph') {
+    return compilePatchGraphWriteOps(behavior);
+  }
+  if (strategy === 'merge_owned_graph') {
+    return compileMergeGraphWriteOps(behavior);
+  }
+
+  throw new TaskSpecCompileError('unsupported_graph_strategy', 'Unsupported GraphWrite graph_strategy.', [
+    {
+      code: 'unsupported_graph_strategy',
+      path: 'behavior.graph_strategy',
+      message: 'Use append_new_owned_graph, replace_owned_graph, patch_owned_graph, or merge_owned_graph.',
+      suggested_patch: { op: 'replace', path: '/behavior/graph_strategy', value: 'append_new_owned_graph' },
+    },
+  ]);
+}
+
+function compileAppendGraphWriteOps(behavior: Record<string, unknown>): GraphWriteCompiledOp[] {
+  const entries = requiredNonEmptyArray(behavior, 'entries', 'behavior.entries');
+  return entries.map((rawEntry, entryIndex) => {
+    if (!isRecord(rawEntry)) {
+      throw new TaskSpecCompileError('taskspec_semantic_invalid', 'GraphWrite entry must be an object.', [
+        {
+          code: 'invalid_graph_write_entry',
+          path: `behavior.entries[${entryIndex}]`,
+          message: 'GraphWrite entry must be an object.',
+        },
+      ]);
+    }
+    const entry = rawEntry as Record<string, unknown>;
+    const entryType = getRequiredString(entry, 'entry_type', `behavior.entries[${entryIndex}].entry_type`);
+    if (entryType !== 'custom_event') {
+      throw new TaskSpecCompileError('unsupported_entry_type', 'Only custom_event entries are supported in this GraphWrite slice.', [
         {
           code: 'unsupported_entry_type',
           path: `behavior.entries[${entryIndex}].entry_type`,
@@ -327,18 +834,190 @@ function assertSupportedTaskSpec(taskSpec: TaskSpec) {
       ]);
     }
 
-    for (const [statementIndex, statement] of entry.body.statements.entries()) {
-      if (statement.kind !== 'call_function' && statement.kind !== 'set_member_variable') {
-        throw new TaskSpecCompileError('unsupported_statement_kind', 'Only call_function and set_member_variable statements are supported in the first MCP slice.', [
-          {
-            code: 'unsupported_statement_kind',
-            path: `behavior.entries[${entryIndex}].body.statements[${statementIndex}].kind`,
-            message: 'Use call_function or set_member_variable, or split this work into a later GraphWrite capability.',
-          },
-        ]);
-      }
-    }
+    const body = getRequiredLogicBody(entry, 'body', `behavior.entries[${entryIndex}].body`);
+    validateSupportedStatements(body.statements, `behavior.entries[${entryIndex}].body.statements`);
+    return {
+      op: 'ensure_entry',
+      entry_type: entryType,
+      name: getRequiredString(entry, 'name', `behavior.entries[${entryIndex}].name`),
+      body: entry['body'],
+    };
+  });
+}
+
+function compileReplaceGraphWriteOp(behavior: Record<string, unknown>): GraphWriteCompiledOp {
+  const replace = requiredRecord(behavior, 'replace', 'behavior.replace');
+  const body = getRequiredLogicBody(replace, 'body', 'behavior.replace.body');
+  validateSupportedStatements(body.statements, 'behavior.replace.body.statements');
+  const replacement = compileLogicBodyToImportPayload(body, 'replace', 'behavior.replace.body');
+  if (replacement.nodes.length === 0) {
+    throw new TaskSpecCompileError('taskspec_semantic_invalid', 'replace_owned_graph requires at least one replacement statement.', [
+      {
+        code: 'empty_replacement',
+        path: 'behavior.replace.body.statements',
+        message: 'Provide at least one replacement statement.',
+      },
+    ]);
   }
+
+  return omitUndefined({
+    op: 'replace_body',
+    replace_scope: getRequiredString(replace, 'scope', 'behavior.replace.scope'),
+    selector: requiredRecord(replace, 'selector', 'behavior.replace.selector'),
+    replacement,
+    options: isRecord(replace['options']) ? replace['options'] : undefined,
+  }) as GraphWriteCompiledOp;
+}
+
+function compilePatchGraphWriteOps(behavior: Record<string, unknown>): GraphWriteCompiledOp[] {
+  const patches = requiredNonEmptyArray(behavior, 'patches', 'behavior.patches');
+  return patches.map((rawPatch, index) => {
+    const path = `behavior.patches[${index}]`;
+    if (!isRecord(rawPatch)) {
+      throw new TaskSpecCompileError('taskspec_semantic_invalid', 'GraphWrite patch must be an object.', [
+        {
+          code: 'invalid_graph_write_patch',
+          path,
+          message: 'GraphWrite patch must be an object.',
+        },
+      ]);
+    }
+    const patch = rawPatch as Record<string, unknown>;
+    const kind = getRequiredString(patch, 'kind', `${path}.kind`);
+    if (!['set_pin_default', 'set_node_comment', 'set_node_position'].includes(kind)) {
+      throw new TaskSpecCompileError('unsupported_graph_write_patch', `Unsupported GraphWrite patch kind: ${kind}`, [
+        {
+          code: 'unsupported_graph_write_patch',
+          path: `${path}.kind`,
+          message: 'Use set_pin_default, set_node_comment, or set_node_position.',
+        },
+      ]);
+    }
+
+    return omitUndefined({
+      op: kind,
+      patch_scope: typeof patch['scope'] === 'string' && patch['scope'].length > 0
+        ? patch['scope']
+        : defaultPatchScope(kind),
+      patched_ref: requiredRecord(patch, 'target_ref', `${path}.target_ref`),
+      patch: compilePatchPayload(patch, path),
+      expected_old_state: isRecord(patch['expected_old_state'])
+        ? literalRecordValues(patch['expected_old_state'])
+        : undefined,
+    }) as GraphWriteCompiledOp;
+  });
+}
+
+function compileMergeGraphWriteOps(behavior: Record<string, unknown>): GraphWriteCompiledOp[] {
+  const merges = requiredNonEmptyArray(behavior, 'merges', 'behavior.merges');
+  return merges.map((rawMerge, index) => {
+    const path = `behavior.merges[${index}]`;
+    if (!isRecord(rawMerge)) {
+      throw new TaskSpecCompileError('taskspec_semantic_invalid', 'GraphWrite merge must be an object.', [
+        {
+          code: 'invalid_graph_write_merge',
+          path,
+          message: 'GraphWrite merge must be an object.',
+        },
+      ]);
+    }
+    const merge = rawMerge as Record<string, unknown>;
+    const kind = getRequiredString(merge, 'kind', `${path}.kind`);
+    if (kind !== 'insert_flow') {
+      throw new TaskSpecCompileError('unsupported_graph_write_merge', `Unsupported GraphWrite merge kind: ${kind}`, [
+        {
+          code: 'unsupported_graph_write_merge',
+          path: `${path}.kind`,
+          message: 'Use insert_flow.',
+        },
+      ]);
+    }
+
+    return omitUndefined({
+      op: 'insert_flow',
+      merge_scope: getRequiredString(merge, 'scope', `${path}.scope`),
+      insert_strategy: getRequiredString(merge, 'insert_strategy', `${path}.insert_strategy`),
+      anchor: requiredRecord(merge, 'anchor', `${path}.anchor`),
+      inserted: requiredRecord(merge, 'inserted', `${path}.inserted`),
+      sequence_order: Array.isArray(merge['sequence_order']) ? merge['sequence_order'] : undefined,
+    }) as GraphWriteCompiledOp;
+  });
+}
+
+function validateSupportedStatements(statements: BlueprintLogicStatement[], path: string): void {
+  statements.forEach((statement, statementIndex) => {
+    if (statement.kind !== 'call_function' && statement.kind !== 'set_member_variable') {
+      throw new TaskSpecCompileError('unsupported_statement_kind', 'Only call_function and set_member_variable statements are supported in this GraphWrite slice.', [
+        {
+          code: 'unsupported_statement_kind',
+          path: `${path}[${statementIndex}].kind`,
+          message: 'Use call_function or set_member_variable, or split this work into a later GraphWrite capability.',
+        },
+      ]);
+    }
+  });
+}
+
+function compileLogicBodyToImportPayload(
+  body: { statements: BlueprintLogicStatement[] },
+  prefix: string,
+  path: string,
+): { nodes: AgentImportNode[]; links: AgentImportLink[] } {
+  const nodes: AgentImportNode[] = [];
+  const links: AgentImportLink[] = [];
+  let previousNodeId: string | undefined;
+  body.statements.forEach((statement, statementIndex) => {
+    const nodeId = `${toIdSegment(prefix)}_stmt_${statementIndex + 1}`;
+    const node = compileStatementNode(statement, nodeId, `${path}.statements[${statementIndex}]`);
+    nodes.push(node);
+    if (previousNodeId) {
+      links.push({ kind: 'exec', from: `${previousNodeId}.then`, to: `${nodeId}.execute` });
+    }
+    previousNodeId = nodeId;
+  });
+  return { nodes, links };
+}
+
+function defaultPatchScope(kind: string): string {
+  if (kind === 'set_node_comment') return 'node_comment';
+  if (kind === 'set_node_position') return 'node_position';
+  return 'pin_default';
+}
+
+function compilePatchPayload(patch: Record<string, unknown>, path: string): Record<string, unknown> {
+  if (isRecord(patch['patch'])) {
+    return literalRecordValues(patch['patch']);
+  }
+  if ('value' in patch) {
+    return {
+      value: literalValue(patch['value']),
+    };
+  }
+  throw new TaskSpecCompileError('taskspec_semantic_invalid', 'GraphWrite patch requires patch or value.', [
+    {
+      code: 'missing_patch_payload',
+      path: `${path}.patch`,
+      message: 'Provide patch or value.',
+    },
+  ]);
+}
+
+function literalRecordValues(record: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(record).map(([key, value]) => [key, literalValue(value)]),
+  );
+}
+
+function requiredRecord(record: Record<string, unknown>, field: string, path: string): Record<string, unknown> {
+  const value = record[field];
+  if (isRecord(value)) return value;
+  throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path} must be an object.`, [
+    {
+      code: 'missing_required_object',
+      path,
+      message: `${path} must be an object.`,
+    },
+  ]);
 }
 
 function assertSupportedBlueprintVariablesTaskSpec(taskSpec: Extract<TaskSpec, { task_type: 'edit_blueprint_variables' }>) {
@@ -687,6 +1366,139 @@ function getRequiredLogicBody(record: Record<string, unknown>, field: string, pa
       message: `${path} must be a BlueprintLogicSpec body.`,
     },
   ]);
+}
+
+function compositeComponentParent(component: Record<string, unknown>): unknown {
+  if (typeof component['attach_to'] === 'string' && component['attach_to'].length > 0) {
+    return component['attach_to'];
+  }
+  const attach = asRecord(component['attach']);
+  return typeof attach?.['parent'] === 'string' && attach['parent'].length > 0 ? attach['parent'] : undefined;
+}
+
+function compositeComponentSocket(component: Record<string, unknown>): unknown {
+  const attach = asRecord(component['attach']);
+  return typeof attach?.['socket'] === 'string' && attach['socket'].length > 0 ? attach['socket'] : undefined;
+}
+
+function compositeComponentAttachRule(component: Record<string, unknown>): unknown {
+  if (typeof component['attach_rule'] === 'string' && component['attach_rule'].length > 0) {
+    return component['attach_rule'];
+  }
+  const attach = asRecord(component['attach']);
+  return typeof attach?.['rule'] === 'string' && attach['rule'].length > 0 ? attach['rule'] : undefined;
+}
+
+function normalizeComponentCollisionPolicy(value: unknown): string | undefined {
+  if (value === 'reuse_if_type_matches' || value === 'reuse_if_exists') return 'reuse_if_exists';
+  if (value === 'fail_if_exists') return 'fail_if_exists';
+  return undefined;
+}
+
+function compositeVariablePinType(record: Record<string, unknown>, path: string): Record<string, unknown> {
+  if (isRecord(record['pin_type'])) return record['pin_type'];
+  if (isRecord(record['variable_type'])) return record['variable_type'];
+  if (typeof record['type'] === 'string' && record['type'].trim().length > 0) {
+    return { category: record['type'] };
+  }
+  throwMissingVariableType(`${path}.type`);
+}
+
+function compositeSettingsArray(
+  rawSettings: unknown,
+  path: string,
+  taskSpec: Extract<TaskSpec, { task_type: 'create_blueprint_feature' }>,
+): Record<string, unknown>[] {
+  if (rawSettings === undefined || rawSettings === null) return [];
+  if (Array.isArray(rawSettings)) {
+    return rawSettings.map((rawSetting, index) => {
+      if (!isRecord(rawSetting)) {
+        throw new TaskSpecCompileError('taskspec_semantic_invalid', 'Property setting must be an object.', [
+          {
+            code: 'invalid_property_setting',
+            path: `${path}[${index}]`,
+            message: 'Use { "property_path": "...", "value": ... }.',
+          },
+        ]);
+      }
+      const setting = rawSetting as Record<string, unknown>;
+      if (!Object.hasOwn(setting, 'value')) {
+        throw new TaskSpecCompileError('taskspec_semantic_invalid', 'Property setting requires value.', [
+          {
+            code: 'missing_property_value',
+            path: `${path}[${index}].value`,
+            message: 'Provide value.',
+          },
+        ]);
+      }
+      return {
+        ...setting,
+        property_path: getRequiredString(setting, 'property_path', `${path}[${index}].property_path`),
+        value: resolveCompositeValue(setting['value'], taskSpec),
+      };
+    });
+  }
+  if (isRecord(rawSettings)) {
+    return Object.entries(rawSettings).map(([propertyPath, value]) => ({
+      property_path: propertyPath,
+      value: resolveCompositeValue(value, taskSpec),
+    }));
+  }
+  throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path} must be an object or array.`, [
+    {
+      code: 'invalid_property_settings',
+      path,
+      message: 'Use an object map or a settings array.',
+    },
+  ]);
+}
+
+function resolveCompositeValue(
+  value: unknown,
+  taskSpec: Extract<TaskSpec, { task_type: 'create_blueprint_feature' }>,
+): unknown {
+  if (typeof value === 'string') {
+    return resolveCompositeReference(value, taskSpec);
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => resolveCompositeValue(item, taskSpec));
+  }
+  if (isRecord(value)) {
+    if (value['kind'] === 'literal') {
+      return literalValue(value);
+    }
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, resolveCompositeValue(item, taskSpec)]),
+    );
+  }
+  return value;
+}
+
+function resolveCompositeReference(
+  value: string,
+  taskSpec: Extract<TaskSpec, { task_type: 'create_blueprint_feature' }>,
+): string {
+  if (!value.startsWith('$resources.')) return value;
+  const resources = asRecord((taskSpec as Record<string, unknown>)['resources']);
+  if (!resources) return value;
+
+  const segments = value.slice('$resources.'.length).split('.');
+  let cursor: unknown = resources;
+  for (const segment of segments) {
+    if (!isRecord(cursor) || !(segment in cursor)) return value;
+    cursor = cursor[segment];
+  }
+  if (typeof cursor === 'string') return cursor;
+  if (isRecord(cursor) && typeof cursor['asset_path'] === 'string') return cursor['asset_path'];
+  return value;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return isRecord(value) ? value : undefined;
+}
+
+function isNonEmptyRecord(value: unknown): value is Record<string, unknown> {
+  return isRecord(value) && Object.keys(value).length > 0;
 }
 
 function toIdSegment(value: string): string {

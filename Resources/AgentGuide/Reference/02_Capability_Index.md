@@ -17,10 +17,14 @@ Agent -> MCP Task Tools -> Python/MCP Task Compiler -> UE Task Runtime -> Existi
 ```text
 blueprinthelper_get_runtime_profile
 blueprinthelper_diagnostics
-blueprinthelper_read_task_context
+blueprinthelper_read_agent_guide
+blueprinthelper_read_context
+blueprinthelper_read_reference_context
 blueprinthelper_preview_task
 blueprinthelper_execute_task
 blueprinthelper_get_task_result
+blueprinthelper_open_editor
+blueprinthelper_close_editor
 ```
 
 职责分层：
@@ -29,10 +33,14 @@ blueprinthelper_get_task_result
 |---|---|
 | `blueprinthelper_get_runtime_profile` | 读取版本、Bridge、写权限、安全档位和不可用能力 |
 | `blueprinthelper_diagnostics` | 读取静态或运行时诊断，不写资产 |
-| `blueprinthelper_read_task_context` | 返回 TaskContextPack，供 Agent 生成 TaskSpec |
+| `blueprinthelper_read_agent_guide` | 返回 AgentGuide 入口索引 |
+| `blueprinthelper_read_context` | 按 ReadSpec 返回 ReadContextPack / LogicMD / LogicJson 等只读上下文 |
+| `blueprinthelper_read_reference_context` | 返回引用上下文，用于引用查看、preview blocked 解释和高风险修改前影响面分析 |
 | `blueprinthelper_preview_task` | 校验 TaskSpec，生成 TaskPlan 摘要，执行 dry_run / preflight |
 | `blueprinthelper_execute_task` | 执行已通过 preview 的 TaskSpec 所编译出的 TaskPlan，返回任务级摘要 |
 | `blueprinthelper_get_task_result` | 查询 task_run_id 对应的任务结果、验证状态和必要摘要 |
+| `blueprinthelper_open_editor` | 启动或打开 Unreal Editor |
+| `blueprinthelper_close_editor` | 关闭 Unreal Editor |
 
 TaskSpec 是 Agent-facing 的语义任务规格，普通 Agent 提交 TaskSpec，不提交 TaskPlan。TaskPlan 是 Task Compiler 输出给 UE Task Runtime 的执行计划。TaskRunJournal 是 UE 侧记录一次任务执行和多个 child transaction 的审计容器。
 
@@ -53,7 +61,7 @@ TaskSpec 是 Agent-facing 的语义任务规格，普通 Agent 提交 TaskSpec�
 
 ## 4. 资产浏览与资产信息
 
-用途：查找、打开、保存、获取资产元信息。普通 Agent 生成 TaskSpec 前，应优先通过 `blueprinthelper_read_task_context` 获取压缩上下文；底层资产浏览工具用于上下文服务、debug / expert 模式或失败定位。
+用途：查找、打开、保存、获取资产元信息。普通 Agent 生成 TaskSpec 前，应优先通过 `blueprinthelper_read_context` 获取压缩上下文；底层资产浏览工具用于上下文服务、debug / expert 模式或失败定位。
 
 典型场景：
 

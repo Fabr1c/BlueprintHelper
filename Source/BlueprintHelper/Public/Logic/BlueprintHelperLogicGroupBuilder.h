@@ -30,6 +30,17 @@ public:
 		const FString& GraphName,
 		EBlueprintHelperLogicScope Scope) const;
 
+	/**
+	 * 从 RawJson 中按入口名称构建单入口 payload。
+	 * 支持完整蓝图 graphs[]：优先在 GraphName 内查找，GraphName 为空时扫描所有图表。
+	 */
+	FBlueprintHelperLogicJsonPayload BuildTargetEntry(
+		const TSharedPtr<FJsonObject>& RawJson,
+		const FString& AssetPath,
+		const FString& GraphName,
+		const FString& TargetName,
+		EBlueprintHelperLogicScope Scope) const;
+
 	/** 判断当前 scope 是否为多入口 scope。 */
 	static bool IsMultiEntryScope(EBlueprintHelperLogicScope Scope);
 

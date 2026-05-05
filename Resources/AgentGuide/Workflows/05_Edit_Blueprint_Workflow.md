@@ -11,14 +11,14 @@
 - `asset_path`
 - 图表写入的 `graph_name` 或 TaskSpec 中等价目标
 - 修改范围：是否允许创建资产、修改用户节点、接入已有执行流、编辑输入映射
-- 当前结构：通过 `blueprinthelper_read_task_context` 获取 TaskContextPack，必要时补充 logic_md / logic_json
+- 当前结构：通过 `blueprinthelper_read_context` 获取 ReadContextPack，必要时补充 logic_md / logic_json；高风险修改前使用 `blueprinthelper_read_reference_context`
 - 验证方式：TaskSpec `validation.should_compile`、`validation.should_save`
 
 标准流程：
 
 ```text
 get_runtime_profile
- -> read_task_context
+ -> read_context / read_reference_context as needed
  -> Agent 生成 TaskSpec
  -> preview_task
  -> 修正 TaskSpec 或 stop_and_report
@@ -32,7 +32,7 @@ get_runtime_profile
 流程：
 
 ```text
-read_task_context
+read_context
  -> TaskSpec.variables[] 描述 name/type/default/category/tooltip
  -> preview_task 检查 name collision / 类型 / scope_policy
  -> execute_task
@@ -49,7 +49,7 @@ read_task_context
 流程：
 
 ```text
-read_task_context
+read_context
  -> TaskSpec 声明函数 / Custom Event / graph 目标和签名
  -> preview_task 检查已有图表、签名能力和外部依赖
  -> execute_task
@@ -62,7 +62,7 @@ read_task_context
 流程：
 
 ```text
-read_task_context
+read_context
  -> 必要时读取 target graph logic_json/raw_json
  -> TaskSpec.behavior / integration 描述入口、逻辑、资源引用和接入策略
  -> preview_task 生成 TaskPlan 并 dry_run

@@ -21,7 +21,7 @@ Agent 直接选择 Asset Factory / Component / Class Settings / Graph Write 等�
 ```text
 Agent
 → blueprinthelper_get_runtime_profile
-→ blueprinthelper_read_task_context
+→ blueprinthelper_read_context / blueprinthelper_read_reference_context
 → BlueprintHelper.TaskSpec.v1
 → blueprinthelper_preview_task
 → blueprinthelper_execute_task
@@ -47,7 +47,7 @@ debug / expert 工具
 Agent Guide 中普通写任务的默认流程已改为：
 
 ```text
-get_runtime_profile -> read_task_context -> TaskSpec -> preview_task -> execute_task
+get_runtime_profile -> read_context / read_reference_context -> TaskSpec -> preview_task -> execute_task
 ```
 
 不再要求普通 Agent 输出完整底层 MCP 工具序列。
@@ -174,7 +174,7 @@ CLAUDE.md / AGENTS.md 默认指向：
 
 ```text
 runtime_profile
-read_task_context
+read_context / read_reference_context
 TaskSpec
 preview_task
 execute_task
@@ -206,7 +206,7 @@ BlueprintHelper/Resources/Skills/BlueprintHelper/
 
 ## 5. 建议后续同步点
 
-1. 当 `blueprinthelper_read_task_context / preview_task / execute_task` 实现后，把 Setup smoke test 改成真实 task preview。
+1. 当 `blueprinthelper_read_context / preview_task / execute_task` 实现后，把 Setup smoke test 改成真实 task preview。
 2. 当 TaskPlan schema 稳定后，把 `TaskSpec` 示例替换成正式 schema 引用。
 3. 当 runtime_profile 实现后，用真实字段替换当前文档中的建议字段。
 4. 当 Review UI 支持 task_run_id 分组后，补充 Setup 中的 task-level Review 策略。

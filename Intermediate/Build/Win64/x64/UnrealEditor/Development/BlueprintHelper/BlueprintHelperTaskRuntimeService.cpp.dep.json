@@ -20,6 +20,7 @@
             "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\services\\graphwrite\\blueprinthelperreplaceblueprintgraphservice.h",
             "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\services\\blueprintvariables\\blueprinthelperblueprintvariableservice.h",
             "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\structure\\blueprintvariables\\blueprinthelperblueprintvariabletypes.h",
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\services\\blueprinthelperblueprintstructureservice.h",
             "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\services\\assetfactory\\blueprinthelperassetfactoryservice.h",
             "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\structure\\assetfactory\\blueprinthelperassetfactorytypes.h",
             "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\services\\blueprintclasssettings\\blueprinthelperclasssettingsservice.h",
@@ -36,6 +37,7 @@
             "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\taskruntime\\taskplanadapters\\blueprintclasssettings\\blueprinthelperclasssettingstaskplanadapter.h",
             "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\taskruntime\\taskplanadapters\\blueprintcomponent\\blueprinthelpercomponenttaskplanadapter.h",
             "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\taskruntime\\taskplanadapters\\datatable\\blueprinthelperdatatabletaskplanadapter.h",
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\taskruntime\\taskplanadapters\\blueprintsignature\\blueprinthelpersignaturetaskplanadapter.h",
             "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\taskruntime\\taskplanadapters\\umgwidget\\blueprinthelperwidgettaskplanadapter.h"
         ],
         "ImportedModules": [],

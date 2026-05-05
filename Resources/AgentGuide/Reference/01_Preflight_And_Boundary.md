@@ -63,7 +63,7 @@ Understand user request
  -> decide MCP or normal code tool
  -> if MCP: preflight Bridge/editor/asset path
  -> get_runtime_profile
- -> read_task_context
+ -> read_context / read_reference_context as needed
  -> produce TaskSpec
  -> preview_task
  -> execute_task only after preview passes

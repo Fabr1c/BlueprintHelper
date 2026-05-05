@@ -40,7 +40,7 @@ Agent 如何在 TaskSpec-first 架构下安全、低歧义、可审计地使用 
 
 ```text
 get_runtime_profile
-→ read_task_context
+→ read_context / read_reference_context as needed
 → build TaskSpec
 → preview_task
 → repair TaskSpec / stop_and_report
@@ -132,10 +132,14 @@ Agent 不应把 UE Task Runtime 理解成 Agent 大脑。UE 侧负责执行，�
 ```text
 blueprinthelper_get_runtime_profile
 blueprinthelper_diagnostics
-blueprinthelper_read_task_context
+blueprinthelper_read_agent_guide
+blueprinthelper_read_context
+blueprinthelper_read_reference_context
 blueprinthelper_preview_task
 blueprinthelper_execute_task
 blueprinthelper_get_task_result
+blueprinthelper_open_editor
+blueprinthelper_close_editor
 ```
 
 ### 3.1 工具职责
@@ -144,10 +148,14 @@ blueprinthelper_get_task_result
 |---|---:|---|
 | `blueprinthelper_get_runtime_profile` | 否 | 获取 Bridge、config、write_permission、Safety Profile、unavailable capability |
 | `blueprinthelper_diagnostics` | 否 | 静态或运行时诊断，定位安装、配置、Bridge、runtime 问题 |
-| `blueprinthelper_read_task_context` | 否 | 返回 TaskContextPack，供 Agent 生成 TaskSpec |
+| `blueprinthelper_read_agent_guide` | 否 | 返回 AgentGuide 入口索引，供 Agent 查询当前 TaskSpec / ReadSpec 文档 |
+| `blueprinthelper_read_context` | 否 | 按 ReadSpec 返回 ReadContextPack / LogicMD / LogicJson 等只读上下文 |
+| `blueprinthelper_read_reference_context` | 否 | 返回引用上下文，用于用户问引用、preview blocked 解释或高风险写入前影响面分析 |
 | `blueprinthelper_preview_task` | 否 | 校验 TaskSpec、生成 TaskPlan 摘要、执行 policy / dry_run / preflight |
 | `blueprinthelper_execute_task` | 是 | 执行通过 preview 的 TaskPlan |
 | `blueprinthelper_get_task_result` | 否 | 查询 task_run_id 的任务摘要、验证状态、必要错误摘要 |
+| `blueprinthelper_open_editor` | 否 | 启动或打开 UE Editor |
+| `blueprinthelper_close_editor` | 否 | 关闭 UE Editor |
 
 底层工具名以 MCP `tools/list` 为准，但普通 Agent 不应优先直调底层工具。
 
@@ -320,14 +328,14 @@ runtime_profile.write_permission.disabled
 
 ---
 
-## 7. TaskContextPack
+## 7. ReadContextPack / 任务上下文
 
-`TaskContextPack` 是 Agent 生成 TaskSpec 前的压缩上下文包，用于减少猜参数和反复 preview 错误。
+`blueprinthelper_read_context` 是 Agent 生成 TaskSpec 前的默认只读上下文入口，用于减少猜参数和反复 preview 错误。旧 `blueprinthelper_read_task_context` 定位暂不清晰，标记为 deprecated，不作为新主线默认入口。
 
 调用：
 
 ```text
-blueprinthelper_read_task_context
+blueprinthelper_read_context
 ```
 
 Agent 应请求与任务相关的上下文，例如：
@@ -338,10 +346,10 @@ Agent 应请求与任务相关的上下文，例如：
 3. LogicMD / LogicJson 片段或目标图表摘要。
 4. 资源候选，例如 mesh、interface、InputAction、DataTable。
 5. 当前 runtime 摘要和 unavailable capability 摘要。
-6. context_id。
+6. 必要的 context_id 或 large_payload_ref。
 ```
 
-Agent 生成 TaskSpec 时必须带上 `context_id`。如果 preview 返回 `context_required` 或 `context_stale`，Agent 应重新调用 `read_task_context`，不能继续沿用旧上下文。
+如果 preview 返回 `context_required` 或 `context_stale`，Agent 应重新调用 `read_context` 或相关只读工具，不能继续沿用旧上下文。
 
 ---
 
@@ -368,7 +376,9 @@ feature_name
 
 ### 8.1 TaskSpec 最小骨架
 
-固定字段以 `Resources/Docs/TaskSpec_TaskPlan_Contract_20260504.md` 为准。当前实现切片只固定 GraphWrite Append。
+固定字段以 `Resources/Docs/TaskSpec_TaskPlan_Contract_20260504.md` 为准。当前 compiler 合同覆盖 GraphWrite Append/Replace/Patch/Merge、Blueprint Variables、P1 capability clusters，以及 `create_blueprint_feature` composite + `integration.interface` 首片。复合任务由 compiler 分解为现有 capability steps，Agent 不填写 TaskPlan。
+
+当前 smoke-verified execute 闭环更窄：GraphWrite 只确认 `append_new_owned_graph + 新图名` 可执行，Variables 只确认 `edit_blueprint_variables` 可执行。普通 Agent 默认只应使用 `append_new_owned_graph` 写新 BlueprintHelper-owned 图；Replace/Patch/Merge、Component、Composite 等路径必须 preview-first，preview blocked 时停止并报告，不回退到底层原子写工具。
 
 ```json
 {
@@ -429,7 +439,7 @@ feature_name
 4. 未说明 allow_modify_user_nodes 却要求改已有节点。
 5. 未说明 allow_merge_existing_execution_flow 却要求接入 BeginPlay / Tick / InputAction。
 6. 把 InputAction 创建当作 IMC 映射完成。
-7. 把 add_implemented_interface 当作接口函数 body 已实现。
+7. 把 add_implemented_interface 当作接口函数 body 已实现；需要接口实现时使用 `create_blueprint_feature.integration.interface`。
 8. 在 add_component 里表达 mesh / collision / physics 等属性设置。
 ```
 
@@ -456,7 +466,7 @@ preview 应完成：
 | 返回 | 语义 | Agent 行为 |
 |---|---|---|
 | `status=preview_passed` | 可执行 | 可以 execute_task |
-| `status=context_required` | 上下文不足或过期 | 重新 read_task_context |
+| `status=context_required` | 上下文不足或过期 | 重新 read_context / read_reference_context |
 | `status=preview_blocked` | TaskSpec 合法但当前不可执行 | stop_and_report 或修改 TaskSpec |
 | `ok=false,status=failed` | TaskSpec schema/semantic 或 preview 工具自身失败 | 按 error.issues / suggested_patch 修正 |
 
@@ -574,6 +584,8 @@ Patch / Merge / Replace / Cleanup 前结构化分析
 3. links 存在 source node 的 node.links 内，表示 outgoing links。
 4. LogicJson importable=false，不能作为导入格式。
 ```
+
+当前已知问题：`target_type=custom_event` 的 LogicJson 查找只搜索 EventGraph，忽略自定义图。读取自定义图里的 Custom Event 时，先按 graph target 读取整张自定义图，或用 LogicMD 做人工核对，直到该 bug 修复。
 
 ### 12.4 RawJson / resource_ref
 
@@ -925,12 +937,12 @@ Agent 生成 TaskSpec，preview_task 产出 TaskPlan 摘要，execute_task 由 U
 
 ```text
 BlueprintHelper 是 UE5.3+ 的 Agent 编辑辅助系统。
-普通 Agent 默认使用 TaskSpec-first 工作流：get_runtime_profile → read_task_context → build TaskSpec → preview_task → execute_task → report summary。
+普通 Agent 默认使用 TaskSpec-first 工作流：get_runtime_profile → read_context / read_reference_context as needed → build TaskSpec → preview_task → execute_task → report summary。
 不要直接把复杂任务拆成大量底层 MCP 调用。
 底层工具簇是 TaskPlan capability / debug / expert / 测试入口。
 runtime_profile.active_profile 是 safety_profile 唯一来源。
 diagnostics 只定位问题，不替代 runtime_profile。
 LogicMD 用于理解，LogicJson 用于结构化分析，RawJson/resource_ref 用于保真、导入、Pin/GUID 级调试。
-Asset Factory 只创建资产；Component add 只创建和 attachment；Class Settings 不写图表逻辑；Enhanced Input 默认不编辑 IA/IMC；Graph Write 分 Append/Replace/Patch/Merge。
+Asset Factory 只创建资产；Component add 只创建和 attachment；Class Settings 不写图表逻辑；Enhanced Input 默认不编辑 IA/IMC；Graph Write 合同分 Append/Replace/Patch/Merge，当前已验证执行只默认使用 Append 新图。
 失败、preview_blocked、missing capability、rollback blocked 时 stop_and_report。
 ```
