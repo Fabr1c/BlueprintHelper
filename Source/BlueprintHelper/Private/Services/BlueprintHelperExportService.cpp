@@ -2,7 +2,7 @@
 
 #include "Services/BlueprintHelperExportService.h"
 #include "GraphSupport/BlueprintHelperGraphResolver.h"
-#include "BlueprintTextConverter.h"
+#include "GraphWrite/BlueprintTextConverter.h"
 
 FBlueprintHelperExportService::FBlueprintHelperExportService(const FBlueprintHelperGraphResolver& InResolver)
 	: Resolver(InResolver)

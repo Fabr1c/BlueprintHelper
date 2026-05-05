@@ -113,8 +113,8 @@ describe('TaskSpec/TaskPlan protocol contract', () => {
         'set_local_variable_properties',
         'remove_local_variable',
       ],
-      runtime_supported_structural_ops: ['ensure_member_variable'],
-      runtime_lowering_pending_ops: [
+      runtime_supported_structural_ops: [
+        'ensure_member_variable',
         'set_member_variable_properties',
         'remove_member_variable',
         'set_member_default',
@@ -122,7 +122,13 @@ describe('TaskSpec/TaskPlan protocol contract', () => {
         'set_local_variable_properties',
         'remove_local_variable',
       ],
-      runtime_lowering_adapters: ['add_blueprint_member_variables'],
+      runtime_lowering_pending_ops: [],
+      runtime_service_pending_ops: [
+        'ensure_local_variable',
+        'set_local_variable_properties',
+        'remove_local_variable',
+      ],
+      runtime_lowering_adapters: ['add_blueprint_member_variables', 'blueprint_variable_batch'],
       adapter_dry_run_supported: false,
       max_task_plan_steps: 1,
     });
@@ -149,7 +155,7 @@ describe('TaskSpec/TaskPlan protocol contract', () => {
     );
   });
 
-  it('separates Blueprint Variable compiler IR from currently lowered UE runtime ops', () => {
+  it('separates Blueprint Variable compiler IR lowering from remaining pending UE service execution', () => {
     const secondSlice = TASK_PROTOCOL_CONTRACT_V1.supported_second_slice;
     assert.deepEqual(secondSlice.agent_semantic_paths, [
       'behavior.variable_strategy',
@@ -172,11 +178,17 @@ describe('TaskSpec/TaskPlan protocol contract', () => {
       'set_local_variable_properties',
       'remove_local_variable',
     ]);
-    assert.deepEqual(secondSlice.runtime_supported_structural_ops, ['ensure_member_variable']);
-    assert.deepEqual(secondSlice.runtime_lowering_pending_ops, [
+    assert.deepEqual(secondSlice.runtime_supported_structural_ops, [
+      'ensure_member_variable',
       'set_member_variable_properties',
       'remove_member_variable',
       'set_member_default',
+      'ensure_local_variable',
+      'set_local_variable_properties',
+      'remove_local_variable',
+    ]);
+    assert.deepEqual(secondSlice.runtime_lowering_pending_ops, []);
+    assert.deepEqual(secondSlice.runtime_service_pending_ops, [
       'ensure_local_variable',
       'set_local_variable_properties',
       'remove_local_variable',
@@ -197,7 +209,7 @@ describe('TaskSpec/TaskPlan protocol contract', () => {
     );
     assert.match(
       TASK_PROTOCOL_CONTRACT_V1.blueprint_variable_taskplan_ir_contract.lowering_policy,
-      /currently lowers only ensure_member_variable/,
+      /blueprint_variable_batch/,
     );
   });
 

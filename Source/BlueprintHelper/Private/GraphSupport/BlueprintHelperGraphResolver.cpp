@@ -1,10 +1,10 @@
-// BlueprintHelper Service Layer — 图表定位器实现
+// BlueprintHelper Service Layer 。图表定位器实。
 
 #include "GraphSupport/BlueprintHelperGraphResolver.h"
 #include "BlueprintEditor.h"
 #include "Editor.h"
 #include "Subsystems/AssetEditorSubsystem.h"
-#include "TextToBlueprintGenerator.h"
+#include "GraphWrite/TextToBlueprintGenerator.h"
 
 UEdGraph* FBlueprintHelperGraphResolver::ResolveGraph(const FBlueprintHelperGraphTarget& Target, FBlueprintHelperDiagnosticSet& OutDiag) const
 {
@@ -17,7 +17,7 @@ UEdGraph* FBlueprintHelperGraphResolver::ResolveGraph(const FBlueprintHelperGrap
 	// 图表名为空时走降级路径
 	if (Target.GraphName.IsEmpty())
 	{
-		// 显式蓝图路径 → 默认查找 EventGraph
+		// 显式蓝图路径 。默认查找 EventGraph
 		if (!Target.BlueprintPath.IsEmpty())
 		{
 			UEdGraph* EventGraph = TextToBlueprintGenerator::FindGraphByName(Blueprint, TEXT("EventGraph"));
@@ -29,7 +29,7 @@ UEdGraph* FBlueprintHelperGraphResolver::ResolveGraph(const FBlueprintHelperGrap
 			return nullptr;
 		}
 
-		// 无路径无图表名 → 当前焦点图表
+		// 无路径无图表。。当前焦点图表
 		UEdGraph* FocusedGraph = GetFocusedGraph();
 		if (FocusedGraph)
 		{
@@ -139,7 +139,7 @@ UBlueprint* FBlueprintHelperGraphResolver::LoadBlueprintByPath(const FString& As
 	if (!Blueprint)
 	{
 		OutDiag.Add(EBlueprintHelperDiagnosticSeverity::Error,
-			FString::Printf(TEXT("无法加载蓝图资产：%s"), *AssetPath));
+			FString::Printf(TEXT("无法加载蓝图资产"), *AssetPath));
 		return nullptr;
 	}
 

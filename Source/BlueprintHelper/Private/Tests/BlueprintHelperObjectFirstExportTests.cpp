@@ -1,5 +1,5 @@
 #include "Misc/AutomationTest.h"
-#include "BlueprintTextConverter.h"
+#include "GraphWrite/BlueprintTextConverter.h"
 #include "Services/BlueprintHelperExportService.h"
 #include "GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Structure/BlueprintHelperServiceTypes.h"

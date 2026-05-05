@@ -4,7 +4,7 @@
 #include "SHelperMainWidget.h"
 
 #include "BlueprintHelper.h"
-#include "BlueprintTextConverter.h"
+#include "GraphWrite/BlueprintTextConverter.h"
 #include "GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Services/BlueprintHelperImportService.h"
 #include "HAL/PlatformApplicationMisc.h"

@@ -2,12 +2,12 @@
 
 #include "Services/BlueprintHelperAgentImportService.h"
 
-#include "Services/BlueprintHelperAssetBrowseService.h"
-#include "Services/BlueprintHelperCompileService.h"
+#include "Services/RuntimeDiagnostics/BlueprintHelperAssetBrowseService.h"
+#include "Services/RuntimeDiagnostics/BlueprintHelperCompileService.h"
 #include "GraphSupport/BlueprintHelperGraphResolver.h"
 #include "GraphSupport/BlueprintHelperScopedAssetMutation.h"
-#include "NodeHandlers/BlueprintNodeHandler.h"
-#include "TextToBlueprintGenerator.h"
+#include "NodeHandlers/GraphWrite/BlueprintNodeHandler.h"
+#include "GraphWrite/TextToBlueprintGenerator.h"
 
 #include "Containers/Queue.h"
 #include "Dom/JsonObject.h"
@@ -371,7 +371,7 @@ namespace
 					bStrict ? EBlueprintHelperAgentImportDiagnosticSeverity::Error : EBlueprintHelperAgentImportDiagnosticSeverity::Warning,
 					TEXT("ForbiddenField"),
 					FieldPath,
-					FString::Printf(TEXT("AgentImportGraph 不接受字段 '%s'。"), *Pair.Key),
+					FString::Printf(TEXT("AgentImportGraph 不接受字。'%s'。"), *Pair.Key),
 					TEXT("删除坐标、GUID、Pin 快照或编辑器状态字段，让插件自动生成。"));
 			}
 
@@ -535,7 +535,7 @@ namespace
 				EBlueprintHelperAgentImportDiagnosticSeverity::Error,
 				TEXT("UnsupportedSchema"),
 				TEXT("$.schema"),
-				TEXT("schema 必须为 BlueprintHelper.AgentImportGraph。"));
+				TEXT("schema 必须。BlueprintHelper.AgentImportGraph。"));
 		}
 
 		FString Version;
@@ -545,7 +545,7 @@ namespace
 				EBlueprintHelperAgentImportDiagnosticSeverity::Error,
 				TEXT("UnsupportedVersion"),
 				TEXT("$.version"),
-				TEXT("version 必须为 1.0。"));
+				TEXT("version 必须。1.0。"));
 		}
 
 		Root->TryGetStringField(TEXT("target_blueprint"), OutRequest.Target.BlueprintPath);
@@ -645,7 +645,7 @@ namespace
 				{
 					AddDiagnostic(Result, EBlueprintHelperAgentImportDiagnosticSeverity::Error,
 						TEXT("DuplicateNodeId"), Path + TEXT(".id"),
-						FString::Printf(TEXT("节点 id 重复：%s。"), *Node.Id));
+						FString::Printf(TEXT("节点 id 重复。s。"), *Node.Id));
 				}
 				else
 				{
@@ -656,7 +656,7 @@ namespace
 				{
 					AddDiagnostic(Result, EBlueprintHelperAgentImportDiagnosticSeverity::Error,
 						TEXT("UnknownNodeKind"), Path + TEXT(".kind"),
-						FString::Printf(TEXT("不支持的节点 kind：%s。"), *Node.Kind));
+						FString::Printf(TEXT("不支持的节点 kind。s。"), *Node.Kind));
 				}
 
 				if (Node.Kind == TEXT("branch") && !Node.Condition.IsEmpty())
@@ -700,20 +700,20 @@ namespace
 				{
 					AddDiagnostic(Result, EBlueprintHelperAgentImportDiagnosticSeverity::Error,
 						TEXT("UnsupportedLinkKind"), Link.Path + TEXT(".kind"),
-						FString::Printf(TEXT("不支持的连线 kind：%s。"), *Link.Kind));
+						FString::Printf(TEXT("不支持的连线 kind。s。"), *Link.Kind));
 				}
 
 				if (!ParseLinkEndpoint(LinkObject, TEXT("from"), TEXT("from_node"), TEXT("from_pin"), Link.FromNode, Link.FromPin))
 				{
 					AddDiagnostic(Result, EBlueprintHelperAgentImportDiagnosticSeverity::Error,
 						TEXT("InvalidLinkEndpoint"), Link.Path + TEXT(".from"),
-						TEXT("连线来源必须是 node.pin 或 from_node/from_pin。"));
+						TEXT("连线来源必须。node.pin 。from_node/from_pin。"));
 				}
 				if (!ParseLinkEndpoint(LinkObject, TEXT("to"), TEXT("to_node"), TEXT("to_pin"), Link.ToNode, Link.ToPin))
 				{
 					AddDiagnostic(Result, EBlueprintHelperAgentImportDiagnosticSeverity::Error,
 						TEXT("InvalidLinkEndpoint"), Link.Path + TEXT(".to"),
-						TEXT("连线目标必须是 node.pin 或 to_node/to_pin。"));
+						TEXT("连线目标必须。node.pin 。to_node/to_pin。"));
 				}
 
 				if (!Link.FromNode.IsEmpty() && !NodeIds.Contains(Link.FromNode))
@@ -980,7 +980,7 @@ namespace
 				{
 					AddDiagnostic(Result, EBlueprintHelperAgentImportDiagnosticSeverity::Error,
 						TEXT("UnknownSymbol"), Path + TEXT(".function"),
-						FString::Printf(TEXT("第一阶段不支持 symbols：%s。"), *Node.Function));
+						FString::Printf(TEXT("第一阶段不支。symbols。s。"), *Node.Function));
 					continue;
 				}
 
@@ -989,7 +989,7 @@ namespace
 				{
 					AddDiagnostic(Result, EBlueprintHelperAgentImportDiagnosticSeverity::Error,
 						TEXT("UnknownFunction"), Path + TEXT(".function"),
-						FString::Printf(TEXT("无法解析函数：%s。"), *Node.Function),
+						FString::Printf(TEXT("无法解析函数。s。"), *Node.Function),
 						TEXT("使用原生函数名，例如 PrintString，或 /Script/Engine.KismetSystemLibrary:PrintString。"));
 				}
 			}
@@ -1007,8 +1007,8 @@ namespace
 				{
 					AddDiagnostic(Result, EBlueprintHelperAgentImportDiagnosticSeverity::Error,
 						TEXT("UnknownVariable"), Path + TEXT(".var"),
-						FString::Printf(TEXT("变量不存在且缺少可创建的类型声明：%s。"), *Node.VariableName),
-						TEXT("在 declarations.variables 中声明变量，或在节点上提供 type 字段。"));
+						FString::Printf(TEXT("变量不存在且缺少可创建的类型声明。s。"), *Node.VariableName),
+						TEXT("。declarations.variables 中声明变量，或在节点上提。type 字段。"));
 				}
 			}
 		}
@@ -1047,7 +1047,7 @@ namespace
 			{
 				AddDiagnostic(Result, EBlueprintHelperAgentImportDiagnosticSeverity::Error,
 					TEXT("CreateVariableFailed"), Path,
-					FString::Printf(TEXT("创建成员变量失败：%s。"), *Name));
+					FString::Printf(TEXT("创建成员变量失败。s。"), *Name));
 				return;
 			}
 
@@ -1413,7 +1413,7 @@ FBlueprintHelperAgentImportResult FBlueprintHelperAgentImportService::Import(con
 		{
 			AddDiagnostic(Result, EBlueprintHelperAgentImportDiagnosticSeverity::Error,
 				TEXT("link_node_not_found"), Link.Path,
-				FString::Printf(TEXT("连线端点必须引用可连线的 K2 节点：%s -> %s。"), *Link.FromNode, *Link.ToNode));
+				FString::Printf(TEXT("连线端点必须引用可连线的 K2 节点。s -> %s。"), *Link.FromNode, *Link.ToNode));
 			continue;
 		}
 

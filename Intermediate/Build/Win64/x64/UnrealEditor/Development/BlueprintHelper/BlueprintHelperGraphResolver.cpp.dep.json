@@ -31,7 +31,7 @@
             "f:\\ue_5.6\\engine\\intermediate\\build\\win64\\unrealeditor\\inc\\sourcecontrol\\uht\\sourcecontrolpreferences.generated.h",
             "f:\\ue_5.6\\engine\\source\\editor\\unrealed\\public\\workfloworientedapp\\workflowtabfactory.h",
             "f:\\ue_5.6\\engine\\source\\editor\\unrealed\\public\\workfloworientedapp\\workflowtabmanager.h",
-            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\texttoblueprintgenerator.h"
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\graphwrite\\texttoblueprintgenerator.h"
         ],
         "ImportedModules": [],
         "ImportedHeaderUnits": []

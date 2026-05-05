@@ -2,9 +2,9 @@
 
 #include "Services/BlueprintHelperImportService.h"
 #include "GraphSupport/BlueprintHelperGraphResolver.h"
-#include "Services/BlueprintHelperValidationService.h"
-#include "Services/BlueprintHelperCompileService.h"
-#include "TextToBlueprintGenerator.h"
+#include "Services/RuntimeDiagnostics/BlueprintHelperValidationService.h"
+#include "Services/RuntimeDiagnostics/BlueprintHelperCompileService.h"
+#include "GraphWrite/TextToBlueprintGenerator.h"
 #include "ScopedTransaction.h"
 #include "Dom/JsonObject.h"
 #include "EdGraph/EdGraph.h"

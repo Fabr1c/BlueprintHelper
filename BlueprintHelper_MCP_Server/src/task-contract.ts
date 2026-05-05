@@ -93,8 +93,8 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       'set_local_variable_properties',
       'remove_local_variable',
     ],
-    runtime_supported_structural_ops: ['ensure_member_variable'],
-    runtime_lowering_pending_ops: [
+    runtime_supported_structural_ops: [
+      'ensure_member_variable',
       'set_member_variable_properties',
       'remove_member_variable',
       'set_member_default',
@@ -102,7 +102,13 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       'set_local_variable_properties',
       'remove_local_variable',
     ],
-    runtime_lowering_adapters: ['add_blueprint_member_variables'],
+    runtime_lowering_pending_ops: [],
+    runtime_service_pending_ops: [
+      'ensure_local_variable',
+      'set_local_variable_properties',
+      'remove_local_variable',
+    ],
+    runtime_lowering_adapters: ['add_blueprint_member_variables', 'blueprint_variable_batch'],
     adapter_dry_run_supported: false,
     max_task_plan_steps: 1,
   },
@@ -358,8 +364,6 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
     ],
     runtime_supported_structural_ops: [
       'ensure_member_variable',
-    ],
-    runtime_lowering_pending_ops: [
       'set_member_variable_properties',
       'remove_member_variable',
       'set_member_default',
@@ -367,7 +371,13 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       'set_local_variable_properties',
       'remove_local_variable',
     ],
-    lowering_policy: 'UE Task Runtime currently lowers only ensure_member_variable to add_blueprint_member_variables; extended variable IR ops are compiler-owned contract surface pending UE Runtime lowering.',
+    runtime_lowering_pending_ops: [],
+    runtime_service_pending_ops: [
+      'ensure_local_variable',
+      'set_local_variable_properties',
+      'remove_local_variable',
+    ],
+    lowering_policy: 'UE Task Runtime lowers compiler-owned Blueprint Variable IR to add_blueprint_member_variables for ensure-only member batches, or blueprint_variable_batch for mixed member/default/local variable ops; member variable properties/defaults execute through BlueprintVariableService, while local variable methods remain implementation-pending.',
   },
   capability_catalog: {
     source_root: 'Resources/v0.3.6/DoneImplementaion',
