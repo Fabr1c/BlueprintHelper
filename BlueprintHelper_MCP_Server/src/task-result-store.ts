@@ -24,7 +24,14 @@ export function storeTaskResult(input: {
   bridgeResult?: Record<string, unknown>;
 }) {
   const firstStep = input.taskPlan.steps[0];
+  const bridgeStep = extractBridgeStep(input.bridgeResult, firstStep?.step_id);
   const transactionId = extractTransactionId(input.bridgeResult);
+  const stepCapability = stringField(bridgeStep, 'capability') ?? stringField(firstStep, 'capability');
+  const stepOperation = stringField(bridgeStep, 'operation')
+    ?? stringField(firstStep, 'operation')
+    ?? stepCapability
+    ?? 'unknown';
+  const adapterOperation = stringField(bridgeStep, 'adapter_operation');
   const journal = {
     schema: TASK_RUN_JOURNAL_SCHEMA,
     task_run_id: input.taskRunId,
@@ -37,7 +44,9 @@ export function storeTaskResult(input: {
       ? [
           {
             step_id: firstStep.step_id,
-            operation: firstStep.operation,
+            ...(stepCapability ? { capability: stepCapability } : {}),
+            operation: stepOperation,
+            ...(adapterOperation ? { adapter_operation: adapterOperation } : {}),
             status: input.status === 'completed' ? 'applied' : 'failed',
             ...(transactionId ? { transaction_id: transactionId } : {}),
           },
@@ -56,6 +65,20 @@ export function storeTaskRunJournal(taskRunId: string, journal: Record<string, u
 
 export function getTaskResult(taskRunId: string) {
   return taskResults.get(taskRunId);
+}
+
+function extractBridgeStep(result: Record<string, unknown> | undefined, stepId: string | undefined) {
+  const data = getRecord(result, 'data');
+  const steps = Array.isArray(data?.['steps']) ? data['steps'] : [];
+  return steps.find((step): step is Record<string, unknown> => {
+    if (step === null || typeof step !== 'object' || Array.isArray(step)) {
+      return false;
+    }
+    if (!stepId) {
+      return true;
+    }
+    return step['step_id'] === stepId;
+  });
 }
 
 function extractTransactionId(result: Record<string, unknown> | undefined) {
@@ -85,6 +108,13 @@ function extractTransactionId(result: Record<string, unknown> | undefined) {
   }
 
   return extractTransactionId(stepResult);
+}
+
+function stringField(record: unknown, field: string) {
+  const value = record !== null && typeof record === 'object' && !Array.isArray(record)
+    ? (record as Record<string, unknown>)[field]
+    : undefined;
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
 function getRecord(record: Record<string, unknown> | undefined, field: string) {

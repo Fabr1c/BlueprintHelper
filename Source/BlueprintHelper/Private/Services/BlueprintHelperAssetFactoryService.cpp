@@ -1,7 +1,7 @@
 // BlueprintHelper Service Layer — Asset Factory 服务实现
 
 #include "Services/BlueprintHelperAssetFactoryService.h"
-#include "Services/BlueprintHelperAssetFactoryTypes.h"
+#include "Structure/BlueprintHelperAssetFactoryTypes.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Engine/Blueprint.h"
 #include "Engine/BlueprintGeneratedClass.h"

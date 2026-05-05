@@ -1,8 +1,8 @@
 // BlueprintHelper Service Layer — 通用 UObject 属性反射服务实现
 
 #include "Services/BlueprintHelperPropertyReflectionService.h"
-#include "Services/BlueprintHelperScopedAssetMutation.h"
-#include "Services/BlueprintHelperServiceTypes.h"
+#include "GraphSupport/BlueprintHelperScopedAssetMutation.h"
+#include "Structure/BlueprintHelperServiceTypes.h"
 #include "UObject/UnrealType.h"
 #include "UObject/Package.h"
 #include "Engine/AssetManager.h"

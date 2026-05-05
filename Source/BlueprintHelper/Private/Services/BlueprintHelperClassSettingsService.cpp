@@ -1,9 +1,9 @@
 // BlueprintHelper Service Layer — Blueprint Class Settings 服务实现
 
 #include "Services/BlueprintHelperClassSettingsService.h"
-#include "Services/BlueprintHelperGraphResolver.h"
-#include "Services/BlueprintHelperScopedAssetMutation.h"
-#include "Services/BlueprintHelperServiceTypes.h"
+#include "GraphSupport/BlueprintHelperGraphResolver.h"
+#include "GraphSupport/BlueprintHelperScopedAssetMutation.h"
+#include "Structure/BlueprintHelperServiceTypes.h"
 
 #include "Engine/Blueprint.h"
 #include "Engine/BlueprintGeneratedClass.h"

@@ -7,7 +7,7 @@
 #include "Services/BlueprintHelperImportService.h"
 #include "Services/BlueprintHelperAgentImportService.h"
 #include "Services/BlueprintHelperExportService.h"
-#include "Services/BlueprintHelperLogicProcessor.h"
+#include "Logic/BlueprintHelperLogicProcessor.h"
 #include "Services/BlueprintHelperCompileService.h"
 #include "Services/BlueprintHelperValidationService.h"
 #include "Services/BlueprintHelperContextService.h"
@@ -18,41 +18,42 @@
 #include "Services/BlueprintHelperDataTableService.h"
 #include "Services/BlueprintHelperEditorCommandService.h"
 #include "Services/BlueprintHelperRuntimeProfileService.h"
-#include "Services/BlueprintHelperRuntimeProfileTypes.h"
+#include "Structure/BlueprintHelperRuntimeProfileTypes.h"
 #include "Services/BlueprintHelperDiagnosticsService.h"
-#include "Services/BlueprintHelperDiagnosticsTypes.h"
-#include "Services/BlueprintHelperLogicMdReadService.h"
-#include "Services/BlueprintHelperLogicMdTypes.h"
-#include "Services/BlueprintHelperLogicJsonReadService.h"
-#include "Services/BlueprintHelperLogicGroupBuilder.h"
+#include "Structure/BlueprintHelperDiagnosticsTypes.h"
+#include "Structure/BlueprintHelperDependencyAnalysisTypes.h"
+#include "Logic/BlueprintHelperLogicMdReadService.h"
+#include "Structure/BlueprintHelperLogicMdTypes.h"
+#include "Logic/BlueprintHelperLogicJsonReadService.h"
+#include "Logic/BlueprintHelperLogicGroupBuilder.h"
 #include "Services/BlueprintHelperAssetFactoryService.h"
-#include "Services/BlueprintHelperAssetFactoryTypes.h"
+#include "Structure/BlueprintHelperAssetFactoryTypes.h"
 #include "Services/BlueprintHelperComponentService.h"
 #include "Services/BlueprintHelperClassSettingsService.h"
-#include "Services/BlueprintHelperClassSettingsTypes.h"
+#include "Structure/BlueprintHelperClassSettingsTypes.h"
 #include "Services/BlueprintHelperAppendBlueprintGraphService.h"
-#include "Services/BlueprintHelperTaskRuntimeService.h"
-#include "Services/BlueprintHelperAppendGraphTypes.h"
+#include "TaskRuntime/BlueprintHelperTaskRuntimeService.h"
+#include "Structure/BlueprintHelperAppendGraphTypes.h"
 #include "Services/BlueprintHelperReplaceBlueprintGraphService.h"
-#include "Services/BlueprintHelperReplaceGraphTypes.h"
+#include "Structure/BlueprintHelperReplaceGraphTypes.h"
 #include "Services/BlueprintHelperPatchBlueprintGraphService.h"
-#include "Services/BlueprintHelperPatchGraphTypes.h"
+#include "Structure/BlueprintHelperPatchGraphTypes.h"
 #include "Services/BlueprintHelperMergeBlueprintGraphService.h"
-#include "Services/BlueprintHelperMergeGraphTypes.h"
+#include "Structure/BlueprintHelperMergeGraphTypes.h"
 #include "Services/BlueprintHelperCleanupBlueprintHelperBlockService.h"
-#include "Services/BlueprintHelperCleanupBlockTypes.h"
+#include "Structure/BlueprintHelperCleanupBlockTypes.h"
 #include "Services/BlueprintHelperRollbackCleanupTransactionService.h"
-#include "Services/BlueprintHelperRollbackCleanupTypes.h"
+#include "Structure/BlueprintHelperRollbackCleanupTypes.h"
 #include "Services/BlueprintHelperConvertBlockToUserOwnedService.h"
-#include "Services/BlueprintHelperConvertBlockToUserOwnedTypes.h"
+#include "Structure/BlueprintHelperConvertBlockToUserOwnedTypes.h"
 #include "Services/BlueprintHelperCompileAssetService.h"
-#include "Services/BlueprintHelperCompileAssetTypes.h"
-#include "Services/BlueprintHelperSaveAssetTypes.h"
-#include "Services/BlueprintHelperTransactionQueryService.h"
-#include "Services/BlueprintHelperTransactionQueryTypes.h"
+#include "Structure/BlueprintHelperCompileAssetTypes.h"
+#include "Structure/BlueprintHelperSaveAssetTypes.h"
+#include "Transactions/BlueprintHelperTransactionQueryService.h"
+#include "Structure/BlueprintHelperTransactionQueryTypes.h"
 #include "Services/BlueprintHelperBlueprintVariableService.h"
-#include "Services/BlueprintHelperBlueprintVariableTypes.h"
-#include "Services/BlueprintHelperToolResultTypes.h"
+#include "Structure/BlueprintHelperBlueprintVariableTypes.h"
+#include "Structure/BlueprintHelperToolResultTypes.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Serialization/JsonReader.h"
@@ -582,6 +583,99 @@ namespace
 		Validation.bSaved = false;
 		Result.Validation = Validation;
 	}
+
+	FBlueprintHelperToolError MakeReferenceContextError(
+		const FString& Code,
+		EBlueprintHelperToolStage Stage,
+		const FString& Message,
+		const FString& Field = FString())
+	{
+		FBlueprintHelperToolError Error;
+		Error.Code = Code;
+		Error.Stage = Stage;
+		Error.Message = Message;
+		Error.bRetryable = false;
+		Error.RollbackResult = EBlueprintHelperRollbackResult::NotNeeded;
+		Error.Field = Field;
+		return Error;
+	}
+
+	TSharedRef<FJsonObject> MakeReferenceContextTargetJson(const TSharedPtr<FJsonObject>& Payload)
+	{
+		TSharedRef<FJsonObject> Target = MakeShared<FJsonObject>();
+
+		FString Value;
+		if (Payload.IsValid() && Payload->TryGetStringField(TEXT("target_type"), Value) && !Value.IsEmpty())
+		{
+			Target->SetStringField(TEXT("target_type"), Value.ToLower());
+		}
+		else
+		{
+			Target->SetStringField(TEXT("target_type"), TEXT("asset"));
+		}
+		if (Payload.IsValid() && Payload->TryGetStringField(TEXT("asset_path"), Value) && !Value.IsEmpty())
+		{
+			Target->SetStringField(TEXT("asset_path"), Value);
+		}
+		if (Payload.IsValid() && Payload->TryGetStringField(TEXT("graph_name"), Value) && !Value.IsEmpty())
+		{
+			Target->SetStringField(TEXT("graph_name"), Value);
+		}
+		if (Payload.IsValid() && Payload->TryGetStringField(TEXT("target_name"), Value) && !Value.IsEmpty())
+		{
+			Target->SetStringField(TEXT("member_name"), Value);
+		}
+		if (Payload.IsValid() && Payload->TryGetStringField(TEXT("block_id"), Value) && !Value.IsEmpty())
+		{
+			Target->SetStringField(TEXT("block_id"), Value);
+		}
+		if (Payload.IsValid() && Payload->TryGetStringField(TEXT("widget_name"), Value) && !Value.IsEmpty())
+		{
+			Target->SetStringField(TEXT("widget_name"), Value);
+		}
+		if (Payload.IsValid() && Payload->TryGetStringField(TEXT("row_name"), Value) && !Value.IsEmpty())
+		{
+			Target->SetStringField(TEXT("row_name"), Value);
+		}
+		return Target;
+	}
+
+	FBlueprintHelperDependencyAnalysisTarget ReadReferenceContextTarget(const TSharedPtr<FJsonObject>& Payload)
+	{
+		FBlueprintHelperDependencyAnalysisTarget Target;
+		if (!Payload.IsValid())
+		{
+			return Target;
+		}
+		Payload->TryGetStringField(TEXT("asset_path"), Target.AssetPath);
+		Payload->TryGetStringField(TEXT("target_type"), Target.TargetType);
+		Payload->TryGetStringField(TEXT("target_name"), Target.TargetName);
+		Payload->TryGetStringField(TEXT("block_id"), Target.BlockId);
+		Payload->TryGetStringField(TEXT("graph_name"), Target.GraphName);
+		Payload->TryGetStringField(TEXT("row_name"), Target.RowName);
+		Payload->TryGetStringField(TEXT("widget_name"), Target.WidgetName);
+		Payload->TryGetStringField(TEXT("interface_path"), Target.InterfacePath);
+		if (Target.TargetType.IsEmpty())
+		{
+			Target.TargetType = TEXT("asset");
+		}
+		return Target;
+	}
+
+	FBlueprintHelperToolResultBase MakeReferenceContextFailureResult(
+		const TSharedPtr<FJsonObject>& Payload,
+		const FString& Code,
+		EBlueprintHelperToolStage Stage,
+		const FString& Message,
+		const FString& Field = FString())
+	{
+		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Failure(
+			TEXT("read_reference_context"),
+			FBlueprintHelperToolResultBuilder::GenerateTraceId(),
+			MakeReferenceContextError(Code, Stage, Message, Field));
+		Result.CustomTargetJson = MakeReferenceContextTargetJson(Payload);
+		return Result;
+	}
 }
 
 FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
@@ -634,7 +728,6 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	, ComponentService(InComponentService)
 	, ClassSettingsService(InClassSettings)
 	, AppendGraphService(InAppendGraphService)
-	, TaskRuntimeService(InAppendGraphService)
 	, ReplaceGraphService(InReplaceGraphService)
 	, PatchGraphService(InPatchGraphService)
 	, MergeGraphService(InMergeGraphService)
@@ -642,6 +735,19 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	, RollbackCleanupService(InRollbackCleanupService)
 	, ConvertBlockService(InConvertBlockService)
 	, VariableService(InVariableService)
+	, TaskRuntimeService(
+		InAppendGraphService,
+		InReplaceGraphService,
+		InPatchGraphService,
+		InMergeGraphService,
+		InVariableService,
+		InAssetFactory,
+		InComponentService,
+		InClassSettings,
+		InWidget,
+		InDataTable,
+		InCompileAssetService,
+		InAssetBrowse)
 	, CompileAssetService(InCompileAssetService)
 	, TransactionQueryService(InTransactionQueryService)
 {
@@ -653,7 +759,18 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequest(
 	FBlueprintHelperBridgeValidationError ValidationError;
 	if (!FBlueprintHelperRequestValidator::ValidatePayloadForCommand(Request.Command, Request.Payload, ValidationError))
 	{
-		return ValidationErrorResponse(Request.RequestId, ValidationError);
+		FBlueprintHelperBridgeResponse Resp = ValidationErrorResponse(Request.RequestId, ValidationError);
+		if (Request.Command == TEXT("read_reference_context"))
+		{
+			const FBlueprintHelperToolResultBase Result = MakeReferenceContextFailureResult(
+				Request.Payload,
+				TEXT("invalid_request"),
+				EBlueprintHelperToolStage::ParseInput,
+				ValidationError.Message,
+				ValidationError.Field);
+			Resp.Result = Result.ToJson();
+		}
+		return Resp;
 	}
 	if (!FBlueprintHelperRequestValidator::ValidateAuthorization(Request, ValidationError))
 	{
@@ -675,6 +792,10 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequest(
 	if (Request.Command == TEXT("diagnostics_runtime"))
 	{
 		return HandleDiagnosticsRuntime(Request);
+	}
+	if (Request.Command == TEXT("read_reference_context"))
+	{
+		return HandleReadReferenceContext(Request);
 	}
 	if (Request.Command == TEXT("read_blueprint_logic_md"))
 	{
@@ -1067,6 +1188,98 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleDiagnosticsRu
 }
 
 // ─── read_blueprint_logic_md ───
+
+// --- read_reference_context ---
+
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadReferenceContext(
+	const FBlueprintHelperBridgeRequest& Req) const
+{
+	const TSharedPtr<FJsonObject> Payload = Req.Payload;
+	const FBlueprintHelperDependencyAnalysisTarget Target = ReadReferenceContextTarget(Payload);
+
+	FString Scope = TEXT("safety_context");
+	if (Payload.IsValid())
+	{
+		Payload->TryGetStringField(TEXT("scope"), Scope);
+	}
+
+	bool bIncludeSamples = true;
+	FBlueprintHelperBridgeValidationError ValidationError;
+	if (!TryReadBoolOption(Payload, TEXT("include_samples"), bIncludeSamples, ValidationError))
+	{
+		FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Error(
+			Req.RequestId,
+			EBlueprintHelperBridgeError::InvalidRequest,
+			ValidationError.Message);
+		Resp.Result = MakeReferenceContextFailureResult(
+			Payload,
+			TEXT("invalid_request"),
+			EBlueprintHelperToolStage::ParseInput,
+			ValidationError.Message,
+			ValidationError.Field).ToJson();
+		return Resp;
+	}
+
+	double MaxResults = 50.0;
+	if (!TryReadNumberField(Payload, TEXT("max_results"), false, MaxResults, ValidationError))
+	{
+		FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Error(
+			Req.RequestId,
+			EBlueprintHelperBridgeError::InvalidRequest,
+			ValidationError.Message);
+		Resp.Result = MakeReferenceContextFailureResult(
+			Payload,
+			TEXT("invalid_request"),
+			EBlueprintHelperToolStage::ParseInput,
+			ValidationError.Message,
+			ValidationError.Field).ToJson();
+		return Resp;
+	}
+
+	FBlueprintHelperDependencyAnalysisOptions Options;
+	Options.MaxResultCount = FMath::RoundToInt(MaxResults);
+
+	FBlueprintHelperReferenceContextPack ContextPack;
+	FString ErrorCode;
+	FString ErrorMessage;
+	if (!DependencyAnalysisService.TryBuildReferenceContext(
+		Target,
+		Options,
+		Scope,
+		bIncludeSamples,
+		ContextPack,
+		ErrorCode,
+		ErrorMessage))
+	{
+		const EBlueprintHelperBridgeError BridgeError =
+			ErrorCode == TEXT("asset_not_found")
+				? EBlueprintHelperBridgeError::AssetNotFound
+				: EBlueprintHelperBridgeError::ExecutionFailed;
+		FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Error(
+			Req.RequestId,
+			BridgeError,
+			ErrorMessage);
+		Resp.Result = MakeReferenceContextFailureResult(
+			Payload,
+			ErrorCode.IsEmpty() ? TEXT("reference_context_failed") : ErrorCode,
+			EBlueprintHelperToolStage::ResolveTarget,
+			ErrorMessage,
+			TEXT("payload.asset_path")).ToJson();
+		return Resp;
+	}
+
+	FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Completed(
+		TEXT("read_reference_context"),
+		FBlueprintHelperToolResultBuilder::GenerateTraceId());
+	Result.CustomTargetJson = MakeReferenceContextTargetJson(Payload);
+	Result.Data = ContextPack.ToJson();
+
+	FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
+	Resp.Result = Result.ToJson();
+	return Resp;
+}
+
+// --- read_blueprint_logic_md ---
 
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadBlueprintLogicMd(
 	const FBlueprintHelperBridgeRequest& Req) const
@@ -3251,11 +3464,14 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadComponent
 		Req.Payload->TryGetStringField(TEXT("asset_path"), Request.AssetPath);
 	}
 
-	FBlueprintHelperComponentToolResult Result = ComponentService.ReadComponents(Request);
+	const FBlueprintHelperToolResultBase Result = ComponentService.ReadComponents(Request);
 
 	auto Resp = Result.bOk
 		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
-		: FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, Result.ErrorMessage);
+		: FBlueprintHelperBridgeResponse::Error(
+			Req.RequestId,
+			EBlueprintHelperBridgeError::ExecutionFailed,
+			Result.Error.IsSet() ? Result.Error->Message : TEXT("read_components 执行失败。"));
 	Resp.Result = Result.ToJson();
 	return Resp;
 }
@@ -3288,11 +3504,14 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleAddComponent(
 		}
 	}
 
-	FBlueprintHelperComponentToolResult Result = ComponentService.AddComponent(Request);
+	const FBlueprintHelperToolResultBase Result = ComponentService.AddComponent(Request);
 
 	auto Resp = Result.bOk
 		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
-		: FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, Result.ErrorMessage);
+		: FBlueprintHelperBridgeResponse::Error(
+			Req.RequestId,
+			EBlueprintHelperBridgeError::ExecutionFailed,
+			Result.Error.IsSet() ? Result.Error->Message : TEXT("add_component 执行失败。"));
 	Resp.Result = Result.ToJson();
 	return Resp;
 }
@@ -3320,11 +3539,14 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleSetComponentP
 		Request.Settings.Add(MoveTemp(Setting));
 	}
 
-	FBlueprintHelperComponentToolResult Result = ComponentService.SetComponentProperty(Request);
+	const FBlueprintHelperToolResultBase Result = ComponentService.SetComponentProperty(Request);
 
 	auto Resp = Result.bOk
 		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
-		: FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, Result.ErrorMessage);
+		: FBlueprintHelperBridgeResponse::Error(
+			Req.RequestId,
+			EBlueprintHelperBridgeError::ExecutionFailed,
+			Result.Error.IsSet() ? Result.Error->Message : TEXT("set_component_property 执行失败。"));
 	Resp.Result = Result.ToJson();
 	return Resp;
 }
@@ -3362,11 +3584,14 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleSetComponentP
 		}
 	}
 
-	FBlueprintHelperComponentToolResult Result = ComponentService.SetComponentProperties(Request);
+	const FBlueprintHelperToolResultBase Result = ComponentService.SetComponentProperties(Request);
 
 	auto Resp = Result.bOk
 		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
-		: FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, Result.ErrorMessage);
+		: FBlueprintHelperBridgeResponse::Error(
+			Req.RequestId,
+			EBlueprintHelperBridgeError::ExecutionFailed,
+			Result.Error.IsSet() ? Result.Error->Message : TEXT("set_component_properties 执行失败。"));
 	Resp.Result = Result.ToJson();
 	return Resp;
 }
@@ -3384,11 +3609,14 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRemoveCompone
 		P->TryGetStringField(TEXT("component_name"), Request.ComponentName);
 	}
 
-	FBlueprintHelperComponentToolResult Result = ComponentService.RemoveComponent(Request);
+	const FBlueprintHelperToolResultBase Result = ComponentService.RemoveComponent(Request);
 
 	auto Resp = Result.bOk
 		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
-		: FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, Result.ErrorMessage);
+		: FBlueprintHelperBridgeResponse::Error(
+			Req.RequestId,
+			EBlueprintHelperBridgeError::ExecutionFailed,
+			Result.Error.IsSet() ? Result.Error->Message : TEXT("remove_component 执行失败。"));
 	Resp.Result = Result.ToJson();
 	return Resp;
 }

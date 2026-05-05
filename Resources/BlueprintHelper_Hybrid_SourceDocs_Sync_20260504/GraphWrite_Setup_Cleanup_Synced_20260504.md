@@ -1760,16 +1760,30 @@ TaskPlan 是 Task Compiler 输出给 UE Task Runtime 的执行计划，例如：
   "steps": [
     {
       "step_id": "step_graph_001",
-      "operation": "append_blueprint_graph",
+      "capability": "graph_write",
       "target": {
         "asset_path": "/Game/BP/BP_Door",
         "graph": "EG_PhysicsDoor"
       },
-      "args": {}
+      "write": {
+        "strategy": "owned_graph_edit",
+        "ops": [
+          {
+            "op": "ensure_entry",
+            "entry": {
+              "kind": "custom_event",
+              "name": "OnSmokeTest",
+              "statements": []
+            }
+          }
+        ]
+      }
     }
   ]
 }
 ```
+
+`append_blueprint_graph` 是 UE Task Runtime lowering 到现有 Bridge capability cluster 时的 adapter operation，不是 Agent 或 Task Compiler 写入 TaskPlan step 的字段。
 
 ## Agent-facing 调整
 

@@ -1,7 +1,7 @@
 // BlueprintHelper Service Layer — 导入服务实现
 
 #include "Services/BlueprintHelperImportService.h"
-#include "Services/BlueprintHelperGraphResolver.h"
+#include "GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Services/BlueprintHelperValidationService.h"
 #include "Services/BlueprintHelperCompileService.h"
 #include "TextToBlueprintGenerator.h"

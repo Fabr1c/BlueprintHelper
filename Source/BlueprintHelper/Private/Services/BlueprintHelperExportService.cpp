@@ -1,7 +1,7 @@
 // BlueprintHelper Service Layer — 导出服务实现
 
 #include "Services/BlueprintHelperExportService.h"
-#include "Services/BlueprintHelperGraphResolver.h"
+#include "GraphSupport/BlueprintHelperGraphResolver.h"
 #include "BlueprintTextConverter.h"
 
 FBlueprintHelperExportService::FBlueprintHelperExportService(const FBlueprintHelperGraphResolver& InResolver)

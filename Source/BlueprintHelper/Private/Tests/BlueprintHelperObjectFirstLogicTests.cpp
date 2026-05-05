@@ -1,5 +1,5 @@
 #include "Misc/AutomationTest.h"
-#include "Services/BlueprintHelperLogicProcessor.h"
+#include "Logic/BlueprintHelperLogicProcessor.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"

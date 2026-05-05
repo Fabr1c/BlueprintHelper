@@ -5,8 +5,8 @@
 
 #include "CoreMinimal.h"
 #include "Dom/JsonObject.h"
-#include "Services/BlueprintHelperServiceTypes.h"
-#include "Services/BlueprintHelperToolResultTypes.h"
+#include "Structure/BlueprintHelperServiceTypes.h"
+#include "Structure/BlueprintHelperToolResultTypes.h"
 
 class FJsonValue;
 class FBlueprintHelperGraphResolver;
@@ -221,53 +221,6 @@ struct FBlueprintHelperComponentNameCollisionInfo
 
 // ─── 顶层工具结果 ───
 
-struct FBlueprintHelperComponentToolResult
-{
-	bool bOk = false;
-	FString Operation;
-	FString Status;
-	bool bModified = false;
-
-	FString AssetPath;
-	FString TargetType;
-	FString ComponentName;
-	FString ComponentClass;
-	FString PropertyPath;
-
-	FBlueprintHelperComponentInfo Component;
-	FBlueprintHelperComponentAttachmentInfo Attachment;
-	FBlueprintHelperComponentNameCollisionInfo NameCollision;
-	FBlueprintHelperComponentPropertyResult PropertyResult;
-
-	TArray<FBlueprintHelperComponentInfo> Components;
-	int32 ComponentCount = 0;
-	int32 RootComponentCount = 0;
-
-	struct FValidation
-	{
-		bool bShouldCompile = false;
-		bool bShouldSave = false;
-
-		TSharedRef<FJsonObject> ToJson() const
-		{
-			TSharedRef<FJsonObject> J = MakeShared<FJsonObject>();
-			J->SetBoolField(TEXT("should_compile"), bShouldCompile);
-			J->SetBoolField(TEXT("should_save"), bShouldSave);
-			J->SetBoolField(TEXT("compiled"), false);
-			J->SetBoolField(TEXT("saved"), false);
-			return J;
-		}
-	} Validation;
-
-	FString ErrorCode;
-	FString ErrorStage;
-	FString ErrorMessage;
-	bool bRetryable = false;
-	FString RollbackResult = TEXT("not_needed");
-
-	TSharedRef<FJsonObject> ToJson() const;
-};
-
 // ─── 服务声明 ───
 
 class BLUEPRINTHELPER_API FBlueprintHelperComponentService
@@ -275,11 +228,11 @@ class BLUEPRINTHELPER_API FBlueprintHelperComponentService
 public:
 	explicit FBlueprintHelperComponentService(const FBlueprintHelperGraphResolver& InResolver);
 
-	FBlueprintHelperComponentToolResult ReadComponents(const FBlueprintHelperReadComponentsRequest& Request) const;
-	FBlueprintHelperComponentToolResult AddComponent(const FBlueprintHelperAddComponentRequest& Request) const;
-	FBlueprintHelperComponentToolResult SetComponentProperty(const FBlueprintHelperSetComponentPropertiesRequest& Request) const;
-	FBlueprintHelperComponentToolResult SetComponentProperties(const FBlueprintHelperSetComponentPropertiesRequest& Request) const;
-	FBlueprintHelperComponentToolResult RemoveComponent(const FBlueprintHelperRemoveComponentRequest& Request) const;
+	FBlueprintHelperToolResultBase ReadComponents(const FBlueprintHelperReadComponentsRequest& Request) const;
+	FBlueprintHelperToolResultBase AddComponent(const FBlueprintHelperAddComponentRequest& Request) const;
+	FBlueprintHelperToolResultBase SetComponentProperty(const FBlueprintHelperSetComponentPropertiesRequest& Request) const;
+	FBlueprintHelperToolResultBase SetComponentProperties(const FBlueprintHelperSetComponentPropertiesRequest& Request) const;
+	FBlueprintHelperToolResultBase RemoveComponent(const FBlueprintHelperRemoveComponentRequest& Request) const;
 
 private:
 	UBlueprint* ResolveBlueprint(const FString& AssetPath, FString& OutError) const;

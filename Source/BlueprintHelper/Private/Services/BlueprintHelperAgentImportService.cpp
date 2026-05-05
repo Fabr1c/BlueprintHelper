@@ -4,8 +4,8 @@
 
 #include "Services/BlueprintHelperAssetBrowseService.h"
 #include "Services/BlueprintHelperCompileService.h"
-#include "Services/BlueprintHelperGraphResolver.h"
-#include "Services/BlueprintHelperScopedAssetMutation.h"
+#include "GraphSupport/BlueprintHelperGraphResolver.h"
+#include "GraphSupport/BlueprintHelperScopedAssetMutation.h"
 #include "NodeHandlers/BlueprintNodeHandler.h"
 #include "TextToBlueprintGenerator.h"
 

@@ -1,10 +1,10 @@
 // BlueprintHelper Service Layer — CleanupBlueprintHelperBlock 核心服务实现
 
 #include "Services/BlueprintHelperCleanupBlueprintHelperBlockService.h"
-#include "Services/BlueprintHelperGraphResolver.h"
-#include "Services/BlueprintHelperTransactionJournalService.h"
-#include "Services/BlueprintHelperScopedAssetMutation.h"
-#include "Services/BlueprintHelperAppendGraphTypes.h"
+#include "GraphSupport/BlueprintHelperGraphResolver.h"
+#include "Transactions/BlueprintHelperTransactionJournalService.h"
+#include "GraphSupport/BlueprintHelperScopedAssetMutation.h"
+#include "Structure/BlueprintHelperAppendGraphTypes.h"
 
 #include "Engine/Blueprint.h"
 #include "EdGraph/EdGraph.h"

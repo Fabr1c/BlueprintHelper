@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Services/BlueprintHelperRuntimeProfileTypes.h"
+#include "Structure/BlueprintHelperRuntimeProfileTypes.h"
 
 struct FBlueprintHelperRuntimeProfileData;
 

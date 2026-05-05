@@ -3,9 +3,9 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Services/BlueprintHelperServiceTypes.h"
-#include "Services/BlueprintHelperReplaceGraphTypes.h"
-#include "Services/BlueprintHelperToolResultTypes.h"
+#include "Structure/BlueprintHelperServiceTypes.h"
+#include "Structure/BlueprintHelperReplaceGraphTypes.h"
+#include "Structure/BlueprintHelperToolResultTypes.h"
 
 class FBlueprintHelperGraphResolver;
 class FBlueprintHelperAgentImportService;

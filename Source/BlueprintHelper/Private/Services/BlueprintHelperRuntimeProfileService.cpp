@@ -1,8 +1,8 @@
 // BlueprintHelper Service Layer — Runtime Profile 服务实现
 
 #include "Services/BlueprintHelperRuntimeProfileService.h"
-#include "Services/BlueprintHelperRuntimeProfileTypes.h"
-#include "Services/BlueprintHelperToolResultTypes.h"
+#include "Structure/BlueprintHelperRuntimeProfileTypes.h"
+#include "Structure/BlueprintHelperToolResultTypes.h"
 #include "Interfaces/IPluginManager.h"
 #include "Misc/ConfigCacheIni.h"
 #include "HAL/PlatformProcess.h"

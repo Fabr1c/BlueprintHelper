@@ -1,12 +1,12 @@
 // BlueprintHelper Service Layer — PatchBlueprintGraph 核心服务实现
 
 #include "Services/BlueprintHelperPatchBlueprintGraphService.h"
-#include "Services/BlueprintHelperGraphResolver.h"
-#include "Services/BlueprintHelperLogicJsonPathService.h"
-#include "Services/BlueprintHelperTransactionJournalService.h"
-#include "Services/BlueprintHelperScopedAssetMutation.h"
-#include "Services/BlueprintHelperAppendGraphTypes.h"
-#include "Services/BlueprintHelperReplaceGraphTypes.h"
+#include "GraphSupport/BlueprintHelperGraphResolver.h"
+#include "Logic/BlueprintHelperLogicJsonPathService.h"
+#include "Transactions/BlueprintHelperTransactionJournalService.h"
+#include "GraphSupport/BlueprintHelperScopedAssetMutation.h"
+#include "Structure/BlueprintHelperAppendGraphTypes.h"
+#include "Structure/BlueprintHelperReplaceGraphTypes.h"
 
 #include "Engine/Blueprint.h"
 #include "EdGraph/EdGraph.h"

@@ -1,0 +1,41 @@
+{
+    "Version": "1.2",
+    "Data": {
+        "Source": "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\private\\texttoblueprintgenerator.cpp",
+        "ProvidedModule": "",
+        "PCH": "g:\\unrealpractise\\mrstone\\intermediate\\build\\win64\\x64\\mrstoneeditor\\development\\unrealed\\sharedpch.unrealed.project.valapi.valexpapi.cpp20.h.pch",
+        "Includes": [
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\intermediate\\build\\win64\\x64\\unrealeditor\\development\\blueprinthelper\\definitions.blueprinthelper.h",
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\texttoblueprintgenerator.h",
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\nodehandlers\\blueprintnodehandler.h",
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\operationhandlers\\blueprintoperationhandler.h",
+            "f:\\ue_5.6\\engine\\source\\editor\\unrealed\\public\\kismet2\\blueprinteditorutils.h",
+            "f:\\ue_5.6\\engine\\source\\editor\\classviewer\\public\\classviewermodule.h",
+            "f:\\ue_5.6\\engine\\source\\editor\\blueprintgraph\\classes\\k2node_callfunction.h",
+            "f:\\ue_5.6\\engine\\source\\editor\\kismetcompiler\\public\\kismetcompilermisc.h",
+            "f:\\ue_5.6\\engine\\source\\editor\\kismetcompiler\\public\\bpterminal.h",
+            "f:\\ue_5.6\\engine\\source\\editor\\kismetcompiler\\public\\blueprintcompiledstatement.h",
+            "f:\\ue_5.6\\engine\\intermediate\\build\\win64\\unrealeditor\\inc\\blueprintgraph\\uht\\k2node_callfunction.generated.h",
+            "f:\\ue_5.6\\engine\\source\\editor\\blueprintgraph\\classes\\k2node_macroinstance.h",
+            "f:\\ue_5.6\\engine\\source\\editor\\blueprintgraph\\classes\\k2node_tunnel.h",
+            "f:\\ue_5.6\\engine\\intermediate\\build\\win64\\unrealeditor\\inc\\blueprintgraph\\uht\\k2node_tunnel.generated.h",
+            "f:\\ue_5.6\\engine\\intermediate\\build\\win64\\unrealeditor\\inc\\blueprintgraph\\uht\\k2node_macroinstance.generated.h",
+            "f:\\ue_5.6\\engine\\source\\editor\\blueprintgraph\\classes\\k2node_variableget.h",
+            "f:\\ue_5.6\\engine\\source\\editor\\blueprintgraph\\classes\\k2node_variable.h",
+            "f:\\ue_5.6\\engine\\intermediate\\build\\win64\\unrealeditor\\inc\\blueprintgraph\\uht\\k2node_variable.generated.h",
+            "f:\\ue_5.6\\engine\\intermediate\\build\\win64\\unrealeditor\\inc\\blueprintgraph\\uht\\k2node_variableget.generated.h",
+            "f:\\ue_5.6\\engine\\source\\editor\\blueprintgraph\\classes\\k2node_variableset.h",
+            "f:\\ue_5.6\\engine\\intermediate\\build\\win64\\unrealeditor\\inc\\blueprintgraph\\uht\\k2node_variableset.generated.h",
+            "f:\\ue_5.6\\engine\\source\\editor\\blueprintgraph\\classes\\k2node_functionentry.h",
+            "f:\\ue_5.6\\engine\\source\\editor\\blueprintgraph\\classes\\k2node_functionterminator.h",
+            "f:\\ue_5.6\\engine\\intermediate\\build\\win64\\unrealeditor\\inc\\blueprintgraph\\uht\\k2node_functionterminator.generated.h",
+            "f:\\ue_5.6\\engine\\intermediate\\build\\win64\\unrealeditor\\inc\\blueprintgraph\\uht\\k2node_functionentry.generated.h",
+            "f:\\ue_5.6\\engine\\source\\editor\\blueprintgraph\\classes\\k2node_functionresult.h",
+            "f:\\ue_5.6\\engine\\intermediate\\build\\win64\\unrealeditor\\inc\\blueprintgraph\\uht\\k2node_functionresult.generated.h",
+            "f:\\ue_5.6\\engine\\source\\editor\\unrealed\\public\\edgraphnode_comment.h",
+            "f:\\ue_5.6\\engine\\intermediate\\build\\win64\\unrealeditor\\inc\\unrealed\\uht\\edgraphnode_comment.generated.h"
+        ],
+        "ImportedModules": [],
+        "ImportedHeaderUnits": []
+    }
+}

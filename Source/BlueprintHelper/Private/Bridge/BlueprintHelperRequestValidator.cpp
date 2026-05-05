@@ -133,6 +133,30 @@ namespace
 	{
 		return Command.Equals(Expected, ESearchCase::IgnoreCase);
 	}
+
+	bool ValidateOptionalStringEnum(
+		const TSharedPtr<FJsonObject>& Payload,
+		const TCHAR* FieldName,
+		const TSet<FString>& AllowedValues,
+		FBlueprintHelperBridgeValidationError& OutError)
+	{
+		FString Value;
+		if (!Payload->TryGetStringField(FieldName, Value))
+		{
+			return true;
+		}
+
+		if (!AllowedValues.Contains(Value.ToLower()))
+		{
+			SetValidationError(
+				OutError,
+				TEXT("payload.") + FString(FieldName),
+				FString::Printf(TEXT("one_of[%s]"), *FString::Join(AllowedValues.Array(), TEXT(","))),
+				Value);
+			return false;
+		}
+		return true;
+	}
 }
 
 bool FBlueprintHelperRequestValidator::NormalizeExportScope(
@@ -571,6 +595,53 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 			{TEXT("task_run_id"), EBlueprintHelperJsonExpectedType::String, true},
 		};
 		return ValidateRules(Payload, Rules, OutError);
+	}
+	if (CommandEquals(Command, TEXT("read_reference_context")))
+	{
+		const FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("target_type"), EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("target_name"), EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("graph_name"), EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("block_id"), EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("widget_name"), EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("row_name"), EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("interface_path"), EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("scope"), EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("max_results"), EBlueprintHelperJsonExpectedType::Number, false},
+			{TEXT("include_samples"), EBlueprintHelperJsonExpectedType::Bool, false},
+		};
+		if (!ValidateRules(Payload, Rules, OutError))
+		{
+			return false;
+		}
+
+		const TSet<FString> TargetTypes = {
+			TEXT("asset"),
+			TEXT("blueprint"),
+			TEXT("graph"),
+			TEXT("function"),
+			TEXT("event"),
+			TEXT("custom_event"),
+			TEXT("member_variable"),
+			TEXT("block"),
+			TEXT("widget"),
+			TEXT("data_table_row"),
+			TEXT("interface"),
+		};
+		if (!ValidateOptionalStringEnum(Payload, TEXT("target_type"), TargetTypes, OutError))
+		{
+			return false;
+		}
+
+		const TSet<FString> Scopes = {
+			TEXT("safety_context"),
+			TEXT("dependencies"),
+			TEXT("referencers"),
+			TEXT("external_dependents"),
+			TEXT("all"),
+		};
+		return ValidateOptionalStringEnum(Payload, TEXT("scope"), Scopes, OutError);
 	}
 	if (CommandEquals(Command, TEXT("append_blueprint_graph")))
 	{

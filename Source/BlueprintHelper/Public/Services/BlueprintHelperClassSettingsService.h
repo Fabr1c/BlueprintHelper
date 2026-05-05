@@ -4,8 +4,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Services/BlueprintHelperClassSettingsTypes.h"
-#include "Services/BlueprintHelperToolResultTypes.h"
+#include "Structure/BlueprintHelperClassSettingsTypes.h"
+#include "Structure/BlueprintHelperToolResultTypes.h"
 
 class UBlueprint;
 class UClass;

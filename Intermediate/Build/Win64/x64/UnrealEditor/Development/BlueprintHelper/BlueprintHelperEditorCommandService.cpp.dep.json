@@ -1,0 +1,29 @@
+{
+    "Version": "1.2",
+    "Data": {
+        "Source": "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\private\\services\\blueprinthelpereditorcommandservice.cpp",
+        "ProvidedModule": "",
+        "PCH": "g:\\unrealpractise\\mrstone\\intermediate\\build\\win64\\x64\\mrstoneeditor\\development\\unrealed\\sharedpch.unrealed.project.valapi.valexpapi.cpp20.h.pch",
+        "Includes": [
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\intermediate\\build\\win64\\x64\\unrealeditor\\development\\blueprinthelper\\definitions.blueprinthelper.h",
+            "g:\\unrealpractise\\mrstone\\plugins\\blueprinthelper\\source\\blueprinthelper\\public\\services\\blueprinthelpereditorcommandservice.h",
+            "f:\\ue_5.6\\engine\\source\\editor\\unrealed\\public\\kismet2\\kismeteditorutilities.h",
+            "f:\\ue_5.6\\engine\\source\\runtime\\assetregistry\\public\\assetregistry\\assetregistrymodule.h",
+            "f:\\ue_5.6\\engine\\source\\runtime\\assetregistry\\public\\assetregistry\\iassetregistry.h",
+            "f:\\ue_5.6\\engine\\source\\runtime\\coreuobject\\public\\misc\\assetregistryinterface.h",
+            "f:\\ue_5.6\\engine\\intermediate\\build\\win64\\unrealeditor\\inc\\assetregistry\\uht\\iassetregistry.generated.h",
+            "f:\\ue_5.6\\engine\\source\\editor\\unrealed\\public\\filehelpers.h",
+            "f:\\ue_5.6\\engine\\source\\editor\\unrealed\\public\\packagetools.h",
+            "f:\\ue_5.6\\engine\\intermediate\\build\\win64\\unrealeditor\\inc\\unrealed\\uht\\packagetools.generated.h",
+            "f:\\ue_5.6\\engine\\source\\developer\\sourcecontrol\\public\\isourcecontrolprovider.h",
+            "f:\\ue_5.6\\engine\\source\\developer\\sourcecontrol\\public\\isourcecontrolchangelist.h",
+            "f:\\ue_5.6\\engine\\source\\developer\\sourcecontrol\\public\\isourcecontrolchangeliststate.h",
+            "f:\\ue_5.6\\engine\\source\\developer\\sourcecontrol\\public\\isourcecontrolstate.h",
+            "f:\\ue_5.6\\engine\\source\\developer\\sourcecontrol\\public\\isourcecontroloperation.h",
+            "f:\\ue_5.6\\engine\\source\\developer\\sourcecontrol\\public\\sourcecontrolresultinfo.h",
+            "f:\\ue_5.6\\engine\\intermediate\\build\\win64\\unrealeditor\\inc\\unrealed\\uht\\filehelpers.generated.h"
+        ],
+        "ImportedModules": [],
+        "ImportedHeaderUnits": []
+    }
+}

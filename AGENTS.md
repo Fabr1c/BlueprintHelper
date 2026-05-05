@@ -3,7 +3,7 @@
 This repository contains the BlueprintHelper Unreal Engine editor plugin. When an AI / IDE / CLI agent is asked to use this plugin, read this file first, then open the guide index:
 
 ```text
-Resources/AgentGuide/00_Agent_Onboarding_Index_20260430.md
+Resources/AgentGuide/00_Agent_Onboarding_Index_20260504.md
 ```
 
 ## Non-negotiable boundary
@@ -33,9 +33,9 @@ Use BlueprintHelper MCP for:
 2. Confirm the Bridge is reachable before calling editor-asset tools.
 3. Identify the exact target asset path, for example `/Game/Blueprints/BP_Player`.
 4. Identify the exact target graph when editing graph nodes, for example `EventGraph`.
-5. Prefer read -> plan -> write -> compile/validate -> save.
+5. Prefer TaskSpec-first writes: read task context -> build `BlueprintHelper.TaskSpec.v1` -> preview task -> execute task -> read task result.
 6. Never rely on the currently focused editor tab for destructive operations unless the user explicitly says to operate on the active context.
 
 ## Fast path
 
-Open `Resources/AgentGuide/00_Agent_Onboarding_Index_20260430.md` and follow the workflow matching the user request.
+Open `Resources/AgentGuide/00_Agent_Onboarding_Index_20260504.md` and follow the workflow matching the user request.
