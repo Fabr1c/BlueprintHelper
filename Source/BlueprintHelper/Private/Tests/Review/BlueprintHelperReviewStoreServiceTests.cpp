@@ -480,10 +480,14 @@ bool FBlueprintHelperReviewGraphBoundsTargetKeyTest::RunTest(const FString& Para
 		Size);
 
 	TestTrue(TEXT("target key matches graph node"), bBuilt);
-	TestEqual(TEXT("comment-style bounds use 50px left padding"), Position.X, 50.0f);
-	TestEqual(TEXT("comment-style bounds use 50px top padding"), Position.Y, -10.0f);
-	TestEqual(TEXT("comment-style width wraps node plus padding"), Size.X, 340.0f);
-	TestEqual(TEXT("comment-style height wraps node plus padding"), Size.Y, 188.0f);
+	TestTrue(TEXT("comment-style bounds use 50px left padding"),
+		FMath::IsNearlyEqual(static_cast<float>(Position.X), 50.0f, 0.01f));
+	TestTrue(TEXT("comment-style bounds use 50px top padding"),
+		FMath::IsNearlyEqual(static_cast<float>(Position.Y), -10.0f, 0.01f));
+	TestTrue(TEXT("comment-style width wraps node plus padding"),
+		FMath::IsNearlyEqual(static_cast<float>(Size.X), 340.0f, 0.01f));
+	TestTrue(TEXT("comment-style height wraps node plus padding"),
+		FMath::IsNearlyEqual(static_cast<float>(Size.Y), 188.0f, 0.01f));
 	return true;
 }
 
