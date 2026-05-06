@@ -386,6 +386,74 @@ export const GraphCleanupOwnershipTaskSpecSchema = TaskSpecBaseSchema.extend({
   });
 });
 
+const BlueprintSignatureChangeSchema = z.object({
+  kind: z.enum([
+    'ensure_function',
+    'ensure_interface_function',
+    'ensure_custom_event',
+    'ensure_interface_event',
+    'ensure_event_dispatcher',
+    'ensure_override_event',
+    'remove_signature',
+  ]),
+  function_name: z.string().min(1).optional(),
+  event_name: z.string().min(1).optional(),
+  graph_name: z.string().min(1).optional(),
+  dispatcher_name: z.string().min(1).optional(),
+  signature_kind: z.enum([
+    'function',
+    'interface_function',
+    'custom_event',
+    'interface_event',
+    'event_dispatcher',
+    'override_event',
+    'native_event',
+  ]).optional(),
+  signature_name: z.string().min(1).optional(),
+  interface_path: z.string().min(1).optional(),
+  inputs: z.array(z.record(z.unknown())).optional(),
+  outputs: z.array(z.record(z.unknown())).optional(),
+  is_pure: z.boolean().optional(),
+  name_collision_policy: z.enum(['reuse_if_exists', 'fail_if_exists']).optional(),
+  signature_mismatch_policy: z.enum(['block']).optional(),
+  event_kind: z.enum(['native_event', 'override_event']).optional(),
+  execute_policy: z.enum(['blocked_preflight']).optional(),
+  require_reference_context: z.literal(true).optional(),
+}).passthrough();
+
+export const BlueprintSignatureTaskSpecSchema = TaskSpecBaseSchema.extend({
+  task_type: z.literal('edit_blueprint_signature'),
+  behavior: z.object({
+    signature_strategy: z.literal('signature_edit'),
+    changes: z.array(BlueprintSignatureChangeSchema).min(1),
+  }).passthrough(),
+}).passthrough().superRefine((value, ctx) => {
+  value.behavior.changes.forEach((change, index) => {
+    const path = ['behavior', 'changes', index];
+    if (change.kind === 'ensure_function' && !change.function_name) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [...path, 'function_name'], message: 'ensure_function requires function_name.' });
+    }
+    if (change.kind === 'ensure_interface_function' && (!change.function_name || !change.interface_path)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path, message: 'ensure_interface_function requires function_name and interface_path.' });
+    }
+    if (change.kind === 'ensure_custom_event' && (!change.event_name || !change.graph_name)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path, message: 'ensure_custom_event requires event_name and graph_name.' });
+    }
+    if (change.kind === 'ensure_interface_event' && (!change.event_name || !change.graph_name || !change.interface_path)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path, message: 'ensure_interface_event requires event_name, graph_name, and interface_path.' });
+    }
+    if (change.kind === 'ensure_event_dispatcher' && !change.dispatcher_name) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [...path, 'dispatcher_name'], message: 'ensure_event_dispatcher requires dispatcher_name.' });
+    }
+    if (change.kind === 'ensure_override_event' && !change.event_name) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [...path, 'event_name'], message: 'ensure_override_event requires event_name.' });
+    }
+    if (change.kind === 'remove_signature' && !(change.signature_name || change.function_name || change.event_name || change.dispatcher_name)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path, message: 'remove_signature requires signature_name, function_name, event_name, or dispatcher_name.' });
+    }
+  });
+});
+
 export const CompositeBlueprintFeatureTaskSpecSchema = TaskSpecBaseSchema.extend({
   task_type: z.literal('create_blueprint_feature'),
   scope_policy: z.object({
@@ -453,6 +521,7 @@ export const TaskSpecSchema: z.ZodTypeAny = z.union([
   DataTableTaskSpecSchema,
   ObjectPropertyTaskSpecSchema,
   GraphCleanupOwnershipTaskSpecSchema,
+  BlueprintSignatureTaskSpecSchema,
 ]).superRefine((value, ctx) => {
   if (value && typeof value === 'object' && !Array.isArray(value) && Object.hasOwn(value, 'intent')) {
     ctx.addIssue({
@@ -822,6 +891,7 @@ export type UMGWidgetTaskPlanStep = z.infer<typeof UMGWidgetTaskPlanStepSchema>;
 export type DataTableTaskPlanStep = z.infer<typeof DataTableTaskPlanStepSchema>;
 export type ObjectPropertyTaskPlanStep = z.infer<typeof ObjectPropertyTaskPlanStepSchema>;
 export type GraphCleanupOwnershipTaskPlanStep = z.infer<typeof GraphCleanupOwnershipTaskPlanStepSchema>;
+export type BlueprintSignatureTaskSpec = z.infer<typeof BlueprintSignatureTaskSpecSchema>;
 export type TaskPlanStep = z.infer<typeof TaskPlanStepSchema>;
 export type TaskPlan = z.infer<typeof TaskPlanSchema>;
 export type TaskError = z.infer<typeof TaskErrorSchema>;

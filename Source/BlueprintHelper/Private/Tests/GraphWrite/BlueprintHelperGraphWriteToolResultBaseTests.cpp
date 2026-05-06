@@ -40,6 +40,8 @@
 #include "Services/UMGWidget/BlueprintHelperWidgetService.h"
 #include "TaskRuntime/BlueprintHelperTaskRuntimeService.h"
 #include "Transactions/Transactions/BlueprintHelperTransactionJournalService.h"
+#include "UObject/MetaData.h"
+#include "UObject/Package.h"
 #include "UObject/Class.h"
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
@@ -119,6 +121,14 @@ namespace
 		Nodes.Add(MakeShared<FJsonValueObject>(EntryNode));
 		Payload->SetArrayField(TEXT("nodes"), Nodes);
 		Payload->SetArrayField(TEXT("links"), {});
+		return Payload;
+	}
+
+	TSharedRef<FJsonObject> MakeAppendExecutePayload(const FString& AssetPath, const FString& GraphName)
+	{
+		TSharedRef<FJsonObject> Payload = MakeAppendPreviewPayload(AssetPath, GraphName);
+		Payload->SetBoolField(TEXT("dry_run"), false);
+		Payload->SetStringField(TEXT("feature_name"), TEXT("SmokeFeature"));
 		return Payload;
 	}
 
@@ -260,6 +270,56 @@ namespace
 		FMetaData& MetaData = Package->GetMetaData();
 		return MetaData.GetValue(Node, TEXT("BlueprintHelperOwned")) == TEXT("true") &&
 			MetaData.GetValue(Node, TEXT("BlueprintHelperBlockId")) == BlockId;
+	}
+
+	void AssertNodeHasOwnershipMetadata(
+		FAutomationTestBase& Test,
+		UEdGraphNode* Node,
+		const FString& BlockId,
+		const FString& TransactionId,
+		const FString& FeatureName)
+	{
+		Test.TestNotNull(TEXT("owned node exists"), Node);
+		if (!Node)
+		{
+			return;
+		}
+
+		UPackage* Package = Node->GetOutermost();
+		Test.TestNotNull(TEXT("node package exists"), Package);
+		if (!Package)
+		{
+			return;
+		}
+
+		FMetaData& MetaData = Package->GetMetaData();
+		Test.TestTrue(TEXT("metadata marks node as BlueprintHelper owned"),
+			MetaData.GetValue(Node, TEXT("BlueprintHelperOwned")) == FString(TEXT("true")));
+		Test.TestTrue(TEXT("metadata keeps block id"),
+			MetaData.GetValue(Node, TEXT("BlueprintHelperBlockId")) == BlockId);
+		Test.TestTrue(TEXT("metadata keeps transaction id"),
+			MetaData.GetValue(Node, TEXT("BlueprintHelperTransactionId")) == TransactionId);
+		Test.TestTrue(TEXT("metadata keeps feature name"),
+			MetaData.GetValue(Node, TEXT("BlueprintHelperFeatureName")) == FeatureName);
+		Test.TestTrue(TEXT("metadata omits legacy tool field"),
+			MetaData.GetValue(Node, TEXT("BlueprintHelperTool")).IsEmpty());
+	}
+
+	UEdGraph* FindUbergraphPageByName(UBlueprint* Blueprint, const FString& GraphName)
+	{
+		if (!Blueprint)
+		{
+			return nullptr;
+		}
+
+		for (UEdGraph* Page : Blueprint->UbergraphPages)
+		{
+			if (Page && Page->GetName() == GraphName)
+			{
+				return Page;
+			}
+		}
+		return nullptr;
 	}
 
 	bool ExportHasExecLinkFromCustomEventToFunction(
@@ -922,13 +982,13 @@ bool FBlueprintHelperGraphWriteReplaceCustomEventBodyReconnectsEntryExecTest::Ru
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperGraphWriteOwnershipCommentOmitsToolFieldTest,
-	"BlueprintHelper.GraphWrite.Ownership.CommentOmitsToolField",
+	FBlueprintHelperGraphWriteOwnershipWritesMetadataWithoutManagedCommentTest,
+	"BlueprintHelper.GraphWrite.Ownership.WritesMetadataWithoutManagedComment",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FBlueprintHelperGraphWriteOwnershipCommentOmitsToolFieldTest::RunTest(const FString& Parameters)
+bool FBlueprintHelperGraphWriteOwnershipWritesMetadataWithoutManagedCommentTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeGraphWriteTestBlueprint(TEXT("OwnershipCommentOmitsTool"));
+	UBlueprint* Blueprint = MakeGraphWriteTestBlueprint(TEXT("OwnershipMetadataOnly"));
 	TestNotNull(TEXT("test blueprint is created"), Blueprint);
 	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
 	{
@@ -943,6 +1003,10 @@ bool FBlueprintHelperGraphWriteOwnershipCommentOmitsToolFieldTest::RunTest(const
 		return false;
 	}
 
+	EventNode->NodeComment = TEXT("Designer note");
+	FMetaData& PreWriteMetaData = EventNode->GetOutermost()->GetMetaData();
+	PreWriteMetaData.SetValue(EventNode, TEXT("BlueprintHelperTool"), TEXT("legacy_graph_write"));
+
 	FBlueprintHelperOwnershipService OwnershipService;
 	FString Error;
 	const bool bWritten = OwnershipService.WriteNodeOwnership(
@@ -954,18 +1018,90 @@ bool FBlueprintHelperGraphWriteOwnershipCommentOmitsToolFieldTest::RunTest(const
 		Error);
 
 	TestTrue(TEXT("ownership writes successfully"), bWritten);
-	TestTrue(TEXT("comment keeps block_id"), EventNode->NodeComment.Contains(TEXT("block_id=EventGraph_SmokeCustomEvent")));
-	TestTrue(TEXT("comment keeps transaction id"), EventNode->NodeComment.Contains(TEXT("tx=tx_test_001")));
+	TestEqual(TEXT("user node comment is preserved"), EventNode->NodeComment, FString(TEXT("Designer note")));
+	TestFalse(TEXT("comment omits block_id"), EventNode->NodeComment.Contains(TEXT("block_id=")));
+	TestFalse(TEXT("comment omits transaction id"), EventNode->NodeComment.Contains(TEXT("tx=")));
 	TestFalse(TEXT("comment omits tool field"), EventNode->NodeComment.Contains(TEXT("tool=")));
 
-	UPackage* Package = EventNode->GetOutermost();
-	TestNotNull(TEXT("node package exists"), Package);
-	if (Package)
+	AssertNodeHasOwnershipMetadata(
+		*this,
+		EventNode,
+		TEXT("EventGraph_SmokeCustomEvent"),
+		TEXT("tx_test_001"),
+		TEXT("SmokeFeature"));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteAppendOwnershipWritesMetadataWithoutManagedCommentTest,
+	"BlueprintHelper.GraphWrite.Append.OwnershipWritesMetadataWithoutManagedComment",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteAppendOwnershipWritesMetadataWithoutManagedCommentTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeGraphWriteTestBlueprint(TEXT("AppendOwnershipMetadata"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint)
 	{
-		FMetaData& MetaData = Package->GetMetaData();
-		TestTrue(TEXT("metadata keeps block id"), MetaData.GetValue(EventNode, TEXT("BlueprintHelperBlockId")) == FString(TEXT("EventGraph_SmokeCustomEvent")));
-		TestTrue(TEXT("metadata keeps transaction id"), MetaData.GetValue(EventNode, TEXT("BlueprintHelperTransactionId")) == FString(TEXT("tx_test_001")));
-		TestTrue(TEXT("metadata omits tool field"), MetaData.GetValue(EventNode, TEXT("BlueprintHelperTool")).IsEmpty());
+		return false;
+	}
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperAssetBrowseService AssetBrowseService;
+	FBlueprintHelperCompileService CompileService(Resolver);
+	FBlueprintHelperAgentImportService AgentImportService(Resolver, CompileService, AssetBrowseService);
+	FBlueprintHelperBlockIdService BlockIdService;
+	FBlueprintHelperOwnershipService OwnershipService;
+	FBlueprintHelperTransactionJournalService JournalService;
+	FBlueprintHelperAppendBlueprintGraphService AppendService(
+		Resolver,
+		AgentImportService,
+		BlockIdService,
+		OwnershipService,
+		JournalService);
+
+	const FString GraphName = TEXT("BH_AppendOwnershipMetadata");
+	const FBlueprintHelperToolResultBase Result = AppendService.Execute(
+		MakeAppendExecutePayload(Blueprint->GetPathName(), GraphName));
+
+	TestTrue(TEXT("append write succeeds"), Result.bOk);
+	TestEqual(TEXT("append write status is applied"), Result.Status, EBlueprintHelperToolStatus::Applied);
+
+	FString TransactionId;
+	const TSharedPtr<FJsonObject>* WriteRef = nullptr;
+	TestTrue(TEXT("append result exposes write_ref"),
+		Result.Data.IsValid() && Result.Data->TryGetObjectField(TEXT("write_ref"), WriteRef));
+	TestTrue(TEXT("append result exposes transaction id"),
+		WriteRef && WriteRef->IsValid() && (*WriteRef)->TryGetStringField(TEXT("transaction_id"), TransactionId));
+	const TSharedPtr<FJsonObject>* AppendResult = nullptr;
+	const TArray<TSharedPtr<FJsonValue>>* BlockRefs = nullptr;
+	FString BlockRef;
+	TestTrue(TEXT("append result exposes append_result"),
+		Result.Data.IsValid() && Result.Data->TryGetObjectField(TEXT("append_result"), AppendResult));
+	TestTrue(TEXT("append result exposes block refs"),
+		AppendResult && AppendResult->IsValid() && (*AppendResult)->TryGetArrayField(TEXT("block_refs"), BlockRefs));
+	TestTrue(TEXT("append result exposes first block ref"),
+		BlockRefs && BlockRefs->Num() > 0 && (*BlockRefs)[0].IsValid() && (*BlockRefs)[0]->TryGetString(BlockRef));
+
+	UEdGraph* Graph = FindUbergraphPageByName(Blueprint, GraphName);
+	TestNotNull(TEXT("append graph exists"), Graph);
+	TestTrue(TEXT("append graph has created nodes"), Graph && Graph->Nodes.Num() > 0);
+	if (!Graph || Graph->Nodes.Num() == 0)
+	{
+		return false;
+	}
+
+	const FString ExpectedBlockId = BlockIdService.MakeFullBlockId(
+		GraphName,
+		BlockRef);
+	for (UEdGraphNode* Node : Graph->Nodes)
+	{
+		AssertNodeHasOwnershipMetadata(*this, Node, ExpectedBlockId, TransactionId, TEXT("SmokeFeature"));
+		TestFalse(TEXT("append-created node comment omits block_id"),
+			Node && Node->NodeComment.Contains(TEXT("block_id=")));
+		TestFalse(TEXT("append-created node comment omits transaction id"),
+			Node && Node->NodeComment.Contains(TEXT("tx=")));
 	}
 
 	return true;

@@ -12,7 +12,8 @@
 - [x] `merge_owned_graph` verified for `append_after + function_call`.
 - [x] `merge_owned_graph` verified for `insert_between + custom_event_call`.
 - [x] LogicJson grouped output includes `block_id`, `group_entry_node_path`, group-local `node_ref`, `pin_ref`, and `link_ref`.
-- [x] BlueprintHelper-owned node comment no longer writes the obsolete `tool` field; it keeps `block_id` and `tx`.
+- [x] Ownership metadata write target fixed: new BlueprintHelper-owned writes store machine fields such as `block_id` and `tx` in `FMetaData`, not `NodeComment`.
+- [x] `NodeComment` `block_id` is legacy fallback only. The current slice does not delete old asset comments and does not change the TaskSpec / TaskPlan mainline.
 
 ## AgentGuide gaps found by Rerun 4
 
@@ -30,7 +31,9 @@
 - [ ] Composite `create_blueprint_feature` execute fixture still needs a disposable asset target.
 - [ ] Non-BlueprintHelper-owned graph content still needs a stable read/write anchor contract.
 - [ ] GUID remains expert/debug fallback only; do not move it back into the Agent-facing main write contract.
+- [ ] Future migration/repair may clean legacy `NodeComment` ownership fragments after fallback behavior and smoke coverage are agreed.
 - [x] TaskSpec field cleanup: Agent-facing `intent` removed; completed task journals now use orchestration-generated `generated_intent`; `feature_name` is display / journal label only and no longer drives graph-name recommendations.
+- [x] TaskRunJournal result lookup: `blueprinthelper_get_task_result` now prefers UE `TaskRunJournal.v1`, falls back to the MCP in-process summary only when UE has no journal, and normalizes missing `generated_intent` on completed UE journals.
 
 ## P2 entry candidates
 
@@ -38,6 +41,7 @@
 - [x] DataAsset/ObjectProperty first slice source integrated: `object_property/property_edit` TaskSpec schema, TS/Python compiler, TaskPlan adapter, true dry-run service façade, and TaskRuntime dispatch added.
 - [x] Cleanup/Rollback/Ownership first slice source integrated: `graph_cleanup_ownership/owned_block_lifecycle` TaskSpec schema, TS/Python compiler, TaskPlan adapter, and TaskRuntime dispatch to cleanup / convert / rollback services added.
 - [ ] P2 unified verification pending: do not count Signature / ObjectProperty / CleanupOwnership as smoke-verified until the next grouped build + automation + disposable fixture run.
-- [ ] Function/Event Signature remaining: full custom event body split, interface function vs interface event, event dispatcher signature mutation policy, override/native event execute policy, and remove-signature execute policy.
+- [x] Function/Event Signature boundary policies fixed: interface function vs interface event lowering, event dispatcher `signature_mismatch_policy=block`, override/native `execute_policy=blocked_preflight`, and remove-signature `execute_policy=blocked_preflight` with reference-context requirement.
+- [ ] Function/Event Signature remaining: full custom event body split, real override/native event creation policy, real remove execution after reference-analysis cleanup policy, and dispatcher signature migration strategy beyond block.
 - [ ] DebugExport/LargePayload service and task debug payload references.
 - [ ] DependencyAnalysis / ReferenceContextPack integration into high-risk preview blockers.

@@ -3031,8 +3031,12 @@ namespace
 		FString SignatureKind;
 		FString SignatureName;
 		FString NameCollisionPolicy = TEXT("reuse_if_exists");
+		FString InterfaceEntryKind;
+		FString SignatureMismatchPolicy;
+		FString ExecutePolicy;
 		bool bIsPure = false;
 		bool bDryRun = false;
+		bool bRequireReferenceContext = true;
 		const TArray<TSharedPtr<FJsonValue>>* Inputs = nullptr;
 		const TArray<TSharedPtr<FJsonValue>>* Outputs = nullptr;
 		if (Payload.IsValid())
@@ -3046,8 +3050,12 @@ namespace
 			Payload->TryGetStringField(TEXT("signature_kind"), SignatureKind);
 			Payload->TryGetStringField(TEXT("signature_name"), SignatureName);
 			Payload->TryGetStringField(TEXT("name_collision_policy"), NameCollisionPolicy);
+			Payload->TryGetStringField(TEXT("interface_entry_kind"), InterfaceEntryKind);
+			Payload->TryGetStringField(TEXT("signature_mismatch_policy"), SignatureMismatchPolicy);
+			Payload->TryGetStringField(TEXT("execute_policy"), ExecutePolicy);
 			Payload->TryGetBoolField(TEXT("is_pure"), bIsPure);
 			Payload->TryGetBoolField(TEXT("dry_run"), bDryRun);
+			Payload->TryGetBoolField(TEXT("require_reference_context"), bRequireReferenceContext);
 			Payload->TryGetArrayField(TEXT("inputs"), Inputs);
 			Payload->TryGetArrayField(TEXT("outputs"), Outputs);
 		}
@@ -3066,6 +3074,7 @@ namespace
 			{
 				Payload->TryGetStringField(TEXT("interface_path"), Request.InterfacePath);
 			}
+			Request.InterfaceEntryKind = InterfaceEntryKind;
 			if (Inputs)
 			{
 				Request.Inputs = *Inputs;
@@ -3085,6 +3094,11 @@ namespace
 			Request.EventName = EventName;
 			Request.NameCollisionPolicy = NameCollisionPolicy;
 			Request.bDryRun = bDryRun;
+			if (Payload.IsValid())
+			{
+				Payload->TryGetStringField(TEXT("interface_path"), Request.InterfacePath);
+			}
+			Request.InterfaceEntryKind = InterfaceEntryKind;
 			if (Inputs)
 			{
 				Request.Inputs = *Inputs;
@@ -3098,6 +3112,10 @@ namespace
 			Request.AssetPath = AssetPath;
 			Request.DispatcherName = DispatcherName;
 			Request.NameCollisionPolicy = NameCollisionPolicy;
+			if (!SignatureMismatchPolicy.IsEmpty())
+			{
+				Request.SignatureMismatchPolicy = SignatureMismatchPolicy;
+			}
 			Request.bDryRun = bDryRun;
 			if (Inputs)
 			{
@@ -3112,6 +3130,10 @@ namespace
 			Request.AssetPath = AssetPath;
 			Request.EventName = EventName;
 			Request.EventKind = EventKind;
+			if (!ExecutePolicy.IsEmpty())
+			{
+				Request.ExecutePolicy = ExecutePolicy;
+			}
 			Request.bDryRun = bDryRun;
 			if (Inputs)
 			{
@@ -3125,7 +3147,12 @@ namespace
 		Request.GraphName = GraphName;
 		Request.SignatureKind = SignatureKind;
 		Request.SignatureName = SignatureName;
+		if (!ExecutePolicy.IsEmpty())
+		{
+			Request.ExecutePolicy = ExecutePolicy;
+		}
 		Request.bDryRun = bDryRun;
+		Request.bRequireReferenceContext = bRequireReferenceContext;
 		return SignatureService.RemoveSignature(Request);
 	}
 }

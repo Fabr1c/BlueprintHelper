@@ -228,11 +228,13 @@ bool FBlueprintHelperSignatureTaskPlanAdapter::TryLowerTaskPlanStep(
 
 	if (bRemoveSignature &&
 		Strategy != StrategyFunctionSignature &&
-		Strategy != StrategyCustomEventSignature)
+		Strategy != StrategyCustomEventSignature &&
+		Strategy != StrategyEventDispatcherSignature &&
+		Strategy != StrategyOverrideEventSignature)
 	{
 		OutError = MakeAdapterError(
 			TEXT("unsupported_signature_strategy"),
-			TEXT("remove_signature requires function_signature or custom_event_signature strategy."),
+			TEXT("remove_signature requires a signature strategy matching signature_kind."),
 			StepFieldPath(TEXT("write.strategy")));
 		return false;
 	}
@@ -278,6 +280,12 @@ bool FBlueprintHelperSignatureTaskPlanAdapter::TryLowerTaskPlanStep(
 			Payload->SetStringField(TEXT("interface_path"), InterfacePath);
 		}
 
+		FString InterfaceEntryKind;
+		if (OpObject->TryGetStringField(TEXT("interface_entry_kind"), InterfaceEntryKind) && !InterfaceEntryKind.IsEmpty())
+		{
+			Payload->SetStringField(TEXT("interface_entry_kind"), InterfaceEntryKind);
+		}
+
 		bool bIsPure = false;
 		if (OpObject->TryGetBoolField(TEXT("is_pure"), bIsPure))
 		{
@@ -321,6 +329,18 @@ bool FBlueprintHelperSignatureTaskPlanAdapter::TryLowerTaskPlanStep(
 		Payload->SetStringField(TEXT("event_name"), EventName);
 		Payload->SetStringField(TEXT("graph_name"), GraphName);
 
+		FString InterfacePath;
+		if (OpObject->TryGetStringField(TEXT("interface_path"), InterfacePath) && !InterfacePath.IsEmpty())
+		{
+			Payload->SetStringField(TEXT("interface_path"), InterfacePath);
+		}
+
+		FString InterfaceEntryKind;
+		if (OpObject->TryGetStringField(TEXT("interface_entry_kind"), InterfaceEntryKind) && !InterfaceEntryKind.IsEmpty())
+		{
+			Payload->SetStringField(TEXT("interface_entry_kind"), InterfaceEntryKind);
+		}
+
 		const TArray<TSharedPtr<FJsonValue>>* Inputs = nullptr;
 		if (OpObject->TryGetArrayField(TEXT("inputs"), Inputs) && Inputs)
 		{
@@ -340,6 +360,12 @@ bool FBlueprintHelperSignatureTaskPlanAdapter::TryLowerTaskPlanStep(
 		}
 
 		Payload->SetStringField(TEXT("dispatcher_name"), DispatcherName);
+
+		FString SignatureMismatchPolicy;
+		if (OpObject->TryGetStringField(TEXT("signature_mismatch_policy"), SignatureMismatchPolicy) && !SignatureMismatchPolicy.IsEmpty())
+		{
+			Payload->SetStringField(TEXT("signature_mismatch_policy"), SignatureMismatchPolicy);
+		}
 
 		const TArray<TSharedPtr<FJsonValue>>* Inputs = nullptr;
 		if (OpObject->TryGetArrayField(TEXT("inputs"), Inputs) && Inputs)
@@ -367,6 +393,12 @@ bool FBlueprintHelperSignatureTaskPlanAdapter::TryLowerTaskPlanStep(
 			Payload->SetStringField(TEXT("event_kind"), EventKind);
 		}
 
+		FString ExecutePolicy;
+		if (OpObject->TryGetStringField(TEXT("execute_policy"), ExecutePolicy) && !ExecutePolicy.IsEmpty())
+		{
+			Payload->SetStringField(TEXT("execute_policy"), ExecutePolicy);
+		}
+
 		const TArray<TSharedPtr<FJsonValue>>* Inputs = nullptr;
 		if (OpObject->TryGetArrayField(TEXT("inputs"), Inputs) && Inputs)
 		{
@@ -381,29 +413,53 @@ bool FBlueprintHelperSignatureTaskPlanAdapter::TryLowerTaskPlanStep(
 			SignatureKind = Strategy == StrategyFunctionSignature ? TEXT("function") : TEXT("custom_event");
 		}
 
-		if (SignatureKind != TEXT("function") && SignatureKind != TEXT("custom_event"))
+		if (SignatureKind != TEXT("function") &&
+			SignatureKind != TEXT("interface_function") &&
+			SignatureKind != TEXT("custom_event") &&
+			SignatureKind != TEXT("interface_event") &&
+			SignatureKind != TEXT("event_dispatcher") &&
+			SignatureKind != TEXT("override_event") &&
+			SignatureKind != TEXT("native_event"))
 		{
 			OutError = MakeAdapterError(
 				TEXT("unsupported_signature_remove_kind"),
-				TEXT("remove_signature supports signature_kind=function or custom_event."),
+				TEXT("remove_signature supports function, interface_function, custom_event, interface_event, event_dispatcher, override_event, or native_event."),
 				OpFieldPath(TEXT("signature_kind")));
 			return false;
 		}
 
-		if (SignatureKind == TEXT("function") && Strategy != StrategyFunctionSignature)
+		if ((SignatureKind == TEXT("function") || SignatureKind == TEXT("interface_function")) && Strategy != StrategyFunctionSignature)
 		{
 			OutError = MakeAdapterError(
 				TEXT("unsupported_signature_strategy"),
-				TEXT("remove_signature kind=function requires function_signature strategy."),
+				TEXT("remove_signature kind=function/interface_function requires function_signature strategy."),
 				StepFieldPath(TEXT("write.strategy")));
 			return false;
 		}
 
-		if (SignatureKind == TEXT("custom_event") && Strategy != StrategyCustomEventSignature)
+		if ((SignatureKind == TEXT("custom_event") || SignatureKind == TEXT("interface_event")) && Strategy != StrategyCustomEventSignature)
 		{
 			OutError = MakeAdapterError(
 				TEXT("unsupported_signature_strategy"),
-				TEXT("remove_signature kind=custom_event requires custom_event_signature strategy."),
+				TEXT("remove_signature kind=custom_event/interface_event requires custom_event_signature strategy."),
+				StepFieldPath(TEXT("write.strategy")));
+			return false;
+		}
+
+		if (SignatureKind == TEXT("event_dispatcher") && Strategy != StrategyEventDispatcherSignature)
+		{
+			OutError = MakeAdapterError(
+				TEXT("unsupported_signature_strategy"),
+				TEXT("remove_signature kind=event_dispatcher requires event_dispatcher_signature strategy."),
+				StepFieldPath(TEXT("write.strategy")));
+			return false;
+		}
+
+		if ((SignatureKind == TEXT("override_event") || SignatureKind == TEXT("native_event")) && Strategy != StrategyOverrideEventSignature)
+		{
+			OutError = MakeAdapterError(
+				TEXT("unsupported_signature_strategy"),
+				TEXT("remove_signature kind=override_event/native_event requires override_event_signature strategy."),
 				StepFieldPath(TEXT("write.strategy")));
 			return false;
 		}
@@ -411,9 +467,13 @@ bool FBlueprintHelperSignatureTaskPlanAdapter::TryLowerTaskPlanStep(
 		FString SignatureName;
 		if (!OpObject->TryGetStringField(TEXT("signature_name"), SignatureName) || SignatureName.IsEmpty())
 		{
-			if (SignatureKind == TEXT("function"))
+			if (SignatureKind == TEXT("function") || SignatureKind == TEXT("interface_function"))
 			{
 				OpObject->TryGetStringField(TEXT("function_name"), SignatureName);
+			}
+			else if (SignatureKind == TEXT("event_dispatcher"))
+			{
+				OpObject->TryGetStringField(TEXT("dispatcher_name"), SignatureName);
 			}
 			else
 			{
@@ -431,6 +491,26 @@ bool FBlueprintHelperSignatureTaskPlanAdapter::TryLowerTaskPlanStep(
 
 		Payload->SetStringField(TEXT("signature_kind"), SignatureKind);
 		Payload->SetStringField(TEXT("signature_name"), SignatureName);
+
+		FString ExecutePolicy;
+		if (OpObject->TryGetStringField(TEXT("execute_policy"), ExecutePolicy) && !ExecutePolicy.IsEmpty())
+		{
+			Payload->SetStringField(TEXT("execute_policy"), ExecutePolicy);
+		}
+
+		bool bRequireReferenceContext = false;
+		if (OpObject->TryGetBoolField(TEXT("require_reference_context"), bRequireReferenceContext))
+		{
+			if (!bRequireReferenceContext)
+			{
+				OutError = MakeAdapterError(
+					TEXT("invalid_signature_remove_policy"),
+					TEXT("remove_signature require_reference_context must be true in this slice."),
+					OpFieldPath(TEXT("require_reference_context")));
+				return false;
+			}
+			Payload->SetBoolField(TEXT("require_reference_context"), bRequireReferenceContext);
+		}
 
 		FString GraphName;
 		if (OpObject->TryGetStringField(TEXT("graph_name"), GraphName) && !GraphName.IsEmpty())

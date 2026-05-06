@@ -16,6 +16,7 @@
 ```
 
 TaskSpec 必须描述：目标资产、feature_name、scope_policy、asset_policy、resources、components、variables、class_settings、behavior、validation。
+`feature_name` 只作为任务显示名 / journal 标签；图表名、函数名、变量名、block_id 必须显式填写，不能由 `feature_name` 推断。不要填写 `intent`，执行后的 `generated_intent` 由编排层写入 Journal。
 
 调用 `blueprinthelper_preview_task` / `blueprinthelper_execute_task` 时，MCP 工具参数固定为：
 

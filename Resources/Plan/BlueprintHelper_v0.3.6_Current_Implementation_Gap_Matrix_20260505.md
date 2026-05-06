@@ -17,10 +17,11 @@ Agent TaskSpec
 - [x] GraphWrite Level 5 已从源码待验证推进到 smoke verified。
 - [x] `replace_owned_graph` 已验证 Python compiler -> Bridge preview -> Bridge execute -> compile -> LogicMd/LogicJson read-back。
 - [x] Replace relink 已验证：preserved entry -> replacement body exec link 重建后 read-back 为 0 orphans。
-- [x] Replace ownership metadata 已验证：Replace 新建节点进入 grouped LogicJson，并可被 Patch/Merge 通过 `block_id` 定位。
+- [x] Replace ownership metadata 已验证：Replace 新建节点的机器 ownership 字段写入 `FMetaData`，进入 grouped LogicJson，并可被 Patch/Merge 通过 `block_id` 定位。
 - [x] `patch_owned_graph` 已验证可 patch Replace-created node。
 - [x] `merge_owned_graph` 已验证 `insert_between + function_call`、`append_after + function_call`、`insert_between + custom_event_call`。
 - [x] LogicJson grouped output 已验证输出 `block_id`、`group_entry_node_path`、组内 `node_ref`、`pin_ref`、`link_ref`。
+- [x] Ownership metadata / `NodeComment` 迁移边界已固定：新写入不再向 `NodeComment` 写 `block_id` / `tx`；机器字段统一写 `FMetaData`；`NodeComment` 中的 `block_id` 只作为旧资产 fallback。
 - [x] AgentGuide 已补 Rerun 4 试错暴露的三类规则：task tool 入参必须包 `task_spec`；Merge anchor 不允许只传 `link_ref`；函数调用参数必须使用结构化 `args`。
 
 当前仍不视为 P1 完全清空的边界项：
@@ -87,7 +88,7 @@ preview 闭环通过：
 - create_blueprint_feature
 ```
 
-GraphWrite `replace_owned_graph` / `patch_owned_graph` / `merge_owned_graph` 的 TaskSpec 子字段合同已经收口：replace 只使用 `behavior.replace`，patch 只使用 `behavior.patches[]`，merge 只使用 `behavior.merges[]`。TS schema、TS fallback compiler、Python compiler、协议 fixtures、合同元数据与 smoke 文档已同步；Agent 仍不应直接调用底层 MCP 原子写工具，默认入口仍是 TaskSpec -> TaskPlan -> UE Task Runtime。2026-05-06 Rerun 4 已确认 Level 5 GraphWrite full pipeline：Replace 通过 compiler/preview/execute/compile/read-back，Patch 可定位并修改 Replace-created node，Merge 已验证 `insert_between + function_call`、`append_after + function_call`、`insert_between + custom_event_call`。Patch/Merge 主线写锚点固定为 v0.3.6 grouped LogicJson / block-scoped anchor：由 `block_id` / `group_entry_node_path` 加组内 `node_ref` / `pin_ref` / `link_ref` 定位 BlueprintHelper-owned block 内部节点与引脚；GUID 只保留为 expert/debug fallback。
+GraphWrite `replace_owned_graph` / `patch_owned_graph` / `merge_owned_graph` 的 TaskSpec 子字段合同已经收口：replace 只使用 `behavior.replace`，patch 只使用 `behavior.patches[]`，merge 只使用 `behavior.merges[]`。TS schema、TS fallback compiler、Python compiler、协议 fixtures、合同元数据与 smoke 文档已同步；Agent 仍不应直接调用底层 MCP 原子写工具，默认入口仍是 TaskSpec -> TaskPlan -> UE Task Runtime。2026-05-06 Rerun 4 已确认 Level 5 GraphWrite full pipeline：Replace 通过 compiler/preview/execute/compile/read-back，Patch 可定位并修改 Replace-created node，Merge 已验证 `insert_between + function_call`、`append_after + function_call`、`insert_between + custom_event_call`。Patch/Merge 主线写锚点固定为 v0.3.6 grouped LogicJson / block-scoped anchor：由 `block_id` / `group_entry_node_path` 加组内 `node_ref` / `pin_ref` / `link_ref` 定位 BlueprintHelper-owned block 内部节点与引脚；GUID 只保留为 expert/debug fallback。Ownership 机器字段的新写入统一进入 `FMetaData`，不再写入 `NodeComment`；`NodeComment` 中的 `block_id` 仅保留为 legacy fallback。
 
 ## 2026-05-05 / 2026-05-06 进度同步
 
@@ -125,6 +126,7 @@ GraphWrite `replace_owned_graph` / `patch_owned_graph` / `merge_owned_graph` 的
 - [x] 字段入口已固定为：`replace_owned_graph -> behavior.replace`、`patch_owned_graph -> behavior.patches[]`、`merge_owned_graph -> behavior.merges[]`。
 - [x] 已禁止把 Replace/Patch/Merge 塞回 `behavior.entries` 或通用 `ops`；2026-05-06 smoke 已证明正确 shape 能进入对应 pipeline，Bridge resolver 与 Replace exec link 行为源码已补，剩余是本地 build/smoke 验证。
 - [x] Patch/Merge 写锚点合同已固定：BlueprintHelper-owned 内容优先使用 `block_id` / `group_entry_node_path` 加组内 `node_ref` / `pin_ref` / `link_ref`；`block_id` 定位 owned block，组内 ref 选择具体节点/引脚/连接；裸 `nodes[index]`、显示名和 GUID-first 不作为 Agent 主线合同，GUID 仅作 expert/debug fallback。
+- [x] Ownership metadata / NodeComment 迁移决策已固定：新写入只把机器字段写入 `FMetaData`；不再在 `NodeComment` 中写 `block_id` / `tx`；旧注释里的 `block_id` 只作为 legacy fallback。
 
 ## 总体差距矩阵
 
@@ -141,7 +143,7 @@ GraphWrite `replace_owned_graph` / `patch_owned_graph` / `merge_owned_graph` 的
 | Rollback Cleanup Transaction | Done + FieldMapping | 完成 | `RollbackCleanupTransactionService` 完成 | `rollback_cleanup_transaction` 完成 | 已接 `graph_cleanup_ownership` adapter / Runtime dispatch | 已接 `manage_blueprinthelper_ownership` compiler | source integrated / smoke pending | 作为 task rollback/journal 能力接入 Runtime，不作为普通写入默认步骤 |
 | Convert Block To User Owned | Done + FieldMapping | 完成 | `ConvertBlockToUserOwnedService` 完成 | `convert_blueprint_helper_block_to_user_owned` 完成 | 已接 `graph_cleanup_ownership` adapter / Runtime dispatch | 已接 `manage_blueprinthelper_ownership` compiler | source integrated / smoke pending | 统一 smoke 验证后再扩高风险 replace/remove 前置使用 |
 | Blueprint Variables/Defaults/Local Variables | Done | 完成 | `BlueprintVariableService` 已支持 member add/remove、member property settings 首片、member default(s) 首片，以及 local variable read/add/set/remove；member/local mutation 细节已迁入 OperationHandler，Service 保持 ToolResultBase façade | 变量相关 command 完成 | 完成变量 IR lowering：ensure-only -> `add_blueprint_member_variables`，混合 member/default/local -> `blueprint_variable_batch`；local_variables preview 支持真实 dry-run | 完成 TaskSpec 编译：member changes/defaults/local variables | smoke-verified：`edit_blueprint_variables` execute | 扩默认值和属性设置更多类型；补更多 UE automation/smoke 覆盖；用户本地项目级 `Build.bat` 已通过；最近验证 task id：`task_38C6DC0D4AC56E1DD89F4992D9A7B3AB` |
-| Function/Event Signature Management | Plan 文档 | 已新增 `Structure/BlueprintSignature` DTO 首片；TaskPlan 已有 `blueprint_signature` | 已新增内部 `FBlueprintHelperSignatureService` 首片：`ensure_function` dry-run/no-op/execute 与 inputs/outputs；`ensure_custom_event` 已有入口创建首片；`ensure_event_dispatcher` 可通过内部结构服务创建新 dispatcher；`ensure_override_event` 和 remove-signature 预检壳仍只 blocked | 无 Agent-facing 原子 command；仅 TaskRuntime 内部执行 | Runtime 已委托 SignatureService 执行 `blueprint_signature` step，并支持 `ensure_function` / `ensure_custom_event` / `ensure_event_dispatcher` / `ensure_override_event` / `remove_signature` lowering；override/remove 仍返回 blocked preflight | `integration.interface` 可编译到 `blueprint_signature` + `graph_write replace_body` | source integrated / smoke pending | 补 custom event body split、interface function/event、event dispatcher signature mutation policy、override/native event execute policy、remove execute policy |
+| Function/Event Signature Management | Plan 文档 | 已新增 `Structure/BlueprintSignature` DTO 首片；TaskPlan 已有 `blueprint_signature` | 已新增内部 `FBlueprintHelperSignatureService` 首片：`ensure_function` dry-run/no-op/execute 与 inputs/outputs；`ensure_custom_event` 已有入口创建首片；`ensure_event_dispatcher` 可通过内部结构服务创建新 dispatcher，现阶段只允许 `signature_mismatch_policy=block`；`ensure_override_event` 和 remove-signature 预检壳仍只 blocked | 无 Agent-facing 原子 command；仅 TaskRuntime 内部执行 | Runtime 已委托 SignatureService 执行 `blueprint_signature` step，并支持 `ensure_function` / `ensure_custom_event` / `ensure_event_dispatcher` / `ensure_override_event` / `remove_signature` lowering；interface function/event 已拆分；override/remove 仍返回 blocked preflight | `integration.interface` 可编译到 `blueprint_signature` + `graph_write replace_body` | source integrated / smoke pending | 补 custom event body split、真实 override/native event 创建、真实 remove 执行与 dispatcher 迁移策略 |
 | AssetFactory | FieldMapping | 完成 | `AssetFactoryService` 完成，支持 dry-run 冲突/创建预检且不创建资产 | `create_asset` 完成 | 完成 adapter，支持 `asset_factory/asset_create/create_asset`；preview 调 Service true dry-run | 完成 `create_asset` TaskSpec 编译 | compiler-ready / preview smoke covered | 后续补 execute smoke，再扩 DataTable/WidgetBlueprint/Material 等资产类型 |
 | AssetDiscovery/EditorNavigation | Done + FieldMapping | 完成 | `AssetBrowseService` 完成 | `list_assets` / `search_assets` / `open_asset` / `get_asset_info` 完成 | 不需要默认写入 Runtime | 后续经 `ReadSpec` / `read_context` 进入只读上下文 | 部分 | 保持只读/导航能力，但不扩散成多 Agent-facing 原子工具 |
 | ProjectContext/SetupState | Done + FieldMapping | 类型存在 | `ContextService` 基础存在 | `get_editor_context` 等入口存在 | 不属于写 Runtime | `read_task_context` 当前定位不清，标记 deprecated；后续经 `read_context` 重定义 | 部分 | 合并到 ReadSpec/CapabilitySchema，不保留模糊独立入口 |
@@ -211,7 +213,7 @@ GraphWrite `replace_owned_graph` / `patch_owned_graph` / `merge_owned_graph` 的
 2. [x] DataAsset/ObjectProperty 首片：TaskSpec schema、TS/Python compiler、TaskPlan adapter、ToolResultBase façade、Runtime dispatch。
 3. [x] Cleanup/Rollback/Ownership 首片：TaskSpec schema、TS/Python compiler、TaskPlan adapter、Runtime dispatch 到 cleanup / convert / rollback service。
 4. [ ] P2 首批三簇统一 build、automation、disposable fixture smoke。
-5. [ ] Signature 扩展：函数参数、返回值、interface function vs interface event、event dispatcher signature mutation policy、override/native event execute policy、remove execute policy。
+5. [x] Signature 边界扩展：函数参数、返回值、interface function vs interface event、event dispatcher signature mutation policy、override/native event execute policy、remove execute policy 已固定到 TaskSpec/TaskPlan 与 UE blocked-preflight 首片。
 6. [ ] DebugExport/LargePayload service。
 7. [ ] DependencyAnalysis 与高风险 preview 的集成。
 
@@ -238,10 +240,11 @@ GraphWrite `replace_owned_graph` / `patch_owned_graph` / `merge_owned_graph` 的
 19. [x] Signature 能力职责确认：`blueprint_signature` 负责创建/确保、修改、移除函数签名、Custom Event 签名、interface function / interface event 入口、event dispatcher 签名、override/native event 入口；GraphWrite 负责 body、节点、连线、调用、bind/unbind。
 20. [x] Custom Event 入口与 Append 依赖边界确认：`graph_write.ensure_entry(entry_type=custom_event)` 可以保留为 append 语义的结构化 IR，但 Custom Event 入口声明/签名创建必须由 `blueprint_signature.ensure_custom_event` 或 UE 内部 BlueprintSignatureService 完成；不得新增 Agent-facing custom event 原子工具。
 21. [ ] `custom_event_definition` 与 Signature 边界：旧 Replace 文档中的 `custom_event_definition` 支持重建入口节点但保持同名同签名；需要确认它拆成 Signature 的声明/签名修改加 GraphWrite 的 body rewrite，还是保留为 GraphWrite 的兼容 lowering。
-22. [ ] Interface/override/native event lowering 细节：已确认入口创建/选择归 Signature、GraphWrite 只写 body；仍需确认 interface event 与 function 的判定规则、override/native event 的选择字段、dry-run blocker 与错误码。
-23. [ ] Signature removal 安全合同：移除签名必须先做引用/依赖风险分析；确认哪些 remove 允许直接删除 body、哪些只删除声明、哪些需要生成 GraphWrite cleanup step，以及 partial failure 时的 journal/recovery 字段。
-24. [ ] Event Dispatcher 字段细节：dispatcher 声明、参数和签名属于 Function/Event Signature；dispatcher call/bind/unbind 这类图节点属于 GraphWrite。需要确认 TaskSpec 字段如何拆分并在 TaskPlan 中表达依赖。
+22. [x] Interface/override/native event lowering 细节：interface function 降到 `ensure_function`，interface event 降到 `ensure_custom_event`；override/native event 当前必须 `execute_policy=blocked_preflight`，只返回 blocked 预检。
+23. [x] Signature removal 安全合同首片：移除签名必须 `execute_policy=blocked_preflight` 且要求 reference context；当前不执行真实删除，后续再确认引用分析后的真实 cleanup 策略。
+24. [x] Event Dispatcher 字段细节首片：dispatcher 声明、参数和签名属于 Function/Event Signature；dispatcher call/bind/unbind 仍属于 GraphWrite；现阶段现有 dispatcher 签名不匹配时只允许 block。
 25. [ ] 非 BlueprintHelper-owned 图内容的稳定写锚点：owned block 已有 `block_id` 主线；用户已有图节点、非 owned 节点和旧资产迁移场景仍需单独确认稳定 read/write anchor 策略。
+26. [ ] Ownership metadata migration/repair：当前首片不是删除旧资产注释，不影响 TaskSpec / TaskPlan 主线；后续可在 fallback、审计输出和 smoke 覆盖明确后清理旧 `NodeComment` 中的 `block_id` / `tx` 片段。
 
 ## 下轮可并行拆分
 

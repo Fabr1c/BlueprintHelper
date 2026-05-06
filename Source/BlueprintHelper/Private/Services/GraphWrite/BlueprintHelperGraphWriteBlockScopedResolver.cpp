@@ -68,10 +68,30 @@ namespace
 
 	bool NodeCommentMentionsBlockId(const UEdGraphNode* Node, const FString& BlockId)
 	{
-		return Node &&
-			!BlockId.IsEmpty() &&
-			Node->NodeComment.Contains(TEXT("[BlueprintHelper]")) &&
-			Node->NodeComment.Contains(FString::Printf(TEXT("block_id=%s"), *BlockId));
+		if (!Node || BlockId.IsEmpty() || !Node->NodeComment.Contains(TEXT("[BlueprintHelper]")))
+		{
+			return false;
+		}
+
+		TArray<FString> CommentLines;
+		Node->NodeComment.ParseIntoArrayLines(CommentLines, false);
+		for (const FString& Line : CommentLines)
+		{
+			FString Key;
+			FString Value;
+			if (!Line.Split(TEXT("="), &Key, &Value, ESearchCase::CaseSensitive))
+			{
+				continue;
+			}
+
+			if (Key.TrimStartAndEnd().Equals(TEXT("block_id"), ESearchCase::IgnoreCase) &&
+				Value.TrimStartAndEnd().Equals(BlockId, ESearchCase::CaseSensitive))
+			{
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	bool IsNodeOwnedByBlock(UEdGraphNode* Node, const FString& BlockId)
@@ -86,9 +106,9 @@ namespace
 			FMetaData& MetaData = Package->GetMetaData();
 			const FString NodeBlockId = MetaData.GetValue(Node, TEXT("BlueprintHelperBlockId"));
 			const FString OwnedStr = MetaData.GetValue(Node, TEXT("BlueprintHelperOwned"));
-			if (NodeBlockId == BlockId && OwnedStr.Equals(TEXT("true"), ESearchCase::IgnoreCase))
+			if (!NodeBlockId.IsEmpty() || !OwnedStr.IsEmpty())
 			{
-				return true;
+				return NodeBlockId == BlockId && OwnedStr.Equals(TEXT("true"), ESearchCase::IgnoreCase);
 			}
 		}
 

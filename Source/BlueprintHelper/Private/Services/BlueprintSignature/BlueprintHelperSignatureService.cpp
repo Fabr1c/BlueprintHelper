@@ -236,14 +236,24 @@ namespace
 		Result.Target = FBlueprintHelperTargetRef();
 		Result.Target->AssetPath = Request.AssetPath;
 		Result.Target->Graph = Request.GraphName;
-		if (Request.SignatureKind == TEXT("function"))
+		if (Request.SignatureKind == TEXT("function") || Request.SignatureKind == TEXT("interface_function"))
 		{
 			Result.Target->TargetType = EBlueprintHelperTargetType::Function;
 			Result.Target->Function = Request.SignatureName;
 		}
-		else if (Request.SignatureKind == TEXT("custom_event"))
+		else if (Request.SignatureKind == TEXT("custom_event") || Request.SignatureKind == TEXT("interface_event"))
 		{
 			Result.Target->TargetType = EBlueprintHelperTargetType::CustomEvent;
+			Result.Target->Event = Request.SignatureName;
+		}
+		else if (Request.SignatureKind == TEXT("event_dispatcher"))
+		{
+			Result.Target->TargetType = EBlueprintHelperTargetType::Property;
+			Result.Target->PropertyPath = Request.SignatureName;
+		}
+		else if (Request.SignatureKind == TEXT("override_event") || Request.SignatureKind == TEXT("native_event"))
+		{
+			Result.Target->TargetType = EBlueprintHelperTargetType::Event;
 			Result.Target->Event = Request.SignatureName;
 		}
 		else
@@ -791,6 +801,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureFunction(
 		Result.Data = MakeSignatureResultData(true, TEXT("function_result"), false);
 		SetSignatureResultBool(Result.Data, TEXT("function_result"), TEXT("exists"), bExists);
 		SetSignatureResultString(Result.Data, TEXT("function_result"), TEXT("interface_path"), Request.InterfacePath);
+		SetSignatureResultString(Result.Data, TEXT("function_result"), TEXT("interface_entry_kind"), Request.InterfaceEntryKind);
 		Result.Validation = MakeSignatureValidation(!bExists, !bExists);
 		return Result;
 	}
@@ -804,6 +815,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureFunction(
 		Result.Data = MakeSignatureResultData(false, TEXT("function_result"), false);
 		SetSignatureResultBool(Result.Data, TEXT("function_result"), TEXT("exists"), true);
 		SetSignatureResultString(Result.Data, TEXT("function_result"), TEXT("interface_path"), Request.InterfacePath);
+		SetSignatureResultString(Result.Data, TEXT("function_result"), TEXT("interface_entry_kind"), Request.InterfaceEntryKind);
 		Result.Validation = MakeSignatureValidation(false, false);
 		return Result;
 	}
@@ -843,6 +855,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureFunction(
 	Result.Data = MakeSignatureResultData(false, TEXT("function_result"), false);
 	SetSignatureResultBool(Result.Data, TEXT("function_result"), TEXT("exists"), true);
 	SetSignatureResultString(Result.Data, TEXT("function_result"), TEXT("interface_path"), Request.InterfacePath);
+	SetSignatureResultString(Result.Data, TEXT("function_result"), TEXT("interface_entry_kind"), Request.InterfaceEntryKind);
 	Result.Validation = MakeSignatureValidation(true, true);
 	return Result;
 }
@@ -928,6 +941,8 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureCustomEve
 		SetSignatureResultBool(Result.Data, TEXT("custom_event_result"), TEXT("exists"), Target.ExistingEvent != nullptr);
 		SetSignatureResultBool(Result.Data, TEXT("custom_event_result"), TEXT("signature_matches"), Target.bSignatureMatches);
 		SetSignatureResultNumber(Result.Data, TEXT("custom_event_result"), TEXT("missing_inputs"), Target.MissingPins.Num());
+		SetSignatureResultString(Result.Data, TEXT("custom_event_result"), TEXT("interface_path"), Request.InterfacePath);
+		SetSignatureResultString(Result.Data, TEXT("custom_event_result"), TEXT("interface_entry_kind"), Request.InterfaceEntryKind);
 		Result.Validation = MakeSignatureValidation(!Target.bSignatureMatches, !Target.bSignatureMatches);
 		return Result;
 	}
@@ -942,6 +957,8 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureCustomEve
 		SetSignatureResultBool(Result.Data, TEXT("custom_event_result"), TEXT("exists"), true);
 		SetSignatureResultBool(Result.Data, TEXT("custom_event_result"), TEXT("signature_matches"), true);
 		SetSignatureResultNumber(Result.Data, TEXT("custom_event_result"), TEXT("missing_inputs"), 0);
+		SetSignatureResultString(Result.Data, TEXT("custom_event_result"), TEXT("interface_path"), Request.InterfacePath);
+		SetSignatureResultString(Result.Data, TEXT("custom_event_result"), TEXT("interface_entry_kind"), Request.InterfaceEntryKind);
 		Result.Validation = MakeSignatureValidation(false, false);
 		return Result;
 	}
@@ -1000,6 +1017,8 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureCustomEve
 	SetSignatureResultBool(Result.Data, TEXT("custom_event_result"), TEXT("exists"), true);
 	SetSignatureResultBool(Result.Data, TEXT("custom_event_result"), TEXT("signature_matches"), true);
 	SetSignatureResultNumber(Result.Data, TEXT("custom_event_result"), TEXT("added_inputs"), EventNode == Target.ExistingEvent ? Target.MissingPins.Num() : Target.RequestedPins.Num());
+	SetSignatureResultString(Result.Data, TEXT("custom_event_result"), TEXT("interface_path"), Request.InterfacePath);
+	SetSignatureResultString(Result.Data, TEXT("custom_event_result"), TEXT("interface_entry_kind"), Request.InterfaceEntryKind);
 	Result.Validation = MakeSignatureValidation(true, true);
 	return Result;
 }
@@ -1025,19 +1044,63 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::RemoveSignature
 		return Result;
 	}
 
-	if (Request.SignatureKind != TEXT("function") && Request.SignatureKind != TEXT("custom_event"))
+	if (Request.ExecutePolicy.IsEmpty() || Request.ExecutePolicy != TEXT("blocked_preflight"))
+	{
+		FBlueprintHelperToolResultBase Result = MakeSignatureFailure(
+			TEXT("remove_signature"),
+			TEXT("invalid_signature_remove_policy"),
+			EBlueprintHelperToolStage::ParseInput,
+			TEXT("remove_signature execute_policy must be blocked_preflight in this slice."),
+			TEXT("execute_policy"));
+		SetRemoveSignatureTarget(Result, Request);
+		Result.Data = MakeSignatureBlockedData(
+			Request.bDryRun,
+			TEXT("invalid_signature_remove_policy"),
+			TEXT("remove_signature execute_policy must be blocked_preflight in this slice."),
+			TEXT("execute_policy"));
+		SetSignatureResultString(Result.Data, TEXT("remove_signature_result"), TEXT("execute_policy"), Request.ExecutePolicy);
+		Result.Validation = MakeSignatureValidation(false, false);
+		return Result;
+	}
+
+	if (!Request.bRequireReferenceContext)
+	{
+		FBlueprintHelperToolResultBase Result = MakeSignatureFailure(
+			TEXT("remove_signature"),
+			TEXT("invalid_signature_remove_policy"),
+			EBlueprintHelperToolStage::ParseInput,
+			TEXT("remove_signature require_reference_context must be true in this slice."),
+			TEXT("require_reference_context"));
+		SetRemoveSignatureTarget(Result, Request);
+		Result.Data = MakeSignatureBlockedData(
+			Request.bDryRun,
+			TEXT("invalid_signature_remove_policy"),
+			TEXT("remove_signature require_reference_context must be true in this slice."),
+			TEXT("require_reference_context"));
+		SetSignatureResultBool(Result.Data, TEXT("remove_signature_result"), TEXT("requires_reference_context"), false);
+		Result.Validation = MakeSignatureValidation(false, false);
+		return Result;
+	}
+
+	if (Request.SignatureKind != TEXT("function") &&
+		Request.SignatureKind != TEXT("interface_function") &&
+		Request.SignatureKind != TEXT("custom_event") &&
+		Request.SignatureKind != TEXT("interface_event") &&
+		Request.SignatureKind != TEXT("event_dispatcher") &&
+		Request.SignatureKind != TEXT("override_event") &&
+		Request.SignatureKind != TEXT("native_event"))
 	{
 		FBlueprintHelperToolResultBase Result = MakeSignatureFailure(
 			TEXT("remove_signature"),
 			TEXT("signature_remove_unsupported_kind"),
 			EBlueprintHelperToolStage::Preflight,
-			TEXT("remove_signature currently has preflight placeholders for function and custom_event only."),
+			TEXT("remove_signature supports function, interface_function, custom_event, interface_event, event_dispatcher, override_event, and native_event policies."),
 			TEXT("signature_kind"));
 		SetRemoveSignatureTarget(Result, Request);
 		Result.Data = MakeSignatureBlockedData(
 			Request.bDryRun,
 			TEXT("signature_remove_unsupported_kind"),
-			TEXT("remove_signature currently has preflight placeholders for function and custom_event only."),
+			TEXT("remove_signature supports function, interface_function, custom_event, interface_event, event_dispatcher, override_event, and native_event policies."),
 			TEXT("signature_kind"));
 		Result.Validation = MakeSignatureValidation(false, false);
 		return Result;
@@ -1062,7 +1125,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::RemoveSignature
 		return Result;
 	}
 
-	if (Request.SignatureKind == TEXT("custom_event"))
+	if (Request.SignatureKind == TEXT("custom_event") || Request.SignatureKind == TEXT("interface_event"))
 	{
 		if (Request.GraphName.IsEmpty())
 		{
@@ -1070,13 +1133,13 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::RemoveSignature
 				TEXT("remove_signature"),
 				TEXT("invalid_signature_payload"),
 				EBlueprintHelperToolStage::ParseInput,
-				TEXT("remove_signature custom_event requires graph_name."),
+				TEXT("remove_signature custom_event/interface_event requires graph_name."),
 				TEXT("graph_name"));
 			SetRemoveSignatureTarget(Result, Request);
 			Result.Data = MakeSignatureBlockedData(
 				Request.bDryRun,
 				TEXT("invalid_signature_payload"),
-				TEXT("remove_signature custom_event requires graph_name."),
+				TEXT("remove_signature custom_event/interface_event requires graph_name."),
 				TEXT("graph_name"));
 			Result.Validation = MakeSignatureValidation(false, false);
 			return Result;
@@ -1124,6 +1187,10 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::RemoveSignature
 		TEXT("signature_remove_unsupported"),
 		TEXT("Signature removal is not wired for safe execution yet."),
 		TEXT("remove_signature"));
+	SetSignatureResultString(Result.Data, TEXT("remove_signature_result"), TEXT("signature_kind"), Request.SignatureKind);
+	SetSignatureResultString(Result.Data, TEXT("remove_signature_result"), TEXT("signature_name"), Request.SignatureName);
+	SetSignatureResultString(Result.Data, TEXT("remove_signature_result"), TEXT("execute_policy"), Request.ExecutePolicy);
+	SetSignatureResultBool(Result.Data, TEXT("remove_signature_result"), TEXT("requires_reference_context"), Request.bRequireReferenceContext);
 	Result.Validation = MakeSignatureValidation(false, false);
 	return Result;
 }
@@ -1152,6 +1219,19 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureEventDisp
 			EBlueprintHelperToolStage::ParseInput,
 			TEXT("ensure_event_dispatcher name_collision_policy must be reuse_if_exists or fail_if_exists."),
 			TEXT("name_collision_policy"));
+		SetEventDispatcherTarget(Result, Request.AssetPath, Request.DispatcherName);
+		Result.Validation = MakeSignatureValidation(false, false);
+		return Result;
+	}
+
+	if (Request.SignatureMismatchPolicy.IsEmpty() || Request.SignatureMismatchPolicy != TEXT("block"))
+	{
+		FBlueprintHelperToolResultBase Result = MakeSignatureFailure(
+			TEXT("ensure_event_dispatcher"),
+			TEXT("invalid_event_dispatcher_mutation_policy"),
+			EBlueprintHelperToolStage::ParseInput,
+			TEXT("ensure_event_dispatcher signature_mismatch_policy must be block in this slice."),
+			TEXT("signature_mismatch_policy"));
 		SetEventDispatcherTarget(Result, Request.AssetPath, Request.DispatcherName);
 		Result.Validation = MakeSignatureValidation(false, false);
 		return Result;
@@ -1238,6 +1318,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureEventDisp
 		SetEventDispatcherTarget(Result, Request.AssetPath, Request.DispatcherName);
 		Result.Data = MakeSignatureResultData(true, TEXT("event_dispatcher_result"), false);
 		SetSignatureResultBool(Result.Data, TEXT("event_dispatcher_result"), TEXT("exists"), bExists);
+		SetSignatureResultString(Result.Data, TEXT("event_dispatcher_result"), TEXT("signature_mismatch_policy"), Request.SignatureMismatchPolicy);
 		Result.Validation = MakeSignatureValidation(!bExists, !bExists);
 		return Result;
 	}
@@ -1250,6 +1331,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureEventDisp
 		SetEventDispatcherTarget(Result, Request.AssetPath, Request.DispatcherName);
 		Result.Data = MakeSignatureResultData(false, TEXT("event_dispatcher_result"), false);
 		SetSignatureResultBool(Result.Data, TEXT("event_dispatcher_result"), TEXT("exists"), true);
+		SetSignatureResultString(Result.Data, TEXT("event_dispatcher_result"), TEXT("signature_mismatch_policy"), Request.SignatureMismatchPolicy);
 		Result.Validation = MakeSignatureValidation(false, false);
 		return Result;
 	}
@@ -1282,6 +1364,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureEventDisp
 	Result.Data = MakeSignatureResultData(false, TEXT("event_dispatcher_result"), false);
 	SetSignatureResultBool(Result.Data, TEXT("event_dispatcher_result"), TEXT("exists"), true);
 	SetSignatureResultNumber(Result.Data, TEXT("event_dispatcher_result"), TEXT("added_inputs"), RequestedPins.Num());
+	SetSignatureResultString(Result.Data, TEXT("event_dispatcher_result"), TEXT("signature_mismatch_policy"), Request.SignatureMismatchPolicy);
 	Result.Validation = MakeSignatureValidation(true, true);
 	return Result;
 }
@@ -1311,6 +1394,19 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureOverrideE
 			EBlueprintHelperToolStage::ParseInput,
 			TEXT("ensure_override_event event_kind must be native_event or override_event."),
 			TEXT("event_kind"));
+		SetOverrideEventTarget(Result, Request);
+		Result.Validation = MakeSignatureValidation(false, false);
+		return Result;
+	}
+
+	if (Request.ExecutePolicy.IsEmpty() || Request.ExecutePolicy != TEXT("blocked_preflight"))
+	{
+		FBlueprintHelperToolResultBase Result = MakeSignatureFailure(
+			TEXT("ensure_override_event"),
+			TEXT("invalid_override_event_execute_policy"),
+			EBlueprintHelperToolStage::ParseInput,
+			TEXT("ensure_override_event execute_policy must be blocked_preflight in this slice."),
+			TEXT("execute_policy"));
 		SetOverrideEventTarget(Result, Request);
 		Result.Validation = MakeSignatureValidation(false, false);
 		return Result;

@@ -397,10 +397,17 @@ Current implementation note, 2026-05-06 Rerun 4:
 Contract/compiler coverage: append_new_owned_graph, replace_owned_graph, patch_owned_graph, merge_owned_graph.
 Confirmed execute coverage: append_new_owned_graph with a fresh graph name, replace_owned_graph, patch_owned_graph on a BlueprintHelper-owned block, merge_owned_graph insert_between + function_call, merge_owned_graph append_after + function_call, and merge_owned_graph insert_between + custom_event_call.
 Confirmed read/write anchor coverage: LogicJson grouped block output includes block_id and group_entry_node_path; Patch/Merge resolve group-local node_ref / pin_ref / link_ref within that owned block.
+Ownership metadata write target: new writes store machine ownership fields in FMetaData, not NodeComment.
 Remaining gaps: append_after + custom_event_call currently returns an empty preview error; branch_fork is not smoke-tested; non-BlueprintHelper-owned graph anchors still need a separate contract.
 ```
 
 Ordinary Agents should still prefer `append_new_owned_graph` with a new BlueprintHelper-owned graph for new isolated logic. When modifying BlueprintHelper-owned blocks, use `replace_owned_graph`, `patch_owned_graph`, or `merge_owned_graph` only with block-scoped LogicJson anchors and always preview first. If preview blocks, stop and report instead of attempting a lower-level write tool fallback.
+
+Ownership metadata and NodeComment migration decision, 2026-05-07: new BlueprintHelper-owned graph writes must store machine ownership fields such as `block_id`, transaction ids, and other resolver metadata in UE `FMetaData`. They must not serialize `block_id` or `tx` into `NodeComment`.
+
+`NodeComment` is human-facing comment text. A `block_id` found in `NodeComment` is legacy fallback only for older assets that do not yet expose the ownership metadata through `FMetaData`. Readers and resolvers may use that fallback to avoid breaking existing assets, but it must not become the default write path.
+
+The current slice is not a migration that deletes or rewrites old asset comments. A later migration or repair pass may clean legacy `NodeComment` ownership fragments after the fallback behavior, audit output, and smoke coverage are agreed. This does not change the TaskSpec / TaskPlan mainline: Agents still use grouped LogicJson / block-scoped anchors, and the compiler still emits structured TaskPlan IR.
 
 The second executable slice is Blueprint Variables:
 
@@ -852,6 +859,8 @@ Completed task journals may include `generated_intent`, produced from the execut
 }
 ```
 
+`blueprinthelper_get_task_result` treats the UE Task Runtime journal as authoritative when `get_task_run_journal` returns `BlueprintHelper.TaskRunJournal.v1`. If the UE journal is unavailable, MCP may return its in-process execution summary. Completed UE journals that do not yet include `generated_intent` are normalized by the orchestration layer before they are returned to the Agent.
+
 ## 10. Validation Policy
 
 Validation policy is deliberately named the same way across TaskSpec and TaskPlan:
@@ -935,7 +944,7 @@ These operations are TaskRuntime / Existing Capability Cluster steps. They do no
 | Graph Write | `append_blueprint_graph`, `replace_blueprint_graph`, `patch_blueprint_graph`, `merge_blueprint_graph` | `BlueprintHelper_AppendBlueprintGraph_UE_CPP_Implementation_Plan_20260503.md`, `BlueprintHelper_ReplaceBlueprintGraph_UE_CPP_Implementation_Plan_20260503.md`, `BlueprintHelper_PatchBlueprintGraph_UE_CPP_Implementation_Plan_20260503.md`, `BlueprintHelper_MergeBlueprintGraph_UE_CPP_Implementation_Plan_20260503.md` | TaskSpec only |
 | Graph Cleanup / Ownership | `cleanup_blueprinthelper_block`, `convert_block_to_user_owned`, `rollback_cleanup_transaction` | `BlueprintHelper_CleanupBlueprintHelperBlock_UE_CPP_Implementation_Plan_20260503.md`, `BlueprintHelper_ConvertBlockToUserOwned_UE_CPP_Implementation_Plan_20260503.md`, `BlueprintHelper_RollbackCleanupTransaction_UE_CPP_Implementation_Plan_20260503.md` | TaskPlan internal |
 | Blueprint Variables | `add_blueprint_member_variables` runtime adapter for `ensure_member_variable`; wider read/default/local/remove commands remain internal until dry-run contracts are fixed | `BlueprintHelper_BlueprintVariables_Defaults_LocalVariables_UE_CPP_Implementation_Plan_20260503.md` | TaskSpec only for `ensure_member_variable`, otherwise TaskPlan internal |
-| Function/Event Signature | `ensure_function` runtime adapter for composite interface implementation; broader read/add/set/remove function/event signatures remain future work | `BlueprintHelper_FunctionEventSignature_UE_CPP_Implementation_Plan_20260503.md` | TaskPlan internal |
+| Function/Event Signature | TaskPlan-internal `blueprint_signature` ops for function, custom event, interface entry, dispatcher, override/native, and remove preflight policies | `BlueprintHelper_FunctionEventSignature_UE_CPP_Implementation_Plan_20260503.md` | TaskPlan internal |
 | UMG Widget Blueprint | `read_widget_blueprint`, `set_widget_tree`, `set_widget_properties` | `BlueprintHelper_UMG_WidgetBlueprint_UE_CPP_Implementation_Plan_20260503.md` | TaskPlan internal |
 | DataAsset | `read_data_asset`, `set_data_asset_properties` | `BlueprintHelper_DataAsset_UE_CPP_Implementation_Plan_20260503.md` | TaskPlan internal |
 | DataTable | `read_data_table`, `update_data_table_rows` | `BlueprintHelper_DataTable_UE_CPP_Implementation_Plan_20260503.md` | TaskPlan internal |
@@ -952,10 +961,11 @@ P2 first slice, 2026-05-06:
 - UE now has an internal `FBlueprintHelperSignatureService` under `Services/BlueprintSignature`, with DTOs under `Structure/BlueprintSignature`.
 - TaskRuntime `blueprint_signature` steps call this internal service instead of keeping signature execution logic inside the runtime service.
 - `ensure_function` supports dry-run, reuse-if-exists no-op, real function graph creation, and first-slice `inputs` / `outputs` forwarding from TaskPlan.
-- `ensure_custom_event` is represented through the same service boundary, but current execution still returns a compact `deferred_to_graph_write` result until GraphWrite entry declaration and body writing are split in UE.
-- `ensure_event_dispatcher` is a TaskPlan-internal `event_dispatcher_signature` op. It can create a new dispatcher declaration through the internal structure service; changing an existing dispatcher signature remains blocked until the migration policy is confirmed.
-- `ensure_override_event` is a TaskPlan-internal `override_event_signature` op, but it currently returns a blocked preflight result. Override/native event creation policy is still pending.
-- `remove_signature` is TaskPlan-internal and remains blocked preflight until reference analysis and cleanup policy are confirmed.
+- `interface_entry_kind` distinguishes interface functions from interface events. Interface functions lower to `ensure_function` under `function_signature`; interface events lower to `ensure_custom_event` under `custom_event_signature` and require an explicit graph target.
+- `ensure_custom_event` supports dry-run, reuse-if-exists no-op, and first-slice entry declaration through the signature service. GraphWrite remains responsible for body nodes and links.
+- `ensure_event_dispatcher` is a TaskPlan-internal `event_dispatcher_signature` op. It can create a new dispatcher declaration through the internal structure service. Existing dispatcher signature mutation is blocked by policy; `signature_mismatch_policy` must be `block`.
+- `ensure_override_event` is a TaskPlan-internal `override_event_signature` op. `event_kind` must be `native_event` or `override_event`, and `execute_policy` must be `blocked_preflight`; this slice returns a blocked preflight result instead of creating the entry.
+- `remove_signature` is TaskPlan-internal. It accepts function, interface function, custom event, interface event, event dispatcher, override event, and native event kinds, but `execute_policy` must be `blocked_preflight` and `require_reference_context` must stay true until reference analysis and cleanup policy are implemented.
 - No new Agent-facing atomic MCP signature tool is introduced.
 
 ### 11.2 Support Clusters

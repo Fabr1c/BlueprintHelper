@@ -191,6 +191,22 @@ namespace
 		return Request;
 	}
 
+	FBlueprintHelperRemoveSignatureRequest MakeRemoveSignatureRequest(
+		UBlueprint* Blueprint,
+		const FString& SignatureKind,
+		const FString& SignatureName,
+		bool bDryRun)
+	{
+		FBlueprintHelperRemoveSignatureRequest Request;
+		Request.AssetPath = Blueprint ? Blueprint->GetPathName() : TEXT("");
+		Request.SignatureKind = SignatureKind;
+		Request.SignatureName = SignatureName;
+		Request.bDryRun = bDryRun;
+		Request.bRequireReferenceContext = true;
+		Request.ExecutePolicy = TEXT("blocked_preflight");
+		return Request;
+	}
+
 	FBlueprintHelperEnsureEventDispatcherSignatureRequest MakeEnsureEventDispatcherRequest(
 		UBlueprint* Blueprint,
 		const FString& DispatcherName,
@@ -480,6 +496,91 @@ bool FBlueprintHelperSignatureServiceRemoveSignatureDryRunBlockedTest::RunTest(c
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperSignatureServiceRemoveEventDispatcherDryRunBlockedTest,
+	"BlueprintHelper.Signature.Service.RemoveEventDispatcherDryRunBlocked",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperSignatureServiceRemoveEventDispatcherDryRunBlockedTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeSignatureServiceActorBlueprint(TEXT("RemoveDispatcherDryRun"));
+	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlueprintStructureService StructureService(Resolver);
+	FBlueprintHelperSignatureService SignatureService(StructureService);
+
+	const FBlueprintHelperToolResultBase Result = SignatureService.RemoveSignature(
+		MakeRemoveSignatureRequest(Blueprint, TEXT("event_dispatcher"), TEXT("OnDoorOpened"), true));
+
+	TestFalse(TEXT("event dispatcher remove signature dry-run is blocked"), Result.bOk);
+	TestEqual(TEXT("remove signature reports failed status"), Result.Status, EBlueprintHelperToolStatus::Failed);
+	TestTrue(TEXT("remove signature uses signature data schema"), HasSignatureDataSchema(Result));
+	TestTrue(TEXT("remove signature has error"), Result.Error.IsSet());
+	if (Result.Error.IsSet())
+	{
+		TestEqual(TEXT("event dispatcher remove blocked code"), Result.Error->Code, FString(TEXT("signature_remove_unsupported")));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperSignatureServiceRejectsRemoveWithoutReferenceContextTest,
+	"BlueprintHelper.Signature.Service.RejectsRemoveWithoutReferenceContext",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperSignatureServiceRejectsRemoveWithoutReferenceContextTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeSignatureServiceActorBlueprint(TEXT("RemoveNeedsReferenceContext"));
+	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlueprintStructureService StructureService(Resolver);
+	FBlueprintHelperSignatureService SignatureService(StructureService);
+
+	FBlueprintHelperRemoveSignatureRequest Request =
+		MakeRemoveSignatureRequest(Blueprint, TEXT("event_dispatcher"), TEXT("OnDoorOpened"), true);
+	Request.bRequireReferenceContext = false;
+
+	const FBlueprintHelperToolResultBase Result = SignatureService.RemoveSignature(Request);
+
+	TestFalse(TEXT("remove without reference context is rejected"), Result.bOk);
+	TestTrue(TEXT("remove without reference context has error"), Result.Error.IsSet());
+	if (Result.Error.IsSet())
+	{
+		TestEqual(TEXT("remove reference context error code"), Result.Error->Code, FString(TEXT("invalid_signature_remove_policy")));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperSignatureServiceRemoveNativeEventDryRunBlockedTest,
+	"BlueprintHelper.Signature.Service.RemoveNativeEventDryRunBlocked",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperSignatureServiceRemoveNativeEventDryRunBlockedTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeSignatureServiceActorBlueprint(TEXT("RemoveNativeEventDryRun"));
+	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlueprintStructureService StructureService(Resolver);
+	FBlueprintHelperSignatureService SignatureService(StructureService);
+
+	const FBlueprintHelperToolResultBase Result = SignatureService.RemoveSignature(
+		MakeRemoveSignatureRequest(Blueprint, TEXT("native_event"), TEXT("ReceiveBeginPlay"), true));
+
+	TestFalse(TEXT("native event remove signature dry-run is blocked"), Result.bOk);
+	TestEqual(TEXT("remove signature reports failed status"), Result.Status, EBlueprintHelperToolStatus::Failed);
+	TestTrue(TEXT("remove signature uses signature data schema"), HasSignatureDataSchema(Result));
+	TestTrue(TEXT("remove signature has error"), Result.Error.IsSet());
+	if (Result.Error.IsSet())
+	{
+		TestEqual(TEXT("native event remove blocked code"), Result.Error->Code, FString(TEXT("signature_remove_unsupported")));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperSignatureServiceEnsureEventDispatcherDryRunTest,
 	"BlueprintHelper.Signature.Service.EnsureEventDispatcherDryRun",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -509,6 +610,35 @@ bool FBlueprintHelperSignatureServiceEnsureEventDispatcherDryRunTest::RunTest(co
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperSignatureServiceRejectsDispatcherMutationPolicyTest,
+	"BlueprintHelper.Signature.Service.RejectsDispatcherMutationPolicy",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperSignatureServiceRejectsDispatcherMutationPolicyTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeSignatureServiceActorBlueprint(TEXT("DispatcherMutationPolicy"));
+	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlueprintStructureService StructureService(Resolver);
+	FBlueprintHelperSignatureService SignatureService(StructureService);
+
+	FBlueprintHelperEnsureEventDispatcherSignatureRequest Request =
+		MakeEnsureEventDispatcherRequest(Blueprint, TEXT("BH_OnDoorOpened"), true);
+	Request.SignatureMismatchPolicy = TEXT("mutate");
+
+	const FBlueprintHelperToolResultBase Result = SignatureService.EnsureEventDispatcher(Request);
+
+	TestFalse(TEXT("unsupported dispatcher mutation policy is rejected"), Result.bOk);
+	TestTrue(TEXT("dispatcher policy result has error"), Result.Error.IsSet());
+	if (Result.Error.IsSet())
+	{
+		TestEqual(TEXT("dispatcher policy error code"), Result.Error->Code, FString(TEXT("invalid_event_dispatcher_mutation_policy")));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperSignatureServiceEnsureOverrideEventDryRunBlockedTest,
 	"BlueprintHelper.Signature.Service.EnsureOverrideEventDryRunBlocked",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -534,6 +664,35 @@ bool FBlueprintHelperSignatureServiceEnsureOverrideEventDryRunBlockedTest::RunTe
 	if (Result.Error.IsSet())
 	{
 		TestEqual(TEXT("override event unsupported code"), Result.Error->Code, FString(TEXT("override_event_signature_unsupported")));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperSignatureServiceRejectsOverrideExecutePolicyTest,
+	"BlueprintHelper.Signature.Service.RejectsOverrideExecutePolicy",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperSignatureServiceRejectsOverrideExecutePolicyTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeSignatureServiceActorBlueprint(TEXT("OverrideExecutePolicy"));
+	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlueprintStructureService StructureService(Resolver);
+	FBlueprintHelperSignatureService SignatureService(StructureService);
+
+	FBlueprintHelperEnsureOverrideEventSignatureRequest Request =
+		MakeEnsureOverrideEventRequest(Blueprint, TEXT("ReceiveBeginPlay"), true);
+	Request.ExecutePolicy = TEXT("execute");
+
+	const FBlueprintHelperToolResultBase Result = SignatureService.EnsureOverrideEvent(Request);
+
+	TestFalse(TEXT("unsupported override execute policy is rejected"), Result.bOk);
+	TestTrue(TEXT("override policy result has error"), Result.Error.IsSet());
+	if (Result.Error.IsSet())
+	{
+		TestEqual(TEXT("override policy error code"), Result.Error->Code, FString(TEXT("invalid_override_event_execute_policy")));
 	}
 	return true;
 }

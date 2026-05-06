@@ -374,6 +374,10 @@ feature_name
 失败策略
 ```
 
+`feature_name` 只用于任务显示名、摘要和 journal 标签，不参与图表名、函数名、变量名或 block_id 推断。图表名等写入目标必须由 Agent 在读取 Profile / 上下文后显式填写。
+
+不要在 TaskSpec 中填写 `intent`。执行完成后，MCP/Python 编排层会根据实际执行的 capability 和目标生成 `generated_intent` 写入 TaskRunJournal。
+
 ### 8.1 TaskSpec 最小骨架
 
 固定字段以 `Resources/Docs/TaskSpec_TaskPlan_Contract_20260504.md` 为准。当前 compiler 合同覆盖 GraphWrite Append/Replace/Patch/Merge、Blueprint Variables、P1 capability clusters，以及 `create_blueprint_feature` composite + `integration.interface` 首片。复合任务由 compiler 分解为现有 capability steps，Agent 不填写 TaskPlan。
@@ -502,6 +506,7 @@ Agent-facing 成功返回应聚焦：
 ```text
 task_run_id
 feature_name
+generated_intent
 target_assets
 applied_steps
 created_assets

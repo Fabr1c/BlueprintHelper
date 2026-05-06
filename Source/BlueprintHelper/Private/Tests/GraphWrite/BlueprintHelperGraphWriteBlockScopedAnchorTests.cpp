@@ -158,8 +158,26 @@ namespace
 			MetaData.SetValue(Node, TEXT("BlueprintHelperOwned"), TEXT("true"));
 			MetaData.SetValue(Node, TEXT("BlueprintHelperBlockId"), *BlockId);
 		}
+	}
 
-		Node->NodeComment = FString::Printf(TEXT("[BlueprintHelper]\nblock_id=%s"), *BlockId);
+	void MarkNodeWithLegacyBlueprintHelperComment(UEdGraphNode* Node, const FString& BlockId)
+	{
+		if (!Node)
+		{
+			return;
+		}
+
+		if (UPackage* Package = Node->GetOutermost())
+		{
+			FMetaData& MetaData = Package->GetMetaData();
+			MetaData.RemoveValue(Node, TEXT("BlueprintHelperOwned"));
+			MetaData.RemoveValue(Node, TEXT("BlueprintHelperBlockId"));
+			MetaData.RemoveValue(Node, TEXT("BlueprintHelperTransactionId"));
+			MetaData.RemoveValue(Node, TEXT("BlueprintHelperFeatureName"));
+			MetaData.RemoveValue(Node, TEXT("BlueprintHelperTool"));
+		}
+
+		Node->NodeComment = FString::Printf(TEXT("[BlueprintHelper]\nblock_id=%s\ntx=legacy_tx"), *BlockId);
 	}
 
 	struct FBlockScopedGraph
@@ -376,11 +394,81 @@ bool FBlueprintHelperGraphWritePatchSetNodeCommentBlockScopedAnchorTest::RunTest
 	FBlueprintHelperTransactionJournalService JournalService;
 	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService, JournalService);
 
+	TestFalse(TEXT("metadata-owned entry does not need legacy block_id comment"),
+		Fixture.OwnedEntry->NodeComment.Contains(TEXT("block_id=")));
 	const FBlueprintHelperToolResultBase Result = PatchService.Execute(MakeSetNodeCommentPayload(Fixture));
 
 	TestTrue(TEXT("set_node_comment resolves block-local nodes[0]"), Result.bOk);
 	TestEqual(TEXT("owned entry comment is changed"), Fixture.OwnedEntry->NodeComment, FString(TEXT("Updated block entry comment")));
 	TestFalse(TEXT("whole-graph nodes[0] was not patched"), Fixture.FirstUnownedEvent->NodeComment == FString(TEXT("Updated block entry comment")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWritePatchResolvesLegacyManagedCommentFallbackTest,
+	"BlueprintHelper.GraphWrite.BlockScopedAnchors.LegacyManagedCommentFallback",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWritePatchResolvesLegacyManagedCommentFallbackTest::RunTest(const FString& Parameters)
+{
+	const FBlockScopedGraph Fixture = MakeBlockScopedGraph(TEXT("PatchLegacyManagedCommentFallback"));
+	TestNotNull(TEXT("fixture graph exists"), Fixture.Graph);
+	TestNotNull(TEXT("owned entry exists"), Fixture.OwnedEntry);
+	TestNotNull(TEXT("owned branch exists"), Fixture.OwnedBranch);
+	if (!Fixture.Graph || !Fixture.OwnedEntry || !Fixture.OwnedBranch)
+	{
+		return false;
+	}
+
+	MarkNodeWithLegacyBlueprintHelperComment(Fixture.OwnedEntry, Fixture.BlockId);
+	MarkNodeWithLegacyBlueprintHelperComment(Fixture.OwnedBranch, Fixture.BlockId);
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperLogicJsonPathService PathService;
+	FBlueprintHelperTransactionJournalService JournalService;
+	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService, JournalService);
+
+	const FBlueprintHelperToolResultBase Result = PatchService.Execute(MakeSetNodeCommentPayload(Fixture));
+
+	TestTrue(TEXT("legacy comment fallback patch succeeds"), Result.bOk);
+	TestEqual(TEXT("legacy comment fallback resolves owned entry"), Fixture.OwnedEntry->NodeComment, FString(TEXT("Updated block entry comment")));
+	TestFalse(TEXT("whole-graph nodes[0] was not patched"), Fixture.FirstUnownedEvent->NodeComment == FString(TEXT("Updated block entry comment")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWritePatchIgnoresLegacyCommentWhenMetadataPresentTest,
+	"BlueprintHelper.GraphWrite.BlockScopedAnchors.MetadataWinsOverLegacyComment",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWritePatchIgnoresLegacyCommentWhenMetadataPresentTest::RunTest(const FString& Parameters)
+{
+	FBlockScopedGraph Fixture = MakeBlockScopedGraph(TEXT("PatchMetadataWinsOverLegacyComment"));
+	TestNotNull(TEXT("fixture graph exists"), Fixture.Graph);
+	TestNotNull(TEXT("owned entry exists"), Fixture.OwnedEntry);
+	TestNotNull(TEXT("owned branch exists"), Fixture.OwnedBranch);
+	if (!Fixture.Graph || !Fixture.OwnedEntry || !Fixture.OwnedBranch)
+	{
+		return false;
+	}
+
+	const FString LegacyBlockId = FString::Printf(TEXT("%s_Legacy"), *Fixture.BlockId);
+	const FString StaleLegacyComment = FString::Printf(TEXT("[BlueprintHelper]\nblock_id=%s\ntx=stale_legacy_tx"), *LegacyBlockId);
+	Fixture.OwnedEntry->NodeComment = StaleLegacyComment;
+	Fixture.OwnedBranch->NodeComment = StaleLegacyComment;
+	Fixture.BlockId = LegacyBlockId;
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperLogicJsonPathService PathService;
+	FBlueprintHelperTransactionJournalService JournalService;
+	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService, JournalService);
+
+	const FBlueprintHelperToolResultBase Result = PatchService.Execute(MakeSetNodeCommentPayload(Fixture));
+
+	TestFalse(TEXT("legacy comment is ignored while ownership metadata is present"), Result.bOk);
+	TestEqual(TEXT("metadata-owned node keeps stale comment when legacy block is rejected"),
+		Fixture.OwnedEntry->NodeComment,
+		StaleLegacyComment);
 	return true;
 }
 
