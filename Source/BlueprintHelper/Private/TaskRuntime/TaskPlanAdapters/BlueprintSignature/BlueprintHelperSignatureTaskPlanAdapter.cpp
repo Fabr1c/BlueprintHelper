@@ -81,11 +81,13 @@ namespace
 
 		if (!(*WriteObjectPtr)->TryGetStringField(TEXT("strategy"), OutStrategy) ||
 			(OutStrategy != FBlueprintHelperSignatureTaskPlanAdapter::StrategyFunctionSignature &&
-				OutStrategy != FBlueprintHelperSignatureTaskPlanAdapter::StrategyCustomEventSignature))
+				OutStrategy != FBlueprintHelperSignatureTaskPlanAdapter::StrategyCustomEventSignature &&
+				OutStrategy != FBlueprintHelperSignatureTaskPlanAdapter::StrategyEventDispatcherSignature &&
+				OutStrategy != FBlueprintHelperSignatureTaskPlanAdapter::StrategyOverrideEventSignature))
 		{
 			OutError = MakeAdapterError(
 				TEXT("unsupported_signature_strategy"),
-				TEXT("blueprint_signature TaskPlan step supports function_signature and custom_event_signature strategies."),
+				TEXT("blueprint_signature TaskPlan step supports function_signature, custom_event_signature, event_dispatcher_signature, and override_event_signature strategies."),
 				StepFieldPath(TEXT("write.strategy")));
 			return false;
 		}
@@ -192,16 +194,21 @@ bool FBlueprintHelperSignatureTaskPlanAdapter::TryLowerTaskPlanStep(
 		return false;
 	}
 
-	if (OpName != AdapterOperationEnsureFunction && OpName != AdapterOperationEnsureCustomEvent)
+	const bool bEnsureFunction = OpName == AdapterOperationEnsureFunction;
+	const bool bEnsureCustomEvent = OpName == AdapterOperationEnsureCustomEvent;
+	const bool bRemoveSignature = OpName == AdapterOperationRemoveSignature;
+	const bool bEnsureEventDispatcher = OpName == AdapterOperationEnsureEventDispatcher;
+	const bool bEnsureOverrideEvent = OpName == AdapterOperationEnsureOverrideEvent;
+	if (!bEnsureFunction && !bEnsureCustomEvent && !bRemoveSignature && !bEnsureEventDispatcher && !bEnsureOverrideEvent)
 	{
 		OutError = MakeAdapterError(
 			TEXT("unsupported_signature_op"),
-			TEXT("blueprint_signature currently supports ensure_function and ensure_custom_event."),
+			TEXT("blueprint_signature currently supports ensure_function, ensure_custom_event, ensure_event_dispatcher, ensure_override_event, and remove_signature."),
 			OpFieldPath(TEXT("op")));
 		return false;
 	}
 
-	if (OpName == AdapterOperationEnsureFunction && Strategy != StrategyFunctionSignature)
+	if (bEnsureFunction && Strategy != StrategyFunctionSignature)
 	{
 		OutError = MakeAdapterError(
 			TEXT("unsupported_signature_strategy"),
@@ -210,7 +217,7 @@ bool FBlueprintHelperSignatureTaskPlanAdapter::TryLowerTaskPlanStep(
 		return false;
 	}
 
-	if (OpName == AdapterOperationEnsureCustomEvent && Strategy != StrategyCustomEventSignature)
+	if (bEnsureCustomEvent && Strategy != StrategyCustomEventSignature)
 	{
 		OutError = MakeAdapterError(
 			TEXT("unsupported_signature_strategy"),
@@ -219,11 +226,40 @@ bool FBlueprintHelperSignatureTaskPlanAdapter::TryLowerTaskPlanStep(
 		return false;
 	}
 
+	if (bRemoveSignature &&
+		Strategy != StrategyFunctionSignature &&
+		Strategy != StrategyCustomEventSignature)
+	{
+		OutError = MakeAdapterError(
+			TEXT("unsupported_signature_strategy"),
+			TEXT("remove_signature requires function_signature or custom_event_signature strategy."),
+			StepFieldPath(TEXT("write.strategy")));
+		return false;
+	}
+
+	if (bEnsureEventDispatcher && Strategy != StrategyEventDispatcherSignature)
+	{
+		OutError = MakeAdapterError(
+			TEXT("unsupported_signature_strategy"),
+			TEXT("ensure_event_dispatcher requires event_dispatcher_signature strategy."),
+			StepFieldPath(TEXT("write.strategy")));
+		return false;
+	}
+
+	if (bEnsureOverrideEvent && Strategy != StrategyOverrideEventSignature)
+	{
+		OutError = MakeAdapterError(
+			TEXT("unsupported_signature_strategy"),
+			TEXT("ensure_override_event requires override_event_signature strategy."),
+			StepFieldPath(TEXT("write.strategy")));
+		return false;
+	}
+
 	TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
 	Payload->SetStringField(TEXT("asset_path"), AssetPath);
 	Payload->SetBoolField(TEXT("dry_run"), bDryRun);
 
-	if (OpName == AdapterOperationEnsureFunction)
+	if (bEnsureFunction)
 	{
 		FString FunctionName;
 		if (!OpObject->TryGetStringField(TEXT("function_name"), FunctionName) || FunctionName.IsEmpty())
@@ -260,7 +296,7 @@ bool FBlueprintHelperSignatureTaskPlanAdapter::TryLowerTaskPlanStep(
 			Payload->SetArrayField(TEXT("outputs"), *Outputs);
 		}
 	}
-	else
+	else if (bEnsureCustomEvent)
 	{
 		FString EventName;
 		if (!OpObject->TryGetStringField(TEXT("event_name"), EventName) || EventName.IsEmpty())
@@ -289,6 +325,117 @@ bool FBlueprintHelperSignatureTaskPlanAdapter::TryLowerTaskPlanStep(
 		if (OpObject->TryGetArrayField(TEXT("inputs"), Inputs) && Inputs)
 		{
 			Payload->SetArrayField(TEXT("inputs"), *Inputs);
+		}
+	}
+	else if (bEnsureEventDispatcher)
+	{
+		FString DispatcherName;
+		if (!OpObject->TryGetStringField(TEXT("dispatcher_name"), DispatcherName) || DispatcherName.IsEmpty())
+		{
+			OutError = MakeAdapterError(
+				TEXT("invalid_signature_op"),
+				TEXT("ensure_event_dispatcher requires dispatcher_name."),
+				OpFieldPath(TEXT("dispatcher_name")));
+			return false;
+		}
+
+		Payload->SetStringField(TEXT("dispatcher_name"), DispatcherName);
+
+		const TArray<TSharedPtr<FJsonValue>>* Inputs = nullptr;
+		if (OpObject->TryGetArrayField(TEXT("inputs"), Inputs) && Inputs)
+		{
+			Payload->SetArrayField(TEXT("inputs"), *Inputs);
+		}
+	}
+	else if (bEnsureOverrideEvent)
+	{
+		FString EventName;
+		if (!OpObject->TryGetStringField(TEXT("event_name"), EventName) || EventName.IsEmpty())
+		{
+			OutError = MakeAdapterError(
+				TEXT("invalid_signature_op"),
+				TEXT("ensure_override_event requires event_name."),
+				OpFieldPath(TEXT("event_name")));
+			return false;
+		}
+
+		Payload->SetStringField(TEXT("event_name"), EventName);
+
+		FString EventKind;
+		if (OpObject->TryGetStringField(TEXT("event_kind"), EventKind) && !EventKind.IsEmpty())
+		{
+			Payload->SetStringField(TEXT("event_kind"), EventKind);
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* Inputs = nullptr;
+		if (OpObject->TryGetArrayField(TEXT("inputs"), Inputs) && Inputs)
+		{
+			Payload->SetArrayField(TEXT("inputs"), *Inputs);
+		}
+	}
+	else
+	{
+		FString SignatureKind;
+		if (!OpObject->TryGetStringField(TEXT("signature_kind"), SignatureKind) || SignatureKind.IsEmpty())
+		{
+			SignatureKind = Strategy == StrategyFunctionSignature ? TEXT("function") : TEXT("custom_event");
+		}
+
+		if (SignatureKind != TEXT("function") && SignatureKind != TEXT("custom_event"))
+		{
+			OutError = MakeAdapterError(
+				TEXT("unsupported_signature_remove_kind"),
+				TEXT("remove_signature supports signature_kind=function or custom_event."),
+				OpFieldPath(TEXT("signature_kind")));
+			return false;
+		}
+
+		if (SignatureKind == TEXT("function") && Strategy != StrategyFunctionSignature)
+		{
+			OutError = MakeAdapterError(
+				TEXT("unsupported_signature_strategy"),
+				TEXT("remove_signature kind=function requires function_signature strategy."),
+				StepFieldPath(TEXT("write.strategy")));
+			return false;
+		}
+
+		if (SignatureKind == TEXT("custom_event") && Strategy != StrategyCustomEventSignature)
+		{
+			OutError = MakeAdapterError(
+				TEXT("unsupported_signature_strategy"),
+				TEXT("remove_signature kind=custom_event requires custom_event_signature strategy."),
+				StepFieldPath(TEXT("write.strategy")));
+			return false;
+		}
+
+		FString SignatureName;
+		if (!OpObject->TryGetStringField(TEXT("signature_name"), SignatureName) || SignatureName.IsEmpty())
+		{
+			if (SignatureKind == TEXT("function"))
+			{
+				OpObject->TryGetStringField(TEXT("function_name"), SignatureName);
+			}
+			else
+			{
+				OpObject->TryGetStringField(TEXT("event_name"), SignatureName);
+			}
+		}
+		if (SignatureName.IsEmpty())
+		{
+			OutError = MakeAdapterError(
+				TEXT("invalid_signature_op"),
+				TEXT("remove_signature requires signature_name, function_name, or event_name."),
+				OpFieldPath(TEXT("signature_name")));
+			return false;
+		}
+
+		Payload->SetStringField(TEXT("signature_kind"), SignatureKind);
+		Payload->SetStringField(TEXT("signature_name"), SignatureName);
+
+		FString GraphName;
+		if (OpObject->TryGetStringField(TEXT("graph_name"), GraphName) && !GraphName.IsEmpty())
+		{
+			Payload->SetStringField(TEXT("graph_name"), GraphName);
 		}
 	}
 

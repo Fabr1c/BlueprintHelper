@@ -50,6 +50,7 @@
 #include "OperationHandlers/GraphWrite/RemoveGraphHandler.h"
 #include "OperationHandlers/BlueprintVariables/RemoveMemberVariableHandler.h"
 #include "SHelperMainWidget.h"
+#include "Widgets/SBlueprintHelperMainWindow.h"
 #include "GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Services/RuntimeDiagnostics/BlueprintHelperValidationService.h"
 #include "Services/BlueprintHelperExportService.h"
@@ -79,6 +80,8 @@
 #include "Services/CleanupOwnership/BlueprintHelperConvertBlockToUserOwnedService.h"
 #include "Services/RuntimeDiagnostics/BlueprintHelperCompileAssetService.h"
 #include "Transactions/Transactions/BlueprintHelperTransactionQueryService.h"
+#include "Services/Review/BlueprintHelperReviewActionService.h"
+#include "Services/Review/BlueprintHelperReviewStoreService.h"
 #include "Services/BlueprintVariables/BlueprintHelperBlueprintVariableService.h"
 #include "GraphSupport/BlueprintHelperBlockIdService.h"
 #include "GraphSupport/BlueprintHelperOwnershipService.h"
@@ -201,6 +204,8 @@ void FBlueprintHelperModule::StartupModule()
 	CompileAssetService = MakeUnique<FBlueprintHelperCompileAssetService>(*CompileService);
 	TransactionQueryService = MakeUnique<FBlueprintHelperTransactionQueryService>();
 	VariableService = MakeUnique<FBlueprintHelperBlueprintVariableService>(*GraphResolver, *StructureService);
+	ReviewStoreService = MakeUnique<FBlueprintHelperReviewStoreService>();
+	ReviewActionService = MakeUnique<FBlueprintHelperReviewActionService>();
 
 	// ─── Bridge Layer 初始。───
 	ContextService = MakeUnique<FBlueprintHelperContextService>(*GraphResolver);
@@ -228,6 +233,8 @@ void FBlueprintHelperModule::ShutdownModule()
 	ContextService.Reset();
 
 	// ─── Service Layer 销毁（逆序）───
+	ReviewActionService.Reset();
+	ReviewStoreService.Reset();
 	EditorCommandService.Reset();
 	ClassSettingsService.Reset();
 	ComponentService.Reset();
@@ -387,9 +394,11 @@ TSharedRef<SDockTab> FBlueprintHelperModule::OnSpawnPluginTab(const FSpawnTabArg
 	return SNew(SDockTab)
 		.TabRole(ETabRole::NomadTab)
 		[
-			SNew(SHelperMainWidget)
+			SNew(SBlueprintHelperMainWindow)
 			.ImportService(ImportService.Get())
 			.GraphResolver(GraphResolver.Get())
+			.ReviewStoreService(ReviewStoreService.Get())
+			.ReviewActionService(ReviewActionService.Get())
 		];
 }
 

@@ -13,6 +13,10 @@
 #include "Services/BlueprintClassSettings/BlueprintHelperClassSettingsService.h"
 #include "Services/RuntimeDiagnostics/BlueprintHelperCompileAssetService.h"
 #include "Services/BlueprintComponent/BlueprintHelperComponentService.h"
+#include "Services/CleanupOwnership/BlueprintHelperCleanupBlueprintHelperBlockService.h"
+#include "Services/CleanupOwnership/BlueprintHelperConvertBlockToUserOwnedService.h"
+#include "Services/CleanupOwnership/BlueprintHelperRollbackCleanupTransactionService.h"
+#include "Services/DataAssetObjectProperty/BlueprintHelperPropertyReflectionService.h"
 #include "Services/DataTable/BlueprintHelperDataTableService.h"
 #include "Services/UMGWidget/BlueprintHelperWidgetService.h"
 #include "Services/RuntimeDiagnostics/BlueprintHelperAssetBrowseService.h"
@@ -21,8 +25,10 @@
 #include "TaskRuntime/TaskPlanAdapters/BlueprintVariables/BlueprintHelperBlueprintVariableTaskPlanAdapter.h"
 #include "TaskRuntime/TaskPlanAdapters/BlueprintClassSettings/BlueprintHelperClassSettingsTaskPlanAdapter.h"
 #include "TaskRuntime/TaskPlanAdapters/BlueprintComponent/BlueprintHelperComponentTaskPlanAdapter.h"
+#include "TaskRuntime/TaskPlanAdapters/DataAssetObjectProperty/BlueprintHelperObjectPropertyTaskPlanAdapter.h"
 #include "TaskRuntime/TaskPlanAdapters/DataTable/BlueprintHelperDataTableTaskPlanAdapter.h"
 #include "TaskRuntime/TaskPlanAdapters/BlueprintSignature/BlueprintHelperSignatureTaskPlanAdapter.h"
+#include "TaskRuntime/TaskPlanAdapters/CleanupOwnership/BlueprintHelperCleanupOwnershipTaskPlanAdapter.h"
 #include "TaskRuntime/TaskPlanAdapters/UMGWidget/BlueprintHelperWidgetTaskPlanAdapter.h"
 
 #include "Dom/JsonObject.h"
@@ -1680,7 +1686,12 @@ namespace
 			TEXT("inspect_task_result_then_submit_followup_taskspec"));
 		Recovery->SetBoolField(TEXT("safe_to_retry"), false);
 		Recovery->SetBoolField(TEXT("rollback_available"), false);
-		Recovery->SetArrayField(TEXT("notes"), {});
+		TArray<TSharedPtr<FJsonValue>> Notes;
+		Notes.Add(MakeShared<FJsonValueString>(
+			TEXT("TaskRuntime does not perform global rollback after partial failure.")));
+		Notes.Add(MakeShared<FJsonValueString>(
+			TEXT("Review failed and blocked steps, then submit a follow-up TaskSpec for the remaining intended changes.")));
+		Recovery->SetArrayField(TEXT("notes"), Notes);
 		return Recovery;
 	}
 
@@ -2852,6 +2863,146 @@ namespace
 			TEXT("Unsupported DataTable adapter operation."));
 	}
 
+	bool TryBuildObjectPropertyRequest(
+		const TSharedPtr<FJsonObject>& Payload,
+		FBlueprintHelperSetObjectPropertiesRequest& OutRequest,
+		FString& OutError)
+	{
+		OutRequest = FBlueprintHelperSetObjectPropertiesRequest();
+		OutError.Reset();
+		if (!Payload.IsValid())
+		{
+			OutError = TEXT("object_property adapter payload is required.");
+			return false;
+		}
+
+		Payload->TryGetStringField(TEXT("asset_path"), OutRequest.AssetPath);
+		Payload->TryGetBoolField(TEXT("dry_run"), OutRequest.bDryRun);
+		if (OutRequest.AssetPath.IsEmpty())
+		{
+			OutError = TEXT("object_property adapter payload requires asset_path.");
+			return false;
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* SettingsArray = nullptr;
+		if (Payload->TryGetArrayField(TEXT("settings"), SettingsArray) && SettingsArray)
+		{
+			for (const TSharedPtr<FJsonValue>& SettingValue : *SettingsArray)
+			{
+				const TSharedPtr<FJsonObject> SettingObject = SettingValue.IsValid()
+					? SettingValue->AsObject()
+					: nullptr;
+				if (!SettingObject.IsValid())
+				{
+					OutError = TEXT("object_property settings entries must be objects.");
+					return false;
+				}
+
+				FBlueprintHelperObjectPropertySetting Setting;
+				SettingObject->TryGetStringField(TEXT("property_path"), Setting.PropertyPath);
+				if (Setting.PropertyPath.IsEmpty())
+				{
+					OutError = TEXT("object_property settings entries require property_path.");
+					return false;
+				}
+
+				const TSharedPtr<FJsonValue>* Value = SettingObject->Values.Find(TEXT("value"));
+				if (!Value || !Value->IsValid())
+				{
+					OutError = TEXT("object_property settings entries require value.");
+					return false;
+				}
+
+				Setting.Value = *Value;
+				OutRequest.Settings.Add(MoveTemp(Setting));
+			}
+			if (OutRequest.Settings.Num() == 0)
+			{
+				OutError = TEXT("object_property settings cannot be empty.");
+				return false;
+			}
+			return true;
+		}
+
+		FBlueprintHelperObjectPropertySetting Setting;
+		Payload->TryGetStringField(TEXT("property_path"), Setting.PropertyPath);
+		if (Setting.PropertyPath.IsEmpty())
+		{
+			OutError = TEXT("object_property adapter payload requires property_path.");
+			return false;
+		}
+
+		const TSharedPtr<FJsonValue>* Value = Payload->Values.Find(TEXT("value"));
+		if (!Value || !Value->IsValid())
+		{
+			OutError = TEXT("object_property adapter payload requires value.");
+			return false;
+		}
+
+		Setting.Value = *Value;
+		OutRequest.Settings.Add(MoveTemp(Setting));
+		return true;
+	}
+
+	FBlueprintHelperToolResultBase ExecuteObjectPropertyTaskPlanStep(
+		const FBlueprintHelperPropertyReflectionService& Service,
+		const FString& AdapterOperation,
+		const TSharedPtr<FJsonObject>& Payload)
+	{
+		FBlueprintHelperSetObjectPropertiesRequest Request;
+		FString Error;
+		if (!TryBuildObjectPropertyRequest(Payload, Request, Error))
+		{
+			return MakeFailure(
+				TEXT("object_property"),
+				TEXT("invalid_object_property_adapter_payload"),
+				EBlueprintHelperToolStage::ParseInput,
+				Error);
+		}
+
+		if (AdapterOperation == FBlueprintHelperObjectPropertyTaskPlanAdapter::AdapterOperationSetObjectProperty)
+		{
+			return Service.SetObjectProperty(Request);
+		}
+		if (AdapterOperation == FBlueprintHelperObjectPropertyTaskPlanAdapter::AdapterOperationSetObjectProperties)
+		{
+			return Service.SetObjectProperties(Request);
+		}
+
+		return MakeFailure(
+			TEXT("object_property"),
+			TEXT("unsupported_object_property_adapter_operation"),
+			EBlueprintHelperToolStage::ParseInput,
+			TEXT("Unsupported object_property adapter operation."));
+	}
+
+	FBlueprintHelperToolResultBase ExecuteCleanupOwnershipTaskPlanStep(
+		const FBlueprintHelperCleanupBlueprintHelperBlockService& CleanupBlockService,
+		const FBlueprintHelperConvertBlockToUserOwnedService& ConvertBlockService,
+		const FBlueprintHelperRollbackCleanupTransactionService& RollbackCleanupService,
+		const FString& AdapterOperation,
+		const TSharedPtr<FJsonObject>& Payload)
+	{
+		if (AdapterOperation == FBlueprintHelperCleanupOwnershipTaskPlanAdapter::AdapterOperationCleanupBlueprintHelperBlock)
+		{
+			return CleanupBlockService.Execute(Payload);
+		}
+		if (AdapterOperation == FBlueprintHelperCleanupOwnershipTaskPlanAdapter::AdapterOperationConvertBlueprintHelperBlockToUserOwned)
+		{
+			return ConvertBlockService.Execute(Payload);
+		}
+		if (AdapterOperation == FBlueprintHelperCleanupOwnershipTaskPlanAdapter::AdapterOperationRollbackCleanupTransaction)
+		{
+			return RollbackCleanupService.Execute(Payload);
+		}
+
+		return MakeFailure(
+			TEXT("graph_cleanup_ownership"),
+			TEXT("unsupported_cleanup_ownership_adapter_operation"),
+			EBlueprintHelperToolStage::ParseInput,
+			TEXT("Unsupported Cleanup/Ownership adapter operation."));
+	}
+
 	FBlueprintHelperToolResultBase ExecuteSignatureTaskPlanStep(
 		const FBlueprintHelperBlueprintStructureService& Service,
 		const FString& AdapterOperation,
@@ -2859,7 +3010,10 @@ namespace
 	{
 		const bool bEnsureFunction = AdapterOperation == FBlueprintHelperSignatureTaskPlanAdapter::AdapterOperationEnsureFunction;
 		const bool bEnsureCustomEvent = AdapterOperation == FBlueprintHelperSignatureTaskPlanAdapter::AdapterOperationEnsureCustomEvent;
-		if (!bEnsureFunction && !bEnsureCustomEvent)
+		const bool bRemoveSignature = AdapterOperation == FBlueprintHelperSignatureTaskPlanAdapter::AdapterOperationRemoveSignature;
+		const bool bEnsureEventDispatcher = AdapterOperation == FBlueprintHelperSignatureTaskPlanAdapter::AdapterOperationEnsureEventDispatcher;
+		const bool bEnsureOverrideEvent = AdapterOperation == FBlueprintHelperSignatureTaskPlanAdapter::AdapterOperationEnsureOverrideEvent;
+		if (!bEnsureFunction && !bEnsureCustomEvent && !bRemoveSignature && !bEnsureEventDispatcher && !bEnsureOverrideEvent)
 		{
 			return MakeFailure(
 				TEXT("blueprint_signature"),
@@ -2872,6 +3026,10 @@ namespace
 		FString FunctionName;
 		FString EventName;
 		FString GraphName;
+		FString DispatcherName;
+		FString EventKind;
+		FString SignatureKind;
+		FString SignatureName;
 		FString NameCollisionPolicy = TEXT("reuse_if_exists");
 		bool bIsPure = false;
 		bool bDryRun = false;
@@ -2883,6 +3041,10 @@ namespace
 			Payload->TryGetStringField(TEXT("function_name"), FunctionName);
 			Payload->TryGetStringField(TEXT("event_name"), EventName);
 			Payload->TryGetStringField(TEXT("graph_name"), GraphName);
+			Payload->TryGetStringField(TEXT("dispatcher_name"), DispatcherName);
+			Payload->TryGetStringField(TEXT("event_kind"), EventKind);
+			Payload->TryGetStringField(TEXT("signature_kind"), SignatureKind);
+			Payload->TryGetStringField(TEXT("signature_name"), SignatureName);
 			Payload->TryGetStringField(TEXT("name_collision_policy"), NameCollisionPolicy);
 			Payload->TryGetBoolField(TEXT("is_pure"), bIsPure);
 			Payload->TryGetBoolField(TEXT("dry_run"), bDryRun);
@@ -2915,17 +3077,56 @@ namespace
 			return SignatureService.EnsureFunction(Request);
 		}
 
-		FBlueprintHelperEnsureCustomEventSignatureRequest Request;
+		if (bEnsureCustomEvent)
+		{
+			FBlueprintHelperEnsureCustomEventSignatureRequest Request;
+			Request.AssetPath = AssetPath;
+			Request.GraphName = GraphName;
+			Request.EventName = EventName;
+			Request.NameCollisionPolicy = NameCollisionPolicy;
+			Request.bDryRun = bDryRun;
+			if (Inputs)
+			{
+				Request.Inputs = *Inputs;
+			}
+			return SignatureService.EnsureCustomEvent(Request);
+		}
+
+		if (bEnsureEventDispatcher)
+		{
+			FBlueprintHelperEnsureEventDispatcherSignatureRequest Request;
+			Request.AssetPath = AssetPath;
+			Request.DispatcherName = DispatcherName;
+			Request.NameCollisionPolicy = NameCollisionPolicy;
+			Request.bDryRun = bDryRun;
+			if (Inputs)
+			{
+				Request.Inputs = *Inputs;
+			}
+			return SignatureService.EnsureEventDispatcher(Request);
+		}
+
+		if (bEnsureOverrideEvent)
+		{
+			FBlueprintHelperEnsureOverrideEventSignatureRequest Request;
+			Request.AssetPath = AssetPath;
+			Request.EventName = EventName;
+			Request.EventKind = EventKind;
+			Request.bDryRun = bDryRun;
+			if (Inputs)
+			{
+				Request.Inputs = *Inputs;
+			}
+			return SignatureService.EnsureOverrideEvent(Request);
+		}
+
+		FBlueprintHelperRemoveSignatureRequest Request;
 		Request.AssetPath = AssetPath;
 		Request.GraphName = GraphName;
-		Request.EventName = EventName;
-		Request.NameCollisionPolicy = NameCollisionPolicy;
+		Request.SignatureKind = SignatureKind;
+		Request.SignatureName = SignatureName;
 		Request.bDryRun = bDryRun;
-		if (Inputs)
-		{
-			Request.Inputs = *Inputs;
-		}
-		return SignatureService.EnsureCustomEvent(Request);
+		return SignatureService.RemoveSignature(Request);
 	}
 }
 
@@ -2941,6 +3142,10 @@ FBlueprintHelperTaskRuntimeService::FBlueprintHelperTaskRuntimeService(
 	const FBlueprintHelperClassSettingsService& InClassSettingsService,
 	const FBlueprintHelperWidgetService& InWidgetService,
 	const FBlueprintHelperDataTableService& InDataTableService,
+	const FBlueprintHelperPropertyReflectionService& InPropertyReflectionService,
+	const FBlueprintHelperCleanupBlueprintHelperBlockService& InCleanupBlockService,
+	const FBlueprintHelperRollbackCleanupTransactionService& InRollbackCleanupService,
+	const FBlueprintHelperConvertBlockToUserOwnedService& InConvertBlockService,
 	const FBlueprintHelperCompileAssetService& InCompileAssetService,
 	const FBlueprintHelperAssetBrowseService& InAssetBrowseService)
 	: AppendGraphService(InAppendGraphService)
@@ -2954,6 +3159,10 @@ FBlueprintHelperTaskRuntimeService::FBlueprintHelperTaskRuntimeService(
 	, ClassSettingsService(InClassSettingsService)
 	, WidgetService(InWidgetService)
 	, DataTableService(InDataTableService)
+	, PropertyReflectionService(InPropertyReflectionService)
+	, CleanupBlockService(InCleanupBlockService)
+	, RollbackCleanupService(InRollbackCleanupService)
+	, ConvertBlockService(InConvertBlockService)
 	, CompileAssetService(InCompileAssetService)
 	, AssetBrowseService(InAssetBrowseService)
 {
@@ -3148,6 +3357,26 @@ bool FBlueprintHelperTaskRuntimeService::TryLowerTaskPlanStep(
 	if (Capability == FBlueprintHelperDataTableTaskPlanAdapter::CapabilityDataTable)
 	{
 		return FBlueprintHelperDataTableTaskPlanAdapter::TryLowerTaskPlanStep(
+			TaskPlan,
+			StepObject,
+			bDryRun,
+			OutLoweredStep,
+			OutError);
+	}
+
+	if (Capability == FBlueprintHelperObjectPropertyTaskPlanAdapter::CapabilityObjectProperty)
+	{
+		return FBlueprintHelperObjectPropertyTaskPlanAdapter::TryLowerTaskPlanStep(
+			TaskPlan,
+			StepObject,
+			bDryRun,
+			OutLoweredStep,
+			OutError);
+	}
+
+	if (Capability == FBlueprintHelperCleanupOwnershipTaskPlanAdapter::CapabilityName)
+	{
+		return FBlueprintHelperCleanupOwnershipTaskPlanAdapter::TryLowerTaskPlanStep(
 			TaskPlan,
 			StepObject,
 			bDryRun,
@@ -3455,6 +3684,19 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		if (LoweredStep.Capability == FBlueprintHelperDataTableTaskPlanAdapter::CapabilityDataTable)
 		{
 			return ExecuteDataTableTaskPlanStep(DataTableService, LoweredStep.AdapterOperation, LoweredStep.Payload);
+		}
+		if (LoweredStep.Capability == FBlueprintHelperObjectPropertyTaskPlanAdapter::CapabilityObjectProperty)
+		{
+			return ExecuteObjectPropertyTaskPlanStep(PropertyReflectionService, LoweredStep.AdapterOperation, LoweredStep.Payload);
+		}
+		if (LoweredStep.Capability == FBlueprintHelperCleanupOwnershipTaskPlanAdapter::CapabilityName)
+		{
+			return ExecuteCleanupOwnershipTaskPlanStep(
+				CleanupBlockService,
+				ConvertBlockService,
+				RollbackCleanupService,
+				LoweredStep.AdapterOperation,
+				LoweredStep.Payload);
 		}
 
 		return FBlueprintHelperToolResultBuilder::Failure(

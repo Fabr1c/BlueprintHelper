@@ -20,6 +20,10 @@
 #include "Services/BlueprintHelperAgentImportService.h"
 #include "Services/BlueprintHelperBlueprintStructureService.h"
 #include "Services/BlueprintVariables/BlueprintHelperBlueprintVariableService.h"
+#include "Services/CleanupOwnership/BlueprintHelperCleanupBlueprintHelperBlockService.h"
+#include "Services/CleanupOwnership/BlueprintHelperConvertBlockToUserOwnedService.h"
+#include "Services/CleanupOwnership/BlueprintHelperRollbackCleanupTransactionService.h"
+#include "Services/DataAssetObjectProperty/BlueprintHelperPropertyReflectionService.h"
 #include "Services/DataTable/BlueprintHelperDataTableService.h"
 #include "Services/GraphWrite/BlueprintHelperAppendBlueprintGraphService.h"
 #include "Services/GraphWrite/BlueprintHelperMergeBlueprintGraphService.h"
@@ -59,6 +63,10 @@ namespace
 		FBlueprintHelperClassSettingsService ClassSettingsService;
 		FBlueprintHelperWidgetService WidgetService;
 		FBlueprintHelperDataTableService DataTableService;
+		FBlueprintHelperPropertyReflectionService PropertyReflectionService;
+		FBlueprintHelperCleanupBlueprintHelperBlockService CleanupBlockService;
+		FBlueprintHelperRollbackCleanupTransactionService RollbackCleanupService;
+		FBlueprintHelperConvertBlockToUserOwnedService ConvertBlockService;
 		FBlueprintHelperCompileAssetService CompileAssetService;
 		FBlueprintHelperTaskRuntimeService TaskRuntimeService;
 
@@ -73,6 +81,9 @@ namespace
 			, VariableService(Resolver, StructureService)
 			, ComponentService(Resolver)
 			, ClassSettingsService(Resolver)
+			, CleanupBlockService(Resolver, JournalService)
+			, RollbackCleanupService(Resolver, JournalService)
+			, ConvertBlockService(Resolver, OwnershipService, JournalService)
 			, CompileAssetService(CompileService)
 			, TaskRuntimeService(
 				AppendGraphService,
@@ -86,6 +97,10 @@ namespace
 				ClassSettingsService,
 				WidgetService,
 				DataTableService,
+				PropertyReflectionService,
+				CleanupBlockService,
+				RollbackCleanupService,
+				ConvertBlockService,
 				CompileAssetService,
 				AssetBrowseService)
 		{

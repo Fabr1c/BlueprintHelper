@@ -24,8 +24,13 @@ public:
 	static constexpr const TCHAR* RuntimeOperationName = TEXT("blueprint_signature");
 	static constexpr const TCHAR* StrategyFunctionSignature = TEXT("function_signature");
 	static constexpr const TCHAR* StrategyCustomEventSignature = TEXT("custom_event_signature");
+	static constexpr const TCHAR* StrategyEventDispatcherSignature = TEXT("event_dispatcher_signature");
+	static constexpr const TCHAR* StrategyOverrideEventSignature = TEXT("override_event_signature");
 	static constexpr const TCHAR* AdapterOperationEnsureFunction = TEXT("ensure_function");
 	static constexpr const TCHAR* AdapterOperationEnsureCustomEvent = TEXT("ensure_custom_event");
+	static constexpr const TCHAR* AdapterOperationRemoveSignature = TEXT("remove_signature");
+	static constexpr const TCHAR* AdapterOperationEnsureEventDispatcher = TEXT("ensure_event_dispatcher");
+	static constexpr const TCHAR* AdapterOperationEnsureOverrideEvent = TEXT("ensure_override_event");
 
 	static bool TryLowerTaskPlanStep(
 		const TSharedPtr<FJsonObject>& TaskPlan,

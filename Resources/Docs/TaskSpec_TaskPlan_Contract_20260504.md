@@ -492,18 +492,23 @@ Agent may provide:
 
 ```text
 context_id
-feature_name
+feature_name (display / journal label only)
 target.target_type
 execution_policy.dry_run_mode
 execution_policy.on_missing_capability
 ```
 
+`feature_name` must not be used to infer graph names, function names, variables, block ids, or any other edit target. Agent must read the runtime/profile naming guidance and explicitly fill target fields such as `scope_policy.graph_name`.
+
 Agent must not provide:
 
 ```text
+intent
 keys named compile or save inside validation
 Bridge/runtime payload fields (for example append_blueprint_graph/replace_blueprint_graph/patch_blueprint_graph/merge_blueprint_graph arguments)
 ```
+
+`intent` is generated after a completed task by the MCP/Python orchestration layer and recorded in the TaskRunJournal as `generated_intent`; it is not an Agent-authored TaskSpec field.
 
 For composite Blueprint feature creation, Agent must provide:
 
@@ -839,6 +844,14 @@ Partial failure recovery summary:
 
 The recovery object is user-readable guidance, not an automatic rollback command. Transaction-level undo/redo/replay is a separate future contract.
 
+Completed task journals may include `generated_intent`, produced from the executed capability, a tool-short-name mapping, an action mapping, and the resolved target name. Example:
+
+```json
+{
+  "generated_intent": "使用 GraphWrite 写入蓝图逻辑了 BP_Door.BH_Door"
+}
+```
+
 ## 10. Validation Policy
 
 Validation policy is deliberately named the same way across TaskSpec and TaskPlan:
@@ -940,6 +953,9 @@ P2 first slice, 2026-05-06:
 - TaskRuntime `blueprint_signature` steps call this internal service instead of keeping signature execution logic inside the runtime service.
 - `ensure_function` supports dry-run, reuse-if-exists no-op, real function graph creation, and first-slice `inputs` / `outputs` forwarding from TaskPlan.
 - `ensure_custom_event` is represented through the same service boundary, but current execution still returns a compact `deferred_to_graph_write` result until GraphWrite entry declaration and body writing are split in UE.
+- `ensure_event_dispatcher` is a TaskPlan-internal `event_dispatcher_signature` op. It can create a new dispatcher declaration through the internal structure service; changing an existing dispatcher signature remains blocked until the migration policy is confirmed.
+- `ensure_override_event` is a TaskPlan-internal `override_event_signature` op, but it currently returns a blocked preflight result. Override/native event creation policy is still pending.
+- `remove_signature` is TaskPlan-internal and remains blocked preflight until reference analysis and cleanup policy are confirmed.
 - No new Agent-facing atomic MCP signature tool is introduced.
 
 ### 11.2 Support Clusters

@@ -51,12 +51,14 @@ public class BlueprintHelper : ModuleRules
 				"ToolMenus",
 				"WorkspaceMenuStructure",
 				"LevelEditor",
+				"PropertyEditor",
 				"Projects",
 				"Sockets",
 				"Networking",
 				"AssetRegistry",
 				"EnhancedInput",
 				"InputBlueprintNodes",
+				"SubobjectEditor",
 				// ... add private dependencies that you statically link with here ...
 			}
 			);
