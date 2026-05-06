@@ -201,6 +201,30 @@ test('task-level tools are registered without removing legacy tools', () => {
   }
 });
 
+test('read_task_context does not infer graph names from feature_name', async () => {
+  const tools = registerWithBridge(async (command): Promise<BridgeResponse> => ({
+    request_id: command,
+    success: true,
+    result: command === 'list_graphs'
+      ? { graphs: [{ name: 'EventGraph', graph_type: 'EventGraph' }] }
+      : {},
+  }));
+
+  const tool = tools.get('blueprinthelper_read_task_context');
+  assert.ok(tool);
+
+  const result = await invokeTool(tool, {
+    target: { asset_path: '/Game/BP/BP_Door' },
+    feature_name: 'DoorFeature',
+  });
+
+  assert.equal(result.isError, false);
+  const data = result.structuredContent?.data as Record<string, unknown>;
+  const constraints = data.recommended_constraints as Record<string, unknown>;
+  assert.equal(Object.hasOwn(constraints, 'recommended_graph_name'), false);
+  assert.equal(Object.hasOwn(data, 'intent'), false);
+});
+
 test('preview_task compiles P1 AssetFactory TaskSpec and previews a UE TaskPlan', async () => {
   const calls: Array<{ command: string; payload: Record<string, unknown> | undefined }> = [];
   const tools = registerWithBridge(async (command, payload) => {
@@ -684,7 +708,34 @@ test('get_task_result falls back to UE TaskRunJournal when not stored in process
           task_type: 'edit_blueprint_graph',
           status: 'completed',
           target_assets: ['/Game/BP/BP_Door'],
-          steps: [],
+          steps: [
+            {
+              step_id: 'step_001',
+              operation: 'append_blueprint_graph',
+              adapter_operation: 'append_blueprint_graph',
+              status: 'completed',
+              result: {
+                ok: true,
+                schema: 'BlueprintHelper.McpToolResult.v1',
+                operation: 'append_blueprint_graph',
+                status: 'completed',
+                modified: true,
+                target: {
+                  target_type: 'graph',
+                  asset_path: '/Game/BP/BP_Door',
+                  graph: 'EG_DoorFeature',
+                },
+                data: {
+                  schema: 'AppendBlueprintGraphResult.v1',
+                  append_result: {
+                    graph: {
+                      graph_name: 'EG_DoorFeature',
+                    },
+                  },
+                },
+              },
+            },
+          ],
         },
       },
     };
@@ -704,6 +755,7 @@ test('get_task_result falls back to UE TaskRunJournal when not stored in process
   const journal = taskResult.structuredContent?.data as Record<string, unknown>;
   assert.equal(journal.schema, 'BlueprintHelper.TaskRunJournal.v1');
   assert.equal(journal.task_run_id, 'task_ue_external');
+  assert.equal(journal.generated_intent, '使用 GraphWrite 写入蓝图逻辑了 BP_Door.EG_DoorFeature');
 });
 
 test('execute_task does not write when preview dry-run is blocked', async () => {

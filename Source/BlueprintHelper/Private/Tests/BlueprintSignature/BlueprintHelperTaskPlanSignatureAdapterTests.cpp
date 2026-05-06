@@ -67,6 +67,8 @@ namespace
 		Op->SetStringField(TEXT("op"), TEXT("ensure_custom_event"));
 		Op->SetStringField(TEXT("event_name"), TEXT("ToggleDoor"));
 		Op->SetStringField(TEXT("graph_name"), TEXT("EG_DoorFeature"));
+		Op->SetStringField(TEXT("interface_path"), TEXT("/Game/Interfaces/BPI_Door"));
+		Op->SetStringField(TEXT("interface_entry_kind"), TEXT("event"));
 		Op->SetStringField(TEXT("name_collision_policy"), TEXT("reuse_if_exists"));
 
 		TSharedPtr<FJsonObject> InputPinType = MakeShared<FJsonObject>();
@@ -110,6 +112,34 @@ namespace
 
 		TSharedPtr<FJsonObject> Write = MakeShared<FJsonObject>();
 		Write->SetStringField(TEXT("strategy"), TEXT("custom_event_signature"));
+		Write->SetArrayField(TEXT("ops"), Ops);
+		Step->SetObjectField(TEXT("write"), Write);
+
+		return Step;
+	}
+
+	TSharedPtr<FJsonObject> MakeRemoveSignatureStep(const FString& SignatureKind, const FString& SignatureName, const FString& Strategy)
+	{
+		TSharedPtr<FJsonObject> Step = MakeShared<FJsonObject>();
+		Step->SetStringField(TEXT("step_id"), TEXT("step_signature_remove_policy"));
+		Step->SetStringField(TEXT("capability"), TEXT("blueprint_signature"));
+
+		TSharedPtr<FJsonObject> Target = MakeShared<FJsonObject>();
+		Target->SetStringField(TEXT("asset_path"), TEXT("/Game/Blueprints/BP_Door"));
+		Step->SetObjectField(TEXT("target"), Target);
+
+		TSharedPtr<FJsonObject> Op = MakeShared<FJsonObject>();
+		Op->SetStringField(TEXT("op"), TEXT("remove_signature"));
+		Op->SetStringField(TEXT("signature_kind"), SignatureKind);
+		Op->SetStringField(TEXT("signature_name"), SignatureName);
+		Op->SetStringField(TEXT("execute_policy"), TEXT("blocked_preflight"));
+		Op->SetBoolField(TEXT("require_reference_context"), true);
+
+		TArray<TSharedPtr<FJsonValue>> Ops;
+		Ops.Add(MakeShared<FJsonValueObject>(Op.ToSharedRef()));
+
+		TSharedPtr<FJsonObject> Write = MakeShared<FJsonObject>();
+		Write->SetStringField(TEXT("strategy"), Strategy);
 		Write->SetArrayField(TEXT("ops"), Ops);
 		Step->SetObjectField(TEXT("write"), Write);
 
@@ -255,6 +285,14 @@ bool FBlueprintHelperTaskPlanSignatureAdapterEnsureCustomEventTest::RunTest(cons
 	TestTrue(TEXT("payload carries graph_name"), LoweredStep.Payload->TryGetStringField(TEXT("graph_name"), GraphName));
 	TestEqual(TEXT("graph name preserved"), GraphName, FString(TEXT("EG_DoorFeature")));
 
+	FString InterfacePath;
+	TestTrue(TEXT("payload carries interface_path"), LoweredStep.Payload->TryGetStringField(TEXT("interface_path"), InterfacePath));
+	TestEqual(TEXT("interface path preserved"), InterfacePath, FString(TEXT("/Game/Interfaces/BPI_Door")));
+
+	FString InterfaceEntryKind;
+	TestTrue(TEXT("payload carries interface_entry_kind"), LoweredStep.Payload->TryGetStringField(TEXT("interface_entry_kind"), InterfaceEntryKind));
+	TestEqual(TEXT("interface entry kind preserved"), InterfaceEntryKind, FString(TEXT("event")));
+
 	const TArray<TSharedPtr<FJsonValue>>* Inputs = nullptr;
 	TestTrue(TEXT("payload carries inputs"), LoweredStep.Payload->TryGetArrayField(TEXT("inputs"), Inputs));
 	TestTrue(TEXT("payload inputs not empty"), Inputs && Inputs->Num() == 1);
@@ -301,6 +339,113 @@ bool FBlueprintHelperTaskPlanSignatureAdapterRemoveSignatureTest::RunTest(const 
 	TestTrue(TEXT("payload carries dry_run"), LoweredStep.Payload->TryGetBoolField(TEXT("dry_run"), bDryRun));
 	TestTrue(TEXT("dry_run preserved"), bDryRun);
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTaskPlanSignatureAdapterRemoveDispatcherSignatureTest,
+	"BlueprintHelper.TaskPlan.SignatureAdapter.RemoveDispatcherSignature",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperTaskPlanSignatureAdapterRemoveDispatcherSignatureTest::RunTest(const FString& Parameters)
+{
+	const TSharedPtr<FJsonObject> Step = MakeRemoveSignatureStep(
+		TEXT("event_dispatcher"),
+		TEXT("OnDoorOpened"),
+		TEXT("event_dispatcher_signature"));
+
+	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
+	FBlueprintHelperToolError Error;
+	const bool bLowered = FBlueprintHelperSignatureTaskPlanAdapter::TryLowerTaskPlanStep(
+		TSharedPtr<FJsonObject>(),
+		Step,
+		true,
+		LoweredStep,
+		Error);
+
+	TestTrue(TEXT("event dispatcher remove signature step lowers successfully"), bLowered);
+	TestEqual(TEXT("adapter operation is remove_signature"), LoweredStep.AdapterOperation, FString(TEXT("remove_signature")));
+
+	FString SignatureKind;
+	TestTrue(TEXT("payload carries signature_kind"), LoweredStep.Payload->TryGetStringField(TEXT("signature_kind"), SignatureKind));
+	TestEqual(TEXT("signature kind preserved"), SignatureKind, FString(TEXT("event_dispatcher")));
+
+	bool bRequireReferenceContext = false;
+	TestTrue(TEXT("payload carries require_reference_context"), LoweredStep.Payload->TryGetBoolField(TEXT("require_reference_context"), bRequireReferenceContext));
+	TestTrue(TEXT("remove requires reference context"), bRequireReferenceContext);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTaskPlanSignatureAdapterRejectsRemoveWithoutReferenceContextTest,
+	"BlueprintHelper.TaskPlan.SignatureAdapter.RejectsRemoveWithoutReferenceContext",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperTaskPlanSignatureAdapterRejectsRemoveWithoutReferenceContextTest::RunTest(const FString& Parameters)
+{
+	const TSharedPtr<FJsonObject> Step = MakeRemoveSignatureStep(
+		TEXT("event_dispatcher"),
+		TEXT("OnDoorOpened"),
+		TEXT("event_dispatcher_signature"));
+
+	const TSharedPtr<FJsonObject>* WriteObject = nullptr;
+	const TArray<TSharedPtr<FJsonValue>>* Ops = nullptr;
+	TestTrue(TEXT("step carries write object"), Step->TryGetObjectField(TEXT("write"), WriteObject) && WriteObject && WriteObject->IsValid());
+	TestTrue(TEXT("write carries ops"), WriteObject && (*WriteObject)->TryGetArrayField(TEXT("ops"), Ops) && Ops && Ops->Num() == 1);
+	if (!WriteObject || !WriteObject->IsValid() || !Ops || Ops->Num() != 1)
+	{
+		return false;
+	}
+
+	TSharedPtr<FJsonObject> OpObject = (*Ops)[0]->AsObject();
+	TestTrue(TEXT("op object exists"), OpObject.IsValid());
+	if (!OpObject.IsValid())
+	{
+		return false;
+	}
+	OpObject->SetBoolField(TEXT("require_reference_context"), false);
+
+	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
+	FBlueprintHelperToolError Error;
+	const bool bLowered = FBlueprintHelperSignatureTaskPlanAdapter::TryLowerTaskPlanStep(
+		TSharedPtr<FJsonObject>(),
+		Step,
+		true,
+		LoweredStep,
+		Error);
+
+	TestFalse(TEXT("remove without reference context is rejected"), bLowered);
+	TestEqual(TEXT("error code"), Error.Code, FString(TEXT("invalid_signature_remove_policy")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTaskPlanSignatureAdapterRemoveOverrideSignatureTest,
+	"BlueprintHelper.TaskPlan.SignatureAdapter.RemoveOverrideSignature",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperTaskPlanSignatureAdapterRemoveOverrideSignatureTest::RunTest(const FString& Parameters)
+{
+	const TSharedPtr<FJsonObject> Step = MakeRemoveSignatureStep(
+		TEXT("native_event"),
+		TEXT("ReceiveBeginPlay"),
+		TEXT("override_event_signature"));
+
+	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
+	FBlueprintHelperToolError Error;
+	const bool bLowered = FBlueprintHelperSignatureTaskPlanAdapter::TryLowerTaskPlanStep(
+		TSharedPtr<FJsonObject>(),
+		Step,
+		true,
+		LoweredStep,
+		Error);
+
+	TestTrue(TEXT("override/native remove signature step lowers successfully"), bLowered);
+	TestEqual(TEXT("adapter operation is remove_signature"), LoweredStep.AdapterOperation, FString(TEXT("remove_signature")));
+
+	FString SignatureKind;
+	TestTrue(TEXT("payload carries signature_kind"), LoweredStep.Payload->TryGetStringField(TEXT("signature_kind"), SignatureKind));
+	TestEqual(TEXT("signature kind preserved"), SignatureKind, FString(TEXT("native_event")));
 	return true;
 }
 

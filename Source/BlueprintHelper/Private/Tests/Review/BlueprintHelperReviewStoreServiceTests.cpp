@@ -1,9 +1,12 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Misc/AutomationTest.h"
+#include "EdGraph/EdGraph.h"
+#include "EdGraph/EdGraphNode.h"
 #include "Services/Review/BlueprintHelperReviewActionService.h"
 #include "Services/Review/BlueprintHelperReviewStoreService.h"
 #include "Structure/Review/BlueprintHelperReviewTypes.h"
+#include "Widgets/Review/BlueprintHelperReviewGraphBounds.h"
 #include "Widgets/SNullWidget.h"
 #include "Widgets/Review/SBlueprintHelperReviewPanel.h"
 
@@ -57,6 +60,12 @@ bool FBlueprintHelperReviewSurfaceClassificationTest::RunTest(const FString& Par
 	GraphChange.AtomicTargets.Add(GraphTarget);
 	TestFalse(TEXT("explicit graph atoms stay out of My Blueprint"),
 		BlueprintHelperReviewShouldShowInMyBlueprint(GraphChange));
+
+	FBlueprintHelperReviewVisibleChange EventGraphChange;
+	EventGraphChange.GraphName = TEXT("EventGraph");
+	EventGraphChange.LocationKey = TEXT("graph:EventGraph/node:BeginPlay");
+	TestFalse(TEXT("EventGraph node changes do not match top-level event rows"),
+		BlueprintHelperReviewShouldShowInMyBlueprint(EventGraphChange));
 
 	FBlueprintHelperReviewVisibleChange SignatureChange;
 	SignatureChange.LocationKey = TEXT("function:FakeDiffFunction:signature");
@@ -434,6 +443,47 @@ bool FBlueprintHelperReviewPanelEmptyConstructsTest::RunTest(const FString& Para
 		.InitialChanges(InitialChanges);
 
 	TestTrue(TEXT("empty review panel widget is constructed"), Widget != SNullWidget::NullWidget);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewGraphBoundsTargetKeyTest,
+	"BlueprintHelper.Review.UI.GraphBounds.UsesTargetKeyCommentStyleBounds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewGraphBoundsTargetKeyTest::RunTest(const FString& Parameters)
+{
+	UEdGraph* Graph = NewObject<UEdGraph>(GetTransientPackage());
+	UEdGraphNode* Node = NewObject<UEdGraphNode>(Graph, FName(TEXT("K2Node_CallFunction_1")));
+	Node->NodePosX = 100;
+	Node->NodePosY = 40;
+	Node->NodeWidth = 240;
+	Node->NodeHeight = 88;
+	Graph->AddNode(Node, false, false);
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.Surface = EBlueprintHelperReviewSurface::Graph;
+	Target.GraphName = TEXT("EventGraph");
+	Target.TargetKey = TEXT("graph:EventGraph/node:K2Node_CallFunction_1");
+
+	TArray<FBlueprintHelperReviewAtomicTarget> Targets;
+	Targets.Add(Target);
+
+	FVector2D Position = FVector2D::ZeroVector;
+	FVector2D Size = FVector2D::ZeroVector;
+	const bool bBuilt = BlueprintHelperReviewGraphBounds::BuildBoundsForTargets(
+		Targets,
+		Graph,
+		TEXT("EventGraph"),
+		nullptr,
+		Position,
+		Size);
+
+	TestTrue(TEXT("target key matches graph node"), bBuilt);
+	TestEqual(TEXT("comment-style bounds use 50px left padding"), Position.X, 50.0f);
+	TestEqual(TEXT("comment-style bounds use 50px top padding"), Position.Y, -10.0f);
+	TestEqual(TEXT("comment-style width wraps node plus padding"), Size.X, 340.0f);
+	TestEqual(TEXT("comment-style height wraps node plus padding"), Size.Y, 188.0f);
 	return true;
 }
 

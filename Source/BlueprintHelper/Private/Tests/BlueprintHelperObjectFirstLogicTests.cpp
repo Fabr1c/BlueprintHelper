@@ -587,6 +587,8 @@ bool FObjectFirstLogic_ReadLogicJsonIncludesOwnedBlockIdFromGraphMetadata::RunTe
     UK2Node_CustomEvent* EventNode = AddLogicServiceCustomEvent(EventGraph, TEXT("OpenDoor"));
     TestNotNull(TEXT("custom event is created"), EventNode);
     MarkLogicServiceNodeAsOwned(EventNode, BlockId);
+    TestFalse(TEXT("owned node does not need legacy block_id comment for LogicJson"),
+        EventNode && EventNode->NodeComment.Contains(TEXT("block_id=")));
 
     FBlueprintHelperTargetRef Target;
     Target.AssetPath = Blueprint->GetPathName();

@@ -154,7 +154,6 @@ Call `blueprinthelper_read_task_context`:
   "target": {
     "asset_path": "_ASSET_PATH_"
   },
-  "intent": "smoke_test_graph_append",
   "feature_name": "TaskSpecUESmoke"
 }
 ```

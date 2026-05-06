@@ -36,12 +36,6 @@ bool FBlueprintHelperOwnershipService::WriteNodeOwnership(
 	MetaData.SetValue(Node, TEXT("BlueprintHelperFeatureName"), *FeatureName);
 	MetaData.RemoveValue(Node, TEXT("BlueprintHelperTool"));
 
-	// 写入 NodeComment
-	Node->NodeComment = FString::Printf(
-		TEXT("[BlueprintHelper]\nblock_id=%s\ntx=%s"),
-		*BlockId,
-		*TransactionId);
-
 	return true;
 }
 

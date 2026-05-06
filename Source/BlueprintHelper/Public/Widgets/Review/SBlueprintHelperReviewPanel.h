@@ -65,8 +65,21 @@ private:
 	TSharedRef<SWidget> BuildReadonlyMyBlueprintWidget();
 	TSharedRef<SWidget> BuildReadonlyDetailsWidget();
 	TSharedRef<SWidget> BuildScopedDiffStack(bool (*Predicate)(const FBlueprintHelperReviewVisibleChange&));
+	TSharedRef<SWidget> BuildPanelDiffFrames(
+		bool (*Predicate)(const FBlueprintHelperReviewVisibleChange&),
+		EBlueprintHelperReviewSurface Surface);
+	TSharedRef<SWidget> BuildPanelDiffFrame(FReviewChangeItem Item);
 	TSharedRef<SWidget> BuildDiffRow(FReviewChangeItem Item, bool bShowActions);
 	TSharedRef<SWidget> BuildDiffFrame(FReviewChangeItem Item, const TSharedRef<SWidget>& Content, bool bShowActions);
+	FString BuildPanelTargetSearchText(FReviewChangeItem Item, EBlueprintHelperReviewSurface Surface) const;
+	FString GetPanelFrameBucket(FReviewChangeItem Item, EBlueprintHelperReviewSurface Surface) const;
+	bool TryBuildPanelFrameGeometry(
+		FReviewChangeItem Item,
+		EBlueprintHelperReviewSurface Surface,
+		const FString& Bucket,
+		int32 BucketRowIndex,
+		FVector2D& OutPosition,
+		FVector2D& OutSize) const;
 	void RefreshDiffStackWidgets();
 	void RebuildChangeTreeItems();
 	void RefreshChangeTreeWidget();
@@ -74,20 +87,17 @@ private:
 	FReviewChangeItem FindChangeItemById(const FString& ChangeId) const;
 	FReply OnAcceptChangeId(const FString& ChangeId);
 	FReply OnRejectChangeId(const FString& ChangeId);
-	void AddGraphDiffBlocks(UEdGraph* PreviewGraphToEdit, const UEdGraph* SourceGraph);
+	void AddGraphDiffBlocks(
+		UEdGraph* PreviewGraphToEdit,
+		const UEdGraph* SourceGraph,
+		const TSharedPtr<SGraphEditor>& GraphEditorForBounds);
 	bool BuildGraphBoundsForChange(
 		const FReviewChangeItem& Item,
-		const UEdGraph* SourceGraph,
+		const UEdGraph* PreviewGraphToEdit,
 		const FString& GraphName,
+		const TSharedPtr<SGraphEditor>& GraphEditorForBounds,
 		FVector2D& OutPosition,
 		FVector2D& OutSize) const;
-	void IncludeGraphTargetBounds(
-		const FBlueprintHelperReviewAtomicTarget& Target,
-		const UEdGraph* SourceGraph,
-		FBox2D& InOutBounds,
-		bool& bInOutHasBounds) const;
-	bool DoesGraphNodeMatchTarget(const UEdGraphNode* Node, const FString& TargetKey) const;
-	UEdGraphNode* FindGraphNodeByGuid(const UEdGraph* Graph, const FString& NodeGuid) const;
 
 	FReply OnAcceptSelected();
 	FReply OnRejectSelected();

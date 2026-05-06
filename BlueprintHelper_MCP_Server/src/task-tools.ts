@@ -200,13 +200,14 @@ export function registerTaskTools(server: McpServer, bridge: BridgeClient, confi
   server.registerTool(
     'blueprinthelper_get_task_result',
     {
-      description: 'Read the in-process BlueprintHelper.TaskRunJournal.v1 summary for a task_run_id.',
+      description: 'Read BlueprintHelper.TaskRunJournal.v1 for a task_run_id, preferring the UE Task Runtime journal with an in-process fallback.',
       inputSchema: GetTaskResultInputSchema,
     },
     async ({ task_run_id }) => {
       const taskResult = getTaskResult(task_run_id);
-      const bridgeTaskResult = taskResult ?? await getBridgeTaskRunJournal(bridge, task_run_id);
-      if (!bridgeTaskResult) {
+      const bridgeTaskResult = await getBridgeTaskRunJournal(bridge, task_run_id);
+      const resolvedTaskResult = bridgeTaskResult ?? taskResult;
+      if (!resolvedTaskResult) {
         return toMcpResult(taskFailure(
           'get_task_result',
           'task_result_not_found',
@@ -218,7 +219,7 @@ export function registerTaskTools(server: McpServer, bridge: BridgeClient, confi
       return toMcpResult(successRead(
         'get_task_result',
         { target_type: 'asset' },
-        bridgeTaskResult,
+        resolvedTaskResult,
       ));
     },
   );
@@ -451,7 +452,10 @@ function extractBridgeTaskRunJournal(
   const data = asRecord(result?.['data']);
   const journal = data ?? result;
   const taskRunId = journal?.['task_run_id'];
-  return taskRunId === requestedTaskRunId ? journal : undefined;
+  const schema = journal?.['schema'];
+  return taskRunId === requestedTaskRunId && schema === 'BlueprintHelper.TaskRunJournal.v1'
+    ? journal
+    : undefined;
 }
 
 function extractDryRun(resp: BridgeResponse): { canExecute: boolean; issues: TaskIssue[] } {

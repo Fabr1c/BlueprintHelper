@@ -89,7 +89,11 @@ namespace
 		}
 		else
 		{
-			Record->TryGetObjectField(TEXT("rollback_data"), RollbackObject);
+			const TSharedPtr<FJsonObject>* RollbackObjectPtr = nullptr;
+			if (Record->TryGetObjectField(TEXT("rollback_data"), RollbackObjectPtr) && RollbackObjectPtr)
+			{
+				RollbackObject = *RollbackObjectPtr;
+			}
 		}
 
 		if (!RollbackObject.IsValid())

@@ -9,13 +9,13 @@ class UEdGraphNode;
 
 /**
  * Ownership 写入服务。
- * 为 BlueprintHelper-owned 节点写入 UMetaData 和 NodeComment。
+ * 为 BlueprintHelper-owned 节点写入 UMetaData。
  * 任一节点写入失败即整体失败。
  */
 class BLUEPRINTHELPER_API FBlueprintHelperOwnershipService
 {
 public:
-	/** 为单个节点写入 ownership metadata + NodeComment。 */
+	/** 为单个节点写入 ownership metadata。 */
 	bool WriteNodeOwnership(
 		UBlueprint* Blueprint,
 		UEdGraphNode* Node,
@@ -24,7 +24,7 @@ public:
 		const FString& FeatureName,
 		FString& OutError) const;
 
-	/** 为一批节点批量写入 ownership metadata + NodeComment。 */
+	/** 为一批节点批量写入 ownership metadata。 */
 	bool WriteBlockOwnership(
 		UBlueprint* Blueprint,
 		const TArray<UEdGraphNode*>& Nodes,

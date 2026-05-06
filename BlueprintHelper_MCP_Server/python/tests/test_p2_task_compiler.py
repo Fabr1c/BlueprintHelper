@@ -1,5 +1,6 @@
 import unittest
 
+from blueprinthelper_task.errors import TaskSpecCompileError
 from blueprinthelper_task.graph_write_append import compile_task_spec
 
 
@@ -56,6 +57,134 @@ class P2TaskCompilerTests(unittest.TestCase):
         self.assertEqual(steps[0]["capability"], "graph_cleanup_ownership")
         self.assertEqual(steps[0]["write"]["ops"][0]["op"], "cleanup_blueprint_helper_block")
         self.assertEqual(steps[1]["write"]["ops"][0]["op"], "convert_blueprint_helper_block_to_user_owned")
+
+    def test_compiles_interface_function_and_interface_event_signatures(self):
+        result = compile_task_spec(make_base_spec("edit_blueprint_signature", {
+            "signature_strategy": "signature_edit",
+            "changes": [
+                {
+                    "kind": "ensure_interface_function",
+                    "interface_path": "/Game/Interfaces/BPI_Door",
+                    "function_name": "CanInteract",
+                    "inputs": [
+                        {"name": "Instigator", "pin_type": {"category": "object", "subcategory_object": "/Script/Engine.Actor"}},
+                    ],
+                    "outputs": [
+                        {"name": "bCanInteract", "pin_type": {"category": "bool"}},
+                    ],
+                },
+                {
+                    "kind": "ensure_interface_event",
+                    "interface_path": "/Game/Interfaces/BPI_Door",
+                    "event_name": "OnInteract",
+                    "graph_name": "EventGraph",
+                    "inputs": [
+                        {"name": "Instigator", "pin_type": {"category": "object", "subcategory_object": "/Script/Engine.Actor"}},
+                    ],
+                },
+            ],
+        }), True)
+
+        steps = result["task_plan"]["steps"]
+        self.assertEqual(steps[0]["capability"], "blueprint_signature")
+        self.assertEqual(steps[0]["write"]["strategy"], "function_signature")
+        self.assertEqual(steps[0]["write"]["ops"][0], {
+            "op": "ensure_function",
+            "function_name": "CanInteract",
+            "interface_path": "/Game/Interfaces/BPI_Door",
+            "interface_entry_kind": "function",
+            "inputs": [
+                {"name": "Instigator", "pin_type": {"category": "object", "subcategory_object": "/Script/Engine.Actor"}},
+            ],
+            "outputs": [
+                {"name": "bCanInteract", "pin_type": {"category": "bool"}},
+            ],
+            "name_collision_policy": "reuse_if_exists",
+        })
+        self.assertEqual(steps[1]["write"]["strategy"], "custom_event_signature")
+        self.assertEqual(steps[1]["write"]["ops"][0], {
+            "op": "ensure_custom_event",
+            "event_name": "OnInteract",
+            "graph_name": "EventGraph",
+            "interface_path": "/Game/Interfaces/BPI_Door",
+            "interface_entry_kind": "event",
+            "inputs": [
+                {"name": "Instigator", "pin_type": {"category": "object", "subcategory_object": "/Script/Engine.Actor"}},
+            ],
+            "name_collision_policy": "reuse_if_exists",
+        })
+
+    def test_compiles_dispatcher_override_and_remove_signature_policies(self):
+        result = compile_task_spec(make_base_spec("edit_blueprint_signature", {
+            "signature_strategy": "signature_edit",
+            "changes": [
+                {
+                    "kind": "ensure_event_dispatcher",
+                    "dispatcher_name": "OnDoorOpened",
+                    "inputs": [
+                        {"name": "bIsOpen", "pin_type": {"category": "bool"}},
+                    ],
+                    "signature_mismatch_policy": "block",
+                },
+                {
+                    "kind": "ensure_override_event",
+                    "event_name": "ReceiveBeginPlay",
+                    "event_kind": "native_event",
+                    "execute_policy": "blocked_preflight",
+                },
+                {
+                    "kind": "remove_signature",
+                    "signature_kind": "event_dispatcher",
+                    "signature_name": "OnDeprecatedDoorOpened",
+                    "execute_policy": "blocked_preflight",
+                    "require_reference_context": True,
+                },
+            ],
+        }), True)
+
+        steps = result["task_plan"]["steps"]
+        self.assertEqual(steps[0]["write"]["strategy"], "event_dispatcher_signature")
+        self.assertEqual(steps[0]["write"]["ops"][0], {
+            "op": "ensure_event_dispatcher",
+            "dispatcher_name": "OnDoorOpened",
+            "inputs": [
+                {"name": "bIsOpen", "pin_type": {"category": "bool"}},
+            ],
+            "name_collision_policy": "reuse_if_exists",
+            "signature_mismatch_policy": "block",
+        })
+        self.assertEqual(steps[1]["write"]["strategy"], "override_event_signature")
+        self.assertEqual(steps[1]["write"]["ops"][0], {
+            "op": "ensure_override_event",
+            "event_name": "ReceiveBeginPlay",
+            "event_kind": "native_event",
+            "execute_policy": "blocked_preflight",
+        })
+        self.assertEqual(steps[2]["write"]["strategy"], "event_dispatcher_signature")
+        self.assertEqual(steps[2]["write"]["ops"][0], {
+            "op": "remove_signature",
+            "signature_kind": "event_dispatcher",
+            "signature_name": "OnDeprecatedDoorOpened",
+            "execute_policy": "blocked_preflight",
+            "require_reference_context": True,
+        })
+
+    def test_rejects_remove_signature_without_reference_context(self):
+        with self.assertRaises(TaskSpecCompileError) as ctx:
+            compile_task_spec(make_base_spec("edit_blueprint_signature", {
+                "signature_strategy": "signature_edit",
+                "changes": [
+                    {
+                        "kind": "remove_signature",
+                        "signature_kind": "event_dispatcher",
+                        "signature_name": "OnDeprecatedDoorOpened",
+                        "execute_policy": "blocked_preflight",
+                        "require_reference_context": False,
+                    },
+                ],
+            }), True)
+
+        self.assertEqual(ctx.exception.code, "invalid_signature_remove_policy")
 
 
 if __name__ == "__main__":

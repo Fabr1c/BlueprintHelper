@@ -249,6 +249,14 @@ describe('TaskSpec schema validation', () => {
     assert.throws(() => TaskSpecSchema.parse(spec), /should_compile/);
   });
 
+  it('rejects Agent-authored intent on TaskSpec input', () => {
+    const spec = makeTaskSpec({
+      intent: 'Agent-authored prose should not drive TaskSpec lowering.',
+    });
+
+    assert.throws(() => TaskSpecSchema.parse(spec), /intent/);
+  });
+
   it('validates task protocol output schemas', () => {
     const plan = compileTaskSpecToTaskPlan(TaskSpecSchema.parse(makeTaskSpec()));
 

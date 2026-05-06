@@ -12,7 +12,6 @@ export async function buildTaskContextPack(bridge: BridgeClient, input: ReadTask
   return {
     schema: TASK_CONTEXT_PACK_SCHEMA,
     context_id: `ctx_${Date.now()}`,
-    intent: input.intent,
     feature_name: input.feature_name,
     runtime: {
       bridge_reachable: true,
@@ -28,7 +27,6 @@ export async function buildTaskContextPack(bridge: BridgeClient, input: ReadTask
     },
     recommended_constraints: {
       prefer_new_graph: true,
-      recommended_graph_name: input.feature_name ? `EG_${input.feature_name}` : undefined,
       allow_modify_user_nodes: false,
       graph_strategy: 'append_new_owned_graph',
     },

@@ -212,3 +212,97 @@ Verification status:
 Deferred:
 
 - Confirm the Review widget can open repeatedly in the live UE 5.6 editor after local rebuild.
+
+## Progress Sync - 2026-05-06 Side Panel And Graph Bounds Follow-up
+
+Implemented:
+
+- My Blueprint panel no longer treats Graph-only visible changes as My Blueprint diff rows.
+- Empty side-panel diff stacks now return `SNullWidget`, so an empty overlay does not cover or intercept the reused UE panel.
+- Right-side column now renders Details above a new Debug panel.
+- Former bottom DebugMessage/status text now writes into the Debug panel instead of a bottom bar.
+- Graph diff bounds are tighter and now prefer real node/block matches over stored graph bounds.
+- Review Store graph records derive graph atomic targets from `created_nodes`, `blocks`, and rollback `node_guids`, giving the Review panel better node/block anchors for underlay bounds.
+- Graph node matching now accepts node GUIDs, object names from `created_nodes`, and BlueprintHelper block ids found in node comments.
+
+Verification status:
+
+- `git diff --check` over the touched Review widget/test paths passed.
+- Trailing whitespace scan over the touched Review widget/test paths passed.
+- Static scan found no active `DuplicateObject<UBlueprint>`, `ChangeListView`, disabled legacy `#if 0`, or old selected overlay builders in the touched Review widget paths.
+- UE build verification is still blocked by `G:\UnrealPractise\MrStone\Intermediate\Build\BuildRules\MrStoneModuleRules.dll` write permission before plugin compilation starts.
+
+Deferred:
+
+- Live editor screenshot validation after the user rebuilds with the local UE 5.6 environment.
+- Exact row-geometry frames inside reused My Blueprint / Details widgets remain future work; this pass prevents empty or graph-only overlays from covering those panels.
+
+## Progress Sync - 2026-05-06 Review Store Compile Fix
+
+Implemented:
+
+- Fixed `FJsonObject::TryGetObjectField("rollback_data", ...)` usage in `BlueprintHelperReviewStoreService.cpp`.
+- The object-form `rollback_data` branch now uses UE's required `const TSharedPtr<FJsonObject>*` out pointer and copies the pointed shared pointer into the local rollback object.
+
+Verification status:
+
+- Static scan confirms the Review Store no longer passes `TSharedPtr<FJsonObject>` or raw `FJsonObject*` directly to `TryGetObjectField`.
+- `git diff --check` over the touched Review Store and Review plan files passed.
+- UE build verification remains blocked in this environment by `G:\UnrealPractise\MrStone\Intermediate\Build\BuildRules\MrStoneModuleRules.dll` write permission before plugin compilation starts.
+
+Deferred:
+
+- Local UE 5.6 compile confirmation after the user rebuilds.
+
+## Progress Sync - 2026-05-07 Side Panel Row Frame Preview
+
+Implemented:
+
+- Replaced Components / My Blueprint / Details side-panel diff overlays with `SCanvas` row-frame previews.
+- Side-panel frames are now empty bordered rectangles with no diff text, so the reused UE panels remain visible underneath.
+- Hovering a side-panel frame still exposes Accept / Reject controls.
+- Components frame preview anchors component rows by stable component target text.
+- My Blueprint frame preview anchors function, component, variable/property, macro, and dispatcher buckets by stable target text and row order.
+- Details frame preview uses the same empty-frame rendering path.
+
+Verification status:
+
+- `git diff --check` over the touched Review panel and plan files passed.
+- Trailing whitespace scan over the touched Review panel and plan files passed.
+- Static scan found no active `DuplicateObject<UBlueprint>`, `ChangeListView`, disabled legacy `#if 0`, or old selected overlay builders in the touched Review widget paths.
+- UE build was retried with local `G:\UE_5.3\Engine\Build\BatchFiles\Build.bat`, but UBT still stops before plugin compilation because it cannot write `G:\UnrealPractise\MrStone\Intermediate\Build\BuildRules\MrStoneModuleRules.dll`.
+
+Deferred:
+
+- Exact UE row geometry binding remains deferred; this is the first path-indexed stable-row approximation for the figure-2 preview shape.
+- Pixel-perfect tuning of the hard-coded row offsets should be done against the next live editor screenshot.
+
+## Progress Sync - 2026-05-07 Graph Diff Comment-Style Bounds
+
+Implemented:
+
+- Added `BlueprintHelperReviewGraphBounds` helpers for graph target matching and comment-style diff bounds.
+- Graph diff bounds now prefer transient preview graph nodes, not source graph nodes.
+- Bounds matching now accepts `NodeGuid`, `TargetKey`, `PinPath`, `VisualGroupKey`, and display-label candidates, so records such as `graph:EventGraph/node:K2Node_CallFunction_1` can resolve to the actual graph node.
+- `SGraphEditor::GetBoundsForNode` is used when available, matching the same widget-bounds source used by UE's selected-node comment sizing path.
+- Fallback sizing still uses `NodePosX/Y`, `NodeWidth/NodeHeight`, and `UEdGraphSchema_K2::EstimateNodeHeight` when graph-editor node widgets are not available yet.
+- Diff block insertion now happens after the transient `SGraphEditor` is constructed, followed by `NotifyGraphChanged()`, so bounds can be computed from graph-editor node widgets without touching the real Blueprint asset.
+- Removed old unreachable panel-local graph matching helpers from `SBlueprintHelperReviewPanel`.
+- Added an automation test for TargetKey-based graph bounds with 50px comment-style padding.
+
+Verification status:
+
+- `git diff --check` over tracked touched Review panel/test/plan files passed.
+- Trailing whitespace scan over the new `BlueprintHelperReviewGraphBounds.cpp/.h` files passed.
+- `Build.bat MrStoneEditor Win64 Development -Project="G:\UnrealPractise\MrStone\MrStone.uproject" -WaitMutex -NoHotReloadFromIDE` did not reach C++ compilation because UBT cannot write/rename files under `G:\UnrealPractise\MrStone\Intermediate`, ending on `SourceFileCache.bin` access denied.
+
+Deferred:
+
+- Full `Automation RunTests BlueprintHelper.Review` confirmation is pending until the project `Intermediate` write lock/permission issue is cleared.
+- The Review UI still does not call UE's real Create Comment action because that action creates a real comment node and marks the Blueprint structurally modified.
+- Exact graph bounds can still fall back to stored node dimensions if `SGraphEditor::GetBoundsForNode` has not built widgets on the first pass.
+
+Omitted:
+
+- No real Blueprint asset mutation was added.
+- No MCP asset operation was used for this UI-only C++ change.

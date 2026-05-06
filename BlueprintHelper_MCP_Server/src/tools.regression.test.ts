@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test, { describe, it } from 'node:test';
 import type { BridgeResponse } from './bridge-client.js';
 import { registerWithBridge, registerResourcesWithBridge, invokeTool, withConnectedMcpServer } from './test-harness.js';
+
+const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 test('blueprint_export_to_json accepts current and legacy scope values', () => {
   const tools = registerWithBridge(async () => ({ request_id: 'test', success: true }));
@@ -53,7 +56,7 @@ test('blueprinthelper_read_agent_guide returns the AgentGuide onboarding index w
 
   const result = await invokeTool(tool, {});
   const expected = readFileSync(
-    path.resolve(process.cwd(), '..', 'Resources', 'AgentGuide', '00_Agent_Onboarding_Index_20260504.md'),
+    path.resolve(PLUGIN_ROOT, 'Resources', 'AgentGuide', '00_Agent_Onboarding_Index_20260504.md'),
     'utf8',
   );
 
@@ -435,7 +438,7 @@ test('blueprint asset resource reads raw JSON through Bridge on demand', async (
 });
 
 test('MCP regression fixtures exist and are valid JSON', () => {
-  const fixturesDir = path.resolve(process.cwd(), '..', 'Resources', 'TestFixtures', 'MCPRegression');
+  const fixturesDir = path.resolve(PLUGIN_ROOT, 'Resources', 'TestFixtures', 'MCPRegression');
   const requiredFixtures = [
     'legacy_full_graph_scope.mcp.json',
     'legacy_full_blueprint_scope.mcp.json',

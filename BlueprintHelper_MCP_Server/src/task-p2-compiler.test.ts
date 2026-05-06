@@ -65,3 +65,143 @@ test('compiles manage_blueprinthelper_ownership into graph_cleanup_ownership Tas
   assert.equal(firstStep.write.ops[0].op, 'cleanup_blueprint_helper_block');
   assert.equal(secondStep.write.ops[0].op, 'convert_blueprint_helper_block_to_user_owned');
 });
+
+test('compiles interface function and interface event signatures into distinct blueprint_signature IR', () => {
+  const taskSpec = TaskSpecSchema.parse(baseTaskSpec('edit_blueprint_signature', {
+    signature_strategy: 'signature_edit',
+    changes: [
+      {
+        kind: 'ensure_interface_function',
+        interface_path: '/Game/Interfaces/BPI_Door',
+        function_name: 'CanInteract',
+        inputs: [
+          { name: 'Instigator', pin_type: { category: 'object', subcategory_object: '/Script/Engine.Actor' } },
+        ],
+        outputs: [
+          { name: 'bCanInteract', pin_type: { category: 'bool' } },
+        ],
+      },
+      {
+        kind: 'ensure_interface_event',
+        interface_path: '/Game/Interfaces/BPI_Door',
+        event_name: 'OnInteract',
+        graph_name: 'EventGraph',
+        inputs: [
+          { name: 'Instigator', pin_type: { category: 'object', subcategory_object: '/Script/Engine.Actor' } },
+        ],
+      },
+    ],
+  }));
+
+  const taskPlan = compileTaskSpecToTaskPlan(taskSpec);
+  TaskPlanSchema.parse(taskPlan);
+  const functionStep = taskPlan.steps[0] as Record<string, any>;
+  const eventStep = taskPlan.steps[1] as Record<string, any>;
+
+  assert.equal(functionStep.capability, 'blueprint_signature');
+  assert.equal(functionStep.write.strategy, 'function_signature');
+  assert.deepEqual(functionStep.write.ops[0], {
+    op: 'ensure_function',
+    function_name: 'CanInteract',
+    interface_path: '/Game/Interfaces/BPI_Door',
+    interface_entry_kind: 'function',
+    inputs: [
+      { name: 'Instigator', pin_type: { category: 'object', subcategory_object: '/Script/Engine.Actor' } },
+    ],
+    outputs: [
+      { name: 'bCanInteract', pin_type: { category: 'bool' } },
+    ],
+    name_collision_policy: 'reuse_if_exists',
+  });
+  assert.equal(eventStep.capability, 'blueprint_signature');
+  assert.equal(eventStep.write.strategy, 'custom_event_signature');
+  assert.deepEqual(eventStep.write.ops[0], {
+    op: 'ensure_custom_event',
+    event_name: 'OnInteract',
+    graph_name: 'EventGraph',
+    interface_path: '/Game/Interfaces/BPI_Door',
+    interface_entry_kind: 'event',
+    inputs: [
+      { name: 'Instigator', pin_type: { category: 'object', subcategory_object: '/Script/Engine.Actor' } },
+    ],
+    name_collision_policy: 'reuse_if_exists',
+  });
+});
+
+test('compiles dispatcher override and remove signature policies into blueprint_signature IR', () => {
+  const taskSpec = TaskSpecSchema.parse(baseTaskSpec('edit_blueprint_signature', {
+    signature_strategy: 'signature_edit',
+    changes: [
+      {
+        kind: 'ensure_event_dispatcher',
+        dispatcher_name: 'OnDoorOpened',
+        inputs: [
+          { name: 'bIsOpen', pin_type: { category: 'bool' } },
+        ],
+        signature_mismatch_policy: 'block',
+      },
+      {
+        kind: 'ensure_override_event',
+        event_name: 'ReceiveBeginPlay',
+        event_kind: 'native_event',
+        execute_policy: 'blocked_preflight',
+      },
+      {
+        kind: 'remove_signature',
+        signature_kind: 'event_dispatcher',
+        signature_name: 'OnDeprecatedDoorOpened',
+        execute_policy: 'blocked_preflight',
+        require_reference_context: true,
+      },
+    ],
+  }));
+
+  const taskPlan = compileTaskSpecToTaskPlan(taskSpec);
+  TaskPlanSchema.parse(taskPlan);
+  const dispatcherStep = taskPlan.steps[0] as Record<string, any>;
+  const overrideStep = taskPlan.steps[1] as Record<string, any>;
+  const removeStep = taskPlan.steps[2] as Record<string, any>;
+
+  assert.equal(dispatcherStep.write.strategy, 'event_dispatcher_signature');
+  assert.deepEqual(dispatcherStep.write.ops[0], {
+    op: 'ensure_event_dispatcher',
+    dispatcher_name: 'OnDoorOpened',
+    inputs: [
+      { name: 'bIsOpen', pin_type: { category: 'bool' } },
+    ],
+    name_collision_policy: 'reuse_if_exists',
+    signature_mismatch_policy: 'block',
+  });
+  assert.equal(overrideStep.write.strategy, 'override_event_signature');
+  assert.deepEqual(overrideStep.write.ops[0], {
+    op: 'ensure_override_event',
+    event_name: 'ReceiveBeginPlay',
+    event_kind: 'native_event',
+    execute_policy: 'blocked_preflight',
+  });
+  assert.equal(removeStep.write.strategy, 'event_dispatcher_signature');
+  assert.deepEqual(removeStep.write.ops[0], {
+    op: 'remove_signature',
+    signature_kind: 'event_dispatcher',
+    signature_name: 'OnDeprecatedDoorOpened',
+    execute_policy: 'blocked_preflight',
+    require_reference_context: true,
+  });
+});
+
+test('rejects remove_signature when reference context is explicitly disabled', () => {
+  const parsed = TaskSpecSchema.safeParse(baseTaskSpec('edit_blueprint_signature', {
+    signature_strategy: 'signature_edit',
+    changes: [
+      {
+        kind: 'remove_signature',
+        signature_kind: 'event_dispatcher',
+        signature_name: 'OnDeprecatedDoorOpened',
+        execute_policy: 'blocked_preflight',
+        require_reference_context: false,
+      },
+    ],
+  }));
+
+  assert.equal(parsed.success, false);
+});
