@@ -5,6 +5,7 @@
 #include "Logic/BlueprintHelperLogicJsonPathService.h"
 #include "Transactions/Transactions/BlueprintHelperTransactionJournalService.h"
 #include "GraphSupport/BlueprintHelperScopedAssetMutation.h"
+#include "Services/GraphWrite/BlueprintHelperGraphWriteBlockScopedResolver.h"
 #include "Structure/GraphWrite/BlueprintHelperAppendGraphTypes.h"
 #include "Structure/GraphWrite/BlueprintHelperReplaceGraphTypes.h"
 
@@ -70,6 +71,8 @@ FBlueprintHelperPatchBlueprintGraphService::ParseRequest(const TSharedPtr<FJsonO
 	const TSharedPtr<FJsonObject>* PatchedRefObj = nullptr;
 	if (Payload->TryGetObjectField(TEXT("patched_ref"), PatchedRefObj) && PatchedRefObj->IsValid())
 	{
+		(*PatchedRefObj)->TryGetStringField(TEXT("block_id"), Req.BlockId);
+		(*PatchedRefObj)->TryGetStringField(TEXT("group_entry_node_path"), Req.GroupEntryNodePath);
 		(*PatchedRefObj)->TryGetStringField(TEXT("node_ref"), Req.NodeRef);
 		(*PatchedRefObj)->TryGetStringField(TEXT("pin_ref"), Req.PinRef);
 		(*PatchedRefObj)->TryGetStringField(TEXT("link_ref"), Req.LinkRef);
@@ -114,9 +117,19 @@ FBlueprintHelperPatchBlueprintGraphService::Preflight(
 	}
 
 	// 定位 node
+	FBlueprintHelperGraphWriteAnchorRef Anchor;
+	Anchor.BlockId = Request.BlockId;
+	Anchor.GroupEntryNodePath = Request.GroupEntryNodePath;
+	Anchor.NodeRef = Request.NodeRef;
+	Anchor.PinRef = Request.PinRef;
+	Anchor.LinkRef = Request.LinkRef;
+	Anchor.NodePath = Request.NodePath;
+	Anchor.PinPath = Request.PinPath;
+	Anchor.LinkPath = Request.LinkPath;
+
 	FBlueprintHelperPatchResolveError NodeError;
 	UEdGraphNode* Node = nullptr;
-	if (!PathService.ResolveNode(Graph, Request.NodeRef, Request.NodePath, Node, NodeError))
+	if (!FBlueprintHelperGraphWriteBlockScopedResolver::ResolveNode(PathService, Graph, Anchor, Node, NodeError))
 	{
 		Result.bPassed = false;
 		Result.BlockedBy.Add(NodeError.Code);
@@ -126,6 +139,7 @@ FBlueprintHelperPatchBlueprintGraphService::Preflight(
 	OutTarget.Node = Node;
 	OutTarget.PatchedRef.GraphId = Graph->GetName();
 	OutTarget.PatchedRef.NodeRef = Request.NodeRef;
+	if (!Request.NodePath.IsEmpty()) { OutTarget.PatchedRef.NodePath = Request.NodePath; }
 
 	// 定位 pin（如需）
 	if (Request.PatchType == EBlueprintHelperPatchType::SetPinDefault ||
@@ -135,7 +149,7 @@ FBlueprintHelperPatchBlueprintGraphService::Preflight(
 	{
 		FBlueprintHelperPatchResolveError PinError;
 		UEdGraphPin* Pin = nullptr;
-		if (!PathService.ResolvePin(Graph, Node, Request.PinRef, Request.PinPath, Pin, PinError))
+		if (!FBlueprintHelperGraphWriteBlockScopedResolver::ResolvePin(PathService, Graph, Node, Anchor, Pin, PinError))
 		{
 			Result.bPassed = false;
 			Result.BlockedBy.Add(PinError.Code);
@@ -144,6 +158,7 @@ FBlueprintHelperPatchBlueprintGraphService::Preflight(
 		}
 		OutTarget.Pin = Pin;
 		OutTarget.PatchedRef.PinRef = Request.PinRef;
+		if (!Request.PinPath.IsEmpty()) { OutTarget.PatchedRef.PinPath = Request.PinPath; }
 	}
 
 	// 定位 link（如需）
@@ -151,7 +166,7 @@ FBlueprintHelperPatchBlueprintGraphService::Preflight(
 		Request.PatchType == EBlueprintHelperPatchType::ReplaceLink)
 	{
 		FBlueprintHelperPatchResolveError LinkError;
-		if (!PathService.ResolveLink(Graph, Request.LinkRef, Request.LinkPath, OutTarget.Link, LinkError))
+		if (!FBlueprintHelperGraphWriteBlockScopedResolver::ResolveLink(PathService, Graph, Anchor, OutTarget.Link, LinkError))
 		{
 			Result.bPassed = false;
 			Result.BlockedBy.Add(LinkError.Code);
@@ -159,6 +174,7 @@ FBlueprintHelperPatchBlueprintGraphService::Preflight(
 			return Result;
 		}
 		OutTarget.PatchedRef.LinkRef = Request.LinkRef;
+		if (!Request.LinkPath.IsEmpty()) { OutTarget.PatchedRef.LinkPath = Request.LinkPath; }
 	}
 
 	// expected_old_state 校验

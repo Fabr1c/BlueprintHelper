@@ -15,7 +15,7 @@ BlueprintHelper_MCP_Server/src/task-protocol.fixtures.ts
 The supported chain is:
 
 ```text
-Agent -> TaskSpec semantic task -> MCP Task Tools -> Python/MCP Task Compiler -> TaskPlan structured edit language / IR -> Bridge task-level preview/execute -> UE Task Runtime lowering -> Existing UE capability clusters / Bridge commands
+Agent -> TaskSpec -> MCP/Python compiler -> TaskPlan structured IR -> Bridge/UE Task Runtime
 ```
 
 Ordinary Agents submit `BlueprintHelper.TaskSpec.v1` only. They do not author `BlueprintHelper.TaskPlan.v1`. The MCP/Python Task Compiler owns TaskPlan generation, and UE Task Runtime executes the lowered adapter work derived from that IR.
@@ -73,6 +73,16 @@ blueprinthelper_execute_task
 blueprinthelper_get_task_result
 blueprinthelper_open_editor
 blueprinthelper_close_editor
+```
+
+Task tools take a wrapped TaskSpec parameter. Do not pass the TaskSpec fields directly as the MCP tool arguments:
+
+```json
+{
+  "task_spec": {
+    "schema": "BlueprintHelper.TaskSpec.v1"
+  }
+}
 ```
 
 Low-level tools remain available only as internal, debug, expert, or test entries while their TaskSpec / ReadSpec replacements are not complete.
@@ -225,25 +235,172 @@ GraphWrite is Agent-facing only through semantic `TaskSpec.behavior.graph_strate
 | `task_type` | `edit_blueprint_graph` |
 | `target.target_type` | `blueprint` |
 | `behavior.graph_strategy` | `append_new_owned_graph`, `replace_owned_graph`, `patch_owned_graph`, `merge_owned_graph` |
-| `behavior.entries[].entry_type` | `custom_event` |
-| `behavior.entries[].body.statements[].kind` | `call_function`, `set_member_variable` |
 | `TaskPlan.steps[].capability` | `graph_write` |
 | `TaskPlan.steps[].write.strategy` | `owned_graph_edit` |
 | `TaskPlan.steps[].write.ops[].op` | `ensure_entry`, `replace_body`, `set_pin_default`, `set_node_comment`, `set_node_position`, `insert_flow` |
 | `TaskPlan.steps[].constraints.allow_modify_user_nodes` | `false` |
 | Step batching | append entries may share one step; replace/patch/merge compile to one structural op per step |
 
+`append_new_owned_graph` uses `behavior.entries[]`:
+
+```text
+behavior.entries[]:
+  - entry_type = custom_event
+  - body = BlueprintLogicSpec.v1
+  - body.statements[].kind in at least call_function, set_member_variable
+```
+
+`replace_owned_graph` uses one `behavior.replace` object:
+
+```text
+behavior.replace.scope:
+  - custom_event_body
+  - function_body
+  - event_body
+  - block_implementation
+
+behavior.replace.selector:
+  - kind
+  - name
+  - block_id
+  - graph_id
+  - node_ref
+
+behavior.replace.body:
+  - schema = BlueprintLogicSpec.v1
+
+behavior.replace.options:
+  - strict
+  - preserve_layout
+```
+
+`patch_owned_graph` uses `behavior.patches[]`:
+
+```text
+patches[].kind:
+  - set_pin_default
+  - set_node_comment
+  - set_node_position
+
+set_pin_default:
+  - target_ref.block_id
+  - target_ref.group_entry_node_path
+  - target_ref.node_ref
+  - target_ref.pin_ref
+  - value
+
+set_node_comment:
+  - target_ref.block_id
+  - target_ref.group_entry_node_path
+  - target_ref.node_ref
+  - value
+
+set_node_position:
+  - target_ref.block_id
+  - target_ref.group_entry_node_path
+  - target_ref.node_ref
+  - patch { x, y }
+
+behavior.patches[].scope:
+  May be derived by compiler; Agent does not need to provide it as mandatory.
+```
+
+`merge_owned_graph` uses `behavior.merges[]`:
+
+```text
+merges[].kind:
+  - insert_flow
+
+merges[].scope:
+  - owned_block_call
+  - custom_event_call
+  - function_call
+
+merges[].insert_strategy:
+  - append_after
+  - insert_between
+  - branch_fork
+
+merges[].anchor:
+  - block_id
+  - group_entry_node_path
+  - node_ref
+  - pin_ref
+  - link_ref only when insert_strategy = insert_between
+
+merges[].inserted:
+  - call_kind
+  - name
+  - block_id
+
+merges[].sequence_order:
+  only when insert_strategy = branch_fork
+```
+
+Agents must not:
+- merge these three strategies into `behavior.entries`.
+- model them as generic ops.
+- place Bridge/runtime payload fields (for example `append_blueprint_graph` args) directly in TaskSpec.
+- use `params` or plain argument values for `call_function`; use `args` with structured literal values instead.
+
+Function call statement arguments use this shape:
+
+```json
+{
+  "kind": "call_function",
+  "name": "PrintString",
+  "args": {
+    "InString": {
+      "kind": "literal",
+      "value_type": "string",
+      "value": "message"
+    }
+  }
+}
+```
+
 Runtime lowering targets `append_blueprint_graph`, `replace_blueprint_graph`, `patch_blueprint_graph`, or `merge_blueprint_graph` depending on the structural op. These are Runtime adapter targets only, not the primary Agent-authored contract.
 
-Current implementation note, 2026-05-05 smoke rerun:
+### 5.1 Patch/Merge Write Anchor Contract
+
+Patch/Merge write anchors follow the v0.3.6 grouped LogicJson / block-scoped contract.
+
+For BlueprintHelper-owned content, the Agent-facing main path is:
+
+```text
+block_id
+group_entry_node_path
+group-local node_ref / pin_ref / link_ref
+```
+
+`block_id` scopes the owned block. Group-local refs select the concrete node, pin, or link inside that block. This lets the Agent patch values, comments, positions, or insert flow without treating the entire graph node array as a stable write surface.
+
+The following are not the default Agent-facing write contract:
+
+- unscoped graph-level LogicJson array indexes such as `nodes[0]`.
+- display names as locators.
+- GUID-first selectors.
+- ad hoc JSONPath strings.
+
+Inside a `block_id` scope, group-local refs such as `nodes[0]` or `links[0]` are valid because they are interpreted only within that BlueprintHelper-owned block. UE GUIDs may still appear in expert/debug paths and internal diagnostics, but ordinary TaskSpec generation should prefer block-scoped anchors. Non-BlueprintHelper-owned graph content still needs a separate stable read/write anchor decision.
+
+Merge anchor rules verified by smoke:
+
+- `append_after` uses `block_id + group_entry_node_path + node_ref + pin_ref`.
+- `insert_between` uses `block_id + group_entry_node_path + node_ref + pin_ref + link_ref`.
+- `link_ref` alone is never enough; it selects the old connection but does not identify the source node/pin anchor required by compiler and UE resolver validation.
+- `branch_fork` remains contract-defined but still needs a UE smoke fixture.
+
+Current implementation note, 2026-05-06 Rerun 4:
 
 ```text
 Contract/compiler coverage: append_new_owned_graph, replace_owned_graph, patch_owned_graph, merge_owned_graph.
-Smoke-verified Bridge execute coverage: append_new_owned_graph only, and only with a fresh graph name.
-Replace/Patch/Merge remain TaskPlan IR contracts until the Bridge/UE blockers are fixed.
+Confirmed execute coverage: append_new_owned_graph with a fresh graph name, replace_owned_graph, patch_owned_graph on a BlueprintHelper-owned block, merge_owned_graph insert_between + function_call, merge_owned_graph append_after + function_call, and merge_owned_graph insert_between + custom_event_call.
+Confirmed read/write anchor coverage: LogicJson grouped block output includes block_id and group_entry_node_path; Patch/Merge resolve group-local node_ref / pin_ref / link_ref within that owned block.
+Remaining gaps: append_after + custom_event_call currently returns an empty preview error; branch_fork is not smoke-tested; non-BlueprintHelper-owned graph anchors still need a separate contract.
 ```
 
-Ordinary Agents should default to `append_new_owned_graph` with a new BlueprintHelper-owned graph for GraphWrite writes. If preview blocks `replace_owned_graph`, `patch_owned_graph`, or `merge_owned_graph`, stop and report instead of attempting a lower-level write tool fallback.
+Ordinary Agents should still prefer `append_new_owned_graph` with a new BlueprintHelper-owned graph for new isolated logic. When modifying BlueprintHelper-owned blocks, use `replace_owned_graph`, `patch_owned_graph`, or `merge_owned_graph` only with block-scoped LogicJson anchors and always preview first. If preview blocks, stop and report instead of attempting a lower-level write tool fallback.
 
 The second executable slice is Blueprint Variables:
 
@@ -285,12 +442,50 @@ target.asset_path
 scope_policy.graph_name
 scope_policy.allow_modify_user_nodes
 behavior.graph_strategy
-behavior.entries[] for append_new_owned_graph
-behavior.replace for replace_owned_graph
-behavior.patches[] for patch_owned_graph
-behavior.merges[] for merge_owned_graph
 validation.should_compile
 validation.should_save
+```
+
+For `append_new_owned_graph`:
+
+```text
+behavior.entries[]
+behavior.entries[].entry_type
+behavior.entries[].name
+behavior.entries[].body
+```
+
+For `replace_owned_graph`:
+
+```text
+behavior.replace
+behavior.replace.scope
+behavior.replace.selector
+behavior.replace.body
+behavior.replace.options
+```
+`behavior.replace.body` must be `BlueprintLogicSpec.v1`.
+
+For `patch_owned_graph`:
+
+```text
+behavior.patches[]
+behavior.patches[].kind
+behavior.patches[].value
+behavior.patches[].target_ref
+```
+`behavior.patches[].target_ref` must follow strategy-specific shape described in section 5.
+
+For `merge_owned_graph`:
+
+```text
+behavior.merges[]
+behavior.merges[].kind
+behavior.merges[].scope
+behavior.merges[].insert_strategy
+behavior.merges[].anchor
+behavior.merges[].inserted
+behavior.merges[].sequence_order (only when strategy is branch_fork)
 ```
 
 Agent may provide:
@@ -307,6 +502,7 @@ Agent must not provide:
 
 ```text
 keys named compile or save inside validation
+Bridge/runtime payload fields (for example append_blueprint_graph/replace_blueprint_graph/patch_blueprint_graph/merge_blueprint_graph arguments)
 ```
 
 For composite Blueprint feature creation, Agent must provide:
@@ -582,7 +778,7 @@ Runtime adapter payloads such as `append_blueprint_graph` remain lowering target
 
 When UE Task Runtime lowers this GraphWrite IR to an existing command cluster, the `custom_event` `ensure_entry` lowers to `append_blueprint_graph` with generated nodes and links. That adapter payload is runtime-internal and is not the primary Agent-facing TaskPlan example. Replace/Patch/Merge TaskSpecs produce separate `graph_write` steps with one structural op each, for example `replace_body`, `set_pin_default`, or `insert_flow`.
 
-As of the 2026-05-05 smoke rerun, those Replace/Patch/Merge steps are contract/compiler-ready but Bridge/UE execution is still blocked. They must be treated as preview-first experimental paths until the blocker is cleared.
+As of the 2026-05-06 Rerun 4 update, Level 5 GraphWrite Replace/Patch/Merge smoke verified the full TaskSpec -> Python compiler -> Bridge preview -> Bridge execute -> compile/read-back path for the supported owned-block cases listed in section 5.1. Treat `append_after + custom_event_call`, `branch_fork`, and non-BlueprintHelper-owned anchors as known gaps until their fixtures pass.
 
 ## 9.1 Partial Failure And Topology Blocking
 
@@ -706,7 +902,7 @@ insert_flow -> merge_blueprint_graph
 
 GraphWrite replace/patch/merge structural ops are emitted by the compiler as `capability/write/ops` TaskPlan IR. The runtime-owned adapter operation names may appear only in child results, runtime data, or TaskRunJournal facts.
 
-Current smoke-verified Bridge execution is narrower than the contract: `ensure_entry(custom_event)` can execute through `append_blueprint_graph` only for `append_new_owned_graph` with a fresh graph name. Replace/Patch/Merge lowering must remain blocked or reported when preview/execute cannot reach the UE command successfully.
+Current confirmed Bridge execution covers `ensure_entry(custom_event)` through `append_blueprint_graph` for fresh owned graphs, plus owned-block `replace_body`, `set_pin_default` / `set_node_comment` / `set_node_position`, and `insert_flow` for the smoke-verified merge cases. Runtime/profile reporting may still lag behind these source capabilities; use preview result and TaskRunJournal facts as the execution authority.
 
 The existing UE GraphWrite commands are Runtime lowering adapter targets, not the primary TaskPlan abstraction:
 
@@ -717,7 +913,7 @@ The existing UE GraphWrite commands are Runtime lowering adapter targets, not th
 | `patch_blueprint_graph` | `asset_path`, `graph`, `patch_scope` | `patch_type`, `patched_ref`, `patch` | `expected_old_state` | root `dry_run` |
 | `merge_blueprint_graph` | `asset_path`, `graph`, `merge_scope`, `insert_strategy` | `anchor`, `inserted` | `sequence_order` | root `dry_run` |
 
-These operations are TaskRuntime / Existing Capability Cluster steps. They do not expand the default Agent tool surface.
+These operations are TaskRuntime / Existing Capability Cluster steps. They do not expand the default Agent tool surface. Agents must continue to send only `TaskSpec` semantic fields and must not send `append_blueprint_graph` / `replace_blueprint_graph` / `patch_blueprint_graph` / `merge_blueprint_graph` runtime payloads in Agent requests.
 
 ### 11.1 Task Runtime Clusters
 
@@ -738,6 +934,14 @@ Do not introduce a new Agent-facing custom-event atomic tool. `blueprint_signatu
 
 Function/Event Signature expansion must cover creation, modification, and removal of function signatures, Custom Event signatures, interface function versus interface event entries, event dispatcher signatures, and override/native event entries. Function or event body logic, graph nodes, links, calls, binds, and unbinds remain GraphWrite responsibility.
 
+P2 first slice, 2026-05-06:
+
+- UE now has an internal `FBlueprintHelperSignatureService` under `Services/BlueprintSignature`, with DTOs under `Structure/BlueprintSignature`.
+- TaskRuntime `blueprint_signature` steps call this internal service instead of keeping signature execution logic inside the runtime service.
+- `ensure_function` supports dry-run, reuse-if-exists no-op, real function graph creation, and first-slice `inputs` / `outputs` forwarding from TaskPlan.
+- `ensure_custom_event` is represented through the same service boundary, but current execution still returns a compact `deferred_to_graph_write` result until GraphWrite entry declaration and body writing are split in UE.
+- No new Agent-facing atomic MCP signature tool is introduced.
+
 ### 11.2 Support Clusters
 
 | Cluster | Purpose | v0.3.6 source documents | Agent exposure |
@@ -749,9 +953,11 @@ Function/Event Signature expansion must cover creation, modification, and remova
 | Editor Lifecycle | Risk commands for launching or closing editor | `BlueprintHelper_EditorLifecycle_RiskCommand_UE_CPP_Implementation_Plan_20260503.md` | Debug or risk command |
 | Common Envelope | Shared result shape and error normalization | `BlueprintHelper_ToolResultBase_CommonEnvelope_UE_CPP_Implementation_Plan_20260503.md` | Protocol internal |
 
-LogicMD keeps the v0.3.6 grouped logic information shape. It is a read-only human-readable logic view and must not carry TaskSpec drafts. LogicJson remains a read-only structured logic view and must not carry `taskspec_hints`. LogicJson `node_ref` / `link_ref` values are local read-view references and are not automatically TaskSpec-compatible write anchors unless a later contract explicitly maps them.
+LogicMD keeps the v0.3.6 grouped logic information shape. It is a read-only human-readable logic view and must not carry TaskSpec drafts. LogicJson remains a read-only structured logic view and must not carry `taskspec_hints`.
 
-Known current bug, 2026-05-05: LogicJson `target_type=custom_event` lookup searches only EventGraph and ignores custom graphs. Until fixed, read custom graph context by graph target first or use LogicMD for verification.
+Decision, 2026-05-06: LogicJson read refs map to write anchors only through the grouped LogicJson / block-scoped contract described in section 5.1. Raw `node_ref` values such as `nodes[0]` are local read-view indexes and are not TaskSpec-compatible write anchors by themselves.
+
+Resolved smoke finding, 2026-05-06: LogicJson `target_type=custom_event` lookup now finds Custom Events in custom graphs, not only EventGraph.
 
 ## 12. Extension Policy
 

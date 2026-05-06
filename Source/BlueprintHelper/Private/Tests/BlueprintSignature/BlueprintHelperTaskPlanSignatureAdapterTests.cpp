@@ -24,6 +24,24 @@ namespace
 		Op->SetStringField(TEXT("interface_path"), TEXT("/Game/Interfaces/BPI_Interact"));
 		Op->SetStringField(TEXT("name_collision_policy"), TEXT("reuse_if_exists"));
 
+		TSharedPtr<FJsonObject> InputPinType = MakeShared<FJsonObject>();
+		InputPinType->SetStringField(TEXT("category"), TEXT("bool"));
+		TSharedPtr<FJsonObject> Input = MakeShared<FJsonObject>();
+		Input->SetStringField(TEXT("name"), TEXT("bPressed"));
+		Input->SetObjectField(TEXT("pin_type"), InputPinType);
+		TArray<TSharedPtr<FJsonValue>> Inputs;
+		Inputs.Add(MakeShared<FJsonValueObject>(Input.ToSharedRef()));
+		Op->SetArrayField(TEXT("inputs"), Inputs);
+
+		TSharedPtr<FJsonObject> OutputPinType = MakeShared<FJsonObject>();
+		OutputPinType->SetStringField(TEXT("category"), TEXT("bool"));
+		TSharedPtr<FJsonObject> Output = MakeShared<FJsonObject>();
+		Output->SetStringField(TEXT("name"), TEXT("bHandled"));
+		Output->SetObjectField(TEXT("pin_type"), OutputPinType);
+		TArray<TSharedPtr<FJsonValue>> Outputs;
+		Outputs.Add(MakeShared<FJsonValueObject>(Output.ToSharedRef()));
+		Op->SetArrayField(TEXT("outputs"), Outputs);
+
 		TArray<TSharedPtr<FJsonValue>> Ops;
 		Ops.Add(MakeShared<FJsonValueObject>(Op.ToSharedRef()));
 
@@ -89,6 +107,14 @@ bool FBlueprintHelperTaskPlanSignatureAdapterEnsureFunctionTest::RunTest(const F
 	FString FunctionName;
 	TestTrue(TEXT("payload carries function_name"), LoweredStep.Payload->TryGetStringField(TEXT("function_name"), FunctionName));
 	TestEqual(TEXT("function name preserved"), FunctionName, FString(TEXT("Interact")));
+
+	const TArray<TSharedPtr<FJsonValue>>* Inputs = nullptr;
+	TestTrue(TEXT("payload carries inputs"), LoweredStep.Payload->TryGetArrayField(TEXT("inputs"), Inputs));
+	TestTrue(TEXT("payload inputs not empty"), Inputs && Inputs->Num() == 1);
+
+	const TArray<TSharedPtr<FJsonValue>>* Outputs = nullptr;
+	TestTrue(TEXT("payload carries outputs"), LoweredStep.Payload->TryGetArrayField(TEXT("outputs"), Outputs));
+	TestTrue(TEXT("payload outputs not empty"), Outputs && Outputs->Num() == 1);
 
 	bool bDryRun = false;
 	TestTrue(TEXT("payload carries dry_run"), LoweredStep.Payload->TryGetBoolField(TEXT("dry_run"), bDryRun));

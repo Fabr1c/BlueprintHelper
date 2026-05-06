@@ -56,42 +56,176 @@ const TaskSpecBaseSchema = z.object({
   validation: TaskValidationPolicySchema,
 }).passthrough();
 
+const GraphWriteAppendEntrySchema = z.object({
+  entry_type: z.string(),
+  name: z.string().min(1),
+  body: BlueprintLogicSpecSchema,
+}).passthrough();
+
+const GraphWriteReplaceSchema = z.object({
+  scope: z.enum(['custom_event_body', 'function_body', 'event_body', 'block_implementation']),
+  selector: z.object({
+    kind: z.enum(['custom_event', 'function', 'event', 'block']),
+    name: z.string().min(1).optional(),
+    block_id: z.string().min(1).optional(),
+    graph_id: z.string().min(1).optional(),
+    node_ref: z.string().min(1).optional(),
+    node_path: z.string().min(1).optional(),
+  }).passthrough(),
+  body: BlueprintLogicSpecSchema,
+  options: z.object({
+    strict: z.boolean().optional(),
+    preserve_layout: z.boolean().optional(),
+  }).passthrough().optional(),
+}).passthrough().superRefine((value, ctx) => {
+  const expectedKindByScope: Record<string, string> = {
+    custom_event_body: 'custom_event',
+    function_body: 'function',
+    event_body: 'event',
+    block_implementation: 'block',
+  };
+  const expectedKind = expectedKindByScope[value.scope];
+  if (value.selector.kind !== expectedKind) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['selector', 'kind'],
+      message: `${value.scope} requires selector.kind="${expectedKind}".`,
+    });
+  }
+  if (value.selector.kind === 'block') {
+    if (!value.selector.block_id) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['selector', 'block_id'],
+        message: 'block_implementation requires selector.block_id.',
+      });
+    }
+  } else if (!value.selector.name) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['selector', 'name'],
+      message: `${value.scope} requires selector.name.`,
+    });
+  }
+});
+
+const GraphWritePatchSchema = z.object({
+  kind: z.enum(['set_pin_default', 'set_node_comment', 'set_node_position']),
+  scope: z.string().min(1).optional(),
+  target_ref: z.record(z.unknown()),
+  value: z.unknown().optional(),
+  patch: z.record(z.unknown()).optional(),
+  expected_old_state: z.record(z.unknown()).optional(),
+}).passthrough().superRefine((value, ctx) => {
+  const expectedScopeByKind: Record<string, string> = {
+    set_pin_default: 'pin_default',
+    set_node_comment: 'node_comment',
+    set_node_position: 'node_position',
+  };
+  const expectedScope = expectedScopeByKind[value.kind];
+  if (value.scope && value.scope !== expectedScope) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['scope'],
+      message: `${value.kind} uses scope ${expectedScope}; omit scope or set it to ${expectedScope}.`,
+    });
+  }
+  if (typeof value.target_ref.node_ref !== 'string' || value.target_ref.node_ref.length === 0) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['target_ref', 'node_ref'], message: 'target_ref.node_ref is required.' });
+  }
+  if (value.kind === 'set_pin_default' && (typeof value.target_ref.pin_ref !== 'string' || value.target_ref.pin_ref.length === 0)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['target_ref', 'pin_ref'], message: 'set_pin_default requires target_ref.pin_ref.' });
+  }
+  if ((value.kind === 'set_pin_default' || value.kind === 'set_node_comment') && !Object.hasOwn(value, 'value')) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['value'], message: `${value.kind} requires value.` });
+  }
+  if (value.kind === 'set_node_position') {
+    const patch = value.patch;
+    if (!patch || (typeof patch.x !== 'number' && typeof patch.y !== 'number')) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['patch'], message: 'set_node_position requires patch.x and/or patch.y as numbers.' });
+    }
+  }
+});
+
+const GraphWriteMergeSchema = z.object({
+  kind: z.literal('insert_flow'),
+  scope: z.enum(['owned_block_call', 'custom_event_call', 'function_call']),
+  insert_strategy: z.enum(['append_after', 'insert_between', 'branch_fork']),
+  anchor: z.record(z.unknown()),
+  inserted: z.record(z.unknown()),
+  sequence_order: z.array(z.string()).optional(),
+}).passthrough().superRefine((value, ctx) => {
+  if (typeof value.anchor.node_ref !== 'string' || value.anchor.node_ref.length === 0) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['anchor', 'node_ref'], message: 'anchor.node_ref is required.' });
+  }
+  if (typeof value.anchor.pin_ref !== 'string' || value.anchor.pin_ref.length === 0) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['anchor', 'pin_ref'], message: 'anchor.pin_ref is required.' });
+  }
+  if (value.inserted.call_kind !== value.scope) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['inserted', 'call_kind'], message: `inserted.call_kind must be ${value.scope}.` });
+  }
+  if (value.scope === 'owned_block_call') {
+    if (typeof value.inserted.block_id !== 'string' || value.inserted.block_id.length === 0) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['inserted', 'block_id'], message: 'owned_block_call requires inserted.block_id.' });
+    }
+  } else if (typeof value.inserted.name !== 'string' || value.inserted.name.length === 0) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['inserted', 'name'], message: `${value.scope} requires inserted.name.` });
+  }
+  if (value.insert_strategy === 'branch_fork') {
+    if (!value.sequence_order || value.sequence_order.length === 0) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['sequence_order'], message: 'branch_fork requires sequence_order.' });
+    } else {
+      value.sequence_order.forEach((entry, index) => {
+        if (entry !== 'inserted_logic' && entry !== 'original_successor') {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['sequence_order', index], message: 'Use inserted_logic or original_successor.' });
+        }
+      });
+    }
+  } else if (value.sequence_order !== undefined) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['sequence_order'], message: 'sequence_order is only valid for branch_fork.' });
+  }
+});
+
+const GraphWriteBehaviorSchema = z.object({
+  graph_strategy: z.string(),
+  entries: z.array(GraphWriteAppendEntrySchema).min(1).optional(),
+  replace: GraphWriteReplaceSchema.optional(),
+  patches: z.array(GraphWritePatchSchema).min(1).optional(),
+  merges: z.array(GraphWriteMergeSchema).min(1).optional(),
+}).passthrough().superRefine((value, ctx) => {
+  const requiredFieldByStrategy: Record<string, keyof typeof value> = {
+    append_new_owned_graph: 'entries',
+    replace_owned_graph: 'replace',
+    patch_owned_graph: 'patches',
+    merge_owned_graph: 'merges',
+  };
+  const requiredField = requiredFieldByStrategy[value.graph_strategy];
+  if (!requiredField) return;
+  if (requiredField && value[requiredField] === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [requiredField],
+      message: `${value.graph_strategy} requires behavior.${requiredField}.`,
+    });
+  }
+  (['entries', 'replace', 'patches', 'merges'] as const)
+    .filter((field) => field !== requiredField && value[field] !== undefined)
+    .forEach((field) => {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [field],
+        message: `${field} does not belong to graph_strategy ${value.graph_strategy}.`,
+      });
+    });
+});
+
 export const GraphWriteTaskSpecSchema = TaskSpecBaseSchema.extend({
   task_type: z.literal('edit_blueprint_graph'),
   scope_policy: z.object({
     graph_name: z.string().min(1),
     allow_modify_user_nodes: z.boolean().optional().default(false),
   }).passthrough(),
-  behavior: z.object({
-    graph_strategy: z.string(),
-    entries: z.array(z.object({
-      entry_type: z.string(),
-      name: z.string().min(1),
-      body: BlueprintLogicSpecSchema,
-    }).passthrough()).min(1).optional(),
-    replace: z.object({
-      scope: z.string().min(1),
-      selector: z.record(z.unknown()),
-      body: BlueprintLogicSpecSchema,
-      options: z.record(z.unknown()).optional(),
-    }).passthrough().optional(),
-    patches: z.array(z.object({
-      kind: z.string().min(1),
-      scope: z.string().min(1).optional(),
-      target_ref: z.record(z.unknown()).optional(),
-      value: z.unknown().optional(),
-      patch: z.record(z.unknown()).optional(),
-      expected_old_state: z.record(z.unknown()).optional(),
-    }).passthrough()).min(1).optional(),
-    merges: z.array(z.object({
-      kind: z.string().min(1),
-      scope: z.string().min(1),
-      insert_strategy: z.string().min(1),
-      anchor: z.record(z.unknown()),
-      inserted: z.record(z.unknown()),
-      sequence_order: z.array(z.string()).optional(),
-    }).passthrough()).min(1).optional(),
-  }).passthrough(),
+  behavior: GraphWriteBehaviorSchema,
 }).passthrough();
 
 export const BlueprintVariableTaskSpecSchema = TaskSpecBaseSchema.extend({
@@ -236,36 +370,7 @@ export const CompositeBlueprintFeatureTaskSpecSchema = TaskSpecBaseSchema.extend
       z.array(z.record(z.unknown())),
     ]).optional(),
   }).passthrough().optional(),
-  behavior: z.object({
-    graph_strategy: z.string(),
-    entries: z.array(z.object({
-      entry_type: z.string(),
-      name: z.string().min(1),
-      body: BlueprintLogicSpecSchema,
-    }).passthrough()).min(1).optional(),
-    replace: z.object({
-      scope: z.string().min(1),
-      selector: z.record(z.unknown()),
-      body: BlueprintLogicSpecSchema,
-      options: z.record(z.unknown()).optional(),
-    }).passthrough().optional(),
-    patches: z.array(z.object({
-      kind: z.string().min(1),
-      scope: z.string().min(1).optional(),
-      target_ref: z.record(z.unknown()).optional(),
-      value: z.unknown().optional(),
-      patch: z.record(z.unknown()).optional(),
-      expected_old_state: z.record(z.unknown()).optional(),
-    }).passthrough()).min(1).optional(),
-    merges: z.array(z.object({
-      kind: z.string().min(1),
-      scope: z.string().min(1),
-      insert_strategy: z.string().min(1),
-      anchor: z.record(z.unknown()),
-      inserted: z.record(z.unknown()),
-      sequence_order: z.array(z.string()).optional(),
-    }).passthrough()).min(1).optional(),
-  }).passthrough().optional(),
+  behavior: GraphWriteBehaviorSchema.optional(),
   integration: z.record(z.unknown()).optional(),
 }).passthrough().superRefine((value, ctx) => {
   const hasComponents = Array.isArray(value.components) && value.components.length > 0;
@@ -280,7 +385,7 @@ export const CompositeBlueprintFeatureTaskSpecSchema = TaskSpecBaseSchema.extend
   }
 });
 
-export const TaskSpecSchema = z.union([
+export const TaskSpecSchema: z.ZodTypeAny = z.union([
   CompositeBlueprintFeatureTaskSpecSchema,
   GraphWriteTaskSpecSchema,
   BlueprintVariableTaskSpecSchema,
@@ -299,11 +404,11 @@ export const ReadTaskContextInputSchema = z.object({
   feature_name: z.string().optional(),
 });
 
-export const PreviewTaskInputSchema = z.object({
+export const PreviewTaskInputSchema: z.ZodTypeAny = z.object({
   task_spec: TaskSpecSchema,
 });
 
-export const ExecuteTaskInputSchema = z.object({
+export const ExecuteTaskInputSchema: z.ZodTypeAny = z.object({
   task_spec: TaskSpecSchema,
 });
 

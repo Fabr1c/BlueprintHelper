@@ -1249,6 +1249,17 @@ def _compile_append_graph_write_ops(behavior: Dict[str, Any]) -> List[Dict[str, 
 
 def _compile_replace_graph_write_op(behavior: Dict[str, Any]) -> Dict[str, Any]:
     replace = _required_object(behavior, "replace", "behavior.replace")
+    replace_scope = _required_string(replace, "scope", "behavior.replace.scope")
+    _assert_allowed_string(
+        replace_scope,
+        "behavior.replace.scope",
+        {"custom_event_body", "function_body", "event_body", "block_implementation"},
+        "Use custom_event_body, function_body, event_body, or block_implementation.",
+    )
+    selector = _normalize_replace_selector(
+        replace_scope,
+        _required_object(replace, "selector", "behavior.replace.selector"),
+    )
     body = _required_logic_body(replace, "body", "behavior.replace.body")
     _validate_supported_statements(body["statements"], "behavior.replace.body.statements")
     replacement = _compile_logic_body_to_import_payload(body, "replace", "behavior.replace.body")
@@ -1265,8 +1276,8 @@ def _compile_replace_graph_write_op(behavior: Dict[str, Any]) -> Dict[str, Any]:
 
     return _omit_none({
         "op": "replace_body",
-        "replace_scope": _required_string(replace, "scope", "behavior.replace.scope"),
-        "selector": _required_object(replace, "selector", "behavior.replace.selector"),
+        "replace_scope": replace_scope,
+        "selector": selector,
         "replacement": replacement,
         "options": replace.get("options") if isinstance(replace.get("options"), dict) else None,
     })
@@ -1298,12 +1309,24 @@ def _compile_patch_graph_write_ops(behavior: Dict[str, Any]) -> List[Dict[str, A
                     "message": "Use set_pin_default, set_node_comment, or set_node_position.",
                 }],
             )
+        patch_scope = patch_value.get("scope") if isinstance(patch_value.get("scope"), str) and patch_value.get("scope") else _default_patch_scope(kind)
+        expected_scope = _default_patch_scope(kind)
+        if patch_scope != expected_scope:
+            raise TaskSpecCompileError(
+                "taskspec_semantic_invalid",
+                f"GraphWrite patch scope must match {kind}.",
+                [{
+                    "code": "patch_scope_mismatch",
+                    "path": f"{path}.scope",
+                    "message": f"{kind} uses scope {expected_scope}. Omit scope or set it to {expected_scope}.",
+                }],
+            )
         ops.append(_omit_none({
             "op": kind,
-            "patch_scope": patch_value.get("scope") if isinstance(patch_value.get("scope"), str) and patch_value.get("scope") else _default_patch_scope(kind),
-            "patched_ref": _required_object(patch_value, "target_ref", f"{path}.target_ref"),
-            "patch": _compile_patch_payload(patch_value, path),
-            "expected_old_state": _literal_record_values(patch_value["expected_old_state"]) if isinstance(patch_value.get("expected_old_state"), dict) else None,
+            "patch_scope": patch_scope,
+            "patched_ref": _normalize_patch_target_ref(kind, _required_object(patch_value, "target_ref", f"{path}.target_ref"), f"{path}.target_ref"),
+            "patch": _compile_patch_payload(kind, patch_value, path),
+            "expected_old_state": _normalize_expected_old_state(patch_value["expected_old_state"]) if isinstance(patch_value.get("expected_old_state"), dict) else None,
         }))
     return ops
 
@@ -1334,13 +1357,28 @@ def _compile_merge_graph_write_ops(behavior: Dict[str, Any]) -> List[Dict[str, A
                     "message": "Use insert_flow.",
                 }],
             )
+        merge_scope = _required_string(merge_value, "scope", f"{path}.scope")
+        _assert_allowed_string(
+            merge_scope,
+            f"{path}.scope",
+            {"owned_block_call", "custom_event_call", "function_call"},
+            "Use owned_block_call, custom_event_call, or function_call.",
+        )
+        insert_strategy = _required_string(merge_value, "insert_strategy", f"{path}.insert_strategy")
+        _assert_allowed_string(
+            insert_strategy,
+            f"{path}.insert_strategy",
+            {"append_after", "insert_between", "branch_fork"},
+            "Use append_after, insert_between, or branch_fork.",
+        )
+        sequence_order = _normalize_merge_sequence_order(merge_value, insert_strategy, f"{path}.sequence_order")
         ops.append(_omit_none({
             "op": "insert_flow",
-            "merge_scope": _required_string(merge_value, "scope", f"{path}.scope"),
-            "insert_strategy": _required_string(merge_value, "insert_strategy", f"{path}.insert_strategy"),
-            "anchor": _required_object(merge_value, "anchor", f"{path}.anchor"),
-            "inserted": _required_object(merge_value, "inserted", f"{path}.inserted"),
-            "sequence_order": merge_value.get("sequence_order") if isinstance(merge_value.get("sequence_order"), list) else None,
+            "merge_scope": merge_scope,
+            "insert_strategy": insert_strategy,
+            "anchor": _normalize_merge_anchor(_required_object(merge_value, "anchor", f"{path}.anchor"), f"{path}.anchor"),
+            "inserted": _normalize_merge_inserted(merge_scope, _required_object(merge_value, "inserted", f"{path}.inserted"), f"{path}.inserted"),
+            "sequence_order": sequence_order,
         }))
     return ops
 
@@ -1385,18 +1423,248 @@ def _default_patch_scope(kind: str) -> str:
     return "pin_default"
 
 
-def _compile_patch_payload(patch: Dict[str, Any], path: str) -> Dict[str, Any]:
-    if isinstance(patch.get("patch"), dict):
-        return _literal_record_values(patch["patch"])
-    if "value" in patch:
-        return {"value": _literal_value(patch.get("value"))}
+def _normalize_replace_selector(replace_scope: str, selector: Dict[str, Any]) -> Dict[str, Any]:
+    kind = _required_string(selector, "kind", "behavior.replace.selector.kind")
+    out: Dict[str, Any] = {}
+    _copy_optional_string_fields(selector, out, ["graph_id", "node_ref", "node_path"])
+
+    if replace_scope == "custom_event_body":
+        _require_selector_kind(kind, "custom_event", replace_scope)
+        out["entry_name"] = _required_string(selector, "name", "behavior.replace.selector.name")
+        return out
+    if replace_scope == "event_body":
+        _require_selector_kind(kind, "event", replace_scope)
+        out["entry_name"] = _required_string(selector, "name", "behavior.replace.selector.name")
+        return out
+    if replace_scope == "function_body":
+        _require_selector_kind(kind, "function", replace_scope)
+        out["function_name"] = _required_string(selector, "name", "behavior.replace.selector.name")
+        return out
+
+    _require_selector_kind(kind, "block", replace_scope)
+    out["block_id"] = _required_string(selector, "block_id", "behavior.replace.selector.block_id")
+    _copy_optional_string_fields(selector, out, ["target_ref", "block_ref"])
+    return out
+
+
+def _require_selector_kind(actual: str, expected: str, replace_scope: str) -> None:
+    if actual == expected:
+        return
     raise TaskSpecCompileError(
         "taskspec_semantic_invalid",
-        "GraphWrite patch requires patch or value.",
+        f"replace selector kind must match {replace_scope}.",
+        [{
+            "code": "replace_selector_scope_mismatch",
+            "path": "behavior.replace.selector.kind",
+            "message": f'{replace_scope} requires selector.kind="{expected}".',
+        }],
+    )
+
+
+def _normalize_patch_target_ref(kind: str, target_ref: Dict[str, Any], path: str) -> Dict[str, Any]:
+    _assert_block_scoped_graph_write_ref(target_ref, path)
+    _required_string(target_ref, "node_ref", f"{path}.node_ref")
+    if kind == "set_pin_default":
+        _required_string(target_ref, "pin_ref", f"{path}.pin_ref")
+    return dict(target_ref)
+
+
+def _compile_patch_payload(kind: str, patch: Dict[str, Any], path: str) -> Dict[str, Any]:
+    if kind == "set_pin_default":
+        if "value" not in patch:
+            _throw_missing_patch_value(path, "set_pin_default requires value.")
+        return {"value": _patch_value_to_string(_literal_value(patch.get("value")))}
+    if kind == "set_node_comment":
+        if "value" not in patch:
+            _throw_missing_patch_value(path, "set_node_comment requires value.")
+        return {"comment": _patch_value_to_string(_literal_value(patch.get("value")))}
+    if kind == "set_node_position":
+        payload = _required_object(patch, "patch", f"{path}.patch")
+        if not isinstance(payload.get("x"), (int, float)) and not isinstance(payload.get("y"), (int, float)):
+            raise TaskSpecCompileError(
+                "taskspec_semantic_invalid",
+                "set_node_position requires patch.x or patch.y.",
+                [{
+                    "code": "missing_node_position",
+                    "path": f"{path}.patch",
+                    "message": "Provide patch.x and/or patch.y as numbers.",
+                }],
+            )
+        return _literal_record_values(payload)
+    raise TaskSpecCompileError(
+        "unsupported_graph_write_patch",
+        f"Unsupported GraphWrite patch kind: {kind}",
+        [{
+            "code": "unsupported_graph_write_patch",
+            "path": f"{path}.kind",
+            "message": "Use set_pin_default, set_node_comment, or set_node_position.",
+        }],
+    )
+
+
+def _throw_missing_patch_value(path: str, message: str) -> None:
+    raise TaskSpecCompileError(
+        "taskspec_semantic_invalid",
+        message,
         [{
             "code": "missing_patch_payload",
-            "path": f"{path}.patch",
-            "message": "Provide patch or value.",
+            "path": f"{path}.value",
+            "message": "Provide value.",
+        }],
+    )
+
+
+def _normalize_expected_old_state(record: Dict[str, Any]) -> Dict[str, Any]:
+    out = _literal_record_values(record)
+    if "value" in record:
+        out["value"] = _patch_value_to_string(_literal_value(record.get("value")))
+    return out
+
+
+def _normalize_merge_anchor(anchor: Dict[str, Any], path: str) -> Dict[str, Any]:
+    _assert_block_scoped_graph_write_ref(anchor, path)
+    _required_string(anchor, "node_ref", f"{path}.node_ref")
+    _required_string(anchor, "pin_ref", f"{path}.pin_ref")
+    return dict(anchor)
+
+
+def _assert_block_scoped_graph_write_ref(ref: Dict[str, Any], path: str) -> None:
+    has_block_id = isinstance(ref.get("block_id"), str) and ref["block_id"].strip()
+    if has_block_id:
+        return
+
+    for field in ("node_ref", "pin_ref", "link_ref"):
+        value = ref.get(field)
+        if isinstance(value, str) and _is_raw_logicjson_array_ref(value):
+            _raise_unsupported_graph_write_anchor(
+                f"{path}.{field}",
+                f"{path}.{field} uses a read-view array index. Use block_id with group-local node_ref/pin_ref/link_ref.",
+            )
+
+    _raise_unsupported_graph_write_anchor(
+        path,
+        f"{path} must identify a BlueprintHelper-owned block with block_id.",
+    )
+
+
+def _is_raw_logicjson_array_ref(value: str) -> bool:
+    return re.fullmatch(r"(?:nodes|pins|links)\[\d+\]", value.strip()) is not None
+
+
+def _raise_unsupported_graph_write_anchor(path: str, message: str) -> None:
+    raise TaskSpecCompileError(
+        "unsupported_graph_write_anchor",
+        "GraphWrite patch/merge requires a block-scoped anchor.",
+        [{
+            "code": "unsupported_graph_write_anchor",
+            "path": path,
+            "message": message,
+        }],
+    )
+
+
+def _normalize_merge_inserted(merge_scope: str, inserted: Dict[str, Any], path: str) -> Dict[str, Any]:
+    call_kind = _required_string(inserted, "call_kind", f"{path}.call_kind")
+    if call_kind != merge_scope:
+        raise TaskSpecCompileError(
+            "taskspec_semantic_invalid",
+            "merge inserted.call_kind must match merge scope.",
+            [{
+                "code": "merge_inserted_scope_mismatch",
+                "path": f"{path}.call_kind",
+                "message": f'{merge_scope} requires inserted.call_kind="{merge_scope}".',
+            }],
+        )
+    if merge_scope == "function_call":
+        return {"function": _required_string(inserted, "name", f"{path}.name")}
+    if merge_scope == "custom_event_call":
+        return {"custom_event": _required_string(inserted, "name", f"{path}.name")}
+    return _omit_none({
+        "block_id": _required_string(inserted, "block_id", f"{path}.block_id"),
+        "block_ref": inserted.get("block_ref") if isinstance(inserted.get("block_ref"), str) and inserted.get("block_ref") else None,
+    })
+
+
+def _normalize_merge_sequence_order(record: Dict[str, Any], insert_strategy: str, path: str) -> List[str] | None:
+    raw = record.get("sequence_order")
+    if insert_strategy != "branch_fork":
+        if raw is not None:
+            raise TaskSpecCompileError(
+                "taskspec_semantic_invalid",
+                "sequence_order is only valid for branch_fork.",
+                [{
+                    "code": "sequence_order_not_allowed",
+                    "path": path,
+                    "message": "Remove sequence_order unless insert_strategy is branch_fork.",
+                }],
+            )
+        return None
+    if not isinstance(raw, list) or not raw:
+        raise TaskSpecCompileError(
+            "taskspec_semantic_invalid",
+            "branch_fork requires sequence_order.",
+            [{
+                "code": "sequence_order_required",
+                "path": path,
+                "message": "Provide sequence_order using inserted_logic and original_successor.",
+            }],
+        )
+    sequence_order: List[str] = []
+    for index, value in enumerate(raw):
+        if value in {"inserted_logic", "original_successor"}:
+            sequence_order.append(value)
+            continue
+        raise TaskSpecCompileError(
+            "taskspec_semantic_invalid",
+            "Invalid branch_fork sequence_order entry.",
+            [{
+                "code": "sequence_order_invalid",
+                "path": f"{path}[{index}]",
+                "message": "Use inserted_logic or original_successor.",
+            }],
+        )
+    if "inserted_logic" not in sequence_order:
+        raise TaskSpecCompileError(
+            "taskspec_semantic_invalid",
+            "branch_fork sequence_order must include inserted_logic.",
+            [{
+                "code": "sequence_order_invalid",
+                "path": path,
+                "message": "Include inserted_logic.",
+            }],
+        )
+    return sequence_order
+
+
+def _patch_value_to_string(value: Any) -> str:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    if value is None:
+        return ""
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def _copy_optional_string_fields(source: Dict[str, Any], target: Dict[str, Any], fields: List[str]) -> None:
+    for field in fields:
+        value = source.get(field)
+        if isinstance(value, str) and value:
+            target[field] = value
+
+
+def _assert_allowed_string(value: str, path: str, allowed: set[str], message: str) -> None:
+    if value in allowed:
+        return
+    raise TaskSpecCompileError(
+        "taskspec_semantic_invalid",
+        f"{path} is not supported.",
+        [{
+            "code": "unsupported_field_value",
+            "path": path,
+            "message": message,
         }],
     )
 

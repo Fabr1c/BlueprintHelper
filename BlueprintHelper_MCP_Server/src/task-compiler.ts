@@ -847,6 +847,17 @@ function compileAppendGraphWriteOps(behavior: Record<string, unknown>): GraphWri
 
 function compileReplaceGraphWriteOp(behavior: Record<string, unknown>): GraphWriteCompiledOp {
   const replace = requiredRecord(behavior, 'replace', 'behavior.replace');
+  const replaceScope = getRequiredString(replace, 'scope', 'behavior.replace.scope');
+  assertAllowedString(
+    replaceScope,
+    'behavior.replace.scope',
+    ['custom_event_body', 'function_body', 'event_body', 'block_implementation'],
+    'Use custom_event_body, function_body, event_body, or block_implementation.',
+  );
+  const selector = normalizeReplaceSelector(
+    replaceScope,
+    requiredRecord(replace, 'selector', 'behavior.replace.selector'),
+  );
   const body = getRequiredLogicBody(replace, 'body', 'behavior.replace.body');
   validateSupportedStatements(body.statements, 'behavior.replace.body.statements');
   const replacement = compileLogicBodyToImportPayload(body, 'replace', 'behavior.replace.body');
@@ -862,8 +873,8 @@ function compileReplaceGraphWriteOp(behavior: Record<string, unknown>): GraphWri
 
   return omitUndefined({
     op: 'replace_body',
-    replace_scope: getRequiredString(replace, 'scope', 'behavior.replace.scope'),
-    selector: requiredRecord(replace, 'selector', 'behavior.replace.selector'),
+    replace_scope: replaceScope,
+    selector,
     replacement,
     options: isRecord(replace['options']) ? replace['options'] : undefined,
   }) as GraphWriteCompiledOp;
@@ -893,16 +904,27 @@ function compilePatchGraphWriteOps(behavior: Record<string, unknown>): GraphWrit
         },
       ]);
     }
+    const patchScope = typeof patch['scope'] === 'string' && patch['scope'].length > 0
+      ? patch['scope']
+      : defaultPatchScope(kind);
+    const expectedScope = defaultPatchScope(kind);
+    if (patchScope !== expectedScope) {
+      throw new TaskSpecCompileError('taskspec_semantic_invalid', `GraphWrite patch scope must match ${kind}.`, [
+        {
+          code: 'patch_scope_mismatch',
+          path: `${path}.scope`,
+          message: `${kind} uses scope ${expectedScope}. Omit scope or set it to ${expectedScope}.`,
+        },
+      ]);
+    }
 
     return omitUndefined({
       op: kind,
-      patch_scope: typeof patch['scope'] === 'string' && patch['scope'].length > 0
-        ? patch['scope']
-        : defaultPatchScope(kind),
-      patched_ref: requiredRecord(patch, 'target_ref', `${path}.target_ref`),
-      patch: compilePatchPayload(patch, path),
+      patch_scope: patchScope,
+      patched_ref: normalizePatchTargetRef(kind, requiredRecord(patch, 'target_ref', `${path}.target_ref`), `${path}.target_ref`),
+      patch: compilePatchPayload(kind, patch, path),
       expected_old_state: isRecord(patch['expected_old_state'])
-        ? literalRecordValues(patch['expected_old_state'])
+        ? normalizeExpectedOldState(patch['expected_old_state'])
         : undefined,
     }) as GraphWriteCompiledOp;
   });
@@ -932,14 +954,29 @@ function compileMergeGraphWriteOps(behavior: Record<string, unknown>): GraphWrit
         },
       ]);
     }
+    const mergeScope = getRequiredString(merge, 'scope', `${path}.scope`);
+    assertAllowedString(
+      mergeScope,
+      `${path}.scope`,
+      ['owned_block_call', 'custom_event_call', 'function_call'],
+      'Use owned_block_call, custom_event_call, or function_call.',
+    );
+    const insertStrategy = getRequiredString(merge, 'insert_strategy', `${path}.insert_strategy`);
+    assertAllowedString(
+      insertStrategy,
+      `${path}.insert_strategy`,
+      ['append_after', 'insert_between', 'branch_fork'],
+      'Use append_after, insert_between, or branch_fork.',
+    );
+    const sequenceOrder = normalizeMergeSequenceOrder(merge, insertStrategy, `${path}.sequence_order`);
 
     return omitUndefined({
       op: 'insert_flow',
-      merge_scope: getRequiredString(merge, 'scope', `${path}.scope`),
-      insert_strategy: getRequiredString(merge, 'insert_strategy', `${path}.insert_strategy`),
-      anchor: requiredRecord(merge, 'anchor', `${path}.anchor`),
-      inserted: requiredRecord(merge, 'inserted', `${path}.inserted`),
-      sequence_order: Array.isArray(merge['sequence_order']) ? merge['sequence_order'] : undefined,
+      merge_scope: mergeScope,
+      insert_strategy: insertStrategy,
+      anchor: normalizeMergeAnchor(requiredRecord(merge, 'anchor', `${path}.anchor`), `${path}.anchor`),
+      inserted: normalizeMergeInserted(mergeScope, requiredRecord(merge, 'inserted', `${path}.inserted`), `${path}.inserted`),
+      sequence_order: sequenceOrder,
     }) as GraphWriteCompiledOp;
   });
 }
@@ -984,20 +1021,249 @@ function defaultPatchScope(kind: string): string {
   return 'pin_default';
 }
 
-function compilePatchPayload(patch: Record<string, unknown>, path: string): Record<string, unknown> {
-  if (isRecord(patch['patch'])) {
-    return literalRecordValues(patch['patch']);
+function normalizeReplaceSelector(
+  replaceScope: string,
+  selector: Record<string, unknown>,
+): Record<string, unknown> {
+  const kind = getRequiredString(selector, 'kind', 'behavior.replace.selector.kind');
+  const out: Record<string, unknown> = {};
+  copyOptionalStringFields(selector, out, ['graph_id', 'node_ref', 'node_path']);
+
+  if (replaceScope === 'custom_event_body') {
+    requireSelectorKind(kind, 'custom_event', replaceScope);
+    out['entry_name'] = getRequiredString(selector, 'name', 'behavior.replace.selector.name');
+    return out;
   }
-  if ('value' in patch) {
+  if (replaceScope === 'event_body') {
+    requireSelectorKind(kind, 'event', replaceScope);
+    out['entry_name'] = getRequiredString(selector, 'name', 'behavior.replace.selector.name');
+    return out;
+  }
+  if (replaceScope === 'function_body') {
+    requireSelectorKind(kind, 'function', replaceScope);
+    out['function_name'] = getRequiredString(selector, 'name', 'behavior.replace.selector.name');
+    return out;
+  }
+
+  requireSelectorKind(kind, 'block', replaceScope);
+  out['block_id'] = getRequiredString(selector, 'block_id', 'behavior.replace.selector.block_id');
+  copyOptionalStringFields(selector, out, ['target_ref', 'block_ref']);
+  return out;
+}
+
+function requireSelectorKind(actual: string, expected: string, replaceScope: string): void {
+  if (actual === expected) return;
+  throw new TaskSpecCompileError('taskspec_semantic_invalid', `replace selector kind must match ${replaceScope}.`, [
+    {
+      code: 'replace_selector_scope_mismatch',
+      path: 'behavior.replace.selector.kind',
+      message: `${replaceScope} requires selector.kind="${expected}".`,
+    },
+  ]);
+}
+
+function normalizePatchTargetRef(kind: string, targetRef: Record<string, unknown>, path: string): Record<string, unknown> {
+  const out = { ...targetRef };
+  assertBlockScopedGraphWriteRef(targetRef, path);
+  getRequiredString(targetRef, 'node_ref', `${path}.node_ref`);
+  if (kind === 'set_pin_default') {
+    getRequiredString(targetRef, 'pin_ref', `${path}.pin_ref`);
+  }
+  return out;
+}
+
+function compilePatchPayload(kind: string, patch: Record<string, unknown>, path: string): Record<string, unknown> {
+  if (kind === 'set_pin_default') {
+    if (!Object.hasOwn(patch, 'value')) {
+      throwMissingPatchValue(path, 'set_pin_default requires value.');
+    }
     return {
-      value: literalValue(patch['value']),
+      value: patchValueToString(literalValue(patch['value'])),
     };
   }
-  throw new TaskSpecCompileError('taskspec_semantic_invalid', 'GraphWrite patch requires patch or value.', [
+  if (kind === 'set_node_comment') {
+    if (!Object.hasOwn(patch, 'value')) {
+      throwMissingPatchValue(path, 'set_node_comment requires value.');
+    }
+    return {
+      comment: patchValueToString(literalValue(patch['value'])),
+    };
+  }
+  if (kind === 'set_node_position') {
+    const payload = requiredRecord(patch, 'patch', `${path}.patch`);
+    if (typeof payload['x'] !== 'number' && typeof payload['y'] !== 'number') {
+      throw new TaskSpecCompileError('taskspec_semantic_invalid', 'set_node_position requires patch.x or patch.y.', [
+        {
+          code: 'missing_node_position',
+          path: `${path}.patch`,
+          message: 'Provide patch.x and/or patch.y as numbers.',
+        },
+      ]);
+    }
+    return literalRecordValues(payload);
+  }
+
+  throw new TaskSpecCompileError('unsupported_graph_write_patch', `Unsupported GraphWrite patch kind: ${kind}`, [
+    {
+      code: 'unsupported_graph_write_patch',
+      path: `${path}.kind`,
+      message: 'Use set_pin_default, set_node_comment, or set_node_position.',
+    },
+  ]);
+}
+
+function throwMissingPatchValue(path: string, message: string): never {
+  throw new TaskSpecCompileError('taskspec_semantic_invalid', message, [
     {
       code: 'missing_patch_payload',
-      path: `${path}.patch`,
-      message: 'Provide patch or value.',
+      path: `${path}.value`,
+      message: 'Provide value.',
+    },
+  ]);
+}
+
+function normalizeExpectedOldState(record: Record<string, unknown>): Record<string, unknown> {
+  const out = literalRecordValues(record);
+  if (Object.hasOwn(record, 'value')) {
+    out['value'] = patchValueToString(literalValue(record['value']));
+  }
+  return out;
+}
+
+function normalizeMergeAnchor(anchor: Record<string, unknown>, path: string): Record<string, unknown> {
+  assertBlockScopedGraphWriteRef(anchor, path);
+  getRequiredString(anchor, 'node_ref', `${path}.node_ref`);
+  getRequiredString(anchor, 'pin_ref', `${path}.pin_ref`);
+  return { ...anchor };
+}
+
+function assertBlockScopedGraphWriteRef(ref: Record<string, unknown>, path: string): void {
+  const hasBlockId = typeof ref['block_id'] === 'string' && ref['block_id'].trim().length > 0;
+  if (hasBlockId) return;
+
+  for (const field of ['node_ref', 'pin_ref', 'link_ref']) {
+    const value = ref[field];
+    if (typeof value === 'string' && isRawLogicJsonArrayRef(value)) {
+      throwUnsupportedGraphWriteAnchor(
+        `${path}.${field}`,
+        `${path}.${field} uses a read-view array index. Use block_id with group-local node_ref/pin_ref/link_ref.`,
+      );
+    }
+  }
+
+  throwUnsupportedGraphWriteAnchor(
+    path,
+    `${path} must identify a BlueprintHelper-owned block with block_id.`,
+  );
+}
+
+function isRawLogicJsonArrayRef(value: string): boolean {
+  return /^(nodes|pins|links)\[\d+\]$/u.test(value.trim());
+}
+
+function throwUnsupportedGraphWriteAnchor(path: string, message: string): never {
+  throw new TaskSpecCompileError('unsupported_graph_write_anchor', 'GraphWrite patch/merge requires a block-scoped anchor.', [
+    {
+      code: 'unsupported_graph_write_anchor',
+      path,
+      message,
+    },
+  ]);
+}
+
+function normalizeMergeInserted(mergeScope: string, inserted: Record<string, unknown>, path: string): Record<string, unknown> {
+  const expectedCallKind = mergeScope;
+  const callKind = getRequiredString(inserted, 'call_kind', `${path}.call_kind`);
+  if (callKind !== expectedCallKind) {
+    throw new TaskSpecCompileError('taskspec_semantic_invalid', 'merge inserted.call_kind must match merge scope.', [
+      {
+        code: 'merge_inserted_scope_mismatch',
+        path: `${path}.call_kind`,
+        message: `${mergeScope} requires inserted.call_kind="${expectedCallKind}".`,
+      },
+    ]);
+  }
+  if (mergeScope === 'function_call') {
+    return { function: getRequiredString(inserted, 'name', `${path}.name`) };
+  }
+  if (mergeScope === 'custom_event_call') {
+    return { custom_event: getRequiredString(inserted, 'name', `${path}.name`) };
+  }
+  return omitUndefined({
+    block_id: getRequiredString(inserted, 'block_id', `${path}.block_id`),
+    block_ref: typeof inserted['block_ref'] === 'string' && inserted['block_ref'].length > 0 ? inserted['block_ref'] : undefined,
+  });
+}
+
+function normalizeMergeSequenceOrder(record: Record<string, unknown>, insertStrategy: string, path: string): string[] | undefined {
+  const raw = record['sequence_order'];
+  if (insertStrategy !== 'branch_fork') {
+    if (raw !== undefined) {
+      throw new TaskSpecCompileError('taskspec_semantic_invalid', 'sequence_order is only valid for branch_fork.', [
+        {
+          code: 'sequence_order_not_allowed',
+          path,
+          message: 'Remove sequence_order unless insert_strategy is branch_fork.',
+        },
+      ]);
+    }
+    return undefined;
+  }
+  if (!Array.isArray(raw) || raw.length === 0) {
+    throw new TaskSpecCompileError('taskspec_semantic_invalid', 'branch_fork requires sequence_order.', [
+      {
+        code: 'sequence_order_required',
+        path,
+        message: 'Provide sequence_order using inserted_logic and original_successor.',
+      },
+    ]);
+  }
+  const sequenceOrder = raw.map((value, index) => {
+    if (typeof value === 'string' && (value === 'inserted_logic' || value === 'original_successor')) {
+      return value;
+    }
+    throw new TaskSpecCompileError('taskspec_semantic_invalid', 'Invalid branch_fork sequence_order entry.', [
+      {
+        code: 'sequence_order_invalid',
+        path: `${path}[${index}]`,
+        message: 'Use inserted_logic or original_successor.',
+      },
+    ]);
+  });
+  if (!sequenceOrder.includes('inserted_logic')) {
+    throw new TaskSpecCompileError('taskspec_semantic_invalid', 'branch_fork sequence_order must include inserted_logic.', [
+      {
+        code: 'sequence_order_invalid',
+        path,
+        message: 'Include inserted_logic.',
+      },
+    ]);
+  }
+  return sequenceOrder;
+}
+
+function patchValueToString(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (value === null || value === undefined) return '';
+  return JSON.stringify(value);
+}
+
+function copyOptionalStringFields(source: Record<string, unknown>, target: Record<string, unknown>, fields: string[]): void {
+  fields.forEach((field) => {
+    if (typeof source[field] === 'string' && source[field].length > 0) {
+      target[field] = source[field];
+    }
+  });
+}
+
+function assertAllowedString(value: string, path: string, allowed: string[], message: string): void {
+  if (allowed.includes(value)) return;
+  throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path} is not supported.`, [
+    {
+      code: 'unsupported_field_value',
+      path,
+      message,
     },
   ]);
 }

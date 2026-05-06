@@ -116,6 +116,11 @@ private:
 	// ─── 删除旧实。───
 
 	bool DeleteOldImplementation(UBlueprint* Blueprint, UEdGraph* Graph, const TArray<UEdGraphNode*>& NodesToDelete) const;
+	bool ReconnectPreservedEntryToNewBody(
+		const FReplaceRequest& Request,
+		const FResolvedReplaceTarget& Resolved,
+		const TSet<UEdGraphNode*>& NodesBeforeImport,
+		FString& OutError) const;
 
 	const FBlueprintHelperGraphResolver& Resolver;
 	const FBlueprintHelperAgentImportService& AgentImportService;

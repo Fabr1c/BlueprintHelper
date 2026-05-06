@@ -188,8 +188,10 @@ export const graphWriteReplaceTaskSpecFixture = {
     replace: {
       scope: 'custom_event_body',
       selector: {
-        entry_name: 'InitializeStoneGate',
-        node_path: 'logic.groups[0].entry.node_path',
+        kind: 'custom_event',
+        name: 'InitializeStoneGate',
+        graph_id: 'EventGraph',
+        node_ref: 'InitializeStoneGateEntry',
       },
       body: {
         schema: 'BlueprintLogicSpec.v1',
@@ -250,7 +252,8 @@ export const graphWriteReplaceExpectedTaskPlanFixture = {
             replace_scope: 'custom_event_body',
             selector: {
               entry_name: 'InitializeStoneGate',
-              node_path: 'logic.groups[0].entry.node_path',
+              graph_id: 'EventGraph',
+              node_ref: 'InitializeStoneGateEntry',
             },
             replacement: {
               nodes: [
@@ -298,11 +301,12 @@ export const graphWritePatchTaskSpecFixture = {
     patches: [
       {
         kind: 'set_pin_default',
-        scope: 'pin_default',
         target_ref: {
-          graph_id: 'EventGraph',
-          node_ref: 'Branch0',
-          pin_ref: 'Condition',
+          block_id: 'BH_StoneGateActivation_InitializeStoneGate',
+          group_entry_node_path: 'logic.groups[0].entry.node_path',
+          node_ref: 'node:branch_condition',
+          pin_ref: 'pin:condition',
+          link_ref: 'link:condition_input',
         },
         value: {
           kind: 'literal',
@@ -355,15 +359,17 @@ export const graphWritePatchExpectedTaskPlanFixture = {
             op: 'set_pin_default',
             patch_scope: 'pin_default',
             patched_ref: {
-              graph_id: 'EventGraph',
-              node_ref: 'Branch0',
-              pin_ref: 'Condition',
+              block_id: 'BH_StoneGateActivation_InitializeStoneGate',
+              group_entry_node_path: 'logic.groups[0].entry.node_path',
+              node_ref: 'node:branch_condition',
+              pin_ref: 'pin:condition',
+              link_ref: 'link:condition_input',
             },
             patch: {
-              value: true,
+              value: 'true',
             },
             expected_old_state: {
-              value: false,
+              value: 'false',
             },
           },
         ],
@@ -394,21 +400,19 @@ export const graphWriteMergeTaskSpecFixture = {
     merges: [
       {
         kind: 'insert_flow',
-        scope: 'owned_block_call',
+        scope: 'function_call',
         insert_strategy: 'insert_between',
         anchor: {
-          node_ref: 'BeginPlay0',
-          pin_ref: 'Then',
-          node_path: 'logic.groups[0].entry.node_path',
+          block_id: 'BH_StoneGateActivation_InitializeStoneGate',
+          group_entry_node_path: 'logic.groups[0].entry.node_path',
+          node_ref: 'node:entry',
+          pin_ref: 'pin:then',
+          link_ref: 'link:entry_then',
         },
         inserted: {
-          block_id: 'BH_StoneGateActivation_InitializeStoneGate',
-          block_ref: 'block:BH_StoneGateActivation_InitializeStoneGate',
+          call_kind: 'function_call',
+          name: 'InitializeStoneGate',
         },
-        sequence_order: [
-          'BeginPlay0',
-          'BH_StoneGateActivation_InitializeStoneGate',
-        ],
       },
     ],
   },
@@ -446,21 +450,18 @@ export const graphWriteMergeExpectedTaskPlanFixture = {
         ops: [
           {
             op: 'insert_flow',
-            merge_scope: 'owned_block_call',
+            merge_scope: 'function_call',
             insert_strategy: 'insert_between',
             anchor: {
-              node_ref: 'BeginPlay0',
-              pin_ref: 'Then',
-              node_path: 'logic.groups[0].entry.node_path',
+              block_id: 'BH_StoneGateActivation_InitializeStoneGate',
+              group_entry_node_path: 'logic.groups[0].entry.node_path',
+              node_ref: 'node:entry',
+              pin_ref: 'pin:then',
+              link_ref: 'link:entry_then',
             },
             inserted: {
-              block_id: 'BH_StoneGateActivation_InitializeStoneGate',
-              block_ref: 'block:BH_StoneGateActivation_InitializeStoneGate',
+              function: 'InitializeStoneGate',
             },
-            sequence_order: [
-              'BeginPlay0',
-              'BH_StoneGateActivation_InitializeStoneGate',
-            ],
           },
         ],
       },
@@ -615,9 +616,10 @@ export const graphWritePatchTaskPlanFixture = {
       args: {
         patch_type: 'set_pin_default',
         patched_ref: {
-          graph_id: 'EventGraph',
-          node_ref: 'Branch0',
-          pin_ref: 'Condition',
+          block_id: 'BH_StoneGateActivation_InitializeStoneGate',
+          group_entry_node_path: 'logic.groups[0].entry.node_path',
+          node_ref: 'node:branch_condition',
+          pin_ref: 'pin:condition',
         },
         patch: {
           value: true,
@@ -653,17 +655,18 @@ export const graphWriteMergeTaskPlanFixture = {
       },
       args: {
         anchor: {
-          node_ref: 'BeginPlay0',
-          pin_ref: 'Then',
-          node_path: 'logic.groups[0].entry.node_path',
+          block_id: 'BH_StoneGateActivation_InitializeStoneGate',
+          group_entry_node_path: 'logic.groups[0].entry.node_path',
+          node_ref: 'node:entry',
+          pin_ref: 'pin:then',
         },
         inserted: {
           block_id: 'BH_StoneGateActivation_InitializeStoneGate',
           block_ref: 'block:BH_StoneGateActivation_InitializeStoneGate',
         },
         sequence_order: [
-          'BeginPlay0',
-          'BH_StoneGateActivation_InitializeStoneGate',
+          'original_successor',
+          'inserted_logic',
         ],
       },
     },
@@ -716,8 +719,10 @@ export const graphWriteStructuredIrTaskPlanFixture = {
           {
             op: 'set_pin_default',
             selector: {
-              node_ref: 'Branch0',
-              pin_ref: 'Condition',
+              block_id: 'BH_StoneGateActivation_InitializeStoneGate',
+              group_entry_node_path: 'logic.groups[0].entry.node_path',
+              node_ref: 'node:branch_condition',
+              pin_ref: 'pin:condition',
             },
             value: {
               kind: 'literal',
@@ -728,8 +733,10 @@ export const graphWriteStructuredIrTaskPlanFixture = {
           {
             op: 'insert_flow',
             anchor: {
-              node_ref: 'BeginPlay0',
-              pin_ref: 'Then',
+              block_id: 'BH_StoneGateActivation_InitializeStoneGate',
+              group_entry_node_path: 'logic.groups[0].entry.node_path',
+              node_ref: 'node:entry',
+              pin_ref: 'pin:then',
             },
             body: {
               schema: 'BlueprintLogicSpec.v1',

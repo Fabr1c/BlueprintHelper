@@ -7,6 +7,7 @@
 #include "Services/GraphWrite/BlueprintHelperReplaceBlueprintGraphService.h"
 #include "Services/BlueprintVariables/BlueprintHelperBlueprintVariableService.h"
 #include "Services/BlueprintHelperBlueprintStructureService.h"
+#include "Services/BlueprintSignature/BlueprintHelperSignatureService.h"
 #include "Services/AssetFactory/BlueprintHelperAssetFactoryService.h"
 #include "Structure/AssetFactory/BlueprintHelperAssetFactoryTypes.h"
 #include "Services/BlueprintClassSettings/BlueprintHelperClassSettingsService.h"
@@ -2851,87 +2852,6 @@ namespace
 			TEXT("Unsupported DataTable adapter operation."));
 	}
 
-	FBlueprintHelperValidationSummary MakeSignatureValidation(bool bShouldCompile, bool bShouldSave)
-	{
-		FBlueprintHelperValidationSummary Validation;
-		Validation.bShouldCompile = bShouldCompile;
-		Validation.bShouldSave = bShouldSave;
-		return Validation;
-	}
-
-	TSharedRef<FJsonObject> MakeSignatureResultData(
-		bool bDryRun,
-		const TCHAR* ResultField = TEXT("function_result"),
-		bool bDeferredToGraphWrite = false)
-	{
-		TSharedRef<FJsonObject> Data = MakeShared<FJsonObject>();
-		Data->SetStringField(TEXT("schema"), TEXT("BlueprintSignature.v1"));
-		if (bDryRun)
-		{
-			Data->SetBoolField(TEXT("dry_run"), true);
-		}
-
-		TSharedRef<FJsonObject> FunctionResult = MakeShared<FJsonObject>();
-		FunctionResult->SetBoolField(TEXT("success"), true);
-		if (bDeferredToGraphWrite)
-		{
-			FunctionResult->SetBoolField(TEXT("deferred_to_graph_write"), true);
-		}
-		Data->SetObjectField(FString(ResultField), FunctionResult);
-		return Data;
-	}
-
-	void SetSignatureFunctionTarget(
-		FBlueprintHelperToolResultBase& Result,
-		const FString& AssetPath,
-		const FString& FunctionName)
-	{
-		Result.Target = FBlueprintHelperTargetRef();
-		Result.Target->AssetPath = AssetPath;
-		Result.Target->TargetType = EBlueprintHelperTargetType::Function;
-		Result.Target->Function = FunctionName;
-	}
-
-	void SetSignatureCustomEventTarget(
-		FBlueprintHelperToolResultBase& Result,
-		const FString& AssetPath,
-		const FString& GraphName,
-		const FString& EventName)
-	{
-		Result.Target = FBlueprintHelperTargetRef();
-		Result.Target->AssetPath = AssetPath;
-		Result.Target->TargetType = EBlueprintHelperTargetType::CustomEvent;
-		Result.Target->Graph = GraphName;
-		Result.Target->Event = EventName;
-	}
-
-	bool SignatureFunctionExists(
-		const FBlueprintHelperBlueprintStructureService& Service,
-		const FString& AssetPath,
-		const FString& FunctionName,
-		FString& OutError)
-	{
-		FBlueprintHelperGraphTarget Target;
-		Target.BlueprintPath = AssetPath;
-		const FBlueprintHelperListGraphsResult Graphs = Service.ListGraphs(Target);
-		if (!Graphs.bSuccess)
-		{
-			OutError = Graphs.ErrorMessage.IsEmpty()
-				? FString::Printf(TEXT("Unable to list Blueprint graphs for %s."), *AssetPath)
-				: Graphs.ErrorMessage;
-			return false;
-		}
-
-		for (const FBlueprintHelperGraphInfo& Graph : Graphs.Graphs)
-		{
-			if (Graph.GraphType == TEXT("Function") && Graph.Name == FunctionName)
-			{
-				return true;
-			}
-		}
-		return false;
-	}
-
 	FBlueprintHelperToolResultBase ExecuteSignatureTaskPlanStep(
 		const FBlueprintHelperBlueprintStructureService& Service,
 		const FString& AdapterOperation,
@@ -2953,7 +2873,10 @@ namespace
 		FString EventName;
 		FString GraphName;
 		FString NameCollisionPolicy = TEXT("reuse_if_exists");
+		bool bIsPure = false;
 		bool bDryRun = false;
+		const TArray<TSharedPtr<FJsonValue>>* Inputs = nullptr;
+		const TArray<TSharedPtr<FJsonValue>>* Outputs = nullptr;
 		if (Payload.IsValid())
 		{
 			Payload->TryGetStringField(TEXT("asset_path"), AssetPath);
@@ -2961,128 +2884,48 @@ namespace
 			Payload->TryGetStringField(TEXT("event_name"), EventName);
 			Payload->TryGetStringField(TEXT("graph_name"), GraphName);
 			Payload->TryGetStringField(TEXT("name_collision_policy"), NameCollisionPolicy);
+			Payload->TryGetBoolField(TEXT("is_pure"), bIsPure);
 			Payload->TryGetBoolField(TEXT("dry_run"), bDryRun);
+			Payload->TryGetArrayField(TEXT("inputs"), Inputs);
+			Payload->TryGetArrayField(TEXT("outputs"), Outputs);
 		}
 
-		if (AssetPath.IsEmpty() ||
-			(bEnsureFunction && FunctionName.IsEmpty()) ||
-			(bEnsureCustomEvent && (EventName.IsEmpty() || GraphName.IsEmpty())))
-		{
-			const FString Operation = bEnsureCustomEvent ? TEXT("ensure_custom_event") : TEXT("ensure_function");
-			const FString Message = bEnsureCustomEvent
-				? TEXT("ensure_custom_event requires asset_path, graph_name, and event_name.")
-				: TEXT("ensure_function requires asset_path and function_name.");
-			return MakeFailure(
-				Operation,
-				TEXT("invalid_signature_payload"),
-				EBlueprintHelperToolStage::ParseInput,
-				Message,
-				TEXT("task_plan.steps[0].write.ops[0]"));
-		}
+		FBlueprintHelperSignatureService SignatureService(Service);
 
-		if (bEnsureCustomEvent)
+		if (bEnsureFunction)
 		{
-			FString ListError;
-			SignatureFunctionExists(Service, AssetPath, TEXT("__BlueprintHelperTargetProbe__"), ListError);
-			if (!ListError.IsEmpty())
+			FBlueprintHelperEnsureFunctionSignatureRequest Request;
+			Request.AssetPath = AssetPath;
+			Request.FunctionName = FunctionName;
+			Request.NameCollisionPolicy = NameCollisionPolicy;
+			Request.bDryRun = bDryRun;
+			Request.bIsPure = bIsPure;
+			if (Payload.IsValid())
 			{
-				return MakeFailure(
-					TEXT("ensure_custom_event"),
-					TEXT("target_blueprint_not_found"),
-					EBlueprintHelperToolStage::ResolveTarget,
-					ListError,
-					TEXT("asset_path"));
+				Payload->TryGetStringField(TEXT("interface_path"), Request.InterfacePath);
 			}
-
-			if (bDryRun)
+			if (Inputs)
 			{
-				FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::DryRun(
-					TEXT("ensure_custom_event"),
-					FBlueprintHelperToolResultBuilder::GenerateTraceId());
-				SetSignatureCustomEventTarget(Result, AssetPath, GraphName, EventName);
-				Result.Data = MakeSignatureResultData(true, TEXT("custom_event_result"), true);
-				Result.Validation = MakeSignatureValidation(false, false);
-				return Result;
+				Request.Inputs = *Inputs;
 			}
-
-			FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::NoOp(
-				TEXT("ensure_custom_event"),
-				FBlueprintHelperToolResultBuilder::GenerateTraceId());
-			SetSignatureCustomEventTarget(Result, AssetPath, GraphName, EventName);
-			Result.Data = MakeSignatureResultData(false, TEXT("custom_event_result"), true);
-			Result.Validation = MakeSignatureValidation(false, false);
-			return Result;
+			if (Outputs)
+			{
+				Request.Outputs = *Outputs;
+			}
+			return SignatureService.EnsureFunction(Request);
 		}
 
-		FString ListError;
-		const bool bExists = SignatureFunctionExists(Service, AssetPath, FunctionName, ListError);
-		if (!ListError.IsEmpty())
+		FBlueprintHelperEnsureCustomEventSignatureRequest Request;
+		Request.AssetPath = AssetPath;
+		Request.GraphName = GraphName;
+		Request.EventName = EventName;
+		Request.NameCollisionPolicy = NameCollisionPolicy;
+		Request.bDryRun = bDryRun;
+		if (Inputs)
 		{
-			return MakeFailure(
-				TEXT("ensure_function"),
-				TEXT("target_blueprint_not_found"),
-				EBlueprintHelperToolStage::ResolveTarget,
-				ListError,
-				TEXT("asset_path"));
+			Request.Inputs = *Inputs;
 		}
-
-		if (bExists && NameCollisionPolicy == TEXT("fail_if_exists"))
-		{
-			return MakeFailure(
-				TEXT("ensure_function"),
-				TEXT("function_already_exists"),
-				EBlueprintHelperToolStage::Preflight,
-				FString::Printf(TEXT("Function already exists: %s"), *FunctionName),
-				TEXT("function_name"));
-		}
-
-		if (bDryRun)
-		{
-			FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::DryRun(
-				TEXT("ensure_function"),
-				FBlueprintHelperToolResultBuilder::GenerateTraceId());
-			SetSignatureFunctionTarget(Result, AssetPath, FunctionName);
-			Result.Data = MakeSignatureResultData(true);
-			Result.Validation = MakeSignatureValidation(!bExists, !bExists);
-			return Result;
-		}
-
-		if (bExists)
-		{
-			FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::NoOp(
-				TEXT("ensure_function"),
-				FBlueprintHelperToolResultBuilder::GenerateTraceId());
-			SetSignatureFunctionTarget(Result, AssetPath, FunctionName);
-			Result.Data = MakeSignatureResultData(false);
-			Result.Validation = MakeSignatureValidation(false, false);
-			return Result;
-		}
-
-		FBlueprintHelperGraphTarget Target;
-		Target.BlueprintPath = AssetPath;
-
-		TSharedPtr<FJsonObject> Params = MakeShared<FJsonObject>();
-		Params->SetStringField(TEXT("name"), FunctionName);
-		Params->SetStringField(TEXT("graph_type"), TEXT("Function"));
-
-		FString Error;
-		if (!Service.AddGraph(Target, Params, Error))
-		{
-			return MakeFailure(
-				TEXT("ensure_function"),
-				TEXT("function_create_failed"),
-				EBlueprintHelperToolStage::Execute,
-				Error.IsEmpty() ? TEXT("Failed to create Blueprint function graph.") : Error,
-				TEXT("function_name"));
-		}
-
-		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Applied(
-			TEXT("ensure_function"),
-			FBlueprintHelperToolResultBuilder::GenerateTraceId());
-		SetSignatureFunctionTarget(Result, AssetPath, FunctionName);
-		Result.Data = MakeSignatureResultData(false);
-		Result.Validation = MakeSignatureValidation(true, true);
-		return Result;
+		return SignatureService.EnsureCustomEvent(Request);
 	}
 }
 

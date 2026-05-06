@@ -61,6 +61,55 @@ describe('GraphWrite TaskPlan contract metadata', () => {
     assert.equal(irContract.supported_structural_ops.includes('replace_blueprint_graph'), false);
   });
 
+  it('publishes the fixed GraphWrite TaskSpec field contract per strategy', () => {
+    const taskSpecContract = TASK_PROTOCOL_CONTRACT_V1.graph_write_taskspec_contract;
+
+    assert.equal(taskSpecContract.ownership, 'agent_authored_semantic_protocol');
+    assert.deepEqual(taskSpecContract.strategy_fields, {
+      append_new_owned_graph: 'behavior.entries[]',
+      replace_owned_graph: 'behavior.replace',
+      patch_owned_graph: 'behavior.patches[]',
+      merge_owned_graph: 'behavior.merges[]',
+    });
+    assert.deepEqual(taskSpecContract.forbidden_agent_shapes, [
+      'replace/patch/merge in behavior.entries[]',
+      'generic behavior.ops[]',
+      'Bridge payload fields as TaskSpec body',
+    ]);
+    assert.deepEqual(taskSpecContract.replace_owned_graph.selector_kinds_by_scope, {
+      custom_event_body: 'custom_event',
+      function_body: 'function',
+      event_body: 'event',
+      block_implementation: 'block',
+    });
+    assert.deepEqual(taskSpecContract.patch_owned_graph.scope_derivation, {
+      set_pin_default: 'pin_default',
+      set_node_comment: 'node_comment',
+      set_node_position: 'node_position',
+    });
+    assert.deepEqual(taskSpecContract.patch_owned_graph.block_scoped_target_ref_fields, [
+      'target_ref.block_id',
+      'target_ref.group_entry_node_path',
+      'target_ref.node_ref',
+      'target_ref.pin_ref',
+      'target_ref.link_ref',
+    ]);
+    assert.deepEqual(taskSpecContract.merge_owned_graph.block_scoped_anchor_fields, [
+      'anchor.block_id',
+      'anchor.group_entry_node_path',
+      'anchor.node_ref',
+      'anchor.pin_ref',
+      'anchor.link_ref',
+    ]);
+    assert.deepEqual(taskSpecContract.patch_owned_graph.forbidden_mainline_anchor_shapes, [
+      'raw LogicJson array indexes such as nodes[0]',
+      'display names as locators',
+      'ad hoc JSONPath strings',
+      'GUID-first selectors',
+    ]);
+    assert.equal(taskSpecContract.merge_owned_graph.sequence_order, 'branch_fork_only');
+  });
+
   it('publishes the fixed GraphWrite lowering adapter operation contract', () => {
     const adapterContract = TASK_PROTOCOL_CONTRACT_V1.graph_write_lowering_adapter_contract;
     const operations = adapterContract.operations;

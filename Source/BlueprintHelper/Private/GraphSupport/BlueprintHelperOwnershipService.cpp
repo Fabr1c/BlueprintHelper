@@ -33,12 +33,12 @@ bool FBlueprintHelperOwnershipService::WriteNodeOwnership(
 	MetaData.SetValue(Node, TEXT("BlueprintHelperOwned"), TEXT("true"));
 	MetaData.SetValue(Node, TEXT("BlueprintHelperBlockId"), *BlockId);
 	MetaData.SetValue(Node, TEXT("BlueprintHelperTransactionId"), *TransactionId);
-	MetaData.SetValue(Node, TEXT("BlueprintHelperTool"), TEXT("AppendBlueprintGraph"));
 	MetaData.SetValue(Node, TEXT("BlueprintHelperFeatureName"), *FeatureName);
+	MetaData.RemoveValue(Node, TEXT("BlueprintHelperTool"));
 
 	// 写入 NodeComment
 	Node->NodeComment = FString::Printf(
-		TEXT("[BlueprintHelper]\nblock_id=%s\ntx=%s\ntool=AppendBlueprintGraph"),
+		TEXT("[BlueprintHelper]\nblock_id=%s\ntx=%s"),
 		*BlockId,
 		*TransactionId);
 

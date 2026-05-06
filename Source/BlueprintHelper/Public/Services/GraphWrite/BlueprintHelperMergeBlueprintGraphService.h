@@ -31,6 +31,7 @@ private:
 		FString AssetPath, GraphName;
 		EBlueprintHelperMergeScope MergeScope;
 		EBlueprintHelperInsertStrategy InsertStrategy;
+		FString AnchorBlockId, AnchorGroupEntryNodePath;
 		FString AnchorNodeRef, AnchorPinRef, AnchorNodePath, AnchorPinPath;
 		FString InsertedBlockId, InsertedBlockRef, InsertedFunctionName, InsertedCustomEventName;
 		TArray<FString> SequenceOrder;

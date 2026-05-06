@@ -6,6 +6,66 @@
 #include "EdGraph/EdGraphPin.h"
 #include "K2Node.h"
 
+namespace
+{
+	bool TryParseLogicJsonNodeIndex(const FString& Ref, int32& OutIndex)
+	{
+		OutIndex = INDEX_NONE;
+		if (Ref.IsEmpty())
+		{
+			return false;
+		}
+
+		const int32 PrefixIndex = Ref.Find(TEXT("nodes["), ESearchCase::IgnoreCase, ESearchDir::FromEnd);
+		if (PrefixIndex == INDEX_NONE)
+		{
+			return false;
+		}
+
+		const int32 NumberStart = PrefixIndex + 6;
+		const int32 CloseIndex = Ref.Find(TEXT("]"), ESearchCase::CaseSensitive, ESearchDir::FromStart, NumberStart);
+		if (CloseIndex == INDEX_NONE || CloseIndex <= NumberStart)
+		{
+			return false;
+		}
+
+		const FString IndexText = Ref.Mid(NumberStart, CloseIndex - NumberStart);
+		if (!IndexText.IsNumeric())
+		{
+			return false;
+		}
+
+		OutIndex = FCString::Atoi(*IndexText);
+		return true;
+	}
+
+	bool TryResolveNodeGuid(UEdGraph* Graph, const FString& Ref, UEdGraphNode*& OutNode)
+	{
+		if (!Graph || Ref.IsEmpty())
+		{
+			return false;
+		}
+
+		FGuid Guid;
+		if (!FGuid::ParseExact(Ref, EGuidFormats::Digits, Guid) &&
+			!FGuid::ParseExact(Ref, EGuidFormats::DigitsWithHyphens, Guid))
+		{
+			return false;
+		}
+
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (Node && Node->NodeGuid == Guid)
+			{
+				OutNode = Node;
+				return true;
+			}
+		}
+
+		return false;
+	}
+}
+
 bool FBlueprintHelperLogicJsonPathService::ResolveNode(
 	UEdGraph* Graph,
 	const FString& NodeRef,
@@ -24,6 +84,20 @@ bool FBlueprintHelperLogicJsonPathService::ResolveNode(
 	// 1. 优先 node_path（完整路径）
 	if (!NodePath.IsEmpty())
 	{
+		int32 LogicJsonIndex = INDEX_NONE;
+		if (TryParseLogicJsonNodeIndex(NodePath, LogicJsonIndex))
+		{
+			if (Graph->Nodes.IsValidIndex(LogicJsonIndex) && Graph->Nodes[LogicJsonIndex])
+			{
+				OutNode = Graph->Nodes[LogicJsonIndex];
+				return true;
+			}
+
+			OutError = {TEXT("target_node_not_found"),
+				FString::Printf(TEXT("无法定位 LogicJson node_path：node_path=%s"), *NodePath), NodePath};
+			return false;
+		}
+
 		for (UEdGraphNode* Node : Graph->Nodes)
 		{
 			if (Node && Node->GetName() == NodePath)
@@ -37,6 +111,25 @@ bool FBlueprintHelperLogicJsonPathService::ResolveNode(
 	// 2. node_ref（节点标题匹配）
 	if (!NodeRef.IsEmpty())
 	{
+		int32 LogicJsonIndex = INDEX_NONE;
+		if (TryParseLogicJsonNodeIndex(NodeRef, LogicJsonIndex))
+		{
+			if (Graph->Nodes.IsValidIndex(LogicJsonIndex) && Graph->Nodes[LogicJsonIndex])
+			{
+				OutNode = Graph->Nodes[LogicJsonIndex];
+				return true;
+			}
+
+			OutError = {TEXT("target_node_not_found"),
+				FString::Printf(TEXT("无法定位 LogicJson node_ref：node_ref=%s"), *NodeRef), NodeRef};
+			return false;
+		}
+
+		if (TryResolveNodeGuid(Graph, NodeRef, OutNode))
+		{
+			return true;
+		}
+
 		TArray<UEdGraphNode*> Matches;
 		for (UEdGraphNode* Node : Graph->Nodes)
 		{
