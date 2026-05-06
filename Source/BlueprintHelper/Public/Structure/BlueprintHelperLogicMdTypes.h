@@ -256,6 +256,7 @@ inline const TCHAR* LogicLinkTypeToString(EBlueprintHelperLogicLinkType Type)
 struct FBlueprintHelperLogicLink
 {
 	FString LinkRef;
+	FString PinRef;
 	EBlueprintHelperLogicLinkType Type = EBlueprintHelperLogicLinkType::Exec;
 	FString FromPin;
 	FString ToNode;
@@ -265,6 +266,7 @@ struct FBlueprintHelperLogicLink
 	{
 		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
 		Json->SetStringField(TEXT("link_ref"), LinkRef);
+		if (!PinRef.IsEmpty()) { Json->SetStringField(TEXT("pin_ref"), PinRef); }
 		Json->SetStringField(TEXT("type"), LogicLinkTypeToString(Type));
 		Json->SetStringField(TEXT("from_pin"), FromPin);
 		Json->SetStringField(TEXT("to_node"), ToNode);
@@ -333,6 +335,7 @@ struct FBlueprintHelperLogicGroup
 {
 	EBlueprintHelperLogicGroupType GroupType = EBlueprintHelperLogicGroupType::Unknown;
 	FString BlockId;
+	FString GroupEntryNodePath;
 	FString Name;
 	FBlueprintHelperLogicEntry Entry;
 	TArray<FBlueprintHelperLogicNode> Nodes;
@@ -342,6 +345,7 @@ struct FBlueprintHelperLogicGroup
 		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
 		Json->SetStringField(TEXT("group_type"), LogicGroupTypeToString(GroupType));
 		if (!BlockId.IsEmpty()) { Json->SetStringField(TEXT("block_id"), BlockId); }
+		if (!GroupEntryNodePath.IsEmpty()) { Json->SetStringField(TEXT("group_entry_node_path"), GroupEntryNodePath); }
 		if (!Name.IsEmpty()) { Json->SetStringField(TEXT("name"), Name); }
 		Json->SetObjectField(TEXT("entry"), Entry.ToJson());
 		TArray<TSharedPtr<FJsonValue>> Arr;

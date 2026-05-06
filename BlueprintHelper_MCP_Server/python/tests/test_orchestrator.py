@@ -166,8 +166,9 @@ class GraphWriteAppendCompilerTests(unittest.TestCase):
                     "args": {
                         "patch_type": "set_pin_default",
                         "patched_ref": {
-                            "graph_id": "EventGraph",
-                            "node_ref": "Branch0",
+                            "block_id": "BH_DoorFeature_ToggleDoor",
+                            "group_entry_node_path": "logic.groups[0].entry.node_path",
+                            "node_ref": "nodes[1]",
                             "pin_ref": "Condition",
                         },
                         "patch": {
@@ -207,8 +208,9 @@ class GraphWriteAppendCompilerTests(unittest.TestCase):
                     },
                     "args": {
                         "anchor": {
+                            "block_id": "BH_DoorFeature_ToggleDoor",
                             "group_entry_node_path": "logic.groups[0].entry.node_path",
-                            "node_ref": "BeginPlay0",
+                            "node_ref": "nodes[0]",
                             "pin_ref": "Then",
                         },
                         "inserted": {
@@ -435,8 +437,10 @@ class GraphWriteAppendCompilerTests(unittest.TestCase):
             "replace": {
                 "scope": "custom_event_body",
                 "selector": {
-                    "entry_name": "ToggleDoor",
-                    "node_path": "logic.groups[0].entry.node_path",
+                    "kind": "custom_event",
+                    "name": "ToggleDoor",
+                    "graph_id": "EventGraph",
+                    "node_ref": "ToggleDoorEntry",
                 },
                 "body": {
                     "schema": "BlueprintLogicSpec.v1",
@@ -473,7 +477,8 @@ class GraphWriteAppendCompilerTests(unittest.TestCase):
                 "replace_scope": "custom_event_body",
                 "selector": {
                     "entry_name": "ToggleDoor",
-                    "node_path": "logic.groups[0].entry.node_path",
+                    "graph_id": "EventGraph",
+                    "node_ref": "ToggleDoorEntry",
                 },
                 "replacement": {
                     "nodes": [
@@ -504,11 +509,12 @@ class GraphWriteAppendCompilerTests(unittest.TestCase):
             "patches": [
                 {
                     "kind": "set_pin_default",
-                    "scope": "pin_default",
                     "target_ref": {
-                        "graph_id": "EventGraph",
-                        "node_ref": "Branch0",
+                        "block_id": "BH_DoorFeature_ToggleDoor",
+                        "group_entry_node_path": "logic.groups[0].entry.node_path",
+                        "node_ref": "nodes[1]",
                         "pin_ref": "Condition",
+                        "link_ref": "links[0]",
                     },
                     "value": {
                         "kind": "literal",
@@ -535,15 +541,17 @@ class GraphWriteAppendCompilerTests(unittest.TestCase):
                 "op": "set_pin_default",
                 "patch_scope": "pin_default",
                 "patched_ref": {
-                    "graph_id": "EventGraph",
-                    "node_ref": "Branch0",
+                    "block_id": "BH_DoorFeature_ToggleDoor",
+                    "group_entry_node_path": "logic.groups[0].entry.node_path",
+                    "node_ref": "nodes[1]",
                     "pin_ref": "Condition",
+                    "link_ref": "links[0]",
                 },
                 "patch": {
-                    "value": True,
+                    "value": "true",
                 },
                 "expected_old_state": {
-                    "value": False,
+                    "value": "false",
                 },
             },
         ])
@@ -554,21 +562,19 @@ class GraphWriteAppendCompilerTests(unittest.TestCase):
             "merges": [
                 {
                     "kind": "insert_flow",
-                    "scope": "owned_block_call",
+                    "scope": "function_call",
                     "insert_strategy": "insert_between",
                     "anchor": {
-                        "node_ref": "BeginPlay0",
+                        "block_id": "BH_DoorFeature_ToggleDoor",
+                        "group_entry_node_path": "logic.groups[0].entry.node_path",
+                        "node_ref": "nodes[0]",
                         "pin_ref": "Then",
-                        "node_path": "logic.groups[0].entry.node_path",
+                        "link_ref": "links[0]",
                     },
                     "inserted": {
-                        "block_id": "BH_DoorFeature_ToggleDoor",
-                        "block_ref": "block:BH_DoorFeature_ToggleDoor",
+                        "call_kind": "function_call",
+                        "name": "OpenDoor",
                     },
-                    "sequence_order": [
-                        "BeginPlay0",
-                        "BH_DoorFeature_ToggleDoor",
-                    ],
                 },
             ],
         })
@@ -580,23 +586,69 @@ class GraphWriteAppendCompilerTests(unittest.TestCase):
         self.assertEqual(step["write"]["ops"], [
             {
                 "op": "insert_flow",
-                "merge_scope": "owned_block_call",
+                "merge_scope": "function_call",
                 "insert_strategy": "insert_between",
                 "anchor": {
-                    "node_ref": "BeginPlay0",
+                    "block_id": "BH_DoorFeature_ToggleDoor",
+                    "group_entry_node_path": "logic.groups[0].entry.node_path",
+                    "node_ref": "nodes[0]",
                     "pin_ref": "Then",
-                    "node_path": "logic.groups[0].entry.node_path",
+                    "link_ref": "links[0]",
                 },
                 "inserted": {
-                    "block_id": "BH_DoorFeature_ToggleDoor",
-                    "block_ref": "block:BH_DoorFeature_ToggleDoor",
+                    "function": "OpenDoor",
                 },
-                "sequence_order": [
-                    "BeginPlay0",
-                    "BH_DoorFeature_ToggleDoor",
-                ],
             },
         ])
+
+    def test_rejects_patch_owned_graph_with_bare_nodes_index_anchor(self):
+        spec = make_task_spec(behavior={
+            "graph_strategy": "patch_owned_graph",
+            "patches": [
+                {
+                    "kind": "set_pin_default",
+                    "target_ref": {
+                        "graph_id": "EventGraph",
+                        "node_ref": "nodes[0]",
+                        "pin_ref": "Condition",
+                    },
+                    "value": True,
+                },
+            ],
+        })
+
+        with self.assertRaises(TaskSpecCompileError) as ctx:
+            compile_graph_write_append(spec, dry_run=True)
+
+        self.assertEqual(ctx.exception.code, "unsupported_graph_write_anchor")
+        self.assertEqual(ctx.exception.issues[0]["path"], "behavior.patches[0].target_ref.node_ref")
+
+    def test_rejects_merge_owned_graph_with_bare_nodes_index_anchor(self):
+        spec = make_task_spec(behavior={
+            "graph_strategy": "merge_owned_graph",
+            "merges": [
+                {
+                    "kind": "insert_flow",
+                    "scope": "function_call",
+                    "insert_strategy": "insert_between",
+                    "anchor": {
+                        "graph_id": "EventGraph",
+                        "node_ref": "nodes[0]",
+                        "pin_ref": "Then",
+                    },
+                    "inserted": {
+                        "call_kind": "function_call",
+                        "name": "OpenDoor",
+                    },
+                },
+            ],
+        })
+
+        with self.assertRaises(TaskSpecCompileError) as ctx:
+            compile_graph_write_append(spec, dry_run=True)
+
+        self.assertEqual(ctx.exception.code, "unsupported_graph_write_anchor")
+        self.assertEqual(ctx.exception.issues[0]["path"], "behavior.merges[0].anchor.node_ref")
 
     def test_rejects_legacy_validation_compile_save_fields(self):
         spec = make_task_spec(validation={

@@ -42,6 +42,7 @@ private:
 		EBlueprintHelperPatchScope PatchScope;
 		EBlueprintHelperPatchType PatchType;
 		bool bDryRun = false;
+		FString BlockId, GroupEntryNodePath;
 		FString NodeRef, PinRef, LinkRef;
 		FString NodePath, PinPath, LinkPath;
 		TSharedPtr<FJsonObject> PatchPayload;

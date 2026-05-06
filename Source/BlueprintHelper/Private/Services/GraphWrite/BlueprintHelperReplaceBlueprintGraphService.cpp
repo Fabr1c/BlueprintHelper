@@ -16,6 +16,8 @@
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraphSchema_K2.h"
+#include "K2Node_CustomEvent.h"
+#include "K2Node_Event.h"
 #include "K2Node_FunctionEntry.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "UObject/MetaData.h"
@@ -24,6 +26,176 @@
 #include "Dom/JsonValue.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+
+namespace
+{
+	UEdGraphPin* FindFirstExecPin(UEdGraphNode* Node, EEdGraphPinDirection Direction)
+	{
+		if (!Node)
+		{
+			return nullptr;
+		}
+
+		for (UEdGraphPin* Pin : Node->Pins)
+		{
+			if (Pin && Pin->Direction == Direction && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+			{
+				return Pin;
+			}
+		}
+		return nullptr;
+	}
+
+	bool NodeMatchesEntryName(UEdGraphNode* Node, const FString& EntryName)
+	{
+		if (!Node)
+		{
+			return false;
+		}
+		if (EntryName.IsEmpty())
+		{
+			return true;
+		}
+
+		if (UK2Node_CustomEvent* CustomEvent = Cast<UK2Node_CustomEvent>(Node))
+		{
+			if (CustomEvent->CustomFunctionName.ToString().Equals(EntryName, ESearchCase::IgnoreCase))
+			{
+				return true;
+			}
+		}
+
+		if (UK2Node_Event* EventNode = Cast<UK2Node_Event>(Node))
+		{
+			if (EventNode->GetFunctionName().ToString().Equals(EntryName, ESearchCase::IgnoreCase) ||
+				EventNode->EventReference.GetMemberName().ToString().Equals(EntryName, ESearchCase::IgnoreCase))
+			{
+				return true;
+			}
+		}
+
+		if (UK2Node_FunctionEntry* FunctionEntry = Cast<UK2Node_FunctionEntry>(Node))
+		{
+			if (FunctionEntry->FunctionReference.GetMemberName().ToString().Equals(EntryName, ESearchCase::IgnoreCase) ||
+				FunctionEntry->CustomGeneratedFunctionName.ToString().Equals(EntryName, ESearchCase::IgnoreCase))
+			{
+				return true;
+			}
+		}
+
+		const FString NodeName = Node->GetName();
+		const FString NodeTitle = Node->GetNodeTitle(ENodeTitleType::FullTitle).ToString();
+		return NodeName.Equals(EntryName, ESearchCase::IgnoreCase) ||
+			NodeTitle.Equals(EntryName, ESearchCase::IgnoreCase);
+	}
+
+	bool TryReadBlueprintHelperBlockId(UEdGraphNode* Node, FString& OutBlockId)
+	{
+		OutBlockId.Reset();
+		if (!Node)
+		{
+			return false;
+		}
+
+		UPackage* Package = Node->GetOutermost();
+		if (!Package)
+		{
+			return false;
+		}
+
+		FMetaData& MetaData = Package->GetMetaData();
+		if (MetaData.GetValue(Node, TEXT("BlueprintHelperOwned")) != TEXT("true"))
+		{
+			return false;
+		}
+
+		OutBlockId = MetaData.GetValue(Node, TEXT("BlueprintHelperBlockId"));
+		return !OutBlockId.IsEmpty();
+	}
+
+	bool HasInboundExecLinkFromImportedNode(UEdGraphPin* ExecInputPin, const TSet<UEdGraphNode*>& ImportedNodes)
+	{
+		if (!ExecInputPin)
+		{
+			return false;
+		}
+
+		for (UEdGraphPin* LinkedPin : ExecInputPin->LinkedTo)
+		{
+			if (!LinkedPin ||
+				LinkedPin->Direction != EGPD_Output ||
+				LinkedPin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec)
+			{
+				continue;
+			}
+
+			if (ImportedNodes.Contains(LinkedPin->GetOwningNode()))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	UEdGraphNode* FindFirstImportedExecutableBodyNode(
+		UEdGraph* Graph,
+		const TSet<UEdGraphNode*>& NodesBeforeImport)
+	{
+		TArray<UEdGraphNode*> ImportedExecutableNodes;
+		TSet<UEdGraphNode*> ImportedNodes;
+
+		if (!Graph)
+		{
+			return nullptr;
+		}
+
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (!Node || NodesBeforeImport.Contains(Node))
+			{
+				continue;
+			}
+
+			ImportedNodes.Add(Node);
+			if (FindFirstExecPin(Node, EGPD_Input))
+			{
+				ImportedExecutableNodes.Add(Node);
+			}
+		}
+
+		for (UEdGraphNode* Node : ImportedExecutableNodes)
+		{
+			if (!HasInboundExecLinkFromImportedNode(FindFirstExecPin(Node, EGPD_Input), ImportedNodes))
+			{
+				return Node;
+			}
+		}
+
+		return ImportedExecutableNodes.Num() > 0 ? ImportedExecutableNodes[0] : nullptr;
+	}
+
+	bool PinsHaveSingleConnectionToEachOther(UEdGraphPin* FirstPin, UEdGraphPin* SecondPin)
+	{
+		return FirstPin &&
+			SecondPin &&
+			FirstPin->LinkedTo.Num() == 1 &&
+			SecondPin->LinkedTo.Num() == 1 &&
+			FirstPin->LinkedTo[0] == SecondPin &&
+			SecondPin->LinkedTo[0] == FirstPin;
+	}
+
+	void BreakAllPinLinksWithModify(UEdGraphPin* Pin)
+	{
+		if (!Pin)
+		{
+			return;
+		}
+
+		Pin->Modify();
+		Pin->BreakAllPinLinks(true);
+	}
+}
 
 // ─── 构造 ───
 
@@ -422,6 +594,15 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 		return FBlueprintHelperToolResultBuilder::Failure(TEXT("replace_blueprint_graph"), TraceId, Error);
 	}
 
+	TSet<UEdGraphNode*> NodesBeforeImport;
+	for (UEdGraphNode* Node : Resolved.Graph->Nodes)
+	{
+		if (Node)
+		{
+			NodesBeforeImport.Add(Node);
+		}
+	}
+
 	// 7. 通过 AgentImportService 创建新节点/连线
 	const FString ImportPayload = BuildAgentImportPayload(Request);
 
@@ -444,32 +625,50 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 		return FBlueprintHelperToolResultBuilder::Failure(TEXT("replace_blueprint_graph"), TraceId, Error);
 	}
 
+	FString ReconnectError;
+	if (!ReconnectPreservedEntryToNewBody(Request, Resolved, NodesBeforeImport, ReconnectError))
+	{
+		Mutation.Rollback();
+
+		FBlueprintHelperToolError Error;
+		Error.Code = TEXT("entry_reconnect_failed");
+		Error.Stage = EBlueprintHelperToolStage::Execute;
+		Error.Message = ReconnectError.IsEmpty()
+			? TEXT("替换实现后重建入口执行连线失败。") : ReconnectError;
+		Error.bRetryable = false;
+		Error.RollbackResult = EBlueprintHelperRollbackResult::RolledBack;
+		return FBlueprintHelperToolResultBuilder::Failure(TEXT("replace_blueprint_graph"), TraceId, Error);
+	}
+
 	// 8. 写入 ownership（如果目标为 owned block）
 	if (Resolved.bIsBlueprintHelperOwned)
 	{
 		TArray<UEdGraphNode*> NewNodes;
 		for (UEdGraphNode* Node : Resolved.Graph->Nodes)
 		{
-			if (Node)
+			if (Node && !NodesBeforeImport.Contains(Node))
 			{
 				NewNodes.Add(Node);
 			}
 		}
 
-		FString OwnershipError;
-		if (!OwnershipService.WriteBlockOwnership(
-			Blueprint, NewNodes, Resolved.OriginalBlockId,
-			TransactionId, TEXT("Replace"), OwnershipError))
+		if (NewNodes.Num() > 0)
 		{
-			Mutation.Rollback();
+			FString OwnershipError;
+			if (!OwnershipService.WriteBlockOwnership(
+				Blueprint, NewNodes, Resolved.OriginalBlockId,
+				TransactionId, TEXT("Replace"), OwnershipError))
+			{
+				Mutation.Rollback();
 
-			FBlueprintHelperToolError Error;
-			Error.Code = TEXT("ownership_write_failed");
-			Error.Stage = EBlueprintHelperToolStage::Execute;
-			Error.Message = OwnershipError;
-			Error.bRetryable = false;
-			Error.RollbackResult = EBlueprintHelperRollbackResult::RolledBack;
-			return FBlueprintHelperToolResultBuilder::Failure(TEXT("replace_blueprint_graph"), TraceId, Error);
+				FBlueprintHelperToolError Error;
+				Error.Code = TEXT("ownership_write_failed");
+				Error.Stage = EBlueprintHelperToolStage::Execute;
+				Error.Message = OwnershipError;
+				Error.bRetryable = false;
+				Error.RollbackResult = EBlueprintHelperRollbackResult::RolledBack;
+				return FBlueprintHelperToolResultBuilder::Failure(TEXT("replace_blueprint_graph"), TraceId, Error);
+			}
 		}
 	}
 
@@ -614,6 +813,17 @@ bool FBlueprintHelperReplaceBlueprintGraphService::ResolveReplaceTarget(
 				if (bIsCustomEventNode || bIsEventNode)
 				{
 					OutTarget.NodesToPreserve.Add(Node);
+					if (NodeMatchesEntryName(Node, Request.EntryName))
+					{
+						FString EntryBlockId;
+						if (TryReadBlueprintHelperBlockId(Node, EntryBlockId))
+						{
+							OutTarget.OriginalBlockId = EntryBlockId;
+							OutTarget.OriginalBlockRef = Request.EntryName.IsEmpty() ? Request.GraphName : Request.EntryName;
+							OutTarget.TargetRef = OutTarget.OriginalBlockRef;
+							OutTarget.bIsBlueprintHelperOwned = true;
+						}
+					}
 				}
 				else
 				{
@@ -710,6 +920,102 @@ bool FBlueprintHelperReplaceBlueprintGraphService::DeleteOldImplementation(
 
 	Graph->NotifyGraphChanged();
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+	return true;
+}
+
+bool FBlueprintHelperReplaceBlueprintGraphService::ReconnectPreservedEntryToNewBody(
+	const FReplaceRequest& Request,
+	const FResolvedReplaceTarget& Resolved,
+	const TSet<UEdGraphNode*>& NodesBeforeImport,
+	FString& OutError) const
+{
+	if (Request.Scope != EBlueprintHelperReplaceScope::FunctionBody &&
+		Request.Scope != EBlueprintHelperReplaceScope::EventBody &&
+		Request.Scope != EBlueprintHelperReplaceScope::CustomEventBody)
+	{
+		return true;
+	}
+
+	if (!Resolved.Graph)
+	{
+		OutError = TEXT("替换图表为空，无法重建入口执行连线。");
+		return false;
+	}
+
+	UEdGraphNode* EntryNode = nullptr;
+	for (UEdGraphNode* Node : Resolved.NodesToPreserve)
+	{
+		if (!Node)
+		{
+			continue;
+		}
+
+		const bool bMatchesScope =
+			(Request.Scope == EBlueprintHelperReplaceScope::FunctionBody && Node->IsA<UK2Node_FunctionEntry>()) ||
+			(Request.Scope != EBlueprintHelperReplaceScope::FunctionBody && FindFirstExecPin(Node, EGPD_Output) != nullptr);
+		if (bMatchesScope && NodeMatchesEntryName(Node, Request.EntryName))
+		{
+			EntryNode = Node;
+			break;
+		}
+	}
+
+	if (!EntryNode)
+	{
+		OutError = Request.EntryName.IsEmpty()
+			? TEXT("未找到可重连的保留入口节点。")
+			: FString::Printf(TEXT("未找到可重连的保留入口节点：%s。"), *Request.EntryName);
+		return false;
+	}
+
+	UEdGraphPin* EntryExecOut = FindFirstExecPin(EntryNode, EGPD_Output);
+	UEdGraphNode* FirstBodyNode = FindFirstImportedExecutableBodyNode(Resolved.Graph, NodesBeforeImport);
+	if (!EntryExecOut)
+	{
+		OutError = TEXT("入口节点或替换 body 首节点缺少 Exec Pin。");
+		return false;
+	}
+
+	if (!FirstBodyNode)
+	{
+		if (EntryExecOut->LinkedTo.Num() > 0)
+		{
+			BreakAllPinLinksWithModify(EntryExecOut);
+			Resolved.Graph->NotifyGraphChanged();
+		}
+		return true;
+	}
+
+	UEdGraphPin* BodyExecIn = FindFirstExecPin(FirstBodyNode, EGPD_Input);
+	if (!BodyExecIn)
+	{
+		OutError = TEXT("Replacement body first node is missing an Exec input pin.");
+		return false;
+	}
+
+	if (PinsHaveSingleConnectionToEachOther(EntryExecOut, BodyExecIn))
+	{
+		return true;
+	}
+
+	const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
+	if (!Schema)
+	{
+		OutError = TEXT("K2 schema is unavailable; cannot rebuild entry exec link.");
+		return false;
+	}
+
+	BreakAllPinLinksWithModify(EntryExecOut);
+	BreakAllPinLinksWithModify(BodyExecIn);
+	if (!Schema->TryCreateConnection(EntryExecOut, BodyExecIn) ||
+		!PinsHaveSingleConnectionToEachOther(EntryExecOut, BodyExecIn))
+	{
+		OutError = FString::Printf(TEXT("无法连接入口 %s 到替换 body 首节点 %s。"),
+			*EntryNode->GetName(), *FirstBodyNode->GetName());
+		return false;
+	}
+
+	Resolved.Graph->NotifyGraphChanged();
 	return true;
 }
 

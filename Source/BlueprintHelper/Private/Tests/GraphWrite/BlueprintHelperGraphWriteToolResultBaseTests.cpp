@@ -11,8 +11,12 @@
 #include "GraphSupport/BlueprintHelperGraphResolver.h"
 #include "GraphSupport/BlueprintHelperGraphSnapshotService.h"
 #include "GraphSupport/BlueprintHelperOwnershipService.h"
+#include "K2Node_CallFunction.h"
+#include "K2Node_CustomEvent.h"
+#include "Kismet/KismetSystemLibrary.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
+#include "GraphWrite/BlueprintTextConverter.h"
 #include "Logic/BlueprintHelperLogicJsonPathService.h"
 #include "Misc/AutomationTest.h"
 #include "Services/BlueprintHelperAgentImportService.h"
@@ -33,6 +37,7 @@
 #include "TaskRuntime/BlueprintHelperTaskRuntimeService.h"
 #include "Transactions/Transactions/BlueprintHelperTransactionJournalService.h"
 #include "UObject/Class.h"
+#include "UObject/MetaData.h"
 #include "UObject/Package.h"
 
 namespace
@@ -147,6 +152,192 @@ namespace
 		Options->SetBoolField(TEXT("dry_run"), true);
 		Payload->SetObjectField(TEXT("options"), Options);
 		return Payload;
+	}
+
+	TSharedRef<FJsonObject> MakeReplaceExecutePayload(const FString& AssetPath, const FString& GraphName)
+	{
+		TSharedRef<FJsonObject> Payload = MakeReplacePreviewPayload(AssetPath, GraphName);
+
+		const TSharedPtr<FJsonObject>* Options = nullptr;
+		if (Payload->TryGetObjectField(TEXT("options"), Options) && Options && Options->IsValid())
+		{
+			(*Options)->SetBoolField(TEXT("dry_run"), false);
+		}
+		return Payload;
+	}
+
+	UK2Node_CustomEvent* AddGraphWriteCustomEvent(UEdGraph* Graph, const FString& EventName)
+	{
+		if (!Graph)
+		{
+			return nullptr;
+		}
+
+		UK2Node_CustomEvent* EventNode = NewObject<UK2Node_CustomEvent>(Graph);
+		Graph->AddNode(EventNode, true, false);
+		EventNode->CreateNewGuid();
+		EventNode->CustomFunctionName = FName(*EventName);
+		EventNode->PostPlacedNewNode();
+		EventNode->AllocateDefaultPins();
+		return EventNode;
+	}
+
+	UK2Node_CallFunction* AddGraphWritePrintStringCall(UEdGraph* Graph)
+	{
+		if (!Graph)
+		{
+			return nullptr;
+		}
+
+		UK2Node_CallFunction* PrintNode = NewObject<UK2Node_CallFunction>(Graph);
+		Graph->AddNode(PrintNode, true, false);
+		PrintNode->CreateNewGuid();
+		PrintNode->FunctionReference.SetExternalMember(
+			GET_FUNCTION_NAME_CHECKED(UKismetSystemLibrary, PrintString),
+			UKismetSystemLibrary::StaticClass());
+		PrintNode->PostPlacedNewNode();
+		PrintNode->AllocateDefaultPins();
+		return PrintNode;
+	}
+
+	UEdGraphPin* FindFirstExecPin(UEdGraphNode* Node, EEdGraphPinDirection Direction)
+	{
+		if (!Node)
+		{
+			return nullptr;
+		}
+
+		for (UEdGraphPin* Pin : Node->Pins)
+		{
+			if (Pin && Pin->Direction == Direction && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+			{
+				return Pin;
+			}
+		}
+		return nullptr;
+	}
+
+	bool ConnectFirstExecPins(UEdGraphNode* FromNode, UEdGraphNode* ToNode)
+	{
+		UEdGraphPin* FromPin = FindFirstExecPin(FromNode, EGPD_Output);
+		UEdGraphPin* ToPin = FindFirstExecPin(ToNode, EGPD_Input);
+		const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
+		return FromPin && ToPin && Schema && Schema->TryCreateConnection(FromPin, ToPin);
+	}
+
+	void MarkGraphWriteNodeAsBlueprintHelperOwned(UEdGraphNode* Node, const FString& BlockId)
+	{
+		if (!Node)
+		{
+			return;
+		}
+
+		if (UPackage* Package = Node->GetOutermost())
+		{
+			FMetaData& MetaData = Package->GetMetaData();
+			MetaData.SetValue(Node, TEXT("BlueprintHelperOwned"), TEXT("true"));
+			MetaData.SetValue(Node, TEXT("BlueprintHelperBlockId"), *BlockId);
+		}
+	}
+
+	bool NodeHasBlueprintHelperBlockId(UEdGraphNode* Node, const FString& BlockId)
+	{
+		if (!Node)
+		{
+			return false;
+		}
+
+		UPackage* Package = Node->GetOutermost();
+		if (!Package)
+		{
+			return false;
+		}
+
+		FMetaData& MetaData = Package->GetMetaData();
+		return MetaData.GetValue(Node, TEXT("BlueprintHelperOwned")) == TEXT("true") &&
+			MetaData.GetValue(Node, TEXT("BlueprintHelperBlockId")) == BlockId;
+	}
+
+	bool ExportHasExecLinkFromCustomEventToFunction(
+		UEdGraph* Graph,
+		const FString& EventName,
+		const FString& FunctionName)
+	{
+		const TSharedPtr<FJsonObject> ExportedGraph = FBlueprintToTextConverter::ConvertGraphToJsonObject(Graph);
+		if (!ExportedGraph.IsValid())
+		{
+			return false;
+		}
+
+		FString EventNodeId;
+		FString FunctionNodeId;
+		const TArray<TSharedPtr<FJsonValue>>* Nodes = nullptr;
+		if (ExportedGraph->TryGetArrayField(TEXT("nodes"), Nodes) && Nodes)
+		{
+			for (const TSharedPtr<FJsonValue>& NodeValue : *Nodes)
+			{
+				const TSharedPtr<FJsonObject>* NodeObject = nullptr;
+				if (!NodeValue.IsValid() || !NodeValue->TryGetObject(NodeObject) || !NodeObject || !NodeObject->IsValid())
+				{
+					continue;
+				}
+
+				FString NodeId;
+				(*NodeObject)->TryGetStringField(TEXT("id"), NodeId);
+
+				const TSharedPtr<FJsonObject>* EventObject = nullptr;
+				FString ExportedEventName;
+				if ((*NodeObject)->TryGetObjectField(TEXT("event"), EventObject) &&
+					EventObject && EventObject->IsValid() &&
+					(*EventObject)->TryGetStringField(TEXT("event_name"), ExportedEventName) &&
+					ExportedEventName.Equals(EventName, ESearchCase::IgnoreCase))
+				{
+					EventNodeId = NodeId;
+				}
+
+				FString ExportedFunctionName;
+				if ((*NodeObject)->TryGetStringField(TEXT("function_name"), ExportedFunctionName) &&
+					ExportedFunctionName.Equals(FunctionName, ESearchCase::IgnoreCase))
+				{
+					FunctionNodeId = NodeId;
+				}
+			}
+		}
+
+		if (EventNodeId.IsEmpty() || FunctionNodeId.IsEmpty())
+		{
+			return false;
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* Links = nullptr;
+		if (!ExportedGraph->TryGetArrayField(TEXT("links"), Links) || !Links)
+		{
+			return false;
+		}
+
+		for (const TSharedPtr<FJsonValue>& LinkValue : *Links)
+		{
+			const TSharedPtr<FJsonObject>* LinkObject = nullptr;
+			if (!LinkValue.IsValid() || !LinkValue->TryGetObject(LinkObject) || !LinkObject || !LinkObject->IsValid())
+			{
+				continue;
+			}
+
+			FString Kind;
+			FString FromId;
+			FString ToId;
+			(*LinkObject)->TryGetStringField(TEXT("kind"), Kind);
+			(*LinkObject)->TryGetStringField(TEXT("from_id"), FromId);
+			(*LinkObject)->TryGetStringField(TEXT("to_id"), ToId);
+			if (Kind.Equals(TEXT("exec"), ESearchCase::IgnoreCase) &&
+				FromId == EventNodeId &&
+				ToId == FunctionNodeId)
+			{
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	TSharedRef<FJsonObject> MakePatchPreviewPayload(const FString& AssetPath, const FString& GraphName)
@@ -598,6 +789,213 @@ bool FBlueprintHelperGraphWriteMergeBlockedDryRunErrorEnvelopeTest::RunTest(cons
 		TEXT("target.graph"));
 	TestEqual(TEXT("blocked merge preview leaves graph count unchanged"), Blueprint->UbergraphPages.Num(), UbergraphCountBefore);
 	TestEqual(TEXT("blocked merge preview leaves package dirty flag unchanged"), Blueprint->GetOutermost()->IsDirty(), bDirtyBefore);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteLogicJsonNodeIndexRefResolvesTest,
+	"BlueprintHelper.GraphWrite.LogicJsonPath.NodeIndexRefResolves",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteLogicJsonNodeIndexRefResolvesTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeGraphWriteTestBlueprint(TEXT("LogicJsonNodeIndexRef"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	AddGraphWriteCustomEvent(Graph, TEXT("IndexRefFirst"));
+	AddGraphWriteCustomEvent(Graph, TEXT("IndexRefSecond"));
+
+	FBlueprintHelperLogicJsonPathService PathService;
+	UEdGraphNode* ResolvedNode = nullptr;
+	FBlueprintHelperPatchResolveError ResolveError;
+
+	TestTrue(TEXT("LogicJson node_ref nodes[0] resolves to graph node index 0"),
+		PathService.ResolveNode(Graph, TEXT("nodes[0]"), FString(), ResolvedNode, ResolveError));
+	TestTrue(TEXT("nodes[0] resolves exact first graph node"), ResolvedNode == Graph->Nodes[0]);
+
+	ResolvedNode = nullptr;
+	TestTrue(TEXT("LogicJson node_ref nodes[1] resolves to graph node index 1"),
+		PathService.ResolveNode(Graph, TEXT("nodes[1]"), FString(), ResolvedNode, ResolveError));
+	TestTrue(TEXT("nodes[1] resolves exact second graph node"), ResolvedNode == Graph->Nodes[1]);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteReplaceCustomEventBodyReconnectsEntryExecTest,
+	"BlueprintHelper.GraphWrite.Replace.CustomEventBodyReconnectsEntryExec",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteReplaceCustomEventBodyReconnectsEntryExecTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeGraphWriteTestBlueprint(TEXT("ReplaceReconnectsEntryExec"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* EntryNode = AddGraphWriteCustomEvent(Graph, TEXT("SmokeCustomEvent"));
+	TestNotNull(TEXT("custom event entry is created"), EntryNode);
+	if (!EntryNode)
+	{
+		return false;
+	}
+
+	UK2Node_CallFunction* OldPrintNode = AddGraphWritePrintStringCall(Graph);
+	TestNotNull(TEXT("old PrintString body node is created"), OldPrintNode);
+	TestTrue(TEXT("old custom event body is linked before replace"),
+		OldPrintNode && ConnectFirstExecPins(EntryNode, OldPrintNode));
+	const FString BlockId = FString::Printf(TEXT("%s_%s"), *Graph->GetName(), TEXT("SmokeCustomEvent"));
+	MarkGraphWriteNodeAsBlueprintHelperOwned(EntryNode, BlockId);
+	MarkGraphWriteNodeAsBlueprintHelperOwned(OldPrintNode, BlockId);
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperAssetBrowseService AssetBrowseService;
+	FBlueprintHelperCompileService CompileService(Resolver);
+	FBlueprintHelperAgentImportService AgentImportService(Resolver, CompileService, AssetBrowseService);
+	FBlueprintHelperBlockIdService BlockIdService;
+	FBlueprintHelperOwnershipService OwnershipService;
+	FBlueprintHelperTransactionJournalService JournalService;
+	FBlueprintHelperGraphSnapshotService SnapshotService;
+	FBlueprintHelperReplaceBlueprintGraphService ReplaceService(
+		Resolver,
+		AgentImportService,
+		BlockIdService,
+		OwnershipService,
+		JournalService,
+		SnapshotService);
+
+	const FBlueprintHelperToolResultBase Result = ReplaceService.Execute(
+		MakeReplaceExecutePayload(Blueprint->GetPathName(), Graph->GetName()));
+
+	TestTrue(TEXT("replace custom event body succeeds"), Result.bOk);
+	TestEqual(TEXT("replace status is applied"), Result.Status, EBlueprintHelperToolStatus::Applied);
+
+	UEdGraphPin* EntryExecOut = FindFirstExecPin(EntryNode, EGPD_Output);
+	TestNotNull(TEXT("custom event has output exec pin"), EntryExecOut);
+	TestTrue(TEXT("custom event output exec is linked after replace"),
+		EntryExecOut && EntryExecOut->LinkedTo.Num() > 0);
+
+	bool bLinkedToPrintString = false;
+	UK2Node_CallFunction* ReplacementPrintNode = nullptr;
+	if (EntryExecOut)
+	{
+		for (UEdGraphPin* LinkedPin : EntryExecOut->LinkedTo)
+		{
+			UK2Node_CallFunction* CallNode = LinkedPin ? Cast<UK2Node_CallFunction>(LinkedPin->GetOwningNode()) : nullptr;
+			if (CallNode && CallNode->GetFunctionName().ToString().Equals(TEXT("PrintString"), ESearchCase::IgnoreCase))
+			{
+				bLinkedToPrintString = true;
+				ReplacementPrintNode = CallNode;
+				break;
+			}
+		}
+	}
+	TestTrue(TEXT("custom event output exec links to replacement PrintString"), bLinkedToPrintString);
+	TestTrue(TEXT("replacement body node keeps BlueprintHelper ownership"), NodeHasBlueprintHelperBlockId(ReplacementPrintNode, BlockId));
+	TestTrue(TEXT("exported graph contains event to replacement PrintString exec link"),
+		ExportHasExecLinkFromCustomEventToFunction(Graph, TEXT("SmokeCustomEvent"), TEXT("PrintString")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteOwnershipCommentOmitsToolFieldTest,
+	"BlueprintHelper.GraphWrite.Ownership.CommentOmitsToolField",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteOwnershipCommentOmitsToolFieldTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeGraphWriteTestBlueprint(TEXT("OwnershipCommentOmitsTool"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* EventNode = AddGraphWriteCustomEvent(Graph, TEXT("SmokeCustomEvent"));
+	TestNotNull(TEXT("custom event is created"), EventNode);
+	if (!EventNode)
+	{
+		return false;
+	}
+
+	FBlueprintHelperOwnershipService OwnershipService;
+	FString Error;
+	const bool bWritten = OwnershipService.WriteNodeOwnership(
+		Blueprint,
+		EventNode,
+		TEXT("EventGraph_SmokeCustomEvent"),
+		TEXT("tx_test_001"),
+		TEXT("SmokeFeature"),
+		Error);
+
+	TestTrue(TEXT("ownership writes successfully"), bWritten);
+	TestTrue(TEXT("comment keeps block_id"), EventNode->NodeComment.Contains(TEXT("block_id=EventGraph_SmokeCustomEvent")));
+	TestTrue(TEXT("comment keeps transaction id"), EventNode->NodeComment.Contains(TEXT("tx=tx_test_001")));
+	TestFalse(TEXT("comment omits tool field"), EventNode->NodeComment.Contains(TEXT("tool=")));
+
+	UPackage* Package = EventNode->GetOutermost();
+	TestNotNull(TEXT("node package exists"), Package);
+	if (Package)
+	{
+		FMetaData& MetaData = Package->GetMetaData();
+		TestTrue(TEXT("metadata keeps block id"), MetaData.GetValue(EventNode, TEXT("BlueprintHelperBlockId")) == FString(TEXT("EventGraph_SmokeCustomEvent")));
+		TestTrue(TEXT("metadata keeps transaction id"), MetaData.GetValue(EventNode, TEXT("BlueprintHelperTransactionId")) == FString(TEXT("tx_test_001")));
+		TestTrue(TEXT("metadata omits tool field"), MetaData.GetValue(EventNode, TEXT("BlueprintHelperTool")).IsEmpty());
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteTaskRuntimeReplaceCustomEventBodyReconnectsEntryExecTest,
+	"BlueprintHelper.GraphWrite.TaskRuntime.Replace.CustomEventBodyReconnectsEntryExec",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteTaskRuntimeReplaceCustomEventBodyReconnectsEntryExecTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeGraphWriteTestBlueprint(TEXT("RuntimeReplaceReconnectsEntryExec"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* EntryNode = AddGraphWriteCustomEvent(Graph, TEXT("SmokeCustomEvent"));
+	UK2Node_CallFunction* OldPrintNode = AddGraphWritePrintStringCall(Graph);
+	TestNotNull(TEXT("custom event entry is created"), EntryNode);
+	TestNotNull(TEXT("old PrintString body node is created"), OldPrintNode);
+	TestTrue(TEXT("old custom event body is linked before runtime replace"),
+		EntryNode && OldPrintNode && ConnectFirstExecPins(EntryNode, OldPrintNode));
+	if (!EntryNode || !OldPrintNode)
+	{
+		return false;
+	}
+
+	FGraphWriteRuntimeHarness Harness;
+	const FBlueprintHelperToolResultBase Result = Harness.RuntimeService.ExecuteTaskPlan(
+		MakeGraphWriteTaskPlanPayload(Blueprint->GetPathName(), Graph->GetName(), MakeReplaceBodyOp()));
+
+	TestTrue(TEXT("runtime replace custom event body succeeds"), Result.bOk);
+	TestEqual(TEXT("runtime replace status is applied"), Result.Status, EBlueprintHelperToolStatus::Applied);
+
+	UEdGraphPin* EntryExecOut = FindFirstExecPin(EntryNode, EGPD_Output);
+	TestNotNull(TEXT("custom event has output exec pin after runtime replace"), EntryExecOut);
+	TestTrue(TEXT("custom event output exec is linked after runtime replace"),
+		EntryExecOut && EntryExecOut->LinkedTo.Num() > 0);
+	TestTrue(TEXT("exported graph contains runtime event to replacement PrintString exec link"),
+		ExportHasExecLinkFromCustomEventToFunction(Graph, TEXT("SmokeCustomEvent"), TEXT("PrintString")));
+
 	return true;
 }
 

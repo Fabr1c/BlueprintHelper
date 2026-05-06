@@ -531,8 +531,9 @@ describe('TaskSpec GraphWrite Append compiler', () => {
           args: {
             patch_type: 'set_pin_default',
             patched_ref: {
-              graph_id: 'EventGraph',
-              node_ref: 'Branch0',
+              block_id: 'BH_DoorFeature_ToggleDoor',
+              group_entry_node_path: 'logic.groups[0].entry.node_path',
+              node_ref: 'nodes[1]',
               pin_ref: 'Condition',
             },
             patch: {
@@ -573,8 +574,9 @@ describe('TaskSpec GraphWrite Append compiler', () => {
           },
           args: {
             anchor: {
+              block_id: 'BH_DoorFeature_ToggleDoor',
               group_entry_node_path: 'logic.groups[0].entry.node_path',
-              node_ref: 'BeginPlay0',
+              node_ref: 'nodes[0]',
               pin_ref: 'Then',
             },
             inserted: {
@@ -620,8 +622,10 @@ describe('TaskSpec GraphWrite Append compiler', () => {
         replace: {
           scope: 'custom_event_body',
           selector: {
-            entry_name: 'ToggleDoor',
-            node_path: 'logic.groups[0].entry.node_path',
+            kind: 'custom_event',
+            name: 'ToggleDoor',
+            graph_id: 'EventGraph',
+            node_ref: 'ToggleDoorEntry',
           },
           body: {
             schema: 'BlueprintLogicSpec.v1',
@@ -660,7 +664,8 @@ describe('TaskSpec GraphWrite Append compiler', () => {
         replace_scope: 'custom_event_body',
         selector: {
           entry_name: 'ToggleDoor',
-          node_path: 'logic.groups[0].entry.node_path',
+          graph_id: 'EventGraph',
+          node_ref: 'ToggleDoorEntry',
         },
         replacement: {
           nodes: [
@@ -690,11 +695,12 @@ describe('TaskSpec GraphWrite Append compiler', () => {
         patches: [
           {
             kind: 'set_pin_default',
-            scope: 'pin_default',
             target_ref: {
-              graph_id: 'EventGraph',
-              node_ref: 'Branch0',
+              block_id: 'BH_DoorFeature_ToggleDoor',
+              group_entry_node_path: 'logic.groups[0].entry.node_path',
+              node_ref: 'nodes[1]',
               pin_ref: 'Condition',
+              link_ref: 'links[0]',
             },
             value: {
               kind: 'literal',
@@ -723,15 +729,78 @@ describe('TaskSpec GraphWrite Append compiler', () => {
         op: 'set_pin_default',
         patch_scope: 'pin_default',
         patched_ref: {
-          graph_id: 'EventGraph',
-          node_ref: 'Branch0',
+          block_id: 'BH_DoorFeature_ToggleDoor',
+          group_entry_node_path: 'logic.groups[0].entry.node_path',
+          node_ref: 'nodes[1]',
           pin_ref: 'Condition',
+          link_ref: 'links[0]',
         },
         patch: {
-          value: true,
+          value: 'true',
         },
         expected_old_state: {
-          value: false,
+          value: 'false',
+        },
+      },
+    ]);
+  });
+
+  it('compiles node comment and node position patches into runtime-ready structured graph_write IR', () => {
+    const spec = makeTaskSpec({
+      behavior: {
+        graph_strategy: 'patch_owned_graph',
+        patches: [
+          {
+            kind: 'set_node_comment',
+            target_ref: {
+              block_id: 'BH_DoorFeature_ToggleDoor',
+              group_entry_node_path: 'logic.groups[0].entry.node_path',
+              node_ref: 'nodes[0]',
+            },
+            value: 'Check whether the door is open.',
+          },
+          {
+            kind: 'set_node_position',
+            target_ref: {
+              block_id: 'BH_DoorFeature_ToggleDoor',
+              group_entry_node_path: 'logic.groups[0].entry.node_path',
+              node_ref: 'nodes[0]',
+            },
+            patch: {
+              x: 320,
+              y: 160,
+            },
+          },
+        ],
+      },
+    });
+
+    const plan = compileTaskSpecToTaskPlan(TaskSpecSchema.parse(spec));
+
+    assert.deepEqual((plan.steps as Array<Record<string, any>>).map((step) => step.write.ops[0]), [
+      {
+        op: 'set_node_comment',
+        patch_scope: 'node_comment',
+        patched_ref: {
+          block_id: 'BH_DoorFeature_ToggleDoor',
+          group_entry_node_path: 'logic.groups[0].entry.node_path',
+          node_ref: 'nodes[0]',
+        },
+        patch: {
+          comment: 'Check whether the door is open.',
+        },
+      },
+      {
+        op: 'set_node_position',
+        patch_scope: 'node_position',
+        patched_ref: {
+          block_id: 'BH_DoorFeature_ToggleDoor',
+          group_entry_node_path: 'logic.groups[0].entry.node_path',
+          node_ref: 'nodes[0]',
+        },
+        patch: {
+          x: 320,
+          y: 160,
         },
       },
     ]);
@@ -744,21 +813,19 @@ describe('TaskSpec GraphWrite Append compiler', () => {
         merges: [
           {
             kind: 'insert_flow',
-            scope: 'owned_block_call',
+            scope: 'function_call',
             insert_strategy: 'insert_between',
             anchor: {
-              node_ref: 'BeginPlay0',
+              block_id: 'BH_DoorFeature_ToggleDoor',
+              group_entry_node_path: 'logic.groups[0].entry.node_path',
+              node_ref: 'nodes[0]',
               pin_ref: 'Then',
-              node_path: 'logic.groups[0].entry.node_path',
+              link_ref: 'links[0]',
             },
             inserted: {
-              block_id: 'BH_DoorFeature_ToggleDoor',
-              block_ref: 'block:BH_DoorFeature_ToggleDoor',
+              call_kind: 'function_call',
+              name: 'OpenDoor',
             },
-            sequence_order: [
-              'BeginPlay0',
-              'BH_DoorFeature_ToggleDoor',
-            ],
           },
         ],
       },
@@ -772,23 +839,187 @@ describe('TaskSpec GraphWrite Append compiler', () => {
     assert.deepEqual(step.write.ops, [
       {
         op: 'insert_flow',
-        merge_scope: 'owned_block_call',
+        merge_scope: 'function_call',
         insert_strategy: 'insert_between',
         anchor: {
-          node_ref: 'BeginPlay0',
+          block_id: 'BH_DoorFeature_ToggleDoor',
+          group_entry_node_path: 'logic.groups[0].entry.node_path',
+          node_ref: 'nodes[0]',
           pin_ref: 'Then',
-          node_path: 'logic.groups[0].entry.node_path',
+          link_ref: 'links[0]',
         },
         inserted: {
-          block_id: 'BH_DoorFeature_ToggleDoor',
-          block_ref: 'block:BH_DoorFeature_ToggleDoor',
+          function: 'OpenDoor',
         },
-        sequence_order: [
-          'BeginPlay0',
-          'BH_DoorFeature_ToggleDoor',
-        ],
       },
     ]);
+  });
+
+  it('requires branch_fork sequence_order and rejects sequence_order on other merge strategies', () => {
+    const branchSpec = makeTaskSpec({
+      behavior: {
+        graph_strategy: 'merge_owned_graph',
+        merges: [
+          {
+            kind: 'insert_flow',
+            scope: 'custom_event_call',
+            insert_strategy: 'branch_fork',
+            anchor: {
+              block_id: 'BH_DoorFeature_ToggleDoor',
+              group_entry_node_path: 'logic.groups[0].entry.node_path',
+              node_ref: 'nodes[0]',
+              pin_ref: 'Then',
+            },
+            inserted: {
+              call_kind: 'custom_event_call',
+              name: 'OpenDoorEvent',
+            },
+            sequence_order: [
+              'inserted_logic',
+              'original_successor',
+            ],
+          },
+        ],
+      },
+    });
+
+    const branchPlan = compileTaskSpecToTaskPlan(TaskSpecSchema.parse(branchSpec));
+    assert.deepEqual((branchPlan.steps[0] as Record<string, any>).write.ops[0], {
+      op: 'insert_flow',
+      merge_scope: 'custom_event_call',
+      insert_strategy: 'branch_fork',
+      anchor: {
+        block_id: 'BH_DoorFeature_ToggleDoor',
+        group_entry_node_path: 'logic.groups[0].entry.node_path',
+        node_ref: 'nodes[0]',
+        pin_ref: 'Then',
+      },
+      inserted: {
+        custom_event: 'OpenDoorEvent',
+      },
+      sequence_order: [
+        'inserted_logic',
+        'original_successor',
+      ],
+    });
+
+    const nonBranchSpec = makeTaskSpec({
+      behavior: {
+        graph_strategy: 'merge_owned_graph',
+        merges: [
+          {
+            kind: 'insert_flow',
+            scope: 'function_call',
+            insert_strategy: 'append_after',
+            anchor: {
+              block_id: 'BH_DoorFeature_ToggleDoor',
+              group_entry_node_path: 'logic.groups[0].entry.node_path',
+              node_ref: 'nodes[0]',
+              pin_ref: 'Then',
+            },
+            inserted: {
+              call_kind: 'function_call',
+              name: 'OpenDoor',
+            },
+            sequence_order: [
+              'inserted_logic',
+              'original_successor',
+            ],
+          },
+        ],
+      },
+    });
+
+    assert.throws(
+      () => compileTaskSpecToTaskPlan(TaskSpecSchema.parse(nonBranchSpec)),
+      /sequence_order/,
+    );
+  });
+
+  it('rejects patch_owned_graph with bare nodes index anchors', () => {
+    const spec = makeTaskSpec({
+      behavior: {
+        graph_strategy: 'patch_owned_graph',
+        patches: [
+          {
+            kind: 'set_pin_default',
+            target_ref: {
+              graph_id: 'EventGraph',
+              node_ref: 'nodes[0]',
+              pin_ref: 'Condition',
+            },
+            value: true,
+          },
+        ],
+      },
+    });
+
+    assert.throws(
+      () => compileTaskSpecToTaskPlan(TaskSpecSchema.parse(spec)),
+      (error: unknown) => error instanceof TaskSpecCompileError &&
+        error.code === 'unsupported_graph_write_anchor' &&
+        error.issues[0]?.path === 'behavior.patches[0].target_ref.node_ref',
+    );
+  });
+
+  it('rejects merge_owned_graph with bare nodes index anchors', () => {
+    const spec = makeTaskSpec({
+      behavior: {
+        graph_strategy: 'merge_owned_graph',
+        merges: [
+          {
+            kind: 'insert_flow',
+            scope: 'function_call',
+            insert_strategy: 'insert_between',
+            anchor: {
+              graph_id: 'EventGraph',
+              node_ref: 'nodes[0]',
+              pin_ref: 'Then',
+            },
+            inserted: {
+              call_kind: 'function_call',
+              name: 'OpenDoor',
+            },
+          },
+        ],
+      },
+    });
+
+    assert.throws(
+      () => compileTaskSpecToTaskPlan(TaskSpecSchema.parse(spec)),
+      (error: unknown) => error instanceof TaskSpecCompileError &&
+        error.code === 'unsupported_graph_write_anchor' &&
+        error.issues[0]?.path === 'behavior.merges[0].anchor.node_ref',
+    );
+  });
+
+  it('rejects replace selectors that do not match the replace scope', () => {
+    const spec = makeTaskSpec({
+      behavior: {
+        graph_strategy: 'replace_owned_graph',
+        replace: {
+          scope: 'custom_event_body',
+          selector: {
+            kind: 'function',
+            name: 'ToggleDoor',
+          },
+          body: {
+            schema: 'BlueprintLogicSpec.v1',
+            statements: [
+              {
+                kind: 'call_function',
+                name: 'PrintString',
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    assert.throws(
+      () => compileTaskSpecToTaskPlan(TaskSpecSchema.parse(spec)),
+      /custom_event_body requires selector.kind/,
+    );
   });
 
   it('rejects non-custom-event entries', () => {

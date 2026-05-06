@@ -51,6 +51,8 @@
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "HAL/PlatformApplicationMisc.h"
 #include "Internationalization/Regex.h"
+#include "UObject/MetaData.h"
+#include "UObject/Package.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 
@@ -836,6 +838,26 @@ void FBlueprintToTextConverter::ExportGraphNodesAndLinks(
 		NodeObj->SetNumberField(TEXT("x"), Node->NodePosX);
 		NodeObj->SetNumberField(TEXT("y"), Node->NodePosY);
 
+		if (UPackage* Package = Node->GetOutermost())
+		{
+			FMetaData& MetaData = Package->GetMetaData();
+			const FString Owned = MetaData.GetValue(Node, TEXT("BlueprintHelperOwned"));
+			const FString BlockId = MetaData.GetValue(Node, TEXT("BlueprintHelperBlockId"));
+			if (!Owned.IsEmpty() || !BlockId.IsEmpty())
+			{
+				TSharedRef<FJsonObject> MetadataObj = MakeShared<FJsonObject>();
+				if (!Owned.IsEmpty())
+				{
+					MetadataObj->SetStringField(TEXT("BlueprintHelperOwned"), Owned);
+				}
+				if (!BlockId.IsEmpty())
+				{
+					MetadataObj->SetStringField(TEXT("BlueprintHelperBlockId"), BlockId);
+				}
+				NodeObj->SetObjectField(TEXT("metadata"), MetadataObj);
+			}
+		}
+
 		// 节点名称
 		const FString NodeTitle = Node->GetNodeTitle(ENodeTitleType::ListView).ToString();
 		if (!NodeTitle.IsEmpty())
@@ -1358,4 +1380,3 @@ FString FBlueprintToTextConverter::SerializeJsonObject(const TSharedPtr<FJsonObj
 	FJsonSerializer::Serialize(JsonObject.ToSharedRef(), Writer);
 	return OutputString;
 }
-

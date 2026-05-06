@@ -78,6 +78,78 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
     ],
     step_batching: 'append custom_event entries compile signature dependency steps before one graph_write body step; replace/patch/merge compile to one structural op per step',
   },
+  graph_write_taskspec_contract: {
+    ownership: 'agent_authored_semantic_protocol',
+    strategy_fields: {
+      append_new_owned_graph: 'behavior.entries[]',
+      replace_owned_graph: 'behavior.replace',
+      patch_owned_graph: 'behavior.patches[]',
+      merge_owned_graph: 'behavior.merges[]',
+    },
+    forbidden_agent_shapes: [
+      'replace/patch/merge in behavior.entries[]',
+      'generic behavior.ops[]',
+      'Bridge payload fields as TaskSpec body',
+    ],
+    replace_owned_graph: {
+      scopes: ['custom_event_body', 'function_body', 'event_body', 'block_implementation'],
+      selector_kinds_by_scope: {
+        custom_event_body: 'custom_event',
+        function_body: 'function',
+        event_body: 'event',
+        block_implementation: 'block',
+      },
+      body_schema: 'BlueprintLogicSpec.v1',
+      options: ['strict', 'preserve_layout'],
+    },
+    patch_owned_graph: {
+      kinds: ['set_pin_default', 'set_node_comment', 'set_node_position'],
+      scope_derivation: {
+        set_pin_default: 'pin_default',
+        set_node_comment: 'node_comment',
+        set_node_position: 'node_position',
+      },
+      field_shapes: {
+        set_pin_default: ['target_ref.block_id', 'target_ref.group_entry_node_path', 'target_ref.node_ref', 'target_ref.pin_ref', 'target_ref.link_ref', 'value'],
+        set_node_comment: ['target_ref.block_id', 'target_ref.group_entry_node_path', 'target_ref.node_ref', 'value'],
+        set_node_position: ['target_ref.block_id', 'target_ref.group_entry_node_path', 'target_ref.node_ref', 'patch.x|patch.y'],
+      },
+      block_scoped_target_ref_fields: [
+        'target_ref.block_id',
+        'target_ref.group_entry_node_path',
+        'target_ref.node_ref',
+        'target_ref.pin_ref',
+        'target_ref.link_ref',
+      ],
+      forbidden_mainline_anchor_shapes: [
+        'raw LogicJson array indexes such as nodes[0]',
+        'display names as locators',
+        'ad hoc JSONPath strings',
+        'GUID-first selectors',
+      ],
+    },
+    merge_owned_graph: {
+      kind: 'insert_flow',
+      scopes: ['owned_block_call', 'custom_event_call', 'function_call'],
+      insert_strategies: ['append_after', 'insert_between', 'branch_fork'],
+      required_anchor_fields: ['block_id', 'group_entry_node_path', 'node_ref', 'pin_ref'],
+      block_scoped_anchor_fields: [
+        'anchor.block_id',
+        'anchor.group_entry_node_path',
+        'anchor.node_ref',
+        'anchor.pin_ref',
+        'anchor.link_ref',
+      ],
+      forbidden_mainline_anchor_shapes: [
+        'raw LogicJson array indexes such as nodes[0]',
+        'display names as locators',
+        'ad hoc JSONPath strings',
+        'GUID-first selectors',
+      ],
+      inserted_call_kind_must_match_scope: true,
+      sequence_order: 'branch_fork_only',
+    },
+  },
   supported_second_slice: {
     task_type: 'edit_blueprint_variables',
     target_type: 'blueprint',

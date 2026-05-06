@@ -241,6 +241,24 @@ bool FBlueprintHelperSignatureTaskPlanAdapter::TryLowerTaskPlanStep(
 		{
 			Payload->SetStringField(TEXT("interface_path"), InterfacePath);
 		}
+
+		bool bIsPure = false;
+		if (OpObject->TryGetBoolField(TEXT("is_pure"), bIsPure))
+		{
+			Payload->SetBoolField(TEXT("is_pure"), bIsPure);
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* Inputs = nullptr;
+		if (OpObject->TryGetArrayField(TEXT("inputs"), Inputs) && Inputs)
+		{
+			Payload->SetArrayField(TEXT("inputs"), *Inputs);
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* Outputs = nullptr;
+		if (OpObject->TryGetArrayField(TEXT("outputs"), Outputs) && Outputs)
+		{
+			Payload->SetArrayField(TEXT("outputs"), *Outputs);
+		}
 	}
 	else
 	{
@@ -266,6 +284,12 @@ bool FBlueprintHelperSignatureTaskPlanAdapter::TryLowerTaskPlanStep(
 
 		Payload->SetStringField(TEXT("event_name"), EventName);
 		Payload->SetStringField(TEXT("graph_name"), GraphName);
+
+		const TArray<TSharedPtr<FJsonValue>>* Inputs = nullptr;
+		if (OpObject->TryGetArrayField(TEXT("inputs"), Inputs) && Inputs)
+		{
+			Payload->SetArrayField(TEXT("inputs"), *Inputs);
+		}
 	}
 
 	FString NameCollisionPolicy;
