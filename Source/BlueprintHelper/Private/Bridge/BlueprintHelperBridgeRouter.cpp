@@ -747,6 +747,10 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 		InClassSettings,
 		InWidget,
 		InDataTable,
+		InPropertyReflection,
+		InCleanupBlockService,
+		InRollbackCleanupService,
+		InConvertBlockService,
 		InCompileAssetService,
 		InAssetBrowse)
 	, CompileAssetService(InCompileAssetService)

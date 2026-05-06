@@ -542,10 +542,16 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
         runtime_adapter_operations: [
           'ensure_function',
           'ensure_custom_event',
+          'ensure_event_dispatcher',
+          'ensure_override_event',
+          'remove_signature',
         ],
         ue_commands: [
           'ensure_function',
           'ensure_custom_event',
+          'ensure_event_dispatcher',
+          'ensure_override_event',
+          'remove_signature',
         ],
         documents: [
           'BlueprintHelper_FunctionEventSignatureManagement_UE_CPP_Implementation_Plan_20260504.md',
@@ -554,14 +560,15 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       {
         cluster: 'graph_cleanup_ownership',
         agent_exposure: 'taskplan_internal',
+        taskplan_capability: 'graph_cleanup_ownership',
         runtime_adapter_operations: [
-          'cleanup_blueprinthelper_block',
-          'convert_block_to_user_owned',
+          'cleanup_blueprint_helper_block',
+          'convert_blueprint_helper_block_to_user_owned',
           'rollback_cleanup_transaction',
         ],
         ue_commands: [
-          'cleanup_blueprinthelper_block',
-          'convert_block_to_user_owned',
+          'cleanup_blueprint_helper_block',
+          'convert_blueprint_helper_block_to_user_owned',
           'rollback_cleanup_transaction',
         ],
         documents: [

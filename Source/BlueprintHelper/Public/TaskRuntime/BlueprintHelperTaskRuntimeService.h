@@ -16,6 +16,10 @@ class FBlueprintHelperComponentService;
 class FBlueprintHelperClassSettingsService;
 class FBlueprintHelperWidgetService;
 class FBlueprintHelperDataTableService;
+class FBlueprintHelperPropertyReflectionService;
+class FBlueprintHelperCleanupBlueprintHelperBlockService;
+class FBlueprintHelperRollbackCleanupTransactionService;
+class FBlueprintHelperConvertBlockToUserOwnedService;
 class FBlueprintHelperCompileAssetService;
 class FBlueprintHelperAssetBrowseService;
 class FJsonObject;
@@ -61,6 +65,10 @@ public:
 		const FBlueprintHelperClassSettingsService& InClassSettingsService,
 		const FBlueprintHelperWidgetService& InWidgetService,
 		const FBlueprintHelperDataTableService& InDataTableService,
+		const FBlueprintHelperPropertyReflectionService& InPropertyReflectionService,
+		const FBlueprintHelperCleanupBlueprintHelperBlockService& InCleanupBlockService,
+		const FBlueprintHelperRollbackCleanupTransactionService& InRollbackCleanupService,
+		const FBlueprintHelperConvertBlockToUserOwnedService& InConvertBlockService,
 		const FBlueprintHelperCompileAssetService& InCompileAssetService,
 		const FBlueprintHelperAssetBrowseService& InAssetBrowseService);
 
@@ -121,6 +129,10 @@ private:
 	const FBlueprintHelperClassSettingsService& ClassSettingsService;
 	const FBlueprintHelperWidgetService& WidgetService;
 	const FBlueprintHelperDataTableService& DataTableService;
+	const FBlueprintHelperPropertyReflectionService& PropertyReflectionService;
+	const FBlueprintHelperCleanupBlueprintHelperBlockService& CleanupBlockService;
+	const FBlueprintHelperRollbackCleanupTransactionService& RollbackCleanupService;
+	const FBlueprintHelperConvertBlockToUserOwnedService& ConvertBlockService;
 	const FBlueprintHelperCompileAssetService& CompileAssetService;
 	const FBlueprintHelperAssetBrowseService& AssetBrowseService;
 	mutable TMap<FString, TSharedPtr<FJsonObject>> TaskRunJournals;

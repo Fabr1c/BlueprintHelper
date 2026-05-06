@@ -33,12 +33,18 @@ export function compileTaskSpecToTaskPlan(taskSpec: TaskSpec): TaskPlan {
   if (taskSpec.task_type === 'edit_blueprint_variables') {
     return compileBlueprintVariablesTaskSpecToTaskPlan(taskSpec);
   }
+  if (taskSpec.task_type === 'edit_object_properties') {
+    return compileObjectPropertiesTaskSpecToTaskPlan(taskSpec);
+  }
+  if (taskSpec.task_type === 'manage_blueprinthelper_ownership') {
+    return compileGraphCleanupOwnershipTaskSpecToTaskPlan(taskSpec);
+  }
   if (taskSpec.task_type !== 'edit_blueprint_graph') {
     throw new TaskSpecCompileError('unsupported_task_type', `Unsupported TaskSpec task_type: ${taskSpec.task_type}`, [
       {
         code: 'unsupported_task_type',
         path: 'task_type',
-        message: 'This TypeScript fallback compiler currently supports edit_blueprint_graph and edit_blueprint_variables only; P1 capability compilation is owned by the Python compiler.',
+        message: 'This TypeScript fallback compiler currently supports GraphWrite, Blueprint Variables, ObjectProperty, Cleanup/Ownership, and composite feature slices; other capability compilation is owned by the Python compiler.',
       },
     ]);
   }
@@ -571,6 +577,175 @@ function compileBlueprintVariablesTaskSpecToTaskPlan(taskSpec: Extract<TaskSpec,
         },
       },
     ],
+  };
+}
+
+function compileObjectPropertiesTaskSpecToTaskPlan(taskSpec: Extract<TaskSpec, { task_type: 'edit_object_properties' }>): TaskPlan {
+  const behavior = taskSpec.behavior as Record<string, unknown>;
+  assertExactString(
+    behavior,
+    'property_strategy',
+    'property_edit',
+    'behavior.property_strategy',
+    'Use property_strategy="property_edit".',
+  );
+
+  const changes = requiredArray(behavior, 'changes', 'behavior.changes');
+  const settings = changes.map((rawChange, index) => {
+    const path = `behavior.changes[${index}]`;
+    if (!isRecord(rawChange)) {
+      throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path} must be an object.`, [
+        { code: 'invalid_property_change', path, message: 'Use { property_path, value }.' },
+      ]);
+    }
+    const change = rawChange as Record<string, unknown>;
+    if (!Object.hasOwn(change, 'value')) {
+      throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path}.value is required.`, [
+        { code: 'missing_property_value', path: `${path}.value`, message: 'Provide value.' },
+      ]);
+    }
+    return {
+      property_path: getRequiredString(change, 'property_path', `${path}.property_path`),
+      value: literalValue(change['value']),
+    };
+  });
+
+  const op = settings.length === 1
+    ? {
+        op: 'set_object_property',
+        property_path: settings[0].property_path,
+        value: settings[0].value,
+      }
+    : {
+        op: 'set_object_properties',
+        settings,
+      };
+
+  return makeSingleCapabilityTaskPlan(
+    taskSpec,
+    'object_property',
+    'property_edit',
+    [op],
+    { property_scope: 'uobject' },
+  );
+}
+
+function compileGraphCleanupOwnershipTaskSpecToTaskPlan(
+  taskSpec: Extract<TaskSpec, { task_type: 'manage_blueprinthelper_ownership' }>,
+): TaskPlan {
+  const behavior = taskSpec.behavior as Record<string, unknown>;
+  assertExactString(
+    behavior,
+    'ownership_strategy',
+    'owned_block_lifecycle',
+    'behavior.ownership_strategy',
+    'Use ownership_strategy="owned_block_lifecycle".',
+  );
+
+  const changes = requiredArray(behavior, 'changes', 'behavior.changes');
+  const steps = changes.map((rawChange, index) => {
+    const path = `behavior.changes[${index}]`;
+    if (!isRecord(rawChange)) {
+      throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path} must be an object.`, [
+        { code: 'invalid_ownership_change', path, message: 'Use an owned block lifecycle change object.' },
+      ]);
+    }
+    const change = rawChange as Record<string, unknown>;
+    const op = compileGraphCleanupOwnershipOp(change, path);
+    return makeCompositeCapabilityStep(
+      index + 1,
+      'graph_cleanup_ownership',
+      taskSpec.target.asset_path,
+      'owned_block_lifecycle',
+      [op],
+    );
+  });
+
+  return makeTaskPlanWithSteps(taskSpec, steps);
+}
+
+function compileGraphCleanupOwnershipOp(change: Record<string, unknown>, path: string): Record<string, unknown> {
+  const kind = getRequiredString(change, 'kind', `${path}.kind`);
+  const opByKind: Record<string, string> = {
+    cleanup_block: 'cleanup_blueprint_helper_block',
+    cleanup_blueprint_helper_block: 'cleanup_blueprint_helper_block',
+    convert_block_to_user_owned: 'convert_blueprint_helper_block_to_user_owned',
+    convert_blueprint_helper_block_to_user_owned: 'convert_blueprint_helper_block_to_user_owned',
+    rollback_cleanup_transaction: 'rollback_cleanup_transaction',
+  };
+  const opName = opByKind[kind];
+  if (!opName) {
+    throw new TaskSpecCompileError('unsupported_ownership_op', `Unsupported ownership change kind: ${kind}.`, [
+      {
+        code: 'unsupported_ownership_op',
+        path: `${path}.kind`,
+        message: 'Use cleanup_block, convert_block_to_user_owned, or rollback_cleanup_transaction.',
+      },
+    ]);
+  }
+
+  if (opName === 'rollback_cleanup_transaction') {
+    return omitUndefined({
+      op: opName,
+      transaction_id: getRequiredString(change, 'transaction_id', `${path}.transaction_id`),
+      asset_path: change['asset_path'],
+      rollback_scope: change['rollback_scope'] ?? 'cleanup_transaction',
+      already_rolled_back_policy: change['already_rolled_back_policy'],
+    });
+  }
+
+  const blockId = typeof change['block_id'] === 'string' ? change['block_id'] : undefined;
+  const graphId = typeof change['graph_id'] === 'string' ? change['graph_id'] : undefined;
+  const blockRef = typeof change['block_ref'] === 'string' ? change['block_ref'] : undefined;
+  if (!blockId && !(graphId && blockRef)) {
+    throw new TaskSpecCompileError('taskspec_semantic_invalid', 'Owned block operation requires block_id or graph_id + block_ref.', [
+      {
+        code: 'missing_owned_block_ref',
+        path,
+        message: 'Provide block_id or graph_id + block_ref.',
+      },
+    ]);
+  }
+
+  return omitUndefined({
+    op: opName,
+    graph: change['graph_name'],
+    graph_id: graphId,
+    block_ref: blockRef,
+    block_id: blockId,
+    missing_policy: change['missing_policy'],
+    already_user_owned_policy: change['already_user_owned_policy'],
+  });
+}
+
+function makeSingleCapabilityTaskPlan(
+  taskSpec: TaskSpec,
+  capability: string,
+  strategy: string,
+  ops: Record<string, unknown>[],
+  constraints?: Record<string, unknown>,
+): TaskPlan {
+  return makeTaskPlanWithSteps(taskSpec, [
+    {
+      ...makeCompositeCapabilityStep(1, capability, taskSpec.target.asset_path, strategy, ops),
+      ...(constraints ? { constraints } : {}),
+    } as TaskPlanStep,
+  ]);
+}
+
+function makeTaskPlanWithSteps(taskSpec: TaskSpec, steps: TaskPlanStep[]): TaskPlan {
+  return {
+    schema: TASK_PLAN_SCHEMA,
+    task_name: taskSpec.feature_name,
+    task_type: taskSpec.task_type,
+    context_id: taskSpec.context_id,
+    target_assets: [taskSpec.target.asset_path],
+    execution_policy: {
+      dry_run_mode: taskSpec.execution_policy.dry_run_mode,
+      should_compile: taskSpec.validation.should_compile,
+      should_save: taskSpec.validation.should_save,
+    },
+    steps: renumberSteps(steps),
   };
 }
 
@@ -1264,6 +1439,36 @@ function assertAllowedString(value: string, path: string, allowed: string[], mes
       code: 'unsupported_field_value',
       path,
       message,
+    },
+  ]);
+}
+
+function assertExactString(
+  record: Record<string, unknown>,
+  field: string,
+  expected: string,
+  path: string,
+  message: string,
+): void {
+  const actual = getRequiredString(record, field, path);
+  if (actual === expected) return;
+  throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path} must be ${expected}.`, [
+    {
+      code: 'unsupported_field_value',
+      path,
+      message,
+    },
+  ]);
+}
+
+function requiredArray(record: Record<string, unknown>, field: string, path: string): unknown[] {
+  const value = record[field];
+  if (Array.isArray(value) && value.length > 0) return value;
+  throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path} must be a non-empty array.`, [
+    {
+      code: 'missing_required_array',
+      path,
+      message: `Provide at least one item in ${path}.`,
     },
   ]);
 }

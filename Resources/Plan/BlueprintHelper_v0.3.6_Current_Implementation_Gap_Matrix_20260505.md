@@ -55,6 +55,8 @@ blueprint_component
 blueprint_class_settings
 umg_widget
 data_table
+object_property
+graph_cleanup_ownership
 ```
 
 当前 Python/MCP Task Compiler 支持从 TaskSpec 编译出的任务类型：
@@ -67,6 +69,8 @@ edit_blueprint_components -> blueprint_component
 edit_blueprint_class_settings -> blueprint_class_settings
 edit_umg_widget           -> umg_widget
 edit_data_table           -> data_table
+edit_object_properties    -> object_property
+manage_blueprinthelper_ownership -> graph_cleanup_ownership
 create_blueprint_feature  -> composite compiler，分解为 blueprint_component / blueprint_variable / blueprint_class_settings / blueprint_signature / graph_write
 ```
 
@@ -112,6 +116,8 @@ GraphWrite `replace_owned_graph` / `patch_owned_graph` / `merge_owned_graph` 的
 - [x] LogicJson `target_type=custom_event` 自定义图查找问题已修复并通过 smoke read-back；LogicJson 能在自定义图中定位 Custom Event。
 - [ ] ClassSettings / UMGWidget / DataTable 仍缺 disposable fixture smoke。
 - [x] GraphWrite Replace/Patch/Merge 子字段合同已固定；Replace execute 已通过；Patch/Merge 读写锚点合同已固定为 grouped LogicJson / block-scoped anchor，LogicJson 输出、compiler lowering、UE block-scoped resolver 源码已补；Replace body exec link 重建源码也已补。下一步是本地 build/smoke 验证。
+- [x] P2 首批三簇源码接线已完成到 TaskSpec-first 主线：`blueprint_signature`、`object_property`、`graph_cleanup_ownership` 均有 TaskPlan adapter / Runtime dispatch；`edit_object_properties` 与 `manage_blueprinthelper_ownership` 已接 TS/Python compiler。`blueprint_signature.remove_signature` 已接 TaskPlan preflight/blocked path，但不执行真实删除。
+- [ ] P2 首批三簇仍待统一 build、automation、disposable fixture smoke；当前只标记为 source integrated，不标记为 smoke verified。
 
 ### 2026-05-05 / 2026-05-06 GraphWrite 合同收口补记
 
@@ -131,11 +137,11 @@ GraphWrite `replace_owned_graph` / `patch_owned_graph` / `merge_owned_graph` 的
 | GraphWrite Replace | Done + FieldMapping | 完成 | `ReplaceBlueprintGraphService` 完成；preserved entry -> replacement body relink 与 ownership metadata 已验证 | `replace_blueprint_graph` 完成 | `replace_body` -> replace adapter lowering 已验证 | 完成 `replace_owned_graph` TaskSpec 编译 | smoke verified full pipeline | 保持 owned-block 约束；继续补非 owned anchor 决策 |
 | GraphWrite Patch | Done + FieldMapping | 完成 | `PatchBlueprintGraphService` 完成；block-scoped resolver 已验证可定位 Replace-created node | `patch_blueprint_graph` 完成 | `set_pin_default` / `set_node_comment` / `set_node_position` -> patch adapter lowering 已验证首片 | 完成 `patch_owned_graph` TaskSpec 编译 | smoke verified on owned block | 扩更多 patch fixture；非 owned anchor 另行决策 |
 | GraphWrite Merge | Done + FieldMapping | 完成 | `MergeBlueprintGraphService` 完成；block-scoped anchor resolver 与 insert flow 首片已验证 | `merge_blueprint_graph` 完成 | `insert_flow` -> merge adapter lowering 已验证 `insert_between` / `append_after` 首片 | 完成 `merge_owned_graph` TaskSpec 编译 | smoke verified for supported owned-block strategies | 补 `branch_fork` 与 `append_after + custom_event_call` 空错误 |
-| Cleanup BlueprintHelper Block | Done + FieldMapping | 完成 | `CleanupBlueprintHelperBlockService` 完成 | `cleanup_blueprint_helper_block` 完成 | 缺失 | 缺失 | 部分 | 作为 `graph_cleanup` 或 `ownership_cleanup` capability 接入 Runtime |
-| Rollback Cleanup Transaction | Done + FieldMapping | 完成 | `RollbackCleanupTransactionService` 完成 | `rollback_cleanup_transaction` 完成 | 缺失 | 缺失 | 部分 | 作为 task rollback/journal 能力接入 Runtime，不作为普通写入默认步骤 |
-| Convert Block To User Owned | Done + FieldMapping | 完成 | `ConvertBlockToUserOwnedService` 完成 | `convert_blueprint_helper_block_to_user_owned` 完成 | 缺失 | 缺失 | 部分 | 接入 `ownership` capability，并在高风险 replace/remove 前可由 TaskPlan 调用 |
+| Cleanup BlueprintHelper Block | Done + FieldMapping | 完成 | `CleanupBlueprintHelperBlockService` 完成 | `cleanup_blueprint_helper_block` 完成 | 已接 `graph_cleanup_ownership` adapter / Runtime dispatch | 已接 `manage_blueprinthelper_ownership` compiler | source integrated / smoke pending | 统一 smoke 后再标记完成；保持 internal TaskPlan capability，不新增 Agent-facing 原子写工具 |
+| Rollback Cleanup Transaction | Done + FieldMapping | 完成 | `RollbackCleanupTransactionService` 完成 | `rollback_cleanup_transaction` 完成 | 已接 `graph_cleanup_ownership` adapter / Runtime dispatch | 已接 `manage_blueprinthelper_ownership` compiler | source integrated / smoke pending | 作为 task rollback/journal 能力接入 Runtime，不作为普通写入默认步骤 |
+| Convert Block To User Owned | Done + FieldMapping | 完成 | `ConvertBlockToUserOwnedService` 完成 | `convert_blueprint_helper_block_to_user_owned` 完成 | 已接 `graph_cleanup_ownership` adapter / Runtime dispatch | 已接 `manage_blueprinthelper_ownership` compiler | source integrated / smoke pending | 统一 smoke 验证后再扩高风险 replace/remove 前置使用 |
 | Blueprint Variables/Defaults/Local Variables | Done | 完成 | `BlueprintVariableService` 已支持 member add/remove、member property settings 首片、member default(s) 首片，以及 local variable read/add/set/remove；member/local mutation 细节已迁入 OperationHandler，Service 保持 ToolResultBase façade | 变量相关 command 完成 | 完成变量 IR lowering：ensure-only -> `add_blueprint_member_variables`，混合 member/default/local -> `blueprint_variable_batch`；local_variables preview 支持真实 dry-run | 完成 TaskSpec 编译：member changes/defaults/local variables | smoke-verified：`edit_blueprint_variables` execute | 扩默认值和属性设置更多类型；补更多 UE automation/smoke 覆盖；用户本地项目级 `Build.bat` 已通过；最近验证 task id：`task_38C6DC0D4AC56E1DD89F4992D9A7B3AB` |
-| Function/Event Signature Management | Plan 文档 | 已新增 `Structure/BlueprintSignature` DTO 首片；TaskPlan 已有 `blueprint_signature` | 已新增内部 `FBlueprintHelperSignatureService` 首片：`ensure_function` dry-run/no-op/execute 与 inputs/outputs；`ensure_custom_event` 仍 deferred_to_graph_write | 无 Agent-facing 原子 command；仅 TaskRuntime 内部执行 | Runtime 已委托 SignatureService 执行 `blueprint_signature` step | `integration.interface` 可编译到 `blueprint_signature` + `graph_write replace_body` | 部分/TaskPlan internal | 补 custom event entry/body split、interface function/event、event dispatcher、override/native event、remove dry-run/preflight |
+| Function/Event Signature Management | Plan 文档 | 已新增 `Structure/BlueprintSignature` DTO 首片；TaskPlan 已有 `blueprint_signature` | 已新增内部 `FBlueprintHelperSignatureService` 首片：`ensure_function` dry-run/no-op/execute 与 inputs/outputs；`ensure_custom_event` 已有入口创建首片；`ensure_event_dispatcher` 可通过内部结构服务创建新 dispatcher；`ensure_override_event` 和 remove-signature 预检壳仍只 blocked | 无 Agent-facing 原子 command；仅 TaskRuntime 内部执行 | Runtime 已委托 SignatureService 执行 `blueprint_signature` step，并支持 `ensure_function` / `ensure_custom_event` / `ensure_event_dispatcher` / `ensure_override_event` / `remove_signature` lowering；override/remove 仍返回 blocked preflight | `integration.interface` 可编译到 `blueprint_signature` + `graph_write replace_body` | source integrated / smoke pending | 补 custom event body split、interface function/event、event dispatcher signature mutation policy、override/native event execute policy、remove execute policy |
 | AssetFactory | FieldMapping | 完成 | `AssetFactoryService` 完成，支持 dry-run 冲突/创建预检且不创建资产 | `create_asset` 完成 | 完成 adapter，支持 `asset_factory/asset_create/create_asset`；preview 调 Service true dry-run | 完成 `create_asset` TaskSpec 编译 | compiler-ready / preview smoke covered | 后续补 execute smoke，再扩 DataTable/WidgetBlueprint/Material 等资产类型 |
 | AssetDiscovery/EditorNavigation | Done + FieldMapping | 完成 | `AssetBrowseService` 完成 | `list_assets` / `search_assets` / `open_asset` / `get_asset_info` 完成 | 不需要默认写入 Runtime | 后续经 `ReadSpec` / `read_context` 进入只读上下文 | 部分 | 保持只读/导航能力，但不扩散成多 Agent-facing 原子工具 |
 | ProjectContext/SetupState | Done + FieldMapping | 类型存在 | `ContextService` 基础存在 | `get_editor_context` 等入口存在 | 不属于写 Runtime | `read_task_context` 当前定位不清，标记 deprecated；后续经 `read_context` 重定义 | 部分 | 合并到 ReadSpec/CapabilitySchema，不保留模糊独立入口 |
@@ -145,7 +151,7 @@ GraphWrite `replace_owned_graph` / `patch_owned_graph` / `merge_owned_graph` 的
 | SaveAsset | Done + FieldMapping | 类型存在 | Bridge 内直接实现 | `save_asset` 完成 | 只把 `should_save` 写入 validation，不实际保存 | 缺失 | 部分 | TaskRuntime 执行末尾按 `execution_policy.should_save` 调用 |
 | EditorLifecycle/RiskCommand | Done + FieldMapping | 完成 | `EditorCommandService` 完成 | undo/redo/PIE/close/console 完成 | 不应默认进入写 Runtime | 缺失 | 内部/debug | `open_editor` / `close_editor` 保留并迁移到 `blueprinthelper_*` 前缀；全局 undo/redo 从默认工具集中移除，后续改做 transaction 级 undo/redo |
 | DebugExport/LargePayload | Done + FieldMapping | 类型存在 | 缺少完整 Service | 缺少完整 command | 缺失 | task context 中只保留 `large_payload_ref` 概念 | 部分 | 建立 debug export service，供失败定位和大 payload 分页 |
-| DataAsset/Object Property | Done + FieldMapping | 类型存在 | `PropertyReflectionService` 完成通用 UObject 属性读写 | `get_object_properties` / `set_object_property` 完成 | 缺失 | 缺失 | 部分 | 接入 `data_asset` 或 `object_property` capability，统一 property path/value 字段 |
+| DataAsset/Object Property | Done + FieldMapping | 类型存在 | `PropertyReflectionService` 完成通用 UObject 属性读写，并新增 ToolResultBase façade / true dry-run 批量设置首片 | `get_object_properties` / `set_object_property` 完成 | 已接 `object_property/property_edit` TaskPlan adapter / Runtime dispatch | 已接 `edit_object_properties` TS/Python compiler | source integrated / smoke pending | 统一 smoke 后扩更完整 value 类型、嵌套路径和 DataAsset fixture |
 | DataTable | Done + FieldMapping | 完成 | `DataTableService` 完成，add/update/delete row 支持 true dry-run | get/add/update/delete row 完成 | 完成 adapter，支持 add/update/delete row；preview 调 Service true dry-run | 完成 `edit_data_table` TaskSpec 编译 | compiler-ready / fixture smoke pending | 确认 read 行为仍只读，不混入写 TaskPlan；补 disposable fixture smoke；扩更完整 row schema/field 类型覆盖 |
 | UMG WidgetBlueprint | Done + FieldMapping | 完成 | `WidgetService` 完成，add/set_property/remove 支持 true dry-run | get/add/remove/move/get_properties/set_property 完成 | 部分 adapter，支持 add/set_property/remove，不支持 move/read；preview 调 Service true dry-run | 完成 `edit_umg_widget` TaskSpec 编译，不支持 move_widget | compiler-ready / fixture smoke pending | Runtime adapter 扩 move_widget 或保持明确不支持；补 disposable WidgetBlueprint fixture smoke |
 | Blueprint Component | FieldMapping | 当前结构在 Service header 内，未完全拆到 Structure | `ComponentService` 完成，已统一 ToolResultBase，add/set/remove 支持 true dry-run | read/add/set/remove command 完成 | 部分 adapter，支持 add/set_properties/remove；preview 调 Service true dry-run | 完成 `edit_blueprint_components` TaskSpec 编译 | preview smoke passed / execute pending | 补 component execute smoke；把 component DTO 进一步迁到 Structure |
@@ -168,8 +174,8 @@ GraphWrite `replace_owned_graph` / `patch_owned_graph` / `merge_owned_graph` 的
 4. **[x] P1 adapter dry-run 已升级为服务级 true dry-run。**
    AssetFactory、BlueprintComponent、BlueprintClassSettings、UMGWidget、DataTable 的 TaskPlan adapter 已标记 true dry-run 支持，并在 preview 时调用对应 Service preflight。dry-run 路径会解析目标资产、类/接口/属性/row/widget/component 等执行前置条件，但不会进入 `FBlueprintHelperScopedAssetMutation`、`Modify`、实际 Add/Remove/ImportText 写入、MarkBlueprint、AssetRegistry 创建或 DataTable row mutation 路径。Runtime synthetic preview 仍保留给尚未完成 true dry-run 的其他 adapter。
 
-5. **部分 UE Service 仍是 stub 或只有 DTO / 底层 Bridge。**
-   BlueprintVariableService 的 member property settings、member defaults、local variables 已完成首片真实执行，且实际 mutation 已迁入 OperationHandler；DebugExport/LargePayload、Function/Event Signature Management、DataAsset TaskPlan、Cleanup/Rollback/Ownership TaskPlan 还没有进入 TaskSpec-first 闭环。
+5. **P2 新簇已进入 source integrated 阶段，但未统一验证。**
+   BlueprintVariableService 的 member property settings、member defaults、local variables 已完成首片真实执行，且实际 mutation 已迁入 OperationHandler；Function/Event Signature Management、DataAsset/ObjectProperty、Cleanup/Rollback/Ownership 已接入 TaskSpec -> TaskPlan -> Runtime 源码路径。DebugExport/LargePayload 仍未接入；P2 首批三簇需要下一轮统一 build、automation、disposable fixture smoke 后才能标记为 verified。
 6. **UE 构建验证状态。**
    后续统一使用项目级 `Build.bat`。源码 UTF-8/TEXT() 修复后，用户本地已确认 `Build.bat MrStoneEditor Win64 Development -Project=G:\UnrealPractise\MrStone\MrStone.uproject` 构建通过；当前 Codex 沙盒复跑会因 MrStone 工程级 `Intermediate` 写权限限制停在 UBT cache 写入阶段。MCP 回归已通过。
 
@@ -201,11 +207,13 @@ GraphWrite `replace_owned_graph` / `patch_owned_graph` / `merge_owned_graph` 的
 
 ### P2：扩 UE 新能力簇
 
-1. Function/Event Signature Management：函数参数、返回值、interface function vs interface event、event dispatcher、override/native event。
-2. DataAsset/ObjectProperty TaskPlan adapter。
-3. Cleanup/Rollback/Ownership TaskPlan adapter。
-4. DebugExport/LargePayload service。
-5. DependencyAnalysis 与高风险 preview 的集成。
+1. [x] Function/Event Signature Management 首片：内部 service、DTO、ensure_function、ensure_custom_event entry 创建、ensure_event_dispatcher 新建声明、ensure_override_event blocked preflight、remove_signature blocked preflight、Runtime delegation。
+2. [x] DataAsset/ObjectProperty 首片：TaskSpec schema、TS/Python compiler、TaskPlan adapter、ToolResultBase façade、Runtime dispatch。
+3. [x] Cleanup/Rollback/Ownership 首片：TaskSpec schema、TS/Python compiler、TaskPlan adapter、Runtime dispatch 到 cleanup / convert / rollback service。
+4. [ ] P2 首批三簇统一 build、automation、disposable fixture smoke。
+5. [ ] Signature 扩展：函数参数、返回值、interface function vs interface event、event dispatcher signature mutation policy、override/native event execute policy、remove execute policy。
+6. [ ] DebugExport/LargePayload service。
+7. [ ] DependencyAnalysis 与高风险 preview 的集成。
 
 ## 后续讨论待办
 
@@ -247,14 +255,19 @@ GraphWrite `replace_owned_graph` / `patch_owned_graph` / `merge_owned_graph` 的
 
 ## 推荐下一步
 
-P0 与 P1 compiler/contract 首片已经完成，变量簇 member property/default/local variable 首片已经落到 UE Service + OperationHandler，且 `edit_blueprint_variables` 已完成 TaskSpec -> Execute smoke。AssetFactory 与 Component preview 已通过，ClassSettings、UMG、DataTable 还需要 disposable fixture。Composite `create_blueprint_feature` 已能把物理门这类核心功能 TaskSpec 分解为多 step TaskPlan，并已补 `integration.interface` 首片：确保接口、确保函数入口、用 GraphWrite replace_body 写接口函数实现；最新 smoke 已确认 composite preview 通过，下一步是 execute fixture。GraphWrite replace/patch/merge 的 TaskSpec compiler 与 Runtime lowering 已进入 Rerun 4 verified 状态：Replace full pipeline 与 read-back 通过，Patch 可修改 owned block，Merge 的 `insert_between + function_call`、`append_after + function_call`、`insert_between + custom_event_call` 已通过。当前 P1 剩余不阻塞 P2 的验证项是：ClassSettings/UMG/DataTable disposable fixture、Composite execute fixture、TaskRunJournal partial failure fixture、`branch_fork` merge fixture、`append_after + custom_event_call` 空错误，以及 runtime profile 能力标记同步。
+P0 与 P1 compiler/contract 首片已经完成，变量簇 member property/default/local variable 首片已经落到 UE Service + OperationHandler，且 `edit_blueprint_variables` 已完成 TaskSpec -> Execute smoke。AssetFactory 与 Component preview 已通过，ClassSettings、UMG、DataTable 还需要 disposable fixture。Composite `create_blueprint_feature` 已能把物理门这类核心功能 TaskSpec 分解为多 step TaskPlan，并已补 `integration.interface` 首片：确保接口、确保函数入口、用 GraphWrite replace_body 写接口函数实现；最新 smoke 已确认 composite preview 通过，下一步是 execute fixture。GraphWrite replace/patch/merge 的 TaskSpec compiler 与 Runtime lowering 已进入 Rerun 4 verified 状态：Replace full pipeline 与 read-back 通过，Patch 可修改 owned block，Merge 的 `insert_between + function_call`、`append_after + function_call`、`insert_between + custom_event_call` 已通过。
+
+P2 首批三簇已进入源码接线阶段：`blueprint_signature`、`object_property`、`graph_cleanup_ownership` 都沿 TaskSpec -> TaskPlan -> Runtime dispatch 接入，不新增 Agent-facing 原子写工具。当前状态仍是 source integrated，不是 smoke verified；按用户安排，先不单独测试这些簇，等三个完整簇落齐后统一 build、automation 和 disposable fixture smoke。
+
+当前 P1/P2 剩余不阻塞继续开发的验证项是：ClassSettings/UMG/DataTable disposable fixture、Composite execute fixture、TaskRunJournal partial failure fixture、`branch_fork` merge fixture、`append_after + custom_event_call` 空错误、runtime profile 能力标记同步，以及 P2 首批三簇统一验证。
 
 ```text
 Prepare fixtures and rerun AssetFactory/Component/ClassSettings/UMG/DataTable/Composite execute smoke
 -> Add controlled partial-failure fixture for TaskRunJournal topology blocking
 -> Fix append_after + custom_event_call empty error and add branch_fork smoke
--> Function/Event Signature Management 完整簇
--> DataAsset/ObjectProperty / Cleanup/Ownership / DebugExport
+-> Run grouped P2 verification for Signature / ObjectProperty / CleanupOwnership
+-> Function/Event Signature Management 后续字段和 remove execute policy
+-> DebugExport / LargePayload
 ```
 
 这样能继续沿 TaskSpec -> TaskPlan -> Runtime lowering 的结构化编辑语言方向扩展，不会退回到底层工具膨胀。

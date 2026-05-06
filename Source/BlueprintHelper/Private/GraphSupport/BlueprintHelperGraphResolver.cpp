@@ -139,7 +139,7 @@ UBlueprint* FBlueprintHelperGraphResolver::LoadBlueprintByPath(const FString& As
 	if (!Blueprint)
 	{
 		OutDiag.Add(EBlueprintHelperDiagnosticSeverity::Error,
-			FString::Printf(TEXT("无法加载蓝图资产"), *AssetPath));
+			FString::Printf(TEXT("无法加载路径为 %s 的蓝图资产"), *AssetPath));
 		return nullptr;
 	}
 

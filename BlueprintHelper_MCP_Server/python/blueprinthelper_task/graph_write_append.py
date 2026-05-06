@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 
 from .errors import TaskSpecCompileError
 from .p1_capabilities import compile_p1_task_spec, supports_p1_task_type
+from .p2_capabilities import compile_p2_task_spec, supports_p2_task_type
 
 
 TASK_COMPILER_RESULT_SCHEMA = "BlueprintHelper.TaskCompilerResult.v1"
@@ -132,6 +133,8 @@ def compile_task_spec(task_spec: Dict[str, Any], dry_run: bool) -> Dict[str, Any
         return compile_blueprint_variables(task_spec, dry_run)
     if supports_p1_task_type(task_type):
         return compile_p1_task_spec(task_spec, dry_run)
+    if supports_p2_task_type(task_type):
+        return compile_p2_task_spec(task_spec, dry_run)
 
     raise TaskSpecCompileError(
         "unsupported_task_type",
@@ -954,7 +957,12 @@ def _validate_blueprint_signature_step(step: Dict[str, Any], path: str) -> None:
     if not isinstance(write, dict):
         _raise_taskplan_invalid("missing_signature_write", "Blueprint signature TaskPlan step requires write.", f"{path}.write")
     strategy = _required_string(write, "strategy", f"{path}.write.strategy")
-    if strategy not in ("function_signature", "custom_event_signature"):
+    if strategy not in (
+        "function_signature",
+        "custom_event_signature",
+        "event_dispatcher_signature",
+        "override_event_signature",
+    ):
         _raise_taskplan_invalid(
             "unsupported_signature_strategy",
             f"Unsupported blueprint_signature strategy: {strategy}.",

@@ -340,8 +340,20 @@ describe('TaskSpec/TaskPlan protocol contract', () => {
     assert.deepEqual(blueprintSignature.runtime_adapter_operations, [
       'ensure_function',
       'ensure_custom_event',
+      'ensure_event_dispatcher',
+      'ensure_override_event',
+      'remove_signature',
     ]);
     assert.deepEqual(blueprintSignature.agent_exposure, 'taskplan_internal');
+
+    const cleanupOwnership = TASK_PROTOCOL_CONTRACT_V1.capability_catalog.task_runtime_clusters[2];
+    assert.equal(cleanupOwnership.taskplan_capability, 'graph_cleanup_ownership');
+    assert.deepEqual(cleanupOwnership.runtime_adapter_operations, [
+      'cleanup_blueprint_helper_block',
+      'convert_blueprint_helper_block_to_user_owned',
+      'rollback_cleanup_transaction',
+    ]);
+    assert.deepEqual(cleanupOwnership.agent_exposure, 'taskplan_internal');
 
     const blueprintVariables = TASK_PROTOCOL_CONTRACT_V1.capability_catalog.task_runtime_clusters[3];
     assert.equal(blueprintVariables.taskplan_capability, 'blueprint_variable');
