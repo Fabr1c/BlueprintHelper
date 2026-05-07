@@ -6,12 +6,35 @@
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraphSchema_K2.h"
 #include "GraphEditor.h"
+#include "UObject/MetaData.h"
 
 namespace
 {
 	constexpr float CommentStylePadding = 20.0f;
 	constexpr float FallbackNodeWidth = 220.0f;
 	constexpr float FallbackNodeHeight = 92.0f;
+
+	enum class ENodeBoundsSource : uint8
+	{
+		None,
+		EditorWidget,
+		FallbackNode
+	};
+
+	struct FBoundsDebugCounters
+	{
+		int32 TargetCount = 0;
+		int32 GraphTargetCount = 0;
+		int32 SkippedSurfaceCount = 0;
+		int32 SkippedGraphCount = 0;
+		int32 CandidateCount = 0;
+		int32 MatchedNodeCount = 0;
+		int32 DuplicateMatchedNodeCount = 0;
+		int32 EditorBoundsCount = 0;
+		int32 FallbackBoundsCount = 0;
+		int32 RecordBoundsCount = 0;
+		TArray<FString> MatchedNodeSummaries;
+	};
 
 	void AddUniqueTrimmed(TArray<FString>& OutValues, FString Value)
 	{
@@ -110,6 +133,17 @@ namespace
 			return true;
 		}
 
+		if (UPackage* Package = Node->GetOutermost())
+		{
+			FMetaData& MetaData = Package->GetMetaData();
+			if (MetaData.GetValue(Node, TEXT("BlueprintHelperBlockId")).Equals(Candidate, ESearchCase::IgnoreCase)
+				|| MetaData.GetValue(Node, TEXT("BlueprintHelperTransactionId")).Equals(Candidate, ESearchCase::IgnoreCase)
+				|| MetaData.GetValue(Node, TEXT("BlueprintHelperFeatureName")).Equals(Candidate, ESearchCase::IgnoreCase))
+			{
+				return true;
+			}
+		}
+
 		if (Node->NodeComment.Contains(Candidate, ESearchCase::IgnoreCase))
 		{
 			return true;
@@ -143,6 +177,26 @@ namespace
 			&& GraphEditor->GetBoundsForNode(Node, OutRect, 0.0f);
 	}
 
+	FString BuildNodeDebugSummary(const UEdGraphNode* Node, ENodeBoundsSource Source)
+	{
+		if (!Node)
+		{
+			return TEXT("<null>");
+		}
+
+		const FString SourceName = Source == ENodeBoundsSource::EditorWidget
+			? TEXT("editor")
+			: (Source == ENodeBoundsSource::FallbackNode ? TEXT("fallback") : TEXT("none"));
+		return FString::Printf(
+			TEXT("%s[%s]@(%d,%d,%d,%d)"),
+			*Node->GetName(),
+			*SourceName,
+			Node->NodePosX,
+			Node->NodePosY,
+			Node->NodeWidth,
+			Node->NodeHeight);
+	}
+
 	FVector2D GetFallbackNodeSize(const UEdGraphNode* Node)
 	{
 		if (!Node)
@@ -160,7 +214,7 @@ namespace
 		return FVector2D(Width, Height);
 	}
 
-	void IncludeNodeBounds(
+	ENodeBoundsSource IncludeNodeBounds(
 		const UEdGraphNode* Node,
 		const TSharedPtr<SGraphEditor>& GraphEditor,
 		FBox2D& InOutBounds,
@@ -168,7 +222,7 @@ namespace
 	{
 		if (!Node)
 		{
-			return;
+			return ENodeBoundsSource::None;
 		}
 
 		FSlateRect EditorRect;
@@ -177,7 +231,7 @@ namespace
 			InOutBounds += FVector2D(EditorRect.Left, EditorRect.Top);
 			InOutBounds += FVector2D(EditorRect.Right, EditorRect.Bottom);
 			bInOutHasBounds = true;
-			return;
+			return ENodeBoundsSource::EditorWidget;
 		}
 
 		const FVector2D NodePosition(static_cast<float>(Node->NodePosX), static_cast<float>(Node->NodePosY));
@@ -185,6 +239,7 @@ namespace
 		InOutBounds += NodePosition;
 		InOutBounds += NodePosition + NodeSize;
 		bInOutHasBounds = true;
+		return ENodeBoundsSource::FallbackNode;
 	}
 
 	bool BuildPaddedBounds(
@@ -244,25 +299,33 @@ namespace BlueprintHelperReviewGraphBounds
 		const FString& GraphName,
 		const TSharedPtr<SGraphEditor>& GraphEditor,
 		FVector2D& OutPosition,
-		FVector2D& OutSize)
+		FVector2D& OutSize,
+		FString* OutDebugSummary)
 	{
 		FBox2D Bounds(ForceInit);
 		bool bHasBounds = false;
+		FBoundsDebugCounters DebugCounters;
+		TSet<const UEdGraphNode*> IncludedNodes;
 
 		for (const FBlueprintHelperReviewAtomicTarget& Target : Targets)
 		{
+			++DebugCounters.TargetCount;
 			if (Target.Surface != EBlueprintHelperReviewSurface::Graph)
 			{
+				++DebugCounters.SkippedSurfaceCount;
 				continue;
 			}
+			++DebugCounters.GraphTargetCount;
 			if (!Target.GraphName.IsEmpty() && !GraphName.IsEmpty() && Target.GraphName != GraphName)
 			{
+				++DebugCounters.SkippedGraphCount;
 				continue;
 			}
 
 			bool bMatchedNode = false;
 			TArray<FString> Candidates;
 			AddGraphTargetCandidates(Target, Candidates);
+			DebugCounters.CandidateCount += Candidates.Num();
 			if (Graph && Candidates.Num() > 0)
 			{
 				for (UEdGraphNode* Node : Graph->Nodes)
@@ -276,7 +339,25 @@ namespace BlueprintHelperReviewGraphBounds
 					{
 						if (DoesNodeMatchSingleCandidate(Node, Candidate))
 						{
-							IncludeNodeBounds(Node, GraphEditor, Bounds, bHasBounds);
+							if (IncludedNodes.Contains(Node))
+							{
+								++DebugCounters.DuplicateMatchedNodeCount;
+								bMatchedNode = true;
+								break;
+							}
+
+							const ENodeBoundsSource Source = IncludeNodeBounds(Node, GraphEditor, Bounds, bHasBounds);
+							if (Source == ENodeBoundsSource::EditorWidget)
+							{
+								++DebugCounters.EditorBoundsCount;
+							}
+							else if (Source == ENodeBoundsSource::FallbackNode)
+							{
+								++DebugCounters.FallbackBoundsCount;
+							}
+							++DebugCounters.MatchedNodeCount;
+							IncludedNodes.Add(Node);
+							DebugCounters.MatchedNodeSummaries.Add(BuildNodeDebugSummary(Node, Source));
 							bMatchedNode = true;
 							break;
 						}
@@ -289,9 +370,35 @@ namespace BlueprintHelperReviewGraphBounds
 				Bounds += Target.GraphPosition;
 				Bounds += Target.GraphPosition + Target.GraphSize;
 				bHasBounds = true;
+				++DebugCounters.RecordBoundsCount;
 			}
 		}
 
-		return BuildPaddedBounds(Bounds, bHasBounds, OutPosition, OutSize);
+		const bool bBuilt = BuildPaddedBounds(Bounds, bHasBounds, OutPosition, OutSize);
+		if (OutDebugSummary)
+		{
+			*OutDebugSummary = FString::Printf(
+				TEXT("built=%d targets=%d graphTargets=%d skippedSurface=%d skippedGraph=%d candidates=%d matchedNodes=%d duplicateMatches=%d editorBounds=%d fallbackBounds=%d recordBounds=%d padding=%.1f pos=(%.1f,%.1f) size=(%.1f,%.1f) graph=\"%s\" graphNodeCount=%d matched=\"%s\""),
+				bBuilt ? 1 : 0,
+				DebugCounters.TargetCount,
+				DebugCounters.GraphTargetCount,
+				DebugCounters.SkippedSurfaceCount,
+				DebugCounters.SkippedGraphCount,
+				DebugCounters.CandidateCount,
+				DebugCounters.MatchedNodeCount,
+				DebugCounters.DuplicateMatchedNodeCount,
+				DebugCounters.EditorBoundsCount,
+				DebugCounters.FallbackBoundsCount,
+				DebugCounters.RecordBoundsCount,
+				CommentStylePadding,
+				static_cast<double>(OutPosition.X),
+				static_cast<double>(OutPosition.Y),
+				static_cast<double>(OutSize.X),
+				static_cast<double>(OutSize.Y),
+				*GraphName,
+				Graph ? Graph->Nodes.Num() : 0,
+				*FString::Join(DebugCounters.MatchedNodeSummaries, TEXT(";")));
+		}
+		return bBuilt;
 	}
 }

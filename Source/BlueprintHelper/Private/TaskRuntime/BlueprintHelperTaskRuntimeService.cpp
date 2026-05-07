@@ -2193,42 +2193,6 @@ namespace
 		return Result;
 	}
 
-	bool TryParseAssetFactoryType(const FString& AssetTypeText, EBlueprintHelperAssetType& OutAssetType)
-	{
-		if (AssetTypeText.Equals(TEXT("blueprint_class"), ESearchCase::IgnoreCase))
-		{
-			OutAssetType = EBlueprintHelperAssetType::BlueprintClass;
-			return true;
-		}
-		if (AssetTypeText.Equals(TEXT("blueprint_interface"), ESearchCase::IgnoreCase))
-		{
-			OutAssetType = EBlueprintHelperAssetType::BlueprintInterface;
-			return true;
-		}
-		if (AssetTypeText.Equals(TEXT("structure"), ESearchCase::IgnoreCase))
-		{
-			OutAssetType = EBlueprintHelperAssetType::Structure;
-			return true;
-		}
-		if (AssetTypeText.Equals(TEXT("input_action"), ESearchCase::IgnoreCase))
-		{
-			OutAssetType = EBlueprintHelperAssetType::InputAction;
-			return true;
-		}
-		if (AssetTypeText.Equals(TEXT("input_mapping_context"), ESearchCase::IgnoreCase))
-		{
-			OutAssetType = EBlueprintHelperAssetType::InputMappingContext;
-			return true;
-		}
-		if (AssetTypeText.Equals(TEXT("data_asset"), ESearchCase::IgnoreCase))
-		{
-			OutAssetType = EBlueprintHelperAssetType::DataAsset;
-			return true;
-		}
-		OutAssetType = EBlueprintHelperAssetType::Unknown;
-		return false;
-	}
-
 	EBlueprintHelperAssetCollisionPolicy ParseAssetFactoryCollision(const FString& CollisionText)
 	{
 		return CollisionText.Equals(TEXT("reuse_if_exists"), ESearchCase::IgnoreCase)
@@ -2275,7 +2239,7 @@ namespace
 		}
 
 		EBlueprintHelperAssetType AssetType = EBlueprintHelperAssetType::Unknown;
-		if (!TryParseAssetFactoryType(AssetTypeText, AssetType))
+		if (!FBlueprintHelperAssetFactoryService::TryNormalizeAssetTypeAndParent(AssetTypeText, ParentClass, AssetType))
 		{
 			return MakeFailure(
 				TEXT("create_asset"),

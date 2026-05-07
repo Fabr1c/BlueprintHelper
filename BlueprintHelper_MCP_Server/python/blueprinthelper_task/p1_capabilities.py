@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
 from .errors import TaskSpecCompileError
 
@@ -63,8 +63,10 @@ def _compile_asset_factory_task_plan(task_spec: Dict[str, Any]) -> Dict[str, Any
     )
     asset = behavior.get("asset") if isinstance(behavior.get("asset"), dict) else behavior
     op = {"op": "create_asset"}
-    _copy_required_string(asset, op, "asset_type", "behavior.asset.asset_type")
-    _copy_optional_string(asset, op, "parent_class", "behavior.asset.parent_class")
+    asset_type, parent_class = _normalize_asset_factory_type_and_parent(asset)
+    op["asset_type"] = asset_type
+    if parent_class:
+        op["parent_class"] = parent_class
     _copy_optional_string(asset, op, "value_type", "behavior.asset.value_type")
     _copy_optional_string(asset, op, "collision", "behavior.asset.collision")
     _copy_optional_string_as(asset, op, "collision_policy", "collision", "behavior.asset.collision_policy")
@@ -485,6 +487,27 @@ def _copy_optional_string_as(
         _raise("taskspec_semantic_invalid", f"{path} must be a string when present.", path, "Use a string value.")
     if value:
         destination[destination_field] = value
+
+
+def _normalize_asset_factory_type_and_parent(asset: Dict[str, Any]) -> Tuple[str, Optional[str]]:
+    asset_type = _required_string(asset, "asset_type", "behavior.asset.asset_type")
+    parent_class = _optional_string_value(asset, "parent_class", "behavior.asset.parent_class")
+    asset_type_key = asset_type.strip().lower()
+
+    if asset_type_key in {"blueprint", "blueprint_class", "blueprintclass"}:
+        return "blueprint_class", parent_class or "Actor"
+    if asset_type_key == "actor":
+        return "blueprint_class", parent_class or "Actor"
+    return asset_type, parent_class
+
+
+def _optional_string_value(source: Dict[str, Any], field: str, path: str) -> Optional[str]:
+    if field not in source:
+        return None
+    value = source[field]
+    if not isinstance(value, str):
+        _raise("taskspec_semantic_invalid", f"{path} must be a string when present.", path, "Use a string value.")
+    return value or None
 
 
 def _read_data_table_op_name(op: Dict[str, Any], path: str) -> str:

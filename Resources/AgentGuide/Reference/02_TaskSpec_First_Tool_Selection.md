@@ -1,38 +1,29 @@
-# 02 - TaskSpec-first 工具选择
+# 02 - TaskSpec-first Tool Selection
 
-普通 Agent 默认工具链：
+默认工具链:
 
 ```text
-blueprinthelper_get_runtime_profile
+blueprint_get_runtime_profile
 blueprinthelper_read_agent_guide
 blueprinthelper_read_context
 blueprinthelper_read_reference_context
 blueprinthelper_preview_task
 blueprinthelper_execute_task
 blueprinthelper_get_task_result
-blueprinthelper_open_editor
-blueprinthelper_close_editor
 ```
 
-只读诊断使用：
+只读诊断:
 
 ```text
 blueprinthelper_diagnostics
+blueprinthelper_diagnostics_runtime
 ```
 
-底层工具簇不作为普通主线：
+`blueprint_open_editor` 只用于显式启动目标 Editor 的 preflight。
 
-```text
-asset_create / add_component / set_component_properties / add_implemented_interface
-append_blueprint_graph / replace_blueprint_graph / patch_blueprint_graph / merge_blueprint_graph
-cleanup / rollback / ownership transfer
-```
+## Task Tool Arguments
 
-这些工具簇属于 TaskPlan capability、debug / expert、自动化测试和失败定位入口。
-
-## Task 工具入参
-
-`blueprinthelper_preview_task` 和 `blueprinthelper_execute_task` 的工具参数必须包一层 `task_spec`：
+`blueprinthelper_preview_task` 和 `blueprinthelper_execute_task` 的工具参数必须包一层 `task_spec`:
 
 ```json
 {
@@ -42,11 +33,11 @@ cleanup / rollback / ownership transfer
 }
 ```
 
-不要把 `schema`、`task_type`、`target`、`behavior` 等 TaskSpec 顶层字段直接作为 MCP 工具参数。
+不要把 TaskSpec 顶层字段直接平铺到 MCP 工具参数中。不要额外包 `args`。
 
-## GraphWrite 写锚点
+## Context And Anchors
 
-Patch/Merge 修改 BlueprintHelper-owned block 时，先用 `blueprinthelper_read_context` 读取 `logic_json`，再从 grouped block 中取：
+Patch/Merge 修改 BlueprintHelper-owned block 时，先用 `blueprinthelper_read_context` 读取 `logic_json`，再从 grouped block 中取:
 
 ```text
 block_id
@@ -56,6 +47,10 @@ pin_ref
 link_ref
 ```
 
-`append_after` 使用 `block_id + group_entry_node_path + node_ref + pin_ref`。`insert_between` 还必须带 `link_ref`。不要只传 `link_ref`。
+`append_after` 使用 `block_id + group_entry_node_path + node_ref + pin_ref`。`insert_between` 还必须带 `link_ref`。
 
-函数调用语句使用 `args`，每个参数值使用 `{ "kind": "literal", "value_type": "...", "value": ... }`；不要使用 `params` 或 plain value。
+Graph body 里的函数调用使用 `args` 表达函数参数。这里的 `args` 不是 MCP 工具参数包装。
+
+## Frozen Boundary
+
+底层 capability 入口只供 Task Runtime、测试和专家诊断使用。普通 Agent 不从 AgentGuide 选择这些入口。preview blocked 时停止报告或修正 TaskSpec。

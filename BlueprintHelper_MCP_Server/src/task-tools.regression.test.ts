@@ -471,6 +471,42 @@ test('preview_task preserves Bridge ToolResultBase errors for blocked GraphWrite
   assert.equal(issues[0]?.code, 'target_graph_type_invalid');
 });
 
+test('preview_task replaces empty Bridge ToolResultBase error messages with a useful fallback', async () => {
+  const tools = registerWithBridge(async (): Promise<BridgeResponse> => ({
+    request_id: 'preview_failed_empty_message',
+    success: false,
+    error_code: 'execution_failed',
+    message: '',
+    result: {
+      ok: false,
+      schema: 'BlueprintHelper.McpToolResult.v1',
+      operation: 'preview_task_plan',
+      trace_id: 'trace_preview_failed_empty_message',
+      status: 'failed',
+      modified: false,
+      error: {
+        code: 'composite_preview_failed',
+        stage: 'preflight',
+        message: '',
+        retryable: false,
+        rollback_result: 'not_needed',
+        field: 'task_plan.steps[0]',
+      },
+    },
+  }));
+
+  const tool = tools.get('blueprinthelper_preview_task');
+  assert.ok(tool);
+
+  const result = await invokeTool(tool, { task_spec: makeTaskSpec() });
+
+  assert.equal(result.isError, true);
+  const error = result.structuredContent?.error as Record<string, unknown>;
+  assert.equal(error.code, 'composite_preview_failed');
+  assert.equal(error.message, 'Bridge dry-run failed.');
+  assert.equal(error.field, 'task_plan.steps[0]');
+});
+
 test('preview_task compiles Blueprint Variables TaskSpec and previews a UE TaskPlan', async () => {
   const calls: Array<{ command: string; payload: Record<string, unknown> | undefined }> = [];
   const tools = registerWithBridge(async (command, payload) => {
@@ -690,6 +726,64 @@ test('execute_task preserves Bridge ToolResultBase errors for failed writes', as
   assert.equal(error.message, 'Agent import failed while creating custom_event body.');
   assert.equal(error.rollback_result, 'rolled_back');
   assert.equal(error.field, 'task_plan.steps[1].write.ops[0]');
+});
+
+test('execute_task replaces empty Bridge ToolResultBase error messages with a useful fallback', async () => {
+  const calls: Array<{ command: string; payload: Record<string, unknown> | undefined }> = [];
+  const tools = registerWithBridge(async (command, payload): Promise<BridgeResponse> => {
+    calls.push({ command, payload });
+    if (command === 'preview_task_plan') {
+      return {
+        request_id: 'preview',
+        success: true,
+        result: {
+          status: 'dry_run',
+          data: {
+            schema: 'BlueprintHelper.TaskRuntimeResult.v1',
+            dry_run: { can_execute: true, warnings: [], conflicts: [], errors: [] },
+            steps: [],
+          },
+        },
+      };
+    }
+
+    return {
+      request_id: 'execute_failed_empty_message',
+      success: false,
+      error_code: 'execution_failed',
+      message: '',
+      result: {
+        ok: false,
+        schema: 'BlueprintHelper.McpToolResult.v1',
+        operation: 'execute_task_plan',
+        trace_id: 'trace_execute_failed_empty_message',
+        status: 'failed',
+        modified: false,
+        error: {
+          code: 'link_create_failed',
+          stage: 'execute',
+          message: '',
+          retryable: false,
+          rollback_result: 'rolled_back',
+          field: 'task_plan.steps[0].write.ops[0]',
+        },
+      },
+    };
+  });
+
+  const tool = tools.get('blueprinthelper_execute_task');
+  assert.ok(tool);
+
+  const result = await invokeTool(tool, { task_spec: makeTaskSpec() });
+
+  assert.equal(result.isError, true);
+  assert.match(result.content[0]?.text ?? '', /Bridge write failed\./);
+  assert.deepEqual(calls.map((call) => call.command), ['preview_task_plan', 'execute_task_plan']);
+  const error = result.structuredContent?.error as Record<string, unknown>;
+  assert.equal(error.code, 'link_create_failed');
+  assert.equal(error.message, 'Bridge write failed.');
+  assert.equal(error.rollback_result, 'rolled_back');
+  assert.equal(error.field, 'task_plan.steps[0].write.ops[0]');
 });
 
 test('get_task_result falls back to UE TaskRunJournal when not stored in process', async () => {

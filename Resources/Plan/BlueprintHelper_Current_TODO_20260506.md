@@ -20,15 +20,20 @@
 - [x] Document `blueprinthelper_preview_task` / `blueprinthelper_execute_task` wrapper: `{ "task_spec": { ... } }`.
 - [x] Document Merge anchor field matrix: `append_after` uses `node_ref + pin_ref`; `insert_between` also requires `link_ref`; `link_ref` alone is invalid.
 - [x] Document function call argument format: use `args` with structured literal values; do not use `params` or plain values.
-- [ ] Improve MCP/UE error detail for `append_after + custom_event_call`, which currently returns an empty preview error.
-- [ ] Align runtime profile capability flags with verified GraphWrite Replace/Patch/Merge execution so profile no longer reports stale `not_implemented` facts.
+- [x] Improve MCP/UE error detail for `append_after + custom_event_call`: 2026-05-07 smoke now returns diagnosable preview blocker `anchor_exec_pin_already_connected` with message/path.
+- [x] Normalize empty task-level errors for GraphWrite execute failures: MCP task wrappers now ignore empty nested Bridge messages, and Bridge TaskRuntime preview/execute/get-journal entry points provide non-empty fallback messages.
+- [x] Align runtime profile capability flags with verified GraphWrite Replace/Patch/Merge execution: source no longer reports `graph_write.merge = not_implemented`; UE smoke rerun still requires local build/editor reload.
 
 ## Remaining P1 validation gaps before or during P2
 
-- [ ] `branch_fork` merge strategy needs a UE smoke fixture.
+- [x] `branch_fork` merge strategy has a UE smoke fixture: preview passes through TaskSpec -> TaskPlan -> Bridge -> UE preview; execute currently fails with an empty error and no task_run_id.
+- [x] `branch_fork` execute implementation / error normalization source fix integrated: `owned_block_call` now resolves an existing BlueprintHelper-owned custom event block and creates a callable node before applying `branch_fork`.
+- [ ] Rerun `branch_fork` execute smoke after local UE build / Editor reload; Codex build attempt is blocked before plugin compilation by project/sibling-plugin `Intermediate` write restrictions.
+- [x] AssetFactory normalizes ordinary Blueprint fixture creation: TaskSpec `asset_type=blueprint` and `asset_type=Actor` now lower to `asset_type=blueprint_class` with `parent_class=Actor`; UE TaskRuntime and direct Bridge `create_asset` share the same parser.
 - [ ] Level 6 disposable fixtures are still needed for ClassSettings, UMGWidget, and DataTable execute smoke.
 - [ ] Level 8 controlled failure fixture is still needed for TaskRunJournal partial failure / topology blocking smoke.
 - [ ] Composite `create_blueprint_feature` execute fixture still needs a disposable asset target.
+- [ ] Fix `create_blueprint_feature` preview empty-error anti-pattern discovered while attempting fixture creation for ClassSettings smoke.
 - [ ] Non-BlueprintHelper-owned graph content still needs a stable read/write anchor contract.
 - [ ] GUID remains expert/debug fallback only; do not move it back into the Agent-facing main write contract.
 - [ ] Future migration/repair may clean legacy `NodeComment` ownership fragments after fallback behavior and smoke coverage are agreed.

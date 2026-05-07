@@ -11,7 +11,9 @@
 #include "GraphSupport/BlueprintHelperGraphResolver.h"
 #include "K2Node_CallFunction.h"
 #include "K2Node_CustomEvent.h"
+#include "K2Node_ExecutionSequence.h"
 #include "K2Node_IfThenElse.h"
+#include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Logic/BlueprintHelperLogicJsonPathService.h"
 #include "Misc/AutomationTest.h"
@@ -319,6 +321,38 @@ namespace
 		return Payload;
 	}
 
+	TSharedRef<FJsonObject> MakeBranchForkOwnedBlockCallPayload(
+		const FBlockScopedGraph& Fixture,
+		const FString& InsertedBlockId)
+	{
+		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+
+		TSharedRef<FJsonObject> Target = MakeShared<FJsonObject>();
+		Target->SetStringField(TEXT("asset_path"), Fixture.Blueprint->GetPathName());
+		Target->SetStringField(TEXT("graph"), Fixture.Graph->GetName());
+		Target->SetStringField(TEXT("merge_scope"), TEXT("owned_block_call"));
+		Target->SetStringField(TEXT("insert_strategy"), TEXT("branch_fork"));
+		Payload->SetObjectField(TEXT("target"), Target);
+
+		TSharedRef<FJsonObject> Anchor = MakeShared<FJsonObject>();
+		Anchor->SetStringField(TEXT("block_id"), Fixture.BlockId);
+		Anchor->SetStringField(TEXT("group_entry_node_path"), Fixture.OwnedEntry->GetName());
+		Anchor->SetStringField(TEXT("node_ref"), TEXT("nodes[0]"));
+		Anchor->SetStringField(TEXT("pin_ref"), TEXT("Then"));
+		Payload->SetObjectField(TEXT("anchor"), Anchor);
+
+		TSharedRef<FJsonObject> Inserted = MakeShared<FJsonObject>();
+		Inserted->SetStringField(TEXT("block_id"), InsertedBlockId);
+		Payload->SetObjectField(TEXT("inserted"), Inserted);
+
+		TArray<TSharedPtr<FJsonValue>> SequenceOrder;
+		SequenceOrder.Add(MakeShared<FJsonValueString>(TEXT("inserted_logic")));
+		SequenceOrder.Add(MakeShared<FJsonValueString>(TEXT("original_successor")));
+		Payload->SetArrayField(TEXT("sequence_order"), SequenceOrder);
+		Payload->SetBoolField(TEXT("dry_run"), false);
+		return Payload;
+	}
+
 	UK2Node_CallFunction* FindCallFunctionNode(UEdGraph* Graph, const FName FunctionName)
 	{
 		if (!Graph)
@@ -335,6 +369,41 @@ namespace
 			}
 		}
 		return nullptr;
+	}
+
+	UK2Node_ExecutionSequence* FindSequenceNode(UEdGraph* Graph)
+	{
+		if (!Graph)
+		{
+			return nullptr;
+		}
+
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (UK2Node_ExecutionSequence* SequenceNode = Cast<UK2Node_ExecutionSequence>(Node))
+			{
+				return SequenceNode;
+			}
+		}
+		return nullptr;
+	}
+
+	TArray<UEdGraphPin*> FindExecPins(UEdGraphNode* Node, EEdGraphPinDirection Direction)
+	{
+		TArray<UEdGraphPin*> Pins;
+		if (!Node)
+		{
+			return Pins;
+		}
+
+		for (UEdGraphPin* Pin : Node->Pins)
+		{
+			if (Pin && Pin->Direction == Direction && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+			{
+				Pins.Add(Pin);
+			}
+		}
+		return Pins;
 	}
 }
 
@@ -544,6 +613,73 @@ bool FBlueprintHelperGraphWriteMergeInsertBetweenBlockScopedAnchorTest::RunTest(
 	TestTrue(TEXT("owned anchor now links to inserted function"), OwnedThenPin && InsertedExecIn && OwnedThenPin->LinkedTo.Contains(InsertedExecIn));
 	TestTrue(TEXT("inserted function links to original successor"), InsertedExecOut && BranchExecIn && InsertedExecOut->LinkedTo.Contains(BranchExecIn));
 	TestFalse(TEXT("old direct link is replaced"), OwnedThenPin && BranchExecIn && OwnedThenPin->LinkedTo.Contains(BranchExecIn));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteMergeBranchForkOwnedBlockCallTest,
+	"BlueprintHelper.GraphWrite.BlockScopedAnchors.MergeBranchForkOwnedBlockCall",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteMergeBranchForkOwnedBlockCallTest::RunTest(const FString& Parameters)
+{
+	const FBlockScopedGraph Fixture = MakeBlockScopedGraph(TEXT("MergeBranchForkOwnedBlockCall"));
+	TestNotNull(TEXT("test blueprint is created"), Fixture.Blueprint);
+	TestNotNull(TEXT("owned entry node is created"), Fixture.OwnedEntry);
+	TestNotNull(TEXT("owned branch node is created"), Fixture.OwnedBranch);
+	if (!Fixture.Blueprint || !Fixture.OwnedEntry || !Fixture.OwnedBranch)
+	{
+		return false;
+	}
+
+	UEdGraphPin* OwnedThenPin = FindPinByName(Fixture.OwnedEntry, TEXT("Then"));
+	UEdGraphPin* BranchExecIn = FindExecPin(Fixture.OwnedBranch, EGPD_Input);
+	TestTrue(TEXT("fixture starts with owned entry linked to owned branch"), ConnectExecPins(OwnedThenPin, BranchExecIn));
+	TestTrue(TEXT("owned entry has one original successor before branch fork"), OwnedThenPin && OwnedThenPin->LinkedTo.Num() == 1);
+	if (!OwnedThenPin || !BranchExecIn || OwnedThenPin->LinkedTo.Num() != 1)
+	{
+		return false;
+	}
+
+	const FString InsertedBlockId = FString::Printf(TEXT("%s_InsertedBlockScoped0"), *Fixture.Graph->GetName());
+	UK2Node_CustomEvent* InsertedOwnedEntry = AddCustomEventNode(Fixture.Graph, TEXT("OwnedInsertedBlock"));
+	TestNotNull(TEXT("inserted owned block entry is created"), InsertedOwnedEntry);
+	if (!InsertedOwnedEntry)
+	{
+		return false;
+	}
+	MarkNodeAsBlueprintHelperOwned(InsertedOwnedEntry, InsertedBlockId);
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Fixture.Blueprint);
+	FKismetEditorUtilities::CompileBlueprint(Fixture.Blueprint);
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperLogicJsonPathService PathService;
+	FBlueprintHelperTransactionJournalService JournalService;
+	FBlueprintHelperMergeBlueprintGraphService MergeService(Resolver, PathService, JournalService);
+
+	const FBlueprintHelperToolResultBase Result = MergeService.Execute(MakeBranchForkOwnedBlockCallPayload(Fixture, InsertedBlockId));
+
+	UK2Node_ExecutionSequence* SequenceNode = FindSequenceNode(Fixture.Graph);
+	UK2Node_CallFunction* InsertedCall = FindCallFunctionNode(Fixture.Graph, FName(TEXT("OwnedInsertedBlock")));
+	UEdGraphPin* SequenceExecIn = FindExecPin(SequenceNode, EGPD_Input);
+	const TArray<UEdGraphPin*> SequenceThenPins = FindExecPins(SequenceNode, EGPD_Output);
+	UEdGraphPin* InsertedExecIn = FindExecPin(InsertedCall, EGPD_Input);
+
+	TestTrue(TEXT("branch_fork executes through owned block call"), Result.bOk);
+	if (!Result.bOk && Result.Error.IsSet())
+	{
+		TestFalse(TEXT("branch_fork failure message is diagnosable"), Result.Error->Message.IsEmpty());
+	}
+	TestNotNull(TEXT("branch_fork creates a sequence node"), SequenceNode);
+	TestNotNull(TEXT("owned block call node is created"), InsertedCall);
+	TestTrue(TEXT("owned anchor now links to sequence input"), OwnedThenPin && SequenceExecIn && OwnedThenPin->LinkedTo.Contains(SequenceExecIn));
+	TestTrue(TEXT("sequence has at least two Then outputs"), SequenceThenPins.Num() >= 2);
+	if (SequenceThenPins.Num() >= 2)
+	{
+		TestTrue(TEXT("first branch calls inserted owned block"), InsertedExecIn && SequenceThenPins[0]->LinkedTo.Contains(InsertedExecIn));
+		TestTrue(TEXT("second branch preserves original successor"), BranchExecIn && SequenceThenPins[1]->LinkedTo.Contains(BranchExecIn));
+	}
+	TestFalse(TEXT("old direct link is replaced by sequence"), OwnedThenPin && BranchExecIn && OwnedThenPin->LinkedTo.Contains(BranchExecIn));
 	return true;
 }
 

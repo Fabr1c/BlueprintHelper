@@ -7,6 +7,76 @@ import type { BridgeResponse } from './bridge-client.js';
 import { registerWithBridge, registerResourcesWithBridge, invokeTool, withConnectedMcpServer } from './test-harness.js';
 
 const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const FROZEN_DESCRIPTION_PREFIX = 'FROZEN / Expert-only / Normal agents must not call directly';
+
+const AGENT_FACING_TOOL_NAMES = [
+  'blueprinthelper_read_agent_guide',
+  'blueprint_get_runtime_profile',
+  'blueprinthelper_diagnostics',
+  'blueprinthelper_diagnostics_runtime',
+  'blueprinthelper_read_context',
+  'blueprinthelper_read_task_context',
+  'blueprinthelper_read_reference_context',
+  'blueprinthelper_preview_task',
+  'blueprinthelper_execute_task',
+  'blueprinthelper_get_task_result',
+];
+
+const FROZEN_EXPERT_TOOL_NAMES = [
+  'blueprint_get_editor_context',
+  'blueprint_get_logic_md',
+  'blueprint_create_asset',
+  'blueprint_add_component',
+  'blueprint_import_json_to_graph',
+  'blueprint_compile_blueprint',
+  'blueprint_save_asset',
+  'blueprint_close_editor',
+  'blueprint_play_in_editor',
+  'blueprint_exec_console_command',
+  'blueprint_build_project',
+];
+
+const AGENT_GUIDE_FORBIDDEN_PATTERNS = [
+  /\bblueprint_add_[a-z_]+\b/,
+  /\bblueprint_set_[a-z_]+\b/,
+  /\bblueprint_import_[a-z_]+\b/,
+  /\bblueprint_export_[a-z_]+\b/,
+  /\bblueprint_compile_[a-z_]+\b/,
+  /\bblueprint_save_[a-z_]+\b/,
+  /\bblueprint_open_asset\b/,
+  /\bblueprint_close_editor\b/,
+  /\bblueprint_play_in_editor\b/,
+  /\bblueprint_stop_pie\b/,
+  /\bblueprint_undo\b/,
+  /\bblueprint_redo\b/,
+  /\bblueprint_exec_console_command\b/,
+  /\bblueprint_build_project\b/,
+  /\bblueprint_create_blueprint\b/,
+  /\bblueprint_get_logic(?:_md|_json)?\b/,
+  /\bblueprint_get_widget_[a-z_]+\b/,
+  /\bblueprint_get_datatable_[a-z_]+\b/,
+  /\bblueprint_get_object_[a-z_]+\b/,
+  /\bPIE\b/,
+  /\bconsole\b/i,
+  /控制台/,
+];
+
+function readAgentGuideMarkdownFiles(): Array<{ file: string; text: string }> {
+  const root = path.resolve(PLUGIN_ROOT, 'Resources', 'AgentGuide');
+  const files: Array<{ file: string; text: string }> = [];
+  const visit = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        visit(fullPath);
+      } else if (entry.isFile() && entry.name.endsWith('.md')) {
+        files.push({ file: path.relative(root, fullPath), text: readFileSync(fullPath, 'utf8') });
+      }
+    }
+  };
+  visit(root);
+  return files;
+}
 
 test('blueprint_export_to_json accepts current and legacy scope values', () => {
   const tools = registerWithBridge(async () => ({ request_id: 'test', success: true }));
@@ -43,6 +113,38 @@ test('blueprint_import_json_to_graph defaults to strict import without manual au
   assert.equal(Object.hasOwn(calls[0].payload ?? {}, 'auth_token'), false);
 });
 
+test('registered non-default tools remain available but are marked frozen expert-only', () => {
+  const tools = registerWithBridge(async () => ({ request_id: 'test', success: true }));
+
+  for (const name of FROZEN_EXPERT_TOOL_NAMES) {
+    const tool = tools.get(name);
+    assert.ok(tool, `${name} should remain registered for compatibility`);
+    assert.ok(
+      tool.description?.includes(FROZEN_DESCRIPTION_PREFIX),
+      `${name} description should include frozen expert-only guidance`,
+    );
+  }
+});
+
+test('agent-facing tools are not marked frozen', () => {
+  const tools = registerWithBridge(async () => ({ request_id: 'test', success: true }));
+
+  for (const name of AGENT_FACING_TOOL_NAMES) {
+    const tool = tools.get(name);
+    assert.ok(tool, `${name} should be registered`);
+    assert.equal(
+      tool.description?.includes(FROZEN_DESCRIPTION_PREFIX),
+      false,
+      `${name} should remain in the normal Agent surface`,
+    );
+  }
+
+  const openEditor = tools.get('blueprint_open_editor');
+  assert.ok(openEditor, 'blueprint_open_editor should remain registered as a preflight helper');
+  assert.equal(openEditor.description?.includes(FROZEN_DESCRIPTION_PREFIX), false);
+  assert.match(openEditor.description ?? '', /Preflight only/i);
+});
+
 test('blueprinthelper_read_agent_guide returns the AgentGuide onboarding index without Bridge', async () => {
   const calls: Array<{ command: string; payload: Record<string, unknown> | undefined }> = [];
   const tools = registerWithBridge(async (command, payload) => {
@@ -64,6 +166,27 @@ test('blueprinthelper_read_agent_guide returns the AgentGuide onboarding index w
   assert.equal(result.content[0].type, 'text');
   assert.equal(result.content[0].text, expected);
   assert.deepEqual(calls, []);
+});
+
+test('blueprinthelper_read_agent_guide does not expose frozen tool names', async () => {
+  const tools = registerWithBridge(async () => ({ request_id: 'test', success: true }));
+  const tool = tools.get('blueprinthelper_read_agent_guide');
+  assert.ok(tool);
+
+  const result = await invokeTool(tool, {});
+  const text = result.content[0].text ?? '';
+
+  for (const pattern of AGENT_GUIDE_FORBIDDEN_PATTERNS) {
+    assert.doesNotMatch(text, pattern);
+  }
+});
+
+test('AgentGuide markdown does not document frozen direct tool calls', () => {
+  for (const { file, text } of readAgentGuideMarkdownFiles()) {
+    for (const pattern of AGENT_GUIDE_FORBIDDEN_PATTERNS) {
+      assert.doesNotMatch(text, pattern, `${file} should not expose ${pattern}`);
+    }
+  }
 });
 
 test('blueprinthelper_read_context reads blueprint logic as LogicMd through ReadContextPack', async () => {

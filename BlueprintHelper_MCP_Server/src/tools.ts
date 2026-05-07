@@ -51,6 +51,8 @@ const rawJsonInputSchema = z.union([
 
 const LEGACY_TOOL_GUIDANCE =
   'Normal Agents should prefer blueprinthelper_read_agent_guide, blueprinthelper_read_context, blueprinthelper_preview_task, and blueprinthelper_execute_task.';
+const FROZEN_TOOL_PREFIX =
+  'FROZEN / Expert-only / Normal agents must not call directly.';
 
 const AGENT_GUIDE_INDEX_RELATIVE_PATH = path.join(
   'Resources',
@@ -59,11 +61,15 @@ const AGENT_GUIDE_INDEX_RELATIVE_PATH = path.join(
 );
 
 function legacyDebugExpertDescription(description: string): string {
-  return `[Legacy/internal/debug/expert] ${description} ${LEGACY_TOOL_GUIDANCE}`;
+  return `${FROZEN_TOOL_PREFIX} [Legacy/internal/debug/expert] ${description} ${LEGACY_TOOL_GUIDANCE}`;
 }
 
 function legacyWriteExpertDescription(description: string): string {
-  return `[Legacy/internal/debug/expert write] ${description} ${LEGACY_TOOL_GUIDANCE}`;
+  return `${FROZEN_TOOL_PREFIX} [Legacy/internal/debug/expert write] ${description} ${LEGACY_TOOL_GUIDANCE}`;
+}
+
+function preflightOnlyDescription(description: string): string {
+  return `Preflight only. ${description} Use this only to start the explicit target editor before TaskSpec-first work. ${LEGACY_TOOL_GUIDANCE}`;
 }
 
 /** 将 Bridge 响应转换为 MCP tool result */
@@ -678,7 +684,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     'blueprinthelper_diagnostics_runtime',
     {
       description:
-        legacyDebugExpertDescription('执行运行时诊断检查（要求 UE Editor Bridge 可达）。检查 UE Editor 运行状态、Bridge 连接、Runtime Profile 可用性、写权限、风险命令、Project Marker 等运行时链路状态。返回 Markdown 诊断报告。'),
+        'Run BlueprintHelper runtime diagnostics when the UE Editor Bridge is reachable. Checks editor status, Bridge connectivity, runtime profile, write permission, risk-command state, and project markers. Read-only Agent-facing diagnostic tool.',
       inputSchema: z.object({}),
     },
     async () => {
@@ -2290,7 +2296,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
   'blueprint_open_editor',
   {
     description:
-      legacyWriteExpertDescription('Launch Unreal Editor for the current project by opening its .uproject file, then wait for the BlueprintHelper Bridge server to become available. Requires UE_ENGINE_DIR and UE_PROJECT_FILE env vars. UE_PROJECT_FILE must be an absolute path to the .uproject file (e.g. G:/UnrealPractise/MrStone/MrStone.uproject). Template variables like ${workspaceFolder} are automatically expanded at startup.'),
+      preflightOnlyDescription('Launch Unreal Editor for the current project by opening its .uproject file, then wait for the BlueprintHelper Bridge server to become available. Requires UE_ENGINE_DIR and UE_PROJECT_FILE env vars. UE_PROJECT_FILE must be an absolute path to the .uproject file, for example G:/UnrealPractise/MrStone/MrStone.uproject. Template variables like ${workspaceFolder} are automatically expanded at startup.'),
     inputSchema: z.object({
       wait_timeout_ms: z
         .number()

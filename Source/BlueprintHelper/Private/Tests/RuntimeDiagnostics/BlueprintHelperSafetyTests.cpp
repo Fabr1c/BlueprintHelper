@@ -303,6 +303,34 @@ bool HasAgentDiagnosticCode(const FBlueprintHelperAgentImportResult& Result, con
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperRuntimeProfileGraphWriteMergeAvailableTest,
+	"BlueprintHelper.RuntimeDiagnostics.RuntimeProfile.GraphWriteMergeAvailable",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperRuntimeProfileGraphWriteMergeAvailableTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperScopedEnvVar BridgeToken(TEXT("BLUEPRINTHELPER_BRIDGE_TOKEN"), TEXT("runtime-profile-test-token"));
+	FBlueprintHelperRuntimeProfileService RuntimeProfileService;
+	const FBlueprintHelperRuntimeProfileData Profile = RuntimeProfileService.GetRuntimeProfile();
+
+	bool bReportsMergeNotImplemented = false;
+	for (const FBlueprintHelperUnavailableCapability& Item : Profile.ToolCapabilities.Unavailable)
+	{
+		if (Item.Cluster == TEXT("graph_write") &&
+			Item.Capability == TEXT("merge") &&
+			Item.Status == EBlueprintHelperCapabilityStatus::Unavailable &&
+			Item.Reason == EBlueprintHelperCapabilityUnavailableReason::NotImplemented)
+		{
+			bReportsMergeNotImplemented = true;
+			break;
+		}
+	}
+
+	TestFalse(TEXT("runtime profile no longer reports graph_write.merge as not_implemented"), bReportsMergeNotImplemented);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperRequestValidatorScopeTest,
 	"BlueprintHelper.Safety.RequestValidator.NormalizesExportScope",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

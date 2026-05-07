@@ -1868,13 +1868,16 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandlePreviewTaskPl
 	const FBlueprintHelperBridgeRequest& Req) const
 {
 	const FBlueprintHelperToolResultBase Result = TaskRuntimeService.PreviewTaskPlan(Req.Payload);
+	const FString ErrorMessage = Result.Error.IsSet() && !Result.Error->Message.IsEmpty()
+		? Result.Error->Message
+		: TEXT("preview_task_plan 执行失败。");
 
 	FBlueprintHelperBridgeResponse Resp = Result.bOk
 		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
 		: FBlueprintHelperBridgeResponse::Error(
 			Req.RequestId,
 			EBlueprintHelperBridgeError::ExecutionFailed,
-			Result.Error.IsSet() ? Result.Error->Message : TEXT("preview_task_plan 执行失败。"));
+			ErrorMessage);
 
 	Resp.Result = Result.ToJson();
 	return Resp;
@@ -1884,13 +1887,16 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleExecuteTaskPl
 	const FBlueprintHelperBridgeRequest& Req) const
 {
 	const FBlueprintHelperToolResultBase Result = TaskRuntimeService.ExecuteTaskPlan(Req.Payload);
+	const FString ErrorMessage = Result.Error.IsSet() && !Result.Error->Message.IsEmpty()
+		? Result.Error->Message
+		: TEXT("execute_task_plan 执行失败。");
 
 	FBlueprintHelperBridgeResponse Resp = Result.bOk
 		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
 		: FBlueprintHelperBridgeResponse::Error(
 			Req.RequestId,
 			EBlueprintHelperBridgeError::ExecutionFailed,
-			Result.Error.IsSet() ? Result.Error->Message : TEXT("execute_task_plan 执行失败。"));
+			ErrorMessage);
 
 	Resp.Result = Result.ToJson();
 	return Resp;
@@ -1906,12 +1912,15 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleGetTaskRunJou
 	}
 
 	const FBlueprintHelperToolResultBase Result = TaskRuntimeService.GetTaskRunJournal(TaskRunId);
+	const FString ErrorMessage = Result.Error.IsSet() && !Result.Error->Message.IsEmpty()
+		? Result.Error->Message
+		: TEXT("get_task_run_journal 执行失败。");
 	FBlueprintHelperBridgeResponse Resp = Result.bOk
 		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
 		: FBlueprintHelperBridgeResponse::Error(
 			Req.RequestId,
 			EBlueprintHelperBridgeError::ExecutionFailed,
-			Result.Error.IsSet() ? Result.Error->Message : TEXT("get_task_run_journal 执行失败。"));
+			ErrorMessage);
 
 	Resp.Result = Result.ToJson();
 	return Resp;
@@ -3352,19 +3361,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleCreateAsset(
 
 	// 解析 asset_type
 	EBlueprintHelperAssetType AssetType = EBlueprintHelperAssetType::Unknown;
-	if (AssetTypeStr.Equals(TEXT("blueprint_class"), ESearchCase::IgnoreCase))
-		AssetType = EBlueprintHelperAssetType::BlueprintClass;
-	else if (AssetTypeStr.Equals(TEXT("blueprint_interface"), ESearchCase::IgnoreCase))
-		AssetType = EBlueprintHelperAssetType::BlueprintInterface;
-	else if (AssetTypeStr.Equals(TEXT("structure"), ESearchCase::IgnoreCase))
-		AssetType = EBlueprintHelperAssetType::Structure;
-	else if (AssetTypeStr.Equals(TEXT("input_action"), ESearchCase::IgnoreCase))
-		AssetType = EBlueprintHelperAssetType::InputAction;
-	else if (AssetTypeStr.Equals(TEXT("input_mapping_context"), ESearchCase::IgnoreCase))
-		AssetType = EBlueprintHelperAssetType::InputMappingContext;
-	else if (AssetTypeStr.Equals(TEXT("data_asset"), ESearchCase::IgnoreCase))
-		AssetType = EBlueprintHelperAssetType::DataAsset;
-	else
+	if (!FBlueprintHelperAssetFactoryService::TryNormalizeAssetTypeAndParent(AssetTypeStr, ParentClass, AssetType))
 	{
 		return FBlueprintHelperBridgeResponse::Error(
 			Req.RequestId, EBlueprintHelperBridgeError::InvalidRequest,

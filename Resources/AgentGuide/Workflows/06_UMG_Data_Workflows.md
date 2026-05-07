@@ -1,94 +1,54 @@
-# 06 - UMG / DataAsset / DataTable 工作流
+# 06 - UMG Data Workflows
 
-## 1. UMG WidgetTree 读取
+UMG、DataAsset、DataTable 和 UObject 属性写入都走 TaskSpec-first。不要直接选择冻结入口。
 
-流程：
+## UMG
 
-```text
-resolve widget blueprint asset
- -> read widget tree
- -> locate widget by name/type/path
- -> read relevant properties
- -> plan tree/property changes
+1. 用 `blueprinthelper_read_context` 读取目标 Widget Blueprint 摘要。
+2. 用 `edit_umg_widget` 描述控件创建、属性更新或删除。
+3. preview 通过后执行。
+4. 写后读取上下文确认树结构或关键属性。
+
+TaskSpec behavior:
+
+```json
+{
+  "widget_strategy": "widget_blueprint_edit",
+  "changes": [
+    {
+      "kind": "update_widget_property",
+      "widget_name": "TitleText",
+      "property_name": "Text",
+      "value": "New Title"
+    }
+  ]
+}
 ```
 
-注意：
+## DataTable
 
-- 控件名必须唯一或使用完整层级路径。
-- 删除或移动控件前必须读取父子关系。
-- 对 Slot 属性、RenderTransform、Visibility、Text、Brush 等属性要区分控件属性和 Slot 属性。
+1. 读取目标表上下文或 reference context，确认 row struct 和 RowName。
+2. 用 `edit_data_table` 描述 add、update 或 delete。
+3. preview 通过后执行。
+4. 写后读取目标行确认。
 
-## 2. UMG 添加控件
+TaskSpec behavior:
 
-流程：
-
-```text
-read widget tree
- -> identify parent panel
- -> add widget with explicit class/name
- -> set properties
- -> read back tree
- -> save asset
+```json
+{
+  "row_strategy": "row_edit",
+  "rows": [
+    {
+      "action": "update",
+      "row_name": "Pistol",
+      "fields": {
+        "Damage": "25"
+      }
+    }
+  ]
+}
 ```
 
-默认规则：
+## Object Properties
 
-- 不要自动覆盖已有同名控件。
-- 不要在不知道父容器类型时猜 Slot 参数。
-- UI 布局变更后建议读取回查树结构和关键属性。
-
-## 3. DataAsset / UObject 属性读写
-
-流程：
-
-```text
-resolve asset path
- -> read object properties
- -> verify property name/type/current value
- -> set property
- -> read back property
- -> save asset
-```
-
-注意：
-
-- 枚举值、软对象路径、类路径、结构体字段必须按 UE 可序列化格式写入。
-- 不要把复杂结构体当作普通字符串写入。
-- 批量改属性时逐项报告成功/失败。
-
-## 4. DataTable 读取
-
-流程：
-
-```text
-resolve data table asset
- -> read row names or sample rows
- -> inspect row struct fields
- -> locate target RowName
-```
-
-注意：
-
-- RowName 是主键，不是普通字段。
-- 更新行前要确认字段名和字段类型。
-
-## 5. DataTable 添加 / 更新行
-
-流程：
-
-```text
-read schema/sample row
- -> validate new row fields
- -> add or update row
- -> read back row
- -> save asset
-```
-
-默认规则：
-
-- 更新行时只改用户要求的字段，除非用户明确要求整行覆盖。
-- 新增行应填齐必需字段；缺失字段时使用表结构默认值或报告无法确认。
-
-## 6. DataTable 删除行
-
-删除前必须读取目标行并确认 RowName。删除后读取 RowNames 回查，不要误删相近名称。
+用 `edit_object_properties` 描述属性路径和值。复杂结构体、枚举、软对象路径和类路径必须使用 UE 可导入文本格式。

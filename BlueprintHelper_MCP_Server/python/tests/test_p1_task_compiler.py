@@ -315,6 +315,47 @@ class P1TaskCompilerTests(unittest.TestCase):
             "task_plan": result["task_plan"],
         })
 
+    def test_compiles_actor_asset_alias_to_blueprint_class_parent(self):
+        result = compile_task_spec(make_base_spec(
+            "create_asset",
+            {
+                "asset_strategy": "ensure_asset",
+                "asset": {
+                    "asset_type": "Actor",
+                    "collision_policy": "reuse_if_exists",
+                },
+            },
+            target={
+                "asset_path": "/Game/BlueprintHelperTest/Smoke/BP_BH_ActorFixture",
+                "target_type": "blueprint",
+            },
+        ), dry_run=True)
+
+        op = result["task_plan"]["steps"][0]["write"]["ops"][0]
+        self.assertEqual(op["asset_type"], "blueprint_class")
+        self.assertEqual(op["parent_class"], "Actor")
+        self.assertEqual(op["collision"], "reuse_if_exists")
+
+    def test_compiles_blueprint_asset_alias_to_blueprint_class_with_parent(self):
+        result = compile_task_spec(make_base_spec(
+            "create_asset",
+            {
+                "asset_strategy": "ensure_asset",
+                "asset": {
+                    "asset_type": "blueprint",
+                    "parent_class": "Pawn",
+                },
+            },
+            target={
+                "asset_path": "/Game/BlueprintHelperTest/Smoke/BP_BH_PawnFixture",
+                "target_type": "blueprint",
+            },
+        ), dry_run=True)
+
+        op = result["task_plan"]["steps"][0]["write"]["ops"][0]
+        self.assertEqual(op["asset_type"], "blueprint_class")
+        self.assertEqual(op["parent_class"], "Pawn")
+
     def test_compiles_component_ops_to_one_taskplan_step_per_op(self):
         result = compile_task_spec(make_base_spec(
             "edit_blueprint_components",

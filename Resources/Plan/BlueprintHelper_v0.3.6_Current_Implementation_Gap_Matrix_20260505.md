@@ -24,10 +24,19 @@ Agent TaskSpec
 - [x] Ownership metadata / `NodeComment` 迁移边界已固定：新写入不再向 `NodeComment` 写 `block_id` / `tx`；机器字段统一写 `FMetaData`；`NodeComment` 中的 `block_id` 只作为旧资产 fallback。
 - [x] AgentGuide 已补 Rerun 4 试错暴露的三类规则：task tool 入参必须包 `task_spec`；Merge anchor 不允许只传 `link_ref`；函数调用参数必须使用结构化 `args`。
 
+## 2026-05-07 P1 Remaining Gap Smoke 同步
+
+- [x] `append_after + custom_event_call` 预览错误已可诊断：preview blocked 返回 `anchor_exec_pin_already_connected`，带 message 和 path，不再是空错误。
+- [x] `branch_fork` 已有 UE smoke fixture：preview 通过 TaskSpec -> Python compiler -> TaskPlan -> Bridge -> UE preview，`capability=graph_write`，`insert_flow` 结构化 IR 正确。
+- [x] `branch_fork` execute / empty-error source fix 已集成：MCP/Bridge 空错误归一化已补，UE MergeService `owned_block_call` 现在会解析已有 BlueprintHelper-owned CustomEvent block 并生成 call node 后再应用 `branch_fork`。
+- [ ] `branch_fork` execute 仍需本地 UE build / Editor reload 后复跑 smoke；Codex 环境的项目级 Build.bat 在进入插件编译前被 MrStone / sibling plugin `Intermediate` 写权限阻塞。
+- [ ] ClassSettings / UMGWidget / DataTable 仍 blocked_by_fixture：`BP_ClassSettingsSmoke`、`BPI_ClassSettingsSmoke`、`WBP_WidgetSmoke`、`DT_DataTableSmoke` 均缺失。
+- [x] fixture 创建路径的普通 Blueprint `create_asset` 问题已补 source fix：`asset_type=Actor` / `asset_type=blueprint` 归一为 `blueprint_class + parent_class=Actor`；`create_blueprint_feature` preview 空错误仍需后续归一化。
+
 当前仍不视为 P1 完全清空的边界项：
 
-- [ ] `append_after + custom_event_call` preview 仍返回空错误，需要补错误归一化或 UE 侧详细 error。
-- [ ] `branch_fork` merge strategy 尚未跑 UE smoke。
+- [x] `append_after + custom_event_call` preview 空错误已修复为可诊断 blocker；execute 仅在 preview 通过时再验证。
+- [ ] `branch_fork` merge strategy 已补 source fix，但 execute smoke 仍待本地 UE build / Editor reload 后复跑确认。
 - [ ] ClassSettings / UMGWidget / DataTable 仍缺 disposable fixture execute smoke。
 - [ ] TaskRunJournal partial failure / topology blocking 仍缺 controlled failure fixture。
 - [ ] runtime profile 中的 GraphWrite merge/journal/review/store 能力标记可能滞后于实际执行能力，需要单独同步。
@@ -115,7 +124,7 @@ GraphWrite `replace_owned_graph` / `patch_owned_graph` / `merge_owned_graph` 的
 - [x] 2026-05-05 smoke rerun 已确认 `create_asset`、`edit_blueprint_components`、`create_blueprint_feature` 的 TaskSpec -> preview 闭环通过；Composite preview 能分解为 component / variable / signature / graph_write 多 step TaskPlan。
 - [x] 2026-05-06 smoke rerun 已确认 GraphWrite Replace/Patch/Merge 正确 TaskSpec shape：Replace 通过 Python compiler、Bridge preview、Bridge execute、compile 历史全链路；Patch/Merge 通过 Python compiler，但当时 Bridge preview 被旧 read ref / write anchor 不兼容阻塞。
 - [x] LogicJson `target_type=custom_event` 自定义图查找问题已修复并通过 smoke read-back；LogicJson 能在自定义图中定位 Custom Event。
-- [ ] ClassSettings / UMGWidget / DataTable 仍缺 disposable fixture smoke。
+- [ ] ClassSettings / UMGWidget / DataTable 仍缺 disposable fixture smoke；2026-05-07 smoke 确认 fixture assets 缺失，未进入 execute。
 - [x] GraphWrite Replace/Patch/Merge 子字段合同已固定；Replace execute 已通过；Patch/Merge 读写锚点合同已固定为 grouped LogicJson / block-scoped anchor，LogicJson 输出、compiler lowering、UE block-scoped resolver 源码已补；Replace body exec link 重建源码也已补。下一步是本地 build/smoke 验证。
 - [x] P2 首批三簇源码接线已完成到 TaskSpec-first 主线：`blueprint_signature`、`object_property`、`graph_cleanup_ownership` 均有 TaskPlan adapter / Runtime dispatch；`edit_object_properties` 与 `manage_blueprinthelper_ownership` 已接 TS/Python compiler。`blueprint_signature.remove_signature` 已接 TaskPlan preflight/blocked path，但不执行真实删除。
 - [ ] P2 首批三簇仍待统一 build、automation、disposable fixture smoke；当前只标记为 source integrated，不标记为 smoke verified。
@@ -138,7 +147,7 @@ GraphWrite `replace_owned_graph` / `patch_owned_graph` / `merge_owned_graph` 的
 | GraphWrite Append | Done + FieldMapping | 完成 | `AppendBlueprintGraphService` 完成 | `append_blueprint_graph` 完成 | 完成，`ensure_entry(custom_event)` structured IR lowering | 完成 `append_new_owned_graph` | execute smoke passed：`append_new_owned_graph + 新图名` | 扩展更多 entry/statement，不改变 TaskPlan 为结构化 IR 的方向 |
 | GraphWrite Replace | Done + FieldMapping | 完成 | `ReplaceBlueprintGraphService` 完成；preserved entry -> replacement body relink 与 ownership metadata 已验证 | `replace_blueprint_graph` 完成 | `replace_body` -> replace adapter lowering 已验证 | 完成 `replace_owned_graph` TaskSpec 编译 | smoke verified full pipeline | 保持 owned-block 约束；继续补非 owned anchor 决策 |
 | GraphWrite Patch | Done + FieldMapping | 完成 | `PatchBlueprintGraphService` 完成；block-scoped resolver 已验证可定位 Replace-created node | `patch_blueprint_graph` 完成 | `set_pin_default` / `set_node_comment` / `set_node_position` -> patch adapter lowering 已验证首片 | 完成 `patch_owned_graph` TaskSpec 编译 | smoke verified on owned block | 扩更多 patch fixture；非 owned anchor 另行决策 |
-| GraphWrite Merge | Done + FieldMapping | 完成 | `MergeBlueprintGraphService` 完成；block-scoped anchor resolver 与 insert flow 首片已验证 | `merge_blueprint_graph` 完成 | `insert_flow` -> merge adapter lowering 已验证 `insert_between` / `append_after` 首片 | 完成 `merge_owned_graph` TaskSpec 编译 | smoke verified for supported owned-block strategies | 补 `branch_fork` 与 `append_after + custom_event_call` 空错误 |
+| GraphWrite Merge | Done + FieldMapping | 完成 | `MergeBlueprintGraphService` 完成；block-scoped anchor resolver 与 insert flow 首片已验证；`branch_fork + owned_block_call` source fix 已补 | `merge_blueprint_graph` 完成 | `insert_flow` -> merge adapter lowering 已验证 `insert_between` / `append_after` 首片 | 完成 `merge_owned_graph` TaskSpec 编译 | smoke verified for supported owned-block strategies；`branch_fork` preview passed，execute source fix integrated / smoke rerun pending | 本地 UE build / Editor reload 后复跑 `branch_fork` execute；`append_after + custom_event_call` preview 已可诊断 |
 | Cleanup BlueprintHelper Block | Done + FieldMapping | 完成 | `CleanupBlueprintHelperBlockService` 完成 | `cleanup_blueprint_helper_block` 完成 | 已接 `graph_cleanup_ownership` adapter / Runtime dispatch | 已接 `manage_blueprinthelper_ownership` compiler | source integrated / smoke pending | 统一 smoke 后再标记完成；保持 internal TaskPlan capability，不新增 Agent-facing 原子写工具 |
 | Rollback Cleanup Transaction | Done + FieldMapping | 完成 | `RollbackCleanupTransactionService` 完成 | `rollback_cleanup_transaction` 完成 | 已接 `graph_cleanup_ownership` adapter / Runtime dispatch | 已接 `manage_blueprinthelper_ownership` compiler | source integrated / smoke pending | 作为 task rollback/journal 能力接入 Runtime，不作为普通写入默认步骤 |
 | Convert Block To User Owned | Done + FieldMapping | 完成 | `ConvertBlockToUserOwnedService` 完成 | `convert_blueprint_helper_block_to_user_owned` 完成 | 已接 `graph_cleanup_ownership` adapter / Runtime dispatch | 已接 `manage_blueprinthelper_ownership` compiler | source integrated / smoke pending | 统一 smoke 验证后再扩高风险 replace/remove 前置使用 |
@@ -258,19 +267,24 @@ GraphWrite `replace_owned_graph` / `patch_owned_graph` / `merge_owned_graph` 的
 
 ## 推荐下一步
 
-P0 与 P1 compiler/contract 首片已经完成，变量簇 member property/default/local variable 首片已经落到 UE Service + OperationHandler，且 `edit_blueprint_variables` 已完成 TaskSpec -> Execute smoke。AssetFactory 与 Component preview 已通过，ClassSettings、UMG、DataTable 还需要 disposable fixture。Composite `create_blueprint_feature` 已能把物理门这类核心功能 TaskSpec 分解为多 step TaskPlan，并已补 `integration.interface` 首片：确保接口、确保函数入口、用 GraphWrite replace_body 写接口函数实现；最新 smoke 已确认 composite preview 通过，下一步是 execute fixture。GraphWrite replace/patch/merge 的 TaskSpec compiler 与 Runtime lowering 已进入 Rerun 4 verified 状态：Replace full pipeline 与 read-back 通过，Patch 可修改 owned block，Merge 的 `insert_between + function_call`、`append_after + function_call`、`insert_between + custom_event_call` 已通过。
+P0 与 P1 compiler/contract 首片已经完成，变量簇 member property/default/local variable 首片已经落到 UE Service + OperationHandler，且 `edit_blueprint_variables` 已完成 TaskSpec -> Execute smoke。AssetFactory 与 Component preview 已通过，ClassSettings、UMG、DataTable 还需要 disposable fixture。Composite `create_blueprint_feature` 已能把物理门这类核心功能 TaskSpec 分解为多 step TaskPlan，并已补 `integration.interface` 首片：确保接口、确保函数入口、用 GraphWrite replace_body 写接口函数实现；最新 smoke 已确认 composite preview 通过，但 fixture 创建路径仍暴露 `create_blueprint_feature` 空错误归一化问题，下一步是 execute fixture 和错误归一化。GraphWrite replace/patch/merge 的 TaskSpec compiler 与 Runtime lowering 已进入 Rerun 4 verified 状态：Replace full pipeline 与 read-back 通过，Patch 可修改 owned block，Merge 的 `insert_between + function_call`、`append_after + function_call`、`insert_between + custom_event_call` 已通过；2026-05-07 smoke 进一步确认 `branch_fork` preview 可走通，后续已补 MCP/Bridge 空错误归一化与 `branch_fork + owned_block_call` source fix，仍需本地 UE build / Editor reload 后复跑 execute smoke。
 
 P2 首批三簇已进入源码接线阶段：`blueprint_signature`、`object_property`、`graph_cleanup_ownership` 都沿 TaskSpec -> TaskPlan -> Runtime dispatch 接入，不新增 Agent-facing 原子写工具。当前状态仍是 source integrated，不是 smoke verified；按用户安排，先不单独测试这些簇，等三个完整簇落齐后统一 build、automation 和 disposable fixture smoke。
 
-当前 P1/P2 剩余不阻塞继续开发的验证项是：ClassSettings/UMG/DataTable disposable fixture、Composite execute fixture、TaskRunJournal partial failure fixture、`branch_fork` merge fixture、`append_after + custom_event_call` 空错误、runtime profile 能力标记同步，以及 P2 首批三簇统一验证。
+当前 P1/P2 剩余不阻塞继续开发的验证项是：ClassSettings/UMG/DataTable disposable fixture、Composite execute fixture、TaskRunJournal partial failure fixture、`branch_fork` execute smoke rerun、`create_blueprint_feature` preview 空错误，以及 P2 首批三簇统一验证。`append_after + custom_event_call` 的 preview 空错误已降级为可诊断 blocker，runtime profile 的 GraphWrite merge stale 标记已从源码移除。
 
 ```text
 Prepare fixtures and rerun AssetFactory/Component/ClassSettings/UMG/DataTable/Composite execute smoke
 -> Add controlled partial-failure fixture for TaskRunJournal topology blocking
--> Fix append_after + custom_event_call empty error and add branch_fork smoke
+-> Rerun branch_fork execute smoke after local UE build / Editor reload, and fix create_blueprint_feature preview empty error
 -> Run grouped P2 verification for Signature / ObjectProperty / CleanupOwnership
 -> Function/Event Signature Management 后续字段和 remove execute policy
 -> DebugExport / LargePayload
 ```
 
 这样能继续沿 TaskSpec -> TaskPlan -> Runtime lowering 的结构化编辑语言方向扩展，不会退回到底层工具膨胀。
+
+## 2026-05-07 AssetFactory Blueprint Alias Follow-up
+
+- [x] Ordinary Blueprint fixture creation source fix integrated: `create_asset` accepts `asset_type=Actor` and `asset_type=blueprint` as `blueprint_class` with `parent_class=Actor`.
+- [ ] WidgetBlueprint and DataTable remain separate factory gaps; `create_blueprint_feature` preview empty-error remains open.

@@ -409,7 +409,7 @@ function bridgeFailureFromResponse(
   const nestedError = asRecord(result?.['error']);
   const code = readString(nestedError?.['code']) ?? response.error_code ?? fallbackCode;
   const responseMessage = readNonEmptyString(response.message);
-  const message = readString(nestedError?.['message']) ?? responseMessage ?? fallbackMessage;
+  const message = readNonEmptyString(nestedError?.['message']) ?? responseMessage ?? fallbackMessage;
   const field = readString(nestedError?.['field']);
   const dryRunIssues = extractDryRun(response).issues;
   const issues = dryRunIssues.length > 0
