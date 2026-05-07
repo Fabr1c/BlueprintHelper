@@ -101,6 +101,44 @@ def _make_graph_write_task_plan_steps(task_spec: Dict[str, Any], ops: List[Dict[
             graph_write_step["depends_on"] = [step["step_id"] for step in signature_steps]
         return signature_steps + [graph_write_step]
 
+    if strategy == "replace_owned_graph" and len(ops) == 1 and isinstance(ops[0].get("__signature_split"), dict):
+        signature_op = ops[0]["__signature_split"]
+        graph_write_step = {
+            "step_id": "step_002",
+            "capability": "graph_write",
+            "target": {
+                "asset_path": target["asset_path"],
+                "graph": scope_policy["graph_name"],
+            },
+            "write": {
+                "strategy": "owned_graph_edit",
+                "ops": [_strip_graph_write_compiler_metadata(ops[0])],
+            },
+            "constraints": {
+                "allow_modify_user_nodes": scope_policy["allow_modify_user_nodes"],
+                "ownership_scope": "blueprinthelper_owned",
+            },
+            "depends_on": ["step_001"],
+        }
+        signature_step = {
+            "step_id": "step_001",
+            "capability": "blueprint_signature",
+            "target": {
+                "asset_path": target["asset_path"],
+            },
+            "write": {
+                "strategy": "custom_event_signature",
+                "ops": [_omit_none({
+                    "op": signature_op["op"],
+                    "event_name": signature_op["event_name"],
+                    "graph_name": scope_policy["graph_name"],
+                    "inputs": signature_op.get("inputs"),
+                    "name_collision_policy": signature_op.get("name_collision_policy", "reuse_if_exists"),
+                })],
+            },
+        }
+        return [signature_step, graph_write_step]
+
     op_batches = [ops] if strategy == "append_new_owned_graph" else [[op] for op in ops]
     return [
         {
@@ -112,7 +150,7 @@ def _make_graph_write_task_plan_steps(task_spec: Dict[str, Any], ops: List[Dict[
             },
             "write": {
                 "strategy": "owned_graph_edit",
-                "ops": batch,
+                "ops": [_strip_graph_write_compiler_metadata(op) for op in batch],
             },
             "constraints": {
                 "allow_modify_user_nodes": scope_policy["allow_modify_user_nodes"],
@@ -121,6 +159,14 @@ def _make_graph_write_task_plan_steps(task_spec: Dict[str, Any], ops: List[Dict[
         }
         for index, batch in enumerate(op_batches)
     ]
+
+
+def _strip_graph_write_compiler_metadata(op: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        key: value
+        for key, value in op.items()
+        if key != "__signature_split"
+    }
 
 
 def compile_task_spec(task_spec: Dict[str, Any], dry_run: bool) -> Dict[str, Any]:
@@ -1261,11 +1307,12 @@ def _compile_replace_graph_write_op(behavior: Dict[str, Any]) -> Dict[str, Any]:
     _assert_allowed_string(
         replace_scope,
         "behavior.replace.scope",
-        {"custom_event_body", "function_body", "event_body", "block_implementation"},
-        "Use custom_event_body, function_body, event_body, or block_implementation.",
+        {"custom_event_definition", "custom_event_body", "function_body", "event_body", "block_implementation"},
+        "Use custom_event_definition, custom_event_body, function_body, event_body, or block_implementation.",
     )
+    graph_write_replace_scope = "custom_event_body" if replace_scope == "custom_event_definition" else replace_scope
     selector = _normalize_replace_selector(
-        replace_scope,
+        graph_write_replace_scope,
         _required_object(replace, "selector", "behavior.replace.selector"),
     )
     body = _required_logic_body(replace, "body", "behavior.replace.body")
@@ -1284,10 +1331,16 @@ def _compile_replace_graph_write_op(behavior: Dict[str, Any]) -> Dict[str, Any]:
 
     return _omit_none({
         "op": "replace_body",
-        "replace_scope": replace_scope,
+        "replace_scope": graph_write_replace_scope,
         "selector": selector,
         "replacement": replacement,
         "options": replace.get("options") if isinstance(replace.get("options"), dict) else None,
+        "__signature_split": {
+            "op": "ensure_custom_event",
+            "event_name": selector.get("entry_name"),
+            "inputs": replace.get("inputs"),
+            "name_collision_policy": replace.get("name_collision_policy", "reuse_if_exists"),
+        } if replace_scope == "custom_event_definition" else None,
     })
 
 

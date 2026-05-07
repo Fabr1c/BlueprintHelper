@@ -1,4 +1,4 @@
-// BlueprintHelper Service Layer — Debug Export / Large Payload 类型定义
+// BlueprintHelper Service Layer — Debug Export 类型定义
 
 #pragma once
 
@@ -32,19 +32,13 @@ inline const TCHAR* SnapshotTypeToString(EBlueprintHelperSnapshotType S)
 	}
 }
 
-enum class EBlueprintHelperLargePayloadReadMode : uint8 { Summary, Chunk };
-inline const TCHAR* LargePayloadReadModeToString(EBlueprintHelperLargePayloadReadMode M)
-{
-	switch (M) { case EBlueprintHelperLargePayloadReadMode::Summary: return TEXT("summary"); case EBlueprintHelperLargePayloadReadMode::Chunk: return TEXT("chunk"); default: return TEXT("unknown"); }
-}
-
 enum class EBlueprintHelperDebugExportErrorCode : uint8
 {
 	InvalidRequest, UnsupportedExportScope, UnsupportedSnapshotType,
 	AssetNotFound, TransactionNotFound, DebugBundleExportFailed,
 	TransactionDebugBundleExportFailed, AssetSnapshotExportFailed,
 	ResourceRefNotFound, ResourceRefExpired, ResourceRefForbidden,
-	ChunkIndexOutOfRange, PayloadReadFailed, SensitiveContentBlocked, InternalError
+	SensitiveContentBlocked, InternalError
 };
 inline const TCHAR* DebugExportErrorCodeToString(EBlueprintHelperDebugExportErrorCode C)
 {
@@ -61,8 +55,6 @@ inline const TCHAR* DebugExportErrorCodeToString(EBlueprintHelperDebugExportErro
 	case EBlueprintHelperDebugExportErrorCode::ResourceRefNotFound:                return TEXT("resource_ref_not_found");
 	case EBlueprintHelperDebugExportErrorCode::ResourceRefExpired:                 return TEXT("resource_ref_expired");
 	case EBlueprintHelperDebugExportErrorCode::ResourceRefForbidden:               return TEXT("resource_ref_forbidden");
-	case EBlueprintHelperDebugExportErrorCode::ChunkIndexOutOfRange:               return TEXT("chunk_index_out_of_range");
-	case EBlueprintHelperDebugExportErrorCode::PayloadReadFailed:                   return TEXT("payload_read_failed");
 	case EBlueprintHelperDebugExportErrorCode::SensitiveContentBlocked:            return TEXT("sensitive_content_blocked");
 	case EBlueprintHelperDebugExportErrorCode::InternalError:                       return TEXT("internal_error");
 	default:                                                                         return TEXT("unknown");
@@ -108,37 +100,4 @@ struct FBlueprintHelperExportAssetLogicSnapshotResultData
 	FString Schema = TEXT("ExportAssetLogicSnapshot.v1");
 	FBlueprintHelperDebugExportResult ExportResult;
 	TSharedRef<FJsonObject> ToJson() const { auto J = MakeShared<FJsonObject>(); J->SetStringField(TEXT("schema"), Schema); J->SetObjectField(TEXT("export_result"), ExportResult.ToJson()); return J; }
-};
-
-// ─── ReadLargePayloadRef ───
-
-struct FBlueprintHelperLargePayload
-{
-	TOptional<bool> bAvailable;
-	FString Format;
-	TOptional<int64> SizeBytes;
-	int32 ChunkCount = 0;
-	TOptional<int32> ChunkIndex;
-	TOptional<FString> Content;
-	TOptional<bool> bTruncated;
-
-	TSharedRef<FJsonObject> ToJson() const
-	{
-		TSharedRef<FJsonObject> J = MakeShared<FJsonObject>();
-		if (bAvailable.IsSet()) J->SetBoolField(TEXT("available"), *bAvailable);
-		J->SetStringField(TEXT("format"), Format);
-		if (SizeBytes.IsSet()) J->SetNumberField(TEXT("size_bytes"), static_cast<double>(*SizeBytes));
-		J->SetNumberField(TEXT("chunk_count"), ChunkCount);
-		if (ChunkIndex.IsSet()) J->SetNumberField(TEXT("chunk_index"), *ChunkIndex);
-		if (Content.IsSet()) J->SetStringField(TEXT("content"), *Content);
-		if (bTruncated.IsSet()) J->SetBoolField(TEXT("truncated"), *bTruncated);
-		return J;
-	}
-};
-
-struct FBlueprintHelperReadLargePayloadRefResultData
-{
-	FString Schema = TEXT("ReadLargePayloadRef.v1");
-	FBlueprintHelperLargePayload Payload;
-	TSharedRef<FJsonObject> ToJson() const { auto J = MakeShared<FJsonObject>(); J->SetStringField(TEXT("schema"), Schema); J->SetObjectField(TEXT("payload"), Payload.ToJson()); return J; }
 };

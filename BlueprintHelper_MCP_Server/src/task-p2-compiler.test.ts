@@ -189,6 +189,99 @@ test('compiles dispatcher override and remove signature policies into blueprint_
   });
 });
 
+test('compiles custom_event_definition into signature then graph body steps', () => {
+  const taskSpec = TaskSpecSchema.parse({
+    schema: 'BlueprintHelper.TaskSpec.v1',
+    task_type: 'edit_blueprint_graph',
+    feature_name: 'P2CustomEventDefinition',
+    target: {
+      asset_path: '/Game/BlueprintHelper/Smoke/BP_TaskSpecSmoke',
+      target_type: 'blueprint',
+    },
+    scope_policy: {
+      graph_name: 'EventGraph',
+      allow_modify_user_nodes: false,
+    },
+    execution_policy: { dry_run_mode: 'full' },
+    validation: { should_compile: false, should_save: true },
+    behavior: {
+      graph_strategy: 'replace_owned_graph',
+      replace: {
+        scope: 'custom_event_definition',
+        selector: {
+          kind: 'custom_event',
+          name: 'OnInteract',
+        },
+        inputs: [
+          { name: 'Instigator', pin_type: { category: 'object', subcategory_object: '/Script/Engine.Actor' } },
+        ],
+        body: {
+          schema: 'BlueprintLogicSpec.v1',
+          statements: [
+            {
+              kind: 'call_function',
+              name: 'PrintString',
+              args: {
+                InString: { kind: 'literal', value_type: 'string', value: 'interact' },
+              },
+            },
+          ],
+        },
+      },
+    },
+  });
+
+  const taskPlan = compileTaskSpecToTaskPlan(taskSpec);
+  TaskPlanSchema.parse(taskPlan);
+
+  assert.equal(taskPlan.steps.length, 2);
+  const signatureStep = taskPlan.steps[0] as Record<string, any>;
+  const graphStep = taskPlan.steps[1] as Record<string, any>;
+  assert.equal(signatureStep.capability, 'blueprint_signature');
+  assert.equal(signatureStep.write.strategy, 'custom_event_signature');
+  assert.deepEqual(signatureStep.write.ops[0], {
+    op: 'ensure_custom_event',
+    event_name: 'OnInteract',
+    graph_name: 'EventGraph',
+    inputs: [
+      { name: 'Instigator', pin_type: { category: 'object', subcategory_object: '/Script/Engine.Actor' } },
+    ],
+    name_collision_policy: 'reuse_if_exists',
+  });
+  assert.equal(graphStep.capability, 'graph_write');
+  assert.deepEqual(graphStep.depends_on, ['step_001']);
+  assert.equal(graphStep.write.ops[0].op, 'replace_body');
+  assert.equal(graphStep.write.ops[0].replace_scope, 'custom_event_body');
+  assert.equal(graphStep.write.ops[0].selector.entry_name, 'OnInteract');
+});
+
+test('compiles override event create_if_missing policy into blueprint_signature IR', () => {
+  const taskSpec = TaskSpecSchema.parse(baseTaskSpec('edit_blueprint_signature', {
+    signature_strategy: 'signature_edit',
+    changes: [
+      {
+        kind: 'ensure_override_event',
+        event_name: 'ReceiveBeginPlay',
+        event_kind: 'native_event',
+        graph_name: 'EventGraph',
+        execute_policy: 'create_if_missing',
+      },
+    ],
+  }));
+
+  const taskPlan = compileTaskSpecToTaskPlan(taskSpec);
+  TaskPlanSchema.parse(taskPlan);
+  const step = taskPlan.steps[0] as Record<string, any>;
+  assert.equal(step.write.strategy, 'override_event_signature');
+  assert.deepEqual(step.write.ops[0], {
+    op: 'ensure_override_event',
+    event_name: 'ReceiveBeginPlay',
+    event_kind: 'native_event',
+    graph_name: 'EventGraph',
+    execute_policy: 'create_if_missing',
+  });
+});
+
 test('rejects remove_signature when reference context is explicitly disabled', () => {
   const parsed = TaskSpecSchema.safeParse(baseTaskSpec('edit_blueprint_signature', {
     signature_strategy: 'signature_edit',

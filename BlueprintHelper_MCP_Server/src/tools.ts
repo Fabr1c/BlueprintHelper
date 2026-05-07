@@ -371,7 +371,6 @@ function toReadContextMcpResult(input: {
       payload,
       stats: isRecord(payload['stats']) ? payload['stats'] : {},
       truncated: false,
-      large_payload_ref: null,
     },
   };
 

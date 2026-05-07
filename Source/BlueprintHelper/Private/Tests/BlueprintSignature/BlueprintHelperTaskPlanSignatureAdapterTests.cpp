@@ -194,6 +194,7 @@ namespace
 		TSharedPtr<FJsonObject> Op = MakeShared<FJsonObject>();
 		Op->SetStringField(TEXT("op"), TEXT("ensure_override_event"));
 		Op->SetStringField(TEXT("event_name"), TEXT("ReceiveBeginPlay"));
+		Op->SetStringField(TEXT("graph_name"), TEXT("EventGraph"));
 		Op->SetStringField(TEXT("event_kind"), TEXT("native_event"));
 
 		TArray<TSharedPtr<FJsonValue>> Ops;
@@ -512,6 +513,10 @@ bool FBlueprintHelperTaskPlanSignatureAdapterEnsureOverrideEventBlockedPathTest:
 	FString EventKind;
 	TestTrue(TEXT("payload carries event_kind"), LoweredStep.Payload->TryGetStringField(TEXT("event_kind"), EventKind));
 	TestEqual(TEXT("event kind preserved"), EventKind, FString(TEXT("native_event")));
+
+	FString GraphName;
+	TestTrue(TEXT("payload carries graph_name"), LoweredStep.Payload->TryGetStringField(TEXT("graph_name"), GraphName));
+	TestEqual(TEXT("graph name preserved"), GraphName, FString(TEXT("EventGraph")));
 	return true;
 }
 

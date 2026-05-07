@@ -1,6 +1,6 @@
 # 04 - MCP Field Templates 20260507
 
-This page documents only the normal Agent-facing surface and TaskSpec fields. Frozen compatibility tools stay registered in MCP, but their direct argument shapes are intentionally not documented here.
+This page documents only the normal Agent-facing surface and TaskSpec fields. Compatibility-only tools may still exist in MCP, but their direct argument shapes are intentionally not documented here.
 
 ## 1. Transport Rules
 
@@ -155,6 +155,16 @@ Do not use `validation.compile` or `validation.save`.
 
 Use canonical `asset_type=blueprint_class` plus explicit `parent_class=Actor` for ordinary Actor Blueprint fixtures.
 
+Agent-facing `create_asset` fields under `behavior.asset`:
+
+| Field | Required | Purpose |
+|---|---|---|
+| `asset_type` | Required | Semantic asset kind. Prefer canonical values such as `blueprint_class`, `blueprint_interface`, `structure`, `input_action`, `input_mapping_context`, `data_asset`, `data_table`, and `widget_blueprint`. Accepted aliases include `blueprint`, `actor`, `Actor`, and `blueprintclass` for `blueprint_class`, plus `datatable` for `data_table`. |
+| `parent_class` | Conditional | Parent UObject class for Blueprint-class, WidgetBlueprint, or DataAsset-style assets when the factory needs a base class. For ordinary Actor Blueprint fixtures, set `parent_class=Actor` or `/Script/Engine.Actor` even if an alias would normalize to Actor. |
+| `fields` | Conditional | Structure field definitions for `asset_type=structure`. Each entry names a field and type; optional `default_value` may seed the struct field. This is not DataTable row data. |
+| `row_struct` | Conditional | Required for `asset_type=data_table` or alias `datatable`. It points to the row UStruct asset used by the DataTable. Row values are edited later through the DataTable TaskSpec flow. |
+| `collision_policy` | Optional | Asset collision handling. Prefer `reuse_if_exists` for idempotent smoke fixtures or `fail_if_exists` when reuse would hide a setup problem. |
+
 ## 8. Component Behavior
 
 ```json
@@ -236,7 +246,36 @@ Use canonical `asset_type=blueprint_class` plus explicit `parent_class=Actor` fo
 }
 ```
 
-## 13. Graph Write Behavior
+## 13. Function/Event Signature Behavior
+
+Function/Event signature edits are expressed through `task_type=edit_blueprint_signature`. These are TaskSpec fields only; Agents must not call any low-level signature or graph tools directly.
+
+```json
+{
+  "signature_strategy": "required. signature_edit.",
+  "changes": [
+    {
+      "kind": "required. ensure_function, ensure_interface_function, ensure_custom_event, ensure_interface_event, ensure_event_dispatcher, ensure_override_event, or remove_signature.",
+      "function_name": "required for ensure_function or ensure_interface_function.",
+      "event_name": "required for ensure_custom_event, ensure_interface_event, ensure_override_event, or native event entries.",
+      "dispatcher_name": "required for ensure_event_dispatcher and event_dispatcher remove_signature.",
+      "graph_name": "required for custom/interface event entries; optional for override/native events, default EventGraph.",
+      "inputs": "optional. Array of pin specs for function, custom event, interface event, dispatcher, or override/native event signatures.",
+      "outputs": "optional. Array of pin specs for function signatures.",
+      "interface_path": "required for interface function or interface event entries.",
+      "event_kind": "optional for ensure_override_event. native_event or override_event.",
+      "execute_policy": "optional. Defaults to blocked_preflight; ensure_override_event may use create_if_missing when the caller explicitly wants to create a missing native/override event entry.",
+      "signature_mismatch_policy": "optional. For ensure_event_dispatcher, use block.",
+      "signature_kind": "required for remove_signature unless it can be inferred from function_name, event_name, or dispatcher_name.",
+      "require_reference_context": "required true for remove_signature. Real removal remains blocked until reference-analysis cleanup policy lands."
+    }
+  ]
+}
+```
+
+For `replace_owned_graph` with `replace.scope=custom_event_definition`, the compiler splits the TaskSpec into two TaskPlan steps: first `blueprint_signature.ensure_custom_event`, then `graph_write.replace_body` with `custom_event_body`. The body remains GraphWrite-owned; the event declaration and pin signature remain Signature-owned.
+
+## 14. Graph Write Behavior
 
 ```json
 {
@@ -266,7 +305,36 @@ Block-scoped anchors must come from `blueprinthelper_read_context` with `view.fo
 }
 ```
 
-## 14. Function Call Body Statement
+For `merge_owned_graph` with `branch_fork`, keep the TaskSpec semantic and provide the strategy-specific fields:
+
+```json
+{
+  "kind": "insert_flow",
+  "scope": "owned_block_call",
+  "insert_strategy": "branch_fork",
+  "anchor": {
+    "block_id": "required. Existing BlueprintHelper-owned anchor block id.",
+    "group_entry_node_path": "required. Group entry node path from logic_json.",
+    "node_ref": "required. Anchor node ref inside the owned block.",
+    "pin_ref": "required. Anchor exec pin ref.",
+    "link_ref": "optional. Existing successor link ref when available."
+  },
+  "inserted": {
+    "call_kind": "owned_block_call",
+    "block_id": "required. Existing BlueprintHelper-owned CustomEvent block to call."
+  },
+  "sequence_order": [
+    "original_successor",
+    "inserted_logic"
+  ]
+}
+```
+
+`sequence_order` is required only for `branch_fork`, and values must be `original_successor` and `inserted_logic`. Preview must resolve `inserted.block_id` to a BlueprintHelper-owned CustomEvent block; missing, non-owned, or non-CustomEvent targets are preview blockers.
+
+After a successful `branch_fork` execute, read back LogicJson or LogicMd and verify the inserted Sequence or equivalent distribution node, the inserted call, and the original successor are reachable from the anchor, with no orphaned nodes in the affected flow.
+
+## 15. Function Call Body Statement
 
 ```json
 {
@@ -282,7 +350,7 @@ Block-scoped anchors must come from `blueprinthelper_read_context` with `view.fo
 }
 ```
 
-## 15. Task Result Query
+## 16. Task Result Query
 
 ```json
 {

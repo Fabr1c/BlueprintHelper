@@ -387,6 +387,12 @@ bool FBlueprintHelperSignatureTaskPlanAdapter::TryLowerTaskPlanStep(
 
 		Payload->SetStringField(TEXT("event_name"), EventName);
 
+		FString GraphName;
+		if (OpObject->TryGetStringField(TEXT("graph_name"), GraphName) && !GraphName.IsEmpty())
+		{
+			Payload->SetStringField(TEXT("graph_name"), GraphName);
+		}
+
 		FString EventKind;
 		if (OpObject->TryGetStringField(TEXT("event_kind"), EventKind) && !EventKind.IsEmpty())
 		{

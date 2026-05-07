@@ -356,6 +356,76 @@ class P1TaskCompilerTests(unittest.TestCase):
         self.assertEqual(op["asset_type"], "blueprint_class")
         self.assertEqual(op["parent_class"], "Pawn")
 
+    def test_compiles_structure_asset_fields(self):
+        result = compile_task_spec(make_base_spec(
+            "create_asset",
+            {
+                "asset_strategy": "ensure_asset",
+                "asset": {
+                    "asset_type": "structure",
+                    "fields": [
+                        {"name": "Damage", "type": "float"},
+                        {"name": "Ammo", "type": "int"},
+                    ],
+                    "collision_policy": "reuse_if_exists",
+                },
+            },
+            target={
+                "asset_path": "/Game/BlueprintHelper/Smoke/ST_DataTableSmokeRow",
+                "target_type": "asset",
+            },
+        ), dry_run=True)
+
+        op = result["task_plan"]["steps"][0]["write"]["ops"][0]
+        self.assertEqual(op["asset_type"], "structure")
+        self.assertEqual(op["fields"], [
+            {"name": "Damage", "type": "float"},
+            {"name": "Ammo", "type": "int"},
+        ])
+        self.assertEqual(op["collision"], "reuse_if_exists")
+
+    def test_compiles_data_table_asset_with_row_struct(self):
+        result = compile_task_spec(make_base_spec(
+            "create_asset",
+            {
+                "asset_strategy": "ensure_asset",
+                "asset": {
+                    "asset_type": "datatable",
+                    "row_struct": "/Game/BlueprintHelper/Smoke/ST_DataTableSmokeRow",
+                    "collision_policy": "reuse_if_exists",
+                },
+            },
+            target={
+                "asset_path": "/Game/BlueprintHelper/Smoke/DT_DataTableSmoke",
+                "target_type": "asset",
+            },
+        ), dry_run=True)
+
+        op = result["task_plan"]["steps"][0]["write"]["ops"][0]
+        self.assertEqual(op["asset_type"], "data_table")
+        self.assertEqual(op["row_struct"], "/Game/BlueprintHelper/Smoke/ST_DataTableSmokeRow")
+        self.assertEqual(op["collision"], "reuse_if_exists")
+
+    def test_compiles_widget_blueprint_alias(self):
+        result = compile_task_spec(make_base_spec(
+            "create_asset",
+            {
+                "asset_strategy": "ensure_asset",
+                "asset": {
+                    "asset_type": "widget",
+                    "collision_policy": "reuse_if_exists",
+                },
+            },
+            target={
+                "asset_path": "/Game/BlueprintHelper/Smoke/WBP_WidgetSmoke",
+                "target_type": "asset",
+            },
+        ), dry_run=True)
+
+        op = result["task_plan"]["steps"][0]["write"]["ops"][0]
+        self.assertEqual(op["asset_type"], "widget_blueprint")
+        self.assertEqual(op["collision"], "reuse_if_exists")
+
     def test_compiles_component_ops_to_one_taskplan_step_per_op(self):
         result = compile_task_spec(make_base_spec(
             "edit_blueprint_components",

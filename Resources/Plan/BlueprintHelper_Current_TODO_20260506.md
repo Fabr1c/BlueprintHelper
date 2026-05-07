@@ -26,11 +26,13 @@
 
 ## Remaining P1 validation gaps before or during P2
 
-- [x] `branch_fork` merge strategy has a UE smoke fixture: preview passes through TaskSpec -> TaskPlan -> Bridge -> UE preview; execute currently fails with an empty error and no task_run_id.
+- [x] `branch_fork` merge strategy has a UE smoke fixture: early reruns confirmed TaskSpec -> TaskPlan -> Bridge -> UE preview; R4 later verified the `custom_event_call` execute/read-back path.
 - [x] `branch_fork` execute implementation / error normalization source fix integrated: `owned_block_call` now resolves an existing BlueprintHelper-owned custom event block and creates a callable node before applying `branch_fork`.
-- [ ] Rerun `branch_fork` execute smoke after local UE build / Editor reload; Codex build attempt is blocked before plugin compilation by project/sibling-plugin `Intermediate` write restrictions.
+- [x] R4 rerun verified `branch_fork + custom_event_call` execute/read-back after UE build / Editor reload: Sequence was created, inserted call and original successor were both reachable.
+- [x] Source patch integrated for `append_new_owned_graph` multi-step execution: dependent `graph_write` append steps now reuse `blueprint_signature`-created CustomEvent entries instead of attempting to create duplicate entries.
+- [ ] Add one same-graph `branch_fork + owned_block_call` execute/read-back smoke so Level 3 is not only covered by `custom_event_call`.
 - [x] AssetFactory normalizes ordinary Blueprint fixture creation: TaskSpec `asset_type=blueprint` and `asset_type=Actor` now lower to `asset_type=blueprint_class` with `parent_class=Actor`; UE TaskRuntime and direct Bridge `create_asset` share the same parser.
-- [ ] Level 6 disposable fixtures are still needed for ClassSettings, UMGWidget, and DataTable execute smoke.
+- [ ] Level 6/7 disposable fixtures are still needed for UMGWidget and DataTable execute smoke. Source now includes Structure fields, DataTable `row_struct`, and WidgetBlueprint create paths; status is pending UE build / Editor reload / smoke verification, not unsupported capability.
 - [ ] Level 8 controlled failure fixture is still needed for TaskRunJournal partial failure / topology blocking smoke.
 - [ ] Composite `create_blueprint_feature` execute fixture still needs a disposable asset target.
 - [ ] Fix `create_blueprint_feature` preview empty-error anti-pattern discovered while attempting fixture creation for ClassSettings smoke.
@@ -40,13 +42,27 @@
 - [x] TaskSpec field cleanup: Agent-facing `intent` removed; completed task journals now use orchestration-generated `generated_intent`; `feature_name` is display / journal label only and no longer drives graph-name recommendations.
 - [x] TaskRunJournal result lookup: `blueprinthelper_get_task_result` now prefers UE `TaskRunJournal.v1`, falls back to the MCP in-process summary only when UE has no journal, and normalizes missing `generated_intent` on completed UE journals.
 
+## Review / diagnostics boundary corrections
+
+- [x] Review / ReviewPanel is user-side only. Do not add Agent-facing Review tools, ReviewPanel flows, or AgentGuide instructions that tell normal Agents to operate the Review UI.
+- [ ] Aggregate TransactionJournalQuery with Review into one persisted Review transaction record model. This should consume UE write transactions and `task_run_id` grouping for the user-side Review panel; normal Agents only receive TaskRunJournal/task result summaries.
+- [x] Remove the deferred bulk-reference path from the current Agent-facing and debug roadmap. Prefer targeted `logic_md` / `logic_json` reads by block or context slice instead of exporting full asset bodies to Agents.
+- [ ] Build DebugExport as an independent developer diagnostics system across MCP, orchestration, and plugin layers. It should capture concrete error context, support exporting debug bundles, and let Agents request those bundles for issue localization.
+
+## 2026-05-07 execution note
+
+- [x] MCP regression rerun passed after plan adjustment: `npm.cmd test` reported Python 42/42 OK and Node 128/128 pass.
+- [x] AgentGuide frozen direct-tool leak scan stayed clean.
+- [x] UnrealEditor was closed through `blueprint_close_editor(save_all=true)` before retrying Build.
+- [ ] UE `Build.bat` is still blocked in this Codex workspace before plugin C++ compilation: UBT cannot write/open `G:\UnrealPractise\MrStone\Intermediate\Build\BuildRules\MrStoneModuleRules.dll`. This path is outside the writable root `G:\UnrealPractise\MrStone\Plugins\BlueprintHelper`, so Level 6/7 and same-graph `owned_block_call` smoke remain pending until a local build runs outside the sandbox.
+
 ## P2 entry candidates
 
 - [x] Function/Event Signature Management first slice source integrated: internal `FBlueprintHelperSignatureService`, Signature DTO folder, Runtime delegation, `ensure_function` inputs/outputs forwarding, `ensure_custom_event` entry creation first slice, `ensure_event_dispatcher` declaration path, `ensure_override_event` blocked preflight path, `remove_signature` TaskPlan preflight/blocked path, and UE automation coverage added.
 - [x] DataAsset/ObjectProperty first slice source integrated: `object_property/property_edit` TaskSpec schema, TS/Python compiler, TaskPlan adapter, true dry-run service façade, and TaskRuntime dispatch added.
 - [x] Cleanup/Rollback/Ownership first slice source integrated: `graph_cleanup_ownership/owned_block_lifecycle` TaskSpec schema, TS/Python compiler, TaskPlan adapter, and TaskRuntime dispatch to cleanup / convert / rollback services added.
 - [ ] P2 unified verification pending: do not count Signature / ObjectProperty / CleanupOwnership as smoke-verified until the next grouped build + automation + disposable fixture run.
-- [x] Function/Event Signature boundary policies fixed: interface function vs interface event lowering, event dispatcher `signature_mismatch_policy=block`, override/native `execute_policy=blocked_preflight`, and remove-signature `execute_policy=blocked_preflight` with reference-context requirement.
-- [ ] Function/Event Signature remaining: full custom event body split, real override/native event creation policy, real remove execution after reference-analysis cleanup policy, and dispatcher signature migration strategy beyond block.
-- [ ] DebugExport/LargePayload service and task debug payload references.
+- [x] Function/Event Signature boundary policies fixed: interface function vs interface event lowering, event dispatcher `signature_mismatch_policy=block`, default override/native `execute_policy=blocked_preflight`, explicit override/native `execute_policy=create_if_missing` source path, remove-signature `execute_policy=blocked_preflight` with reference-context requirement, and `custom_event_definition` split into Signature declaration plus GraphWrite body rewrite.
+- [ ] Function/Event Signature remaining: real remove execution after reference-analysis cleanup policy, dispatcher signature migration strategy beyond block, and grouped UE build / automation / smoke verification for the new Signature source paths.
+- [ ] DebugExport developer diagnostics system: MCP + orchestration + plugin can capture/export concrete error context; no bulk-reference-first design.
 - [ ] DependencyAnalysis / ReferenceContextPack integration into high-risk preview blockers.

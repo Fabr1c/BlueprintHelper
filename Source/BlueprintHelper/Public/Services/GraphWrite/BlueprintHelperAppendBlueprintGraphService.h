@@ -40,6 +40,7 @@ private:
 		FString GraphName;
 		FString FeatureName;
 		bool bDryRun = false;
+		bool bReuseExistingEntries = false;
 		TArray<TSharedPtr<FJsonValue>> Nodes;
 		TArray<TSharedPtr<FJsonValue>> Links;
 	};
@@ -60,8 +61,8 @@ private:
 
 	FAppendPreflightResult Preflight(const FAppendRequest& Request) const;
 	bool PreflightBlueprint(const FString& AssetPath, UBlueprint*& OutBlueprint, FAppendPreflightResult& OutResult) const;
-	bool PreflightGraphTarget(UBlueprint* Blueprint, const FString& GraphName, UEdGraph*& OutGraph, FAppendPreflightResult& OutResult) const;
-	bool PreflightNodePayload(const FAppendRequest& Request, FAppendPreflightResult& OutResult) const;
+	bool PreflightGraphTarget(UBlueprint* Blueprint, const FAppendRequest& Request, UEdGraph*& OutGraph, FAppendPreflightResult& OutResult) const;
+	bool PreflightNodePayload(const FAppendRequest& Request, UEdGraph* Graph, FAppendPreflightResult& OutResult) const;
 
 	// ─── 图表操作 ───
 

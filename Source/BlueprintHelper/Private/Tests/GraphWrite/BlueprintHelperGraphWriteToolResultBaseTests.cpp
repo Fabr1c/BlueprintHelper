@@ -132,6 +132,36 @@ namespace
 		return Payload;
 	}
 
+	TSharedRef<FJsonObject> MakeAppendReuseExistingEntryExecutePayload(const FString& AssetPath, const FString& GraphName)
+	{
+		TSharedRef<FJsonObject> Payload = MakeAppendExecutePayload(AssetPath, GraphName);
+		Payload->SetBoolField(TEXT("reuse_existing_entries"), true);
+
+		TArray<TSharedPtr<FJsonValue>> Nodes;
+		TSharedRef<FJsonObject> EntryNode = MakeShared<FJsonObject>();
+		EntryNode->SetStringField(TEXT("id"), TEXT("entry_01"));
+		EntryNode->SetStringField(TEXT("kind"), TEXT("custom_event"));
+		EntryNode->SetStringField(TEXT("name"), TEXT("SmokeCustomEvent"));
+		Nodes.Add(MakeShared<FJsonValueObject>(EntryNode));
+
+		TSharedRef<FJsonObject> CallNode = MakeShared<FJsonObject>();
+		CallNode->SetStringField(TEXT("id"), TEXT("print_01"));
+		CallNode->SetStringField(TEXT("kind"), TEXT("call"));
+		CallNode->SetStringField(TEXT("function"), TEXT("PrintString"));
+		Nodes.Add(MakeShared<FJsonValueObject>(CallNode));
+		Payload->SetArrayField(TEXT("nodes"), Nodes);
+
+		TArray<TSharedPtr<FJsonValue>> Links;
+		TSharedRef<FJsonObject> ExecLink = MakeShared<FJsonObject>();
+		ExecLink->SetStringField(TEXT("kind"), TEXT("exec"));
+		ExecLink->SetStringField(TEXT("from"), TEXT("entry_01.then"));
+		ExecLink->SetStringField(TEXT("to"), TEXT("print_01.execute"));
+		Links.Add(MakeShared<FJsonValueObject>(ExecLink));
+		Payload->SetArrayField(TEXT("links"), Links);
+
+		return Payload;
+	}
+
 	TSharedRef<FJsonObject> MakeReplacementNode()
 	{
 		TSharedRef<FJsonObject> Node = MakeShared<FJsonObject>();
@@ -320,6 +350,25 @@ namespace
 			}
 		}
 		return nullptr;
+	}
+
+	int32 CountCustomEventsByName(UEdGraph* Graph, const FString& EventName)
+	{
+		if (!Graph)
+		{
+			return 0;
+		}
+
+		int32 Count = 0;
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			const UK2Node_CustomEvent* CustomEvent = Cast<UK2Node_CustomEvent>(Node);
+			if (CustomEvent && CustomEvent->CustomFunctionName.ToString().Equals(EventName, ESearchCase::IgnoreCase))
+			{
+				++Count;
+			}
+		}
+		return Count;
 	}
 
 	bool ExportHasExecLinkFromCustomEventToFunction(
@@ -1103,6 +1152,58 @@ bool FBlueprintHelperGraphWriteAppendOwnershipWritesMetadataWithoutManagedCommen
 		TestFalse(TEXT("append-created node comment omits transaction id"),
 			Node && Node->NodeComment.Contains(TEXT("tx=")));
 	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteAppendReusesSignatureEntryTest,
+	"BlueprintHelper.GraphWrite.Append.ReusesSignatureEntry",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteAppendReusesSignatureEntryTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeGraphWriteTestBlueprint(TEXT("AppendReusesSignatureEntry"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* EntryNode = AddGraphWriteCustomEvent(Graph, TEXT("SmokeCustomEvent"));
+	TestNotNull(TEXT("signature-created custom event exists"), EntryNode);
+	if (!EntryNode)
+	{
+		return false;
+	}
+
+	const int32 EventCountBefore = CountCustomEventsByName(Graph, TEXT("SmokeCustomEvent"));
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperAssetBrowseService AssetBrowseService;
+	FBlueprintHelperCompileService CompileService(Resolver);
+	FBlueprintHelperAgentImportService AgentImportService(Resolver, CompileService, AssetBrowseService);
+	FBlueprintHelperBlockIdService BlockIdService;
+	FBlueprintHelperOwnershipService OwnershipService;
+	FBlueprintHelperTransactionJournalService JournalService;
+	FBlueprintHelperAppendBlueprintGraphService AppendService(
+		Resolver,
+		AgentImportService,
+		BlockIdService,
+		OwnershipService,
+		JournalService);
+
+	const FBlueprintHelperToolResultBase Result = AppendService.Execute(
+		MakeAppendReuseExistingEntryExecutePayload(Blueprint->GetPathName(), Graph->GetName()));
+
+	TestTrue(TEXT("append reusing signature entry succeeds"), Result.bOk);
+	TestEqual(TEXT("append reuse write status is applied"), Result.Status, EBlueprintHelperToolStatus::Applied);
+	TestEqual(TEXT("append reuse does not duplicate custom event"),
+		CountCustomEventsByName(Graph, TEXT("SmokeCustomEvent")),
+		EventCountBefore);
+	TestTrue(TEXT("append reuse connects existing custom event to imported body"),
+		ExportHasExecLinkFromCustomEventToFunction(Graph, TEXT("SmokeCustomEvent"), TEXT("PrintString")));
 
 	return true;
 }

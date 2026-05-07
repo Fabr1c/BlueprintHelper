@@ -63,7 +63,7 @@ const GraphWriteAppendEntrySchema = z.object({
 }).passthrough();
 
 const GraphWriteReplaceSchema = z.object({
-  scope: z.enum(['custom_event_body', 'function_body', 'event_body', 'block_implementation']),
+  scope: z.enum(['custom_event_definition', 'custom_event_body', 'function_body', 'event_body', 'block_implementation']),
   selector: z.object({
     kind: z.enum(['custom_event', 'function', 'event', 'block']),
     name: z.string().min(1).optional(),
@@ -72,6 +72,7 @@ const GraphWriteReplaceSchema = z.object({
     node_ref: z.string().min(1).optional(),
     node_path: z.string().min(1).optional(),
   }).passthrough(),
+  inputs: z.array(z.record(z.unknown())).optional(),
   body: BlueprintLogicSpecSchema,
   options: z.object({
     strict: z.boolean().optional(),
@@ -79,6 +80,7 @@ const GraphWriteReplaceSchema = z.object({
   }).passthrough().optional(),
 }).passthrough().superRefine((value, ctx) => {
   const expectedKindByScope: Record<string, string> = {
+    custom_event_definition: 'custom_event',
     custom_event_body: 'custom_event',
     function_body: 'function',
     event_body: 'event',
@@ -266,11 +268,27 @@ export const AssetFactoryTaskSpecSchema = TaskSpecBaseSchema.extend({
       asset_type: z.string().min(1),
       parent_class: z.string().min(1).optional(),
       value_type: z.string().min(1).optional(),
+      fields: z.array(z.object({
+        name: z.string().min(1),
+        type: z.enum(['int', 'float', 'bool', 'string']),
+        default_value: z.unknown().optional(),
+      }).passthrough()).min(1).optional(),
+      row_struct: z.string().min(1).optional(),
+      data_asset_class: z.string().min(1).optional(),
       collision: z.string().min(1).optional(),
       collision_policy: z.string().min(1).optional(),
     }).passthrough(),
   }).passthrough(),
-}).passthrough();
+}).passthrough().superRefine((value, ctx) => {
+  const assetType = value.behavior.asset.asset_type.trim().toLowerCase();
+  if ((assetType === 'data_table' || assetType === 'datatable') && !value.behavior.asset.row_struct) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['behavior', 'asset', 'row_struct'],
+      message: 'asset_type=data_table requires behavior.asset.row_struct.',
+    });
+  }
+});
 
 export const BlueprintComponentTaskSpecSchema = TaskSpecBaseSchema.extend({
   task_type: z.literal('edit_blueprint_components'),
@@ -417,7 +435,7 @@ const BlueprintSignatureChangeSchema = z.object({
   name_collision_policy: z.enum(['reuse_if_exists', 'fail_if_exists']).optional(),
   signature_mismatch_policy: z.enum(['block']).optional(),
   event_kind: z.enum(['native_event', 'override_event']).optional(),
-  execute_policy: z.enum(['blocked_preflight']).optional(),
+  execute_policy: z.enum(['blocked_preflight', 'create_if_missing']).optional(),
   require_reference_context: z.literal(true).optional(),
 }).passthrough();
 

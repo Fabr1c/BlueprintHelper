@@ -9,6 +9,7 @@
 #include "GameFramework/Actor.h"
 #include "GraphSupport/BlueprintHelperGraphResolver.h"
 #include "K2Node_CustomEvent.h"
+#include "K2Node_Event.h"
 #include "K2Node_FunctionEntry.h"
 #include "K2Node_FunctionResult.h"
 #include "Kismet2/KismetEditorUtilities.h"
@@ -110,6 +111,27 @@ namespace
 			}
 		}
 		return nullptr;
+	}
+
+	UK2Node_Event* FindSignatureOverrideEvent(UBlueprint* Blueprint, const FString& EventName)
+	{
+		if (!Blueprint)
+		{
+			return nullptr;
+		}
+
+		const FName EventFName(*EventName);
+		UFunction* EventFunction = nullptr;
+		UClass* const SignatureClass = FBlueprintEditorUtils::GetOverrideFunctionClass(
+			Blueprint,
+			EventFName,
+			&EventFunction);
+		if (!SignatureClass || !EventFunction)
+		{
+			return nullptr;
+		}
+
+		return FBlueprintEditorUtils::FindOverrideForFunction(Blueprint, SignatureClass, EventFName);
 	}
 
 	bool HasUserDefinedPin(UK2Node_CustomEvent* EventNode, const FString& PinName)
@@ -230,6 +252,7 @@ namespace
 		Request.AssetPath = Blueprint ? Blueprint->GetPathName() : TEXT("");
 		Request.EventName = EventName;
 		Request.EventKind = TEXT("native_event");
+		Request.GraphName = TEXT("EventGraph");
 		Request.bDryRun = bDryRun;
 		return Request;
 	}
@@ -663,8 +686,86 @@ bool FBlueprintHelperSignatureServiceEnsureOverrideEventDryRunBlockedTest::RunTe
 	TestTrue(TEXT("override event has error"), Result.Error.IsSet());
 	if (Result.Error.IsSet())
 	{
-		TestEqual(TEXT("override event unsupported code"), Result.Error->Code, FString(TEXT("override_event_signature_unsupported")));
+		TestEqual(TEXT("override event blocked policy code"), Result.Error->Code, FString(TEXT("override_event_signature_blocked_by_policy")));
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperSignatureServiceEnsureOverrideEventCreateIfMissingDryRunTest,
+	"BlueprintHelper.Signature.Service.EnsureOverrideEventCreateIfMissingDryRun",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperSignatureServiceEnsureOverrideEventCreateIfMissingDryRunTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeSignatureServiceActorBlueprint(TEXT("OverrideEventCreateDryRun"));
+	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0)
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	const int32 NodeCountBefore = Graph ? Graph->Nodes.Num() : 0;
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlueprintStructureService StructureService(Resolver);
+	FBlueprintHelperSignatureService SignatureService(StructureService);
+
+	FBlueprintHelperEnsureOverrideEventSignatureRequest Request =
+		MakeEnsureOverrideEventRequest(Blueprint, TEXT("ReceiveBeginPlay"), true);
+	Request.GraphName = Graph->GetName();
+	Request.ExecutePolicy = TEXT("create_if_missing");
+
+	const FBlueprintHelperToolResultBase Result = SignatureService.EnsureOverrideEvent(Request);
+
+	TestTrue(TEXT("override event create dry-run succeeds"), Result.bOk);
+	TestEqual(TEXT("operation"), Result.Operation, FString(TEXT("ensure_override_event")));
+	TestEqual(TEXT("status"), Result.Status, EBlueprintHelperToolStatus::DryRun);
+	TestFalse(TEXT("dry-run does not modify"), Result.bModified);
+	TestTrue(TEXT("override event uses signature data schema"), HasSignatureDataSchema(Result));
+	TestEqual(TEXT("dry-run does not add event node"), Graph ? Graph->Nodes.Num() : 0, NodeCountBefore);
+	TestNull(TEXT("dry-run does not create override event"), FindSignatureOverrideEvent(Blueprint, TEXT("ReceiveBeginPlay")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperSignatureServiceEnsureOverrideEventCreateIfMissingExecuteTest,
+	"BlueprintHelper.Signature.Service.EnsureOverrideEventCreateIfMissingExecute",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperSignatureServiceEnsureOverrideEventCreateIfMissingExecuteTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeSignatureServiceActorBlueprint(TEXT("OverrideEventCreateExecute"));
+	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0)
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	TestNotNull(TEXT("test EventGraph exists"), Graph);
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlueprintStructureService StructureService(Resolver);
+	FBlueprintHelperSignatureService SignatureService(StructureService);
+
+	FBlueprintHelperEnsureOverrideEventSignatureRequest Request =
+		MakeEnsureOverrideEventRequest(Blueprint, TEXT("ReceiveBeginPlay"), false);
+	Request.GraphName = Graph->GetName();
+	Request.ExecutePolicy = TEXT("create_if_missing");
+
+	const FBlueprintHelperToolResultBase Result = SignatureService.EnsureOverrideEvent(Request);
+
+	TestTrue(TEXT("override event create executes"), Result.bOk);
+	TestEqual(TEXT("operation"), Result.Operation, FString(TEXT("ensure_override_event")));
+	TestEqual(TEXT("status"), Result.Status, EBlueprintHelperToolStatus::Applied);
+	TestTrue(TEXT("execute modifies"), Result.bModified);
+	TestTrue(TEXT("override event uses signature data schema"), HasSignatureDataSchema(Result));
+
+	UK2Node_Event* EventNode = FindSignatureOverrideEvent(Blueprint, TEXT("ReceiveBeginPlay"));
+	TestNotNull(TEXT("override event node exists"), EventNode);
+	TestTrue(TEXT("override function flag set"), EventNode && EventNode->bOverrideFunction);
 	return true;
 }
 

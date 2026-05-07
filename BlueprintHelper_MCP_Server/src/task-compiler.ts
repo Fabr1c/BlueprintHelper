@@ -522,9 +522,54 @@ function makeGraphWriteTaskPlanSteps(
     ];
   }
 
+  if (strategy === 'replace_owned_graph' && graphWriteOps.length === 1) {
+    const op = graphWriteOps[0] as GraphWriteCompiledOp & { __signature_split?: GraphWriteSignatureSplit };
+    if (op.__signature_split) {
+      const signatureOp = op.__signature_split;
+      return [
+        {
+          step_id: 'step_001',
+          capability: 'blueprint_signature',
+          target: {
+            asset_path: taskSpec.target.asset_path,
+          },
+          write: {
+            strategy: 'custom_event_signature',
+            ops: [
+              omitUndefined({
+                op: signatureOp.op,
+                event_name: signatureOp.event_name,
+                graph_name: taskSpec.scope_policy.graph_name,
+                inputs: signatureOp.inputs,
+                name_collision_policy: signatureOp.name_collision_policy,
+              }),
+            ],
+          },
+        } as TaskPlanStep,
+        {
+          step_id: 'step_002',
+          capability: 'graph_write',
+          target: {
+            asset_path: taskSpec.target.asset_path,
+            graph: taskSpec.scope_policy.graph_name,
+          },
+          write: {
+            strategy: 'owned_graph_edit',
+            ops: [stripGraphWriteCompilerMetadata(op)],
+          },
+          constraints: {
+            allow_modify_user_nodes: taskSpec.scope_policy.allow_modify_user_nodes,
+            ownership_scope: 'blueprinthelper_owned',
+          },
+          depends_on: ['step_001'],
+        } as TaskPlanStep,
+      ];
+    }
+  }
+
   const opBatches = strategy === 'append_new_owned_graph'
     ? [graphWriteOps]
-    : graphWriteOps.map((op) => [op]);
+    : graphWriteOps.map((op) => [stripGraphWriteCompilerMetadata(op)]);
 
   return opBatches.map((ops, index) => ({
     step_id: `step_${String(index + 1).padStart(3, '0')}`,
@@ -542,6 +587,11 @@ function makeGraphWriteTaskPlanSteps(
       ownership_scope: 'blueprinthelper_owned',
     },
   }));
+}
+
+function stripGraphWriteCompilerMetadata(op: GraphWriteCompiledOp): GraphWriteCompiledOp {
+  const { __signature_split: _signatureSplit, ...cleanOp } = op as GraphWriteCompiledOp & { __signature_split?: unknown };
+  return cleanOp as GraphWriteCompiledOp;
 }
 
 function compileBlueprintVariablesTaskSpecToTaskPlan(taskSpec: Extract<TaskSpec, { task_type: 'edit_blueprint_variables' }>): TaskPlan {
@@ -801,6 +851,7 @@ function compileBlueprintSignatureOp(change: Record<string, unknown>, path: stri
       op: 'ensure_override_event',
       event_name: getRequiredString(change, 'event_name', `${path}.event_name`),
       event_kind: optionalString(change, 'event_kind') ?? 'native_event',
+      graph_name: optionalString(change, 'graph_name'),
       inputs: change['inputs'],
       execute_policy: optionalString(change, 'execute_policy') ?? 'blocked_preflight',
     });
@@ -1113,6 +1164,12 @@ function assertSupportedTaskSpec(taskSpec: TaskSpec) {
 }
 
 type GraphWriteCompiledOp = Record<string, unknown> & { op: string };
+type GraphWriteSignatureSplit = {
+  op: 'ensure_custom_event';
+  event_name: string;
+  inputs?: unknown;
+  name_collision_policy: string;
+};
 
 function compileGraphWriteOps(behavior: Record<string, unknown>): GraphWriteCompiledOp[] {
   const strategy = getRequiredString(behavior, 'graph_strategy', 'behavior.graph_strategy');
@@ -1181,11 +1238,14 @@ function compileReplaceGraphWriteOp(behavior: Record<string, unknown>): GraphWri
   assertAllowedString(
     replaceScope,
     'behavior.replace.scope',
-    ['custom_event_body', 'function_body', 'event_body', 'block_implementation'],
-    'Use custom_event_body, function_body, event_body, or block_implementation.',
+    ['custom_event_definition', 'custom_event_body', 'function_body', 'event_body', 'block_implementation'],
+    'Use custom_event_definition, custom_event_body, function_body, event_body, or block_implementation.',
   );
+  const graphWriteReplaceScope = replaceScope === 'custom_event_definition'
+    ? 'custom_event_body'
+    : replaceScope;
   const selector = normalizeReplaceSelector(
-    replaceScope,
+    graphWriteReplaceScope,
     requiredRecord(replace, 'selector', 'behavior.replace.selector'),
   );
   const body = getRequiredLogicBody(replace, 'body', 'behavior.replace.body');
@@ -1203,10 +1263,18 @@ function compileReplaceGraphWriteOp(behavior: Record<string, unknown>): GraphWri
 
   return omitUndefined({
     op: 'replace_body',
-    replace_scope: replaceScope,
+    replace_scope: graphWriteReplaceScope,
     selector,
     replacement,
     options: isRecord(replace['options']) ? replace['options'] : undefined,
+    __signature_split: replaceScope === 'custom_event_definition'
+      ? {
+          op: 'ensure_custom_event',
+          event_name: String(selector['entry_name']),
+          inputs: replace['inputs'],
+          name_collision_policy: optionalString(replace, 'name_collision_policy') ?? 'reuse_if_exists',
+        }
+      : undefined,
   }) as GraphWriteCompiledOp;
 }
 

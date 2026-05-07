@@ -11,6 +11,7 @@
 #include "GraphWrite/TextToBlueprintGenerator.h"
 #include "K2Node_CustomEvent.h"
 #include "K2Node_EditablePinBase.h"
+#include "K2Node_Event.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Services/BlueprintHelperBlueprintStructureService.h"
 
@@ -280,6 +281,7 @@ namespace
 	{
 		Result.Target = FBlueprintHelperTargetRef();
 		Result.Target->AssetPath = Request.AssetPath;
+		Result.Target->Graph = Request.GraphName;
 		Result.Target->TargetType = EBlueprintHelperTargetType::Event;
 		Result.Target->Event = Request.EventName;
 	}
@@ -737,6 +739,123 @@ namespace
 			return nullptr;
 		}
 
+		return EventNode;
+	}
+
+	FName ResolveNativeOrOverrideEventName(const FString& InEventName)
+	{
+		const FString Lower = InEventName.ToLower();
+		if (Lower == TEXT("beginplay") || Lower == TEXT("receivebeginplay"))
+		{
+			return FName(TEXT("ReceiveBeginPlay"));
+		}
+		if (Lower == TEXT("tick") || Lower == TEXT("receivetick"))
+		{
+			return FName(TEXT("ReceiveTick"));
+		}
+		if (Lower == TEXT("endplay") || Lower == TEXT("receiveendplay"))
+		{
+			return FName(TEXT("ReceiveEndPlay"));
+		}
+		if (Lower == TEXT("anydamage") || Lower == TEXT("receiveanydamage"))
+		{
+			return FName(TEXT("ReceiveAnyDamage"));
+		}
+		if (Lower == TEXT("actorbeginoverlap") || Lower == TEXT("receiveactorbeginoverlap"))
+		{
+			return FName(TEXT("ReceiveActorBeginOverlap"));
+		}
+		if (Lower == TEXT("actorendoverlap") || Lower == TEXT("receiveactorendoverlap"))
+		{
+			return FName(TEXT("ReceiveActorEndOverlap"));
+		}
+		if (Lower == TEXT("actorhit") || Lower == TEXT("receivehit") || Lower == TEXT("hit"))
+		{
+			return FName(TEXT("ReceiveHit"));
+		}
+		return FName(*InEventName);
+	}
+
+	UEdGraph* ResolveOverrideEventGraph(
+		const FBlueprintHelperBlueprintStructureService& StructureService,
+		const FBlueprintHelperEnsureOverrideEventSignatureRequest& Request,
+		FString& OutGraphName,
+		FString& OutCode,
+		EBlueprintHelperToolStage& OutStage,
+		FString& OutMessage,
+		FString& OutField)
+	{
+		OutGraphName = Request.GraphName.IsEmpty() ? TEXT("EventGraph") : Request.GraphName;
+
+		FString ValidationCode;
+		EBlueprintHelperToolStage ValidationStage = EBlueprintHelperToolStage::Preflight;
+		FString ValidationMessage;
+		FString ValidationField;
+		if (!TryValidateEventGraphExists(
+			StructureService,
+			Request.AssetPath,
+			OutGraphName,
+			ValidationCode,
+			ValidationStage,
+			ValidationMessage,
+			ValidationField))
+		{
+			OutCode = ValidationCode;
+			OutStage = ValidationStage;
+			OutMessage = ValidationMessage;
+			OutField = ValidationField;
+			return nullptr;
+		}
+
+		FBlueprintHelperGraphResolver Resolver;
+		FBlueprintHelperDiagnosticSet Diag;
+		UEdGraph* Graph = Resolver.ResolveGraph(MakeGraphTarget(Request.AssetPath, OutGraphName), Diag);
+		if (!Graph || Diag.HasErrors())
+		{
+			OutCode = TEXT("target_graph_not_found");
+			OutStage = EBlueprintHelperToolStage::ResolveTarget;
+			OutMessage = Diag.Items.Num() > 0
+				? Diag.Items[0].Message
+				: FString::Printf(TEXT("Blueprint graph not found: %s."), *OutGraphName);
+			OutField = TEXT("graph_name");
+			return nullptr;
+		}
+
+		return Graph;
+	}
+
+	UK2Node_Event* CreateOverrideEventNode(
+		UEdGraph* Graph,
+		UFunction* EventFunction,
+		FString& OutError)
+	{
+		if (!Graph)
+		{
+			OutError = TEXT("Target graph is invalid.");
+			return nullptr;
+		}
+		if (!EventFunction)
+		{
+			OutError = TEXT("Override event function is invalid.");
+			return nullptr;
+		}
+
+		UK2Node_Event* EventNode = NewObject<UK2Node_Event>(Graph);
+		if (!EventNode)
+		{
+			OutError = TEXT("Failed to allocate override event node.");
+			return nullptr;
+		}
+
+		EventNode->EventReference.SetFromField<UFunction>(EventFunction, false);
+		EventNode->bOverrideFunction = true;
+		EventNode->CreateNewGuid();
+		EventNode->PostPlacedNewNode();
+		EventNode->SetFlags(RF_Transactional);
+		EventNode->NodePosX = 0;
+		EventNode->NodePosY = 0;
+		EventNode->AllocateDefaultPins();
+		Graph->AddNode(EventNode, true, false);
 		return EventNode;
 	}
 }
@@ -1399,13 +1518,14 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureOverrideE
 		return Result;
 	}
 
-	if (Request.ExecutePolicy.IsEmpty() || Request.ExecutePolicy != TEXT("blocked_preflight"))
+	const FString ExecutePolicy = Request.ExecutePolicy.IsEmpty() ? TEXT("blocked_preflight") : Request.ExecutePolicy;
+	if (ExecutePolicy != TEXT("blocked_preflight") && ExecutePolicy != TEXT("create_if_missing"))
 	{
 		FBlueprintHelperToolResultBase Result = MakeSignatureFailure(
 			TEXT("ensure_override_event"),
 			TEXT("invalid_override_event_execute_policy"),
 			EBlueprintHelperToolStage::ParseInput,
-			TEXT("ensure_override_event execute_policy must be blocked_preflight in this slice."),
+			TEXT("ensure_override_event execute_policy must be blocked_preflight or create_if_missing."),
 			TEXT("execute_policy"));
 		SetOverrideEventTarget(Result, Request);
 		Result.Validation = MakeSignatureValidation(false, false);
@@ -1426,19 +1546,175 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureOverrideE
 		return Result;
 	}
 
-	FBlueprintHelperToolResultBase Result = MakeSignatureFailure(
+	FString GraphName;
+	FString ValidationCode;
+	EBlueprintHelperToolStage ValidationStage = EBlueprintHelperToolStage::Preflight;
+	FString ValidationMessage;
+	FString ValidationField;
+	UEdGraph* Graph = ResolveOverrideEventGraph(
+		StructureService,
+		Request,
+		GraphName,
+		ValidationCode,
+		ValidationStage,
+		ValidationMessage,
+		ValidationField);
+	if (!Graph)
+	{
+		FBlueprintHelperToolResultBase Result = MakeSignatureFailure(
+			TEXT("ensure_override_event"),
+			ValidationCode,
+			ValidationStage,
+			ValidationMessage,
+			ValidationField);
+		SetOverrideEventTarget(Result, Request);
+		Result.Validation = MakeSignatureValidation(false, false);
+		return Result;
+	}
+
+	UBlueprint* Blueprint = FBlueprintEditorUtils::FindBlueprintForGraph(Graph);
+	if (!Blueprint)
+	{
+		FBlueprintHelperToolResultBase Result = MakeSignatureFailure(
+			TEXT("ensure_override_event"),
+			TEXT("target_blueprint_not_found"),
+			EBlueprintHelperToolStage::ResolveTarget,
+			TEXT("Unable to resolve Blueprint owning the target graph."),
+			TEXT("asset_path"));
+		SetOverrideEventTarget(Result, Request);
+		Result.Validation = MakeSignatureValidation(false, false);
+		return Result;
+	}
+
+	const FName ResolvedEventName = ResolveNativeOrOverrideEventName(Request.EventName);
+	UFunction* EventFunction = nullptr;
+	UClass* const SignatureClass = FBlueprintEditorUtils::GetOverrideFunctionClass(
+		Blueprint,
+		ResolvedEventName,
+		&EventFunction);
+	if (!SignatureClass || !EventFunction)
+	{
+		FBlueprintHelperToolResultBase Result = MakeSignatureFailure(
+			TEXT("ensure_override_event"),
+			TEXT("override_event_function_not_found"),
+			EBlueprintHelperToolStage::ResolveTarget,
+			FString::Printf(TEXT("Override/native event function not found: %s."), *ResolvedEventName.ToString()),
+			TEXT("event_name"));
+		SetOverrideEventTarget(Result, Request);
+		Result.Validation = MakeSignatureValidation(false, false);
+		return Result;
+	}
+
+	if (!UEdGraphSchema_K2::FunctionCanBePlacedAsEvent(EventFunction))
+	{
+		FBlueprintHelperToolResultBase Result = MakeSignatureFailure(
+			TEXT("ensure_override_event"),
+			TEXT("override_event_not_placeable"),
+			EBlueprintHelperToolStage::Preflight,
+			FString::Printf(TEXT("Function cannot be placed as an event: %s."), *ResolvedEventName.ToString()),
+			TEXT("event_name"));
+		SetOverrideEventTarget(Result, Request);
+		Result.Validation = MakeSignatureValidation(false, false);
+		return Result;
+	}
+
+	UK2Node_Event* ExistingEvent = FBlueprintEditorUtils::FindOverrideForFunction(
+		Blueprint,
+		SignatureClass,
+		ResolvedEventName);
+
+	if (ExecutePolicy == TEXT("blocked_preflight"))
+	{
+		FBlueprintHelperToolResultBase Result = MakeSignatureFailure(
+			TEXT("ensure_override_event"),
+			TEXT("override_event_signature_blocked_by_policy"),
+			Request.bDryRun ? EBlueprintHelperToolStage::DryRun : EBlueprintHelperToolStage::Preflight,
+			TEXT("Override/native event creation requires execute_policy=create_if_missing."),
+			TEXT("execute_policy"));
+		SetOverrideEventTarget(Result, Request);
+		Result.Data = MakeSignatureBlockedData(
+			Request.bDryRun,
+			TEXT("override_event_signature_blocked_by_policy"),
+			TEXT("Override/native event creation requires execute_policy=create_if_missing."),
+			TEXT("execute_policy"),
+			TEXT("override_event_result"));
+		SetSignatureResultString(Result.Data, TEXT("override_event_result"), TEXT("event_kind"), EventKind);
+		SetSignatureResultString(Result.Data, TEXT("override_event_result"), TEXT("execute_policy"), ExecutePolicy);
+		SetSignatureResultString(Result.Data, TEXT("override_event_result"), TEXT("graph_name"), GraphName);
+		SetSignatureResultString(Result.Data, TEXT("override_event_result"), TEXT("event_function"), ResolvedEventName.ToString());
+		SetSignatureResultBool(Result.Data, TEXT("override_event_result"), TEXT("exists"), ExistingEvent != nullptr);
+		Result.Validation = MakeSignatureValidation(false, false);
+		return Result;
+	}
+
+	if (Request.bDryRun)
+	{
+		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::DryRun(
+			TEXT("ensure_override_event"),
+			FBlueprintHelperToolResultBuilder::GenerateTraceId());
+		SetOverrideEventTarget(Result, Request);
+		Result.Data = MakeSignatureResultData(true, TEXT("override_event_result"), true);
+		SetSignatureResultBool(Result.Data, TEXT("override_event_result"), TEXT("exists"), ExistingEvent != nullptr);
+		SetSignatureResultString(Result.Data, TEXT("override_event_result"), TEXT("event_kind"), EventKind);
+		SetSignatureResultString(Result.Data, TEXT("override_event_result"), TEXT("execute_policy"), ExecutePolicy);
+		SetSignatureResultString(Result.Data, TEXT("override_event_result"), TEXT("graph_name"), GraphName);
+		SetSignatureResultString(Result.Data, TEXT("override_event_result"), TEXT("event_function"), ResolvedEventName.ToString());
+		Result.Validation = MakeSignatureValidation(ExistingEvent == nullptr, ExistingEvent == nullptr);
+		return Result;
+	}
+
+	if (ExistingEvent)
+	{
+		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::NoOp(
+			TEXT("ensure_override_event"),
+			FBlueprintHelperToolResultBuilder::GenerateTraceId());
+		SetOverrideEventTarget(Result, Request);
+		Result.Data = MakeSignatureResultData(false, TEXT("override_event_result"), true);
+		SetSignatureResultBool(Result.Data, TEXT("override_event_result"), TEXT("exists"), true);
+		SetSignatureResultString(Result.Data, TEXT("override_event_result"), TEXT("event_kind"), EventKind);
+		SetSignatureResultString(Result.Data, TEXT("override_event_result"), TEXT("execute_policy"), ExecutePolicy);
+		SetSignatureResultString(Result.Data, TEXT("override_event_result"), TEXT("graph_name"), GraphName);
+		SetSignatureResultString(Result.Data, TEXT("override_event_result"), TEXT("event_function"), ResolvedEventName.ToString());
+		Result.Validation = MakeSignatureValidation(false, false);
+		return Result;
+	}
+
+	FBlueprintHelperScopedAssetMutation Mutation(
+		FText::FromString(TEXT("BlueprintHelper Ensure Override Event Signature")),
+		Blueprint);
+	Mutation.Modify(Graph);
+
+	FString Error;
+	UK2Node_Event* EventNode = CreateOverrideEventNode(Graph, EventFunction, Error);
+	if (!EventNode)
+	{
+		Mutation.Rollback();
+		FBlueprintHelperToolResultBase Result = MakeSignatureFailure(
+			TEXT("ensure_override_event"),
+			TEXT("override_event_create_failed"),
+			EBlueprintHelperToolStage::Execute,
+			Error.IsEmpty() ? TEXT("Failed to create override/native event node.") : Error,
+			TEXT("event_name"));
+		SetOverrideEventTarget(Result, Request);
+		Result.Validation = MakeSignatureValidation(false, false);
+		return Result;
+	}
+
+	Graph->NotifyGraphChanged();
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+	Mutation.Commit();
+
+	FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Applied(
 		TEXT("ensure_override_event"),
-		TEXT("override_event_signature_unsupported"),
-		Request.bDryRun ? EBlueprintHelperToolStage::DryRun : EBlueprintHelperToolStage::Preflight,
-		TEXT("Override/native event signature creation is not wired for safe execution yet."),
-		TEXT("ensure_override_event"));
+		FBlueprintHelperToolResultBuilder::GenerateTraceId());
 	SetOverrideEventTarget(Result, Request);
-	Result.Data = MakeSignatureBlockedData(
-		Request.bDryRun,
-		TEXT("override_event_signature_unsupported"),
-		TEXT("Override/native event signature creation is not wired for safe execution yet."),
-		TEXT("ensure_override_event"),
-		TEXT("override_event_result"));
-	Result.Validation = MakeSignatureValidation(false, false);
+	Result.Data = MakeSignatureResultData(false, TEXT("override_event_result"), true);
+	SetSignatureResultBool(Result.Data, TEXT("override_event_result"), TEXT("exists"), true);
+	SetSignatureResultBool(Result.Data, TEXT("override_event_result"), TEXT("created"), true);
+	SetSignatureResultString(Result.Data, TEXT("override_event_result"), TEXT("event_kind"), EventKind);
+	SetSignatureResultString(Result.Data, TEXT("override_event_result"), TEXT("execute_policy"), ExecutePolicy);
+	SetSignatureResultString(Result.Data, TEXT("override_event_result"), TEXT("graph_name"), GraphName);
+	SetSignatureResultString(Result.Data, TEXT("override_event_result"), TEXT("event_function"), ResolvedEventName.ToString());
+	Result.Validation = MakeSignatureValidation(true, true);
 	return Result;
 }
