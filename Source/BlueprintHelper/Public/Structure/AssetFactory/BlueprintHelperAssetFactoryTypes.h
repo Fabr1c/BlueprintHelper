@@ -5,6 +5,7 @@
 
 #include "CoreMinimal.h"
 #include "Dom/JsonObject.h"
+#include "Dom/JsonValue.h"
 
 // ─── 资产类型枚举 ───
 
@@ -108,6 +109,42 @@ inline const TCHAR* InputActionValueTypeToString(const FString& ValueType)
 
 #pragma region Asset Factory Structs
 
+struct FBlueprintHelperAssetFactoryFieldSpec
+{
+	FString Name;
+	FString Type;
+	FString DefaultValue;
+	bool bHasDefaultValue = false;
+
+	FBlueprintHelperAssetFactoryFieldSpec() = default;
+
+	FBlueprintHelperAssetFactoryFieldSpec(const FString& InName, const FString& InType)
+		: Name(InName)
+		, Type(InType)
+	{
+	}
+
+	FBlueprintHelperAssetFactoryFieldSpec(const FString& InName, const FString& InType, const FString& InDefaultValue)
+		: Name(InName)
+		, Type(InType)
+		, DefaultValue(InDefaultValue)
+		, bHasDefaultValue(true)
+	{
+	}
+
+	TSharedRef<FJsonObject> ToJson() const
+	{
+		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+		Json->SetStringField(TEXT("name"), Name);
+		Json->SetStringField(TEXT("type"), Type);
+		if (bHasDefaultValue)
+		{
+			Json->SetStringField(TEXT("default_value"), DefaultValue);
+		}
+		return Json;
+	}
+};
+
 // ─── 6.4 创建规格 ───
 
 struct FBlueprintHelperAssetFactorySpec
@@ -118,6 +155,7 @@ struct FBlueprintHelperAssetFactorySpec
 	FString ValueType;
 	FString RowStruct;
 	FString DataAssetClass;
+	TArray<FBlueprintHelperAssetFactoryFieldSpec> Fields;
 
 	TSharedRef<FJsonObject> ToJson() const
 	{
@@ -128,6 +166,16 @@ struct FBlueprintHelperAssetFactorySpec
 		if (!ValueType.IsEmpty()) { Json->SetStringField(TEXT("value_type"), InputActionValueTypeToString(ValueType)); }
 		if (!RowStruct.IsEmpty()) { Json->SetStringField(TEXT("row_struct"), RowStruct); }
 		if (!DataAssetClass.IsEmpty()) { Json->SetStringField(TEXT("data_asset_class"), DataAssetClass); }
+		if (Fields.Num() > 0)
+		{
+			TArray<TSharedPtr<FJsonValue>> FieldValues;
+			FieldValues.Reserve(Fields.Num());
+			for (const FBlueprintHelperAssetFactoryFieldSpec& Field : Fields)
+			{
+				FieldValues.Add(MakeShared<FJsonValueObject>(Field.ToJson()));
+			}
+			Json->SetArrayField(TEXT("fields"), FieldValues);
+		}
 		return Json;
 	}
 };

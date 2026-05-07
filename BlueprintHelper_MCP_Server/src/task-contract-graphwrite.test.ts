@@ -23,7 +23,7 @@ describe('GraphWrite TaskPlan contract metadata', () => {
         'patch_blueprint_graph',
         'merge_blueprint_graph',
       ],
-      step_batching: 'append custom_event entries compile signature dependency steps before one graph_write body step; replace/patch/merge compile to one structural op per step',
+      step_batching: 'append custom_event entries and custom_event_definition replacements compile signature dependency steps before graph_write body steps; other replace/patch/merge paths compile to one structural op per step',
     });
   });
 
@@ -77,6 +77,7 @@ describe('GraphWrite TaskPlan contract metadata', () => {
       'Bridge payload fields as TaskSpec body',
     ]);
     assert.deepEqual(taskSpecContract.replace_owned_graph.selector_kinds_by_scope, {
+      custom_event_definition: 'custom_event',
       custom_event_body: 'custom_event',
       function_body: 'function',
       event_body: 'event',

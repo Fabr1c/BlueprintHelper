@@ -76,7 +76,7 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       'patch_blueprint_graph',
       'merge_blueprint_graph',
     ],
-    step_batching: 'append custom_event entries compile signature dependency steps before one graph_write body step; replace/patch/merge compile to one structural op per step',
+    step_batching: 'append custom_event entries and custom_event_definition replacements compile signature dependency steps before graph_write body steps; other replace/patch/merge paths compile to one structural op per step',
   },
   graph_write_taskspec_contract: {
     ownership: 'agent_authored_semantic_protocol',
@@ -92,8 +92,9 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       'Bridge payload fields as TaskSpec body',
     ],
     replace_owned_graph: {
-      scopes: ['custom_event_body', 'function_body', 'event_body', 'block_implementation'],
+      scopes: ['custom_event_definition', 'custom_event_body', 'function_body', 'event_body', 'block_implementation'],
       selector_kinds_by_scope: {
+        custom_event_definition: 'custom_event',
         custom_event_body: 'custom_event',
         function_body: 'function',
         event_body: 'event',
@@ -237,6 +238,10 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       asset_strategy: 'ensure_asset',
       agent_semantic_paths: [
         'behavior.asset_strategy=ensure_asset',
+        'behavior.asset.asset_type',
+        'behavior.asset.parent_class',
+        'behavior.asset.fields[] for asset_type=structure',
+        'behavior.asset.row_struct for asset_type=data_table',
         'behavior.asset.collision_policy',
       ],
       forbidden_agent_fields: [
@@ -755,7 +760,6 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
         documents: [
           'BlueprintHelper_Diagnostics_UE_CPP_Implementation_Plan_20260503.md',
           'BlueprintHelper_AssetDiscovery_EditorNavigation_UE_CPP_Implementation_Plan_20260503.md',
-          'BlueprintHelper_DebugExport_LargePayload_UE_CPP_Implementation_Plan_20260503.md',
           'BlueprintHelper_InternalDependencyAnalysis_UE_ImplementationPlan_20260503.md',
           'BlueprintHelper_ProjectContext_SetupState_UE_CPP_Implementation_Plan_20260503.md',
         ],

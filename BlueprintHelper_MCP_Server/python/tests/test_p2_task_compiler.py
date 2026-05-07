@@ -186,6 +186,84 @@ class P2TaskCompilerTests(unittest.TestCase):
 
         self.assertEqual(ctx.exception.code, "invalid_signature_remove_policy")
 
+    def test_compiles_custom_event_definition_into_signature_then_graph_body_steps(self):
+        spec = make_base_spec("edit_blueprint_graph", {
+            "graph_strategy": "replace_owned_graph",
+            "replace": {
+                "scope": "custom_event_definition",
+                "selector": {
+                    "kind": "custom_event",
+                    "name": "OnInteract",
+                },
+                "inputs": [
+                    {"name": "Instigator", "pin_type": {"category": "object", "subcategory_object": "/Script/Engine.Actor"}},
+                ],
+                "body": {
+                    "schema": "BlueprintLogicSpec.v1",
+                    "statements": [{
+                        "kind": "call_function",
+                        "name": "PrintString",
+                        "args": {
+                            "InString": {
+                                "kind": "literal",
+                                "value_type": "string",
+                                "value": "interact",
+                            },
+                        },
+                    }],
+                },
+            },
+        })
+        spec["scope_policy"] = {
+            "graph_name": "EventGraph",
+            "allow_modify_user_nodes": False,
+        }
+
+        result = compile_task_spec(spec, True)
+        steps = result["task_plan"]["steps"]
+
+        self.assertEqual(len(steps), 2)
+        self.assertEqual(steps[0]["capability"], "blueprint_signature")
+        self.assertEqual(steps[0]["write"]["strategy"], "custom_event_signature")
+        self.assertEqual(steps[0]["write"]["ops"][0], {
+            "op": "ensure_custom_event",
+            "event_name": "OnInteract",
+            "graph_name": "EventGraph",
+            "inputs": [
+                {"name": "Instigator", "pin_type": {"category": "object", "subcategory_object": "/Script/Engine.Actor"}},
+            ],
+            "name_collision_policy": "reuse_if_exists",
+        })
+        self.assertEqual(steps[1]["capability"], "graph_write")
+        self.assertEqual(steps[1]["depends_on"], ["step_001"])
+        self.assertEqual(steps[1]["write"]["ops"][0]["op"], "replace_body")
+        self.assertEqual(steps[1]["write"]["ops"][0]["replace_scope"], "custom_event_body")
+        self.assertEqual(steps[1]["write"]["ops"][0]["selector"]["entry_name"], "OnInteract")
+
+    def test_compiles_override_event_create_if_missing_policy(self):
+        result = compile_task_spec(make_base_spec("edit_blueprint_signature", {
+            "signature_strategy": "signature_edit",
+            "changes": [
+                {
+                    "kind": "ensure_override_event",
+                    "event_name": "ReceiveBeginPlay",
+                    "event_kind": "native_event",
+                    "graph_name": "EventGraph",
+                    "execute_policy": "create_if_missing",
+                },
+            ],
+        }), True)
+
+        step = result["task_plan"]["steps"][0]
+        self.assertEqual(step["write"]["strategy"], "override_event_signature")
+        self.assertEqual(step["write"]["ops"][0], {
+            "op": "ensure_override_event",
+            "event_name": "ReceiveBeginPlay",
+            "event_kind": "native_event",
+            "graph_name": "EventGraph",
+            "execute_policy": "create_if_missing",
+        })
+
 
 if __name__ == "__main__":
     unittest.main()

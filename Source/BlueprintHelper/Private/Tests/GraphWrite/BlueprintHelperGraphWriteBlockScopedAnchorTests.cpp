@@ -323,7 +323,9 @@ namespace
 
 	TSharedRef<FJsonObject> MakeBranchForkOwnedBlockCallPayload(
 		const FBlockScopedGraph& Fixture,
-		const FString& InsertedBlockId)
+		const FString& InsertedBlockId,
+		bool bDryRun = false,
+		bool bAllowCompileBeforeCall = false)
 	{
 		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
 
@@ -349,7 +351,8 @@ namespace
 		SequenceOrder.Add(MakeShared<FJsonValueString>(TEXT("inserted_logic")));
 		SequenceOrder.Add(MakeShared<FJsonValueString>(TEXT("original_successor")));
 		Payload->SetArrayField(TEXT("sequence_order"), SequenceOrder);
-		Payload->SetBoolField(TEXT("dry_run"), false);
+		Payload->SetBoolField(TEXT("allow_compile_before_call"), bAllowCompileBeforeCall);
+		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
 		return Payload;
 	}
 
@@ -404,6 +407,32 @@ namespace
 			}
 		}
 		return Pins;
+	}
+
+	bool GetMergeDryRunStatus(
+		const FBlueprintHelperToolResultBase& Result,
+		FString& OutDryRunResult,
+		bool& bOutCanExecute)
+	{
+		OutDryRunResult.Reset();
+		bOutCanExecute = true;
+
+		if (!Result.Data.IsValid())
+		{
+			return false;
+		}
+
+		const TSharedPtr<FJsonObject>* DryRunObject = nullptr;
+		if (!Result.Data->TryGetObjectField(TEXT("dry_run"), DryRunObject) ||
+			!DryRunObject ||
+			!DryRunObject->IsValid())
+		{
+			return false;
+		}
+
+		(*DryRunObject)->TryGetStringField(TEXT("result"), OutDryRunResult);
+		(*DryRunObject)->TryGetBoolField(TEXT("can_execute"), bOutCanExecute);
+		return true;
 	}
 }
 
@@ -666,6 +695,120 @@ bool FBlueprintHelperGraphWriteMergeBranchForkOwnedBlockCallTest::RunTest(const 
 	UEdGraphPin* InsertedExecIn = FindExecPin(InsertedCall, EGPD_Input);
 
 	TestTrue(TEXT("branch_fork executes through owned block call"), Result.bOk);
+	if (!Result.bOk && Result.Error.IsSet())
+	{
+		TestFalse(TEXT("branch_fork failure message is diagnosable"), Result.Error->Message.IsEmpty());
+	}
+	TestNotNull(TEXT("branch_fork creates a sequence node"), SequenceNode);
+	TestNotNull(TEXT("owned block call node is created"), InsertedCall);
+	TestTrue(TEXT("owned anchor now links to sequence input"), OwnedThenPin && SequenceExecIn && OwnedThenPin->LinkedTo.Contains(SequenceExecIn));
+	TestTrue(TEXT("sequence has at least two Then outputs"), SequenceThenPins.Num() >= 2);
+	if (SequenceThenPins.Num() >= 2)
+	{
+		TestTrue(TEXT("first branch calls inserted owned block"), InsertedExecIn && SequenceThenPins[0]->LinkedTo.Contains(InsertedExecIn));
+		TestTrue(TEXT("second branch preserves original successor"), BranchExecIn && SequenceThenPins[1]->LinkedTo.Contains(BranchExecIn));
+	}
+	TestFalse(TEXT("old direct link is replaced by sequence"), OwnedThenPin && BranchExecIn && OwnedThenPin->LinkedTo.Contains(BranchExecIn));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteMergeBranchForkMissingOwnedBlockPreviewBlocksTest,
+	"BlueprintHelper.GraphWrite.BlockScopedAnchors.MergeBranchForkMissingOwnedBlockPreviewBlocks",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteMergeBranchForkMissingOwnedBlockPreviewBlocksTest::RunTest(const FString& Parameters)
+{
+	const FBlockScopedGraph Fixture = MakeBlockScopedGraph(TEXT("MergeBranchForkMissingOwnedBlockPreviewBlocks"));
+	TestNotNull(TEXT("test blueprint is created"), Fixture.Blueprint);
+	TestNotNull(TEXT("owned entry node is created"), Fixture.OwnedEntry);
+	TestNotNull(TEXT("owned branch node is created"), Fixture.OwnedBranch);
+	if (!Fixture.Blueprint || !Fixture.OwnedEntry || !Fixture.OwnedBranch)
+	{
+		return false;
+	}
+
+	UEdGraphPin* OwnedThenPin = FindPinByName(Fixture.OwnedEntry, TEXT("Then"));
+	UEdGraphPin* BranchExecIn = FindExecPin(Fixture.OwnedBranch, EGPD_Input);
+	TestTrue(TEXT("fixture starts with one original successor"), ConnectExecPins(OwnedThenPin, BranchExecIn));
+	if (!OwnedThenPin || !BranchExecIn || OwnedThenPin->LinkedTo.Num() != 1)
+	{
+		return false;
+	}
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperLogicJsonPathService PathService;
+	FBlueprintHelperTransactionJournalService JournalService;
+	FBlueprintHelperMergeBlueprintGraphService MergeService(Resolver, PathService, JournalService);
+
+	const FString MissingBlockId = FString::Printf(TEXT("%s_MissingInsertedBlock0"), *Fixture.Graph->GetName());
+	const FBlueprintHelperToolResultBase Result = MergeService.Execute(
+		MakeBranchForkOwnedBlockCallPayload(Fixture, MissingBlockId, true));
+
+	FString DryRunResult;
+	bool bCanExecute = true;
+	TestTrue(TEXT("dry-run status is present"), GetMergeDryRunStatus(Result, DryRunResult, bCanExecute));
+	TestFalse(TEXT("missing inserted block preview is blocked"), Result.bOk);
+	TestEqual(TEXT("dry-run result is blocked"), DryRunResult, FString(TEXT("blocked")));
+	TestFalse(TEXT("dry-run cannot execute"), bCanExecute);
+	TestTrue(TEXT("missing inserted block error is surfaced"),
+		Result.Error.IsSet() &&
+		Result.Error->Code == TEXT("inserted_logic_not_found") &&
+		!Result.Error->Message.IsEmpty());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteMergeBranchForkUncompiledOwnedBlockCallTest,
+	"BlueprintHelper.GraphWrite.BlockScopedAnchors.MergeBranchForkUncompiledOwnedBlockCall",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteMergeBranchForkUncompiledOwnedBlockCallTest::RunTest(const FString& Parameters)
+{
+	const FBlockScopedGraph Fixture = MakeBlockScopedGraph(TEXT("MergeBranchForkUncompiledOwnedBlockCall"));
+	TestNotNull(TEXT("test blueprint is created"), Fixture.Blueprint);
+	TestNotNull(TEXT("owned entry node is created"), Fixture.OwnedEntry);
+	TestNotNull(TEXT("owned branch node is created"), Fixture.OwnedBranch);
+	if (!Fixture.Blueprint || !Fixture.OwnedEntry || !Fixture.OwnedBranch)
+	{
+		return false;
+	}
+
+	UEdGraphPin* OwnedThenPin = FindPinByName(Fixture.OwnedEntry, TEXT("Then"));
+	UEdGraphPin* BranchExecIn = FindExecPin(Fixture.OwnedBranch, EGPD_Input);
+	TestTrue(TEXT("fixture starts with owned entry linked to owned branch"), ConnectExecPins(OwnedThenPin, BranchExecIn));
+	TestTrue(TEXT("owned entry has one original successor before branch fork"), OwnedThenPin && OwnedThenPin->LinkedTo.Num() == 1);
+	if (!OwnedThenPin || !BranchExecIn || OwnedThenPin->LinkedTo.Num() != 1)
+	{
+		return false;
+	}
+
+	const FString InsertedBlockId = FString::Printf(TEXT("%s_UncompiledInsertedBlock0"), *Fixture.Graph->GetName());
+	const FString InsertedEventName = TEXT("OwnedUncompiledInsertedBlock");
+	UK2Node_CustomEvent* InsertedOwnedEntry = AddCustomEventNode(Fixture.Graph, InsertedEventName);
+	TestNotNull(TEXT("inserted owned block entry is created"), InsertedOwnedEntry);
+	if (!InsertedOwnedEntry)
+	{
+		return false;
+	}
+	MarkNodeAsBlueprintHelperOwned(InsertedOwnedEntry, InsertedBlockId);
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Fixture.Blueprint);
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperLogicJsonPathService PathService;
+	FBlueprintHelperTransactionJournalService JournalService;
+	FBlueprintHelperMergeBlueprintGraphService MergeService(Resolver, PathService, JournalService);
+
+	const FBlueprintHelperToolResultBase Result = MergeService.Execute(
+		MakeBranchForkOwnedBlockCallPayload(Fixture, InsertedBlockId, false, true));
+
+	UK2Node_ExecutionSequence* SequenceNode = FindSequenceNode(Fixture.Graph);
+	UK2Node_CallFunction* InsertedCall = FindCallFunctionNode(Fixture.Graph, FName(*InsertedEventName));
+	UEdGraphPin* SequenceExecIn = FindExecPin(SequenceNode, EGPD_Input);
+	const TArray<UEdGraphPin*> SequenceThenPins = FindExecPins(SequenceNode, EGPD_Output);
+	UEdGraphPin* InsertedExecIn = FindExecPin(InsertedCall, EGPD_Input);
+
+	TestTrue(TEXT("uncompiled owned block call compiles and executes"), Result.bOk);
 	if (!Result.bOk && Result.Error.IsSet())
 	{
 		TestFalse(TEXT("branch_fork failure message is diagnosable"), Result.Error->Message.IsEmpty());

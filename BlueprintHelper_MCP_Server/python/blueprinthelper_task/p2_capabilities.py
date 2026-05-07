@@ -185,6 +185,7 @@ def _compile_blueprint_signature_op(change: Dict[str, Any], path: str) -> Dict[s
             "op": "ensure_override_event",
             "event_name": _required_string(change, "event_name", f"{path}.event_name"),
             "event_kind": _optional_string(change, "event_kind") or "native_event",
+            "graph_name": _optional_string(change, "graph_name"),
             "inputs": change.get("inputs"),
             "execute_policy": _optional_string(change, "execute_policy") or "blocked_preflight",
         })

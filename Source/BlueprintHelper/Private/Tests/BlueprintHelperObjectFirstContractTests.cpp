@@ -539,6 +539,43 @@ bool FBlueprintHelperContractTaskRuntimeGraphWriteIrLoweringTest::RunTest(const 
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperContractTaskRuntimeGraphWriteAppendDependsOnReusesEntryTest,
+	"BlueprintHelper.ObjectFirst.Contract.TaskRuntimeGraphWriteAppendDependsOnReusesEntry",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperContractTaskRuntimeGraphWriteAppendDependsOnReusesEntryTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FJsonObject> Step = MakeGraphWriteEnsureEntryStep();
+	Step->SetStringField(TEXT("step_id"), TEXT("step_002"));
+
+	TArray<TSharedPtr<FJsonValue>> DependsOn;
+	DependsOn.Add(MakeShared<FJsonValueString>(TEXT("step_001")));
+	Step->SetArrayField(TEXT("depends_on"), DependsOn);
+
+	TSharedPtr<FJsonObject> TaskPlan = MakeGraphWriteTaskPlan(Step);
+
+	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
+	FBlueprintHelperToolError Error;
+	const bool bLowered = FBlueprintHelperTaskRuntimeService::TryLowerTaskPlanStep(
+		TaskPlan,
+		Step,
+		false,
+		LoweredStep,
+		Error);
+
+	TestTrue(TEXT("dependent graph_write append step lowers successfully"), bLowered);
+	TestEqual(TEXT("dependent append still uses append adapter"), LoweredStep.AdapterOperation, FString(TEXT("append_blueprint_graph")));
+
+	bool bReuseExistingEntries = false;
+	TestTrue(TEXT("dependent append payload declares existing entry reuse"),
+		LoweredStep.Payload.IsValid() &&
+		LoweredStep.Payload->TryGetBoolField(TEXT("reuse_existing_entries"), bReuseExistingEntries));
+	TestTrue(TEXT("dependent append payload reuses signature-created entries"), bReuseExistingEntries);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperContractTaskRuntimeAggregatesMultipleStepsTest,
 	"BlueprintHelper.ObjectFirst.Contract.TaskRuntimeAggregatesMultipleSteps",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -1373,6 +1410,11 @@ bool FBlueprintHelperContractTaskRuntimeGraphWriteIrMergeLoweringTest::RunTest(c
 	bool bDryRun = false;
 	TestTrue(TEXT("merge payload injects dry_run"), LoweredStep.Payload->TryGetBoolField(TEXT("dry_run"), bDryRun));
 	TestTrue(TEXT("merge dry_run=true"), bDryRun);
+
+	bool bAllowCompileBeforeCall = false;
+	TestTrue(TEXT("merge payload carries allow_compile_before_call"),
+		LoweredStep.Payload->TryGetBoolField(TEXT("allow_compile_before_call"), bAllowCompileBeforeCall));
+	TestTrue(TEXT("allow_compile_before_call follows execution policy"), bAllowCompileBeforeCall);
 
 	return true;
 }

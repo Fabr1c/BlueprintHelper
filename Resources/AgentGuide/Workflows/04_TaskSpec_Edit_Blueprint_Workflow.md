@@ -10,7 +10,7 @@
 5. 如果 context_required/context_stale：重新 read_context / read_reference_context
 6. 如果 TaskSpec error：按 suggested_patch 修正
 7. 如果 preview_blocked：stop_and_report 或修改 TaskSpec
-8. execute_task
+8. 只有 preview completed 后才 execute_task
 9. get_task_result if needed
 10. report summary
 ```
@@ -32,6 +32,10 @@ TaskSpec 必须描述：目标资产、feature_name、scope_policy、asset_polic
 
 Patch/Merge 已有 BlueprintHelper-owned block 时，先用 `blueprinthelper_read_context` 读取 `logic_json`。写入锚点必须来自 grouped block：`block_id + group_entry_node_path + node_ref + pin_ref`，`insert_between` 额外需要 `link_ref`。不要把全图级 `nodes[0]`、显示名、GUID-first selector 当普通主线写锚点。
 
+`merge_owned_graph` 使用 `branch_fork + owned_block_call` 时，Preview 是写入门禁。TaskSpec 必须显式给出 `sequence_order`，且只使用 `original_successor` / `inserted_logic`；`inserted.block_id` 必须在 Preview 阶段解析为已有的 BlueprintHelper-owned CustomEvent block。Preview blocked 时禁止 execute，也不要回退到底层工具。
+
+execute_task 仍可能因 UE 当前状态、资产变化或 Editor 写入失败而失败；失败结果必须带非空 error code/message/stage，报告时使用该错误和 task result/journal，不展开底层 Bridge payload。
+
 GraphWrite body 内的函数调用使用 `args`，每个参数值是结构化 literal：
 
 ```json
@@ -47,6 +51,13 @@ GraphWrite body 内的函数调用使用 `args`，每个参数值是结构化 li
   }
 }
 ```
+
+GraphWrite `branch_fork` 成功 execute 后必须读回。读回应确认：
+
+- 新插入的 Sequence 或等价分发节点连接在 anchor 之后。
+- `inserted` call 节点可达。
+- 原 original successor 仍从 Sequence 分支可达。
+- 受影响执行流无孤立节点。
 
 execute_task 成功后，普通报告只输出任务摘要、目标资产、主要变更、编译/保存/未完成项，不展开完整 TaskPlan、child transaction、Journal 路径或底层 Bridge JSON。
 

@@ -35,6 +35,7 @@ private:
 		FString AnchorNodeRef, AnchorPinRef, AnchorNodePath, AnchorPinPath;
 		FString InsertedBlockId, InsertedBlockRef, InsertedFunctionName, InsertedCustomEventName;
 		TArray<FString> SequenceOrder;
+		bool bAllowCompileBeforeCall = false;
 		bool bDryRun = false;
 	};
 
@@ -60,12 +61,15 @@ private:
 	};
 
 	FMergeRequest ParseRequest(const TSharedPtr<FJsonObject>& Payload) const;
-	FMergePreflightResult Preflight(const FMergeRequest& Request, FMergeContext& Context) const;
+	FMergePreflightResult Preflight(
+		const FMergeRequest& Request,
+		FMergeContext& Context,
+		bool bAllowInsertedLogicRequiresCompile) const;
 	FBlueprintHelperToolResultBase ExecuteDryRun(const FMergeRequest& Request) const;
 	FBlueprintHelperToolResultBase ExecuteWrite(const FMergeRequest& Request) const;
 
 	bool ResolveAnchor(const FMergeRequest& Request, FMergeContext& Context, FString& OutError) const;
-	bool ResolveInsertedLogic(const FMergeRequest& Request, FMergeContext& Context, FString& OutError) const;
+	bool ResolveInsertedLogic(const FMergeRequest& Request, FMergeContext& Context, FString& OutErrorCode, FString& OutError) const;
 	bool CheckSuccessorCount(const FMergeRequest& Request, const FMergeContext& Context, FMergePreflightResult& OutResult) const;
 	bool ApplyAppendAfter(UBlueprint* BP, UEdGraph* Graph, const FMergeRequest& Request, FMergeContext& Context, FString& OutError) const;
 	bool ApplyInsertBetween(UBlueprint* BP, UEdGraph* Graph, const FMergeRequest& Request, FMergeContext& Context, FString& OutError) const;

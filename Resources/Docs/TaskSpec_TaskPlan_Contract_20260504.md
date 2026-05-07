@@ -109,7 +109,7 @@ Default Agent-facing result layering is fixed as:
 
 UE Agent-facing façade commands return `FBlueprintHelperToolResultBase`. MCP task/read tools normalize those results into `BlueprintHelper.McpToolResult.v1` for Agent consumption. Existing Bridge / UE operation results are internal facts for compiler/runtime/journal use; ordinary Agents should not depend on raw adapter payloads.
 
-Debug data must not expand the default top-level shape. Put compact debug facts under `data.debug` only when directly useful, and use `large_payload_ref` for large payloads.
+Debug data must not expand the default top-level shape. Put compact debug facts under `data.debug` only when directly useful. Large asset context should be read through targeted `logic_md` / `logic_json` slices or a future DebugExport bundle, not by expanding default tool responses.
 
 Long-term read entry consolidation is:
 
@@ -194,7 +194,7 @@ Future read domains such as material graphs and animation blueprints must enter 
 
 `summary` is for low-token discovery and first-pass asset inspection before choosing a more detailed read. `schema` is for field guidance for the selected `read_type` / format without reading the asset body. Neither format performs writes or returns TaskSpec drafts.
 
-Read result `data.schema` follows the short-name payload rule. `ReadContextPack.v1` does not include a separate `read_id`, and read results do not carry a `diagnostics` array. Payload errors use the outer MCP/ToolResult error envelope; read completeness uses `truncated` and `large_payload_ref`.
+Read result `data.schema` follows the short-name payload rule. `ReadContextPack.v1` does not include a separate `read_id`, and read results do not carry a `diagnostics` array. Payload errors use the outer MCP/ToolResult error envelope; read completeness uses `truncated` plus a recommendation to reread a specific block or context slice.
 
 ```json
 {
@@ -218,8 +218,7 @@ Read result `data.schema` follows the short-name payload rule. `ReadContextPack.
       "schema": "LogicMd.v1"
     },
     "stats": {},
-    "truncated": false,
-    "large_payload_ref": null
+    "truncated": false
   }
 }
 ```
@@ -944,7 +943,7 @@ These operations are TaskRuntime / Existing Capability Cluster steps. They do no
 | Graph Write | `append_blueprint_graph`, `replace_blueprint_graph`, `patch_blueprint_graph`, `merge_blueprint_graph` | `BlueprintHelper_AppendBlueprintGraph_UE_CPP_Implementation_Plan_20260503.md`, `BlueprintHelper_ReplaceBlueprintGraph_UE_CPP_Implementation_Plan_20260503.md`, `BlueprintHelper_PatchBlueprintGraph_UE_CPP_Implementation_Plan_20260503.md`, `BlueprintHelper_MergeBlueprintGraph_UE_CPP_Implementation_Plan_20260503.md` | TaskSpec only |
 | Graph Cleanup / Ownership | `cleanup_blueprinthelper_block`, `convert_block_to_user_owned`, `rollback_cleanup_transaction` | `BlueprintHelper_CleanupBlueprintHelperBlock_UE_CPP_Implementation_Plan_20260503.md`, `BlueprintHelper_ConvertBlockToUserOwned_UE_CPP_Implementation_Plan_20260503.md`, `BlueprintHelper_RollbackCleanupTransaction_UE_CPP_Implementation_Plan_20260503.md` | TaskPlan internal |
 | Blueprint Variables | `add_blueprint_member_variables` runtime adapter for `ensure_member_variable`; wider read/default/local/remove commands remain internal until dry-run contracts are fixed | `BlueprintHelper_BlueprintVariables_Defaults_LocalVariables_UE_CPP_Implementation_Plan_20260503.md` | TaskSpec only for `ensure_member_variable`, otherwise TaskPlan internal |
-| Function/Event Signature | TaskPlan-internal `blueprint_signature` ops for function, custom event, interface entry, dispatcher, override/native, and remove preflight policies | `BlueprintHelper_FunctionEventSignature_UE_CPP_Implementation_Plan_20260503.md` | TaskPlan internal |
+| Function/Event Signature | TaskPlan-internal `blueprint_signature` ops for function, custom event, interface entry, dispatcher, override/native create-if-missing, and remove preflight policies | `BlueprintHelper_FunctionEventSignature_UE_CPP_Implementation_Plan_20260503.md` | TaskPlan internal |
 | UMG Widget Blueprint | `read_widget_blueprint`, `set_widget_tree`, `set_widget_properties` | `BlueprintHelper_UMG_WidgetBlueprint_UE_CPP_Implementation_Plan_20260503.md` | TaskPlan internal |
 | DataAsset | `read_data_asset`, `set_data_asset_properties` | `BlueprintHelper_DataAsset_UE_CPP_Implementation_Plan_20260503.md` | TaskPlan internal |
 | DataTable | `read_data_table`, `update_data_table_rows` | `BlueprintHelper_DataTable_UE_CPP_Implementation_Plan_20260503.md` | TaskPlan internal |
@@ -962,9 +961,9 @@ P2 first slice, 2026-05-06:
 - TaskRuntime `blueprint_signature` steps call this internal service instead of keeping signature execution logic inside the runtime service.
 - `ensure_function` supports dry-run, reuse-if-exists no-op, real function graph creation, and first-slice `inputs` / `outputs` forwarding from TaskPlan.
 - `interface_entry_kind` distinguishes interface functions from interface events. Interface functions lower to `ensure_function` under `function_signature`; interface events lower to `ensure_custom_event` under `custom_event_signature` and require an explicit graph target.
-- `ensure_custom_event` supports dry-run, reuse-if-exists no-op, and first-slice entry declaration through the signature service. GraphWrite remains responsible for body nodes and links.
+- `ensure_custom_event` supports dry-run, reuse-if-exists no-op, and first-slice entry declaration through the signature service. GraphWrite remains responsible for body nodes and links. `replace_owned_graph` with `replace.scope=custom_event_definition` now lowers into a `blueprint_signature.ensure_custom_event` dependency step followed by `graph_write.replace_body` with `custom_event_body`.
 - `ensure_event_dispatcher` is a TaskPlan-internal `event_dispatcher_signature` op. It can create a new dispatcher declaration through the internal structure service. Existing dispatcher signature mutation is blocked by policy; `signature_mismatch_policy` must be `block`.
-- `ensure_override_event` is a TaskPlan-internal `override_event_signature` op. `event_kind` must be `native_event` or `override_event`, and `execute_policy` must be `blocked_preflight`; this slice returns a blocked preflight result instead of creating the entry.
+- `ensure_override_event` is a TaskPlan-internal `override_event_signature` op. `event_kind` must be `native_event` or `override_event`; default `execute_policy=blocked_preflight` still returns a blocked preflight result, while explicit `execute_policy=create_if_missing` can create a missing native/override event entry in the target graph. This source path still needs UE build, automation, and smoke verification before it is counted verified.
 - `remove_signature` is TaskPlan-internal. It accepts function, interface function, custom event, interface event, event dispatcher, override event, and native event kinds, but `execute_policy` must be `blocked_preflight` and `require_reference_context` must stay true until reference analysis and cleanup policy are implemented.
 - No new Agent-facing atomic MCP signature tool is introduced.
 
@@ -974,7 +973,7 @@ P2 first slice, 2026-05-06:
 |---|---|---|---|
 | Runtime Profile | Safety/profile facts used before TaskSpec and execution | `BlueprintHelper_RuntimeProfile_UE_CPP_Implementation_Plan_20260503.md` | Agent read |
 | Logic Read | LogicMD / LogicJson by asset, graph, function, event, custom event, or block target | `BlueprintHelper_LogicRead_Grouped_UE_FieldMapping_20260502.md` | Agent read |
-| Diagnostics / Discovery | Asset discovery, editor navigation, debug export, internal dependency analysis, project context, setup state | `BlueprintHelper_Diagnostics_UE_CPP_Implementation_Plan_20260503.md`, `BlueprintHelper_AssetDiscovery_EditorNavigation_UE_CPP_Implementation_Plan_20260503.md`, `BlueprintHelper_DebugExport_LargePayload_UE_CPP_Implementation_Plan_20260503.md`, `BlueprintHelper_InternalDependencyAnalysis_UE_ImplementationPlan_20260503.md`, `BlueprintHelper_ProjectContext_SetupState_UE_CPP_Implementation_Plan_20260503.md` | Agent read or debug |
+| Diagnostics / Discovery | Asset discovery, editor navigation, debug export, internal dependency analysis, project context, setup state | `BlueprintHelper_Diagnostics_UE_CPP_Implementation_Plan_20260503.md`, `BlueprintHelper_AssetDiscovery_EditorNavigation_UE_CPP_Implementation_Plan_20260503.md`, `BlueprintHelper_InternalDependencyAnalysis_UE_ImplementationPlan_20260503.md`, `BlueprintHelper_ProjectContext_SetupState_UE_CPP_Implementation_Plan_20260503.md` | Agent read or debug |
 | Transaction Journal | Task result, transaction query, rollback audit | `BlueprintHelper_TransactionJournalQuery_UE_CPP_Implementation_Plan_20260503.md` | Task result or debug |
 | Editor Lifecycle | Risk commands for launching or closing editor | `BlueprintHelper_EditorLifecycle_RiskCommand_UE_CPP_Implementation_Plan_20260503.md` | Debug or risk command |
 | Common Envelope | Shared result shape and error normalization | `BlueprintHelper_ToolResultBase_CommonEnvelope_UE_CPP_Implementation_Plan_20260503.md` | Protocol internal |

@@ -42,6 +42,19 @@ function compileTaskSpecForTaskToolTests(taskSpec: TaskSpec): TaskPlan {
 
   const behavior = taskSpec.behavior as Record<string, unknown>;
   const asset = behavior.asset as Record<string, unknown>;
+  const assetType = normalizeAssetTypeForTaskToolTests(String(asset.asset_type ?? ''));
+  const op: { op: string; [key: string]: unknown } = {
+    op: 'create_asset',
+    asset_type: assetType,
+    value_type: asset.value_type,
+    collision: asset.collision_policy,
+  };
+  for (const field of ['parent_class', 'fields', 'row_struct', 'data_asset_class'] as const) {
+    if (asset[field] !== undefined) {
+      op[field] = asset[field];
+    }
+  }
+
   return {
     schema: 'BlueprintHelper.TaskPlan.v1',
     task_name: taskSpec.feature_name,
@@ -62,18 +75,24 @@ function compileTaskSpecForTaskToolTests(taskSpec: TaskSpec): TaskPlan {
         },
         write: {
           strategy: 'asset_create',
-          ops: [
-            {
-              op: 'create_asset',
-              asset_type: asset.asset_type,
-              value_type: asset.value_type,
-              collision: asset.collision_policy,
-            },
-          ],
+          ops: [op],
         },
       },
     ],
   };
+}
+
+function normalizeAssetTypeForTaskToolTests(assetType: string): string {
+  const normalized = assetType.trim().toLowerCase();
+  const aliases: Record<string, string> = {
+    blueprint: 'blueprint_class',
+    actor: 'blueprint_class',
+    blueprintclass: 'blueprint_class',
+    datatable: 'data_table',
+    widget: 'widget_blueprint',
+    widgetblueprint: 'widget_blueprint',
+  };
+  return aliases[normalized] ?? normalized;
 }
 
 function makeTaskSpec() {
@@ -186,6 +205,67 @@ function makeAssetFactoryTaskSpec() {
   };
 }
 
+function makeStructureAssetFactoryTaskSpec() {
+  return {
+    schema: 'BlueprintHelper.TaskSpec.v1',
+    context_id: 'ctx_asset_factory_structure',
+    task_type: 'create_asset',
+    feature_name: 'DataTableSmokeRow',
+    target: {
+      asset_path: '/Game/BlueprintHelper/Smoke/ST_DataTableSmokeRow',
+      target_type: 'asset',
+    },
+    behavior: {
+      asset_strategy: 'ensure_asset',
+      asset: {
+        asset_type: 'structure',
+        fields: [
+          { name: 'Damage', type: 'float' },
+          { name: 'Ammo', type: 'int' },
+        ],
+        collision_policy: 'replace_existing',
+      },
+    },
+    execution_policy: {
+      dry_run_mode: 'full',
+      on_missing_capability: 'stop_and_report',
+    },
+    validation: {
+      should_compile: false,
+      should_save: true,
+    },
+  };
+}
+
+function makeDataTableAssetFactoryTaskSpec() {
+  return {
+    schema: 'BlueprintHelper.TaskSpec.v1',
+    context_id: 'ctx_asset_factory_data_table',
+    task_type: 'create_asset',
+    feature_name: 'DataTableSmoke',
+    target: {
+      asset_path: '/Game/BlueprintHelper/Smoke/DT_DataTableSmoke',
+      target_type: 'asset',
+    },
+    behavior: {
+      asset_strategy: 'ensure_asset',
+      asset: {
+        asset_type: 'datatable',
+        row_struct: '/Game/BlueprintHelper/Smoke/ST_DataTableSmokeRow',
+        collision_policy: 'replace_existing',
+      },
+    },
+    execution_policy: {
+      dry_run_mode: 'full',
+      on_missing_capability: 'stop_and_report',
+    },
+    validation: {
+      should_compile: false,
+      should_save: true,
+    },
+  };
+}
+
 test('task-level tools are registered without removing legacy tools', () => {
   const tools = registerWithBridge(async () => ({ request_id: 'test', success: true }));
 
@@ -263,6 +343,81 @@ test('preview_task compiles P1 AssetFactory TaskSpec and previews a UE TaskPlan'
   });
 });
 
+test('preview_task preserves AssetFactory structure fields in TaskPlan ops', async () => {
+  const calls: Array<{ command: string; payload: Record<string, unknown> | undefined }> = [];
+  const tools = registerWithBridge(async (command, payload) => {
+    calls.push({ command, payload });
+    return {
+      request_id: 'test',
+      success: true,
+      result: {
+        status: 'dry_run',
+        data: {
+          schema: 'BlueprintHelper.TaskRuntimeResult.v1',
+          dry_run: { can_execute: true, warnings: [], conflicts: [], errors: [] },
+          steps: [],
+        },
+      },
+    };
+  });
+
+  const tool = tools.get('blueprinthelper_preview_task');
+  assert.ok(tool);
+
+  const result = await invokeTool(tool, { task_spec: makeStructureAssetFactoryTaskSpec() });
+
+  assert.equal(result.isError, false);
+  const taskPlan = calls[0]?.payload?.task_plan as Record<string, unknown>;
+  const steps = taskPlan.steps as Array<Record<string, unknown>>;
+  const ops = ((steps[0]?.write as Record<string, unknown>)?.ops ?? []) as Array<Record<string, unknown>>;
+  assert.deepEqual(ops[0], {
+    op: 'create_asset',
+    asset_type: 'structure',
+    value_type: undefined,
+    collision: 'replace_existing',
+    fields: [
+      { name: 'Damage', type: 'float' },
+      { name: 'Ammo', type: 'int' },
+    ],
+  });
+});
+
+test('preview_task normalizes AssetFactory DataTable alias and preserves row_struct', async () => {
+  const calls: Array<{ command: string; payload: Record<string, unknown> | undefined }> = [];
+  const tools = registerWithBridge(async (command, payload) => {
+    calls.push({ command, payload });
+    return {
+      request_id: 'test',
+      success: true,
+      result: {
+        status: 'dry_run',
+        data: {
+          schema: 'BlueprintHelper.TaskRuntimeResult.v1',
+          dry_run: { can_execute: true, warnings: [], conflicts: [], errors: [] },
+          steps: [],
+        },
+      },
+    };
+  });
+
+  const tool = tools.get('blueprinthelper_preview_task');
+  assert.ok(tool);
+
+  const result = await invokeTool(tool, { task_spec: makeDataTableAssetFactoryTaskSpec() });
+
+  assert.equal(result.isError, false);
+  const taskPlan = calls[0]?.payload?.task_plan as Record<string, unknown>;
+  const steps = taskPlan.steps as Array<Record<string, unknown>>;
+  const ops = ((steps[0]?.write as Record<string, unknown>)?.ops ?? []) as Array<Record<string, unknown>>;
+  assert.deepEqual(ops[0], {
+    op: 'create_asset',
+    asset_type: 'data_table',
+    value_type: undefined,
+    collision: 'replace_existing',
+    row_struct: '/Game/BlueprintHelper/Smoke/ST_DataTableSmokeRow',
+  });
+});
+
 test('read_reference_context forwards compact read request to the Bridge', async () => {
   const calls: Array<{ command: string; payload: Record<string, unknown> | undefined }> = [];
   const tools = registerWithBridge(async (command, payload): Promise<BridgeResponse> => {
@@ -315,7 +470,6 @@ test('read_reference_context forwards compact read request to the Bridge', async
             recommended_task_strategy: 'preview_before_write',
             blockers: ['external_referencers_exist'],
           },
-          large_payload_ref: null,
         },
       },
     };

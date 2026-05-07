@@ -3,10 +3,17 @@
 #include "Services/AssetFactory/BlueprintHelperAssetFactoryService.h"
 #include "Structure/AssetFactory/BlueprintHelperAssetFactoryTypes.h"
 #include "AssetRegistry/AssetRegistryModule.h"
+#include "Blueprint/UserWidget.h"
+#include "EdGraphSchema_K2.h"
 #include "Engine/Blueprint.h"
 #include "Engine/BlueprintGeneratedClass.h"
+#include "Engine/DataAsset.h"
+#include "Engine/DataTable.h"
+#include "Engine/UserDefinedStruct.h"
 #include "Factories/BlueprintFactory.h"
 #include "Factories/DataAssetFactory.h"
+#include "Factories/DataTableFactory.h"
+#include "Kismet2/StructureEditorUtils.h"
 #include "InputAction.h"
 #include "InputMappingContext.h"
 #include "GameFramework/Actor.h"
@@ -14,6 +21,9 @@
 #include "Misc/PackageName.h"
 #include "PackageTools.h"
 #include "UObject/SavePackage.h"
+#include "UserDefinedStructure/UserDefinedStructEditorData.h"
+#include "WidgetBlueprint.h"
+#include "WidgetBlueprintFactory.h"
 
 FBlueprintHelperAssetFactoryService::FBlueprintHelperAssetFactoryService() = default;
 
@@ -35,6 +45,157 @@ namespace
 		const FString AssetName = FPackageName::GetLongPackageAssetName(PackageName);
 		return FString::Printf(TEXT("%s.%s"), *PackageName, *AssetName);
 	}
+
+	UClass* ResolveAssetFactoryClass(const FString& ClassText, UClass* DefaultClass, UClass* RequiredParentClass)
+	{
+		UClass* ResolvedClass = DefaultClass;
+		const FString TrimmedClassText = ClassText.TrimStartAndEnd();
+		if (!TrimmedClassText.IsEmpty())
+		{
+			UClass* FoundClass = FindObject<UClass>(nullptr, *TrimmedClassText);
+			if (!FoundClass)
+			{
+				FoundClass = LoadObject<UClass>(nullptr, *TrimmedClassText);
+			}
+			if (!FoundClass && !TrimmedClassText.Contains(TEXT(".")) && !TrimmedClassText.StartsWith(TEXT("/Script/")))
+			{
+				FoundClass = FindObject<UClass>(nullptr, *FString::Printf(TEXT("/Script/Engine.%s"), *TrimmedClassText));
+			}
+			if (!FoundClass && !TrimmedClassText.Contains(TEXT(".")) && !TrimmedClassText.StartsWith(TEXT("/Script/")))
+			{
+				FoundClass = FindObject<UClass>(nullptr, *FString::Printf(TEXT("/Script/UMG.%s"), *TrimmedClassText));
+			}
+
+			if (FoundClass)
+			{
+				ResolvedClass = FoundClass;
+			}
+		}
+
+		if (ResolvedClass && RequiredParentClass && !ResolvedClass->IsChildOf(RequiredParentClass))
+		{
+			return nullptr;
+		}
+
+		return ResolvedClass;
+	}
+
+	UScriptStruct* ResolveAssetFactoryRowStruct(const FString& RowStructText)
+	{
+		const FString TrimmedRowStruct = RowStructText.TrimStartAndEnd();
+		if (TrimmedRowStruct.IsEmpty())
+		{
+			return nullptr;
+		}
+
+		UScriptStruct* RowStruct = FindObject<UScriptStruct>(nullptr, *TrimmedRowStruct);
+		if (!RowStruct)
+		{
+			RowStruct = LoadObject<UScriptStruct>(nullptr, *TrimmedRowStruct);
+		}
+		if (!RowStruct && !TrimmedRowStruct.Contains(TEXT(".")))
+		{
+			const FString ObjectPath = BlueprintHelperAssetObjectPath(TrimmedRowStruct);
+			RowStruct = FindObject<UScriptStruct>(nullptr, *ObjectPath);
+			if (!RowStruct)
+			{
+				RowStruct = LoadObject<UScriptStruct>(nullptr, *ObjectPath);
+			}
+		}
+		if (!RowStruct)
+		{
+			RowStruct = UClass::TryFindTypeSlow<UScriptStruct>(TrimmedRowStruct);
+		}
+
+		return RowStruct;
+	}
+
+	bool TryMakeStructFieldPinType(const FString& TypeText, FEdGraphPinType& OutPinType)
+	{
+		const FString Key = TypeText.TrimStartAndEnd().ToLower();
+		if (Key == TEXT("int") || Key == TEXT("integer"))
+		{
+			OutPinType = FEdGraphPinType(UEdGraphSchema_K2::PC_Int, NAME_None, nullptr, EPinContainerType::None, false, FEdGraphTerminalType());
+			return true;
+		}
+		if (Key == TEXT("float") || Key == TEXT("double") || Key == TEXT("real"))
+		{
+			OutPinType = FEdGraphPinType(UEdGraphSchema_K2::PC_Real, UEdGraphSchema_K2::PC_Float, nullptr, EPinContainerType::None, false, FEdGraphTerminalType());
+			return true;
+		}
+		if (Key == TEXT("bool") || Key == TEXT("boolean"))
+		{
+			OutPinType = FEdGraphPinType(UEdGraphSchema_K2::PC_Boolean, NAME_None, nullptr, EPinContainerType::None, false, FEdGraphTerminalType());
+			return true;
+		}
+		if (Key == TEXT("string"))
+		{
+			OutPinType = FEdGraphPinType(UEdGraphSchema_K2::PC_String, NAME_None, nullptr, EPinContainerType::None, false, FEdGraphTerminalType());
+			return true;
+		}
+
+		return false;
+	}
+
+	bool ApplyUserDefinedStructFields(UUserDefinedStruct* Struct, const TArray<FBlueprintHelperAssetFactoryFieldSpec>& Fields)
+	{
+		if (!Struct || Fields.Num() == 0)
+		{
+			return Struct != nullptr;
+		}
+
+		for (int32 FieldIndex = 0; FieldIndex < Fields.Num(); ++FieldIndex)
+		{
+			const FBlueprintHelperAssetFactoryFieldSpec& Field = Fields[FieldIndex];
+			if (Field.Name.TrimStartAndEnd().IsEmpty())
+			{
+				return false;
+			}
+
+			FEdGraphPinType PinType;
+			if (!TryMakeStructFieldPinType(Field.Type, PinType))
+			{
+				return false;
+			}
+
+			TArray<FStructVariableDescription>& Descriptions = FStructureEditorUtils::GetVarDesc(Struct);
+			FGuid VarGuid;
+			if (FieldIndex == 0 && Descriptions.Num() > 0)
+			{
+				VarGuid = Descriptions[0].VarGuid;
+			}
+			else
+			{
+				if (!FStructureEditorUtils::AddVariable(Struct, PinType))
+				{
+					return false;
+				}
+				VarGuid = FStructureEditorUtils::GetVarDesc(Struct).Last().VarGuid;
+			}
+
+			if (!FStructureEditorUtils::RenameVariable(Struct, VarGuid, Field.Name))
+			{
+				return false;
+			}
+
+			FStructVariableDescription* VarDesc = FStructureEditorUtils::GetVarDescByGuid(Struct, VarGuid);
+			if (!VarDesc)
+			{
+				return false;
+			}
+			if (!FStructureEditorUtils::ChangeVariableType(Struct, VarGuid, PinType))
+			{
+				return false;
+			}
+			if (Field.bHasDefaultValue && !FStructureEditorUtils::ChangeVariableDefaultValue(Struct, VarGuid, Field.DefaultValue))
+			{
+				return false;
+			}
+		}
+
+		FStructureEditorUtils::CompileStructure(Struct);
+		return Struct->Status == UDSS_UpToDate;
+	}
 }
 
 FBlueprintHelperAssetFactoryData FBlueprintHelperAssetFactoryService::CreateAsset(
@@ -45,11 +206,39 @@ FBlueprintHelperAssetFactoryData FBlueprintHelperAssetFactoryService::CreateAsse
 	EBlueprintHelperAssetCollisionPolicy CollisionPolicy,
 	bool bDryRun) const
 {
+	return CreateAsset(
+		AssetPath,
+		AssetType,
+		ParentClass,
+		ValueType,
+		TEXT(""),
+		TEXT(""),
+		TArray<FBlueprintHelperAssetFactoryFieldSpec>(),
+		CollisionPolicy,
+		bDryRun);
+}
+
+FBlueprintHelperAssetFactoryData FBlueprintHelperAssetFactoryService::CreateAsset(
+	const FString& AssetPath,
+	EBlueprintHelperAssetType AssetType,
+	const FString& ParentClass,
+	const FString& ValueType,
+	const FString& RowStruct,
+	const FString& DataAssetClass,
+	const TArray<FBlueprintHelperAssetFactoryFieldSpec>& Fields,
+	EBlueprintHelperAssetCollisionPolicy CollisionPolicy,
+	bool bDryRun) const
+{
 	FBlueprintHelperAssetFactoryData Data;
 	Data.Factory.AssetType = AssetType;
 	Data.Factory.FactoryType = AssetTypeToFactoryType(AssetType);
-	Data.Factory.ParentClass = ParentClass;
+	Data.Factory.ParentClass = (AssetType == EBlueprintHelperAssetType::WidgetBlueprint && ParentClass.TrimStartAndEnd().IsEmpty())
+		? TEXT("UserWidget")
+		: ParentClass;
 	Data.Factory.ValueType = ValueType;
+	Data.Factory.RowStruct = RowStruct;
+	Data.Factory.DataAssetClass = DataAssetClass;
+	Data.Factory.Fields = Fields;
 	Data.Asset.AssetPath = AssetPath;
 	Data.Asset.AssetClass = AssetTypeToAssetClass(AssetType);
 	Data.Collision.Policy = CollisionPolicy;
@@ -98,7 +287,7 @@ FBlueprintHelperAssetFactoryData FBlueprintHelperAssetFactoryService::CreateAsse
 		bCreated = CreateBlueprintInterface(AssetPath);
 		break;
 	case EBlueprintHelperAssetType::Structure:
-		bCreated = CreateStructure(AssetPath);
+		bCreated = CreateStructure(AssetPath, Fields);
 		break;
 	case EBlueprintHelperAssetType::InputAction:
 		bCreated = CreateInputAction(AssetPath, ValueType.IsEmpty() ? TEXT("bool") : ValueType);
@@ -107,7 +296,13 @@ FBlueprintHelperAssetFactoryData FBlueprintHelperAssetFactoryService::CreateAsse
 		bCreated = CreateInputMappingContext(AssetPath);
 		break;
 	case EBlueprintHelperAssetType::DataAsset:
-		bCreated = CreateDataAsset(AssetPath, Data.Factory.DataAssetClass);
+		bCreated = CreateDataAsset(AssetPath, DataAssetClass);
+		break;
+	case EBlueprintHelperAssetType::DataTable:
+		bCreated = CreateDataTable(AssetPath, RowStruct);
+		break;
+	case EBlueprintHelperAssetType::WidgetBlueprint:
+		bCreated = CreateWidgetBlueprint(AssetPath, Data.Factory.ParentClass);
 		break;
 	default:
 		break;
@@ -179,6 +374,20 @@ bool FBlueprintHelperAssetFactoryService::TryNormalizeAssetTypeAndParent(
 	if (Key == TEXT("data_asset") || Key == TEXT("dataasset"))
 	{
 		OutAssetType = EBlueprintHelperAssetType::DataAsset;
+		return true;
+	}
+	if (Key == TEXT("data_table") || Key == TEXT("datatable"))
+	{
+		OutAssetType = EBlueprintHelperAssetType::DataTable;
+		return true;
+	}
+	if (Key == TEXT("widget_blueprint") || Key == TEXT("widgetblueprint") || Key == TEXT("widget"))
+	{
+		OutAssetType = EBlueprintHelperAssetType::WidgetBlueprint;
+		if (InOutParentClass.TrimStartAndEnd().IsEmpty())
+		{
+			InOutParentClass = TEXT("UserWidget");
+		}
 		return true;
 	}
 
@@ -299,7 +508,9 @@ bool FBlueprintHelperAssetFactoryService::CreateBlueprintInterface(const FString
 	return false;
 }
 
-bool FBlueprintHelperAssetFactoryService::CreateStructure(const FString& AssetPath)
+bool FBlueprintHelperAssetFactoryService::CreateStructure(
+	const FString& AssetPath,
+	const TArray<FBlueprintHelperAssetFactoryFieldSpec>& Fields)
 {
 	const FString PackageName = BlueprintHelperAssetPackageName(AssetPath);
 	const FString AssetName = FPackageName::GetLongPackageAssetName(PackageName);
@@ -308,13 +519,18 @@ bool FBlueprintHelperAssetFactoryService::CreateStructure(const FString& AssetPa
 	if (!Package) return false;
 
 	// 通过类名查找 UUserDefinedStruct
-	UClass* StructClass = FindObject<UClass>(nullptr, TEXT("/Script/Engine.UserDefinedStruct"));
-	if (!StructClass) return false;
+	UUserDefinedStruct* NewStruct = FStructureEditorUtils::CreateUserDefinedStruct(
+		Package,
+		FName(*AssetName),
+		RF_Public | RF_Standalone);
+	if (!NewStruct) return false;
 
-	UObject* NewAsset = NewObject<UObject>(Package, StructClass, *AssetName, RF_Public | RF_Standalone);
-	if (!NewAsset) return false;
+	if (!ApplyUserDefinedStructFields(NewStruct, Fields))
+	{
+		return false;
+	}
 
-	FAssetRegistryModule::AssetCreated(NewAsset);
+	FAssetRegistryModule::AssetCreated(NewStruct);
 	Package->MarkPackageDirty();
 	return true;
 }
@@ -364,15 +580,8 @@ bool FBlueprintHelperAssetFactoryService::CreateDataAsset(const FString& AssetPa
 	const FString PackageName = BlueprintHelperAssetPackageName(AssetPath);
 	const FString AssetName = FPackageName::GetLongPackageAssetName(PackageName);
 
-	UClass* Class = UDataAsset::StaticClass();
-	if (!AssetClass.IsEmpty())
-	{
-		UClass* FoundClass = FindObject<UClass>(nullptr, *AssetClass);
-		if (FoundClass && FoundClass->IsChildOf(UDataAsset::StaticClass()))
-		{
-			Class = FoundClass;
-		}
-	}
+	UClass* Class = ResolveAssetFactoryClass(AssetClass, UDataAsset::StaticClass(), UDataAsset::StaticClass());
+	if (!Class) return false;
 
 	UPackage* Package = CreatePackage(*PackageName);
 	if (!Package) return false;
@@ -382,6 +591,66 @@ bool FBlueprintHelperAssetFactoryService::CreateDataAsset(const FString& AssetPa
 
 	UObject* NewAsset = Factory->FactoryCreateNew(
 		Class, Package, *AssetName,
+		RF_Public | RF_Standalone, nullptr, GWarn);
+
+	if (NewAsset)
+	{
+		FAssetRegistryModule::AssetCreated(NewAsset);
+		Package->MarkPackageDirty();
+		return true;
+	}
+
+	return false;
+}
+
+bool FBlueprintHelperAssetFactoryService::CreateDataTable(const FString& AssetPath, const FString& RowStruct)
+{
+	UScriptStruct* ResolvedRowStruct = ResolveAssetFactoryRowStruct(RowStruct);
+	if (!ResolvedRowStruct)
+	{
+		return false;
+	}
+
+	const FString PackageName = BlueprintHelperAssetPackageName(AssetPath);
+	const FString AssetName = FPackageName::GetLongPackageAssetName(PackageName);
+
+	UPackage* Package = CreatePackage(*PackageName);
+	if (!Package) return false;
+
+	UDataTableFactory* Factory = NewObject<UDataTableFactory>();
+	Factory->Struct = ResolvedRowStruct;
+
+	UObject* NewAsset = Factory->FactoryCreateNew(
+		UDataTable::StaticClass(), Package, *AssetName,
+		RF_Public | RF_Standalone, nullptr, GWarn);
+
+	if (NewAsset)
+	{
+		FAssetRegistryModule::AssetCreated(NewAsset);
+		Package->MarkPackageDirty();
+		return true;
+	}
+
+	return false;
+}
+
+bool FBlueprintHelperAssetFactoryService::CreateWidgetBlueprint(const FString& AssetPath, const FString& ParentClass)
+{
+	UClass* ParentUClass = ResolveAssetFactoryClass(ParentClass, UUserWidget::StaticClass(), UUserWidget::StaticClass());
+	if (!ParentUClass) return false;
+
+	const FString PackageName = BlueprintHelperAssetPackageName(AssetPath);
+	const FString AssetName = FPackageName::GetLongPackageAssetName(PackageName);
+
+	UPackage* Package = CreatePackage(*PackageName);
+	if (!Package) return false;
+
+	UWidgetBlueprintFactory* Factory = NewObject<UWidgetBlueprintFactory>();
+	Factory->BlueprintType = BPTYPE_Normal;
+	Factory->ParentClass = ParentUClass;
+
+	UObject* NewAsset = Factory->FactoryCreateNew(
+		UWidgetBlueprint::StaticClass(), Package, *AssetName,
 		RF_Public | RF_Standalone, nullptr, GWarn);
 
 	if (NewAsset)

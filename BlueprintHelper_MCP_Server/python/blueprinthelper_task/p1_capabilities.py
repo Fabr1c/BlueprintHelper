@@ -68,6 +68,10 @@ def _compile_asset_factory_task_plan(task_spec: Dict[str, Any]) -> Dict[str, Any
     if parent_class:
         op["parent_class"] = parent_class
     _copy_optional_string(asset, op, "value_type", "behavior.asset.value_type")
+    if "fields" in asset:
+        op["fields"] = _validate_asset_factory_fields(asset, "fields", "behavior.asset.fields")
+    _copy_optional_string(asset, op, "row_struct", "behavior.asset.row_struct")
+    _copy_optional_string(asset, op, "data_asset_class", "behavior.asset.data_asset_class")
     _copy_optional_string(asset, op, "collision", "behavior.asset.collision")
     _copy_optional_string_as(asset, op, "collision_policy", "collision", "behavior.asset.collision_policy")
 
@@ -498,7 +502,37 @@ def _normalize_asset_factory_type_and_parent(asset: Dict[str, Any]) -> Tuple[str
         return "blueprint_class", parent_class or "Actor"
     if asset_type_key == "actor":
         return "blueprint_class", parent_class or "Actor"
+    if asset_type_key in {"data_table", "datatable"}:
+        return "data_table", parent_class
+    if asset_type_key in {"widget_blueprint", "widgetblueprint", "widget"}:
+        return "widget_blueprint", parent_class
     return asset_type, parent_class
+
+
+def _validate_asset_factory_fields(record: Dict[str, Any], field: str, path: str) -> List[Dict[str, Any]]:
+    values = _required_non_empty_list(record, field, path)
+    supported_types = {"int", "float", "bool", "string"}
+    fields = []
+    for index, raw_field in enumerate(values):
+        field_path = f"{path}[{index}]"
+        field_obj = _required_object_value(raw_field, field_path)
+        field_name = _required_string(field_obj, "name", f"{field_path}.name")
+        field_type = _required_string(field_obj, "type", f"{field_path}.type").strip().lower()
+        if field_type not in supported_types:
+            _raise(
+                "unsupported_asset_factory_field_type",
+                f"Unsupported structure field type: {field_type}",
+                f"{field_path}.type",
+                "Use int, float, bool, or string.",
+            )
+        compiled = {
+            "name": field_name,
+            "type": field_type,
+        }
+        if "default_value" in field_obj:
+            compiled["default_value"] = field_obj["default_value"]
+        fields.append(compiled)
+    return fields
 
 
 def _optional_string_value(source: Dict[str, Any], field: str, path: str) -> Optional[str]:

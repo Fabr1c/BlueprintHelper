@@ -82,6 +82,32 @@ namespace
 		Destination->SetStringField(FieldName, Value);
 		return true;
 	}
+
+	bool TryCopyOptionalArrayField(
+		const TSharedPtr<FJsonObject>& Source,
+		const TCHAR* FieldName,
+		const FString& FieldPath,
+		const TSharedRef<FJsonObject>& Destination,
+		FBlueprintHelperToolError& OutError)
+	{
+		if (!Source.IsValid() || !Source->HasField(FieldName))
+		{
+			return true;
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* Value = nullptr;
+		if (!Source->TryGetArrayField(FieldName, Value) || !Value)
+		{
+			OutError = MakeAssetFactoryTaskPlanError(
+				TEXT("invalid_asset_factory_create_asset_op"),
+				FString::Printf(TEXT("Asset Factory create_asset field %s must be an array."), FieldName),
+				FieldPath);
+			return false;
+		}
+
+		Destination->SetArrayField(FieldName, *Value);
+		return true;
+	}
 }
 
 bool FBlueprintHelperAssetFactoryTaskPlanAdapter::SupportsStep(
@@ -241,7 +267,14 @@ bool FBlueprintHelperAssetFactoryTaskPlanAdapter::TryBuildPayloadFromTaskPlanSte
 
 	if (!TryCopyOptionalStringField(OpObject, TEXT("parent_class"), BuildOpFieldPath(TEXT("parent_class")), Payload, OutError) ||
 		!TryCopyOptionalStringField(OpObject, TEXT("value_type"), BuildOpFieldPath(TEXT("value_type")), Payload, OutError) ||
+		!TryCopyOptionalStringField(OpObject, TEXT("row_struct"), BuildOpFieldPath(TEXT("row_struct")), Payload, OutError) ||
+		!TryCopyOptionalStringField(OpObject, TEXT("data_asset_class"), BuildOpFieldPath(TEXT("data_asset_class")), Payload, OutError) ||
 		!TryCopyOptionalStringField(OpObject, TEXT("collision"), BuildOpFieldPath(TEXT("collision")), Payload, OutError))
+	{
+		return false;
+	}
+
+	if (!TryCopyOptionalArrayField(OpObject, TEXT("fields"), BuildOpFieldPath(TEXT("fields")), Payload, OutError))
 	{
 		return false;
 	}

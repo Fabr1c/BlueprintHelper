@@ -977,6 +977,10 @@ namespace
 		BridgeTarget->SetStringField(TEXT("graph"), GraphName);
 		Payload->SetObjectField(TEXT("target"), BridgeTarget);
 		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
+		if (ReadStepDependsOn(StepObject).Num() > 0)
+		{
+			Payload->SetBoolField(TEXT("reuse_existing_entries"), true);
+		}
 
 		FString FeatureName;
 		if (TaskPlan.IsValid() && TaskPlan->TryGetStringField(TEXT("task_name"), FeatureName) && !FeatureName.IsEmpty())
@@ -1357,6 +1361,7 @@ namespace
 	}
 
 	bool TryBuildGraphWriteIrMergePayload(
+		const TSharedPtr<FJsonObject>& TaskPlan,
 		const TSharedPtr<FJsonObject>& TargetObject,
 		const FString& AssetPath,
 		const FString& GraphName,
@@ -1405,6 +1410,12 @@ namespace
 		Payload->SetObjectField(TEXT("anchor"), Anchor);
 		Payload->SetObjectField(TEXT("inserted"), Inserted);
 		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
+
+		bool bAllowCompileBeforeCall = false;
+		if (TryReadExecutionPolicyBool(TaskPlan, TEXT("should_compile"), bAllowCompileBeforeCall))
+		{
+			Payload->SetBoolField(TEXT("allow_compile_before_call"), bAllowCompileBeforeCall);
+		}
 
 		const TArray<TSharedPtr<FJsonValue>>* SequenceOrder = nullptr;
 		if (OpObject->TryGetArrayField(TEXT("sequence_order"), SequenceOrder) && SequenceOrder)
@@ -1516,7 +1527,7 @@ namespace
 		if (OpName == TEXT("insert_flow"))
 		{
 			OutAdapterOperation = TEXT("merge_blueprint_graph");
-			return TryBuildGraphWriteIrMergePayload(TargetObject, AssetPath, GraphName, FirstOpObject, bDryRun, OutPayload, OutError);
+			return TryBuildGraphWriteIrMergePayload(TaskPlan, TargetObject, AssetPath, GraphName, FirstOpObject, bDryRun, OutPayload, OutError);
 		}
 
 		OutError = MakeTaskRuntimeError(
@@ -2218,6 +2229,48 @@ namespace
 		}
 	}
 
+	TArray<FBlueprintHelperAssetFactoryFieldSpec> ReadAssetFactoryFieldsArray(
+		const TSharedPtr<FJsonObject>& Payload)
+	{
+		TArray<FBlueprintHelperAssetFactoryFieldSpec> Fields;
+		const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;
+		if (!Payload.IsValid() || !Payload->TryGetArrayField(TEXT("fields"), Values) || !Values)
+		{
+			return Fields;
+		}
+
+		for (const TSharedPtr<FJsonValue>& Value : *Values)
+		{
+			const TSharedPtr<FJsonObject> FieldObject = Value.IsValid() ? Value->AsObject() : nullptr;
+			if (!FieldObject.IsValid())
+			{
+				continue;
+			}
+
+			FString Name;
+			FString Type;
+			if (!FieldObject->TryGetStringField(TEXT("name"), Name) ||
+				!FieldObject->TryGetStringField(TEXT("type"), Type))
+			{
+				continue;
+			}
+
+			FBlueprintHelperAssetFactoryFieldSpec Field(Name, Type);
+			if (FieldObject->HasField(TEXT("default_value")))
+			{
+				FString DefaultValue;
+				if (!FieldObject->TryGetStringField(TEXT("default_value"), DefaultValue))
+				{
+					DefaultValue = JsonValueToString(FieldObject->TryGetField(TEXT("default_value")));
+				}
+				Field.DefaultValue = DefaultValue;
+				Field.bHasDefaultValue = true;
+			}
+			Fields.Add(Field);
+		}
+		return Fields;
+	}
+
 	FBlueprintHelperToolResultBase ExecuteAssetFactoryTaskPlanStep(
 		const FBlueprintHelperAssetFactoryService& Service,
 		const TSharedPtr<FJsonObject>& Payload)
@@ -2226,7 +2279,10 @@ namespace
 		FString AssetTypeText;
 		FString ParentClass;
 		FString ValueType;
+		FString RowStruct;
+		FString DataAssetClass;
 		FString CollisionText;
+		TArray<FBlueprintHelperAssetFactoryFieldSpec> Fields;
 		bool bDryRun = false;
 		if (Payload.IsValid())
 		{
@@ -2234,7 +2290,10 @@ namespace
 			Payload->TryGetStringField(TEXT("asset_type"), AssetTypeText);
 			Payload->TryGetStringField(TEXT("parent_class"), ParentClass);
 			Payload->TryGetStringField(TEXT("value_type"), ValueType);
+			Payload->TryGetStringField(TEXT("row_struct"), RowStruct);
+			Payload->TryGetStringField(TEXT("data_asset_class"), DataAssetClass);
 			Payload->TryGetStringField(TEXT("collision"), CollisionText);
+			Fields = ReadAssetFactoryFieldsArray(Payload);
 			Payload->TryGetBoolField(TEXT("dry_run"), bDryRun);
 		}
 
@@ -2249,12 +2308,25 @@ namespace
 				TEXT("task_plan.steps[0].write.ops[0].asset_type"));
 		}
 
+		if (AssetType == EBlueprintHelperAssetType::DataTable && RowStruct.TrimStartAndEnd().IsEmpty())
+		{
+			return MakeFailure(
+				TEXT("create_asset"),
+				TEXT("missing_row_struct"),
+				EBlueprintHelperToolStage::ParseInput,
+				TEXT("asset_type=data_table requires row_struct."),
+				TEXT("task_plan.steps[0].write.ops[0].row_struct"));
+		}
+
 		const EBlueprintHelperAssetCollisionPolicy Collision = ParseAssetFactoryCollision(CollisionText);
 		const FBlueprintHelperAssetFactoryData FactoryData = Service.CreateAsset(
 			AssetPath,
 			AssetType,
 			ParentClass,
 			ValueType,
+			RowStruct,
+			DataAssetClass,
+			Fields,
 			Collision,
 			bDryRun);
 
@@ -3092,6 +3164,7 @@ namespace
 		{
 			FBlueprintHelperEnsureOverrideEventSignatureRequest Request;
 			Request.AssetPath = AssetPath;
+			Request.GraphName = GraphName;
 			Request.EventName = EventName;
 			Request.EventKind = EventKind;
 			if (!ExecutePolicy.IsEmpty())

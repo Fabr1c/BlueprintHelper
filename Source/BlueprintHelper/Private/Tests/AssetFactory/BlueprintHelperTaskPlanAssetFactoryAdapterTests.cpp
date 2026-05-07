@@ -1,9 +1,11 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "AssetRegistry/AssetRegistryModule.h"
+#include "Blueprint/UserWidget.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Engine/Blueprint.h"
+#include "Engine/DataTable.h"
 #include "GameFramework/Actor.h"
 #include "GraphSupport/BlueprintHelperBlockIdService.h"
 #include "GraphSupport/BlueprintHelperGraphResolver.h"
@@ -36,7 +38,10 @@
 #include "TaskRuntime/BlueprintHelperTaskRuntimeService.h"
 #include "TaskRuntime/TaskPlanAdapters/AssetFactory/BlueprintHelperAssetFactoryTaskPlanAdapter.h"
 #include "Transactions/Transactions/BlueprintHelperTransactionJournalService.h"
+#include "Engine/UserDefinedStruct.h"
 #include "UObject/SoftObjectPath.h"
+#include "WidgetBlueprint.h"
+#include "StructUtils/UserDefinedStruct.h"
 
 namespace
 {
@@ -124,6 +129,32 @@ namespace
 		return AssetRegistry.Get().GetAssetByObjectPath(FSoftObjectPath(AssetFactoryTestObjectPath(AssetPath))).IsValid();
 	}
 
+	bool AssetFactoryHasPropertyWithFriendlyName(const UUserDefinedStruct* Struct, const FString& FriendlyName)
+	{
+		if (!Struct)
+		{
+			return false;
+		}
+
+		for (TFieldIterator<const FProperty> It(Struct); It; ++It)
+		{
+			if (Struct->GetAuthoredNameForField(*It) == FriendlyName)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	TArray<FBlueprintHelperAssetFactoryFieldSpec> MakeDamageAmmoFields()
+	{
+		TArray<FBlueprintHelperAssetFactoryFieldSpec> Fields;
+		Fields.Add(FBlueprintHelperAssetFactoryFieldSpec(TEXT("Damage"), TEXT("int")));
+		Fields.Add(FBlueprintHelperAssetFactoryFieldSpec(TEXT("Ammo"), TEXT("int")));
+		return Fields;
+	}
+
 	TSharedPtr<FJsonObject> MakeAssetFactoryCreateAssetStep()
 	{
 		TSharedPtr<FJsonObject> Step = MakeShared<FJsonObject>();
@@ -138,7 +169,22 @@ namespace
 		Op->SetStringField(TEXT("op"), FBlueprintHelperAssetFactoryTaskPlanAdapter::SupportedOp);
 		Op->SetStringField(TEXT("asset_type"), TEXT("input_action"));
 		Op->SetStringField(TEXT("value_type"), TEXT("bool"));
+		Op->SetStringField(TEXT("row_struct"), TEXT("/Game/BlueprintHelperSafety/ST_Row.ST_Row"));
+		Op->SetStringField(TEXT("data_asset_class"), TEXT("/Script/Engine.DataAsset"));
 		Op->SetStringField(TEXT("collision"), TEXT("reuse_if_exists"));
+
+		TSharedPtr<FJsonObject> DamageField = MakeShared<FJsonObject>();
+		DamageField->SetStringField(TEXT("name"), TEXT("Damage"));
+		DamageField->SetStringField(TEXT("type"), TEXT("int"));
+
+		TSharedPtr<FJsonObject> AmmoField = MakeShared<FJsonObject>();
+		AmmoField->SetStringField(TEXT("name"), TEXT("Ammo"));
+		AmmoField->SetStringField(TEXT("type"), TEXT("int"));
+
+		TArray<TSharedPtr<FJsonValue>> Fields;
+		Fields.Add(MakeShared<FJsonValueObject>(DamageField.ToSharedRef()));
+		Fields.Add(MakeShared<FJsonValueObject>(AmmoField.ToSharedRef()));
+		Op->SetArrayField(TEXT("fields"), Fields);
 
 		TArray<TSharedPtr<FJsonValue>> Ops;
 		Ops.Add(MakeShared<FJsonValueObject>(Op.ToSharedRef()));
@@ -232,19 +278,71 @@ bool FBlueprintHelperTaskPlanAssetFactoryAdapterBuildsCreateAssetPayloadTest::Ru
 	FString AssetPath;
 	FString AssetType;
 	FString ValueType;
+	FString RowStruct;
+	FString DataAssetClass;
 	FString Collision;
 	bool bDryRun = false;
 	TestTrue(TEXT("payload carries asset_path"), Payload->TryGetStringField(TEXT("asset_path"), AssetPath));
 	TestTrue(TEXT("payload carries asset_type"), Payload->TryGetStringField(TEXT("asset_type"), AssetType));
 	TestTrue(TEXT("payload carries value_type"), Payload->TryGetStringField(TEXT("value_type"), ValueType));
+	TestTrue(TEXT("payload carries row_struct"), Payload->TryGetStringField(TEXT("row_struct"), RowStruct));
+	TestTrue(TEXT("payload carries data_asset_class"), Payload->TryGetStringField(TEXT("data_asset_class"), DataAssetClass));
 	TestTrue(TEXT("payload carries collision"), Payload->TryGetStringField(TEXT("collision"), Collision));
 	TestTrue(TEXT("payload carries dry_run"), Payload->TryGetBoolField(TEXT("dry_run"), bDryRun));
+	const TArray<TSharedPtr<FJsonValue>>* Fields = nullptr;
+	TestTrue(TEXT("payload carries fields"), Payload->TryGetArrayField(TEXT("fields"), Fields));
 
 	TestEqual(TEXT("asset_path comes from step target"), AssetPath, FString(TEXT("/Game/Input/IA_Interact")));
 	TestEqual(TEXT("asset_type comes from create op"), AssetType, FString(TEXT("input_action")));
 	TestEqual(TEXT("value_type is preserved"), ValueType, FString(TEXT("bool")));
+	TestEqual(TEXT("row_struct is preserved"), RowStruct, FString(TEXT("/Game/BlueprintHelperSafety/ST_Row.ST_Row")));
+	TestEqual(TEXT("data_asset_class is preserved"), DataAssetClass, FString(TEXT("/Script/Engine.DataAsset")));
 	TestEqual(TEXT("existing collision field name is preserved"), Collision, FString(TEXT("reuse_if_exists")));
 	TestTrue(TEXT("preview dry_run is preserved"), bDryRun);
+	TestTrue(TEXT("fields array has two entries"), Fields && Fields->Num() == 2);
+	if (Fields && Fields->Num() == 2)
+	{
+		FString DamageName;
+		FString AmmoType;
+		TestTrue(TEXT("first field is an object"), (*Fields)[0].IsValid() && (*Fields)[0]->AsObject().IsValid());
+		TestTrue(TEXT("second field is an object"), (*Fields)[1].IsValid() && (*Fields)[1]->AsObject().IsValid());
+		TestTrue(TEXT("first field name is preserved"), (*Fields)[0]->AsObject()->TryGetStringField(TEXT("name"), DamageName));
+		TestTrue(TEXT("second field type is preserved"), (*Fields)[1]->AsObject()->TryGetStringField(TEXT("type"), AmmoType));
+		TestEqual(TEXT("first field name value"), DamageName, FString(TEXT("Damage")));
+		TestEqual(TEXT("second field type value"), AmmoType, FString(TEXT("int")));
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperAssetFactoryServiceNormalizesDataTableAndWidgetAliasesTest,
+	"BlueprintHelper.AssetFactory.NormalizesDataTableAndWidgetAliases",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperAssetFactoryServiceNormalizesDataTableAndWidgetAliasesTest::RunTest(const FString& Parameters)
+{
+	EBlueprintHelperAssetType AssetType = EBlueprintHelperAssetType::Unknown;
+	FString ParentClass;
+
+	TestTrue(TEXT("data_table alias normalizes"), FBlueprintHelperAssetFactoryService::TryNormalizeAssetTypeAndParent(TEXT("data_table"), ParentClass, AssetType));
+	TestEqual(TEXT("data_table maps to DataTable"), AssetType, EBlueprintHelperAssetType::DataTable);
+
+	AssetType = EBlueprintHelperAssetType::Unknown;
+	TestTrue(TEXT("datatable alias normalizes"), FBlueprintHelperAssetFactoryService::TryNormalizeAssetTypeAndParent(TEXT("datatable"), ParentClass, AssetType));
+	TestEqual(TEXT("datatable maps to DataTable"), AssetType, EBlueprintHelperAssetType::DataTable);
+
+	AssetType = EBlueprintHelperAssetType::Unknown;
+	TestTrue(TEXT("widget alias normalizes"), FBlueprintHelperAssetFactoryService::TryNormalizeAssetTypeAndParent(TEXT("widget"), ParentClass, AssetType));
+	TestEqual(TEXT("widget maps to WidgetBlueprint"), AssetType, EBlueprintHelperAssetType::WidgetBlueprint);
+
+	AssetType = EBlueprintHelperAssetType::Unknown;
+	TestTrue(TEXT("widget_blueprint alias normalizes"), FBlueprintHelperAssetFactoryService::TryNormalizeAssetTypeAndParent(TEXT("widget_blueprint"), ParentClass, AssetType));
+	TestEqual(TEXT("widget_blueprint maps to WidgetBlueprint"), AssetType, EBlueprintHelperAssetType::WidgetBlueprint);
+
+	AssetType = EBlueprintHelperAssetType::Unknown;
+	TestTrue(TEXT("widgetblueprint alias normalizes"), FBlueprintHelperAssetFactoryService::TryNormalizeAssetTypeAndParent(TEXT("widgetblueprint"), ParentClass, AssetType));
+	TestEqual(TEXT("widgetblueprint maps to WidgetBlueprint"), AssetType, EBlueprintHelperAssetType::WidgetBlueprint);
 
 	return true;
 }
@@ -313,6 +411,143 @@ bool FBlueprintHelperAssetFactoryServiceCreatesActorBlueprintAssetTest::RunTest(
 	}
 
 	return CreatedBlueprint != nullptr && Data.Asset.bCreated;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperAssetFactoryServiceCreatesUserDefinedStructWithFieldsTest,
+	"BlueprintHelper.AssetFactory.CreatesUserDefinedStructWithFields",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperAssetFactoryServiceCreatesUserDefinedStructWithFieldsTest::RunTest(const FString& Parameters)
+{
+	const FString AssetPath = FString::Printf(
+		TEXT("/Game/BlueprintHelperSafety/ST_DamageAmmo_%s"),
+		*FGuid::NewGuid().ToString(EGuidFormats::Digits));
+
+	const FBlueprintHelperAssetFactoryService Service;
+	const FBlueprintHelperAssetFactoryData Data = Service.CreateAsset(
+		AssetPath,
+		EBlueprintHelperAssetType::Structure,
+		TEXT(""),
+		TEXT(""),
+		TEXT(""),
+		TEXT(""),
+		MakeDamageAmmoFields(),
+		EBlueprintHelperAssetCollisionPolicy::FailIfExists,
+		false);
+
+	TestTrue(TEXT("structure create reports created"), Data.Asset.bCreated);
+	TestTrue(TEXT("structure asset is registered"), AssetFactoryTestAssetExists(AssetPath));
+
+	UObject* CreatedAsset = StaticLoadObject(UUserDefinedStruct::StaticClass(), nullptr, *AssetFactoryTestObjectPath(AssetPath));
+	UUserDefinedStruct* CreatedStruct = Cast<UUserDefinedStruct>(CreatedAsset);
+	TestNotNull(TEXT("created asset loads as UUserDefinedStruct"), CreatedStruct);
+	if (CreatedStruct)
+	{
+		TestTrue(TEXT("Damage field exists"), AssetFactoryHasPropertyWithFriendlyName(CreatedStruct, TEXT("Damage")));
+		TestTrue(TEXT("Ammo field exists"), AssetFactoryHasPropertyWithFriendlyName(CreatedStruct, TEXT("Ammo")));
+		ObjectTools::DeleteSingleObject(CreatedStruct, false);
+	}
+
+	return CreatedStruct != nullptr && Data.Asset.bCreated;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperAssetFactoryServiceCreatesDataTableWithRowStructTest,
+	"BlueprintHelper.AssetFactory.CreatesDataTableWithRowStruct",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperAssetFactoryServiceCreatesDataTableWithRowStructTest::RunTest(const FString& Parameters)
+{
+	const FString GuidText = FGuid::NewGuid().ToString(EGuidFormats::Digits);
+	const FString StructPath = FString::Printf(TEXT("/Game/BlueprintHelperSafety/ST_TableRow_%s"), *GuidText);
+	const FString TablePath = FString::Printf(TEXT("/Game/BlueprintHelperSafety/DT_Table_%s"), *GuidText);
+
+	const FBlueprintHelperAssetFactoryService Service;
+	const FBlueprintHelperAssetFactoryData StructData = Service.CreateAsset(
+		StructPath,
+		EBlueprintHelperAssetType::Structure,
+		TEXT(""),
+		TEXT(""),
+		TEXT(""),
+		TEXT(""),
+		MakeDamageAmmoFields(),
+		EBlueprintHelperAssetCollisionPolicy::FailIfExists,
+		false);
+
+	UUserDefinedStruct* RowStruct = Cast<UUserDefinedStruct>(
+		StaticLoadObject(UUserDefinedStruct::StaticClass(), nullptr, *AssetFactoryTestObjectPath(StructPath)));
+	TestTrue(TEXT("row struct fixture was created"), StructData.Asset.bCreated);
+	TestNotNull(TEXT("row struct fixture loads"), RowStruct);
+	if (!RowStruct)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperAssetFactoryData TableData = Service.CreateAsset(
+		TablePath,
+		EBlueprintHelperAssetType::DataTable,
+		TEXT(""),
+		TEXT(""),
+		RowStruct->GetPathName(),
+		TEXT(""),
+		TArray<FBlueprintHelperAssetFactoryFieldSpec>(),
+		EBlueprintHelperAssetCollisionPolicy::FailIfExists,
+		false);
+
+	TestTrue(TEXT("data table create reports created"), TableData.Asset.bCreated);
+	TestTrue(TEXT("data table asset is registered"), AssetFactoryTestAssetExists(TablePath));
+	TestEqual(TEXT("factory records row_struct"), TableData.Factory.RowStruct, RowStruct->GetPathName());
+
+	UObject* CreatedAsset = StaticLoadObject(UDataTable::StaticClass(), nullptr, *AssetFactoryTestObjectPath(TablePath));
+	UDataTable* CreatedTable = Cast<UDataTable>(CreatedAsset);
+	TestNotNull(TEXT("created asset loads as UDataTable"), CreatedTable);
+	if (CreatedTable)
+	{
+		TestTrue(TEXT("data table references requested RowStruct"), CreatedTable->GetRowStruct() == RowStruct);
+		ObjectTools::DeleteSingleObject(CreatedTable, false);
+	}
+	ObjectTools::DeleteSingleObject(RowStruct, false);
+
+	return CreatedTable != nullptr && TableData.Asset.bCreated;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperAssetFactoryServiceCreatesWidgetBlueprintTest,
+	"BlueprintHelper.AssetFactory.CreatesWidgetBlueprint",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperAssetFactoryServiceCreatesWidgetBlueprintTest::RunTest(const FString& Parameters)
+{
+	const FString AssetPath = FString::Printf(
+		TEXT("/Game/BlueprintHelperSafety/WBP_Create_%s"),
+		*FGuid::NewGuid().ToString(EGuidFormats::Digits));
+
+	const FBlueprintHelperAssetFactoryService Service;
+	const FBlueprintHelperAssetFactoryData Data = Service.CreateAsset(
+		AssetPath,
+		EBlueprintHelperAssetType::WidgetBlueprint,
+		TEXT(""),
+		TEXT(""),
+		TEXT(""),
+		TEXT(""),
+		TArray<FBlueprintHelperAssetFactoryFieldSpec>(),
+		EBlueprintHelperAssetCollisionPolicy::FailIfExists,
+		false);
+
+	TestTrue(TEXT("widget blueprint create reports created"), Data.Asset.bCreated);
+	TestTrue(TEXT("widget blueprint asset is registered"), AssetFactoryTestAssetExists(AssetPath));
+
+	UObject* CreatedAsset = StaticLoadObject(UWidgetBlueprint::StaticClass(), nullptr, *AssetFactoryTestObjectPath(AssetPath));
+	UWidgetBlueprint* CreatedWidgetBlueprint = Cast<UWidgetBlueprint>(CreatedAsset);
+	TestNotNull(TEXT("created asset loads as UWidgetBlueprint"), CreatedWidgetBlueprint);
+	if (CreatedWidgetBlueprint)
+	{
+		TestTrue(TEXT("widget blueprint defaults to UUserWidget parent"), CreatedWidgetBlueprint->ParentClass == UUserWidget::StaticClass());
+		ObjectTools::DeleteSingleObject(CreatedWidgetBlueprint, false);
+	}
+
+	return CreatedWidgetBlueprint != nullptr && Data.Asset.bCreated;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(

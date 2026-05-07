@@ -212,7 +212,6 @@ struct FBlueprintHelperReferenceContextPack
 	TArray<FBlueprintHelperAssetRefSummary> Referencers;
 	TArray<FBlueprintHelperDependentRefSummary> ExternalDependents;
 	FBlueprintHelperReferenceContextAgentHints AgentHints;
-	FString LargePayloadRef;
 
 	TSharedRef<FJsonObject> ToJson() const
 	{
@@ -243,14 +242,6 @@ struct FBlueprintHelperReferenceContextPack
 		}
 		Json->SetArrayField(TEXT("external_dependents"), ExternalDependentValues);
 		Json->SetObjectField(TEXT("agent_hints"), AgentHints.ToJson());
-		if (LargePayloadRef.IsEmpty())
-		{
-			Json->SetField(TEXT("large_payload_ref"), MakeShared<FJsonValueNull>());
-		}
-		else
-		{
-			Json->SetStringField(TEXT("large_payload_ref"), LargePayloadRef);
-		}
 		return Json;
 	}
 };

@@ -13,6 +13,7 @@
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraphSchema_K2.h"
+#include "K2Node_CustomEvent.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -53,6 +54,42 @@ namespace
 			}
 		}
 		return false;
+	}
+
+	UK2Node_CustomEvent* FindExistingCustomEventNode(UEdGraph* Graph, const FString& EventName)
+	{
+		if (!Graph || EventName.IsEmpty())
+		{
+			return nullptr;
+		}
+
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			UK2Node_CustomEvent* CustomEvent = Cast<UK2Node_CustomEvent>(Node);
+			if (CustomEvent && CustomEvent->CustomFunctionName.ToString().Equals(EventName, ESearchCase::IgnoreCase))
+			{
+				return CustomEvent;
+			}
+		}
+		return nullptr;
+	}
+
+	TSet<UEdGraphNode*> CaptureGraphNodes(UEdGraph* Graph)
+	{
+		TSet<UEdGraphNode*> Nodes;
+		if (!Graph)
+		{
+			return Nodes;
+		}
+
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (Node)
+			{
+				Nodes.Add(Node);
+			}
+		}
+		return Nodes;
 	}
 }
 
@@ -108,6 +145,7 @@ FBlueprintHelperAppendBlueprintGraphService::ParseRequest(const TSharedPtr<FJson
 
 	Payload->TryGetStringField(TEXT("feature_name"), Request.FeatureName);
 	Payload->TryGetBoolField(TEXT("dry_run"), Request.bDryRun);
+	Payload->TryGetBoolField(TEXT("reuse_existing_entries"), Request.bReuseExistingEntries);
 
 	const TArray<TSharedPtr<FJsonValue>>* NodesArray = nullptr;
 	if (Payload->TryGetArrayField(TEXT("nodes"), NodesArray))
@@ -159,13 +197,13 @@ FBlueprintHelperAppendBlueprintGraphService::Preflight(const FAppendRequest& Req
 		return Result;
 	}
 
-	if (!PreflightGraphTarget(Blueprint, Request.GraphName, Graph, Result))
+	if (!PreflightGraphTarget(Blueprint, Request, Graph, Result))
 	{
 		return Result;
 	}
 
 	// 4. 检查节点
-	if (!PreflightNodePayload(Request, Result))
+	if (!PreflightNodePayload(Request, Graph, Result))
 	{
 		return Result;
 	}
@@ -199,10 +237,11 @@ bool FBlueprintHelperAppendBlueprintGraphService::PreflightBlueprint(
 
 bool FBlueprintHelperAppendBlueprintGraphService::PreflightGraphTarget(
 	UBlueprint* Blueprint,
-	const FString& GraphName,
+	const FAppendRequest& Request,
 	UEdGraph*& OutGraph,
 	FAppendPreflightResult& OutResult) const
 {
+	const FString& GraphName = Request.GraphName;
 	// 检查 FunctionGraphs / MacroGraphs 中是否存在同名图表
 	for (UEdGraph* FunctionGraph : Blueprint->FunctionGraphs)
 	{
@@ -243,6 +282,11 @@ bool FBlueprintHelperAppendBlueprintGraphService::PreflightGraphTarget(
 				return true;
 			}
 
+			if (Request.bReuseExistingEntries)
+			{
+				return true;
+			}
+
 			// 非空图表拒绝
 			OutResult.bPassed = false;
 			OutResult.BlockedBy.Add(TEXT("target_graph_not_empty"));
@@ -260,6 +304,7 @@ bool FBlueprintHelperAppendBlueprintGraphService::PreflightGraphTarget(
 
 bool FBlueprintHelperAppendBlueprintGraphService::PreflightNodePayload(
 	const FAppendRequest& Request,
+	UEdGraph* Graph,
 	FAppendPreflightResult& OutResult) const
 {
 	if (Request.Nodes.Num() == 0)
@@ -328,6 +373,15 @@ bool FBlueprintHelperAppendBlueprintGraphService::PreflightNodePayload(
 					Name, TEXT("nodes[].name")});
 			}
 			SeenNames.Add(Name);
+
+			if (Request.bReuseExistingEntries && !Request.bDryRun && !FindExistingCustomEventNode(Graph, Name))
+			{
+				OutResult.bPassed = false;
+				OutResult.BlockedBy.Add(TEXT("custom_event_entry_not_found"));
+				OutResult.Conflicts.Add({TEXT("custom_event_entry_not_found"),
+					FString::Printf(TEXT("Custom Event '%s' must already exist when reuse_existing_entries is enabled."), *Name),
+					Name, TEXT("nodes[].name")});
+			}
 		}
 	}
 
@@ -543,6 +597,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 		Error.RollbackResult = EBlueprintHelperRollbackResult::NotNeeded;
 		return FBlueprintHelperToolResultBuilder::Failure(TEXT("append_blueprint_graph"), TraceId, Error);
 	}
+	const TSet<UEdGraphNode*> NodeSnapshot = CaptureGraphNodes(TargetGraph);
 
 	// 5. 通过 AgentImportService 执行节点/连线创建
 	const FBlueprintHelperAgentImportResult ImportResult = AgentImportService.Import(ImportReq);
@@ -583,9 +638,19 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 	TArray<UEdGraphNode*> CreatedNodes;
 	for (UEdGraphNode* Node : TargetGraph->Nodes)
 	{
-		if (Node)
+		if (Node && !NodeSnapshot.Contains(Node))
 		{
 			CreatedNodes.Add(Node);
+		}
+	}
+	if (Request.bReuseExistingEntries)
+	{
+		for (const FString& EntryName : EntryNames)
+		{
+			if (UK2Node_CustomEvent* ExistingEntry = FindExistingCustomEventNode(TargetGraph, EntryName))
+			{
+				CreatedNodes.AddUnique(ExistingEntry);
+			}
 		}
 	}
 
@@ -712,7 +777,7 @@ FString FBlueprintHelperAppendBlueprintGraphService::BuildAgentImportPayload(
 	Options->SetBoolField(TEXT("strict"), true);
 	Options->SetBoolField(TEXT("dry_run"), false);
 	Options->SetBoolField(TEXT("create_missing_variables"), false);
-	Options->SetBoolField(TEXT("reconstruct_existing_nodes"), false);
+	Options->SetBoolField(TEXT("reconstruct_existing_nodes"), Request.bReuseExistingEntries);
 	Root->SetObjectField(TEXT("options"), Options);
 
 	// nodes

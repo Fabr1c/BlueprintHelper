@@ -95,7 +95,7 @@ describe('TaskSpec/TaskPlan protocol contract', () => {
         'patch_blueprint_graph',
         'merge_blueprint_graph',
       ],
-      step_batching: 'append custom_event entries compile signature dependency steps before one graph_write body step; replace/patch/merge compile to one structural op per step',
+      step_batching: 'append custom_event entries and custom_event_definition replacements compile signature dependency steps before graph_write body steps; other replace/patch/merge paths compile to one structural op per step',
     });
 
     assert.deepEqual(TASK_PROTOCOL_CONTRACT_V1.supported_second_slice, {
@@ -267,6 +267,10 @@ describe('TaskSpec/TaskPlan protocol contract', () => {
 
     assert.deepEqual(p1ByType.create_asset.agent_semantic_paths, [
       'behavior.asset_strategy=ensure_asset',
+      'behavior.asset.asset_type',
+      'behavior.asset.parent_class',
+      'behavior.asset.fields[] for asset_type=structure',
+      'behavior.asset.row_struct for asset_type=data_table',
       'behavior.asset.collision_policy',
     ]);
     assert.deepEqual(p1ByType.create_asset.forbidden_agent_fields, [

@@ -54,6 +54,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperEnsureEventDispatcherSignatureRequest
 struct BLUEPRINTHELPER_API FBlueprintHelperEnsureOverrideEventSignatureRequest
 {
 	FString AssetPath;
+	FString GraphName;
 	FString EventName;
 	FString EventKind = TEXT("native_event");
 	FString ExecutePolicy = TEXT("blocked_preflight");

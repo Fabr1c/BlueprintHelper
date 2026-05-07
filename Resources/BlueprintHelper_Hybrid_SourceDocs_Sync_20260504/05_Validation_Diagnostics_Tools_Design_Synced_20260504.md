@@ -66,12 +66,12 @@ blueprinthelper_diagnostics
 blueprinthelper_diagnostics_runtime
 ```
 
-蓝图资产级诊断可继续规划：
+蓝图资产级诊断可继续规划为能力范围，不作为普通 Agent 直调工具清单：
 
 ```text
-blueprint_graph_diagnostics
-blueprint_asset_diagnostics
-blueprint_project_diagnostics（后置）
+Graph diagnostics
+Asset diagnostics
+Project diagnostics（后置）
 ```
 
 ---
@@ -330,18 +330,16 @@ AutoRepair 可以读取 Diagnostics 结果后另行调用写工具，但 Diagnos
 
 compile / save / PIE 不重复造新工具。
 
-现有编译、保存、PIE 启停、编辑器命令工具保持原有归属，但在工作流层归入 Validation Workflow。
+现有编译、保存、PIE 启停、编辑器命令能力保持原有实现归属，但普通 Agent 工作流只通过 TaskSpec validation、preview、execute、task result 和 read-back 表达闭环。
 
-Validation Workflow 可包含：
+Validation Workflow 可包含这些能力阶段：
 
 ```text
-blueprint_graph_diagnostics
-blueprint_asset_diagnostics
-blueprint_compile_asset
-blueprint_save_asset
-editor_start_pie
-editor_stop_pie
-editor_run_smoke_test（后续可选）
+graph diagnostics
+asset diagnostics
+compile
+save
+PIE smoke（后续可选）
 ```
 
 Save 是落盘动作，应遵守 Safety Profile 与用户授权规则。
@@ -501,6 +499,16 @@ TaskSpec 合法但预览阻断：ok=true,status=preview_blocked,data.preview。
 需要更多上下文：ok=true,status=context_required,data.preview.issues[].context_query。
 ```
 
+2026-05-07 同步规则：
+
+```text
+1. preview_task 是 S1-S3 写入门禁。
+2. preview_blocked / context_required / context_stale / failed 时不得 execute。
+3. GraphWrite branch_fork + owned_block_call 必须在 preview 阶段解析 inserted.block_id。
+4. inserted.block_id 必须指向已有 BlueprintHelper-owned CustomEvent block；缺失、非 owned、非 CustomEvent 都是 preview blocker。
+5. branch_fork 必须显式 sequence_order，且只能使用 original_successor / inserted_logic。
+```
+
 ## execute_task
 
 execute_task 只执行 preview 已通过的 TaskSpec / TaskPlan。
@@ -531,4 +539,16 @@ rollback blocked / failed 时：
 ```text
 state_trust=unsafe
 agent_action=stop_and_report
+```
+
+execute 仍可能因为 UE 当前状态、资产变化、Editor 写入或链接失败而失败。失败返回必须保留非空 error code/message/stage；空错误要归一化成可报告错误，Agent 不应继续猜测或回退到原子写入口。
+
+GraphWrite `branch_fork` execute/read-back 规则：
+
+```text
+1. execute 成功后读取 LogicJson 或 LogicMd。
+2. 确认 anchor 后插入 Sequence 或等价分发节点。
+3. 确认 inserted call 已生成并可达。
+4. 确认 original successor 仍从 Sequence 分支可达。
+5. 确认受影响执行流无孤立节点。
 ```

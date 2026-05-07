@@ -17,6 +17,7 @@
 #include "EdGraphNode_Comment.h"
 #include "EdGraphSchema_K2.h"
 #include "Engine/Blueprint.h"
+#include "K2Node_CustomEvent.h"
 #include "K2Node.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Serialization/JsonReader.h"
@@ -171,6 +172,24 @@ namespace
 			}
 		}
 		return Snapshot;
+	}
+
+	UK2Node_CustomEvent* FindExistingCustomEventNode(UEdGraph* Graph, const FString& EventName)
+	{
+		if (!Graph || EventName.IsEmpty())
+		{
+			return nullptr;
+		}
+
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			UK2Node_CustomEvent* CustomEvent = Cast<UK2Node_CustomEvent>(Node);
+			if (CustomEvent && CustomEvent->CustomFunctionName.ToString().Equals(EventName, ESearchCase::IgnoreCase))
+			{
+				return CustomEvent;
+			}
+		}
+		return nullptr;
 	}
 
 	TSet<FName> CaptureBlueprintVariableSnapshot(UBlueprint* Blueprint)
@@ -1331,10 +1350,28 @@ FBlueprintHelperAgentImportResult FBlueprintHelperAgentImportService::Import(con
 	TMap<FString, UEdGraphNode*> IdToNode;
 	TMap<FString, UK2Node*> IdToK2Node;
 	TMap<FString, FParsedNode> IdToParsedNode;
+	TSet<FString> ReusedNodeIds;
 
 	for (int32 Index = 0; Index < ParsedRequest.Nodes.Num(); ++Index)
 	{
 		const FBlueprintHelperAgentImportNode& AgentNode = ParsedRequest.Nodes[Index];
+		if (ParsedRequest.Options.bReconstructExistingNodes && AgentNode.Kind == TEXT("custom_event"))
+		{
+			UK2Node_CustomEvent* ExistingEvent = FindExistingCustomEventNode(TargetGraph, AgentNode.CustomEventName);
+			if (!ExistingEvent)
+			{
+				AddDiagnostic(Result, EBlueprintHelperAgentImportDiagnosticSeverity::Error,
+					TEXT("custom_event_entry_not_found"), FString::Printf(TEXT("$.nodes[%d].name"), Index),
+					FString::Printf(TEXT("Custom Event '%s' must already exist when reconstruct_existing_nodes is enabled."), *AgentNode.CustomEventName));
+				continue;
+			}
+
+			IdToNode.Add(AgentNode.Id, ExistingEvent);
+			IdToK2Node.Add(AgentNode.Id, ExistingEvent);
+			ReusedNodeIds.Add(AgentNode.Id);
+			continue;
+		}
+
 		if (AgentNode.Kind == TEXT("comment"))
 		{
 			UEdGraphNode_Comment* CommentNode = NewObject<UEdGraphNode_Comment>(TargetGraph);
@@ -1386,6 +1423,10 @@ FBlueprintHelperAgentImportResult FBlueprintHelperAgentImportService::Import(con
 	{
 		if (Pair.Value)
 		{
+			if (ReusedNodeIds.Contains(Pair.Key))
+			{
+				continue;
+			}
 			if (TargetGraph->GetSchema())
 			{
 				TargetGraph->GetSchema()->ReconstructNode(*Pair.Value);

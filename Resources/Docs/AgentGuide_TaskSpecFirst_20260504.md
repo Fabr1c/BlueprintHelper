@@ -62,7 +62,7 @@ get_runtime_profile
 4. 规定 runtime_profile、Safety Profile、missing capability 的消费规则。
 5. 规定 diagnostics 与 runtime_profile 的区别。
 6. 规定底层 capability 的边界，避免 Agent 混用工具职责。
-7. 规定 LogicMD / LogicJson / RawJson / resource_ref 的读取策略。
+7. 规定 LogicMD / LogicJson / RawJson 的读取策略。
 8. 规定 Graph Write、Asset、Component、Class Settings、Enhanced Input 的 stop 条件。
 9. 规定最终报告格式。
 ```
@@ -346,7 +346,7 @@ Agent 应请求与任务相关的上下文，例如：
 3. LogicMD / LogicJson 片段或目标图表摘要。
 4. 资源候选，例如 mesh、interface、InputAction、DataTable。
 5. 当前 runtime 摘要和 unavailable capability 摘要。
-6. 必要的 context_id 或 large_payload_ref。
+6. 必要的 context_id 或精确的块级/上下文切片重读目标。
 ```
 
 如果 preview 返回 `context_required` 或 `context_stale`，Agent 应重新调用 `read_context` 或相关只读工具，不能继续沿用旧上下文。
@@ -555,8 +555,8 @@ Agent 不生成 `transaction_id` 或 `block_id`。这些 ID 由 UE 侧生成。
 ```text
 Need understand?          → logic_md
 Need structured reasoning? → logic_json
-Need exact pins / import?  → raw_json_structured / resource_ref
-Need large payload?        → resource_ref
+Need exact pins / import?  → logic_json targeted slice, then raw_json_structured only for explicit import/debug
+Need more context?         → read the specific block, graph, widget, row, or property slice
 ```
 
 ### 12.2 LogicMD
@@ -592,7 +592,7 @@ Patch / Merge / Replace / Cleanup 前结构化分析
 
 当前已知问题：`target_type=custom_event` 的 LogicJson 查找只搜索 EventGraph，忽略自定义图。读取自定义图里的 Custom Event 时，先按 graph target 读取整张自定义图，或用 LogicMD 做人工核对，直到该 bug 修复。
 
-### 12.4 RawJson / resource_ref
+### 12.4 RawJson
 
 仅用于：
 
@@ -601,7 +601,6 @@ Patch / Merge / Replace / Cleanup 前结构化分析
 完整保真备份
 Pin/GUID 级调试
 Schema 回归测试
-大 payload 延迟读取
 ```
 
 用户只要求理解逻辑时，不默认导出 RawJson。
@@ -947,7 +946,7 @@ BlueprintHelper 是 UE5.3+ 的 Agent 编辑辅助系统。
 底层工具簇是 TaskPlan capability / debug / expert / 测试入口。
 runtime_profile.active_profile 是 safety_profile 唯一来源。
 diagnostics 只定位问题，不替代 runtime_profile。
-LogicMD 用于理解，LogicJson 用于结构化分析，RawJson/resource_ref 用于保真、导入、Pin/GUID 级调试。
+LogicMD 用于理解，LogicJson 用于结构化分析，RawJson 仅用于保真、导入、Pin/GUID 级调试。
 Asset Factory 只创建资产；Component add 只创建和 attachment；Class Settings 不写图表逻辑；Enhanced Input 默认不编辑 IA/IMC；Graph Write 合同分 Append/Replace/Patch/Merge，当前已验证执行只默认使用 Append 新图。
 失败、preview_blocked、missing capability、rollback blocked 时 stop_and_report。
 ```

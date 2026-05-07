@@ -44,6 +44,47 @@ describe('P1 TaskSpec schema validation', () => {
           target_type: 'asset',
         },
       }),
+      baseSpec('create_asset', {
+        asset_strategy: 'ensure_asset',
+        asset: {
+          asset_type: 'structure',
+          fields: [
+            { name: 'Damage', type: 'float' },
+            { name: 'Ammo', type: 'int' },
+          ],
+          collision_policy: 'reuse_if_exists',
+        },
+      }, {
+        target: {
+          asset_path: '/Game/BlueprintHelper/Smoke/ST_DataTableSmokeRow',
+          target_type: 'asset',
+        },
+      }),
+      baseSpec('create_asset', {
+        asset_strategy: 'ensure_asset',
+        asset: {
+          asset_type: 'data_table',
+          row_struct: '/Game/BlueprintHelper/Smoke/ST_DataTableSmokeRow',
+          collision_policy: 'reuse_if_exists',
+        },
+      }, {
+        target: {
+          asset_path: '/Game/BlueprintHelper/Smoke/DT_DataTableSmoke',
+          target_type: 'asset',
+        },
+      }),
+      baseSpec('create_asset', {
+        asset_strategy: 'ensure_asset',
+        asset: {
+          asset_type: 'widget_blueprint',
+          collision_policy: 'reuse_if_exists',
+        },
+      }, {
+        target: {
+          asset_path: '/Game/BlueprintHelper/Smoke/WBP_WidgetSmoke',
+          target_type: 'asset',
+        },
+      }),
       baseSpec('edit_blueprint_components', {
         component_strategy: 'component_tree',
         changes: [

@@ -35,6 +35,17 @@ public:
 		EBlueprintHelperAssetCollisionPolicy CollisionPolicy = EBlueprintHelperAssetCollisionPolicy::FailIfExists,
 		bool bDryRun = false) const;
 
+	FBlueprintHelperAssetFactoryData CreateAsset(
+		const FString& AssetPath,
+		EBlueprintHelperAssetType AssetType,
+		const FString& ParentClass,
+		const FString& ValueType,
+		const FString& RowStruct,
+		const FString& DataAssetClass,
+		const TArray<FBlueprintHelperAssetFactoryFieldSpec>& Fields,
+		EBlueprintHelperAssetCollisionPolicy CollisionPolicy = EBlueprintHelperAssetCollisionPolicy::FailIfExists,
+		bool bDryRun = false) const;
+
 	/** 根据 asset_type 确定是否需要编译。*/
 	static bool ShouldCompile(EBlueprintHelperAssetType AssetType);
 
@@ -67,7 +78,7 @@ private:
 	static bool CreateBlueprintInterface(const FString& AssetPath);
 
 	/** 实际创建结构体。*/
-	static bool CreateStructure(const FString& AssetPath);
+	static bool CreateStructure(const FString& AssetPath, const TArray<FBlueprintHelperAssetFactoryFieldSpec>& Fields);
 
 	/** 实际创建 Input Action。*/
 	static bool CreateInputAction(const FString& AssetPath, const FString& ValueType);
@@ -77,4 +88,8 @@ private:
 
 	/** 实际创建 DataAsset。*/
 	static bool CreateDataAsset(const FString& AssetPath, const FString& AssetClass);
+
+	static bool CreateDataTable(const FString& AssetPath, const FString& RowStruct);
+
+	static bool CreateWidgetBlueprint(const FString& AssetPath, const FString& ParentClass);
 };
