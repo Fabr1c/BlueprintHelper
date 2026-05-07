@@ -63,7 +63,13 @@ namespace
 			}
 
 			const FString RawValue = Value->AsString();
-			const FString TargetId = bExtractNodeName ? ExtractReviewNodeIdentifier(RawValue) : RawValue;
+			FString TargetId = bExtractNodeName ? ExtractReviewNodeIdentifier(RawValue) : RawValue;
+			if (FCString::Stricmp(*TargetPrefix, TEXT("block")) == 0)
+			{
+				TargetId = FBlueprintHelperReviewStoreService::NormalizeGraphBlockTargetId(
+					Input.GraphName,
+					TargetId);
+			}
 			if (TargetId.IsEmpty())
 			{
 				continue;
@@ -108,6 +114,26 @@ namespace
 			false,
 			Input);
 	}
+}
+
+FString FBlueprintHelperReviewStoreService::NormalizeGraphBlockTargetId(
+	const FString& GraphName,
+	const FString& BlockRefOrId)
+{
+	FString Normalized = BlockRefOrId;
+	Normalized.TrimStartAndEndInline();
+	if (GraphName.IsEmpty() || Normalized.IsEmpty())
+	{
+		return Normalized;
+	}
+
+	const FString GraphPrefix = GraphName + TEXT("_");
+	if (Normalized.StartsWith(GraphPrefix, ESearchCase::CaseSensitive))
+	{
+		return Normalized;
+	}
+
+	return GraphPrefix + Normalized;
 }
 
 TArray<FBlueprintHelperReviewVisibleChange> FBlueprintHelperReviewStoreService::BuildVisibleChanges(

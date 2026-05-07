@@ -1,72 +1,41 @@
-# 07 - 安全、验证与恢复
+# 07 - Safety Validation And Recovery
 
-## 1. 写操作安全级别
+## Safety Levels
 
-| 等级 | 操作 | 默认要求 |
+| Level | Operation | Default requirement |
 |---|---|---|
-| S0 | 只读查询 | 可直接执行 |
-| S1 | 添加变量/控件/行 | 读取现状 -> 写入 -> 回查 -> 保存 |
-| S2 | 修改属性/连线/默认值 | 读取现状 -> 最小修改 -> 编译/回查 -> 保存 |
-| S3 | 删除/重命名/批量导入 | 读取依赖 -> 明确影响 -> 写入 -> 编译 -> 可恢复方案 |
+| S0 | Read-only | May run after target is clear |
+| S1 | Add variable, component, widget, or row | Read current state, preview, execute, read back |
+| S2 | Modify properties, defaults, or graph flow | Read current state, preview, execute minimal change, validate |
+| S3 | Delete, rename, or batch mutation | Read references, preview impact, execute only after blocker-free preview |
 
-## 2. 编译规则
+## Validation
 
-蓝图结构写入后必须编译目标蓝图。编译失败时：
+Use TaskSpec `validation.should_compile` and `validation.should_save`. If validation fails, stop further writes and report the failing asset, stage, and diagnostic summary.
 
-- 停止继续写入。
-- 返回错误摘要。
-- 给出可能失败点：类型不匹配、Pin 连线错误、缺少引用、节点不存在、变量重名。
-- 如工具支持 Undo，可恢复到写入前；否则报告已修改但未保存或已保存状态。
+## Recovery
 
-## 3. 保存规则
+If a write fails:
 
-默认保存：
+- Prefer task result and journal data from `blueprinthelper_get_task_result`.
+- Report which steps ran and which were blocked.
+- Do not call frozen recovery tools unless the user explicitly requests expert recovery.
 
-- 用户要求完成修改。
-- 编译或回查通过。
-- 操作是明确资产写入。
+## Read-back
 
-默认不保存或需谨慎保存：
+After writing, do at least one relevant read-back:
 
-- 编译失败。
-- 用户要求仅试验。
-- 批量操作中部分失败。
-- 不确定目标资产是否正确。
+- Blueprint logic summary or structured anchors.
+- Variable, component, class setting, Widget, object property, or DataTable target context.
+- Task result journal for status and validation.
 
-## 4. 回查规则
-
-写后至少做一种回查：
-
-- 重新列变量 / 图表 / 节点摘要。
-- 重新导出 `logic_md` / `logic_json`。
-- 读取 UMG WidgetTree。
-- 读取 DataAsset 属性。
-- 读取 DataTable 目标行。
-
-## 5. Undo / Redo 使用
-
-允许使用 Undo 的情况：
-
-- 当前步骤刚失败，且没有执行其他不相关写入。
-- 用户要求撤回刚才改动。
-- 编译失败且明确由刚才操作导致。
-
-不要用 Undo 的情况：
-
-- 无法确认 Undo 栈对应的是本次 Agent 操作。
-- 多个用户或手工操作混在同一编辑器会话中。
-- 已保存并且用户希望保留部分变更。
-
-## 6. Agent 报告格式
+## Report Format
 
 ```text
-执行结果：成功/部分成功/失败
-目标资产：...
-执行步骤：...
-验证结果：...
-保存状态：...
-风险：...
-建议下一步：...
+Status: completed / preview_blocked / failed
+Target: asset path
+Task: task_type or feature_name
+Changes: concise list
+Validation: compile/save/read-back status
+Remaining risks: concise list
 ```
-
-报告中不要隐藏失败细节。Agent 应明确哪些操作已执行，哪些没有执行。

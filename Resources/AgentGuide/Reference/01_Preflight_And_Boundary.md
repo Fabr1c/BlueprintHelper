@@ -1,71 +1,53 @@
-# 01 - Preflight 与能力边界
+# 01 - Preflight And Boundary
 
-## 1. 使用前判断
+## 1. Task Type Decision
 
-Agent 每次收到任务后，先判断任务属于哪一类：
+Agent 先判断任务是否需要 Unreal Editor:
 
 ```text
-A. UE 编辑器资产操作 -> 使用 BlueprintHelper MCP
-B. 源码 / 配置 / 文档修改 -> 使用普通文件与代码工具
-C. 两者都有 -> 先分解任务，源码部分不用 MCP，资产部分用 MCP
+UE asset read or write -> BlueprintHelper MCP TaskSpec-first flow
+Source/config/docs edit -> normal repository tools
+Mixed task -> split first; code edits do not use BlueprintHelper MCP
 ```
 
-## 2. BlueprintHelper MCP 适用范围
+## 2. BlueprintHelper MCP Scope
 
-适用：
+适用:
 
-- 蓝图资产浏览、搜索、打开、保存、信息查询。
-- 蓝图图表读取、导入导出、节点增删、变量增删、函数图/宏图/事件分发器处理。
-- 蓝图编译、校验、JSON / 逻辑视图导出。
-- UMG WidgetTree 读取、添加、删除、移动、属性读写。
-- UObject / DataAsset 属性读写。
-- DataTable 行读取、添加、更新、删除。
-- PIE 启停、Undo / Redo、控制台命令、关闭编辑器等编辑器命令。
-- 在 MCP server 侧具备环境变量时，启动 Unreal Editor 或执行项目编译。
+- 读取 Blueprint、UMG、DataAsset、DataTable 等 UE 资产上下文。
+- 通过 TaskSpec 修改 Blueprint 图表、变量、组件、Class Settings、UMG、DataTable 行和对象属性。
+- 通过 Task Runtime 执行预览、写入、验证和结果查询。
 
-不适用：
+不适用:
 
 - 全仓库代码搜索。
-- C++ / TypeScript / Python / shell 脚本编辑。
-- `.uproject`、`.uplugin`、`.Build.cs`、`.Target.cs`、配置文件直接改写。
-- 生成 AGENTS.md、Codex memory、普通项目文档。
-- 任何不需要 Unreal Editor 参与的纯文本文件操作。
+- C++、TypeScript、Python、配置、脚本和普通文档编辑。
+- 直接修改 `.uproject`、`.uplugin`、`.Build.cs`、`.Target.cs`。
+- 生成 AGENTS.md、memory 或普通项目说明。
 
-## 3. 连接前置条件
+## 3. Required Preflight
 
-调用资产类工具前，应满足：
+资产写入前必须确认:
 
-1. Unreal Editor 已打开目标项目。
-2. BlueprintHelper Bridge 插件已加载并监听本地端口。
-3. MCP Server 能连接 Bridge，默认是 `127.0.0.1:54321`，具体以当前配置为准。
-4. 若需要由 MCP 启动编辑器，必须存在：
-   - `UE_ENGINE_DIR`
-   - `UE_PROJECT_FILE`
-5. 若需要项目编译，编辑器通常应先关闭，避免文件锁和热重载不确定性。
+1. 目标项目和 Editor/Bridge 状态可用。
+2. 目标资产路径明确，例如 `/Game/Blueprints/BP_Player`。
+3. 图表、函数、控件、行名或 block 锚点等目标上下文明确。
+4. 修改范围明确，尤其是是否允许修改用户节点、接入已有执行流、创建资产。
+5. 写入前已执行 preview，且 preview 未 blocked。
 
-## 4. 写操作强约束
-
-写入前必须明确：
-
-| 必需信息 | 示例 | 原因 |
-|---|---|---|
-| 资产路径 | `/Game/Blueprints/BP_Player` | 防止误改当前焦点资产 |
-| 图表名称或等价 TaskSpec 目标 | `EventGraph` | 防止节点写入错误图表 |
-| 允许修改范围 | `allow_modify_user_nodes=false` | 降低破坏面 |
-| 验证方式 | TaskSpec `validation.should_compile` / `validation.should_save`，必要时包含 diagnostics 策略 | 确认结果可用 |
-
-对于删除、重命名、断线、批量移动等破坏性操作，必须先读取现状并列出将要影响的对象。
-
-## 5. 默认任务循环
+## 4. Default Loop
 
 ```text
-Understand user request
- -> decide MCP or normal code tool
- -> if MCP: preflight Bridge/editor/asset path
- -> get_runtime_profile
- -> read_context / read_reference_context as needed
- -> produce TaskSpec
- -> preview_task
- -> execute_task only after preview passes
- -> report task summary and remaining risks
+understand request
+-> check runtime profile
+-> read compact context
+-> build TaskSpec
+-> preview
+-> execute only after preview passes
+-> read task result when needed
+-> report concise summary
 ```
+
+## 5. Frozen Tool Boundary
+
+已注册但冻结的兼容、测试和专家工具不在 AgentGuide 中列为调用入口。普通 Agent 遇到 TaskSpec 无法表达的需求时，应停止报告缺口，而不是改用冻结入口。

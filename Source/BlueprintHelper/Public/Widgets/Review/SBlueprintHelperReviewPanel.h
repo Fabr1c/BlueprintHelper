@@ -12,8 +12,8 @@ class FBlueprintHelperReviewStoreService;
 class SKismetInspector;
 class SBox;
 class SGraphEditor;
+class SMultiLineEditableTextBox;
 class SMyBlueprint;
-class STextBlock;
 class UBlueprint;
 class UEdGraph;
 class UEdGraphNode;
@@ -52,6 +52,10 @@ private:
 	void GetChangeTreeChildren(FReviewTreeItemPtr Item, TArray<FReviewTreeItemPtr>& OutChildren) const;
 	void OnChangeSelectionChanged(FReviewChangeItem Item, ESelectInfo::Type SelectInfo);
 	void OnChangeTreeSelectionChanged(FReviewTreeItemPtr Item, ESelectInfo::Type SelectInfo);
+	void AddDebugMessage(const FString& Message);
+	FString BuildDebugMessagesString() const;
+	FText GetDebugMessagesText() const;
+	FReply OnCopyDebugMessages() const;
 
 	TSharedRef<SWidget> BuildFinalChangeSidebar();
 	TSharedRef<SWidget> BuildComponentsPanel();
@@ -61,6 +65,7 @@ private:
 	TSharedRef<SWidget> BuildDebugPanel();
 	TSharedRef<SWidget> BuildGraphEditorWidget();
 	TSharedRef<SWidget> BuildActionButtonBar();
+	TSharedRef<SWidget> BuildAssetChangeButtonBar();
 	TSharedRef<SWidget> BuildReadonlyComponentsWidget();
 	TSharedRef<SWidget> BuildReadonlyMyBlueprintWidget();
 	TSharedRef<SWidget> BuildReadonlyDetailsWidget();
@@ -97,7 +102,9 @@ private:
 		const FString& GraphName,
 		const TSharedPtr<SGraphEditor>& GraphEditorForBounds,
 		FVector2D& OutPosition,
-		FVector2D& OutSize) const;
+		FVector2D& OutSize,
+		FString* OutDebugSummary = nullptr) const;
+	void JumpToSelectedGraphDiffBlock();
 
 	FReply OnAcceptSelected();
 	FReply OnRejectSelected();
@@ -137,7 +144,8 @@ private:
 	TSharedPtr<SKismetInspector> KismetInspector;
 	TSharedPtr<SMyBlueprint> MyBlueprintWidget;
 	FReviewChangeItem SelectedChange;
-	TSharedPtr<STextBlock> StatusTextBlock;
+	TArray<FString> DebugMessages;
+	TSharedPtr<SMultiLineEditableTextBox> DebugMessageTextBox;
 	TWeakObjectPtr<UBlueprint> ReviewBlueprint;
 	TStrongObjectPtr<UBlueprint> PreviewBlueprint;
 	TStrongObjectPtr<UEdGraph> PreviewGraph;

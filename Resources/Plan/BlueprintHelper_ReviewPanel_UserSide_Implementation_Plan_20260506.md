@@ -306,3 +306,197 @@ Omitted:
 
 - No real Blueprint asset mutation was added.
 - No MCP asset operation was used for this UI-only C++ change.
+
+## Progress Sync - 2026-05-07 Graph Bounds Test Compile Fix
+
+Implemented:
+
+- Fixed UE 5.6 automation-test compile ambiguity in `FBlueprintHelperReviewGraphBoundsTargetKeyTest`.
+- Replaced numeric `TestEqual` calls on `FVector2D` values with `TestTrue + FMath::IsNearlyEqual` and explicit `float` casts.
+
+Verification status:
+
+- `git diff --check -- Source/BlueprintHelper/Private/Tests/Review/BlueprintHelperReviewStoreServiceTests.cpp` passed.
+- `Build.bat MrStoneEditor Win64 Development -Project="G:\UnrealPractise\MrStone\MrStone.uproject" -WaitMutex -NoHotReloadFromIDE` was retried, but UBT still stopped before plugin C++ compilation because it cannot write project and sibling-plugin `Intermediate` files such as `Module.MrStone.9.cpp`, `LiveCodingInfo.json`, and response files.
+
+Deferred:
+
+- Full UE compile and Review automation confirmation remain dependent on the user-side compile run because the Codex environment is still blocked by project `Intermediate` write permissions.
+
+Omitted:
+
+- No production code behavior changed in this compile fix.
+
+## Progress Sync - 2026-05-07 Graph Diff Delayed Resize And Asset Sidebar Actions
+
+Implemented:
+
+- Fixed the Graph Diff resize timing issue by adding a short active-timer refresh after the transient `SGraphEditor` is constructed.
+- The Review graph now creates an initial fallback diff block, then rebuilds graph diff blocks for three active-timer ticks so `SGraphEditor::GetBoundsForNode` can use node widget bounds after Slate layout.
+- Rebuild removes only transient `UBlueprintHelperReviewDiffBlockNode` nodes from the preview graph, then re-adds diff blocks from current visible changes. Real Blueprint assets remain untouched.
+- Restored graph diff padding to UE Comment-style `50.0f`, matching `FEdGraphSchemaAction_K2AddComment` and the graph bounds automation test.
+- Added `AcceptAllAssetChange` and `RejectAllAssetChange` buttons to the bottom of the left Final Change sidebar.
+- These new sidebar buttons reuse existing asset-layer `OnAcceptAll` / `OnRejectAll` behavior, so they apply to the selected asset's pending visible changes.
+
+Verification status:
+
+- `git diff --check -- Source/BlueprintHelper/Private/Widgets/Review/SBlueprintHelperReviewPanel.cpp Source/BlueprintHelper/Public/Widgets/Review/SBlueprintHelperReviewPanel.h Source/BlueprintHelper/Private/Widgets/Review/BlueprintHelperReviewGraphBounds.cpp Resources/Plan/BlueprintHelper_ReviewPanel_UserSide_Implementation_Plan_20260506.md` passed.
+- Trailing whitespace scan over the touched Review panel, graph-bounds helper, and plan files passed.
+- Static scan confirms `AcceptAllAssetChange`, `RejectAllAssetChange`, `TickGraphDiffBoundsRefresh`, and `CommentStylePadding = 50.0f` are present.
+- `Build.bat MrStoneEditor Win64 Development -Project="G:\UnrealPractise\MrStone\MrStone.uproject" -WaitMutex -NoHotReloadFromIDE` was retried, but UBT still stopped before plugin C++ compilation because it cannot write/rename project and sibling-plugin `Intermediate` files, ending on `G:\UnrealPractise\MrStone\Intermediate\Build\SourceFileCache.bin` access denied.
+
+Deferred:
+
+- Full UE compile and Review automation confirmation still depend on clearing the project/sibling-plugin `Intermediate` write permission issue in this Codex environment.
+
+Omitted:
+
+- No real Blueprint asset mutation or MCP asset operation was added.
+
+## Progress Sync - 2026-05-07 Graph Block Target Normalization
+
+Implemented:
+
+- Re-analyzed the live DebugMessage log for `tx_1777905076009`. The selected change now resolves the correct source graph, but only the custom event node matched because the Review target block came from the journal as a short block ref while current node metadata uses full block id.
+- Checked the Append design rule: full block id is `graph_id + "_" + block_ref`.
+- Removed the temporary broad suffix-matching direction for `BlueprintHelperBlockId`; GraphBounds keeps exact metadata matching.
+- Added `FBlueprintHelperReviewStoreService::NormalizeGraphBlockTargetId`.
+- Review Store now normalizes `blocks` journal entries when building graph atomic targets. A short block ref such as `BH_TaskSpecSmokeEvent_20260504_0010` becomes `BH_TaskSpecSmoke_20260504_001_BH_TaskSpecSmokeEvent_20260504_0010`; an already-full block id is preserved.
+- Added tests for block target normalization and full-block-id metadata bounds.
+
+Verification status:
+
+- `git diff --check` over the touched Review Store, GraphBounds, Review tests, and plan files passed.
+- Trailing whitespace scan over the same files passed.
+- `Build.bat MrStoneEditor Win64 Development -Project="G:\UnrealPractise\MrStone\MrStone.uproject" -WaitMutex -NoHotReloadFromIDE` was retried, but UBT still stopped before plugin C++ compilation because it cannot rename/write project and sibling-plugin `Intermediate` files, ending on `G:\UnrealPractise\MrStone\Intermediate\Build\SourceFileCache.bin` access denied.
+
+Deferred:
+
+- User-side build/run confirmation is needed for the new Store normalization.
+- If `tx_1777905076009` still only matches one node after this change, the next DebugMessage should include the generated full block target id and current node block metadata for direct comparison.
+
+Omitted:
+
+- No real Blueprint asset mutation or MCP asset operation was added.
+
+## Progress Sync - 2026-05-07 SourceGraph Metadata Bounds
+
+Implemented:
+
+- Analyzed the copied DebugMessage log. The evidence shows `editorBounds=0` on every successful graph bound and successful rectangles are all from `fallbackBounds`.
+- Confirmed the first successful selected change starts from `previewNodes=4`, so the small `pos=(284,-212) size=(260,136)` rectangle is not caused by later DiffBlock nodes polluting the graph.
+- Added a graph-bounds automation test for `BlueprintHelperBlockId` metadata: one block target should wrap multiple nodes that share the same block id.
+- `BlueprintHelperReviewGraphBounds` now matches graph targets against node metadata keys `BlueprintHelperBlockId`, `BlueprintHelperTransactionId`, and `BlueprintHelperFeatureName`.
+- Bounds matching now de-duplicates repeated node matches and reports `duplicateMatches`.
+- Debug summary now includes `matched="NodeName[source]@(x,y,w,h)"` details so the next live run can show exactly which nodes were included in each Diff rectangle.
+- Review graph bounds now use the read-only source graph for fallback matching when available, while still drawing transient DiffBlock nodes into the preview graph. This keeps metadata available without mutating assets.
+- Debug messages now include `boundsGraph="..."` to confirm whether bounds came from the source graph or preview graph.
+
+Verification status:
+
+- `git diff --check` over the touched graph-bounds, Review panel, and Review tests passed.
+- Trailing whitespace scan over the same files passed.
+- `Build.bat MrStoneEditor Win64 Development -Project="G:\UnrealPractise\MrStone\MrStone.uproject" -WaitMutex -NoHotReloadFromIDE` was retried in Codex, but UBT still stopped before plugin C++ compilation because it cannot rename/write project and sibling-plugin `Intermediate` files, ending on `G:\UnrealPractise\MrStone\Intermediate\Build\SourceFileCache.bin` access denied.
+- User-side build passed for this metadata-bounds change.
+- User-side DebugMessage confirms the source-graph fallback path is active. Example: `tx_1778068978617` on `BH_TaskSpecSmoke_20260504_001` now matches `K2Node_CustomEvent_0`, `K2Node_CallFunction_1`, and `K2Node_CallFunction_2`, producing `size=(1348.0,262.0)`.
+- User screenshot confirms at least one Graph Diff frame now resizes to the expected block-level rectangle and wraps three nodes.
+
+Deferred:
+
+- The remaining `editorBounds=0` timing issue is intentionally not fixed by timer in this pass.
+- Some Append journal records only contain `blocks` plus two `created_nodes`; Review bounds can only wrap the currently matchable atomic targets. Later transaction overlays still need their own leaf or a future atomic-chain compaction/merge rule.
+- `BH_TaskSpecSmoke_20260505_001` currently resolves to `EventGraph` in the Review UI because the requested graph is not found in the loaded Blueprint. The next UI fix should avoid falling back to `EventGraph` for a selected graph-specific Review change and instead render an empty/missing-graph Review graph with a clear DebugMessage.
+
+Omitted:
+
+- No real Blueprint asset mutation or MCP asset operation was added.
+
+## Progress Sync - 2026-05-07 Remove Graph Diff Timer And Add Debug List
+
+Implemented:
+
+- Removed the Graph Diff active-timer resize path from `SBlueprintHelperReviewPanel`.
+- Removed the timer-driven transient DiffBlock delete/rebuild flow so mouse-up handling no longer races with timer-created graph node churn.
+- Kept Graph Diff creation as a single initial pass when the Review `SGraphEditor` is built.
+- Converted the right-side Debug area from a single status text into a list-style DebugMessage panel.
+- Added DebugMessage entries for selected change, graph editor build, graph bounds result, fallback rectangle use, transient DiffBlock creation, jump result, and Accept/Reject operations.
+- Extended `BlueprintHelperReviewGraphBounds::BuildBoundsForTargets` with an optional debug summary containing target counts, skipped surface/graph counts, candidate count, matched node count, editor-widget bounds count, fallback-node bounds count, record-bounds count, padding, final position, final size, graph name, and graph node count.
+- Updated the graph-bounds automation test to assert the current `20.0f` padding and to verify debug summary fields.
+
+Verification status:
+
+- `git diff --check` over the touched Review panel, graph-bounds helper, graph-bounds test, and plan files passed.
+- Trailing whitespace scan over the same files passed.
+- Static scan confirms the Graph Diff bounds active-timer symbols and timer-driven rebuild/remove helpers are no longer present; only the existing flash timer remains.
+- `Build.bat MrStoneEditor Win64 Development -Project="G:\UnrealPractise\MrStone\MrStone.uproject" -WaitMutex -NoHotReloadFromIDE` was retried, but UBT still stopped before plugin C++ compilation because it cannot rename/write project and sibling-plugin `Intermediate` files, ending on `G:\UnrealPractise\MrStone\Intermediate\Build\SourceFileCache.bin` access denied.
+
+Deferred:
+
+- No final crash fix beyond timer removal is claimed yet. The next decision should use the DebugMessage output from a live editor run.
+- If the crash persists without the timer, the next likely investigation point is whether `UEdGraphNode_Comment` still routes through `SGraphNodeComment` interaction paths despite the custom visual widget.
+- A deterministic Slate mouse-up crash automation test remains deferred because the issue depends on live GraphEditor interaction.
+
+Omitted:
+
+- No real Blueprint asset mutation or MCP asset operation was added.
+- No new graph refresh/upsert strategy was introduced in this pass.
+
+## Progress Sync - 2026-05-07 Debug Copy And Bounds Log Analysis
+
+Implemented:
+
+- Replaced the Debug panel's non-copyable list rows with a read-only `SMultiLineEditableTextBox`.
+- Added `CopyAll` in the Debug panel header; it copies the current DebugMessage text to the system clipboard.
+- Added `BlueprintHelperReviewDebugText::BuildCopyableText` so DebugMessage export order and line breaks are testable outside Slate.
+- Added an automation test for copyable DebugMessage text ordering and line breaks.
+
+Debug log analysis:
+
+- Current live logs show `editorBounds=0` for all successful Graph Diff bounds; the UI is not receiving real `SGraphEditor::GetBoundsForNode` geometry in the current one-pass build.
+- Successful bounds are coming from `fallbackBounds`, which explains why several Diff boxes share `pos=(284,-212)` and `size=(260,136)`.
+- `skippedGraph=1` or `skippedGraph=3` means those visible changes belong to a different graph than the current Review graph, so skipping them in the current GraphEditor is expected.
+- `candidates=0` means the Review record does not provide a node guid, target key, pin path, visual group key, or display label usable for graph-node matching; those changes need stored graph bounds or better target recording.
+- `graphNodeCount` increases during DiffBlock insertion because transient DiffBlock nodes are added to the preview graph. If the mouse-up crash persists without the removed timer, the next investigation point is still the comment-derived DiffBlock node path.
+
+Verification status:
+
+- `git diff --check` over the touched Review panel, DebugText helper/test, and plan files passed.
+- Trailing whitespace scan over the same files passed.
+- Static scan confirms the old non-copyable Debug `SListView` symbols and removed Graph Diff timer/rebuild symbols are absent.
+- `Build.bat MrStoneEditor Win64 Development -Project="G:\UnrealPractise\MrStone\MrStone.uproject" -WaitMutex -NoHotReloadFromIDE` was retried, but UBT still stopped before plugin C++ compilation because it cannot rename/write project and sibling-plugin `Intermediate` files, ending on `G:\UnrealPractise\MrStone\Intermediate\Build\SourceFileCache.bin` access denied.
+- User-side build has now passed after this Debug copy change, so the copied-text UI path is compile-validated outside the Codex sandbox.
+
+Deferred:
+
+- No graph bounds fix was added in this pass; this pass only makes Debug text copyable and records the current log interpretation.
+
+Omitted:
+
+- No real Blueprint asset mutation or MCP asset operation was added.
+
+## Progress Sync - 2026-05-07 Missing Requested Graph Fallback Fix
+
+Implemented:
+
+- Analyzed the copied live DebugMessage log. The multi-node Diff rectangle path is now validated for existing graphs: `tx_1777992254751` on `BH_Smoke_Rerun_20260505` produced `size=(1300.0,263.0)` and the user screenshot confirms the frame wraps three nodes.
+- Identified a separate Review UI fallback issue: selecting `tx_1777914068182` requested `BH_TaskSpecSmoke_20260505_001`, but the loaded Blueprint did not contain that graph, so the panel fell back to `EventGraph`.
+- Added `BlueprintHelperReviewGraphResolver`. Explicit requested graph names now only resolve to that exact graph; missing requested graphs return null instead of falling back to `EventGraph`.
+- `SBlueprintHelperReviewPanel::ResolveGraphForSelectedChange` now uses the resolver.
+- Added a DebugMessage when a selected graph-specific Review change cannot resolve its source graph, so the panel reports `sourceGraph="<none>"` instead of silently showing the wrong graph.
+- Added an automation test for the resolver rule: missing explicit graph does not fall back, while an empty requested graph can still use the default graph.
+
+Verification status:
+
+- `git diff --check` over the touched Review panel, graph resolver, Review tests, and plan files passed.
+- Trailing whitespace scan over the touched Review panel, graph resolver, Review tests, and plan files passed.
+- `Build.bat MrStoneEditor Win64 Development -Project="G:\UnrealPractise\MrStone\MrStone.uproject" -WaitMutex -NoHotReloadFromIDE` was retried, but UBT still stopped before plugin C++ compilation because it cannot rename/write project and sibling-plugin `Intermediate` files, ending on `G:\UnrealPractise\MrStone\Intermediate\Build\SourceFileCache.bin` access denied.
+
+Deferred:
+
+- User-side build/run confirmation is still needed for the new graph resolver files because Codex cannot reach plugin compilation in the current sandbox.
+- `tx_1777905076009` can still produce a smaller frame when older journal `created_nodes` no longer exist in the current graph after later transactions. That is an atomic-chain/current-node attribution issue, not the missing-graph fallback issue fixed here.
+- `editorBounds=0` remains intentionally deferred while timer-based resizing is removed.
+
+Omitted:
+
+- No real Blueprint asset mutation or MCP asset operation was added.

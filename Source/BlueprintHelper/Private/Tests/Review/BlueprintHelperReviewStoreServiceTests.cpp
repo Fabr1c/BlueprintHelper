@@ -6,9 +6,13 @@
 #include "Services/Review/BlueprintHelperReviewActionService.h"
 #include "Services/Review/BlueprintHelperReviewStoreService.h"
 #include "Structure/Review/BlueprintHelperReviewTypes.h"
+#include "Widgets/Review/BlueprintHelperReviewDebugText.h"
 #include "Widgets/Review/BlueprintHelperReviewGraphBounds.h"
+#include "Widgets/Review/BlueprintHelperReviewGraphResolver.h"
 #include "Widgets/SNullWidget.h"
 #include "Widgets/Review/SBlueprintHelperReviewPanel.h"
+#include "Engine/Blueprint.h"
+#include "UObject/MetaData.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperReviewColorMappingTest,
@@ -471,23 +475,219 @@ bool FBlueprintHelperReviewGraphBoundsTargetKeyTest::RunTest(const FString& Para
 
 	FVector2D Position = FVector2D::ZeroVector;
 	FVector2D Size = FVector2D::ZeroVector;
+	FString DebugSummary;
 	const bool bBuilt = BlueprintHelperReviewGraphBounds::BuildBoundsForTargets(
 		Targets,
 		Graph,
 		TEXT("EventGraph"),
 		nullptr,
 		Position,
-		Size);
+		Size,
+		&DebugSummary);
 
 	TestTrue(TEXT("target key matches graph node"), bBuilt);
-	TestTrue(TEXT("comment-style bounds use 50px left padding"),
-		FMath::IsNearlyEqual(static_cast<float>(Position.X), 50.0f, 0.01f));
-	TestTrue(TEXT("comment-style bounds use 50px top padding"),
-		FMath::IsNearlyEqual(static_cast<float>(Position.Y), -10.0f, 0.01f));
+	TestTrue(TEXT("comment-style bounds use 20px left padding"),
+		FMath::IsNearlyEqual(static_cast<float>(Position.X), 80.0f, 0.01f));
+	TestTrue(TEXT("comment-style bounds use 20px top padding"),
+		FMath::IsNearlyEqual(static_cast<float>(Position.Y), 20.0f, 0.01f));
 	TestTrue(TEXT("comment-style width wraps node plus padding"),
-		FMath::IsNearlyEqual(static_cast<float>(Size.X), 340.0f, 0.01f));
+		FMath::IsNearlyEqual(static_cast<float>(Size.X), 280.0f, 0.01f));
 	TestTrue(TEXT("comment-style height wraps node plus padding"),
-		FMath::IsNearlyEqual(static_cast<float>(Size.Y), 188.0f, 0.01f));
+		FMath::IsNearlyEqual(static_cast<float>(Size.Y), 128.0f, 0.01f));
+	TestTrue(TEXT("bounds debug reports built bounds"),
+		DebugSummary.Contains(TEXT("built=1")));
+	TestTrue(TEXT("bounds debug reports fallback node bounds"),
+		DebugSummary.Contains(TEXT("fallbackBounds=1")));
+	TestTrue(TEXT("bounds debug reports 20px padding"),
+		DebugSummary.Contains(TEXT("padding=20.0")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewDebugCopyTextTest,
+	"BlueprintHelper.Review.UI.Debug.BuildsCopyableText",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewDebugCopyTextTest::RunTest(const FString& Parameters)
+{
+	TArray<FString> Messages;
+	Messages.Add(TEXT("[01:20:51] newest message"));
+	Messages.Add(TEXT("[01:20:50] older message"));
+
+	const FString Expected = FString::Printf(
+		TEXT("[01:20:51] newest message%s[01:20:50] older message"),
+		LINE_TERMINATOR);
+	TestEqual(
+		TEXT("copyable debug text preserves visible row order with line breaks"),
+		BlueprintHelperReviewDebugText::BuildCopyableText(Messages),
+		Expected);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewGraphResolverMissingRequestedGraphTest,
+	"BlueprintHelper.Review.UI.GraphResolver.DoesNotFallbackWhenRequestedGraphIsMissing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewGraphResolverMissingRequestedGraphTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = NewObject<UBlueprint>(GetTransientPackage());
+	UEdGraph* EventGraph = NewObject<UEdGraph>(Blueprint, FName(TEXT("EventGraph")));
+	Blueprint->UbergraphPages.Add(EventGraph);
+
+	TestTrue(
+		TEXT("explicit missing graph does not fall back to EventGraph"),
+		BlueprintHelperReviewGraphResolver::ResolveGraphForReviewSelection(
+			Blueprint,
+			TEXT("BH_TaskSpecSmoke_20260505_001")) == nullptr);
+	TestTrue(
+		TEXT("empty requested graph still falls back to EventGraph"),
+		BlueprintHelperReviewGraphResolver::ResolveGraphForReviewSelection(Blueprint, FString()) == EventGraph);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewGraphBoundsBlockMetadataTest,
+	"BlueprintHelper.Review.UI.GraphBounds.UsesBlockMetadataBounds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewGraphBoundsBlockMetadataTest::RunTest(const FString& Parameters)
+{
+	UEdGraph* Graph = NewObject<UEdGraph>(GetTransientPackage());
+	UEdGraphNode* FirstNode = NewObject<UEdGraphNode>(Graph, FName(TEXT("K2Node_CustomEvent_1")));
+	FirstNode->NodePosX = 100;
+	FirstNode->NodePosY = 40;
+	FirstNode->NodeWidth = 240;
+	FirstNode->NodeHeight = 88;
+	Graph->AddNode(FirstNode, false, false);
+
+	UEdGraphNode* SecondNode = NewObject<UEdGraphNode>(Graph, FName(TEXT("K2Node_CallFunction_1")));
+	SecondNode->NodePosX = 500;
+	SecondNode->NodePosY = 120;
+	SecondNode->NodeWidth = 260;
+	SecondNode->NodeHeight = 96;
+	Graph->AddNode(SecondNode, false, false);
+
+	FMetaData& MetaData = GetTransientPackage()->GetMetaData();
+	MetaData.SetValue(FirstNode, TEXT("BlueprintHelperOwned"), TEXT("true"));
+	MetaData.SetValue(FirstNode, TEXT("BlueprintHelperBlockId"), TEXT("SmokeBlock"));
+	MetaData.SetValue(SecondNode, TEXT("BlueprintHelperOwned"), TEXT("true"));
+	MetaData.SetValue(SecondNode, TEXT("BlueprintHelperBlockId"), TEXT("SmokeBlock"));
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.Surface = EBlueprintHelperReviewSurface::Graph;
+	Target.GraphName = TEXT("EventGraph");
+	Target.TargetKey = TEXT("graph:EventGraph:block:SmokeBlock");
+
+	TArray<FBlueprintHelperReviewAtomicTarget> Targets;
+	Targets.Add(Target);
+
+	FVector2D Position = FVector2D::ZeroVector;
+	FVector2D Size = FVector2D::ZeroVector;
+	FString DebugSummary;
+	const bool bBuilt = BlueprintHelperReviewGraphBounds::BuildBoundsForTargets(
+		Targets,
+		Graph,
+		TEXT("EventGraph"),
+		nullptr,
+		Position,
+		Size,
+		&DebugSummary);
+
+	TestTrue(TEXT("block id metadata matches graph nodes"), bBuilt);
+	TestTrue(TEXT("block metadata bounds include first node left padding"),
+		FMath::IsNearlyEqual(static_cast<float>(Position.X), 80.0f, 0.01f));
+	TestTrue(TEXT("block metadata bounds include first node top padding"),
+		FMath::IsNearlyEqual(static_cast<float>(Position.Y), 20.0f, 0.01f));
+	TestTrue(TEXT("block metadata width spans both nodes"),
+		FMath::IsNearlyEqual(static_cast<float>(Size.X), 700.0f, 0.01f));
+	TestTrue(TEXT("block metadata height spans both nodes"),
+		FMath::IsNearlyEqual(static_cast<float>(Size.Y), 216.0f, 0.01f));
+	TestTrue(TEXT("debug reports both matched nodes"),
+		DebugSummary.Contains(TEXT("matchedNodes=2")));
+	TestTrue(TEXT("debug reports metadata block id match"),
+		DebugSummary.Contains(TEXT("K2Node_CustomEvent_1")));
+	TestTrue(TEXT("debug reports second metadata block id match"),
+		DebugSummary.Contains(TEXT("K2Node_CallFunction_1")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewGraphBlockTargetNormalizationTest,
+	"BlueprintHelper.Review.Store.NormalizesGraphBlockTargetId",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewGraphBlockTargetNormalizationTest::RunTest(const FString& Parameters)
+{
+	const FString GraphName = TEXT("BH_TaskSpecSmoke_20260504_001");
+	const FString BlockRef = TEXT("BH_TaskSpecSmokeEvent_20260504_0010");
+	const FString FullBlockId = TEXT("BH_TaskSpecSmoke_20260504_001_BH_TaskSpecSmokeEvent_20260504_0010");
+
+	TestEqual(
+		TEXT("short block ref is normalized to graph-prefixed block id"),
+		FBlueprintHelperReviewStoreService::NormalizeGraphBlockTargetId(GraphName, BlockRef),
+		FullBlockId);
+	TestEqual(
+		TEXT("full block id is preserved"),
+		FBlueprintHelperReviewStoreService::NormalizeGraphBlockTargetId(GraphName, FullBlockId),
+		FullBlockId);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewGraphBoundsFullBlockMetadataTest,
+	"BlueprintHelper.Review.UI.GraphBounds.UsesFullBlockMetadataBounds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewGraphBoundsFullBlockMetadataTest::RunTest(const FString& Parameters)
+{
+	UEdGraph* Graph = NewObject<UEdGraph>(GetTransientPackage());
+	UEdGraphNode* FirstNode = NewObject<UEdGraphNode>(Graph, FName(TEXT("K2Node_CustomEvent_0")));
+	FirstNode->NodePosX = 304;
+	FirstNode->NodePosY = -192;
+	Graph->AddNode(FirstNode, false, false);
+
+	UEdGraphNode* SecondNode = NewObject<UEdGraphNode>(Graph, FName(TEXT("K2Node_CallFunction_1")));
+	SecondNode->NodePosX = 784;
+	SecondNode->NodePosY = -176;
+	Graph->AddNode(SecondNode, false, false);
+
+	UEdGraphNode* ThirdNode = NewObject<UEdGraphNode>(Graph, FName(TEXT("K2Node_CallFunction_2")));
+	ThirdNode->NodePosX = 1392;
+	ThirdNode->NodePosY = -176;
+	Graph->AddNode(ThirdNode, false, false);
+
+	FMetaData& MetaData = GetTransientPackage()->GetMetaData();
+	const FString CurrentBlockId = TEXT("BH_TaskSpecSmoke_20260504_001_BH_TaskSpecSmokeEvent_20260504_0010");
+	MetaData.SetValue(FirstNode, TEXT("BlueprintHelperBlockId"), *CurrentBlockId);
+	MetaData.SetValue(SecondNode, TEXT("BlueprintHelperBlockId"), *CurrentBlockId);
+	MetaData.SetValue(ThirdNode, TEXT("BlueprintHelperBlockId"), *CurrentBlockId);
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.Surface = EBlueprintHelperReviewSurface::Graph;
+	Target.GraphName = TEXT("BH_TaskSpecSmoke_20260504_001");
+	Target.TargetKey = TEXT("graph:BH_TaskSpecSmoke_20260504_001:block:BH_TaskSpecSmoke_20260504_001_BH_TaskSpecSmokeEvent_20260504_0010");
+
+	TArray<FBlueprintHelperReviewAtomicTarget> Targets;
+	Targets.Add(Target);
+
+	FVector2D Position = FVector2D::ZeroVector;
+	FVector2D Size = FVector2D::ZeroVector;
+	FString DebugSummary;
+	const bool bBuilt = BlueprintHelperReviewGraphBounds::BuildBoundsForTargets(
+		Targets,
+		Graph,
+		TEXT("BH_TaskSpecSmoke_20260504_001"),
+		nullptr,
+		Position,
+		Size,
+		&DebugSummary);
+
+	TestTrue(TEXT("full block id matches graph-prefixed block metadata"), bBuilt);
+	TestTrue(TEXT("full block metadata matches all nodes"),
+		DebugSummary.Contains(TEXT("matchedNodes=3")));
+	TestTrue(TEXT("full block metadata wraps full block width"),
+		Size.X > 1200.0f);
 	return true;
 }
 

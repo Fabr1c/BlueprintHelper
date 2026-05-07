@@ -41,6 +41,12 @@ public:
 	/** 根据 asset_type 确定是否需要保存。*/
 	static bool ShouldSave(EBlueprintHelperAssetType AssetType);
 
+	/** Parses TaskSpec/Bridge asset_type aliases and fills BlueprintClass parent defaults. */
+	static bool TryNormalizeAssetTypeAndParent(
+		const FString& AssetTypeText,
+		FString& InOutParentClass,
+		EBlueprintHelperAssetType& OutAssetType);
+
 private:
 	/** 解析 asset_type 。factory_type。*/
 	static EBlueprintHelperFactoryType AssetTypeToFactoryType(EBlueprintHelperAssetType Type);

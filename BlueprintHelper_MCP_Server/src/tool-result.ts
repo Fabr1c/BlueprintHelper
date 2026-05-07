@@ -224,8 +224,10 @@ export function makeSummary(result: ToolResultBase): string {
   const targetInfo = result.target
     ? `${result.target.asset_path ?? ''}${result.target.graph ? '.' + result.target.graph : ''}`
     : '';
+  const baseSummary = `${result.operation} ${result.status}: ${targetInfo}, modified=${result.modified}.`;
+  const errorMessage = !result.ok ? result.error?.message.trim() : undefined;
 
-  return `${result.operation} ${result.status}: ${targetInfo}, modified=${result.modified}.`;
+  return errorMessage ? `${baseSummary} error=${errorMessage}` : baseSummary;
 }
 
 // ─── 从 Bridge 原始响应标准化 ───

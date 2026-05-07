@@ -8,6 +8,10 @@
 class BLUEPRINTHELPER_API FBlueprintHelperReviewStoreService
 {
 public:
+	static FString NormalizeGraphBlockTargetId(
+		const FString& GraphName,
+		const FString& BlockRefOrId);
+
 	TArray<FBlueprintHelperReviewVisibleChange> BuildVisibleChanges(
 		const TArray<FBlueprintHelperReviewTransactionInput>& Transactions) const;
 

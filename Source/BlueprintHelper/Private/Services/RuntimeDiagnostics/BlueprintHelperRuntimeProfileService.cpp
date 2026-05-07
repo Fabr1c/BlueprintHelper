@@ -154,9 +154,6 @@ TArray<FBlueprintHelperUnavailableCapability> FBlueprintHelperRuntimeProfileServ
 		Unavailable.Add(Item);
 	};
 
-	// graph_write 。- merge 尚未实现
-	AddUnavailable(TEXT("graph_write"), TEXT("merge"));
-
 	// cleanup 。- 整体尚未实现
 	AddUnavailable(TEXT("cleanup"), TEXT("cleanup_blueprinthelper_block"));
 

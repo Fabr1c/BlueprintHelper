@@ -49,3 +49,22 @@ GraphWrite body 内的函数调用使用 `args`，每个参数值是结构化 li
 ```
 
 execute_task 成功后，普通报告只输出任务摘要、目标资产、主要变更、编译/保存/未完成项，不展开完整 TaskPlan、child transaction、Journal 路径或底层 Bridge JSON。
+
+## 2026-05-07 调用参数检查点
+
+在执行 smoke 或写入任务前，对照：
+
+```text
+Resources/AgentGuide/Reference/04_MCP_Field_Templates_20260507.md
+```
+
+执行顺序中的参数形状应为：
+
+```text
+read_context: schema/read_type/target/view/context 位于工具参数根对象
+preview_task: 根对象只有 task_spec
+execute_task: 根对象只有 task_spec
+get_task_result: 根对象只有 task_run_id
+```
+
+不要把 `schema`、`read_type`、`target` 或 `task_spec` 再包进额外 `args`。如果客户端要求对象字段传 JSON string，字段名仍保持在根对象。

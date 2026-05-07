@@ -100,6 +100,60 @@ namespace
 			MetaData.SetValue(Node, TEXT("BlueprintHelperBlockId"), *BlockId);
 		}
 	}
+
+	bool TryReadMergeNodeBlockId(UEdGraphNode* Node, FString& OutBlockId)
+	{
+		OutBlockId.Reset();
+		if (!Node)
+		{
+			return false;
+		}
+
+		if (UPackage* Package = Node->GetOutermost())
+		{
+			FMetaData& MetaData = Package->GetMetaData();
+			if (MetaData.GetValue(Node, TEXT("BlueprintHelperOwned")) == TEXT("true"))
+			{
+				OutBlockId = MetaData.GetValue(Node, TEXT("BlueprintHelperBlockId"));
+				if (!OutBlockId.IsEmpty())
+				{
+					return true;
+				}
+			}
+		}
+
+		const FString LegacyPrefix = TEXT("block_id=");
+		const int32 PrefixIndex = Node->NodeComment.Find(LegacyPrefix);
+		if (PrefixIndex != INDEX_NONE)
+		{
+			FString Remainder = Node->NodeComment.RightChop(PrefixIndex + LegacyPrefix.Len());
+			Remainder.Split(TEXT("\n"), &OutBlockId, nullptr);
+			OutBlockId.TrimStartAndEndInline();
+		}
+		return !OutBlockId.IsEmpty();
+	}
+
+	UK2Node_CustomEvent* FindOwnedCustomEventEntryNode(UEdGraph* Graph, const FString& BlockId)
+	{
+		if (!Graph || BlockId.IsEmpty())
+		{
+			return nullptr;
+		}
+
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			FString NodeBlockId;
+			if (TryReadMergeNodeBlockId(Node, NodeBlockId) &&
+				NodeBlockId == BlockId)
+			{
+				if (UK2Node_CustomEvent* CustomEvent = Cast<UK2Node_CustomEvent>(Node))
+				{
+					return CustomEvent;
+				}
+			}
+		}
+		return nullptr;
+	}
 }
 
 FBlueprintHelperToolResultBase FBlueprintHelperMergeBlueprintGraphService::Execute(
@@ -529,9 +583,42 @@ bool FBlueprintHelperMergeBlueprintGraphService::ResolveInsertedLogic(
 	switch (Request.MergeScope)
 	{
 	case EBlueprintHelperMergeScope::OwnedBlockCall:
+	{
 		Context.InsertedRef = Request.InsertedBlockId.IsEmpty() ? Request.InsertedBlockRef : Request.InsertedBlockId;
-		if (Context.InsertedRef.IsEmpty()) { OutError = TEXT("inserted_logic_not_found: 缺少 block_id。"); return false; }
+		if (Context.InsertedRef.IsEmpty())
+		{
+			OutError = TEXT("inserted_logic_not_found: 缺少 block_id。");
+			return false;
+		}
+
+		UK2Node_CustomEvent* OwnedEntry = FindOwnedCustomEventEntryNode(Context.Graph, Context.InsertedRef);
+		if (!OwnedEntry)
+		{
+			OutError = FString::Printf(TEXT("inserted_logic_not_found: 未找到 BlueprintHelper-owned custom event block '%s'。"), *Context.InsertedRef);
+			return false;
+		}
+
+		const FString EventName = OwnedEntry->CustomFunctionName.IsNone()
+			? OwnedEntry->GetName()
+			: OwnedEntry->CustomFunctionName.ToString();
+		UFunction* TargetFunc = ResolveMergeCallableFunction(Context.Blueprint, EventName);
+		if (!TargetFunc)
+		{
+			OutError = FString::Printf(TEXT("inserted_logic_not_found: owned block '%s' 的 custom event '%s' 不存在或尚未编译。"), *Context.InsertedRef, *EventName);
+			return false;
+		}
+
+		UK2Node_CallFunction* CallNode = CreateMergeCallFunctionNode(Context.Graph, TargetFunc);
+		if (!CallNode)
+		{
+			OutError = FString::Printf(TEXT("inserted_logic_not_found: unable to create owned block call '%s'."), *EventName);
+			return false;
+		}
+
+		Context.InsertedNode = CallNode;
+		MarkMergeNodeAsBlueprintHelperOwned(Context.InsertedNode, Request.AnchorBlockId);
 		return true;
+	}
 
 	case EBlueprintHelperMergeScope::CustomEventCall:
 	{
@@ -736,6 +823,7 @@ bool FBlueprintHelperMergeBlueprintGraphService::ApplyBranchFork(
 	SeqNode->CreateNewGuid();
 	SeqNode->PostPlacedNewNode();
 	SeqNode->AllocateDefaultPins();
+	MarkMergeNodeAsBlueprintHelperOwned(SeqNode, Request.AnchorBlockId);
 	Context.SequenceNode = SeqNode;
 
 	// Find Sequence Exec In
@@ -749,10 +837,22 @@ bool FBlueprintHelperMergeBlueprintGraphService::ApplyBranchFork(
 
 	// Collect Sequence Then pins
 	TArray<UEdGraphPin*> SeqThenPins;
-	for (UEdGraphPin* Pin : SeqNode->Pins)
+	auto CollectSequenceThenPins = [&SeqNode, &SeqThenPins]()
 	{
-		if (Pin && Pin->Direction == EGPD_Output && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
-			SeqThenPins.Add(Pin);
+		SeqThenPins.Reset();
+		for (UEdGraphPin* Pin : SeqNode->Pins)
+		{
+			if (Pin && Pin->Direction == EGPD_Output && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+			{
+				SeqThenPins.Add(Pin);
+			}
+		}
+	};
+	CollectSequenceThenPins();
+	while (SeqThenPins.Num() < 2)
+	{
+		SeqNode->AddInputPin();
+		CollectSequenceThenPins();
 	}
 	if (SeqThenPins.Num() < 2) { OutError = TEXT("Sequence 节点需要至。2 。Then 输出。"); return false; }
 

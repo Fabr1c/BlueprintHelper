@@ -25,5 +25,6 @@ namespace BlueprintHelperReviewGraphBounds
 		const FString& GraphName,
 		const TSharedPtr<SGraphEditor>& GraphEditor,
 		FVector2D& OutPosition,
-		FVector2D& OutSize);
+		FVector2D& OutSize,
+		FString* OutDebugSummary = nullptr);
 }
