@@ -4,8 +4,8 @@
 #include "Dom/JsonValue.h"
 #include "Engine/DataTable.h"
 #include "Misc/AutomationTest.h"
-#include "Services/DataTable/BlueprintHelperDataTableService.h"
-#include "TaskRuntime/TaskPlanAdapters/DataTable/BlueprintHelperDataTableTaskPlanAdapter.h"
+#include "Systems/ToolClusters/DataTable/BlueprintHelperDataTableService.h"
+#include "Runtime/TaskRuntime/TaskPlanAdapters/DataTable/BlueprintHelperDataTableTaskPlanAdapter.h"
 #include "UObject/NoExportTypes.h"
 #include "UObject/Package.h"
 

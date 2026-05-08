@@ -1,10 +1,10 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
-#include "Bridge/BlueprintHelperRequestValidator.h"
+#include "Entry/Bridge/BlueprintHelperRequestValidator.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Misc/AutomationTest.h"
-#include "TaskRuntime/BlueprintHelperTaskRuntimeService.h"
+#include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.h"
 
 namespace
 {

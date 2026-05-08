@@ -6,15 +6,15 @@
 #include "EdGraphSchema_K2.h"
 #include "Engine/Blueprint.h"
 #include "GameFramework/Actor.h"
-#include "GraphSupport/BlueprintHelperGraphResolver.h"
+#include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "K2Node_FunctionEntry.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Misc/AutomationTest.h"
-#include "Services/BlueprintHelperBlueprintStructureService.h"
-#include "Services/BlueprintVariables/BlueprintHelperBlueprintVariableService.h"
+#include "Shared/Services/BlueprintHelperBlueprintStructureService.h"
+#include "Systems/ToolClusters/BlueprintVariables/BlueprintHelperBlueprintVariableService.h"
 #include "UObject/Package.h"
-#include "TaskRuntime/TaskPlanAdapters/BlueprintVariables/BlueprintHelperBlueprintVariableTaskPlanAdapter.h"
+#include "Runtime/TaskRuntime/TaskPlanAdapters/BlueprintVariables/BlueprintHelperBlueprintVariableTaskPlanAdapter.h"
 
 namespace
 {

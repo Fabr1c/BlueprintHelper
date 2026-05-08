@@ -5,4 +5,8 @@ build/
 *.old
 *.exp
 *.rsp
+*.pdb
+*.modules
 /Intermediate/
+/Binaries/
+/Saved/
