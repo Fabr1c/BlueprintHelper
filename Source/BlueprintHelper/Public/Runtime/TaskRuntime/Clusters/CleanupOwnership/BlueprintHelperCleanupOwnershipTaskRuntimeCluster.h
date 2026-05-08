@@ -1,0 +1,28 @@
+// BlueprintHelper TaskRuntime - CleanupOwnership static cluster
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.h"
+
+class FBlueprintHelperCleanupBlueprintHelperBlockService;
+class FBlueprintHelperRollbackCleanupTransactionService;
+class FBlueprintHelperConvertBlockToUserOwnedService;
+
+class BLUEPRINTHELPER_API FBlueprintHelperCleanupOwnershipTaskRuntimeCluster
+{
+public:
+	FBlueprintHelperCleanupOwnershipTaskRuntimeCluster(
+		const FBlueprintHelperCleanupBlueprintHelperBlockService& InCleanupBlockService,
+		const FBlueprintHelperRollbackCleanupTransactionService& InRollbackCleanupService,
+		const FBlueprintHelperConvertBlockToUserOwnedService& InConvertBlockService);
+
+	static bool CanExecuteStep(const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep);
+
+	FBlueprintHelperToolResultBase ExecuteStep(const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep) const;
+
+private:
+	const FBlueprintHelperCleanupBlueprintHelperBlockService& CleanupBlockService;
+	const FBlueprintHelperRollbackCleanupTransactionService& RollbackCleanupService;
+	const FBlueprintHelperConvertBlockToUserOwnedService& ConvertBlockService;
+};

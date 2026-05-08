@@ -22,28 +22,28 @@ namespace
 		return Error;
 	}
 
-	FString BuildStepFieldPath(const FString& Suffix)
+	FString ObjectPropertyBuildStepFieldPath(const FString& Suffix)
 	{
 		return Suffix.IsEmpty()
 			? FString(TEXT("task_plan.steps[0]"))
 			: FString::Printf(TEXT("task_plan.steps[0].%s"), *Suffix);
 	}
 
-	FString BuildOpFieldPath(const FString& Suffix)
+	FString ObjectPropertyBuildOpFieldPath(const FString& Suffix)
 	{
 		return Suffix.IsEmpty()
 			? FString(TEXT("task_plan.steps[0].write.ops[0]"))
 			: FString::Printf(TEXT("task_plan.steps[0].write.ops[0].%s"), *Suffix);
 	}
 
-	FString BuildSettingFieldPath(int32 SettingIndex, const FString& Suffix)
+	FString ObjectPropertyBuildSettingFieldPath(int32 SettingIndex, const FString& Suffix)
 	{
 		return Suffix.IsEmpty()
 			? FString::Printf(TEXT("task_plan.steps[0].write.ops[0].settings[%d]"), SettingIndex)
 			: FString::Printf(TEXT("task_plan.steps[0].write.ops[0].settings[%d].%s"), SettingIndex, *Suffix);
 	}
 
-	FString JsonValueTypeToString(const TSharedPtr<FJsonValue>& Value)
+	FString ObjectPropertyJsonValueTypeToString(const TSharedPtr<FJsonValue>& Value)
 	{
 		if (!Value.IsValid())
 		{
@@ -63,7 +63,7 @@ namespace
 		}
 	}
 
-	bool TryReadRequiredString(
+	bool ObjectPropertyTryReadRequiredString(
 		const TSharedPtr<FJsonObject>& Object,
 		const TCHAR* FieldName,
 		const FString& FieldPath,
@@ -88,7 +88,7 @@ namespace
 				FString::Printf(
 					TEXT("object_property field %s must be a string; actual type is %s."),
 					FieldName,
-					*JsonValueTypeToString(*FoundValue)),
+					*ObjectPropertyJsonValueTypeToString(*FoundValue)),
 				FieldPath);
 			return false;
 		}
@@ -105,7 +105,7 @@ namespace
 		return true;
 	}
 
-	bool TryRequireValueField(
+	bool ObjectPropertyTryRequireValueField(
 		const TSharedPtr<FJsonObject>& Object,
 		const FString& FieldPath,
 		const FString& ErrorCode,
@@ -131,7 +131,7 @@ namespace
 		return true;
 	}
 
-	bool TryReadObjectPropertyTaskPlanParts(
+	bool ObjectPropertyTryReadTaskPlanParts(
 		const TSharedPtr<FJsonObject>& StepObject,
 		FString& OutStepId,
 		FString& OutAssetPath,
@@ -147,7 +147,7 @@ namespace
 			OutError = MakeObjectPropertyTaskPlanError(
 				TEXT("invalid_object_property_step"),
 				TEXT("object_property TaskPlan step must be an object."),
-				BuildStepFieldPath(TEXT("")));
+				ObjectPropertyBuildStepFieldPath(TEXT("")));
 			return false;
 		}
 
@@ -163,7 +163,7 @@ namespace
 			OutError = MakeObjectPropertyTaskPlanError(
 				TEXT("unsupported_object_property_operation_field"),
 				TEXT("object_property IR TaskPlan steps use capability/write; adapter operation fields are runtime lowering details."),
-				BuildStepFieldPath(TEXT("operation")));
+				ObjectPropertyBuildStepFieldPath(TEXT("operation")));
 			return false;
 		}
 
@@ -174,7 +174,7 @@ namespace
 			OutError = MakeObjectPropertyTaskPlanError(
 				TEXT("unsupported_object_property_capability"),
 				TEXT("object_property adapter requires capability=object_property."),
-				BuildStepFieldPath(TEXT("capability")));
+				ObjectPropertyBuildStepFieldPath(TEXT("capability")));
 			return false;
 		}
 
@@ -185,14 +185,14 @@ namespace
 			OutError = MakeObjectPropertyTaskPlanError(
 				TEXT("invalid_object_property_target"),
 				TEXT("object_property TaskPlan step target object is required."),
-				BuildStepFieldPath(TEXT("target")));
+				ObjectPropertyBuildStepFieldPath(TEXT("target")));
 			return false;
 		}
 
-		if (!TryReadRequiredString(
+		if (!ObjectPropertyTryReadRequiredString(
 			*TargetObjectPtr,
 			TEXT("asset_path"),
-			BuildStepFieldPath(TEXT("target.asset_path")),
+			ObjectPropertyBuildStepFieldPath(TEXT("target.asset_path")),
 			TEXT("invalid_object_property_target"),
 			TEXT("object_property TaskPlan target requires asset_path."),
 			OutAssetPath,
@@ -208,7 +208,7 @@ namespace
 			OutError = MakeObjectPropertyTaskPlanError(
 				TEXT("invalid_object_property_write"),
 				TEXT("object_property TaskPlan step requires write object."),
-				BuildStepFieldPath(TEXT("write")));
+				ObjectPropertyBuildStepFieldPath(TEXT("write")));
 			return false;
 		}
 
@@ -219,7 +219,7 @@ namespace
 			OutError = MakeObjectPropertyTaskPlanError(
 				TEXT("unsupported_object_property_strategy"),
 				TEXT("object_property TaskPlan adapter currently supports property_edit strategy only."),
-				BuildStepFieldPath(TEXT("write.strategy")));
+				ObjectPropertyBuildStepFieldPath(TEXT("write.strategy")));
 			return false;
 		}
 
@@ -230,7 +230,7 @@ namespace
 			OutError = MakeObjectPropertyTaskPlanError(
 				TEXT("invalid_object_property_ops"),
 				TEXT("object_property adapter currently lowers exactly one write.ops entry per TaskPlan step."),
-				BuildStepFieldPath(TEXT("write.ops")));
+				ObjectPropertyBuildStepFieldPath(TEXT("write.ops")));
 			return false;
 		}
 
@@ -242,14 +242,14 @@ namespace
 			OutError = MakeObjectPropertyTaskPlanError(
 				TEXT("invalid_object_property_op"),
 				TEXT("object_property write.ops entry must be an object."),
-				BuildOpFieldPath(TEXT("")));
+				ObjectPropertyBuildOpFieldPath(TEXT("")));
 			return false;
 		}
 
 		return true;
 	}
 
-	bool TryBuildSetObjectPropertyPayload(
+	bool ObjectPropertyTryBuildSetPayload(
 		const FString& AssetPath,
 		const TSharedPtr<FJsonObject>& OpObject,
 		bool bDryRun,
@@ -257,10 +257,10 @@ namespace
 		FBlueprintHelperToolError& OutError)
 	{
 		FString PropertyPath;
-		if (!TryReadRequiredString(
+		if (!ObjectPropertyTryReadRequiredString(
 			OpObject,
 			TEXT("property_path"),
-			BuildOpFieldPath(TEXT("property_path")),
+			ObjectPropertyBuildOpFieldPath(TEXT("property_path")),
 			TEXT("invalid_object_property_setting"),
 			TEXT("set_object_property requires property_path."),
 			PropertyPath,
@@ -270,9 +270,9 @@ namespace
 		}
 
 		TSharedPtr<FJsonValue> Value;
-		if (!TryRequireValueField(
+		if (!ObjectPropertyTryRequireValueField(
 			OpObject,
-			BuildOpFieldPath(TEXT("value")),
+			ObjectPropertyBuildOpFieldPath(TEXT("value")),
 			TEXT("invalid_object_property_setting"),
 			Value,
 			OutError))
@@ -290,7 +290,7 @@ namespace
 		return true;
 	}
 
-	bool TryBuildSetObjectPropertiesPayload(
+	bool ObjectPropertyTryBuildSetManyPayload(
 		const FString& AssetPath,
 		const TSharedPtr<FJsonObject>& OpObject,
 		bool bDryRun,
@@ -305,7 +305,7 @@ namespace
 			OutError = MakeObjectPropertyTaskPlanError(
 				TEXT("invalid_object_property_settings"),
 				TEXT("set_object_properties requires a non-empty settings array."),
-				BuildOpFieldPath(TEXT("settings")));
+				ObjectPropertyBuildOpFieldPath(TEXT("settings")));
 			return false;
 		}
 
@@ -320,15 +320,15 @@ namespace
 				OutError = MakeObjectPropertyTaskPlanError(
 					TEXT("invalid_object_property_settings"),
 					TEXT("object_property settings entries must be objects."),
-					BuildSettingFieldPath(Index, TEXT("")));
+					ObjectPropertyBuildSettingFieldPath(Index, TEXT("")));
 				return false;
 			}
 
 			FString PropertyPath;
-			if (!TryReadRequiredString(
+			if (!ObjectPropertyTryReadRequiredString(
 				SettingObject,
 				TEXT("property_path"),
-				BuildSettingFieldPath(Index, TEXT("property_path")),
+				ObjectPropertyBuildSettingFieldPath(Index, TEXT("property_path")),
 				TEXT("invalid_object_property_settings"),
 				TEXT("object_property settings entries require property_path."),
 				PropertyPath,
@@ -338,9 +338,9 @@ namespace
 			}
 
 			TSharedPtr<FJsonValue> Value;
-			if (!TryRequireValueField(
+			if (!ObjectPropertyTryRequireValueField(
 				SettingObject,
-				BuildSettingFieldPath(Index, TEXT("value")),
+				ObjectPropertyBuildSettingFieldPath(Index, TEXT("value")),
 				TEXT("invalid_object_property_settings"),
 				Value,
 				OutError))
@@ -384,16 +384,16 @@ bool FBlueprintHelperObjectPropertyTaskPlanAdapter::TryBuildPayloadFromTaskPlanS
 	FString StepId;
 	FString AssetPath;
 	TSharedPtr<FJsonObject> OpObject;
-	if (!TryReadObjectPropertyTaskPlanParts(StepObject, StepId, AssetPath, OpObject, OutError))
+	if (!ObjectPropertyTryReadTaskPlanParts(StepObject, StepId, AssetPath, OpObject, OutError))
 	{
 		return false;
 	}
 
 	FString OpName;
-	if (!TryReadRequiredString(
+	if (!ObjectPropertyTryReadRequiredString(
 		OpObject,
 		TEXT("op"),
-		BuildOpFieldPath(TEXT("op")),
+		ObjectPropertyBuildOpFieldPath(TEXT("op")),
 		TEXT("invalid_object_property_op"),
 		TEXT("object_property op requires op."),
 		OpName,
@@ -407,7 +407,7 @@ bool FBlueprintHelperObjectPropertyTaskPlanAdapter::TryBuildPayloadFromTaskPlanS
 	if (OpName == OpSetObjectProperty)
 	{
 		AdapterOperation = AdapterOperationSetObjectProperty;
-		if (!TryBuildSetObjectPropertyPayload(AssetPath, OpObject, bDryRun, Payload, OutError))
+		if (!ObjectPropertyTryBuildSetPayload(AssetPath, OpObject, bDryRun, Payload, OutError))
 		{
 			return false;
 		}
@@ -415,7 +415,7 @@ bool FBlueprintHelperObjectPropertyTaskPlanAdapter::TryBuildPayloadFromTaskPlanS
 	else if (OpName == OpSetObjectProperties)
 	{
 		AdapterOperation = AdapterOperationSetObjectProperties;
-		if (!TryBuildSetObjectPropertiesPayload(AssetPath, OpObject, bDryRun, Payload, OutError))
+		if (!ObjectPropertyTryBuildSetManyPayload(AssetPath, OpObject, bDryRun, Payload, OutError))
 		{
 			return false;
 		}
@@ -425,7 +425,7 @@ bool FBlueprintHelperObjectPropertyTaskPlanAdapter::TryBuildPayloadFromTaskPlanS
 		OutError = MakeObjectPropertyTaskPlanError(
 			TEXT("unsupported_object_property_read_op"),
 			TEXT("object_property TaskRuntime write lowering does not execute read ops; use ReadSpec/read_context for reads."),
-			BuildOpFieldPath(TEXT("op")));
+			ObjectPropertyBuildOpFieldPath(TEXT("op")));
 		return false;
 	}
 	else
@@ -433,7 +433,7 @@ bool FBlueprintHelperObjectPropertyTaskPlanAdapter::TryBuildPayloadFromTaskPlanS
 		OutError = MakeObjectPropertyTaskPlanError(
 			TEXT("unsupported_object_property_op"),
 			TEXT("object_property adapter currently supports set_object_property and set_object_properties only."),
-			BuildOpFieldPath(TEXT("op")));
+			ObjectPropertyBuildOpFieldPath(TEXT("op")));
 		return false;
 	}
 

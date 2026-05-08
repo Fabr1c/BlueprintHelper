@@ -9,17 +9,17 @@
 
 namespace
 {
-	FString StepFieldPath(const TCHAR* Field)
+	FString ClassSettingsStepFieldPath(const TCHAR* Field)
 	{
 		return FString::Printf(TEXT("task_plan.steps[0].%s"), Field);
 	}
 
-	FString OpFieldPath(int32 OpIndex, const TCHAR* Field)
+	FString ClassSettingsOpFieldPath(int32 OpIndex, const TCHAR* Field)
 	{
 		return FString::Printf(TEXT("task_plan.steps[0].write.ops[%d].%s"), OpIndex, Field);
 	}
 
-	FBlueprintHelperToolError MakeAdapterError(
+	FBlueprintHelperToolError MakeClassSettingsAdapterError(
 		const FString& Code,
 		const FString& Message,
 		const FString& Field)
@@ -34,7 +34,7 @@ namespace
 		return Error;
 	}
 
-	bool TryReadTargetAssetPath(
+	bool ClassSettingsTryReadTargetAssetPath(
 		const TSharedPtr<FJsonObject>& StepObject,
 		FString& OutAssetPath,
 		FBlueprintHelperToolError& OutError)
@@ -44,26 +44,26 @@ namespace
 			!StepObject->TryGetObjectField(TEXT("target"), TargetObjectPtr) ||
 			!TargetObjectPtr || !TargetObjectPtr->IsValid())
 		{
-			OutError = MakeAdapterError(
+			OutError = MakeClassSettingsAdapterError(
 				TEXT("invalid_taskplan_step_target"),
 				TEXT("blueprint_class_settings TaskPlan step requires target object."),
-				StepFieldPath(TEXT("target")));
+				ClassSettingsStepFieldPath(TEXT("target")));
 			return false;
 		}
 
 		if (!(*TargetObjectPtr)->TryGetStringField(TEXT("asset_path"), OutAssetPath) || OutAssetPath.IsEmpty())
 		{
-			OutError = MakeAdapterError(
+			OutError = MakeClassSettingsAdapterError(
 				TEXT("invalid_taskplan_step_target"),
 				TEXT("blueprint_class_settings TaskPlan step target requires asset_path."),
-				StepFieldPath(TEXT("target.asset_path")));
+				ClassSettingsStepFieldPath(TEXT("target.asset_path")));
 			return false;
 		}
 
 		return true;
 	}
 
-	bool TryReadWriteObject(
+	bool ClassSettingsTryReadWriteObject(
 		const TSharedPtr<FJsonObject>& StepObject,
 		const TSharedPtr<FJsonObject>*& OutWriteObjectPtr,
 		FBlueprintHelperToolError& OutError)
@@ -73,10 +73,10 @@ namespace
 			!StepObject->TryGetObjectField(TEXT("write"), OutWriteObjectPtr) ||
 			!OutWriteObjectPtr || !OutWriteObjectPtr->IsValid())
 		{
-			OutError = MakeAdapterError(
+			OutError = MakeClassSettingsAdapterError(
 				TEXT("invalid_class_settings_write"),
 				TEXT("blueprint_class_settings TaskPlan step requires write object."),
-				StepFieldPath(TEXT("write")));
+				ClassSettingsStepFieldPath(TEXT("write")));
 			return false;
 		}
 
@@ -84,17 +84,17 @@ namespace
 		if (!(*OutWriteObjectPtr)->TryGetStringField(TEXT("strategy"), Strategy) ||
 			Strategy != FBlueprintHelperClassSettingsTaskPlanAdapter::StrategyName)
 		{
-			OutError = MakeAdapterError(
+			OutError = MakeClassSettingsAdapterError(
 				TEXT("unsupported_class_settings_strategy"),
 				TEXT("blueprint_class_settings TaskPlan step supports class_settings strategy only."),
-				StepFieldPath(TEXT("write.strategy")));
+				ClassSettingsStepFieldPath(TEXT("write.strategy")));
 			return false;
 		}
 
 		return true;
 	}
 
-	bool TryReadSingleOp(
+	bool ClassSettingsTryReadSingleOp(
 		const TSharedPtr<FJsonObject>& WriteObject,
 		TSharedPtr<FJsonObject>& OutOpObject,
 		FBlueprintHelperToolError& OutError)
@@ -104,26 +104,26 @@ namespace
 			!WriteObject->TryGetArrayField(TEXT("ops"), OpsArray) ||
 			!OpsArray)
 		{
-			OutError = MakeAdapterError(
+			OutError = MakeClassSettingsAdapterError(
 				TEXT("invalid_class_settings_ops"),
 				TEXT("blueprint_class_settings TaskPlan step requires write.ops array."),
-				StepFieldPath(TEXT("write.ops")));
+				ClassSettingsStepFieldPath(TEXT("write.ops")));
 			return false;
 		}
 
 		if (OpsArray->Num() != 1)
 		{
-			OutError = MakeAdapterError(
+			OutError = MakeClassSettingsAdapterError(
 				TEXT("invalid_class_settings_ops"),
 				TEXT("blueprint_class_settings TaskPlan step currently supports exactly one batch op."),
-				StepFieldPath(TEXT("write.ops")));
+				ClassSettingsStepFieldPath(TEXT("write.ops")));
 			return false;
 		}
 
 		OutOpObject = (*OpsArray)[0].IsValid() ? (*OpsArray)[0]->AsObject() : nullptr;
 		if (!OutOpObject.IsValid())
 		{
-			OutError = MakeAdapterError(
+			OutError = MakeClassSettingsAdapterError(
 				TEXT("invalid_class_settings_op"),
 				TEXT("blueprint_class_settings op must be an object."),
 				TEXT("task_plan.steps[0].write.ops[0]"));
@@ -133,7 +133,7 @@ namespace
 		return true;
 	}
 
-	bool TryCopyStringArrayField(
+	bool ClassSettingsTryCopyStringArrayField(
 		const TSharedPtr<FJsonObject>& OpObject,
 		const TCHAR* FieldName,
 		TArray<TSharedPtr<FJsonValue>>& OutArray,
@@ -144,10 +144,10 @@ namespace
 			!OpObject->TryGetArrayField(FieldName, SourceArray) ||
 			!SourceArray)
 		{
-			OutError = MakeAdapterError(
+			OutError = MakeClassSettingsAdapterError(
 				TEXT("invalid_class_settings_op"),
 				TEXT("Class Settings interface op requires interface_paths array."),
-				OpFieldPath(0, FieldName));
+				ClassSettingsOpFieldPath(0, FieldName));
 			return false;
 		}
 
@@ -156,7 +156,7 @@ namespace
 			FString Item;
 			if (!(*SourceArray)[Index].IsValid() || !(*SourceArray)[Index]->TryGetString(Item))
 			{
-				OutError = MakeAdapterError(
+				OutError = MakeClassSettingsAdapterError(
 					TEXT("invalid_class_settings_op"),
 					TEXT("interface_paths entries must be strings."),
 					FString::Printf(TEXT("task_plan.steps[0].write.ops[0].%s[%d]"), FieldName, Index));
@@ -169,7 +169,7 @@ namespace
 		return true;
 	}
 
-	bool TryCopySettingsArrayField(
+	bool ClassSettingsTryCopySettingsArrayField(
 		const TSharedPtr<FJsonObject>& OpObject,
 		TArray<TSharedPtr<FJsonValue>>& OutArray,
 		FBlueprintHelperToolError& OutError)
@@ -179,10 +179,10 @@ namespace
 			!OpObject->TryGetArrayField(TEXT("settings"), SourceArray) ||
 			!SourceArray)
 		{
-			OutError = MakeAdapterError(
+			OutError = MakeClassSettingsAdapterError(
 				TEXT("invalid_class_settings_op"),
 				TEXT("set_class_default_properties requires settings array."),
-				OpFieldPath(0, TEXT("settings")));
+				ClassSettingsOpFieldPath(0, TEXT("settings")));
 			return false;
 		}
 
@@ -194,7 +194,7 @@ namespace
 					: nullptr;
 			if (!SettingObject.IsValid())
 			{
-				OutError = MakeAdapterError(
+				OutError = MakeClassSettingsAdapterError(
 					TEXT("invalid_class_settings_op"),
 					TEXT("settings entries must be objects."),
 					FString::Printf(TEXT("task_plan.steps[0].write.ops[0].settings[%d]"), Index));
@@ -204,7 +204,7 @@ namespace
 			FString PropertyPath;
 			if (!SettingObject->TryGetStringField(TEXT("property_path"), PropertyPath) || PropertyPath.IsEmpty())
 			{
-				OutError = MakeAdapterError(
+				OutError = MakeClassSettingsAdapterError(
 					TEXT("invalid_class_settings_op"),
 					TEXT("settings entries require property_path."),
 					FString::Printf(TEXT("task_plan.steps[0].write.ops[0].settings[%d].property_path"), Index));
@@ -213,7 +213,7 @@ namespace
 
 			if (!SettingObject->HasField(TEXT("value")))
 			{
-				OutError = MakeAdapterError(
+				OutError = MakeClassSettingsAdapterError(
 					TEXT("invalid_class_settings_op"),
 					TEXT("settings entries require value."),
 					FString::Printf(TEXT("task_plan.steps[0].write.ops[0].settings[%d].value"), Index));
@@ -263,19 +263,19 @@ bool FBlueprintHelperClassSettingsTaskPlanAdapter::TryBuildAdapterPayload(
 	OutError = FBlueprintHelperToolError();
 
 	FString AssetPath;
-	if (!TryReadTargetAssetPath(StepObject, AssetPath, OutError))
+	if (!ClassSettingsTryReadTargetAssetPath(StepObject, AssetPath, OutError))
 	{
 		return false;
 	}
 
 	const TSharedPtr<FJsonObject>* WriteObjectPtr = nullptr;
-	if (!TryReadWriteObject(StepObject, WriteObjectPtr, OutError))
+	if (!ClassSettingsTryReadWriteObject(StepObject, WriteObjectPtr, OutError))
 	{
 		return false;
 	}
 
 	TSharedPtr<FJsonObject> OpObject;
-	if (!TryReadSingleOp(*WriteObjectPtr, OpObject, OutError))
+	if (!ClassSettingsTryReadSingleOp(*WriteObjectPtr, OpObject, OutError))
 	{
 		return false;
 	}
@@ -283,28 +283,28 @@ bool FBlueprintHelperClassSettingsTaskPlanAdapter::TryBuildAdapterPayload(
 	FString OpName;
 	if (!OpObject->TryGetStringField(TEXT("op"), OpName) || OpName.IsEmpty())
 	{
-		OutError = MakeAdapterError(
+		OutError = MakeClassSettingsAdapterError(
 			TEXT("invalid_class_settings_op"),
 			TEXT("blueprint_class_settings op requires op name."),
-			OpFieldPath(0, TEXT("op")));
+			ClassSettingsOpFieldPath(0, TEXT("op")));
 		return false;
 	}
 
 	if (IsParentClassOp(OpName))
 	{
-		OutError = MakeAdapterError(
+		OutError = MakeClassSettingsAdapterError(
 			TEXT("unsupported_class_settings_parent_class_op"),
 			TEXT("Parent class changes are not supported by blueprint_class_settings."),
-			OpFieldPath(0, TEXT("op")));
+			ClassSettingsOpFieldPath(0, TEXT("op")));
 		return false;
 	}
 
 	if (!IsSupportedOp(OpName))
 	{
-		OutError = MakeAdapterError(
+		OutError = MakeClassSettingsAdapterError(
 			TEXT("unsupported_class_settings_op"),
 			TEXT("Unsupported blueprint_class_settings op."),
-			OpFieldPath(0, TEXT("op")));
+			ClassSettingsOpFieldPath(0, TEXT("op")));
 		return false;
 	}
 
@@ -315,7 +315,7 @@ bool FBlueprintHelperClassSettingsTaskPlanAdapter::TryBuildAdapterPayload(
 	if (OpName == AddImplementedInterfacesOp || OpName == RemoveImplementedInterfacesOp)
 	{
 		TArray<TSharedPtr<FJsonValue>> InterfacePaths;
-		if (!TryCopyStringArrayField(OpObject, TEXT("interface_paths"), InterfacePaths, OutError))
+		if (!ClassSettingsTryCopyStringArrayField(OpObject, TEXT("interface_paths"), InterfacePaths, OutError))
 		{
 			return false;
 		}
@@ -324,7 +324,7 @@ bool FBlueprintHelperClassSettingsTaskPlanAdapter::TryBuildAdapterPayload(
 	else if (OpName == SetClassDefaultPropertiesOp)
 	{
 		TArray<TSharedPtr<FJsonValue>> Settings;
-		if (!TryCopySettingsArrayField(OpObject, Settings, OutError))
+		if (!ClassSettingsTryCopySettingsArrayField(OpObject, Settings, OutError))
 		{
 			return false;
 		}
@@ -349,7 +349,7 @@ bool FBlueprintHelperClassSettingsTaskPlanAdapter::TryLowerTaskPlanStep(
 
 	if (!StepObject.IsValid())
 	{
-		OutError = MakeAdapterError(
+		OutError = MakeClassSettingsAdapterError(
 			TEXT("invalid_taskplan_step"),
 			TEXT("TaskPlan step must be an object."),
 			TEXT("task_plan.steps[0]"));
@@ -366,20 +366,20 @@ bool FBlueprintHelperClassSettingsTaskPlanAdapter::TryLowerTaskPlanStep(
 	StepObject->TryGetStringField(TEXT("capability"), Capability);
 	if (!IsSupportedCapability(Capability))
 	{
-		OutError = MakeAdapterError(
+		OutError = MakeClassSettingsAdapterError(
 			TEXT("unsupported_taskplan_capability"),
 			TEXT("Class Settings adapter supports blueprint_class_settings capability only."),
-			StepFieldPath(TEXT("capability")));
+			ClassSettingsStepFieldPath(TEXT("capability")));
 		return false;
 	}
 
 	FString AdapterOperationField;
 	if (StepObject->TryGetStringField(TEXT("operation"), AdapterOperationField))
 	{
-		OutError = MakeAdapterError(
+		OutError = MakeClassSettingsAdapterError(
 			TEXT("unsupported_class_settings_operation_field"),
 			TEXT("blueprint_class_settings IR TaskPlan steps use capability/write; adapter operation fields are runtime lowering details."),
-			StepFieldPath(TEXT("operation")));
+			ClassSettingsStepFieldPath(TEXT("operation")));
 		return false;
 	}
 

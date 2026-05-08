@@ -32,6 +32,7 @@
 #include "Runtime/TaskRuntime/TaskPlanAdapters/BlueprintSignature/BlueprintHelperSignatureTaskPlanAdapter.h"
 #include "Runtime/TaskRuntime/TaskPlanAdapters/CleanupOwnership/BlueprintHelperCleanupOwnershipTaskPlanAdapter.h"
 #include "Runtime/TaskRuntime/TaskPlanAdapters/UMGWidget/BlueprintHelperWidgetTaskPlanAdapter.h"
+#include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeClusterHub.h"
 
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -3660,6 +3661,351 @@ namespace
 	}
 }
 
+FBlueprintHelperBlueprintVariablesTaskRuntimeCluster::FBlueprintHelperBlueprintVariablesTaskRuntimeCluster(
+	const FBlueprintHelperBlueprintVariableService& InVariableService)
+	: VariableService(InVariableService)
+{
+}
+
+bool FBlueprintHelperBlueprintVariablesTaskRuntimeCluster::CanExecuteStep(
+	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep)
+{
+	return LoweredStep.Capability == FBlueprintHelperBlueprintVariableTaskPlanAdapter::CapabilityBlueprintVariable ||
+		LoweredStep.AdapterOperation == FBlueprintHelperBlueprintVariableTaskPlanAdapter::AdapterOperationAddMemberVariables ||
+		LoweredStep.AdapterOperation == FBlueprintHelperBlueprintVariableTaskPlanAdapter::AdapterOperationVariableBatch;
+}
+
+FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariablesTaskRuntimeCluster::ExecuteStep(
+	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep) const
+{
+	if (LoweredStep.AdapterOperation == FBlueprintHelperBlueprintVariableTaskPlanAdapter::AdapterOperationAddMemberVariables)
+	{
+		return VariableService.AddMemberVariables(LoweredStep.Payload.ToSharedRef());
+	}
+	if (LoweredStep.AdapterOperation == FBlueprintHelperBlueprintVariableTaskPlanAdapter::AdapterOperationVariableBatch)
+	{
+		return ExecuteBlueprintVariableBatchTaskPlanStep(VariableService, LoweredStep.Payload);
+	}
+
+	return MakeFailure(
+		TEXT("blueprint_variable"),
+		TEXT("unsupported_variable_adapter_operation"),
+		EBlueprintHelperToolStage::ParseInput,
+		TEXT("Unsupported BlueprintVariables adapter operation."),
+		TEXT("task_plan.steps[0]"));
+}
+
+FBlueprintHelperComponentTaskRuntimeCluster::FBlueprintHelperComponentTaskRuntimeCluster(
+	const FBlueprintHelperComponentService& InComponentService)
+	: ComponentService(InComponentService)
+{
+}
+
+bool FBlueprintHelperComponentTaskRuntimeCluster::CanExecuteStep(
+	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep)
+{
+	return LoweredStep.Capability == FBlueprintHelperComponentTaskPlanAdapter::CapabilityBlueprintComponent;
+}
+
+FBlueprintHelperToolResultBase FBlueprintHelperComponentTaskRuntimeCluster::ExecuteStep(
+	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep) const
+{
+	return ExecuteComponentTaskPlanStep(ComponentService, LoweredStep.AdapterOperation, LoweredStep.Payload);
+}
+
+FBlueprintHelperClassSettingsTaskRuntimeCluster::FBlueprintHelperClassSettingsTaskRuntimeCluster(
+	const FBlueprintHelperClassSettingsService& InClassSettingsService)
+	: ClassSettingsService(InClassSettingsService)
+{
+}
+
+bool FBlueprintHelperClassSettingsTaskRuntimeCluster::CanExecuteStep(
+	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep)
+{
+	return LoweredStep.Capability == FBlueprintHelperClassSettingsTaskPlanAdapter::CapabilityName;
+}
+
+FBlueprintHelperToolResultBase FBlueprintHelperClassSettingsTaskRuntimeCluster::ExecuteStep(
+	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep) const
+{
+	return ExecuteClassSettingsTaskPlanStep(ClassSettingsService, LoweredStep.AdapterOperation, LoweredStep.Payload);
+}
+
+FBlueprintHelperSignatureTaskRuntimeCluster::FBlueprintHelperSignatureTaskRuntimeCluster(
+	const FBlueprintHelperBlueprintStructureService& InStructureService)
+	: StructureService(InStructureService)
+{
+}
+
+bool FBlueprintHelperSignatureTaskRuntimeCluster::CanExecuteStep(
+	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep)
+{
+	return LoweredStep.Capability == FBlueprintHelperSignatureTaskPlanAdapter::CapabilityName;
+}
+
+FBlueprintHelperToolResultBase FBlueprintHelperSignatureTaskRuntimeCluster::ExecuteStep(
+	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep) const
+{
+	return ExecuteSignatureTaskPlanStep(StructureService, LoweredStep.AdapterOperation, LoweredStep.Payload);
+}
+
+FBlueprintHelperUMGWidgetTaskRuntimeCluster::FBlueprintHelperUMGWidgetTaskRuntimeCluster(
+	const FBlueprintHelperWidgetService& InWidgetService)
+	: WidgetService(InWidgetService)
+{
+}
+
+bool FBlueprintHelperUMGWidgetTaskRuntimeCluster::CanExecuteStep(
+	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep)
+{
+	return LoweredStep.Capability == BlueprintHelperWidgetTaskPlan::Capability::UMGWidget;
+}
+
+FBlueprintHelperToolResultBase FBlueprintHelperUMGWidgetTaskRuntimeCluster::ExecuteStep(
+	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep) const
+{
+	return ExecuteWidgetTaskPlanStep(WidgetService, LoweredStep.AdapterOperation, LoweredStep.Payload);
+}
+
+FBlueprintHelperDataTableTaskRuntimeCluster::FBlueprintHelperDataTableTaskRuntimeCluster(
+	const FBlueprintHelperDataTableService& InDataTableService)
+	: DataTableService(InDataTableService)
+{
+}
+
+bool FBlueprintHelperDataTableTaskRuntimeCluster::CanExecuteStep(
+	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep)
+{
+	return LoweredStep.Capability == FBlueprintHelperDataTableTaskPlanAdapter::CapabilityDataTable;
+}
+
+FBlueprintHelperToolResultBase FBlueprintHelperDataTableTaskRuntimeCluster::ExecuteStep(
+	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep) const
+{
+	return ExecuteDataTableTaskPlanStep(DataTableService, LoweredStep.AdapterOperation, LoweredStep.Payload);
+}
+
+FBlueprintHelperObjectPropertyTaskRuntimeCluster::FBlueprintHelperObjectPropertyTaskRuntimeCluster(
+	const FBlueprintHelperPropertyReflectionService& InPropertyReflectionService)
+	: PropertyReflectionService(InPropertyReflectionService)
+{
+}
+
+bool FBlueprintHelperObjectPropertyTaskRuntimeCluster::CanExecuteStep(
+	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep)
+{
+	return LoweredStep.Capability == FBlueprintHelperObjectPropertyTaskPlanAdapter::CapabilityObjectProperty;
+}
+
+FBlueprintHelperToolResultBase FBlueprintHelperObjectPropertyTaskRuntimeCluster::ExecuteStep(
+	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep) const
+{
+	return ExecuteObjectPropertyTaskPlanStep(
+		PropertyReflectionService,
+		LoweredStep.AdapterOperation,
+		LoweredStep.Payload);
+}
+
+FBlueprintHelperCleanupOwnershipTaskRuntimeCluster::FBlueprintHelperCleanupOwnershipTaskRuntimeCluster(
+	const FBlueprintHelperCleanupBlueprintHelperBlockService& InCleanupBlockService,
+	const FBlueprintHelperRollbackCleanupTransactionService& InRollbackCleanupService,
+	const FBlueprintHelperConvertBlockToUserOwnedService& InConvertBlockService)
+	: CleanupBlockService(InCleanupBlockService)
+	, RollbackCleanupService(InRollbackCleanupService)
+	, ConvertBlockService(InConvertBlockService)
+{
+}
+
+bool FBlueprintHelperCleanupOwnershipTaskRuntimeCluster::CanExecuteStep(
+	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep)
+{
+	return LoweredStep.Capability == FBlueprintHelperCleanupOwnershipTaskPlanAdapter::CapabilityName;
+}
+
+FBlueprintHelperToolResultBase FBlueprintHelperCleanupOwnershipTaskRuntimeCluster::ExecuteStep(
+	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep) const
+{
+	return ExecuteCleanupOwnershipTaskPlanStep(
+		CleanupBlockService,
+		ConvertBlockService,
+		RollbackCleanupService,
+		LoweredStep.AdapterOperation,
+		LoweredStep.Payload);
+}
+
+FBlueprintHelperTaskRuntimeClusterHub::FBlueprintHelperTaskRuntimeClusterHub(
+	const FBlueprintHelperAppendBlueprintGraphService& InAppendGraphService,
+	const FBlueprintHelperReplaceBlueprintGraphService& InReplaceGraphService,
+	const FBlueprintHelperPatchBlueprintGraphService& InPatchGraphService,
+	const FBlueprintHelperMergeBlueprintGraphService& InMergeGraphService,
+	const FBlueprintHelperBlueprintVariableService& InVariableService,
+	const FBlueprintHelperBlueprintStructureService& InStructureService,
+	const FBlueprintHelperAssetFactoryService& InAssetFactoryService,
+	const FBlueprintHelperComponentService& InComponentService,
+	const FBlueprintHelperClassSettingsService& InClassSettingsService,
+	const FBlueprintHelperWidgetService& InWidgetService,
+	const FBlueprintHelperDataTableService& InDataTableService,
+	const FBlueprintHelperPropertyReflectionService& InPropertyReflectionService,
+	const FBlueprintHelperCleanupBlueprintHelperBlockService& InCleanupBlockService,
+	const FBlueprintHelperRollbackCleanupTransactionService& InRollbackCleanupService,
+	const FBlueprintHelperConvertBlockToUserOwnedService& InConvertBlockService)
+	: GraphWriteCluster(
+		InAppendGraphService,
+		InReplaceGraphService,
+		InPatchGraphService,
+		InMergeGraphService)
+	, BlueprintVariablesCluster(InVariableService)
+	, SignatureCluster(InStructureService)
+	, AssetFactoryService(InAssetFactoryService)
+	, ComponentCluster(InComponentService)
+	, ClassSettingsCluster(InClassSettingsService)
+	, UMGWidgetCluster(InWidgetService)
+	, DataTableCluster(InDataTableService)
+	, ObjectPropertyCluster(InPropertyReflectionService)
+	, CleanupOwnershipCluster(
+		InCleanupBlockService,
+		InRollbackCleanupService,
+		InConvertBlockService)
+{
+}
+
+bool FBlueprintHelperTaskRuntimeClusterHub::TryLowerStep(
+	const TSharedPtr<FJsonObject>& TaskPlan,
+	const TSharedPtr<FJsonObject>& StepObject,
+	bool bDryRun,
+	FBlueprintHelperTaskRuntimeLoweredStep& OutLoweredStep,
+	FBlueprintHelperToolError& OutError)
+{
+	return FBlueprintHelperTaskRuntimeService::TryLowerTaskPlanStep(
+		TaskPlan,
+		StepObject,
+		bDryRun,
+		OutLoweredStep,
+		OutError);
+}
+
+EBlueprintHelperTaskRuntimeCluster FBlueprintHelperTaskRuntimeClusterHub::ResolveClusterForLoweredStep(
+	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep)
+{
+	if (FBlueprintHelperGraphWriteTaskRuntimeCluster::CanExecuteStep(LoweredStep))
+	{
+		return EBlueprintHelperTaskRuntimeCluster::GraphWrite;
+	}
+	if (FBlueprintHelperBlueprintVariablesTaskRuntimeCluster::CanExecuteStep(LoweredStep))
+	{
+		return EBlueprintHelperTaskRuntimeCluster::BlueprintVariables;
+	}
+	if (LoweredStep.Capability == FBlueprintHelperAssetFactoryTaskPlanAdapter::SupportedCapability ||
+		LoweredStep.AdapterOperation == FBlueprintHelperAssetFactoryTaskPlanAdapter::AdapterOperation)
+	{
+		return EBlueprintHelperTaskRuntimeCluster::AssetFactory;
+	}
+	if (FBlueprintHelperComponentTaskRuntimeCluster::CanExecuteStep(LoweredStep))
+	{
+		return EBlueprintHelperTaskRuntimeCluster::Component;
+	}
+	if (FBlueprintHelperClassSettingsTaskRuntimeCluster::CanExecuteStep(LoweredStep))
+	{
+		return EBlueprintHelperTaskRuntimeCluster::ClassSettings;
+	}
+	if (FBlueprintHelperSignatureTaskRuntimeCluster::CanExecuteStep(LoweredStep))
+	{
+		return EBlueprintHelperTaskRuntimeCluster::Signature;
+	}
+	if (FBlueprintHelperUMGWidgetTaskRuntimeCluster::CanExecuteStep(LoweredStep))
+	{
+		return EBlueprintHelperTaskRuntimeCluster::UMGWidget;
+	}
+	if (FBlueprintHelperDataTableTaskRuntimeCluster::CanExecuteStep(LoweredStep))
+	{
+		return EBlueprintHelperTaskRuntimeCluster::DataTable;
+	}
+	if (FBlueprintHelperObjectPropertyTaskRuntimeCluster::CanExecuteStep(LoweredStep))
+	{
+		return EBlueprintHelperTaskRuntimeCluster::ObjectProperty;
+	}
+	if (FBlueprintHelperCleanupOwnershipTaskRuntimeCluster::CanExecuteStep(LoweredStep))
+	{
+		return EBlueprintHelperTaskRuntimeCluster::CleanupOwnership;
+	}
+	return EBlueprintHelperTaskRuntimeCluster::Unknown;
+}
+
+bool FBlueprintHelperTaskRuntimeClusterHub::CanExecuteStep(
+	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep) const
+{
+	return ResolveClusterForLoweredStep(LoweredStep) != EBlueprintHelperTaskRuntimeCluster::Unknown;
+}
+
+FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeClusterHub::ExecuteStep(
+	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
+	bool bDryRun) const
+{
+	if (bDryRun && !LoweredStep.bAdapterDryRunSupported)
+	{
+		FBlueprintHelperToolResultBase StepResult = FBlueprintHelperToolResultBuilder::DryRun(
+			LoweredStep.AdapterOperation,
+			FBlueprintHelperToolResultBuilder::GenerateTraceId());
+		StepResult.Data = MakeSyntheticDryRunData();
+		return StepResult;
+	}
+
+	switch (ResolveClusterForLoweredStep(LoweredStep))
+	{
+	case EBlueprintHelperTaskRuntimeCluster::GraphWrite:
+		return GraphWriteCluster.ExecuteStep(LoweredStep);
+	case EBlueprintHelperTaskRuntimeCluster::BlueprintVariables:
+		return BlueprintVariablesCluster.ExecuteStep(LoweredStep);
+	case EBlueprintHelperTaskRuntimeCluster::AssetFactory:
+		return ExecuteAssetFactoryTaskPlanStep(AssetFactoryService, LoweredStep.Payload);
+	case EBlueprintHelperTaskRuntimeCluster::Component:
+		return ComponentCluster.ExecuteStep(LoweredStep);
+	case EBlueprintHelperTaskRuntimeCluster::ClassSettings:
+		return ClassSettingsCluster.ExecuteStep(LoweredStep);
+	case EBlueprintHelperTaskRuntimeCluster::Signature:
+		return SignatureCluster.ExecuteStep(LoweredStep);
+	case EBlueprintHelperTaskRuntimeCluster::UMGWidget:
+		return UMGWidgetCluster.ExecuteStep(LoweredStep);
+	case EBlueprintHelperTaskRuntimeCluster::DataTable:
+		return DataTableCluster.ExecuteStep(LoweredStep);
+	case EBlueprintHelperTaskRuntimeCluster::ObjectProperty:
+		return ObjectPropertyCluster.ExecuteStep(LoweredStep);
+	case EBlueprintHelperTaskRuntimeCluster::CleanupOwnership:
+		return CleanupOwnershipCluster.ExecuteStep(LoweredStep);
+	default:
+		break;
+	}
+
+	return FBlueprintHelperToolResultBuilder::Failure(
+		LoweredStep.RuntimeOperation.IsEmpty() ? TEXT("execute_task_plan") : LoweredStep.RuntimeOperation,
+		FBlueprintHelperToolResultBuilder::GenerateTraceId(),
+		MakeTaskRuntimeError(
+			TEXT("unsupported_taskplan_adapter_operation"),
+			EBlueprintHelperToolStage::ParseInput,
+			TEXT("Task Runtime lowering produced an unsupported adapter operation."),
+			TEXT("task_plan.steps[0]")));
+}
+
+bool FBlueprintHelperTaskRuntimeClusterHub::BuildReviewEvidence(
+	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
+	const FBlueprintHelperToolResultBase& StepResult,
+	const FString& ArchiveSessionId,
+	const FString& TaskRunId,
+	int32 StepIndex,
+	FBlueprintHelperWriteReviewEvidence& OutEvidence) const
+{
+	if (!StepResult.bOk)
+	{
+		return false;
+	}
+	return TryBuildTaskRuntimeReviewEvidence(
+		LoweredStep,
+		ArchiveSessionId,
+		TaskRunId,
+		StepIndex,
+		OutEvidence);
+}
+
 FBlueprintHelperTaskRuntimeService::FBlueprintHelperTaskRuntimeService(
 	const FBlueprintHelperAppendBlueprintGraphService& InAppendGraphService,
 	const FBlueprintHelperReplaceBlueprintGraphService& InReplaceGraphService,
@@ -3678,25 +4024,28 @@ FBlueprintHelperTaskRuntimeService::FBlueprintHelperTaskRuntimeService(
 	const FBlueprintHelperConvertBlockToUserOwnedService& InConvertBlockService,
 	const FBlueprintHelperCompileAssetService& InCompileAssetService,
 	const FBlueprintHelperAssetBrowseService& InAssetBrowseService)
-	: AppendGraphService(InAppendGraphService)
-	, ReplaceGraphService(InReplaceGraphService)
-	, PatchGraphService(InPatchGraphService)
-	, MergeGraphService(InMergeGraphService)
-	, VariableService(InVariableService)
-	, StructureService(InStructureService)
-	, AssetFactoryService(InAssetFactoryService)
-	, ComponentService(InComponentService)
-	, ClassSettingsService(InClassSettingsService)
-	, WidgetService(InWidgetService)
-	, DataTableService(InDataTableService)
-	, PropertyReflectionService(InPropertyReflectionService)
-	, CleanupBlockService(InCleanupBlockService)
-	, RollbackCleanupService(InRollbackCleanupService)
-	, ConvertBlockService(InConvertBlockService)
+	: ClusterHub(MakeUnique<FBlueprintHelperTaskRuntimeClusterHub>(
+		InAppendGraphService,
+		InReplaceGraphService,
+		InPatchGraphService,
+		InMergeGraphService,
+		InVariableService,
+		InStructureService,
+		InAssetFactoryService,
+		InComponentService,
+		InClassSettingsService,
+		InWidgetService,
+		InDataTableService,
+		InPropertyReflectionService,
+		InCleanupBlockService,
+		InRollbackCleanupService,
+		InConvertBlockService))
 	, CompileAssetService(InCompileAssetService)
 	, AssetBrowseService(InAssetBrowseService)
 {
 }
+
+FBlueprintHelperTaskRuntimeService::~FBlueprintHelperTaskRuntimeService() = default;
 
 FBlueprintHelperValidationSummary FBlueprintHelperTaskRuntimeService::BuildRuntimeValidation(
 	const TSharedPtr<FJsonObject>& TaskPlan,
@@ -4186,85 +4535,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 
 	auto ExecuteLoweredStep = [&](const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep) -> FBlueprintHelperToolResultBase
 	{
-		if (bDryRun && !LoweredStep.bAdapterDryRunSupported)
-		{
-			FBlueprintHelperToolResultBase StepResult = FBlueprintHelperToolResultBuilder::DryRun(
-				LoweredStep.AdapterOperation,
-				FBlueprintHelperToolResultBuilder::GenerateTraceId());
-			StepResult.Data = MakeSyntheticDryRunData();
-			return StepResult;
-		}
-
-		if (LoweredStep.AdapterOperation == TEXT("append_blueprint_graph"))
-		{
-			return AppendGraphService.Execute(LoweredStep.Payload.ToSharedRef());
-		}
-		if (LoweredStep.AdapterOperation == TEXT("replace_blueprint_graph"))
-		{
-			return ReplaceGraphService.Execute(LoweredStep.Payload.ToSharedRef());
-		}
-		if (LoweredStep.AdapterOperation == TEXT("patch_blueprint_graph"))
-		{
-			return PatchGraphService.Execute(LoweredStep.Payload.ToSharedRef());
-		}
-		if (LoweredStep.AdapterOperation == TEXT("merge_blueprint_graph"))
-		{
-			return MergeGraphService.Execute(LoweredStep.Payload.ToSharedRef());
-		}
-		if (LoweredStep.AdapterOperation == TEXT("add_blueprint_member_variables"))
-		{
-			return VariableService.AddMemberVariables(LoweredStep.Payload.ToSharedRef());
-		}
-		if (LoweredStep.AdapterOperation == FBlueprintHelperBlueprintVariableTaskPlanAdapter::AdapterOperationVariableBatch)
-		{
-			return ExecuteBlueprintVariableBatchTaskPlanStep(VariableService, LoweredStep.Payload);
-		}
-		if (LoweredStep.AdapterOperation == FBlueprintHelperAssetFactoryTaskPlanAdapter::AdapterOperation)
-		{
-			return ExecuteAssetFactoryTaskPlanStep(AssetFactoryService, LoweredStep.Payload);
-		}
-		if (LoweredStep.Capability == FBlueprintHelperComponentTaskPlanAdapter::CapabilityBlueprintComponent)
-		{
-			return ExecuteComponentTaskPlanStep(ComponentService, LoweredStep.AdapterOperation, LoweredStep.Payload);
-		}
-		if (LoweredStep.Capability == FBlueprintHelperClassSettingsTaskPlanAdapter::CapabilityName)
-		{
-			return ExecuteClassSettingsTaskPlanStep(ClassSettingsService, LoweredStep.AdapterOperation, LoweredStep.Payload);
-		}
-		if (LoweredStep.Capability == FBlueprintHelperSignatureTaskPlanAdapter::CapabilityName)
-		{
-			return ExecuteSignatureTaskPlanStep(StructureService, LoweredStep.AdapterOperation, LoweredStep.Payload);
-		}
-		if (LoweredStep.Capability == BlueprintHelperWidgetTaskPlan::Capability::UMGWidget)
-		{
-			return ExecuteWidgetTaskPlanStep(WidgetService, LoweredStep.AdapterOperation, LoweredStep.Payload);
-		}
-		if (LoweredStep.Capability == FBlueprintHelperDataTableTaskPlanAdapter::CapabilityDataTable)
-		{
-			return ExecuteDataTableTaskPlanStep(DataTableService, LoweredStep.AdapterOperation, LoweredStep.Payload);
-		}
-		if (LoweredStep.Capability == FBlueprintHelperObjectPropertyTaskPlanAdapter::CapabilityObjectProperty)
-		{
-			return ExecuteObjectPropertyTaskPlanStep(PropertyReflectionService, LoweredStep.AdapterOperation, LoweredStep.Payload);
-		}
-		if (LoweredStep.Capability == FBlueprintHelperCleanupOwnershipTaskPlanAdapter::CapabilityName)
-		{
-			return ExecuteCleanupOwnershipTaskPlanStep(
-				CleanupBlockService,
-				ConvertBlockService,
-				RollbackCleanupService,
-				LoweredStep.AdapterOperation,
-				LoweredStep.Payload);
-		}
-
-		return FBlueprintHelperToolResultBuilder::Failure(
-			LoweredStep.RuntimeOperation.IsEmpty() ? RuntimeOperation : LoweredStep.RuntimeOperation,
-			FBlueprintHelperToolResultBuilder::GenerateTraceId(),
-			MakeTaskRuntimeError(
-				TEXT("unsupported_taskplan_adapter_operation"),
-				EBlueprintHelperToolStage::ParseInput,
-				TEXT("Task Runtime lowering produced an unsupported adapter operation."),
-				TEXT("task_plan.steps[0]")));
+		return ClusterHub->ExecuteStep(LoweredStep, bDryRun);
 	};
 
 	for (int32 StepIndex = 0; StepIndex < StepsArray->Num(); ++StepIndex)
@@ -4309,7 +4580,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 
 		FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
 		FBlueprintHelperToolError LoweringError;
-		if (!TryLowerTaskPlanStep(*TaskPlanPtr, StepObject, bDryRun, LoweredStep, LoweringError))
+		if (!ClusterHub->TryLowerStep(*TaskPlanPtr, StepObject, bDryRun, LoweredStep, LoweringError))
 		{
 			NormalizeErrorField(LoweringError, StepIndex);
 			return BuildFailureResult(LoweringError);
@@ -4333,8 +4604,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		if (!bDryRun && StepResult.bOk)
 		{
 			FBlueprintHelperWriteReviewEvidence RuntimeEvidence;
-			if (TryBuildTaskRuntimeReviewEvidence(
+			if (ClusterHub->BuildReviewEvidence(
 				LoweredStep,
+				StepResult,
 				ArchiveSessionId,
 				TaskRunId,
 				StepIndex,

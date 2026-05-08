@@ -22,6 +22,7 @@ class FBlueprintHelperRollbackCleanupTransactionService;
 class FBlueprintHelperConvertBlockToUserOwnedService;
 class FBlueprintHelperCompileAssetService;
 class FBlueprintHelperAssetBrowseService;
+class FBlueprintHelperTaskRuntimeClusterHub;
 class FJsonObject;
 
 struct BLUEPRINTHELPER_API FBlueprintHelperTaskRuntimeLoweredStep
@@ -71,6 +72,7 @@ public:
 		const FBlueprintHelperConvertBlockToUserOwnedService& InConvertBlockService,
 		const FBlueprintHelperCompileAssetService& InCompileAssetService,
 		const FBlueprintHelperAssetBrowseService& InAssetBrowseService);
+	~FBlueprintHelperTaskRuntimeService();
 
 	FBlueprintHelperToolResultBase PreviewTaskPlan(const TSharedPtr<FJsonObject>& Payload) const;
 	FBlueprintHelperToolResultBase ExecuteTaskPlan(const TSharedPtr<FJsonObject>& Payload) const;
@@ -118,21 +120,7 @@ private:
 		const TSharedPtr<FJsonObject>& Payload,
 		bool bDryRun) const;
 
-	const FBlueprintHelperAppendBlueprintGraphService& AppendGraphService;
-	const FBlueprintHelperReplaceBlueprintGraphService& ReplaceGraphService;
-	const FBlueprintHelperPatchBlueprintGraphService& PatchGraphService;
-	const FBlueprintHelperMergeBlueprintGraphService& MergeGraphService;
-	const FBlueprintHelperBlueprintVariableService& VariableService;
-	const FBlueprintHelperBlueprintStructureService& StructureService;
-	const FBlueprintHelperAssetFactoryService& AssetFactoryService;
-	const FBlueprintHelperComponentService& ComponentService;
-	const FBlueprintHelperClassSettingsService& ClassSettingsService;
-	const FBlueprintHelperWidgetService& WidgetService;
-	const FBlueprintHelperDataTableService& DataTableService;
-	const FBlueprintHelperPropertyReflectionService& PropertyReflectionService;
-	const FBlueprintHelperCleanupBlueprintHelperBlockService& CleanupBlockService;
-	const FBlueprintHelperRollbackCleanupTransactionService& RollbackCleanupService;
-	const FBlueprintHelperConvertBlockToUserOwnedService& ConvertBlockService;
+	TUniquePtr<FBlueprintHelperTaskRuntimeClusterHub> ClusterHub;
 	const FBlueprintHelperCompileAssetService& CompileAssetService;
 	const FBlueprintHelperAssetBrowseService& AssetBrowseService;
 	mutable TMap<FString, TSharedPtr<FJsonObject>> TaskRunJournals;

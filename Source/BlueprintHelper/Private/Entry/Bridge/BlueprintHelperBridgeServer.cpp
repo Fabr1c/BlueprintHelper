@@ -151,18 +151,21 @@ void FBlueprintHelperBridgeServer::HandleClient(FSocket* ClientSocket)
 		UE_LOG(LogBlueprintHelperBridge, Verbose, TEXT("收到请求: %s"), *RequestJson.Left(200));
 
 		// 投递到 GameThread 并等待结果
+		const TOptional<FBlueprintHelperBridgeRequest> Req =
+			FBlueprintHelperBridgeProtocol::ParseRequest(RequestJson);
+		const FBlueprintHelperBridgeRoutePlan RoutePlan = Req.IsSet()
+			? FBlueprintHelperBridgeRoutePlanner::BuildPlan(Req.GetValue().Command)
+			: FBlueprintHelperBridgeRoutePlan();
+
 		TPromise<FString> Promise;
 		TFuture<FString> Future = Promise.GetFuture();
 
-		AsyncTask(ENamedThreads::GameThread, [this, &RequestJson, &Promise]()
+		AsyncTask(ENamedThreads::GameThread, [this, Req, RoutePlan, &Promise]()
 		{
-			TOptional<FBlueprintHelperBridgeRequest> Req =
-				FBlueprintHelperBridgeProtocol::ParseRequest(RequestJson);
-
 			FBlueprintHelperBridgeResponse Resp;
 			if (Req.IsSet())
 			{
-				Resp = Router.HandleRequest(Req.GetValue());
+				Resp = Router.HandleRequestWithPlan(Req.GetValue(), RoutePlan);
 			}
 			else
 			{

@@ -3,6 +3,15 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Entry/Bridge/BlueprintHelperBridgeRoutePlanner.h"
+#include "Entry/Bridge/Routes/BlueprintHelperBlueprintVariablesBridgeRoutes.h"
+#include "Entry/Bridge/Routes/BlueprintHelperClassSettingsBridgeRoutes.h"
+#include "Entry/Bridge/Routes/BlueprintHelperCleanupOwnershipBridgeRoutes.h"
+#include "Entry/Bridge/Routes/BlueprintHelperComponentBridgeRoutes.h"
+#include "Entry/Bridge/Routes/BlueprintHelperDataTableBridgeRoutes.h"
+#include "Entry/Bridge/Routes/BlueprintHelperGraphWriteBridgeRoutes.h"
+#include "Entry/Bridge/Routes/BlueprintHelperObjectPropertyBridgeRoutes.h"
+#include "Entry/Bridge/Routes/BlueprintHelperUMGWidgetBridgeRoutes.h"
 #include "Entry/Bridge/BlueprintHelperBridgeTypes.h"
 #include "Shared/Safety/BlueprintHelperDependencyAnalysisService.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.h"
@@ -77,6 +86,9 @@ public:
 
 	/** 路由并执行命令。必须在 GameThread 调用。 */
 	FBlueprintHelperBridgeResponse HandleRequest(const FBlueprintHelperBridgeRequest& Request) const;
+	FBlueprintHelperBridgeResponse HandleRequestWithPlan(
+		const FBlueprintHelperBridgeRequest& Request,
+		const FBlueprintHelperBridgeRoutePlan& RoutePlan) const;
 
 private:
 	FBlueprintHelperBridgeResponse HandleGetRuleMarkdown(const FBlueprintHelperBridgeRequest& Req) const;
@@ -207,25 +219,21 @@ private:
 	const FBlueprintHelperContextService& ContextService;
 	const FBlueprintHelperAssetBrowseService& AssetBrowseService;
 	const FBlueprintHelperBlueprintStructureService& StructureService;
-	const FBlueprintHelperWidgetService& WidgetService;
-	const FBlueprintHelperPropertyReflectionService& PropertyReflectionService;
-	const FBlueprintHelperDataTableService& DataTableService;
+	FBlueprintHelperUMGWidgetBridgeRoutes UMGWidgetRoutes;
+	FBlueprintHelperObjectPropertyBridgeRoutes ObjectPropertyRoutes;
+	FBlueprintHelperDataTableBridgeRoutes DataTableRoutes;
 	const FBlueprintHelperEditorCommandService& EditorCommandService;
 	const FBlueprintHelperRuntimeProfileService& RuntimeProfileService;
 	const FBlueprintHelperDiagnosticsService& DiagnosticsService;
 	const FBlueprintHelperLogicMdReadService& LogicMdReadService;
 	const FBlueprintHelperLogicJsonReadService& LogicJsonReadService;
 	const FBlueprintHelperAssetFactoryService& AssetFactoryService;
-	const FBlueprintHelperComponentService& ComponentService;
-	const FBlueprintHelperClassSettingsService& ClassSettingsService;
-	const FBlueprintHelperAppendBlueprintGraphService& AppendGraphService;
-	const FBlueprintHelperReplaceBlueprintGraphService& ReplaceGraphService;
-	const FBlueprintHelperPatchBlueprintGraphService& PatchGraphService;
-	const FBlueprintHelperMergeBlueprintGraphService& MergeGraphService;
-	const FBlueprintHelperCleanupBlueprintHelperBlockService& CleanupBlockService;
-	const FBlueprintHelperRollbackCleanupTransactionService& RollbackCleanupService;
-	const FBlueprintHelperConvertBlockToUserOwnedService& ConvertBlockService;
+	FBlueprintHelperComponentBridgeRoutes ComponentRoutes;
+	FBlueprintHelperClassSettingsBridgeRoutes ClassSettingsRoutes;
+	FBlueprintHelperGraphWriteBridgeRoutes GraphWriteRoutes;
+	FBlueprintHelperCleanupOwnershipBridgeRoutes CleanupOwnershipRoutes;
 	const FBlueprintHelperBlueprintVariableService& VariableService;
+	FBlueprintHelperBlueprintVariablesBridgeRoutes BlueprintVariablesRoutes;
 	FBlueprintHelperDependencyAnalysisService DependencyAnalysisService;
 	FBlueprintHelperTaskRuntimeService TaskRuntimeService;
 	const FBlueprintHelperCompileAssetService& CompileAssetService;
