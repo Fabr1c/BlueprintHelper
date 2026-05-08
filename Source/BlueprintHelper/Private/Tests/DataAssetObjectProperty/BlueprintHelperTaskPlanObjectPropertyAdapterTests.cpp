@@ -1,12 +1,12 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
-#include "TaskRuntime/TaskPlanAdapters/DataAssetObjectProperty/BlueprintHelperObjectPropertyTaskPlanAdapter.h"
+#include "Runtime/TaskRuntime/TaskPlanAdapters/DataAssetObjectProperty/BlueprintHelperObjectPropertyTaskPlanAdapter.h"
 
 #include "Components/TextBlock.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Misc/AutomationTest.h"
-#include "Services/DataAssetObjectProperty/BlueprintHelperPropertyReflectionService.h"
+#include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
 #include "UObject/Package.h"
 
 namespace

@@ -3,8 +3,8 @@
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Misc/AutomationTest.h"
-#include "TaskRuntime/BlueprintHelperTaskRuntimeService.h"
-#include "TaskRuntime/TaskPlanAdapters/BlueprintSignature/BlueprintHelperSignatureTaskPlanAdapter.h"
+#include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.h"
+#include "Runtime/TaskRuntime/TaskPlanAdapters/BlueprintSignature/BlueprintHelperSignatureTaskPlanAdapter.h"
 
 namespace
 {

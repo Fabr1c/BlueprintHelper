@@ -1,6 +1,6 @@
 #include "Misc/AutomationTest.h"
-#include "Bridge/BlueprintHelperBridgeRouter.h"
-#include "Bridge/BlueprintHelperBridgeProtocol.h"
+#include "Entry/Bridge/BlueprintHelperBridgeRouter.h"
+#include "Entry/Bridge/BlueprintHelperBridgeProtocol.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Serialization/JsonSerializer.h"
