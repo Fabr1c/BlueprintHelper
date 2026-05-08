@@ -6,4 +6,14 @@ name = "BlueprintHelper"
 script = ""
 
 [setup.win32]
-script = "cd G:\\UnrealPractise\\MrStone\\Plugins\\BlueprintHelper"
+script = "cd G:\\UnrealPractise\\MrStone"
+
+[[actions]]
+name = "获取环境路径"
+icon = "tool"
+command = "cd G:\\UnrealPractise\\MrStone"
+
+[[actions]]
+name = "Build"
+icon = "test"
+command = "F:/UE_5.6/Engine/Build/BatchFiles/Build.bat MrStoneEditor Win64 Development -Project=G:/UnrealPractise/MrStone/MrStone.uproject -WaitMutex"

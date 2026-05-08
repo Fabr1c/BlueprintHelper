@@ -561,7 +561,7 @@ test('blueprint asset resource reads raw JSON through Bridge on demand', async (
 });
 
 test('MCP regression fixtures exist and are valid JSON', () => {
-  const fixturesDir = path.resolve(PLUGIN_ROOT, 'Resources', 'TestFixtures', 'MCPRegression');
+  const fixturesDir = path.resolve(PLUGIN_ROOT, 'Develop', 'TestFixtures', 'MCPRegression');
   const requiredFixtures = [
     'legacy_full_graph_scope.mcp.json',
     'legacy_full_blueprint_scope.mcp.json',

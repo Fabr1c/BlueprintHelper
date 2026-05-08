@@ -23,21 +23,21 @@ namespace
 		return Error;
 	}
 
-	FString BuildStepFieldPath(const FString& Suffix)
+	FString WidgetBuildStepFieldPath(const FString& Suffix)
 	{
 		return Suffix.IsEmpty()
 			? FString(TEXT("task_plan.steps[0]"))
 			: FString::Printf(TEXT("task_plan.steps[0].%s"), *Suffix);
 	}
 
-	FString BuildOpFieldPath(const FString& Suffix)
+	FString WidgetBuildOpFieldPath(const FString& Suffix)
 	{
 		return Suffix.IsEmpty()
 			? FString(TEXT("task_plan.steps[0].write.ops[0]"))
 			: FString::Printf(TEXT("task_plan.steps[0].write.ops[0].%s"), *Suffix);
 	}
 
-	FString JsonValueTypeToString(const TSharedPtr<FJsonValue>& Value)
+	FString WidgetJsonValueTypeToString(const TSharedPtr<FJsonValue>& Value)
 	{
 		if (!Value.IsValid())
 		{
@@ -57,7 +57,7 @@ namespace
 		}
 	}
 
-	bool TryReadRequiredString(
+	bool WidgetTryReadRequiredString(
 		const TSharedPtr<FJsonObject>& Object,
 		const TCHAR* FieldName,
 		const FString& FieldPath,
@@ -82,7 +82,7 @@ namespace
 				FString::Printf(
 					TEXT("UMG widget field %s must be a string; actual type is %s."),
 					FieldName,
-					*JsonValueTypeToString(*FoundValue)),
+					*WidgetJsonValueTypeToString(*FoundValue)),
 				FieldPath);
 			return false;
 		}
@@ -99,7 +99,7 @@ namespace
 		return true;
 	}
 
-	bool TryCopyRequiredString(
+	bool WidgetTryCopyRequiredString(
 		const TSharedPtr<FJsonObject>& Source,
 		const TCHAR* SourceFieldName,
 		const FString& SourceFieldPath,
@@ -108,7 +108,7 @@ namespace
 		FBlueprintHelperToolError& OutError)
 	{
 		FString Value;
-		if (!TryReadRequiredString(
+		if (!WidgetTryReadRequiredString(
 			Source,
 			SourceFieldName,
 			SourceFieldPath,
@@ -124,7 +124,7 @@ namespace
 		return true;
 	}
 
-	bool TryCopyOptionalString(
+	bool WidgetTryCopyOptionalString(
 		const TSharedPtr<FJsonObject>& Source,
 		const TCHAR* SourceFieldName,
 		const FString& SourceFieldPath,
@@ -146,7 +146,7 @@ namespace
 				FString::Printf(
 					TEXT("UMG widget op %s must be a string when present; actual type is %s."),
 					SourceFieldName,
-					*JsonValueTypeToString(FoundValue ? *FoundValue : nullptr)),
+					*WidgetJsonValueTypeToString(FoundValue ? *FoundValue : nullptr)),
 				SourceFieldPath);
 			return false;
 		}
@@ -155,34 +155,34 @@ namespace
 		return true;
 	}
 
-	bool TryReadPropertyName(
+	bool WidgetTryReadPropertyName(
 		const TSharedPtr<FJsonObject>& OpObject,
 		FString& OutPropertyName,
 		FBlueprintHelperToolError& OutError)
 	{
 		if (OpObject.IsValid() && OpObject->Values.Contains(TEXT("property_name")))
 		{
-			return TryReadRequiredString(
+			return WidgetTryReadRequiredString(
 				OpObject,
 				TEXT("property_name"),
-				BuildOpFieldPath(TEXT("property_name")),
+				WidgetBuildOpFieldPath(TEXT("property_name")),
 				TEXT("invalid_umg_widget_op"),
 				TEXT("set_widget_property requires property_name or property_path."),
 				OutPropertyName,
 				OutError);
 		}
 
-		return TryReadRequiredString(
+		return WidgetTryReadRequiredString(
 			OpObject,
 			TEXT("property_path"),
-			BuildOpFieldPath(TEXT("property_path")),
+			WidgetBuildOpFieldPath(TEXT("property_path")),
 			TEXT("invalid_umg_widget_op"),
 			TEXT("set_widget_property requires property_name or property_path."),
 			OutPropertyName,
 			OutError);
 	}
 
-	bool TryJsonValueToServiceImportText(
+	bool WidgetTryJsonValueToServiceImportText(
 		const TSharedPtr<FJsonValue>& Value,
 		const FString& FieldPath,
 		FString& OutValue,
@@ -229,7 +229,7 @@ namespace
 		return true;
 	}
 
-	bool TryReadWidgetTaskPlanParts(
+	bool WidgetTryReadTaskPlanParts(
 		const TSharedPtr<FJsonObject>& StepObject,
 		FString& OutStepId,
 		FString& OutAssetPath,
@@ -247,7 +247,7 @@ namespace
 			OutError = MakeWidgetTaskPlanError(
 				TEXT("invalid_umg_widget_step"),
 				TEXT("UMG widget TaskPlan step must be an object."),
-				BuildStepFieldPath(TEXT("")));
+				WidgetBuildStepFieldPath(TEXT("")));
 			return false;
 		}
 
@@ -263,7 +263,7 @@ namespace
 			OutError = MakeWidgetTaskPlanError(
 				TEXT("unsupported_umg_widget_operation_field"),
 				TEXT("UMG widget IR TaskPlan steps use capability/write; adapter operation fields are runtime lowering details."),
-				BuildStepFieldPath(TEXT("operation")));
+				WidgetBuildStepFieldPath(TEXT("operation")));
 			return false;
 		}
 
@@ -274,7 +274,7 @@ namespace
 			OutError = MakeWidgetTaskPlanError(
 				TEXT("unsupported_umg_widget_capability"),
 				TEXT("UMG widget adapter only supports capability umg_widget."),
-				BuildStepFieldPath(TEXT("capability")));
+				WidgetBuildStepFieldPath(TEXT("capability")));
 			return false;
 		}
 
@@ -285,14 +285,14 @@ namespace
 			OutError = MakeWidgetTaskPlanError(
 				TEXT("invalid_umg_widget_target"),
 				TEXT("UMG widget TaskPlan step target object is required."),
-				BuildStepFieldPath(TEXT("target")));
+				WidgetBuildStepFieldPath(TEXT("target")));
 			return false;
 		}
 
-		if (!TryReadRequiredString(
+		if (!WidgetTryReadRequiredString(
 			*TargetObjectPtr,
 			TEXT("asset_path"),
-			BuildStepFieldPath(TEXT("target.asset_path")),
+			WidgetBuildStepFieldPath(TEXT("target.asset_path")),
 			TEXT("invalid_umg_widget_target"),
 			TEXT("UMG widget TaskPlan target requires asset_path."),
 			OutAssetPath,
@@ -308,7 +308,7 @@ namespace
 			OutError = MakeWidgetTaskPlanError(
 				TEXT("invalid_umg_widget_write"),
 				TEXT("umg_widget TaskPlan step requires write object."),
-				BuildStepFieldPath(TEXT("write")));
+				WidgetBuildStepFieldPath(TEXT("write")));
 			return false;
 		}
 
@@ -319,7 +319,7 @@ namespace
 			OutError = MakeWidgetTaskPlanError(
 				TEXT("unsupported_umg_widget_strategy"),
 				TEXT("UMG widget adapter currently supports widget_tree_edit and widget_property_edit strategies."),
-				BuildStepFieldPath(TEXT("write.strategy")));
+				WidgetBuildStepFieldPath(TEXT("write.strategy")));
 			return false;
 		}
 
@@ -330,7 +330,7 @@ namespace
 			OutError = MakeWidgetTaskPlanError(
 				TEXT("invalid_umg_widget_ops"),
 				TEXT("UMG widget adapter currently lowers exactly one write.ops entry per TaskPlan step."),
-				BuildStepFieldPath(TEXT("write.ops")));
+				WidgetBuildStepFieldPath(TEXT("write.ops")));
 			return false;
 		}
 
@@ -342,14 +342,14 @@ namespace
 			OutError = MakeWidgetTaskPlanError(
 				TEXT("invalid_umg_widget_op"),
 				TEXT("UMG widget write.ops entry must be an object."),
-				BuildOpFieldPath(TEXT("")));
+				WidgetBuildOpFieldPath(TEXT("")));
 			return false;
 		}
 
 		return true;
 	}
 
-	bool TryBuildAddWidgetPayload(
+	bool WidgetTryBuildAddPayload(
 		const FString& AssetPath,
 		const TSharedPtr<FJsonObject>& OpObject,
 		bool bDryRun,
@@ -360,20 +360,20 @@ namespace
 		Payload->SetStringField(TEXT("asset_path"), AssetPath);
 		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
 
-		if (!TryCopyRequiredString(OpObject, TEXT("widget_class"), BuildOpFieldPath(TEXT("widget_class")), TEXT("widget_class"), Payload, OutError) ||
-			!TryCopyRequiredString(OpObject, TEXT("widget_name"), BuildOpFieldPath(TEXT("widget_name")), TEXT("widget_name"), Payload, OutError))
+		if (!WidgetTryCopyRequiredString(OpObject, TEXT("widget_class"), WidgetBuildOpFieldPath(TEXT("widget_class")), TEXT("widget_class"), Payload, OutError) ||
+			!WidgetTryCopyRequiredString(OpObject, TEXT("widget_name"), WidgetBuildOpFieldPath(TEXT("widget_name")), TEXT("widget_name"), Payload, OutError))
 		{
 			return false;
 		}
 
 		if (OpObject.IsValid() && OpObject->Values.Contains(TEXT("parent_widget_name")))
 		{
-			if (!TryCopyOptionalString(OpObject, TEXT("parent_widget_name"), BuildOpFieldPath(TEXT("parent_widget_name")), TEXT("parent_name"), Payload, OutError))
+			if (!WidgetTryCopyOptionalString(OpObject, TEXT("parent_widget_name"), WidgetBuildOpFieldPath(TEXT("parent_widget_name")), TEXT("parent_name"), Payload, OutError))
 			{
 				return false;
 			}
 		}
-		else if (!TryCopyOptionalString(OpObject, TEXT("parent_name"), BuildOpFieldPath(TEXT("parent_name")), TEXT("parent_name"), Payload, OutError))
+		else if (!WidgetTryCopyOptionalString(OpObject, TEXT("parent_name"), WidgetBuildOpFieldPath(TEXT("parent_name")), TEXT("parent_name"), Payload, OutError))
 		{
 			return false;
 		}
@@ -382,7 +382,7 @@ namespace
 		return true;
 	}
 
-	bool TryBuildSetWidgetPropertyPayload(
+	bool WidgetTryBuildSetPropertyPayload(
 		const FString& AssetPath,
 		const TSharedPtr<FJsonObject>& OpObject,
 		bool bDryRun,
@@ -393,13 +393,13 @@ namespace
 		Payload->SetStringField(TEXT("asset_path"), AssetPath);
 		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
 
-		if (!TryCopyRequiredString(OpObject, TEXT("widget_name"), BuildOpFieldPath(TEXT("widget_name")), TEXT("widget_name"), Payload, OutError))
+		if (!WidgetTryCopyRequiredString(OpObject, TEXT("widget_name"), WidgetBuildOpFieldPath(TEXT("widget_name")), TEXT("widget_name"), Payload, OutError))
 		{
 			return false;
 		}
 
 		FString PropertyName;
-		if (!TryReadPropertyName(OpObject, PropertyName, OutError))
+		if (!WidgetTryReadPropertyName(OpObject, PropertyName, OutError))
 		{
 			return false;
 		}
@@ -409,9 +409,9 @@ namespace
 			? OpObject->Values.Find(TEXT("value"))
 			: nullptr;
 		FString ImportText;
-		if (!TryJsonValueToServiceImportText(
+		if (!WidgetTryJsonValueToServiceImportText(
 			Value ? *Value : nullptr,
-			BuildOpFieldPath(TEXT("value")),
+			WidgetBuildOpFieldPath(TEXT("value")),
 			ImportText,
 			OutError))
 		{
@@ -423,7 +423,7 @@ namespace
 		return true;
 	}
 
-	bool TryBuildRemoveWidgetPayload(
+	bool WidgetTryBuildRemovePayload(
 		const FString& AssetPath,
 		const TSharedPtr<FJsonObject>& OpObject,
 		bool bDryRun,
@@ -434,7 +434,7 @@ namespace
 		Payload->SetStringField(TEXT("asset_path"), AssetPath);
 		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
 
-		if (!TryCopyRequiredString(OpObject, TEXT("widget_name"), BuildOpFieldPath(TEXT("widget_name")), TEXT("widget_name"), Payload, OutError))
+		if (!WidgetTryCopyRequiredString(OpObject, TEXT("widget_name"), WidgetBuildOpFieldPath(TEXT("widget_name")), TEXT("widget_name"), Payload, OutError))
 		{
 			return false;
 		}
@@ -498,16 +498,16 @@ bool FBlueprintHelperWidgetTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(
 	FString AssetPath;
 	FString Strategy;
 	TSharedPtr<FJsonObject> OpObject;
-	if (!TryReadWidgetTaskPlanParts(StepObject, StepId, AssetPath, Strategy, OpObject, OutError))
+	if (!WidgetTryReadTaskPlanParts(StepObject, StepId, AssetPath, Strategy, OpObject, OutError))
 	{
 		return false;
 	}
 
 	FString OpName;
-	if (!TryReadRequiredString(
+	if (!WidgetTryReadRequiredString(
 		OpObject,
 		TEXT("op"),
-		BuildOpFieldPath(TEXT("op")),
+		WidgetBuildOpFieldPath(TEXT("op")),
 		TEXT("invalid_umg_widget_op"),
 		TEXT("UMG widget op requires op."),
 		OpName,
@@ -525,11 +525,11 @@ bool FBlueprintHelperWidgetTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(
 			OutError = MakeWidgetTaskPlanError(
 				TEXT("unsupported_umg_widget_strategy_for_op"),
 				TEXT("add_widget requires widget_tree_edit strategy."),
-				BuildStepFieldPath(TEXT("write.strategy")));
+				WidgetBuildStepFieldPath(TEXT("write.strategy")));
 			return false;
 		}
 		AdapterOperation = BlueprintHelperWidgetTaskPlan::AdapterOperation::AddWidget;
-		if (!TryBuildAddWidgetPayload(AssetPath, OpObject, bDryRun, Payload, OutError))
+		if (!WidgetTryBuildAddPayload(AssetPath, OpObject, bDryRun, Payload, OutError))
 		{
 			return false;
 		}
@@ -541,11 +541,11 @@ bool FBlueprintHelperWidgetTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(
 			OutError = MakeWidgetTaskPlanError(
 				TEXT("unsupported_umg_widget_strategy_for_op"),
 				TEXT("set_widget_property requires widget_property_edit strategy."),
-				BuildStepFieldPath(TEXT("write.strategy")));
+				WidgetBuildStepFieldPath(TEXT("write.strategy")));
 			return false;
 		}
 		AdapterOperation = BlueprintHelperWidgetTaskPlan::AdapterOperation::SetWidgetProperty;
-		if (!TryBuildSetWidgetPropertyPayload(AssetPath, OpObject, bDryRun, Payload, OutError))
+		if (!WidgetTryBuildSetPropertyPayload(AssetPath, OpObject, bDryRun, Payload, OutError))
 		{
 			return false;
 		}
@@ -557,11 +557,11 @@ bool FBlueprintHelperWidgetTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(
 			OutError = MakeWidgetTaskPlanError(
 				TEXT("unsupported_umg_widget_strategy_for_op"),
 				TEXT("remove_widget requires widget_tree_edit strategy."),
-				BuildStepFieldPath(TEXT("write.strategy")));
+				WidgetBuildStepFieldPath(TEXT("write.strategy")));
 			return false;
 		}
 		AdapterOperation = BlueprintHelperWidgetTaskPlan::AdapterOperation::RemoveWidget;
-		if (!TryBuildRemoveWidgetPayload(AssetPath, OpObject, bDryRun, Payload, OutError))
+		if (!WidgetTryBuildRemovePayload(AssetPath, OpObject, bDryRun, Payload, OutError))
 		{
 			return false;
 		}
@@ -571,7 +571,7 @@ bool FBlueprintHelperWidgetTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(
 		OutError = MakeWidgetTaskPlanError(
 			TEXT("unsupported_umg_widget_op"),
 			TEXT("UMG widget adapter currently supports add_widget, set_widget_property, and remove_widget only."),
-			BuildOpFieldPath(TEXT("op")));
+			WidgetBuildOpFieldPath(TEXT("op")));
 		return false;
 	}
 

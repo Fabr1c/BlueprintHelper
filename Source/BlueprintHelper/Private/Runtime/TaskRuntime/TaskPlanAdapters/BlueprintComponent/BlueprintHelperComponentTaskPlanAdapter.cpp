@@ -19,7 +19,7 @@ const TCHAR* FBlueprintHelperComponentTaskPlanAdapter::OpRemoveComponent = TEXT(
 
 namespace
 {
-	FString JsonValueTypeToString(const TSharedPtr<FJsonValue>& Value)
+	FString ComponentJsonValueTypeToString(const TSharedPtr<FJsonValue>& Value)
 	{
 		if (!Value.IsValid())
 		{
@@ -54,21 +54,21 @@ namespace
 		return Error;
 	}
 
-	FString BuildStepFieldPath(const FString& Suffix)
+	FString ComponentBuildStepFieldPath(const FString& Suffix)
 	{
 		return Suffix.IsEmpty()
 			? FString(TEXT("task_plan.steps[0]"))
 			: FString::Printf(TEXT("task_plan.steps[0].%s"), *Suffix);
 	}
 
-	FString BuildOpFieldPath(const FString& Suffix)
+	FString ComponentBuildOpFieldPath(const FString& Suffix)
 	{
 		return Suffix.IsEmpty()
 			? FString(TEXT("task_plan.steps[0].write.ops[0]"))
 			: FString::Printf(TEXT("task_plan.steps[0].write.ops[0].%s"), *Suffix);
 	}
 
-	bool TryReadRequiredString(
+	bool ComponentTryReadRequiredString(
 		const TSharedPtr<FJsonObject>& Object,
 		const TCHAR* FieldName,
 		const FString& FieldPath,
@@ -108,7 +108,7 @@ namespace
 		return true;
 	}
 
-	bool TryCopyOptionalString(
+	bool ComponentTryCopyOptionalString(
 		const TSharedPtr<FJsonObject>& Source,
 		const TCHAR* FieldName,
 		const FString& FieldPath,
@@ -129,7 +129,7 @@ namespace
 				FString::Printf(
 					TEXT("Blueprint component op %s must be a string when present; actual type is %s."),
 					FieldName,
-					*JsonValueTypeToString(FoundValue ? *FoundValue : TSharedPtr<FJsonValue>())),
+					*ComponentJsonValueTypeToString(FoundValue ? *FoundValue : TSharedPtr<FJsonValue>())),
 				FieldPath);
 			return false;
 		}
@@ -138,7 +138,7 @@ namespace
 		return true;
 	}
 
-	bool TryValidateStringEnum(
+	bool ComponentTryValidateStringEnum(
 		const TSharedPtr<FJsonObject>& Source,
 		const TCHAR* FieldName,
 		const FString& FieldPath,
@@ -162,7 +162,7 @@ namespace
 		return true;
 	}
 
-	bool TryCopyStringField(
+	bool ComponentTryCopyStringField(
 		const TSharedPtr<FJsonObject>& Source,
 		const TCHAR* FieldName,
 		const FString& FieldPath,
@@ -170,7 +170,7 @@ namespace
 		FBlueprintHelperToolError& OutError)
 	{
 		FString Value;
-		if (!TryReadRequiredString(Source, FieldName, FieldPath, Value, OutError))
+		if (!ComponentTryReadRequiredString(Source, FieldName, FieldPath, Value, OutError))
 		{
 			return false;
 		}
@@ -178,7 +178,7 @@ namespace
 		return true;
 	}
 
-	bool TryReadComponentTaskPlanParts(
+	bool ComponentTryReadTaskPlanParts(
 		const TSharedPtr<FJsonObject>& StepObject,
 		FString& OutAssetPath,
 		TSharedPtr<FJsonObject>& OutOpObject,
@@ -189,7 +189,7 @@ namespace
 			OutError = MakeComponentTaskPlanError(
 				TEXT("invalid_taskplan_step"),
 				TEXT("TaskPlan step must be an object."),
-				BuildStepFieldPath(TEXT("")));
+				ComponentBuildStepFieldPath(TEXT("")));
 			return false;
 		}
 
@@ -199,7 +199,7 @@ namespace
 			OutError = MakeComponentTaskPlanError(
 				TEXT("unsupported_blueprint_component_operation_field"),
 				TEXT("Blueprint component TaskPlan steps use capability/write; adapter operation fields are runtime lowering details."),
-				BuildStepFieldPath(TEXT("operation")));
+				ComponentBuildStepFieldPath(TEXT("operation")));
 			return false;
 		}
 
@@ -210,7 +210,7 @@ namespace
 			OutError = MakeComponentTaskPlanError(
 				TEXT("unsupported_blueprint_component_capability"),
 				TEXT("Blueprint component adapter only supports capability blueprint_component."),
-				BuildStepFieldPath(TEXT("capability")));
+				ComponentBuildStepFieldPath(TEXT("capability")));
 			return false;
 		}
 
@@ -221,7 +221,7 @@ namespace
 			OutError = MakeComponentTaskPlanError(
 				TEXT("invalid_blueprint_component_target"),
 				TEXT("Blueprint component TaskPlan step target object is required."),
-				BuildStepFieldPath(TEXT("target")));
+				ComponentBuildStepFieldPath(TEXT("target")));
 			return false;
 		}
 
@@ -231,7 +231,7 @@ namespace
 			OutError = MakeComponentTaskPlanError(
 				TEXT("invalid_blueprint_component_target"),
 				TEXT("Blueprint component TaskPlan step target requires asset_path."),
-				BuildStepFieldPath(TEXT("target.asset_path")));
+				ComponentBuildStepFieldPath(TEXT("target.asset_path")));
 			return false;
 		}
 
@@ -242,7 +242,7 @@ namespace
 			OutError = MakeComponentTaskPlanError(
 				TEXT("invalid_blueprint_component_write"),
 				TEXT("blueprint_component TaskPlan step requires write object."),
-				BuildStepFieldPath(TEXT("write")));
+				ComponentBuildStepFieldPath(TEXT("write")));
 			return false;
 		}
 
@@ -253,7 +253,7 @@ namespace
 			OutError = MakeComponentTaskPlanError(
 				TEXT("unsupported_blueprint_component_strategy"),
 				TEXT("Blueprint component adapter currently supports component_tree strategy only."),
-				BuildStepFieldPath(TEXT("write.strategy")));
+				ComponentBuildStepFieldPath(TEXT("write.strategy")));
 			return false;
 		}
 
@@ -264,7 +264,7 @@ namespace
 			OutError = MakeComponentTaskPlanError(
 				TEXT("invalid_blueprint_component_ops"),
 				TEXT("Blueprint component adapter currently lowers exactly one write.ops entry per TaskPlan step."),
-				BuildStepFieldPath(TEXT("write.ops")));
+				ComponentBuildStepFieldPath(TEXT("write.ops")));
 			return false;
 		}
 
@@ -276,14 +276,14 @@ namespace
 			OutError = MakeComponentTaskPlanError(
 				TEXT("invalid_blueprint_component_op"),
 				TEXT("Blueprint component write.ops entry must be an object."),
-				BuildOpFieldPath(TEXT("")));
+				ComponentBuildOpFieldPath(TEXT("")));
 			return false;
 		}
 
 		return true;
 	}
 
-	bool TryValidateSettingsArray(
+	bool ComponentTryValidateSettingsArray(
 		const TSharedPtr<FJsonObject>& OpObject,
 		FBlueprintHelperToolError& OutError)
 	{
@@ -295,7 +295,7 @@ namespace
 			OutError = MakeComponentTaskPlanError(
 				TEXT("invalid_blueprint_component_op"),
 				TEXT("set_component_properties requires a non-empty settings array."),
-				BuildOpFieldPath(TEXT("settings")));
+				ComponentBuildOpFieldPath(TEXT("settings")));
 			return false;
 		}
 
@@ -317,7 +317,7 @@ namespace
 			}
 
 			FString PropertyPath;
-			if (!TryReadRequiredString(
+			if (!ComponentTryReadRequiredString(
 				SettingObject,
 				TEXT("property_path"),
 				SettingPath + TEXT(".property_path"),
@@ -341,7 +341,7 @@ namespace
 		return true;
 	}
 
-	bool TryBuildAddComponentPayload(
+	bool ComponentTryBuildAddPayload(
 		const FString& AssetPath,
 		const TSharedPtr<FJsonObject>& OpObject,
 		bool bDryRun,
@@ -352,23 +352,23 @@ namespace
 		Payload->SetStringField(TEXT("asset_path"), AssetPath);
 		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
 
-		if (!TryCopyStringField(OpObject, TEXT("component_name"), BuildOpFieldPath(TEXT("component_name")), Payload, OutError) ||
-			!TryCopyStringField(OpObject, TEXT("component_class"), BuildOpFieldPath(TEXT("component_class")), Payload, OutError))
+		if (!ComponentTryCopyStringField(OpObject, TEXT("component_name"), ComponentBuildOpFieldPath(TEXT("component_name")), Payload, OutError) ||
+			!ComponentTryCopyStringField(OpObject, TEXT("component_class"), ComponentBuildOpFieldPath(TEXT("component_class")), Payload, OutError))
 		{
 			return false;
 		}
 
-		if (!TryValidateStringEnum(
+		if (!ComponentTryValidateStringEnum(
 				OpObject,
 				TEXT("attach_rule"),
-				BuildOpFieldPath(TEXT("attach_rule")),
+				ComponentBuildOpFieldPath(TEXT("attach_rule")),
 				TEXT("keep_relative"),
 				TEXT("snap_to_target"),
 				OutError) ||
-			!TryValidateStringEnum(
+			!ComponentTryValidateStringEnum(
 				OpObject,
 				TEXT("name_collision_policy"),
-				BuildOpFieldPath(TEXT("name_collision_policy")),
+				ComponentBuildOpFieldPath(TEXT("name_collision_policy")),
 				TEXT("fail_if_exists"),
 				TEXT("reuse_if_exists"),
 				OutError))
@@ -376,10 +376,10 @@ namespace
 			return false;
 		}
 
-		if (!TryCopyOptionalString(OpObject, TEXT("parent_component"), BuildOpFieldPath(TEXT("parent_component")), Payload, OutError) ||
-			!TryCopyOptionalString(OpObject, TEXT("socket_name"), BuildOpFieldPath(TEXT("socket_name")), Payload, OutError) ||
-			!TryCopyOptionalString(OpObject, TEXT("attach_rule"), BuildOpFieldPath(TEXT("attach_rule")), Payload, OutError) ||
-			!TryCopyOptionalString(OpObject, TEXT("name_collision_policy"), BuildOpFieldPath(TEXT("name_collision_policy")), Payload, OutError))
+		if (!ComponentTryCopyOptionalString(OpObject, TEXT("parent_component"), ComponentBuildOpFieldPath(TEXT("parent_component")), Payload, OutError) ||
+			!ComponentTryCopyOptionalString(OpObject, TEXT("socket_name"), ComponentBuildOpFieldPath(TEXT("socket_name")), Payload, OutError) ||
+			!ComponentTryCopyOptionalString(OpObject, TEXT("attach_rule"), ComponentBuildOpFieldPath(TEXT("attach_rule")), Payload, OutError) ||
+			!ComponentTryCopyOptionalString(OpObject, TEXT("name_collision_policy"), ComponentBuildOpFieldPath(TEXT("name_collision_policy")), Payload, OutError))
 		{
 			return false;
 		}
@@ -388,14 +388,14 @@ namespace
 		return true;
 	}
 
-	bool TryBuildSetComponentPropertiesPayload(
+	bool ComponentTryBuildSetPropertiesPayload(
 		const FString& AssetPath,
 		const TSharedPtr<FJsonObject>& OpObject,
 		bool bDryRun,
 		TSharedPtr<FJsonObject>& OutPayload,
 		FBlueprintHelperToolError& OutError)
 	{
-		if (!TryValidateSettingsArray(OpObject, OutError))
+		if (!ComponentTryValidateSettingsArray(OpObject, OutError))
 		{
 			return false;
 		}
@@ -404,7 +404,7 @@ namespace
 		Payload->SetStringField(TEXT("asset_path"), AssetPath);
 		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
 
-		if (!TryCopyStringField(OpObject, TEXT("component_name"), BuildOpFieldPath(TEXT("component_name")), Payload, OutError))
+		if (!ComponentTryCopyStringField(OpObject, TEXT("component_name"), ComponentBuildOpFieldPath(TEXT("component_name")), Payload, OutError))
 		{
 			return false;
 		}
@@ -420,7 +420,7 @@ namespace
 		return true;
 	}
 
-	bool TryBuildRemoveComponentPayload(
+	bool ComponentTryBuildRemovePayload(
 		const FString& AssetPath,
 		const TSharedPtr<FJsonObject>& OpObject,
 		bool bDryRun,
@@ -431,7 +431,7 @@ namespace
 		Payload->SetStringField(TEXT("asset_path"), AssetPath);
 		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
 
-		if (!TryCopyStringField(OpObject, TEXT("component_name"), BuildOpFieldPath(TEXT("component_name")), Payload, OutError))
+		if (!ComponentTryCopyStringField(OpObject, TEXT("component_name"), ComponentBuildOpFieldPath(TEXT("component_name")), Payload, OutError))
 		{
 			return false;
 		}
@@ -452,13 +452,13 @@ bool FBlueprintHelperComponentTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(
 
 	FString AssetPath;
 	TSharedPtr<FJsonObject> OpObject;
-	if (!TryReadComponentTaskPlanParts(StepObject, AssetPath, OpObject, OutError))
+	if (!ComponentTryReadTaskPlanParts(StepObject, AssetPath, OpObject, OutError))
 	{
 		return false;
 	}
 
 	FString OpName;
-	if (!TryReadRequiredString(OpObject, TEXT("op"), BuildOpFieldPath(TEXT("op")), OpName, OutError))
+	if (!ComponentTryReadRequiredString(OpObject, TEXT("op"), ComponentBuildOpFieldPath(TEXT("op")), OpName, OutError))
 	{
 		return false;
 	}
@@ -468,7 +468,7 @@ bool FBlueprintHelperComponentTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(
 	if (OpName == OpAddComponent)
 	{
 		AdapterOperation = AdapterOperationAddComponent;
-		if (!TryBuildAddComponentPayload(AssetPath, OpObject, bDryRun, Payload, OutError))
+		if (!ComponentTryBuildAddPayload(AssetPath, OpObject, bDryRun, Payload, OutError))
 		{
 			return false;
 		}
@@ -476,7 +476,7 @@ bool FBlueprintHelperComponentTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(
 	else if (OpName == OpSetComponentProperties)
 	{
 		AdapterOperation = AdapterOperationSetComponentProperties;
-		if (!TryBuildSetComponentPropertiesPayload(AssetPath, OpObject, bDryRun, Payload, OutError))
+		if (!ComponentTryBuildSetPropertiesPayload(AssetPath, OpObject, bDryRun, Payload, OutError))
 		{
 			return false;
 		}
@@ -484,7 +484,7 @@ bool FBlueprintHelperComponentTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(
 	else if (OpName == OpRemoveComponent)
 	{
 		AdapterOperation = AdapterOperationRemoveComponent;
-		if (!TryBuildRemoveComponentPayload(AssetPath, OpObject, bDryRun, Payload, OutError))
+		if (!ComponentTryBuildRemovePayload(AssetPath, OpObject, bDryRun, Payload, OutError))
 		{
 			return false;
 		}
@@ -494,7 +494,7 @@ bool FBlueprintHelperComponentTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(
 		OutError = MakeComponentTaskPlanError(
 			TEXT("unsupported_blueprint_component_op"),
 			TEXT("Blueprint component adapter currently supports add_component, set_component_properties, and remove_component only."),
-			BuildOpFieldPath(TEXT("op")));
+			ComponentBuildOpFieldPath(TEXT("op")));
 		return false;
 	}
 
