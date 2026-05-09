@@ -8,6 +8,7 @@
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
 #include "Engine/Blueprint.h"
+#include "Systems/Debug/BlueprintHelperDebugEntryService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperOwnershipService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
@@ -764,6 +765,14 @@ namespace
 	}
 }
 
+FBlueprintHelperReviewActionService::FBlueprintHelperReviewActionService() = default;
+
+FBlueprintHelperReviewActionService::FBlueprintHelperReviewActionService(
+	const FBlueprintHelperDebugEntryService* InDebugEntryService)
+	: DebugEntryService(InDebugEntryService)
+{
+}
+
 FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::AcceptVisibleChange(
 	const FBlueprintHelperReviewVisibleChange& Change) const
 {
@@ -876,6 +885,88 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectVi
 	Result.Message = TEXT("rejected");
 	Result.bSupersededDataCompactionEligible = true;
 	return Result;
+}
+
+void FBlueprintHelperReviewActionService::RecordRejectDebugCaseBestEffort(
+	FBlueprintHelperReviewRecord& Record,
+	const TArray<FString>& TargetKeys,
+	const FString& SourceTransactionId,
+	EBlueprintHelperReviewChangeStatus RejectStatus,
+	const FString& RejectMessage) const
+{
+	if (!DebugEntryService ||
+		(RejectStatus != EBlueprintHelperReviewChangeStatus::NeedsAction &&
+		 RejectStatus != EBlueprintHelperReviewChangeStatus::RejectFailed))
+	{
+		return;
+	}
+
+	TSharedRef<FJsonObject> ToolSummary = MakeShared<FJsonObject>();
+	ToolSummary->SetStringField(TEXT("review_record_id"), Record.ReviewRecordId);
+	ToolSummary->SetStringField(TEXT("archive_session_id"), Record.ArchiveSessionId);
+	ToolSummary->SetStringField(TEXT("asset_path"), Record.AssetPath);
+	ToolSummary->SetStringField(TEXT("review_status"), BlueprintHelperReviewChangeStatusToString(RejectStatus));
+	if (!SourceTransactionId.IsEmpty())
+	{
+		ToolSummary->SetStringField(TEXT("source_transaction_id"), SourceTransactionId);
+	}
+	if (!RejectMessage.IsEmpty())
+	{
+		ToolSummary->SetStringField(TEXT("message"), RejectMessage);
+	}
+	TArray<TSharedPtr<FJsonValue>> TargetKeyValues;
+	for (const FString& TargetKey : TargetKeys)
+	{
+		if (!TargetKey.IsEmpty())
+		{
+			TargetKeyValues.Add(MakeShared<FJsonValueString>(TargetKey));
+		}
+	}
+	if (TargetKeyValues.Num() > 0)
+	{
+		ToolSummary->SetArrayField(TEXT("target_keys"), TargetKeyValues);
+	}
+
+	FBlueprintHelperDebugEntryEventInput DebugInput;
+	DebugInput.SourceLayer = TEXT("review");
+	DebugInput.Source = RejectStatus == EBlueprintHelperReviewChangeStatus::RejectFailed
+		? TEXT("review_reject_failed")
+		: TEXT("review_reject_needs_action");
+	DebugInput.Operation = TEXT("reject_review_targets");
+	DebugInput.Stage = TEXT("reject");
+	DebugInput.Severity = EBlueprintHelperDebugSeverity::Error;
+	if (Record.SourceTaskRunIds.Num() > 0)
+	{
+		DebugInput.TaskRunId = Record.SourceTaskRunIds[0];
+	}
+	if (!Record.AssetPath.IsEmpty())
+	{
+		DebugInput.AssetPaths.Add(Record.AssetPath);
+	}
+	if (!Record.ReviewRecordId.IsEmpty())
+	{
+		DebugInput.ReviewRecordIds.Add(Record.ReviewRecordId);
+	}
+	if (!SourceTransactionId.IsEmpty())
+	{
+		FBlueprintHelperDebugTransactionLink TransactionLink;
+		TransactionLink.TransactionId = SourceTransactionId;
+		TransactionLink.Role = TEXT("review_reject_failed");
+		TransactionLink.Source = TEXT("review");
+		TransactionLink.Summary = TEXT("source transaction for review reject action");
+		DebugInput.TransactionLinks.Add(TransactionLink);
+	}
+	DebugInput.Error.Code = DebugInput.Source;
+	DebugInput.Error.Message = RejectMessage;
+	DebugInput.RecommendedNext = TEXT("get_debug_case");
+	DebugInput.ToolResultSummary = ToolSummary;
+
+	const FBlueprintHelperDebugEntryRecordResult DebugResult =
+		DebugEntryService->RecordEventBestEffort(DebugInput);
+	if (DebugResult.bRecorded && !DebugResult.DebugCaseId.IsEmpty())
+	{
+		Record.DebugCaseIds.AddUnique(DebugResult.DebugCaseId);
+	}
 }
 
 FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::AcceptReviewTargets(
@@ -996,6 +1087,12 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectRe
 		TEXT("archive_baseline"),
 		SourceTransactionId,
 		LastMessage));
+	RecordRejectDebugCaseBestEffort(
+		Record,
+		TargetKeys,
+		SourceTransactionId,
+		bAllRejected ? EBlueprintHelperReviewChangeStatus::Rejected : LastStatus,
+		LastMessage);
 
 	if (!Store.SaveReviewRecord(Record, Error))
 	{

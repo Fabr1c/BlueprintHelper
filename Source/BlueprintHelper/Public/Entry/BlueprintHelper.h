@@ -24,6 +24,8 @@ class FBlueprintHelperDataTableService;
 class FBlueprintHelperEditorCommandService;
 class FBlueprintHelperRuntimeProfileService;
 class FBlueprintHelperDiagnosticsService;
+class FBlueprintHelperDebugCaseStoreService;
+class FBlueprintHelperDebugEntryService;
 class FBlueprintHelperLogicMdReadService;
 class FBlueprintHelperLogicJsonReadService;
 class FBlueprintHelperAssetFactoryService;
@@ -127,6 +129,8 @@ private:
 
 	// ─── Diagnostics ───
 	TUniquePtr<FBlueprintHelperDiagnosticsService> DiagnosticsService;
+	TUniquePtr<FBlueprintHelperDebugCaseStoreService> DebugCaseStoreService;
+	TUniquePtr<FBlueprintHelperDebugEntryService> DebugEntryService;
 
 	// ─── Logic MD ───
 	TUniquePtr<FBlueprintHelperLogicMdReadService> LogicMdReadService;

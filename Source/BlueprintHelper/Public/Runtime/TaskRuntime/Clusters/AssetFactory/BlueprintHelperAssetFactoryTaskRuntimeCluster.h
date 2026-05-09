@@ -1,18 +1,18 @@
-// BlueprintHelper TaskRuntime - ClassSettings static cluster
+// BlueprintHelper TaskRuntime - Asset Factory cluster
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.h"
 
-class FBlueprintHelperClassSettingsService;
+class FBlueprintHelperAssetFactoryService;
 struct FBlueprintHelperWriteReviewEvidence;
 
-class BLUEPRINTHELPER_API FBlueprintHelperClassSettingsTaskRuntimeCluster
+class BLUEPRINTHELPER_API FBlueprintHelperAssetFactoryTaskRuntimeCluster
 {
 public:
-	explicit FBlueprintHelperClassSettingsTaskRuntimeCluster(
-		const FBlueprintHelperClassSettingsService& InClassSettingsService);
+	explicit FBlueprintHelperAssetFactoryTaskRuntimeCluster(
+		const FBlueprintHelperAssetFactoryService& InAssetFactoryService);
 
 	static bool CanExecuteStep(const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep);
 
@@ -27,5 +27,5 @@ public:
 	FBlueprintHelperToolResultBase ExecuteStep(const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep) const;
 
 private:
-	const FBlueprintHelperClassSettingsService& ClassSettingsService;
+	const FBlueprintHelperAssetFactoryService& AssetFactoryService;
 };

@@ -5,6 +5,8 @@
 #include "CoreMinimal.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
 
+class FJsonObject;
+
 class BLUEPRINTHELPER_API FBlueprintHelperReviewStoreService
 {
 public:
@@ -29,6 +31,9 @@ public:
 		const FString& ReviewRecordId,
 		FBlueprintHelperReviewRecord& OutRecord,
 		FString& OutError) const;
+
+	TSharedRef<FJsonObject> BuildReviewRecordSummaryArtifact(
+		const FBlueprintHelperReviewRecord& Record) const;
 
 	bool SaveReviewRecord(
 		const FBlueprintHelperReviewRecord& Record,

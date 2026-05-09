@@ -2,6 +2,7 @@
 
 #include "Systems/Debug/BlueprintHelperCompileAssetService.h"
 #include "Systems/Debug/BlueprintHelperCompileService.h"
+#include "Systems/Debug/BlueprintHelperDebugEntryService.h"
 #include "Shared/BlueprintHelperServiceTypes.h"
 
 #include "Engine/Blueprint.h"
@@ -12,9 +13,83 @@
 #include "Dom/JsonObject.h"
 
 FBlueprintHelperCompileAssetService::FBlueprintHelperCompileAssetService(
-	const FBlueprintHelperCompileService& InCompileService)
+	const FBlueprintHelperCompileService& InCompileService,
+	const FBlueprintHelperDebugEntryService* InDebugEntryService)
 	: CompileService(InCompileService)
+	, DebugEntryService(InDebugEntryService)
 {
+}
+
+FBlueprintHelperToolResultBase FBlueprintHelperCompileAssetService::BuildResultFromCompileResult(
+	const FString& TraceId,
+	const FString& AssetPath,
+	const FBlueprintHelperCompileResult& CompileResult,
+	const FBlueprintHelperDebugEntryService* DebugEntryService)
+{
+	TSharedRef<FJsonObject> Tgt = MakeShared<FJsonObject>();
+	Tgt->SetStringField(TEXT("asset_path"), AssetPath);
+
+	FBlueprintHelperCompileAssetResultData Data;
+	Data.CompileResult.bSuccess = CompileResult.bSuccess;
+	Data.CompileResult.Status = CompileResult.bSuccess ? TEXT("succeeded") : TEXT("failed");
+	Data.CompileResult.WarningCount = CompileResult.Diagnostics.WarningCount;
+
+	if (!CompileResult.bSuccess)
+	{
+		Data.CompileResult.Format = TEXT("markdown");
+		FString Markdown = TEXT("## Compile Errors\n\n");
+		for (const FBlueprintHelperDiagnosticItem& Item : CompileResult.Diagnostics.Items)
+		{
+			if (Item.Severity == EBlueprintHelperDiagnosticSeverity::Error)
+			{
+				Markdown += FString::Printf(TEXT("- `unmapped`: %s\n"), *Item.Message);
+			}
+		}
+		if (Markdown == TEXT("## Compile Errors\n\n"))
+		{
+			Markdown += TEXT("- `unmapped`: Blueprint compile failed without mapped diagnostics.\n");
+		}
+		Data.CompileResult.Markdown = Markdown;
+	}
+
+	if (!CompileResult.bSuccess)
+	{
+		FBlueprintHelperToolError Err;
+		Err.Code = TEXT("compile_failed");
+		Err.Stage = EBlueprintHelperToolStage::Execute;
+		Err.Message = FString::Printf(
+			TEXT("Blueprint compile failed for %s with %d error(s)."),
+			*AssetPath,
+			CompileResult.Diagnostics.ErrorCount);
+		Err.bRetryable = false;
+
+		FBlueprintHelperToolResultBase Failure =
+			FBlueprintHelperToolResultBuilder::Failure(TEXT("compile_blueprint_asset"), TraceId, Err);
+		Failure.CustomTargetJson = Tgt;
+		Failure.Data = Data.ToJson();
+		if (DebugEntryService)
+		{
+			FBlueprintHelperDebugEntryEventInput DebugInput;
+			DebugInput.SourceLayer = TEXT("debug");
+			DebugInput.Source = TEXT("compile_failure");
+			DebugInput.Stage = TEXT("execute");
+			DebugInput.AssetPaths.Add(AssetPath);
+			DebugInput.RecommendedNext = TEXT("fix_blueprint_compile_errors");
+			DebugEntryService->AttachDebugCaseToFailureBestEffort(Failure, DebugInput);
+		}
+		return Failure;
+	}
+
+	FBlueprintHelperToolResultBase Result;
+	Result.bOk = true;
+	Result.Schema = TEXT("BlueprintHelper.McpToolResult.v1");
+	Result.Operation = TEXT("compile_blueprint_asset");
+	Result.TraceId = TraceId;
+	Result.Status = EBlueprintHelperToolStatus::Completed;
+	Result.bModified = false;
+	Result.CustomTargetJson = Tgt;
+	Result.Data = Data.ToJson();
+	return Result;
 }
 
 FBlueprintHelperToolResultBase FBlueprintHelperCompileAssetService::Execute(
@@ -25,8 +100,18 @@ FBlueprintHelperToolResultBase FBlueprintHelperCompileAssetService::Execute(
 	FString AssetPath;
 	if (!Payload.IsValid() || !Payload->TryGetStringField(TEXT("asset_path"), AssetPath) || AssetPath.IsEmpty())
 	{
-		return FBlueprintHelperToolResultBuilder::Failure(TEXT("compile_blueprint_asset"), TraceId,
+		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Failure(TEXT("compile_blueprint_asset"), TraceId,
 			{TEXT("invalid_request"), EBlueprintHelperToolStage::ParseInput, TEXT("缺少 asset_path。"), false});
+		if (DebugEntryService)
+		{
+			FBlueprintHelperDebugEntryEventInput DebugInput;
+			DebugInput.SourceLayer = TEXT("debug");
+			DebugInput.Source = TEXT("compile_failure");
+			DebugInput.Stage = TEXT("parse_input");
+			DebugInput.RecommendedNext = TEXT("provide_asset_path");
+			DebugEntryService->AttachDebugCaseToFailureBestEffort(Result, DebugInput);
+		}
+		return Result;
 	}
 
 	TSharedRef<FJsonObject> Tgt = MakeShared<FJsonObject>();
@@ -48,37 +133,18 @@ FBlueprintHelperToolResultBase FBlueprintHelperCompileAssetService::Execute(
 		Err.bRetryable = false;
 		auto R = FBlueprintHelperToolResultBuilder::Failure(TEXT("compile_blueprint_asset"), TraceId, Err);
 		R.CustomTargetJson = Tgt;
+		if (DebugEntryService)
+		{
+			FBlueprintHelperDebugEntryEventInput DebugInput;
+			DebugInput.SourceLayer = TEXT("debug");
+			DebugInput.Source = TEXT("compile_failure");
+			DebugInput.Stage = TEXT("resolve_target");
+			DebugInput.AssetPaths.Add(AssetPath);
+			DebugInput.RecommendedNext = TEXT("verify_asset_path");
+			DebugEntryService->AttachDebugCaseToFailureBestEffort(R, DebugInput);
+		}
 		return R;
 	}
 
-	// Build compile_result
-	FBlueprintHelperCompileAssetResultData Data;
-	Data.CompileResult.bSuccess = Cr.bSuccess;
-	Data.CompileResult.Status = Cr.bSuccess ? TEXT("succeeded") : TEXT("failed");
-	Data.CompileResult.WarningCount = Cr.Diagnostics.WarningCount;
-
-	if (!Cr.bSuccess)
-	{
-		Data.CompileResult.Format = TEXT("markdown");
-		FString Markdown = TEXT("## Compile Errors\n\n");
-		for (const auto& Item : Cr.Diagnostics.Items)
-		{
-			if (Item.Severity == EBlueprintHelperDiagnosticSeverity::Error)
-			{
-				Markdown += FString::Printf(TEXT("- `unmapped`: %s\n"), *Item.Message);
-			}
-		}
-		Data.CompileResult.Markdown = Markdown;
-	}
-
-	FBlueprintHelperToolResultBase Result;
-	Result.bOk = true;
-	Result.Schema = TEXT("BlueprintHelper.McpToolResult.v1");
-	Result.Operation = TEXT("compile_blueprint_asset");
-	Result.TraceId = TraceId;
-	Result.Status = EBlueprintHelperToolStatus::Completed;
-	Result.bModified = false;
-	Result.CustomTargetJson = Tgt;
-	Result.Data = Data.ToJson();
-	return Result;
+	return BuildResultFromCompileResult(TraceId, AssetPath, Cr, DebugEntryService);
 }

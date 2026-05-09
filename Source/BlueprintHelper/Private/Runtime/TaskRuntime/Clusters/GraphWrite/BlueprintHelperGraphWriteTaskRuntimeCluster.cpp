@@ -43,6 +43,17 @@ bool FBlueprintHelperGraphWriteTaskRuntimeCluster::CanExecuteStep(
 		LoweredStep.Capability == TEXT("graph_write");
 }
 
+bool FBlueprintHelperGraphWriteTaskRuntimeCluster::BuildReviewEvidence(
+	const FBlueprintHelperTaskRuntimeLoweredStep&,
+	const FBlueprintHelperToolResultBase&,
+	const FString&,
+	const FString&,
+	int32,
+	FBlueprintHelperWriteReviewEvidence&)
+{
+	return false;
+}
+
 FBlueprintHelperToolResultBase FBlueprintHelperGraphWriteTaskRuntimeCluster::ExecuteStep(
 	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep) const
 {

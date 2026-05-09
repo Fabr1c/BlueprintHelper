@@ -22,6 +22,7 @@ class FBlueprintHelperRollbackCleanupTransactionService;
 class FBlueprintHelperConvertBlockToUserOwnedService;
 class FBlueprintHelperCompileAssetService;
 class FBlueprintHelperAssetBrowseService;
+class FBlueprintHelperDebugEntryService;
 class FBlueprintHelperTaskRuntimeClusterHub;
 class FJsonObject;
 
@@ -71,7 +72,8 @@ public:
 		const FBlueprintHelperRollbackCleanupTransactionService& InRollbackCleanupService,
 		const FBlueprintHelperConvertBlockToUserOwnedService& InConvertBlockService,
 		const FBlueprintHelperCompileAssetService& InCompileAssetService,
-		const FBlueprintHelperAssetBrowseService& InAssetBrowseService);
+		const FBlueprintHelperAssetBrowseService& InAssetBrowseService,
+		const FBlueprintHelperDebugEntryService* InDebugEntryService = nullptr);
 	~FBlueprintHelperTaskRuntimeService();
 
 	FBlueprintHelperToolResultBase PreviewTaskPlan(const TSharedPtr<FJsonObject>& Payload) const;
@@ -123,5 +125,6 @@ private:
 	TUniquePtr<FBlueprintHelperTaskRuntimeClusterHub> ClusterHub;
 	const FBlueprintHelperCompileAssetService& CompileAssetService;
 	const FBlueprintHelperAssetBrowseService& AssetBrowseService;
+	const FBlueprintHelperDebugEntryService* DebugEntryService = nullptr;
 	mutable TMap<FString, TSharedPtr<FJsonObject>> TaskRunJournals;
 };

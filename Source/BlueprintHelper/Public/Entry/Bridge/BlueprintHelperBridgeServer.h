@@ -6,6 +6,7 @@
 #include "HAL/Runnable.h"
 
 class FBlueprintHelperBridgeRouter;
+class FBlueprintHelperDebugEntryService;
 class FSocket;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogBlueprintHelperBridge, Log, All);
@@ -20,7 +21,10 @@ DECLARE_LOG_CATEGORY_EXTERN(LogBlueprintHelperBridge, Log, All);
 class BLUEPRINTHELPER_API FBlueprintHelperBridgeServer : public FRunnable
 {
 public:
-	FBlueprintHelperBridgeServer(FBlueprintHelperBridgeRouter& InRouter, int32 InPort = 54321);
+	FBlueprintHelperBridgeServer(
+		FBlueprintHelperBridgeRouter& InRouter,
+		int32 InPort = 54321,
+		const FBlueprintHelperDebugEntryService* InDebugEntryService = nullptr);
 	virtual ~FBlueprintHelperBridgeServer() override;
 
 	/** 启动监听线程。成功返回 true。 */
@@ -46,7 +50,15 @@ private:
 	/** 写入一条完整消息（4 字节长度头 + body）。 */
 	bool WriteMessage(FSocket* Socket, const FString& Json) const;
 
+	void RecordBridgeFailureBestEffort(
+		const FString& Source,
+		const FString& Stage,
+		const FString& Code,
+		const FString& Message,
+		const FString& RequestId = FString()) const;
+
 	FBlueprintHelperBridgeRouter& Router;
+	const FBlueprintHelperDebugEntryService* DebugEntryService = nullptr;
 	int32 Port;
 	FSocket* ListenerSocket = nullptr;
 	TUniquePtr<FRunnableThread> Thread;

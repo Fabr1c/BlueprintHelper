@@ -677,6 +677,8 @@ struct FBlueprintHelperToolResultBase
 	/** 是否修改 UE 资产或项目状态。 */
 	bool bModified = false;
 
+	TArray<FString> DebugCaseIds;
+
 	/** 目标引用。多数工具需设置，runtime_profile 可省略。 */
 	TOptional<FBlueprintHelperTargetRef> Target;
 
@@ -714,6 +716,21 @@ struct FBlueprintHelperToolResultBase
 		Json->SetStringField(TEXT("trace_id"), TraceId);
 		Json->SetStringField(TEXT("status"), ToolStatusToString(Status));
 		Json->SetBoolField(TEXT("modified"), bModified);
+		if (!bOk && DebugCaseIds.Num() > 0)
+		{
+			TArray<TSharedPtr<FJsonValue>> Arr;
+			for (const FString& DebugCaseId : DebugCaseIds)
+			{
+				if (!DebugCaseId.IsEmpty())
+				{
+					Arr.Add(MakeShared<FJsonValueString>(DebugCaseId));
+				}
+			}
+			if (Arr.Num() > 0)
+			{
+				Json->SetArrayField(TEXT("debug_case_ids"), Arr);
+			}
+		}
 
 		if (CustomTargetJson.IsValid()) { Json->SetObjectField(TEXT("target"), CustomTargetJson); }
 		else if (Target.IsSet()) { Json->SetObjectField(TEXT("target"), Target->ToJson()); }

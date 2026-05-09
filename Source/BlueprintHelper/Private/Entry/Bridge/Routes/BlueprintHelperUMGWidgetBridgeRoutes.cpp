@@ -8,7 +8,7 @@
 
 namespace
 {
-	FString ReadStringField(const TSharedPtr<FJsonObject>& Payload, const TCHAR* FieldName)
+	FString ReadUMGWidgetRouteStringField(const TSharedPtr<FJsonObject>& Payload, const TCHAR* FieldName)
 	{
 		FString Value;
 		if (Payload.IsValid())
@@ -48,7 +48,7 @@ bool FBlueprintHelperUMGWidgetBridgeRoutes::IsUMGWidgetCommand(const FString& Co
 FBlueprintHelperBridgeResponse FBlueprintHelperUMGWidgetBridgeRoutes::HandleRequest(
 	const FBlueprintHelperBridgeRequest& Request) const
 {
-	const FString AssetPath = ReadStringField(Request.Payload, TEXT("asset_path"));
+	const FString AssetPath = ReadUMGWidgetRouteStringField(Request.Payload, TEXT("asset_path"));
 
 	if (Request.Command == TEXT("get_widget_tree"))
 	{
@@ -95,9 +95,9 @@ FBlueprintHelperBridgeResponse FBlueprintHelperUMGWidgetBridgeRoutes::HandleRequ
 
 	if (Request.Command == TEXT("add_widget"))
 	{
-		const FString WidgetClass = ReadStringField(Request.Payload, TEXT("widget_class"));
-		const FString ParentName = ReadStringField(Request.Payload, TEXT("parent_name"));
-		const FString WidgetName = ReadStringField(Request.Payload, TEXT("widget_name"));
+		const FString WidgetClass = ReadUMGWidgetRouteStringField(Request.Payload, TEXT("widget_class"));
+		const FString ParentName = ReadUMGWidgetRouteStringField(Request.Payload, TEXT("parent_name"));
+		const FString WidgetName = ReadUMGWidgetRouteStringField(Request.Payload, TEXT("widget_name"));
 		if (AssetPath.IsEmpty())
 		{
 			return MakeMissingWidgetFieldResponse(Request, TEXT("payload 缺少 asset_path 字段。"));
@@ -125,7 +125,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperUMGWidgetBridgeRoutes::HandleRequ
 
 	if (Request.Command == TEXT("remove_widget"))
 	{
-		const FString WidgetName = ReadStringField(Request.Payload, TEXT("widget_name"));
+		const FString WidgetName = ReadUMGWidgetRouteStringField(Request.Payload, TEXT("widget_name"));
 		if (AssetPath.IsEmpty() || WidgetName.IsEmpty())
 		{
 			return MakeMissingWidgetFieldResponse(Request, TEXT("payload 缺少 asset_path 。widget_name 字段。"));
@@ -148,8 +148,8 @@ FBlueprintHelperBridgeResponse FBlueprintHelperUMGWidgetBridgeRoutes::HandleRequ
 
 	if (Request.Command == TEXT("move_widget"))
 	{
-		const FString WidgetName = ReadStringField(Request.Payload, TEXT("widget_name"));
-		const FString NewParent = ReadStringField(Request.Payload, TEXT("new_parent"));
+		const FString WidgetName = ReadUMGWidgetRouteStringField(Request.Payload, TEXT("widget_name"));
+		const FString NewParent = ReadUMGWidgetRouteStringField(Request.Payload, TEXT("new_parent"));
 		if (AssetPath.IsEmpty() || WidgetName.IsEmpty() || NewParent.IsEmpty())
 		{
 			return MakeMissingWidgetFieldResponse(Request, TEXT("payload 缺少 asset_path / widget_name / new_parent 字段。"));
@@ -180,7 +180,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperUMGWidgetBridgeRoutes::HandleRequ
 
 	if (Request.Command == TEXT("get_widget_properties"))
 	{
-		const FString WidgetName = ReadStringField(Request.Payload, TEXT("widget_name"));
+		const FString WidgetName = ReadUMGWidgetRouteStringField(Request.Payload, TEXT("widget_name"));
 		if (AssetPath.IsEmpty() || WidgetName.IsEmpty())
 		{
 			return MakeMissingWidgetFieldResponse(Request, TEXT("payload 缺少 asset_path 。widget_name 字段。"));
@@ -216,14 +216,14 @@ FBlueprintHelperBridgeResponse FBlueprintHelperUMGWidgetBridgeRoutes::HandleRequ
 
 	if (Request.Command == TEXT("set_widget_property"))
 	{
-		const FString WidgetName = ReadStringField(Request.Payload, TEXT("widget_name"));
-		const FString PropertyName = ReadStringField(Request.Payload, TEXT("property_name"));
+		const FString WidgetName = ReadUMGWidgetRouteStringField(Request.Payload, TEXT("widget_name"));
+		const FString PropertyName = ReadUMGWidgetRouteStringField(Request.Payload, TEXT("property_name"));
 		if (AssetPath.IsEmpty() || WidgetName.IsEmpty() || PropertyName.IsEmpty())
 		{
 			return MakeMissingWidgetFieldResponse(Request, TEXT("payload 缺少 asset_path / widget_name / property_name 字段。"));
 		}
 
-		const FString Value = ReadStringField(Request.Payload, TEXT("value"));
+		const FString Value = ReadUMGWidgetRouteStringField(Request.Payload, TEXT("value"));
 		const FBlueprintHelperWidgetMutationResult Result =
 			WidgetService.SetWidgetProperty(AssetPath, WidgetName, PropertyName, Value);
 		if (!Result.bSuccess)

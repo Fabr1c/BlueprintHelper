@@ -171,6 +171,7 @@ struct FBlueprintHelperWriteReviewEvidence
 	FString DisplayLabel;
 	FString BeforeSummary;
 	FString AfterSummary;
+	TArray<FString> DebugCaseIds;
 	FString DebugExportRef;
 	TArray<FBlueprintHelperReviewAtomicTarget> AtomicTargets;
 };
@@ -218,6 +219,7 @@ struct FBlueprintHelperReviewRecord
 	EBlueprintHelperReviewStorageStatus StorageStatus = EBlueprintHelperReviewStorageStatus::Active;
 	TArray<FBlueprintHelperReviewVisibleChange> VisibleChanges;
 	TArray<FBlueprintHelperReviewActionRecord> ReviewActions;
+	TArray<FString> DebugCaseIds;
 	TArray<FString> DebugExportRefs;
 	FBlueprintHelperReviewSourceTransactionSummary SourceTransactionSummary;
 };

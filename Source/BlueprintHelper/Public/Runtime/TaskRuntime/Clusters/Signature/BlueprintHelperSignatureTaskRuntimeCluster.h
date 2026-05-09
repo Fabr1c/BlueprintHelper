@@ -6,6 +6,7 @@
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.h"
 
 class FBlueprintHelperBlueprintStructureService;
+struct FBlueprintHelperWriteReviewEvidence;
 
 class BLUEPRINTHELPER_API FBlueprintHelperSignatureTaskRuntimeCluster
 {
@@ -14,6 +15,14 @@ public:
 		const FBlueprintHelperBlueprintStructureService& InStructureService);
 
 	static bool CanExecuteStep(const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep);
+
+	static bool BuildReviewEvidence(
+		const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
+		const FBlueprintHelperToolResultBase& StepResult,
+		const FString& ArchiveSessionId,
+		const FString& TaskRunId,
+		int32 StepIndex,
+		FBlueprintHelperWriteReviewEvidence& OutEvidence);
 
 	FBlueprintHelperToolResultBase ExecuteStep(const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep) const;
 

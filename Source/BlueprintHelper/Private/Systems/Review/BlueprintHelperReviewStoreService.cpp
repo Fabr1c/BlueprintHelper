@@ -387,6 +387,7 @@ namespace
 		Json->SetObjectField(TEXT("source_transaction_summary"), Summary);
 
 		TSharedRef<FJsonObject> Diagnostics = MakeShared<FJsonObject>();
+		Diagnostics->SetArrayField(TEXT("debug_case_ids"), MakeReviewJsonStringArray(Record.DebugCaseIds));
 		Diagnostics->SetArrayField(TEXT("debug_export_refs"), MakeReviewJsonStringArray(Record.DebugExportRefs));
 		Json->SetObjectField(TEXT("diagnostics"), Diagnostics);
 		return Json;
@@ -556,6 +557,7 @@ namespace
 		const TSharedPtr<FJsonObject>* Diagnostics = nullptr;
 		if (Json->TryGetObjectField(TEXT("diagnostics"), Diagnostics) && Diagnostics)
 		{
+			ReadReviewStringArray(*Diagnostics, TEXT("debug_case_ids"), OutRecord.DebugCaseIds);
 			ReadReviewStringArray(*Diagnostics, TEXT("debug_export_refs"), OutRecord.DebugExportRefs);
 		}
 
@@ -567,6 +569,10 @@ namespace
 		for (const FString& TaskRunId : Incoming.SourceTaskRunIds)
 		{
 			Existing.SourceTaskRunIds.AddUnique(TaskRunId);
+		}
+		for (const FString& DebugCaseId : Incoming.DebugCaseIds)
+		{
+			Existing.DebugCaseIds.AddUnique(DebugCaseId);
 		}
 		for (const FString& DebugExportRef : Incoming.DebugExportRefs)
 		{
@@ -804,6 +810,10 @@ TArray<FBlueprintHelperReviewRecord> FBlueprintHelperReviewStoreService::BuildRe
 		{
 			Record->SourceTransactionSummary.TransactionIds.AddUnique(Evidence.TransactionId);
 		}
+		for (const FString& DebugCaseId : Evidence.DebugCaseIds)
+		{
+			Record->DebugCaseIds.AddUnique(DebugCaseId);
+		}
 		if (!Evidence.DebugExportRef.IsEmpty())
 		{
 			Record->DebugExportRefs.AddUnique(Evidence.DebugExportRef);
@@ -924,6 +934,70 @@ bool FBlueprintHelperReviewStoreService::LoadReviewRecordById(
 	}
 
 	return true;
+}
+
+TSharedRef<FJsonObject> FBlueprintHelperReviewStoreService::BuildReviewRecordSummaryArtifact(
+	const FBlueprintHelperReviewRecord& Record) const
+{
+	TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+	Json->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.ReviewSummaryArtifact.v1"));
+	Json->SetStringField(TEXT("review_record_id"), Record.ReviewRecordId);
+	Json->SetStringField(TEXT("archive_session_id"), Record.ArchiveSessionId);
+	Json->SetStringField(TEXT("asset_path"), Record.AssetPath);
+	Json->SetStringField(TEXT("status"), BlueprintHelperReviewChangeStatusToString(Record.Status));
+	Json->SetStringField(TEXT("storage_status"), BlueprintHelperReviewStorageStatusToString(Record.StorageStatus));
+	Json->SetArrayField(TEXT("source_task_run_ids"), MakeReviewJsonStringArray(Record.SourceTaskRunIds));
+	Json->SetArrayField(TEXT("debug_case_ids"), MakeReviewJsonStringArray(Record.DebugCaseIds));
+
+	TSharedRef<FJsonObject> SourceSummary = MakeShared<FJsonObject>();
+	SourceSummary->SetNumberField(TEXT("transaction_count"), Record.SourceTransactionSummary.TransactionCount);
+	SourceSummary->SetArrayField(TEXT("task_run_ids"), MakeReviewJsonStringArray(Record.SourceTransactionSummary.TaskRunIds));
+	SourceSummary->SetArrayField(TEXT("operation_kinds"), MakeReviewJsonStringArray(Record.SourceTransactionSummary.OperationKinds));
+	SourceSummary->SetArrayField(TEXT("asset_paths"), MakeReviewJsonStringArray(Record.SourceTransactionSummary.AssetPaths));
+	SourceSummary->SetArrayField(TEXT("transaction_ids"), MakeReviewJsonStringArray(Record.SourceTransactionSummary.TransactionIds));
+	SourceSummary->SetStringField(TEXT("final_review_status"),
+		BlueprintHelperReviewChangeStatusToString(Record.SourceTransactionSummary.FinalReviewStatus));
+	Json->SetObjectField(TEXT("source_transaction_summary"), SourceSummary);
+
+	TArray<TSharedPtr<FJsonValue>> ChangeSummaries;
+	for (const FBlueprintHelperReviewVisibleChange& Change : Record.VisibleChanges)
+	{
+		TSharedRef<FJsonObject> ChangeJson = MakeShared<FJsonObject>();
+		ChangeJson->SetStringField(TEXT("change_id"), Change.ChangeId);
+		ChangeJson->SetStringField(TEXT("asset_path"), Change.AssetPath);
+		if (!Change.GraphName.IsEmpty())
+		{
+			ChangeJson->SetStringField(TEXT("graph_name"), Change.GraphName);
+		}
+		if (!Change.LocationKey.IsEmpty())
+		{
+			ChangeJson->SetStringField(TEXT("visual_group_key"), Change.LocationKey);
+		}
+		ChangeJson->SetStringField(TEXT("change_kind"), BlueprintHelperReviewChangeKindToString(Change.ChangeKind));
+		ChangeJson->SetStringField(TEXT("status"), BlueprintHelperReviewChangeStatusToString(Change.Status));
+		if (!Change.DisplayLabel.IsEmpty())
+		{
+			ChangeJson->SetStringField(TEXT("display_label"), Change.DisplayLabel);
+		}
+		if (!Change.BeforeSummary.IsEmpty())
+		{
+			ChangeJson->SetStringField(TEXT("before_summary"), Change.BeforeSummary);
+		}
+		if (!Change.AfterSummary.IsEmpty())
+		{
+			ChangeJson->SetStringField(TEXT("after_summary"), Change.AfterSummary);
+		}
+		if (!Change.NeedsActionReason.IsEmpty())
+		{
+			ChangeJson->SetStringField(TEXT("needs_action_reason"), Change.NeedsActionReason);
+		}
+		ChangeJson->SetNumberField(TEXT("atomic_target_count"), Change.AtomicTargets.Num());
+		ChangeSummaries.Add(MakeShared<FJsonValueObject>(ChangeJson));
+	}
+	Json->SetNumberField(TEXT("visible_change_count"), Record.VisibleChanges.Num());
+	Json->SetArrayField(TEXT("visible_changes"), ChangeSummaries);
+	Json->SetNumberField(TEXT("review_action_count"), Record.ReviewActions.Num());
+	return Json;
 }
 
 bool FBlueprintHelperReviewStoreService::SaveReviewRecord(

@@ -8,6 +8,7 @@
 class FBlueprintHelperCleanupBlueprintHelperBlockService;
 class FBlueprintHelperRollbackCleanupTransactionService;
 class FBlueprintHelperConvertBlockToUserOwnedService;
+struct FBlueprintHelperWriteReviewEvidence;
 
 class BLUEPRINTHELPER_API FBlueprintHelperCleanupOwnershipTaskRuntimeCluster
 {
@@ -18,6 +19,14 @@ public:
 		const FBlueprintHelperConvertBlockToUserOwnedService& InConvertBlockService);
 
 	static bool CanExecuteStep(const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep);
+
+	static bool BuildReviewEvidence(
+		const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
+		const FBlueprintHelperToolResultBase& StepResult,
+		const FString& ArchiveSessionId,
+		const FString& TaskRunId,
+		int32 StepIndex,
+		FBlueprintHelperWriteReviewEvidence& OutEvidence);
 
 	FBlueprintHelperToolResultBase ExecuteStep(const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep) const;
 

@@ -242,6 +242,13 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 		};
 		return ValidateRules(Payload, Rules, OutError);
 	}
+	if (CommandEquals(Command, TEXT("get_debug_case")))
+	{
+		const FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("debug_case_id"), EBlueprintHelperJsonExpectedType::String, true},
+		};
+		return ValidateRules(Payload, Rules, OutError);
+	}
 	if (CommandEquals(Command, TEXT("import_json")))
 	{
 		// json 字段接受 string 或 object（拒绝 array / bool / number）

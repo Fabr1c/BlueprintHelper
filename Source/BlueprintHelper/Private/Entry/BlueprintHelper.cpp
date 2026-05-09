@@ -66,6 +66,8 @@
 #include "Systems/Debug/BlueprintHelperEditorCommandService.h"
 #include "Systems/Debug/BlueprintHelperRuntimeProfileService.h"
 #include "Systems/Debug/BlueprintHelperDiagnosticsService.h"
+#include "Systems/Debug/BlueprintHelperDebugCaseStoreService.h"
+#include "Systems/Debug/BlueprintHelperDebugEntryService.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicMdReadService.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicJsonReadService.h"
 #include "Systems/ToolClusters/AssetFactory/BlueprintHelperAssetFactoryService.h"
@@ -176,6 +178,9 @@ void FBlueprintHelperModule::StartupModule()
 	EditorCommandService = MakeUnique<FBlueprintHelperEditorCommandService>();
 	RuntimeProfileService = MakeUnique<FBlueprintHelperRuntimeProfileService>();
 	DiagnosticsService = MakeUnique<FBlueprintHelperDiagnosticsService>();
+	DebugCaseStoreService = MakeUnique<FBlueprintHelperDebugCaseStoreService>();
+	ReviewStoreService = MakeUnique<FBlueprintHelperReviewStoreService>();
+	DebugEntryService = MakeUnique<FBlueprintHelperDebugEntryService>(*DebugCaseStoreService, ReviewStoreService.Get());
 	LogicMdReadService = MakeUnique<FBlueprintHelperLogicMdReadService>();
 	LogicJsonReadService = MakeUnique<FBlueprintHelperLogicJsonReadService>();
 	AssetFactoryService = MakeUnique<FBlueprintHelperAssetFactoryService>();
@@ -198,20 +203,19 @@ void FBlueprintHelperModule::StartupModule()
 	CleanupBlockService = MakeUnique<FBlueprintHelperCleanupBlueprintHelperBlockService>(
 		*GraphResolver, *JournalService);
 	RollbackCleanupService = MakeUnique<FBlueprintHelperRollbackCleanupTransactionService>(
-		*GraphResolver, *JournalService);
+		*GraphResolver, *JournalService, DebugEntryService.Get());
 	ConvertBlockService = MakeUnique<FBlueprintHelperConvertBlockToUserOwnedService>(
 		*GraphResolver, *OwnershipService, *JournalService);
-	CompileAssetService = MakeUnique<FBlueprintHelperCompileAssetService>(*CompileService);
+	CompileAssetService = MakeUnique<FBlueprintHelperCompileAssetService>(*CompileService, DebugEntryService.Get());
 	TransactionQueryService = MakeUnique<FBlueprintHelperTransactionQueryService>();
 	VariableService = MakeUnique<FBlueprintHelperBlueprintVariableService>(*GraphResolver, *StructureService);
-	ReviewStoreService = MakeUnique<FBlueprintHelperReviewStoreService>();
-	ReviewActionService = MakeUnique<FBlueprintHelperReviewActionService>();
+	ReviewActionService = MakeUnique<FBlueprintHelperReviewActionService>(DebugEntryService.Get());
 
 	// ─── Bridge Layer 初始。───
 	ContextService = MakeUnique<FBlueprintHelperContextService>(*GraphResolver);
 	BridgeRouter = MakeUnique<FBlueprintHelperBridgeRouter>(
-		*ImportService, *AgentImportService, *ExportService, *CompileService, *ValidationService, *ContextService, *AssetBrowseService, *StructureService, *WidgetService, *PropertyReflectionService, *DataTableService, *EditorCommandService, *RuntimeProfileService, *DiagnosticsService, *LogicMdReadService, *LogicJsonReadService, *AssetFactoryService, *ComponentService, *ClassSettingsService, *AppendGraphService, *ReplaceGraphService, *PatchGraphService, *MergeGraphService, *CleanupBlockService, *RollbackCleanupService, *ConvertBlockService, *CompileAssetService, *TransactionQueryService, *VariableService);
-	BridgeServer = MakeUnique<FBlueprintHelperBridgeServer>(*BridgeRouter);
+		*ImportService, *AgentImportService, *ExportService, *CompileService, *ValidationService, *ContextService, *AssetBrowseService, *StructureService, *WidgetService, *PropertyReflectionService, *DataTableService, *EditorCommandService, *RuntimeProfileService, *DiagnosticsService, *DebugEntryService, *LogicMdReadService, *LogicJsonReadService, *AssetFactoryService, *ComponentService, *ClassSettingsService, *AppendGraphService, *ReplaceGraphService, *PatchGraphService, *MergeGraphService, *CleanupBlockService, *RollbackCleanupService, *ConvertBlockService, *CompileAssetService, *TransactionQueryService, *VariableService);
+	BridgeServer = MakeUnique<FBlueprintHelperBridgeServer>(*BridgeRouter, 54321, DebugEntryService.Get());
 	BridgeServer->Start();
 
 	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(HelperTabName, FOnSpawnTab::CreateRaw(this, &FBlueprintHelperModule::OnSpawnPluginTab))
@@ -234,6 +238,7 @@ void FBlueprintHelperModule::ShutdownModule()
 
 	// ─── Service Layer 销毁（逆序）───
 	ReviewActionService.Reset();
+	DebugEntryService.Reset();
 	ReviewStoreService.Reset();
 	EditorCommandService.Reset();
 	ClassSettingsService.Reset();
@@ -242,6 +247,7 @@ void FBlueprintHelperModule::ShutdownModule()
 	LogicJsonReadService.Reset();
 	LogicMdReadService.Reset();
 	DiagnosticsService.Reset();
+	DebugCaseStoreService.Reset();
 	RuntimeProfileService.Reset();
 	DataTableService.Reset();
 	PropertyReflectionService.Reset();

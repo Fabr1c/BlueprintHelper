@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Runtime/TaskRuntime/Clusters/AssetFactory/BlueprintHelperAssetFactoryTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/BlueprintVariables/BlueprintHelperBlueprintVariablesTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/ClassSettings/BlueprintHelperClassSettingsTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/CleanupOwnership/BlueprintHelperCleanupOwnershipTaskRuntimeCluster.h"
@@ -96,7 +97,7 @@ private:
 	FBlueprintHelperGraphWriteTaskRuntimeCluster GraphWriteCluster;
 	FBlueprintHelperBlueprintVariablesTaskRuntimeCluster BlueprintVariablesCluster;
 	FBlueprintHelperSignatureTaskRuntimeCluster SignatureCluster;
-	const FBlueprintHelperAssetFactoryService& AssetFactoryService;
+	FBlueprintHelperAssetFactoryTaskRuntimeCluster AssetFactoryCluster;
 	FBlueprintHelperComponentTaskRuntimeCluster ComponentCluster;
 	FBlueprintHelperClassSettingsTaskRuntimeCluster ClassSettingsCluster;
 	FBlueprintHelperUMGWidgetTaskRuntimeCluster UMGWidgetCluster;

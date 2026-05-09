@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Entry/Bridge/BlueprintHelperBridgeRoutePlanner.h"
+#include "Entry/Bridge/Routes/BlueprintHelperAssetFactoryBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperBlueprintVariablesBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperClassSettingsBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperCleanupOwnershipBridgeRoutes.h"
@@ -30,6 +31,7 @@ class FBlueprintHelperDataTableService;
 class FBlueprintHelperEditorCommandService;
 class FBlueprintHelperRuntimeProfileService;
 class FBlueprintHelperDiagnosticsService;
+class FBlueprintHelperDebugEntryService;
 class FBlueprintHelperLogicMdReadService;
 class FBlueprintHelperLogicJsonReadService;
 class FBlueprintHelperAssetFactoryService;
@@ -47,8 +49,8 @@ class FBlueprintHelperTransactionQueryService;
 class FBlueprintHelperBlueprintVariableService;
 
 /**
- * 命令路由器，将 Bridge 请求分发到对应的 Service 方法。
- * 所有 Handle 方法必须在 GameThread 上调用。
+ * 命令路由器，将 Bridge 请求分发到对应的静态簇或系统层入口。
+ * 工具簇命令由 *BridgeRoutes 执行；private Handle 仅保留系统层/遗留系统入口。
  */
 class BLUEPRINTHELPER_API FBlueprintHelperBridgeRouter
 {
@@ -68,6 +70,7 @@ public:
 		const FBlueprintHelperEditorCommandService& InEditorCommand,
 		const FBlueprintHelperRuntimeProfileService& InRuntimeProfile,
 		const FBlueprintHelperDiagnosticsService& InDiagnostics,
+		const FBlueprintHelperDebugEntryService& InDebugEntryService,
 		const FBlueprintHelperLogicMdReadService& InLogicMdRead,
 		const FBlueprintHelperLogicJsonReadService& InLogicJsonRead,
 		const FBlueprintHelperAssetFactoryService& InAssetFactory,
@@ -95,6 +98,7 @@ private:
 	FBlueprintHelperBridgeResponse HandleGetEditorContext(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleGetRuntimeProfile(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleDiagnosticsRuntime(const FBlueprintHelperBridgeRequest& Req) const;
+	FBlueprintHelperBridgeResponse HandleGetDebugCase(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleReadReferenceContext(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleReadBlueprintLogicMd(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleReadBlueprintLogicJson(const FBlueprintHelperBridgeRequest& Req) const;
@@ -119,90 +123,23 @@ private:
 	FBlueprintHelperBridgeResponse HandleAddVariable(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleRemoveVariable(const FBlueprintHelperBridgeRequest& Req) const;
 
-	// ─── Blueprint Variable Service ───
-	FBlueprintHelperBridgeResponse HandleReadMemberVariables(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleAddMemberVariable(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleAddMemberVariables(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleSetMemberVariableProperties(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleRemoveMemberVariable(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleRemoveMemberVariables(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleReadMemberDefaults(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleSetMemberDefault(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleSetMemberDefaults(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleReadLocalVariables(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleAddLocalVariable(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleAddLocalVariables(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleSetLocalVariableProperties(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleRemoveLocalVariable(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleRemoveLocalVariables(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleAddGraph(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleRemoveGraph(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleAddEventDispatcher(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleDeleteNodes(const FBlueprintHelperBridgeRequest& Req) const;
-
-	// ─── Phase 6: UMG Widget 操作 ───
-	FBlueprintHelperBridgeResponse HandleGetWidgetTree(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleAddWidget(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleRemoveWidget(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleMoveWidget(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleGetWidgetProperties(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleSetWidgetProperty(const FBlueprintHelperBridgeRequest& Req) const;
-
-	// ─── Phase 7: DataAsset & DataTable 操作 ───
-	FBlueprintHelperBridgeResponse HandleGetObjectProperties(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleSetObjectProperty(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleGetDataTableRows(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleAddDataTableRow(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleUpdateDataTableRow(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleDeleteDataTableRow(const FBlueprintHelperBridgeRequest& Req) const;
 
 	// ─── Phase 8: 编辑器命令 ───
 	FBlueprintHelperBridgeResponse HandleUndo(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleRedo(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandlePlayInEditor(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleStopPIE(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleCreateAsset(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleReadComponents(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleAddComponent(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleSetComponentProperty(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleSetComponentProperties(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleRemoveComponent(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleCreateBlueprint(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleExecConsoleCommand(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleCloseEditor(const FBlueprintHelperBridgeRequest& Req) const;
 
-	// ─── Phase 9: Blueprint Class Settings ───
-	FBlueprintHelperBridgeResponse HandleReadClassSettings(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleAddImplementedInterface(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleAddImplementedInterfaces(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleRemoveImplementedInterface(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleRemoveImplementedInterfaces(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleSetClassDefaultProperty(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleSetClassDefaultProperties(const FBlueprintHelperBridgeRequest& Req) const;
-
-	// ─── AppendBlueprintGraph ───
 	FBlueprintHelperBridgeResponse HandlePreviewTaskPlan(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleExecuteTaskPlan(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleGetTaskRunJournal(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleAppendBlueprintGraph(const FBlueprintHelperBridgeRequest& Req) const;
-
-	// ─── ReplaceBlueprintGraph ───
-	FBlueprintHelperBridgeResponse HandleReplaceBlueprintGraph(const FBlueprintHelperBridgeRequest& Req) const;
-
-	// ─── PatchBlueprintGraph ───
-	FBlueprintHelperBridgeResponse HandlePatchBlueprintGraph(const FBlueprintHelperBridgeRequest& Req) const;
-
-	// ─── MergeBlueprintGraph ───
-	FBlueprintHelperBridgeResponse HandleMergeBlueprintGraph(const FBlueprintHelperBridgeRequest& Req) const;
-
-	// ─── CleanupBlueprintHelperBlock ───
-	FBlueprintHelperBridgeResponse HandleCleanupBlueprintHelperBlock(const FBlueprintHelperBridgeRequest& Req) const;
-
-	// ─── RollbackCleanupTransaction ───
-	FBlueprintHelperBridgeResponse HandleRollbackCleanupTransaction(const FBlueprintHelperBridgeRequest& Req) const;
-
-	// ─── ConvertBlockToUserOwned ───
-	FBlueprintHelperBridgeResponse HandleConvertBlockToUserOwned(const FBlueprintHelperBridgeRequest& Req) const;
 
 	// ─── CompileBlueprintAsset ───
 	FBlueprintHelperBridgeResponse HandleCompileBlueprintAsset(const FBlueprintHelperBridgeRequest& Req) const;
@@ -225,9 +162,10 @@ private:
 	const FBlueprintHelperEditorCommandService& EditorCommandService;
 	const FBlueprintHelperRuntimeProfileService& RuntimeProfileService;
 	const FBlueprintHelperDiagnosticsService& DiagnosticsService;
+	const FBlueprintHelperDebugEntryService& DebugEntryService;
 	const FBlueprintHelperLogicMdReadService& LogicMdReadService;
 	const FBlueprintHelperLogicJsonReadService& LogicJsonReadService;
-	const FBlueprintHelperAssetFactoryService& AssetFactoryService;
+	FBlueprintHelperAssetFactoryBridgeRoutes AssetFactoryRoutes;
 	FBlueprintHelperComponentBridgeRoutes ComponentRoutes;
 	FBlueprintHelperClassSettingsBridgeRoutes ClassSettingsRoutes;
 	FBlueprintHelperGraphWriteBridgeRoutes GraphWriteRoutes;

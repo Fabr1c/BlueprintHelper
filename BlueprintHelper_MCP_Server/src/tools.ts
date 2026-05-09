@@ -87,6 +87,10 @@ const responseModeSchema = z.enum([
   'legacy_text_json',
 ]).optional();
 
+const debugCaseInputSchema = z.object({
+  debug_case_id: z.string().min(1).describe('DebugCase id returned in ToolResultBase.debug_case_ids[]'),
+});
+
 const readContextInputSchema = z.object({
   schema: z.literal('BlueprintHelper.ReadSpec.v1'),
   read_type: z.enum([
@@ -423,6 +427,29 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
           content: [{ type: 'text' as const, text: `AgentGuide error: ${message}` }],
           isError: true,
         };
+      }
+    },
+  );
+
+  server.registerTool(
+    'blueprinthelper_get_debug_case',
+    {
+      description: 'Read a summary-only DebugCase by id. Returns DebugCase metadata and event summary only; never returns DebugBundle artifact content, local bundle paths, raw JSON payloads, tokens, or source file content.',
+      inputSchema: debugCaseInputSchema,
+    },
+    async ({ debug_case_id }) => {
+      try {
+        const resp = await bridge.sendCommand('get_debug_case', { debug_case_id });
+        if (isRecord(resp.result) && resp.result['schema'] === 'BlueprintHelper.McpToolResult.v1') {
+          return toMcpResult(resp.result as unknown as ToolResultBase);
+        }
+
+        return toMcpResult(normalizeToolResult(resp, 'get_debug_case', {
+          data: isRecord(resp.result) ? resp.result : { debug_case_id },
+          modified: false,
+        }));
+      } catch (err) {
+        return toErrorResult(err);
       }
     },
   );

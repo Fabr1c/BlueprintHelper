@@ -191,6 +191,7 @@ export interface ToolResultBase {
   trace_id: string;
   status: ToolStatus;
   modified: boolean;
+  debug_case_ids?: string[];
   target?: ToolResultTarget;
   data?: Record<string, unknown>;
   validation?: ToolResultValidation;
@@ -226,8 +227,12 @@ export function makeSummary(result: ToolResultBase): string {
     : '';
   const baseSummary = `${result.operation} ${result.status}: ${targetInfo}, modified=${result.modified}.`;
   const errorMessage = !result.ok ? result.error?.message.trim() : undefined;
+  const debugCases =
+    !result.ok && result.debug_case_ids?.length
+      ? ` debug_case_ids=${result.debug_case_ids.join(',')}`
+      : '';
 
-  return errorMessage ? `${baseSummary} error=${errorMessage}` : baseSummary;
+  return errorMessage ? `${baseSummary} error=${errorMessage}${debugCases}` : `${baseSummary}${debugCases}`;
 }
 
 // ─── 从 Bridge 原始响应标准化 ───

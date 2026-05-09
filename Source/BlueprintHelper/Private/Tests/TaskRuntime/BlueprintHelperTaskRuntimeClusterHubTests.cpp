@@ -1,5 +1,6 @@
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeClusterHub.h"
 #include "Runtime/TaskRuntime/Clusters/AnimationBlueprint/BlueprintHelperAnimationBlueprintTaskRuntimeCluster.h"
+#include "Runtime/TaskRuntime/Clusters/AssetFactory/BlueprintHelperAssetFactoryTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/BlueprintVariables/BlueprintHelperBlueprintVariablesTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/ClassSettings/BlueprintHelperClassSettingsTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/CleanupOwnership/BlueprintHelperCleanupOwnershipTaskRuntimeCluster.h"
@@ -10,6 +11,7 @@
 #include "Runtime/TaskRuntime/Clusters/ObjectProperty/BlueprintHelperObjectPropertyTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/Signature/BlueprintHelperSignatureTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/UMGWidget/BlueprintHelperUMGWidgetTaskRuntimeCluster.h"
+#include "Shared/Review/BlueprintHelperReviewTypes.h"
 
 #include "Misc/AutomationTest.h"
 
@@ -24,6 +26,11 @@ FBlueprintHelperTaskRuntimeLoweredStep MakeLoweredStep(const FString& Capability
 	Step.Capability = Capability;
 	Step.AdapterOperation = AdapterOperation;
 	return Step;
+}
+
+FBlueprintHelperToolResultBase MakeClusterEvidenceAppliedResult(const FString& Operation)
+{
+	return FBlueprintHelperToolResultBuilder::Applied(Operation, TEXT("trace_cluster_evidence"));
 }
 }
 
@@ -202,6 +209,92 @@ bool FBlueprintHelperReservedTaskRuntimeClusters_DoNotClaimSteps::RunTest(const 
 		TEXT("Material placeholder rejects asset factory"),
 		FBlueprintHelperMaterialTaskRuntimeCluster::CanExecuteStep(
 			MakeLoweredStep(TEXT("asset_factory"), TEXT(""))));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTaskRuntimeCluster_BuildsProducerOwnedReviewEvidence,
+	"BlueprintHelper.Review.Producer.ClusterBuildsProducerOwnedEvidence",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperTaskRuntimeCluster_BuildsProducerOwnedReviewEvidence::RunTest(const FString& Parameters)
+{
+	TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+	Payload->SetStringField(TEXT("asset_path"), TEXT("/Game/BP_Door"));
+	Payload->SetStringField(TEXT("component_name"), TEXT("DoorMesh"));
+
+	FBlueprintHelperTaskRuntimeLoweredStep ComponentStep = MakeLoweredStep(TEXT("blueprint_component"), TEXT("blueprint_component.add_component"));
+	ComponentStep.Payload = Payload;
+
+	FBlueprintHelperWriteReviewEvidence Evidence;
+	const bool bBuilt = FBlueprintHelperComponentTaskRuntimeCluster::BuildReviewEvidence(
+		ComponentStep,
+		MakeClusterEvidenceAppliedResult(ComponentStep.AdapterOperation),
+		TEXT("archive_cluster_evidence"),
+		TEXT("task_cluster_evidence"),
+		2,
+		Evidence);
+
+	TestTrue(TEXT("component cluster owns Review evidence production"), bBuilt);
+	TestEqual(TEXT("archive session id is required"),
+		Evidence.ArchiveSessionId,
+		FString(TEXT("archive_cluster_evidence")));
+	TestEqual(TEXT("task run id is required"),
+		Evidence.TaskRunId,
+		FString(TEXT("task_cluster_evidence")));
+	TestEqual(TEXT("producer transaction id is required"),
+		Evidence.TransactionId,
+		FString(TEXT("task_step_task_cluster_evidence_2")));
+	TestEqual(TEXT("asset path is required"),
+		Evidence.AssetPath,
+		FString(TEXT("/Game/BP_Door")));
+	TestEqual(TEXT("one target is emitted"), Evidence.AtomicTargets.Num(), 1);
+	if (Evidence.AtomicTargets.Num() != 1)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperReviewAtomicTarget& Target = Evidence.AtomicTargets[0];
+	TestEqual(TEXT("target kind is required"),
+		Target.TargetKind,
+		FString(TEXT("component")));
+	TestFalse(TEXT("target anchor is required"), Target.TargetKey.IsEmpty());
+	TestFalse(TEXT("visual group key is required"), Target.VisualGroupKey.IsEmpty());
+	TestFalse(TEXT("baseline hash is required"), Target.BaselineHash.IsEmpty());
+	TestFalse(TEXT("recorded-after hash is required"), Target.RecordedAfterHash.IsEmpty());
+	TestFalse(TEXT("rollback data ref is required"), Target.RollbackDataRef.IsEmpty());
+
+	TSharedRef<FJsonObject> AssetPayload = MakeShared<FJsonObject>();
+	AssetPayload->SetStringField(TEXT("asset_path"), TEXT("/Game/Data/DA_Door"));
+	AssetPayload->SetStringField(TEXT("asset_type"), TEXT("DataAsset"));
+
+	FBlueprintHelperTaskRuntimeLoweredStep AssetFactoryStep = MakeLoweredStep(TEXT("asset_factory"), TEXT("create_asset"));
+	AssetFactoryStep.Payload = AssetPayload;
+
+	FBlueprintHelperWriteReviewEvidence AssetEvidence;
+	TestTrue(TEXT("asset factory cluster owns Review evidence production"),
+		FBlueprintHelperAssetFactoryTaskRuntimeCluster::BuildReviewEvidence(
+			AssetFactoryStep,
+			MakeClusterEvidenceAppliedResult(AssetFactoryStep.AdapterOperation),
+			TEXT("archive_cluster_evidence"),
+			TEXT("task_cluster_evidence"),
+			4,
+			AssetEvidence));
+	TestEqual(TEXT("asset factory target kind is required"),
+		AssetEvidence.AtomicTargets.Num() == 1 ? AssetEvidence.AtomicTargets[0].TargetKind : FString(),
+		FString(TEXT("asset_factory")));
+
+	FBlueprintHelperTaskRuntimeLoweredStep GraphWriteStep = MakeLoweredStep(TEXT("graph_write"), TEXT("append_blueprint_graph"));
+	GraphWriteStep.Payload = Payload;
+	FBlueprintHelperWriteReviewEvidence GraphWriteEvidence;
+	TestFalse(TEXT("journal-backed graph write cluster does not use runtime fallback evidence"),
+		FBlueprintHelperGraphWriteTaskRuntimeCluster::BuildReviewEvidence(
+			GraphWriteStep,
+			MakeClusterEvidenceAppliedResult(GraphWriteStep.AdapterOperation),
+			TEXT("archive_cluster_evidence"),
+			TEXT("task_cluster_evidence"),
+			3,
+			GraphWriteEvidence));
 	return true;
 }
 
