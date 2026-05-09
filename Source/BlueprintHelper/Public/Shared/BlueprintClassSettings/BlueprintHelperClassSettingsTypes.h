@@ -60,12 +60,14 @@ struct FBlueprintHelperInvalidInterface
 {
 	FString InterfacePath;
 	FString Code;
+	FString Message;
 
 	TSharedRef<FJsonObject> ToJson() const
 	{
 		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
 		Json->SetStringField(TEXT("interface_path"), InterfacePath);
 		Json->SetStringField(TEXT("code"), Code);
+		if (!Message.IsEmpty()) { Json->SetStringField(TEXT("message"), Message.Left(128)); }
 		return Json;
 	}
 };

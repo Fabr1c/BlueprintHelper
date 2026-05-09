@@ -5,6 +5,9 @@
 #include "CoreMinimal.h"
 
 class UDataTable;
+class UObject;
+class UScriptStruct;
+class FProperty;
 
 // ─── DataTable Schema 信息 ───
 
@@ -86,6 +89,14 @@ private:
 		const TMap<FString, FString>& Fields,
 		UObject* Owner,
 		FString& OutError);
+
+	/** 将字段输入名解析到真实行结构属性，支持 UE 内部名和 Blueprint authored/display 名。 */
+	static FProperty* FindRowPropertyByInputName(
+		const UScriptStruct* RowStruct,
+		const FString& FieldName);
+
+	static FString GetRowPropertyExternalName(const FProperty* Property);
+	static bool DidImportConsumeAllText(const TCHAR* ImportEnd);
 
 	/** 将字段值应用到临时候选行，用于 dry-run 和预校验。 */
 	static bool ApplyFieldsToCandidateRow(

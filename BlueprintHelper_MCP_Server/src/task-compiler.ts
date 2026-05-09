@@ -598,12 +598,6 @@ function compileBlueprintVariablesTaskSpecToTaskPlan(taskSpec: Extract<TaskSpec,
   assertSupportedBlueprintVariablesTaskSpec(taskSpec);
   const behavior = taskSpec.behavior as Record<string, unknown>;
   const strategy = getRequiredString(behavior, 'variable_strategy', 'behavior.variable_strategy');
-  const target = {
-    asset_path: taskSpec.target.asset_path,
-    ...(strategy === 'local_variables'
-      ? { function_name: getRequiredString(behavior, 'function_name', 'behavior.function_name') }
-      : {}),
-  };
 
   return {
     schema: TASK_PLAN_SCHEMA,
@@ -616,20 +610,7 @@ function compileBlueprintVariablesTaskSpecToTaskPlan(taskSpec: Extract<TaskSpec,
       should_compile: taskSpec.validation.should_compile,
       should_save: taskSpec.validation.should_save,
     },
-    steps: [
-      {
-        step_id: 'step_001',
-        capability: 'blueprint_variable',
-        target,
-        write: {
-          strategy,
-          ops: compileBlueprintVariableOps(behavior),
-        },
-        constraints: {
-          allow_remove_referenced_variables: false,
-        },
-      },
-    ],
+    steps: compileBlueprintVariableSteps(taskSpec.target.asset_path, behavior, strategy),
   };
 }
 
@@ -1785,6 +1766,74 @@ function compileBlueprintVariableOps(behavior: Record<string, unknown>): Bluepri
   return changes.map((entry, index) => compileLocalVariableChange(entry, functionName, `behavior.changes[${index}]`));
 }
 
+function compileBlueprintVariableSteps(
+  assetPath: string,
+  behavior: Record<string, unknown>,
+  strategy: string,
+): TaskPlanStep[] {
+  if (strategy !== 'member_variables') {
+    return [
+      blueprintVariableStep(
+        'step_001',
+        {
+          asset_path: assetPath,
+          ...(strategy === 'local_variables'
+            ? { function_name: getRequiredString(behavior, 'function_name', 'behavior.function_name') }
+            : {}),
+        },
+        strategy,
+        compileBlueprintVariableOps(behavior),
+      ),
+    ];
+  }
+
+  const entries = Array.isArray(behavior['changes'])
+    ? behavior['changes']
+    : Array.isArray(behavior['variables'])
+      ? behavior['variables']
+      : [];
+  const pathPrefix = Array.isArray(behavior['changes']) ? 'behavior.changes' : 'behavior.variables';
+  const target = { asset_path: assetPath };
+  const steps = [
+    blueprintVariableStep(
+      'step_001',
+      target,
+      'member_variables',
+      entries.map((entry, index) => compileMemberVariableChange(entry, `${pathPrefix}[${index}]`)),
+    ),
+  ];
+  const defaultOps = entries
+    .map((entry, index) => compileMemberDefaultFromVariableEntry(entry, `${pathPrefix}[${index}]`))
+    .filter((op): op is BlueprintVariableCompiledOp => op !== undefined);
+  if (defaultOps.length > 0) {
+    steps.push({
+      ...blueprintVariableStep('step_002', target, 'member_defaults', defaultOps),
+      depends_on: ['step_001'],
+    });
+  }
+  return steps;
+}
+
+function blueprintVariableStep(
+  stepId: string,
+  target: Record<string, unknown>,
+  strategy: string,
+  ops: BlueprintVariableCompiledOp[],
+): TaskPlanStep {
+  return {
+    step_id: stepId,
+    capability: 'blueprint_variable',
+    target,
+    write: {
+      strategy,
+      ops,
+    },
+    constraints: {
+      allow_remove_referenced_variables: false,
+    },
+  } as TaskPlanStep;
+}
+
 function compileMemberVariableChange(rawEntry: unknown, path: string): BlueprintVariableCompiledOp {
   if (!isRecord(rawEntry)) {
     throwInvalidVariable(path);
@@ -1810,6 +1859,19 @@ function compileMemberVariableChange(rawEntry: unknown, path: string): Blueprint
       }
     }
     return out as BlueprintVariableCompiledOp;
+  }
+
+  if (!('kind' in entry)) {
+    return omitUndefined({
+      op: 'ensure_member_variable',
+      name: getRequiredString(entry, 'name', `${path}.name`),
+      pin_type: variablePinType(entry, path),
+      category: entry['category'],
+      tooltip: entry['tooltip'],
+      flags: entry['flags'],
+      metadata: entry['metadata'],
+      name_collision: entry['name_collision'],
+    }) as BlueprintVariableCompiledOp;
   }
 
   const kind = getRequiredString(entry, 'kind', `${path}.kind`);
@@ -1839,6 +1901,25 @@ function compileMemberVariableChange(rawEntry: unknown, path: string): Blueprint
     };
   }
   throwUnsupportedVariableKind(kind, `${path}.kind`, ['ensure_member_variable', 'configure_member_variable', 'remove_member_variable']);
+}
+
+function compileMemberDefaultFromVariableEntry(rawEntry: unknown, path: string): BlueprintVariableCompiledOp | undefined {
+  if (!isRecord(rawEntry) || !Object.hasOwn(rawEntry, 'default')) {
+    return undefined;
+  }
+  const kind = rawEntry['kind'];
+  const op = rawEntry['op'];
+  if (
+    (kind !== undefined && kind !== 'ensure_member_variable') ||
+    (op !== undefined && op !== 'ensure_member_variable')
+  ) {
+    return undefined;
+  }
+  return {
+    op: 'set_member_default',
+    name: getRequiredString(rawEntry, 'name', `${path}.name`),
+    value: literalValue(rawEntry['default']),
+  };
 }
 
 function compileMemberDefaultChange(rawEntry: unknown, path: string): BlueprintVariableCompiledOp {
@@ -1895,7 +1976,10 @@ function compileLocalVariableChange(rawEntry: unknown, functionName: string, pat
 function variablePinType(entry: Record<string, unknown>, path: string): Record<string, unknown> {
   if (isRecord(entry['pin_type'])) return entry['pin_type'];
   if (isRecord(entry['variable_type'])) return entry['variable_type'];
-  throwMissingVariableType(`${path}.variable_type`);
+  if (typeof entry['type'] === 'string' && entry['type'].trim().length > 0) {
+    return { category: entry['type'] };
+  }
+  throwMissingVariableType(`${path}.type`);
 }
 
 function requiredNonEmptyArray(record: Record<string, unknown>, field: string, path: string): unknown[] {
@@ -1925,7 +2009,7 @@ function throwMissingVariableType(path: string): never {
     {
       code: 'missing_variable_pin_type',
       path,
-      message: 'Provide variable_type, for example {"category":"bool"}.',
+      message: 'Provide type or variable_type, for example {"category":"bool"}.',
     },
   ]);
 }

@@ -2,6 +2,7 @@
 
 #include "UI/Review/SBlueprintHelperReviewPanel.h"
 
+#include "AssetRegistry/AssetRegistryModule.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraphUtilities.h"
@@ -11,6 +12,8 @@
 #include "GraphEditor.h"
 #include "HAL/PlatformApplicationMisc.h"
 #include "Misc/DateTime.h"
+#include "Misc/PackageName.h"
+#include "Modules/ModuleManager.h"
 #include "SKismetInspector.h"
 #include "SMyBlueprint.h"
 #include "Systems/Review/BlueprintHelperReviewActionService.h"
@@ -57,6 +60,72 @@ public:
 		return false;
 	}
 
+	static FString MakeReviewPackageNameFromAssetPath(const FString& AssetPath)
+	{
+		if (AssetPath.IsEmpty())
+		{
+			return FString();
+		}
+		if (FPackageName::IsValidObjectPath(AssetPath))
+		{
+			return FPackageName::ObjectPathToPackageName(AssetPath);
+		}
+
+		FString PackageName = AssetPath;
+		int32 SubObjectIndex = INDEX_NONE;
+		if (PackageName.FindChar(TEXT(':'), SubObjectIndex))
+		{
+			PackageName = PackageName.Left(SubObjectIndex);
+		}
+
+		int32 ObjectIndex = INDEX_NONE;
+		if (PackageName.FindChar(TEXT('.'), ObjectIndex))
+		{
+			PackageName = PackageName.Left(ObjectIndex);
+		}
+		return PackageName;
+	}
+
+	static FString MakeReviewObjectPathFromAssetPath(const FString& AssetPath)
+	{
+		if (FPackageName::IsValidObjectPath(AssetPath))
+		{
+			return AssetPath;
+		}
+
+		const FString PackageName = MakeReviewPackageNameFromAssetPath(AssetPath);
+		if (!FPackageName::IsValidLongPackageName(PackageName))
+		{
+			return AssetPath;
+		}
+		return FString::Printf(
+			TEXT("%s.%s"),
+			*PackageName,
+			*FPackageName::GetLongPackageAssetName(PackageName));
+	}
+
+	static bool DoesReviewPackageContainBlueprintAsset(const FString& PackageName)
+	{
+		FAssetRegistryModule& AssetRegistryModule =
+			FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+
+		TArray<FAssetData> Assets;
+		AssetRegistryModule.Get().GetAssetsByPackageName(FName(*PackageName), Assets, false);
+		if (Assets.Num() == 0)
+		{
+			return true;
+		}
+
+		for (const FAssetData& Asset : Assets)
+		{
+			if (Asset.IsInstanceOf(UBlueprint::StaticClass()))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
 	static UBlueprint* LoadReviewBlueprintAsset(const FString& AssetPath)
 	{
 		if (AssetPath.IsEmpty())
@@ -64,18 +133,30 @@ public:
 			return nullptr;
 		}
 
-		if (UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath))
+		const FString ObjectPath = MakeReviewObjectPathFromAssetPath(AssetPath);
+		if (UBlueprint* Blueprint = FindObject<UBlueprint>(nullptr, *ObjectPath))
 		{
 			return Blueprint;
 		}
-
-		FString PackagePath;
-		FString AssetName;
-		if (AssetPath.Split(TEXT("/"), &PackagePath, &AssetName, ESearchCase::CaseSensitive, ESearchDir::FromEnd)
-			&& !AssetName.Contains(TEXT(".")))
+		if (ObjectPath != AssetPath)
 		{
-			const FString ObjectPath = FString::Printf(TEXT("%s/%s.%s"), *PackagePath, *AssetName, *AssetName);
-			return LoadObject<UBlueprint>(nullptr, *ObjectPath);
+			if (UBlueprint* Blueprint = FindObject<UBlueprint>(nullptr, *AssetPath))
+			{
+				return Blueprint;
+			}
+		}
+
+		const FString PackageName = MakeReviewPackageNameFromAssetPath(AssetPath);
+		if (!FPackageName::IsValidLongPackageName(PackageName)
+			|| !FPackageName::DoesPackageExist(PackageName)
+			|| !DoesReviewPackageContainBlueprintAsset(PackageName))
+		{
+			return nullptr;
+		}
+
+		if (UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *ObjectPath))
+		{
+			return Blueprint;
 		}
 
 		return nullptr;
@@ -1113,9 +1194,9 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildReadonlyComponentsWidget()
 {
 	if (UBlueprint* Blueprint = ReviewBlueprint.Get())
 	{
-		if (Blueprint->GeneratedClass)
+		if (Blueprint->GeneratedClass && Blueprint->GeneratedClass->IsChildOf(AActor::StaticClass()))
 		{
-			if (AActor* ActorCDO = Blueprint->GeneratedClass->GetDefaultObject<AActor>())
+			if (AActor* ActorCDO = Cast<AActor>(Blueprint->GeneratedClass->GetDefaultObject()))
 			{
 				return SNew(SSubobjectBlueprintEditor)
 					.ObjectContext(ActorCDO)

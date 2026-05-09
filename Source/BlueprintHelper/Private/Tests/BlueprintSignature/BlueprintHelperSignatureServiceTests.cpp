@@ -133,7 +133,37 @@ public:
 			return nullptr;
 		}
 
-		return FBlueprintEditorUtils::FindOverrideForFunction(Blueprint, SignatureClass, EventFName);
+		if (UK2Node_Event* ExistingEvent = FBlueprintEditorUtils::FindOverrideForFunction(Blueprint, SignatureClass, EventFName))
+		{
+			return ExistingEvent;
+		}
+
+		for (UEdGraph* Graph : Blueprint->UbergraphPages)
+		{
+			if (!Graph)
+			{
+				continue;
+			}
+
+			for (UEdGraphNode* Node : Graph->Nodes)
+			{
+				UK2Node_Event* EventNode = Cast<UK2Node_Event>(Node);
+				if (!EventNode ||
+					!EventNode->bOverrideFunction ||
+					EventNode->EventReference.GetMemberName() != EventFName)
+				{
+					continue;
+				}
+
+				const UClass* MemberParentClass = EventNode->EventReference.GetMemberParentClass(EventNode->GetBlueprintClassFromNode());
+				if (MemberParentClass && MemberParentClass->IsChildOf(SignatureClass))
+				{
+					return EventNode;
+				}
+			}
+		}
+
+		return nullptr;
 	}
 
 	static bool HasUserDefinedPin(UK2Node_CustomEvent* EventNode, const FString& PinName)

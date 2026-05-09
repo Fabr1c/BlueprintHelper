@@ -1398,6 +1398,48 @@ describe('TaskSpec Blueprint Variables compiler', () => {
     });
   });
 
+  it('compiles independent variable shorthand with defaults like composite variables', () => {
+    const plan = compileTaskSpecToTaskPlan(TaskSpecSchema.parse(makeVariableTaskSpec({
+      behavior: {
+        variable_strategy: 'member_variables',
+        variables: [
+          {
+            name: 'SmokeHealth',
+            type: 'float',
+            default: 100,
+            category: 'BHStats',
+          },
+        ],
+      },
+    })));
+
+    assert.equal(plan.steps.length, 2);
+    const variableStep = plan.steps[0] as Record<string, unknown>;
+    const defaultStep = plan.steps[1] as Record<string, unknown>;
+    assert.deepEqual(variableStep['write'], {
+      strategy: 'member_variables',
+      ops: [
+        {
+          op: 'ensure_member_variable',
+          name: 'SmokeHealth',
+          pin_type: { category: 'float' },
+          category: 'BHStats',
+        },
+      ],
+    });
+    assert.deepEqual(defaultStep['write'], {
+      strategy: 'member_defaults',
+      ops: [
+        {
+          op: 'set_member_default',
+          name: 'SmokeHealth',
+          value: 100,
+        },
+      ],
+    });
+    assert.deepEqual(defaultStep['depends_on'], ['step_001']);
+  });
+
   it('compiles member defaults and local variable changes into structured blueprint_variable IR', () => {
     const defaultsPlan = compileTaskSpecToTaskPlan(TaskSpecSchema.parse(makeVariableTaskSpec({
       behavior: {
