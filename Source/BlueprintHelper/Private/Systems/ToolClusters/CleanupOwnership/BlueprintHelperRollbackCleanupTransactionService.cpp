@@ -5,6 +5,7 @@
 #include "Systems/Transactions/BlueprintHelperTransactionJournalService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
 #include "Shared/GraphWrite/BlueprintHelperAppendGraphTypes.h"
+#include "Systems/Debug/BlueprintHelperDebugEntryService.h"
 
 #include "Engine/Blueprint.h"
 #include "EdGraph/EdGraph.h"
@@ -22,8 +23,11 @@
 
 FBlueprintHelperRollbackCleanupTransactionService::FBlueprintHelperRollbackCleanupTransactionService(
 	const FBlueprintHelperGraphResolver& InResolver,
-	const FBlueprintHelperTransactionJournalService& InJournalService)
-	: Resolver(InResolver), JournalService(InJournalService)
+	const FBlueprintHelperTransactionJournalService& InJournalService,
+	const FBlueprintHelperDebugEntryService* InDebugEntryService)
+	: Resolver(InResolver)
+	, JournalService(InJournalService)
+	, DebugEntryService(InDebugEntryService)
 {
 }
 
@@ -286,15 +290,57 @@ FBlueprintHelperToolResultBase FBlueprintHelperRollbackCleanupTransactionService
 		E.Message = Pre.Conflicts.Num() > 0 ? Pre.Conflicts[0].Message : TEXT("Preflight 未通过。");
 		E.bRetryable = false;
 		E.RollbackResult = EBlueprintHelperRollbackResult::NotNeeded;
-		return FBlueprintHelperToolResultBuilder::Failure(TEXT("rollback_cleanup_transaction"), TraceId, E);
+		FBlueprintHelperToolResultBase Failure = FBlueprintHelperToolResultBuilder::Failure(TEXT("rollback_cleanup_transaction"), TraceId, E);
+		if (DebugEntryService)
+		{
+			FBlueprintHelperDebugEntryEventInput DebugInput;
+			DebugInput.SourceLayer = TEXT("cleanup_ownership");
+			DebugInput.Source = TEXT("transaction_rollback_failure");
+			DebugInput.Stage = TEXT("preflight");
+			DebugInput.AssetPaths.Add(Request.AssetPath.IsEmpty() ? Pre.SourceAssetPath : Request.AssetPath);
+			if (!Request.TransactionId.IsEmpty())
+			{
+				FBlueprintHelperDebugTransactionLink TransactionLink;
+				TransactionLink.TransactionId = Request.TransactionId;
+				TransactionLink.Role = TEXT("rollback_target");
+				TransactionLink.Source = TEXT("cleanup_ownership");
+				TransactionLink.Summary = TEXT("transaction targeted by rollback preflight");
+				DebugInput.TransactionLinks.Add(TransactionLink);
+			}
+			DebugInput.RecommendedNext = TEXT("inspect_rollback_preflight");
+			DebugEntryService->AttachDebugCaseToFailureBestEffort(Failure, DebugInput);
+		}
+		return Failure;
 	}
 
 	// 重新加载 Journal 获取 rollback_data
 	TSharedPtr<FJsonObject> Record;
 	FString LoadErr;
 	if (!LoadJournalRecord(Request.TransactionId, Record, LoadErr))
-		return FBlueprintHelperToolResultBuilder::Failure(TEXT("rollback_cleanup_transaction"), TraceId,
+	{
+		FBlueprintHelperToolResultBase Failure = FBlueprintHelperToolResultBuilder::Failure(TEXT("rollback_cleanup_transaction"), TraceId,
 			{TEXT("transaction_not_found"), EBlueprintHelperToolStage::ResolveTarget, LoadErr});
+		if (DebugEntryService)
+		{
+			FBlueprintHelperDebugEntryEventInput DebugInput;
+			DebugInput.SourceLayer = TEXT("cleanup_ownership");
+			DebugInput.Source = TEXT("transaction_rollback_failure");
+			DebugInput.Stage = TEXT("resolve_target");
+			DebugInput.AssetPaths.Add(Request.AssetPath);
+			if (!Request.TransactionId.IsEmpty())
+			{
+				FBlueprintHelperDebugTransactionLink TransactionLink;
+				TransactionLink.TransactionId = Request.TransactionId;
+				TransactionLink.Role = TEXT("rollback_target");
+				TransactionLink.Source = TEXT("cleanup_ownership");
+				TransactionLink.Summary = TEXT("transaction targeted by rollback resolve");
+				DebugInput.TransactionLinks.Add(TransactionLink);
+			}
+			DebugInput.RecommendedNext = TEXT("verify_transaction_id");
+			DebugEntryService->AttachDebugCaseToFailureBestEffort(Failure, DebugInput);
+		}
+		return Failure;
+	}
 
 	const FString NewTxId = JournalService.GenerateTransactionId();
 
@@ -369,9 +415,31 @@ FBlueprintHelperToolResultBase FBlueprintHelperRollbackCleanupTransactionService
 
 	FString JErr;
 	if (!JournalService.WriteAppendJournal(JRec, JErr))
-		return FBlueprintHelperToolResultBuilder::Failure(TEXT("rollback_cleanup_transaction"), TraceId,
+	{
+		FBlueprintHelperToolResultBase Failure = FBlueprintHelperToolResultBuilder::Failure(TEXT("rollback_cleanup_transaction"), TraceId,
 			{TEXT("journal_write_failed"), EBlueprintHelperToolStage::Execute, JErr,
 			 false, EBlueprintHelperRollbackResult::RolledBack});
+		if (DebugEntryService)
+		{
+			FBlueprintHelperDebugEntryEventInput DebugInput;
+			DebugInput.SourceLayer = TEXT("cleanup_ownership");
+			DebugInput.Source = TEXT("transaction_rollback_failure");
+			DebugInput.Stage = TEXT("execute");
+			DebugInput.AssetPaths.Add(Pre.SourceAssetPath);
+			if (!Request.TransactionId.IsEmpty())
+			{
+				FBlueprintHelperDebugTransactionLink TransactionLink;
+				TransactionLink.TransactionId = Request.TransactionId;
+				TransactionLink.Role = TEXT("rollback_target");
+				TransactionLink.Source = TEXT("cleanup_ownership");
+				TransactionLink.Summary = TEXT("transaction targeted by rollback execution");
+				DebugInput.TransactionLinks.Add(TransactionLink);
+			}
+			DebugInput.RecommendedNext = TEXT("inspect_transaction_journal");
+			DebugEntryService->AttachDebugCaseToFailureBestEffort(Failure, DebugInput);
+		}
+		return Failure;
+	}
 
 	// Success
 	FBlueprintHelperToolResultBase Success = FBlueprintHelperToolResultBuilder::Applied(

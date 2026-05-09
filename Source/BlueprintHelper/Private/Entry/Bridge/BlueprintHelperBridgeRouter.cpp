@@ -13,14 +13,12 @@
 #include "Systems/Debug/BlueprintHelperContextService.h"
 #include "Systems/Debug/BlueprintHelperAssetBrowseService.h"
 #include "Shared/Services/BlueprintHelperBlueprintStructureService.h"
-#include "Systems/ToolClusters/UMGWidget/BlueprintHelperWidgetService.h"
-#include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
-#include "Systems/ToolClusters/DataTable/BlueprintHelperDataTableService.h"
 #include "Systems/Debug/BlueprintHelperEditorCommandService.h"
 #include "Systems/Debug/BlueprintHelperRuntimeProfileService.h"
 #include "Shared/Debug/BlueprintHelperRuntimeProfileTypes.h"
 #include "Systems/Debug/BlueprintHelperDiagnosticsService.h"
 #include "Shared/Debug/BlueprintHelperDiagnosticsTypes.h"
+#include "Systems/Debug/BlueprintHelperDebugEntryService.h"
 #include "Shared/BlueprintHelperDependencyAnalysisTypes.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicMdReadService.h"
 #include "Shared/BlueprintHelperLogicMdTypes.h"
@@ -269,50 +267,6 @@ namespace
 		return true;
 	}
 
-	bool TryReadStringOption(
-		const TSharedPtr<FJsonObject>& Payload,
-		const TCHAR* FieldName,
-		const FString& DefaultValue,
-		FString& OutValue,
-		FString& OutError)
-	{
-		OutValue = DefaultValue;
-		if (!Payload.IsValid() || !Payload->HasField(FieldName))
-		{
-			return true;
-		}
-
-		if (!Payload->TryGetStringField(FieldName, OutValue) || OutValue.IsEmpty())
-		{
-			OutError = FString::Printf(TEXT("payload.%s 必须是非空字符串。"), FieldName);
-			return false;
-		}
-
-		return true;
-	}
-
-	bool TryReadBoolOption(
-		const TSharedPtr<FJsonObject>& Payload,
-		const TCHAR* FieldName,
-		bool& InOutValue,
-		FString& OutError)
-	{
-		if (!Payload.IsValid() || !Payload->HasField(FieldName))
-		{
-			return true;
-		}
-
-		bool bValue = false;
-		if (!Payload->TryGetBoolField(FieldName, bValue))
-		{
-			OutError = FString::Printf(TEXT("payload.%s 必须是布尔值。"), FieldName);
-			return false;
-		}
-
-		InOutValue = bValue;
-		return true;
-	}
-
 	EBlueprintHelperBridgeError ValidationCodeToBridgeError(const FString& Code)
 	{
 		if (Code == TEXT("unauthorized"))
@@ -463,127 +417,7 @@ namespace
 		return Stats;
 	}
 
-	TSharedRef<FJsonObject> MakeDiagnosticJsonArray(const FBlueprintHelperDiagnosticSet& Diagnostics)
-	{
-		TSharedRef<FJsonObject> Array = MakeShared<FJsonObject>();
-		TArray<TSharedPtr<FJsonValue>> DiagValues;
-		for (const FBlueprintHelperDiagnosticItem& Item : Diagnostics.Items)
-		{
-			TSharedRef<FJsonObject> DiagObj = MakeShared<FJsonObject>();
-			DiagObj->SetStringField(TEXT("severity"),
-				Item.Severity == EBlueprintHelperDiagnosticSeverity::Error ? TEXT("error") :
-				Item.Severity == EBlueprintHelperDiagnosticSeverity::Warning ? TEXT("warning") : TEXT("info"));
-			DiagObj->SetStringField(TEXT("message"), Item.Message);
-			if (!Item.Code.IsEmpty()) DiagObj->SetStringField(TEXT("code"), Item.Code);
-			if (!Item.Field.IsEmpty()) DiagObj->SetStringField(TEXT("field"), Item.Field);
-			DiagValues.Add(MakeShared<FJsonValueObject>(DiagObj));
-		}
-		Array->SetArrayField(TEXT("diagnostics"), DiagValues);
-		return Array;
-	}
-
-	/** 尝试从 JSON payload 读取 json 字段 — 支持 object 和 string */
-	bool TryReadJsonObjectOrString(
-		const TSharedPtr<FJsonObject>& Payload,
-		const TCHAR* FieldName,
-		TSharedPtr<FJsonObject>& OutJsonObject,
-		FString& OutJsonString,
-		FBlueprintHelperBridgeValidationError& OutError)
-	{
-		OutJsonObject.Reset();
-		OutJsonString.Empty();
-
-		if (!Payload.IsValid())
-		{
-			OutError.Code = TEXT("invalid_request");
-			OutError.Field = FString(TEXT("payload.")) + FieldName;
-			OutError.ExpectedType = TEXT("object 或 string");
-			OutError.ActualType = TEXT("missing");
-			OutError.Message = FString::Printf(TEXT("%s 缺失，需要 object 或 string。"), *OutError.Field);
-			return false;
-		}
-
-		const TSharedPtr<FJsonValue>* FoundValue = Payload->Values.Find(FieldName);
-		if (!FoundValue || !FoundValue->IsValid())
-		{
-			OutError.Code = TEXT("invalid_request");
-			OutError.Field = FString(TEXT("payload.")) + FieldName;
-			OutError.ExpectedType = TEXT("object 或 string");
-			OutError.ActualType = TEXT("missing");
-			OutError.Message = FString::Printf(TEXT("%s 缺失，需要 object 或 string。"), *OutError.Field);
-			return false;
-		}
-
-		const TSharedPtr<FJsonValue> Value = *FoundValue;
-		if (Value->Type == EJson::Object)
-		{
-			OutJsonObject = Value->AsObject();
-			return true;
-		}
-
-		if (Value->Type == EJson::String)
-		{
-			OutJsonString = Value->AsString();
-			return true;
-		}
-
-		OutError.Code = TEXT("invalid_request");
-		OutError.Field = FString(TEXT("payload.")) + FieldName;
-		OutError.ExpectedType = TEXT("object 或 string");
-		OutError.ActualType = JsonValueTypeToString(Value);
-		OutError.Message = FString::Printf(TEXT("%s 必须是 object 或 string，实际类型: %s。"), *OutError.Field, *OutError.ActualType);
-		return false;
-	}
-
-	// ─── Asset Factory 辅助函数 ───
-
-	/** 构建 AssetFactory 错误对象。*/
-	FBlueprintHelperToolError MakeAssetFactoryError(
-		const FString& Code, EBlueprintHelperToolStage Stage,
-		const FString& Message, bool bRetryable)
-	{
-		FBlueprintHelperToolError Error;
-		Error.Code = Code;
-		Error.Stage = Stage;
-		Error.Message = Message;
-		Error.bRetryable = bRetryable;
-		Error.RollbackResult = EBlueprintHelperRollbackResult::NotNeeded;
-		return Error;
-	}
-
-	/** 填充 ToolResultBase 。Asset Factory target/data/validation。*/
-	void BuildAssetFactoryResult(
-		FBlueprintHelperToolResultBase& Result,
-		const FBlueprintHelperAssetFactoryData& Data,
-		const FString& AssetPath,
-		EBlueprintHelperAssetType AssetType)
-	{
-		FBlueprintHelperTargetRef Target;
-		Target.AssetPath = AssetPath;
-		Target.TargetType = EBlueprintHelperTargetType::Asset;
-		// 根据 AssetType 设置 AssetClass
-		switch (AssetType)
-		{
-		case EBlueprintHelperAssetType::BlueprintClass:     Target.AssetClass = TEXT("Blueprint"); break;
-		case EBlueprintHelperAssetType::BlueprintInterface:  Target.AssetClass = TEXT("Blueprint"); break;
-		case EBlueprintHelperAssetType::Structure:           Target.AssetClass = TEXT("UserDefinedStruct"); break;
-		case EBlueprintHelperAssetType::InputAction:         Target.AssetClass = TEXT("InputAction"); break;
-		case EBlueprintHelperAssetType::InputMappingContext: Target.AssetClass = TEXT("InputMappingContext"); break;
-		case EBlueprintHelperAssetType::DataAsset:           Target.AssetClass = TEXT("DataAsset"); break;
-		case EBlueprintHelperAssetType::DataTable:           Target.AssetClass = TEXT("DataTable"); break;
-		default:                                             break;
-		}
-		Result.Target = Target;
-		Result.Data = Data.ToJson();
-
-		FBlueprintHelperValidationSummary Validation;
-		Validation.bShouldCompile = FBlueprintHelperAssetFactoryService::ShouldCompile(AssetType);
-		Validation.bShouldSave = FBlueprintHelperAssetFactoryService::ShouldSave(AssetType);
-		Validation.bCompiled = false;
-		Validation.bSaved = false;
-		Result.Validation = Validation;
-	}
-
+	// ─── reference context helpers ───
 	FBlueprintHelperToolError MakeReferenceContextError(
 		const FString& Code,
 		EBlueprintHelperToolStage Stage,
@@ -693,6 +527,7 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	const FBlueprintHelperEditorCommandService& InEditorCommand,
 	const FBlueprintHelperRuntimeProfileService& InRuntimeProfile,
 	const FBlueprintHelperDiagnosticsService& InDiagnostics,
+	const FBlueprintHelperDebugEntryService& InDebugEntryService,
 	const FBlueprintHelperLogicMdReadService& InLogicMdRead,
 	const FBlueprintHelperLogicJsonReadService& InLogicJsonRead,
 	const FBlueprintHelperAssetFactoryService& InAssetFactory,
@@ -722,9 +557,10 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	, EditorCommandService(InEditorCommand)
 	, RuntimeProfileService(InRuntimeProfile)
 	, DiagnosticsService(InDiagnostics)
+	, DebugEntryService(InDebugEntryService)
 	, LogicMdReadService(InLogicMdRead)
 	, LogicJsonReadService(InLogicJsonRead)
-	, AssetFactoryService(InAssetFactory)
+	, AssetFactoryRoutes(InAssetFactory)
 	, ComponentRoutes(InComponentService)
 	, ClassSettingsRoutes(InClassSettings)
 	, GraphWriteRoutes(
@@ -755,7 +591,8 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 		InRollbackCleanupService,
 		InConvertBlockService,
 		InCompileAssetService,
-		InAssetBrowse)
+		InAssetBrowse,
+		&InDebugEntryService)
 	, CompileAssetService(InCompileAssetService)
 	, TransactionQueryService(InTransactionQueryService)
 {
@@ -811,6 +648,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequestWithPl
 
 	BLUEPRINTHELPER_ROUTE("get_runtime_profile", Debug, HandleGetRuntimeProfile)
 	BLUEPRINTHELPER_ROUTE("diagnostics_runtime", Debug, HandleDiagnosticsRuntime)
+	BLUEPRINTHELPER_ROUTE("get_debug_case", Debug, HandleGetDebugCase)
 	BLUEPRINTHELPER_ROUTE("compile_blueprint", Debug, HandleCompileBlueprint)
 	BLUEPRINTHELPER_ROUTE("compile_blueprint_asset", Debug, HandleCompileBlueprintAsset)
 
@@ -871,7 +709,11 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequestWithPl
 	BLUEPRINTHELPER_ROUTE("exec_console_command", EditorCommand, HandleExecConsoleCommand)
 	BLUEPRINTHELPER_ROUTE("close_editor", EditorCommand, HandleCloseEditor)
 
-	BLUEPRINTHELPER_ROUTE("create_asset", AssetFactory, HandleCreateAsset)
+	if (RoutePlan.Cluster == EBlueprintHelperBridgeRouteCluster::AssetFactory &&
+		FBlueprintHelperAssetFactoryBridgeRoutes::IsAssetFactoryCommand(Request.Command))
+	{
+		return AssetFactoryRoutes.HandleRequest(Request);
+	}
 
 	if (RoutePlan.Cluster == EBlueprintHelperBridgeRouteCluster::Component &&
 		FBlueprintHelperComponentBridgeRoutes::IsComponentCommand(Request.Command))
@@ -906,346 +748,12 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequestWithPl
 
 #undef BLUEPRINTHELPER_ROUTE
 
-	if (Request.Command == TEXT("get_rule_markdown"))
-	{
-		return HandleGetRuleMarkdown(Request);
-	}
-	if (Request.Command == TEXT("get_editor_context"))
-	{
-		return HandleGetEditorContext(Request);
-	}
-	if (Request.Command == TEXT("get_runtime_profile"))
-	{
-		return HandleGetRuntimeProfile(Request);
-	}
-	if (Request.Command == TEXT("diagnostics_runtime"))
-	{
-		return HandleDiagnosticsRuntime(Request);
-	}
-	if (Request.Command == TEXT("read_reference_context"))
-	{
-		return HandleReadReferenceContext(Request);
-	}
-	if (Request.Command == TEXT("read_blueprint_logic_md"))
-	{
-		return HandleReadBlueprintLogicMd(Request);
-	}
-	if (Request.Command == TEXT("read_blueprint_logic_json"))
-	{
-		return HandleReadBlueprintLogicJson(Request);
-	}
-	if (Request.Command == TEXT("validate_json"))
-	{
-		return HandleValidateJson(Request);
-	}
-	if (Request.Command == TEXT("export_to_json"))
-	{
-		return HandleExportToJson(Request);
-	}
-	if (Request.Command == TEXT("export_logic"))
-	{
-		return HandleExportLogic(Request);
-	}
-	if (Request.Command == TEXT("import_json"))
-	{
-		return HandleImportJson(Request);
-	}
-	if (Request.Command == TEXT("import_agent_graph"))
-	{
-		return HandleImportAgentGraph(Request);
-	}
-	if (Request.Command == TEXT("compile_blueprint"))
-	{
-		return HandleCompileBlueprint(Request);
-	}
-	if (Request.Command == TEXT("open_asset"))
-	{
-		return HandleOpenAsset(Request);
-	}
-	if (Request.Command == TEXT("list_assets"))
-	{
-		return HandleListAssets(Request);
-	}
-	if (Request.Command == TEXT("search_assets"))
-	{
-		return HandleSearchAssets(Request);
-	}
-	if (Request.Command == TEXT("save_asset"))
-	{
-		return HandleSaveAsset(Request);
-	}
-	if (Request.Command == TEXT("get_asset_info"))
-	{
-		return HandleGetAssetInfo(Request);
-	}
-	// ─── Phase 5: 蓝图结构操作 ───
-	if (Request.Command == TEXT("list_graphs"))
-	{
-		return HandleListGraphs(Request);
-	}
-	// ─── Blueprint Variable Service (new commands) ───
-	if (Request.Command == TEXT("read_blueprint_member_variables"))
-		return HandleReadMemberVariables(Request);
-	if (Request.Command == TEXT("add_blueprint_member_variable"))
-		return HandleAddMemberVariable(Request);
-	if (Request.Command == TEXT("add_blueprint_member_variables"))
-		return HandleAddMemberVariables(Request);
-	if (Request.Command == TEXT("set_blueprint_member_variable_properties"))
-		return HandleSetMemberVariableProperties(Request);
-	if (Request.Command == TEXT("remove_blueprint_member_variable"))
-		return HandleRemoveMemberVariable(Request);
-	if (Request.Command == TEXT("remove_blueprint_member_variables"))
-		return HandleRemoveMemberVariables(Request);
-	if (Request.Command == TEXT("read_blueprint_member_defaults"))
-		return HandleReadMemberDefaults(Request);
-	if (Request.Command == TEXT("set_blueprint_member_default"))
-		return HandleSetMemberDefault(Request);
-	if (Request.Command == TEXT("set_blueprint_member_defaults"))
-		return HandleSetMemberDefaults(Request);
-	if (Request.Command == TEXT("read_blueprint_local_variables"))
-		return HandleReadLocalVariables(Request);
-	if (Request.Command == TEXT("add_blueprint_local_variable"))
-		return HandleAddLocalVariable(Request);
-	if (Request.Command == TEXT("add_blueprint_local_variables"))
-		return HandleAddLocalVariables(Request);
-	if (Request.Command == TEXT("set_blueprint_local_variable_properties"))
-		return HandleSetLocalVariableProperties(Request);
-	if (Request.Command == TEXT("remove_blueprint_local_variable"))
-		return HandleRemoveLocalVariable(Request);
-	if (Request.Command == TEXT("remove_blueprint_local_variables"))
-		return HandleRemoveLocalVariables(Request);
-	// ─── (legacy commands, migrated to new service) ───
-	if (Request.Command == TEXT("list_variables"))
-	{
-		return HandleListVariables(Request);
-	}
-	if (Request.Command == TEXT("list_event_dispatchers"))
-	{
-		return HandleListEventDispatchers(Request);
-	}
-	if (Request.Command == TEXT("add_variable"))
-	{
-		return HandleAddVariable(Request);
-	}
-	if (Request.Command == TEXT("remove_variable"))
-	{
-		return HandleRemoveVariable(Request);
-	}
-	if (Request.Command == TEXT("add_graph"))
-	{
-		return HandleAddGraph(Request);
-	}
-	if (Request.Command == TEXT("remove_graph"))
-	{
-		return HandleRemoveGraph(Request);
-	}
-	if (Request.Command == TEXT("add_event_dispatcher"))
-	{
-		return HandleAddEventDispatcher(Request);
-	}
-	if (Request.Command == TEXT("delete_nodes"))
-	{
-		return HandleDeleteNodes(Request);
-	}
-	// ─── Phase 6: UMG Widget 操作 ───
-	if (Request.Command == TEXT("get_widget_tree"))
-	{
-		return HandleGetWidgetTree(Request);
-	}
-	if (Request.Command == TEXT("add_widget"))
-	{
-		return HandleAddWidget(Request);
-	}
-	if (Request.Command == TEXT("remove_widget"))
-	{
-		return HandleRemoveWidget(Request);
-	}
-	if (Request.Command == TEXT("move_widget"))
-	{
-		return HandleMoveWidget(Request);
-	}
-	if (Request.Command == TEXT("get_widget_properties"))
-	{
-		return HandleGetWidgetProperties(Request);
-	}
-	if (Request.Command == TEXT("set_widget_property"))
-	{
-		return HandleSetWidgetProperty(Request);
-	}
-	// ─── Phase 7: DataAsset & DataTable 操作 ───
-	if (Request.Command == TEXT("get_object_properties"))
-	{
-		return HandleGetObjectProperties(Request);
-	}
-	if (Request.Command == TEXT("set_object_property"))
-	{
-		return HandleSetObjectProperty(Request);
-	}
-	if (Request.Command == TEXT("get_datatable_rows"))
-	{
-		return HandleGetDataTableRows(Request);
-	}
-	if (Request.Command == TEXT("add_datatable_row"))
-	{
-		return HandleAddDataTableRow(Request);
-	}
-	if (Request.Command == TEXT("update_datatable_row"))
-	{
-		return HandleUpdateDataTableRow(Request);
-	}
-	if (Request.Command == TEXT("delete_datatable_row"))
-	{
-		return HandleDeleteDataTableRow(Request);
-	}
-	// ─── Phase 8: 编辑器命。───
-	if (Request.Command == TEXT("undo"))
-	{
-		return HandleUndo(Request);
-	}
-	if (Request.Command == TEXT("redo"))
-	{
-		return HandleRedo(Request);
-	}
-	if (Request.Command == TEXT("play_in_editor"))
-	{
-		return HandlePlayInEditor(Request);
-	}
-	if (Request.Command == TEXT("stop_pie"))
-	{
-		return HandleStopPIE(Request);
-	}
-	if (Request.Command == TEXT("create_asset"))
-	{
-		return HandleCreateAsset(Request);
-	}
-	if (Request.Command == TEXT("read_components"))
-	{
-		return HandleReadComponents(Request);
-	}
-	if (Request.Command == TEXT("add_component"))
-	{
-		return HandleAddComponent(Request);
-	}
-	if (Request.Command == TEXT("set_component_property"))
-	{
-		return HandleSetComponentProperty(Request);
-	}
-	if (Request.Command == TEXT("set_component_properties"))
-	{
-		return HandleSetComponentProperties(Request);
-	}
-	if (Request.Command == TEXT("remove_component"))
-	{
-		return HandleRemoveComponent(Request);
-	}
-	if (Request.Command == TEXT("create_blueprint"))
-	{
-		return HandleCreateBlueprint(Request);
-	}
-	if (Request.Command == TEXT("exec_console_command"))
-	{
-		return HandleExecConsoleCommand(Request);
-	}
-	if (Request.Command == TEXT("close_editor"))
-	{
-		return HandleCloseEditor(Request);
-	}
-
-	// ─── Phase 9: Blueprint Class Settings ───
-	if (Request.Command == TEXT("read_class_settings"))
-	{
-		return HandleReadClassSettings(Request);
-	}
-	if (Request.Command == TEXT("add_implemented_interface"))
-	{
-		return HandleAddImplementedInterface(Request);
-	}
-	if (Request.Command == TEXT("add_implemented_interfaces"))
-	{
-		return HandleAddImplementedInterfaces(Request);
-	}
-	if (Request.Command == TEXT("remove_implemented_interface"))
-	{
-		return HandleRemoveImplementedInterface(Request);
-	}
-	if (Request.Command == TEXT("remove_implemented_interfaces"))
-	{
-		return HandleRemoveImplementedInterfaces(Request);
-	}
-	if (Request.Command == TEXT("set_class_default_property"))
-	{
-		return HandleSetClassDefaultProperty(Request);
-	}
-	if (Request.Command == TEXT("set_class_default_properties"))
-	{
-		return HandleSetClassDefaultProperties(Request);
-	}
-	// ─── Task Runtime ───
-	if (Request.Command == TEXT("preview_task_plan"))
-	{
-		return HandlePreviewTaskPlan(Request);
-	}
-	if (Request.Command == TEXT("execute_task_plan"))
-	{
-		return HandleExecuteTaskPlan(Request);
-	}
-	if (Request.Command == TEXT("get_task_run_journal"))
-	{
-		return HandleGetTaskRunJournal(Request);
-	}
-	// ─── AppendBlueprintGraph ───
-	if (Request.Command == TEXT("append_blueprint_graph"))
-	{
-		return HandleAppendBlueprintGraph(Request);
-	}
-	// ─── ReplaceBlueprintGraph ───
-	if (Request.Command == TEXT("replace_blueprint_graph"))
-	{
-		return HandleReplaceBlueprintGraph(Request);
-	}
-	// ─── PatchBlueprintGraph ───
-	if (Request.Command == TEXT("patch_blueprint_graph"))
-	{
-		return HandlePatchBlueprintGraph(Request);
-	}
-	// ─── MergeBlueprintGraph ───
-	if (Request.Command == TEXT("merge_blueprint_graph"))
-	{
-		return HandleMergeBlueprintGraph(Request);
-	}
-	// ─── CleanupBlueprintHelperBlock ───
-	if (Request.Command == TEXT("cleanup_blueprint_helper_block"))
-	{
-		return HandleCleanupBlueprintHelperBlock(Request);
-	}
-	// ─── RollbackCleanupTransaction ───
-	if (Request.Command == TEXT("rollback_cleanup_transaction"))
-	{
-		return HandleRollbackCleanupTransaction(Request);
-	}
-	// ─── ConvertBlockToUserOwned ───
-	if (Request.Command == TEXT("convert_blueprint_helper_block_to_user_owned"))
-	{
-		return HandleConvertBlockToUserOwned(Request);
-	}
-	// ─── CompileBlueprintAsset ───
-	if (Request.Command == TEXT("compile_blueprint_asset"))
-	{
-		return HandleCompileBlueprintAsset(Request);
-	}
-	// ─── Transaction Query ───
-	if (Request.Command == TEXT("list_blueprint_helper_transactions"))
-	{
-		return HandleListTransactions(Request);
-	}
-	if (Request.Command == TEXT("read_blueprint_helper_transaction"))
-	{
-		return HandleReadTransaction(Request);
-	}
 	return FBlueprintHelperBridgeResponse::Error(
 		Request.RequestId,
 		EBlueprintHelperBridgeError::UnknownCommand,
-		FString::Printf(TEXT("未知命令: %s"), *Request.Command));
+		FString::Printf(TEXT("RoutePlan cluster %s did not handle command: %s"),
+			FBlueprintHelperBridgeRoutePlanner::GetClusterName(RoutePlan.Cluster),
+			*Request.Command));
 }
 
 // ─── get_rule_markdown ───
@@ -1317,6 +825,20 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleDiagnosticsRu
 }
 
 // ─── read_blueprint_logic_md ───
+
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleGetDebugCase(
+	const FBlueprintHelperBridgeRequest& Req) const
+{
+	const FBlueprintHelperToolResultBase Result = DebugEntryService.GetDebugCaseSummaryResult(Req.Payload);
+	auto Resp = Result.bOk
+		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
+		: FBlueprintHelperBridgeResponse::Error(
+			Req.RequestId,
+			EBlueprintHelperBridgeError::ExecutionFailed,
+			Result.Error.IsSet() ? Result.Error->Message : TEXT("get_debug_case failed."));
+	Resp.Result = Result.ToJson();
+	return Resp;
+}
 
 // --- read_reference_context ---
 
@@ -2050,62 +1572,6 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleGetTaskRunJou
 	return Resp;
 }
 
-// ─── append_blueprint_graph ───
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleAppendBlueprintGraph(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	return GraphWriteRoutes.HandleRequest(Req);
-}
-
-// ─── replace_blueprint_graph ───
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReplaceBlueprintGraph(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	return GraphWriteRoutes.HandleRequest(Req);
-}
-
-// ─── patch_blueprint_graph ───
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandlePatchBlueprintGraph(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	return GraphWriteRoutes.HandleRequest(Req);
-}
-
-// ─── merge_blueprint_graph ───
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleMergeBlueprintGraph(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	return GraphWriteRoutes.HandleRequest(Req);
-}
-
-// ─── cleanup_blueprint_helper_block ───
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleCleanupBlueprintHelperBlock(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	return CleanupOwnershipRoutes.HandleRequest(Req);
-}
-
-// ─── rollback_cleanup_transaction ───
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRollbackCleanupTransaction(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	return CleanupOwnershipRoutes.HandleRequest(Req);
-}
-
-// ─── convert_blueprint_helper_block_to_user_owned ───
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleConvertBlockToUserOwned(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	return CleanupOwnershipRoutes.HandleRequest(Req);
-}
-
 // ─── compile_blueprint_asset ───
 
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleCompileBlueprintAsset(
@@ -2391,6 +1857,16 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleSaveAsset(
 		Err.bRetryable = true;
 		FBlueprintHelperToolResultBase Fail = FBlueprintHelperToolResultBuilder::Failure(TEXT("save_asset"), TraceId, Err);
 		Fail.CustomTargetJson = Tgt;
+		FBlueprintHelperDebugEntryEventInput DebugInput;
+		DebugInput.SourceLayer = TEXT("debug");
+		DebugInput.Source = TEXT("save_failure");
+		DebugInput.Operation = TEXT("save_asset");
+		DebugInput.Stage = TEXT("execute");
+		DebugInput.AssetPaths.Add(AssetPath);
+		DebugInput.Error.Code = Err.Code;
+		DebugInput.Error.Message = Err.Message;
+		DebugInput.RecommendedNext = TEXT("verify_asset_checkout_or_path");
+		DebugEntryService.AttachDebugCaseToFailureBestEffort(Fail, DebugInput);
 		auto Resp = FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, SaveResult.ErrorMessage);
 		Resp.Result = Fail.ToJson();
 		return Resp;
@@ -2585,39 +2061,6 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRemoveVariabl
 	return Resp;
 }
 
-// ─── Blueprint Variable Service (new handlers) ───
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadMemberVariables(const FBlueprintHelperBridgeRequest& Req) const
-{ return BlueprintVariablesRoutes.HandleRequest(Req); }
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleAddMemberVariable(const FBlueprintHelperBridgeRequest& Req) const
-{ return BlueprintVariablesRoutes.HandleRequest(Req); }
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleAddMemberVariables(const FBlueprintHelperBridgeRequest& Req) const
-{ return BlueprintVariablesRoutes.HandleRequest(Req); }
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleSetMemberVariableProperties(const FBlueprintHelperBridgeRequest& Req) const
-{ return BlueprintVariablesRoutes.HandleRequest(Req); }
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRemoveMemberVariable(const FBlueprintHelperBridgeRequest& Req) const
-{ return BlueprintVariablesRoutes.HandleRequest(Req); }
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRemoveMemberVariables(const FBlueprintHelperBridgeRequest& Req) const
-{ return BlueprintVariablesRoutes.HandleRequest(Req); }
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadMemberDefaults(const FBlueprintHelperBridgeRequest& Req) const
-{ return BlueprintVariablesRoutes.HandleRequest(Req); }
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleSetMemberDefault(const FBlueprintHelperBridgeRequest& Req) const
-{ return BlueprintVariablesRoutes.HandleRequest(Req); }
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleSetMemberDefaults(const FBlueprintHelperBridgeRequest& Req) const
-{ return BlueprintVariablesRoutes.HandleRequest(Req); }
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadLocalVariables(const FBlueprintHelperBridgeRequest& Req) const
-{ return BlueprintVariablesRoutes.HandleRequest(Req); }
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleAddLocalVariable(const FBlueprintHelperBridgeRequest& Req) const
-{ return BlueprintVariablesRoutes.HandleRequest(Req); }
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleAddLocalVariables(const FBlueprintHelperBridgeRequest& Req) const
-{ return BlueprintVariablesRoutes.HandleRequest(Req); }
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleSetLocalVariableProperties(const FBlueprintHelperBridgeRequest& Req) const
-{ return BlueprintVariablesRoutes.HandleRequest(Req); }
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRemoveLocalVariable(const FBlueprintHelperBridgeRequest& Req) const
-{ return BlueprintVariablesRoutes.HandleRequest(Req); }
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRemoveLocalVariables(const FBlueprintHelperBridgeRequest& Req) const
-{ return BlueprintVariablesRoutes.HandleRequest(Req); }
-
 // ─── add_graph ───
 
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleAddGraph(
@@ -2779,104 +2222,6 @@ static FString GetRequiredStringField(const TSharedPtr<FJsonObject>& Payload, co
 	return Value;
 }
 
-// ─── get_widget_tree ───
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleGetWidgetTree(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	return UMGWidgetRoutes.HandleRequest(Req);
-}
-
-// ─── add_widget ───
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleAddWidget(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	return UMGWidgetRoutes.HandleRequest(Req);
-}
-
-// ─── remove_widget ───
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRemoveWidget(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	return UMGWidgetRoutes.HandleRequest(Req);
-}
-
-// ─── move_widget ───
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleMoveWidget(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	return UMGWidgetRoutes.HandleRequest(Req);
-}
-
-// ─── get_widget_properties ───
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleGetWidgetProperties(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	return UMGWidgetRoutes.HandleRequest(Req);
-}
-
-// ─── set_widget_property ───
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleSetWidgetProperty(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	return UMGWidgetRoutes.HandleRequest(Req);
-}
-
-// ══════════════════════════════════════════════════════════。// Phase 7 。DataAsset & DataTable 操作
-// ══════════════════════════════════════════════════════════。
-// ─── get_object_properties ───
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleGetObjectProperties(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	return ObjectPropertyRoutes.HandleRequest(Req);
-}
-
-// ─── set_object_property ───
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleSetObjectProperty(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	return ObjectPropertyRoutes.HandleRequest(Req);
-}
-
-// ─── get_datatable_rows ───
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleGetDataTableRows(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	return DataTableRoutes.HandleRequest(Req);
-}
-
-// ─── add_datatable_row ───
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleAddDataTableRow(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	return DataTableRoutes.HandleRequest(Req);
-}
-
-// ─── update_datatable_row ───
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleUpdateDataTableRow(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	return DataTableRoutes.HandleRequest(Req);
-}
-
-// ─── delete_datatable_row ───
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleDeleteDataTableRow(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	return DataTableRoutes.HandleRequest(Req);
-}
-
 // ══════════════════════════════════════════════════════════。// Phase 8: 编辑器命。// ══════════════════════════════════════════════════════════。
 // ─── undo ───
 
@@ -2948,155 +2293,6 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleStopPIE(
 	Resp.Result = MakeShared<FJsonObject>();
 	Resp.Result->SetStringField(TEXT("message"), Result.Message);
 	return Resp;
-}
-
-// ─── create_asset ───
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleCreateAsset(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	const TSharedPtr<FJsonObject> Payload = Req.Payload;
-
-	FString AssetPath;
-	FString AssetTypeStr;
-	FString ParentClass;
-	FString ValueType;
-	FString CollisionStr;
-
-	FBlueprintHelperBridgeValidationError ParseError;
-	if (!TryReadStringField(Payload, TEXT("asset_path"), true, AssetPath, ParseError)
-		|| !TryReadStringField(Payload, TEXT("asset_type"), true, AssetTypeStr, ParseError))
-	{
-		return ValidationErrorResponse(Req.RequestId, ParseError);
-	}
-
-	TryReadStringField(Payload, TEXT("parent_class"), false, ParentClass, ParseError);
-	TryReadStringField(Payload, TEXT("value_type"), false, ValueType, ParseError);
-	TryReadStringField(Payload, TEXT("collision"), false, CollisionStr, ParseError);
-
-	// 解析 asset_type
-	EBlueprintHelperAssetType AssetType = EBlueprintHelperAssetType::Unknown;
-	if (!FBlueprintHelperAssetFactoryService::TryNormalizeAssetTypeAndParent(AssetTypeStr, ParentClass, AssetType))
-	{
-		return FBlueprintHelperBridgeResponse::Error(
-			Req.RequestId, EBlueprintHelperBridgeError::InvalidRequest,
-			FString::Printf(TEXT("不支持的 asset_type: %s"), *AssetTypeStr));
-	}
-
-	// 解析 collision policy
-	EBlueprintHelperAssetCollisionPolicy Collision = EBlueprintHelperAssetCollisionPolicy::FailIfExists;
-	if (CollisionStr.Equals(TEXT("reuse_if_exists"), ESearchCase::IgnoreCase))
-		Collision = EBlueprintHelperAssetCollisionPolicy::ReuseIfExists;
-
-	// 调用 AssetFactoryService
-	FBlueprintHelperAssetFactoryData FactoryData = AssetFactoryService.CreateAsset(
-		AssetPath, AssetType, ParentClass, ValueType, Collision);
-
-	// 构建 ToolResultBase
-	const FString TraceId = FBlueprintHelperToolResultBuilder::GenerateTraceId();
-
-	// 检查创建结果
-	if (FactoryData.Asset.bAlreadyExisted)
-	{
-		if (FactoryData.Collision.Policy == EBlueprintHelperAssetCollisionPolicy::ReuseIfExists
-			&& FactoryData.Collision.bHandled)
-		{
-			// reuse_if_exists 命中同类。
-FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::NoOp(
-				TEXT("create_asset"), TraceId);
-			BuildAssetFactoryResult(Result, FactoryData, AssetPath, AssetType);
-			auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
-			Resp.Result = Result.ToJson();
-			return Resp;
-		}
-
-		if (FactoryData.Collision.Policy == EBlueprintHelperAssetCollisionPolicy::FailIfExists)
-		{
-			// fail_if_exists 冲突
-			FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Failure(
-				TEXT("create_asset"), TraceId,
-				MakeAssetFactoryError(TEXT("asset_already_exists"),
-					EBlueprintHelperToolStage::Preflight,
-					TEXT("Target asset already exists."), false));
-			BuildAssetFactoryResult(Result, FactoryData, AssetPath, AssetType);
-			auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
-			Resp.Result = Result.ToJson();
-			return Resp;
-		}
-
-		// reuse_if_exists 但类型不匹配
-		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Failure(
-			TEXT("create_asset"), TraceId,
-			MakeAssetFactoryError(TEXT("asset_type_mismatch"),
-				EBlueprintHelperToolStage::Preflight,
-				TEXT("Existing asset type does not match requested asset type."), false));
-		BuildAssetFactoryResult(Result, FactoryData, AssetPath, AssetType);
-		auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
-		Resp.Result = Result.ToJson();
-		return Resp;
-	}
-
-	if (!FactoryData.Asset.bCreated)
-	{
-		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Failure(
-			TEXT("create_asset"), TraceId,
-			MakeAssetFactoryError(TEXT("creation_failed"),
-				EBlueprintHelperToolStage::Execute,
-				TEXT("Failed to create asset."), false));
-		BuildAssetFactoryResult(Result, FactoryData, AssetPath, AssetType);
-		auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
-		Resp.Result = Result.ToJson();
-		return Resp;
-	}
-
-	// 成功
-	FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Applied(
-		TEXT("create_asset"), TraceId);
-	BuildAssetFactoryResult(Result, FactoryData, AssetPath, AssetType);
-
-	auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
-	Resp.Result = Result.ToJson();
-	return Resp;
-}
-
-// ─── read_components ───
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadComponents(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	return ComponentRoutes.HandleRequest(Req);
-}
-
-// ─── add_component ───
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleAddComponent(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	return ComponentRoutes.HandleRequest(Req);
-}
-
-// ─── set_component_property ───
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleSetComponentProperty(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	return ComponentRoutes.HandleRequest(Req);
-}
-
-// ─── set_component_properties ───
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleSetComponentProperties(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	return ComponentRoutes.HandleRequest(Req);
-}
-
-// ─── remove_component ───
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRemoveComponent(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	return ComponentRoutes.HandleRequest(Req);
 }
 
 // ─── create_blueprint ───
@@ -3189,114 +2385,4 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleCloseEditor(
 	Resp.Result = MakeShared<FJsonObject>();
 	Resp.Result->SetStringField(TEXT("message"), Result.Message);
 	return Resp;
-}
-
-// ─── Phase 9: Blueprint Class Settings ───
-
-static FBlueprintHelperBridgeResponse MakeToolResultResponse(
-	const FBlueprintHelperBridgeRequest& Req,
-	const FBlueprintHelperToolResultBase& Result)
-{
-	FBlueprintHelperBridgeResponse Resp = Result.bOk
-		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
-		: FBlueprintHelperBridgeResponse::Error(
-			Req.RequestId,
-			EBlueprintHelperBridgeError::ExecutionFailed,
-			Result.Error.IsSet() ? Result.Error->Message : TEXT("Blueprint Class Settings operation failed."));
-
-	Resp.Result = Result.ToJson();
-	return Resp;
-}
-
-static TArray<FString> ReadStringArrayField(
-	const TSharedPtr<FJsonObject>& Payload,
-	const TCHAR* FieldName)
-{
-	TArray<FString> Result;
-	const TArray<TSharedPtr<FJsonValue>>* Array = nullptr;
-	if (Payload.IsValid() && Payload->TryGetArrayField(FieldName, Array))
-	{
-		for (const TSharedPtr<FJsonValue>& Value : *Array)
-		{
-			FString Item;
-			if (Value.IsValid() && Value->TryGetString(Item))
-			{
-				Result.Add(Item);
-			}
-		}
-	}
-	return Result;
-}
-
-static TArray<FBlueprintHelperClassDefaultPropertySetting> ReadClassDefaultSettings(
-	const TSharedPtr<FJsonObject>& Payload)
-{
-	TArray<FBlueprintHelperClassDefaultPropertySetting> Settings;
-	const TArray<TSharedPtr<FJsonValue>>* Array = nullptr;
-	if (!Payload.IsValid() || !Payload->TryGetArrayField(TEXT("settings"), Array))
-	{
-		return Settings;
-	}
-
-	for (const TSharedPtr<FJsonValue>& ItemValue : *Array)
-	{
-		const TSharedPtr<FJsonObject>* Obj = nullptr;
-		if (!ItemValue.IsValid() || !ItemValue->TryGetObject(Obj) || !Obj || !Obj->IsValid())
-		{
-			continue;
-		}
-
-		FBlueprintHelperClassDefaultPropertySetting Setting;
-		(*Obj)->TryGetStringField(TEXT("property_path"), Setting.PropertyPath);
-		const TSharedPtr<FJsonValue>* Value = (*Obj)->Values.Find(TEXT("value"));
-		if (Value)
-		{
-			Setting.Value = *Value;
-		}
-		Settings.Add(MoveTemp(Setting));
-	}
-
-	return Settings;
-}
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadClassSettings(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	return ClassSettingsRoutes.HandleRequest(Req);
-}
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleAddImplementedInterface(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	return ClassSettingsRoutes.HandleRequest(Req);
-}
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleAddImplementedInterfaces(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	return ClassSettingsRoutes.HandleRequest(Req);
-}
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRemoveImplementedInterface(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	return ClassSettingsRoutes.HandleRequest(Req);
-}
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRemoveImplementedInterfaces(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	return ClassSettingsRoutes.HandleRequest(Req);
-}
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleSetClassDefaultProperty(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	return ClassSettingsRoutes.HandleRequest(Req);
-}
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleSetClassDefaultProperties(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	return ClassSettingsRoutes.HandleRequest(Req);
 }

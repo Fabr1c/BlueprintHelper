@@ -27,6 +27,8 @@
 #include "Systems/Debug/BlueprintHelperEditorCommandService.h"
 #include "Systems/Debug/BlueprintHelperRuntimeProfileService.h"
 #include "Systems/Debug/BlueprintHelperDiagnosticsService.h"
+#include "Systems/Debug/BlueprintHelperDebugCaseStoreService.h"
+#include "Systems/Debug/BlueprintHelperDebugEntryService.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicMdReadService.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicJsonReadService.h"
 #include "Systems/ToolClusters/AssetFactory/BlueprintHelperAssetFactoryService.h"
@@ -384,6 +386,8 @@ bool FBlueprintHelperBridgeExportEffectiveScopeTest::RunTest(const FString& Para
 	FBlueprintHelperEditorCommandService EditorCommandService;
 	FBlueprintHelperRuntimeProfileService RuntimeProfileService;
 	FBlueprintHelperDiagnosticsService DiagnosticsService;
+	FBlueprintHelperDebugCaseStoreService DebugCaseStoreService;
+	FBlueprintHelperDebugEntryService DebugEntryService(DebugCaseStoreService);
 	FBlueprintHelperLogicMdReadService LogicMdReadService;
 	FBlueprintHelperLogicJsonReadService LogicJsonReadService;
 	FBlueprintHelperAssetFactoryService AssetFactoryService;
@@ -427,6 +431,7 @@ bool FBlueprintHelperBridgeExportEffectiveScopeTest::RunTest(const FString& Para
 		EditorCommandService,
 		RuntimeProfileService,
 		DiagnosticsService,
+		DebugEntryService,
 		LogicMdReadService,
 		LogicJsonReadService,
 		AssetFactoryService,

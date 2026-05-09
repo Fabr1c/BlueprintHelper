@@ -5,6 +5,8 @@
 #include "CoreMinimal.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
 
+class FBlueprintHelperDebugEntryService;
+
 struct FBlueprintHelperReviewActionResult
 {
 	bool bSucceeded = false;
@@ -26,6 +28,9 @@ struct FBlueprintHelperReviewRejectOptions
 class BLUEPRINTHELPER_API FBlueprintHelperReviewActionService
 {
 public:
+	FBlueprintHelperReviewActionService();
+	explicit FBlueprintHelperReviewActionService(const FBlueprintHelperDebugEntryService* InDebugEntryService);
+
 	FBlueprintHelperReviewActionResult AcceptVisibleChange(
 		const FBlueprintHelperReviewVisibleChange& Change) const;
 
@@ -51,4 +56,14 @@ public:
 
 	FBlueprintHelperReviewActionResult ConvertOwnerBlock(
 		const FBlueprintHelperReviewConvertOwnerBlockRequest& Request) const;
+
+private:
+	void RecordRejectDebugCaseBestEffort(
+		FBlueprintHelperReviewRecord& Record,
+		const TArray<FString>& TargetKeys,
+		const FString& SourceTransactionId,
+		EBlueprintHelperReviewChangeStatus RejectStatus,
+		const FString& RejectMessage) const;
+
+	const FBlueprintHelperDebugEntryService* DebugEntryService = nullptr;
 };

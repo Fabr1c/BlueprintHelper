@@ -3,6 +3,7 @@
 #include "Entry/Bridge/BlueprintHelperBridgeServer.h"
 #include "Entry/Bridge/BlueprintHelperBridgeRouter.h"
 #include "Entry/Bridge/BlueprintHelperBridgeProtocol.h"
+#include "Systems/Debug/BlueprintHelperDebugEntryService.h"
 #include "Async/Async.h"
 #include "Common/TcpSocketBuilder.h"
 #include "Sockets.h"
@@ -10,8 +11,12 @@
 
 DEFINE_LOG_CATEGORY(LogBlueprintHelperBridge);
 
-FBlueprintHelperBridgeServer::FBlueprintHelperBridgeServer(FBlueprintHelperBridgeRouter& InRouter, int32 InPort)
+FBlueprintHelperBridgeServer::FBlueprintHelperBridgeServer(
+	FBlueprintHelperBridgeRouter& InRouter,
+	int32 InPort,
+	const FBlueprintHelperDebugEntryService* InDebugEntryService)
 	: Router(InRouter)
+	, DebugEntryService(InDebugEntryService)
 	, Port(InPort)
 {
 }
@@ -145,6 +150,11 @@ void FBlueprintHelperBridgeServer::HandleClient(FSocket* ClientSocket)
 		FString RequestJson;
 		if (!ReadMessage(ClientSocket, RequestJson))
 		{
+			RecordBridgeFailureBestEffort(
+				TEXT("bridge_transport_failure"),
+				TEXT("bridge"),
+				TEXT("transport_read_failed"),
+				TEXT("Bridge request frame could not be read."));
 			break;
 		}
 
@@ -169,6 +179,18 @@ void FBlueprintHelperBridgeServer::HandleClient(FSocket* ClientSocket)
 			}
 			else
 			{
+				if (DebugEntryService)
+				{
+					FBlueprintHelperDebugEntryEventInput DebugInput;
+					DebugInput.SourceLayer = TEXT("bridge");
+					DebugInput.Source = TEXT("malformed_bridge_request");
+					DebugInput.Operation = TEXT("bridge");
+					DebugInput.Stage = TEXT("parse_input");
+					DebugInput.Error.Code = TEXT("json_parse_failed");
+					DebugInput.Error.Message = TEXT("Bridge request JSON parse failed.");
+					DebugInput.RecommendedNext = TEXT("send_valid_bridge_request");
+					DebugEntryService->RecordEventBestEffort(DebugInput);
+				}
 				Resp = FBlueprintHelperBridgeResponse::Error(
 					TEXT(""), EBlueprintHelperBridgeError::InvalidRequest,
 					TEXT("请求 JSON 解析失败。"));
@@ -183,9 +205,43 @@ void FBlueprintHelperBridgeServer::HandleClient(FSocket* ClientSocket)
 
 		if (!WriteMessage(ClientSocket, ResponseJson))
 		{
+			RecordBridgeFailureBestEffort(
+				TEXT("bridge_transport_failure"),
+				TEXT("bridge"),
+				TEXT("transport_write_failed"),
+				TEXT("Bridge response frame could not be written."),
+				Req.IsSet() ? Req.GetValue().RequestId : FString());
 			break;
 		}
 	}
+}
+
+void FBlueprintHelperBridgeServer::RecordBridgeFailureBestEffort(
+	const FString& Source,
+	const FString& Stage,
+	const FString& Code,
+	const FString& Message,
+	const FString& RequestId) const
+{
+	if (!DebugEntryService)
+	{
+		return;
+	}
+
+	const FBlueprintHelperDebugEntryService* DebugService = DebugEntryService;
+	AsyncTask(ENamedThreads::GameThread, [DebugService, Source, Stage, Code, Message, RequestId]()
+	{
+		FBlueprintHelperDebugEntryEventInput DebugInput;
+		DebugInput.SourceLayer = TEXT("bridge");
+		DebugInput.Source = Source;
+		DebugInput.Operation = TEXT("bridge");
+		DebugInput.Stage = Stage;
+		DebugInput.TraceId = RequestId;
+		DebugInput.Error.Code = Code;
+		DebugInput.Error.Message = Message;
+		DebugInput.RecommendedNext = TEXT("retry_bridge_request");
+		DebugService->RecordEventBestEffort(DebugInput);
+	});
 }
 
 bool FBlueprintHelperBridgeServer::ReadMessage(FSocket* Socket, FString& OutJson) const
@@ -218,6 +274,11 @@ bool FBlueprintHelperBridgeServer::ReadMessage(FSocket* Socket, FString& OutJson
 	if (BodyLength == 0 || BodyLength > 16 * 1024 * 1024)
 	{
 		UE_LOG(LogBlueprintHelperBridge, Warning, TEXT("消息长度异常: %u"), BodyLength);
+		RecordBridgeFailureBestEffort(
+			TEXT("bridge_transport_failure"),
+			TEXT("bridge"),
+			TEXT("invalid_frame_length"),
+			FString::Printf(TEXT("Bridge frame length is invalid: %u."), BodyLength));
 		return false;
 	}
 

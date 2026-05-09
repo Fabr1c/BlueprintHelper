@@ -20,7 +20,7 @@ namespace
 		return Response;
 	}
 
-	TArray<FString> ReadStringArrayField(const TSharedPtr<FJsonObject>& Payload, const TCHAR* FieldName)
+	TArray<FString> ReadClassSettingsRouteStringArrayField(const TSharedPtr<FJsonObject>& Payload, const TCHAR* FieldName)
 	{
 		TArray<FString> Result;
 		const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;
@@ -40,7 +40,7 @@ namespace
 		return Result;
 	}
 
-	TArray<FBlueprintHelperClassDefaultPropertySetting> ReadClassDefaultSettings(
+	TArray<FBlueprintHelperClassDefaultPropertySetting> ReadClassSettingsRouteDefaultSettings(
 		const TSharedPtr<FJsonObject>& Payload)
 	{
 		TArray<FBlueprintHelperClassDefaultPropertySetting> Settings;
@@ -114,7 +114,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperClassSettingsBridgeRoutes::Handle
 			Request,
 			ClassSettingsService.AddImplementedInterfaces(
 				AssetPath,
-				ReadStringArrayField(Request.Payload, TEXT("interface_paths"))));
+				ReadClassSettingsRouteStringArrayField(Request.Payload, TEXT("interface_paths"))));
 	}
 	if (Request.Command == TEXT("remove_implemented_interface"))
 	{
@@ -133,7 +133,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperClassSettingsBridgeRoutes::Handle
 			Request,
 			ClassSettingsService.RemoveImplementedInterfaces(
 				AssetPath,
-				ReadStringArrayField(Request.Payload, TEXT("interface_paths"))));
+				ReadClassSettingsRouteStringArrayField(Request.Payload, TEXT("interface_paths"))));
 	}
 	if (Request.Command == TEXT("set_class_default_property"))
 	{
@@ -158,7 +158,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperClassSettingsBridgeRoutes::Handle
 			Request,
 			ClassSettingsService.SetClassDefaultProperties(
 				AssetPath,
-				ReadClassDefaultSettings(Request.Payload)));
+				ReadClassSettingsRouteDefaultSettings(Request.Payload)));
 	}
 
 	return FBlueprintHelperBridgeResponse::Error(

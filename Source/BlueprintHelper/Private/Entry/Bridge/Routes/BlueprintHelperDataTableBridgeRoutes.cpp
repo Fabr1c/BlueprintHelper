@@ -8,7 +8,7 @@
 
 namespace
 {
-	FString ReadStringField(const TSharedPtr<FJsonObject>& Payload, const TCHAR* FieldName)
+	FString ReadDataTableRouteStringField(const TSharedPtr<FJsonObject>& Payload, const TCHAR* FieldName)
 	{
 		FString Value;
 		if (Payload.IsValid())
@@ -18,7 +18,7 @@ namespace
 		return Value;
 	}
 
-	TArray<FString> ReadRowNameFilter(const TSharedPtr<FJsonObject>& Payload)
+	TArray<FString> ReadDataTableRouteRowNameFilter(const TSharedPtr<FJsonObject>& Payload)
 	{
 		TArray<FString> RowNames;
 		const TArray<TSharedPtr<FJsonValue>>* RowNameValues = nullptr;
@@ -38,7 +38,7 @@ namespace
 		return RowNames;
 	}
 
-	TMap<FString, FString> ReadFieldsObject(const TSharedPtr<FJsonObject>& Payload)
+	TMap<FString, FString> ReadDataTableRouteFieldsObject(const TSharedPtr<FJsonObject>& Payload)
 	{
 		TMap<FString, FString> Fields;
 		const TSharedPtr<FJsonObject>* FieldsObject = nullptr;
@@ -104,7 +104,7 @@ bool FBlueprintHelperDataTableBridgeRoutes::IsDataTableCommand(const FString& Co
 FBlueprintHelperBridgeResponse FBlueprintHelperDataTableBridgeRoutes::HandleRequest(
 	const FBlueprintHelperBridgeRequest& Request) const
 {
-	const FString AssetPath = ReadStringField(Request.Payload, TEXT("asset_path"));
+	const FString AssetPath = ReadDataTableRouteStringField(Request.Payload, TEXT("asset_path"));
 
 	if (Request.Command == TEXT("get_datatable_rows"))
 	{
@@ -114,7 +114,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperDataTableBridgeRoutes::HandleRequ
 		}
 
 		const FBlueprintHelperDataTableRowsResult Result =
-			DataTableService.GetDataTableRows(AssetPath, ReadRowNameFilter(Request.Payload));
+			DataTableService.GetDataTableRows(AssetPath, ReadDataTableRouteRowNameFilter(Request.Payload));
 		if (!Result.bSuccess)
 		{
 			return MakeDataTableExecutionFailure(Request, Result.ErrorMessage);
@@ -153,7 +153,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperDataTableBridgeRoutes::HandleRequ
 		return Response;
 	}
 
-	const FString RowName = ReadStringField(Request.Payload, TEXT("row_name"));
+	const FString RowName = ReadDataTableRouteStringField(Request.Payload, TEXT("row_name"));
 	if (Request.Command == TEXT("add_datatable_row"))
 	{
 		if (AssetPath.IsEmpty() || RowName.IsEmpty())
@@ -162,7 +162,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperDataTableBridgeRoutes::HandleRequ
 		}
 
 		const FBlueprintHelperDataTableMutationResult Result =
-			DataTableService.AddDataTableRow(AssetPath, RowName, ReadFieldsObject(Request.Payload));
+			DataTableService.AddDataTableRow(AssetPath, RowName, ReadDataTableRouteFieldsObject(Request.Payload));
 		if (!Result.bSuccess)
 		{
 			return MakeDataTableExecutionFailure(Request, Result.ErrorMessage);
@@ -180,7 +180,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperDataTableBridgeRoutes::HandleRequ
 			return MakeInvalidDataTableRequest(Request, TEXT("payload requires asset_path and row_name."));
 		}
 
-		const TMap<FString, FString> Fields = ReadFieldsObject(Request.Payload);
+		const TMap<FString, FString> Fields = ReadDataTableRouteFieldsObject(Request.Payload);
 		if (Fields.Num() == 0)
 		{
 			return MakeInvalidDataTableRequest(Request, TEXT("payload.fields must contain at least one field."));

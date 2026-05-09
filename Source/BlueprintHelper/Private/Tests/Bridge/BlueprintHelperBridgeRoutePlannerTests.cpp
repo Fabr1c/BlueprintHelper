@@ -1,5 +1,6 @@
 #include "Entry/Bridge/BlueprintHelperBridgeRoutePlanner.h"
 #include "Entry/Bridge/Routes/BlueprintHelperAnimationBlueprintBridgeRoutes.h"
+#include "Entry/Bridge/Routes/BlueprintHelperAssetFactoryBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperBlueprintVariablesBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperClassSettingsBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperCleanupOwnershipBridgeRoutes.h"
@@ -34,6 +35,7 @@ bool FBlueprintHelperBridgeRoutePlanner_KnownCommandsMapToClusters::RunTest(cons
 		{TEXT("cleanup_blueprint_helper_block"), EBlueprintHelperBridgeRouteCluster::CleanupOwnership},
 		{TEXT("preview_task_plan"), EBlueprintHelperBridgeRouteCluster::TaskRuntime},
 		{TEXT("diagnostics_runtime"), EBlueprintHelperBridgeRouteCluster::Debug},
+		{TEXT("get_debug_case"), EBlueprintHelperBridgeRouteCluster::Debug},
 		{TEXT("list_blueprint_helper_transactions"), EBlueprintHelperBridgeRouteCluster::Transactions},
 	};
 
@@ -127,6 +129,13 @@ bool FBlueprintHelperSecondBatchBridgeRoutes_RecognizeOnlyOwnedCommands::RunTest
 	TestFalse(
 		TEXT("BlueprintVariables route rejects component command"),
 		FBlueprintHelperBlueprintVariablesBridgeRoutes::IsBlueprintVariablesCommand(TEXT("add_component")));
+
+	TestTrue(
+		TEXT("AssetFactory route recognizes create asset"),
+		FBlueprintHelperAssetFactoryBridgeRoutes::IsAssetFactoryCommand(TEXT("create_asset")));
+	TestFalse(
+		TEXT("AssetFactory route rejects graph command"),
+		FBlueprintHelperAssetFactoryBridgeRoutes::IsAssetFactoryCommand(TEXT("append_blueprint_graph")));
 
 	TestTrue(
 		TEXT("Component route recognizes component add"),

@@ -8,7 +8,7 @@
 
 namespace
 {
-	FString ReadStringField(const TSharedPtr<FJsonObject>& Payload, const TCHAR* FieldName)
+	FString ReadObjectPropertyRouteStringField(const TSharedPtr<FJsonObject>& Payload, const TCHAR* FieldName)
 	{
 		FString Value;
 		if (Payload.IsValid())
@@ -44,7 +44,7 @@ bool FBlueprintHelperObjectPropertyBridgeRoutes::IsObjectPropertyCommand(const F
 FBlueprintHelperBridgeResponse FBlueprintHelperObjectPropertyBridgeRoutes::HandleRequest(
 	const FBlueprintHelperBridgeRequest& Request) const
 {
-	const FString AssetPath = ReadStringField(Request.Payload, TEXT("asset_path"));
+	const FString AssetPath = ReadObjectPropertyRouteStringField(Request.Payload, TEXT("asset_path"));
 
 	if (Request.Command == TEXT("get_object_properties"))
 	{
@@ -86,13 +86,13 @@ FBlueprintHelperBridgeResponse FBlueprintHelperObjectPropertyBridgeRoutes::Handl
 
 	if (Request.Command == TEXT("set_object_property"))
 	{
-		const FString PropertyName = ReadStringField(Request.Payload, TEXT("property_name"));
+		const FString PropertyName = ReadObjectPropertyRouteStringField(Request.Payload, TEXT("property_name"));
 		if (AssetPath.IsEmpty() || PropertyName.IsEmpty())
 		{
 			return MakeInvalidObjectPropertyRequest(Request, TEXT("payload requires asset_path and property_name."));
 		}
 
-		const FString Value = ReadStringField(Request.Payload, TEXT("value"));
+		const FString Value = ReadObjectPropertyRouteStringField(Request.Payload, TEXT("value"));
 		const FBlueprintHelperSetPropertyResult Result =
 			PropertyReflectionService.SetObjectProperty(AssetPath, PropertyName, Value);
 		if (!Result.bSuccess)

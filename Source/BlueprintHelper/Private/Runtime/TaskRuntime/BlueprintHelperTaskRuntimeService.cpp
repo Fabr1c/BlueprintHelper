@@ -13,6 +13,7 @@
 #include "Shared/AssetFactory/BlueprintHelperAssetFactoryTypes.h"
 #include "Systems/ToolClusters/BlueprintClassSettings/BlueprintHelperClassSettingsService.h"
 #include "Systems/Debug/BlueprintHelperCompileAssetService.h"
+#include "Systems/Debug/BlueprintHelperDebugEntryService.h"
 #include "Systems/ToolClusters/BlueprintComponent/BlueprintHelperComponentService.h"
 #include "Systems/ToolClusters/CleanupOwnership/BlueprintHelperCleanupBlueprintHelperBlockService.h"
 #include "Systems/ToolClusters/CleanupOwnership/BlueprintHelperConvertBlockToUserOwnedService.h"
@@ -561,15 +562,6 @@ namespace
 		bool bActive = false;
 	};
 
-	bool IsJournalBackedReviewStep(const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep)
-	{
-		return LoweredStep.AdapterOperation == TEXT("append_blueprint_graph")
-			|| LoweredStep.AdapterOperation == TEXT("replace_blueprint_graph")
-			|| LoweredStep.AdapterOperation == TEXT("patch_blueprint_graph")
-			|| LoweredStep.AdapterOperation == TEXT("merge_blueprint_graph")
-			|| LoweredStep.Capability == FBlueprintHelperCleanupOwnershipTaskPlanAdapter::CapabilityName;
-	}
-
 	FString SerializeTaskRuntimeReviewPayload(const TSharedPtr<FJsonObject>& Payload)
 	{
 		if (!Payload.IsValid())
@@ -807,7 +799,7 @@ namespace
 		int32 StepIndex,
 		FBlueprintHelperWriteReviewEvidence& OutEvidence)
 	{
-		if (!LoweredStep.Payload.IsValid() || IsJournalBackedReviewStep(LoweredStep))
+		if (!LoweredStep.Payload.IsValid())
 		{
 			return false;
 		}
@@ -2846,7 +2838,7 @@ namespace
 		return Result;
 	}
 
-	TArray<FString> ReadStringArrayField(
+	TArray<FString> ReadTaskRuntimeStringArrayField(
 		const TSharedPtr<FJsonObject>& Payload,
 		const TCHAR* FieldName)
 	{
@@ -2868,7 +2860,7 @@ namespace
 		return Result;
 	}
 
-	TMap<FString, FString> ReadStringFieldsObject(const TSharedPtr<FJsonObject>& Payload)
+	TMap<FString, FString> ReadTaskRuntimeStringFieldsObject(const TSharedPtr<FJsonObject>& Payload)
 	{
 		TMap<FString, FString> Fields;
 		const TSharedPtr<FJsonObject>* FieldsObject = nullptr;
@@ -2886,7 +2878,7 @@ namespace
 		return Fields;
 	}
 
-	TArray<FBlueprintHelperClassDefaultPropertySetting> ReadClassDefaultSettings(
+	TArray<FBlueprintHelperClassDefaultPropertySetting> ReadTaskRuntimeClassDefaultSettings(
 		const TSharedPtr<FJsonObject>& Payload)
 	{
 		TArray<FBlueprintHelperClassDefaultPropertySetting> Settings;
@@ -3185,15 +3177,15 @@ namespace
 
 		if (AdapterOperation == FBlueprintHelperClassSettingsTaskPlanAdapter::AddImplementedInterfacesOp)
 		{
-			return Service.AddImplementedInterfaces(AssetPath, ReadStringArrayField(Payload, TEXT("interface_paths")), bDryRun);
+			return Service.AddImplementedInterfaces(AssetPath, ReadTaskRuntimeStringArrayField(Payload, TEXT("interface_paths")), bDryRun);
 		}
 		if (AdapterOperation == FBlueprintHelperClassSettingsTaskPlanAdapter::RemoveImplementedInterfacesOp)
 		{
-			return Service.RemoveImplementedInterfaces(AssetPath, ReadStringArrayField(Payload, TEXT("interface_paths")), bDryRun);
+			return Service.RemoveImplementedInterfaces(AssetPath, ReadTaskRuntimeStringArrayField(Payload, TEXT("interface_paths")), bDryRun);
 		}
 		if (AdapterOperation == FBlueprintHelperClassSettingsTaskPlanAdapter::SetClassDefaultPropertiesOp)
 		{
-			return Service.SetClassDefaultProperties(AssetPath, ReadClassDefaultSettings(Payload), bDryRun);
+			return Service.SetClassDefaultProperties(AssetPath, ReadTaskRuntimeClassDefaultSettings(Payload), bDryRun);
 		}
 
 		return MakeFailure(
@@ -3346,12 +3338,12 @@ namespace
 		if (AdapterOperation == FBlueprintHelperDataTableTaskPlanAdapter::AdapterOperationAddRow)
 		{
 			return MakeDataTableMutationResult(AdapterOperation, Payload,
-				Service.AddDataTableRow(AssetPath, RowName, ReadStringFieldsObject(Payload), bDryRun));
+				Service.AddDataTableRow(AssetPath, RowName, ReadTaskRuntimeStringFieldsObject(Payload), bDryRun));
 		}
 		if (AdapterOperation == FBlueprintHelperDataTableTaskPlanAdapter::AdapterOperationUpdateRow)
 		{
 			return MakeDataTableMutationResult(AdapterOperation, Payload,
-				Service.UpdateDataTableRow(AssetPath, RowName, ReadStringFieldsObject(Payload), bDryRun));
+				Service.UpdateDataTableRow(AssetPath, RowName, ReadTaskRuntimeStringFieldsObject(Payload), bDryRun));
 		}
 		if (AdapterOperation == FBlueprintHelperDataTableTaskPlanAdapter::AdapterOperationDeleteRow)
 		{
@@ -3675,6 +3667,22 @@ bool FBlueprintHelperBlueprintVariablesTaskRuntimeCluster::CanExecuteStep(
 		LoweredStep.AdapterOperation == FBlueprintHelperBlueprintVariableTaskPlanAdapter::AdapterOperationVariableBatch;
 }
 
+bool FBlueprintHelperBlueprintVariablesTaskRuntimeCluster::BuildReviewEvidence(
+	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
+	const FBlueprintHelperToolResultBase& StepResult,
+	const FString& ArchiveSessionId,
+	const FString& TaskRunId,
+	int32 StepIndex,
+	FBlueprintHelperWriteReviewEvidence& OutEvidence)
+{
+	return StepResult.bOk && TryBuildTaskRuntimeReviewEvidence(
+		LoweredStep,
+		ArchiveSessionId,
+		TaskRunId,
+		StepIndex,
+		OutEvidence);
+}
+
 FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariablesTaskRuntimeCluster::ExecuteStep(
 	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep) const
 {
@@ -3695,6 +3703,41 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariablesTaskRuntimeClus
 		TEXT("task_plan.steps[0]"));
 }
 
+FBlueprintHelperAssetFactoryTaskRuntimeCluster::FBlueprintHelperAssetFactoryTaskRuntimeCluster(
+	const FBlueprintHelperAssetFactoryService& InAssetFactoryService)
+	: AssetFactoryService(InAssetFactoryService)
+{
+}
+
+bool FBlueprintHelperAssetFactoryTaskRuntimeCluster::CanExecuteStep(
+	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep)
+{
+	return LoweredStep.Capability == FBlueprintHelperAssetFactoryTaskPlanAdapter::SupportedCapability ||
+		LoweredStep.AdapterOperation == FBlueprintHelperAssetFactoryTaskPlanAdapter::AdapterOperation;
+}
+
+bool FBlueprintHelperAssetFactoryTaskRuntimeCluster::BuildReviewEvidence(
+	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
+	const FBlueprintHelperToolResultBase& StepResult,
+	const FString& ArchiveSessionId,
+	const FString& TaskRunId,
+	int32 StepIndex,
+	FBlueprintHelperWriteReviewEvidence& OutEvidence)
+{
+	return StepResult.bOk && TryBuildTaskRuntimeReviewEvidence(
+		LoweredStep,
+		ArchiveSessionId,
+		TaskRunId,
+		StepIndex,
+		OutEvidence);
+}
+
+FBlueprintHelperToolResultBase FBlueprintHelperAssetFactoryTaskRuntimeCluster::ExecuteStep(
+	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep) const
+{
+	return ExecuteAssetFactoryTaskPlanStep(AssetFactoryService, LoweredStep.Payload);
+}
+
 FBlueprintHelperComponentTaskRuntimeCluster::FBlueprintHelperComponentTaskRuntimeCluster(
 	const FBlueprintHelperComponentService& InComponentService)
 	: ComponentService(InComponentService)
@@ -3705,6 +3748,22 @@ bool FBlueprintHelperComponentTaskRuntimeCluster::CanExecuteStep(
 	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep)
 {
 	return LoweredStep.Capability == FBlueprintHelperComponentTaskPlanAdapter::CapabilityBlueprintComponent;
+}
+
+bool FBlueprintHelperComponentTaskRuntimeCluster::BuildReviewEvidence(
+	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
+	const FBlueprintHelperToolResultBase& StepResult,
+	const FString& ArchiveSessionId,
+	const FString& TaskRunId,
+	int32 StepIndex,
+	FBlueprintHelperWriteReviewEvidence& OutEvidence)
+{
+	return StepResult.bOk && TryBuildTaskRuntimeReviewEvidence(
+		LoweredStep,
+		ArchiveSessionId,
+		TaskRunId,
+		StepIndex,
+		OutEvidence);
 }
 
 FBlueprintHelperToolResultBase FBlueprintHelperComponentTaskRuntimeCluster::ExecuteStep(
@@ -3725,6 +3784,22 @@ bool FBlueprintHelperClassSettingsTaskRuntimeCluster::CanExecuteStep(
 	return LoweredStep.Capability == FBlueprintHelperClassSettingsTaskPlanAdapter::CapabilityName;
 }
 
+bool FBlueprintHelperClassSettingsTaskRuntimeCluster::BuildReviewEvidence(
+	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
+	const FBlueprintHelperToolResultBase& StepResult,
+	const FString& ArchiveSessionId,
+	const FString& TaskRunId,
+	int32 StepIndex,
+	FBlueprintHelperWriteReviewEvidence& OutEvidence)
+{
+	return StepResult.bOk && TryBuildTaskRuntimeReviewEvidence(
+		LoweredStep,
+		ArchiveSessionId,
+		TaskRunId,
+		StepIndex,
+		OutEvidence);
+}
+
 FBlueprintHelperToolResultBase FBlueprintHelperClassSettingsTaskRuntimeCluster::ExecuteStep(
 	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep) const
 {
@@ -3741,6 +3816,22 @@ bool FBlueprintHelperSignatureTaskRuntimeCluster::CanExecuteStep(
 	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep)
 {
 	return LoweredStep.Capability == FBlueprintHelperSignatureTaskPlanAdapter::CapabilityName;
+}
+
+bool FBlueprintHelperSignatureTaskRuntimeCluster::BuildReviewEvidence(
+	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
+	const FBlueprintHelperToolResultBase& StepResult,
+	const FString& ArchiveSessionId,
+	const FString& TaskRunId,
+	int32 StepIndex,
+	FBlueprintHelperWriteReviewEvidence& OutEvidence)
+{
+	return StepResult.bOk && TryBuildTaskRuntimeReviewEvidence(
+		LoweredStep,
+		ArchiveSessionId,
+		TaskRunId,
+		StepIndex,
+		OutEvidence);
 }
 
 FBlueprintHelperToolResultBase FBlueprintHelperSignatureTaskRuntimeCluster::ExecuteStep(
@@ -3761,6 +3852,22 @@ bool FBlueprintHelperUMGWidgetTaskRuntimeCluster::CanExecuteStep(
 	return LoweredStep.Capability == BlueprintHelperWidgetTaskPlan::Capability::UMGWidget;
 }
 
+bool FBlueprintHelperUMGWidgetTaskRuntimeCluster::BuildReviewEvidence(
+	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
+	const FBlueprintHelperToolResultBase& StepResult,
+	const FString& ArchiveSessionId,
+	const FString& TaskRunId,
+	int32 StepIndex,
+	FBlueprintHelperWriteReviewEvidence& OutEvidence)
+{
+	return StepResult.bOk && TryBuildTaskRuntimeReviewEvidence(
+		LoweredStep,
+		ArchiveSessionId,
+		TaskRunId,
+		StepIndex,
+		OutEvidence);
+}
+
 FBlueprintHelperToolResultBase FBlueprintHelperUMGWidgetTaskRuntimeCluster::ExecuteStep(
 	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep) const
 {
@@ -3779,6 +3886,22 @@ bool FBlueprintHelperDataTableTaskRuntimeCluster::CanExecuteStep(
 	return LoweredStep.Capability == FBlueprintHelperDataTableTaskPlanAdapter::CapabilityDataTable;
 }
 
+bool FBlueprintHelperDataTableTaskRuntimeCluster::BuildReviewEvidence(
+	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
+	const FBlueprintHelperToolResultBase& StepResult,
+	const FString& ArchiveSessionId,
+	const FString& TaskRunId,
+	int32 StepIndex,
+	FBlueprintHelperWriteReviewEvidence& OutEvidence)
+{
+	return StepResult.bOk && TryBuildTaskRuntimeReviewEvidence(
+		LoweredStep,
+		ArchiveSessionId,
+		TaskRunId,
+		StepIndex,
+		OutEvidence);
+}
+
 FBlueprintHelperToolResultBase FBlueprintHelperDataTableTaskRuntimeCluster::ExecuteStep(
 	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep) const
 {
@@ -3795,6 +3918,22 @@ bool FBlueprintHelperObjectPropertyTaskRuntimeCluster::CanExecuteStep(
 	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep)
 {
 	return LoweredStep.Capability == FBlueprintHelperObjectPropertyTaskPlanAdapter::CapabilityObjectProperty;
+}
+
+bool FBlueprintHelperObjectPropertyTaskRuntimeCluster::BuildReviewEvidence(
+	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
+	const FBlueprintHelperToolResultBase& StepResult,
+	const FString& ArchiveSessionId,
+	const FString& TaskRunId,
+	int32 StepIndex,
+	FBlueprintHelperWriteReviewEvidence& OutEvidence)
+{
+	return StepResult.bOk && TryBuildTaskRuntimeReviewEvidence(
+		LoweredStep,
+		ArchiveSessionId,
+		TaskRunId,
+		StepIndex,
+		OutEvidence);
 }
 
 FBlueprintHelperToolResultBase FBlueprintHelperObjectPropertyTaskRuntimeCluster::ExecuteStep(
@@ -3820,6 +3959,17 @@ bool FBlueprintHelperCleanupOwnershipTaskRuntimeCluster::CanExecuteStep(
 	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep)
 {
 	return LoweredStep.Capability == FBlueprintHelperCleanupOwnershipTaskPlanAdapter::CapabilityName;
+}
+
+bool FBlueprintHelperCleanupOwnershipTaskRuntimeCluster::BuildReviewEvidence(
+	const FBlueprintHelperTaskRuntimeLoweredStep&,
+	const FBlueprintHelperToolResultBase&,
+	const FString&,
+	const FString&,
+	int32,
+	FBlueprintHelperWriteReviewEvidence&)
+{
+	return false;
 }
 
 FBlueprintHelperToolResultBase FBlueprintHelperCleanupOwnershipTaskRuntimeCluster::ExecuteStep(
@@ -3856,7 +4006,7 @@ FBlueprintHelperTaskRuntimeClusterHub::FBlueprintHelperTaskRuntimeClusterHub(
 		InMergeGraphService)
 	, BlueprintVariablesCluster(InVariableService)
 	, SignatureCluster(InStructureService)
-	, AssetFactoryService(InAssetFactoryService)
+	, AssetFactoryCluster(InAssetFactoryService)
 	, ComponentCluster(InComponentService)
 	, ClassSettingsCluster(InClassSettingsService)
 	, UMGWidgetCluster(InWidgetService)
@@ -3895,8 +4045,7 @@ EBlueprintHelperTaskRuntimeCluster FBlueprintHelperTaskRuntimeClusterHub::Resolv
 	{
 		return EBlueprintHelperTaskRuntimeCluster::BlueprintVariables;
 	}
-	if (LoweredStep.Capability == FBlueprintHelperAssetFactoryTaskPlanAdapter::SupportedCapability ||
-		LoweredStep.AdapterOperation == FBlueprintHelperAssetFactoryTaskPlanAdapter::AdapterOperation)
+	if (FBlueprintHelperAssetFactoryTaskRuntimeCluster::CanExecuteStep(LoweredStep))
 	{
 		return EBlueprintHelperTaskRuntimeCluster::AssetFactory;
 	}
@@ -3957,7 +4106,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeClusterHub::ExecuteSte
 	case EBlueprintHelperTaskRuntimeCluster::BlueprintVariables:
 		return BlueprintVariablesCluster.ExecuteStep(LoweredStep);
 	case EBlueprintHelperTaskRuntimeCluster::AssetFactory:
-		return ExecuteAssetFactoryTaskPlanStep(AssetFactoryService, LoweredStep.Payload);
+		return AssetFactoryCluster.ExecuteStep(LoweredStep);
 	case EBlueprintHelperTaskRuntimeCluster::Component:
 		return ComponentCluster.ExecuteStep(LoweredStep);
 	case EBlueprintHelperTaskRuntimeCluster::ClassSettings:
@@ -3994,16 +4143,93 @@ bool FBlueprintHelperTaskRuntimeClusterHub::BuildReviewEvidence(
 	int32 StepIndex,
 	FBlueprintHelperWriteReviewEvidence& OutEvidence) const
 {
-	if (!StepResult.bOk)
+	switch (ResolveClusterForLoweredStep(LoweredStep))
 	{
-		return false;
+	case EBlueprintHelperTaskRuntimeCluster::GraphWrite:
+		return FBlueprintHelperGraphWriteTaskRuntimeCluster::BuildReviewEvidence(
+			LoweredStep,
+			StepResult,
+			ArchiveSessionId,
+			TaskRunId,
+			StepIndex,
+			OutEvidence);
+	case EBlueprintHelperTaskRuntimeCluster::BlueprintVariables:
+		return FBlueprintHelperBlueprintVariablesTaskRuntimeCluster::BuildReviewEvidence(
+			LoweredStep,
+			StepResult,
+			ArchiveSessionId,
+			TaskRunId,
+			StepIndex,
+			OutEvidence);
+	case EBlueprintHelperTaskRuntimeCluster::AssetFactory:
+		return FBlueprintHelperAssetFactoryTaskRuntimeCluster::BuildReviewEvidence(
+			LoweredStep,
+			StepResult,
+			ArchiveSessionId,
+			TaskRunId,
+			StepIndex,
+			OutEvidence);
+	case EBlueprintHelperTaskRuntimeCluster::Component:
+		return FBlueprintHelperComponentTaskRuntimeCluster::BuildReviewEvidence(
+			LoweredStep,
+			StepResult,
+			ArchiveSessionId,
+			TaskRunId,
+			StepIndex,
+			OutEvidence);
+	case EBlueprintHelperTaskRuntimeCluster::ClassSettings:
+		return FBlueprintHelperClassSettingsTaskRuntimeCluster::BuildReviewEvidence(
+			LoweredStep,
+			StepResult,
+			ArchiveSessionId,
+			TaskRunId,
+			StepIndex,
+			OutEvidence);
+	case EBlueprintHelperTaskRuntimeCluster::Signature:
+		return FBlueprintHelperSignatureTaskRuntimeCluster::BuildReviewEvidence(
+			LoweredStep,
+			StepResult,
+			ArchiveSessionId,
+			TaskRunId,
+			StepIndex,
+			OutEvidence);
+	case EBlueprintHelperTaskRuntimeCluster::UMGWidget:
+		return FBlueprintHelperUMGWidgetTaskRuntimeCluster::BuildReviewEvidence(
+			LoweredStep,
+			StepResult,
+			ArchiveSessionId,
+			TaskRunId,
+			StepIndex,
+			OutEvidence);
+	case EBlueprintHelperTaskRuntimeCluster::DataTable:
+		return FBlueprintHelperDataTableTaskRuntimeCluster::BuildReviewEvidence(
+			LoweredStep,
+			StepResult,
+			ArchiveSessionId,
+			TaskRunId,
+			StepIndex,
+			OutEvidence);
+	case EBlueprintHelperTaskRuntimeCluster::ObjectProperty:
+		return FBlueprintHelperObjectPropertyTaskRuntimeCluster::BuildReviewEvidence(
+			LoweredStep,
+			StepResult,
+			ArchiveSessionId,
+			TaskRunId,
+			StepIndex,
+			OutEvidence);
+	case EBlueprintHelperTaskRuntimeCluster::CleanupOwnership:
+		return FBlueprintHelperCleanupOwnershipTaskRuntimeCluster::BuildReviewEvidence(
+			LoweredStep,
+			StepResult,
+			ArchiveSessionId,
+			TaskRunId,
+			StepIndex,
+			OutEvidence);
+	default:
+		break;
 	}
-	return TryBuildTaskRuntimeReviewEvidence(
-		LoweredStep,
-		ArchiveSessionId,
-		TaskRunId,
-		StepIndex,
-		OutEvidence);
+
+	return false;
 }
 
 FBlueprintHelperTaskRuntimeService::FBlueprintHelperTaskRuntimeService(
@@ -4023,7 +4249,8 @@ FBlueprintHelperTaskRuntimeService::FBlueprintHelperTaskRuntimeService(
 	const FBlueprintHelperRollbackCleanupTransactionService& InRollbackCleanupService,
 	const FBlueprintHelperConvertBlockToUserOwnedService& InConvertBlockService,
 	const FBlueprintHelperCompileAssetService& InCompileAssetService,
-	const FBlueprintHelperAssetBrowseService& InAssetBrowseService)
+	const FBlueprintHelperAssetBrowseService& InAssetBrowseService,
+	const FBlueprintHelperDebugEntryService* InDebugEntryService)
 	: ClusterHub(MakeUnique<FBlueprintHelperTaskRuntimeClusterHub>(
 		InAppendGraphService,
 		InReplaceGraphService,
@@ -4042,6 +4269,7 @@ FBlueprintHelperTaskRuntimeService::FBlueprintHelperTaskRuntimeService(
 		InConvertBlockService))
 	, CompileAssetService(InCompileAssetService)
 	, AssetBrowseService(InAssetBrowseService)
+	, DebugEntryService(InDebugEntryService)
 {
 }
 
@@ -4528,6 +4756,46 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 				StepRecords,
 				PostOperationRecords,
 				true));
+		}
+
+		if (DebugEntryService)
+		{
+			const FString ErrorCodeLower = Error.Code.ToLower();
+			FBlueprintHelperDebugEntryEventInput DebugInput;
+			DebugInput.SourceLayer = TEXT("task_runtime");
+			DebugInput.Source = bDryRun
+				? TEXT("task_preview_blocker")
+				: ((StepRecords.Num() > 0 || PostOperationRecords.Num() > 0)
+					? TEXT("task_partial_failure")
+					: TEXT("task_execute_failure"));
+			if (ErrorCodeLower.Contains(TEXT("compile")))
+			{
+				DebugInput.Source = TEXT("compile_failure");
+			}
+			else if (ErrorCodeLower.Contains(TEXT("save")))
+			{
+				DebugInput.Source = TEXT("save_failure");
+			}
+			else if (ErrorCodeLower.Contains(TEXT("rollback")) || Error.RollbackResult == EBlueprintHelperRollbackResult::Failed)
+			{
+				DebugInput.Source = TEXT("transaction_rollback_failure");
+			}
+			DebugInput.Operation = RuntimeOperation;
+			DebugInput.Stage = ToolStageToString(Error.Stage);
+			DebugInput.TraceId = RuntimeResult.TraceId;
+			DebugInput.TaskRunId = TaskRunId;
+			DebugInput.AssetPaths = ReadTargetAssets(*TaskPlanPtr);
+			DebugInput.Error.Code = Error.Code;
+			DebugInput.Error.Message = Error.Message;
+			DebugInput.RecommendedNext = TEXT("get_debug_case");
+			if (RuntimeResult.bOk)
+			{
+				DebugEntryService->RecordEventBestEffort(DebugInput);
+			}
+			else
+			{
+				DebugEntryService->AttachDebugCaseToFailureBestEffort(RuntimeResult, DebugInput);
+			}
 		}
 
 		return RuntimeResult;

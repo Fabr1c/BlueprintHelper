@@ -53,7 +53,7 @@
 - 2026-05-08：第一阶段已完成。
   - 新增 `FBlueprintHelperBridgeRoutePlanner`，Bridge socket/worker 线程可只读构建 `RoutePlan`。
   - `BridgeServer` 已先解析 request 并构建 `RoutePlan`，再投递 `Request + RoutePlan` 到 GameThread。
-  - `BridgeRouter` 保留唯一外部入口，新增 `HandleRequestWithPlan`；已知命令优先走 RoutePlan 簇分发，旧 if-chain 保留为兼容回退。
+  - `BridgeRouter` 保留唯一外部入口，新增 `HandleRequestWithPlan`；已知命令优先走 RoutePlan 簇分发，第一阶段曾保留旧 if-chain 兼容回退，后续收口已移除。
   - 新增 `FBlueprintHelperTaskRuntimeClusterHub`，`TaskRuntimeService` 通过 ClusterHub 执行 lower/execute/review evidence；compile/save post operation 仍留在 Runtime 编排层。
   - 已新增 Automation 测试 `BlueprintHelper.Router.Cluster.*` 和 `BlueprintHelper.TaskRuntime.Cluster.*`。
   - 已修正 MCP regression fixture 路径到迁移后的 `Develop/TestFixtures/MCPRegression`。
@@ -63,14 +63,14 @@
   - 当前进度：`GraphWriteBridgeRoutes` 与 `GraphWriteTaskRuntimeCluster` 已完成代码迁移；新增 GraphWrite 簇识别 Automation 测试。
   - 验证状态：MCP 测试已通过；UE build 仍被 `G:/UnrealPractise/MrStone/Intermediate/Build/SourceFileCache.bin` 权限问题阻塞，C++ 编译与 Automation 运行待该环境问题解除后确认。
 - 2026-05-08：第二阶段继续迁移第二批簇。
-  - 已抽出 `BlueprintVariablesBridgeRoutes`、`ComponentBridgeRoutes`、`ClassSettingsBridgeRoutes`，`BridgeRouter` 的 RoutePlan 优先分发会委托到对应簇 routes；旧 handler 仅保留为兼容入口并转发。
+  - 已抽出 `BlueprintVariablesBridgeRoutes`、`ComponentBridgeRoutes`、`ClassSettingsBridgeRoutes`，`BridgeRouter` 的 RoutePlan 优先分发会委托到对应簇 routes；当时旧 handler 仅保留为兼容入口并转发，后续收口已删除。
   - 已抽出 `BlueprintVariablesTaskRuntimeCluster`、`ComponentTaskRuntimeCluster`、`ClassSettingsTaskRuntimeCluster`、`SignatureTaskRuntimeCluster`，`TaskRuntimeClusterHub` 的 resolve/execute 会委托到对应簇 cluster。
   - 已新增第二批簇识别 Automation 测试：`BlueprintHelper.Router.Cluster.SecondBatchRoutesRecognizeOnlyOwnedCommands` 与 `BlueprintHelper.TaskRuntime.Cluster.SecondBatchClustersRecognizeOnlyOwnedSteps`。
   - 本轮仍不改变 MCP/Bridge command 名称，不改变 TaskSpec/TaskPlan wire shape。
   - 本轮验证：`git diff --check` 通过；`npm.cmd test` 通过。当前 Codex 会话内 UE build 仍在写入 `G:/UnrealPractise/MrStone/Intermediate/Build/SourceFileCache.bin` 时被权限阻塞，未进入 C++ 编译；用户侧已反馈编译通过，后续仍需在可写 Intermediate 环境下跑 Automation。
 
   - 2026-05-08：第二阶段 final batch 已完成。
-  - 已接入 `UMGWidgetBridgeRoutes`，并新增 `DataTableBridgeRoutes`、`ObjectPropertyBridgeRoutes`、`CleanupOwnershipBridgeRoutes`；`BridgeRouter` 的 RoutePlan 优先分发已覆盖 UMGWidget、DataTable、ObjectProperty、CleanupOwnership，旧 handler 仅保留为兼容转发入口。
+  - 已接入 `UMGWidgetBridgeRoutes`，并新增 `DataTableBridgeRoutes`、`ObjectPropertyBridgeRoutes`、`CleanupOwnershipBridgeRoutes`；`BridgeRouter` 的 RoutePlan 优先分发已覆盖 UMGWidget、DataTable、ObjectProperty、CleanupOwnership；当时旧 handler 仅保留为兼容转发入口，后续收口已删除。
   - 已新增 `UMGWidgetTaskRuntimeCluster`、`DataTableTaskRuntimeCluster`、`ObjectPropertyTaskRuntimeCluster`、`CleanupOwnershipTaskRuntimeCluster`；`TaskRuntimeClusterHub` 不再直接持有 final batch 具体 service 引用，而是通过对应静态簇执行 resolve/execute。
   - 已新增 final batch 簇识别 Automation 测试：`BlueprintHelper.Router.Cluster.FinalBatchRoutesRecognizeOnlyOwnedCommands` 与 `BlueprintHelper.TaskRuntime.Cluster.FinalBatchClustersRecognizeOnlyOwnedSteps`。
   - 本轮验证：`git diff --check` 通过；`npm.cmd test` in `BlueprintHelper_MCP_Server` 通过，Node/Python 共 138/44 项测试通过；UE build 在当前 Codex 沙箱仍被项目级 `G:/UnrealPractise/MrStone/Intermediate/Build/SourceFileCache.bin` 写入权限阻塞，未进入 C++ 编译阶段，需要在可写 Intermediate 的本机/IDE 环境复跑。
@@ -80,6 +80,21 @@
   - 空簇当前不声明任何 command 或 capability，不接入 `BridgeRouter` / `TaskRuntimeClusterHub` 执行链；后续真实工具落地时再补 `BridgeRoutePlanner` command 表和 Hub 成员。
   - 已新增保留空簇 Automation 识别测试：`BlueprintHelper.Router.Cluster.ReservedRoutesDoNotClaimCommands` 与 `BlueprintHelper.TaskRuntime.Cluster.ReservedClustersDoNotClaimSteps`。
   - 收口验证：`git diff --check` 通过；`npm.cmd test` in `BlueprintHelper_MCP_Server` 通过；UE build 仍在项目级 `Intermediate/Build/SourceFileCache.bin` 写入阶段被当前 Codex 沙箱权限阻塞。
+- 2026-05-08：编译闭环补充。
+  - 环境权限修复后，UE build 已进入 C++ 编译阶段，并暴露 TaskPlanAdapters 在 unity build 下的匿名 namespace helper 同名问题。
+  - 已将 AssetFactory、Component、ClassSettings、Signature、UMGWidget、DataTable、ObjectProperty、CleanupOwnership adapter 内部 helper 改为按文件/工具簇前缀命名，保持错误码、payload、wire shape、执行逻辑不变。
+  - 已复跑 TaskPlanAdapters helper 名称扫描，确认当前 adapter 内部 helper 不再出现跨文件同名定义。
+  - 当前 Codex 环境下直接启用 UBA 仍会因为 `C:/ProgramData/Epic/UnrealBuildAccelerator/sessions` 写入权限失败；验证使用 `-NoUBA`。
+  - UE build 已通过：`F:/UE_5.6/Engine/Build/BatchFiles/Build.bat MrStoneEditor Win64 Development -Project=G:/UnrealPractise/MrStone/MrStone.uproject -WaitMutex -NoUBA -MaxParallelActions=1`。
+  - 复跑同一 UE build 命令返回 `Target is up to date` 与 `Result: Succeeded`。
+- 2026-05-08：BridgeRouter 工具簇入口命名收口。
+  - 已移除 `BridgeRouter::HandleRequestWithPlan` 后半段旧 command if-chain 兼容回退；已知命令必须由 `RoutePlan` 对应簇路径处理。
+  - 已删除已迁移工具簇在 `BridgeRouter` 中的旧私有转发 handler，包括 GraphWrite、BlueprintVariables、AssetFactory、Component、ClassSettings、UMGWidget、DataTable、ObjectProperty、CleanupOwnership。
+  - 新增 `AssetFactoryBridgeRoutes`，使 `create_asset` 与其它工具簇命令一样通过静态簇 routes 执行。
+  - 已将 Routes 与 TaskRuntime 中会进入同一 unity translation unit 的匿名 namespace helper 改为按簇/层前缀命名，避免 `ReadStringField`、`ReadStringArrayField`、`ReadClassDefaultSettings` 等 helper 同名冲突。
+  - 当前边界：Debug、Transactions、TaskRuntime、AssetBrowser、SharedServices、BlueprintStructure、EditorCommand 仍是系统层/遗留系统入口，不作为工具簇迁入本轮。
+  - 用户侧 UE build 已通过；本地轻量检查 `git diff --check` 通过，且 `BridgeRouter` 中已无已迁移工具簇的私有 `HandleXxx` 转发入口。
+  - 本地补充验证：直接编译包含 Router、Routes、TaskRuntime 的 `Module.BlueprintHelper.1.cpp` unity 单元通过，用于确认最后的 helper 前缀收口没有新增 C++ 编译错误。
 
 ## Test Plan
 - TaskRuntime tests：
@@ -99,6 +114,7 @@
   - `git diff --check`
   - `npm.cmd test` in `BlueprintHelper_MCP_Server`
   - UE build: `F:/UE_5.6/Engine/Build/BatchFiles/Build.bat MrStoneEditor Win64 Development -Project=G:/UnrealPractise/MrStone/MrStone.uproject -WaitMutex`
+  - 当前 Codex 环境验证用 UE build: `F:/UE_5.6/Engine/Build/BatchFiles/Build.bat MrStoneEditor Win64 Development -Project=G:/UnrealPractise/MrStone/MrStone.uproject -WaitMutex -NoUBA -MaxParallelActions=1`
   - UE Automation: existing `BlueprintHelper.*` plus new `BlueprintHelper.Router.Cluster` and `BlueprintHelper.TaskRuntime.Cluster`
 
 ## Assumptions

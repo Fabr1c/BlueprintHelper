@@ -8,6 +8,7 @@
 
 class FBlueprintHelperGraphResolver;
 class FBlueprintHelperTransactionJournalService;
+class FBlueprintHelperDebugEntryService;
 class FJsonObject;
 
 class BLUEPRINTHELPER_API FBlueprintHelperRollbackCleanupTransactionService
@@ -15,7 +16,8 @@ class BLUEPRINTHELPER_API FBlueprintHelperRollbackCleanupTransactionService
 public:
 	FBlueprintHelperRollbackCleanupTransactionService(
 		const FBlueprintHelperGraphResolver& InResolver,
-		const FBlueprintHelperTransactionJournalService& InJournalService);
+		const FBlueprintHelperTransactionJournalService& InJournalService,
+		const FBlueprintHelperDebugEntryService* InDebugEntryService = nullptr);
 
 	FBlueprintHelperToolResultBase Execute(const TSharedPtr<FJsonObject>& Payload) const;
 
@@ -50,4 +52,5 @@ private:
 
 	const FBlueprintHelperGraphResolver& Resolver;
 	const FBlueprintHelperTransactionJournalService& JournalService;
+	const FBlueprintHelperDebugEntryService* DebugEntryService = nullptr;
 };
