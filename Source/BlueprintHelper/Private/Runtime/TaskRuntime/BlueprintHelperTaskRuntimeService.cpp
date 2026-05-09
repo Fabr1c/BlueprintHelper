@@ -64,9 +64,10 @@ const TCHAR* FBlueprintHelperBlueprintVariableTaskPlanAdapter::OpEnsureLocalVari
 const TCHAR* FBlueprintHelperBlueprintVariableTaskPlanAdapter::OpSetLocalVariableProperties = TEXT("set_local_variable_properties");
 const TCHAR* FBlueprintHelperBlueprintVariableTaskPlanAdapter::OpRemoveLocalVariable = TEXT("remove_local_variable");
 
-namespace BlueprintVariableTaskPlanAdapterImpl
+class FBlueprintVariableTaskPlanAdapterUtils
 {
-	FBlueprintHelperToolError MakeVariableTaskPlanError(
+public:
+	static FBlueprintHelperToolError MakeVariableTaskPlanError(
 		const FString& Code,
 		const FString& Message,
 		const FString& Field)
@@ -81,21 +82,21 @@ namespace BlueprintVariableTaskPlanAdapterImpl
 		return Error;
 	}
 
-	FString BuildStepFieldPath(const FString& Suffix)
+	static FString BuildStepFieldPath(const FString& Suffix)
 	{
 		return Suffix.IsEmpty()
 			? FString(TEXT("task_plan.steps[0]"))
 			: FString::Printf(TEXT("task_plan.steps[0].%s"), *Suffix);
 	}
 
-	FString BuildOpFieldPath(int32 OpIndex, const FString& Suffix)
+	static FString BuildOpFieldPath(int32 OpIndex, const FString& Suffix)
 	{
 		return Suffix.IsEmpty()
 			? FString::Printf(TEXT("task_plan.steps[0].write.ops[%d]"), OpIndex)
 			: FString::Printf(TEXT("task_plan.steps[0].write.ops[%d].%s"), OpIndex, *Suffix);
 	}
 
-	bool TryReadRequiredString(
+	static bool TryReadRequiredString(
 		const TSharedPtr<FJsonObject>& Object,
 		const TCHAR* FieldName,
 		const FString& FieldPath,
@@ -114,7 +115,7 @@ namespace BlueprintVariableTaskPlanAdapterImpl
 		return true;
 	}
 
-	bool TryReadRequiredObject(
+	static bool TryReadRequiredObject(
 		const TSharedPtr<FJsonObject>& Object,
 		const TCHAR* FieldName,
 		const FString& FieldPath,
@@ -134,7 +135,7 @@ namespace BlueprintVariableTaskPlanAdapterImpl
 		return true;
 	}
 
-	bool TryReadRequiredArray(
+	static bool TryReadRequiredArray(
 		const TSharedPtr<FJsonObject>& Object,
 		const TCHAR* FieldName,
 		const FString& FieldPath,
@@ -154,7 +155,7 @@ namespace BlueprintVariableTaskPlanAdapterImpl
 		return true;
 	}
 
-	bool TryRequireValueField(
+	static bool TryRequireValueField(
 		const TSharedPtr<FJsonObject>& Object,
 		const FString& FieldPath,
 		FBlueprintHelperToolError& OutError)
@@ -170,7 +171,7 @@ namespace BlueprintVariableTaskPlanAdapterImpl
 		return true;
 	}
 
-	void CopyObjectFieldsExceptOp(
+	static void CopyObjectFieldsExceptOp(
 		const TSharedPtr<FJsonObject>& Source,
 		const TSharedRef<FJsonObject>& Destination)
 	{
@@ -188,7 +189,7 @@ namespace BlueprintVariableTaskPlanAdapterImpl
 		}
 	}
 
-	TSharedRef<FJsonObject> CopyOpForBatch(
+	static TSharedRef<FJsonObject> CopyOpForBatch(
 		const TSharedPtr<FJsonObject>& Source,
 		const FString& LocalFunctionName)
 	{
@@ -207,7 +208,7 @@ namespace BlueprintVariableTaskPlanAdapterImpl
 		return Destination;
 	}
 
-	bool TryValidateMemberVariableOp(
+	static bool TryValidateMemberVariableOp(
 		const FString& OpName,
 		const TSharedPtr<FJsonObject>& OpObject,
 		int32 OpIndex,
@@ -236,7 +237,7 @@ namespace BlueprintVariableTaskPlanAdapterImpl
 		return false;
 	}
 
-	bool TryValidateMemberDefaultOp(
+	static bool TryValidateMemberDefaultOp(
 		const FString& OpName,
 		const TSharedPtr<FJsonObject>& OpObject,
 		int32 OpIndex,
@@ -256,7 +257,7 @@ namespace BlueprintVariableTaskPlanAdapterImpl
 			TryRequireValueField(OpObject, BuildOpFieldPath(OpIndex, TEXT("value")), OutError);
 	}
 
-	bool TryValidateLocalVariableOp(
+	static bool TryValidateLocalVariableOp(
 		const FString& OpName,
 		const TSharedPtr<FJsonObject>& OpObject,
 		const FString& FunctionName,
@@ -298,7 +299,8 @@ namespace BlueprintVariableTaskPlanAdapterImpl
 			BuildOpFieldPath(OpIndex, TEXT("op")));
 		return false;
 	}
-}
+
+};
 
 bool FBlueprintHelperBlueprintVariableTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(
 	const TSharedPtr<FJsonObject>& StepObject,
@@ -306,34 +308,32 @@ bool FBlueprintHelperBlueprintVariableTaskPlanAdapter::TryBuildPayloadFromTaskPl
 	FBlueprintHelperBlueprintVariableTaskPlanPayload& OutPayload,
 	FBlueprintHelperToolError& OutError)
 {
-	using namespace BlueprintVariableTaskPlanAdapterImpl;
-
-	if (!StepObject.IsValid())
+		if (!StepObject.IsValid())
 	{
-		OutError = MakeVariableTaskPlanError(
+		OutError = FBlueprintVariableTaskPlanAdapterUtils::MakeVariableTaskPlanError(
 			TEXT("invalid_taskplan_step"),
 			TEXT("TaskPlan step must be an object."),
-			BuildStepFieldPath(TEXT("")));
+			FBlueprintVariableTaskPlanAdapterUtils::BuildStepFieldPath(TEXT("")));
 		return false;
 	}
 
 	FString AdapterOperation;
 	if (StepObject->TryGetStringField(TEXT("operation"), AdapterOperation))
 	{
-		OutError = MakeVariableTaskPlanError(
+		OutError = FBlueprintVariableTaskPlanAdapterUtils::MakeVariableTaskPlanError(
 			TEXT("unsupported_blueprint_variable_operation_field"),
 			TEXT("Blueprint variable IR TaskPlan steps use capability/write; adapter operation fields are runtime lowering details."),
-			BuildStepFieldPath(TEXT("operation")));
+			FBlueprintVariableTaskPlanAdapterUtils::BuildStepFieldPath(TEXT("operation")));
 		return false;
 	}
 
 	FString Capability;
 	if (!StepObject->TryGetStringField(TEXT("capability"), Capability) || Capability != CapabilityBlueprintVariable)
 	{
-		OutError = MakeVariableTaskPlanError(
+		OutError = FBlueprintVariableTaskPlanAdapterUtils::MakeVariableTaskPlanError(
 			TEXT("unsupported_blueprint_variable_capability"),
 			TEXT("Blueprint variable adapter only supports capability blueprint_variable."),
-			BuildStepFieldPath(TEXT("capability")));
+			FBlueprintVariableTaskPlanAdapterUtils::BuildStepFieldPath(TEXT("capability")));
 		return false;
 	}
 
@@ -341,20 +341,20 @@ bool FBlueprintHelperBlueprintVariableTaskPlanAdapter::TryBuildPayloadFromTaskPl
 	if (!StepObject->TryGetObjectField(TEXT("target"), TargetObjectPtr) ||
 		!TargetObjectPtr || !TargetObjectPtr->IsValid())
 	{
-		OutError = MakeVariableTaskPlanError(
+		OutError = FBlueprintVariableTaskPlanAdapterUtils::MakeVariableTaskPlanError(
 			TEXT("invalid_taskplan_step_target"),
 			TEXT("Blueprint variable TaskPlan step target object is required."),
-			BuildStepFieldPath(TEXT("target")));
+			FBlueprintVariableTaskPlanAdapterUtils::BuildStepFieldPath(TEXT("target")));
 		return false;
 	}
 
 	FString AssetPath;
 	if (!(*TargetObjectPtr)->TryGetStringField(TEXT("asset_path"), AssetPath) || AssetPath.IsEmpty())
 	{
-		OutError = MakeVariableTaskPlanError(
+		OutError = FBlueprintVariableTaskPlanAdapterUtils::MakeVariableTaskPlanError(
 			TEXT("invalid_taskplan_step_target"),
 			TEXT("Blueprint variable TaskPlan step target requires asset_path."),
-			BuildStepFieldPath(TEXT("target.asset_path")));
+			FBlueprintVariableTaskPlanAdapterUtils::BuildStepFieldPath(TEXT("target.asset_path")));
 		return false;
 	}
 
@@ -362,10 +362,10 @@ bool FBlueprintHelperBlueprintVariableTaskPlanAdapter::TryBuildPayloadFromTaskPl
 	if (!StepObject->TryGetObjectField(TEXT("write"), WriteObjectPtr) ||
 		!WriteObjectPtr || !WriteObjectPtr->IsValid())
 	{
-		OutError = MakeVariableTaskPlanError(
+		OutError = FBlueprintVariableTaskPlanAdapterUtils::MakeVariableTaskPlanError(
 			TEXT("invalid_variable_write"),
 			TEXT("blueprint_variable TaskPlan step requires write object."),
-			BuildStepFieldPath(TEXT("write")));
+			FBlueprintVariableTaskPlanAdapterUtils::BuildStepFieldPath(TEXT("write")));
 		return false;
 	}
 
@@ -375,10 +375,10 @@ bool FBlueprintHelperBlueprintVariableTaskPlanAdapter::TryBuildPayloadFromTaskPl
 			Strategy != StrategyMemberDefaults &&
 			Strategy != StrategyLocalVariables))
 	{
-		OutError = MakeVariableTaskPlanError(
+		OutError = FBlueprintVariableTaskPlanAdapterUtils::MakeVariableTaskPlanError(
 			TEXT("unsupported_variable_strategy"),
 			TEXT("Blueprint variable TaskPlan step requires a supported write.strategy."),
-			BuildStepFieldPath(TEXT("write.strategy")));
+			FBlueprintVariableTaskPlanAdapterUtils::BuildStepFieldPath(TEXT("write.strategy")));
 		return false;
 	}
 
@@ -386,20 +386,20 @@ bool FBlueprintHelperBlueprintVariableTaskPlanAdapter::TryBuildPayloadFromTaskPl
 	if (Strategy == StrategyLocalVariables &&
 		(!(*TargetObjectPtr)->TryGetStringField(TEXT("function_name"), FunctionName) || FunctionName.IsEmpty()))
 	{
-		OutError = MakeVariableTaskPlanError(
+		OutError = FBlueprintVariableTaskPlanAdapterUtils::MakeVariableTaskPlanError(
 			TEXT("invalid_taskplan_step_target"),
 			TEXT("local_variables TaskPlan step target requires function_name."),
-			BuildStepFieldPath(TEXT("target.function_name")));
+			FBlueprintVariableTaskPlanAdapterUtils::BuildStepFieldPath(TEXT("target.function_name")));
 		return false;
 	}
 
 	const TArray<TSharedPtr<FJsonValue>>* OpsArray = nullptr;
 	if (!(*WriteObjectPtr)->TryGetArrayField(TEXT("ops"), OpsArray) || !OpsArray || OpsArray->Num() == 0)
 	{
-		OutError = MakeVariableTaskPlanError(
+		OutError = FBlueprintVariableTaskPlanAdapterUtils::MakeVariableTaskPlanError(
 			TEXT("invalid_variable_ops"),
 			TEXT("blueprint_variable TaskPlan step requires write.ops array."),
-			BuildStepFieldPath(TEXT("write.ops")));
+			FBlueprintVariableTaskPlanAdapterUtils::BuildStepFieldPath(TEXT("write.ops")));
 		return false;
 	}
 
@@ -415,37 +415,37 @@ bool FBlueprintHelperBlueprintVariableTaskPlanAdapter::TryBuildPayloadFromTaskPl
 				: nullptr;
 		if (!OpObject.IsValid())
 		{
-			OutError = MakeVariableTaskPlanError(
+			OutError = FBlueprintVariableTaskPlanAdapterUtils::MakeVariableTaskPlanError(
 				TEXT("invalid_variable_op"),
 				TEXT("Blueprint variable op must be an object."),
-				BuildOpFieldPath(OpIndex, TEXT("")));
+				FBlueprintVariableTaskPlanAdapterUtils::BuildOpFieldPath(OpIndex, TEXT("")));
 			return false;
 		}
 
 		FString OpName;
 		if (!OpObject->TryGetStringField(TEXT("op"), OpName) || OpName.IsEmpty())
 		{
-			OutError = MakeVariableTaskPlanError(
+			OutError = FBlueprintVariableTaskPlanAdapterUtils::MakeVariableTaskPlanError(
 				TEXT("invalid_variable_op"),
 				TEXT("Blueprint variable op requires op."),
-				BuildOpFieldPath(OpIndex, TEXT("op")));
+				FBlueprintVariableTaskPlanAdapterUtils::BuildOpFieldPath(OpIndex, TEXT("op")));
 			return false;
 		}
 
 		bool bOpValid = false;
 		if (Strategy == StrategyMemberVariables)
 		{
-			bOpValid = TryValidateMemberVariableOp(OpName, OpObject, OpIndex, OutError);
+			bOpValid = FBlueprintVariableTaskPlanAdapterUtils::TryValidateMemberVariableOp(OpName, OpObject, OpIndex, OutError);
 			bAllEnsureMemberVariables = bAllEnsureMemberVariables && OpName == OpEnsureMemberVariable;
 		}
 		else if (Strategy == StrategyMemberDefaults)
 		{
-			bOpValid = TryValidateMemberDefaultOp(OpName, OpObject, OpIndex, OutError);
+			bOpValid = FBlueprintVariableTaskPlanAdapterUtils::TryValidateMemberDefaultOp(OpName, OpObject, OpIndex, OutError);
 			bAllEnsureMemberVariables = false;
 		}
 		else
 		{
-			bOpValid = TryValidateLocalVariableOp(OpName, OpObject, FunctionName, OpIndex, OutError);
+			bOpValid = FBlueprintVariableTaskPlanAdapterUtils::TryValidateLocalVariableOp(OpName, OpObject, FunctionName, OpIndex, OutError);
 			bAllEnsureMemberVariables = false;
 		}
 
@@ -457,11 +457,11 @@ bool FBlueprintHelperBlueprintVariableTaskPlanAdapter::TryBuildPayloadFromTaskPl
 		if (bAllEnsureMemberVariables)
 		{
 			TSharedRef<FJsonObject> Variable = MakeShared<FJsonObject>();
-			CopyObjectFieldsExceptOp(OpObject, Variable);
+			FBlueprintVariableTaskPlanAdapterUtils::CopyObjectFieldsExceptOp(OpObject, Variable);
 			MemberVariables.Add(MakeShared<FJsonValueObject>(Variable));
 		}
 
-		BatchOps.Add(MakeShared<FJsonValueObject>(CopyOpForBatch(OpObject, FunctionName)));
+		BatchOps.Add(MakeShared<FJsonValueObject>(FBlueprintVariableTaskPlanAdapterUtils::CopyOpForBatch(OpObject, FunctionName)));
 	}
 
 	OutPayload.Capability = CapabilityBlueprintVariable;
@@ -502,11 +502,10 @@ bool FBlueprintHelperBlueprintVariableTaskPlanAdapter::TryBuildPayloadFromTaskPl
 	return true;
 }
 
-namespace
+class FBlueprintHelperTaskRuntimeServiceLocalUtils
 {
-	TArray<FString> ReadStepDependsOn(const TSharedPtr<FJsonObject>& StepObject);
-
-	FBlueprintHelperToolError MakeTaskRuntimeError(
+public:
+	static FBlueprintHelperToolError MakeTaskRuntimeError(
 		const FString& Code,
 		EBlueprintHelperToolStage Stage,
 		const FString& Message,
@@ -522,7 +521,7 @@ namespace
 		return Error;
 	}
 
-	FBlueprintHelperToolResultBase MakeFailure(
+	static FBlueprintHelperToolResultBase MakeFailure(
 		const FString& Operation,
 		const FString& Code,
 		EBlueprintHelperToolStage Stage,
@@ -562,7 +561,7 @@ namespace
 		bool bActive = false;
 	};
 
-	FString SerializeTaskRuntimeReviewPayload(const TSharedPtr<FJsonObject>& Payload)
+	static FString SerializeTaskRuntimeReviewPayload(const TSharedPtr<FJsonObject>& Payload)
 	{
 		if (!Payload.IsValid())
 		{
@@ -575,12 +574,12 @@ namespace
 		return Serialized;
 	}
 
-	FString MakeTaskRuntimeReviewHash(const FString& Payload)
+	static FString MakeTaskRuntimeReviewHash(const FString& Payload)
 	{
 		return FString::Printf(TEXT("crc32_%08x"), FCrc::StrCrc32(*Payload));
 	}
 
-	FString MakeTaskRuntimeReviewRefSegment(const FString& RawValue)
+	static FString MakeTaskRuntimeReviewRefSegment(const FString& RawValue)
 	{
 		FString Segment;
 		Segment.Reserve(RawValue.Len());
@@ -595,7 +594,7 @@ namespace
 		return Segment.IsEmpty() ? FString(TEXT("target")) : Segment;
 	}
 
-	TArray<FString> CaptureReviewBaselineSnapshots(
+	static TArray<FString> CaptureReviewBaselineSnapshots(
 		const FString& ArchiveSessionId,
 		const TArray<FString>& AssetPaths)
 	{
@@ -641,7 +640,7 @@ namespace
 		return SnapshotRefs;
 	}
 
-	EBlueprintHelperReviewChangeKind DeriveTaskRuntimeReviewChangeKind(const FString& OperationKind)
+	static EBlueprintHelperReviewChangeKind DeriveTaskRuntimeReviewChangeKind(const FString& OperationKind)
 	{
 		if (OperationKind.Contains(TEXT("remove"), ESearchCase::IgnoreCase)
 			|| OperationKind.Contains(TEXT("delete"), ESearchCase::IgnoreCase)
@@ -658,7 +657,7 @@ namespace
 		return EBlueprintHelperReviewChangeKind::Modified;
 	}
 
-	FString ReadTaskRuntimeReviewStringField(
+	static FString ReadTaskRuntimeReviewStringField(
 		const TSharedPtr<FJsonObject>& Payload,
 		const TCHAR* FieldName)
 	{
@@ -670,7 +669,7 @@ namespace
 		return Value;
 	}
 
-	void AddTaskRuntimeReviewTarget(
+	static void AddTaskRuntimeReviewTarget(
 		FBlueprintHelperWriteReviewEvidence& Evidence,
 		const TSharedPtr<FJsonObject>& Payload,
 		EBlueprintHelperReviewSurface Surface,
@@ -726,7 +725,7 @@ namespace
 		Evidence.AtomicTargets.Add(Target);
 	}
 
-	void AddTaskRuntimeReviewTargetsFromStringArray(
+	static void AddTaskRuntimeReviewTargetsFromStringArray(
 		FBlueprintHelperWriteReviewEvidence& Evidence,
 		const TSharedPtr<FJsonObject>& Payload,
 		const TCHAR* FieldName,
@@ -758,7 +757,7 @@ namespace
 		}
 	}
 
-	void AddTaskRuntimeReviewTargetsFromObjectArray(
+	static void AddTaskRuntimeReviewTargetsFromObjectArray(
 		FBlueprintHelperWriteReviewEvidence& Evidence,
 		const TSharedPtr<FJsonObject>& Payload,
 		const TCHAR* FieldName,
@@ -792,7 +791,7 @@ namespace
 		}
 	}
 
-	bool TryBuildTaskRuntimeReviewEvidence(
+	static bool TryBuildTaskRuntimeReviewEvidence(
 		const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
 		const FString& ArchiveSessionId,
 		const FString& TaskRunId,
@@ -926,7 +925,7 @@ namespace
 					TEXT("variable"));
 			}
 		}
-		else if (LoweredStep.Capability == BlueprintHelperWidgetTaskPlan::Capability::UMGWidget)
+		else if (LoweredStep.Capability == FBlueprintHelperWidgetTaskPlan::Capability::UMGWidget)
 		{
 			const FString WidgetName = ReadTaskRuntimeReviewStringField(LoweredStep.Payload, TEXT("widget_name"));
 			const FString PropertyName = ReadTaskRuntimeReviewStringField(LoweredStep.Payload, TEXT("property_name"));
@@ -982,7 +981,7 @@ namespace
 		return OutEvidence.AtomicTargets.Num() > 0;
 	}
 
-	TArray<TSharedPtr<FJsonValue>> CopyArrayField(
+	static TArray<TSharedPtr<FJsonValue>> CopyArrayField(
 		const TSharedPtr<FJsonObject>& Object,
 		const TCHAR* FieldName)
 	{
@@ -994,7 +993,7 @@ namespace
 		return {};
 	}
 
-	void CopyObjectFields(
+	static void CopyObjectFields(
 		const TSharedPtr<FJsonObject>& Source,
 		const TSharedRef<FJsonObject>& Destination)
 	{
@@ -1009,7 +1008,7 @@ namespace
 		}
 	}
 
-	bool IsGraphWriteTaskPlanOperation(const FString& Operation)
+	static bool IsGraphWriteTaskPlanOperation(const FString& Operation)
 	{
 		return Operation == TEXT("append_blueprint_graph") ||
 			Operation == TEXT("replace_blueprint_graph") ||
@@ -1017,21 +1016,21 @@ namespace
 			Operation == TEXT("merge_blueprint_graph");
 	}
 
-	FString BuildStepFieldPath(const FString& Suffix)
+	static FString BuildStepFieldPath(const FString& Suffix)
 	{
 		return Suffix.IsEmpty()
 			? FString(TEXT("task_plan.steps[0]"))
 			: FString::Printf(TEXT("task_plan.steps[0].%s"), *Suffix);
 	}
 
-	FString BuildOpFieldPath(int32 OpIndex, const FString& Suffix)
+	static FString BuildOpFieldPath(int32 OpIndex, const FString& Suffix)
 	{
 		return Suffix.IsEmpty()
 			? FString::Printf(TEXT("task_plan.steps[0].write.ops[%d]"), OpIndex)
 			: FString::Printf(TEXT("task_plan.steps[0].write.ops[%d].%s"), OpIndex, *Suffix);
 	}
 
-	FString ToTaskRuntimeIdSegment(const FString& Value)
+	static FString ToTaskRuntimeIdSegment(const FString& Value)
 	{
 		FString Result;
 		Result.Reserve(Value.Len());
@@ -1042,7 +1041,7 @@ namespace
 		return Result.IsEmpty() ? FString(TEXT("entry")) : Result;
 	}
 
-	FString JsonValueToString(const TSharedPtr<FJsonValue>& Value)
+	static FString JsonValueToString(const TSharedPtr<FJsonValue>& Value)
 	{
 		if (!Value.IsValid())
 		{
@@ -1069,7 +1068,7 @@ namespace
 		return Serialized;
 	}
 
-	TSharedPtr<FJsonValue> GetLiteralJsonValue(const TSharedPtr<FJsonValue>& Value)
+	static TSharedPtr<FJsonValue> GetLiteralJsonValue(const TSharedPtr<FJsonValue>& Value)
 	{
 		if (!Value.IsValid())
 		{
@@ -1092,7 +1091,7 @@ namespace
 		return Value;
 	}
 
-	void CopyLiteralArgsToInputs(
+	static void CopyLiteralArgsToInputs(
 		const TSharedPtr<FJsonObject>& ArgsObject,
 		const TSharedRef<FJsonObject>& InputsObject)
 	{
@@ -1107,7 +1106,7 @@ namespace
 		}
 	}
 
-	TSharedRef<FJsonObject> MakeExecLink(
+	static TSharedRef<FJsonObject> MakeExecLink(
 		const FString& FromNodeId,
 		const FString& ToNodeId)
 	{
@@ -1118,7 +1117,7 @@ namespace
 		return Link;
 	}
 
-	TSharedRef<FJsonObject> MakeSyntheticDryRunData()
+	static TSharedRef<FJsonObject> MakeSyntheticDryRunData()
 	{
 		TSharedRef<FJsonObject> Data = MakeShared<FJsonObject>();
 		TSharedRef<FJsonObject> DryRun = MakeShared<FJsonObject>();
@@ -1136,7 +1135,7 @@ namespace
 		return Data;
 	}
 
-	bool TryReadStepTarget(
+	static bool TryReadStepTarget(
 		const TSharedPtr<FJsonObject>& StepObject,
 		TSharedPtr<FJsonObject>& OutTargetObject,
 		FString& OutAssetPath,
@@ -1172,7 +1171,7 @@ namespace
 		return true;
 	}
 
-	bool TryAppendGraphWriteStatement(
+	static bool TryAppendGraphWriteStatement(
 		const TSharedPtr<FJsonObject>& StatementObject,
 		int32 OpIndex,
 		int32 StatementIndex,
@@ -1268,7 +1267,7 @@ namespace
 		return true;
 	}
 
-	bool TryAppendGraphWriteEnsureEntry(
+	static bool TryAppendGraphWriteEnsureEntry(
 		const TSharedPtr<FJsonObject>& OpObject,
 		int32 OpIndex,
 		TArray<TSharedPtr<FJsonValue>>& Nodes,
@@ -1364,7 +1363,7 @@ namespace
 		return true;
 	}
 
-	bool TryBuildGraphWriteIrAppendPayload(
+	static bool TryBuildGraphWriteIrAppendPayload(
 		const TSharedPtr<FJsonObject>& TaskPlan,
 		const TSharedPtr<FJsonObject>& StepObject,
 		bool bDryRun,
@@ -1461,7 +1460,7 @@ namespace
 		FString GraphName;
 	};
 
-	bool TryReadStepPayloadParts(
+	static bool TryReadStepPayloadParts(
 		const TSharedPtr<FJsonObject>& StepObject,
 		FTaskPlanStepPayloadParts& OutParts,
 		FString& OutErrorCode,
@@ -1503,7 +1502,7 @@ namespace
 		return true;
 	}
 
-	TSharedRef<FJsonObject> BuildBridgeTargetPayload(const FTaskPlanStepPayloadParts& Parts)
+	static TSharedRef<FJsonObject> BuildBridgeTargetPayload(const FTaskPlanStepPayloadParts& Parts)
 	{
 		TSharedRef<FJsonObject> BridgeTarget = MakeShared<FJsonObject>();
 		CopyObjectFields(Parts.TargetObject, BridgeTarget);
@@ -1512,7 +1511,7 @@ namespace
 		return BridgeTarget;
 	}
 
-	bool HasExecutionPolicyValidationFields(const TSharedPtr<FJsonObject>& TaskPlan)
+	static bool HasExecutionPolicyValidationFields(const TSharedPtr<FJsonObject>& TaskPlan)
 	{
 		const TSharedPtr<FJsonObject>* ExecutionPolicyPtr = nullptr;
 		if (!TaskPlan.IsValid() ||
@@ -1527,7 +1526,7 @@ namespace
 			(*ExecutionPolicyPtr)->TryGetBoolField(TEXT("should_save"), bIgnored);
 	}
 
-	bool TryReadExecutionPolicyBool(
+	static bool TryReadExecutionPolicyBool(
 		const TSharedPtr<FJsonObject>& TaskPlan,
 		const TCHAR* FieldName,
 		bool& OutValue)
@@ -1540,7 +1539,7 @@ namespace
 			(*ExecutionPolicyPtr)->TryGetBoolField(FieldName, OutValue);
 	}
 
-	TArray<FString> ReadTargetAssets(const TSharedPtr<FJsonObject>& TaskPlan)
+	static TArray<FString> ReadTargetAssets(const TSharedPtr<FJsonObject>& TaskPlan)
 	{
 		TArray<FString> Assets;
 		const TArray<TSharedPtr<FJsonValue>>* TargetAssets = nullptr;
@@ -1566,7 +1565,7 @@ namespace
 		return Assets;
 	}
 
-	FBlueprintHelperToolResultBase MakeSaveAssetToolResult(
+	static FBlueprintHelperToolResultBase MakeSaveAssetToolResult(
 		const FBlueprintHelperAssetBrowseService& Service,
 		const FString& AssetPath)
 	{
@@ -1604,7 +1603,7 @@ namespace
 		return Result;
 	}
 
-	TSharedRef<FJsonObject> BuildAppendPayload(
+	static TSharedRef<FJsonObject> BuildAppendPayload(
 		const TSharedPtr<FJsonObject>& StepObject,
 		bool bDryRun,
 		FString& OutErrorCode,
@@ -1632,7 +1631,7 @@ namespace
 		return AppendPayload;
 	}
 
-	TSharedRef<FJsonObject> BuildGraphWritePayload(
+	static TSharedRef<FJsonObject> BuildGraphWritePayload(
 		const FString& StepOperation,
 		const TSharedPtr<FJsonObject>& StepObject,
 		bool bDryRun,
@@ -1675,7 +1674,7 @@ namespace
 		return Payload;
 	}
 
-	bool TryReadRequiredGraphWriteOpObject(
+	static bool TryReadRequiredGraphWriteOpObject(
 		const TSharedPtr<FJsonObject>& OpObject,
 		const FString& FieldName,
 		const FString& FieldPath,
@@ -1699,7 +1698,7 @@ namespace
 		return true;
 	}
 
-	TSharedRef<FJsonObject> BuildGraphWriteIrTargetPayload(
+	static TSharedRef<FJsonObject> BuildGraphWriteIrTargetPayload(
 		const TSharedPtr<FJsonObject>& TargetObject,
 		const FString& AssetPath,
 		const FString& GraphName)
@@ -1711,7 +1710,7 @@ namespace
 		return BridgeTarget;
 	}
 
-	bool TryBuildGraphWriteIrReplacePayload(
+	static bool TryBuildGraphWriteIrReplacePayload(
 		const TSharedPtr<FJsonObject>& TargetObject,
 		const FString& AssetPath,
 		const FString& GraphName,
@@ -1762,7 +1761,7 @@ namespace
 		return true;
 	}
 
-	FString DefaultPatchScopeForGraphWriteOp(const FString& OpName)
+	static FString DefaultPatchScopeForGraphWriteOp(const FString& OpName)
 	{
 		if (OpName == TEXT("set_node_comment"))
 		{
@@ -1775,7 +1774,7 @@ namespace
 		return TEXT("pin_default");
 	}
 
-	bool TryBuildGraphWriteIrPatchPayload(
+	static bool TryBuildGraphWriteIrPatchPayload(
 		const TSharedPtr<FJsonObject>& TargetObject,
 		const FString& AssetPath,
 		const FString& GraphName,
@@ -1819,7 +1818,7 @@ namespace
 		return true;
 	}
 
-	bool TryBuildGraphWriteIrMergePayload(
+	static bool TryBuildGraphWriteIrMergePayload(
 		const TSharedPtr<FJsonObject>& TaskPlan,
 		const TSharedPtr<FJsonObject>& TargetObject,
 		const FString& AssetPath,
@@ -1886,7 +1885,7 @@ namespace
 		return true;
 	}
 
-	bool TryBuildGraphWriteIrPayload(
+	static bool TryBuildGraphWriteIrPayload(
 		const TSharedPtr<FJsonObject>& TaskPlan,
 		const TSharedPtr<FJsonObject>& StepObject,
 		bool bDryRun,
@@ -1997,7 +1996,7 @@ namespace
 		return false;
 	}
 
-	TSharedRef<FJsonObject> MakeStepResultJson(
+	static TSharedRef<FJsonObject> MakeStepResultJson(
 		const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
 		const FBlueprintHelperToolResultBase& StepResult)
 	{
@@ -2017,7 +2016,7 @@ namespace
 		return StepJson;
 	}
 
-	TSharedRef<FJsonObject> MakePostOperationResultJson(
+	static TSharedRef<FJsonObject> MakePostOperationResultJson(
 		const FBlueprintHelperTaskRuntimePostOperationRecord& PostOperation)
 	{
 		TSharedRef<FJsonObject> PostJson = MakeShared<FJsonObject>();
@@ -2027,7 +2026,7 @@ namespace
 		return PostJson;
 	}
 
-	bool HasFailedStep(
+	static bool HasFailedStep(
 		const TArray<FBlueprintHelperTaskRuntimeStepRecord>& StepRecords)
 	{
 		for (const FBlueprintHelperTaskRuntimeStepRecord& StepRecord : StepRecords)
@@ -2040,7 +2039,7 @@ namespace
 		return false;
 	}
 
-	bool HasFailedPostOperation(
+	static bool HasFailedPostOperation(
 		const TArray<FBlueprintHelperTaskRuntimePostOperationRecord>& PostOperationRecords)
 	{
 		for (const FBlueprintHelperTaskRuntimePostOperationRecord& PostOperation : PostOperationRecords)
@@ -2061,7 +2060,7 @@ namespace
 		Skipped
 	};
 
-	const TCHAR* TaskJournalStepStatusToString(EBlueprintHelperTaskJournalStepStatus Status)
+	static const TCHAR* TaskJournalStepStatusToString(EBlueprintHelperTaskJournalStepStatus Status)
 	{
 		switch (Status)
 		{
@@ -2078,7 +2077,7 @@ namespace
 		}
 	}
 
-	TArray<FString> ReadStepDependsOn(const TSharedPtr<FJsonObject>& StepObject)
+	static TArray<FString> ReadStepDependsOn(const TSharedPtr<FJsonObject>& StepObject)
 	{
 		TArray<FString> DependsOn;
 		const TArray<TSharedPtr<FJsonValue>>* DependsOnValues = nullptr;
@@ -2106,7 +2105,7 @@ namespace
 		return DependsOn;
 	}
 
-	TArray<TSharedPtr<FJsonValue>> MakeStringArray(const TArray<FString>& Values)
+	static TArray<TSharedPtr<FJsonValue>> MakeStringArray(const TArray<FString>& Values)
 	{
 		TArray<TSharedPtr<FJsonValue>> Result;
 		for (const FString& Value : Values)
@@ -2116,7 +2115,7 @@ namespace
 		return Result;
 	}
 
-	FString GetTaskPlanStepId(const TSharedPtr<FJsonObject>& StepObject, int32 StepIndex)
+	static FString GetTaskPlanStepId(const TSharedPtr<FJsonObject>& StepObject, int32 StepIndex)
 	{
 		FString StepId;
 		if (StepObject.IsValid() && StepObject->TryGetStringField(TEXT("step_id"), StepId) && !StepId.IsEmpty())
@@ -2127,7 +2126,7 @@ namespace
 		return FString::Printf(TEXT("step_%03d"), StepIndex + 1);
 	}
 
-	FString GetTaskPlanStepOperation(const TSharedPtr<FJsonObject>& StepObject)
+	static FString GetTaskPlanStepOperation(const TSharedPtr<FJsonObject>& StepObject)
 	{
 		FString Capability;
 		if (StepObject.IsValid() &&
@@ -2148,7 +2147,7 @@ namespace
 		return TEXT("unknown");
 	}
 
-	TSharedRef<FJsonObject> MakeTaskJournalRecoveryJson()
+	static TSharedRef<FJsonObject> MakeTaskJournalRecoveryJson()
 	{
 		TSharedRef<FJsonObject> Recovery = MakeShared<FJsonObject>();
 		Recovery->SetStringField(
@@ -2165,7 +2164,7 @@ namespace
 		return Recovery;
 	}
 
-	TSharedRef<FJsonObject> MakeTaskJournalStepJson(
+	static TSharedRef<FJsonObject> MakeTaskJournalStepJson(
 		const TSharedPtr<FJsonObject>& PlannedStep,
 		const FBlueprintHelperTaskRuntimeStepRecord* ExecutedStep,
 		const FString& StepId,
@@ -2226,7 +2225,7 @@ namespace
 		return StepJson;
 	}
 
-	TSharedRef<FJsonObject> MakeRuntimeData(
+	static TSharedRef<FJsonObject> MakeRuntimeData(
 		const TSharedPtr<FJsonObject>& TaskPlan,
 		const FString& TaskRunId,
 		const TArray<FBlueprintHelperTaskRuntimeStepRecord>& StepRecords,
@@ -2291,7 +2290,7 @@ namespace
 		return Data;
 	}
 
-	TSharedRef<FJsonObject> MakeRuntimeData(
+	static TSharedRef<FJsonObject> MakeRuntimeData(
 		const TSharedPtr<FJsonObject>& TaskPlan,
 		const FString& TaskRunId,
 		const FString& StepId,
@@ -2313,7 +2312,7 @@ namespace
 			bDryRun);
 	}
 
-	TSharedRef<FJsonObject> MakeTaskRunJournal(
+	static TSharedRef<FJsonObject> MakeTaskRunJournal(
 		const FString& TaskRunId,
 		const TSharedPtr<FJsonObject>& TaskPlan,
 		const TArray<FBlueprintHelperTaskRuntimeStepRecord>& StepRecords,
@@ -2486,7 +2485,7 @@ namespace
 		return Journal;
 	}
 
-	TSharedRef<FJsonObject> MakeTaskRunJournal(
+	static TSharedRef<FJsonObject> MakeTaskRunJournal(
 		const FString& TaskRunId,
 		const TSharedPtr<FJsonObject>& TaskPlan,
 		const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
@@ -2501,7 +2500,7 @@ namespace
 			{});
 	}
 
-	TSharedRef<FJsonObject> MakeTaskRunJournal(
+	static TSharedRef<FJsonObject> MakeTaskRunJournal(
 		const FString& TaskRunId,
 		const TSharedPtr<FJsonObject>& TaskPlan,
 		const FString& StepId,
@@ -2515,7 +2514,7 @@ namespace
 		return MakeTaskRunJournal(TaskRunId, TaskPlan, LoweredStep, StepResult);
 	}
 
-	TSharedRef<FJsonObject> MakeRuntimeTarget(
+	static TSharedRef<FJsonObject> MakeRuntimeTarget(
 		const FString& AssetPath,
 		const FString& TargetType,
 		const FString& MemberName = TEXT(""),
@@ -2543,14 +2542,14 @@ namespace
 		return Target;
 	}
 
-	FString MakePlannedComponentKey(
+	static FString MakePlannedComponentKey(
 		const FString& AssetPath,
 		const FString& ComponentName)
 	{
 		return FString::Printf(TEXT("%s\n%s"), *AssetPath, *ComponentName);
 	}
 
-	bool TryReadComponentPayloadIdentity(
+	static bool TryReadComponentPayloadIdentity(
 		const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
 		FString& OutAssetPath,
 		FString& OutComponentName)
@@ -2567,7 +2566,7 @@ namespace
 		return !OutAssetPath.IsEmpty() && !OutComponentName.IsEmpty();
 	}
 
-	bool IsPlannedComponentPropertyDryRun(
+	static bool IsPlannedComponentPropertyDryRun(
 		const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
 		const FBlueprintHelperToolResultBase& StepResult,
 		const TSet<FString>& PlannedComponentKeys)
@@ -2594,7 +2593,7 @@ namespace
 			PlannedComponentKeys.Contains(MakePlannedComponentKey(AssetPath, ComponentName));
 	}
 
-	FBlueprintHelperToolResultBase MakePlannedComponentPropertyDryRunResult(
+	static FBlueprintHelperToolResultBase MakePlannedComponentPropertyDryRunResult(
 		const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep)
 	{
 		FString AssetPath;
@@ -2663,14 +2662,14 @@ namespace
 		return Result;
 	}
 
-	EBlueprintHelperAssetCollisionPolicy ParseAssetFactoryCollision(const FString& CollisionText)
+	static EBlueprintHelperAssetCollisionPolicy ParseAssetFactoryCollision(const FString& CollisionText)
 	{
 		return CollisionText.Equals(TEXT("reuse_if_exists"), ESearchCase::IgnoreCase)
 			? EBlueprintHelperAssetCollisionPolicy::ReuseIfExists
 			: EBlueprintHelperAssetCollisionPolicy::FailIfExists;
 	}
 
-	void ApplyAssetFactoryResultData(
+	static void ApplyAssetFactoryResultData(
 		FBlueprintHelperToolResultBase& Result,
 		const FBlueprintHelperAssetFactoryData& FactoryData,
 		const FString& AssetPath,
@@ -2688,7 +2687,7 @@ namespace
 		}
 	}
 
-	TArray<FBlueprintHelperAssetFactoryFieldSpec> ReadAssetFactoryFieldsArray(
+	static TArray<FBlueprintHelperAssetFactoryFieldSpec> ReadAssetFactoryFieldsArray(
 		const TSharedPtr<FJsonObject>& Payload)
 	{
 		TArray<FBlueprintHelperAssetFactoryFieldSpec> Fields;
@@ -2730,7 +2729,7 @@ namespace
 		return Fields;
 	}
 
-	FBlueprintHelperToolResultBase ExecuteAssetFactoryTaskPlanStep(
+	static FBlueprintHelperToolResultBase ExecuteAssetFactoryTaskPlanStep(
 		const FBlueprintHelperAssetFactoryService& Service,
 		const TSharedPtr<FJsonObject>& Payload)
 	{
@@ -2838,7 +2837,7 @@ namespace
 		return Result;
 	}
 
-	TArray<FString> ReadTaskRuntimeStringArrayField(
+	static TArray<FString> ReadTaskRuntimeStringArrayField(
 		const TSharedPtr<FJsonObject>& Payload,
 		const TCHAR* FieldName)
 	{
@@ -2860,7 +2859,7 @@ namespace
 		return Result;
 	}
 
-	TMap<FString, FString> ReadTaskRuntimeStringFieldsObject(const TSharedPtr<FJsonObject>& Payload)
+	static TMap<FString, FString> ReadTaskRuntimeStringFieldsObject(const TSharedPtr<FJsonObject>& Payload)
 	{
 		TMap<FString, FString> Fields;
 		const TSharedPtr<FJsonObject>* FieldsObject = nullptr;
@@ -2878,7 +2877,7 @@ namespace
 		return Fields;
 	}
 
-	TArray<FBlueprintHelperClassDefaultPropertySetting> ReadTaskRuntimeClassDefaultSettings(
+	static TArray<FBlueprintHelperClassDefaultPropertySetting> ReadTaskRuntimeClassDefaultSettings(
 		const TSharedPtr<FJsonObject>& Payload)
 	{
 		TArray<FBlueprintHelperClassDefaultPropertySetting> Settings;
@@ -2904,7 +2903,7 @@ namespace
 		return Settings;
 	}
 
-	FBlueprintHelperSetComponentPropertiesRequest ReadComponentPropertiesRequest(
+	static FBlueprintHelperSetComponentPropertiesRequest ReadComponentPropertiesRequest(
 		const TSharedPtr<FJsonObject>& Payload)
 	{
 		FBlueprintHelperSetComponentPropertiesRequest Request;
@@ -2938,7 +2937,7 @@ namespace
 		return Request;
 	}
 
-	TSharedRef<FJsonObject> MakeBlueprintVariableOpPayload(
+	static TSharedRef<FJsonObject> MakeBlueprintVariableOpPayload(
 		const FString& AssetPath,
 		const FString& FunctionName,
 		const TSharedPtr<FJsonObject>& OpObject)
@@ -2962,7 +2961,7 @@ namespace
 		return OpPayload;
 	}
 
-	FBlueprintHelperToolResultBase ExecuteBlueprintVariableBatchTaskPlanStep(
+	static FBlueprintHelperToolResultBase ExecuteBlueprintVariableBatchTaskPlanStep(
 		const FBlueprintHelperBlueprintVariableService& Service,
 		const TSharedPtr<FJsonObject>& Payload)
 	{
@@ -3107,7 +3106,7 @@ namespace
 		return Result;
 	}
 
-	FBlueprintHelperToolResultBase ExecuteComponentTaskPlanStep(
+	static FBlueprintHelperToolResultBase ExecuteComponentTaskPlanStep(
 		const FBlueprintHelperComponentService& Service,
 		const FString& AdapterOperation,
 		const TSharedPtr<FJsonObject>& Payload)
@@ -3162,7 +3161,7 @@ namespace
 			TEXT("Unsupported component adapter operation."));
 	}
 
-	FBlueprintHelperToolResultBase ExecuteClassSettingsTaskPlanStep(
+	static FBlueprintHelperToolResultBase ExecuteClassSettingsTaskPlanStep(
 		const FBlueprintHelperClassSettingsService& Service,
 		const FString& AdapterOperation,
 		const TSharedPtr<FJsonObject>& Payload)
@@ -3195,7 +3194,7 @@ namespace
 			TEXT("Unsupported class settings adapter operation."));
 	}
 
-	FBlueprintHelperToolResultBase MakeWidgetMutationResult(
+	static FBlueprintHelperToolResultBase MakeWidgetMutationResult(
 		const FString& Operation,
 		const TSharedPtr<FJsonObject>& Payload,
 		const FBlueprintHelperWidgetMutationResult& MutationResult)
@@ -3239,7 +3238,7 @@ namespace
 		return Result;
 	}
 
-	FBlueprintHelperToolResultBase ExecuteWidgetTaskPlanStep(
+	static FBlueprintHelperToolResultBase ExecuteWidgetTaskPlanStep(
 		const FBlueprintHelperWidgetService& Service,
 		const FString& AdapterOperation,
 		const TSharedPtr<FJsonObject>& Payload)
@@ -3262,17 +3261,17 @@ namespace
 			Payload->TryGetBoolField(TEXT("dry_run"), bDryRun);
 		}
 
-		if (AdapterOperation == BlueprintHelperWidgetTaskPlan::AdapterOperation::AddWidget)
+		if (AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::AddWidget)
 		{
 			return MakeWidgetMutationResult(AdapterOperation, Payload,
 				Service.AddWidget(AssetPath, ParentName, WidgetClass, WidgetName, bDryRun));
 		}
-		if (AdapterOperation == BlueprintHelperWidgetTaskPlan::AdapterOperation::SetWidgetProperty)
+		if (AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::SetWidgetProperty)
 		{
 			return MakeWidgetMutationResult(AdapterOperation, Payload,
 				Service.SetWidgetProperty(AssetPath, WidgetName, PropertyName, Value, bDryRun));
 		}
-		if (AdapterOperation == BlueprintHelperWidgetTaskPlan::AdapterOperation::RemoveWidget)
+		if (AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::RemoveWidget)
 		{
 			return MakeWidgetMutationResult(AdapterOperation, Payload,
 				Service.RemoveWidget(AssetPath, WidgetName, bDryRun));
@@ -3285,7 +3284,7 @@ namespace
 			TEXT("Unsupported widget adapter operation."));
 	}
 
-	FBlueprintHelperToolResultBase MakeDataTableMutationResult(
+	static FBlueprintHelperToolResultBase MakeDataTableMutationResult(
 		const FString& Operation,
 		const TSharedPtr<FJsonObject>& Payload,
 		const FBlueprintHelperDataTableMutationResult& MutationResult)
@@ -3320,7 +3319,7 @@ namespace
 		return Result;
 	}
 
-	FBlueprintHelperToolResultBase ExecuteDataTableTaskPlanStep(
+	static FBlueprintHelperToolResultBase ExecuteDataTableTaskPlanStep(
 		const FBlueprintHelperDataTableService& Service,
 		const FString& AdapterOperation,
 		const TSharedPtr<FJsonObject>& Payload)
@@ -3358,7 +3357,7 @@ namespace
 			TEXT("Unsupported DataTable adapter operation."));
 	}
 
-	bool TryBuildObjectPropertyRequest(
+	static bool TryBuildObjectPropertyRequest(
 		const TSharedPtr<FJsonObject>& Payload,
 		FBlueprintHelperSetObjectPropertiesRequest& OutRequest,
 		FString& OutError)
@@ -3439,7 +3438,7 @@ namespace
 		return true;
 	}
 
-	FBlueprintHelperToolResultBase ExecuteObjectPropertyTaskPlanStep(
+	static FBlueprintHelperToolResultBase ExecuteObjectPropertyTaskPlanStep(
 		const FBlueprintHelperPropertyReflectionService& Service,
 		const FString& AdapterOperation,
 		const TSharedPtr<FJsonObject>& Payload)
@@ -3471,7 +3470,7 @@ namespace
 			TEXT("Unsupported object_property adapter operation."));
 	}
 
-	FBlueprintHelperToolResultBase ExecuteCleanupOwnershipTaskPlanStep(
+	static FBlueprintHelperToolResultBase ExecuteCleanupOwnershipTaskPlanStep(
 		const FBlueprintHelperCleanupBlueprintHelperBlockService& CleanupBlockService,
 		const FBlueprintHelperConvertBlockToUserOwnedService& ConvertBlockService,
 		const FBlueprintHelperRollbackCleanupTransactionService& RollbackCleanupService,
@@ -3498,7 +3497,7 @@ namespace
 			TEXT("Unsupported Cleanup/Ownership adapter operation."));
 	}
 
-	FBlueprintHelperToolResultBase ExecuteSignatureTaskPlanStep(
+	static FBlueprintHelperToolResultBase ExecuteSignatureTaskPlanStep(
 		const FBlueprintHelperBlueprintStructureService& Service,
 		const FString& AdapterOperation,
 		const TSharedPtr<FJsonObject>& Payload)
@@ -3651,7 +3650,8 @@ namespace
 		Request.bRequireReferenceContext = bRequireReferenceContext;
 		return SignatureService.RemoveSignature(Request);
 	}
-}
+
+};
 
 FBlueprintHelperBlueprintVariablesTaskRuntimeCluster::FBlueprintHelperBlueprintVariablesTaskRuntimeCluster(
 	const FBlueprintHelperBlueprintVariableService& InVariableService)
@@ -3675,7 +3675,7 @@ bool FBlueprintHelperBlueprintVariablesTaskRuntimeCluster::BuildReviewEvidence(
 	int32 StepIndex,
 	FBlueprintHelperWriteReviewEvidence& OutEvidence)
 {
-	return StepResult.bOk && TryBuildTaskRuntimeReviewEvidence(
+	return StepResult.bOk && FBlueprintHelperTaskRuntimeServiceLocalUtils::TryBuildTaskRuntimeReviewEvidence(
 		LoweredStep,
 		ArchiveSessionId,
 		TaskRunId,
@@ -3692,10 +3692,10 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariablesTaskRuntimeClus
 	}
 	if (LoweredStep.AdapterOperation == FBlueprintHelperBlueprintVariableTaskPlanAdapter::AdapterOperationVariableBatch)
 	{
-		return ExecuteBlueprintVariableBatchTaskPlanStep(VariableService, LoweredStep.Payload);
+		return FBlueprintHelperTaskRuntimeServiceLocalUtils::ExecuteBlueprintVariableBatchTaskPlanStep(VariableService, LoweredStep.Payload);
 	}
 
-	return MakeFailure(
+	return FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeFailure(
 		TEXT("blueprint_variable"),
 		TEXT("unsupported_variable_adapter_operation"),
 		EBlueprintHelperToolStage::ParseInput,
@@ -3724,7 +3724,7 @@ bool FBlueprintHelperAssetFactoryTaskRuntimeCluster::BuildReviewEvidence(
 	int32 StepIndex,
 	FBlueprintHelperWriteReviewEvidence& OutEvidence)
 {
-	return StepResult.bOk && TryBuildTaskRuntimeReviewEvidence(
+	return StepResult.bOk && FBlueprintHelperTaskRuntimeServiceLocalUtils::TryBuildTaskRuntimeReviewEvidence(
 		LoweredStep,
 		ArchiveSessionId,
 		TaskRunId,
@@ -3735,7 +3735,7 @@ bool FBlueprintHelperAssetFactoryTaskRuntimeCluster::BuildReviewEvidence(
 FBlueprintHelperToolResultBase FBlueprintHelperAssetFactoryTaskRuntimeCluster::ExecuteStep(
 	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep) const
 {
-	return ExecuteAssetFactoryTaskPlanStep(AssetFactoryService, LoweredStep.Payload);
+	return FBlueprintHelperTaskRuntimeServiceLocalUtils::ExecuteAssetFactoryTaskPlanStep(AssetFactoryService, LoweredStep.Payload);
 }
 
 FBlueprintHelperComponentTaskRuntimeCluster::FBlueprintHelperComponentTaskRuntimeCluster(
@@ -3758,7 +3758,7 @@ bool FBlueprintHelperComponentTaskRuntimeCluster::BuildReviewEvidence(
 	int32 StepIndex,
 	FBlueprintHelperWriteReviewEvidence& OutEvidence)
 {
-	return StepResult.bOk && TryBuildTaskRuntimeReviewEvidence(
+	return StepResult.bOk && FBlueprintHelperTaskRuntimeServiceLocalUtils::TryBuildTaskRuntimeReviewEvidence(
 		LoweredStep,
 		ArchiveSessionId,
 		TaskRunId,
@@ -3769,7 +3769,7 @@ bool FBlueprintHelperComponentTaskRuntimeCluster::BuildReviewEvidence(
 FBlueprintHelperToolResultBase FBlueprintHelperComponentTaskRuntimeCluster::ExecuteStep(
 	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep) const
 {
-	return ExecuteComponentTaskPlanStep(ComponentService, LoweredStep.AdapterOperation, LoweredStep.Payload);
+	return FBlueprintHelperTaskRuntimeServiceLocalUtils::ExecuteComponentTaskPlanStep(ComponentService, LoweredStep.AdapterOperation, LoweredStep.Payload);
 }
 
 FBlueprintHelperClassSettingsTaskRuntimeCluster::FBlueprintHelperClassSettingsTaskRuntimeCluster(
@@ -3792,7 +3792,7 @@ bool FBlueprintHelperClassSettingsTaskRuntimeCluster::BuildReviewEvidence(
 	int32 StepIndex,
 	FBlueprintHelperWriteReviewEvidence& OutEvidence)
 {
-	return StepResult.bOk && TryBuildTaskRuntimeReviewEvidence(
+	return StepResult.bOk && FBlueprintHelperTaskRuntimeServiceLocalUtils::TryBuildTaskRuntimeReviewEvidence(
 		LoweredStep,
 		ArchiveSessionId,
 		TaskRunId,
@@ -3803,7 +3803,7 @@ bool FBlueprintHelperClassSettingsTaskRuntimeCluster::BuildReviewEvidence(
 FBlueprintHelperToolResultBase FBlueprintHelperClassSettingsTaskRuntimeCluster::ExecuteStep(
 	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep) const
 {
-	return ExecuteClassSettingsTaskPlanStep(ClassSettingsService, LoweredStep.AdapterOperation, LoweredStep.Payload);
+	return FBlueprintHelperTaskRuntimeServiceLocalUtils::ExecuteClassSettingsTaskPlanStep(ClassSettingsService, LoweredStep.AdapterOperation, LoweredStep.Payload);
 }
 
 FBlueprintHelperSignatureTaskRuntimeCluster::FBlueprintHelperSignatureTaskRuntimeCluster(
@@ -3826,7 +3826,7 @@ bool FBlueprintHelperSignatureTaskRuntimeCluster::BuildReviewEvidence(
 	int32 StepIndex,
 	FBlueprintHelperWriteReviewEvidence& OutEvidence)
 {
-	return StepResult.bOk && TryBuildTaskRuntimeReviewEvidence(
+	return StepResult.bOk && FBlueprintHelperTaskRuntimeServiceLocalUtils::TryBuildTaskRuntimeReviewEvidence(
 		LoweredStep,
 		ArchiveSessionId,
 		TaskRunId,
@@ -3837,7 +3837,7 @@ bool FBlueprintHelperSignatureTaskRuntimeCluster::BuildReviewEvidence(
 FBlueprintHelperToolResultBase FBlueprintHelperSignatureTaskRuntimeCluster::ExecuteStep(
 	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep) const
 {
-	return ExecuteSignatureTaskPlanStep(StructureService, LoweredStep.AdapterOperation, LoweredStep.Payload);
+	return FBlueprintHelperTaskRuntimeServiceLocalUtils::ExecuteSignatureTaskPlanStep(StructureService, LoweredStep.AdapterOperation, LoweredStep.Payload);
 }
 
 FBlueprintHelperUMGWidgetTaskRuntimeCluster::FBlueprintHelperUMGWidgetTaskRuntimeCluster(
@@ -3849,7 +3849,7 @@ FBlueprintHelperUMGWidgetTaskRuntimeCluster::FBlueprintHelperUMGWidgetTaskRuntim
 bool FBlueprintHelperUMGWidgetTaskRuntimeCluster::CanExecuteStep(
 	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep)
 {
-	return LoweredStep.Capability == BlueprintHelperWidgetTaskPlan::Capability::UMGWidget;
+	return LoweredStep.Capability == FBlueprintHelperWidgetTaskPlan::Capability::UMGWidget;
 }
 
 bool FBlueprintHelperUMGWidgetTaskRuntimeCluster::BuildReviewEvidence(
@@ -3860,7 +3860,7 @@ bool FBlueprintHelperUMGWidgetTaskRuntimeCluster::BuildReviewEvidence(
 	int32 StepIndex,
 	FBlueprintHelperWriteReviewEvidence& OutEvidence)
 {
-	return StepResult.bOk && TryBuildTaskRuntimeReviewEvidence(
+	return StepResult.bOk && FBlueprintHelperTaskRuntimeServiceLocalUtils::TryBuildTaskRuntimeReviewEvidence(
 		LoweredStep,
 		ArchiveSessionId,
 		TaskRunId,
@@ -3871,7 +3871,7 @@ bool FBlueprintHelperUMGWidgetTaskRuntimeCluster::BuildReviewEvidence(
 FBlueprintHelperToolResultBase FBlueprintHelperUMGWidgetTaskRuntimeCluster::ExecuteStep(
 	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep) const
 {
-	return ExecuteWidgetTaskPlanStep(WidgetService, LoweredStep.AdapterOperation, LoweredStep.Payload);
+	return FBlueprintHelperTaskRuntimeServiceLocalUtils::ExecuteWidgetTaskPlanStep(WidgetService, LoweredStep.AdapterOperation, LoweredStep.Payload);
 }
 
 FBlueprintHelperDataTableTaskRuntimeCluster::FBlueprintHelperDataTableTaskRuntimeCluster(
@@ -3894,7 +3894,7 @@ bool FBlueprintHelperDataTableTaskRuntimeCluster::BuildReviewEvidence(
 	int32 StepIndex,
 	FBlueprintHelperWriteReviewEvidence& OutEvidence)
 {
-	return StepResult.bOk && TryBuildTaskRuntimeReviewEvidence(
+	return StepResult.bOk && FBlueprintHelperTaskRuntimeServiceLocalUtils::TryBuildTaskRuntimeReviewEvidence(
 		LoweredStep,
 		ArchiveSessionId,
 		TaskRunId,
@@ -3905,7 +3905,7 @@ bool FBlueprintHelperDataTableTaskRuntimeCluster::BuildReviewEvidence(
 FBlueprintHelperToolResultBase FBlueprintHelperDataTableTaskRuntimeCluster::ExecuteStep(
 	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep) const
 {
-	return ExecuteDataTableTaskPlanStep(DataTableService, LoweredStep.AdapterOperation, LoweredStep.Payload);
+	return FBlueprintHelperTaskRuntimeServiceLocalUtils::ExecuteDataTableTaskPlanStep(DataTableService, LoweredStep.AdapterOperation, LoweredStep.Payload);
 }
 
 FBlueprintHelperObjectPropertyTaskRuntimeCluster::FBlueprintHelperObjectPropertyTaskRuntimeCluster(
@@ -3928,7 +3928,7 @@ bool FBlueprintHelperObjectPropertyTaskRuntimeCluster::BuildReviewEvidence(
 	int32 StepIndex,
 	FBlueprintHelperWriteReviewEvidence& OutEvidence)
 {
-	return StepResult.bOk && TryBuildTaskRuntimeReviewEvidence(
+	return StepResult.bOk && FBlueprintHelperTaskRuntimeServiceLocalUtils::TryBuildTaskRuntimeReviewEvidence(
 		LoweredStep,
 		ArchiveSessionId,
 		TaskRunId,
@@ -3939,7 +3939,7 @@ bool FBlueprintHelperObjectPropertyTaskRuntimeCluster::BuildReviewEvidence(
 FBlueprintHelperToolResultBase FBlueprintHelperObjectPropertyTaskRuntimeCluster::ExecuteStep(
 	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep) const
 {
-	return ExecuteObjectPropertyTaskPlanStep(
+	return FBlueprintHelperTaskRuntimeServiceLocalUtils::ExecuteObjectPropertyTaskPlanStep(
 		PropertyReflectionService,
 		LoweredStep.AdapterOperation,
 		LoweredStep.Payload);
@@ -3975,7 +3975,7 @@ bool FBlueprintHelperCleanupOwnershipTaskRuntimeCluster::BuildReviewEvidence(
 FBlueprintHelperToolResultBase FBlueprintHelperCleanupOwnershipTaskRuntimeCluster::ExecuteStep(
 	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep) const
 {
-	return ExecuteCleanupOwnershipTaskPlanStep(
+	return FBlueprintHelperTaskRuntimeServiceLocalUtils::ExecuteCleanupOwnershipTaskPlanStep(
 		CleanupBlockService,
 		ConvertBlockService,
 		RollbackCleanupService,
@@ -4095,7 +4095,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeClusterHub::ExecuteSte
 		FBlueprintHelperToolResultBase StepResult = FBlueprintHelperToolResultBuilder::DryRun(
 			LoweredStep.AdapterOperation,
 			FBlueprintHelperToolResultBuilder::GenerateTraceId());
-		StepResult.Data = MakeSyntheticDryRunData();
+		StepResult.Data = FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeSyntheticDryRunData();
 		return StepResult;
 	}
 
@@ -4128,7 +4128,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeClusterHub::ExecuteSte
 	return FBlueprintHelperToolResultBuilder::Failure(
 		LoweredStep.RuntimeOperation.IsEmpty() ? TEXT("execute_task_plan") : LoweredStep.RuntimeOperation,
 		FBlueprintHelperToolResultBuilder::GenerateTraceId(),
-		MakeTaskRuntimeError(
+		FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRuntimeError(
 			TEXT("unsupported_taskplan_adapter_operation"),
 			EBlueprintHelperToolStage::ParseInput,
 			TEXT("Task Runtime lowering produced an unsupported adapter operation."),
@@ -4316,7 +4316,7 @@ bool FBlueprintHelperTaskRuntimeService::TryLowerTaskPlanStep(
 
 	if (!StepObject.IsValid())
 	{
-		OutError = MakeTaskRuntimeError(
+		OutError = FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRuntimeError(
 			TEXT("invalid_taskplan_step"),
 			EBlueprintHelperToolStage::ParseInput,
 			TEXT("TaskPlan step must be an object."),
@@ -4337,7 +4337,7 @@ bool FBlueprintHelperTaskRuntimeService::TryLowerTaskPlanStep(
 		FString OperationField;
 		if (StepObject->TryGetStringField(TEXT("operation"), OperationField))
 		{
-			OutError = MakeTaskRuntimeError(
+			OutError = FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRuntimeError(
 				TEXT("unsupported_graph_write_operation_field"),
 				EBlueprintHelperToolStage::ParseInput,
 				TEXT("GraphWrite IR TaskPlan steps use capability/write; adapter operation fields are runtime lowering details."),
@@ -4347,7 +4347,7 @@ bool FBlueprintHelperTaskRuntimeService::TryLowerTaskPlanStep(
 
 		TSharedPtr<FJsonObject> Payload;
 		FString AdapterOperation;
-		if (!TryBuildGraphWriteIrPayload(TaskPlan, StepObject, bDryRun, Payload, AdapterOperation, OutError))
+		if (!FBlueprintHelperTaskRuntimeServiceLocalUtils::TryBuildGraphWriteIrPayload(TaskPlan, StepObject, bDryRun, Payload, AdapterOperation, OutError))
 		{
 			return false;
 		}
@@ -4384,7 +4384,7 @@ bool FBlueprintHelperTaskRuntimeService::TryLowerTaskPlanStep(
 		FString AdapterOperation;
 		if (StepObject->TryGetStringField(TEXT("operation"), AdapterOperation))
 		{
-			OutError = MakeTaskRuntimeError(
+			OutError = FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRuntimeError(
 				TEXT("unsupported_asset_factory_operation_field"),
 				EBlueprintHelperToolStage::ParseInput,
 				TEXT("asset_factory IR TaskPlan steps use capability/write; adapter operation fields are runtime lowering details."),
@@ -4444,7 +4444,7 @@ bool FBlueprintHelperTaskRuntimeService::TryLowerTaskPlanStep(
 			OutError);
 	}
 
-	if (Capability == BlueprintHelperWidgetTaskPlan::Capability::UMGWidget)
+	if (Capability == FBlueprintHelperWidgetTaskPlan::Capability::UMGWidget)
 	{
 		FBlueprintHelperWidgetTaskPlanPayload Payload;
 		if (!FBlueprintHelperWidgetTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(
@@ -4493,7 +4493,7 @@ bool FBlueprintHelperTaskRuntimeService::TryLowerTaskPlanStep(
 
 	if (!Capability.IsEmpty())
 	{
-		OutError = MakeTaskRuntimeError(
+		OutError = FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRuntimeError(
 			TEXT("unsupported_taskplan_capability"),
 			EBlueprintHelperToolStage::ParseInput,
 			TEXT("Task Runtime does not support this TaskPlan capability yet."),
@@ -4503,9 +4503,9 @@ bool FBlueprintHelperTaskRuntimeService::TryLowerTaskPlanStep(
 
 	FString StepOperation;
 	StepObject->TryGetStringField(TEXT("operation"), StepOperation);
-	if (!IsGraphWriteTaskPlanOperation(StepOperation))
+	if (!FBlueprintHelperTaskRuntimeServiceLocalUtils::IsGraphWriteTaskPlanOperation(StepOperation))
 	{
-		OutError = MakeTaskRuntimeError(
+		OutError = FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRuntimeError(
 			TEXT("unsupported_taskplan_operation"),
 			EBlueprintHelperToolStage::ParseInput,
 			TEXT("Task Runtime currently supports graph write TaskPlan steps only."),
@@ -4516,7 +4516,7 @@ bool FBlueprintHelperTaskRuntimeService::TryLowerTaskPlanStep(
 	FString StepPayloadErrorCode;
 	FString StepPayloadErrorMessage;
 	FString StepPayloadErrorField;
-	TSharedRef<FJsonObject> StepPayload = BuildGraphWritePayload(
+	TSharedRef<FJsonObject> StepPayload = FBlueprintHelperTaskRuntimeServiceLocalUtils::BuildGraphWritePayload(
 		StepOperation,
 		StepObject,
 		bDryRun,
@@ -4525,7 +4525,7 @@ bool FBlueprintHelperTaskRuntimeService::TryLowerTaskPlanStep(
 		StepPayloadErrorField);
 	if (!StepPayloadErrorCode.IsEmpty())
 	{
-		OutError = MakeTaskRuntimeError(
+		OutError = FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRuntimeError(
 			StepPayloadErrorCode,
 			EBlueprintHelperToolStage::ParseInput,
 			StepPayloadErrorMessage,
@@ -4548,7 +4548,7 @@ TSharedRef<FJsonObject> FBlueprintHelperTaskRuntimeService::BuildRuntimeDataForS
 {
 	TArray<FBlueprintHelperTaskRuntimeStepRecord> StepRecords;
 	StepRecords.Add({LoweredStep, StepResult});
-	return MakeRuntimeData(TaskPlan, TaskRunId, StepRecords, {}, bDryRun);
+	return FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeRuntimeData(TaskPlan, TaskRunId, StepRecords, {}, bDryRun);
 }
 
 TSharedRef<FJsonObject> FBlueprintHelperTaskRuntimeService::BuildRuntimeDataForSteps(
@@ -4558,7 +4558,7 @@ TSharedRef<FJsonObject> FBlueprintHelperTaskRuntimeService::BuildRuntimeDataForS
 	const TArray<FBlueprintHelperTaskRuntimePostOperationRecord>& PostOperationRecords,
 	bool bDryRun)
 {
-	return MakeRuntimeData(TaskPlan, TaskRunId, StepRecords, PostOperationRecords, bDryRun);
+	return FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeRuntimeData(TaskPlan, TaskRunId, StepRecords, PostOperationRecords, bDryRun);
 }
 
 TSharedRef<FJsonObject> FBlueprintHelperTaskRuntimeService::BuildTaskRunJournalForStep(
@@ -4567,7 +4567,7 @@ TSharedRef<FJsonObject> FBlueprintHelperTaskRuntimeService::BuildTaskRunJournalF
 	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
 	const FBlueprintHelperToolResultBase& StepResult)
 {
-	return MakeTaskRunJournal(TaskRunId, TaskPlan, LoweredStep, StepResult);
+	return FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRunJournal(TaskRunId, TaskPlan, LoweredStep, StepResult);
 }
 
 TSharedRef<FJsonObject> FBlueprintHelperTaskRuntimeService::BuildTaskRunJournalForSteps(
@@ -4576,7 +4576,7 @@ TSharedRef<FJsonObject> FBlueprintHelperTaskRuntimeService::BuildTaskRunJournalF
 	const TArray<FBlueprintHelperTaskRuntimeStepRecord>& StepRecords,
 	const TArray<FBlueprintHelperTaskRuntimePostOperationRecord>& PostOperationRecords)
 {
-	return MakeTaskRunJournal(TaskRunId, TaskPlan, StepRecords, PostOperationRecords);
+	return FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRunJournal(TaskRunId, TaskPlan, StepRecords, PostOperationRecords);
 }
 
 FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::PreviewTaskPlan(
@@ -4597,7 +4597,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::GetTaskRunJou
 	const TSharedPtr<FJsonObject>* FoundJournal = TaskRunJournals.Find(TaskRunId);
 	if (!FoundJournal || !FoundJournal->IsValid())
 	{
-		return MakeFailure(
+		return FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeFailure(
 			TEXT("get_task_run_journal"),
 			TEXT("task_run_journal_not_found"),
 			EBlueprintHelperToolStage::ResolveTarget,
@@ -4619,21 +4619,21 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 	const FString RuntimeOperation = bDryRun ? TEXT("preview_task_plan") : TEXT("execute_task_plan");
 	if (!Payload.IsValid())
 	{
-		return MakeFailure(RuntimeOperation, TEXT("invalid_taskplan_payload"),
+		return FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeFailure(RuntimeOperation, TEXT("invalid_taskplan_payload"),
 			EBlueprintHelperToolStage::ParseInput, TEXT("payload is required."), TEXT("payload"));
 	}
 
 	const TSharedPtr<FJsonObject>* TaskPlanPtr = nullptr;
 	if (!Payload->TryGetObjectField(TEXT("task_plan"), TaskPlanPtr) || !TaskPlanPtr || !TaskPlanPtr->IsValid())
 	{
-		return MakeFailure(RuntimeOperation, TEXT("missing_task_plan"),
+		return FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeFailure(RuntimeOperation, TEXT("missing_task_plan"),
 			EBlueprintHelperToolStage::ParseInput, TEXT("payload.task_plan is required."), TEXT("payload.task_plan"));
 	}
 
 	const TArray<TSharedPtr<FJsonValue>>* StepsArray = nullptr;
 	if (!(*TaskPlanPtr)->TryGetArrayField(TEXT("steps"), StepsArray) || !StepsArray || StepsArray->Num() == 0)
 	{
-		return MakeFailure(RuntimeOperation, TEXT("unsupported_taskplan_step_count"),
+		return FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeFailure(RuntimeOperation, TEXT("unsupported_taskplan_step_count"),
 			EBlueprintHelperToolStage::ParseInput, TEXT("Task Runtime requires at least one TaskPlan step."),
 			TEXT("task_plan.steps"));
 	}
@@ -4650,8 +4650,8 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		FBlueprintHelperReviewArchiveSession ArchiveSession;
 		ArchiveSession.ArchiveSessionId = ArchiveSessionId;
 		ArchiveSession.TaskRunId = TaskRunId;
-		ArchiveSession.AllowedTargetAssets = ReadTargetAssets(*TaskPlanPtr);
-		ArchiveSession.BaselineSnapshotRefs = CaptureReviewBaselineSnapshots(
+		ArchiveSession.AllowedTargetAssets = FBlueprintHelperTaskRuntimeServiceLocalUtils::ReadTargetAssets(*TaskPlanPtr);
+		ArchiveSession.BaselineSnapshotRefs = FBlueprintHelperTaskRuntimeServiceLocalUtils::CaptureReviewBaselineSnapshots(
 			ArchiveSessionId,
 			ArchiveSession.AllowedTargetAssets);
 		ArchiveSession.CreatedAt = FDateTime::UtcNow().ToIso8601();
@@ -4660,7 +4660,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		FString ArchiveSessionError;
 		if (!ReviewStore.SaveArchiveSession(ArchiveSession, ArchiveSessionError))
 		{
-			return MakeFailure(
+			return FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeFailure(
 				RuntimeOperation,
 				TEXT("review_archive_session_write_failed"),
 				EBlueprintHelperToolStage::Execute,
@@ -4668,13 +4668,13 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 				TEXT("review.archive_session"));
 		}
 	}
-	FScopedBlueprintHelperReviewContext ReviewContext(!bDryRun, ArchiveSessionId, TaskRunId);
+	FBlueprintHelperTaskRuntimeServiceLocalUtils::FScopedBlueprintHelperReviewContext ReviewContext(!bDryRun, ArchiveSessionId, TaskRunId);
 
 	TArray<FBlueprintHelperTaskRuntimeStepRecord> StepRecords;
 	TArray<FBlueprintHelperTaskRuntimePostOperationRecord> PostOperationRecords;
 	FBlueprintHelperValidationSummary BaseValidation;
 	bool bSawStepValidation = false;
-	TMap<FString, EBlueprintHelperTaskJournalStepStatus> StepExecutionStatuses;
+	TMap<FString, FBlueprintHelperTaskRuntimeServiceLocalUtils::EBlueprintHelperTaskJournalStepStatus> StepExecutionStatuses;
 	TSet<FString> DryRunPlannedComponentKeys;
 	bool bSawExecutionFailure = false;
 	bool bHasFirstExecutionError = false;
@@ -4701,7 +4701,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 				FBlueprintHelperToolResultBuilder::GenerateTraceId(),
 				Error);
 
-		if (bSawStepValidation || HasExecutionPolicyValidationFields(*TaskPlanPtr))
+		if (bSawStepValidation || FBlueprintHelperTaskRuntimeServiceLocalUtils::HasExecutionPolicyValidationFields(*TaskPlanPtr))
 		{
 			RuntimeResult.Validation = BuildRuntimeValidation(*TaskPlanPtr, BaseValidation);
 		}
@@ -4750,7 +4750,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 
 		if (!bDryRun && !TaskRunId.IsEmpty() && (StepRecords.Num() > 0 || PostOperationRecords.Num() > 0))
 		{
-			TaskRunJournals.Add(TaskRunId, MakeTaskRunJournal(
+			TaskRunJournals.Add(TaskRunId, FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRunJournal(
 				TaskRunId,
 				*TaskPlanPtr,
 				StepRecords,
@@ -4784,7 +4784,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 			DebugInput.Stage = ToolStageToString(Error.Stage);
 			DebugInput.TraceId = RuntimeResult.TraceId;
 			DebugInput.TaskRunId = TaskRunId;
-			DebugInput.AssetPaths = ReadTargetAssets(*TaskPlanPtr);
+			DebugInput.AssetPaths = FBlueprintHelperTaskRuntimeServiceLocalUtils::ReadTargetAssets(*TaskPlanPtr);
 			DebugInput.Error.Code = Error.Code;
 			DebugInput.Error.Message = Error.Message;
 			DebugInput.RecommendedNext = TEXT("get_debug_case");
@@ -4814,24 +4814,24 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 				: nullptr;
 		if (!StepObject.IsValid())
 		{
-			return BuildFailureResult(MakeTaskRuntimeError(
+			return BuildFailureResult(FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRuntimeError(
 				TEXT("invalid_taskplan_step"),
 				EBlueprintHelperToolStage::ParseInput,
 				TEXT("TaskPlan step must be an object."),
 				FString::Printf(TEXT("task_plan.steps[%d]"), StepIndex)));
 		}
 
-		const FString PlannedStepId = GetTaskPlanStepId(StepObject, StepIndex);
+		const FString PlannedStepId = FBlueprintHelperTaskRuntimeServiceLocalUtils::GetTaskPlanStepId(StepObject, StepIndex);
 		if (!bDryRun)
 		{
-			const TArray<FString> DependsOn = ReadStepDependsOn(StepObject);
+			const TArray<FString> DependsOn = FBlueprintHelperTaskRuntimeServiceLocalUtils::ReadStepDependsOn(StepObject);
 			bool bBlockedByDependency = false;
 			for (const FString& DependsOnStepId : DependsOn)
 			{
-				const EBlueprintHelperTaskJournalStepStatus* DependencyStatus = StepExecutionStatuses.Find(DependsOnStepId);
+				const FBlueprintHelperTaskRuntimeServiceLocalUtils::EBlueprintHelperTaskJournalStepStatus* DependencyStatus = StepExecutionStatuses.Find(DependsOnStepId);
 				if (DependencyStatus &&
-					(*DependencyStatus == EBlueprintHelperTaskJournalStepStatus::Failed ||
-					 *DependencyStatus == EBlueprintHelperTaskJournalStepStatus::Blocked))
+					(*DependencyStatus == FBlueprintHelperTaskRuntimeServiceLocalUtils::EBlueprintHelperTaskJournalStepStatus::Failed ||
+					 *DependencyStatus == FBlueprintHelperTaskRuntimeServiceLocalUtils::EBlueprintHelperTaskJournalStepStatus::Blocked))
 				{
 					bBlockedByDependency = true;
 					break;
@@ -4840,7 +4840,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 
 			if (bBlockedByDependency)
 			{
-				StepExecutionStatuses.Add(PlannedStepId, EBlueprintHelperTaskJournalStepStatus::Blocked);
+				StepExecutionStatuses.Add(PlannedStepId, FBlueprintHelperTaskRuntimeServiceLocalUtils::EBlueprintHelperTaskJournalStepStatus::Blocked);
 				bSawExecutionFailure = true;
 				continue;
 			}
@@ -4856,7 +4856,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 
 		if (!LoweredStep.Payload.IsValid())
 		{
-			return BuildFailureResult(MakeTaskRuntimeError(
+			return BuildFailureResult(FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRuntimeError(
 				TEXT("invalid_taskplan_lowered_payload"),
 				EBlueprintHelperToolStage::ParseInput,
 				TEXT("Task Runtime lowering did not produce a payload."),
@@ -4864,9 +4864,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		}
 
 		FBlueprintHelperToolResultBase StepResult = ExecuteLoweredStep(LoweredStep);
-		if (bDryRun && IsPlannedComponentPropertyDryRun(LoweredStep, StepResult, DryRunPlannedComponentKeys))
+		if (bDryRun && FBlueprintHelperTaskRuntimeServiceLocalUtils::IsPlannedComponentPropertyDryRun(LoweredStep, StepResult, DryRunPlannedComponentKeys))
 		{
-			StepResult = MakePlannedComponentPropertyDryRunResult(LoweredStep);
+			StepResult = FBlueprintHelperTaskRuntimeServiceLocalUtils::MakePlannedComponentPropertyDryRunResult(LoweredStep);
 		}
 		StepRecords.Add({LoweredStep, StepResult});
 		if (!bDryRun && StepResult.bOk)
@@ -4889,7 +4889,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 				if (!ReviewStore.SaveReviewRecords(RuntimeReviewRecords, ReviewRecordError))
 				{
 					StepResult.bOk = false;
-					StepResult.Error = MakeTaskRuntimeError(
+					StepResult.Error = FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRuntimeError(
 						TEXT("review_record_write_failed"),
 						EBlueprintHelperToolStage::Execute,
 						ReviewRecordError,
@@ -4901,17 +4901,17 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		StepExecutionStatuses.Add(
 			LoweredStep.StepId,
 			StepResult.bOk
-				? EBlueprintHelperTaskJournalStepStatus::Completed
-				: EBlueprintHelperTaskJournalStepStatus::Failed);
+				? FBlueprintHelperTaskRuntimeServiceLocalUtils::EBlueprintHelperTaskJournalStepStatus::Completed
+				: FBlueprintHelperTaskRuntimeServiceLocalUtils::EBlueprintHelperTaskJournalStepStatus::Failed);
 		if (bDryRun &&
 			StepResult.bOk &&
 			LoweredStep.AdapterOperation == FBlueprintHelperComponentTaskPlanAdapter::AdapterOperationAddComponent)
 		{
 			FString PlannedAssetPath;
 			FString PlannedComponentName;
-			if (TryReadComponentPayloadIdentity(LoweredStep, PlannedAssetPath, PlannedComponentName))
+			if (FBlueprintHelperTaskRuntimeServiceLocalUtils::TryReadComponentPayloadIdentity(LoweredStep, PlannedAssetPath, PlannedComponentName))
 			{
-				DryRunPlannedComponentKeys.Add(MakePlannedComponentKey(PlannedAssetPath, PlannedComponentName));
+				DryRunPlannedComponentKeys.Add(FBlueprintHelperTaskRuntimeServiceLocalUtils::MakePlannedComponentKey(PlannedAssetPath, PlannedComponentName));
 			}
 		}
 
@@ -4928,7 +4928,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 			{
 				FirstExecutionError = StepResult.Error.IsSet()
 					? *StepResult.Error
-					: MakeTaskRuntimeError(TEXT("task_step_failed"), EBlueprintHelperToolStage::Execute, TEXT("TaskPlan step failed."));
+					: FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRuntimeError(TEXT("task_step_failed"), EBlueprintHelperToolStage::Execute, TEXT("TaskPlan step failed."));
 				bHasFirstExecutionError = true;
 			}
 			bSawExecutionFailure = true;
@@ -4940,21 +4940,21 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		return BuildFailureResult(
 			bHasFirstExecutionError
 				? FirstExecutionError
-				: MakeTaskRuntimeError(TEXT("task_step_failed"), EBlueprintHelperToolStage::Execute, TEXT("TaskPlan step failed.")));
+				: FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRuntimeError(TEXT("task_step_failed"), EBlueprintHelperToolStage::Execute, TEXT("TaskPlan step failed.")));
 	}
 
 	if (!bDryRun)
 	{
 		bool bShouldCompile = false;
 		bool bShouldSave = false;
-		const bool bHasCompilePolicy = TryReadExecutionPolicyBool(*TaskPlanPtr, TEXT("should_compile"), bShouldCompile);
-		const bool bHasSavePolicy = TryReadExecutionPolicyBool(*TaskPlanPtr, TEXT("should_save"), bShouldSave);
+		const bool bHasCompilePolicy = FBlueprintHelperTaskRuntimeServiceLocalUtils::TryReadExecutionPolicyBool(*TaskPlanPtr, TEXT("should_compile"), bShouldCompile);
+		const bool bHasSavePolicy = FBlueprintHelperTaskRuntimeServiceLocalUtils::TryReadExecutionPolicyBool(*TaskPlanPtr, TEXT("should_save"), bShouldSave);
 		if ((bHasCompilePolicy && bShouldCompile) || (bHasSavePolicy && bShouldSave))
 		{
-			const TArray<FString> TargetAssets = ReadTargetAssets(*TaskPlanPtr);
+			const TArray<FString> TargetAssets = FBlueprintHelperTaskRuntimeServiceLocalUtils::ReadTargetAssets(*TaskPlanPtr);
 			if (TargetAssets.Num() == 0)
 			{
-				return BuildFailureResult(MakeTaskRuntimeError(
+				return BuildFailureResult(FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRuntimeError(
 					TEXT("missing_target_assets_for_post_operation"),
 					EBlueprintHelperToolStage::ParseInput,
 					TEXT("TaskPlan execution_policy compile/save requires target_assets."),
@@ -4974,7 +4974,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 						return BuildFailureResult(
 							CompileResult.Error.IsSet()
 								? *CompileResult.Error
-								: MakeTaskRuntimeError(TEXT("task_compile_failed"), EBlueprintHelperToolStage::Execute, TEXT("TaskPlan compile post operation failed.")));
+								: FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRuntimeError(TEXT("task_compile_failed"), EBlueprintHelperToolStage::Execute, TEXT("TaskPlan compile post operation failed.")));
 					}
 				}
 			}
@@ -4983,14 +4983,14 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 			{
 				for (const FString& AssetPath : TargetAssets)
 				{
-					FBlueprintHelperToolResultBase SaveResult = MakeSaveAssetToolResult(AssetBrowseService, AssetPath);
+					FBlueprintHelperToolResultBase SaveResult = FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeSaveAssetToolResult(AssetBrowseService, AssetPath);
 					PostOperationRecords.Add({TEXT("save_asset"), SaveResult});
 					if (!SaveResult.bOk)
 					{
 						return BuildFailureResult(
 							SaveResult.Error.IsSet()
 								? *SaveResult.Error
-								: MakeTaskRuntimeError(TEXT("task_save_failed"), EBlueprintHelperToolStage::Execute, TEXT("TaskPlan save post operation failed.")));
+								: FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRuntimeError(TEXT("task_save_failed"), EBlueprintHelperToolStage::Execute, TEXT("TaskPlan save post operation failed.")));
 					}
 				}
 			}
@@ -5010,7 +5010,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		}
 	}
 
-	if (bSawStepValidation || HasExecutionPolicyValidationFields(*TaskPlanPtr))
+	if (bSawStepValidation || FBlueprintHelperTaskRuntimeServiceLocalUtils::HasExecutionPolicyValidationFields(*TaskPlanPtr))
 	{
 		RuntimeResult.Validation = BuildRuntimeValidation(*TaskPlanPtr, BaseValidation);
 	}

@@ -14,9 +14,10 @@
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "ScopedTransaction.h"
 
-namespace
+class FBlueprintHelperBlueprintVariableServiceLocalUtils
 {
-FBlueprintHelperToolResultBase MakeBlueprintVariableFailure(
+public:
+static FBlueprintHelperToolResultBase MakeBlueprintVariableFailure(
 	const FString& Operation,
 	const FString& TraceId,
 	const FString& Code,
@@ -33,7 +34,7 @@ FBlueprintHelperToolResultBase MakeBlueprintVariableFailure(
 	return FBlueprintHelperToolResultBuilder::Failure(Operation, TraceId, Error);
 }
 
-bool TryResolveBlueprintForVariableWrite(
+static bool TryResolveBlueprintForVariableWrite(
 	const FBlueprintHelperGraphResolver& Resolver,
 	const FString& AssetPath,
 	UBlueprint*& OutBlueprint,
@@ -55,7 +56,7 @@ bool TryResolveBlueprintForVariableWrite(
 	return true;
 }
 
-TSharedRef<FJsonObject> MakeBlueprintVariableTarget(
+static TSharedRef<FJsonObject> MakeBlueprintVariableTarget(
 	const FString& AssetPath,
 	const FString& VariableName = TEXT(""))
 {
@@ -69,7 +70,7 @@ TSharedRef<FJsonObject> MakeBlueprintVariableTarget(
 	return TargetJson;
 }
 
-TSharedRef<FJsonObject> MakeBlueprintLocalVariableTarget(
+static TSharedRef<FJsonObject> MakeBlueprintLocalVariableTarget(
 	const FString& AssetPath,
 	const FString& FunctionName,
 	const FString& VariableName = TEXT(""))
@@ -85,7 +86,7 @@ TSharedRef<FJsonObject> MakeBlueprintLocalVariableTarget(
 	return TargetJson;
 }
 
-bool TryReadDryRun(const TSharedPtr<FJsonObject>& Payload)
+static bool TryReadDryRun(const TSharedPtr<FJsonObject>& Payload)
 {
 	bool bDryRun = false;
 	if (Payload.IsValid())
@@ -95,7 +96,7 @@ bool TryReadDryRun(const TSharedPtr<FJsonObject>& Payload)
 	return bDryRun;
 }
 
-bool TryReadVariableNameField(const TSharedPtr<FJsonObject>& Payload, FString& OutVariableName)
+static bool TryReadVariableNameField(const TSharedPtr<FJsonObject>& Payload, FString& OutVariableName)
 {
 	if (!Payload.IsValid())
 	{
@@ -110,7 +111,7 @@ bool TryReadVariableNameField(const TSharedPtr<FJsonObject>& Payload, FString& O
 	return !OutVariableName.IsEmpty();
 }
 
-bool TryReadVariableNamesArray(
+static bool TryReadVariableNamesArray(
 	const TSharedPtr<FJsonObject>& Payload,
 	const TCHAR* ArrayField,
 	TArray<FString>& OutNames,
@@ -151,7 +152,7 @@ bool TryReadVariableNamesArray(
 	return true;
 }
 
-FBlueprintHelperVariableBatchResult ToBlueprintVariableBatchResult(
+static FBlueprintHelperVariableBatchResult ToBlueprintVariableBatchResult(
 	const FBlueprintHelperLocalVariableMutationCounts& Counts)
 {
 	FBlueprintHelperVariableBatchResult Result;
@@ -163,7 +164,7 @@ FBlueprintHelperVariableBatchResult ToBlueprintVariableBatchResult(
 	return Result;
 }
 
-bool TryReadLocalAddRequests(
+static bool TryReadLocalAddRequests(
 	const TSharedPtr<FJsonObject>& Payload,
 	TArray<FBlueprintHelperLocalVariableAddRequest>& OutRequests,
 	FString& OutError,
@@ -222,7 +223,7 @@ bool TryReadLocalAddRequests(
 	return true;
 }
 
-bool TryReadLocalRemoveRequests(
+static bool TryReadLocalRemoveRequests(
 	const TSharedPtr<FJsonObject>& Payload,
 	TArray<FBlueprintHelperLocalVariableRemoveRequest>& OutRequests,
 	FString& OutError,
@@ -299,7 +300,7 @@ bool TryReadLocalRemoveRequests(
 	return true;
 }
 
-bool LocalVariableExists(
+static bool LocalVariableExists(
 	const TArray<FBlueprintHelperLocalVariableItem>& LocalVariables,
 	const FString& VariableName)
 {
@@ -313,7 +314,7 @@ bool LocalVariableExists(
 	return false;
 }
 
-bool ValidateLocalAddDryRun(
+static bool ValidateLocalAddDryRun(
 	UBlueprint* Blueprint,
 	const FString& FunctionName,
 	const TArray<FBlueprintHelperLocalVariableAddRequest>& Requests,
@@ -377,14 +378,15 @@ bool ValidateLocalAddDryRun(
 	return true;
 }
 
-void AddVariableWriteValidation(FBlueprintHelperToolResultBase& Result, bool bShouldCompile = true, bool bShouldSave = true)
+static void AddVariableWriteValidation(FBlueprintHelperToolResultBase& Result, bool bShouldCompile = true, bool bShouldSave = true)
 {
 	FBlueprintHelperValidationSummary Validation;
 	Validation.bShouldCompile = bShouldCompile;
 	Validation.bShouldSave = bShouldSave;
 	Result.Validation = Validation;
 }
-}
+
+};
 
 FBlueprintHelperBlueprintVariableService::FBlueprintHelperBlueprintVariableService(
 	const FBlueprintHelperGraphResolver& InResolver,
@@ -453,11 +455,11 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::AddMemb
 		return FBlueprintHelperToolResultBuilder::Failure(TEXT("add_blueprint_member_variable"), TraceId,
 			{TEXT("invalid_request"), EBlueprintHelperToolStage::ParseInput, TEXT("缺少 asset_path。"), false});
 
-	if (TryReadDryRun(Payload))
+	if (FBlueprintHelperBlueprintVariableServiceLocalUtils::TryReadDryRun(Payload))
 	{
 		UBlueprint* Blueprint = nullptr;
 		FString ResolveError;
-		if (!TryResolveBlueprintForVariableWrite(Resolver, AssetPath, Blueprint, ResolveError))
+		if (!FBlueprintHelperBlueprintVariableServiceLocalUtils::TryResolveBlueprintForVariableWrite(Resolver, AssetPath, Blueprint, ResolveError))
 		{
 			return FBlueprintHelperToolResultBuilder::Failure(TEXT("add_blueprint_member_variable"), TraceId,
 				{TEXT("asset_not_found"), EBlueprintHelperToolStage::ResolveTarget, ResolveError, false});
@@ -465,7 +467,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::AddMemb
 		(void)Blueprint;
 
 		FString VariableName;
-		if (!TryReadVariableNameField(Payload, VariableName))
+		if (!FBlueprintHelperBlueprintVariableServiceLocalUtils::TryReadVariableNameField(Payload, VariableName))
 		{
 			return FBlueprintHelperToolResultBuilder::Failure(TEXT("add_blueprint_member_variable"), TraceId,
 				{TEXT("invalid_request"), EBlueprintHelperToolStage::ParseInput, TEXT("name or variable_name is required."), false});
@@ -473,7 +475,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::AddMemb
 
 		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::DryRun(
 			TEXT("add_blueprint_member_variable"), TraceId);
-		Result.CustomTargetJson = MakeBlueprintVariableTarget(AssetPath, VariableName);
+		Result.CustomTargetJson = FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableTarget(AssetPath, VariableName);
 		FBlueprintHelperAddMemberVariableResultData Data;
 		Data.AddResult.bSuccess = true;
 		Result.Data = Data.ToJson();
@@ -518,11 +520,11 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::AddMemb
 		return FBlueprintHelperToolResultBuilder::Failure(TEXT("add_blueprint_member_variables"), TraceId,
 			{TEXT("invalid_request"), EBlueprintHelperToolStage::ParseInput, TEXT("缺少 variables 数组。"), false});
 
-	if (TryReadDryRun(Payload))
+	if (FBlueprintHelperBlueprintVariableServiceLocalUtils::TryReadDryRun(Payload))
 	{
 		UBlueprint* Blueprint = nullptr;
 		FString ResolveError;
-		if (!TryResolveBlueprintForVariableWrite(Resolver, AssetPath, Blueprint, ResolveError))
+		if (!FBlueprintHelperBlueprintVariableServiceLocalUtils::TryResolveBlueprintForVariableWrite(Resolver, AssetPath, Blueprint, ResolveError))
 		{
 			return FBlueprintHelperToolResultBuilder::Failure(TEXT("add_blueprint_member_variables"), TraceId,
 				{TEXT("asset_not_found"), EBlueprintHelperToolStage::ResolveTarget, ResolveError, false});
@@ -532,7 +534,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::AddMemb
 		for (int32 Index = 0; Index < Vars->Num(); ++Index)
 		{
 			FString VariableName;
-			if (!TryReadVariableNameField((*Vars)[Index].IsValid() ? (*Vars)[Index]->AsObject() : nullptr, VariableName))
+			if (!FBlueprintHelperBlueprintVariableServiceLocalUtils::TryReadVariableNameField((*Vars)[Index].IsValid() ? (*Vars)[Index]->AsObject() : nullptr, VariableName))
 			{
 				return FBlueprintHelperToolResultBuilder::Failure(TEXT("add_blueprint_member_variables"), TraceId,
 					{TEXT("invalid_request"), EBlueprintHelperToolStage::ParseInput, FString::Printf(TEXT("variables[%d] requires name or variable_name."), Index), false});
@@ -541,7 +543,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::AddMemb
 
 		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::DryRun(
 			TEXT("add_blueprint_member_variables"), TraceId);
-		Result.CustomTargetJson = MakeBlueprintVariableTarget(AssetPath);
+		Result.CustomTargetJson = FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableTarget(AssetPath);
 		FBlueprintHelperAddMemberVariablesResultData Data;
 		Data.AddResult.RequestedCount = Vars->Num();
 		Data.AddResult.AddedCount = Vars->Num();
@@ -587,7 +589,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetMemb
 	const FString TraceId = FBlueprintHelperToolResultBuilder::GenerateTraceId();
 	if (!Payload.IsValid())
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("set_blueprint_member_variable_properties"),
 			TraceId,
 			TEXT("invalid_request"),
@@ -600,7 +602,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetMemb
 	Payload->TryGetStringField(TEXT("asset_path"), AssetPath);
 	if (AssetPath.IsEmpty())
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("set_blueprint_member_variable_properties"),
 			TraceId,
 			TEXT("invalid_request"),
@@ -612,7 +614,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetMemb
 	FString VariableName;
 	if (!FBlueprintHelperMemberVariableMutationHandler::TryReadVariableName(Payload, VariableName))
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("set_blueprint_member_variable_properties"),
 			TraceId,
 			TEXT("invalid_request"),
@@ -624,7 +626,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetMemb
 	const TArray<TSharedPtr<FJsonValue>>* SettingsArray = nullptr;
 	if (!Payload->TryGetArrayField(TEXT("settings"), SettingsArray) || !SettingsArray || SettingsArray->Num() == 0)
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("set_blueprint_member_variable_properties"),
 			TraceId,
 			TEXT("invalid_member_variable_settings"),
@@ -635,9 +637,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetMemb
 
 	UBlueprint* Blueprint = nullptr;
 	FString ResolveError;
-	if (!TryResolveBlueprintForVariableWrite(Resolver, AssetPath, Blueprint, ResolveError))
+	if (!FBlueprintHelperBlueprintVariableServiceLocalUtils::TryResolveBlueprintForVariableWrite(Resolver, AssetPath, Blueprint, ResolveError))
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("set_blueprint_member_variable_properties"),
 			TraceId,
 			TEXT("asset_not_found"),
@@ -657,7 +659,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetMemb
 		FBlueprintHelperMemberPropertyMutation Setting;
 		if (!FBlueprintHelperMemberVariableMutationHandler::TryReadPropertySetting(SettingObject, Setting))
 		{
-			return MakeBlueprintVariableFailure(
+			return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 				TEXT("set_blueprint_member_variable_properties"),
 				TraceId,
 				TEXT("invalid_member_variable_settings"),
@@ -668,12 +670,12 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetMemb
 		Settings.Add(MoveTemp(Setting));
 	}
 
-	if (TryReadDryRun(Payload))
+	if (FBlueprintHelperBlueprintVariableServiceLocalUtils::TryReadDryRun(Payload))
 	{
 		const int32 VariableIndex = FBlueprintEditorUtils::FindNewVariableIndex(Blueprint, FName(*VariableName));
 		if (VariableIndex == INDEX_NONE)
 		{
-			return MakeBlueprintVariableFailure(
+			return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 				TEXT("set_blueprint_member_variable_properties"),
 				TraceId,
 				TEXT("variable_not_found"),
@@ -690,7 +692,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetMemb
 				Path != TEXT("instance_editable") &&
 				Path != TEXT("expose_on_spawn"))
 			{
-				return MakeBlueprintVariableFailure(
+				return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 					TEXT("set_blueprint_member_variable_properties"),
 					TraceId,
 					TEXT("invalid_member_variable_settings"),
@@ -702,7 +704,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetMemb
 
 		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::DryRun(
 			TEXT("set_blueprint_member_variable_properties"), TraceId);
-		Result.CustomTargetJson = MakeBlueprintVariableTarget(AssetPath, VariableName);
+		Result.CustomTargetJson = FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableTarget(AssetPath, VariableName);
 		TSharedRef<FJsonObject> Data = MakeShared<FJsonObject>();
 		Data->SetStringField(TEXT("schema"), TEXT("SetMemberVariableProperties.v1"));
 		FBlueprintHelperVariableBatchResult PropertiesResult;
@@ -724,7 +726,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetMemb
 		SettingError,
 		&SettingField))
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("set_blueprint_member_variable_properties"),
 			TraceId,
 			SettingField == TEXT("name") ? TEXT("variable_not_found") : TEXT("invalid_member_variable_settings"),
@@ -736,7 +738,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetMemb
 	FBlueprintHelperToolResultBase Result = Counts.ChangedCount > 0
 		? FBlueprintHelperToolResultBuilder::Applied(TEXT("set_blueprint_member_variable_properties"), TraceId)
 		: FBlueprintHelperToolResultBuilder::NoOp(TEXT("set_blueprint_member_variable_properties"), TraceId);
-	Result.CustomTargetJson = MakeBlueprintVariableTarget(AssetPath, VariableName);
+	Result.CustomTargetJson = FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableTarget(AssetPath, VariableName);
 
 	TSharedRef<FJsonObject> Data = MakeShared<FJsonObject>();
 	Data->SetStringField(TEXT("schema"), TEXT("SetMemberVariableProperties.v1"));
@@ -774,11 +776,11 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::RemoveM
 		return FBlueprintHelperToolResultBuilder::Failure(TEXT("remove_blueprint_member_variable"), TraceId,
 			{TEXT("invalid_request"), EBlueprintHelperToolStage::ParseInput, TEXT("缺少 asset_path 或 variable_name。"), false});
 
-	if (TryReadDryRun(Payload))
+	if (FBlueprintHelperBlueprintVariableServiceLocalUtils::TryReadDryRun(Payload))
 	{
 		UBlueprint* Blueprint = nullptr;
 		FString ResolveError;
-		if (!TryResolveBlueprintForVariableWrite(Resolver, AssetPath, Blueprint, ResolveError))
+		if (!FBlueprintHelperBlueprintVariableServiceLocalUtils::TryResolveBlueprintForVariableWrite(Resolver, AssetPath, Blueprint, ResolveError))
 		{
 			return FBlueprintHelperToolResultBuilder::Failure(TEXT("remove_blueprint_member_variable"), TraceId,
 				{TEXT("asset_not_found"), EBlueprintHelperToolStage::ResolveTarget, ResolveError, false});
@@ -787,7 +789,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::RemoveM
 		const int32 VariableIndex = FBlueprintEditorUtils::FindNewVariableIndex(Blueprint, FName(*VarName));
 		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::DryRun(
 			TEXT("remove_blueprint_member_variable"), TraceId);
-		Result.CustomTargetJson = MakeBlueprintVariableTarget(AssetPath, VarName);
+		Result.CustomTargetJson = FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableTarget(AssetPath, VarName);
 		FBlueprintHelperRemoveMemberVariableResultData Data;
 		Data.RemoveResult.bSuccess = VariableIndex != INDEX_NONE;
 		Result.Data = Data.ToJson();
@@ -836,8 +838,8 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::RemoveM
 	TArray<FString> VariableNames;
 	FString ParseError;
 	FString ParseField;
-	if (!TryReadVariableNamesArray(Payload, TEXT("variables"), VariableNames, ParseError, ParseField) &&
-		!TryReadVariableNamesArray(Payload, TEXT("variable_names"), VariableNames, ParseError, ParseField))
+	if (!FBlueprintHelperBlueprintVariableServiceLocalUtils::TryReadVariableNamesArray(Payload, TEXT("variables"), VariableNames, ParseError, ParseField) &&
+		!FBlueprintHelperBlueprintVariableServiceLocalUtils::TryReadVariableNamesArray(Payload, TEXT("variable_names"), VariableNames, ParseError, ParseField))
 	{
 		return FBlueprintHelperToolResultBuilder::Failure(TEXT("remove_blueprint_member_variables"), TraceId,
 			{TEXT("invalid_request"), EBlueprintHelperToolStage::ParseInput, ParseError, false});
@@ -845,7 +847,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::RemoveM
 
 	UBlueprint* Blueprint = nullptr;
 	FString ResolveError;
-	if (!TryResolveBlueprintForVariableWrite(Resolver, AssetPath, Blueprint, ResolveError))
+	if (!FBlueprintHelperBlueprintVariableServiceLocalUtils::TryResolveBlueprintForVariableWrite(Resolver, AssetPath, Blueprint, ResolveError))
 	{
 		return FBlueprintHelperToolResultBuilder::Failure(TEXT("remove_blueprint_member_variables"), TraceId,
 			{TEXT("asset_not_found"), EBlueprintHelperToolStage::ResolveTarget, ResolveError, false});
@@ -864,11 +866,11 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::RemoveM
 		++BatchResult.RemovedCount;
 	}
 
-	if (TryReadDryRun(Payload))
+	if (FBlueprintHelperBlueprintVariableServiceLocalUtils::TryReadDryRun(Payload))
 	{
 		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::DryRun(
 			TEXT("remove_blueprint_member_variables"), TraceId);
-		Result.CustomTargetJson = MakeBlueprintVariableTarget(AssetPath);
+		Result.CustomTargetJson = FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableTarget(AssetPath);
 		FBlueprintHelperRemoveMemberVariablesResultData Data;
 		Data.RemoveResult = BatchResult;
 		Result.Data = Data.ToJson();
@@ -895,13 +897,13 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::RemoveM
 	FBlueprintHelperToolResultBase Result = BatchResult.RemovedCount > 0
 		? FBlueprintHelperToolResultBuilder::Applied(TEXT("remove_blueprint_member_variables"), TraceId)
 		: FBlueprintHelperToolResultBuilder::NoOp(TEXT("remove_blueprint_member_variables"), TraceId);
-	Result.CustomTargetJson = MakeBlueprintVariableTarget(AssetPath);
+	Result.CustomTargetJson = FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableTarget(AssetPath);
 	FBlueprintHelperRemoveMemberVariablesResultData Data;
 	Data.RemoveResult = BatchResult;
 	Result.Data = Data.ToJson();
 	if (BatchResult.RemovedCount > 0)
 	{
-		AddVariableWriteValidation(Result);
+		FBlueprintHelperBlueprintVariableServiceLocalUtils::AddVariableWriteValidation(Result);
 	}
 	return Result;
 }
@@ -950,7 +952,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetMemb
 	const FString TraceId = FBlueprintHelperToolResultBuilder::GenerateTraceId();
 	if (!Payload.IsValid())
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("set_blueprint_member_default"),
 			TraceId,
 			TEXT("invalid_request"),
@@ -963,7 +965,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetMemb
 	Payload->TryGetStringField(TEXT("asset_path"), AssetPath);
 	if (AssetPath.IsEmpty())
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("set_blueprint_member_default"),
 			TraceId,
 			TEXT("invalid_request"),
@@ -975,7 +977,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetMemb
 	FBlueprintHelperMemberDefaultMutation Change;
 	if (!FBlueprintHelperMemberVariableMutationHandler::TryReadVariableName(Payload, Change.VariableName))
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("set_blueprint_member_default"),
 			TraceId,
 			TEXT("invalid_request"),
@@ -986,7 +988,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetMemb
 
 	if (!FBlueprintHelperMemberVariableMutationHandler::TryReadDefaultValue(Payload, Change.DefaultValue))
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("set_blueprint_member_default"),
 			TraceId,
 			TEXT("invalid_member_default_settings"),
@@ -997,9 +999,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetMemb
 
 	UBlueprint* Blueprint = nullptr;
 	FString ResolveError;
-	if (!TryResolveBlueprintForVariableWrite(Resolver, AssetPath, Blueprint, ResolveError))
+	if (!FBlueprintHelperBlueprintVariableServiceLocalUtils::TryResolveBlueprintForVariableWrite(Resolver, AssetPath, Blueprint, ResolveError))
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("set_blueprint_member_default"),
 			TraceId,
 			TEXT("asset_not_found"),
@@ -1011,12 +1013,12 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetMemb
 	TArray<FBlueprintHelperMemberDefaultMutation> Changes;
 	Changes.Add(Change);
 
-	if (TryReadDryRun(Payload))
+	if (FBlueprintHelperBlueprintVariableServiceLocalUtils::TryReadDryRun(Payload))
 	{
 		const int32 VariableIndex = FBlueprintEditorUtils::FindNewVariableIndex(Blueprint, FName(*Change.VariableName));
 		if (VariableIndex == INDEX_NONE)
 		{
-			return MakeBlueprintVariableFailure(
+			return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 				TEXT("set_blueprint_member_default"),
 				TraceId,
 				TEXT("variable_not_found"),
@@ -1027,7 +1029,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetMemb
 
 		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::DryRun(
 			TEXT("set_blueprint_member_default"), TraceId);
-		Result.CustomTargetJson = MakeBlueprintVariableTarget(AssetPath, Change.VariableName);
+		Result.CustomTargetJson = FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableTarget(AssetPath, Change.VariableName);
 		FBlueprintHelperSetMemberDefaultsResultData Data;
 		Data.AppliedCount = 1;
 		Data.ChangedCount = 1;
@@ -1045,7 +1047,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetMemb
 		ApplyError,
 		&ApplyField))
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("set_blueprint_member_default"),
 			TraceId,
 			TEXT("variable_not_found"),
@@ -1057,7 +1059,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetMemb
 	FBlueprintHelperToolResultBase Result = Counts.ChangedCount > 0
 		? FBlueprintHelperToolResultBuilder::Applied(TEXT("set_blueprint_member_default"), TraceId)
 		: FBlueprintHelperToolResultBuilder::NoOp(TEXT("set_blueprint_member_default"), TraceId);
-	Result.CustomTargetJson = MakeBlueprintVariableTarget(AssetPath, Change.VariableName);
+	Result.CustomTargetJson = FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableTarget(AssetPath, Change.VariableName);
 
 	FBlueprintHelperSetMemberDefaultsResultData Data;
 	Data.AppliedCount = Counts.ChangedCount > 0 ? 1 : 0;
@@ -1080,7 +1082,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetMemb
 	const FString TraceId = FBlueprintHelperToolResultBuilder::GenerateTraceId();
 	if (!Payload.IsValid())
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("set_blueprint_member_defaults"),
 			TraceId,
 			TEXT("invalid_request"),
@@ -1093,7 +1095,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetMemb
 	Payload->TryGetStringField(TEXT("asset_path"), AssetPath);
 	if (AssetPath.IsEmpty())
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("set_blueprint_member_defaults"),
 			TraceId,
 			TEXT("invalid_request"),
@@ -1114,7 +1116,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetMemb
 					: nullptr;
 			if (!DefaultObject.IsValid())
 			{
-				return MakeBlueprintVariableFailure(
+				return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 					TEXT("set_blueprint_member_defaults"),
 					TraceId,
 					TEXT("invalid_member_default_settings"),
@@ -1126,7 +1128,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetMemb
 			FBlueprintHelperMemberDefaultMutation Change;
 			if (!FBlueprintHelperMemberVariableMutationHandler::TryReadVariableName(DefaultObject, Change.VariableName))
 			{
-				return MakeBlueprintVariableFailure(
+				return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 					TEXT("set_blueprint_member_defaults"),
 					TraceId,
 					TEXT("invalid_request"),
@@ -1137,7 +1139,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetMemb
 
 			if (!FBlueprintHelperMemberVariableMutationHandler::TryReadDefaultValue(DefaultObject, Change.DefaultValue))
 			{
-				return MakeBlueprintVariableFailure(
+				return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 					TEXT("set_blueprint_member_defaults"),
 					TraceId,
 					TEXT("invalid_member_default_settings"),
@@ -1161,7 +1163,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetMemb
 					Pair.Value,
 					Change.DefaultValue))
 				{
-					return MakeBlueprintVariableFailure(
+					return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 						TEXT("set_blueprint_member_defaults"),
 						TraceId,
 						TEXT("invalid_member_default_settings"),
@@ -1176,7 +1178,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetMemb
 
 	if (Changes.Num() == 0)
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("set_blueprint_member_defaults"),
 			TraceId,
 			TEXT("invalid_request"),
@@ -1187,9 +1189,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetMemb
 
 	UBlueprint* Blueprint = nullptr;
 	FString ResolveError;
-	if (!TryResolveBlueprintForVariableWrite(Resolver, AssetPath, Blueprint, ResolveError))
+	if (!FBlueprintHelperBlueprintVariableServiceLocalUtils::TryResolveBlueprintForVariableWrite(Resolver, AssetPath, Blueprint, ResolveError))
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("set_blueprint_member_defaults"),
 			TraceId,
 			TEXT("asset_not_found"),
@@ -1198,13 +1200,13 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetMemb
 			TEXT("asset_path"));
 	}
 
-	if (TryReadDryRun(Payload))
+	if (FBlueprintHelperBlueprintVariableServiceLocalUtils::TryReadDryRun(Payload))
 	{
 		for (int32 Index = 0; Index < Changes.Num(); ++Index)
 		{
 			if (FBlueprintEditorUtils::FindNewVariableIndex(Blueprint, FName(*Changes[Index].VariableName)) == INDEX_NONE)
 			{
-				return MakeBlueprintVariableFailure(
+				return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 					TEXT("set_blueprint_member_defaults"),
 					TraceId,
 					TEXT("variable_not_found"),
@@ -1216,7 +1218,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetMemb
 
 		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::DryRun(
 			TEXT("set_blueprint_member_defaults"), TraceId);
-		Result.CustomTargetJson = MakeBlueprintVariableTarget(AssetPath);
+		Result.CustomTargetJson = FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableTarget(AssetPath);
 		FBlueprintHelperSetMemberDefaultsBatchResultData Data;
 		Data.DefaultsResult.RequestedCount = Changes.Num();
 		Data.DefaultsResult.ChangedCount = Changes.Num();
@@ -1234,7 +1236,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetMemb
 		ApplyError,
 		&ApplyField))
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("set_blueprint_member_defaults"),
 			TraceId,
 			TEXT("variable_not_found"),
@@ -1246,7 +1248,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetMemb
 	FBlueprintHelperToolResultBase Result = Counts.ChangedCount > 0
 		? FBlueprintHelperToolResultBuilder::Applied(TEXT("set_blueprint_member_defaults"), TraceId)
 		: FBlueprintHelperToolResultBuilder::NoOp(TEXT("set_blueprint_member_defaults"), TraceId);
-	Result.CustomTargetJson = MakeBlueprintVariableTarget(AssetPath);
+	Result.CustomTargetJson = FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableTarget(AssetPath);
 
 	FBlueprintHelperSetMemberDefaultsBatchResultData Data;
 	Data.DefaultsResult.RequestedCount = Counts.RequestedCount;
@@ -1271,7 +1273,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::ReadLoc
 	const FString TraceId = FBlueprintHelperToolResultBuilder::GenerateTraceId();
 	if (!Payload.IsValid())
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("read_blueprint_local_variables"),
 			TraceId,
 			TEXT("invalid_request"),
@@ -1284,7 +1286,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::ReadLoc
 	Payload->TryGetStringField(TEXT("asset_path"), AssetPath);
 	if (AssetPath.IsEmpty())
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("read_blueprint_local_variables"),
 			TraceId,
 			TEXT("invalid_request"),
@@ -1296,7 +1298,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::ReadLoc
 	FString FunctionName;
 	if (!FBlueprintHelperLocalVariableMutationHandler::TryReadFunctionName(Payload, FunctionName))
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("read_blueprint_local_variables"),
 			TraceId,
 			TEXT("invalid_request"),
@@ -1307,9 +1309,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::ReadLoc
 
 	UBlueprint* Blueprint = nullptr;
 	FString ResolveError;
-	if (!TryResolveBlueprintForVariableWrite(Resolver, AssetPath, Blueprint, ResolveError))
+	if (!FBlueprintHelperBlueprintVariableServiceLocalUtils::TryResolveBlueprintForVariableWrite(Resolver, AssetPath, Blueprint, ResolveError))
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("read_blueprint_local_variables"),
 			TraceId,
 			TEXT("asset_not_found"),
@@ -1328,7 +1330,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::ReadLoc
 		ReadError,
 		&ReadField))
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("read_blueprint_local_variables"),
 			TraceId,
 			TEXT("function_not_found"),
@@ -1339,7 +1341,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::ReadLoc
 
 	FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Completed(
 		TEXT("read_blueprint_local_variables"), TraceId);
-	Result.CustomTargetJson = MakeBlueprintLocalVariableTarget(AssetPath, FunctionName);
+	Result.CustomTargetJson = FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintLocalVariableTarget(AssetPath, FunctionName);
 	FBlueprintHelperReadLocalVariablesResultData Data;
 	Data.FunctionName = FunctionName;
 	Data.LocalVariables = MoveTemp(LocalVariables);
@@ -1353,7 +1355,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::AddLoca
 	const FString TraceId = FBlueprintHelperToolResultBuilder::GenerateTraceId();
 	if (!Payload.IsValid())
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("add_blueprint_local_variable"),
 			TraceId,
 			TEXT("invalid_request"),
@@ -1366,7 +1368,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::AddLoca
 	Payload->TryGetStringField(TEXT("asset_path"), AssetPath);
 	if (AssetPath.IsEmpty())
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("add_blueprint_local_variable"),
 			TraceId,
 			TEXT("invalid_request"),
@@ -1378,7 +1380,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::AddLoca
 	FString FunctionName;
 	if (!FBlueprintHelperLocalVariableMutationHandler::TryReadFunctionName(Payload, FunctionName))
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("add_blueprint_local_variable"),
 			TraceId,
 			TEXT("invalid_request"),
@@ -1390,9 +1392,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::AddLoca
 	TArray<FBlueprintHelperLocalVariableAddRequest> Requests;
 	FString ParseError;
 	FString ParseField;
-	if (!TryReadLocalAddRequests(Payload, Requests, ParseError, ParseField) || Requests.Num() != 1)
+	if (!FBlueprintHelperBlueprintVariableServiceLocalUtils::TryReadLocalAddRequests(Payload, Requests, ParseError, ParseField) || Requests.Num() != 1)
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("add_blueprint_local_variable"),
 			TraceId,
 			TEXT("invalid_local_variable_settings"),
@@ -1403,9 +1405,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::AddLoca
 
 	UBlueprint* Blueprint = nullptr;
 	FString ResolveError;
-	if (!TryResolveBlueprintForVariableWrite(Resolver, AssetPath, Blueprint, ResolveError))
+	if (!FBlueprintHelperBlueprintVariableServiceLocalUtils::TryResolveBlueprintForVariableWrite(Resolver, AssetPath, Blueprint, ResolveError))
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("add_blueprint_local_variable"),
 			TraceId,
 			TEXT("asset_not_found"),
@@ -1417,11 +1419,11 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::AddLoca
 	FBlueprintHelperLocalVariableMutationCounts Counts;
 	FString ApplyError;
 	FString ApplyField;
-	if (TryReadDryRun(Payload))
+	if (FBlueprintHelperBlueprintVariableServiceLocalUtils::TryReadDryRun(Payload))
 	{
-		if (!ValidateLocalAddDryRun(Blueprint, FunctionName, Requests, Counts, ApplyError, ApplyField))
+		if (!FBlueprintHelperBlueprintVariableServiceLocalUtils::ValidateLocalAddDryRun(Blueprint, FunctionName, Requests, Counts, ApplyError, ApplyField))
 		{
-			return MakeBlueprintVariableFailure(
+			return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 				TEXT("add_blueprint_local_variable"),
 				TraceId,
 				TEXT("variable_add_failed"),
@@ -1432,7 +1434,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::AddLoca
 
 		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::DryRun(
 			TEXT("add_blueprint_local_variable"), TraceId);
-		Result.CustomTargetJson = MakeBlueprintLocalVariableTarget(AssetPath, FunctionName, Requests[0].VariableName);
+		Result.CustomTargetJson = FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintLocalVariableTarget(AssetPath, FunctionName, Requests[0].VariableName);
 		FBlueprintHelperAddLocalVariableResultData Data;
 		Data.AddResult.bSuccess = Counts.AddedCount > 0 || Counts.NoOpCount > 0;
 		Result.Data = Data.ToJson();
@@ -1449,7 +1451,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::AddLoca
 			ApplyError,
 			&ApplyField))
 		{
-			return MakeBlueprintVariableFailure(
+			return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 				TEXT("add_blueprint_local_variable"),
 				TraceId,
 				TEXT("variable_add_failed"),
@@ -1462,13 +1464,13 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::AddLoca
 	FBlueprintHelperToolResultBase Result = Counts.AddedCount > 0
 		? FBlueprintHelperToolResultBuilder::Applied(TEXT("add_blueprint_local_variable"), TraceId)
 		: FBlueprintHelperToolResultBuilder::NoOp(TEXT("add_blueprint_local_variable"), TraceId);
-	Result.CustomTargetJson = MakeBlueprintLocalVariableTarget(AssetPath, FunctionName, Requests[0].VariableName);
+	Result.CustomTargetJson = FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintLocalVariableTarget(AssetPath, FunctionName, Requests[0].VariableName);
 	FBlueprintHelperAddLocalVariableResultData Data;
 	Data.AddResult.bSuccess = true;
 	Result.Data = Data.ToJson();
 	if (Counts.AddedCount > 0)
 	{
-		AddVariableWriteValidation(Result);
+		FBlueprintHelperBlueprintVariableServiceLocalUtils::AddVariableWriteValidation(Result);
 	}
 	return Result;
 }
@@ -1479,7 +1481,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::AddLoca
 	const FString TraceId = FBlueprintHelperToolResultBuilder::GenerateTraceId();
 	if (!Payload.IsValid())
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("add_blueprint_local_variables"),
 			TraceId,
 			TEXT("invalid_request"),
@@ -1492,7 +1494,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::AddLoca
 	Payload->TryGetStringField(TEXT("asset_path"), AssetPath);
 	if (AssetPath.IsEmpty())
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("add_blueprint_local_variables"),
 			TraceId,
 			TEXT("invalid_request"),
@@ -1504,7 +1506,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::AddLoca
 	FString FunctionName;
 	if (!FBlueprintHelperLocalVariableMutationHandler::TryReadFunctionName(Payload, FunctionName))
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("add_blueprint_local_variables"),
 			TraceId,
 			TEXT("invalid_request"),
@@ -1516,9 +1518,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::AddLoca
 	TArray<FBlueprintHelperLocalVariableAddRequest> Requests;
 	FString ParseError;
 	FString ParseField;
-	if (!TryReadLocalAddRequests(Payload, Requests, ParseError, ParseField))
+	if (!FBlueprintHelperBlueprintVariableServiceLocalUtils::TryReadLocalAddRequests(Payload, Requests, ParseError, ParseField))
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("add_blueprint_local_variables"),
 			TraceId,
 			TEXT("invalid_local_variable_settings"),
@@ -1529,9 +1531,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::AddLoca
 
 	UBlueprint* Blueprint = nullptr;
 	FString ResolveError;
-	if (!TryResolveBlueprintForVariableWrite(Resolver, AssetPath, Blueprint, ResolveError))
+	if (!FBlueprintHelperBlueprintVariableServiceLocalUtils::TryResolveBlueprintForVariableWrite(Resolver, AssetPath, Blueprint, ResolveError))
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("add_blueprint_local_variables"),
 			TraceId,
 			TEXT("asset_not_found"),
@@ -1543,11 +1545,11 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::AddLoca
 	FBlueprintHelperLocalVariableMutationCounts Counts;
 	FString ApplyError;
 	FString ApplyField;
-	if (TryReadDryRun(Payload))
+	if (FBlueprintHelperBlueprintVariableServiceLocalUtils::TryReadDryRun(Payload))
 	{
-		if (!ValidateLocalAddDryRun(Blueprint, FunctionName, Requests, Counts, ApplyError, ApplyField))
+		if (!FBlueprintHelperBlueprintVariableServiceLocalUtils::ValidateLocalAddDryRun(Blueprint, FunctionName, Requests, Counts, ApplyError, ApplyField))
 		{
-			return MakeBlueprintVariableFailure(
+			return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 				TEXT("add_blueprint_local_variables"),
 				TraceId,
 				TEXT("variable_add_failed"),
@@ -1558,9 +1560,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::AddLoca
 
 		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::DryRun(
 			TEXT("add_blueprint_local_variables"), TraceId);
-		Result.CustomTargetJson = MakeBlueprintLocalVariableTarget(AssetPath, FunctionName);
+		Result.CustomTargetJson = FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintLocalVariableTarget(AssetPath, FunctionName);
 		FBlueprintHelperAddLocalVariablesResultData Data;
-		Data.AddResult = ToBlueprintVariableBatchResult(Counts);
+		Data.AddResult = FBlueprintHelperBlueprintVariableServiceLocalUtils::ToBlueprintVariableBatchResult(Counts);
 		Result.Data = Data.ToJson();
 		return Result;
 	}
@@ -1575,7 +1577,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::AddLoca
 			ApplyError,
 			&ApplyField))
 		{
-			return MakeBlueprintVariableFailure(
+			return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 				TEXT("add_blueprint_local_variables"),
 				TraceId,
 				TEXT("variable_add_failed"),
@@ -1588,13 +1590,13 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::AddLoca
 	FBlueprintHelperToolResultBase Result = Counts.AddedCount > 0
 		? FBlueprintHelperToolResultBuilder::Applied(TEXT("add_blueprint_local_variables"), TraceId)
 		: FBlueprintHelperToolResultBuilder::NoOp(TEXT("add_blueprint_local_variables"), TraceId);
-	Result.CustomTargetJson = MakeBlueprintLocalVariableTarget(AssetPath, FunctionName);
+	Result.CustomTargetJson = FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintLocalVariableTarget(AssetPath, FunctionName);
 	FBlueprintHelperAddLocalVariablesResultData Data;
-	Data.AddResult = ToBlueprintVariableBatchResult(Counts);
+	Data.AddResult = FBlueprintHelperBlueprintVariableServiceLocalUtils::ToBlueprintVariableBatchResult(Counts);
 	Result.Data = Data.ToJson();
 	if (Counts.AddedCount > 0)
 	{
-		AddVariableWriteValidation(Result);
+		FBlueprintHelperBlueprintVariableServiceLocalUtils::AddVariableWriteValidation(Result);
 	}
 	return Result;
 }
@@ -1605,7 +1607,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetLoca
 	const FString TraceId = FBlueprintHelperToolResultBuilder::GenerateTraceId();
 	if (!Payload.IsValid())
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("set_blueprint_local_variable_properties"),
 			TraceId,
 			TEXT("invalid_request"),
@@ -1618,7 +1620,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetLoca
 	Payload->TryGetStringField(TEXT("asset_path"), AssetPath);
 	if (AssetPath.IsEmpty())
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("set_blueprint_local_variable_properties"),
 			TraceId,
 			TEXT("invalid_request"),
@@ -1630,7 +1632,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetLoca
 	FString FunctionName;
 	if (!FBlueprintHelperLocalVariableMutationHandler::TryReadFunctionName(Payload, FunctionName))
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("set_blueprint_local_variable_properties"),
 			TraceId,
 			TEXT("invalid_request"),
@@ -1642,7 +1644,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetLoca
 	FString VariableName;
 	if (!FBlueprintHelperLocalVariableMutationHandler::TryReadVariableName(Payload, VariableName))
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("set_blueprint_local_variable_properties"),
 			TraceId,
 			TEXT("invalid_request"),
@@ -1660,7 +1662,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetLoca
 		ParseError,
 		&ParseField))
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("set_blueprint_local_variable_properties"),
 			TraceId,
 			TEXT("invalid_local_variable_settings"),
@@ -1671,9 +1673,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetLoca
 
 	UBlueprint* Blueprint = nullptr;
 	FString ResolveError;
-	if (!TryResolveBlueprintForVariableWrite(Resolver, AssetPath, Blueprint, ResolveError))
+	if (!FBlueprintHelperBlueprintVariableServiceLocalUtils::TryResolveBlueprintForVariableWrite(Resolver, AssetPath, Blueprint, ResolveError))
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("set_blueprint_local_variable_properties"),
 			TraceId,
 			TEXT("asset_not_found"),
@@ -1682,7 +1684,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetLoca
 			TEXT("asset_path"));
 	}
 
-	if (TryReadDryRun(Payload))
+	if (FBlueprintHelperBlueprintVariableServiceLocalUtils::TryReadDryRun(Payload))
 	{
 		TArray<FBlueprintHelperLocalVariableItem> LocalVariables;
 		FString ReadError;
@@ -1694,7 +1696,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetLoca
 			ReadError,
 			&ReadField))
 		{
-			return MakeBlueprintVariableFailure(
+			return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 				TEXT("set_blueprint_local_variable_properties"),
 				TraceId,
 				TEXT("function_not_found"),
@@ -1703,9 +1705,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetLoca
 				ReadField);
 		}
 
-		if (!LocalVariableExists(LocalVariables, VariableName))
+		if (!FBlueprintHelperBlueprintVariableServiceLocalUtils::LocalVariableExists(LocalVariables, VariableName))
 		{
-			return MakeBlueprintVariableFailure(
+			return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 				TEXT("set_blueprint_local_variable_properties"),
 				TraceId,
 				TEXT("variable_not_found"),
@@ -1716,7 +1718,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetLoca
 
 		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::DryRun(
 			TEXT("set_blueprint_local_variable_properties"), TraceId);
-		Result.CustomTargetJson = MakeBlueprintLocalVariableTarget(AssetPath, FunctionName, VariableName);
+		Result.CustomTargetJson = FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintLocalVariableTarget(AssetPath, FunctionName, VariableName);
 		FBlueprintHelperSetLocalVariablePropertiesResultData Data;
 		Data.PropertiesResult.RequestedCount = Settings.Num();
 		Data.PropertiesResult.ChangedCount = Settings.Num();
@@ -1738,7 +1740,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetLoca
 			ApplyError,
 			&ApplyField))
 		{
-			return MakeBlueprintVariableFailure(
+			return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 				TEXT("set_blueprint_local_variable_properties"),
 				TraceId,
 				TEXT("variable_property_set_failed"),
@@ -1751,13 +1753,13 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetLoca
 	FBlueprintHelperToolResultBase Result = Counts.ChangedCount > 0
 		? FBlueprintHelperToolResultBuilder::Applied(TEXT("set_blueprint_local_variable_properties"), TraceId)
 		: FBlueprintHelperToolResultBuilder::NoOp(TEXT("set_blueprint_local_variable_properties"), TraceId);
-	Result.CustomTargetJson = MakeBlueprintLocalVariableTarget(AssetPath, FunctionName, VariableName);
+	Result.CustomTargetJson = FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintLocalVariableTarget(AssetPath, FunctionName, VariableName);
 	FBlueprintHelperSetLocalVariablePropertiesResultData Data;
-	Data.PropertiesResult = ToBlueprintVariableBatchResult(Counts);
+	Data.PropertiesResult = FBlueprintHelperBlueprintVariableServiceLocalUtils::ToBlueprintVariableBatchResult(Counts);
 	Result.Data = Data.ToJson();
 	if (Counts.ChangedCount > 0)
 	{
-		AddVariableWriteValidation(Result);
+		FBlueprintHelperBlueprintVariableServiceLocalUtils::AddVariableWriteValidation(Result);
 	}
 	return Result;
 }
@@ -1768,7 +1770,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::RemoveL
 	const FString TraceId = FBlueprintHelperToolResultBuilder::GenerateTraceId();
 	if (!Payload.IsValid())
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("remove_blueprint_local_variable"),
 			TraceId,
 			TEXT("invalid_request"),
@@ -1781,7 +1783,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::RemoveL
 	Payload->TryGetStringField(TEXT("asset_path"), AssetPath);
 	if (AssetPath.IsEmpty())
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("remove_blueprint_local_variable"),
 			TraceId,
 			TEXT("invalid_request"),
@@ -1793,7 +1795,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::RemoveL
 	FString FunctionName;
 	if (!FBlueprintHelperLocalVariableMutationHandler::TryReadFunctionName(Payload, FunctionName))
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("remove_blueprint_local_variable"),
 			TraceId,
 			TEXT("invalid_request"),
@@ -1805,9 +1807,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::RemoveL
 	TArray<FBlueprintHelperLocalVariableRemoveRequest> Requests;
 	FString ParseError;
 	FString ParseField;
-	if (!TryReadLocalRemoveRequests(Payload, Requests, ParseError, ParseField) || Requests.Num() != 1)
+	if (!FBlueprintHelperBlueprintVariableServiceLocalUtils::TryReadLocalRemoveRequests(Payload, Requests, ParseError, ParseField) || Requests.Num() != 1)
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("remove_blueprint_local_variable"),
 			TraceId,
 			TEXT("invalid_request"),
@@ -1818,9 +1820,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::RemoveL
 
 	UBlueprint* Blueprint = nullptr;
 	FString ResolveError;
-	if (!TryResolveBlueprintForVariableWrite(Resolver, AssetPath, Blueprint, ResolveError))
+	if (!FBlueprintHelperBlueprintVariableServiceLocalUtils::TryResolveBlueprintForVariableWrite(Resolver, AssetPath, Blueprint, ResolveError))
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("remove_blueprint_local_variable"),
 			TraceId,
 			TEXT("asset_not_found"),
@@ -1832,7 +1834,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::RemoveL
 	FBlueprintHelperLocalVariableMutationCounts Counts;
 	FString ApplyError;
 	FString ApplyField;
-	if (TryReadDryRun(Payload))
+	if (FBlueprintHelperBlueprintVariableServiceLocalUtils::TryReadDryRun(Payload))
 	{
 		Requests[0].bDryRun = true;
 		if (!FBlueprintHelperLocalVariableMutationHandler::ApplyRemoveLocalVariables(
@@ -1843,7 +1845,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::RemoveL
 			ApplyError,
 			&ApplyField))
 		{
-			return MakeBlueprintVariableFailure(
+			return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 				TEXT("remove_blueprint_local_variable"),
 				TraceId,
 				TEXT("variable_remove_failed"),
@@ -1854,7 +1856,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::RemoveL
 
 		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::DryRun(
 			TEXT("remove_blueprint_local_variable"), TraceId);
-		Result.CustomTargetJson = MakeBlueprintLocalVariableTarget(AssetPath, FunctionName, Requests[0].VariableName);
+		Result.CustomTargetJson = FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintLocalVariableTarget(AssetPath, FunctionName, Requests[0].VariableName);
 		FBlueprintHelperRemoveLocalVariableResultData Data;
 		Data.RemoveResult.bSuccess = true;
 		Result.Data = Data.ToJson();
@@ -1872,7 +1874,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::RemoveL
 			ApplyError,
 			&ApplyField))
 		{
-			return MakeBlueprintVariableFailure(
+			return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 				TEXT("remove_blueprint_local_variable"),
 				TraceId,
 				TEXT("variable_remove_failed"),
@@ -1885,13 +1887,13 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::RemoveL
 	FBlueprintHelperToolResultBase Result = Counts.RemovedCount > 0
 		? FBlueprintHelperToolResultBuilder::Applied(TEXT("remove_blueprint_local_variable"), TraceId)
 		: FBlueprintHelperToolResultBuilder::NoOp(TEXT("remove_blueprint_local_variable"), TraceId);
-	Result.CustomTargetJson = MakeBlueprintLocalVariableTarget(AssetPath, FunctionName, Requests[0].VariableName);
+	Result.CustomTargetJson = FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintLocalVariableTarget(AssetPath, FunctionName, Requests[0].VariableName);
 	FBlueprintHelperRemoveLocalVariableResultData Data;
 	Data.RemoveResult.bSuccess = Counts.RemovedCount > 0;
 	Result.Data = Data.ToJson();
 	if (Counts.RemovedCount > 0)
 	{
-		AddVariableWriteValidation(Result);
+		FBlueprintHelperBlueprintVariableServiceLocalUtils::AddVariableWriteValidation(Result);
 	}
 	return Result;
 }
@@ -1902,7 +1904,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::RemoveL
 	const FString TraceId = FBlueprintHelperToolResultBuilder::GenerateTraceId();
 	if (!Payload.IsValid())
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("remove_blueprint_local_variables"),
 			TraceId,
 			TEXT("invalid_request"),
@@ -1915,7 +1917,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::RemoveL
 	Payload->TryGetStringField(TEXT("asset_path"), AssetPath);
 	if (AssetPath.IsEmpty())
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("remove_blueprint_local_variables"),
 			TraceId,
 			TEXT("invalid_request"),
@@ -1927,7 +1929,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::RemoveL
 	FString FunctionName;
 	if (!FBlueprintHelperLocalVariableMutationHandler::TryReadFunctionName(Payload, FunctionName))
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("remove_blueprint_local_variables"),
 			TraceId,
 			TEXT("invalid_request"),
@@ -1939,9 +1941,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::RemoveL
 	TArray<FBlueprintHelperLocalVariableRemoveRequest> Requests;
 	FString ParseError;
 	FString ParseField;
-	if (!TryReadLocalRemoveRequests(Payload, Requests, ParseError, ParseField))
+	if (!FBlueprintHelperBlueprintVariableServiceLocalUtils::TryReadLocalRemoveRequests(Payload, Requests, ParseError, ParseField))
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("remove_blueprint_local_variables"),
 			TraceId,
 			TEXT("invalid_request"),
@@ -1952,9 +1954,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::RemoveL
 
 	UBlueprint* Blueprint = nullptr;
 	FString ResolveError;
-	if (!TryResolveBlueprintForVariableWrite(Resolver, AssetPath, Blueprint, ResolveError))
+	if (!FBlueprintHelperBlueprintVariableServiceLocalUtils::TryResolveBlueprintForVariableWrite(Resolver, AssetPath, Blueprint, ResolveError))
 	{
-		return MakeBlueprintVariableFailure(
+		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("remove_blueprint_local_variables"),
 			TraceId,
 			TEXT("asset_not_found"),
@@ -1963,7 +1965,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::RemoveL
 			TEXT("asset_path"));
 	}
 
-	const bool bDryRun = TryReadDryRun(Payload);
+	const bool bDryRun = FBlueprintHelperBlueprintVariableServiceLocalUtils::TryReadDryRun(Payload);
 	for (FBlueprintHelperLocalVariableRemoveRequest& Request : Requests)
 	{
 		Request.bDryRun = bDryRun;
@@ -1982,7 +1984,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::RemoveL
 			ApplyError,
 			&ApplyField))
 		{
-			return MakeBlueprintVariableFailure(
+			return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 				TEXT("remove_blueprint_local_variables"),
 				TraceId,
 				TEXT("variable_remove_failed"),
@@ -1993,9 +1995,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::RemoveL
 
 		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::DryRun(
 			TEXT("remove_blueprint_local_variables"), TraceId);
-		Result.CustomTargetJson = MakeBlueprintLocalVariableTarget(AssetPath, FunctionName);
+		Result.CustomTargetJson = FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintLocalVariableTarget(AssetPath, FunctionName);
 		FBlueprintHelperRemoveLocalVariablesResultData Data;
-		Data.RemoveResult = ToBlueprintVariableBatchResult(Counts);
+		Data.RemoveResult = FBlueprintHelperBlueprintVariableServiceLocalUtils::ToBlueprintVariableBatchResult(Counts);
 		Result.Data = Data.ToJson();
 		return Result;
 	}
@@ -2010,7 +2012,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::RemoveL
 			ApplyError,
 			&ApplyField))
 		{
-			return MakeBlueprintVariableFailure(
+			return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 				TEXT("remove_blueprint_local_variables"),
 				TraceId,
 				TEXT("variable_remove_failed"),
@@ -2023,13 +2025,13 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::RemoveL
 	FBlueprintHelperToolResultBase Result = Counts.RemovedCount > 0
 		? FBlueprintHelperToolResultBuilder::Applied(TEXT("remove_blueprint_local_variables"), TraceId)
 		: FBlueprintHelperToolResultBuilder::NoOp(TEXT("remove_blueprint_local_variables"), TraceId);
-	Result.CustomTargetJson = MakeBlueprintLocalVariableTarget(AssetPath, FunctionName);
+	Result.CustomTargetJson = FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintLocalVariableTarget(AssetPath, FunctionName);
 	FBlueprintHelperRemoveLocalVariablesResultData Data;
-	Data.RemoveResult = ToBlueprintVariableBatchResult(Counts);
+	Data.RemoveResult = FBlueprintHelperBlueprintVariableServiceLocalUtils::ToBlueprintVariableBatchResult(Counts);
 	Result.Data = Data.ToJson();
 	if (Counts.RemovedCount > 0)
 	{
-		AddVariableWriteValidation(Result);
+		FBlueprintHelperBlueprintVariableServiceLocalUtils::AddVariableWriteValidation(Result);
 	}
 	return Result;
 }

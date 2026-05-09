@@ -90,9 +90,10 @@ inline EBlueprintHelperDebugCaseStatus BlueprintHelperDebugCaseStatusFromString(
 	return EBlueprintHelperDebugCaseStatus::Open;
 }
 
-namespace BlueprintHelperDebugJson
+class FBlueprintHelperDebugJson
 {
-	inline bool IsSensitiveFieldName(const FString& FieldName)
+public:
+	static bool IsSensitiveFieldName(const FString& FieldName)
 	{
 		const FString Lower = FieldName.ToLower();
 		return Lower.Contains(TEXT("raw_payload"))
@@ -110,14 +111,14 @@ namespace BlueprintHelperDebugJson
 			|| Lower.Contains(TEXT("secret"));
 	}
 
-	inline bool IsUnrealVirtualPath(const FString& Normalized)
+	static bool IsUnrealVirtualPath(const FString& Normalized)
 	{
 		return Normalized.StartsWith(TEXT("/Game/"))
 			|| Normalized.StartsWith(TEXT("/Script/"))
 			|| Normalized.StartsWith(TEXT("/Engine/"));
 	}
 
-	inline bool IsLocalAbsolutePath(const FString& Value)
+	static bool IsLocalAbsolutePath(const FString& Value)
 	{
 		FString Normalized = Value;
 		FPaths::NormalizeFilename(Normalized);
@@ -148,12 +149,12 @@ namespace BlueprintHelperDebugJson
 		return Normalized.StartsWith(TEXT("/")) && !IsUnrealVirtualPath(Normalized);
 	}
 
-	inline bool IsLocalDebugPath(const FString& Value)
+	static bool IsLocalDebugPath(const FString& Value)
 	{
 		return IsLocalAbsolutePath(Value);
 	}
 
-	inline bool LooksLikeToken(const FString& Value)
+	static bool LooksLikeToken(const FString& Value)
 	{
 		const FString Lower = Value.ToLower();
 		return Lower.Contains(TEXT("bearer "))
@@ -164,7 +165,7 @@ namespace BlueprintHelperDebugJson
 			|| Value.Contains(TEXT("xoxb-"));
 	}
 
-	inline bool LooksLikeSourceContent(const FString& Value)
+	static bool LooksLikeSourceContent(const FString& Value)
 	{
 		return Value.Contains(TEXT("\n"))
 			&& (Value.Contains(TEXT("#include"))
@@ -175,7 +176,7 @@ namespace BlueprintHelperDebugJson
 				|| Value.Contains(TEXT("struct ")));
 	}
 
-	inline FString RedactString(const FString& Value)
+	static FString RedactString(const FString& Value)
 	{
 		if (LooksLikeToken(Value) || IsLocalAbsolutePath(Value) || LooksLikeSourceContent(Value))
 		{
@@ -184,9 +185,7 @@ namespace BlueprintHelperDebugJson
 		return Value;
 	}
 
-	TSharedPtr<FJsonValue> SanitizeValue(const TSharedPtr<FJsonValue>& Value);
-
-	inline TSharedRef<FJsonObject> SanitizeObject(const TSharedPtr<FJsonObject>& Object)
+	static TSharedRef<FJsonObject> SanitizeObject(const TSharedPtr<FJsonObject>& Object)
 	{
 		TSharedRef<FJsonObject> Sanitized = MakeShared<FJsonObject>();
 		if (!Object.IsValid())
@@ -209,7 +208,7 @@ namespace BlueprintHelperDebugJson
 		return Sanitized;
 	}
 
-	inline TSharedPtr<FJsonValue> SanitizeValue(const TSharedPtr<FJsonValue>& Value)
+	static TSharedPtr<FJsonValue> SanitizeValue(const TSharedPtr<FJsonValue>& Value)
 	{
 		if (!Value.IsValid() || Value->Type == EJson::Null)
 		{
@@ -248,7 +247,7 @@ namespace BlueprintHelperDebugJson
 		return nullptr;
 	}
 
-	inline TArray<TSharedPtr<FJsonValue>> StringArrayToJson(const TArray<FString>& Values)
+	static TArray<TSharedPtr<FJsonValue>> StringArrayToJson(const TArray<FString>& Values)
 	{
 		TArray<TSharedPtr<FJsonValue>> JsonValues;
 		for (const FString& Value : Values)
@@ -261,7 +260,7 @@ namespace BlueprintHelperDebugJson
 		return JsonValues;
 	}
 
-	inline void ReadStringArray(const TSharedPtr<FJsonObject>& Json, const TCHAR* FieldName, TArray<FString>& OutValues)
+	static void ReadStringArray(const TSharedPtr<FJsonObject>& Json, const TCHAR* FieldName, TArray<FString>& OutValues)
 	{
 		OutValues.Reset();
 		if (!Json.IsValid())
@@ -281,7 +280,7 @@ namespace BlueprintHelperDebugJson
 			}
 		}
 	}
-}
+};
 
 struct FBlueprintHelperDebugError
 {
@@ -292,7 +291,7 @@ struct FBlueprintHelperDebugError
 	{
 		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
 		if (!Code.IsEmpty()) Json->SetStringField(TEXT("code"), Code);
-		if (!Message.IsEmpty()) Json->SetStringField(TEXT("message"), BlueprintHelperDebugJson::RedactString(Message));
+		if (!Message.IsEmpty()) Json->SetStringField(TEXT("message"), FBlueprintHelperDebugJson::RedactString(Message));
 		return Json;
 	}
 
@@ -332,10 +331,10 @@ struct FBlueprintHelperDebugTransactionLink
 	TSharedRef<FJsonObject> ToJson() const
 	{
 		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
-		if (!TransactionId.IsEmpty()) Json->SetStringField(TEXT("transaction_id"), BlueprintHelperDebugJson::RedactString(TransactionId));
-		if (!Role.IsEmpty()) Json->SetStringField(TEXT("role"), BlueprintHelperDebugJson::RedactString(Role));
-		if (!Source.IsEmpty()) Json->SetStringField(TEXT("source"), BlueprintHelperDebugJson::RedactString(Source));
-		if (!Summary.IsEmpty()) Json->SetStringField(TEXT("summary"), BlueprintHelperDebugJson::RedactString(Summary));
+		if (!TransactionId.IsEmpty()) Json->SetStringField(TEXT("transaction_id"), FBlueprintHelperDebugJson::RedactString(TransactionId));
+		if (!Role.IsEmpty()) Json->SetStringField(TEXT("role"), FBlueprintHelperDebugJson::RedactString(Role));
+		if (!Source.IsEmpty()) Json->SetStringField(TEXT("source"), FBlueprintHelperDebugJson::RedactString(Source));
+		if (!Summary.IsEmpty()) Json->SetStringField(TEXT("summary"), FBlueprintHelperDebugJson::RedactString(Summary));
 		return Json;
 	}
 
@@ -389,8 +388,8 @@ struct FBlueprintHelperDebugEvent
 		Json->SetStringField(TEXT("status"), BlueprintHelperDebugEventStatusToString(Status));
 		if (!TraceId.IsEmpty()) Json->SetStringField(TEXT("trace_id"), TraceId);
 		if (!TaskRunId.IsEmpty()) Json->SetStringField(TEXT("task_run_id"), TaskRunId);
-		if (AssetPaths.Num() > 0) Json->SetArrayField(TEXT("asset_paths"), BlueprintHelperDebugJson::StringArrayToJson(AssetPaths));
-		if (ReviewRecordIds.Num() > 0) Json->SetArrayField(TEXT("review_record_ids"), BlueprintHelperDebugJson::StringArrayToJson(ReviewRecordIds));
+		if (AssetPaths.Num() > 0) Json->SetArrayField(TEXT("asset_paths"), FBlueprintHelperDebugJson::StringArrayToJson(AssetPaths));
+		if (ReviewRecordIds.Num() > 0) Json->SetArrayField(TEXT("review_record_ids"), FBlueprintHelperDebugJson::StringArrayToJson(ReviewRecordIds));
 		if (TransactionLinks.Num() > 0)
 		{
 			TArray<TSharedPtr<FJsonValue>> TransactionValues;
@@ -405,7 +404,7 @@ struct FBlueprintHelperDebugEvent
 		if (!RecommendedNext.IsEmpty()) Json->SetStringField(TEXT("recommended_next"), RecommendedNext);
 		if (ToolResultSummary.IsValid())
 		{
-			Json->SetObjectField(TEXT("tool_result_summary"), BlueprintHelperDebugJson::SanitizeObject(ToolResultSummary));
+			Json->SetObjectField(TEXT("tool_result_summary"), FBlueprintHelperDebugJson::SanitizeObject(ToolResultSummary));
 		}
 		return Json;
 	}
@@ -430,8 +429,8 @@ struct FBlueprintHelperDebugEvent
 		if (Json->TryGetStringField(TEXT("status"), StatusText)) Event.Status = BlueprintHelperDebugEventStatusFromString(StatusText);
 		Json->TryGetStringField(TEXT("trace_id"), Event.TraceId);
 		Json->TryGetStringField(TEXT("task_run_id"), Event.TaskRunId);
-		BlueprintHelperDebugJson::ReadStringArray(Json, TEXT("asset_paths"), Event.AssetPaths);
-		BlueprintHelperDebugJson::ReadStringArray(Json, TEXT("review_record_ids"), Event.ReviewRecordIds);
+		FBlueprintHelperDebugJson::ReadStringArray(Json, TEXT("asset_paths"), Event.AssetPaths);
+		FBlueprintHelperDebugJson::ReadStringArray(Json, TEXT("review_record_ids"), Event.ReviewRecordIds);
 		const TArray<TSharedPtr<FJsonValue>>* TransactionValues = nullptr;
 		if (Json->TryGetArrayField(TEXT("transaction_links"), TransactionValues))
 		{
@@ -489,10 +488,10 @@ struct FBlueprintHelperDebugCase
 		Json->SetStringField(TEXT("status"), BlueprintHelperDebugCaseStatusToString(Status));
 		if (!Operation.IsEmpty()) Json->SetStringField(TEXT("operation"), Operation);
 		if (!Stage.IsEmpty()) Json->SetStringField(TEXT("stage"), Stage);
-		if (TraceIds.Num() > 0) Json->SetArrayField(TEXT("trace_ids"), BlueprintHelperDebugJson::StringArrayToJson(TraceIds));
+		if (TraceIds.Num() > 0) Json->SetArrayField(TEXT("trace_ids"), FBlueprintHelperDebugJson::StringArrayToJson(TraceIds));
 		if (!TaskRunId.IsEmpty()) Json->SetStringField(TEXT("task_run_id"), TaskRunId);
-		if (AssetPaths.Num() > 0) Json->SetArrayField(TEXT("asset_paths"), BlueprintHelperDebugJson::StringArrayToJson(AssetPaths));
-		if (ReviewRecordIds.Num() > 0) Json->SetArrayField(TEXT("review_record_ids"), BlueprintHelperDebugJson::StringArrayToJson(ReviewRecordIds));
+		if (AssetPaths.Num() > 0) Json->SetArrayField(TEXT("asset_paths"), FBlueprintHelperDebugJson::StringArrayToJson(AssetPaths));
+		if (ReviewRecordIds.Num() > 0) Json->SetArrayField(TEXT("review_record_ids"), FBlueprintHelperDebugJson::StringArrayToJson(ReviewRecordIds));
 		if (TransactionLinks.Num() > 0)
 		{
 			TArray<TSharedPtr<FJsonValue>> TransactionValues;
@@ -533,10 +532,10 @@ struct FBlueprintHelperDebugCase
 		if (Json->TryGetStringField(TEXT("status"), StatusText)) DebugCase.Status = BlueprintHelperDebugCaseStatusFromString(StatusText);
 		Json->TryGetStringField(TEXT("operation"), DebugCase.Operation);
 		Json->TryGetStringField(TEXT("stage"), DebugCase.Stage);
-		BlueprintHelperDebugJson::ReadStringArray(Json, TEXT("trace_ids"), DebugCase.TraceIds);
+		FBlueprintHelperDebugJson::ReadStringArray(Json, TEXT("trace_ids"), DebugCase.TraceIds);
 		Json->TryGetStringField(TEXT("task_run_id"), DebugCase.TaskRunId);
-		BlueprintHelperDebugJson::ReadStringArray(Json, TEXT("asset_paths"), DebugCase.AssetPaths);
-		BlueprintHelperDebugJson::ReadStringArray(Json, TEXT("review_record_ids"), DebugCase.ReviewRecordIds);
+		FBlueprintHelperDebugJson::ReadStringArray(Json, TEXT("asset_paths"), DebugCase.AssetPaths);
+		FBlueprintHelperDebugJson::ReadStringArray(Json, TEXT("review_record_ids"), DebugCase.ReviewRecordIds);
 		const TArray<TSharedPtr<FJsonValue>>* TransactionValues = nullptr;
 		if (Json->TryGetArrayField(TEXT("transaction_links"), TransactionValues))
 		{
@@ -600,10 +599,10 @@ struct FBlueprintHelperDebugCaseSummary
 		Json->SetStringField(TEXT("status"), BlueprintHelperDebugCaseStatusToString(Status));
 		if (!Operation.IsEmpty()) Json->SetStringField(TEXT("operation"), Operation);
 		if (!Stage.IsEmpty()) Json->SetStringField(TEXT("stage"), Stage);
-		if (TraceIds.Num() > 0) Json->SetArrayField(TEXT("trace_ids"), BlueprintHelperDebugJson::StringArrayToJson(TraceIds));
+		if (TraceIds.Num() > 0) Json->SetArrayField(TEXT("trace_ids"), FBlueprintHelperDebugJson::StringArrayToJson(TraceIds));
 		if (!TaskRunId.IsEmpty()) Json->SetStringField(TEXT("task_run_id"), TaskRunId);
-		if (AssetPaths.Num() > 0) Json->SetArrayField(TEXT("asset_paths"), BlueprintHelperDebugJson::StringArrayToJson(AssetPaths));
-		if (ReviewRecordIds.Num() > 0) Json->SetArrayField(TEXT("review_record_ids"), BlueprintHelperDebugJson::StringArrayToJson(ReviewRecordIds));
+		if (AssetPaths.Num() > 0) Json->SetArrayField(TEXT("asset_paths"), FBlueprintHelperDebugJson::StringArrayToJson(AssetPaths));
+		if (ReviewRecordIds.Num() > 0) Json->SetArrayField(TEXT("review_record_ids"), FBlueprintHelperDebugJson::StringArrayToJson(ReviewRecordIds));
 		if (TransactionLinks.Num() > 0)
 		{
 			TArray<TSharedPtr<FJsonValue>> TransactionValues;
@@ -657,7 +656,7 @@ struct FBlueprintHelperDebugBundleManifest
 		TArray<TSharedPtr<FJsonValue>> SafeContents;
 		for (const FString& Content : Contents)
 		{
-			if (!Content.IsEmpty() && FPaths::IsRelative(Content) && !BlueprintHelperDebugJson::IsLocalDebugPath(Content))
+			if (!Content.IsEmpty() && FPaths::IsRelative(Content) && !FBlueprintHelperDebugJson::IsLocalDebugPath(Content))
 			{
 				SafeContents.Add(MakeShared<FJsonValueString>(Content));
 			}
@@ -666,7 +665,7 @@ struct FBlueprintHelperDebugBundleManifest
 		TArray<TSharedPtr<FJsonValue>> SafeReviewRefs;
 		for (const FString& ReviewSummaryRef : ReviewSummaryRefs)
 		{
-			if (!ReviewSummaryRef.IsEmpty() && FPaths::IsRelative(ReviewSummaryRef) && !BlueprintHelperDebugJson::IsLocalDebugPath(ReviewSummaryRef))
+			if (!ReviewSummaryRef.IsEmpty() && FPaths::IsRelative(ReviewSummaryRef) && !FBlueprintHelperDebugJson::IsLocalDebugPath(ReviewSummaryRef))
 			{
 				SafeReviewRefs.Add(MakeShared<FJsonValueString>(ReviewSummaryRef));
 			}

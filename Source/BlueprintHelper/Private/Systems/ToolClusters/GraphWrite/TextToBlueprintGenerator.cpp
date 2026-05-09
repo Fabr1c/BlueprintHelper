@@ -22,15 +22,16 @@
 #include "UObject/UObjectIterator.h"
 #include "EdGraphNode_Comment.h"
 
-namespace
+class FTextToBlueprintGeneratorLocalUtils
 {
+public:
 	/** 标准宏库资产路径。 */
-	const TCHAR* StandardMacroLibraryPath = TEXT("/Engine/EditorBlueprintResources/StandardMacros.StandardMacros");
+	inline static const TCHAR* StandardMacroLibraryPath = TEXT("/Engine/EditorBlueprintResources/StandardMacros.StandardMacros");
 
 	/**
 	 * 归一化节点类型名称，统一转成 K2Node_xxx 形式。
 	 */
-	FString NormalizeNodeTypeName(const FString& InNodeType)
+	static FString NormalizeNodeTypeName(const FString& InNodeType)
 	{
 		FString Result = InNodeType;
 		Result.TrimStartAndEndInline();
@@ -54,7 +55,7 @@ namespace
 	/**
 	 * 判断宏名称是否仍是占位符。
 	 */
-	bool IsPlaceholderMacroName(const FString& InMacroName)
+	static bool IsPlaceholderMacroName(const FString& InMacroName)
 	{
 		return InMacroName.Equals(TEXT("BlueprintGraph.MacroInstance"), ESearchCase::IgnoreCase)
 			|| InMacroName.Equals(TEXT("K2Node_MacroInstance"), ESearchCase::IgnoreCase)
@@ -64,7 +65,7 @@ namespace
 	/**
 	 * 归一化引脚名称，便于做别名比较。
 	 */
-	FString NormalizePinKey(const FString& InPinName)
+	static FString NormalizePinKey(const FString& InPinName)
 	{
 		FString Result = InPinName;
 		Result.TrimStartAndEndInline();
@@ -77,7 +78,7 @@ namespace
 	/**
 	 * 返回标准 K2 实数子分类。
 	 */
-	FName ResolveRealSubCategory(const FString& Category)
+	static FName ResolveRealSubCategory(const FString& Category)
 	{
 		if (Category.Equals(TEXT("double"), ESearchCase::IgnoreCase))
 		{
@@ -87,7 +88,7 @@ namespace
 		return UEdGraphSchema_K2::PC_Float;
 	}
 
-	FBlueprintGeneratorDiagnostic MakeGeneratorDiagnostic(
+	static FBlueprintGeneratorDiagnostic MakeGeneratorDiagnostic(
 		const FString& Code,
 		const FString& NodeId,
 		const FString& PinName,
@@ -103,7 +104,7 @@ namespace
 		return Diagnostic;
 	}
 
-	bool IsInvalidPinTypeFailure(const FString& ErrorMessage)
+	static bool IsInvalidPinTypeFailure(const FString& ErrorMessage)
 	{
 		return ErrorMessage.Contains(TEXT("类型转换失败"))
 			|| ErrorMessage.Contains(TEXT("引脚类型无效"))
@@ -111,7 +112,7 @@ namespace
 			|| ErrorMessage.Contains(TEXT("无法加载引脚子分类对象"));
 	}
 
-	FString FindDiagnosticPinName(const FParsedNode& NodeData, const FString& ErrorMessage)
+	static FString FindDiagnosticPinName(const FParsedNode& NodeData, const FString& ErrorMessage)
 	{
 		for (const FParsedEventParam& Param : NodeData.EventReference.Params)
 		{
@@ -124,7 +125,7 @@ namespace
 		return TEXT("");
 	}
 
-	int32 CountRequestedPinTypes(const FParsedNode& NodeData)
+	static int32 CountRequestedPinTypes(const FParsedNode& NodeData)
 	{
 		int32 Count = 0;
 		if (NodeData.VariableReference.PinType.IsValid())
@@ -152,7 +153,8 @@ namespace
 		}
 		return Count;
 	}
-}
+
+};
 
 EParsedBlueprintNodeType TextToBlueprintGenerator::ResolveNodeType(const TSharedPtr<FJsonObject>& NodeObject)
 {
@@ -163,7 +165,7 @@ EParsedBlueprintNodeType TextToBlueprintGenerator::ResolveNodeType(const TShared
 
 	FString NodeTypeString;
 	NodeObject->TryGetStringField(TEXT("type"), NodeTypeString);
-	const FString NormalizedNodeType = NormalizeNodeTypeName(NodeTypeString);
+	const FString NormalizedNodeType = FTextToBlueprintGeneratorLocalUtils::NormalizeNodeTypeName(NodeTypeString);
 
 	if (NormalizedNodeType.Equals(TEXT("K2Node_CallFunction"), ESearchCase::IgnoreCase))
 	{
@@ -584,12 +586,12 @@ FParsedMacroReference TextToBlueprintGenerator::ResolveMacroReference(const TSha
 		NodeObject->TryGetStringField(TEXT("name"), Result.MacroName);
 	}
 
-	if (Result.MacroName.IsEmpty() || IsPlaceholderMacroName(Result.MacroName))
+	if (Result.MacroName.IsEmpty() || FTextToBlueprintGeneratorLocalUtils::IsPlaceholderMacroName(Result.MacroName))
 	{
 		NodeObject->TryGetStringField(TEXT("function_name"), Result.MacroName);
 	}
 
-	if (IsPlaceholderMacroName(Result.MacroName))
+	if (FTextToBlueprintGeneratorLocalUtils::IsPlaceholderMacroName(Result.MacroName))
 	{
 		Result.MacroName.Reset();
 	}
@@ -1129,7 +1131,7 @@ bool TextToBlueprintGenerator::ConvertToEdGraphPinType(const FParsedPinType& InP
 	else if (Category == TEXT("float") || Category == TEXT("double") || Category == TEXT("real"))
 	{
 		OutPinType.PinCategory = UEdGraphSchema_K2::PC_Real;
-		OutPinType.PinSubCategory = ResolveRealSubCategory(Category);
+		OutPinType.PinSubCategory = FTextToBlueprintGeneratorLocalUtils::ResolveRealSubCategory(Category);
 	}
 	else if (Category == TEXT("name"))
 	{
@@ -1307,7 +1309,7 @@ UEdGraph* TextToBlueprintGenerator::ResolveMacroGraph(const FParsedMacroReferenc
 	FString BlueprintPath = MacroReference.MacroAssetPath;
 	if (BlueprintPath.IsEmpty() || MacroReference.LibraryType.Equals(TEXT("standard"), ESearchCase::IgnoreCase))
 	{
-		BlueprintPath = StandardMacroLibraryPath;
+		BlueprintPath = FTextToBlueprintGeneratorLocalUtils::StandardMacroLibraryPath;
 	}
 
 	UBlueprint* MacroLibrary = LoadObject<UBlueprint>(nullptr, *BlueprintPath);
@@ -1341,7 +1343,7 @@ UEdGraphPin* TextToBlueprintGenerator::FindPinByAlias(UK2Node* TargetNode, const
 		return ExactPin;
 	}
 
-	const FString NormalizedKey = NormalizePinKey(RequestedPinName);
+	const FString NormalizedKey = FTextToBlueprintGeneratorLocalUtils::NormalizePinKey(RequestedPinName);
 	for (UEdGraphPin* Pin : TargetNode->Pins)
 	{
 		if (!Pin)
@@ -1349,23 +1351,23 @@ UEdGraphPin* TextToBlueprintGenerator::FindPinByAlias(UK2Node* TargetNode, const
 			continue;
 		}
 
-		if (NormalizePinKey(Pin->PinName.ToString()) == NormalizedKey)
+		if (FTextToBlueprintGeneratorLocalUtils::NormalizePinKey(Pin->PinName.ToString()) == NormalizedKey)
 		{
 			return Pin;
 		}
 	}
 
-	if (NormalizedKey == NormalizePinKey(TEXT("execute")))
+	if (NormalizedKey == FTextToBlueprintGeneratorLocalUtils::NormalizePinKey(TEXT("execute")))
 	{
 		return TargetNode->FindPin(UEdGraphSchema_K2::PN_Execute);
 	}
 
-	if (NormalizedKey == NormalizePinKey(TEXT("then")))
+	if (NormalizedKey == FTextToBlueprintGeneratorLocalUtils::NormalizePinKey(TEXT("then")))
 	{
 		return TargetNode->FindPin(UEdGraphSchema_K2::PN_Then);
 	}
 
-	if (NormalizedKey == NormalizePinKey(TEXT("completed")))
+	if (NormalizedKey == FTextToBlueprintGeneratorLocalUtils::NormalizePinKey(TEXT("completed")))
 	{
 		if (UEdGraphPin* CompletedPin = TargetNode->FindPin(UEdGraphSchema_K2::PN_Completed))
 		{
@@ -1373,7 +1375,7 @@ UEdGraphPin* TextToBlueprintGenerator::FindPinByAlias(UK2Node* TargetNode, const
 		}
 	}
 
-	if (NormalizedKey == NormalizePinKey(TEXT("loopbody")))
+	if (NormalizedKey == FTextToBlueprintGeneratorLocalUtils::NormalizePinKey(TEXT("loopbody")))
 	{
 		if (UEdGraphPin* LoopBodyPin = TargetNode->FindPin(TEXT("LoopBody")))
 		{
@@ -1381,7 +1383,7 @@ UEdGraphPin* TextToBlueprintGenerator::FindPinByAlias(UK2Node* TargetNode, const
 		}
 	}
 
-	if (NormalizedKey == NormalizePinKey(TEXT("firstindex")))
+	if (NormalizedKey == FTextToBlueprintGeneratorLocalUtils::NormalizePinKey(TEXT("firstindex")))
 	{
 		if (UEdGraphPin* FirstIndexPin = TargetNode->FindPin(TEXT("FirstIndex")))
 		{
@@ -1389,7 +1391,7 @@ UEdGraphPin* TextToBlueprintGenerator::FindPinByAlias(UK2Node* TargetNode, const
 		}
 	}
 
-	if (NormalizedKey == NormalizePinKey(TEXT("lastindex")))
+	if (NormalizedKey == FTextToBlueprintGeneratorLocalUtils::NormalizePinKey(TEXT("lastindex")))
 	{
 		if (UEdGraphPin* LastIndexPin = TargetNode->FindPin(TEXT("LastIndex")))
 		{
@@ -1397,7 +1399,7 @@ UEdGraphPin* TextToBlueprintGenerator::FindPinByAlias(UK2Node* TargetNode, const
 		}
 	}
 
-	if (NormalizedKey == NormalizePinKey(TEXT("index")))
+	if (NormalizedKey == FTextToBlueprintGeneratorLocalUtils::NormalizePinKey(TEXT("index")))
 	{
 		if (UEdGraphPin* IndexPin = TargetNode->FindPin(TEXT("Index")))
 		{
@@ -1405,7 +1407,7 @@ UEdGraphPin* TextToBlueprintGenerator::FindPinByAlias(UK2Node* TargetNode, const
 		}
 	}
 
-	if (NormalizedKey == NormalizePinKey(TEXT("value")))
+	if (NormalizedKey == FTextToBlueprintGeneratorLocalUtils::NormalizePinKey(TEXT("value")))
 	{
 		for (UEdGraphPin* Pin : TargetNode->Pins)
 		{
@@ -1422,7 +1424,7 @@ UEdGraphPin* TextToBlueprintGenerator::FindPinByAlias(UK2Node* TargetNode, const
 	}
 
 	// ── DynamicCast 别名 ──
-	if (NormalizedKey == NormalizePinKey(TEXT("valid")) || NormalizedKey == NormalizePinKey(TEXT("cast_succeeded")))
+	if (NormalizedKey == FTextToBlueprintGeneratorLocalUtils::NormalizePinKey(TEXT("valid")) || NormalizedKey == FTextToBlueprintGeneratorLocalUtils::NormalizePinKey(TEXT("cast_succeeded")))
 	{
 		if (UEdGraphPin* ValidPin = TargetNode->FindPin(UEdGraphSchema_K2::PN_CastSucceeded))
 		{
@@ -1430,7 +1432,7 @@ UEdGraphPin* TextToBlueprintGenerator::FindPinByAlias(UK2Node* TargetNode, const
 		}
 	}
 
-	if (NormalizedKey == NormalizePinKey(TEXT("invalid")) || NormalizedKey == NormalizePinKey(TEXT("cast_failed")))
+	if (NormalizedKey == FTextToBlueprintGeneratorLocalUtils::NormalizePinKey(TEXT("invalid")) || NormalizedKey == FTextToBlueprintGeneratorLocalUtils::NormalizePinKey(TEXT("cast_failed")))
 	{
 		if (UEdGraphPin* FailedPin = TargetNode->FindPin(TEXT("CastFailed")))
 		{
@@ -1438,7 +1440,7 @@ UEdGraphPin* TextToBlueprintGenerator::FindPinByAlias(UK2Node* TargetNode, const
 		}
 	}
 
-	if (NormalizedKey == NormalizePinKey(TEXT("cast_result")))
+	if (NormalizedKey == FTextToBlueprintGeneratorLocalUtils::NormalizePinKey(TEXT("cast_result")))
 	{
 		for (UEdGraphPin* Pin : TargetNode->Pins)
 		{
@@ -1449,7 +1451,7 @@ UEdGraphPin* TextToBlueprintGenerator::FindPinByAlias(UK2Node* TargetNode, const
 		}
 	}
 
-	if (NormalizedKey == NormalizePinKey(TEXT("success")) || NormalizedKey == NormalizePinKey(TEXT("bsuccess")) || NormalizedKey == NormalizePinKey(TEXT("bool_success")))
+	if (NormalizedKey == FTextToBlueprintGeneratorLocalUtils::NormalizePinKey(TEXT("success")) || NormalizedKey == FTextToBlueprintGeneratorLocalUtils::NormalizePinKey(TEXT("bsuccess")) || NormalizedKey == FTextToBlueprintGeneratorLocalUtils::NormalizePinKey(TEXT("bool_success")))
 	{
 		if (UEdGraphPin* SuccessPin = TargetNode->FindPin(TEXT("bSuccess")))
 		{
@@ -1706,7 +1708,7 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateBlueprintFromJson(UEd
 			FParsedNode ParsedNode;
 			ParsedNode.Id = NodeObject->GetStringField(TEXT("id"));
 			NodeObject->TryGetStringField(TEXT("type"), ParsedNode.SourceType);
-			ParsedNode.SourceType = NormalizeNodeTypeName(ParsedNode.SourceType);
+			ParsedNode.SourceType = FTextToBlueprintGeneratorLocalUtils::NormalizeNodeTypeName(ParsedNode.SourceType);
 			ParsedNode.NodeType = ResolveNodeType(NodeObject);
 			ParsedNode.FunctionName = ResolveNodeFunctionName(NodeObject);
 			ParsedNode.X = NodeObject->HasField(TEXT("x")) ? static_cast<float>(NodeObject->GetNumberField(TEXT("x"))) : 0.0f;
@@ -1794,7 +1796,7 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateBlueprintFromJson(UEd
 	for (const FParsedNode& ParsedNode : ParsedNodes)
 	{
 		RequestedDefaultValueCount += ParsedNode.DefaultValues.Num();
-		RequestedPinTypeCount += CountRequestedPinTypes(ParsedNode);
+		RequestedPinTypeCount += FTextToBlueprintGeneratorLocalUtils::CountRequestedPinTypes(ParsedNode);
 	}
 
 	const FScopedTransaction Transaction(FText::FromString(TEXT("Generate Blueprint from JSON")));
@@ -1810,9 +1812,9 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateBlueprintFromJson(UEd
 		FString EnsureErrorMessage;
 		if (!EnsureLocalVariableExists(TargetGraph, Declaration, EnsureErrorMessage))
 		{
-			if (IsInvalidPinTypeFailure(EnsureErrorMessage))
+			if (FTextToBlueprintGeneratorLocalUtils::IsInvalidPinTypeFailure(EnsureErrorMessage))
 			{
-				PinTypeDiagnostics.Add(MakeGeneratorDiagnostic(
+				PinTypeDiagnostics.Add(FTextToBlueprintGeneratorLocalUtils::MakeGeneratorDiagnostic(
 					TEXT("invalid_pin_type"),
 					Declaration.Name,
 					Declaration.Name,
@@ -1884,12 +1886,12 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateBlueprintFromJson(UEd
 			continue;
 		}
 
-		if (IsInvalidPinTypeFailure(SpawnErrorMessage))
+		if (FTextToBlueprintGeneratorLocalUtils::IsInvalidPinTypeFailure(SpawnErrorMessage))
 		{
-			PinTypeDiagnostics.Add(MakeGeneratorDiagnostic(
+			PinTypeDiagnostics.Add(FTextToBlueprintGeneratorLocalUtils::MakeGeneratorDiagnostic(
 				TEXT("invalid_pin_type"),
 				ParsedNode.Id,
-				FindDiagnosticPinName(ParsedNode, SpawnErrorMessage),
+				FTextToBlueprintGeneratorLocalUtils::FindDiagnosticPinName(ParsedNode, SpawnErrorMessage),
 				SpawnErrorMessage));
 		}
 
@@ -1988,7 +1990,7 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateBlueprintFromJson(UEd
 	{
 		if (!Schema)
 		{
-			ConnectionDiagnostics.Add(MakeGeneratorDiagnostic(
+			ConnectionDiagnostics.Add(FTextToBlueprintGeneratorLocalUtils::MakeGeneratorDiagnostic(
 				TEXT("link_connection_rejected"),
 				ParsedLink.FromId,
 				ParsedLink.FromPin,
@@ -2000,7 +2002,7 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateBlueprintFromJson(UEd
 		UK2Node** ToNodePtr = IdToSpawnedNode.Find(ParsedLink.ToId);
 		if (!FromNodePtr || !*FromNodePtr)
 		{
-			ConnectionDiagnostics.Add(MakeGeneratorDiagnostic(
+			ConnectionDiagnostics.Add(FTextToBlueprintGeneratorLocalUtils::MakeGeneratorDiagnostic(
 				TEXT("link_node_not_found"),
 				ParsedLink.FromId,
 				ParsedLink.FromPin,
@@ -2009,7 +2011,7 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateBlueprintFromJson(UEd
 		}
 		if (!ToNodePtr || !*ToNodePtr)
 		{
-			ConnectionDiagnostics.Add(MakeGeneratorDiagnostic(
+			ConnectionDiagnostics.Add(FTextToBlueprintGeneratorLocalUtils::MakeGeneratorDiagnostic(
 				TEXT("link_node_not_found"),
 				ParsedLink.ToId,
 				ParsedLink.ToPin,
@@ -2023,7 +2025,7 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateBlueprintFromJson(UEd
 		UEdGraphPin* ToPin = FindPinByAlias(ToNode, ParsedLink.ToPin);
 		if (!FromPin)
 		{
-			ConnectionDiagnostics.Add(MakeGeneratorDiagnostic(
+			ConnectionDiagnostics.Add(FTextToBlueprintGeneratorLocalUtils::MakeGeneratorDiagnostic(
 				TEXT("link_pin_not_found"),
 				ParsedLink.FromId,
 				ParsedLink.FromPin,
@@ -2032,7 +2034,7 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateBlueprintFromJson(UEd
 		}
 		if (!ToPin)
 		{
-			ConnectionDiagnostics.Add(MakeGeneratorDiagnostic(
+			ConnectionDiagnostics.Add(FTextToBlueprintGeneratorLocalUtils::MakeGeneratorDiagnostic(
 				TEXT("link_pin_not_found"),
 				ParsedLink.ToId,
 				ParsedLink.ToPin,
@@ -2047,7 +2049,7 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateBlueprintFromJson(UEd
 		}
 		else
 		{
-			ConnectionDiagnostics.Add(MakeGeneratorDiagnostic(
+			ConnectionDiagnostics.Add(FTextToBlueprintGeneratorLocalUtils::MakeGeneratorDiagnostic(
 				TEXT("link_connection_rejected"),
 				ParsedLink.FromId,
 				ParsedLink.FromPin,
@@ -2186,7 +2188,7 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateNodesAndLinksForGraph
 			FParsedNode ParsedNode;
 			ParsedNode.Id = NodeObject->GetStringField(TEXT("id"));
 			NodeObject->TryGetStringField(TEXT("type"), ParsedNode.SourceType);
-			ParsedNode.SourceType = NormalizeNodeTypeName(ParsedNode.SourceType);
+			ParsedNode.SourceType = FTextToBlueprintGeneratorLocalUtils::NormalizeNodeTypeName(ParsedNode.SourceType);
 			ParsedNode.NodeType = ResolveNodeType(NodeObject);
 			ParsedNode.FunctionName = ResolveNodeFunctionName(NodeObject);
 			ParsedNode.X = NodeObject->HasField(TEXT("x")) ? static_cast<float>(NodeObject->GetNumberField(TEXT("x"))) : 0.0f;
@@ -2271,7 +2273,7 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateNodesAndLinksForGraph
 	for (const FParsedNode& ParsedNode : ParsedNodes)
 	{
 		RequestedDefaultValueCount += ParsedNode.DefaultValues.Num();
-		RequestedPinTypeCount += CountRequestedPinTypes(ParsedNode);
+		RequestedPinTypeCount += FTextToBlueprintGeneratorLocalUtils::CountRequestedPinTypes(ParsedNode);
 	}
 
 	if (ParsedNodes.Num() == 0)
@@ -2297,9 +2299,9 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateNodesAndLinksForGraph
 		FString EnsureErrorMessage;
 		if (!EnsureLocalVariableExists(TargetGraph, Declaration, EnsureErrorMessage))
 		{
-			if (IsInvalidPinTypeFailure(EnsureErrorMessage))
+			if (FTextToBlueprintGeneratorLocalUtils::IsInvalidPinTypeFailure(EnsureErrorMessage))
 			{
-				PinTypeDiagnostics.Add(MakeGeneratorDiagnostic(
+				PinTypeDiagnostics.Add(FTextToBlueprintGeneratorLocalUtils::MakeGeneratorDiagnostic(
 					TEXT("invalid_pin_type"),
 					Declaration.Name,
 					Declaration.Name,
@@ -2371,12 +2373,12 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateNodesAndLinksForGraph
 			continue;
 		}
 
-		if (IsInvalidPinTypeFailure(SpawnErrorMessage))
+		if (FTextToBlueprintGeneratorLocalUtils::IsInvalidPinTypeFailure(SpawnErrorMessage))
 		{
-			PinTypeDiagnostics.Add(MakeGeneratorDiagnostic(
+			PinTypeDiagnostics.Add(FTextToBlueprintGeneratorLocalUtils::MakeGeneratorDiagnostic(
 				TEXT("invalid_pin_type"),
 				ParsedNode.Id,
-				FindDiagnosticPinName(ParsedNode, SpawnErrorMessage),
+				FTextToBlueprintGeneratorLocalUtils::FindDiagnosticPinName(ParsedNode, SpawnErrorMessage),
 				SpawnErrorMessage));
 		}
 
@@ -2475,7 +2477,7 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateNodesAndLinksForGraph
 	{
 		if (!Schema)
 		{
-			ConnectionDiagnostics.Add(MakeGeneratorDiagnostic(
+			ConnectionDiagnostics.Add(FTextToBlueprintGeneratorLocalUtils::MakeGeneratorDiagnostic(
 				TEXT("link_connection_rejected"),
 				ParsedLink.FromId,
 				ParsedLink.FromPin,
@@ -2487,7 +2489,7 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateNodesAndLinksForGraph
 		UK2Node** ToNodePtr = IdToSpawnedNode.Find(ParsedLink.ToId);
 		if (!FromNodePtr || !*FromNodePtr)
 		{
-			ConnectionDiagnostics.Add(MakeGeneratorDiagnostic(
+			ConnectionDiagnostics.Add(FTextToBlueprintGeneratorLocalUtils::MakeGeneratorDiagnostic(
 				TEXT("link_node_not_found"),
 				ParsedLink.FromId,
 				ParsedLink.FromPin,
@@ -2496,7 +2498,7 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateNodesAndLinksForGraph
 		}
 		if (!ToNodePtr || !*ToNodePtr)
 		{
-			ConnectionDiagnostics.Add(MakeGeneratorDiagnostic(
+			ConnectionDiagnostics.Add(FTextToBlueprintGeneratorLocalUtils::MakeGeneratorDiagnostic(
 				TEXT("link_node_not_found"),
 				ParsedLink.ToId,
 				ParsedLink.ToPin,
@@ -2510,7 +2512,7 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateNodesAndLinksForGraph
 		UEdGraphPin* ToPin = FindPinByAlias(ToNode, ParsedLink.ToPin);
 		if (!FromPin)
 		{
-			ConnectionDiagnostics.Add(MakeGeneratorDiagnostic(
+			ConnectionDiagnostics.Add(FTextToBlueprintGeneratorLocalUtils::MakeGeneratorDiagnostic(
 				TEXT("link_pin_not_found"),
 				ParsedLink.FromId,
 				ParsedLink.FromPin,
@@ -2519,7 +2521,7 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateNodesAndLinksForGraph
 		}
 		if (!ToPin)
 		{
-			ConnectionDiagnostics.Add(MakeGeneratorDiagnostic(
+			ConnectionDiagnostics.Add(FTextToBlueprintGeneratorLocalUtils::MakeGeneratorDiagnostic(
 				TEXT("link_pin_not_found"),
 				ParsedLink.ToId,
 				ParsedLink.ToPin,
@@ -2534,7 +2536,7 @@ FBlueprintGenerateResult TextToBlueprintGenerator::GenerateNodesAndLinksForGraph
 		}
 		else
 		{
-			ConnectionDiagnostics.Add(MakeGeneratorDiagnostic(
+			ConnectionDiagnostics.Add(FTextToBlueprintGeneratorLocalUtils::MakeGeneratorDiagnostic(
 				TEXT("link_connection_rejected"),
 				ParsedLink.FromId,
 				ParsedLink.FromPin,
@@ -2919,7 +2921,7 @@ TArray<FBlueprintGeneratorDiagnostic> TextToBlueprintGenerator::ApplyDefaultValu
 	{
 		for (const auto& Pair : DefaultValues)
 		{
-			Diagnostics.Add(MakeGeneratorDiagnostic(
+			Diagnostics.Add(FTextToBlueprintGeneratorLocalUtils::MakeGeneratorDiagnostic(
 				TEXT("default_pin_not_found"),
 				NodeId,
 				Pair.Key,
@@ -2933,7 +2935,7 @@ TArray<FBlueprintGeneratorDiagnostic> TextToBlueprintGenerator::ApplyDefaultValu
 		UEdGraphPin* Pin = FindPinByAlias(TargetNode, Pair.Key);
 		if (!Pin)
 		{
-			Diagnostics.Add(MakeGeneratorDiagnostic(
+			Diagnostics.Add(FTextToBlueprintGeneratorLocalUtils::MakeGeneratorDiagnostic(
 				TEXT("default_pin_not_found"),
 				NodeId,
 				Pair.Key,
@@ -2945,7 +2947,7 @@ TArray<FBlueprintGeneratorDiagnostic> TextToBlueprintGenerator::ApplyDefaultValu
 		FString DiagnosticMessage;
 		if (!ApplyPinDefaultValue(Pin, Pair.Value, DiagnosticCode, DiagnosticMessage))
 		{
-			Diagnostics.Add(MakeGeneratorDiagnostic(
+			Diagnostics.Add(FTextToBlueprintGeneratorLocalUtils::MakeGeneratorDiagnostic(
 				DiagnosticCode.IsEmpty() ? TEXT("default_value_rejected") : DiagnosticCode,
 				NodeId,
 				Pair.Key,

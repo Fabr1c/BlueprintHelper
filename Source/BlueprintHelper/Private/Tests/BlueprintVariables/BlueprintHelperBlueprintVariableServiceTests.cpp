@@ -16,14 +16,15 @@
 #include "UObject/Package.h"
 #include "Runtime/TaskRuntime/TaskPlanAdapters/BlueprintVariables/BlueprintHelperBlueprintVariableTaskPlanAdapter.h"
 
-namespace
+class FBlueprintHelperBlueprintVariableServiceTestsLocalUtils
 {
-FString MakeVariableServiceTestObjectName(const FString& Prefix)
+public:
+static FString MakeVariableServiceTestObjectName(const FString& Prefix)
 {
 	return FString::Printf(TEXT("%s_%s"), *Prefix, *FGuid::NewGuid().ToString(EGuidFormats::Digits));
 }
 
-UPackage* MakeVariableServiceTestPackage(const FString& Prefix)
+static UPackage* MakeVariableServiceTestPackage(const FString& Prefix)
 {
 	UPackage* Package = CreatePackage(*FString::Printf(
 		TEXT("/Game/BlueprintHelperSafety/%s"),
@@ -32,7 +33,7 @@ UPackage* MakeVariableServiceTestPackage(const FString& Prefix)
 	return Package;
 }
 
-UBlueprint* MakeSafetyActorBlueprint(const FString& Prefix)
+static UBlueprint* MakeSafetyActorBlueprint(const FString& Prefix)
 {
 	UPackage* Package = MakeVariableServiceTestPackage(Prefix);
 	UBlueprint* Blueprint = FKismetEditorUtilities::CreateBlueprint(
@@ -47,7 +48,7 @@ UBlueprint* MakeSafetyActorBlueprint(const FString& Prefix)
 	return Blueprint;
 }
 
-UEdGraph* AddSafetyFunctionGraph(UBlueprint* Blueprint, const FString& FunctionName)
+static UEdGraph* AddSafetyFunctionGraph(UBlueprint* Blueprint, const FString& FunctionName)
 {
 	if (!Blueprint)
 	{
@@ -72,7 +73,7 @@ UEdGraph* AddSafetyFunctionGraph(UBlueprint* Blueprint, const FString& FunctionN
 	return FunctionGraph;
 }
 
-UK2Node_FunctionEntry* FindSafetyFunctionEntry(UEdGraph* FunctionGraph)
+static UK2Node_FunctionEntry* FindSafetyFunctionEntry(UEdGraph* FunctionGraph)
 {
 	if (!FunctionGraph)
 	{
@@ -89,7 +90,7 @@ UK2Node_FunctionEntry* FindSafetyFunctionEntry(UEdGraph* FunctionGraph)
 	return nullptr;
 }
 
-FBPVariableDescription* FindSafetyLocalVariable(UEdGraph* FunctionGraph, const FString& VariableName)
+static FBPVariableDescription* FindSafetyLocalVariable(UEdGraph* FunctionGraph, const FString& VariableName)
 {
 	UK2Node_FunctionEntry* Entry = FindSafetyFunctionEntry(FunctionGraph);
 	if (!Entry)
@@ -108,7 +109,7 @@ FBPVariableDescription* FindSafetyLocalVariable(UEdGraph* FunctionGraph, const F
 	return nullptr;
 }
 
-FBPVariableDescription* FindSafetyMemberVariable(UBlueprint* Blueprint, const FString& VariableName)
+static FBPVariableDescription* FindSafetyMemberVariable(UBlueprint* Blueprint, const FString& VariableName)
 {
 	if (!Blueprint)
 	{
@@ -126,14 +127,14 @@ FBPVariableDescription* FindSafetyMemberVariable(UBlueprint* Blueprint, const FS
 	return nullptr;
 }
 
-TSharedRef<FJsonObject> MakePinType(const FString& Category)
+static TSharedRef<FJsonObject> MakePinType(const FString& Category)
 {
 	TSharedRef<FJsonObject> PinType = MakeShared<FJsonObject>();
 	PinType->SetStringField(TEXT("category"), Category);
 	return PinType;
 }
 
-TSharedRef<FJsonObject> MakeServicePayload(
+static TSharedRef<FJsonObject> MakeServicePayload(
 	UBlueprint* Blueprint,
 	const FString& FunctionName,
 	const FString& VariableName,
@@ -147,7 +148,7 @@ TSharedRef<FJsonObject> MakeServicePayload(
 	return Payload;
 }
 
-TSharedPtr<FJsonValue> MakeLocalVariableValue(const FString& VariableName, const FString& Category)
+static TSharedPtr<FJsonValue> MakeLocalVariableValue(const FString& VariableName, const FString& Category)
 {
 	TSharedRef<FJsonObject> Variable = MakeShared<FJsonObject>();
 	Variable->SetStringField(TEXT("name"), VariableName);
@@ -155,7 +156,7 @@ TSharedPtr<FJsonValue> MakeLocalVariableValue(const FString& VariableName, const
 	return MakeShared<FJsonValueObject>(Variable);
 }
 
-TSharedRef<FJsonObject> MakeLocalVariablesPayload(
+static TSharedRef<FJsonObject> MakeLocalVariablesPayload(
 	UBlueprint* Blueprint,
 	const FString& FunctionName,
 	const TArray<TSharedPtr<FJsonValue>>& Variables,
@@ -169,7 +170,7 @@ TSharedRef<FJsonObject> MakeLocalVariablesPayload(
 	return Payload;
 }
 
-TSharedPtr<FJsonValue> MakeSetting(const FString& PropertyPath, const TSharedPtr<FJsonValue>& Value)
+static TSharedPtr<FJsonValue> MakeSetting(const FString& PropertyPath, const TSharedPtr<FJsonValue>& Value)
 {
 	TSharedRef<FJsonObject> Setting = MakeShared<FJsonObject>();
 	Setting->SetStringField(TEXT("property_path"), PropertyPath);
@@ -177,7 +178,7 @@ TSharedPtr<FJsonValue> MakeSetting(const FString& PropertyPath, const TSharedPtr
 	return MakeShared<FJsonValueObject>(Setting);
 }
 
-bool JsonArrayContainsVariableName(
+static bool JsonArrayContainsVariableName(
 	const TArray<TSharedPtr<FJsonValue>>& Values,
 	const FString& VariableName)
 {
@@ -195,14 +196,14 @@ bool JsonArrayContainsVariableName(
 	return false;
 }
 
-bool IsRemoveDryRunCompatibleStatus(const EBlueprintHelperToolStatus Status)
+static bool IsRemoveDryRunCompatibleStatus(const EBlueprintHelperToolStatus Status)
 {
 	return Status == EBlueprintHelperToolStatus::DryRun ||
 		Status == EBlueprintHelperToolStatus::Completed ||
 		Status == EBlueprintHelperToolStatus::NoOp;
 }
 
-TSharedPtr<FJsonObject> MakeLocalVariableTaskPlanStep(bool bUseRemoveOp)
+static TSharedPtr<FJsonObject> MakeLocalVariableTaskPlanStep(bool bUseRemoveOp)
 {
 	TSharedPtr<FJsonObject> Step = MakeShared<FJsonObject>();
 	Step->SetStringField(TEXT("step_id"), TEXT("step_local_variables"));
@@ -233,7 +234,8 @@ TSharedPtr<FJsonObject> MakeLocalVariableTaskPlanStep(bool bUseRemoveOp)
 	Step->SetObjectField(TEXT("write"), Write);
 	return Step;
 }
-}
+
+};
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperBlueprintVariableAddLocalVariableTest,
@@ -242,18 +244,18 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperBlueprintVariableAddLocalVariableTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeSafetyActorBlueprint(TEXT("AddLocalVariable"));
+	UBlueprint* Blueprint = FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::MakeSafetyActorBlueprint(TEXT("AddLocalVariable"));
 	TestNotNull(TEXT("test Blueprint is created"), Blueprint);
-	UEdGraph* FunctionGraph = AddSafetyFunctionGraph(Blueprint, TEXT("CalculateDamage"));
+	UEdGraph* FunctionGraph = FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::AddSafetyFunctionGraph(Blueprint, TEXT("CalculateDamage"));
 	TestNotNull(TEXT("function graph is created"), FunctionGraph);
-	TestNotNull(TEXT("function entry is created"), FindSafetyFunctionEntry(FunctionGraph));
+	TestNotNull(TEXT("function entry is created"), FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::FindSafetyFunctionEntry(FunctionGraph));
 
 	FBlueprintHelperGraphResolver GraphResolver;
 	FBlueprintHelperBlueprintStructureService StructureService(GraphResolver);
 	FBlueprintHelperBlueprintVariableService VariableService(GraphResolver, StructureService);
 
 	const FBlueprintHelperToolResultBase AddResult = VariableService.AddLocalVariable(
-		MakeServicePayload(Blueprint, TEXT("CalculateDamage"), TEXT("DamageScale"), TEXT("int")));
+		FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::MakeServicePayload(Blueprint, TEXT("CalculateDamage"), TEXT("DamageScale"), TEXT("int")));
 
 	TestTrue(TEXT("add local variable succeeds"), AddResult.bOk);
 	TestEqual(TEXT("add local variable applies change"), AddResult.Status, EBlueprintHelperToolStatus::Applied);
@@ -261,7 +263,7 @@ bool FBlueprintHelperBlueprintVariableAddLocalVariableTest::RunTest(const FStrin
 	TestTrue(TEXT("add local variable requests compile"), AddResult.Validation.IsSet() && AddResult.Validation->bShouldCompile);
 	TestTrue(TEXT("add local variable requests save"), AddResult.Validation.IsSet() && AddResult.Validation->bShouldSave);
 
-	const FBPVariableDescription* DamageScale = FindSafetyLocalVariable(FunctionGraph, TEXT("DamageScale"));
+	const FBPVariableDescription* DamageScale = FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::FindSafetyLocalVariable(FunctionGraph, TEXT("DamageScale"));
 	TestNotNull(TEXT("DamageScale local variable exists"), DamageScale);
 	if (DamageScale)
 	{
@@ -290,22 +292,22 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperBlueprintVariableAddLocalVariablesBatchTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeSafetyActorBlueprint(TEXT("AddLocalVariablesBatch"));
+	UBlueprint* Blueprint = FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::MakeSafetyActorBlueprint(TEXT("AddLocalVariablesBatch"));
 	TestNotNull(TEXT("test Blueprint is created"), Blueprint);
-	UEdGraph* FunctionGraph = AddSafetyFunctionGraph(Blueprint, TEXT("CalculateDamage"));
+	UEdGraph* FunctionGraph = FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::AddSafetyFunctionGraph(Blueprint, TEXT("CalculateDamage"));
 	TestNotNull(TEXT("function graph is created"), FunctionGraph);
-	TestNotNull(TEXT("function entry is created"), FindSafetyFunctionEntry(FunctionGraph));
+	TestNotNull(TEXT("function entry is created"), FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::FindSafetyFunctionEntry(FunctionGraph));
 
 	FBlueprintHelperGraphResolver GraphResolver;
 	FBlueprintHelperBlueprintStructureService StructureService(GraphResolver);
 	FBlueprintHelperBlueprintVariableService VariableService(GraphResolver, StructureService);
 
 	TArray<TSharedPtr<FJsonValue>> Variables;
-	Variables.Add(MakeLocalVariableValue(TEXT("DamageScale"), TEXT("int")));
-	Variables.Add(MakeLocalVariableValue(TEXT("DamageLabel"), TEXT("string")));
+	Variables.Add(FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::MakeLocalVariableValue(TEXT("DamageScale"), TEXT("int")));
+	Variables.Add(FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::MakeLocalVariableValue(TEXT("DamageLabel"), TEXT("string")));
 
 	const FBlueprintHelperToolResultBase AddResult = VariableService.AddLocalVariables(
-		MakeLocalVariablesPayload(Blueprint, TEXT("CalculateDamage"), Variables, false));
+		FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::MakeLocalVariablesPayload(Blueprint, TEXT("CalculateDamage"), Variables, false));
 
 	TestTrue(TEXT("add local variables succeeds"), AddResult.bOk);
 	TestEqual(TEXT("add local variables applies change"), AddResult.Status, EBlueprintHelperToolStatus::Applied);
@@ -313,8 +315,8 @@ bool FBlueprintHelperBlueprintVariableAddLocalVariablesBatchTest::RunTest(const 
 	TestTrue(TEXT("add local variables requests compile"), AddResult.Validation.IsSet() && AddResult.Validation->bShouldCompile);
 	TestTrue(TEXT("add local variables requests save"), AddResult.Validation.IsSet() && AddResult.Validation->bShouldSave);
 
-	const FBPVariableDescription* DamageScale = FindSafetyLocalVariable(FunctionGraph, TEXT("DamageScale"));
-	const FBPVariableDescription* DamageLabel = FindSafetyLocalVariable(FunctionGraph, TEXT("DamageLabel"));
+	const FBPVariableDescription* DamageScale = FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::FindSafetyLocalVariable(FunctionGraph, TEXT("DamageScale"));
+	const FBPVariableDescription* DamageLabel = FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::FindSafetyLocalVariable(FunctionGraph, TEXT("DamageLabel"));
 	TestNotNull(TEXT("DamageScale local variable exists"), DamageScale);
 	TestNotNull(TEXT("DamageLabel local variable exists"), DamageLabel);
 	if (DamageScale)
@@ -353,9 +355,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperBlueprintVariableReadLocalVariablesTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeSafetyActorBlueprint(TEXT("ReadLocalVariables"));
+	UBlueprint* Blueprint = FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::MakeSafetyActorBlueprint(TEXT("ReadLocalVariables"));
 	TestNotNull(TEXT("test Blueprint is created"), Blueprint);
-	UEdGraph* FunctionGraph = AddSafetyFunctionGraph(Blueprint, TEXT("CalculateDamage"));
+	UEdGraph* FunctionGraph = FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::AddSafetyFunctionGraph(Blueprint, TEXT("CalculateDamage"));
 	TestNotNull(TEXT("function graph is created"), FunctionGraph);
 
 	FBlueprintHelperGraphResolver GraphResolver;
@@ -363,9 +365,9 @@ bool FBlueprintHelperBlueprintVariableReadLocalVariablesTest::RunTest(const FStr
 	FBlueprintHelperBlueprintVariableService VariableService(GraphResolver, StructureService);
 
 	const FBlueprintHelperToolResultBase AddResult = VariableService.AddLocalVariable(
-		MakeServicePayload(Blueprint, TEXT("CalculateDamage"), TEXT("LocalDamage"), TEXT("int")));
+		FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::MakeServicePayload(Blueprint, TEXT("CalculateDamage"), TEXT("LocalDamage"), TEXT("int")));
 	TestTrue(TEXT("local variable is added before read"), AddResult.bOk);
-	TestNotNull(TEXT("LocalDamage local variable exists before read"), FindSafetyLocalVariable(FunctionGraph, TEXT("LocalDamage")));
+	TestNotNull(TEXT("LocalDamage local variable exists before read"), FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::FindSafetyLocalVariable(FunctionGraph, TEXT("LocalDamage")));
 
 	TSharedRef<FJsonObject> ReadPayload = MakeShared<FJsonObject>();
 	ReadPayload->SetStringField(TEXT("asset_path"), Blueprint->GetPathName());
@@ -389,7 +391,7 @@ bool FBlueprintHelperBlueprintVariableReadLocalVariablesTest::RunTest(const FStr
 	TestTrue(TEXT("read local variables returns local_variables array"),
 		ReadResult.Data.IsValid() && ReadResult.Data->TryGetArrayField(TEXT("local_variables"), LocalVariables));
 	TestTrue(TEXT("read local variables includes LocalDamage"),
-		LocalVariables && JsonArrayContainsVariableName(*LocalVariables, TEXT("LocalDamage")));
+		LocalVariables && FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::JsonArrayContainsVariableName(*LocalVariables, TEXT("LocalDamage")));
 	return true;
 }
 
@@ -400,9 +402,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperBlueprintVariableSetLocalVariablePropertiesTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeSafetyActorBlueprint(TEXT("SetLocalVariableProperties"));
+	UBlueprint* Blueprint = FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::MakeSafetyActorBlueprint(TEXT("SetLocalVariableProperties"));
 	TestNotNull(TEXT("test Blueprint is created"), Blueprint);
-	UEdGraph* FunctionGraph = AddSafetyFunctionGraph(Blueprint, TEXT("CalculateDamage"));
+	UEdGraph* FunctionGraph = FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::AddSafetyFunctionGraph(Blueprint, TEXT("CalculateDamage"));
 	TestNotNull(TEXT("function graph is created"), FunctionGraph);
 
 	FBlueprintHelperGraphResolver GraphResolver;
@@ -410,13 +412,13 @@ bool FBlueprintHelperBlueprintVariableSetLocalVariablePropertiesTest::RunTest(co
 	FBlueprintHelperBlueprintVariableService VariableService(GraphResolver, StructureService);
 
 	const FBlueprintHelperToolResultBase AddResult = VariableService.AddLocalVariable(
-		MakeServicePayload(Blueprint, TEXT("CalculateDamage"), TEXT("DamageScale"), TEXT("int")));
+		FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::MakeServicePayload(Blueprint, TEXT("CalculateDamage"), TEXT("DamageScale"), TEXT("int")));
 	TestTrue(TEXT("local variable is added before property write"), AddResult.bOk);
 
 	TArray<TSharedPtr<FJsonValue>> Settings;
-	Settings.Add(MakeSetting(TEXT("category"), MakeShared<FJsonValueString>(TEXT("Combat"))));
-	Settings.Add(MakeSetting(TEXT("tooltip"), MakeShared<FJsonValueString>(TEXT("Damage multiplier used by the function."))));
-	Settings.Add(MakeSetting(TEXT("default_value"), MakeShared<FJsonValueString>(TEXT("7"))));
+	Settings.Add(FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::MakeSetting(TEXT("category"), MakeShared<FJsonValueString>(TEXT("Combat"))));
+	Settings.Add(FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::MakeSetting(TEXT("tooltip"), MakeShared<FJsonValueString>(TEXT("Damage multiplier used by the function."))));
+	Settings.Add(FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::MakeSetting(TEXT("default_value"), MakeShared<FJsonValueString>(TEXT("7"))));
 
 	TSharedRef<FJsonObject> SetPayload = MakeShared<FJsonObject>();
 	SetPayload->SetStringField(TEXT("asset_path"), Blueprint->GetPathName());
@@ -430,7 +432,7 @@ bool FBlueprintHelperBlueprintVariableSetLocalVariablePropertiesTest::RunTest(co
 	TestTrue(TEXT("set local variable properties requests compile"), SetResult.Validation.IsSet() && SetResult.Validation->bShouldCompile);
 	TestTrue(TEXT("set local variable properties requests save"), SetResult.Validation.IsSet() && SetResult.Validation->bShouldSave);
 
-	const FBPVariableDescription* DamageScale = FindSafetyLocalVariable(FunctionGraph, TEXT("DamageScale"));
+	const FBPVariableDescription* DamageScale = FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::FindSafetyLocalVariable(FunctionGraph, TEXT("DamageScale"));
 	TestNotNull(TEXT("DamageScale local variable still exists"), DamageScale);
 	if (DamageScale)
 	{
@@ -460,9 +462,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperBlueprintVariableRemoveLocalVariableDryRunTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeSafetyActorBlueprint(TEXT("RemoveLocalVariableDryRun"));
+	UBlueprint* Blueprint = FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::MakeSafetyActorBlueprint(TEXT("RemoveLocalVariableDryRun"));
 	TestNotNull(TEXT("test Blueprint is created"), Blueprint);
-	UEdGraph* FunctionGraph = AddSafetyFunctionGraph(Blueprint, TEXT("CalculateDamage"));
+	UEdGraph* FunctionGraph = FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::AddSafetyFunctionGraph(Blueprint, TEXT("CalculateDamage"));
 	TestNotNull(TEXT("function graph is created"), FunctionGraph);
 
 	FBlueprintHelperGraphResolver GraphResolver;
@@ -470,9 +472,9 @@ bool FBlueprintHelperBlueprintVariableRemoveLocalVariableDryRunTest::RunTest(con
 	FBlueprintHelperBlueprintVariableService VariableService(GraphResolver, StructureService);
 
 	const FBlueprintHelperToolResultBase AddResult = VariableService.AddLocalVariable(
-		MakeServicePayload(Blueprint, TEXT("CalculateDamage"), TEXT("ScratchValue"), TEXT("int")));
+		FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::MakeServicePayload(Blueprint, TEXT("CalculateDamage"), TEXT("ScratchValue"), TEXT("int")));
 	TestTrue(TEXT("local variable is added before dry-run remove"), AddResult.bOk);
-	TestNotNull(TEXT("ScratchValue local variable exists before dry-run remove"), FindSafetyLocalVariable(FunctionGraph, TEXT("ScratchValue")));
+	TestNotNull(TEXT("ScratchValue local variable exists before dry-run remove"), FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::FindSafetyLocalVariable(FunctionGraph, TEXT("ScratchValue")));
 
 	TSharedRef<FJsonObject> RemovePayload = MakeShared<FJsonObject>();
 	RemovePayload->SetStringField(TEXT("asset_path"), Blueprint->GetPathName());
@@ -483,9 +485,9 @@ bool FBlueprintHelperBlueprintVariableRemoveLocalVariableDryRunTest::RunTest(con
 	const FBlueprintHelperToolResultBase RemoveResult = VariableService.RemoveLocalVariable(RemovePayload);
 	TestTrue(TEXT("remove local variable dry run succeeds"), RemoveResult.bOk);
 	TestTrue(TEXT("remove local variable dry-run status is non-mutating compatible"),
-		IsRemoveDryRunCompatibleStatus(RemoveResult.Status));
+		FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::IsRemoveDryRunCompatibleStatus(RemoveResult.Status));
 	TestFalse(TEXT("remove local variable dry run does not mark modified"), RemoveResult.bModified);
-	TestNotNull(TEXT("ScratchValue local variable remains after dry-run remove"), FindSafetyLocalVariable(FunctionGraph, TEXT("ScratchValue")));
+	TestNotNull(TEXT("ScratchValue local variable remains after dry-run remove"), FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::FindSafetyLocalVariable(FunctionGraph, TEXT("ScratchValue")));
 	return true;
 }
 
@@ -496,9 +498,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperBlueprintVariableRemoveLocalVariablesBatchDryRunTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeSafetyActorBlueprint(TEXT("RemoveLocalVariablesBatchDryRun"));
+	UBlueprint* Blueprint = FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::MakeSafetyActorBlueprint(TEXT("RemoveLocalVariablesBatchDryRun"));
 	TestNotNull(TEXT("test Blueprint is created"), Blueprint);
-	UEdGraph* FunctionGraph = AddSafetyFunctionGraph(Blueprint, TEXT("CalculateDamage"));
+	UEdGraph* FunctionGraph = FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::AddSafetyFunctionGraph(Blueprint, TEXT("CalculateDamage"));
 	TestNotNull(TEXT("function graph is created"), FunctionGraph);
 
 	FBlueprintHelperGraphResolver GraphResolver;
@@ -506,30 +508,30 @@ bool FBlueprintHelperBlueprintVariableRemoveLocalVariablesBatchDryRunTest::RunTe
 	FBlueprintHelperBlueprintVariableService VariableService(GraphResolver, StructureService);
 
 	TArray<TSharedPtr<FJsonValue>> VariablesToAdd;
-	VariablesToAdd.Add(MakeLocalVariableValue(TEXT("FirstScratchValue"), TEXT("int")));
-	VariablesToAdd.Add(MakeLocalVariableValue(TEXT("SecondScratchValue"), TEXT("float")));
+	VariablesToAdd.Add(FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::MakeLocalVariableValue(TEXT("FirstScratchValue"), TEXT("int")));
+	VariablesToAdd.Add(FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::MakeLocalVariableValue(TEXT("SecondScratchValue"), TEXT("float")));
 	const FBlueprintHelperToolResultBase AddResult = VariableService.AddLocalVariables(
-		MakeLocalVariablesPayload(Blueprint, TEXT("CalculateDamage"), VariablesToAdd, false));
+		FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::MakeLocalVariablesPayload(Blueprint, TEXT("CalculateDamage"), VariablesToAdd, false));
 	TestTrue(TEXT("local variables are added before dry-run remove"), AddResult.bOk);
 	TestNotNull(TEXT("FirstScratchValue exists before dry-run remove"),
-		FindSafetyLocalVariable(FunctionGraph, TEXT("FirstScratchValue")));
+		FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::FindSafetyLocalVariable(FunctionGraph, TEXT("FirstScratchValue")));
 	TestNotNull(TEXT("SecondScratchValue exists before dry-run remove"),
-		FindSafetyLocalVariable(FunctionGraph, TEXT("SecondScratchValue")));
+		FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::FindSafetyLocalVariable(FunctionGraph, TEXT("SecondScratchValue")));
 
 	TArray<TSharedPtr<FJsonValue>> VariablesToRemove;
 	VariablesToRemove.Add(MakeShared<FJsonValueString>(TEXT("FirstScratchValue")));
 	VariablesToRemove.Add(MakeShared<FJsonValueString>(TEXT("SecondScratchValue")));
 	const FBlueprintHelperToolResultBase RemoveResult = VariableService.RemoveLocalVariables(
-		MakeLocalVariablesPayload(Blueprint, TEXT("CalculateDamage"), VariablesToRemove, true));
+		FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::MakeLocalVariablesPayload(Blueprint, TEXT("CalculateDamage"), VariablesToRemove, true));
 
 	TestTrue(TEXT("remove local variables dry run succeeds"), RemoveResult.bOk);
 	TestEqual(TEXT("remove local variables dry run status"), RemoveResult.Status, EBlueprintHelperToolStatus::DryRun);
 	TestFalse(TEXT("remove local variables dry run does not mark modified"), RemoveResult.bModified);
 	TestFalse(TEXT("remove local variables dry run does not request validation"), RemoveResult.Validation.IsSet());
 	TestNotNull(TEXT("FirstScratchValue remains after dry-run remove"),
-		FindSafetyLocalVariable(FunctionGraph, TEXT("FirstScratchValue")));
+		FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::FindSafetyLocalVariable(FunctionGraph, TEXT("FirstScratchValue")));
 	TestNotNull(TEXT("SecondScratchValue remains after dry-run remove"),
-		FindSafetyLocalVariable(FunctionGraph, TEXT("SecondScratchValue")));
+		FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::FindSafetyLocalVariable(FunctionGraph, TEXT("SecondScratchValue")));
 
 	FString DataSchema;
 	TestTrue(TEXT("remove local variables returns data schema"),
@@ -558,9 +560,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperBlueprintVariableRemoveLocalVariableDeletesTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeSafetyActorBlueprint(TEXT("RemoveLocalVariableDeletes"));
+	UBlueprint* Blueprint = FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::MakeSafetyActorBlueprint(TEXT("RemoveLocalVariableDeletes"));
 	TestNotNull(TEXT("test Blueprint is created"), Blueprint);
-	UEdGraph* FunctionGraph = AddSafetyFunctionGraph(Blueprint, TEXT("CalculateDamage"));
+	UEdGraph* FunctionGraph = FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::AddSafetyFunctionGraph(Blueprint, TEXT("CalculateDamage"));
 	TestNotNull(TEXT("function graph is created"), FunctionGraph);
 
 	FBlueprintHelperGraphResolver GraphResolver;
@@ -568,9 +570,9 @@ bool FBlueprintHelperBlueprintVariableRemoveLocalVariableDeletesTest::RunTest(co
 	FBlueprintHelperBlueprintVariableService VariableService(GraphResolver, StructureService);
 
 	const FBlueprintHelperToolResultBase AddResult = VariableService.AddLocalVariable(
-		MakeServicePayload(Blueprint, TEXT("CalculateDamage"), TEXT("ScratchValue"), TEXT("int")));
+		FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::MakeServicePayload(Blueprint, TEXT("CalculateDamage"), TEXT("ScratchValue"), TEXT("int")));
 	TestTrue(TEXT("local variable is added before remove"), AddResult.bOk);
-	TestNotNull(TEXT("ScratchValue local variable exists before remove"), FindSafetyLocalVariable(FunctionGraph, TEXT("ScratchValue")));
+	TestNotNull(TEXT("ScratchValue local variable exists before remove"), FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::FindSafetyLocalVariable(FunctionGraph, TEXT("ScratchValue")));
 
 	TSharedRef<FJsonObject> RemovePayload = MakeShared<FJsonObject>();
 	RemovePayload->SetStringField(TEXT("asset_path"), Blueprint->GetPathName());
@@ -585,7 +587,7 @@ bool FBlueprintHelperBlueprintVariableRemoveLocalVariableDeletesTest::RunTest(co
 	TestTrue(TEXT("remove local variable requests compile"), RemoveResult.Validation.IsSet() && RemoveResult.Validation->bShouldCompile);
 	TestTrue(TEXT("remove local variable requests save"), RemoveResult.Validation.IsSet() && RemoveResult.Validation->bShouldSave);
 	TestTrue(TEXT("ScratchValue local variable is removed"),
-		FindSafetyLocalVariable(FunctionGraph, TEXT("ScratchValue")) == nullptr);
+		FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::FindSafetyLocalVariable(FunctionGraph, TEXT("ScratchValue")) == nullptr);
 
 	FString DataSchema;
 	TestTrue(TEXT("remove local variable returns data schema"),
@@ -601,7 +603,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperBlueprintVariableLocalVariablesTaskPlanDryRunAdapterTest::RunTest(const FString& Parameters)
 {
-	const TSharedPtr<FJsonObject> Step = MakeLocalVariableTaskPlanStep(false);
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::MakeLocalVariableTaskPlanStep(false);
 
 	FBlueprintHelperBlueprintVariableTaskPlanPayload BuiltPayload;
 	FBlueprintHelperToolError Error;
@@ -640,7 +642,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperBlueprintVariableRemoveMemberVariablesBatchTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeSafetyActorBlueprint(TEXT("RemoveMemberVariablesBatch"));
+	UBlueprint* Blueprint = FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::MakeSafetyActorBlueprint(TEXT("RemoveMemberVariablesBatch"));
 	TestNotNull(TEXT("test Blueprint is created"), Blueprint);
 
 	FBlueprintHelperGraphResolver GraphResolver;
@@ -652,14 +654,14 @@ bool FBlueprintHelperBlueprintVariableRemoveMemberVariablesBatchTest::RunTest(co
 		TSharedRef<FJsonObject> AddPayload = MakeShared<FJsonObject>();
 		AddPayload->SetStringField(TEXT("asset_path"), Blueprint->GetPathName());
 		AddPayload->SetStringField(TEXT("name"), Name);
-		AddPayload->SetObjectField(TEXT("pin_type"), MakePinType(TEXT("int")));
+		AddPayload->SetObjectField(TEXT("pin_type"), FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::MakePinType(TEXT("int")));
 		return VariableService.AddMemberVariable(AddPayload);
 	};
 
 	TestTrue(TEXT("First member variable is added"), AddMember(TEXT("FirstValue")).bOk);
 	TestTrue(TEXT("Second member variable is added"), AddMember(TEXT("SecondValue")).bOk);
-	TestNotNull(TEXT("FirstValue exists before batch remove"), FindSafetyMemberVariable(Blueprint, TEXT("FirstValue")));
-	TestNotNull(TEXT("SecondValue exists before batch remove"), FindSafetyMemberVariable(Blueprint, TEXT("SecondValue")));
+	TestNotNull(TEXT("FirstValue exists before batch remove"), FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::FindSafetyMemberVariable(Blueprint, TEXT("FirstValue")));
+	TestNotNull(TEXT("SecondValue exists before batch remove"), FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::FindSafetyMemberVariable(Blueprint, TEXT("SecondValue")));
 
 	TSharedRef<FJsonObject> FirstVariable = MakeShared<FJsonObject>();
 	FirstVariable->SetStringField(TEXT("name"), TEXT("FirstValue"));
@@ -680,8 +682,8 @@ bool FBlueprintHelperBlueprintVariableRemoveMemberVariablesBatchTest::RunTest(co
 	TestEqual(TEXT("remove member variables applies change"), RemoveResult.Status, EBlueprintHelperToolStatus::Applied);
 	TestTrue(TEXT("remove member variables requests compile"), RemoveResult.Validation.IsSet() && RemoveResult.Validation->bShouldCompile);
 	TestTrue(TEXT("remove member variables requests save"), RemoveResult.Validation.IsSet() && RemoveResult.Validation->bShouldSave);
-	TestTrue(TEXT("FirstValue is removed"), FindSafetyMemberVariable(Blueprint, TEXT("FirstValue")) == nullptr);
-	TestTrue(TEXT("SecondValue is removed"), FindSafetyMemberVariable(Blueprint, TEXT("SecondValue")) == nullptr);
+	TestTrue(TEXT("FirstValue is removed"), FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::FindSafetyMemberVariable(Blueprint, TEXT("FirstValue")) == nullptr);
+	TestTrue(TEXT("SecondValue is removed"), FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::FindSafetyMemberVariable(Blueprint, TEXT("SecondValue")) == nullptr);
 
 	FString DataSchema;
 	TestTrue(TEXT("remove member variables returns data schema"),

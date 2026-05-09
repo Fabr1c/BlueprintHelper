@@ -8,9 +8,10 @@
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperPatchBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperReplaceBlueprintGraphService.h"
 
-namespace
+class FBlueprintHelperGraphWriteTaskRuntimeClusterLocalUtils
 {
-	FBlueprintHelperToolError MakeUnsupportedGraphWriteOperationError()
+public:
+	static FBlueprintHelperToolError MakeUnsupportedGraphWriteOperationError()
 	{
 		FBlueprintHelperToolError Error;
 		Error.Code = TEXT("unsupported_taskplan_adapter_operation");
@@ -19,7 +20,8 @@ namespace
 		Error.Field = TEXT("task_plan.steps[0]");
 		return Error;
 	}
-}
+
+};
 
 FBlueprintHelperGraphWriteTaskRuntimeCluster::FBlueprintHelperGraphWriteTaskRuntimeCluster(
 	const FBlueprintHelperAppendBlueprintGraphService& InAppendGraphService,
@@ -77,5 +79,5 @@ FBlueprintHelperToolResultBase FBlueprintHelperGraphWriteTaskRuntimeCluster::Exe
 	return FBlueprintHelperToolResultBuilder::Failure(
 		LoweredStep.RuntimeOperation.IsEmpty() ? TEXT("execute_task_plan") : LoweredStep.RuntimeOperation,
 		FBlueprintHelperToolResultBuilder::GenerateTraceId(),
-		MakeUnsupportedGraphWriteOperationError());
+		FBlueprintHelperGraphWriteTaskRuntimeClusterLocalUtils::MakeUnsupportedGraphWriteOperationError());
 }

@@ -5,22 +5,23 @@
 #include "Dom/JsonValue.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.h"
 
-namespace
+class FBlueprintHelperCleanupOwnershipTaskPlanAdapterLocalUtils
 {
-	constexpr const TCHAR* OpAliasCleanupBlueprintHelperBlock = TEXT("cleanup_blueprinthelper_block");
-	constexpr const TCHAR* OpAliasConvertBlockToUserOwned = TEXT("convert_block_to_user_owned");
+public:
+	static constexpr const TCHAR* OpAliasCleanupBlueprintHelperBlock = TEXT("cleanup_blueprinthelper_block");
+	static constexpr const TCHAR* OpAliasConvertBlockToUserOwned = TEXT("convert_block_to_user_owned");
 
-	FString CleanupStepFieldPath(const TCHAR* Field)
+	static FString CleanupStepFieldPath(const TCHAR* Field)
 	{
 		return FString::Printf(TEXT("task_plan.steps[0].%s"), Field);
 	}
 
-	FString CleanupOpFieldPath(const TCHAR* Field)
+	static FString CleanupOpFieldPath(const TCHAR* Field)
 	{
 		return FString::Printf(TEXT("task_plan.steps[0].write.ops[0].%s"), Field);
 	}
 
-	FBlueprintHelperToolError MakeCleanupOwnershipTaskPlanError(
+	static FBlueprintHelperToolError MakeCleanupOwnershipTaskPlanError(
 		const FString& Code,
 		const FString& Message,
 		const FString& Field)
@@ -35,7 +36,7 @@ namespace
 		return Error;
 	}
 
-	bool CleanupTryReadStepTarget(
+	static bool CleanupTryReadStepTarget(
 		const TSharedPtr<FJsonObject>& StepObject,
 		TSharedPtr<FJsonObject>& OutTargetObject,
 		FBlueprintHelperToolError& OutError)
@@ -56,7 +57,7 @@ namespace
 		return true;
 	}
 
-	bool CleanupTryReadSingleLifecycleOp(
+	static bool CleanupTryReadSingleLifecycleOp(
 		const TSharedPtr<FJsonObject>& StepObject,
 		TSharedPtr<FJsonObject>& OutOpObject,
 		FBlueprintHelperToolError& OutError)
@@ -116,7 +117,7 @@ namespace
 		return true;
 	}
 
-	bool CleanupTryGetStringFromFirstAvailable(
+	static bool CleanupTryGetStringFromFirstAvailable(
 		const TSharedPtr<FJsonObject>& Primary,
 		const TSharedPtr<FJsonObject>& Secondary,
 		const TCHAR* FieldName,
@@ -127,7 +128,7 @@ namespace
 			(Secondary.IsValid() && Secondary->TryGetStringField(FieldName, OutValue) && !OutValue.IsEmpty());
 	}
 
-	bool CleanupTryCopyStringFromFirstAvailable(
+	static bool CleanupTryCopyStringFromFirstAvailable(
 		const TSharedPtr<FJsonObject>& Primary,
 		const TSharedPtr<FJsonObject>& Secondary,
 		const TCHAR* SourceFieldName,
@@ -144,7 +145,7 @@ namespace
 		return true;
 	}
 
-	FString CleanupNormalizeAdapterOperation(const FString& OpName)
+	static FString CleanupNormalizeAdapterOperation(const FString& OpName)
 	{
 		if (OpName == OpAliasCleanupBlueprintHelperBlock ||
 			OpName == FBlueprintHelperCleanupOwnershipTaskPlanAdapter::AdapterOperationCleanupBlueprintHelperBlock)
@@ -166,22 +167,22 @@ namespace
 		return FString();
 	}
 
-	bool CleanupIsCleanupOperation(const FString& AdapterOperation)
+	static bool CleanupIsCleanupOperation(const FString& AdapterOperation)
 	{
 		return AdapterOperation == FBlueprintHelperCleanupOwnershipTaskPlanAdapter::AdapterOperationCleanupBlueprintHelperBlock;
 	}
 
-	bool CleanupIsConvertOperation(const FString& AdapterOperation)
+	static bool CleanupIsConvertOperation(const FString& AdapterOperation)
 	{
 		return AdapterOperation == FBlueprintHelperCleanupOwnershipTaskPlanAdapter::AdapterOperationConvertBlueprintHelperBlockToUserOwned;
 	}
 
-	bool CleanupIsRollbackOperation(const FString& AdapterOperation)
+	static bool CleanupIsRollbackOperation(const FString& AdapterOperation)
 	{
 		return AdapterOperation == FBlueprintHelperCleanupOwnershipTaskPlanAdapter::AdapterOperationRollbackCleanupTransaction;
 	}
 
-	bool CleanupTryRequireAssetPathForBlockOperation(
+	static bool CleanupTryRequireAssetPathForBlockOperation(
 		const TSharedPtr<FJsonObject>& TargetObject,
 		const TSharedRef<FJsonObject>& Payload,
 		FBlueprintHelperToolError& OutError)
@@ -202,7 +203,7 @@ namespace
 		return true;
 	}
 
-	bool CleanupTryBuildBlockLifecyclePayload(
+	static bool CleanupTryBuildBlockLifecyclePayload(
 		const FString& AdapterOperation,
 		const TSharedPtr<FJsonObject>& TargetObject,
 		const TSharedPtr<FJsonObject>& OpObject,
@@ -278,7 +279,7 @@ namespace
 		return true;
 	}
 
-	bool CleanupTryBuildRollbackPayload(
+	static bool CleanupTryBuildRollbackPayload(
 		const TSharedPtr<FJsonObject>& TargetObject,
 		const TSharedPtr<FJsonObject>& OpObject,
 		const bool bDryRun,
@@ -324,7 +325,8 @@ namespace
 		OutPayload = Payload;
 		return true;
 	}
-}
+
+};
 
 bool FBlueprintHelperCleanupOwnershipTaskPlanAdapter::IsSupportedCapability(const FString& Capability)
 {
@@ -333,7 +335,7 @@ bool FBlueprintHelperCleanupOwnershipTaskPlanAdapter::IsSupportedCapability(cons
 
 bool FBlueprintHelperCleanupOwnershipTaskPlanAdapter::IsSupportedOp(const FString& OpName)
 {
-	return !CleanupNormalizeAdapterOperation(OpName).IsEmpty();
+	return !FBlueprintHelperCleanupOwnershipTaskPlanAdapterLocalUtils::CleanupNormalizeAdapterOperation(OpName).IsEmpty();
 }
 
 bool FBlueprintHelperCleanupOwnershipTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(
@@ -347,7 +349,7 @@ bool FBlueprintHelperCleanupOwnershipTaskPlanAdapter::TryBuildPayloadFromTaskPla
 
 	if (!StepObject.IsValid())
 	{
-		OutError = MakeCleanupOwnershipTaskPlanError(
+		OutError = FBlueprintHelperCleanupOwnershipTaskPlanAdapterLocalUtils::MakeCleanupOwnershipTaskPlanError(
 			TEXT("invalid_cleanup_ownership_step"),
 			TEXT("graph_cleanup_ownership TaskPlan step must be an object."),
 			TEXT("task_plan.steps[0]"));
@@ -364,31 +366,31 @@ bool FBlueprintHelperCleanupOwnershipTaskPlanAdapter::TryBuildPayloadFromTaskPla
 	StepObject->TryGetStringField(TEXT("capability"), Capability);
 	if (!IsSupportedCapability(Capability))
 	{
-		OutError = MakeCleanupOwnershipTaskPlanError(
+		OutError = FBlueprintHelperCleanupOwnershipTaskPlanAdapterLocalUtils::MakeCleanupOwnershipTaskPlanError(
 			TEXT("unsupported_cleanup_ownership_capability"),
 			TEXT("CleanupOwnership adapter requires capability=graph_cleanup_ownership."),
-			CleanupStepFieldPath(TEXT("capability")));
+			FBlueprintHelperCleanupOwnershipTaskPlanAdapterLocalUtils::CleanupStepFieldPath(TEXT("capability")));
 		return false;
 	}
 
 	FString OperationField;
 	if (StepObject->TryGetStringField(TEXT("operation"), OperationField))
 	{
-		OutError = MakeCleanupOwnershipTaskPlanError(
+		OutError = FBlueprintHelperCleanupOwnershipTaskPlanAdapterLocalUtils::MakeCleanupOwnershipTaskPlanError(
 			TEXT("unsupported_cleanup_ownership_operation_field"),
 			TEXT("graph_cleanup_ownership IR TaskPlan steps use capability/write; adapter operation fields are runtime lowering details."),
-			CleanupStepFieldPath(TEXT("operation")));
+			FBlueprintHelperCleanupOwnershipTaskPlanAdapterLocalUtils::CleanupStepFieldPath(TEXT("operation")));
 		return false;
 	}
 
 	TSharedPtr<FJsonObject> TargetObject;
-	if (!CleanupTryReadStepTarget(StepObject, TargetObject, OutError))
+	if (!FBlueprintHelperCleanupOwnershipTaskPlanAdapterLocalUtils::CleanupTryReadStepTarget(StepObject, TargetObject, OutError))
 	{
 		return false;
 	}
 
 	TSharedPtr<FJsonObject> OpObject;
-	if (!CleanupTryReadSingleLifecycleOp(StepObject, OpObject, OutError))
+	if (!FBlueprintHelperCleanupOwnershipTaskPlanAdapterLocalUtils::CleanupTryReadSingleLifecycleOp(StepObject, OpObject, OutError))
 	{
 		return false;
 	}
@@ -396,34 +398,34 @@ bool FBlueprintHelperCleanupOwnershipTaskPlanAdapter::TryBuildPayloadFromTaskPla
 	FString OpName;
 	if (!OpObject->TryGetStringField(TEXT("op"), OpName) || OpName.IsEmpty())
 	{
-		OutError = MakeCleanupOwnershipTaskPlanError(
+		OutError = FBlueprintHelperCleanupOwnershipTaskPlanAdapterLocalUtils::MakeCleanupOwnershipTaskPlanError(
 			TEXT("invalid_cleanup_ownership_op"),
 			TEXT("graph_cleanup_ownership lifecycle op requires op name."),
-			CleanupOpFieldPath(TEXT("op")));
+			FBlueprintHelperCleanupOwnershipTaskPlanAdapterLocalUtils::CleanupOpFieldPath(TEXT("op")));
 		return false;
 	}
 
-	const FString AdapterOperation = CleanupNormalizeAdapterOperation(OpName);
+	const FString AdapterOperation = FBlueprintHelperCleanupOwnershipTaskPlanAdapterLocalUtils::CleanupNormalizeAdapterOperation(OpName);
 	if (AdapterOperation.IsEmpty())
 	{
-		OutError = MakeCleanupOwnershipTaskPlanError(
+		OutError = FBlueprintHelperCleanupOwnershipTaskPlanAdapterLocalUtils::MakeCleanupOwnershipTaskPlanError(
 			TEXT("unsupported_cleanup_ownership_op"),
 			TEXT("graph_cleanup_ownership supports cleanup_blueprint_helper_block, convert_blueprint_helper_block_to_user_owned, and rollback_cleanup_transaction."),
-			CleanupOpFieldPath(TEXT("op")));
+			FBlueprintHelperCleanupOwnershipTaskPlanAdapterLocalUtils::CleanupOpFieldPath(TEXT("op")));
 		return false;
 	}
 
 	TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
-	if (CleanupIsRollbackOperation(AdapterOperation))
+	if (FBlueprintHelperCleanupOwnershipTaskPlanAdapterLocalUtils::CleanupIsRollbackOperation(AdapterOperation))
 	{
-		if (!CleanupTryBuildRollbackPayload(TargetObject, OpObject, bDryRun, Payload, OutError))
+		if (!FBlueprintHelperCleanupOwnershipTaskPlanAdapterLocalUtils::CleanupTryBuildRollbackPayload(TargetObject, OpObject, bDryRun, Payload, OutError))
 		{
 			return false;
 		}
 	}
 	else
 	{
-		if (!CleanupTryBuildBlockLifecyclePayload(AdapterOperation, TargetObject, OpObject, bDryRun, Payload, OutError))
+		if (!FBlueprintHelperCleanupOwnershipTaskPlanAdapterLocalUtils::CleanupTryBuildBlockLifecyclePayload(AdapterOperation, TargetObject, OpObject, bDryRun, Payload, OutError))
 		{
 			return false;
 		}

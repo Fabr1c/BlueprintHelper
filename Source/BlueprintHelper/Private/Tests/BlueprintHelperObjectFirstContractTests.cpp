@@ -6,9 +6,10 @@
 #include "Misc/AutomationTest.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.h"
 
-namespace
+class FBlueprintHelperObjectFirstContractTestsLocalUtils
 {
-	TSharedPtr<FJsonObject> MakeLiteralValue(const FString& ValueType, const TSharedPtr<FJsonValue>& Value)
+public:
+	static TSharedPtr<FJsonObject> MakeLiteralValue(const FString& ValueType, const TSharedPtr<FJsonValue>& Value)
 	{
 		TSharedPtr<FJsonObject> Literal = MakeShared<FJsonObject>();
 		Literal->SetStringField(TEXT("kind"), TEXT("literal"));
@@ -17,7 +18,7 @@ namespace
 		return Literal;
 	}
 
-	TSharedPtr<FJsonObject> MakeGraphWriteEnsureEntryStep(bool bIncludeLegacyOperation = false)
+	static TSharedPtr<FJsonObject> MakeGraphWriteEnsureEntryStep(bool bIncludeLegacyOperation = false)
 	{
 		TSharedPtr<FJsonObject> Step = MakeShared<FJsonObject>();
 		Step->SetStringField(TEXT("step_id"), TEXT("step_001"));
@@ -93,7 +94,7 @@ namespace
 		return Step;
 	}
 
-	TSharedPtr<FJsonObject> MakeGraphWriteTaskPlan(const TSharedPtr<FJsonObject>& Step)
+	static TSharedPtr<FJsonObject> MakeGraphWriteTaskPlan(const TSharedPtr<FJsonObject>& Step)
 	{
 		TSharedPtr<FJsonObject> TaskPlan = MakeShared<FJsonObject>();
 		TaskPlan->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.TaskPlan.v1"));
@@ -117,7 +118,7 @@ namespace
 		return TaskPlan;
 	}
 
-	TSharedPtr<FJsonObject> MakeTaskPlanWithSteps(
+	static TSharedPtr<FJsonObject> MakeTaskPlanWithSteps(
 		const TArray<TSharedPtr<FJsonObject>>& StepsToAdd,
 		const FString& TaskName = TEXT("StoneGateActivation"),
 		const FString& TaskType = TEXT("edit_blueprint_graph"))
@@ -135,7 +136,7 @@ namespace
 		return TaskPlan;
 	}
 
-	TSharedPtr<FJsonObject> MakeGraphWriteStepWithSingleOp(const TSharedPtr<FJsonObject>& Op)
+	static TSharedPtr<FJsonObject> MakeGraphWriteStepWithSingleOp(const TSharedPtr<FJsonObject>& Op)
 	{
 		TSharedPtr<FJsonObject> Step = MakeShared<FJsonObject>();
 		Step->SetStringField(TEXT("step_id"), TEXT("step_001"));
@@ -160,7 +161,8 @@ namespace
 		Step->SetObjectField(TEXT("constraints"), Constraints);
 		return Step;
 	}
-}
+
+};
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperContractExportIncludeJsonTextTest,
@@ -391,8 +393,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperContractTaskRuntimeGraphWriteIrLoweringTest::RunTest(const FString& Parameters)
 {
-	const TSharedPtr<FJsonObject> Step = MakeGraphWriteEnsureEntryStep();
-	const TSharedPtr<FJsonObject> TaskPlan = MakeGraphWriteTaskPlan(Step);
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperObjectFirstContractTestsLocalUtils::MakeGraphWriteEnsureEntryStep();
+	const TSharedPtr<FJsonObject> TaskPlan = FBlueprintHelperObjectFirstContractTestsLocalUtils::MakeGraphWriteTaskPlan(Step);
 
 	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
 	FBlueprintHelperToolError Error;
@@ -545,14 +547,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperContractTaskRuntimeGraphWriteAppendDependsOnReusesEntryTest::RunTest(const FString& Parameters)
 {
-	TSharedPtr<FJsonObject> Step = MakeGraphWriteEnsureEntryStep();
+	TSharedPtr<FJsonObject> Step = FBlueprintHelperObjectFirstContractTestsLocalUtils::MakeGraphWriteEnsureEntryStep();
 	Step->SetStringField(TEXT("step_id"), TEXT("step_002"));
 
 	TArray<TSharedPtr<FJsonValue>> DependsOn;
 	DependsOn.Add(MakeShared<FJsonValueString>(TEXT("step_001")));
 	Step->SetArrayField(TEXT("depends_on"), DependsOn);
 
-	TSharedPtr<FJsonObject> TaskPlan = MakeGraphWriteTaskPlan(Step);
+	TSharedPtr<FJsonObject> TaskPlan = FBlueprintHelperObjectFirstContractTestsLocalUtils::MakeGraphWriteTaskPlan(Step);
 
 	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
 	FBlueprintHelperToolError Error;
@@ -582,7 +584,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperContractTaskRuntimeAggregatesMultipleStepsTest::RunTest(const FString& Parameters)
 {
-	const TSharedPtr<FJsonObject> TaskPlan = MakeGraphWriteTaskPlan(MakeGraphWriteEnsureEntryStep());
+	const TSharedPtr<FJsonObject> TaskPlan = FBlueprintHelperObjectFirstContractTestsLocalUtils::MakeGraphWriteTaskPlan(FBlueprintHelperObjectFirstContractTestsLocalUtils::MakeGraphWriteEnsureEntryStep());
 
 	FBlueprintHelperTaskRuntimeLoweredStep FirstStep;
 	FirstStep.StepId = TEXT("step_001");
@@ -684,7 +686,7 @@ bool FBlueprintHelperContractTaskRuntimePartialFailureJournalTest::RunTest(const
 	PlannedSteps.Add(FailedPlanStep);
 	PlannedSteps.Add(BlockedPlanStep);
 	PlannedSteps.Add(IndependentPlanStep);
-	const TSharedPtr<FJsonObject> TaskPlan = MakeTaskPlanWithSteps(
+	const TSharedPtr<FJsonObject> TaskPlan = FBlueprintHelperObjectFirstContractTestsLocalUtils::MakeTaskPlanWithSteps(
 		PlannedSteps,
 		TEXT("DoorFeature"),
 		TEXT("create_blueprint_feature"));
@@ -742,7 +744,14 @@ bool FBlueprintHelperContractTaskRuntimePartialFailureJournalTest::RunTest(const
 	TestEqual(TEXT("recovery action matches contract"), RecommendedAction, FString(TEXT("inspect_task_result_then_submit_followup_taskspec")));
 	TestFalse(TEXT("partial failure journal is not marked safe to retry"), bSafeToRetry);
 	TestFalse(TEXT("partial failure journal does not promise rollback"), bRollbackAvailable);
-	TestEqual(TEXT("recovery notes may be empty"), RecoveryNotes ? RecoveryNotes->Num() : -1, 0);
+	TestTrue(TEXT("recovery notes array is valid"), RecoveryNotes != nullptr);
+	if (RecoveryNotes)
+	{
+		for (const TSharedPtr<FJsonValue>& RecoveryNote : *RecoveryNotes)
+		{
+			TestTrue(TEXT("recovery note is string"), RecoveryNote.IsValid() && RecoveryNote->Type == EJson::String);
+		}
+	}
 
 	const TArray<TSharedPtr<FJsonValue>>* JournalSteps = nullptr;
 	TestTrue(TEXT("journal exposes all task plan steps"), Journal->TryGetArrayField(TEXT("steps"), JournalSteps));
@@ -783,7 +792,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperContractTaskRuntimeRecordsCompileSavePostOperationsTest::RunTest(const FString& Parameters)
 {
-	const TSharedPtr<FJsonObject> TaskPlan = MakeGraphWriteTaskPlan(MakeGraphWriteEnsureEntryStep());
+	const TSharedPtr<FJsonObject> TaskPlan = FBlueprintHelperObjectFirstContractTestsLocalUtils::MakeGraphWriteTaskPlan(FBlueprintHelperObjectFirstContractTestsLocalUtils::MakeGraphWriteEnsureEntryStep());
 
 	FBlueprintHelperTaskRuntimeLoweredStep Step;
 	Step.StepId = TEXT("step_001");
@@ -846,9 +855,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperContractTaskRuntimeGraphWriteIrRejectsAdapterOperationFieldTest::RunTest(const FString& Parameters)
 {
-	const TSharedPtr<FJsonObject> Step = MakeGraphWriteEnsureEntryStep();
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperObjectFirstContractTestsLocalUtils::MakeGraphWriteEnsureEntryStep();
 	Step->SetStringField(TEXT("operation"), TEXT("append_blueprint_graph"));
-	const TSharedPtr<FJsonObject> TaskPlan = MakeGraphWriteTaskPlan(Step);
+	const TSharedPtr<FJsonObject> TaskPlan = FBlueprintHelperObjectFirstContractTestsLocalUtils::MakeGraphWriteTaskPlan(Step);
 
 	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
 	FBlueprintHelperToolError Error;
@@ -907,7 +916,7 @@ bool FBlueprintHelperContractTaskRuntimeBlueprintVariableEnsureMemberLoweringTes
 	Constraints->SetBoolField(TEXT("allow_remove_referenced_variables"), false);
 	Step->SetObjectField(TEXT("constraints"), Constraints);
 
-	const TSharedPtr<FJsonObject> TaskPlan = MakeGraphWriteTaskPlan(Step);
+	const TSharedPtr<FJsonObject> TaskPlan = FBlueprintHelperObjectFirstContractTestsLocalUtils::MakeGraphWriteTaskPlan(Step);
 
 	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
 	FBlueprintHelperToolError Error;
@@ -994,7 +1003,7 @@ bool FBlueprintHelperContractTaskRuntimeBlueprintVariableMemberChangesLoweringTe
 	Constraints->SetBoolField(TEXT("allow_remove_referenced_variables"), false);
 	Step->SetObjectField(TEXT("constraints"), Constraints);
 
-	const TSharedPtr<FJsonObject> TaskPlan = MakeGraphWriteTaskPlan(Step);
+	const TSharedPtr<FJsonObject> TaskPlan = FBlueprintHelperObjectFirstContractTestsLocalUtils::MakeGraphWriteTaskPlan(Step);
 
 	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
 	FBlueprintHelperToolError Error;
@@ -1055,7 +1064,7 @@ bool FBlueprintHelperContractTaskRuntimeBlueprintVariableMemberDefaultsLoweringT
 	Constraints->SetBoolField(TEXT("allow_remove_referenced_variables"), false);
 	Step->SetObjectField(TEXT("constraints"), Constraints);
 
-	const TSharedPtr<FJsonObject> TaskPlan = MakeGraphWriteTaskPlan(Step);
+	const TSharedPtr<FJsonObject> TaskPlan = FBlueprintHelperObjectFirstContractTestsLocalUtils::MakeGraphWriteTaskPlan(Step);
 
 	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
 	FBlueprintHelperToolError Error;
@@ -1137,7 +1146,7 @@ bool FBlueprintHelperContractTaskRuntimeBlueprintVariableLocalVariablesLoweringT
 	Constraints->SetBoolField(TEXT("allow_remove_referenced_variables"), false);
 	Step->SetObjectField(TEXT("constraints"), Constraints);
 
-	const TSharedPtr<FJsonObject> TaskPlan = MakeGraphWriteTaskPlan(Step);
+	const TSharedPtr<FJsonObject> TaskPlan = FBlueprintHelperObjectFirstContractTestsLocalUtils::MakeGraphWriteTaskPlan(Step);
 
 	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
 	FBlueprintHelperToolError Error;
@@ -1196,7 +1205,7 @@ bool FBlueprintHelperContractTaskRuntimeBlueprintVariableLocalVariablesRequireFu
 	Write->SetArrayField(TEXT("ops"), Ops);
 	Step->SetObjectField(TEXT("write"), Write);
 
-	const TSharedPtr<FJsonObject> TaskPlan = MakeGraphWriteTaskPlan(Step);
+	const TSharedPtr<FJsonObject> TaskPlan = FBlueprintHelperObjectFirstContractTestsLocalUtils::MakeGraphWriteTaskPlan(Step);
 
 	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
 	FBlueprintHelperToolError Error;
@@ -1222,7 +1231,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperContractTaskRuntimeGraphWriteIrUnsupportedOpTest::RunTest(const FString& Parameters)
 {
-	const TSharedPtr<FJsonObject> Step = MakeGraphWriteEnsureEntryStep(false);
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperObjectFirstContractTestsLocalUtils::MakeGraphWriteEnsureEntryStep(false);
 	const TSharedPtr<FJsonObject>* WriteObject = nullptr;
 	TestTrue(TEXT("graph_write step exposes write object"), Step->TryGetObjectField(TEXT("write"), WriteObject));
 
@@ -1235,7 +1244,7 @@ bool FBlueprintHelperContractTaskRuntimeGraphWriteIrUnsupportedOpTest::RunTest(c
 	Ops.Add(MakeShared<FJsonValueObject>(UnsupportedOp.ToSharedRef()));
 	(*WriteObject)->SetArrayField(TEXT("ops"), Ops);
 
-	const TSharedPtr<FJsonObject> TaskPlan = MakeGraphWriteTaskPlan(Step);
+	const TSharedPtr<FJsonObject> TaskPlan = FBlueprintHelperObjectFirstContractTestsLocalUtils::MakeGraphWriteTaskPlan(Step);
 
 	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
 	FBlueprintHelperToolError Error;
@@ -1280,8 +1289,8 @@ bool FBlueprintHelperContractTaskRuntimeGraphWriteIrReplaceLoweringTest::RunTest
 	Op->SetObjectField(TEXT("replacement"), Replacement);
 	Op->SetObjectField(TEXT("options"), Options);
 
-	const TSharedPtr<FJsonObject> Step = MakeGraphWriteStepWithSingleOp(Op);
-	const TSharedPtr<FJsonObject> TaskPlan = MakeGraphWriteTaskPlan(Step);
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperObjectFirstContractTestsLocalUtils::MakeGraphWriteStepWithSingleOp(Op);
+	const TSharedPtr<FJsonObject> TaskPlan = FBlueprintHelperObjectFirstContractTestsLocalUtils::MakeGraphWriteTaskPlan(Step);
 
 	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
 	FBlueprintHelperToolError Error;
@@ -1330,8 +1339,8 @@ bool FBlueprintHelperContractTaskRuntimeGraphWriteIrPatchLoweringTest::RunTest(c
 	Op->SetObjectField(TEXT("patched_ref"), PatchedRef);
 	Op->SetObjectField(TEXT("patch"), Patch);
 
-	const TSharedPtr<FJsonObject> Step = MakeGraphWriteStepWithSingleOp(Op);
-	const TSharedPtr<FJsonObject> TaskPlan = MakeGraphWriteTaskPlan(Step);
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperObjectFirstContractTestsLocalUtils::MakeGraphWriteStepWithSingleOp(Op);
+	const TSharedPtr<FJsonObject> TaskPlan = FBlueprintHelperObjectFirstContractTestsLocalUtils::MakeGraphWriteTaskPlan(Step);
 
 	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
 	FBlueprintHelperToolError Error;
@@ -1383,8 +1392,8 @@ bool FBlueprintHelperContractTaskRuntimeGraphWriteIrMergeLoweringTest::RunTest(c
 	Op->SetObjectField(TEXT("inserted"), Inserted);
 	Op->SetArrayField(TEXT("sequence_order"), SequenceOrder);
 
-	const TSharedPtr<FJsonObject> Step = MakeGraphWriteStepWithSingleOp(Op);
-	const TSharedPtr<FJsonObject> TaskPlan = MakeGraphWriteTaskPlan(Step);
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperObjectFirstContractTestsLocalUtils::MakeGraphWriteStepWithSingleOp(Op);
+	const TSharedPtr<FJsonObject> TaskPlan = FBlueprintHelperObjectFirstContractTestsLocalUtils::MakeGraphWriteTaskPlan(Step);
 
 	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
 	FBlueprintHelperToolError Error;
@@ -1465,7 +1474,7 @@ bool FBlueprintHelperContractTaskRuntimeLegacyAppendCompatibilityTest::RunTest(c
 	Args->SetArrayField(TEXT("links"), Links);
 	Step->SetObjectField(TEXT("args"), Args);
 
-	const TSharedPtr<FJsonObject> TaskPlan = MakeGraphWriteTaskPlan(Step);
+	const TSharedPtr<FJsonObject> TaskPlan = FBlueprintHelperObjectFirstContractTestsLocalUtils::MakeGraphWriteTaskPlan(Step);
 
 	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
 	FBlueprintHelperToolError Error;

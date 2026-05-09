@@ -158,6 +158,39 @@ Private/
 
 Public/ 目录完全镜像。
 
+## 2026-05-09 状态核查
+
+物理目录迁移已完成到本文目标结构。
+
+核查结果：
+
+```text
+Public 顶层目录：Entry / Runtime / Shared / Systems / UI
+Private 顶层目录：Entry / Runtime / Shared / Systems / Tests / UI
+旧顶层目录：Services / Structure / TaskRuntime / Widgets / Bridge 均不存在
+旧 include 前缀：未发现 Services/、Structure/、TaskRuntime/、Widgets/、Bridge/、Transactions/Transactions/ 等旧路径引用
+```
+
+当前源码落点与阶段对应：
+
+```text
+Phase 1 Shared DTO：完成
+Phase 2 Transaction Facts：完成
+Phase 3 Tool Clusters：完成
+Phase 4 Debug Diagnostics：完成
+Phase 5 Review Audit：完成
+Phase 6 TaskRuntime：完成
+Phase 7 Entry / Bridge：完成
+Phase 8 收尾合并：完成
+```
+
+验证口径：
+
+```text
+本次核查只做静态目录和 include 扫描。
+用户已反馈手动编译通过；本次不再启动编译。
+```
+
 ## 迁移约束
 
 1. 每阶段完成后编译验证，不跳步。

@@ -24,20 +24,21 @@
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 
-namespace
+class FBlueprintHelperAgentImportServiceLocalUtils
 {
-	constexpr int32 ExecLayerSpacingX = 420;
-	constexpr int32 ExecNodeSpacingY = 220;
-	constexpr int32 DataNodeOffsetX = -260;
-	constexpr int32 DataNodeOffsetY = -120;
-	constexpr int32 BranchSpacingY = 260;
-	constexpr int32 OrphanAreaOffsetY = 900;
-	constexpr int32 CommentPadding = 80;
+public:
+	static constexpr int32 ExecLayerSpacingX = 420;
+	static constexpr int32 ExecNodeSpacingY = 220;
+	static constexpr int32 DataNodeOffsetX = -260;
+	static constexpr int32 DataNodeOffsetY = -120;
+	static constexpr int32 BranchSpacingY = 260;
+	static constexpr int32 OrphanAreaOffsetY = 900;
+	static constexpr int32 CommentPadding = 80;
 
-	const TCHAR* AgentImportSchema = TEXT("BlueprintHelper.AgentImportGraph");
-	const TCHAR* AgentImportResultSchema = TEXT("BlueprintHelper.AgentImportResult");
+	inline static const TCHAR* AgentImportSchema = TEXT("BlueprintHelper.AgentImportGraph");
+	inline static const TCHAR* AgentImportResultSchema = TEXT("BlueprintHelper.AgentImportResult");
 
-	const TSet<FString>& ForbiddenFields()
+	static const TSet<FString>& ForbiddenFields()
 	{
 		static const TSet<FString> Fields = {
 			TEXT("Pos"),
@@ -61,7 +62,7 @@ namespace
 		return Fields;
 	}
 
-	const TSet<FString>& SupportedKinds()
+	static const TSet<FString>& SupportedKinds()
 	{
 		static const TSet<FString> Kinds = {
 			TEXT("event"),
@@ -76,7 +77,7 @@ namespace
 		return Kinds;
 	}
 
-	void AddDiagnostic(
+	static void AddDiagnostic(
 		FBlueprintHelperAgentImportResult& Result,
 		EBlueprintHelperAgentImportDiagnosticSeverity Severity,
 		const FString& Code,
@@ -102,7 +103,7 @@ namespace
 		}
 	}
 
-	EBlueprintHelperAgentImportDiagnosticSeverity ConvertGeneratorSeverity(const FString& Severity)
+	static EBlueprintHelperAgentImportDiagnosticSeverity ConvertGeneratorSeverity(const FString& Severity)
 	{
 		if (Severity.Equals(TEXT("error"), ESearchCase::IgnoreCase))
 		{
@@ -115,7 +116,7 @@ namespace
 		return EBlueprintHelperAgentImportDiagnosticSeverity::Info;
 	}
 
-	void AddGeneratorDiagnosticsToResult(
+	static void AddGeneratorDiagnosticsToResult(
 		const TArray<FBlueprintGeneratorDiagnostic>& GeneratorDiagnostics,
 		FBlueprintHelperAgentImportResult& Result)
 	{
@@ -132,7 +133,7 @@ namespace
 		}
 	}
 
-	void FinalizeAgentImportStatus(FBlueprintHelperAgentImportResult& Result)
+	static void FinalizeAgentImportStatus(FBlueprintHelperAgentImportResult& Result)
 	{
 		if (Result.HasErrors())
 		{
@@ -156,7 +157,7 @@ namespace
 		}
 	}
 
-	TSet<UEdGraphNode*> CaptureGraphNodeSnapshot(UEdGraph* Graph)
+	static TSet<UEdGraphNode*> CaptureGraphNodeSnapshot(UEdGraph* Graph)
 	{
 		TSet<UEdGraphNode*> Snapshot;
 		if (!Graph)
@@ -174,7 +175,7 @@ namespace
 		return Snapshot;
 	}
 
-	UK2Node_CustomEvent* FindExistingCustomEventNode(UEdGraph* Graph, const FString& EventName)
+	static UK2Node_CustomEvent* FindExistingCustomEventNode(UEdGraph* Graph, const FString& EventName)
 	{
 		if (!Graph || EventName.IsEmpty())
 		{
@@ -192,7 +193,7 @@ namespace
 		return nullptr;
 	}
 
-	TSet<FName> CaptureBlueprintVariableSnapshot(UBlueprint* Blueprint)
+	static TSet<FName> CaptureBlueprintVariableSnapshot(UBlueprint* Blueprint)
 	{
 		TSet<FName> Snapshot;
 		if (!Blueprint)
@@ -207,7 +208,7 @@ namespace
 		return Snapshot;
 	}
 
-	int32 RemoveNodesCreatedAfterSnapshot(UEdGraph* Graph, const TSet<UEdGraphNode*>& Snapshot)
+	static int32 RemoveNodesCreatedAfterSnapshot(UEdGraph* Graph, const TSet<UEdGraphNode*>& Snapshot)
 	{
 		if (!Graph)
 		{
@@ -242,7 +243,7 @@ namespace
 		return RemovedCount;
 	}
 
-	int32 RemoveVariablesCreatedAfterSnapshot(UBlueprint* Blueprint, const TSet<FName>& Snapshot)
+	static int32 RemoveVariablesCreatedAfterSnapshot(UBlueprint* Blueprint, const TSet<FName>& Snapshot)
 	{
 		if (!Blueprint)
 		{
@@ -264,7 +265,7 @@ namespace
 		return RemovedCount;
 	}
 
-	void RollbackAgentImportMutation(
+	static void RollbackAgentImportMutation(
 		FBlueprintHelperScopedAssetMutation& Mutation,
 		UEdGraph* TargetGraph,
 		UBlueprint* Blueprint,
@@ -286,7 +287,7 @@ namespace
 			TEXT("strict AgentImportGraph detected a partial or failed import and rolled back this transaction."));
 	}
 
-	FString JsonValueToString(const TSharedPtr<FJsonValue>& Value)
+	static FString JsonValueToString(const TSharedPtr<FJsonValue>& Value)
 	{
 		if (!Value.IsValid())
 		{
@@ -313,7 +314,7 @@ namespace
 		return Serialized;
 	}
 
-	bool SplitEndpoint(const FString& Endpoint, FString& OutNode, FString& OutPin)
+	static bool SplitEndpoint(const FString& Endpoint, FString& OutNode, FString& OutPin)
 	{
 		int32 DotIndex = INDEX_NONE;
 		if (!Endpoint.FindLastChar(TEXT('.'), DotIndex) || DotIndex <= 0 || DotIndex >= Endpoint.Len() - 1)
@@ -326,19 +327,19 @@ namespace
 		return !OutNode.IsEmpty() && !OutPin.IsEmpty();
 	}
 
-	bool LooksLikeEndpoint(const FString& Value)
+	static bool LooksLikeEndpoint(const FString& Value)
 	{
 		FString Node;
 		FString Pin;
 		return SplitEndpoint(Value, Node, Pin);
 	}
 
-	FString NormalizeKind(const FString& Kind)
+	static FString NormalizeKind(const FString& Kind)
 	{
 		return Kind.ToLower();
 	}
 
-	FString FunctionNameForGenerator(const FString& InFunction)
+	static FString FunctionNameForGenerator(const FString& InFunction)
 	{
 		FString Function = InFunction.TrimStartAndEnd();
 		int32 ColonIndex = INDEX_NONE;
@@ -357,19 +358,19 @@ namespace
 		return Function;
 	}
 
-	FParsedPinType PinTypeFromString(const FString& Type)
+	static FParsedPinType PinTypeFromString(const FString& Type)
 	{
 		FParsedPinType ParsedType;
 		ParsedType.Category = Type.IsEmpty() ? TEXT("bool") : Type;
 		return ParsedType;
 	}
 
-	FParsedPinType PinTypeFromDeclaration(const FBlueprintHelperAgentImportVariableDeclaration& Declaration)
+	static FParsedPinType PinTypeFromDeclaration(const FBlueprintHelperAgentImportVariableDeclaration& Declaration)
 	{
 		return PinTypeFromString(Declaration.Type);
 	}
 
-	void ScanForbiddenFields(
+	static void ScanForbiddenFields(
 		const TSharedPtr<FJsonObject>& Object,
 		const FString& Path,
 		bool bStrict,
@@ -416,7 +417,7 @@ namespace
 		}
 	}
 
-	void ParseOptions(const TSharedPtr<FJsonObject>& Root, FBlueprintHelperAgentImportOptions& OutOptions)
+	static void ParseOptions(const TSharedPtr<FJsonObject>& Root, FBlueprintHelperAgentImportOptions& OutOptions)
 	{
 		const TSharedPtr<FJsonObject>* OptionsObject = nullptr;
 		if (!Root->TryGetObjectField(TEXT("options"), OptionsObject) || !OptionsObject || !OptionsObject->IsValid())
@@ -432,7 +433,7 @@ namespace
 		(*OptionsObject)->TryGetBoolField(TEXT("reconstruct_existing_nodes"), OutOptions.bReconstructExistingNodes);
 	}
 
-	void ParseInputs(const TSharedPtr<FJsonObject>& NodeObject, FBlueprintHelperAgentImportNode& OutNode)
+	static void ParseInputs(const TSharedPtr<FJsonObject>& NodeObject, FBlueprintHelperAgentImportNode& OutNode)
 	{
 		const TSharedPtr<FJsonObject>* InputsObject = nullptr;
 		if (!NodeObject->TryGetObjectField(TEXT("inputs"), InputsObject) || !InputsObject || !InputsObject->IsValid())
@@ -446,7 +447,7 @@ namespace
 		}
 	}
 
-	void ParseContains(const TSharedPtr<FJsonObject>& NodeObject, FBlueprintHelperAgentImportNode& OutNode)
+	static void ParseContains(const TSharedPtr<FJsonObject>& NodeObject, FBlueprintHelperAgentImportNode& OutNode)
 	{
 		const TArray<TSharedPtr<FJsonValue>>* ContainsArray = nullptr;
 		if (!NodeObject->TryGetArrayField(TEXT("contains"), ContainsArray) || !ContainsArray)
@@ -464,7 +465,7 @@ namespace
 		}
 	}
 
-	bool ParseLinkEndpoint(
+	static bool ParseLinkEndpoint(
 		const TSharedPtr<FJsonObject>& LinkObject,
 		const FString& EndpointField,
 		const FString& NodeField,
@@ -483,7 +484,7 @@ namespace
 		return !OutNode.IsEmpty() && !OutPin.IsEmpty();
 	}
 
-	void ParseDeclarations(
+	static void ParseDeclarations(
 		const TSharedPtr<FJsonObject>& Root,
 		FBlueprintHelperAgentImportParsedRequest& OutRequest)
 	{
@@ -527,7 +528,7 @@ namespace
 		}
 	}
 
-	bool ParseRoot(
+	static bool ParseRoot(
 		const FString& JsonText,
 		FBlueprintHelperAgentImportParsedRequest& OutRequest,
 		FBlueprintHelperAgentImportResult& Result)
@@ -755,7 +756,7 @@ namespace
 		return !Result.HasErrors();
 	}
 
-	float CalculateAppendBaseX(UEdGraph* TargetGraph)
+	static float CalculateAppendBaseX(UEdGraph* TargetGraph)
 	{
 		float MaxX = 0.0f;
 		bool bHasNodes = false;
@@ -777,7 +778,7 @@ namespace
 		return bHasNodes ? MaxX + ExecLayerSpacingX : 0.0f;
 	}
 
-	void ApplyAutoLayout(UEdGraph* TargetGraph, FBlueprintHelperAgentImportParsedRequest& Request)
+	static void ApplyAutoLayout(UEdGraph* TargetGraph, FBlueprintHelperAgentImportParsedRequest& Request)
 	{
 		const float BaseX = (Request.Layout == EBlueprintHelperAgentLayoutStrategy::AppendRight || (TargetGraph && TargetGraph->Nodes.Num() > 0))
 			? CalculateAppendBaseX(TargetGraph)
@@ -927,7 +928,7 @@ namespace
 		}
 	}
 
-	bool BlueprintHasMemberVariable(UBlueprint* Blueprint, const FString& Name)
+	static bool BlueprintHasMemberVariable(UBlueprint* Blueprint, const FString& Name)
 	{
 		if (!Blueprint || Name.IsEmpty())
 		{
@@ -948,7 +949,7 @@ namespace
 			|| (Blueprint->ParentClass && Blueprint->ParentClass->FindPropertyByName(VarName));
 	}
 
-	const FBlueprintHelperAgentImportVariableDeclaration* FindDeclaration(
+	static const FBlueprintHelperAgentImportVariableDeclaration* FindDeclaration(
 		const FBlueprintHelperAgentImportParsedRequest& Request,
 		const FString& Name)
 	{
@@ -962,7 +963,7 @@ namespace
 		return nullptr;
 	}
 
-	bool CanCreateVariableForNode(
+	static bool CanCreateVariableForNode(
 		const FBlueprintHelperAgentImportParsedRequest& Request,
 		const FBlueprintHelperAgentImportNode& Node)
 	{
@@ -970,7 +971,7 @@ namespace
 			&& (!Node.VariableType.IsEmpty() || FindDeclaration(Request, Node.VariableName) != nullptr);
 	}
 
-	bool PreflightRuntimeReferences(
+	static bool PreflightRuntimeReferences(
 		UBlueprint* Blueprint,
 		const FBlueprintHelperAgentImportParsedRequest& Request,
 		FBlueprintHelperAgentImportResult& Result)
@@ -1035,7 +1036,7 @@ namespace
 		return !Result.HasErrors();
 	}
 
-	int32 CreateDeclaredVariables(
+	static int32 CreateDeclaredVariables(
 		UBlueprint* Blueprint,
 		const FBlueprintHelperAgentImportParsedRequest& Request,
 		FBlueprintHelperAgentImportResult& Result)
@@ -1126,7 +1127,7 @@ namespace
 		return CreatedCount;
 	}
 
-	EParsedBlueprintNodeType NodeTypeForKind(const FString& Kind)
+	static EParsedBlueprintNodeType NodeTypeForKind(const FString& Kind)
 	{
 		if (Kind == TEXT("event")) return EParsedBlueprintNodeType::Event;
 		if (Kind == TEXT("custom_event")) return EParsedBlueprintNodeType::CustomEvent;
@@ -1138,7 +1139,7 @@ namespace
 		return EParsedBlueprintNodeType::Unknown;
 	}
 
-	FParsedNode ToParsedNode(
+	static FParsedNode ToParsedNode(
 		const FBlueprintHelperAgentImportParsedRequest& Request,
 		const FBlueprintHelperAgentImportNode& Node)
 	{
@@ -1199,7 +1200,7 @@ namespace
 		return ParsedNode;
 	}
 
-	FString AvailablePinsSummary(UK2Node* Node)
+	static FString AvailablePinsSummary(UK2Node* Node)
 	{
 		if (!Node)
 		{
@@ -1216,7 +1217,8 @@ namespace
 		}
 		return FString::Join(PinNames, TEXT(", "));
 	}
-}
+
+};
 
 bool FBlueprintHelperAgentImportResult::HasErrors() const
 {
@@ -1258,7 +1260,7 @@ FBlueprintHelperAgentImportResult FBlueprintHelperAgentImportService::Import(con
 	FBlueprintHelperAgentImportResult Result;
 
 	FBlueprintHelperAgentImportParsedRequest ParsedRequest;
-	if (!ParseRoot(Request.JsonText, ParsedRequest, Result))
+	if (!FBlueprintHelperAgentImportServiceLocalUtils::ParseRoot(Request.JsonText, ParsedRequest, Result))
 	{
 		return Result;
 	}
@@ -1267,7 +1269,7 @@ FBlueprintHelperAgentImportResult FBlueprintHelperAgentImportService::Import(con
 	UEdGraph* TargetGraph = Resolver.ResolveGraph(ParsedRequest.Target, TargetDiagnostics);
 	for (const FBlueprintHelperDiagnosticItem& Item : TargetDiagnostics.Items)
 	{
-		AddDiagnostic(Result,
+		FBlueprintHelperAgentImportServiceLocalUtils::AddDiagnostic(Result,
 			Item.Severity == EBlueprintHelperDiagnosticSeverity::Error
 				? EBlueprintHelperAgentImportDiagnosticSeverity::Error
 				: EBlueprintHelperAgentImportDiagnosticSeverity::Warning,
@@ -1285,15 +1287,15 @@ FBlueprintHelperAgentImportResult FBlueprintHelperAgentImportService::Import(con
 	UBlueprint* Blueprint = FBlueprintEditorUtils::FindBlueprintForGraph(TargetGraph);
 	if (!Blueprint)
 	{
-		AddDiagnostic(Result, EBlueprintHelperAgentImportDiagnosticSeverity::Error,
+		FBlueprintHelperAgentImportServiceLocalUtils::AddDiagnostic(Result, EBlueprintHelperAgentImportDiagnosticSeverity::Error,
 			TEXT("InvalidTargetBlueprint"), TEXT("$.target_blueprint"),
 			TEXT("无法从目标图表解析蓝图对象。"));
 		return Result;
 	}
 
-	ApplyAutoLayout(TargetGraph, ParsedRequest);
+	FBlueprintHelperAgentImportServiceLocalUtils::ApplyAutoLayout(TargetGraph, ParsedRequest);
 
-	if (!PreflightRuntimeReferences(Blueprint, ParsedRequest, Result))
+	if (!FBlueprintHelperAgentImportServiceLocalUtils::PreflightRuntimeReferences(Blueprint, ParsedRequest, Result))
 	{
 		return Result;
 	}
@@ -1304,13 +1306,13 @@ FBlueprintHelperAgentImportResult FBlueprintHelperAgentImportService::Import(con
 		Result.CreatedNodeCount = ParsedRequest.Nodes.Num();
 		Result.CreatedLinkCount = ParsedRequest.Links.Num();
 		Result.CreatedVariableCount = ParsedRequest.Variables.Num();
-		FinalizeAgentImportStatus(Result);
+		FBlueprintHelperAgentImportServiceLocalUtils::FinalizeAgentImportStatus(Result);
 		Result.Message = TEXT("AgentImportGraph dry_run 校验通过。");
 		return Result;
 	}
 
-	const TSet<UEdGraphNode*> NodeSnapshot = CaptureGraphNodeSnapshot(TargetGraph);
-	const TSet<FName> VariableSnapshot = CaptureBlueprintVariableSnapshot(Blueprint);
+	const TSet<UEdGraphNode*> NodeSnapshot = FBlueprintHelperAgentImportServiceLocalUtils::CaptureGraphNodeSnapshot(TargetGraph);
+	const TSet<FName> VariableSnapshot = FBlueprintHelperAgentImportServiceLocalUtils::CaptureBlueprintVariableSnapshot(Blueprint);
 
 	FBlueprintHelperScopedAssetMutation Mutation(
 		FText::FromString(TEXT("BlueprintHelper Import Agent Graph")),
@@ -1321,7 +1323,7 @@ FBlueprintHelperAgentImportResult FBlueprintHelperAgentImportService::Import(con
 	{
 		if (ParsedRequest.Options.bStrict)
 		{
-			RollbackAgentImportMutation(Mutation, TargetGraph, Blueprint, NodeSnapshot, VariableSnapshot, Result);
+			FBlueprintHelperAgentImportServiceLocalUtils::RollbackAgentImportMutation(Mutation, TargetGraph, Blueprint, NodeSnapshot, VariableSnapshot, Result);
 			return Result;
 		}
 
@@ -1341,7 +1343,7 @@ FBlueprintHelperAgentImportResult FBlueprintHelperAgentImportService::Import(con
 		return Result;
 	};
 
-	Result.CreatedVariableCount = CreateDeclaredVariables(Blueprint, ParsedRequest, Result);
+	Result.CreatedVariableCount = FBlueprintHelperAgentImportServiceLocalUtils::CreateDeclaredVariables(Blueprint, ParsedRequest, Result);
 	if (Result.HasErrors())
 	{
 		return FinishMutationErrors();
@@ -1357,10 +1359,10 @@ FBlueprintHelperAgentImportResult FBlueprintHelperAgentImportService::Import(con
 		const FBlueprintHelperAgentImportNode& AgentNode = ParsedRequest.Nodes[Index];
 		if (ParsedRequest.Options.bReconstructExistingNodes && AgentNode.Kind == TEXT("custom_event"))
 		{
-			UK2Node_CustomEvent* ExistingEvent = FindExistingCustomEventNode(TargetGraph, AgentNode.CustomEventName);
+			UK2Node_CustomEvent* ExistingEvent = FBlueprintHelperAgentImportServiceLocalUtils::FindExistingCustomEventNode(TargetGraph, AgentNode.CustomEventName);
 			if (!ExistingEvent)
 			{
-				AddDiagnostic(Result, EBlueprintHelperAgentImportDiagnosticSeverity::Error,
+				FBlueprintHelperAgentImportServiceLocalUtils::AddDiagnostic(Result, EBlueprintHelperAgentImportDiagnosticSeverity::Error,
 					TEXT("custom_event_entry_not_found"), FString::Printf(TEXT("$.nodes[%d].name"), Index),
 					FString::Printf(TEXT("Custom Event '%s' must already exist when reconstruct_existing_nodes is enabled."), *AgentNode.CustomEventName));
 				continue;
@@ -1387,11 +1389,11 @@ FBlueprintHelperAgentImportResult FBlueprintHelperAgentImportService::Import(con
 			continue;
 		}
 
-		const FParsedNode ParsedNode = ToParsedNode(ParsedRequest, AgentNode);
+		const FParsedNode ParsedNode = FBlueprintHelperAgentImportServiceLocalUtils::ToParsedNode(ParsedRequest, AgentNode);
 		IBlueprintNodeHandler* Handler = FBlueprintNodeHandlerRegistry::Get().FindHandler(ParsedNode.NodeType);
 		if (!Handler)
 		{
-			AddDiagnostic(Result, EBlueprintHelperAgentImportDiagnosticSeverity::Error,
+			FBlueprintHelperAgentImportServiceLocalUtils::AddDiagnostic(Result, EBlueprintHelperAgentImportDiagnosticSeverity::Error,
 				TEXT("UnknownNodeKind"), FString::Printf(TEXT("$.nodes[%d].kind"), Index),
 				FString::Printf(TEXT("没有可处理节点 kind 的 handler：%s。"), *AgentNode.Kind));
 			continue;
@@ -1402,7 +1404,7 @@ FBlueprintHelperAgentImportResult FBlueprintHelperAgentImportService::Import(con
 		if (!SpawnedNode)
 		{
 			const FString Code = AgentNode.Kind == TEXT("call") ? TEXT("UnknownFunction") : TEXT("CreateNodeFailed");
-			AddDiagnostic(Result, EBlueprintHelperAgentImportDiagnosticSeverity::Error,
+			FBlueprintHelperAgentImportServiceLocalUtils::AddDiagnostic(Result, EBlueprintHelperAgentImportDiagnosticSeverity::Error,
 				Code, FString::Printf(TEXT("$.nodes[%d]"), Index),
 				SpawnError.IsEmpty() ? TEXT("节点创建失败。") : SpawnError);
 			continue;
@@ -1433,7 +1435,7 @@ FBlueprintHelperAgentImportResult FBlueprintHelperAgentImportService::Import(con
 			}
 			if (const FParsedNode* ParsedNode = IdToParsedNode.Find(Pair.Key))
 			{
-				AddGeneratorDiagnosticsToResult(
+				FBlueprintHelperAgentImportServiceLocalUtils::AddGeneratorDiagnosticsToResult(
 					TextToBlueprintGenerator::ApplyDefaultValues(Pair.Value, ParsedNode->DefaultValues, Pair.Key),
 					Result);
 			}
@@ -1452,7 +1454,7 @@ FBlueprintHelperAgentImportResult FBlueprintHelperAgentImportService::Import(con
 		UK2Node* const* ToNodePtr = IdToK2Node.Find(Link.ToNode);
 		if (!FromNodePtr || !ToNodePtr || !*FromNodePtr || !*ToNodePtr)
 		{
-			AddDiagnostic(Result, EBlueprintHelperAgentImportDiagnosticSeverity::Error,
+			FBlueprintHelperAgentImportServiceLocalUtils::AddDiagnostic(Result, EBlueprintHelperAgentImportDiagnosticSeverity::Error,
 				TEXT("link_node_not_found"), Link.Path,
 				FString::Printf(TEXT("连线端点必须引用可连线的 K2 节点。s -> %s。"), *Link.FromNode, *Link.ToNode));
 			continue;
@@ -1462,24 +1464,24 @@ FBlueprintHelperAgentImportResult FBlueprintHelperAgentImportService::Import(con
 		UEdGraphPin* ToPin = TextToBlueprintGenerator::FindPinByAlias(*ToNodePtr, Link.ToPin);
 		if (!FromPin)
 		{
-			AddDiagnostic(Result, EBlueprintHelperAgentImportDiagnosticSeverity::Error,
+			FBlueprintHelperAgentImportServiceLocalUtils::AddDiagnostic(Result, EBlueprintHelperAgentImportDiagnosticSeverity::Error,
 				TEXT("link_pin_not_found"), Link.Path + TEXT(".from"),
 				FString::Printf(TEXT("Link source pin '%s.%s' was not found."), *Link.FromNode, *Link.FromPin),
-				FString::Printf(TEXT("Available pins: %s"), *AvailablePinsSummary(*FromNodePtr)));
+				FString::Printf(TEXT("Available pins: %s"), *FBlueprintHelperAgentImportServiceLocalUtils::AvailablePinsSummary(*FromNodePtr)));
 			continue;
 		}
 		if (!ToPin)
 		{
-			AddDiagnostic(Result, EBlueprintHelperAgentImportDiagnosticSeverity::Error,
+			FBlueprintHelperAgentImportServiceLocalUtils::AddDiagnostic(Result, EBlueprintHelperAgentImportDiagnosticSeverity::Error,
 				TEXT("link_pin_not_found"), Link.Path + TEXT(".to"),
 				FString::Printf(TEXT("Link target pin '%s.%s' was not found."), *Link.ToNode, *Link.ToPin),
-				FString::Printf(TEXT("Available pins: %s"), *AvailablePinsSummary(*ToNodePtr)));
+				FString::Printf(TEXT("Available pins: %s"), *FBlueprintHelperAgentImportServiceLocalUtils::AvailablePinsSummary(*ToNodePtr)));
 			continue;
 		}
 
 		if (!Schema || !Schema->TryCreateConnection(FromPin, ToPin))
 		{
-			AddDiagnostic(Result, EBlueprintHelperAgentImportDiagnosticSeverity::Error,
+			FBlueprintHelperAgentImportServiceLocalUtils::AddDiagnostic(Result, EBlueprintHelperAgentImportDiagnosticSeverity::Error,
 				TEXT("link_connection_rejected"), Link.Path,
 				FString::Printf(TEXT("无法连接 '%s.%s' 到 '%s.%s'。"), *Link.FromNode, *Link.FromPin, *Link.ToNode, *Link.ToPin));
 			continue;
@@ -1502,14 +1504,14 @@ FBlueprintHelperAgentImportResult FBlueprintHelperAgentImportService::Import(con
 		Result.bCompiled = CompileResult.bSuccess;
 		if (!CompileResult.bSuccess)
 		{
-			AddDiagnostic(Result, EBlueprintHelperAgentImportDiagnosticSeverity::Error,
+			FBlueprintHelperAgentImportServiceLocalUtils::AddDiagnostic(Result, EBlueprintHelperAgentImportDiagnosticSeverity::Error,
 				TEXT("CompileFailed"), TEXT("$.options.compile"),
 				TEXT("导入后蓝图编译失败。"));
 			return FinishMutationErrors();
 		}
 	}
 
-	FinalizeAgentImportStatus(Result);
+	FBlueprintHelperAgentImportServiceLocalUtils::FinalizeAgentImportStatus(Result);
 	if (!Result.bSuccess)
 	{
 		return FinishMutationErrors();
@@ -1523,7 +1525,7 @@ FBlueprintHelperAgentImportResult FBlueprintHelperAgentImportService::Import(con
 		Result.bSaved = SaveResult.bSuccess;
 		if (!SaveResult.bSuccess)
 		{
-			AddDiagnostic(Result, EBlueprintHelperAgentImportDiagnosticSeverity::Error,
+			FBlueprintHelperAgentImportServiceLocalUtils::AddDiagnostic(Result, EBlueprintHelperAgentImportDiagnosticSeverity::Error,
 				TEXT("SaveFailed"), TEXT("$.options.save"),
 				SaveResult.ErrorMessage.IsEmpty() ? TEXT("保存资产失败。") : SaveResult.ErrorMessage);
 			Result.bSuccess = false;

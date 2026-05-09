@@ -1,5 +1,7 @@
 # BlueprintHelper P1 Remaining Gap Smoke (2026-05-07)
 
+2026-05-09 清理: 本文件保留 P1 gap smoke 的历史失败、rerun 证据和 fixture 细节。当前 P1/P2 全线测试入口已迁入 `Develop/Plan/BlueprintHelper_Unified_SmokeRun_Verification_20260509.md`。
+
 ## Purpose
 
 This smoke targets the remaining P1 verification gaps that were not covered by the 2026-05-06 Rerun 4 smoke:
@@ -687,13 +689,13 @@ Task run ids:
 - data_table:
 
 Blocked by fixture:
-- 
+- None recorded.
 
 Known implementation failures:
-- 
+- None recorded.
 
 Empty-error failures:
-- 
+- None recorded.
 
 Read-back method used:
 - GraphWrite:

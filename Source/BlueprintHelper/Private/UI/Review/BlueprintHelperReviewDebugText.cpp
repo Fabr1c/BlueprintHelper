@@ -1,9 +1,6 @@
 #include "UI/Review/BlueprintHelperReviewDebugText.h"
 
-namespace BlueprintHelperReviewDebugText
+FString FBlueprintHelperReviewDebugText::BuildCopyableText(const TArray<FString>& Messages)
 {
-	FString BuildCopyableText(const TArray<FString>& Messages)
-	{
-		return FString::Join(Messages, LINE_TERMINATOR);
-	}
+	return FString::Join(Messages, LINE_TERMINATOR);
 }

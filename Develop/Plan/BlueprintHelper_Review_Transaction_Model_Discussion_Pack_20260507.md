@@ -15,8 +15,8 @@ Confirmed boundaries:
 - Normal Agents should keep using TaskSpec -> preview -> execute -> get task result.
 - TransactionJournalQuery should become part of a persisted Review transaction record consumer model.
 - TaskRunJournal remains the Agent-visible task summary path.
-- `large_payload_ref` is not the current direction for Agent reading.
-- DebugExport should become a separate developer diagnostics system.
+- `large_payload_ref` is deleted from the current Debug direction.
+- DebugCase / DebugBundle are separate developer diagnostics systems.
 
 Primary question for the next design discussion:
 
@@ -153,11 +153,11 @@ Transaction services:
 | Current gap matrix | `Resources/Plan/BlueprintHelper_v0.3.6_Current_Implementation_Gap_Matrix_20260505.md` | Tracks DebugExport as an independent developer diagnostics system. |
 | Current TODO | `Resources/Plan/BlueprintHelper_Current_TODO_20260506.md` | Tracks DebugExport and TransactionJournalQuery / Review aggregation as active TODOs. |
 
-DebugExport decision for Review discussion:
+Debug linkage decision for Review discussion:
 
-- Do not use DebugExport as the Review transaction storage model.
-- DebugExport should link to transactions, task_run_id, ReviewRecord, and error context.
-- DebugExport should export concrete diagnostic bundles when users or developers need to debug Review / rollback / task failures.
+- Do not use DebugBundle as the Review transaction storage model.
+- ReviewRecord links to `debug_case_ids[]`; DebugCase links back to transactions, task_run_id, ReviewRecord, and error context.
+- DebugBundle export starts from DebugCase and is generated only when users or developers need to debug Review / rollback / task failures.
 
 ## 8. Capability Producer Documents That Mention Review / Journal
 
@@ -285,7 +285,7 @@ This is a discussion target, not an implemented schema.
     "status": "not_required"
   },
   "diagnostics": {
-    "debug_export_ref": null
+    "debug_case_ids": []
   }
 }
 ```
@@ -357,9 +357,9 @@ archived
 compacted
 ```
 
-9. DebugExport linkage
+9. Debug linkage
 
-Need define how a ReviewRecord links to debug bundles without turning DebugExport into an Agent bulk-read path.
+Resolved direction: ReviewRecord links to `debug_case_ids[]`; DebugBundle is generated from DebugCase and does not become an Agent bulk-read path.
 
 10. Non-BlueprintHelper-owned anchors
 
@@ -374,6 +374,5 @@ The web discussion should produce:
 - ReviewRecord query surface replacing raw TransactionJournalQuery as the user-facing model.
 - Accept / Reject state machine.
 - Ownership conversion tool scope and review-only exposure decision.
-- DebugExport linkage contract.
+- DebugCase / DebugBundle linkage contract.
 - TODO updates for implementation order.
-

@@ -11,9 +11,10 @@
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 
-namespace
+class FBlueprintHelperReviewStoreServiceLocalUtils
 {
-	FString ExtractReviewNodeIdentifier(const FString& RawNodePath)
+public:
+	static FString ExtractReviewNodeIdentifier(const FString& RawNodePath)
 	{
 		FString Identifier = RawNodePath;
 
@@ -26,7 +27,7 @@ namespace
 		return Identifier;
 	}
 
-	FBlueprintHelperReviewAtomicTarget MakeGraphRecordTarget(
+	static FBlueprintHelperReviewAtomicTarget MakeGraphRecordTarget(
 		const FBlueprintHelperReviewTransactionInput& Input,
 		const FString& TargetId,
 		const FString& TargetPrefix)
@@ -43,7 +44,7 @@ namespace
 		return Target;
 	}
 
-	void AddGraphTargetsFromStringArrayField(
+	static void AddGraphTargetsFromStringArrayField(
 		const TSharedPtr<FJsonObject>& Record,
 		const TCHAR* FieldName,
 		const FString& TargetPrefix,
@@ -80,7 +81,7 @@ namespace
 		}
 	}
 
-	void AddGraphTargetsFromRollbackData(FBlueprintHelperReviewTransactionInput& Input, const TSharedPtr<FJsonObject>& Record)
+	static void AddGraphTargetsFromRollbackData(FBlueprintHelperReviewTransactionInput& Input, const TSharedPtr<FJsonObject>& Record)
 	{
 		TSharedPtr<FJsonObject> RollbackObject;
 		if (!Record.IsValid())
@@ -116,17 +117,17 @@ namespace
 			Input);
 	}
 
-	FString MakeReviewInternalMissingAnchorKey(const FString& TransactionId, int32 Index)
+	static FString MakeReviewInternalMissingAnchorKey(const FString& TransactionId, int32 Index)
 	{
 		return FString::Printf(TEXT("__missing_anchor|%s|%d"), *TransactionId, Index);
 	}
 
-	FString MakeReviewInternalMissingGroupKey(const FString& TransactionId, int32 Index)
+	static FString MakeReviewInternalMissingGroupKey(const FString& TransactionId, int32 Index)
 	{
 		return FString::Printf(TEXT("__missing_visual_group|%s|%d"), *TransactionId, Index);
 	}
 
-	FString MakeReviewAtomicLookupKey(const FBlueprintHelperReviewAtomicTarget& Target, const FString& FallbackKey)
+	static FString MakeReviewAtomicLookupKey(const FBlueprintHelperReviewAtomicTarget& Target, const FString& FallbackKey)
 	{
 		return FString::Printf(
 			TEXT("%s|%s|%s|%s"),
@@ -136,7 +137,7 @@ namespace
 			Target.TargetKey.IsEmpty() ? *FallbackKey : *Target.TargetKey);
 	}
 
-	bool IsReviewEvidenceTargetComplete(const FBlueprintHelperReviewAtomicTarget& Target, FString& OutReason)
+	static bool IsReviewEvidenceTargetComplete(const FBlueprintHelperReviewAtomicTarget& Target, FString& OutReason)
 	{
 		if (Target.TargetKey.IsEmpty())
 		{
@@ -166,7 +167,7 @@ namespace
 		return true;
 	}
 
-	FBlueprintHelperReviewVisibleChange MakeVisibleChangeFromEvidence(
+	static FBlueprintHelperReviewVisibleChange MakeVisibleChangeFromEvidence(
 		const FBlueprintHelperWriteReviewEvidence& Evidence,
 		const FBlueprintHelperReviewAtomicTarget& Target,
 		const FString& VisualGroupKey)
@@ -186,7 +187,7 @@ namespace
 		return Change;
 	}
 
-	EBlueprintHelperReviewChangeStatus ParseReviewChangeStatus(const FString& Status)
+	static EBlueprintHelperReviewChangeStatus ParseReviewChangeStatus(const FString& Status)
 	{
 		if (Status.Equals(TEXT("accepted"), ESearchCase::IgnoreCase))
 		{
@@ -211,7 +212,7 @@ namespace
 		return EBlueprintHelperReviewChangeStatus::Pending;
 	}
 
-	EBlueprintHelperReviewChangeKind ParseReviewChangeKind(const FString& ChangeKind)
+	static EBlueprintHelperReviewChangeKind ParseReviewChangeKind(const FString& ChangeKind)
 	{
 		if (ChangeKind.Equals(TEXT("added"), ESearchCase::IgnoreCase))
 		{
@@ -236,7 +237,7 @@ namespace
 		return EBlueprintHelperReviewChangeKind::Modified;
 	}
 
-	EBlueprintHelperReviewSurface ParseReviewSurface(const FString& Surface)
+	static EBlueprintHelperReviewSurface ParseReviewSurface(const FString& Surface)
 	{
 		if (Surface.Equals(TEXT("components"), ESearchCase::IgnoreCase))
 		{
@@ -253,7 +254,7 @@ namespace
 		return EBlueprintHelperReviewSurface::Graph;
 	}
 
-	void ReadReviewStringArray(
+	static void ReadReviewStringArray(
 		const TSharedPtr<FJsonObject>& Json,
 		const TCHAR* FieldName,
 		TArray<FString>& OutValues)
@@ -278,7 +279,7 @@ namespace
 		}
 	}
 
-	TArray<TSharedPtr<FJsonValue>> MakeReviewJsonStringArray(const TArray<FString>& Values)
+	static TArray<TSharedPtr<FJsonValue>> MakeReviewJsonStringArray(const TArray<FString>& Values)
 	{
 		TArray<TSharedPtr<FJsonValue>> JsonValues;
 		for (const FString& Value : Values)
@@ -288,7 +289,7 @@ namespace
 		return JsonValues;
 	}
 
-	TSharedRef<FJsonObject> ReviewAtomicTargetToJson(const FBlueprintHelperReviewAtomicTarget& Target)
+	static TSharedRef<FJsonObject> ReviewAtomicTargetToJson(const FBlueprintHelperReviewAtomicTarget& Target)
 	{
 		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
 		Json->SetStringField(TEXT("asset_path"), Target.AssetPath);
@@ -313,7 +314,7 @@ namespace
 		return Json;
 	}
 
-	TSharedRef<FJsonObject> ReviewVisibleChangeToJson(const FBlueprintHelperReviewVisibleChange& Change)
+	static TSharedRef<FJsonObject> ReviewVisibleChangeToJson(const FBlueprintHelperReviewVisibleChange& Change)
 	{
 		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
 		Json->SetStringField(TEXT("change_id"), Change.ChangeId);
@@ -339,7 +340,7 @@ namespace
 		return Json;
 	}
 
-	TSharedRef<FJsonObject> ReviewActionRecordToJson(const FBlueprintHelperReviewActionRecord& Action)
+	static TSharedRef<FJsonObject> ReviewActionRecordToJson(const FBlueprintHelperReviewActionRecord& Action)
 	{
 		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
 		Json->SetStringField(TEXT("action"), Action.Action);
@@ -351,7 +352,7 @@ namespace
 		return Json;
 	}
 
-	TSharedRef<FJsonObject> ReviewRecordToJson(const FBlueprintHelperReviewRecord& Record)
+	static TSharedRef<FJsonObject> ReviewRecordToJson(const FBlueprintHelperReviewRecord& Record)
 	{
 		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
 		Json->SetStringField(TEXT("schema"), Record.Schema);
@@ -388,12 +389,11 @@ namespace
 
 		TSharedRef<FJsonObject> Diagnostics = MakeShared<FJsonObject>();
 		Diagnostics->SetArrayField(TEXT("debug_case_ids"), MakeReviewJsonStringArray(Record.DebugCaseIds));
-		Diagnostics->SetArrayField(TEXT("debug_export_refs"), MakeReviewJsonStringArray(Record.DebugExportRefs));
 		Json->SetObjectField(TEXT("diagnostics"), Diagnostics);
 		return Json;
 	}
 
-	TSharedRef<FJsonObject> ReviewArchiveSessionToJson(const FBlueprintHelperReviewArchiveSession& ArchiveSession)
+	static TSharedRef<FJsonObject> ReviewArchiveSessionToJson(const FBlueprintHelperReviewArchiveSession& ArchiveSession)
 	{
 		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
 		Json->SetStringField(TEXT("schema"), ArchiveSession.Schema);
@@ -408,7 +408,7 @@ namespace
 		return Json;
 	}
 
-	bool ReadReviewRecordFromJson(const TSharedPtr<FJsonObject>& Json, FBlueprintHelperReviewRecord& OutRecord)
+	static bool ReadReviewRecordFromJson(const TSharedPtr<FJsonObject>& Json, FBlueprintHelperReviewRecord& OutRecord)
 	{
 		if (!Json.IsValid())
 		{
@@ -558,13 +558,12 @@ namespace
 		if (Json->TryGetObjectField(TEXT("diagnostics"), Diagnostics) && Diagnostics)
 		{
 			ReadReviewStringArray(*Diagnostics, TEXT("debug_case_ids"), OutRecord.DebugCaseIds);
-			ReadReviewStringArray(*Diagnostics, TEXT("debug_export_refs"), OutRecord.DebugExportRefs);
 		}
 
 		return !OutRecord.ReviewRecordId.IsEmpty();
 	}
 
-	void MergeReviewRecord(FBlueprintHelperReviewRecord& Existing, const FBlueprintHelperReviewRecord& Incoming)
+	static void MergeReviewRecord(FBlueprintHelperReviewRecord& Existing, const FBlueprintHelperReviewRecord& Incoming)
 	{
 		for (const FString& TaskRunId : Incoming.SourceTaskRunIds)
 		{
@@ -573,10 +572,6 @@ namespace
 		for (const FString& DebugCaseId : Incoming.DebugCaseIds)
 		{
 			Existing.DebugCaseIds.AddUnique(DebugCaseId);
-		}
-		for (const FString& DebugExportRef : Incoming.DebugExportRefs)
-		{
-			Existing.DebugExportRefs.AddUnique(DebugExportRef);
 		}
 
 		for (const FBlueprintHelperReviewVisibleChange& IncomingChange : Incoming.VisibleChanges)
@@ -667,7 +662,8 @@ namespace
 		}
 		Existing.SourceTransactionSummary.FinalReviewStatus = Existing.Status;
 	}
-}
+
+};
 
 FString FBlueprintHelperReviewStoreService::NormalizeGraphBlockTargetId(
 	const FString& GraphName,
@@ -814,10 +810,6 @@ TArray<FBlueprintHelperReviewRecord> FBlueprintHelperReviewStoreService::BuildRe
 		{
 			Record->DebugCaseIds.AddUnique(DebugCaseId);
 		}
-		if (!Evidence.DebugExportRef.IsEmpty())
-		{
-			Record->DebugExportRefs.AddUnique(Evidence.DebugExportRef);
-		}
 
 		AddEvidenceAtomicTargets(Evidence, *Record);
 		Record->SourceTransactionSummary.TransactionCount =
@@ -875,7 +867,7 @@ TArray<FBlueprintHelperReviewRecord> FBlueprintHelperReviewStoreService::QueryRe
 		}
 
 		FBlueprintHelperReviewRecord Record;
-		if (!ReadReviewRecordFromJson(Json, Record))
+		if (!FBlueprintHelperReviewStoreServiceLocalUtils::ReadReviewRecordFromJson(Json, Record))
 		{
 			continue;
 		}
@@ -927,7 +919,7 @@ bool FBlueprintHelperReviewStoreService::LoadReviewRecordById(
 
 	TSharedPtr<FJsonObject> Json;
 	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Content);
-	if (!FJsonSerializer::Deserialize(Reader, Json) || !ReadReviewRecordFromJson(Json, OutRecord))
+	if (!FJsonSerializer::Deserialize(Reader, Json) || !FBlueprintHelperReviewStoreServiceLocalUtils::ReadReviewRecordFromJson(Json, OutRecord))
 	{
 		OutError = FString::Printf(TEXT("failed to parse review record: %s"), *ReviewRecordId);
 		return false;
@@ -946,15 +938,15 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewStoreService::BuildReviewRecordSum
 	Json->SetStringField(TEXT("asset_path"), Record.AssetPath);
 	Json->SetStringField(TEXT("status"), BlueprintHelperReviewChangeStatusToString(Record.Status));
 	Json->SetStringField(TEXT("storage_status"), BlueprintHelperReviewStorageStatusToString(Record.StorageStatus));
-	Json->SetArrayField(TEXT("source_task_run_ids"), MakeReviewJsonStringArray(Record.SourceTaskRunIds));
-	Json->SetArrayField(TEXT("debug_case_ids"), MakeReviewJsonStringArray(Record.DebugCaseIds));
+	Json->SetArrayField(TEXT("source_task_run_ids"), FBlueprintHelperReviewStoreServiceLocalUtils::MakeReviewJsonStringArray(Record.SourceTaskRunIds));
+	Json->SetArrayField(TEXT("debug_case_ids"), FBlueprintHelperReviewStoreServiceLocalUtils::MakeReviewJsonStringArray(Record.DebugCaseIds));
 
 	TSharedRef<FJsonObject> SourceSummary = MakeShared<FJsonObject>();
 	SourceSummary->SetNumberField(TEXT("transaction_count"), Record.SourceTransactionSummary.TransactionCount);
-	SourceSummary->SetArrayField(TEXT("task_run_ids"), MakeReviewJsonStringArray(Record.SourceTransactionSummary.TaskRunIds));
-	SourceSummary->SetArrayField(TEXT("operation_kinds"), MakeReviewJsonStringArray(Record.SourceTransactionSummary.OperationKinds));
-	SourceSummary->SetArrayField(TEXT("asset_paths"), MakeReviewJsonStringArray(Record.SourceTransactionSummary.AssetPaths));
-	SourceSummary->SetArrayField(TEXT("transaction_ids"), MakeReviewJsonStringArray(Record.SourceTransactionSummary.TransactionIds));
+	SourceSummary->SetArrayField(TEXT("task_run_ids"), FBlueprintHelperReviewStoreServiceLocalUtils::MakeReviewJsonStringArray(Record.SourceTransactionSummary.TaskRunIds));
+	SourceSummary->SetArrayField(TEXT("operation_kinds"), FBlueprintHelperReviewStoreServiceLocalUtils::MakeReviewJsonStringArray(Record.SourceTransactionSummary.OperationKinds));
+	SourceSummary->SetArrayField(TEXT("asset_paths"), FBlueprintHelperReviewStoreServiceLocalUtils::MakeReviewJsonStringArray(Record.SourceTransactionSummary.AssetPaths));
+	SourceSummary->SetArrayField(TEXT("transaction_ids"), FBlueprintHelperReviewStoreServiceLocalUtils::MakeReviewJsonStringArray(Record.SourceTransactionSummary.TransactionIds));
 	SourceSummary->SetStringField(TEXT("final_review_status"),
 		BlueprintHelperReviewChangeStatusToString(Record.SourceTransactionSummary.FinalReviewStatus));
 	Json->SetObjectField(TEXT("source_transaction_summary"), SourceSummary);
@@ -1021,7 +1013,7 @@ bool FBlueprintHelperReviewStoreService::SaveReviewRecord(
 
 	FString JsonText;
 	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonText);
-	if (!FJsonSerializer::Serialize(ReviewRecordToJson(Record), Writer))
+	if (!FJsonSerializer::Serialize(FBlueprintHelperReviewStoreServiceLocalUtils::ReviewRecordToJson(Record), Writer))
 	{
 		OutError = FString::Printf(TEXT("failed to serialize review record: %s"), *Record.ReviewRecordId);
 		return false;
@@ -1067,16 +1059,16 @@ bool FBlueprintHelperReviewStoreService::SaveReviewRecords(
 			TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ExistingContent);
 			FBlueprintHelperReviewRecord ExistingRecord;
 			if (FJsonSerializer::Deserialize(Reader, ExistingJson)
-				&& ReadReviewRecordFromJson(ExistingJson, ExistingRecord))
+				&& FBlueprintHelperReviewStoreServiceLocalUtils::ReadReviewRecordFromJson(ExistingJson, ExistingRecord))
 			{
-				MergeReviewRecord(ExistingRecord, Record);
+				FBlueprintHelperReviewStoreServiceLocalUtils::MergeReviewRecord(ExistingRecord, Record);
 				RecordToWrite = ExistingRecord;
 			}
 		}
 
 		FString JsonText;
 		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonText);
-		if (!FJsonSerializer::Serialize(ReviewRecordToJson(RecordToWrite), Writer))
+		if (!FJsonSerializer::Serialize(FBlueprintHelperReviewStoreServiceLocalUtils::ReviewRecordToJson(RecordToWrite), Writer))
 		{
 			OutError = FString::Printf(TEXT("failed to serialize review record: %s"), *Record.ReviewRecordId);
 			return false;
@@ -1113,7 +1105,7 @@ bool FBlueprintHelperReviewStoreService::SaveArchiveSession(
 
 	FString JsonText;
 	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonText);
-	if (!FJsonSerializer::Serialize(ReviewArchiveSessionToJson(ArchiveSession), Writer))
+	if (!FJsonSerializer::Serialize(FBlueprintHelperReviewStoreServiceLocalUtils::ReviewArchiveSessionToJson(ArchiveSession), Writer))
 	{
 		OutError = FString::Printf(TEXT("failed to serialize archive session: %s"), *ArchiveSession.ArchiveSessionId);
 		return false;
@@ -1315,17 +1307,17 @@ void FBlueprintHelperReviewStoreService::AddEvidenceAtomicTargets(
 		}
 
 		FString NeedsActionReason;
-		if (!IsReviewEvidenceTargetComplete(Target, NeedsActionReason))
+		if (!FBlueprintHelperReviewStoreServiceLocalUtils::IsReviewEvidenceTargetComplete(Target, NeedsActionReason))
 		{
 			Target.Status = EBlueprintHelperReviewChangeStatus::NeedsAction;
 		}
 
 		const FString VisualGroupKey = Target.VisualGroupKey.IsEmpty()
-			? MakeReviewInternalMissingGroupKey(Evidence.TransactionId, Index)
+			? FBlueprintHelperReviewStoreServiceLocalUtils::MakeReviewInternalMissingGroupKey(Evidence.TransactionId, Index)
 			: Target.VisualGroupKey;
-		const FString AtomicLookupKey = MakeReviewAtomicLookupKey(
+		const FString AtomicLookupKey = FBlueprintHelperReviewStoreServiceLocalUtils::MakeReviewAtomicLookupKey(
 			Target,
-			MakeReviewInternalMissingAnchorKey(Evidence.TransactionId, Index));
+			FBlueprintHelperReviewStoreServiceLocalUtils::MakeReviewInternalMissingAnchorKey(Evidence.TransactionId, Index));
 
 		FBlueprintHelperReviewVisibleChange* Change = Record.VisibleChanges.FindByPredicate(
 			[&VisualGroupKey](const FBlueprintHelperReviewVisibleChange& Candidate)
@@ -1334,7 +1326,7 @@ void FBlueprintHelperReviewStoreService::AddEvidenceAtomicTargets(
 			});
 		if (!Change)
 		{
-			FBlueprintHelperReviewVisibleChange NewChange = MakeVisibleChangeFromEvidence(
+			FBlueprintHelperReviewVisibleChange NewChange = FBlueprintHelperReviewStoreServiceLocalUtils::MakeVisibleChangeFromEvidence(
 				Evidence,
 				Target,
 				VisualGroupKey);
@@ -1351,7 +1343,7 @@ void FBlueprintHelperReviewStoreService::AddEvidenceAtomicTargets(
 		FBlueprintHelperReviewAtomicTarget* ExistingTarget = Change->AtomicTargets.FindByPredicate(
 			[&AtomicLookupKey](const FBlueprintHelperReviewAtomicTarget& Candidate)
 			{
-				return MakeReviewAtomicLookupKey(Candidate, FString()) == AtomicLookupKey;
+				return FBlueprintHelperReviewStoreServiceLocalUtils::MakeReviewAtomicLookupKey(Candidate, FString()) == AtomicLookupKey;
 			});
 		if (!ExistingTarget)
 		{

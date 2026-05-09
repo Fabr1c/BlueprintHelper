@@ -1,5 +1,7 @@
 # BlueprintHelper Current Capability Integration Smoke Test (2026-05-05)
 
+2026-05-09 清理: 本文件保留 2026-05-05 到 2026-05-06 integration smoke 证据。当前未完成项已迁入 `Develop/Plan/BlueprintHelper_Unified_SmokeRun_Verification_20260509.md`，不要再从本文件直接执行全线 smoke。
+
 ## Purpose
 
 This smoke validates the current TaskSpec-first architecture as a connected system, not as isolated tools:
@@ -1750,7 +1752,7 @@ BH_TaskSpecSmokeEvent_20260504_001.then -> 打印字符串.execute
 5. **[gap] block_id 不在 LogicJson 输出中**: LogicJson grouped output 缺少 `block_id` 字段（TODO 中标记为已完成但实际输出未体现），当前使用 `name` 字段值作为 block_id 替代，仅对 Append 创建的图有效。
 ## Source Fix Notes (2026-05-06)
 
-Status: source patched, pending user-side UE build and smoke rerun.
+Status: source patched. User-side UE build later passed; current rerun authority is `Develop/Plan/BlueprintHelper_Unified_SmokeRun_Verification_20260509.md`.
 
 - Merge execute: fixed `insert_between` execute path so `OriginalSuccessorPin` is captured after preflight anchor resolution. `function_call` and `custom_event_call` now create call-function nodes instead of treating entry nodes as inserted executable body.
 - Replace ownership: replacement body nodes now inherit `BlueprintHelperOwned` / `BlueprintHelperBlockId` when the replace target is an existing BlueprintHelper-owned block or owned custom event entry. Ownership is written only to imported replacement nodes, not the whole graph.

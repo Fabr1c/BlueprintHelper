@@ -1,5 +1,7 @@
 # BlueprintHelper P1 Remaining Gap Smoke 重跑 (2026-05-07)
 
+2026-05-09 清理: 本文件保留 P1 gap rerun 的历史记录。当前 same-graph `branch_fork + owned_block_call`、UMGWidget、DataTable、TaskRunJournal、Composite 和 P2 grouped verification 已统一迁入 `Develop/Plan/BlueprintHelper_Unified_SmokeRun_Verification_20260509.md`。
+
 ## 背景
 
 基于 `BlueprintHelper_P1_Remaining_Gap_Smoke_20260507.md` 上次失败的 smoke 结果，MCP 层已做了空错误回退修复（npm test 已通过），本次重跑验证修复效果。

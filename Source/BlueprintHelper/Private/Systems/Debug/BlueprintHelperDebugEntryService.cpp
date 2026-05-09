@@ -259,7 +259,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperDebugEntryService::CleanupDebugCa
 	TSharedRef<FJsonObject> Data = MakeShared<FJsonObject>();
 	Data->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.DebugCaseCleanup.v1"));
 	Data->SetNumberField(TEXT("archived_count"), ArchivedCaseIds.Num());
-	Data->SetArrayField(TEXT("archived_debug_case_ids"), BlueprintHelperDebugJson::StringArrayToJson(ArchivedCaseIds));
+	Data->SetArrayField(TEXT("archived_debug_case_ids"), FBlueprintHelperDebugJson::StringArrayToJson(ArchivedCaseIds));
 	Result.Data = Data;
 	return Result;
 }

@@ -14,12 +14,13 @@
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "UObject/Class.h"
 
-namespace
+class FBlueprintLocalVariableMutationHandlerLocalUtils
 {
-const FName BlueprintHelperLocalDescriptionMetaKey(TEXT("Description"));
-const FName BlueprintHelperLocalCategoryMetaKey(TEXT("Category"));
+public:
+inline static const FName BlueprintHelperLocalDescriptionMetaKey = FName(TEXT("Description"));
+inline static const FName BlueprintHelperLocalCategoryMetaKey = FName(TEXT("Category"));
 
-void SetOptionalField(FString* OutField, const FString& Field)
+static void SetOptionalField(FString* OutField, const FString& Field)
 {
 	if (OutField)
 	{
@@ -27,7 +28,7 @@ void SetOptionalField(FString* OutField, const FString& Field)
 	}
 }
 
-FString NormalizePropertyPath(const FString& PropertyPath)
+static FString NormalizePropertyPath(const FString& PropertyPath)
 {
 	FString Result = PropertyPath;
 	Result.TrimStartAndEndInline();
@@ -36,7 +37,7 @@ FString NormalizePropertyPath(const FString& PropertyPath)
 	return Result.ToLower();
 }
 
-FString NormalizeContainerName(const FString& Container)
+static FString NormalizeContainerName(const FString& Container)
 {
 	FString Result = Container;
 	Result.TrimStartAndEndInline();
@@ -48,7 +49,7 @@ FString NormalizeContainerName(const FString& Container)
 	return Result;
 }
 
-bool TryGetOptionalScalarStringField(
+static bool TryGetOptionalScalarStringField(
 	const TSharedPtr<FJsonObject>& Payload,
 	const TCHAR* FieldName,
 	TOptional<FString>& OutValue,
@@ -74,7 +75,7 @@ bool TryGetOptionalScalarStringField(
 	return true;
 }
 
-bool RejectUnsupportedLocalFields(
+static bool RejectUnsupportedLocalFields(
 	const TSharedPtr<FJsonObject>& Payload,
 	const TArray<FString>& FieldNames,
 	FString& OutError,
@@ -98,7 +99,7 @@ bool RejectUnsupportedLocalFields(
 	return true;
 }
 
-UK2Node_FunctionEntry* FindFunctionEntryNode(UEdGraph* FunctionGraph)
+static UK2Node_FunctionEntry* FindFunctionEntryNode(UEdGraph* FunctionGraph)
 {
 	if (!FunctionGraph)
 	{
@@ -110,12 +111,12 @@ UK2Node_FunctionEntry* FindFunctionEntryNode(UEdGraph* FunctionGraph)
 	return EntryNodes.Num() > 0 ? EntryNodes[0] : nullptr;
 }
 
-const UK2Node_FunctionEntry* FindFunctionEntryNode(const UEdGraph* FunctionGraph)
+static const UK2Node_FunctionEntry* FindFunctionEntryNode(const UEdGraph* FunctionGraph)
 {
 	return FindFunctionEntryNode(const_cast<UEdGraph*>(FunctionGraph));
 }
 
-FBPVariableDescription* FindLocalVariableOnEntry(UK2Node_FunctionEntry* EntryNode, const FName VariableName)
+static FBPVariableDescription* FindLocalVariableOnEntry(UK2Node_FunctionEntry* EntryNode, const FName VariableName)
 {
 	if (!EntryNode)
 	{
@@ -133,12 +134,12 @@ FBPVariableDescription* FindLocalVariableOnEntry(UK2Node_FunctionEntry* EntryNod
 	return nullptr;
 }
 
-const FBPVariableDescription* FindLocalVariableOnEntry(const UK2Node_FunctionEntry* EntryNode, const FName VariableName)
+static const FBPVariableDescription* FindLocalVariableOnEntry(const UK2Node_FunctionEntry* EntryNode, const FName VariableName)
 {
 	return FindLocalVariableOnEntry(const_cast<UK2Node_FunctionEntry*>(EntryNode), VariableName);
 }
 
-bool FunctionGraphMatchesName(const UEdGraph* Graph, const FString& FunctionName)
+static bool FunctionGraphMatchesName(const UEdGraph* Graph, const FString& FunctionName)
 {
 	if (!Graph || FunctionName.IsEmpty())
 	{
@@ -166,7 +167,7 @@ bool FunctionGraphMatchesName(const UEdGraph* Graph, const FString& FunctionName
 	return EntryNode->FunctionReference.GetMemberName().ToString().Equals(FunctionName, ESearchCase::IgnoreCase);
 }
 
-UFunction* FindFunctionScopeByName(UBlueprint* Blueprint, const FName ScopeName)
+static UFunction* FindFunctionScopeByName(UBlueprint* Blueprint, const FName ScopeName)
 {
 	if (!Blueprint || ScopeName.IsNone())
 	{
@@ -192,7 +193,7 @@ UFunction* FindFunctionScopeByName(UBlueprint* Blueprint, const FName ScopeName)
 	return nullptr;
 }
 
-bool IsLocalVariablePropertyUnsupportedRenameOrType(const FString& NormalizedPath, FString& OutError)
+static bool IsLocalVariablePropertyUnsupportedRenameOrType(const FString& NormalizedPath, FString& OutError)
 {
 	if (NormalizedPath == TEXT("name") || NormalizedPath == TEXT("variable_name"))
 	{
@@ -211,7 +212,7 @@ bool IsLocalVariablePropertyUnsupportedRenameOrType(const FString& NormalizedPat
 	return false;
 }
 
-bool IsLocalVariablePropertyUnsupportedMemberOnly(const FString& NormalizedPath, FString& OutError)
+static bool IsLocalVariablePropertyUnsupportedMemberOnly(const FString& NormalizedPath, FString& OutError)
 {
 	if (NormalizedPath == TEXT("instance_editable") ||
 		NormalizedPath == TEXT("expose_on_spawn") ||
@@ -225,7 +226,7 @@ bool IsLocalVariablePropertyUnsupportedMemberOnly(const FString& NormalizedPath,
 	return false;
 }
 
-bool ValidateLocalVariablePropertyPath(const FString& PropertyPath, FString& OutError)
+static bool ValidateLocalVariablePropertyPath(const FString& PropertyPath, FString& OutError)
 {
 	const FString NormalizedPath = NormalizePropertyPath(PropertyPath);
 	if (IsLocalVariablePropertyUnsupportedRenameOrType(NormalizedPath, OutError) ||
@@ -246,7 +247,7 @@ bool ValidateLocalVariablePropertyPath(const FString& PropertyPath, FString& Out
 	return false;
 }
 
-bool TryReadVariableTypeObject(
+static bool TryReadVariableTypeObject(
 	const TSharedPtr<FJsonObject>& TypeObject,
 	FBlueprintHelperVariableType& OutVariableType,
 	FString& OutError,
@@ -316,7 +317,7 @@ bool TryReadVariableTypeObject(
 	return true;
 }
 
-bool TryLoadSubtypeObject(const FString& Subtype, UObject*& OutObject, FString& OutError)
+static bool TryLoadSubtypeObject(const FString& Subtype, UObject*& OutObject, FString& OutError)
 {
 	OutObject = nullptr;
 	if (Subtype.IsEmpty())
@@ -334,14 +335,14 @@ bool TryLoadSubtypeObject(const FString& Subtype, UObject*& OutObject, FString& 
 	return true;
 }
 
-FString GetVariableMetaDataValue(const FBPVariableDescription& Variable, const FName Key)
+static FString GetVariableMetaDataValue(const FBPVariableDescription& Variable, const FName Key)
 {
 	return Variable.FindMetaDataEntryIndexForKey(Key) != INDEX_NONE
 		? Variable.GetMetaData(Key)
 		: FString();
 }
 
-bool SetVariableMetaDataValue(
+static bool SetVariableMetaDataValue(
 	FBPVariableDescription& Variable,
 	const FName Key,
 	const FString& NewValue,
@@ -366,7 +367,7 @@ bool SetVariableMetaDataValue(
 	return true;
 }
 
-bool ApplyValidatedPropertySetting(
+static bool ApplyValidatedPropertySetting(
 	FBPVariableDescription& Variable,
 	const FString& NormalizedPath,
 	const FString& NewValue,
@@ -420,7 +421,7 @@ bool ApplyValidatedPropertySetting(
 	return false;
 }
 
-bool WouldChangeValidatedPropertySetting(
+static bool WouldChangeValidatedPropertySetting(
 	const FBPVariableDescription& Variable,
 	const FString& NormalizedPath,
 	const FString& NewValue)
@@ -448,7 +449,7 @@ bool WouldChangeValidatedPropertySetting(
 	return false;
 }
 
-bool ReadAddRequestsArray(
+static bool ReadAddRequestsArray(
 	const TSharedPtr<FJsonObject>& Payload,
 	TArray<FBlueprintHelperLocalVariableAddRequest>& OutRequests,
 	FString& OutError,
@@ -499,7 +500,7 @@ bool ReadAddRequestsArray(
 	return true;
 }
 
-bool ReadRemoveRequestsArray(
+static bool ReadRemoveRequestsArray(
 	const TSharedPtr<FJsonObject>& Payload,
 	TArray<FBlueprintHelperLocalVariableRemoveRequest>& OutRequests,
 	FString& OutError,
@@ -568,7 +569,8 @@ bool ReadRemoveRequestsArray(
 
 	return true;
 }
-}
+
+};
 
 bool FBlueprintHelperLocalVariableMutationHandler::CanHandle(const FString& OpName) const
 {
@@ -627,7 +629,7 @@ bool FBlueprintHelperLocalVariableMutationHandler::Execute(
 		OpName.Equals(TEXT("ensure_local_variable"), ESearchCase::IgnoreCase))
 	{
 		TArray<FBlueprintHelperLocalVariableAddRequest> Requests;
-		if (!ReadAddRequestsArray(OpPayload, Requests, OutError, &Field))
+		if (!FBlueprintLocalVariableMutationHandlerLocalUtils::ReadAddRequestsArray(OpPayload, Requests, OutError, &Field))
 		{
 			return false;
 		}
@@ -662,7 +664,7 @@ bool FBlueprintHelperLocalVariableMutationHandler::Execute(
 		OpName.Equals(TEXT("remove_blueprint_local_variables"), ESearchCase::IgnoreCase))
 	{
 		TArray<FBlueprintHelperLocalVariableRemoveRequest> Requests;
-		if (!ReadRemoveRequestsArray(OpPayload, Requests, OutError, &Field))
+		if (!FBlueprintLocalVariableMutationHandlerLocalUtils::ReadRemoveRequestsArray(OpPayload, Requests, OutError, &Field))
 		{
 			return false;
 		}
@@ -715,7 +717,7 @@ bool FBlueprintHelperLocalVariableMutationHandler::TryReadDefaultValue(
 	if (!Payload.IsValid())
 	{
 		OutError = TEXT("payload is required.");
-		SetOptionalField(OutField, TEXT("payload"));
+		FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, TEXT("payload"));
 		return false;
 	}
 
@@ -736,7 +738,7 @@ bool FBlueprintHelperLocalVariableMutationHandler::TryReadDefaultValue(
 	if (!TryScalarJsonToBlueprintDefaultString(Value, ConvertedValue))
 	{
 		OutError = FString::Printf(TEXT("%s must be a scalar JSON value."), *FieldName);
-		SetOptionalField(OutField, FieldName);
+		FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, FieldName);
 		return false;
 	}
 
@@ -798,7 +800,7 @@ bool FBlueprintHelperLocalVariableMutationHandler::TryReadNameCollisionPolicy(
 	}
 
 	OutError = FString::Printf(TEXT("Unsupported local variable name_collision policy: %s."), *PolicyString);
-	SetOptionalField(OutField, Payload->HasField(TEXT("name_collision")) ? TEXT("name_collision") : TEXT("name_collision_policy"));
+	FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, Payload->HasField(TEXT("name_collision")) ? TEXT("name_collision") : TEXT("name_collision_policy"));
 	return false;
 }
 
@@ -811,19 +813,19 @@ bool FBlueprintHelperLocalVariableMutationHandler::TryReadVariableType(
 	if (!Payload.IsValid())
 	{
 		OutError = TEXT("payload is required.");
-		SetOptionalField(OutField, TEXT("payload"));
+		FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, TEXT("payload"));
 		return false;
 	}
 
 	const TSharedPtr<FJsonObject>* TypeObject = nullptr;
 	if (Payload->TryGetObjectField(TEXT("variable_type"), TypeObject) && TypeObject && TypeObject->IsValid())
 	{
-		return TryReadVariableTypeObject(*TypeObject, OutVariableType, OutError, OutField, TEXT("variable_type"));
+		return FBlueprintLocalVariableMutationHandlerLocalUtils::TryReadVariableTypeObject(*TypeObject, OutVariableType, OutError, OutField, TEXT("variable_type"));
 	}
 
 	if (Payload->TryGetObjectField(TEXT("pin_type"), TypeObject) && TypeObject && TypeObject->IsValid())
 	{
-		return TryReadVariableTypeObject(*TypeObject, OutVariableType, OutError, OutField, TEXT("pin_type"));
+		return FBlueprintLocalVariableMutationHandlerLocalUtils::TryReadVariableTypeObject(*TypeObject, OutVariableType, OutError, OutField, TEXT("pin_type"));
 	}
 
 	const bool bLooksLikeStandaloneType =
@@ -833,11 +835,11 @@ bool FBlueprintHelperLocalVariableMutationHandler::TryReadVariableType(
 		!Payload->HasField(TEXT("function_name"));
 	if (bLooksLikeStandaloneType)
 	{
-		return TryReadVariableTypeObject(Payload, OutVariableType, OutError, OutField, TEXT("variable_type"));
+		return FBlueprintLocalVariableMutationHandlerLocalUtils::TryReadVariableTypeObject(Payload, OutVariableType, OutError, OutField, TEXT("variable_type"));
 	}
 
 	OutError = TEXT("variable_type or pin_type object is required.");
-	SetOptionalField(OutField, TEXT("variable_type"));
+	FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, TEXT("variable_type"));
 	return false;
 }
 
@@ -850,11 +852,11 @@ bool FBlueprintHelperLocalVariableMutationHandler::TryReadAddRequest(
 	if (!Payload.IsValid())
 	{
 		OutError = TEXT("local variable add request must be an object.");
-		SetOptionalField(OutField, TEXT("variable"));
+		FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, TEXT("variable"));
 		return false;
 	}
 
-	if (!RejectUnsupportedLocalFields(
+	if (!FBlueprintLocalVariableMutationHandlerLocalUtils::RejectUnsupportedLocalFields(
 		Payload,
 		{
 			TEXT("instance_editable"),
@@ -871,7 +873,7 @@ bool FBlueprintHelperLocalVariableMutationHandler::TryReadAddRequest(
 	if (!TryReadVariableName(Payload, OutRequest.VariableName))
 	{
 		OutError = TEXT("local variable add request requires name or variable_name.");
-		SetOptionalField(OutField, TEXT("name"));
+		FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, TEXT("name"));
 		return false;
 	}
 
@@ -890,9 +892,9 @@ bool FBlueprintHelperLocalVariableMutationHandler::TryReadAddRequest(
 		return false;
 	}
 
-	if (!TryGetOptionalScalarStringField(Payload, TEXT("category"), OutRequest.Category, OutError, OutField) ||
-		!TryGetOptionalScalarStringField(Payload, TEXT("tooltip"), OutRequest.Tooltip, OutError, OutField) ||
-		!TryGetOptionalScalarStringField(Payload, TEXT("description"), OutRequest.Description, OutError, OutField))
+	if (!FBlueprintLocalVariableMutationHandlerLocalUtils::TryGetOptionalScalarStringField(Payload, TEXT("category"), OutRequest.Category, OutError, OutField) ||
+		!FBlueprintLocalVariableMutationHandlerLocalUtils::TryGetOptionalScalarStringField(Payload, TEXT("tooltip"), OutRequest.Tooltip, OutError, OutField) ||
+		!FBlueprintLocalVariableMutationHandlerLocalUtils::TryGetOptionalScalarStringField(Payload, TEXT("description"), OutRequest.Description, OutError, OutField))
 	{
 		return false;
 	}
@@ -910,11 +912,11 @@ bool FBlueprintHelperLocalVariableMutationHandler::TryReadPropertySettings(
 	if (!Payload.IsValid())
 	{
 		OutError = TEXT("payload is required.");
-		SetOptionalField(OutField, TEXT("payload"));
+		FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, TEXT("payload"));
 		return false;
 	}
 
-	if (!RejectUnsupportedLocalFields(
+	if (!FBlueprintLocalVariableMutationHandlerLocalUtils::RejectUnsupportedLocalFields(
 		Payload,
 		{
 			TEXT("variable_type"),
@@ -945,15 +947,15 @@ bool FBlueprintHelperLocalVariableMutationHandler::TryReadPropertySettings(
 			if (!TryReadPropertySetting(SettingObject, Setting))
 			{
 				OutError = TEXT("settings entries require property_path and value.");
-				SetOptionalField(OutField, FString::Printf(TEXT("settings[%d]"), Index));
+				FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, FString::Printf(TEXT("settings[%d]"), Index));
 				return false;
 			}
 
 			FString ValidationError;
-			if (!ValidateLocalVariablePropertyPath(Setting.PropertyPath, ValidationError))
+			if (!FBlueprintLocalVariableMutationHandlerLocalUtils::ValidateLocalVariablePropertyPath(Setting.PropertyPath, ValidationError))
 			{
 				OutError = ValidationError;
-				SetOptionalField(OutField, FString::Printf(TEXT("settings[%d].property_path"), Index));
+				FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, FString::Printf(TEXT("settings[%d].property_path"), Index));
 				return false;
 			}
 
@@ -966,17 +968,17 @@ bool FBlueprintHelperLocalVariableMutationHandler::TryReadPropertySettings(
 		if (!Payload->TryGetObjectField(TEXT("properties"), PropertiesObject) || !PropertiesObject || !PropertiesObject->IsValid())
 		{
 			OutError = TEXT("settings array or properties object is required.");
-			SetOptionalField(OutField, TEXT("settings"));
+			FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, TEXT("settings"));
 			return false;
 		}
 
 		for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : (*PropertiesObject)->Values)
 		{
 			FString ValidationError;
-			if (!ValidateLocalVariablePropertyPath(Pair.Key, ValidationError))
+			if (!FBlueprintLocalVariableMutationHandlerLocalUtils::ValidateLocalVariablePropertyPath(Pair.Key, ValidationError))
 			{
 				OutError = ValidationError;
-				SetOptionalField(OutField, FString::Printf(TEXT("properties.%s"), *Pair.Key));
+				FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, FString::Printf(TEXT("properties.%s"), *Pair.Key));
 				return false;
 			}
 
@@ -990,7 +992,7 @@ bool FBlueprintHelperLocalVariableMutationHandler::TryReadPropertySettings(
 	if (OutSettings.Num() == 0)
 	{
 		OutError = TEXT("at least one local variable property setting is required.");
-		SetOptionalField(OutField, TEXT("settings"));
+		FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, TEXT("settings"));
 		return false;
 	}
 
@@ -1006,14 +1008,14 @@ bool FBlueprintHelperLocalVariableMutationHandler::TryReadRemoveRequest(
 	if (!Payload.IsValid())
 	{
 		OutError = TEXT("local variable remove request must be an object.");
-		SetOptionalField(OutField, TEXT("variable"));
+		FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, TEXT("variable"));
 		return false;
 	}
 
 	if (!TryReadVariableName(Payload, OutRequest.VariableName))
 	{
 		OutError = TEXT("local variable remove request requires name or variable_name.");
-		SetOptionalField(OutField, TEXT("name"));
+		FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, TEXT("name"));
 		return false;
 	}
 
@@ -1066,7 +1068,7 @@ bool FBlueprintHelperLocalVariableMutationHandler::TryBuildPinType(
 		return false;
 	}
 
-	const FString Container = NormalizeContainerName(VariableType.Container);
+	const FString Container = FBlueprintLocalVariableMutationHandlerLocalUtils::NormalizeContainerName(VariableType.Container);
 	if (Container == TEXT("array"))
 	{
 		OutPinType.ContainerType = EPinContainerType::Array;
@@ -1122,7 +1124,7 @@ bool FBlueprintHelperLocalVariableMutationHandler::TryBuildPinType(
 		OutPinType.PinCategory = UEdGraphSchema_K2::PC_Object;
 		UObject* SubtypeObject = nullptr;
 		const FString Subtype = VariableType.Subtype.IsSet() ? VariableType.Subtype.GetValue() : FString();
-		if (!TryLoadSubtypeObject(Subtype, SubtypeObject, OutError))
+		if (!FBlueprintLocalVariableMutationHandlerLocalUtils::TryLoadSubtypeObject(Subtype, SubtypeObject, OutError))
 		{
 			return false;
 		}
@@ -1133,7 +1135,7 @@ bool FBlueprintHelperLocalVariableMutationHandler::TryBuildPinType(
 		OutPinType.PinCategory = UEdGraphSchema_K2::PC_Class;
 		UObject* SubtypeObject = nullptr;
 		const FString Subtype = VariableType.Subtype.IsSet() ? VariableType.Subtype.GetValue() : FString();
-		if (!TryLoadSubtypeObject(Subtype, SubtypeObject, OutError))
+		if (!FBlueprintLocalVariableMutationHandlerLocalUtils::TryLoadSubtypeObject(Subtype, SubtypeObject, OutError))
 		{
 			return false;
 		}
@@ -1149,7 +1151,7 @@ bool FBlueprintHelperLocalVariableMutationHandler::TryBuildPinType(
 		}
 
 		UObject* SubtypeObject = nullptr;
-		if (!TryLoadSubtypeObject(VariableType.Subtype.GetValue(), SubtypeObject, OutError))
+		if (!FBlueprintLocalVariableMutationHandlerLocalUtils::TryLoadSubtypeObject(VariableType.Subtype.GetValue(), SubtypeObject, OutError))
 		{
 			return false;
 		}
@@ -1170,7 +1172,7 @@ bool FBlueprintHelperLocalVariableMutationHandler::TryBuildPinType(
 		}
 
 		UObject* SubtypeObject = nullptr;
-		if (!TryLoadSubtypeObject(VariableType.Subtype.GetValue(), SubtypeObject, OutError))
+		if (!FBlueprintLocalVariableMutationHandlerLocalUtils::TryLoadSubtypeObject(VariableType.Subtype.GetValue(), SubtypeObject, OutError))
 		{
 			return false;
 		}
@@ -1286,20 +1288,20 @@ bool FBlueprintHelperLocalVariableMutationHandler::ResolveFunctionGraph(
 	if (!Blueprint)
 	{
 		OutError = TEXT("Blueprint asset could not be resolved.");
-		SetOptionalField(OutField, TEXT("asset_path"));
+		FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, TEXT("asset_path"));
 		return false;
 	}
 
 	if (FunctionName.IsEmpty())
 	{
 		OutError = TEXT("function_name is required for local variable operations.");
-		SetOptionalField(OutField, TEXT("function_name"));
+		FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, TEXT("function_name"));
 		return false;
 	}
 
 	auto TryUseGraph = [&OutFunctionGraph, &FunctionName](UEdGraph* Graph)
 	{
-		if (!Graph || !FunctionGraphMatchesName(Graph, FunctionName))
+		if (!Graph || !FBlueprintLocalVariableMutationHandlerLocalUtils::FunctionGraphMatchesName(Graph, FunctionName))
 		{
 			return false;
 		}
@@ -1332,7 +1334,7 @@ bool FBlueprintHelperLocalVariableMutationHandler::ResolveFunctionGraph(
 	}
 
 	OutError = FString::Printf(TEXT("Function graph '%s' was not found or does not support local variables."), *FunctionName);
-	SetOptionalField(OutField, TEXT("function_name"));
+	FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, TEXT("function_name"));
 	return false;
 }
 
@@ -1347,22 +1349,22 @@ bool FBlueprintHelperLocalVariableMutationHandler::ResolveFunctionScope(
 	if (!Blueprint || !FunctionGraph)
 	{
 		OutError = TEXT("Blueprint and function graph are required to resolve local variable scope.");
-		SetOptionalField(OutField, !Blueprint ? TEXT("asset_path") : TEXT("function_name"));
+		FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, !Blueprint ? TEXT("asset_path") : TEXT("function_name"));
 		return false;
 	}
 
-	if (UFunction* ScopeFunction = FindFunctionScopeByName(Blueprint, FunctionGraph->GetFName()))
+	if (UFunction* ScopeFunction = FBlueprintLocalVariableMutationHandlerLocalUtils::FindFunctionScopeByName(Blueprint, FunctionGraph->GetFName()))
 	{
 		OutScope = ScopeFunction;
 		return true;
 	}
 
-	const UK2Node_FunctionEntry* EntryNode = FindFunctionEntryNode(FunctionGraph);
+	const UK2Node_FunctionEntry* EntryNode = FBlueprintLocalVariableMutationHandlerLocalUtils::FindFunctionEntryNode(FunctionGraph);
 	if (EntryNode)
 	{
 		if (!EntryNode->CustomGeneratedFunctionName.IsNone())
 		{
-			if (UFunction* ScopeFunction = FindFunctionScopeByName(Blueprint, EntryNode->CustomGeneratedFunctionName))
+			if (UFunction* ScopeFunction = FBlueprintLocalVariableMutationHandlerLocalUtils::FindFunctionScopeByName(Blueprint, EntryNode->CustomGeneratedFunctionName))
 			{
 				OutScope = ScopeFunction;
 				return true;
@@ -1372,7 +1374,7 @@ bool FBlueprintHelperLocalVariableMutationHandler::ResolveFunctionScope(
 		const FName MemberName = EntryNode->FunctionReference.GetMemberName();
 		if (!MemberName.IsNone())
 		{
-			if (UFunction* ScopeFunction = FindFunctionScopeByName(Blueprint, MemberName))
+			if (UFunction* ScopeFunction = FBlueprintLocalVariableMutationHandlerLocalUtils::FindFunctionScopeByName(Blueprint, MemberName))
 			{
 				OutScope = ScopeFunction;
 				return true;
@@ -1383,7 +1385,7 @@ bool FBlueprintHelperLocalVariableMutationHandler::ResolveFunctionScope(
 	OutError = FString::Printf(
 		TEXT("Function scope for '%s' could not be resolved. Compile the Blueprint before removing local variables."),
 		*FunctionGraph->GetName());
-	SetOptionalField(OutField, TEXT("function_name"));
+	FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, TEXT("function_name"));
 	return false;
 }
 
@@ -1402,11 +1404,11 @@ bool FBlueprintHelperLocalVariableMutationHandler::ReadLocalVariables(
 		return false;
 	}
 
-	const UK2Node_FunctionEntry* EntryNode = FindFunctionEntryNode(FunctionGraph);
+	const UK2Node_FunctionEntry* EntryNode = FBlueprintLocalVariableMutationHandlerLocalUtils::FindFunctionEntryNode(FunctionGraph);
 	if (!EntryNode)
 	{
 		OutError = FString::Printf(TEXT("Function graph '%s' has no function entry node."), *FunctionName);
-		SetOptionalField(OutField, TEXT("function_name"));
+		FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, TEXT("function_name"));
 		return false;
 	}
 
@@ -1442,18 +1444,18 @@ bool FBlueprintHelperLocalVariableMutationHandler::ApplyAddLocalVariables(
 		return false;
 	}
 
-	UK2Node_FunctionEntry* EntryNode = FindFunctionEntryNode(FunctionGraph);
+	UK2Node_FunctionEntry* EntryNode = FBlueprintLocalVariableMutationHandlerLocalUtils::FindFunctionEntryNode(FunctionGraph);
 	if (!EntryNode)
 	{
 		OutError = FString::Printf(TEXT("Function graph '%s' has no function entry node."), *FunctionName);
-		SetOptionalField(OutField, TEXT("function_name"));
+		FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, TEXT("function_name"));
 		return false;
 	}
 
 	if (Requests.Num() == 0)
 	{
 		OutError = TEXT("at least one local variable add request is required.");
-		SetOptionalField(OutField, TEXT("variables"));
+		FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, TEXT("variables"));
 		return false;
 	}
 
@@ -1467,24 +1469,24 @@ bool FBlueprintHelperLocalVariableMutationHandler::ApplyAddLocalVariables(
 		if (Request.VariableName.IsEmpty())
 		{
 			OutError = TEXT("Local variable add request requires name or variable_name.");
-			SetOptionalField(OutField, FString::Printf(TEXT("variables[%d].name"), Index));
+			FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, FString::Printf(TEXT("variables[%d].name"), Index));
 			return false;
 		}
 
 		const FName VariableFName(*Request.VariableName);
-		const bool bExists = FindLocalVariableOnEntry(EntryNode, VariableFName) != nullptr;
+		const bool bExists = FBlueprintLocalVariableMutationHandlerLocalUtils::FindLocalVariableOnEntry(EntryNode, VariableFName) != nullptr;
 		const bool bPlanned = PlannedAddNames.Contains(VariableFName);
 		if ((bExists || bPlanned) &&
 			Request.NameCollisionPolicy == EBlueprintHelperVariableNameCollisionPolicy::FailIfExists)
 		{
 			OutError = FString::Printf(TEXT("Local variable '%s' already exists."), *Request.VariableName);
-			SetOptionalField(OutField, FString::Printf(TEXT("variables[%d].name"), Index));
+			FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, FString::Printf(TEXT("variables[%d].name"), Index));
 			return false;
 		}
 
 		if (!TryBuildPinType(Request.VariableType, PinTypes[Index], OutError))
 		{
-			SetOptionalField(OutField, FString::Printf(TEXT("variables[%d].variable_type"), Index));
+			FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, FString::Printf(TEXT("variables[%d].variable_type"), Index));
 			return false;
 		}
 
@@ -1500,7 +1502,7 @@ bool FBlueprintHelperLocalVariableMutationHandler::ApplyAddLocalVariables(
 	{
 		const FBlueprintHelperLocalVariableAddRequest& Request = Requests[Index];
 		const FName VariableFName(*Request.VariableName);
-		if (FindLocalVariableOnEntry(EntryNode, VariableFName))
+		if (FBlueprintLocalVariableMutationHandlerLocalUtils::FindLocalVariableOnEntry(EntryNode, VariableFName))
 		{
 			++OutCounts.NoOpCount;
 			continue;
@@ -1511,18 +1513,18 @@ bool FBlueprintHelperLocalVariableMutationHandler::ApplyAddLocalVariables(
 		{
 			EntryNode->LocalVariables = OriginalLocalVariables;
 			OutError = FString::Printf(TEXT("Failed to add local variable '%s'."), *Request.VariableName);
-			SetOptionalField(OutField, FString::Printf(TEXT("variables[%d].name"), Index));
+			FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, FString::Printf(TEXT("variables[%d].name"), Index));
 			return false;
 		}
 
-		EntryNode = FindFunctionEntryNode(FunctionGraph);
-		FBPVariableDescription* AddedVariable = FindLocalVariableOnEntry(EntryNode, VariableFName);
+		EntryNode = FBlueprintLocalVariableMutationHandlerLocalUtils::FindFunctionEntryNode(FunctionGraph);
+		FBPVariableDescription* AddedVariable = FBlueprintLocalVariableMutationHandlerLocalUtils::FindLocalVariableOnEntry(EntryNode, VariableFName);
 		if (AddedVariable)
 		{
 			if (Request.Category.IsSet())
 			{
 				AddedVariable->Category = FText::FromString(*Request.Category);
-				AddedVariable->SetMetaData(BlueprintHelperLocalCategoryMetaKey, *Request.Category);
+				AddedVariable->SetMetaData(FBlueprintLocalVariableMutationHandlerLocalUtils::BlueprintHelperLocalCategoryMetaKey, *Request.Category);
 			}
 			if (Request.Tooltip.IsSet())
 			{
@@ -1530,7 +1532,7 @@ bool FBlueprintHelperLocalVariableMutationHandler::ApplyAddLocalVariables(
 			}
 			if (Request.Description.IsSet())
 			{
-				AddedVariable->SetMetaData(BlueprintHelperLocalDescriptionMetaKey, *Request.Description);
+				AddedVariable->SetMetaData(FBlueprintLocalVariableMutationHandlerLocalUtils::BlueprintHelperLocalDescriptionMetaKey, *Request.Description);
 			}
 		}
 
@@ -1562,33 +1564,33 @@ bool FBlueprintHelperLocalVariableMutationHandler::ApplyPropertySettings(
 		return false;
 	}
 
-	UK2Node_FunctionEntry* EntryNode = FindFunctionEntryNode(FunctionGraph);
+	UK2Node_FunctionEntry* EntryNode = FBlueprintLocalVariableMutationHandlerLocalUtils::FindFunctionEntryNode(FunctionGraph);
 	if (!EntryNode)
 	{
 		OutError = FString::Printf(TEXT("Function graph '%s' has no function entry node."), *FunctionName);
-		SetOptionalField(OutField, TEXT("function_name"));
+		FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, TEXT("function_name"));
 		return false;
 	}
 
 	if (VariableName.IsEmpty())
 	{
 		OutError = TEXT("Local variable property settings require name or variable_name.");
-		SetOptionalField(OutField, TEXT("name"));
+		FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, TEXT("name"));
 		return false;
 	}
 
-	FBPVariableDescription* LocalVariable = FindLocalVariableOnEntry(EntryNode, FName(*VariableName));
+	FBPVariableDescription* LocalVariable = FBlueprintLocalVariableMutationHandlerLocalUtils::FindLocalVariableOnEntry(EntryNode, FName(*VariableName));
 	if (!LocalVariable)
 	{
 		OutError = FString::Printf(TEXT("Local variable '%s' was not found."), *VariableName);
-		SetOptionalField(OutField, TEXT("name"));
+		FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, TEXT("name"));
 		return false;
 	}
 
 	if (Settings.Num() == 0)
 	{
 		OutError = TEXT("at least one local variable property setting is required.");
-		SetOptionalField(OutField, TEXT("settings"));
+		FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, TEXT("settings"));
 		return false;
 	}
 
@@ -1604,10 +1606,10 @@ bool FBlueprintHelperLocalVariableMutationHandler::ApplyPropertySettings(
 	{
 		const FBlueprintHelperLocalVariablePropertyMutation& Setting = Settings[Index];
 		FString ValidationError;
-		if (!ValidateLocalVariablePropertyPath(Setting.PropertyPath, ValidationError))
+		if (!FBlueprintLocalVariableMutationHandlerLocalUtils::ValidateLocalVariablePropertyPath(Setting.PropertyPath, ValidationError))
 		{
 			OutError = ValidationError;
-			SetOptionalField(OutField, FString::Printf(TEXT("settings[%d].property_path"), Index));
+			FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, FString::Printf(TEXT("settings[%d].property_path"), Index));
 			return false;
 		}
 
@@ -1615,12 +1617,12 @@ bool FBlueprintHelperLocalVariableMutationHandler::ApplyPropertySettings(
 		if (!TryScalarJsonToBlueprintDefaultString(Setting.Value, NewValue))
 		{
 			OutError = FString::Printf(TEXT("%s must be a scalar JSON value."), *Setting.PropertyPath);
-			SetOptionalField(OutField, FString::Printf(TEXT("settings[%d].value"), Index));
+			FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, FString::Printf(TEXT("settings[%d].value"), Index));
 			return false;
 		}
 
 		FValidatedSetting ValidatedSetting;
-		ValidatedSetting.NormalizedPath = NormalizePropertyPath(Setting.PropertyPath);
+		ValidatedSetting.NormalizedPath = FBlueprintLocalVariableMutationHandlerLocalUtils::NormalizePropertyPath(Setting.PropertyPath);
 		ValidatedSetting.NewValue = NewValue;
 		ValidatedSettings.Add(MoveTemp(ValidatedSetting));
 	}
@@ -1629,7 +1631,7 @@ bool FBlueprintHelperLocalVariableMutationHandler::ApplyPropertySettings(
 	for (int32 Index = 0; Index < ValidatedSettings.Num(); ++Index)
 	{
 		if (!bModified &&
-			WouldChangeValidatedPropertySetting(
+			FBlueprintLocalVariableMutationHandlerLocalUtils::WouldChangeValidatedPropertySetting(
 				*LocalVariable,
 				ValidatedSettings[Index].NormalizedPath,
 				ValidatedSettings[Index].NewValue))
@@ -1640,14 +1642,14 @@ bool FBlueprintHelperLocalVariableMutationHandler::ApplyPropertySettings(
 		}
 
 		bool bChanged = false;
-		if (!ApplyValidatedPropertySetting(
+		if (!FBlueprintLocalVariableMutationHandlerLocalUtils::ApplyValidatedPropertySetting(
 			*LocalVariable,
 			ValidatedSettings[Index].NormalizedPath,
 			ValidatedSettings[Index].NewValue,
 			bChanged))
 		{
 			OutError = FString::Printf(TEXT("Failed to apply local variable property setting '%s'."), *Settings[Index].PropertyPath);
-			SetOptionalField(OutField, FString::Printf(TEXT("settings[%d].property_path"), Index));
+			FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, FString::Printf(TEXT("settings[%d].property_path"), Index));
 			return false;
 		}
 
@@ -1685,18 +1687,18 @@ bool FBlueprintHelperLocalVariableMutationHandler::ApplyRemoveLocalVariables(
 		return false;
 	}
 
-	UK2Node_FunctionEntry* EntryNode = FindFunctionEntryNode(FunctionGraph);
+	UK2Node_FunctionEntry* EntryNode = FBlueprintLocalVariableMutationHandlerLocalUtils::FindFunctionEntryNode(FunctionGraph);
 	if (!EntryNode)
 	{
 		OutError = FString::Printf(TEXT("Function graph '%s' has no function entry node."), *FunctionName);
-		SetOptionalField(OutField, TEXT("function_name"));
+		FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, TEXT("function_name"));
 		return false;
 	}
 
 	if (Requests.Num() == 0)
 	{
 		OutError = TEXT("at least one local variable remove request is required.");
-		SetOptionalField(OutField, TEXT("variables"));
+		FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, TEXT("variables"));
 		return false;
 	}
 
@@ -1707,7 +1709,7 @@ bool FBlueprintHelperLocalVariableMutationHandler::ApplyRemoveLocalVariables(
 		if (Request.VariableName.IsEmpty())
 		{
 			OutError = TEXT("Local variable remove request requires name or variable_name.");
-			SetOptionalField(OutField, FString::Printf(TEXT("variables[%d].name"), Index));
+			FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, FString::Printf(TEXT("variables[%d].name"), Index));
 			return false;
 		}
 
@@ -1715,15 +1717,15 @@ bool FBlueprintHelperLocalVariableMutationHandler::ApplyRemoveLocalVariables(
 		if (SeenNames.Contains(VariableFName))
 		{
 			OutError = FString::Printf(TEXT("Duplicate local variable remove request: %s."), *Request.VariableName);
-			SetOptionalField(OutField, FString::Printf(TEXT("variables[%d].name"), Index));
+			FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, FString::Printf(TEXT("variables[%d].name"), Index));
 			return false;
 		}
 		SeenNames.Add(VariableFName);
 
-		if (!FindLocalVariableOnEntry(EntryNode, VariableFName))
+		if (!FBlueprintLocalVariableMutationHandlerLocalUtils::FindLocalVariableOnEntry(EntryNode, VariableFName))
 		{
 			OutError = FString::Printf(TEXT("Local variable '%s' was not found."), *Request.VariableName);
-			SetOptionalField(OutField, FString::Printf(TEXT("variables[%d].name"), Index));
+			FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, FString::Printf(TEXT("variables[%d].name"), Index));
 			return false;
 		}
 
@@ -1735,7 +1737,7 @@ bool FBlueprintHelperLocalVariableMutationHandler::ApplyRemoveLocalVariables(
 				TEXT("Local variable '%s' has %d function graph reference(s)."),
 				*Request.VariableName,
 				ReferenceCount);
-			SetOptionalField(OutField, FString::Printf(TEXT("variables[%d].name"), Index));
+			FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, FString::Printf(TEXT("variables[%d].name"), Index));
 			return false;
 		}
 	}
@@ -1769,15 +1771,15 @@ bool FBlueprintHelperLocalVariableMutationHandler::ApplyRemoveLocalVariables(
 		if (!bRemoved)
 		{
 			OutError = FString::Printf(TEXT("Failed to remove local variable '%s'."), *Request.VariableName);
-			SetOptionalField(OutField, FString::Printf(TEXT("variables[%d].name"), Index));
+			FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, FString::Printf(TEXT("variables[%d].name"), Index));
 			return false;
 		}
 
-		EntryNode = FindFunctionEntryNode(FunctionGraph);
-		if (FindLocalVariableOnEntry(EntryNode, VariableFName))
+		EntryNode = FBlueprintLocalVariableMutationHandlerLocalUtils::FindFunctionEntryNode(FunctionGraph);
+		if (FBlueprintLocalVariableMutationHandlerLocalUtils::FindLocalVariableOnEntry(EntryNode, VariableFName))
 		{
 			OutError = FString::Printf(TEXT("Failed to remove local variable '%s'."), *Request.VariableName);
-			SetOptionalField(OutField, FString::Printf(TEXT("variables[%d].name"), Index));
+			FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, FString::Printf(TEXT("variables[%d].name"), Index));
 			return false;
 		}
 

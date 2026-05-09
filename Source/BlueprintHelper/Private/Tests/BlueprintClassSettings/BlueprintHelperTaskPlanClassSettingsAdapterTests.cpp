@@ -14,9 +14,10 @@
 #include "UObject/Interface.h"
 #include "UObject/Package.h"
 
-namespace
+class FBlueprintHelperTaskPlanClassSettingsAdapterTestsLocalUtils
 {
-	TSharedPtr<FJsonObject> MakeClassSettingsStep(const FString& OpName)
+public:
+	static TSharedPtr<FJsonObject> MakeClassSettingsStep(const FString& OpName)
 	{
 		TSharedPtr<FJsonObject> Step = MakeShared<FJsonObject>();
 		Step->SetStringField(TEXT("step_id"), TEXT("step_class_settings"));
@@ -58,12 +59,12 @@ namespace
 		return Step;
 	}
 
-	FString MakeClassSettingsTestObjectName(const FString& Prefix)
+	static FString MakeClassSettingsTestObjectName(const FString& Prefix)
 	{
 		return FString::Printf(TEXT("%s_%s"), *Prefix, *FGuid::NewGuid().ToString(EGuidFormats::Digits));
 	}
 
-	UPackage* MakeClassSettingsTestPackage(const FString& Prefix)
+	static UPackage* MakeClassSettingsTestPackage(const FString& Prefix)
 	{
 		UPackage* Package = CreatePackage(*FString::Printf(
 			TEXT("/Game/BlueprintHelperSafety/%s"),
@@ -72,7 +73,7 @@ namespace
 		return Package;
 	}
 
-	UBlueprint* MakeClassSettingsActorBlueprint(const FString& Prefix)
+	static UBlueprint* MakeClassSettingsActorBlueprint(const FString& Prefix)
 	{
 		UPackage* Package = MakeClassSettingsTestPackage(Prefix);
 		UBlueprint* Blueprint = FKismetEditorUtilities::CreateBlueprint(
@@ -87,7 +88,7 @@ namespace
 		return Blueprint;
 	}
 
-	UBlueprint* MakeClassSettingsInterfaceBlueprint(const FString& Prefix)
+	static UBlueprint* MakeClassSettingsInterfaceBlueprint(const FString& Prefix)
 	{
 		UPackage* Package = MakeClassSettingsTestPackage(Prefix);
 		UBlueprint* Blueprint = FKismetEditorUtilities::CreateBlueprint(
@@ -101,7 +102,8 @@ namespace
 		Package->SetDirtyFlag(false);
 		return Blueprint;
 	}
-}
+
+};
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperTaskPlanClassSettingsAdapterAddInterfacesTest,
@@ -110,7 +112,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperTaskPlanClassSettingsAdapterAddInterfacesTest::RunTest(const FString& Parameters)
 {
-	const TSharedPtr<FJsonObject> Step = MakeClassSettingsStep(TEXT("add_implemented_interfaces"));
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanClassSettingsAdapterTestsLocalUtils::MakeClassSettingsStep(TEXT("add_implemented_interfaces"));
 
 	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
 	FBlueprintHelperToolError Error;
@@ -162,8 +164,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperClassSettingsServiceAddInterfacesDryRunTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeClassSettingsActorBlueprint(TEXT("DryRunAddInterfaceTarget"));
-	UBlueprint* InterfaceBlueprint = MakeClassSettingsInterfaceBlueprint(TEXT("DryRunAddInterface"));
+	UBlueprint* Blueprint = FBlueprintHelperTaskPlanClassSettingsAdapterTestsLocalUtils::MakeClassSettingsActorBlueprint(TEXT("DryRunAddInterfaceTarget"));
+	UBlueprint* InterfaceBlueprint = FBlueprintHelperTaskPlanClassSettingsAdapterTestsLocalUtils::MakeClassSettingsInterfaceBlueprint(TEXT("DryRunAddInterface"));
 	TestNotNull(TEXT("target Blueprint is created"), Blueprint);
 	TestNotNull(TEXT("interface Blueprint is created"), InterfaceBlueprint);
 	if (!Blueprint || !InterfaceBlueprint)
@@ -193,7 +195,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperTaskPlanClassSettingsAdapterRemoveInterfacesTest::RunTest(const FString& Parameters)
 {
-	const TSharedPtr<FJsonObject> Step = MakeClassSettingsStep(TEXT("remove_implemented_interfaces"));
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanClassSettingsAdapterTestsLocalUtils::MakeClassSettingsStep(TEXT("remove_implemented_interfaces"));
 
 	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
 	FBlueprintHelperToolError Error;
@@ -230,7 +232,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperTaskPlanClassSettingsAdapterSetDefaultsTest::RunTest(const FString& Parameters)
 {
-	const TSharedPtr<FJsonObject> Step = MakeClassSettingsStep(TEXT("set_class_default_properties"));
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanClassSettingsAdapterTestsLocalUtils::MakeClassSettingsStep(TEXT("set_class_default_properties"));
 
 	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
 	FBlueprintHelperToolError Error;
@@ -284,7 +286,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperTaskPlanClassSettingsAdapterRejectsParentClassTest::RunTest(const FString& Parameters)
 {
-	const TSharedPtr<FJsonObject> Step = MakeClassSettingsStep(TEXT("set_parent_class"));
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanClassSettingsAdapterTestsLocalUtils::MakeClassSettingsStep(TEXT("set_parent_class"));
 
 	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
 	FBlueprintHelperToolError Error;
@@ -310,7 +312,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperTaskPlanClassSettingsAdapterRejectsOperationFieldTest::RunTest(const FString& Parameters)
 {
-	const TSharedPtr<FJsonObject> Step = MakeClassSettingsStep(TEXT("add_implemented_interfaces"));
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanClassSettingsAdapterTestsLocalUtils::MakeClassSettingsStep(TEXT("add_implemented_interfaces"));
 	Step->SetStringField(TEXT("operation"), TEXT("add_implemented_interfaces"));
 
 	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;

@@ -6,9 +6,10 @@
 #include "Engine/Blueprint.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 
-namespace
+class FBlueprintMemberVariableMutationHandlerLocalUtils
 {
-bool TryJsonValueToBool(const TSharedPtr<FJsonValue>& Value, bool& OutValue)
+public:
+static bool TryJsonValueToBool(const TSharedPtr<FJsonValue>& Value, bool& OutValue)
 {
 	if (!Value.IsValid())
 	{
@@ -39,7 +40,7 @@ bool TryJsonValueToBool(const TSharedPtr<FJsonValue>& Value, bool& OutValue)
 	return false;
 }
 
-bool ApplyVariableMetadataSetting(
+static bool ApplyVariableMetadataSetting(
 	UBlueprint* Blueprint,
 	const FName VariableName,
 	FBPVariableDescription& Variable,
@@ -196,7 +197,8 @@ bool ApplyVariableMetadataSetting(
 	OutError = FString::Printf(TEXT("Unsupported member variable property: %s."), *Setting.PropertyPath);
 	return false;
 }
-}
+
+};
 
 bool FBlueprintHelperMemberVariableMutationHandler::CanHandle(const FString& OpName) const
 {
@@ -507,7 +509,7 @@ bool FBlueprintHelperMemberVariableMutationHandler::ApplyPropertySettings(
 		bool bChanged = false;
 		FString SettingError;
 		FBPVariableDescription& Variable = Blueprint->NewVariables[VariableIndex];
-		if (!ApplyVariableMetadataSetting(
+		if (!FBlueprintMemberVariableMutationHandlerLocalUtils::ApplyVariableMetadataSetting(
 			Blueprint,
 			VariableFName,
 			Variable,

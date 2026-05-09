@@ -106,7 +106,7 @@ Source/BlueprintHelper/Public/OperationHandlers
 
 ```text
 1. 新工具优先归入已有工具簇，不引入动态注册模型。
-2. 每个工具簇必须能导出 DebugBundle evidence summary。
+2. 每个工具簇必须能提供脱敏 debug summary candidate；只有 failure、blocker、partial、review needs_action 经 DebugEntry 创建 DebugCase，DebugBundle 只在开发者导出时生成。
 3. 每个写工具必须接入 Review，产出 WriteReviewEvidence.v1。
 4. 每个写工具必须记录 transaction_id 和 rollback_data_ref。
 5. ReviewStore 只消费 evidence，不推断缺失 anchor。
@@ -243,4 +243,3 @@ Source/BlueprintHelper/Private/UI
 3. Public 头文件路径变更必须保留兼容 shim 或一次性更新所有 include。
 4. Review 闭环和 DebugBundle 闭环优先于目录美化。
 ```
-

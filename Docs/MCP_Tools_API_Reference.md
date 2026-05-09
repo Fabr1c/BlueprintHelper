@@ -41,7 +41,7 @@ Default Agent-facing payload schemas:
 | `blueprinthelper_execute_task` | `McpToolResult.v1` with `data.schema = TaskRunSummary.v1` or `TaskRunJournal.v1` |
 | `blueprinthelper_get_task_result` | `McpToolResult.v1` with `data.schema = TaskRunJournal.v1` |
 
-UE façade results use `FBlueprintHelperToolResultBase`; MCP normalizes them into the public `McpToolResult.v1` envelope. Compact debug facts belong under `data.debug`; large asset context should be read through targeted `logic_md` / `logic_json` slices or a future DebugExport bundle, not by expanding the default response.
+UE façade results use `FBlueprintHelperToolResultBase`; MCP normalizes them into the public `McpToolResult.v1` envelope. Compact debug facts belong under `data.debug`; large asset context should be read through targeted `logic_md` / `logic_json` slices. Developer diagnostics use summary `DebugCase` ids and local `DebugBundle` exports; MCP must not expand default responses with bundle artifacts or large payload refs.
 
 TaskSpec validation, semantic, policy, capability, preview, and execution failures are returned as task-level errors. A failed TaskSpec does not require the Agent to inspect raw Bridge / UE operation errors by default:
 

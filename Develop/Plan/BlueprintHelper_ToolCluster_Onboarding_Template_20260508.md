@@ -7,6 +7,7 @@
 - `TaskRuntimeCluster`: 识别并执行该簇的 lowered step。
 - `BridgeRoutes`: 识别并执行该簇的 Bridge command。
 - `ReviewEvidenceBuilder`: 写工具必须产出 `WriteReviewEvidence.v1`；只读工具不产出 ReviewRecord。
+- `DebugEvidenceBoundary`: 工具簇不私自写 Debug JSON；失败、blocked、partial failure、compile/save failure 统一通过 TaskRuntime / DebugEntry 进入 DebugCase，DebugBundle 只导出 summary 或 stable artifact candidate。
 
 ## Required Source Shape
 - Service: `Source/BlueprintHelper/Public/Systems/ToolClusters/<ClusterName>/...`
@@ -21,13 +22,15 @@
 - `FBlueprintHelperTaskRuntimeClusterHub`: 增加一个 cluster 成员，并在 `ResolveClusterForLoweredStep` / `ExecuteStep` 中委托。
 - `TaskPlanAdapter`: 负责从 TaskPlan IR lower 到该簇 payload，不把 adapter operation 暴露给 Agent-facing TaskSpec。
 - `Review`: 所有 asset-mutating write 必须在生产者侧产出完整 `WriteReviewEvidence.v1`，ReviewStore 不猜测 anchor。
-- `DebugBundle`: 如该簇有诊断输出，只写稳定 ref，不把 Debug 系统并入工具簇。
+- `Debug`: 工具簇只提供脱敏 debug summary candidate，不把 Debug 系统并入工具簇，不写 bundle artifact 内容；只有 failure、blocker、partial、review needs_action 经 DebugEntry 创建 DebugCase，DebugBundle 只在开发者导出时生成。
+- `Transaction`: 写工具的 `transaction_id` 必须能链接到 Review evidence 和 DebugCase transaction summary；Transaction Journal 仍是事实来源。
 
 ## Verification Checklist
 - Bridge route planner tests: command 只归属一个簇，unknown command 仍 unknown。
 - Bridge route tests: `Is<ClusterName>Command` 只识别本簇命令。
 - TaskRuntime cluster tests: capability / adapter operation 只由一个簇处理。
 - Review regression: 写工具 evidence 仍生成。
+- Debug regression: 失败结果只暴露 `debug_case_ids[]` summary ref，不暴露 DebugBundle artifact、本地路径、raw payload 或 source content。
 - Commands:
   - `git diff --check`
   - `npm.cmd test` in `BlueprintHelper_MCP_Server`

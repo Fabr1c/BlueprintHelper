@@ -8,8 +8,9 @@
 
 #include <initializer_list>
 
-namespace
+class FBlueprintHelperLogicProcessorLocalUtils
 {
+public:
 	struct FLogicNode
 	{
 		FString Id;
@@ -53,7 +54,7 @@ namespace
 		int32 UnknownLinkCount = 0;
 	};
 
-	FString JsonValueToString(const TSharedPtr<FJsonValue>& Value)
+	static FString JsonValueToString(const TSharedPtr<FJsonValue>& Value)
 	{
 		if (!Value.IsValid())
 		{
@@ -73,7 +74,7 @@ namespace
 		}
 	}
 
-	bool TryReadStringField(const TSharedPtr<FJsonObject>& Object, const TCHAR* FieldName, FString& OutValue)
+	static bool TryReadStringField(const TSharedPtr<FJsonObject>& Object, const TCHAR* FieldName, FString& OutValue)
 	{
 		if (!Object.IsValid())
 		{
@@ -90,7 +91,7 @@ namespace
 		return !OutValue.IsEmpty();
 	}
 
-	FString ReadFirstStringField(const TSharedPtr<FJsonObject>& Object, const TCHAR* First, const TCHAR* Second = nullptr, const TCHAR* Third = nullptr)
+	static FString ReadFirstStringField(const TSharedPtr<FJsonObject>& Object, const TCHAR* First, const TCHAR* Second = nullptr, const TCHAR* Third = nullptr)
 	{
 		FString Value;
 		if (First && TryReadStringField(Object, First, Value))
@@ -108,7 +109,7 @@ namespace
 		return TEXT("");
 	}
 
-	bool TryReadNestedStringField(const TSharedPtr<FJsonObject>& Object, const TCHAR* ObjectField, const TCHAR* StringField, FString& OutValue)
+	static bool TryReadNestedStringField(const TSharedPtr<FJsonObject>& Object, const TCHAR* ObjectField, const TCHAR* StringField, FString& OutValue)
 	{
 		const TSharedPtr<FJsonObject>* NestedObject = nullptr;
 		if (Object.IsValid()
@@ -122,7 +123,7 @@ namespace
 		return false;
 	}
 
-	FString NormalizeToken(const FString& InValue)
+	static FString NormalizeToken(const FString& InValue)
 	{
 		FString Result = InValue;
 		Result.TrimStartAndEndInline();
@@ -134,7 +135,7 @@ namespace
 		return Result.ToLower();
 	}
 
-	FString NormalizeNodeTypeName(const FString& InValue)
+	static FString NormalizeNodeTypeName(const FString& InValue)
 	{
 		FString Result = InValue;
 		Result.TrimStartAndEndInline();
@@ -155,7 +156,7 @@ namespace
 		return Result.TrimStartAndEnd();
 	}
 
-	bool ContainsAny(const FString& Text, std::initializer_list<const TCHAR*> Needles)
+	static bool ContainsAny(const FString& Text, std::initializer_list<const TCHAR*> Needles)
 	{
 		for (const TCHAR* Needle : Needles)
 		{
@@ -167,7 +168,7 @@ namespace
 		return false;
 	}
 
-	FString ResolveGraphName(const TSharedPtr<FJsonObject>& GraphObject, int32 GraphIndex)
+	static FString ResolveGraphName(const TSharedPtr<FJsonObject>& GraphObject, int32 GraphIndex)
 	{
 		FString Name = ReadFirstStringField(GraphObject, TEXT("name"), TEXT("graph"), TEXT("graph_name"));
 		if (!Name.IsEmpty())
@@ -178,7 +179,7 @@ namespace
 		return GraphIndex == 0 ? TEXT("Graph") : FString::Printf(TEXT("Graph_%d"), GraphIndex + 1);
 	}
 
-	FString ResolveNodeLabel(const TSharedPtr<FJsonObject>& NodeObject, const FString& NodeId)
+	static FString ResolveNodeLabel(const TSharedPtr<FJsonObject>& NodeObject, const FString& NodeId)
 	{
 		FString Label = ReadFirstStringField(NodeObject, TEXT("name"), TEXT("display_name"), TEXT("function_name"));
 		if (!Label.IsEmpty())
@@ -202,7 +203,7 @@ namespace
 		return NodeId;
 	}
 
-	FString ClassifyNode(const TSharedPtr<FJsonObject>& NodeObject, const FString& RawType)
+	static FString ClassifyNode(const TSharedPtr<FJsonObject>& NodeObject, const FString& RawType)
 	{
 		const FString NormalizedType = NormalizeNodeTypeName(RawType);
 		const FString TypeKey = NormalizeToken(NormalizedType);
@@ -288,7 +289,7 @@ namespace
 		return TEXT("unknown");
 	}
 
-	void ResolveNodePosition(const TSharedPtr<FJsonObject>& NodeObject, FLogicNode& OutNode)
+	static void ResolveNodePosition(const TSharedPtr<FJsonObject>& NodeObject, FLogicNode& OutNode)
 	{
 		double X = 0.0;
 		double Y = 0.0;
@@ -313,7 +314,7 @@ namespace
 		}
 	}
 
-	FLogicNode ParseNode(const TSharedPtr<FJsonObject>& NodeObject, int32 NodeIndex)
+	static FLogicNode ParseNode(const TSharedPtr<FJsonObject>& NodeObject, int32 NodeIndex)
 	{
 		FLogicNode Node;
 		Node.Id = ReadFirstStringField(NodeObject, TEXT("id"), TEXT("node_id"), TEXT("node_guid"));
@@ -329,7 +330,7 @@ namespace
 		return Node;
 	}
 
-	bool TryReadEndpointObjectField(const TSharedPtr<FJsonObject>& LinkObject, const TCHAR* ObjectField, const TCHAR* FieldName, FString& OutValue)
+	static bool TryReadEndpointObjectField(const TSharedPtr<FJsonObject>& LinkObject, const TCHAR* ObjectField, const TCHAR* FieldName, FString& OutValue)
 	{
 		const TSharedPtr<FJsonObject>* EndpointObject = nullptr;
 		if (LinkObject->TryGetObjectField(ObjectField, EndpointObject)
@@ -342,7 +343,7 @@ namespace
 		return false;
 	}
 
-	void ResolveEndpoint(const TSharedPtr<FJsonObject>& LinkObject, bool bSource, FString& OutNodeId, FString& OutPin)
+	static void ResolveEndpoint(const TSharedPtr<FJsonObject>& LinkObject, bool bSource, FString& OutNodeId, FString& OutPin)
 	{
 		if (bSource)
 		{
@@ -394,7 +395,7 @@ namespace
 		}
 	}
 
-	FString NormalizeExplicitKind(const FString& RawKind)
+	static FString NormalizeExplicitKind(const FString& RawKind)
 	{
 		const FString KindKey = NormalizeToken(RawKind);
 		if (KindKey.Contains(TEXT("exec")) || KindKey.Contains(TEXT("execution")) || KindKey.Contains(TEXT("flow")) || KindKey.Contains(TEXT("control")))
@@ -408,7 +409,7 @@ namespace
 		return TEXT("unknown");
 	}
 
-	bool TryReadPinTypeCategory(const TSharedPtr<FJsonObject>& Object, FString& OutCategory)
+	static bool TryReadPinTypeCategory(const TSharedPtr<FJsonObject>& Object, FString& OutCategory)
 	{
 		if (!Object.IsValid())
 		{
@@ -436,7 +437,7 @@ namespace
 		return false;
 	}
 
-	bool TryReadEndpointPinTypeCategory(const TSharedPtr<FJsonObject>& LinkObject, const TCHAR* EndpointField, FString& OutCategory)
+	static bool TryReadEndpointPinTypeCategory(const TSharedPtr<FJsonObject>& LinkObject, const TCHAR* EndpointField, FString& OutCategory)
 	{
 		const TSharedPtr<FJsonObject>* EndpointObject = nullptr;
 		if (!LinkObject->TryGetObjectField(EndpointField, EndpointObject) || !EndpointObject || !EndpointObject->IsValid())
@@ -460,7 +461,7 @@ namespace
 		return false;
 	}
 
-	bool IsExecPinName(const FString& PinName)
+	static bool IsExecPinName(const FString& PinName)
 	{
 		const FString Key = NormalizeToken(PinName);
 		return Key.Equals(TEXT("exec"))
@@ -482,7 +483,7 @@ namespace
 			|| Key.Equals(TEXT("isnotvalid"));
 	}
 
-	FLogicLink ParseLink(const TSharedPtr<FJsonObject>& LinkObject)
+	static FLogicLink ParseLink(const TSharedPtr<FJsonObject>& LinkObject)
 	{
 		FLogicLink Link;
 		ResolveEndpoint(LinkObject, true, Link.SourceNodeId, Link.SourcePin);
@@ -532,7 +533,7 @@ namespace
 		return Link;
 	}
 
-	const FLogicNode* FindNode(const FLogicGraph& Graph, const FString& NodeId)
+	static const FLogicNode* FindNode(const FLogicGraph& Graph, const FString& NodeId)
 	{
 		const int32* NodeIndex = Graph.NodeIndexById.Find(NodeId);
 		if (!NodeIndex || !Graph.Nodes.IsValidIndex(*NodeIndex))
@@ -542,7 +543,7 @@ namespace
 		return &Graph.Nodes[*NodeIndex];
 	}
 
-	FString ResolveNodeReference(const FLogicGraph& Graph, const FString& NodeId, const FBlueprintHelperLogicOptions& Options)
+	static FString ResolveNodeReference(const FLogicGraph& Graph, const FString& NodeId, const FBlueprintHelperLogicOptions& Options)
 	{
 		const bool bDebug = Options.DetailLevel == EBlueprintHelperLogicDetailLevel::Debug;
 		const FLogicNode* Node = FindNode(Graph, NodeId);
@@ -559,7 +560,7 @@ namespace
 		return Node->Label.IsEmpty() ? Node->Id : Node->Label;
 	}
 
-	void AnalyzeGraph(FLogicGraph& Graph)
+	static void AnalyzeGraph(FLogicGraph& Graph)
 	{
 		TSet<FString> LinkedNodeIds;
 		TSet<FString> IncomingExecNodeIds;
@@ -628,7 +629,7 @@ namespace
 		}
 	}
 
-	FLogicGraph ParseGraph(const TSharedPtr<FJsonObject>& GraphObject, int32 GraphIndex)
+	static FLogicGraph ParseGraph(const TSharedPtr<FJsonObject>& GraphObject, int32 GraphIndex)
 	{
 		FLogicGraph Graph;
 		Graph.Name = ResolveGraphName(GraphObject, GraphIndex);
@@ -681,7 +682,7 @@ namespace
 		return Graph;
 	}
 
-	FLogicTotals CalculateTotals(const TArray<FLogicGraph>& Graphs)
+	static FLogicTotals CalculateTotals(const TArray<FLogicGraph>& Graphs)
 	{
 		FLogicTotals Totals;
 		for (const FLogicGraph& Graph : Graphs)
@@ -696,7 +697,7 @@ namespace
 		return Totals;
 	}
 
-	TSharedRef<FJsonObject> MakeStatsObject(const FLogicTotals& Totals)
+	static TSharedRef<FJsonObject> MakeStatsObject(const FLogicTotals& Totals)
 	{
 		TSharedRef<FJsonObject> StatsObject = MakeShared<FJsonObject>();
 		StatsObject->SetNumberField(TEXT("nodes"), Totals.NodeCount);
@@ -711,7 +712,7 @@ namespace
 		return StatsObject;
 	}
 
-	TSharedRef<FJsonObject> MakeGraphStatsObject(const FLogicGraph& Graph)
+	static TSharedRef<FJsonObject> MakeGraphStatsObject(const FLogicGraph& Graph)
 	{
 		FLogicTotals Totals;
 		Totals.NodeCount = Graph.Nodes.Num();
@@ -723,7 +724,7 @@ namespace
 		return MakeStatsObject(Totals);
 	}
 
-	TSharedRef<FJsonObject> MakeNodeObject(const FLogicNode& Node, const FBlueprintHelperLogicOptions& Options)
+	static TSharedRef<FJsonObject> MakeNodeObject(const FLogicNode& Node, const FBlueprintHelperLogicOptions& Options)
 	{
 		const bool bDebug = Options.DetailLevel == EBlueprintHelperLogicDetailLevel::Debug;
 		TSharedRef<FJsonObject> NodeObject = MakeShared<FJsonObject>();
@@ -749,7 +750,7 @@ namespace
 		return NodeObject;
 	}
 
-	TSharedRef<FJsonObject> MakeLinkObject(const FLogicGraph& Graph, const FLogicLink& Link, const FBlueprintHelperLogicOptions& Options)
+	static TSharedRef<FJsonObject> MakeLinkObject(const FLogicGraph& Graph, const FLogicLink& Link, const FBlueprintHelperLogicOptions& Options)
 	{
 		const bool bDebug = Options.DetailLevel == EBlueprintHelperLogicDetailLevel::Debug;
 		TSharedRef<FJsonObject> LinkObject = MakeShared<FJsonObject>();
@@ -769,7 +770,7 @@ namespace
 		return LinkObject;
 	}
 
-	TArray<TSharedPtr<FJsonValue>> MakeNodeRefArray(const FLogicGraph& Graph, const TArray<FString>& NodeIds, const FBlueprintHelperLogicOptions& Options)
+	static TArray<TSharedPtr<FJsonValue>> MakeNodeRefArray(const FLogicGraph& Graph, const TArray<FString>& NodeIds, const FBlueprintHelperLogicOptions& Options)
 	{
 		TArray<TSharedPtr<FJsonValue>> Values;
 		for (const FString& NodeId : NodeIds)
@@ -779,7 +780,7 @@ namespace
 		return Values;
 	}
 
-	TArray<TSharedPtr<FJsonValue>> MakeLinkArray(const FLogicGraph& Graph, const TArray<FLogicLink>& Links, const FBlueprintHelperLogicOptions& Options)
+	static TArray<TSharedPtr<FJsonValue>> MakeLinkArray(const FLogicGraph& Graph, const TArray<FLogicLink>& Links, const FBlueprintHelperLogicOptions& Options)
 	{
 		TArray<TSharedPtr<FJsonValue>> Values;
 		for (const FLogicLink& Link : Links)
@@ -789,7 +790,7 @@ namespace
 		return Values;
 	}
 
-	FString BuildLogicJson(const TArray<FLogicGraph>& Graphs, const FLogicTotals& Totals, const FBlueprintHelperLogicOptions& Options)
+	static FString BuildLogicJson(const TArray<FLogicGraph>& Graphs, const FLogicTotals& Totals, const FBlueprintHelperLogicOptions& Options)
 	{
 		TSharedRef<FJsonObject> RootObject = MakeShared<FJsonObject>();
 		RootObject->SetStringField(TEXT("version"), TEXT("1.0"));
@@ -836,13 +837,13 @@ namespace
 		return OutputString;
 	}
 
-	void AppendLine(FString& Output, const FString& Line = TEXT(""))
+	static void AppendLine(FString& Output, const FString& Line = TEXT(""))
 	{
 		Output += Line;
 		Output += TEXT("\n");
 	}
 
-	FString FormatLinkMarkdown(const FLogicGraph& Graph, const FLogicLink& Link, const FBlueprintHelperLogicOptions& Options)
+	static FString FormatLinkMarkdown(const FLogicGraph& Graph, const FLogicLink& Link, const FBlueprintHelperLogicOptions& Options)
 	{
 		return FString::Printf(
 			TEXT("%s.%s -> %s.%s (kind=%s, confidence=%s)"),
@@ -854,7 +855,7 @@ namespace
 			*Link.Confidence);
 	}
 
-	void AppendNodeList(FString& Output, const FLogicGraph& Graph, const TArray<FString>& NodeIds, const FBlueprintHelperLogicOptions& Options)
+	static void AppendNodeList(FString& Output, const FLogicGraph& Graph, const TArray<FString>& NodeIds, const FBlueprintHelperLogicOptions& Options)
 	{
 		if (NodeIds.Num() == 0)
 		{
@@ -877,7 +878,7 @@ namespace
 		}
 	}
 
-	void AppendLinkList(FString& Output, const FLogicGraph& Graph, const TArray<FLogicLink>& Links, const FBlueprintHelperLogicOptions& Options)
+	static void AppendLinkList(FString& Output, const FLogicGraph& Graph, const TArray<FLogicLink>& Links, const FBlueprintHelperLogicOptions& Options)
 	{
 		if (Links.Num() == 0)
 		{
@@ -891,7 +892,7 @@ namespace
 		}
 	}
 
-	void AppendDebugNodeList(FString& Output, const FLogicGraph& Graph)
+	static void AppendDebugNodeList(FString& Output, const FLogicGraph& Graph)
 	{
 		if (Graph.Nodes.Num() == 0)
 		{
@@ -910,7 +911,7 @@ namespace
 		}
 	}
 
-	FString BuildMarkdown(const TArray<FLogicGraph>& Graphs, const FLogicTotals& Totals, const FBlueprintHelperLogicOptions& Options)
+	static FString BuildMarkdown(const TArray<FLogicGraph>& Graphs, const FLogicTotals& Totals, const FBlueprintHelperLogicOptions& Options)
 	{
 		FString Output;
 		AppendLine(Output, TEXT("# Logic Graph"));
@@ -979,7 +980,8 @@ namespace
 
 		return Output;
 	}
-}
+
+};
 
 FBlueprintHelperLogicResult FBlueprintHelperLogicProcessor::ProcessRawJson(
 	const FString& RawJsonText,
@@ -1018,7 +1020,7 @@ FBlueprintHelperLogicResult FBlueprintHelperLogicProcessor::ProcessRawJsonObject
 
 	const TSharedPtr<FJsonObject>& RootObject = RawJsonObject;
 
-	TArray<FLogicGraph> Graphs;
+	TArray<FBlueprintHelperLogicProcessorLocalUtils::FLogicGraph> Graphs;
 	const TArray<TSharedPtr<FJsonValue>>* GraphsArray = nullptr;
 	if (RootObject->TryGetArrayField(TEXT("graphs"), GraphsArray) && GraphsArray)
 	{
@@ -1029,15 +1031,15 @@ FBlueprintHelperLogicResult FBlueprintHelperLogicProcessor::ProcessRawJsonObject
 			{
 				continue;
 			}
-			Graphs.Add(ParseGraph(*GraphObject, GraphIndex));
+			Graphs.Add(FBlueprintHelperLogicProcessorLocalUtils::ParseGraph(*GraphObject, GraphIndex));
 		}
 	}
 	else if (RootObject->HasField(TEXT("nodes")) || RootObject->HasField(TEXT("links")))
 	{
-		Graphs.Add(ParseGraph(RootObject, 0));
+		Graphs.Add(FBlueprintHelperLogicProcessorLocalUtils::ParseGraph(RootObject, 0));
 	}
 
-	const FLogicTotals Totals = CalculateTotals(Graphs);
+	const FBlueprintHelperLogicProcessorLocalUtils::FLogicTotals Totals = FBlueprintHelperLogicProcessorLocalUtils::CalculateTotals(Graphs);
 	Result.NodeCount = Totals.NodeCount;
 	Result.ExecLinkCount = Totals.ExecLinkCount;
 	Result.DataLinkCount = Totals.DataLinkCount;
@@ -1045,8 +1047,8 @@ FBlueprintHelperLogicResult FBlueprintHelperLogicProcessor::ProcessRawJsonObject
 	Result.OrphanNodeCount = Totals.OrphanNodeCount;
 
 	Result.OutputText = Options.Format == EBlueprintHelperLogicOutputFormat::Markdown
-		? BuildMarkdown(Graphs, Totals, Options)
-		: BuildLogicJson(Graphs, Totals, Options);
+		? FBlueprintHelperLogicProcessorLocalUtils::BuildMarkdown(Graphs, Totals, Options)
+		: FBlueprintHelperLogicProcessorLocalUtils::BuildLogicJson(Graphs, Totals, Options);
 	Result.bSuccess = true;
 	return Result;
 }

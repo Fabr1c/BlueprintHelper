@@ -17,14 +17,15 @@
 #include "Systems/Debug/BlueprintHelperDebugEntryService.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
 
-namespace
+class FBlueprintHelperDebugCaseTestsLocalUtils
 {
-FString MakeDebugTestId(const FString& Prefix)
+public:
+static FString MakeDebugTestId(const FString& Prefix)
 {
 	return Prefix + TEXT("_") + FGuid::NewGuid().ToString(EGuidFormats::Digits);
 }
 
-FString SerializeJsonObject(const TSharedRef<FJsonObject>& Json)
+static FString SerializeJsonObject(const TSharedRef<FJsonObject>& Json)
 {
 	FString Serialized;
 	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Serialized);
@@ -32,7 +33,7 @@ FString SerializeJsonObject(const TSharedRef<FJsonObject>& Json)
 	return Serialized;
 }
 
-FString ExpectedDebugCasePath(const FString& DebugCaseId)
+static FString ExpectedDebugCasePath(const FString& DebugCaseId)
 {
 	return FPaths::ProjectSavedDir()
 		/ TEXT("BlueprintHelper")
@@ -41,12 +42,12 @@ FString ExpectedDebugCasePath(const FString& DebugCaseId)
 		/ FString::Printf(TEXT("%s.json"), *DebugCaseId);
 }
 
-FString ExpectedDebugRootDir()
+static FString ExpectedDebugRootDir()
 {
 	return FPaths::ProjectSavedDir() / TEXT("BlueprintHelper") / TEXT("Debug");
 }
 
-FString ExpectedReviewRecordPath(const FString& ReviewRecordId)
+static FString ExpectedReviewRecordPath(const FString& ReviewRecordId)
 {
 	return FPaths::ProjectSavedDir()
 		/ TEXT("BlueprintHelper")
@@ -55,24 +56,25 @@ FString ExpectedReviewRecordPath(const FString& ReviewRecordId)
 		/ FString::Printf(TEXT("%s.json"), *ReviewRecordId);
 }
 
-void CleanupDebugCaseFile(const FString& DebugCaseId)
+static void CleanupDebugCaseFile(const FString& DebugCaseId)
 {
 	IFileManager::Get().Delete(*ExpectedDebugCasePath(DebugCaseId), false, true);
 }
 
-void CleanupReviewRecordFile(const FString& ReviewRecordId)
+static void CleanupReviewRecordFile(const FString& ReviewRecordId)
 {
 	IFileManager::Get().Delete(*ExpectedReviewRecordPath(ReviewRecordId), false, true);
 }
 
-void CleanupDebugBundleDirectory(const FString& BundleId)
+static void CleanupDebugBundleDirectory(const FString& BundleId)
 {
 	IFileManager::Get().DeleteDirectory(
 		*(FBlueprintHelperDebugCaseStoreService::GetBundleDirectory(BundleId)),
 		false,
 		true);
 }
-}
+
+};
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperDebugCaseIdsFailureOnlyTest,
@@ -176,8 +178,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperDebugCaseStoreWritesUnderSavedDebugTest::RunTest(const FString& Parameters)
 {
-	const FString DebugCaseId = MakeDebugTestId(TEXT("dbg_store"));
-	CleanupDebugCaseFile(DebugCaseId);
+	const FString DebugCaseId = FBlueprintHelperDebugCaseTestsLocalUtils::MakeDebugTestId(TEXT("dbg_store"));
+	FBlueprintHelperDebugCaseTestsLocalUtils::CleanupDebugCaseFile(DebugCaseId);
 
 	FBlueprintHelperDebugCase DebugCase;
 	DebugCase.DebugCaseId = DebugCaseId;
@@ -201,11 +203,11 @@ bool FBlueprintHelperDebugCaseStoreWritesUnderSavedDebugTest::RunTest(const FStr
 		AddError(FString::Printf(TEXT("Unexpected save error: %s"), *Error));
 	}
 
-	const FString CasePath = ExpectedDebugCasePath(DebugCaseId);
+	const FString CasePath = FBlueprintHelperDebugCaseTestsLocalUtils::ExpectedDebugCasePath(DebugCaseId);
 	TestTrue(TEXT("case file exists at Saved/BlueprintHelper/Debug/Cases"), FPaths::FileExists(CasePath));
 
 	FString NormalizedCasePath = CasePath;
-	FString NormalizedDebugRoot = ExpectedDebugRootDir();
+	FString NormalizedDebugRoot = FBlueprintHelperDebugCaseTestsLocalUtils::ExpectedDebugRootDir();
 	FPaths::NormalizeFilename(NormalizedCasePath);
 	FPaths::NormalizeDirectoryName(NormalizedDebugRoot);
 	TestTrue(TEXT("case file is inside Saved/BlueprintHelper/Debug"),
@@ -214,14 +216,14 @@ bool FBlueprintHelperDebugCaseStoreWritesUnderSavedDebugTest::RunTest(const FStr
 	FBlueprintHelperDebugCaseSummary Summary;
 	TestTrue(TEXT("case summary query succeeds"), Store.QueryCaseSummary(DebugCaseId, Summary, &Error));
 	TSharedRef<FJsonObject> SummaryJson = Summary.ToJson();
-	const FString SerializedSummary = SerializeJsonObject(SummaryJson);
+	const FString SerializedSummary = FBlueprintHelperDebugCaseTestsLocalUtils::SerializeJsonObject(SummaryJson);
 	TestFalse(TEXT("summary does not expose saved file paths"), SerializedSummary.Contains(TEXT("Saved/BlueprintHelper/Debug")));
 	TestFalse(TEXT("summary does not expose local path fields"), SerializedSummary.Contains(TEXT("local_path")));
 	TestFalse(TEXT("summary does not expose raw payload fields"), SerializedSummary.Contains(TEXT("raw_payload")));
 	TestFalse(TEXT("summary does not expose artifact contents"), SerializedSummary.Contains(TEXT("artifact_contents")));
 	TestFalse(TEXT("summary does not expose full event payloads"), SummaryJson->HasField(TEXT("events")));
 
-	CleanupDebugCaseFile(DebugCaseId);
+	FBlueprintHelperDebugCaseTestsLocalUtils::CleanupDebugCaseFile(DebugCaseId);
 	return true;
 }
 
@@ -288,7 +290,7 @@ bool FBlueprintHelperDebugEntryBestEffortEventRecordingTest::RunTest(const FStri
 			FString(TEXT("task_source")));
 	}
 
-	const FString SerializedSummary = SerializeJsonObject(Summary.ToJson());
+	const FString SerializedSummary = FBlueprintHelperDebugCaseTestsLocalUtils::SerializeJsonObject(Summary.ToJson());
 	TestFalse(TEXT("summary hides raw payload fields from event evidence"),
 		SerializedSummary.Contains(TEXT("raw_payload")));
 	TestFalse(TEXT("summary hides local saved paths"),
@@ -316,7 +318,7 @@ bool FBlueprintHelperDebugEntryBestEffortEventRecordingTest::RunTest(const FStri
 		}
 	}
 
-	CleanupDebugCaseFile(RecordResult.DebugCaseId);
+	FBlueprintHelperDebugCaseTestsLocalUtils::CleanupDebugCaseFile(RecordResult.DebugCaseId);
 	return true;
 }
 
@@ -327,12 +329,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperDebugBundleExportsReviewSummaryArtifactTest::RunTest(const FString& Parameters)
 {
-	const FString DebugCaseId = MakeDebugTestId(TEXT("dbg_review_bundle"));
+	const FString DebugCaseId = FBlueprintHelperDebugCaseTestsLocalUtils::MakeDebugTestId(TEXT("dbg_review_bundle"));
 	const FString ReviewRecordId = FBlueprintHelperReviewStoreService::MakeReviewRecordId(
 		TEXT("archive_debug_bundle_review"),
 		TEXT("/Game/BP_DebugReview"));
-	CleanupDebugCaseFile(DebugCaseId);
-	CleanupReviewRecordFile(ReviewRecordId);
+	FBlueprintHelperDebugCaseTestsLocalUtils::CleanupDebugCaseFile(DebugCaseId);
+	FBlueprintHelperDebugCaseTestsLocalUtils::CleanupReviewRecordFile(ReviewRecordId);
 
 	FBlueprintHelperReviewRecord ReviewRecord;
 	ReviewRecord.ReviewRecordId = ReviewRecordId;
@@ -387,16 +389,16 @@ bool FBlueprintHelperDebugBundleExportsReviewSummaryArtifactTest::RunTest(const 
 	TestTrue(TEXT("summary bundle exports review summary artifact"), bExported);
 	if (!bExported)
 	{
-		CleanupDebugCaseFile(DebugCaseId);
-		CleanupReviewRecordFile(ReviewRecordId);
+		FBlueprintHelperDebugCaseTestsLocalUtils::CleanupDebugCaseFile(DebugCaseId);
+		FBlueprintHelperDebugCaseTestsLocalUtils::CleanupReviewRecordFile(ReviewRecordId);
 		return false;
 	}
 	TestEqual(TEXT("one review summary ref is exported"), Manifest.ReviewSummaryRefs.Num(), 1);
 	if (Manifest.ReviewSummaryRefs.Num() != 1)
 	{
-		CleanupDebugBundleDirectory(Manifest.BundleId);
-		CleanupDebugCaseFile(DebugCaseId);
-		CleanupReviewRecordFile(ReviewRecordId);
+		FBlueprintHelperDebugCaseTestsLocalUtils::CleanupDebugBundleDirectory(Manifest.BundleId);
+		FBlueprintHelperDebugCaseTestsLocalUtils::CleanupDebugCaseFile(DebugCaseId);
+		FBlueprintHelperDebugCaseTestsLocalUtils::CleanupReviewRecordFile(ReviewRecordId);
 		return false;
 	}
 	TestTrue(TEXT("review summary ref is relative"),
@@ -423,13 +425,12 @@ bool FBlueprintHelperDebugBundleExportsReviewSummaryArtifactTest::RunTest(const 
 	FString ReloadError;
 	TestTrue(TEXT("review record reloads after bundle export"),
 		ReviewStore.LoadReviewRecordById(ReviewRecordId, ReloadedReviewRecord, ReloadError));
-	TestEqual(TEXT("bundle export does not write debug export refs to ReviewRecord"),
-		ReloadedReviewRecord.DebugExportRefs.Num(),
-		0);
+	TestTrue(TEXT("bundle export keeps debug case id on ReviewRecord"),
+		ReloadedReviewRecord.DebugCaseIds.Contains(DebugCaseId));
 
-	CleanupDebugBundleDirectory(Manifest.BundleId);
-	CleanupDebugCaseFile(DebugCaseId);
-	CleanupReviewRecordFile(ReviewRecordId);
+	FBlueprintHelperDebugCaseTestsLocalUtils::CleanupDebugBundleDirectory(Manifest.BundleId);
+	FBlueprintHelperDebugCaseTestsLocalUtils::CleanupDebugCaseFile(DebugCaseId);
+	FBlueprintHelperDebugCaseTestsLocalUtils::CleanupReviewRecordFile(ReviewRecordId);
 	return true;
 }
 
@@ -486,8 +487,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperDebugRedactionAndBundleSummaryExportTest::RunTest(const FString& Parameters)
 {
-	const FString DebugCaseId = MakeDebugTestId(TEXT("dbg_bundle"));
-	CleanupDebugCaseFile(DebugCaseId);
+	const FString DebugCaseId = FBlueprintHelperDebugCaseTestsLocalUtils::MakeDebugTestId(TEXT("dbg_bundle"));
+	FBlueprintHelperDebugCaseTestsLocalUtils::CleanupDebugCaseFile(DebugCaseId);
 
 	FBlueprintHelperDebugCase DebugCase;
 	DebugCase.DebugCaseId = DebugCaseId;
@@ -560,8 +561,8 @@ bool FBlueprintHelperDebugRedactionAndBundleSummaryExportTest::RunTest(const FSt
 	TestTrue(TEXT("debug case summary artifact carries summary schema"),
 		DebugCaseSummaryText.Contains(TEXT("BlueprintHelper.DebugCaseSummary.v1")));
 
-	CleanupDebugBundleDirectory(Manifest.BundleId);
-	CleanupDebugCaseFile(DebugCaseId);
+	FBlueprintHelperDebugCaseTestsLocalUtils::CleanupDebugBundleDirectory(Manifest.BundleId);
+	FBlueprintHelperDebugCaseTestsLocalUtils::CleanupDebugCaseFile(DebugCaseId);
 	return true;
 }
 
@@ -572,12 +573,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperDebugCleanupResolvedLowSeverityCasesTest::RunTest(const FString& Parameters)
 {
-	const FString ResolvedId = MakeDebugTestId(TEXT("dbg_resolved"));
-	const FString NeedsActionId = MakeDebugTestId(TEXT("dbg_needs_action"));
-	const FString RollbackId = MakeDebugTestId(TEXT("dbg_rollback"));
-	CleanupDebugCaseFile(ResolvedId);
-	CleanupDebugCaseFile(NeedsActionId);
-	CleanupDebugCaseFile(RollbackId);
+	const FString ResolvedId = FBlueprintHelperDebugCaseTestsLocalUtils::MakeDebugTestId(TEXT("dbg_resolved"));
+	const FString NeedsActionId = FBlueprintHelperDebugCaseTestsLocalUtils::MakeDebugTestId(TEXT("dbg_needs_action"));
+	const FString RollbackId = FBlueprintHelperDebugCaseTestsLocalUtils::MakeDebugTestId(TEXT("dbg_rollback"));
+	FBlueprintHelperDebugCaseTestsLocalUtils::CleanupDebugCaseFile(ResolvedId);
+	FBlueprintHelperDebugCaseTestsLocalUtils::CleanupDebugCaseFile(NeedsActionId);
+	FBlueprintHelperDebugCaseTestsLocalUtils::CleanupDebugCaseFile(RollbackId);
 
 	FBlueprintHelperDebugCase Resolved;
 	Resolved.DebugCaseId = ResolvedId;
@@ -621,9 +622,9 @@ bool FBlueprintHelperDebugCleanupResolvedLowSeverityCasesTest::RunTest(const FSt
 	TestTrue(TEXT("rollback case stays resolved for later action"),
 		LoadedRollback.Status == EBlueprintHelperDebugCaseStatus::Resolved);
 
-	CleanupDebugCaseFile(ResolvedId);
-	CleanupDebugCaseFile(NeedsActionId);
-	CleanupDebugCaseFile(RollbackId);
+	FBlueprintHelperDebugCaseTestsLocalUtils::CleanupDebugCaseFile(ResolvedId);
+	FBlueprintHelperDebugCaseTestsLocalUtils::CleanupDebugCaseFile(NeedsActionId);
+	FBlueprintHelperDebugCaseTestsLocalUtils::CleanupDebugCaseFile(RollbackId);
 	return true;
 }
 
@@ -675,9 +676,9 @@ bool FBlueprintHelperDebugEntryDeveloperUiInternalsTest::RunTest(const FString& 
 
 	if (!ExportedBundleId.IsEmpty())
 	{
-		CleanupDebugBundleDirectory(ExportedBundleId);
+		FBlueprintHelperDebugCaseTestsLocalUtils::CleanupDebugBundleDirectory(ExportedBundleId);
 	}
-	CleanupDebugCaseFile(RecordResult.DebugCaseId);
+	FBlueprintHelperDebugCaseTestsLocalUtils::CleanupDebugCaseFile(RecordResult.DebugCaseId);
 	return true;
 }
 

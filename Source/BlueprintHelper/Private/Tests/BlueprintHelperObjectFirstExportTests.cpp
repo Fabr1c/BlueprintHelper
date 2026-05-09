@@ -40,9 +40,12 @@ bool FObjectFirstExport_ConvertGraphToJson_MatchesObjectSerialize::RunTest(const
 	TSharedPtr<FJsonObject> Obj = FBlueprintToTextConverter::ConvertGraphToJsonObject(nullptr);
 	FString RoundTripJson = FBlueprintToTextConverter::SerializeJsonObject(Obj);
 
-	// 两边都应返回 "{}"
-	TestTrue(TEXT("Legacy and roundtrip both produce valid JSON"),
-		LegacyJson.Equals(TEXT("{}")) && RoundTripJson.Equals(TEXT("{}")));
+	TestTrue(TEXT("Legacy and roundtrip produce the same JSON"),
+		LegacyJson.Equals(RoundTripJson));
+	TestTrue(TEXT("Serialized graph JSON includes stable empty nodes array"),
+		RoundTripJson.Contains(TEXT("\"nodes\"")));
+	TestTrue(TEXT("Serialized graph JSON includes stable empty links array"),
+		RoundTripJson.Contains(TEXT("\"links\"")));
 
 	return true;
 }

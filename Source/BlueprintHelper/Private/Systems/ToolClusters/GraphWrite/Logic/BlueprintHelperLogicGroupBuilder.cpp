@@ -4,9 +4,10 @@
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 
-namespace
+class FBlueprintHelperLogicGroupBuilderLocalUtils
 {
-	FString JsonValueToString(const TSharedPtr<FJsonValue>& Value)
+public:
+	static FString JsonValueToString(const TSharedPtr<FJsonValue>& Value)
 	{
 		if (!Value.IsValid())
 		{
@@ -26,7 +27,7 @@ namespace
 		}
 	}
 
-	bool TryReadStringField(const TSharedPtr<FJsonObject>& Object, const TCHAR* FieldName, FString& OutValue)
+	static bool TryReadStringField(const TSharedPtr<FJsonObject>& Object, const TCHAR* FieldName, FString& OutValue)
 	{
 		if (!Object.IsValid())
 		{
@@ -43,7 +44,7 @@ namespace
 		return !OutValue.IsEmpty();
 	}
 
-	FString ReadFirstStringField(
+	static FString ReadFirstStringField(
 		const TSharedPtr<FJsonObject>& Object,
 		const TCHAR* First,
 		const TCHAR* Second = nullptr,
@@ -65,7 +66,7 @@ namespace
 		return TEXT("");
 	}
 
-	bool TryReadNestedStringField(
+	static bool TryReadNestedStringField(
 		const TSharedPtr<FJsonObject>& Object,
 		const TCHAR* ObjectFieldName,
 		const TCHAR* FieldName,
@@ -83,28 +84,28 @@ namespace
 		return false;
 	}
 
-	FString MakeNodeRef(int32 NodeIndex)
+	static FString MakeNodeRef(int32 NodeIndex)
 	{
 		return FString::Printf(TEXT("nodes[%d]"), NodeIndex);
 	}
 
-	FString MakeLinkRef(int32 LinkIndex)
+	static FString MakeLinkRef(int32 LinkIndex)
 	{
 		return FString::Printf(TEXT("links[%d]"), LinkIndex);
 	}
 
-	FString MakeGraphNodePath(const FString& GraphName, const FString& NodeRef)
+	static FString MakeGraphNodePath(const FString& GraphName, const FString& NodeRef)
 	{
 		return FString::Printf(TEXT("$.graphs[%s].%s"), *GraphName, *NodeRef);
 	}
 
-	FString ExtractNodeId(const TSharedPtr<FJsonObject>& NodeObj, int32 NodeIndex)
+	static FString ExtractNodeId(const TSharedPtr<FJsonObject>& NodeObj, int32 NodeIndex)
 	{
 		const FString NodeId = ReadFirstStringField(NodeObj, TEXT("id"), TEXT("node_id"), TEXT("node_guid"));
 		return NodeId.IsEmpty() ? FString::Printf(TEXT("Node_%d"), NodeIndex) : NodeId;
 	}
 
-	FString NormalizeLogicToken(const FString& InValue)
+	static FString NormalizeLogicToken(const FString& InValue)
 	{
 		FString Result = InValue;
 		Result.TrimStartAndEndInline();
@@ -116,7 +117,7 @@ namespace
 		return Result.ToLower();
 	}
 
-	bool IsTruthyMetadataValue(const FString& Value)
+	static bool IsTruthyMetadataValue(const FString& Value)
 	{
 		const FString Key = NormalizeLogicToken(Value);
 		return Key.Equals(TEXT("true"))
@@ -124,7 +125,7 @@ namespace
 			|| Key.Equals(TEXT("yes"));
 	}
 
-	bool TryReadNodeMetadataStringField(
+	static bool TryReadNodeMetadataStringField(
 		const TSharedPtr<FJsonObject>& NodeObj,
 		const TCHAR* FieldName,
 		FString& OutValue)
@@ -135,7 +136,7 @@ namespace
 			|| TryReadNestedStringField(NodeObj, TEXT("ownership"), FieldName, OutValue);
 	}
 
-	FString ExtractBlueprintHelperBlockId(const TSharedPtr<FJsonObject>& NodeObj)
+	static FString ExtractBlueprintHelperBlockId(const TSharedPtr<FJsonObject>& NodeObj)
 	{
 		FString OwnedValue;
 		if (!TryReadNodeMetadataStringField(NodeObj, TEXT("BlueprintHelperOwned"), OwnedValue)
@@ -153,13 +154,13 @@ namespace
 		return BlockId.TrimStartAndEnd();
 	}
 
-	bool IsGroupEntryNode(const FBlueprintHelperLogicNode& Node)
+	static bool IsGroupEntryNode(const FBlueprintHelperLogicNode& Node)
 	{
 		return Node.Kind == EBlueprintHelperLogicNodeKind::Event
 			|| Node.Kind == EBlueprintHelperLogicNodeKind::CustomEvent;
 	}
 
-	void AssignGroupEntry(FBlueprintHelperLogicGroup& Group, const FString& GraphName)
+	static void AssignGroupEntry(FBlueprintHelperLogicGroup& Group, const FString& GraphName)
 	{
 		if (Group.Nodes.Num() == 0)
 		{
@@ -184,7 +185,7 @@ namespace
 		Group.GroupEntryNodePath = Group.Entry.NodePath;
 	}
 
-	void NormalizeGroupLocalRefs(FBlueprintHelperLogicGroup& Group)
+	static void NormalizeGroupLocalRefs(FBlueprintHelperLogicGroup& Group)
 	{
 		TMap<FString, FString> LocalNodeRefByOriginalRef;
 		for (int32 NodeIndex = 0; NodeIndex < Group.Nodes.Num(); ++NodeIndex)
@@ -236,7 +237,7 @@ namespace
 		}
 	}
 
-	bool TryBuildOwnedBlockGroups(
+	static bool TryBuildOwnedBlockGroups(
 		const TArray<TSharedPtr<FJsonValue>>& NodesArray,
 		const TArray<FBlueprintHelperLogicNode>& GraphNodes,
 		const FString& GraphName,
@@ -320,7 +321,7 @@ namespace
 		return Payload.Groups.Num() > 0;
 	}
 
-	FString FindUniqueOwnedBlockId(const TArray<TSharedPtr<FJsonValue>>& NodesArray)
+	static FString FindUniqueOwnedBlockId(const TArray<TSharedPtr<FJsonValue>>& NodesArray)
 	{
 		FString UniqueBlockId;
 		for (int32 NodeIndex = 0; NodeIndex < NodesArray.Num(); ++NodeIndex)
@@ -351,7 +352,7 @@ namespace
 		return UniqueBlockId;
 	}
 
-	bool IsExecPinName(const FString& PinName)
+	static bool IsExecPinName(const FString& PinName)
 	{
 		const FString Key = NormalizeLogicToken(PinName);
 		return Key.Equals(TEXT("exec"))
@@ -367,7 +368,7 @@ namespace
 			|| Key.Equals(TEXT("body"));
 	}
 
-	EBlueprintHelperLogicLinkType IdentifyGraphLinkType(
+	static EBlueprintHelperLogicLinkType IdentifyGraphLinkType(
 		const TSharedPtr<FJsonObject>& LinkObj,
 		const FString& FromPin,
 		const FString& ToPin)
@@ -396,7 +397,7 @@ namespace
 			: EBlueprintHelperLogicLinkType::Data;
 	}
 
-	bool HasEquivalentLink(
+	static bool HasEquivalentLink(
 		const FBlueprintHelperLogicNode& Node,
 		const FString& FromPin,
 		const FString& ToNode,
@@ -415,7 +416,7 @@ namespace
 		return false;
 	}
 
-	void AttachGraphLevelLinksToNodes(
+	static void AttachGraphLevelLinksToNodes(
 		const TSharedPtr<FJsonObject>& GraphObj,
 		TArray<FBlueprintHelperLogicNode>& Nodes)
 	{
@@ -533,7 +534,8 @@ namespace
 			SourceNode.Links.Add(MoveTemp(Link));
 		}
 	}
-}
+
+};
 
 FBlueprintHelperLogicGroupBuilder::FBlueprintHelperLogicGroupBuilder() = default;
 
@@ -594,7 +596,7 @@ FBlueprintHelperLogicJsonPayload FBlueprintHelperLogicGroupBuilder::BuildGroups(
 			const TSharedPtr<FJsonObject>* NodeObjPtr = nullptr;
 			if (!NodeVal.IsValid() || !NodeVal->TryGetObject(NodeObjPtr) || !NodeObjPtr) continue;
 
-			const FString NodeRef = MakeNodeRef(i);
+			const FString NodeRef = FBlueprintHelperLogicGroupBuilderLocalUtils::MakeNodeRef(i);
 			const FString Name = ExtractNodeName(*NodeObjPtr);
 			const EBlueprintHelperLogicNodeKind Kind = IdentifyNodeKind(*NodeObjPtr);
 
@@ -605,7 +607,7 @@ FBlueprintHelperLogicJsonPayload FBlueprintHelperLogicGroupBuilder::BuildGroups(
 				Group.Entry.Kind = Kind;
 				Group.Entry.Name = Name;
 				Group.Entry.NodeRef = NodeRef;
-				Group.Entry.NodePath = MakeGraphNodePath(GraphName, NodeRef);
+				Group.Entry.NodePath = FBlueprintHelperLogicGroupBuilderLocalUtils::MakeGraphNodePath(GraphName, NodeRef);
 				Group.GroupEntryNodePath = Group.Entry.NodePath;
 				bFoundEntry = true;
 			}
@@ -613,8 +615,8 @@ FBlueprintHelperLogicJsonPayload FBlueprintHelperLogicGroupBuilder::BuildGroups(
 			Group.Nodes.Add(MoveTemp(Node));
 		}
 
-		AttachGraphLevelLinksToNodes(RawJson, Group.Nodes);
-		if (TryBuildOwnedBlockGroups(*NodesArray, Group.Nodes, GraphName, Payload))
+		FBlueprintHelperLogicGroupBuilderLocalUtils::AttachGraphLevelLinksToNodes(RawJson, Group.Nodes);
+		if (FBlueprintHelperLogicGroupBuilderLocalUtils::TryBuildOwnedBlockGroups(*NodesArray, Group.Nodes, GraphName, Payload))
 		{
 			return Payload;
 		}
@@ -625,7 +627,7 @@ FBlueprintHelperLogicJsonPayload FBlueprintHelperLogicGroupBuilder::BuildGroups(
 			Group.Entry.Kind = Group.Nodes[0].Kind;
 			Group.Entry.Name = Group.Nodes[0].Name;
 			Group.Entry.NodeRef = Group.Nodes[0].NodeRef;
-			Group.Entry.NodePath = MakeGraphNodePath(GraphName, Group.Nodes[0].NodeRef);
+			Group.Entry.NodePath = FBlueprintHelperLogicGroupBuilderLocalUtils::MakeGraphNodePath(GraphName, Group.Nodes[0].NodeRef);
 			Group.GroupEntryNodePath = Group.Entry.NodePath;
 		}
 
@@ -641,7 +643,7 @@ FBlueprintHelperLogicJsonPayload FBlueprintHelperLogicGroupBuilder::BuildGroups(
 			const TSharedPtr<FJsonObject>* NodeObjPtr = nullptr;
 			if (!NodeVal.IsValid() || !NodeVal->TryGetObject(NodeObjPtr) || !NodeObjPtr) continue;
 
-			const FString NodeRef = MakeNodeRef(i);
+			const FString NodeRef = FBlueprintHelperLogicGroupBuilderLocalUtils::MakeNodeRef(i);
 			const FString Name = ExtractNodeName(*NodeObjPtr);
 			const EBlueprintHelperLogicNodeKind Kind = IdentifyNodeKind(*NodeObjPtr);
 
@@ -653,7 +655,7 @@ FBlueprintHelperLogicJsonPayload FBlueprintHelperLogicGroupBuilder::BuildGroups(
 				Entry.Kind = Kind;
 				Entry.Name = Name;
 				Entry.NodeRef = NodeRef;
-				Entry.NodePath = MakeGraphNodePath(GraphName, NodeRef);
+				Entry.NodePath = FBlueprintHelperLogicGroupBuilderLocalUtils::MakeGraphNodePath(GraphName, NodeRef);
 				Payload.Entry = Entry;
 				bFoundEntry = true;
 			}
@@ -661,8 +663,8 @@ FBlueprintHelperLogicJsonPayload FBlueprintHelperLogicGroupBuilder::BuildGroups(
 			Payload.Nodes.Add(MoveTemp(Node));
 		}
 
-		AttachGraphLevelLinksToNodes(RawJson, Payload.Nodes);
-		Payload.BlockId = FindUniqueOwnedBlockId(*NodesArray);
+		FBlueprintHelperLogicGroupBuilderLocalUtils::AttachGraphLevelLinksToNodes(RawJson, Payload.Nodes);
+		Payload.BlockId = FBlueprintHelperLogicGroupBuilderLocalUtils::FindUniqueOwnedBlockId(*NodesArray);
 
 		if (!bFoundEntry && Payload.Nodes.Num() > 0)
 		{
@@ -670,7 +672,7 @@ FBlueprintHelperLogicJsonPayload FBlueprintHelperLogicGroupBuilder::BuildGroups(
 			Entry.Kind = Payload.Nodes[0].Kind;
 			Entry.Name = Payload.Nodes[0].Name;
 			Entry.NodeRef = Payload.Nodes[0].NodeRef;
-			Entry.NodePath = MakeGraphNodePath(GraphName, Payload.Nodes[0].NodeRef);
+			Entry.NodePath = FBlueprintHelperLogicGroupBuilderLocalUtils::MakeGraphNodePath(GraphName, Payload.Nodes[0].NodeRef);
 			Payload.Entry = Entry;
 		}
 	}
@@ -821,16 +823,16 @@ FBlueprintHelperLogicJsonPayload FBlueprintHelperLogicGroupBuilder::BuildTargetE
 				FBlueprintHelperLogicEntry Entry;
 				Entry.Kind = IdentifyNodeKind(*NodeObjPtr);
 				Entry.Name = ExtractNodeName(*NodeObjPtr);
-				Entry.NodeRef = MakeNodeRef(i);
-				Entry.NodePath = MakeGraphNodePath(EffectiveGraphName, Entry.NodeRef);
+				Entry.NodeRef = FBlueprintHelperLogicGroupBuilderLocalUtils::MakeNodeRef(i);
+				Entry.NodePath = FBlueprintHelperLogicGroupBuilderLocalUtils::MakeGraphNodePath(EffectiveGraphName, Entry.NodeRef);
 				Payload.Entry = Entry;
 			}
 
 			Payload.Nodes.Add(ConvertNode(*NodeObjPtr, i));
 		}
 
-		AttachGraphLevelLinksToNodes(GraphObj, Payload.Nodes);
-		Payload.BlockId = FindUniqueOwnedBlockId(*NodesArray);
+		FBlueprintHelperLogicGroupBuilderLocalUtils::AttachGraphLevelLinksToNodes(GraphObj, Payload.Nodes);
+		Payload.BlockId = FBlueprintHelperLogicGroupBuilderLocalUtils::FindUniqueOwnedBlockId(*NodesArray);
 
 		return true;
 	};
@@ -905,7 +907,7 @@ EBlueprintHelperLogicNodeKind FBlueprintHelperLogicGroupBuilder::IdentifyNodeKin
 FBlueprintHelperLogicNode FBlueprintHelperLogicGroupBuilder::ConvertNode(const TSharedPtr<FJsonObject>& NodeObj, int32 Index)
 {
 	FBlueprintHelperLogicNode Node;
-	Node.NodeRef = MakeNodeRef(Index);
+	Node.NodeRef = FBlueprintHelperLogicGroupBuilderLocalUtils::MakeNodeRef(Index);
 	Node.Kind = IdentifyNodeKind(NodeObj);
 	Node.Name = ExtractNodeName(NodeObj);
 	Node.Owner = ExtractOwner(NodeObj);
@@ -921,7 +923,7 @@ FBlueprintHelperLogicNode FBlueprintHelperLogicGroupBuilder::ConvertNode(const T
 			if (!LinkVal.IsValid() || !LinkVal->TryGetObject(LinkObjPtr) || !LinkObjPtr) continue;
 
 			FBlueprintHelperLogicLink Link;
-			Link.LinkRef = MakeLinkRef(j);
+			Link.LinkRef = FBlueprintHelperLogicGroupBuilderLocalUtils::MakeLinkRef(j);
 
 			FString LinkTypeStr;
 			(*LinkObjPtr)->TryGetStringField(TEXT("type"), LinkTypeStr);

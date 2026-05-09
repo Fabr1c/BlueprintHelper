@@ -37,26 +37,27 @@
 #include "Widgets/Views/STreeView.h"
 #include "UObject/UObjectGlobals.h"
 
-namespace
+class FSBlueprintHelperReviewPanelLocalUtils
 {
-	const FLinearColor ReviewGreen(0.05f, 0.75f, 0.22f, 0.85f);
-	const FLinearColor ReviewRed(0.95f, 0.12f, 0.10f, 0.85f);
-	const FLinearColor ReviewYellow(1.0f, 0.72f, 0.08f, 0.85f);
-	const FLinearColor ReviewPanelBg(0.015f, 0.015f, 0.015f, 1.0f);
-	const FLinearColor ReviewSectionBg(0.035f, 0.035f, 0.035f, 1.0f);
-	const FLinearColor ReviewFrameInnerBg(0.06f, 0.06f, 0.06f, 0.92f);
+public:
+	inline static const FLinearColor ReviewGreen = FLinearColor(0.05f, 0.75f, 0.22f, 0.85f);
+	inline static const FLinearColor ReviewRed = FLinearColor(0.95f, 0.12f, 0.10f, 0.85f);
+	inline static const FLinearColor ReviewYellow = FLinearColor(1.0f, 0.72f, 0.08f, 0.85f);
+	inline static const FLinearColor ReviewPanelBg = FLinearColor(0.015f, 0.015f, 0.015f, 1.0f);
+	inline static const FLinearColor ReviewSectionBg = FLinearColor(0.035f, 0.035f, 0.035f, 1.0f);
+	inline static const FLinearColor ReviewFrameInnerBg = FLinearColor(0.06f, 0.06f, 0.06f, 0.92f);
 
-	FText StatusToText(EBlueprintHelperReviewChangeStatus Status)
+	static FText StatusToText(EBlueprintHelperReviewChangeStatus Status)
 	{
 		return FText::FromString(BlueprintHelperReviewChangeStatusToString(Status));
 	}
 
-	bool IsReviewPropertyEditingEnabled()
+	static bool IsReviewPropertyEditingEnabled()
 	{
 		return false;
 	}
 
-	UBlueprint* LoadReviewBlueprintAsset(const FString& AssetPath)
+	static UBlueprint* LoadReviewBlueprintAsset(const FString& AssetPath)
 	{
 		if (AssetPath.IsEmpty())
 		{
@@ -80,7 +81,7 @@ namespace
 		return nullptr;
 	}
 
-	UBlueprint* CreateReviewPreviewBlueprint(const UBlueprint* SourceBlueprint)
+	static UBlueprint* CreateReviewPreviewBlueprint(const UBlueprint* SourceBlueprint)
 	{
 		const FName PreviewName = MakeUniqueObjectName(
 			GetTransientPackage(),
@@ -103,7 +104,7 @@ namespace
 		return PreviewBlueprint;
 	}
 
-	void AttachPreviewGraphToMatchingBlueprintList(
+	static void AttachPreviewGraphToMatchingBlueprintList(
 		const UBlueprint* SourceBlueprint,
 		const UEdGraph* SourceGraph,
 		UBlueprint* PreviewBlueprint,
@@ -256,7 +257,8 @@ namespace
 			FLinearColor(0.02f, 0.02f, 0.02f, 0.95f),
 			5.0f);
 	};
-}
+
+};
 
 void SBlueprintHelperReviewPanel::Construct(const FArguments& InArgs)
 {
@@ -279,7 +281,7 @@ void SBlueprintHelperReviewPanel::Construct(const FArguments& InArgs)
 	[
 		SNew(SBorder)
 		.BorderImage(FAppStyle::GetBrush(TEXT("Brushes.White")))
-		.BorderBackgroundColor(ReviewPanelBg)
+		.BorderBackgroundColor(FSBlueprintHelperReviewPanelLocalUtils::ReviewPanelBg)
 		[
 			SNew(SVerticalBox)
 			+ SVerticalBox::Slot()
@@ -402,7 +404,7 @@ void SBlueprintHelperReviewPanel::AddDebugMessage(const FString& Message)
 
 FString SBlueprintHelperReviewPanel::BuildDebugMessagesString() const
 {
-	return BlueprintHelperReviewDebugText::BuildCopyableText(DebugMessages);
+	return FBlueprintHelperReviewDebugText::BuildCopyableText(DebugMessages);
 }
 
 FText SBlueprintHelperReviewPanel::GetDebugMessagesText() const
@@ -484,7 +486,7 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildFinalChangeSidebar()
 {
 	return SNew(SBorder)
 		.BorderImage(FAppStyle::GetBrush(TEXT("Brushes.Panel")))
-		.BorderBackgroundColor(ReviewSectionBg)
+		.BorderBackgroundColor(FSBlueprintHelperReviewPanelLocalUtils::ReviewSectionBg)
 		.Padding(0.0f)
 		[
 			SNew(SVerticalBox)
@@ -600,7 +602,7 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildComponentsPanel()
 {
 	return SNew(SBorder)
 		.BorderImage(FAppStyle::GetBrush(TEXT("Brushes.Panel")))
-		.BorderBackgroundColor(ReviewSectionBg)
+		.BorderBackgroundColor(FSBlueprintHelperReviewPanelLocalUtils::ReviewSectionBg)
 		.Padding(0.0f)
 		[
 			SNew(SVerticalBox)
@@ -644,7 +646,7 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildMyBlueprintPanel()
 {
 	return SNew(SBorder)
 		.BorderImage(FAppStyle::GetBrush(TEXT("Brushes.Panel")))
-		.BorderBackgroundColor(ReviewSectionBg)
+		.BorderBackgroundColor(FSBlueprintHelperReviewPanelLocalUtils::ReviewSectionBg)
 		.Padding(0.0f)
 		[
 			SNew(SVerticalBox)
@@ -713,7 +715,7 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildDetailsPanel()
 {
 	return SNew(SBorder)
 		.BorderImage(FAppStyle::GetBrush(TEXT("Brushes.Panel")))
-		.BorderBackgroundColor(ReviewSectionBg)
+		.BorderBackgroundColor(FSBlueprintHelperReviewPanelLocalUtils::ReviewSectionBg)
 		.Padding(0.0f)
 		[
 			SNew(SVerticalBox)
@@ -758,7 +760,7 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildDebugPanel()
 
 	return SNew(SBorder)
 		.BorderImage(FAppStyle::GetBrush(TEXT("Brushes.Panel")))
-		.BorderBackgroundColor(ReviewSectionBg)
+		.BorderBackgroundColor(FSBlueprintHelperReviewPanelLocalUtils::ReviewSectionBg)
 		.Padding(0.0f)
 		[
 			SNew(SVerticalBox)
@@ -815,7 +817,7 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildGraphEditorWidget()
 			*SelectedChange->AssetPath));
 	}
 
-	PreviewBlueprint = TStrongObjectPtr<UBlueprint>(CreateReviewPreviewBlueprint(SourceBlueprint));
+	PreviewBlueprint = TStrongObjectPtr<UBlueprint>(FSBlueprintHelperReviewPanelLocalUtils::CreateReviewPreviewBlueprint(SourceBlueprint));
 
 	if (SourceGraph && PreviewBlueprint.IsValid())
 	{
@@ -824,7 +826,7 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildGraphEditorWidget()
 		{
 			PreviewGraph->SetFlags(RF_Transient);
 			PreviewGraph->bEditable = false;
-			AttachPreviewGraphToMatchingBlueprintList(
+			FSBlueprintHelperReviewPanelLocalUtils::AttachPreviewGraphToMatchingBlueprintList(
 				SourceBlueprint,
 				SourceGraph,
 				PreviewBlueprint.Get(),
@@ -836,7 +838,7 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildGraphEditorWidget()
 	{
 		if (!PreviewBlueprint.IsValid())
 		{
-			PreviewBlueprint = TStrongObjectPtr<UBlueprint>(CreateReviewPreviewBlueprint(SourceBlueprint));
+			PreviewBlueprint = TStrongObjectPtr<UBlueprint>(FSBlueprintHelperReviewPanelLocalUtils::CreateReviewPreviewBlueprint(SourceBlueprint));
 		}
 		PreviewGraph = TStrongObjectPtr<UEdGraph>(NewObject<UEdGraph>(
 			PreviewBlueprint.Get(),
@@ -1043,7 +1045,7 @@ bool SBlueprintHelperReviewPanel::BuildGraphBoundsForChange(
 
 	if (Item->AtomicTargets.Num() > 0)
 	{
-		return BlueprintHelperReviewGraphBounds::BuildBoundsForTargets(
+		return FBlueprintHelperReviewGraphBounds::BuildBoundsForTargets(
 			Item->AtomicTargets,
 			PreviewGraphToEdit,
 			GraphName,
@@ -1072,7 +1074,7 @@ bool SBlueprintHelperReviewPanel::BuildGraphBoundsForChange(
 	FallbackTarget.NodeGuid = Item->LocationKey;
 	TArray<FBlueprintHelperReviewAtomicTarget> FallbackTargets;
 	FallbackTargets.Add(FallbackTarget);
-	return BlueprintHelperReviewGraphBounds::BuildBoundsForTargets(
+	return FBlueprintHelperReviewGraphBounds::BuildBoundsForTargets(
 		FallbackTargets,
 		PreviewGraphToEdit,
 		GraphName,
@@ -1162,7 +1164,7 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildReadonlyDetailsWidget()
 		.HideNameArea(true)
 		.ViewIdentifier(FName(TEXT("BlueprintHelperReviewInspector")))
 		.MyBlueprintWidget(MyBlueprintWidget)
-		.IsPropertyEditingEnabledDelegate(FIsPropertyEditingEnabled::CreateStatic(&IsReviewPropertyEditingEnabled))
+		.IsPropertyEditingEnabledDelegate(FIsPropertyEditingEnabled::CreateStatic(&FSBlueprintHelperReviewPanelLocalUtils::IsReviewPropertyEditingEnabled))
 		.ShowLocalVariables(true);
 	if (MyBlueprintWidget.IsValid())
 	{
@@ -1260,7 +1262,7 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildPanelDiffFrame(FReviewChan
 		? GetSelectedDiffColor()
 		: (Item.IsValid() ? GetChangeColor(Item->ChangeKind) : FSlateColor(FLinearColor::Transparent));
 
-	return SNew(SBlueprintHelperReviewDiffFrame)
+	return SNew(FSBlueprintHelperReviewPanelLocalUtils::SBlueprintHelperReviewDiffFrame)
 		.FrameColor(FrameColor)
 		.ShowActions(Item.IsValid())
 		.FillBackground(false)
@@ -1519,7 +1521,7 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildDiffFrame(
 	const TSharedRef<SWidget>& Content,
 	bool bShowActions)
 {
-	return SNew(SBlueprintHelperReviewDiffFrame)
+	return SNew(FSBlueprintHelperReviewPanelLocalUtils::SBlueprintHelperReviewDiffFrame)
 		.FrameColor(Item.IsValid() ? GetChangeColor(Item->ChangeKind) : FSlateColor(FLinearColor::Transparent))
 		.ShowActions(bShowActions && Item.IsValid())
 		.OnAccept(this, &SBlueprintHelperReviewPanel::OnAcceptChange, Item)
@@ -1760,7 +1762,7 @@ FText SBlueprintHelperReviewPanel::GetSelectedAfter() const
 FText SBlueprintHelperReviewPanel::GetSelectedStatus() const
 {
 	return SelectedChange.IsValid()
-		? FText::Format(FText::FromString(TEXT("Status: {0}")), StatusToText(SelectedChange->Status))
+		? FText::Format(FText::FromString(TEXT("Status: {0}")), FSBlueprintHelperReviewPanelLocalUtils::StatusToText(SelectedChange->Status))
 		: FText::GetEmpty();
 }
 
@@ -1798,15 +1800,15 @@ FSlateColor SBlueprintHelperReviewPanel::GetChangeColor(EBlueprintHelperReviewCh
 	const FString ColorName = BlueprintHelperReviewChangeKindToColorName(Kind);
 	if (ColorName == TEXT("green"))
 	{
-		return FSlateColor(ReviewGreen);
+		return FSlateColor(FSBlueprintHelperReviewPanelLocalUtils::ReviewGreen);
 	}
 	if (ColorName == TEXT("red"))
 	{
-		return FSlateColor(ReviewRed);
+		return FSlateColor(FSBlueprintHelperReviewPanelLocalUtils::ReviewRed);
 	}
 	if (ColorName == TEXT("yellow"))
 	{
-		return FSlateColor(ReviewYellow);
+		return FSlateColor(FSBlueprintHelperReviewPanelLocalUtils::ReviewYellow);
 	}
 	return FSlateColor(FLinearColor(0.18f, 0.18f, 0.18f, 0.85f));
 }
@@ -1866,7 +1868,7 @@ void SBlueprintHelperReviewPanel::LoadReviewBlueprintFromSelection()
 		}
 	}
 
-	UBlueprint* LoadedBlueprint = LoadReviewBlueprintAsset(AssetPath);
+	UBlueprint* LoadedBlueprint = FSBlueprintHelperReviewPanelLocalUtils::LoadReviewBlueprintAsset(AssetPath);
 	if (LoadedBlueprint == ReviewBlueprint.Get())
 	{
 		return;
@@ -1929,5 +1931,5 @@ UEdGraph* SBlueprintHelperReviewPanel::ResolveGraphForSelectedChange() const
 {
 	const UBlueprint* Blueprint = ReviewBlueprint.Get();
 	const FString RequestedGraphName = SelectedChange.IsValid() ? SelectedChange->GraphName : FString();
-	return BlueprintHelperReviewGraphResolver::ResolveGraphForReviewSelection(Blueprint, RequestedGraphName);
+	return FBlueprintHelperReviewGraphResolver::ResolveGraphForReviewSelection(Blueprint, RequestedGraphName);
 }

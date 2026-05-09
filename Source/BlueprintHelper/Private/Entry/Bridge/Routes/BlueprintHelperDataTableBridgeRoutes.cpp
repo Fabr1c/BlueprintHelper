@@ -6,9 +6,10 @@
 #include "Dom/JsonValue.h"
 #include "Systems/ToolClusters/DataTable/BlueprintHelperDataTableService.h"
 
-namespace
+class FBlueprintHelperDataTableBridgeRoutesLocalUtils
 {
-	FString ReadDataTableRouteStringField(const TSharedPtr<FJsonObject>& Payload, const TCHAR* FieldName)
+public:
+	static FString ReadDataTableRouteStringField(const TSharedPtr<FJsonObject>& Payload, const TCHAR* FieldName)
 	{
 		FString Value;
 		if (Payload.IsValid())
@@ -18,7 +19,7 @@ namespace
 		return Value;
 	}
 
-	TArray<FString> ReadDataTableRouteRowNameFilter(const TSharedPtr<FJsonObject>& Payload)
+	static TArray<FString> ReadDataTableRouteRowNameFilter(const TSharedPtr<FJsonObject>& Payload)
 	{
 		TArray<FString> RowNames;
 		const TArray<TSharedPtr<FJsonValue>>* RowNameValues = nullptr;
@@ -38,7 +39,7 @@ namespace
 		return RowNames;
 	}
 
-	TMap<FString, FString> ReadDataTableRouteFieldsObject(const TSharedPtr<FJsonObject>& Payload)
+	static TMap<FString, FString> ReadDataTableRouteFieldsObject(const TSharedPtr<FJsonObject>& Payload)
 	{
 		TMap<FString, FString> Fields;
 		const TSharedPtr<FJsonObject>* FieldsObject = nullptr;
@@ -59,7 +60,7 @@ namespace
 		return Fields;
 	}
 
-	FBlueprintHelperBridgeResponse MakeInvalidDataTableRequest(
+	static FBlueprintHelperBridgeResponse MakeInvalidDataTableRequest(
 		const FBlueprintHelperBridgeRequest& Request,
 		const FString& Message)
 	{
@@ -69,7 +70,7 @@ namespace
 			Message);
 	}
 
-	FBlueprintHelperBridgeResponse MakeDataTableExecutionFailure(
+	static FBlueprintHelperBridgeResponse MakeDataTableExecutionFailure(
 		const FBlueprintHelperBridgeRequest& Request,
 		const FString& Message)
 	{
@@ -79,13 +80,14 @@ namespace
 			Message);
 	}
 
-	TSharedPtr<FJsonObject> MakeDataTableMutationJson(const FBlueprintHelperDataTableMutationResult& Result)
+	static TSharedPtr<FJsonObject> MakeDataTableMutationJson(const FBlueprintHelperDataTableMutationResult& Result)
 	{
 		TSharedPtr<FJsonObject> Json = MakeShared<FJsonObject>();
 		Json->SetStringField(TEXT("row_name"), Result.AffectedRow.ToString());
 		return Json;
 	}
-}
+
+};
 
 FBlueprintHelperDataTableBridgeRoutes::FBlueprintHelperDataTableBridgeRoutes(
 	const FBlueprintHelperDataTableService& InDataTableService)
@@ -104,20 +106,20 @@ bool FBlueprintHelperDataTableBridgeRoutes::IsDataTableCommand(const FString& Co
 FBlueprintHelperBridgeResponse FBlueprintHelperDataTableBridgeRoutes::HandleRequest(
 	const FBlueprintHelperBridgeRequest& Request) const
 {
-	const FString AssetPath = ReadDataTableRouteStringField(Request.Payload, TEXT("asset_path"));
+	const FString AssetPath = FBlueprintHelperDataTableBridgeRoutesLocalUtils::ReadDataTableRouteStringField(Request.Payload, TEXT("asset_path"));
 
 	if (Request.Command == TEXT("get_datatable_rows"))
 	{
 		if (AssetPath.IsEmpty())
 		{
-			return MakeInvalidDataTableRequest(Request, TEXT("payload requires asset_path."));
+			return FBlueprintHelperDataTableBridgeRoutesLocalUtils::MakeInvalidDataTableRequest(Request, TEXT("payload requires asset_path."));
 		}
 
 		const FBlueprintHelperDataTableRowsResult Result =
-			DataTableService.GetDataTableRows(AssetPath, ReadDataTableRouteRowNameFilter(Request.Payload));
+			DataTableService.GetDataTableRows(AssetPath, FBlueprintHelperDataTableBridgeRoutesLocalUtils::ReadDataTableRouteRowNameFilter(Request.Payload));
 		if (!Result.bSuccess)
 		{
-			return MakeDataTableExecutionFailure(Request, Result.ErrorMessage);
+			return FBlueprintHelperDataTableBridgeRoutesLocalUtils::MakeDataTableExecutionFailure(Request, Result.ErrorMessage);
 		}
 
 		FBlueprintHelperBridgeResponse Response = FBlueprintHelperBridgeResponse::Success(Request.RequestId);
@@ -153,23 +155,23 @@ FBlueprintHelperBridgeResponse FBlueprintHelperDataTableBridgeRoutes::HandleRequ
 		return Response;
 	}
 
-	const FString RowName = ReadDataTableRouteStringField(Request.Payload, TEXT("row_name"));
+	const FString RowName = FBlueprintHelperDataTableBridgeRoutesLocalUtils::ReadDataTableRouteStringField(Request.Payload, TEXT("row_name"));
 	if (Request.Command == TEXT("add_datatable_row"))
 	{
 		if (AssetPath.IsEmpty() || RowName.IsEmpty())
 		{
-			return MakeInvalidDataTableRequest(Request, TEXT("payload requires asset_path and row_name."));
+			return FBlueprintHelperDataTableBridgeRoutesLocalUtils::MakeInvalidDataTableRequest(Request, TEXT("payload requires asset_path and row_name."));
 		}
 
 		const FBlueprintHelperDataTableMutationResult Result =
-			DataTableService.AddDataTableRow(AssetPath, RowName, ReadDataTableRouteFieldsObject(Request.Payload));
+			DataTableService.AddDataTableRow(AssetPath, RowName, FBlueprintHelperDataTableBridgeRoutesLocalUtils::ReadDataTableRouteFieldsObject(Request.Payload));
 		if (!Result.bSuccess)
 		{
-			return MakeDataTableExecutionFailure(Request, Result.ErrorMessage);
+			return FBlueprintHelperDataTableBridgeRoutesLocalUtils::MakeDataTableExecutionFailure(Request, Result.ErrorMessage);
 		}
 
 		FBlueprintHelperBridgeResponse Response = FBlueprintHelperBridgeResponse::Success(Request.RequestId);
-		Response.Result = MakeDataTableMutationJson(Result);
+		Response.Result = FBlueprintHelperDataTableBridgeRoutesLocalUtils::MakeDataTableMutationJson(Result);
 		return Response;
 	}
 
@@ -177,24 +179,24 @@ FBlueprintHelperBridgeResponse FBlueprintHelperDataTableBridgeRoutes::HandleRequ
 	{
 		if (AssetPath.IsEmpty() || RowName.IsEmpty())
 		{
-			return MakeInvalidDataTableRequest(Request, TEXT("payload requires asset_path and row_name."));
+			return FBlueprintHelperDataTableBridgeRoutesLocalUtils::MakeInvalidDataTableRequest(Request, TEXT("payload requires asset_path and row_name."));
 		}
 
-		const TMap<FString, FString> Fields = ReadDataTableRouteFieldsObject(Request.Payload);
+		const TMap<FString, FString> Fields = FBlueprintHelperDataTableBridgeRoutesLocalUtils::ReadDataTableRouteFieldsObject(Request.Payload);
 		if (Fields.Num() == 0)
 		{
-			return MakeInvalidDataTableRequest(Request, TEXT("payload.fields must contain at least one field."));
+			return FBlueprintHelperDataTableBridgeRoutesLocalUtils::MakeInvalidDataTableRequest(Request, TEXT("payload.fields must contain at least one field."));
 		}
 
 		const FBlueprintHelperDataTableMutationResult Result =
 			DataTableService.UpdateDataTableRow(AssetPath, RowName, Fields);
 		if (!Result.bSuccess)
 		{
-			return MakeDataTableExecutionFailure(Request, Result.ErrorMessage);
+			return FBlueprintHelperDataTableBridgeRoutesLocalUtils::MakeDataTableExecutionFailure(Request, Result.ErrorMessage);
 		}
 
 		FBlueprintHelperBridgeResponse Response = FBlueprintHelperBridgeResponse::Success(Request.RequestId);
-		Response.Result = MakeDataTableMutationJson(Result);
+		Response.Result = FBlueprintHelperDataTableBridgeRoutesLocalUtils::MakeDataTableMutationJson(Result);
 		return Response;
 	}
 
@@ -202,18 +204,18 @@ FBlueprintHelperBridgeResponse FBlueprintHelperDataTableBridgeRoutes::HandleRequ
 	{
 		if (AssetPath.IsEmpty() || RowName.IsEmpty())
 		{
-			return MakeInvalidDataTableRequest(Request, TEXT("payload requires asset_path and row_name."));
+			return FBlueprintHelperDataTableBridgeRoutesLocalUtils::MakeInvalidDataTableRequest(Request, TEXT("payload requires asset_path and row_name."));
 		}
 
 		const FBlueprintHelperDataTableMutationResult Result =
 			DataTableService.DeleteDataTableRow(AssetPath, RowName);
 		if (!Result.bSuccess)
 		{
-			return MakeDataTableExecutionFailure(Request, Result.ErrorMessage);
+			return FBlueprintHelperDataTableBridgeRoutesLocalUtils::MakeDataTableExecutionFailure(Request, Result.ErrorMessage);
 		}
 
 		FBlueprintHelperBridgeResponse Response = FBlueprintHelperBridgeResponse::Success(Request.RequestId);
-		Response.Result = MakeDataTableMutationJson(Result);
+		Response.Result = FBlueprintHelperDataTableBridgeRoutesLocalUtils::MakeDataTableMutationJson(Result);
 		return Response;
 	}
 

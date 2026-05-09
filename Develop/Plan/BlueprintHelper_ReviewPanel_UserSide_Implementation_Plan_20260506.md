@@ -493,8 +493,22 @@ Verification status:
 
 Deferred:
 
-- User-side build/run confirmation is still needed for the new graph resolver files because Codex cannot reach plugin compilation in the current sandbox.
+- Live run confirmation is still needed for the new graph resolver behavior. User-side compile is confirmed in the 2026-05-09 sync below.
 - `tx_1777905076009` can still produce a smaller frame when older journal `created_nodes` no longer exist in the current graph after later transactions. That is an atomic-chain/current-node attribution issue, not the missing-graph fallback issue fixed here.
+- `editorBounds=0` remains intentionally deferred while timer-based resizing is removed.
+
+## Progress Sync - 2026-05-09 User Compile Confirmation
+
+Status update:
+
+- User-side compile has passed, so the new graph resolver files are now compile-confirmed outside the Codex sandbox.
+- The previous compile blocker for `BlueprintHelperReviewGraphResolver` is closed.
+- No new Codex-side UE compile was run in this sync.
+
+Still open:
+
+- Live ReviewPanel run confirmation is still useful for graph selection and current-node attribution behavior.
+- `tx_1777905076009` can still produce a smaller frame when older journal `created_nodes` no longer exist in the current graph after later transactions.
 - `editorBounds=0` remains intentionally deferred while timer-based resizing is removed.
 
 Omitted:

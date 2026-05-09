@@ -6,9 +6,10 @@
 #include "Shared/BlueprintHelperToolResultTypes.h"
 #include "Systems/ToolClusters/AssetFactory/BlueprintHelperAssetFactoryService.h"
 
-namespace
+class FBlueprintHelperAssetFactoryBridgeRoutesLocalUtils
 {
-	FBlueprintHelperBridgeResponse MakeInvalidRequest(
+public:
+	static FBlueprintHelperBridgeResponse MakeInvalidRequest(
 		const FBlueprintHelperBridgeRequest& Request,
 		const FString& Message)
 	{
@@ -18,7 +19,7 @@ namespace
 			Message);
 	}
 
-	bool TryReadString(
+	static bool TryReadString(
 		const TSharedPtr<FJsonObject>& Payload,
 		const TCHAR* FieldName,
 		bool bRequired,
@@ -36,7 +37,7 @@ namespace
 		return true;
 	}
 
-	FBlueprintHelperToolError MakeAssetFactoryError(
+	static FBlueprintHelperToolError MakeAssetFactoryError(
 		const FString& Code,
 		EBlueprintHelperToolStage Stage,
 		const FString& Message,
@@ -51,7 +52,7 @@ namespace
 		return Error;
 	}
 
-	void BuildAssetFactoryResult(
+	static void BuildAssetFactoryResult(
 		FBlueprintHelperToolResultBase& Result,
 		const FBlueprintHelperAssetFactoryData& Data,
 		const FString& AssetPath,
@@ -81,7 +82,8 @@ namespace
 		Validation.bSaved = false;
 		Result.Validation = Validation;
 	}
-}
+
+};
 
 FBlueprintHelperAssetFactoryBridgeRoutes::FBlueprintHelperAssetFactoryBridgeRoutes(
 	const FBlueprintHelperAssetFactoryService& InAssetFactoryService)
@@ -107,23 +109,23 @@ FBlueprintHelperBridgeResponse FBlueprintHelperAssetFactoryBridgeRoutes::HandleR
 
 	FString AssetPath;
 	FString AssetTypeText;
-	if (!TryReadString(Request.Payload, TEXT("asset_path"), true, AssetPath) ||
-		!TryReadString(Request.Payload, TEXT("asset_type"), true, AssetTypeText))
+	if (!FBlueprintHelperAssetFactoryBridgeRoutesLocalUtils::TryReadString(Request.Payload, TEXT("asset_path"), true, AssetPath) ||
+		!FBlueprintHelperAssetFactoryBridgeRoutesLocalUtils::TryReadString(Request.Payload, TEXT("asset_type"), true, AssetTypeText))
 	{
-		return MakeInvalidRequest(Request, TEXT("payload 缺少 asset_path 或 asset_type 字段。"));
+		return FBlueprintHelperAssetFactoryBridgeRoutesLocalUtils::MakeInvalidRequest(Request, TEXT("payload 缺少 asset_path 或 asset_type 字段。"));
 	}
 
 	FString ParentClass;
 	FString ValueType;
 	FString CollisionText;
-	TryReadString(Request.Payload, TEXT("parent_class"), false, ParentClass);
-	TryReadString(Request.Payload, TEXT("value_type"), false, ValueType);
-	TryReadString(Request.Payload, TEXT("collision"), false, CollisionText);
+	FBlueprintHelperAssetFactoryBridgeRoutesLocalUtils::TryReadString(Request.Payload, TEXT("parent_class"), false, ParentClass);
+	FBlueprintHelperAssetFactoryBridgeRoutesLocalUtils::TryReadString(Request.Payload, TEXT("value_type"), false, ValueType);
+	FBlueprintHelperAssetFactoryBridgeRoutesLocalUtils::TryReadString(Request.Payload, TEXT("collision"), false, CollisionText);
 
 	EBlueprintHelperAssetType AssetType = EBlueprintHelperAssetType::Unknown;
 	if (!FBlueprintHelperAssetFactoryService::TryNormalizeAssetTypeAndParent(AssetTypeText, ParentClass, AssetType))
 	{
-		return MakeInvalidRequest(
+		return FBlueprintHelperAssetFactoryBridgeRoutesLocalUtils::MakeInvalidRequest(
 			Request,
 			FString::Printf(TEXT("不支持的 asset_type: %s"), *AssetTypeText));
 	}
@@ -151,7 +153,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperAssetFactoryBridgeRoutes::HandleR
 			FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::NoOp(
 				TEXT("create_asset"),
 				TraceId);
-			BuildAssetFactoryResult(Result, FactoryData, AssetPath, AssetType);
+			FBlueprintHelperAssetFactoryBridgeRoutesLocalUtils::BuildAssetFactoryResult(Result, FactoryData, AssetPath, AssetType);
 			FBlueprintHelperBridgeResponse Response = FBlueprintHelperBridgeResponse::Success(Request.RequestId);
 			Response.Result = Result.ToJson();
 			return Response;
@@ -162,12 +164,12 @@ FBlueprintHelperBridgeResponse FBlueprintHelperAssetFactoryBridgeRoutes::HandleR
 			FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Failure(
 				TEXT("create_asset"),
 				TraceId,
-				MakeAssetFactoryError(
+				FBlueprintHelperAssetFactoryBridgeRoutesLocalUtils::MakeAssetFactoryError(
 					TEXT("asset_already_exists"),
 					EBlueprintHelperToolStage::Preflight,
 					TEXT("Target asset already exists."),
 					false));
-			BuildAssetFactoryResult(Result, FactoryData, AssetPath, AssetType);
+			FBlueprintHelperAssetFactoryBridgeRoutesLocalUtils::BuildAssetFactoryResult(Result, FactoryData, AssetPath, AssetType);
 			FBlueprintHelperBridgeResponse Response = FBlueprintHelperBridgeResponse::Success(Request.RequestId);
 			Response.Result = Result.ToJson();
 			return Response;
@@ -176,12 +178,12 @@ FBlueprintHelperBridgeResponse FBlueprintHelperAssetFactoryBridgeRoutes::HandleR
 		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Failure(
 			TEXT("create_asset"),
 			TraceId,
-			MakeAssetFactoryError(
+			FBlueprintHelperAssetFactoryBridgeRoutesLocalUtils::MakeAssetFactoryError(
 				TEXT("asset_type_mismatch"),
 				EBlueprintHelperToolStage::Preflight,
 				TEXT("Existing asset type does not match requested asset type."),
 				false));
-		BuildAssetFactoryResult(Result, FactoryData, AssetPath, AssetType);
+		FBlueprintHelperAssetFactoryBridgeRoutesLocalUtils::BuildAssetFactoryResult(Result, FactoryData, AssetPath, AssetType);
 		FBlueprintHelperBridgeResponse Response = FBlueprintHelperBridgeResponse::Success(Request.RequestId);
 		Response.Result = Result.ToJson();
 		return Response;
@@ -192,12 +194,12 @@ FBlueprintHelperBridgeResponse FBlueprintHelperAssetFactoryBridgeRoutes::HandleR
 		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Failure(
 			TEXT("create_asset"),
 			TraceId,
-			MakeAssetFactoryError(
+			FBlueprintHelperAssetFactoryBridgeRoutesLocalUtils::MakeAssetFactoryError(
 				TEXT("creation_failed"),
 				EBlueprintHelperToolStage::Execute,
 				TEXT("Failed to create asset."),
 				false));
-		BuildAssetFactoryResult(Result, FactoryData, AssetPath, AssetType);
+		FBlueprintHelperAssetFactoryBridgeRoutesLocalUtils::BuildAssetFactoryResult(Result, FactoryData, AssetPath, AssetType);
 		FBlueprintHelperBridgeResponse Response = FBlueprintHelperBridgeResponse::Success(Request.RequestId);
 		Response.Result = Result.ToJson();
 		return Response;
@@ -206,7 +208,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperAssetFactoryBridgeRoutes::HandleR
 	FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Applied(
 		TEXT("create_asset"),
 		TraceId);
-	BuildAssetFactoryResult(Result, FactoryData, AssetPath, AssetType);
+	FBlueprintHelperAssetFactoryBridgeRoutesLocalUtils::BuildAssetFactoryResult(Result, FactoryData, AssetPath, AssetType);
 
 	FBlueprintHelperBridgeResponse Response = FBlueprintHelperBridgeResponse::Success(Request.RequestId);
 	Response.Result = Result.ToJson();

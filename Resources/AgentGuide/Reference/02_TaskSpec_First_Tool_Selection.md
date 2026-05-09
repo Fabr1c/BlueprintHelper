@@ -54,3 +54,5 @@ Graph body 里的函数调用使用 `args` 表达函数参数。这里的 `args`
 ## Frozen Boundary
 
 底层 capability 入口只供 Task Runtime、测试和专家诊断使用。普通 Agent 不从 AgentGuide 选择这些入口。preview blocked 时停止报告或修正 TaskSpec。
+
+普通 Agent 不操作 ReviewPanel，不展开 ReviewRecord 内部状态。工具返回 `debug_case_ids[]` 时，可以用 summary-only `blueprinthelper_get_debug_case` 定位问题，但不能读取 DebugBundle artifact 内容、本地 bundle 路径、raw payload、source content 或 token/settings 全文。

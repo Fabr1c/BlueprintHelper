@@ -39,8 +39,9 @@
 #include "UObject/Package.h"
 #include "UObject/UnrealType.h"
 
-namespace
+class FBlueprintHelperComponentToolResultBaseTestsLocalUtils
 {
+public:
 	struct FComponentTaskRuntimeTestServices
 	{
 		FBlueprintHelperGraphResolver Resolver;
@@ -107,12 +108,12 @@ namespace
 		}
 	};
 
-	FString MakeComponentServiceTestObjectName(const FString& Prefix)
+	static FString MakeComponentServiceTestObjectName(const FString& Prefix)
 	{
 		return FString::Printf(TEXT("%s_%s"), *Prefix, *FGuid::NewGuid().ToString(EGuidFormats::Digits));
 	}
 
-	UPackage* MakeComponentServiceTestPackage(const FString& Prefix)
+	static UPackage* MakeComponentServiceTestPackage(const FString& Prefix)
 	{
 		UPackage* Package = CreatePackage(*FString::Printf(
 			TEXT("/Game/BlueprintHelperComponent/%s"),
@@ -121,7 +122,7 @@ namespace
 		return Package;
 	}
 
-	UBlueprint* MakeComponentServiceActorBlueprint(const FString& Prefix)
+	static UBlueprint* MakeComponentServiceActorBlueprint(const FString& Prefix)
 	{
 		UPackage* Package = MakeComponentServiceTestPackage(Prefix);
 		UBlueprint* Blueprint = FKismetEditorUtilities::CreateBlueprint(
@@ -136,7 +137,7 @@ namespace
 		return Blueprint;
 	}
 
-	USCS_Node* FindComponentServiceTestNode(UBlueprint* Blueprint, const FString& ComponentName)
+	static USCS_Node* FindComponentServiceTestNode(UBlueprint* Blueprint, const FString& ComponentName)
 	{
 		if (!Blueprint || !Blueprint->SimpleConstructionScript)
 		{
@@ -153,7 +154,7 @@ namespace
 		return nullptr;
 	}
 
-	FBoolProperty* FindWritableBoolProperty(UObject* Object, FString& OutPropertyName)
+	static FBoolProperty* FindWritableBoolProperty(UObject* Object, FString& OutPropertyName)
 	{
 		if (!Object)
 		{
@@ -172,14 +173,14 @@ namespace
 		return nullptr;
 	}
 
-	bool ReadBoolPropertyValue(UObject* Object, FBoolProperty* Property)
+	static bool ReadBoolPropertyValue(UObject* Object, FBoolProperty* Property)
 	{
 		return Object && Property
 			? Property->GetPropertyValue(Property->ContainerPtrToValuePtr<void>(Object))
 			: false;
 	}
 
-	void WriteBoolPropertyValue(UObject* Object, FBoolProperty* Property, bool bValue)
+	static void WriteBoolPropertyValue(UObject* Object, FBoolProperty* Property, bool bValue)
 	{
 		if (Object && Property)
 		{
@@ -187,7 +188,7 @@ namespace
 		}
 	}
 
-	void AssertComponentDryRunResult(
+	static void AssertComponentDryRunResult(
 		FAutomationTestBase& Test,
 		const FBlueprintHelperToolResultBase& Result,
 		const FString& ExpectedOperation)
@@ -204,13 +205,13 @@ namespace
 		}
 	}
 
-	void AssertComponentToolResultBaseEnvelope(
+	static void AssertComponentToolResultBaseEnvelope(
 		FAutomationTestBase& Test,
 		const FBlueprintHelperToolResultBase& Result,
 		const FString& ExpectedOperation)
 	{
 		Test.TestEqual(TEXT("schema is ToolResultBase schema"),
-			Result.Schema, FString(BlueprintHelperProtocol::ToolResultSchema));
+			Result.Schema, FString(FBlueprintHelperProtocol::ToolResultSchema));
 		Test.TestEqual(TEXT("operation is preserved"), Result.Operation, ExpectedOperation);
 		Test.TestEqual(TEXT("failed status is represented by ToolResultBase"),
 			Result.Status, EBlueprintHelperToolStatus::Failed);
@@ -225,7 +226,7 @@ namespace
 		Test.TestTrue(TEXT("json carries schema"), Json->TryGetStringField(TEXT("schema"), Schema));
 		Test.TestTrue(TEXT("json carries operation"), Json->TryGetStringField(TEXT("operation"), Operation));
 		Test.TestTrue(TEXT("json carries status"), Json->TryGetStringField(TEXT("status"), Status));
-		Test.TestEqual(TEXT("json schema value"), Schema, FString(BlueprintHelperProtocol::ToolResultSchema));
+		Test.TestEqual(TEXT("json schema value"), Schema, FString(FBlueprintHelperProtocol::ToolResultSchema));
 		Test.TestEqual(TEXT("json operation value"), Operation, ExpectedOperation);
 		Test.TestEqual(TEXT("json status value"), Status, FString(TEXT("failed")));
 		Test.TestTrue(TEXT("json carries target"), Json->HasTypedField<EJson::Object>(TEXT("target")));
@@ -233,7 +234,7 @@ namespace
 		Test.TestTrue(TEXT("json carries error"), Json->HasTypedField<EJson::Object>(TEXT("error")));
 	}
 
-	TSharedPtr<FJsonObject> MakeComponentTaskPlanStep(
+	static TSharedPtr<FJsonObject> MakeComponentTaskPlanStep(
 		const FString& StepId,
 		const FString& AssetPath,
 		const FString& OpName,
@@ -276,7 +277,7 @@ namespace
 		return Step;
 	}
 
-	TSharedPtr<FJsonObject> MakeComponentAddThenConfigureTaskPlan(
+	static TSharedPtr<FJsonObject> MakeComponentAddThenConfigureTaskPlan(
 		const FString& AssetPath,
 		const FString& ComponentName)
 	{
@@ -316,7 +317,8 @@ namespace
 		TaskPlan->SetArrayField(TEXT("steps"), Steps);
 		return TaskPlan;
 	}
-}
+
+};
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperComponentToolResultBaseReadEnvelopeTest,
@@ -332,7 +334,7 @@ bool FBlueprintHelperComponentToolResultBaseReadEnvelopeTest::RunTest(const FStr
 	Request.AssetPath = TEXT("/Game/BlueprintHelper/DoesNotExist/BP_Missing");
 
 	const FBlueprintHelperToolResultBase Result = ComponentService.ReadComponents(Request);
-	AssertComponentToolResultBaseEnvelope(*this, Result, TEXT("read_components"));
+	FBlueprintHelperComponentToolResultBaseTestsLocalUtils::AssertComponentToolResultBaseEnvelope(*this, Result, TEXT("read_components"));
 	return true;
 }
 
@@ -351,7 +353,7 @@ bool FBlueprintHelperComponentToolResultBaseWriteEnvelopeTest::RunTest(const FSt
 	AddRequest.AssetPath = MissingAssetPath;
 	AddRequest.ComponentName = TEXT("TestComponent");
 	AddRequest.ComponentClass = TEXT("StaticMeshComponent");
-	AssertComponentToolResultBaseEnvelope(*this,
+	FBlueprintHelperComponentToolResultBaseTestsLocalUtils::AssertComponentToolResultBaseEnvelope(*this,
 		ComponentService.AddComponent(AddRequest),
 		TEXT("add_component"));
 
@@ -363,14 +365,14 @@ bool FBlueprintHelperComponentToolResultBaseWriteEnvelopeTest::RunTest(const FSt
 	Setting.PropertyPath = TEXT("Mobility");
 	Setting.Value = MakeShared<FJsonValueString>(TEXT("Movable"));
 	SetRequest.Settings.Add(MoveTemp(Setting));
-	AssertComponentToolResultBaseEnvelope(*this,
+	FBlueprintHelperComponentToolResultBaseTestsLocalUtils::AssertComponentToolResultBaseEnvelope(*this,
 		ComponentService.SetComponentProperty(SetRequest),
 		TEXT("set_component_property"));
 
 	FBlueprintHelperRemoveComponentRequest RemoveRequest;
 	RemoveRequest.AssetPath = MissingAssetPath;
 	RemoveRequest.ComponentName = TEXT("TestComponent");
-	AssertComponentToolResultBaseEnvelope(*this,
+	FBlueprintHelperComponentToolResultBaseTestsLocalUtils::AssertComponentToolResultBaseEnvelope(*this,
 		ComponentService.RemoveComponent(RemoveRequest),
 		TEXT("remove_component"));
 
@@ -384,7 +386,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperComponentAddDryRunDoesNotCreateTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeComponentServiceActorBlueprint(TEXT("AddDryRun"));
+	UBlueprint* Blueprint = FBlueprintHelperComponentToolResultBaseTestsLocalUtils::MakeComponentServiceActorBlueprint(TEXT("AddDryRun"));
 	TestNotNull(TEXT("test Blueprint is created"), Blueprint);
 	TestNotNull(TEXT("test Blueprint has SimpleConstructionScript"), Blueprint ? Blueprint->SimpleConstructionScript.Get() : nullptr);
 	if (!Blueprint || !Blueprint->SimpleConstructionScript)
@@ -404,9 +406,9 @@ bool FBlueprintHelperComponentAddDryRunDoesNotCreateTest::RunTest(const FString&
 
 	const FBlueprintHelperToolResultBase Result = ComponentService.AddComponent(Request);
 
-	AssertComponentDryRunResult(*this, Result, TEXT("add_component"));
+	FBlueprintHelperComponentToolResultBaseTestsLocalUtils::AssertComponentDryRunResult(*this, Result, TEXT("add_component"));
 	TestNull(TEXT("dry-run add does not create component node"),
-		FindComponentServiceTestNode(Blueprint, TEXT("DryRunActorComponent")));
+		FBlueprintHelperComponentToolResultBaseTestsLocalUtils::FindComponentServiceTestNode(Blueprint, TEXT("DryRunActorComponent")));
 	TestEqual(TEXT("dry-run add leaves SCS node count unchanged"),
 		Blueprint->SimpleConstructionScript->GetAllNodes().Num(),
 		BeforeNodeCount);
@@ -420,7 +422,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperComponentSetPropertiesDryRunDoesNotWriteTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeComponentServiceActorBlueprint(TEXT("SetPropertiesDryRun"));
+	UBlueprint* Blueprint = FBlueprintHelperComponentToolResultBaseTestsLocalUtils::MakeComponentServiceActorBlueprint(TEXT("SetPropertiesDryRun"));
 	TestNotNull(TEXT("test Blueprint is created"), Blueprint);
 	if (!Blueprint)
 	{
@@ -438,7 +440,7 @@ bool FBlueprintHelperComponentSetPropertiesDryRunDoesNotWriteTest::RunTest(const
 	TestTrue(TEXT("component is added before property dry-run"), AddResult.bOk);
 	TestEqual(TEXT("component add applies change"), AddResult.Status, EBlueprintHelperToolStatus::Applied);
 
-	USCS_Node* Node = FindComponentServiceTestNode(Blueprint, TEXT("DryRunEditableComponent"));
+	USCS_Node* Node = FBlueprintHelperComponentToolResultBaseTestsLocalUtils::FindComponentServiceTestNode(Blueprint, TEXT("DryRunEditableComponent"));
 	TestNotNull(TEXT("component node exists before property dry-run"), Node);
 	TestNotNull(TEXT("component template exists before property dry-run"), Node ? Node->ComponentTemplate.Get() : nullptr);
 	if (!Node || !Node->ComponentTemplate)
@@ -447,16 +449,16 @@ bool FBlueprintHelperComponentSetPropertiesDryRunDoesNotWriteTest::RunTest(const
 	}
 
 	FString PropertyName;
-	FBoolProperty* BoolProperty = FindWritableBoolProperty(Node->ComponentTemplate, PropertyName);
+	FBoolProperty* BoolProperty = FBlueprintHelperComponentToolResultBaseTestsLocalUtils::FindWritableBoolProperty(Node->ComponentTemplate, PropertyName);
 	TestNotNull(TEXT("component template has a writable bool property"), BoolProperty);
 	if (!BoolProperty)
 	{
 		return false;
 	}
 
-	WriteBoolPropertyValue(Node->ComponentTemplate, BoolProperty, true);
+	FBlueprintHelperComponentToolResultBaseTestsLocalUtils::WriteBoolPropertyValue(Node->ComponentTemplate, BoolProperty, true);
 	TestTrue(TEXT("test bool property starts true"),
-		ReadBoolPropertyValue(Node->ComponentTemplate, BoolProperty));
+		FBlueprintHelperComponentToolResultBaseTestsLocalUtils::ReadBoolPropertyValue(Node->ComponentTemplate, BoolProperty));
 
 	FBlueprintHelperSetComponentPropertiesRequest SetRequest;
 	SetRequest.AssetPath = Blueprint->GetPathName();
@@ -470,9 +472,9 @@ bool FBlueprintHelperComponentSetPropertiesDryRunDoesNotWriteTest::RunTest(const
 
 	const FBlueprintHelperToolResultBase SetResult = ComponentService.SetComponentProperties(SetRequest);
 
-	AssertComponentDryRunResult(*this, SetResult, TEXT("set_component_properties"));
+	FBlueprintHelperComponentToolResultBaseTestsLocalUtils::AssertComponentDryRunResult(*this, SetResult, TEXT("set_component_properties"));
 	TestTrue(TEXT("dry-run property write validates property but leaves value unchanged"),
-		ReadBoolPropertyValue(Node->ComponentTemplate, BoolProperty));
+		FBlueprintHelperComponentToolResultBaseTestsLocalUtils::ReadBoolPropertyValue(Node->ComponentTemplate, BoolProperty));
 	return true;
 }
 
@@ -483,7 +485,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperComponentRemoveDryRunDoesNotDeleteTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeComponentServiceActorBlueprint(TEXT("RemoveDryRun"));
+	UBlueprint* Blueprint = FBlueprintHelperComponentToolResultBaseTestsLocalUtils::MakeComponentServiceActorBlueprint(TEXT("RemoveDryRun"));
 	TestNotNull(TEXT("test Blueprint is created"), Blueprint);
 	if (!Blueprint)
 	{
@@ -501,7 +503,7 @@ bool FBlueprintHelperComponentRemoveDryRunDoesNotDeleteTest::RunTest(const FStri
 	TestTrue(TEXT("component is added before remove dry-run"), AddResult.bOk);
 	TestEqual(TEXT("component add applies change"), AddResult.Status, EBlueprintHelperToolStatus::Applied);
 	TestNotNull(TEXT("component node exists before remove dry-run"),
-		FindComponentServiceTestNode(Blueprint, TEXT("DryRunRemoveComponent")));
+		FBlueprintHelperComponentToolResultBaseTestsLocalUtils::FindComponentServiceTestNode(Blueprint, TEXT("DryRunRemoveComponent")));
 
 	FBlueprintHelperRemoveComponentRequest RemoveRequest;
 	RemoveRequest.AssetPath = Blueprint->GetPathName();
@@ -510,9 +512,9 @@ bool FBlueprintHelperComponentRemoveDryRunDoesNotDeleteTest::RunTest(const FStri
 
 	const FBlueprintHelperToolResultBase RemoveResult = ComponentService.RemoveComponent(RemoveRequest);
 
-	AssertComponentDryRunResult(*this, RemoveResult, TEXT("remove_component"));
+	FBlueprintHelperComponentToolResultBaseTestsLocalUtils::AssertComponentDryRunResult(*this, RemoveResult, TEXT("remove_component"));
 	TestNotNull(TEXT("dry-run remove leaves component node in SCS"),
-		FindComponentServiceTestNode(Blueprint, TEXT("DryRunRemoveComponent")));
+		FBlueprintHelperComponentToolResultBaseTestsLocalUtils::FindComponentServiceTestNode(Blueprint, TEXT("DryRunRemoveComponent")));
 	return true;
 }
 
@@ -523,7 +525,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperComponentTaskRuntimeDryRunPlannedConfigureTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeComponentServiceActorBlueprint(TEXT("TaskRuntimeDryRun"));
+	UBlueprint* Blueprint = FBlueprintHelperComponentToolResultBaseTestsLocalUtils::MakeComponentServiceActorBlueprint(TEXT("TaskRuntimeDryRun"));
 	TestNotNull(TEXT("target Blueprint is created"), Blueprint);
 	if (!Blueprint)
 	{
@@ -532,21 +534,21 @@ bool FBlueprintHelperComponentTaskRuntimeDryRunPlannedConfigureTest::RunTest(con
 
 	const FString ComponentName = TEXT("DryRunPlannedMesh");
 	TestNull(TEXT("component does not exist before preview"),
-		FindComponentServiceTestNode(Blueprint, ComponentName));
+		FBlueprintHelperComponentToolResultBaseTestsLocalUtils::FindComponentServiceTestNode(Blueprint, ComponentName));
 
 	TSharedPtr<FJsonObject> Payload = MakeShared<FJsonObject>();
-	Payload->SetObjectField(TEXT("task_plan"), MakeComponentAddThenConfigureTaskPlan(
+	Payload->SetObjectField(TEXT("task_plan"), FBlueprintHelperComponentToolResultBaseTestsLocalUtils::MakeComponentAddThenConfigureTaskPlan(
 		Blueprint->GetPathName(),
 		ComponentName));
 
-	FComponentTaskRuntimeTestServices Services;
+	FBlueprintHelperComponentToolResultBaseTestsLocalUtils::FComponentTaskRuntimeTestServices Services;
 	const FBlueprintHelperToolResultBase Result = Services.TaskRuntimeService.PreviewTaskPlan(Payload);
 
 	TestTrue(TEXT("component add+configure preview succeeds"), Result.bOk);
 	TestEqual(TEXT("preview returns dry-run status"), Result.Status, EBlueprintHelperToolStatus::DryRun);
 	TestFalse(TEXT("preview does not modify assets"), Result.bModified);
 	TestNull(TEXT("dry-run does not create the planned component"),
-		FindComponentServiceTestNode(Blueprint, ComponentName));
+		FBlueprintHelperComponentToolResultBaseTestsLocalUtils::FindComponentServiceTestNode(Blueprint, ComponentName));
 	TestTrue(TEXT("preview carries runtime data"), Result.Data.IsValid());
 	if (!Result.Data.IsValid())
 	{

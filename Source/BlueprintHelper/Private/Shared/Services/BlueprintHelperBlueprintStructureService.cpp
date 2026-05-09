@@ -15,14 +15,16 @@
 
 DEFINE_LOG_CATEGORY_STATIC(LogBlueprintHelperStructure, Log, All);
 
-namespace
+class FBlueprintHelperBlueprintStructureServiceLocalUtils
 {
-bool ParseStableNodeGuid(const FString& NodeId, FGuid& OutGuid)
+public:
+static bool ParseStableNodeGuid(const FString& NodeId, FGuid& OutGuid)
 {
 	return FGuid::ParseExact(NodeId, EGuidFormats::Digits, OutGuid)
 		|| FGuid::ParseExact(NodeId, EGuidFormats::DigitsWithHyphens, OutGuid);
 }
-}
+
+};
 
 FBlueprintHelperBlueprintStructureService::FBlueprintHelperBlueprintStructureService(
 	const FBlueprintHelperGraphResolver& InResolver)
@@ -401,7 +403,7 @@ bool FBlueprintHelperBlueprintStructureService::DeleteNodes(
 		}
 
 		FGuid NodeGuid;
-		if (!ParseStableNodeGuid(NodeId, NodeGuid))
+		if (!FBlueprintHelperBlueprintStructureServiceLocalUtils::ParseStableNodeGuid(NodeId, NodeGuid))
 		{
 			OutError = FString::Printf(TEXT("delete_nodes 只接受稳定 node_guid，收到: %s"), *NodeId);
 			return false;

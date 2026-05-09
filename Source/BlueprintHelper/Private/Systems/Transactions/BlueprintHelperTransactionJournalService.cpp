@@ -12,12 +12,13 @@
 #include "Serialization/JsonWriter.h"
 #include "Misc/DateTime.h"
 
-namespace
+class FBlueprintHelperTransactionJournalServiceLocalUtils
 {
-	FString GBlueprintHelperRuntimeReviewArchiveSessionId;
-	FString GBlueprintHelperRuntimeReviewTaskRunId;
+public:
+	inline static FString GBlueprintHelperRuntimeReviewArchiveSessionId;
+	inline static FString GBlueprintHelperRuntimeReviewTaskRunId;
 
-	FString ExtractJournalTargetName(const FString& RawPath)
+	static FString ExtractJournalTargetName(const FString& RawPath)
 	{
 		FString Name = RawPath;
 		int32 DotIndex = INDEX_NONE;
@@ -28,7 +29,7 @@ namespace
 		return Name;
 	}
 
-	EBlueprintHelperReviewChangeKind DeriveReviewChangeKindFromTool(const FString& Tool)
+	static EBlueprintHelperReviewChangeKind DeriveReviewChangeKindFromTool(const FString& Tool)
 	{
 		if (Tool.Contains(TEXT("Cleanup"), ESearchCase::IgnoreCase)
 			|| Tool.Contains(TEXT("Remove"), ESearchCase::IgnoreCase)
@@ -45,12 +46,12 @@ namespace
 		return EBlueprintHelperReviewChangeKind::Modified;
 	}
 
-	FString MakeStableReviewHash(const FString& Payload)
+	static FString MakeStableReviewHash(const FString& Payload)
 	{
 		return FBlueprintHelperReviewHashService::MakeStableHash(Payload);
 	}
 
-	FString MakeReviewTargetHashPayload(
+	static FString MakeReviewTargetHashPayload(
 		const FString& Phase,
 		const FBlueprintHelperWriteReviewEvidence& Evidence,
 		const FString& GraphName,
@@ -67,7 +68,7 @@ namespace
 			*TargetKey);
 	}
 
-	void AddJournalAtomicTarget(
+	static void AddJournalAtomicTarget(
 		FBlueprintHelperWriteReviewEvidence& Evidence,
 		const FString& GraphName,
 		const FString& TargetKey,
@@ -112,7 +113,7 @@ namespace
 		Evidence.AtomicTargets.Add(Target);
 	}
 
-	TArray<FBlueprintHelperWriteReviewEvidence> BuildReviewEvidencesFromJournal(
+	static TArray<FBlueprintHelperWriteReviewEvidence> BuildReviewEvidencesFromJournal(
 		const FBlueprintHelperAppendJournalRecord& Record)
 	{
 		TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
@@ -217,20 +218,21 @@ namespace
 
 		return Evidences;
 	}
-}
+
+};
 
 void FBlueprintHelperTransactionJournalService::SetRuntimeReviewContext(
 	const FString& ArchiveSessionId,
 	const FString& TaskRunId)
 {
-	GBlueprintHelperRuntimeReviewArchiveSessionId = ArchiveSessionId;
-	GBlueprintHelperRuntimeReviewTaskRunId = TaskRunId;
+	FBlueprintHelperTransactionJournalServiceLocalUtils::GBlueprintHelperRuntimeReviewArchiveSessionId = ArchiveSessionId;
+	FBlueprintHelperTransactionJournalServiceLocalUtils::GBlueprintHelperRuntimeReviewTaskRunId = TaskRunId;
 }
 
 void FBlueprintHelperTransactionJournalService::ClearRuntimeReviewContext()
 {
-	GBlueprintHelperRuntimeReviewArchiveSessionId.Empty();
-	GBlueprintHelperRuntimeReviewTaskRunId.Empty();
+	FBlueprintHelperTransactionJournalServiceLocalUtils::GBlueprintHelperRuntimeReviewArchiveSessionId.Empty();
+	FBlueprintHelperTransactionJournalServiceLocalUtils::GBlueprintHelperRuntimeReviewTaskRunId.Empty();
 }
 
 FString FBlueprintHelperTransactionJournalService::GenerateTransactionId() const
@@ -303,7 +305,7 @@ bool FBlueprintHelperTransactionJournalService::WriteAppendJournal(
 		}
 	}
 
-	const TArray<FBlueprintHelperWriteReviewEvidence> ReviewEvidences = BuildReviewEvidencesFromJournal(Record);
+	const TArray<FBlueprintHelperWriteReviewEvidence> ReviewEvidences = FBlueprintHelperTransactionJournalServiceLocalUtils::BuildReviewEvidencesFromJournal(Record);
 	if (ReviewEvidences.Num() > 0)
 	{
 		FBlueprintHelperReviewStoreService ReviewStore;

@@ -43,9 +43,10 @@
 #include "WidgetBlueprint.h"
 #include "StructUtils/UserDefinedStruct.h"
 
-namespace
+class FBlueprintHelperTaskPlanAssetFactoryAdapterTestsLocalUtils
 {
-	FString AssetFactoryTestObjectPath(const FString& AssetPath)
+public:
+	static FString AssetFactoryTestObjectPath(const FString& AssetPath)
 	{
 		if (AssetPath.Contains(TEXT(".")))
 		{
@@ -122,14 +123,14 @@ namespace
 		}
 	};
 
-	bool AssetFactoryTestAssetExists(const FString& AssetPath)
+	static bool AssetFactoryTestAssetExists(const FString& AssetPath)
 	{
 		FAssetRegistryModule& AssetRegistry =
 			FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
 		return AssetRegistry.Get().GetAssetByObjectPath(FSoftObjectPath(AssetFactoryTestObjectPath(AssetPath))).IsValid();
 	}
 
-	bool AssetFactoryHasPropertyWithFriendlyName(const UUserDefinedStruct* Struct, const FString& FriendlyName)
+	static bool AssetFactoryHasPropertyWithFriendlyName(const UUserDefinedStruct* Struct, const FString& FriendlyName)
 	{
 		if (!Struct)
 		{
@@ -147,7 +148,7 @@ namespace
 		return false;
 	}
 
-	TArray<FBlueprintHelperAssetFactoryFieldSpec> MakeDamageAmmoFields()
+	static TArray<FBlueprintHelperAssetFactoryFieldSpec> MakeDamageAmmoFields()
 	{
 		TArray<FBlueprintHelperAssetFactoryFieldSpec> Fields;
 		Fields.Add(FBlueprintHelperAssetFactoryFieldSpec(TEXT("Damage"), TEXT("int")));
@@ -155,7 +156,7 @@ namespace
 		return Fields;
 	}
 
-	TSharedPtr<FJsonObject> MakeAssetFactoryCreateAssetStep()
+	static TSharedPtr<FJsonObject> MakeAssetFactoryCreateAssetStep()
 	{
 		TSharedPtr<FJsonObject> Step = MakeShared<FJsonObject>();
 		Step->SetStringField(TEXT("step_id"), TEXT("step_asset_factory"));
@@ -197,7 +198,7 @@ namespace
 		return Step;
 	}
 
-	TSharedPtr<FJsonObject> MakeAssetFactoryCreateAssetTaskPlan(
+	static TSharedPtr<FJsonObject> MakeAssetFactoryCreateAssetTaskPlan(
 		const FString& AssetPath,
 		const FString& AssetType,
 		const FString& ParentClass = FString())
@@ -247,7 +248,8 @@ namespace
 		TaskPlan->SetArrayField(TEXT("steps"), Steps);
 		return TaskPlan;
 	}
-}
+
+};
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperTaskPlanAssetFactoryAdapterBuildsCreateAssetPayloadTest,
@@ -257,7 +259,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FBlueprintHelperTaskPlanAssetFactoryAdapterBuildsCreateAssetPayloadTest::RunTest(const FString& Parameters)
 {
 	const TSharedPtr<FJsonObject> TaskPlan = MakeShared<FJsonObject>();
-	const TSharedPtr<FJsonObject> Step = MakeAssetFactoryCreateAssetStep();
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanAssetFactoryAdapterTestsLocalUtils::MakeAssetFactoryCreateAssetStep();
 
 	TSharedPtr<FJsonObject> Payload;
 	FBlueprintHelperToolError Error;
@@ -358,7 +360,7 @@ bool FBlueprintHelperAssetFactoryServiceDryRunDoesNotCreateAssetTest::RunTest(co
 		TEXT("/Game/BlueprintHelperSafety/IA_DryRun_%s"),
 		*FGuid::NewGuid().ToString(EGuidFormats::Digits));
 
-	TestFalse(TEXT("test asset does not exist before dry-run"), AssetFactoryTestAssetExists(AssetPath));
+	TestFalse(TEXT("test asset does not exist before dry-run"), FBlueprintHelperTaskPlanAssetFactoryAdapterTestsLocalUtils::AssetFactoryTestAssetExists(AssetPath));
 
 	const FBlueprintHelperAssetFactoryService Service;
 	const FBlueprintHelperAssetFactoryData Data = Service.CreateAsset(
@@ -371,7 +373,7 @@ bool FBlueprintHelperAssetFactoryServiceDryRunDoesNotCreateAssetTest::RunTest(co
 
 	TestFalse(TEXT("dry-run does not report a real created asset"), Data.Asset.bCreated);
 	TestFalse(TEXT("dry-run target was not already present"), Data.Asset.bAlreadyExisted);
-	TestFalse(TEXT("dry-run does not create an asset registry entry"), AssetFactoryTestAssetExists(AssetPath));
+	TestFalse(TEXT("dry-run does not create an asset registry entry"), FBlueprintHelperTaskPlanAssetFactoryAdapterTestsLocalUtils::AssetFactoryTestAssetExists(AssetPath));
 
 	return true;
 }
@@ -387,7 +389,7 @@ bool FBlueprintHelperAssetFactoryServiceCreatesActorBlueprintAssetTest::RunTest(
 		TEXT("/Game/BlueprintHelperSafety/BP_ActorCreate_%s"),
 		*FGuid::NewGuid().ToString(EGuidFormats::Digits));
 
-	TestFalse(TEXT("test asset does not exist before create"), AssetFactoryTestAssetExists(AssetPath));
+	TestFalse(TEXT("test asset does not exist before create"), FBlueprintHelperTaskPlanAssetFactoryAdapterTestsLocalUtils::AssetFactoryTestAssetExists(AssetPath));
 
 	const FBlueprintHelperAssetFactoryService Service;
 	const FBlueprintHelperAssetFactoryData Data = Service.CreateAsset(
@@ -399,9 +401,9 @@ bool FBlueprintHelperAssetFactoryServiceCreatesActorBlueprintAssetTest::RunTest(
 		false);
 
 	TestTrue(TEXT("blueprint class create reports created"), Data.Asset.bCreated);
-	TestTrue(TEXT("created blueprint asset is registered at requested object path"), AssetFactoryTestAssetExists(AssetPath));
+	TestTrue(TEXT("created blueprint asset is registered at requested object path"), FBlueprintHelperTaskPlanAssetFactoryAdapterTestsLocalUtils::AssetFactoryTestAssetExists(AssetPath));
 
-	UObject* CreatedAsset = StaticLoadObject(UBlueprint::StaticClass(), nullptr, *AssetFactoryTestObjectPath(AssetPath));
+	UObject* CreatedAsset = StaticLoadObject(UBlueprint::StaticClass(), nullptr, *FBlueprintHelperTaskPlanAssetFactoryAdapterTestsLocalUtils::AssetFactoryTestObjectPath(AssetPath));
 	UBlueprint* CreatedBlueprint = Cast<UBlueprint>(CreatedAsset);
 	TestNotNull(TEXT("created asset loads as UBlueprint"), CreatedBlueprint);
 	if (CreatedBlueprint)
@@ -432,20 +434,20 @@ bool FBlueprintHelperAssetFactoryServiceCreatesUserDefinedStructWithFieldsTest::
 		TEXT(""),
 		TEXT(""),
 		TEXT(""),
-		MakeDamageAmmoFields(),
+		FBlueprintHelperTaskPlanAssetFactoryAdapterTestsLocalUtils::MakeDamageAmmoFields(),
 		EBlueprintHelperAssetCollisionPolicy::FailIfExists,
 		false);
 
 	TestTrue(TEXT("structure create reports created"), Data.Asset.bCreated);
-	TestTrue(TEXT("structure asset is registered"), AssetFactoryTestAssetExists(AssetPath));
+	TestTrue(TEXT("structure asset is registered"), FBlueprintHelperTaskPlanAssetFactoryAdapterTestsLocalUtils::AssetFactoryTestAssetExists(AssetPath));
 
-	UObject* CreatedAsset = StaticLoadObject(UUserDefinedStruct::StaticClass(), nullptr, *AssetFactoryTestObjectPath(AssetPath));
+	UObject* CreatedAsset = StaticLoadObject(UUserDefinedStruct::StaticClass(), nullptr, *FBlueprintHelperTaskPlanAssetFactoryAdapterTestsLocalUtils::AssetFactoryTestObjectPath(AssetPath));
 	UUserDefinedStruct* CreatedStruct = Cast<UUserDefinedStruct>(CreatedAsset);
 	TestNotNull(TEXT("created asset loads as UUserDefinedStruct"), CreatedStruct);
 	if (CreatedStruct)
 	{
-		TestTrue(TEXT("Damage field exists"), AssetFactoryHasPropertyWithFriendlyName(CreatedStruct, TEXT("Damage")));
-		TestTrue(TEXT("Ammo field exists"), AssetFactoryHasPropertyWithFriendlyName(CreatedStruct, TEXT("Ammo")));
+		TestTrue(TEXT("Damage field exists"), FBlueprintHelperTaskPlanAssetFactoryAdapterTestsLocalUtils::AssetFactoryHasPropertyWithFriendlyName(CreatedStruct, TEXT("Damage")));
+		TestTrue(TEXT("Ammo field exists"), FBlueprintHelperTaskPlanAssetFactoryAdapterTestsLocalUtils::AssetFactoryHasPropertyWithFriendlyName(CreatedStruct, TEXT("Ammo")));
 		ObjectTools::DeleteSingleObject(CreatedStruct, false);
 	}
 
@@ -471,12 +473,12 @@ bool FBlueprintHelperAssetFactoryServiceCreatesDataTableWithRowStructTest::RunTe
 		TEXT(""),
 		TEXT(""),
 		TEXT(""),
-		MakeDamageAmmoFields(),
+		FBlueprintHelperTaskPlanAssetFactoryAdapterTestsLocalUtils::MakeDamageAmmoFields(),
 		EBlueprintHelperAssetCollisionPolicy::FailIfExists,
 		false);
 
 	UUserDefinedStruct* RowStruct = Cast<UUserDefinedStruct>(
-		StaticLoadObject(UUserDefinedStruct::StaticClass(), nullptr, *AssetFactoryTestObjectPath(StructPath)));
+		StaticLoadObject(UUserDefinedStruct::StaticClass(), nullptr, *FBlueprintHelperTaskPlanAssetFactoryAdapterTestsLocalUtils::AssetFactoryTestObjectPath(StructPath)));
 	TestTrue(TEXT("row struct fixture was created"), StructData.Asset.bCreated);
 	TestNotNull(TEXT("row struct fixture loads"), RowStruct);
 	if (!RowStruct)
@@ -496,10 +498,10 @@ bool FBlueprintHelperAssetFactoryServiceCreatesDataTableWithRowStructTest::RunTe
 		false);
 
 	TestTrue(TEXT("data table create reports created"), TableData.Asset.bCreated);
-	TestTrue(TEXT("data table asset is registered"), AssetFactoryTestAssetExists(TablePath));
+	TestTrue(TEXT("data table asset is registered"), FBlueprintHelperTaskPlanAssetFactoryAdapterTestsLocalUtils::AssetFactoryTestAssetExists(TablePath));
 	TestEqual(TEXT("factory records row_struct"), TableData.Factory.RowStruct, RowStruct->GetPathName());
 
-	UObject* CreatedAsset = StaticLoadObject(UDataTable::StaticClass(), nullptr, *AssetFactoryTestObjectPath(TablePath));
+	UObject* CreatedAsset = StaticLoadObject(UDataTable::StaticClass(), nullptr, *FBlueprintHelperTaskPlanAssetFactoryAdapterTestsLocalUtils::AssetFactoryTestObjectPath(TablePath));
 	UDataTable* CreatedTable = Cast<UDataTable>(CreatedAsset);
 	TestNotNull(TEXT("created asset loads as UDataTable"), CreatedTable);
 	if (CreatedTable)
@@ -536,9 +538,9 @@ bool FBlueprintHelperAssetFactoryServiceCreatesWidgetBlueprintTest::RunTest(cons
 		false);
 
 	TestTrue(TEXT("widget blueprint create reports created"), Data.Asset.bCreated);
-	TestTrue(TEXT("widget blueprint asset is registered"), AssetFactoryTestAssetExists(AssetPath));
+	TestTrue(TEXT("widget blueprint asset is registered"), FBlueprintHelperTaskPlanAssetFactoryAdapterTestsLocalUtils::AssetFactoryTestAssetExists(AssetPath));
 
-	UObject* CreatedAsset = StaticLoadObject(UWidgetBlueprint::StaticClass(), nullptr, *AssetFactoryTestObjectPath(AssetPath));
+	UObject* CreatedAsset = StaticLoadObject(UWidgetBlueprint::StaticClass(), nullptr, *FBlueprintHelperTaskPlanAssetFactoryAdapterTestsLocalUtils::AssetFactoryTestObjectPath(AssetPath));
 	UWidgetBlueprint* CreatedWidgetBlueprint = Cast<UWidgetBlueprint>(CreatedAsset);
 	TestNotNull(TEXT("created asset loads as UWidgetBlueprint"), CreatedWidgetBlueprint);
 	if (CreatedWidgetBlueprint)
@@ -561,9 +563,9 @@ bool FBlueprintHelperTaskRuntimeAssetFactoryAcceptsActorAliasPreviewTest::RunTes
 		TEXT("/Game/BlueprintHelperSafety/BP_ActorAliasDryRun_%s"),
 		*FGuid::NewGuid().ToString(EGuidFormats::Digits));
 
-	FAssetFactoryTaskRuntimeTestServices Services;
+	FBlueprintHelperTaskPlanAssetFactoryAdapterTestsLocalUtils::FAssetFactoryTaskRuntimeTestServices Services;
 	TSharedPtr<FJsonObject> Payload = MakeShared<FJsonObject>();
-	Payload->SetObjectField(TEXT("task_plan"), MakeAssetFactoryCreateAssetTaskPlan(AssetPath, TEXT("Actor")));
+	Payload->SetObjectField(TEXT("task_plan"), FBlueprintHelperTaskPlanAssetFactoryAdapterTestsLocalUtils::MakeAssetFactoryCreateAssetTaskPlan(AssetPath, TEXT("Actor")));
 
 	const FBlueprintHelperToolResultBase Result = Services.TaskRuntimeService.PreviewTaskPlan(Payload);
 	TestTrue(TEXT("Actor alias preview succeeds"), Result.bOk);
@@ -592,7 +594,7 @@ bool FBlueprintHelperTaskRuntimeAssetFactoryAcceptsActorAliasPreviewTest::RunTes
 	TestTrue(TEXT("factory parent_class is readable"), Factory && Factory->IsValid() && (*Factory)->TryGetStringField(TEXT("parent_class"), ParentClass));
 	TestEqual(TEXT("Actor alias normalizes to blueprint_class"), AssetType, FString(TEXT("blueprint_class")));
 	TestEqual(TEXT("Actor alias supplies Actor parent class"), ParentClass, FString(TEXT("Actor")));
-	TestFalse(TEXT("Actor alias dry-run does not create an asset"), AssetFactoryTestAssetExists(AssetPath));
+	TestFalse(TEXT("Actor alias dry-run does not create an asset"), FBlueprintHelperTaskPlanAssetFactoryAdapterTestsLocalUtils::AssetFactoryTestAssetExists(AssetPath));
 
 	return true;
 }
@@ -605,7 +607,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FBlueprintHelperTaskPlanAssetFactoryAdapterRejectsOperationFieldTest::RunTest(const FString& Parameters)
 {
 	const TSharedPtr<FJsonObject> TaskPlan = MakeShared<FJsonObject>();
-	const TSharedPtr<FJsonObject> Step = MakeAssetFactoryCreateAssetStep();
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanAssetFactoryAdapterTestsLocalUtils::MakeAssetFactoryCreateAssetStep();
 	Step->SetStringField(TEXT("operation"), TEXT("create_asset"));
 
 	TSharedPtr<FJsonObject> Payload;
@@ -633,7 +635,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FBlueprintHelperTaskPlanAssetFactoryAdapterRejectsMissingAssetTypeTest::RunTest(const FString& Parameters)
 {
 	const TSharedPtr<FJsonObject> TaskPlan = MakeShared<FJsonObject>();
-	const TSharedPtr<FJsonObject> Step = MakeAssetFactoryCreateAssetStep();
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanAssetFactoryAdapterTestsLocalUtils::MakeAssetFactoryCreateAssetStep();
 
 	const TSharedPtr<FJsonObject>* Write = nullptr;
 	TestTrue(TEXT("test step has write object"), Step->TryGetObjectField(TEXT("write"), Write));

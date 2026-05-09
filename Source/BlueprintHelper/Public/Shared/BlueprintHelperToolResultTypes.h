@@ -9,12 +9,27 @@
 
 // ─── 协议常量 ───
 
-namespace BlueprintHelperProtocol
+class FBlueprintHelperProtocol
 {
-	static const TCHAR* ToolResultSchema = TEXT("BlueprintHelper.McpToolResult.v1");
-	namespace Status { static const TCHAR* Completed = TEXT("completed"); static const TCHAR* Applied = TEXT("applied"); static const TCHAR* NoOp = TEXT("no_op"); static const TCHAR* DryRun = TEXT("dry_run"); static const TCHAR* Failed = TEXT("failed"); }
-	namespace DryRunResult { static const TCHAR* Passed = TEXT("passed"); static const TCHAR* Blocked = TEXT("blocked"); static const TCHAR* Failed = TEXT("failed"); }
-}
+public:
+	static constexpr const TCHAR* ToolResultSchema = TEXT("BlueprintHelper.McpToolResult.v1");
+
+	struct Status
+	{
+		static constexpr const TCHAR* Completed = TEXT("completed");
+		static constexpr const TCHAR* Applied = TEXT("applied");
+		static constexpr const TCHAR* NoOp = TEXT("no_op");
+		static constexpr const TCHAR* DryRun = TEXT("dry_run");
+		static constexpr const TCHAR* Failed = TEXT("failed");
+	};
+
+	struct DryRunResult
+	{
+		static constexpr const TCHAR* Passed = TEXT("passed");
+		static constexpr const TCHAR* Blocked = TEXT("blocked");
+		static constexpr const TCHAR* Failed = TEXT("failed");
+	};
+};
 
 // ─── 状态枚举 ───
 

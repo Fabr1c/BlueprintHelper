@@ -5,7 +5,8 @@
 class UBlueprint;
 class UEdGraph;
 
-namespace BlueprintHelperReviewGraphResolver
+class BLUEPRINTHELPER_API FBlueprintHelperReviewGraphResolver
 {
-	UEdGraph* ResolveGraphForReviewSelection(const UBlueprint* Blueprint, const FString& RequestedGraphName);
-}
+public:
+	static UEdGraph* ResolveGraphForReviewSelection(const UBlueprint* Blueprint, const FString& RequestedGraphName);
+};

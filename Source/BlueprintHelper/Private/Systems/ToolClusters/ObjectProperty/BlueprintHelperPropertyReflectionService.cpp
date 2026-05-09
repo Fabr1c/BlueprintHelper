@@ -7,9 +7,10 @@
 #include "Shared/BlueprintHelperServiceTypes.h"
 #include "UObject/UnrealType.h"
 
-namespace
+class FBlueprintHelperPropertyReflectionServiceLocalUtils
 {
-	FBlueprintHelperToolError MakeObjectPropertyToolError(
+public:
+	static FBlueprintHelperToolError MakeObjectPropertyToolError(
 		const FString& Code,
 		EBlueprintHelperToolStage Stage,
 		const FString& Message,
@@ -25,7 +26,7 @@ namespace
 		return Error;
 	}
 
-	TSharedRef<FJsonObject> MakeObjectPropertyTarget(
+	static TSharedRef<FJsonObject> MakeObjectPropertyTarget(
 		const FString& AssetPath,
 		const FString& PropertyPath)
 	{
@@ -39,7 +40,7 @@ namespace
 		return Target;
 	}
 
-	FBlueprintHelperToolResultBase MakeObjectPropertyToolResult(
+	static FBlueprintHelperToolResultBase MakeObjectPropertyToolResult(
 		const FString& Operation,
 		const FString& AssetPath,
 		const FString& PropertyPath,
@@ -84,7 +85,26 @@ namespace
 		Result.Data = Data;
 		return Result;
 	}
-}
+
+	static bool DidImportConsumeAllText(const TCHAR* ImportEnd)
+	{
+		if (!ImportEnd)
+		{
+			return false;
+		}
+
+		while (*ImportEnd != TEXT('\0'))
+		{
+			if (!FChar::IsWhitespace(*ImportEnd))
+			{
+				return false;
+			}
+			++ImportEnd;
+		}
+		return true;
+	}
+
+};
 
 UObject* FBlueprintHelperPropertyReflectionService::ResolveAsset(
 	const FString& AssetPath,
@@ -324,7 +344,7 @@ FBlueprintHelperSetPropertyResult FBlueprintHelperPropertyReflectionService::Set
 	void* TempValue = FMemory_Alloca(Prop->GetSize());
 	Prop->InitializeValue(TempValue);
 	const TCHAR* PreflightImportResult = Prop->ImportText_Direct(*Value, TempValue, Obj, PPF_None);
-	if (!PreflightImportResult)
+	if (!FBlueprintHelperPropertyReflectionServiceLocalUtils::DidImportConsumeAllText(PreflightImportResult))
 	{
 		Prop->DestroyValue(TempValue);
 		Result.ErrorMessage = FString::Printf(
@@ -346,7 +366,7 @@ FBlueprintHelperSetPropertyResult FBlueprintHelperPropertyReflectionService::Set
 		FText::FromString(TEXT("BlueprintHelper Set Object Property")), Obj);
 
 	const TCHAR* ImportResult = Prop->ImportText_Direct(*Value, ValuePtr, Obj, PPF_None);
-	if (!ImportResult)
+	if (!FBlueprintHelperPropertyReflectionServiceLocalUtils::DidImportConsumeAllText(ImportResult))
 	{
 		Prop->ImportText_Direct(*Result.OldValue, ValuePtr, Obj, PPF_None);
 		Mutation.Rollback();
@@ -433,7 +453,7 @@ FBlueprintHelperSetPropertiesResult FBlueprintHelperPropertyReflectionService::S
 		void* TempValue = FMemory_Alloca(Property->GetSize());
 		Property->InitializeValue(TempValue);
 		const TCHAR* ImportResult = Property->ImportText_Direct(*Setting.Value, TempValue, Obj, PPF_None);
-		if (!ImportResult)
+		if (!FBlueprintHelperPropertyReflectionServiceLocalUtils::DidImportConsumeAllText(ImportResult))
 		{
 			Property->DestroyValue(TempValue);
 			Invalid.Code = TEXT("type_mismatch");
@@ -487,7 +507,7 @@ FBlueprintHelperSetPropertiesResult FBlueprintHelperPropertyReflectionService::S
 			Resolved.ValuePtr,
 			Obj,
 			PPF_None);
-		if (!ImportResult)
+		if (!FBlueprintHelperPropertyReflectionServiceLocalUtils::DidImportConsumeAllText(ImportResult))
 		{
 			Mutation.Rollback();
 			Result.ErrorMessage = FString::Printf(
@@ -534,7 +554,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperPropertyReflectionService::SetObj
 		return FBlueprintHelperToolResultBuilder::Failure(
 			TEXT("set_object_property"),
 			FBlueprintHelperToolResultBuilder::GenerateTraceId(),
-			MakeObjectPropertyToolError(
+			FBlueprintHelperPropertyReflectionServiceLocalUtils::MakeObjectPropertyToolError(
 				TEXT("invalid_object_property_settings"),
 				EBlueprintHelperToolStage::ParseInput,
 				TEXT("set_object_property requires exactly one setting."),
@@ -582,7 +602,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperPropertyReflectionService::SetObj
 	if (ConversionFailure.PropertyResult.InvalidSettings.Num() > 0)
 	{
 		ConversionFailure.ErrorMessage = TEXT("One or more object property values are invalid.");
-		return MakeObjectPropertyToolResult(
+		return FBlueprintHelperPropertyReflectionServiceLocalUtils::MakeObjectPropertyToolResult(
 			TEXT("set_object_properties"),
 			Request.AssetPath,
 			Request.Settings.Num() == 1 ? Request.Settings[0].PropertyPath : FString(),
@@ -593,7 +613,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperPropertyReflectionService::SetObj
 		Request.AssetPath,
 		TextSettings,
 		Request.bDryRun);
-	return MakeObjectPropertyToolResult(
+	return FBlueprintHelperPropertyReflectionServiceLocalUtils::MakeObjectPropertyToolResult(
 		TEXT("set_object_properties"),
 		Request.AssetPath,
 		Request.Settings.Num() == 1 ? Request.Settings[0].PropertyPath : FString(),

@@ -3,9 +3,10 @@
 #include "EdGraph/EdGraph.h"
 #include "Engine/Blueprint.h"
 
-namespace
+class FBlueprintHelperReviewGraphResolverLocalUtils
 {
-	UEdGraph* FindGraphByName(const UBlueprint* Blueprint, const FString& GraphName)
+public:
+	static UEdGraph* FindGraphByName(const UBlueprint* Blueprint, const FString& GraphName)
 	{
 		if (!Blueprint || GraphName.IsEmpty())
 		{
@@ -23,37 +24,37 @@ namespace
 		}
 		return nullptr;
 	}
-}
 
-namespace BlueprintHelperReviewGraphResolver
+};
+
+UEdGraph* FBlueprintHelperReviewGraphResolver::ResolveGraphForReviewSelection(
+	const UBlueprint* Blueprint,
+	const FString& RequestedGraphName)
 {
-	UEdGraph* ResolveGraphForReviewSelection(const UBlueprint* Blueprint, const FString& RequestedGraphName)
+	if (!Blueprint)
 	{
-		if (!Blueprint)
-		{
-			return nullptr;
-		}
-
-		if (!RequestedGraphName.IsEmpty())
-		{
-			return FindGraphByName(Blueprint, RequestedGraphName);
-		}
-
-		if (Blueprint->UbergraphPages.Num() > 0)
-		{
-			return Blueprint->UbergraphPages[0];
-		}
-
-		TArray<UEdGraph*> Graphs;
-		Blueprint->GetAllGraphs(Graphs);
-		for (UEdGraph* Graph : Graphs)
-		{
-			if (Graph)
-			{
-				return Graph;
-			}
-		}
-
 		return nullptr;
 	}
+
+	if (!RequestedGraphName.IsEmpty())
+	{
+		return FBlueprintHelperReviewGraphResolverLocalUtils::FindGraphByName(Blueprint, RequestedGraphName);
+	}
+
+	if (Blueprint->UbergraphPages.Num() > 0)
+	{
+		return Blueprint->UbergraphPages[0];
+	}
+
+	TArray<UEdGraph*> Graphs;
+	Blueprint->GetAllGraphs(Graphs);
+	for (UEdGraph* Graph : Graphs)
+	{
+		if (Graph)
+		{
+			return Graph;
+		}
+	}
+
+	return nullptr;
 }

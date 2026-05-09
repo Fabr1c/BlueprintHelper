@@ -1,5 +1,7 @@
 # BlueprintHelper 工具簇入口重构计划
 
+2026-05-09 清理: 工具簇重构计划保留实现历史和架构边界。当前 grouped Automation、P1/P2 fixture、ReviewPanel、DebugBundle 全线验证入口已统一到 `Develop/Plan/BlueprintHelper_Unified_SmokeRun_Verification_20260509.md`。
+
 ## Summary
 - 将 `TaskRuntimeService` 和 `BridgeRouter` 从“直接接入所有具体工具 Service”改成“静态工具簇入口”。
 - 新工具接入默认只新增一个工具簇 Service、一个 TaskRuntime 簇执行入口、一个 Bridge 簇路由入口，再在静态 Hub 中补一行。
@@ -30,7 +32,7 @@
   - `BlueprintVariablesBridgeRoutes`
   - `AssetFactoryBridgeRoutes`
   - 后续新增 `AnimationBlueprintBridgeRoutes`、`MaterialBridgeRoutes`
-- Review、Debug、Transactions 不作为工具簇；它们是系统层。工具簇负责产出 Review evidence 和 DebugBundle ref，系统层负责持久化、查询、展示和回滚。
+- Review、Debug、Transactions 不作为工具簇；它们是系统层。工具簇负责产出 Review evidence 和脱敏 debug summary candidate；只有 failure、blocker、partial、review needs_action 经 DebugEntry 创建 DebugCase，DebugBundle 只在开发者导出时生成。
 
 ## Implementation Changes
 - 第一阶段只做无行为变化拆分：
@@ -61,25 +63,25 @@
   - 目标：抽出 `GraphWriteBridgeRoutes` 与 `GraphWriteTaskRuntimeCluster`，让 GraphWrite 不再停留在 Router/Hub 的内联分支中。
   - 边界：保持对外 command、payload validation、响应 JSON、TaskPlan wire shape 不变。
   - 当前进度：`GraphWriteBridgeRoutes` 与 `GraphWriteTaskRuntimeCluster` 已完成代码迁移；新增 GraphWrite 簇识别 Automation 测试。
-  - 验证状态：MCP 测试已通过；UE build 仍被 `G:/UnrealPractise/MrStone/Intermediate/Build/SourceFileCache.bin` 权限问题阻塞，C++ 编译与 Automation 运行待该环境问题解除后确认。
+  - 当时验证状态：MCP 测试已通过；UE build 曾被 `G:/UnrealPractise/MrStone/Intermediate/Build/SourceFileCache.bin` 权限问题阻塞。该阻塞已被后续用户侧 build 通过状态取代，当前剩余项是 Automation / smoke 复跑。
 - 2026-05-08：第二阶段继续迁移第二批簇。
   - 已抽出 `BlueprintVariablesBridgeRoutes`、`ComponentBridgeRoutes`、`ClassSettingsBridgeRoutes`，`BridgeRouter` 的 RoutePlan 优先分发会委托到对应簇 routes；当时旧 handler 仅保留为兼容入口并转发，后续收口已删除。
   - 已抽出 `BlueprintVariablesTaskRuntimeCluster`、`ComponentTaskRuntimeCluster`、`ClassSettingsTaskRuntimeCluster`、`SignatureTaskRuntimeCluster`，`TaskRuntimeClusterHub` 的 resolve/execute 会委托到对应簇 cluster。
   - 已新增第二批簇识别 Automation 测试：`BlueprintHelper.Router.Cluster.SecondBatchRoutesRecognizeOnlyOwnedCommands` 与 `BlueprintHelper.TaskRuntime.Cluster.SecondBatchClustersRecognizeOnlyOwnedSteps`。
   - 本轮仍不改变 MCP/Bridge command 名称，不改变 TaskSpec/TaskPlan wire shape。
-  - 本轮验证：`git diff --check` 通过；`npm.cmd test` 通过。当前 Codex 会话内 UE build 仍在写入 `G:/UnrealPractise/MrStone/Intermediate/Build/SourceFileCache.bin` 时被权限阻塞，未进入 C++ 编译；用户侧已反馈编译通过，后续仍需在可写 Intermediate 环境下跑 Automation。
+  - 本轮验证：`git diff --check` 通过；`npm.cmd test` 通过。历史 Codex 会话内 UE build 曾在写入 `G:/UnrealPractise/MrStone/Intermediate/Build/SourceFileCache.bin` 时被权限阻塞；后续用户侧已反馈编译通过，当前剩余项是 grouped Automation 和 disposable fixture smoke。
 
   - 2026-05-08：第二阶段 final batch 已完成。
   - 已接入 `UMGWidgetBridgeRoutes`，并新增 `DataTableBridgeRoutes`、`ObjectPropertyBridgeRoutes`、`CleanupOwnershipBridgeRoutes`；`BridgeRouter` 的 RoutePlan 优先分发已覆盖 UMGWidget、DataTable、ObjectProperty、CleanupOwnership；当时旧 handler 仅保留为兼容转发入口，后续收口已删除。
   - 已新增 `UMGWidgetTaskRuntimeCluster`、`DataTableTaskRuntimeCluster`、`ObjectPropertyTaskRuntimeCluster`、`CleanupOwnershipTaskRuntimeCluster`；`TaskRuntimeClusterHub` 不再直接持有 final batch 具体 service 引用，而是通过对应静态簇执行 resolve/execute。
   - 已新增 final batch 簇识别 Automation 测试：`BlueprintHelper.Router.Cluster.FinalBatchRoutesRecognizeOnlyOwnedCommands` 与 `BlueprintHelper.TaskRuntime.Cluster.FinalBatchClustersRecognizeOnlyOwnedSteps`。
-  - 本轮验证：`git diff --check` 通过；`npm.cmd test` in `BlueprintHelper_MCP_Server` 通过，Node/Python 共 138/44 项测试通过；UE build 在当前 Codex 沙箱仍被项目级 `G:/UnrealPractise/MrStone/Intermediate/Build/SourceFileCache.bin` 写入权限阻塞，未进入 C++ 编译阶段，需要在可写 Intermediate 的本机/IDE 环境复跑。
+  - 本轮验证：`git diff --check` 通过；`npm.cmd test` in `BlueprintHelper_MCP_Server` 通过，Node/Python 共 138/44 项测试通过；UE build 权限阻塞是历史状态，后续用户侧 build 已通过。
 - 2026-05-08：第三、四阶段已完成骨架闭环。
   - 新增工具簇接入模板文档：`Develop/Plan/BlueprintHelper_ToolCluster_Onboarding_Template_20260508.md`，固定 Service / BridgeRoutes / TaskRuntimeCluster / ReviewEvidenceBuilder 四个接入边界。
   - 新增保留空簇骨架：`AnimationBlueprintBridgeRoutes`、`MaterialBridgeRoutes`、`AnimationBlueprintTaskRuntimeCluster`、`MaterialTaskRuntimeCluster`。
   - 空簇当前不声明任何 command 或 capability，不接入 `BridgeRouter` / `TaskRuntimeClusterHub` 执行链；后续真实工具落地时再补 `BridgeRoutePlanner` command 表和 Hub 成员。
   - 已新增保留空簇 Automation 识别测试：`BlueprintHelper.Router.Cluster.ReservedRoutesDoNotClaimCommands` 与 `BlueprintHelper.TaskRuntime.Cluster.ReservedClustersDoNotClaimSteps`。
-  - 收口验证：`git diff --check` 通过；`npm.cmd test` in `BlueprintHelper_MCP_Server` 通过；UE build 仍在项目级 `Intermediate/Build/SourceFileCache.bin` 写入阶段被当前 Codex 沙箱权限阻塞。
+  - 收口验证：`git diff --check` 通过；`npm.cmd test` in `BlueprintHelper_MCP_Server` 通过；UE build 权限阻塞是历史状态，后续用户侧 build 已通过。
 - 2026-05-08：编译闭环补充。
   - 环境权限修复后，UE build 已进入 C++ 编译阶段，并暴露 TaskPlanAdapters 在 unity build 下的匿名 namespace helper 同名问题。
   - 已将 AssetFactory、Component、ClassSettings、Signature、UMGWidget、DataTable、ObjectProperty、CleanupOwnership adapter 内部 helper 改为按文件/工具簇前缀命名，保持错误码、payload、wire shape、执行逻辑不变。
@@ -95,6 +97,12 @@
   - 当前边界：Debug、Transactions、TaskRuntime、AssetBrowser、SharedServices、BlueprintStructure、EditorCommand 仍是系统层/遗留系统入口，不作为工具簇迁入本轮。
   - 用户侧 UE build 已通过；本地轻量检查 `git diff --check` 通过，且 `BridgeRouter` 中已无已迁移工具簇的私有 `HandleXxx` 转发入口。
   - 本地补充验证：直接编译包含 Router、Routes、TaskRuntime 的 `Module.BlueprintHelper.1.cpp` unity 单元通过，用于确认最后的 helper 前缀收口没有新增 C++ 编译错误。
+- 2026-05-09：用户侧编译和 Automation 状态更新。
+  - 用户已确认 UE build 通过；本计划不再把主阻塞写成 Codex 环境 C++ 编译阻塞。
+  - 用户提供的 `FullTestLog.txt` 显示多轮 Automation 运行，其中 Review / Debug targeted batch 已覆盖 `RejectNeedsActionCreatesDebugCase`、`RejectFailedCreatesDebugCase`、`PersistsDebugCaseIds`、`LoadPendingVisibleChangesUsesRecordQuery`、`BundleSummaryExportIncludesReviewSummaryArtifact` 等关键用例。
+  - 同一日志曾显示 full / grouped Automation 未绿：ObjectFirst JSON export、BlueprintVariable category expectation、TaskRunJournal partial failure recovery notes、ObjectProperty invalid value dry-run、AssetFactory Structure/DataTable creation、Signature override create-if-missing。对应 source/test 修复已完成，当前剩余是 Unified SmokeRun Ring 1 rerun。
+  - CleanupOwnership cluster 失败是测试仍使用旧 `cleanup_ownership` capability；active TaskPlan capability 是 `graph_cleanup_ownership`。测试口径已更正，targeted UE Automation 复跑 `ResolvesLoweredSteps` 与 `FinalBatchClustersRecognizeOnlyOwnedSteps` 已通过。
+  - ReviewPanel 手动打开时没有待审阅内容；日志 `sourceGraph="<none>" previewGraph="EdGraph_0" previewNodes=0` 对应空 pending visible change 状态。需要先通过 Unified SmokeRun Ring 8 生成 disposable ReviewRecord，再做 UI Accept / Reject / RejectAll 验证。
 
 ## Test Plan
 - TaskRuntime tests：
@@ -115,7 +123,8 @@
   - `npm.cmd test` in `BlueprintHelper_MCP_Server`
   - UE build: `F:/UE_5.6/Engine/Build/BatchFiles/Build.bat MrStoneEditor Win64 Development -Project=G:/UnrealPractise/MrStone/MrStone.uproject -WaitMutex`
   - 当前 Codex 环境验证用 UE build: `F:/UE_5.6/Engine/Build/BatchFiles/Build.bat MrStoneEditor Win64 Development -Project=G:/UnrealPractise/MrStone/MrStone.uproject -WaitMutex -NoUBA -MaxParallelActions=1`
-  - UE Automation: existing `BlueprintHelper.*` plus new `BlueprintHelper.Router.Cluster` and `BlueprintHelper.TaskRuntime.Cluster`
+- UE Automation: existing `BlueprintHelper.*` plus new `BlueprintHelper.Router.Cluster` and `BlueprintHelper.TaskRuntime.Cluster`
+- Unified smoke/P2 fixture run: use `Develop/Plan/BlueprintHelper_Unified_SmokeRun_Verification_20260509.md` as the current execution checklist.
 
 ## Assumptions
 - 先提交当前物理路径迁移基线，再执行本重构，避免 rename 和逻辑拆分混在同一个 diff。

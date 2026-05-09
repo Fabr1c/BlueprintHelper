@@ -2,7 +2,8 @@
 
 #include "CoreMinimal.h"
 
-namespace BlueprintHelperReviewDebugText
+class BLUEPRINTHELPER_API FBlueprintHelperReviewDebugText
 {
-	FString BuildCopyableText(const TArray<FString>& Messages);
-}
+public:
+	static FString BuildCopyableText(const TArray<FString>& Messages);
+};

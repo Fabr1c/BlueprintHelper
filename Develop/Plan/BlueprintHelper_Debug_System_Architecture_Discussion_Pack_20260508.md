@@ -85,7 +85,7 @@ snapshots compose into one debuggable, privacy-bounded DebugCase / DebugBundle m
 | Transaction / Journal / Review design | `Resources/BlueprintHelper_Hybrid_SourceDocs_Sync_20260504/06_Transaction_Journal_Review_Design_Synced_20260504.md` | Defines Transaction Journal and Review as internal audit facts that Debug can reference. |
 | TransactionJournalQuery field mapping | `Resources/v0.3.6/FieldMapping/BlueprintHelper_TransactionJournalQuery_UE_FieldMapping_20260503.md` | Read-only transaction query prior art; future ReviewRecord and DebugCase can consume these summaries. |
 | TransactionJournalQuery implementation plan | `Resources/v0.3.6/DoneImplementaion/BlueprintHelper_TransactionJournalQuery_UE_CPP_Implementation_Plan_20260503.md` | UE implementation plan for transaction query services. |
-| Review transaction discussion pack | `Resources/Plan/BlueprintHelper_Review_Transaction_Model_Discussion_Pack_20260507.md` | Defines ReviewRecord discussion target and DebugExport linkage expectations. |
+| Review transaction discussion pack | `Resources/Plan/BlueprintHelper_Review_Transaction_Model_Discussion_Pack_20260507.md` | Defines ReviewRecord discussion target and current DebugCase / DebugBundle linkage expectations. |
 | P1 smoke rerun report | `Resources/Plan/BlueprintHelper_P1_Remaining_Gap_Smoke_20260507_Rerun.md` | Evidence of empty-error fallback and blocked diagnostics issues that motivated the Debug system. |
 | P1 smoke plan/report | `Resources/Plan/BlueprintHelper_P1_Remaining_Gap_Smoke_20260507.md` | Earlier evidence for bridge/runtime preview/execute/read-back error handling. |
 
@@ -219,7 +219,7 @@ Layer model:
 | Sanitization | Remove sensitive/private data | Tokens, secrets, full settings, full AgentGuide, local absolute paths, full project/source export. |
 | Artifact export | Write a bounded bundle | Manifest JSON, compact markdown report, selected child results, log excerpts, optional targeted asset snapshots. |
 | MCP access | Let developers or Agents request debug evidence when needed | Explicit debug export/query tools, not default AgentGuide write flow. |
-| UI / Review linkage | Let user-side Review link to debug facts | ReviewRecord -> DebugCase / DebugBundle refs. |
+| UI / Review linkage | Let user-side Review link to debug facts | ReviewRecord -> DebugCase ids; DebugBundle is generated from DebugCase only on developer export. |
 
 ## 11. Proposed DebugCase Shape For Discussion
 
@@ -334,7 +334,7 @@ Should normal Agents see DebugExport in AgentGuide? Current direction says no. I
 
 5. Large payload replacement
 
-Should `read_large_payload_ref` be deleted entirely, or replaced with a narrower debug-only artifact reader:
+Resolved 2026-05-09: delete `read_large_payload_ref` entirely. Do not replace it with a DebugBundle artifact reader:
 
 ```text
 read_debug_artifact_manifest
@@ -401,4 +401,3 @@ The web discussion should produce:
 - Retention/cleanup policy.
 - ReviewRecord and TransactionJournal linkage policy.
 - Test plan and smoke fixture list.
-

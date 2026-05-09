@@ -4,9 +4,10 @@
 
 #include "Systems/ToolClusters/BlueprintComponent/BlueprintHelperComponentService.h"
 
-namespace
+class FBlueprintHelperComponentBridgeRoutesLocalUtils
 {
-	FBlueprintHelperBridgeResponse MakeComponentResponse(
+public:
+	static FBlueprintHelperBridgeResponse MakeComponentResponse(
 		const FBlueprintHelperBridgeRequest& Request,
 		const FBlueprintHelperToolResultBase& Result,
 		const TCHAR* FallbackFailureMessage)
@@ -21,7 +22,7 @@ namespace
 		return Response;
 	}
 
-	FBlueprintHelperSetComponentPropertiesRequest ReadComponentPropertiesRequest(
+	static FBlueprintHelperSetComponentPropertiesRequest ReadComponentPropertiesRequest(
 		const TSharedPtr<FJsonObject>& Payload,
 		EBlueprintHelperComponentPropertyMode Mode)
 	{
@@ -74,7 +75,8 @@ namespace
 		}
 		return Request;
 	}
-}
+
+};
 
 FBlueprintHelperComponentBridgeRoutes::FBlueprintHelperComponentBridgeRoutes(
 	const FBlueprintHelperComponentService& InComponentService)
@@ -101,7 +103,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperComponentBridgeRoutes::HandleRequ
 		{
 			Request.Payload->TryGetStringField(TEXT("asset_path"), ServiceRequest.AssetPath);
 		}
-		return MakeComponentResponse(
+		return FBlueprintHelperComponentBridgeRoutesLocalUtils::MakeComponentResponse(
 			Request,
 			ComponentService.ReadComponents(ServiceRequest),
 			TEXT("read_components 执行失败。"));
@@ -130,7 +132,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperComponentBridgeRoutes::HandleRequ
 				TryParseNameCollisionPolicy(NameCollisionPolicy, ServiceRequest.NameCollisionPolicy);
 			}
 		}
-		return MakeComponentResponse(
+		return FBlueprintHelperComponentBridgeRoutesLocalUtils::MakeComponentResponse(
 			Request,
 			ComponentService.AddComponent(ServiceRequest),
 			TEXT("add_component 执行失败。"));
@@ -138,19 +140,19 @@ FBlueprintHelperBridgeResponse FBlueprintHelperComponentBridgeRoutes::HandleRequ
 
 	if (Request.Command == TEXT("set_component_property"))
 	{
-		return MakeComponentResponse(
+		return FBlueprintHelperComponentBridgeRoutesLocalUtils::MakeComponentResponse(
 			Request,
 			ComponentService.SetComponentProperty(
-				ReadComponentPropertiesRequest(Request.Payload, EBlueprintHelperComponentPropertyMode::Single)),
+				FBlueprintHelperComponentBridgeRoutesLocalUtils::ReadComponentPropertiesRequest(Request.Payload, EBlueprintHelperComponentPropertyMode::Single)),
 			TEXT("set_component_property 执行失败。"));
 	}
 
 	if (Request.Command == TEXT("set_component_properties"))
 	{
-		return MakeComponentResponse(
+		return FBlueprintHelperComponentBridgeRoutesLocalUtils::MakeComponentResponse(
 			Request,
 			ComponentService.SetComponentProperties(
-				ReadComponentPropertiesRequest(Request.Payload, EBlueprintHelperComponentPropertyMode::Batch)),
+				FBlueprintHelperComponentBridgeRoutesLocalUtils::ReadComponentPropertiesRequest(Request.Payload, EBlueprintHelperComponentPropertyMode::Batch)),
 			TEXT("set_component_properties 执行失败。"));
 	}
 
@@ -163,7 +165,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperComponentBridgeRoutes::HandleRequ
 			Request.Payload->TryGetStringField(TEXT("component_name"), ServiceRequest.ComponentName);
 			Request.Payload->TryGetBoolField(TEXT("dry_run"), ServiceRequest.bDryRun);
 		}
-		return MakeComponentResponse(
+		return FBlueprintHelperComponentBridgeRoutesLocalUtils::MakeComponentResponse(
 			Request,
 			ComponentService.RemoveComponent(ServiceRequest),
 			TEXT("remove_component 执行失败。"));

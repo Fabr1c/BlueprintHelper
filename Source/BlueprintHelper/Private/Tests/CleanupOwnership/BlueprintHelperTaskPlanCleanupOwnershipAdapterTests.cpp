@@ -6,9 +6,10 @@
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.h"
 #include "Runtime/TaskRuntime/TaskPlanAdapters/CleanupOwnership/BlueprintHelperCleanupOwnershipTaskPlanAdapter.h"
 
-namespace
+class FBlueprintHelperTaskPlanCleanupOwnershipAdapterTestsLocalUtils
 {
-	TSharedPtr<FJsonObject> MakeCleanupOwnershipStep(const FString& OpName)
+public:
+	static TSharedPtr<FJsonObject> MakeCleanupOwnershipStep(const FString& OpName)
 	{
 		TSharedPtr<FJsonObject> Step = MakeShared<FJsonObject>();
 		Step->SetStringField(TEXT("step_id"), TEXT("step_cleanup_ownership"));
@@ -44,7 +45,7 @@ namespace
 		return Step;
 	}
 
-	TSharedPtr<FJsonObject> GetFirstCleanupOwnershipOp(const TSharedPtr<FJsonObject>& Step)
+	static TSharedPtr<FJsonObject> GetFirstCleanupOwnershipOp(const TSharedPtr<FJsonObject>& Step)
 	{
 		const TSharedPtr<FJsonObject>* Write = nullptr;
 		if (!Step.IsValid() || !Step->TryGetObjectField(TEXT("write"), Write) || !Write || !Write->IsValid())
@@ -60,7 +61,8 @@ namespace
 
 		return (*Ops)[0].IsValid() ? (*Ops)[0]->AsObject() : nullptr;
 	}
-}
+
+};
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperTaskPlanCleanupOwnershipAdapterCleanupBlockTest,
@@ -69,7 +71,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperTaskPlanCleanupOwnershipAdapterCleanupBlockTest::RunTest(const FString& Parameters)
 {
-	const TSharedPtr<FJsonObject> Step = MakeCleanupOwnershipStep(
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanCleanupOwnershipAdapterTestsLocalUtils::MakeCleanupOwnershipStep(
 		FBlueprintHelperCleanupOwnershipTaskPlanAdapter::AdapterOperationCleanupBlueprintHelperBlock);
 
 	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
@@ -118,8 +120,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperTaskPlanCleanupOwnershipAdapterConvertAliasTest::RunTest(const FString& Parameters)
 {
-	const TSharedPtr<FJsonObject> Step = MakeCleanupOwnershipStep(TEXT("convert_block_to_user_owned"));
-	TSharedPtr<FJsonObject> Op = GetFirstCleanupOwnershipOp(Step);
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanCleanupOwnershipAdapterTestsLocalUtils::MakeCleanupOwnershipStep(TEXT("convert_block_to_user_owned"));
+	TSharedPtr<FJsonObject> Op = FBlueprintHelperTaskPlanCleanupOwnershipAdapterTestsLocalUtils::GetFirstCleanupOwnershipOp(Step);
 	TestNotNull(TEXT("cleanup ownership op exists"), Op.Get());
 	Op->SetStringField(TEXT("already_user_owned_policy"), TEXT("ignore"));
 
@@ -158,9 +160,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperTaskPlanCleanupOwnershipAdapterRollbackDryRunTest::RunTest(const FString& Parameters)
 {
-	const TSharedPtr<FJsonObject> Step = MakeCleanupOwnershipStep(
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanCleanupOwnershipAdapterTestsLocalUtils::MakeCleanupOwnershipStep(
 		FBlueprintHelperCleanupOwnershipTaskPlanAdapter::AdapterOperationRollbackCleanupTransaction);
-	TSharedPtr<FJsonObject> Op = GetFirstCleanupOwnershipOp(Step);
+	TSharedPtr<FJsonObject> Op = FBlueprintHelperTaskPlanCleanupOwnershipAdapterTestsLocalUtils::GetFirstCleanupOwnershipOp(Step);
 	TestNotNull(TEXT("cleanup ownership op exists"), Op.Get());
 	Op->SetStringField(TEXT("already_rolled_back_policy"), TEXT("ignore"));
 
@@ -205,7 +207,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperTaskPlanCleanupOwnershipAdapterRejectsInvalidOpTest::RunTest(const FString& Parameters)
 {
-	const TSharedPtr<FJsonObject> Step = MakeCleanupOwnershipStep(TEXT("cleanup_feature"));
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanCleanupOwnershipAdapterTestsLocalUtils::MakeCleanupOwnershipStep(TEXT("cleanup_feature"));
 
 	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
 	FBlueprintHelperToolError Error;
@@ -237,7 +239,7 @@ bool FBlueprintHelperTaskPlanCleanupOwnershipAdapterOperationNamesTest::RunTest(
 	TestEqual(TEXT("convert operation name"), FString(FBlueprintHelperCleanupOwnershipTaskPlanAdapter::AdapterOperationConvertBlueprintHelperBlockToUserOwned), FString(TEXT("convert_blueprint_helper_block_to_user_owned")));
 	TestEqual(TEXT("rollback operation name"), FString(FBlueprintHelperCleanupOwnershipTaskPlanAdapter::AdapterOperationRollbackCleanupTransaction), FString(TEXT("rollback_cleanup_transaction")));
 
-	const TSharedPtr<FJsonObject> Step = MakeCleanupOwnershipStep(TEXT("cleanup_blueprinthelper_block"));
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanCleanupOwnershipAdapterTestsLocalUtils::MakeCleanupOwnershipStep(TEXT("cleanup_blueprinthelper_block"));
 
 	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
 	FBlueprintHelperToolError Error;
