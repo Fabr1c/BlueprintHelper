@@ -4,19 +4,17 @@
 
 #include "CoreMinimal.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
-#include "UObject/StrongObjectPtr.h"
+#include "UI/Review/BlueprintHelperReviewAssetContext.h"
+#include "UI/Review/BlueprintHelperReviewSurfacePresenter.h"
 #include "Widgets/SCompoundWidget.h"
 
 class FBlueprintHelperReviewActionService;
 class FBlueprintHelperReviewStoreService;
 class SKismetInspector;
 class SBox;
-class SGraphEditor;
 class SMultiLineEditableTextBox;
 class SMyBlueprint;
-class UBlueprint;
 class UEdGraph;
-class UEdGraphNode;
 template <typename ItemType> class STreeView;
 
 class SBlueprintHelperReviewPanel : public SCompoundWidget
@@ -73,18 +71,9 @@ private:
 	TSharedRef<SWidget> BuildPanelDiffFrames(
 		bool (*Predicate)(const FBlueprintHelperReviewVisibleChange&),
 		EBlueprintHelperReviewSurface Surface);
-	TSharedRef<SWidget> BuildPanelDiffFrame(FReviewChangeItem Item);
+	TSharedRef<SWidget> BuildDetailsPanelDiffFrames();
 	TSharedRef<SWidget> BuildDiffRow(FReviewChangeItem Item, bool bShowActions);
 	TSharedRef<SWidget> BuildDiffFrame(FReviewChangeItem Item, const TSharedRef<SWidget>& Content, bool bShowActions);
-	FString BuildPanelTargetSearchText(FReviewChangeItem Item, EBlueprintHelperReviewSurface Surface) const;
-	FString GetPanelFrameBucket(FReviewChangeItem Item, EBlueprintHelperReviewSurface Surface) const;
-	bool TryBuildPanelFrameGeometry(
-		FReviewChangeItem Item,
-		EBlueprintHelperReviewSurface Surface,
-		const FString& Bucket,
-		int32 BucketRowIndex,
-		FVector2D& OutPosition,
-		FVector2D& OutSize) const;
 	void RefreshDiffStackWidgets();
 	void RebuildChangeTreeItems();
 	void RefreshChangeTreeWidget();
@@ -92,19 +81,6 @@ private:
 	FReviewChangeItem FindChangeItemById(const FString& ChangeId) const;
 	FReply OnAcceptChangeId(const FString& ChangeId);
 	FReply OnRejectChangeId(const FString& ChangeId);
-	void AddGraphDiffBlocks(
-		UEdGraph* PreviewGraphToEdit,
-		const UEdGraph* SourceGraph,
-		const TSharedPtr<SGraphEditor>& GraphEditorForBounds);
-	bool BuildGraphBoundsForChange(
-		const FReviewChangeItem& Item,
-		const UEdGraph* PreviewGraphToEdit,
-		const FString& GraphName,
-		const TSharedPtr<SGraphEditor>& GraphEditorForBounds,
-		FVector2D& OutPosition,
-		FVector2D& OutSize,
-		FString* OutDebugSummary = nullptr) const;
-	void JumpToSelectedGraphDiffBlock();
 
 	FReply OnAcceptSelected();
 	FReply OnRejectSelected();
@@ -123,8 +99,15 @@ private:
 
 	EActiveTimerReturnType TickFlash(double InCurrentTime, float InDeltaTime);
 	void StartFlash();
-	void LoadReviewBlueprintFromSelection();
+	void RequestDeferredDiffGeometryRefresh();
+	EActiveTimerReturnType RefreshDiffGeometryAfterLayout(double InCurrentTime, float InDeltaTime);
+	void LoadReviewAssetFromSelection();
 	void UpdateDetailsSelection();
+	EBlueprintHelperReviewSurface ResolveDetailsSurfaceFromSelectedChange() const;
+	bool ResolveReviewRowGeometry(
+		const FBlueprintHelperReviewVisibleChange& Change,
+		EBlueprintHelperReviewSurface Surface,
+		FBlueprintHelperReviewSurfaceGeometryAnchor& OutAnchor) const;
 	UObject* ResolveDetailsObjectForSelectedChange() const;
 	UEdGraph* ResolveGraphForSelectedChange() const;
 
@@ -135,9 +118,9 @@ private:
 	TArray<FReviewTreeItemPtr> ChangeTreeRootItems;
 	TSharedPtr<STreeView<FReviewTreeItemPtr>> ChangeTreeView;
 	TSharedPtr<SBox> GraphEditorBox;
-	TSharedPtr<SGraphEditor> GraphEditorWidget;
 	TSharedPtr<SBox> ComponentsContentBox;
 	TSharedPtr<SBox> MyBlueprintContentBox;
+	TSharedPtr<SBox> DetailsContentBox;
 	TSharedPtr<SBox> ComponentsDiffStackBox;
 	TSharedPtr<SBox> MyBlueprintDiffStackBox;
 	TSharedPtr<SBox> DetailsDiffStackBox;
@@ -146,8 +129,9 @@ private:
 	FReviewChangeItem SelectedChange;
 	TArray<FString> DebugMessages;
 	TSharedPtr<SMultiLineEditableTextBox> DebugMessageTextBox;
-	TWeakObjectPtr<UBlueprint> ReviewBlueprint;
-	TStrongObjectPtr<UBlueprint> PreviewBlueprint;
-	TStrongObjectPtr<UEdGraph> PreviewGraph;
+	FBlueprintHelperReviewAssetContext ReviewAssetContext;
+	EBlueprintHelperReviewSurface DetailsSurface = EBlueprintHelperReviewSurface::Unknown;
+	FBlueprintHelperReviewGraphPresenterState GraphPresenterState;
 	float FlashAlpha = 0.0f;
+	bool bPendingDiffGeometryRefresh = false;
 };

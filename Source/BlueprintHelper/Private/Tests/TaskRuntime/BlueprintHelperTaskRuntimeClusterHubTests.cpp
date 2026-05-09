@@ -285,6 +285,11 @@ bool FBlueprintHelperTaskRuntimeCluster_BuildsProducerOwnedReviewEvidence::RunTe
 	TestEqual(TEXT("asset factory target kind is required"),
 		AssetEvidence.AtomicTargets.Num() == 1 ? AssetEvidence.AtomicTargets[0].TargetKind : FString(),
 		FString(TEXT("asset_factory")));
+	TestEqual(TEXT("DataAsset asset factory routes to DataAsset surface"),
+		AssetEvidence.AtomicTargets.Num() == 1
+			? static_cast<int32>(AssetEvidence.AtomicTargets[0].Surface)
+			: static_cast<int32>(EBlueprintHelperReviewSurface::Unknown),
+		static_cast<int32>(EBlueprintHelperReviewSurface::DataAsset));
 
 	FBlueprintHelperTaskRuntimeLoweredStep GraphWriteStep = FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT("graph_write"), TEXT("append_blueprint_graph"));
 	GraphWriteStep.Payload = Payload;

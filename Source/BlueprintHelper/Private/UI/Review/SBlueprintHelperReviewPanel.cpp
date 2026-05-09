@@ -2,28 +2,15 @@
 
 #include "UI/Review/SBlueprintHelperReviewPanel.h"
 
-#include "AssetRegistry/AssetRegistryModule.h"
-#include "EdGraph/EdGraph.h"
-#include "EdGraph/EdGraphNode.h"
-#include "EdGraphUtilities.h"
-#include "EdGraphSchema_K2.h"
-#include "Engine/Blueprint.h"
-#include "GameFramework/Actor.h"
-#include "GraphEditor.h"
 #include "HAL/PlatformApplicationMisc.h"
 #include "Misc/DateTime.h"
-#include "Misc/PackageName.h"
-#include "Modules/ModuleManager.h"
 #include "SKismetInspector.h"
 #include "SMyBlueprint.h"
 #include "Systems/Review/BlueprintHelperReviewActionService.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
-#include "SSubobjectBlueprintEditor.h"
 #include "UI/Review/BlueprintHelperReviewDebugText.h"
-#include "UI/Review/BlueprintHelperReviewDiffBlockNode.h"
-#include "UI/Review/BlueprintHelperReviewGraphBounds.h"
-#include "UI/Review/BlueprintHelperReviewGraphResolver.h"
-#include "Brushes/SlateRoundedBoxBrush.h"
+#include "UI/Review/BlueprintHelperReviewAssetPresenters.h"
+#include "UI/Review/BlueprintHelperReviewSurfacePresenter.h"
 #include "Styling/AppStyle.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SMultiLineEditableTextBox.h"
@@ -32,13 +19,11 @@
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SSplitter.h"
 #include "Widgets/SBoxPanel.h"
-#include "Widgets/SCanvas.h"
 #include "Widgets/SNullWidget.h"
 #include "Widgets/SOverlay.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/STableRow.h"
 #include "Widgets/Views/STreeView.h"
-#include "UObject/UObjectGlobals.h"
 
 class FSBlueprintHelperReviewPanelLocalUtils
 {
@@ -48,297 +33,11 @@ public:
 	inline static const FLinearColor ReviewYellow = FLinearColor(1.0f, 0.72f, 0.08f, 0.85f);
 	inline static const FLinearColor ReviewPanelBg = FLinearColor(0.015f, 0.015f, 0.015f, 1.0f);
 	inline static const FLinearColor ReviewSectionBg = FLinearColor(0.035f, 0.035f, 0.035f, 1.0f);
-	inline static const FLinearColor ReviewFrameInnerBg = FLinearColor(0.06f, 0.06f, 0.06f, 0.92f);
 
 	static FText StatusToText(EBlueprintHelperReviewChangeStatus Status)
 	{
 		return FText::FromString(BlueprintHelperReviewChangeStatusToString(Status));
 	}
-
-	static bool IsReviewPropertyEditingEnabled()
-	{
-		return false;
-	}
-
-	static FString MakeReviewPackageNameFromAssetPath(const FString& AssetPath)
-	{
-		if (AssetPath.IsEmpty())
-		{
-			return FString();
-		}
-		if (FPackageName::IsValidObjectPath(AssetPath))
-		{
-			return FPackageName::ObjectPathToPackageName(AssetPath);
-		}
-
-		FString PackageName = AssetPath;
-		int32 SubObjectIndex = INDEX_NONE;
-		if (PackageName.FindChar(TEXT(':'), SubObjectIndex))
-		{
-			PackageName = PackageName.Left(SubObjectIndex);
-		}
-
-		int32 ObjectIndex = INDEX_NONE;
-		if (PackageName.FindChar(TEXT('.'), ObjectIndex))
-		{
-			PackageName = PackageName.Left(ObjectIndex);
-		}
-		return PackageName;
-	}
-
-	static FString MakeReviewObjectPathFromAssetPath(const FString& AssetPath)
-	{
-		if (FPackageName::IsValidObjectPath(AssetPath))
-		{
-			return AssetPath;
-		}
-
-		const FString PackageName = MakeReviewPackageNameFromAssetPath(AssetPath);
-		if (!FPackageName::IsValidLongPackageName(PackageName))
-		{
-			return AssetPath;
-		}
-		return FString::Printf(
-			TEXT("%s.%s"),
-			*PackageName,
-			*FPackageName::GetLongPackageAssetName(PackageName));
-	}
-
-	static bool DoesReviewPackageContainBlueprintAsset(const FString& PackageName)
-	{
-		FAssetRegistryModule& AssetRegistryModule =
-			FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
-
-		TArray<FAssetData> Assets;
-		AssetRegistryModule.Get().GetAssetsByPackageName(FName(*PackageName), Assets, false);
-		if (Assets.Num() == 0)
-		{
-			return true;
-		}
-
-		for (const FAssetData& Asset : Assets)
-		{
-			if (Asset.IsInstanceOf(UBlueprint::StaticClass()))
-			{
-				return true;
-			}
-		}
-		return false;
-	}
-
-	static UBlueprint* LoadReviewBlueprintAsset(const FString& AssetPath)
-	{
-		if (AssetPath.IsEmpty())
-		{
-			return nullptr;
-		}
-
-		const FString ObjectPath = MakeReviewObjectPathFromAssetPath(AssetPath);
-		if (UBlueprint* Blueprint = FindObject<UBlueprint>(nullptr, *ObjectPath))
-		{
-			return Blueprint;
-		}
-		if (ObjectPath != AssetPath)
-		{
-			if (UBlueprint* Blueprint = FindObject<UBlueprint>(nullptr, *AssetPath))
-			{
-				return Blueprint;
-			}
-		}
-
-		const FString PackageName = MakeReviewPackageNameFromAssetPath(AssetPath);
-		if (!FPackageName::IsValidLongPackageName(PackageName)
-			|| !FPackageName::DoesPackageExist(PackageName)
-			|| !DoesReviewPackageContainBlueprintAsset(PackageName))
-		{
-			return nullptr;
-		}
-
-		if (UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *ObjectPath))
-		{
-			return Blueprint;
-		}
-
-		return nullptr;
-	}
-
-	static UBlueprint* CreateReviewPreviewBlueprint(const UBlueprint* SourceBlueprint)
-	{
-		const FName PreviewName = MakeUniqueObjectName(
-			GetTransientPackage(),
-			UBlueprint::StaticClass(),
-			FName(TEXT("BlueprintHelperReviewPreviewBP")));
-
-		UBlueprint* PreviewBlueprint = NewObject<UBlueprint>(
-			GetTransientPackage(),
-			PreviewName,
-			RF_Transient);
-
-		if (SourceBlueprint)
-		{
-			PreviewBlueprint->BlueprintType = SourceBlueprint->BlueprintType;
-			PreviewBlueprint->ParentClass = SourceBlueprint->ParentClass;
-			PreviewBlueprint->GeneratedClass = SourceBlueprint->GeneratedClass;
-			PreviewBlueprint->SkeletonGeneratedClass = SourceBlueprint->SkeletonGeneratedClass;
-		}
-
-		return PreviewBlueprint;
-	}
-
-	static void AttachPreviewGraphToMatchingBlueprintList(
-		const UBlueprint* SourceBlueprint,
-		const UEdGraph* SourceGraph,
-		UBlueprint* PreviewBlueprint,
-		UEdGraph* PreviewGraph)
-	{
-		if (!SourceBlueprint || !SourceGraph || !PreviewBlueprint || !PreviewGraph)
-		{
-			return;
-		}
-
-		if (SourceBlueprint->UbergraphPages.Contains(SourceGraph))
-		{
-			PreviewBlueprint->UbergraphPages.Add(PreviewGraph);
-			return;
-		}
-		if (SourceBlueprint->FunctionGraphs.Contains(SourceGraph))
-		{
-			PreviewBlueprint->FunctionGraphs.Add(PreviewGraph);
-			return;
-		}
-		if (SourceBlueprint->MacroGraphs.Contains(SourceGraph))
-		{
-			PreviewBlueprint->MacroGraphs.Add(PreviewGraph);
-			return;
-		}
-		if (SourceBlueprint->DelegateSignatureGraphs.Contains(SourceGraph))
-		{
-			PreviewBlueprint->DelegateSignatureGraphs.Add(PreviewGraph);
-		}
-	}
-
-	class SBlueprintHelperReviewDiffFrame : public SCompoundWidget
-	{
-	public:
-		SLATE_BEGIN_ARGS(SBlueprintHelperReviewDiffFrame)
-			: _FrameColor(FSlateColor(FLinearColor::Transparent))
-			, _ShowActions(false)
-			, _FillBackground(true)
-		{
-		}
-
-			SLATE_ATTRIBUTE(FSlateColor, FrameColor)
-			SLATE_ATTRIBUTE(bool, ShowActions)
-			SLATE_ARGUMENT(bool, FillBackground)
-			SLATE_EVENT(FOnClicked, OnAccept)
-			SLATE_EVENT(FOnClicked, OnReject)
-			SLATE_DEFAULT_SLOT(FArguments, Content)
-
-		SLATE_END_ARGS()
-
-		void Construct(const FArguments& InArgs)
-		{
-			FrameColor = InArgs._FrameColor;
-			ShowActions = InArgs._ShowActions;
-			bFillBackground = InArgs._FillBackground;
-			OnAccept = InArgs._OnAccept;
-			OnReject = InArgs._OnReject;
-
-			ChildSlot
-			[
-				SNew(SOverlay)
-				+ SOverlay::Slot()
-				[
-					SNew(SBorder)
-					.BorderImage(this, &SBlueprintHelperReviewDiffFrame::GetFrameBrush)
-					.Padding(3.0f)
-					[
-						SNew(SBorder)
-						.BorderImage(this, &SBlueprintHelperReviewDiffFrame::GetInnerBrush)
-						.Padding(0.0f)
-						[
-							InArgs._Content.Widget
-						]
-					]
-				]
-				+ SOverlay::Slot()
-				.HAlign(HAlign_Right)
-				.VAlign(VAlign_Bottom)
-				.Padding(0.0f, 0.0f, 8.0f, 8.0f)
-				[
-					SNew(SBorder)
-					.BorderImage(&ActionsBrush)
-					.Padding(5.0f)
-					.Visibility(this, &SBlueprintHelperReviewDiffFrame::GetActionsVisibility)
-					[
-						SNew(SHorizontalBox)
-						+ SHorizontalBox::Slot()
-						.AutoWidth()
-						.Padding(0.0f, 0.0f, 6.0f, 0.0f)
-						[
-							SNew(SButton)
-							.Text(FText::FromString(TEXT("Accept")))
-							.OnClicked(OnAccept)
-						]
-						+ SHorizontalBox::Slot()
-						.AutoWidth()
-						[
-							SNew(SButton)
-							.Text(FText::FromString(TEXT("Reject")))
-							.OnClicked(OnReject)
-						]
-					]
-				]
-			];
-		}
-
-	private:
-		FSlateColor GetFrameColor() const
-		{
-			return FrameColor.Get();
-		}
-
-		const FSlateBrush* GetFrameBrush() const
-		{
-			FrameBrush = FSlateRoundedBoxBrush(
-				FLinearColor::Transparent,
-				7.0f,
-				GetFrameColor().GetSpecifiedColor(),
-				4.0f);
-			return &FrameBrush;
-		}
-
-		const FSlateBrush* GetInnerBrush() const
-		{
-			InnerBrush = FSlateRoundedBoxBrush(
-				bFillBackground ? ReviewFrameInnerBg : FLinearColor::Transparent,
-				5.0f);
-			return &InnerBrush;
-		}
-
-		EVisibility GetActionsVisibility() const
-		{
-			return ShowActions.Get(false) && IsHovered()
-				? EVisibility::Visible
-				: EVisibility::Collapsed;
-		}
-
-		TAttribute<FSlateColor> FrameColor;
-		TAttribute<bool> ShowActions;
-		FOnClicked OnAccept;
-		FOnClicked OnReject;
-		bool bFillBackground = true;
-		mutable FSlateRoundedBoxBrush FrameBrush = FSlateRoundedBoxBrush(
-			FLinearColor::Transparent,
-			7.0f,
-			FLinearColor::Transparent,
-			4.0f);
-		mutable FSlateRoundedBoxBrush InnerBrush = FSlateRoundedBoxBrush(ReviewFrameInnerBg, 5.0f);
-		FSlateRoundedBoxBrush ActionsBrush = FSlateRoundedBoxBrush(
-			FLinearColor(0.02f, 0.02f, 0.02f, 0.95f),
-			5.0f);
-	};
-
 };
 
 void SBlueprintHelperReviewPanel::Construct(const FArguments& InArgs)
@@ -356,7 +55,7 @@ void SBlueprintHelperReviewPanel::Construct(const FArguments& InArgs)
 	{
 		SelectedChange = ChangeItems[0];
 	}
-	LoadReviewBlueprintFromSelection();
+	LoadReviewAssetFromSelection();
 
 	ChildSlot
 	[
@@ -425,6 +124,7 @@ void SBlueprintHelperReviewPanel::Construct(const FArguments& InArgs)
 
 	RefreshChangeTreeWidget();
 	UpdateDetailsSelection();
+	RequestDeferredDiffGeometryRefresh();
 }
 
 void SBlueprintHelperReviewPanel::RefreshVisibleChanges(
@@ -441,12 +141,14 @@ void SBlueprintHelperReviewPanel::RefreshVisibleChanges(
 void SBlueprintHelperReviewPanel::OnChangeSelectionChanged(FReviewChangeItem Item, ESelectInfo::Type SelectInfo)
 {
 	SelectedChange = Item;
-	LoadReviewBlueprintFromSelection();
+	LoadReviewAssetFromSelection();
 	if (GraphEditorBox.IsValid())
 	{
 		GraphEditorBox->SetContent(BuildGraphEditorWidget());
 	}
+	RefreshDiffStackWidgets();
 	UpdateDetailsSelection();
+	RequestDeferredDiffGeometryRefresh();
 	StartFlash();
 	if (Item.IsValid())
 	{
@@ -714,7 +416,7 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildComponentsPanel()
 					SAssignNew(ComponentsDiffStackBox, SBox)
 					[
 						BuildPanelDiffFrames(
-							&BlueprintHelperReviewShouldShowInComponents,
+							&FBlueprintHelperReviewBlueprintComponentsPresenter::ShouldShowChange,
 							EBlueprintHelperReviewSurface::Components)
 					]
 				]
@@ -758,7 +460,7 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildMyBlueprintPanel()
 					SAssignNew(MyBlueprintDiffStackBox, SBox)
 					[
 						BuildPanelDiffFrames(
-							&BlueprintHelperReviewShouldShowInMyBlueprint,
+							&FBlueprintHelperReviewMyBlueprintPresenter::ShouldShowChange,
 							EBlueprintHelperReviewSurface::MyBlueprint)
 					]
 				]
@@ -813,7 +515,10 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildDetailsPanel()
 				SNew(SOverlay)
 				+ SOverlay::Slot()
 				[
-					BuildReadonlyDetailsWidget()
+					SAssignNew(DetailsContentBox, SBox)
+					[
+						BuildReadonlyDetailsWidget()
+					]
 				]
 				+ SOverlay::Slot()
 				.HAlign(HAlign_Fill)
@@ -822,9 +527,7 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildDetailsPanel()
 				[
 					SAssignNew(DetailsDiffStackBox, SBox)
 					[
-						BuildPanelDiffFrames(
-							&BlueprintHelperReviewShouldShowInDetails,
-							EBlueprintHelperReviewSurface::Details)
+						BuildDetailsPanelDiffFrames()
 					]
 				]
 			]
@@ -885,73 +588,28 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildDebugPanel()
 
 TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildGraphEditorWidget()
 {
-	UEdGraph* SourceGraph = ResolveGraphForSelectedChange();
-	PreviewBlueprint.Reset();
-	PreviewGraph.Reset();
-
-	const UBlueprint* SourceBlueprint = ReviewBlueprint.Get();
-	if (!SourceGraph && SelectedChange.IsValid() && !SelectedChange->GraphName.IsEmpty())
+	FBlueprintHelperReviewGraphPresenterArgs Args;
+	Args.AssetContext = &ReviewAssetContext;
+	Args.ChangeItems = &ChangeItems;
+	Args.SelectedChange = SelectedChange;
+	Args.AddDebugMessage = [this](const FString& Message)
 	{
-		AddDebugMessage(FString::Printf(
-			TEXT("GraphEditor source graph missing selectedGraph=\"%s\" asset=\"%s\"; using empty Review graph."),
-			*SelectedChange->GraphName,
-			*SelectedChange->AssetPath));
-	}
-
-	PreviewBlueprint = TStrongObjectPtr<UBlueprint>(FSBlueprintHelperReviewPanelLocalUtils::CreateReviewPreviewBlueprint(SourceBlueprint));
-
-	if (SourceGraph && PreviewBlueprint.IsValid())
+		AddDebugMessage(Message);
+	};
+	Args.OnAcceptChangeId = [this](const FString& ChangeId)
 	{
-		PreviewGraph = TStrongObjectPtr<UEdGraph>(FEdGraphUtilities::CloneGraph(SourceGraph, PreviewBlueprint.Get()));
-		if (PreviewGraph.IsValid())
-		{
-			PreviewGraph->SetFlags(RF_Transient);
-			PreviewGraph->bEditable = false;
-			FSBlueprintHelperReviewPanelLocalUtils::AttachPreviewGraphToMatchingBlueprintList(
-				SourceBlueprint,
-				SourceGraph,
-				PreviewBlueprint.Get(),
-				PreviewGraph.Get());
-		}
-	}
-
-	if (!PreviewGraph.IsValid())
+		return OnAcceptChangeId(ChangeId);
+	};
+	Args.OnRejectChangeId = [this](const FString& ChangeId)
 	{
-		if (!PreviewBlueprint.IsValid())
-		{
-			PreviewBlueprint = TStrongObjectPtr<UBlueprint>(FSBlueprintHelperReviewPanelLocalUtils::CreateReviewPreviewBlueprint(SourceBlueprint));
-		}
-		PreviewGraph = TStrongObjectPtr<UEdGraph>(NewObject<UEdGraph>(
-			PreviewBlueprint.Get(),
-			NAME_None,
-			RF_Transient));
-		PreviewGraph->Schema = UEdGraphSchema_K2::StaticClass();
-		PreviewGraph->bEditable = false;
-	}
+		return OnRejectChangeId(ChangeId);
+	};
+	Args.GetChangeColor = [this](EBlueprintHelperReviewChangeKind Kind)
+	{
+		return GetChangeColor(Kind);
+	};
 
-	FGraphAppearanceInfo Appearance;
-	Appearance.CornerText = FText::FromString(TEXT("Review"));
-	Appearance.InstructionText = FText::FromString(TEXT("Read-only Review Graph"));
-	Appearance.ReadOnlyText = FText::FromString(TEXT("Review Only"));
-
-	TSharedRef<SGraphEditor> Editor = SAssignNew(GraphEditorWidget, SGraphEditor)
-		.IsEditable(false)
-		.DisplayAsReadOnly(false)
-		.GraphToEdit(PreviewGraph.Get())
-		.Appearance(Appearance)
-		.ShowGraphStateOverlay(false);
-
-	AddDebugMessage(FString::Printf(
-		TEXT("GraphEditor build sourceGraph=\"%s\" previewGraph=\"%s\" previewNodes=%d timer=disabled"),
-		SourceGraph ? *SourceGraph->GetName() : TEXT("<none>"),
-		PreviewGraph.IsValid() ? *PreviewGraph->GetName() : TEXT("<none>"),
-		PreviewGraph.IsValid() ? PreviewGraph->Nodes.Num() : 0));
-	AddGraphDiffBlocks(PreviewGraph.Get(), SourceGraph, Editor);
-	Editor->NotifyGraphChanged();
-
-	JumpToSelectedGraphDiffBlock();
-
-	return Editor;
+	return FBlueprintHelperReviewGraphPresenter::BuildContent(Args, GraphPresenterState);
 }
 
 SBlueprintHelperReviewPanel::FReviewChangeItem SBlueprintHelperReviewPanel::FindChangeItemById(
@@ -975,194 +633,6 @@ FReply SBlueprintHelperReviewPanel::OnAcceptChangeId(const FString& ChangeId)
 FReply SBlueprintHelperReviewPanel::OnRejectChangeId(const FString& ChangeId)
 {
 	return OnRejectChange(FindChangeItemById(ChangeId));
-}
-
-void SBlueprintHelperReviewPanel::AddGraphDiffBlocks(
-	UEdGraph* PreviewGraphToEdit,
-	const UEdGraph* SourceGraph,
-	const TSharedPtr<SGraphEditor>& GraphEditorForBounds)
-{
-	if (!PreviewGraphToEdit)
-	{
-		return;
-	}
-
-	const FString CurrentAssetPath = SelectedChange.IsValid() ? SelectedChange->AssetPath : FString();
-	const FString GraphName = SourceGraph ? SourceGraph->GetName() : (SelectedChange.IsValid() ? SelectedChange->GraphName : FString());
-	const UEdGraph* BoundsGraph = SourceGraph ? SourceGraph : PreviewGraphToEdit;
-	for (const FReviewChangeItem& Item : ChangeItems)
-	{
-		if (!Item.IsValid() || !BlueprintHelperReviewShouldShowInGraph(*Item))
-		{
-			continue;
-		}
-		if (!CurrentAssetPath.IsEmpty() && Item->AssetPath != CurrentAssetPath)
-		{
-			continue;
-		}
-
-		FVector2D Position = FVector2D::ZeroVector;
-		FVector2D Size = FVector2D(760.0f, 180.0f);
-		FString BoundsDebug;
-		if (!BuildGraphBoundsForChange(Item, BoundsGraph, GraphName, GraphEditorForBounds, Position, Size, &BoundsDebug))
-		{
-			AddDebugMessage(FString::Printf(
-				TEXT("GraphDiff bounds failed change=%s selected=%d boundsGraph=\"%s\" %s"),
-				*Item->ChangeId,
-				Item == SelectedChange ? 1 : 0,
-				BoundsGraph ? *BoundsGraph->GetName() : TEXT("<none>"),
-				*BoundsDebug));
-			if (Item != SelectedChange)
-			{
-				continue;
-			}
-			Position = FVector2D(-380.0f, -90.0f);
-			AddDebugMessage(FString::Printf(
-				TEXT("GraphDiff fallback rect applied change=%s pos=(%.1f,%.1f) size=(%.1f,%.1f)"),
-				*Item->ChangeId,
-				static_cast<double>(Position.X),
-				static_cast<double>(Position.Y),
-				static_cast<double>(Size.X),
-				static_cast<double>(Size.Y)));
-		}
-		else
-		{
-			AddDebugMessage(FString::Printf(
-				TEXT("GraphDiff bounds change=%s selected=%d boundsGraph=\"%s\" %s"),
-				*Item->ChangeId,
-				Item == SelectedChange ? 1 : 0,
-				BoundsGraph ? *BoundsGraph->GetName() : TEXT("<none>"),
-				*BoundsDebug));
-		}
-
-		UBlueprintHelperReviewDiffBlockNode* DiffNode = NewObject<UBlueprintHelperReviewDiffBlockNode>(PreviewGraphToEdit);
-		DiffNode->SetFlags(RF_Transient);
-		DiffNode->CreateNewGuid();
-		DiffNode->NodePosX = FMath::FloorToInt(Position.X);
-		DiffNode->NodePosY = FMath::FloorToInt(Position.Y);
-		DiffNode->NodeWidth = FMath::CeilToInt(Size.X);
-		DiffNode->NodeHeight = FMath::CeilToInt(Size.Y);
-		DiffNode->Configure(
-			Item->ChangeId,
-			Item->DisplayLabel,
-			GetChangeColor(Item->ChangeKind).GetSpecifiedColor(),
-			Item == SelectedChange,
-			[this](const FString& ChangeId)
-			{
-				return OnAcceptChangeId(ChangeId);
-			},
-			[this](const FString& ChangeId)
-			{
-				return OnRejectChangeId(ChangeId);
-			});
-		PreviewGraphToEdit->AddNode(DiffNode, false, false);
-		AddDebugMessage(FString::Printf(
-			TEXT("GraphDiff node created change=%s graph=\"%s\" pos=(%d,%d) size=(%d,%d) previewNodes=%d"),
-			*Item->ChangeId,
-			*GraphName,
-			DiffNode->NodePosX,
-			DiffNode->NodePosY,
-			DiffNode->NodeWidth,
-			DiffNode->NodeHeight,
-			PreviewGraphToEdit->Nodes.Num()));
-	}
-}
-
-void SBlueprintHelperReviewPanel::JumpToSelectedGraphDiffBlock()
-{
-	if (!SelectedChange.IsValid() || !PreviewGraph.IsValid() || !GraphEditorWidget.IsValid())
-	{
-		AddDebugMessage(TEXT("GraphDiff jump skipped because selection, preview graph, or editor is invalid."));
-		return;
-	}
-
-	bool bJumped = false;
-	for (UEdGraphNode* Node : PreviewGraph->Nodes)
-	{
-		if (const UBlueprintHelperReviewDiffBlockNode* DiffNode = Cast<UBlueprintHelperReviewDiffBlockNode>(Node))
-		{
-			if (DiffNode->ChangeId == SelectedChange->ChangeId)
-			{
-				GraphEditorWidget->JumpToNode(Node, false, false);
-				bJumped = true;
-				AddDebugMessage(FString::Printf(
-					TEXT("GraphDiff jump change=%s pos=(%d,%d) size=(%d,%d)"),
-					*SelectedChange->ChangeId,
-					DiffNode->NodePosX,
-					DiffNode->NodePosY,
-					DiffNode->NodeWidth,
-					DiffNode->NodeHeight));
-				break;
-			}
-		}
-	}
-
-	if (!bJumped)
-	{
-		AddDebugMessage(FString::Printf(
-			TEXT("GraphDiff jump missed change=%s previewNodes=%d"),
-			*SelectedChange->ChangeId,
-			PreviewGraph->Nodes.Num()));
-	}
-}
-
-bool SBlueprintHelperReviewPanel::BuildGraphBoundsForChange(
-	const FReviewChangeItem& Item,
-	const UEdGraph* PreviewGraphToEdit,
-	const FString& GraphName,
-	const TSharedPtr<SGraphEditor>& GraphEditorForBounds,
-	FVector2D& OutPosition,
-	FVector2D& OutSize,
-	FString* OutDebugSummary) const
-{
-	if (!Item.IsValid())
-	{
-		if (OutDebugSummary)
-		{
-			*OutDebugSummary = TEXT("built=0 invalid change item");
-		}
-		return false;
-	}
-
-	if (Item->AtomicTargets.Num() > 0)
-	{
-		return FBlueprintHelperReviewGraphBounds::BuildBoundsForTargets(
-			Item->AtomicTargets,
-			PreviewGraphToEdit,
-			GraphName,
-			GraphEditorForBounds,
-			OutPosition,
-			OutSize,
-			OutDebugSummary);
-	}
-
-	if (!Item->GraphName.IsEmpty() && !GraphName.IsEmpty() && Item->GraphName != GraphName)
-	{
-		if (OutDebugSummary)
-		{
-			*OutDebugSummary = FString::Printf(
-				TEXT("built=0 graph mismatch itemGraph=\"%s\" currentGraph=\"%s\""),
-				*Item->GraphName,
-				*GraphName);
-		}
-		return false;
-	}
-
-	FBlueprintHelperReviewAtomicTarget FallbackTarget;
-	FallbackTarget.Surface = EBlueprintHelperReviewSurface::Graph;
-	FallbackTarget.GraphName = Item->GraphName;
-	FallbackTarget.TargetKey = Item->LocationKey;
-	FallbackTarget.NodeGuid = Item->LocationKey;
-	TArray<FBlueprintHelperReviewAtomicTarget> FallbackTargets;
-	FallbackTargets.Add(FallbackTarget);
-	return FBlueprintHelperReviewGraphBounds::BuildBoundsForTargets(
-		FallbackTargets,
-		PreviewGraphToEdit,
-		GraphName,
-		GraphEditorForBounds,
-		OutPosition,
-		OutSize,
-		OutDebugSummary);
 }
 
 TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildActionButtonBar()
@@ -1192,66 +662,38 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildActionButtonBar()
 
 TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildReadonlyComponentsWidget()
 {
-	if (UBlueprint* Blueprint = ReviewBlueprint.Get())
-	{
-		if (Blueprint->GeneratedClass && Blueprint->GeneratedClass->IsChildOf(AActor::StaticClass()))
-		{
-			if (AActor* ActorCDO = Cast<AActor>(Blueprint->GeneratedClass->GetDefaultObject()))
-			{
-				return SNew(SSubobjectBlueprintEditor)
-					.ObjectContext(ActorCDO)
-					.AllowEditing(false)
-					.HideComponentClassCombo(true);
-			}
-		}
-	}
-
-	return SNew(SBorder)
-		.BorderImage(FAppStyle::GetBrush(TEXT("Brushes.Panel")))
-		.Padding(8.0f)
-		[
-			SNew(STextBlock)
-			.ColorAndOpacity(FSlateColor(FLinearColor(0.58f, 0.58f, 0.58f, 1.0f)))
-			.Text(FText::FromString(TEXT("No Blueprint component tree loaded.")))
-		];
+	return FBlueprintHelperReviewBlueprintComponentsPresenter::BuildContent(ReviewAssetContext);
 }
 
 TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildReadonlyMyBlueprintWidget()
 {
-	if (UBlueprint* Blueprint = ReviewBlueprint.Get())
-	{
-		TSharedRef<SMyBlueprint> Widget = SAssignNew(MyBlueprintWidget, SMyBlueprint, TWeakPtr<FBlueprintEditor>(), Blueprint);
-		if (KismetInspector.IsValid())
-		{
-			MyBlueprintWidget->SetInspector(KismetInspector);
-		}
-		return Widget;
-	}
-
-	MyBlueprintWidget.Reset();
-	return SNew(SBorder)
-		.BorderImage(FAppStyle::GetBrush(TEXT("Brushes.Panel")))
-		.Padding(8.0f)
-		[
-			SNew(STextBlock)
-			.ColorAndOpacity(FSlateColor(FLinearColor(0.58f, 0.58f, 0.58f, 1.0f)))
-			.Text(FText::FromString(TEXT("No Blueprint outline loaded.")))
-		];
+	return FBlueprintHelperReviewMyBlueprintPresenter::BuildContent(
+		ReviewAssetContext,
+		MyBlueprintWidget,
+		KismetInspector);
 }
 
 TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildReadonlyDetailsWidget()
 {
-	TSharedRef<SKismetInspector> Inspector = SAssignNew(KismetInspector, SKismetInspector)
-		.HideNameArea(true)
-		.ViewIdentifier(FName(TEXT("BlueprintHelperReviewInspector")))
-		.MyBlueprintWidget(MyBlueprintWidget)
-		.IsPropertyEditingEnabledDelegate(FIsPropertyEditingEnabled::CreateStatic(&FSBlueprintHelperReviewPanelLocalUtils::IsReviewPropertyEditingEnabled))
-		.ShowLocalVariables(true);
-	if (MyBlueprintWidget.IsValid())
+	switch (ResolveDetailsSurfaceFromSelectedChange())
 	{
-		MyBlueprintWidget->SetInspector(KismetInspector);
+	case EBlueprintHelperReviewSurface::UMGWidgetTree:
+		KismetInspector.Reset();
+		return FBlueprintHelperReviewUMGWidgetTreePresenter::BuildContent(ReviewAssetContext);
+	case EBlueprintHelperReviewSurface::DataTable:
+		KismetInspector.Reset();
+		return FBlueprintHelperReviewDataTablePresenter::BuildContent(ReviewAssetContext);
+	case EBlueprintHelperReviewSurface::DataAsset:
+		KismetInspector.Reset();
+		return FBlueprintHelperReviewDataAssetPresenter::BuildContent(ReviewAssetContext);
+	default:
+		break;
 	}
-	return Inspector;
+
+	return FBlueprintHelperReviewObjectDetailsPresenter::BuildContent(
+		ReviewAssetContext,
+		KismetInspector,
+		MyBlueprintWidget);
 }
 
 TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildScopedDiffStack(
@@ -1291,67 +733,94 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildPanelDiffFrames(
 	bool (*Predicate)(const FBlueprintHelperReviewVisibleChange&),
 	EBlueprintHelperReviewSurface Surface)
 {
-	TSharedRef<SCanvas> Canvas = SNew(SCanvas);
-	const FString CurrentAssetPath = SelectedChange.IsValid() ? SelectedChange->AssetPath : FString();
-	TMap<FString, int32> BucketRowCounts;
-	int32 VisibleFrameCount = 0;
-
-	for (const FReviewChangeItem& Item : ChangeItems)
+	FBlueprintHelperReviewPanelSurfacePresenterArgs Args;
+	Args.AssetContext = &ReviewAssetContext;
+	Args.ChangeItems = &ChangeItems;
+	Args.SelectedChange = SelectedChange;
+	Args.AddDebugMessage = [this](const FString& Message)
 	{
-		if (!Item.IsValid() || !Predicate(*Item))
-		{
-			continue;
-		}
-		if (!CurrentAssetPath.IsEmpty() && Item->AssetPath != CurrentAssetPath)
-		{
-			continue;
-		}
-
-		const FString Bucket = GetPanelFrameBucket(Item, Surface);
-		int32& BucketRowIndex = BucketRowCounts.FindOrAdd(Bucket);
-
-		FVector2D Position = FVector2D::ZeroVector;
-		FVector2D Size = FVector2D::ZeroVector;
-		if (!TryBuildPanelFrameGeometry(Item, Surface, Bucket, BucketRowIndex, Position, Size))
-		{
-			++BucketRowIndex;
-			continue;
-		}
-
-		Canvas->AddSlot()
-		.Position(Position)
-		.Size(Size)
-		[
-			BuildPanelDiffFrame(Item)
-		];
-
-		++BucketRowIndex;
-		++VisibleFrameCount;
-	}
-
-	if (VisibleFrameCount == 0)
+		AddDebugMessage(Message);
+	};
+	Args.OnAcceptChange = [this](FReviewChangeItem Item)
 	{
-		return SNullWidget::NullWidget;
-	}
+		return OnAcceptChange(Item);
+	};
+	Args.OnRejectChange = [this](FReviewChangeItem Item)
+	{
+		return OnRejectChange(Item);
+	};
+	Args.GetChangeColor = [this](EBlueprintHelperReviewChangeKind Kind)
+	{
+		return GetChangeColor(Kind);
+	};
+	Args.GetSelectedDiffColor = [this]()
+	{
+		return GetSelectedDiffColor();
+	};
+	Args.ResolveRowGeometry.BindLambda([this](
+		const FBlueprintHelperReviewVisibleChange& Change,
+		EBlueprintHelperReviewSurface RoutedSurface,
+		FBlueprintHelperReviewSurfaceGeometryAnchor& OutAnchor)
+	{
+		return ResolveReviewRowGeometry(Change, RoutedSurface, OutAnchor);
+	});
 
-	return Canvas;
+	if (Surface == EBlueprintHelperReviewSurface::Components
+		&& Predicate == &FBlueprintHelperReviewBlueprintComponentsPresenter::ShouldShowChange)
+	{
+		return FBlueprintHelperReviewBlueprintComponentsPresenter::BuildOverlay(Args);
+	}
+	if (Surface == EBlueprintHelperReviewSurface::MyBlueprint
+		&& Predicate == &FBlueprintHelperReviewMyBlueprintPresenter::ShouldShowChange)
+	{
+		return FBlueprintHelperReviewMyBlueprintPresenter::BuildOverlay(Args);
+	}
+	if (Surface == EBlueprintHelperReviewSurface::Details
+		&& Predicate == &FBlueprintHelperReviewObjectDetailsPresenter::ShouldShowChange)
+	{
+		return FBlueprintHelperReviewObjectDetailsPresenter::BuildOverlay(Args);
+	}
+	if (Surface == EBlueprintHelperReviewSurface::UMGWidgetTree
+		&& Predicate == &FBlueprintHelperReviewUMGWidgetTreePresenter::ShouldShowChange)
+	{
+		return FBlueprintHelperReviewUMGWidgetTreePresenter::BuildOverlay(Args);
+	}
+	if (Surface == EBlueprintHelperReviewSurface::DataTable
+		&& Predicate == &FBlueprintHelperReviewDataTablePresenter::ShouldShowChange)
+	{
+		return FBlueprintHelperReviewDataTablePresenter::BuildOverlay(Args);
+	}
+	if (Surface == EBlueprintHelperReviewSurface::DataAsset
+		&& Predicate == &FBlueprintHelperReviewDataAssetPresenter::ShouldShowChange)
+	{
+		return FBlueprintHelperReviewDataAssetPresenter::BuildOverlay(Args);
+	}
+	return SNullWidget::NullWidget;
 }
 
-TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildPanelDiffFrame(FReviewChangeItem Item)
+TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildDetailsPanelDiffFrames()
 {
-	const FSlateColor FrameColor = Item == SelectedChange && Item.IsValid()
-		? GetSelectedDiffColor()
-		: (Item.IsValid() ? GetChangeColor(Item->ChangeKind) : FSlateColor(FLinearColor::Transparent));
+	switch (ResolveDetailsSurfaceFromSelectedChange())
+	{
+	case EBlueprintHelperReviewSurface::UMGWidgetTree:
+		return BuildPanelDiffFrames(
+			&FBlueprintHelperReviewUMGWidgetTreePresenter::ShouldShowChange,
+			EBlueprintHelperReviewSurface::UMGWidgetTree);
+	case EBlueprintHelperReviewSurface::DataTable:
+		return BuildPanelDiffFrames(
+			&FBlueprintHelperReviewDataTablePresenter::ShouldShowChange,
+			EBlueprintHelperReviewSurface::DataTable);
+	case EBlueprintHelperReviewSurface::DataAsset:
+		return BuildPanelDiffFrames(
+			&FBlueprintHelperReviewDataAssetPresenter::ShouldShowChange,
+			EBlueprintHelperReviewSurface::DataAsset);
+	default:
+		break;
+	}
 
-	return SNew(FSBlueprintHelperReviewPanelLocalUtils::SBlueprintHelperReviewDiffFrame)
-		.FrameColor(FrameColor)
-		.ShowActions(Item.IsValid())
-		.FillBackground(false)
-		.OnAccept(this, &SBlueprintHelperReviewPanel::OnAcceptChange, Item)
-		.OnReject(this, &SBlueprintHelperReviewPanel::OnRejectChange, Item)
-		[
-			SNullWidget::NullWidget
-		];
+	return BuildPanelDiffFrames(
+		&FBlueprintHelperReviewObjectDetailsPresenter::ShouldShowChange,
+		EBlueprintHelperReviewSurface::Details);
 }
 
 TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildAssetChangeButtonBar()
@@ -1379,185 +848,6 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildAssetChangeButtonBar()
 				.OnClicked(this, &SBlueprintHelperReviewPanel::OnRejectAll)
 			]
 		];
-}
-
-FString SBlueprintHelperReviewPanel::BuildPanelTargetSearchText(
-	FReviewChangeItem Item,
-	EBlueprintHelperReviewSurface Surface) const
-{
-	if (!Item.IsValid())
-	{
-		return FString();
-	}
-
-	FString Text;
-	auto AppendToken = [&Text](const FString& Value)
-	{
-		if (!Value.IsEmpty())
-		{
-			Text += TEXT(" ");
-			Text += Value;
-		}
-	};
-
-	AppendToken(Item->LocationKey);
-	AppendToken(Item->DisplayLabel);
-	AppendToken(Item->BeforeSummary);
-	AppendToken(Item->AfterSummary);
-
-	for (const FBlueprintHelperReviewAtomicTarget& Target : Item->AtomicTargets)
-	{
-		if (Target.Surface != Surface)
-		{
-			continue;
-		}
-
-		AppendToken(Target.TargetKey);
-		AppendToken(Target.VisualGroupKey);
-		AppendToken(Target.DisplayLabel);
-		AppendToken(Target.ComponentPath);
-		AppendToken(Target.PropertyPath);
-		AppendToken(Target.PinPath);
-	}
-
-	Text.ToLowerInline();
-	return Text;
-}
-
-FString SBlueprintHelperReviewPanel::GetPanelFrameBucket(
-	FReviewChangeItem Item,
-	EBlueprintHelperReviewSurface Surface) const
-{
-	const FString Text = BuildPanelTargetSearchText(Item, Surface);
-
-	if (Surface == EBlueprintHelperReviewSurface::Components)
-	{
-		return TEXT("component");
-	}
-
-	if (Surface == EBlueprintHelperReviewSurface::Details)
-	{
-		return TEXT("details");
-	}
-
-	if (Text.Contains(TEXT("dispatcher")) || Text.Contains(TEXT("delegate")))
-	{
-		return TEXT("dispatcher");
-	}
-	if (Text.Contains(TEXT("variable"))
-		|| Text.Contains(TEXT("property"))
-		|| Text.Contains(TEXT("smokevalue"))
-		|| Text.Contains(TEXT("fakediffproperty")))
-	{
-		return TEXT("variable");
-	}
-	if (Text.Contains(TEXT("component")))
-	{
-		return TEXT("component_variable");
-	}
-	if (Text.Contains(TEXT("macro")))
-	{
-		return TEXT("macro");
-	}
-	return TEXT("function");
-}
-
-bool SBlueprintHelperReviewPanel::TryBuildPanelFrameGeometry(
-	FReviewChangeItem Item,
-	EBlueprintHelperReviewSurface Surface,
-	const FString& Bucket,
-	int32 BucketRowIndex,
-	FVector2D& OutPosition,
-	FVector2D& OutSize) const
-{
-	if (!Item.IsValid())
-	{
-		return false;
-	}
-
-	const FString Text = BuildPanelTargetSearchText(Item, Surface);
-	if (Surface == EBlueprintHelperReviewSurface::Components)
-	{
-		const float RowTop = Text.Contains(TEXT("defaultsceneroot")) ? 66.0f : 92.0f + BucketRowIndex * 24.0f;
-		const float RowLeft = Text.Contains(TEXT("defaultsceneroot")) ? 30.0f : 44.0f;
-		OutPosition = FVector2D(RowLeft, RowTop);
-		OutSize = FVector2D(250.0f, 26.0f);
-		return true;
-	}
-
-	if (Surface == EBlueprintHelperReviewSurface::Details)
-	{
-		OutPosition = FVector2D(6.0f, 42.0f + BucketRowIndex * 30.0f);
-		OutSize = FVector2D(320.0f, 28.0f);
-		return true;
-	}
-
-	if (Surface != EBlueprintHelperReviewSurface::MyBlueprint)
-	{
-		return false;
-	}
-
-	if (Bucket == TEXT("function"))
-	{
-		float RowTop = 158.0f + BucketRowIndex * 30.0f;
-		if (Text.Contains(TEXT("fakedifffunction")))
-		{
-			RowTop = 218.0f;
-		}
-		else if (Text.Contains(TEXT("bh_smoke")))
-		{
-			RowTop = 188.0f;
-		}
-		else if (Text.Contains(TEXT("construction")))
-		{
-			RowTop = 158.0f;
-		}
-
-		OutPosition = FVector2D(6.0f, RowTop);
-		OutSize = FVector2D(360.0f, 28.0f);
-		return true;
-	}
-
-	if (Bucket == TEXT("component_variable"))
-	{
-		const float RowTop = Text.Contains(TEXT("defaultsceneroot")) ? 354.0f : 326.0f + BucketRowIndex * 24.0f;
-		OutPosition = FVector2D(28.0f, RowTop);
-		OutSize = FVector2D(245.0f, 24.0f);
-		return true;
-	}
-
-	if (Bucket == TEXT("variable"))
-	{
-		float RowTop = 405.0f + BucketRowIndex * 31.0f;
-		if (Text.Contains(TEXT("fakediffproperty")))
-		{
-			RowTop = 436.0f;
-		}
-		else if (Text.Contains(TEXT("smokevalue")))
-		{
-			RowTop = 405.0f;
-		}
-
-		OutPosition = FVector2D(6.0f, RowTop);
-		OutSize = FVector2D(360.0f, 28.0f);
-		return true;
-	}
-
-	if (Bucket == TEXT("dispatcher"))
-	{
-		OutPosition = FVector2D(6.0f, 488.0f + BucketRowIndex * 30.0f);
-		OutSize = FVector2D(360.0f, 28.0f);
-		return true;
-	}
-
-	if (Bucket == TEXT("macro"))
-	{
-		OutPosition = FVector2D(6.0f, 280.0f + BucketRowIndex * 30.0f);
-		OutSize = FVector2D(360.0f, 28.0f);
-		return true;
-	}
-
-	return false;
 }
 
 TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildDiffRow(FReviewChangeItem Item, bool bShowActions)
@@ -1602,14 +892,20 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildDiffFrame(
 	const TSharedRef<SWidget>& Content,
 	bool bShowActions)
 {
-	return SNew(FSBlueprintHelperReviewPanelLocalUtils::SBlueprintHelperReviewDiffFrame)
-		.FrameColor(Item.IsValid() ? GetChangeColor(Item->ChangeKind) : FSlateColor(FLinearColor::Transparent))
-		.ShowActions(bShowActions && Item.IsValid())
-		.OnAccept(this, &SBlueprintHelperReviewPanel::OnAcceptChange, Item)
-		.OnReject(this, &SBlueprintHelperReviewPanel::OnRejectChange, Item)
-		[
-			Content
-		];
+	return FBlueprintHelperReviewSurfaceFrameBuilder::BuildDiffFrame(
+		Item,
+		Content,
+		bShowActions,
+		true,
+		Item.IsValid() ? GetChangeColor(Item->ChangeKind) : FSlateColor(FLinearColor::Transparent),
+		[this](FReviewChangeItem ChangeItem)
+		{
+			return OnAcceptChange(ChangeItem);
+		},
+		[this](FReviewChangeItem ChangeItem)
+		{
+			return OnRejectChange(ChangeItem);
+		});
 }
 
 FReply SBlueprintHelperReviewPanel::OnAcceptSelected()
@@ -1659,7 +955,7 @@ FReply SBlueprintHelperReviewPanel::OnAcceptChange(FReviewChangeItem Item)
 		}
 		RebuildChangeTreeItems();
 		RefreshChangeTreeWidget();
-		LoadReviewBlueprintFromSelection();
+		LoadReviewAssetFromSelection();
 		if (GraphEditorBox.IsValid())
 		{
 			GraphEditorBox->SetContent(BuildGraphEditorWidget());
@@ -1703,6 +999,7 @@ FReply SBlueprintHelperReviewPanel::OnRejectChange(FReviewChangeItem Item)
 	Item->NeedsActionReason = Result.Message;
 	RebuildChangeTreeItems();
 	RefreshChangeTreeWidget();
+	LoadReviewAssetFromSelection();
 	RefreshDiffStackWidgets();
 	if (GraphEditorBox.IsValid())
 	{
@@ -1765,8 +1062,8 @@ FReply SBlueprintHelperReviewPanel::OnAcceptAll()
 	SelectedChange = ChangeItems.Num() > 0 ? ChangeItems[0] : FReviewChangeItem();
 	RebuildChangeTreeItems();
 	RefreshChangeTreeWidget();
+	LoadReviewAssetFromSelection();
 	RefreshDiffStackWidgets();
-	LoadReviewBlueprintFromSelection();
 	if (GraphEditorBox.IsValid())
 	{
 		GraphEditorBox->SetContent(BuildGraphEditorWidget());
@@ -1809,7 +1106,12 @@ FReply SBlueprintHelperReviewPanel::OnRejectAll()
 
 	RebuildChangeTreeItems();
 	RefreshChangeTreeWidget();
+	LoadReviewAssetFromSelection();
 	RefreshDiffStackWidgets();
+	if (GraphEditorBox.IsValid())
+	{
+		GraphEditorBox->SetContent(BuildGraphEditorWidget());
+	}
 	UpdateDetailsSelection();
 	AddDebugMessage(FString::Printf(
 		TEXT("RejectAll asset=\"%s\" markedNeedsAction=1"),
@@ -1907,30 +1209,48 @@ void SBlueprintHelperReviewPanel::StartFlash()
 	RegisterActiveTimer(0.0f, FWidgetActiveTimerDelegate::CreateSP(this, &SBlueprintHelperReviewPanel::TickFlash));
 }
 
+void SBlueprintHelperReviewPanel::RequestDeferredDiffGeometryRefresh()
+{
+	if (bPendingDiffGeometryRefresh)
+	{
+		return;
+	}
+
+	bPendingDiffGeometryRefresh = true;
+	RegisterActiveTimer(
+		0.0f,
+		FWidgetActiveTimerDelegate::CreateSP(this, &SBlueprintHelperReviewPanel::RefreshDiffGeometryAfterLayout));
+}
+
+EActiveTimerReturnType SBlueprintHelperReviewPanel::RefreshDiffGeometryAfterLayout(double InCurrentTime, float InDeltaTime)
+{
+	bPendingDiffGeometryRefresh = false;
+	RefreshDiffStackWidgets();
+	return EActiveTimerReturnType::Stop;
+}
+
 void SBlueprintHelperReviewPanel::RefreshDiffStackWidgets()
 {
 	if (ComponentsDiffStackBox.IsValid())
 	{
 		ComponentsDiffStackBox->SetContent(BuildPanelDiffFrames(
-			&BlueprintHelperReviewShouldShowInComponents,
+			&FBlueprintHelperReviewBlueprintComponentsPresenter::ShouldShowChange,
 			EBlueprintHelperReviewSurface::Components));
 	}
 	if (MyBlueprintDiffStackBox.IsValid())
 	{
 		MyBlueprintDiffStackBox->SetContent(BuildPanelDiffFrames(
-			&BlueprintHelperReviewShouldShowInMyBlueprint,
+			&FBlueprintHelperReviewMyBlueprintPresenter::ShouldShowChange,
 			EBlueprintHelperReviewSurface::MyBlueprint));
 	}
 	if (DetailsDiffStackBox.IsValid())
 	{
-		DetailsDiffStackBox->SetContent(BuildPanelDiffFrames(
-			&BlueprintHelperReviewShouldShowInDetails,
-			EBlueprintHelperReviewSurface::Details));
+		DetailsDiffStackBox->SetContent(BuildDetailsPanelDiffFrames());
 	}
 	Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
 }
 
-void SBlueprintHelperReviewPanel::LoadReviewBlueprintFromSelection()
+void SBlueprintHelperReviewPanel::LoadReviewAssetFromSelection()
 {
 	FString AssetPath;
 	if (SelectedChange.IsValid())
@@ -1949,13 +1269,29 @@ void SBlueprintHelperReviewPanel::LoadReviewBlueprintFromSelection()
 		}
 	}
 
-	UBlueprint* LoadedBlueprint = FSBlueprintHelperReviewPanelLocalUtils::LoadReviewBlueprintAsset(AssetPath);
-	if (LoadedBlueprint == ReviewBlueprint.Get())
+	FBlueprintHelperReviewAssetContext LoadedContext =
+		FBlueprintHelperReviewAssetContext::LoadForAssetPath(AssetPath);
+	const EBlueprintHelperReviewSurface LoadedDetailsSurface = ResolveDetailsSurfaceFromSelectedChange();
+	if (LoadedContext.AssetPath == ReviewAssetContext.AssetPath
+		&& LoadedContext.AssetKind == ReviewAssetContext.AssetKind
+		&& LoadedContext.AssetObject.Get() == ReviewAssetContext.AssetObject.Get()
+		&& LoadedContext.Blueprint.Get() == ReviewAssetContext.Blueprint.Get()
+		&& LoadedDetailsSurface == DetailsSurface)
 	{
 		return;
 	}
 
-	ReviewBlueprint = LoadedBlueprint;
+	ReviewAssetContext = LoadedContext;
+	DetailsSurface = LoadedDetailsSurface;
+	AddDebugMessage(FString::Printf(
+		TEXT("ReviewAssetContext asset=\"%s\" package=\"%s\" object=\"%s\" kind=%s valid=%d blueprint=%d detailsSurface=%s"),
+		*ReviewAssetContext.AssetPath,
+		*ReviewAssetContext.PackageName,
+		*ReviewAssetContext.ObjectPath,
+		BlueprintHelperReviewAssetKindToString(ReviewAssetContext.AssetKind),
+		ReviewAssetContext.IsValid() ? 1 : 0,
+		ReviewAssetContext.Blueprint.IsValid() ? 1 : 0,
+		BlueprintHelperReviewSurfaceToString(DetailsSurface)));
 	if (ComponentsContentBox.IsValid())
 	{
 		ComponentsContentBox->SetContent(BuildReadonlyComponentsWidget());
@@ -1964,6 +1300,10 @@ void SBlueprintHelperReviewPanel::LoadReviewBlueprintFromSelection()
 	{
 		MyBlueprintContentBox->SetContent(BuildReadonlyMyBlueprintWidget());
 	}
+	if (DetailsContentBox.IsValid())
+	{
+		DetailsContentBox->SetContent(BuildReadonlyDetailsWidget());
+	}
 	if (KismetInspector.IsValid())
 	{
 		if (MyBlueprintWidget.IsValid())
@@ -1971,6 +1311,7 @@ void SBlueprintHelperReviewPanel::LoadReviewBlueprintFromSelection()
 			MyBlueprintWidget->SetInspector(KismetInspector);
 		}
 	}
+	RequestDeferredDiffGeometryRefresh();
 }
 
 void SBlueprintHelperReviewPanel::UpdateDetailsSelection()
@@ -1995,9 +1336,125 @@ void SBlueprintHelperReviewPanel::UpdateDetailsSelection()
 		SKismetInspector::FShowDetailsOptions(FText::GetEmpty(), true));
 }
 
+EBlueprintHelperReviewSurface SBlueprintHelperReviewPanel::ResolveDetailsSurfaceFromSelectedChange() const
+{
+	auto ResolveFromChange = [](const FReviewChangeItem& Item)
+	{
+		if (!Item.IsValid())
+		{
+			return EBlueprintHelperReviewSurface::Unknown;
+		}
+		if (FBlueprintHelperReviewUMGWidgetTreePresenter::ShouldShowChange(*Item))
+		{
+			return EBlueprintHelperReviewSurface::UMGWidgetTree;
+		}
+		if (FBlueprintHelperReviewDataTablePresenter::ShouldShowChange(*Item))
+		{
+			return EBlueprintHelperReviewSurface::DataTable;
+		}
+		if (FBlueprintHelperReviewDataAssetPresenter::ShouldShowChange(*Item))
+		{
+			return EBlueprintHelperReviewSurface::DataAsset;
+		}
+		if (FBlueprintHelperReviewObjectDetailsPresenter::ShouldShowChange(*Item))
+		{
+			return EBlueprintHelperReviewSurface::Details;
+		}
+		return EBlueprintHelperReviewSurface::Unknown;
+	};
+
+	const EBlueprintHelperReviewSurface SelectedSurface = ResolveFromChange(SelectedChange);
+	if (SelectedSurface != EBlueprintHelperReviewSurface::Unknown)
+	{
+		return SelectedSurface;
+	}
+
+	const FString CurrentAssetPath = SelectedChange.IsValid() ? SelectedChange->AssetPath : FString();
+	for (const FReviewChangeItem& Item : ChangeItems)
+	{
+		if (!CurrentAssetPath.IsEmpty() && Item.IsValid() && Item->AssetPath != CurrentAssetPath)
+		{
+			continue;
+		}
+
+		const EBlueprintHelperReviewSurface ItemSurface = ResolveFromChange(Item);
+		if (ItemSurface != EBlueprintHelperReviewSurface::Unknown)
+		{
+			return ItemSurface;
+		}
+	}
+
+	return EBlueprintHelperReviewSurface::Details;
+}
+
+bool SBlueprintHelperReviewPanel::ResolveReviewRowGeometry(
+	const FBlueprintHelperReviewVisibleChange& Change,
+	EBlueprintHelperReviewSurface Surface,
+	FBlueprintHelperReviewSurfaceGeometryAnchor& OutAnchor) const
+{
+	TSharedPtr<SWidget> OverlayWidget;
+	switch (Surface)
+	{
+	case EBlueprintHelperReviewSurface::Components:
+		OverlayWidget = ComponentsDiffStackBox;
+		break;
+	case EBlueprintHelperReviewSurface::MyBlueprint:
+		OverlayWidget = MyBlueprintDiffStackBox;
+		break;
+	case EBlueprintHelperReviewSurface::Details:
+	case EBlueprintHelperReviewSurface::UMGWidgetTree:
+	case EBlueprintHelperReviewSurface::DataTable:
+	case EBlueprintHelperReviewSurface::DataAsset:
+		OverlayWidget = DetailsDiffStackBox;
+		break;
+	default:
+		OutAnchor.Reason = TEXT("unsupported_surface_geometry");
+		return false;
+	}
+
+	const FString TargetText = FBlueprintHelperReviewSurfaceFrameBuilder::GetReviewTargetText(Change, Surface);
+	if (TargetText.IsEmpty())
+	{
+		OutAnchor.Reason = TEXT("missing_geometry_target");
+		return false;
+	}
+
+	const FString PrimaryAssetPath = Change.AssetPath.IsEmpty() ? ReviewAssetContext.AssetPath : Change.AssetPath;
+	if (FBlueprintHelperReviewSlateRowGeometryRegistry::ResolveRowGeometry(
+		PrimaryAssetPath,
+		Surface,
+		TargetText,
+		OverlayWidget,
+		OutAnchor))
+	{
+		return true;
+	}
+
+	if (PrimaryAssetPath != ReviewAssetContext.AssetPath)
+	{
+		return FBlueprintHelperReviewSlateRowGeometryRegistry::ResolveRowGeometry(
+			ReviewAssetContext.AssetPath,
+			Surface,
+			TargetText,
+			OverlayWidget,
+			OutAnchor);
+	}
+
+	return false;
+}
+
 UObject* SBlueprintHelperReviewPanel::ResolveDetailsObjectForSelectedChange() const
 {
-	if (SelectedChange.IsValid() && BlueprintHelperReviewShouldShowInGraph(*SelectedChange))
+	const EBlueprintHelperReviewSurface SelectedDetailsSurface = ResolveDetailsSurfaceFromSelectedChange();
+	if (SelectedDetailsSurface == EBlueprintHelperReviewSurface::UMGWidgetTree
+		|| SelectedDetailsSurface == EBlueprintHelperReviewSurface::DataTable
+		|| SelectedDetailsSurface == EBlueprintHelperReviewSurface::DataAsset)
+	{
+		return nullptr;
+	}
+
+	if (SelectedChange.IsValid()
+		&& FBlueprintHelperReviewGraphPresenter::ShouldShowChange(*SelectedChange))
 	{
 		if (UEdGraph* Graph = ResolveGraphForSelectedChange())
 		{
@@ -2005,12 +1462,16 @@ UObject* SBlueprintHelperReviewPanel::ResolveDetailsObjectForSelectedChange() co
 		}
 	}
 
-	return ReviewBlueprint.Get();
+	if (ReviewAssetContext.DefaultObject.IsValid())
+	{
+		return ReviewAssetContext.DefaultObject.Get();
+	}
+	return ReviewAssetContext.AssetObject.Get();
 }
 
 UEdGraph* SBlueprintHelperReviewPanel::ResolveGraphForSelectedChange() const
 {
-	const UBlueprint* Blueprint = ReviewBlueprint.Get();
-	const FString RequestedGraphName = SelectedChange.IsValid() ? SelectedChange->GraphName : FString();
-	return FBlueprintHelperReviewGraphResolver::ResolveGraphForReviewSelection(Blueprint, RequestedGraphName);
+	return FBlueprintHelperReviewGraphPresenter::ResolveGraphForSelection(
+		ReviewAssetContext,
+		SelectedChange);
 }

@@ -10,3 +10,6 @@ build/
 /Intermediate/
 /Binaries/
 /Saved/
+*.toml
+*.7z
+*.yaml

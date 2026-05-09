@@ -1,9 +1,17 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Misc/AutomationTest.h"
+#include "Blueprint/UserWidget.h"
+#include "Blueprint/WidgetTree.h"
+#include "Components/CanvasPanel.h"
+#include "Components/TextBlock.h"
+#include "Curves/CurveFloat.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
 #include "Engine/BlueprintGeneratedClass.h"
+#include "Engine/DataAsset.h"
+#include "Engine/DataTable.h"
+#include "Engine/PrimaryAssetLabel.h"
 #include "GameFramework/Actor.h"
 #include "K2Node_CustomEvent.h"
 #include "Kismet2/BlueprintEditorUtils.h"
@@ -17,13 +25,18 @@
 #include "Shared/GraphWrite/BlueprintHelperAppendGraphTypes.h"
 #include "Systems/Transactions/BlueprintHelperTransactionJournalService.h"
 #include "UI/Review/BlueprintHelperReviewDebugText.h"
+#include "UI/Review/BlueprintHelperReviewAssetContext.h"
+#include "UI/Review/BlueprintHelperReviewAssetPresenters.h"
 #include "UI/Review/BlueprintHelperReviewGraphBounds.h"
 #include "UI/Review/BlueprintHelperReviewGraphResolver.h"
+#include "UI/Review/BlueprintHelperReviewSurfacePresenter.h"
 #include "Widgets/SNullWidget.h"
 #include "UI/Review/SBlueprintHelperReviewPanel.h"
 #include "Engine/Blueprint.h"
 #include "UObject/MetaData.h"
+#include "UObject/NoExportTypes.h"
 #include "UObject/Package.h"
+#include "WidgetBlueprint.h"
 
 class FBlueprintHelperReviewStoreServiceTestsLocalUtils
 {
@@ -119,6 +132,107 @@ public:
 			TEXT("BlueprintHelperReviewStoreServiceTests"));
 		Package->SetDirtyFlag(false);
 		return Blueprint;
+	}
+
+	static UDataTable* MakeReviewDataTable(const FString& Prefix)
+	{
+		UPackage* Package = CreatePackage(*FString::Printf(
+			TEXT("/Game/BlueprintHelperReview/%s_%s"),
+			*Prefix,
+			*FGuid::NewGuid().ToString(EGuidFormats::Digits)));
+		if (!Package)
+		{
+			return nullptr;
+		}
+
+		UDataTable* DataTable = NewObject<UDataTable>(
+			Package,
+			*FString::Printf(TEXT("DT_%s"), *Prefix),
+			RF_Public | RF_Standalone | RF_Transactional);
+		if (DataTable)
+		{
+			const FVector InitialValue(1.0, 2.0, 3.0);
+			TMap<FName, const uint8*> RawRows;
+			RawRows.Add(FName(TEXT("DamageSmall")), reinterpret_cast<const uint8*>(&InitialValue));
+			DataTable->CreateTableFromRawData(RawRows, TBaseStructure<FVector>::Get());
+			Package->SetDirtyFlag(false);
+		}
+		return DataTable;
+	}
+
+	static UObject* MakeReviewGenericObject(const FString& Prefix)
+	{
+		UPackage* Package = CreatePackage(*FString::Printf(
+			TEXT("/Game/BlueprintHelperReview/%s_%s"),
+			*Prefix,
+			*FGuid::NewGuid().ToString(EGuidFormats::Digits)));
+		if (!Package)
+		{
+			return nullptr;
+		}
+
+		UObject* Object = NewObject<UCurveFloat>(
+			Package,
+			*FString::Printf(TEXT("Obj_%s"), *Prefix),
+			RF_Public | RF_Standalone | RF_Transactional);
+		Package->SetDirtyFlag(false);
+		return Object;
+	}
+
+	static UDataAsset* MakeReviewDataAsset(const FString& Prefix)
+	{
+		UPackage* Package = CreatePackage(*FString::Printf(
+			TEXT("/Game/BlueprintHelperReview/%s_%s"),
+			*Prefix,
+			*FGuid::NewGuid().ToString(EGuidFormats::Digits)));
+		if (!Package)
+		{
+			return nullptr;
+		}
+
+		UDataAsset* DataAsset = NewObject<UPrimaryAssetLabel>(
+			Package,
+			*FString::Printf(TEXT("DA_%s"), *Prefix),
+			RF_Public | RF_Standalone | RF_Transactional);
+		Package->SetDirtyFlag(false);
+		return DataAsset;
+	}
+
+	static UWidgetBlueprint* MakeReviewWidgetBlueprint(const FString& Prefix)
+	{
+		UPackage* Package = CreatePackage(*FString::Printf(
+			TEXT("/Game/BlueprintHelperReview/%s_%s"),
+			*Prefix,
+			*FGuid::NewGuid().ToString(EGuidFormats::Digits)));
+		if (!Package)
+		{
+			return nullptr;
+		}
+
+		UWidgetBlueprint* WidgetBlueprint = NewObject<UWidgetBlueprint>(
+			Package,
+			*FString::Printf(TEXT("WBP_%s"), *Prefix),
+			RF_Public | RF_Standalone | RF_Transactional);
+		if (!WidgetBlueprint)
+		{
+			return nullptr;
+		}
+
+		WidgetBlueprint->ParentClass = UUserWidget::StaticClass();
+		WidgetBlueprint->WidgetTree = NewObject<UWidgetTree>(
+			WidgetBlueprint,
+			TEXT("WidgetTree"),
+			RF_Transactional);
+		UCanvasPanel* Root = WidgetBlueprint->WidgetTree->ConstructWidget<UCanvasPanel>(
+			UCanvasPanel::StaticClass(),
+			TEXT("RootCanvas"));
+		WidgetBlueprint->WidgetTree->RootWidget = Root;
+		UTextBlock* Text = WidgetBlueprint->WidgetTree->ConstructWidget<UTextBlock>(
+			UTextBlock::StaticClass(),
+			TEXT("SmokeText"));
+		Root->AddChild(Text);
+		Package->SetDirtyFlag(false);
+		return WidgetBlueprint;
 	}
 
 	static UK2Node_CustomEvent* AddReviewConversionEventNode(UEdGraph* Graph, const FString& EventName)
@@ -238,6 +352,686 @@ bool FBlueprintHelperReviewSurfaceClassificationTest::RunTest(const FString& Par
 	TestTrue(TEXT("signature changes render in Details"),
 		BlueprintHelperReviewShouldShowInDetails(SignatureChange));
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewGraphRequiresExplicitGraphTargetTest,
+	"BlueprintHelper.Review.VisibleChange.ReviewShouldShowInGraphRequiresGraphTargetWhenTargetsAreExplicit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewGraphRequiresExplicitGraphTargetTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewVisibleChange SignatureOnlyChange;
+	SignatureOnlyChange.ChangeId = TEXT("tx_signature_only");
+	SignatureOnlyChange.GraphName = TEXT("EventGraph");
+	SignatureOnlyChange.LocationKey = TEXT("function:ApplyDamage:signature");
+	SignatureOnlyChange.ChangeKind = EBlueprintHelperReviewChangeKind::SignatureModified;
+
+	FBlueprintHelperReviewAtomicTarget SignatureTarget;
+	SignatureTarget.Surface = EBlueprintHelperReviewSurface::MyBlueprint;
+	SignatureTarget.TargetKind = TEXT("signature");
+	SignatureTarget.TargetKey = TEXT("signature:ApplyDamage");
+	SignatureOnlyChange.AtomicTargets.Add(SignatureTarget);
+
+	TestFalse(TEXT("explicit MyBlueprint signature target does not route to Graph fallback"),
+		BlueprintHelperReviewShouldShowInGraph(SignatureOnlyChange));
+	TestTrue(TEXT("explicit MyBlueprint signature target routes to MyBlueprint"),
+		BlueprintHelperReviewShouldShowInMyBlueprint(SignatureOnlyChange));
+	TestFalse(TEXT("explicit MyBlueprint signature target does not legacy-route to Details"),
+		BlueprintHelperReviewShouldShowInDetails(SignatureOnlyChange));
+
+	const FBlueprintHelperReviewSurfaceRouteDecision HiddenGraphDecision =
+		FBlueprintHelperReviewSurfacePresenterRouter::RouteChangeToSurface(
+			SignatureOnlyChange,
+			EBlueprintHelperReviewSurface::Graph);
+	TestFalse(TEXT("presenter hides Graph without Graph target"), HiddenGraphDecision.bShouldShow);
+	TestEqual(TEXT("presenter records no_surface_anchor reason"),
+		HiddenGraphDecision.Reason,
+		FString(TEXT("no_surface_anchor")));
+
+	FBlueprintHelperReviewVisibleChange TrueGraphChange = SignatureOnlyChange;
+	TrueGraphChange.ChangeId = TEXT("tx_1778317276165");
+	TrueGraphChange.AtomicTargets.Reset();
+	FBlueprintHelperReviewAtomicTarget GraphTarget;
+	GraphTarget.Surface = EBlueprintHelperReviewSurface::Graph;
+	GraphTarget.GraphName = TEXT("EventGraph");
+	GraphTarget.TargetKind = TEXT("graph_node");
+	GraphTarget.TargetKey = TEXT("graph:EventGraph/node:PrintString");
+	TrueGraphChange.AtomicTargets.Add(GraphTarget);
+
+	TestTrue(TEXT("explicit Graph target remains routable"),
+		BlueprintHelperReviewShouldShowInGraph(TrueGraphChange));
+	const FBlueprintHelperReviewSurfaceRouteDecision ShownGraphDecision =
+		FBlueprintHelperReviewSurfacePresenterRouter::RouteChangeToSurface(
+			TrueGraphChange,
+			EBlueprintHelperReviewSurface::Graph);
+	TestTrue(TEXT("presenter shows true Graph target"), ShownGraphDecision.bShouldShow);
+	TestEqual(TEXT("presenter records target_match reason"),
+		ShownGraphDecision.Reason,
+		FString(TEXT("target_match")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewPresenterRoutingContractsTest,
+	"BlueprintHelper.Review.VisibleChange.PresenterRoutingContracts",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewPresenterRoutingContractsTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewVisibleChange GraphChange;
+	GraphChange.ChangeId = TEXT("tx_graph_presenter");
+	FBlueprintHelperReviewAtomicTarget GraphTarget;
+	GraphTarget.Surface = EBlueprintHelperReviewSurface::Graph;
+	GraphTarget.TargetKind = TEXT("graph_node");
+	GraphTarget.TargetKey = TEXT("graph:EventGraph/node:PrintString");
+	GraphChange.AtomicTargets.Add(GraphTarget);
+	TestTrue(TEXT("Graph presenter accepts graph anchor"),
+		FBlueprintHelperReviewGraphPresenter::ShouldShowChange(GraphChange));
+	TestFalse(TEXT("Components presenter rejects graph anchor"),
+		FBlueprintHelperReviewBlueprintComponentsPresenter::ShouldShowChange(GraphChange));
+
+	FBlueprintHelperReviewVisibleChange ComponentChange;
+	ComponentChange.ChangeId = TEXT("tx_component_presenter");
+	FBlueprintHelperReviewAtomicTarget ComponentTarget;
+	ComponentTarget.Surface = EBlueprintHelperReviewSurface::Components;
+	ComponentTarget.TargetKind = TEXT("component");
+	ComponentTarget.TargetKey = TEXT("component:SmokeSceneComp");
+	ComponentChange.AtomicTargets.Add(ComponentTarget);
+	TestTrue(TEXT("Components presenter accepts component anchor"),
+		FBlueprintHelperReviewBlueprintComponentsPresenter::ShouldShowChange(ComponentChange));
+	TestFalse(TEXT("Graph presenter rejects component anchor"),
+		FBlueprintHelperReviewGraphPresenter::ShouldShowChange(ComponentChange));
+
+	FBlueprintHelperReviewVisibleChange SignatureChange;
+	SignatureChange.ChangeId = TEXT("tx_signature_presenter");
+	FBlueprintHelperReviewAtomicTarget SignatureTarget;
+	SignatureTarget.Surface = EBlueprintHelperReviewSurface::MyBlueprint;
+	SignatureTarget.TargetKind = TEXT("signature");
+	SignatureTarget.TargetKey = TEXT("signature:ApplyDamage");
+	SignatureChange.AtomicTargets.Add(SignatureTarget);
+	TestTrue(TEXT("MyBlueprint presenter accepts signature anchor"),
+		FBlueprintHelperReviewMyBlueprintPresenter::ShouldShowChange(SignatureChange));
+	TestFalse(TEXT("Details presenter rejects MyBlueprint-only signature anchor"),
+		FBlueprintHelperReviewObjectDetailsPresenter::ShouldShowChange(SignatureChange));
+
+	FBlueprintHelperReviewVisibleChange DetailsChange;
+	DetailsChange.ChangeId = TEXT("tx_details_presenter");
+	FBlueprintHelperReviewAtomicTarget DetailsTarget;
+	DetailsTarget.Surface = EBlueprintHelperReviewSurface::Details;
+	DetailsTarget.TargetKind = TEXT("class_default_property");
+	DetailsTarget.TargetKey = TEXT("class_default_property:SmokeHealth");
+	DetailsChange.AtomicTargets.Add(DetailsTarget);
+	TestTrue(TEXT("Details presenter accepts class default property anchor"),
+		FBlueprintHelperReviewObjectDetailsPresenter::ShouldShowChange(DetailsChange));
+	TestFalse(TEXT("Graph presenter rejects object property anchor"),
+		FBlueprintHelperReviewGraphPresenter::ShouldShowChange(DetailsChange));
+
+	FBlueprintHelperReviewVisibleChange DataTableChange;
+	DataTableChange.ChangeId = TEXT("tx_datatable_independent_presenter");
+	FBlueprintHelperReviewAtomicTarget DataTableTarget;
+	DataTableTarget.Surface = EBlueprintHelperReviewSurface::DataTable;
+	DataTableTarget.TargetKind = TEXT("datatable_row");
+	DataTableTarget.TargetKey = TEXT("datatable_row:DamageSmall");
+	DataTableChange.AtomicTargets.Add(DataTableTarget);
+	TestTrue(TEXT("DataTable presenter accepts DataTable surface"),
+		FBlueprintHelperReviewDataTablePresenter::ShouldShowChange(DataTableChange));
+	TestFalse(TEXT("Details presenter rejects DataTable surface"),
+		FBlueprintHelperReviewObjectDetailsPresenter::ShouldShowChange(DataTableChange));
+
+	FBlueprintHelperReviewVisibleChange LegacyDataTableChange = DataTableChange;
+	LegacyDataTableChange.ChangeId = TEXT("tx_datatable_legacy_details_presenter");
+	LegacyDataTableChange.AtomicTargets[0].Surface = EBlueprintHelperReviewSurface::Details;
+	TestFalse(TEXT("DataTable presenter no longer routes via Details target kind compatibility"),
+		FBlueprintHelperReviewDataTablePresenter::ShouldShowChange(LegacyDataTableChange));
+
+	FBlueprintHelperReviewVisibleChange MixedSurfaceChange;
+	MixedSurfaceChange.ChangeId = TEXT("tx_mixed_surface_presenter");
+	FBlueprintHelperReviewAtomicTarget MixedDataTableTarget;
+	MixedDataTableTarget.Surface = EBlueprintHelperReviewSurface::DataTable;
+	MixedDataTableTarget.TargetKind = TEXT("unknown_anchor");
+	MixedDataTableTarget.TargetKey = TEXT("datatable_row:DamageSmall");
+	MixedSurfaceChange.AtomicTargets.Add(MixedDataTableTarget);
+	FBlueprintHelperReviewAtomicTarget MixedDataAssetTarget;
+	MixedDataAssetTarget.Surface = EBlueprintHelperReviewSurface::DataAsset;
+	MixedDataAssetTarget.TargetKind = TEXT("object_property");
+	MixedDataAssetTarget.TargetKey = TEXT("object_property:SmokeHealth");
+	MixedSurfaceChange.AtomicTargets.Add(MixedDataAssetTarget);
+	TestFalse(TEXT("DataTable presenter only accepts target kind on the DataTable surface"),
+		FBlueprintHelperReviewDataTablePresenter::ShouldShowChange(MixedSurfaceChange));
+	TestTrue(TEXT("DataAsset presenter accepts its own matching surface target"),
+		FBlueprintHelperReviewDataAssetPresenter::ShouldShowChange(MixedSurfaceChange));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewPresenterOverlayBuildsDeterministicReviewListTest,
+	"BlueprintHelper.Review.VisibleChange.PresenterOverlayBuildsDeterministicReviewList",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewPresenterOverlayBuildsDeterministicReviewListTest::RunTest(const FString& Parameters)
+{
+	struct FOverlayCase
+	{
+		EBlueprintHelperReviewSurface Surface;
+		EBlueprintHelperReviewAssetKind AssetKind;
+		FString DebugSurfaceName;
+		FString SurfaceToken;
+		FString ChangePrefix;
+		FString TargetKind;
+		TFunction<TSharedRef<SWidget>(const FBlueprintHelperReviewPanelSurfacePresenterArgs&)> BuildOverlay;
+	};
+
+	const TArray<FOverlayCase> Cases = {
+		{
+			EBlueprintHelperReviewSurface::Components,
+			EBlueprintHelperReviewAssetKind::Blueprint,
+			TEXT("Components"),
+			TEXT("components"),
+			TEXT("component"),
+			TEXT("component"),
+			[](const FBlueprintHelperReviewPanelSurfacePresenterArgs& Args)
+			{
+				return FBlueprintHelperReviewBlueprintComponentsPresenter::BuildOverlay(Args);
+			}
+		},
+		{
+			EBlueprintHelperReviewSurface::MyBlueprint,
+			EBlueprintHelperReviewAssetKind::Blueprint,
+			TEXT("MyBlueprint"),
+			TEXT("my_blueprint"),
+			TEXT("myblueprint"),
+			TEXT("signature"),
+			[](const FBlueprintHelperReviewPanelSurfacePresenterArgs& Args)
+			{
+				return FBlueprintHelperReviewMyBlueprintPresenter::BuildOverlay(Args);
+			}
+		},
+		{
+			EBlueprintHelperReviewSurface::Details,
+			EBlueprintHelperReviewAssetKind::Blueprint,
+			TEXT("Details"),
+			TEXT("details"),
+			TEXT("details"),
+			TEXT("class_default_property"),
+			[](const FBlueprintHelperReviewPanelSurfacePresenterArgs& Args)
+			{
+				return FBlueprintHelperReviewObjectDetailsPresenter::BuildOverlay(Args);
+			}
+		},
+		{
+			EBlueprintHelperReviewSurface::UMGWidgetTree,
+			EBlueprintHelperReviewAssetKind::WidgetBlueprint,
+			TEXT("UMGWidgetTree"),
+			TEXT("umg_widget_tree"),
+			TEXT("umg"),
+			TEXT("umg_widget"),
+			[](const FBlueprintHelperReviewPanelSurfacePresenterArgs& Args)
+			{
+				return FBlueprintHelperReviewUMGWidgetTreePresenter::BuildOverlay(Args);
+			}
+		},
+		{
+			EBlueprintHelperReviewSurface::DataTable,
+			EBlueprintHelperReviewAssetKind::DataTable,
+			TEXT("DataTable"),
+			TEXT("data_table"),
+			TEXT("datatable"),
+			TEXT("datatable_row"),
+			[](const FBlueprintHelperReviewPanelSurfacePresenterArgs& Args)
+			{
+				return FBlueprintHelperReviewDataTablePresenter::BuildOverlay(Args);
+			}
+		},
+		{
+			EBlueprintHelperReviewSurface::DataAsset,
+			EBlueprintHelperReviewAssetKind::DataAsset,
+			TEXT("DataAsset"),
+			TEXT("data_asset"),
+			TEXT("dataasset"),
+			TEXT("data_asset_property"),
+			[](const FBlueprintHelperReviewPanelSurfacePresenterArgs& Args)
+			{
+				return FBlueprintHelperReviewDataAssetPresenter::BuildOverlay(Args);
+			}
+		}
+	};
+
+	for (const FOverlayCase& OverlayCase : Cases)
+	{
+		TArray<TSharedPtr<FBlueprintHelperReviewVisibleChange>> Items;
+		for (int32 Index = 0; Index < 2; ++Index)
+		{
+			FBlueprintHelperReviewVisibleChange Change;
+			Change.ChangeId = FString::Printf(TEXT("tx_%s_overlay_%d"), *OverlayCase.ChangePrefix, Index);
+			Change.AssetPath = TEXT("/Game/BlueprintHelper/Smoke/ReviewAsset");
+			Change.DisplayLabel = FString::Printf(TEXT("%s row %d"), *OverlayCase.ChangePrefix, Index);
+			Change.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
+
+			FBlueprintHelperReviewAtomicTarget Target;
+			Target.Surface = OverlayCase.Surface;
+			Target.TargetKind = OverlayCase.TargetKind;
+			Target.TargetKey = FString::Printf(TEXT("%s:Target%d"), *OverlayCase.TargetKind, Index);
+			Target.DisplayLabel = FString::Printf(TEXT("Target%d"), Index);
+			Change.AtomicTargets.Add(Target);
+			Items.Add(MakeShared<FBlueprintHelperReviewVisibleChange>(Change));
+		}
+
+		TArray<FString> DebugMessages;
+		FBlueprintHelperReviewAssetContext Context;
+		Context.AssetKind = OverlayCase.AssetKind;
+		FBlueprintHelperReviewPanelSurfacePresenterArgs Args;
+		Args.AssetContext = &Context;
+		Args.ChangeItems = &Items;
+		Args.SelectedChange = Items[0];
+		Args.AddDebugMessage = [&DebugMessages](const FString& Message)
+		{
+			DebugMessages.Add(Message);
+		};
+		Args.OnAcceptChange = [](TSharedPtr<FBlueprintHelperReviewVisibleChange>)
+		{
+			return FReply::Handled();
+		};
+		Args.OnRejectChange = [](TSharedPtr<FBlueprintHelperReviewVisibleChange>)
+		{
+			return FReply::Handled();
+		};
+		Args.GetChangeColor = [](EBlueprintHelperReviewChangeKind)
+		{
+			return FSlateColor(FLinearColor::Green);
+		};
+		Args.GetSelectedDiffColor = []()
+		{
+			return FSlateColor(FLinearColor::Yellow);
+		};
+
+		TSharedRef<SWidget> Overlay = OverlayCase.BuildOverlay(Args);
+		TestTrue(FString::Printf(TEXT("%s overlay builds a widget"), *OverlayCase.DebugSurfaceName),
+			&Overlay.Get() != &SNullWidget::NullWidget.Get());
+
+		bool bSawRoute = false;
+		bool bSawFallbackGeometry = false;
+		bool bSawRow0 = false;
+		bool bSawRow1 = false;
+		for (const FString& Message : DebugMessages)
+		{
+			bSawRoute |= Message.Contains(FString::Printf(
+				TEXT("ReviewRoute change=tx_%s_overlay_0 surface=%s"),
+				*OverlayCase.ChangePrefix,
+				*OverlayCase.DebugSurfaceName));
+			bSawFallbackGeometry |= Message.Contains(TEXT("mode=fallback_geometry"));
+			bSawRow0 |= Message.Contains(FString::Printf(
+				TEXT("ReviewFrameGeometry change=tx_%s_overlay_0 surface=%s mode=review_list result=shown"),
+				*OverlayCase.ChangePrefix,
+				*OverlayCase.SurfaceToken))
+				&& Message.Contains(TEXT("row=0"));
+			bSawRow1 |= Message.Contains(FString::Printf(
+				TEXT("ReviewFrameGeometry change=tx_%s_overlay_1 surface=%s mode=review_list result=shown"),
+				*OverlayCase.ChangePrefix,
+				*OverlayCase.SurfaceToken))
+				&& Message.Contains(TEXT("row=1"));
+		}
+		TestTrue(FString::Printf(TEXT("%s overlay logs route debug"), *OverlayCase.DebugSurfaceName), bSawRoute);
+		TestFalse(FString::Printf(TEXT("%s overlay does not log fake geometry"), *OverlayCase.DebugSurfaceName), bSawFallbackGeometry);
+		TestTrue(FString::Printf(TEXT("%s overlay logs deterministic row 0"), *OverlayCase.DebugSurfaceName), bSawRow0);
+		TestTrue(FString::Printf(TEXT("%s overlay logs deterministic row 1"), *OverlayCase.DebugSurfaceName), bSawRow1);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewPresenterOverlayUsesStableSlateRowGeometryTest,
+	"BlueprintHelper.Review.VisibleChange.PresenterOverlayUsesStableSlateRowGeometry",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewPresenterOverlayUsesStableSlateRowGeometryTest::RunTest(const FString& Parameters)
+{
+	struct FOverlayCase
+	{
+		EBlueprintHelperReviewSurface Surface;
+		EBlueprintHelperReviewAssetKind AssetKind;
+		FString DebugSurfaceName;
+		FString SurfaceToken;
+		FString ChangePrefix;
+		FString TargetKind;
+		TFunction<TSharedRef<SWidget>(const FBlueprintHelperReviewPanelSurfacePresenterArgs&)> BuildOverlay;
+	};
+
+	const TArray<FOverlayCase> Cases = {
+		{
+			EBlueprintHelperReviewSurface::Components,
+			EBlueprintHelperReviewAssetKind::Blueprint,
+			TEXT("Components"),
+			TEXT("components"),
+			TEXT("component"),
+			TEXT("component"),
+			[](const FBlueprintHelperReviewPanelSurfacePresenterArgs& Args)
+			{
+				return FBlueprintHelperReviewBlueprintComponentsPresenter::BuildOverlay(Args);
+			}
+		},
+		{
+			EBlueprintHelperReviewSurface::MyBlueprint,
+			EBlueprintHelperReviewAssetKind::Blueprint,
+			TEXT("MyBlueprint"),
+			TEXT("my_blueprint"),
+			TEXT("myblueprint"),
+			TEXT("signature"),
+			[](const FBlueprintHelperReviewPanelSurfacePresenterArgs& Args)
+			{
+				return FBlueprintHelperReviewMyBlueprintPresenter::BuildOverlay(Args);
+			}
+		},
+		{
+			EBlueprintHelperReviewSurface::Details,
+			EBlueprintHelperReviewAssetKind::Blueprint,
+			TEXT("Details"),
+			TEXT("details"),
+			TEXT("details"),
+			TEXT("class_default_property"),
+			[](const FBlueprintHelperReviewPanelSurfacePresenterArgs& Args)
+			{
+				return FBlueprintHelperReviewObjectDetailsPresenter::BuildOverlay(Args);
+			}
+		},
+		{
+			EBlueprintHelperReviewSurface::UMGWidgetTree,
+			EBlueprintHelperReviewAssetKind::WidgetBlueprint,
+			TEXT("UMGWidgetTree"),
+			TEXT("umg_widget_tree"),
+			TEXT("umg"),
+			TEXT("umg_widget"),
+			[](const FBlueprintHelperReviewPanelSurfacePresenterArgs& Args)
+			{
+				return FBlueprintHelperReviewUMGWidgetTreePresenter::BuildOverlay(Args);
+			}
+		},
+		{
+			EBlueprintHelperReviewSurface::DataTable,
+			EBlueprintHelperReviewAssetKind::DataTable,
+			TEXT("DataTable"),
+			TEXT("data_table"),
+			TEXT("datatable"),
+			TEXT("datatable_row"),
+			[](const FBlueprintHelperReviewPanelSurfacePresenterArgs& Args)
+			{
+				return FBlueprintHelperReviewDataTablePresenter::BuildOverlay(Args);
+			}
+		},
+		{
+			EBlueprintHelperReviewSurface::DataAsset,
+			EBlueprintHelperReviewAssetKind::DataAsset,
+			TEXT("DataAsset"),
+			TEXT("data_asset"),
+			TEXT("dataasset"),
+			TEXT("data_asset_property"),
+			[](const FBlueprintHelperReviewPanelSurfacePresenterArgs& Args)
+			{
+				return FBlueprintHelperReviewDataAssetPresenter::BuildOverlay(Args);
+			}
+		}
+	};
+
+	for (const FOverlayCase& OverlayCase : Cases)
+	{
+		TArray<TSharedPtr<FBlueprintHelperReviewVisibleChange>> Items;
+		for (int32 Index = 0; Index < 2; ++Index)
+		{
+			FBlueprintHelperReviewVisibleChange Change;
+			Change.ChangeId = FString::Printf(TEXT("tx_%s_slate_row_%d"), *OverlayCase.ChangePrefix, Index);
+			Change.AssetPath = TEXT("/Game/BlueprintHelper/Smoke/ReviewAsset");
+			Change.DisplayLabel = FString::Printf(TEXT("%s row %d"), *OverlayCase.ChangePrefix, Index);
+			Change.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
+
+			FBlueprintHelperReviewAtomicTarget Target;
+			Target.Surface = OverlayCase.Surface;
+			Target.TargetKind = OverlayCase.TargetKind;
+			Target.TargetKey = FString::Printf(TEXT("%s:Target%d"), *OverlayCase.TargetKind, Index);
+			Target.DisplayLabel = FString::Printf(TEXT("Target%d"), Index);
+			Change.AtomicTargets.Add(Target);
+			Items.Add(MakeShared<FBlueprintHelperReviewVisibleChange>(Change));
+		}
+
+		TArray<FString> DebugMessages;
+		FBlueprintHelperReviewAssetContext Context;
+		Context.AssetKind = OverlayCase.AssetKind;
+		FBlueprintHelperReviewPanelSurfacePresenterArgs Args;
+		Args.AssetContext = &Context;
+		Args.ChangeItems = &Items;
+		Args.SelectedChange = Items[0];
+		Args.AddDebugMessage = [&DebugMessages](const FString& Message)
+		{
+			DebugMessages.Add(Message);
+		};
+		Args.OnAcceptChange = [](TSharedPtr<FBlueprintHelperReviewVisibleChange>)
+		{
+			return FReply::Handled();
+		};
+		Args.OnRejectChange = [](TSharedPtr<FBlueprintHelperReviewVisibleChange>)
+		{
+			return FReply::Handled();
+		};
+		Args.GetChangeColor = [](EBlueprintHelperReviewChangeKind)
+		{
+			return FSlateColor(FLinearColor::Green);
+		};
+		Args.GetSelectedDiffColor = []()
+		{
+			return FSlateColor(FLinearColor::Yellow);
+		};
+		Args.ResolveRowGeometry.BindLambda([](
+			const FBlueprintHelperReviewVisibleChange& Change,
+			EBlueprintHelperReviewSurface,
+			FBlueprintHelperReviewSurfaceGeometryAnchor& OutAnchor)
+		{
+			const int32 RowIndex = Change.ChangeId.EndsWith(TEXT("_1")) ? 1 : 0;
+			OutAnchor.bIsValid = true;
+			OutAnchor.Position = FVector2D(12.0f, 24.0f + RowIndex * 44.0f);
+			OutAnchor.Size = FVector2D(260.0f, 32.0f);
+			OutAnchor.TargetText = Change.DisplayLabel;
+			OutAnchor.Reason = TEXT("test_stable_slate_row_geometry");
+			return true;
+		});
+
+		TSharedRef<SWidget> Overlay = OverlayCase.BuildOverlay(Args);
+		TestTrue(FString::Printf(TEXT("%s stable geometry overlay builds a widget"), *OverlayCase.DebugSurfaceName),
+			&Overlay.Get() != &SNullWidget::NullWidget.Get());
+
+		bool bSawRow0 = false;
+		bool bSawRow1 = false;
+		bool bSawReviewList = false;
+		for (const FString& Message : DebugMessages)
+		{
+			bSawReviewList |= Message.Contains(TEXT("mode=review_list"));
+			bSawRow0 |= Message.Contains(FString::Printf(
+				TEXT("ReviewFrameGeometry change=tx_%s_slate_row_0 surface=%s mode=slate_row result=shown"),
+				*OverlayCase.ChangePrefix,
+				*OverlayCase.SurfaceToken))
+				&& Message.Contains(TEXT("pos=(12.0,24.0)"))
+				&& Message.Contains(TEXT("size=(260.0,32.0)"));
+			bSawRow1 |= Message.Contains(FString::Printf(
+				TEXT("ReviewFrameGeometry change=tx_%s_slate_row_1 surface=%s mode=slate_row result=shown"),
+				*OverlayCase.ChangePrefix,
+				*OverlayCase.SurfaceToken))
+				&& Message.Contains(TEXT("pos=(12.0,68.0)"))
+				&& Message.Contains(TEXT("size=(260.0,32.0)"));
+		}
+
+		TestFalse(FString::Printf(TEXT("%s stable geometry does not fall back to review-list"), *OverlayCase.DebugSurfaceName), bSawReviewList);
+		TestTrue(FString::Printf(TEXT("%s logs stable slate row 0"), *OverlayCase.DebugSurfaceName), bSawRow0);
+		TestTrue(FString::Printf(TEXT("%s logs stable slate row 1"), *OverlayCase.DebugSurfaceName), bSawRow1);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewPresenterOverlayFallsBackWhenSlateRowGeometryIsPartialTest,
+	"BlueprintHelper.Review.VisibleChange.PresenterOverlayFallsBackWhenSlateRowGeometryIsPartial",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewPresenterOverlayFallsBackWhenSlateRowGeometryIsPartialTest::RunTest(const FString& Parameters)
+{
+	TArray<TSharedPtr<FBlueprintHelperReviewVisibleChange>> Items;
+	for (int32 Index = 0; Index < 2; ++Index)
+	{
+		FBlueprintHelperReviewVisibleChange Change;
+		Change.ChangeId = FString::Printf(TEXT("tx_component_partial_geometry_%d"), Index);
+		Change.AssetPath = TEXT("/Game/BlueprintHelper/Smoke/BP_ComponentSmoke");
+		Change.DisplayLabel = FString::Printf(TEXT("Component row %d"), Index);
+		Change.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
+
+		FBlueprintHelperReviewAtomicTarget Target;
+		Target.Surface = EBlueprintHelperReviewSurface::Components;
+		Target.TargetKind = TEXT("component");
+		Target.TargetKey = FString::Printf(TEXT("component:Target%d"), Index);
+		Target.DisplayLabel = FString::Printf(TEXT("Target%d"), Index);
+		Change.AtomicTargets.Add(Target);
+		Items.Add(MakeShared<FBlueprintHelperReviewVisibleChange>(Change));
+	}
+
+	TArray<FString> DebugMessages;
+	FBlueprintHelperReviewAssetContext Context;
+	Context.AssetKind = EBlueprintHelperReviewAssetKind::Blueprint;
+	FBlueprintHelperReviewPanelSurfacePresenterArgs Args;
+	Args.AssetContext = &Context;
+	Args.ChangeItems = &Items;
+	Args.SelectedChange = Items[0];
+	Args.AddDebugMessage = [&DebugMessages](const FString& Message)
+	{
+		DebugMessages.Add(Message);
+	};
+	Args.OnAcceptChange = [](TSharedPtr<FBlueprintHelperReviewVisibleChange>)
+	{
+		return FReply::Handled();
+	};
+	Args.OnRejectChange = [](TSharedPtr<FBlueprintHelperReviewVisibleChange>)
+	{
+		return FReply::Handled();
+	};
+	Args.GetChangeColor = [](EBlueprintHelperReviewChangeKind)
+	{
+		return FSlateColor(FLinearColor::Green);
+	};
+	Args.GetSelectedDiffColor = []()
+	{
+		return FSlateColor(FLinearColor::Yellow);
+	};
+	Args.ResolveRowGeometry.BindLambda([](
+		const FBlueprintHelperReviewVisibleChange& Change,
+		EBlueprintHelperReviewSurface,
+		FBlueprintHelperReviewSurfaceGeometryAnchor& OutAnchor)
+	{
+		if (Change.ChangeId.EndsWith(TEXT("_0")))
+		{
+			OutAnchor.bIsValid = true;
+			OutAnchor.Position = FVector2D(12.0f, 24.0f);
+			OutAnchor.Size = FVector2D(260.0f, 32.0f);
+			OutAnchor.Reason = TEXT("test_stable_slate_row_geometry");
+			return true;
+		}
+
+		OutAnchor.Reason = TEXT("test_missing_slate_row_geometry");
+		return false;
+	});
+
+	TSharedRef<SWidget> Overlay = FBlueprintHelperReviewBlueprintComponentsPresenter::BuildOverlay(Args);
+	TestTrue(TEXT("partial geometry overlay builds a widget"),
+		&Overlay.Get() != &SNullWidget::NullWidget.Get());
+
+	bool bSawSlateRow = false;
+	bool bSawReviewListRow0 = false;
+	bool bSawReviewListRow1 = false;
+	for (const FString& Message : DebugMessages)
+	{
+		bSawSlateRow |= Message.Contains(TEXT("mode=slate_row"));
+		bSawReviewListRow0 |= Message.Contains(
+			TEXT("ReviewFrameGeometry change=tx_component_partial_geometry_0 surface=components mode=review_list result=shown reason=partial_slate_row_geometry"))
+			&& Message.Contains(TEXT("row=0"));
+		bSawReviewListRow1 |= Message.Contains(
+			TEXT("ReviewFrameGeometry change=tx_component_partial_geometry_1 surface=components mode=review_list result=shown reason=partial_slate_row_geometry"))
+			&& Message.Contains(TEXT("row=1"));
+	}
+
+	TestFalse(TEXT("partial geometry never mixes slate_row with review-list"), bSawSlateRow);
+	TestTrue(TEXT("partial geometry falls back row 0 to review-list"), bSawReviewListRow0);
+	TestTrue(TEXT("partial geometry falls back row 1 to review-list"), bSawReviewListRow1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewUMGWidgetAnchorRoutesToUMGPresenterTest,
+	"BlueprintHelper.Review.VisibleChange.UMGWidgetAnchorRoutesToWidgetPresenter",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewUMGWidgetAnchorRoutesToUMGPresenterTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewVisibleChange Change;
+	Change.ChangeId = TEXT("tx_umg_widget_presenter");
+	Change.LocationKey = TEXT("umg_widget:SmokeText");
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.Surface = EBlueprintHelperReviewSurface::UMGWidgetTree;
+	Target.TargetKind = TEXT("umg_widget");
+	Target.TargetKey = TEXT("umg_widget:SmokeText");
+	Target.DisplayLabel = TEXT("SmokeText");
+	Change.AtomicTargets.Add(Target);
+
+	TestTrue(TEXT("UMG widget anchor routes to UMG presenter"),
+		FBlueprintHelperReviewUMGWidgetTreePresenter::ShouldShowChange(Change));
+	TestFalse(TEXT("UMG widget anchor does not route to DataTable presenter"),
+		FBlueprintHelperReviewDataTablePresenter::ShouldShowChange(Change));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewDataTableRowAnchorRoutesToDataTablePresenterTest,
+	"BlueprintHelper.Review.VisibleChange.DataTableRowAnchorRoutesToDataTablePresenter",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewDataTableRowAnchorRoutesToDataTablePresenterTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewVisibleChange Change;
+	Change.ChangeId = TEXT("tx_datatable_row_presenter");
+	Change.LocationKey = TEXT("datatable_row:DamageSmall");
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.Surface = EBlueprintHelperReviewSurface::DataTable;
+	Target.TargetKind = TEXT("datatable_row");
+	Target.TargetKey = TEXT("datatable_row:DamageSmall");
+	Target.DisplayLabel = TEXT("DamageSmall");
+	Change.AtomicTargets.Add(Target);
+
+	TestTrue(TEXT("DataTable row anchor routes to DataTable presenter"),
+		FBlueprintHelperReviewDataTablePresenter::ShouldShowChange(Change));
+	TestFalse(TEXT("DataTable row anchor does not route to UMG presenter"),
+		FBlueprintHelperReviewUMGWidgetTreePresenter::ShouldShowChange(Change));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewDataAssetPropertyAnchorRoutesToDataAssetPresenterTest,
+	"BlueprintHelper.Review.VisibleChange.DataAssetPropertyAnchorRoutesToDataAssetPresenter",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewDataAssetPropertyAnchorRoutesToDataAssetPresenterTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewVisibleChange Change;
+	Change.ChangeId = TEXT("tx_data_asset_property_presenter");
+	Change.LocationKey = TEXT("data_asset_property:SmokeHealth");
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.Surface = EBlueprintHelperReviewSurface::DataAsset;
+	Target.TargetKind = TEXT("data_asset_property");
+	Target.TargetKey = TEXT("data_asset_property:SmokeHealth");
+	Target.PropertyPath = TEXT("SmokeHealth");
+	Target.DisplayLabel = TEXT("SmokeHealth");
+	Change.AtomicTargets.Add(Target);
+
+	TestTrue(TEXT("DataAsset property anchor routes to DataAsset presenter"),
+		FBlueprintHelperReviewDataAssetPresenter::ShouldShowChange(Change));
+	TestFalse(TEXT("DataAsset property anchor does not route to DataTable presenter"),
+		FBlueprintHelperReviewDataTablePresenter::ShouldShowChange(Change));
 	return true;
 }
 
@@ -609,6 +1403,200 @@ bool FBlueprintHelperReviewRecordLatestWinsWithProducerHashesTest::RunTest(const
 	TestEqual(TEXT("source transaction chain is retained"),
 		Target.SourceTransactionIds.Num(),
 		2);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewRecordNormalizesLegacyDetailsSurfacesFromEvidenceTest,
+	"BlueprintHelper.Review.Record.NormalizesLegacyDetailsSurfacesFromEvidence",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewRecordNormalizesLegacyDetailsSurfacesFromEvidenceTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewStoreService Store;
+
+	struct FLegacySurfaceCase
+	{
+		FString AssetPath;
+		FString TransactionId;
+		FString OperationKind;
+		FString TargetKind;
+		FString TargetKey;
+		EBlueprintHelperReviewSurface ExpectedSurface;
+	};
+
+	const TArray<FLegacySurfaceCase> Cases = {
+		{
+			TEXT("/Game/BlueprintHelper/Smoke/WBP_WidgetSmoke"),
+			TEXT("tx_legacy_umg_surface"),
+			TEXT("modify_umg_widget"),
+			TEXT("umg_widget_property"),
+			TEXT("umg_widget:SmokeText:Text"),
+			EBlueprintHelperReviewSurface::UMGWidgetTree
+		},
+		{
+			TEXT("/Game/BlueprintHelper/Smoke/DT_SmokeDamageTable"),
+			TEXT("tx_legacy_datatable_surface"),
+			TEXT("set_datatable_row"),
+			TEXT("datatable_row"),
+			TEXT("datatable_row:DamageSmall"),
+			EBlueprintHelperReviewSurface::DataTable
+		},
+		{
+			TEXT("/Game/BlueprintHelper/Smoke/DA_SmokeTuning"),
+			TEXT("tx_legacy_dataasset_surface"),
+			TEXT("set_object_property"),
+			TEXT("object_property"),
+			TEXT("object_property:SmokeHealth"),
+			EBlueprintHelperReviewSurface::DataAsset
+		}
+	};
+
+	TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
+	for (const FLegacySurfaceCase& SurfaceCase : Cases)
+	{
+		FBlueprintHelperReviewAtomicTarget Target;
+		Target.Surface = EBlueprintHelperReviewSurface::Details;
+		Target.AssetPath = SurfaceCase.AssetPath;
+		Target.TargetKind = SurfaceCase.TargetKind;
+		Target.TargetKey = SurfaceCase.TargetKey;
+		Target.VisualGroupKey = SurfaceCase.TargetKey;
+		Target.DisplayLabel = SurfaceCase.TargetKey;
+		Target.RecordedAfterHash = TEXT("after_hash");
+		Target.BaselineHash = TEXT("baseline_hash");
+		Target.RollbackDataRef = TEXT("review://rollback/legacy_surface");
+		Target.Ownership = TEXT("blueprinthelper_owned");
+
+		FBlueprintHelperWriteReviewEvidence Evidence;
+		Evidence.ArchiveSessionId = TEXT("archive_legacy_surface");
+		Evidence.TaskRunId = TEXT("task_legacy_surface");
+		Evidence.TransactionId = SurfaceCase.TransactionId;
+		Evidence.AssetPath = SurfaceCase.AssetPath;
+		Evidence.OperationKind = SurfaceCase.OperationKind;
+		Evidence.DisplayLabel = SurfaceCase.TargetKey;
+		Evidence.AtomicTargets.Add(Target);
+		Evidences.Add(Evidence);
+	}
+
+	const TArray<FBlueprintHelperReviewRecord> Records = Store.BuildReviewRecordsFromEvidence(Evidences);
+	TestEqual(TEXT("one record is built per asset"), Records.Num(), Cases.Num());
+	if (Records.Num() != Cases.Num())
+	{
+		return false;
+	}
+
+	for (const FLegacySurfaceCase& SurfaceCase : Cases)
+	{
+		const FBlueprintHelperReviewRecord* Record = Records.FindByPredicate(
+			[&SurfaceCase](const FBlueprintHelperReviewRecord& Candidate)
+			{
+				return Candidate.AssetPath == SurfaceCase.AssetPath;
+			});
+		TestNotNull(FString::Printf(TEXT("record exists for %s"), *SurfaceCase.AssetPath), Record);
+		if (!Record || Record->VisibleChanges.Num() != 1 || Record->VisibleChanges[0].AtomicTargets.Num() != 1)
+		{
+			return false;
+		}
+
+		TestEqual(
+			FString::Printf(TEXT("legacy Details target normalizes for %s"), *SurfaceCase.TargetKind),
+			static_cast<int32>(Record->VisibleChanges[0].AtomicTargets[0].Surface),
+			static_cast<int32>(SurfaceCase.ExpectedSurface));
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewRecordPreservesIndependentSurfaceStringsTest,
+	"BlueprintHelper.Review.Record.PreservesIndependentSurfaceStrings",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewRecordPreservesIndependentSurfaceStringsTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewStoreService Store;
+	const FString ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_independent_surfaces"));
+
+	FBlueprintHelperReviewRecord Record;
+	Record.ReviewRecordId = FBlueprintHelperReviewStoreService::MakeReviewRecordId(
+		ArchiveSessionId,
+		TEXT("/Game/BlueprintHelper/Smoke/WBP_WidgetSmoke"));
+	Record.ArchiveSessionId = ArchiveSessionId;
+	Record.AssetPath = TEXT("/Game/BlueprintHelper/Smoke/WBP_WidgetSmoke");
+
+	struct FIndependentSurfaceCase
+	{
+		FString ChangeId;
+		FString TargetKind;
+		FString TargetKey;
+		EBlueprintHelperReviewSurface Surface;
+	};
+
+	const TArray<FIndependentSurfaceCase> Cases = {
+		{ TEXT("tx_save_umg_surface"), TEXT("umg_widget"), TEXT("umg_widget:SmokeText"), EBlueprintHelperReviewSurface::UMGWidgetTree },
+		{ TEXT("tx_save_datatable_surface"), TEXT("datatable_row"), TEXT("datatable_row:DamageSmall"), EBlueprintHelperReviewSurface::DataTable },
+		{ TEXT("tx_save_dataasset_surface"), TEXT("data_asset_property"), TEXT("data_asset_property:SmokeHealth"), EBlueprintHelperReviewSurface::DataAsset }
+	};
+
+	for (const FIndependentSurfaceCase& SurfaceCase : Cases)
+	{
+		FBlueprintHelperReviewVisibleChange Change;
+		Change.ChangeId = SurfaceCase.ChangeId;
+		Change.AssetPath = Record.AssetPath;
+		Change.LocationKey = SurfaceCase.TargetKey;
+		Change.LatestTransactionId = SurfaceCase.ChangeId;
+		Change.SourceTransactionIds.Add(SurfaceCase.ChangeId);
+		Change.DisplayLabel = SurfaceCase.TargetKey;
+
+		FBlueprintHelperReviewAtomicTarget Target;
+		Target.Surface = SurfaceCase.Surface;
+		Target.AssetPath = Record.AssetPath;
+		Target.TargetKind = SurfaceCase.TargetKind;
+		Target.TargetKey = SurfaceCase.TargetKey;
+		Target.VisualGroupKey = SurfaceCase.TargetKey;
+		Target.DisplayLabel = SurfaceCase.TargetKey;
+		Target.LatestTransactionId = SurfaceCase.ChangeId;
+		Target.SourceTransactionIds.Add(SurfaceCase.ChangeId);
+		Target.RecordedAfterHash = TEXT("after_hash");
+		Target.BaselineHash = TEXT("baseline_hash");
+		Target.RollbackDataRef = TEXT("review://rollback/independent_surface");
+		Target.Ownership = TEXT("blueprinthelper_owned");
+		Change.AtomicTargets.Add(Target);
+		Record.VisibleChanges.Add(Change);
+	}
+
+	FString SaveError;
+	TestTrue(TEXT("record with independent surfaces saves"), Store.SaveReviewRecord(Record, SaveError));
+
+	FBlueprintHelperReviewRecord Loaded;
+	FString LoadError;
+	TestTrue(TEXT("record with independent surfaces reloads"),
+		Store.LoadReviewRecordById(Record.ReviewRecordId, Loaded, LoadError));
+	TestEqual(TEXT("loaded change count"), Loaded.VisibleChanges.Num(), Cases.Num());
+	if (Loaded.VisibleChanges.Num() != Cases.Num())
+	{
+		return false;
+	}
+
+	for (const FIndependentSurfaceCase& SurfaceCase : Cases)
+	{
+		const FBlueprintHelperReviewVisibleChange* Change = Loaded.VisibleChanges.FindByPredicate(
+			[&SurfaceCase](const FBlueprintHelperReviewVisibleChange& Candidate)
+			{
+				return Candidate.ChangeId == SurfaceCase.ChangeId;
+			});
+		TestNotNull(FString::Printf(TEXT("loaded change exists for %s"), *SurfaceCase.ChangeId), Change);
+		if (!Change || Change->AtomicTargets.Num() != 1)
+		{
+			return false;
+		}
+
+		TestEqual(
+			FString::Printf(TEXT("independent surface is preserved for %s"), *SurfaceCase.TargetKind),
+			static_cast<int32>(Change->AtomicTargets[0].Surface),
+			static_cast<int32>(SurfaceCase.Surface));
+	}
+
 	return true;
 }
 
@@ -2024,6 +3012,169 @@ bool FBlueprintHelperReviewPanelConstructsTest::RunTest(const FString& Parameter
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewAssetContextLoadsDataTableTest,
+	"BlueprintHelper.Review.UI.AssetContextLoadsDataTable",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewAssetContextLoadsDataTableTest::RunTest(const FString& Parameters)
+{
+	UDataTable* DataTable = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewDataTable(TEXT("ReviewAssetContextDataTable"));
+	TestNotNull(TEXT("DataTable fixture exists"), DataTable);
+	if (!DataTable)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperReviewAssetContext Context =
+		FBlueprintHelperReviewAssetContext::LoadForAssetPath(DataTable->GetPathName());
+	TestTrue(TEXT("DataTable context is valid"), Context.IsValid());
+	TestEqual(TEXT("DataTable context kind"),
+		static_cast<int32>(Context.AssetKind),
+		static_cast<int32>(EBlueprintHelperReviewAssetKind::DataTable));
+	TestTrue(TEXT("DataTable context object matches fixture"),
+		Context.DataTable.Get() == DataTable);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewAssetContextLoadsGenericObjectTest,
+	"BlueprintHelper.Review.UI.AssetContextLoadsGenericObject",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewAssetContextLoadsGenericObjectTest::RunTest(const FString& Parameters)
+{
+	UObject* Object = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewGenericObject(TEXT("ReviewAssetContextGenericObject"));
+	TestNotNull(TEXT("generic UObject fixture exists"), Object);
+	if (!Object)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperReviewAssetContext Context =
+		FBlueprintHelperReviewAssetContext::LoadForAssetPath(Object->GetPathName());
+	TestTrue(TEXT("generic object context is valid"), Context.IsValid());
+	TestEqual(TEXT("generic object context kind"),
+		static_cast<int32>(Context.AssetKind),
+		static_cast<int32>(EBlueprintHelperReviewAssetKind::GenericObject));
+	TestTrue(TEXT("generic object context object matches fixture"),
+		Context.AssetObject.Get() == Object);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewAssetContextLoadsDataAssetTest,
+	"BlueprintHelper.Review.UI.AssetContextLoadsDataAsset",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewAssetContextLoadsDataAssetTest::RunTest(const FString& Parameters)
+{
+	UDataAsset* DataAsset = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewDataAsset(TEXT("ReviewAssetContextDataAsset"));
+	TestNotNull(TEXT("DataAsset fixture exists"), DataAsset);
+	if (!DataAsset)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperReviewAssetContext Context =
+		FBlueprintHelperReviewAssetContext::LoadForAssetPath(DataAsset->GetPathName());
+	TestTrue(TEXT("DataAsset context is valid"), Context.IsValid());
+	TestEqual(TEXT("DataAsset context kind"),
+		static_cast<int32>(Context.AssetKind),
+		static_cast<int32>(EBlueprintHelperReviewAssetKind::DataAsset));
+	TestTrue(TEXT("DataAsset context object matches fixture"),
+		Context.AssetObject.Get() == DataAsset);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewAssetContextLoadsWidgetBlueprintTest,
+	"BlueprintHelper.Review.UI.AssetContextLoadsWidgetBlueprint",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewAssetContextLoadsWidgetBlueprintTest::RunTest(const FString& Parameters)
+{
+	UWidgetBlueprint* WidgetBlueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewWidgetBlueprint(TEXT("ReviewAssetContextWidgetBlueprint"));
+	TestNotNull(TEXT("WidgetBlueprint fixture exists"), WidgetBlueprint);
+	if (!WidgetBlueprint)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperReviewAssetContext Context =
+		FBlueprintHelperReviewAssetContext::LoadForAssetPath(WidgetBlueprint->GetPathName());
+	TestTrue(TEXT("WidgetBlueprint context is valid"), Context.IsValid());
+	TestEqual(TEXT("WidgetBlueprint context kind"),
+		static_cast<int32>(Context.AssetKind),
+		static_cast<int32>(EBlueprintHelperReviewAssetKind::WidgetBlueprint));
+	TestTrue(TEXT("WidgetBlueprint context object matches fixture"),
+		Context.Blueprint.Get() == WidgetBlueprint);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewUMGWidgetPresenterBuildsReadonlyTreeTest,
+	"BlueprintHelper.Review.UI.UMGWidgetPresenterBuildsReadonlyTree",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewUMGWidgetPresenterBuildsReadonlyTreeTest::RunTest(const FString& Parameters)
+{
+	UWidgetBlueprint* WidgetBlueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewWidgetBlueprint(TEXT("ReviewUMGPresenterContent"));
+	TestNotNull(TEXT("WidgetBlueprint fixture exists"), WidgetBlueprint);
+	if (!WidgetBlueprint)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperReviewAssetContext Context =
+		FBlueprintHelperReviewAssetContext::LoadForAssetPath(WidgetBlueprint->GetPathName());
+	TSharedRef<SWidget> Widget = FBlueprintHelperReviewUMGWidgetTreePresenter::BuildContent(Context);
+	TestTrue(TEXT("UMG presenter content is constructed"), Widget != SNullWidget::NullWidget);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewDataTablePresenterBuildsReadonlyRowsTest,
+	"BlueprintHelper.Review.UI.DataTablePresenterBuildsReadonlyRows",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewDataTablePresenterBuildsReadonlyRowsTest::RunTest(const FString& Parameters)
+{
+	UDataTable* DataTable = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewDataTable(TEXT("ReviewDataTablePresenterContent"));
+	TestNotNull(TEXT("DataTable fixture exists"), DataTable);
+	if (!DataTable)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperReviewAssetContext Context =
+		FBlueprintHelperReviewAssetContext::LoadForAssetPath(DataTable->GetPathName());
+	TSharedRef<SWidget> Widget = FBlueprintHelperReviewDataTablePresenter::BuildContent(Context);
+	TestTrue(TEXT("DataTable presenter content is constructed"), Widget != SNullWidget::NullWidget);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewDataAssetPresenterBuildsReadonlyDetailsTest,
+	"BlueprintHelper.Review.UI.DataAssetPresenterBuildsReadonlyDetails",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewDataAssetPresenterBuildsReadonlyDetailsTest::RunTest(const FString& Parameters)
+{
+	UDataAsset* DataAsset = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewDataAsset(TEXT("ReviewDataAssetPresenterContent"));
+	TestNotNull(TEXT("DataAsset fixture exists"), DataAsset);
+	if (!DataAsset)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperReviewAssetContext Context =
+		FBlueprintHelperReviewAssetContext::LoadForAssetPath(DataAsset->GetPathName());
+	TSharedRef<SWidget> Widget = FBlueprintHelperReviewDataAssetPresenter::BuildContent(Context);
+	TestTrue(TEXT("DataAsset presenter content is constructed"), Widget != SNullWidget::NullWidget);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperReviewPanelEmptyConstructsTest,
 	"BlueprintHelper.Review.UI.PanelConstructsWithEmptyVisibleChanges",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -2071,6 +3222,337 @@ bool FBlueprintHelperReviewPanelObjectBlueprintConstructsTest::RunTest(const FSt
 		.InitialChanges(InitialChanges);
 
 	TestTrue(TEXT("review panel widget is constructed for non-Actor Blueprint"), Widget != SNullWidget::NullWidget);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewPanelDataTableConstructsTest,
+	"BlueprintHelper.Review.UI.ReviewPanelConstructsWithDataTableVisibleChange",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewPanelDataTableConstructsTest::RunTest(const FString& Parameters)
+{
+	UDataTable* DataTable = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewDataTable(TEXT("ReviewPanelDataTable"));
+	TestNotNull(TEXT("DataTable fixture exists"), DataTable);
+	if (!DataTable)
+	{
+		return false;
+	}
+
+	FBlueprintHelperReviewVisibleChange Change;
+	Change.ChangeId = TEXT("tx_datatable_visible");
+	Change.AssetPath = DataTable->GetPathName();
+	Change.LocationKey = TEXT("asset_factory:data_table");
+	Change.LatestTransactionId = TEXT("tx_datatable_visible");
+	Change.SourceTransactionIds.Add(TEXT("tx_datatable_visible"));
+	Change.ChangeKind = EBlueprintHelperReviewChangeKind::Added;
+	Change.DisplayLabel = TEXT("DataTable Review");
+	Change.BeforeSummary = TEXT("Missing");
+	Change.AfterSummary = TEXT("Created DataTable");
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.AssetPath = Change.AssetPath;
+	Target.Surface = EBlueprintHelperReviewSurface::DataTable;
+	Target.TargetKind = TEXT("asset_factory");
+	Target.TargetKey = TEXT("asset_factory:data_table");
+	Target.DisplayLabel = TEXT("DataTable Review");
+	Change.AtomicTargets.Add(Target);
+
+	TArray<FBlueprintHelperReviewVisibleChange> InitialChanges;
+	InitialChanges.Add(Change);
+
+	TSharedRef<SWidget> Widget = SNew(SBlueprintHelperReviewPanel)
+		.InitialChanges(InitialChanges);
+
+	TestTrue(TEXT("review panel widget is constructed for DataTable"), Widget != SNullWidget::NullWidget);
+	TestFalse(TEXT("DataTable details target does not route to Graph"),
+		FBlueprintHelperReviewGraphPresenter::ShouldShowChange(Change));
+	TestTrue(TEXT("DataTable target routes to independent DataTable presenter"),
+		FBlueprintHelperReviewDataTablePresenter::ShouldShowChange(Change));
+	TestFalse(TEXT("DataTable target does not route to Details"),
+		FBlueprintHelperReviewObjectDetailsPresenter::ShouldShowChange(Change));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewPanelDataTableRowConstructsTest,
+	"BlueprintHelper.Review.UI.ReviewPanelConstructsWithDataTableRowVisibleChange",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewPanelDataTableRowConstructsTest::RunTest(const FString& Parameters)
+{
+	UDataTable* DataTable = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewDataTable(TEXT("ReviewPanelDataTableRow"));
+	TestNotNull(TEXT("DataTable fixture exists"), DataTable);
+	if (!DataTable)
+	{
+		return false;
+	}
+
+	FBlueprintHelperReviewVisibleChange Change;
+	Change.ChangeId = TEXT("tx_datatable_row_visible");
+	Change.AssetPath = DataTable->GetPathName();
+	Change.LocationKey = TEXT("datatable_row:DamageSmall");
+	Change.LatestTransactionId = TEXT("tx_datatable_row_visible");
+	Change.SourceTransactionIds.Add(TEXT("tx_datatable_row_visible"));
+	Change.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
+	Change.DisplayLabel = TEXT("DamageSmall Row");
+	Change.BeforeSummary = TEXT("DamageSmall before");
+	Change.AfterSummary = TEXT("DamageSmall after");
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.AssetPath = Change.AssetPath;
+	Target.Surface = EBlueprintHelperReviewSurface::DataTable;
+	Target.TargetKind = TEXT("datatable_row");
+	Target.TargetKey = TEXT("datatable_row:DamageSmall");
+	Target.DisplayLabel = TEXT("DamageSmall Row");
+	Change.AtomicTargets.Add(Target);
+
+	TArray<FBlueprintHelperReviewVisibleChange> InitialChanges;
+	InitialChanges.Add(Change);
+
+	TSharedRef<SWidget> Widget = SNew(SBlueprintHelperReviewPanel)
+		.InitialChanges(InitialChanges);
+
+	TestTrue(TEXT("review panel widget is constructed for DataTable row"), Widget != SNullWidget::NullWidget);
+	TestTrue(TEXT("DataTable row target routes to DataTable presenter"),
+		FBlueprintHelperReviewDataTablePresenter::ShouldShowChange(Change));
+	TestFalse(TEXT("DataTable row target does not route to Graph"),
+		FBlueprintHelperReviewGraphPresenter::ShouldShowChange(Change));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewPanelGenericObjectConstructsTest,
+	"BlueprintHelper.Review.UI.ReviewPanelConstructsWithGenericObjectVisibleChange",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewPanelGenericObjectConstructsTest::RunTest(const FString& Parameters)
+{
+	UObject* Object = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewGenericObject(TEXT("ReviewPanelGenericObject"));
+	TestNotNull(TEXT("generic UObject fixture exists"), Object);
+	if (!Object)
+	{
+		return false;
+	}
+
+	FBlueprintHelperReviewVisibleChange Change;
+	Change.ChangeId = TEXT("tx_generic_object_visible");
+	Change.AssetPath = Object->GetPathName();
+	Change.LocationKey = TEXT("object_property:DisplayName");
+	Change.LatestTransactionId = TEXT("tx_generic_object_visible");
+	Change.SourceTransactionIds.Add(TEXT("tx_generic_object_visible"));
+	Change.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
+	Change.DisplayLabel = TEXT("Generic Object Review");
+	Change.BeforeSummary = TEXT("Before");
+	Change.AfterSummary = TEXT("After");
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.AssetPath = Change.AssetPath;
+	Target.Surface = EBlueprintHelperReviewSurface::DataAsset;
+	Target.TargetKind = TEXT("object_property");
+	Target.TargetKey = TEXT("object_property:DisplayName");
+	Target.PropertyPath = TEXT("DisplayName");
+	Target.DisplayLabel = TEXT("DisplayName");
+	Change.AtomicTargets.Add(Target);
+
+	TArray<FBlueprintHelperReviewVisibleChange> InitialChanges;
+	InitialChanges.Add(Change);
+
+	TSharedRef<SWidget> Widget = SNew(SBlueprintHelperReviewPanel)
+		.InitialChanges(InitialChanges);
+
+	TestTrue(TEXT("review panel widget is constructed for generic UObject"), Widget != SNullWidget::NullWidget);
+	TestFalse(TEXT("generic object details target does not route to Graph"),
+		FBlueprintHelperReviewGraphPresenter::ShouldShowChange(Change));
+	TestTrue(TEXT("generic object target routes to DataAsset presenter"),
+		FBlueprintHelperReviewDataAssetPresenter::ShouldShowChange(Change));
+	TestFalse(TEXT("generic object target does not route to Details"),
+		FBlueprintHelperReviewObjectDetailsPresenter::ShouldShowChange(Change));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewPanelDataAssetPropertyConstructsTest,
+	"BlueprintHelper.Review.UI.ReviewPanelConstructsWithDataAssetPropertyVisibleChange",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewPanelDataAssetPropertyConstructsTest::RunTest(const FString& Parameters)
+{
+	UDataAsset* DataAsset = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewDataAsset(TEXT("ReviewPanelDataAssetProperty"));
+	TestNotNull(TEXT("DataAsset fixture exists"), DataAsset);
+	if (!DataAsset)
+	{
+		return false;
+	}
+
+	FBlueprintHelperReviewVisibleChange Change;
+	Change.ChangeId = TEXT("tx_data_asset_property_visible");
+	Change.AssetPath = DataAsset->GetPathName();
+	Change.LocationKey = TEXT("data_asset_property:Config.Health");
+	Change.LatestTransactionId = TEXT("tx_data_asset_property_visible");
+	Change.SourceTransactionIds.Add(TEXT("tx_data_asset_property_visible"));
+	Change.ChangeKind = EBlueprintHelperReviewChangeKind::VariableModified;
+	Change.DisplayLabel = TEXT("Config.Health");
+	Change.BeforeSummary = TEXT("Health before");
+	Change.AfterSummary = TEXT("Health after");
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.AssetPath = Change.AssetPath;
+	Target.Surface = EBlueprintHelperReviewSurface::DataAsset;
+	Target.TargetKind = TEXT("data_asset_property");
+	Target.TargetKey = TEXT("data_asset_property:Config.Health");
+	Target.PropertyPath = TEXT("Config.Health");
+	Target.DisplayLabel = TEXT("Config.Health");
+	Change.AtomicTargets.Add(Target);
+
+	TArray<FBlueprintHelperReviewVisibleChange> InitialChanges;
+	InitialChanges.Add(Change);
+
+	TSharedRef<SWidget> Widget = SNew(SBlueprintHelperReviewPanel)
+		.InitialChanges(InitialChanges);
+
+	TestTrue(TEXT("review panel widget is constructed for DataAsset property"), Widget != SNullWidget::NullWidget);
+	TestTrue(TEXT("DataAsset property target routes to DataAsset presenter"),
+		FBlueprintHelperReviewDataAssetPresenter::ShouldShowChange(Change));
+	TestFalse(TEXT("DataAsset property target does not route to Graph"),
+		FBlueprintHelperReviewGraphPresenter::ShouldShowChange(Change));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewPanelWidgetBlueprintConstructsTest,
+	"BlueprintHelper.Review.UI.ReviewPanelConstructsWithWidgetBlueprintVisibleChange",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewPanelWidgetBlueprintConstructsTest::RunTest(const FString& Parameters)
+{
+	UWidgetBlueprint* WidgetBlueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewWidgetBlueprint(TEXT("ReviewPanelWidgetBlueprint"));
+	TestNotNull(TEXT("WidgetBlueprint fixture exists"), WidgetBlueprint);
+	if (!WidgetBlueprint)
+	{
+		return false;
+	}
+
+	FBlueprintHelperReviewVisibleChange Change;
+	Change.ChangeId = TEXT("tx_widget_blueprint_visible");
+	Change.AssetPath = WidgetBlueprint->GetPathName();
+	Change.LocationKey = TEXT("umg_widget:SmokeText");
+	Change.LatestTransactionId = TEXT("tx_widget_blueprint_visible");
+	Change.SourceTransactionIds.Add(TEXT("tx_widget_blueprint_visible"));
+	Change.ChangeKind = EBlueprintHelperReviewChangeKind::Added;
+	Change.DisplayLabel = TEXT("SmokeText Widget");
+	Change.BeforeSummary = TEXT("Missing");
+	Change.AfterSummary = TEXT("TextBlock SmokeText");
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.AssetPath = Change.AssetPath;
+	Target.Surface = EBlueprintHelperReviewSurface::UMGWidgetTree;
+	Target.TargetKind = TEXT("umg_widget");
+	Target.TargetKey = TEXT("umg_widget:SmokeText");
+	Target.DisplayLabel = TEXT("SmokeText Widget");
+	Change.AtomicTargets.Add(Target);
+
+	TArray<FBlueprintHelperReviewVisibleChange> InitialChanges;
+	InitialChanges.Add(Change);
+
+	TSharedRef<SWidget> Widget = SNew(SBlueprintHelperReviewPanel)
+		.InitialChanges(InitialChanges);
+
+	TestTrue(TEXT("review panel widget is constructed for WidgetBlueprint"), Widget != SNullWidget::NullWidget);
+	TestTrue(TEXT("WidgetBlueprint UMG target routes to UMG presenter"),
+		FBlueprintHelperReviewUMGWidgetTreePresenter::ShouldShowChange(Change));
+	TestFalse(TEXT("WidgetBlueprint UMG target does not route to Graph"),
+		FBlueprintHelperReviewGraphPresenter::ShouldShowChange(Change));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewPanelMyBlueprintOnlySignatureDoesNotGraphRouteTest,
+	"BlueprintHelper.Review.UI.ReviewPanelDoesNotGraphRouteMyBlueprintOnlySignatureChange",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewPanelMyBlueprintOnlySignatureDoesNotGraphRouteTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewConversionTestBlueprint(TEXT("ReviewPanelSignatureOnly"));
+	TestNotNull(TEXT("Blueprint fixture exists"), Blueprint);
+	if (!Blueprint)
+	{
+		return false;
+	}
+
+	FBlueprintHelperReviewVisibleChange Change;
+	Change.ChangeId = TEXT("tx_signature_only_panel");
+	Change.AssetPath = Blueprint->GetPathName();
+	Change.GraphName = TEXT("EventGraph");
+	Change.LocationKey = TEXT("function:ApplyDamage:signature");
+	Change.LatestTransactionId = TEXT("tx_signature_only_panel");
+	Change.ChangeKind = EBlueprintHelperReviewChangeKind::SignatureModified;
+	Change.DisplayLabel = TEXT("ApplyDamage Signature");
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.AssetPath = Change.AssetPath;
+	Target.Surface = EBlueprintHelperReviewSurface::MyBlueprint;
+	Target.GraphName = TEXT("EventGraph");
+	Target.TargetKind = TEXT("signature");
+	Target.TargetKey = TEXT("signature:ApplyDamage");
+	Target.DisplayLabel = TEXT("ApplyDamage Signature");
+	Change.AtomicTargets.Add(Target);
+
+	TArray<FBlueprintHelperReviewVisibleChange> InitialChanges;
+	InitialChanges.Add(Change);
+
+	TSharedRef<SWidget> Widget = SNew(SBlueprintHelperReviewPanel)
+		.InitialChanges(InitialChanges);
+
+	TestTrue(TEXT("review panel widget is constructed for MyBlueprint-only signature"), Widget != SNullWidget::NullWidget);
+	TestFalse(TEXT("MyBlueprint-only signature does not route to Graph"),
+		FBlueprintHelperReviewGraphPresenter::ShouldShowChange(Change));
+	TestTrue(TEXT("MyBlueprint-only signature routes to MyBlueprint"),
+		FBlueprintHelperReviewMyBlueprintPresenter::ShouldShowChange(Change));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewPanelKeepsTrueGraphVisibleChangeRoutableTest,
+	"BlueprintHelper.Review.UI.ReviewPanelKeepsTrueGraphVisibleChangeRoutable",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewPanelKeepsTrueGraphVisibleChangeRoutableTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewConversionTestBlueprint(TEXT("ReviewPanelTrueGraph"));
+	TestNotNull(TEXT("Blueprint fixture exists"), Blueprint);
+	if (!Blueprint)
+	{
+		return false;
+	}
+
+	FBlueprintHelperReviewVisibleChange Change;
+	Change.ChangeId = TEXT("tx_1778317276165");
+	Change.AssetPath = Blueprint->GetPathName();
+	Change.GraphName = TEXT("EventGraph");
+	Change.LocationKey = TEXT("graph:EventGraph/node:PrintString");
+	Change.LatestTransactionId = TEXT("tx_1778317276165");
+	Change.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
+	Change.DisplayLabel = TEXT("Print String Node");
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.AssetPath = Change.AssetPath;
+	Target.Surface = EBlueprintHelperReviewSurface::Graph;
+	Target.GraphName = TEXT("EventGraph");
+	Target.TargetKind = TEXT("graph_node");
+	Target.TargetKey = TEXT("graph:EventGraph/node:PrintString");
+	Target.DisplayLabel = TEXT("Print String Node");
+	Change.AtomicTargets.Add(Target);
+
+	TArray<FBlueprintHelperReviewVisibleChange> InitialChanges;
+	InitialChanges.Add(Change);
+
+	TSharedRef<SWidget> Widget = SNew(SBlueprintHelperReviewPanel)
+		.InitialChanges(InitialChanges);
+
+	TestTrue(TEXT("review panel widget is constructed for true Graph change"), Widget != SNullWidget::NullWidget);
+	TestTrue(TEXT("true Graph change routes to Graph"),
+		FBlueprintHelperReviewGraphPresenter::ShouldShowChange(Change));
 	return true;
 }
 
@@ -2124,6 +3606,66 @@ bool FBlueprintHelperReviewGraphBoundsTargetKeyTest::RunTest(const FString& Para
 		DebugSummary.Contains(TEXT("fallbackBounds=1")));
 	TestTrue(TEXT("bounds debug reports 20px padding"),
 		DebugSummary.Contains(TEXT("padding=20.0")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewGraphBoundsRequireRealAnchorTest,
+	"BlueprintHelper.Review.UI.GraphBounds.RequireNodeOrRecordedBounds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewGraphBoundsRequireRealAnchorTest::RunTest(const FString& Parameters)
+{
+	UEdGraph* Graph = NewObject<UEdGraph>(GetTransientPackage());
+
+	FBlueprintHelperReviewAtomicTarget MissingAnchorTarget;
+	MissingAnchorTarget.Surface = EBlueprintHelperReviewSurface::Graph;
+	MissingAnchorTarget.GraphName = TEXT("EventGraph");
+	MissingAnchorTarget.TargetKind = TEXT("graph_node");
+	MissingAnchorTarget.TargetKey = TEXT("graph:EventGraph/node:MissingNode");
+
+	TArray<FBlueprintHelperReviewAtomicTarget> MissingAnchorTargets;
+	MissingAnchorTargets.Add(MissingAnchorTarget);
+
+	FVector2D Position = FVector2D::ZeroVector;
+	FVector2D Size = FVector2D::ZeroVector;
+	FString MissingDebugSummary;
+	TestFalse(TEXT("graph bounds do not create fake geometry without node or recorded bounds"),
+		FBlueprintHelperReviewGraphBounds::BuildBoundsForTargets(
+			MissingAnchorTargets,
+			Graph,
+			TEXT("EventGraph"),
+			nullptr,
+			Position,
+			Size,
+			&MissingDebugSummary));
+	TestTrue(TEXT("missing real anchor debug reports no built bounds"),
+		MissingDebugSummary.Contains(TEXT("built=0")));
+
+	FBlueprintHelperReviewAtomicTarget RecordedTarget = MissingAnchorTarget;
+	RecordedTarget.bHasGraphBounds = true;
+	RecordedTarget.GraphPosition = FVector2D(120.0f, 80.0f);
+	RecordedTarget.GraphSize = FVector2D(300.0f, 140.0f);
+
+	TArray<FBlueprintHelperReviewAtomicTarget> RecordedTargets;
+	RecordedTargets.Add(RecordedTarget);
+
+	FString RecordedDebugSummary;
+	TestTrue(TEXT("recorded graph bounds are accepted as real anchor geometry"),
+		FBlueprintHelperReviewGraphBounds::BuildBoundsForTargets(
+			RecordedTargets,
+			Graph,
+			TEXT("EventGraph"),
+			nullptr,
+			Position,
+			Size,
+			&RecordedDebugSummary));
+	TestTrue(TEXT("recorded graph bounds debug reports record source"),
+		RecordedDebugSummary.Contains(TEXT("recordBounds=1")));
+	TestTrue(TEXT("recorded graph bounds keep padding"),
+		FMath::IsNearlyEqual(static_cast<float>(Position.X), 100.0f, 0.01f));
+	TestTrue(TEXT("recorded graph bounds keep padded size"),
+		FMath::IsNearlyEqual(static_cast<float>(Size.X), 340.0f, 0.01f));
 	return true;
 }
 

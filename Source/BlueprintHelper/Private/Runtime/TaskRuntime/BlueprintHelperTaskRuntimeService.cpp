@@ -706,10 +706,15 @@ public:
 		FBlueprintHelperReviewAtomicTarget Target;
 		Target.AssetPath = Evidence.AssetPath;
 		Target.GraphName = GraphName;
-		Target.Surface = Surface;
 		Target.TargetKey = TargetKey;
 		Target.TargetKind = TargetKind;
 		Target.VisualGroupKey = VisualGroupKey;
+		Target.Surface = BlueprintHelperReviewNormalizeSurfaceForTarget(
+			Surface,
+			Target.TargetKind,
+			Target.TargetKey,
+			Target.VisualGroupKey,
+			Evidence.OperationKind);
 		Target.DisplayLabel = DisplayLabel.IsEmpty() ? TargetName : DisplayLabel;
 		Target.LatestTransactionId = Evidence.TransactionId;
 		Target.SourceTransactionIds.Add(Evidence.TransactionId);
@@ -835,7 +840,11 @@ public:
 			AddTaskRuntimeReviewTarget(
 				OutEvidence,
 				LoweredStep.Payload,
-				EBlueprintHelperReviewSurface::Details,
+				AssetType.Contains(TEXT("DataTable"), ESearchCase::IgnoreCase)
+					? EBlueprintHelperReviewSurface::DataTable
+					: (AssetType.Contains(TEXT("Widget"), ESearchCase::IgnoreCase)
+						? EBlueprintHelperReviewSurface::UMGWidgetTree
+						: EBlueprintHelperReviewSurface::DataAsset),
 				TEXT("asset_factory"),
 				AssetPath,
 				TEXT("asset_factory"),
@@ -935,7 +944,7 @@ public:
 			AddTaskRuntimeReviewTarget(
 				OutEvidence,
 				LoweredStep.Payload,
-				EBlueprintHelperReviewSurface::Details,
+				EBlueprintHelperReviewSurface::UMGWidgetTree,
 				PropertyName.IsEmpty() ? TEXT("umg_widget") : TEXT("umg_widget_property"),
 				TargetName,
 				TEXT("umg_widget"),
@@ -947,7 +956,7 @@ public:
 			AddTaskRuntimeReviewTarget(
 				OutEvidence,
 				LoweredStep.Payload,
-				EBlueprintHelperReviewSurface::Details,
+				EBlueprintHelperReviewSurface::DataTable,
 				TEXT("datatable_row"),
 				RowName,
 				TEXT("datatable"),
@@ -961,7 +970,7 @@ public:
 				AddTaskRuntimeReviewTarget(
 					OutEvidence,
 					LoweredStep.Payload,
-					EBlueprintHelperReviewSurface::Details,
+					EBlueprintHelperReviewSurface::DataAsset,
 					TEXT("object_property"),
 					PropertyPath,
 					TEXT("object_property"),
@@ -972,7 +981,7 @@ public:
 				LoweredStep.Payload,
 				TEXT("settings"),
 				TEXT("property_path"),
-				EBlueprintHelperReviewSurface::Details,
+				EBlueprintHelperReviewSurface::DataAsset,
 				TEXT("object_property"),
 				TEXT("object_property"),
 				TEXT("property"));
