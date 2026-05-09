@@ -828,6 +828,7 @@ public:
 	static UK2Node_Event* CreateOverrideEventNode(
 		UEdGraph* Graph,
 		UFunction* EventFunction,
+		UClass* SignatureClass,
 		FString& OutError)
 	{
 		if (!Graph)
@@ -841,6 +842,18 @@ public:
 			return nullptr;
 		}
 
+		UClass* EventSignatureClass = SignatureClass ? SignatureClass->GetAuthoritativeClass() : nullptr;
+		if (!EventSignatureClass)
+		{
+			EventSignatureClass = EventFunction->GetOwnerClass();
+			EventSignatureClass = EventSignatureClass ? EventSignatureClass->GetAuthoritativeClass() : nullptr;
+		}
+		if (!EventSignatureClass)
+		{
+			OutError = TEXT("Override event signature class is invalid.");
+			return nullptr;
+		}
+
 		UK2Node_Event* EventNode = NewObject<UK2Node_Event>(Graph);
 		if (!EventNode)
 		{
@@ -848,15 +861,15 @@ public:
 			return nullptr;
 		}
 
-		EventNode->EventReference.SetFromField<UFunction>(EventFunction, false);
+		EventNode->EventReference.SetExternalMember(EventFunction->GetFName(), EventSignatureClass);
 		EventNode->bOverrideFunction = true;
-		EventNode->CreateNewGuid();
-		EventNode->PostPlacedNewNode();
 		EventNode->SetFlags(RF_Transactional);
 		EventNode->NodePosX = 0;
 		EventNode->NodePosY = 0;
-		EventNode->AllocateDefaultPins();
 		Graph->AddNode(EventNode, true, false);
+		EventNode->CreateNewGuid();
+		EventNode->PostPlacedNewNode();
+		EventNode->AllocateDefaultPins();
 		return EventNode;
 	}
 
@@ -1687,7 +1700,11 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureOverrideE
 	Mutation.Modify(Graph);
 
 	FString Error;
-	UK2Node_Event* EventNode = FBlueprintHelperSignatureServiceLocalUtils::CreateOverrideEventNode(Graph, EventFunction, Error);
+	UK2Node_Event* EventNode = FBlueprintHelperSignatureServiceLocalUtils::CreateOverrideEventNode(
+		Graph,
+		EventFunction,
+		SignatureClass,
+		Error);
 	if (!EventNode)
 	{
 		Mutation.Rollback();

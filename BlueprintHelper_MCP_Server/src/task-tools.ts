@@ -464,11 +464,37 @@ function extractDryRun(resp: BridgeResponse): { canExecute: boolean; issues: Tas
   const dryRun = asRecord(data?.['dry_run']) ?? asRecord(result?.['dry_run']);
   const canExecute = dryRun?.['can_execute'];
   const blockedByStatus = result?.['status'] === 'failed' || dryRun?.['result'] === 'blocked';
-  const issues = collectIssues(dryRun);
+  const dryRunIssues = collectIssues(dryRun);
+  const issues = dryRunIssues.length > 0 || !blockedByStatus
+    ? dryRunIssues
+    : collectBlockedPreviewIssues(result, dryRun);
   return {
     canExecute: typeof canExecute === 'boolean' ? canExecute : !blockedByStatus,
     issues,
   };
+}
+
+function collectBlockedPreviewIssues(
+  result: Record<string, unknown> | undefined,
+  dryRun: Record<string, unknown> | undefined,
+): TaskIssue[] {
+  const error = asRecord(dryRun?.['error']) ?? asRecord(result?.['error']);
+  const code =
+    readString(error?.['code']) ??
+    readString(result?.['error_code']) ??
+    'task_preview_blocked';
+  const path =
+    readString(error?.['target']) ??
+    readString(error?.['field']) ??
+    readString(error?.['path']) ??
+    'bridge.preview_task_plan';
+  const message =
+    readNonEmptyString(error?.['message']) ??
+    readNonEmptyString(dryRun?.['message']) ??
+    readNonEmptyString(result?.['message']) ??
+    'Task preview was blocked.';
+
+  return [{ code, path, message }];
 }
 
 function collectIssues(dryRun: Record<string, unknown> | undefined): TaskIssue[] {

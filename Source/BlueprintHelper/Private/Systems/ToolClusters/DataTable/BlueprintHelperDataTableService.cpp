@@ -30,6 +30,76 @@ UDataTable* FBlueprintHelperDataTableService::ResolveDataTable(
 	return DT;
 }
 
+FString FBlueprintHelperDataTableService::GetRowPropertyExternalName(const FProperty* Property)
+{
+	if (!Property)
+	{
+		return FString();
+	}
+
+	const FString AuthoredName = Property->GetAuthoredName();
+	return AuthoredName.IsEmpty() ? Property->GetName() : AuthoredName;
+}
+
+FProperty* FBlueprintHelperDataTableService::FindRowPropertyByInputName(
+	const UScriptStruct* RowStruct,
+	const FString& FieldName)
+{
+	if (!RowStruct || FieldName.IsEmpty())
+	{
+		return nullptr;
+	}
+
+	if (FProperty* InternalNameProperty = RowStruct->FindPropertyByName(FName(*FieldName)))
+	{
+		return InternalNameProperty;
+	}
+
+	for (TFieldIterator<FProperty> It(RowStruct); It; ++It)
+	{
+		FProperty* Prop = *It;
+		if (!Prop) continue;
+
+		if (GetRowPropertyExternalName(Prop).Equals(FieldName, ESearchCase::CaseSensitive) ||
+			Prop->GetDisplayNameText().ToString().Equals(FieldName, ESearchCase::CaseSensitive))
+		{
+			return Prop;
+		}
+	}
+
+	for (TFieldIterator<FProperty> It(RowStruct); It; ++It)
+	{
+		FProperty* Prop = *It;
+		if (!Prop) continue;
+
+		if (GetRowPropertyExternalName(Prop).Equals(FieldName, ESearchCase::IgnoreCase) ||
+			Prop->GetDisplayNameText().ToString().Equals(FieldName, ESearchCase::IgnoreCase))
+		{
+			return Prop;
+		}
+	}
+
+	return nullptr;
+}
+
+bool FBlueprintHelperDataTableService::DidImportConsumeAllText(const TCHAR* ImportEnd)
+{
+	if (!ImportEnd)
+	{
+		return false;
+	}
+
+	while (*ImportEnd != TEXT('\0'))
+	{
+		if (!FChar::IsWhitespace(*ImportEnd))
+		{
+			return false;
+		}
+		++ImportEnd;
+	}
+	return true;
+}
+
 TArray<FBlueprintHelperDataTableColumnInfo> FBlueprintHelperDataTableService::CollectColumns(
 	const UScriptStruct* RowStruct)
 {
@@ -42,7 +112,7 @@ TArray<FBlueprintHelperDataTableColumnInfo> FBlueprintHelperDataTableService::Co
 		if (!Prop) continue;
 
 		FBlueprintHelperDataTableColumnInfo Col;
-		Col.Name = Prop->GetName();
+		Col.Name = GetRowPropertyExternalName(Prop);
 		Col.TypeName = Prop->GetCPPType();
 		Columns.Add(MoveTemp(Col));
 	}
@@ -65,7 +135,7 @@ TMap<FString, FString> FBlueprintHelperDataTableService::ExportRowFields(
 		const void* ValuePtr = Prop->ContainerPtrToValuePtr<void>(RowData);
 		FString ValueStr;
 		Prop->ExportTextItem_Direct(ValueStr, ValuePtr, nullptr, Owner, PPF_None);
-		Fields.Add(Prop->GetName(), MoveTemp(ValueStr));
+		Fields.Add(GetRowPropertyExternalName(Prop), MoveTemp(ValueStr));
 	}
 	return Fields;
 }
@@ -85,16 +155,27 @@ bool FBlueprintHelperDataTableService::ApplyFieldsToRow(
 
 	for (const auto& Pair : Fields)
 	{
-		FProperty* Prop = RowStruct->FindPropertyByName(*Pair.Key);
+		FProperty* Prop = FindRowPropertyByInputName(RowStruct, Pair.Key);
 		if (!Prop)
 		{
-			OutError = FString::Printf(TEXT("行结构中未找到字段: %s"), *Pair.Key);
+			TArray<FString> AvailableFields;
+			for (TFieldIterator<FProperty> It(RowStruct); It; ++It)
+			{
+				if (FProperty* Candidate = *It)
+				{
+					AvailableFields.Add(GetRowPropertyExternalName(Candidate));
+				}
+			}
+			OutError = FString::Printf(
+				TEXT("行结构中未找到字段: %s。可用字段: %s"),
+				*Pair.Key,
+				*FString::Join(AvailableFields, TEXT(", ")));
 			return false;
 		}
 
 		void* ValuePtr = Prop->ContainerPtrToValuePtr<void>(RowData);
 		const TCHAR* ImportResult = Prop->ImportText_Direct(*Pair.Value, ValuePtr, Owner, PPF_None);
-		if (!ImportResult)
+		if (!DidImportConsumeAllText(ImportResult))
 		{
 			OutError = FString::Printf(TEXT("字段 %s 值导入失败: \"%s\""), *Pair.Key, *Pair.Value);
 			return false;

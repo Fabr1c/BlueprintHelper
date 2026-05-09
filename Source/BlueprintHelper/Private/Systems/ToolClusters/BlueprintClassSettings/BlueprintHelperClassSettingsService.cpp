@@ -13,6 +13,43 @@
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 
+namespace
+{
+	FString BlueprintClassSettingsDescribeInvalidInterface(const FBlueprintHelperInvalidInterface& Invalid)
+	{
+		FString Message = FString::Printf(
+			TEXT("Invalid interface '%s': %s"),
+			*Invalid.InterfacePath,
+			Invalid.Code.IsEmpty() ? TEXT("unknown_error") : *Invalid.Code);
+		if (!Invalid.Message.IsEmpty())
+		{
+			Message += FString::Printf(TEXT(" (%s)"), *Invalid.Message);
+		}
+		return Message;
+	}
+
+	FString BlueprintClassSettingsDescribeInvalidDefaultSetting(const FBlueprintHelperInvalidClassDefaultSetting& Invalid)
+	{
+		FString Message = FString::Printf(
+			TEXT("Invalid class default property '%s': %s"),
+			*Invalid.PropertyPath,
+			Invalid.Code.IsEmpty() ? TEXT("unknown_error") : *Invalid.Code);
+		if (!Invalid.ExpectedType.IsEmpty())
+		{
+			Message += FString::Printf(TEXT(", expected_type=%s"), *Invalid.ExpectedType);
+		}
+		if (!Invalid.ActualType.IsEmpty())
+		{
+			Message += FString::Printf(TEXT(", actual_type=%s"), *Invalid.ActualType);
+		}
+		if (!Invalid.ValueSummary.IsEmpty())
+		{
+			Message += FString::Printf(TEXT(", detail=%s"), *Invalid.ValueSummary);
+		}
+		return Message;
+	}
+}
+
 // ─── 构造函数 ───
 
 FBlueprintHelperClassSettingsService::FBlueprintHelperClassSettingsService(
@@ -76,7 +113,8 @@ FString FBlueprintHelperClassSettingsService::NormalizeObjectPath(const FString&
 FBlueprintHelperToolError FBlueprintHelperClassSettingsService::MakeError(
 	const FString& Code,
 	EBlueprintHelperToolStage Stage,
-	const FString& Message)
+	const FString& Message,
+	const FString& Field)
 {
 	FBlueprintHelperToolError Error;
 	Error.Code = Code;
@@ -84,6 +122,7 @@ FBlueprintHelperToolError FBlueprintHelperClassSettingsService::MakeError(
 	Error.Message = Message;
 	Error.bRetryable = false;
 	Error.RollbackResult = EBlueprintHelperRollbackResult::NotNeeded;
+	Error.Field = Field;
 	return Error;
 }
 
@@ -340,6 +379,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperClassSettingsService::AddImplemen
 			FBlueprintHelperInvalidInterface Invalid;
 			Invalid.InterfacePath = InterfacePath;
 			Invalid.Code = Code;
+			Invalid.Message = Message;
 			InterfaceResult.InvalidInterfaces.Add(MoveTemp(Invalid));
 			continue;
 		}
@@ -358,7 +398,8 @@ FBlueprintHelperToolResultBase FBlueprintHelperClassSettingsService::AddImplemen
 			TEXT("add_implemented_interfaces"),
 			TraceId,
 			MakeError(TEXT("invalid_blueprint_interface"), EBlueprintHelperToolStage::Preflight,
-				TEXT("One or more interfaces are invalid.")));
+				BlueprintClassSettingsDescribeInvalidInterface(InterfaceResult.InvalidInterfaces[0]),
+				TEXT("interface_paths")));
 		Failed.Target = FBlueprintHelperTargetRef();
 		Failed.Target->AssetPath = AssetPath;
 		Failed.Target->TargetType = EBlueprintHelperTargetType::Blueprint;
@@ -503,6 +544,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperClassSettingsService::RemoveImple
 			FBlueprintHelperInvalidInterface Invalid;
 			Invalid.InterfacePath = InterfacePath;
 			Invalid.Code = Code;
+			Invalid.Message = Message;
 			InterfaceResult.InvalidInterfaces.Add(MoveTemp(Invalid));
 			continue;
 		}
@@ -521,7 +563,8 @@ FBlueprintHelperToolResultBase FBlueprintHelperClassSettingsService::RemoveImple
 			TEXT("remove_implemented_interfaces"),
 			TraceId,
 			MakeError(TEXT("invalid_blueprint_interface"), EBlueprintHelperToolStage::Preflight,
-				TEXT("One or more interfaces are invalid.")));
+				BlueprintClassSettingsDescribeInvalidInterface(InterfaceResult.InvalidInterfaces[0]),
+				TEXT("interface_paths")));
 		Failed.Target = FBlueprintHelperTargetRef();
 		Failed.Target->AssetPath = AssetPath;
 		Failed.Target->TargetType = EBlueprintHelperTargetType::Blueprint;
@@ -902,7 +945,8 @@ FBlueprintHelperToolResultBase FBlueprintHelperClassSettingsService::SetClassDef
 			TEXT("set_class_default_properties"),
 			TraceId,
 			MakeError(TEXT("invalid_class_default_property_settings"), EBlueprintHelperToolStage::Preflight,
-				TEXT("One or more class default property settings are invalid.")));
+				BlueprintClassSettingsDescribeInvalidDefaultSetting(PropertyResult.InvalidSettings[0]),
+				PropertyResult.InvalidSettings[0].PropertyPath));
 		Failed.Target = FBlueprintHelperTargetRef();
 		Failed.Target->AssetPath = AssetPath;
 		Failed.Target->TargetType = EBlueprintHelperTargetType::Blueprint;

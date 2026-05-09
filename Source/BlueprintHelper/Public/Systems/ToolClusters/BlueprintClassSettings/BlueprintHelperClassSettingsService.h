@@ -97,7 +97,11 @@ private:
 		FBlueprintHelperInvalidClassDefaultSetting& OutInvalid);
 
 	static FBlueprintHelperValidationSummary MakeValidation(bool bShouldCompile, bool bShouldSave);
-	static FBlueprintHelperToolError MakeError(const FString& Code, EBlueprintHelperToolStage Stage, const FString& Message);
+	static FBlueprintHelperToolError MakeError(
+		const FString& Code,
+		EBlueprintHelperToolStage Stage,
+		const FString& Message,
+		const FString& Field = FString());
 
 	const FBlueprintHelperGraphResolver& Resolver;
 };

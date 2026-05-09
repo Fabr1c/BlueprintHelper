@@ -138,6 +138,38 @@ def make_composite_physics_door_spec(**overrides):
 
 
 class P1TaskCompilerTests(unittest.TestCase):
+    def test_compiles_independent_blueprint_variable_shorthand_with_default(self):
+        result = compile_task_spec(make_base_spec(
+            "edit_blueprint_variables",
+            {
+                "variable_strategy": "member_variables",
+                "variables": [
+                    {
+                        "name": "SmokeHealth",
+                        "type": "float",
+                        "default": 100.0,
+                        "category": "BHStats",
+                    },
+                ],
+            },
+        ), dry_run=True)
+
+        task_plan = result["task_plan"]
+        self.assertEqual([step["write"]["strategy"] for step in task_plan["steps"]], ["member_variables", "member_defaults"])
+        self.assertEqual(task_plan["steps"][0]["write"]["ops"][0], {
+            "op": "ensure_member_variable",
+            "name": "SmokeHealth",
+            "pin_type": {"category": "float"},
+            "category": "BHStats",
+        })
+        self.assertEqual(task_plan["steps"][1]["write"]["ops"][0], {
+            "op": "set_member_default",
+            "name": "SmokeHealth",
+            "value": 100.0,
+        })
+        self.assertEqual(task_plan["steps"][1]["depends_on"], ["step_001"])
+        self.assertEqual(result["bridge_payload"], {"task_plan": task_plan})
+
     def test_compiles_composite_create_blueprint_feature_to_existing_capability_steps(self):
         result = compile_task_spec(make_composite_physics_door_spec(), dry_run=True)
 

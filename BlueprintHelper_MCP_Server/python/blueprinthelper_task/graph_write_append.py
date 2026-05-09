@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from .errors import TaskSpecCompileError
 from .p1_capabilities import compile_p1_task_spec, supports_p1_task_type
@@ -247,13 +247,7 @@ def compile_blueprint_variables(task_spec: Dict[str, Any], dry_run: bool) -> Dic
     behavior = task_spec["behavior"]
     execution_policy = task_spec.get("execution_policy", {})
     validation = task_spec.get("validation", {})
-    strategy = behavior["variable_strategy"]
-    ops = _compile_blueprint_variable_ops(behavior)
-    step_target = {
-        "asset_path": target["asset_path"],
-    }
-    if strategy == "local_variables":
-        step_target["function_name"] = _required_string(behavior, "function_name", "behavior.function_name")
+    steps = _compile_blueprint_variable_steps(target, behavior)
 
     task_plan = {
         "schema": TASK_PLAN_SCHEMA,
@@ -266,26 +260,17 @@ def compile_blueprint_variables(task_spec: Dict[str, Any], dry_run: bool) -> Dic
             "should_compile": validation.get("should_compile", False),
             "should_save": validation.get("should_save", False),
         },
-        "steps": [
-            {
-                "step_id": "step_001",
-                "capability": "blueprint_variable",
-                "target": step_target,
-                "write": {
-                    "strategy": strategy,
-                    "ops": ops,
-                },
-                "constraints": {
-                    "allow_remove_referenced_variables": False,
-                },
-            },
-        ],
+        "steps": steps,
     }
 
     return {
         "schema": TASK_COMPILER_RESULT_SCHEMA,
         "task_plan": _omit_none_deep(task_plan),
-        "bridge_payload": _blueprint_variable_bridge_payload(task_plan, task_plan["steps"][0], dry_run),
+        "bridge_payload": (
+            _blueprint_variable_bridge_payload(task_plan, task_plan["steps"][0], dry_run)
+            if len(task_plan["steps"]) == 1
+            else {"task_plan": _omit_none_deep(task_plan)}
+        ),
         "task_plan_summary": summarize_task_plan(task_plan),
     }
 
@@ -1830,6 +1815,9 @@ def _assert_supported_blueprint_variables_task_spec(task_spec: Dict[str, Any]) -
             )
 
         kind = variable.get("kind")
+        if strategy == "member_variables" and kind is None and "op" not in variable:
+            _require_pin_type_alias(variable, f"{path}[{variable_index}]")
+            continue
         if strategy == "member_defaults" and kind is None:
             if "value" not in variable:
                 raise TaskSpecCompileError(
@@ -1880,7 +1868,7 @@ def _compile_blueprint_variable_ops(behavior: Dict[str, Any]) -> List[Dict[str, 
         if entries is None:
             entries = behavior.get("variables", [])
         return [
-            _compile_member_variable_change(entry, f"behavior.changes[{index}]")
+            _compile_member_variable_change(entry, f"behavior.{ 'changes' if 'changes' in behavior else 'variables' }[{index}]")
             for index, entry in enumerate(entries)
         ]
     if strategy == "member_defaults":
@@ -1896,11 +1884,71 @@ def _compile_blueprint_variable_ops(behavior: Dict[str, Any]) -> List[Dict[str, 
     ]
 
 
+def _compile_blueprint_variable_steps(target: Dict[str, Any], behavior: Dict[str, Any]) -> List[Dict[str, Any]]:
+    strategy = behavior["variable_strategy"]
+    if strategy != "member_variables":
+        step_target = {"asset_path": target["asset_path"]}
+        if strategy == "local_variables":
+            step_target["function_name"] = _required_string(behavior, "function_name", "behavior.function_name")
+        return [_blueprint_variable_step("step_001", step_target, strategy, _compile_blueprint_variable_ops(behavior))]
+
+    entries = behavior.get("changes")
+    path_prefix = "behavior.changes"
+    if entries is None:
+        entries = behavior.get("variables", [])
+        path_prefix = "behavior.variables"
+
+    member_ops = [
+        _compile_member_variable_change(entry, f"{path_prefix}[{index}]")
+        for index, entry in enumerate(entries)
+    ]
+    default_ops = [
+        op
+        for index, entry in enumerate(entries)
+        for op in [_compile_member_default_from_variable_entry(entry, f"{path_prefix}[{index}]")]
+        if op is not None
+    ]
+
+    step_target = {"asset_path": target["asset_path"]}
+    steps = [_blueprint_variable_step("step_001", step_target, "member_variables", member_ops)]
+    if default_ops:
+        default_step = _blueprint_variable_step("step_002", step_target, "member_defaults", default_ops)
+        default_step["depends_on"] = ["step_001"]
+        steps.append(default_step)
+    return steps
+
+
+def _blueprint_variable_step(
+    step_id: str,
+    target: Dict[str, Any],
+    strategy: str,
+    ops: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    return {
+        "step_id": step_id,
+        "capability": "blueprint_variable",
+        "target": target,
+        "write": {
+            "strategy": strategy,
+            "ops": ops,
+        },
+        "constraints": {
+            "allow_remove_referenced_variables": False,
+        },
+    }
+
+
 def _compile_member_variable_change(change: Dict[str, Any], path: str) -> Dict[str, Any]:
     if "op" in change and "kind" not in change:
         op = dict(change)
         if "variable_type" in op and "pin_type" not in op:
             op["pin_type"] = op.pop("variable_type")
+        return op
+
+    if "kind" not in change:
+        op = _copy_known_fields(change, ["name", "category", "tooltip", "flags", "metadata", "name_collision"])
+        op["op"] = "ensure_member_variable"
+        op["pin_type"] = _variable_pin_type(change, path)
         return op
 
     kind = _required_string(change, "kind", f"{path}.kind")
@@ -1928,6 +1976,20 @@ def _compile_member_default_change(change: Dict[str, Any], path: str) -> Dict[st
         "op": "set_member_default",
         "name": _required_string(change, "name", f"{path}.name"),
         "value": _literal_value(change.get("value")),
+    }
+
+
+def _compile_member_default_from_variable_entry(change: Any, path: str) -> Optional[Dict[str, Any]]:
+    if not isinstance(change, dict) or "default" not in change:
+        return None
+    kind = change.get("kind")
+    op = change.get("op")
+    if kind not in {None, "ensure_member_variable"} or op not in {None, "ensure_member_variable"}:
+        return None
+    return {
+        "op": "set_member_default",
+        "name": _required_string(change, "name", f"{path}.name"),
+        "value": _literal_value(change.get("default")),
     }
 
 
@@ -1970,13 +2032,15 @@ def _variable_pin_type(record: Dict[str, Any], path: str) -> Dict[str, Any]:
         value = record.get("variable_type")
     if isinstance(value, dict):
         return dict(value)
+    if isinstance(record.get("type"), str) and record["type"].strip():
+        return {"category": record["type"]}
     raise TaskSpecCompileError(
         "taskspec_semantic_invalid",
         "Blueprint variable type is required.",
         [{
             "code": "missing_variable_pin_type",
-            "path": f"{path}.variable_type",
-            "message": 'Provide variable_type, for example {"category":"bool"}.',
+            "path": f"{path}.type",
+            "message": 'Provide type or variable_type, for example {"category":"bool"}.',
         }],
     )
 

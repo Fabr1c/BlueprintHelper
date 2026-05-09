@@ -1,5 +1,7 @@
 # BlueprintHelper TaskSpec UE Smoke Test (2026-05-05)
 
+2026-05-09 清理: 本文件保留早期 append-focused TaskSpec UE smoke。当前全线 smoke 执行入口已迁入 `Develop/Plan/BlueprintHelper_Unified_SmokeRun_Verification_20260509.md`。
+
 ## Purpose
 
 This smoke verifies the current TaskSpec-first runtime path against a real Unreal Editor session:

@@ -40,6 +40,47 @@ public:
 		return Target;
 	}
 
+	static FString DescribeInvalidObjectPropertySetting(
+		const FBlueprintHelperInvalidObjectPropertySetting& Invalid)
+	{
+		FString Message = FString::Printf(
+			TEXT("Invalid object property '%s': %s"),
+			*Invalid.PropertyPath,
+			Invalid.Code.IsEmpty() ? TEXT("unknown_error") : *Invalid.Code);
+		if (!Invalid.ExpectedType.IsEmpty())
+		{
+			Message += FString::Printf(TEXT(", expected_type=%s"), *Invalid.ExpectedType);
+		}
+		if (!Invalid.ActualType.IsEmpty())
+		{
+			Message += FString::Printf(TEXT(", actual_type=%s"), *Invalid.ActualType);
+		}
+		if (!Invalid.ValueSummary.IsEmpty())
+		{
+			Message += FString::Printf(TEXT(", detail=%s"), *Invalid.ValueSummary);
+		}
+		return Message;
+	}
+
+	static FString BuildObjectPropertyErrorMessage(
+		const FString& Fallback,
+		const FBlueprintHelperObjectPropertyWriteResult& PropertyResult)
+	{
+		if (PropertyResult.InvalidSettings.Num() == 0)
+		{
+			return Fallback;
+		}
+		return DescribeInvalidObjectPropertySetting(PropertyResult.InvalidSettings[0]);
+	}
+
+	static FString GetObjectPropertyErrorField(
+		const FBlueprintHelperObjectPropertyWriteResult& PropertyResult)
+	{
+		return PropertyResult.InvalidSettings.Num() > 0
+			? PropertyResult.InvalidSettings[0].PropertyPath
+			: FString();
+	}
+
 	static FBlueprintHelperToolResultBase MakeObjectPropertyToolResult(
 		const FString& Operation,
 		const FString& AssetPath,
@@ -65,13 +106,18 @@ public:
 		}
 		else
 		{
+			const bool bHasInvalidSettings = MutationResult.PropertyResult.InvalidSettings.Num() > 0;
+			const FString ErrorCode = bHasInvalidSettings && !MutationResult.PropertyResult.InvalidSettings[0].Code.IsEmpty()
+				? MutationResult.PropertyResult.InvalidSettings[0].Code
+				: TEXT("object_property_operation_failed");
 			Result = FBlueprintHelperToolResultBuilder::Failure(
 				Operation,
 				TraceId,
 				MakeObjectPropertyToolError(
-					TEXT("object_property_operation_failed"),
-					EBlueprintHelperToolStage::Execute,
-					MutationResult.ErrorMessage));
+					ErrorCode,
+					bHasInvalidSettings ? EBlueprintHelperToolStage::Preflight : EBlueprintHelperToolStage::Execute,
+					BuildObjectPropertyErrorMessage(MutationResult.ErrorMessage, MutationResult.PropertyResult),
+					GetObjectPropertyErrorField(MutationResult.PropertyResult)));
 		}
 
 		Result.CustomTargetJson = MakeObjectPropertyTarget(AssetPath, PropertyPath);
@@ -476,7 +522,9 @@ FBlueprintHelperSetPropertiesResult FBlueprintHelperPropertyReflectionService::S
 
 	if (Result.PropertyResult.InvalidSettings.Num() > 0)
 	{
-		Result.ErrorMessage = TEXT("One or more object property settings are invalid.");
+		Result.ErrorMessage = FBlueprintHelperPropertyReflectionServiceLocalUtils::BuildObjectPropertyErrorMessage(
+			TEXT("One or more object property settings are invalid."),
+			Result.PropertyResult);
 		return Result;
 	}
 
@@ -601,7 +649,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperPropertyReflectionService::SetObj
 
 	if (ConversionFailure.PropertyResult.InvalidSettings.Num() > 0)
 	{
-		ConversionFailure.ErrorMessage = TEXT("One or more object property values are invalid.");
+		ConversionFailure.ErrorMessage = FBlueprintHelperPropertyReflectionServiceLocalUtils::BuildObjectPropertyErrorMessage(
+			TEXT("One or more object property values are invalid."),
+			ConversionFailure.PropertyResult);
 		return FBlueprintHelperPropertyReflectionServiceLocalUtils::MakeObjectPropertyToolResult(
 			TEXT("set_object_properties"),
 			Request.AssetPath,

@@ -6,6 +6,7 @@
 #include "Dom/JsonValue.h"
 #include "HAL/FileManager.h"
 #include "Misc/FileHelper.h"
+#include "Misc/PackageName.h"
 #include "Misc/Paths.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
@@ -135,6 +136,39 @@ public:
 			BlueprintHelperReviewSurfaceToString(Target.Surface),
 			*Target.GraphName,
 			Target.TargetKey.IsEmpty() ? *FallbackKey : *Target.TargetKey);
+	}
+
+	static FString MakeReviewPackageNameFromAssetPath(const FString& AssetPath)
+	{
+		if (AssetPath.IsEmpty())
+		{
+			return FString();
+		}
+		if (FPackageName::IsValidObjectPath(AssetPath))
+		{
+			return FPackageName::ObjectPathToPackageName(AssetPath);
+		}
+
+		FString PackageName = AssetPath;
+		int32 SubObjectIndex = INDEX_NONE;
+		if (PackageName.FindChar(TEXT(':'), SubObjectIndex))
+		{
+			PackageName = PackageName.Left(SubObjectIndex);
+		}
+
+		int32 ObjectIndex = INDEX_NONE;
+		if (PackageName.FindChar(TEXT('.'), ObjectIndex))
+		{
+			PackageName = PackageName.Left(ObjectIndex);
+		}
+		return PackageName;
+	}
+
+	static bool DoesReviewAssetPackageExist(const FString& AssetPath)
+	{
+		const FString PackageName = MakeReviewPackageNameFromAssetPath(AssetPath);
+		return FPackageName::IsValidLongPackageName(PackageName)
+			&& FPackageName::DoesPackageExist(PackageName);
 	}
 
 	static bool IsReviewEvidenceTargetComplete(const FBlueprintHelperReviewAtomicTarget& Target, FString& OutReason)
@@ -1196,10 +1230,25 @@ TArray<FBlueprintHelperReviewVisibleChange> FBlueprintHelperReviewStoreService::
 
 	TArray<FBlueprintHelperReviewVisibleChange> RecordChanges;
 	const TArray<FBlueprintHelperReviewRecord> Records = QueryReviewRecords(Query);
+	const bool bSkipMissingAssetRecords = AssetPathFilter.IsEmpty();
 	for (const FBlueprintHelperReviewRecord& Record : Records)
 	{
+		if (bSkipMissingAssetRecords
+			&& !FBlueprintHelperReviewStoreServiceLocalUtils::DoesReviewAssetPackageExist(Record.AssetPath))
+		{
+			continue;
+		}
+
 		for (const FBlueprintHelperReviewVisibleChange& Change : Record.VisibleChanges)
 		{
+			if (bSkipMissingAssetRecords
+				&& !Change.AssetPath.IsEmpty()
+				&& Change.AssetPath != Record.AssetPath
+				&& !FBlueprintHelperReviewStoreServiceLocalUtils::DoesReviewAssetPackageExist(Change.AssetPath))
+			{
+				continue;
+			}
+
 			if (Change.Status == EBlueprintHelperReviewChangeStatus::Pending
 				|| Change.Status == EBlueprintHelperReviewChangeStatus::NeedsAction
 				|| Change.Status == EBlueprintHelperReviewChangeStatus::RejectFailed)

@@ -98,6 +98,29 @@ public:
 		return Blueprint;
 	}
 
+	static UBlueprint* MakeReviewObjectBlueprint(const FString& Prefix)
+	{
+		UPackage* Package = CreatePackage(*FString::Printf(
+			TEXT("/Game/BlueprintHelperReview/%s_%s"),
+			*Prefix,
+			*FGuid::NewGuid().ToString(EGuidFormats::Digits)));
+		if (!Package)
+		{
+			return nullptr;
+		}
+
+		UBlueprint* Blueprint = FKismetEditorUtilities::CreateBlueprint(
+			UObject::StaticClass(),
+			Package,
+			*FString::Printf(TEXT("BP_%s"), *Prefix),
+			BPTYPE_Normal,
+			UBlueprint::StaticClass(),
+			UBlueprintGeneratedClass::StaticClass(),
+			TEXT("BlueprintHelperReviewStoreServiceTests"));
+		Package->SetDirtyFlag(false);
+		return Blueprint;
+	}
+
 	static UK2Node_CustomEvent* AddReviewConversionEventNode(UEdGraph* Graph, const FString& EventName)
 	{
 		if (!Graph)
@@ -826,6 +849,58 @@ bool FBlueprintHelperReviewLoadPendingVisibleChangesUsesRecordQueryTest::RunTest
 
 	TestTrue(TEXT("pending change is loaded through record query"), bContainsPending);
 	TestFalse(TEXT("accepted change is excluded by pending query"), bContainsAccepted);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewLoadPendingVisibleChangesSkipsMissingAssetInGlobalQueryTest,
+	"BlueprintHelper.Review.UI.LoadPendingVisibleChangesSkipsMissingAssetInGlobalQuery",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewLoadPendingVisibleChangesSkipsMissingAssetInGlobalQueryTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewStoreService Store;
+	const FString ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_ui_stale"));
+	const FString AssetPath = FString::Printf(
+		TEXT("/Game/BP_MissingReview_%s"),
+		*FGuid::NewGuid().ToString(EGuidFormats::Digits));
+
+	FBlueprintHelperReviewAtomicTarget PendingTarget = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
+		TEXT("graph_node:MissingReview"),
+		TEXT("graph:EventGraph:block:MissingReview"),
+		TEXT("tx_ui_stale"));
+	PendingTarget.AssetPath = AssetPath;
+
+	TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
+	Evidences.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
+		ArchiveSessionId,
+		TEXT("task_ui_stale"),
+		TEXT("tx_ui_stale"),
+		AssetPath,
+		PendingTarget));
+
+	TArray<FBlueprintHelperReviewRecord> Records = Store.BuildReviewRecordsFromEvidence(Evidences);
+	TestEqual(TEXT("one stale UI query record is built"), Records.Num(), 1);
+	if (Records.Num() != 1)
+	{
+		return false;
+	}
+
+	FString SaveError;
+	TestTrue(TEXT("stale UI query record saves"), Store.SaveReviewRecords(Records, SaveError));
+
+	const auto ContainsMissingAsset = [&AssetPath](const FBlueprintHelperReviewVisibleChange& Change)
+	{
+		return Change.AssetPath == AssetPath;
+	};
+
+	const TArray<FBlueprintHelperReviewVisibleChange> GlobalPendingChanges =
+		Store.LoadPendingVisibleChanges();
+	const TArray<FBlueprintHelperReviewVisibleChange> ExplicitPendingChanges =
+		Store.LoadPendingVisibleChanges(AssetPath);
+
+	TestFalse(TEXT("global pending changes skip missing asset records"), GlobalPendingChanges.ContainsByPredicate(ContainsMissingAsset));
+	TestTrue(TEXT("explicit asset pending query still exposes missing asset diagnostics"), ExplicitPendingChanges.ContainsByPredicate(ContainsMissingAsset));
 	return true;
 }
 
@@ -1960,6 +2035,42 @@ bool FBlueprintHelperReviewPanelEmptyConstructsTest::RunTest(const FString& Para
 		.InitialChanges(InitialChanges);
 
 	TestTrue(TEXT("empty review panel widget is constructed"), Widget != SNullWidget::NullWidget);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewPanelObjectBlueprintConstructsTest,
+	"BlueprintHelper.Review.UI.PanelConstructsWithObjectBlueprintVisibleChange",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewPanelObjectBlueprintConstructsTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewObjectBlueprint(TEXT("ReviewPanelObjectBlueprint"));
+	TestNotNull(TEXT("object Blueprint exists"), Blueprint);
+	if (!Blueprint)
+	{
+		return false;
+	}
+
+	FBlueprintHelperReviewVisibleChange Change;
+	Change.ChangeId = TEXT("tx_object_visible");
+	Change.AssetPath = Blueprint->GetPathName();
+	Change.GraphName = TEXT("EventGraph");
+	Change.LocationKey = TEXT("object:class_settings");
+	Change.LatestTransactionId = TEXT("tx_object_visible");
+	Change.SourceTransactionIds.Add(TEXT("tx_object_visible"));
+	Change.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
+	Change.DisplayLabel = TEXT("Object Blueprint Review");
+	Change.BeforeSummary = TEXT("Before");
+	Change.AfterSummary = TEXT("After");
+
+	TArray<FBlueprintHelperReviewVisibleChange> InitialChanges;
+	InitialChanges.Add(Change);
+
+	TSharedRef<SWidget> Widget = SNew(SBlueprintHelperReviewPanel)
+		.InitialChanges(InitialChanges);
+
+	TestTrue(TEXT("review panel widget is constructed for non-Actor Blueprint"), Widget != SNullWidget::NullWidget);
 	return true;
 }
 
