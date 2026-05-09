@@ -285,7 +285,27 @@ public:
 		{
 			return EBlueprintHelperReviewSurface::Details;
 		}
-		return EBlueprintHelperReviewSurface::Graph;
+		if (Surface.Equals(TEXT("umg_widget_tree"), ESearchCase::IgnoreCase)
+			|| Surface.Equals(TEXT("umg"), ESearchCase::IgnoreCase)
+			|| Surface.Equals(TEXT("umg_widget"), ESearchCase::IgnoreCase))
+		{
+			return EBlueprintHelperReviewSurface::UMGWidgetTree;
+		}
+		if (Surface.Equals(TEXT("data_table"), ESearchCase::IgnoreCase)
+			|| Surface.Equals(TEXT("datatable"), ESearchCase::IgnoreCase))
+		{
+			return EBlueprintHelperReviewSurface::DataTable;
+		}
+		if (Surface.Equals(TEXT("data_asset"), ESearchCase::IgnoreCase)
+			|| Surface.Equals(TEXT("object_details"), ESearchCase::IgnoreCase))
+		{
+			return EBlueprintHelperReviewSurface::DataAsset;
+		}
+		if (Surface.Equals(TEXT("graph"), ESearchCase::IgnoreCase))
+		{
+			return EBlueprintHelperReviewSurface::Graph;
+		}
+		return EBlueprintHelperReviewSurface::Unknown;
 	}
 
 	static void ReadReviewStringArray(
@@ -542,6 +562,12 @@ public:
 						FString TargetStatus;
 						TargetJson->TryGetStringField(TEXT("status"), TargetStatus);
 						Target.Status = ParseReviewChangeStatus(TargetStatus);
+						Target.Surface = BlueprintHelperReviewNormalizeSurfaceForTarget(
+							Target.Surface,
+							Target.TargetKind,
+							Target.TargetKey,
+							Target.VisualGroupKey,
+							Change.LocationKey);
 						Change.AtomicTargets.Add(Target);
 					}
 				}
@@ -1354,6 +1380,12 @@ void FBlueprintHelperReviewStoreService::AddEvidenceAtomicTargets(
 		{
 			Target.Ownership = TEXT("unknown");
 		}
+		Target.Surface = BlueprintHelperReviewNormalizeSurfaceForTarget(
+			Target.Surface,
+			Target.TargetKind,
+			Target.TargetKey,
+			Target.VisualGroupKey,
+			Evidence.OperationKind);
 
 		FString NeedsActionReason;
 		if (!FBlueprintHelperReviewStoreServiceLocalUtils::IsReviewEvidenceTargetComplete(Target, NeedsActionReason))
@@ -1439,6 +1471,12 @@ TArray<FBlueprintHelperReviewAtomicTarget> FBlueprintHelperReviewStoreService::M
 			Target.VisualGroupKey = Target.VisualGroupKey.IsEmpty() ? Input.LocationKey : Target.VisualGroupKey;
 			Target.DisplayLabel = Target.DisplayLabel.IsEmpty() ? Input.DisplayLabel : Target.DisplayLabel;
 			Target.SourceTransactionIds.Add(Input.TransactionId);
+			Target.Surface = BlueprintHelperReviewNormalizeSurfaceForTarget(
+				Target.Surface,
+				Target.TargetKind,
+				Target.TargetKey,
+				Target.VisualGroupKey,
+				Input.LocationKey);
 		}
 		return Targets;
 	}
@@ -1476,6 +1514,12 @@ TArray<FBlueprintHelperReviewAtomicTarget> FBlueprintHelperReviewStoreService::M
 	{
 		Target.Surface = EBlueprintHelperReviewSurface::Graph;
 	}
+	Target.Surface = BlueprintHelperReviewNormalizeSurfaceForTarget(
+		Target.Surface,
+		Target.TargetKind,
+		Target.TargetKey,
+		Target.VisualGroupKey,
+		Input.LocationKey);
 
 	TArray<FBlueprintHelperReviewAtomicTarget> Targets;
 	Targets.Add(Target);
