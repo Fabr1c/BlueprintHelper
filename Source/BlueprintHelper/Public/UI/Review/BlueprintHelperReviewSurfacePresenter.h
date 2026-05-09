@@ -153,6 +153,8 @@ public:
 		const FSlateColor& FrameColor,
 		const TFunction<FReply(TSharedPtr<FBlueprintHelperReviewVisibleChange>)>& OnAcceptChange,
 		const TFunction<FReply(TSharedPtr<FBlueprintHelperReviewVisibleChange>)>& OnRejectChange);
+
+	static FLinearColor GetDiffFrameBackgroundColor(bool bFillBackground);
 };
 
 class BLUEPRINTHELPER_API FBlueprintHelperReviewSlateRowGeometryRegistry

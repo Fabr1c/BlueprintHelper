@@ -34,7 +34,13 @@ class FBlueprintEditor;
 
 namespace BlueprintHelperReviewSurfacePresenterPrivate
 {
-	static const FLinearColor ReviewFrameInnerBg = FLinearColor(0.06f, 0.06f, 0.06f, 0.92f);
+	static constexpr float ReviewFrameBackgroundOpacity = 0.60f;
+	static const FLinearColor ReviewFrameInnerBg = FLinearColor(0.06f, 0.06f, 0.06f, ReviewFrameBackgroundOpacity);
+
+	static FLinearColor GetReviewFrameBackgroundColor(bool bFillBackground)
+	{
+		return bFillBackground ? ReviewFrameInnerBg : FLinearColor::Transparent;
+	}
 
 	struct FSlateRowGeometryRecord
 	{
@@ -337,7 +343,7 @@ namespace BlueprintHelperReviewSurfacePresenterPrivate
 		const FSlateBrush* GetInnerBrush() const
 		{
 			InnerBrush = FSlateRoundedBoxBrush(
-				bFillBackground ? ReviewFrameInnerBg : FLinearColor::Transparent,
+				GetReviewFrameBackgroundColor(bFillBackground),
 				5.0f);
 			return &InnerBrush;
 		}
@@ -653,7 +659,7 @@ namespace BlueprintHelperReviewSurfacePresenterPrivate
 			Item,
 			SNullWidget::NullWidget,
 			Item.IsValid(),
-			false,
+			true,
 			FrameColor,
 			Args.OnAcceptChange,
 			Args.OnRejectChange);
@@ -1296,6 +1302,11 @@ TSharedRef<SWidget> FBlueprintHelperReviewSurfaceFrameBuilder::BuildReviewListOv
 	bool (*Predicate)(const FBlueprintHelperReviewVisibleChange&))
 {
 	return BlueprintHelperReviewSurfacePresenterPrivate::BuildPanelDiffFrames(Args, Surface, Predicate);
+}
+
+FLinearColor FBlueprintHelperReviewSurfaceFrameBuilder::GetDiffFrameBackgroundColor(bool bFillBackground)
+{
+	return BlueprintHelperReviewSurfacePresenterPrivate::GetReviewFrameBackgroundColor(bFillBackground);
 }
 
 TSharedRef<SWidget> FBlueprintHelperReviewSurfaceFrameBuilder::BuildDiffFrame(

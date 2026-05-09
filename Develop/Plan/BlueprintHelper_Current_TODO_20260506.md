@@ -34,7 +34,7 @@
 - [x] Source patch integrated for `append_new_owned_graph` multi-step execution: dependent `graph_write` append steps now reuse `blueprint_signature`-created CustomEvent entries instead of attempting to create duplicate entries.
 - [ ] Add one same-graph `branch_fork + owned_block_call` execute/read-back smoke so Level 3 is not only covered by `custom_event_call`. Fold this into the unified P1/P2 disposable fixture run instead of treating it as a separate build-blocked item.
 - [x] AssetFactory normalizes ordinary Blueprint fixture creation: TaskSpec `asset_type=blueprint` and `asset_type=Actor` now lower to `asset_type=blueprint_class` with `parent_class=Actor`; UE TaskRuntime and direct Bridge `create_asset` share the same parser.
-- [ ] Level 6/7 disposable fixtures are still needed for UMGWidget and DataTable execute smoke. Source now includes Structure fields, DataTable `row_struct`, and WidgetBlueprint create paths; UE build has passed, so the remaining status is Automation / Editor fixture verification.
+- [x] Level 6/7 disposable fixtures for UMGWidget and DataTable execute smoke are now covered by Unified SmokeRun (3.2/3.3) and passed.
 - [ ] Level 8 controlled failure fixture is still needed for TaskRunJournal partial failure / topology blocking smoke. Recovery notes expectation mismatch has been fixed in source/tests; rerun is tracked by Unified SmokeRun Ring 1 and Ring 4.
 - [ ] Composite `create_blueprint_feature` execute fixture still needs a disposable asset target and should run in the same unified smoke/P2 fixture batch.
 - [ ] Fix `create_blueprint_feature` preview empty-error anti-pattern discovered while attempting fixture creation for ClassSettings smoke.
@@ -51,6 +51,7 @@
 - [x] Remove the deferred bulk-reference path from the current Agent-facing and debug roadmap. Prefer targeted `logic_md` / `logic_json` reads by block or context slice instead of exporting full asset bodies to Agents.
 - [x] Replace the old DebugExport / LargePayload active contract with the current DebugCase / DebugBundle boundary: failure-facing results expose summary `debug_case_ids[]`; ReviewRecord stores `debug_case_ids[]`; DebugBundle is a developer export artifact, not an Agent bulk-read path.
 - [ ] Verify the ReviewPanel + DebugCase / DebugBundle tail in Editor: pending visible changes load, Accept / Reject / RejectAll status propagation, Reject `needs_action` / `reject_failed` writing `debug_case_ids[]`, DebugBundle Review summary artifact, and no `debug_export_refs` in active Review records.
+- [ ] Discuss and decide ReviewPanel information-panel placement per asset kind before fixing the current DA / DT / UMG routing bugs. This discussion must define which asset surfaces own the center workspace, side panels, Details panel, and Diff overlays for Blueprint, WidgetBlueprint, DataTable, DataAsset, and GenericObject, using the current smoke issues as input: WBP rows incorrectly include DataTable/DataAsset changes, WidgetTree/DataTable/DataAsset changes are spawned into Details, and Diff frames overlap Details text.
 
 ## 2026-05-07 execution note
 
@@ -62,6 +63,8 @@
 ## 2026-05-09 verification update from user FullTestLog
 
 - [x] UE build passed on the user side.
+- [x] Local recheck on 2026-05-09: full workspace `Build.bat` compile now passes (`MrStoneEditor Win64 Development ... -NoHotReload`).
+- [x] Local recheck on 2026-05-09: plugin package compile now passes via `RunUAT BuildPlugin` and produces `PluginOut/BlueprintHelper` with no compile errors.
 - [ ] Full Automation rerun is pending after the grouped failure fixes. The former failing set was ObjectFirst export JSON shape, BlueprintVariable localized category expectation, TaskRunJournal recovery notes, ObjectProperty invalid value dry-run, AssetFactory Structure/DataTable creation, and Signature override create-if-missing; rerun is now tracked by Unified SmokeRun Ring 1.
 - [x] Review / Debug targeted Automation evidence exists in the log for `RejectNeedsActionCreatesDebugCase`, `RejectFailedCreatesDebugCase`, `PersistsDebugCaseIds`, `LoadPendingVisibleChangesUsesRecordQuery`, and `BundleSummaryExportIncludesReviewSummaryArtifact`.
 - [ ] ReviewPanel manual check has not produced pending visible content yet. The observed log `sourceGraph="<none>" previewGraph="EdGraph_0" previewNodes=0` means the panel loaded with no selected pending visible change; generate disposable Review content first, then run Unified SmokeRun Ring 8.
