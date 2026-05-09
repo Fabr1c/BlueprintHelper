@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(F:/UE_5.6/Engine/Binaries/Win64/UnrealEditor-Cmd.exe *)",
-      "Bash(npm.cmd test *)"
-    ]
-  }
-}
