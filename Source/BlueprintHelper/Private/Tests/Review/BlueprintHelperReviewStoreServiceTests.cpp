@@ -869,6 +869,28 @@ bool FBlueprintHelperReviewPresenterOverlayUsesStableSlateRowGeometryTest::RunTe
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewDiffFrameBackgroundUsesTranslucentBaseTest,
+	"BlueprintHelper.Review.UI.DiffFrameBackgroundUsesTranslucentBase",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewDiffFrameBackgroundUsesTranslucentBaseTest::RunTest(const FString& Parameters)
+{
+	const FLinearColor FilledBackground =
+		FBlueprintHelperReviewSurfaceFrameBuilder::GetDiffFrameBackgroundColor(true);
+	TestTrue(TEXT("filled diff frame background uses alpha 0.6"),
+		FMath::IsNearlyEqual(FilledBackground.A, 0.60f));
+	TestTrue(TEXT("filled diff frame background remains visible"),
+		FilledBackground.R > 0.0f && FilledBackground.G > 0.0f && FilledBackground.B > 0.0f);
+
+	const FLinearColor TransparentBackground =
+		FBlueprintHelperReviewSurfaceFrameBuilder::GetDiffFrameBackgroundColor(false);
+	TestTrue(TEXT("explicit no-fill diff frame background stays transparent"),
+		TransparentBackground.Equals(FLinearColor::Transparent));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperReviewPresenterOverlayFallsBackWhenSlateRowGeometryIsPartialTest,
 	"BlueprintHelper.Review.VisibleChange.PresenterOverlayFallsBackWhenSlateRowGeometryIsPartial",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

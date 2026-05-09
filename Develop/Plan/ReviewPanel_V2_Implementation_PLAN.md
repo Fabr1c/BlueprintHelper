@@ -65,6 +65,27 @@
 2. 对 Components/MyBlueprint/Details/UMG/DataTable，优先尝试读取稳定 Slate row geometry。
 3. 如果 Unreal 不暴露稳定 row geometry，移除“假精确”硬编码框，改为 deterministic review-list/card，不再伪装成精确行框。
 
+### Stage 5: Panel Placement Contract Fixes
+
+1. Final change list grouping and readable row text.
+   - Left final-change list groups rows by the visible change's true `AssetPath`; a Widget Blueprint review must not absorb DataTable or DataAsset changes from the same transaction.
+   - Each review row should show user-facing text first, for example `修改了 [SmokeText]`, `修改了 [DamageSmall] 行`, `修改了 [SmokeHealth] 变量`.
+   - Transaction id, `target_kind`, surface name, and raw anchor details remain available in debug export or tooltip-style diagnostics, not as the primary row title.
+
+2. Blueprint and Widget Blueprint panel ownership.
+   - Blueprint uses `Components + MyBlueprint + Graph`: component changes draw their diff overlay in the Components panel, variable / function / dispatcher / signature changes draw in My Blueprint, and graph changes draw in the center Graph workspace.
+   - Widget Blueprint uses `WidgetTree + MyBlueprint + Graph`: Widget Tree replaces the Components position, My Blueprint stays in the lower left-middle panel, and the center workspace continues to display Graph.
+   - Widget widget/property changes draw only inside Widget Tree. They must not be rerouted into the right Details panel and must not create Graph fallback overlays.
+   - DataTable and DataAsset changes remain independent asset groups. They must not appear under a selected Widget Blueprint; their dedicated panel placement remains a separate follow-up decision.
+   - The right Details panel is auxiliary for the selected review item: readable property summary, before/after text, reject/debug context, and diagnostic metadata. It does not own UMG, DataTable, or DataAsset primary diff overlays.
+
+3. Diff fill style, padding, and fallback behavior.
+   - Diff visuals should follow code-review style block highlighting: a translucent filled background over the changed row/block is the primary signal, with a subtle selected-state edge or stronger fill when selected.
+   - Added changes use green fill, modified changes use yellow/amber fill, and removed changes use red fill. The existing semi-transparent base should stay readable over Slate text.
+   - Geometry may expand beyond the exact row/block bounds. Default padding is 10 px; graph blocks or large block-level anchors may use up to 20 px.
+   - Expanded geometry must stay clipped to its owning surface and must not cover unrelated rows as if they were part of the same change.
+   - When a stable row/block geometry cannot be resolved, render the deterministic review-list/card inside the owning surface instead of drawing a fake precise overlay in Details.
+
 ## Test Plan
 
 - Stage 1 automation:
