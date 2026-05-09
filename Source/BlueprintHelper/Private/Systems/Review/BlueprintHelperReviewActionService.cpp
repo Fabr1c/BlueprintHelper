@@ -26,14 +26,15 @@
 #include "UObject/Package.h"
 #include "UObject/UObjectGlobals.h"
 
-namespace
+class FBlueprintHelperReviewActionServiceLocalUtils
 {
-	bool ReviewTargetMatches(const FBlueprintHelperReviewAtomicTarget& Target, const TArray<FString>& TargetKeys)
+public:
+	static bool ReviewTargetMatches(const FBlueprintHelperReviewAtomicTarget& Target, const TArray<FString>& TargetKeys)
 	{
 		return TargetKeys.Num() == 0 || TargetKeys.Contains(Target.TargetKey);
 	}
 
-	EBlueprintHelperReviewChangeStatus CombineTargetStatuses(
+	static EBlueprintHelperReviewChangeStatus CombineTargetStatuses(
 		const TArray<FBlueprintHelperReviewAtomicTarget>& Targets)
 	{
 		if (Targets.Num() == 0)
@@ -72,7 +73,7 @@ namespace
 		return EBlueprintHelperReviewChangeStatus::Pending;
 	}
 
-	EBlueprintHelperReviewChangeStatus CombineChangeStatuses(
+	static EBlueprintHelperReviewChangeStatus CombineChangeStatuses(
 		const TArray<FBlueprintHelperReviewVisibleChange>& Changes)
 	{
 		if (Changes.Num() == 0)
@@ -117,7 +118,7 @@ namespace
 		return EBlueprintHelperReviewChangeStatus::Pending;
 	}
 
-	void RefreshReviewRecordStatus(FBlueprintHelperReviewRecord& Record)
+	static void RefreshReviewRecordStatus(FBlueprintHelperReviewRecord& Record)
 	{
 		for (FBlueprintHelperReviewVisibleChange& Change : Record.VisibleChanges)
 		{
@@ -127,7 +128,7 @@ namespace
 		Record.SourceTransactionSummary.FinalReviewStatus = Record.Status;
 	}
 
-	FBlueprintHelperReviewActionRecord MakeReviewActionRecord(
+	static FBlueprintHelperReviewActionRecord MakeReviewActionRecord(
 		const FString& Action,
 		const TArray<FString>& TargetKeys,
 		const FString& OwnershipPolicy,
@@ -144,7 +145,7 @@ namespace
 		return ActionRecord;
 	}
 
-	TArray<FString> CollectPendingTargetKeys(const FBlueprintHelperReviewRecord& Record)
+	static TArray<FString> CollectPendingTargetKeys(const FBlueprintHelperReviewRecord& Record)
 	{
 		TArray<FString> TargetKeys;
 		for (const FBlueprintHelperReviewVisibleChange& Change : Record.VisibleChanges)
@@ -160,7 +161,7 @@ namespace
 		return TargetKeys;
 	}
 
-	TArray<FString> CollectTargetKeysFromVisibleChange(const FBlueprintHelperReviewVisibleChange& Change)
+	static TArray<FString> CollectTargetKeysFromVisibleChange(const FBlueprintHelperReviewVisibleChange& Change)
 	{
 		TArray<FString> TargetKeys;
 		for (const FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
@@ -173,7 +174,7 @@ namespace
 		return TargetKeys;
 	}
 
-	bool TryResolvePersistedReviewChange(
+	static bool TryResolvePersistedReviewChange(
 		const FBlueprintHelperReviewVisibleChange& Change,
 		FString& OutReviewRecordId,
 		TArray<FString>& OutTargetKeys)
@@ -226,7 +227,7 @@ namespace
 		return false;
 	}
 
-	bool HasInjectedRejectOptions(const FBlueprintHelperReviewRejectOptions& Options)
+	static bool HasInjectedRejectOptions(const FBlueprintHelperReviewRejectOptions& Options)
 	{
 		return Options.CurrentHashesByTargetKey.Num() > 0
 			|| Options.bRollbackExecutorAvailable
@@ -234,7 +235,7 @@ namespace
 			|| !Options.RollbackFailureMessage.IsEmpty();
 	}
 
-	FBlueprintHelperReviewActionResult MakeRejectFailureResult(
+	static FBlueprintHelperReviewActionResult MakeRejectFailureResult(
 		const FBlueprintHelperReviewVisibleChange& Change,
 		EBlueprintHelperReviewChangeStatus Status,
 		const FString& Message)
@@ -247,7 +248,7 @@ namespace
 		return Result;
 	}
 
-	bool ExtractRollbackTransactionId(const FString& RollbackDataRef, FString& OutTransactionId)
+	static bool ExtractRollbackTransactionId(const FString& RollbackDataRef, FString& OutTransactionId)
 	{
 		const FString Prefix = TEXT("transaction://");
 		const FString Suffix = TEXT("/rollback_data");
@@ -261,7 +262,7 @@ namespace
 		return !OutTransactionId.IsEmpty();
 	}
 
-	bool LoadJournalRecordForReviewRollback(
+	static bool LoadJournalRecordForReviewRollback(
 		const FString& TransactionId,
 		TSharedPtr<FJsonObject>& OutRecord,
 		FString& OutError)
@@ -305,7 +306,7 @@ namespace
 		return true;
 	}
 
-	FString ExtractReviewTargetTail(const FString& TargetKey, const FString& Marker)
+	static FString ExtractReviewTargetTail(const FString& TargetKey, const FString& Marker)
 	{
 		const FString Token = Marker + TEXT(":");
 		const int32 Pos = TargetKey.Find(Token, ESearchCase::CaseSensitive, ESearchDir::FromEnd);
@@ -322,9 +323,7 @@ namespace
 		return TargetKey;
 	}
 
-	UEdGraph* FindReviewRollbackGraph(UBlueprint* Blueprint, const FString& GraphName);
-
-	bool TryFindReviewAtomicTarget(
+	static bool TryFindReviewAtomicTarget(
 		const FBlueprintHelperReviewRecord& Record,
 		const FString& TargetKey,
 		FBlueprintHelperReviewAtomicTarget& OutTarget)
@@ -343,7 +342,7 @@ namespace
 		return false;
 	}
 
-	FString ResolveConversionTransactionId(
+	static FString ResolveConversionTransactionId(
 		const FBlueprintHelperReviewConvertOwnerBlockRequest& Request,
 		const FBlueprintHelperTransactionJournalService& JournalService)
 	{
@@ -352,7 +351,7 @@ namespace
 			: Request.ConversionTransactionId;
 	}
 
-	FString MakeConvertBlockFailureMessage(const FBlueprintHelperToolResultBase& ToolResult)
+	static FString MakeConvertBlockFailureMessage(const FBlueprintHelperToolResultBase& ToolResult)
 	{
 		if (ToolResult.Error.IsSet())
 		{
@@ -372,7 +371,7 @@ namespace
 		return TEXT("convert_owner_block_failed");
 	}
 
-	bool ExecuteBhToUserOwnerBlockConversion(
+	static bool ExecuteBhToUserOwnerBlockConversion(
 		const FBlueprintHelperReviewAtomicTarget& Target,
 		const FBlueprintHelperReviewConvertOwnerBlockRequest& Request,
 		const FString& ConversionTransactionId,
@@ -412,7 +411,7 @@ namespace
 		return true;
 	}
 
-	UEdGraphNode* FindReviewNodeByAnchor(UEdGraph* Graph, const FString& Anchor)
+	static UEdGraphNode* FindReviewNodeByAnchor(UEdGraph* Graph, const FString& Anchor)
 	{
 		if (!Graph || Anchor.IsEmpty())
 		{
@@ -443,7 +442,7 @@ namespace
 		return nullptr;
 	}
 
-	bool ExecuteUserToBhOwnerBlockConversion(
+	static bool ExecuteUserToBhOwnerBlockConversion(
 		const FBlueprintHelperReviewAtomicTarget& Target,
 		const FBlueprintHelperReviewConvertOwnerBlockRequest& Request,
 		const FString& ConversionTransactionId,
@@ -548,7 +547,7 @@ namespace
 		return true;
 	}
 
-	UEdGraph* FindReviewRollbackGraph(UBlueprint* Blueprint, const FString& GraphName)
+	static UEdGraph* FindReviewRollbackGraph(UBlueprint* Blueprint, const FString& GraphName)
 	{
 		if (!Blueprint)
 		{
@@ -582,7 +581,7 @@ namespace
 		return nullptr;
 	}
 
-	void CollectRollbackNodesForTarget(
+	static void CollectRollbackNodesForTarget(
 		UEdGraph* Graph,
 		const FBlueprintHelperReviewAtomicTarget& Target,
 		TArray<UEdGraphNode*>& OutNodes)
@@ -631,7 +630,7 @@ namespace
 		}
 	}
 
-	bool ExecuteGraphAppendRollback(
+	static bool ExecuteGraphAppendRollback(
 		const FBlueprintHelperReviewAtomicTarget& Target,
 		const TSharedPtr<FJsonObject>& JournalRecord,
 		FString& OutError)
@@ -688,7 +687,7 @@ namespace
 		return true;
 	}
 
-	FBlueprintHelperReviewActionResult RejectVisibleChangeWithDefaultDispatcher(
+	static FBlueprintHelperReviewActionResult RejectVisibleChangeWithDefaultDispatcher(
 		const FBlueprintHelperReviewVisibleChange& Change)
 	{
 		if (Change.AtomicTargets.Num() == 0)
@@ -763,7 +762,8 @@ namespace
 		Result.bSupersededDataCompactionEligible = true;
 		return Result;
 	}
-}
+
+};
 
 FBlueprintHelperReviewActionService::FBlueprintHelperReviewActionService() = default;
 
@@ -778,7 +778,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::AcceptVi
 {
 	FString ReviewRecordId;
 	TArray<FString> TargetKeys;
-	if (TryResolvePersistedReviewChange(Change, ReviewRecordId, TargetKeys))
+	if (FBlueprintHelperReviewActionServiceLocalUtils::TryResolvePersistedReviewChange(Change, ReviewRecordId, TargetKeys))
 	{
 		return AcceptReviewTargets(ReviewRecordId, TargetKeys);
 	}
@@ -798,7 +798,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectVi
 {
 	FString ReviewRecordId;
 	TArray<FString> TargetKeys;
-	if (TryResolvePersistedReviewChange(Change, ReviewRecordId, TargetKeys))
+	if (FBlueprintHelperReviewActionServiceLocalUtils::TryResolvePersistedReviewChange(Change, ReviewRecordId, TargetKeys))
 	{
 		FBlueprintHelperReviewRejectOptions Options;
 		return RejectReviewTargets(ReviewRecordId, TargetKeys, Options);
@@ -989,7 +989,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::AcceptRe
 	{
 		for (FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
 		{
-			if (!ReviewTargetMatches(Target, TargetKeys))
+			if (!FBlueprintHelperReviewActionServiceLocalUtils::ReviewTargetMatches(Target, TargetKeys))
 			{
 				continue;
 			}
@@ -1005,8 +1005,8 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::AcceptRe
 		return Result;
 	}
 
-	RefreshReviewRecordStatus(Record);
-	Record.ReviewActions.Add(MakeReviewActionRecord(
+	FBlueprintHelperReviewActionServiceLocalUtils::RefreshReviewRecordStatus(Record);
+	Record.ReviewActions.Add(FBlueprintHelperReviewActionServiceLocalUtils::MakeReviewActionRecord(
 		TEXT("accept"),
 		TargetKeys,
 		TEXT("keep_managed"),
@@ -1044,7 +1044,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectRe
 
 	bool bMatchedAny = false;
 	bool bAllRejected = true;
-	const bool bUseInjectedOptions = HasInjectedRejectOptions(Options);
+	const bool bUseInjectedOptions = FBlueprintHelperReviewActionServiceLocalUtils::HasInjectedRejectOptions(Options);
 	FString SourceTransactionId;
 	FString LastMessage;
 	EBlueprintHelperReviewChangeStatus LastStatus = EBlueprintHelperReviewChangeStatus::Rejected;
@@ -1053,7 +1053,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectRe
 	{
 		for (FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
 		{
-			if (!ReviewTargetMatches(Target, TargetKeys))
+			if (!FBlueprintHelperReviewActionServiceLocalUtils::ReviewTargetMatches(Target, TargetKeys))
 			{
 				continue;
 			}
@@ -1064,7 +1064,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectRe
 			TargetChange.AtomicTargets.Add(Target);
 			const FBlueprintHelperReviewActionResult TargetResult = bUseInjectedOptions
 				? RejectVisibleChange(TargetChange, Options)
-				: RejectVisibleChangeWithDefaultDispatcher(TargetChange);
+				: FBlueprintHelperReviewActionServiceLocalUtils::RejectVisibleChangeWithDefaultDispatcher(TargetChange);
 			Target.Status = TargetResult.NewStatus;
 			Change.NeedsActionReason = TargetResult.bSucceeded ? FString() : TargetResult.Message;
 			SourceTransactionId = Target.LatestTransactionId;
@@ -1080,8 +1080,8 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectRe
 		return Result;
 	}
 
-	RefreshReviewRecordStatus(Record);
-	Record.ReviewActions.Add(MakeReviewActionRecord(
+	FBlueprintHelperReviewActionServiceLocalUtils::RefreshReviewRecordStatus(Record);
+	Record.ReviewActions.Add(FBlueprintHelperReviewActionServiceLocalUtils::MakeReviewActionRecord(
 		TEXT("reject"),
 		TargetKeys,
 		TEXT("archive_baseline"),
@@ -1129,7 +1129,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectAl
 	FString LastMessage;
 	for (const FBlueprintHelperReviewRecord& Record : Records)
 	{
-		const TArray<FString> TargetKeys = CollectPendingTargetKeys(Record);
+		const TArray<FString> TargetKeys = FBlueprintHelperReviewActionServiceLocalUtils::CollectPendingTargetKeys(Record);
 		if (TargetKeys.Num() == 0)
 		{
 			continue;
@@ -1174,7 +1174,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::ConvertO
 		{
 			TargetKeys.Add(Request.BlockTargetKey);
 		}
-		Record.ReviewActions.Add(MakeReviewActionRecord(
+		Record.ReviewActions.Add(FBlueprintHelperReviewActionServiceLocalUtils::MakeReviewActionRecord(
 			TEXT("convert_owner_block"),
 			TargetKeys,
 			Request.Direction,
@@ -1211,7 +1211,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::ConvertO
 	}
 
 	FBlueprintHelperReviewAtomicTarget MatchedTarget;
-	if (!TryFindReviewAtomicTarget(Record, Request.BlockTargetKey, MatchedTarget))
+	if (!FBlueprintHelperReviewActionServiceLocalUtils::TryFindReviewAtomicTarget(Record, Request.BlockTargetKey, MatchedTarget))
 	{
 		return PersistFailure(TEXT("convert_owner_block_target_not_found"), FString());
 	}
@@ -1225,15 +1225,15 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::ConvertO
 	}
 
 	FBlueprintHelperTransactionJournalService JournalService;
-	const FString ConversionTransactionId = ResolveConversionTransactionId(Request, JournalService);
+	const FString ConversionTransactionId = FBlueprintHelperReviewActionServiceLocalUtils::ResolveConversionTransactionId(Request, JournalService);
 	FString ConversionError;
 	const bool bConverted = Request.Direction == TEXT("bh_to_user")
-		? ExecuteBhToUserOwnerBlockConversion(
+		? FBlueprintHelperReviewActionServiceLocalUtils::ExecuteBhToUserOwnerBlockConversion(
 			MatchedTarget,
 			Request,
 			ConversionTransactionId,
 			ConversionError)
-		: ExecuteUserToBhOwnerBlockConversion(
+		: FBlueprintHelperReviewActionServiceLocalUtils::ExecuteUserToBhOwnerBlockConversion(
 			MatchedTarget,
 			Request,
 			ConversionTransactionId,
@@ -1264,7 +1264,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::ConvertO
 
 	TArray<FString> ConvertedTargetKeys;
 	ConvertedTargetKeys.Add(Request.BlockTargetKey);
-	Record.ReviewActions.Add(MakeReviewActionRecord(
+	Record.ReviewActions.Add(FBlueprintHelperReviewActionServiceLocalUtils::MakeReviewActionRecord(
 		TEXT("convert_owner_block"),
 		ConvertedTargetKeys,
 		Request.Direction,

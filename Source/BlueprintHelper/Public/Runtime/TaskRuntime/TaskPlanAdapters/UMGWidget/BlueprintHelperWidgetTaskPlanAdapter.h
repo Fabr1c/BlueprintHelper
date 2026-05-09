@@ -6,33 +6,34 @@
 #include "Dom/JsonObject.h"
 #include "Shared/BlueprintHelperToolResultTypes.h"
 
-namespace BlueprintHelperWidgetTaskPlan
+class FBlueprintHelperWidgetTaskPlan
 {
-	namespace Capability
+public:
+	struct Capability
 	{
 		static constexpr const TCHAR* UMGWidget = TEXT("umg_widget");
-	}
+	};
 
-	namespace Strategy
+	struct Strategy
 	{
 		static constexpr const TCHAR* WidgetTreeEdit = TEXT("widget_tree_edit");
 		static constexpr const TCHAR* WidgetPropertyEdit = TEXT("widget_property_edit");
-	}
+	};
 
-	namespace Op
+	struct Op
 	{
 		static constexpr const TCHAR* AddWidget = TEXT("add_widget");
 		static constexpr const TCHAR* SetWidgetProperty = TEXT("set_widget_property");
 		static constexpr const TCHAR* RemoveWidget = TEXT("remove_widget");
-	}
+	};
 
-	namespace AdapterOperation
+	struct AdapterOperation
 	{
 		static constexpr const TCHAR* AddWidget = TEXT("add_widget");
 		static constexpr const TCHAR* SetWidgetProperty = TEXT("set_widget_property");
 		static constexpr const TCHAR* RemoveWidget = TEXT("remove_widget");
-	}
-}
+	};
+};
 
 struct BLUEPRINTHELPER_API FBlueprintHelperWidgetTaskPlanLoweredOp
 {

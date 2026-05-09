@@ -8,9 +8,10 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
-namespace
+class FBlueprintHelperObjectFirstImportTestsLocalUtils
 {
-	TSharedPtr<FJsonObject> MakeValidRawJsonObject()
+public:
+	static TSharedPtr<FJsonObject> MakeValidRawJsonObject()
 	{
 		TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
 		Root->SetStringField(TEXT("version"), TEXT("2.2"));
@@ -22,7 +23,7 @@ namespace
 		return Root;
 	}
 
-	TSharedPtr<FJsonObject> MakeLogicJsonObject()
+	static TSharedPtr<FJsonObject> MakeLogicJsonObject()
 	{
 		TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
 		Root->SetStringField(TEXT("version"), TEXT("1.0"));
@@ -31,7 +32,8 @@ namespace
 		Root->SetArrayField(TEXT("graphs"), Graphs);
 		return Root;
 	}
-}
+
+};
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FObjectFirstImport_ObjectRawJsonAccepted,
@@ -59,7 +61,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FObjectFirstImport_SchemaGuardRejectsLogicJson::RunTest(const FString& Parameters)
 {
 	// 验证 LogicJson schema 被 ResolveImportJsonText 拒绝
-	TSharedPtr<FJsonObject> LogicObj = MakeLogicJsonObject();
+	TSharedPtr<FJsonObject> LogicObj = FBlueprintHelperObjectFirstImportTestsLocalUtils::MakeLogicJsonObject();
 
 	FString SchemaValue;
 	TestTrue(TEXT("Logic object has schema field"), LogicObj->TryGetStringField(TEXT("schema"), SchemaValue));

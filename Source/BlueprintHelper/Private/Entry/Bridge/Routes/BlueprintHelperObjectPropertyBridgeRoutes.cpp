@@ -6,9 +6,10 @@
 #include "Dom/JsonValue.h"
 #include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
 
-namespace
+class FBlueprintHelperObjectPropertyBridgeRoutesLocalUtils
 {
-	FString ReadObjectPropertyRouteStringField(const TSharedPtr<FJsonObject>& Payload, const TCHAR* FieldName)
+public:
+	static FString ReadObjectPropertyRouteStringField(const TSharedPtr<FJsonObject>& Payload, const TCHAR* FieldName)
 	{
 		FString Value;
 		if (Payload.IsValid())
@@ -18,7 +19,7 @@ namespace
 		return Value;
 	}
 
-	FBlueprintHelperBridgeResponse MakeInvalidObjectPropertyRequest(
+	static FBlueprintHelperBridgeResponse MakeInvalidObjectPropertyRequest(
 		const FBlueprintHelperBridgeRequest& Request,
 		const FString& Message)
 	{
@@ -27,7 +28,8 @@ namespace
 			EBlueprintHelperBridgeError::InvalidRequest,
 			Message);
 	}
-}
+
+};
 
 FBlueprintHelperObjectPropertyBridgeRoutes::FBlueprintHelperObjectPropertyBridgeRoutes(
 	const FBlueprintHelperPropertyReflectionService& InPropertyReflectionService)
@@ -44,13 +46,13 @@ bool FBlueprintHelperObjectPropertyBridgeRoutes::IsObjectPropertyCommand(const F
 FBlueprintHelperBridgeResponse FBlueprintHelperObjectPropertyBridgeRoutes::HandleRequest(
 	const FBlueprintHelperBridgeRequest& Request) const
 {
-	const FString AssetPath = ReadObjectPropertyRouteStringField(Request.Payload, TEXT("asset_path"));
+	const FString AssetPath = FBlueprintHelperObjectPropertyBridgeRoutesLocalUtils::ReadObjectPropertyRouteStringField(Request.Payload, TEXT("asset_path"));
 
 	if (Request.Command == TEXT("get_object_properties"))
 	{
 		if (AssetPath.IsEmpty())
 		{
-			return MakeInvalidObjectPropertyRequest(Request, TEXT("payload requires asset_path."));
+			return FBlueprintHelperObjectPropertyBridgeRoutesLocalUtils::MakeInvalidObjectPropertyRequest(Request, TEXT("payload requires asset_path."));
 		}
 
 		const FBlueprintHelperObjectPropertiesResult Result =
@@ -86,13 +88,13 @@ FBlueprintHelperBridgeResponse FBlueprintHelperObjectPropertyBridgeRoutes::Handl
 
 	if (Request.Command == TEXT("set_object_property"))
 	{
-		const FString PropertyName = ReadObjectPropertyRouteStringField(Request.Payload, TEXT("property_name"));
+		const FString PropertyName = FBlueprintHelperObjectPropertyBridgeRoutesLocalUtils::ReadObjectPropertyRouteStringField(Request.Payload, TEXT("property_name"));
 		if (AssetPath.IsEmpty() || PropertyName.IsEmpty())
 		{
-			return MakeInvalidObjectPropertyRequest(Request, TEXT("payload requires asset_path and property_name."));
+			return FBlueprintHelperObjectPropertyBridgeRoutesLocalUtils::MakeInvalidObjectPropertyRequest(Request, TEXT("payload requires asset_path and property_name."));
 		}
 
-		const FString Value = ReadObjectPropertyRouteStringField(Request.Payload, TEXT("value"));
+		const FString Value = FBlueprintHelperObjectPropertyBridgeRoutesLocalUtils::ReadObjectPropertyRouteStringField(Request.Payload, TEXT("value"));
 		const FBlueprintHelperSetPropertyResult Result =
 			PropertyReflectionService.SetObjectProperty(AssetPath, PropertyName, Value);
 		if (!Result.bSuccess)

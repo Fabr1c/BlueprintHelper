@@ -6,9 +6,10 @@
 #include "EdGraph/EdGraphPin.h"
 #include "K2Node.h"
 
-namespace
+class FBlueprintHelperLogicJsonPathServiceLocalUtils
 {
-	bool TryParseLogicJsonNodeIndex(const FString& Ref, int32& OutIndex)
+public:
+	static bool TryParseLogicJsonNodeIndex(const FString& Ref, int32& OutIndex)
 	{
 		OutIndex = INDEX_NONE;
 		if (Ref.IsEmpty())
@@ -39,7 +40,7 @@ namespace
 		return true;
 	}
 
-	bool TryResolveNodeGuid(UEdGraph* Graph, const FString& Ref, UEdGraphNode*& OutNode)
+	static bool TryResolveNodeGuid(UEdGraph* Graph, const FString& Ref, UEdGraphNode*& OutNode)
 	{
 		if (!Graph || Ref.IsEmpty())
 		{
@@ -64,7 +65,8 @@ namespace
 
 		return false;
 	}
-}
+
+};
 
 bool FBlueprintHelperLogicJsonPathService::ResolveNode(
 	UEdGraph* Graph,
@@ -85,7 +87,7 @@ bool FBlueprintHelperLogicJsonPathService::ResolveNode(
 	if (!NodePath.IsEmpty())
 	{
 		int32 LogicJsonIndex = INDEX_NONE;
-		if (TryParseLogicJsonNodeIndex(NodePath, LogicJsonIndex))
+		if (FBlueprintHelperLogicJsonPathServiceLocalUtils::TryParseLogicJsonNodeIndex(NodePath, LogicJsonIndex))
 		{
 			if (Graph->Nodes.IsValidIndex(LogicJsonIndex) && Graph->Nodes[LogicJsonIndex])
 			{
@@ -112,7 +114,7 @@ bool FBlueprintHelperLogicJsonPathService::ResolveNode(
 	if (!NodeRef.IsEmpty())
 	{
 		int32 LogicJsonIndex = INDEX_NONE;
-		if (TryParseLogicJsonNodeIndex(NodeRef, LogicJsonIndex))
+		if (FBlueprintHelperLogicJsonPathServiceLocalUtils::TryParseLogicJsonNodeIndex(NodeRef, LogicJsonIndex))
 		{
 			if (Graph->Nodes.IsValidIndex(LogicJsonIndex) && Graph->Nodes[LogicJsonIndex])
 			{
@@ -125,7 +127,7 @@ bool FBlueprintHelperLogicJsonPathService::ResolveNode(
 			return false;
 		}
 
-		if (TryResolveNodeGuid(Graph, NodeRef, OutNode))
+		if (FBlueprintHelperLogicJsonPathServiceLocalUtils::TryResolveNodeGuid(Graph, NodeRef, OutNode))
 		{
 			return true;
 		}

@@ -58,9 +58,10 @@
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 
-namespace
+class FBlueprintHelperBridgeRouterLocalUtils
 {
-	TSharedRef<FJsonObject> MakeLogicStatsObject(const FBlueprintHelperLogicResult& Result)
+public:
+	static TSharedRef<FJsonObject> MakeLogicStatsObject(const FBlueprintHelperLogicResult& Result)
 	{
 		TSharedRef<FJsonObject> StatsObject = MakeShared<FJsonObject>();
 		StatsObject->SetNumberField(TEXT("nodes"), Result.NodeCount);
@@ -71,7 +72,7 @@ namespace
 		return StatsObject;
 	}
 
-	FString JsonValueTypeToString(const TSharedPtr<FJsonValue>& Value)
+	static FString JsonValueTypeToString(const TSharedPtr<FJsonValue>& Value)
 	{
 		if (!Value.IsValid())
 		{
@@ -91,7 +92,7 @@ namespace
 		}
 	}
 
-	FBlueprintHelperBridgeValidationError MakePayloadFieldError(
+	static FBlueprintHelperBridgeValidationError MakePayloadFieldError(
 		const TCHAR* FieldName,
 		const FString& ExpectedType,
 		const FString& ActualType)
@@ -106,7 +107,7 @@ namespace
 		return Error;
 	}
 
-	bool TryReadStringField(
+	static bool TryReadStringField(
 		const TSharedPtr<FJsonObject>& Payload,
 		const TCHAR* FieldName,
 		bool bRequired,
@@ -144,7 +145,7 @@ namespace
 		return true;
 	}
 
-	bool TryReadStringOption(
+	static bool TryReadStringOption(
 		const TSharedPtr<FJsonObject>& Payload,
 		const TCHAR* FieldName,
 		const FString& DefaultValue,
@@ -172,7 +173,7 @@ namespace
 		return true;
 	}
 
-	bool TryReadBoolField(
+	static bool TryReadBoolField(
 		const TSharedPtr<FJsonObject>& Payload,
 		const TCHAR* FieldName,
 		bool bRequired,
@@ -209,7 +210,7 @@ namespace
 		return true;
 	}
 
-	bool TryReadNumberField(
+	static bool TryReadNumberField(
 		const TSharedPtr<FJsonObject>& Payload,
 		const TCHAR* FieldName,
 		bool bRequired,
@@ -246,7 +247,7 @@ namespace
 		return true;
 	}
 
-	bool TryReadBoolOption(
+	static bool TryReadBoolOption(
 		const TSharedPtr<FJsonObject>& Payload,
 		const TCHAR* FieldName,
 		bool& InOutValue,
@@ -267,7 +268,7 @@ namespace
 		return true;
 	}
 
-	EBlueprintHelperBridgeError ValidationCodeToBridgeError(const FString& Code)
+	static EBlueprintHelperBridgeError ValidationCodeToBridgeError(const FString& Code)
 	{
 		if (Code == TEXT("unauthorized"))
 		{
@@ -280,7 +281,7 @@ namespace
 		return EBlueprintHelperBridgeError::InvalidRequest;
 	}
 
-	FBlueprintHelperBridgeResponse ValidationErrorResponse(
+	static FBlueprintHelperBridgeResponse ValidationErrorResponse(
 		const FString& RequestId,
 		const FBlueprintHelperBridgeValidationError& Error)
 	{
@@ -302,7 +303,7 @@ namespace
 		return Resp;
 	}
 
-	EBlueprintHelperBridgeError DiagnosticSetToBridgeError(const FBlueprintHelperDiagnosticSet& Diagnostics)
+	static EBlueprintHelperBridgeError DiagnosticSetToBridgeError(const FBlueprintHelperDiagnosticSet& Diagnostics)
 	{
 		for (const FBlueprintHelperDiagnosticItem& Item : Diagnostics.Items)
 		{
@@ -318,7 +319,7 @@ namespace
 		return EBlueprintHelperBridgeError::ExecutionFailed;
 	}
 
-	TSharedPtr<FJsonObject> ParseJsonObject(const FString& JsonText)
+	static TSharedPtr<FJsonObject> ParseJsonObject(const FString& JsonText)
 	{
 		TSharedPtr<FJsonObject> JsonObject;
 		const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonText);
@@ -329,7 +330,7 @@ namespace
 		return JsonObject;
 	}
 
-	FString AgentImportSeverityToString(EBlueprintHelperAgentImportDiagnosticSeverity Severity)
+	static FString AgentImportSeverityToString(EBlueprintHelperAgentImportDiagnosticSeverity Severity)
 	{
 		switch (Severity)
 		{
@@ -342,7 +343,7 @@ namespace
 		}
 	}
 
-	TSharedRef<FJsonObject> AgentImportResultToJson(const FBlueprintHelperAgentImportResult& Result)
+	static TSharedRef<FJsonObject> AgentImportResultToJson(const FBlueprintHelperAgentImportResult& Result)
 	{
 		TSharedRef<FJsonObject> Object = MakeShared<FJsonObject>();
 		Object->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.AgentImportResult"));
@@ -384,7 +385,7 @@ namespace
 		return Object;
 	}
 
-	TSharedRef<FJsonObject> MakeRawJsonStatsObject(const TSharedPtr<FJsonObject>& RawJsonObject)
+	static TSharedRef<FJsonObject> MakeRawJsonStatsObject(const TSharedPtr<FJsonObject>& RawJsonObject)
 	{
 		TSharedRef<FJsonObject> Stats = MakeShared<FJsonObject>();
 		if (!RawJsonObject.IsValid())
@@ -418,7 +419,7 @@ namespace
 	}
 
 	// ─── reference context helpers ───
-	FBlueprintHelperToolError MakeReferenceContextError(
+	static FBlueprintHelperToolError MakeReferenceContextError(
 		const FString& Code,
 		EBlueprintHelperToolStage Stage,
 		const FString& Message,
@@ -434,7 +435,7 @@ namespace
 		return Error;
 	}
 
-	TSharedRef<FJsonObject> MakeReferenceContextTargetJson(const TSharedPtr<FJsonObject>& Payload)
+	static TSharedRef<FJsonObject> MakeReferenceContextTargetJson(const TSharedPtr<FJsonObject>& Payload)
 	{
 		TSharedRef<FJsonObject> Target = MakeShared<FJsonObject>();
 
@@ -474,7 +475,7 @@ namespace
 		return Target;
 	}
 
-	FBlueprintHelperDependencyAnalysisTarget ReadReferenceContextTarget(const TSharedPtr<FJsonObject>& Payload)
+	static FBlueprintHelperDependencyAnalysisTarget ReadReferenceContextTarget(const TSharedPtr<FJsonObject>& Payload)
 	{
 		FBlueprintHelperDependencyAnalysisTarget Target;
 		if (!Payload.IsValid())
@@ -496,7 +497,7 @@ namespace
 		return Target;
 	}
 
-	FBlueprintHelperToolResultBase MakeReferenceContextFailureResult(
+	static FBlueprintHelperToolResultBase MakeReferenceContextFailureResult(
 		const TSharedPtr<FJsonObject>& Payload,
 		const FString& Code,
 		EBlueprintHelperToolStage Stage,
@@ -510,7 +511,8 @@ namespace
 		Result.CustomTargetJson = MakeReferenceContextTargetJson(Payload);
 		return Result;
 	}
-}
+
+};
 
 FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	const FBlueprintHelperImportService& InImport,
@@ -611,10 +613,10 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequestWithPl
 	FBlueprintHelperBridgeValidationError ValidationError;
 	if (!FBlueprintHelperRequestValidator::ValidatePayloadForCommand(Request.Command, Request.Payload, ValidationError))
 	{
-		FBlueprintHelperBridgeResponse Resp = ValidationErrorResponse(Request.RequestId, ValidationError);
+		FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeRouterLocalUtils::ValidationErrorResponse(Request.RequestId, ValidationError);
 		if (Request.Command == TEXT("read_reference_context"))
 		{
-			const FBlueprintHelperToolResultBase Result = MakeReferenceContextFailureResult(
+			const FBlueprintHelperToolResultBase Result = FBlueprintHelperBridgeRouterLocalUtils::MakeReferenceContextFailureResult(
 				Request.Payload,
 				TEXT("invalid_request"),
 				EBlueprintHelperToolStage::ParseInput,
@@ -626,7 +628,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequestWithPl
 	}
 	if (!FBlueprintHelperRequestValidator::ValidateAuthorization(Request, ValidationError))
 	{
-		return ValidationErrorResponse(Request.RequestId, ValidationError);
+		return FBlueprintHelperBridgeRouterLocalUtils::ValidationErrorResponse(Request.RequestId, ValidationError);
 	}
 
 	if (!RoutePlan.bKnownCommand)
@@ -846,7 +848,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadReference
 	const FBlueprintHelperBridgeRequest& Req) const
 {
 	const TSharedPtr<FJsonObject> Payload = Req.Payload;
-	const FBlueprintHelperDependencyAnalysisTarget Target = ReadReferenceContextTarget(Payload);
+	const FBlueprintHelperDependencyAnalysisTarget Target = FBlueprintHelperBridgeRouterLocalUtils::ReadReferenceContextTarget(Payload);
 
 	FString Scope = TEXT("safety_context");
 	if (Payload.IsValid())
@@ -856,13 +858,13 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadReference
 
 	bool bIncludeSamples = true;
 	FBlueprintHelperBridgeValidationError ValidationError;
-	if (!TryReadBoolOption(Payload, TEXT("include_samples"), bIncludeSamples, ValidationError))
+	if (!FBlueprintHelperBridgeRouterLocalUtils::TryReadBoolOption(Payload, TEXT("include_samples"), bIncludeSamples, ValidationError))
 	{
 		FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Error(
 			Req.RequestId,
 			EBlueprintHelperBridgeError::InvalidRequest,
 			ValidationError.Message);
-		Resp.Result = MakeReferenceContextFailureResult(
+		Resp.Result = FBlueprintHelperBridgeRouterLocalUtils::MakeReferenceContextFailureResult(
 			Payload,
 			TEXT("invalid_request"),
 			EBlueprintHelperToolStage::ParseInput,
@@ -872,13 +874,13 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadReference
 	}
 
 	double MaxResults = 50.0;
-	if (!TryReadNumberField(Payload, TEXT("max_results"), false, MaxResults, ValidationError))
+	if (!FBlueprintHelperBridgeRouterLocalUtils::TryReadNumberField(Payload, TEXT("max_results"), false, MaxResults, ValidationError))
 	{
 		FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Error(
 			Req.RequestId,
 			EBlueprintHelperBridgeError::InvalidRequest,
 			ValidationError.Message);
-		Resp.Result = MakeReferenceContextFailureResult(
+		Resp.Result = FBlueprintHelperBridgeRouterLocalUtils::MakeReferenceContextFailureResult(
 			Payload,
 			TEXT("invalid_request"),
 			EBlueprintHelperToolStage::ParseInput,
@@ -910,7 +912,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadReference
 			Req.RequestId,
 			BridgeError,
 			ErrorMessage);
-		Resp.Result = MakeReferenceContextFailureResult(
+		Resp.Result = FBlueprintHelperBridgeRouterLocalUtils::MakeReferenceContextFailureResult(
 			Payload,
 			ErrorCode.IsEmpty() ? TEXT("reference_context_failed") : ErrorCode,
 			EBlueprintHelperToolStage::ResolveTarget,
@@ -922,7 +924,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadReference
 	FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Completed(
 		TEXT("read_reference_context"),
 		FBlueprintHelperToolResultBuilder::GenerateTraceId());
-	Result.CustomTargetJson = MakeReferenceContextTargetJson(Payload);
+	Result.CustomTargetJson = FBlueprintHelperBridgeRouterLocalUtils::MakeReferenceContextTargetJson(Payload);
 	Result.Data = ContextPack.ToJson();
 
 	FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
@@ -1086,9 +1088,9 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleValidateJson(
 {
 	FBlueprintHelperBridgeValidationError ParseError;
 	FString JsonText;
-	if (!TryReadStringField(Req.Payload, TEXT("json"), true, JsonText, ParseError))
+	if (!FBlueprintHelperBridgeRouterLocalUtils::TryReadStringField(Req.Payload, TEXT("json"), true, JsonText, ParseError))
 	{
-		return ValidationErrorResponse(Req.RequestId, ParseError);
+		return FBlueprintHelperBridgeRouterLocalUtils::ValidationErrorResponse(Req.RequestId, ParseError);
 	}
 
 	if (JsonText.IsEmpty())
@@ -1192,7 +1194,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleExportToJson(
 	}
 
 	// stats
-	Resp.Result->SetObjectField(TEXT("stats"), MakeRawJsonStatsObject(ExportResult.JsonObject));
+	Resp.Result->SetObjectField(TEXT("stats"), FBlueprintHelperBridgeRouterLocalUtils::MakeRawJsonStatsObject(ExportResult.JsonObject));
 
 	// diagnostics
 	TArray<TSharedPtr<FJsonValue>> DiagArray;
@@ -1226,11 +1228,11 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleExportLogic(
 	FString FormatStr;
 	FString DetailStr;
 	FBlueprintHelperBridgeValidationError ParseError;
-	if (!TryReadStringOption(Payload, TEXT("scope"), TEXT("single_graph"), ScopeStr, ParseError)
-		|| !TryReadStringOption(Payload, TEXT("format"), TEXT("logic_md"), FormatStr, ParseError)
-		|| !TryReadStringOption(Payload, TEXT("detail"), TEXT("normal"), DetailStr, ParseError))
+	if (!FBlueprintHelperBridgeRouterLocalUtils::TryReadStringOption(Payload, TEXT("scope"), TEXT("single_graph"), ScopeStr, ParseError)
+		|| !FBlueprintHelperBridgeRouterLocalUtils::TryReadStringOption(Payload, TEXT("format"), TEXT("logic_md"), FormatStr, ParseError)
+		|| !FBlueprintHelperBridgeRouterLocalUtils::TryReadStringOption(Payload, TEXT("detail"), TEXT("normal"), DetailStr, ParseError))
 	{
-		return ValidationErrorResponse(Req.RequestId, ParseError);
+		return FBlueprintHelperBridgeRouterLocalUtils::ValidationErrorResponse(Req.RequestId, ParseError);
 	}
 
 	FBlueprintHelperExportRequest ExportReq;
@@ -1293,13 +1295,13 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleExportLogic(
 			FString::Printf(TEXT("不支持的 detail: %s"), *DetailStr));
 	}
 
-	if (!TryReadBoolOption(Payload, TEXT("include_data_dependencies"), LogicOptions.bIncludeDataDependencies, ParseError)
-		|| !TryReadBoolOption(Payload, TEXT("include_orphans"), LogicOptions.bIncludeOrphanNodes, ParseError)
-		|| !TryReadBoolOption(Payload, TEXT("include_node_ids"), LogicOptions.bIncludeNodeIds, ParseError)
-		|| !TryReadBoolOption(Payload, TEXT("include_positions"), LogicOptions.bIncludePositions, ParseError)
-		|| !TryReadBoolOption(Payload, TEXT("include_raw_node_types"), LogicOptions.bIncludeRawNodeTypes, ParseError))
+	if (!FBlueprintHelperBridgeRouterLocalUtils::TryReadBoolOption(Payload, TEXT("include_data_dependencies"), LogicOptions.bIncludeDataDependencies, ParseError)
+		|| !FBlueprintHelperBridgeRouterLocalUtils::TryReadBoolOption(Payload, TEXT("include_orphans"), LogicOptions.bIncludeOrphanNodes, ParseError)
+		|| !FBlueprintHelperBridgeRouterLocalUtils::TryReadBoolOption(Payload, TEXT("include_node_ids"), LogicOptions.bIncludeNodeIds, ParseError)
+		|| !FBlueprintHelperBridgeRouterLocalUtils::TryReadBoolOption(Payload, TEXT("include_positions"), LogicOptions.bIncludePositions, ParseError)
+		|| !FBlueprintHelperBridgeRouterLocalUtils::TryReadBoolOption(Payload, TEXT("include_raw_node_types"), LogicOptions.bIncludeRawNodeTypes, ParseError))
 	{
-		return ValidationErrorResponse(Req.RequestId, ParseError);
+		return FBlueprintHelperBridgeRouterLocalUtils::ValidationErrorResponse(Req.RequestId, ParseError);
 	}
 
 	const FBlueprintHelperExportResult ExportResult = ExportService.Export(ExportReq);
@@ -1310,7 +1312,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleExportLogic(
 			: TEXT("导出失败。");
 		return FBlueprintHelperBridgeResponse::Error(
 			Req.RequestId,
-			DiagnosticSetToBridgeError(ExportResult.Diagnostics),
+			FBlueprintHelperBridgeRouterLocalUtils::DiagnosticSetToBridgeError(ExportResult.Diagnostics),
 			ErrorMsg);
 	}
 
@@ -1336,11 +1338,11 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleExportLogic(
 	if (LogicOptions.Format == EBlueprintHelperLogicOutputFormat::Markdown)
 	{
 		Resp.Result->SetStringField(TEXT("markdown"), LogicResult.OutputText);
-		Resp.Result->SetObjectField(TEXT("stats"), MakeLogicStatsObject(LogicResult));
+		Resp.Result->SetObjectField(TEXT("stats"), FBlueprintHelperBridgeRouterLocalUtils::MakeLogicStatsObject(LogicResult));
 		return Resp;
 	}
 
-	TSharedPtr<FJsonObject> LogicObject = ParseJsonObject(LogicResult.OutputText);
+	TSharedPtr<FJsonObject> LogicObject = FBlueprintHelperBridgeRouterLocalUtils::ParseJsonObject(LogicResult.OutputText);
 	if (!LogicObject.IsValid())
 	{
 		return FBlueprintHelperBridgeResponse::Error(
@@ -1358,7 +1360,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleExportLogic(
 	}
 	else
 	{
-		Resp.Result->SetObjectField(TEXT("stats"), MakeLogicStatsObject(LogicResult));
+		Resp.Result->SetObjectField(TEXT("stats"), FBlueprintHelperBridgeRouterLocalUtils::MakeLogicStatsObject(LogicResult));
 	}
 
 	return Resp;
@@ -1406,11 +1408,11 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleImportJson(
 		Req.Payload->TryGetStringField(TEXT("target_blueprint"), ImportReq.Target.BlueprintPath);
 		Req.Payload->TryGetStringField(TEXT("target_graph"), ImportReq.Target.GraphName);
 	}
-	if (!TryReadBoolOption(Req.Payload, TEXT("compile_after_import"), ImportReq.bAutoCompile, ParseError)
-		|| !TryReadBoolOption(Req.Payload, TEXT("strict"), ImportReq.bStrict, ParseError)
-		|| !TryReadBoolOption(Req.Payload, TEXT("allow_partial"), ImportReq.bAllowPartial, ParseError))
+	if (!FBlueprintHelperBridgeRouterLocalUtils::TryReadBoolOption(Req.Payload, TEXT("compile_after_import"), ImportReq.bAutoCompile, ParseError)
+		|| !FBlueprintHelperBridgeRouterLocalUtils::TryReadBoolOption(Req.Payload, TEXT("strict"), ImportReq.bStrict, ParseError)
+		|| !FBlueprintHelperBridgeRouterLocalUtils::TryReadBoolOption(Req.Payload, TEXT("allow_partial"), ImportReq.bAllowPartial, ParseError))
 	{
-		return ValidationErrorResponse(Req.RequestId, ParseError);
+		return FBlueprintHelperBridgeRouterLocalUtils::ValidationErrorResponse(Req.RequestId, ParseError);
 	}
 
 	// ImportService.ResolveImportJsonText() 会处。JsonObject/JsonText 解析。schema/importable 守卫
@@ -1421,7 +1423,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleImportJson(
 		const FString ErrorMsg = ImportResult.GetSummaryText();
 		return FBlueprintHelperBridgeResponse::Error(
 			Req.RequestId,
-			DiagnosticSetToBridgeError(ImportResult.Diagnostics),
+			FBlueprintHelperBridgeRouterLocalUtils::DiagnosticSetToBridgeError(ImportResult.Diagnostics),
 			ErrorMsg);
 	}
 
@@ -1504,7 +1506,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleImportAgentGr
 	const FBlueprintHelperAgentImportResult ImportResult = AgentImportService.Import(ImportReq);
 
 	auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId, ImportResult.GetSummaryText());
-	Resp.Result = AgentImportResultToJson(ImportResult);
+	Resp.Result = FBlueprintHelperBridgeRouterLocalUtils::AgentImportResultToJson(ImportResult);
 	return Resp;
 }
 
@@ -1667,9 +1669,9 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleOpenAsset(
 {
 	FBlueprintHelperBridgeValidationError ParseError;
 	FString AssetPath;
-	if (!TryReadStringField(Req.Payload, TEXT("asset_path"), true, AssetPath, ParseError))
+	if (!FBlueprintHelperBridgeRouterLocalUtils::TryReadStringField(Req.Payload, TEXT("asset_path"), true, AssetPath, ParseError))
 	{
-		return ValidationErrorResponse(Req.RequestId, ParseError);
+		return FBlueprintHelperBridgeRouterLocalUtils::ValidationErrorResponse(Req.RequestId, ParseError);
 	}
 
 	if (AssetPath.IsEmpty())
@@ -1705,19 +1707,19 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleListAssets(
 	if (Req.Payload.IsValid())
 	{
 		FBlueprintHelperBridgeValidationError ParseError;
-		if (!TryReadStringField(Req.Payload, TEXT("path"), false, ListReq.Path, ParseError)
-			|| !TryReadStringField(Req.Payload, TEXT("class_filter"), false, ListReq.ClassFilter, ParseError)
-			|| !TryReadStringField(Req.Payload, TEXT("name_filter"), false, ListReq.NameFilter, ParseError)
-			|| !TryReadBoolOption(Req.Payload, TEXT("recursive"), ListReq.bRecursive, ParseError))
+		if (!FBlueprintHelperBridgeRouterLocalUtils::TryReadStringField(Req.Payload, TEXT("path"), false, ListReq.Path, ParseError)
+			|| !FBlueprintHelperBridgeRouterLocalUtils::TryReadStringField(Req.Payload, TEXT("class_filter"), false, ListReq.ClassFilter, ParseError)
+			|| !FBlueprintHelperBridgeRouterLocalUtils::TryReadStringField(Req.Payload, TEXT("name_filter"), false, ListReq.NameFilter, ParseError)
+			|| !FBlueprintHelperBridgeRouterLocalUtils::TryReadBoolOption(Req.Payload, TEXT("recursive"), ListReq.bRecursive, ParseError))
 		{
-			return ValidationErrorResponse(Req.RequestId, ParseError);
+			return FBlueprintHelperBridgeRouterLocalUtils::ValidationErrorResponse(Req.RequestId, ParseError);
 		}
 		if (Req.Payload->HasField(TEXT("max_results")))
 		{
 			double MaxResults = 0.0;
-			if (!TryReadNumberField(Req.Payload, TEXT("max_results"), false, MaxResults, ParseError))
+			if (!FBlueprintHelperBridgeRouterLocalUtils::TryReadNumberField(Req.Payload, TEXT("max_results"), false, MaxResults, ParseError))
 			{
-				return ValidationErrorResponse(Req.RequestId, ParseError);
+				return FBlueprintHelperBridgeRouterLocalUtils::ValidationErrorResponse(Req.RequestId, ParseError);
 			}
 			ListReq.MaxResults = static_cast<int32>(MaxResults);
 		}
@@ -1765,18 +1767,18 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleSearchAssets(
 	if (Req.Payload.IsValid())
 	{
 		FBlueprintHelperBridgeValidationError ParseError;
-		if (!TryReadStringField(Req.Payload, TEXT("path"), false, SearchReq.Path, ParseError)
-			|| !TryReadStringField(Req.Payload, TEXT("class_filter"), false, SearchReq.ClassFilter, ParseError)
-			|| !TryReadStringField(Req.Payload, TEXT("query"), true, SearchReq.NameFilter, ParseError))
+		if (!FBlueprintHelperBridgeRouterLocalUtils::TryReadStringField(Req.Payload, TEXT("path"), false, SearchReq.Path, ParseError)
+			|| !FBlueprintHelperBridgeRouterLocalUtils::TryReadStringField(Req.Payload, TEXT("class_filter"), false, SearchReq.ClassFilter, ParseError)
+			|| !FBlueprintHelperBridgeRouterLocalUtils::TryReadStringField(Req.Payload, TEXT("query"), true, SearchReq.NameFilter, ParseError))
 		{
-			return ValidationErrorResponse(Req.RequestId, ParseError);
+			return FBlueprintHelperBridgeRouterLocalUtils::ValidationErrorResponse(Req.RequestId, ParseError);
 		}
 		if (Req.Payload->HasField(TEXT("max_results")))
 		{
 			double MaxResults = 0.0;
-			if (!TryReadNumberField(Req.Payload, TEXT("max_results"), false, MaxResults, ParseError))
+			if (!FBlueprintHelperBridgeRouterLocalUtils::TryReadNumberField(Req.Payload, TEXT("max_results"), false, MaxResults, ParseError))
 			{
-				return ValidationErrorResponse(Req.RequestId, ParseError);
+				return FBlueprintHelperBridgeRouterLocalUtils::ValidationErrorResponse(Req.RequestId, ParseError);
 			}
 			SearchReq.MaxResults = static_cast<int32>(MaxResults);
 		}
@@ -1830,9 +1832,9 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleSaveAsset(
 {
 	FBlueprintHelperBridgeValidationError ParseError;
 	FString AssetPath;
-	if (!TryReadStringField(Req.Payload, TEXT("asset_path"), true, AssetPath, ParseError))
+	if (!FBlueprintHelperBridgeRouterLocalUtils::TryReadStringField(Req.Payload, TEXT("asset_path"), true, AssetPath, ParseError))
 	{
-		return ValidationErrorResponse(Req.RequestId, ParseError);
+		return FBlueprintHelperBridgeRouterLocalUtils::ValidationErrorResponse(Req.RequestId, ParseError);
 	}
 
 	if (AssetPath.IsEmpty())
@@ -1898,9 +1900,9 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleGetAssetInfo(
 {
 	FBlueprintHelperBridgeValidationError ParseError;
 	FString AssetPath;
-	if (!TryReadStringField(Req.Payload, TEXT("asset_path"), true, AssetPath, ParseError))
+	if (!FBlueprintHelperBridgeRouterLocalUtils::TryReadStringField(Req.Payload, TEXT("asset_path"), true, AssetPath, ParseError))
 	{
-		return ValidationErrorResponse(Req.RequestId, ParseError);
+		return FBlueprintHelperBridgeRouterLocalUtils::ValidationErrorResponse(Req.RequestId, ParseError);
 	}
 
 	if (AssetPath.IsEmpty())
@@ -2068,9 +2070,9 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleAddGraph(
 {
 	FBlueprintHelperBridgeValidationError ParseError;
 	FString GraphName;
-	if (!TryReadStringField(Req.Payload, TEXT("name"), true, GraphName, ParseError))
+	if (!FBlueprintHelperBridgeRouterLocalUtils::TryReadStringField(Req.Payload, TEXT("name"), true, GraphName, ParseError))
 	{
-		return ValidationErrorResponse(Req.RequestId, ParseError);
+		return FBlueprintHelperBridgeRouterLocalUtils::ValidationErrorResponse(Req.RequestId, ParseError);
 	}
 
 	if (!Req.Payload.IsValid() || !Req.Payload->HasField(TEXT("name")))
@@ -2102,9 +2104,9 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRemoveGraph(
 {
 	FBlueprintHelperBridgeValidationError ParseError;
 	FString GraphName;
-	if (!TryReadStringField(Req.Payload, TEXT("name"), true, GraphName, ParseError))
+	if (!FBlueprintHelperBridgeRouterLocalUtils::TryReadStringField(Req.Payload, TEXT("name"), true, GraphName, ParseError))
 	{
-		return ValidationErrorResponse(Req.RequestId, ParseError);
+		return FBlueprintHelperBridgeRouterLocalUtils::ValidationErrorResponse(Req.RequestId, ParseError);
 	}
 
 	if (GraphName.IsEmpty())
@@ -2136,9 +2138,9 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleAddEventDispa
 {
 	FBlueprintHelperBridgeValidationError ParseError;
 	FString DispatcherName;
-	if (!TryReadStringField(Req.Payload, TEXT("name"), true, DispatcherName, ParseError))
+	if (!FBlueprintHelperBridgeRouterLocalUtils::TryReadStringField(Req.Payload, TEXT("name"), true, DispatcherName, ParseError))
 	{
-		return ValidationErrorResponse(Req.RequestId, ParseError);
+		return FBlueprintHelperBridgeRouterLocalUtils::ValidationErrorResponse(Req.RequestId, ParseError);
 	}
 
 	if (!Req.Payload.IsValid() || !Req.Payload->HasField(TEXT("name")))
@@ -2312,9 +2314,9 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleCreateBluepri
 	if (Req.Payload.IsValid() && Req.Payload->HasField(TEXT("parent_class")))
 	{
 		FBlueprintHelperBridgeValidationError ParseError;
-		if (!TryReadStringField(Req.Payload, TEXT("parent_class"), false, ParentClass, ParseError))
+		if (!FBlueprintHelperBridgeRouterLocalUtils::TryReadStringField(Req.Payload, TEXT("parent_class"), false, ParentClass, ParseError))
 		{
-			return ValidationErrorResponse(Req.RequestId, ParseError);
+			return FBlueprintHelperBridgeRouterLocalUtils::ValidationErrorResponse(Req.RequestId, ParseError);
 		}
 	}
 
@@ -2368,9 +2370,9 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleCloseEditor(
 	if (Req.Payload.IsValid() && Req.Payload->HasField(TEXT("save_all")))
 	{
 		FBlueprintHelperBridgeValidationError ParseError;
-		if (!TryReadBoolField(Req.Payload, TEXT("save_all"), false, bSaveAll, ParseError))
+		if (!FBlueprintHelperBridgeRouterLocalUtils::TryReadBoolField(Req.Payload, TEXT("save_all"), false, bSaveAll, ParseError))
 		{
-			return ValidationErrorResponse(Req.RequestId, ParseError);
+			return FBlueprintHelperBridgeRouterLocalUtils::ValidationErrorResponse(Req.RequestId, ParseError);
 		}
 	}
 

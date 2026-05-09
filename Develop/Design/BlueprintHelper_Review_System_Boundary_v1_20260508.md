@@ -2,7 +2,7 @@
 
 日期：2026-05-08  
 状态：本轮讨论确认版  
-适用范围：BlueprintHelper UE 插件侧 Review / Transaction / Journal / rollback / ownership conversion / DebugExport 设计  
+适用范围：BlueprintHelper UE 插件侧 Review / Transaction / Journal / rollback / ownership conversion / DebugCase / DebugBundle linkage 设计
 来源：基于 `BlueprintHelper_Review_Transaction_Model_Discussion_Pack_20260507.md` 与本轮 Review v1 决策同步整理。
 
 ---
@@ -34,7 +34,7 @@ Internal / developer diagnostics:
   Transaction Journal details
   rollback_data
   diff snapshots
-  DebugExport bundle
+  DebugBundle bundle
 ```
 
 核心模型：
@@ -78,7 +78,7 @@ Review 状态
 rollback_data
 Journal 路径
 完整 diff
-DebugExport payload
+DebugBundle payload
 Accept / Reject 操作说明
 ```
 
@@ -186,7 +186,7 @@ current review status
 用途：
 
 ```text
-DebugExport
+DebugCase / DebugBundle
 rollback failure diagnosis
 transaction replay investigation
 source transaction inspection
@@ -512,18 +512,19 @@ compacted = 只保留 source_transaction_summary。
 
 ---
 
-## 10. DebugExport linkage
+## 10. Debug linkage
 
 采用：
 
 ```text
-ReviewRecord 只保存 debug_export_ref。
-DebugExport 独立作为 developer diagnostics system。
+ReviewRecord 只保存 debug_case_ids。
+DebugCase 独立作为 developer diagnostics index。
+DebugBundle 只在开发者导出时生成。
 ```
 
-ReviewRecord 不内联 DebugExport payload。
+ReviewRecord 不内联 DebugCase 事件正文或 DebugBundle payload。
 
-DebugExport 可包含：
+DebugBundle 可包含：
 
 ```text
 ReviewRecord summary
@@ -535,7 +536,7 @@ native error context
 source_transaction_summary
 ```
 
-但 DebugExport：
+但 DebugBundle：
 
 ```text
 不进入 Agent 默认 TaskRunJournal。
@@ -563,7 +564,7 @@ ReviewPanel 展示用户内容被怎样影响。
 ReviewVisibleChange 折叠。
 ReviewAtomicTarget 定位。
 Reject 时恢复 / 删除 / 回滚用户选择的目标。
-DebugExport 定位问题上下文。
+DebugCase 定位问题上下文。
 ```
 
 它不服务于：
@@ -615,7 +616,7 @@ ReviewRecord
 ReviewVisibleChange / ReviewAtomicTarget
 ReviewSnapshot
 rollback_data
-DebugExport
+DebugCase / DebugBundle
 ```
 
 禁止默认写入：
@@ -639,7 +640,7 @@ Non-BH-owned anchor 只供：
 Review 展示
 visible change collapse
 Reject rollback
-DebugExport
+DebugCase / DebugBundle
 ReviewRecordQuery
 ```
 
@@ -904,7 +905,7 @@ needs_action
     }
   ],
   "diagnostics": {
-    "debug_export_refs": []
+    "debug_case_ids": []
   },
   "source_transaction_summary": null
 }
@@ -965,7 +966,7 @@ Open in Blueprint Editor 作为用户主动辅助动作。
 1. Agent-facing ReviewPanel flow。
 2. AgentGuide Accept / Reject 操作说明。
 3. raw transaction-first Review UI。
-4. DebugExport 作为 Review 存储。
+4. DebugBundle 作为 Review 存储。
 5. large_payload_ref 作为 Agent 当前读取方向。
 6. 跨 transaction 自动级联 rollback。
 7. Reject 依赖分析。
@@ -990,6 +991,5 @@ Open in Blueprint Editor 作为用户主动辅助动作。
 | 6 | Accept ownership policy | `review_action + ownership conversion transaction`，纳入 Setting Profile policy |
 | 7 | Ownership conversion scope | `ConvertOwnerBlock`，block 级双向转换 |
 | 8 | Compaction policy | 状态分层；compacted 只保留 `source_transaction_summary` |
-| 9 | DebugExport linkage | ReviewRecord 只保存 `debug_export_ref` |
+| 9 | Debug linkage | ReviewRecord 只保存 `debug_case_ids[]`；DebugBundle 不写入 ReviewRecord |
 | 10 | Non-BH-owned anchors | 仅 Review 定位，不是 ownership，不是 Agent 写入 handle |
-

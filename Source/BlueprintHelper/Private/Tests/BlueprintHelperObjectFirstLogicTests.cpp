@@ -21,9 +21,10 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
-namespace
+class FBlueprintHelperObjectFirstLogicTestsLocalUtils
 {
-    TSharedRef<FJsonObject> MakeLogicTestEventNode(
+public:
+    static TSharedRef<FJsonObject> MakeLogicTestEventNode(
         const FString& Id,
         const FString& Type,
         const FString& Name,
@@ -40,7 +41,7 @@ namespace
         return Node;
     }
 
-    TSharedRef<FJsonObject> MakeLogicTestGraph(
+    static TSharedRef<FJsonObject> MakeLogicTestGraph(
         const FString& GraphName,
         const TArray<TSharedPtr<FJsonValue>>& Nodes)
     {
@@ -51,7 +52,7 @@ namespace
         return Graph;
     }
 
-    TSharedPtr<FJsonObject> MakeTestRawJsonObject()
+    static TSharedPtr<FJsonObject> MakeTestRawJsonObject()
     {
         TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
         Root->SetStringField(TEXT("version"), TEXT("2.2"));
@@ -70,7 +71,7 @@ namespace
         return Root;
     }
 
-    TSharedPtr<FJsonObject> MakeCustomEventInCustomGraphRawJsonObject()
+    static TSharedPtr<FJsonObject> MakeCustomEventInCustomGraphRawJsonObject()
     {
         TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
         Root->SetStringField(TEXT("version"), TEXT("2.2"));
@@ -92,7 +93,7 @@ namespace
         return Root;
     }
 
-    TSharedPtr<FJsonObject> MakeCustomEventWithGraphLevelExecLinkRawJsonObject()
+    static TSharedPtr<FJsonObject> MakeCustomEventWithGraphLevelExecLinkRawJsonObject()
     {
         TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
         Root->SetStringField(TEXT("version"), TEXT("2.2"));
@@ -128,7 +129,7 @@ namespace
         return Root;
     }
 
-    void AddBlueprintHelperOwnershipMetadata(
+    static void AddBlueprintHelperOwnershipMetadata(
         const TSharedRef<FJsonObject>& Node,
         const FString& BlockId)
     {
@@ -138,7 +139,7 @@ namespace
         Node->SetObjectField(TEXT("metadata"), Metadata);
     }
 
-    TSharedPtr<FJsonObject> MakeBlueprintHelperOwnedBlockRawJsonObject()
+    static TSharedPtr<FJsonObject> MakeBlueprintHelperOwnedBlockRawJsonObject()
     {
         static const FString BlockId = TEXT("BH_DoorFeature_ToggleDoor");
 
@@ -175,12 +176,12 @@ namespace
         return Root;
     }
 
-    FString MakeLogicServiceTestObjectName(const FString& Prefix)
+    static FString MakeLogicServiceTestObjectName(const FString& Prefix)
     {
         return FString::Printf(TEXT("%s_%s"), *Prefix, *FGuid::NewGuid().ToString(EGuidFormats::Digits));
     }
 
-    UBlueprint* MakeLogicServiceBlueprint(const FString& Prefix)
+    static UBlueprint* MakeLogicServiceBlueprint(const FString& Prefix)
     {
         UPackage* Package = CreatePackage(*FString::Printf(
             TEXT("/Game/BlueprintHelperLogic/%s"),
@@ -199,7 +200,7 @@ namespace
         return Blueprint;
     }
 
-    UEdGraph* FindLogicServiceGraph(UBlueprint* Blueprint, const FString& GraphName)
+    static UEdGraph* FindLogicServiceGraph(UBlueprint* Blueprint, const FString& GraphName)
     {
         if (!Blueprint)
         {
@@ -216,7 +217,7 @@ namespace
         return nullptr;
     }
 
-    UEdGraph* AddLogicServiceUbergraph(UBlueprint* Blueprint, const FString& GraphName)
+    static UEdGraph* AddLogicServiceUbergraph(UBlueprint* Blueprint, const FString& GraphName)
     {
         if (!Blueprint)
         {
@@ -238,7 +239,7 @@ namespace
         return Graph;
     }
 
-    UK2Node_CustomEvent* AddLogicServiceCustomEvent(UEdGraph* Graph, const FString& EventName)
+    static UK2Node_CustomEvent* AddLogicServiceCustomEvent(UEdGraph* Graph, const FString& EventName)
     {
         if (!Graph)
         {
@@ -256,7 +257,7 @@ namespace
         return EventNode;
     }
 
-    void MarkLogicServiceNodeAsOwned(UEdGraphNode* Node, const FString& BlockId)
+    static void MarkLogicServiceNodeAsOwned(UEdGraphNode* Node, const FString& BlockId)
     {
         if (!Node)
         {
@@ -270,7 +271,8 @@ namespace
             MetaData.SetValue(Node, TEXT("BlueprintHelperBlockId"), *BlockId);
         }
     }
-}
+
+};
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FObjectFirstLogic_ObjectAndStringProduceIdenticalStats,
@@ -279,7 +281,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FObjectFirstLogic_ObjectAndStringProduceIdenticalStats::RunTest(const FString& Parameters)
 {
-    TSharedPtr<FJsonObject> RootObj = MakeTestRawJsonObject();
+    TSharedPtr<FJsonObject> RootObj = FBlueprintHelperObjectFirstLogicTestsLocalUtils::MakeTestRawJsonObject();
     FString JsonText = [&]() {
         FString Out;
         TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Out);
@@ -309,7 +311,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FObjectFirstLogic_ObjectAndStringProduceIdenticalMarkdown::RunTest(const FString& Parameters)
 {
-    TSharedPtr<FJsonObject> RootObj = MakeTestRawJsonObject();
+    TSharedPtr<FJsonObject> RootObj = FBlueprintHelperObjectFirstLogicTestsLocalUtils::MakeTestRawJsonObject();
     FString JsonText = [&]() {
         FString Out;
         TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Out);
@@ -371,7 +373,7 @@ bool FObjectFirstLogic_CustomEventTargetUsesCustomGraph::RunTest(const FString& 
 {
     FBlueprintHelperLogicGroupBuilder Builder;
     const FBlueprintHelperLogicJsonPayload Payload = Builder.BuildTargetEntry(
-        MakeCustomEventInCustomGraphRawJsonObject(),
+        FBlueprintHelperObjectFirstLogicTestsLocalUtils::MakeCustomEventInCustomGraphRawJsonObject(),
         TEXT("/Game/BP/BP_PhysicsDoor"),
         TEXT("EG_DoorFeature"),
         TEXT("OpenDoor"),
@@ -398,7 +400,7 @@ bool FObjectFirstLogic_CustomEventTargetPreservesGraphLevelExecLink::RunTest(con
 {
     FBlueprintHelperLogicGroupBuilder Builder;
     const FBlueprintHelperLogicJsonPayload Payload = Builder.BuildTargetEntry(
-        MakeCustomEventWithGraphLevelExecLinkRawJsonObject(),
+        FBlueprintHelperObjectFirstLogicTestsLocalUtils::MakeCustomEventWithGraphLevelExecLinkRawJsonObject(),
         TEXT("/Game/BP/BP_PhysicsDoor"),
         TEXT("EG_DoorFeature"),
         TEXT("OpenDoor"),
@@ -434,7 +436,7 @@ bool FObjectFirstLogic_GroupedBlueprintHelperOwnedBlockExposesWriteAnchors::RunT
 {
     FBlueprintHelperLogicGroupBuilder Builder;
     const FBlueprintHelperLogicJsonPayload Payload = Builder.BuildGroups(
-        MakeBlueprintHelperOwnedBlockRawJsonObject(),
+        FBlueprintHelperObjectFirstLogicTestsLocalUtils::MakeBlueprintHelperOwnedBlockRawJsonObject(),
         TEXT("/Game/BP/BP_PhysicsDoor"),
         TEXT("EG_DoorFeature"),
         EBlueprintHelperLogicScope::TargetGraph);
@@ -516,16 +518,16 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FObjectFirstLogic_ReadLogicJsonCustomEventScansCustomGraphs::RunTest(const FString& Parameters)
 {
-    UBlueprint* Blueprint = MakeLogicServiceBlueprint(TEXT("ReadLogicJsonCustomEvent"));
+    UBlueprint* Blueprint = FBlueprintHelperObjectFirstLogicTestsLocalUtils::MakeLogicServiceBlueprint(TEXT("ReadLogicJsonCustomEvent"));
     TestNotNull(TEXT("test Blueprint is created"), Blueprint);
     if (!Blueprint)
     {
         return false;
     }
 
-    UEdGraph* EventGraph = FindLogicServiceGraph(Blueprint, TEXT("EventGraph"));
+    UEdGraph* EventGraph = FBlueprintHelperObjectFirstLogicTestsLocalUtils::FindLogicServiceGraph(Blueprint, TEXT("EventGraph"));
     TestNotNull(TEXT("EventGraph exists"), EventGraph);
-    UEdGraph* CustomGraph = AddLogicServiceUbergraph(Blueprint, TEXT("EG_DoorFeature"));
+    UEdGraph* CustomGraph = FBlueprintHelperObjectFirstLogicTestsLocalUtils::AddLogicServiceUbergraph(Blueprint, TEXT("EG_DoorFeature"));
     TestNotNull(TEXT("custom graph is created"), CustomGraph);
     if (!EventGraph || !CustomGraph)
     {
@@ -533,9 +535,9 @@ bool FObjectFirstLogic_ReadLogicJsonCustomEventScansCustomGraphs::RunTest(const 
     }
 
     TestNotNull(TEXT("EventGraph custom event is created"),
-        AddLogicServiceCustomEvent(EventGraph, TEXT("EventGraphDoor")));
+        FBlueprintHelperObjectFirstLogicTestsLocalUtils::AddLogicServiceCustomEvent(EventGraph, TEXT("EventGraphDoor")));
     TestNotNull(TEXT("custom graph custom event is created"),
-        AddLogicServiceCustomEvent(CustomGraph, TEXT("OpenDoor")));
+        FBlueprintHelperObjectFirstLogicTestsLocalUtils::AddLogicServiceCustomEvent(CustomGraph, TEXT("OpenDoor")));
 
     FBlueprintHelperTargetRef Target;
     Target.AssetPath = Blueprint->GetPathName();
@@ -569,14 +571,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FObjectFirstLogic_ReadLogicJsonIncludesOwnedBlockIdFromGraphMetadata::RunTest(const FString& Parameters)
 {
-    UBlueprint* Blueprint = MakeLogicServiceBlueprint(TEXT("ReadLogicJsonOwnedBlockId"));
+    UBlueprint* Blueprint = FBlueprintHelperObjectFirstLogicTestsLocalUtils::MakeLogicServiceBlueprint(TEXT("ReadLogicJsonOwnedBlockId"));
     TestNotNull(TEXT("test Blueprint is created"), Blueprint);
     if (!Blueprint)
     {
         return false;
     }
 
-    UEdGraph* EventGraph = FindLogicServiceGraph(Blueprint, TEXT("EventGraph"));
+    UEdGraph* EventGraph = FBlueprintHelperObjectFirstLogicTestsLocalUtils::FindLogicServiceGraph(Blueprint, TEXT("EventGraph"));
     TestNotNull(TEXT("EventGraph exists"), EventGraph);
     if (!EventGraph)
     {
@@ -584,9 +586,9 @@ bool FObjectFirstLogic_ReadLogicJsonIncludesOwnedBlockIdFromGraphMetadata::RunTe
     }
 
     const FString BlockId = TEXT("EventGraph_OpenDoor");
-    UK2Node_CustomEvent* EventNode = AddLogicServiceCustomEvent(EventGraph, TEXT("OpenDoor"));
+    UK2Node_CustomEvent* EventNode = FBlueprintHelperObjectFirstLogicTestsLocalUtils::AddLogicServiceCustomEvent(EventGraph, TEXT("OpenDoor"));
     TestNotNull(TEXT("custom event is created"), EventNode);
-    MarkLogicServiceNodeAsOwned(EventNode, BlockId);
+    FBlueprintHelperObjectFirstLogicTestsLocalUtils::MarkLogicServiceNodeAsOwned(EventNode, BlockId);
     TestFalse(TEXT("owned node does not need legacy block_id comment for LogicJson"),
         EventNode && EventNode->NodeComment.Contains(TEXT("block_id=")));
 

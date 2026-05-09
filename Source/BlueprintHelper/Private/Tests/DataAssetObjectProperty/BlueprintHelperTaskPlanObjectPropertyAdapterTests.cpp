@@ -9,9 +9,10 @@
 #include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
 #include "UObject/Package.h"
 
-namespace
+class FBlueprintHelperTaskPlanObjectPropertyAdapterTestsLocalUtils
 {
-	TSharedPtr<FJsonObject> MakeObjectPropertyStep(const FString& OpName)
+public:
+	static TSharedPtr<FJsonObject> MakeObjectPropertyStep(const FString& OpName)
 	{
 		TSharedPtr<FJsonObject> Step = MakeShared<FJsonObject>();
 		Step->SetStringField(TEXT("step_id"), TEXT("step_object_property"));
@@ -35,7 +36,7 @@ namespace
 		return Step;
 	}
 
-	TSharedPtr<FJsonObject> GetFirstObjectPropertyOp(const TSharedPtr<FJsonObject>& Step)
+	static TSharedPtr<FJsonObject> GetFirstObjectPropertyOp(const TSharedPtr<FJsonObject>& Step)
 	{
 		const TSharedPtr<FJsonObject>* Write = nullptr;
 		if (!Step.IsValid() || !Step->TryGetObjectField(TEXT("write"), Write) || !Write || !Write->IsValid())
@@ -52,12 +53,12 @@ namespace
 		return (*Ops)[0].IsValid() ? (*Ops)[0]->AsObject() : nullptr;
 	}
 
-	FString MakeObjectPropertyTestObjectName(const FString& Prefix)
+	static FString MakeObjectPropertyTestObjectName(const FString& Prefix)
 	{
 		return FString::Printf(TEXT("%s_%s"), *Prefix, *FGuid::NewGuid().ToString(EGuidFormats::Digits));
 	}
 
-	UPackage* MakeObjectPropertyTestPackage(const FString& Prefix)
+	static UPackage* MakeObjectPropertyTestPackage(const FString& Prefix)
 	{
 		UPackage* Package = CreatePackage(*FString::Printf(
 			TEXT("/Game/BlueprintHelperObjectPropertyTests/%s"),
@@ -65,7 +66,8 @@ namespace
 		Package->SetDirtyFlag(false);
 		return Package;
 	}
-}
+
+};
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperObjectPropertyAdapterSetSinglePropertyTest,
@@ -74,8 +76,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperObjectPropertyAdapterSetSinglePropertyTest::RunTest(const FString& Parameters)
 {
-	TSharedPtr<FJsonObject> Step = MakeObjectPropertyStep(FBlueprintHelperObjectPropertyTaskPlanAdapter::OpSetObjectProperty);
-	TSharedPtr<FJsonObject> Op = GetFirstObjectPropertyOp(Step);
+	TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanObjectPropertyAdapterTestsLocalUtils::MakeObjectPropertyStep(FBlueprintHelperObjectPropertyTaskPlanAdapter::OpSetObjectProperty);
+	TSharedPtr<FJsonObject> Op = FBlueprintHelperTaskPlanObjectPropertyAdapterTestsLocalUtils::GetFirstObjectPropertyOp(Step);
 	TestNotNull(TEXT("object_property op exists"), Op.Get());
 
 	Op->SetStringField(TEXT("property_path"), TEXT("CombatRules.DamageScale"));
@@ -121,8 +123,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperObjectPropertyAdapterSetBatchPropertiesTest::RunTest(const FString& Parameters)
 {
-	TSharedPtr<FJsonObject> Step = MakeObjectPropertyStep(FBlueprintHelperObjectPropertyTaskPlanAdapter::OpSetObjectProperties);
-	TSharedPtr<FJsonObject> Op = GetFirstObjectPropertyOp(Step);
+	TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanObjectPropertyAdapterTestsLocalUtils::MakeObjectPropertyStep(FBlueprintHelperObjectPropertyTaskPlanAdapter::OpSetObjectProperties);
+	TSharedPtr<FJsonObject> Op = FBlueprintHelperTaskPlanObjectPropertyAdapterTestsLocalUtils::GetFirstObjectPropertyOp(Step);
 	TestNotNull(TEXT("object_property op exists"), Op.Get());
 
 	TArray<TSharedPtr<FJsonValue>> Settings;
@@ -169,7 +171,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperObjectPropertyAdapterRejectsOperationFieldTest::RunTest(const FString& Parameters)
 {
-	TSharedPtr<FJsonObject> Step = MakeObjectPropertyStep(FBlueprintHelperObjectPropertyTaskPlanAdapter::OpSetObjectProperty);
+	TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanObjectPropertyAdapterTestsLocalUtils::MakeObjectPropertyStep(FBlueprintHelperObjectPropertyTaskPlanAdapter::OpSetObjectProperty);
 	Step->SetStringField(TEXT("operation"), TEXT("set_object_property"));
 
 	FBlueprintHelperObjectPropertyTaskPlanPayload BuiltPayload;
@@ -194,7 +196,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperObjectPropertyAdapterRejectsReadOpTest::RunTest(const FString& Parameters)
 {
-	TSharedPtr<FJsonObject> Step = MakeObjectPropertyStep(TEXT("read_object_property"));
+	TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanObjectPropertyAdapterTestsLocalUtils::MakeObjectPropertyStep(TEXT("read_object_property"));
 
 	FBlueprintHelperObjectPropertyTaskPlanPayload BuiltPayload;
 	FBlueprintHelperToolError Error;
@@ -218,7 +220,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperObjectPropertyAdapterRejectsInvalidBatchSettingsTest::RunTest(const FString& Parameters)
 {
-	TSharedPtr<FJsonObject> Step = MakeObjectPropertyStep(FBlueprintHelperObjectPropertyTaskPlanAdapter::OpSetObjectProperties);
+	TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanObjectPropertyAdapterTestsLocalUtils::MakeObjectPropertyStep(FBlueprintHelperObjectPropertyTaskPlanAdapter::OpSetObjectProperties);
 
 	FBlueprintHelperObjectPropertyTaskPlanPayload BuiltPayload;
 	FBlueprintHelperToolError Error;
@@ -242,10 +244,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperObjectPropertyServiceDryRunDoesNotMutatePropertyTest::RunTest(const FString& Parameters)
 {
-	UPackage* Package = MakeObjectPropertyTestPackage(TEXT("DryRun"));
+	UPackage* Package = FBlueprintHelperTaskPlanObjectPropertyAdapterTestsLocalUtils::MakeObjectPropertyTestPackage(TEXT("DryRun"));
 	UTextBlock* TextBlock = NewObject<UTextBlock>(
 		Package,
-		*MakeObjectPropertyTestObjectName(TEXT("TextBlock")),
+		*FBlueprintHelperTaskPlanObjectPropertyAdapterTestsLocalUtils::MakeObjectPropertyTestObjectName(TEXT("TextBlock")),
 		RF_Public | RF_Standalone | RF_Transactional);
 	TestNotNull(TEXT("test object is created"), TextBlock);
 
@@ -275,10 +277,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperObjectPropertyServiceDryRunRejectsInvalidValueTest::RunTest(const FString& Parameters)
 {
-	UPackage* Package = MakeObjectPropertyTestPackage(TEXT("InvalidDryRun"));
+	UPackage* Package = FBlueprintHelperTaskPlanObjectPropertyAdapterTestsLocalUtils::MakeObjectPropertyTestPackage(TEXT("InvalidDryRun"));
 	UTextBlock* TextBlock = NewObject<UTextBlock>(
 		Package,
-		*MakeObjectPropertyTestObjectName(TEXT("TextBlock")),
+		*FBlueprintHelperTaskPlanObjectPropertyAdapterTestsLocalUtils::MakeObjectPropertyTestObjectName(TEXT("TextBlock")),
 		RF_Public | RF_Standalone | RF_Transactional);
 	TestNotNull(TEXT("test object is created"), TextBlock);
 

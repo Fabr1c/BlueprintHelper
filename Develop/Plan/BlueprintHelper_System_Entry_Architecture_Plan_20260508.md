@@ -86,12 +86,14 @@ TypeScript MCP Gateway
 1. 写入默认走 TaskSpec -> TaskPlan -> TaskRuntime。
 2. TaskSpec -> TaskPlan 由 Python Orchestration 负责，TypeScript MCP Gateway 只负责调用和封装。
 3. 读取默认走 ReadSpec -> Python / MCP Read Router -> Read Capability。
-4. 所有工具簇都必须能提供 DebugBundle 证据摘要或 artifact candidate。
+4. 所有工具簇都必须能提供脱敏 debug summary candidate。
 5. 所有修改 UE 资产的工具都必须生成 ReviewRecord / ReviewVisibleChange / ReviewAtomicTarget。
 6. Debug 默认只在失败恢复或开发诊断路径暴露。
 7. Review 是用户侧审查系统，不进入普通 Agent 执行闭环。
 8. Transaction 是内部事实来源，不作为用户主查询面。
 9. 新工具不得绕过 ToolResultBase、DebugEvent、Transaction、Review 边界。
+10. TaskPlan 路径的横切汇合点是 TaskRuntime；非 TaskPlan 路径允许直接调用对应 System Entry。
+11. 非 TaskPlan 路径不能私自持久化 Debug / Review / Transaction，只能走 DebugEntry、ReviewAction / ReviewStore、TransactionJournal / TransactionEntry。
 ```
 
 ### 1.3 新工具接入口径
@@ -135,7 +137,7 @@ System Entry 是每个系统的稳定门面，不承担动态能力发现。
 
 ### 2.2 工具簇 DebugBundle 合同
 
-每个工具簇必须提供 DebugBundle 证据摘要。
+每个工具簇必须提供脱敏 debug summary candidate。
 
 最低字段：
 
@@ -244,48 +246,55 @@ System Entry 是每个系统的稳定门面，不承担动态能力发现。
 
 ## 4. 目标文件结构
 
-### 4.1 新增文件
+### 4.1 当前固定入口源码
 
 ```text
-Source/BlueprintHelper/Public/Structure/RuntimeDiagnostics/BlueprintHelperDebugBundleTypes.h
-Source/BlueprintHelper/Public/Services/Debug/BlueprintHelperDebugEntry.h
-Source/BlueprintHelper/Private/Services/Debug/BlueprintHelperDebugEntry.cpp
-Source/BlueprintHelper/Public/Services/Debug/BlueprintHelperDebugBundleService.h
-Source/BlueprintHelper/Private/Services/Debug/BlueprintHelperDebugBundleService.cpp
-Source/BlueprintHelper/Public/Services/Review/BlueprintHelperReviewEntry.h
-Source/BlueprintHelper/Private/Services/Review/BlueprintHelperReviewEntry.cpp
-Source/BlueprintHelper/Public/Structure/Review/BlueprintHelperWriteReviewEvidenceTypes.h
-BlueprintHelper_MCP_Server/python/blueprinthelper_task/debug_evidence.py
+Source/BlueprintHelper/Public/Entry/BlueprintHelper.h
+Source/BlueprintHelper/Private/Entry/BlueprintHelper.cpp
+Source/BlueprintHelper/Public/Entry/Bridge/BlueprintHelperBridgeRoutePlanner.h
+Source/BlueprintHelper/Private/Entry/Bridge/BlueprintHelperBridgeRoutePlanner.cpp
+Source/BlueprintHelper/Public/Entry/Bridge/BlueprintHelperBridgeRouter.h
+Source/BlueprintHelper/Private/Entry/Bridge/BlueprintHelperBridgeRouter.cpp
+Source/BlueprintHelper/Public/Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.h
+Source/BlueprintHelper/Private/Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.cpp
+Source/BlueprintHelper/Public/Runtime/TaskRuntime/BlueprintHelperTaskRuntimeClusterHub.h
+Source/BlueprintHelper/Public/Shared/Debug/BlueprintHelperDebugTypes.h
+Source/BlueprintHelper/Public/Shared/Review/BlueprintHelperReviewTypes.h
+Source/BlueprintHelper/Public/Systems/Debug/BlueprintHelperDebugEntryService.h
+Source/BlueprintHelper/Private/Systems/Debug/BlueprintHelperDebugEntryService.cpp
+Source/BlueprintHelper/Public/Systems/Debug/BlueprintHelperDebugCaseStoreService.h
+Source/BlueprintHelper/Private/Systems/Debug/BlueprintHelperDebugCaseStoreService.cpp
+Source/BlueprintHelper/Public/Systems/Review/BlueprintHelperReviewStoreService.h
+Source/BlueprintHelper/Private/Systems/Review/BlueprintHelperReviewStoreService.cpp
 ```
 
-### 4.2 修改文件
+### 4.2 当前 MCP / Python 编排入口
 
 ```text
-Source/BlueprintHelper/Public/TaskRuntime/BlueprintHelperTaskRuntimeService.h
-Source/BlueprintHelper/Private/TaskRuntime/BlueprintHelperTaskRuntimeService.cpp
-Source/BlueprintHelper/Private/BlueprintHelper.cpp
-Source/BlueprintHelper/Public/Structure/BlueprintHelperToolResultTypes.h
-Source/BlueprintHelper/Private/Structure/BlueprintHelperToolResultBuilder.cpp
-Source/BlueprintHelper/Public/Services/Review/BlueprintHelperReviewStoreService.h
-Source/BlueprintHelper/Private/Services/Review/BlueprintHelperReviewStoreService.cpp
 BlueprintHelper_MCP_Server/src/task-tools.ts
 BlueprintHelper_MCP_Server/src/task-python-orchestrator.ts
 BlueprintHelper_MCP_Server/src/tool-result.ts
 BlueprintHelper_MCP_Server/src/task-result-store.ts
 BlueprintHelper_MCP_Server/python/blueprinthelper_task/orchestrator.py
 BlueprintHelper_MCP_Server/python/blueprinthelper_task/errors.py
+```
+
+### 4.3 当前合同文档入口
+
+```text
 Resources/Docs/TaskSpec_TaskPlan_Contract_20260504.md
 Resources/AgentGuide/00_Agent_Onboarding_Index_20260504.md
 Resources/AgentGuide/Reference/02_TaskSpec_First_Tool_Selection.md
+Develop/Plan/BlueprintHelper_ToolCluster_Onboarding_Template_20260508.md
+Develop/Plan/LowerStepPLAN.md
 ```
 
-### 4.3 测试文件
+### 4.4 测试文件
 
 ```text
-Source/BlueprintHelper/Private/Tests/RuntimeDiagnostics/BlueprintHelperDebugBundleTests.cpp
-Source/BlueprintHelper/Private/Tests/Review/BlueprintHelperWriteReviewEvidenceTests.cpp
-Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintHelperGraphWriteReviewEvidenceTests.cpp
-Source/BlueprintHelper/Private/Tests/RuntimeDiagnostics/BlueprintHelperToolClusterDebugEvidenceTests.cpp
+Source/BlueprintHelper/Private/Tests/RuntimeDiagnostics/BlueprintHelperDebugCaseTests.cpp
+Source/BlueprintHelper/Private/Tests/Review/BlueprintHelperReviewStoreServiceTests.cpp
+Source/BlueprintHelper/Private/Tests/TaskRuntime/BlueprintHelperTaskRuntimeClusterHubTests.cpp
 BlueprintHelper_MCP_Server/src/tools.regression.test.ts
 BlueprintHelper_MCP_Server/src/task-tools.regression.test.ts
 BlueprintHelper_MCP_Server/src/task-python-orchestrator.regression.test.ts
@@ -299,16 +308,16 @@ BlueprintHelper_MCP_Server/python/tests/test_orchestrator.py
 
 ### Phase 0：合同冻结
 
-- [ ] 固定 `BlueprintHelper.ToolClusterDebugEvidence.v1`。
-- [ ] 固定 `BlueprintHelper.WriteReviewEvidence.v1`。
-- [ ] 固定 Python Orchestration 在 DebugBundle / Review 链路中的职责边界。
-- [ ] 在 TaskSpec / TaskPlan 合同中明确所有工具簇的 DebugBundle / Review 横切要求。
-- [ ] 在 AgentGuide 中明确普通 Agent 不操作 ReviewPanel，也不读取 DebugBundle artifact 内容。
+- [x] 固定工具簇 debug summary candidate 合同。
+- [x] 固定 `BlueprintHelper.WriteReviewEvidence.v1`。
+- [x] 固定 Python Orchestration 在 DebugBundle / Review 链路中的职责边界。
+- [x] 在 TaskSpec / TaskPlan 合同中明确所有工具簇的 DebugBundle / Review 横切要求。
+- [x] 在 AgentGuide 中明确普通 Agent 不操作 ReviewPanel，也不读取 DebugBundle artifact 内容。
 
 验收：
 
 ```text
-文档能回答每个工具簇导出哪些 DebugBundle evidence。
+文档能回答每个工具簇提供哪些脱敏 debug summary candidate。
 文档能回答每个写工具产生哪些 Review atomic targets。
 文档能回答 Python Orchestration 保存哪些关联 ID 和错误归一化事实。
 文档明确不引入动态能力注册。
@@ -316,11 +325,11 @@ BlueprintHelper_MCP_Server/python/tests/test_orchestrator.py
 
 ### Phase 1：Python Orchestration linkage
 
-- [ ] `task-python-orchestrator.ts` 明确输出 `preview_id`、TaskPlan summary、compiler issues、error code。
-- [ ] Python `orchestrator.py` 保持只做编译和错误解释，不直接写 UE 资产。
-- [ ] Python compiler result 增加 debug linkage summary，供 TypeScript MCP Gateway 和后续 DebugCase 使用。
-- [ ] TypeScript MCP Gateway 在 preview / execute 失败时保留 Python error、Bridge error、TaskPlan summary 的关联。
-- [ ] `get_task_result` 继续以 UE TaskRunJournal 为事实来源，Python / MCP 只做 fallback normalization。
+- [x] `task-python-orchestrator.ts` 输出 TaskPlan summary；preview / execute 工具输出 `preview_id`、compiler issues、error code。
+- [x] Python `orchestrator.py` 保持只做编译和错误解释，不直接写 UE 资产。
+- [x] Python compiler result 保留 `task_plan_summary`，供 TypeScript MCP Gateway 和后续 DebugCase 关联。
+- [x] TypeScript MCP Gateway 在 preview / execute 失败时保留 Python error、Bridge error、TaskPlan summary 的关联。
+- [x] `get_task_result` 继续以 UE TaskRunJournal 为事实来源，Python / MCP 只做 fallback normalization。
 
 验收：
 
@@ -332,17 +341,17 @@ MCP result 可以关联 Python compiler issue、Bridge trace_id、UE task_run_id
 
 ### Phase 2：DebugBundle 横切基础
 
-- [ ] 新增 DebugBundle DTO 和 manifest。
-- [ ] 新增 DebugEntry / DebugBundleService。
-- [ ] ToolResultBase 增加 debug evidence 引用字段或内部 attachment。
-- [ ] TaskRuntime 在 preview / execute / partial_failure / compile / save 失败时收集 evidence。
-- [ ] GraphWrite、Component、ClassSettings、Signature、Widget、DataTable、ObjectProperty、CleanupOwnership 输出第一批 evidence。
-- [ ] Python Orchestration 失败时输出 compiler evidence summary，但不生成最终 DebugBundle。
+- [x] 新增 DebugBundle DTO 和 manifest。
+- [x] 新增 DebugEntry / DebugBundle store。
+- [x] ToolResultBase 增加 `debug_case_ids[]`，并保持 failure-only 暴露。
+- [x] TaskRuntime 在 preview / execute / partial_failure / compile / save 失败时收集 evidence。
+- [x] GraphWrite、Component、ClassSettings、Signature、Widget、DataTable、ObjectProperty、CleanupOwnership 接入统一 Debug failure capture。工具簇不私自写 Debug JSON。
+- [x] Python Orchestration 失败时输出 compiler issue summary，但不生成最终 DebugBundle。
 
 验收：
 
 ```text
-每个工具簇至少能提供一份 DebugBundle evidence summary。
+每个工具簇至少能提供一份脱敏 debug summary candidate。
 Debug 入口 best-effort，失败不掩盖原始错误。
 standard profile 不泄露 token、settings 全文、本地绝对路径、完整 RawJson。
 MCP 不返回 DebugBundle artifact 内容。
@@ -350,12 +359,12 @@ MCP 不返回 DebugBundle artifact 内容。
 
 ### Phase 3：Review 横切基础
 
-- [ ] 新增 WriteReviewEvidence DTO。
-- [ ] ReviewStore 增加 consume evidence 聚合入口。
-- [ ] TaskRuntime 在每个成功写 step 后提交 Review evidence。
-- [ ] GraphWrite、Component、ClassSettings、Signature、Variable、Widget、DataTable、ObjectProperty、CleanupOwnership 接入第一批 Review evidence。
-- [ ] ArchiveSession 仍按 task_run 创建，ReviewRecord 仍按 asset_path 拆分。
-- [ ] Python Orchestration 不创建 ReviewRecord，只把 TaskPlan steps、preview_id 和 generated intent linkage 留给 TaskRunJournal。
+- [x] 新增 WriteReviewEvidence DTO。
+- [x] ReviewStore 增加 consume evidence 聚合入口。
+- [x] TaskRuntime 在每个成功写 step 后提交 Review evidence。
+- [x] GraphWrite、Component、ClassSettings、Signature、Variable、Widget、DataTable、ObjectProperty、CleanupOwnership 接入第一批 Review evidence。GraphWrite 仍以 journal-backed evidence 为事实来源。
+- [x] ArchiveSession 仍按 task_run 创建，ReviewRecord 仍按 asset_path 拆分。
+- [x] Python Orchestration 不创建 ReviewRecord，只把 TaskPlan steps、preview_id 和 generated intent linkage 留给 TaskRunJournal。
 
 验收：
 
@@ -368,11 +377,11 @@ Agent 默认最终报告不展开 Review 内部状态。
 
 ### Phase 4：Transaction linkage
 
-- [ ] 每个写工具保证 transaction_id 可链接到 Review evidence。
-- [ ] rollback_data_ref 和 target_key 保持一致。
-- [ ] Transaction failure / rollback failed 自动创建 DebugCase。
-- [ ] DebugBundle 包含 transaction role summary。
-- [ ] TypeScript MCP Gateway 和 Python Orchestration 保留 transaction summary linkage，但不替代 UE Transaction Journal。
+- [x] 每个写工具保证 transaction_id 可链接到 Review evidence。
+- [x] rollback_data_ref 和 target_key 保持一致。
+- [x] Transaction failure / rollback failed 自动创建 DebugCase。
+- [x] DebugBundle 包含 transaction role summary。
+- [x] TypeScript MCP Gateway 和 Python Orchestration 保留 transaction summary linkage，但不替代 UE Transaction Journal。
 
 验收：
 
@@ -384,28 +393,28 @@ DebugCase 能链接 transaction_id、task_run_id、review_record_id。
 
 ### Phase 5：工具簇补齐
 
-- [ ] 按工具簇表逐个补齐 DebugBundle evidence。
-- [ ] 按工具簇表逐个补齐 Review evidence。
-- [ ] 每个工具簇新增一条成功写入 Review 测试。
-- [ ] 每个工具簇新增一条失败 DebugBundle 测试。
-- [ ] MCP regression 保持 Agent-facing 工具面不扩散。
-- [ ] Python compiler / orchestrator tests 覆盖新增 TaskSpec lowering 和 error normalization。
+- [x] 按工具簇表逐个补齐 failure / blocker / partial / review needs_action 的 DebugEntry 统一入口。
+- [x] 按工具簇表逐个补齐 Review evidence。
+- [x] 已覆盖 producer-owned Review evidence 与 journal-backed GraphWrite evidence 的回归测试。
+- [x] 已覆盖 DebugCase / DebugBundle export / redaction / cleanup 回归测试。
+- [x] MCP regression 保持 Agent-facing 工具面不扩散。
+- [x] Python compiler / orchestrator tests 覆盖新增 TaskSpec lowering 和 error normalization。
 
 验收：
 
 ```text
 新增工具簇不要求普通 Agent 知道底层 operation。
-所有工具簇都有 DebugBundle 出口。
+所有工具簇都有脱敏 debug summary candidate 出口。
 所有写工具都有 Review 出口。
 TaskSpec / ReadSpec 仍是普通 Agent 的唯一主线输入。
 ```
 
 ### Phase 6：Developer Debug UI 和清理
 
-- [ ] Developer Debug tab 列出 DebugCase。
-- [ ] Developer Debug tab 支持导出 DebugBundle。
-- [ ] DebugBundle cleanup 遵守 retention policy。
-- [ ] Review tab 只显示 has_debug_info / debug_case_ids，不显示 DebugBundle 内容。
+- [x] Developer Debug entry 支持列出 DebugCase。
+- [x] Developer Debug entry 支持导出 DebugBundle。
+- [x] DebugBundle cleanup 遵守 retention policy。
+- [x] Review tab 只显示 has_debug_info / debug_case_ids，不显示 DebugBundle 内容。
 
 验收：
 
@@ -413,6 +422,54 @@ TaskSpec / ReadSpec 仍是普通 Agent 的唯一主线输入。
 Developer Debug tab 和 Review tab 分离。
 open / needs_action / rollback_failed / export_failed 不自动清理。
 MCP 不提供删除 DebugBundle 的普通工具。
+```
+
+### 2026-05-09 横切合同落地状态
+
+当前合同已按迁移后的物理目录落地：
+
+```text
+1. System Entry：`Entry/BridgeRoutePlanner`、`Entry/BridgeRouter`、`Runtime/TaskRuntimeService`、`Systems/Debug`、`Systems/Review`、`Systems/Transactions`。
+2. Review 横切：`FBlueprintHelperWriteReviewEvidence` 是写工具 producer-owned evidence 合同，`ReviewStore` 只消费 evidence，不猜 anchor。
+3. Debug 横切：`DebugEvent`、`DebugCase`、`DebugBundleManifest`、`DebugEntryService`、`DebugCaseStoreService` 是 DebugBundle / DebugCase 合同落点。
+4. Agent 边界：MCP 只暴露 summary-only `get_debug_case`；不提供 DebugBundle artifact reader；普通 Agent 不操作 ReviewPanel。
+5. Transaction 边界：Review evidence、DebugCase、DebugBundle transaction summary 都只链接 transaction id / role summary，不替代 UE Transaction Journal。
+```
+
+当前实现口径：
+
+```text
+工具簇不私自写 Debug JSON。
+工具簇通过 TaskRuntime / DebugEntry 的统一失败捕获进入 DebugCase。
+写工具通过 producer-owned `WriteReviewEvidence.v1` 或 GraphWrite journal-backed evidence 进入 ReviewRecord。
+DebugBundle export 只写本地 summary/artifacts 目录，不经 MCP 传输 artifact 内容。
+```
+
+TaskPlan 与非 TaskPlan 路径的固定规则：
+
+```text
+TaskPlan 路径：
+TaskRuntime 是 Review / Debug / Transaction 的主汇合点。
+
+非 TaskPlan 路径：
+Bridge failure -> DebugEntry
+Compile / Save failure -> DebugEntry
+ReviewAction failure -> DebugEntry
+Rollback / cleanup expert failure -> DebugEntry
+Debug export failure -> DebugEntry 或 DebugCaseStore 内部失败结果
+
+Write evidence -> ReviewStore
+Review user action -> ReviewAction
+Transaction facts -> TransactionJournal / TransactionEntry
+Task execution facts -> TaskRunJournal
+```
+
+约束：
+
+```text
+允许非 TaskPlan 路径直接调用 System Entry，是为了覆盖 malformed Bridge request、单独 compile/save、Review Reject、rollback/cleanup 专家路径和 Debug export 自身失败。
+这不是放开任意工具簇写横切状态；工具簇和 MCP/Python 仍不得绕过固定 System Entry。
+DebugCase 可以链接 review_record_id / transaction_id / task_run_id，但不替代 ReviewRecord、Transaction Journal 或 TaskRunJournal。
 ```
 
 ---
@@ -424,7 +481,7 @@ MCP 不提供删除 DebugBundle 的普通工具。
 ```text
 1. 归入现有系统入口。
 2. 定义 ToolResultBase 成功 / 失败摘要。
-3. 定义 DebugBundle evidence。
+3. 定义脱敏 debug summary candidate。
 4. 如果会修改 UE 资产，定义 WriteReviewEvidence。
 5. 如果会修改 UE 资产，定义 transaction rollback_data。
 6. 如果属于 TaskSpec-first 主线，增加 TaskPlan adapter。
@@ -454,7 +511,7 @@ MCP 不提供删除 DebugBundle 的普通工具。
 ### 7.1 主要风险
 
 ```text
-1. DebugBundle evidence 过大，重新变成 bulk payload。
+1. debug summary candidate 过大，重新变成 bulk payload。
 2. Review evidence 缺 anchor，导致 Reject 无法稳定定位。
 3. Debug、Review、Transaction 边界混用。
 4. MCP legacy tools 仍被误认为普通 Agent 主线入口。
@@ -464,7 +521,7 @@ MCP 不提供删除 DebugBundle 的普通工具。
 ### 7.2 控制方式
 
 ```text
-1. DebugBundle evidence 先存摘要和 artifact candidate，不直接塞完整资产正文。
+1. 工具簇只提供脱敏 debug summary candidate，不直接塞完整资产正文。
 2. producer 写工具必须提供 atomic target anchor。
 3. ReviewStore 只折叠 evidence，不猜测 anchor。
 4. ToolResultBase 只暴露 DebugCase 摘要引用，不暴露 artifact 内容。
@@ -503,7 +560,7 @@ UE 侧：
 
 ```text
 运行 BlueprintHelper 相关 UE Automation tests。
-重点覆盖 DebugBundle evidence、WriteReviewEvidence、ToolResultBase、Review、RuntimeDiagnostics。
+重点覆盖 debug summary candidate、WriteReviewEvidence、ToolResultBase、Review、RuntimeDiagnostics。
 ```
 
 当前 Codex 沙箱可能无法完成上层项目 Build。需要本地具备写入 `G:\UnrealPractise\MrStone\Intermediate` 的环境后再执行 UE 编译和 smoke。
@@ -517,7 +574,7 @@ UE 侧：
 2. MCP Server Layer 明确包含 TypeScript MCP Gateway 和 Python Orchestration。
 3. Python Orchestration 负责 TaskSpec -> TaskPlan、TaskPlan summary、Task Error，不直接写 UE 资产。
 4. UE TaskRuntime 负责真实执行、Transaction、Review、Debug evidence。
-5. 所有工具簇都能导出 DebugBundle evidence。
+5. 所有工具簇都能提供脱敏 debug summary candidate。
 6. 所有写工具都能提交 Review evidence。
 7. 所有写工具都能链接 transaction_id 和 rollback_data。
 8. DebugCase 能关联 trace_id、preview_id、task_run_id、transaction_id、review_record_id。
@@ -532,7 +589,7 @@ UE 侧：
 ```text
 系统入口负责收敛边界。
 Python Orchestration 负责计划编译、错误解释和关联 ID 传递。
-工具簇负责提供 DebugBundle evidence。
+工具簇负责提供脱敏 debug summary candidate。
 写工具负责提供 Review evidence。
 Service 负责执行 UE 操作。
 TaskSpec / ReadSpec 负责普通 Agent 输入。

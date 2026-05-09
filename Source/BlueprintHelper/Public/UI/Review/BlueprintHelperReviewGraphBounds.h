@@ -9,17 +9,18 @@ class SGraphEditor;
 class UEdGraph;
 class UEdGraphNode;
 
-namespace BlueprintHelperReviewGraphBounds
+class BLUEPRINTHELPER_API FBlueprintHelperReviewGraphBounds
 {
-	bool DoesNodeMatchTargetKey(const UEdGraphNode* Node, const FString& TargetKey);
+public:
+	static bool DoesNodeMatchTargetKey(const UEdGraphNode* Node, const FString& TargetKey);
 
-	bool BuildCommentStyleBoundsForNodes(
+	static bool BuildCommentStyleBoundsForNodes(
 		const TArray<UEdGraphNode*>& Nodes,
 		const TSharedPtr<SGraphEditor>& GraphEditor,
 		FVector2D& OutPosition,
 		FVector2D& OutSize);
 
-	bool BuildBoundsForTargets(
+	static bool BuildBoundsForTargets(
 		const TArray<FBlueprintHelperReviewAtomicTarget>& Targets,
 		const UEdGraph* Graph,
 		const FString& GraphName,
@@ -27,4 +28,4 @@ namespace BlueprintHelperReviewGraphBounds
 		FVector2D& OutPosition,
 		FVector2D& OutSize,
 		FString* OutDebugSummary = nullptr);
-}
+};

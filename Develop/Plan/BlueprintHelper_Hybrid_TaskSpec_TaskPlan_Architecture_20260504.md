@@ -493,7 +493,7 @@ TaskSpec 是 Agent 提交的语义级任务规格。
     "dry_run_mode": "full",
     "on_missing_capability": "stop_and_report",
     "on_dry_run_blocked": "stop_and_report",
-    "on_write_partial_failure": "rollback_and_report"
+    "on_write_partial_failure": "record_partial_failure_and_report"
   },
   "validation": {
     "should_compile": true,
@@ -528,7 +528,7 @@ TaskPlan step 的主面是能力簇结构化 IR，例如 `capability`、`target`
     "dry_run_mode": "full",
     "should_compile": true,
     "should_save": false,
-    "on_write_partial_failure": "rollback_and_report"
+    "on_write_partial_failure": "record_partial_failure_and_report"
   },
   "steps": [
     {
@@ -1032,7 +1032,7 @@ FBlueprintHelperTaskReviewGrouper
 4. 将 TaskPlan step 映射到已有工具簇能力。
 5. 每个真实写操作生成 transaction_id。
 6. 整个 TaskPlan 生成 task_run_id。
-7. 失败时按写入顺序逆序 rollback。
+7. 失败时记录 partial_failure 并按 TaskPlan topology 阻断依赖步骤；不默认全局 rollback。
 8. 写 TaskRunJournal + Transaction Journal + Review。
 9. compile / diagnostics / save。
 ```

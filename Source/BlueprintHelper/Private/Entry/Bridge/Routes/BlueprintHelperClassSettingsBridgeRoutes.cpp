@@ -4,9 +4,10 @@
 
 #include "Systems/ToolClusters/BlueprintClassSettings/BlueprintHelperClassSettingsService.h"
 
-namespace
+class FBlueprintHelperClassSettingsBridgeRoutesLocalUtils
 {
-	FBlueprintHelperBridgeResponse MakeClassSettingsResponse(
+public:
+	static FBlueprintHelperBridgeResponse MakeClassSettingsResponse(
 		const FBlueprintHelperBridgeRequest& Request,
 		const FBlueprintHelperToolResultBase& Result)
 	{
@@ -20,7 +21,7 @@ namespace
 		return Response;
 	}
 
-	TArray<FString> ReadClassSettingsRouteStringArrayField(const TSharedPtr<FJsonObject>& Payload, const TCHAR* FieldName)
+	static TArray<FString> ReadClassSettingsRouteStringArrayField(const TSharedPtr<FJsonObject>& Payload, const TCHAR* FieldName)
 	{
 		TArray<FString> Result;
 		const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;
@@ -40,7 +41,7 @@ namespace
 		return Result;
 	}
 
-	TArray<FBlueprintHelperClassDefaultPropertySetting> ReadClassSettingsRouteDefaultSettings(
+	static TArray<FBlueprintHelperClassDefaultPropertySetting> ReadClassSettingsRouteDefaultSettings(
 		const TSharedPtr<FJsonObject>& Payload)
 	{
 		TArray<FBlueprintHelperClassDefaultPropertySetting> Settings;
@@ -65,7 +66,8 @@ namespace
 		}
 		return Settings;
 	}
-}
+
+};
 
 FBlueprintHelperClassSettingsBridgeRoutes::FBlueprintHelperClassSettingsBridgeRoutes(
 	const FBlueprintHelperClassSettingsService& InClassSettingsService)
@@ -95,7 +97,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperClassSettingsBridgeRoutes::Handle
 
 	if (Request.Command == TEXT("read_class_settings"))
 	{
-		return MakeClassSettingsResponse(Request, ClassSettingsService.ReadClassSettings(AssetPath));
+		return FBlueprintHelperClassSettingsBridgeRoutesLocalUtils::MakeClassSettingsResponse(Request, ClassSettingsService.ReadClassSettings(AssetPath));
 	}
 	if (Request.Command == TEXT("add_implemented_interface"))
 	{
@@ -104,17 +106,17 @@ FBlueprintHelperBridgeResponse FBlueprintHelperClassSettingsBridgeRoutes::Handle
 		{
 			Request.Payload->TryGetStringField(TEXT("interface_path"), InterfacePath);
 		}
-		return MakeClassSettingsResponse(
+		return FBlueprintHelperClassSettingsBridgeRoutesLocalUtils::MakeClassSettingsResponse(
 			Request,
 			ClassSettingsService.AddImplementedInterface(AssetPath, InterfacePath));
 	}
 	if (Request.Command == TEXT("add_implemented_interfaces"))
 	{
-		return MakeClassSettingsResponse(
+		return FBlueprintHelperClassSettingsBridgeRoutesLocalUtils::MakeClassSettingsResponse(
 			Request,
 			ClassSettingsService.AddImplementedInterfaces(
 				AssetPath,
-				ReadClassSettingsRouteStringArrayField(Request.Payload, TEXT("interface_paths"))));
+				FBlueprintHelperClassSettingsBridgeRoutesLocalUtils::ReadClassSettingsRouteStringArrayField(Request.Payload, TEXT("interface_paths"))));
 	}
 	if (Request.Command == TEXT("remove_implemented_interface"))
 	{
@@ -123,17 +125,17 @@ FBlueprintHelperBridgeResponse FBlueprintHelperClassSettingsBridgeRoutes::Handle
 		{
 			Request.Payload->TryGetStringField(TEXT("interface_path"), InterfacePath);
 		}
-		return MakeClassSettingsResponse(
+		return FBlueprintHelperClassSettingsBridgeRoutesLocalUtils::MakeClassSettingsResponse(
 			Request,
 			ClassSettingsService.RemoveImplementedInterface(AssetPath, InterfacePath));
 	}
 	if (Request.Command == TEXT("remove_implemented_interfaces"))
 	{
-		return MakeClassSettingsResponse(
+		return FBlueprintHelperClassSettingsBridgeRoutesLocalUtils::MakeClassSettingsResponse(
 			Request,
 			ClassSettingsService.RemoveImplementedInterfaces(
 				AssetPath,
-				ReadClassSettingsRouteStringArrayField(Request.Payload, TEXT("interface_paths"))));
+				FBlueprintHelperClassSettingsBridgeRoutesLocalUtils::ReadClassSettingsRouteStringArrayField(Request.Payload, TEXT("interface_paths"))));
 	}
 	if (Request.Command == TEXT("set_class_default_property"))
 	{
@@ -148,17 +150,17 @@ FBlueprintHelperBridgeResponse FBlueprintHelperClassSettingsBridgeRoutes::Handle
 				Value = *FoundValue;
 			}
 		}
-		return MakeClassSettingsResponse(
+		return FBlueprintHelperClassSettingsBridgeRoutesLocalUtils::MakeClassSettingsResponse(
 			Request,
 			ClassSettingsService.SetClassDefaultProperty(AssetPath, PropertyPath, Value));
 	}
 	if (Request.Command == TEXT("set_class_default_properties"))
 	{
-		return MakeClassSettingsResponse(
+		return FBlueprintHelperClassSettingsBridgeRoutesLocalUtils::MakeClassSettingsResponse(
 			Request,
 			ClassSettingsService.SetClassDefaultProperties(
 				AssetPath,
-				ReadClassSettingsRouteDefaultSettings(Request.Payload)));
+				FBlueprintHelperClassSettingsBridgeRoutesLocalUtils::ReadClassSettingsRouteDefaultSettings(Request.Payload)));
 	}
 
 	return FBlueprintHelperBridgeResponse::Error(

@@ -6,9 +6,10 @@
 #include "Dom/JsonValue.h"
 #include "Systems/ToolClusters/UMGWidget/BlueprintHelperWidgetService.h"
 
-namespace
+class FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils
 {
-	FString ReadUMGWidgetRouteStringField(const TSharedPtr<FJsonObject>& Payload, const TCHAR* FieldName)
+public:
+	static FString ReadUMGWidgetRouteStringField(const TSharedPtr<FJsonObject>& Payload, const TCHAR* FieldName)
 	{
 		FString Value;
 		if (Payload.IsValid())
@@ -18,7 +19,7 @@ namespace
 		return Value;
 	}
 
-	FBlueprintHelperBridgeResponse MakeMissingWidgetFieldResponse(
+	static FBlueprintHelperBridgeResponse MakeMissingWidgetFieldResponse(
 		const FBlueprintHelperBridgeRequest& Request,
 		const FString& Message)
 	{
@@ -27,7 +28,8 @@ namespace
 			EBlueprintHelperBridgeError::InvalidRequest,
 			Message);
 	}
-}
+
+};
 
 FBlueprintHelperUMGWidgetBridgeRoutes::FBlueprintHelperUMGWidgetBridgeRoutes(
 	const FBlueprintHelperWidgetService& InWidgetService)
@@ -48,13 +50,13 @@ bool FBlueprintHelperUMGWidgetBridgeRoutes::IsUMGWidgetCommand(const FString& Co
 FBlueprintHelperBridgeResponse FBlueprintHelperUMGWidgetBridgeRoutes::HandleRequest(
 	const FBlueprintHelperBridgeRequest& Request) const
 {
-	const FString AssetPath = ReadUMGWidgetRouteStringField(Request.Payload, TEXT("asset_path"));
+	const FString AssetPath = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("asset_path"));
 
 	if (Request.Command == TEXT("get_widget_tree"))
 	{
 		if (AssetPath.IsEmpty())
 		{
-			return MakeMissingWidgetFieldResponse(Request, TEXT("payload 缺少 asset_path 字段。"));
+			return FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::MakeMissingWidgetFieldResponse(Request, TEXT("payload 缺少 asset_path 字段。"));
 		}
 
 		const FBlueprintHelperWidgetTreeResult Result = WidgetService.GetWidgetTree(AssetPath);
@@ -95,16 +97,16 @@ FBlueprintHelperBridgeResponse FBlueprintHelperUMGWidgetBridgeRoutes::HandleRequ
 
 	if (Request.Command == TEXT("add_widget"))
 	{
-		const FString WidgetClass = ReadUMGWidgetRouteStringField(Request.Payload, TEXT("widget_class"));
-		const FString ParentName = ReadUMGWidgetRouteStringField(Request.Payload, TEXT("parent_name"));
-		const FString WidgetName = ReadUMGWidgetRouteStringField(Request.Payload, TEXT("widget_name"));
+		const FString WidgetClass = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("widget_class"));
+		const FString ParentName = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("parent_name"));
+		const FString WidgetName = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("widget_name"));
 		if (AssetPath.IsEmpty())
 		{
-			return MakeMissingWidgetFieldResponse(Request, TEXT("payload 缺少 asset_path 字段。"));
+			return FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::MakeMissingWidgetFieldResponse(Request, TEXT("payload 缺少 asset_path 字段。"));
 		}
 		if (WidgetClass.IsEmpty())
 		{
-			return MakeMissingWidgetFieldResponse(Request, TEXT("payload 缺少 widget_class 字段。"));
+			return FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::MakeMissingWidgetFieldResponse(Request, TEXT("payload 缺少 widget_class 字段。"));
 		}
 
 		const FBlueprintHelperWidgetMutationResult Result =
@@ -125,10 +127,10 @@ FBlueprintHelperBridgeResponse FBlueprintHelperUMGWidgetBridgeRoutes::HandleRequ
 
 	if (Request.Command == TEXT("remove_widget"))
 	{
-		const FString WidgetName = ReadUMGWidgetRouteStringField(Request.Payload, TEXT("widget_name"));
+		const FString WidgetName = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("widget_name"));
 		if (AssetPath.IsEmpty() || WidgetName.IsEmpty())
 		{
-			return MakeMissingWidgetFieldResponse(Request, TEXT("payload 缺少 asset_path 。widget_name 字段。"));
+			return FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::MakeMissingWidgetFieldResponse(Request, TEXT("payload 缺少 asset_path 。widget_name 字段。"));
 		}
 
 		const FBlueprintHelperWidgetMutationResult Result = WidgetService.RemoveWidget(AssetPath, WidgetName);
@@ -148,11 +150,11 @@ FBlueprintHelperBridgeResponse FBlueprintHelperUMGWidgetBridgeRoutes::HandleRequ
 
 	if (Request.Command == TEXT("move_widget"))
 	{
-		const FString WidgetName = ReadUMGWidgetRouteStringField(Request.Payload, TEXT("widget_name"));
-		const FString NewParent = ReadUMGWidgetRouteStringField(Request.Payload, TEXT("new_parent"));
+		const FString WidgetName = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("widget_name"));
+		const FString NewParent = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("new_parent"));
 		if (AssetPath.IsEmpty() || WidgetName.IsEmpty() || NewParent.IsEmpty())
 		{
-			return MakeMissingWidgetFieldResponse(Request, TEXT("payload 缺少 asset_path / widget_name / new_parent 字段。"));
+			return FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::MakeMissingWidgetFieldResponse(Request, TEXT("payload 缺少 asset_path / widget_name / new_parent 字段。"));
 		}
 
 		int32 InsertIndex = -1;
@@ -180,10 +182,10 @@ FBlueprintHelperBridgeResponse FBlueprintHelperUMGWidgetBridgeRoutes::HandleRequ
 
 	if (Request.Command == TEXT("get_widget_properties"))
 	{
-		const FString WidgetName = ReadUMGWidgetRouteStringField(Request.Payload, TEXT("widget_name"));
+		const FString WidgetName = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("widget_name"));
 		if (AssetPath.IsEmpty() || WidgetName.IsEmpty())
 		{
-			return MakeMissingWidgetFieldResponse(Request, TEXT("payload 缺少 asset_path 。widget_name 字段。"));
+			return FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::MakeMissingWidgetFieldResponse(Request, TEXT("payload 缺少 asset_path 。widget_name 字段。"));
 		}
 
 		const FBlueprintHelperWidgetPropertyResult Result =
@@ -216,14 +218,14 @@ FBlueprintHelperBridgeResponse FBlueprintHelperUMGWidgetBridgeRoutes::HandleRequ
 
 	if (Request.Command == TEXT("set_widget_property"))
 	{
-		const FString WidgetName = ReadUMGWidgetRouteStringField(Request.Payload, TEXT("widget_name"));
-		const FString PropertyName = ReadUMGWidgetRouteStringField(Request.Payload, TEXT("property_name"));
+		const FString WidgetName = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("widget_name"));
+		const FString PropertyName = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("property_name"));
 		if (AssetPath.IsEmpty() || WidgetName.IsEmpty() || PropertyName.IsEmpty())
 		{
-			return MakeMissingWidgetFieldResponse(Request, TEXT("payload 缺少 asset_path / widget_name / property_name 字段。"));
+			return FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::MakeMissingWidgetFieldResponse(Request, TEXT("payload 缺少 asset_path / widget_name / property_name 字段。"));
 		}
 
-		const FString Value = ReadUMGWidgetRouteStringField(Request.Payload, TEXT("value"));
+		const FString Value = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("value"));
 		const FBlueprintHelperWidgetMutationResult Result =
 			WidgetService.SetWidgetProperty(AssetPath, WidgetName, PropertyName, Value);
 		if (!Result.bSuccess)

@@ -1,5 +1,7 @@
 # BlueprintHelper Debug / Export Bundle / Large Payload UE 字段映射计划
 
+2026-05-09 状态：已废弃。当前 Debug 合同删除 `read_large_payload_ref` 路径，Review 只链接 `debug_case_ids[]`，DebugBundle 只通过开发者导出生成，不作为 MCP large-payload 读取通道。
+
 日期：2026-05-03  
 适用范围：BlueprintHelper v0.4 / v0.5 前置协议收敛  
 状态：Debug / Export Bundle / Large Payload 字段确认稿  

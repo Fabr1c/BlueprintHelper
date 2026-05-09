@@ -5,9 +5,10 @@
 #include "Dom/JsonValue.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.h"
 
-namespace
+class FBlueprintHelperDataTableTaskPlanAdapterLocalUtils
 {
-	FBlueprintHelperToolError MakeDataTableTaskPlanError(
+public:
+	static FBlueprintHelperToolError MakeDataTableTaskPlanError(
 		const FString& Code,
 		const FString& Message,
 		const FString& Field)
@@ -22,12 +23,12 @@ namespace
 		return Error;
 	}
 
-	FString DataTableBuildOpFieldPath(int32 OpIndex, const FString& Field)
+	static FString DataTableBuildOpFieldPath(int32 OpIndex, const FString& Field)
 	{
 		return FString::Printf(TEXT("task_plan.steps[0].write.ops[%d].%s"), OpIndex, *Field);
 	}
 
-	bool DataTableTryReadStepTargetAssetPath(
+	static bool DataTableTryReadStepTargetAssetPath(
 		const TSharedPtr<FJsonObject>& StepObject,
 		FString& OutAssetPath,
 		FBlueprintHelperToolError& OutError)
@@ -56,7 +57,7 @@ namespace
 		return true;
 	}
 
-	bool DataTableTryReadSingleOp(
+	static bool DataTableTryReadSingleOp(
 		const TSharedPtr<FJsonObject>& StepObject,
 		TSharedPtr<FJsonObject>& OutOpObject,
 		FBlueprintHelperToolError& OutError)
@@ -116,7 +117,7 @@ namespace
 		return true;
 	}
 
-	bool DataTableTryRequireRowName(
+	static bool DataTableTryRequireRowName(
 		const TSharedPtr<FJsonObject>& OpObject,
 		const FString& ErrorCode,
 		FString& OutRowName,
@@ -134,7 +135,7 @@ namespace
 		return true;
 	}
 
-	bool DataTableTryRequireFieldsObject(
+	static bool DataTableTryRequireFieldsObject(
 		const TSharedPtr<FJsonObject>& OpObject,
 		const FString& ErrorCode,
 		const TSharedPtr<FJsonObject>*& OutFieldsObjectPtr,
@@ -156,7 +157,7 @@ namespace
 		return true;
 	}
 
-	void DataTableCopyFieldsObjectIfPresent(
+	static void DataTableCopyFieldsObjectIfPresent(
 		const TSharedPtr<FJsonObject>& OpObject,
 		const TSharedRef<FJsonObject>& Payload)
 	{
@@ -168,7 +169,8 @@ namespace
 			Payload->SetObjectField(TEXT("fields"), *FieldsObjectPtr);
 		}
 	}
-}
+
+};
 
 bool FBlueprintHelperDataTableTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(
 	const TSharedPtr<FJsonObject>& StepObject,
@@ -181,7 +183,7 @@ bool FBlueprintHelperDataTableTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(
 
 	if (!StepObject.IsValid())
 	{
-		OutError = MakeDataTableTaskPlanError(
+		OutError = FBlueprintHelperDataTableTaskPlanAdapterLocalUtils::MakeDataTableTaskPlanError(
 			TEXT("invalid_data_table_step"),
 			TEXT("DataTable TaskPlan step must be an object."),
 			TEXT("task_plan.steps[0]"));
@@ -198,7 +200,7 @@ bool FBlueprintHelperDataTableTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(
 	StepObject->TryGetStringField(TEXT("capability"), Capability);
 	if (Capability != CapabilityDataTable)
 	{
-		OutError = MakeDataTableTaskPlanError(
+		OutError = FBlueprintHelperDataTableTaskPlanAdapterLocalUtils::MakeDataTableTaskPlanError(
 			TEXT("unsupported_data_table_capability"),
 			TEXT("DataTable adapter requires capability=data_table."),
 			TEXT("task_plan.steps[0].capability"));
@@ -208,7 +210,7 @@ bool FBlueprintHelperDataTableTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(
 	FString LegacyOperation;
 	if (StepObject->TryGetStringField(TEXT("operation"), LegacyOperation))
 	{
-		OutError = MakeDataTableTaskPlanError(
+		OutError = FBlueprintHelperDataTableTaskPlanAdapterLocalUtils::MakeDataTableTaskPlanError(
 			TEXT("unsupported_data_table_operation_field"),
 			TEXT("DataTable IR TaskPlan steps use capability/write; adapter operation fields are runtime lowering details."),
 			TEXT("task_plan.steps[0].operation"));
@@ -216,13 +218,13 @@ bool FBlueprintHelperDataTableTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(
 	}
 
 	FString AssetPath;
-	if (!DataTableTryReadStepTargetAssetPath(StepObject, AssetPath, OutError))
+	if (!FBlueprintHelperDataTableTaskPlanAdapterLocalUtils::DataTableTryReadStepTargetAssetPath(StepObject, AssetPath, OutError))
 	{
 		return false;
 	}
 
 	TSharedPtr<FJsonObject> OpObject;
-	if (!DataTableTryReadSingleOp(StepObject, OpObject, OutError))
+	if (!FBlueprintHelperDataTableTaskPlanAdapterLocalUtils::DataTableTryReadSingleOp(StepObject, OpObject, OutError))
 	{
 		return false;
 	}
@@ -249,22 +251,22 @@ bool FBlueprintHelperDataTableTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(
 	}
 	else
 	{
-		OutError = MakeDataTableTaskPlanError(
+		OutError = FBlueprintHelperDataTableTaskPlanAdapterLocalUtils::MakeDataTableTaskPlanError(
 			TEXT("unsupported_data_table_op"),
 			TEXT("DataTable TaskPlan adapter supports add_row, update_row, and delete_row only."),
-			DataTableBuildOpFieldPath(0, TEXT("op")));
+			FBlueprintHelperDataTableTaskPlanAdapterLocalUtils::DataTableBuildOpFieldPath(0, TEXT("op")));
 		return false;
 	}
 
 	FString RowName;
-	if (!DataTableTryRequireRowName(OpObject, OpErrorCode, RowName, OutError))
+	if (!FBlueprintHelperDataTableTaskPlanAdapterLocalUtils::DataTableTryRequireRowName(OpObject, OpErrorCode, RowName, OutError))
 	{
 		return false;
 	}
 
 	const TSharedPtr<FJsonObject>* RequiredFieldsObjectPtr = nullptr;
 	if (OpName == OpUpdateRow &&
-		!DataTableTryRequireFieldsObject(OpObject, OpErrorCode, RequiredFieldsObjectPtr, OutError))
+		!FBlueprintHelperDataTableTaskPlanAdapterLocalUtils::DataTableTryRequireFieldsObject(OpObject, OpErrorCode, RequiredFieldsObjectPtr, OutError))
 	{
 		return false;
 	}
@@ -280,7 +282,7 @@ bool FBlueprintHelperDataTableTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(
 	}
 	else if (OpName == OpAddRow)
 	{
-		DataTableCopyFieldsObjectIfPresent(OpObject, Payload);
+		FBlueprintHelperDataTableTaskPlanAdapterLocalUtils::DataTableCopyFieldsObjectIfPresent(OpObject, Payload);
 	}
 
 	OutPayload.Capability = CapabilityDataTable;

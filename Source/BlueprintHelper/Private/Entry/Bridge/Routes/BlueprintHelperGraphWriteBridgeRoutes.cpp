@@ -8,9 +8,10 @@
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperPatchBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperReplaceBlueprintGraphService.h"
 
-namespace
+class FBlueprintHelperGraphWriteBridgeRoutesLocalUtils
 {
-	FBlueprintHelperBridgeResponse MakeGraphWritePayloadMissingResponse(const FBlueprintHelperBridgeRequest& Request)
+public:
+	static FBlueprintHelperBridgeResponse MakeGraphWritePayloadMissingResponse(const FBlueprintHelperBridgeRequest& Request)
 	{
 		return FBlueprintHelperBridgeResponse::Error(
 			Request.RequestId,
@@ -18,7 +19,7 @@ namespace
 			TEXT("payload 缺失。"));
 	}
 
-	FBlueprintHelperBridgeResponse MakeGraphWriteExecutionResponse(
+	static FBlueprintHelperBridgeResponse MakeGraphWriteExecutionResponse(
 		const FBlueprintHelperBridgeRequest& Request,
 		const FBlueprintHelperToolResultBase& Result,
 		const TCHAR* FallbackFailureMessage)
@@ -33,7 +34,8 @@ namespace
 		Response.Result = Result.ToJson();
 		return Response;
 	}
-}
+
+};
 
 FBlueprintHelperGraphWriteBridgeRoutes::FBlueprintHelperGraphWriteBridgeRoutes(
 	const FBlueprintHelperAppendBlueprintGraphService& InAppendGraphService,
@@ -60,33 +62,33 @@ FBlueprintHelperBridgeResponse FBlueprintHelperGraphWriteBridgeRoutes::HandleReq
 {
 	if (!Request.Payload.IsValid())
 	{
-		return MakeGraphWritePayloadMissingResponse(Request);
+		return FBlueprintHelperGraphWriteBridgeRoutesLocalUtils::MakeGraphWritePayloadMissingResponse(Request);
 	}
 
 	if (Request.Command == TEXT("append_blueprint_graph"))
 	{
-		return MakeGraphWriteExecutionResponse(
+		return FBlueprintHelperGraphWriteBridgeRoutesLocalUtils::MakeGraphWriteExecutionResponse(
 			Request,
 			AppendGraphService.Execute(Request.Payload),
 			TEXT("append_blueprint_graph 执行失败。"));
 	}
 	if (Request.Command == TEXT("replace_blueprint_graph"))
 	{
-		return MakeGraphWriteExecutionResponse(
+		return FBlueprintHelperGraphWriteBridgeRoutesLocalUtils::MakeGraphWriteExecutionResponse(
 			Request,
 			ReplaceGraphService.Execute(Request.Payload),
 			TEXT("replace_blueprint_graph 执行失败。"));
 	}
 	if (Request.Command == TEXT("patch_blueprint_graph"))
 	{
-		return MakeGraphWriteExecutionResponse(
+		return FBlueprintHelperGraphWriteBridgeRoutesLocalUtils::MakeGraphWriteExecutionResponse(
 			Request,
 			PatchGraphService.Execute(Request.Payload),
 			TEXT("patch_blueprint_graph 执行失败。"));
 	}
 	if (Request.Command == TEXT("merge_blueprint_graph"))
 	{
-		return MakeGraphWriteExecutionResponse(
+		return FBlueprintHelperGraphWriteBridgeRoutesLocalUtils::MakeGraphWriteExecutionResponse(
 			Request,
 			MergeGraphService.Execute(Request.Payload),
 			TEXT("merge_blueprint_graph 执行失败。"));

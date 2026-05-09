@@ -5,8 +5,9 @@
 #include "Dom/JsonValue.h"
 #include "Misc/Parse.h"
 
-namespace
+class FBlueprintHelperRequestValidatorLocalUtils
 {
+public:
 	enum class EBlueprintHelperJsonExpectedType : uint8
 	{
 		String,
@@ -23,7 +24,7 @@ namespace
 		bool bRequired = false;
 	};
 
-	FString ExpectedTypeToString(EBlueprintHelperJsonExpectedType Type)
+	static FString ExpectedTypeToString(EBlueprintHelperJsonExpectedType Type)
 	{
 		switch (Type)
 		{
@@ -36,7 +37,7 @@ namespace
 		}
 	}
 
-	FString ActualJsonTypeToString(const TSharedPtr<FJsonValue>& Value)
+	static FString ActualJsonTypeToString(const TSharedPtr<FJsonValue>& Value)
 	{
 		if (!Value.IsValid())
 		{
@@ -56,7 +57,7 @@ namespace
 		}
 	}
 
-	bool MatchesExpectedType(const TSharedPtr<FJsonValue>& Value, EBlueprintHelperJsonExpectedType Type)
+	static bool MatchesExpectedType(const TSharedPtr<FJsonValue>& Value, EBlueprintHelperJsonExpectedType Type)
 	{
 		if (!Value.IsValid())
 		{
@@ -74,7 +75,7 @@ namespace
 		}
 	}
 
-	void SetValidationError(
+	static void SetValidationError(
 		FBlueprintHelperBridgeValidationError& OutError,
 		const FString& Field,
 		const FString& Expected,
@@ -88,7 +89,7 @@ namespace
 			*Field, *Expected, *Actual);
 	}
 
-	bool ValidateFieldRule(
+	static bool ValidateFieldRule(
 		const TSharedPtr<FJsonObject>& Payload,
 		const FBlueprintHelperFieldRule& Rule,
 		FBlueprintHelperBridgeValidationError& OutError)
@@ -114,7 +115,7 @@ namespace
 		return true;
 	}
 
-	bool ValidateRules(
+	static bool ValidateRules(
 		const TSharedPtr<FJsonObject>& Payload,
 		TArrayView<const FBlueprintHelperFieldRule> Rules,
 		FBlueprintHelperBridgeValidationError& OutError)
@@ -129,12 +130,12 @@ namespace
 		return true;
 	}
 
-	bool CommandEquals(const FString& Command, const TCHAR* Expected)
+	static bool CommandEquals(const FString& Command, const TCHAR* Expected)
 	{
 		return Command.Equals(Expected, ESearchCase::IgnoreCase);
 	}
 
-	bool ValidateOptionalStringEnum(
+	static bool ValidateOptionalStringEnum(
 		const TSharedPtr<FJsonObject>& Payload,
 		const TCHAR* FieldName,
 		const TSet<FString>& AllowedValues,
@@ -157,7 +158,8 @@ namespace
 		}
 		return true;
 	}
-}
+
+};
 
 bool FBlueprintHelperRequestValidator::NormalizeExportScope(
 	const FString& InScope,
@@ -204,309 +206,309 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 		return false;
 	}
 
-	const FBlueprintHelperFieldRule TargetRules[] = {
-		{TEXT("target_blueprint"), EBlueprintHelperJsonExpectedType::String, false},
-		{TEXT("target_graph"), EBlueprintHelperJsonExpectedType::String, false},
+	const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule TargetRules[] = {
+		{TEXT("target_blueprint"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+		{TEXT("target_graph"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
 	};
-	if (!ValidateRules(Payload, TargetRules, OutError))
+	if (!FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, TargetRules, OutError))
 	{
 		return false;
 	}
 
-	if (CommandEquals(Command, TEXT("export_to_json")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("export_to_json")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("scope"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("include_json_text"), EBlueprintHelperJsonExpectedType::Bool, false},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("scope"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("include_json_text"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("export_logic")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("export_logic")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("scope"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("format"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("detail"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("include_data_dependencies"), EBlueprintHelperJsonExpectedType::Bool, false},
-			{TEXT("include_orphans"), EBlueprintHelperJsonExpectedType::Bool, false},
-			{TEXT("include_node_ids"), EBlueprintHelperJsonExpectedType::Bool, false},
-			{TEXT("include_positions"), EBlueprintHelperJsonExpectedType::Bool, false},
-			{TEXT("include_raw_node_types"), EBlueprintHelperJsonExpectedType::Bool, false},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("scope"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("format"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("detail"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("include_data_dependencies"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
+			{TEXT("include_orphans"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
+			{TEXT("include_node_ids"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
+			{TEXT("include_positions"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
+			{TEXT("include_raw_node_types"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("validate_json")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("validate_json")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("json"), EBlueprintHelperJsonExpectedType::String, true},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("json"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("get_debug_case")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("get_debug_case")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("debug_case_id"), EBlueprintHelperJsonExpectedType::String, true},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("debug_case_id"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("import_json")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("import_json")))
 	{
 		// json 字段接受 string 或 object（拒绝 array / bool / number）
 		{
 			const TSharedPtr<FJsonValue>* FoundValue = Payload->Values.Find(TEXT("json"));
 			if (!FoundValue)
 			{
-				SetValidationError(OutError, TEXT("payload.json"), TEXT("string 或 object"), TEXT("missing"));
+				FBlueprintHelperRequestValidatorLocalUtils::SetValidationError(OutError, TEXT("payload.json"), TEXT("string 或 object"), TEXT("missing"));
 				return false;
 			}
 			const auto JsonVal = *FoundValue;
 			if (!JsonVal.IsValid() || (JsonVal->Type != EJson::String && JsonVal->Type != EJson::Object))
 			{
-				SetValidationError(OutError, TEXT("payload.json"), TEXT("string 或 object"), ActualJsonTypeToString(JsonVal));
+				FBlueprintHelperRequestValidatorLocalUtils::SetValidationError(OutError, TEXT("payload.json"), TEXT("string 或 object"), FBlueprintHelperRequestValidatorLocalUtils::ActualJsonTypeToString(JsonVal));
 				return false;
 			}
 		}
 
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("compile_after_import"), EBlueprintHelperJsonExpectedType::Bool, false},
-			{TEXT("strict"), EBlueprintHelperJsonExpectedType::Bool, false},
-			{TEXT("allow_partial"), EBlueprintHelperJsonExpectedType::Bool, false},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("compile_after_import"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
+			{TEXT("strict"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
+			{TEXT("allow_partial"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("import_agent_graph")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("import_agent_graph")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("schema"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("version"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("target_blueprint"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("target_graph"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("mode"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("layout"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("declarations"), EBlueprintHelperJsonExpectedType::Object, false},
-			{TEXT("nodes"), EBlueprintHelperJsonExpectedType::Array, true},
-			{TEXT("links"), EBlueprintHelperJsonExpectedType::Array, false},
-			{TEXT("options"), EBlueprintHelperJsonExpectedType::Object, false},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("schema"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("version"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("target_blueprint"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("target_graph"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("mode"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("layout"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("declarations"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Object, false},
+			{TEXT("nodes"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Array, true},
+			{TEXT("links"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Array, false},
+			{TEXT("options"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Object, false},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("compile_blueprint")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("compile_blueprint")))
 	{
 		return true;
 	}
-	if (CommandEquals(Command, TEXT("open_asset")) || CommandEquals(Command, TEXT("save_asset"))
-		|| CommandEquals(Command, TEXT("get_asset_info")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("open_asset")) || FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("save_asset"))
+		|| FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("get_asset_info")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("list_assets")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("list_assets")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("path"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("class_filter"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("name_filter"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("recursive"), EBlueprintHelperJsonExpectedType::Bool, false},
-			{TEXT("max_results"), EBlueprintHelperJsonExpectedType::Number, false},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("class_filter"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("name_filter"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("recursive"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
+			{TEXT("max_results"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Number, false},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("search_assets")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("search_assets")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("path"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("class_filter"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("query"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("max_results"), EBlueprintHelperJsonExpectedType::Number, false},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("class_filter"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("query"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("max_results"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Number, false},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("add_variable")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("add_variable")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("name"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("pin_type"), EBlueprintHelperJsonExpectedType::Object, false},
-			{TEXT("default_value"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("category"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("flags"), EBlueprintHelperJsonExpectedType::Object, false},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("pin_type"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Object, false},
+			{TEXT("default_value"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("category"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("flags"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Object, false},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("add_graph")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("add_graph")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("name"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("graph_type"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("inputs"), EBlueprintHelperJsonExpectedType::Array, false},
-			{TEXT("outputs"), EBlueprintHelperJsonExpectedType::Array, false},
-			{TEXT("is_pure"), EBlueprintHelperJsonExpectedType::Bool, false},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("graph_type"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("inputs"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Array, false},
+			{TEXT("outputs"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Array, false},
+			{TEXT("is_pure"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("add_event_dispatcher")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("add_event_dispatcher")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("name"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("params"), EBlueprintHelperJsonExpectedType::Array, false},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("params"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Array, false},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("remove_variable")) || CommandEquals(Command, TEXT("remove_graph")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("remove_variable")) || FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("remove_graph")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("name"), EBlueprintHelperJsonExpectedType::String, true},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("delete_nodes")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("delete_nodes")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("node_ids"), EBlueprintHelperJsonExpectedType::Array, true},
-			{TEXT("strict"), EBlueprintHelperJsonExpectedType::Bool, false},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("node_ids"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Array, true},
+			{TEXT("strict"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("add_widget")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("add_widget")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("widget_class"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("parent_name"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("widget_name"), EBlueprintHelperJsonExpectedType::String, false},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("widget_class"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("parent_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("widget_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("get_widget_tree")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("get_widget_tree")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("remove_widget")) || CommandEquals(Command, TEXT("get_widget_properties")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("remove_widget")) || FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("get_widget_properties")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("widget_name"), EBlueprintHelperJsonExpectedType::String, true},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("widget_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("move_widget")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("move_widget")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("widget_name"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("new_parent"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("insert_index"), EBlueprintHelperJsonExpectedType::Number, false},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("widget_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("new_parent"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("insert_index"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Number, false},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("set_widget_property")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("set_widget_property")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("widget_name"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("property_name"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("value"), EBlueprintHelperJsonExpectedType::String, true},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("widget_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("property_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("value"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("get_object_properties")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("get_object_properties")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("set_object_property")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("set_object_property")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("property_name"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("value"), EBlueprintHelperJsonExpectedType::String, true},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("property_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("value"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("get_datatable_rows")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("get_datatable_rows")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("row_names"), EBlueprintHelperJsonExpectedType::Array, false},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("row_names"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Array, false},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("add_datatable_row")) || CommandEquals(Command, TEXT("update_datatable_row")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("add_datatable_row")) || FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("update_datatable_row")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("row_name"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("fields"), EBlueprintHelperJsonExpectedType::Object, true},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("row_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("fields"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Object, true},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("delete_datatable_row")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("delete_datatable_row")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("row_name"), EBlueprintHelperJsonExpectedType::String, true},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("row_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("create_blueprint")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("create_blueprint")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("parent_class"), EBlueprintHelperJsonExpectedType::String, false},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("parent_class"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("exec_console_command")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("exec_console_command")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("command"), EBlueprintHelperJsonExpectedType::String, true},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("command"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("close_editor")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("close_editor")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("save_all"), EBlueprintHelperJsonExpectedType::Bool, false},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("save_all"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
 
 	// ─── Blueprint Component 命令校验 ───
 
-	if (CommandEquals(Command, TEXT("read_components")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("read_components")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("add_component")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("add_component")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("component_name"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("component_class"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("parent_component"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("socket_name"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("attach_rule"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("name_collision_policy"), EBlueprintHelperJsonExpectedType::String, false},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("component_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("component_class"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("parent_component"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("socket_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("attach_rule"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("name_collision_policy"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("set_component_property")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("set_component_property")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("component_name"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("property_path"), EBlueprintHelperJsonExpectedType::String, true},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("component_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("property_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
 		};
-		if (!ValidateRules(Payload, Rules, OutError)) return false;
+		if (!FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError)) return false;
 		if (!Payload->HasField(TEXT("value")))
 		{
 			OutError.Code = TEXT("invalid_request");
@@ -518,57 +520,57 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 		}
 		return true;
 	}
-	if (CommandEquals(Command, TEXT("set_component_properties")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("set_component_properties")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("component_name"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("settings"), EBlueprintHelperJsonExpectedType::Array, true},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("component_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("settings"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Array, true},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("remove_component")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("remove_component")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("component_name"), EBlueprintHelperJsonExpectedType::String, true},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("component_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
 
 	// ─── Phase 9: Blueprint Class Settings ───
-	if (CommandEquals(Command, TEXT("read_class_settings")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("read_class_settings")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("add_implemented_interface")) ||
-		CommandEquals(Command, TEXT("remove_implemented_interface")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("add_implemented_interface")) ||
+		FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("remove_implemented_interface")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("interface_path"), EBlueprintHelperJsonExpectedType::String, true},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("interface_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("add_implemented_interfaces")) ||
-		CommandEquals(Command, TEXT("remove_implemented_interfaces")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("add_implemented_interfaces")) ||
+		FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("remove_implemented_interfaces")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("interface_paths"), EBlueprintHelperJsonExpectedType::Array, true},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("interface_paths"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Array, true},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("set_class_default_property")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("set_class_default_property")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("property_path"), EBlueprintHelperJsonExpectedType::String, true},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("property_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
 		};
-		if (!ValidateRules(Payload, Rules, OutError)) return false;
+		if (!FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError)) return false;
 		if (!Payload->HasField(TEXT("value")))
 		{
 			OutError.Code = TEXT("invalid_request");
@@ -580,45 +582,45 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 		}
 		return true;
 	}
-	if (CommandEquals(Command, TEXT("set_class_default_properties")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("set_class_default_properties")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("settings"), EBlueprintHelperJsonExpectedType::Array, true},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("settings"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Array, true},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("preview_task_plan")) ||
-		CommandEquals(Command, TEXT("execute_task_plan")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("preview_task_plan")) ||
+		FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("execute_task_plan")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("task_plan"), EBlueprintHelperJsonExpectedType::Object, true},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("task_plan"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Object, true},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("get_task_run_journal")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("get_task_run_journal")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("task_run_id"), EBlueprintHelperJsonExpectedType::String, true},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("task_run_id"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("read_reference_context")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("read_reference_context")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("target_type"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("target_name"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("graph_name"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("block_id"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("widget_name"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("row_name"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("interface_path"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("scope"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("max_results"), EBlueprintHelperJsonExpectedType::Number, false},
-			{TEXT("include_samples"), EBlueprintHelperJsonExpectedType::Bool, false},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("target_type"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("target_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("graph_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("block_id"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("widget_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("row_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("interface_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("scope"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("max_results"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Number, false},
+			{TEXT("include_samples"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
 		};
-		if (!ValidateRules(Payload, Rules, OutError))
+		if (!FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError))
 		{
 			return false;
 		}
@@ -636,7 +638,7 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 			TEXT("data_table_row"),
 			TEXT("interface"),
 		};
-		if (!ValidateOptionalStringEnum(Payload, TEXT("target_type"), TargetTypes, OutError))
+		if (!FBlueprintHelperRequestValidatorLocalUtils::ValidateOptionalStringEnum(Payload, TEXT("target_type"), TargetTypes, OutError))
 		{
 			return false;
 		}
@@ -648,112 +650,112 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 			TEXT("external_dependents"),
 			TEXT("all"),
 		};
-		return ValidateOptionalStringEnum(Payload, TEXT("scope"), Scopes, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateOptionalStringEnum(Payload, TEXT("scope"), Scopes, OutError);
 	}
-	if (CommandEquals(Command, TEXT("append_blueprint_graph")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("append_blueprint_graph")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("target"), EBlueprintHelperJsonExpectedType::Object, true},
-			{TEXT("feature_name"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("nodes"), EBlueprintHelperJsonExpectedType::Array, true},
-			{TEXT("links"), EBlueprintHelperJsonExpectedType::Array, false},
-			{TEXT("dry_run"), EBlueprintHelperJsonExpectedType::Bool, false},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("target"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Object, true},
+			{TEXT("feature_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("nodes"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Array, true},
+			{TEXT("links"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Array, false},
+			{TEXT("dry_run"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("replace_blueprint_graph")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("replace_blueprint_graph")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("target"), EBlueprintHelperJsonExpectedType::Object, true},
-			{TEXT("selector"), EBlueprintHelperJsonExpectedType::Object, false},
-			{TEXT("replacement"), EBlueprintHelperJsonExpectedType::Object, true},
-			{TEXT("options"), EBlueprintHelperJsonExpectedType::Object, false},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("target"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Object, true},
+			{TEXT("selector"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Object, false},
+			{TEXT("replacement"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Object, true},
+			{TEXT("options"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Object, false},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("patch_blueprint_graph")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("patch_blueprint_graph")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("target"), EBlueprintHelperJsonExpectedType::Object, true},
-			{TEXT("patch_type"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("patched_ref"), EBlueprintHelperJsonExpectedType::Object, true},
-			{TEXT("patch"), EBlueprintHelperJsonExpectedType::Object, true},
-			{TEXT("dry_run"), EBlueprintHelperJsonExpectedType::Bool, false},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("target"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Object, true},
+			{TEXT("patch_type"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("patched_ref"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Object, true},
+			{TEXT("patch"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Object, true},
+			{TEXT("dry_run"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("merge_blueprint_graph")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("merge_blueprint_graph")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("target"), EBlueprintHelperJsonExpectedType::Object, true},
-			{TEXT("anchor"), EBlueprintHelperJsonExpectedType::Object, true},
-			{TEXT("inserted"), EBlueprintHelperJsonExpectedType::Object, true},
-			{TEXT("sequence_order"), EBlueprintHelperJsonExpectedType::Array, false},
-			{TEXT("dry_run"), EBlueprintHelperJsonExpectedType::Bool, false},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("target"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Object, true},
+			{TEXT("anchor"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Object, true},
+			{TEXT("inserted"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Object, true},
+			{TEXT("sequence_order"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Array, false},
+			{TEXT("dry_run"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("cleanup_blueprint_helper_block")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("cleanup_blueprint_helper_block")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("block_id"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("graph"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("block_ref"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("missing_policy"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("dry_run"), EBlueprintHelperJsonExpectedType::Bool, false},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("block_id"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("graph"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("block_ref"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("missing_policy"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("dry_run"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("rollback_cleanup_transaction")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("rollback_cleanup_transaction")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("transaction_id"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("rollback_scope"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("already_rolled_back_policy"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("dry_run"), EBlueprintHelperJsonExpectedType::Bool, false},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("transaction_id"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("rollback_scope"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("already_rolled_back_policy"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("dry_run"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("convert_blueprint_helper_block_to_user_owned")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("convert_blueprint_helper_block_to_user_owned")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("ownership_scope"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("graph"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("block_id"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("graph_id"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("block_ref"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("already_user_owned_policy"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("dry_run"), EBlueprintHelperJsonExpectedType::Bool, false},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("ownership_scope"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("graph"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("block_id"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("graph_id"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("block_ref"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("already_user_owned_policy"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("dry_run"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("compile_blueprint_asset")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("compile_blueprint_asset")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, true},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("list_blueprint_helper_transactions")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("list_blueprint_helper_transactions")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("query_scope"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("asset_path"), EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("limit"), EBlueprintHelperJsonExpectedType::Number, false},
-			{TEXT("cursor"), EBlueprintHelperJsonExpectedType::String, false},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("query_scope"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("limit"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Number, false},
+			{TEXT("cursor"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (CommandEquals(Command, TEXT("read_blueprint_helper_transaction")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("read_blueprint_helper_transaction")))
 	{
-		const FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("transaction_id"), EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("detail_level"), EBlueprintHelperJsonExpectedType::String, false},
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("transaction_id"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("detail_level"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
 		};
-		return ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
 	return true;
 }
@@ -859,8 +861,8 @@ TEXT("create_blueprint"),
 
 bool FBlueprintHelperRequestValidator::IsHighRiskCommand(const FString& Command)
 {
-	return CommandEquals(Command, TEXT("exec_console_command"))
-		|| CommandEquals(Command, TEXT("close_editor"));
+	return FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("exec_console_command"))
+		|| FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("close_editor"));
 }
 
 bool FBlueprintHelperRequestValidator::IsHighRiskCommandEnabled()

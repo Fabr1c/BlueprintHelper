@@ -5,12 +5,13 @@
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Engine/Blueprint.h"
 
-namespace
+class FEventNodeHandlerLocalUtils
 {
+public:
 	/**
 	 * 常见引擎事件名称映射，将用户友好名称转换为实际函数名。
 	 */
-	FName ResolveEngineEventFunctionName(const FString& InEventName)
+	static FName ResolveEngineEventFunctionName(const FString& InEventName)
 	{
 		const FString Lower = InEventName.ToLower();
 		if (Lower == TEXT("beginplay") || Lower == TEXT("receivebeginplay"))
@@ -52,7 +53,8 @@ namespace
 		}
 		return FName(*InEventName);
 	}
-}
+
+};
 
 bool FEventNodeHandler::CanHandle(EParsedBlueprintNodeType NodeType) const
 {
@@ -88,7 +90,7 @@ UK2Node* FEventNodeHandler::Spawn(UEdGraph* TargetGraph, const FParsedNode& Node
 		return nullptr;
 	}
 
-	const FName ResolvedEventName = ResolveEngineEventFunctionName(EventName);
+	const FName ResolvedEventName = FEventNodeHandlerLocalUtils::ResolveEngineEventFunctionName(EventName);
 	UFunction* EventFunction = ParentClass->FindFunctionByName(ResolvedEventName);
 	if (!EventFunction)
 	{

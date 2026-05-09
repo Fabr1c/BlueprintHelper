@@ -17,8 +17,9 @@
 
 DEFINE_LOG_CATEGORY_STATIC(LogWidgetService, Log, All);
 
-namespace
+class FBlueprintHelperWidgetServiceLocalUtils
 {
+public:
 struct FBlueprintHelperSlotSnapshot
 {
 	UPanelWidget* Parent = nullptr;
@@ -33,7 +34,7 @@ struct FBlueprintHelperSlotSnapshot
 	int32 CanvasZOrder = 0;
 };
 
-bool CaptureSlotSnapshot(UWidget* Widget, FBlueprintHelperSlotSnapshot& OutSnapshot, FString& OutError)
+static bool CaptureSlotSnapshot(UWidget* Widget, FBlueprintHelperSlotSnapshot& OutSnapshot, FString& OutError)
 {
 	if (!Widget || !Widget->Slot)
 	{
@@ -87,7 +88,7 @@ bool CaptureSlotSnapshot(UWidget* Widget, FBlueprintHelperSlotSnapshot& OutSnaps
 	return true;
 }
 
-bool ApplySlotSnapshotToSlot(UPanelSlot* Slot, const FBlueprintHelperSlotSnapshot& Snapshot, bool bModifySlot, FString& OutError)
+static bool ApplySlotSnapshotToSlot(UPanelSlot* Slot, const FBlueprintHelperSlotSnapshot& Snapshot, bool bModifySlot, FString& OutError)
 {
 	if (!Slot)
 	{
@@ -164,7 +165,7 @@ bool ApplySlotSnapshotToSlot(UPanelSlot* Slot, const FBlueprintHelperSlotSnapsho
 	return true;
 }
 
-bool RestoreSlotSnapshot(UWidget* Widget, const FBlueprintHelperSlotSnapshot& Snapshot, FString& OutError)
+static bool RestoreSlotSnapshot(UWidget* Widget, const FBlueprintHelperSlotSnapshot& Snapshot, FString& OutError)
 {
 	if (!Widget || !Snapshot.Parent)
 	{
@@ -196,7 +197,8 @@ bool RestoreSlotSnapshot(UWidget* Widget, const FBlueprintHelperSlotSnapshot& Sn
 
 	return ApplySlotSnapshotToSlot(RestoredSlot, Snapshot, true, OutError);
 }
-}
+
+};
 
 // ═══════════════════════════════════════════════════════════
 // 内部工具
@@ -548,8 +550,8 @@ FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::MoveWidget(
 		return Result;
 	}
 
-	FBlueprintHelperSlotSnapshot OldSlotSnapshot;
-	if (!CaptureSlotSnapshot(Widget, OldSlotSnapshot, Result.ErrorMessage))
+	FBlueprintHelperWidgetServiceLocalUtils::FBlueprintHelperSlotSnapshot OldSlotSnapshot;
+	if (!FBlueprintHelperWidgetServiceLocalUtils::CaptureSlotSnapshot(Widget, OldSlotSnapshot, Result.ErrorMessage))
 	{
 		return Result;
 	}
@@ -586,7 +588,7 @@ FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::MoveWidget(
 	if (!NewSlot)
 	{
 		FString RestoreError;
-		if (!RestoreSlotSnapshot(Widget, OldSlotSnapshot, RestoreError))
+		if (!FBlueprintHelperWidgetServiceLocalUtils::RestoreSlotSnapshot(Widget, OldSlotSnapshot, RestoreError))
 		{
 			Result.ErrorMessage = FString::Printf(TEXT("移动 Widget 失败，且恢复旧 Slot 失败: %s"), *RestoreError);
 			Mutation.Rollback();
@@ -594,7 +596,7 @@ FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::MoveWidget(
 		}
 		Mutation.Rollback();
 		RestoreError.Reset();
-		if (!RestoreSlotSnapshot(Widget, OldSlotSnapshot, RestoreError))
+		if (!FBlueprintHelperWidgetServiceLocalUtils::RestoreSlotSnapshot(Widget, OldSlotSnapshot, RestoreError))
 		{
 			Result.ErrorMessage = FString::Printf(TEXT("移动 Widget 失败，事务取消后恢复旧 Slot 失败: %s"), *RestoreError);
 			Mutation.RestorePrimaryPackageDirtyState();

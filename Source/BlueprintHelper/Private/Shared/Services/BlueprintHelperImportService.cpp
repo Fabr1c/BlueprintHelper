@@ -14,12 +14,13 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 
-namespace
+class FBlueprintHelperImportServiceLocalUtils
 {
+public:
 using FGraphNodeSnapshot = TMap<UEdGraph*, TSet<UEdGraphNode*>>;
 using FPackageDirtySnapshot = TMap<UPackage*, bool>;
 
-void AddGraphIfValid(TArray<UEdGraph*>& Graphs, UEdGraph* Graph)
+static void AddGraphIfValid(TArray<UEdGraph*>& Graphs, UEdGraph* Graph)
 {
 	if (Graph)
 	{
@@ -27,7 +28,7 @@ void AddGraphIfValid(TArray<UEdGraph*>& Graphs, UEdGraph* Graph)
 	}
 }
 
-TArray<UEdGraph*> CollectBlueprintGraphs(UBlueprint* Blueprint)
+static TArray<UEdGraph*> CollectBlueprintGraphs(UBlueprint* Blueprint)
 {
 	TArray<UEdGraph*> Graphs;
 	if (!Blueprint)
@@ -50,7 +51,7 @@ TArray<UEdGraph*> CollectBlueprintGraphs(UBlueprint* Blueprint)
 	return Graphs;
 }
 
-FGraphNodeSnapshot CaptureGraphNodeSnapshot(const TArray<UEdGraph*>& Graphs)
+static FGraphNodeSnapshot CaptureGraphNodeSnapshot(const TArray<UEdGraph*>& Graphs)
 {
 	FGraphNodeSnapshot Snapshot;
 	for (UEdGraph* Graph : Graphs)
@@ -72,7 +73,7 @@ FGraphNodeSnapshot CaptureGraphNodeSnapshot(const TArray<UEdGraph*>& Graphs)
 	return Snapshot;
 }
 
-FPackageDirtySnapshot CapturePackageDirtySnapshot(const TArray<UEdGraph*>& Graphs)
+static FPackageDirtySnapshot CapturePackageDirtySnapshot(const TArray<UEdGraph*>& Graphs)
 {
 	FPackageDirtySnapshot Snapshot;
 	for (UEdGraph* Graph : Graphs)
@@ -92,7 +93,7 @@ FPackageDirtySnapshot CapturePackageDirtySnapshot(const TArray<UEdGraph*>& Graph
 	return Snapshot;
 }
 
-void RestorePackageDirtySnapshot(const FPackageDirtySnapshot& Snapshot)
+static void RestorePackageDirtySnapshot(const FPackageDirtySnapshot& Snapshot)
 {
 	for (const TPair<UPackage*, bool>& Pair : Snapshot)
 	{
@@ -103,7 +104,7 @@ void RestorePackageDirtySnapshot(const FPackageDirtySnapshot& Snapshot)
 	}
 }
 
-void RemoveNodesCreatedAfterSnapshot(const FGraphNodeSnapshot& Snapshot)
+static void RemoveNodesCreatedAfterSnapshot(const FGraphNodeSnapshot& Snapshot)
 {
 	for (const TPair<UEdGraph*, TSet<UEdGraphNode*>>& Pair : Snapshot)
 	{
@@ -136,7 +137,7 @@ void RemoveNodesCreatedAfterSnapshot(const FGraphNodeSnapshot& Snapshot)
 	}
 }
 
-EBlueprintHelperDiagnosticSeverity ConvertGeneratorSeverity(const FString& Severity)
+static EBlueprintHelperDiagnosticSeverity ConvertGeneratorSeverity(const FString& Severity)
 {
 	if (Severity.Equals(TEXT("error"), ESearchCase::IgnoreCase))
 	{
@@ -149,7 +150,7 @@ EBlueprintHelperDiagnosticSeverity ConvertGeneratorSeverity(const FString& Sever
 	return EBlueprintHelperDiagnosticSeverity::Info;
 }
 
-void AddGeneratorDiagnosticsToResult(
+static void AddGeneratorDiagnosticsToResult(
 	const TArray<FBlueprintGeneratorDiagnostic>& GeneratorDiagnostics,
 	FBlueprintHelperImportResult& Result)
 {
@@ -165,7 +166,8 @@ void AddGeneratorDiagnosticsToResult(
 			Diagnostic.NodeId);
 	}
 }
-}
+
+};
 
 FBlueprintHelperImportService::FBlueprintHelperImportService(
 	const FBlueprintHelperGraphResolver& InResolver,
@@ -204,8 +206,8 @@ FBlueprintHelperImportResult FBlueprintHelperImportService::Import(const FBluepr
 	TArray<TSharedPtr<FUnresolvedNodeItem>> Unresolved;
 	FBlueprintGenerateResult GenResult;
 	const bool bNeedsMultiGraph = NeedsMultiGraphPath(EffectiveJsonText);
-	FGraphNodeSnapshot NodeSnapshot;
-	FPackageDirtySnapshot DirtySnapshot;
+	FBlueprintHelperImportServiceLocalUtils::FGraphNodeSnapshot NodeSnapshot;
+	FBlueprintHelperImportServiceLocalUtils::FPackageDirtySnapshot DirtySnapshot;
 
 	// 3. 事务包裹（整体 Undo 支持）
 	FScopedTransaction Transaction(FText::FromString(TEXT("BlueprintHelper Import JSON")));
@@ -218,9 +220,9 @@ FBlueprintHelperImportResult FBlueprintHelperImportService::Import(const FBluepr
 			Transaction.Cancel();
 			return Result;
 		}
-		TArray<UEdGraph*> SnapshotGraphs = CollectBlueprintGraphs(Blueprint);
-		NodeSnapshot = CaptureGraphNodeSnapshot(SnapshotGraphs);
-		DirtySnapshot = CapturePackageDirtySnapshot(SnapshotGraphs);
+		TArray<UEdGraph*> SnapshotGraphs = FBlueprintHelperImportServiceLocalUtils::CollectBlueprintGraphs(Blueprint);
+		NodeSnapshot = FBlueprintHelperImportServiceLocalUtils::CaptureGraphNodeSnapshot(SnapshotGraphs);
+		DirtySnapshot = FBlueprintHelperImportServiceLocalUtils::CapturePackageDirtySnapshot(SnapshotGraphs);
 		GenResult = TextToBlueprintGenerator::GenerateMultiGraphFromJson(Blueprint, EffectiveJsonText, Unresolved);
 	}
 	else
@@ -233,8 +235,8 @@ FBlueprintHelperImportResult FBlueprintHelperImportService::Import(const FBluepr
 		}
 		TArray<UEdGraph*> SnapshotGraphs;
 		SnapshotGraphs.Add(Graph);
-		NodeSnapshot = CaptureGraphNodeSnapshot(SnapshotGraphs);
-		DirtySnapshot = CapturePackageDirtySnapshot(SnapshotGraphs);
+		NodeSnapshot = FBlueprintHelperImportServiceLocalUtils::CaptureGraphNodeSnapshot(SnapshotGraphs);
+		DirtySnapshot = FBlueprintHelperImportServiceLocalUtils::CapturePackageDirtySnapshot(SnapshotGraphs);
 		GenResult = TextToBlueprintGenerator::GenerateBlueprintFromJson(Graph, EffectiveJsonText, Unresolved);
 	}
 
@@ -243,9 +245,9 @@ FBlueprintHelperImportResult FBlueprintHelperImportService::Import(const FBluepr
 	Result.GeneratedNodeCount = GenResult.GeneratedNodeCount;
 	Result.UnresolvedNodeCount = GenResult.UnresolvedNodeCount;
 	Result.LinksConnected = GenResult.CreatedConnectionCount;
-	AddGeneratorDiagnosticsToResult(GenResult.DefaultValueDiagnostics, Result);
-	AddGeneratorDiagnosticsToResult(GenResult.PinTypeDiagnostics, Result);
-	AddGeneratorDiagnosticsToResult(GenResult.ConnectionDiagnostics, Result);
+	FBlueprintHelperImportServiceLocalUtils::AddGeneratorDiagnosticsToResult(GenResult.DefaultValueDiagnostics, Result);
+	FBlueprintHelperImportServiceLocalUtils::AddGeneratorDiagnosticsToResult(GenResult.PinTypeDiagnostics, Result);
+	FBlueprintHelperImportServiceLocalUtils::AddGeneratorDiagnosticsToResult(GenResult.ConnectionDiagnostics, Result);
 
 	for (const TSharedPtr<FUnresolvedNodeItem>& Item : Unresolved)
 	{
@@ -287,8 +289,8 @@ FBlueprintHelperImportResult FBlueprintHelperImportService::Import(const FBluepr
 
 	if ((Result.Status == TEXT("partial_success") || Result.Status == TEXT("no_op")) && Request.bStrict && !Request.bAllowPartial)
 	{
-		RemoveNodesCreatedAfterSnapshot(NodeSnapshot);
-		RestorePackageDirtySnapshot(DirtySnapshot);
+		FBlueprintHelperImportServiceLocalUtils::RemoveNodesCreatedAfterSnapshot(NodeSnapshot);
+		FBlueprintHelperImportServiceLocalUtils::RestorePackageDirtySnapshot(DirtySnapshot);
 		Transaction.Cancel();
 		Result.bSuccess = false;
 		Result.bRolledBack = true;

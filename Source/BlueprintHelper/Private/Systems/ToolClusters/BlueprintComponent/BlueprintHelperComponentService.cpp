@@ -20,8 +20,9 @@
 // ToJson
 // ═══════════════════════════════════════════════════════════
 
-namespace
+class FBlueprintHelperComponentServiceLocalUtils
 {
+public:
 	struct FBlueprintHelperComponentOperationState
 	{
 		bool bOk = false;
@@ -61,7 +62,7 @@ namespace
 		FString RollbackResult = TEXT("not_needed");
 	};
 
-	EBlueprintHelperToolStage ComponentErrorStageFromString(const FString& Stage)
+	static EBlueprintHelperToolStage ComponentErrorStageFromString(const FString& Stage)
 	{
 		if (Stage == TEXT("resolve_blueprint") ||
 			Stage == TEXT("resolve_component") ||
@@ -79,14 +80,14 @@ namespace
 		return EBlueprintHelperToolStage::Execute;
 	}
 
-	EBlueprintHelperRollbackResult ComponentRollbackFromString(const FString& RollbackResult)
+	static EBlueprintHelperRollbackResult ComponentRollbackFromString(const FString& RollbackResult)
 	{
 		return RollbackResult == TEXT("rolled_back")
 			? EBlueprintHelperRollbackResult::RolledBack
 			: EBlueprintHelperRollbackResult::NotNeeded;
 	}
 
-	FBlueprintHelperToolError MakeComponentError(const FBlueprintHelperComponentOperationState& State)
+	static FBlueprintHelperToolError MakeComponentError(const FBlueprintHelperComponentOperationState& State)
 	{
 		FBlueprintHelperToolError Error;
 		Error.Code = State.ErrorCode;
@@ -97,7 +98,7 @@ namespace
 		return Error;
 	}
 
-	TSharedRef<FJsonObject> MakeComponentTargetJson(const FBlueprintHelperComponentOperationState& State)
+	static TSharedRef<FJsonObject> MakeComponentTargetJson(const FBlueprintHelperComponentOperationState& State)
 	{
 		TSharedRef<FJsonObject> Target = MakeShared<FJsonObject>();
 		Target->SetStringField(TEXT("asset_path"), State.AssetPath);
@@ -108,7 +109,7 @@ namespace
 		return Target;
 	}
 
-	TSharedRef<FJsonObject> MakeComponentDryRunJson(const FBlueprintHelperComponentOperationState& State)
+	static TSharedRef<FJsonObject> MakeComponentDryRunJson(const FBlueprintHelperComponentOperationState& State)
 	{
 		TSharedRef<FJsonObject> DryRun = MakeShared<FJsonObject>();
 		DryRun->SetStringField(TEXT("preview_kind"), TEXT("service"));
@@ -122,7 +123,7 @@ namespace
 		return DryRun;
 	}
 
-	TSharedRef<FJsonObject> MakeComponentDataJson(const FBlueprintHelperComponentOperationState& State)
+	static TSharedRef<FJsonObject> MakeComponentDataJson(const FBlueprintHelperComponentOperationState& State)
 	{
 		TSharedRef<FJsonObject> Data = MakeShared<FJsonObject>();
 		Data->SetStringField(TEXT("schema"), TEXT("BlueprintComponent.v1"));
@@ -164,7 +165,7 @@ namespace
 		return Data;
 	}
 
-	FBlueprintHelperValidationSummary MakeComponentValidation(const FBlueprintHelperComponentOperationState& State)
+	static FBlueprintHelperValidationSummary MakeComponentValidation(const FBlueprintHelperComponentOperationState& State)
 	{
 		FBlueprintHelperValidationSummary Validation;
 		Validation.bShouldCompile = State.bShouldCompile;
@@ -172,7 +173,7 @@ namespace
 		return Validation;
 	}
 
-	FBlueprintHelperToolResultBase BuildComponentToolResult(const FBlueprintHelperComponentOperationState& State)
+	static FBlueprintHelperToolResultBase BuildComponentToolResult(const FBlueprintHelperComponentOperationState& State)
 	{
 		const FString TraceId = FBlueprintHelperToolResultBuilder::GenerateTraceId();
 
@@ -195,7 +196,8 @@ namespace
 		}
 		return Result;
 	}
-}
+
+};
 
 // ═══════════════════════════════════════════════════════════
 // 服务实现
@@ -303,7 +305,7 @@ UClass* FBlueprintHelperComponentService::ResolveComponentClass(const FString& C
 FBlueprintHelperToolResultBase FBlueprintHelperComponentService::ReadComponents(
 	const FBlueprintHelperReadComponentsRequest& Request) const
 {
-	FBlueprintHelperComponentOperationState Result;
+	FBlueprintHelperComponentServiceLocalUtils::FBlueprintHelperComponentOperationState Result;
 	Result.Operation = TEXT("read_components");
 	Result.Status = TEXT("completed");
 	Result.AssetPath = Request.AssetPath;
@@ -318,7 +320,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::ReadComponents(
 		Result.ErrorCode = TEXT("component_not_found");
 		Result.ErrorStage = TEXT("resolve_blueprint");
 		Result.ErrorMessage = Error.IsEmpty() ? TEXT("蓝图没有 SimpleConstructionScript。") : Error;
-		return BuildComponentToolResult(Result);
+		return FBlueprintHelperComponentServiceLocalUtils::BuildComponentToolResult(Result);
 	}
 
 	TSet<FString> RootNames;
@@ -348,7 +350,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::ReadComponents(
 	Result.ComponentCount = Result.Components.Num();
 	Result.RootComponentCount = RootNames.Num();
 	Result.bOk = true;
-	return BuildComponentToolResult(Result);
+	return FBlueprintHelperComponentServiceLocalUtils::BuildComponentToolResult(Result);
 }
 
 // ─── AddComponent ───
@@ -356,7 +358,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::ReadComponents(
 FBlueprintHelperToolResultBase FBlueprintHelperComponentService::AddComponent(
 	const FBlueprintHelperAddComponentRequest& Request) const
 {
-	FBlueprintHelperComponentOperationState Result;
+	FBlueprintHelperComponentServiceLocalUtils::FBlueprintHelperComponentOperationState Result;
 	Result.Operation = TEXT("add_component");
 	Result.AssetPath = Request.AssetPath;
 	Result.TargetType = TEXT("component");
@@ -377,7 +379,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::AddComponent(
 		Result.ErrorCode = TEXT("component_not_found");
 		Result.ErrorStage = TEXT("resolve_blueprint");
 		Result.ErrorMessage = Error.IsEmpty() ? TEXT("蓝图没有 SimpleConstructionScript。") : Error;
-		return BuildComponentToolResult(Result);
+		return FBlueprintHelperComponentServiceLocalUtils::BuildComponentToolResult(Result);
 	}
 
 	FString ClassError;
@@ -389,7 +391,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::AddComponent(
 		Result.ErrorCode = TEXT("unsupported_component_class");
 		Result.ErrorStage = TEXT("resolve_component_class");
 		Result.ErrorMessage = ClassError;
-		return BuildComponentToolResult(Result);
+		return FBlueprintHelperComponentServiceLocalUtils::BuildComponentToolResult(Result);
 	}
 
 	// 名称冲突检查
@@ -412,7 +414,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::AddComponent(
 			Result.ErrorCode = TEXT("component_type_mismatch");
 			Result.ErrorStage = TEXT("name_collision");
 			Result.ErrorMessage = FString::Printf(TEXT("组件 %s 已存在，但类型不是 %s。"), *Request.ComponentName, *Request.ComponentClass);
-			return BuildComponentToolResult(Result);
+			return FBlueprintHelperComponentServiceLocalUtils::BuildComponentToolResult(Result);
 		}
 
 		if (Request.NameCollisionPolicy == EBlueprintHelperComponentNameCollisionPolicy::FailIfExists)
@@ -422,7 +424,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::AddComponent(
 			Result.ErrorCode = TEXT("component_already_exists");
 			Result.ErrorStage = TEXT("name_collision");
 			Result.ErrorMessage = FString::Printf(TEXT("组件已存在: %s"), *Request.ComponentName);
-			return BuildComponentToolResult(Result);
+			return FBlueprintHelperComponentServiceLocalUtils::BuildComponentToolResult(Result);
 		}
 
 		Result.bOk = true;
@@ -434,7 +436,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::AddComponent(
 		{
 			Result.WouldNoOpCount = 1;
 		}
-		return BuildComponentToolResult(Result);
+		return FBlueprintHelperComponentServiceLocalUtils::BuildComponentToolResult(Result);
 	}
 
 	// 父组件查找
@@ -449,7 +451,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::AddComponent(
 			Result.ErrorCode = TEXT("parent_component_not_found");
 			Result.ErrorStage = TEXT("resolve_parent_component");
 			Result.ErrorMessage = FString::Printf(TEXT("未找到父组件: %s"), *Request.ParentComponent);
-			return BuildComponentToolResult(Result);
+			return FBlueprintHelperComponentServiceLocalUtils::BuildComponentToolResult(Result);
 		}
 	}
 
@@ -465,7 +467,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::AddComponent(
 		Result.bShouldSave = false;
 		Result.WouldChangeCount = 1;
 		Result.WouldCreateCount = 1;
-		return BuildComponentToolResult(Result);
+		return FBlueprintHelperComponentServiceLocalUtils::BuildComponentToolResult(Result);
 	}
 
 	// 创建组件
@@ -482,7 +484,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::AddComponent(
 		Result.ErrorStage = TEXT("create_scs_node");
 		Result.ErrorMessage = TEXT("创建 SCS 组件节点失败。");
 		Result.RollbackResult = TEXT("rolled_back");
-		return BuildComponentToolResult(Result);
+		return FBlueprintHelperComponentServiceLocalUtils::BuildComponentToolResult(Result);
 	}
 
 	Mutation.Modify(NewNode);
@@ -517,7 +519,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::AddComponent(
 	Result.Component.bCreated = true;
 	Result.bShouldCompile = true;
 	Result.bShouldSave = true;
-	return BuildComponentToolResult(Result);
+	return FBlueprintHelperComponentServiceLocalUtils::BuildComponentToolResult(Result);
 }
 
 // ─── ResolvePropertyPath ───
@@ -691,7 +693,7 @@ bool FBlueprintHelperComponentService::ValidatePropertySetting(
 FBlueprintHelperToolResultBase FBlueprintHelperComponentService::SetComponentProperties(
 	const FBlueprintHelperSetComponentPropertiesRequest& Request) const
 {
-	FBlueprintHelperComponentOperationState Result;
+	FBlueprintHelperComponentServiceLocalUtils::FBlueprintHelperComponentOperationState Result;
 	Result.Operation = TEXT("set_component_properties");
 	Result.AssetPath = Request.AssetPath;
 	Result.TargetType = TEXT("component");
@@ -709,7 +711,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::SetComponentPro
 		Result.ErrorCode = TEXT("component_not_found");
 		Result.ErrorStage = TEXT("resolve_blueprint");
 		Result.ErrorMessage = Error;
-		return BuildComponentToolResult(Result);
+		return FBlueprintHelperComponentServiceLocalUtils::BuildComponentToolResult(Result);
 	}
 
 	USCS_Node* Node = FindComponentNodeByName(Blueprint, Request.ComponentName);
@@ -720,7 +722,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::SetComponentPro
 		Result.ErrorCode = TEXT("component_not_found");
 		Result.ErrorStage = TEXT("resolve_component");
 		Result.ErrorMessage = FString::Printf(TEXT("未找到组件: %s"), *Request.ComponentName);
-		return BuildComponentToolResult(Result);
+		return FBlueprintHelperComponentServiceLocalUtils::BuildComponentToolResult(Result);
 	}
 
 	Result.Component.ComponentName = Request.ComponentName;
@@ -817,7 +819,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::SetComponentPro
 			Result.PropertyResult.AppliedCount = 0;
 			Result.PropertyResult.ChangedCount = 0;
 			Result.PropertyResult.NoOpCount = 0;
-			return BuildComponentToolResult(Result);
+			return FBlueprintHelperComponentServiceLocalUtils::BuildComponentToolResult(Result);
 		}
 
 		Result.bOk = true;
@@ -825,7 +827,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::SetComponentPro
 		Result.bModified = false;
 		Result.bShouldCompile = false;
 		Result.bShouldSave = false;
-		return BuildComponentToolResult(Result);
+		return FBlueprintHelperComponentServiceLocalUtils::BuildComponentToolResult(Result);
 	}
 
 	// Preflight: 检查所有属性设置
@@ -849,7 +851,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::SetComponentPro
 		Result.PropertyResult.AppliedCount = 0;
 		Result.PropertyResult.ChangedCount = 0;
 		Result.PropertyResult.NoOpCount = 0;
-		return BuildComponentToolResult(Result);
+		return FBlueprintHelperComponentServiceLocalUtils::BuildComponentToolResult(Result);
 	}
 
 	// 应用属性
@@ -876,7 +878,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::SetComponentPro
 			Result.ErrorStage = TEXT("apply");
 			Result.ErrorMessage = ErrorMessage;
 			Result.RollbackResult = TEXT("rolled_back");
-			return BuildComponentToolResult(Result);
+			return FBlueprintHelperComponentServiceLocalUtils::BuildComponentToolResult(Result);
 		}
 
 		FString Before;
@@ -895,7 +897,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::SetComponentPro
 			Result.ErrorStage = TEXT("apply");
 			Result.ErrorMessage = FString::Printf(TEXT("属性写入失败: %s"), *Setting.PropertyPath);
 			Result.RollbackResult = TEXT("rolled_back");
-			return BuildComponentToolResult(Result);
+			return FBlueprintHelperComponentServiceLocalUtils::BuildComponentToolResult(Result);
 		}
 
 		FString After;
@@ -914,7 +916,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::SetComponentPro
 		Result.bModified = false;
 		Result.bShouldCompile = false;
 		Result.bShouldSave = false;
-		return BuildComponentToolResult(Result);
+		return FBlueprintHelperComponentServiceLocalUtils::BuildComponentToolResult(Result);
 	}
 
 	Node->ComponentTemplate->PostEditChange();
@@ -926,7 +928,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::SetComponentPro
 	Result.bModified = true;
 	Result.bShouldCompile = true;
 	Result.bShouldSave = true;
-	return BuildComponentToolResult(Result);
+	return FBlueprintHelperComponentServiceLocalUtils::BuildComponentToolResult(Result);
 }
 
 // ─── SetComponentProperty ───
@@ -962,7 +964,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::SetComponentPro
 FBlueprintHelperToolResultBase FBlueprintHelperComponentService::RemoveComponent(
 	const FBlueprintHelperRemoveComponentRequest& Request) const
 {
-	FBlueprintHelperComponentOperationState Result;
+	FBlueprintHelperComponentServiceLocalUtils::FBlueprintHelperComponentOperationState Result;
 	Result.Operation = TEXT("remove_component");
 	Result.AssetPath = Request.AssetPath;
 	Result.TargetType = TEXT("component");
@@ -978,7 +980,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::RemoveComponent
 		Result.ErrorCode = TEXT("component_not_found");
 		Result.ErrorStage = TEXT("resolve_blueprint");
 		Result.ErrorMessage = Error;
-		return BuildComponentToolResult(Result);
+		return FBlueprintHelperComponentServiceLocalUtils::BuildComponentToolResult(Result);
 	}
 
 	USCS_Node* Node = FindComponentNodeByName(Blueprint, Request.ComponentName);
@@ -989,7 +991,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::RemoveComponent
 		Result.ErrorCode = TEXT("component_not_found");
 		Result.ErrorStage = TEXT("resolve_component");
 		Result.ErrorMessage = FString::Printf(TEXT("未找到组件: %s"), *Request.ComponentName);
-		return BuildComponentToolResult(Result);
+		return FBlueprintHelperComponentServiceLocalUtils::BuildComponentToolResult(Result);
 	}
 
 	if (Request.ComponentName == TEXT("DefaultSceneRoot") || Node->GetChildNodes().Num() > 0)
@@ -999,7 +1001,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::RemoveComponent
 		Result.ErrorCode = TEXT("remove_component_blocked");
 		Result.ErrorStage = TEXT("preflight");
 		Result.ErrorMessage = TEXT("第一版不删除根组件或带子组件的组件。");
-		return BuildComponentToolResult(Result);
+		return FBlueprintHelperComponentServiceLocalUtils::BuildComponentToolResult(Result);
 	}
 
 	Result.Component.ComponentName = Request.ComponentName;
@@ -1015,7 +1017,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::RemoveComponent
 		Result.bShouldSave = false;
 		Result.WouldChangeCount = 1;
 		Result.WouldRemoveCount = 1;
-		return BuildComponentToolResult(Result);
+		return FBlueprintHelperComponentServiceLocalUtils::BuildComponentToolResult(Result);
 	}
 
 	FBlueprintHelperScopedAssetMutation Mutation(
@@ -1035,7 +1037,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::RemoveComponent
 		Result.ErrorStage = TEXT("remove_scs_node");
 		Result.ErrorMessage = TEXT("删除 SCS 组件节点失败。");
 		Result.RollbackResult = TEXT("rolled_back");
-		return BuildComponentToolResult(Result);
+		return FBlueprintHelperComponentServiceLocalUtils::BuildComponentToolResult(Result);
 	}
 
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
@@ -1047,5 +1049,5 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::RemoveComponent
 	Result.Component.bRemoved = true;
 	Result.bShouldCompile = true;
 	Result.bShouldSave = true;
-	return BuildComponentToolResult(Result);
+	return FBlueprintHelperComponentServiceLocalUtils::BuildComponentToolResult(Result);
 }

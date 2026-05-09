@@ -22,9 +22,10 @@
 
 // ─── 禁止创建的全局事件名称集合 ───
 
-namespace
+class FBlueprintHelperAppendBlueprintGraphServiceLocalUtils
 {
-	const TSet<FString>& ForbiddenEventNames()
+public:
+	static const TSet<FString>& ForbiddenEventNames()
 	{
 		static const TSet<FString> Names = {
 			TEXT("BeginPlay"),
@@ -44,7 +45,7 @@ namespace
 		return Names;
 	}
 
-	FString BuildAppendReviewRollbackDataJson(
+	static FString BuildAppendReviewRollbackDataJson(
 		const TArray<UEdGraphNode*>& CreatedNodes,
 		const TArray<FString>& BlockRefs)
 	{
@@ -77,7 +78,7 @@ namespace
 		return JsonText;
 	}
 
-	bool LooksLikeGlobalEvent(const FString& Name)
+	static bool LooksLikeGlobalEvent(const FString& Name)
 	{
 		for (const FString& Forbidden : ForbiddenEventNames())
 		{
@@ -89,7 +90,7 @@ namespace
 		return false;
 	}
 
-	UK2Node_CustomEvent* FindExistingCustomEventNode(UEdGraph* Graph, const FString& EventName)
+	static UK2Node_CustomEvent* FindExistingCustomEventNode(UEdGraph* Graph, const FString& EventName)
 	{
 		if (!Graph || EventName.IsEmpty())
 		{
@@ -107,7 +108,7 @@ namespace
 		return nullptr;
 	}
 
-	TSet<UEdGraphNode*> CaptureGraphNodes(UEdGraph* Graph)
+	static TSet<UEdGraphNode*> CaptureGraphNodes(UEdGraph* Graph)
 	{
 		TSet<UEdGraphNode*> Nodes;
 		if (!Graph)
@@ -124,7 +125,8 @@ namespace
 		}
 		return Nodes;
 	}
-}
+
+};
 
 // ─── 构造 ───
 
@@ -373,7 +375,7 @@ bool FBlueprintHelperAppendBlueprintGraphService::PreflightNodePayload(
 				NodeObject->TryGetStringField(TEXT("event_name"), EventName);
 			}
 
-			if (LooksLikeGlobalEvent(EventName))
+			if (FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::LooksLikeGlobalEvent(EventName))
 			{
 				OutResult.bPassed = false;
 				OutResult.BlockedBy.Add(TEXT("global_event_creation_disallowed"));
@@ -388,7 +390,7 @@ bool FBlueprintHelperAppendBlueprintGraphService::PreflightNodePayload(
 			FString Name;
 			NodeObject->TryGetStringField(TEXT("name"), Name);
 
-			if (LooksLikeGlobalEvent(Name))
+			if (FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::LooksLikeGlobalEvent(Name))
 			{
 				OutResult.bPassed = false;
 				OutResult.BlockedBy.Add(TEXT("global_event_creation_disallowed"));
@@ -407,7 +409,7 @@ bool FBlueprintHelperAppendBlueprintGraphService::PreflightNodePayload(
 			}
 			SeenNames.Add(Name);
 
-			if (Request.bReuseExistingEntries && !Request.bDryRun && !FindExistingCustomEventNode(Graph, Name))
+			if (Request.bReuseExistingEntries && !Request.bDryRun && !FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::FindExistingCustomEventNode(Graph, Name))
 			{
 				OutResult.bPassed = false;
 				OutResult.BlockedBy.Add(TEXT("custom_event_entry_not_found"));
@@ -630,7 +632,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 		Error.RollbackResult = EBlueprintHelperRollbackResult::NotNeeded;
 		return FBlueprintHelperToolResultBuilder::Failure(TEXT("append_blueprint_graph"), TraceId, Error);
 	}
-	const TSet<UEdGraphNode*> NodeSnapshot = CaptureGraphNodes(TargetGraph);
+	const TSet<UEdGraphNode*> NodeSnapshot = FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::CaptureGraphNodes(TargetGraph);
 
 	// 5. 通过 AgentImportService 执行节点/连线创建
 	const FBlueprintHelperAgentImportResult ImportResult = AgentImportService.Import(ImportReq);
@@ -680,7 +682,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 	{
 		for (const FString& EntryName : EntryNames)
 		{
-			if (UK2Node_CustomEvent* ExistingEntry = FindExistingCustomEventNode(TargetGraph, EntryName))
+			if (UK2Node_CustomEvent* ExistingEntry = FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::FindExistingCustomEventNode(TargetGraph, EntryName))
 			{
 				CreatedNodes.AddUnique(ExistingEntry);
 			}
@@ -727,7 +729,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 	JournalRecord.GraphId = Request.GraphName;
 	JournalRecord.GraphName = Request.GraphName;
 	JournalRecord.BlockIds = BlockRefs;
-	JournalRecord.RollbackData = BuildAppendReviewRollbackDataJson(CreatedNodes, BlockRefs);
+	JournalRecord.RollbackData = FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::BuildAppendReviewRollbackDataJson(CreatedNodes, BlockRefs);
 	for (UEdGraphNode* Node : CreatedNodes)
 	{
 		if (Node)
@@ -847,7 +849,7 @@ bool FBlueprintHelperAppendBlueprintGraphService::IsForbiddenEventKind(
 		return false;
 	}
 
-	return LooksLikeGlobalEvent(EventName);
+	return FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::LooksLikeGlobalEvent(EventName);
 }
 
 TArray<FString> FBlueprintHelperAppendBlueprintGraphService::ExtractCustomEventNames(

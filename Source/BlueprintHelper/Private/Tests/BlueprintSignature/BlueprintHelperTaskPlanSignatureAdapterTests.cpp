@@ -6,9 +6,10 @@
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.h"
 #include "Runtime/TaskRuntime/TaskPlanAdapters/BlueprintSignature/BlueprintHelperSignatureTaskPlanAdapter.h"
 
-namespace
+class FBlueprintHelperTaskPlanSignatureAdapterTestsLocalUtils
 {
-	TSharedPtr<FJsonObject> MakeSignatureStep()
+public:
+	static TSharedPtr<FJsonObject> MakeSignatureStep()
 	{
 		TSharedPtr<FJsonObject> Step = MakeShared<FJsonObject>();
 		Step->SetStringField(TEXT("step_id"), TEXT("step_signature"));
@@ -53,7 +54,7 @@ namespace
 		return Step;
 	}
 
-	TSharedPtr<FJsonObject> MakeCustomEventSignatureStep()
+	static TSharedPtr<FJsonObject> MakeCustomEventSignatureStep()
 	{
 		TSharedPtr<FJsonObject> Step = MakeShared<FJsonObject>();
 		Step->SetStringField(TEXT("step_id"), TEXT("step_signature"));
@@ -91,7 +92,7 @@ namespace
 		return Step;
 	}
 
-	TSharedPtr<FJsonObject> MakeRemoveCustomEventSignatureStep()
+	static TSharedPtr<FJsonObject> MakeRemoveCustomEventSignatureStep()
 	{
 		TSharedPtr<FJsonObject> Step = MakeShared<FJsonObject>();
 		Step->SetStringField(TEXT("step_id"), TEXT("step_signature_remove"));
@@ -118,7 +119,7 @@ namespace
 		return Step;
 	}
 
-	TSharedPtr<FJsonObject> MakeRemoveSignatureStep(const FString& SignatureKind, const FString& SignatureName, const FString& Strategy)
+	static TSharedPtr<FJsonObject> MakeRemoveSignatureStep(const FString& SignatureKind, const FString& SignatureName, const FString& Strategy)
 	{
 		TSharedPtr<FJsonObject> Step = MakeShared<FJsonObject>();
 		Step->SetStringField(TEXT("step_id"), TEXT("step_signature_remove_policy"));
@@ -146,7 +147,7 @@ namespace
 		return Step;
 	}
 
-	TSharedPtr<FJsonObject> MakeEventDispatcherSignatureStep()
+	static TSharedPtr<FJsonObject> MakeEventDispatcherSignatureStep()
 	{
 		TSharedPtr<FJsonObject> Step = MakeShared<FJsonObject>();
 		Step->SetStringField(TEXT("step_id"), TEXT("step_signature_dispatcher"));
@@ -181,7 +182,7 @@ namespace
 		return Step;
 	}
 
-	TSharedPtr<FJsonObject> MakeOverrideEventSignatureStep()
+	static TSharedPtr<FJsonObject> MakeOverrideEventSignatureStep()
 	{
 		TSharedPtr<FJsonObject> Step = MakeShared<FJsonObject>();
 		Step->SetStringField(TEXT("step_id"), TEXT("step_signature_override"));
@@ -207,7 +208,8 @@ namespace
 
 		return Step;
 	}
-}
+
+};
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperTaskPlanSignatureAdapterEnsureFunctionTest,
@@ -216,7 +218,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperTaskPlanSignatureAdapterEnsureFunctionTest::RunTest(const FString& Parameters)
 {
-	const TSharedPtr<FJsonObject> Step = MakeSignatureStep();
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanSignatureAdapterTestsLocalUtils::MakeSignatureStep();
 
 	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
 	FBlueprintHelperToolError Error;
@@ -262,7 +264,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperTaskPlanSignatureAdapterEnsureCustomEventTest::RunTest(const FString& Parameters)
 {
-	const TSharedPtr<FJsonObject> Step = MakeCustomEventSignatureStep();
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanSignatureAdapterTestsLocalUtils::MakeCustomEventSignatureStep();
 
 	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
 	FBlueprintHelperToolError Error;
@@ -308,7 +310,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperTaskPlanSignatureAdapterRemoveSignatureTest::RunTest(const FString& Parameters)
 {
-	const TSharedPtr<FJsonObject> Step = MakeRemoveCustomEventSignatureStep();
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanSignatureAdapterTestsLocalUtils::MakeRemoveCustomEventSignatureStep();
 
 	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
 	FBlueprintHelperToolError Error;
@@ -350,7 +352,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperTaskPlanSignatureAdapterRemoveDispatcherSignatureTest::RunTest(const FString& Parameters)
 {
-	const TSharedPtr<FJsonObject> Step = MakeRemoveSignatureStep(
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanSignatureAdapterTestsLocalUtils::MakeRemoveSignatureStep(
 		TEXT("event_dispatcher"),
 		TEXT("OnDoorOpened"),
 		TEXT("event_dispatcher_signature"));
@@ -384,7 +386,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperTaskPlanSignatureAdapterRejectsRemoveWithoutReferenceContextTest::RunTest(const FString& Parameters)
 {
-	const TSharedPtr<FJsonObject> Step = MakeRemoveSignatureStep(
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanSignatureAdapterTestsLocalUtils::MakeRemoveSignatureStep(
 		TEXT("event_dispatcher"),
 		TEXT("OnDoorOpened"),
 		TEXT("event_dispatcher_signature"));
@@ -427,7 +429,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperTaskPlanSignatureAdapterRemoveOverrideSignatureTest::RunTest(const FString& Parameters)
 {
-	const TSharedPtr<FJsonObject> Step = MakeRemoveSignatureStep(
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanSignatureAdapterTestsLocalUtils::MakeRemoveSignatureStep(
 		TEXT("native_event"),
 		TEXT("ReceiveBeginPlay"),
 		TEXT("override_event_signature"));
@@ -457,7 +459,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperTaskPlanSignatureAdapterEnsureEventDispatcherTest::RunTest(const FString& Parameters)
 {
-	const TSharedPtr<FJsonObject> Step = MakeEventDispatcherSignatureStep();
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanSignatureAdapterTestsLocalUtils::MakeEventDispatcherSignatureStep();
 
 	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
 	FBlueprintHelperToolError Error;
@@ -490,7 +492,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperTaskPlanSignatureAdapterEnsureOverrideEventBlockedPathTest::RunTest(const FString& Parameters)
 {
-	const TSharedPtr<FJsonObject> Step = MakeOverrideEventSignatureStep();
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanSignatureAdapterTestsLocalUtils::MakeOverrideEventSignatureStep();
 
 	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
 	FBlueprintHelperToolError Error;
@@ -527,7 +529,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperTaskPlanSignatureAdapterRejectsOperationFieldTest::RunTest(const FString& Parameters)
 {
-	const TSharedPtr<FJsonObject> Step = MakeSignatureStep();
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanSignatureAdapterTestsLocalUtils::MakeSignatureStep();
 	Step->SetStringField(TEXT("operation"), TEXT("ensure_function"));
 
 	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;

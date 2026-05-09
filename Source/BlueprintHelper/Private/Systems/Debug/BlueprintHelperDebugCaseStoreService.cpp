@@ -100,7 +100,7 @@ FString FBlueprintHelperDebugCaseStoreService::BuildMarkdownSummary(
 	};
 	auto Safe = [](const FString& Value)
 	{
-		return BlueprintHelperDebugJson::RedactString(Value);
+		return FBlueprintHelperDebugJson::RedactString(Value);
 	};
 	auto AppendValue = [&AppendLine, &Safe](const TCHAR* Label, const FString& Value)
 	{
@@ -257,7 +257,7 @@ bool FBlueprintHelperDebugCaseStoreService::WriteJsonArtifact(
 		return false;
 	}
 
-	TSharedRef<FJsonObject> Sanitized = BlueprintHelperDebugJson::SanitizeObject(Json);
+	TSharedRef<FJsonObject> Sanitized = FBlueprintHelperDebugJson::SanitizeObject(Json);
 	FString JsonText;
 	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonText);
 	if (!FJsonSerializer::Serialize(Sanitized, Writer))

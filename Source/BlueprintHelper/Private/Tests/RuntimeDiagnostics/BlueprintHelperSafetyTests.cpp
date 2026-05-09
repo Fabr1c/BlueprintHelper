@@ -59,8 +59,9 @@
 #include "UObject/Package.h"
 #include "WidgetBlueprint.h"
 
-namespace
+class FBlueprintHelperSafetyTestsLocalUtils
 {
+public:
 class FBlueprintHelperScopedEnvVar
 {
 public:
@@ -81,19 +82,19 @@ private:
 	FString PreviousValue;
 };
 
-FString MakeSafetyObjectName(const FString& Prefix)
+static FString MakeSafetyObjectName(const FString& Prefix)
 {
 	return FString::Printf(TEXT("%s_%s"), *Prefix, *FGuid::NewGuid().ToString(EGuidFormats::Digits));
 }
 
-UPackage* MakeSafetyPackage(const FString& Prefix)
+static UPackage* MakeSafetyPackage(const FString& Prefix)
 {
 	UPackage* Package = CreatePackage(*FString::Printf(TEXT("/Game/BlueprintHelperSafety/%s"), *MakeSafetyObjectName(Prefix)));
 	Package->SetDirtyFlag(false);
 	return Package;
 }
 
-bool BuildOrderedHalfWriteFields(TMap<FString, FString>& OutFields)
+static bool BuildOrderedHalfWriteFields(TMap<FString, FString>& OutFields)
 {
 	const TArray<FString> MissingFieldCandidates = {
 		TEXT("MissingField"),
@@ -135,7 +136,7 @@ bool BuildOrderedHalfWriteFields(TMap<FString, FString>& OutFields)
 	return false;
 }
 
-UDataTable* MakeVectorDataTable(UPackage* Package, const FName TableName, const FName RowName, const FVector& InitialValue)
+static UDataTable* MakeVectorDataTable(UPackage* Package, const FName TableName, const FName RowName, const FVector& InitialValue)
 {
 	UDataTable* DataTable = NewObject<UDataTable>(Package, TableName, RF_Public | RF_Standalone | RF_Transactional);
 	TMap<FName, const uint8*> RawRows;
@@ -161,7 +162,7 @@ struct FWidgetMoveFixture
 	int32 OldIndex = INDEX_NONE;
 };
 
-FWidgetMoveFixture MakeWidgetMoveFixture()
+static FWidgetMoveFixture MakeWidgetMoveFixture()
 {
 	FWidgetMoveFixture Fixture;
 	Fixture.Package = MakeSafetyPackage(TEXT("WidgetMove"));
@@ -208,7 +209,7 @@ FWidgetMoveFixture MakeWidgetMoveFixture()
 	return Fixture;
 }
 
-bool AnchorsEqual(const FAnchors& A, const FAnchors& B)
+static bool AnchorsEqual(const FAnchors& A, const FAnchors& B)
 {
 	return FMath::IsNearlyEqual(A.Minimum.X, B.Minimum.X)
 		&& FMath::IsNearlyEqual(A.Minimum.Y, B.Minimum.Y)
@@ -216,7 +217,7 @@ bool AnchorsEqual(const FAnchors& A, const FAnchors& B)
 		&& FMath::IsNearlyEqual(A.Maximum.Y, B.Maximum.Y);
 }
 
-UBlueprint* MakeSafetyActorBlueprint(const FString& Prefix)
+static UBlueprint* MakeSafetyActorBlueprint(const FString& Prefix)
 {
 	UPackage* Package = MakeSafetyPackage(Prefix);
 	UBlueprint* Blueprint = FKismetEditorUtilities::CreateBlueprint(
@@ -231,7 +232,7 @@ UBlueprint* MakeSafetyActorBlueprint(const FString& Prefix)
 	return Blueprint;
 }
 
-FBPVariableDescription* FindSafetyMemberVariable(UBlueprint* Blueprint, const FString& VariableName)
+static FBPVariableDescription* FindSafetyMemberVariable(UBlueprint* Blueprint, const FString& VariableName)
 {
 	if (!Blueprint)
 	{
@@ -249,18 +250,18 @@ FBPVariableDescription* FindSafetyMemberVariable(UBlueprint* Blueprint, const FS
 	return nullptr;
 }
 
-UEdGraph* GetSafetyEventGraph(UBlueprint* Blueprint)
+static UEdGraph* GetSafetyEventGraph(UBlueprint* Blueprint)
 {
 	return Blueprint ? TextToBlueprintGenerator::FindGraphByName(Blueprint, TEXT("EventGraph")) : nullptr;
 }
 
-int32 GetSafetyEventGraphNodeCount(UBlueprint* Blueprint)
+static int32 GetSafetyEventGraphNodeCount(UBlueprint* Blueprint)
 {
 	UEdGraph* EventGraph = GetSafetyEventGraph(Blueprint);
 	return EventGraph ? EventGraph->Nodes.Num() : INDEX_NONE;
 }
 
-FBlueprintHelperImportResult RunStrictImport(UBlueprint* Blueprint, const FString& JsonText)
+static FBlueprintHelperImportResult RunStrictImport(UBlueprint* Blueprint, const FString& JsonText)
 {
 	FBlueprintHelperGraphResolver Resolver;
 	FBlueprintHelperValidationService Validator;
@@ -275,7 +276,7 @@ FBlueprintHelperImportResult RunStrictImport(UBlueprint* Blueprint, const FStrin
 	return ImportService.Import(Request);
 }
 
-bool HasDiagnosticCode(const FBlueprintHelperDiagnosticSet& Diagnostics, const FString& Code)
+static bool HasDiagnosticCode(const FBlueprintHelperDiagnosticSet& Diagnostics, const FString& Code)
 {
 	return Diagnostics.Items.ContainsByPredicate([&Code](const FBlueprintHelperDiagnosticItem& Item)
 	{
@@ -283,7 +284,7 @@ bool HasDiagnosticCode(const FBlueprintHelperDiagnosticSet& Diagnostics, const F
 	});
 }
 
-FBlueprintHelperAgentImportResult RunAgentImport(const FString& JsonText)
+static FBlueprintHelperAgentImportResult RunAgentImport(const FString& JsonText)
 {
 	FBlueprintHelperGraphResolver Resolver;
 	FBlueprintHelperCompileService CompileService(Resolver);
@@ -295,14 +296,15 @@ FBlueprintHelperAgentImportResult RunAgentImport(const FString& JsonText)
 	return AgentImportService.Import(Request);
 }
 
-bool HasAgentDiagnosticCode(const FBlueprintHelperAgentImportResult& Result, const FString& Code)
+static bool HasAgentDiagnosticCode(const FBlueprintHelperAgentImportResult& Result, const FString& Code)
 {
 	return Result.Diagnostics.ContainsByPredicate([&Code](const FBlueprintHelperAgentImportDiagnostic& Diagnostic)
 	{
 		return Diagnostic.Code == Code;
 	});
 }
-}
+
+};
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperRuntimeProfileGraphWriteMergeAvailableTest,
@@ -311,7 +313,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperRuntimeProfileGraphWriteMergeAvailableTest::RunTest(const FString& Parameters)
 {
-	FBlueprintHelperScopedEnvVar BridgeToken(TEXT("BLUEPRINTHELPER_BRIDGE_TOKEN"), TEXT("runtime-profile-test-token"));
+	FBlueprintHelperSafetyTestsLocalUtils::FBlueprintHelperScopedEnvVar BridgeToken(TEXT("BLUEPRINTHELPER_BRIDGE_TOKEN"), TEXT("runtime-profile-test-token"));
 	FBlueprintHelperRuntimeProfileService RuntimeProfileService;
 	const FBlueprintHelperRuntimeProfileData Profile = RuntimeProfileService.GetRuntimeProfile();
 
@@ -367,9 +369,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperBridgeExportEffectiveScopeTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeSafetyActorBlueprint(TEXT("BridgeExportEffectiveScope"));
+	UBlueprint* Blueprint = FBlueprintHelperSafetyTestsLocalUtils::MakeSafetyActorBlueprint(TEXT("BridgeExportEffectiveScope"));
 	TestNotNull(TEXT("test Blueprint is created"), Blueprint);
-	TestNotNull(TEXT("test EventGraph exists"), GetSafetyEventGraph(Blueprint));
+	TestNotNull(TEXT("test EventGraph exists"), FBlueprintHelperSafetyTestsLocalUtils::GetSafetyEventGraph(Blueprint));
 
 	FBlueprintHelperGraphResolver Resolver;
 	FBlueprintHelperValidationService Validator;
@@ -479,7 +481,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperBlueprintVariableSetMemberDefaultTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeSafetyActorBlueprint(TEXT("VariableDefault"));
+	UBlueprint* Blueprint = FBlueprintHelperSafetyTestsLocalUtils::MakeSafetyActorBlueprint(TEXT("VariableDefault"));
 	TestNotNull(TEXT("test Blueprint is created"), Blueprint);
 
 	FBlueprintHelperGraphResolver GraphResolver;
@@ -496,7 +498,7 @@ bool FBlueprintHelperBlueprintVariableSetMemberDefaultTest::RunTest(const FStrin
 
 	const FBlueprintHelperToolResultBase AddResult = VariableService.AddMemberVariable(AddPayload);
 	TestTrue(TEXT("member variable is added"), AddResult.bOk);
-	TestNotNull(TEXT("member variable exists after add"), FindSafetyMemberVariable(Blueprint, TEXT("Health")));
+	TestNotNull(TEXT("member variable exists after add"), FBlueprintHelperSafetyTestsLocalUtils::FindSafetyMemberVariable(Blueprint, TEXT("Health")));
 
 	TSharedRef<FJsonObject> SetPayload = MakeShared<FJsonObject>();
 	SetPayload->SetStringField(TEXT("asset_path"), Blueprint->GetPathName());
@@ -511,7 +513,7 @@ bool FBlueprintHelperBlueprintVariableSetMemberDefaultTest::RunTest(const FStrin
 	TestTrue(TEXT("set member default requests compile"), SetResult.Validation.IsSet() && SetResult.Validation->bShouldCompile);
 	TestTrue(TEXT("set member default requests save"), SetResult.Validation.IsSet() && SetResult.Validation->bShouldSave);
 
-	const FBPVariableDescription* HealthVariable = FindSafetyMemberVariable(Blueprint, TEXT("Health"));
+	const FBPVariableDescription* HealthVariable = FBlueprintHelperSafetyTestsLocalUtils::FindSafetyMemberVariable(Blueprint, TEXT("Health"));
 	TestNotNull(TEXT("Health variable still exists"), HealthVariable);
 	if (HealthVariable)
 	{
@@ -532,7 +534,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperBlueprintVariableSetMemberVariablePropertiesTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeSafetyActorBlueprint(TEXT("VariableProperties"));
+	UBlueprint* Blueprint = FBlueprintHelperSafetyTestsLocalUtils::MakeSafetyActorBlueprint(TEXT("VariableProperties"));
 	TestNotNull(TEXT("test Blueprint is created"), Blueprint);
 
 	FBlueprintHelperGraphResolver GraphResolver;
@@ -557,7 +559,7 @@ bool FBlueprintHelperBlueprintVariableSetMemberVariablePropertiesTest::RunTest(c
 	};
 
 	TArray<TSharedPtr<FJsonValue>> Settings;
-	Settings.Add(MakeSetting(TEXT("category"), MakeShared<FJsonValueString>(TEXT("Stats"))));
+	Settings.Add(MakeSetting(TEXT("category"), MakeShared<FJsonValueString>(TEXT("BHStats"))));
 	Settings.Add(MakeSetting(TEXT("tooltip"), MakeShared<FJsonValueString>(TEXT("Current health."))));
 	Settings.Add(MakeSetting(TEXT("instance_editable"), MakeShared<FJsonValueBoolean>(false)));
 	Settings.Add(MakeSetting(TEXT("expose_on_spawn"), MakeShared<FJsonValueBoolean>(true)));
@@ -576,7 +578,7 @@ bool FBlueprintHelperBlueprintVariableSetMemberVariablePropertiesTest::RunTest(c
 	const FName HealthName(TEXT("Health"));
 	TestEqual(TEXT("Health category is written"),
 		FBlueprintEditorUtils::GetBlueprintVariableCategory(Blueprint, HealthName, nullptr).ToString(),
-		FString(TEXT("Stats")));
+		FString(TEXT("BHStats")));
 
 	FString Tooltip;
 	TestTrue(TEXT("Health tooltip metadata exists"),
@@ -588,7 +590,7 @@ bool FBlueprintHelperBlueprintVariableSetMemberVariablePropertiesTest::RunTest(c
 		FBlueprintEditorUtils::GetBlueprintVariableMetaData(Blueprint, HealthName, nullptr, FBlueprintMetadata::MD_ExposeOnSpawn, ExposeOnSpawn));
 	TestEqual(TEXT("Health expose_on_spawn metadata is true"), ExposeOnSpawn, FString(TEXT("true")));
 
-	const FBPVariableDescription* HealthVariable = FindSafetyMemberVariable(Blueprint, TEXT("Health"));
+	const FBPVariableDescription* HealthVariable = FBlueprintHelperSafetyTestsLocalUtils::FindSafetyMemberVariable(Blueprint, TEXT("Health"));
 	TestNotNull(TEXT("Health variable still exists"), HealthVariable);
 	if (HealthVariable)
 	{
@@ -610,7 +612,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperBlueprintVariableSetMemberDefaultsBatchTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeSafetyActorBlueprint(TEXT("VariableDefaultsBatch"));
+	UBlueprint* Blueprint = FBlueprintHelperSafetyTestsLocalUtils::MakeSafetyActorBlueprint(TEXT("VariableDefaultsBatch"));
 	TestNotNull(TEXT("test Blueprint is created"), Blueprint);
 
 	FBlueprintHelperGraphResolver GraphResolver;
@@ -655,8 +657,8 @@ bool FBlueprintHelperBlueprintVariableSetMemberDefaultsBatchTest::RunTest(const 
 	TestTrue(TEXT("set member defaults requests compile"), BatchResult.Validation.IsSet() && BatchResult.Validation->bShouldCompile);
 	TestTrue(TEXT("set member defaults requests save"), BatchResult.Validation.IsSet() && BatchResult.Validation->bShouldSave);
 
-	const FBPVariableDescription* ManaVariable = FindSafetyMemberVariable(Blueprint, TEXT("Mana"));
-	const FBPVariableDescription* EnabledVariable = FindSafetyMemberVariable(Blueprint, TEXT("bEnabled"));
+	const FBPVariableDescription* ManaVariable = FBlueprintHelperSafetyTestsLocalUtils::FindSafetyMemberVariable(Blueprint, TEXT("Mana"));
+	const FBPVariableDescription* EnabledVariable = FBlueprintHelperSafetyTestsLocalUtils::FindSafetyMemberVariable(Blueprint, TEXT("bEnabled"));
 	TestNotNull(TEXT("Mana variable still exists"), ManaVariable);
 	TestNotNull(TEXT("Enabled variable still exists"), EnabledVariable);
 	if (ManaVariable)
@@ -701,7 +703,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperRequestValidatorRequiresTokenForWriteTest::RunTest(const FString& Parameters)
 {
-	FBlueprintHelperScopedEnvVar TokenEnv(TEXT("BLUEPRINTHELPER_BRIDGE_TOKEN"), TEXT("bridge-token"));
+	FBlueprintHelperSafetyTestsLocalUtils::FBlueprintHelperScopedEnvVar TokenEnv(TEXT("BLUEPRINTHELPER_BRIDGE_TOKEN"), TEXT("bridge-token"));
 
 	FBlueprintHelperBridgeRequest WriteRequest;
 	WriteRequest.Command = TEXT("import_json");
@@ -729,8 +731,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperRequestValidatorHighRiskDefaultTest::RunTest(const FString& Parameters)
 {
-	FBlueprintHelperScopedEnvVar TokenEnv(TEXT("BLUEPRINTHELPER_BRIDGE_TOKEN"), TEXT("bridge-token"));
-	FBlueprintHelperScopedEnvVar HighRiskEnv(TEXT("BLUEPRINTHELPER_ENABLE_HIGH_RISK_COMMANDS"), TEXT(""));
+	FBlueprintHelperSafetyTestsLocalUtils::FBlueprintHelperScopedEnvVar TokenEnv(TEXT("BLUEPRINTHELPER_BRIDGE_TOKEN"), TEXT("bridge-token"));
+	FBlueprintHelperSafetyTestsLocalUtils::FBlueprintHelperScopedEnvVar HighRiskEnv(TEXT("BLUEPRINTHELPER_ENABLE_HIGH_RISK_COMMANDS"), TEXT(""));
 
 	FBlueprintHelperBridgeRequest ExecRequest;
 	ExecRequest.Command = TEXT("exec_console_command");
@@ -811,12 +813,12 @@ bool FBlueprintHelperDataTableUpdateNoHalfWriteTest::RunTest(const FString& Para
 	const FName RowName(TEXT("RowA"));
 	const FVector InitialValue(1.0, 2.0, 3.0);
 
-	UPackage* Package = MakeSafetyPackage(TEXT("DataTableNoHalfWrite"));
-	UDataTable* DataTable = MakeVectorDataTable(Package, *MakeSafetyObjectName(TEXT("DT_VectorRows")), RowName, InitialValue);
+	UPackage* Package = FBlueprintHelperSafetyTestsLocalUtils::MakeSafetyPackage(TEXT("DataTableNoHalfWrite"));
+	UDataTable* DataTable = FBlueprintHelperSafetyTestsLocalUtils::MakeVectorDataTable(Package, *FBlueprintHelperSafetyTestsLocalUtils::MakeSafetyObjectName(TEXT("DT_VectorRows")), RowName, InitialValue);
 	TestNotNull(TEXT("test DataTable is created"), DataTable);
 
 	TMap<FString, FString> Fields;
-	TestTrue(TEXT("test fields exercise a valid write before the invalid field"), BuildOrderedHalfWriteFields(Fields));
+	TestTrue(TEXT("test fields exercise a valid write before the invalid field"), FBlueprintHelperSafetyTestsLocalUtils::BuildOrderedHalfWriteFields(Fields));
 
 	FBlueprintHelperDataTableService Service;
 	FBlueprintHelperDataTableMutationResult Result = Service.UpdateDataTableRow(DataTable->GetPathName(), RowName.ToString(), Fields);
@@ -841,7 +843,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperWidgetMoveRestoresOldSlotTest::RunTest(const FString& Parameters)
 {
-	FWidgetMoveFixture Fixture = MakeWidgetMoveFixture();
+	FBlueprintHelperSafetyTestsLocalUtils::FWidgetMoveFixture Fixture = FBlueprintHelperSafetyTestsLocalUtils::MakeWidgetMoveFixture();
 	TestNotNull(TEXT("WidgetBlueprint is created"), Fixture.Blueprint);
 	TestNotNull(TEXT("target widget is created"), Fixture.Target);
 	TestNotNull(TEXT("full button is created"), Fixture.FullButton);
@@ -864,7 +866,7 @@ bool FBlueprintHelperWidgetMoveRestoresOldSlotTest::RunTest(const FString& Param
 		TestEqual(TEXT("position Y is restored"), RestoredSlot->GetPosition().Y, Fixture.OldPosition.Y);
 		TestEqual(TEXT("size X is restored"), RestoredSlot->GetSize().X, Fixture.OldSize.X);
 		TestEqual(TEXT("size Y is restored"), RestoredSlot->GetSize().Y, Fixture.OldSize.Y);
-		TestTrue(TEXT("anchors are restored"), AnchorsEqual(RestoredSlot->GetAnchors(), Fixture.OldAnchors));
+		TestTrue(TEXT("anchors are restored"), FBlueprintHelperSafetyTestsLocalUtils::AnchorsEqual(RestoredSlot->GetAnchors(), Fixture.OldAnchors));
 		TestEqual(TEXT("alignment X is restored"), RestoredSlot->GetAlignment().X, Fixture.OldAlignment.X);
 		TestEqual(TEXT("alignment Y is restored"), RestoredSlot->GetAlignment().Y, Fixture.OldAlignment.Y);
 		TestEqual(TEXT("auto size is restored"), RestoredSlot->GetAutoSize(), Fixture.bOldAutoSize);
@@ -881,10 +883,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperObjectPropertyRejectsUnsafeFlagsTest::RunTest(const FString& Parameters)
 {
-	UPackage* ObjectPackage = MakeSafetyPackage(TEXT("ObjectPropertyUnsafeFlags"));
+	UPackage* ObjectPackage = FBlueprintHelperSafetyTestsLocalUtils::MakeSafetyPackage(TEXT("ObjectPropertyUnsafeFlags"));
 	UTextBlock* TextBlock = NewObject<UTextBlock>(
 		ObjectPackage,
-		*MakeSafetyObjectName(TEXT("ObjectTextBlock")),
+		*FBlueprintHelperSafetyTestsLocalUtils::MakeSafetyObjectName(TEXT("ObjectTextBlock")),
 		RF_Public | RF_Standalone | RF_Transactional);
 
 	FProperty* SlotProperty = TextBlock->GetClass()->FindPropertyByName(TEXT("Slot"));
@@ -904,7 +906,7 @@ bool FBlueprintHelperObjectPropertyRejectsUnsafeFlagsTest::RunTest(const FString
 	TestFalse(TEXT("UObject unsafe property is rejected"), ObjectResult.bSuccess);
 	TestFalse(TEXT("rejected UObject property write does not dirty the package"), ObjectPackage->IsDirty());
 
-	FWidgetMoveFixture WidgetFixture = MakeWidgetMoveFixture();
+	FBlueprintHelperSafetyTestsLocalUtils::FWidgetMoveFixture WidgetFixture = FBlueprintHelperSafetyTestsLocalUtils::MakeWidgetMoveFixture();
 	FBlueprintHelperWidgetService WidgetService;
 	FBlueprintHelperWidgetMutationResult WidgetResult = WidgetService.SetWidgetProperty(
 		WidgetFixture.Blueprint->GetPathName(),
@@ -923,11 +925,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperDeleteNodesRejectsNodeIndexTest::RunTest(const FString& Parameters)
 {
-	UPackage* Package = MakeSafetyPackage(TEXT("DeleteNodesRejectsNodeIndex"));
+	UPackage* Package = FBlueprintHelperSafetyTestsLocalUtils::MakeSafetyPackage(TEXT("DeleteNodesRejectsNodeIndex"));
 	UBlueprint* Blueprint = FKismetEditorUtilities::CreateBlueprint(
 		AActor::StaticClass(),
 		Package,
-		*MakeSafetyObjectName(TEXT("BP_DeleteNodes")),
+		*FBlueprintHelperSafetyTestsLocalUtils::MakeSafetyObjectName(TEXT("BP_DeleteNodes")),
 		BPTYPE_Normal,
 		UBlueprint::StaticClass(),
 		UBlueprintGeneratedClass::StaticClass(),
@@ -960,11 +962,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperImportStrictRollsBackOnMissingLinkPinTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeSafetyActorBlueprint(TEXT("ImportStrictMissingLinkPin"));
+	UBlueprint* Blueprint = FBlueprintHelperSafetyTestsLocalUtils::MakeSafetyActorBlueprint(TEXT("ImportStrictMissingLinkPin"));
 	TestNotNull(TEXT("test Blueprint is created"), Blueprint);
-	TestNotNull(TEXT("test EventGraph exists"), GetSafetyEventGraph(Blueprint));
+	TestNotNull(TEXT("test EventGraph exists"), FBlueprintHelperSafetyTestsLocalUtils::GetSafetyEventGraph(Blueprint));
 
-	const int32 NodeCountBefore = GetSafetyEventGraphNodeCount(Blueprint);
+	const int32 NodeCountBefore = FBlueprintHelperSafetyTestsLocalUtils::GetSafetyEventGraphNodeCount(Blueprint);
 	const FString Json = TEXT(R"JSON(
 	{
 		"version": "1.0",
@@ -978,16 +980,16 @@ bool FBlueprintHelperImportStrictRollsBackOnMissingLinkPinTest::RunTest(const FS
 	}
 	)JSON");
 
-	const FBlueprintHelperImportResult Result = RunStrictImport(Blueprint, Json);
+	const FBlueprintHelperImportResult Result = FBlueprintHelperSafetyTestsLocalUtils::RunStrictImport(Blueprint, Json);
 	TestFalse(TEXT("strict import fails when a link pin is missing"), Result.bSuccess);
 	TestTrue(TEXT("strict import reports rollback"), Result.bRolledBack);
 	TestEqual(TEXT("strict import status is failed"), Result.Status, FString(TEXT("failed")));
 	TestTrue(TEXT("missing link pin has structured diagnostic"),
-		HasDiagnosticCode(Result.Diagnostics, TEXT("link_pin_not_found")));
+		FBlueprintHelperSafetyTestsLocalUtils::HasDiagnosticCode(Result.Diagnostics, TEXT("link_pin_not_found")));
 	TestTrue(TEXT("strict rollback diagnostic is returned"),
-		HasDiagnosticCode(Result.Diagnostics, TEXT("strict_import_rolled_back")));
+		FBlueprintHelperSafetyTestsLocalUtils::HasDiagnosticCode(Result.Diagnostics, TEXT("strict_import_rolled_back")));
 	TestEqual(TEXT("failed strict import leaves graph node count unchanged"),
-		GetSafetyEventGraphNodeCount(Blueprint), NodeCountBefore);
+		FBlueprintHelperSafetyTestsLocalUtils::GetSafetyEventGraphNodeCount(Blueprint), NodeCountBefore);
 	return true;
 }
 
@@ -998,11 +1000,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperImportStrictRollsBackOnMissingDefaultPinTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeSafetyActorBlueprint(TEXT("ImportStrictMissingDefaultPin"));
+	UBlueprint* Blueprint = FBlueprintHelperSafetyTestsLocalUtils::MakeSafetyActorBlueprint(TEXT("ImportStrictMissingDefaultPin"));
 	TestNotNull(TEXT("test Blueprint is created"), Blueprint);
-	TestNotNull(TEXT("test EventGraph exists"), GetSafetyEventGraph(Blueprint));
+	TestNotNull(TEXT("test EventGraph exists"), FBlueprintHelperSafetyTestsLocalUtils::GetSafetyEventGraph(Blueprint));
 
-	const int32 NodeCountBefore = GetSafetyEventGraphNodeCount(Blueprint);
+	const int32 NodeCountBefore = FBlueprintHelperSafetyTestsLocalUtils::GetSafetyEventGraphNodeCount(Blueprint);
 	const FString Json = TEXT(R"JSON(
 	{
 		"version": "1.0",
@@ -1019,16 +1021,16 @@ bool FBlueprintHelperImportStrictRollsBackOnMissingDefaultPinTest::RunTest(const
 	}
 	)JSON");
 
-	const FBlueprintHelperImportResult Result = RunStrictImport(Blueprint, Json);
+	const FBlueprintHelperImportResult Result = FBlueprintHelperSafetyTestsLocalUtils::RunStrictImport(Blueprint, Json);
 	TestFalse(TEXT("strict import fails when a default value pin is missing"), Result.bSuccess);
 	TestTrue(TEXT("strict import reports rollback"), Result.bRolledBack);
 	TestEqual(TEXT("strict import status is failed"), Result.Status, FString(TEXT("failed")));
 	TestTrue(TEXT("missing default pin has structured diagnostic"),
-		HasDiagnosticCode(Result.Diagnostics, TEXT("default_pin_not_found")));
+		FBlueprintHelperSafetyTestsLocalUtils::HasDiagnosticCode(Result.Diagnostics, TEXT("default_pin_not_found")));
 	TestTrue(TEXT("strict rollback diagnostic is returned"),
-		HasDiagnosticCode(Result.Diagnostics, TEXT("strict_import_rolled_back")));
+		FBlueprintHelperSafetyTestsLocalUtils::HasDiagnosticCode(Result.Diagnostics, TEXT("strict_import_rolled_back")));
 	TestEqual(TEXT("failed strict import leaves graph node count unchanged"),
-		GetSafetyEventGraphNodeCount(Blueprint), NodeCountBefore);
+		FBlueprintHelperSafetyTestsLocalUtils::GetSafetyEventGraphNodeCount(Blueprint), NodeCountBefore);
 	return true;
 }
 
@@ -1039,11 +1041,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperImportStrictRollsBackOnInvalidPinTypeTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeSafetyActorBlueprint(TEXT("ImportStrictInvalidPinType"));
+	UBlueprint* Blueprint = FBlueprintHelperSafetyTestsLocalUtils::MakeSafetyActorBlueprint(TEXT("ImportStrictInvalidPinType"));
 	TestNotNull(TEXT("test Blueprint is created"), Blueprint);
-	TestNotNull(TEXT("test EventGraph exists"), GetSafetyEventGraph(Blueprint));
+	TestNotNull(TEXT("test EventGraph exists"), FBlueprintHelperSafetyTestsLocalUtils::GetSafetyEventGraph(Blueprint));
 
-	const int32 NodeCountBefore = GetSafetyEventGraphNodeCount(Blueprint);
+	const int32 NodeCountBefore = FBlueprintHelperSafetyTestsLocalUtils::GetSafetyEventGraphNodeCount(Blueprint);
 	const FString Json = TEXT(R"JSON(
 	{
 		"version": "1.0",
@@ -1065,16 +1067,16 @@ bool FBlueprintHelperImportStrictRollsBackOnInvalidPinTypeTest::RunTest(const FS
 	}
 	)JSON");
 
-	const FBlueprintHelperImportResult Result = RunStrictImport(Blueprint, Json);
+	const FBlueprintHelperImportResult Result = FBlueprintHelperSafetyTestsLocalUtils::RunStrictImport(Blueprint, Json);
 	TestFalse(TEXT("strict import fails when pin_type cannot be converted"), Result.bSuccess);
 	TestTrue(TEXT("strict import reports rollback"), Result.bRolledBack);
 	TestEqual(TEXT("strict import status is failed"), Result.Status, FString(TEXT("failed")));
 	TestTrue(TEXT("invalid pin type has structured diagnostic"),
-		HasDiagnosticCode(Result.Diagnostics, TEXT("invalid_pin_type")));
+		FBlueprintHelperSafetyTestsLocalUtils::HasDiagnosticCode(Result.Diagnostics, TEXT("invalid_pin_type")));
 	TestTrue(TEXT("strict rollback diagnostic is returned"),
-		HasDiagnosticCode(Result.Diagnostics, TEXT("strict_import_rolled_back")));
+		FBlueprintHelperSafetyTestsLocalUtils::HasDiagnosticCode(Result.Diagnostics, TEXT("strict_import_rolled_back")));
 	TestEqual(TEXT("failed strict import leaves graph node count unchanged"),
-		GetSafetyEventGraphNodeCount(Blueprint), NodeCountBefore);
+		FBlueprintHelperSafetyTestsLocalUtils::GetSafetyEventGraphNodeCount(Blueprint), NodeCountBefore);
 	return true;
 }
 
@@ -1085,11 +1087,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperAgentImportGraphSimpleBeginPlayPrintStringStrictTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeSafetyActorBlueprint(TEXT("AgentImportSimple"));
+	UBlueprint* Blueprint = FBlueprintHelperSafetyTestsLocalUtils::MakeSafetyActorBlueprint(TEXT("AgentImportSimple"));
 	TestNotNull(TEXT("test Blueprint is created"), Blueprint);
-	TestNotNull(TEXT("test EventGraph exists"), GetSafetyEventGraph(Blueprint));
+	TestNotNull(TEXT("test EventGraph exists"), FBlueprintHelperSafetyTestsLocalUtils::GetSafetyEventGraph(Blueprint));
 
-	const int32 NodeCountBefore = GetSafetyEventGraphNodeCount(Blueprint);
+	const int32 NodeCountBefore = FBlueprintHelperSafetyTestsLocalUtils::GetSafetyEventGraphNodeCount(Blueprint);
 	const FString Json = FString::Printf(TEXT(R"JSON(
 	{
 		"schema": "BlueprintHelper.AgentImportGraph",
@@ -1108,7 +1110,7 @@ bool FBlueprintHelperAgentImportGraphSimpleBeginPlayPrintStringStrictTest::RunTe
 	}
 	)JSON"), *Blueprint->GetPathName());
 
-	const FBlueprintHelperAgentImportResult Result = RunAgentImport(Json);
+	const FBlueprintHelperAgentImportResult Result = FBlueprintHelperSafetyTestsLocalUtils::RunAgentImport(Json);
 	TestTrue(TEXT("simple AgentImportGraph succeeds without explicit strict option"), Result.bSuccess);
 	TestEqual(TEXT("simple AgentImportGraph status is full_success"), Result.Status, FString(TEXT("full_success")));
 	TestEqual(TEXT("simple AgentImportGraph creates two nodes"), Result.CreatedNodeCount, 2);
@@ -1118,7 +1120,7 @@ bool FBlueprintHelperAgentImportGraphSimpleBeginPlayPrintStringStrictTest::RunTe
 	TestFalse(TEXT("simple AgentImportGraph does not roll back"), Result.bRolledBack);
 	TestEqual(TEXT("simple AgentImportGraph returns zero rollbacks"), Result.RollbackCount, 0);
 	TestEqual(TEXT("simple AgentImportGraph writes expected nodes"),
-		GetSafetyEventGraphNodeCount(Blueprint), NodeCountBefore + 2);
+		FBlueprintHelperSafetyTestsLocalUtils::GetSafetyEventGraphNodeCount(Blueprint), NodeCountBefore + 2);
 	return true;
 }
 
@@ -1129,11 +1131,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperAgentImportGraphRejectsGraphTypoTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeSafetyActorBlueprint(TEXT("AgentImportGraphTypo"));
+	UBlueprint* Blueprint = FBlueprintHelperSafetyTestsLocalUtils::MakeSafetyActorBlueprint(TEXT("AgentImportGraphTypo"));
 	TestNotNull(TEXT("test Blueprint is created"), Blueprint);
-	TestNotNull(TEXT("test EventGraph exists"), GetSafetyEventGraph(Blueprint));
+	TestNotNull(TEXT("test EventGraph exists"), FBlueprintHelperSafetyTestsLocalUtils::GetSafetyEventGraph(Blueprint));
 
-	const int32 NodeCountBefore = GetSafetyEventGraphNodeCount(Blueprint);
+	const int32 NodeCountBefore = FBlueprintHelperSafetyTestsLocalUtils::GetSafetyEventGraphNodeCount(Blueprint);
 	const FString Json = FString::Printf(TEXT(R"JSON(
 	{
 		"schema": "BlueprintHelper.AgentImportGraph",
@@ -1149,15 +1151,15 @@ bool FBlueprintHelperAgentImportGraphRejectsGraphTypoTest::RunTest(const FString
 	}
 	)JSON"), *Blueprint->GetPathName());
 
-	const FBlueprintHelperAgentImportResult Result = RunAgentImport(Json);
+	const FBlueprintHelperAgentImportResult Result = FBlueprintHelperSafetyTestsLocalUtils::RunAgentImport(Json);
 	TestFalse(TEXT("graph typo import fails"), Result.bSuccess);
 	TestEqual(TEXT("graph typo status is failed"), Result.Status, FString(TEXT("failed")));
 	TestTrue(TEXT("graph typo returns graph_not_found"),
-		HasAgentDiagnosticCode(Result, TEXT("graph_not_found")));
+		FBlueprintHelperSafetyTestsLocalUtils::HasAgentDiagnosticCode(Result, TEXT("graph_not_found")));
 	TestTrue(TEXT("graph typo diagnostic includes available EventGraph"),
 		Result.Message.Contains(TEXT("EventGraph")));
 	TestEqual(TEXT("graph typo leaves EventGraph node count unchanged"),
-		GetSafetyEventGraphNodeCount(Blueprint), NodeCountBefore);
+		FBlueprintHelperSafetyTestsLocalUtils::GetSafetyEventGraphNodeCount(Blueprint), NodeCountBefore);
 	return true;
 }
 
@@ -1168,11 +1170,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperAgentImportGraphDefaultStrictRollsBackOnMissingLinkPinTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeSafetyActorBlueprint(TEXT("AgentImportMissingLinkPin"));
+	UBlueprint* Blueprint = FBlueprintHelperSafetyTestsLocalUtils::MakeSafetyActorBlueprint(TEXT("AgentImportMissingLinkPin"));
 	TestNotNull(TEXT("test Blueprint is created"), Blueprint);
-	TestNotNull(TEXT("test EventGraph exists"), GetSafetyEventGraph(Blueprint));
+	TestNotNull(TEXT("test EventGraph exists"), FBlueprintHelperSafetyTestsLocalUtils::GetSafetyEventGraph(Blueprint));
 
-	const int32 NodeCountBefore = GetSafetyEventGraphNodeCount(Blueprint);
+	const int32 NodeCountBefore = FBlueprintHelperSafetyTestsLocalUtils::GetSafetyEventGraphNodeCount(Blueprint);
 	const FString Json = FString::Printf(TEXT(R"JSON(
 	{
 		"schema": "BlueprintHelper.AgentImportGraph",
@@ -1191,17 +1193,17 @@ bool FBlueprintHelperAgentImportGraphDefaultStrictRollsBackOnMissingLinkPinTest:
 	}
 	)JSON"), *Blueprint->GetPathName());
 
-	const FBlueprintHelperAgentImportResult Result = RunAgentImport(Json);
+	const FBlueprintHelperAgentImportResult Result = FBlueprintHelperSafetyTestsLocalUtils::RunAgentImport(Json);
 	TestFalse(TEXT("missing link pin fails under default strict"), Result.bSuccess);
 	TestEqual(TEXT("missing link pin status is failed"), Result.Status, FString(TEXT("failed")));
 	TestTrue(TEXT("missing link pin reports rollback"), Result.bRolledBack);
 	TestEqual(TEXT("missing link pin returns one rollback"), Result.RollbackCount, 1);
 	TestTrue(TEXT("missing link pin diagnostic is returned"),
-		HasAgentDiagnosticCode(Result, TEXT("link_pin_not_found")));
+		FBlueprintHelperSafetyTestsLocalUtils::HasAgentDiagnosticCode(Result, TEXT("link_pin_not_found")));
 	TestTrue(TEXT("strict rollback diagnostic is returned"),
-		HasAgentDiagnosticCode(Result, TEXT("strict_import_rolled_back")));
+		FBlueprintHelperSafetyTestsLocalUtils::HasAgentDiagnosticCode(Result, TEXT("strict_import_rolled_back")));
 	TestEqual(TEXT("missing link pin leaves graph node count unchanged"),
-		GetSafetyEventGraphNodeCount(Blueprint), NodeCountBefore);
+		FBlueprintHelperSafetyTestsLocalUtils::GetSafetyEventGraphNodeCount(Blueprint), NodeCountBefore);
 	return true;
 }
 
@@ -1212,11 +1214,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperAgentImportGraphDefaultStrictRollsBackOnMissingDefaultPinTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeSafetyActorBlueprint(TEXT("AgentImportMissingDefaultPin"));
+	UBlueprint* Blueprint = FBlueprintHelperSafetyTestsLocalUtils::MakeSafetyActorBlueprint(TEXT("AgentImportMissingDefaultPin"));
 	TestNotNull(TEXT("test Blueprint is created"), Blueprint);
-	TestNotNull(TEXT("test EventGraph exists"), GetSafetyEventGraph(Blueprint));
+	TestNotNull(TEXT("test EventGraph exists"), FBlueprintHelperSafetyTestsLocalUtils::GetSafetyEventGraph(Blueprint));
 
-	const int32 NodeCountBefore = GetSafetyEventGraphNodeCount(Blueprint);
+	const int32 NodeCountBefore = FBlueprintHelperSafetyTestsLocalUtils::GetSafetyEventGraphNodeCount(Blueprint);
 	const FString Json = FString::Printf(TEXT(R"JSON(
 	{
 		"schema": "BlueprintHelper.AgentImportGraph",
@@ -1232,17 +1234,17 @@ bool FBlueprintHelperAgentImportGraphDefaultStrictRollsBackOnMissingDefaultPinTe
 	}
 	)JSON"), *Blueprint->GetPathName());
 
-	const FBlueprintHelperAgentImportResult Result = RunAgentImport(Json);
+	const FBlueprintHelperAgentImportResult Result = FBlueprintHelperSafetyTestsLocalUtils::RunAgentImport(Json);
 	TestFalse(TEXT("missing default pin fails under default strict"), Result.bSuccess);
 	TestEqual(TEXT("missing default pin status is failed"), Result.Status, FString(TEXT("failed")));
 	TestTrue(TEXT("missing default pin reports rollback"), Result.bRolledBack);
 	TestEqual(TEXT("missing default pin returns one rollback"), Result.RollbackCount, 1);
 	TestTrue(TEXT("missing default pin diagnostic is returned"),
-		HasAgentDiagnosticCode(Result, TEXT("default_pin_not_found")));
+		FBlueprintHelperSafetyTestsLocalUtils::HasAgentDiagnosticCode(Result, TEXT("default_pin_not_found")));
 	TestTrue(TEXT("strict rollback diagnostic is returned"),
-		HasAgentDiagnosticCode(Result, TEXT("strict_import_rolled_back")));
+		FBlueprintHelperSafetyTestsLocalUtils::HasAgentDiagnosticCode(Result, TEXT("strict_import_rolled_back")));
 	TestEqual(TEXT("missing default pin leaves graph node count unchanged"),
-		GetSafetyEventGraphNodeCount(Blueprint), NodeCountBefore);
+		FBlueprintHelperSafetyTestsLocalUtils::GetSafetyEventGraphNodeCount(Blueprint), NodeCountBefore);
 	return true;
 }
 

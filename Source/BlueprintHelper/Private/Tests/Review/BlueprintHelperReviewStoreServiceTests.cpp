@@ -25,9 +25,10 @@
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
 
-namespace
+class FBlueprintHelperReviewStoreServiceTestsLocalUtils
 {
-	FBlueprintHelperReviewAtomicTarget MakeReviewTestTarget(
+public:
+	static FBlueprintHelperReviewAtomicTarget MakeReviewTestTarget(
 		const FString& TargetKey,
 		const FString& VisualGroupKey,
 		const FString& TransactionId,
@@ -50,7 +51,7 @@ namespace
 		return Target;
 	}
 
-	FBlueprintHelperWriteReviewEvidence MakeReviewTestEvidence(
+	static FBlueprintHelperWriteReviewEvidence MakeReviewTestEvidence(
 		const FString& ArchiveSessionId,
 		const FString& TaskRunId,
 		const FString& TransactionId,
@@ -69,12 +70,12 @@ namespace
 		return Evidence;
 	}
 
-	FString MakeUniqueReviewArchiveId(const FString& Prefix)
+	static FString MakeUniqueReviewArchiveId(const FString& Prefix)
 	{
 		return Prefix + TEXT("_") + FGuid::NewGuid().ToString(EGuidFormats::Digits);
 	}
 
-	UBlueprint* MakeReviewConversionTestBlueprint(const FString& Prefix)
+	static UBlueprint* MakeReviewConversionTestBlueprint(const FString& Prefix)
 	{
 		UPackage* Package = CreatePackage(*FString::Printf(
 			TEXT("/Game/BlueprintHelperReview/%s_%s"),
@@ -97,7 +98,7 @@ namespace
 		return Blueprint;
 	}
 
-	UK2Node_CustomEvent* AddReviewConversionEventNode(UEdGraph* Graph, const FString& EventName)
+	static UK2Node_CustomEvent* AddReviewConversionEventNode(UEdGraph* Graph, const FString& EventName)
 	{
 		if (!Graph)
 		{
@@ -113,7 +114,7 @@ namespace
 		return EventNode;
 	}
 
-	void MarkReviewNodeAsBlueprintHelperOwned(UEdGraphNode* Node, const FString& BlockId)
+	static void MarkReviewNodeAsBlueprintHelperOwned(UEdGraphNode* Node, const FString& BlockId)
 	{
 		if (!Node)
 		{
@@ -127,7 +128,7 @@ namespace
 		}
 	}
 
-	bool IsReviewNodeBlueprintHelperOwned(UEdGraphNode* Node)
+	static bool IsReviewNodeBlueprintHelperOwned(UEdGraphNode* Node)
 	{
 		if (!Node)
 		{
@@ -142,11 +143,12 @@ namespace
 		return false;
 	}
 
-	bool ReviewGraphContainsNode(UEdGraph* Graph, const UEdGraphNode* Node)
+	static bool ReviewGraphContainsNode(UEdGraph* Graph, const UEdGraphNode* Node)
 	{
 		return Graph && Node && Graph->Nodes.Contains(const_cast<UEdGraphNode*>(Node));
 	}
-}
+
+};
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperReviewColorMappingTest,
@@ -451,7 +453,7 @@ bool FBlueprintHelperReviewRecordIdentityAssetFirstGroupingTest::RunTest(const F
 {
 	FBlueprintHelperReviewStoreService Store;
 
-	FBlueprintHelperReviewAtomicTarget DoorTarget = MakeReviewTestTarget(
+	FBlueprintHelperReviewAtomicTarget DoorTarget = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
 		TEXT("graph_node:N1"),
 		TEXT("graph:EventGraph:block:DoorFlow"),
 		TEXT("tx_1"));
@@ -462,8 +464,8 @@ bool FBlueprintHelperReviewRecordIdentityAssetFirstGroupingTest::RunTest(const F
 	WindowTarget.VisualGroupKey = TEXT("graph:EventGraph:block:WindowFlow");
 
 	TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
-	Evidences.Add(MakeReviewTestEvidence(TEXT("archive_1"), TEXT("task_1"), TEXT("tx_1"), TEXT("/Game/BP_Door"), DoorTarget));
-	Evidences.Add(MakeReviewTestEvidence(TEXT("archive_1"), TEXT("task_1"), TEXT("tx_2"), TEXT("/Game/BP_Window"), WindowTarget));
+	Evidences.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(TEXT("archive_1"), TEXT("task_1"), TEXT("tx_1"), TEXT("/Game/BP_Door"), DoorTarget));
+	Evidences.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(TEXT("archive_1"), TEXT("task_1"), TEXT("tx_2"), TEXT("/Game/BP_Window"), WindowTarget));
 
 	const TArray<FBlueprintHelperReviewRecord> Records = Store.BuildReviewRecordsFromEvidence(Evidences);
 	TestEqual(TEXT("one archive session is split into asset-first records"), Records.Num(), 2);
@@ -505,12 +507,12 @@ bool FBlueprintHelperReviewRecordExplicitEvidenceDoesNotInferMissingAnchorTest::
 {
 	FBlueprintHelperReviewStoreService Store;
 
-	FBlueprintHelperReviewAtomicTarget MissingAnchorTarget = MakeReviewTestTarget(
+	FBlueprintHelperReviewAtomicTarget MissingAnchorTarget = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
 		TEXT(""),
 		TEXT("graph:EventGraph:block:DoorFlow"),
 		TEXT("tx_missing_anchor"));
 	TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
-	Evidences.Add(MakeReviewTestEvidence(
+	Evidences.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
 		TEXT("archive_1"),
 		TEXT("task_1"),
 		TEXT("tx_missing_anchor"),
@@ -552,7 +554,7 @@ bool FBlueprintHelperReviewRecordLatestWinsWithProducerHashesTest::RunTest(const
 {
 	FBlueprintHelperReviewStoreService Store;
 
-	FBlueprintHelperReviewAtomicTarget T1 = MakeReviewTestTarget(
+	FBlueprintHelperReviewAtomicTarget T1 = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
 		TEXT("graph_node:N1"),
 		TEXT("graph:EventGraph:block:DoorFlow"),
 		TEXT("tx_1"),
@@ -564,8 +566,8 @@ bool FBlueprintHelperReviewRecordLatestWinsWithProducerHashesTest::RunTest(const
 	T2.RecordedAfterHash = TEXT("after_2");
 
 	TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
-	Evidences.Add(MakeReviewTestEvidence(TEXT("archive_1"), TEXT("task_1"), TEXT("tx_1"), TEXT("/Game/BP_Door"), T1));
-	Evidences.Add(MakeReviewTestEvidence(TEXT("archive_1"), TEXT("task_1"), TEXT("tx_2"), TEXT("/Game/BP_Door"), T2));
+	Evidences.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(TEXT("archive_1"), TEXT("task_1"), TEXT("tx_1"), TEXT("/Game/BP_Door"), T1));
+	Evidences.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(TEXT("archive_1"), TEXT("task_1"), TEXT("tx_2"), TEXT("/Game/BP_Door"), T2));
 
 	const TArray<FBlueprintHelperReviewRecord> Records = Store.BuildReviewRecordsFromEvidence(Evidences);
 	TestEqual(TEXT("one asset record is built"), Records.Num(), 1);
@@ -589,13 +591,13 @@ bool FBlueprintHelperReviewRecordLatestWinsWithProducerHashesTest::RunTest(const
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperReviewRecordPersistsDebugCaseIdsTest,
-	"BlueprintHelper.Review.Record.PersistsDebugCaseIdsWithLegacyDebugRefs",
+	"BlueprintHelper.Review.Record.PersistsDebugCaseIds",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FBlueprintHelperReviewRecordPersistsDebugCaseIdsTest::RunTest(const FString& Parameters)
 {
 	FBlueprintHelperReviewStoreService Store;
-	const FString ArchiveSessionId = MakeUniqueReviewArchiveId(TEXT("archive_debug_case_ids"));
+	const FString ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_debug_case_ids"));
 
 	FBlueprintHelperReviewRecord Record;
 	Record.ReviewRecordId = FBlueprintHelperReviewStoreService::MakeReviewRecordId(
@@ -604,7 +606,6 @@ bool FBlueprintHelperReviewRecordPersistsDebugCaseIdsTest::RunTest(const FString
 	Record.ArchiveSessionId = ArchiveSessionId;
 	Record.AssetPath = TEXT("/Game/BP_Door");
 	Record.DebugCaseIds.Add(TEXT("debug_case_preview_blocked"));
-	Record.DebugExportRefs.Add(TEXT("legacy_debug_export"));
 
 	FString SaveError;
 	TestTrue(TEXT("record with debug case ids saves"), Store.SaveReviewRecord(Record, SaveError));
@@ -615,20 +616,18 @@ bool FBlueprintHelperReviewRecordPersistsDebugCaseIdsTest::RunTest(const FString
 		Store.LoadReviewRecordById(Record.ReviewRecordId, Loaded, LoadError));
 	TestTrue(TEXT("debug_case_ids persist"),
 		Loaded.DebugCaseIds.Contains(TEXT("debug_case_preview_blocked")));
-	TestTrue(TEXT("legacy debug_export_refs remain compatible"),
-		Loaded.DebugExportRefs.Contains(TEXT("legacy_debug_export")));
 	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperReviewRecordMergesDebugCaseIdsTest,
-	"BlueprintHelper.Review.Record.MergesDebugCaseIdsWithLegacyDebugRefs",
+	"BlueprintHelper.Review.Record.MergesDebugCaseIds",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FBlueprintHelperReviewRecordMergesDebugCaseIdsTest::RunTest(const FString& Parameters)
 {
 	FBlueprintHelperReviewStoreService Store;
-	const FString ArchiveSessionId = MakeUniqueReviewArchiveId(TEXT("archive_debug_case_merge"));
+	const FString ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_debug_case_merge"));
 	const FString RecordId = FBlueprintHelperReviewStoreService::MakeReviewRecordId(
 		ArchiveSessionId,
 		TEXT("/Game/BP_Door"));
@@ -638,7 +637,6 @@ bool FBlueprintHelperReviewRecordMergesDebugCaseIdsTest::RunTest(const FString& 
 	Existing.ArchiveSessionId = ArchiveSessionId;
 	Existing.AssetPath = TEXT("/Game/BP_Door");
 	Existing.DebugCaseIds.Add(TEXT("debug_case_existing"));
-	Existing.DebugExportRefs.Add(TEXT("legacy_existing"));
 
 	FString SaveError;
 	TestTrue(TEXT("existing debug case record saves"), Store.SaveReviewRecord(Existing, SaveError));
@@ -646,8 +644,6 @@ bool FBlueprintHelperReviewRecordMergesDebugCaseIdsTest::RunTest(const FString& 
 	FBlueprintHelperReviewRecord Incoming = Existing;
 	Incoming.DebugCaseIds.Reset();
 	Incoming.DebugCaseIds.Add(TEXT("debug_case_incoming"));
-	Incoming.DebugExportRefs.Reset();
-	Incoming.DebugExportRefs.Add(TEXT("legacy_incoming"));
 
 	TArray<FBlueprintHelperReviewRecord> Records;
 	Records.Add(Incoming);
@@ -661,10 +657,6 @@ bool FBlueprintHelperReviewRecordMergesDebugCaseIdsTest::RunTest(const FString& 
 		Loaded.DebugCaseIds.Contains(TEXT("debug_case_existing")));
 	TestTrue(TEXT("incoming debug case id is added"),
 		Loaded.DebugCaseIds.Contains(TEXT("debug_case_incoming")));
-	TestTrue(TEXT("existing legacy debug export ref remains"),
-		Loaded.DebugExportRefs.Contains(TEXT("legacy_existing")));
-	TestTrue(TEXT("incoming legacy debug export ref is added"),
-		Loaded.DebugExportRefs.Contains(TEXT("legacy_incoming")));
 	return true;
 }
 
@@ -677,11 +669,11 @@ bool FBlueprintHelperReviewRecordBuildsDebugCaseIdsFromEvidenceTest::RunTest(con
 {
 	FBlueprintHelperReviewStoreService Store;
 
-	FBlueprintHelperReviewAtomicTarget Target = MakeReviewTestTarget(
+	FBlueprintHelperReviewAtomicTarget Target = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
 		TEXT("graph_node:N1"),
 		TEXT("graph:EventGraph:block:DoorFlow"),
 		TEXT("tx_debug_case_evidence"));
-	FBlueprintHelperWriteReviewEvidence Evidence = MakeReviewTestEvidence(
+	FBlueprintHelperWriteReviewEvidence Evidence = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
 		TEXT("archive_debug_case_evidence"),
 		TEXT("task_debug_case_evidence"),
 		TEXT("tx_debug_case_evidence"),
@@ -689,7 +681,6 @@ bool FBlueprintHelperReviewRecordBuildsDebugCaseIdsFromEvidenceTest::RunTest(con
 		Target);
 	Evidence.DebugCaseIds.Add(TEXT("debug_case_preview_blocked"));
 	Evidence.DebugCaseIds.Add(TEXT("debug_case_partial_failure"));
-	Evidence.DebugExportRef = TEXT("legacy_debug_export");
 
 	TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
 	Evidences.Add(Evidence);
@@ -704,8 +695,6 @@ bool FBlueprintHelperReviewRecordBuildsDebugCaseIdsFromEvidenceTest::RunTest(con
 		Records[0].DebugCaseIds.Contains(TEXT("debug_case_preview_blocked")));
 	TestTrue(TEXT("second evidence debug case id is copied"),
 		Records[0].DebugCaseIds.Contains(TEXT("debug_case_partial_failure")));
-	TestTrue(TEXT("legacy debug export ref remains compatible"),
-		Records[0].DebugExportRefs.Contains(TEXT("legacy_debug_export")));
 	return true;
 }
 
@@ -716,7 +705,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperReviewJournalBackedEvidenceIncludesHashesTest::RunTest(const FString& Parameters)
 {
-	const FString ArchiveSessionId = MakeUniqueReviewArchiveId(TEXT("archive_journal_evidence"));
+	const FString ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_journal_evidence"));
 	FBlueprintHelperAppendJournalRecord JournalRecord;
 	JournalRecord.TransactionId = TEXT("tx_journal_evidence");
 	JournalRecord.ArchiveSessionId = ArchiveSessionId;
@@ -762,31 +751,31 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FBlueprintHelperReviewLoadPendingVisibleChangesUsesRecordQueryTest::RunTest(const FString& Parameters)
 {
 	FBlueprintHelperReviewStoreService Store;
-	const FString ArchiveSessionId = MakeUniqueReviewArchiveId(TEXT("archive_ui_query"));
+	const FString ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_ui_query"));
 	const FString AssetPath = FString::Printf(
 		TEXT("/Game/BP_Door_%s"),
 		*FGuid::NewGuid().ToString(EGuidFormats::Digits));
 
-	FBlueprintHelperReviewAtomicTarget PendingTarget = MakeReviewTestTarget(
+	FBlueprintHelperReviewAtomicTarget PendingTarget = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
 		TEXT("graph_node:UIPending"),
 		TEXT("graph:EventGraph:block:UIQuery"),
 		TEXT("tx_ui_pending"));
 	PendingTarget.AssetPath = AssetPath;
 
-	FBlueprintHelperReviewAtomicTarget AcceptedTarget = MakeReviewTestTarget(
+	FBlueprintHelperReviewAtomicTarget AcceptedTarget = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
 		TEXT("graph_node:UIAccepted"),
 		TEXT("graph:EventGraph:block:UIAccepted"),
 		TEXT("tx_ui_accepted"));
 	AcceptedTarget.AssetPath = AssetPath;
 
 	TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
-	Evidences.Add(MakeReviewTestEvidence(
+	Evidences.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
 		ArchiveSessionId,
 		TEXT("task_ui_query"),
 		TEXT("tx_ui_pending"),
 		AssetPath,
 		PendingTarget));
-	Evidences.Add(MakeReviewTestEvidence(
+	Evidences.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
 		ArchiveSessionId,
 		TEXT("task_ui_query"),
 		TEXT("tx_ui_accepted"),
@@ -950,7 +939,7 @@ bool FBlueprintHelperReviewRejectVisibleChangeSuccessTest::RunTest(const FString
 	Change.AssetPath = TEXT("/Game/BP_Door");
 	Change.LatestTransactionId = TEXT("tx_2");
 	Change.Status = EBlueprintHelperReviewChangeStatus::Pending;
-	Change.AtomicTargets.Add(MakeReviewTestTarget(
+	Change.AtomicTargets.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
 		TEXT("graph_node:N1"),
 		TEXT("graph:EventGraph:block:DoorFlow"),
 		TEXT("tx_2"),
@@ -985,7 +974,7 @@ bool FBlueprintHelperReviewRejectVisibleChangeToctouMismatchTest::RunTest(const 
 	Change.ChangeId = TEXT("change_1");
 	Change.AssetPath = TEXT("/Game/BP_Door");
 	Change.LatestTransactionId = TEXT("tx_2");
-	Change.AtomicTargets.Add(MakeReviewTestTarget(
+	Change.AtomicTargets.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
 		TEXT("graph_node:N1"),
 		TEXT("graph:EventGraph:block:DoorFlow"),
 		TEXT("tx_2"),
@@ -1016,13 +1005,13 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FBlueprintHelperReviewAcceptTargetsPersistsActionHistoryTest::RunTest(const FString& Parameters)
 {
 	FBlueprintHelperReviewStoreService Store;
-	const FString ArchiveSessionId = MakeUniqueReviewArchiveId(TEXT("archive_accept"));
-	FBlueprintHelperReviewAtomicTarget Target = MakeReviewTestTarget(
+	const FString ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_accept"));
+	FBlueprintHelperReviewAtomicTarget Target = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
 		TEXT("graph_node:N1"),
 		TEXT("graph:EventGraph:block:DoorFlow"),
 		TEXT("tx_accept"));
 	TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
-	Evidences.Add(MakeReviewTestEvidence(
+	Evidences.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
 		ArchiveSessionId,
 		TEXT("task_accept"),
 		TEXT("tx_accept"),
@@ -1080,8 +1069,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FBlueprintHelperReviewPartialAcceptPropagatesPendingStatusTest::RunTest(const FString& Parameters)
 {
 	FBlueprintHelperReviewStoreService Store;
-	const FString ArchiveSessionId = MakeUniqueReviewArchiveId(TEXT("archive_partial_accept"));
-	FBlueprintHelperReviewAtomicTarget FirstTarget = MakeReviewTestTarget(
+	const FString ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_partial_accept"));
+	FBlueprintHelperReviewAtomicTarget FirstTarget = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
 		TEXT("graph_node:N1"),
 		TEXT("graph:EventGraph:block:DoorFlow"),
 		TEXT("tx_partial_accept"));
@@ -1089,13 +1078,13 @@ bool FBlueprintHelperReviewPartialAcceptPropagatesPendingStatusTest::RunTest(con
 	SecondTarget.TargetKey = TEXT("graph_node:N2");
 
 	TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
-	Evidences.Add(MakeReviewTestEvidence(
+	Evidences.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
 		ArchiveSessionId,
 		TEXT("task_partial_accept"),
 		TEXT("tx_partial_accept"),
 		TEXT("/Game/BP_Door"),
 		FirstTarget));
-	Evidences.Add(MakeReviewTestEvidence(
+	Evidences.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
 		ArchiveSessionId,
 		TEXT("task_partial_accept"),
 		TEXT("tx_partial_accept"),
@@ -1170,14 +1159,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FBlueprintHelperReviewRejectTargetsPersistsActionHistoryTest::RunTest(const FString& Parameters)
 {
 	FBlueprintHelperReviewStoreService Store;
-	const FString ArchiveSessionId = MakeUniqueReviewArchiveId(TEXT("archive_reject_targets"));
-	FBlueprintHelperReviewAtomicTarget Target = MakeReviewTestTarget(
+	const FString ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_reject_targets"));
+	FBlueprintHelperReviewAtomicTarget Target = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
 		TEXT("graph_node:N1"),
 		TEXT("graph:EventGraph:block:DoorFlow"),
 		TEXT("tx_reject_targets"),
 		TEXT("after_reject"));
 	TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
-	Evidences.Add(MakeReviewTestEvidence(
+	Evidences.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
 		ArchiveSessionId,
 		TEXT("task_reject_targets"),
 		TEXT("tx_reject_targets"),
@@ -1235,14 +1224,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FBlueprintHelperReviewRejectNeedsActionCreatesDebugCaseTest::RunTest(const FString& Parameters)
 {
 	FBlueprintHelperReviewStoreService Store;
-	const FString ArchiveSessionId = MakeUniqueReviewArchiveId(TEXT("archive_reject_debug_needs_action"));
-	FBlueprintHelperReviewAtomicTarget Target = MakeReviewTestTarget(
+	const FString ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_reject_debug_needs_action"));
+	FBlueprintHelperReviewAtomicTarget Target = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
 		TEXT("graph_node:N1"),
 		TEXT("graph:EventGraph:block:DoorFlow"),
 		TEXT("tx_reject_debug_needs_action"),
 		TEXT("after_original"));
 	TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
-	Evidences.Add(MakeReviewTestEvidence(
+	Evidences.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
 		ArchiveSessionId,
 		TEXT("task_reject_debug_needs_action"),
 		TEXT("tx_reject_debug_needs_action"),
@@ -1275,7 +1264,6 @@ bool FBlueprintHelperReviewRejectNeedsActionCreatesDebugCaseTest::RunTest(const 
 	TestTrue(TEXT("needs-action record reloads"),
 		Store.LoadReviewRecordById(Records[0].ReviewRecordId, Loaded, LoadError));
 	TestEqual(TEXT("one debug case id is linked to review record"), Loaded.DebugCaseIds.Num(), 1);
-	TestEqual(TEXT("review record keeps no debug bundle path refs"), Loaded.DebugExportRefs.Num(), 0);
 	if (Loaded.DebugCaseIds.Num() != 1)
 	{
 		return false;
@@ -1316,14 +1304,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FBlueprintHelperReviewRejectFailedCreatesDebugCaseTest::RunTest(const FString& Parameters)
 {
 	FBlueprintHelperReviewStoreService Store;
-	const FString ArchiveSessionId = MakeUniqueReviewArchiveId(TEXT("archive_reject_debug_failed"));
-	FBlueprintHelperReviewAtomicTarget Target = MakeReviewTestTarget(
+	const FString ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_reject_debug_failed"));
+	FBlueprintHelperReviewAtomicTarget Target = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
 		TEXT("graph_node:N1"),
 		TEXT("graph:EventGraph:block:DoorFlow"),
 		TEXT("tx_reject_debug_failed"),
 		TEXT("after_failed"));
 	TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
-	Evidences.Add(MakeReviewTestEvidence(
+	Evidences.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
 		ArchiveSessionId,
 		TEXT("task_reject_debug_failed"),
 		TEXT("tx_reject_debug_failed"),
@@ -1357,7 +1345,6 @@ bool FBlueprintHelperReviewRejectFailedCreatesDebugCaseTest::RunTest(const FStri
 	TestTrue(TEXT("reject-failed record reloads"),
 		Store.LoadReviewRecordById(Records[0].ReviewRecordId, Loaded, LoadError));
 	TestEqual(TEXT("one reject-failed debug case id is linked"), Loaded.DebugCaseIds.Num(), 1);
-	TestEqual(TEXT("reject-failed review record keeps no debug bundle path refs"), Loaded.DebugExportRefs.Num(), 0);
 	if (Loaded.DebugCaseIds.Num() != 1)
 	{
 		return false;
@@ -1399,14 +1386,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FBlueprintHelperReviewRejectAllPersistsToctouNeedsActionTest::RunTest(const FString& Parameters)
 {
 	FBlueprintHelperReviewStoreService Store;
-	const FString ArchiveSessionId = MakeUniqueReviewArchiveId(TEXT("archive_reject_all"));
-	FBlueprintHelperReviewAtomicTarget Target = MakeReviewTestTarget(
+	const FString ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_reject_all"));
+	FBlueprintHelperReviewAtomicTarget Target = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
 		TEXT("graph_node:N1"),
 		TEXT("graph:EventGraph:block:DoorFlow"),
 		TEXT("tx_reject_all"),
 		TEXT("after_original"));
 	TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
-	Evidences.Add(MakeReviewTestEvidence(
+	Evidences.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
 		ArchiveSessionId,
 		TEXT("task_reject_all"),
 		TEXT("tx_reject_all"),
@@ -1460,8 +1447,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FBlueprintHelperReviewRejectAllIteratesPendingTargetsTest::RunTest(const FString& Parameters)
 {
 	FBlueprintHelperReviewStoreService Store;
-	const FString ArchiveSessionId = MakeUniqueReviewArchiveId(TEXT("archive_reject_all_iterates"));
-	FBlueprintHelperReviewAtomicTarget FirstTarget = MakeReviewTestTarget(
+	const FString ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_reject_all_iterates"));
+	FBlueprintHelperReviewAtomicTarget FirstTarget = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
 		TEXT("graph_node:N1"),
 		TEXT("graph:EventGraph:block:DoorFlow"),
 		TEXT("tx_reject_all_iterates"),
@@ -1471,13 +1458,13 @@ bool FBlueprintHelperReviewRejectAllIteratesPendingTargetsTest::RunTest(const FS
 	SecondTarget.RecordedAfterHash = TEXT("after_second");
 
 	TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
-	Evidences.Add(MakeReviewTestEvidence(
+	Evidences.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
 		ArchiveSessionId,
 		TEXT("task_reject_all_iterates"),
 		TEXT("tx_reject_all_iterates"),
 		TEXT("/Game/BP_Door"),
 		FirstTarget));
-	Evidences.Add(MakeReviewTestEvidence(
+	Evidences.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
 		ArchiveSessionId,
 		TEXT("task_reject_all_iterates"),
 		TEXT("tx_reject_all_iterates"),
@@ -1549,15 +1536,15 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FBlueprintHelperReviewConvertOwnerBlockRequiresSettingProfileTest::RunTest(const FString& Parameters)
 {
 	FBlueprintHelperReviewStoreService Store;
-	const FString ArchiveSessionId = MakeUniqueReviewArchiveId(TEXT("archive_convert_owner_policy"));
-	FBlueprintHelperReviewAtomicTarget Target = MakeReviewTestTarget(
+	const FString ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_convert_owner_policy"));
+	FBlueprintHelperReviewAtomicTarget Target = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
 		TEXT("graph:EventGraph:block:DoorFlow"),
 		TEXT("graph:EventGraph:block:DoorFlow"),
 		TEXT("tx_convert_policy"));
 	Target.TargetKind = TEXT("graph_block");
 	Target.Ownership = TEXT("blueprinthelper_owned");
 	TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
-	Evidences.Add(MakeReviewTestEvidence(
+	Evidences.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
 		ArchiveSessionId,
 		TEXT("task_convert_policy"),
 		TEXT("tx_convert_policy"),
@@ -1616,15 +1603,15 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FBlueprintHelperReviewConvertOwnerBlockRequiresNodeAnchorsTest::RunTest(const FString& Parameters)
 {
 	FBlueprintHelperReviewStoreService Store;
-	const FString ArchiveSessionId = MakeUniqueReviewArchiveId(TEXT("archive_convert_owner"));
-	FBlueprintHelperReviewAtomicTarget Target = MakeReviewTestTarget(
+	const FString ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_convert_owner"));
+	FBlueprintHelperReviewAtomicTarget Target = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
 		TEXT("graph:EventGraph:block:DoorFlow"),
 		TEXT("graph:EventGraph:block:DoorFlow"),
 		TEXT("tx_convert"));
 	Target.TargetKind = TEXT("graph_block");
 	Target.Ownership = TEXT("blueprinthelper_owned");
 	TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
-	Evidences.Add(MakeReviewTestEvidence(
+	Evidences.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
 		ArchiveSessionId,
 		TEXT("task_convert"),
 		TEXT("tx_convert"),
@@ -1681,7 +1668,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperReviewConvertOwnerBlockExecutesBhToUserTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeReviewConversionTestBlueprint(TEXT("ConvertOwnerBhToUser"));
+	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewConversionTestBlueprint(TEXT("ConvertOwnerBhToUser"));
 	TestNotNull(TEXT("test blueprint created"), Blueprint);
 	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0)
 	{
@@ -1692,17 +1679,17 @@ bool FBlueprintHelperReviewConvertOwnerBlockExecutesBhToUserTest::RunTest(const 
 	const FString GraphName = Graph ? Graph->GetName() : FString();
 	const FString BlockRef = TEXT("DoorFlow");
 	const FString BlockId = FBlueprintHelperReviewStoreService::NormalizeGraphBlockTargetId(GraphName, BlockRef);
-	UK2Node_CustomEvent* EventNode = AddReviewConversionEventNode(Graph, TEXT("ReviewConvertDoorFlow"));
+	UK2Node_CustomEvent* EventNode = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewConversionEventNode(Graph, TEXT("ReviewConvertDoorFlow"));
 	TestNotNull(TEXT("test event node created"), EventNode);
 	if (!Graph || !EventNode)
 	{
 		return false;
 	}
 
-	MarkReviewNodeAsBlueprintHelperOwned(EventNode, BlockId);
-	TestTrue(TEXT("node starts BlueprintHelper-owned"), IsReviewNodeBlueprintHelperOwned(EventNode));
+	FBlueprintHelperReviewStoreServiceTestsLocalUtils::MarkReviewNodeAsBlueprintHelperOwned(EventNode, BlockId);
+	TestTrue(TEXT("node starts BlueprintHelper-owned"), FBlueprintHelperReviewStoreServiceTestsLocalUtils::IsReviewNodeBlueprintHelperOwned(EventNode));
 
-	FBlueprintHelperReviewAtomicTarget Target = MakeReviewTestTarget(
+	FBlueprintHelperReviewAtomicTarget Target = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
 		FString::Printf(TEXT("graph:%s:block:%s"), *GraphName, *BlockId),
 		FString::Printf(TEXT("graph:%s:block:%s"), *GraphName, *BlockId),
 		TEXT("tx_convert_real"));
@@ -1712,9 +1699,9 @@ bool FBlueprintHelperReviewConvertOwnerBlockExecutesBhToUserTest::RunTest(const 
 	Target.Ownership = TEXT("blueprinthelper_owned");
 
 	FBlueprintHelperReviewStoreService Store;
-	const FString ArchiveSessionId = MakeUniqueReviewArchiveId(TEXT("archive_convert_owner_real"));
+	const FString ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_convert_owner_real"));
 	TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
-	Evidences.Add(MakeReviewTestEvidence(
+	Evidences.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
 		ArchiveSessionId,
 		TEXT("task_convert_real"),
 		TEXT("tx_convert_real"),
@@ -1737,7 +1724,7 @@ bool FBlueprintHelperReviewConvertOwnerBlockExecutesBhToUserTest::RunTest(const 
 	FBlueprintHelperReviewActionService ActionService;
 	const FBlueprintHelperReviewActionResult Result = ActionService.ConvertOwnerBlock(Request);
 	TestTrue(TEXT("convert owner action succeeds"), Result.bSucceeded);
-	TestFalse(TEXT("node ownership metadata is removed"), IsReviewNodeBlueprintHelperOwned(EventNode));
+	TestFalse(TEXT("node ownership metadata is removed"), FBlueprintHelperReviewStoreServiceTestsLocalUtils::IsReviewNodeBlueprintHelperOwned(EventNode));
 
 	FBlueprintHelperReviewRecord LoadedRecord;
 	FString LoadError;
@@ -1768,7 +1755,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperReviewRejectDefaultDispatcherRemovesSelectedGraphNodeTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeReviewConversionTestBlueprint(TEXT("RejectSelectedGraphNode"));
+	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewConversionTestBlueprint(TEXT("RejectSelectedGraphNode"));
 	TestNotNull(TEXT("test blueprint created"), Blueprint);
 	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
 	{
@@ -1776,8 +1763,8 @@ bool FBlueprintHelperReviewRejectDefaultDispatcherRemovesSelectedGraphNodeTest::
 	}
 
 	UEdGraph* Graph = Blueprint->UbergraphPages[0];
-	UK2Node_CustomEvent* SelectedNode = AddReviewConversionEventNode(Graph, TEXT("ReviewRejectSelected"));
-	UK2Node_CustomEvent* UnselectedNode = AddReviewConversionEventNode(Graph, TEXT("ReviewRejectUnselected"));
+	UK2Node_CustomEvent* SelectedNode = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewConversionEventNode(Graph, TEXT("ReviewRejectSelected"));
+	UK2Node_CustomEvent* UnselectedNode = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewConversionEventNode(Graph, TEXT("ReviewRejectUnselected"));
 	TestNotNull(TEXT("selected rollback node created"), SelectedNode);
 	TestNotNull(TEXT("unselected rollback node created"), UnselectedNode);
 	if (!SelectedNode || !UnselectedNode)
@@ -1785,7 +1772,7 @@ bool FBlueprintHelperReviewRejectDefaultDispatcherRemovesSelectedGraphNodeTest::
 		return false;
 	}
 
-	const FString ArchiveSessionId = MakeUniqueReviewArchiveId(TEXT("archive_reject_default"));
+	const FString ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_reject_default"));
 	const FString TransactionId = FString::Printf(
 		TEXT("tx_reject_default_%s"),
 		*FGuid::NewGuid().ToString(EGuidFormats::Digits));
@@ -1842,8 +1829,8 @@ bool FBlueprintHelperReviewRejectDefaultDispatcherRemovesSelectedGraphNodeTest::
 		FBlueprintHelperReviewRejectOptions());
 
 	TestTrue(TEXT("selected target rollback succeeds"), Result.bSucceeded);
-	TestFalse(TEXT("selected node is removed"), ReviewGraphContainsNode(Graph, SelectedNode));
-	TestTrue(TEXT("unselected node remains"), ReviewGraphContainsNode(Graph, UnselectedNode));
+	TestFalse(TEXT("selected node is removed"), FBlueprintHelperReviewStoreServiceTestsLocalUtils::ReviewGraphContainsNode(Graph, SelectedNode));
+	TestTrue(TEXT("unselected node remains"), FBlueprintHelperReviewStoreServiceTestsLocalUtils::ReviewGraphContainsNode(Graph, UnselectedNode));
 	return true;
 }
 
@@ -1854,7 +1841,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperReviewConvertOwnerBlockExecutesUserToBhTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeReviewConversionTestBlueprint(TEXT("ConvertOwnerUserToBh"));
+	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewConversionTestBlueprint(TEXT("ConvertOwnerUserToBh"));
 	TestNotNull(TEXT("test blueprint created"), Blueprint);
 	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0)
 	{
@@ -1865,15 +1852,15 @@ bool FBlueprintHelperReviewConvertOwnerBlockExecutesUserToBhTest::RunTest(const 
 	const FString GraphName = Graph ? Graph->GetName() : FString();
 	const FString BlockRef = TEXT("DoorFlowUserOwned");
 	const FString BlockId = FBlueprintHelperReviewStoreService::NormalizeGraphBlockTargetId(GraphName, BlockRef);
-	UK2Node_CustomEvent* EventNode = AddReviewConversionEventNode(Graph, TEXT("ReviewConvertUserToBh"));
+	UK2Node_CustomEvent* EventNode = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewConversionEventNode(Graph, TEXT("ReviewConvertUserToBh"));
 	TestNotNull(TEXT("test event node created"), EventNode);
 	if (!Graph || !EventNode)
 	{
 		return false;
 	}
-	TestFalse(TEXT("node starts user-owned"), IsReviewNodeBlueprintHelperOwned(EventNode));
+	TestFalse(TEXT("node starts user-owned"), FBlueprintHelperReviewStoreServiceTestsLocalUtils::IsReviewNodeBlueprintHelperOwned(EventNode));
 
-	FBlueprintHelperReviewAtomicTarget Target = MakeReviewTestTarget(
+	FBlueprintHelperReviewAtomicTarget Target = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
 		FString::Printf(TEXT("graph:%s:block:%s"), *GraphName, *BlockId),
 		FString::Printf(TEXT("graph:%s:block:%s"), *GraphName, *BlockId),
 		TEXT("tx_convert_user_to_bh"));
@@ -1883,9 +1870,9 @@ bool FBlueprintHelperReviewConvertOwnerBlockExecutesUserToBhTest::RunTest(const 
 	Target.Ownership = TEXT("user_owned");
 
 	FBlueprintHelperReviewStoreService Store;
-	const FString ArchiveSessionId = MakeUniqueReviewArchiveId(TEXT("archive_convert_user_to_bh"));
+	const FString ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_convert_user_to_bh"));
 	TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
-	Evidences.Add(MakeReviewTestEvidence(
+	Evidences.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
 		ArchiveSessionId,
 		TEXT("task_convert_user_to_bh"),
 		TEXT("tx_convert_user_to_bh"),
@@ -1908,7 +1895,7 @@ bool FBlueprintHelperReviewConvertOwnerBlockExecutesUserToBhTest::RunTest(const 
 	FBlueprintHelperReviewActionService ActionService;
 	const FBlueprintHelperReviewActionResult Result = ActionService.ConvertOwnerBlock(Request);
 	TestTrue(TEXT("user-to-bh convert owner action succeeds"), Result.bSucceeded);
-	TestTrue(TEXT("node ownership metadata is written"), IsReviewNodeBlueprintHelperOwned(EventNode));
+	TestTrue(TEXT("node ownership metadata is written"), FBlueprintHelperReviewStoreServiceTestsLocalUtils::IsReviewNodeBlueprintHelperOwned(EventNode));
 
 	FBlueprintHelperReviewRecord LoadedRecord;
 	FString LoadError;
@@ -2002,7 +1989,7 @@ bool FBlueprintHelperReviewGraphBoundsTargetKeyTest::RunTest(const FString& Para
 	FVector2D Position = FVector2D::ZeroVector;
 	FVector2D Size = FVector2D::ZeroVector;
 	FString DebugSummary;
-	const bool bBuilt = BlueprintHelperReviewGraphBounds::BuildBoundsForTargets(
+	const bool bBuilt = FBlueprintHelperReviewGraphBounds::BuildBoundsForTargets(
 		Targets,
 		Graph,
 		TEXT("EventGraph"),
@@ -2045,7 +2032,7 @@ bool FBlueprintHelperReviewDebugCopyTextTest::RunTest(const FString& Parameters)
 		LINE_TERMINATOR);
 	TestEqual(
 		TEXT("copyable debug text preserves visible row order with line breaks"),
-		BlueprintHelperReviewDebugText::BuildCopyableText(Messages),
+		FBlueprintHelperReviewDebugText::BuildCopyableText(Messages),
 		Expected);
 	return true;
 }
@@ -2063,12 +2050,12 @@ bool FBlueprintHelperReviewGraphResolverMissingRequestedGraphTest::RunTest(const
 
 	TestTrue(
 		TEXT("explicit missing graph does not fall back to EventGraph"),
-		BlueprintHelperReviewGraphResolver::ResolveGraphForReviewSelection(
+		FBlueprintHelperReviewGraphResolver::ResolveGraphForReviewSelection(
 			Blueprint,
 			TEXT("BH_TaskSpecSmoke_20260505_001")) == nullptr);
 	TestTrue(
 		TEXT("empty requested graph still falls back to EventGraph"),
-		BlueprintHelperReviewGraphResolver::ResolveGraphForReviewSelection(Blueprint, FString()) == EventGraph);
+		FBlueprintHelperReviewGraphResolver::ResolveGraphForReviewSelection(Blueprint, FString()) == EventGraph);
 	return true;
 }
 
@@ -2111,7 +2098,7 @@ bool FBlueprintHelperReviewGraphBoundsBlockMetadataTest::RunTest(const FString& 
 	FVector2D Position = FVector2D::ZeroVector;
 	FVector2D Size = FVector2D::ZeroVector;
 	FString DebugSummary;
-	const bool bBuilt = BlueprintHelperReviewGraphBounds::BuildBoundsForTargets(
+	const bool bBuilt = FBlueprintHelperReviewGraphBounds::BuildBoundsForTargets(
 		Targets,
 		Graph,
 		TEXT("EventGraph"),
@@ -2200,7 +2187,7 @@ bool FBlueprintHelperReviewGraphBoundsFullBlockMetadataTest::RunTest(const FStri
 	FVector2D Position = FVector2D::ZeroVector;
 	FVector2D Size = FVector2D::ZeroVector;
 	FString DebugSummary;
-	const bool bBuilt = BlueprintHelperReviewGraphBounds::BuildBoundsForTargets(
+	const bool bBuilt = FBlueprintHelperReviewGraphBounds::BuildBoundsForTargets(
 		Targets,
 		Graph,
 		TEXT("BH_TaskSpecSmoke_20260504_001"),

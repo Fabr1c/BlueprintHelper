@@ -27,9 +27,10 @@
 
 FBlueprintHelperAssetFactoryService::FBlueprintHelperAssetFactoryService() = default;
 
-namespace
+class FBlueprintHelperAssetFactoryServiceLocalUtils
 {
-	FString BlueprintHelperAssetPackageName(const FString& AssetPath)
+public:
+	static FString BlueprintHelperAssetPackageName(const FString& AssetPath)
 	{
 		int32 DotIndex = INDEX_NONE;
 		if (AssetPath.FindChar(TEXT('.'), DotIndex))
@@ -39,14 +40,14 @@ namespace
 		return AssetPath;
 	}
 
-	FString BlueprintHelperAssetObjectPath(const FString& AssetPath)
+	static FString BlueprintHelperAssetObjectPath(const FString& AssetPath)
 	{
 		const FString PackageName = BlueprintHelperAssetPackageName(AssetPath);
 		const FString AssetName = FPackageName::GetLongPackageAssetName(PackageName);
 		return FString::Printf(TEXT("%s.%s"), *PackageName, *AssetName);
 	}
 
-	UClass* ResolveAssetFactoryClass(const FString& ClassText, UClass* DefaultClass, UClass* RequiredParentClass)
+	static UClass* ResolveAssetFactoryClass(const FString& ClassText, UClass* DefaultClass, UClass* RequiredParentClass)
 	{
 		UClass* ResolvedClass = DefaultClass;
 		const FString TrimmedClassText = ClassText.TrimStartAndEnd();
@@ -80,7 +81,7 @@ namespace
 		return ResolvedClass;
 	}
 
-	UScriptStruct* ResolveAssetFactoryRowStruct(const FString& RowStructText)
+	static UScriptStruct* ResolveAssetFactoryRowStruct(const FString& RowStructText)
 	{
 		const FString TrimmedRowStruct = RowStructText.TrimStartAndEnd();
 		if (TrimmedRowStruct.IsEmpty())
@@ -110,7 +111,7 @@ namespace
 		return RowStruct;
 	}
 
-	bool TryMakeStructFieldPinType(const FString& TypeText, FEdGraphPinType& OutPinType)
+	static bool TryMakeStructFieldPinType(const FString& TypeText, FEdGraphPinType& OutPinType)
 	{
 		const FString Key = TypeText.TrimStartAndEnd().ToLower();
 		if (Key == TEXT("int") || Key == TEXT("integer"))
@@ -137,7 +138,7 @@ namespace
 		return false;
 	}
 
-	bool ApplyUserDefinedStructFields(UUserDefinedStruct* Struct, const TArray<FBlueprintHelperAssetFactoryFieldSpec>& Fields)
+	static bool ApplyUserDefinedStructFields(UUserDefinedStruct* Struct, const TArray<FBlueprintHelperAssetFactoryFieldSpec>& Fields)
 	{
 		if (!Struct || Fields.Num() == 0)
 		{
@@ -183,7 +184,7 @@ namespace
 			{
 				return false;
 			}
-			if (!FStructureEditorUtils::ChangeVariableType(Struct, VarGuid, PinType))
+			if (VarDesc->ToPinType() != PinType && !FStructureEditorUtils::ChangeVariableType(Struct, VarGuid, PinType))
 			{
 				return false;
 			}
@@ -196,7 +197,8 @@ namespace
 		FStructureEditorUtils::CompileStructure(Struct);
 		return Struct->Status == UDSS_UpToDate;
 	}
-}
+
+};
 
 FBlueprintHelperAssetFactoryData FBlueprintHelperAssetFactoryService::CreateAsset(
 	const FString& AssetPath,
@@ -430,14 +432,14 @@ FString FBlueprintHelperAssetFactoryService::AssetTypeToAssetClass(EBlueprintHel
 bool FBlueprintHelperAssetFactoryService::AssetExists(const FString& AssetPath)
 {
 	FAssetRegistryModule& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
-	FAssetData AssetData = AssetRegistry.Get().GetAssetByObjectPath(FSoftObjectPath(BlueprintHelperAssetObjectPath(AssetPath)));
+	FAssetData AssetData = AssetRegistry.Get().GetAssetByObjectPath(FSoftObjectPath(FBlueprintHelperAssetFactoryServiceLocalUtils::BlueprintHelperAssetObjectPath(AssetPath)));
 	return AssetData.IsValid();
 }
 
 FString FBlueprintHelperAssetFactoryService::GetExistingAssetClass(const FString& AssetPath)
 {
 	FAssetRegistryModule& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
-	FAssetData AssetData = AssetRegistry.Get().GetAssetByObjectPath(FSoftObjectPath(BlueprintHelperAssetObjectPath(AssetPath)));
+	FAssetData AssetData = AssetRegistry.Get().GetAssetByObjectPath(FSoftObjectPath(FBlueprintHelperAssetFactoryServiceLocalUtils::BlueprintHelperAssetObjectPath(AssetPath)));
 	if (AssetData.IsValid())
 	{
 		return AssetData.AssetClassPath.GetAssetName().ToString();
@@ -460,7 +462,7 @@ bool FBlueprintHelperAssetFactoryService::CreateBlueprintClass(const FString& As
 		if (FoundClass) { ParentUClass = FoundClass; }
 	}
 
-	const FString PackageName = BlueprintHelperAssetPackageName(AssetPath);
+	const FString PackageName = FBlueprintHelperAssetFactoryServiceLocalUtils::BlueprintHelperAssetPackageName(AssetPath);
 	const FString AssetName = FPackageName::GetLongPackageAssetName(PackageName);
 
 	UPackage* Package = CreatePackage(*PackageName);
@@ -485,7 +487,7 @@ bool FBlueprintHelperAssetFactoryService::CreateBlueprintClass(const FString& As
 
 bool FBlueprintHelperAssetFactoryService::CreateBlueprintInterface(const FString& AssetPath)
 {
-	const FString PackageName = BlueprintHelperAssetPackageName(AssetPath);
+	const FString PackageName = FBlueprintHelperAssetFactoryServiceLocalUtils::BlueprintHelperAssetPackageName(AssetPath);
 	const FString AssetName = FPackageName::GetLongPackageAssetName(PackageName);
 
 	UPackage* Package = CreatePackage(*PackageName);
@@ -512,7 +514,7 @@ bool FBlueprintHelperAssetFactoryService::CreateStructure(
 	const FString& AssetPath,
 	const TArray<FBlueprintHelperAssetFactoryFieldSpec>& Fields)
 {
-	const FString PackageName = BlueprintHelperAssetPackageName(AssetPath);
+	const FString PackageName = FBlueprintHelperAssetFactoryServiceLocalUtils::BlueprintHelperAssetPackageName(AssetPath);
 	const FString AssetName = FPackageName::GetLongPackageAssetName(PackageName);
 
 	UPackage* Package = CreatePackage(*PackageName);
@@ -525,7 +527,7 @@ bool FBlueprintHelperAssetFactoryService::CreateStructure(
 		RF_Public | RF_Standalone);
 	if (!NewStruct) return false;
 
-	if (!ApplyUserDefinedStructFields(NewStruct, Fields))
+	if (!FBlueprintHelperAssetFactoryServiceLocalUtils::ApplyUserDefinedStructFields(NewStruct, Fields))
 	{
 		return false;
 	}
@@ -537,7 +539,7 @@ bool FBlueprintHelperAssetFactoryService::CreateStructure(
 
 bool FBlueprintHelperAssetFactoryService::CreateInputAction(const FString& AssetPath, const FString& ValueType)
 {
-	const FString PackageName = BlueprintHelperAssetPackageName(AssetPath);
+	const FString PackageName = FBlueprintHelperAssetFactoryServiceLocalUtils::BlueprintHelperAssetPackageName(AssetPath);
 	const FString AssetName = FPackageName::GetLongPackageAssetName(PackageName);
 
 	UPackage* Package = CreatePackage(*PackageName);
@@ -562,7 +564,7 @@ bool FBlueprintHelperAssetFactoryService::CreateInputAction(const FString& Asset
 
 bool FBlueprintHelperAssetFactoryService::CreateInputMappingContext(const FString& AssetPath)
 {
-	const FString PackageName = BlueprintHelperAssetPackageName(AssetPath);
+	const FString PackageName = FBlueprintHelperAssetFactoryServiceLocalUtils::BlueprintHelperAssetPackageName(AssetPath);
 	const FString AssetName = FPackageName::GetLongPackageAssetName(PackageName);
 
 	UPackage* Package = CreatePackage(*PackageName);
@@ -577,10 +579,10 @@ bool FBlueprintHelperAssetFactoryService::CreateInputMappingContext(const FStrin
 
 bool FBlueprintHelperAssetFactoryService::CreateDataAsset(const FString& AssetPath, const FString& AssetClass)
 {
-	const FString PackageName = BlueprintHelperAssetPackageName(AssetPath);
+	const FString PackageName = FBlueprintHelperAssetFactoryServiceLocalUtils::BlueprintHelperAssetPackageName(AssetPath);
 	const FString AssetName = FPackageName::GetLongPackageAssetName(PackageName);
 
-	UClass* Class = ResolveAssetFactoryClass(AssetClass, UDataAsset::StaticClass(), UDataAsset::StaticClass());
+	UClass* Class = FBlueprintHelperAssetFactoryServiceLocalUtils::ResolveAssetFactoryClass(AssetClass, UDataAsset::StaticClass(), UDataAsset::StaticClass());
 	if (!Class) return false;
 
 	UPackage* Package = CreatePackage(*PackageName);
@@ -605,13 +607,13 @@ bool FBlueprintHelperAssetFactoryService::CreateDataAsset(const FString& AssetPa
 
 bool FBlueprintHelperAssetFactoryService::CreateDataTable(const FString& AssetPath, const FString& RowStruct)
 {
-	UScriptStruct* ResolvedRowStruct = ResolveAssetFactoryRowStruct(RowStruct);
+	UScriptStruct* ResolvedRowStruct = FBlueprintHelperAssetFactoryServiceLocalUtils::ResolveAssetFactoryRowStruct(RowStruct);
 	if (!ResolvedRowStruct)
 	{
 		return false;
 	}
 
-	const FString PackageName = BlueprintHelperAssetPackageName(AssetPath);
+	const FString PackageName = FBlueprintHelperAssetFactoryServiceLocalUtils::BlueprintHelperAssetPackageName(AssetPath);
 	const FString AssetName = FPackageName::GetLongPackageAssetName(PackageName);
 
 	UPackage* Package = CreatePackage(*PackageName);
@@ -636,10 +638,10 @@ bool FBlueprintHelperAssetFactoryService::CreateDataTable(const FString& AssetPa
 
 bool FBlueprintHelperAssetFactoryService::CreateWidgetBlueprint(const FString& AssetPath, const FString& ParentClass)
 {
-	UClass* ParentUClass = ResolveAssetFactoryClass(ParentClass, UUserWidget::StaticClass(), UUserWidget::StaticClass());
+	UClass* ParentUClass = FBlueprintHelperAssetFactoryServiceLocalUtils::ResolveAssetFactoryClass(ParentClass, UUserWidget::StaticClass(), UUserWidget::StaticClass());
 	if (!ParentUClass) return false;
 
-	const FString PackageName = BlueprintHelperAssetPackageName(AssetPath);
+	const FString PackageName = FBlueprintHelperAssetFactoryServiceLocalUtils::BlueprintHelperAssetPackageName(AssetPath);
 	const FString AssetName = FPackageName::GetLongPackageAssetName(PackageName);
 
 	UPackage* Package = CreatePackage(*PackageName);

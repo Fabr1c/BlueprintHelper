@@ -46,6 +46,8 @@ Ordinary Agents submit `BlueprintHelper.TaskSpec.v1` only. They do not author `B
 | MCP/Python Task Compiler | `BlueprintHelper.TaskPlan.v1` | TaskSpec |
 | UE Task Runtime | `BlueprintHelper.TaskRunJournal.v1` | TaskPlan |
 | Existing Capability Clusters | Bridge/UE operation result facts | TaskPlan step args |
+| Review System | `BlueprintHelper.ReviewRecord.v1` from `BlueprintHelper.WriteReviewEvidence.v1` | Producer-owned write evidence, transaction rollback refs |
+| Debug System | `BlueprintHelper.DebugCase.v1`, `BlueprintHelper.DebugBundleManifest.v1` | ToolResult failure summary, TaskRuntime/Bridge/Review/Transaction failure evidence |
 
 Rules:
 
@@ -57,6 +59,12 @@ Rules:
 - TaskSpec keeps a small semantic top-level surface. A single semantic TaskSpec may combine multiple capability clusters through compiler decomposition, but those clusters must not become new default Agent-facing atomic tools.
 - Preview may expose a TaskPlan summary and debug/expert details, but ordinary Agents do not depend on full TaskPlan payloads or adapter payloads.
 - TaskRuntime execution policy is: dry-run all executable steps first, execute steps sequentially only after dry-run passes, record partial failure in TaskRunJournal if execution fails mid-run, and block dependent downstream steps by TaskPlan topology. It does not promise global rollback by default.
+- Every asset-mutating write cluster must provide producer-owned Review evidence. ReviewStore consumes evidence and does not invent missing atomic anchors.
+- DebugCase / DebugBundle are developer diagnostics. MCP may expose summary-only `debug_case_ids[]` and `get_debug_case`, but must not return DebugBundle artifact contents, local bundle paths, raw payloads, token/settings full values, or source content.
+- Python Orchestration owns TaskSpec validation, TaskPlan generation, TaskPlan summary, and compiler error normalization. It never writes UE assets and never creates ReviewRecord or DebugBundle artifacts.
+- TaskPlan execution uses TaskRuntime as the main Review / Debug / Transaction convergence point.
+- Non-TaskPlan paths may call fixed System Entry points directly. Examples: malformed Bridge request -> DebugEntry, standalone compile/save failure -> DebugEntry, ReviewAction reject failure -> DebugEntry, rollback/cleanup expert failure -> DebugEntry, Debug export failure -> DebugEntry or DebugCaseStore failure result.
+- Non-TaskPlan access does not permit arbitrary persistence. Producers must still use ReviewStore / ReviewAction / TransactionJournal / DebugEntry instead of writing ReviewRecord, Transaction Journal, DebugCase, or DebugBundle files directly.
 
 ## 4. Agent-Facing Tools
 
@@ -109,7 +117,7 @@ Default Agent-facing result layering is fixed as:
 
 UE Agent-facing façade commands return `FBlueprintHelperToolResultBase`. MCP task/read tools normalize those results into `BlueprintHelper.McpToolResult.v1` for Agent consumption. Existing Bridge / UE operation results are internal facts for compiler/runtime/journal use; ordinary Agents should not depend on raw adapter payloads.
 
-Debug data must not expand the default top-level shape. Put compact debug facts under `data.debug` only when directly useful. Large asset context should be read through targeted `logic_md` / `logic_json` slices or a future DebugExport bundle, not by expanding default tool responses.
+Debug data must not expand the default top-level shape. Put compact debug facts under `data.debug` only when directly useful. Large asset context should be read through targeted `logic_md` / `logic_json` slices. Developer diagnostics use summary `DebugCase` ids and local `DebugBundle` exports; default tool responses must not expose bundle artifacts, local paths, raw payloads, source content, or large payload refs.
 
 Long-term read entry consolidation is:
 
@@ -963,7 +971,7 @@ P2 first slice, 2026-05-06:
 - `interface_entry_kind` distinguishes interface functions from interface events. Interface functions lower to `ensure_function` under `function_signature`; interface events lower to `ensure_custom_event` under `custom_event_signature` and require an explicit graph target.
 - `ensure_custom_event` supports dry-run, reuse-if-exists no-op, and first-slice entry declaration through the signature service. GraphWrite remains responsible for body nodes and links. `replace_owned_graph` with `replace.scope=custom_event_definition` now lowers into a `blueprint_signature.ensure_custom_event` dependency step followed by `graph_write.replace_body` with `custom_event_body`.
 - `ensure_event_dispatcher` is a TaskPlan-internal `event_dispatcher_signature` op. It can create a new dispatcher declaration through the internal structure service. Existing dispatcher signature mutation is blocked by policy; `signature_mismatch_policy` must be `block`.
-- `ensure_override_event` is a TaskPlan-internal `override_event_signature` op. `event_kind` must be `native_event` or `override_event`; default `execute_policy=blocked_preflight` still returns a blocked preflight result, while explicit `execute_policy=create_if_missing` can create a missing native/override event entry in the target graph. This source path still needs UE build, automation, and smoke verification before it is counted verified.
+- `ensure_override_event` is a TaskPlan-internal `override_event_signature` op. `event_kind` must be `native_event` or `override_event`; default `execute_policy=blocked_preflight` still returns a blocked preflight result, while explicit `execute_policy=create_if_missing` can create a missing native/override event entry in the target graph. UE build has passed, but FullTestLog still shows failing override create-if-missing Automation, so this path is not smoke-verified yet.
 - `remove_signature` is TaskPlan-internal. It accepts function, interface function, custom event, interface event, event dispatcher, override event, and native event kinds, but `execute_policy` must be `blocked_preflight` and `require_reference_context` must stay true until reference analysis and cleanup policy are implemented.
 - No new Agent-facing atomic MCP signature tool is introduced.
 

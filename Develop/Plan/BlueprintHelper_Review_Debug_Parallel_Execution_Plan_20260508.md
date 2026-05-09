@@ -45,7 +45,6 @@ Shared contract locked by this plan:
 ToolResultBase exposes only debug_case_ids[] summary references.
 ToolResultBase never exposes DebugBundle artifact content.
 ReviewRecord stores debug_case_ids[] for Debug linkage.
-ReviewRecord keeps legacy DebugExportRefs only as compatibility metadata.
 ReviewRecord never stores DebugBundle local paths.
 DebugCase can store review_record_ids[].
 Review Reject failed / needs_action reports to DebugEntry.
@@ -230,7 +229,7 @@ Debug progress sync, 2026-05-09:
 
 ```text
 P3 Debug integration has been merged into the main workspace.
-Implemented: Review reject needs_action / reject_failed now passes review_record_id into DebugEntry; DebugEvent, DebugCase, and DebugCaseSummary persist review_record_ids[]; DebugBundle summary export can use ReviewStore to write relative review/*.summary.json artifacts into the bundle manifest; ReviewRecord remains free of DebugBundle local paths and legacy DebugExportRefs are not populated by bundle export.
+Implemented: Review reject needs_action / reject_failed now passes review_record_id into DebugEntry; DebugEvent, DebugCase, and DebugCaseSummary persist review_record_ids[]; DebugBundle summary export can use ReviewStore to write relative review/*.summary.json artifacts into the bundle manifest; ReviewRecord remains free of DebugBundle local paths and legacy DebugExportRefs have been removed from the active contract.
 Tests added: RuntimeDiagnostics Debug automation covers review_record_ids summary persistence and Review summary artifact export; Review integration tests now assert reject needs_action and reject_failed DebugCases link back to the originating ReviewRecord.
 Verification run in this session: git diff --check passed for tracked changes with only LF/CRLF warnings; Debug P3 new-file trailing whitespace scan passed; conflict marker scan found no matches; MCP npm.cmd test passed with Python 44 tests OK and Node 140 tests passing.
 Full UE Build Tool was intentionally skipped because the user will run the unified compile.
@@ -252,7 +251,7 @@ Full UE Build Tool was intentionally skipped because the user will run the unifi
 
 ### P1 Review: Internal persistence and status propagation only
 
-- [x] Add or confirm `debug_case_ids[]` on ReviewRecord while keeping `DebugExportRefs` compatibility.
+- [x] Add `debug_case_ids[]` on ReviewRecord and remove legacy `DebugExportRefs` from the active contract.
 - [x] Persist `review_actions[]` after Accept, Reject, RejectAll, and ConvertOwnerBlock.
 - [x] Propagate per-target status to visible-change status and record status.
 - [x] Add unit tests for Accept action history and status propagation.
@@ -296,7 +295,7 @@ Review progress sync, 2026-05-09:
 P3 Review: implemented for Review-side reject failure paths.
 Reject needs_action and reject_failed now record a DebugCase through DebugEntry and persist only debug_case_ids[] on ReviewRecord.
 Reject needs_action and reject_failed now include a summary-only transaction link with role=review_reject_failed.
-ReviewRecord still does not store DebugBundle local paths; tests assert the new failure-linking path leaves DebugExportRefs empty.
+ReviewRecord still does not store DebugBundle local paths; tests assert the new failure-linking path persists only debug_case_ids[].
 P3 verification run in this session: direct cl /Y- compile passed for BlueprintHelperReviewStoreServiceTests.cpp, BlueprintHelperReviewActionService.cpp, and BlueprintHelper.cpp.
 Full UBT build was not run because the user requested no build.
 ```

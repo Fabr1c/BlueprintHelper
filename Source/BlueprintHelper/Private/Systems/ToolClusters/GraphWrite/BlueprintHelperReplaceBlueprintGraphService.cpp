@@ -27,9 +27,10 @@
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 
-namespace
+class FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils
 {
-	UEdGraphPin* FindFirstExecPin(UEdGraphNode* Node, EEdGraphPinDirection Direction)
+public:
+	static UEdGraphPin* FindFirstExecPin(UEdGraphNode* Node, EEdGraphPinDirection Direction)
 	{
 		if (!Node)
 		{
@@ -46,7 +47,7 @@ namespace
 		return nullptr;
 	}
 
-	bool NodeMatchesEntryName(UEdGraphNode* Node, const FString& EntryName)
+	static bool NodeMatchesEntryName(UEdGraphNode* Node, const FString& EntryName)
 	{
 		if (!Node)
 		{
@@ -89,7 +90,7 @@ namespace
 			NodeTitle.Equals(EntryName, ESearchCase::IgnoreCase);
 	}
 
-	bool TryReadBlueprintHelperBlockId(UEdGraphNode* Node, FString& OutBlockId)
+	static bool TryReadBlueprintHelperBlockId(UEdGraphNode* Node, FString& OutBlockId)
 	{
 		OutBlockId.Reset();
 		if (!Node)
@@ -113,7 +114,7 @@ namespace
 		return !OutBlockId.IsEmpty();
 	}
 
-	bool HasInboundExecLinkFromImportedNode(UEdGraphPin* ExecInputPin, const TSet<UEdGraphNode*>& ImportedNodes)
+	static bool HasInboundExecLinkFromImportedNode(UEdGraphPin* ExecInputPin, const TSet<UEdGraphNode*>& ImportedNodes)
 	{
 		if (!ExecInputPin)
 		{
@@ -138,7 +139,7 @@ namespace
 		return false;
 	}
 
-	UEdGraphNode* FindFirstImportedExecutableBodyNode(
+	static UEdGraphNode* FindFirstImportedExecutableBodyNode(
 		UEdGraph* Graph,
 		const TSet<UEdGraphNode*>& NodesBeforeImport)
 	{
@@ -175,7 +176,7 @@ namespace
 		return ImportedExecutableNodes.Num() > 0 ? ImportedExecutableNodes[0] : nullptr;
 	}
 
-	bool PinsHaveSingleConnectionToEachOther(UEdGraphPin* FirstPin, UEdGraphPin* SecondPin)
+	static bool PinsHaveSingleConnectionToEachOther(UEdGraphPin* FirstPin, UEdGraphPin* SecondPin)
 	{
 		return FirstPin &&
 			SecondPin &&
@@ -185,7 +186,7 @@ namespace
 			SecondPin->LinkedTo[0] == FirstPin;
 	}
 
-	void BreakAllPinLinksWithModify(UEdGraphPin* Pin)
+	static void BreakAllPinLinksWithModify(UEdGraphPin* Pin)
 	{
 		if (!Pin)
 		{
@@ -195,7 +196,8 @@ namespace
 		Pin->Modify();
 		Pin->BreakAllPinLinks(true);
 	}
-}
+
+};
 
 // ─── 构造 ───
 
@@ -813,10 +815,10 @@ bool FBlueprintHelperReplaceBlueprintGraphService::ResolveReplaceTarget(
 				if (bIsCustomEventNode || bIsEventNode)
 				{
 					OutTarget.NodesToPreserve.Add(Node);
-					if (NodeMatchesEntryName(Node, Request.EntryName))
+					if (FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::NodeMatchesEntryName(Node, Request.EntryName))
 					{
 						FString EntryBlockId;
-						if (TryReadBlueprintHelperBlockId(Node, EntryBlockId))
+						if (FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::TryReadBlueprintHelperBlockId(Node, EntryBlockId))
 						{
 							OutTarget.OriginalBlockId = EntryBlockId;
 							OutTarget.OriginalBlockRef = Request.EntryName.IsEmpty() ? Request.GraphName : Request.EntryName;
@@ -952,8 +954,8 @@ bool FBlueprintHelperReplaceBlueprintGraphService::ReconnectPreservedEntryToNewB
 
 		const bool bMatchesScope =
 			(Request.Scope == EBlueprintHelperReplaceScope::FunctionBody && Node->IsA<UK2Node_FunctionEntry>()) ||
-			(Request.Scope != EBlueprintHelperReplaceScope::FunctionBody && FindFirstExecPin(Node, EGPD_Output) != nullptr);
-		if (bMatchesScope && NodeMatchesEntryName(Node, Request.EntryName))
+			(Request.Scope != EBlueprintHelperReplaceScope::FunctionBody && FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::FindFirstExecPin(Node, EGPD_Output) != nullptr);
+		if (bMatchesScope && FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::NodeMatchesEntryName(Node, Request.EntryName))
 		{
 			EntryNode = Node;
 			break;
@@ -968,8 +970,8 @@ bool FBlueprintHelperReplaceBlueprintGraphService::ReconnectPreservedEntryToNewB
 		return false;
 	}
 
-	UEdGraphPin* EntryExecOut = FindFirstExecPin(EntryNode, EGPD_Output);
-	UEdGraphNode* FirstBodyNode = FindFirstImportedExecutableBodyNode(Resolved.Graph, NodesBeforeImport);
+	UEdGraphPin* EntryExecOut = FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::FindFirstExecPin(EntryNode, EGPD_Output);
+	UEdGraphNode* FirstBodyNode = FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::FindFirstImportedExecutableBodyNode(Resolved.Graph, NodesBeforeImport);
 	if (!EntryExecOut)
 	{
 		OutError = TEXT("入口节点或替换 body 首节点缺少 Exec Pin。");
@@ -980,20 +982,20 @@ bool FBlueprintHelperReplaceBlueprintGraphService::ReconnectPreservedEntryToNewB
 	{
 		if (EntryExecOut->LinkedTo.Num() > 0)
 		{
-			BreakAllPinLinksWithModify(EntryExecOut);
+			FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::BreakAllPinLinksWithModify(EntryExecOut);
 			Resolved.Graph->NotifyGraphChanged();
 		}
 		return true;
 	}
 
-	UEdGraphPin* BodyExecIn = FindFirstExecPin(FirstBodyNode, EGPD_Input);
+	UEdGraphPin* BodyExecIn = FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::FindFirstExecPin(FirstBodyNode, EGPD_Input);
 	if (!BodyExecIn)
 	{
 		OutError = TEXT("Replacement body first node is missing an Exec input pin.");
 		return false;
 	}
 
-	if (PinsHaveSingleConnectionToEachOther(EntryExecOut, BodyExecIn))
+	if (FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::PinsHaveSingleConnectionToEachOther(EntryExecOut, BodyExecIn))
 	{
 		return true;
 	}
@@ -1005,10 +1007,10 @@ bool FBlueprintHelperReplaceBlueprintGraphService::ReconnectPreservedEntryToNewB
 		return false;
 	}
 
-	BreakAllPinLinksWithModify(EntryExecOut);
-	BreakAllPinLinksWithModify(BodyExecIn);
+	FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::BreakAllPinLinksWithModify(EntryExecOut);
+	FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::BreakAllPinLinksWithModify(BodyExecIn);
 	if (!Schema->TryCreateConnection(EntryExecOut, BodyExecIn) ||
-		!PinsHaveSingleConnectionToEachOther(EntryExecOut, BodyExecIn))
+		!FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::PinsHaveSingleConnectionToEachOther(EntryExecOut, BodyExecIn))
 	{
 		OutError = FString::Printf(TEXT("无法连接入口 %s 到替换 body 首节点 %s。"),
 			*EntryNode->GetName(), *FirstBodyNode->GetName());

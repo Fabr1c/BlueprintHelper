@@ -5,9 +5,10 @@
 #include "Dom/JsonValue.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.h"
 
-namespace
+class FBlueprintHelperObjectPropertyTaskPlanAdapterLocalUtils
 {
-	FBlueprintHelperToolError MakeObjectPropertyTaskPlanError(
+public:
+	static FBlueprintHelperToolError MakeObjectPropertyTaskPlanError(
 		const FString& Code,
 		const FString& Message,
 		const FString& Field)
@@ -22,28 +23,28 @@ namespace
 		return Error;
 	}
 
-	FString ObjectPropertyBuildStepFieldPath(const FString& Suffix)
+	static FString ObjectPropertyBuildStepFieldPath(const FString& Suffix)
 	{
 		return Suffix.IsEmpty()
 			? FString(TEXT("task_plan.steps[0]"))
 			: FString::Printf(TEXT("task_plan.steps[0].%s"), *Suffix);
 	}
 
-	FString ObjectPropertyBuildOpFieldPath(const FString& Suffix)
+	static FString ObjectPropertyBuildOpFieldPath(const FString& Suffix)
 	{
 		return Suffix.IsEmpty()
 			? FString(TEXT("task_plan.steps[0].write.ops[0]"))
 			: FString::Printf(TEXT("task_plan.steps[0].write.ops[0].%s"), *Suffix);
 	}
 
-	FString ObjectPropertyBuildSettingFieldPath(int32 SettingIndex, const FString& Suffix)
+	static FString ObjectPropertyBuildSettingFieldPath(int32 SettingIndex, const FString& Suffix)
 	{
 		return Suffix.IsEmpty()
 			? FString::Printf(TEXT("task_plan.steps[0].write.ops[0].settings[%d]"), SettingIndex)
 			: FString::Printf(TEXT("task_plan.steps[0].write.ops[0].settings[%d].%s"), SettingIndex, *Suffix);
 	}
 
-	FString ObjectPropertyJsonValueTypeToString(const TSharedPtr<FJsonValue>& Value)
+	static FString ObjectPropertyJsonValueTypeToString(const TSharedPtr<FJsonValue>& Value)
 	{
 		if (!Value.IsValid())
 		{
@@ -63,7 +64,7 @@ namespace
 		}
 	}
 
-	bool ObjectPropertyTryReadRequiredString(
+	static bool ObjectPropertyTryReadRequiredString(
 		const TSharedPtr<FJsonObject>& Object,
 		const TCHAR* FieldName,
 		const FString& FieldPath,
@@ -105,7 +106,7 @@ namespace
 		return true;
 	}
 
-	bool ObjectPropertyTryRequireValueField(
+	static bool ObjectPropertyTryRequireValueField(
 		const TSharedPtr<FJsonObject>& Object,
 		const FString& FieldPath,
 		const FString& ErrorCode,
@@ -131,7 +132,7 @@ namespace
 		return true;
 	}
 
-	bool ObjectPropertyTryReadTaskPlanParts(
+	static bool ObjectPropertyTryReadTaskPlanParts(
 		const TSharedPtr<FJsonObject>& StepObject,
 		FString& OutStepId,
 		FString& OutAssetPath,
@@ -249,7 +250,7 @@ namespace
 		return true;
 	}
 
-	bool ObjectPropertyTryBuildSetPayload(
+	static bool ObjectPropertyTryBuildSetPayload(
 		const FString& AssetPath,
 		const TSharedPtr<FJsonObject>& OpObject,
 		bool bDryRun,
@@ -290,7 +291,7 @@ namespace
 		return true;
 	}
 
-	bool ObjectPropertyTryBuildSetManyPayload(
+	static bool ObjectPropertyTryBuildSetManyPayload(
 		const FString& AssetPath,
 		const TSharedPtr<FJsonObject>& OpObject,
 		bool bDryRun,
@@ -362,7 +363,8 @@ namespace
 		OutPayload = Payload;
 		return true;
 	}
-}
+
+};
 
 bool FBlueprintHelperObjectPropertyTaskPlanAdapter::SupportsStep(const TSharedPtr<FJsonObject>& StepObject)
 {
@@ -384,16 +386,16 @@ bool FBlueprintHelperObjectPropertyTaskPlanAdapter::TryBuildPayloadFromTaskPlanS
 	FString StepId;
 	FString AssetPath;
 	TSharedPtr<FJsonObject> OpObject;
-	if (!ObjectPropertyTryReadTaskPlanParts(StepObject, StepId, AssetPath, OpObject, OutError))
+	if (!FBlueprintHelperObjectPropertyTaskPlanAdapterLocalUtils::ObjectPropertyTryReadTaskPlanParts(StepObject, StepId, AssetPath, OpObject, OutError))
 	{
 		return false;
 	}
 
 	FString OpName;
-	if (!ObjectPropertyTryReadRequiredString(
+	if (!FBlueprintHelperObjectPropertyTaskPlanAdapterLocalUtils::ObjectPropertyTryReadRequiredString(
 		OpObject,
 		TEXT("op"),
-		ObjectPropertyBuildOpFieldPath(TEXT("op")),
+		FBlueprintHelperObjectPropertyTaskPlanAdapterLocalUtils::ObjectPropertyBuildOpFieldPath(TEXT("op")),
 		TEXT("invalid_object_property_op"),
 		TEXT("object_property op requires op."),
 		OpName,
@@ -407,7 +409,7 @@ bool FBlueprintHelperObjectPropertyTaskPlanAdapter::TryBuildPayloadFromTaskPlanS
 	if (OpName == OpSetObjectProperty)
 	{
 		AdapterOperation = AdapterOperationSetObjectProperty;
-		if (!ObjectPropertyTryBuildSetPayload(AssetPath, OpObject, bDryRun, Payload, OutError))
+		if (!FBlueprintHelperObjectPropertyTaskPlanAdapterLocalUtils::ObjectPropertyTryBuildSetPayload(AssetPath, OpObject, bDryRun, Payload, OutError))
 		{
 			return false;
 		}
@@ -415,25 +417,25 @@ bool FBlueprintHelperObjectPropertyTaskPlanAdapter::TryBuildPayloadFromTaskPlanS
 	else if (OpName == OpSetObjectProperties)
 	{
 		AdapterOperation = AdapterOperationSetObjectProperties;
-		if (!ObjectPropertyTryBuildSetManyPayload(AssetPath, OpObject, bDryRun, Payload, OutError))
+		if (!FBlueprintHelperObjectPropertyTaskPlanAdapterLocalUtils::ObjectPropertyTryBuildSetManyPayload(AssetPath, OpObject, bDryRun, Payload, OutError))
 		{
 			return false;
 		}
 	}
 	else if (OpName.StartsWith(TEXT("read_")))
 	{
-		OutError = MakeObjectPropertyTaskPlanError(
+		OutError = FBlueprintHelperObjectPropertyTaskPlanAdapterLocalUtils::MakeObjectPropertyTaskPlanError(
 			TEXT("unsupported_object_property_read_op"),
 			TEXT("object_property TaskRuntime write lowering does not execute read ops; use ReadSpec/read_context for reads."),
-			ObjectPropertyBuildOpFieldPath(TEXT("op")));
+			FBlueprintHelperObjectPropertyTaskPlanAdapterLocalUtils::ObjectPropertyBuildOpFieldPath(TEXT("op")));
 		return false;
 	}
 	else
 	{
-		OutError = MakeObjectPropertyTaskPlanError(
+		OutError = FBlueprintHelperObjectPropertyTaskPlanAdapterLocalUtils::MakeObjectPropertyTaskPlanError(
 			TEXT("unsupported_object_property_op"),
 			TEXT("object_property adapter currently supports set_object_property and set_object_properties only."),
-			ObjectPropertyBuildOpFieldPath(TEXT("op")));
+			FBlueprintHelperObjectPropertyTaskPlanAdapterLocalUtils::ObjectPropertyBuildOpFieldPath(TEXT("op")));
 		return false;
 	}
 

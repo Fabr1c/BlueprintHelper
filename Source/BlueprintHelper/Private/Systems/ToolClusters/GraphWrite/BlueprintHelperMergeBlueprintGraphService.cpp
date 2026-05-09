@@ -35,9 +35,10 @@ FBlueprintHelperMergeBlueprintGraphService::FBlueprintHelperMergeBlueprintGraphS
 
 // ─── 公共入口 ───
 
-namespace
+class FBlueprintHelperMergeBlueprintGraphServiceLocalUtils
 {
-	UFunction* ResolveMergeCallableFunction(UBlueprint* Blueprint, const FString& FunctionName)
+public:
+	static UFunction* ResolveMergeCallableFunction(UBlueprint* Blueprint, const FString& FunctionName)
 	{
 		if (FunctionName.IsEmpty())
 		{
@@ -74,7 +75,7 @@ namespace
 		return TextToBlueprintGenerator::FindFunctionByName(FunctionName);
 	}
 
-	UK2Node_CallFunction* CreateMergeCallFunctionNode(UEdGraph* Graph, UFunction* Function)
+	static UK2Node_CallFunction* CreateMergeCallFunctionNode(UEdGraph* Graph, UFunction* Function)
 	{
 		if (!Graph || !Function)
 		{
@@ -87,7 +88,7 @@ namespace
 		return TextToBlueprintGenerator::SpawnFunctionNode(Graph, Function, NodeData);
 	}
 
-	void MarkMergeNodeAsBlueprintHelperOwned(UEdGraphNode* Node, const FString& BlockId)
+	static void MarkMergeNodeAsBlueprintHelperOwned(UEdGraphNode* Node, const FString& BlockId)
 	{
 		if (!Node || BlockId.IsEmpty())
 		{
@@ -102,7 +103,7 @@ namespace
 		}
 	}
 
-	bool TryReadMergeNodeBlockId(UEdGraphNode* Node, FString& OutBlockId)
+	static bool TryReadMergeNodeBlockId(UEdGraphNode* Node, FString& OutBlockId)
 	{
 		OutBlockId.Reset();
 		if (!Node)
@@ -134,7 +135,7 @@ namespace
 		return !OutBlockId.IsEmpty();
 	}
 
-	UEdGraphNode* FindOwnedNodeByBlockId(UEdGraph* Graph, const FString& BlockId)
+	static UEdGraphNode* FindOwnedNodeByBlockId(UEdGraph* Graph, const FString& BlockId)
 	{
 		if (!Graph || BlockId.IsEmpty())
 		{
@@ -153,7 +154,7 @@ namespace
 		return nullptr;
 	}
 
-	UK2Node_CustomEvent* FindOwnedCustomEventEntryNode(UEdGraph* Graph, const FString& BlockId)
+	static UK2Node_CustomEvent* FindOwnedCustomEventEntryNode(UEdGraph* Graph, const FString& BlockId)
 	{
 		if (!Graph || BlockId.IsEmpty())
 		{
@@ -175,7 +176,7 @@ namespace
 		return nullptr;
 	}
 
-	FString GetOwnedCustomEventCallableName(const UK2Node_CustomEvent* EventNode)
+	static FString GetOwnedCustomEventCallableName(const UK2Node_CustomEvent* EventNode)
 	{
 		if (!EventNode)
 		{
@@ -197,7 +198,7 @@ namespace
 		UFunction* Function = nullptr;
 	};
 
-	FOwnedBlockCallableCheck CheckOwnedBlockCallable(
+	static FOwnedBlockCallableCheck CheckOwnedBlockCallable(
 		UBlueprint* Blueprint,
 		UEdGraph* Graph,
 		const FString& BlockId)
@@ -254,7 +255,8 @@ namespace
 		Result.bOk = true;
 		return Result;
 	}
-}
+
+};
 
 FBlueprintHelperToolResultBase FBlueprintHelperMergeBlueprintGraphService::Execute(
 	const TSharedPtr<FJsonObject>& Payload) const
@@ -386,7 +388,7 @@ FBlueprintHelperMergeBlueprintGraphService::Preflight(
 		const FString InsertedRef = Request.InsertedBlockId.IsEmpty()
 			? Request.InsertedBlockRef
 			: Request.InsertedBlockId;
-		const FOwnedBlockCallableCheck InsertedCheck = CheckOwnedBlockCallable(Context.Blueprint, Context.Graph, InsertedRef);
+		const FBlueprintHelperMergeBlueprintGraphServiceLocalUtils::FOwnedBlockCallableCheck InsertedCheck = FBlueprintHelperMergeBlueprintGraphServiceLocalUtils::CheckOwnedBlockCallable(Context.Blueprint, Context.Graph, InsertedRef);
 		if (!InsertedCheck.bOk &&
 			!(bAllowInsertedLogicRequiresCompile && InsertedCheck.Code == TEXT("inserted_logic_requires_compile")))
 		{
@@ -720,14 +722,14 @@ bool FBlueprintHelperMergeBlueprintGraphService::ResolveInsertedLogic(
 	{
 		Context.InsertedRef = Request.InsertedBlockId.IsEmpty() ? Request.InsertedBlockRef : Request.InsertedBlockId;
 		{
-			FOwnedBlockCallableCheck InsertedCheck = CheckOwnedBlockCallable(Context.Blueprint, Context.Graph, Context.InsertedRef);
+			FBlueprintHelperMergeBlueprintGraphServiceLocalUtils::FOwnedBlockCallableCheck InsertedCheck = FBlueprintHelperMergeBlueprintGraphServiceLocalUtils::CheckOwnedBlockCallable(Context.Blueprint, Context.Graph, Context.InsertedRef);
 			if (!InsertedCheck.bOk && InsertedCheck.Code == TEXT("inserted_logic_requires_compile") && Request.bAllowCompileBeforeCall)
 			{
 				if (Context.Blueprint)
 				{
 					FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Context.Blueprint);
 					FKismetEditorUtilities::CompileBlueprint(Context.Blueprint);
-					InsertedCheck = CheckOwnedBlockCallable(Context.Blueprint, Context.Graph, Context.InsertedRef);
+					InsertedCheck = FBlueprintHelperMergeBlueprintGraphServiceLocalUtils::CheckOwnedBlockCallable(Context.Blueprint, Context.Graph, Context.InsertedRef);
 				}
 			}
 			if (!InsertedCheck.bOk)
@@ -739,7 +741,7 @@ bool FBlueprintHelperMergeBlueprintGraphService::ResolveInsertedLogic(
 				return false;
 			}
 
-			UK2Node_CallFunction* CallNode = CreateMergeCallFunctionNode(Context.Graph, InsertedCheck.Function);
+			UK2Node_CallFunction* CallNode = FBlueprintHelperMergeBlueprintGraphServiceLocalUtils::CreateMergeCallFunctionNode(Context.Graph, InsertedCheck.Function);
 			if (!CallNode)
 			{
 				OutErrorCode = TEXT("inserted_logic_not_callable");
@@ -750,7 +752,7 @@ bool FBlueprintHelperMergeBlueprintGraphService::ResolveInsertedLogic(
 			}
 
 			Context.InsertedNode = CallNode;
-			MarkMergeNodeAsBlueprintHelperOwned(Context.InsertedNode, Request.AnchorBlockId);
+			FBlueprintHelperMergeBlueprintGraphServiceLocalUtils::MarkMergeNodeAsBlueprintHelperOwned(Context.InsertedNode, Request.AnchorBlockId);
 			return true;
 		}
 	}
@@ -759,14 +761,14 @@ bool FBlueprintHelperMergeBlueprintGraphService::ResolveInsertedLogic(
 		if (Request.InsertedCustomEventName.IsEmpty()) { OutError = TEXT("inserted_logic_not_found: 缺少 custom_event 名。"); return false; }
 		Context.InsertedRef = Request.InsertedCustomEventName;
 
-		UFunction* TargetFunc = ResolveMergeCallableFunction(Context.Blueprint, Request.InsertedCustomEventName);
+		UFunction* TargetFunc = FBlueprintHelperMergeBlueprintGraphServiceLocalUtils::ResolveMergeCallableFunction(Context.Blueprint, Request.InsertedCustomEventName);
 		if (!TargetFunc)
 		{
 			OutError = FString::Printf(TEXT("inserted_logic_not_found: custom_event '%s' 不存在或尚未编译。"), *Request.InsertedCustomEventName);
 			return false;
 		}
 
-		UK2Node_CallFunction* CallNode = CreateMergeCallFunctionNode(Context.Graph, TargetFunc);
+		UK2Node_CallFunction* CallNode = FBlueprintHelperMergeBlueprintGraphServiceLocalUtils::CreateMergeCallFunctionNode(Context.Graph, TargetFunc);
 		if (!CallNode)
 		{
 			OutError = FString::Printf(TEXT("inserted_logic_not_found: unable to create custom_event call '%s'."), *Request.InsertedCustomEventName);
@@ -774,7 +776,7 @@ bool FBlueprintHelperMergeBlueprintGraphService::ResolveInsertedLogic(
 		}
 
 		Context.InsertedNode = CallNode;
-		MarkMergeNodeAsBlueprintHelperOwned(Context.InsertedNode, Request.AnchorBlockId);
+		FBlueprintHelperMergeBlueprintGraphServiceLocalUtils::MarkMergeNodeAsBlueprintHelperOwned(Context.InsertedNode, Request.AnchorBlockId);
 		return true;
 	}
 
@@ -783,10 +785,10 @@ bool FBlueprintHelperMergeBlueprintGraphService::ResolveInsertedLogic(
 		if (Request.InsertedFunctionName.IsEmpty()) { OutError = TEXT("inserted_logic_not_found: 缺少 function 名。"); return false; }
 		Context.InsertedRef = Request.InsertedFunctionName;
 
-		UFunction* TargetFunc = ResolveMergeCallableFunction(Context.Blueprint, Request.InsertedFunctionName);
+		UFunction* TargetFunc = FBlueprintHelperMergeBlueprintGraphServiceLocalUtils::ResolveMergeCallableFunction(Context.Blueprint, Request.InsertedFunctionName);
 		if (!TargetFunc) { OutError = FString::Printf(TEXT("inserted_logic_not_found: 函数 '%s' 不存在。"), *Request.InsertedFunctionName); return false; }
 
-		UK2Node_CallFunction* CallNode = CreateMergeCallFunctionNode(Context.Graph, TargetFunc);
+		UK2Node_CallFunction* CallNode = FBlueprintHelperMergeBlueprintGraphServiceLocalUtils::CreateMergeCallFunctionNode(Context.Graph, TargetFunc);
 		if (!CallNode)
 		{
 			OutError = FString::Printf(TEXT("inserted_logic_not_found: unable to create function call '%s'."), *Request.InsertedFunctionName);
@@ -794,7 +796,7 @@ bool FBlueprintHelperMergeBlueprintGraphService::ResolveInsertedLogic(
 		}
 
 		Context.InsertedNode = CallNode;
-		MarkMergeNodeAsBlueprintHelperOwned(Context.InsertedNode, Request.AnchorBlockId);
+		FBlueprintHelperMergeBlueprintGraphServiceLocalUtils::MarkMergeNodeAsBlueprintHelperOwned(Context.InsertedNode, Request.AnchorBlockId);
 		return true;
 	}
 
@@ -957,7 +959,7 @@ bool FBlueprintHelperMergeBlueprintGraphService::ApplyBranchFork(
 	SeqNode->CreateNewGuid();
 	SeqNode->PostPlacedNewNode();
 	SeqNode->AllocateDefaultPins();
-	MarkMergeNodeAsBlueprintHelperOwned(SeqNode, Request.AnchorBlockId);
+	FBlueprintHelperMergeBlueprintGraphServiceLocalUtils::MarkMergeNodeAsBlueprintHelperOwned(SeqNode, Request.AnchorBlockId);
 	Context.SequenceNode = SeqNode;
 
 	// Find Sequence Exec In

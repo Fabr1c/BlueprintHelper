@@ -6,9 +6,10 @@
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
 
-namespace
+class FBlueprintHelperGraphWriteBlockScopedResolverLocalUtils
 {
-	bool TryParseIndexedRef(const FString& Ref, const TCHAR* Prefix, int32& OutIndex)
+public:
+	static bool TryParseIndexedRef(const FString& Ref, const TCHAR* Prefix, int32& OutIndex)
 	{
 		OutIndex = INDEX_NONE;
 		if (Ref.IsEmpty())
@@ -40,7 +41,7 @@ namespace
 		return true;
 	}
 
-	bool TryResolveNodeGuidInSet(const TArray<UEdGraphNode*>& Nodes, const FString& Ref, UEdGraphNode*& OutNode)
+	static bool TryResolveNodeGuidInSet(const TArray<UEdGraphNode*>& Nodes, const FString& Ref, UEdGraphNode*& OutNode)
 	{
 		if (Ref.IsEmpty())
 		{
@@ -66,7 +67,7 @@ namespace
 		return false;
 	}
 
-	bool NodeCommentMentionsBlockId(const UEdGraphNode* Node, const FString& BlockId)
+	static bool NodeCommentMentionsBlockId(const UEdGraphNode* Node, const FString& BlockId)
 	{
 		if (!Node || BlockId.IsEmpty() || !Node->NodeComment.Contains(TEXT("[BlueprintHelper]")))
 		{
@@ -94,7 +95,7 @@ namespace
 		return false;
 	}
 
-	bool IsNodeOwnedByBlock(UEdGraphNode* Node, const FString& BlockId)
+	static bool IsNodeOwnedByBlock(UEdGraphNode* Node, const FString& BlockId)
 	{
 		if (!Node || BlockId.IsEmpty())
 		{
@@ -115,7 +116,7 @@ namespace
 		return NodeCommentMentionsBlockId(Node, BlockId);
 	}
 
-	void CollectBlockNodes(UEdGraph* Graph, const FString& BlockId, TArray<UEdGraphNode*>& OutNodes)
+	static void CollectBlockNodes(UEdGraph* Graph, const FString& BlockId, TArray<UEdGraphNode*>& OutNodes)
 	{
 		OutNodes.Reset();
 		if (!Graph || BlockId.IsEmpty())
@@ -132,7 +133,7 @@ namespace
 		}
 	}
 
-	bool ResolveIndexedNode(const TArray<UEdGraphNode*>& BlockNodes, const FString& Ref, UEdGraphNode*& OutNode)
+	static bool ResolveIndexedNode(const TArray<UEdGraphNode*>& BlockNodes, const FString& Ref, UEdGraphNode*& OutNode)
 	{
 		int32 NodeIndex = INDEX_NONE;
 		if (!TryParseIndexedRef(Ref, TEXT("nodes["), NodeIndex))
@@ -149,7 +150,7 @@ namespace
 		return false;
 	}
 
-	bool ResolveNamedNodeInBlock(const TArray<UEdGraphNode*>& BlockNodes, const FString& Ref, UEdGraphNode*& OutNode, bool& bOutAmbiguous)
+	static bool ResolveNamedNodeInBlock(const TArray<UEdGraphNode*>& BlockNodes, const FString& Ref, UEdGraphNode*& OutNode, bool& bOutAmbiguous)
 	{
 		bOutAmbiguous = false;
 		if (Ref.IsEmpty())
@@ -183,11 +184,12 @@ namespace
 		return false;
 	}
 
-	bool BlockContainsNode(const TArray<UEdGraphNode*>& BlockNodes, UEdGraphNode* Node)
+	static bool BlockContainsNode(const TArray<UEdGraphNode*>& BlockNodes, UEdGraphNode* Node)
 	{
 		return Node && BlockNodes.Contains(Node);
 	}
-}
+
+};
 
 bool FBlueprintHelperGraphWriteBlockScopedResolver::ResolveNode(
 	const FBlueprintHelperLogicJsonPathService& PathService,
@@ -210,7 +212,7 @@ bool FBlueprintHelperGraphWriteBlockScopedResolver::ResolveNode(
 	}
 
 	TArray<UEdGraphNode*> BlockNodes;
-	CollectBlockNodes(Graph, Anchor.BlockId, BlockNodes);
+	FBlueprintHelperGraphWriteBlockScopedResolverLocalUtils::CollectBlockNodes(Graph, Anchor.BlockId, BlockNodes);
 	if (BlockNodes.Num() == 0)
 	{
 		OutError = {TEXT("target_group_not_found"),
@@ -225,13 +227,13 @@ bool FBlueprintHelperGraphWriteBlockScopedResolver::ResolveNode(
 		: (Anchor.NodeRef.IsEmpty() ? Anchor.GroupEntryNodePath : FString());
 	if (!EffectiveNodePath.IsEmpty())
 	{
-		if (ResolveIndexedNode(BlockNodes, EffectiveNodePath, OutNode))
+		if (FBlueprintHelperGraphWriteBlockScopedResolverLocalUtils::ResolveIndexedNode(BlockNodes, EffectiveNodePath, OutNode))
 		{
 			return true;
 		}
 
 		bool bAmbiguous = false;
-		if (ResolveNamedNodeInBlock(BlockNodes, EffectiveNodePath, OutNode, bAmbiguous))
+		if (FBlueprintHelperGraphWriteBlockScopedResolverLocalUtils::ResolveNamedNodeInBlock(BlockNodes, EffectiveNodePath, OutNode, bAmbiguous))
 		{
 			return true;
 		}
@@ -247,18 +249,18 @@ bool FBlueprintHelperGraphWriteBlockScopedResolver::ResolveNode(
 
 	if (!Anchor.NodeRef.IsEmpty())
 	{
-		if (ResolveIndexedNode(BlockNodes, Anchor.NodeRef, OutNode))
+		if (FBlueprintHelperGraphWriteBlockScopedResolverLocalUtils::ResolveIndexedNode(BlockNodes, Anchor.NodeRef, OutNode))
 		{
 			return true;
 		}
 
-		if (TryResolveNodeGuidInSet(BlockNodes, Anchor.NodeRef, OutNode))
+		if (FBlueprintHelperGraphWriteBlockScopedResolverLocalUtils::TryResolveNodeGuidInSet(BlockNodes, Anchor.NodeRef, OutNode))
 		{
 			return true;
 		}
 
 		bool bAmbiguous = false;
-		if (ResolveNamedNodeInBlock(BlockNodes, Anchor.NodeRef, OutNode, bAmbiguous))
+		if (FBlueprintHelperGraphWriteBlockScopedResolverLocalUtils::ResolveNamedNodeInBlock(BlockNodes, Anchor.NodeRef, OutNode, bAmbiguous))
 		{
 			return true;
 		}
@@ -303,7 +305,7 @@ bool FBlueprintHelperGraphWriteBlockScopedResolver::ResolveLink(
 	}
 
 	TArray<UEdGraphNode*> BlockNodes;
-	CollectBlockNodes(Graph, Anchor.BlockId, BlockNodes);
+	FBlueprintHelperGraphWriteBlockScopedResolverLocalUtils::CollectBlockNodes(Graph, Anchor.BlockId, BlockNodes);
 	if (BlockNodes.Num() == 0)
 	{
 		OutError = {TEXT("target_group_not_found"),
@@ -314,7 +316,7 @@ bool FBlueprintHelperGraphWriteBlockScopedResolver::ResolveLink(
 	}
 
 	int32 LinkIndex = INDEX_NONE;
-	if (TryParseIndexedRef(Anchor.LinkRef, TEXT("links["), LinkIndex))
+	if (FBlueprintHelperGraphWriteBlockScopedResolverLocalUtils::TryParseIndexedRef(Anchor.LinkRef, TEXT("links["), LinkIndex))
 	{
 		TArray<UEdGraphNode*> SourceNodes;
 		if (!Anchor.NodeRef.IsEmpty() || !Anchor.NodePath.IsEmpty())
@@ -351,7 +353,7 @@ bool FBlueprintHelperGraphWriteBlockScopedResolver::ResolveLink(
 				for (UEdGraphPin* LinkedPin : Pin->LinkedTo)
 				{
 					UEdGraphNode* LinkedNode = LinkedPin ? LinkedPin->GetOwningNode() : nullptr;
-					if (!BlockContainsNode(BlockNodes, LinkedNode))
+					if (!FBlueprintHelperGraphWriteBlockScopedResolverLocalUtils::BlockContainsNode(BlockNodes, LinkedNode))
 					{
 						continue;
 					}
@@ -379,8 +381,8 @@ bool FBlueprintHelperGraphWriteBlockScopedResolver::ResolveLink(
 
 	FBlueprintHelperPatchResolveError LinkError;
 	if (PathService.ResolveLink(Graph, Anchor.LinkRef, Anchor.LinkPath, OutLink, LinkError) &&
-		BlockContainsNode(BlockNodes, OutLink.SourceNode) &&
-		BlockContainsNode(BlockNodes, OutLink.TargetNode))
+		FBlueprintHelperGraphWriteBlockScopedResolverLocalUtils::BlockContainsNode(BlockNodes, OutLink.SourceNode) &&
+		FBlueprintHelperGraphWriteBlockScopedResolverLocalUtils::BlockContainsNode(BlockNodes, OutLink.TargetNode))
 	{
 		return true;
 	}

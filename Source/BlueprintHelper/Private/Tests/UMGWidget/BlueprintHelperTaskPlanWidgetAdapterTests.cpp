@@ -12,14 +12,15 @@
 #include "UObject/Package.h"
 #include "WidgetBlueprint.h"
 
-namespace
+class FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils
 {
-FString MakeWidgetServiceTestObjectName(const FString& Prefix)
+public:
+static FString MakeWidgetServiceTestObjectName(const FString& Prefix)
 {
 	return FString::Printf(TEXT("%s_%s"), *Prefix, *FGuid::NewGuid().ToString(EGuidFormats::Digits));
 }
 
-UPackage* MakeWidgetServiceTestPackage(const FString& Prefix)
+static UPackage* MakeWidgetServiceTestPackage(const FString& Prefix)
 {
 	UPackage* Package = CreatePackage(*FString::Printf(
 		TEXT("/Game/BlueprintHelperSafety/%s"),
@@ -36,7 +37,7 @@ struct FWidgetServiceDryRunFixture
 	UTextBlock* ExistingText = nullptr;
 };
 
-FWidgetServiceDryRunFixture MakeWidgetServiceDryRunFixture(const FString& Prefix)
+static FWidgetServiceDryRunFixture MakeWidgetServiceDryRunFixture(const FString& Prefix)
 {
 	FWidgetServiceDryRunFixture Fixture;
 	Fixture.Package = MakeWidgetServiceTestPackage(Prefix);
@@ -64,13 +65,13 @@ FWidgetServiceDryRunFixture MakeWidgetServiceDryRunFixture(const FString& Prefix
 	return Fixture;
 }
 
-TSharedPtr<FJsonObject> MakeWidgetTaskPlanStep(
+static TSharedPtr<FJsonObject> MakeWidgetTaskPlanStep(
 	const TArray<TSharedPtr<FJsonValue>>& Ops,
-	const TCHAR* Strategy = BlueprintHelperWidgetTaskPlan::Strategy::WidgetTreeEdit)
+	const TCHAR* Strategy = FBlueprintHelperWidgetTaskPlan::Strategy::WidgetTreeEdit)
 {
 	TSharedPtr<FJsonObject> Step = MakeShared<FJsonObject>();
 	Step->SetStringField(TEXT("step_id"), TEXT("step_widget"));
-	Step->SetStringField(TEXT("capability"), BlueprintHelperWidgetTaskPlan::Capability::UMGWidget);
+	Step->SetStringField(TEXT("capability"), FBlueprintHelperWidgetTaskPlan::Capability::UMGWidget);
 
 	TSharedPtr<FJsonObject> Target = MakeShared<FJsonObject>();
 	Target->SetStringField(TEXT("asset_path"), TEXT("/Game/UI/WBP_MainMenu"));
@@ -88,7 +89,7 @@ TSharedPtr<FJsonObject> MakeWidgetTaskPlanStep(
 	return Step;
 }
 
-TSharedPtr<FJsonObject> MakeWidgetTaskPlan(const TSharedPtr<FJsonObject>& Step)
+static TSharedPtr<FJsonObject> MakeWidgetTaskPlan(const TSharedPtr<FJsonObject>& Step)
 {
 	TSharedPtr<FJsonObject> TaskPlan = MakeShared<FJsonObject>();
 	TaskPlan->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.TaskPlan.v1"));
@@ -111,7 +112,8 @@ TSharedPtr<FJsonObject> MakeWidgetTaskPlan(const TSharedPtr<FJsonObject>& Step)
 
 	return TaskPlan;
 }
-}
+
+};
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperWidgetTaskPlanAddWidgetLoweringTest,
@@ -121,7 +123,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FBlueprintHelperWidgetTaskPlanAddWidgetLoweringTest::RunTest(const FString& Parameters)
 {
 	TSharedPtr<FJsonObject> Op = MakeShared<FJsonObject>();
-	Op->SetStringField(TEXT("op"), BlueprintHelperWidgetTaskPlan::Op::AddWidget);
+	Op->SetStringField(TEXT("op"), FBlueprintHelperWidgetTaskPlan::Op::AddWidget);
 	Op->SetStringField(TEXT("parent_widget_name"), TEXT("CanvasRoot"));
 	Op->SetStringField(TEXT("widget_class"), TEXT("TextBlock"));
 	Op->SetStringField(TEXT("widget_name"), TEXT("TitleText"));
@@ -129,8 +131,8 @@ bool FBlueprintHelperWidgetTaskPlanAddWidgetLoweringTest::RunTest(const FString&
 	TArray<TSharedPtr<FJsonValue>> Ops;
 	Ops.Add(MakeShared<FJsonValueObject>(Op.ToSharedRef()));
 
-	const TSharedPtr<FJsonObject> Step = MakeWidgetTaskPlanStep(Ops);
-	const TSharedPtr<FJsonObject> TaskPlan = MakeWidgetTaskPlan(Step);
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::MakeWidgetTaskPlanStep(Ops);
+	const TSharedPtr<FJsonObject> TaskPlan = FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::MakeWidgetTaskPlan(Step);
 
 	FBlueprintHelperWidgetTaskPlanLoweredStep LoweredStep;
 	FBlueprintHelperToolError Error;
@@ -142,8 +144,8 @@ bool FBlueprintHelperWidgetTaskPlanAddWidgetLoweringTest::RunTest(const FString&
 		Error);
 
 	TestTrue(TEXT("umg_widget add_widget lowers successfully"), bLowered);
-	TestEqual(TEXT("step capability preserved"), LoweredStep.Capability, FString(BlueprintHelperWidgetTaskPlan::Capability::UMGWidget));
-	TestEqual(TEXT("runtime operation is capability"), LoweredStep.RuntimeOperation, FString(BlueprintHelperWidgetTaskPlan::Capability::UMGWidget));
+	TestEqual(TEXT("step capability preserved"), LoweredStep.Capability, FString(FBlueprintHelperWidgetTaskPlan::Capability::UMGWidget));
+	TestEqual(TEXT("runtime operation is capability"), LoweredStep.RuntimeOperation, FString(FBlueprintHelperWidgetTaskPlan::Capability::UMGWidget));
 	TestTrue(TEXT("widget service adapter supports true dry-run"), LoweredStep.bAdapterDryRunSupported);
 	TestEqual(TEXT("one lowered widget op emitted"), LoweredStep.Ops.Num(), 1);
 
@@ -153,7 +155,7 @@ bool FBlueprintHelperWidgetTaskPlanAddWidgetLoweringTest::RunTest(const FString&
 	}
 
 	const FBlueprintHelperWidgetTaskPlanLoweredOp& LoweredOp = LoweredStep.Ops[0];
-	TestEqual(TEXT("add op lowers to current service adapter name"), LoweredOp.AdapterOperation, FString(BlueprintHelperWidgetTaskPlan::AdapterOperation::AddWidget));
+	TestEqual(TEXT("add op lowers to current service adapter name"), LoweredOp.AdapterOperation, FString(FBlueprintHelperWidgetTaskPlan::AdapterOperation::AddWidget));
 	TestNotNull(TEXT("add payload exists"), LoweredOp.Payload.Get());
 
 	FString AssetPath;
@@ -187,7 +189,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FBlueprintHelperWidgetTaskPlanSetWidgetPropertyLoweringTest::RunTest(const FString& Parameters)
 {
 	TSharedPtr<FJsonObject> Op = MakeShared<FJsonObject>();
-	Op->SetStringField(TEXT("op"), BlueprintHelperWidgetTaskPlan::Op::SetWidgetProperty);
+	Op->SetStringField(TEXT("op"), FBlueprintHelperWidgetTaskPlan::Op::SetWidgetProperty);
 	Op->SetStringField(TEXT("widget_name"), TEXT("TitleText"));
 	Op->SetStringField(TEXT("property_path"), TEXT("Text"));
 	Op->SetStringField(TEXT("value"), TEXT("Start Game"));
@@ -195,10 +197,10 @@ bool FBlueprintHelperWidgetTaskPlanSetWidgetPropertyLoweringTest::RunTest(const 
 	TArray<TSharedPtr<FJsonValue>> Ops;
 	Ops.Add(MakeShared<FJsonValueObject>(Op.ToSharedRef()));
 
-	const TSharedPtr<FJsonObject> Step = MakeWidgetTaskPlanStep(
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::MakeWidgetTaskPlanStep(
 		Ops,
-		BlueprintHelperWidgetTaskPlan::Strategy::WidgetPropertyEdit);
-	const TSharedPtr<FJsonObject> TaskPlan = MakeWidgetTaskPlan(Step);
+		FBlueprintHelperWidgetTaskPlan::Strategy::WidgetPropertyEdit);
+	const TSharedPtr<FJsonObject> TaskPlan = FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::MakeWidgetTaskPlan(Step);
 
 	FBlueprintHelperWidgetTaskPlanLoweredStep LoweredStep;
 	FBlueprintHelperToolError Error;
@@ -219,7 +221,7 @@ bool FBlueprintHelperWidgetTaskPlanSetWidgetPropertyLoweringTest::RunTest(const 
 	}
 
 	const FBlueprintHelperWidgetTaskPlanLoweredOp& LoweredOp = LoweredStep.Ops[0];
-	TestEqual(TEXT("property op lowers to current service adapter name"), LoweredOp.AdapterOperation, FString(BlueprintHelperWidgetTaskPlan::AdapterOperation::SetWidgetProperty));
+	TestEqual(TEXT("property op lowers to current service adapter name"), LoweredOp.AdapterOperation, FString(FBlueprintHelperWidgetTaskPlan::AdapterOperation::SetWidgetProperty));
 
 	FString PropertyName;
 	TestTrue(TEXT("payload carries property_name for current service"), LoweredOp.Payload->TryGetStringField(TEXT("property_name"), PropertyName));
@@ -244,14 +246,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FBlueprintHelperWidgetTaskPlanRemoveWidgetLoweringTest::RunTest(const FString& Parameters)
 {
 	TSharedPtr<FJsonObject> Op = MakeShared<FJsonObject>();
-	Op->SetStringField(TEXT("op"), BlueprintHelperWidgetTaskPlan::Op::RemoveWidget);
+	Op->SetStringField(TEXT("op"), FBlueprintHelperWidgetTaskPlan::Op::RemoveWidget);
 	Op->SetStringField(TEXT("widget_name"), TEXT("OldButton"));
 
 	TArray<TSharedPtr<FJsonValue>> Ops;
 	Ops.Add(MakeShared<FJsonValueObject>(Op.ToSharedRef()));
 
-	const TSharedPtr<FJsonObject> Step = MakeWidgetTaskPlanStep(Ops);
-	const TSharedPtr<FJsonObject> TaskPlan = MakeWidgetTaskPlan(Step);
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::MakeWidgetTaskPlanStep(Ops);
+	const TSharedPtr<FJsonObject> TaskPlan = FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::MakeWidgetTaskPlan(Step);
 
 	FBlueprintHelperWidgetTaskPlanLoweredStep LoweredStep;
 	FBlueprintHelperToolError Error;
@@ -272,7 +274,7 @@ bool FBlueprintHelperWidgetTaskPlanRemoveWidgetLoweringTest::RunTest(const FStri
 	}
 
 	const FBlueprintHelperWidgetTaskPlanLoweredOp& LoweredOp = LoweredStep.Ops[0];
-	TestEqual(TEXT("remove op lowers to current service adapter name"), LoweredOp.AdapterOperation, FString(BlueprintHelperWidgetTaskPlan::AdapterOperation::RemoveWidget));
+	TestEqual(TEXT("remove op lowers to current service adapter name"), LoweredOp.AdapterOperation, FString(FBlueprintHelperWidgetTaskPlan::AdapterOperation::RemoveWidget));
 
 	FString WidgetName;
 	TestTrue(TEXT("payload carries widget_name"), LoweredOp.Payload->TryGetStringField(TEXT("widget_name"), WidgetName));
@@ -292,7 +294,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperWidgetServiceAddWidgetDryRunDoesNotCreateWidgetTest::RunTest(const FString& Parameters)
 {
-	FWidgetServiceDryRunFixture Fixture = MakeWidgetServiceDryRunFixture(TEXT("WidgetAddDryRun"));
+	FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::FWidgetServiceDryRunFixture Fixture = FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::MakeWidgetServiceDryRunFixture(TEXT("WidgetAddDryRun"));
 	TestNotNull(TEXT("WidgetBlueprint is created"), Fixture.Blueprint);
 	TestNotNull(TEXT("root canvas is created"), Fixture.Root);
 
@@ -322,7 +324,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperWidgetServiceSetWidgetPropertyDryRunDoesNotModifyPropertyTest::RunTest(const FString& Parameters)
 {
-	FWidgetServiceDryRunFixture Fixture = MakeWidgetServiceDryRunFixture(TEXT("WidgetSetPropertyDryRun"));
+	FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::FWidgetServiceDryRunFixture Fixture = FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::MakeWidgetServiceDryRunFixture(TEXT("WidgetSetPropertyDryRun"));
 	TestNotNull(TEXT("WidgetBlueprint is created"), Fixture.Blueprint);
 	TestNotNull(TEXT("existing text widget is created"), Fixture.ExistingText);
 
@@ -351,7 +353,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperWidgetServiceRemoveWidgetDryRunDoesNotDeleteWidgetTest::RunTest(const FString& Parameters)
 {
-	FWidgetServiceDryRunFixture Fixture = MakeWidgetServiceDryRunFixture(TEXT("WidgetRemoveDryRun"));
+	FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::FWidgetServiceDryRunFixture Fixture = FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::MakeWidgetServiceDryRunFixture(TEXT("WidgetRemoveDryRun"));
 	TestNotNull(TEXT("WidgetBlueprint is created"), Fixture.Blueprint);
 	TestNotNull(TEXT("existing text widget is created"), Fixture.ExistingText);
 
@@ -380,17 +382,17 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FBlueprintHelperWidgetTaskPlanOperationFieldRejectedTest::RunTest(const FString& Parameters)
 {
 	TSharedPtr<FJsonObject> Op = MakeShared<FJsonObject>();
-	Op->SetStringField(TEXT("op"), BlueprintHelperWidgetTaskPlan::Op::AddWidget);
+	Op->SetStringField(TEXT("op"), FBlueprintHelperWidgetTaskPlan::Op::AddWidget);
 	Op->SetStringField(TEXT("widget_class"), TEXT("TextBlock"));
 	Op->SetStringField(TEXT("widget_name"), TEXT("TitleText"));
 
 	TArray<TSharedPtr<FJsonValue>> Ops;
 	Ops.Add(MakeShared<FJsonValueObject>(Op.ToSharedRef()));
 
-	const TSharedPtr<FJsonObject> Step = MakeWidgetTaskPlanStep(Ops);
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::MakeWidgetTaskPlanStep(Ops);
 	Step->SetStringField(TEXT("operation"), TEXT("add_widget_to_tree"));
 
-	const TSharedPtr<FJsonObject> TaskPlan = MakeWidgetTaskPlan(Step);
+	const TSharedPtr<FJsonObject> TaskPlan = FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::MakeWidgetTaskPlan(Step);
 
 	FBlueprintHelperWidgetTaskPlanLoweredStep LoweredStep;
 	FBlueprintHelperToolError Error;

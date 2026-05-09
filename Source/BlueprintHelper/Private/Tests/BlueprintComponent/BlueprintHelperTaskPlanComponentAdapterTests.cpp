@@ -5,9 +5,10 @@
 #include "Misc/AutomationTest.h"
 #include "Runtime/TaskRuntime/TaskPlanAdapters/BlueprintComponent/BlueprintHelperComponentTaskPlanAdapter.h"
 
-namespace
+class FBlueprintHelperTaskPlanComponentAdapterTestsLocalUtils
 {
-	TSharedPtr<FJsonObject> MakeComponentTaskPlanStep(const FString& OpName)
+public:
+	static TSharedPtr<FJsonObject> MakeComponentTaskPlanStep(const FString& OpName)
 	{
 		TSharedPtr<FJsonObject> Step = MakeShared<FJsonObject>();
 		Step->SetStringField(TEXT("step_id"), TEXT("step_component"));
@@ -31,7 +32,7 @@ namespace
 		return Step;
 	}
 
-	TSharedPtr<FJsonObject> GetFirstComponentOp(const TSharedPtr<FJsonObject>& Step)
+	static TSharedPtr<FJsonObject> GetFirstComponentOp(const TSharedPtr<FJsonObject>& Step)
 	{
 		const TSharedPtr<FJsonObject>* Write = nullptr;
 		if (!Step->TryGetObjectField(TEXT("write"), Write) || !Write || !Write->IsValid())
@@ -47,7 +48,8 @@ namespace
 
 		return (*Ops)[0].IsValid() ? (*Ops)[0]->AsObject() : nullptr;
 	}
-}
+
+};
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperTaskPlanComponentAdapterAddComponentTest,
@@ -56,8 +58,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperTaskPlanComponentAdapterAddComponentTest::RunTest(const FString& Parameters)
 {
-	TSharedPtr<FJsonObject> Step = MakeComponentTaskPlanStep(FBlueprintHelperComponentTaskPlanAdapter::OpAddComponent);
-	TSharedPtr<FJsonObject> Op = GetFirstComponentOp(Step);
+	TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanComponentAdapterTestsLocalUtils::MakeComponentTaskPlanStep(FBlueprintHelperComponentTaskPlanAdapter::OpAddComponent);
+	TSharedPtr<FJsonObject> Op = FBlueprintHelperTaskPlanComponentAdapterTestsLocalUtils::GetFirstComponentOp(Step);
 	TestNotNull(TEXT("component op exists"), Op.Get());
 
 	Op->SetStringField(TEXT("component_name"), TEXT("DoorMesh"));
@@ -119,8 +121,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperTaskPlanComponentAdapterSetPropertiesTest::RunTest(const FString& Parameters)
 {
-	TSharedPtr<FJsonObject> Step = MakeComponentTaskPlanStep(FBlueprintHelperComponentTaskPlanAdapter::OpSetComponentProperties);
-	TSharedPtr<FJsonObject> Op = GetFirstComponentOp(Step);
+	TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanComponentAdapterTestsLocalUtils::MakeComponentTaskPlanStep(FBlueprintHelperComponentTaskPlanAdapter::OpSetComponentProperties);
+	TSharedPtr<FJsonObject> Op = FBlueprintHelperTaskPlanComponentAdapterTestsLocalUtils::GetFirstComponentOp(Step);
 	TestNotNull(TEXT("component op exists"), Op.Get());
 
 	Op->SetStringField(TEXT("component_name"), TEXT("DoorMesh"));
@@ -181,8 +183,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperTaskPlanComponentAdapterRemoveComponentTest::RunTest(const FString& Parameters)
 {
-	TSharedPtr<FJsonObject> Step = MakeComponentTaskPlanStep(FBlueprintHelperComponentTaskPlanAdapter::OpRemoveComponent);
-	TSharedPtr<FJsonObject> Op = GetFirstComponentOp(Step);
+	TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanComponentAdapterTestsLocalUtils::MakeComponentTaskPlanStep(FBlueprintHelperComponentTaskPlanAdapter::OpRemoveComponent);
+	TSharedPtr<FJsonObject> Op = FBlueprintHelperTaskPlanComponentAdapterTestsLocalUtils::GetFirstComponentOp(Step);
 	TestNotNull(TEXT("component op exists"), Op.Get());
 	Op->SetStringField(TEXT("component_name"), TEXT("DoorMesh"));
 
@@ -218,7 +220,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperTaskPlanComponentAdapterRejectsOperationFieldTest::RunTest(const FString& Parameters)
 {
-	TSharedPtr<FJsonObject> Step = MakeComponentTaskPlanStep(FBlueprintHelperComponentTaskPlanAdapter::OpAddComponent);
+	TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanComponentAdapterTestsLocalUtils::MakeComponentTaskPlanStep(FBlueprintHelperComponentTaskPlanAdapter::OpAddComponent);
 	Step->SetStringField(TEXT("operation"), TEXT("add_component"));
 
 	FBlueprintHelperComponentTaskPlanPayload BuiltPayload;

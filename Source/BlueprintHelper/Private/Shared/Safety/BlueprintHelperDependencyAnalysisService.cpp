@@ -11,12 +11,13 @@
 #include "Modules/ModuleManager.h"
 #include "UObject/UObjectGlobals.h"
 
-namespace
+class FBlueprintHelperDependencyAnalysisServiceLocalUtils
 {
-	constexpr int32 DefaultMaxResults = 50;
-	constexpr int32 MaxAllowedResults = 500;
+public:
+	static constexpr int32 DefaultMaxResults = 50;
+	static constexpr int32 MaxAllowedResults = 500;
 
-	FString NormalizeScope(const FString& Scope)
+	static FString NormalizeScope(const FString& Scope)
 	{
 		const FString LowerScope = Scope.IsEmpty() ? TEXT("safety_context") : Scope.ToLower();
 		if (LowerScope == TEXT("dependencies") ||
@@ -29,22 +30,22 @@ namespace
 		return TEXT("safety_context");
 	}
 
-	bool ShouldReadDependencies(const FString& Scope)
+	static bool ShouldReadDependencies(const FString& Scope)
 	{
 		return Scope == TEXT("safety_context") || Scope == TEXT("dependencies") || Scope == TEXT("all");
 	}
 
-	bool ShouldReadReferencers(const FString& Scope)
+	static bool ShouldReadReferencers(const FString& Scope)
 	{
 		return Scope == TEXT("safety_context") || Scope == TEXT("referencers") || Scope == TEXT("all");
 	}
 
-	bool ShouldReadExternalDependents(const FString& Scope)
+	static bool ShouldReadExternalDependents(const FString& Scope)
 	{
 		return Scope == TEXT("safety_context") || Scope == TEXT("external_dependents") || Scope == TEXT("all");
 	}
 
-	int32 ClampMaxResults(int32 MaxResults)
+	static int32 ClampMaxResults(int32 MaxResults)
 	{
 		if (MaxResults <= 0)
 		{
@@ -53,7 +54,7 @@ namespace
 		return FMath::Clamp(MaxResults, 1, MaxAllowedResults);
 	}
 
-	FString PackageNameFromAssetPath(const FString& AssetPath)
+	static FString PackageNameFromAssetPath(const FString& AssetPath)
 	{
 		if (AssetPath.IsEmpty())
 		{
@@ -70,7 +71,7 @@ namespace
 		return AssetPath.Contains(TEXT(".")) ? FPackageName::ObjectPathToPackageName(AssetPath) : AssetPath;
 	}
 
-	FString ObjectPathFromPackageName(const FString& PackageName)
+	static FString ObjectPathFromPackageName(const FString& PackageName)
 	{
 		if (PackageName.IsEmpty())
 		{
@@ -79,7 +80,7 @@ namespace
 		return PackageName + TEXT(".") + FPackageName::GetLongPackageAssetName(PackageName);
 	}
 
-	FString AssetPathFromDataOrPackage(const FAssetData& AssetData, const FName& PackageName)
+	static FString AssetPathFromDataOrPackage(const FAssetData& AssetData, const FName& PackageName)
 	{
 		if (AssetData.IsValid())
 		{
@@ -88,7 +89,7 @@ namespace
 		return PackageName.ToString();
 	}
 
-	FString AssetTypeFromData(const FAssetData& AssetData)
+	static FString AssetTypeFromData(const FAssetData& AssetData)
 	{
 		if (!AssetData.IsValid())
 		{
@@ -97,7 +98,7 @@ namespace
 		return AssetData.AssetClassPath.ToString();
 	}
 
-	bool TryFindAssetData(IAssetRegistry& Registry, const FName PackageName, FAssetData& OutAssetData)
+	static bool TryFindAssetData(IAssetRegistry& Registry, const FName PackageName, FAssetData& OutAssetData)
 	{
 		TArray<FAssetData> Assets;
 		Registry.GetAssetsByPackageName(PackageName, Assets, false);
@@ -109,7 +110,7 @@ namespace
 		return false;
 	}
 
-	bool TryResolveTargetAsset(
+	static bool TryResolveTargetAsset(
 		IAssetRegistry& Registry,
 		const FString& AssetPath,
 		FName& OutPackageName,
@@ -150,7 +151,7 @@ namespace
 		return false;
 	}
 
-	FBlueprintHelperAssetRefSummary MakeAssetRefSummary(
+	static FBlueprintHelperAssetRefSummary MakeAssetRefSummary(
 		IAssetRegistry& Registry,
 		const FName PackageName,
 		const FString& EvidencePath = FString())
@@ -168,12 +169,12 @@ namespace
 		return Summary;
 	}
 
-	void AddUnsupportedCheck(TArray<FString>& UnsupportedChecks, const FString& Check)
+	static void AddUnsupportedCheck(TArray<FString>& UnsupportedChecks, const FString& Check)
 	{
 		UnsupportedChecks.AddUnique(Check);
 	}
 
-	void AddUnsupportedChecksForOptions(
+	static void AddUnsupportedChecksForOptions(
 		const FBlueprintHelperDependencyAnalysisOptions& Options,
 		TArray<FString>& UnsupportedChecks)
 	{
@@ -199,7 +200,7 @@ namespace
 		}
 	}
 
-	void AppendPackageRefs(
+	static void AppendPackageRefs(
 		IAssetRegistry& Registry,
 		const TArray<FName>& PackageNames,
 		const FString& ReferenceKind,
@@ -231,7 +232,8 @@ namespace
 			OutSamples.Add(Summary);
 		}
 	}
-}
+
+};
 
 bool FBlueprintHelperDependencyAnalysisService::TryBuildReferenceContext(
 	const FBlueprintHelperDependencyAnalysisTarget& Target,
@@ -252,7 +254,7 @@ bool FBlueprintHelperDependencyAnalysisService::TryBuildReferenceContext(
 
 	FName TargetPackageName;
 	FAssetData TargetAssetData;
-	if (!TryResolveTargetAsset(
+	if (!FBlueprintHelperDependencyAnalysisServiceLocalUtils::TryResolveTargetAsset(
 		AssetRegistry,
 		Target.AssetPath,
 		TargetPackageName,
@@ -263,8 +265,8 @@ bool FBlueprintHelperDependencyAnalysisService::TryBuildReferenceContext(
 		return false;
 	}
 
-	const FString EffectiveScope = NormalizeScope(Scope);
-	const int32 EffectiveMaxResults = ClampMaxResults(Options.MaxResultCount);
+	const FString EffectiveScope = FBlueprintHelperDependencyAnalysisServiceLocalUtils::NormalizeScope(Scope);
+	const int32 EffectiveMaxResults = FBlueprintHelperDependencyAnalysisServiceLocalUtils::ClampMaxResults(Options.MaxResultCount);
 	bool bTruncated = false;
 
 	TArray<FName> HardDependencies;
@@ -272,7 +274,7 @@ bool FBlueprintHelperDependencyAnalysisService::TryBuildReferenceContext(
 	TArray<FName> HardReferencers;
 	TArray<FName> SoftReferencers;
 
-	if (ShouldReadDependencies(EffectiveScope) && Options.bIncludeHardReferences)
+	if (FBlueprintHelperDependencyAnalysisServiceLocalUtils::ShouldReadDependencies(EffectiveScope) && Options.bIncludeHardReferences)
 	{
 		AssetRegistry.GetDependencies(
 			TargetPackageName,
@@ -280,7 +282,7 @@ bool FBlueprintHelperDependencyAnalysisService::TryBuildReferenceContext(
 			UE::AssetRegistry::EDependencyCategory::Package,
 			UE::AssetRegistry::FDependencyQuery(UE::AssetRegistry::EDependencyQuery::Hard));
 	}
-	if (ShouldReadDependencies(EffectiveScope) && Options.bIncludeSoftReferences)
+	if (FBlueprintHelperDependencyAnalysisServiceLocalUtils::ShouldReadDependencies(EffectiveScope) && Options.bIncludeSoftReferences)
 	{
 		AssetRegistry.GetDependencies(
 			TargetPackageName,
@@ -289,7 +291,7 @@ bool FBlueprintHelperDependencyAnalysisService::TryBuildReferenceContext(
 			UE::AssetRegistry::FDependencyQuery(UE::AssetRegistry::EDependencyQuery::Soft));
 	}
 
-	if (ShouldReadReferencers(EffectiveScope))
+	if (FBlueprintHelperDependencyAnalysisServiceLocalUtils::ShouldReadReferencers(EffectiveScope))
 	{
 		AssetRegistry.GetReferencers(
 			TargetPackageName,
@@ -310,13 +312,13 @@ bool FBlueprintHelperDependencyAnalysisService::TryBuildReferenceContext(
 	OutContext.Analysis.MaxResults = EffectiveMaxResults;
 	OutContext.Analysis.UnsupportedChecks.Reset();
 
-	if (ShouldReadExternalDependents(EffectiveScope))
+	if (FBlueprintHelperDependencyAnalysisServiceLocalUtils::ShouldReadExternalDependents(EffectiveScope))
 	{
-		AddUnsupportedChecksForOptions(Options, OutContext.Analysis.UnsupportedChecks);
+		FBlueprintHelperDependencyAnalysisServiceLocalUtils::AddUnsupportedChecksForOptions(Options, OutContext.Analysis.UnsupportedChecks);
 	}
 
 	int32 DependencyCount = 0;
-	AppendPackageRefs(
+	FBlueprintHelperDependencyAnalysisServiceLocalUtils::AppendPackageRefs(
 		AssetRegistry,
 		HardDependencies,
 		TEXT("hard_package"),
@@ -325,7 +327,7 @@ bool FBlueprintHelperDependencyAnalysisService::TryBuildReferenceContext(
 		DependencyCount,
 		OutContext.Dependencies,
 		bTruncated);
-	AppendPackageRefs(
+	FBlueprintHelperDependencyAnalysisServiceLocalUtils::AppendPackageRefs(
 		AssetRegistry,
 		SoftDependencies,
 		TEXT("soft_package"),
@@ -336,7 +338,7 @@ bool FBlueprintHelperDependencyAnalysisService::TryBuildReferenceContext(
 		bTruncated);
 
 	int32 ReferencerCount = 0;
-	AppendPackageRefs(
+	FBlueprintHelperDependencyAnalysisServiceLocalUtils::AppendPackageRefs(
 		AssetRegistry,
 		HardReferencers,
 		TEXT("hard_package"),
@@ -345,7 +347,7 @@ bool FBlueprintHelperDependencyAnalysisService::TryBuildReferenceContext(
 		ReferencerCount,
 		OutContext.Referencers,
 		bTruncated);
-	AppendPackageRefs(
+	FBlueprintHelperDependencyAnalysisServiceLocalUtils::AppendPackageRefs(
 		AssetRegistry,
 		SoftReferencers,
 		TEXT("soft_package"),

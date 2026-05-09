@@ -172,7 +172,6 @@ struct FBlueprintHelperWriteReviewEvidence
 	FString BeforeSummary;
 	FString AfterSummary;
 	TArray<FString> DebugCaseIds;
-	FString DebugExportRef;
 	TArray<FBlueprintHelperReviewAtomicTarget> AtomicTargets;
 };
 
@@ -220,7 +219,6 @@ struct FBlueprintHelperReviewRecord
 	TArray<FBlueprintHelperReviewVisibleChange> VisibleChanges;
 	TArray<FBlueprintHelperReviewActionRecord> ReviewActions;
 	TArray<FString> DebugCaseIds;
-	TArray<FString> DebugExportRefs;
 	FBlueprintHelperReviewSourceTransactionSummary SourceTransactionSummary;
 };
 

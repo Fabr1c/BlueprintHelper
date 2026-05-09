@@ -12,16 +12,17 @@
 
 FBlueprintHelperLogicJsonReadService::FBlueprintHelperLogicJsonReadService() = default;
 
-namespace
+class FBlueprintHelperLogicJsonReadServiceLocalUtils
 {
-	bool IsTargetEntryScope(EBlueprintHelperLogicScope Scope)
+public:
+	static bool IsTargetEntryScope(EBlueprintHelperLogicScope Scope)
 	{
 		return Scope == EBlueprintHelperLogicScope::TargetFunction ||
 			Scope == EBlueprintHelperLogicScope::TargetEvent ||
 			Scope == EBlueprintHelperLogicScope::TargetCustomEvent;
 	}
 
-	FString GetTargetEntryName(const FBlueprintHelperTargetRef& Target, EBlueprintHelperLogicScope Scope)
+	static FString GetTargetEntryName(const FBlueprintHelperTargetRef& Target, EBlueprintHelperLogicScope Scope)
 	{
 		switch (Scope)
 		{
@@ -34,7 +35,8 @@ namespace
 			return TEXT("");
 		}
 	}
-}
+
+};
 
 FBlueprintHelperLogicJsonData FBlueprintHelperLogicJsonReadService::ReadLogicJson(const FBlueprintHelperTargetRef& Target) const
 {
@@ -51,7 +53,7 @@ FBlueprintHelperLogicJsonData FBlueprintHelperLogicJsonReadService::ReadLogicJso
 	{
 		ExportReq.Target.GraphName = Target.Graph;
 	}
-	ExportReq.Scope = IsTargetEntryScope(Scope) && Target.Graph.IsEmpty()
+	ExportReq.Scope = FBlueprintHelperLogicJsonReadServiceLocalUtils::IsTargetEntryScope(Scope) && Target.Graph.IsEmpty()
 		? EBlueprintHelperExportScope::FullBlueprint
 		: ScopeToExportScope(Scope);
 
@@ -66,13 +68,13 @@ FBlueprintHelperLogicJsonData FBlueprintHelperLogicJsonReadService::ReadLogicJso
 	// 使用 GroupBuilder 构建分组内容。单入口 target 在未指定图表时扫描完整蓝图，
 	// 避免 custom_event / function / event 读回被默认 EventGraph 吞掉。
 	const FString GraphName = Target.Graph.IsEmpty() ? TEXT("EventGraph") : Target.Graph;
-	if (IsTargetEntryScope(Scope))
+	if (FBlueprintHelperLogicJsonReadServiceLocalUtils::IsTargetEntryScope(Scope))
 	{
 		Data.Logic = GroupBuilder.BuildTargetEntry(
 			ExportResult.JsonObject,
 			Target.AssetPath,
 			Target.Graph,
-			GetTargetEntryName(Target, Scope),
+			FBlueprintHelperLogicJsonReadServiceLocalUtils::GetTargetEntryName(Target, Scope),
 			Scope);
 	}
 	else

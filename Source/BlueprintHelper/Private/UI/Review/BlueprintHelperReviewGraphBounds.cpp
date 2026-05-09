@@ -8,11 +8,12 @@
 #include "GraphEditor.h"
 #include "UObject/MetaData.h"
 
-namespace
+class FBlueprintHelperReviewGraphBoundsLocalUtils
 {
-	constexpr float CommentStylePadding = 20.0f;
-	constexpr float FallbackNodeWidth = 220.0f;
-	constexpr float FallbackNodeHeight = 92.0f;
+public:
+	static constexpr float CommentStylePadding = 20.0f;
+	static constexpr float FallbackNodeWidth = 220.0f;
+	static constexpr float FallbackNodeHeight = 92.0f;
 
 	enum class ENodeBoundsSource : uint8
 	{
@@ -36,7 +37,7 @@ namespace
 		TArray<FString> MatchedNodeSummaries;
 	};
 
-	void AddUniqueTrimmed(TArray<FString>& OutValues, FString Value)
+	static void AddUniqueTrimmed(TArray<FString>& OutValues, FString Value)
 	{
 		Value.TrimStartAndEndInline();
 		if (!Value.IsEmpty())
@@ -45,7 +46,7 @@ namespace
 		}
 	}
 
-	FString LastSegmentAfter(const FString& Value, const TCHAR Separator)
+	static FString LastSegmentAfter(const FString& Value, const TCHAR Separator)
 	{
 		int32 Index = INDEX_NONE;
 		if (Value.FindLastChar(Separator, Index))
@@ -55,12 +56,12 @@ namespace
 		return Value;
 	}
 
-	FString StripObjectPath(const FString& Value)
+	static FString StripObjectPath(const FString& Value)
 	{
 		return LastSegmentAfter(LastSegmentAfter(Value, TCHAR('/')), TCHAR('.'));
 	}
 
-	bool IsUsefulTargetToken(const FString& Token)
+	static bool IsUsefulTargetToken(const FString& Token)
 	{
 		if (Token.Len() < 2)
 		{
@@ -76,7 +77,7 @@ namespace
 			&& !Token.Equals(TEXT("rename_removed"), ESearchCase::IgnoreCase);
 	}
 
-	void AddTargetKeyCandidates(const FString& RawTargetKey, TArray<FString>& OutCandidates)
+	static void AddTargetKeyCandidates(const FString& RawTargetKey, TArray<FString>& OutCandidates)
 	{
 		if (RawTargetKey.IsEmpty())
 		{
@@ -105,7 +106,7 @@ namespace
 		}
 	}
 
-	FString NormalizeNodeLabelForCompare(FString Value)
+	static FString NormalizeNodeLabelForCompare(FString Value)
 	{
 		Value.ToLowerInline();
 		Value.ReplaceInline(TEXT(" "), TEXT(""));
@@ -113,7 +114,7 @@ namespace
 		return Value;
 	}
 
-	bool DoesNodeMatchSingleCandidate(const UEdGraphNode* Node, const FString& Candidate)
+	static bool DoesNodeMatchSingleCandidate(const UEdGraphNode* Node, const FString& Candidate)
 	{
 		if (!Node || Candidate.IsEmpty())
 		{
@@ -156,7 +157,7 @@ namespace
 				|| NodeTitle.Contains(CandidateLabel, ESearchCase::IgnoreCase));
 	}
 
-	void AddGraphTargetCandidates(
+	static void AddGraphTargetCandidates(
 		const FBlueprintHelperReviewAtomicTarget& Target,
 		TArray<FString>& OutCandidates)
 	{
@@ -167,7 +168,7 @@ namespace
 		AddTargetKeyCandidates(Target.DisplayLabel, OutCandidates);
 	}
 
-	bool TryGetEditorNodeBounds(
+	static bool TryGetEditorNodeBounds(
 		const UEdGraphNode* Node,
 		const TSharedPtr<SGraphEditor>& GraphEditor,
 		FSlateRect& OutRect)
@@ -177,7 +178,7 @@ namespace
 			&& GraphEditor->GetBoundsForNode(Node, OutRect, 0.0f);
 	}
 
-	FString BuildNodeDebugSummary(const UEdGraphNode* Node, ENodeBoundsSource Source)
+	static FString BuildNodeDebugSummary(const UEdGraphNode* Node, ENodeBoundsSource Source)
 	{
 		if (!Node)
 		{
@@ -197,7 +198,7 @@ namespace
 			Node->NodeHeight);
 	}
 
-	FVector2D GetFallbackNodeSize(const UEdGraphNode* Node)
+	static FVector2D GetFallbackNodeSize(const UEdGraphNode* Node)
 	{
 		if (!Node)
 		{
@@ -214,7 +215,7 @@ namespace
 		return FVector2D(Width, Height);
 	}
 
-	ENodeBoundsSource IncludeNodeBounds(
+	static ENodeBoundsSource IncludeNodeBounds(
 		const UEdGraphNode* Node,
 		const TSharedPtr<SGraphEditor>& GraphEditor,
 		FBox2D& InOutBounds,
@@ -242,7 +243,7 @@ namespace
 		return ENodeBoundsSource::FallbackNode;
 	}
 
-	bool BuildPaddedBounds(
+	static bool BuildPaddedBounds(
 		const FBox2D& Bounds,
 		const bool bHasBounds,
 		FVector2D& OutPosition,
@@ -260,145 +261,143 @@ namespace
 		OutSize.Y = FMath::Max(40.0f, OutSize.Y);
 		return true;
 	}
+
+};
+
+bool FBlueprintHelperReviewGraphBounds::DoesNodeMatchTargetKey(const UEdGraphNode* Node, const FString& TargetKey)
+{
+	TArray<FString> Candidates;
+	FBlueprintHelperReviewGraphBoundsLocalUtils::AddTargetKeyCandidates(TargetKey, Candidates);
+	for (const FString& Candidate : Candidates)
+	{
+		if (FBlueprintHelperReviewGraphBoundsLocalUtils::DoesNodeMatchSingleCandidate(Node, Candidate))
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
-namespace BlueprintHelperReviewGraphBounds
+bool FBlueprintHelperReviewGraphBounds::BuildCommentStyleBoundsForNodes(
+	const TArray<UEdGraphNode*>& Nodes,
+	const TSharedPtr<SGraphEditor>& GraphEditor,
+	FVector2D& OutPosition,
+	FVector2D& OutSize)
 {
-	bool DoesNodeMatchTargetKey(const UEdGraphNode* Node, const FString& TargetKey)
+	FBox2D Bounds(ForceInit);
+	bool bHasBounds = false;
+	for (UEdGraphNode* Node : Nodes)
 	{
+		FBlueprintHelperReviewGraphBoundsLocalUtils::IncludeNodeBounds(Node, GraphEditor, Bounds, bHasBounds);
+	}
+	return FBlueprintHelperReviewGraphBoundsLocalUtils::BuildPaddedBounds(Bounds, bHasBounds, OutPosition, OutSize);
+}
+
+bool FBlueprintHelperReviewGraphBounds::BuildBoundsForTargets(
+	const TArray<FBlueprintHelperReviewAtomicTarget>& Targets,
+	const UEdGraph* Graph,
+	const FString& GraphName,
+	const TSharedPtr<SGraphEditor>& GraphEditor,
+	FVector2D& OutPosition,
+	FVector2D& OutSize,
+	FString* OutDebugSummary)
+{
+	FBox2D Bounds(ForceInit);
+	bool bHasBounds = false;
+	FBlueprintHelperReviewGraphBoundsLocalUtils::FBoundsDebugCounters DebugCounters;
+	TSet<const UEdGraphNode*> IncludedNodes;
+
+	for (const FBlueprintHelperReviewAtomicTarget& Target : Targets)
+	{
+		++DebugCounters.TargetCount;
+		if (Target.Surface != EBlueprintHelperReviewSurface::Graph)
+		{
+			++DebugCounters.SkippedSurfaceCount;
+			continue;
+		}
+		++DebugCounters.GraphTargetCount;
+		if (!Target.GraphName.IsEmpty() && !GraphName.IsEmpty() && Target.GraphName != GraphName)
+		{
+			++DebugCounters.SkippedGraphCount;
+			continue;
+		}
+
+		bool bMatchedNode = false;
 		TArray<FString> Candidates;
-		AddTargetKeyCandidates(TargetKey, Candidates);
-		for (const FString& Candidate : Candidates)
+		FBlueprintHelperReviewGraphBoundsLocalUtils::AddGraphTargetCandidates(Target, Candidates);
+		DebugCounters.CandidateCount += Candidates.Num();
+		if (Graph && Candidates.Num() > 0)
 		{
-			if (DoesNodeMatchSingleCandidate(Node, Candidate))
+			for (UEdGraphNode* Node : Graph->Nodes)
 			{
-				return true;
-			}
-		}
-		return false;
-	}
-
-	bool BuildCommentStyleBoundsForNodes(
-		const TArray<UEdGraphNode*>& Nodes,
-		const TSharedPtr<SGraphEditor>& GraphEditor,
-		FVector2D& OutPosition,
-		FVector2D& OutSize)
-	{
-		FBox2D Bounds(ForceInit);
-		bool bHasBounds = false;
-		for (UEdGraphNode* Node : Nodes)
-		{
-			IncludeNodeBounds(Node, GraphEditor, Bounds, bHasBounds);
-		}
-		return BuildPaddedBounds(Bounds, bHasBounds, OutPosition, OutSize);
-	}
-
-	bool BuildBoundsForTargets(
-		const TArray<FBlueprintHelperReviewAtomicTarget>& Targets,
-		const UEdGraph* Graph,
-		const FString& GraphName,
-		const TSharedPtr<SGraphEditor>& GraphEditor,
-		FVector2D& OutPosition,
-		FVector2D& OutSize,
-		FString* OutDebugSummary)
-	{
-		FBox2D Bounds(ForceInit);
-		bool bHasBounds = false;
-		FBoundsDebugCounters DebugCounters;
-		TSet<const UEdGraphNode*> IncludedNodes;
-
-		for (const FBlueprintHelperReviewAtomicTarget& Target : Targets)
-		{
-			++DebugCounters.TargetCount;
-			if (Target.Surface != EBlueprintHelperReviewSurface::Graph)
-			{
-				++DebugCounters.SkippedSurfaceCount;
-				continue;
-			}
-			++DebugCounters.GraphTargetCount;
-			if (!Target.GraphName.IsEmpty() && !GraphName.IsEmpty() && Target.GraphName != GraphName)
-			{
-				++DebugCounters.SkippedGraphCount;
-				continue;
-			}
-
-			bool bMatchedNode = false;
-			TArray<FString> Candidates;
-			AddGraphTargetCandidates(Target, Candidates);
-			DebugCounters.CandidateCount += Candidates.Num();
-			if (Graph && Candidates.Num() > 0)
-			{
-				for (UEdGraphNode* Node : Graph->Nodes)
+				if (!Node)
 				{
-					if (!Node)
-					{
-						continue;
-					}
+					continue;
+				}
 
-					for (const FString& Candidate : Candidates)
+				for (const FString& Candidate : Candidates)
+				{
+					if (FBlueprintHelperReviewGraphBoundsLocalUtils::DoesNodeMatchSingleCandidate(Node, Candidate))
 					{
-						if (DoesNodeMatchSingleCandidate(Node, Candidate))
+						if (IncludedNodes.Contains(Node))
 						{
-							if (IncludedNodes.Contains(Node))
-							{
-								++DebugCounters.DuplicateMatchedNodeCount;
-								bMatchedNode = true;
-								break;
-							}
-
-							const ENodeBoundsSource Source = IncludeNodeBounds(Node, GraphEditor, Bounds, bHasBounds);
-							if (Source == ENodeBoundsSource::EditorWidget)
-							{
-								++DebugCounters.EditorBoundsCount;
-							}
-							else if (Source == ENodeBoundsSource::FallbackNode)
-							{
-								++DebugCounters.FallbackBoundsCount;
-							}
-							++DebugCounters.MatchedNodeCount;
-							IncludedNodes.Add(Node);
-							DebugCounters.MatchedNodeSummaries.Add(BuildNodeDebugSummary(Node, Source));
+							++DebugCounters.DuplicateMatchedNodeCount;
 							bMatchedNode = true;
 							break;
 						}
+
+						const FBlueprintHelperReviewGraphBoundsLocalUtils::ENodeBoundsSource Source = FBlueprintHelperReviewGraphBoundsLocalUtils::IncludeNodeBounds(Node, GraphEditor, Bounds, bHasBounds);
+						if (Source == FBlueprintHelperReviewGraphBoundsLocalUtils::ENodeBoundsSource::EditorWidget)
+						{
+							++DebugCounters.EditorBoundsCount;
+						}
+						else if (Source == FBlueprintHelperReviewGraphBoundsLocalUtils::ENodeBoundsSource::FallbackNode)
+						{
+							++DebugCounters.FallbackBoundsCount;
+						}
+						++DebugCounters.MatchedNodeCount;
+						IncludedNodes.Add(Node);
+						DebugCounters.MatchedNodeSummaries.Add(FBlueprintHelperReviewGraphBoundsLocalUtils::BuildNodeDebugSummary(Node, Source));
+						bMatchedNode = true;
+						break;
 					}
 				}
 			}
-
-			if (!bMatchedNode && Target.bHasGraphBounds)
-			{
-				Bounds += Target.GraphPosition;
-				Bounds += Target.GraphPosition + Target.GraphSize;
-				bHasBounds = true;
-				++DebugCounters.RecordBoundsCount;
-			}
 		}
 
-		const bool bBuilt = BuildPaddedBounds(Bounds, bHasBounds, OutPosition, OutSize);
-		if (OutDebugSummary)
+		if (!bMatchedNode && Target.bHasGraphBounds)
 		{
-			*OutDebugSummary = FString::Printf(
-				TEXT("built=%d targets=%d graphTargets=%d skippedSurface=%d skippedGraph=%d candidates=%d matchedNodes=%d duplicateMatches=%d editorBounds=%d fallbackBounds=%d recordBounds=%d padding=%.1f pos=(%.1f,%.1f) size=(%.1f,%.1f) graph=\"%s\" graphNodeCount=%d matched=\"%s\""),
-				bBuilt ? 1 : 0,
-				DebugCounters.TargetCount,
-				DebugCounters.GraphTargetCount,
-				DebugCounters.SkippedSurfaceCount,
-				DebugCounters.SkippedGraphCount,
-				DebugCounters.CandidateCount,
-				DebugCounters.MatchedNodeCount,
-				DebugCounters.DuplicateMatchedNodeCount,
-				DebugCounters.EditorBoundsCount,
-				DebugCounters.FallbackBoundsCount,
-				DebugCounters.RecordBoundsCount,
-				CommentStylePadding,
-				static_cast<double>(OutPosition.X),
-				static_cast<double>(OutPosition.Y),
-				static_cast<double>(OutSize.X),
-				static_cast<double>(OutSize.Y),
-				*GraphName,
-				Graph ? Graph->Nodes.Num() : 0,
-				*FString::Join(DebugCounters.MatchedNodeSummaries, TEXT(";")));
+			Bounds += Target.GraphPosition;
+			Bounds += Target.GraphPosition + Target.GraphSize;
+			bHasBounds = true;
+			++DebugCounters.RecordBoundsCount;
 		}
-		return bBuilt;
 	}
+
+	const bool bBuilt = FBlueprintHelperReviewGraphBoundsLocalUtils::BuildPaddedBounds(Bounds, bHasBounds, OutPosition, OutSize);
+	if (OutDebugSummary)
+	{
+		*OutDebugSummary = FString::Printf(
+			TEXT("built=%d targets=%d graphTargets=%d skippedSurface=%d skippedGraph=%d candidates=%d matchedNodes=%d duplicateMatches=%d editorBounds=%d fallbackBounds=%d recordBounds=%d padding=%.1f pos=(%.1f,%.1f) size=(%.1f,%.1f) graph=\"%s\" graphNodeCount=%d matched=\"%s\""),
+			bBuilt ? 1 : 0,
+			DebugCounters.TargetCount,
+			DebugCounters.GraphTargetCount,
+			DebugCounters.SkippedSurfaceCount,
+			DebugCounters.SkippedGraphCount,
+			DebugCounters.CandidateCount,
+			DebugCounters.MatchedNodeCount,
+			DebugCounters.DuplicateMatchedNodeCount,
+			DebugCounters.EditorBoundsCount,
+			DebugCounters.FallbackBoundsCount,
+			DebugCounters.RecordBoundsCount,
+			FBlueprintHelperReviewGraphBoundsLocalUtils::CommentStylePadding,
+			static_cast<double>(OutPosition.X),
+			static_cast<double>(OutPosition.Y),
+			static_cast<double>(OutSize.X),
+			static_cast<double>(OutSize.Y),
+			*GraphName,
+			Graph ? Graph->Nodes.Num() : 0,
+			*FString::Join(DebugCounters.MatchedNodeSummaries, TEXT(";")));
+	}
+	return bBuilt;
 }

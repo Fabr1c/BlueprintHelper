@@ -19,14 +19,15 @@
 #include "Systems/ToolClusters/BlueprintSignature/BlueprintHelperSignatureService.h"
 #include "UObject/Package.h"
 
-namespace
+class FBlueprintHelperSignatureServiceTestsLocalUtils
 {
-	FString MakeSignatureServiceTestObjectName(const FString& Prefix)
+public:
+	static FString MakeSignatureServiceTestObjectName(const FString& Prefix)
 	{
 		return FString::Printf(TEXT("%s_%s"), *Prefix, *FGuid::NewGuid().ToString(EGuidFormats::Digits));
 	}
 
-	UBlueprint* MakeSignatureServiceActorBlueprint(const FString& Prefix)
+	static UBlueprint* MakeSignatureServiceActorBlueprint(const FString& Prefix)
 	{
 		UPackage* Package = CreatePackage(*FString::Printf(
 			TEXT("/Game/BlueprintHelperSignature/%s"),
@@ -45,7 +46,7 @@ namespace
 		return Blueprint;
 	}
 
-	UEdGraph* FindSignatureFunctionGraph(UBlueprint* Blueprint, const FString& FunctionName)
+	static UEdGraph* FindSignatureFunctionGraph(UBlueprint* Blueprint, const FString& FunctionName)
 	{
 		if (!Blueprint)
 		{
@@ -62,7 +63,7 @@ namespace
 		return nullptr;
 	}
 
-	UK2Node_FunctionEntry* FindSignatureFunctionEntry(UEdGraph* Graph)
+	static UK2Node_FunctionEntry* FindSignatureFunctionEntry(UEdGraph* Graph)
 	{
 		if (!Graph)
 		{
@@ -79,7 +80,7 @@ namespace
 		return nullptr;
 	}
 
-	UK2Node_FunctionResult* FindSignatureFunctionResult(UEdGraph* Graph)
+	static UK2Node_FunctionResult* FindSignatureFunctionResult(UEdGraph* Graph)
 	{
 		if (!Graph)
 		{
@@ -96,7 +97,7 @@ namespace
 		return nullptr;
 	}
 
-	UK2Node_CustomEvent* FindSignatureCustomEvent(UEdGraph* Graph, const FString& EventName)
+	static UK2Node_CustomEvent* FindSignatureCustomEvent(UEdGraph* Graph, const FString& EventName)
 	{
 		if (!Graph)
 		{
@@ -114,7 +115,7 @@ namespace
 		return nullptr;
 	}
 
-	UK2Node_Event* FindSignatureOverrideEvent(UBlueprint* Blueprint, const FString& EventName)
+	static UK2Node_Event* FindSignatureOverrideEvent(UBlueprint* Blueprint, const FString& EventName)
 	{
 		if (!Blueprint)
 		{
@@ -135,7 +136,7 @@ namespace
 		return FBlueprintEditorUtils::FindOverrideForFunction(Blueprint, SignatureClass, EventFName);
 	}
 
-	bool HasUserDefinedPin(UK2Node_CustomEvent* EventNode, const FString& PinName)
+	static bool HasUserDefinedPin(UK2Node_CustomEvent* EventNode, const FString& PinName)
 	{
 		if (!EventNode)
 		{
@@ -149,7 +150,7 @@ namespace
 			});
 	}
 
-	bool HasSignatureDataSchema(const FBlueprintHelperToolResultBase& Result)
+	static bool HasSignatureDataSchema(const FBlueprintHelperToolResultBase& Result)
 	{
 		FString Schema;
 		return Result.Data.IsValid() &&
@@ -157,7 +158,7 @@ namespace
 			Schema == TEXT("BlueprintSignature.v1");
 	}
 
-	TSharedPtr<FJsonValue> MakeSignatureParamValue(const FString& Name, const FString& Category)
+	static TSharedPtr<FJsonValue> MakeSignatureParamValue(const FString& Name, const FString& Category)
 	{
 		TSharedRef<FJsonObject> PinType = MakeShared<FJsonObject>();
 		PinType->SetStringField(TEXT("category"), Category);
@@ -168,7 +169,7 @@ namespace
 		return MakeShared<FJsonValueObject>(Param);
 	}
 
-	FBlueprintHelperEnsureFunctionSignatureRequest MakeEnsureFunctionRequest(
+	static FBlueprintHelperEnsureFunctionSignatureRequest MakeEnsureFunctionRequest(
 		UBlueprint* Blueprint,
 		const FString& FunctionName,
 		bool bDryRun)
@@ -183,7 +184,7 @@ namespace
 		return Request;
 	}
 
-	FBlueprintHelperEnsureCustomEventSignatureRequest MakeEnsureCustomEventRequest(
+	static FBlueprintHelperEnsureCustomEventSignatureRequest MakeEnsureCustomEventRequest(
 		UBlueprint* Blueprint,
 		const FString& GraphName,
 		const FString& EventName,
@@ -199,7 +200,7 @@ namespace
 		return Request;
 	}
 
-	FBlueprintHelperRemoveSignatureRequest MakeRemoveCustomEventSignatureRequest(
+	static FBlueprintHelperRemoveSignatureRequest MakeRemoveCustomEventSignatureRequest(
 		UBlueprint* Blueprint,
 		const FString& GraphName,
 		const FString& EventName,
@@ -214,7 +215,7 @@ namespace
 		return Request;
 	}
 
-	FBlueprintHelperRemoveSignatureRequest MakeRemoveSignatureRequest(
+	static FBlueprintHelperRemoveSignatureRequest MakeRemoveSignatureRequest(
 		UBlueprint* Blueprint,
 		const FString& SignatureKind,
 		const FString& SignatureName,
@@ -230,7 +231,7 @@ namespace
 		return Request;
 	}
 
-	FBlueprintHelperEnsureEventDispatcherSignatureRequest MakeEnsureEventDispatcherRequest(
+	static FBlueprintHelperEnsureEventDispatcherSignatureRequest MakeEnsureEventDispatcherRequest(
 		UBlueprint* Blueprint,
 		const FString& DispatcherName,
 		bool bDryRun)
@@ -244,7 +245,7 @@ namespace
 		return Request;
 	}
 
-	FBlueprintHelperEnsureOverrideEventSignatureRequest MakeEnsureOverrideEventRequest(
+	static FBlueprintHelperEnsureOverrideEventSignatureRequest MakeEnsureOverrideEventRequest(
 		UBlueprint* Blueprint,
 		const FString& EventName,
 		bool bDryRun)
@@ -257,7 +258,8 @@ namespace
 		Request.bDryRun = bDryRun;
 		return Request;
 	}
-}
+
+};
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperSignatureServiceEnsureFunctionDryRunTest,
@@ -266,7 +268,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperSignatureServiceEnsureFunctionDryRunTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeSignatureServiceActorBlueprint(TEXT("DryRun"));
+	UBlueprint* Blueprint = FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureServiceActorBlueprint(TEXT("DryRun"));
 	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
 
 	FBlueprintHelperGraphResolver Resolver;
@@ -277,15 +279,15 @@ bool FBlueprintHelperSignatureServiceEnsureFunctionDryRunTest::RunTest(const FSt
 	const int32 FunctionCountBefore = Blueprint ? Blueprint->FunctionGraphs.Num() : 0;
 
 	const FBlueprintHelperToolResultBase Result = SignatureService.EnsureFunction(
-		MakeEnsureFunctionRequest(Blueprint, FunctionName, true));
+		FBlueprintHelperSignatureServiceTestsLocalUtils::MakeEnsureFunctionRequest(Blueprint, FunctionName, true));
 
 	TestTrue(TEXT("dry-run succeeds"), Result.bOk);
 	TestEqual(TEXT("operation"), Result.Operation, FString(TEXT("ensure_function")));
 	TestEqual(TEXT("status"), Result.Status, EBlueprintHelperToolStatus::DryRun);
 	TestFalse(TEXT("dry-run does not modify"), Result.bModified);
-	TestTrue(TEXT("dry-run uses signature data schema"), HasSignatureDataSchema(Result));
+	TestTrue(TEXT("dry-run uses signature data schema"), FBlueprintHelperSignatureServiceTestsLocalUtils::HasSignatureDataSchema(Result));
 	TestEqual(TEXT("dry-run keeps function graph count"), Blueprint ? Blueprint->FunctionGraphs.Num() : 0, FunctionCountBefore);
-	TestNull(TEXT("dry-run does not create function graph"), FindSignatureFunctionGraph(Blueprint, FunctionName));
+	TestNull(TEXT("dry-run does not create function graph"), FBlueprintHelperSignatureServiceTestsLocalUtils::FindSignatureFunctionGraph(Blueprint, FunctionName));
 	return true;
 }
 
@@ -296,7 +298,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperSignatureServiceEnsureFunctionExecuteTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeSignatureServiceActorBlueprint(TEXT("Execute"));
+	UBlueprint* Blueprint = FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureServiceActorBlueprint(TEXT("Execute"));
 	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
 
 	FBlueprintHelperGraphResolver Resolver;
@@ -305,18 +307,18 @@ bool FBlueprintHelperSignatureServiceEnsureFunctionExecuteTest::RunTest(const FS
 
 	const FString FunctionName = TEXT("BH_CreateSignatureFunction");
 	const FBlueprintHelperToolResultBase Result = SignatureService.EnsureFunction(
-		MakeEnsureFunctionRequest(Blueprint, FunctionName, false));
+		FBlueprintHelperSignatureServiceTestsLocalUtils::MakeEnsureFunctionRequest(Blueprint, FunctionName, false));
 
 	TestTrue(TEXT("execute succeeds"), Result.bOk);
 	TestEqual(TEXT("operation"), Result.Operation, FString(TEXT("ensure_function")));
 	TestEqual(TEXT("status"), Result.Status, EBlueprintHelperToolStatus::Applied);
 	TestTrue(TEXT("execute modifies"), Result.bModified);
-	TestTrue(TEXT("execute uses signature data schema"), HasSignatureDataSchema(Result));
+	TestTrue(TEXT("execute uses signature data schema"), FBlueprintHelperSignatureServiceTestsLocalUtils::HasSignatureDataSchema(Result));
 
-	UEdGraph* FunctionGraph = FindSignatureFunctionGraph(Blueprint, FunctionName);
+	UEdGraph* FunctionGraph = FBlueprintHelperSignatureServiceTestsLocalUtils::FindSignatureFunctionGraph(Blueprint, FunctionName);
 	TestNotNull(TEXT("function graph created"), FunctionGraph);
 
-	UK2Node_FunctionEntry* Entry = FindSignatureFunctionEntry(FunctionGraph);
+	UK2Node_FunctionEntry* Entry = FBlueprintHelperSignatureServiceTestsLocalUtils::FindSignatureFunctionEntry(FunctionGraph);
 	TestNotNull(TEXT("function entry exists"), Entry);
 	TestTrue(TEXT("input pin added"), Entry && Entry->UserDefinedPins.ContainsByPredicate(
 		[](const TSharedPtr<FUserPinInfo>& Pin)
@@ -324,7 +326,7 @@ bool FBlueprintHelperSignatureServiceEnsureFunctionExecuteTest::RunTest(const FS
 			return Pin.IsValid() && Pin->PinName == FName(TEXT("bPressed"));
 		}));
 
-	UK2Node_FunctionResult* FunctionResult = FindSignatureFunctionResult(FunctionGraph);
+	UK2Node_FunctionResult* FunctionResult = FBlueprintHelperSignatureServiceTestsLocalUtils::FindSignatureFunctionResult(FunctionGraph);
 	TestNotNull(TEXT("function result exists"), FunctionResult);
 	TestTrue(TEXT("output pin added"), FunctionResult && FunctionResult->UserDefinedPins.ContainsByPredicate(
 		[](const TSharedPtr<FUserPinInfo>& Pin)
@@ -341,7 +343,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperSignatureServiceEnsureFunctionReuseTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeSignatureServiceActorBlueprint(TEXT("Reuse"));
+	UBlueprint* Blueprint = FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureServiceActorBlueprint(TEXT("Reuse"));
 	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
 
 	FBlueprintHelperGraphResolver Resolver;
@@ -350,12 +352,12 @@ bool FBlueprintHelperSignatureServiceEnsureFunctionReuseTest::RunTest(const FStr
 
 	const FString FunctionName = TEXT("BH_ReuseSignatureFunction");
 	const FBlueprintHelperToolResultBase FirstResult = SignatureService.EnsureFunction(
-		MakeEnsureFunctionRequest(Blueprint, FunctionName, false));
+		FBlueprintHelperSignatureServiceTestsLocalUtils::MakeEnsureFunctionRequest(Blueprint, FunctionName, false));
 	TestTrue(TEXT("first ensure succeeds"), FirstResult.bOk);
 
 	const int32 FunctionCountAfterFirst = Blueprint ? Blueprint->FunctionGraphs.Num() : 0;
 	const FBlueprintHelperToolResultBase SecondResult = SignatureService.EnsureFunction(
-		MakeEnsureFunctionRequest(Blueprint, FunctionName, false));
+		FBlueprintHelperSignatureServiceTestsLocalUtils::MakeEnsureFunctionRequest(Blueprint, FunctionName, false));
 
 	TestTrue(TEXT("second ensure succeeds"), SecondResult.bOk);
 	TestEqual(TEXT("second ensure is no-op"), SecondResult.Status, EBlueprintHelperToolStatus::NoOp);
@@ -371,7 +373,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperSignatureServiceEnsureCustomEventDryRunTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeSignatureServiceActorBlueprint(TEXT("CustomEventDryRun"));
+	UBlueprint* Blueprint = FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureServiceActorBlueprint(TEXT("CustomEventDryRun"));
 	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
 	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0)
 	{
@@ -388,15 +390,15 @@ bool FBlueprintHelperSignatureServiceEnsureCustomEventDryRunTest::RunTest(const 
 	const FString EventName = TEXT("BH_DryRunCustomEvent");
 	const int32 NodeCountBefore = Graph ? Graph->Nodes.Num() : 0;
 	const FBlueprintHelperToolResultBase Result = SignatureService.EnsureCustomEvent(
-		MakeEnsureCustomEventRequest(Blueprint, Graph->GetName(), EventName, true));
+		FBlueprintHelperSignatureServiceTestsLocalUtils::MakeEnsureCustomEventRequest(Blueprint, Graph->GetName(), EventName, true));
 
 	TestTrue(TEXT("custom event dry-run succeeds"), Result.bOk);
 	TestEqual(TEXT("operation"), Result.Operation, FString(TEXT("ensure_custom_event")));
 	TestEqual(TEXT("status"), Result.Status, EBlueprintHelperToolStatus::DryRun);
 	TestFalse(TEXT("dry-run does not modify"), Result.bModified);
-	TestTrue(TEXT("dry-run uses signature data schema"), HasSignatureDataSchema(Result));
+	TestTrue(TEXT("dry-run uses signature data schema"), FBlueprintHelperSignatureServiceTestsLocalUtils::HasSignatureDataSchema(Result));
 	TestEqual(TEXT("dry-run keeps graph node count"), Graph ? Graph->Nodes.Num() : 0, NodeCountBefore);
-	TestNull(TEXT("dry-run does not create custom event"), FindSignatureCustomEvent(Graph, EventName));
+	TestNull(TEXT("dry-run does not create custom event"), FBlueprintHelperSignatureServiceTestsLocalUtils::FindSignatureCustomEvent(Graph, EventName));
 	return true;
 }
 
@@ -407,7 +409,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperSignatureServiceEnsureCustomEventExecuteTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeSignatureServiceActorBlueprint(TEXT("CustomEventExecute"));
+	UBlueprint* Blueprint = FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureServiceActorBlueprint(TEXT("CustomEventExecute"));
 	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
 	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0)
 	{
@@ -423,17 +425,17 @@ bool FBlueprintHelperSignatureServiceEnsureCustomEventExecuteTest::RunTest(const
 
 	const FString EventName = TEXT("BH_CreateCustomEvent");
 	const FBlueprintHelperToolResultBase Result = SignatureService.EnsureCustomEvent(
-		MakeEnsureCustomEventRequest(Blueprint, Graph->GetName(), EventName, false));
+		FBlueprintHelperSignatureServiceTestsLocalUtils::MakeEnsureCustomEventRequest(Blueprint, Graph->GetName(), EventName, false));
 
 	TestTrue(TEXT("custom event execute succeeds"), Result.bOk);
 	TestEqual(TEXT("operation"), Result.Operation, FString(TEXT("ensure_custom_event")));
 	TestEqual(TEXT("status"), Result.Status, EBlueprintHelperToolStatus::Applied);
 	TestTrue(TEXT("execute modifies"), Result.bModified);
-	TestTrue(TEXT("execute uses signature data schema"), HasSignatureDataSchema(Result));
+	TestTrue(TEXT("execute uses signature data schema"), FBlueprintHelperSignatureServiceTestsLocalUtils::HasSignatureDataSchema(Result));
 
-	UK2Node_CustomEvent* EventNode = FindSignatureCustomEvent(Graph, EventName);
+	UK2Node_CustomEvent* EventNode = FBlueprintHelperSignatureServiceTestsLocalUtils::FindSignatureCustomEvent(Graph, EventName);
 	TestNotNull(TEXT("custom event node created"), EventNode);
-	TestTrue(TEXT("input pin added"), HasUserDefinedPin(EventNode, TEXT("bPressed")));
+	TestTrue(TEXT("input pin added"), FBlueprintHelperSignatureServiceTestsLocalUtils::HasUserDefinedPin(EventNode, TEXT("bPressed")));
 	return true;
 }
 
@@ -444,7 +446,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperSignatureServiceEnsureCustomEventReuseTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeSignatureServiceActorBlueprint(TEXT("CustomEventReuse"));
+	UBlueprint* Blueprint = FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureServiceActorBlueprint(TEXT("CustomEventReuse"));
 	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
 	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0)
 	{
@@ -459,12 +461,12 @@ bool FBlueprintHelperSignatureServiceEnsureCustomEventReuseTest::RunTest(const F
 
 	const FString EventName = TEXT("BH_ReuseCustomEvent");
 	const FBlueprintHelperToolResultBase FirstResult = SignatureService.EnsureCustomEvent(
-		MakeEnsureCustomEventRequest(Blueprint, Graph->GetName(), EventName, false));
+		FBlueprintHelperSignatureServiceTestsLocalUtils::MakeEnsureCustomEventRequest(Blueprint, Graph->GetName(), EventName, false));
 	TestTrue(TEXT("first custom event ensure succeeds"), FirstResult.bOk);
 
 	const int32 NodeCountAfterFirst = Graph ? Graph->Nodes.Num() : 0;
 	const FBlueprintHelperToolResultBase SecondResult = SignatureService.EnsureCustomEvent(
-		MakeEnsureCustomEventRequest(Blueprint, Graph->GetName(), EventName, false));
+		FBlueprintHelperSignatureServiceTestsLocalUtils::MakeEnsureCustomEventRequest(Blueprint, Graph->GetName(), EventName, false));
 
 	TestTrue(TEXT("second custom event ensure succeeds"), SecondResult.bOk);
 	TestEqual(TEXT("second custom event ensure is no-op"), SecondResult.Status, EBlueprintHelperToolStatus::NoOp);
@@ -480,7 +482,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperSignatureServiceRemoveSignatureDryRunBlockedTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeSignatureServiceActorBlueprint(TEXT("RemoveSignatureDryRun"));
+	UBlueprint* Blueprint = FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureServiceActorBlueprint(TEXT("RemoveSignatureDryRun"));
 	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
 	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0)
 	{
@@ -495,11 +497,11 @@ bool FBlueprintHelperSignatureServiceRemoveSignatureDryRunBlockedTest::RunTest(c
 	FBlueprintHelperSignatureService SignatureService(StructureService);
 
 	const FBlueprintHelperToolResultBase Result = SignatureService.RemoveSignature(
-		MakeRemoveCustomEventSignatureRequest(Blueprint, Graph->GetName(), TEXT("BH_RemoveCustomEvent"), true));
+		FBlueprintHelperSignatureServiceTestsLocalUtils::MakeRemoveCustomEventSignatureRequest(Blueprint, Graph->GetName(), TEXT("BH_RemoveCustomEvent"), true));
 
 	TestFalse(TEXT("remove signature dry-run is blocked"), Result.bOk);
 	TestEqual(TEXT("remove signature reports failed status"), Result.Status, EBlueprintHelperToolStatus::Failed);
-	TestTrue(TEXT("remove signature uses signature data schema"), HasSignatureDataSchema(Result));
+	TestTrue(TEXT("remove signature uses signature data schema"), FBlueprintHelperSignatureServiceTestsLocalUtils::HasSignatureDataSchema(Result));
 	TestTrue(TEXT("remove signature has error"), Result.Error.IsSet());
 	if (Result.Error.IsSet())
 	{
@@ -526,7 +528,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperSignatureServiceRemoveEventDispatcherDryRunBlockedTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeSignatureServiceActorBlueprint(TEXT("RemoveDispatcherDryRun"));
+	UBlueprint* Blueprint = FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureServiceActorBlueprint(TEXT("RemoveDispatcherDryRun"));
 	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
 
 	FBlueprintHelperGraphResolver Resolver;
@@ -534,11 +536,11 @@ bool FBlueprintHelperSignatureServiceRemoveEventDispatcherDryRunBlockedTest::Run
 	FBlueprintHelperSignatureService SignatureService(StructureService);
 
 	const FBlueprintHelperToolResultBase Result = SignatureService.RemoveSignature(
-		MakeRemoveSignatureRequest(Blueprint, TEXT("event_dispatcher"), TEXT("OnDoorOpened"), true));
+		FBlueprintHelperSignatureServiceTestsLocalUtils::MakeRemoveSignatureRequest(Blueprint, TEXT("event_dispatcher"), TEXT("OnDoorOpened"), true));
 
 	TestFalse(TEXT("event dispatcher remove signature dry-run is blocked"), Result.bOk);
 	TestEqual(TEXT("remove signature reports failed status"), Result.Status, EBlueprintHelperToolStatus::Failed);
-	TestTrue(TEXT("remove signature uses signature data schema"), HasSignatureDataSchema(Result));
+	TestTrue(TEXT("remove signature uses signature data schema"), FBlueprintHelperSignatureServiceTestsLocalUtils::HasSignatureDataSchema(Result));
 	TestTrue(TEXT("remove signature has error"), Result.Error.IsSet());
 	if (Result.Error.IsSet())
 	{
@@ -554,7 +556,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperSignatureServiceRejectsRemoveWithoutReferenceContextTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeSignatureServiceActorBlueprint(TEXT("RemoveNeedsReferenceContext"));
+	UBlueprint* Blueprint = FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureServiceActorBlueprint(TEXT("RemoveNeedsReferenceContext"));
 	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
 
 	FBlueprintHelperGraphResolver Resolver;
@@ -562,7 +564,7 @@ bool FBlueprintHelperSignatureServiceRejectsRemoveWithoutReferenceContextTest::R
 	FBlueprintHelperSignatureService SignatureService(StructureService);
 
 	FBlueprintHelperRemoveSignatureRequest Request =
-		MakeRemoveSignatureRequest(Blueprint, TEXT("event_dispatcher"), TEXT("OnDoorOpened"), true);
+		FBlueprintHelperSignatureServiceTestsLocalUtils::MakeRemoveSignatureRequest(Blueprint, TEXT("event_dispatcher"), TEXT("OnDoorOpened"), true);
 	Request.bRequireReferenceContext = false;
 
 	const FBlueprintHelperToolResultBase Result = SignatureService.RemoveSignature(Request);
@@ -583,7 +585,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperSignatureServiceRemoveNativeEventDryRunBlockedTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeSignatureServiceActorBlueprint(TEXT("RemoveNativeEventDryRun"));
+	UBlueprint* Blueprint = FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureServiceActorBlueprint(TEXT("RemoveNativeEventDryRun"));
 	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
 
 	FBlueprintHelperGraphResolver Resolver;
@@ -591,11 +593,11 @@ bool FBlueprintHelperSignatureServiceRemoveNativeEventDryRunBlockedTest::RunTest
 	FBlueprintHelperSignatureService SignatureService(StructureService);
 
 	const FBlueprintHelperToolResultBase Result = SignatureService.RemoveSignature(
-		MakeRemoveSignatureRequest(Blueprint, TEXT("native_event"), TEXT("ReceiveBeginPlay"), true));
+		FBlueprintHelperSignatureServiceTestsLocalUtils::MakeRemoveSignatureRequest(Blueprint, TEXT("native_event"), TEXT("ReceiveBeginPlay"), true));
 
 	TestFalse(TEXT("native event remove signature dry-run is blocked"), Result.bOk);
 	TestEqual(TEXT("remove signature reports failed status"), Result.Status, EBlueprintHelperToolStatus::Failed);
-	TestTrue(TEXT("remove signature uses signature data schema"), HasSignatureDataSchema(Result));
+	TestTrue(TEXT("remove signature uses signature data schema"), FBlueprintHelperSignatureServiceTestsLocalUtils::HasSignatureDataSchema(Result));
 	TestTrue(TEXT("remove signature has error"), Result.Error.IsSet());
 	if (Result.Error.IsSet())
 	{
@@ -611,7 +613,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperSignatureServiceEnsureEventDispatcherDryRunTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeSignatureServiceActorBlueprint(TEXT("EventDispatcherDryRun"));
+	UBlueprint* Blueprint = FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureServiceActorBlueprint(TEXT("EventDispatcherDryRun"));
 	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
 
 	FBlueprintHelperGraphResolver Resolver;
@@ -622,13 +624,13 @@ bool FBlueprintHelperSignatureServiceEnsureEventDispatcherDryRunTest::RunTest(co
 	const int32 DispatcherCountBefore = Blueprint ? Blueprint->DelegateSignatureGraphs.Num() : 0;
 
 	const FBlueprintHelperToolResultBase Result = SignatureService.EnsureEventDispatcher(
-		MakeEnsureEventDispatcherRequest(Blueprint, DispatcherName, true));
+		FBlueprintHelperSignatureServiceTestsLocalUtils::MakeEnsureEventDispatcherRequest(Blueprint, DispatcherName, true));
 
 	TestTrue(TEXT("dispatcher dry-run succeeds"), Result.bOk);
 	TestEqual(TEXT("operation"), Result.Operation, FString(TEXT("ensure_event_dispatcher")));
 	TestEqual(TEXT("status"), Result.Status, EBlueprintHelperToolStatus::DryRun);
 	TestFalse(TEXT("dry-run does not modify"), Result.bModified);
-	TestTrue(TEXT("dry-run uses signature data schema"), HasSignatureDataSchema(Result));
+	TestTrue(TEXT("dry-run uses signature data schema"), FBlueprintHelperSignatureServiceTestsLocalUtils::HasSignatureDataSchema(Result));
 	TestEqual(TEXT("dry-run keeps dispatcher graph count"), Blueprint ? Blueprint->DelegateSignatureGraphs.Num() : 0, DispatcherCountBefore);
 	return true;
 }
@@ -640,7 +642,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperSignatureServiceRejectsDispatcherMutationPolicyTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeSignatureServiceActorBlueprint(TEXT("DispatcherMutationPolicy"));
+	UBlueprint* Blueprint = FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureServiceActorBlueprint(TEXT("DispatcherMutationPolicy"));
 	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
 
 	FBlueprintHelperGraphResolver Resolver;
@@ -648,7 +650,7 @@ bool FBlueprintHelperSignatureServiceRejectsDispatcherMutationPolicyTest::RunTes
 	FBlueprintHelperSignatureService SignatureService(StructureService);
 
 	FBlueprintHelperEnsureEventDispatcherSignatureRequest Request =
-		MakeEnsureEventDispatcherRequest(Blueprint, TEXT("BH_OnDoorOpened"), true);
+		FBlueprintHelperSignatureServiceTestsLocalUtils::MakeEnsureEventDispatcherRequest(Blueprint, TEXT("BH_OnDoorOpened"), true);
 	Request.SignatureMismatchPolicy = TEXT("mutate");
 
 	const FBlueprintHelperToolResultBase Result = SignatureService.EnsureEventDispatcher(Request);
@@ -669,7 +671,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperSignatureServiceEnsureOverrideEventDryRunBlockedTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeSignatureServiceActorBlueprint(TEXT("OverrideEventDryRun"));
+	UBlueprint* Blueprint = FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureServiceActorBlueprint(TEXT("OverrideEventDryRun"));
 	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
 
 	FBlueprintHelperGraphResolver Resolver;
@@ -677,13 +679,13 @@ bool FBlueprintHelperSignatureServiceEnsureOverrideEventDryRunBlockedTest::RunTe
 	FBlueprintHelperSignatureService SignatureService(StructureService);
 
 	const FBlueprintHelperToolResultBase Result = SignatureService.EnsureOverrideEvent(
-		MakeEnsureOverrideEventRequest(Blueprint, TEXT("ReceiveBeginPlay"), true));
+		FBlueprintHelperSignatureServiceTestsLocalUtils::MakeEnsureOverrideEventRequest(Blueprint, TEXT("ReceiveBeginPlay"), true));
 
 	TestFalse(TEXT("override event dry-run is blocked"), Result.bOk);
 	TestEqual(TEXT("operation"), Result.Operation, FString(TEXT("ensure_override_event")));
 	TestEqual(TEXT("status"), Result.Status, EBlueprintHelperToolStatus::Failed);
 	TestFalse(TEXT("blocked preflight does not modify"), Result.bModified);
-	TestTrue(TEXT("override event uses signature data schema"), HasSignatureDataSchema(Result));
+	TestTrue(TEXT("override event uses signature data schema"), FBlueprintHelperSignatureServiceTestsLocalUtils::HasSignatureDataSchema(Result));
 	TestTrue(TEXT("override event has error"), Result.Error.IsSet());
 	if (Result.Error.IsSet())
 	{
@@ -699,7 +701,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperSignatureServiceEnsureOverrideEventCreateIfMissingDryRunTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeSignatureServiceActorBlueprint(TEXT("OverrideEventCreateDryRun"));
+	UBlueprint* Blueprint = FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureServiceActorBlueprint(TEXT("OverrideEventCreateDryRun"));
 	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
 	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0)
 	{
@@ -713,8 +715,12 @@ bool FBlueprintHelperSignatureServiceEnsureOverrideEventCreateIfMissingDryRunTes
 	FBlueprintHelperBlueprintStructureService StructureService(Resolver);
 	FBlueprintHelperSignatureService SignatureService(StructureService);
 
+	const FString EventName = TEXT("ReceiveAnyDamage");
+	TestNull(TEXT("override event is initially missing"),
+		FBlueprintHelperSignatureServiceTestsLocalUtils::FindSignatureOverrideEvent(Blueprint, EventName));
+
 	FBlueprintHelperEnsureOverrideEventSignatureRequest Request =
-		MakeEnsureOverrideEventRequest(Blueprint, TEXT("ReceiveBeginPlay"), true);
+		FBlueprintHelperSignatureServiceTestsLocalUtils::MakeEnsureOverrideEventRequest(Blueprint, EventName, true);
 	Request.GraphName = Graph->GetName();
 	Request.ExecutePolicy = TEXT("create_if_missing");
 
@@ -724,9 +730,9 @@ bool FBlueprintHelperSignatureServiceEnsureOverrideEventCreateIfMissingDryRunTes
 	TestEqual(TEXT("operation"), Result.Operation, FString(TEXT("ensure_override_event")));
 	TestEqual(TEXT("status"), Result.Status, EBlueprintHelperToolStatus::DryRun);
 	TestFalse(TEXT("dry-run does not modify"), Result.bModified);
-	TestTrue(TEXT("override event uses signature data schema"), HasSignatureDataSchema(Result));
+	TestTrue(TEXT("override event uses signature data schema"), FBlueprintHelperSignatureServiceTestsLocalUtils::HasSignatureDataSchema(Result));
 	TestEqual(TEXT("dry-run does not add event node"), Graph ? Graph->Nodes.Num() : 0, NodeCountBefore);
-	TestNull(TEXT("dry-run does not create override event"), FindSignatureOverrideEvent(Blueprint, TEXT("ReceiveBeginPlay")));
+	TestNull(TEXT("dry-run does not create override event"), FBlueprintHelperSignatureServiceTestsLocalUtils::FindSignatureOverrideEvent(Blueprint, EventName));
 	return true;
 }
 
@@ -737,7 +743,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperSignatureServiceEnsureOverrideEventCreateIfMissingExecuteTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeSignatureServiceActorBlueprint(TEXT("OverrideEventCreateExecute"));
+	UBlueprint* Blueprint = FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureServiceActorBlueprint(TEXT("OverrideEventCreateExecute"));
 	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
 	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0)
 	{
@@ -751,8 +757,12 @@ bool FBlueprintHelperSignatureServiceEnsureOverrideEventCreateIfMissingExecuteTe
 	FBlueprintHelperBlueprintStructureService StructureService(Resolver);
 	FBlueprintHelperSignatureService SignatureService(StructureService);
 
+	const FString EventName = TEXT("ReceiveAnyDamage");
+	TestNull(TEXT("override event is initially missing"),
+		FBlueprintHelperSignatureServiceTestsLocalUtils::FindSignatureOverrideEvent(Blueprint, EventName));
+
 	FBlueprintHelperEnsureOverrideEventSignatureRequest Request =
-		MakeEnsureOverrideEventRequest(Blueprint, TEXT("ReceiveBeginPlay"), false);
+		FBlueprintHelperSignatureServiceTestsLocalUtils::MakeEnsureOverrideEventRequest(Blueprint, EventName, false);
 	Request.GraphName = Graph->GetName();
 	Request.ExecutePolicy = TEXT("create_if_missing");
 
@@ -762,9 +772,9 @@ bool FBlueprintHelperSignatureServiceEnsureOverrideEventCreateIfMissingExecuteTe
 	TestEqual(TEXT("operation"), Result.Operation, FString(TEXT("ensure_override_event")));
 	TestEqual(TEXT("status"), Result.Status, EBlueprintHelperToolStatus::Applied);
 	TestTrue(TEXT("execute modifies"), Result.bModified);
-	TestTrue(TEXT("override event uses signature data schema"), HasSignatureDataSchema(Result));
+	TestTrue(TEXT("override event uses signature data schema"), FBlueprintHelperSignatureServiceTestsLocalUtils::HasSignatureDataSchema(Result));
 
-	UK2Node_Event* EventNode = FindSignatureOverrideEvent(Blueprint, TEXT("ReceiveBeginPlay"));
+	UK2Node_Event* EventNode = FBlueprintHelperSignatureServiceTestsLocalUtils::FindSignatureOverrideEvent(Blueprint, EventName);
 	TestNotNull(TEXT("override event node exists"), EventNode);
 	TestTrue(TEXT("override function flag set"), EventNode && EventNode->bOverrideFunction);
 	return true;
@@ -777,7 +787,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperSignatureServiceRejectsOverrideExecutePolicyTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = MakeSignatureServiceActorBlueprint(TEXT("OverrideExecutePolicy"));
+	UBlueprint* Blueprint = FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureServiceActorBlueprint(TEXT("OverrideExecutePolicy"));
 	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
 
 	FBlueprintHelperGraphResolver Resolver;
@@ -785,7 +795,7 @@ bool FBlueprintHelperSignatureServiceRejectsOverrideExecutePolicyTest::RunTest(c
 	FBlueprintHelperSignatureService SignatureService(StructureService);
 
 	FBlueprintHelperEnsureOverrideEventSignatureRequest Request =
-		MakeEnsureOverrideEventRequest(Blueprint, TEXT("ReceiveBeginPlay"), true);
+		FBlueprintHelperSignatureServiceTestsLocalUtils::MakeEnsureOverrideEventRequest(Blueprint, TEXT("ReceiveBeginPlay"), true);
 	Request.ExecutePolicy = TEXT("execute");
 
 	const FBlueprintHelperToolResultBase Result = SignatureService.EnsureOverrideEvent(Request);

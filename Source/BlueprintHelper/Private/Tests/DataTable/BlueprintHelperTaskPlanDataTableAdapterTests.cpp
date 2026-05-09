@@ -9,9 +9,10 @@
 #include "UObject/NoExportTypes.h"
 #include "UObject/Package.h"
 
-namespace
+class FBlueprintHelperTaskPlanDataTableAdapterTestsLocalUtils
 {
-	TSharedPtr<FJsonObject> MakeDataTableTaskPlanStep(const FString& OpName)
+public:
+	static TSharedPtr<FJsonObject> MakeDataTableTaskPlanStep(const FString& OpName)
 	{
 		TSharedPtr<FJsonObject> Step = MakeShared<FJsonObject>();
 		Step->SetStringField(TEXT("step_id"), TEXT("step_data_table"));
@@ -35,7 +36,7 @@ namespace
 		return Step;
 	}
 
-	TSharedPtr<FJsonObject> GetFirstDataTableOp(const TSharedPtr<FJsonObject>& Step)
+	static TSharedPtr<FJsonObject> GetFirstDataTableOp(const TSharedPtr<FJsonObject>& Step)
 	{
 		const TSharedPtr<FJsonObject>* Write = nullptr;
 		if (!Step->TryGetObjectField(TEXT("write"), Write) || !Write || !Write->IsValid())
@@ -52,7 +53,7 @@ namespace
 		return (*Ops)[0].IsValid() ? (*Ops)[0]->AsObject() : nullptr;
 	}
 
-	TSharedPtr<FJsonObject> MakeWeaponFields()
+	static TSharedPtr<FJsonObject> MakeWeaponFields()
 	{
 		TSharedPtr<FJsonObject> Fields = MakeShared<FJsonObject>();
 		Fields->SetStringField(TEXT("Damage"), TEXT("12"));
@@ -60,12 +61,12 @@ namespace
 		return Fields;
 	}
 
-	FString MakeDataTableTestObjectName(const FString& Prefix)
+	static FString MakeDataTableTestObjectName(const FString& Prefix)
 	{
 		return FString::Printf(TEXT("%s_%s"), *Prefix, *FGuid::NewGuid().ToString(EGuidFormats::Digits));
 	}
 
-	UPackage* MakeDataTableTestPackage(const FString& Prefix)
+	static UPackage* MakeDataTableTestPackage(const FString& Prefix)
 	{
 		UPackage* Package = CreatePackage(*FString::Printf(
 			TEXT("/Game/BlueprintHelperDataTableTests/%s"),
@@ -74,7 +75,7 @@ namespace
 		return Package;
 	}
 
-	UDataTable* MakeVectorDataTable(
+	static UDataTable* MakeVectorDataTable(
 		UPackage* Package,
 		const FName TableName,
 		const FName RowName,
@@ -88,7 +89,7 @@ namespace
 		return DataTable;
 	}
 
-	TMap<FString, FString> MakeVectorFields(const double X, const double Y, const double Z)
+	static TMap<FString, FString> MakeVectorFields(const double X, const double Y, const double Z)
 	{
 		TMap<FString, FString> Fields;
 		Fields.Add(TEXT("X"), FString::SanitizeFloat(X));
@@ -96,7 +97,8 @@ namespace
 		Fields.Add(TEXT("Z"), FString::SanitizeFloat(Z));
 		return Fields;
 	}
-}
+
+};
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperTaskPlanDataTableAdapterAddRowTest,
@@ -105,12 +107,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperTaskPlanDataTableAdapterAddRowTest::RunTest(const FString& Parameters)
 {
-	TSharedPtr<FJsonObject> Step = MakeDataTableTaskPlanStep(FBlueprintHelperDataTableTaskPlanAdapter::OpAddRow);
-	TSharedPtr<FJsonObject> Op = GetFirstDataTableOp(Step);
+	TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanDataTableAdapterTestsLocalUtils::MakeDataTableTaskPlanStep(FBlueprintHelperDataTableTaskPlanAdapter::OpAddRow);
+	TSharedPtr<FJsonObject> Op = FBlueprintHelperTaskPlanDataTableAdapterTestsLocalUtils::GetFirstDataTableOp(Step);
 	TestNotNull(TEXT("data_table op exists"), Op.Get());
 
 	Op->SetStringField(TEXT("row_name"), TEXT("Pistol"));
-	Op->SetObjectField(TEXT("fields"), MakeWeaponFields());
+	Op->SetObjectField(TEXT("fields"), FBlueprintHelperTaskPlanDataTableAdapterTestsLocalUtils::MakeWeaponFields());
 
 	FBlueprintHelperDataTableTaskPlanPayload BuiltPayload;
 	FBlueprintHelperToolError Error;
@@ -153,12 +155,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperTaskPlanDataTableAdapterUpdateRowTest::RunTest(const FString& Parameters)
 {
-	TSharedPtr<FJsonObject> Step = MakeDataTableTaskPlanStep(FBlueprintHelperDataTableTaskPlanAdapter::OpUpdateRow);
-	TSharedPtr<FJsonObject> Op = GetFirstDataTableOp(Step);
+	TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanDataTableAdapterTestsLocalUtils::MakeDataTableTaskPlanStep(FBlueprintHelperDataTableTaskPlanAdapter::OpUpdateRow);
+	TSharedPtr<FJsonObject> Op = FBlueprintHelperTaskPlanDataTableAdapterTestsLocalUtils::GetFirstDataTableOp(Step);
 	TestNotNull(TEXT("data_table op exists"), Op.Get());
 
 	Op->SetStringField(TEXT("row_name"), TEXT("Pistol"));
-	Op->SetObjectField(TEXT("fields"), MakeWeaponFields());
+	Op->SetObjectField(TEXT("fields"), FBlueprintHelperTaskPlanDataTableAdapterTestsLocalUtils::MakeWeaponFields());
 
 	FBlueprintHelperDataTableTaskPlanPayload BuiltPayload;
 	FBlueprintHelperToolError Error;
@@ -195,8 +197,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperTaskPlanDataTableAdapterDeleteRowTest::RunTest(const FString& Parameters)
 {
-	TSharedPtr<FJsonObject> Step = MakeDataTableTaskPlanStep(FBlueprintHelperDataTableTaskPlanAdapter::OpDeleteRow);
-	TSharedPtr<FJsonObject> Op = GetFirstDataTableOp(Step);
+	TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanDataTableAdapterTestsLocalUtils::MakeDataTableTaskPlanStep(FBlueprintHelperDataTableTaskPlanAdapter::OpDeleteRow);
+	TSharedPtr<FJsonObject> Op = FBlueprintHelperTaskPlanDataTableAdapterTestsLocalUtils::GetFirstDataTableOp(Step);
 	TestNotNull(TEXT("data_table op exists"), Op.Get());
 	Op->SetStringField(TEXT("row_name"), TEXT("Pistol"));
 
@@ -236,10 +238,10 @@ bool FBlueprintHelperDataTableServiceAddRowDryRunDoesNotCreateRowTest::RunTest(c
 	const FName NewRowName(TEXT("DryRunRow"));
 	const FVector InitialValue(1.0, 2.0, 3.0);
 
-	UPackage* Package = MakeDataTableTestPackage(TEXT("AddRowDryRun"));
-	UDataTable* DataTable = MakeVectorDataTable(
+	UPackage* Package = FBlueprintHelperTaskPlanDataTableAdapterTestsLocalUtils::MakeDataTableTestPackage(TEXT("AddRowDryRun"));
+	UDataTable* DataTable = FBlueprintHelperTaskPlanDataTableAdapterTestsLocalUtils::MakeVectorDataTable(
 		Package,
-		*MakeDataTableTestObjectName(TEXT("DT_VectorRows")),
+		*FBlueprintHelperTaskPlanDataTableAdapterTestsLocalUtils::MakeDataTableTestObjectName(TEXT("DT_VectorRows")),
 		ExistingRowName,
 		InitialValue);
 	TestNotNull(TEXT("test DataTable is created"), DataTable);
@@ -248,7 +250,7 @@ bool FBlueprintHelperDataTableServiceAddRowDryRunDoesNotCreateRowTest::RunTest(c
 	const FBlueprintHelperDataTableMutationResult Result = Service.AddDataTableRow(
 		DataTable->GetPathName(),
 		NewRowName.ToString(),
-		MakeVectorFields(10.0, 20.0, 30.0),
+		FBlueprintHelperTaskPlanDataTableAdapterTestsLocalUtils::MakeVectorFields(10.0, 20.0, 30.0),
 		true);
 
 	TestTrue(TEXT("add row dry-run validates successfully"), Result.bSuccess);
@@ -271,10 +273,10 @@ bool FBlueprintHelperDataTableServiceUpdateRowDryRunDoesNotModifyRowTest::RunTes
 	const FName RowName(TEXT("ExistingRow"));
 	const FVector InitialValue(1.0, 2.0, 3.0);
 
-	UPackage* Package = MakeDataTableTestPackage(TEXT("UpdateRowDryRun"));
-	UDataTable* DataTable = MakeVectorDataTable(
+	UPackage* Package = FBlueprintHelperTaskPlanDataTableAdapterTestsLocalUtils::MakeDataTableTestPackage(TEXT("UpdateRowDryRun"));
+	UDataTable* DataTable = FBlueprintHelperTaskPlanDataTableAdapterTestsLocalUtils::MakeVectorDataTable(
 		Package,
-		*MakeDataTableTestObjectName(TEXT("DT_VectorRows")),
+		*FBlueprintHelperTaskPlanDataTableAdapterTestsLocalUtils::MakeDataTableTestObjectName(TEXT("DT_VectorRows")),
 		RowName,
 		InitialValue);
 	TestNotNull(TEXT("test DataTable is created"), DataTable);
@@ -283,7 +285,7 @@ bool FBlueprintHelperDataTableServiceUpdateRowDryRunDoesNotModifyRowTest::RunTes
 	const FBlueprintHelperDataTableMutationResult Result = Service.UpdateDataTableRow(
 		DataTable->GetPathName(),
 		RowName.ToString(),
-		MakeVectorFields(10.0, 20.0, 30.0),
+		FBlueprintHelperTaskPlanDataTableAdapterTestsLocalUtils::MakeVectorFields(10.0, 20.0, 30.0),
 		true);
 
 	TestTrue(TEXT("update row dry-run validates successfully"), Result.bSuccess);
@@ -311,10 +313,10 @@ bool FBlueprintHelperDataTableServiceDeleteRowDryRunDoesNotRemoveRowTest::RunTes
 	const FName RowName(TEXT("ExistingRow"));
 	const FVector InitialValue(1.0, 2.0, 3.0);
 
-	UPackage* Package = MakeDataTableTestPackage(TEXT("DeleteRowDryRun"));
-	UDataTable* DataTable = MakeVectorDataTable(
+	UPackage* Package = FBlueprintHelperTaskPlanDataTableAdapterTestsLocalUtils::MakeDataTableTestPackage(TEXT("DeleteRowDryRun"));
+	UDataTable* DataTable = FBlueprintHelperTaskPlanDataTableAdapterTestsLocalUtils::MakeVectorDataTable(
 		Package,
-		*MakeDataTableTestObjectName(TEXT("DT_VectorRows")),
+		*FBlueprintHelperTaskPlanDataTableAdapterTestsLocalUtils::MakeDataTableTestObjectName(TEXT("DT_VectorRows")),
 		RowName,
 		InitialValue);
 	TestNotNull(TEXT("test DataTable is created"), DataTable);
@@ -349,7 +351,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperTaskPlanDataTableAdapterRejectsOperationFieldTest::RunTest(const FString& Parameters)
 {
-	TSharedPtr<FJsonObject> Step = MakeDataTableTaskPlanStep(FBlueprintHelperDataTableTaskPlanAdapter::OpAddRow);
+	TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanDataTableAdapterTestsLocalUtils::MakeDataTableTaskPlanStep(FBlueprintHelperDataTableTaskPlanAdapter::OpAddRow);
 	Step->SetStringField(TEXT("operation"), TEXT("add_datatable_row"));
 
 	FBlueprintHelperDataTableTaskPlanPayload BuiltPayload;
@@ -374,11 +376,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperTaskPlanDataTableAdapterRejectsUpdateValuesFieldTest::RunTest(const FString& Parameters)
 {
-	TSharedPtr<FJsonObject> Step = MakeDataTableTaskPlanStep(FBlueprintHelperDataTableTaskPlanAdapter::OpUpdateRow);
-	TSharedPtr<FJsonObject> Op = GetFirstDataTableOp(Step);
+	TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanDataTableAdapterTestsLocalUtils::MakeDataTableTaskPlanStep(FBlueprintHelperDataTableTaskPlanAdapter::OpUpdateRow);
+	TSharedPtr<FJsonObject> Op = FBlueprintHelperTaskPlanDataTableAdapterTestsLocalUtils::GetFirstDataTableOp(Step);
 	TestNotNull(TEXT("data_table op exists"), Op.Get());
 	Op->SetStringField(TEXT("row_name"), TEXT("Pistol"));
-	Op->SetObjectField(TEXT("values"), MakeWeaponFields());
+	Op->SetObjectField(TEXT("values"), FBlueprintHelperTaskPlanDataTableAdapterTestsLocalUtils::MakeWeaponFields());
 
 	FBlueprintHelperDataTableTaskPlanPayload BuiltPayload;
 	FBlueprintHelperToolError Error;
@@ -402,7 +404,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperTaskPlanDataTableAdapterRejectsBatchOpsTest::RunTest(const FString& Parameters)
 {
-	TSharedPtr<FJsonObject> Step = MakeDataTableTaskPlanStep(FBlueprintHelperDataTableTaskPlanAdapter::OpUpdateRow);
+	TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanDataTableAdapterTestsLocalUtils::MakeDataTableTaskPlanStep(FBlueprintHelperDataTableTaskPlanAdapter::OpUpdateRow);
 
 	const TSharedPtr<FJsonObject>* Write = nullptr;
 	TestTrue(TEXT("test step has write object"), Step->TryGetObjectField(TEXT("write"), Write));
@@ -411,13 +413,13 @@ bool FBlueprintHelperTaskPlanDataTableAdapterRejectsBatchOpsTest::RunTest(const 
 	TSharedPtr<FJsonObject> FirstOp = MakeShared<FJsonObject>();
 	FirstOp->SetStringField(TEXT("op"), FBlueprintHelperDataTableTaskPlanAdapter::OpUpdateRow);
 	FirstOp->SetStringField(TEXT("row_name"), TEXT("Pistol"));
-	FirstOp->SetObjectField(TEXT("fields"), MakeWeaponFields());
+	FirstOp->SetObjectField(TEXT("fields"), FBlueprintHelperTaskPlanDataTableAdapterTestsLocalUtils::MakeWeaponFields());
 	Ops.Add(MakeShared<FJsonValueObject>(FirstOp.ToSharedRef()));
 
 	TSharedPtr<FJsonObject> SecondOp = MakeShared<FJsonObject>();
 	SecondOp->SetStringField(TEXT("op"), FBlueprintHelperDataTableTaskPlanAdapter::OpUpdateRow);
 	SecondOp->SetStringField(TEXT("row_name"), TEXT("Rifle"));
-	SecondOp->SetObjectField(TEXT("fields"), MakeWeaponFields());
+	SecondOp->SetObjectField(TEXT("fields"), FBlueprintHelperTaskPlanDataTableAdapterTestsLocalUtils::MakeWeaponFields());
 	Ops.Add(MakeShared<FJsonValueObject>(SecondOp.ToSharedRef()));
 	(*Write)->SetArrayField(TEXT("ops"), Ops);
 

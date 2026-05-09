@@ -1,5 +1,5 @@
-// BlueprintHelper Service Layer — Internal Dependency Analysis 内部类型定义
-// 不导出独立 Agent-facing MCP 工具簇，仅供 Cleanup/Replace/Remove 等调用方内部使用
+// BlueprintHelper Service Layer �?Internal Dependency Analysis 内部类型定义
+// 不导出独�?Agent-facing MCP 工具簇，仅供 Cleanup/Replace/Remove 等调用方内部使用
 
 #pragma once
 
@@ -7,14 +7,16 @@
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 
-namespace BlueprintHelperReferenceContextProtocol
+class FBlueprintHelperReferenceContextProtocol
 {
+public:
 	static constexpr const TCHAR* Schema = TEXT("BlueprintHelper.ReferenceContextPack.v1");
-}
+};
 
-namespace BlueprintHelperDependencyAnalysisJson
+class FBlueprintHelperDependencyAnalysisJson
 {
-	inline TArray<TSharedPtr<FJsonValue>> StringArray(const TArray<FString>& Items)
+public:
+	static TArray<TSharedPtr<FJsonValue>> StringArray(const TArray<FString>& Items)
 	{
 		TArray<TSharedPtr<FJsonValue>> Values;
 		for (const FString& Item : Items)
@@ -23,7 +25,7 @@ namespace BlueprintHelperDependencyAnalysisJson
 		}
 		return Values;
 	}
-}
+};
 
 // ─── 内部目标描述 ───
 
@@ -114,7 +116,7 @@ struct FBlueprintHelperDependentRefSummary
 	}
 };
 
-// ─── Dependencies (target → external assets) ───
+// ─── Dependencies (target �?external assets) ───
 
 struct FBlueprintHelperAssetDependencySummary
 {
@@ -124,7 +126,7 @@ struct FBlueprintHelperAssetDependencySummary
 	TArray<FString> UnsupportedChecks;
 };
 
-// ─── Referencers (external assets → target) ───
+// ─── Referencers (external assets �?target) ───
 
 struct FBlueprintHelperAssetReferencerSummary
 {
@@ -160,7 +162,7 @@ struct FBlueprintHelperReferenceContextAnalysis
 		Json->SetBoolField(TEXT("partial"), bPartial);
 		Json->SetBoolField(TEXT("truncated"), bTruncated);
 		Json->SetNumberField(TEXT("max_results"), MaxResults);
-		Json->SetArrayField(TEXT("unsupported_checks"), BlueprintHelperDependencyAnalysisJson::StringArray(UnsupportedChecks));
+		Json->SetArrayField(TEXT("unsupported_checks"), FBlueprintHelperDependencyAnalysisJson::StringArray(UnsupportedChecks));
 		return Json;
 	}
 };
@@ -198,7 +200,7 @@ struct FBlueprintHelperReferenceContextAgentHints
 		Json->SetBoolField(TEXT("can_edit_safely"), bCanEditSafely);
 		Json->SetBoolField(TEXT("requires_preview"), bRequiresPreview);
 		Json->SetStringField(TEXT("recommended_task_strategy"), RecommendedTaskStrategy);
-		Json->SetArrayField(TEXT("blockers"), BlueprintHelperDependencyAnalysisJson::StringArray(Blockers));
+		Json->SetArrayField(TEXT("blockers"), FBlueprintHelperDependencyAnalysisJson::StringArray(Blockers));
 		return Json;
 	}
 };
@@ -216,7 +218,7 @@ struct FBlueprintHelperReferenceContextPack
 	TSharedRef<FJsonObject> ToJson() const
 	{
 		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
-		Json->SetStringField(TEXT("schema"), BlueprintHelperReferenceContextProtocol::Schema);
+		Json->SetStringField(TEXT("schema"), FBlueprintHelperReferenceContextProtocol::Schema);
 		Json->SetStringField(TEXT("context_id"), ContextId);
 		Json->SetObjectField(TEXT("analysis"), Analysis.ToJson());
 		Json->SetObjectField(TEXT("summary"), Summary.ToJson());

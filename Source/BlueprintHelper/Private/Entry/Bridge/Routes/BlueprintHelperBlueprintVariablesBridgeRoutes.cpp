@@ -5,9 +5,10 @@
 #include "Shared/BlueprintHelperToolResultTypes.h"
 #include "Systems/ToolClusters/BlueprintVariables/BlueprintHelperBlueprintVariableService.h"
 
-namespace
+class FBlueprintHelperBlueprintVariablesBridgeRoutesLocalUtils
 {
-	FBlueprintHelperBridgeResponse MakeBlueprintVariablesResponse(
+public:
+	static FBlueprintHelperBridgeResponse MakeBlueprintVariablesResponse(
 		const FBlueprintHelperBridgeRequest& Request,
 		const FBlueprintHelperToolResultBase& Result)
 	{
@@ -20,7 +21,8 @@ namespace
 		Response.Result = Result.ToJson();
 		return Response;
 	}
-}
+
+};
 
 FBlueprintHelperBlueprintVariablesBridgeRoutes::FBlueprintHelperBlueprintVariablesBridgeRoutes(
 	const FBlueprintHelperBlueprintVariableService& InVariableService)
@@ -52,63 +54,63 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBlueprintVariablesBridgeRoutes::H
 {
 	if (Request.Command == TEXT("read_blueprint_member_variables"))
 	{
-		return MakeBlueprintVariablesResponse(Request, VariableService.ReadMemberVariables(Request.Payload));
+		return FBlueprintHelperBlueprintVariablesBridgeRoutesLocalUtils::MakeBlueprintVariablesResponse(Request, VariableService.ReadMemberVariables(Request.Payload));
 	}
 	if (Request.Command == TEXT("add_blueprint_member_variable"))
 	{
-		return MakeBlueprintVariablesResponse(Request, VariableService.AddMemberVariable(Request.Payload));
+		return FBlueprintHelperBlueprintVariablesBridgeRoutesLocalUtils::MakeBlueprintVariablesResponse(Request, VariableService.AddMemberVariable(Request.Payload));
 	}
 	if (Request.Command == TEXT("add_blueprint_member_variables"))
 	{
-		return MakeBlueprintVariablesResponse(Request, VariableService.AddMemberVariables(Request.Payload));
+		return FBlueprintHelperBlueprintVariablesBridgeRoutesLocalUtils::MakeBlueprintVariablesResponse(Request, VariableService.AddMemberVariables(Request.Payload));
 	}
 	if (Request.Command == TEXT("set_blueprint_member_variable_properties"))
 	{
-		return MakeBlueprintVariablesResponse(Request, VariableService.SetMemberVariableProperties(Request.Payload));
+		return FBlueprintHelperBlueprintVariablesBridgeRoutesLocalUtils::MakeBlueprintVariablesResponse(Request, VariableService.SetMemberVariableProperties(Request.Payload));
 	}
 	if (Request.Command == TEXT("remove_blueprint_member_variable"))
 	{
-		return MakeBlueprintVariablesResponse(Request, VariableService.RemoveMemberVariable(Request.Payload));
+		return FBlueprintHelperBlueprintVariablesBridgeRoutesLocalUtils::MakeBlueprintVariablesResponse(Request, VariableService.RemoveMemberVariable(Request.Payload));
 	}
 	if (Request.Command == TEXT("remove_blueprint_member_variables"))
 	{
-		return MakeBlueprintVariablesResponse(Request, VariableService.RemoveMemberVariables(Request.Payload));
+		return FBlueprintHelperBlueprintVariablesBridgeRoutesLocalUtils::MakeBlueprintVariablesResponse(Request, VariableService.RemoveMemberVariables(Request.Payload));
 	}
 	if (Request.Command == TEXT("read_blueprint_member_defaults"))
 	{
-		return MakeBlueprintVariablesResponse(Request, VariableService.ReadMemberDefaults(Request.Payload));
+		return FBlueprintHelperBlueprintVariablesBridgeRoutesLocalUtils::MakeBlueprintVariablesResponse(Request, VariableService.ReadMemberDefaults(Request.Payload));
 	}
 	if (Request.Command == TEXT("set_blueprint_member_default"))
 	{
-		return MakeBlueprintVariablesResponse(Request, VariableService.SetMemberDefault(Request.Payload));
+		return FBlueprintHelperBlueprintVariablesBridgeRoutesLocalUtils::MakeBlueprintVariablesResponse(Request, VariableService.SetMemberDefault(Request.Payload));
 	}
 	if (Request.Command == TEXT("set_blueprint_member_defaults"))
 	{
-		return MakeBlueprintVariablesResponse(Request, VariableService.SetMemberDefaults(Request.Payload));
+		return FBlueprintHelperBlueprintVariablesBridgeRoutesLocalUtils::MakeBlueprintVariablesResponse(Request, VariableService.SetMemberDefaults(Request.Payload));
 	}
 	if (Request.Command == TEXT("read_blueprint_local_variables"))
 	{
-		return MakeBlueprintVariablesResponse(Request, VariableService.ReadLocalVariables(Request.Payload));
+		return FBlueprintHelperBlueprintVariablesBridgeRoutesLocalUtils::MakeBlueprintVariablesResponse(Request, VariableService.ReadLocalVariables(Request.Payload));
 	}
 	if (Request.Command == TEXT("add_blueprint_local_variable"))
 	{
-		return MakeBlueprintVariablesResponse(Request, VariableService.AddLocalVariable(Request.Payload));
+		return FBlueprintHelperBlueprintVariablesBridgeRoutesLocalUtils::MakeBlueprintVariablesResponse(Request, VariableService.AddLocalVariable(Request.Payload));
 	}
 	if (Request.Command == TEXT("add_blueprint_local_variables"))
 	{
-		return MakeBlueprintVariablesResponse(Request, VariableService.AddLocalVariables(Request.Payload));
+		return FBlueprintHelperBlueprintVariablesBridgeRoutesLocalUtils::MakeBlueprintVariablesResponse(Request, VariableService.AddLocalVariables(Request.Payload));
 	}
 	if (Request.Command == TEXT("set_blueprint_local_variable_properties"))
 	{
-		return MakeBlueprintVariablesResponse(Request, VariableService.SetLocalVariableProperties(Request.Payload));
+		return FBlueprintHelperBlueprintVariablesBridgeRoutesLocalUtils::MakeBlueprintVariablesResponse(Request, VariableService.SetLocalVariableProperties(Request.Payload));
 	}
 	if (Request.Command == TEXT("remove_blueprint_local_variable"))
 	{
-		return MakeBlueprintVariablesResponse(Request, VariableService.RemoveLocalVariable(Request.Payload));
+		return FBlueprintHelperBlueprintVariablesBridgeRoutesLocalUtils::MakeBlueprintVariablesResponse(Request, VariableService.RemoveLocalVariable(Request.Payload));
 	}
 	if (Request.Command == TEXT("remove_blueprint_local_variables"))
 	{
-		return MakeBlueprintVariablesResponse(Request, VariableService.RemoveLocalVariables(Request.Payload));
+		return FBlueprintHelperBlueprintVariablesBridgeRoutesLocalUtils::MakeBlueprintVariablesResponse(Request, VariableService.RemoveLocalVariables(Request.Payload));
 	}
 
 	return FBlueprintHelperBridgeResponse::Error(

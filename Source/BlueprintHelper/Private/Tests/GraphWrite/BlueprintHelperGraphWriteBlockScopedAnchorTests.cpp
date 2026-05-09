@@ -23,14 +23,15 @@
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
 
-namespace
+class FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils
 {
-	FString MakeBlockScopedAnchorTestObjectName(const FString& Prefix)
+public:
+	static FString MakeBlockScopedAnchorTestObjectName(const FString& Prefix)
 	{
 		return FString::Printf(TEXT("%s_%s"), *Prefix, *FGuid::NewGuid().ToString(EGuidFormats::Digits));
 	}
 
-	UBlueprint* MakeBlockScopedAnchorTestBlueprint(const FString& Prefix)
+	static UBlueprint* MakeBlockScopedAnchorTestBlueprint(const FString& Prefix)
 	{
 		UPackage* Package = CreatePackage(*FString::Printf(
 			TEXT("/Game/BlueprintHelperGraphWrite/%s"),
@@ -49,7 +50,7 @@ namespace
 		return Blueprint;
 	}
 
-	UK2Node_CustomEvent* AddCustomEventNode(UEdGraph* Graph, const FString& EventName)
+	static UK2Node_CustomEvent* AddCustomEventNode(UEdGraph* Graph, const FString& EventName)
 	{
 		if (!Graph)
 		{
@@ -65,7 +66,7 @@ namespace
 		return EventNode;
 	}
 
-	UK2Node_IfThenElse* AddBranchNode(UEdGraph* Graph)
+	static UK2Node_IfThenElse* AddBranchNode(UEdGraph* Graph)
 	{
 		if (!Graph)
 		{
@@ -80,7 +81,7 @@ namespace
 		return BranchNode;
 	}
 
-	UK2Node_CallFunction* AddNativeFunctionCallNode(UEdGraph* Graph, const FName FunctionName)
+	static UK2Node_CallFunction* AddNativeFunctionCallNode(UEdGraph* Graph, const FName FunctionName)
 	{
 		if (!Graph)
 		{
@@ -102,7 +103,7 @@ namespace
 		return CallNode;
 	}
 
-	UEdGraphPin* FindPinByName(UEdGraphNode* Node, const TCHAR* PinName)
+	static UEdGraphPin* FindPinByName(UEdGraphNode* Node, const TCHAR* PinName)
 	{
 		if (!Node)
 		{
@@ -119,7 +120,7 @@ namespace
 		return nullptr;
 	}
 
-	UEdGraphPin* FindExecPin(UEdGraphNode* Node, EEdGraphPinDirection Direction)
+	static UEdGraphPin* FindExecPin(UEdGraphNode* Node, EEdGraphPinDirection Direction)
 	{
 		if (!Node)
 		{
@@ -136,7 +137,7 @@ namespace
 		return nullptr;
 	}
 
-	bool ConnectExecPins(UEdGraphPin* FromPin, UEdGraphPin* ToPin)
+	static bool ConnectExecPins(UEdGraphPin* FromPin, UEdGraphPin* ToPin)
 	{
 		if (!FromPin || !ToPin)
 		{
@@ -147,7 +148,7 @@ namespace
 		return Schema && Schema->TryCreateConnection(FromPin, ToPin);
 	}
 
-	void MarkNodeAsBlueprintHelperOwned(UEdGraphNode* Node, const FString& BlockId)
+	static void MarkNodeAsBlueprintHelperOwned(UEdGraphNode* Node, const FString& BlockId)
 	{
 		if (!Node)
 		{
@@ -162,7 +163,7 @@ namespace
 		}
 	}
 
-	void MarkNodeWithLegacyBlueprintHelperComment(UEdGraphNode* Node, const FString& BlockId)
+	static void MarkNodeWithLegacyBlueprintHelperComment(UEdGraphNode* Node, const FString& BlockId)
 	{
 		if (!Node)
 		{
@@ -193,7 +194,7 @@ namespace
 		FString BlockId;
 	};
 
-	FBlockScopedGraph MakeBlockScopedGraph(const FString& Prefix)
+	static FBlockScopedGraph MakeBlockScopedGraph(const FString& Prefix)
 	{
 		FBlockScopedGraph Result;
 		Result.Blueprint = MakeBlockScopedAnchorTestBlueprint(Prefix);
@@ -214,7 +215,7 @@ namespace
 		return Result;
 	}
 
-	TSharedRef<FJsonObject> MakePatchPayload(
+	static TSharedRef<FJsonObject> MakePatchPayload(
 		const FBlockScopedGraph& Fixture,
 		const FString& PatchType,
 		const FString& PatchScope,
@@ -245,7 +246,7 @@ namespace
 		return Payload;
 	}
 
-	TSharedRef<FJsonObject> MakeSetPinDefaultPayload(const FBlockScopedGraph& Fixture)
+	static TSharedRef<FJsonObject> MakeSetPinDefaultPayload(const FBlockScopedGraph& Fixture)
 	{
 		TSharedRef<FJsonObject> Patch = MakeShared<FJsonObject>();
 		Patch->SetStringField(TEXT("value"), TEXT("true"));
@@ -258,7 +259,7 @@ namespace
 			Patch);
 	}
 
-	TSharedRef<FJsonObject> MakeSetNodeCommentPayload(const FBlockScopedGraph& Fixture)
+	static TSharedRef<FJsonObject> MakeSetNodeCommentPayload(const FBlockScopedGraph& Fixture)
 	{
 		TSharedRef<FJsonObject> Patch = MakeShared<FJsonObject>();
 		Patch->SetStringField(TEXT("comment"), TEXT("Updated block entry comment"));
@@ -271,7 +272,7 @@ namespace
 			Patch);
 	}
 
-	TSharedRef<FJsonObject> MakeInsertFlowPayload(const FBlockScopedGraph& Fixture)
+	static TSharedRef<FJsonObject> MakeInsertFlowPayload(const FBlockScopedGraph& Fixture)
 	{
 		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
 
@@ -296,7 +297,7 @@ namespace
 		return Payload;
 	}
 
-	TSharedRef<FJsonObject> MakeInsertBetweenFlowPayload(const FBlockScopedGraph& Fixture)
+	static TSharedRef<FJsonObject> MakeInsertBetweenFlowPayload(const FBlockScopedGraph& Fixture)
 	{
 		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
 
@@ -321,7 +322,7 @@ namespace
 		return Payload;
 	}
 
-	TSharedRef<FJsonObject> MakeBranchForkOwnedBlockCallPayload(
+	static TSharedRef<FJsonObject> MakeBranchForkOwnedBlockCallPayload(
 		const FBlockScopedGraph& Fixture,
 		const FString& InsertedBlockId,
 		bool bDryRun = false,
@@ -356,7 +357,7 @@ namespace
 		return Payload;
 	}
 
-	UK2Node_CallFunction* FindCallFunctionNode(UEdGraph* Graph, const FName FunctionName)
+	static UK2Node_CallFunction* FindCallFunctionNode(UEdGraph* Graph, const FName FunctionName)
 	{
 		if (!Graph)
 		{
@@ -374,7 +375,7 @@ namespace
 		return nullptr;
 	}
 
-	UK2Node_ExecutionSequence* FindSequenceNode(UEdGraph* Graph)
+	static UK2Node_ExecutionSequence* FindSequenceNode(UEdGraph* Graph)
 	{
 		if (!Graph)
 		{
@@ -391,7 +392,7 @@ namespace
 		return nullptr;
 	}
 
-	TArray<UEdGraphPin*> FindExecPins(UEdGraphNode* Node, EEdGraphPinDirection Direction)
+	static TArray<UEdGraphPin*> FindExecPins(UEdGraphNode* Node, EEdGraphPinDirection Direction)
 	{
 		TArray<UEdGraphPin*> Pins;
 		if (!Node)
@@ -409,7 +410,7 @@ namespace
 		return Pins;
 	}
 
-	bool GetMergeDryRunStatus(
+	static bool GetMergeDryRunStatus(
 		const FBlueprintHelperToolResultBase& Result,
 		FString& OutDryRunResult,
 		bool& bOutCanExecute)
@@ -434,7 +435,8 @@ namespace
 		(*DryRunObject)->TryGetBoolField(TEXT("can_execute"), bOutCanExecute);
 		return true;
 	}
-}
+
+};
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperGraphWritePatchSetPinDefaultBlockScopedAnchorTest,
@@ -443,7 +445,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperGraphWritePatchSetPinDefaultBlockScopedAnchorTest::RunTest(const FString& Parameters)
 {
-	const FBlockScopedGraph Fixture = MakeBlockScopedGraph(TEXT("PatchSetPinDefaultBlockScoped"));
+	const FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FBlockScopedGraph Fixture = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeBlockScopedGraph(TEXT("PatchSetPinDefaultBlockScoped"));
 	TestNotNull(TEXT("test blueprint is created"), Fixture.Blueprint);
 	TestNotNull(TEXT("test graph is available"), Fixture.Graph);
 	TestNotNull(TEXT("owned branch node is created"), Fixture.OwnedBranch);
@@ -452,7 +454,7 @@ bool FBlueprintHelperGraphWritePatchSetPinDefaultBlockScopedAnchorTest::RunTest(
 		return false;
 	}
 
-	UEdGraphPin* ConditionPin = FindPinByName(Fixture.OwnedBranch, TEXT("Condition"));
+	UEdGraphPin* ConditionPin = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindPinByName(Fixture.OwnedBranch, TEXT("Condition"));
 	TestNotNull(TEXT("owned branch has Condition pin"), ConditionPin);
 	if (!ConditionPin)
 	{
@@ -464,7 +466,7 @@ bool FBlueprintHelperGraphWritePatchSetPinDefaultBlockScopedAnchorTest::RunTest(
 	FBlueprintHelperTransactionJournalService JournalService;
 	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService, JournalService);
 
-	const FBlueprintHelperToolResultBase Result = PatchService.Execute(MakeSetPinDefaultPayload(Fixture));
+	const FBlueprintHelperToolResultBase Result = PatchService.Execute(FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeSetPinDefaultPayload(Fixture));
 
 	TestTrue(TEXT("set_pin_default resolves block-local nodes[1]"), Result.bOk);
 	TestEqual(TEXT("owned branch condition default is changed"), ConditionPin->DefaultValue, FString(TEXT("true")));
@@ -478,7 +480,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperGraphWritePatchSetNodeCommentBlockScopedAnchorTest::RunTest(const FString& Parameters)
 {
-	const FBlockScopedGraph Fixture = MakeBlockScopedGraph(TEXT("PatchSetNodeCommentBlockScoped"));
+	const FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FBlockScopedGraph Fixture = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeBlockScopedGraph(TEXT("PatchSetNodeCommentBlockScoped"));
 	TestNotNull(TEXT("test blueprint is created"), Fixture.Blueprint);
 	TestNotNull(TEXT("owned entry node is created"), Fixture.OwnedEntry);
 	TestNotNull(TEXT("unowned leading node is created"), Fixture.FirstUnownedEvent);
@@ -494,7 +496,7 @@ bool FBlueprintHelperGraphWritePatchSetNodeCommentBlockScopedAnchorTest::RunTest
 
 	TestFalse(TEXT("metadata-owned entry does not need legacy block_id comment"),
 		Fixture.OwnedEntry->NodeComment.Contains(TEXT("block_id=")));
-	const FBlueprintHelperToolResultBase Result = PatchService.Execute(MakeSetNodeCommentPayload(Fixture));
+	const FBlueprintHelperToolResultBase Result = PatchService.Execute(FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeSetNodeCommentPayload(Fixture));
 
 	TestTrue(TEXT("set_node_comment resolves block-local nodes[0]"), Result.bOk);
 	TestEqual(TEXT("owned entry comment is changed"), Fixture.OwnedEntry->NodeComment, FString(TEXT("Updated block entry comment")));
@@ -509,7 +511,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperGraphWritePatchResolvesLegacyManagedCommentFallbackTest::RunTest(const FString& Parameters)
 {
-	const FBlockScopedGraph Fixture = MakeBlockScopedGraph(TEXT("PatchLegacyManagedCommentFallback"));
+	const FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FBlockScopedGraph Fixture = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeBlockScopedGraph(TEXT("PatchLegacyManagedCommentFallback"));
 	TestNotNull(TEXT("fixture graph exists"), Fixture.Graph);
 	TestNotNull(TEXT("owned entry exists"), Fixture.OwnedEntry);
 	TestNotNull(TEXT("owned branch exists"), Fixture.OwnedBranch);
@@ -518,15 +520,15 @@ bool FBlueprintHelperGraphWritePatchResolvesLegacyManagedCommentFallbackTest::Ru
 		return false;
 	}
 
-	MarkNodeWithLegacyBlueprintHelperComment(Fixture.OwnedEntry, Fixture.BlockId);
-	MarkNodeWithLegacyBlueprintHelperComment(Fixture.OwnedBranch, Fixture.BlockId);
+	FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MarkNodeWithLegacyBlueprintHelperComment(Fixture.OwnedEntry, Fixture.BlockId);
+	FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MarkNodeWithLegacyBlueprintHelperComment(Fixture.OwnedBranch, Fixture.BlockId);
 
 	FBlueprintHelperGraphResolver Resolver;
 	FBlueprintHelperLogicJsonPathService PathService;
 	FBlueprintHelperTransactionJournalService JournalService;
 	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService, JournalService);
 
-	const FBlueprintHelperToolResultBase Result = PatchService.Execute(MakeSetNodeCommentPayload(Fixture));
+	const FBlueprintHelperToolResultBase Result = PatchService.Execute(FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeSetNodeCommentPayload(Fixture));
 
 	TestTrue(TEXT("legacy comment fallback patch succeeds"), Result.bOk);
 	TestEqual(TEXT("legacy comment fallback resolves owned entry"), Fixture.OwnedEntry->NodeComment, FString(TEXT("Updated block entry comment")));
@@ -541,7 +543,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperGraphWritePatchIgnoresLegacyCommentWhenMetadataPresentTest::RunTest(const FString& Parameters)
 {
-	FBlockScopedGraph Fixture = MakeBlockScopedGraph(TEXT("PatchMetadataWinsOverLegacyComment"));
+	FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FBlockScopedGraph Fixture = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeBlockScopedGraph(TEXT("PatchMetadataWinsOverLegacyComment"));
 	TestNotNull(TEXT("fixture graph exists"), Fixture.Graph);
 	TestNotNull(TEXT("owned entry exists"), Fixture.OwnedEntry);
 	TestNotNull(TEXT("owned branch exists"), Fixture.OwnedBranch);
@@ -561,7 +563,7 @@ bool FBlueprintHelperGraphWritePatchIgnoresLegacyCommentWhenMetadataPresentTest:
 	FBlueprintHelperTransactionJournalService JournalService;
 	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService, JournalService);
 
-	const FBlueprintHelperToolResultBase Result = PatchService.Execute(MakeSetNodeCommentPayload(Fixture));
+	const FBlueprintHelperToolResultBase Result = PatchService.Execute(FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeSetNodeCommentPayload(Fixture));
 
 	TestFalse(TEXT("legacy comment is ignored while ownership metadata is present"), Result.bOk);
 	TestEqual(TEXT("metadata-owned node keeps stale comment when legacy block is rejected"),
@@ -577,7 +579,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperGraphWriteMergeInsertFlowBlockScopedAnchorTest::RunTest(const FString& Parameters)
 {
-	const FBlockScopedGraph Fixture = MakeBlockScopedGraph(TEXT("MergeInsertFlowBlockScoped"));
+	const FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FBlockScopedGraph Fixture = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeBlockScopedGraph(TEXT("MergeInsertFlowBlockScoped"));
 	TestNotNull(TEXT("test blueprint is created"), Fixture.Blueprint);
 	TestNotNull(TEXT("owned entry node is created"), Fixture.OwnedEntry);
 	TestNotNull(TEXT("unowned leading node is created"), Fixture.FirstUnownedEvent);
@@ -591,10 +593,10 @@ bool FBlueprintHelperGraphWriteMergeInsertFlowBlockScopedAnchorTest::RunTest(con
 	FBlueprintHelperTransactionJournalService JournalService;
 	FBlueprintHelperMergeBlueprintGraphService MergeService(Resolver, PathService, JournalService);
 
-	const FBlueprintHelperToolResultBase Result = MergeService.Execute(MakeInsertFlowPayload(Fixture));
+	const FBlueprintHelperToolResultBase Result = MergeService.Execute(FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeInsertFlowPayload(Fixture));
 
-	UEdGraphPin* OwnedThenPin = FindPinByName(Fixture.OwnedEntry, TEXT("Then"));
-	UEdGraphPin* UnownedThenPin = FindPinByName(Fixture.FirstUnownedEvent, TEXT("Then"));
+	UEdGraphPin* OwnedThenPin = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindPinByName(Fixture.OwnedEntry, TEXT("Then"));
+	UEdGraphPin* UnownedThenPin = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindPinByName(Fixture.FirstUnownedEvent, TEXT("Then"));
 	TestTrue(TEXT("insert_flow resolves block-local anchor nodes[0]"), Result.bOk);
 	TestTrue(TEXT("owned anchor Then pin receives inserted flow"), OwnedThenPin && OwnedThenPin->LinkedTo.Num() == 1);
 	TestTrue(TEXT("whole-graph nodes[0] was not used as anchor"), !UnownedThenPin || UnownedThenPin->LinkedTo.Num() == 0);
@@ -608,7 +610,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperGraphWriteMergeInsertBetweenBlockScopedAnchorTest::RunTest(const FString& Parameters)
 {
-	const FBlockScopedGraph Fixture = MakeBlockScopedGraph(TEXT("MergeInsertBetweenBlockScoped"));
+	const FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FBlockScopedGraph Fixture = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeBlockScopedGraph(TEXT("MergeInsertBetweenBlockScoped"));
 	TestNotNull(TEXT("test blueprint is created"), Fixture.Blueprint);
 	TestNotNull(TEXT("owned entry node is created"), Fixture.OwnedEntry);
 	TestNotNull(TEXT("owned branch node is created"), Fixture.OwnedBranch);
@@ -617,9 +619,9 @@ bool FBlueprintHelperGraphWriteMergeInsertBetweenBlockScopedAnchorTest::RunTest(
 		return false;
 	}
 
-	UEdGraphPin* OwnedThenPin = FindPinByName(Fixture.OwnedEntry, TEXT("Then"));
-	UEdGraphPin* BranchExecIn = FindExecPin(Fixture.OwnedBranch, EGPD_Input);
-	TestTrue(TEXT("fixture starts with owned entry linked to owned branch"), ConnectExecPins(OwnedThenPin, BranchExecIn));
+	UEdGraphPin* OwnedThenPin = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindPinByName(Fixture.OwnedEntry, TEXT("Then"));
+	UEdGraphPin* BranchExecIn = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindExecPin(Fixture.OwnedBranch, EGPD_Input);
+	TestTrue(TEXT("fixture starts with owned entry linked to owned branch"), FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::ConnectExecPins(OwnedThenPin, BranchExecIn));
 	TestTrue(TEXT("owned entry has one original successor before merge"), OwnedThenPin && OwnedThenPin->LinkedTo.Num() == 1);
 	if (!OwnedThenPin || !BranchExecIn || OwnedThenPin->LinkedTo.Num() != 1)
 	{
@@ -631,11 +633,11 @@ bool FBlueprintHelperGraphWriteMergeInsertBetweenBlockScopedAnchorTest::RunTest(
 	FBlueprintHelperTransactionJournalService JournalService;
 	FBlueprintHelperMergeBlueprintGraphService MergeService(Resolver, PathService, JournalService);
 
-	const FBlueprintHelperToolResultBase Result = MergeService.Execute(MakeInsertBetweenFlowPayload(Fixture));
+	const FBlueprintHelperToolResultBase Result = MergeService.Execute(FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeInsertBetweenFlowPayload(Fixture));
 
-	UK2Node_CallFunction* InsertedCall = FindCallFunctionNode(Fixture.Graph, GET_FUNCTION_NAME_CHECKED(AActor, K2_SetActorLocation));
-	UEdGraphPin* InsertedExecIn = FindExecPin(InsertedCall, EGPD_Input);
-	UEdGraphPin* InsertedExecOut = FindExecPin(InsertedCall, EGPD_Output);
+	UK2Node_CallFunction* InsertedCall = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindCallFunctionNode(Fixture.Graph, GET_FUNCTION_NAME_CHECKED(AActor, K2_SetActorLocation));
+	UEdGraphPin* InsertedExecIn = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindExecPin(InsertedCall, EGPD_Input);
+	UEdGraphPin* InsertedExecOut = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindExecPin(InsertedCall, EGPD_Output);
 
 	TestTrue(TEXT("insert_between executes through block-local anchor"), Result.bOk);
 	TestNotNull(TEXT("inserted function call node is created"), InsertedCall);
@@ -652,7 +654,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperGraphWriteMergeBranchForkOwnedBlockCallTest::RunTest(const FString& Parameters)
 {
-	const FBlockScopedGraph Fixture = MakeBlockScopedGraph(TEXT("MergeBranchForkOwnedBlockCall"));
+	const FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FBlockScopedGraph Fixture = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeBlockScopedGraph(TEXT("MergeBranchForkOwnedBlockCall"));
 	TestNotNull(TEXT("test blueprint is created"), Fixture.Blueprint);
 	TestNotNull(TEXT("owned entry node is created"), Fixture.OwnedEntry);
 	TestNotNull(TEXT("owned branch node is created"), Fixture.OwnedBranch);
@@ -661,9 +663,9 @@ bool FBlueprintHelperGraphWriteMergeBranchForkOwnedBlockCallTest::RunTest(const 
 		return false;
 	}
 
-	UEdGraphPin* OwnedThenPin = FindPinByName(Fixture.OwnedEntry, TEXT("Then"));
-	UEdGraphPin* BranchExecIn = FindExecPin(Fixture.OwnedBranch, EGPD_Input);
-	TestTrue(TEXT("fixture starts with owned entry linked to owned branch"), ConnectExecPins(OwnedThenPin, BranchExecIn));
+	UEdGraphPin* OwnedThenPin = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindPinByName(Fixture.OwnedEntry, TEXT("Then"));
+	UEdGraphPin* BranchExecIn = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindExecPin(Fixture.OwnedBranch, EGPD_Input);
+	TestTrue(TEXT("fixture starts with owned entry linked to owned branch"), FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::ConnectExecPins(OwnedThenPin, BranchExecIn));
 	TestTrue(TEXT("owned entry has one original successor before branch fork"), OwnedThenPin && OwnedThenPin->LinkedTo.Num() == 1);
 	if (!OwnedThenPin || !BranchExecIn || OwnedThenPin->LinkedTo.Num() != 1)
 	{
@@ -671,13 +673,13 @@ bool FBlueprintHelperGraphWriteMergeBranchForkOwnedBlockCallTest::RunTest(const 
 	}
 
 	const FString InsertedBlockId = FString::Printf(TEXT("%s_InsertedBlockScoped0"), *Fixture.Graph->GetName());
-	UK2Node_CustomEvent* InsertedOwnedEntry = AddCustomEventNode(Fixture.Graph, TEXT("OwnedInsertedBlock"));
+	UK2Node_CustomEvent* InsertedOwnedEntry = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::AddCustomEventNode(Fixture.Graph, TEXT("OwnedInsertedBlock"));
 	TestNotNull(TEXT("inserted owned block entry is created"), InsertedOwnedEntry);
 	if (!InsertedOwnedEntry)
 	{
 		return false;
 	}
-	MarkNodeAsBlueprintHelperOwned(InsertedOwnedEntry, InsertedBlockId);
+	FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MarkNodeAsBlueprintHelperOwned(InsertedOwnedEntry, InsertedBlockId);
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Fixture.Blueprint);
 	FKismetEditorUtilities::CompileBlueprint(Fixture.Blueprint);
 
@@ -686,13 +688,13 @@ bool FBlueprintHelperGraphWriteMergeBranchForkOwnedBlockCallTest::RunTest(const 
 	FBlueprintHelperTransactionJournalService JournalService;
 	FBlueprintHelperMergeBlueprintGraphService MergeService(Resolver, PathService, JournalService);
 
-	const FBlueprintHelperToolResultBase Result = MergeService.Execute(MakeBranchForkOwnedBlockCallPayload(Fixture, InsertedBlockId));
+	const FBlueprintHelperToolResultBase Result = MergeService.Execute(FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeBranchForkOwnedBlockCallPayload(Fixture, InsertedBlockId));
 
-	UK2Node_ExecutionSequence* SequenceNode = FindSequenceNode(Fixture.Graph);
-	UK2Node_CallFunction* InsertedCall = FindCallFunctionNode(Fixture.Graph, FName(TEXT("OwnedInsertedBlock")));
-	UEdGraphPin* SequenceExecIn = FindExecPin(SequenceNode, EGPD_Input);
-	const TArray<UEdGraphPin*> SequenceThenPins = FindExecPins(SequenceNode, EGPD_Output);
-	UEdGraphPin* InsertedExecIn = FindExecPin(InsertedCall, EGPD_Input);
+	UK2Node_ExecutionSequence* SequenceNode = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindSequenceNode(Fixture.Graph);
+	UK2Node_CallFunction* InsertedCall = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindCallFunctionNode(Fixture.Graph, FName(TEXT("OwnedInsertedBlock")));
+	UEdGraphPin* SequenceExecIn = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindExecPin(SequenceNode, EGPD_Input);
+	const TArray<UEdGraphPin*> SequenceThenPins = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindExecPins(SequenceNode, EGPD_Output);
+	UEdGraphPin* InsertedExecIn = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindExecPin(InsertedCall, EGPD_Input);
 
 	TestTrue(TEXT("branch_fork executes through owned block call"), Result.bOk);
 	if (!Result.bOk && Result.Error.IsSet())
@@ -719,7 +721,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperGraphWriteMergeBranchForkMissingOwnedBlockPreviewBlocksTest::RunTest(const FString& Parameters)
 {
-	const FBlockScopedGraph Fixture = MakeBlockScopedGraph(TEXT("MergeBranchForkMissingOwnedBlockPreviewBlocks"));
+	const FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FBlockScopedGraph Fixture = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeBlockScopedGraph(TEXT("MergeBranchForkMissingOwnedBlockPreviewBlocks"));
 	TestNotNull(TEXT("test blueprint is created"), Fixture.Blueprint);
 	TestNotNull(TEXT("owned entry node is created"), Fixture.OwnedEntry);
 	TestNotNull(TEXT("owned branch node is created"), Fixture.OwnedBranch);
@@ -728,9 +730,9 @@ bool FBlueprintHelperGraphWriteMergeBranchForkMissingOwnedBlockPreviewBlocksTest
 		return false;
 	}
 
-	UEdGraphPin* OwnedThenPin = FindPinByName(Fixture.OwnedEntry, TEXT("Then"));
-	UEdGraphPin* BranchExecIn = FindExecPin(Fixture.OwnedBranch, EGPD_Input);
-	TestTrue(TEXT("fixture starts with one original successor"), ConnectExecPins(OwnedThenPin, BranchExecIn));
+	UEdGraphPin* OwnedThenPin = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindPinByName(Fixture.OwnedEntry, TEXT("Then"));
+	UEdGraphPin* BranchExecIn = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindExecPin(Fixture.OwnedBranch, EGPD_Input);
+	TestTrue(TEXT("fixture starts with one original successor"), FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::ConnectExecPins(OwnedThenPin, BranchExecIn));
 	if (!OwnedThenPin || !BranchExecIn || OwnedThenPin->LinkedTo.Num() != 1)
 	{
 		return false;
@@ -743,11 +745,11 @@ bool FBlueprintHelperGraphWriteMergeBranchForkMissingOwnedBlockPreviewBlocksTest
 
 	const FString MissingBlockId = FString::Printf(TEXT("%s_MissingInsertedBlock0"), *Fixture.Graph->GetName());
 	const FBlueprintHelperToolResultBase Result = MergeService.Execute(
-		MakeBranchForkOwnedBlockCallPayload(Fixture, MissingBlockId, true));
+		FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeBranchForkOwnedBlockCallPayload(Fixture, MissingBlockId, true));
 
 	FString DryRunResult;
 	bool bCanExecute = true;
-	TestTrue(TEXT("dry-run status is present"), GetMergeDryRunStatus(Result, DryRunResult, bCanExecute));
+	TestTrue(TEXT("dry-run status is present"), FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::GetMergeDryRunStatus(Result, DryRunResult, bCanExecute));
 	TestFalse(TEXT("missing inserted block preview is blocked"), Result.bOk);
 	TestEqual(TEXT("dry-run result is blocked"), DryRunResult, FString(TEXT("blocked")));
 	TestFalse(TEXT("dry-run cannot execute"), bCanExecute);
@@ -765,7 +767,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperGraphWriteMergeBranchForkUncompiledOwnedBlockCallTest::RunTest(const FString& Parameters)
 {
-	const FBlockScopedGraph Fixture = MakeBlockScopedGraph(TEXT("MergeBranchForkUncompiledOwnedBlockCall"));
+	const FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FBlockScopedGraph Fixture = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeBlockScopedGraph(TEXT("MergeBranchForkUncompiledOwnedBlockCall"));
 	TestNotNull(TEXT("test blueprint is created"), Fixture.Blueprint);
 	TestNotNull(TEXT("owned entry node is created"), Fixture.OwnedEntry);
 	TestNotNull(TEXT("owned branch node is created"), Fixture.OwnedBranch);
@@ -774,9 +776,9 @@ bool FBlueprintHelperGraphWriteMergeBranchForkUncompiledOwnedBlockCallTest::RunT
 		return false;
 	}
 
-	UEdGraphPin* OwnedThenPin = FindPinByName(Fixture.OwnedEntry, TEXT("Then"));
-	UEdGraphPin* BranchExecIn = FindExecPin(Fixture.OwnedBranch, EGPD_Input);
-	TestTrue(TEXT("fixture starts with owned entry linked to owned branch"), ConnectExecPins(OwnedThenPin, BranchExecIn));
+	UEdGraphPin* OwnedThenPin = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindPinByName(Fixture.OwnedEntry, TEXT("Then"));
+	UEdGraphPin* BranchExecIn = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindExecPin(Fixture.OwnedBranch, EGPD_Input);
+	TestTrue(TEXT("fixture starts with owned entry linked to owned branch"), FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::ConnectExecPins(OwnedThenPin, BranchExecIn));
 	TestTrue(TEXT("owned entry has one original successor before branch fork"), OwnedThenPin && OwnedThenPin->LinkedTo.Num() == 1);
 	if (!OwnedThenPin || !BranchExecIn || OwnedThenPin->LinkedTo.Num() != 1)
 	{
@@ -785,13 +787,13 @@ bool FBlueprintHelperGraphWriteMergeBranchForkUncompiledOwnedBlockCallTest::RunT
 
 	const FString InsertedBlockId = FString::Printf(TEXT("%s_UncompiledInsertedBlock0"), *Fixture.Graph->GetName());
 	const FString InsertedEventName = TEXT("OwnedUncompiledInsertedBlock");
-	UK2Node_CustomEvent* InsertedOwnedEntry = AddCustomEventNode(Fixture.Graph, InsertedEventName);
+	UK2Node_CustomEvent* InsertedOwnedEntry = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::AddCustomEventNode(Fixture.Graph, InsertedEventName);
 	TestNotNull(TEXT("inserted owned block entry is created"), InsertedOwnedEntry);
 	if (!InsertedOwnedEntry)
 	{
 		return false;
 	}
-	MarkNodeAsBlueprintHelperOwned(InsertedOwnedEntry, InsertedBlockId);
+	FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MarkNodeAsBlueprintHelperOwned(InsertedOwnedEntry, InsertedBlockId);
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Fixture.Blueprint);
 
 	FBlueprintHelperGraphResolver Resolver;
@@ -800,13 +802,13 @@ bool FBlueprintHelperGraphWriteMergeBranchForkUncompiledOwnedBlockCallTest::RunT
 	FBlueprintHelperMergeBlueprintGraphService MergeService(Resolver, PathService, JournalService);
 
 	const FBlueprintHelperToolResultBase Result = MergeService.Execute(
-		MakeBranchForkOwnedBlockCallPayload(Fixture, InsertedBlockId, false, true));
+		FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeBranchForkOwnedBlockCallPayload(Fixture, InsertedBlockId, false, true));
 
-	UK2Node_ExecutionSequence* SequenceNode = FindSequenceNode(Fixture.Graph);
-	UK2Node_CallFunction* InsertedCall = FindCallFunctionNode(Fixture.Graph, FName(*InsertedEventName));
-	UEdGraphPin* SequenceExecIn = FindExecPin(SequenceNode, EGPD_Input);
-	const TArray<UEdGraphPin*> SequenceThenPins = FindExecPins(SequenceNode, EGPD_Output);
-	UEdGraphPin* InsertedExecIn = FindExecPin(InsertedCall, EGPD_Input);
+	UK2Node_ExecutionSequence* SequenceNode = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindSequenceNode(Fixture.Graph);
+	UK2Node_CallFunction* InsertedCall = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindCallFunctionNode(Fixture.Graph, FName(*InsertedEventName));
+	UEdGraphPin* SequenceExecIn = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindExecPin(SequenceNode, EGPD_Input);
+	const TArray<UEdGraphPin*> SequenceThenPins = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindExecPins(SequenceNode, EGPD_Output);
+	UEdGraphPin* InsertedExecIn = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindExecPin(InsertedCall, EGPD_Input);
 
 	TestTrue(TEXT("uncompiled owned block call compiles and executes"), Result.bOk);
 	if (!Result.bOk && Result.Error.IsSet())

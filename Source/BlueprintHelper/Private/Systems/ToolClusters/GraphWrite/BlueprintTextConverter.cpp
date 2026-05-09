@@ -56,12 +56,23 @@
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 
-namespace
+class FBlueprintTextConverterLocalUtils
 {
+public:
+	static TSharedRef<FJsonObject> MakeGraphExportRoot()
+	{
+		TSharedRef<FJsonObject> RootObject = MakeShared<FJsonObject>();
+		RootObject->SetStringField(TEXT("version"), TEXT("2.2"));
+		RootObject->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.JsonToBlueprint"));
+		RootObject->SetArrayField(TEXT("nodes"), TArray<TSharedPtr<FJsonValue>>());
+		RootObject->SetArrayField(TEXT("links"), TArray<TSharedPtr<FJsonValue>>());
+		return RootObject;
+	}
+
 	/**
 	 * 清洗 T3D 导出的默认值文本，便于内部统一复用。
 	 */
-	FString NormalizeExportTextValue(const FString& InValue)
+	static FString NormalizeExportTextValue(const FString& InValue)
 	{
 		FString Result = InValue.TrimStartAndEnd();
 		Result.RemoveFromStart(TEXT("\""));
@@ -74,7 +85,7 @@ namespace
 	/**
 	 * 从导出文本中提取对象路径，兼容 Class'/Game/...' 这类格式。
 	 */
-	FString ExtractObjectPathFromExportValue(const FString& InValue)
+	static FString ExtractObjectPathFromExportValue(const FString& InValue)
 	{
 		FString Result = NormalizeExportTextValue(InValue);
 
@@ -92,7 +103,7 @@ namespace
 	/**
 	 * 归一化节点类型名称，统一转成 K2Node_xxx 形式。
 	 */
-	FString NormalizeNodeTypeName(const FString& InValue)
+	static FString NormalizeNodeTypeName(const FString& InValue)
 	{
 		FString Result = NormalizeExportTextValue(InValue);
 		Result.ReplaceInline(TEXT("\""), TEXT(""));
@@ -115,7 +126,7 @@ namespace
 	/**
 	 * 判断节点类型是否匹配指定短名。
 	 */
-	bool IsNodeTypeMatch(const FString& InNodeType, const TCHAR* ExpectedType)
+	static bool IsNodeTypeMatch(const FString& InNodeType, const TCHAR* ExpectedType)
 	{
 		return NormalizeNodeTypeName(InNodeType).Equals(ExpectedType, ESearchCase::IgnoreCase);
 	}
@@ -123,7 +134,7 @@ namespace
 	/**
 	 * 解析正则的第一个捕获结果。
 	 */
-	FString MatchFirstGroup(const FString& SourceText, const FString& Pattern)
+	static FString MatchFirstGroup(const FString& SourceText, const FString& Pattern)
 	{
 		const FRegexPattern RegexPattern(Pattern);
 		FRegexMatcher RegexMatcher(RegexPattern, SourceText);
@@ -138,7 +149,7 @@ namespace
 	/**
 	 * 查找变量节点的代表引脚，用于导出局部变量类型。
 	 */
-	const FMinimalPin* FindRepresentativeVariablePin(const FMinimalNode& Node)
+	static const FMinimalPin* FindRepresentativeVariablePin(const FMinimalNode& Node)
 	{
 		auto IsCandidatePin = [](const FMinimalPin& Pin)
 		{
@@ -191,7 +202,7 @@ namespace
 	/**
 	 * 写入轻量引脚类型到 JSON。
 	 */
-	void WritePinTypeToJson(const FMinimalPin& Pin, const TSharedRef<FJsonObject>& PinTypeObject)
+	static void WritePinTypeToJson(const FMinimalPin& Pin, const TSharedRef<FJsonObject>& PinTypeObject)
 	{
 		PinTypeObject->SetStringField(TEXT("category"), Pin.PinCategory);
 
@@ -221,17 +232,17 @@ namespace
 		}
 	}
 
-	bool IsExecPin(const UEdGraphPin* Pin)
+	static bool IsExecPin(const UEdGraphPin* Pin)
 	{
 		return Pin && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec;
 	}
 
-	bool HasReadablePinCategory(const UEdGraphPin* Pin)
+	static bool HasReadablePinCategory(const UEdGraphPin* Pin)
 	{
 		return Pin && !Pin->PinType.PinCategory.IsNone();
 	}
 
-	FString GetLinkKind(const UEdGraphPin* SourcePin, const UEdGraphPin* TargetPin)
+	static FString GetLinkKind(const UEdGraphPin* SourcePin, const UEdGraphPin* TargetPin)
 	{
 		if (IsExecPin(SourcePin) || IsExecPin(TargetPin))
 		{
@@ -246,12 +257,12 @@ namespace
 		return TEXT("unknown");
 	}
 
-	FString GetPinCategoryString(const UEdGraphPin* Pin)
+	static FString GetPinCategoryString(const UEdGraphPin* Pin)
 	{
 		return HasReadablePinCategory(Pin) ? Pin->PinType.PinCategory.ToString() : TEXT("unknown");
 	}
 
-	FString GetPinDirectionString(const UEdGraphPin* Pin)
+	static FString GetPinDirectionString(const UEdGraphPin* Pin)
 	{
 		if (!Pin)
 		{
@@ -268,7 +279,8 @@ namespace
 			return TEXT("unknown");
 		}
 	}
-}
+
+};
 
 FString FBlueprintToTextConverter::ConvertClipboardToMinimalText()
 {
@@ -301,11 +313,11 @@ bool FBlueprintToTextConverter::IsBlueprintT3DText(const FString& SourceText)
 
 void FBlueprintToTextConverter::ParseVariableReferenceLine(const FString& Line, FMinimalNode& Node)
 {
-	Node.DisplayName = NormalizeExportValue(MatchFirstGroup(Line, TEXT("MemberName=\"([^\"]+)\"")));
-	Node.VariableScopeGraphName = NormalizeExportValue(MatchFirstGroup(Line, TEXT("MemberScope=\"([^\"]+)\"")));
-	Node.VariableOwnerClassPath = ExtractObjectPathFromExportValue(MatchFirstGroup(Line, TEXT("MemberParent=([^,)]+)")));
+	Node.DisplayName = NormalizeExportValue(FBlueprintTextConverterLocalUtils::MatchFirstGroup(Line, TEXT("MemberName=\"([^\"]+)\"")));
+	Node.VariableScopeGraphName = NormalizeExportValue(FBlueprintTextConverterLocalUtils::MatchFirstGroup(Line, TEXT("MemberScope=\"([^\"]+)\"")));
+	Node.VariableOwnerClassPath = FBlueprintTextConverterLocalUtils::ExtractObjectPathFromExportValue(FBlueprintTextConverterLocalUtils::MatchFirstGroup(Line, TEXT("MemberParent=([^,)]+)")));
 
-	const FString SelfContextString = MatchFirstGroup(Line, TEXT("bSelfContext=(true|false|True|False)"));
+	const FString SelfContextString = FBlueprintTextConverterLocalUtils::MatchFirstGroup(Line, TEXT("bSelfContext=(true|false|True|False)"));
 	if (!SelfContextString.IsEmpty())
 	{
 		Node.bSelfContext = SelfContextString.Equals(TEXT("true"), ESearchCase::IgnoreCase);
@@ -316,10 +328,10 @@ void FBlueprintToTextConverter::ParseVariableReferenceLine(const FString& Line, 
 
 void FBlueprintToTextConverter::ParseMacroReferenceLine(const FString& Line, FMinimalNode& Node)
 {
-	FString MacroGraphValue = MatchFirstGroup(Line, TEXT("MacroGraph=([^,)]+)"));
+	FString MacroGraphValue = FBlueprintTextConverterLocalUtils::MatchFirstGroup(Line, TEXT("MacroGraph=([^,)]+)"));
 	if (MacroGraphValue.IsEmpty())
 	{
-		MacroGraphValue = MatchFirstGroup(Line, TEXT("MacroGraphReference=\\(([^)]+)\\)"));
+		MacroGraphValue = FBlueprintTextConverterLocalUtils::MatchFirstGroup(Line, TEXT("MacroGraphReference=\\(([^)]+)\\)"));
 	}
 
 	MacroGraphValue = NormalizeExportValue(MacroGraphValue);
@@ -328,7 +340,7 @@ void FBlueprintToTextConverter::ParseMacroReferenceLine(const FString& Line, FMi
 		return;
 	}
 
-	Node.MacroAssetPath = ExtractObjectPathFromExportValue(MacroGraphValue);
+	Node.MacroAssetPath = FBlueprintTextConverterLocalUtils::ExtractObjectPathFromExportValue(MacroGraphValue);
 
 	const FString SourcePath = Node.MacroAssetPath.IsEmpty() ? MacroGraphValue : Node.MacroAssetPath;
 	int32 MacroNameIndex = SourcePath.Find(TEXT(":"), ESearchCase::IgnoreCase, ESearchDir::FromEnd);
@@ -374,7 +386,7 @@ void FBlueprintToTextConverter::ParseT3DToNodes(const FString& T3DText, TMap<FSt
 					FParse::Value(*Line, TEXT("Name="), NodeName);
 					NodeName = NormalizeExportValue(NodeName);
 
-					const FString CleanType = NormalizeNodeTypeName(ClassPath);
+					const FString CleanType = FBlueprintTextConverterLocalUtils::NormalizeNodeTypeName(ClassPath);
 
 					FMinimalNode NewNode;
 					NewNode.InternalName = NodeName;
@@ -429,13 +441,13 @@ void FBlueprintToTextConverter::ParseT3DToNodes(const FString& T3DText, TMap<FSt
 			FParse::Value(*Line, TEXT("NodePosY="), CurrentNode->NodePosY);
 		}
 
-		if ((IsNodeTypeMatch(CurrentNode->NodeType, TEXT("K2Node_VariableGet")) || IsNodeTypeMatch(CurrentNode->NodeType, TEXT("K2Node_VariableSet"))) && Line.Contains(TEXT("VariableReference=")))
+		if ((FBlueprintTextConverterLocalUtils::IsNodeTypeMatch(CurrentNode->NodeType, TEXT("K2Node_VariableGet")) || FBlueprintTextConverterLocalUtils::IsNodeTypeMatch(CurrentNode->NodeType, TEXT("K2Node_VariableSet"))) && Line.Contains(TEXT("VariableReference=")))
 		{
 			ParseVariableReferenceLine(Line, *CurrentNode);
 			continue;
 		}
 
-		if (IsNodeTypeMatch(CurrentNode->NodeType, TEXT("K2Node_MacroInstance")) && (Line.Contains(TEXT("MacroGraphReference=")) || Line.Contains(TEXT("MacroGraph="))))
+		if (FBlueprintTextConverterLocalUtils::IsNodeTypeMatch(CurrentNode->NodeType, TEXT("K2Node_MacroInstance")) && (Line.Contains(TEXT("MacroGraphReference=")) || Line.Contains(TEXT("MacroGraph="))))
 		{
 			ParseMacroReferenceLine(Line, *CurrentNode);
 			continue;
@@ -465,9 +477,9 @@ void FBlueprintToTextConverter::ParseT3DToNodes(const FString& T3DText, TMap<FSt
 				FParse::Value(*Line, TEXT("AutogeneratedDefaultValue="), NewPin.DefaultValue);
 			}
 
-			const FString ContainerMatch = MatchFirstGroup(Line, TEXT("PinType.ContainerType=([^,)]+)"));
-			const FString ReferenceMatch = MatchFirstGroup(Line, TEXT("PinType.bIsReference=(true|false|True|False)"));
-			const FString ConstMatch = MatchFirstGroup(Line, TEXT("PinType.bIsConst=(true|false|True|False)"));
+			const FString ContainerMatch = FBlueprintTextConverterLocalUtils::MatchFirstGroup(Line, TEXT("PinType.ContainerType=([^,)]+)"));
+			const FString ReferenceMatch = FBlueprintTextConverterLocalUtils::MatchFirstGroup(Line, TEXT("PinType.bIsReference=(true|false|True|False)"));
+			const FString ConstMatch = FBlueprintTextConverterLocalUtils::MatchFirstGroup(Line, TEXT("PinType.bIsConst=(true|false|True|False)"));
 
 			NewPin.PinName = NormalizeExportValue(NewPin.PinName);
 			NewPin.PinCategory = NormalizeExportValue(NewPin.PinCategory);
@@ -553,7 +565,7 @@ FString FBlueprintToTextConverter::FormatNodesToJson(const TMap<FString, FMinima
 		}
 		NodeObject->SetObjectField(TEXT("inputs"), InputsObject);
 
-		if (IsNodeTypeMatch(Node.NodeType, TEXT("K2Node_VariableGet")) || IsNodeTypeMatch(Node.NodeType, TEXT("K2Node_VariableSet")))
+		if (FBlueprintTextConverterLocalUtils::IsNodeTypeMatch(Node.NodeType, TEXT("K2Node_VariableGet")) || FBlueprintTextConverterLocalUtils::IsNodeTypeMatch(Node.NodeType, TEXT("K2Node_VariableSet")))
 		{
 			TSharedRef<FJsonObject> VariableObject = MakeShared<FJsonObject>();
 			VariableObject->SetStringField(TEXT("scope"), Node.VariableScopeType.IsEmpty() ? TEXT("member") : Node.VariableScopeType);
@@ -570,11 +582,11 @@ FString FBlueprintToTextConverter::FormatNodesToJson(const TMap<FString, FMinima
 				VariableObject->SetStringField(TEXT("scope_graph_name"), Node.VariableScopeGraphName);
 			}
 
-			const FMinimalPin* RepresentativePin = FindRepresentativeVariablePin(Node);
+			const FMinimalPin* RepresentativePin = FBlueprintTextConverterLocalUtils::FindRepresentativeVariablePin(Node);
 			if (RepresentativePin)
 			{
 				TSharedRef<FJsonObject> PinTypeObject = MakeShared<FJsonObject>();
-				WritePinTypeToJson(*RepresentativePin, PinTypeObject);
+				FBlueprintTextConverterLocalUtils::WritePinTypeToJson(*RepresentativePin, PinTypeObject);
 				VariableObject->SetObjectField(TEXT("pin_type"), PinTypeObject);
 
 				if (!RepresentativePin->DefaultValue.IsEmpty())
@@ -596,7 +608,7 @@ FString FBlueprintToTextConverter::FormatNodesToJson(const TMap<FString, FMinima
 					if (RepresentativePin)
 					{
 						TSharedRef<FJsonObject> PinTypeObject = MakeShared<FJsonObject>();
-						WritePinTypeToJson(*RepresentativePin, PinTypeObject);
+						FBlueprintTextConverterLocalUtils::WritePinTypeToJson(*RepresentativePin, PinTypeObject);
 						LocalVariableObject->SetObjectField(TEXT("pin_type"), PinTypeObject);
 
 						if (!RepresentativePin->DefaultValue.IsEmpty())
@@ -611,7 +623,7 @@ FString FBlueprintToTextConverter::FormatNodesToJson(const TMap<FString, FMinima
 
 			NodeObject->SetObjectField(TEXT("variable"), VariableObject);
 		}
-		else if (IsNodeTypeMatch(Node.NodeType, TEXT("K2Node_MacroInstance")))
+		else if (FBlueprintTextConverterLocalUtils::IsNodeTypeMatch(Node.NodeType, TEXT("K2Node_MacroInstance")))
 		{
 			TSharedRef<FJsonObject> MacroObject = MakeShared<FJsonObject>();
 			MacroObject->SetStringField(TEXT("name"), Node.MacroName.IsEmpty() ? Node.DisplayName : Node.MacroName);
@@ -691,7 +703,7 @@ FString FBlueprintToTextConverter::FormatNodesToJson(const TMap<FString, FMinima
 
 FString FBlueprintToTextConverter::NormalizeExportValue(const FString& InValue)
 {
-	return NormalizeExportTextValue(InValue);
+	return FBlueprintTextConverterLocalUtils::NormalizeExportTextValue(InValue);
 }
 
 // ============================================================================
@@ -1086,11 +1098,11 @@ void FBlueprintToTextConverter::ExportGraphNodesAndLinks(
 				LinkObj->SetStringField(TEXT("from_pin"), Pin->PinName.ToString());
 				LinkObj->SetStringField(TEXT("to_id"), *TargetId);
 				LinkObj->SetStringField(TEXT("to_pin"), LinkedPin->PinName.ToString());
-				LinkObj->SetStringField(TEXT("kind"), GetLinkKind(Pin, LinkedPin));
-				LinkObj->SetStringField(TEXT("from_pin_type"), GetPinCategoryString(Pin));
-				LinkObj->SetStringField(TEXT("to_pin_type"), GetPinCategoryString(LinkedPin));
-				LinkObj->SetStringField(TEXT("from_direction"), GetPinDirectionString(Pin));
-				LinkObj->SetStringField(TEXT("to_direction"), GetPinDirectionString(LinkedPin));
+				LinkObj->SetStringField(TEXT("kind"), FBlueprintTextConverterLocalUtils::GetLinkKind(Pin, LinkedPin));
+				LinkObj->SetStringField(TEXT("from_pin_type"), FBlueprintTextConverterLocalUtils::GetPinCategoryString(Pin));
+				LinkObj->SetStringField(TEXT("to_pin_type"), FBlueprintTextConverterLocalUtils::GetPinCategoryString(LinkedPin));
+				LinkObj->SetStringField(TEXT("from_direction"), FBlueprintTextConverterLocalUtils::GetPinDirectionString(Pin));
+				LinkObj->SetStringField(TEXT("to_direction"), FBlueprintTextConverterLocalUtils::GetPinDirectionString(LinkedPin));
 				OutLinks.Add(MakeShared<FJsonValueObject>(LinkObj));
 			}
 		}
@@ -1099,14 +1111,11 @@ void FBlueprintToTextConverter::ExportGraphNodesAndLinks(
 
 TSharedPtr<FJsonObject> FBlueprintToTextConverter::ConvertGraphToJsonObject(UEdGraph* TargetGraph)
 {
+	TSharedRef<FJsonObject> RootObject = FBlueprintTextConverterLocalUtils::MakeGraphExportRoot();
 	if (!TargetGraph)
 	{
-		return MakeShared<FJsonObject>();
+		return RootObject;
 	}
-
-	TSharedRef<FJsonObject> RootObject = MakeShared<FJsonObject>();
-	RootObject->SetStringField(TEXT("version"), TEXT("2.2"));
-	RootObject->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.JsonToBlueprint"));
 
 	TArray<TSharedPtr<FJsonValue>> NodesArray;
 	TArray<TSharedPtr<FJsonValue>> LinksArray;

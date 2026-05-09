@@ -2,6 +2,8 @@
 
 日期：2026-05-05
 
+2026-05-09 清理: 本文件保留 capability gap 矩阵和设计待办。当前 grouped Automation、P1/P2 fixture、ReviewPanel、DebugBundle 全线验证入口已统一到 `Develop/Plan/BlueprintHelper_Unified_SmokeRun_Verification_20260509.md`。
+
 本文用于把 `Resources/v0.3.6/DoneImplementaion` 与 `Resources/v0.3.6/FieldMapping` 中已收敛的 UE 能力设计，对照当前源码实现状态。目标不是回到 Agent 直调原子工具，而是确定哪些能力已经能进入当前主架构：
 
 ```text
@@ -39,7 +41,7 @@ Agent TaskSpec
 - [x] `append_after + custom_event_call` preview 空错误已修复为可诊断 blocker；execute 仅在 preview 通过时再验证。
 - [x] `branch_fork + custom_event_call` merge strategy 已完成 R4 execute/read-back smoke。
 - [ ] `branch_fork + owned_block_call` 仍需同 graph execute/read-back smoke。
-- [ ] UMGWidget / DataTable 仍缺 disposable fixture execute smoke；AssetFactory 相关源码已补，待 UE build / Editor reload 后验证。
+- [ ] UMGWidget / DataTable 仍缺 disposable fixture execute smoke；AssetFactory 相关源码已补，用户侧 UE build 已通过，下一步按 Unified SmokeRun Ring 3 验证。
 - [ ] TaskRunJournal partial failure / topology blocking 仍缺 controlled failure fixture。
 - [ ] runtime profile 中的 GraphWrite merge/journal/review/store 能力标记可能滞后于实际执行能力，需要单独同步。
 
@@ -163,7 +165,7 @@ GraphWrite `replace_owned_graph` / `patch_owned_graph` / `merge_owned_graph` 的
 | CompileBlueprintAsset | Done + FieldMapping | 完成 | `CompileAssetService` 完成 | `compile_blueprint_asset` 完成 | 只把 `should_compile` 写入 validation，不实际调用 compile | 缺失 | 部分 | TaskRuntime 执行末尾按 `execution_policy.should_compile` 调用 |
 | SaveAsset | Done + FieldMapping | 类型存在 | Bridge 内直接实现 | `save_asset` 完成 | 只把 `should_save` 写入 validation，不实际保存 | 缺失 | 部分 | TaskRuntime 执行末尾按 `execution_policy.should_save` 调用 |
 | EditorLifecycle/RiskCommand | Done + FieldMapping | 完成 | `EditorCommandService` 完成 | undo/redo/PIE/close/console 完成 | 不应默认进入写 Runtime | 缺失 | 内部/debug | `open_editor` / `close_editor` 保留并迁移到 `blueprinthelper_*` 前缀；全局 undo/redo 从默认工具集中移除，后续改做 transaction 级 undo/redo |
-| DebugExport | Done + FieldMapping | 类型存在；旧 bulk-read DTO 已从当前源码契约移除 | 缺少完整 Service | 缺少完整 command | 缺失 | Agent 通过块级 `logic_md` / `logic_json` 读取定位；开发诊断走独立 DebugExport bundle | 部分 | 建立独立开发诊断系统，MCP / 编排层 / 插件层都能获取具体错误信息并导出 debug bundle |
+| DebugCase / DebugBundle | Debug 系统架构 | DebugCase / DebugBundleManifest v1 已成为当前 developer diagnostics 口径；旧 DebugExport / LargePayload 不再是 active Agent-facing contract | DebugCaseStore / DebugEntry / Review debug linkage 已有首片 | `get_debug_case` summary-only；DebugBundle 仍是本地开发者导出边界 | TaskRuntime / Review / Transaction failure paths 已接入首片 | Agent 通过块级 `logic_md` / `logic_json` 读取定位；失败只暴露 `debug_case_ids[]` summary ref；DebugBundle 不经 MCP 传输 artifact | source integrated / verification tail pending | ReviewPanel 现场验证、DebugBundle Review summary 边界、compile/post-operation failure debug surfacing、retention / cleanup policy |
 | DataAsset/Object Property | Done + FieldMapping | 类型存在 | `PropertyReflectionService` 完成通用 UObject 属性读写，并新增 ToolResultBase façade / true dry-run 批量设置首片 | `get_object_properties` / `set_object_property` 完成 | 已接 `object_property/property_edit` TaskPlan adapter / Runtime dispatch | 已接 `edit_object_properties` TS/Python compiler | source integrated / smoke pending | 统一 smoke 后扩更完整 value 类型、嵌套路径和 DataAsset fixture |
 | DataTable | Done + FieldMapping | 完成 | `DataTableService` 完成，add/update/delete row 支持 true dry-run | get/add/update/delete row 完成 | 完成 adapter，支持 add/update/delete row；preview 调 Service true dry-run | 完成 `edit_data_table` TaskSpec 编译 | compiler-ready / fixture smoke pending | 确认 read 行为仍只读，不混入写 TaskPlan；补 disposable fixture smoke；扩更完整 row schema/field 类型覆盖 |
 | UMG WidgetBlueprint | Done + FieldMapping | 完成 | `WidgetService` 完成，add/set_property/remove 支持 true dry-run | get/add/remove/move/get_properties/set_property 完成 | 部分 adapter，支持 add/set_property/remove，不支持 move/read；preview 调 Service true dry-run | 完成 `edit_umg_widget` TaskSpec 编译，不支持 move_widget | compiler-ready / fixture smoke pending | Runtime adapter 扩 move_widget 或保持明确不支持；补 disposable WidgetBlueprint fixture smoke |
@@ -188,9 +190,9 @@ GraphWrite `replace_owned_graph` / `patch_owned_graph` / `merge_owned_graph` 的
    AssetFactory、BlueprintComponent、BlueprintClassSettings、UMGWidget、DataTable 的 TaskPlan adapter 已标记 true dry-run 支持，并在 preview 时调用对应 Service preflight。dry-run 路径会解析目标资产、类/接口/属性/row/widget/component 等执行前置条件，但不会进入 `FBlueprintHelperScopedAssetMutation`、`Modify`、实际 Add/Remove/ImportText 写入、MarkBlueprint、AssetRegistry 创建或 DataTable row mutation 路径。Runtime synthetic preview 仍保留给尚未完成 true dry-run 的其他 adapter。
 
 5. **P2 新簇已进入 source integrated 阶段，但未统一验证。**
-   BlueprintVariableService 的 member property settings、member defaults、local variables 已完成首片真实执行，且实际 mutation 已迁入 OperationHandler；Function/Event Signature Management、DataAsset/ObjectProperty、Cleanup/Rollback/Ownership 已接入 TaskSpec -> TaskPlan -> Runtime 源码路径。DebugExport 仍未接入为独立开发诊断系统；批量上下文引用不再作为当前 Agent-facing 主线方向；P2 首批三簇需要下一轮统一 build、automation、disposable fixture smoke 后才能标记为 verified。
+   BlueprintVariableService 的 member property settings、member defaults、local variables 已完成首片真实执行，且实际 mutation 已迁入 OperationHandler；Function/Event Signature Management、DataAsset/ObjectProperty、Cleanup/Rollback/Ownership 已接入 TaskSpec -> TaskPlan -> Runtime 源码路径。DebugCase / DebugBundle 已替代旧 DebugExport LargePayload 作为当前 developer diagnostics 方向；批量上下文引用不再作为当前 Agent-facing 主线方向；P2 首批三簇需要下一轮统一 automation、disposable fixture smoke 后才能标记为 verified。
 6. **UE 构建验证状态。**
-   后续统一使用项目级 `Build.bat`。源码 UTF-8/TEXT() 修复后，用户本地已确认 `Build.bat MrStoneEditor Win64 Development -Project=G:\UnrealPractise\MrStone\MrStone.uproject` 构建通过；当前 Codex 沙盒复跑会因 MrStone 工程级 `Intermediate` 写权限限制停在 UBT rules assembly 阶段。2026-05-07 复核中，即使通过 `blueprint_close_editor(save_all=true)` 关闭 Editor 后，`G:\UnrealPractise\MrStone\Intermediate\Build\BuildRules\MrStoneModuleRules.dll` 仍无法在 Codex 中写入/独占打开。MCP 回归已通过。
+   后续统一使用项目级 `Build.bat`。源码 UTF-8/TEXT() 修复后，用户本地已确认 `Build.bat MrStoneEditor Win64 Development -Project=G:\UnrealPractise\MrStone\MrStone.uproject` 构建通过。2026-05-09 起当前主线不再按 Codex 环境 build blocked 口径推进；剩余状态是 grouped Automation 和 disposable fixture smoke 未全绿。
 
 ## 优先级建议
 
@@ -225,14 +227,15 @@ GraphWrite `replace_owned_graph` / `patch_owned_graph` / `merge_owned_graph` 的
 3. [x] Cleanup/Rollback/Ownership 首片：TaskSpec schema、TS/Python compiler、TaskPlan adapter、Runtime dispatch 到 cleanup / convert / rollback service。
 4. [ ] P2 首批三簇统一 build、automation、disposable fixture smoke。
 5. [x] Signature 边界扩展：函数参数、返回值、interface function vs interface event、event dispatcher signature mutation policy、override/native event default blocked policy、override/native explicit create-if-missing source path、custom_event_definition split、remove execute policy 已固定到 TaskSpec/TaskPlan 与 UE 源码首片。
-6. [ ] DebugExport developer diagnostics system：MCP、编排层、插件层都能获取具体错误信息并支持导出 debug bundle。
+6. [x] DebugCase / DebugBundle developer diagnostics 首片：失败路径使用 `debug_case_ids[]` summary ref，DebugBundle 是本地开发者导出物，不再走旧 DebugExport LargePayload 口径。
+7. [ ] Debug diagnostics verification tail：ReviewPanel 现场验证、DebugBundle Review summary export 边界、compile/post-operation failure debug surfacing、retention / cleanup policy。
 7. [ ] DependencyAnalysis 与高风险 preview 的集成。
 
 ## 后续讨论待办
 
 1. [x] Agent-facing MCP 默认工具集合最终冻结：`blueprinthelper_read_agent_guide`、`blueprinthelper_get_runtime_profile`、`blueprinthelper_diagnostics`、`blueprinthelper_read_context`、`blueprinthelper_read_reference_context`、`blueprinthelper_preview_task`、`blueprinthelper_execute_task`、`blueprinthelper_get_task_result`、`blueprinthelper_open_editor`、`blueprinthelper_close_editor`。
 2. [x] 旧 MCP 原子工具处理策略确认：已实现 TaskPlan adapter + TaskSpec compiler 覆盖的能力优先移除旧 Agent-facing 原子 MCP 工具；未覆盖能力暂保留为 legacy/internal/debug/expert/test，等 adapter 与 TaskSpec 支持落地时同步移除。
-3. [x] 返回体分层最终冻结：`blueprinthelper_read_agent_guide` 返回 Markdown；其他默认读/任务工具使用 `BlueprintHelper.McpToolResult.v1` 外壳；`read_context` -> `ReadContextPack.v1`，`read_reference_context` -> `ReferenceContextPack.v1`，`preview_task` -> `TaskPreviewResult.v1`，`execute_task` -> `TaskRunSummary.v1` 或 `TaskRunJournal.v1`，`get_task_result` -> `TaskRunJournal.v1`；UE façade 统一 `FBlueprintHelperToolResultBase`；普通 Agent 不走批量上下文引用，开发诊断改走独立 DebugExport。
+3. [x] 返回体分层最终冻结：`blueprinthelper_read_agent_guide` 返回 Markdown；其他默认读/任务工具使用 `BlueprintHelper.McpToolResult.v1` 外壳；`read_context` -> `ReadContextPack.v1`，`read_reference_context` -> `ReferenceContextPack.v1`，`preview_task` -> `TaskPreviewResult.v1`，`execute_task` -> `TaskRunSummary.v1` 或 `TaskRunJournal.v1`，`get_task_result` -> `TaskRunJournal.v1`；UE façade 统一 `FBlueprintHelperToolResultBase`；普通 Agent 不走批量上下文引用，开发诊断走 DebugCase / DebugBundle summary/export 边界。
 4. [x] TaskRuntime partial failure 拓扑阻断合同：TaskPlan step 使用 `steps[].depends_on` 表达依赖；TaskRunJournal step status 固定为 `completed|failed|blocked|skipped`；blocked step 使用 `blocked_by_step_ids` / `blocked_reason`；partial failure 使用 `recovery.recommended_action`、`safe_to_retry`、`rollback_available`、`notes` 给出用户可读恢复建议；不默认全局 rollback。
 5. [ ] Function/Event Signature 扩展字段合同：继续补真实 remove 引用清理策略、dispatcher 签名迁移策略，以及 override/native create-if-missing 的 UE automation / smoke 验证记录。
 6. [x] LogicJson 与 TaskSpec 组合语义：已确认 `logic_json` 不返回 `taskspec_hints`，保持只读结构化逻辑视图；其他组合语义后续单独设计。
@@ -251,7 +254,7 @@ GraphWrite `replace_owned_graph` / `patch_owned_graph` / `merge_owned_graph` 的
 19. [x] Signature 能力职责确认：`blueprint_signature` 负责创建/确保、修改、移除函数签名、Custom Event 签名、interface function / interface event 入口、event dispatcher 签名、override/native event 入口；GraphWrite 负责 body、节点、连线、调用、bind/unbind。
 20. [x] Custom Event 入口与 Append 依赖边界确认：`graph_write.ensure_entry(entry_type=custom_event)` 可以保留为 append 语义的结构化 IR，但 Custom Event 入口声明/签名创建必须由 `blueprint_signature.ensure_custom_event` 或 UE 内部 BlueprintSignatureService 完成；不得新增 Agent-facing custom event 原子工具。
 21. [x] `custom_event_definition` 与 Signature 边界：已确认并实现为 Signature 的 `ensure_custom_event` 声明/签名 step 加 GraphWrite 的 `custom_event_body` body rewrite step；不新增 Agent-facing custom event 原子工具。
-22. [x] Interface/override/native event lowering 细节：interface function 降到 `ensure_function`，interface event 降到 `ensure_custom_event`；override/native event 默认 `execute_policy=blocked_preflight`，显式 `execute_policy=create_if_missing` 已有 source-integrated 创建路径，待 UE build / automation / smoke 后再标 verified。
+22. [x] Interface/override/native event lowering 细节：interface function 降到 `ensure_function`，interface event 降到 `ensure_custom_event`；override/native event 默认 `execute_policy=blocked_preflight`，显式 `execute_policy=create_if_missing` 已有 source-integrated 创建路径，用户侧 UE build 已通过，待 Unified SmokeRun Ring 7 automation / smoke 后再标 verified。
 23. [x] Signature removal 安全合同首片：移除签名必须 `execute_policy=blocked_preflight` 且要求 reference context；当前不执行真实删除，后续再确认引用分析后的真实 cleanup 策略。
 24. [x] Event Dispatcher 字段细节首片：dispatcher 声明、参数和签名属于 Function/Event Signature；dispatcher call/bind/unbind 仍属于 GraphWrite；现阶段现有 dispatcher 签名不匹配时只允许 block。
 25. [ ] 非 BlueprintHelper-owned 图内容的稳定写锚点：owned block 已有 `block_id` 主线；用户已有图节点、非 owned 节点和旧资产迁移场景仍需单独确认稳定 read/write anchor 策略。
@@ -271,17 +274,17 @@ GraphWrite `replace_owned_graph` / `patch_owned_graph` / `merge_owned_graph` 的
 
 P0 与 P1 compiler/contract 首片已经完成，变量簇 member property/default/local variable 首片已经落到 UE Service + OperationHandler，且 `edit_blueprint_variables` 已完成 TaskSpec -> Execute smoke。AssetFactory 与 Component preview 已通过，ClassSettings、UMG、DataTable 还需要 disposable fixture。Composite `create_blueprint_feature` 已能把物理门这类核心功能 TaskSpec 分解为多 step TaskPlan，并已补 `integration.interface` 首片：确保接口、确保函数入口、用 GraphWrite replace_body 写接口函数实现；最新 smoke 已确认 composite preview 通过，但 fixture 创建路径仍暴露 `create_blueprint_feature` 空错误归一化问题，下一步是 execute fixture 和错误归一化。GraphWrite replace/patch/merge 的 TaskSpec compiler 与 Runtime lowering 已进入 Rerun 4 verified 状态：Replace full pipeline 与 read-back 通过，Patch 可修改 owned block，Merge 的 `insert_between + function_call`、`append_after + function_call`、`insert_between + custom_event_call` 已通过；2026-05-07 smoke 进一步确认 `branch_fork` preview 可走通，后续已补 MCP/Bridge 空错误归一化与 `branch_fork + owned_block_call` source fix，仍需本地 UE build / Editor reload 后复跑 execute smoke。
 
-P2 首批三簇已进入源码接线阶段：`blueprint_signature`、`object_property`、`graph_cleanup_ownership` 都沿 TaskSpec -> TaskPlan -> Runtime dispatch 接入，不新增 Agent-facing 原子写工具。当前状态仍是 source integrated，不是 smoke verified；按用户安排，先不单独测试这些簇，等三个完整簇落齐后统一 build、automation 和 disposable fixture smoke。
+P2 首批三簇已进入源码接线阶段：`blueprint_signature`、`object_property`、`graph_cleanup_ownership` 都沿 TaskSpec -> TaskPlan -> Runtime dispatch 接入，不新增 Agent-facing 原子写工具。当前状态仍是 source integrated，不是 smoke verified；按用户安排，先不单独测试这些簇，等三个完整簇落齐后统一 Automation 和 disposable fixture smoke。UE build 已通过，不再作为当前阻塞口径。
 
-当前 P1/P2 剩余不阻塞继续开发的验证项是：UMG/DataTable disposable fixture、Composite execute fixture、TaskRunJournal partial failure fixture、同 graph `branch_fork + owned_block_call` execute smoke、`create_blueprint_feature` preview 空错误，以及 P2 首批三簇统一验证。R4 已验证 `branch_fork + custom_event_call` execute/read-back；`append_after + custom_event_call` 的 preview 空错误已降级为可诊断 blocker，runtime profile 的 GraphWrite merge stale 标记已从源码移除。
+当前 P1/P2 剩余不阻塞继续开发的验证项是：UMG/DataTable disposable fixture、Composite execute fixture、TaskRunJournal partial failure fixture、同 graph `branch_fork + owned_block_call` execute smoke、`create_blueprint_feature` preview 空错误，以及 P2 首批三簇统一验证。R4 已验证 `branch_fork + custom_event_call` execute/read-back；`append_after + custom_event_call` 的 preview 空错误已降级为可诊断 blocker，runtime profile 的 GraphWrite merge stale 标记已从源码移除。2026-05-09 FullTestLog 中的 grouped failure 已完成源码或测试口径修复，下一步按 Unified SmokeRun Ring 1 复跑后再标 smoke verified。
 
 ```text
 Prepare fixtures and rerun AssetFactory/Component/UMG/DataTable/Composite execute smoke
 -> Add controlled partial-failure fixture for TaskRunJournal topology blocking
--> Rerun same-graph branch_fork + owned_block_call execute smoke after local UE build / Editor reload, and fix create_blueprint_feature preview empty error
+-> Rerun same-graph branch_fork + owned_block_call execute smoke in the unified Automation / Editor fixture pass, and fix create_blueprint_feature preview empty error
 -> Run grouped P2 verification for Signature / ObjectProperty / CleanupOwnership
 -> Function/Event Signature Management 后续字段和 remove execute policy
--> DebugExport developer diagnostics system
+-> DebugCase / DebugBundle verification tail and retention / cleanup policy
 ```
 
 这样能继续沿 TaskSpec -> TaskPlan -> Runtime lowering 的结构化编辑语言方向扩展，不会退回到底层工具膨胀。
@@ -289,4 +292,4 @@ Prepare fixtures and rerun AssetFactory/Component/UMG/DataTable/Composite execut
 ## 2026-05-07 AssetFactory Blueprint Alias Follow-up
 
 - [x] Ordinary Blueprint fixture creation source fix integrated: `create_asset` accepts `asset_type=Actor` and `asset_type=blueprint` as `blueprint_class` with `parent_class=Actor`.
-- [ ] WidgetBlueprint and DataTable factory source is integrated; UE smoke is still pending. `create_blueprint_feature` preview empty-error remains open.
+- [ ] WidgetBlueprint and DataTable factory source is integrated; UE smoke is still pending under Unified SmokeRun Ring 3. `create_blueprint_feature` preview empty-error remains open under Ring 6.

@@ -7,9 +7,10 @@
 #include "Systems/ToolClusters/CleanupOwnership/BlueprintHelperConvertBlockToUserOwnedService.h"
 #include "Systems/ToolClusters/CleanupOwnership/BlueprintHelperRollbackCleanupTransactionService.h"
 
-namespace
+class FBlueprintHelperCleanupOwnershipBridgeRoutesLocalUtils
 {
-	FBlueprintHelperBridgeResponse MakeCleanupResponse(
+public:
+	static FBlueprintHelperBridgeResponse MakeCleanupResponse(
 		const FBlueprintHelperBridgeRequest& Request,
 		const FBlueprintHelperToolResultBase& Result,
 		const TCHAR* FallbackFailureMessage)
@@ -23,7 +24,8 @@ namespace
 		Response.Result = Result.ToJson();
 		return Response;
 	}
-}
+
+};
 
 FBlueprintHelperCleanupOwnershipBridgeRoutes::FBlueprintHelperCleanupOwnershipBridgeRoutes(
 	const FBlueprintHelperCleanupBlueprintHelperBlockService& InCleanupBlockService,
@@ -55,7 +57,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperCleanupOwnershipBridgeRoutes::Han
 
 	if (Request.Command == TEXT("cleanup_blueprint_helper_block"))
 	{
-		return MakeCleanupResponse(
+		return FBlueprintHelperCleanupOwnershipBridgeRoutesLocalUtils::MakeCleanupResponse(
 			Request,
 			CleanupBlockService.Execute(Request.Payload),
 			TEXT("cleanup_blueprint_helper_block failed."));
@@ -63,7 +65,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperCleanupOwnershipBridgeRoutes::Han
 
 	if (Request.Command == TEXT("rollback_cleanup_transaction"))
 	{
-		return MakeCleanupResponse(
+		return FBlueprintHelperCleanupOwnershipBridgeRoutesLocalUtils::MakeCleanupResponse(
 			Request,
 			RollbackCleanupService.Execute(Request.Payload),
 			TEXT("rollback_cleanup_transaction failed."));
@@ -71,7 +73,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperCleanupOwnershipBridgeRoutes::Han
 
 	if (Request.Command == TEXT("convert_blueprint_helper_block_to_user_owned"))
 	{
-		return MakeCleanupResponse(
+		return FBlueprintHelperCleanupOwnershipBridgeRoutesLocalUtils::MakeCleanupResponse(
 			Request,
 			ConvertBlockService.Execute(Request.Payload),
 			TEXT("convert_blueprint_helper_block_to_user_owned failed."));

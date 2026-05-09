@@ -2,9 +2,10 @@
 
 #include "Dom/JsonValue.h"
 
-namespace
+class FBlueprintHelperAssetFactoryTaskPlanAdapterLocalUtils
 {
-	FBlueprintHelperToolError MakeAssetFactoryTaskPlanError(
+public:
+	static FBlueprintHelperToolError MakeAssetFactoryTaskPlanError(
 		const FString& Code,
 		const FString& Message,
 		const FString& Field)
@@ -19,21 +20,21 @@ namespace
 		return Error;
 	}
 
-	FString AssetFactoryBuildStepFieldPath(const FString& Suffix)
+	static FString AssetFactoryBuildStepFieldPath(const FString& Suffix)
 	{
 		return Suffix.IsEmpty()
 			? FString(TEXT("task_plan.steps[0]"))
 			: FString::Printf(TEXT("task_plan.steps[0].%s"), *Suffix);
 	}
 
-	FString AssetFactoryBuildOpFieldPath(const FString& Suffix)
+	static FString AssetFactoryBuildOpFieldPath(const FString& Suffix)
 	{
 		return Suffix.IsEmpty()
 			? FString(TEXT("task_plan.steps[0].write.ops[0]"))
 			: FString::Printf(TEXT("task_plan.steps[0].write.ops[0].%s"), *Suffix);
 	}
 
-	bool AssetFactoryTryReadRequiredString(
+	static bool AssetFactoryTryReadRequiredString(
 		const TSharedPtr<FJsonObject>& Object,
 		const TCHAR* FieldName,
 		const FString& FieldPath,
@@ -57,7 +58,7 @@ namespace
 		return true;
 	}
 
-	bool AssetFactoryTryCopyOptionalStringField(
+	static bool AssetFactoryTryCopyOptionalStringField(
 		const TSharedPtr<FJsonObject>& Source,
 		const TCHAR* FieldName,
 		const FString& FieldPath,
@@ -83,7 +84,7 @@ namespace
 		return true;
 	}
 
-	bool AssetFactoryTryCopyOptionalArrayField(
+	static bool AssetFactoryTryCopyOptionalArrayField(
 		const TSharedPtr<FJsonObject>& Source,
 		const TCHAR* FieldName,
 		const FString& FieldPath,
@@ -108,7 +109,8 @@ namespace
 		Destination->SetArrayField(FieldName, *Value);
 		return true;
 	}
-}
+
+};
 
 bool FBlueprintHelperAssetFactoryTaskPlanAdapter::SupportsStep(
 	const TSharedPtr<FJsonObject>& StepObject)
@@ -134,7 +136,7 @@ bool FBlueprintHelperAssetFactoryTaskPlanAdapter::TryBuildPayloadFromTaskPlanSte
 		OutError = MakeError(
 			TEXT("invalid_asset_factory_step"),
 			TEXT("Asset Factory TaskPlan step must be an object."),
-			AssetFactoryBuildStepFieldPath(TEXT("")));
+			FBlueprintHelperAssetFactoryTaskPlanAdapterLocalUtils::AssetFactoryBuildStepFieldPath(TEXT("")));
 		return false;
 	}
 
@@ -145,7 +147,7 @@ bool FBlueprintHelperAssetFactoryTaskPlanAdapter::TryBuildPayloadFromTaskPlanSte
 		OutError = MakeError(
 			TEXT("unsupported_asset_factory_capability"),
 			TEXT("Asset Factory adapter supports asset_factory capability only."),
-			AssetFactoryBuildStepFieldPath(TEXT("capability")));
+			FBlueprintHelperAssetFactoryTaskPlanAdapterLocalUtils::AssetFactoryBuildStepFieldPath(TEXT("capability")));
 		return false;
 	}
 
@@ -155,7 +157,7 @@ bool FBlueprintHelperAssetFactoryTaskPlanAdapter::TryBuildPayloadFromTaskPlanSte
 		OutError = MakeError(
 			TEXT("unsupported_asset_factory_operation_field"),
 			TEXT("Asset Factory IR TaskPlan steps use capability/write; adapter operation fields are runtime lowering details."),
-			AssetFactoryBuildStepFieldPath(TEXT("operation")));
+			FBlueprintHelperAssetFactoryTaskPlanAdapterLocalUtils::AssetFactoryBuildStepFieldPath(TEXT("operation")));
 		return false;
 	}
 
@@ -166,15 +168,15 @@ bool FBlueprintHelperAssetFactoryTaskPlanAdapter::TryBuildPayloadFromTaskPlanSte
 		OutError = MakeError(
 			TEXT("invalid_asset_factory_target"),
 			TEXT("Asset Factory TaskPlan step requires target object."),
-			AssetFactoryBuildStepFieldPath(TEXT("target")));
+			FBlueprintHelperAssetFactoryTaskPlanAdapterLocalUtils::AssetFactoryBuildStepFieldPath(TEXT("target")));
 		return false;
 	}
 
 	FString AssetPath;
-	if (!AssetFactoryTryReadRequiredString(
+	if (!FBlueprintHelperAssetFactoryTaskPlanAdapterLocalUtils::AssetFactoryTryReadRequiredString(
 		*TargetObjectPtr,
 		TEXT("asset_path"),
-		AssetFactoryBuildStepFieldPath(TEXT("target.asset_path")),
+		FBlueprintHelperAssetFactoryTaskPlanAdapterLocalUtils::AssetFactoryBuildStepFieldPath(TEXT("target.asset_path")),
 		TEXT("invalid_asset_factory_target"),
 		TEXT("Asset Factory TaskPlan target requires asset_path."),
 		AssetPath,
@@ -190,7 +192,7 @@ bool FBlueprintHelperAssetFactoryTaskPlanAdapter::TryBuildPayloadFromTaskPlanSte
 		OutError = MakeError(
 			TEXT("invalid_asset_factory_write"),
 			TEXT("asset_factory TaskPlan step requires write object."),
-			AssetFactoryBuildStepFieldPath(TEXT("write")));
+			FBlueprintHelperAssetFactoryTaskPlanAdapterLocalUtils::AssetFactoryBuildStepFieldPath(TEXT("write")));
 		return false;
 	}
 
@@ -201,7 +203,7 @@ bool FBlueprintHelperAssetFactoryTaskPlanAdapter::TryBuildPayloadFromTaskPlanSte
 		OutError = MakeError(
 			TEXT("unsupported_asset_factory_strategy"),
 			TEXT("Asset Factory Task Runtime currently supports asset_create strategy only."),
-			AssetFactoryBuildStepFieldPath(TEXT("write.strategy")));
+			FBlueprintHelperAssetFactoryTaskPlanAdapterLocalUtils::AssetFactoryBuildStepFieldPath(TEXT("write.strategy")));
 		return false;
 	}
 
@@ -211,7 +213,7 @@ bool FBlueprintHelperAssetFactoryTaskPlanAdapter::TryBuildPayloadFromTaskPlanSte
 		OutError = MakeError(
 			TEXT("invalid_asset_factory_ops"),
 			TEXT("asset_factory TaskPlan step requires write.ops array."),
-			AssetFactoryBuildStepFieldPath(TEXT("write.ops")));
+			FBlueprintHelperAssetFactoryTaskPlanAdapterLocalUtils::AssetFactoryBuildStepFieldPath(TEXT("write.ops")));
 		return false;
 	}
 
@@ -220,7 +222,7 @@ bool FBlueprintHelperAssetFactoryTaskPlanAdapter::TryBuildPayloadFromTaskPlanSte
 		OutError = MakeError(
 			TEXT("unsupported_asset_factory_op_count"),
 			TEXT("Asset Factory Task Runtime currently supports exactly one create_asset op."),
-			AssetFactoryBuildStepFieldPath(TEXT("write.ops")));
+			FBlueprintHelperAssetFactoryTaskPlanAdapterLocalUtils::AssetFactoryBuildStepFieldPath(TEXT("write.ops")));
 		return false;
 	}
 
@@ -233,7 +235,7 @@ bool FBlueprintHelperAssetFactoryTaskPlanAdapter::TryBuildPayloadFromTaskPlanSte
 		OutError = MakeError(
 			TEXT("invalid_asset_factory_create_asset_op"),
 			TEXT("Asset Factory create_asset op must be an object."),
-			AssetFactoryBuildOpFieldPath(TEXT("")));
+			FBlueprintHelperAssetFactoryTaskPlanAdapterLocalUtils::AssetFactoryBuildOpFieldPath(TEXT("")));
 		return false;
 	}
 
@@ -243,15 +245,15 @@ bool FBlueprintHelperAssetFactoryTaskPlanAdapter::TryBuildPayloadFromTaskPlanSte
 		OutError = MakeError(
 			TEXT("unsupported_asset_factory_op"),
 			TEXT("Asset Factory Task Runtime currently supports create_asset only."),
-			AssetFactoryBuildOpFieldPath(TEXT("op")));
+			FBlueprintHelperAssetFactoryTaskPlanAdapterLocalUtils::AssetFactoryBuildOpFieldPath(TEXT("op")));
 		return false;
 	}
 
 	FString AssetType;
-	if (!AssetFactoryTryReadRequiredString(
+	if (!FBlueprintHelperAssetFactoryTaskPlanAdapterLocalUtils::AssetFactoryTryReadRequiredString(
 		OpObject,
 		TEXT("asset_type"),
-		AssetFactoryBuildOpFieldPath(TEXT("asset_type")),
+		FBlueprintHelperAssetFactoryTaskPlanAdapterLocalUtils::AssetFactoryBuildOpFieldPath(TEXT("asset_type")),
 		TEXT("invalid_asset_factory_create_asset_op"),
 		TEXT("Asset Factory create_asset op requires asset_type."),
 		AssetType,
@@ -265,16 +267,16 @@ bool FBlueprintHelperAssetFactoryTaskPlanAdapter::TryBuildPayloadFromTaskPlanSte
 	Payload->SetStringField(TEXT("asset_type"), AssetType);
 	Payload->SetBoolField(TEXT("dry_run"), bDryRun);
 
-	if (!AssetFactoryTryCopyOptionalStringField(OpObject, TEXT("parent_class"), AssetFactoryBuildOpFieldPath(TEXT("parent_class")), Payload, OutError) ||
-		!AssetFactoryTryCopyOptionalStringField(OpObject, TEXT("value_type"), AssetFactoryBuildOpFieldPath(TEXT("value_type")), Payload, OutError) ||
-		!AssetFactoryTryCopyOptionalStringField(OpObject, TEXT("row_struct"), AssetFactoryBuildOpFieldPath(TEXT("row_struct")), Payload, OutError) ||
-		!AssetFactoryTryCopyOptionalStringField(OpObject, TEXT("data_asset_class"), AssetFactoryBuildOpFieldPath(TEXT("data_asset_class")), Payload, OutError) ||
-		!AssetFactoryTryCopyOptionalStringField(OpObject, TEXT("collision"), AssetFactoryBuildOpFieldPath(TEXT("collision")), Payload, OutError))
+	if (!FBlueprintHelperAssetFactoryTaskPlanAdapterLocalUtils::AssetFactoryTryCopyOptionalStringField(OpObject, TEXT("parent_class"), FBlueprintHelperAssetFactoryTaskPlanAdapterLocalUtils::AssetFactoryBuildOpFieldPath(TEXT("parent_class")), Payload, OutError) ||
+		!FBlueprintHelperAssetFactoryTaskPlanAdapterLocalUtils::AssetFactoryTryCopyOptionalStringField(OpObject, TEXT("value_type"), FBlueprintHelperAssetFactoryTaskPlanAdapterLocalUtils::AssetFactoryBuildOpFieldPath(TEXT("value_type")), Payload, OutError) ||
+		!FBlueprintHelperAssetFactoryTaskPlanAdapterLocalUtils::AssetFactoryTryCopyOptionalStringField(OpObject, TEXT("row_struct"), FBlueprintHelperAssetFactoryTaskPlanAdapterLocalUtils::AssetFactoryBuildOpFieldPath(TEXT("row_struct")), Payload, OutError) ||
+		!FBlueprintHelperAssetFactoryTaskPlanAdapterLocalUtils::AssetFactoryTryCopyOptionalStringField(OpObject, TEXT("data_asset_class"), FBlueprintHelperAssetFactoryTaskPlanAdapterLocalUtils::AssetFactoryBuildOpFieldPath(TEXT("data_asset_class")), Payload, OutError) ||
+		!FBlueprintHelperAssetFactoryTaskPlanAdapterLocalUtils::AssetFactoryTryCopyOptionalStringField(OpObject, TEXT("collision"), FBlueprintHelperAssetFactoryTaskPlanAdapterLocalUtils::AssetFactoryBuildOpFieldPath(TEXT("collision")), Payload, OutError))
 	{
 		return false;
 	}
 
-	if (!AssetFactoryTryCopyOptionalArrayField(OpObject, TEXT("fields"), AssetFactoryBuildOpFieldPath(TEXT("fields")), Payload, OutError))
+	if (!FBlueprintHelperAssetFactoryTaskPlanAdapterLocalUtils::AssetFactoryTryCopyOptionalArrayField(OpObject, TEXT("fields"), FBlueprintHelperAssetFactoryTaskPlanAdapterLocalUtils::AssetFactoryBuildOpFieldPath(TEXT("fields")), Payload, OutError))
 	{
 		return false;
 	}
@@ -298,5 +300,5 @@ FBlueprintHelperToolError FBlueprintHelperAssetFactoryTaskPlanAdapter::MakeError
 	const FString& Message,
 	const FString& Field)
 {
-	return MakeAssetFactoryTaskPlanError(Code, Message, Field);
+	return FBlueprintHelperAssetFactoryTaskPlanAdapterLocalUtils::MakeAssetFactoryTaskPlanError(Code, Message, Field);
 }
