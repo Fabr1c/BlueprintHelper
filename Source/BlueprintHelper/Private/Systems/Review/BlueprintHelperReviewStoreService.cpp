@@ -201,6 +201,75 @@ public:
 		return true;
 	}
 
+	static bool IsAssetLifecycleRootTarget(
+		const FBlueprintHelperReviewAtomicTarget& Target,
+		EBlueprintHelperReviewChangeKind ChangeKind)
+	{
+		return ChangeKind == EBlueprintHelperReviewChangeKind::Added
+			&& Target.TargetKind.Equals(TEXT("asset_factory"), ESearchCase::IgnoreCase);
+	}
+
+	static void ApplyAssetLifecycleRootMetadata(FBlueprintHelperReviewVisibleChange& Change)
+	{
+		const bool bHasAssetFactoryAddedTarget = Change.AtomicTargets.ContainsByPredicate(
+			[&Change](const FBlueprintHelperReviewAtomicTarget& Target)
+			{
+				return IsAssetLifecycleRootTarget(Target, Change.ChangeKind);
+			});
+		if (!bHasAssetFactoryAddedTarget)
+		{
+			return;
+		}
+
+		Change.bIsAssetLifecycleRoot = true;
+		Change.bRejectRemovesChildren = true;
+		Change.ParentChangeId.Reset();
+	}
+
+	static bool IsPendingLifecycleLinkCandidate(const FBlueprintHelperReviewVisibleChange& Change)
+	{
+		return Change.Status == EBlueprintHelperReviewChangeStatus::Pending;
+	}
+
+	static void LinkPendingChildrenToLifecycleRoots(TArray<FBlueprintHelperReviewVisibleChange>& Changes)
+	{
+		TMap<FString, int32> PendingRootIndexByAssetPath;
+		for (int32 Index = 0; Index < Changes.Num(); ++Index)
+		{
+			const FBlueprintHelperReviewVisibleChange& Change = Changes[Index];
+			if (!IsPendingLifecycleLinkCandidate(Change)
+				|| !Change.bIsAssetLifecycleRoot
+				|| Change.AssetPath.IsEmpty())
+			{
+				continue;
+			}
+
+			PendingRootIndexByAssetPath.Add(Change.AssetPath, Index);
+		}
+
+		for (FBlueprintHelperReviewVisibleChange& Change : Changes)
+		{
+			if (!IsPendingLifecycleLinkCandidate(Change) || Change.AssetPath.IsEmpty())
+			{
+				continue;
+			}
+
+			if (Change.bIsAssetLifecycleRoot)
+			{
+				Change.ParentChangeId.Reset();
+				continue;
+			}
+
+			const int32* RootIndex = PendingRootIndexByAssetPath.Find(Change.AssetPath);
+			if (!RootIndex || !Changes.IsValidIndex(*RootIndex))
+			{
+				continue;
+			}
+
+			Change.ParentChangeId = Changes[*RootIndex].ChangeId;
+		}
+	}
+
 	static FBlueprintHelperReviewVisibleChange MakeVisibleChangeFromEvidence(
 		const FBlueprintHelperWriteReviewEvidence& Evidence,
 		const FBlueprintHelperReviewAtomicTarget& Target,
@@ -218,6 +287,12 @@ public:
 		Change.DisplayLabel = Target.DisplayLabel.IsEmpty() ? Evidence.DisplayLabel : Target.DisplayLabel;
 		Change.BeforeSummary = Evidence.BeforeSummary;
 		Change.AfterSummary = Evidence.AfterSummary;
+		if (IsAssetLifecycleRootTarget(Target, Change.ChangeKind))
+		{
+			Change.bIsAssetLifecycleRoot = true;
+			Change.bRejectRemovesChildren = true;
+			Change.ParentChangeId.Reset();
+		}
 		return Change;
 	}
 
@@ -384,6 +459,9 @@ public:
 		if (!Change.BeforeSummary.IsEmpty()) Json->SetStringField(TEXT("before_summary"), Change.BeforeSummary);
 		if (!Change.AfterSummary.IsEmpty()) Json->SetStringField(TEXT("after_summary"), Change.AfterSummary);
 		if (!Change.NeedsActionReason.IsEmpty()) Json->SetStringField(TEXT("needs_action_reason"), Change.NeedsActionReason);
+		if (!Change.ParentChangeId.IsEmpty()) Json->SetStringField(TEXT("parent_change_id"), Change.ParentChangeId);
+		if (Change.bIsAssetLifecycleRoot) Json->SetBoolField(TEXT("is_asset_lifecycle_root"), true);
+		if (Change.bRejectRemovesChildren) Json->SetBoolField(TEXT("reject_removes_children"), true);
 
 		TArray<TSharedPtr<FJsonValue>> Targets;
 		for (const FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
@@ -524,6 +602,9 @@ public:
 				ChangeJson->TryGetStringField(TEXT("before_summary"), Change.BeforeSummary);
 				ChangeJson->TryGetStringField(TEXT("after_summary"), Change.AfterSummary);
 				ChangeJson->TryGetStringField(TEXT("needs_action_reason"), Change.NeedsActionReason);
+				ChangeJson->TryGetStringField(TEXT("parent_change_id"), Change.ParentChangeId);
+				ChangeJson->TryGetBoolField(TEXT("is_asset_lifecycle_root"), Change.bIsAssetLifecycleRoot);
+				ChangeJson->TryGetBoolField(TEXT("reject_removes_children"), Change.bRejectRemovesChildren);
 
 				const TArray<TSharedPtr<FJsonValue>>* Targets = nullptr;
 				if (ChangeJson->TryGetArrayField(TEXT("atomic_targets"), Targets) && Targets)
@@ -572,6 +653,7 @@ public:
 					}
 				}
 
+				ApplyAssetLifecycleRootMetadata(Change);
 				OutRecord.VisibleChanges.Add(Change);
 			}
 		}
@@ -688,12 +770,16 @@ public:
 			ExistingChange->ChangeId = IncomingChange.ChangeId;
 			ExistingChange->ChangeKind = IncomingChange.ChangeKind;
 			ExistingChange->AfterSummary = IncomingChange.AfterSummary;
+			ExistingChange->ParentChangeId = IncomingChange.ParentChangeId;
+			ExistingChange->bIsAssetLifecycleRoot = IncomingChange.bIsAssetLifecycleRoot;
+			ExistingChange->bRejectRemovesChildren = IncomingChange.bRejectRemovesChildren;
 			if (IncomingChange.Status == EBlueprintHelperReviewChangeStatus::NeedsAction
 				|| IncomingChange.Status == EBlueprintHelperReviewChangeStatus::RejectFailed)
 			{
 				ExistingChange->Status = IncomingChange.Status;
 				ExistingChange->NeedsActionReason = IncomingChange.NeedsActionReason;
 			}
+			ApplyAssetLifecycleRootMetadata(*ExistingChange);
 		}
 
 		for (const FString& TaskRunId : Incoming.SourceTransactionSummary.TaskRunIds)
@@ -1043,6 +1129,18 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewStoreService::BuildReviewRecordSum
 		{
 			ChangeJson->SetStringField(TEXT("needs_action_reason"), Change.NeedsActionReason);
 		}
+		if (!Change.ParentChangeId.IsEmpty())
+		{
+			ChangeJson->SetStringField(TEXT("parent_change_id"), Change.ParentChangeId);
+		}
+		if (Change.bIsAssetLifecycleRoot)
+		{
+			ChangeJson->SetBoolField(TEXT("is_asset_lifecycle_root"), true);
+		}
+		if (Change.bRejectRemovesChildren)
+		{
+			ChangeJson->SetBoolField(TEXT("reject_removes_children"), true);
+		}
 		ChangeJson->SetNumberField(TEXT("atomic_target_count"), Change.AtomicTargets.Num());
 		ChangeSummaries.Add(MakeShared<FJsonValueObject>(ChangeJson));
 	}
@@ -1214,6 +1312,7 @@ void FBlueprintHelperReviewStoreService::AddAtomicTargetsForInput(
 			AtomicChange.AtomicTargets.Add(Target);
 			AtomicChange.LatestTransactionIds.Reset();
 			AtomicChange.LatestTransactionIds.Add(Input.TransactionId);
+			FBlueprintHelperReviewStoreServiceLocalUtils::ApplyAssetLifecycleRootMetadata(AtomicChange);
 			AtomicChanges.Add(AtomicKey, AtomicChange);
 			AtomicOrder.Add(AtomicKey);
 			continue;
@@ -1244,6 +1343,7 @@ void FBlueprintHelperReviewStoreService::AddAtomicTargetsForInput(
 		AtomicChange.DisplayLabel = Target.DisplayLabel.IsEmpty() ? AtomicChange.DisplayLabel : Target.DisplayLabel;
 		AtomicChange.AfterSummary = Input.AfterSummary;
 		AtomicChange.ChangeId = Input.TransactionId;
+		FBlueprintHelperReviewStoreServiceLocalUtils::ApplyAssetLifecycleRootMetadata(AtomicChange);
 	}
 }
 
@@ -1283,6 +1383,7 @@ TArray<FBlueprintHelperReviewVisibleChange> FBlueprintHelperReviewStoreService::
 			}
 		}
 	}
+	FBlueprintHelperReviewStoreServiceLocalUtils::LinkPendingChildrenToLifecycleRoots(RecordChanges);
 	return RecordChanges;
 }
 
@@ -1343,6 +1444,7 @@ void FBlueprintHelperReviewStoreService::GroupAtomicVisibleChange(
 		Existing.DisplayLabel = AtomicChange.DisplayLabel.IsEmpty() ? Existing.DisplayLabel : AtomicChange.DisplayLabel;
 		Existing.AfterSummary = AtomicChange.AfterSummary;
 		Existing.ChangeId = AtomicChange.ChangeId;
+		FBlueprintHelperReviewStoreServiceLocalUtils::ApplyAssetLifecycleRootMetadata(Existing);
 		return;
 	}
 
@@ -1415,6 +1517,7 @@ void FBlueprintHelperReviewStoreService::AddEvidenceAtomicTargets(
 				Target,
 				VisualGroupKey);
 			NewChange.AtomicTargets.Add(Target);
+			FBlueprintHelperReviewStoreServiceLocalUtils::ApplyAssetLifecycleRootMetadata(NewChange);
 			if (!NeedsActionReason.IsEmpty())
 			{
 				NewChange.Status = EBlueprintHelperReviewChangeStatus::NeedsAction;
@@ -1452,6 +1555,7 @@ void FBlueprintHelperReviewStoreService::AddEvidenceAtomicTargets(
 		Change->ChangeId = Evidence.TransactionId;
 		Change->ChangeKind = Evidence.ChangeKind;
 		Change->AfterSummary = Evidence.AfterSummary;
+		FBlueprintHelperReviewStoreServiceLocalUtils::ApplyAssetLifecycleRootMetadata(*Change);
 		if (!NeedsActionReason.IsEmpty())
 		{
 			Change->Status = EBlueprintHelperReviewChangeStatus::NeedsAction;

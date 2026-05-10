@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Input/Reply.h"
+#include "Layout/Visibility.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
 #include "UI/Review/BlueprintHelperReviewAssetContext.h"
 #include "UObject/StrongObjectPtr.h"
@@ -58,6 +59,14 @@ struct BLUEPRINTHELPER_API FBlueprintHelperReviewSurfaceGeometryAnchor
 	FString DebugMode;
 };
 
+struct BLUEPRINTHELPER_API FBlueprintHelperReviewRowHighlight
+{
+	FString ChangeId;
+	FString TargetKey;
+	EBlueprintHelperReviewChangeKind ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
+	bool bSelected = false;
+};
+
 DECLARE_DELEGATE_RetVal_ThreeParams(
 	bool,
 	FBlueprintHelperReviewResolveRowGeometry,
@@ -81,6 +90,45 @@ struct BLUEPRINTHELPER_API FBlueprintHelperReviewPanelSurfacePresenterArgs
 	TFunction<FSlateColor()> GetSelectedDiffColor;
 	FBlueprintHelperReviewResolveRowGeometry ResolveRowGeometry;
 	FBlueprintHelperReviewGeometryInvalidated OnGeometryInvalidated;
+};
+
+class BLUEPRINTHELPER_API FBlueprintHelperReviewRowHighlightModel
+{
+public:
+	static bool IsRowHighlightSurface(EBlueprintHelperReviewSurface Surface);
+
+	static FLinearColor GetRowHighlightFillColor(const FLinearColor& ChangeColor);
+
+	static TMap<FString, FBlueprintHelperReviewRowHighlight> BuildTargetKeyToHighlight(
+		const TArray<TSharedPtr<FBlueprintHelperReviewVisibleChange>>& ChangeItems,
+		const TSharedPtr<FBlueprintHelperReviewVisibleChange>& SelectedChange,
+		EBlueprintHelperReviewSurface Surface,
+		const FString& CurrentAssetPath);
+
+	static TSharedRef<SWidget> BuildRowHighlightOverlay(
+		const FBlueprintHelperReviewPanelSurfacePresenterArgs& Args,
+		EBlueprintHelperReviewSurface Surface,
+		bool (*Predicate)(const FBlueprintHelperReviewVisibleChange&));
+
+	static FSlateColor GetRowBackgroundColor(
+		const FString& AssetPath,
+		EBlueprintHelperReviewSurface Surface,
+		const FString& SearchText);
+
+	static EVisibility GetRowActionsVisibility(
+		const FString& AssetPath,
+		EBlueprintHelperReviewSurface Surface,
+		const FString& SearchText);
+
+	static FReply AcceptHighlightedRow(
+		const FString& AssetPath,
+		EBlueprintHelperReviewSurface Surface,
+		const FString& SearchText);
+
+	static FReply RejectHighlightedRow(
+		const FString& AssetPath,
+		EBlueprintHelperReviewSurface Surface,
+		const FString& SearchText);
 };
 
 class BLUEPRINTHELPER_API SBlueprintHelperReviewGeometryProbe : public SCompoundWidget

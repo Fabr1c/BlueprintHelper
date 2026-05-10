@@ -197,6 +197,33 @@ public:
 		Pin->BreakAllPinLinks(true);
 	}
 
+	static FBlueprintHelperGraphReviewNodeAnchor MakeReviewNodeAnchor(const UEdGraphNode* Node)
+	{
+		FBlueprintHelperGraphReviewNodeAnchor Anchor;
+		if (!Node)
+		{
+			return Anchor;
+		}
+
+		Anchor.NodePath = Node->GetPathName();
+		Anchor.NodeGuid = Node->NodeGuid.IsValid()
+			? Node->NodeGuid.ToString(EGuidFormats::Digits)
+			: FString();
+		Anchor.DisplayLabel = Node->GetNodeTitle(ENodeTitleType::ListView).ToString();
+		if (Anchor.DisplayLabel.IsEmpty())
+		{
+			Anchor.DisplayLabel = Node->GetName();
+		}
+		Anchor.GraphPosition = FVector2D(
+			static_cast<float>(Node->NodePosX),
+			static_cast<float>(Node->NodePosY));
+		Anchor.GraphSize = FVector2D(
+			Node->NodeWidth > 0 ? static_cast<float>(Node->NodeWidth) : 360.0f,
+			Node->NodeHeight > 0 ? static_cast<float>(Node->NodeHeight) : 180.0f);
+		Anchor.bHasGraphBounds = true;
+		return Anchor;
+	}
+
 };
 
 // ─── 构造 ───
@@ -697,6 +724,8 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 		{
 			JournalRecord.CreatedNodePaths.Add(Node->NodeGuid.ToString(EGuidFormats::Digits));
 		}
+		JournalRecord.CreatedNodeAnchors.Add(
+			FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::MakeReviewNodeAnchor(Node));
 	}
 	JournalRecord.RollbackData = BeforeSnapshot.ToJsonString();
 

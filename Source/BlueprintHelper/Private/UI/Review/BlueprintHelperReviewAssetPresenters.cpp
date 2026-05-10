@@ -7,16 +7,30 @@
 #include "Blueprint/WidgetTree.h"
 #include "Components/PanelWidget.h"
 #include "Components/Widget.h"
+#include "DataTableEditorUtils.h"
 #include "Engine/DataTable.h"
-#include "Systems/ToolClusters/DataTable/BlueprintHelperDataTableService.h"
-#include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
+#include "IDetailTreeNode.h"
+#include "IPropertyRowGenerator.h"
+#include "Kismet2/StructureEditorUtils.h"
+#include "Modules/ModuleManager.h"
+#include "PropertyEditorModule.h"
+#include "PropertyHandle.h"
+#include "Styling/AppStyle.h"
+#include "StructUtils/UserDefinedStruct.h"
 #include "UI/Review/BlueprintHelperReviewSurfacePresenter.h"
+#include "UserDefinedStructure/UserDefinedStructEditorData.h"
 #include "WidgetBlueprint.h"
+#include "Widgets/Images/SImage.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
+#include "Widgets/Layout/SSpacer.h"
+#include "Widgets/Input/SButton.h"
 #include "Widgets/SBoxPanel.h"
+#include "Widgets/SNullWidget.h"
 #include "Widgets/Text/STextBlock.h"
+#include "Widgets/Views/SHeaderRow.h"
+#include "Widgets/Views/SListView.h"
 #include "Widgets/Views/STableRow.h"
 #include "Widgets/Views/STreeView.h"
 
@@ -290,24 +304,77 @@ namespace BlueprintHelperReviewAssetPresentersPrivate
 			.TargetKey(ProbeTargetKey)
 			.OnGeometryInvalidated(OnGeometryInvalidated)
 			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot()
-				.FillWidth(1.0f)
-				.VAlign(VAlign_Center)
+				SNew(SBorder)
+				.BorderImage(FAppStyle::GetBrush(TEXT("Brushes.White")))
+				.BorderBackgroundColor_Lambda([AssetPath, ProbeTargetKey]()
+				{
+					return FBlueprintHelperReviewRowHighlightModel::GetRowBackgroundColor(
+						AssetPath,
+						EBlueprintHelperReviewSurface::UMGWidgetTree,
+						ProbeTargetKey);
+				})
+				.Padding(FMargin(4.0f, 2.0f))
 				[
-					SNew(STextBlock)
-					.Text(FText::FromString(WidgetName))
-					.ColorAndOpacity(FSlateColor(FLinearColor(0.84f, 0.84f, 0.84f, 1.0f)))
-				]
-				+ SHorizontalBox::Slot()
-				.AutoWidth()
-				.Padding(8.0f, 0.0f, 0.0f, 0.0f)
-				.VAlign(VAlign_Center)
-				[
-					SNew(STextBlock)
-					.Visibility(WidgetClass.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible)
-					.Text(FText::FromString(WidgetClass))
-					.ColorAndOpacity(FSlateColor(FLinearColor(0.52f, 0.52f, 0.52f, 1.0f)))
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot()
+					.FillWidth(1.0f)
+					.VAlign(VAlign_Center)
+					[
+						SNew(STextBlock)
+						.Text(FText::FromString(WidgetName))
+						.ColorAndOpacity(FSlateColor(FLinearColor(0.84f, 0.84f, 0.84f, 1.0f)))
+					]
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.Padding(8.0f, 0.0f, 0.0f, 0.0f)
+					.VAlign(VAlign_Center)
+					[
+						SNew(STextBlock)
+						.Visibility(WidgetClass.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible)
+						.Text(FText::FromString(WidgetClass))
+						.ColorAndOpacity(FSlateColor(FLinearColor(0.52f, 0.52f, 0.52f, 1.0f)))
+					]
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.Padding(6.0f, 0.0f, 0.0f, 0.0f)
+					.VAlign(VAlign_Center)
+					[
+						SNew(SHorizontalBox)
+						.Visibility_Lambda([AssetPath, ProbeTargetKey]()
+						{
+							return FBlueprintHelperReviewRowHighlightModel::GetRowActionsVisibility(
+								AssetPath,
+								EBlueprintHelperReviewSurface::UMGWidgetTree,
+								ProbeTargetKey);
+						})
+						+ SHorizontalBox::Slot()
+						.AutoWidth()
+						.Padding(0.0f, 0.0f, 4.0f, 0.0f)
+						[
+							SNew(SButton)
+							.Text(FText::FromString(TEXT("Accept")))
+							.OnClicked_Lambda([AssetPath, ProbeTargetKey]()
+							{
+								return FBlueprintHelperReviewRowHighlightModel::AcceptHighlightedRow(
+									AssetPath,
+									EBlueprintHelperReviewSurface::UMGWidgetTree,
+									ProbeTargetKey);
+							})
+						]
+						+ SHorizontalBox::Slot()
+						.AutoWidth()
+						[
+							SNew(SButton)
+							.Text(FText::FromString(TEXT("Reject")))
+							.OnClicked_Lambda([AssetPath, ProbeTargetKey]()
+							{
+								return FBlueprintHelperReviewRowHighlightModel::RejectHighlightedRow(
+									AssetPath,
+									EBlueprintHelperReviewSurface::UMGWidgetTree,
+									ProbeTargetKey);
+							})
+						]
+					]
 				]
 			];
 
@@ -360,6 +427,481 @@ namespace BlueprintHelperReviewAssetPresentersPrivate
 			return ChangeHasTargetKind(Change, Surface, ExpectedKinds);
 		}
 		return true;
+	}
+
+	static FString GetAssetShortName(const FString& AssetPath)
+	{
+		FString Trimmed = AssetPath;
+		Trimmed.TrimStartAndEndInline();
+		if (Trimmed.IsEmpty())
+		{
+			return FString();
+		}
+
+		int32 SeparatorIndex = INDEX_NONE;
+		if (Trimmed.FindLastChar(TEXT('.'), SeparatorIndex)
+			|| Trimmed.FindLastChar(TEXT('/'), SeparatorIndex))
+		{
+			Trimmed = Trimmed.Mid(SeparatorIndex + 1);
+		}
+		Trimmed.TrimStartAndEndInline();
+		return Trimmed;
+	}
+
+	static FString ExtractReadableTail(FString Text)
+	{
+		Text.TrimStartAndEndInline();
+		int32 SeparatorIndex = INDEX_NONE;
+		if (Text.FindLastChar(TEXT(':'), SeparatorIndex)
+			|| Text.FindLastChar(TEXT('/'), SeparatorIndex)
+			|| Text.FindLastChar(TEXT('.'), SeparatorIndex))
+		{
+			Text = Text.Mid(SeparatorIndex + 1);
+		}
+		Text.TrimStartAndEndInline();
+		return Text;
+	}
+
+	static FSlateColor GetRowBackgroundOrDefault(
+		const FString& AssetPath,
+		EBlueprintHelperReviewSurface Surface,
+		const FString& SearchText,
+		const FLinearColor& DefaultColor)
+	{
+		const FSlateColor HighlightColor =
+			FBlueprintHelperReviewRowHighlightModel::GetRowBackgroundColor(AssetPath, Surface, SearchText);
+		if (HighlightColor.GetSpecifiedColor().A > 0.0f)
+		{
+			return HighlightColor;
+		}
+		return FSlateColor(DefaultColor);
+	}
+
+	static TSharedRef<SWidget> BuildRowActions(
+		const FString& AssetPath,
+		EBlueprintHelperReviewSurface Surface,
+		const FString& SearchText)
+	{
+		return SNew(SHorizontalBox)
+			.Visibility_Lambda([AssetPath, Surface, SearchText]()
+			{
+				return FBlueprintHelperReviewRowHighlightModel::GetRowActionsVisibility(
+					AssetPath,
+					Surface,
+					SearchText);
+			})
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.Padding(0.0f, 0.0f, 4.0f, 0.0f)
+			[
+				SNew(SButton)
+				.Text(FText::FromString(TEXT("Accept")))
+				.OnClicked_Lambda([AssetPath, Surface, SearchText]()
+				{
+					return FBlueprintHelperReviewRowHighlightModel::AcceptHighlightedRow(
+						AssetPath,
+						Surface,
+						SearchText);
+				})
+			]
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			[
+				SNew(SButton)
+				.Text(FText::FromString(TEXT("Reject")))
+				.OnClicked_Lambda([AssetPath, Surface, SearchText]()
+				{
+					return FBlueprintHelperReviewRowHighlightModel::RejectHighlightedRow(
+						AssetPath,
+						Surface,
+						SearchText);
+				})
+			];
+	}
+
+	static TSharedRef<SWidget> BuildRowHighlightShell(
+		const FString& AssetPath,
+		EBlueprintHelperReviewSurface Surface,
+		const FString& SearchText,
+		TSharedRef<SWidget> Content,
+		const FLinearColor& DefaultBackground = FLinearColor::Transparent)
+	{
+		return SNew(SBorder)
+			.BorderImage(FAppStyle::GetBrush(TEXT("Brushes.White")))
+			.BorderBackgroundColor_Lambda([AssetPath, Surface, SearchText, DefaultBackground]()
+			{
+				return GetRowBackgroundOrDefault(AssetPath, Surface, SearchText, DefaultBackground);
+			})
+			.Padding(FMargin(4.0f, 2.0f))
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot()
+				.FillWidth(1.0f)
+				.VAlign(VAlign_Center)
+				[
+					Content
+				]
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.Padding(6.0f, 0.0f, 0.0f, 0.0f)
+				.VAlign(VAlign_Center)
+				[
+					BuildRowActions(AssetPath, Surface, SearchText)
+				]
+			];
+	}
+
+	static void RegisterRowSearchAliases(
+		const FString& AssetPath,
+		EBlueprintHelperReviewSurface Surface,
+		const FString& PrimaryKey,
+		const TSharedRef<SWidget>& RowWidget,
+		const TCHAR* DebugMode)
+	{
+		if (PrimaryKey.IsEmpty())
+		{
+			return;
+		}
+		FBlueprintHelperReviewSlateRowGeometryRegistry::RegisterRow(
+			AssetPath,
+			Surface,
+			PrimaryKey,
+			RowWidget,
+			DebugMode);
+		const FString Tail = ExtractReadableTail(PrimaryKey);
+		if (!Tail.IsEmpty() && Tail != PrimaryKey)
+		{
+			FBlueprintHelperReviewSlateRowGeometryRegistry::RegisterRow(
+				AssetPath,
+				Surface,
+				Tail,
+				RowWidget,
+				DebugMode);
+		}
+	}
+
+	using FDataTableReviewColumnPtr = TSharedPtr<FDataTableEditorColumnHeaderData>;
+	using FDataTableReviewRowPtr = TSharedPtr<FDataTableEditorRowListViewData>;
+
+	static const FName ReviewDataTableRowNameColumnId(TEXT("RowName"));
+	static const FName ReviewDataTableActionsColumnId(TEXT("ReviewActions"));
+
+	class SBlueprintHelperReviewDataTableRow
+		: public SMultiColumnTableRow<FDataTableReviewRowPtr>
+	{
+	public:
+		SLATE_BEGIN_ARGS(SBlueprintHelperReviewDataTableRow) {}
+			SLATE_ARGUMENT(FDataTableReviewRowPtr, RowData)
+			SLATE_ARGUMENT(TArray<FDataTableReviewColumnPtr>*, Columns)
+			SLATE_ARGUMENT(FString, AssetPath)
+			SLATE_EVENT(FBlueprintHelperReviewGeometryInvalidated, OnGeometryInvalidated)
+		SLATE_END_ARGS()
+
+		void Construct(
+			const FArguments& InArgs,
+			const TSharedRef<STableViewBase>& InOwnerTableView)
+		{
+			RowData = InArgs._RowData;
+			Columns = InArgs._Columns;
+			AssetPath = InArgs._AssetPath;
+			OnGeometryInvalidated = InArgs._OnGeometryInvalidated;
+
+			SMultiColumnTableRow<FDataTableReviewRowPtr>::Construct(
+				SMultiColumnTableRow<FDataTableReviewRowPtr>::FArguments()
+					.Style(FAppStyle::Get(), TEXT("DataTableEditor.CellListViewRow")),
+				InOwnerTableView);
+		}
+
+		virtual TSharedRef<SWidget> GenerateWidgetForColumn(const FName& ColumnName) override
+		{
+			const FString RowName = RowData.IsValid() ? RowData->RowId.ToString() : FString(TEXT("<invalid>"));
+			const FString SearchText = FString::Printf(TEXT("datatable_row:%s"), *RowName);
+			TSharedRef<SWidget> Cell = BuildCellWidget(ColumnName);
+			TSharedRef<SWidget> RowCell = SNew(SBlueprintHelperReviewGeometryProbe)
+				.Surface(EBlueprintHelperReviewSurface::DataTable)
+				.TargetKey(SearchText)
+				.OnGeometryInvalidated(OnGeometryInvalidated)
+				[
+					BuildRowHighlightShell(
+						AssetPath,
+						EBlueprintHelperReviewSurface::DataTable,
+						SearchText,
+						Cell)
+				];
+
+			RegisterRowSearchAliases(
+				AssetPath,
+				EBlueprintHelperReviewSurface::DataTable,
+				SearchText,
+				RowCell,
+				TEXT("native_datatable_row"));
+			RegisterRowSearchAliases(
+				AssetPath,
+				EBlueprintHelperReviewSurface::DataTable,
+				RowName,
+				RowCell,
+				TEXT("native_datatable_row"));
+			return RowCell;
+		}
+
+	private:
+		TSharedRef<SWidget> BuildCellWidget(const FName& ColumnName) const
+		{
+			if (!RowData.IsValid())
+			{
+				return SNullWidget::NullWidget;
+			}
+
+			if (ColumnName == ReviewDataTableActionsColumnId)
+			{
+				return SNew(SSpacer)
+					.Size(FVector2D(1.0f, 1.0f));
+			}
+
+			if (ColumnName == ReviewDataTableRowNameColumnId)
+			{
+				return SNew(STextBlock)
+					.TextStyle(FAppStyle::Get(), TEXT("DataTableEditor.CellText"))
+					.Text(RowData->DisplayName);
+			}
+
+			const int32 ColumnIndex = Columns
+				? Columns->IndexOfByPredicate([ColumnName](const FDataTableReviewColumnPtr& Column)
+				{
+					return Column.IsValid() && Column->ColumnId == ColumnName;
+				})
+				: INDEX_NONE;
+
+			if (ColumnIndex != INDEX_NONE && RowData->CellData.IsValidIndex(ColumnIndex))
+			{
+				return SNew(STextBlock)
+					.TextStyle(FAppStyle::Get(), TEXT("DataTableEditor.CellText"))
+					.Text(RowData->CellData[ColumnIndex])
+					.ToolTipText(RowData->CellData[ColumnIndex]);
+			}
+
+			return SNullWidget::NullWidget;
+		}
+
+		FDataTableReviewRowPtr RowData;
+		TArray<FDataTableReviewColumnPtr>* Columns = nullptr;
+		FString AssetPath;
+		FBlueprintHelperReviewGeometryInvalidated OnGeometryInvalidated;
+	};
+
+	static TSharedRef<SWidget> BuildAssetSummaryRow(
+		const FString& AssetPath,
+		EBlueprintHelperReviewSurface Surface,
+		const FString& Label,
+		const FString& SearchText,
+		const FLinearColor& DefaultBackground = FLinearColor(0.05f, 0.05f, 0.05f, 1.0f))
+	{
+		TSharedRef<SWidget> RowContent =
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.Padding(0.0f, 0.0f, 6.0f, 0.0f)
+			.VAlign(VAlign_Center)
+			[
+				SNew(SImage)
+				.Image(FAppStyle::GetBrush(TEXT("Icons.Info")))
+			]
+			+ SHorizontalBox::Slot()
+			.FillWidth(1.0f)
+			.VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.Text(FText::FromString(Label))
+				.ColorAndOpacity(FSlateColor(FLinearColor(0.84f, 0.84f, 0.84f, 1.0f)))
+			];
+
+		TSharedRef<SWidget> RowWidget = SNew(SBlueprintHelperReviewGeometryProbe)
+			.Surface(Surface)
+			.TargetKey(SearchText)
+			[
+				BuildRowHighlightShell(
+					AssetPath,
+					Surface,
+					SearchText,
+					RowContent,
+					DefaultBackground)
+			];
+		RegisterRowSearchAliases(AssetPath, Surface, SearchText, RowWidget, TEXT("native_asset_summary_row"));
+		return RowWidget;
+	}
+
+	static FString GetDetailNodeSearchText(const TSharedPtr<IDetailTreeNode>& DetailNode)
+	{
+		if (!DetailNode.IsValid())
+		{
+			return FString();
+		}
+
+		TArray<FString> FilterStrings;
+		DetailNode->GetFilterStrings(FilterStrings);
+		FString SearchText = DetailNode->GetNodeName().ToString();
+		for (const FString& FilterString : FilterStrings)
+		{
+			if (!FilterString.IsEmpty())
+			{
+				if (!SearchText.IsEmpty())
+				{
+					SearchText += TEXT(" ");
+				}
+				SearchText += FilterString;
+			}
+		}
+		if (const TSharedPtr<IPropertyHandle> PropertyHandle = DetailNode->CreatePropertyHandle())
+		{
+			if (const FProperty* Property = PropertyHandle->GetProperty())
+			{
+				SearchText += FString::Printf(
+					TEXT(" object_property:%s data_asset_property:%s %s"),
+					*Property->GetName(),
+					*Property->GetName(),
+					*Property->GetDisplayNameText().ToString());
+			}
+		}
+		SearchText.TrimStartAndEndInline();
+		return SearchText;
+	}
+
+	static void FlattenDetailTreeNodes(
+		const TArray<TSharedRef<IDetailTreeNode>>& Nodes,
+		int32 Depth,
+		TArray<TSharedPtr<FBlueprintHelperReviewDataAssetRowItem>>& OutRows)
+	{
+		for (const TSharedRef<IDetailTreeNode>& Node : Nodes)
+		{
+			TSharedRef<FBlueprintHelperReviewDataAssetRowItem> Row =
+				MakeShared<FBlueprintHelperReviewDataAssetRowItem>();
+			Row->DetailNode = Node;
+			Row->Depth = Depth;
+			Row->bIsSection = Node->GetNodeType() == EDetailNodeType::Category
+				|| Node->GetNodeType() == EDetailNodeType::Object;
+			Row->Label = Node->GetNodeName().ToString();
+			Row->SearchText = GetDetailNodeSearchText(Node);
+			OutRows.Add(Row);
+
+			TArray<TSharedRef<IDetailTreeNode>> Children;
+			Node->GetChildren(Children, true);
+			FlattenDetailTreeNodes(Children, Depth + 1, OutRows);
+		}
+	}
+
+	static TSharedRef<SWidget> BuildDataAssetRowContent(
+		const TSharedPtr<FBlueprintHelperReviewDataAssetRowItem>& Item)
+	{
+		if (!Item.IsValid())
+		{
+			return SNullWidget::NullWidget;
+		}
+
+		if (Item->DetailNode.IsValid())
+		{
+			const FNodeWidgets NodeWidgets = Item->DetailNode->CreateNodeWidgets();
+			if (NodeWidgets.WholeRowWidget.IsValid())
+			{
+				return NodeWidgets.WholeRowWidget.ToSharedRef();
+			}
+			TSharedRef<SWidget> NameWidget = NodeWidgets.NameWidget.IsValid()
+				? NodeWidgets.NameWidget.ToSharedRef()
+				: StaticCastSharedRef<SWidget>(SNew(STextBlock).Text(FText::FromString(Item->Label)));
+			TSharedRef<SWidget> ValueWidget = NodeWidgets.ValueWidget.IsValid()
+				? NodeWidgets.ValueWidget.ToSharedRef()
+				: StaticCastSharedRef<SWidget>(SNew(STextBlock).Text(FText::FromString(Item->Value)));
+			return SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot()
+				.FillWidth(0.42f)
+				.VAlign(VAlign_Center)
+				[
+					NameWidget
+				]
+				+ SHorizontalBox::Slot()
+				.FillWidth(0.58f)
+				.Padding(8.0f, 0.0f, 0.0f, 0.0f)
+				.VAlign(VAlign_Center)
+				[
+					ValueWidget
+				];
+		}
+
+		return SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot()
+			.FillWidth(1.0f)
+			.VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.Text(FText::FromString(Item->Label))
+				.ColorAndOpacity(FSlateColor(Item->bIsSection
+					? FLinearColor(0.88f, 0.88f, 0.88f, 1.0f)
+					: FLinearColor(0.72f, 0.72f, 0.72f, 1.0f)))
+			]
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.Padding(10.0f, 0.0f, 0.0f, 0.0f)
+			.VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.Text(FText::FromString(Item->Value))
+				.ColorAndOpacity(FSlateColor(FLinearColor(0.58f, 0.58f, 0.58f, 1.0f)))
+			];
+	}
+
+	static TSharedRef<ITableRow> GenerateDataAssetRow(
+		TSharedPtr<FBlueprintHelperReviewDataAssetRowItem> Item,
+		const TSharedRef<STableViewBase>& OwnerTable,
+		const FString AssetPath,
+		FBlueprintHelperReviewGeometryInvalidated OnGeometryInvalidated)
+	{
+		const FString SearchText = Item.IsValid() && !Item->SearchText.IsEmpty()
+			? Item->SearchText
+			: (Item.IsValid() ? Item->Label : FString(TEXT("data_asset_row")));
+		const float DepthPadding = Item.IsValid()
+			? static_cast<float>(FMath::Max(0, Item->Depth) * 12)
+			: 0.0f;
+		const FLinearColor DefaultBackground = Item.IsValid() && Item->bIsSection
+			? FLinearColor(0.18f, 0.18f, 0.18f, 1.0f)
+			: FLinearColor::Transparent;
+
+		TSharedRef<SWidget> RowContent = SNew(SBlueprintHelperReviewGeometryProbe)
+			.Surface(EBlueprintHelperReviewSurface::DataAsset)
+			.TargetKey(SearchText)
+			.OnGeometryInvalidated(OnGeometryInvalidated)
+			[
+				BuildRowHighlightShell(
+					AssetPath,
+					EBlueprintHelperReviewSurface::DataAsset,
+					SearchText,
+					BuildDataAssetRowContent(Item),
+					DefaultBackground)
+			];
+
+		TSharedRef<STableRow<TSharedPtr<FBlueprintHelperReviewDataAssetRowItem>>> RowWidget =
+			SNew(STableRow<TSharedPtr<FBlueprintHelperReviewDataAssetRowItem>>, OwnerTable)
+			.Padding(FMargin(DepthPadding, 1.0f, 2.0f, 1.0f))
+			[
+				RowContent
+			];
+
+		if (Item.IsValid())
+		{
+			Item->RowWidget = RowContent;
+			RegisterRowSearchAliases(
+				AssetPath,
+				EBlueprintHelperReviewSurface::DataAsset,
+				SearchText,
+				RowContent,
+				Item->DetailNode.IsValid() ? TEXT("native_details_row") : TEXT("native_structure_row"));
+			RegisterRowSearchAliases(
+				AssetPath,
+				EBlueprintHelperReviewSurface::DataAsset,
+				Item->Label,
+				RowContent,
+				Item->DetailNode.IsValid() ? TEXT("native_details_row") : TEXT("native_structure_row"));
+		}
+
+		return RowWidget;
 	}
 }
 
@@ -471,7 +1013,7 @@ TSharedRef<SWidget> FBlueprintHelperReviewUMGWidgetTreePresenter::BuildContent(
 TSharedRef<SWidget> FBlueprintHelperReviewUMGWidgetTreePresenter::BuildOverlay(
 	const FBlueprintHelperReviewPanelSurfacePresenterArgs& Args)
 {
-	return FBlueprintHelperReviewSurfaceFrameBuilder::BuildReviewListOverlay(
+	return FBlueprintHelperReviewRowHighlightModel::BuildRowHighlightOverlay(
 		Args,
 		EBlueprintHelperReviewSurface::UMGWidgetTree,
 		&FBlueprintHelperReviewUMGWidgetTreePresenter::ShouldShowChange);
@@ -488,57 +1030,110 @@ bool FBlueprintHelperReviewDataTablePresenter::ShouldShowChange(
 
 TSharedRef<SWidget> FBlueprintHelperReviewDataTablePresenter::BuildContent(
 	const FBlueprintHelperReviewAssetContext& Context,
+	FBlueprintHelperReviewDataTablePresenterState& State,
 	FBlueprintHelperReviewGeometryInvalidated OnGeometryInvalidated)
 {
-	TArray<FString> Lines;
-	Lines.Add(FString::Printf(TEXT("Asset: %s"), *Context.AssetPath));
-	Lines.Add(FString::Printf(TEXT("Kind: %s"), BlueprintHelperReviewAssetKindToString(Context.AssetKind)));
+	using namespace BlueprintHelperReviewAssetPresentersPrivate;
 
-	FBlueprintHelperDataTableService DataTableService;
-	const FString DataTableAssetPath = Context.ObjectPath.IsEmpty() ? Context.AssetPath : Context.ObjectPath;
-	const FBlueprintHelperDataTableRowsResult Result = DataTableService.GetDataTableRows(DataTableAssetPath);
-	if (!Result.bSuccess)
+	State.Columns.Reset();
+	State.Rows.Reset();
+	State.ListView.Reset();
+
+	UDataTable* DataTable = Context.DataTable.Get();
+	if (!DataTable)
 	{
-		Lines.Add(FString::Printf(TEXT("DataTable: unavailable (%s)"), *Result.ErrorMessage));
+		DataTable = Cast<UDataTable>(Context.AssetObject.Get());
+	}
+
+	if (!DataTable)
+	{
+		TArray<FString> Lines;
+		Lines.Add(FString::Printf(TEXT("Asset: %s"), *Context.AssetPath));
+		Lines.Add(FString::Printf(TEXT("Kind: %s"), BlueprintHelperReviewAssetKindToString(Context.AssetKind)));
+		Lines.Add(TEXT("DataTable: unavailable"));
 		return BlueprintHelperReviewAssetPresentersPrivate::BuildSummaryPanel(
 			TEXT("DataTable Summary"),
 			Lines,
-			Context.AssetPath,
-			EBlueprintHelperReviewSurface::DataTable,
+			FString(),
+			EBlueprintHelperReviewSurface::Unknown,
 			OnGeometryInvalidated);
 	}
 
-	Lines.Add(FString::Printf(TEXT("Row struct: %s"), Result.RowStructName.IsEmpty() ? TEXT("<none>") : *Result.RowStructName));
-	Lines.Add(FString::Printf(TEXT("Column count: %d"), Result.Columns.Num()));
-	Lines.Add(FString::Printf(TEXT("Row count: %d"), Result.Rows.Num()));
+	FDataTableEditorUtils::CacheDataTableForEditing(DataTable, State.Columns, State.Rows);
 
-	for (const FBlueprintHelperDataTableColumnInfo& Column : Result.Columns)
+	TSharedRef<SHeaderRow> HeaderRow = SNew(SHeaderRow)
+		+ SHeaderRow::Column(ReviewDataTableRowNameColumnId)
+		.DefaultLabel(FText::FromString(TEXT("Row")))
+		.ManualWidth(160.0f);
+	for (const FDataTableReviewColumnPtr& Column : State.Columns)
 	{
-		Lines.Add(FString::Printf(TEXT("Column: %s : %s"), *Column.Name, *Column.TypeName));
-	}
-
-	for (const FBlueprintHelperDataTableRowInfo& Row : Result.Rows)
-	{
-		FString RowLine = FString::Printf(TEXT("Row: %s"), *Row.RowName.ToString());
-		for (const TPair<FString, FString>& Field : Row.Fields)
+		if (!Column.IsValid())
 		{
-			RowLine += FString::Printf(TEXT(" %s=%s"), *Field.Key, *Field.Value);
+			continue;
 		}
-		Lines.Add(RowLine);
+		HeaderRow->AddColumn(
+			SHeaderRow::Column(Column->ColumnId)
+			.DefaultLabel(Column->DisplayName)
+			.ManualWidth(FMath::Max(96.0f, Column->DesiredColumnWidth)));
 	}
+	HeaderRow->AddColumn(
+		SHeaderRow::Column(ReviewDataTableActionsColumnId)
+		.DefaultLabel(FText::GetEmpty())
+		.FixedWidth(148.0f));
 
-	return BlueprintHelperReviewAssetPresentersPrivate::BuildSummaryPanel(
-		TEXT("DataTable Summary"),
-		Lines,
-		Context.AssetPath,
-		EBlueprintHelperReviewSurface::DataTable,
-		OnGeometryInvalidated);
+	const FString AssetPath = Context.AssetPath;
+	TArray<FDataTableReviewColumnPtr>* ColumnSource = &State.Columns;
+	TSharedRef<SListView<FDataTableReviewRowPtr>> ListView =
+		SAssignNew(State.ListView, SListView<FDataTableReviewRowPtr>)
+		.ListItemsSource(&State.Rows)
+		.SelectionMode(ESelectionMode::None)
+		.HeaderRow(HeaderRow)
+		.OnGenerateRow_Lambda([AssetPath, OnGeometryInvalidated, ColumnSource](
+			FDataTableReviewRowPtr RowData,
+			const TSharedRef<STableViewBase>& OwnerTable) -> TSharedRef<ITableRow>
+		{
+			return SNew(SBlueprintHelperReviewDataTableRow, OwnerTable)
+				.RowData(RowData)
+				.Columns(ColumnSource)
+				.AssetPath(AssetPath)
+				.OnGeometryInvalidated(OnGeometryInvalidated);
+		});
+
+	const FString AssetName = GetAssetShortName(Context.AssetPath);
+	const FString SummarySearchText = FString::Printf(
+		TEXT("asset_factory:data_table data_table %s %s"),
+		*AssetName,
+		*Context.AssetPath);
+	return SNew(SBorder)
+		.Padding(8.0f)
+		[
+			SNew(SVerticalBox)
+			+ SVerticalBox::Slot()
+			.AutoHeight()
+			.Padding(0.0f, 0.0f, 0.0f, 4.0f)
+			[
+				BuildAssetSummaryRow(
+					Context.AssetPath,
+					EBlueprintHelperReviewSurface::DataTable,
+					FString::Printf(
+						TEXT("DataTable: %s  Rows: %d  Columns: %d"),
+						*AssetName,
+						State.Rows.Num(),
+						State.Columns.Num()),
+					SummarySearchText)
+			]
+			+ SVerticalBox::Slot()
+			.FillHeight(1.0f)
+			[
+				ListView
+			]
+		];
 }
 
 TSharedRef<SWidget> FBlueprintHelperReviewDataTablePresenter::BuildOverlay(
 	const FBlueprintHelperReviewPanelSurfacePresenterArgs& Args)
 {
-	return FBlueprintHelperReviewSurfaceFrameBuilder::BuildReviewListOverlay(
+	return FBlueprintHelperReviewRowHighlightModel::BuildRowHighlightOverlay(
 		Args,
 		EBlueprintHelperReviewSurface::DataTable,
 		&FBlueprintHelperReviewDataTablePresenter::ShouldShowChange);
@@ -550,54 +1145,124 @@ bool FBlueprintHelperReviewDataAssetPresenter::ShouldShowChange(
 	return BlueprintHelperReviewAssetPresentersPrivate::ShouldShowIndependentSurfaceChange(
 		Change,
 		EBlueprintHelperReviewSurface::DataAsset,
-		{TEXT("object_property"), TEXT("data_asset_property"), TEXT("asset_factory")});
+		{
+			TEXT("object_property"),
+			TEXT("data_asset_property"),
+			TEXT("asset_factory"),
+			TEXT("structure"),
+			TEXT("struct_field"),
+			TEXT("structure_field")
+		});
 }
 
 TSharedRef<SWidget> FBlueprintHelperReviewDataAssetPresenter::BuildContent(
 	const FBlueprintHelperReviewAssetContext& Context,
+	FBlueprintHelperReviewDataAssetPresenterState& State,
 	FBlueprintHelperReviewGeometryInvalidated OnGeometryInvalidated)
 {
-	TArray<FString> Lines;
-	Lines.Add(FString::Printf(TEXT("Asset: %s"), *Context.AssetPath));
-	Lines.Add(FString::Printf(TEXT("Kind: %s"), BlueprintHelperReviewAssetKindToString(Context.AssetKind)));
+	using namespace BlueprintHelperReviewAssetPresentersPrivate;
 
-	FBlueprintHelperPropertyReflectionService PropertyService;
-	const FString ObjectAssetPath = Context.ObjectPath.IsEmpty() ? Context.AssetPath : Context.ObjectPath;
-	const FBlueprintHelperObjectPropertiesResult Result = PropertyService.GetObjectProperties(ObjectAssetPath);
-	if (!Result.bSuccess)
+	State.Rows.Reset();
+	State.ListView.Reset();
+	State.PropertyRowGenerator.Reset();
+
+	const FString AssetName = GetAssetShortName(Context.AssetPath);
+
+	if (UUserDefinedStruct* Structure = Context.Structure.Get())
 	{
-		Lines.Add(FString::Printf(TEXT("Object properties: unavailable (%s)"), *Result.ErrorMessage));
+		TSharedRef<FBlueprintHelperReviewDataAssetRowItem> SummaryRow =
+			MakeShared<FBlueprintHelperReviewDataAssetRowItem>();
+		SummaryRow->Label = FString::Printf(TEXT("Structure: %s"), *AssetName);
+		SummaryRow->Value = FString::Printf(TEXT("Fields: %d"), FStructureEditorUtils::GetVarDesc(Structure).Num());
+		SummaryRow->SearchText = FString::Printf(
+			TEXT("asset_factory:structure structure %s %s"),
+			*AssetName,
+			*Context.AssetPath);
+		SummaryRow->bIsSection = true;
+		State.Rows.Add(SummaryRow);
+
+		for (const FStructVariableDescription& Variable : FStructureEditorUtils::GetVarDesc(Structure))
+		{
+			const FString FriendlyName = Variable.FriendlyName.IsEmpty()
+				? Variable.VarName.ToString()
+				: Variable.FriendlyName;
+			TSharedRef<FBlueprintHelperReviewDataAssetRowItem> Row =
+				MakeShared<FBlueprintHelperReviewDataAssetRowItem>();
+			Row->Label = FriendlyName;
+			Row->Value = Variable.ToPinType().PinCategory.ToString();
+			Row->SearchText = FString::Printf(
+				TEXT("struct_field:%s structure_field:%s %s"),
+				*FriendlyName,
+				*FriendlyName,
+				*Variable.VarName.ToString());
+			Row->Depth = 1;
+			State.Rows.Add(Row);
+		}
+	}
+	else if (UObject* AssetObject = Context.AssetObject.Get())
+	{
+		TSharedRef<FBlueprintHelperReviewDataAssetRowItem> SummaryRow =
+			MakeShared<FBlueprintHelperReviewDataAssetRowItem>();
+		SummaryRow->Label = FString::Printf(TEXT("Object: %s"), *AssetName);
+		SummaryRow->Value = AssetObject->GetClass() ? AssetObject->GetClass()->GetName() : FString(TEXT("<unknown>"));
+		SummaryRow->SearchText = FString::Printf(
+			TEXT("asset_factory:data_asset data_asset object_property %s %s"),
+			*AssetName,
+			*Context.AssetPath);
+		SummaryRow->bIsSection = true;
+		State.Rows.Add(SummaryRow);
+
+		FPropertyEditorModule& PropertyEditorModule =
+			FModuleManager::LoadModuleChecked<FPropertyEditorModule>(TEXT("PropertyEditor"));
+		FPropertyRowGeneratorArgs RowGeneratorArgs;
+		RowGeneratorArgs.bShouldShowHiddenProperties = false;
+		RowGeneratorArgs.bAllowEditingClassDefaultObjects = false;
+		State.PropertyRowGenerator = PropertyEditorModule.CreatePropertyRowGenerator(RowGeneratorArgs);
+		State.PropertyRowGenerator->SetObjects({ AssetObject });
+
+		FlattenDetailTreeNodes(
+			State.PropertyRowGenerator->GetRootTreeNodes(),
+			0,
+			State.Rows);
+	}
+
+	if (State.Rows.Num() == 0)
+	{
+		TArray<FString> Lines;
+		Lines.Add(FString::Printf(TEXT("Asset: %s"), *Context.AssetPath));
+		Lines.Add(FString::Printf(TEXT("Kind: %s"), BlueprintHelperReviewAssetKindToString(Context.AssetKind)));
+		Lines.Add(TEXT("Object rows: unavailable"));
 		return BlueprintHelperReviewAssetPresentersPrivate::BuildSummaryPanel(
-			TEXT("Object Details Summary"),
+			TEXT("Object Details"),
 			Lines,
-			Context.AssetPath,
-			EBlueprintHelperReviewSurface::DataAsset,
+			FString(),
+			EBlueprintHelperReviewSurface::Unknown,
 			OnGeometryInvalidated);
 	}
 
-	Lines.Add(FString::Printf(TEXT("Class: %s"), Result.ClassName.IsEmpty() ? TEXT("<none>") : *Result.ClassName));
-	Lines.Add(FString::Printf(TEXT("Property count: %d"), Result.Properties.Num()));
-	for (const FBlueprintHelperObjectPropertyInfo& Property : Result.Properties)
-	{
-		Lines.Add(FString::Printf(
-			TEXT("- %s : %s = %s"),
-			*Property.Name,
-			*Property.TypeName,
-			*Property.Value));
-	}
+	const FString AssetPath = Context.AssetPath;
+	TSharedRef<SListView<TSharedPtr<FBlueprintHelperReviewDataAssetRowItem>>> ListView =
+		SAssignNew(State.ListView, SListView<TSharedPtr<FBlueprintHelperReviewDataAssetRowItem>>)
+		.ListItemsSource(&State.Rows)
+		.SelectionMode(ESelectionMode::None)
+		.OnGenerateRow_Lambda([AssetPath, OnGeometryInvalidated](
+			TSharedPtr<FBlueprintHelperReviewDataAssetRowItem> Item,
+			const TSharedRef<STableViewBase>& OwnerTable) -> TSharedRef<ITableRow>
+		{
+			return GenerateDataAssetRow(Item, OwnerTable, AssetPath, OnGeometryInvalidated);
+		});
 
-	return BlueprintHelperReviewAssetPresentersPrivate::BuildSummaryPanel(
-		TEXT("Object Details Summary"),
-		Lines,
-		Context.AssetPath,
-		EBlueprintHelperReviewSurface::DataAsset,
-		OnGeometryInvalidated);
+	return SNew(SBorder)
+		.Padding(8.0f)
+		[
+			ListView
+		];
 }
 
 TSharedRef<SWidget> FBlueprintHelperReviewDataAssetPresenter::BuildOverlay(
 	const FBlueprintHelperReviewPanelSurfacePresenterArgs& Args)
 {
-	return FBlueprintHelperReviewSurfaceFrameBuilder::BuildReviewListOverlay(
+	return FBlueprintHelperReviewRowHighlightModel::BuildRowHighlightOverlay(
 		Args,
 		EBlueprintHelperReviewSurface::DataAsset,
 		&FBlueprintHelperReviewDataAssetPresenter::ShouldShowChange);

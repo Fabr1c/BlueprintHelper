@@ -26,6 +26,11 @@ public:
 		{
 			Name = Name.Mid(DotIndex + 1);
 		}
+		int32 SlashIndex = INDEX_NONE;
+		if (Name.FindLastChar(TEXT('/'), SlashIndex))
+		{
+			Name = Name.Mid(SlashIndex + 1);
+		}
 		return Name;
 	}
 
@@ -68,14 +73,124 @@ public:
 			*TargetKey);
 	}
 
-	static void AddJournalAtomicTarget(
+	static bool TryNormalizeGuidString(const FString& Value, FString& OutGuid)
+	{
+		OutGuid.Reset();
+		FString Candidate = Value;
+		Candidate.TrimStartAndEndInline();
+		if (Candidate.IsEmpty())
+		{
+			return false;
+		}
+
+		FGuid ParsedGuid;
+		if (!FGuid::Parse(Candidate, ParsedGuid))
+		{
+			return false;
+		}
+
+		OutGuid = ParsedGuid.ToString(EGuidFormats::Digits);
+		return true;
+	}
+
+	static TSharedRef<FJsonObject> MakeVectorJson(const FVector2D& Value)
+	{
+		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+		Json->SetNumberField(TEXT("x"), Value.X);
+		Json->SetNumberField(TEXT("y"), Value.Y);
+		return Json;
+	}
+
+	static FString SerializeJsonObject(const TSharedRef<FJsonObject>& Json)
+	{
+		FString JsonText;
+		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonText);
+		FJsonSerializer::Serialize(Json, Writer);
+		return JsonText;
+	}
+
+	static FString MakeStructuredAnchorJson(const FBlueprintHelperGraphReviewNodeAnchor& Anchor)
+	{
+		TSharedRef<FJsonObject> Json = Anchor.ToJson();
+		Json->SetStringField(TEXT("anchor_source"), TEXT("structured"));
+		return SerializeJsonObject(Json);
+	}
+
+	static FString MakeLegacyNodeGuidAnchorJson(const FString& NodeGuid)
+	{
+		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+		Json->SetStringField(TEXT("anchor_source"), TEXT("legacy"));
+		Json->SetStringField(TEXT("node_guid"), NodeGuid);
+		return SerializeJsonObject(Json);
+	}
+
+	static FString MakeAggregateAnchorJson(
+		const FVector2D& Position,
+		const FVector2D& Size,
+		const FString& Source)
+	{
+		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+		Json->SetStringField(TEXT("anchor_source"), Source);
+		Json->SetObjectField(TEXT("graph_position"), MakeVectorJson(Position));
+		Json->SetObjectField(TEXT("graph_size"), MakeVectorJson(Size));
+		Json->SetBoolField(TEXT("has_graph_bounds"), true);
+		return SerializeJsonObject(Json);
+	}
+
+	static bool TryBuildAggregateRecordedBounds(
+		const TArray<FBlueprintHelperGraphReviewNodeAnchor>& Anchors,
+		FVector2D& OutPosition,
+		FVector2D& OutSize)
+	{
+		FBox2D Bounds(ForceInit);
+		bool bHasBounds = false;
+		for (const FBlueprintHelperGraphReviewNodeAnchor& Anchor : Anchors)
+		{
+			if (!Anchor.bHasGraphBounds)
+			{
+				continue;
+			}
+
+			Bounds += Anchor.GraphPosition;
+			Bounds += Anchor.GraphPosition + Anchor.GraphSize;
+			bHasBounds = true;
+		}
+
+		if (!bHasBounds)
+		{
+			return false;
+		}
+
+		OutPosition = Bounds.Min;
+		OutSize = Bounds.Max - Bounds.Min;
+		return true;
+	}
+
+	static void ApplyRecordedBounds(
+		FBlueprintHelperReviewAtomicTarget& Target,
+		const FVector2D& Position,
+		const FVector2D& Size,
+		const FString& AnchorJson)
+	{
+		Target.bHasGraphBounds = true;
+		Target.GraphPosition = Position;
+		Target.GraphSize = Size;
+		Target.AnchorJson = AnchorJson;
+	}
+
+	static FBlueprintHelperReviewAtomicTarget& AddJournalAtomicTarget(
 		FBlueprintHelperWriteReviewEvidence& Evidence,
 		const FString& GraphName,
 		const FString& TargetKey,
 		const FString& TargetKind,
 		const FString& VisualGroupKey,
 		const FString& DisplayLabel,
-		const FString& RollbackDataRef)
+		const FString& RollbackDataRef,
+		const FString& NodeGuid = FString(),
+		bool bHasGraphBounds = false,
+		FVector2D GraphPosition = FVector2D::ZeroVector,
+		FVector2D GraphSize = FVector2D(360.0f, 180.0f),
+		const FString& AnchorJson = FString())
 	{
 		FBlueprintHelperReviewAtomicTarget Target;
 		Target.AssetPath = Evidence.AssetPath;
@@ -88,6 +203,11 @@ public:
 		Target.LatestTransactionId = Evidence.TransactionId;
 		Target.SourceTransactionIds.Add(Evidence.TransactionId);
 		Target.RollbackDataRef = RollbackDataRef;
+		Target.NodeGuid = NodeGuid;
+		Target.bHasGraphBounds = bHasGraphBounds;
+		Target.GraphPosition = GraphPosition;
+		Target.GraphSize = GraphSize;
+		Target.AnchorJson = AnchorJson;
 		Target.BaselineHash = MakeStableReviewHash(MakeReviewTargetHashPayload(
 			TEXT("baseline"),
 			Evidence,
@@ -111,6 +231,7 @@ public:
 		}
 		Target.Ownership = TEXT("blueprinthelper_owned");
 		Evidence.AtomicTargets.Add(Target);
+		return Evidence.AtomicTargets.Last();
 	}
 
 	static TArray<FBlueprintHelperWriteReviewEvidence> BuildReviewEvidencesFromJournal(
@@ -147,6 +268,13 @@ public:
 			Evidence.DisplayLabel = Record.Tool.IsEmpty() ? Record.TransactionId : Record.Tool;
 			Evidence.AfterSummary = Record.DiffSummary;
 
+			FVector2D AggregateGraphPosition = FVector2D::ZeroVector;
+			FVector2D AggregateGraphSize = FVector2D::ZeroVector;
+			const bool bHasAggregateRecordedBounds = TryBuildAggregateRecordedBounds(
+				Record.CreatedNodeAnchors,
+				AggregateGraphPosition,
+				AggregateGraphSize);
+
 			for (const FString& BlockId : Record.BlockIds)
 			{
 				const FString NormalizedBlockId =
@@ -155,7 +283,7 @@ public:
 					TEXT("graph:%s:block:%s"),
 					*GraphName,
 					*NormalizedBlockId);
-				AddJournalAtomicTarget(
+				FBlueprintHelperReviewAtomicTarget& BlockTarget = AddJournalAtomicTarget(
 					Evidence,
 					GraphName,
 					VisualGroupKey,
@@ -163,6 +291,14 @@ public:
 					VisualGroupKey,
 					BlockId,
 					RollbackDataRef);
+				if (bHasAggregateRecordedBounds)
+				{
+					ApplyRecordedBounds(
+						BlockTarget,
+						AggregateGraphPosition,
+						AggregateGraphSize,
+						MakeAggregateAnchorJson(AggregateGraphPosition, AggregateGraphSize, TEXT("structured")));
+				}
 			}
 
 			FString DefaultVisualGroupKey = FString::Printf(
@@ -179,21 +315,63 @@ public:
 					*FirstBlockId);
 			}
 
-			for (const FString& CreatedNodePath : Record.CreatedNodePaths)
+			if (Record.CreatedNodeAnchors.Num() > 0)
 			{
-				const FString NodeName = ExtractJournalTargetName(CreatedNodePath);
-				if (NodeName.IsEmpty())
+				for (const FBlueprintHelperGraphReviewNodeAnchor& Anchor : Record.CreatedNodeAnchors)
 				{
-					continue;
+					const FString NodeId = Anchor.NodeGuid.IsEmpty()
+						? ExtractJournalTargetName(Anchor.NodePath)
+						: Anchor.NodeGuid;
+					if (NodeId.IsEmpty())
+					{
+						continue;
+					}
+
+					const FString DisplayLabel = Anchor.DisplayLabel.IsEmpty()
+						? ExtractJournalTargetName(Anchor.NodePath)
+						: Anchor.DisplayLabel;
+					AddJournalAtomicTarget(
+						Evidence,
+						GraphName,
+						FString::Printf(TEXT("graph:%s:node:%s"), *GraphName, *NodeId),
+						TEXT("graph_node"),
+						DefaultVisualGroupKey,
+						DisplayLabel.IsEmpty() ? NodeId : DisplayLabel,
+						RollbackDataRef,
+						Anchor.NodeGuid,
+						Anchor.bHasGraphBounds,
+						Anchor.GraphPosition,
+						Anchor.GraphSize,
+						MakeStructuredAnchorJson(Anchor));
 				}
-				AddJournalAtomicTarget(
-					Evidence,
-					GraphName,
-					FString::Printf(TEXT("graph:%s:node:%s"), *GraphName, *NodeName),
-					TEXT("graph_node"),
-					DefaultVisualGroupKey,
-					NodeName,
-					RollbackDataRef);
+			}
+			else
+			{
+				for (const FString& CreatedNodePath : Record.CreatedNodePaths)
+				{
+					FString LegacyNodeGuid;
+					const bool bGuidNodePath = TryNormalizeGuidString(CreatedNodePath, LegacyNodeGuid);
+					const FString NodeName = bGuidNodePath
+						? LegacyNodeGuid
+						: ExtractJournalTargetName(CreatedNodePath);
+					if (NodeName.IsEmpty())
+					{
+						continue;
+					}
+					AddJournalAtomicTarget(
+						Evidence,
+						GraphName,
+						FString::Printf(TEXT("graph:%s:node:%s"), *GraphName, *NodeName),
+						TEXT("graph_node"),
+						DefaultVisualGroupKey,
+						NodeName,
+						RollbackDataRef,
+						bGuidNodePath ? LegacyNodeGuid : FString(),
+						false,
+						FVector2D::ZeroVector,
+						FVector2D(360.0f, 180.0f),
+						bGuidNodePath ? MakeLegacyNodeGuidAnchorJson(LegacyNodeGuid) : FString());
+				}
 			}
 
 			for (const FString& CreatedLinkPath : Record.CreatedLinkPaths)

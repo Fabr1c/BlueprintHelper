@@ -34,6 +34,19 @@ public:
 
 	void Construct(const FArguments& InArgs);
 
+#if WITH_DEV_AUTOMATION_TESTS
+	struct FReviewTreeSnapshotEntry
+	{
+		bool bIsAssetHeader = false;
+		FString AssetPath;
+		FString ChangeId;
+		int32 Depth = 0;
+	};
+
+	static TArray<FReviewTreeSnapshotEntry> BuildReviewTreeSnapshotForTesting(
+		const TArray<FBlueprintHelperReviewVisibleChange>& SourceChanges);
+#endif
+
 private:
 	using FReviewChangeItem = TSharedPtr<FBlueprintHelperReviewVisibleChange>;
 	struct FReviewTreeItem
@@ -81,8 +94,17 @@ private:
 	void RefreshSurfaceOverlay(EBlueprintHelperReviewSurface Surface);
 	void RebuildChangeTreeItems();
 	void RefreshChangeTreeWidget();
+	static void BuildChangeTreeItemsFromChangeItems(
+		const TArray<FReviewChangeItem>& SourceItems,
+		TArray<FReviewTreeItemPtr>& OutRootItems);
+	static FReviewTreeItemPtr FindTreeItemForChangeRecursive(
+		const TArray<FReviewTreeItemPtr>& Items,
+		FReviewChangeItem ChangeItem);
+	void ExpandChangeTreeItemRecursive(FReviewTreeItemPtr Item);
 	FReviewTreeItemPtr FindTreeItemForChange(FReviewChangeItem Item) const;
 	FReviewChangeItem FindChangeItemById(const FString& ChangeId) const;
+	TArray<FBlueprintHelperReviewVisibleChange> BuildPendingChangeSnapshot() const;
+	void SelectNextChangeAfterRemoval(const FString& PreferredAssetPath, int32 RemovedIndex);
 	FReply OnAcceptChangeId(const FString& ChangeId);
 	FReply OnRejectChangeId(const FString& ChangeId);
 
@@ -142,5 +164,7 @@ private:
 	FBlueprintHelperReviewBlueprintComponentsPresenter::FState ComponentsPresenterState;
 	FBlueprintHelperReviewWidgetTreePresenterState WidgetTreePresenterState;
 	FBlueprintHelperReviewMyBlueprintPresenter::FState MyBlueprintPresenterState;
+	FBlueprintHelperReviewDataTablePresenterState DataTablePresenterState;
+	FBlueprintHelperReviewDataAssetPresenterState DataAssetPresenterState;
 	float FlashAlpha = 0.0f;
 };

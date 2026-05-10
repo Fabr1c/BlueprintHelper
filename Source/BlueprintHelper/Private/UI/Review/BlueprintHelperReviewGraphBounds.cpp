@@ -6,6 +6,9 @@
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraphSchema_K2.h"
 #include "GraphEditor.h"
+#include "Dom/JsonObject.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 #include "UObject/MetaData.h"
 
 class FBlueprintHelperReviewGraphBoundsLocalUtils
@@ -34,7 +37,19 @@ public:
 		int32 EditorBoundsCount = 0;
 		int32 FallbackBoundsCount = 0;
 		int32 RecordBoundsCount = 0;
+		int32 NodeGuidTargetCount = 0;
+		int32 RecordedBoundsTargetCount = 0;
+		int32 StructuredAnchorSourceCount = 0;
+		int32 LegacyAnchorSourceCount = 0;
 		TArray<FString> MatchedNodeSummaries;
+	};
+
+	struct FRecordedGraphBounds
+	{
+		bool bHasGraphBounds = false;
+		FVector2D GraphPosition = FVector2D::ZeroVector;
+		FVector2D GraphSize = FVector2D(360.0f, 180.0f);
+		FString AnchorSource;
 	};
 
 	static void AddUniqueTrimmed(TArray<FString>& OutValues, FString Value)
@@ -157,15 +172,135 @@ public:
 				|| NodeTitle.Contains(CandidateLabel, ESearchCase::IgnoreCase));
 	}
 
-	static void AddGraphTargetCandidates(
+	static void AddGraphTargetCandidatePasses(
 		const FBlueprintHelperReviewAtomicTarget& Target,
-		TArray<FString>& OutCandidates)
+		TArray<TArray<FString>>& OutCandidatePasses)
 	{
-		AddTargetKeyCandidates(Target.NodeGuid, OutCandidates);
-		AddTargetKeyCandidates(Target.TargetKey, OutCandidates);
-		AddTargetKeyCandidates(Target.PinPath, OutCandidates);
-		AddTargetKeyCandidates(Target.VisualGroupKey, OutCandidates);
-		AddTargetKeyCandidates(Target.DisplayLabel, OutCandidates);
+		auto AddPass = [&OutCandidatePasses](const FString& RawValue)
+		{
+			TArray<FString> Candidates;
+			AddTargetKeyCandidates(RawValue, Candidates);
+			if (Candidates.Num() > 0)
+			{
+				OutCandidatePasses.Add(Candidates);
+			}
+		};
+
+		AddPass(Target.NodeGuid);
+		AddPass(Target.TargetKey);
+		AddPass(Target.PinPath);
+		AddPass(Target.VisualGroupKey);
+		AddPass(Target.DisplayLabel);
+	}
+
+	static bool TryReadVector2D(
+		const TSharedPtr<FJsonObject>& Json,
+		const TCHAR* FieldName,
+		FVector2D& OutValue)
+	{
+		const TSharedPtr<FJsonObject>* VectorJson = nullptr;
+		if (!Json.IsValid() || !Json->TryGetObjectField(FieldName, VectorJson) || !VectorJson || !VectorJson->IsValid())
+		{
+			return false;
+		}
+
+		double X = 0.0;
+		double Y = 0.0;
+		if (!(*VectorJson)->TryGetNumberField(TEXT("x"), X)
+			|| !(*VectorJson)->TryGetNumberField(TEXT("y"), Y))
+		{
+			return false;
+		}
+
+		OutValue = FVector2D(static_cast<float>(X), static_cast<float>(Y));
+		return true;
+	}
+
+	static bool TryReadAnchorJson(
+		const FString& AnchorJson,
+		FRecordedGraphBounds& OutRecordedBounds)
+	{
+		if (AnchorJson.IsEmpty())
+		{
+			return false;
+		}
+
+		TSharedPtr<FJsonObject> Json;
+		const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(AnchorJson);
+		if (!FJsonSerializer::Deserialize(Reader, Json) || !Json.IsValid())
+		{
+			return false;
+		}
+
+		Json->TryGetStringField(TEXT("anchor_source"), OutRecordedBounds.AnchorSource);
+		FVector2D GraphPosition = FVector2D::ZeroVector;
+		FVector2D GraphSize = FVector2D(360.0f, 180.0f);
+		bool bHasGraphBounds = false;
+		if (Json->TryGetBoolField(TEXT("has_graph_bounds"), bHasGraphBounds)
+			&& bHasGraphBounds
+			&& TryReadVector2D(Json, TEXT("graph_position"), GraphPosition)
+			&& TryReadVector2D(Json, TEXT("graph_size"), GraphSize))
+		{
+			OutRecordedBounds.bHasGraphBounds = true;
+			OutRecordedBounds.GraphPosition = GraphPosition;
+			OutRecordedBounds.GraphSize = GraphSize;
+			if (OutRecordedBounds.AnchorSource.IsEmpty())
+			{
+				OutRecordedBounds.AnchorSource = TEXT("structured");
+			}
+		}
+		else if (OutRecordedBounds.AnchorSource.IsEmpty())
+		{
+			OutRecordedBounds.AnchorSource = TEXT("legacy");
+		}
+
+		return true;
+	}
+
+	static FRecordedGraphBounds GetRecordedBoundsForTarget(const FBlueprintHelperReviewAtomicTarget& Target)
+	{
+		FRecordedGraphBounds RecordedBounds;
+		if (Target.bHasGraphBounds)
+		{
+			RecordedBounds.bHasGraphBounds = true;
+			RecordedBounds.GraphPosition = Target.GraphPosition;
+			RecordedBounds.GraphSize = Target.GraphSize;
+			RecordedBounds.AnchorSource = TEXT("legacy");
+		}
+
+		FRecordedGraphBounds AnchorBounds;
+		if (TryReadAnchorJson(Target.AnchorJson, AnchorBounds))
+		{
+			if (!AnchorBounds.AnchorSource.IsEmpty())
+			{
+				RecordedBounds.AnchorSource = AnchorBounds.AnchorSource;
+			}
+			if (AnchorBounds.bHasGraphBounds)
+			{
+				RecordedBounds.bHasGraphBounds = true;
+				RecordedBounds.GraphPosition = AnchorBounds.GraphPosition;
+				RecordedBounds.GraphSize = AnchorBounds.GraphSize;
+			}
+		}
+
+		return RecordedBounds;
+	}
+
+	static FString BuildAnchorSourceSummary(const FBoundsDebugCounters& DebugCounters)
+	{
+		if (DebugCounters.StructuredAnchorSourceCount > 0 && DebugCounters.LegacyAnchorSourceCount > 0)
+		{
+			return TEXT("mixed");
+		}
+		if (DebugCounters.StructuredAnchorSourceCount > 0)
+		{
+			return TEXT("structured");
+		}
+		if (DebugCounters.LegacyAnchorSourceCount > 0)
+		{
+			return TEXT("legacy");
+		}
+		return TEXT("none");
 	}
 
 	static bool TryGetEditorNodeBounds(
@@ -322,53 +457,83 @@ bool FBlueprintHelperReviewGraphBounds::BuildBoundsForTargets(
 			continue;
 		}
 
-		bool bMatchedNode = false;
-		TArray<FString> Candidates;
-		FBlueprintHelperReviewGraphBoundsLocalUtils::AddGraphTargetCandidates(Target, Candidates);
-		DebugCounters.CandidateCount += Candidates.Num();
-		if (Graph && Candidates.Num() > 0)
+		if (!Target.NodeGuid.IsEmpty())
 		{
-			for (UEdGraphNode* Node : Graph->Nodes)
-			{
-				if (!Node)
-				{
-					continue;
-				}
+			++DebugCounters.NodeGuidTargetCount;
+		}
+		const FBlueprintHelperReviewGraphBoundsLocalUtils::FRecordedGraphBounds RecordedBounds =
+			FBlueprintHelperReviewGraphBoundsLocalUtils::GetRecordedBoundsForTarget(Target);
+		if (RecordedBounds.bHasGraphBounds)
+		{
+			++DebugCounters.RecordedBoundsTargetCount;
+		}
+		if (RecordedBounds.AnchorSource.Equals(TEXT("structured"), ESearchCase::IgnoreCase))
+		{
+			++DebugCounters.StructuredAnchorSourceCount;
+		}
+		else if (RecordedBounds.AnchorSource.Equals(TEXT("legacy"), ESearchCase::IgnoreCase))
+		{
+			++DebugCounters.LegacyAnchorSourceCount;
+		}
 
-				for (const FString& Candidate : Candidates)
+		bool bMatchedNode = false;
+		TArray<TArray<FString>> CandidatePasses;
+		FBlueprintHelperReviewGraphBoundsLocalUtils::AddGraphTargetCandidatePasses(Target, CandidatePasses);
+		for (const TArray<FString>& CandidatePass : CandidatePasses)
+		{
+			DebugCounters.CandidateCount += CandidatePass.Num();
+		}
+		if (Graph && CandidatePasses.Num() > 0)
+		{
+			for (const TArray<FString>& CandidatePass : CandidatePasses)
+			{
+				for (UEdGraphNode* Node : Graph->Nodes)
 				{
-					if (FBlueprintHelperReviewGraphBoundsLocalUtils::DoesNodeMatchSingleCandidate(Node, Candidate))
+					if (!Node)
 					{
-						if (IncludedNodes.Contains(Node))
+						continue;
+					}
+
+					for (const FString& Candidate : CandidatePass)
+					{
+						if (FBlueprintHelperReviewGraphBoundsLocalUtils::DoesNodeMatchSingleCandidate(Node, Candidate))
 						{
-							++DebugCounters.DuplicateMatchedNodeCount;
+							if (IncludedNodes.Contains(Node))
+							{
+								++DebugCounters.DuplicateMatchedNodeCount;
+								bMatchedNode = true;
+								break;
+							}
+
+							const FBlueprintHelperReviewGraphBoundsLocalUtils::ENodeBoundsSource Source = FBlueprintHelperReviewGraphBoundsLocalUtils::IncludeNodeBounds(Node, GraphEditor, Bounds, bHasBounds);
+							if (Source == FBlueprintHelperReviewGraphBoundsLocalUtils::ENodeBoundsSource::EditorWidget)
+							{
+								++DebugCounters.EditorBoundsCount;
+							}
+							else if (Source == FBlueprintHelperReviewGraphBoundsLocalUtils::ENodeBoundsSource::FallbackNode)
+							{
+								++DebugCounters.FallbackBoundsCount;
+							}
+							++DebugCounters.MatchedNodeCount;
+							IncludedNodes.Add(Node);
+							DebugCounters.MatchedNodeSummaries.Add(FBlueprintHelperReviewGraphBoundsLocalUtils::BuildNodeDebugSummary(Node, Source));
 							bMatchedNode = true;
 							break;
 						}
-
-						const FBlueprintHelperReviewGraphBoundsLocalUtils::ENodeBoundsSource Source = FBlueprintHelperReviewGraphBoundsLocalUtils::IncludeNodeBounds(Node, GraphEditor, Bounds, bHasBounds);
-						if (Source == FBlueprintHelperReviewGraphBoundsLocalUtils::ENodeBoundsSource::EditorWidget)
-						{
-							++DebugCounters.EditorBoundsCount;
-						}
-						else if (Source == FBlueprintHelperReviewGraphBoundsLocalUtils::ENodeBoundsSource::FallbackNode)
-						{
-							++DebugCounters.FallbackBoundsCount;
-						}
-						++DebugCounters.MatchedNodeCount;
-						IncludedNodes.Add(Node);
-						DebugCounters.MatchedNodeSummaries.Add(FBlueprintHelperReviewGraphBoundsLocalUtils::BuildNodeDebugSummary(Node, Source));
-						bMatchedNode = true;
-						break;
 					}
+				}
+
+				if (bMatchedNode)
+				{
+					break;
 				}
 			}
 		}
 
-		if (!bMatchedNode && Target.bHasGraphBounds)
+		if (!bMatchedNode && RecordedBounds.bHasGraphBounds)
 		{
-			Bounds += Target.GraphPosition;
-			Bounds += Target.GraphPosition + Target.GraphSize;
+			Bounds += RecordedBounds.GraphPosition;
+			Bounds += RecordedBounds.GraphPosition + RecordedBounds.GraphSize;
 			bHasBounds = true;
 			++DebugCounters.RecordBoundsCount;
 		}
@@ -378,7 +543,7 @@ bool FBlueprintHelperReviewGraphBounds::BuildBoundsForTargets(
 	if (OutDebugSummary)
 	{
 		*OutDebugSummary = FString::Printf(
-			TEXT("built=%d targets=%d graphTargets=%d skippedSurface=%d skippedGraph=%d candidates=%d matchedNodes=%d duplicateMatches=%d editorBounds=%d fallbackBounds=%d recordBounds=%d padding=%.1f pos=(%.1f,%.1f) size=(%.1f,%.1f) graph=\"%s\" graphNodeCount=%d matched=\"%s\""),
+			TEXT("built=%d targets=%d graphTargets=%d skippedSurface=%d skippedGraph=%d candidates=%d matchedNodes=%d duplicateMatches=%d editorBounds=%d fallbackBounds=%d recordBounds=%d hasNodeGuidTargets=%d hasRecordedBounds=%d anchorSource=%s padding=%.1f pos=(%.1f,%.1f) size=(%.1f,%.1f) graph=\"%s\" graphNodeCount=%d matched=\"%s\""),
 			bBuilt ? 1 : 0,
 			DebugCounters.TargetCount,
 			DebugCounters.GraphTargetCount,
@@ -390,6 +555,9 @@ bool FBlueprintHelperReviewGraphBounds::BuildBoundsForTargets(
 			DebugCounters.EditorBoundsCount,
 			DebugCounters.FallbackBoundsCount,
 			DebugCounters.RecordBoundsCount,
+			DebugCounters.NodeGuidTargetCount,
+			DebugCounters.RecordedBoundsTargetCount,
+			*FBlueprintHelperReviewGraphBoundsLocalUtils::BuildAnchorSourceSummary(DebugCounters),
 			FBlueprintHelperReviewGraphBoundsLocalUtils::CommentStylePadding,
 			static_cast<double>(OutPosition.X),
 			static_cast<double>(OutPosition.Y),

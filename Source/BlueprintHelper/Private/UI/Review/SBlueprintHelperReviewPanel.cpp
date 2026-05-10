@@ -481,10 +481,18 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildFinalChangeSidebar()
 
 void SBlueprintHelperReviewPanel::RebuildChangeTreeItems()
 {
-	ChangeTreeRootItems.Reset();
+	BuildChangeTreeItemsFromChangeItems(ChangeItems, ChangeTreeRootItems);
+}
 
+void SBlueprintHelperReviewPanel::BuildChangeTreeItemsFromChangeItems(
+	const TArray<FReviewChangeItem>& SourceItems,
+	TArray<FReviewTreeItemPtr>& OutRootItems)
+{
+	OutRootItems.Reset();
 	TMap<FString, FReviewTreeItemPtr> AssetRootsByPath;
-	for (const FReviewChangeItem& Item : ChangeItems)
+	TMap<FString, FReviewTreeItemPtr> LifecycleRootItemsByAssetAndChangeId;
+	TArray<FReviewTreeItemPtr> LeafItems;
+	for (const FReviewChangeItem& Item : SourceItems)
 	{
 		if (!Item.IsValid())
 		{
@@ -499,13 +507,50 @@ void SBlueprintHelperReviewPanel::RebuildChangeTreeItems()
 			Root->bIsAssetRoot = true;
 			Root->AssetPath = AssetPath;
 			AssetRootsByPath.Add(AssetPath, Root);
-			ChangeTreeRootItems.Add(Root);
+			OutRootItems.Add(Root);
 			ExistingRoot = AssetRootsByPath.Find(AssetPath);
 		}
 
 		FReviewTreeItemPtr Leaf = MakeShared<FReviewTreeItem>();
 		Leaf->AssetPath = AssetPath;
 		Leaf->Change = Item;
+		LeafItems.Add(Leaf);
+		if (Item->bIsAssetLifecycleRoot && !Item->ChangeId.IsEmpty())
+		{
+			LifecycleRootItemsByAssetAndChangeId.Add(
+				FString::Printf(TEXT("%s|%s"), *AssetPath, *Item->ChangeId),
+				Leaf);
+		}
+	}
+
+	for (const FReviewTreeItemPtr& Leaf : LeafItems)
+	{
+		if (!Leaf.IsValid() || !Leaf->Change.IsValid())
+		{
+			continue;
+		}
+
+		const FString AssetPath = Leaf->AssetPath.IsEmpty() ? TEXT("(unknown asset)") : Leaf->AssetPath;
+		FReviewTreeItemPtr* ExistingRoot = AssetRootsByPath.Find(AssetPath);
+		if (!ExistingRoot || !ExistingRoot->IsValid())
+		{
+			continue;
+		}
+
+		const FBlueprintHelperReviewVisibleChange& Change = *Leaf->Change;
+		if (!Change.bIsAssetLifecycleRoot && !Change.ParentChangeId.IsEmpty())
+		{
+			if (FReviewTreeItemPtr* ParentRoot = LifecycleRootItemsByAssetAndChangeId.Find(
+				FString::Printf(TEXT("%s|%s"), *AssetPath, *Change.ParentChangeId)))
+			{
+				if (ParentRoot->IsValid())
+				{
+					(*ParentRoot)->Children.Add(Leaf);
+					continue;
+				}
+			}
+		}
+
 		(*ExistingRoot)->Children.Add(Leaf);
 	}
 }
@@ -522,7 +567,7 @@ void SBlueprintHelperReviewPanel::RefreshChangeTreeWidget()
 	{
 		if (Root.IsValid())
 		{
-			ChangeTreeView->SetItemExpansion(Root, true);
+			ExpandChangeTreeItemRecursive(Root);
 		}
 	}
 
@@ -542,23 +587,90 @@ SBlueprintHelperReviewPanel::FReviewTreeItemPtr SBlueprintHelperReviewPanel::Fin
 	{
 		return nullptr;
 	}
+	return FindTreeItemForChangeRecursive(ChangeTreeRootItems, Item);
+}
 
-	for (const FReviewTreeItemPtr& Root : ChangeTreeRootItems)
+SBlueprintHelperReviewPanel::FReviewTreeItemPtr SBlueprintHelperReviewPanel::FindTreeItemForChangeRecursive(
+	const TArray<FReviewTreeItemPtr>& Items,
+	FReviewChangeItem ChangeItem)
+{
+	for (const FReviewTreeItemPtr& Item : Items)
 	{
-		if (!Root.IsValid())
+		if (!Item.IsValid())
 		{
 			continue;
 		}
-		for (const FReviewTreeItemPtr& Child : Root->Children)
+		if (Item->Change == ChangeItem)
 		{
-			if (Child.IsValid() && Child->Change == Item)
-			{
-				return Child;
-			}
+			return Item;
+		}
+		if (FReviewTreeItemPtr ChildMatch = FindTreeItemForChangeRecursive(Item->Children, ChangeItem))
+		{
+			return ChildMatch;
 		}
 	}
 	return nullptr;
 }
+
+void SBlueprintHelperReviewPanel::ExpandChangeTreeItemRecursive(FReviewTreeItemPtr Item)
+{
+	if (!ChangeTreeView.IsValid() || !Item.IsValid())
+	{
+		return;
+	}
+
+	ChangeTreeView->SetItemExpansion(Item, true);
+	for (const FReviewTreeItemPtr& Child : Item->Children)
+	{
+		ExpandChangeTreeItemRecursive(Child);
+	}
+}
+
+#if WITH_DEV_AUTOMATION_TESTS
+TArray<SBlueprintHelperReviewPanel::FReviewTreeSnapshotEntry>
+SBlueprintHelperReviewPanel::BuildReviewTreeSnapshotForTesting(
+	const TArray<FBlueprintHelperReviewVisibleChange>& SourceChanges)
+{
+	TArray<FReviewChangeItem> SourceItems;
+	for (const FBlueprintHelperReviewVisibleChange& SourceChange : SourceChanges)
+	{
+		SourceItems.Add(MakeShared<FBlueprintHelperReviewVisibleChange>(SourceChange));
+	}
+
+	TArray<FReviewTreeItemPtr> RootItems;
+	BuildChangeTreeItemsFromChangeItems(SourceItems, RootItems);
+
+	TArray<FReviewTreeSnapshotEntry> Snapshot;
+	TArray<TPair<FReviewTreeItemPtr, int32>> PendingItems;
+	for (int32 Index = RootItems.Num() - 1; Index >= 0; --Index)
+	{
+		PendingItems.Emplace(RootItems[Index], 0);
+	}
+	while (PendingItems.Num() > 0)
+	{
+		const TPair<FReviewTreeItemPtr, int32> PendingItem = PendingItems.Pop(EAllowShrinking::No);
+		const FReviewTreeItemPtr Item = PendingItem.Key;
+		const int32 Depth = PendingItem.Value;
+		if (!Item.IsValid())
+		{
+			continue;
+		}
+
+		FReviewTreeSnapshotEntry Entry;
+		Entry.bIsAssetHeader = Item->bIsAssetRoot;
+		Entry.AssetPath = Item->AssetPath;
+		Entry.Depth = Depth;
+		Entry.ChangeId = Item->Change.IsValid() ? Item->Change->ChangeId : FString();
+		Snapshot.Add(Entry);
+
+		for (int32 ChildIndex = Item->Children.Num() - 1; ChildIndex >= 0; --ChildIndex)
+		{
+			PendingItems.Emplace(Item->Children[ChildIndex], Depth + 1);
+		}
+	}
+	return Snapshot;
+}
+#endif
 
 
 TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildComponentsPanel()
@@ -789,6 +901,7 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildMainWorkspaceWidget()
 		GraphPresenterState.Reset();
 		return FBlueprintHelperReviewDataTablePresenter::BuildContent(
 			ReviewAssetContext,
+			DataTablePresenterState,
 			FBlueprintHelperReviewGeometryInvalidated::CreateSP(
 				this,
 				&SBlueprintHelperReviewPanel::RefreshSurfaceOverlay));
@@ -798,6 +911,7 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildMainWorkspaceWidget()
 		GraphPresenterState.Reset();
 		return FBlueprintHelperReviewDataAssetPresenter::BuildContent(
 			ReviewAssetContext,
+			DataAssetPresenterState,
 			FBlueprintHelperReviewGeometryInvalidated::CreateSP(
 				this,
 				&SBlueprintHelperReviewPanel::RefreshSurfaceOverlay));
@@ -843,6 +957,45 @@ SBlueprintHelperReviewPanel::FReviewChangeItem SBlueprintHelperReviewPanel::Find
 		}
 	}
 	return FReviewChangeItem();
+}
+
+TArray<FBlueprintHelperReviewVisibleChange> SBlueprintHelperReviewPanel::BuildPendingChangeSnapshot() const
+{
+	TArray<FBlueprintHelperReviewVisibleChange> PendingChanges;
+	for (const FReviewChangeItem& Item : ChangeItems)
+	{
+		if (Item.IsValid())
+		{
+			PendingChanges.Add(*Item);
+		}
+	}
+	return PendingChanges;
+}
+
+void SBlueprintHelperReviewPanel::SelectNextChangeAfterRemoval(
+	const FString& PreferredAssetPath,
+	int32 RemovedIndex)
+{
+	if (ChangeItems.Num() == 0)
+	{
+		SelectedChange.Reset();
+		return;
+	}
+
+	if (!PreferredAssetPath.IsEmpty())
+	{
+		for (const FReviewChangeItem& Item : ChangeItems)
+		{
+			if (Item.IsValid() && Item->AssetPath == PreferredAssetPath)
+			{
+				SelectedChange = Item;
+				return;
+			}
+		}
+	}
+
+	const int32 NextIndex = FMath::Clamp(RemovedIndex, 0, ChangeItems.Num() - 1);
+	SelectedChange = ChangeItems[NextIndex];
 }
 
 FReply SBlueprintHelperReviewPanel::OnAcceptChangeId(const FString& ChangeId)
@@ -1241,6 +1394,73 @@ FReply SBlueprintHelperReviewPanel::OnRejectChange(FReviewChangeItem Item)
 
 	SelectedChange = Item;
 
+	if (Item->bIsAssetLifecycleRoot)
+	{
+		FBlueprintHelperReviewCascadeActionResult CascadeResult;
+		if (ReviewActionService)
+		{
+			CascadeResult = ReviewActionService->RejectLifecycleRootVisibleChange(
+				*Item,
+				BuildPendingChangeSnapshot());
+		}
+		else
+		{
+			CascadeResult.RootResult.bSucceeded = false;
+			CascadeResult.RootResult.TargetTransactionId = Item->LatestTransactionId;
+			CascadeResult.RootResult.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
+			CascadeResult.RootResult.RollbackMode = TEXT("archive_baseline");
+			CascadeResult.RootResult.Message = TEXT("Reject requires archive-baseline rollback service.");
+		}
+
+		if (CascadeResult.RootResult.bSucceeded)
+		{
+			const FString PreferredAssetPath = Item->AssetPath;
+			const int32 RemovedIndex = ChangeItems.IndexOfByKey(Item);
+			TSet<FString> RemovedChangeIds;
+			if (!Item->ChangeId.IsEmpty())
+			{
+				RemovedChangeIds.Add(Item->ChangeId);
+			}
+			for (const FString& RemovedChildChangeId : CascadeResult.RemovedChildChangeIds)
+			{
+				RemovedChangeIds.Add(RemovedChildChangeId);
+			}
+
+			ChangeItems.RemoveAll([&RemovedChangeIds, &Item](const FReviewChangeItem& Candidate)
+			{
+				return Candidate == Item
+					|| (Candidate.IsValid()
+						&& !Candidate->ChangeId.IsEmpty()
+						&& RemovedChangeIds.Contains(Candidate->ChangeId));
+			});
+			SelectNextChangeAfterRemoval(PreferredAssetPath, RemovedIndex);
+		}
+		else
+		{
+			Item->Status = CascadeResult.RootResult.NewStatus;
+			Item->NeedsActionReason = CascadeResult.RootResult.Message;
+		}
+
+		RebuildChangeTreeItems();
+		RefreshChangeTreeWidget();
+		LoadReviewAssetFromSelection();
+		RefreshDiffStackWidgets();
+		if (GraphEditorBox.IsValid())
+		{
+			GraphEditorBox->SetContent(BuildMainWorkspaceWidget());
+		}
+		UpdateDetailsSelection();
+
+		AddDebugMessage(FString::Printf(
+			TEXT("Reject lifecycle root id=%s success=%d removedChildren=%d status=%s message=\"%s\""),
+			*Item->ChangeId,
+			CascadeResult.RootResult.bSucceeded ? 1 : 0,
+			CascadeResult.RemovedChildChangeIds.Num(),
+			BlueprintHelperReviewChangeStatusToString(CascadeResult.RootResult.NewStatus),
+			*CascadeResult.RootResult.Message));
+		return FReply::Handled();
+	}
+
 	FBlueprintHelperReviewActionResult Result;
 	if (ReviewActionService)
 	{
@@ -1268,10 +1488,10 @@ FReply SBlueprintHelperReviewPanel::OnRejectChange(FReviewChangeItem Item)
 	UpdateDetailsSelection();
 
 	AddDebugMessage(FString::Printf(
-		TEXT("Reject change id=%s success=%d status=%d message=\"%s\""),
+		TEXT("Reject change id=%s success=%d status=%s message=\"%s\""),
 		*Item->ChangeId,
 		Result.bSucceeded ? 1 : 0,
-		*BlueprintHelperReviewChangeStatusToString(Result.NewStatus),
+		BlueprintHelperReviewChangeStatusToString(Result.NewStatus),
 		*Result.Message));
 	return FReply::Handled();
 }
@@ -1345,10 +1565,65 @@ FReply SBlueprintHelperReviewPanel::OnRejectAll()
 		AssetPath = SelectedChange->AssetPath;
 	}
 
+	FReviewChangeItem LifecycleRoot;
 	for (const FReviewChangeItem& Item : ChangeItems)
 	{
-		if (Item.IsValid() && (AssetPath.IsEmpty() || Item->AssetPath == AssetPath))
+		if (Item.IsValid()
+			&& Item->bIsAssetLifecycleRoot
+			&& (AssetPath.IsEmpty() || Item->AssetPath == AssetPath))
 		{
+			LifecycleRoot = Item;
+			break;
+		}
+	}
+
+	TSet<FString> RemovedChangeIds;
+	bool bLifecycleRootSucceeded = false;
+	if (LifecycleRoot.IsValid())
+	{
+		FBlueprintHelperReviewCascadeActionResult CascadeResult;
+		if (ReviewActionService)
+		{
+			CascadeResult = ReviewActionService->RejectLifecycleRootVisibleChange(
+				*LifecycleRoot,
+				BuildPendingChangeSnapshot());
+		}
+		else
+		{
+			CascadeResult.RootResult.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
+			CascadeResult.RootResult.Message = TEXT("Reject requires archive-baseline rollback service.");
+		}
+
+		if (CascadeResult.RootResult.bSucceeded)
+		{
+			bLifecycleRootSucceeded = true;
+			if (!LifecycleRoot->ChangeId.IsEmpty())
+			{
+				RemovedChangeIds.Add(LifecycleRoot->ChangeId);
+			}
+			for (const FString& RemovedChildChangeId : CascadeResult.RemovedChildChangeIds)
+			{
+				RemovedChangeIds.Add(RemovedChildChangeId);
+			}
+		}
+		else
+		{
+			LifecycleRoot->Status = CascadeResult.RootResult.NewStatus;
+			LifecycleRoot->NeedsActionReason = CascadeResult.RootResult.Message;
+		}
+	}
+
+	if (!LifecycleRoot.IsValid())
+	{
+		for (const FReviewChangeItem& Item : ChangeItems)
+		{
+			if (!Item.IsValid()
+				|| (!AssetPath.IsEmpty() && Item->AssetPath != AssetPath)
+				|| (!Item->ChangeId.IsEmpty() && RemovedChangeIds.Contains(Item->ChangeId)))
+			{
+				continue;
+			}
+
 			FBlueprintHelperReviewActionResult Result;
 			if (ReviewActionService)
 			{
@@ -1364,6 +1639,23 @@ FReply SBlueprintHelperReviewPanel::OnRejectAll()
 		}
 	}
 
+	if (bLifecycleRootSucceeded && RemovedChangeIds.Num() > 0)
+	{
+		const int32 RemovedIndex = LifecycleRoot.IsValid() ? ChangeItems.IndexOfByKey(LifecycleRoot) : 0;
+		ChangeItems.RemoveAll([&RemovedChangeIds, &LifecycleRoot](const FReviewChangeItem& Item)
+		{
+			return Item == LifecycleRoot
+				|| (Item.IsValid()
+					&& !Item->ChangeId.IsEmpty()
+					&& RemovedChangeIds.Contains(Item->ChangeId));
+		});
+		SelectNextChangeAfterRemoval(AssetPath, RemovedIndex);
+	}
+	else if (!SelectedChange.IsValid() && ChangeItems.Num() > 0)
+	{
+		SelectedChange = ChangeItems[0];
+	}
+
 	RebuildChangeTreeItems();
 	RefreshChangeTreeWidget();
 	LoadReviewAssetFromSelection();
@@ -1374,8 +1666,9 @@ FReply SBlueprintHelperReviewPanel::OnRejectAll()
 	}
 	UpdateDetailsSelection();
 	AddDebugMessage(FString::Printf(
-		TEXT("RejectAll asset=\"%s\" markedNeedsAction=1"),
-		*AssetPath));
+		TEXT("RejectAll asset=\"%s\" cascadeRemoved=%d"),
+		*AssetPath,
+		RemovedChangeIds.Num()));
 	return FReply::Handled();
 }
 

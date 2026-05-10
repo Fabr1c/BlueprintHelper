@@ -17,6 +17,13 @@ struct FBlueprintHelperReviewActionResult
 	bool bSupersededDataCompactionEligible = false;
 };
 
+struct FBlueprintHelperReviewCascadeActionResult
+{
+	FBlueprintHelperReviewActionResult RootResult;
+	TArray<FString> RemovedChildChangeIds;
+	bool bChildrenRemoved = false;
+};
+
 struct FBlueprintHelperReviewRejectOptions
 {
 	TMap<FString, FString> CurrentHashesByTargetKey;
@@ -39,6 +46,15 @@ public:
 
 	FBlueprintHelperReviewActionResult RejectVisibleChange(
 		const FBlueprintHelperReviewVisibleChange& Change,
+		const FBlueprintHelperReviewRejectOptions& Options) const;
+
+	FBlueprintHelperReviewCascadeActionResult RejectLifecycleRootVisibleChange(
+		const FBlueprintHelperReviewVisibleChange& Root,
+		const TArray<FBlueprintHelperReviewVisibleChange>& PendingChanges) const;
+
+	FBlueprintHelperReviewCascadeActionResult RejectLifecycleRootVisibleChange(
+		const FBlueprintHelperReviewVisibleChange& Root,
+		const TArray<FBlueprintHelperReviewVisibleChange>& PendingChanges,
 		const FBlueprintHelperReviewRejectOptions& Options) const;
 
 	FBlueprintHelperReviewActionResult AcceptReviewTargets(
