@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(F:/UE_5.6/Engine/Binaries/Win64/UnrealEditor-Cmd.exe *)",
+      "Bash(npm.cmd test *)",
+      "PowerShell(Get-ChildItem -Recurse -Depth 3 -Directory | ForEach-Object { $_.FullName })",
+      "PowerShell(Get-ChildItem -Recurse -File -Path \".claude\" | ForEach-Object { $_.FullName })",
+      "PowerShell(Get-ChildItem -Recurse -File -Path \".codex\" | ForEach-Object { $_.FullName })",
+      "PowerShell(Get-ChildItem -Recurse -File -Path \"BlueprintHelper_MCP_Server\" -Exclude \"node_modules\" | ForEach-Object { $_.FullName })",
+      "PowerShell(Get-ChildItem -Recurse -File -Path \".claude\\\\skills\" | ForEach-Object { $_.FullName })",
+      "PowerShell(Get-ChildItem -Recurse -File -Path \"workspace\\\\skills\" | ForEach-Object { $_.FullName })",
+      "PowerShell(Get-ChildItem -File -Depth 0 | ForEach-Object { $_.FullName })",
+      "PowerShell(Test-Path *)",
+      "Bash(Get-ChildItem -Recurse -Depth 3 \".claude-plugin\")",
+      "Bash(Select-Object Mode, FullName, Length)"
+    ]
+  },
+  "skillOverrides": {
+    "receiving-code-review": "off",
+    "verification-before-completion": "off",
+    "finishing-a-development-branch": "off",
+    "using-git-worktrees": "off",
+    "brainstorming": "off",
+    "using-superpowers": "off",
+    "dispatching-parallel-agents": "off",
+    "requesting-code-review": "off",
+    "executing-plans": "off",
+    "subagent-driven-development": "off",
+    "systematic-debugging": "off",
+    "writing-skills": "off",
+    "test-driven-development": "off",
+    "writing-plans": "off"
+  },
+  "enabledPlugins": {
+    "superpowers-developing-for-claude-code@superpowers-marketplace": true
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "blueprint-helper",
+  "version": "0.3.8",
+  "description": "UE5 Blueprint Agent 编辑辅助系统 - 通过 MCP Server 桥接 AI Agent 与 Unreal Editor，支持蓝图图表、UMG 控件、DataAsset、DataTable 等编辑器资产操作，采用 TaskSpec-first 安全写入架构",
+  "author": {
+    "name": "Fabric"
+  },
+  "license": "MIT",
+  "keywords": ["unreal-engine", "blueprint", "ue5", "mcp", "editor-tools"],
+  "mcpServers": {
+    "blueprint-helper": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/BlueprintHelper_MCP_Server/build/index.js"],
+      "env": {
+        "UE_ENGINE_DIR": "${UE_ENGINE_DIR}",
+        "UE_PROJECT_FILE": "${UE_PROJECT_FILE}",
+        "BRIDGE_HOST": "127.0.0.1",
+        "BRIDGE_PORT": "54321"
+      }
+    }
+  }
+}
