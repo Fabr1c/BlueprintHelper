@@ -15,6 +15,7 @@ class BLUEPRINTHELPER_API FBlueprintHelperReviewBlueprintComponentsPresenter
 public:
 	struct FState
 	{
+		FString AssetPath;
 		TSharedPtr<SSubobjectBlueprintEditor> SubobjectEditor;
 		FBlueprintHelperReviewGeometryInvalidated OnGeometryInvalidated;
 	};

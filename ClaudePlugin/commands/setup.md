@@ -13,7 +13,7 @@ allowed-tools: Read, Write, AskUserQuestion
 
 ### 1.1 获取 UE 引擎目录
 
-询问用户并确认 `UE_ENGINE_DIR` 的绝对路径，例如 `F:\UE_5.6`。
+询问用户并确认 `UE_ENGINE_DIR` 的绝对路径，文档中用 `<UE_ENGINE_DIR>` 表示该路径。
 
 验证规则：
 - 必须是绝对路径
@@ -22,7 +22,7 @@ allowed-tools: Read, Write, AskUserQuestion
 
 ### 1.2 发现项目文件
 
-Agent 使用普通仓库工具在当前项目工作区发现目标 `.uproject` 文件，例如 `G:\UnrealPractise\MrStone\MrStone.uproject`。
+Agent 使用普通仓库工具在当前项目工作区发现目标 `.uproject` 文件，文档中用 `<PROJECT_FILE>` 表示该路径。
 
 不要把项目路径写入全局 Claude settings、插件 env、SetupProfile 或 RuntimeProfile。项目路径只在调用 `blueprint_open_editor`、`blueprint_build_project` 等工具时作为显式 `project_file` 参数传入。
 

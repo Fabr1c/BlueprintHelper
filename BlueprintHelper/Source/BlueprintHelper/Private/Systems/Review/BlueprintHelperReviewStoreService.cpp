@@ -809,6 +809,141 @@ public:
 		Existing.SourceTransactionSummary.FinalReviewStatus = Existing.Status;
 	}
 
+	static bool IsSafeReviewRecordId(const FString& ReviewRecordId)
+	{
+		if (ReviewRecordId.IsEmpty())
+		{
+			return false;
+		}
+
+		for (const TCHAR Ch : ReviewRecordId)
+		{
+			if (!(FChar::IsAlnum(Ch) || Ch == TEXT('_') || Ch == TEXT('-')))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	static FString GetRecordsDir()
+	{
+		return FPaths::ProjectSavedDir()
+			/ TEXT("BlueprintHelper")
+			/ TEXT("Review")
+			/ TEXT("Records");
+	}
+
+	static FString GetRecordPath(const FString& ReviewRecordId)
+	{
+		return GetRecordsDir() / FString::Printf(TEXT("%s.json"), *ReviewRecordId);
+	}
+
+	static bool ReviewTargetMatches(const FBlueprintHelperReviewAtomicTarget& Target, const TSet<FString>& TargetKeys)
+	{
+		return TargetKeys.Num() == 0 || TargetKeys.Contains(Target.TargetKey);
+	}
+
+	static EBlueprintHelperReviewChangeStatus CombineTargetStatuses(
+		const TArray<FBlueprintHelperReviewAtomicTarget>& Targets)
+	{
+		if (Targets.Num() == 0)
+		{
+			return EBlueprintHelperReviewChangeStatus::NeedsAction;
+		}
+
+		bool bAllAccepted = true;
+		bool bAllRejected = true;
+		bool bAnyPending = false;
+		bool bAnyNeedsAction = false;
+		bool bAnyRejectFailed = false;
+		for (const FBlueprintHelperReviewAtomicTarget& Target : Targets)
+		{
+			bAllAccepted &= Target.Status == EBlueprintHelperReviewChangeStatus::Accepted;
+			bAllRejected &= Target.Status == EBlueprintHelperReviewChangeStatus::Rejected;
+			bAnyPending |= Target.Status == EBlueprintHelperReviewChangeStatus::Pending;
+			bAnyNeedsAction |= Target.Status == EBlueprintHelperReviewChangeStatus::NeedsAction;
+			bAnyRejectFailed |= Target.Status == EBlueprintHelperReviewChangeStatus::RejectFailed;
+		}
+
+		if (bAnyRejectFailed)
+		{
+			return EBlueprintHelperReviewChangeStatus::RejectFailed;
+		}
+		if (bAnyNeedsAction)
+		{
+			return EBlueprintHelperReviewChangeStatus::NeedsAction;
+		}
+		if (bAnyPending)
+		{
+			return EBlueprintHelperReviewChangeStatus::Pending;
+		}
+		if (bAllAccepted)
+		{
+			return EBlueprintHelperReviewChangeStatus::Accepted;
+		}
+		if (bAllRejected)
+		{
+			return EBlueprintHelperReviewChangeStatus::Rejected;
+		}
+		return EBlueprintHelperReviewChangeStatus::Pending;
+	}
+
+	static EBlueprintHelperReviewChangeStatus CombineChangeStatuses(
+		const TArray<FBlueprintHelperReviewVisibleChange>& Changes)
+	{
+		if (Changes.Num() == 0)
+		{
+			return EBlueprintHelperReviewChangeStatus::NeedsAction;
+		}
+
+		bool bAllAccepted = true;
+		bool bAllRejected = true;
+		bool bAnyPending = false;
+		bool bAnyNeedsAction = false;
+		bool bAnyRejectFailed = false;
+		for (const FBlueprintHelperReviewVisibleChange& Change : Changes)
+		{
+			bAllAccepted &= Change.Status == EBlueprintHelperReviewChangeStatus::Accepted;
+			bAllRejected &= Change.Status == EBlueprintHelperReviewChangeStatus::Rejected;
+			bAnyPending |= Change.Status == EBlueprintHelperReviewChangeStatus::Pending;
+			bAnyNeedsAction |= Change.Status == EBlueprintHelperReviewChangeStatus::NeedsAction;
+			bAnyRejectFailed |= Change.Status == EBlueprintHelperReviewChangeStatus::RejectFailed;
+		}
+
+		if (bAnyRejectFailed)
+		{
+			return EBlueprintHelperReviewChangeStatus::RejectFailed;
+		}
+		if (bAnyNeedsAction)
+		{
+			return EBlueprintHelperReviewChangeStatus::NeedsAction;
+		}
+		if (bAnyPending)
+		{
+			return EBlueprintHelperReviewChangeStatus::Pending;
+		}
+		if (bAllAccepted)
+		{
+			return EBlueprintHelperReviewChangeStatus::Accepted;
+		}
+		if (bAllRejected)
+		{
+			return EBlueprintHelperReviewChangeStatus::Rejected;
+		}
+		return EBlueprintHelperReviewChangeStatus::Pending;
+	}
+
+	static void RefreshReviewRecordStatus(FBlueprintHelperReviewRecord& Record)
+	{
+		for (FBlueprintHelperReviewVisibleChange& Change : Record.VisibleChanges)
+		{
+			Change.Status = CombineTargetStatuses(Change.AtomicTargets);
+		}
+		Record.Status = CombineChangeStatuses(Record.VisibleChanges);
+		Record.SourceTransactionSummary.FinalReviewStatus = Record.Status;
+	}
+
 };
 
 FString FBlueprintHelperReviewStoreService::NormalizeGraphBlockTargetId(
@@ -1072,6 +1207,98 @@ bool FBlueprintHelperReviewStoreService::LoadReviewRecordById(
 	}
 
 	return true;
+}
+
+bool FBlueprintHelperReviewStoreService::DeleteReviewRecord(
+	const FString& ReviewRecordId,
+	FString& OutError) const
+{
+	if (!FBlueprintHelperReviewStoreServiceLocalUtils::IsSafeReviewRecordId(ReviewRecordId))
+	{
+		OutError = TEXT("invalid review_record_id");
+		return false;
+	}
+
+	const FString Path = FBlueprintHelperReviewStoreServiceLocalUtils::GetRecordPath(ReviewRecordId);
+	if (!IFileManager::Get().FileExists(*Path))
+	{
+		OutError.Reset();
+		return true;
+	}
+
+	if (!IFileManager::Get().Delete(*Path, false, true))
+	{
+		OutError = FString::Printf(TEXT("failed to delete review record: %s"), *ReviewRecordId);
+		return false;
+	}
+
+	OutError.Reset();
+	return true;
+}
+
+bool FBlueprintHelperReviewStoreService::PurgeReviewTargets(
+	const FString& ReviewRecordId,
+	const TArray<FString>& TargetKeys,
+	TArray<FString>& OutDebugCaseIdsToDelete,
+	bool& bOutRecordDeleted,
+	FString& OutError) const
+{
+	OutDebugCaseIdsToDelete.Reset();
+	bOutRecordDeleted = false;
+
+	FBlueprintHelperReviewRecord Record;
+	if (!LoadReviewRecordById(ReviewRecordId, Record, OutError))
+	{
+		return false;
+	}
+
+	TSet<FString> TargetKeySet;
+	for (const FString& TargetKey : TargetKeys)
+	{
+		if (!TargetKey.IsEmpty())
+		{
+			TargetKeySet.Add(TargetKey);
+		}
+	}
+
+	bool bMatchedAny = false;
+	for (int32 ChangeIndex = Record.VisibleChanges.Num() - 1; ChangeIndex >= 0; --ChangeIndex)
+	{
+		FBlueprintHelperReviewVisibleChange& Change = Record.VisibleChanges[ChangeIndex];
+		const int32 RemovedTargetCount = Change.AtomicTargets.RemoveAll(
+			[&TargetKeySet](const FBlueprintHelperReviewAtomicTarget& Target)
+			{
+				return FBlueprintHelperReviewStoreServiceLocalUtils::ReviewTargetMatches(Target, TargetKeySet);
+			});
+		if (RemovedTargetCount > 0)
+		{
+			bMatchedAny = true;
+		}
+		if (Change.AtomicTargets.Num() == 0)
+		{
+			Record.VisibleChanges.RemoveAt(ChangeIndex);
+		}
+	}
+
+	if (!bMatchedAny)
+	{
+		OutError = TEXT("target_keys_not_found");
+		return false;
+	}
+
+	if (Record.VisibleChanges.Num() == 0)
+	{
+		OutDebugCaseIdsToDelete = Record.DebugCaseIds;
+		if (!DeleteReviewRecord(ReviewRecordId, OutError))
+		{
+			return false;
+		}
+		bOutRecordDeleted = true;
+		return true;
+	}
+
+	FBlueprintHelperReviewStoreServiceLocalUtils::RefreshReviewRecordStatus(Record);
+	return SaveReviewRecord(Record, OutError);
 }
 
 TSharedRef<FJsonObject> FBlueprintHelperReviewStoreService::BuildReviewRecordSummaryArtifact(

@@ -28,6 +28,7 @@ TSharedRef<SWidget> FBlueprintHelperReviewBlueprintComponentsPresenter::BuildCon
 	FBlueprintHelperReviewGeometryInvalidated OnGeometryInvalidated)
 {
 	State.SubobjectEditor.Reset();
+	State.AssetPath = Context.AssetPath;
 	State.OnGeometryInvalidated = OnGeometryInvalidated;
 
 	if (UBlueprint* Blueprint = Context.Blueprint.Get())
@@ -148,11 +149,18 @@ bool FBlueprintHelperReviewBlueprintComponentsPresenter::ResolveRowGeometry(
 			return false;
 		}
 
-		const FString AssetPath = Change.AssetPath;
-		const FSlateColor RowColor = FBlueprintHelperReviewRowHighlightModel::GetRowBackgroundColor(
+		const FString AssetPath = State.AssetPath.IsEmpty() ? Change.AssetPath : State.AssetPath;
+		FSlateColor RowColor = FBlueprintHelperReviewRowHighlightModel::GetRowBackgroundColor(
 			AssetPath,
 			EBlueprintHelperReviewSurface::Components,
 			Candidate);
+		if (RowColor.GetSpecifiedColor().A <= 0.0f && AssetPath != Change.AssetPath)
+		{
+			RowColor = FBlueprintHelperReviewRowHighlightModel::GetRowBackgroundColor(
+				Change.AssetPath,
+				EBlueprintHelperReviewSurface::Components,
+				Candidate);
+		}
 		TryApplyTableRowBackgroundColor(Row->AsWidget(), RowColor);
 
 		return BuildGeometryAnchorFromRowWidget(
@@ -373,7 +381,7 @@ bool FBlueprintHelperReviewBlueprintComponentsPresenter::TryApplyTableRowBackgro
 	}
 
 	const FString RowType = RowWidget->GetTypeAsString();
-	if (!RowType.Contains(TEXT("TableRow")) && !RowType.Contains(TEXT("Subobject_RowWidget")))
+	if (RowType != TEXT("SBorder"))
 	{
 		return false;
 	}

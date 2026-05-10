@@ -5,6 +5,24 @@ description: Use when working with Unreal Engine Blueprints, UMG widgets, DataAs
 
 # BlueprintHelper Skill
 
+## Non-negotiable SideAgent routing
+
+When this skill is loaded for UE editor asset work, the Main Agent must not call BlueprintHelper MCP tools directly.
+
+The Main Agent may only:
+- read repository files, `AGENTS.md`, this skill, and references;
+- decide task scope, ask the user for missing targets, and summarize results;
+- dispatch a SideAgent with a concise task package.
+
+The SideAgent must:
+- read `references/09_SideAgent_Tool_Execution.md`;
+- call BlueprintHelper MCP tools, including read and preflight tools such as `blueprinthelper_read_agent_guide`, `blueprint_get_runtime_profile`, `blueprinthelper_diagnostics`, `blueprinthelper_read_context`, `blueprinthelper_preview_task`, `blueprinthelper_execute_task`, and `blueprinthelper_get_task_result`;
+- return translated results to the Main Agent with tool names, important arguments, status, blockers, validation results, and next action.
+
+If the platform cannot start a SideAgent or the Main Agent cannot delegate, stop and report `sideagent_unavailable`. Do not silently bypass this rule by calling BlueprintHelper MCP tools from the Main Agent.
+
+Normal repository tools remain allowed for C++, TypeScript, Python, JSON, docs, tests, config, `AGENTS.md`, and memory files. This exception does not include BlueprintHelper MCP tools or UE editor asset operations.
+
 BlueprintHelper 是 UE 编辑器资产操作入口。`SKILL.md` 只负责让主 Agent 判断任务、读取索引、分派 SideAgent；工具参数和返回结果处理规则在 references 中。
 
 ## 主 Agent 入口职责

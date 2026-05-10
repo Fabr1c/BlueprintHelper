@@ -6,6 +6,7 @@
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
 #include "UI/Review/BlueprintHelperReviewPresenterTypes.h"
 
+class SCanvas;
 struct FBlueprintHelperReviewPanelSurfacePresenterArgs;
 
 /**
@@ -102,6 +103,19 @@ private:
 		const FString& AssetPath,
 		EBlueprintHelperReviewSurface Surface,
 		const FString& SearchText);
+	static TSharedRef<SWidget> BuildComponentRowHighlightFill(const FSlateColor& FillColor);
+	static TSharedRef<SWidget> BuildComponentRowActions(
+		const FString& AssetPath,
+		EBlueprintHelperReviewSurface Surface,
+		const FString& SearchText);
+	static void AddComponentRowOverlay(
+		const TSharedPtr<SCanvas>& Canvas,
+		const FBlueprintHelperReviewSurfaceGeometryAnchor& Anchor,
+		const FSlateColor& FillColor,
+		const FString& AssetPath,
+		EBlueprintHelperReviewSurface Surface,
+		const FString& SearchText,
+		bool bSelected);
 	static void EmitDedupedRowHighlightDebug(
 		const TFunction<void(const FString&)>& AddDebugMessage,
 		const FString& Message,

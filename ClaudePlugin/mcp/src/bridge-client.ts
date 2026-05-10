@@ -140,8 +140,11 @@ export class BridgeClient {
   }
 
   private ensureConnected(): Promise<net.Socket> {
-    if (this.socket && !this.socket.destroyed) {
+    if (this.socket && this.isSocketUsable(this.socket)) {
       return Promise.resolve(this.socket);
+    }
+    if (this.socket) {
+      this.resetSocket(new Error('Bridge connection is no longer writable'));
     }
     if (this.connectPromise) {
       return this.connectPromise;
@@ -206,10 +209,22 @@ export class BridgeClient {
       this.resetSocket(new Error(`Bridge connection error: ${err.message}`));
     });
 
+    socket.on('end', () => {
+      if (this.socket !== socket) return;
+      this.resetSocket(new Error('Bridge connection ended'));
+    });
+
     socket.on('close', () => {
       if (this.socket !== socket) return;
       this.resetSocket(new Error('Bridge connection closed'));
     });
+  }
+
+  private isSocketUsable(socket: net.Socket): boolean {
+    return !socket.destroyed
+      && socket.writable
+      && !socket.writableEnded
+      && socket.readyState === 'open';
   }
 
   private handleData(chunk: Buffer): void {

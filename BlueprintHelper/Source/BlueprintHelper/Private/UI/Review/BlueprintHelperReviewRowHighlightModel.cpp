@@ -337,6 +337,102 @@ EVisibility FBlueprintHelperReviewRowHighlightModel::ResolveRowActionsVisibility
 		: EVisibility::Collapsed;
 }
 
+TSharedRef<SWidget> FBlueprintHelperReviewRowHighlightModel::BuildComponentRowHighlightFill(
+	const FSlateColor& FillColor)
+{
+	return SNew(SBorder)
+		.Visibility(EVisibility::HitTestInvisible)
+		.BorderImage(FAppStyle::GetBrush(TEXT("Brushes.White")))
+		.BorderBackgroundColor(FillColor)
+		.Padding(0.0f)
+		[
+			SNullWidget::NullWidget
+		];
+}
+
+TSharedRef<SWidget> FBlueprintHelperReviewRowHighlightModel::BuildComponentRowActions(
+	const FString& AssetPath,
+	EBlueprintHelperReviewSurface Surface,
+	const FString& SearchText)
+{
+	return SNew(SBorder)
+		.BorderImage(FAppStyle::GetBrush(TEXT("Brushes.Panel")))
+		.Padding(FMargin(4.0f, 2.0f))
+		.Visibility_Lambda([AssetPath, Surface, SearchText]()
+		{
+			return FBlueprintHelperReviewRowHighlightModel::GetRowActionsVisibility(
+				AssetPath,
+				Surface,
+				SearchText);
+		})
+		[
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.Padding(0.0f, 0.0f, 4.0f, 0.0f)
+			[
+				SNew(SButton)
+				.Text(FText::FromString(TEXT("Accept")))
+				.OnClicked_Lambda([AssetPath, Surface, SearchText]()
+				{
+					return FBlueprintHelperReviewRowHighlightModel::AcceptHighlightedRow(
+						AssetPath,
+						Surface,
+						SearchText);
+				})
+			]
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			[
+				SNew(SButton)
+				.Text(FText::FromString(TEXT("Reject")))
+				.OnClicked_Lambda([AssetPath, Surface, SearchText]()
+				{
+					return FBlueprintHelperReviewRowHighlightModel::RejectHighlightedRow(
+						AssetPath,
+						Surface,
+						SearchText);
+				})
+			]
+		];
+}
+
+void FBlueprintHelperReviewRowHighlightModel::AddComponentRowOverlay(
+	const TSharedPtr<SCanvas>& Canvas,
+	const FBlueprintHelperReviewSurfaceGeometryAnchor& Anchor,
+	const FSlateColor& FillColor,
+	const FString& AssetPath,
+	EBlueprintHelperReviewSurface Surface,
+	const FString& SearchText,
+	bool bSelected)
+{
+	if (!Canvas.IsValid() || !Anchor.bIsValid)
+	{
+		return;
+	}
+
+	Canvas->AddSlot()
+	.Position(Anchor.Position)
+	.Size(Anchor.Size)
+	[
+		BuildComponentRowHighlightFill(FillColor)
+	];
+
+	if (!bSelected)
+	{
+		return;
+	}
+
+	const FVector2D ActionSize(144.0f, FMath::Max(24.0f, Anchor.Size.Y - 4.0f));
+	const float ActionX = Anchor.Position.X + FMath::Max(4.0f, Anchor.Size.X - ActionSize.X - 4.0f);
+	Canvas->AddSlot()
+	.Position(FVector2D(ActionX, Anchor.Position.Y + 2.0f))
+	.Size(ActionSize)
+	[
+		BuildComponentRowActions(AssetPath, Surface, SearchText)
+	];
+}
+
 void FBlueprintHelperReviewRowHighlightModel::EmitDedupedRowHighlightDebug(
 	const TFunction<void(const FString&)>& AddDebugMessage,
 	const FString& Message,
@@ -432,9 +528,10 @@ TSharedRef<SWidget> FBlueprintHelperReviewRowHighlightModel::BuildRowHighlightOv
 		return SNullWidget::NullWidget;
 	}
 
-	const FString CurrentAssetPath = Args.SelectedChange.IsValid()
-		? Args.SelectedChange->AssetPath
-		: (Args.AssetContext ? Args.AssetContext->AssetPath : FString());
+	const FString ContextAssetPath = Args.AssetContext ? Args.AssetContext->AssetPath : FString();
+	const FString SelectedAssetPath = Args.SelectedChange.IsValid() ? Args.SelectedChange->AssetPath : FString();
+	const FString CurrentAssetPath = ContextAssetPath.IsEmpty() ? SelectedAssetPath : ContextAssetPath;
+	const FString FilterAssetPath = SelectedAssetPath.IsEmpty() ? CurrentAssetPath : SelectedAssetPath;
 	FRowHighlightSurfaceState State;
 	State.AssetPath = CurrentAssetPath;
 	State.Surface = Surface;
@@ -444,6 +541,11 @@ TSharedRef<SWidget> FBlueprintHelperReviewRowHighlightModel::BuildRowHighlightOv
 
 	TArray<TSharedPtr<FBlueprintHelperReviewVisibleChange>> HighlightedItems;
 	TMap<FString, FString> PrimaryTargetByChangeId;
+	TSharedPtr<SCanvas> ComponentOverlayCanvas;
+	if (Surface == EBlueprintHelperReviewSurface::Components)
+	{
+		SAssignNew(ComponentOverlayCanvas, SCanvas);
+	}
 
 	for (const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Item : *Args.ChangeItems)
 	{
@@ -451,7 +553,9 @@ TSharedRef<SWidget> FBlueprintHelperReviewRowHighlightModel::BuildRowHighlightOv
 		{
 			continue;
 		}
-		if (!CurrentAssetPath.IsEmpty() && Item->AssetPath != CurrentAssetPath)
+		if ((!CurrentAssetPath.IsEmpty() || !FilterAssetPath.IsEmpty())
+			&& Item->AssetPath != CurrentAssetPath
+			&& Item->AssetPath != FilterAssetPath)
 		{
 			continue;
 		}
@@ -510,6 +614,21 @@ TSharedRef<SWidget> FBlueprintHelperReviewRowHighlightModel::BuildRowHighlightOv
 	GetRowHighlightSurfaceStates().Add(
 		BuildRowHighlightStateKey(CurrentAssetPath, Surface),
 		State);
+	if (!FilterAssetPath.IsEmpty() && FilterAssetPath != CurrentAssetPath)
+	{
+		GetRowHighlightSurfaceStates().Add(
+			BuildRowHighlightStateKey(FilterAssetPath, Surface),
+			State);
+	}
+	for (const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Item : HighlightedItems)
+	{
+		if (Item.IsValid() && !Item->AssetPath.IsEmpty() && Item->AssetPath != CurrentAssetPath)
+		{
+			GetRowHighlightSurfaceStates().Add(
+				BuildRowHighlightStateKey(Item->AssetPath, Surface),
+				State);
+		}
+	}
 
 	for (const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Item : HighlightedItems)
 	{
@@ -521,6 +640,19 @@ TSharedRef<SWidget> FBlueprintHelperReviewRowHighlightModel::BuildRowHighlightOv
 
 		if (bResolved)
 		{
+			if (Surface == EBlueprintHelperReviewSurface::Components)
+			{
+				const FString ActionAssetPath = CurrentAssetPath.IsEmpty() ? Item->AssetPath : CurrentAssetPath;
+				AddComponentRowOverlay(
+					ComponentOverlayCanvas,
+					Anchor,
+					ResolveRowHighlightColor(ActionAssetPath, Surface, TargetText),
+					ActionAssetPath,
+					Surface,
+					TargetText,
+					IsSameChange(Item, Args.SelectedChange));
+			}
+
 			EmitDedupedRowHighlightDebug(
 				Args.AddDebugMessage,
 				FString::Printf(
@@ -548,6 +680,11 @@ TSharedRef<SWidget> FBlueprintHelperReviewRowHighlightModel::BuildRowHighlightOv
 			Item->ChangeId,
 			TEXT("pending"),
 			Reason);
+	}
+
+	if (ComponentOverlayCanvas.IsValid() && ComponentOverlayCanvas->GetChildren()->Num() > 0)
+	{
+		return ComponentOverlayCanvas.ToSharedRef();
 	}
 
 	return SNullWidget::NullWidget;
