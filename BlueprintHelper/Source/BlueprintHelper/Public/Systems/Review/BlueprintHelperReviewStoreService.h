@@ -32,6 +32,17 @@ public:
 		FBlueprintHelperReviewRecord& OutRecord,
 		FString& OutError) const;
 
+	bool DeleteReviewRecord(
+		const FString& ReviewRecordId,
+		FString& OutError) const;
+
+	bool PurgeReviewTargets(
+		const FString& ReviewRecordId,
+		const TArray<FString>& TargetKeys,
+		TArray<FString>& OutDebugCaseIdsToDelete,
+		bool& bOutRecordDeleted,
+		FString& OutError) const;
+
 	TSharedRef<FJsonObject> BuildReviewRecordSummaryArtifact(
 		const FBlueprintHelperReviewRecord& Record) const;
 

@@ -12,11 +12,11 @@ Task orchestration mainline: Agent -> MCP Task Tools -> Python/MCP Task Compiler
 - BlueprintHelper installed under the project `Plugins` directory.
 - A terminal that can run Windows PowerShell commands.
 
-Current repository example:
+Path placeholders used in this guide:
 
 ```text
-Plugin:  G:\UnrealPractise\MrStone\Plugins\BlueprintHelper
-Project: G:\UnrealPractise\MrStone\MrStone.uproject
+Plugin:  <PLUGIN_ROOT>
+Project: <PROJECT_FILE>
 ```
 
 ## 1. Install The Plugin
@@ -32,7 +32,7 @@ Open the project in Unreal Editor, enable BlueprintHelper if needed, and rebuild
 ## 2. Build The MCP Server
 
 ```powershell
-cd G:\UnrealPractise\MrStone\Plugins\BlueprintHelper\BlueprintHelper_MCP_Server
+cd <PLUGIN_ROOT>\ClaudePlugin\mcp
 npm install
 npm run build
 ```
@@ -52,7 +52,7 @@ The MCP Server reads these environment variables:
 
 | Variable | Required | Default | Purpose |
 |---|---:|---|---|
-| `UE_ENGINE_DIR` | For `blueprint_open_editor` and `blueprint_build_project` | empty | Unreal Engine root, for example `F:\UE_5.6` |
+| `UE_ENGINE_DIR` | For `blueprint_open_editor` and `blueprint_build_project` | empty | Unreal Engine root, represented as `<UE_ENGINE_DIR>` |
 | `BRIDGE_HOST` | No | `127.0.0.1` | BlueprintHelper Bridge host |
 | `BRIDGE_PORT` | No | `54321` | BlueprintHelper Bridge port |
 
@@ -61,7 +61,7 @@ Interactive write access is granted through `blueprinthelper_request_write_sessi
 PowerShell example:
 
 ```powershell
-$env:UE_ENGINE_DIR = "F:\UE_5.6"
+$env:UE_ENGINE_DIR = "<UE_ENGINE_DIR>"
 $env:BRIDGE_HOST = "127.0.0.1"
 $env:BRIDGE_PORT = "54321"
 ```
@@ -89,13 +89,13 @@ The MCP Server uses stdio transport. Most MCP clients launch it directly.
 Manual command:
 
 ```powershell
-node G:\UnrealPractise\MrStone\Plugins\BlueprintHelper\BlueprintHelper_MCP_Server\build\index.js
+node <PLUGIN_ROOT>\ClaudePlugin\mcp\build\index.js
 ```
 
 Using npm:
 
 ```powershell
-cd G:\UnrealPractise\MrStone\Plugins\BlueprintHelper_MCP_Server
+cd <PLUGIN_ROOT>\ClaudePlugin\mcp
 npm start
 ```
 
@@ -111,10 +111,10 @@ Generic MCP client configuration:
     "blueprint-helper": {
       "command": "node",
       "args": [
-        "G:\\UnrealPractise\\MrStone\\Plugins\\BlueprintHelper\\BlueprintHelper_MCP_Server\\build\\index.js"
+        "<PLUGIN_ROOT>\\ClaudePlugin\\mcp\\build\\index.js"
       ],
       "env": {
-        "UE_ENGINE_DIR": "F:\\UE_5.6",
+        "UE_ENGINE_DIR": "<UE_ENGINE_DIR>",
         "BRIDGE_HOST": "127.0.0.1",
         "BRIDGE_PORT": "54321"
       }
@@ -130,7 +130,7 @@ For Codex, Claude, or IDE agents, use the same command, args, and env fields in 
 Repository verification:
 
 ```powershell
-cd G:\UnrealPractise\MrStone\Plugins\BlueprintHelper\BlueprintHelper_MCP_Server
+cd <PLUGIN_ROOT>\ClaudePlugin\mcp
 npm test
 ```
 

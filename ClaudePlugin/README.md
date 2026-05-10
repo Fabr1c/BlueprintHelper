@@ -82,7 +82,7 @@ For repository work, use normal shell and editor tools. For editor assets, use t
 3. 配置环境变量（在 Claude Code settings 或系统环境中设置）：
 
 ```powershell
-$env:UE_ENGINE_DIR = "F:\UE_5.6"
+$env:UE_ENGINE_DIR = "<UE_ENGINE_DIR>"
 ```
 
 Project `.uproject` paths are not stored in Claude global settings. Agents discover the target `.uproject` from the current workspace and pass it as the explicit `project_file` tool argument when launching or building a project.
@@ -105,7 +105,7 @@ npm run build
 4. Build the MCP Server:
 
 ```powershell
-cd G:\UnrealPractise\MrStone\Plugins\BlueprintHelper\BlueprintHelper_MCP_Server
+cd <PLUGIN_ROOT>\ClaudePlugin\mcp
 npm install
 npm run build
 ```
@@ -113,7 +113,7 @@ npm run build
 5. Set MCP Server environment variables:
 
 ```powershell
-$env:UE_ENGINE_DIR = "F:\UE_5.6"
+$env:UE_ENGINE_DIR = "<UE_ENGINE_DIR>"
 $env:BRIDGE_HOST = "127.0.0.1"
 $env:BRIDGE_PORT = "54321"
 ```
@@ -121,7 +121,7 @@ $env:BRIDGE_PORT = "54321"
 6. Start Unreal Editor with the project, then connect your Agent MCP client to:
 
 ```powershell
-node G:\UnrealPractise\MrStone\Plugins\BlueprintHelper\BlueprintHelper_MCP_Server\build\index.js
+node <PLUGIN_ROOT>\ClaudePlugin\mcp\build\index.js
 ```
 
 For full setup details, read [Docs/Install_MCP_QuickStart.md](Docs/Install_MCP_QuickStart.md).

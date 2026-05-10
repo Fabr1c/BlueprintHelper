@@ -1,5 +1,7 @@
 # 09 - SideAgent Tool Execution
 
+主 Agent 不得直接调用 BlueprintHelper MCP 工具。凡是需要调用 BlueprintHelper MCP 工具的步骤，都必须由 SideAgent 执行；如果当前平台无法分派 SideAgent，返回 `sideagent_unavailable`，不要降级为主 Agent 直连调用。
+
 本文件只给负责 BlueprintHelper 工具调用的 SideAgent 使用。主 Agent 负责面向用户沟通，SideAgent 负责构造参数、调用工具、翻译结果并回交。
 
 ## 输入契约

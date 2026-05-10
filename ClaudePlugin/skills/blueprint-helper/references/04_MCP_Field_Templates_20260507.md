@@ -43,7 +43,7 @@ Use `tools/list` as final authority. Normal Agent-facing tools:
 | `blueprinthelper_preview_task` | `{ "task_spec": { ...BlueprintHelper.TaskSpec.v1... } }` |
 | `blueprinthelper_execute_task` | `{ "task_spec": { ...BlueprintHelper.TaskSpec.v1... } }` |
 | `blueprinthelper_get_task_result` | `{ "task_run_id": "..." }` |
-| `blueprint_open_editor` | `{ "project_file": "G:/UnrealPractise/MrStone/MrStone.uproject", "wait_timeout_ms": 120000 }` |
+| `blueprint_open_editor` | `{ "project_file": "<PROJECT_FILE>", "wait_timeout_ms": 120000 }` |
 
 `blueprinthelper_request_write_session` is only called after a successful preview when `write_permission` is disabled. The running Editor shows a minimal accept/reject prompt. The tool response omits the raw session id; Agents must not pass `auth_session`, `auth_token`, or `BLUEPRINTHELPER_BRIDGE_TOKEN` in later tool calls.
 
@@ -124,6 +124,20 @@ Use `tools/list` as final authority. Normal Agent-facing tools:
 ```
 
 Do not use `validation.compile` or `validation.save`.
+
+Compile validation is only for assets that have a Blueprint compile step.
+
+| Asset or operation | `validation.should_compile` | Validation rule |
+|---|---:|---|
+| `blueprint_class`, Blueprint graph, components, variables, class settings, signatures | `true` | Compile plus read-back |
+| `blueprint_interface` | `true` | Compile plus read-back |
+| `widget_blueprint`, UMG widget edits | `true` | Compile plus widget-tree read-back |
+| `structure` / UserDefinedStruct | `false` | No Blueprint compile; verify fields by read-back |
+| `data_table` creation or row edits | `false` | No Blueprint compile; verify row struct and rows by read-back |
+| `data_asset` creation or property edits | `false` | No Blueprint compile; verify asset class and properties by read-back |
+| `input_action`, `input_mapping_context`, plain UObject properties | `false` | No Blueprint compile; verify properties by read-back |
+
+Do not report a skipped compile or `no_op` reuse as a compile failure for non-Blueprint data assets. For idempotent fixtures, `no_op` is acceptable only when read-back proves the existing asset matches the requested type and content.
 
 ## 7. Asset Fixture TaskSpec
 

@@ -9,7 +9,7 @@ Purpose: run BlueprintHelper end to end in a clean Unreal project, using disposa
 Use one unique run id and keep every disposable asset under one folder.
 
 ```text
-ENGINE_DIR=<F:/UE_5.6/Engine>
+ENGINE_DIR=<UE_ENGINE_DIR>
 PROJECT_ROOT=<absolute path to new project>
 PROJECT_FILE=<absolute path to NewProject.uproject>
 PROJECT_NAME=<NewProject target name without .uproject>
@@ -37,6 +37,8 @@ ${SMOKE_ROOT}/DA_BHSmokeData
 - Expected negative cases must return a non-empty `issues[]` with `code`, `path`, and `message`.
 - Every successful execute must return a non-empty `task_run_id`; `blueprinthelper_get_task_result` must load the UE TaskRunJournal.
 - `validation.should_compile` and `validation.should_save` must be explicit for every write.
+- Compile validation is only for Blueprint-backed assets. `structure`, `data_table`, `data_asset`, `input_action`, `input_mapping_context`, and plain UObject property writes must use `validation.should_compile=false` and pass by read-back.
+- `no_op` is acceptable for idempotent fixture creation when read-back proves the existing asset type and content match the requested fixture. Do not classify `no_op` on ST/DT/DA as a compile failure.
 - MCP responses must not expose DebugBundle local paths, raw payloads, source content, tokens, settings, or `debug_export_refs`.
 - ReviewRecord may store `debug_case_ids[]`; it must not inline DebugBundle payload or local bundle paths.
 - A full pass requires no UE Automation failures, no MCP contract regression failures, no orphaned graph flow after read-back, and no path leak in Review/Debug summaries.
@@ -213,15 +215,17 @@ Record every operation in this table:
 
 ### 6.2 Interface, Struct, DataTable, Widget, DataAsset
 
-Run equivalent `create_asset` TaskSpecs:
+Run equivalent `create_asset` TaskSpecs. Compile only assets that have a Blueprint compile step:
 
-| Asset | `asset_type` | Required extra fields | Pass criteria |
-|---|---|---|---|
-| `${SMOKE_ROOT}/BPI_BHSmokeInteract` | `blueprint_interface` | none | asset exists |
-| `${SMOKE_ROOT}/ST_BHSmokeDamageRow` | `structure` | `fields=[Damage:int, DisplayName:string]` | fields exist |
-| `${SMOKE_ROOT}/DT_BHSmokeDamage` | `data_table` | `row_struct="${SMOKE_ROOT}/ST_BHSmokeDamageRow"` | DataTable uses row struct |
-| `${SMOKE_ROOT}/WBP_BHSmokePanel` | `widget_blueprint` | `parent_class=UserWidget` | WidgetBlueprint exists |
-| `${SMOKE_ROOT}/DA_BHSmokeData` | `data_asset` | `data_asset_class=/Script/Engine.PrimaryDataAsset` | DataAsset exists |
+| Asset | `asset_type` | Required extra fields | `should_compile` | Pass criteria |
+|---|---|---|---:|---|
+| `${SMOKE_ROOT}/BPI_BHSmokeInteract` | `blueprint_interface` | none | `true` | asset exists and compile succeeds |
+| `${SMOKE_ROOT}/ST_BHSmokeDamageRow` | `structure` | `fields=[Damage:int, DisplayName:string]` | `false` | fields exist by read-back |
+| `${SMOKE_ROOT}/DT_BHSmokeDamage` | `data_table` | `row_struct="${SMOKE_ROOT}/ST_BHSmokeDamageRow"` | `false` | DataTable uses row struct by read-back |
+| `${SMOKE_ROOT}/WBP_BHSmokePanel` | `widget_blueprint` | `parent_class=UserWidget` | `true` | WidgetBlueprint exists and compile has no fatal error |
+| `${SMOKE_ROOT}/DA_BHSmokeData` | `data_asset` | `data_asset_class=/Script/Engine.DataAsset` | `false` | DataAsset exists by read-back |
+
+For ST/DT/DA, do not request compile and do not fail the smoke for missing compile output. If the create step returns `no_op` because the fixture already exists, run read-back and only fail when the asset type or content is wrong.
 
 ## 7. Blueprint Capability Ring
 
@@ -595,9 +599,13 @@ TaskSpec requirements:
 
 Read-back: widget tree shows both widgets, parent/child relation is correct, text property matches.
 
+Validation: `validation.should_compile=true` for WidgetBlueprint / UMG writes.
+
 ### 9.2 DataTable
 
 Target: `${SMOKE_ROOT}/DT_BHSmokeDamage`
+
+Validation: `validation.should_compile=false`; DataTable rows are verified by read-back, not by Blueprint compile.
 
 TaskSpec rows:
 
@@ -637,6 +645,8 @@ Read-back: both rows exist; `Sword.Damage=55`; `Axe.Damage=99`.
 ### 9.3 Object Property
 
 Run a valid object-property TaskSpec against a fixture that has a known writable property. Prefer a DataAsset or Blueprint class default created specifically for this smoke. Then run the negative invalid-value case in Ring 12.
+
+If the target is a DataAsset or plain UObject, set `validation.should_compile=false` and validate by property read-back. Only Blueprint class default changes should request compile.
 
 Pass criteria:
 

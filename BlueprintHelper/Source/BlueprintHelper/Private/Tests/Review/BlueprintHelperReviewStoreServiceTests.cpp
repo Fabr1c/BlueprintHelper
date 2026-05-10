@@ -2080,6 +2080,68 @@ bool FBlueprintHelperReviewDataAssetAndTableUseRowHighlightSurfaceTest::RunTest(
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewComponentsRowHighlightUsesAssetContextScopeTest,
+	"BlueprintHelper.Review.UI.ComponentsRowHighlightUsesAssetContextScope",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewComponentsRowHighlightUsesAssetContextScopeTest::RunTest(const FString& Parameters)
+{
+	const FString ContextAssetPath = TEXT("/Game/BlueprintHelper/Smoke/BP_ComponentSmoke");
+	const FString ChangeAssetPath = TEXT("/Game/BlueprintHelperSmoke/BP_ComponentSmoke");
+
+	TArray<TSharedPtr<FBlueprintHelperReviewVisibleChange>> Items;
+	FBlueprintHelperReviewVisibleChange Change;
+	Change.ChangeId = TEXT("tx_component_asset_scope");
+	Change.AssetPath = ChangeAssetPath;
+	Change.DisplayLabel = TEXT("SmokeMesh");
+	Change.ChangeKind = EBlueprintHelperReviewChangeKind::Added;
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.Surface = EBlueprintHelperReviewSurface::Components;
+	Target.TargetKind = TEXT("component");
+	Target.TargetKey = TEXT("component:SmokeMesh");
+	Target.DisplayLabel = TEXT("SmokeMesh");
+	Change.AtomicTargets.Add(Target);
+	Items.Add(MakeShared<FBlueprintHelperReviewVisibleChange>(Change));
+
+	FBlueprintHelperReviewAssetContext Context;
+	Context.AssetPath = ContextAssetPath;
+	Context.AssetKind = EBlueprintHelperReviewAssetKind::Blueprint;
+	FBlueprintHelperReviewPanelSurfacePresenterArgs Args;
+	Args.AssetContext = &Context;
+	Args.ChangeItems = &Items;
+	Args.SelectedChange = Items[0];
+	Args.GetChangeColor = [](EBlueprintHelperReviewChangeKind)
+	{
+		return FSlateColor(FLinearColor::Green);
+	};
+	Args.ResolveRowGeometry.BindLambda([](
+		const FBlueprintHelperReviewVisibleChange&,
+		EBlueprintHelperReviewSurface,
+		FBlueprintHelperReviewSurfaceGeometryAnchor& OutAnchor)
+	{
+		OutAnchor.bIsValid = true;
+		OutAnchor.Position = FVector2D(12.0f, 24.0f);
+		OutAnchor.Size = FVector2D(260.0f, 32.0f);
+		OutAnchor.Reason = TEXT("test_stable_slate_row_geometry");
+		return true;
+	});
+
+	FBlueprintHelperReviewBlueprintComponentsPresenter::BuildOverlay(Args);
+
+	TestTrue(TEXT("component row highlight is scoped to loaded asset context"),
+		FBlueprintHelperReviewRowHighlightModel::GetRowBackgroundColor(
+			ContextAssetPath,
+			EBlueprintHelperReviewSurface::Components,
+			TEXT("SmokeMesh")).GetSpecifiedColor().A > 0.0f);
+	TestTrue(TEXT("selected component row actions are scoped to loaded asset context"),
+		FBlueprintHelperReviewRowHighlightModel::GetRowActionsVisibility(
+			ContextAssetPath,
+			EBlueprintHelperReviewSurface::Components,
+			TEXT("SmokeMesh")) == EVisibility::Visible);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperReviewPresenterOverlayShowsOnlyReadySlateRowGeometryTest,
 	"BlueprintHelper.Review.VisibleChange.PresenterOverlayShowsOnlyReadySlateRowGeometry",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -2150,8 +2212,8 @@ bool FBlueprintHelperReviewPresenterOverlayShowsOnlyReadySlateRowGeometryTest::R
 	});
 
 	TSharedRef<SWidget> Overlay = FBlueprintHelperReviewBlueprintComponentsPresenter::BuildOverlay(Args);
-	TestTrue(TEXT("partial geometry row highlight does not render overlay frames"),
-		&Overlay.Get() == &SNullWidget::NullWidget.Get());
+	TestTrue(TEXT("component partial geometry exposes selected-row action host"),
+		&Overlay.Get() != &SNullWidget::NullWidget.Get());
 
 	bool bSawShownRowHighlight0 = false;
 	bool bSawPendingRow1 = false;
@@ -3737,11 +3799,11 @@ bool FBlueprintHelperReviewPartialAcceptPropagatesPendingStatusTest::RunTest(con
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperReviewRejectTargetsPersistsActionHistoryTest,
-	"BlueprintHelper.Review.Action.RejectTargetsPersistsActionHistory",
+	FBlueprintHelperReviewRejectTargetsPurgesReviewRecordTest,
+	"BlueprintHelper.Review.Action.RejectTargetsPurgesReviewRecord",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FBlueprintHelperReviewRejectTargetsPersistsActionHistoryTest::RunTest(const FString& Parameters)
+bool FBlueprintHelperReviewRejectTargetsPurgesReviewRecordTest::RunTest(const FString& Parameters)
 {
 	FBlueprintHelperReviewStoreService Store;
 	const FString ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_reject_targets"));
@@ -3775,29 +3837,76 @@ bool FBlueprintHelperReviewRejectTargetsPersistsActionHistoryTest::RunTest(const
 
 	FBlueprintHelperReviewRecord Loaded;
 	FString LoadError;
-	TestTrue(TEXT("rejected record reloads"),
+	TestFalse(TEXT("successful reject physically removes the review record"),
 		Store.LoadReviewRecordById(Records[0].ReviewRecordId, Loaded, LoadError));
-	TestEqual(TEXT("record status rejected"),
-		Loaded.Status,
-		EBlueprintHelperReviewChangeStatus::Rejected);
-	TestEqual(TEXT("one visible change remains after reject"), Loaded.VisibleChanges.Num(), 1);
-	if (Loaded.VisibleChanges.Num() != 1 || Loaded.VisibleChanges[0].AtomicTargets.Num() != 1)
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewRejectTargetsPurgesLinkedDebugCasesTest,
+	"BlueprintHelper.Review.Action.RejectTargetsPurgesLinkedDebugCases",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewRejectTargetsPurgesLinkedDebugCasesTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewStoreService Store;
+	FBlueprintHelperDebugCaseStoreService DebugStore;
+	const FString ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_reject_targets_debug"));
+	FBlueprintHelperReviewAtomicTarget Target = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
+		TEXT("graph_node:N1"),
+		TEXT("graph:EventGraph:block:DoorFlow"),
+		TEXT("tx_reject_targets_debug"),
+		TEXT("after_reject_debug"));
+	TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
+	Evidences.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
+		ArchiveSessionId,
+		TEXT("task_reject_targets_debug"),
+		TEXT("tx_reject_targets_debug"),
+		TEXT("/Game/BP_Door"),
+		Target));
+	TArray<FBlueprintHelperReviewRecord> Records = Store.BuildReviewRecordsFromEvidence(Evidences);
+	if (Records.Num() != 1)
 	{
 		return false;
 	}
-	TestEqual(TEXT("action history records reject"), Loaded.ReviewActions.Num(), 1);
-	if (Loaded.ReviewActions.Num() == 1)
-	{
-		TestEqual(TEXT("action name is reject"), Loaded.ReviewActions[0].Action, FString(TEXT("reject")));
-		TestEqual(TEXT("reject records archive baseline policy"),
-			Loaded.ReviewActions[0].OwnershipPolicy,
-			FString(TEXT("archive_baseline")));
-		TestTrue(TEXT("reject action targets selected key"),
-			Loaded.ReviewActions[0].TargetKeys.Contains(TEXT("graph_node:N1")));
-	}
-	TestEqual(TEXT("target status rejected"),
-		Loaded.VisibleChanges[0].AtomicTargets[0].Status,
-		EBlueprintHelperReviewChangeStatus::Rejected);
+
+	const FString DebugCaseId = TEXT("dbg_reject_targets_") + FGuid::NewGuid().ToString(EGuidFormats::Digits);
+	Records[0].DebugCaseIds.Add(DebugCaseId);
+	FString SaveError;
+	TestTrue(TEXT("record with linked debug case saves"), Store.SaveReviewRecord(Records[0], SaveError));
+
+	FBlueprintHelperDebugCase DebugCase;
+	DebugCase.DebugCaseId = DebugCaseId;
+	DebugCase.CreatedAt = FDateTime::UtcNow().ToIso8601();
+	DebugCase.UpdatedAt = DebugCase.CreatedAt;
+	DebugCase.Source = TEXT("review_test");
+	DebugCase.Operation = TEXT("reject_review_targets");
+	DebugCase.Stage = TEXT("test");
+	DebugCase.AssetPaths.Add(TEXT("/Game/BP_Door"));
+	DebugCase.ReviewRecordIds.Add(Records[0].ReviewRecordId);
+	FString DebugSaveError;
+	TestTrue(TEXT("linked debug case saves"), DebugStore.SaveCase(DebugCase, &DebugSaveError));
+
+	FBlueprintHelperReviewRejectOptions Options;
+	Options.CurrentHashesByTargetKey.Add(TEXT("graph_node:N1"), TEXT("after_reject_debug"));
+	Options.bRollbackExecutorAvailable = true;
+	Options.bRollbackSucceeded = true;
+
+	FBlueprintHelperReviewActionService ActionService;
+	const FBlueprintHelperReviewActionResult Result = ActionService.RejectReviewTargets(
+		Records[0].ReviewRecordId,
+		{TEXT("graph_node:N1")},
+		Options);
+	TestTrue(TEXT("persisted reject succeeds"), Result.bSucceeded);
+
+	FBlueprintHelperReviewRecord Loaded;
+	FString LoadError;
+	TestFalse(TEXT("successful reject removes the review record"),
+		Store.LoadReviewRecordById(Records[0].ReviewRecordId, Loaded, LoadError));
+	FBlueprintHelperDebugCase LoadedDebugCase;
+	FString DebugLoadError;
+	TestFalse(TEXT("successful reject removes linked debug case"),
+		DebugStore.LoadCase(DebugCaseId, LoadedDebugCase, &DebugLoadError));
 	return true;
 }
 
@@ -3882,39 +3991,8 @@ bool FBlueprintHelperReviewRejectLifecycleRootRemovesChildrenTest::RunTest(const
 
 	FBlueprintHelperReviewRecord Loaded;
 	FString LoadError;
-	TestTrue(TEXT("cascade reject record reloads"),
+	TestFalse(TEXT("successful lifecycle root reject physically removes the review record"),
 		Store.LoadReviewRecordById(Records[0].ReviewRecordId, Loaded, LoadError));
-	if (Loaded.VisibleChanges.Num() != 2)
-	{
-		return false;
-	}
-
-	const FBlueprintHelperReviewVisibleChange* LoadedRoot = Loaded.VisibleChanges.FindByPredicate(
-		[](const FBlueprintHelperReviewVisibleChange& Change)
-		{
-			return Change.ChangeId == TEXT("tx_reject_lifecycle_root");
-		});
-	const FBlueprintHelperReviewVisibleChange* LoadedChild = Loaded.VisibleChanges.FindByPredicate(
-		[](const FBlueprintHelperReviewVisibleChange& Change)
-		{
-			return Change.ChangeId == TEXT("tx_reject_lifecycle_child");
-		});
-	TestNotNull(TEXT("loaded root exists"), LoadedRoot);
-	TestNotNull(TEXT("loaded child exists"), LoadedChild);
-	if (LoadedRoot)
-	{
-		TestEqual(TEXT("root is rejected"),
-			LoadedRoot->Status,
-			EBlueprintHelperReviewChangeStatus::Rejected);
-	}
-	if (LoadedChild)
-	{
-		TestEqual(TEXT("child is cascade rejected"),
-			LoadedChild->Status,
-			EBlueprintHelperReviewChangeStatus::Rejected);
-		TestTrue(TEXT("child records cascade reason"),
-			LoadedChild->NeedsActionReason.Contains(TEXT("cascade_removed_by_asset_lifecycle_root:tx_reject_lifecycle_root")));
-	}
 
 	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(Records[0].ReviewRecordId);
 	return true;
@@ -4017,20 +4095,8 @@ bool FBlueprintHelperReviewAssetRootRejectUsesLifecycleCascadeTest::RunTest(cons
 
 	FBlueprintHelperReviewRecord Loaded;
 	FString LoadError;
-	TestTrue(TEXT("default asset root reject record reloads"),
+	TestFalse(TEXT("default asset root reject physically removes the review record"),
 		Store.LoadReviewRecordById(Records[0].ReviewRecordId, Loaded, LoadError));
-	const FBlueprintHelperReviewVisibleChange* LoadedChild = Loaded.VisibleChanges.FindByPredicate(
-		[](const FBlueprintHelperReviewVisibleChange& Change)
-		{
-			return Change.ChangeId == TEXT("tx_reject_asset_root_default_child");
-		});
-	TestNotNull(TEXT("default reject child exists in persisted record"), LoadedChild);
-	if (LoadedChild)
-	{
-		TestEqual(TEXT("default reject child is cascade rejected"),
-			LoadedChild->Status,
-			EBlueprintHelperReviewChangeStatus::Rejected);
-	}
 
 	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(Records[0].ReviewRecordId);
 	if (UObject* RemainingObject = FindObject<UObject>(nullptr, *ObjectPath))
@@ -4521,38 +4587,8 @@ bool FBlueprintHelperReviewRejectAllIteratesPendingTargetsTest::RunTest(const FS
 
 	FBlueprintHelperReviewRecord Loaded;
 	FString LoadError;
-	TestTrue(TEXT("reject all iteration record reloads"),
+	TestFalse(TEXT("successful reject all physically removes the review record"),
 		Store.LoadReviewRecordById(Records[0].ReviewRecordId, Loaded, LoadError));
-	TestEqual(TEXT("record status rejected after all targets reject"),
-		Loaded.Status,
-		EBlueprintHelperReviewChangeStatus::Rejected);
-	TestEqual(TEXT("one visible change remains after reject all"), Loaded.VisibleChanges.Num(), 1);
-	if (Loaded.VisibleChanges.Num() != 1)
-	{
-		return false;
-	}
-	TestEqual(TEXT("visible change status rejected after all targets reject"),
-		Loaded.VisibleChanges[0].Status,
-		EBlueprintHelperReviewChangeStatus::Rejected);
-	TestEqual(TEXT("both targets remain after reject all"), Loaded.VisibleChanges[0].AtomicTargets.Num(), 2);
-	if (Loaded.VisibleChanges[0].AtomicTargets.Num() != 2)
-	{
-		return false;
-	}
-	for (const FBlueprintHelperReviewAtomicTarget& Target : Loaded.VisibleChanges[0].AtomicTargets)
-	{
-		TestEqual(TEXT("each pending target was rejected"),
-			Target.Status,
-			EBlueprintHelperReviewChangeStatus::Rejected);
-	}
-	TestEqual(TEXT("one reject action records the batch"), Loaded.ReviewActions.Num(), 1);
-	if (Loaded.ReviewActions.Num() == 1)
-	{
-		TestTrue(TEXT("reject all action includes first target"),
-			Loaded.ReviewActions[0].TargetKeys.Contains(TEXT("graph_node:N1")));
-		TestTrue(TEXT("reject all action includes second target"),
-			Loaded.ReviewActions[0].TargetKeys.Contains(TEXT("graph_node:N2")));
-	}
 	return true;
 }
 

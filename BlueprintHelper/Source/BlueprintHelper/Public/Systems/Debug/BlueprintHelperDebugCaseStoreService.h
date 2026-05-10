@@ -12,6 +12,11 @@ class BLUEPRINTHELPER_API FBlueprintHelperDebugCaseStoreService
 public:
 	bool SaveCase(const FBlueprintHelperDebugCase& DebugCase, FString* OutError = nullptr) const;
 	bool LoadCase(const FString& DebugCaseId, FBlueprintHelperDebugCase& OutCase, FString* OutError = nullptr) const;
+	bool DeleteCase(const FString& DebugCaseId, FString* OutError = nullptr) const;
+	bool DeleteCasesForReviewRecord(
+		const FString& ReviewRecordId,
+		TArray<FString>& OutDeletedCaseIds,
+		FString* OutError = nullptr) const;
 	bool QueryCaseSummary(const FString& DebugCaseId, FBlueprintHelperDebugCaseSummary& OutSummary, FString* OutError = nullptr) const;
 	bool QueryCaseSummaries(TArray<FBlueprintHelperDebugCaseSummary>& OutSummaries, FString* OutError = nullptr) const;
 	bool ExportDebugBundleSummary(

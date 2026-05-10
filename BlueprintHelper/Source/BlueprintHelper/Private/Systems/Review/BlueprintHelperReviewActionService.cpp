@@ -8,6 +8,7 @@
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
 #include "Engine/Blueprint.h"
+#include "Systems/Debug/BlueprintHelperDebugCaseStoreService.h"
 #include "Systems/Debug/BlueprintHelperDebugEntryService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperOwnershipService.h"
@@ -174,6 +175,58 @@ public:
 			}
 		}
 		return TargetKeys;
+	}
+
+	static bool DeleteDebugCasesForReviewRecord(
+		const FString& ReviewRecordId,
+		const TArray<FString>& ExplicitDebugCaseIds,
+		FString& OutError)
+	{
+		FBlueprintHelperDebugCaseStoreService DebugStore;
+		for (const FString& DebugCaseId : ExplicitDebugCaseIds)
+		{
+			if (DebugCaseId.IsEmpty())
+			{
+				continue;
+			}
+
+			FString DeleteError;
+			if (!DebugStore.DeleteCase(DebugCaseId, &DeleteError))
+			{
+				OutError = DeleteError;
+				return false;
+			}
+		}
+
+		TArray<FString> DeletedCaseIds;
+		if (!DebugStore.DeleteCasesForReviewRecord(ReviewRecordId, DeletedCaseIds, &OutError))
+		{
+			return false;
+		}
+
+		OutError.Reset();
+		return true;
+	}
+
+	static bool DeleteReviewRecordAndLinkedDebugCases(
+		FBlueprintHelperReviewStoreService& Store,
+		const FString& ReviewRecordId,
+		FString& OutError)
+	{
+		TArray<FString> DebugCaseIdsToDelete;
+		FBlueprintHelperReviewRecord ExistingRecord;
+		FString LoadError;
+		if (Store.LoadReviewRecordById(ReviewRecordId, ExistingRecord, LoadError))
+		{
+			DebugCaseIdsToDelete = ExistingRecord.DebugCaseIds;
+		}
+
+		if (!Store.DeleteReviewRecord(ReviewRecordId, OutError))
+		{
+			return false;
+		}
+
+		return DeleteDebugCasesForReviewRecord(ReviewRecordId, DebugCaseIdsToDelete, OutError);
 	}
 
 	static bool TryResolvePersistedReviewChange(
@@ -852,7 +905,8 @@ public:
 	static FBlueprintHelperReviewCascadeActionResult CascadeRejectLifecycleChildrenAfterRootResult(
 		const FBlueprintHelperReviewVisibleChange& Root,
 		const TArray<FBlueprintHelperReviewVisibleChange>& PendingChanges,
-		const FBlueprintHelperReviewActionResult& RootResult)
+		const FBlueprintHelperReviewActionResult& RootResult,
+		const FString& ResolvedReviewRecordId)
 	{
 		FBlueprintHelperReviewCascadeActionResult CascadeResult;
 		CascadeResult.RootResult = RootResult;
@@ -867,94 +921,35 @@ public:
 			if (PendingChange.AssetPath == Root.AssetPath
 				&& !PendingChange.bIsAssetLifecycleRoot
 				&& PendingChange.Status == EBlueprintHelperReviewChangeStatus::Pending
-				&& PendingChange.ParentChangeId == Root.ChangeId
 				&& !PendingChange.ChangeId.IsEmpty())
 			{
 				ChildChangeIds.Add(PendingChange.ChangeId);
 			}
 		}
-		if (ChildChangeIds.Num() == 0)
-		{
-			return CascadeResult;
-		}
 
-		FString ReviewRecordId;
+		FString ReviewRecordId = ResolvedReviewRecordId;
 		TArray<FString> RootTargetKeys;
-		if (!TryResolvePersistedReviewChange(Root, ReviewRecordId, RootTargetKeys))
+		if (ReviewRecordId.IsEmpty()
+			&& !TryResolvePersistedReviewChange(Root, ReviewRecordId, RootTargetKeys))
 		{
 			return CascadeResult;
 		}
 
 		FBlueprintHelperReviewStoreService Store;
-		FBlueprintHelperReviewRecord Record;
 		FString Error;
-		if (!Store.LoadReviewRecordById(ReviewRecordId, Record, Error))
+		if (!DeleteReviewRecordAndLinkedDebugCases(Store, ReviewRecordId, Error))
 		{
+			CascadeResult.RootResult.bSucceeded = false;
+			CascadeResult.RootResult.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
 			CascadeResult.RootResult.Message = Error;
 			return CascadeResult;
 		}
 
-		const FString CascadeReason = FString::Printf(
-			TEXT("cascade_removed_by_asset_lifecycle_root:%s"),
-			*Root.ChangeId);
-		TArray<FString> RemovedChildChangeIds;
-		TArray<FString> RemovedChildTargetKeys;
-		for (FBlueprintHelperReviewVisibleChange& Change : Record.VisibleChanges)
+		for (const FString& ChildChangeId : ChildChangeIds)
 		{
-			if (!ChildChangeIds.Contains(Change.ChangeId)
-				&& !(Change.AssetPath == Root.AssetPath && Change.ParentChangeId == Root.ChangeId))
-			{
-				continue;
-			}
-			if (Change.bIsAssetLifecycleRoot)
-			{
-				continue;
-			}
-
-			Change.Status = EBlueprintHelperReviewChangeStatus::Rejected;
-			Change.NeedsActionReason = CascadeReason;
-			RemovedChildChangeIds.AddUnique(Change.ChangeId);
-			for (FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
-			{
-				Target.Status = EBlueprintHelperReviewChangeStatus::Rejected;
-				if (!Target.TargetKey.IsEmpty())
-				{
-					RemovedChildTargetKeys.AddUnique(Target.TargetKey);
-				}
-			}
+			CascadeResult.RemovedChildChangeIds.Add(ChildChangeId);
 		}
-
-		if (RemovedChildChangeIds.Num() == 0)
-		{
-			return CascadeResult;
-		}
-
-		RefreshReviewRecordStatus(Record);
-		for (FBlueprintHelperReviewVisibleChange& Change : Record.VisibleChanges)
-		{
-			if (RemovedChildChangeIds.Contains(Change.ChangeId))
-			{
-				Change.Status = EBlueprintHelperReviewChangeStatus::Rejected;
-				Change.NeedsActionReason = CascadeReason;
-			}
-		}
-		Record.Status = CombineChangeStatuses(Record.VisibleChanges);
-		Record.SourceTransactionSummary.FinalReviewStatus = Record.Status;
-		Record.ReviewActions.Add(MakeReviewActionRecord(
-			TEXT("cascade_reject_lifecycle_children"),
-			RemovedChildTargetKeys,
-			TEXT("asset_lifecycle_root"),
-			Root.LatestTransactionId,
-			CascadeReason));
-
-		if (!Store.SaveReviewRecord(Record, Error))
-		{
-			CascadeResult.RootResult.Message = Error;
-			return CascadeResult;
-		}
-
-		CascadeResult.RemovedChildChangeIds = RemovedChildChangeIds;
-		CascadeResult.bChildrenRemoved = RemovedChildChangeIds.Num() > 0;
+		CascadeResult.bChildrenRemoved = CascadeResult.RemovedChildChangeIds.Num() > 0;
 		return CascadeResult;
 	}
 
@@ -1086,11 +1081,24 @@ FBlueprintHelperReviewCascadeActionResult FBlueprintHelperReviewActionService::R
 	const FBlueprintHelperReviewVisibleChange& Root,
 	const TArray<FBlueprintHelperReviewVisibleChange>& PendingChanges) const
 {
-	const FBlueprintHelperReviewActionResult RootResult = RejectVisibleChange(Root);
+	FBlueprintHelperReviewActionResult RootResult;
+	FString ReviewRecordId;
+	TArray<FString> TargetKeys;
+	if (FBlueprintHelperReviewActionServiceLocalUtils::TryResolvePersistedReviewChange(Root, ReviewRecordId, TargetKeys))
+	{
+		FBlueprintHelperReviewRejectOptions Options;
+		RootResult = RejectReviewTargets(ReviewRecordId, TargetKeys, Options);
+	}
+	else
+	{
+		RootResult = RejectVisibleChange(Root);
+	}
+
 	return FBlueprintHelperReviewActionServiceLocalUtils::CascadeRejectLifecycleChildrenAfterRootResult(
 		Root,
 		PendingChanges,
-		RootResult);
+		RootResult,
+		ReviewRecordId);
 }
 
 FBlueprintHelperReviewCascadeActionResult FBlueprintHelperReviewActionService::RejectLifecycleRootVisibleChange(
@@ -1113,7 +1121,8 @@ FBlueprintHelperReviewCascadeActionResult FBlueprintHelperReviewActionService::R
 	return FBlueprintHelperReviewActionServiceLocalUtils::CascadeRejectLifecycleChildrenAfterRootResult(
 		Root,
 		PendingChanges,
-		RootResult);
+		RootResult,
+		ReviewRecordId);
 }
 
 void FBlueprintHelperReviewActionService::RecordRejectDebugCaseBestEffort(
@@ -1306,6 +1315,34 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectRe
 	if (!bMatchedAny)
 	{
 		Result.Message = TEXT("target_keys_not_found");
+		return Result;
+	}
+
+	if (bAllRejected)
+	{
+		TArray<FString> DebugCaseIdsToDelete;
+		bool bRecordDeleted = false;
+		if (!Store.PurgeReviewTargets(ReviewRecordId, TargetKeys, DebugCaseIdsToDelete, bRecordDeleted, Error))
+		{
+			Result.Message = Error;
+			return Result;
+		}
+		if (bRecordDeleted
+			&& !FBlueprintHelperReviewActionServiceLocalUtils::DeleteDebugCasesForReviewRecord(
+				ReviewRecordId,
+				DebugCaseIdsToDelete,
+				Error))
+		{
+			Result.Message = Error;
+			return Result;
+		}
+
+		Result.bSucceeded = true;
+		Result.TargetTransactionId = SourceTransactionId;
+		Result.NewStatus = EBlueprintHelperReviewChangeStatus::Rejected;
+		Result.RollbackMode = TEXT("archive_baseline");
+		Result.Message = LastMessage.IsEmpty() ? TEXT("rejected_purged") : LastMessage;
+		Result.bSupersededDataCompactionEligible = true;
 		return Result;
 	}
 

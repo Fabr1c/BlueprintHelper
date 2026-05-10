@@ -510,6 +510,75 @@ bool FBlueprintHelperDebugCaseStoreService::LoadCase(const FString& DebugCaseId,
 	return true;
 }
 
+bool FBlueprintHelperDebugCaseStoreService::DeleteCase(const FString& DebugCaseId, FString* OutError) const
+{
+	if (!IsSafeDebugCaseId(DebugCaseId))
+	{
+		SetError(OutError, TEXT("invalid debug_case_id"));
+		return false;
+	}
+
+	const FString CasePath = GetCasePath(DebugCaseId);
+	if (!IsPathInsideDebugRoot(CasePath))
+	{
+		SetError(OutError, TEXT("debug case path escaped Saved/BlueprintHelper/Debug"));
+		return false;
+	}
+
+	if (!IFileManager::Get().FileExists(*CasePath))
+	{
+		SetError(OutError, FString());
+		return true;
+	}
+
+	if (!IFileManager::Get().Delete(*CasePath, false, true))
+	{
+		SetError(OutError, FString::Printf(TEXT("failed to delete debug case: %s"), *DebugCaseId));
+		return false;
+	}
+
+	SetError(OutError, FString());
+	return true;
+}
+
+bool FBlueprintHelperDebugCaseStoreService::DeleteCasesForReviewRecord(
+	const FString& ReviewRecordId,
+	TArray<FString>& OutDeletedCaseIds,
+	FString* OutError) const
+{
+	OutDeletedCaseIds.Reset();
+	if (ReviewRecordId.IsEmpty())
+	{
+		SetError(OutError, TEXT("review_record_id is required"));
+		return false;
+	}
+
+	TArray<FBlueprintHelperDebugCaseSummary> Summaries;
+	if (!QueryCaseSummaries(Summaries, OutError))
+	{
+		return false;
+	}
+
+	for (const FBlueprintHelperDebugCaseSummary& Summary : Summaries)
+	{
+		if (!Summary.ReviewRecordIds.Contains(ReviewRecordId))
+		{
+			continue;
+		}
+
+		FString DeleteError;
+		if (!DeleteCase(Summary.DebugCaseId, &DeleteError))
+		{
+			SetError(OutError, DeleteError);
+			return false;
+		}
+		OutDeletedCaseIds.AddUnique(Summary.DebugCaseId);
+	}
+
+	SetError(OutError, FString());
+	return true;
+}
+
 FBlueprintHelperDebugCaseSummary FBlueprintHelperDebugCaseStoreService::BuildSummary(const FBlueprintHelperDebugCase& DebugCase)
 {
 	FBlueprintHelperDebugCaseSummary Summary;

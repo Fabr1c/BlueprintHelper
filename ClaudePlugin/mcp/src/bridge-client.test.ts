@@ -19,6 +19,7 @@ type TestBridgeServer = {
 
 type TestBridgeServerOptions = {
   closeSocketAfterResponse?: (command: string) => boolean;
+  endSocketAfterResponse?: (command: string) => boolean;
 };
 
 function encodeFrame(payload: Record<string, unknown>): Buffer {
@@ -61,6 +62,8 @@ async function startTestBridgeServer(options: TestBridgeServerOptions = {}): Pro
           const command = request.command ?? '';
           if (options.closeSocketAfterResponse?.(command)) {
             socket.destroy();
+          } else if (options.endSocketAfterResponse?.(command)) {
+            socket.end();
           }
         });
       }
@@ -169,6 +172,32 @@ test('BridgeClient shares one TCP connection for concurrent commands', async () 
 test('BridgeClient reconnects after the Bridge closes the persistent connection', async () => {
   const server = await startTestBridgeServer({
     closeSocketAfterResponse: (command) => command === 'first',
+  });
+  const client = new BridgeClient({
+    host: '127.0.0.1',
+    port: server.port,
+    connectTimeoutMs: 1000,
+    requestTimeoutMs: 1000,
+  });
+
+  try {
+    const first = await client.sendCommand('first');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const second = await client.sendCommand('second');
+
+    assert.equal(first.success, true);
+    assert.equal(second.success, true);
+    assert.deepEqual(server.commands(), ['first', 'second']);
+    assert.equal(server.connectionCount(), 2);
+  } finally {
+    client.close();
+    await server.close();
+  }
+});
+
+test('BridgeClient reconnects after the Bridge half-closes an idle persistent connection', async () => {
+  const server = await startTestBridgeServer({
+    endSocketAfterResponse: (command) => command === 'first',
   });
   const client = new BridgeClient({
     host: '127.0.0.1',

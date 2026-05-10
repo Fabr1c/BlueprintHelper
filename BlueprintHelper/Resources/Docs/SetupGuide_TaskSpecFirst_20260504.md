@@ -376,8 +376,8 @@ SetupProfile 示例：
   "profile_name": "default",
   "created_at": "2026-05-04T00:00:00Z",
   "project": {
-    "ue_engine_dir": "F:/UE_5.6",
-    "ue_project_file": "G:/UnrealPractise/MrStone/MrStone.uproject"
+    "ue_engine_dir": "<UE_ENGINE_DIR>",
+    "ue_project_file": "<PROJECT_FILE>"
   },
   "bridge": {
     "host": "127.0.0.1",

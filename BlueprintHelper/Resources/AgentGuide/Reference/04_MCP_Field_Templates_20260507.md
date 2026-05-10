@@ -125,6 +125,20 @@ Use `tools/list` as final authority. Normal Agent-facing tools:
 
 Do not use `validation.compile` or `validation.save`.
 
+Compile validation is only for assets that have a Blueprint compile step.
+
+| Asset or operation | `validation.should_compile` | Validation rule |
+|---|---:|---|
+| `blueprint_class`, Blueprint graph, components, variables, class settings, signatures | `true` | Compile plus read-back |
+| `blueprint_interface` | `true` | Compile plus read-back |
+| `widget_blueprint`, UMG widget edits | `true` | Compile plus widget-tree read-back |
+| `structure` / UserDefinedStruct | `false` | No Blueprint compile; verify fields by read-back |
+| `data_table` creation or row edits | `false` | No Blueprint compile; verify row struct and rows by read-back |
+| `data_asset` creation or property edits | `false` | No Blueprint compile; verify asset class and properties by read-back |
+| `input_action`, `input_mapping_context`, plain UObject properties | `false` | No Blueprint compile; verify properties by read-back |
+
+Do not report a skipped compile or `no_op` reuse as a compile failure for non-Blueprint data assets. For idempotent fixtures, `no_op` is acceptable only when read-back proves the existing asset matches the requested type and content.
+
 ## 7. Asset Fixture TaskSpec
 
 ```json

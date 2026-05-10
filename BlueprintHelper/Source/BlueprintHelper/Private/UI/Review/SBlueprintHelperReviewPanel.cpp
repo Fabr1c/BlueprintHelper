@@ -801,8 +801,21 @@ FReply SBlueprintHelperReviewPanel::OnRejectChange(FReviewChangeItem Item)
 		Result.Message = TEXT("Reject requires archive-baseline rollback service.");
 	}
 
-	Item->Status = Result.NewStatus;
-	Item->NeedsActionReason = Result.Message;
+	if (Result.bSucceeded)
+	{
+		const FString PreferredAssetPath = Item->AssetPath;
+		const int32 RemovedIndex = ChangeItems.IndexOfByKey(Item);
+		ChangeItems.RemoveAll([&Item](const FReviewChangeItem& Candidate)
+		{
+			return Candidate == Item;
+		});
+		SelectNextChangeAfterRemoval(PreferredAssetPath, RemovedIndex);
+	}
+	else
+	{
+		Item->Status = Result.NewStatus;
+		Item->NeedsActionReason = Result.Message;
+	}
 	RebuildChangeTreeItems();
 	RefreshChangeTreeWidget();
 	LoadReviewAssetFromSelection();
@@ -941,6 +954,7 @@ FReply SBlueprintHelperReviewPanel::OnRejectAll()
 
 	if (!LifecycleRoot.IsValid())
 	{
+		TArray<FReviewChangeItem> RejectedItems;
 		for (const FReviewChangeItem& Item : ChangeItems)
 		{
 			if (!Item.IsValid()
@@ -960,8 +974,25 @@ FReply SBlueprintHelperReviewPanel::OnRejectAll()
 				Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
 				Result.Message = TEXT("Reject requires archive-baseline rollback service.");
 			}
-			Item->Status = Result.NewStatus;
-			Item->NeedsActionReason = Result.Message;
+			if (Result.bSucceeded)
+			{
+				RejectedItems.Add(Item);
+			}
+			else
+			{
+				Item->Status = Result.NewStatus;
+				Item->NeedsActionReason = Result.Message;
+			}
+		}
+
+		if (RejectedItems.Num() > 0)
+		{
+			const int32 RemovedIndex = SelectedChange.IsValid() ? ChangeItems.IndexOfByKey(SelectedChange) : 0;
+			ChangeItems.RemoveAll([&RejectedItems](const FReviewChangeItem& Item)
+			{
+				return Item.IsValid() && RejectedItems.Contains(Item);
+			});
+			SelectNextChangeAfterRemoval(AssetPath, RemovedIndex);
 		}
 	}
 

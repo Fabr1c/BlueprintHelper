@@ -107,12 +107,12 @@ uint32 FBlueprintHelperBridgeServer::Run()
 			continue;
 		}
 
-		UE_LOG(LogBlueprintHelperBridge, Log, TEXT("Bridge 客户端已连接。"));
+		UE_LOG(LogBlueprintHelperBridge, Verbose, TEXT("Bridge 客户端已连接。"));
 		HandleClient(ClientSocket);
 
 		ClientSocket->Close();
 		ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(ClientSocket);
-		UE_LOG(LogBlueprintHelperBridge, Log, TEXT("Bridge 客户端已断开。"));
+		UE_LOG(LogBlueprintHelperBridge, Verbose, TEXT("Bridge 客户端已断开。"));
 	}
 
 	return 0;
@@ -127,22 +127,15 @@ void FBlueprintHelperBridgeServer::HandleClient(FSocket* ClientSocket)
 {
 	while (!bStopping)
 	{
-		// 检查是否有数据可读
 		uint32 PendingDataSize = 0;
 		if (!ClientSocket->HasPendingData(PendingDataSize))
 		{
-			// 连接可能已关闭
-			break;
-		}
-
-		if (PendingDataSize == 0)
-		{
-			// 检查连接是否还活着
-			ESocketConnectionState State = ClientSocket->GetConnectionState();
+			const ESocketConnectionState State = ClientSocket->GetConnectionState();
 			if (State != SCS_Connected)
 			{
 				break;
 			}
+
 			FPlatformProcess::Sleep(0.01f);
 			continue;
 		}

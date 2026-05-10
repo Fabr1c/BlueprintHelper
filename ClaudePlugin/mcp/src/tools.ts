@@ -273,7 +273,10 @@ function resolvePluginResourcePath(relativePath: string): string {
   const cwd = process.cwd();
   const candidates = [
     cwd,
+    path.resolve(cwd, 'BlueprintHelper'),
     path.resolve(cwd, '..'),
+    path.resolve(cwd, '..', 'BlueprintHelper'),
+    path.resolve(cwd, '..', '..', 'BlueprintHelper'),
     path.resolve(cwd, 'Plugins', 'BlueprintHelper'),
     path.resolve(cwd, '..', 'Plugins', 'BlueprintHelper'),
   ];
@@ -664,7 +667,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     'blueprinthelper_diagnostics',
     {
       description:
-        '执行静态诊断检查（不要求 UE Editor 运行）。检查 settings.json、CLAUDE.md managed block、Skill 入口、项目目录结构等安装/配置状态。返回 Markdown 诊断报告。',
+        'Run static diagnostics without requiring the UE Editor. Checks .blueprinthelper/agent-profile.json, CLAUDE.md managed block, Skill entry, project structure, and install/configuration state. Returns a Markdown diagnostic report.',
       inputSchema: z.object({}),
     },
     async () => {
@@ -675,21 +678,19 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
           info: [],
         };
 
-        // ═══════ Static 检查 ═══════
-
-        // 检查 settings.json
-        // settings.json 应该由 setup profile 生成，这里只检查是否存在
-        const settingsPath = path.join(
-          process.cwd(),
+        // Static checks.
+        const projectDir = process.cwd();
+        const agentProfilePath = path.join(
+          projectDir,
           '.blueprinthelper',
-          'settings.json',
+          'agent-profile.json',
         );
-        if (fs.existsSync(settingsPath)) {
-          report.info.push({ code: 'settings.valid' });
+        if (fs.existsSync(agentProfilePath)) {
+          report.info.push({ code: 'agent_profile.valid' });
         } else {
           report.blocking.push({
-            code: 'settings.unavailable',
-            extra: 'reason: .blueprinthelper/settings.json not found',
+            code: 'agent_profile.unavailable',
+            extra: 'reason: .blueprinthelper/agent-profile.json not found',
           });
         }
 
@@ -720,7 +721,6 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
         }
 
         // 检查项目目录结构（是否像 UE 项目）
-        const projectDir = process.cwd();
         const uprojectFiles = fs
           .readdirSync(projectDir)
           .filter((f) => f.endsWith('.uproject'));
@@ -729,15 +729,10 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
           // 检查 Project Marker
           const projectClaudePath = path.join(projectDir, '.claude', 'CLAUDE.md');
           const projectAgentsPath = path.join(projectDir, 'AGENTS.md');
-          const projectProfilePath = path.join(
-            projectDir,
-            '.blueprinthelper',
-            'agent-profile.json',
-          );
           if (
             fs.existsSync(projectClaudePath) ||
             fs.existsSync(projectAgentsPath) ||
-            fs.existsSync(projectProfilePath)
+            fs.existsSync(agentProfilePath)
           ) {
             report.info.push({ code: 'project_marker.present' });
           } else {

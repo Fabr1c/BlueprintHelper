@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test, { describe, it } from 'node:test';
@@ -159,6 +160,36 @@ test('blueprinthelper_request_write_session stores Bridge session without exposi
   assert.equal(storedSessionId, 'write-session-secret');
   assert.equal(result.isError, false);
   assert.equal(JSON.stringify(result).includes('write-session-secret'), false);
+});
+
+test('blueprinthelper_diagnostics accepts project agent-profile without legacy settings.json', async () => {
+  const previousCwd = process.cwd();
+  const projectDir = mkdtempSync(path.join(tmpdir(), 'blueprinthelper-diagnostics-'));
+  try {
+    mkdirSync(path.join(projectDir, '.blueprinthelper'), { recursive: true });
+    writeFileSync(path.join(projectDir, 'SmokeProject.uproject'), '{}', 'utf8');
+    writeFileSync(
+      path.join(projectDir, '.blueprinthelper', 'agent-profile.json'),
+      JSON.stringify({ schema: 'BlueprintHelper.AgentProfile.v1' }),
+      'utf8',
+    );
+    process.chdir(projectDir);
+
+    const tools = registerWithBridge(async () => ({ request_id: 'test', success: true }));
+    const tool = tools.get('blueprinthelper_diagnostics');
+    assert.ok(tool);
+
+    const result = await invokeTool(tool, {});
+    assert.equal(result.isError, false);
+    const data = result.structuredContent?.data as Record<string, unknown>;
+    const markdown = String(data.markdown ?? '');
+    assert.match(markdown, /agent_profile\.valid/);
+    assert.doesNotMatch(markdown, /settings\.unavailable/);
+    assert.doesNotMatch(markdown, /\.blueprinthelper\/settings\.json/);
+  } finally {
+    process.chdir(previousCwd);
+    rmSync(projectDir, { recursive: true, force: true });
+  }
 });
 
 test('registered non-default tools remain available but are marked frozen expert-only', () => {
