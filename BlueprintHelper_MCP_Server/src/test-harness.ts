@@ -38,6 +38,7 @@ export interface RegisteredResource {
 export function registerWithBridge(
   sendCommand: (command: string, payload?: Record<string, unknown>) => Promise<BridgeResponse>,
   config: Partial<EditorConfig> = {},
+  bridgeExtras: Partial<BridgeClient> = {},
 ): Map<string, RegisteredTool> {
   const tools = new Map<string, RegisteredTool>();
   const server = {
@@ -46,7 +47,7 @@ export function registerWithBridge(
     },
   } as unknown as McpServer;
 
-  const bridge = { sendCommand } as unknown as BridgeClient;
+  const bridge = { sendCommand, ...bridgeExtras } as unknown as BridgeClient;
   registerTools(server, bridge, { ueEngineDir: '', ueProjectFile: '', ...config });
   return tools;
 }

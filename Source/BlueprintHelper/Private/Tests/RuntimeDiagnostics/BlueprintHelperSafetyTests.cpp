@@ -27,6 +27,7 @@
 #include "Systems/Debug/BlueprintHelperEditorCommandService.h"
 #include "Systems/Debug/BlueprintHelperRuntimeProfileService.h"
 #include "Systems/Debug/BlueprintHelperDiagnosticsService.h"
+#include "Systems/Authorization/BlueprintHelperWriteAuthorizationService.h"
 #include "Systems/Debug/BlueprintHelperDebugCaseStoreService.h"
 #include "Systems/Debug/BlueprintHelperDebugEntryService.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicMdReadService.h"
@@ -313,7 +314,6 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperRuntimeProfileGraphWriteMergeAvailableTest::RunTest(const FString& Parameters)
 {
-	FBlueprintHelperSafetyTestsLocalUtils::FBlueprintHelperScopedEnvVar BridgeToken(TEXT("BLUEPRINTHELPER_BRIDGE_TOKEN"), TEXT("runtime-profile-test-token"));
 	FBlueprintHelperRuntimeProfileService RuntimeProfileService;
 	const FBlueprintHelperRuntimeProfileData Profile = RuntimeProfileService.GetRuntimeProfile();
 
@@ -697,30 +697,43 @@ bool FBlueprintHelperRequestValidatorPayloadTest::RunTest(const FString& Paramet
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperRequestValidatorRequiresTokenForWriteTest,
-	"BlueprintHelper.Safety.RequestValidator.RequiresTokenForWrite",
+	FBlueprintHelperRequestValidatorRequiresWriteSessionTest,
+	"BlueprintHelper.Safety.RequestValidator.RequiresWriteSession",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FBlueprintHelperRequestValidatorRequiresTokenForWriteTest::RunTest(const FString& Parameters)
+bool FBlueprintHelperRequestValidatorRequiresWriteSessionTest::RunTest(const FString& Parameters)
 {
-	FBlueprintHelperSafetyTestsLocalUtils::FBlueprintHelperScopedEnvVar TokenEnv(TEXT("BLUEPRINTHELPER_BRIDGE_TOKEN"), TEXT("bridge-token"));
+	FBlueprintHelperWriteAuthorizationService& AuthService = FBlueprintHelperWriteAuthorizationService::Get();
+	AuthService.ResetForTesting();
 
 	FBlueprintHelperBridgeRequest WriteRequest;
 	WriteRequest.Command = TEXT("import_json");
 
 	FBlueprintHelperBridgeValidationError Error;
-	TestFalse(TEXT("write command without auth_token is rejected"),
+	TestFalse(TEXT("write command without auth_session is rejected"),
 		FBlueprintHelperRequestValidator::ValidateAuthorization(WriteRequest, Error));
 	TestEqual(TEXT("write rejection uses unauthorized code"), Error.Code, FString(TEXT("unauthorized")));
-	TestEqual(TEXT("write rejection identifies auth_token"), Error.Field, FString(TEXT("auth_token")));
+	TestEqual(TEXT("write rejection identifies auth_session"), Error.Field, FString(TEXT("auth_session")));
+
+	FBlueprintHelperWriteSessionRequest SessionRequest;
+	SessionRequest.Reason = TEXT("automation test");
+	SessionRequest.Scope = TEXT("project");
+	SessionRequest.TtlSeconds = 60;
+	const FBlueprintHelperWriteSessionGrant Grant = AuthService.CreateApprovedSessionForTesting(SessionRequest);
+
+	WriteRequest.AuthSession = Grant.SessionId;
+	Error = FBlueprintHelperBridgeValidationError();
+	TestTrue(TEXT("write command with approved auth_session is accepted"),
+		FBlueprintHelperRequestValidator::ValidateAuthorization(WriteRequest, Error));
 
 	FBlueprintHelperBridgeRequest ReadRequest;
 	ReadRequest.Command = TEXT("validate_json");
 
 	Error = FBlueprintHelperBridgeValidationError();
-	TestTrue(TEXT("validate_json remains readable without auth_token"),
+	TestTrue(TEXT("validate_json remains readable without auth_session"),
 		FBlueprintHelperRequestValidator::ValidateAuthorization(ReadRequest, Error));
 
+	AuthService.ResetForTesting();
 	return true;
 }
 
@@ -731,12 +744,16 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperRequestValidatorHighRiskDefaultTest::RunTest(const FString& Parameters)
 {
-	FBlueprintHelperSafetyTestsLocalUtils::FBlueprintHelperScopedEnvVar TokenEnv(TEXT("BLUEPRINTHELPER_BRIDGE_TOKEN"), TEXT("bridge-token"));
 	FBlueprintHelperSafetyTestsLocalUtils::FBlueprintHelperScopedEnvVar HighRiskEnv(TEXT("BLUEPRINTHELPER_ENABLE_HIGH_RISK_COMMANDS"), TEXT(""));
+	FBlueprintHelperWriteAuthorizationService& AuthService = FBlueprintHelperWriteAuthorizationService::Get();
+	AuthService.ResetForTesting();
+	FBlueprintHelperWriteSessionRequest SessionRequest;
+	SessionRequest.Reason = TEXT("automation high risk test");
+	const FBlueprintHelperWriteSessionGrant Grant = AuthService.CreateApprovedSessionForTesting(SessionRequest);
 
 	FBlueprintHelperBridgeRequest ExecRequest;
 	ExecRequest.Command = TEXT("exec_console_command");
-	ExecRequest.AuthToken = TEXT("bridge-token");
+	ExecRequest.AuthSession = Grant.SessionId;
 
 	FBlueprintHelperBridgeValidationError Error;
 	TestFalse(TEXT("exec_console_command is disabled by default"),
@@ -746,7 +763,7 @@ bool FBlueprintHelperRequestValidatorHighRiskDefaultTest::RunTest(const FString&
 
 	FBlueprintHelperBridgeRequest CloseRequest;
 	CloseRequest.Command = TEXT("close_editor");
-	CloseRequest.AuthToken = TEXT("bridge-token");
+	CloseRequest.AuthSession = Grant.SessionId;
 
 	Error = FBlueprintHelperBridgeValidationError();
 	TestFalse(TEXT("close_editor is disabled by default"),
@@ -754,6 +771,7 @@ bool FBlueprintHelperRequestValidatorHighRiskDefaultTest::RunTest(const FString&
 	TestEqual(TEXT("close_editor rejection uses command_disabled"),
 		Error.Code, FString(TEXT("command_disabled")));
 
+	AuthService.ResetForTesting();
 	return true;
 }
 

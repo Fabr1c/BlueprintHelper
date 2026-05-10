@@ -1,6 +1,7 @@
 // BlueprintHelper Bridge Layer — request validation helpers
 
 #include "Entry/Bridge/BlueprintHelperRequestValidator.h"
+#include "Systems/Authorization/BlueprintHelperWriteAuthorizationService.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Misc/Parse.h"
@@ -248,6 +249,16 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 	{
 		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
 			{TEXT("debug_case_id"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+		};
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
+	}
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("request_write_session")))
+	{
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("reason"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("scope"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("ttl_seconds"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Number, false},
+			{TEXT("asset_paths"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Array, false},
 		};
 		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
@@ -778,24 +789,12 @@ bool FBlueprintHelperRequestValidator::ValidateAuthorization(
 		return true;
 	}
 
-	const FString ExpectedToken = GetConfiguredToken();
-	if (ExpectedToken.IsEmpty())
-	{
-		OutError.Code = TEXT("unauthorized");
-		OutError.Field = TEXT("auth_token");
-		OutError.Message = TEXT("写命令需要配置 BLUEPRINTHELPER_BRIDGE_TOKEN 并携带匹配 auth_token。");
-		return false;
-	}
+	return FBlueprintHelperWriteAuthorizationService::Get().ValidateSessionForCommand(
+		Request.AuthSession,
+		Request.Command,
+		Request.Payload,
+		OutError);
 
-	if (Request.AuthToken.IsEmpty() || Request.AuthToken != ExpectedToken)
-	{
-		OutError.Code = TEXT("unauthorized");
-		OutError.Field = TEXT("auth_token");
-		OutError.Message = TEXT("auth_token 缺失或不匹配。");
-		return false;
-	}
-
-	return true;
 }
 
 bool FBlueprintHelperRequestValidator::IsWriteCommand(const FString& Command)
@@ -869,9 +868,4 @@ bool FBlueprintHelperRequestValidator::IsHighRiskCommandEnabled()
 {
 	const FString Value = FPlatformMisc::GetEnvironmentVariable(TEXT("BLUEPRINTHELPER_ENABLE_HIGH_RISK_COMMANDS")).ToLower();
 	return Value == TEXT("1") || Value == TEXT("true") || Value == TEXT("yes");
-}
-
-FString FBlueprintHelperRequestValidator::GetConfiguredToken()
-{
-	return FPlatformMisc::GetEnvironmentVariable(TEXT("BLUEPRINTHELPER_BRIDGE_TOKEN"));
 }

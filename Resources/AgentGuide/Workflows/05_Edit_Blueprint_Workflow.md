@@ -23,6 +23,7 @@ profile
 -> build TaskSpec
 -> preview_task
 -> repair or stop
+-> request_write_session if write_permission is disabled
 -> execute_task
 -> get_task_result when needed
 -> report summary
@@ -55,6 +56,8 @@ profile
 ## Removal Or Rename
 
 删除、重命名、断线和批量改动前先读取 reference context。preview blocked 时停止，不执行写入。
+
+If a write session is required, the Editor prompt is simple accept/reject. If rejected, report the denied write session and do not execute.
 
 ## Reporting
 

@@ -69,7 +69,7 @@
 
 1. Final change list grouping and readable row text.
    - Left final-change list groups rows by the visible change's true `AssetPath`; a Widget Blueprint review must not absorb DataTable or DataAsset changes from the same transaction.
-   - Each review row should show user-facing text first, for example `修改了 [SmokeText]`, `修改了 [DamageSmall] 行`, `修改了 [SmokeHealth] 变量`.
+   - Each review row should show user-facing text first, for example `修改了[SmokeText]`, `修改了[DamageSmall]行`, `修改了[SmokeHealth]变量`.
    - Transaction id, `target_kind`, surface name, and raw anchor details remain available in debug export or tooltip-style diagnostics, not as the primary row title.
 
 2. Blueprint and Widget Blueprint panel ownership.
@@ -85,6 +85,81 @@
    - Geometry may expand beyond the exact row/block bounds. Default padding is 10 px; graph blocks or large block-level anchors may use up to 20 px.
    - Expanded geometry must stay clipped to its owning surface and must not cover unrelated rows as if they were part of the same change.
    - When a stable row/block geometry cannot be resolved, render the deterministic review-list/card inside the owning surface instead of drawing a fake precise overlay in Details.
+
+### Stage 6: DataTable/DataAsset Main Workspace
+
+1. Main workspace surface routing.
+   - Blueprint and WidgetBlueprint keep Graph as the center workspace.
+   - DataTable uses the DataTable presenter in the center workspace.
+   - DataAsset and GenericObject use the DataAsset presenter in the center workspace.
+
+2. Main workspace overlay ownership.
+   - DataTable and DataAsset overlays are owned by the center workspace host.
+   - WidgetTree remains in the structure panel, and Details remains details-only.
+   - Graph keeps its existing graph-presenter diff block path instead of using the generic panel overlay host.
+
+3. Fallback behavior.
+   - DataTable/DataAsset first try stable Slate row geometry inside their center presenter content.
+   - If row geometry is unavailable, the deterministic review-list/card is rendered in the center workspace, not in Details.
+
+## Execution Progress
+
+### 2026-05-09 Stage 1-6 Status
+
+- Stage 1 Asset Context + Strict Graph Routing: Completed in workspace. Non-Blueprint assets can construct ReviewPanel, explicit non-Graph targets no longer route through Graph fallback, and true Graph visible changes remain routable.
+- Stage 2 Presenter Extraction: Completed for the current four-panel boundary. Graph, Components, MyBlueprint, Details content/overlay routing now live behind presenter/helper boundaries while `SBlueprintHelperReviewPanel` keeps selection, layout, actions, refresh, and debug ownership.
+- Stage 3 UMG/DataTable/DataAsset Presenters: Completed for independent presenter routing and readonly review surfaces. UMG widget tree, DataTable rows, and DataAsset properties have presenter-level routing and deterministic fallback behavior.
+- Stage 4 Real Geometry Anchors: Completed for current Slate row geometry coverage. Stable row geometry is preferred; unresolved geometry falls back to deterministic review-list/card instead of fake precise Details overlays.
+- Stage 5 Panel Placement Contract Fixes: Completed in workspace. Widget Blueprint uses `WidgetTree + MyBlueprint + Graph`; Widget Tree replaces the Components slot, Details no longer owns UMG/DataTable/DataAsset primary overlays, final-change rows use readable titles, and visible changes are grouped by true target `AssetPath`.
+- Stage 6 DataTable/DataAsset Main Workspace: Completed in workspace. DataTable, DataAsset, and GenericObject reviews now replace the center Graph workspace with their dedicated presenter content and center-owned overlay host.
+
+### 2026-05-09 Verification
+
+- UE build passed with `F:\UE_5.6\Engine\Build\BatchFiles\Build.bat MrStoneEditor Win64 Development -Project="G:\UnrealPractise\MrStone\MrStone.uproject" -WaitMutex -NoHotReload`.
+- Full grouped automation passed: `BlueprintHelper.Review` reported `69 success`, `3 succeededWithWarnings`, `0 failed`.
+- Automation report: `G:\UnrealPractise\MrStone\Saved\Automation\BlueprintHelper_Review_Stage5_Final_20260509_224505`.
+- Targeted UI automation passed after Stage 6: `BlueprintHelper.Review.UI` reported `29 success`, `0 warnings`, `0 failed`.
+- Stage 6 UI automation report: `G:\UnrealPractise\MrStone\Saved\Automation\BlueprintHelper_Review_UI_MainWorkspace_20260509_230037`.
+- `git diff --check` passed. Only LF/CRLF working-copy warnings were reported.
+- Known automation warnings are environment or legacy fixture noise: `/Game/BP_Door` missing package and EOS no-connection log entries. No ReviewPanel assertion or automation error remains in this run.
+
+### 2026-05-09 Bugfix: Automation Record Pollution
+
+- User reported final-change list still showing `tx_save_umg_surface`, `tx_save_datatable_surface`, and `tx_save_dataasset_surface` under `/Game/BlueprintHelper/Smoke/WBP_WidgetSmoke`.
+- Root cause: `BlueprintHelper.Review.Record.PreservesIndependentSurfaceStrings` persisted synthetic automation records into `Saved/BlueprintHelper/Review/Records` and left them pending. The synthetic record used the Widget Blueprint record path for DataTable/DataAsset changes, so ReviewPanel loaded automation leftovers as real pending review rows.
+- Fix in workspace: the test now writes each synthetic visible change and atomic target with its true target asset path and deletes its temporary review record file after reload validation.
+- Local cleanup performed: stale `review_archive_independent_surfaces_*.json` files containing those `tx_save_*` changes were removed from `Saved/BlueprintHelper/Review/Records`.
+- Verification pending: rebuild and targeted automation are blocked if UnrealEditor/Rider is holding `UnrealEditor-BlueprintHelper.dll`.
+
+### 2026-05-09 Bugfix: Blueprint Package Path Asset Context
+
+- User reported `/Game/BlueprintHelper/Smoke/BP_TaskSpecSmoke` true Graph review opening as `generic_object`, with Graph targets hidden and the center workspace showing `Object Details Summary`.
+- Root cause: `FBlueprintHelperReviewAssetContext::MakeObjectPathFromAssetPath` treated pure long package paths such as `/Game/.../BP_TaskSpecSmoke` as already-valid object paths. The loader therefore did not normalize them to `/Game/.../BP_TaskSpecSmoke.BP_TaskSpecSmoke`, so Blueprint package-path review records could fall through to `GenericObject`.
+- Fix in workspace: only paths containing an object separator `.` are accepted as object paths; pure package paths are expanded to `<Package>.<AssetName>`.
+- Regression coverage added: `BlueprintHelper.Review.UI.AssetContextLoadsBlueprintFromPackagePath`.
+- Verification:
+  - UE build passed with `F:\UE_5.6\Engine\Build\BatchFiles\Build.bat MrStoneEditor Win64 Development -Project="G:\UnrealPractise\MrStone\MrStone.uproject" -WaitMutex -NoHotReload`.
+  - `BlueprintHelper.Review.UI.AssetContextLoadsBlueprintFromPackagePath`: `1 success`, `0 warnings`, `0 failed`.
+  - `BlueprintHelper.Review.UI.AssetContextLoads`: `5 success`, `0 warnings`, `0 failed`.
+  - `BlueprintHelper.Review.UI.ReviewPanelKeepsTrueGraphVisibleChangeRoutable`: `1 success`, `0 warnings`, `0 failed`.
+
+### 2026-05-10 Bugfix: Graph Anchor And Built-In Panel Fallback
+
+- User reported that selecting `ReplaceBlueprintGraph` routed to Graph but did not draw a center workspace diff frame.
+- Root cause: `ReplaceBlueprintGraph` wrote a graph review target even when `OriginalBlockId` was empty, but it did not write the newly imported graph nodes into `CreatedNodePaths`. The ReviewPanel route therefore had `graphTargets=1` while `GraphBounds` had no node, block metadata, or recorded bounds to match.
+- Fix in workspace: `ReplaceBlueprintGraph` now records imported replacement nodes as review graph node anchors and skips empty block ids. The new graph node targets are usable by `FBlueprintHelperReviewGraphBounds::BuildBoundsForTargets`.
+- User also reported that Components/MyBlueprint/WidgetTree/Details diff frames showed text and behaved like overlay cards instead of precise embedded highlights.
+- Contract update: those built-in panels may only draw diff frames when stable Slate row geometry is available. If geometry is missing or partial, the presenter logs `ReviewFrameGeometry ... result=hidden reason=no_stable_slate_geometry|partial_slate_row_geometry` and does not render a text review-list fallback. DataTable/DataAsset center workspace fallback remains unchanged for now.
+- Regression coverage added:
+  - `BlueprintHelper.GraphWrite.Replace.EmitsReviewNodeAnchorsForDiffBounds`
+  - `BlueprintHelper.Review.VisibleChange.PresenterOverlayHidesBuiltInPanelFallbackWithoutSlateRowGeometry`
+  - updated `BlueprintHelper.Review.VisibleChange.PresenterOverlayFallsBackWhenSlateRowGeometryIsPartial` to assert hidden fallback rather than text-card rendering.
+- Verification status: initial build was blocked before running the new tests by an existing `BlueprintHelperRequestValidator::GetConfiguredToken` declaration mismatch and UnrealEditor-held DLL link locks; those build issues are outside this ReviewPanel bugfix and are not handled here.
+
+### Pending Follow-Up
+
+- Manual editor smoke should confirm the visual result in live Slate: Blueprint Components/MyBlueprint/Graph overlays, WidgetBlueprint WidgetTree/MyBlueprint/Graph overlays, DataTable/DataAsset center workspace overlays, readable final-change row text, selected diff fill, Accept/Reject/RejectAll, and Debug export without `debug_export_refs`.
+- Next execution candidate: improve DataTable/DataAsset presenter content from summary rows toward richer asset-specific views, then add manual-smoke notes for large tables and nested DataAsset property paths.
 
 ## Test Plan
 

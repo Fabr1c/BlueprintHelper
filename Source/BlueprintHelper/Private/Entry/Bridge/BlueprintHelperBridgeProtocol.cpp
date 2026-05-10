@@ -21,7 +21,7 @@ TOptional<FBlueprintHelperBridgeRequest> FBlueprintHelperBridgeProtocol::ParseRe
 	{
 		return {};
 	}
-	Root->TryGetStringField(TEXT("auth_token"), Req.AuthToken);
+	Root->TryGetStringField(TEXT("auth_session"), Req.AuthSession);
 
 	if (Root->HasField(TEXT("payload")))
 	{

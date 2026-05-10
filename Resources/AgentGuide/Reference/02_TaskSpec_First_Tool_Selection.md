@@ -8,6 +8,7 @@ blueprinthelper_read_agent_guide
 blueprinthelper_read_context
 blueprinthelper_read_reference_context
 blueprinthelper_preview_task
+blueprinthelper_request_write_session
 blueprinthelper_execute_task
 blueprinthelper_get_task_result
 ```
@@ -21,6 +22,8 @@ blueprinthelper_diagnostics_runtime
 
 `blueprint_open_editor` 只用于显式启动目标 Editor 的 preflight。
 
+`blueprinthelper_request_write_session` is the ordinary interactive write authorization path. Use it after preview and before execute only when write permission is disabled and the user approves the Editor-side prompt.
+The Editor prompt is intentionally a simple accept/reject dialog. If the user rejects it, stop and report. Do not request or pass `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session`; the MCP Bridge client caches the approved session internally.
 ## Task Tool Arguments
 
 `blueprinthelper_preview_task` 和 `blueprinthelper_execute_task` 的工具参数必须包一层 `task_spec`:

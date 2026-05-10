@@ -43,10 +43,13 @@ understand request
 -> read compact context
 -> build TaskSpec
 -> preview
+-> request write session only if write_permission is disabled
 -> execute only after preview passes
 -> read task result when needed
 -> report concise summary
 ```
+
+Write authorization is session-based. If preview succeeds but `write_permission` is disabled, call `blueprinthelper_request_write_session`; the Editor displays a simple accept/reject dialog. If the user rejects it, stop and report. Do not use `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or direct `auth_session` handling for ordinary writes.
 
 ## 5. Frozen Tool Boundary
 

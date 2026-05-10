@@ -18,6 +18,7 @@ Use `tools/list` as final authority. Normal Agent-facing tools:
 | Runtime profile | `blueprint_get_runtime_profile` |
 | Static diagnostics | `blueprinthelper_diagnostics` |
 | Runtime diagnostics | `blueprinthelper_diagnostics_runtime` |
+| Request write session | `blueprinthelper_request_write_session` |
 | AgentGuide index | `blueprinthelper_read_agent_guide` |
 | ReadSpec context | `blueprinthelper_read_context` |
 | Task context | `blueprinthelper_read_task_context` |
@@ -34,6 +35,7 @@ Use `tools/list` as final authority. Normal Agent-facing tools:
 | `blueprint_get_runtime_profile` | `{}` |
 | `blueprinthelper_diagnostics` | `{}` |
 | `blueprinthelper_diagnostics_runtime` | `{}` |
+| `blueprinthelper_request_write_session` | `{ "reason": "...", "scope": "project", "ttl_seconds": 900, "asset_paths": ["/Game/..."] }` |
 | `blueprinthelper_read_agent_guide` | `{}` |
 | `blueprinthelper_read_context` | `BlueprintHelper.ReadSpec.v1` fields at root |
 | `blueprinthelper_read_task_context` | `{ "target": { "asset_path": "..." }, "feature_name": "..." }` |
@@ -42,6 +44,8 @@ Use `tools/list` as final authority. Normal Agent-facing tools:
 | `blueprinthelper_execute_task` | `{ "task_spec": { ...BlueprintHelper.TaskSpec.v1... } }` |
 | `blueprinthelper_get_task_result` | `{ "task_run_id": "..." }` |
 | `blueprint_open_editor` | `{ "wait_timeout_ms": 120000 }` or `{}` |
+
+`blueprinthelper_request_write_session` is only called after a successful preview when `write_permission` is disabled. The running Editor shows a minimal accept/reject prompt. The tool response omits the raw session id; Agents must not pass `auth_session`, `auth_token`, or `BLUEPRINTHELPER_BRIDGE_TOKEN` in later tool calls.
 
 ## 4. Read Context Template
 

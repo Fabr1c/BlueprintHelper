@@ -10,9 +10,11 @@
 5. 如果 context_required/context_stale：重新 read_context / read_reference_context
 6. 如果 TaskSpec error：按 suggested_patch 修正
 7. 如果 preview_blocked：stop_and_report 或修改 TaskSpec
-8. 只有 preview completed 后才 execute_task
-9. get_task_result if needed
-10. report summary
+8. Only continue toward execute when preview completed without blockers
+9. If `write_permission` is disabled, call `blueprinthelper_request_write_session`; continue only if the user accepts the simple Editor prompt
+10. execute_task
+11. get_task_result if needed
+12. report summary
 ```
 
 TaskSpec 必须描述：目标资产、feature_name、scope_policy、asset_policy、resources、components、variables、class_settings、behavior、validation。

@@ -36,6 +36,4 @@ public:
 	static bool IsWriteCommand(const FString& Command);
 	static bool IsHighRiskCommand(const FString& Command);
 	static bool IsHighRiskCommandEnabled();
-
-	static FString GetConfiguredToken();
 };
