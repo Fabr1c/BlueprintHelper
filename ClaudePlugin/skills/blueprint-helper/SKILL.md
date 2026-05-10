@@ -1,72 +1,66 @@
 ---
 name: blueprint-helper
-description: Use when working with Unreal Engine Blueprints, UMG widgets, DataAssets, DataTables, or any UE editor assets. Provides MCP tools for reading and modifying Unreal Editor assets through a local Bridge connection. Always use this skill before making any MCP calls to BlueprintHelper tools.
+description: Use when working with Unreal Engine Blueprints, UMG widgets, DataAssets, DataTables, or other UE editor assets through BlueprintHelper.
 ---
 
-# BlueprintHelper Skill — TaskSpec-first
+# BlueprintHelper Skill
 
-BlueprintHelper 是 UE5.3+ 的 Agent 编辑辅助系统。通过 MCP Server 桥接 AI Agent 与运行中的 Unreal Editor，使用 TaskSpec-first 架构安全地操作编辑器资产。
+BlueprintHelper 是 UE 编辑器资产操作入口。`SKILL.md` 只负责让主 Agent 判断任务、读取索引、分派 SideAgent；工具参数和返回结果处理规则在 references 中。
 
-## 默认流程
+## 主 Agent 入口职责
 
-```text
-get_runtime_profile → read_task_context → build TaskSpec → preview_task → execute_task → report summary
-```
+当用户要求操作蓝图或其他 UE 编辑器资产时：
 
-不要把复杂 UE 资产任务拆成大量底层 MCP 调用。底层工具簇是 TaskPlan capability、debug / expert 工具和测试入口。
+1. 读取 `references/08_User_Preferences.md` 和 `references/00_Agent_Onboarding_Index_20260504.md`。
+2. 判断用户需求是否缺少目标资产、目标图表或创建/修改策略。
+3. 如果缺少关键目标，先问用户，不启用写入工具。
+4. 如果需要调用 BlueprintHelper 工具，给 SideAgent 一个精简任务包，并要求它读取 `references/09_SideAgent_Tool_Execution.md`。
+5. 接收 SideAgent 翻译后的结果，再由主 Agent 决定继续、请求确认或回复用户。
 
-## 关键规则
+不要把整个 `SKILL.md` 原文传给 SideAgent。SideAgent 只接收任务包和需要读取的 reference 路径。
 
-- runtime_profile.active_profile 是 safety_profile 唯一来源。
-- diagnostics 只定位问题，不替代 runtime_profile。
-- LogicMD 用于理解，LogicJson 用于结构化分析，RawJson/resource_ref 用于保真、导入或 Pin/GUID 级调试。
-- Asset Factory 只创建资产。
-- add_component 只创建组件和 attachment。
-- Class Settings 不写图表逻辑，不支持第一版 reparent。
-- Enhanced Input 默认不编辑 IA / IMC。
-- Append/Replace/Patch/Merge 是 Graph Write capability，不是普通 Agent 默认直调入口。
-- preview_blocked、missing capability、rollback blocked/failed 时 stop_and_report。
+## SideAgent 任务包
 
-## 安全写入前置检查
+主 Agent 下发给 SideAgent 的任务包只包含执行所需信息：
 
-任何写入操作前必须完成：
+- 用户目标
+- 目标资产路径和目标图表
+- 是创建新资产还是修改已有资产
+- 安全档位和写入授权要求
+- 允许使用的 BlueprintHelper 工具
+- 停止条件
+- 返回格式要求
 
-1. 确认用户有目标 UE 项目且 Unreal Editor 正在运行，或 MCP server 配置了 `UE_ENGINE_DIR` 和 `UE_PROJECT_FILE`。
-2. 确认 Bridge 可达。
-3. 识别精确的目标资产路径，例如 `/Game/Blueprints/BP_Player`。
-4. 编辑图表节点时识别精确的目标图表，例如 `EventGraph`。
-5. 优先使用 TaskSpec-first 写入流程。
-6. 如果 `write_permission` 被禁用，在 preview 之后 execute 之前调用 `blueprinthelper_request_write_session`。
-7. 不要对交互式写入请求或注入 `BLUEPRINTHELPER_BRIDGE_TOKEN` / `auth_token`。
-8. 不要依赖当前聚焦的编辑器标签页进行破坏性操作。
+示例：用户说“在蓝图实现一个可以开关的物理门”时，如果目标资产未知，主 Agent 应先询问“修改已有门蓝图还是创建新的 `BP_PhysicsDoor`”。确认后再分派 SideAgent。
 
-## 边界规则
+## 停止条件
 
-使用 BlueprintHelper MCP 处理：
-- 通过运行的 Unreal Editor 读写现有 UE 资产。
-- 创建或修改蓝图图表、变量、函数、宏、节点、链接和事件分发器。
-- 读写 UMG widget tree 和 widget 属性。
-- 读写 UObject / DataAsset 属性。
-- 读写 DataTable 行。
-- 编译、打开、保存、验证、导入或导出蓝图相关编辑器资产。
+以下情况主 Agent 不继续推进写入：
 
-使用普通仓库工具处理：
-- C++ / TypeScript / Python / config 编辑。
-- 搜索源文件。
-- 添加文档文件。
-- 更新构建脚本。
-- 编写 AGENTS.md / memory / 项目说明。
+- 目标资产或创建策略不明确。
+- Bridge 不可达。
+- runtime_profile 不允许目标写入。
+- preview 被阻断。
+- capability 缺失。
+- 写入授权被拒绝。
+- SideAgent 返回的结果无法判断是否满足用户目标。
 
-## 参考文档
+## 边界摘要
 
-需要详细 API 参考和工作流程时，读取以下文件：
+BlueprintHelper MCP 只用于 UE 编辑器资产：Blueprint、UMG、DataAsset、DataTable、编译、保存、打开、PIE/editor 命令和诊断。
 
-- `references/00_Agent_Onboarding_Index.md` — Agent 引导索引
+C++、TypeScript、Python、JSON、配置、文档、AGENTS 和 memory 文件使用普通仓库工具。
+
+## References
+
+- `references/08_User_Preferences.md` — 用户偏好、协作规则、Debug/Review 约定
+- `references/00_Agent_Onboarding_Index_20260504.md` — Agent 引导索引
+- `references/09_SideAgent_Tool_Execution.md` — SideAgent 工具调用和结果翻译协议
 - `references/01_Preflight_And_Boundary.md` — 预检和边界
-- `references/02_Capability_Index.md` — 能力索引
-- `references/03_Runtime_Profile_And_Diagnostics.md` — 运行时配置与诊断
-- `references/04_MCP_Field_Templates.md` — MCP 字段模板
+- `references/02_TaskSpec_First_Tool_Selection.md` — TaskSpec-first 工具选择
+- `references/03_Runtime_Profile_And_Diagnostics.md` — runtime_profile 和 diagnostics
+- `references/04_MCP_Field_Templates_20260507.md` — MCP 字段模板
 - `references/04_TaskSpec_Edit_Blueprint_Workflow.md` — TaskSpec 编辑蓝图工作流
-- `references/05_Edit_Blueprint_Workflow.md` — 编辑蓝图工作流
+- `references/05_Edit_Blueprint_Workflow.md` — 旧编辑蓝图工作流
 - `references/06_UMG_Data_Workflows.md` — UMG 和数据工作流
 - `references/07_Safety_Validation_And_Recovery.md` — 安全验证与恢复

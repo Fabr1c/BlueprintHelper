@@ -24,11 +24,6 @@
     "allow_modify_user_nodes_by_default": false,
     "allow_merge_existing_execution_flow_by_default": false
   },
-  "enhanced_input": {
-    "allow_auto_create_input_action": false,
-    "allow_auto_edit_mapping_context": false,
-    "require_explicit_input_action_path": true
-  },
   "review": {
     "enable_transaction_journal": true,
     "enable_review_store": true,

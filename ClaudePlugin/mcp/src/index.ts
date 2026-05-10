@@ -25,7 +25,6 @@ function expandTemplateVars(raw: string): string {
 }
 
 const UE_ENGINE_DIR = expandTemplateVars(process.env['UE_ENGINE_DIR'] ?? '');
-const UE_PROJECT_FILE = expandTemplateVars(process.env['UE_PROJECT_FILE'] ?? '');
 
 // 鈹€鈹€鈹€ 鍚姩 鈹€鈹€鈹€
 
@@ -40,7 +39,7 @@ async function main() {
   });
 
   // 娉ㄥ唽宸ュ叿涓庤祫婧?
-  registerTools(server, bridge, { ueEngineDir: UE_ENGINE_DIR, ueProjectFile: UE_PROJECT_FILE });
+  registerTools(server, bridge, { ueEngineDir: UE_ENGINE_DIR });
   registerResources(server, bridge);
 
   // stdio 浼犺緭

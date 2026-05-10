@@ -39,7 +39,6 @@ import {
 
 export interface TaskToolsConfig {
   ueEngineDir: string;
-  ueProjectFile: string;
   taskCompiler?: TaskCompiler;
 }
 
@@ -463,7 +462,10 @@ function extractDryRun(resp: BridgeResponse): { canExecute: boolean; issues: Tas
   const data = asRecord(result?.['data']);
   const dryRun = asRecord(data?.['dry_run']) ?? asRecord(result?.['dry_run']);
   const canExecute = dryRun?.['can_execute'];
-  const blockedByStatus = result?.['status'] === 'failed' || dryRun?.['result'] === 'blocked';
+  const blockedByStatus =
+    result?.['status'] === 'failed' ||
+    dryRun?.['result'] === 'blocked' ||
+    canExecute === false;
   const dryRunIssues = collectIssues(dryRun);
   const issues = dryRunIssues.length > 0 || !blockedByStatus
     ? dryRunIssues

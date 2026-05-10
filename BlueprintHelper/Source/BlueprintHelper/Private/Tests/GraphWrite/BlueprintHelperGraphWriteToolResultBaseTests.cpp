@@ -13,6 +13,8 @@
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperOwnershipService.h"
 #include "K2Node_CallFunction.h"
 #include "K2Node_CustomEvent.h"
+#include "K2Node_ExecutionSequence.h"
+#include "K2Node_IfThenElse.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
@@ -251,6 +253,21 @@ public:
 		return PrintNode;
 	}
 
+	static UK2Node_IfThenElse* AddGraphWriteBranchNode(UEdGraph* Graph)
+	{
+		if (!Graph)
+		{
+			return nullptr;
+		}
+
+		UK2Node_IfThenElse* BranchNode = NewObject<UK2Node_IfThenElse>(Graph);
+		Graph->AddNode(BranchNode, true, false);
+		BranchNode->CreateNewGuid();
+		BranchNode->PostPlacedNewNode();
+		BranchNode->AllocateDefaultPins();
+		return BranchNode;
+	}
+
 	static UEdGraphPin* FindFirstExecPin(UEdGraphNode* Node, EEdGraphPinDirection Direction)
 	{
 		if (!Node)
@@ -274,6 +291,101 @@ public:
 		UEdGraphPin* ToPin = FindFirstExecPin(ToNode, EGPD_Input);
 		const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
 		return FromPin && ToPin && Schema && Schema->TryCreateConnection(FromPin, ToPin);
+	}
+
+	static TArray<UEdGraphPin*> FindExecPins(UEdGraphNode* Node, EEdGraphPinDirection Direction)
+	{
+		TArray<UEdGraphPin*> Result;
+		if (!Node)
+		{
+			return Result;
+		}
+
+		for (UEdGraphPin* Pin : Node->Pins)
+		{
+			if (Pin && Pin->Direction == Direction && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+			{
+				Result.Add(Pin);
+			}
+		}
+		return Result;
+	}
+
+	static UK2Node_ExecutionSequence* FindGraphWriteSequenceNode(UEdGraph* Graph)
+	{
+		if (!Graph)
+		{
+			return nullptr;
+		}
+
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (UK2Node_ExecutionSequence* SequenceNode = Cast<UK2Node_ExecutionSequence>(Node))
+			{
+				return SequenceNode;
+			}
+		}
+		return nullptr;
+	}
+
+	static UK2Node_CallFunction* FindGraphWriteCallFunctionNode(UEdGraph* Graph, const FName FunctionName)
+	{
+		if (!Graph)
+		{
+			return nullptr;
+		}
+
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			UK2Node_CallFunction* CallNode = Cast<UK2Node_CallFunction>(Node);
+			if (CallNode && CallNode->GetFunctionName() == FunctionName)
+			{
+				return CallNode;
+			}
+		}
+		return nullptr;
+	}
+
+	static bool IsExecReachable(UEdGraphNode* FromNode, UEdGraphNode* ToNode)
+	{
+		if (!FromNode || !ToNode)
+		{
+			return false;
+		}
+
+		TSet<UEdGraphNode*> Visited;
+		TArray<UEdGraphNode*> Stack;
+		Stack.Add(FromNode);
+
+		while (Stack.Num() > 0)
+		{
+			UEdGraphNode* Current = Stack.Pop(EAllowShrinking::No);
+			if (!Current || Visited.Contains(Current))
+			{
+				continue;
+			}
+			if (Current == ToNode)
+			{
+				return true;
+			}
+
+			Visited.Add(Current);
+			for (UEdGraphPin* Pin : Current->Pins)
+			{
+				if (!Pin || Pin->Direction != EGPD_Output || Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec)
+				{
+					continue;
+				}
+				for (UEdGraphPin* LinkedPin : Pin->LinkedTo)
+				{
+					if (LinkedPin && LinkedPin->GetOwningNode())
+					{
+						Stack.Add(LinkedPin->GetOwningNode());
+					}
+				}
+			}
+		}
+		return false;
 	}
 
 	static void MarkGraphWriteNodeAsBlueprintHelperOwned(UEdGraphNode* Node, const FString& BlockId)
@@ -562,7 +674,8 @@ public:
 	static TSharedRef<FJsonObject> MakeGraphWriteTaskPlanPayload(
 		const FString& AssetPath,
 		const FString& GraphName,
-		const TSharedRef<FJsonObject>& Op)
+		const TSharedRef<FJsonObject>& Op,
+		bool bShouldCompile = false)
 	{
 		TSharedRef<FJsonObject> Step = MakeShared<FJsonObject>();
 		Step->SetStringField(TEXT("step_id"), TEXT("step_001"));
@@ -597,7 +710,7 @@ public:
 
 		TSharedRef<FJsonObject> ExecutionPolicy = MakeShared<FJsonObject>();
 		ExecutionPolicy->SetStringField(TEXT("dry_run_mode"), TEXT("full"));
-		ExecutionPolicy->SetBoolField(TEXT("should_compile"), false);
+		ExecutionPolicy->SetBoolField(TEXT("should_compile"), bShouldCompile);
 		ExecutionPolicy->SetBoolField(TEXT("should_save"), false);
 		TaskPlan->SetObjectField(TEXT("execution_policy"), ExecutionPolicy);
 
@@ -643,6 +756,34 @@ public:
 		TSharedRef<FJsonObject> Patch = MakeShared<FJsonObject>();
 		Patch->SetStringField(TEXT("value"), TEXT("true"));
 		Op->SetObjectField(TEXT("patch"), Patch);
+		return Op;
+	}
+
+	static TSharedRef<FJsonObject> MakeBranchForkOwnedBlockCallOp(
+		const FString& AnchorBlockId,
+		const FString& AnchorEntryNodePath,
+		const FString& InsertedBlockId)
+	{
+		TSharedRef<FJsonObject> Op = MakeShared<FJsonObject>();
+		Op->SetStringField(TEXT("op"), TEXT("insert_flow"));
+		Op->SetStringField(TEXT("merge_scope"), TEXT("owned_block_call"));
+		Op->SetStringField(TEXT("insert_strategy"), TEXT("branch_fork"));
+
+		TSharedRef<FJsonObject> Anchor = MakeShared<FJsonObject>();
+		Anchor->SetStringField(TEXT("block_id"), AnchorBlockId);
+		Anchor->SetStringField(TEXT("group_entry_node_path"), AnchorEntryNodePath);
+		Anchor->SetStringField(TEXT("node_ref"), TEXT("nodes[0]"));
+		Anchor->SetStringField(TEXT("pin_ref"), TEXT("Then"));
+		Op->SetObjectField(TEXT("anchor"), Anchor);
+
+		TSharedRef<FJsonObject> Inserted = MakeShared<FJsonObject>();
+		Inserted->SetStringField(TEXT("block_id"), InsertedBlockId);
+		Op->SetObjectField(TEXT("inserted"), Inserted);
+
+		TArray<TSharedPtr<FJsonValue>> SequenceOrder;
+		SequenceOrder.Add(MakeShared<FJsonValueString>(TEXT("inserted_logic")));
+		SequenceOrder.Add(MakeShared<FJsonValueString>(TEXT("original_successor")));
+		Op->SetArrayField(TEXT("sequence_order"), SequenceOrder);
 		return Op;
 	}
 
@@ -1684,6 +1825,121 @@ bool FBlueprintHelperGraphWriteTaskRuntimeReplaceCustomEventBodyReconnectsEntryE
 	TestTrue(TEXT("exported graph contains runtime event to replacement PrintString exec link"),
 		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ExportHasExecLinkFromCustomEventToFunction(Graph, TEXT("SmokeCustomEvent"), TEXT("PrintString")));
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteTaskRuntimeMergeBranchForkOwnedBlockCallReadBackTest,
+	"BlueprintHelper.GraphWrite.TaskRuntime.Merge.BranchForkOwnedBlockCallReadBack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteTaskRuntimeMergeBranchForkOwnedBlockCallReadBackTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("RuntimeMergeBranchForkOwnedBlockCall"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	const FString AnchorBlockId = FString::Printf(TEXT("%s_AnchorBlock0"), *Graph->GetName());
+	const FString InsertedBlockId = FString::Printf(TEXT("%s_InsertedBlock0"), *Graph->GetName());
+
+	UK2Node_CustomEvent* AnchorEntry = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, TEXT("OwnedAnchorBlock"));
+	UK2Node_IfThenElse* OriginalSuccessor = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteBranchNode(Graph);
+	UK2Node_CustomEvent* InsertedEntry = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, TEXT("OwnedInsertedBlock"));
+	TestNotNull(TEXT("anchor owned block entry is created"), AnchorEntry);
+	TestNotNull(TEXT("original successor is created"), OriginalSuccessor);
+	TestNotNull(TEXT("inserted owned block entry is created"), InsertedEntry);
+	if (!AnchorEntry || !OriginalSuccessor || !InsertedEntry)
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("fixture starts with anchor linked to original successor"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ConnectFirstExecPins(AnchorEntry, OriginalSuccessor));
+	UEdGraphPin* AnchorExecOut = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(AnchorEntry, EGPD_Output);
+	UEdGraphPin* OriginalExecIn = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(OriginalSuccessor, EGPD_Input);
+	TestTrue(TEXT("anchor has exactly one original successor before branch_fork"), AnchorExecOut && AnchorExecOut->LinkedTo.Num() == 1);
+	if (!AnchorExecOut || !OriginalExecIn || AnchorExecOut->LinkedTo.Num() != 1)
+	{
+		return false;
+	}
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(AnchorEntry, AnchorBlockId);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(OriginalSuccessor, AnchorBlockId);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(InsertedEntry, InsertedBlockId);
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+	FKismetEditorUtilities::CompileBlueprint(Blueprint);
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness Harness;
+	const FString AssetPath = Blueprint->GetPathName();
+	const FString GraphName = Graph->GetName();
+
+	const FBlueprintHelperToolResultBase Preview = Harness.RuntimeService.PreviewTaskPlan(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTaskPlanPayload(
+			AssetPath,
+			GraphName,
+			FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeBranchForkOwnedBlockCallOp(
+				AnchorBlockId,
+				AnchorEntry->GetName(),
+				InsertedBlockId),
+			true));
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AssertRuntimePreviewReachedGraphWriteService(
+		*this,
+		Preview,
+		TEXT("merge_blueprint_graph"),
+		true);
+
+	const FBlueprintHelperToolResultBase ExecuteResult = Harness.RuntimeService.ExecuteTaskPlan(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTaskPlanPayload(
+			AssetPath,
+			GraphName,
+			FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeBranchForkOwnedBlockCallOp(
+				AnchorBlockId,
+				AnchorEntry->GetName(),
+				InsertedBlockId),
+			true));
+	TestTrue(TEXT("runtime branch_fork owned block call succeeds"), ExecuteResult.bOk);
+	if (!ExecuteResult.bOk && ExecuteResult.Error.IsSet())
+	{
+		TestFalse(TEXT("execute failure has diagnosable message"), ExecuteResult.Error->Message.IsEmpty());
+	}
+	TestEqual(TEXT("runtime branch_fork status is applied"), ExecuteResult.Status, EBlueprintHelperToolStatus::Applied);
+
+	FString TaskRunId;
+	TestTrue(TEXT("execute result has data"), ExecuteResult.Data.IsValid());
+	TestTrue(TEXT("execute result carries task_run_id"),
+		ExecuteResult.Data.IsValid() && ExecuteResult.Data->TryGetStringField(TEXT("task_run_id"), TaskRunId));
+	TestFalse(TEXT("task_run_id is not empty"), TaskRunId.IsEmpty());
+	const FBlueprintHelperToolResultBase JournalResult = Harness.RuntimeService.GetTaskRunJournal(TaskRunId);
+	TestTrue(TEXT("TaskRunJournal can be loaded for branch_fork task"), JournalResult.bOk);
+	FString JournalStatus;
+	TestTrue(TEXT("TaskRunJournal has status"),
+		JournalResult.Data.IsValid() && JournalResult.Data->TryGetStringField(TEXT("status"), JournalStatus));
+	TestEqual(TEXT("TaskRunJournal completed"), JournalStatus, FString(TEXT("completed")));
+
+	UK2Node_ExecutionSequence* SequenceNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindGraphWriteSequenceNode(Graph);
+	UK2Node_CallFunction* InsertedCall = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindGraphWriteCallFunctionNode(Graph, FName(TEXT("OwnedInsertedBlock")));
+	UEdGraphPin* SequenceExecIn = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(SequenceNode, EGPD_Input);
+	const TArray<UEdGraphPin*> SequenceThenPins = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindExecPins(SequenceNode, EGPD_Output);
+	UEdGraphPin* InsertedExecIn = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(InsertedCall, EGPD_Input);
+
+	TestNotNull(TEXT("read-back finds branch_fork sequence node"), SequenceNode);
+	TestNotNull(TEXT("read-back finds owned block call node"), InsertedCall);
+	TestTrue(TEXT("anchor now links to sequence input"), AnchorExecOut && SequenceExecIn && AnchorExecOut->LinkedTo.Contains(SequenceExecIn));
+	TestFalse(TEXT("anchor no longer directly links original successor"), AnchorExecOut && AnchorExecOut->LinkedTo.Contains(OriginalExecIn));
+	TestTrue(TEXT("sequence has inserted and original successor branches"), SequenceThenPins.Num() >= 2);
+	if (SequenceThenPins.Num() >= 2)
+	{
+		TestTrue(TEXT("inserted branch calls owned block"), InsertedExecIn && SequenceThenPins[0]->LinkedTo.Contains(InsertedExecIn));
+		TestTrue(TEXT("original successor branch is preserved"), OriginalExecIn && SequenceThenPins[1]->LinkedTo.Contains(OriginalExecIn));
+	}
+	TestTrue(TEXT("inserted call is reachable from anchor"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::IsExecReachable(AnchorEntry, InsertedCall));
+	TestTrue(TEXT("original successor is reachable from anchor"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::IsExecReachable(AnchorEntry, OriginalSuccessor));
 	return true;
 }
 

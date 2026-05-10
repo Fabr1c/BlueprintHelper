@@ -193,6 +193,46 @@ test('agent-facing tools are not marked frozen', () => {
   assert.match(openEditor.description ?? '', /Preflight only/i);
 });
 
+test('blueprint_open_editor requires explicit project_file tool argument instead of UE_PROJECT_FILE env', async () => {
+  const tools = registerWithBridge(async () => ({ request_id: 'test', success: true }), {
+    ueEngineDir: '/fake/engine',
+  });
+  const tool = tools.get('blueprint_open_editor');
+  assert.ok(tool);
+
+  const parsed = tool.inputSchema.parse({
+    project_file: '/fake/project/MrStone.uproject',
+    wait_timeout_ms: 1,
+  });
+  assert.equal(parsed.project_file, '/fake/project/MrStone.uproject');
+  assert.equal(tool.description?.includes('UE_PROJECT_FILE'), false);
+
+  const result = await invokeTool(tool, { project_file: '/fake/project' });
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text ?? '', /PROJECT_FILE_NOT_UPROJECT/);
+  assert.equal((result.content[0].text ?? '').includes('UE_PROJECT_FILE'), false);
+});
+
+test('blueprint_build_project requires explicit project_file tool argument instead of UE_PROJECT_FILE env', async () => {
+  const tools = registerWithBridge(async () => ({ request_id: 'test', success: true }), {
+    ueEngineDir: '/fake/engine',
+  });
+  const tool = tools.get('blueprint_build_project');
+  assert.ok(tool);
+
+  const parsed = tool.inputSchema.parse({
+    project_file: '/fake/project/MrStone.uproject',
+    target: 'MrStoneEditor',
+  });
+  assert.equal(parsed.project_file, '/fake/project/MrStone.uproject');
+  assert.equal(tool.description?.includes('UE_PROJECT_FILE'), false);
+
+  const result = await invokeTool(tool, { project_file: '/fake/project' });
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text ?? '', /PROJECT_FILE_NOT_UPROJECT/);
+  assert.equal((result.content[0].text ?? '').includes('UE_PROJECT_FILE'), false);
+});
+
 test('blueprinthelper_read_agent_guide returns the AgentGuide onboarding index without Bridge', async () => {
   const calls: Array<{ command: string; payload: Record<string, unknown> | undefined }> = [];
   const tools = registerWithBridge(async (command, payload) => {

@@ -10,10 +10,9 @@
   "mcpServers": {
     "blueprint-helper": {
       "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/BlueprintHelper_MCP_Server/build/index.js"],
+      "args": ["${CLAUDE_PLUGIN_ROOT}/mcp/build/index.js"],
       "env": {
         "UE_ENGINE_DIR": "${UE_ENGINE_DIR}",
-        "UE_PROJECT_FILE": "${UE_PROJECT_FILE}",
         "BRIDGE_HOST": "127.0.0.1",
         "BRIDGE_PORT": "54321"
       }

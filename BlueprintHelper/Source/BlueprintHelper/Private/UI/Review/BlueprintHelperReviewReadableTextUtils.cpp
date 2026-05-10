@@ -141,25 +141,25 @@ FString FBlueprintHelperReviewReadableTextUtils::GetAssetFactoryReadableSuffix(
 
 	if (LowerAssetName.StartsWith(TEXT("wbp_")) || CombinedDescriptor.Contains(TEXT("widget")))
 	{
-		return TEXT("Widget Blueprint 璧勪骇");
+		return TEXT("Widget Blueprint \u8d44\u4ea7");
 	}
 	if (LowerAssetName.StartsWith(TEXT("dt_")) || CombinedDescriptor.Contains(TEXT("data_table")))
 	{
-		return TEXT("DataTable 璧勪骇");
+		return TEXT("DataTable \u8d44\u4ea7");
 	}
 	if (LowerAssetName.StartsWith(TEXT("st_")) || CombinedDescriptor.Contains(TEXT("structure")))
 	{
-		return TEXT("Structure 璧勪骇");
+		return TEXT("Structure \u8d44\u4ea7");
 	}
 	if (LowerAssetName.StartsWith(TEXT("da_")) || CombinedDescriptor.Contains(TEXT("data_asset")))
 	{
-		return TEXT("DataAsset 璧勪骇");
+		return TEXT("DataAsset \u8d44\u4ea7");
 	}
 	if (LowerAssetName.StartsWith(TEXT("bp_")) || LowerAssetName.StartsWith(TEXT("bpi_")))
 	{
-		return TEXT("钃濆浘璧勪骇");
+		return TEXT("\u84dd\u56fe\u8d44\u4ea7");
 	}
-	return TEXT("UObject 璧勪骇");
+	return TEXT("UObject \u8d44\u4ea7");
 }
 
 FString FBlueprintHelperReviewReadableTextUtils::GetReadableTargetName(const FBlueprintHelperReviewVisibleChange& Change)
@@ -217,21 +217,21 @@ FString FBlueprintHelperReviewReadableTextUtils::GetReadableTargetSuffix(const F
 	}
 	if (TargetKind.Contains(TEXT("datatable_row")) || Surface == EBlueprintHelperReviewSurface::DataTable)
 	{
-		return TEXT("行");
+		return TEXT("\u884c");
 	}
 	if (TargetKind.Contains(TEXT("component")) || Surface == EBlueprintHelperReviewSurface::Components)
 	{
-		return TEXT("缁勪欢");
+		return TEXT("\u7ec4\u4ef6");
 	}
 	if (TargetKind.Contains(TEXT("signature")))
 	{
-		return TEXT("绛惧悕");
+		return TEXT("\u7b7e\u540d");
 	}
 	if (TargetKind.Contains(TEXT("variable"))
 		|| TargetKind.Contains(TEXT("property"))
 		|| Surface == EBlueprintHelperReviewSurface::DataAsset)
 	{
-		return TEXT("鍙橀噺");
+		return TEXT("\u53d8\u91cf");
 	}
 	return FString();
 }
@@ -241,13 +241,13 @@ FString FBlueprintHelperReviewReadableTextUtils::GetReadableChangeVerb(EBlueprin
 	switch (ChangeKind)
 	{
 	case EBlueprintHelperReviewChangeKind::Added:
-		return TEXT("新增了");
+		return TEXT("\u65b0\u589e\u4e86");
 	case EBlueprintHelperReviewChangeKind::Removed:
-		return TEXT("删除了");
+		return TEXT("\u5220\u9664\u4e86");
 	case EBlueprintHelperReviewChangeKind::Renamed:
-		return TEXT("閲嶅懡鍚嶄簡");
+		return TEXT("\u91cd\u547d\u540d\u4e86");
 	default:
-		return TEXT("修改了");
+		return TEXT("\u4fee\u6539\u4e86");
 	}
 }
 

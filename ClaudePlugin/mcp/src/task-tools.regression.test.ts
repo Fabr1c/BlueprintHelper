@@ -700,6 +700,47 @@ test('preview_task surfaces Bridge failed status as a blocked issue when dry-run
   assert.equal(issues[0]?.message, 'Unsupported TaskPlan capability.');
 });
 
+test('preview_task surfaces composite dry-run can_execute false as a blocked issue when issues are absent', async () => {
+  const tools = registerWithBridge(async (): Promise<BridgeResponse> => ({
+    request_id: 'preview_composite_can_execute_false',
+    success: true,
+    result: {
+      ok: true,
+      schema: 'BlueprintHelper.McpToolResult.v1',
+      operation: 'preview_task_plan',
+      trace_id: 'trace_preview_composite_can_execute_false',
+      status: 'dry_run',
+      modified: false,
+      data: {
+        dry_run: {
+          can_execute: false,
+        },
+      },
+    },
+  }));
+
+  const tool = tools.get('blueprinthelper_preview_task');
+  assert.ok(tool);
+
+  const result = await invokeTool(tool, {
+    task_spec: {
+      ...makeTaskSpec(),
+      task_type: 'create_blueprint_feature',
+    },
+  });
+
+  assert.equal(result.isError, false);
+  const data = result.structuredContent?.data as Record<string, unknown>;
+  assert.equal(data.schema, 'BlueprintHelper.TaskPreview.v1');
+  assert.equal(data.passed, false);
+  assert.equal(data.blocked, true);
+  const issues = data.issues as Array<Record<string, unknown>>;
+  assert.equal(issues.length, 1);
+  assert.equal(issues[0]?.code, 'task_preview_blocked');
+  assert.equal(issues[0]?.path, 'bridge.preview_task_plan');
+  assert.equal(issues[0]?.message, 'Task preview was blocked.');
+});
+
 test('preview_task compiles Blueprint Variables TaskSpec and previews a UE TaskPlan', async () => {
   const calls: Array<{ command: string; payload: Record<string, unknown> | undefined }> = [];
   const tools = registerWithBridge(async (command, payload) => {

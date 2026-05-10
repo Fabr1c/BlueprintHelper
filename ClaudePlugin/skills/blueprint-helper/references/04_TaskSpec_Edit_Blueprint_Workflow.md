@@ -68,7 +68,7 @@ execute_task 成功后，普通报告只输出任务摘要、目标资产、主�
 在执行 smoke 或写入任务前，对照：
 
 ```text
-Resources/AgentGuide/Reference/04_MCP_Field_Templates_20260507.md
+references/04_MCP_Field_Templates_20260507.md
 ```
 
 执行顺序中的参数形状应为：

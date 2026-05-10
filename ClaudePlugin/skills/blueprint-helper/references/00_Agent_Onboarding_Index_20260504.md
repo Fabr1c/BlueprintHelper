@@ -2,6 +2,8 @@
 
 普通 Agent 只走 TaskSpec-first 主线。MCP 中仍注册了兼容、测试和专家入口，但这些冻结入口不在本指南中作为可选工具暴露。
 
+主 Agent 命中 BlueprintHelper Skill 后，先确认目标资产和创建/修改策略。需要实际调用 BlueprintHelper 工具时，给 SideAgent 一个精简任务包，并让 SideAgent 读取 `09_SideAgent_Tool_Execution.md`。不要把完整 Skill 原文传给 SideAgent。
+
 默认流程:
 
 ```text
@@ -41,14 +43,15 @@ Ordinary Agents must not request, set, or forward `BLUEPRINTHELPER_BRIDGE_TOKEN`
 
 阅读顺序:
 
-1. `Resources/AgentGuide/Reference/01_Preflight_And_Boundary.md`
-2. `Resources/AgentGuide/Reference/02_TaskSpec_First_Tool_Selection.md`
-3. `Resources/AgentGuide/Reference/03_Runtime_Profile_And_Diagnostics.md`
-4. `Resources/AgentGuide/Reference/04_MCP_Field_Templates_20260507.md`
-5. `Resources/AgentGuide/Workflows/04_TaskSpec_Edit_Blueprint_Workflow.md`
-6. `Resources/AgentGuide/Workflows/05_Edit_Blueprint_Workflow.md`
-7. `Resources/AgentGuide/Workflows/06_UMG_Data_Workflows.md`
-8. `Resources/AgentGuide/Workflows/07_Safety_Validation_And_Recovery.md`
+1. `references/01_Preflight_And_Boundary.md`
+2. `references/02_TaskSpec_First_Tool_Selection.md`
+3. `references/03_Runtime_Profile_And_Diagnostics.md`
+4. `references/04_MCP_Field_Templates_20260507.md`
+5. `references/09_SideAgent_Tool_Execution.md`
+6. `references/04_TaskSpec_Edit_Blueprint_Workflow.md`
+7. `references/05_Edit_Blueprint_Workflow.md`
+8. `references/06_UMG_Data_Workflows.md`
+9. `references/07_Safety_Validation_And_Recovery.md`
 
 规则:
 
