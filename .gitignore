@@ -13,3 +13,8 @@ build/
 *.toml
 *.7z
 *.yaml
+__pycache__/
+*.pyc
+/.claude/
+/.codex/
+/workspace/
