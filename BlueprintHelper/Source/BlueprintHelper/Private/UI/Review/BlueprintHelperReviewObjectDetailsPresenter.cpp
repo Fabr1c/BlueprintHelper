@@ -1,0 +1,47 @@
+// BlueprintHelper Review object details presenter.
+
+#include "UI/Review/BlueprintHelperReviewObjectDetailsPresenter.h"
+
+#include "SKismetInspector.h"
+#include "UI/Review/BlueprintHelperReviewRowHighlightModel.h"
+#include "UI/Review/BlueprintHelperReviewSurfaceRouter.h"
+
+class FBlueprintHelperReviewObjectDetailsPresenterUtils
+{
+public:
+	static bool IsReviewPropertyEditingEnabled();
+};
+
+bool FBlueprintHelperReviewObjectDetailsPresenterUtils::IsReviewPropertyEditingEnabled()
+{
+	return false;
+}
+
+bool FBlueprintHelperReviewObjectDetailsPresenter::ShouldShowChange(const FBlueprintHelperReviewVisibleChange& Change)
+{
+	return FBlueprintHelperReviewSurfacePresenterRouter::ShouldShowChangeOnSurface(
+		Change,
+		EBlueprintHelperReviewSurface::Details);
+}
+
+TSharedRef<SWidget> FBlueprintHelperReviewObjectDetailsPresenter::BuildContent(
+	const FBlueprintHelperReviewAssetContext&,
+	TSharedPtr<SKismetInspector>& OutKismetInspector)
+{
+	TSharedRef<SKismetInspector> Inspector = SAssignNew(OutKismetInspector, SKismetInspector)
+		.HideNameArea(true)
+		.ViewIdentifier(FName(TEXT("BlueprintHelperReviewInspector")))
+		.IsPropertyEditingEnabledDelegate(FIsPropertyEditingEnabled::CreateStatic(
+			&FBlueprintHelperReviewObjectDetailsPresenterUtils::IsReviewPropertyEditingEnabled))
+		.ShowLocalVariables(true);
+	return Inspector;
+}
+
+TSharedRef<SWidget> FBlueprintHelperReviewObjectDetailsPresenter::BuildOverlay(
+	const FBlueprintHelperReviewPanelSurfacePresenterArgs& Args)
+{
+	return FBlueprintHelperReviewRowHighlightModel::BuildRowHighlightOverlay(
+		Args,
+		EBlueprintHelperReviewSurface::Details,
+		&FBlueprintHelperReviewObjectDetailsPresenter::ShouldShowChange);
+}

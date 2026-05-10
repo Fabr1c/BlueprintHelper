@@ -1,0 +1,18 @@
+{
+  "name": "blueprint-helper-dev",
+  "description": "BlueprintHelper 开发测试 Marketplace",
+  "owner": {
+    "name": "Fabric"
+  },
+  "plugins": [
+    {
+      "name": "blueprint-helper",
+      "description": "UE5 Blueprint Agent 编辑辅助系统",
+      "version": "0.3.8",
+      "source": "./",
+      "author": {
+        "name": "Fabric"
+      }
+    }
+  ]
+}
