@@ -34,12 +34,14 @@
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperMergeBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperPatchBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperReplaceBlueprintGraphService.h"
+#include "Systems/Review/BlueprintHelperReviewStoreService.h"
 #include "Systems/Debug/BlueprintHelperAssetBrowseService.h"
 #include "Systems/Debug/BlueprintHelperCompileAssetService.h"
 #include "Systems/Debug/BlueprintHelperCompileService.h"
 #include "Systems/ToolClusters/UMGWidget/BlueprintHelperWidgetService.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.h"
 #include "Systems/Transactions/BlueprintHelperTransactionJournalService.h"
+#include "UI/Review/BlueprintHelperReviewGraphBounds.h"
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
 #include "UObject/Class.h"
@@ -1029,6 +1031,108 @@ bool FBlueprintHelperGraphWriteReplaceCustomEventBodyReconnectsEntryExecTest::Ru
 	TestTrue(TEXT("exported graph contains event to replacement PrintString exec link"),
 		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ExportHasExecLinkFromCustomEventToFunction(Graph, TEXT("SmokeCustomEvent"), TEXT("PrintString")));
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteReplaceEmitsReviewNodeAnchorsForDiffBoundsTest,
+	"BlueprintHelper.GraphWrite.Replace.EmitsReviewNodeAnchorsForDiffBounds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteReplaceEmitsReviewNodeAnchorsForDiffBoundsTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("ReplaceReviewNodeAnchors"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* EntryNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, TEXT("SmokeCustomEvent"));
+	UK2Node_CallFunction* OldPrintNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWritePrintStringCall(Graph);
+	TestNotNull(TEXT("custom event entry is created"), EntryNode);
+	TestNotNull(TEXT("old PrintString body node is created"), OldPrintNode);
+	TestTrue(TEXT("old custom event body is linked before replace"),
+		EntryNode && OldPrintNode && FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ConnectFirstExecPins(EntryNode, OldPrintNode));
+	if (!EntryNode || !OldPrintNode)
+	{
+		return false;
+	}
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperAssetBrowseService AssetBrowseService;
+	FBlueprintHelperCompileService CompileService(Resolver);
+	FBlueprintHelperAgentImportService AgentImportService(Resolver, CompileService, AssetBrowseService);
+	FBlueprintHelperBlockIdService BlockIdService;
+	FBlueprintHelperOwnershipService OwnershipService;
+	FBlueprintHelperTransactionJournalService JournalService;
+	FBlueprintHelperGraphSnapshotService SnapshotService;
+	FBlueprintHelperReplaceBlueprintGraphService ReplaceService(
+		Resolver,
+		AgentImportService,
+		BlockIdService,
+		OwnershipService,
+		JournalService,
+		SnapshotService);
+
+	const FString ArchiveSessionId = FString::Printf(
+		TEXT("archive_replace_diff_anchor_%s"),
+		*FGuid::NewGuid().ToString(EGuidFormats::Digits));
+	FBlueprintHelperTransactionJournalService::SetRuntimeReviewContext(
+		ArchiveSessionId,
+		TEXT("task_replace_diff_anchor"));
+	const FBlueprintHelperToolResultBase Result = ReplaceService.Execute(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeReplaceExecutePayload(Blueprint->GetPathName(), Graph->GetName()));
+	FBlueprintHelperTransactionJournalService::ClearRuntimeReviewContext();
+
+	TestTrue(TEXT("replace custom event body succeeds"), Result.bOk);
+	TestEqual(TEXT("replace status is applied"), Result.Status, EBlueprintHelperToolStatus::Applied);
+
+	FBlueprintHelperReviewStoreService Store;
+	FBlueprintHelperReviewRecordQuery Query;
+	Query.ArchiveSessionIdFilter = ArchiveSessionId;
+	Query.bPendingOnly = false;
+	const TArray<FBlueprintHelperReviewRecord> Records = Store.QueryReviewRecords(Query);
+	TestEqual(TEXT("replace writes one review record"), Records.Num(), 1);
+	if (Records.Num() != 1 || Records[0].VisibleChanges.Num() == 0)
+	{
+		return false;
+	}
+
+	bool bSawGraphNodeTarget = false;
+	bool bSawEmptyGraphBlockTarget = false;
+	bool bBuiltGraphBounds = false;
+	FString BoundsDebug;
+	for (const FBlueprintHelperReviewVisibleChange& Change : Records[0].VisibleChanges)
+	{
+		for (const FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
+		{
+			if (Target.Surface != EBlueprintHelperReviewSurface::Graph)
+			{
+				continue;
+			}
+			bSawGraphNodeTarget |= Target.TargetKind.Equals(TEXT("graph_node"), ESearchCase::IgnoreCase)
+				&& !Target.TargetKey.IsEmpty();
+			bSawEmptyGraphBlockTarget |= Target.TargetKind.Equals(TEXT("graph_block"), ESearchCase::IgnoreCase)
+				&& Target.TargetKey.EndsWith(TEXT("block:"));
+		}
+
+		FVector2D BoundsPosition = FVector2D::ZeroVector;
+		FVector2D BoundsSize = FVector2D::ZeroVector;
+		bBuiltGraphBounds |= FBlueprintHelperReviewGraphBounds::BuildBoundsForTargets(
+			Change.AtomicTargets,
+			Graph,
+			Graph->GetName(),
+			TSharedPtr<SGraphEditor>(),
+			BoundsPosition,
+			BoundsSize,
+			&BoundsDebug);
+	}
+
+	TestTrue(TEXT("replace review evidence includes a graph_node target"), bSawGraphNodeTarget);
+	TestFalse(TEXT("replace review evidence does not include an empty graph block target"), bSawEmptyGraphBlockTarget);
+	TestTrue(FString::Printf(TEXT("replace graph_node target can build graph diff bounds: %s"), *BoundsDebug), bBuiltGraphBounds);
 	return true;
 }
 

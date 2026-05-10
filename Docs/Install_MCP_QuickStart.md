@@ -56,7 +56,8 @@ The MCP Server reads these environment variables:
 | `UE_PROJECT_FILE` | For `blueprint_open_editor` and `blueprint_build_project` | empty | Absolute `.uproject` path |
 | `BRIDGE_HOST` | No | `127.0.0.1` | BlueprintHelper Bridge host |
 | `BRIDGE_PORT` | No | `54321` | BlueprintHelper Bridge port |
-| `BLUEPRINTHELPER_BRIDGE_TOKEN` | Optional | empty | Optional Bridge auth token |
+
+Interactive write access is granted through `blueprinthelper_request_write_session` after the Unreal Editor is running. The Editor shows a simple accept/reject approval dialog, and the MCP server caches the short-lived session id internally. Ordinary agents should not configure or pass a Bridge token for writes.
 
 PowerShell example:
 

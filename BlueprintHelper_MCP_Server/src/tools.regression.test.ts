@@ -14,6 +14,7 @@ const AGENT_FACING_TOOL_NAMES = [
   'blueprint_get_runtime_profile',
   'blueprinthelper_diagnostics',
   'blueprinthelper_diagnostics_runtime',
+  'blueprinthelper_request_write_session',
   'blueprinthelper_read_context',
   'blueprinthelper_read_task_context',
   'blueprinthelper_read_reference_context',
@@ -111,6 +112,53 @@ test('blueprint_import_json_to_graph defaults to strict import without manual au
     },
   ]);
   assert.equal(Object.hasOwn(calls[0].payload ?? {}, 'auth_token'), false);
+});
+
+test('blueprinthelper_request_write_session stores Bridge session without exposing its raw id', async () => {
+  const calls: Array<{ command: string; payload: Record<string, unknown> | undefined }> = [];
+  let storedSessionId = '';
+  const tools = registerWithBridge(async (command, payload) => {
+    calls.push({ command, payload });
+    return {
+      request_id: 'test',
+      success: true,
+      result: {
+        write_session: {
+          session_id: 'write-session-secret',
+          scope: 'project',
+          expires_at_utc: '2026-05-10T00:15:00Z',
+        },
+      },
+    };
+  }, {}, {
+    setWriteSessionId: (sessionId: string) => {
+      storedSessionId = sessionId;
+    },
+  });
+  const tool = tools.get('blueprinthelper_request_write_session');
+  assert.ok(tool);
+
+  const result = await invokeTool(tool, {
+    reason: 'edit requested by user',
+    scope: 'project',
+    ttl_seconds: 900,
+    asset_paths: ['/Game/BP_Player'],
+  });
+
+  assert.deepEqual(calls, [
+    {
+      command: 'request_write_session',
+      payload: {
+        reason: 'edit requested by user',
+        scope: 'project',
+        ttl_seconds: 900,
+        asset_paths: ['/Game/BP_Player'],
+      },
+    },
+  ]);
+  assert.equal(storedSessionId, 'write-session-secret');
+  assert.equal(result.isError, false);
+  assert.equal(JSON.stringify(result).includes('write-session-secret'), false);
 });
 
 test('registered non-default tools remain available but are marked frozen expert-only', () => {

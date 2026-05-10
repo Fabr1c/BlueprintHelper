@@ -6,6 +6,7 @@
 
 | Tool | Purpose |
 |---|---|
+| `blueprinthelper_request_write_session` | Request a short-lived Editor-approved write session before execute when `write_permission` is disabled |
 | `blueprinthelper_read_agent_guide` | 读取本指南入口 |
 | `blueprint_get_runtime_profile` | 读取 Bridge、写权限、安全档位和能力状态 |
 | `blueprinthelper_diagnostics` | 静态安装和配置诊断 |

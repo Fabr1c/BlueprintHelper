@@ -41,7 +41,4 @@ private:
 
 	/** 获取插件版本号（。uplugin 或编译宏）。*/
 	static FString GetPluginVersion();
-
-	/** 读取 settings / config 中的 token。*/
-	static FString GetBridgeToken();
 };

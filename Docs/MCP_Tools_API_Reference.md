@@ -38,6 +38,7 @@ Default Agent-facing payload schemas:
 | `blueprinthelper_read_context` | `McpToolResult.v1` with `data.schema = ReadContextPack.v1` |
 | `blueprinthelper_read_reference_context` | `McpToolResult.v1` with `data.schema = ReferenceContextPack.v1` |
 | `blueprinthelper_preview_task` | `McpToolResult.v1` with `data.schema = TaskPreviewResult.v1` |
+| `blueprinthelper_request_write_session` | `McpToolResult.v1` with `data.schema = WriteSession.v1`; raw session id is not returned |
 | `blueprinthelper_execute_task` | `McpToolResult.v1` with `data.schema = TaskRunSummary.v1` or `TaskRunJournal.v1` |
 | `blueprinthelper_get_task_result` | `McpToolResult.v1` with `data.schema = TaskRunJournal.v1` |
 
@@ -77,6 +78,7 @@ Default Agent-facing tools:
 - `blueprinthelper_read_agent_guide`
 - `blueprinthelper_get_runtime_profile`
 - `blueprinthelper_diagnostics`
+- `blueprinthelper_request_write_session`
 - `blueprinthelper_read_context`
 - `blueprinthelper_read_reference_context`
 - `blueprinthelper_preview_task`
@@ -105,6 +107,7 @@ This is the documented target surface for ordinary Agents. Some entries may be a
 | `blueprinthelper_get_runtime_profile` | Read | Returns version, Bridge state, write permission, safety profile, and unavailable capabilities | No | Call at session start or before write planning |
 | `blueprinthelper_diagnostics` | Read | Returns static/runtime diagnostics | No | Blocking diagnostics are business state, not transport failure |
 | `blueprinthelper_read_agent_guide` | Read | Returns the AgentGuide onboarding index Markdown | No | Documentation entry for capability surface and schema guide paths |
+| `blueprinthelper_request_write_session` | Approval | Requests a short-lived Editor-approved write session | No | Required before TaskSpec execute when no active session exists; raw session id is never returned to the Agent |
 | `blueprinthelper_read_context` | Read | Executes `BlueprintHelper.ReadSpec.v1` through the generic read router | No | Default asset-domain read entry |
 | `blueprinthelper_read_reference_context` | Read | Returns compact reference impact context | No | Independent reference viewer; not part of every write flow |
 | `blueprinthelper_preview_task` | Preview | Validates `BlueprintHelper.TaskSpec.v1`, compiles `BlueprintHelper.TaskPlan.v1`, and dry-runs/preflights | No | Returns GraphWrite IR summary when compilation succeeds and suggested patches for schema/semantic errors when possible |
@@ -205,9 +208,10 @@ Canonical field contract: `Resources/Docs/TaskSpec_TaskPlan_Contract_20260504.md
 
 Current MCP Server behavior:
 
-- `BLUEPRINTHELPER_BRIDGE_TOKEN` is forwarded to the Bridge when set.
-- A formal setup/session token is not enforced by the TypeScript MCP Server yet.
-- Future guard resources may require reading `.blueprinthelper/agent-profile.json` before writes.
+- Ordinary write access uses `blueprinthelper_request_write_session`.
+- The running Unreal Editor shows a simple accept/reject approval dialog for a short-lived write session, and the MCP Bridge client caches the session id internally.
+- If the user rejects the dialog, Agents must stop and report the denied write session.
+- `BLUEPRINTHELPER_BRIDGE_TOKEN` is no longer the ordinary interactive write path.
 
 Unless noted otherwise, Bridge-backed tools require Unreal Editor to be running with the BlueprintHelper Bridge reachable at `BRIDGE_HOST:BRIDGE_PORT`.
 
@@ -227,49 +231,49 @@ The following entries describe the current low-level inventory. Ordinary Agents 
 | Tool | Type | Bridge | Inputs | Success example | Failure example | Risk | Preconditions | Token/session |
 |---|---|---:|---|---|---|---|---|---|
 | `blueprinthelper_read_agent_guide` | Read | No | none | AgentGuide onboarding index Markdown | AgentGuide index file missing | Low | MCP Server can read plugin `Resources` | None |
-| `blueprint_get_editor_context` | Read | Yes | none | `{ "success": true, "result": { "active_blueprint": "...", "active_graph": "..." } }` | No active editor context or Bridge unavailable | Low | Editor Bridge reachable | Optional Bridge token |
-| `blueprint_validate_json` | Read | Yes | `json` string | `{ "success": true, "result": { "valid": true } }` | Invalid JSON or rule violation | Low | Editor Bridge reachable | Optional Bridge token |
-| `blueprint_export_to_json` | Read | Yes | optional `target_blueprint`, optional `target_graph`, optional `scope` | `{ "success": true, "result": { "json": "..." } }` | Target asset or graph not found | Low | Editor Bridge reachable, target asset for explicit reads | Optional Bridge token |
-| `blueprint_get_logic` | Read | Yes | optional `target_blueprint`, optional `target_graph`, optional `scope`, optional `detail`, optional `include_data_dependencies`, optional `include_orphans` | Markdown LogicMD plus optional safety summary | Target asset or graph not found | Low | Editor Bridge reachable | Optional Bridge token |
-| `blueprint_get_logic_json` | Read | Yes | optional `target_blueprint`, optional `target_graph`, optional `scope`, optional `detail`, optional data/orphan/node/position/raw type flags | `{ "success": true, "result": { "format": "logic_json", "graphs": [] } }` | Target asset or graph not found | Low | Editor Bridge reachable | Optional Bridge token |
-| `blueprint_import_json_to_graph` | Mutate | Yes | `json`, optional `target_blueprint`, optional `target_graph`, optional `compile_after_import`, optional `strict`, optional `allow_partial` | `{ "success": true, "result": { "nodes_created": 3, "links_connected": 2 } }` | Validation failed, link failed, rolled back | High | Explicit target recommended, raw BlueprintHelper JSON required | Optional Bridge token, setup not enforced |
-| `blueprint_import_agent_graph` | Mutate | Yes | `schema`, `version`, `target_blueprint`, `target_graph`, `mode`, `layout`, optional `declarations`, `nodes`, optional `links`, optional `options` | `{ "success": true, "result": { "operations_applied": 4 } }` | Contract validation failed, unsupported node kind | High | Explicit Blueprint and graph required | Optional Bridge token, setup not enforced |
-| `blueprint_compile_blueprint` | EditorCommand | Yes | optional `target_blueprint` | `{ "success": true, "result": { "compiled": true } }` | Compile error diagnostics | Medium | Editor Bridge reachable, target Blueprint or active Blueprint | Optional Bridge token |
-| `blueprint_open_asset` | EditorCommand | Yes | `asset_path` | `{ "success": true, "message": "opened" }` | Asset not found | Medium | Editor Bridge reachable, asset path known | Optional Bridge token |
-| `blueprint_list_assets` | Read | Yes | optional `path`, optional `class_filter`, optional `name_filter`, optional `recursive`, optional `max_results` | `{ "success": true, "result": { "assets": [] } }` | Invalid content path | Low | Editor Bridge reachable | Optional Bridge token |
-| `blueprint_search_assets` | Read | Yes | `query`, optional `path`, optional `class_filter`, optional `max_results` | `{ "success": true, "result": { "assets": [] } }` | Invalid content path | Low | Editor Bridge reachable | Optional Bridge token |
-| `blueprint_save_asset` | Mutate | Yes | `asset_path` | `{ "success": true, "message": "saved" }` | Save failed or asset not found | Medium | Editor Bridge reachable, asset path known | Optional Bridge token, profile may require confirmation |
-| `blueprint_get_asset_info` | Read | Yes | `asset_path` | `{ "success": true, "result": { "class": "Blueprint" } }` | Asset not found | Low | Editor Bridge reachable | Optional Bridge token |
-| `blueprint_list_graphs` | Read | Yes | optional `target_blueprint` | `{ "success": true, "result": { "graphs": [] } }` | Blueprint not found | Low | Editor Bridge reachable | Optional Bridge token |
-| `blueprint_list_variables` | Read | Yes | optional `target_blueprint` | `{ "success": true, "result": { "variables": [] } }` | Blueprint not found | Low | Editor Bridge reachable | Optional Bridge token |
-| `blueprint_list_event_dispatchers` | Read | Yes | optional `target_blueprint` | `{ "success": true, "result": { "dispatchers": [] } }` | Blueprint not found | Low | Editor Bridge reachable | Optional Bridge token |
-| `blueprint_add_variable` | Mutate | Yes | optional `target_blueprint`, `name`, optional `pin_type`, optional `default_value`, optional `category`, optional `flags` | `{ "success": true, "result": { "variable": "Health" } }` | Duplicate name or invalid pin type | Medium | Explicit target recommended | Optional Bridge token, profile may require plan |
-| `blueprint_remove_variable` | Mutate | Yes | optional `target_blueprint`, `name` | `{ "success": true, "message": "removed" }` | Variable used by graph or Blueprint not found | High | Explicit target recommended, read references first | Optional Bridge token, profile may require confirmation |
-| `blueprint_add_graph` | Mutate | Yes | optional `target_blueprint`, `name`, optional `graph_type`, optional `inputs`, optional `outputs`, optional `is_pure` | `{ "success": true, "result": { "graph": "ComputeScore" } }` | Duplicate graph or invalid signature | Medium | Explicit target recommended | Optional Bridge token, profile may require plan |
-| `blueprint_remove_graph` | Mutate | Yes | optional `target_blueprint`, `name` | `{ "success": true, "message": "removed" }` | Cannot remove EventGraph or graph not found | High | Explicit target recommended, read references first | Optional Bridge token, profile may require confirmation |
-| `blueprint_add_event_dispatcher` | Mutate | Yes | optional `target_blueprint`, `name`, optional `params` | `{ "success": true, "result": { "dispatcher": "OnHealthChanged" } }` | Duplicate name or invalid parameter | Medium | Explicit target recommended | Optional Bridge token, profile may require plan |
-| `blueprint_delete_nodes` | Mutate | Yes | optional `target_blueprint`, optional `target_graph`, `node_ids` | `{ "success": true, "result": { "operations_applied": 2 } }` | Protected node, missing node, rollback | High | Explicit Blueprint and graph strongly recommended | Optional Bridge token, profile should require confirmation |
-| `blueprint_get_widget_tree` | Read | Yes | `asset_path` | `{ "success": true, "result": { "tree": {} } }` | WidgetBlueprint not found | Low | Editor Bridge reachable, WidgetBlueprint path known | Optional Bridge token |
-| `blueprint_add_widget` | Mutate | Yes | `asset_path`, `widget_class`, optional `parent_name`, optional `widget_name` | `{ "success": true, "result": { "widget_name": "TitleText" } }` | Invalid class or parent not found | Medium | Read widget tree first | Optional Bridge token, profile may require plan |
-| `blueprint_remove_widget` | Mutate | Yes | `asset_path`, `widget_name` | `{ "success": true, "message": "removed" }` | Widget not found or protected root | High | Read widget tree first | Optional Bridge token, profile should require confirmation |
-| `blueprint_move_widget` | Mutate | Yes | `asset_path`, `widget_name`, `new_parent`, optional `insert_index` | `{ "success": true, "message": "moved" }` | Parent not found or invalid slot | Medium | Read widget tree first | Optional Bridge token, profile may require plan |
-| `blueprint_get_widget_properties` | Read | Yes | `asset_path`, `widget_name` | `{ "success": true, "result": { "properties": [] } }` | Widget not found | Low | Widget path and name known | Optional Bridge token |
-| `blueprint_set_widget_property` | Mutate | Yes | `asset_path`, `widget_name`, `property_name`, `value` | `{ "success": true, "message": "property set" }` | Invalid property or text import value | Medium | Read widget properties first | Optional Bridge token, profile may require confirmation |
-| `blueprint_get_object_properties` | Read | Yes | `asset_path` | `{ "success": true, "result": { "properties": [] } }` | Asset not found or no editable fields | Low | UObject asset path known | Optional Bridge token |
-| `blueprint_set_object_property` | Mutate | Yes | `asset_path`, `property_name`, `value` | `{ "success": true, "message": "property set" }` | Invalid property, unsafe flag, invalid value | Medium | Read object properties first | Optional Bridge token, profile may require confirmation |
-| `blueprint_get_datatable_rows` | Read | Yes | `asset_path`, optional `row_names` | `{ "success": true, "result": { "rows": [] } }` | DataTable not found or row missing | Low | DataTable asset path known | Optional Bridge token |
-| `blueprint_add_datatable_row` | Mutate | Yes | `asset_path`, `row_name`, optional `fields` | `{ "success": true, "message": "row added" }` | Duplicate row or invalid field value | High | Read table schema and rows first | Optional Bridge token, profile may require confirmation |
-| `blueprint_update_datatable_row` | Mutate | Yes | `asset_path`, `row_name`, `fields` | `{ "success": true, "message": "row updated" }` | Row not found or invalid field value | Medium | Read target row first | Optional Bridge token, profile may require confirmation |
-| `blueprint_delete_datatable_row` | Mutate | Yes | `asset_path`, `row_name` | `{ "success": true, "message": "row deleted" }` | Row not found | High | Read target row first | Optional Bridge token, profile should require confirmation |
-| `blueprint_undo` | EditorCommand | Yes | none | `{ "success": true, "message": "undone" }` | Nothing to undo | Medium | Editor Bridge reachable | Optional Bridge token |
-| `blueprint_redo` | EditorCommand | Yes | none | `{ "success": true, "message": "redone" }` | Nothing to redo | Medium | Editor Bridge reachable | Optional Bridge token |
-| `blueprint_play_in_editor` | EditorCommand | Yes | none | `{ "success": true, "message": "PIE started" }` | PIE already running or editor not ready | Medium | Editor Bridge reachable | Optional Bridge token, profile may require permission |
-| `blueprint_stop_pie` | EditorCommand | Yes | none | `{ "success": true, "message": "PIE stopped" }` | No PIE session running | Medium | Editor Bridge reachable | Optional Bridge token |
-| `blueprint_create_blueprint` | Mutate | Yes | `asset_path`, optional `parent_class` | `{ "success": true, "result": { "asset_path": "/Game/..." } }` | Invalid path, duplicate asset, invalid parent class | High | Confirm destination path and parent class | Optional Bridge token, profile should require plan |
-| `blueprint_exec_console_command` | EditorCommand | Yes | `command` | `{ "success": true, "result": { "output": "..." } }` | Console command failed | Critical | User should approve command | Optional Bridge token, profile should require confirmation |
-| `blueprint_close_editor` | EditorCommand | Yes | optional `save_all` | `{ "success": true, "message": "closing" }` | Save failed or Bridge unavailable | Critical | User should approve closing editor | Optional Bridge token, profile should require confirmation |
-| `blueprint_build_project` | LocalProcess | No | optional `target`, optional `configuration`, optional `platform` | `{ "success": true, "message": "Build succeeded." }` | Missing env vars or build failed with exit code | Critical | `UE_ENGINE_DIR` and `UE_PROJECT_FILE` set, editor should be closed | No Bridge token, setup not enforced |
-| `blueprint_open_editor` | LocalProcess | Launch no, readiness ping yes | optional `wait_timeout_ms` | `{ "success": true, "code": "EDITOR_BRIDGE_AVAILABLE" }` | Missing env vars, bad `.uproject`, launch failure, Bridge timeout | Critical | `UE_ENGINE_DIR` and `UE_PROJECT_FILE` set | Bridge token used only for readiness ping when set |
+| `blueprint_get_editor_context` | Read | Yes | none | `{ "success": true, "result": { "active_blueprint": "...", "active_graph": "..." } }` | No active editor context or Bridge unavailable | Low | Editor Bridge reachable | No write session required |
+| `blueprint_validate_json` | Read | Yes | `json` string | `{ "success": true, "result": { "valid": true } }` | Invalid JSON or rule violation | Low | Editor Bridge reachable | No write session required |
+| `blueprint_export_to_json` | Read | Yes | optional `target_blueprint`, optional `target_graph`, optional `scope` | `{ "success": true, "result": { "json": "..." } }` | Target asset or graph not found | Low | Editor Bridge reachable, target asset for explicit reads | No write session required |
+| `blueprint_get_logic` | Read | Yes | optional `target_blueprint`, optional `target_graph`, optional `scope`, optional `detail`, optional `include_data_dependencies`, optional `include_orphans` | Markdown LogicMD plus optional safety summary | Target asset or graph not found | Low | Editor Bridge reachable | No write session required |
+| `blueprint_get_logic_json` | Read | Yes | optional `target_blueprint`, optional `target_graph`, optional `scope`, optional `detail`, optional data/orphan/node/position/raw type flags | `{ "success": true, "result": { "format": "logic_json", "graphs": [] } }` | Target asset or graph not found | Low | Editor Bridge reachable | No write session required |
+| `blueprint_import_json_to_graph` | Mutate | Yes | `json`, optional `target_blueprint`, optional `target_graph`, optional `compile_after_import`, optional `strict`, optional `allow_partial` | `{ "success": true, "result": { "nodes_created": 3, "links_connected": 2 } }` | Validation failed, link failed, rolled back | High | Explicit target recommended, raw BlueprintHelper JSON required | Approved write session |
+| `blueprint_import_agent_graph` | Mutate | Yes | `schema`, `version`, `target_blueprint`, `target_graph`, `mode`, `layout`, optional `declarations`, `nodes`, optional `links`, optional `options` | `{ "success": true, "result": { "operations_applied": 4 } }` | Contract validation failed, unsupported node kind | High | Explicit Blueprint and graph required | Approved write session |
+| `blueprint_compile_blueprint` | EditorCommand | Yes | optional `target_blueprint` | `{ "success": true, "result": { "compiled": true } }` | Compile error diagnostics | Medium | Editor Bridge reachable, target Blueprint or active Blueprint | Approved write session if command mutates |
+| `blueprint_open_asset` | EditorCommand | Yes | `asset_path` | `{ "success": true, "message": "opened" }` | Asset not found | Medium | Editor Bridge reachable, asset path known | Approved write session if command mutates |
+| `blueprint_list_assets` | Read | Yes | optional `path`, optional `class_filter`, optional `name_filter`, optional `recursive`, optional `max_results` | `{ "success": true, "result": { "assets": [] } }` | Invalid content path | Low | Editor Bridge reachable | No write session required |
+| `blueprint_search_assets` | Read | Yes | `query`, optional `path`, optional `class_filter`, optional `max_results` | `{ "success": true, "result": { "assets": [] } }` | Invalid content path | Low | Editor Bridge reachable | No write session required |
+| `blueprint_save_asset` | Mutate | Yes | `asset_path` | `{ "success": true, "message": "saved" }` | Save failed or asset not found | Medium | Editor Bridge reachable, asset path known | Approved write session |
+| `blueprint_get_asset_info` | Read | Yes | `asset_path` | `{ "success": true, "result": { "class": "Blueprint" } }` | Asset not found | Low | Editor Bridge reachable | No write session required |
+| `blueprint_list_graphs` | Read | Yes | optional `target_blueprint` | `{ "success": true, "result": { "graphs": [] } }` | Blueprint not found | Low | Editor Bridge reachable | No write session required |
+| `blueprint_list_variables` | Read | Yes | optional `target_blueprint` | `{ "success": true, "result": { "variables": [] } }` | Blueprint not found | Low | Editor Bridge reachable | No write session required |
+| `blueprint_list_event_dispatchers` | Read | Yes | optional `target_blueprint` | `{ "success": true, "result": { "dispatchers": [] } }` | Blueprint not found | Low | Editor Bridge reachable | No write session required |
+| `blueprint_add_variable` | Mutate | Yes | optional `target_blueprint`, `name`, optional `pin_type`, optional `default_value`, optional `category`, optional `flags` | `{ "success": true, "result": { "variable": "Health" } }` | Duplicate name or invalid pin type | Medium | Explicit target recommended | Approved write session |
+| `blueprint_remove_variable` | Mutate | Yes | optional `target_blueprint`, `name` | `{ "success": true, "message": "removed" }` | Variable used by graph or Blueprint not found | High | Explicit target recommended, read references first | Approved write session |
+| `blueprint_add_graph` | Mutate | Yes | optional `target_blueprint`, `name`, optional `graph_type`, optional `inputs`, optional `outputs`, optional `is_pure` | `{ "success": true, "result": { "graph": "ComputeScore" } }` | Duplicate graph or invalid signature | Medium | Explicit target recommended | Approved write session |
+| `blueprint_remove_graph` | Mutate | Yes | optional `target_blueprint`, `name` | `{ "success": true, "message": "removed" }` | Cannot remove EventGraph or graph not found | High | Explicit target recommended, read references first | Approved write session |
+| `blueprint_add_event_dispatcher` | Mutate | Yes | optional `target_blueprint`, `name`, optional `params` | `{ "success": true, "result": { "dispatcher": "OnHealthChanged" } }` | Duplicate name or invalid parameter | Medium | Explicit target recommended | Approved write session |
+| `blueprint_delete_nodes` | Mutate | Yes | optional `target_blueprint`, optional `target_graph`, `node_ids` | `{ "success": true, "result": { "operations_applied": 2 } }` | Protected node, missing node, rollback | High | Explicit Blueprint and graph strongly recommended | Approved write session |
+| `blueprint_get_widget_tree` | Read | Yes | `asset_path` | `{ "success": true, "result": { "tree": {} } }` | WidgetBlueprint not found | Low | Editor Bridge reachable, WidgetBlueprint path known | No write session required |
+| `blueprint_add_widget` | Mutate | Yes | `asset_path`, `widget_class`, optional `parent_name`, optional `widget_name` | `{ "success": true, "result": { "widget_name": "TitleText" } }` | Invalid class or parent not found | Medium | Read widget tree first | Approved write session |
+| `blueprint_remove_widget` | Mutate | Yes | `asset_path`, `widget_name` | `{ "success": true, "message": "removed" }` | Widget not found or protected root | High | Read widget tree first | Approved write session |
+| `blueprint_move_widget` | Mutate | Yes | `asset_path`, `widget_name`, `new_parent`, optional `insert_index` | `{ "success": true, "message": "moved" }` | Parent not found or invalid slot | Medium | Read widget tree first | Approved write session |
+| `blueprint_get_widget_properties` | Read | Yes | `asset_path`, `widget_name` | `{ "success": true, "result": { "properties": [] } }` | Widget not found | Low | Widget path and name known | No write session required |
+| `blueprint_set_widget_property` | Mutate | Yes | `asset_path`, `widget_name`, `property_name`, `value` | `{ "success": true, "message": "property set" }` | Invalid property or text import value | Medium | Read widget properties first | Approved write session |
+| `blueprint_get_object_properties` | Read | Yes | `asset_path` | `{ "success": true, "result": { "properties": [] } }` | Asset not found or no editable fields | Low | UObject asset path known | No write session required |
+| `blueprint_set_object_property` | Mutate | Yes | `asset_path`, `property_name`, `value` | `{ "success": true, "message": "property set" }` | Invalid property, unsafe flag, invalid value | Medium | Read object properties first | Approved write session |
+| `blueprint_get_datatable_rows` | Read | Yes | `asset_path`, optional `row_names` | `{ "success": true, "result": { "rows": [] } }` | DataTable not found or row missing | Low | DataTable asset path known | No write session required |
+| `blueprint_add_datatable_row` | Mutate | Yes | `asset_path`, `row_name`, optional `fields` | `{ "success": true, "message": "row added" }` | Duplicate row or invalid field value | High | Read table schema and rows first | Approved write session |
+| `blueprint_update_datatable_row` | Mutate | Yes | `asset_path`, `row_name`, `fields` | `{ "success": true, "message": "row updated" }` | Row not found or invalid field value | Medium | Read target row first | Approved write session |
+| `blueprint_delete_datatable_row` | Mutate | Yes | `asset_path`, `row_name` | `{ "success": true, "message": "row deleted" }` | Row not found | High | Read target row first | Approved write session |
+| `blueprint_undo` | EditorCommand | Yes | none | `{ "success": true, "message": "undone" }` | Nothing to undo | Medium | Editor Bridge reachable | Approved write session if command mutates |
+| `blueprint_redo` | EditorCommand | Yes | none | `{ "success": true, "message": "redone" }` | Nothing to redo | Medium | Editor Bridge reachable | Approved write session if command mutates |
+| `blueprint_play_in_editor` | EditorCommand | Yes | none | `{ "success": true, "message": "PIE started" }` | PIE already running or editor not ready | Medium | Editor Bridge reachable | Approved write session if command mutates |
+| `blueprint_stop_pie` | EditorCommand | Yes | none | `{ "success": true, "message": "PIE stopped" }` | No PIE session running | Medium | Editor Bridge reachable | Approved write session if command mutates |
+| `blueprint_create_blueprint` | Mutate | Yes | `asset_path`, optional `parent_class` | `{ "success": true, "result": { "asset_path": "/Game/..." } }` | Invalid path, duplicate asset, invalid parent class | High | Confirm destination path and parent class | Approved write session |
+| `blueprint_exec_console_command` | EditorCommand | Yes | `command` | `{ "success": true, "result": { "output": "..." } }` | Console command failed | Critical | User should approve command | Approved write session and high-risk enablement |
+| `blueprint_close_editor` | EditorCommand | Yes | optional `save_all` | `{ "success": true, "message": "closing" }` | Save failed or Bridge unavailable | Critical | User should approve closing editor | Approved write session and high-risk enablement |
+| `blueprint_build_project` | LocalProcess | No | optional `target`, optional `configuration`, optional `platform` | `{ "success": true, "message": "Build succeeded." }` | Missing env vars or build failed with exit code | Critical | `UE_ENGINE_DIR` and `UE_PROJECT_FILE` set, editor should be closed | No write session; local process |
+| `blueprint_open_editor` | LocalProcess | Launch no, readiness ping yes | optional `wait_timeout_ms` | `{ "success": true, "code": "EDITOR_BRIDGE_AVAILABLE" }` | Missing env vars, bad `.uproject`, launch failure, Bridge timeout | Critical | `UE_ENGINE_DIR` and `UE_PROJECT_FILE` set | No write session; readiness ping is read-only |
 
 ## Write Tools Summary
 
@@ -313,6 +317,7 @@ blueprinthelper_read_agent_guide
  -> blueprinthelper_get_runtime_profile
  -> blueprinthelper_read_context
  -> blueprinthelper_preview_task
+ -> blueprinthelper_request_write_session when write_permission is disabled
  -> blueprinthelper_execute_task
  -> blueprinthelper_get_task_result when needed
 ```

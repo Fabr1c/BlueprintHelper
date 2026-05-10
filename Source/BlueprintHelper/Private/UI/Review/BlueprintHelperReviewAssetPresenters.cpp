@@ -4,16 +4,21 @@
 
 #include <initializer_list>
 
+#include "Blueprint/WidgetTree.h"
+#include "Components/PanelWidget.h"
+#include "Components/Widget.h"
 #include "Engine/DataTable.h"
 #include "Systems/ToolClusters/DataTable/BlueprintHelperDataTableService.h"
 #include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
-#include "Systems/ToolClusters/UMGWidget/BlueprintHelperWidgetService.h"
 #include "UI/Review/BlueprintHelperReviewSurfacePresenter.h"
+#include "WidgetBlueprint.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
+#include "Widgets/Views/STableRow.h"
+#include "Widgets/Views/STreeView.h"
 
 namespace BlueprintHelperReviewAssetPresentersPrivate
 {
@@ -74,13 +79,22 @@ namespace BlueprintHelperReviewAssetPresentersPrivate
 		const FString& AssetPath,
 		EBlueprintHelperReviewSurface Surface,
 		const FString& Text,
-		const FLinearColor& Color)
+		const FLinearColor& Color,
+		FBlueprintHelperReviewGeometryInvalidated OnGeometryInvalidated)
 	{
 		TSharedPtr<SBox> RowBox;
-		TSharedRef<SWidget> RowWidget = SAssignNew(RowBox, SBox)
+		TSharedRef<SWidget> RowContent = SAssignNew(RowBox, SBox)
 		[
 			BuildLine(Text, Color)
 		];
+		TSharedRef<SWidget> RowWidget =
+			SNew(SBlueprintHelperReviewGeometryProbe)
+			.Surface(Surface)
+			.TargetKey(Text)
+			.OnGeometryInvalidated(OnGeometryInvalidated)
+			[
+				RowContent
+			];
 
 		FBlueprintHelperReviewSlateRowGeometryRegistry::RegisterRow(
 			AssetPath,
@@ -94,7 +108,8 @@ namespace BlueprintHelperReviewAssetPresentersPrivate
 		const FString& Title,
 		const TArray<FString>& Lines,
 		const FString& AssetPath = FString(),
-		EBlueprintHelperReviewSurface Surface = EBlueprintHelperReviewSurface::Unknown)
+		EBlueprintHelperReviewSurface Surface = EBlueprintHelperReviewSurface::Unknown,
+		FBlueprintHelperReviewGeometryInvalidated OnGeometryInvalidated = FBlueprintHelperReviewGeometryInvalidated())
 	{
 		TSharedRef<SScrollBox> Scroll = SNew(SScrollBox);
 		Scroll->AddSlot()
@@ -111,7 +126,8 @@ namespace BlueprintHelperReviewAssetPresentersPrivate
 					AssetPath,
 					Surface,
 					Line,
-					FLinearColor(0.62f, 0.62f, 0.62f, 1.0f))
+					FLinearColor(0.62f, 0.62f, 0.62f, 1.0f),
+					OnGeometryInvalidated)
 			];
 		}
 
@@ -120,6 +136,206 @@ namespace BlueprintHelperReviewAssetPresentersPrivate
 			[
 				Scroll
 			];
+	}
+
+	using FWidgetTreeRowItemPtr = TSharedPtr<FBlueprintHelperReviewWidgetTreeRowItem>;
+
+	static FString GetWidgetTreeClassText(const UWidget* Widget)
+	{
+		if (!Widget || !Widget->GetClass())
+		{
+			return TEXT("Unknown");
+		}
+		return Widget->GetClass()->GetName();
+	}
+
+	static FWidgetTreeRowItemPtr MakeWidgetTreeRowItem(
+		const FName WidgetName,
+		const FString& WidgetClass,
+		const int32 Depth)
+	{
+		FWidgetTreeRowItemPtr Item = MakeShared<FBlueprintHelperReviewWidgetTreeRowItem>();
+		Item->WidgetName = WidgetName;
+		Item->WidgetClass = WidgetClass;
+		Item->Depth = Depth;
+		return Item;
+	}
+
+	static FWidgetTreeRowItemPtr BuildWidgetTreeRowItem(
+		UWidget* Widget,
+		const int32 Depth,
+		TSet<const UWidget*>& ReachableWidgets)
+	{
+		if (!Widget || ReachableWidgets.Contains(Widget))
+		{
+			return nullptr;
+		}
+
+		ReachableWidgets.Add(Widget);
+		FWidgetTreeRowItemPtr Item = MakeWidgetTreeRowItem(
+			Widget->GetFName(),
+			GetWidgetTreeClassText(Widget),
+			Depth);
+
+		if (UPanelWidget* Panel = Cast<UPanelWidget>(Widget))
+		{
+			const int32 ChildCount = Panel->GetChildrenCount();
+			for (int32 ChildIndex = 0; ChildIndex < ChildCount; ++ChildIndex)
+			{
+				if (FWidgetTreeRowItemPtr ChildItem = BuildWidgetTreeRowItem(
+					Panel->GetChildAt(ChildIndex),
+					Depth + 1,
+					ReachableWidgets))
+				{
+					Item->Children.Add(ChildItem);
+				}
+			}
+		}
+
+		return Item;
+	}
+
+	static void CollectUnparentedWidgetTreeItems(
+		UWidgetTree* WidgetTree,
+		const TSet<const UWidget*>& ReachableWidgets,
+		TArray<FWidgetTreeRowItemPtr>& OutItems)
+	{
+		if (!WidgetTree)
+		{
+			return;
+		}
+
+		TArray<UWidget*> AllWidgets;
+		WidgetTree->GetAllWidgets(AllWidgets);
+		AllWidgets.Sort([](const UWidget& Left, const UWidget& Right)
+		{
+			return Left.GetName() < Right.GetName();
+		});
+
+		for (UWidget* Widget : AllWidgets)
+		{
+			if (!Widget || ReachableWidgets.Contains(Widget))
+			{
+				continue;
+			}
+			OutItems.Add(MakeWidgetTreeRowItem(
+				Widget->GetFName(),
+				GetWidgetTreeClassText(Widget),
+				1));
+		}
+	}
+
+	static bool IsWidgetTreeGroupRow(const FWidgetTreeRowItemPtr& Item)
+	{
+		return Item.IsValid()
+			&& Item->WidgetName == FName(TEXT("Unparented Widgets"))
+			&& Item->WidgetClass.IsEmpty();
+	}
+
+	static void RegisterWidgetTreeRowAliases(
+		const FString& AssetPath,
+		const FWidgetTreeRowItemPtr& Item,
+		const TSharedRef<SWidget>& RowWidget)
+	{
+		if (AssetPath.IsEmpty() || !Item.IsValid() || IsWidgetTreeGroupRow(Item))
+		{
+			return;
+		}
+
+		const FString WidgetName = Item->WidgetName.ToString();
+		if (WidgetName.IsEmpty())
+		{
+			return;
+		}
+
+		FBlueprintHelperReviewSlateRowGeometryRegistry::RegisterRow(
+			AssetPath,
+			EBlueprintHelperReviewSurface::UMGWidgetTree,
+			FString::Printf(TEXT("umg_widget:%s"), *WidgetName),
+			RowWidget,
+			TEXT("owned_tree_row"));
+		FBlueprintHelperReviewSlateRowGeometryRegistry::RegisterRow(
+			AssetPath,
+			EBlueprintHelperReviewSurface::UMGWidgetTree,
+			FString::Printf(TEXT("umg_widget_property:%s"), *WidgetName),
+			RowWidget,
+			TEXT("owned_tree_row"));
+		FBlueprintHelperReviewSlateRowGeometryRegistry::RegisterRow(
+			AssetPath,
+			EBlueprintHelperReviewSurface::UMGWidgetTree,
+			WidgetName,
+			RowWidget,
+			TEXT("owned_tree_row"));
+	}
+
+	static TSharedRef<ITableRow> GenerateWidgetTreeRow(
+		const FWidgetTreeRowItemPtr Item,
+		const TSharedRef<STableViewBase>& OwnerTable,
+		const FString AssetPath,
+		FBlueprintHelperReviewGeometryInvalidated OnGeometryInvalidated)
+	{
+		const FString WidgetName = Item.IsValid()
+			? Item->WidgetName.ToString()
+			: FString(TEXT("<invalid>"));
+		const FString WidgetClass = Item.IsValid()
+			? Item->WidgetClass
+			: FString();
+		const float DepthPadding = Item.IsValid()
+			? static_cast<float>(FMath::Max(0, Item->Depth) * 12)
+			: 0.0f;
+		const FString ProbeTargetKey = WidgetName.IsEmpty() ? FString(TEXT("widget_tree_row")) : WidgetName;
+		TSharedRef<SWidget> RowContent =
+			SNew(SBlueprintHelperReviewGeometryProbe)
+			.Surface(EBlueprintHelperReviewSurface::UMGWidgetTree)
+			.TargetKey(ProbeTargetKey)
+			.OnGeometryInvalidated(OnGeometryInvalidated)
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot()
+				.FillWidth(1.0f)
+				.VAlign(VAlign_Center)
+				[
+					SNew(STextBlock)
+					.Text(FText::FromString(WidgetName))
+					.ColorAndOpacity(FSlateColor(FLinearColor(0.84f, 0.84f, 0.84f, 1.0f)))
+				]
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.Padding(8.0f, 0.0f, 0.0f, 0.0f)
+				.VAlign(VAlign_Center)
+				[
+					SNew(STextBlock)
+					.Visibility(WidgetClass.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible)
+					.Text(FText::FromString(WidgetClass))
+					.ColorAndOpacity(FSlateColor(FLinearColor(0.52f, 0.52f, 0.52f, 1.0f)))
+				]
+			];
+
+		TSharedRef<STableRow<FWidgetTreeRowItemPtr>> RowWidget =
+			SNew(STableRow<FWidgetTreeRowItemPtr>, OwnerTable)
+			.Padding(FMargin(DepthPadding, 2.0f, 4.0f, 2.0f))
+			[
+				RowContent
+			];
+
+		RegisterWidgetTreeRowAliases(AssetPath, Item, RowContent);
+		return RowWidget;
+	}
+
+	static void ExpandWidgetTreeRows(
+		const TSharedPtr<STreeView<FWidgetTreeRowItemPtr>>& TreeView,
+		const FWidgetTreeRowItemPtr& Item)
+	{
+		if (!TreeView.IsValid() || !Item.IsValid())
+		{
+			return;
+		}
+
+		TreeView->SetItemExpansion(Item, true);
+		for (const FWidgetTreeRowItemPtr& Child : Item->Children)
+		{
+			ExpandWidgetTreeRows(TreeView, Child);
+		}
 	}
 
 	static bool IsSurfaceRoutable(
@@ -157,47 +373,99 @@ bool FBlueprintHelperReviewUMGWidgetTreePresenter::ShouldShowChange(
 }
 
 TSharedRef<SWidget> FBlueprintHelperReviewUMGWidgetTreePresenter::BuildContent(
-	const FBlueprintHelperReviewAssetContext& Context)
+	const FBlueprintHelperReviewAssetContext& Context,
+	FBlueprintHelperReviewWidgetTreePresenterState& State,
+	FBlueprintHelperReviewGeometryInvalidated OnGeometryInvalidated)
 {
-	TArray<FString> Lines;
-	Lines.Add(FString::Printf(TEXT("Asset: %s"), *Context.AssetPath));
-	Lines.Add(FString::Printf(TEXT("Kind: %s"), BlueprintHelperReviewAssetKindToString(Context.AssetKind)));
+	using namespace BlueprintHelperReviewAssetPresentersPrivate;
 
-	FBlueprintHelperWidgetService WidgetService;
-	const FString WidgetAssetPath = Context.ObjectPath.IsEmpty() ? Context.AssetPath : Context.ObjectPath;
-	const FBlueprintHelperWidgetTreeResult Result = WidgetService.GetWidgetTree(WidgetAssetPath);
-	if (!Result.bSuccess)
+	State.RootItems.Reset();
+	State.TreeView.Reset();
+
+	TArray<FString> PlaceholderLines;
+	PlaceholderLines.Add(FString::Printf(TEXT("Asset: %s"), *Context.AssetPath));
+	PlaceholderLines.Add(FString::Printf(TEXT("Kind: %s"), BlueprintHelperReviewAssetKindToString(Context.AssetKind)));
+
+	UWidgetBlueprint* WidgetBlueprint = Cast<UWidgetBlueprint>(Context.Blueprint.Get());
+	if (!WidgetBlueprint)
 	{
-		Lines.Add(FString::Printf(TEXT("WidgetTree: unavailable (%s)"), *Result.ErrorMessage));
-		return BlueprintHelperReviewAssetPresentersPrivate::BuildSummaryPanel(
+		PlaceholderLines.Add(TEXT("WidgetTree: unavailable"));
+		return BuildSummaryPanel(
 			TEXT("UMG Widget Tree"),
-			Lines,
-			Context.AssetPath,
-			EBlueprintHelperReviewSurface::UMGWidgetTree);
+			PlaceholderLines,
+			FString(),
+			EBlueprintHelperReviewSurface::Unknown,
+			OnGeometryInvalidated);
 	}
 
-	Lines.Add(FString::Printf(TEXT("Root: %s"), Result.RootWidgetName.IsEmpty() ? TEXT("<none>") : *Result.RootWidgetName));
-	Lines.Add(FString::Printf(TEXT("Widget count: %d"), Result.Widgets.Num()));
-	for (const FBlueprintHelperWidgetInfo& Widget : Result.Widgets)
+	UWidgetTree* WidgetTree = WidgetBlueprint->WidgetTree;
+	if (!WidgetTree)
 	{
-		FString Indent;
-		for (int32 DepthIndex = 0; DepthIndex < Widget.Depth; ++DepthIndex)
-		{
-			Indent += TEXT("  ");
-		}
-		Lines.Add(FString::Printf(
-			TEXT("%s- %s : %s children=%d"),
-			*Indent,
-			*Widget.Name,
-			*Widget.WidgetClass,
-			Widget.ChildCount));
+		PlaceholderLines.Add(TEXT("WidgetTree: unavailable"));
+		return BuildSummaryPanel(
+			TEXT("UMG Widget Tree"),
+			PlaceholderLines,
+			FString(),
+			EBlueprintHelperReviewSurface::Unknown,
+			OnGeometryInvalidated);
 	}
 
-	return BlueprintHelperReviewAssetPresentersPrivate::BuildSummaryPanel(
-		TEXT("UMG Widget Tree"),
-		Lines,
-		Context.AssetPath,
-		EBlueprintHelperReviewSurface::UMGWidgetTree);
+	TSet<const UWidget*> ReachableWidgets;
+	if (WidgetTree->RootWidget)
+	{
+		if (FWidgetTreeRowItemPtr RootItem = BuildWidgetTreeRowItem(
+			WidgetTree->RootWidget,
+			0,
+			ReachableWidgets))
+		{
+			State.RootItems.Add(RootItem);
+		}
+	}
+
+	TArray<FWidgetTreeRowItemPtr> UnparentedItems;
+	CollectUnparentedWidgetTreeItems(WidgetTree, ReachableWidgets, UnparentedItems);
+	if (UnparentedItems.Num() > 0)
+	{
+		FWidgetTreeRowItemPtr UnparentedGroup = MakeWidgetTreeRowItem(
+			FName(TEXT("Unparented Widgets")),
+			FString(),
+			0);
+		UnparentedGroup->Children = MoveTemp(UnparentedItems);
+		State.RootItems.Add(UnparentedGroup);
+	}
+
+	const FString AssetPath = Context.AssetPath;
+	TSharedRef<STreeView<FWidgetTreeRowItemPtr>> TreeView =
+		SAssignNew(State.TreeView, STreeView<FWidgetTreeRowItemPtr>)
+		.TreeItemsSource(&State.RootItems)
+		.SelectionMode(ESelectionMode::None)
+		.OnGenerateRow_Lambda([AssetPath, OnGeometryInvalidated](
+			FWidgetTreeRowItemPtr Item,
+			const TSharedRef<STableViewBase>& OwnerTable)
+		{
+			return GenerateWidgetTreeRow(Item, OwnerTable, AssetPath, OnGeometryInvalidated);
+		})
+		.OnGetChildren_Lambda([](
+			FWidgetTreeRowItemPtr Item,
+			TArray<FWidgetTreeRowItemPtr>& OutChildren)
+		{
+			if (Item.IsValid())
+			{
+				OutChildren.Append(Item->Children);
+			}
+		});
+
+	TreeView->RequestTreeRefresh();
+	for (const FWidgetTreeRowItemPtr& RootItem : State.RootItems)
+	{
+		ExpandWidgetTreeRows(State.TreeView, RootItem);
+	}
+
+	return SNew(SBorder)
+		.Padding(8.0f)
+		[
+			TreeView
+		];
 }
 
 TSharedRef<SWidget> FBlueprintHelperReviewUMGWidgetTreePresenter::BuildOverlay(
@@ -219,7 +487,8 @@ bool FBlueprintHelperReviewDataTablePresenter::ShouldShowChange(
 }
 
 TSharedRef<SWidget> FBlueprintHelperReviewDataTablePresenter::BuildContent(
-	const FBlueprintHelperReviewAssetContext& Context)
+	const FBlueprintHelperReviewAssetContext& Context,
+	FBlueprintHelperReviewGeometryInvalidated OnGeometryInvalidated)
 {
 	TArray<FString> Lines;
 	Lines.Add(FString::Printf(TEXT("Asset: %s"), *Context.AssetPath));
@@ -235,7 +504,8 @@ TSharedRef<SWidget> FBlueprintHelperReviewDataTablePresenter::BuildContent(
 			TEXT("DataTable Summary"),
 			Lines,
 			Context.AssetPath,
-			EBlueprintHelperReviewSurface::DataTable);
+			EBlueprintHelperReviewSurface::DataTable,
+			OnGeometryInvalidated);
 	}
 
 	Lines.Add(FString::Printf(TEXT("Row struct: %s"), Result.RowStructName.IsEmpty() ? TEXT("<none>") : *Result.RowStructName));
@@ -261,7 +531,8 @@ TSharedRef<SWidget> FBlueprintHelperReviewDataTablePresenter::BuildContent(
 		TEXT("DataTable Summary"),
 		Lines,
 		Context.AssetPath,
-		EBlueprintHelperReviewSurface::DataTable);
+		EBlueprintHelperReviewSurface::DataTable,
+		OnGeometryInvalidated);
 }
 
 TSharedRef<SWidget> FBlueprintHelperReviewDataTablePresenter::BuildOverlay(
@@ -283,7 +554,8 @@ bool FBlueprintHelperReviewDataAssetPresenter::ShouldShowChange(
 }
 
 TSharedRef<SWidget> FBlueprintHelperReviewDataAssetPresenter::BuildContent(
-	const FBlueprintHelperReviewAssetContext& Context)
+	const FBlueprintHelperReviewAssetContext& Context,
+	FBlueprintHelperReviewGeometryInvalidated OnGeometryInvalidated)
 {
 	TArray<FString> Lines;
 	Lines.Add(FString::Printf(TEXT("Asset: %s"), *Context.AssetPath));
@@ -299,7 +571,8 @@ TSharedRef<SWidget> FBlueprintHelperReviewDataAssetPresenter::BuildContent(
 			TEXT("Object Details Summary"),
 			Lines,
 			Context.AssetPath,
-			EBlueprintHelperReviewSurface::DataAsset);
+			EBlueprintHelperReviewSurface::DataAsset,
+			OnGeometryInvalidated);
 	}
 
 	Lines.Add(FString::Printf(TEXT("Class: %s"), Result.ClassName.IsEmpty() ? TEXT("<none>") : *Result.ClassName));
@@ -317,7 +590,8 @@ TSharedRef<SWidget> FBlueprintHelperReviewDataAssetPresenter::BuildContent(
 		TEXT("Object Details Summary"),
 		Lines,
 		Context.AssetPath,
-		EBlueprintHelperReviewSurface::DataAsset);
+		EBlueprintHelperReviewSurface::DataAsset,
+		OnGeometryInvalidated);
 }
 
 TSharedRef<SWidget> FBlueprintHelperReviewDataAssetPresenter::BuildOverlay(

@@ -343,6 +343,46 @@ inline int32 BlueprintHelperReviewCountSurfaceTargets(
 	return Count;
 }
 
+inline bool BlueprintHelperReviewTargetKindCanRouteToDetails(const FString& TargetKind)
+{
+	FString Kind = TargetKind;
+	Kind.ToLowerInline();
+	return Kind.Contains(TEXT("class_default"))
+		|| Kind.Contains(TEXT("blueprint_default"))
+		|| Kind.Contains(TEXT("blueprint_setting"))
+		|| Kind.Contains(TEXT("class_setting"))
+		|| Kind.Contains(TEXT("blueprint_class"))
+		|| Kind.Contains(TEXT("interface"))
+		|| Kind.Contains(TEXT("signature"))
+		|| Kind.Contains(TEXT("dispatcher"))
+		|| Kind.Contains(TEXT("blueprint_variable"))
+		|| Kind.Contains(TEXT("variable_default"))
+		|| Kind.Contains(TEXT("object_property"));
+}
+
+inline int32 BlueprintHelperReviewCountDetailsTargets(
+	const FBlueprintHelperReviewVisibleChange& Change)
+{
+	int32 Count = 0;
+	for (const FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
+	{
+		if (Target.Surface == EBlueprintHelperReviewSurface::Details)
+		{
+			++Count;
+			continue;
+		}
+
+		if (Target.Surface != EBlueprintHelperReviewSurface::DataAsset
+			&& Target.Surface != EBlueprintHelperReviewSurface::DataTable
+			&& Target.Surface != EBlueprintHelperReviewSurface::UMGWidgetTree
+			&& BlueprintHelperReviewTargetKindCanRouteToDetails(Target.TargetKind))
+		{
+			++Count;
+		}
+	}
+	return Count;
+}
+
 inline bool BlueprintHelperReviewHasExplicitTargets(const FBlueprintHelperReviewVisibleChange& Change)
 {
 	return Change.AtomicTargets.Num() > 0;
@@ -377,7 +417,7 @@ inline bool BlueprintHelperReviewShouldShowInDetails(const FBlueprintHelperRevie
 {
 	if (BlueprintHelperReviewHasExplicitTargets(Change))
 	{
-		return BlueprintHelperReviewCountSurfaceTargets(Change, EBlueprintHelperReviewSurface::Details) > 0;
+		return BlueprintHelperReviewCountDetailsTargets(Change) > 0;
 	}
 
 	const FString Location = BlueprintHelperReviewNormalizeLocation(Change);

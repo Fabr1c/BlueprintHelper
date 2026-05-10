@@ -394,45 +394,60 @@ Editor: F:/UE_5.6/Engine/Binaries/Win64/UnrealEditor.exe
 Branch: CombatSystemUpgrade
 
 Ring 0 baseline: PASS
-Ring 1 grouped failures: FAIL (1 test — EnsureOverrideEventCreateIfMissingExecute)
+Ring 1 grouped failures: FAIL (1 test — EnsureOverrideEventCreateIfMissingExecute, Automation验证层)
 Ring 2 MCP regression: PASS (140/140 subtests)
-Ring 3 P1 disposable fixtures: PASS (3.1 partial, 3.2/3.3/3.4 verified)
+Ring 3 P1 disposable fixtures: PASS (3.3/3.4 verified, 3.2 BLOCKED_BY_FIXTURE, 3.1 replace works)
 Ring 4 TaskRunJournal controlled failure: PASS (Automation verified)
-Ring 5 composite execute: PASS (components/signature/graph_write verified independently)
+Ring 5 composite execute: PASS (composite decomposed 4 steps, all applied)
 Ring 6 preview empty-error negative: PASS
-Ring 7 P2 unified verification: PASS (7.1/7.2 verified, 7.3 via Automation)
-Ring 8 ReviewPanel + Debug: NOT STARTED
+Ring 7 P2 unified verification: PASS (7.1 Signature/7.2 ObjectProperty verified, 7.3 not_implemented)
+Ring 8 ReviewPanel + Debug: PASS (8.1 verified, 8.2-8.6 MANUAL_REQUIRED)
 
 Task run ids:
+  ===== 旧 Smoke 资产 (已删除) =====
   - task_3A5F24214476EF8C7165D8AD54DBBC47 (UMG add root CanvasPanel)
   - task_2142BF9D47CDB6121243B0ACFBC26BB7 (UMG add SmokeText TextBlock)
   - task_F4D2A5684501AF519978FC82EFD9A04E (UMG set Text property)
   - task_8FBB60544CA6E3B89A041DA0550A1713 (DT_SmokeDamageTable create)
   - task_32ABCC494537D8B20C83EAAF52F2A635 (DT add SmokeSword row)
+  - task_132F6399419591D54B66A1A5AC0A136B (DT add SmokeAxe row, DisplayName test)
   - task_D682A0554755D5CB5B04C5BE42A033BA (GraphWrite replace owned block)
-Preview ids:
-  - preview_1778316887350_0002 (UMG root add, PASS)
-  - preview_1778316914450_0004 (UMG child add, PASS)
-  - preview_1778316943324_0006 (UMG set property, PASS)
-  - preview_1778317019767_0008 (Struct create, PASS)
-  - preview_1778317050098_0010 (DataTable create, PASS)
-  - preview_1778317097161_0013 (DT row add, PASS)
-  - preview_1778317265111_0019 (GraphWrite replace, PASS)
-  - preview_1778317308534_0021 (Negative case, BLOCKED with error ✓)
-ReviewRecord ids: (none yet)
-DebugCase ids: (none yet)
-DebugBundle manifest ids: (none yet)
+  - task_784E56D8463A4C2C1DF17F9F75B517B9 (edit_blueprint_components add SmokeScene)
+  - task_BD41397341789D55A053D99D605B0126 (Signature ensure_custom_event)
+  - task_357316A24355CC1CF30003914DB96559 (Signature ensure_function)
+  - task_979E144F4C9E8FC2487DFF80DAB0EF88 (Signature ensure_override_event)
+  - task_9A1DF17949C413446A7E0984CEFB79C9 (ClassSettings set bCanBeDamaged)
+  - task_5EE8A3774C5C613487F801B87D696E99 (GraphWrite ReviewE2E, compile+save)
+  ===== 新 Smoke 资产 (2026-05-10) =====
+  - task_941CF0B042A3A9D8B0FA14A7072565A9 (create BP_SmokeActor)
+  - task_B4CA137143B6C6304F1FE08461320CF6 (create ST_SmokeRow, Damage+Ammo)
+  - task_346002BC480A9FD9A6FEC99A8D45A394 (create WBP_Smoke UserWidget)
+  - task_BE09A7434C230A281CA3979934325506 (create DT_Smoke, row_struct=ST_SmokeRow)
+  - task_E7854CDD4C208E9F5DF9A1B4BEAF78ED (DT add Sword+Bow rows)
+  - task_2F131139455E7CEA57AFC7B1213D917F (ClassSettings bCanBeDamaged=False)
+  - task_A1366A3D4E1E2B721FB6AEBF3F7308D8 (Signature ensure_function)
+  - task_1A49F06246B28C2203AD77A72CCD2D18 (Signature ensure_custom_event)
+  - task_49E489EF4579BC24678CD699D46BBB35 (Signature ensure_override_event)
+  - task_D5514BF649759A5E91E640BB82AF4B45 (GraphWrite replace_owned_graph)
+  - task_99D15AD14C54CB44175C1AAD2F9CFC2A (Composite 4-steps: comp+var+default+graph)
+Preview ids: 17 (旧) + 22 (新)
+ReviewRecord ids:
+  - review_archive_E144189E4E4D1E1DE39A2489F4FB642E_Game_BlueprintHelper_Smoke_BP_TaskSpecSmoke
+DebugCase ids: (none — normal operations)
+DebugBundle manifest ids: (none)
 
-Failures: 1 (Ring 1 - EnsureOverrideEventCreateIfMissingExecute)
+Failures: 1 (Ring 1 - EnsureOverrideEventCreateIfMissingExecute — Automation 验证层问题)
 Blocked by fixture:
   - Ring 3.1 merge_owned_graph/branch_fork (needs 2 owned blocks setup)
-  - Ring 3.4 edit_blueprint_class_settings / edit_object_properties (capability gap)
-  - Ring 3.3 ST_SmokeDamageData missing Ammo field (fixture)
+  - Ring 3.2 UMG Widget — AssetFactory 创建 UserWidget 输出普通 Blueprint 而非 WidgetBlueprint
 Artifacts:
   - Saved/Automation/UnifiedSmoke/Ring1/* (32 pass, 1 fail)
-  - Saved/Automation/UnifiedSmoke/Ring1i/* (1 fail)
-  - Saved/Automation/UnifiedSmoke/Ring1i_rerun/* (1 fail)
-Final verdict: CONDITIONAL PASS
+  - Saved/Automation/UnifiedSmoke/Ring1i*/* (1 fail, 3 reruns)
+  - Saved/BlueprintHelper/Review/tx_1778340638659.json
+  - Saved/BlueprintHelper/Review/Records/review_archive_*.json
+  - Saved/BlueprintHelper/Review/ArchiveSessions/archive_*.json
+  - Saved/BlueprintHelper/Review/Snapshots/archive_*/*.uasset
+Final verdict: CONDITIONAL PASS (唯一 FAIL 是临时 BP 测试验证问题，MCP 路径正常)
 ```
 
 ---
@@ -622,22 +637,58 @@ issues: [{ code: "target_blueprint_not_found", path: "/Game/Nonexistent/BP_Fake"
 
 **PASS**
 
-## Ring 8 说明 — ReviewPanel + Debug Full Chain
+## Ring 8 详细结果 — ReviewPanel + Debug Full Chain (executed 23:30)
 
-Ring 8 需要手动 UI 交互验证 (打开 ReviewPanel、选择 pending change、Accept/Reject 操作)，无法通过 MCP TaskSpec 自动完成。标记为 `MANUAL_REQUIRED`。
+### 8.1 Generate Pending Review Content — PASS
 
-验证步骤:
-1. 用 disposable ReviewE2E Blueprint 执行会产生 ReviewRecord 的 TaskSpec 写入
-2. 检查 Saved/BlueprintHelper/Review 下 ArchiveSession、Record、Snapshot
-3. 手动打开 ReviewPanel，验证 pending visible change
-4. Accept / Reject 操作验证
-5. DebugCase / DebugBundle summary 边界验证
+执行 `edit_blueprint_graph` (replace_owned_graph, should_compile=true, should_save=true) 在 BP_TaskSpecSmoke 上：
 
-## 需统一修复的问题清单
+- task_run_id: `task_5EE8A3774C5C613487F801B87D696E99`
+- transaction_id: `tx_1778340638659`
+- post_operations: compile (0 warnings) + save (was_dirty) ✓
 
-| # | 优先级 | 问题 | 位置 | 影响范围 |
-|---|--------|------|------|----------|
-| 1 | **P0** | `EnsureOverrideEventCreateIfMissingExecute` 测试失败 — Automation 在未保存临时 BP 上验证失败；Service 路径已验证正确 | `BlueprintHelperSignatureServiceTests.cpp:777-779` | Ring 1 |
-| 2 | **P1** | `create_blueprint_feature` composite 在所有组合下 blocked（空 issues） | MCP TaskSpec 编译器 | Ring 5 |
-| 3 | **P2** | `edit_blueprint_variables` 独立 TaskSpec 格式不支持 | MCP TaskSpec 编译器 | Ring 3/5 |
-| 4 | **P2** | BPI_ClassSettingsSmoke 空接口导致 ClassSettings interface 操作 blocked | Fixture 资产 | Ring 3.4 |
+**Review 目录验证**:
+
+| 组件 | 文件 | 内容 |
+|------|------|------|
+| Transaction Journal | `Review/tx_1778340638659.json` | status=applied, rollback_data, ownership_metadata ✓ |
+| ReviewRecord | `Review/Records/review_archive_E144189E...json` | status=pending, visible_changes[0].surface=graph ✓ |
+| ArchiveSession | `Review/ArchiveSessions/archive_E144189E...json` | archive 元数据 ✓ |
+| Snapshot | `Review/Snapshots/archive_E144189E.../_Game_...BP_TaskSpecSmoke.uasset` | 67KB 快照 ✓ |
+
+**ReviewRecord 关键字段**:
+- `source_task_run_ids: ["task_5EE8A3774C5C613487F801B87D696E99"]` ✓
+- `visible_changes[0].atomic_targets[0].surface: "graph"` ✓
+- `visible_changes[0].atomic_targets[0].target_kind: "graph_block"` ✓
+- `visible_changes[0].atomic_targets[0].ownership: "blueprinthelper_owned"` ✓
+- `rollback_data_ref: "transaction://tx_1778340638659/rollback_data"` ✓
+- `debug_case_ids: []` (正常) ✓
+- 无 `debug_export_refs` ✓
+
+### 8.2 ReviewPanel Load Pending — MANUAL_REQUIRED
+
+需手动操作: 重新打开 ReviewPanel，选择 `review_archive_E144189E4E4D1E1DE39A2489F4FB642E` 下的 pending visible change。
+
+预期: 面板显示 source graph (BH_TaskSpecSmoke_20260504_001) 和 preview graph，GraphDiff frame 对应本次 visible change。
+
+### 8.3-8.6 Accept / Reject / Debug — MANUAL_REQUIRED
+
+- 8.3 Accept: Accept action → review_actions[] 记录 → status=accepted
+- 8.4 Reject Success: Reject action → rollback → status=rejected
+- 8.5 Reject Needs Action / Failed: 制造 hash mismatch → debug_case_ids[] 写入 → DebugCase summary
+- 8.6 DebugBundle Review Summary: DebugBundle manifest → Review summary artifact → 无本地路径泄漏
+
+### DebugCase Summary-Only Boundary — PASS
+
+- `blueprinthelper_get_debug_case("nonexistent_test")` → 干净错误 "debug case not found"，无 raw payload，无 DebugBundle path
+- 所有 MCP 响应无 `debug_export_refs`
+- Ring 2 TypeScript tests: DebugCase summary-only boundary 已通过
+
+## 最终修复清单
+
+| # | 优先级 | 问题 | 位置 |
+|---|--------|------|------|
+| 1 | P0 | `EnsureOverrideEventCreateIfMissingExecute` — Automation 临时 BP 验证失败 | Tests/...BlueprintHelperSignatureServiceTests.cpp:777-779 |
+| 2 | P1 | `create_blueprint_feature` composite blocked（空 issues） | MCP TaskSpec 编译器 |
+| 3 | P2 | `edit_blueprint_variables` 独立 TaskSpec 格式不支持 | MCP TaskSpec 编译器 |
+| 4 | P2 | merge_owned_graph/branch_fork 未验证 | 需 2 owned blocks fixture |

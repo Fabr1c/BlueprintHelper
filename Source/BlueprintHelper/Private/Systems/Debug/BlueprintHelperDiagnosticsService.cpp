@@ -4,6 +4,7 @@
 #include "Shared/Debug/BlueprintHelperDiagnosticsTypes.h"
 #include "Shared/Debug/BlueprintHelperRuntimeProfileTypes.h"
 #include "Shared/BlueprintHelperToolResultTypes.h"
+#include "Systems/Authorization/BlueprintHelperWriteAuthorizationService.h"
 #include "Interfaces/IPluginManager.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Misc/Paths.h"
@@ -53,13 +54,12 @@ FBlueprintHelperDiagnosticsData FBlueprintHelperDiagnosticsService::RunRuntimeDi
 	// ══════。Warning 检。══════。
 
 	// Write Permission
-	const FString Token = GetBridgeToken();
 	const FString SafetyProfile = GetSafetyProfileStr();
 
-	if (Token.IsEmpty())
+	if (!FBlueprintHelperWriteAuthorizationService::Get().HasActiveSession())
 	{
 		Report.AddWarning(TEXT("write_permission.disabled"),
-			TEXT("reason: token_missing"));
+			TEXT("reason: write_session_missing"));
 	}
 	else if (SafetyProfile.Equals(TEXT("readonly"), ESearchCase::IgnoreCase))
 	{
@@ -108,24 +108,6 @@ FString FBlueprintHelperDiagnosticsService::GetPluginVersion()
 		return Plugin->GetDescriptor().VersionName;
 	}
 	return TEXT("0.5.0-dev");
-}
-
-FString FBlueprintHelperDiagnosticsService::GetBridgeToken()
-{
-	FString Token = FPlatformMisc::GetEnvironmentVariable(TEXT("BLUEPRINTHELPER_BRIDGE_TOKEN"));
-	if (Token.IsEmpty())
-	{
-		const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("BlueprintHelper"));
-		if (Plugin.IsValid())
-		{
-			const FString ConfigPath = Plugin->GetBaseDir() / TEXT("Config/FilterPlugin.ini");
-			if (FPaths::FileExists(ConfigPath))
-			{
-				GConfig->GetString(TEXT("BlueprintHelper"), TEXT("BridgeToken"), Token, ConfigPath);
-			}
-		}
-	}
-	return Token;
 }
 
 FString FBlueprintHelperDiagnosticsService::GetSafetyProfileStr()

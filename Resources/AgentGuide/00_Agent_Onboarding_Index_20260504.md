@@ -11,6 +11,7 @@ blueprint_get_runtime_profile
 -> build BlueprintHelper.TaskSpec.v1
 -> blueprinthelper_preview_task
 -> repair TaskSpec or stop_and_report
+-> blueprinthelper_request_write_session if write_permission is disabled and the user accepts the simple Editor approval dialog
 -> blueprinthelper_execute_task
 -> blueprinthelper_get_task_result
 -> report summary
@@ -23,6 +24,7 @@ blueprinthelper_read_agent_guide
 blueprint_get_runtime_profile
 blueprinthelper_diagnostics
 blueprinthelper_diagnostics_runtime
+blueprinthelper_request_write_session
 blueprinthelper_read_context
 blueprinthelper_read_task_context
 blueprinthelper_read_reference_context
@@ -30,6 +32,10 @@ blueprinthelper_preview_task
 blueprinthelper_execute_task
 blueprinthelper_get_task_result
 ```
+
+Write authorization is session-based: use `blueprinthelper_request_write_session` only after a successful preview when `write_permission` is disabled. The Editor UI is intentionally a minimal accept/reject prompt. If it is rejected, stop and report.
+
+Ordinary Agents must not request, set, or forward `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session`; the MCP Bridge client stores the approved session internally.
 
 `blueprint_open_editor` 仅用于用户明确需要启动目标 Unreal Editor 的 preflight，不属于普通写入主线。
 

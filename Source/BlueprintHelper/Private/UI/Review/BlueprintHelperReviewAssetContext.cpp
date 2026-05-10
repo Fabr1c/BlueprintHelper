@@ -131,7 +131,9 @@ FString FBlueprintHelperReviewAssetContext::MakePackageNameFromAssetPath(const F
 
 FString FBlueprintHelperReviewAssetContext::MakeObjectPathFromAssetPath(const FString& InAssetPath)
 {
-	if (FPackageName::IsValidObjectPath(InAssetPath))
+	int32 ObjectSeparatorIndex = INDEX_NONE;
+	if (InAssetPath.FindChar(TEXT('.'), ObjectSeparatorIndex)
+		&& FPackageName::IsValidObjectPath(InAssetPath))
 	{
 		return InAssetPath;
 	}

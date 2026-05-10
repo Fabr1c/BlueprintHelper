@@ -53,9 +53,8 @@ struct FBlueprintHelperBridgeRequest
 
 	/** 命令名称，例如 "import_json"、"compile_blueprint"。 */
 	FString Command;
-
-	/** 可选会话 token。写命令和高危命令需要携带。 */
-	FString AuthToken;
+	/** Approved short-lived write session. Write and high-risk commands require this. */
+	FString AuthSession;
 
 	/** 业务参数。 */
 	TSharedPtr<FJsonObject> Payload;

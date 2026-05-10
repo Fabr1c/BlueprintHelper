@@ -11,9 +11,12 @@ profile
 -> context
 -> TaskSpec
 -> preview
+-> request_write_session if write_permission is disabled
 -> execute
 -> result
 ```
+
+If preview passes but write permission is disabled, call `blueprinthelper_request_write_session`. The user only sees a simple accept/reject Editor prompt. Rejection means stop and report. Do not use env-token fallback.
 
 ## 2. Intent Mapping
 

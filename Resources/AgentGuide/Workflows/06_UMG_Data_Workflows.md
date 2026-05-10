@@ -1,5 +1,7 @@
 # 06 - UMG Data Workflows
 
+For any UMG, DataAsset, DataTable, or UObject write, call `blueprinthelper_request_write_session` after preview only when `write_permission` is disabled. The Editor prompt is intentionally simple accept/reject; rejection stops the write.
+
 UMG、DataAsset、DataTable 和 UObject 属性写入都走 TaskSpec-first。不要直接选择冻结入口。
 
 ## UMG

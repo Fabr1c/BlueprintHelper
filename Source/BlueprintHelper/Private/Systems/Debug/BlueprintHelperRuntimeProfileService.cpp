@@ -3,6 +3,7 @@
 #include "Systems/Debug/BlueprintHelperRuntimeProfileService.h"
 #include "Shared/Debug/BlueprintHelperRuntimeProfileTypes.h"
 #include "Shared/BlueprintHelperToolResultTypes.h"
+#include "Systems/Authorization/BlueprintHelperWriteAuthorizationService.h"
 #include "Interfaces/IPluginManager.h"
 #include "Misc/ConfigCacheIni.h"
 #include "HAL/PlatformProcess.h"
@@ -57,11 +58,10 @@ FBlueprintHelperWritePermissionState FBlueprintHelperRuntimeProfileService::Buil
 {
 	FBlueprintHelperWritePermissionState State;
 
-	const FString Token = GetBridgeToken();
-	if (Token.IsEmpty())
+	if (!FBlueprintHelperWriteAuthorizationService::Get().HasActiveSession())
 	{
 		State.bEnabled = false;
-		State.Reason = EBlueprintHelperWritePermissionReason::TokenMissing;
+		State.Reason = EBlueprintHelperWritePermissionReason::WriteSessionMissing;
 		return State;
 	}
 
@@ -84,8 +84,7 @@ FBlueprintHelperRiskCommandState FBlueprintHelperRuntimeProfileService::BuildRis
 {
 	FBlueprintHelperRiskCommandState State;
 
-	const FString Token = GetBridgeToken();
-	if (Token.IsEmpty())
+	if (!FBlueprintHelperWriteAuthorizationService::Get().HasActiveSession())
 	{
 		State.bEnabled = false;
 		State.Reason = EBlueprintHelperRiskCommandReason::RiskCommandMissing;
@@ -193,26 +192,4 @@ FString FBlueprintHelperRuntimeProfileService::GetPluginVersion()
 		return Plugin->GetDescriptor().VersionName;
 	}
 	return TEXT("0.5.0-dev");
-}
-
-FString FBlueprintHelperRuntimeProfileService::GetBridgeToken()
-{
-	// 从环境变量读取
-	FString Token = FPlatformMisc::GetEnvironmentVariable(TEXT("BLUEPRINTHELPER_BRIDGE_TOKEN"));
-
-	// 回退：从插件配置读取
-	if (Token.IsEmpty())
-	{
-		const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("BlueprintHelper"));
-		if (Plugin.IsValid())
-		{
-			const FString ConfigPath = Plugin->GetBaseDir() / TEXT("Config/FilterPlugin.ini");
-			if (FPaths::FileExists(ConfigPath))
-			{
-				GConfig->GetString(TEXT("BlueprintHelper"), TEXT("BridgeToken"), Token, ConfigPath);
-			}
-		}
-	}
-
-	return Token;
 }

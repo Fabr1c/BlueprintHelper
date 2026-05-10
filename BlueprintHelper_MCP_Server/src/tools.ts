@@ -569,6 +569,77 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
 
   // ─── 2.6. diagnostics (Static) ───
   server.registerTool(
+    'blueprinthelper_request_write_session',
+    {
+      description:
+        'Request a short-lived BlueprintHelper write session from the running Unreal Editor. The Editor must ask the user to approve the session; the raw session id is cached inside the MCP Bridge client and is not returned to the Agent.',
+      inputSchema: z.object({
+        reason: z.string().min(1).describe('Human-readable reason shown in the Editor approval prompt.'),
+        scope: z.enum(['project', 'asset_list']).optional().describe('Requested write scope. Default is project.'),
+        ttl_seconds: z.number().int().positive().max(3600).optional().describe('Requested session lifetime in seconds. Default is 900.'),
+        asset_paths: z.array(z.string()).optional().describe('Optional explicit asset paths for asset_list scope.'),
+      }),
+    },
+    async ({ reason, scope, ttl_seconds, asset_paths }) => {
+      try {
+        const payload: Record<string, unknown> = { reason };
+        if (scope) payload['scope'] = scope;
+        if (ttl_seconds !== undefined) payload['ttl_seconds'] = ttl_seconds;
+        if (asset_paths) payload['asset_paths'] = asset_paths;
+
+        const resp = await bridge.sendCommand('request_write_session', payload);
+        if (!resp.success) {
+          return toToolResult(resp);
+        }
+
+        const writeSession = isRecord(resp.result?.['write_session'])
+          ? resp.result['write_session']
+          : undefined;
+        const sessionId = typeof writeSession?.['session_id'] === 'string'
+          ? writeSession['session_id']
+          : '';
+
+        if (!sessionId) {
+          return toErrorResult(new Error('Bridge approved a write session but did not return write_session.session_id.'));
+        }
+
+        bridge.setWriteSessionId(sessionId);
+
+        const sanitizedSession: Record<string, unknown> = {
+          scope: writeSession?.['scope'] ?? scope ?? 'project',
+          expires_at_utc: writeSession?.['expires_at_utc'],
+        };
+        if (Array.isArray(writeSession?.['asset_paths'])) {
+          sanitizedSession['asset_paths'] = writeSession['asset_paths'];
+        }
+
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: `write session approved: scope=${sanitizedSession['scope']}, expires_at_utc=${sanitizedSession['expires_at_utc'] ?? 'unknown'}.`,
+            },
+          ],
+          isError: false,
+          structuredContent: {
+            ok: true,
+            schema: 'BlueprintHelper.McpToolResult.v1',
+            operation: 'request_write_session',
+            status: 'completed',
+            modified: false,
+            data: {
+              schema: 'WriteSession.v1',
+              write_session: sanitizedSession,
+            },
+          },
+        };
+      } catch (err) {
+        return toErrorResult(err);
+      }
+    },
+  );
+
+  server.registerTool(
     'blueprinthelper_diagnostics',
     {
       description:

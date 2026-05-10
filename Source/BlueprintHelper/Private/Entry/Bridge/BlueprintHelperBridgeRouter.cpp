@@ -4,6 +4,7 @@
 #include "Entry/Bridge/BlueprintHelperBridgeProtocol.h"
 #include "Entry/Bridge/BlueprintHelperRequestValidator.h"
 #include "Entry/BlueprintHelper.h"
+#include "Systems/Authorization/BlueprintHelperWriteAuthorizationService.h"
 #include "Shared/Services/BlueprintHelperImportService.h"
 #include "Shared/Services/BlueprintHelperAgentImportService.h"
 #include "Shared/Services/BlueprintHelperExportService.h"
@@ -647,6 +648,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequestWithPl
 
 	BLUEPRINTHELPER_ROUTE("get_rule_markdown", Core, HandleGetRuleMarkdown)
 	BLUEPRINTHELPER_ROUTE("get_editor_context", Core, HandleGetEditorContext)
+	BLUEPRINTHELPER_ROUTE("request_write_session", Core, HandleRequestWriteSession)
 
 	BLUEPRINTHELPER_ROUTE("get_runtime_profile", Debug, HandleGetRuntimeProfile)
 	BLUEPRINTHELPER_ROUTE("diagnostics_runtime", Debug, HandleDiagnosticsRuntime)
@@ -791,6 +793,49 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleGetEditorCont
 }
 
 // ─── get_runtime_profile ───
+
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequestWriteSession(
+	const FBlueprintHelperBridgeRequest& Req) const
+{
+	FBlueprintHelperWriteSessionRequest SessionRequest;
+	Req.Payload->TryGetStringField(TEXT("reason"), SessionRequest.Reason);
+	Req.Payload->TryGetStringField(TEXT("scope"), SessionRequest.Scope);
+
+	double TtlSeconds = 0.0;
+	if (Req.Payload->TryGetNumberField(TEXT("ttl_seconds"), TtlSeconds))
+	{
+		SessionRequest.TtlSeconds = FMath::RoundToInt(TtlSeconds);
+	}
+
+	const TArray<TSharedPtr<FJsonValue>>* AssetPathValues = nullptr;
+	if (Req.Payload->TryGetArrayField(TEXT("asset_paths"), AssetPathValues) && AssetPathValues)
+	{
+		for (const TSharedPtr<FJsonValue>& Value : *AssetPathValues)
+		{
+			FString AssetPath;
+			if (Value.IsValid() && Value->TryGetString(AssetPath))
+			{
+				SessionRequest.AssetPaths.Add(AssetPath);
+			}
+		}
+	}
+
+	FString Error;
+	const TOptional<FBlueprintHelperWriteSessionGrant> Grant =
+		FBlueprintHelperWriteAuthorizationService::Get().RequestSession(SessionRequest, Error);
+	if (!Grant.IsSet())
+	{
+		return FBlueprintHelperBridgeResponse::Error(
+			Req.RequestId,
+			EBlueprintHelperBridgeError::Unauthorized,
+			Error.IsEmpty() ? TEXT("Write session request was denied.") : Error);
+	}
+
+	auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
+	Resp.Result = MakeShared<FJsonObject>();
+	Resp.Result->SetObjectField(TEXT("write_session"), Grant.GetValue().ToJson());
+	return Resp;
+}
 
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleGetRuntimeProfile(
 	const FBlueprintHelperBridgeRequest& Req) const

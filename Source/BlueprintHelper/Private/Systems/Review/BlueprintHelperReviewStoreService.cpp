@@ -208,7 +208,7 @@ public:
 	{
 		FBlueprintHelperReviewVisibleChange Change;
 		Change.ChangeId = Evidence.TransactionId;
-		Change.AssetPath = Evidence.AssetPath;
+		Change.AssetPath = Target.AssetPath.IsEmpty() ? Evidence.AssetPath : Target.AssetPath;
 		Change.GraphName = Target.GraphName;
 		Change.LocationKey = VisualGroupKey;
 		Change.LatestTransactionId = Evidence.TransactionId;
@@ -1374,6 +1374,7 @@ void FBlueprintHelperReviewStoreService::AddEvidenceAtomicTargets(
 	{
 		FBlueprintHelperReviewAtomicTarget Target = Evidence.AtomicTargets[Index];
 		Target.AssetPath = Target.AssetPath.IsEmpty() ? Evidence.AssetPath : Target.AssetPath;
+		Record.SourceTransactionSummary.AssetPaths.AddUnique(Target.AssetPath);
 		Target.LatestTransactionId = Evidence.TransactionId;
 		Target.SourceTransactionIds.AddUnique(Evidence.TransactionId);
 		if (Target.Ownership.IsEmpty())
@@ -1396,14 +1397,16 @@ void FBlueprintHelperReviewStoreService::AddEvidenceAtomicTargets(
 		const FString VisualGroupKey = Target.VisualGroupKey.IsEmpty()
 			? FBlueprintHelperReviewStoreServiceLocalUtils::MakeReviewInternalMissingGroupKey(Evidence.TransactionId, Index)
 			: Target.VisualGroupKey;
+		const FString ChangeAssetPath = Target.AssetPath.IsEmpty() ? Evidence.AssetPath : Target.AssetPath;
 		const FString AtomicLookupKey = FBlueprintHelperReviewStoreServiceLocalUtils::MakeReviewAtomicLookupKey(
 			Target,
 			FBlueprintHelperReviewStoreServiceLocalUtils::MakeReviewInternalMissingAnchorKey(Evidence.TransactionId, Index));
 
 		FBlueprintHelperReviewVisibleChange* Change = Record.VisibleChanges.FindByPredicate(
-			[&VisualGroupKey](const FBlueprintHelperReviewVisibleChange& Candidate)
+			[&VisualGroupKey, &ChangeAssetPath](const FBlueprintHelperReviewVisibleChange& Candidate)
 			{
-				return Candidate.LocationKey == VisualGroupKey;
+				return Candidate.LocationKey == VisualGroupKey
+					&& Candidate.AssetPath == ChangeAssetPath;
 			});
 		if (!Change)
 		{

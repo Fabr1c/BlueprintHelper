@@ -34,7 +34,9 @@ Use BlueprintHelper MCP for:
 3. Identify the exact target asset path, for example `/Game/Blueprints/BP_Player`.
 4. Identify the exact target graph when editing graph nodes, for example `EventGraph`.
 5. Prefer TaskSpec-first writes: read task context -> build `BlueprintHelper.TaskSpec.v1` -> preview task -> execute task -> read task result.
-6. Never rely on the currently focused editor tab for destructive operations unless the user explicitly says to operate on the active context.
+6. If `write_permission` is disabled, call `blueprinthelper_request_write_session` after preview and before execute. The running Editor shows a simple accept/reject approval dialog; if the user rejects it, stop and report instead of trying another write path.
+7. Do not ask for or inject `BLUEPRINTHELPER_BRIDGE_TOKEN` / `auth_token` for ordinary interactive writes. The MCP client caches the approved session internally.
+8. Never rely on the currently focused editor tab for destructive operations unless the user explicitly says to operate on the active context.
 
 ## Fast path
 

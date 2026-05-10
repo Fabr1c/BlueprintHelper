@@ -24,9 +24,6 @@ private:
 	/** 获取插件版本号。 */
 	static FString GetPluginVersion();
 
-	/** 读取 Bridge Token。 */
-	static FString GetBridgeToken();
-
 	/** 读取 Safety Profile 配置。 */
 	static FString GetSafetyProfileStr();
 

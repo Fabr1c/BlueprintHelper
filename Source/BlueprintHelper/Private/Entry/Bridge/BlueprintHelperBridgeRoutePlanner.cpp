@@ -20,7 +20,8 @@ static FBlueprintHelperBridgeRoutePlan MakePlan(
 FBlueprintHelperBridgeRoutePlan FBlueprintHelperBridgeRoutePlanner::BuildPlan(const FString& Command)
 {
 	if (Command == TEXT("get_rule_markdown") ||
-		Command == TEXT("get_editor_context"))
+		Command == TEXT("get_editor_context") ||
+		Command == TEXT("request_write_session"))
 	{
 		return FBlueprintHelperBridgeRoutePlannerLocalUtils::MakePlan(Command, EBlueprintHelperBridgeRouteCluster::Core);
 	}

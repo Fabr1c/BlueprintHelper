@@ -64,6 +64,7 @@ enum class EBlueprintHelperWritePermissionReason : uint8
 	TokenInvalid,
 	TokenExpired,
 	TokenMissingOrInvalid,
+	WriteSessionMissing,
 	ConfigUnavailable,
 	SetupNotCompleted,
 	SafetyProfileReadOnly,
@@ -81,6 +82,7 @@ inline const TCHAR* WritePermissionReasonToString(EBlueprintHelperWritePermissio
 	case EBlueprintHelperWritePermissionReason::TokenInvalid:           return TEXT("token_invalid");
 	case EBlueprintHelperWritePermissionReason::TokenExpired:           return TEXT("token_expired");
 	case EBlueprintHelperWritePermissionReason::TokenMissingOrInvalid:  return TEXT("token_missing_or_invalid");
+	case EBlueprintHelperWritePermissionReason::WriteSessionMissing:    return TEXT("write_session_missing");
 	case EBlueprintHelperWritePermissionReason::ConfigUnavailable:      return TEXT("config_unavailable");
 	case EBlueprintHelperWritePermissionReason::SetupNotCompleted:      return TEXT("setup_not_completed");
 	case EBlueprintHelperWritePermissionReason::SafetyProfileReadOnly:  return TEXT("safety_profile_read_only");

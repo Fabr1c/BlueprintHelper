@@ -643,17 +643,17 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 	}
 
 	// 8. 写入 ownership（如果目标为 owned block）
+	TArray<UEdGraphNode*> NewNodes;
+	for (UEdGraphNode* Node : Resolved.Graph->Nodes)
+	{
+		if (Node && !NodesBeforeImport.Contains(Node))
+		{
+			NewNodes.Add(Node);
+		}
+	}
+
 	if (Resolved.bIsBlueprintHelperOwned)
 	{
-		TArray<UEdGraphNode*> NewNodes;
-		for (UEdGraphNode* Node : Resolved.Graph->Nodes)
-		{
-			if (Node && !NodesBeforeImport.Contains(Node))
-			{
-				NewNodes.Add(Node);
-			}
-		}
-
 		if (NewNodes.Num() > 0)
 		{
 			FString OwnershipError;
@@ -682,7 +682,22 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 	JournalRecord.TargetAssets.Add(Request.AssetPath);
 	JournalRecord.GraphId = Request.GraphName;
 	JournalRecord.GraphName = Request.GraphName;
-	JournalRecord.BlockIds.Add(Resolved.OriginalBlockId);
+	if (!Resolved.OriginalBlockId.IsEmpty())
+	{
+		JournalRecord.BlockIds.Add(Resolved.OriginalBlockId);
+	}
+	for (UEdGraphNode* Node : NewNodes)
+	{
+		if (!Node)
+		{
+			continue;
+		}
+		JournalRecord.CreatedNodePaths.Add(FString::Printf(TEXT("/%s"), *Node->GetPathName()));
+		if (Node->NodeGuid.IsValid())
+		{
+			JournalRecord.CreatedNodePaths.Add(Node->NodeGuid.ToString(EGuidFormats::Digits));
+		}
+	}
 	JournalRecord.RollbackData = BeforeSnapshot.ToJsonString();
 
 	FString JournalError;

@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
 #include "UI/Review/BlueprintHelperReviewAssetContext.h"
+#include "UI/Review/BlueprintHelperReviewAssetPresenters.h"
 #include "UI/Review/BlueprintHelperReviewSurfacePresenter.h"
 #include "Widgets/SCompoundWidget.h"
 
@@ -13,7 +14,6 @@ class FBlueprintHelperReviewStoreService;
 class SKismetInspector;
 class SBox;
 class SMultiLineEditableTextBox;
-class SMyBlueprint;
 class UEdGraph;
 template <typename ItemType> class STreeView;
 
@@ -61,12 +61,15 @@ private:
 	TSharedRef<SWidget> BuildGraphPanel();
 	TSharedRef<SWidget> BuildDetailsPanel();
 	TSharedRef<SWidget> BuildDebugPanel();
+	TSharedRef<SWidget> BuildMainWorkspaceWidget();
 	TSharedRef<SWidget> BuildGraphEditorWidget();
 	TSharedRef<SWidget> BuildActionButtonBar();
 	TSharedRef<SWidget> BuildAssetChangeButtonBar();
 	TSharedRef<SWidget> BuildReadonlyComponentsWidget();
 	TSharedRef<SWidget> BuildReadonlyMyBlueprintWidget();
 	TSharedRef<SWidget> BuildReadonlyDetailsWidget();
+	TSharedRef<SWidget> BuildStructurePanelDiffFrames();
+	TSharedRef<SWidget> BuildMainWorkspaceDiffFrames();
 	TSharedRef<SWidget> BuildScopedDiffStack(bool (*Predicate)(const FBlueprintHelperReviewVisibleChange&));
 	TSharedRef<SWidget> BuildPanelDiffFrames(
 		bool (*Predicate)(const FBlueprintHelperReviewVisibleChange&),
@@ -75,6 +78,7 @@ private:
 	TSharedRef<SWidget> BuildDiffRow(FReviewChangeItem Item, bool bShowActions);
 	TSharedRef<SWidget> BuildDiffFrame(FReviewChangeItem Item, const TSharedRef<SWidget>& Content, bool bShowActions);
 	void RefreshDiffStackWidgets();
+	void RefreshSurfaceOverlay(EBlueprintHelperReviewSurface Surface);
 	void RebuildChangeTreeItems();
 	void RefreshChangeTreeWidget();
 	FReviewTreeItemPtr FindTreeItemForChange(FReviewChangeItem Item) const;
@@ -99,15 +103,18 @@ private:
 
 	EActiveTimerReturnType TickFlash(double InCurrentTime, float InDeltaTime);
 	void StartFlash();
-	void RequestDeferredDiffGeometryRefresh();
-	EActiveTimerReturnType RefreshDiffGeometryAfterLayout(double InCurrentTime, float InDeltaTime);
 	void LoadReviewAssetFromSelection();
 	void UpdateDetailsSelection();
+	void OnDetailsDisplayedPropertiesChanged();
 	EBlueprintHelperReviewSurface ResolveDetailsSurfaceFromSelectedChange() const;
 	bool ResolveReviewRowGeometry(
 		const FBlueprintHelperReviewVisibleChange& Change,
 		EBlueprintHelperReviewSurface Surface,
-		FBlueprintHelperReviewSurfaceGeometryAnchor& OutAnchor) const;
+		FBlueprintHelperReviewSurfaceGeometryAnchor& OutAnchor);
+	bool ResolveDetailsRowGeometry(
+		const FBlueprintHelperReviewVisibleChange& Change,
+		const TSharedPtr<SWidget>& OverlayWidget,
+		FBlueprintHelperReviewSurfaceGeometryAnchor& OutAnchor);
 	UObject* ResolveDetailsObjectForSelectedChange() const;
 	UEdGraph* ResolveGraphForSelectedChange() const;
 
@@ -122,16 +129,18 @@ private:
 	TSharedPtr<SBox> MyBlueprintContentBox;
 	TSharedPtr<SBox> DetailsContentBox;
 	TSharedPtr<SBox> ComponentsDiffStackBox;
+	TSharedPtr<SBox> MainWorkspaceDiffStackBox;
 	TSharedPtr<SBox> MyBlueprintDiffStackBox;
 	TSharedPtr<SBox> DetailsDiffStackBox;
 	TSharedPtr<SKismetInspector> KismetInspector;
-	TSharedPtr<SMyBlueprint> MyBlueprintWidget;
 	FReviewChangeItem SelectedChange;
 	TArray<FString> DebugMessages;
 	TSharedPtr<SMultiLineEditableTextBox> DebugMessageTextBox;
 	FBlueprintHelperReviewAssetContext ReviewAssetContext;
 	EBlueprintHelperReviewSurface DetailsSurface = EBlueprintHelperReviewSurface::Unknown;
 	FBlueprintHelperReviewGraphPresenterState GraphPresenterState;
+	FBlueprintHelperReviewBlueprintComponentsPresenter::FState ComponentsPresenterState;
+	FBlueprintHelperReviewWidgetTreePresenterState WidgetTreePresenterState;
+	FBlueprintHelperReviewMyBlueprintPresenter::FState MyBlueprintPresenterState;
 	float FlashAlpha = 0.0f;
-	bool bPendingDiffGeometryRefresh = false;
 };
