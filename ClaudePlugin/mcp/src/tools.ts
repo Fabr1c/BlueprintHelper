@@ -39,8 +39,29 @@ import * as fs from 'node:fs';
 /** 编辑器/引擎路径配置 */
 export interface EditorConfig {
   ueEngineDir: string;
-  ueProjectFile: string;
   taskCompiler?: TaskToolsConfig['taskCompiler'];
+}
+
+function resolveExplicitProjectFile(projectFile: string): string {
+  const resolvedProjectFile = path.resolve(projectFile);
+  if (path.extname(resolvedProjectFile).toLowerCase() !== '.uproject') {
+    throw new Error(
+      JSON.stringify(
+        {
+          success: false,
+          code: 'PROJECT_FILE_NOT_UPROJECT',
+          message: 'project_file must point to a .uproject file for the target Unreal project.',
+          received_project_file: projectFile,
+          resolved_project_file: resolvedProjectFile,
+          agent_instruction:
+            'Find the target .uproject in the current workspace and pass its absolute path as project_file.',
+        },
+        null,
+        2,
+      ),
+    );
+  }
+  return resolvedProjectFile;
 }
 
 /** RawJson input: accepts structured object or legacy JSON string */
@@ -2305,8 +2326,12 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     'blueprint_build_project',
     {
       description:
-        legacyWriteExpertDescription('Build the Unreal project using UnrealBuildTool. The editor must be closed first. Returns build output. Requires UE_ENGINE_DIR and UE_PROJECT_FILE env vars.'),
+        legacyWriteExpertDescription('Build the Unreal project using UnrealBuildTool. The editor must be closed first. Returns build output. Requires UE_ENGINE_DIR env var and an explicit project_file tool argument.'),
       inputSchema: z.object({
+        project_file: z
+          .string()
+          .min(1)
+          .describe('Absolute path to the target .uproject file. Agents should discover it from the current workspace before calling this tool.'),
         target: z
           .string()
           .optional()
@@ -2318,29 +2343,36 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
         platform: z.string().optional().describe('Target platform (default: Win64)'),
       }),
     },
-    async ({ target, configuration, platform }) => {
-      if (!config.ueEngineDir || !config.ueProjectFile) {
+    async ({ project_file, target, configuration, platform }) => {
+      if (!config.ueEngineDir) {
         return toErrorResult(
           new Error(
-            'UE_ENGINE_DIR and UE_PROJECT_FILE environment variables must be set for build_project.',
+            'UE_ENGINE_DIR environment variable must be set for build_project. Pass the target .uproject as the project_file tool argument.',
           ),
         );
       }
 
+      let uprojectFile: string;
+      try {
+        uprojectFile = resolveExplicitProjectFile(project_file);
+      } catch (err) {
+        return toErrorResult(err);
+      }
+
       const buildBat = path.join(config.ueEngineDir, 'Engine', 'Build', 'BatchFiles', 'Build.bat');
-      const projectName = path.basename(config.ueProjectFile, '.uproject');
+      const projectName = path.basename(uprojectFile, '.uproject');
       const buildTarget = target ?? `${projectName}Editor`;
       const buildConfig = configuration ?? 'Development';
       const buildPlatform = platform ?? 'Win64';
 
       return new Promise((resolve) => {
         console.error(
-          `[BlueprintHelper MCP] Building: ${buildBat} ${buildTarget} ${buildPlatform} ${buildConfig} "${config.ueProjectFile}" -WaitMutex`,
+          `[BlueprintHelper MCP] Building: ${buildBat} ${buildTarget} ${buildPlatform} ${buildConfig} "${uprojectFile}" -WaitMutex`,
         );
 
         execFile(
           buildBat,
-          [buildTarget, buildPlatform, buildConfig, config.ueProjectFile, '-WaitMutex'],
+          [buildTarget, buildPlatform, buildConfig, uprojectFile, '-WaitMutex'],
           { maxBuffer: 10 * 1024 * 1024, timeout: 600_000 },
           (error, stdout, stderr) => {
             const output = (stdout || '') + (stderr ? `\n--- stderr ---\n${stderr}` : '');
@@ -2393,55 +2425,37 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
   'blueprint_open_editor',
   {
     description:
-      preflightOnlyDescription('Launch Unreal Editor for the current project by opening its .uproject file, then wait for the BlueprintHelper Bridge server to become available. Requires UE_ENGINE_DIR and UE_PROJECT_FILE env vars. UE_PROJECT_FILE must be an absolute path to the .uproject file, for example G:/UnrealPractise/MrStone/MrStone.uproject. Template variables like ${workspaceFolder} are automatically expanded at startup.'),
+      preflightOnlyDescription('Launch Unreal Editor by opening the explicit project_file .uproject, then wait for the BlueprintHelper Bridge server to become available. Requires UE_ENGINE_DIR env var and a project_file tool argument. Agents should discover the .uproject from the current workspace before calling this tool.'),
     inputSchema: z.object({
+      project_file: z
+        .string()
+        .min(1)
+        .describe('Absolute path to the target .uproject file. Agents should discover it from the current workspace before calling this tool.'),
       wait_timeout_ms: z
         .number()
         .optional()
         .describe('Max time in ms to wait for the editor Bridge to become available (default 120000)'),
     }),
   },
-  async ({ wait_timeout_ms }) => {
-    if (!config.ueEngineDir || !config.ueProjectFile) {
+  async ({ project_file, wait_timeout_ms }) => {
+    if (!config.ueEngineDir) {
       return toErrorResult(
         new Error(
           [
-            'UE_ENGINE_DIR and UE_PROJECT_FILE environment variables must be set for blueprint_open_editor.',
-            'Both must be absolute paths (e.g. F:/UE_5.6 and G:/UnrealPractise/MrStone/MrStone.uproject).',
-            'UE_PROJECT_FILE must point to the current project .uproject file, not only a project directory.',
-            'Template variables (${workspaceFolder}) are expanded automatically — set them literally in the MCP env config.',
-            `Current values: UE_ENGINE_DIR=${config.ueEngineDir || '(empty)'}, UE_PROJECT_FILE=${config.ueProjectFile || '(empty)'}`,
-            'Agent instruction: verify the MCP server env configuration uses absolute paths. If the paths look correct but the editor still fails to open, check that the .uproject file exists.',
+            'UE_ENGINE_DIR environment variable must be set for blueprint_open_editor.',
+            'Pass the target .uproject as the project_file tool argument.',
+            `Current value: UE_ENGINE_DIR=${config.ueEngineDir || '(empty)'}`,
+            'Agent instruction: find the target .uproject in the current workspace and pass its absolute path as project_file.',
           ].join('\n'),
         ),
       );
     }
 
-    const uprojectFile = path.resolve(config.ueProjectFile);
-
-    if (path.extname(uprojectFile).toLowerCase() !== '.uproject') {
-      return {
-        content: [
-          {
-            type: 'text' as const,
-            text: JSON.stringify(
-              {
-                success: false,
-                code: 'UE_PROJECT_FILE_NOT_UPROJECT',
-                message:
-                  'UE_PROJECT_FILE must point to a .uproject file for the current Unreal project.',
-                received_ue_project_file: config.ueProjectFile,
-                resolved_project_file: uprojectFile,
-                agent_instruction:
-                  'Resolve the current project path, find the matching .uproject file, set UE_PROJECT_FILE to that absolute .uproject path, then call blueprint_open_editor again.',
-              },
-              null,
-              2,
-            ),
-          },
-        ],
-        isError: true,
-      };
+    let uprojectFile: string;
+    try {
+      uprojectFile = resolveExplicitProjectFile(project_file);
+    } catch (err) {
+      return toErrorResult(err);
     }
 
     const editorExe = path.join(
@@ -2481,7 +2495,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
                 uproject_path: uprojectFile,
                 launch_command: launchCommand,
                 agent_instruction:
-                  'Verify UE_ENGINE_DIR and UE_PROJECT_FILE. UE_PROJECT_FILE must be the absolute path to the current project .uproject.',
+                  'Verify UE_ENGINE_DIR and project_file. project_file must be the absolute path to the target .uproject.',
                 error: err instanceof Error ? err.message : String(err),
               },
               null,

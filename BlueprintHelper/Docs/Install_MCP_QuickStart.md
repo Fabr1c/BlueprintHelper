@@ -53,7 +53,6 @@ The MCP Server reads these environment variables:
 | Variable | Required | Default | Purpose |
 |---|---:|---|---|
 | `UE_ENGINE_DIR` | For `blueprint_open_editor` and `blueprint_build_project` | empty | Unreal Engine root, for example `F:\UE_5.6` |
-| `UE_PROJECT_FILE` | For `blueprint_open_editor` and `blueprint_build_project` | empty | Absolute `.uproject` path |
 | `BRIDGE_HOST` | No | `127.0.0.1` | BlueprintHelper Bridge host |
 | `BRIDGE_PORT` | No | `54321` | BlueprintHelper Bridge port |
 
@@ -63,16 +62,15 @@ PowerShell example:
 
 ```powershell
 $env:UE_ENGINE_DIR = "F:\UE_5.6"
-$env:UE_PROJECT_FILE = "G:\UnrealPractise\MrStone\MrStone.uproject"
 $env:BRIDGE_HOST = "127.0.0.1"
 $env:BRIDGE_PORT = "54321"
 ```
 
-`UE_PROJECT_FILE` must point to the `.uproject` file, not the project directory.
+Project `.uproject` paths are intentionally not stored in global MCP environment variables. Agents should discover the target `.uproject` from the current workspace and pass it as the explicit `project_file` tool argument.
 
 ## 4. Start Unreal Editor
 
-Either start Unreal Editor normally with the project, or let the MCP tool launch it later through `blueprint_open_editor` after `UE_ENGINE_DIR` and `UE_PROJECT_FILE` are set.
+Either start Unreal Editor normally with the project, or let the MCP tool launch it later through `blueprint_open_editor` after `UE_ENGINE_DIR` is set and the Agent can pass the target `.uproject` as `project_file`.
 
 The editor must load the BlueprintHelper plugin so the Bridge can listen on the configured host and port.
 
@@ -117,7 +115,6 @@ Generic MCP client configuration:
       ],
       "env": {
         "UE_ENGINE_DIR": "F:\\UE_5.6",
-        "UE_PROJECT_FILE": "G:\\UnrealPractise\\MrStone\\MrStone.uproject",
         "BRIDGE_HOST": "127.0.0.1",
         "BRIDGE_PORT": "54321"
       }

@@ -83,8 +83,9 @@ For repository work, use normal shell and editor tools. For editor assets, use t
 
 ```powershell
 $env:UE_ENGINE_DIR = "F:\UE_5.6"
-$env:UE_PROJECT_FILE = "G:\UnrealPractise\MrStone\MrStone.uproject"
 ```
+
+Project `.uproject` paths are not stored in Claude global settings. Agents discover the target `.uproject` from the current workspace and pass it as the explicit `project_file` tool argument when launching or building a project.
 
 4. 安装 MCP Server 依赖并构建：
 
@@ -113,7 +114,6 @@ npm run build
 
 ```powershell
 $env:UE_ENGINE_DIR = "F:\UE_5.6"
-$env:UE_PROJECT_FILE = "G:\UnrealPractise\MrStone\MrStone.uproject"
 $env:BRIDGE_HOST = "127.0.0.1"
 $env:BRIDGE_PORT = "54321"
 ```
@@ -140,6 +140,15 @@ Agents should read these in order:
 
 Claude-style agents can also load [.claude/skills/blueprinthelper/SKILL.md](.claude/skills/blueprinthelper/SKILL.md).
 
+## Claude Plugin Commands
+
+Claude Code discovers plugin commands from the plugin root `commands/` directory.
+
+| Command | Purpose |
+|---|---|
+| `/blueprint-helper:setup` | Initial setup: UE paths, MCP build, Bridge check, first-run preferences, SetupProfile |
+| `/blueprint-helper:configure` | Update user preferences and active safety profile after setup |
+
 ## User Documentation
 
 | Document | Purpose |
@@ -156,7 +165,7 @@ Claude-style agents can also load [.claude/skills/blueprinthelper/SKILL.md](.cla
 
 For ordinary Agent editor-asset mutations, use the TaskSpec-first loop:
 
-1. Confirm Unreal Editor is running or `UE_ENGINE_DIR` and `UE_PROJECT_FILE` are configured.
+1. Confirm Unreal Editor is running, or `UE_ENGINE_DIR` is configured and the target `.uproject` can be passed as `project_file`.
 2. Confirm the Bridge is reachable.
 3. Read runtime profile and TaskContextPack.
 4. Produce an explicit `BlueprintHelper.TaskSpec.v1` with `validation.should_compile` and `validation.should_save`.

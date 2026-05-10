@@ -3,14 +3,13 @@
 必须采集：
 
 ```text
-UE_ENGINE_DIR / UE_PROJECT_FILE 绝对路径
+UE_ENGINE_DIR 绝对路径；项目 .uproject 由 Agent 在当前工作区发现，并在调用工具时作为 project_file 显式传入
 Safety Profile：ReadOnly / Conservative / Standard / AutoRepair / Expert
 Agent entry mode：task_spec_first
 Fallback policy：stop_and_report / capability_debug_allowed / legacy_direct_allowed
 Blueprint / C++ 边界
 Graph Write 是否允许修改用户节点 / 现有执行流
 命名规则：EG_{FeatureName}、DescriptivePascalCase
-Enhanced Input：是否允许自动创建 IA、是否允许编辑 IMC
 Review / Journal / rollback_data retention
 CLAUDE.md / AGENTS.md Project Marker 写入确认
 ```

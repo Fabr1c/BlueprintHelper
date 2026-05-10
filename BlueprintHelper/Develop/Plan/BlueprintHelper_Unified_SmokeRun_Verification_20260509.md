@@ -369,7 +369,7 @@ npm.cmd test
 | 0 | PASS | 无 |
 | 1 | PASS | 无 |
 | 2 | PASS | 无 |
-| 3 | PASS | 单个 fixture 缺失只能记 BLOCKED_BY_FIXTURE，不能标全线 PASS |
+| 3 | PASS | 2026-05-10 update: same-graph `branch_fork + owned_block_call` fixture is now covered by UE automation |
 | 4 | PASS | 可由 UE Automation controlled fixture 替代手动 fixture |
 | 5 | PASS | 无 |
 | 6 | PASS | 无 |
@@ -396,12 +396,12 @@ Branch: CombatSystemUpgrade
 Ring 0 baseline: PASS
 Ring 1 grouped failures: FAIL (1 test — EnsureOverrideEventCreateIfMissingExecute, Automation验证层)
 Ring 2 MCP regression: PASS (140/140 subtests)
-Ring 3 P1 disposable fixtures: PASS (3.3/3.4 verified, 3.2 BLOCKED_BY_FIXTURE, 3.1 replace works)
+Ring 3 P1 disposable fixtures: PASS (2026-05-10: 3.1 same-graph `branch_fork + owned_block_call` execute/read-back PASS; 3.3/3.4 verified)
 Ring 4 TaskRunJournal controlled failure: PASS (Automation verified)
 Ring 5 composite execute: PASS (composite decomposed 4 steps, all applied)
 Ring 6 preview empty-error negative: PASS
 Ring 7 P2 unified verification: PASS (7.1 Signature/7.2 ObjectProperty verified, 7.3 not_implemented)
-Ring 8 ReviewPanel + Debug: PASS (8.1 verified, 8.2-8.6 MANUAL_REQUIRED)
+Ring 8 ReviewPanel + Debug: PASS (2026-05-10 automation closure: UI 51/51, Action 17/17, Integration 2/2, Debug 9/9)
 
 Task run ids:
   ===== 旧 Smoke 资产 (已删除) =====
@@ -438,7 +438,7 @@ DebugBundle manifest ids: (none)
 
 Failures: 1 (Ring 1 - EnsureOverrideEventCreateIfMissingExecute — Automation 验证层问题)
 Blocked by fixture:
-  - Ring 3.1 merge_owned_graph/branch_fork (needs 2 owned blocks setup)
+  - Closed 2026-05-10: Ring 3.1 `merge_owned_graph + branch_fork + owned_block_call` covered by `Saved/Automation/BranchForkOwnedBlockCall`
   - Ring 3.2 UMG Widget — AssetFactory 创建 UserWidget 输出普通 Blueprint 而非 WidgetBlueprint
 Artifacts:
   - Saved/Automation/UnifiedSmoke/Ring1/* (32 pass, 1 fail)
@@ -528,14 +528,14 @@ EventNode->AllocateDefaultPins();
 
 ## Ring 3 详细结果 — P1 Disposable Fixture Smoke
 
-### 3.1 Same-Graph Branch Fork Owned Block Call — PARTIAL
+### 3.1 Same-Graph Branch Fork Owned Block Call - PASS (updated 2026-05-10)
 
 **已验证**: `replace_owned_graph` 策略对已有 CustomEvent 进行 body replacement，preview → execute → TaskRunJournal 全链路通过。
 - task_run_id: `task_D682A0554755D5CB5B04C5BE42A033BA`
 - 目标: BP_TaskSpecSmoke, graph=BH_TaskSpecSmoke_20260504_001, custom_event=BH_TaskSpecSmokeEvent_20260504_001
 - transaction_id: tx_1778317276165, journal_recorded: true
 
-**未验证**: `merge_owned_graph` + `branch_fork` + `owned_block_call` 路径。需要创建两个 BlueprintHelper-owned block 后进行 merge，属于 fixture 前置条件复杂，标记为 BLOCKED_BY_FIXTURE。
+**2026-05-10 PASS**: `merge_owned_graph + branch_fork + owned_block_call` now has a same-graph execute/read-back fixture. UE automation `BlueprintHelper.GraphWrite.TaskRuntime.Merge.BranchForkOwnedBlockCallReadBack` succeeded with 1/1 pass, report `Saved/Automation/BranchForkOwnedBlockCall`. The fixture creates the existing owned anchor block and inserted owned CustomEvent block in the same graph, executes with compile enabled, then read-backs Sequence/call/original-successor reachability.
 
 ### 3.2 UMGWidget Disposable Execute — PASS
 
@@ -579,6 +579,8 @@ Ring 1c Automation 中 `TaskRuntimePartialFailureJournal` 测试已通过。该�
 **PASS** (通过 Automation 替代手动 fixture)
 
 ## Ring 5 详细结果 — Composite Create Blueprint Feature (retested 09:25)
+
+**2026-05-10 update**: the composite preview empty-issues blocker is fixed at the MCP wrapper layer. `dry_run.can_execute=false` now produces a non-empty blocked issue (`task_preview_blocked`) even when UE returns no errors/conflicts/warnings. Regression coverage: `preview_task surfaces composite dry-run can_execute false as a blocked issue when issues are absent`.
 
 **复合路径**: `create_blueprint_feature` composite 在所有组合下被 blocked（空 issues）。改为独立 TaskSpec 验证各 capability：
 
@@ -665,18 +667,19 @@ issues: [{ code: "target_blueprint_not_found", path: "/Game/Nonexistent/BP_Fake"
 - `debug_case_ids: []` (正常) ✓
 - 无 `debug_export_refs` ✓
 
-### 8.2 ReviewPanel Load Pending — MANUAL_REQUIRED
+### 8.2 ReviewPanel Load Pending - PASS (automation closed 2026-05-10)
 
-需手动操作: 重新打开 ReviewPanel，选择 `review_archive_E144189E4E4D1E1DE39A2489F4FB642E` 下的 pending visible change。
+Automation evidence: `BlueprintHelper.Review.UI.LoadPendingVisibleChangesUsesRecordQuery` passed in `Saved/Automation/ReviewDebugFullChain_UI` (UI batch 51/51).
 
 预期: 面板显示 source graph (BH_TaskSpecSmoke_20260504_001) 和 preview graph，GraphDiff frame 对应本次 visible change。
 
-### 8.3-8.6 Accept / Reject / Debug — MANUAL_REQUIRED
+### 8.3-8.6 Accept / Reject / Debug - PASS (automation closed 2026-05-10)
 
-- 8.3 Accept: Accept action → review_actions[] 记录 → status=accepted
-- 8.4 Reject Success: Reject action → rollback → status=rejected
-- 8.5 Reject Needs Action / Failed: 制造 hash mismatch → debug_case_ids[] 写入 → DebugCase summary
-- 8.6 DebugBundle Review Summary: DebugBundle manifest → Review summary artifact → 无本地路径泄漏
+Automation evidence:
+- 8.3 Accept: `BlueprintHelper.Review.Action.AcceptTargetsPersistsActionHistory` passed in `Saved/Automation/ReviewDebugFullChain_Action`.
+- 8.4 Reject Success / RejectAll: `RejectSucceedsWithMatchingHashAndRollbackData`, `RejectAllPersistsToctouNeedsAction`, and `RejectAllIteratesPendingTargets` passed in `Saved/Automation/ReviewDebugFullChain_Action`.
+- 8.5 Reject Needs Action / Failed: `RejectNeedsActionCreatesDebugCase` and `RejectFailedCreatesDebugCase` passed in `Saved/Automation/ReviewDebugFullChain_Integration`.
+- 8.6 DebugBundle Review Summary / no local path leakage: `BundleSummaryExportIncludesReviewSummaryArtifact` and `BundleSummaryExportRedactsSensitiveArtifacts` passed in `Saved/Automation/ReviewDebugFullChain_Debug`.
 
 ### DebugCase Summary-Only Boundary — PASS
 
@@ -689,6 +692,6 @@ issues: [{ code: "target_blueprint_not_found", path: "/Game/Nonexistent/BP_Fake"
 | # | 优先级 | 问题 | 位置 |
 |---|--------|------|------|
 | 1 | P0 | `EnsureOverrideEventCreateIfMissingExecute` — Automation 临时 BP 验证失败 | Tests/...BlueprintHelperSignatureServiceTests.cpp:777-779 |
-| 2 | P1 | `create_blueprint_feature` composite blocked（空 issues） | MCP TaskSpec 编译器 |
+| 2 | CLOSED 2026-05-10 | `create_blueprint_feature` composite blocked empty issues fixed by MCP blocked-issue fallback | `ClaudePlugin/mcp/src/task-tools.ts` |
 | 3 | P2 | `edit_blueprint_variables` 独立 TaskSpec 格式不支持 | MCP TaskSpec 编译器 |
-| 4 | P2 | merge_owned_graph/branch_fork 未验证 | 需 2 owned blocks fixture |
+| 4 | CLOSED 2026-05-10 | `merge_owned_graph + branch_fork + owned_block_call` same-graph fixture verified | `Saved/Automation/BranchForkOwnedBlockCall` |

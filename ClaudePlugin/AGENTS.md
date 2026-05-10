@@ -29,7 +29,7 @@ Use BlueprintHelper MCP for:
 
 ## Required preflight before any write operation
 
-1. Confirm the user has a target UE project and the Unreal Editor is running, or the MCP server has `UE_ENGINE_DIR` and `UE_PROJECT_FILE` configured so it can launch the editor.
+1. Confirm the user has a target UE project and the Unreal Editor is running, or the MCP server has `UE_ENGINE_DIR` configured and the target `.uproject` can be passed as the explicit `project_file` tool argument so it can launch the editor.
 2. Confirm the Bridge is reachable before calling editor-asset tools.
 3. Identify the exact target asset path, for example `/Game/Blueprints/BP_Player`.
 4. Identify the exact target graph when editing graph nodes, for example `EventGraph`.

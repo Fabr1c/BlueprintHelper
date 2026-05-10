@@ -21,7 +21,6 @@ function makeFakeServer(): { server: Record<string, unknown>; tools: Map<string,
 
 const fakeConfig: EditorConfig = {
   ueEngineDir: '/fake/engine',
-  ueProjectFile: '/fake/project.uproject',
 };
 
 describe('blueprint_import_json_to_graph (object-first)', () => {

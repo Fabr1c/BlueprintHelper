@@ -48,7 +48,7 @@ export function registerWithBridge(
   } as unknown as McpServer;
 
   const bridge = { sendCommand, ...bridgeExtras } as unknown as BridgeClient;
-  registerTools(server, bridge, { ueEngineDir: '', ueProjectFile: '', ...config });
+  registerTools(server, bridge, { ueEngineDir: '', ...config });
   return tools;
 }
 
@@ -82,7 +82,7 @@ export async function withConnectedMcpServer(
 ): Promise<void> {
   const server = new McpServer({ name: 'blueprint-helper-test-server', version: '0.0.0' });
   const bridge = { sendCommand } as unknown as BridgeClient;
-  registerTools(server, bridge, { ueEngineDir: '', ueProjectFile: '' });
+  registerTools(server, bridge, { ueEngineDir: '' });
 
   const client = new Client({ name: 'blueprint-helper-test-client', version: '0.0.0' });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
