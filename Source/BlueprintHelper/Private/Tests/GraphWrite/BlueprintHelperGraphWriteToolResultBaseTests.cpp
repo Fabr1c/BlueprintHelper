@@ -16,9 +16,11 @@
 #include "Kismet/KismetSystemLibrary.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
+#include "Misc/FileHelper.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintTextConverter.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicJsonPathService.h"
 #include "Misc/AutomationTest.h"
+#include "Misc/Paths.h"
 #include "Shared/Services/BlueprintHelperAgentImportService.h"
 #include "Systems/ToolClusters/AssetFactory/BlueprintHelperAssetFactoryService.h"
 #include "Systems/ToolClusters/BlueprintClassSettings/BlueprintHelperClassSettingsService.h"
@@ -47,6 +49,8 @@
 #include "UObject/Class.h"
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 
 class FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils
 {
@@ -454,6 +458,23 @@ public:
 		}
 
 		return false;
+	}
+
+	static bool LoadActiveJournalJson(const FString& TransactionId, TSharedPtr<FJsonObject>& OutJson)
+	{
+		const FString JournalPath = FPaths::ProjectSavedDir()
+			/ TEXT("BlueprintHelper")
+			/ TEXT("Transactions")
+			/ TEXT("Active")
+			/ FString::Printf(TEXT("%s.json"), *TransactionId);
+		FString JournalJson;
+		if (!FFileHelper::LoadFileToString(JournalJson, *JournalPath))
+		{
+			return false;
+		}
+
+		const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JournalJson);
+		return FJsonSerializer::Deserialize(Reader, OutJson) && OutJson.IsValid();
 	}
 
 	static TSharedRef<FJsonObject> MakePatchPreviewPayload(const FString& AssetPath, const FString& GraphName)
@@ -1089,6 +1110,47 @@ bool FBlueprintHelperGraphWriteReplaceEmitsReviewNodeAnchorsForDiffBoundsTest::R
 	TestTrue(TEXT("replace custom event body succeeds"), Result.bOk);
 	TestEqual(TEXT("replace status is applied"), Result.Status, EBlueprintHelperToolStatus::Applied);
 
+	FString TransactionId;
+	const TSharedPtr<FJsonObject>* WriteRef = nullptr;
+	TestTrue(TEXT("replace result exposes write_ref"),
+		Result.Data.IsValid() && Result.Data->TryGetObjectField(TEXT("write_ref"), WriteRef));
+	TestTrue(TEXT("replace result exposes transaction id"),
+		WriteRef && WriteRef->IsValid() && (*WriteRef)->TryGetStringField(TEXT("transaction_id"), TransactionId));
+
+	TSharedPtr<FJsonObject> JournalJson;
+	TestTrue(TEXT("replace journal can be reloaded"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::LoadActiveJournalJson(TransactionId, JournalJson));
+	const TArray<TSharedPtr<FJsonValue>>* CreatedNodePaths = nullptr;
+	TestTrue(TEXT("replace journal preserves legacy created_nodes"),
+		JournalJson.IsValid() && JournalJson->TryGetArrayField(TEXT("created_nodes"), CreatedNodePaths) && CreatedNodePaths && CreatedNodePaths->Num() > 0);
+	const TArray<TSharedPtr<FJsonValue>>* CreatedNodeAnchors = nullptr;
+	TestTrue(TEXT("replace journal emits structured created node anchors"),
+		JournalJson.IsValid() && JournalJson->TryGetArrayField(TEXT("created_node_anchors"), CreatedNodeAnchors) && CreatedNodeAnchors && CreatedNodeAnchors->Num() > 0);
+	if (CreatedNodeAnchors && CreatedNodeAnchors->Num() > 0)
+	{
+		const TSharedPtr<FJsonObject> FirstAnchor = (*CreatedNodeAnchors)[0].IsValid()
+			? (*CreatedNodeAnchors)[0]->AsObject()
+			: nullptr;
+		FString AnchorNodePath;
+		FString AnchorNodeGuid;
+		FString AnchorDisplayLabel;
+		bool bHasGraphBounds = false;
+		const TSharedPtr<FJsonObject>* AnchorPosition = nullptr;
+		const TSharedPtr<FJsonObject>* AnchorSize = nullptr;
+		TestTrue(TEXT("structured anchor records node path"),
+			FirstAnchor.IsValid() && FirstAnchor->TryGetStringField(TEXT("node_path"), AnchorNodePath) && !AnchorNodePath.IsEmpty());
+		TestTrue(TEXT("structured anchor records node guid"),
+			FirstAnchor.IsValid() && FirstAnchor->TryGetStringField(TEXT("node_guid"), AnchorNodeGuid) && !AnchorNodeGuid.IsEmpty());
+		TestTrue(TEXT("structured anchor records display label"),
+			FirstAnchor.IsValid() && FirstAnchor->TryGetStringField(TEXT("display_label"), AnchorDisplayLabel) && !AnchorDisplayLabel.IsEmpty());
+		TestTrue(TEXT("structured anchor records graph position"),
+			FirstAnchor.IsValid() && FirstAnchor->TryGetObjectField(TEXT("graph_position"), AnchorPosition) && AnchorPosition && AnchorPosition->IsValid());
+		TestTrue(TEXT("structured anchor records graph size"),
+			FirstAnchor.IsValid() && FirstAnchor->TryGetObjectField(TEXT("graph_size"), AnchorSize) && AnchorSize && AnchorSize->IsValid());
+		TestTrue(TEXT("structured anchor records graph bounds flag"),
+			FirstAnchor.IsValid() && FirstAnchor->TryGetBoolField(TEXT("has_graph_bounds"), bHasGraphBounds) && bHasGraphBounds);
+	}
+
 	FBlueprintHelperReviewStoreService Store;
 	FBlueprintHelperReviewRecordQuery Query;
 	Query.ArchiveSessionIdFilter = ArchiveSessionId;
@@ -1101,6 +1163,8 @@ bool FBlueprintHelperGraphWriteReplaceEmitsReviewNodeAnchorsForDiffBoundsTest::R
 	}
 
 	bool bSawGraphNodeTarget = false;
+	bool bSawGraphNodeTargetWithNodeGuid = false;
+	bool bSawRecordedAnchorPayload = false;
 	bool bSawEmptyGraphBlockTarget = false;
 	bool bBuiltGraphBounds = false;
 	FString BoundsDebug;
@@ -1114,6 +1178,12 @@ bool FBlueprintHelperGraphWriteReplaceEmitsReviewNodeAnchorsForDiffBoundsTest::R
 			}
 			bSawGraphNodeTarget |= Target.TargetKind.Equals(TEXT("graph_node"), ESearchCase::IgnoreCase)
 				&& !Target.TargetKey.IsEmpty();
+			bSawGraphNodeTargetWithNodeGuid |= Target.TargetKind.Equals(TEXT("graph_node"), ESearchCase::IgnoreCase)
+				&& !Target.NodeGuid.IsEmpty()
+				&& Target.TargetKey.Contains(Target.NodeGuid);
+			bSawRecordedAnchorPayload |= Target.AnchorJson.Contains(TEXT("has_graph_bounds"))
+				&& Target.AnchorJson.Contains(TEXT("graph_position"))
+				&& Target.AnchorJson.Contains(TEXT("graph_size"));
 			bSawEmptyGraphBlockTarget |= Target.TargetKind.Equals(TEXT("graph_block"), ESearchCase::IgnoreCase)
 				&& Target.TargetKey.EndsWith(TEXT("block:"));
 		}
@@ -1131,8 +1201,268 @@ bool FBlueprintHelperGraphWriteReplaceEmitsReviewNodeAnchorsForDiffBoundsTest::R
 	}
 
 	TestTrue(TEXT("replace review evidence includes a graph_node target"), bSawGraphNodeTarget);
+	TestTrue(TEXT("replace graph_node target carries node guid evidence"), bSawGraphNodeTargetWithNodeGuid);
+	TestTrue(TEXT("replace graph_node target carries recorded bounds anchor payload"), bSawRecordedAnchorPayload);
 	TestFalse(TEXT("replace review evidence does not include an empty graph block target"), bSawEmptyGraphBlockTarget);
 	TestTrue(FString::Printf(TEXT("replace graph_node target can build graph diff bounds: %s"), *BoundsDebug), bBuiltGraphBounds);
+	TestTrue(TEXT("bounds debug reports node guid target count"),
+		BoundsDebug.Contains(TEXT("hasNodeGuidTargets=")));
+	TestTrue(TEXT("bounds debug reports recorded bounds target count"),
+		BoundsDebug.Contains(TEXT("hasRecordedBounds=")));
+	TestTrue(TEXT("bounds debug reports anchor source"),
+		BoundsDebug.Contains(TEXT("anchorSource=")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewGraphBoundsUsesNodeGuidBeforeDisplayLabelTest,
+	"BlueprintHelper.Review.GraphBounds.UsesNodeGuidBeforeDisplayLabel",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewGraphBoundsUsesNodeGuidBeforeDisplayLabelTest::RunTest(const FString& Parameters)
+{
+	UEdGraph* Graph = NewObject<UEdGraph>(GetTransientPackage());
+
+	UEdGraphNode* LabelMatchedNode = NewObject<UEdGraphNode>(Graph, FName(TEXT("DisplayLabelNode")));
+	LabelMatchedNode->CreateNewGuid();
+	LabelMatchedNode->NodePosX = 100;
+	LabelMatchedNode->NodePosY = 40;
+	LabelMatchedNode->NodeWidth = 240;
+	LabelMatchedNode->NodeHeight = 88;
+	Graph->AddNode(LabelMatchedNode, false, false);
+
+	UEdGraphNode* GuidMatchedNode = NewObject<UEdGraphNode>(Graph, FName(TEXT("GuidMatchedNode")));
+	GuidMatchedNode->CreateNewGuid();
+	GuidMatchedNode->NodePosX = 500;
+	GuidMatchedNode->NodePosY = 180;
+	GuidMatchedNode->NodeWidth = 260;
+	GuidMatchedNode->NodeHeight = 96;
+	Graph->AddNode(GuidMatchedNode, false, false);
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.Surface = EBlueprintHelperReviewSurface::Graph;
+	Target.GraphName = TEXT("EventGraph");
+	Target.TargetKind = TEXT("graph_node");
+	Target.NodeGuid = GuidMatchedNode->NodeGuid.ToString(EGuidFormats::Digits);
+	Target.TargetKey = FString::Printf(TEXT("graph:EventGraph:node:%s"), *Target.NodeGuid);
+	Target.DisplayLabel = LabelMatchedNode->GetName();
+
+	TArray<FBlueprintHelperReviewAtomicTarget> Targets;
+	Targets.Add(Target);
+
+	FVector2D Position = FVector2D::ZeroVector;
+	FVector2D Size = FVector2D::ZeroVector;
+	FString DebugSummary;
+	const bool bBuilt = FBlueprintHelperReviewGraphBounds::BuildBoundsForTargets(
+		Targets,
+		Graph,
+		TEXT("EventGraph"),
+		nullptr,
+		Position,
+		Size,
+		&DebugSummary);
+
+	TestTrue(TEXT("node guid target builds bounds"), bBuilt);
+	TestTrue(TEXT("node guid match wins before display label match"),
+		FMath::IsNearlyEqual(static_cast<float>(Position.X), 480.0f, 0.01f));
+	TestTrue(TEXT("node guid match reports one matched node"),
+		DebugSummary.Contains(TEXT("matchedNodes=1")));
+	TestTrue(TEXT("debug reports node guid evidence"),
+		DebugSummary.Contains(TEXT("hasNodeGuidTargets=1")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewGraphBoundsUsesRecordedAnchorWhenNodeMatchFailsTest,
+	"BlueprintHelper.Review.GraphBounds.UsesRecordedBoundsWhenNodeMatchFails",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewGraphBoundsUsesRecordedAnchorWhenNodeMatchFailsTest::RunTest(const FString& Parameters)
+{
+	UEdGraph* Graph = NewObject<UEdGraph>(GetTransientPackage());
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.Surface = EBlueprintHelperReviewSurface::Graph;
+	Target.GraphName = TEXT("EventGraph");
+	Target.TargetKind = TEXT("graph_node");
+	Target.NodeGuid = FGuid::NewGuid().ToString(EGuidFormats::Digits);
+	Target.TargetKey = FString::Printf(TEXT("graph:EventGraph:node:%s"), *Target.NodeGuid);
+	Target.DisplayLabel = TEXT("Deleted Print String");
+	Target.AnchorJson = FString(TEXT("{\"node_path\":\"/Transient/DeletedNode\",\"node_guid\":\""))
+		+ Target.NodeGuid
+		+ TEXT("\",\"display_label\":\"Deleted Print String\",\"graph_position\":{\"x\":120,\"y\":80},\"graph_size\":{\"x\":300,\"y\":140},\"has_graph_bounds\":true}");
+
+	TArray<FBlueprintHelperReviewAtomicTarget> Targets;
+	Targets.Add(Target);
+
+	FVector2D Position = FVector2D::ZeroVector;
+	FVector2D Size = FVector2D::ZeroVector;
+	FString DebugSummary;
+	const bool bBuilt = FBlueprintHelperReviewGraphBounds::BuildBoundsForTargets(
+		Targets,
+		Graph,
+		TEXT("EventGraph"),
+		nullptr,
+		Position,
+		Size,
+		&DebugSummary);
+
+	TestTrue(TEXT("recorded anchor json supplies bounds when node match fails"), bBuilt);
+	TestTrue(TEXT("recorded anchor bounds keep left padding"),
+		FMath::IsNearlyEqual(static_cast<float>(Position.X), 100.0f, 0.01f));
+	TestTrue(TEXT("recorded anchor bounds keep padded width"),
+		FMath::IsNearlyEqual(static_cast<float>(Size.X), 340.0f, 0.01f));
+	TestTrue(TEXT("debug reports recorded bounds evidence"),
+		DebugSummary.Contains(TEXT("hasRecordedBounds=1")));
+	TestTrue(TEXT("debug reports structured anchor source"),
+		DebugSummary.Contains(TEXT("anchorSource=structured")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTransactionJournalLegacyGuidCreatedNodePathBecomesNodeGuidTest,
+	"BlueprintHelper.GraphWrite.TransactionJournal.LegacyGuidCreatedNodePathBecomesNodeGuid",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperTransactionJournalLegacyGuidCreatedNodePathBecomesNodeGuidTest::RunTest(const FString& Parameters)
+{
+	const FString ArchiveSessionId = FString::Printf(
+		TEXT("archive_legacy_guid_anchor_%s"),
+		*FGuid::NewGuid().ToString(EGuidFormats::Digits));
+	const FString LegacyNodeGuid = FGuid::NewGuid().ToString(EGuidFormats::Digits);
+
+	FBlueprintHelperAppendJournalRecord JournalRecord;
+	JournalRecord.TransactionId = FString::Printf(TEXT("tx_legacy_guid_%s"), *FGuid::NewGuid().ToString(EGuidFormats::Digits));
+	JournalRecord.ArchiveSessionId = ArchiveSessionId;
+	JournalRecord.TaskRunId = TEXT("task_legacy_guid_anchor");
+	JournalRecord.Tool = TEXT("AppendBlueprintGraph");
+	JournalRecord.Status = TEXT("applied");
+	JournalRecord.TargetAssets.Add(TEXT("/Game/BP_LegacyGuidAnchor.BP_LegacyGuidAnchor"));
+	JournalRecord.GraphId = TEXT("EventGraph");
+	JournalRecord.GraphName = TEXT("EventGraph");
+	JournalRecord.CreatedNodePaths.Add(LegacyNodeGuid);
+	JournalRecord.RollbackData = TEXT("{\"node_guids\":[]}");
+
+	FBlueprintHelperTransactionJournalService JournalService;
+	FString JournalError;
+	TestTrue(TEXT("legacy guid journal writes review evidence"),
+		JournalService.WriteAppendJournal(JournalRecord, JournalError));
+
+	FBlueprintHelperReviewStoreService Store;
+	FBlueprintHelperReviewRecordQuery Query;
+	Query.ArchiveSessionIdFilter = ArchiveSessionId;
+	Query.bPendingOnly = false;
+	const TArray<FBlueprintHelperReviewRecord> Records = Store.QueryReviewRecords(Query);
+	TestEqual(TEXT("one legacy guid review record is created"), Records.Num(), 1);
+	if (Records.Num() != 1)
+	{
+		return false;
+	}
+
+	bool bFoundNodeGuidTarget = false;
+	for (const FBlueprintHelperReviewVisibleChange& Change : Records[0].VisibleChanges)
+	{
+		for (const FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
+		{
+			bFoundNodeGuidTarget |= Target.TargetKind.Equals(TEXT("graph_node"), ESearchCase::IgnoreCase)
+				&& Target.NodeGuid == LegacyNodeGuid
+				&& Target.TargetKey.Contains(LegacyNodeGuid);
+		}
+	}
+
+	TestTrue(TEXT("legacy guid-like created node path is promoted to node guid"), bFoundNodeGuidTarget);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTransactionJournalStructuredAnchorsCreateBlockRecordedBoundsTest,
+	"BlueprintHelper.GraphWrite.Replace.GraphTargetsCarryRecordedBounds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperTransactionJournalStructuredAnchorsCreateBlockRecordedBoundsTest::RunTest(const FString& Parameters)
+{
+	const FString ArchiveSessionId = FString::Printf(
+		TEXT("archive_structured_anchor_bounds_%s"),
+		*FGuid::NewGuid().ToString(EGuidFormats::Digits));
+
+	FBlueprintHelperGraphReviewNodeAnchor FirstAnchor;
+	FirstAnchor.NodePath = TEXT("/Game/BP_Smoke.BP_Smoke:EventGraph.K2Node_First");
+	FirstAnchor.NodeGuid = FGuid::NewGuid().ToString(EGuidFormats::Digits);
+	FirstAnchor.DisplayLabel = TEXT("First");
+	FirstAnchor.GraphPosition = FVector2D(100.0f, 40.0f);
+	FirstAnchor.GraphSize = FVector2D(200.0f, 80.0f);
+	FirstAnchor.bHasGraphBounds = true;
+
+	FBlueprintHelperGraphReviewNodeAnchor SecondAnchor;
+	SecondAnchor.NodePath = TEXT("/Game/BP_Smoke.BP_Smoke:EventGraph.K2Node_Second");
+	SecondAnchor.NodeGuid = FGuid::NewGuid().ToString(EGuidFormats::Digits);
+	SecondAnchor.DisplayLabel = TEXT("Second");
+	SecondAnchor.GraphPosition = FVector2D(500.0f, 120.0f);
+	SecondAnchor.GraphSize = FVector2D(260.0f, 100.0f);
+	SecondAnchor.bHasGraphBounds = true;
+
+	FBlueprintHelperAppendJournalRecord JournalRecord;
+	JournalRecord.TransactionId = FString::Printf(TEXT("tx_structured_bounds_%s"), *FGuid::NewGuid().ToString(EGuidFormats::Digits));
+	JournalRecord.ArchiveSessionId = ArchiveSessionId;
+	JournalRecord.TaskRunId = TEXT("task_structured_anchor_bounds");
+	JournalRecord.Tool = TEXT("ReplaceBlueprintGraph");
+	JournalRecord.Status = TEXT("applied");
+	JournalRecord.TargetAssets.Add(TEXT("/Game/BP_Smoke.BP_Smoke"));
+	JournalRecord.GraphId = TEXT("EventGraph");
+	JournalRecord.GraphName = TEXT("EventGraph");
+	JournalRecord.BlockIds.Add(TEXT("EventGraph_SmokeBlock"));
+	JournalRecord.CreatedNodeAnchors.Add(FirstAnchor);
+	JournalRecord.CreatedNodeAnchors.Add(SecondAnchor);
+	JournalRecord.RollbackData = TEXT("{\"node_guids\":[]}");
+
+	FBlueprintHelperTransactionJournalService JournalService;
+	FString JournalError;
+	TestTrue(TEXT("structured anchor journal writes review evidence"),
+		JournalService.WriteAppendJournal(JournalRecord, JournalError));
+
+	FBlueprintHelperReviewStoreService Store;
+	FBlueprintHelperReviewRecordQuery Query;
+	Query.ArchiveSessionIdFilter = ArchiveSessionId;
+	Query.bPendingOnly = false;
+	const TArray<FBlueprintHelperReviewRecord> Records = Store.QueryReviewRecords(Query);
+	TestEqual(TEXT("one structured anchor review record is created"), Records.Num(), 1);
+	if (Records.Num() != 1)
+	{
+		return false;
+	}
+
+	bool bFoundBlockAnchorPayload = false;
+	bool bBuiltBlockBounds = false;
+	FString BoundsDebug;
+	UEdGraph* EmptyGraph = NewObject<UEdGraph>(GetTransientPackage());
+	for (const FBlueprintHelperReviewVisibleChange& Change : Records[0].VisibleChanges)
+	{
+		for (const FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
+		{
+			if (Target.TargetKind.Equals(TEXT("graph_block"), ESearchCase::IgnoreCase))
+			{
+				bFoundBlockAnchorPayload |= Target.AnchorJson.Contains(TEXT("has_graph_bounds"))
+					&& Target.AnchorJson.Contains(TEXT("graph_position"))
+					&& Target.AnchorJson.Contains(TEXT("graph_size"));
+			}
+		}
+
+		FVector2D Position = FVector2D::ZeroVector;
+		FVector2D Size = FVector2D::ZeroVector;
+		bBuiltBlockBounds |= FBlueprintHelperReviewGraphBounds::BuildBoundsForTargets(
+			Change.AtomicTargets,
+			EmptyGraph,
+			TEXT("EventGraph"),
+			nullptr,
+			Position,
+			Size,
+			&BoundsDebug);
+	}
+
+	TestTrue(TEXT("block target carries aggregate recorded bounds payload"), bFoundBlockAnchorPayload);
+	TestTrue(FString::Printf(TEXT("aggregate recorded bounds build graph diff bounds: %s"), *BoundsDebug), bBuiltBlockBounds);
+	TestTrue(TEXT("aggregate bounds debug reports structured source"),
+		BoundsDebug.Contains(TEXT("anchorSource=structured")));
 	return true;
 }
 

@@ -164,6 +164,8 @@ inline EBlueprintHelperReviewSurface BlueprintHelperReviewNormalizeSurfaceForTar
 	if (Text.Contains(TEXT("data_asset_property"))
 		|| Text.Contains(TEXT("dataasset"))
 		|| Text.Contains(TEXT("data_asset"))
+		|| Text.Contains(TEXT("structure"))
+		|| Text.Contains(TEXT("struct_field"))
 		|| Text.Contains(TEXT("object_property")))
 	{
 		return EBlueprintHelperReviewSurface::DataAsset;
@@ -232,6 +234,9 @@ struct FBlueprintHelperReviewVisibleChange
 	FString BeforeSummary;
 	FString AfterSummary;
 	FString NeedsActionReason;
+	FString ParentChangeId;
+	bool bIsAssetLifecycleRoot = false;
+	bool bRejectRemovesChildren = false;
 };
 
 struct FBlueprintHelperWriteReviewEvidence
@@ -465,6 +470,8 @@ inline bool BlueprintHelperReviewShouldShowInDataAsset(const FBlueprintHelperRev
 	const FString Location = BlueprintHelperReviewNormalizeLocation(Change);
 	return Location.Contains(TEXT("data_asset"))
 		|| Location.Contains(TEXT("dataasset"))
+		|| Location.Contains(TEXT("structure"))
+		|| Location.Contains(TEXT("struct_field"))
 		|| Location.Contains(TEXT("object_property"));
 }
 

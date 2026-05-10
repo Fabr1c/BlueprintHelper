@@ -7,6 +7,7 @@
 #include "Engine/DataAsset.h"
 #include "Engine/DataTable.h"
 #include "Misc/PackageName.h"
+#include "StructUtils/UserDefinedStruct.h"
 #include "UObject/UObjectGlobals.h"
 #include "WidgetBlueprint.h"
 
@@ -174,6 +175,12 @@ FBlueprintHelperReviewAssetContext FBlueprintHelperReviewAssetContext::LoadForAs
 	{
 		Context.DataTable = DataTable;
 		Context.AssetKind = EBlueprintHelperReviewAssetKind::DataTable;
+		return Context;
+	}
+	if (UUserDefinedStruct* Structure = Cast<UUserDefinedStruct>(Object))
+	{
+		Context.Structure = Structure;
+		Context.AssetKind = EBlueprintHelperReviewAssetKind::Structure;
 		return Context;
 	}
 	if (Cast<UDataAsset>(Object))

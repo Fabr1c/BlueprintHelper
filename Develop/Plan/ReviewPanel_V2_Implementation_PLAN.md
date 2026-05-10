@@ -102,6 +102,27 @@
    - DataTable/DataAsset first try stable Slate row geometry inside their center presenter content.
    - If row geometry is unavailable, the deterministic review-list/card is rendered in the center workspace, not in Details.
 
+### Stage 7: Row Highlight, Graph Bounds Evidence, Lifecycle Root
+
+Detailed execution plan: `Develop/Plan/ReviewPanel_RowHighlight_GraphBounds_LifecycleRoot_PLAN_20260510_CN.md`.
+
+1. Non-Graph panel diff contract.
+   - Components, MyBlueprint, Details, and WidgetTree no longer use the old anchor overlay path.
+   - These panels directly highlight the resolved Row background with added/modified/removed colors.
+   - Only the selected Row shows Accept / Reject on the right side.
+   - Missing Row geometry logs pending/hidden debug and does not draw fake precise frames or text fallback cards.
+
+2. Graph workspace contract.
+   - The center Graph workspace keeps the existing anchor/bounds diff block model.
+   - Graph route success is not enough to draw a block; graph review evidence must include node guid matches or recorded bounds.
+   - Graph write tools, especially ReplaceBlueprintGraph, must emit structured node anchors and aggregate recorded bounds so `GraphDiff bounds failed matchedNodes=0 recordBounds=0` is eliminated for valid graph changes.
+
+3. Asset lifecycle root contract.
+   - `asset_factory` + added visible changes are lifecycle root reviews.
+   - While the root is pending, same-asset child reviews are nested under it.
+   - Rejecting the root successfully removes same-asset child reviews from pending review flow.
+   - Accepting the root does not accept children; rejecting a child does not affect the root.
+
 ## Execution Progress
 
 ### 2026-05-09 Stage 1-6 Status
@@ -156,10 +177,142 @@
   - updated `BlueprintHelper.Review.VisibleChange.PresenterOverlayFallsBackWhenSlateRowGeometryIsPartial` to assert hidden fallback rather than text-card rendering.
 - Verification status: initial build was blocked before running the new tests by an existing `BlueprintHelperRequestValidator::GetConfiguredToken` declaration mismatch and UnrealEditor-held DLL link locks; those build issues are outside this ReviewPanel bugfix and are not handled here.
 
+### 2026-05-10 Stage 7 Implementation Result
+
+- Stage 7 row-highlight / graph-bounds / lifecycle-root plan has been implemented in workspace.
+- Non-Graph built-in panels now use Row background highlight instead of ReviewPanel anchor overlay cards for Components, MyBlueprint, Details, and WidgetTree. Owned MyBlueprint and WidgetTree rows show selected-row Accept / Reject actions.
+- Graph workspace keeps graph diff blocks, but `ReplaceBlueprintGraph` now records structured node anchors and recorded bounds so valid graph changes can resolve by node guid or persisted bounds.
+- `asset_factory + added` visible changes are lifecycle roots. Same-asset pending child reviews are nested under the root; root reject cascades child removal only after root reject succeeds; root accept does not accept children.
+- Fixed integration issue where lifecycle-root cascade was briefly wired into Accept during parallel implementation; final code keeps cascade only on Reject.
+- Verification:
+  - UE build passed: `F:\UE_5.6\Engine\Build\BatchFiles\Build.bat MrStoneEditor Win64 Development -Project="G:\UnrealPractise\MrStone\MrStone.uproject" -WaitMutex -NoHotReload`.
+  - `BlueprintHelper.Review.VisibleChange`: 15 found / 15 success / 0 failed.
+  - `BlueprintHelper.Review.UI`: 39 found / 39 success / 0 failed.
+  - `BlueprintHelper.GraphWrite.Replace`: 3 found / 3 success / 0 failed.
+  - `BlueprintHelper.Review.GraphBounds`: 2 found / 2 success / 0 failed.
+  - `git diff --check` passed with only LF/CRLF working-copy warnings.
+  - UE startup logs still include environment noise such as EOS no-connection and pre-session `LogAutomationTest: Error: Condition failed`; the targeted automation runs completed with exit code 0.
+
+### 2026-05-10 Stage 8 Investigation: Title Cleanup, Asset-Scoped Row Highlight, MyBlueprint Native Parity
+
+This note is research and plan sync only. No C++ behavior change is included in this update.
+
+Code inspected:
+
+- `Source/BlueprintHelper/Private/UI/Review/BlueprintHelperReviewSurfacePresenter.cpp`
+- `Source/BlueprintHelper/Public/UI/Review/BlueprintHelperReviewSurfacePresenter.h`
+- `Source/BlueprintHelper/Private/UI/Review/SBlueprintHelperReviewPanel.cpp`
+- `F:\UE_5.6\Engine\Source\Editor\Kismet\Private\SMyBlueprint.cpp`
+- `F:\UE_5.6\Engine\Source\Editor\Kismet\Public\SMyBlueprint.h`
+
+Findings:
+
+1. Asset creation title pollution.
+   - `BuildReadableChangeTitle()` uses `GetReadableTargetName()` and `ExtractReadableTail()`.
+   - `ExtractReadableTail()` strips `:`, `/`, and `.` segments, but it does not normalize underscore-encoded package names such as `_Game_BlueprintHelper_Smoke_BP_SmokeActor`.
+   - `asset_factory` root changes therefore can show path noise inside `新增了[...]`.
+   - Asset creation titles must prefer the reviewed `AssetPath` short asset name and asset kind, for example `新增了[BP_SmokeActor]蓝图资产`, not `新增了[_Game_BlueprintHelper_Smoke_BP_SmokeActor]变量`.
+
+2. Built-in panel row highlight should be asset-scoped, not selected-change scoped.
+   - `BuildRowHighlightOverlay()` already scans all `ChangeItems` under the current asset and uses `bSelected` only for row actions.
+   - The contract should be locked in tests: selecting an asset root or any same-asset review row must still make Components, MyBlueprint, Details, and WidgetTree show all routable pending row highlights for that asset.
+   - Accept / Reject buttons remain selected-row only.
+
+3. Section rows can be falsely highlighted.
+   - Section rows in owned MyBlueprint currently use empty `SearchText`.
+   - `FindRowHighlightEntry()` falls through to `GeometrySearchTextMatches()`.
+   - `GeometrySearchTextMatches(SearchText, Target)` can match an empty normalized row text because `TargetTerm.Contains(NormalizedRow)` is true for an empty string.
+   - This explains section headers such as `Graphs` / `Variables` turning into diff-colored rows.
+   - Empty search text must never resolve a row highlight or row action. Section rows should be non-review rows with gray header background.
+
+4. Current MyBlueprint presenter is not native-parity.
+   - `FBlueprintHelperReviewMyBlueprintPresenter::BuildContent()` currently creates one `Graphs` section and adds `UbergraphPages`, `FunctionGraphs`, `MacroGraphs`, and `DelegateSignatureGraphs` under it, then adds `Variables` and `Dispatchers`.
+   - UE native `SMyBlueprint` uses distinct sections from `NodeSectionID`: `Graphs`, `Functions`, `Macros`, `Variables`, `Event Dispatchers`, and related optional sections.
+   - UE native rows are generated by private `SMyBlueprint::CollectAllActions()` / `OnCreateWidgetForAction()` and a private `SGraphActionMenu` context tied to `FBlueprintEditor`, command lists, edit mode, action selection, and context menus.
+   - Directly reusing native generated row widgets inside ReviewPanel is high risk without embedding a real Blueprint editor context. The safer short path is source-data and visual parity in the owned readonly presenter.
+
+5. Graph workspace diff block still needs live-record verification.
+   - Stage 7 added structured graph node anchors and recorded bounds for new `ReplaceBlueprintGraph` writes.
+   - If live pending records still show `GraphDiff bounds failed matchedNodes=0 recordBounds=0`, those records are either old-contract records created before Stage 7, or the current write path still failed to persist node guid / recorded bounds for that case.
+   - Route success alone is not enough. Debug must show `hasNodeGuidTargets=1` or `hasRecordedBounds=1`, and the center workspace must draw a diff block.
+
+6. Asset-level Reject currently fails in manual smoke.
+   - User reported that asset-level Reject is ineffective after selecting asset creation/root review rows.
+   - This is a Stage 8 blocker because `asset_factory + added` reviews are lifecycle roots: rejecting the root must reject/delete or roll back the created asset first, then remove same-asset child reviews only after the root operation succeeds.
+   - The UI must distinguish normal child reject from lifecycle-root reject. Root-row Reject and `RejectAllAssetChange` must call the lifecycle-root cascade path, not silently fall through to a normal visible-change reject.
+   - Failure must be explicit: if asset deletion/rollback cannot complete, keep the root and children pending or `needs_action`, write a clear debug reason, and do not remove child reviews.
+
+Stage 8 implementation tasks:
+
+1. Friendly title cleanup.
+   - Add a sanitizer used by `BuildReadableChangeTitle()` for `asset_factory` targets.
+   - Prefer `Change.AssetPath` short name for asset root changes.
+   - Strip `_Game_BlueprintHelper_Smoke_` style package prefixes and any long package/object path residue from display text.
+   - Use asset kind aware suffixes: `蓝图资产`, `Widget Blueprint 资产`, `DataTable 资产`, `Structure 资产`, `DataAsset 资产`, or `UObject 资产`.
+   - Add regression coverage for Blueprint, WidgetBlueprint, DataTable, and Structure asset factory titles.
+
+2. Asset-scoped row highlight contract.
+   - Keep row background highlights based on all same-asset pending changes.
+   - Keep Accept / Reject visibility based on the selected change only.
+   - Add tests proving that selecting the lifecycle root still highlights same-asset component, variable, signature, dispatcher, and widget rows.
+   - Add tests proving another asset's rows do not highlight.
+
+3. Empty-search and section-row guard.
+   - Make `GeometrySearchTextMatches()` return false if either normalized side is empty.
+   - Make section rows skip `GetRowBackgroundColor()` and `GetRowActionsVisibility()` entirely.
+   - Give owned section headers a UE-like gray background and no review key.
+   - Add tests for `SectionRowsNeverHighlightFromEmptySearchText` and `EmptySearchTextDoesNotMatchAnyReviewTarget`.
+
+4. MyBlueprint owned presenter native-parity pass.
+   - Split sections to match UE order: `Graphs`, `Functions`, `Macros`, `Variables`, `Event Dispatchers`, plus `Review Anchors` only for targets that have no real Blueprint row.
+   - Populate `Graphs` from `Blueprint->UbergraphPages`.
+   - Populate `Functions` from `Blueprint->FunctionGraphs` and interface/overridable signature anchors when no graph row exists.
+   - Populate `Macros` from `Blueprint->MacroGraphs`.
+   - Populate `Variables` from non-delegate Blueprint-visible variables.
+   - Populate `Event Dispatchers` from multicast delegate variables and `DelegateSignatureGraphs`.
+   - For custom event signatures, prefer the same Graph/event child placement as UE `SMyBlueprint::GetChildEvents()` when a graph/event node exists; otherwise add a deterministic `Review Anchors` row.
+   - Register aliases per row: `signature:Name`, `function:Name`, `event:Name`, `blueprint_variable:Name`, `event_dispatcher:Name`, `dispatcher:Name`, and raw `Name`.
+   - Use UE style brushes/icons where available and keep section header backgrounds gray, not diff-colored.
+
+5. WidgetTree parity guard.
+   - Keep WidgetTree row highlight asset-scoped just like MyBlueprint.
+   - Section/group rows in WidgetTree, if any, must not highlight from empty search text.
+   - Add regression coverage for selecting a Widget Blueprint asset root while widget row changes remain highlighted.
+
+6. Graph diff live-record follow-up.
+   - Inspect current pending `ReplaceBlueprintGraph` records from `Saved/BlueprintHelper/Review/Records`.
+   - If a record predates Stage 7 and lacks node anchors or bounds, mark it as old-contract debug evidence rather than treating the current code path as failed.
+   - Add a targeted test that builds a ReviewPanel-visible `ReplaceBlueprintGraph` change from the same record shape emitted by the write service, then asserts a drawable graph diff block can be produced.
+   - Debug success condition: `ReviewRoute surface=Graph result=shown` plus `GraphDiff bounds ... built=1` with `matchedNodes>0` or `recordBounds>0`.
+
+7. Asset-level Reject lifecycle fix.
+   - Trace `SBlueprintHelperReviewPanel::OnRejectChange`, root-row Reject buttons, and `OnRejectAll` to confirm which path is used for `bIsAssetLifecycleRoot`.
+   - Ensure root-row Reject calls `RejectLifecycleRootVisibleChange()` for `bIsAssetLifecycleRoot` changes.
+   - Ensure `RejectAllAssetChange` prefers the same lifecycle-root cascade when the selected asset has a pending lifecycle root.
+   - Require a success-first cascade: root reject/delete must succeed before same-asset child reviews are removed.
+   - Add debug evidence: `RejectLifecycleRoot id=... rootSuccess=... removedChildren=... reason=...`.
+   - Add failure behavior: failed asset root reject must leave child reviews visible and set root status/reason rather than no-op.
+
+Stage 8 verification targets:
+
+- `BlueprintHelper.Review.UI.AssetFactoryTitleStripsPackagePrefix`
+- `BlueprintHelper.Review.UI.AssetFactoryTitleUsesAssetKindSuffix`
+- `BlueprintHelper.Review.UI.EmptySearchTextDoesNotMatchAnyReviewTarget`
+- `BlueprintHelper.Review.UI.SectionRowsNeverHighlightFromEmptySearchText`
+- `BlueprintHelper.Review.UI.AssetRootSelectionHighlightsSameAssetRows`
+- `BlueprintHelper.Review.UI.RowActionsRemainSelectedChangeOnly`
+- `BlueprintHelper.Review.UI.MyBlueprintPresenterBuildsNativeParitySections`
+- `BlueprintHelper.Review.UI.MyBlueprintPresenterClassifiesFunctionsMacrosVariablesDispatchers`
+- `BlueprintHelper.Review.UI.WidgetTreeAssetRootSelectionHighlightsWidgetRows`
+- `BlueprintHelper.Review.UI.ReplaceBlueprintGraphLiveRecordCreatesDiffBlock`
+- `BlueprintHelper.Review.UI.AssetRootRejectUsesLifecycleCascade`
+- `BlueprintHelper.Review.UI.RejectAllAssetChangeUsesLifecycleCascade`
+- `BlueprintHelper.Review.Action.AssetRootRejectFailureKeepsChildrenPending`
+
 ### Pending Follow-Up
 
 - Manual editor smoke should confirm the visual result in live Slate: Blueprint Components/MyBlueprint/Graph overlays, WidgetBlueprint WidgetTree/MyBlueprint/Graph overlays, DataTable/DataAsset center workspace overlays, readable final-change row text, selected diff fill, Accept/Reject/RejectAll, and Debug export without `debug_export_refs`.
-- Next execution candidate: improve DataTable/DataAsset presenter content from summary rows toward richer asset-specific views, then add manual-smoke notes for large tables and nested DataAsset property paths.
+- Next execution candidate: implement Stage 8 above before returning to richer DataTable/DataAsset presenter content.
 
 ## Test Plan
 
@@ -189,6 +342,35 @@
   - `/Game/BlueprintHelper/Smoke/DT_SmokeDamageTable` 显示非空 DataTable/details review。
   - Accept/Reject/RejectAll 状态更新不变。
   - Debug export 包含 routing 诊断，不出现 `debug_export_refs`。
+
+## Stage 8 Execution Status - 2026-05-10
+
+Implemented in code:
+
+- Asset factory visible-change titles now prefer the short `AssetPath` asset name and strip encoded package prefixes such as `_Game_BlueprintHelper_Smoke_`.
+- Asset factory titles now use asset-kind suffixes for Blueprint, Widget Blueprint, DataTable, Structure, DataAsset, and generic UObject instead of treating asset creation as a variable.
+- Components, MyBlueprint, Details, and WidgetTree no longer render old text/anchor overlay frames for row-level review. They use row highlight state with 0.6 alpha; only the selected row exposes Accept / Reject actions.
+- Empty row/search text no longer matches any review target. Section rows are non-review rows and keep gray section backgrounds.
+- MyBlueprint readonly presenter now separates `Graphs`, `Functions`, `Macros`, `Variables`, and `Event Dispatchers`, with `Review Anchors` only for targets that do not have a stable row.
+- WidgetTree keeps asset-scoped row highlight behavior when the selected change is the Widget Blueprint asset lifecycle root.
+- `asset_factory + Added` reviews are lifecycle roots. The review tree nests same-asset children under the root when `ParentChangeId` is present.
+- Root-row Reject and RejectAll asset flow call lifecycle-root cascade logic. Child review rows are removed/rejected only after root reject succeeds.
+- Default asset-root Reject now handles `asset_factory` targets by deleting the created asset object through `ObjectTools::ForceDeleteObjects`; if delete fails, children remain pending or needs-action.
+- Row highlight and frame-geometry debug messages are deduped to avoid repeated per-tick log spam during layout resizing.
+
+Verified:
+
+- UE build passed with `F:/UE_5.6/Engine/Build/BatchFiles/Build.bat MrStoneEditor Win64 Development -Project=G:/UnrealPractise/MrStone/MrStone.uproject -WaitMutex -FromMsBuild`.
+- `Automation RunTests BlueprintHelper.Review.UI; BlueprintHelper.Review.Action; BlueprintHelper.Review.Record` passed: `succeeded=47`, `failed=0`, report at `G:/UnrealPractise/MrStone/Saved/Automation/ReviewPanelStage8/index.json`.
+- `git diff --check` passed before the final doc update.
+
+Still requires live editor smoke:
+
+- Confirm Components/MyBlueprint/Details/WidgetTree row background highlight appears visually in the real ReviewPanel, not only through automation state.
+- Confirm selected row Accept / Reject buttons appear on the right side of the selected row for native Slate rows.
+- Confirm `ReplaceBlueprintGraph` live pending records contain node GUID or recorded bounds and produce `GraphDiff bounds ... built=1`. Old pending records without Stage 7 graph evidence should be treated as old-contract records.
+- Confirm asset-level Reject on a real newly-created Blueprint root deletes the asset and clears same-asset child reviews.
+- DataTable/DataAsset/Structure native editor row reuse is still not complete in this Stage 8 pass; current code keeps their existing summary/content path unless a later plan explicitly replaces those presenters.
 
 ## Assumptions
 

@@ -8,6 +8,7 @@
 #include "Curves/CurveFloat.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
+#include "EdGraphSchema_K2.h"
 #include "Engine/BlueprintGeneratedClass.h"
 #include "Engine/DataAsset.h"
 #include "Engine/DataTable.h"
@@ -16,7 +17,9 @@
 #include "K2Node_CustomEvent.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
+#include "Kismet2/StructureEditorUtils.h"
 #include "HAL/FileManager.h"
+#include "ObjectTools.h"
 #include "Systems/Debug/BlueprintHelperDebugCaseStoreService.h"
 #include "Systems/Debug/BlueprintHelperDebugEntryService.h"
 #include "Systems/Review/BlueprintHelperReviewActionService.h"
@@ -34,9 +37,11 @@
 #include "Widgets/Text/STextBlock.h"
 #include "UI/Review/SBlueprintHelperReviewPanel.h"
 #include "Engine/Blueprint.h"
+#include "StructUtils/UserDefinedStruct.h"
 #include "UObject/MetaData.h"
 #include "UObject/NoExportTypes.h"
 #include "UObject/Package.h"
+#include "UserDefinedStructure/UserDefinedStructEditorData.h"
 #include "WidgetBlueprint.h"
 
 class FBlueprintHelperReviewStoreServiceTestsLocalUtils
@@ -62,6 +67,25 @@ public:
 		Target.BaselineHash = TEXT("baseline_hash");
 		Target.RollbackDataRef = TEXT("review://rollback/door_flow");
 		Target.Ownership = TEXT("blueprinthelper_owned");
+		return Target;
+	}
+
+	static FBlueprintHelperReviewAtomicTarget MakeReviewAssetFactoryTarget(
+		const FString& TargetKey,
+		const FString& TransactionId,
+		const FString& AssetPath,
+		const FString& RecordedAfterHash = TEXT("after_asset_factory"))
+	{
+		FBlueprintHelperReviewAtomicTarget Target = MakeReviewTestTarget(
+			TargetKey,
+			TargetKey,
+			TransactionId,
+			RecordedAfterHash);
+		Target.Surface = EBlueprintHelperReviewSurface::Details;
+		Target.AssetPath = AssetPath;
+		Target.GraphName.Reset();
+		Target.TargetKind = TEXT("asset_factory");
+		Target.DisplayLabel = TEXT("BP_Door asset");
 		return Target;
 	}
 
@@ -240,6 +264,42 @@ public:
 			RF_Public | RF_Standalone | RF_Transactional);
 		Package->SetDirtyFlag(false);
 		return DataAsset;
+	}
+
+	static UUserDefinedStruct* MakeReviewUserDefinedStruct(const FString& Prefix)
+	{
+		UPackage* Package = CreatePackage(*FString::Printf(
+			TEXT("/Game/BlueprintHelperReview/%s_%s"),
+			*Prefix,
+			*FGuid::NewGuid().ToString(EGuidFormats::Digits)));
+		if (!Package)
+		{
+			return nullptr;
+		}
+
+		UUserDefinedStruct* Structure = FStructureEditorUtils::CreateUserDefinedStruct(
+			Package,
+			*FString::Printf(TEXT("ST_%s"), *Prefix),
+			RF_Public | RF_Standalone | RF_Transactional);
+		if (!Structure)
+		{
+			return nullptr;
+		}
+
+		FEdGraphPinType IntPinType;
+		IntPinType.PinCategory = UEdGraphSchema_K2::PC_Int;
+		FStructureEditorUtils::AddVariable(Structure, IntPinType);
+		if (TArray<FStructVariableDescription>* Variables = FStructureEditorUtils::GetVarDescPtr(Structure))
+		{
+			if (Variables->Num() > 0)
+			{
+				(*Variables)[0].FriendlyName = TEXT("SmokeValue");
+				(*Variables)[0].VarName = FName(TEXT("SmokeValue"));
+			}
+		}
+		FStructureEditorUtils::CompileStructure(Structure);
+		Package->SetDirtyFlag(false);
+		return Structure;
 	}
 
 	static UWidgetBlueprint* MakeReviewWidgetBlueprint(const FString& Prefix)
@@ -660,18 +720,20 @@ bool FBlueprintHelperReviewPresenterOverlayBuildsDeterministicReviewListTest::Ru
 				*OverlayCase.DebugSurfaceName));
 			bSawFallbackGeometry |= Message.Contains(TEXT("mode=fallback_geometry"));
 			bSawRow0 |= Message.Contains(FString::Printf(
-				TEXT("ReviewFrameGeometry change=tx_%s_overlay_0 surface=%s mode=slate_row result=pending reason=geometry_not_ready"),
+				TEXT("ReviewRowHighlight change=tx_%s_overlay_0 surface=%s target=\"%s:Target0\" result=pending reason=row_not_visible"),
 				*OverlayCase.ChangePrefix,
-				*OverlayCase.SurfaceToken));
+				*OverlayCase.DebugSurfaceName,
+				*OverlayCase.TargetKind));
 			bSawRow1 |= Message.Contains(FString::Printf(
-				TEXT("ReviewFrameGeometry change=tx_%s_overlay_1 surface=%s mode=slate_row result=pending reason=geometry_not_ready"),
+				TEXT("ReviewRowHighlight change=tx_%s_overlay_1 surface=%s target=\"%s:Target1\" result=pending reason=row_not_visible"),
 				*OverlayCase.ChangePrefix,
-				*OverlayCase.SurfaceToken));
+				*OverlayCase.DebugSurfaceName,
+				*OverlayCase.TargetKind));
 		}
 		TestTrue(FString::Printf(TEXT("%s overlay logs route debug"), *OverlayCase.DebugSurfaceName), bSawRoute);
 		TestFalse(FString::Printf(TEXT("%s overlay does not log fake geometry"), *OverlayCase.DebugSurfaceName), bSawFallbackGeometry);
-		TestTrue(FString::Printf(TEXT("%s overlay logs pending row 0"), *OverlayCase.DebugSurfaceName), bSawRow0);
-		TestTrue(FString::Printf(TEXT("%s overlay logs pending row 1"), *OverlayCase.DebugSurfaceName), bSawRow1);
+		TestTrue(FString::Printf(TEXT("%s row highlight logs pending row 0"), *OverlayCase.DebugSurfaceName), bSawRow0);
+		TestTrue(FString::Printf(TEXT("%s row highlight logs pending row 1"), *OverlayCase.DebugSurfaceName), bSawRow1);
 	}
 	return true;
 }
@@ -795,7 +857,7 @@ bool FBlueprintHelperReviewPresenterOverlayHidesBuiltInPanelFallbackWithoutSlate
 			&Overlay.Get() == &SNullWidget::NullWidget.Get());
 
 		bool bSawRoute = false;
-		bool bSawHiddenGeometry = false;
+		bool bSawPendingRowHighlight = false;
 		bool bSawShownReviewList = false;
 		for (const FString& Message : DebugMessages)
 		{
@@ -803,17 +865,305 @@ bool FBlueprintHelperReviewPresenterOverlayHidesBuiltInPanelFallbackWithoutSlate
 				TEXT("ReviewRoute change=tx_%s_no_geometry surface=%s"),
 				*OverlayCase.ChangePrefix,
 				*OverlayCase.DebugSurfaceName));
-			bSawHiddenGeometry |= Message.Contains(FString::Printf(
-				TEXT("ReviewFrameGeometry change=tx_%s_no_geometry surface=%s mode=slate_row result=pending reason=geometry_not_ready"),
+			bSawPendingRowHighlight |= Message.Contains(FString::Printf(
+				TEXT("ReviewRowHighlight change=tx_%s_no_geometry surface=%s target=\"%s:Target\" result=pending reason=row_not_visible"),
 				*OverlayCase.ChangePrefix,
-				*OverlayCase.SurfaceToken));
+				*OverlayCase.DebugSurfaceName,
+				*OverlayCase.TargetKind));
 			bSawShownReviewList |= Message.Contains(TEXT("mode=review_list result=shown"));
 		}
 		TestTrue(FString::Printf(TEXT("%s overlay logs route debug"), *OverlayCase.DebugSurfaceName), bSawRoute);
-		TestTrue(FString::Printf(TEXT("%s overlay logs pending no-geometry state"), *OverlayCase.DebugSurfaceName), bSawHiddenGeometry);
+		TestTrue(FString::Printf(TEXT("%s overlay logs pending no-geometry state"), *OverlayCase.DebugSurfaceName), bSawPendingRowHighlight);
 		TestFalse(FString::Printf(TEXT("%s overlay does not show text review-list fallback"), *OverlayCase.DebugSurfaceName), bSawShownReviewList);
 	}
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewNonGraphPanelsDoNotUseAnchorOverlayTest,
+	"BlueprintHelper.Review.UI.NonGraphPanelsDoNotUseAnchorOverlay",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewNonGraphPanelsDoNotUseAnchorOverlayTest::RunTest(const FString& Parameters)
+{
+	struct FOverlayCase
+	{
+		EBlueprintHelperReviewSurface Surface;
+		EBlueprintHelperReviewAssetKind AssetKind;
+		FString DebugSurfaceName;
+		FString SurfaceToken;
+		FString ChangePrefix;
+		FString TargetKind;
+		TFunction<TSharedRef<SWidget>(const FBlueprintHelperReviewPanelSurfacePresenterArgs&)> BuildOverlay;
+	};
+
+	const TArray<FOverlayCase> Cases = {
+		{
+			EBlueprintHelperReviewSurface::Components,
+			EBlueprintHelperReviewAssetKind::Blueprint,
+			TEXT("Components"),
+			TEXT("components"),
+			TEXT("component_row_highlight"),
+			TEXT("component"),
+			[](const FBlueprintHelperReviewPanelSurfacePresenterArgs& Args)
+			{
+				return FBlueprintHelperReviewBlueprintComponentsPresenter::BuildOverlay(Args);
+			}
+		},
+		{
+			EBlueprintHelperReviewSurface::MyBlueprint,
+			EBlueprintHelperReviewAssetKind::Blueprint,
+			TEXT("MyBlueprint"),
+			TEXT("my_blueprint"),
+			TEXT("myblueprint_row_highlight"),
+			TEXT("blueprint_variable"),
+			[](const FBlueprintHelperReviewPanelSurfacePresenterArgs& Args)
+			{
+				return FBlueprintHelperReviewMyBlueprintPresenter::BuildOverlay(Args);
+			}
+		},
+		{
+			EBlueprintHelperReviewSurface::Details,
+			EBlueprintHelperReviewAssetKind::Blueprint,
+			TEXT("Details"),
+			TEXT("details"),
+			TEXT("details_row_highlight"),
+			TEXT("class_default_property"),
+			[](const FBlueprintHelperReviewPanelSurfacePresenterArgs& Args)
+			{
+				return FBlueprintHelperReviewObjectDetailsPresenter::BuildOverlay(Args);
+			}
+		},
+		{
+			EBlueprintHelperReviewSurface::UMGWidgetTree,
+			EBlueprintHelperReviewAssetKind::WidgetBlueprint,
+			TEXT("UMGWidgetTree"),
+			TEXT("umg_widget_tree"),
+			TEXT("umg_row_highlight"),
+			TEXT("umg_widget"),
+			[](const FBlueprintHelperReviewPanelSurfacePresenterArgs& Args)
+			{
+				return FBlueprintHelperReviewUMGWidgetTreePresenter::BuildOverlay(Args);
+			}
+		}
+	};
+
+	for (const FOverlayCase& OverlayCase : Cases)
+	{
+		TArray<TSharedPtr<FBlueprintHelperReviewVisibleChange>> Items;
+		FBlueprintHelperReviewVisibleChange Change;
+		Change.ChangeId = FString::Printf(TEXT("tx_%s"), *OverlayCase.ChangePrefix);
+		Change.AssetPath = TEXT("/Game/BlueprintHelper/Smoke/ReviewAsset");
+		Change.DisplayLabel = TEXT("SmokeTarget");
+		Change.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
+
+		FBlueprintHelperReviewAtomicTarget Target;
+		Target.Surface = OverlayCase.Surface;
+		Target.TargetKind = OverlayCase.TargetKind;
+		Target.TargetKey = FString::Printf(TEXT("%s:SmokeTarget"), *OverlayCase.TargetKind);
+		Target.DisplayLabel = TEXT("SmokeTarget");
+		Change.AtomicTargets.Add(Target);
+		Items.Add(MakeShared<FBlueprintHelperReviewVisibleChange>(Change));
+
+		TArray<FString> DebugMessages;
+		FBlueprintHelperReviewAssetContext Context;
+		Context.AssetKind = OverlayCase.AssetKind;
+		FBlueprintHelperReviewPanelSurfacePresenterArgs Args;
+		Args.AssetContext = &Context;
+		Args.ChangeItems = &Items;
+		Args.SelectedChange = Items[0];
+		Args.AddDebugMessage = [&DebugMessages](const FString& Message)
+		{
+			DebugMessages.Add(Message);
+		};
+		Args.OnAcceptChange = [](TSharedPtr<FBlueprintHelperReviewVisibleChange>)
+		{
+			return FReply::Handled();
+		};
+		Args.OnRejectChange = [](TSharedPtr<FBlueprintHelperReviewVisibleChange>)
+		{
+			return FReply::Handled();
+		};
+		Args.GetChangeColor = [](EBlueprintHelperReviewChangeKind)
+		{
+			return FSlateColor(FLinearColor::Yellow);
+		};
+		Args.GetSelectedDiffColor = []()
+		{
+			return FSlateColor(FLinearColor::Yellow);
+		};
+		Args.ResolveRowGeometry.BindLambda([](
+			const FBlueprintHelperReviewVisibleChange& ChangeToResolve,
+			EBlueprintHelperReviewSurface,
+			FBlueprintHelperReviewSurfaceGeometryAnchor& OutAnchor)
+		{
+			OutAnchor.bIsValid = true;
+			OutAnchor.Position = FVector2D(12.0f, 24.0f);
+			OutAnchor.Size = FVector2D(260.0f, 32.0f);
+			OutAnchor.TargetText = ChangeToResolve.DisplayLabel;
+			OutAnchor.Reason = TEXT("test_stable_row");
+			return true;
+		});
+
+		TSharedRef<SWidget> Overlay = OverlayCase.BuildOverlay(Args);
+		TestTrue(FString::Printf(TEXT("%s row highlight does not render overlay widget"), *OverlayCase.DebugSurfaceName),
+			&Overlay.Get() == &SNullWidget::NullWidget.Get());
+
+		bool bSawRowHighlight = false;
+		bool bSawFrameGeometry = false;
+		bool bSawReviewList = false;
+		for (const FString& Message : DebugMessages)
+		{
+			bSawRowHighlight |= Message.Contains(FString::Printf(
+				TEXT("ReviewRowHighlight change=tx_%s surface=%s target=\"%s:SmokeTarget\" result=shown mode=row_background"),
+				*OverlayCase.ChangePrefix,
+				*OverlayCase.DebugSurfaceName,
+				*OverlayCase.TargetKind));
+			bSawFrameGeometry |= Message.Contains(TEXT("ReviewFrameGeometry"));
+			bSawReviewList |= Message.Contains(TEXT("mode=review_list"));
+		}
+
+		TestTrue(FString::Printf(TEXT("%s logs row background highlight"), *OverlayCase.DebugSurfaceName), bSawRowHighlight);
+		TestFalse(FString::Printf(TEXT("%s does not log frame geometry"), *OverlayCase.DebugSurfaceName), bSawFrameGeometry);
+		TestFalse(FString::Printf(TEXT("%s does not show review-list fallback"), *OverlayCase.DebugSurfaceName), bSawReviewList);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewMissingRowLogsRowHighlightPendingTest,
+	"BlueprintHelper.Review.UI.MissingRowLogsRowHighlightPending",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewMissingRowLogsRowHighlightPendingTest::RunTest(const FString& Parameters)
+{
+	TArray<TSharedPtr<FBlueprintHelperReviewVisibleChange>> Items;
+	FBlueprintHelperReviewVisibleChange Change;
+	Change.ChangeId = TEXT("tx_myblueprint_missing_row_highlight");
+	Change.AssetPath = TEXT("/Game/BlueprintHelper/Smoke/ReviewAsset");
+	Change.DisplayLabel = TEXT("SmokeHP");
+	Change.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.Surface = EBlueprintHelperReviewSurface::MyBlueprint;
+	Target.TargetKind = TEXT("blueprint_variable");
+	Target.TargetKey = TEXT("blueprint_variable:SmokeHP");
+	Target.DisplayLabel = TEXT("SmokeHP");
+	Change.AtomicTargets.Add(Target);
+	Items.Add(MakeShared<FBlueprintHelperReviewVisibleChange>(Change));
+
+	TArray<FString> DebugMessages;
+	FBlueprintHelperReviewAssetContext Context;
+	Context.AssetKind = EBlueprintHelperReviewAssetKind::Blueprint;
+	FBlueprintHelperReviewPanelSurfacePresenterArgs Args;
+	Args.AssetContext = &Context;
+	Args.ChangeItems = &Items;
+	Args.SelectedChange = Items[0];
+	Args.AddDebugMessage = [&DebugMessages](const FString& Message)
+	{
+		DebugMessages.Add(Message);
+	};
+	Args.GetChangeColor = [](EBlueprintHelperReviewChangeKind)
+	{
+		return FSlateColor(FLinearColor::Yellow);
+	};
+	Args.GetSelectedDiffColor = []()
+	{
+		return FSlateColor(FLinearColor::Yellow);
+	};
+	Args.ResolveRowGeometry.BindLambda([](
+		const FBlueprintHelperReviewVisibleChange&,
+		EBlueprintHelperReviewSurface,
+		FBlueprintHelperReviewSurfaceGeometryAnchor& OutAnchor)
+	{
+		OutAnchor.Reason = TEXT("row_not_visible");
+		return false;
+	});
+
+	TSharedRef<SWidget> Overlay = FBlueprintHelperReviewMyBlueprintPresenter::BuildOverlay(Args);
+	TestTrue(TEXT("missing row does not render overlay widget"),
+		&Overlay.Get() == &SNullWidget::NullWidget.Get());
+
+	bool bSawPendingRowHighlight = false;
+	bool bSawReviewList = false;
+	for (const FString& Message : DebugMessages)
+	{
+		bSawPendingRowHighlight |= Message.Contains(
+			TEXT("ReviewRowHighlight change=tx_myblueprint_missing_row_highlight surface=MyBlueprint target=\"blueprint_variable:SmokeHP\" result=pending reason=row_not_visible"));
+		bSawReviewList |= Message.Contains(TEXT("mode=review_list"));
+	}
+
+	TestTrue(TEXT("missing row logs row highlight pending"), bSawPendingRowHighlight);
+	TestFalse(TEXT("missing row does not render review-list fallback"), bSawReviewList);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewDebugDedupesRepeatedGeometryPendingMessagesTest,
+	"BlueprintHelper.Review.UI.DebugDedupesRepeatedGeometryPendingMessages",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewDebugDedupesRepeatedGeometryPendingMessagesTest::RunTest(const FString& Parameters)
+{
+	TArray<TSharedPtr<FBlueprintHelperReviewVisibleChange>> Items;
+	FBlueprintHelperReviewVisibleChange Change;
+	Change.ChangeId = TEXT("tx_dedupe_row_highlight_pending");
+	Change.AssetPath = TEXT("/Game/BlueprintHelper/Smoke/ReviewAsset");
+	Change.DisplayLabel = TEXT("SmokeHP");
+	Change.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.Surface = EBlueprintHelperReviewSurface::MyBlueprint;
+	Target.TargetKind = TEXT("blueprint_variable");
+	Target.TargetKey = TEXT("blueprint_variable:SmokeHP");
+	Target.DisplayLabel = TEXT("SmokeHP");
+	Change.AtomicTargets.Add(Target);
+	Items.Add(MakeShared<FBlueprintHelperReviewVisibleChange>(Change));
+
+	TArray<FString> DebugMessages;
+	FBlueprintHelperReviewAssetContext Context;
+	Context.AssetKind = EBlueprintHelperReviewAssetKind::Blueprint;
+	FBlueprintHelperReviewPanelSurfacePresenterArgs Args;
+	Args.AssetContext = &Context;
+	Args.ChangeItems = &Items;
+	Args.SelectedChange = Items[0];
+	Args.AddDebugMessage = [&DebugMessages](const FString& Message)
+	{
+		DebugMessages.Add(Message);
+	};
+	Args.GetChangeColor = [](EBlueprintHelperReviewChangeKind)
+	{
+		return FSlateColor(FLinearColor::Yellow);
+	};
+	Args.GetSelectedDiffColor = []()
+	{
+		return FSlateColor(FLinearColor::Yellow);
+	};
+	Args.ResolveRowGeometry.BindLambda([](
+		const FBlueprintHelperReviewVisibleChange&,
+		EBlueprintHelperReviewSurface,
+		FBlueprintHelperReviewSurfaceGeometryAnchor& OutAnchor)
+	{
+		OutAnchor.Reason = TEXT("row_not_visible");
+		return false;
+	});
+
+	FBlueprintHelperReviewMyBlueprintPresenter::BuildOverlay(Args);
+	FBlueprintHelperReviewMyBlueprintPresenter::BuildOverlay(Args);
+
+	int32 PendingMessageCount = 0;
+	for (const FString& Message : DebugMessages)
+	{
+		if (Message.Contains(
+			TEXT("ReviewRowHighlight change=tx_dedupe_row_highlight_pending surface=MyBlueprint target=\"blueprint_variable:SmokeHP\" result=pending reason=row_not_visible")))
+		{
+			++PendingMessageCount;
+		}
+	}
+
+	TestEqual(TEXT("duplicate pending row highlight debug message is emitted once"), PendingMessageCount, 1);
 	return true;
 }
 
@@ -836,54 +1186,6 @@ bool FBlueprintHelperReviewPresenterOverlayUsesStableSlateRowGeometryTest::RunTe
 	};
 
 	const TArray<FOverlayCase> Cases = {
-		{
-			EBlueprintHelperReviewSurface::Components,
-			EBlueprintHelperReviewAssetKind::Blueprint,
-			TEXT("Components"),
-			TEXT("components"),
-			TEXT("component"),
-			TEXT("component"),
-			[](const FBlueprintHelperReviewPanelSurfacePresenterArgs& Args)
-			{
-				return FBlueprintHelperReviewBlueprintComponentsPresenter::BuildOverlay(Args);
-			}
-		},
-		{
-			EBlueprintHelperReviewSurface::MyBlueprint,
-			EBlueprintHelperReviewAssetKind::Blueprint,
-			TEXT("MyBlueprint"),
-			TEXT("my_blueprint"),
-			TEXT("myblueprint"),
-			TEXT("signature"),
-			[](const FBlueprintHelperReviewPanelSurfacePresenterArgs& Args)
-			{
-				return FBlueprintHelperReviewMyBlueprintPresenter::BuildOverlay(Args);
-			}
-		},
-		{
-			EBlueprintHelperReviewSurface::Details,
-			EBlueprintHelperReviewAssetKind::Blueprint,
-			TEXT("Details"),
-			TEXT("details"),
-			TEXT("details"),
-			TEXT("class_default_property"),
-			[](const FBlueprintHelperReviewPanelSurfacePresenterArgs& Args)
-			{
-				return FBlueprintHelperReviewObjectDetailsPresenter::BuildOverlay(Args);
-			}
-		},
-		{
-			EBlueprintHelperReviewSurface::UMGWidgetTree,
-			EBlueprintHelperReviewAssetKind::WidgetBlueprint,
-			TEXT("UMGWidgetTree"),
-			TEXT("umg_widget_tree"),
-			TEXT("umg"),
-			TEXT("umg_widget"),
-			[](const FBlueprintHelperReviewPanelSurfacePresenterArgs& Args)
-			{
-				return FBlueprintHelperReviewUMGWidgetTreePresenter::BuildOverlay(Args);
-			}
-		},
 		{
 			EBlueprintHelperReviewSurface::DataTable,
 			EBlueprintHelperReviewAssetKind::DataTable,
@@ -972,8 +1274,8 @@ bool FBlueprintHelperReviewPresenterOverlayUsesStableSlateRowGeometryTest::RunTe
 		});
 
 		TSharedRef<SWidget> Overlay = OverlayCase.BuildOverlay(Args);
-		TestTrue(FString::Printf(TEXT("%s stable geometry overlay builds a widget"), *OverlayCase.DebugSurfaceName),
-			&Overlay.Get() != &SNullWidget::NullWidget.Get());
+		TestTrue(FString::Printf(TEXT("%s row highlight overlay remains widget-free"), *OverlayCase.DebugSurfaceName),
+			&Overlay.Get() == &SNullWidget::NullWidget.Get());
 
 		bool bSawRow0 = false;
 		bool bSawRow1 = false;
@@ -982,22 +1284,20 @@ bool FBlueprintHelperReviewPresenterOverlayUsesStableSlateRowGeometryTest::RunTe
 		{
 			bSawReviewList |= Message.Contains(TEXT("mode=review_list"));
 			bSawRow0 |= Message.Contains(FString::Printf(
-				TEXT("ReviewFrameGeometry change=tx_%s_slate_row_0 surface=%s mode=slate_row result=shown"),
+				TEXT("ReviewRowHighlight change=tx_%s_slate_row_0 surface=%s target=\"%s:Target0\" result=shown mode=row_background"),
 				*OverlayCase.ChangePrefix,
-				*OverlayCase.SurfaceToken))
-				&& Message.Contains(TEXT("pos=(2.0,14.0)"))
-				&& Message.Contains(TEXT("size=(280.0,52.0)"));
+				*OverlayCase.DebugSurfaceName,
+				*OverlayCase.TargetKind));
 			bSawRow1 |= Message.Contains(FString::Printf(
-				TEXT("ReviewFrameGeometry change=tx_%s_slate_row_1 surface=%s mode=slate_row result=shown"),
+				TEXT("ReviewRowHighlight change=tx_%s_slate_row_1 surface=%s target=\"%s:Target1\" result=shown mode=row_background"),
 				*OverlayCase.ChangePrefix,
-				*OverlayCase.SurfaceToken))
-				&& Message.Contains(TEXT("pos=(2.0,58.0)"))
-				&& Message.Contains(TEXT("size=(280.0,52.0)"));
+				*OverlayCase.DebugSurfaceName,
+				*OverlayCase.TargetKind));
 		}
 
 		TestFalse(FString::Printf(TEXT("%s stable geometry does not fall back to review-list"), *OverlayCase.DebugSurfaceName), bSawReviewList);
-		TestTrue(FString::Printf(TEXT("%s logs stable slate row 0"), *OverlayCase.DebugSurfaceName), bSawRow0);
-		TestTrue(FString::Printf(TEXT("%s logs stable slate row 1"), *OverlayCase.DebugSurfaceName), bSawRow1);
+		TestTrue(FString::Printf(TEXT("%s logs row background highlight 0"), *OverlayCase.DebugSurfaceName), bSawRow0);
+		TestTrue(FString::Printf(TEXT("%s logs row background highlight 1"), *OverlayCase.DebugSurfaceName), bSawRow1);
 	}
 
 	return true;
@@ -1049,6 +1349,308 @@ bool FBlueprintHelperReviewDiffFrameFillUsesChangeColorTest::RunTest(const FStri
 		FBlueprintHelperReviewSurfaceFrameBuilder::GetDiffFrameFillColor(AddedFrameColor, false, false);
 	TestTrue(TEXT("no-fill diff frame remains transparent"),
 		NoFill.Equals(FLinearColor::Transparent));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewRowHighlightAlphaIsPointSixTest,
+	"BlueprintHelper.Review.UI.RowHighlightAlphaIsPointSix",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewRowHighlightAlphaIsPointSixTest::RunTest(const FString& Parameters)
+{
+	const FLinearColor SourceColor(0.05f, 0.75f, 0.22f, 1.0f);
+	const FLinearColor FillColor =
+		FBlueprintHelperReviewRowHighlightModel::GetRowHighlightFillColor(SourceColor);
+
+	TestTrue(TEXT("row highlight fill alpha is exactly 0.6"),
+		FMath::IsNearlyEqual(FillColor.A, 0.6f));
+	TestTrue(TEXT("row highlight preserves change color channels"),
+		FMath::IsNearlyEqual(FillColor.R, SourceColor.R)
+		&& FMath::IsNearlyEqual(FillColor.G, SourceColor.G)
+		&& FMath::IsNearlyEqual(FillColor.B, SourceColor.B));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewSelectedRowShowsAcceptRejectActionsTest,
+	"BlueprintHelper.Review.UI.SelectedRowShowsAcceptRejectActions",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewSelectedRowShowsAcceptRejectActionsTest::RunTest(const FString& Parameters)
+{
+	TArray<TSharedPtr<FBlueprintHelperReviewVisibleChange>> Items;
+	for (const TCHAR* Name : {TEXT("SmokeHP"), TEXT("SmokeMP")})
+	{
+		FBlueprintHelperReviewVisibleChange Change;
+		Change.ChangeId = FString::Printf(TEXT("tx_action_%s"), Name);
+		Change.AssetPath = TEXT("/Game/BlueprintHelper/Smoke/ReviewAsset");
+		Change.DisplayLabel = Name;
+		Change.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
+		FBlueprintHelperReviewAtomicTarget Target;
+		Target.Surface = EBlueprintHelperReviewSurface::MyBlueprint;
+		Target.TargetKind = TEXT("blueprint_variable");
+		Target.TargetKey = FString::Printf(TEXT("blueprint_variable:%s"), Name);
+		Target.DisplayLabel = Name;
+		Change.AtomicTargets.Add(Target);
+		Items.Add(MakeShared<FBlueprintHelperReviewVisibleChange>(Change));
+	}
+
+	FBlueprintHelperReviewAssetContext Context;
+	Context.AssetPath = TEXT("/Game/BlueprintHelper/Smoke/ReviewAsset");
+	Context.AssetKind = EBlueprintHelperReviewAssetKind::Blueprint;
+	FBlueprintHelperReviewPanelSurfacePresenterArgs Args;
+	Args.AssetContext = &Context;
+	Args.ChangeItems = &Items;
+	Args.SelectedChange = Items[0];
+	Args.GetChangeColor = [](EBlueprintHelperReviewChangeKind)
+	{
+		return FSlateColor(FLinearColor::Yellow);
+	};
+	Args.ResolveRowGeometry.BindLambda([](
+		const FBlueprintHelperReviewVisibleChange& Change,
+		EBlueprintHelperReviewSurface,
+		FBlueprintHelperReviewSurfaceGeometryAnchor& OutAnchor)
+	{
+		OutAnchor.bIsValid = true;
+		OutAnchor.TargetText = Change.DisplayLabel;
+		OutAnchor.Size = FVector2D(200.0f, 24.0f);
+		return true;
+	});
+
+	FBlueprintHelperReviewMyBlueprintPresenter::BuildOverlay(Args);
+
+	TestTrue(TEXT("selected row exposes actions"),
+		FBlueprintHelperReviewRowHighlightModel::GetRowActionsVisibility(
+			Context.AssetPath,
+			EBlueprintHelperReviewSurface::MyBlueprint,
+			TEXT("blueprint_variable:SmokeHP")) == EVisibility::Visible);
+	TestTrue(TEXT("unselected row hides actions"),
+		FBlueprintHelperReviewRowHighlightModel::GetRowActionsVisibility(
+			Context.AssetPath,
+			EBlueprintHelperReviewSurface::MyBlueprint,
+			TEXT("blueprint_variable:SmokeMP")) == EVisibility::Collapsed);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewEmptySearchTextDoesNotMatchAnyReviewTargetTest,
+	"BlueprintHelper.Review.UI.EmptySearchTextDoesNotMatchAnyReviewTarget",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewEmptySearchTextDoesNotMatchAnyReviewTargetTest::RunTest(const FString& Parameters)
+{
+	TArray<TSharedPtr<FBlueprintHelperReviewVisibleChange>> Items;
+	FBlueprintHelperReviewVisibleChange Change;
+	Change.ChangeId = TEXT("tx_empty_search_guard");
+	Change.AssetPath = TEXT("/Game/BlueprintHelper/Smoke/ReviewAsset");
+	Change.DisplayLabel = TEXT("SmokeHP");
+	Change.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.Surface = EBlueprintHelperReviewSurface::MyBlueprint;
+	Target.TargetKind = TEXT("blueprint_variable");
+	Target.TargetKey = TEXT("blueprint_variable:SmokeHP");
+	Target.DisplayLabel = TEXT("SmokeHP");
+	Change.AtomicTargets.Add(Target);
+	Items.Add(MakeShared<FBlueprintHelperReviewVisibleChange>(Change));
+
+	FBlueprintHelperReviewAssetContext Context;
+	Context.AssetPath = Change.AssetPath;
+	Context.AssetKind = EBlueprintHelperReviewAssetKind::Blueprint;
+	FBlueprintHelperReviewPanelSurfacePresenterArgs Args;
+	Args.AssetContext = &Context;
+	Args.ChangeItems = &Items;
+	Args.SelectedChange = Items[0];
+	Args.GetChangeColor = [](EBlueprintHelperReviewChangeKind)
+	{
+		return FSlateColor(FLinearColor::Yellow);
+	};
+	FBlueprintHelperReviewMyBlueprintPresenter::BuildOverlay(Args);
+
+	TestTrue(TEXT("empty row search text has transparent background"),
+		FBlueprintHelperReviewRowHighlightModel::GetRowBackgroundColor(
+			Context.AssetPath,
+			EBlueprintHelperReviewSurface::MyBlueprint,
+			FString()).GetSpecifiedColor().Equals(FLinearColor::Transparent));
+	TestTrue(TEXT("empty row search text has no actions"),
+		FBlueprintHelperReviewRowHighlightModel::GetRowActionsVisibility(
+			Context.AssetPath,
+			EBlueprintHelperReviewSurface::MyBlueprint,
+			FString()) == EVisibility::Collapsed);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewSectionRowsNeverHighlightFromEmptySearchTextTest,
+	"BlueprintHelper.Review.UI.SectionRowsNeverHighlightFromEmptySearchText",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewSectionRowsNeverHighlightFromEmptySearchTextTest::RunTest(const FString& Parameters)
+{
+	const FString AssetPath = TEXT("/Game/BlueprintHelper/Smoke/ReviewAssetSection");
+	TArray<TSharedPtr<FBlueprintHelperReviewVisibleChange>> Items;
+	FBlueprintHelperReviewVisibleChange Change;
+	Change.ChangeId = TEXT("tx_section_guard");
+	Change.AssetPath = AssetPath;
+	Change.DisplayLabel = TEXT("SmokeHP");
+	Change.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.Surface = EBlueprintHelperReviewSurface::MyBlueprint;
+	Target.TargetKind = TEXT("blueprint_variable");
+	Target.TargetKey = TEXT("blueprint_variable:SmokeHP");
+	Change.AtomicTargets.Add(Target);
+	Items.Add(MakeShared<FBlueprintHelperReviewVisibleChange>(Change));
+
+	FBlueprintHelperReviewAssetContext Context;
+	Context.AssetPath = AssetPath;
+	Context.AssetKind = EBlueprintHelperReviewAssetKind::Blueprint;
+	FBlueprintHelperReviewPanelSurfacePresenterArgs Args;
+	Args.AssetContext = &Context;
+	Args.ChangeItems = &Items;
+	Args.SelectedChange = Items[0];
+	Args.GetChangeColor = [](EBlueprintHelperReviewChangeKind)
+	{
+		return FSlateColor(FLinearColor::Yellow);
+	};
+	FBlueprintHelperReviewMyBlueprintPresenter::BuildOverlay(Args);
+
+	TestTrue(TEXT("section rows use empty search text and remain transparent to review matching"),
+		FBlueprintHelperReviewRowHighlightModel::GetRowBackgroundColor(
+			AssetPath,
+			EBlueprintHelperReviewSurface::MyBlueprint,
+			FString()).GetSpecifiedColor().Equals(FLinearColor::Transparent));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewAssetRootSelectionHighlightsSameAssetRowsTest,
+	"BlueprintHelper.Review.UI.AssetRootSelectionHighlightsSameAssetRows",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewAssetRootSelectionHighlightsSameAssetRowsTest::RunTest(const FString& Parameters)
+{
+	const FString AssetPath = TEXT("/Game/BlueprintHelper/Smoke/BP_SmokeActor");
+	TArray<TSharedPtr<FBlueprintHelperReviewVisibleChange>> Items;
+
+	FBlueprintHelperReviewVisibleChange RootChange;
+	RootChange.ChangeId = TEXT("tx_asset_root");
+	RootChange.AssetPath = AssetPath;
+	RootChange.ChangeKind = EBlueprintHelperReviewChangeKind::Added;
+	RootChange.bIsAssetLifecycleRoot = true;
+	FBlueprintHelperReviewAtomicTarget RootTarget;
+	RootTarget.Surface = EBlueprintHelperReviewSurface::Details;
+	RootTarget.TargetKind = TEXT("asset_factory");
+	RootTarget.TargetKey = TEXT("asset_factory:create_asset");
+	RootTarget.AssetPath = AssetPath;
+	RootChange.AtomicTargets.Add(RootTarget);
+	Items.Add(MakeShared<FBlueprintHelperReviewVisibleChange>(RootChange));
+
+	FBlueprintHelperReviewVisibleChange VariableChange;
+	VariableChange.ChangeId = TEXT("tx_same_asset_variable");
+	VariableChange.AssetPath = AssetPath;
+	VariableChange.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
+	FBlueprintHelperReviewAtomicTarget VariableTarget;
+	VariableTarget.Surface = EBlueprintHelperReviewSurface::MyBlueprint;
+	VariableTarget.TargetKind = TEXT("blueprint_variable");
+	VariableTarget.TargetKey = TEXT("blueprint_variable:SmokeHP");
+	VariableTarget.DisplayLabel = TEXT("SmokeHP");
+	VariableChange.AtomicTargets.Add(VariableTarget);
+	Items.Add(MakeShared<FBlueprintHelperReviewVisibleChange>(VariableChange));
+
+	FBlueprintHelperReviewVisibleChange OtherAssetChange = VariableChange;
+	OtherAssetChange.ChangeId = TEXT("tx_other_asset_variable");
+	OtherAssetChange.AssetPath = TEXT("/Game/BlueprintHelper/Smoke/BP_OtherActor");
+	Items.Add(MakeShared<FBlueprintHelperReviewVisibleChange>(OtherAssetChange));
+
+	FBlueprintHelperReviewAssetContext Context;
+	Context.AssetPath = AssetPath;
+	Context.AssetKind = EBlueprintHelperReviewAssetKind::Blueprint;
+	FBlueprintHelperReviewPanelSurfacePresenterArgs Args;
+	Args.AssetContext = &Context;
+	Args.ChangeItems = &Items;
+	Args.SelectedChange = Items[0];
+	Args.GetChangeColor = [](EBlueprintHelperReviewChangeKind)
+	{
+		return FSlateColor(FLinearColor::Yellow);
+	};
+	FBlueprintHelperReviewMyBlueprintPresenter::BuildOverlay(Args);
+
+	TestTrue(TEXT("selected asset root still highlights same-asset MyBlueprint rows"),
+		FBlueprintHelperReviewRowHighlightModel::GetRowBackgroundColor(
+			AssetPath,
+			EBlueprintHelperReviewSurface::MyBlueprint,
+			TEXT("SmokeHP")).GetSpecifiedColor().A > 0.0f);
+	TestTrue(TEXT("same-asset child row actions stay hidden because root is selected"),
+		FBlueprintHelperReviewRowHighlightModel::GetRowActionsVisibility(
+			AssetPath,
+			EBlueprintHelperReviewSurface::MyBlueprint,
+			TEXT("SmokeHP")) == EVisibility::Collapsed);
+	TestTrue(TEXT("other asset has no highlight state"),
+		FBlueprintHelperReviewRowHighlightModel::GetRowBackgroundColor(
+			TEXT("/Game/BlueprintHelper/Smoke/BP_OtherActor"),
+			EBlueprintHelperReviewSurface::MyBlueprint,
+			TEXT("SmokeHP")).GetSpecifiedColor().Equals(FLinearColor::Transparent));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewWidgetTreeAssetRootSelectionHighlightsWidgetRowsTest,
+	"BlueprintHelper.Review.UI.WidgetTreeAssetRootSelectionHighlightsWidgetRows",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewWidgetTreeAssetRootSelectionHighlightsWidgetRowsTest::RunTest(const FString& Parameters)
+{
+	const FString AssetPath = TEXT("/Game/BlueprintHelper/Smoke/WBP_Smoke");
+	TArray<TSharedPtr<FBlueprintHelperReviewVisibleChange>> Items;
+
+	FBlueprintHelperReviewVisibleChange RootChange;
+	RootChange.ChangeId = TEXT("tx_widget_asset_root");
+	RootChange.AssetPath = AssetPath;
+	RootChange.ChangeKind = EBlueprintHelperReviewChangeKind::Added;
+	RootChange.bIsAssetLifecycleRoot = true;
+	FBlueprintHelperReviewAtomicTarget RootTarget;
+	RootTarget.Surface = EBlueprintHelperReviewSurface::Details;
+	RootTarget.TargetKind = TEXT("asset_factory");
+	RootTarget.TargetKey = TEXT("asset_factory:create_asset");
+	RootTarget.AssetPath = AssetPath;
+	RootChange.AtomicTargets.Add(RootTarget);
+	Items.Add(MakeShared<FBlueprintHelperReviewVisibleChange>(RootChange));
+
+	FBlueprintHelperReviewVisibleChange WidgetChange;
+	WidgetChange.ChangeId = TEXT("tx_same_widget_tree_row");
+	WidgetChange.AssetPath = AssetPath;
+	WidgetChange.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
+	FBlueprintHelperReviewAtomicTarget WidgetTarget;
+	WidgetTarget.Surface = EBlueprintHelperReviewSurface::UMGWidgetTree;
+	WidgetTarget.TargetKind = TEXT("umg_widget");
+	WidgetTarget.TargetKey = TEXT("umg_widget:SmokeText");
+	WidgetTarget.DisplayLabel = TEXT("SmokeText");
+	WidgetChange.AtomicTargets.Add(WidgetTarget);
+	Items.Add(MakeShared<FBlueprintHelperReviewVisibleChange>(WidgetChange));
+
+	FBlueprintHelperReviewAssetContext Context;
+	Context.AssetPath = AssetPath;
+	Context.AssetKind = EBlueprintHelperReviewAssetKind::WidgetBlueprint;
+	FBlueprintHelperReviewPanelSurfacePresenterArgs Args;
+	Args.AssetContext = &Context;
+	Args.ChangeItems = &Items;
+	Args.SelectedChange = Items[0];
+	Args.GetChangeColor = [](EBlueprintHelperReviewChangeKind)
+	{
+		return FSlateColor(FLinearColor::Yellow);
+	};
+	FBlueprintHelperReviewUMGWidgetTreePresenter::BuildOverlay(Args);
+
+	TestTrue(TEXT("selected Widget Blueprint asset root still highlights same-asset widget rows"),
+		FBlueprintHelperReviewRowHighlightModel::GetRowBackgroundColor(
+			AssetPath,
+			EBlueprintHelperReviewSurface::UMGWidgetTree,
+			TEXT("SmokeText")).GetSpecifiedColor().A > 0.0f);
+	TestTrue(TEXT("same-asset widget row actions stay hidden because root is selected"),
+		FBlueprintHelperReviewRowHighlightModel::GetRowActionsVisibility(
+			AssetPath,
+			EBlueprintHelperReviewSurface::UMGWidgetTree,
+			TEXT("SmokeText")) == EVisibility::Collapsed);
 	return true;
 }
 
@@ -1116,6 +1718,280 @@ bool FBlueprintHelperReviewReadableChangeTitleTest::RunTest(const FString& Param
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewAssetFactoryTitleStripsPackagePrefixTest,
+	"BlueprintHelper.Review.UI.AssetFactoryTitleStripsPackagePrefix",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewAssetFactoryTitleStripsPackagePrefixTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewVisibleChange Change;
+	Change.ChangeKind = EBlueprintHelperReviewChangeKind::Added;
+	Change.AssetPath = TEXT("/Game/BlueprintHelper/Smoke/BP_SmokeActor");
+	Change.bIsAssetLifecycleRoot = true;
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.Surface = EBlueprintHelperReviewSurface::Details;
+	Target.TargetKind = TEXT("asset_factory");
+	Target.TargetKey = TEXT("asset_factory:_Game_BlueprintHelper_Smoke_BP_SmokeActor");
+	Target.DisplayLabel = TEXT("_Game_BlueprintHelper_Smoke_BP_SmokeActor");
+	Change.AtomicTargets.Add(Target);
+
+	const FString Title = FBlueprintHelperReviewSurfaceFrameBuilder::BuildReadableChangeTitle(Change);
+	TestTrue(TEXT("asset factory title uses short asset name"), Title.Contains(TEXT("[BP_SmokeActor]")));
+	TestFalse(TEXT("asset factory title strips encoded package prefix"),
+		Title.Contains(TEXT("_Game_BlueprintHelper_Smoke")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewAssetFactoryTitleUsesAssetKindSuffixTest,
+	"BlueprintHelper.Review.UI.AssetFactoryTitleUsesAssetKindSuffix",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewAssetFactoryTitleUsesAssetKindSuffixTest::RunTest(const FString& Parameters)
+{
+	struct FCase
+	{
+		FString AssetPath;
+		FString ExpectedSuffix;
+	};
+	const TArray<FCase> Cases =
+	{
+		{TEXT("/Game/BlueprintHelper/Smoke/BP_SmokeActor"), TEXT("\u84dd\u56fe\u8d44\u4ea7")},
+		{TEXT("/Game/BlueprintHelper/Smoke/WBP_Smoke"), TEXT("Widget Blueprint \u8d44\u4ea7")},
+		{TEXT("/Game/BlueprintHelper/Smoke/DT_Smoke"), TEXT("DataTable \u8d44\u4ea7")},
+		{TEXT("/Game/BlueprintHelper/Smoke/ST_SmokeRow"), TEXT("Structure \u8d44\u4ea7")}
+	};
+
+	for (const FCase& Case : Cases)
+	{
+		FBlueprintHelperReviewVisibleChange Change;
+		Change.ChangeKind = EBlueprintHelperReviewChangeKind::Added;
+		Change.AssetPath = Case.AssetPath;
+		Change.bIsAssetLifecycleRoot = true;
+		FBlueprintHelperReviewAtomicTarget Target;
+		Target.Surface = EBlueprintHelperReviewSurface::Details;
+		Target.TargetKind = TEXT("asset_factory");
+		Target.TargetKey = TEXT("asset_factory:create_asset");
+		Change.AtomicTargets.Add(Target);
+
+		const FString Title = FBlueprintHelperReviewSurfaceFrameBuilder::BuildReadableChangeTitle(Change);
+		TestTrue(FString::Printf(TEXT("%s uses asset-kind suffix"), *Case.AssetPath),
+			Title.EndsWith(Case.ExpectedSuffix));
+		TestFalse(FString::Printf(TEXT("%s asset factory title is not a variable"), *Case.AssetPath),
+			Title.EndsWith(TEXT("\u53d8\u91cf")));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewMyBlueprintPresenterBuildsNativeParitySectionsTest,
+	"BlueprintHelper.Review.UI.MyBlueprintPresenterBuildsNativeParitySections",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewMyBlueprintPresenterBuildsNativeParitySectionsTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewConversionTestBlueprint(TEXT("MyBlueprintSections"));
+	if (!Blueprint)
+	{
+		return false;
+	}
+
+	UEdGraph* FunctionGraph = FBlueprintEditorUtils::CreateNewGraph(
+		Blueprint,
+		TEXT("BH_SmokeFunc"),
+		UEdGraph::StaticClass(),
+		UEdGraphSchema_K2::StaticClass());
+	FBlueprintEditorUtils::AddFunctionGraph<UFunction>(Blueprint, FunctionGraph, true, nullptr);
+
+	UEdGraph* MacroGraph = FBlueprintEditorUtils::CreateNewGraph(
+		Blueprint,
+		TEXT("BH_SmokeMacro"),
+		UEdGraph::StaticClass(),
+		UEdGraphSchema_K2::StaticClass());
+	FBlueprintEditorUtils::AddMacroGraph(Blueprint, MacroGraph, true, nullptr);
+
+	FEdGraphPinType IntPinType;
+	IntPinType.PinCategory = UEdGraphSchema_K2::PC_Int;
+	FBlueprintEditorUtils::AddMemberVariable(Blueprint, TEXT("SmokeHP"), IntPinType);
+
+	FBPVariableDescription DispatcherDescription;
+	DispatcherDescription.VarName = TEXT("OnSmoke");
+	DispatcherDescription.VarType.PinCategory = UEdGraphSchema_K2::PC_MCDelegate;
+	Blueprint->NewVariables.Add(DispatcherDescription);
+
+	FBlueprintHelperReviewAssetContext Context;
+	Context.AssetPath = Blueprint->GetOutermost()->GetName();
+	Context.AssetKind = EBlueprintHelperReviewAssetKind::Blueprint;
+	Context.AssetObject = Blueprint;
+	Context.Blueprint = Blueprint;
+
+	TArray<TSharedPtr<FBlueprintHelperReviewVisibleChange>> Changes;
+	FBlueprintHelperReviewMyBlueprintPresenter::FState State;
+	TSharedRef<SWidget> Content =
+		FBlueprintHelperReviewMyBlueprintPresenter::BuildContent(Context, State, Changes);
+	TestTrue(TEXT("content widget builds"), Content != SNullWidget::NullWidget);
+
+	TSet<FString> Sections;
+	TMap<FString, TArray<FString>> SectionChildren;
+	for (const TSharedPtr<FBlueprintHelperReviewMyBlueprintPresenter::FRowItem>& Root : State.RootItems)
+	{
+		if (!Root.IsValid())
+		{
+			continue;
+		}
+		const FString SectionName = Root->Label.ToString();
+		Sections.Add(SectionName);
+		for (const TSharedPtr<FBlueprintHelperReviewMyBlueprintPresenter::FRowItem>& Child : Root->Children)
+		{
+			if (Child.IsValid())
+			{
+				SectionChildren.FindOrAdd(SectionName).Add(Child->Label.ToString());
+			}
+		}
+	}
+
+	TestTrue(TEXT("Graphs section exists"), Sections.Contains(TEXT("Graphs")));
+	TestTrue(TEXT("Functions section exists"), Sections.Contains(TEXT("Functions")));
+	TestTrue(TEXT("Macros section exists"), Sections.Contains(TEXT("Macros")));
+	TestTrue(TEXT("Variables section exists"), Sections.Contains(TEXT("Variables")));
+	TestTrue(TEXT("Event Dispatchers section exists"), Sections.Contains(TEXT("Event Dispatchers")));
+	TestTrue(TEXT("function graph appears under Functions"),
+		SectionChildren.FindRef(TEXT("Functions")).Contains(TEXT("BH_SmokeFunc")));
+	TestTrue(TEXT("macro graph appears under Macros"),
+		SectionChildren.FindRef(TEXT("Macros")).Contains(TEXT("BH_SmokeMacro")));
+	TestTrue(TEXT("variable appears under Variables"),
+		SectionChildren.FindRef(TEXT("Variables")).Contains(TEXT("SmokeHP")));
+	TestTrue(TEXT("dispatcher appears under Event Dispatchers"),
+		SectionChildren.FindRef(TEXT("Event Dispatchers")).Contains(TEXT("OnSmoke")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewMyBlueprintPresenterClassifiesFunctionsMacrosVariablesDispatchersTest,
+	"BlueprintHelper.Review.UI.MyBlueprintPresenterClassifiesFunctionsMacrosVariablesDispatchers",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewMyBlueprintPresenterClassifiesFunctionsMacrosVariablesDispatchersTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewConversionTestBlueprint(TEXT("MyBlueprintClassification"));
+	if (!Blueprint)
+	{
+		return false;
+	}
+
+	UEdGraph* FunctionGraph = FBlueprintEditorUtils::CreateNewGraph(
+		Blueprint,
+		TEXT("BH_ClassifiedFunc"),
+		UEdGraph::StaticClass(),
+		UEdGraphSchema_K2::StaticClass());
+	FBlueprintEditorUtils::AddFunctionGraph<UFunction>(Blueprint, FunctionGraph, true, nullptr);
+
+	UEdGraph* MacroGraph = FBlueprintEditorUtils::CreateNewGraph(
+		Blueprint,
+		TEXT("BH_ClassifiedMacro"),
+		UEdGraph::StaticClass(),
+		UEdGraphSchema_K2::StaticClass());
+	FBlueprintEditorUtils::AddMacroGraph(Blueprint, MacroGraph, true, nullptr);
+
+	FEdGraphPinType IntPinType;
+	IntPinType.PinCategory = UEdGraphSchema_K2::PC_Int;
+	FBlueprintEditorUtils::AddMemberVariable(Blueprint, TEXT("ClassifiedHP"), IntPinType);
+
+	FBPVariableDescription DispatcherDescription;
+	DispatcherDescription.VarName = TEXT("OnClassified");
+	DispatcherDescription.VarType.PinCategory = UEdGraphSchema_K2::PC_MCDelegate;
+	Blueprint->NewVariables.Add(DispatcherDescription);
+
+	FBlueprintHelperReviewAssetContext Context;
+	Context.AssetPath = Blueprint->GetOutermost()->GetName();
+	Context.AssetKind = EBlueprintHelperReviewAssetKind::Blueprint;
+	Context.AssetObject = Blueprint;
+	Context.Blueprint = Blueprint;
+
+	TArray<TSharedPtr<FBlueprintHelperReviewVisibleChange>> Changes;
+	FBlueprintHelperReviewMyBlueprintPresenter::FState State;
+	FBlueprintHelperReviewMyBlueprintPresenter::BuildContent(Context, State, Changes);
+
+	auto FindChild = [&State](
+		const FString& SectionName,
+		const FString& ChildName) -> TSharedPtr<FBlueprintHelperReviewMyBlueprintPresenter::FRowItem>
+	{
+		for (const TSharedPtr<FBlueprintHelperReviewMyBlueprintPresenter::FRowItem>& Root : State.RootItems)
+		{
+			if (!Root.IsValid() || Root->Label.ToString() != SectionName)
+			{
+				continue;
+			}
+			for (const TSharedPtr<FBlueprintHelperReviewMyBlueprintPresenter::FRowItem>& Child : Root->Children)
+			{
+				if (Child.IsValid() && Child->Label.ToString() == ChildName)
+				{
+					return Child;
+				}
+			}
+		}
+		return nullptr;
+	};
+
+	const TSharedPtr<FBlueprintHelperReviewMyBlueprintPresenter::FRowItem> FunctionRow =
+		FindChild(TEXT("Functions"), TEXT("BH_ClassifiedFunc"));
+	const TSharedPtr<FBlueprintHelperReviewMyBlueprintPresenter::FRowItem> MacroRow =
+		FindChild(TEXT("Macros"), TEXT("BH_ClassifiedMacro"));
+	const TSharedPtr<FBlueprintHelperReviewMyBlueprintPresenter::FRowItem> VariableRow =
+		FindChild(TEXT("Variables"), TEXT("ClassifiedHP"));
+	const TSharedPtr<FBlueprintHelperReviewMyBlueprintPresenter::FRowItem> DispatcherRow =
+		FindChild(TEXT("Event Dispatchers"), TEXT("OnClassified"));
+
+	TestTrue(TEXT("function row kind"), FunctionRow.IsValid()
+		&& FunctionRow->Kind == FBlueprintHelperReviewMyBlueprintPresenter::ERowKind::Function);
+	TestTrue(TEXT("macro row kind"), MacroRow.IsValid()
+		&& MacroRow->Kind == FBlueprintHelperReviewMyBlueprintPresenter::ERowKind::Macro);
+	TestTrue(TEXT("variable row kind"), VariableRow.IsValid()
+		&& VariableRow->Kind == FBlueprintHelperReviewMyBlueprintPresenter::ERowKind::Variable);
+	TestTrue(TEXT("dispatcher row kind"), DispatcherRow.IsValid()
+		&& DispatcherRow->Kind == FBlueprintHelperReviewMyBlueprintPresenter::ERowKind::Dispatcher);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewMyBlueprintPresenterKeepsEmptyDispatcherSectionTest,
+	"BlueprintHelper.Review.UI.MyBlueprintPresenterKeepsEmptyDispatcherSection",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewMyBlueprintPresenterKeepsEmptyDispatcherSectionTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewConversionTestBlueprint(TEXT("MyBlueprintEmptyDispatcherSection"));
+	if (!Blueprint)
+	{
+		return false;
+	}
+
+	FBlueprintHelperReviewAssetContext Context;
+	Context.AssetPath = Blueprint->GetOutermost()->GetName();
+	Context.AssetKind = EBlueprintHelperReviewAssetKind::Blueprint;
+	Context.AssetObject = Blueprint;
+	Context.Blueprint = Blueprint;
+
+	TArray<TSharedPtr<FBlueprintHelperReviewVisibleChange>> Changes;
+	FBlueprintHelperReviewMyBlueprintPresenter::FState State;
+	FBlueprintHelperReviewMyBlueprintPresenter::BuildContent(Context, State, Changes);
+
+	bool bFoundDispatcherSection = false;
+	for (const TSharedPtr<FBlueprintHelperReviewMyBlueprintPresenter::FRowItem>& Root : State.RootItems)
+	{
+		bFoundDispatcherSection |= Root.IsValid()
+			&& Root->Label.ToString() == TEXT("Event Dispatchers")
+			&& Root->Kind == FBlueprintHelperReviewMyBlueprintPresenter::ERowKind::Section;
+	}
+
+	TestTrue(TEXT("empty Event Dispatchers section is still visible"), bFoundDispatcherSection);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperReviewPanelSurfacePlacementContractTest,
 	"BlueprintHelper.Review.UI.PanelSurfacePlacementContract",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -1153,11 +2029,16 @@ bool FBlueprintHelperReviewPanelSurfacePlacementContractTest::RunTest(const FStr
 			EBlueprintHelperReviewAssetKind::DataAsset)),
 		static_cast<int32>(EBlueprintHelperReviewSurface::DataAsset));
 	TestEqual(
+		TEXT("Structure main workspace owns DataAsset presenter"),
+		static_cast<int32>(FBlueprintHelperReviewSurfacePresenterRouter::GetMainWorkspaceSurfaceForAssetKind(
+			EBlueprintHelperReviewAssetKind::Structure)),
+		static_cast<int32>(EBlueprintHelperReviewSurface::DataAsset));
+	TestEqual(
 		TEXT("GenericObject main workspace owns DataAsset presenter"),
 		static_cast<int32>(FBlueprintHelperReviewSurfacePresenterRouter::GetMainWorkspaceSurfaceForAssetKind(
 			EBlueprintHelperReviewAssetKind::GenericObject)),
 		static_cast<int32>(EBlueprintHelperReviewSurface::DataAsset));
-	TestTrue(TEXT("Details overlay remains details-only"),
+	TestFalse(TEXT("Details panel uses row-highlight model instead of overlay ownership"),
 		FBlueprintHelperReviewSurfacePresenterRouter::ShouldDetailsPanelOwnOverlay(
 			EBlueprintHelperReviewSurface::Details));
 	TestFalse(TEXT("Details overlay does not own WidgetTree"),
@@ -1181,6 +2062,20 @@ bool FBlueprintHelperReviewPanelSurfacePlacementContractTest::RunTest(const FStr
 	TestFalse(TEXT("Main workspace overlay does not own Details"),
 		FBlueprintHelperReviewSurfacePresenterRouter::ShouldMainWorkspaceOwnOverlay(
 			EBlueprintHelperReviewSurface::Details));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewDataAssetAndTableUseRowHighlightSurfaceTest,
+	"BlueprintHelper.Review.UI.DataAssetAndTableUseRowHighlightSurface",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewDataAssetAndTableUseRowHighlightSurfaceTest::RunTest(const FString& Parameters)
+{
+	TestTrue(TEXT("DataTable uses row background highlights"),
+		FBlueprintHelperReviewRowHighlightModel::IsRowHighlightSurface(EBlueprintHelperReviewSurface::DataTable));
+	TestTrue(TEXT("DataAsset uses row background highlights"),
+		FBlueprintHelperReviewRowHighlightModel::IsRowHighlightSurface(EBlueprintHelperReviewSurface::DataAsset));
 	return true;
 }
 
@@ -1255,24 +2150,27 @@ bool FBlueprintHelperReviewPresenterOverlayShowsOnlyReadySlateRowGeometryTest::R
 	});
 
 	TSharedRef<SWidget> Overlay = FBlueprintHelperReviewBlueprintComponentsPresenter::BuildOverlay(Args);
-	TestTrue(TEXT("partial geometry overlay renders only stable frames"),
-		&Overlay.Get() != &SNullWidget::NullWidget.Get());
+	TestTrue(TEXT("partial geometry row highlight does not render overlay frames"),
+		&Overlay.Get() == &SNullWidget::NullWidget.Get());
 
-	bool bSawShownSlateRow0 = false;
+	bool bSawShownRowHighlight0 = false;
 	bool bSawPendingRow1 = false;
 	bool bSawShownReviewList = false;
+	bool bSawFrameGeometry = false;
 	for (const FString& Message : DebugMessages)
 	{
-		bSawShownSlateRow0 |= Message.Contains(
-			TEXT("ReviewFrameGeometry change=tx_component_partial_geometry_0 surface=components mode=slate_row result=shown"));
+		bSawShownRowHighlight0 |= Message.Contains(
+			TEXT("ReviewRowHighlight change=tx_component_partial_geometry_0 surface=Components target=\"component:Target0\" result=shown mode=row_background"));
 		bSawPendingRow1 |= Message.Contains(
-			TEXT("ReviewFrameGeometry change=tx_component_partial_geometry_1 surface=components mode=slate_row result=pending reason=geometry_not_ready"));
+			TEXT("ReviewRowHighlight change=tx_component_partial_geometry_1 surface=Components target=\"component:Target1\" result=pending reason=test_missing_slate_row_geometry"));
 		bSawShownReviewList |= Message.Contains(TEXT("mode=review_list result=shown"));
+		bSawFrameGeometry |= Message.Contains(TEXT("ReviewFrameGeometry"));
 	}
 
-	TestTrue(TEXT("partial geometry renders stable slate row 0"), bSawShownSlateRow0);
+	TestTrue(TEXT("partial geometry reports stable row 0 as row background"), bSawShownRowHighlight0);
 	TestTrue(TEXT("partial geometry leaves row 1 pending"), bSawPendingRow1);
 	TestFalse(TEXT("partial geometry does not show text review-list fallback"), bSawShownReviewList);
+	TestFalse(TEXT("partial geometry does not draw row overlay frames"), bSawFrameGeometry);
 	return true;
 }
 
@@ -2111,6 +3009,229 @@ bool FBlueprintHelperReviewRecordBuildsDebugCaseIdsFromEvidenceTest::RunTest(con
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewAssetFactoryChangeIsLifecycleRootTest,
+	"BlueprintHelper.Review.Record.AssetFactoryChangeIsLifecycleRoot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewAssetFactoryChangeIsLifecycleRootTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewStoreService Store;
+	const FString AssetPath = TEXT("/Game/BP_DoorLifecycleRoot");
+	FBlueprintHelperReviewAtomicTarget Target =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewAssetFactoryTarget(
+			TEXT("asset_factory:create_asset"),
+			TEXT("tx_asset_factory_root"),
+			AssetPath);
+
+	FBlueprintHelperWriteReviewEvidence Evidence =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
+			TEXT("archive_asset_factory_root"),
+			TEXT("task_asset_factory_root"),
+			TEXT("tx_asset_factory_root"),
+			AssetPath,
+			Target);
+	Evidence.OperationKind = TEXT("asset_factory");
+	Evidence.ChangeKind = EBlueprintHelperReviewChangeKind::Added;
+
+	TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
+	Evidences.Add(Evidence);
+	const TArray<FBlueprintHelperReviewRecord> Records =
+		Store.BuildReviewRecordsFromEvidence(Evidences);
+	TestEqual(TEXT("one asset factory record is built"), Records.Num(), 1);
+	if (Records.Num() != 1 || Records[0].VisibleChanges.Num() != 1)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperReviewVisibleChange& Change = Records[0].VisibleChanges[0];
+	TestTrue(TEXT("asset factory added change is lifecycle root"), Change.bIsAssetLifecycleRoot);
+	TestTrue(TEXT("asset factory root reject removes children"), Change.bRejectRemovesChildren);
+	TestTrue(TEXT("asset factory root has no parent"), Change.ParentChangeId.IsEmpty());
+	TestEqual(TEXT("asset factory root keeps added kind"),
+		Change.ChangeKind,
+		EBlueprintHelperReviewChangeKind::Added);
+	TestTrue(TEXT("asset factory target remains asset factory"),
+		Change.AtomicTargets.Num() == 1 && Change.AtomicTargets[0].TargetKind == TEXT("asset_factory"));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewPendingChangesLinkUnderLifecycleRootTest,
+	"BlueprintHelper.Review.Record.PendingChangesLinkUnderLifecycleRoot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewPendingChangesLinkUnderLifecycleRootTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewStoreService Store;
+	const FString ArchiveSessionId =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_lifecycle_link"));
+	const FString AssetPath = FString::Printf(
+		TEXT("/Game/BP_Lifecycle_%s"),
+		*FGuid::NewGuid().ToString(EGuidFormats::Digits));
+	const FString OtherAssetPath = FString::Printf(
+		TEXT("/Game/BP_LifecycleOther_%s"),
+		*FGuid::NewGuid().ToString(EGuidFormats::Digits));
+
+	FBlueprintHelperReviewAtomicTarget RootTarget =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewAssetFactoryTarget(
+			TEXT("asset_factory:create_asset"),
+			TEXT("tx_lifecycle_root"),
+			AssetPath);
+	FBlueprintHelperWriteReviewEvidence RootEvidence =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
+			ArchiveSessionId,
+			TEXT("task_lifecycle_link"),
+			TEXT("tx_lifecycle_root"),
+			AssetPath,
+			RootTarget);
+	RootEvidence.OperationKind = TEXT("asset_factory");
+	RootEvidence.ChangeKind = EBlueprintHelperReviewChangeKind::Added;
+
+	FBlueprintHelperReviewAtomicTarget ChildTarget =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
+			TEXT("component:SmokeComp"),
+			TEXT("component:SmokeComp"),
+			TEXT("tx_lifecycle_child"),
+			TEXT("after_child"));
+	ChildTarget.AssetPath = AssetPath;
+	ChildTarget.Surface = EBlueprintHelperReviewSurface::Components;
+	ChildTarget.TargetKind = TEXT("component");
+	FBlueprintHelperWriteReviewEvidence ChildEvidence =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
+			ArchiveSessionId,
+			TEXT("task_lifecycle_link"),
+			TEXT("tx_lifecycle_child"),
+			AssetPath,
+			ChildTarget);
+
+	FBlueprintHelperReviewAtomicTarget OtherAssetTarget = ChildTarget;
+	OtherAssetTarget.AssetPath = OtherAssetPath;
+	OtherAssetTarget.TargetKey = TEXT("component:OtherComp");
+	OtherAssetTarget.VisualGroupKey = TEXT("component:OtherComp");
+	OtherAssetTarget.LatestTransactionId = TEXT("tx_lifecycle_other_asset");
+	OtherAssetTarget.SourceTransactionIds.Reset();
+	OtherAssetTarget.SourceTransactionIds.Add(TEXT("tx_lifecycle_other_asset"));
+	FBlueprintHelperWriteReviewEvidence OtherAssetEvidence =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
+			ArchiveSessionId,
+			TEXT("task_lifecycle_link"),
+			TEXT("tx_lifecycle_other_asset"),
+			AssetPath,
+			OtherAssetTarget);
+
+	TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
+	Evidences.Add(RootEvidence);
+	Evidences.Add(ChildEvidence);
+	Evidences.Add(OtherAssetEvidence);
+	TArray<FBlueprintHelperReviewRecord> Records =
+		Store.BuildReviewRecordsFromEvidence(Evidences);
+	FString SaveError;
+	TestTrue(TEXT("lifecycle link record saves"), Store.SaveReviewRecords(Records, SaveError));
+
+	const TArray<FBlueprintHelperReviewVisibleChange> PendingChanges =
+		Store.LoadPendingVisibleChanges(AssetPath);
+	const FBlueprintHelperReviewVisibleChange* Root = PendingChanges.FindByPredicate(
+		[](const FBlueprintHelperReviewVisibleChange& Change)
+		{
+			return Change.bIsAssetLifecycleRoot;
+		});
+	TestNotNull(TEXT("pending lifecycle root loads"), Root);
+	if (!Root)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperReviewVisibleChange* Child = PendingChanges.FindByPredicate(
+		[](const FBlueprintHelperReviewVisibleChange& Change)
+		{
+			return Change.AtomicTargets.ContainsByPredicate(
+				[](const FBlueprintHelperReviewAtomicTarget& Target)
+				{
+					return Target.TargetKey == TEXT("component:SmokeComp");
+				});
+		});
+	const FBlueprintHelperReviewVisibleChange* OtherAssetChild = PendingChanges.FindByPredicate(
+		[](const FBlueprintHelperReviewVisibleChange& Change)
+		{
+			return Change.AtomicTargets.ContainsByPredicate(
+				[](const FBlueprintHelperReviewAtomicTarget& Target)
+				{
+					return Target.TargetKey == TEXT("component:OtherComp");
+				});
+		});
+
+	TestNotNull(TEXT("same asset child loads"), Child);
+	TestNotNull(TEXT("different asset child in record loads"), OtherAssetChild);
+	if (Child)
+	{
+		TestEqual(TEXT("same asset child links to root"),
+			Child->ParentChangeId,
+			Root->ChangeId);
+	}
+	if (OtherAssetChild)
+	{
+		TestTrue(TEXT("different asset child remains unparented"),
+			OtherAssetChild->ParentChangeId.IsEmpty());
+	}
+
+	for (const FBlueprintHelperReviewRecord& Record : Records)
+	{
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(Record.ReviewRecordId);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewLegacyVisibleChangeDefaultsToNoLifecycleRootTest,
+	"BlueprintHelper.Review.Record.LegacyVisibleChangeDefaultsToNoLifecycleRoot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewLegacyVisibleChangeDefaultsToNoLifecycleRootTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewStoreService Store;
+	const FString ArchiveSessionId =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_lifecycle_legacy"));
+
+	FBlueprintHelperReviewAtomicTarget Target =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
+			TEXT("graph_node:N1"),
+			TEXT("graph:EventGraph:block:DoorFlow"),
+			TEXT("tx_lifecycle_legacy"));
+	FBlueprintHelperWriteReviewEvidence Evidence =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
+			ArchiveSessionId,
+			TEXT("task_lifecycle_legacy"),
+			TEXT("tx_lifecycle_legacy"),
+			TEXT("/Game/BP_Door"),
+			Target);
+
+	TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
+	Evidences.Add(Evidence);
+	TArray<FBlueprintHelperReviewRecord> Records = Store.BuildReviewRecordsFromEvidence(Evidences);
+	FString SaveError;
+	TestTrue(TEXT("legacy default record saves"), Store.SaveReviewRecords(Records, SaveError));
+
+	FBlueprintHelperReviewRecord Loaded;
+	FString LoadError;
+	TestTrue(TEXT("legacy default record reloads"),
+		Store.LoadReviewRecordById(Records[0].ReviewRecordId, Loaded, LoadError));
+	if (Loaded.VisibleChanges.Num() != 1)
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("legacy non-root change has no parent"),
+		Loaded.VisibleChanges[0].ParentChangeId.IsEmpty());
+	TestFalse(TEXT("legacy non-root change is not lifecycle root"),
+		Loaded.VisibleChanges[0].bIsAssetLifecycleRoot);
+	TestFalse(TEXT("legacy non-root change does not remove children"),
+		Loaded.VisibleChanges[0].bRejectRemovesChildren);
+
+	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(Records[0].ReviewRecordId);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperReviewJournalBackedEvidenceIncludesHashesTest,
 	"BlueprintHelper.Review.Producer.JournalBackedEvidenceIncludesHashes",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -2677,6 +3798,449 @@ bool FBlueprintHelperReviewRejectTargetsPersistsActionHistoryTest::RunTest(const
 	TestEqual(TEXT("target status rejected"),
 		Loaded.VisibleChanges[0].AtomicTargets[0].Status,
 		EBlueprintHelperReviewChangeStatus::Rejected);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewRejectLifecycleRootRemovesChildrenTest,
+	"BlueprintHelper.Review.Action.RejectLifecycleRootRemovesChildren",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewRejectLifecycleRootRemovesChildrenTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewStoreService Store;
+	const FString ArchiveSessionId =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_reject_lifecycle_root"));
+	const FString AssetPath = TEXT("/Game/BP_DoorLifecycleReject");
+
+	FBlueprintHelperReviewAtomicTarget RootTarget =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewAssetFactoryTarget(
+			TEXT("asset_factory:create_asset"),
+			TEXT("tx_reject_lifecycle_root"),
+			AssetPath,
+			TEXT("after_root"));
+	FBlueprintHelperWriteReviewEvidence RootEvidence =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
+			ArchiveSessionId,
+			TEXT("task_reject_lifecycle_root"),
+			TEXT("tx_reject_lifecycle_root"),
+			AssetPath,
+			RootTarget);
+	RootEvidence.OperationKind = TEXT("asset_factory");
+	RootEvidence.ChangeKind = EBlueprintHelperReviewChangeKind::Added;
+
+	FBlueprintHelperReviewAtomicTarget ChildTarget =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
+			TEXT("component:SmokeComp"),
+			TEXT("component:SmokeComp"),
+			TEXT("tx_reject_lifecycle_child"),
+			TEXT("after_child"));
+	ChildTarget.AssetPath = AssetPath;
+	ChildTarget.Surface = EBlueprintHelperReviewSurface::Components;
+	ChildTarget.TargetKind = TEXT("component");
+	FBlueprintHelperWriteReviewEvidence ChildEvidence =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
+			ArchiveSessionId,
+			TEXT("task_reject_lifecycle_root"),
+			TEXT("tx_reject_lifecycle_child"),
+			AssetPath,
+			ChildTarget);
+
+	TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
+	Evidences.Add(RootEvidence);
+	Evidences.Add(ChildEvidence);
+	TArray<FBlueprintHelperReviewRecord> Records =
+		Store.BuildReviewRecordsFromEvidence(Evidences);
+	FString SaveError;
+	TestTrue(TEXT("lifecycle root reject record saves"), Store.SaveReviewRecords(Records, SaveError));
+
+	const TArray<FBlueprintHelperReviewVisibleChange> PendingChanges =
+		Store.LoadPendingVisibleChanges(AssetPath);
+	const FBlueprintHelperReviewVisibleChange* Root = PendingChanges.FindByPredicate(
+		[](const FBlueprintHelperReviewVisibleChange& Change)
+		{
+			return Change.bIsAssetLifecycleRoot;
+		});
+	TestNotNull(TEXT("lifecycle root is available for cascade reject"), Root);
+	if (!Root)
+	{
+		return false;
+	}
+
+	FBlueprintHelperReviewRejectOptions Options;
+	Options.CurrentHashesByTargetKey.Add(TEXT("asset_factory:create_asset"), TEXT("after_root"));
+	Options.bRollbackExecutorAvailable = true;
+	Options.bRollbackSucceeded = true;
+
+	FBlueprintHelperReviewActionService ActionService;
+	const FBlueprintHelperReviewCascadeActionResult Result =
+		ActionService.RejectLifecycleRootVisibleChange(*Root, PendingChanges, Options);
+	TestTrue(TEXT("root reject succeeds"), Result.RootResult.bSucceeded);
+	TestTrue(TEXT("cascade reports child removal"), Result.bChildrenRemoved);
+	TestTrue(TEXT("child change id is returned"),
+		Result.RemovedChildChangeIds.Contains(TEXT("tx_reject_lifecycle_child")));
+
+	FBlueprintHelperReviewRecord Loaded;
+	FString LoadError;
+	TestTrue(TEXT("cascade reject record reloads"),
+		Store.LoadReviewRecordById(Records[0].ReviewRecordId, Loaded, LoadError));
+	if (Loaded.VisibleChanges.Num() != 2)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperReviewVisibleChange* LoadedRoot = Loaded.VisibleChanges.FindByPredicate(
+		[](const FBlueprintHelperReviewVisibleChange& Change)
+		{
+			return Change.ChangeId == TEXT("tx_reject_lifecycle_root");
+		});
+	const FBlueprintHelperReviewVisibleChange* LoadedChild = Loaded.VisibleChanges.FindByPredicate(
+		[](const FBlueprintHelperReviewVisibleChange& Change)
+		{
+			return Change.ChangeId == TEXT("tx_reject_lifecycle_child");
+		});
+	TestNotNull(TEXT("loaded root exists"), LoadedRoot);
+	TestNotNull(TEXT("loaded child exists"), LoadedChild);
+	if (LoadedRoot)
+	{
+		TestEqual(TEXT("root is rejected"),
+			LoadedRoot->Status,
+			EBlueprintHelperReviewChangeStatus::Rejected);
+	}
+	if (LoadedChild)
+	{
+		TestEqual(TEXT("child is cascade rejected"),
+			LoadedChild->Status,
+			EBlueprintHelperReviewChangeStatus::Rejected);
+		TestTrue(TEXT("child records cascade reason"),
+			LoadedChild->NeedsActionReason.Contains(TEXT("cascade_removed_by_asset_lifecycle_root:tx_reject_lifecycle_root")));
+	}
+
+	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(Records[0].ReviewRecordId);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewAssetRootRejectUsesLifecycleCascadeTest,
+	"BlueprintHelper.Review.Action.AssetRootRejectUsesLifecycleCascade",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewAssetRootRejectUsesLifecycleCascadeTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewStoreService Store;
+	const FString ArchiveSessionId =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_reject_asset_root_default"));
+	const FString PackageName = FString::Printf(
+		TEXT("/Game/BlueprintHelperReview/AssetRootReject_%s"),
+		*FGuid::NewGuid().ToString(EGuidFormats::Digits));
+	const FString AssetName = FPaths::GetBaseFilename(PackageName);
+	UPackage* Package = CreatePackage(*PackageName);
+	if (!Package)
+	{
+		return false;
+	}
+	UObject* CreatedObject = NewObject<UCurveFloat>(
+		Package,
+		*AssetName,
+		RF_Public | RF_Standalone | RF_Transactional);
+	if (!CreatedObject)
+	{
+		return false;
+	}
+	const FString ObjectPath = CreatedObject->GetPathName();
+	Package->SetDirtyFlag(false);
+
+	FBlueprintHelperReviewAtomicTarget RootTarget =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewAssetFactoryTarget(
+			TEXT("asset_factory:create_asset"),
+			TEXT("tx_reject_asset_root_default"),
+			PackageName,
+			TEXT("after_root"));
+	FBlueprintHelperWriteReviewEvidence RootEvidence =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
+			ArchiveSessionId,
+			TEXT("task_reject_asset_root_default"),
+			TEXT("tx_reject_asset_root_default"),
+			PackageName,
+			RootTarget);
+	RootEvidence.OperationKind = TEXT("asset_factory");
+	RootEvidence.ChangeKind = EBlueprintHelperReviewChangeKind::Added;
+
+	FBlueprintHelperReviewAtomicTarget ChildTarget =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
+			TEXT("component:SmokeComp"),
+			TEXT("component:SmokeComp"),
+			TEXT("tx_reject_asset_root_default_child"),
+			TEXT("after_child"));
+	ChildTarget.AssetPath = PackageName;
+	ChildTarget.Surface = EBlueprintHelperReviewSurface::Components;
+	ChildTarget.TargetKind = TEXT("component");
+	FBlueprintHelperWriteReviewEvidence ChildEvidence =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
+			ArchiveSessionId,
+			TEXT("task_reject_asset_root_default"),
+			TEXT("tx_reject_asset_root_default_child"),
+			PackageName,
+			ChildTarget);
+
+	TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
+	Evidences.Add(RootEvidence);
+	Evidences.Add(ChildEvidence);
+	TArray<FBlueprintHelperReviewRecord> Records = Store.BuildReviewRecordsFromEvidence(Evidences);
+	FString SaveError;
+	TestTrue(TEXT("asset root default reject record saves"), Store.SaveReviewRecords(Records, SaveError));
+
+	const TArray<FBlueprintHelperReviewVisibleChange> PendingChanges =
+		Store.LoadPendingVisibleChanges(PackageName);
+	const FBlueprintHelperReviewVisibleChange* Root = PendingChanges.FindByPredicate(
+		[](const FBlueprintHelperReviewVisibleChange& Change)
+		{
+			return Change.bIsAssetLifecycleRoot;
+		});
+	TestNotNull(TEXT("asset lifecycle root is available for default reject"), Root);
+	if (!Root)
+	{
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(Records[0].ReviewRecordId);
+		TArray<UObject*> ObjectsToDelete;
+		ObjectsToDelete.Add(CreatedObject);
+		ObjectTools::ForceDeleteObjects(ObjectsToDelete, false);
+		return false;
+	}
+
+	FBlueprintHelperReviewActionService ActionService;
+	const FBlueprintHelperReviewCascadeActionResult Result =
+		ActionService.RejectLifecycleRootVisibleChange(*Root, PendingChanges);
+	TestTrue(TEXT("default asset root reject succeeds"), Result.RootResult.bSucceeded);
+	TestTrue(TEXT("default asset root reject removes children"), Result.bChildrenRemoved);
+	TestTrue(TEXT("created object is deleted by root reject"),
+		FindObject<UObject>(nullptr, *ObjectPath) == nullptr);
+
+	FBlueprintHelperReviewRecord Loaded;
+	FString LoadError;
+	TestTrue(TEXT("default asset root reject record reloads"),
+		Store.LoadReviewRecordById(Records[0].ReviewRecordId, Loaded, LoadError));
+	const FBlueprintHelperReviewVisibleChange* LoadedChild = Loaded.VisibleChanges.FindByPredicate(
+		[](const FBlueprintHelperReviewVisibleChange& Change)
+		{
+			return Change.ChangeId == TEXT("tx_reject_asset_root_default_child");
+		});
+	TestNotNull(TEXT("default reject child exists in persisted record"), LoadedChild);
+	if (LoadedChild)
+	{
+		TestEqual(TEXT("default reject child is cascade rejected"),
+			LoadedChild->Status,
+			EBlueprintHelperReviewChangeStatus::Rejected);
+	}
+
+	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(Records[0].ReviewRecordId);
+	if (UObject* RemainingObject = FindObject<UObject>(nullptr, *ObjectPath))
+	{
+		TArray<UObject*> ObjectsToDelete;
+		ObjectsToDelete.Add(RemainingObject);
+		ObjectTools::ForceDeleteObjects(ObjectsToDelete, false);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewRejectLifecycleRootFailureKeepsChildrenTest,
+	"BlueprintHelper.Review.Action.RejectLifecycleRootFailureKeepsChildren",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewRejectLifecycleRootFailureKeepsChildrenTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewStoreService Store;
+	const FString ArchiveSessionId =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_reject_lifecycle_failure"));
+	const FString AssetPath = TEXT("/Game/BP_DoorLifecycleRejectFailure");
+
+	FBlueprintHelperReviewAtomicTarget RootTarget =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewAssetFactoryTarget(
+			TEXT("asset_factory:create_asset"),
+			TEXT("tx_reject_lifecycle_failure_root"),
+			AssetPath,
+			TEXT("after_root"));
+	FBlueprintHelperWriteReviewEvidence RootEvidence =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
+			ArchiveSessionId,
+			TEXT("task_reject_lifecycle_failure"),
+			TEXT("tx_reject_lifecycle_failure_root"),
+			AssetPath,
+			RootTarget);
+	RootEvidence.OperationKind = TEXT("asset_factory");
+	RootEvidence.ChangeKind = EBlueprintHelperReviewChangeKind::Added;
+
+	FBlueprintHelperReviewAtomicTarget ChildTarget =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
+			TEXT("component:SmokeComp"),
+			TEXT("component:SmokeComp"),
+			TEXT("tx_reject_lifecycle_failure_child"),
+			TEXT("after_child"));
+	ChildTarget.AssetPath = AssetPath;
+	ChildTarget.Surface = EBlueprintHelperReviewSurface::Components;
+	ChildTarget.TargetKind = TEXT("component");
+	FBlueprintHelperWriteReviewEvidence ChildEvidence =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
+			ArchiveSessionId,
+			TEXT("task_reject_lifecycle_failure"),
+			TEXT("tx_reject_lifecycle_failure_child"),
+			AssetPath,
+			ChildTarget);
+
+	TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
+	Evidences.Add(RootEvidence);
+	Evidences.Add(ChildEvidence);
+	TArray<FBlueprintHelperReviewRecord> Records =
+		Store.BuildReviewRecordsFromEvidence(Evidences);
+	FString SaveError;
+	TestTrue(TEXT("lifecycle root failure record saves"), Store.SaveReviewRecords(Records, SaveError));
+
+	const TArray<FBlueprintHelperReviewVisibleChange> PendingChanges =
+		Store.LoadPendingVisibleChanges(AssetPath);
+	const FBlueprintHelperReviewVisibleChange* Root = PendingChanges.FindByPredicate(
+		[](const FBlueprintHelperReviewVisibleChange& Change)
+		{
+			return Change.bIsAssetLifecycleRoot;
+		});
+	TestNotNull(TEXT("lifecycle root is available for failed cascade reject"), Root);
+	if (!Root)
+	{
+		return false;
+	}
+
+	FBlueprintHelperReviewRejectOptions Options;
+	Options.CurrentHashesByTargetKey.Add(TEXT("asset_factory:create_asset"), TEXT("changed_after_root"));
+	Options.bRollbackExecutorAvailable = true;
+	Options.bRollbackSucceeded = true;
+
+	FBlueprintHelperReviewActionService ActionService;
+	const FBlueprintHelperReviewCascadeActionResult Result =
+		ActionService.RejectLifecycleRootVisibleChange(*Root, PendingChanges, Options);
+	TestFalse(TEXT("root reject failure reports non-success"), Result.RootResult.bSucceeded);
+	TestFalse(TEXT("failed root reject removes no children"), Result.bChildrenRemoved);
+	TestEqual(TEXT("no child ids are returned after root failure"), Result.RemovedChildChangeIds.Num(), 0);
+
+	FBlueprintHelperReviewRecord Loaded;
+	FString LoadError;
+	TestTrue(TEXT("failed cascade record reloads"),
+		Store.LoadReviewRecordById(Records[0].ReviewRecordId, Loaded, LoadError));
+	const FBlueprintHelperReviewVisibleChange* LoadedChild = Loaded.VisibleChanges.FindByPredicate(
+		[](const FBlueprintHelperReviewVisibleChange& Change)
+		{
+			return Change.ChangeId == TEXT("tx_reject_lifecycle_failure_child");
+		});
+	TestNotNull(TEXT("loaded child exists after root failure"), LoadedChild);
+	if (LoadedChild)
+	{
+		TestEqual(TEXT("child remains pending after root failure"),
+			LoadedChild->Status,
+			EBlueprintHelperReviewChangeStatus::Pending);
+		TestTrue(TEXT("child has no cascade reason after root failure"),
+			LoadedChild->NeedsActionReason.IsEmpty());
+	}
+
+	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(Records[0].ReviewRecordId);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewAcceptLifecycleRootDoesNotAcceptChildrenTest,
+	"BlueprintHelper.Review.UI.AcceptLifecycleRootDoesNotAcceptChildren",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewAcceptLifecycleRootDoesNotAcceptChildrenTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewStoreService Store;
+	const FString ArchiveSessionId =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_accept_lifecycle_root"));
+	const FString AssetPath = TEXT("/Game/BP_DoorLifecycleAccept");
+
+	FBlueprintHelperReviewAtomicTarget RootTarget =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewAssetFactoryTarget(
+			TEXT("asset_factory:create_asset"),
+			TEXT("tx_accept_lifecycle_root"),
+			AssetPath);
+	FBlueprintHelperWriteReviewEvidence RootEvidence =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
+			ArchiveSessionId,
+			TEXT("task_accept_lifecycle_root"),
+			TEXT("tx_accept_lifecycle_root"),
+			AssetPath,
+			RootTarget);
+	RootEvidence.OperationKind = TEXT("asset_factory");
+	RootEvidence.ChangeKind = EBlueprintHelperReviewChangeKind::Added;
+
+	FBlueprintHelperReviewAtomicTarget ChildTarget =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
+			TEXT("component:SmokeComp"),
+			TEXT("component:SmokeComp"),
+			TEXT("tx_accept_lifecycle_child"));
+	ChildTarget.AssetPath = AssetPath;
+	ChildTarget.Surface = EBlueprintHelperReviewSurface::Components;
+	ChildTarget.TargetKind = TEXT("component");
+	FBlueprintHelperWriteReviewEvidence ChildEvidence =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
+			ArchiveSessionId,
+			TEXT("task_accept_lifecycle_root"),
+			TEXT("tx_accept_lifecycle_child"),
+			AssetPath,
+			ChildTarget);
+
+	TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
+	Evidences.Add(RootEvidence);
+	Evidences.Add(ChildEvidence);
+	TArray<FBlueprintHelperReviewRecord> Records =
+		Store.BuildReviewRecordsFromEvidence(Evidences);
+	FString SaveError;
+	TestTrue(TEXT("lifecycle root accept record saves"), Store.SaveReviewRecords(Records, SaveError));
+
+	const TArray<FBlueprintHelperReviewVisibleChange> PendingChanges =
+		Store.LoadPendingVisibleChanges(AssetPath);
+	const FBlueprintHelperReviewVisibleChange* Root = PendingChanges.FindByPredicate(
+		[](const FBlueprintHelperReviewVisibleChange& Change)
+		{
+			return Change.bIsAssetLifecycleRoot;
+		});
+	TestNotNull(TEXT("lifecycle root is available for accept"), Root);
+	if (!Root)
+	{
+		return false;
+	}
+
+	FBlueprintHelperReviewActionService ActionService;
+	const FBlueprintHelperReviewActionResult Result = ActionService.AcceptVisibleChange(*Root);
+	TestTrue(TEXT("root accept succeeds"), Result.bSucceeded);
+
+	FBlueprintHelperReviewRecord Loaded;
+	FString LoadError;
+	TestTrue(TEXT("accepted lifecycle root record reloads"),
+		Store.LoadReviewRecordById(Records[0].ReviewRecordId, Loaded, LoadError));
+	const FBlueprintHelperReviewVisibleChange* LoadedRoot = Loaded.VisibleChanges.FindByPredicate(
+		[](const FBlueprintHelperReviewVisibleChange& Change)
+		{
+			return Change.ChangeId == TEXT("tx_accept_lifecycle_root");
+		});
+	const FBlueprintHelperReviewVisibleChange* LoadedChild = Loaded.VisibleChanges.FindByPredicate(
+		[](const FBlueprintHelperReviewVisibleChange& Change)
+		{
+			return Change.ChangeId == TEXT("tx_accept_lifecycle_child");
+		});
+	TestNotNull(TEXT("accepted root exists"), LoadedRoot);
+	TestNotNull(TEXT("child exists after root accept"), LoadedChild);
+	if (LoadedRoot)
+	{
+		TestEqual(TEXT("root is accepted"),
+			LoadedRoot->Status,
+			EBlueprintHelperReviewChangeStatus::Accepted);
+	}
+	if (LoadedChild)
+	{
+		TestEqual(TEXT("child remains pending after root accept"),
+			LoadedChild->Status,
+			EBlueprintHelperReviewChangeStatus::Pending);
+	}
+
+	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(Records[0].ReviewRecordId);
 	return true;
 }
 
@@ -3413,6 +4977,65 @@ bool FBlueprintHelperReviewPanelConstructsTest::RunTest(const FString& Parameter
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewTreeNestsChangesUnderLifecycleRootTest,
+	"BlueprintHelper.Review.UI.TreeNestsChangesUnderLifecycleRoot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewTreeNestsChangesUnderLifecycleRootTest::RunTest(const FString& Parameters)
+{
+	const FString AssetPath = TEXT("/Game/BP_DoorTreeLifecycle");
+
+	FBlueprintHelperReviewVisibleChange Root;
+	Root.ChangeId = TEXT("tx_tree_root");
+	Root.AssetPath = AssetPath;
+	Root.LatestTransactionId = TEXT("tx_tree_root");
+	Root.ChangeKind = EBlueprintHelperReviewChangeKind::Added;
+	Root.DisplayLabel = TEXT("BP_DoorTreeLifecycle asset");
+	Root.bIsAssetLifecycleRoot = true;
+	Root.bRejectRemovesChildren = true;
+
+	FBlueprintHelperReviewVisibleChange Child;
+	Child.ChangeId = TEXT("tx_tree_child");
+	Child.AssetPath = AssetPath;
+	Child.LatestTransactionId = TEXT("tx_tree_child");
+	Child.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
+	Child.DisplayLabel = TEXT("SmokeComp");
+	Child.ParentChangeId = Root.ChangeId;
+
+	FBlueprintHelperReviewVisibleChange DirectChild;
+	DirectChild.ChangeId = TEXT("tx_tree_direct");
+	DirectChild.AssetPath = AssetPath;
+	DirectChild.LatestTransactionId = TEXT("tx_tree_direct");
+	DirectChild.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
+	DirectChild.DisplayLabel = TEXT("Unparented");
+
+	TArray<FBlueprintHelperReviewVisibleChange> InitialChanges;
+	InitialChanges.Add(Root);
+	InitialChanges.Add(Child);
+	InitialChanges.Add(DirectChild);
+
+	const TArray<SBlueprintHelperReviewPanel::FReviewTreeSnapshotEntry> Snapshot =
+		SBlueprintHelperReviewPanel::BuildReviewTreeSnapshotForTesting(InitialChanges);
+	TestEqual(TEXT("asset header plus root, nested child, direct child"),
+		Snapshot.Num(),
+		4);
+	if (Snapshot.Num() != 4)
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("first entry is asset header"), Snapshot[0].bIsAssetHeader);
+	TestEqual(TEXT("asset header depth"), Snapshot[0].Depth, 0);
+	TestEqual(TEXT("root depth"), Snapshot[1].Depth, 1);
+	TestEqual(TEXT("root change id"), Snapshot[1].ChangeId, Root.ChangeId);
+	TestEqual(TEXT("child nests under root"), Snapshot[2].Depth, 2);
+	TestEqual(TEXT("nested child id"), Snapshot[2].ChangeId, Child.ChangeId);
+	TestEqual(TEXT("unparented child stays directly under asset"), Snapshot[3].Depth, 1);
+	TestEqual(TEXT("direct child id"), Snapshot[3].ChangeId, DirectChild.ChangeId);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperReviewAssetContextLoadsBlueprintFromPackagePathTest,
 	"BlueprintHelper.Review.UI.AssetContextLoadsBlueprintFromPackagePath",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -3518,6 +5141,32 @@ bool FBlueprintHelperReviewAssetContextLoadsDataAssetTest::RunTest(const FString
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewAssetContextLoadsStructureTest,
+	"BlueprintHelper.Review.UI.AssetContextLoadsStructure",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewAssetContextLoadsStructureTest::RunTest(const FString& Parameters)
+{
+	UUserDefinedStruct* Structure =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewUserDefinedStruct(TEXT("ReviewAssetContextStructure"));
+	TestNotNull(TEXT("Structure fixture exists"), Structure);
+	if (!Structure)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperReviewAssetContext Context =
+		FBlueprintHelperReviewAssetContext::LoadForAssetPath(Structure->GetPathName());
+	TestTrue(TEXT("Structure context is valid"), Context.IsValid());
+	TestEqual(TEXT("Structure context kind"),
+		static_cast<int32>(Context.AssetKind),
+		static_cast<int32>(EBlueprintHelperReviewAssetKind::Structure));
+	TestTrue(TEXT("Structure context object matches fixture"),
+		Context.Structure.Get() == Structure);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperReviewAssetContextLoadsWidgetBlueprintTest,
 	"BlueprintHelper.Review.UI.AssetContextLoadsWidgetBlueprint",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -3581,8 +5230,11 @@ bool FBlueprintHelperReviewDataTablePresenterBuildsReadonlyRowsTest::RunTest(con
 
 	const FBlueprintHelperReviewAssetContext Context =
 		FBlueprintHelperReviewAssetContext::LoadForAssetPath(DataTable->GetPathName());
-	TSharedRef<SWidget> Widget = FBlueprintHelperReviewDataTablePresenter::BuildContent(Context);
+	FBlueprintHelperReviewDataTablePresenterState State;
+	TSharedRef<SWidget> Widget = FBlueprintHelperReviewDataTablePresenter::BuildContent(Context, State);
 	TestTrue(TEXT("DataTable presenter content is constructed"), Widget != SNullWidget::NullWidget);
+	TestTrue(TEXT("DataTable presenter uses cached native columns"), State.Columns.Num() > 0);
+	TestTrue(TEXT("DataTable presenter uses cached native rows"), State.Rows.Num() > 0);
 	return true;
 }
 
@@ -3602,8 +5254,38 @@ bool FBlueprintHelperReviewDataAssetPresenterBuildsReadonlyDetailsTest::RunTest(
 
 	const FBlueprintHelperReviewAssetContext Context =
 		FBlueprintHelperReviewAssetContext::LoadForAssetPath(DataAsset->GetPathName());
-	TSharedRef<SWidget> Widget = FBlueprintHelperReviewDataAssetPresenter::BuildContent(Context);
+	FBlueprintHelperReviewDataAssetPresenterState State;
+	TSharedRef<SWidget> Widget = FBlueprintHelperReviewDataAssetPresenter::BuildContent(Context, State);
 	TestTrue(TEXT("DataAsset presenter content is constructed"), Widget != SNullWidget::NullWidget);
+	TestTrue(TEXT("DataAsset presenter owns native property rows"), State.Rows.Num() > 0);
+	TestTrue(TEXT("DataAsset presenter owns property row generator"), State.PropertyRowGenerator.IsValid());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewStructurePresenterBuildsReadonlyRowsTest,
+	"BlueprintHelper.Review.UI.StructurePresenterBuildsReadonlyRows",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewStructurePresenterBuildsReadonlyRowsTest::RunTest(const FString& Parameters)
+{
+	UUserDefinedStruct* Structure =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewUserDefinedStruct(TEXT("ReviewStructurePresenterContent"));
+	TestNotNull(TEXT("Structure fixture exists"), Structure);
+	if (!Structure)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperReviewAssetContext Context =
+		FBlueprintHelperReviewAssetContext::LoadForAssetPath(Structure->GetPathName());
+	FBlueprintHelperReviewDataAssetPresenterState State;
+	TSharedRef<SWidget> Widget = FBlueprintHelperReviewDataAssetPresenter::BuildContent(Context, State);
+	TestTrue(TEXT("Structure presenter content is constructed"), Widget != SNullWidget::NullWidget);
+	TestEqual(TEXT("Structure presenter asset kind"),
+		static_cast<int32>(Context.AssetKind),
+		static_cast<int32>(EBlueprintHelperReviewAssetKind::Structure));
+	TestTrue(TEXT("Structure presenter owns structure rows"), State.Rows.Num() > 0);
 	return true;
 }
 

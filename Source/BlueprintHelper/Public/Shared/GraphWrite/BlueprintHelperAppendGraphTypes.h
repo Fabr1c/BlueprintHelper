@@ -275,6 +275,37 @@ struct FBlueprintHelperAppendDryRunData
 // ─── AppendJournalRecord ───
 
 /** Transaction Journal 记录。 */
+struct FBlueprintHelperGraphReviewNodeAnchor
+{
+	FString NodePath;
+	FString NodeGuid;
+	FString DisplayLabel;
+	FVector2D GraphPosition = FVector2D::ZeroVector;
+	FVector2D GraphSize = FVector2D(360.0f, 180.0f);
+	bool bHasGraphBounds = false;
+
+	TSharedRef<FJsonObject> ToJson() const
+	{
+		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+		if (!NodePath.IsEmpty()) Json->SetStringField(TEXT("node_path"), NodePath);
+		if (!NodeGuid.IsEmpty()) Json->SetStringField(TEXT("node_guid"), NodeGuid);
+		if (!DisplayLabel.IsEmpty()) Json->SetStringField(TEXT("display_label"), DisplayLabel);
+
+		TSharedRef<FJsonObject> PositionJson = MakeShared<FJsonObject>();
+		PositionJson->SetNumberField(TEXT("x"), GraphPosition.X);
+		PositionJson->SetNumberField(TEXT("y"), GraphPosition.Y);
+		Json->SetObjectField(TEXT("graph_position"), PositionJson);
+
+		TSharedRef<FJsonObject> SizeJson = MakeShared<FJsonObject>();
+		SizeJson->SetNumberField(TEXT("x"), GraphSize.X);
+		SizeJson->SetNumberField(TEXT("y"), GraphSize.Y);
+		Json->SetObjectField(TEXT("graph_size"), SizeJson);
+
+		Json->SetBoolField(TEXT("has_graph_bounds"), bHasGraphBounds);
+		return Json;
+	}
+};
+
 struct FBlueprintHelperAppendJournalRecord
 {
 	FString TransactionId;
@@ -287,6 +318,7 @@ struct FBlueprintHelperAppendJournalRecord
 	FString GraphName;
 	TArray<FString> BlockIds;
 	TArray<FString> CreatedNodePaths;
+	TArray<FBlueprintHelperGraphReviewNodeAnchor> CreatedNodeAnchors;
 	TArray<FString> CreatedLinkPaths;
 	FString DiffSummary;
 	FString RollbackData;
@@ -318,6 +350,15 @@ struct FBlueprintHelperAppendJournalRecord
 			TArray<TSharedPtr<FJsonValue>> Arr;
 			for (const FString& Node : CreatedNodePaths) { Arr.Add(MakeShared<FJsonValueString>(Node)); }
 			Json->SetArrayField(TEXT("created_nodes"), Arr);
+		}
+		if (CreatedNodeAnchors.Num() > 0)
+		{
+			TArray<TSharedPtr<FJsonValue>> Arr;
+			for (const FBlueprintHelperGraphReviewNodeAnchor& Anchor : CreatedNodeAnchors)
+			{
+				Arr.Add(MakeShared<FJsonValueObject>(Anchor.ToJson()));
+			}
+			Json->SetArrayField(TEXT("created_node_anchors"), Arr);
 		}
 		if (CreatedLinkPaths.Num() > 0)
 		{
