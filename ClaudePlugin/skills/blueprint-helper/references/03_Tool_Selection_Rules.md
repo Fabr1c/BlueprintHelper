@@ -16,7 +16,7 @@ profile
 -> result
 ```
 
-If preview passes but write permission is disabled, call `blueprinthelper_request_write_session`. The user only sees a simple accept/reject Editor prompt. Rejection means stop and report. Do not use env-token fallback.
+If preview passes but write permission is disabled, call `blueprinthelper_request_write_session`. The user only sees a simple accept/reject Editor prompt. Rejection means stop and report. The running Editor/Bridge owns the approved scope and lifetime, so delegated SideAgents do not need raw session data. Do not use env-token fallback.
 
 ## 2. Intent Mapping
 
@@ -35,11 +35,15 @@ If preview passes but write permission is disabled, call `blueprinthelper_reques
 ## 3. Read Format Choice
 
 ```text
-Need human summary -> read_context view.format=logic_md
+Unknown graph size -> read_context view.format=summary or bounded logic_json with max_items=80
+Need human summary and graph <= 80 nodes -> read_context view.format=logic_md
+Need human summary and graph > 80 nodes -> read block/function/event/custom_event slices, not whole graph logic_md
 Need structured anchors -> read_context view.format=logic_json
 Need schema only -> read_context view.format=schema
 Need reference impact -> read_reference_context
 ```
+
+If node count is unknown, do not start with whole-graph `logic_md`. If summary, stats, or a bounded structured read shows more than 80 nodes, select a target slice first or return `clarification_required`.
 
 ## 4. Write Rules
 

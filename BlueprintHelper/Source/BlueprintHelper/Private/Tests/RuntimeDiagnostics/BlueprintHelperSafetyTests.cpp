@@ -708,9 +708,11 @@ bool FBlueprintHelperRequestValidatorRequiresWriteSessionTest::RunTest(const FSt
 
 	FBlueprintHelperBridgeRequest WriteRequest;
 	WriteRequest.Command = TEXT("import_json");
+	WriteRequest.Payload = MakeShared<FJsonObject>();
+	WriteRequest.Payload->SetStringField(TEXT("asset_path"), TEXT("/Game/Tests/BP_Door.BP_Door"));
 
 	FBlueprintHelperBridgeValidationError Error;
-	TestFalse(TEXT("write command without auth_session is rejected"),
+	TestFalse(TEXT("write command without an active write session is rejected"),
 		FBlueprintHelperRequestValidator::ValidateAuthorization(WriteRequest, Error));
 	TestEqual(TEXT("write rejection uses unauthorized code"), Error.Code, FString(TEXT("unauthorized")));
 	TestEqual(TEXT("write rejection identifies auth_session"), Error.Field, FString(TEXT("auth_session")));
@@ -721,10 +723,52 @@ bool FBlueprintHelperRequestValidatorRequiresWriteSessionTest::RunTest(const FSt
 	SessionRequest.TtlSeconds = 60;
 	const FBlueprintHelperWriteSessionGrant Grant = AuthService.CreateApprovedSessionForTesting(SessionRequest);
 
+	Error = FBlueprintHelperBridgeValidationError();
+	TestTrue(TEXT("write command without auth_session is accepted under active Editor write session"),
+		FBlueprintHelperRequestValidator::ValidateAuthorization(WriteRequest, Error));
+
 	WriteRequest.AuthSession = Grant.SessionId;
 	Error = FBlueprintHelperBridgeValidationError();
 	TestTrue(TEXT("write command with approved auth_session is accepted"),
 		FBlueprintHelperRequestValidator::ValidateAuthorization(WriteRequest, Error));
+
+	AuthService.ResetForTesting();
+
+	FBlueprintHelperWriteSessionRequest AssetListSessionRequest;
+	AssetListSessionRequest.Reason = TEXT("automation scoped session test");
+	AssetListSessionRequest.Scope = TEXT("asset_list");
+	AssetListSessionRequest.TtlSeconds = 60;
+	AssetListSessionRequest.AssetPaths.Add(TEXT("/Game/Tests/BP_Door.BP_Door"));
+	AuthService.CreateApprovedSessionForTesting(AssetListSessionRequest);
+
+	FBlueprintHelperBridgeRequest ScopedTaskRequest;
+	ScopedTaskRequest.Command = TEXT("execute_task_plan");
+	ScopedTaskRequest.Payload = MakeShared<FJsonObject>();
+	TSharedPtr<FJsonObject> TaskPlan = MakeShared<FJsonObject>();
+	TArray<TSharedPtr<FJsonValue>> TargetAssets;
+	TargetAssets.Add(MakeShared<FJsonValueString>(TEXT("/Game/Tests/BP_Door.BP_Door")));
+	TaskPlan->SetArrayField(TEXT("target_assets"), TargetAssets);
+	ScopedTaskRequest.Payload->SetObjectField(TEXT("task_plan"), TaskPlan);
+
+	Error = FBlueprintHelperBridgeValidationError();
+	TestTrue(TEXT("asset_list Editor write session covers TaskPlan target_assets without auth_session"),
+		FBlueprintHelperRequestValidator::ValidateAuthorization(ScopedTaskRequest, Error));
+
+	ScopedTaskRequest.AuthSession = TEXT("stale-session-from-another-client");
+	Error = FBlueprintHelperBridgeValidationError();
+	TestTrue(TEXT("active Editor write session is not blocked by stale cached auth_session"),
+		FBlueprintHelperRequestValidator::ValidateAuthorization(ScopedTaskRequest, Error));
+
+	ScopedTaskRequest.AuthSession = FString();
+	TargetAssets.Reset();
+	TargetAssets.Add(MakeShared<FJsonValueString>(TEXT("/Game/Tests/BP_Other.BP_Other")));
+	TaskPlan->SetArrayField(TEXT("target_assets"), TargetAssets);
+
+	Error = FBlueprintHelperBridgeValidationError();
+	TestFalse(TEXT("asset_list Editor write session rejects uncovered TaskPlan target_assets"),
+		FBlueprintHelperRequestValidator::ValidateAuthorization(ScopedTaskRequest, Error));
+	TestEqual(TEXT("uncovered asset rejection uses unauthorized code"), Error.Code, FString(TEXT("unauthorized")));
+	TestEqual(TEXT("uncovered asset rejection identifies auth_session"), Error.Field, FString(TEXT("auth_session")));
 
 	FBlueprintHelperBridgeRequest ReadRequest;
 	ReadRequest.Command = TEXT("validate_json");

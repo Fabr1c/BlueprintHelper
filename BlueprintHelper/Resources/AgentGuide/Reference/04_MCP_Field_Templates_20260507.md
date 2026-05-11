@@ -45,7 +45,7 @@ Use `tools/list` as final authority. Normal Agent-facing tools:
 | `blueprinthelper_get_task_result` | `{ "task_run_id": "..." }` |
 | `blueprint_open_editor` | `{ "wait_timeout_ms": 120000 }` or `{}` |
 
-`blueprinthelper_request_write_session` is only called after a successful preview when `write_permission` is disabled. The running Editor shows a minimal accept/reject prompt. The tool response omits the raw session id; Agents must not pass `auth_session`, `auth_token`, or `BLUEPRINTHELPER_BRIDGE_TOKEN` in later tool calls.
+`blueprinthelper_request_write_session` is only called after a successful preview when `write_permission` is disabled. The running Editor shows a minimal accept/reject prompt. The approval is owned by the running Editor/Bridge for the approved scope and lifetime, and can be used by delegated SideAgents. The tool response omits the raw session id; Agents must not pass `auth_session`, `auth_token`, or `BLUEPRINTHELPER_BRIDGE_TOKEN` in later tool calls.
 
 ## 4. Read Context Template
 

@@ -7,6 +7,7 @@
 #include "IDetailsView.h"
 #include "PropertyEditorDelegates.h"
 #include "PropertyPath.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "SKismetInspector.h"
 #include "Systems/Review/BlueprintHelperReviewActionService.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
@@ -299,7 +300,7 @@ SBlueprintHelperReviewPanel::BuildReviewTreeSnapshotForTesting(
 	}
 	while (PendingItems.Num() > 0)
 	{
-		const TPair<FReviewTreeItemPtr, int32> PendingItem = PendingItems.Pop(EAllowShrinking::No);
+		const TPair<FReviewTreeItemPtr, int32> PendingItem = FBlueprintHelperVersionCompat::PopNoShrink(PendingItems);
 		const FReviewTreeItemPtr Item = PendingItem.Key;
 		const int32 Depth = PendingItem.Value;
 		if (!Item.IsValid())
@@ -1459,7 +1460,9 @@ bool SBlueprintHelperReviewPanel::ResolveDetailsRowGeometry(
 						Property->GetDisplayNameText().ToString(),
 						Candidates);
 					const TSharedRef<FPropertyPath> PropertyPath = FPropertyPath::Create(TWeakFieldPtr<FProperty>(Property));
+#if ENGINE_MAJOR_VERSION > 5 || (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 6)
 					PropertyView->ScrollPropertyIntoView(*PropertyPath, true);
+#endif
 					PropertyView->HighlightProperty(*PropertyPath);
 					bRequestedPropertyScroll = true;
 				}

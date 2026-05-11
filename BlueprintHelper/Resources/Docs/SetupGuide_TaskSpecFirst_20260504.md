@@ -15,7 +15,7 @@ Setup 文档需要从“让用户接通 MCP 工具”升级为“生成 Agent �
 
 ```text
 1. 安装 UE 插件和 MCP Server。
-2. 配置 UE_ENGINE_DIR / UE_PROJECT_FILE / Bridge / Token。
+2. 配置项目 SetupProfile 的 `environment.ue_engine_dir`、Bridge 连接和写入授权。
 3. 生成 SetupProfile。
 4. 采集用户的安全档位、蓝图/C++边界、命名偏好、输入系统偏好、Review/rollback 策略。
 5. 让 runtime_profile 能稳定暴露当前运行时事实。
@@ -62,7 +62,7 @@ Setup 不应让 Agent 在单次工具调用里临时覆盖安全档位。安全�
 ```text
 1. UE 插件已安装并可在目标项目中加载。
 2. MCP Server 可启动。
-3. UE_ENGINE_DIR 和 UE_PROJECT_FILE 为绝对路径。
+3. `environment.ue_engine_dir` 为项目级绝对路径；`.uproject` 只在工具调用时作为显式 `project_file` 传入。
 4. MCP Server 能连接 UE Bridge。
 5. runtime_profile 可读取。
 6. diagnostics 可返回 data.markdown。
@@ -140,20 +140,21 @@ Marker 只负责指向插件文档与当前 SetupProfile 摘要，不应复制�
 
 ### 4.3 配置本地路径
 
-必须使用绝对路径：
+必须使用项目级配置保存 UE Engine 路径：
 
 ```text
-UE_ENGINE_DIR=<absolute path to Unreal Engine>
-UE_PROJECT_FILE=<absolute path to .uproject>
+<ProjectDir>/.blueprinthelper/agent-profile.json
+environment.ue_engine_dir=<absolute path to Unreal Engine>
+environment.ue_version=<optional UE version, for example 5.6>
 ```
 
 规则：
 
 ```text
 1. 不使用相对路径作为最终值。
-2. 可允许 MCP Server 展开 ${workspaceFolder}，但展开后必须是绝对路径。
-3. open_editor / build_project 依赖这些路径。
-4. UE_PROJECT_FILE 必须指向实际 .uproject 文件。
+2. `environment.ue_engine_dir` 写入项目 agent-profile，不写入全局 Claude settings 或 MCP env。
+3. open_editor / build_project 先通过显式 `project_file` 找到项目目录，再读取该项目的 agent-profile。
+4. `.uproject` 路径不写入 SetupProfile / RuntimeProfile / 插件 env；Agent 从当前工作区发现后按调用传参。
 ```
 
 ### 4.4 配置 Bridge
@@ -201,7 +202,7 @@ Setup Wizard 应采集以下项目，并生成 SetupProfile。
 
 ```text
 UE Engine 绝对路径
-uproject 绝对路径
+uproject 显式工具参数策略
 MCP Server 路径或启动方式
 Bridge host / port
 Agent 客户端类型：Claude Code / Codex / ChatGPT Agent / 其他
@@ -375,9 +376,9 @@ SetupProfile 示例：
   "schema": "BlueprintHelper.SetupProfile.v1",
   "profile_name": "default",
   "created_at": "2026-05-04T00:00:00Z",
-  "project": {
-    "ue_engine_dir": "<UE_ENGINE_DIR>",
-    "ue_project_file": "<PROJECT_FILE>"
+  "environment": {
+    "ue_version": "5.6",
+    "ue_engine_dir": "<UE_ENGINE_ROOT>"
   },
   "bridge": {
     "host": "127.0.0.1",

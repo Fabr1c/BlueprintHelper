@@ -2,14 +2,16 @@
 
 普通 Agent 只走 TaskSpec-first 主线。MCP 中仍注册了兼容、测试和专家入口，但这些冻结入口不在本指南中作为可选工具暴露。
 
-主 Agent 命中 BlueprintHelper Skill 后，先确认目标资产和创建/修改策略。需要实际调用 BlueprintHelper 工具时，给 SideAgent 一个精简任务包，并让 SideAgent 读取 `09_SideAgent_Tool_Execution.md`。不要把完整 Skill 原文传给 SideAgent。
+主 Agent 命中 BlueprintHelper Skill 后，身份是面向用户的意图理解、目标确认和安全决策者。先确认目标资产、目标范围和创建/修改策略；需要实际调用 BlueprintHelper 工具时，给 SideAgent 一个语义化精简任务包，并让 SideAgent 读取 `09_SideAgent_Tool_Execution.md`。不要把完整对话或完整 Skill 原文传给 SideAgent。
 
 默认流程:
 
 ```text
 blueprint_get_runtime_profile
 -> blueprinthelper_read_agent_guide
--> blueprinthelper_read_context or blueprinthelper_read_reference_context
+-> blueprinthelper_read_context summary or bounded structured read to estimate graph size
+-> if graph has more than 80 nodes, use block-scoped or target-scoped reads instead of whole-graph logic_md
+-> blueprinthelper_read_context or blueprinthelper_read_reference_context for the selected slice
 -> build BlueprintHelper.TaskSpec.v1
 -> blueprinthelper_preview_task
 -> repair TaskSpec or stop_and_report
@@ -35,9 +37,9 @@ blueprinthelper_execute_task
 blueprinthelper_get_task_result
 ```
 
-Write authorization is session-based: use `blueprinthelper_request_write_session` only after a successful preview when `write_permission` is disabled. The Editor UI is intentionally a minimal accept/reject prompt. If it is rejected, stop and report.
+Write authorization is running Editor/Bridge based: use `blueprinthelper_request_write_session` only after a successful preview when `write_permission` is disabled. The approved scope and lifetime are held by the running Editor, so delegated SideAgents can call BlueprintHelper tools after approval as long as they stay within that scope. The Editor UI is intentionally a minimal accept/reject prompt. If it is rejected, stop and report.
 
-Ordinary Agents must not request, set, or forward `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session`; the MCP Bridge client stores the approved session internally.
+Ordinary Agents must not request, set, or forward `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session`; raw session data is not part of the Agent contract.
 
 `blueprint_open_editor` 仅用于用户明确需要启动目标 Unreal Editor 的 preflight，不属于普通写入主线。
 
@@ -58,3 +60,4 @@ Ordinary Agents must not request, set, or forward `BLUEPRINTHELPER_BRIDGE_TOKEN`
 - Agent 写入 UE 资产时只提交 `BlueprintHelper.TaskSpec.v1`。
 - TaskPlan、底层 capability、Bridge command 和冻结工具名不作为普通 Agent 选择项。
 - preview blocked 时停止报告或修正 TaskSpec，不回退到冻结入口。
+- 不清楚图表大小时，不要直接读取整个图表的 `logic_md`。先用 `summary` 或带 `max_items` 的结构化读取估算节点数量；如果节点数大于 80，采用目标范围、block 或引用影响面的分块读取策略。

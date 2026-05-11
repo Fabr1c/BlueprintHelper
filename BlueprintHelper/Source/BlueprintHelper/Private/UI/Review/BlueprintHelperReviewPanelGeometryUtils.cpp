@@ -7,6 +7,7 @@
 #include "Widgets/Text/SInlineEditableTextBlock.h"
 #include "Widgets/Text/SRichTextBlock.h"
 #include "Widgets/Text/STextBlock.h"
+#include "Runtime/Launch/Resources/Version.h"
 
 FString FBlueprintHelperReviewPanelGeometryUtils::NormalizeGeometrySearchText(FString Text)
 {
@@ -96,8 +97,13 @@ bool FBlueprintHelperReviewPanelGeometryUtils::TryReadWidgetText(
 	}
 	if (WidgetType == TEXT("SInlineEditableTextBlock"))
 	{
+#if ENGINE_MAJOR_VERSION > 5 || (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 6)
 		OutText = static_cast<SInlineEditableTextBlock&>(Widget.Get()).GetText().ToString();
 		return true;
+#else
+		OutText = Widget->GetAccessibleText().ToString();
+		return !OutText.IsEmpty();
+#endif
 	}
 	if (WidgetType == TEXT("SEditableText"))
 	{

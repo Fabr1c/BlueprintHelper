@@ -22,6 +22,7 @@
 #include "UObject/UObjectGlobals.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
 
@@ -97,7 +98,7 @@ public:
 
 		if (UPackage* Package = Node->GetOutermost())
 		{
-			FMetaData& MetaData = Package->GetMetaData();
+			FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
 			MetaData.SetValue(Node, TEXT("BlueprintHelperOwned"), TEXT("true"));
 			MetaData.SetValue(Node, TEXT("BlueprintHelperBlockId"), *BlockId);
 		}
@@ -113,7 +114,7 @@ public:
 
 		if (UPackage* Package = Node->GetOutermost())
 		{
-			FMetaData& MetaData = Package->GetMetaData();
+			FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
 			if (MetaData.GetValue(Node, TEXT("BlueprintHelperOwned")) == TEXT("true"))
 			{
 				OutBlockId = MetaData.GetValue(Node, TEXT("BlueprintHelperBlockId"));

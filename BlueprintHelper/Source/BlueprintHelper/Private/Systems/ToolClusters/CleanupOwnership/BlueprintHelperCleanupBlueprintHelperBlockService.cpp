@@ -11,6 +11,7 @@
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraph/EdGraphPin.h"
 #include "Kismet2/BlueprintEditorUtils.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
 #include "Dom/JsonObject.h"
@@ -163,7 +164,7 @@ bool FBlueprintHelperCleanupBlueprintHelperBlockService::ResolveBlock(
 			if (!Node) continue;
 			UPackage* Pkg = Node->GetOutermost();
 			if (!Pkg) continue;
-			FMetaData& Meta = Pkg->GetMetaData();
+			FBlueprintHelperPackageMetaData& Meta = FBlueprintHelperVersionCompat::GetPackageMetaData(Pkg);
 			const FString Owned = Meta.GetValue(Node, TEXT("BlueprintHelperOwned"));
 			const FString BlockId = Meta.GetValue(Node, TEXT("BlueprintHelperBlockId"));
 			if (Owned == TEXT("true") && BlockId == EffectiveBlockId)
@@ -215,7 +216,7 @@ bool FBlueprintHelperCleanupBlueprintHelperBlockService::CheckOwnership(
 		if (!Node) continue;
 		UPackage* Pkg = Node->GetOutermost();
 		if (!Pkg) continue;
-		FMetaData& Meta = Pkg->GetMetaData();
+		FBlueprintHelperPackageMetaData& Meta = FBlueprintHelperVersionCompat::GetPackageMetaData(Pkg);
 		const FString Owned = Meta.GetValue(Node, TEXT("BlueprintHelperOwned"));
 		const FString BlockId = Meta.GetValue(Node, TEXT("BlueprintHelperBlockId"));
 

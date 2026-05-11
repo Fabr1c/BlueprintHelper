@@ -79,13 +79,20 @@ For repository work, use normal shell and editor tools. For editor assets, use t
 
 2. 重启 Claude Code。
 
-3. 配置环境变量（在 Claude Code settings 或系统环境中设置）：
+3. 配置项目 agent profile：
 
-```powershell
-$env:UE_ENGINE_DIR = "<UE_ENGINE_DIR>"
+Store the UE version and engine root in the project agent profile:
+
+```json
+{
+  "environment": {
+    "ue_version": "5.6",
+    "ue_engine_dir": "<UE_ENGINE_ROOT>"
+  }
+}
 ```
 
-Project `.uproject` paths are not stored in Claude global settings. Agents discover the target `.uproject` from the current workspace and pass it as the explicit `project_file` tool argument when launching or building a project.
+Save this under `<ProjectDir>/.blueprinthelper/agent-profile.json`. Project `.uproject` paths are not stored in Claude global settings. Agents discover the target `.uproject` from the current workspace and pass it as the explicit `project_file` tool argument when launching or building a project.
 
 4. 安装 MCP Server 依赖并构建：
 
@@ -113,10 +120,11 @@ npm run build
 5. Set MCP Server environment variables:
 
 ```powershell
-$env:UE_ENGINE_DIR = "<UE_ENGINE_DIR>"
 $env:BRIDGE_HOST = "127.0.0.1"
 $env:BRIDGE_PORT = "54321"
 ```
+
+Store the UE engine root in `<ProjectDir>/.blueprinthelper/agent-profile.json` as `environment.ue_engine_dir`; do not put UE version-specific project configuration in global Claude settings.
 
 6. Start Unreal Editor with the project, then connect your Agent MCP client to:
 
@@ -165,7 +173,7 @@ Claude Code discovers plugin commands from the plugin root `commands/` directory
 
 For ordinary Agent editor-asset mutations, use the TaskSpec-first loop:
 
-1. Confirm Unreal Editor is running, or `UE_ENGINE_DIR` is configured and the target `.uproject` can be passed as `project_file`.
+1. Confirm Unreal Editor is running, or `<ProjectDir>/.blueprinthelper/agent-profile.json` has `environment.ue_engine_dir` and the target `.uproject` can be passed as `project_file`.
 2. Confirm the Bridge is reachable.
 3. Read runtime profile and TaskContextPack.
 4. Produce an explicit `BlueprintHelper.TaskSpec.v1` with `validation.should_compile` and `validation.should_save`.

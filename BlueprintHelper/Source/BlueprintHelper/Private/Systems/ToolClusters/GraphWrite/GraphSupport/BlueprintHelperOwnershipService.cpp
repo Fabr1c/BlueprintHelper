@@ -3,6 +3,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperOwnershipService.h"
 #include "Engine/Blueprint.h"
 #include "EdGraph/EdGraphNode.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
 
@@ -27,7 +28,7 @@ bool FBlueprintHelperOwnershipService::WriteNodeOwnership(
 		return false;
 	}
 
-	FMetaData& MetaData = Package->GetMetaData();
+	FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
 
 	// 写入 FMetaData 标记
 	MetaData.SetValue(Node, TEXT("BlueprintHelperOwned"), TEXT("true"));

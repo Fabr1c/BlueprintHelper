@@ -4,6 +4,7 @@
 #include "Engine/Blueprint.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
 
@@ -33,7 +34,7 @@ FString FBlueprintHelperBlockIdService::MakeBlockRef(
 			continue;
 		}
 
-		FMetaData& MetaData = Package->GetMetaData();
+		FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
 		const FString BlockId = MetaData.GetValue(Node, TEXT("BlueprintHelperBlockId"));
 		if (BlockId.IsEmpty())
 		{

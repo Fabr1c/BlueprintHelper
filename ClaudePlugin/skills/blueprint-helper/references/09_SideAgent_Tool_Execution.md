@@ -1,21 +1,26 @@
 # 09 - SideAgent Tool Execution
 
-主 Agent 不得直接调用 BlueprintHelper MCP 工具。凡是需要调用 BlueprintHelper MCP 工具的步骤，都必须由 SideAgent 执行；如果当前平台无法分派 SideAgent，返回 `sideagent_unavailable`，不要降级为主 Agent 直连调用。
+本文件只给 BlueprintHelper SideAgent 使用。SideAgent 的身份是工具参数构造、MCP 调用和结果翻译执行者，不是面向用户对话的主 Agent。
 
-本文件只给负责 BlueprintHelper 工具调用的 SideAgent 使用。主 Agent 负责面向用户沟通，SideAgent 负责构造参数、调用工具、翻译结果并回交。
+主 Agent 负责理解用户意图、确认目标资产、做安全判断、询问用户和最终回复。SideAgent 只根据主 Agent 给出的精简任务包执行 BlueprintHelper MCP 工具链，并把工具返回结果翻译成主 Agent 可判断的中文摘要。
+
+如果当前平台无法分派 SideAgent，主 Agent 应返回 `sideagent_unavailable`。SideAgent 不需要处理这种情况。
 
 ## 输入契约
 
-SideAgent 必须从主 Agent 接收一个精简任务包，而不是完整对话或完整 `SKILL.md`。
+SideAgent 必须从主 Agent 接收一个精简任务包，而不是完整对话或完整 `SKILL.md`。如果任务包像是原始对话转储、整份 Skill 规则或缺少可执行目标，返回 `clarification_required`，要求主 Agent 重新给出语义化任务包。
 
 任务包应包含：
 
-- `user_goal`: 用户目标
+- `user_goal`: 用户目标，用 gameplay/editor 语义描述
+- `main_agent_decision`: 主 Agent 为什么判断这需要 BlueprintHelper MCP
 - `target_asset_path`: 目标 UE 资产路径；未知时不得写入
 - `target_graph`: 目标图表；图表写入任务需要
-- `operation_mode`: `create_new` 或 `modify_existing`
+- `operation_mode`: `create_new`、`modify_existing`、`inspect_only` 或 `validate_only`
 - `safety_profile`: runtime_profile 中的当前安全档位
 - `allowed_tools`: 允许调用的 BlueprintHelper 工具名
+- `read_strategy`: 图表读取策略，必须包含是否避免未知规模全图 `logic_md` 和大图节点阈值
+- `tool_call_intent`: 主 Agent 指定的单个工具调用意图，以及为什么需要这次缺失数据
 - `stop_conditions`: 必须停止并回交的条件
 - `return_format`: 主 Agent 要求的结果摘要格式
 
@@ -25,11 +30,22 @@ SideAgent 必须从主 Agent 接收一个精简任务包，而不是完整对话
 
 1. 读取本文件和必要字段模板：`04_MCP_Field_Templates_20260507.md`。
 2. 按需要读取任务 workflow，例如 `04_TaskSpec_Edit_Blueprint_Workflow.md`。
-3. 使用 TaskSpec-first 工具链，不直接调用冻结或 legacy 底层入口。
-4. 工具参数必须是 MCP schema root object，不要额外包 `args`。
-5. `blueprinthelper_preview_task` 和 `blueprinthelper_execute_task` 必须把 TaskSpec 包在 `task_spec` 字段下。
-6. 如果 `write_permission` 被禁用，只在 preview 成功后请求 write session。
-7. SideAgent 不向用户回复，不请求用户确认；需要用户确认时把原因交回主 Agent。
+3. 读取 Blueprint graph 前先判断规模。未知规模时先用 `view.format=summary` 或带 `max_items` 的 `logic_json` 估算节点数量，不要直接读取整个图表的 `logic_md`。
+4. 如果工具结果显示节点数量大于 80，或者结果被截断，改用 block、function、event、custom_event 或引用影响面分块读取；无法定位分块目标时返回 `clarification_required`。
+5. 使用 TaskSpec-first 工具链，不直接调用冻结或 legacy 底层入口。
+6. 工具参数必须是 MCP schema root object，不要额外包 `args`。
+7. `blueprinthelper_preview_task` 和 `blueprinthelper_execute_task` 必须把 TaskSpec 包在 `task_spec` 字段下。
+8. 如果 `write_permission` 被禁用，只在 preview 成功后请求 write session。
+9. write session 是运行中 Editor/Bridge 的短时许可，不是单个 Agent 的 secret。SideAgent 可以在许可 scope/lifetime 内继续执行，但不能请求、传递或回传 `auth_session`。
+10. SideAgent 只执行主 Agent 指定的单个工具调用或单个原子工具步骤，不自行扩展为连续调查。
+11. SideAgent 不向用户回复，不请求用户确认；需要用户确认时把原因交回主 Agent。
+
+### 工具调用约束
+
+1. SideAgent 不负责复用历史上下文；上下文聚合、是否需要下一次读取、是否已有足够证据，都由 MainAgent 判断。
+2. 对同一 `asset_path + target_type + target_name + view.format + detail` 的 `blueprinthelper_read_context`，同一 SideAgent 任务中最多调用一次。
+3. 不得同时把同名函数当作 `function` 和 `graph` 重复读取，除非工具返回表明 `target_type` 不匹配。
+4. 如果主 Agent 指定的工具调用缺少必要字段，返回 `clarification_required`，不要自行换用相邻工具或扩大读取范围。
 
 ## 允许的普通工具链
 
@@ -58,6 +74,7 @@ blueprinthelper_get_task_result
 - `profile_blocked`: runtime_profile 不允许写入
 - `preview_blocked`: preview 返回阻断
 - `capability_missing`: TaskSpec 或工具能力缺失
+- `graph_too_large_without_slice`: 图表超过 80 个节点且任务包没有足够信息定位读取分块
 - `write_rejected`: write session 被拒绝
 - `tool_failed`: 工具返回失败，且没有明确可安全修复的参数错误
 

@@ -209,7 +209,8 @@ Canonical field contract: `Resources/Docs/TaskSpec_TaskPlan_Contract_20260504.md
 Current MCP Server behavior:
 
 - Ordinary write access uses `blueprinthelper_request_write_session`.
-- The running Unreal Editor shows a simple accept/reject approval dialog for a short-lived write session, and the MCP Bridge client caches the session id internally.
+- The running Unreal Editor shows a simple accept/reject approval dialog for a short-lived write session.
+- The approval belongs to the running Editor/Bridge for the approved scope and lifetime, not to one Agent. Delegated SideAgents can continue BlueprintHelper tool execution without receiving raw session data.
 - If the user rejects the dialog, Agents must stop and report the denied write session.
 - `BLUEPRINTHELPER_BRIDGE_TOKEN` is no longer the ordinary interactive write path.
 
@@ -272,8 +273,8 @@ The following entries describe the current low-level inventory. Ordinary Agents 
 | `blueprint_create_blueprint` | Mutate | Yes | `asset_path`, optional `parent_class` | `{ "success": true, "result": { "asset_path": "/Game/..." } }` | Invalid path, duplicate asset, invalid parent class | High | Confirm destination path and parent class | Approved write session |
 | `blueprint_exec_console_command` | EditorCommand | Yes | `command` | `{ "success": true, "result": { "output": "..." } }` | Console command failed | Critical | User should approve command | Approved write session and high-risk enablement |
 | `blueprint_close_editor` | EditorCommand | Yes | optional `save_all` | `{ "success": true, "message": "closing" }` | Save failed or Bridge unavailable | Critical | User should approve closing editor | Approved write session and high-risk enablement |
-| `blueprint_build_project` | LocalProcess | No | required `project_file`, optional `target`, optional `configuration`, optional `platform` | `{ "success": true, "message": "Build succeeded." }` | Missing `UE_ENGINE_DIR`, invalid `project_file`, or build failed with exit code | Critical | `UE_ENGINE_DIR` set; Agent passes target `.uproject` as `project_file`; editor should be closed | No write session; local process |
-| `blueprint_open_editor` | LocalProcess | Launch no, readiness ping yes | required `project_file`, optional `wait_timeout_ms` | `{ "success": true, "code": "EDITOR_BRIDGE_AVAILABLE" }` | Missing `UE_ENGINE_DIR`, invalid `project_file`, launch failure, Bridge timeout | Critical | `UE_ENGINE_DIR` set; Agent passes target `.uproject` as `project_file` | No write session; readiness ping is read-only |
+| `blueprint_build_project` | LocalProcess | No | required `project_file`, optional `target`, optional `configuration`, optional `platform` | `{ "success": true, "message": "Build succeeded." }` | Missing project `environment.ue_engine_dir`, invalid `project_file`, or build failed with exit code | Critical | Project `.blueprinthelper/agent-profile.json` has `environment.ue_engine_dir`; Agent passes target `.uproject` as `project_file`; editor should be closed | No write session; local process |
+| `blueprint_open_editor` | LocalProcess | Launch no, readiness ping yes | required `project_file`, optional `wait_timeout_ms` | `{ "success": true, "code": "EDITOR_BRIDGE_AVAILABLE" }` | Missing project `environment.ue_engine_dir`, invalid `project_file`, launch failure, Bridge timeout | Critical | Project `.blueprinthelper/agent-profile.json` has `environment.ue_engine_dir`; Agent passes target `.uproject` as `project_file` | No write session; readiness ping is read-only |
 
 ## Write Tools Summary
 

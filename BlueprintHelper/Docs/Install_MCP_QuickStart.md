@@ -16,7 +16,7 @@ Path placeholders used in this guide:
 
 ```text
 Plugin:  <PLUGIN_ROOT>
-Project: <PROJECT_FILE>
+Project file: discovered by the Agent and passed as explicit `project_file`
 ```
 
 ## 1. Install The Plugin
@@ -46,31 +46,40 @@ Available scripts:
 | `npm start` | Start the stdio MCP Server from `build/index.js` |
 | `npm run dev` | Watch TypeScript sources |
 
-## 3. Configure Environment Variables
+## 3. Configure Project Agent Profile
 
-The MCP Server reads these environment variables:
+Store UE version-specific configuration in the project profile:
+
+```json
+{
+  "environment": {
+    "ue_version": "5.6",
+    "ue_engine_dir": "<UE_ENGINE_ROOT>"
+  }
+}
+```
+
+Save this file as `<ProjectDir>/.blueprinthelper/agent-profile.json`. The MCP Server reads these environment variables only for Bridge connectivity:
 
 | Variable | Required | Default | Purpose |
 |---|---:|---|---|
-| `UE_ENGINE_DIR` | For `blueprint_open_editor` and `blueprint_build_project` | empty | Unreal Engine root, represented as `<UE_ENGINE_DIR>` |
 | `BRIDGE_HOST` | No | `127.0.0.1` | BlueprintHelper Bridge host |
 | `BRIDGE_PORT` | No | `54321` | BlueprintHelper Bridge port |
 
-Interactive write access is granted through `blueprinthelper_request_write_session` after the Unreal Editor is running. The Editor shows a simple accept/reject approval dialog, and the MCP server caches the short-lived session id internally. Ordinary agents should not configure or pass a Bridge token for writes.
+Interactive write access is granted through `blueprinthelper_request_write_session` after the Unreal Editor is running. The Editor shows a simple accept/reject approval dialog, and the approval is held by the running Editor/Bridge for its approved scope and lifetime. Ordinary agents and delegated SideAgents should not configure or pass a Bridge token or raw `auth_session` for writes.
 
 PowerShell example:
 
 ```powershell
-$env:UE_ENGINE_DIR = "<UE_ENGINE_DIR>"
 $env:BRIDGE_HOST = "127.0.0.1"
 $env:BRIDGE_PORT = "54321"
 ```
 
-Project `.uproject` paths are intentionally not stored in global MCP environment variables. Agents should discover the target `.uproject` from the current workspace and pass it as the explicit `project_file` tool argument.
+Project `.uproject` paths and UE version-specific paths are intentionally not stored in global MCP environment variables. Agents should discover the target `.uproject` from the current workspace and pass it as the explicit `project_file` tool argument.
 
 ## 4. Start Unreal Editor
 
-Either start Unreal Editor normally with the project, or let the MCP tool launch it later through `blueprint_open_editor` after `UE_ENGINE_DIR` is set and the Agent can pass the target `.uproject` as `project_file`.
+Either start Unreal Editor normally with the project, or let the MCP tool launch it later through `blueprint_open_editor` after the project agent profile has `environment.ue_engine_dir` and the Agent can pass the target `.uproject` as `project_file`.
 
 The editor must load the BlueprintHelper plugin so the Bridge can listen on the configured host and port.
 
@@ -114,7 +123,6 @@ Generic MCP client configuration:
         "<PLUGIN_ROOT>\\ClaudePlugin\\mcp\\build\\index.js"
       ],
       "env": {
-        "UE_ENGINE_DIR": "<UE_ENGINE_DIR>",
         "BRIDGE_HOST": "127.0.0.1",
         "BRIDGE_PORT": "54321"
       }

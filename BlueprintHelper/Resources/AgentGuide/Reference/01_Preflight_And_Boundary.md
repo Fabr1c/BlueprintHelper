@@ -49,7 +49,7 @@ understand request
 -> report concise summary
 ```
 
-Write authorization is session-based. If preview succeeds but `write_permission` is disabled, call `blueprinthelper_request_write_session`; the Editor displays a simple accept/reject dialog. If the user rejects it, stop and report. Do not use `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or direct `auth_session` handling for ordinary writes.
+Write authorization is running Editor/Bridge based. If preview succeeds but `write_permission` is disabled, call `blueprinthelper_request_write_session`; the Editor displays a simple accept/reject dialog. If the user rejects it, stop and report. Delegated SideAgents may execute within the approved scope and lifetime. Do not use `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or direct `auth_session` handling for ordinary writes.
 
 ## 5. Frozen Tool Boundary
 

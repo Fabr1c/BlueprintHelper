@@ -16,7 +16,7 @@ profile
 -> result
 ```
 
-If preview passes but write permission is disabled, call `blueprinthelper_request_write_session`. The user only sees a simple accept/reject Editor prompt. Rejection means stop and report. Do not use env-token fallback.
+If preview passes but write permission is disabled, call `blueprinthelper_request_write_session`. The user only sees a simple accept/reject Editor prompt. Rejection means stop and report. The running Editor/Bridge owns the approved scope and lifetime, so delegated SideAgents do not need raw session data. Do not use env-token fallback.
 
 ## 2. Intent Mapping
 

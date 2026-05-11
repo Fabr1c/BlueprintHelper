@@ -30,15 +30,84 @@ namespace
 		OutError.Message = Message;
 	}
 
-	bool TryReadPayloadAsset(const TSharedPtr<FJsonObject>& Payload, FString& OutAssetPath)
+	void AddAssetPathIfPresent(TArray<FString>& OutAssetPaths, const FString& AssetPath)
+	{
+		if (!AssetPath.IsEmpty())
+		{
+			OutAssetPaths.AddUnique(AssetPath);
+		}
+	}
+
+	void ReadAssetPathFields(const TSharedPtr<FJsonObject>& Json, TArray<FString>& OutAssetPaths)
+	{
+		if (!Json.IsValid())
+		{
+			return;
+		}
+
+		FString AssetPath;
+		if (Json->TryGetStringField(TEXT("asset_path"), AssetPath))
+		{
+			AddAssetPathIfPresent(OutAssetPaths, AssetPath);
+		}
+		if (Json->TryGetStringField(TEXT("target_blueprint"), AssetPath))
+		{
+			AddAssetPathIfPresent(OutAssetPaths, AssetPath);
+		}
+
+		const TSharedPtr<FJsonObject>* TargetObjectPtr = nullptr;
+		if (Json->TryGetObjectField(TEXT("target"), TargetObjectPtr) &&
+			TargetObjectPtr &&
+			TargetObjectPtr->IsValid() &&
+			(*TargetObjectPtr)->TryGetStringField(TEXT("asset_path"), AssetPath))
+		{
+			AddAssetPathIfPresent(OutAssetPaths, AssetPath);
+		}
+	}
+
+	void ReadTargetAssetsArray(const TSharedPtr<FJsonObject>& Json, TArray<FString>& OutAssetPaths)
+	{
+		if (!Json.IsValid())
+		{
+			return;
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* TargetAssets = nullptr;
+		if (!Json->TryGetArrayField(TEXT("target_assets"), TargetAssets) || !TargetAssets)
+		{
+			return;
+		}
+
+		for (const TSharedPtr<FJsonValue>& Value : *TargetAssets)
+		{
+			FString AssetPath;
+			if (Value.IsValid() && Value->TryGetString(AssetPath))
+			{
+				AddAssetPathIfPresent(OutAssetPaths, AssetPath);
+			}
+		}
+	}
+
+	bool TryReadPayloadAssets(const TSharedPtr<FJsonObject>& Payload, TArray<FString>& OutAssetPaths)
 	{
 		if (!Payload.IsValid())
 		{
 			return false;
 		}
 
-		return Payload->TryGetStringField(TEXT("asset_path"), OutAssetPath)
-			|| Payload->TryGetStringField(TEXT("target_blueprint"), OutAssetPath);
+		ReadAssetPathFields(Payload, OutAssetPaths);
+		ReadTargetAssetsArray(Payload, OutAssetPaths);
+
+		const TSharedPtr<FJsonObject>* TaskPlanPtr = nullptr;
+		if (Payload->TryGetObjectField(TEXT("task_plan"), TaskPlanPtr) &&
+			TaskPlanPtr &&
+			TaskPlanPtr->IsValid())
+		{
+			ReadAssetPathFields(*TaskPlanPtr, OutAssetPaths);
+			ReadTargetAssetsArray(*TaskPlanPtr, OutAssetPaths);
+		}
+
+		return OutAssetPaths.Num() > 0;
 	}
 }
 
@@ -98,32 +167,59 @@ bool FBlueprintHelperWriteAuthorizationService::ValidateSessionForCommand(
 	const TSharedPtr<FJsonObject>& Payload,
 	FBlueprintHelperBridgeValidationError& OutError)
 {
-	if (SessionId.IsEmpty())
-	{
-		SetAuthError(OutError, TEXT("unauthorized"),
-			TEXT("Write commands require an approved BlueprintHelper auth_session."));
-		return false;
-	}
-
 	FScopeLock Lock(&Mutex);
 	RemoveExpiredSessions();
 
-	const FBlueprintHelperWriteSessionGrant* Grant = Sessions.Find(SessionId);
-	if (!Grant)
+	if (Sessions.Num() == 0)
+	{
+		SetAuthError(OutError, TEXT("unauthorized"),
+			TEXT("Write commands require an approved BlueprintHelper write session."));
+		return false;
+	}
+
+	const FBlueprintHelperWriteSessionGrant* Grant = SessionId.IsEmpty() ? nullptr : Sessions.Find(SessionId);
+	if (Grant && GrantCoversPayload(*Grant, Payload))
+	{
+		return true;
+	}
+
+	if (FindCoveringGrantLocked(Payload))
+	{
+		return true;
+	}
+
+	if (!SessionId.IsEmpty() && !Grant)
 	{
 		SetAuthError(OutError, TEXT("unauthorized"),
 			TEXT("auth_session is missing, expired, or not recognized by the running editor."));
 		return false;
 	}
 
-	if (!GrantCoversPayload(*Grant, Payload))
+	if (!SessionId.IsEmpty())
 	{
 		SetAuthError(OutError, TEXT("unauthorized"),
 			FString::Printf(TEXT("auth_session does not cover command %s target asset."), *Command));
 		return false;
 	}
 
-	return true;
+	SetAuthError(OutError, TEXT("unauthorized"),
+		FString::Printf(TEXT("No active BlueprintHelper write session covers command %s target asset."), *Command));
+	return false;
+}
+
+const FBlueprintHelperWriteSessionGrant* FBlueprintHelperWriteAuthorizationService::FindCoveringGrantLocked(
+	const TSharedPtr<FJsonObject>& Payload) const
+{
+	for (const auto& Pair : Sessions)
+	{
+		const FBlueprintHelperWriteSessionGrant& Grant = Pair.Value;
+		if (!Grant.IsExpired() && GrantCoversPayload(Grant, Payload))
+		{
+			return &Grant;
+		}
+	}
+
+	return nullptr;
 }
 
 bool FBlueprintHelperWriteAuthorizationService::HasActiveSession()
@@ -184,13 +280,21 @@ bool FBlueprintHelperWriteAuthorizationService::GrantCoversPayload(
 		return true;
 	}
 
-	FString AssetPath;
-	if (!TryReadPayloadAsset(Payload, AssetPath))
+	TArray<FString> AssetPaths;
+	if (!TryReadPayloadAssets(Payload, AssetPaths))
 	{
 		return false;
 	}
 
-	return Grant.AssetPaths.Contains(AssetPath);
+	for (const FString& AssetPath : AssetPaths)
+	{
+		if (!Grant.AssetPaths.Contains(AssetPath))
+		{
+			return false;
+		}
+	}
+
+	return true;
 }
 
 void FBlueprintHelperWriteAuthorizationService::RemoveExpiredSessions()

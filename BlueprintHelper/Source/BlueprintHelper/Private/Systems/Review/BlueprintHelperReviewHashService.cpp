@@ -7,6 +7,7 @@
 #include "EdGraph/EdGraphPin.h"
 #include "Engine/Blueprint.h"
 #include "Misc/Crc.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
 #include "UObject/UObjectGlobals.h"
@@ -193,7 +194,7 @@ bool FBlueprintHelperReviewHashService::ComputeGraphBlockHash(
 		{
 			continue;
 		}
-		FMetaData& MetaData = Package->GetMetaData();
+		FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
 		const FString NodeBlockId = MetaData.GetValue(Node, TEXT("BlueprintHelperBlockId"));
 		if (NodeBlockId == BlockId)
 		{

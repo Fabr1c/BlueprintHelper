@@ -29,7 +29,7 @@ Agents should read this file before BlueprintHelper planning, status review, imp
 - Missing capability default: `stop_and_report`.
 - Do not fall back to frozen or legacy low-level MCP tools unless the user explicitly requests expert recovery.
 - If `write_permission` is disabled, request a write session after preview and before execute; a user rejection is a stop-and-report condition.
-- Do not ask for or inject `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session` for ordinary interactive writes.
+- Do not ask for or inject `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session` for ordinary interactive writes; approved write permission is held by the running Editor/Bridge and can be used by delegated SideAgents within scope and lifetime.
 
 ### Save And Validation
 

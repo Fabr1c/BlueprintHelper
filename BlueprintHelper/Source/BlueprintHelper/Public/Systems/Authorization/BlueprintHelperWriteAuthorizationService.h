@@ -55,6 +55,7 @@ private:
 	FBlueprintHelperWriteSessionGrant CreateGrant(const FBlueprintHelperWriteSessionRequest& Request);
 	bool RequestUserApproval(const FBlueprintHelperWriteSessionRequest& Request) const;
 	bool GrantCoversPayload(const FBlueprintHelperWriteSessionGrant& Grant, const TSharedPtr<FJsonObject>& Payload) const;
+	const FBlueprintHelperWriteSessionGrant* FindCoveringGrantLocked(const TSharedPtr<FJsonObject>& Payload) const;
 	void RemoveExpiredSessions();
 
 	mutable FCriticalSection Mutex;

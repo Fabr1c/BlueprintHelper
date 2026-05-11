@@ -4,6 +4,7 @@
 #include "K2Node_SwitchString.h"
 #include "K2Node_SwitchName.h"
 #include "K2Node_SwitchEnum.h"
+#include "Runtime/Launch/Resources/Version.h"
 #include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
 
 bool FSwitchNodeHandler::CanHandle(EParsedBlueprintNodeType NodeType) const
@@ -117,7 +118,31 @@ UK2Node* FSwitchNodeHandler::Spawn(UEdGraph* TargetGraph, const FParsedNode& Nod
 			SwitchNode->CreateNewGuid();
 			SwitchNode->PostPlacedNewNode();
 			SwitchNode->bHasDefaultPin = NodeData.SwitchReference.bHasDefaultPin;
+#if ENGINE_MAJOR_VERSION > 5 || (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 6)
 			SwitchNode->SetEnum(Enum);
+#else
+			SwitchNode->Enum = Enum;
+			SwitchNode->EnumEntries.Empty();
+			SwitchNode->EnumFriendlyNames.Empty();
+			if (Enum)
+			{
+				if (IsInGameThread() || Enum->IsPostLoadThreadSafe())
+				{
+					Enum->ConditionalPostLoad();
+				}
+				for (int32 EnumIndex = 0; EnumIndex < Enum->NumEnums() - 1; ++EnumIndex)
+				{
+					const bool bShouldBeHidden = Enum->HasMetaData(TEXT("Hidden"), EnumIndex)
+						|| Enum->HasMetaData(TEXT("Spacer"), EnumIndex);
+					if (!bShouldBeHidden)
+					{
+						const FString EnumValueName = Enum->GetNameStringByIndex(EnumIndex);
+						SwitchNode->EnumEntries.Add(FName(*EnumValueName));
+						SwitchNode->EnumFriendlyNames.Add(Enum->GetDisplayNameTextByIndex(EnumIndex));
+					}
+				}
+			}
+#endif
 			SwitchNode->NodePosX = static_cast<int32>(NodeData.X);
 			SwitchNode->NodePosY = static_cast<int32>(NodeData.Y);
 			SwitchNode->AllocateDefaultPins();
