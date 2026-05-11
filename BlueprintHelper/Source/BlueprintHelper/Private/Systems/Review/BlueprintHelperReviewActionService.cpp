@@ -25,6 +25,7 @@
 #include "Serialization/JsonSerializer.h"
 #include "Systems/ToolClusters/CleanupOwnership/BlueprintHelperConvertBlockToUserOwnedService.h"
 #include "Systems/Transactions/BlueprintHelperTransactionJournalService.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
 #include "UObject/UObjectGlobals.h"
@@ -749,7 +750,7 @@ public:
 				{
 					continue;
 				}
-				FMetaData& MetaData = Package->GetMetaData();
+				FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
 				if (MetaData.GetValue(Node, TEXT("BlueprintHelperBlockId")) == BlockId)
 				{
 					OutNodes.AddUnique(Node);

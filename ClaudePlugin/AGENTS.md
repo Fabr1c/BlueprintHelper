@@ -29,13 +29,13 @@ Use BlueprintHelper MCP for:
 
 ## Required preflight before any write operation
 
-1. Confirm the user has a target UE project and the Unreal Editor is running, or the MCP server has `UE_ENGINE_DIR` configured and the target `.uproject` can be passed as the explicit `project_file` tool argument so it can launch the editor.
+1. Confirm the user has a target UE project and the Unreal Editor is running, or the project `.blueprinthelper/agent-profile.json` has `environment.ue_engine_dir` configured and the target `.uproject` can be passed as the explicit `project_file` tool argument so it can launch the editor.
 2. Confirm the Bridge is reachable before calling editor-asset tools.
 3. Identify the exact target asset path, for example `/Game/Blueprints/BP_Player`.
 4. Identify the exact target graph when editing graph nodes, for example `EventGraph`.
 5. Prefer TaskSpec-first writes: read task context -> build `BlueprintHelper.TaskSpec.v1` -> preview task -> execute task -> read task result.
 6. If `write_permission` is disabled, call `blueprinthelper_request_write_session` after preview and before execute. The running Editor shows a simple accept/reject approval dialog; if the user rejects it, stop and report instead of trying another write path.
-7. Do not ask for or inject `BLUEPRINTHELPER_BRIDGE_TOKEN` / `auth_token` for ordinary interactive writes. The MCP client caches the approved session internally.
+7. Do not ask for or inject `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session` for ordinary interactive writes. The running Editor/Bridge owns the approved scope and lifetime, so delegated SideAgents can use BlueprintHelper tools after approval without receiving raw session data.
 8. Never rely on the currently focused editor tab for destructive operations unless the user explicitly says to operate on the active context.
 
 ## Fast path

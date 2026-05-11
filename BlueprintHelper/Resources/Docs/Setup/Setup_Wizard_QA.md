@@ -3,7 +3,7 @@
 必须采集：
 
 ```text
-UE_ENGINE_DIR 绝对路径；项目 .uproject 由 Agent 在当前工作区发现，并在调用工具时作为 project_file 显式传入
+Project agent profile must include `environment.ue_engine_dir` absolute path and optional `environment.ue_version`; project `.uproject` is discovered by the Agent from the current workspace and passed as explicit `project_file` when calling tools
 Safety Profile：ReadOnly / Conservative / Standard / AutoRepair / Expert
 Agent entry mode：task_spec_first
 Fallback policy：stop_and_report / capability_debug_allowed / legacy_direct_allowed

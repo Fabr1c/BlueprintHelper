@@ -51,6 +51,7 @@
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "HAL/PlatformApplicationMisc.h"
 #include "Internationalization/Regex.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
 #include "Serialization/JsonSerializer.h"
@@ -852,7 +853,7 @@ void FBlueprintToTextConverter::ExportGraphNodesAndLinks(
 
 		if (UPackage* Package = Node->GetOutermost())
 		{
-			FMetaData& MetaData = Package->GetMetaData();
+			FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
 			const FString Owned = MetaData.GetValue(Node, TEXT("BlueprintHelperOwned"));
 			const FString BlockId = MetaData.GetValue(Node, TEXT("BlueprintHelperBlockId"));
 			if (!Owned.IsEmpty() || !BlockId.IsEmpty())
@@ -934,7 +935,11 @@ void FBlueprintToTextConverter::ExportGraphNodesAndLinks(
 		{
 			TSharedPtr<FJsonObject> CompEventObj = MakeShared<FJsonObject>();
 			CompEventObj->SetStringField(TEXT("delegate_property"), CompEvent->DelegatePropertyName.ToString());
+#if ENGINE_MAJOR_VERSION > 5 || (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 6)
 			CompEventObj->SetStringField(TEXT("component_property"), CompEvent->GetComponentPropertyName().ToString());
+#else
+			CompEventObj->SetStringField(TEXT("component_property"), CompEvent->ComponentPropertyName.ToString());
+#endif
 			if (CompEvent->DelegateOwnerClass)
 			{
 				CompEventObj->SetStringField(TEXT("delegate_owner_class"), CompEvent->DelegateOwnerClass->GetPathName());

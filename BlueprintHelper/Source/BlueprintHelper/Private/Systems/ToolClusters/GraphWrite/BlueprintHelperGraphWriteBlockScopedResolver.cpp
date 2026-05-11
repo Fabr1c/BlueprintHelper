@@ -3,6 +3,7 @@
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraph/EdGraphPin.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
 
@@ -104,7 +105,7 @@ public:
 
 		if (UPackage* Package = Node->GetOutermost())
 		{
-			FMetaData& MetaData = Package->GetMetaData();
+			FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
 			const FString NodeBlockId = MetaData.GetValue(Node, TEXT("BlueprintHelperBlockId"));
 			const FString OwnedStr = MetaData.GetValue(Node, TEXT("BlueprintHelperOwned"));
 			if (!NodeBlockId.IsEmpty() || !OwnedStr.IsEmpty())

@@ -53,7 +53,7 @@ struct FBlueprintHelperBridgeRequest
 
 	/** 命令名称，例如 "import_json"、"compile_blueprint"。 */
 	FString Command;
-	/** Approved short-lived write session. Write and high-risk commands require this. */
+	/** Optional cached write session. The running editor can also validate active scoped write grants. */
 	FString AuthSession;
 
 	/** 业务参数。 */

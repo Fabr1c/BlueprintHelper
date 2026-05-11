@@ -20,6 +20,7 @@
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperMergeBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperPatchBlueprintGraphService.h"
 #include "Systems/Transactions/BlueprintHelperTransactionJournalService.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
 
@@ -157,7 +158,7 @@ public:
 
 		if (UPackage* Package = Node->GetOutermost())
 		{
-			FMetaData& MetaData = Package->GetMetaData();
+			FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
 			MetaData.SetValue(Node, TEXT("BlueprintHelperOwned"), TEXT("true"));
 			MetaData.SetValue(Node, TEXT("BlueprintHelperBlockId"), *BlockId);
 		}
@@ -172,7 +173,7 @@ public:
 
 		if (UPackage* Package = Node->GetOutermost())
 		{
-			FMetaData& MetaData = Package->GetMetaData();
+			FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
 			MetaData.RemoveValue(Node, TEXT("BlueprintHelperOwned"));
 			MetaData.RemoveValue(Node, TEXT("BlueprintHelperBlockId"));
 			MetaData.RemoveValue(Node, TEXT("BlueprintHelperTransactionId"));

@@ -4,6 +4,7 @@
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraph/EdGraphPin.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
 
@@ -53,7 +54,7 @@ FBlueprintHelperGraphSnapshot FBlueprintHelperGraphSnapshotService::CaptureNodeS
 		UPackage* Package = Node->GetOutermost();
 		if (Package)
 		{
-			FMetaData& MetaData = Package->GetMetaData();
+			FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
 			const FString OwnedStr = MetaData.GetValue(Node, TEXT("BlueprintHelperOwned"));
 			if (!OwnedStr.IsEmpty())
 			{

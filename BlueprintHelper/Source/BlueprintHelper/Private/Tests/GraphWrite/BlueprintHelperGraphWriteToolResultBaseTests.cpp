@@ -46,6 +46,7 @@
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.h"
 #include "Systems/Transactions/BlueprintHelperTransactionJournalService.h"
 #include "UI/Review/BlueprintHelperReviewGraphBounds.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
 #include "UObject/Class.h"
@@ -359,7 +360,7 @@ public:
 
 		while (Stack.Num() > 0)
 		{
-			UEdGraphNode* Current = Stack.Pop(EAllowShrinking::No);
+			UEdGraphNode* Current = FBlueprintHelperVersionCompat::PopNoShrink(Stack);
 			if (!Current || Visited.Contains(Current))
 			{
 				continue;
@@ -397,7 +398,7 @@ public:
 
 		if (UPackage* Package = Node->GetOutermost())
 		{
-			FMetaData& MetaData = Package->GetMetaData();
+			FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
 			MetaData.SetValue(Node, TEXT("BlueprintHelperOwned"), TEXT("true"));
 			MetaData.SetValue(Node, TEXT("BlueprintHelperBlockId"), *BlockId);
 		}
@@ -416,7 +417,7 @@ public:
 			return false;
 		}
 
-		FMetaData& MetaData = Package->GetMetaData();
+		FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
 		return MetaData.GetValue(Node, TEXT("BlueprintHelperOwned")) == TEXT("true") &&
 			MetaData.GetValue(Node, TEXT("BlueprintHelperBlockId")) == BlockId;
 	}
@@ -441,7 +442,7 @@ public:
 			return;
 		}
 
-		FMetaData& MetaData = Package->GetMetaData();
+		FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
 		Test.TestTrue(TEXT("metadata marks node as BlueprintHelper owned"),
 			MetaData.GetValue(Node, TEXT("BlueprintHelperOwned")) == FString(TEXT("true")));
 		Test.TestTrue(TEXT("metadata keeps block id"),
@@ -1630,7 +1631,7 @@ bool FBlueprintHelperGraphWriteOwnershipWritesMetadataWithoutManagedCommentTest:
 	}
 
 	EventNode->NodeComment = TEXT("Designer note");
-	FMetaData& PreWriteMetaData = EventNode->GetOutermost()->GetMetaData();
+	FBlueprintHelperPackageMetaData& PreWriteMetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(EventNode->GetOutermost());
 	PreWriteMetaData.SetValue(EventNode, TEXT("BlueprintHelperTool"), TEXT("legacy_graph_write"));
 
 	FBlueprintHelperOwnershipService OwnershipService;

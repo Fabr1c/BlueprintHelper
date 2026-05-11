@@ -37,7 +37,13 @@
 #include "Widgets/Text/STextBlock.h"
 #include "UI/Review/SBlueprintHelperReviewPanel.h"
 #include "Engine/Blueprint.h"
+#include "Runtime/Launch/Resources/Version.h"
+#if ENGINE_MAJOR_VERSION > 5 || (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 6)
 #include "StructUtils/UserDefinedStruct.h"
+#else
+#include "Engine/UserDefinedStruct.h"
+#endif
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "UObject/MetaData.h"
 #include "UObject/NoExportTypes.h"
 #include "UObject/Package.h"
@@ -363,7 +369,7 @@ public:
 		}
 		if (UPackage* Package = Node->GetOutermost())
 		{
-			FMetaData& MetaData = Package->GetMetaData();
+			FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
 			MetaData.SetValue(Node, TEXT("BlueprintHelperOwned"), TEXT("true"));
 			MetaData.SetValue(Node, TEXT("BlueprintHelperBlockId"), *BlockId);
 		}
@@ -377,7 +383,7 @@ public:
 		}
 		if (UPackage* Package = Node->GetOutermost())
 		{
-			FMetaData& MetaData = Package->GetMetaData();
+			FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
 			return MetaData.GetValue(Node, TEXT("BlueprintHelperOwned")) == FString(TEXT("true"))
 				&& !MetaData.GetValue(Node, TEXT("BlueprintHelperBlockId")).IsEmpty();
 		}
@@ -5928,7 +5934,7 @@ bool FBlueprintHelperReviewGraphBoundsBlockMetadataTest::RunTest(const FString& 
 	SecondNode->NodeHeight = 96;
 	Graph->AddNode(SecondNode, false, false);
 
-	FMetaData& MetaData = GetTransientPackage()->GetMetaData();
+	FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(GetTransientPackage());
 	MetaData.SetValue(FirstNode, TEXT("BlueprintHelperOwned"), TEXT("true"));
 	MetaData.SetValue(FirstNode, TEXT("BlueprintHelperBlockId"), TEXT("SmokeBlock"));
 	MetaData.SetValue(SecondNode, TEXT("BlueprintHelperOwned"), TEXT("true"));
@@ -6017,7 +6023,7 @@ bool FBlueprintHelperReviewGraphBoundsFullBlockMetadataTest::RunTest(const FStri
 	ThirdNode->NodePosY = -176;
 	Graph->AddNode(ThirdNode, false, false);
 
-	FMetaData& MetaData = GetTransientPackage()->GetMetaData();
+	FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(GetTransientPackage());
 	const FString CurrentBlockId = TEXT("BH_TaskSpecSmoke_20260504_001_BH_TaskSpecSmokeEvent_20260504_0010");
 	MetaData.SetValue(FirstNode, TEXT("BlueprintHelperBlockId"), *CurrentBlockId);
 	MetaData.SetValue(SecondNode, TEXT("BlueprintHelperBlockId"), *CurrentBlockId);

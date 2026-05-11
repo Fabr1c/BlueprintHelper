@@ -11,6 +11,7 @@
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
 #include "Kismet2/BlueprintEditorUtils.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
 #include "Dom/JsonObject.h"
@@ -134,7 +135,7 @@ bool FBlueprintHelperConvertBlockToUserOwnedService::ResolveBlock(
 			if (!Node) continue;
 			UPackage* Pkg = Node->GetOutermost();
 			if (!Pkg) continue;
-			FMetaData& Meta = Pkg->GetMetaData();
+			FBlueprintHelperPackageMetaData& Meta = FBlueprintHelperVersionCompat::GetPackageMetaData(Pkg);
 			const FString Owned = Meta.GetValue(Node, TEXT("BlueprintHelperOwned"));
 			const FString BId = Meta.GetValue(Node, TEXT("BlueprintHelperBlockId"));
 			if (BId == EffectiveBlockId)
@@ -327,7 +328,7 @@ bool FBlueprintHelperConvertBlockToUserOwnedService::ConvertOwnershipMetadata(
 
 		UPackage* Pkg = Node->GetOutermost();
 		if (!Pkg) { OutError = TEXT("无法获取 Package。"); return false; }
-		FMetaData& Meta = Pkg->GetMetaData();
+		FBlueprintHelperPackageMetaData& Meta = FBlueprintHelperVersionCompat::GetPackageMetaData(Pkg);
 
 		// 清除 BlueprintHelper ownership metadata
 		Meta.RemoveValue(Node, TEXT("BlueprintHelperOwned"));

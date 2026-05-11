@@ -1,6 +1,6 @@
 ---
 description: Run BlueprintHelper initial setup — configure UE paths, verify MCP Bridge connectivity, collect safety preferences, and generate SetupProfile
-allowed-tools: Read, Write, AskUserQuestion
+allowed-tools: Read, Write, AskUserQuestion, mcp__blueprint-helper__blueprinthelper_read_agent_guide, mcp__blueprint-helper__blueprinthelper_get_debug_case, mcp__blueprint-helper__blueprint_get_runtime_profile, mcp__blueprint-helper__blueprinthelper_diagnostics, mcp__blueprint-helper__blueprinthelper_diagnostics_runtime, mcp__blueprint-helper__blueprinthelper_request_write_session, mcp__blueprint-helper__blueprinthelper_read_context, mcp__blueprint-helper__blueprinthelper_read_task_context, mcp__blueprint-helper__blueprinthelper_read_reference_context, mcp__blueprint-helper__blueprinthelper_preview_task, mcp__blueprint-helper__blueprinthelper_execute_task, mcp__blueprint-helper__blueprinthelper_get_task_result, mcp__blueprint-helper__blueprint_open_editor
 ---
 
 # BlueprintHelper Setup
@@ -13,7 +13,7 @@ allowed-tools: Read, Write, AskUserQuestion
 
 ### 1.1 获取 UE 引擎目录
 
-询问用户并确认 `UE_ENGINE_DIR` 的绝对路径，文档中用 `<UE_ENGINE_DIR>` 表示该路径。
+询问用户并确认当前项目使用的 UE Engine 绝对路径，文档中用 `<UE_ENGINE_ROOT>` 表示该路径。该路径只写入项目下的 `<ProjectDir>/.blueprinthelper/agent-profile.json`，字段为 `environment.ue_engine_dir`，不要写入 C 盘全局 Claude settings 或插件 env。
 
 验证规则：
 - 必须是绝对路径
@@ -22,7 +22,7 @@ allowed-tools: Read, Write, AskUserQuestion
 
 ### 1.2 发现项目文件
 
-Agent 使用普通仓库工具在当前项目工作区发现目标 `.uproject` 文件，文档中用 `<PROJECT_FILE>` 表示该路径。
+Agent 使用普通仓库工具在当前项目工作区发现目标 `.uproject` 文件，文档中用 `<ABSOLUTE_UPROJECT_FILE>` 表示该一次性工具参数。
 
 不要把项目路径写入全局 Claude settings、插件 env、SetupProfile 或 RuntimeProfile。项目路径只在调用 `blueprint_open_editor`、`blueprint_build_project` 等工具时作为显式 `project_file` 参数传入。
 
@@ -30,7 +30,7 @@ Agent 使用普通仓库工具在当前项目工作区发现目标 `.uproject` �
 - 必须是绝对路径
 - 必须以 `.uproject` 结尾
 - 文件必须存在
-- 如果当前工作区下无法唯一确定目标 `.uproject`，停止并询问用户，不要回退到 `UE_PROJECT_FILE`
+- 如果当前工作区下无法唯一确定目标 `.uproject`，停止并询问用户，不要回退到任何全局项目路径变量
 
 ### 1.3 确认 BlueprintHelper 插件已安装
 
@@ -57,13 +57,51 @@ npm run build
 
 ---
 
+## 阶段 2.5：一次性请求 MCP Tool 权限
+
+在进入 Bridge 连通性验证前，必须用原生交互表单请求用户一次性准许本 setup 可用的 BlueprintHelper MCP Tool 权限。
+
+权限范围只包含非冻结、非废弃、Agent-facing 或 preflight 工具：
+- `blueprinthelper_read_agent_guide`
+- `blueprinthelper_get_debug_case`
+- `blueprint_get_runtime_profile`
+- `blueprinthelper_diagnostics`
+- `blueprinthelper_diagnostics_runtime`
+- `blueprinthelper_request_write_session`
+- `blueprinthelper_read_context`
+- `blueprinthelper_read_task_context`
+- `blueprinthelper_read_reference_context`
+- `blueprinthelper_preview_task`
+- `blueprinthelper_execute_task`
+- `blueprinthelper_get_task_result`
+- `blueprint_open_editor`
+
+不要请求 `mcp__blueprint-helper` 整服权限，因为它会包含 frozen / legacy / expert 工具。不要请求任何 description 含 `FROZEN / Expert-only` 的工具。
+
+Use AskUserQuestion:
+- header: "MCP Tools"
+- question: "是否一次性准许 setup 使用非冻结 BlueprintHelper MCP 工具？"
+- multiSelect: false
+- options:
+  - label: "Allow setup MCP tools (Recommended)"
+    description: "准许 TaskSpec、diagnostics、context、runtime profile、write session 和 open_editor preflight 工具"
+  - label: "Review tool list first"
+    description: "先展示上方工具清单，再重新请求准许"
+  - label: "Skip MCP tools"
+    description: "只生成本地文件；Bridge、runtime_profile 和 diagnostics 验证将标记为 skipped"
+
+如果用户选择 `Review tool list first`，展示工具清单后再次输出同一个原生确认表单。
+如果用户选择 `Skip MCP tools` 或拒绝 Claude 权限弹窗，继续完成本地文件生成，但不要调用 MCP 工具，并在最终报告中写明 `MCP verification skipped by user`。
+
+---
+
 ## 阶段 3：Bridge 连通性
 
 ### 3.1 确认 Unreal Editor 状态
 
 检查以下之一：
 1. Unreal Editor 正在运行且已加载 BlueprintHelper 插件
-2. 如果 Editor 未运行，确认 `open_editor` 工具可用（依赖 `UE_ENGINE_DIR` 和显式 `project_file` 参数）
+2. 如果 Editor 未运行，确认 `open_editor` 工具可用（依赖项目 agent-profile 的 `environment.ue_engine_dir` 和显式 `project_file` 参数）
 
 ### 3.2 验证 Bridge 连接
 
@@ -313,18 +351,19 @@ Use AskUserQuestion:
 
 示例结构参见 `Resources/Docs/Setup/SetupProfile_Example.json`。
 
-注意：不要把 `08_User_Preferences.md` 的长文本偏好写入 SetupProfile。SetupProfile 只保存安全档位、fallback、自动保存、边界等可执行配置摘要。不要把项目 `.uproject` 路径、`project_file` 或旧的 `UE_PROJECT_FILE` 写入 SetupProfile。
+注意：不要把 `08_User_Preferences.md` 的长文本偏好写入 SetupProfile。SetupProfile 只保存安全档位、fallback、自动保存、边界等可执行配置摘要，以及当前项目的 `environment.ue_engine_dir` 和可选 `environment.ue_version`。不要把项目 `.uproject` 路径、`project_file` 或旧的全局项目路径字段写入 SetupProfile。
 
 ---
 
-## 阶段 5.5：全局 Claude Settings 预检
+## 阶段 5.5：项目 Agent Profile 预检
 
-在进入验证阶段前，使用 Read 读取 `~/.claude/settings.json`。
+在进入验证阶段前，使用 Read 读取 `<ProjectDir>/.blueprinthelper/agent-profile.json`。
 
 检查规则：
-- `env.UE_ENGINE_DIR` 应存在，并指向有效 UE Engine 目录
-- 不要写入或更新 `env.UE_PROJECT_FILE`
-- 如果发现已有 `env.UE_PROJECT_FILE`，报告它已被 BlueprintHelper 插件弃用且会被忽略；可建议用户手动清理，但 setup 不自动修改全局 settings
+- `environment.ue_engine_dir` 应存在，并指向有效 UE Engine 目录
+- `environment.ue_version` 可选，但多版本开发项目建议写入，例如 `5.6`
+- 不要写入或更新全局 Claude settings 的旧 UE 引擎路径或旧项目路径字段
+- 如果发现全局 settings 中已有旧 UE 引擎路径或旧项目路径字段，报告它们已被 BlueprintHelper 项目 profile 流程弃用；可建议用户手动清理，但 setup 不自动修改全局 settings
 - 项目 `.uproject` 路径继续由 Agent 从当前工作区发现，并在工具调用时显式传入 `project_file`
 
 ---
@@ -347,7 +386,7 @@ Use AskUserQuestion:
 
 ### 6.3 生成项目 Marker（可选）
 
-如果项目根目录存在 `CLAUDE.md` 或 `AGENTS.md`，询问是否需要添加 BlueprintHelper 引用指针：
+如果项目根目录存在 `CLAUDE.md` 或 `AGENTS.md`，询问是否需要添加 BlueprintHelper 引用指针(如果添加，先清除文档只读状态)：
 
 ```markdown
 ## BlueprintHelper
@@ -366,9 +405,10 @@ Setup 完成后输出摘要：
 ```text
 BlueprintHelper Setup 完成
 
-UE Engine:  <UE_ENGINE_DIR>
+UE Engine:  <UE_ENGINE_ROOT> (from agent-profile environment.ue_engine_dir)
 UE Project: <discovered .uproject used as project_file only>
 Bridge:     <host:port> — <status>
+MCP Tools:  <allowed non-frozen tools / skipped by user>
 Safety:     <safety_profile>
 Entry Mode: task_spec_first
 Fallback:   <fallback_policy>

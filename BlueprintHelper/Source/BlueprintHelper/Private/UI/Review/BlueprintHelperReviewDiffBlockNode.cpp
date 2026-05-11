@@ -178,14 +178,8 @@ void UBlueprintHelperReviewDiffBlockNode::Configure(
 	OnReject = MoveTemp(InOnReject);
 
 	NodeComment.Reset();
-	CommentColor = DiffColor;
-	CommentColor.A = 0.46f;
-	FontSize = 1;
-	MoveMode = ECommentBoxMode::NoGroupMovement;
-	CommentDepth = -10000;
 	bCanRenameNode = false;
 	bCanResizeNode = false;
-	bCommentBubbleVisible_InDetailsPanel = false;
 }
 
 FText UBlueprintHelperReviewDiffBlockNode::GetNodeTitle(ENodeTitleType::Type TitleType) const

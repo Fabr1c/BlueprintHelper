@@ -20,6 +20,7 @@
 #include "K2Node_Event.h"
 #include "K2Node_FunctionEntry.h"
 #include "Kismet2/BlueprintEditorUtils.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
 #include "Dom/JsonObject.h"
@@ -104,7 +105,7 @@ public:
 			return false;
 		}
 
-		FMetaData& MetaData = Package->GetMetaData();
+		FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
 		if (MetaData.GetValue(Node, TEXT("BlueprintHelperOwned")) != TEXT("true"))
 		{
 			return false;
@@ -904,7 +905,7 @@ bool FBlueprintHelperReplaceBlueprintGraphService::ResolveBlockImplementation(
 		UPackage* Package = Node->GetOutermost();
 		if (!Package) continue;
 
-		FMetaData& MetaData = Package->GetMetaData();
+		FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
 		const FString OwnedStr = MetaData.GetValue(Node, TEXT("BlueprintHelperOwned"));
 		if (OwnedStr != TEXT("true")) continue;
 

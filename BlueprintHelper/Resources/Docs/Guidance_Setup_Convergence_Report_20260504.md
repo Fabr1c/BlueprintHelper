@@ -157,7 +157,7 @@ Expert
 Setup Wizard 需要采集：
 
 ```text
-UE_ENGINE_DIR / UE_PROJECT_FILE 绝对路径
+项目 agent-profile 的 `environment.ue_engine_dir` 绝对路径；`.uproject` 只作为工具调用的显式 `project_file`
 Safety Profile
 TaskSpec-first fallback 策略
 Blueprint / C++ 边界

@@ -39,9 +39,12 @@
 #include "Runtime/TaskRuntime/TaskPlanAdapters/AssetFactory/BlueprintHelperAssetFactoryTaskPlanAdapter.h"
 #include "Systems/Transactions/BlueprintHelperTransactionJournalService.h"
 #include "Engine/UserDefinedStruct.h"
+#include "Runtime/Launch/Resources/Version.h"
 #include "UObject/SoftObjectPath.h"
 #include "WidgetBlueprint.h"
+#if ENGINE_MAJOR_VERSION > 5 || (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 6)
 #include "StructUtils/UserDefinedStruct.h"
+#endif
 
 class FBlueprintHelperTaskPlanAssetFactoryAdapterTestsLocalUtils
 {

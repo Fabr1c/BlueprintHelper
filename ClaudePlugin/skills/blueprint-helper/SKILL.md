@@ -1,84 +1,118 @@
 ---
 name: blueprint-helper
-description: Use when working with Unreal Engine Blueprints, UMG widgets, DataAssets, DataTables, or other UE editor assets through BlueprintHelper.
+description: Use when a user request requires accessing Unreal Engine Blueprint assets through BlueprintHelper, including reading, inspecting, creating, or modifying Blueprint-related UE editor assets.
 ---
 
 # BlueprintHelper Skill
 
-## Non-negotiable SideAgent routing
+## Main Agent Role
 
-When this skill is loaded for UE editor asset work, the Main Agent must not call BlueprintHelper MCP tools directly.
+You are the user-facing planning and decision agent for Blueprint work.
 
-The Main Agent may only:
-- read repository files, `AGENTS.md`, this skill, and references;
-- decide task scope, ask the user for missing targets, and summarize results;
-- dispatch a SideAgent with a concise task package.
+Your job is to understand the user's gameplay or editor intent, identify the target Blueprint asset and scope, protect the user's existing assets, and decide what needs to be delegated. You own the conversation, clarification questions, final explanation, and user-facing tradeoffs.
 
-The SideAgent must:
-- read `references/09_SideAgent_Tool_Execution.md`;
-- call BlueprintHelper MCP tools, including read and preflight tools such as `blueprinthelper_read_agent_guide`, `blueprint_get_runtime_profile`, `blueprinthelper_diagnostics`, `blueprinthelper_read_context`, `blueprinthelper_preview_task`, `blueprinthelper_execute_task`, and `blueprinthelper_get_task_result`;
-- return translated results to the Main Agent with tool names, important arguments, status, blockers, validation results, and next action.
+Do not call BlueprintHelper MCP tools directly. If the request needs BlueprintHelper MCP access, delegate execution to a SideAgent.
 
-If the platform cannot start a SideAgent or the Main Agent cannot delegate, stop and report `sideagent_unavailable`. Do not silently bypass this rule by calling BlueprintHelper MCP tools from the Main Agent.
+Use this Skill when the user asks to:
 
-Normal repository tools remain allowed for C++, TypeScript, Python, JSON, docs, tests, config, `AGENTS.md`, and memory files. This exception does not include BlueprintHelper MCP tools or UE editor asset operations.
+- read, inspect, summarize, create, or modify a Blueprint;
+- edit Blueprint graphs, variables, components, class settings, interfaces, UMG, DataAssets, DataTables, or object properties through the UE Editor;
+- compile, save, open, diagnose, or validate UE editor assets as part of BlueprintHelper work.
 
-BlueprintHelper 是 UE 编辑器资产操作入口。`SKILL.md` 只负责让主 Agent 判断任务、读取索引、分派 SideAgent；工具参数和返回结果处理规则在 references 中。
+Do not use BlueprintHelper MCP for C++, TypeScript, Python, JSON, docs, tests, config, `AGENTS.md`, or memory files. Use normal repository tools for those.
 
-## 主 Agent 入口职责
+## Main Agent Flow
 
-当用户要求操作蓝图或其他 UE 编辑器资产时：
+1. Read `references/08_User_Preferences.md` and `references/00_Agent_Onboarding_Index_20260504.md`.
+2. Convert the user's request into intent, target, scope, and safety constraints.
+3. If the target asset, target graph, or create-vs-modify strategy is unclear, ask the user before any tool delegation.
+4. If BlueprintHelper MCP access is required, send a concise execution package to a SideAgent and tell it to read `references/09_SideAgent_Tool_Execution.md`.
+5. Review the SideAgent's translated result, then decide whether to continue, ask the user for confirmation, or report the outcome.
 
-1. 读取 `references/08_User_Preferences.md` 和 `references/00_Agent_Onboarding_Index_20260504.md`。
-2. 判断用户需求是否缺少目标资产、目标图表或创建/修改策略。
-3. 如果缺少关键目标，先问用户，不启用写入工具。
-4. 如果需要调用 BlueprintHelper 工具，给 SideAgent 一个精简任务包，并要求它读取 `references/09_SideAgent_Tool_Execution.md`。
-5. 接收 SideAgent 翻译后的结果，再由主 Agent 决定继续、请求确认或回复用户。
+The Main Agent owns context reuse. Keep a running summary of SideAgent returns, decide whether a follow-up can be answered from existing evidence, and only dispatch a new SideAgent when a specific missing tool result is needed.
 
-不要把整个 `SKILL.md` 原文传给 SideAgent。SideAgent 只接收任务包和需要读取的 reference 路径。
+The SideAgent is an execution and translation worker, not the conversation owner. Do not pass the full conversation or full `SKILL.md`; pass only the execution package and the reference paths it must read.
 
-## SideAgent 任务包
+## Main Agent Context Ledger
 
-主 Agent 下发给 SideAgent 的任务包只包含执行所需信息：
+Before dispatching a follow-up SideAgent:
 
-- 用户目标
-- 目标资产路径和目标图表
-- 是创建新资产还是修改已有资产
-- 安全档位和写入授权要求
-- 允许使用的 BlueprintHelper 工具
-- 停止条件
-- 返回格式要求
+- check the accumulated SideAgent results for the same asset, target, view, and evidence;
+- answer directly if the existing translated result is enough;
+- if more data is needed, identify the exact missing field or validation result;
+- delegate one atomic BlueprintHelper tool call for that missing data, not a broad re-analysis of the same function or graph.
 
-示例：用户说“在蓝图实现一个可以开关的物理门”时，如果目标资产未知，主 Agent 应先询问“修改已有门蓝图还是创建新的 `BP_PhysicsDoor`”。确认后再分派 SideAgent。
+## SideAgent Delegation Package
 
-## 停止条件
+When delegating, use semantic fields instead of dumping rules:
 
-以下情况主 Agent 不继续推进写入：
+```yaml
+user_goal: "<what the user wants in gameplay/editor terms>"
+main_agent_decision: "<why this requires BlueprintHelper MCP access>"
+operation_mode: "create_new | modify_existing | inspect_only | validate_only"
+target_asset_path: "<UE asset path, or unknown>"
+target_graph: "<graph/function/event/widget scope, or unknown>"
+safety_constraints:
+  allow_modify_user_nodes: false
+  require_preview: true
+  require_write_session_if_disabled: true
+  write_session_scope: "running Editor/Bridge, usable by delegated SideAgents within approved scope and lifetime"
+read_strategy:
+  avoid_full_logic_md_when_graph_size_unknown: true
+  large_graph_node_threshold: 80
+  large_graph_policy: "estimate size first, then read summary or block-scoped slices"
+tool_call_intent:
+  tool_name: "<single BlueprintHelper MCP tool this SideAgent should execute>"
+  missing_field_reason: "<why Main Agent cannot answer from accumulated SideAgent results>"
+references_to_read:
+  - "references/09_SideAgent_Tool_Execution.md"
+  - "<workflow reference if needed>"
+stop_conditions:
+  - "missing target asset or create/modify strategy"
+  - "Bridge unavailable"
+  - "runtime_profile blocks write"
+  - "preview blocked"
+  - "write session rejected"
+return_format: "Chinese summary with tool names, key arguments, status, blockers, validation, and next step"
+```
 
-- 目标资产或创建策略不明确。
-- Bridge 不可达。
-- runtime_profile 不允许目标写入。
-- preview 被阻断。
-- capability 缺失。
-- 写入授权被拒绝。
-- SideAgent 返回的结果无法判断是否满足用户目标。
+Example: if the user says "在蓝图实现一个可以开关的物理门" and does not name an asset, ask whether to modify an existing door Blueprint or create a new `BP_PhysicsDoor`. After that, delegate the actual BlueprintHelper tool work to a SideAgent.
 
-## 边界摘要
+## SideAgent Responsibility
 
-BlueprintHelper MCP 只用于 UE 编辑器资产：Blueprint、UMG、DataAsset、DataTable、编译、保存、打开、PIE/editor 命令和诊断。
+Tell the SideAgent its responsibility in the task package:
 
-C++、TypeScript、Python、JSON、配置、文档、AGENTS 和 memory 文件使用普通仓库工具。
+- construct valid BlueprintHelper MCP tool parameters from the user's goal and target;
+- call only the assigned BlueprintHelper MCP tool or the single atomic tool step explicitly requested by the Main Agent;
+- do not expand the task into a broader investigation, repeat adjacent reads, or decide whether prior SideAgent context is sufficient;
+- estimate graph size before requesting full graph `logic_md`; if the graph has more than 80 nodes, use summary, structured anchors, or block-scoped reads instead of whole-graph text;
+- run preview, write-session, execute, and result lookup only when the Main Agent assigned that tool step;
+- treat an approved write session as a running Editor/Bridge permission, not a single-Agent secret; never request, pass, or reveal `auth_session`;
+- translate the returned tool results into a concise Chinese result for the Main Agent;
+- stop and return a blocker instead of asking the user directly.
+
+The Main Agent uses that translated result to answer the user or decide the next clarification.
+
+## Stop Conditions
+
+Stop before write delegation when:
+
+- the target asset or create strategy is unknown;
+- the requested edit would modify user-owned nodes without explicit permission;
+- the request needs a capability not listed in the onboarding index;
+- the SideAgent reports `clarification_required`, `bridge_unavailable`, `profile_blocked`, `preview_blocked`, `capability_missing`, `write_rejected`, or `tool_failed`;
+- the SideAgent result is not enough to judge whether the user's goal was satisfied.
 
 ## References
 
-- `references/08_User_Preferences.md` — 用户偏好、协作规则、Debug/Review 约定
-- `references/00_Agent_Onboarding_Index_20260504.md` — Agent 引导索引
-- `references/09_SideAgent_Tool_Execution.md` — SideAgent 工具调用和结果翻译协议
-- `references/01_Preflight_And_Boundary.md` — 预检和边界
-- `references/02_TaskSpec_First_Tool_Selection.md` — TaskSpec-first 工具选择
-- `references/03_Runtime_Profile_And_Diagnostics.md` — runtime_profile 和 diagnostics
-- `references/04_MCP_Field_Templates_20260507.md` — MCP 字段模板
-- `references/04_TaskSpec_Edit_Blueprint_Workflow.md` — TaskSpec 编辑蓝图工作流
-- `references/05_Edit_Blueprint_Workflow.md` — 旧编辑蓝图工作流
-- `references/06_UMG_Data_Workflows.md` — UMG 和数据工作流
-- `references/07_Safety_Validation_And_Recovery.md` — 安全验证与恢复
+- `references/08_User_Preferences.md` - user preferences, collaboration rules, Debug/Review conventions
+- `references/00_Agent_Onboarding_Index_20260504.md` - Agent-facing guide index
+- `references/09_SideAgent_Tool_Execution.md` - SideAgent tool execution and result translation contract
+- `references/01_Preflight_And_Boundary.md` - preflight and scope boundaries
+- `references/02_TaskSpec_First_Tool_Selection.md` - TaskSpec-first tool selection
+- `references/03_Runtime_Profile_And_Diagnostics.md` - runtime_profile and diagnostics
+- `references/04_MCP_Field_Templates_20260507.md` - MCP field templates
+- `references/04_TaskSpec_Edit_Blueprint_Workflow.md` - TaskSpec Blueprint edit workflow
+- `references/05_Edit_Blueprint_Workflow.md` - legacy Blueprint edit workflow
+- `references/06_UMG_Data_Workflows.md` - UMG and data workflows
+- `references/07_Safety_Validation_And_Recovery.md` - safety validation and recovery

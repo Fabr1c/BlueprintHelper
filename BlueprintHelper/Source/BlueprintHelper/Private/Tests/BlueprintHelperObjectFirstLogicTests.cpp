@@ -16,6 +16,7 @@
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
 
@@ -266,7 +267,7 @@ public:
 
         if (UPackage* Package = Node->GetOutermost())
         {
-            FMetaData& MetaData = Package->GetMetaData();
+            FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
             MetaData.SetValue(Node, TEXT("BlueprintHelperOwned"), TEXT("true"));
             MetaData.SetValue(Node, TEXT("BlueprintHelperBlockId"), *BlockId);
         }
