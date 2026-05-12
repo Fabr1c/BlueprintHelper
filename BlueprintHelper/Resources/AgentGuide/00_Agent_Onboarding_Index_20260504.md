@@ -1,5 +1,7 @@
 # BlueprintHelper Agent Onboarding Index
 
+If the current Claude environment cannot dispatch a SideAgent but the Main Agent can see and call the required BlueprintHelper MCP tool, the Main Agent may execute one tool locally under the SideAgent single-tool contract and mark the result as `main_agent_direct_fallback`. Report `mcp_tools_unavailable` only when the required `mcp__blueprint-helper__...` tool is not visible or callable.
+
 普通 Agent 只走 TaskSpec-first 主线。MCP 中仍注册了兼容、测试和专家入口，但这些冻结入口不在本指南中作为可选工具暴露。
 
 默认流程:
@@ -36,6 +38,8 @@ blueprinthelper_get_task_result
 Write authorization is running Editor/Bridge based: use `blueprinthelper_request_write_session` only after a successful preview when `write_permission` is disabled. The approved scope and lifetime are held by the running Editor, so delegated SideAgents can call BlueprintHelper tools after approval as long as they stay within that scope. The Editor UI is intentionally a minimal accept/reject prompt. If it is rejected, stop and report.
 
 Ordinary Agents must not request, set, or forward `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session`; raw session data is not part of the Agent contract.
+
+Read-only tools such as `blueprinthelper_read_context`, `blueprinthelper_read_task_context`, and `blueprinthelper_read_reference_context` do not require a write session. If these tools are unavailable, diagnose Claude tool permission, plugin MCP registration, MCP server startup, or Bridge connectivity instead of requesting write permission.
 
 `blueprint_open_editor` 仅用于用户明确需要启动目标 Unreal Editor 的 preflight，不属于普通写入主线。
 

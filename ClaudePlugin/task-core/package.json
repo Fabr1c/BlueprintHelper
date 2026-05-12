@@ -21,6 +21,14 @@
     "./task/*": {
       "types": "./build/task/*.d.ts",
       "import": "./build/task/*.js"
+    },
+    "./tool-surface/*": {
+      "types": "./build/tool-surface/*.d.ts",
+      "import": "./build/tool-surface/*.js"
+    },
+    "./project-profile/*": {
+      "types": "./build/project-profile/*.d.ts",
+      "import": "./build/project-profile/*.js"
     }
   },
   "scripts": {

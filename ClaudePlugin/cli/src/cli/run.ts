@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { BridgeClient, type BridgeResponse } from '@blueprinthelper/task-core/bridge/bridge-client';
+import { getBlueprintHelperTool } from '@blueprinthelper/task-core/tool-surface/tool-registry';
 import { compileTaskSpecWithPython } from '@blueprinthelper/task-core/task/compiler/task-python-orchestrator';
 import {
   createTaskSpecRunner,
@@ -17,6 +18,7 @@ import {
   type CliCommand,
   type CliFormat,
 } from './output.js';
+import { invokeCliTool } from './tool-command.js';
 import {
   TOOL_RESULT_SCHEMA,
   failureResult,
@@ -30,6 +32,7 @@ export interface CliRuntime {
   cwd: string;
   runner?: TaskSpecRunner;
   bridge?: TaskRunnerBridge;
+  readStdin?: () => Promise<string> | string;
   stdout: (text: string) => void;
   stderr: (text: string) => void;
 }
@@ -68,6 +71,18 @@ export async function runCli(runtime: CliRuntime): Promise<number> {
   const command = parsed.command;
 
   try {
+    if (command.kind === 'tool.invoke') {
+      const toolResult = await invokeCliTool({
+        command,
+        cwd: runtime.cwd,
+        bridge: getBridge(runtime) as BridgeClient,
+        taskRunner: getRunner(runtime),
+        readStdin: runtime.readStdin ?? readProcessStdin,
+      });
+      const outcome = writeCliResult(runtime, command, toolResult);
+      return outcome.outputTooLarge ? 3 : toolResult.ok ? 0 : 2;
+    }
+
     if (command.kind === 'task.preview') {
       const taskSpec = TaskSpecSchema.parse(readJsonFile(path.resolve(runtime.cwd, required(command.file))));
       const preview = await getRunner(runtime).previewTask(taskSpec);
@@ -129,6 +144,7 @@ export async function runCli(runtime: CliRuntime): Promise<number> {
       operation: command.kind,
       status,
       message: err instanceof Error ? err.message : String(err),
+      fields: command.fields,
     }))}\n`);
     return status === 'bridge_unavailable' ? 2 : 1;
   }
@@ -147,9 +163,13 @@ function parseArgs(argv: string[]): ParseResult {
     file?: string;
     id?: string;
     command?: string;
+    json?: string;
+    stdin?: boolean;
+    expert?: boolean;
     format?: CliFormat;
     artifactDir?: string;
     maxBytes?: number;
+    fields?: string[];
   } = {};
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -160,6 +180,12 @@ function parseArgs(argv: string[]): ParseResult {
       options.id = readOptionValue(argv, ++index, arg);
     } else if (arg === '--command') {
       options.command = readOptionValue(argv, ++index, arg);
+    } else if (arg === '--json') {
+      options.json = readOptionValue(argv, ++index, arg);
+    } else if (arg === '--stdin') {
+      options.stdin = true;
+    } else if (arg === '--expert') {
+      options.expert = true;
     } else if (arg === '--format') {
       const format = readOptionValue(argv, ++index, arg);
       if (!['summary', 'json', 'full'].includes(format)) {
@@ -175,6 +201,13 @@ function parseArgs(argv: string[]): ParseResult {
         return { ok: false, message: `--max-bytes must be a positive integer: ${rawMaxBytes}` };
       }
       options.maxBytes = maxBytes;
+    } else if (arg === '--fields' || arg === '--select') {
+      const rawFields = readOptionValue(argv, ++index, arg);
+      const fields = parseFieldList(rawFields);
+      if (fields.length === 0) {
+        return { ok: false, message: `${arg} must include at least one field path.` };
+      }
+      options.fields = fields;
     } else if (arg.startsWith('--')) {
       return { ok: false, message: `Unknown option: ${arg}` };
     } else {
@@ -186,8 +219,24 @@ function parseArgs(argv: string[]): ParseResult {
     format: options.format ?? 'summary',
     artifactDir: options.artifactDir,
     maxBytes: options.maxBytes,
+    fields: options.fields,
   };
   const [group, action] = positionals;
+
+  if (positionals.length === 1 && getBlueprintHelperTool(group)) {
+    return {
+      ok: true,
+      command: {
+        ...base,
+        kind: 'tool.invoke',
+        toolName: group,
+        file: options.file,
+        json: options.json,
+        stdin: options.stdin,
+        expert: options.expert,
+      },
+    };
+  }
 
   if (group === 'task' && action === 'preview' && options.file) {
     return { ok: true, command: { ...base, kind: 'task.preview', file: options.file } };
@@ -217,6 +266,30 @@ function readOptionValue(argv: string[], index: number, flag: string): string {
     throw new Error(`Missing value for ${flag}`);
   }
   return value;
+}
+
+function readProcessStdin(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    process.stdin.on('data', (chunk: Buffer | string) => {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    });
+    process.stdin.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    process.stdin.on('error', reject);
+  });
+}
+
+function parseFieldList(rawFields: string): string[] {
+  return rawFields
+    .split(',')
+    .map((field) => field.trim())
+    .filter((field) => field.length > 0)
+    .map((field) => {
+      if (!/^[A-Za-z0-9_.-]+$/.test(field)) {
+        throw new Error(`Invalid field path for --fields: ${field}`);
+      }
+      return field;
+    });
 }
 
 function getRunner(runtime: CliRuntime): TaskSpecRunner {
@@ -277,11 +350,12 @@ function helpText(): string {
     'BlueprintHelper CLI',
     '',
     'Usage:',
-    '  blueprinthelper-cli task preview --file <task-spec.json> [--format summary|json|full]',
-    '  blueprinthelper-cli task execute --file <task-spec.json> [--format summary|json|full]',
-    '  blueprinthelper-cli task result --id <task_run_id>',
-    '  blueprinthelper-cli context read --file <context-request.json>',
-    '  blueprinthelper-cli bridge ping',
-    '  blueprinthelper-cli bridge call --command <read_only_command>',
+    '  blueprinthelper-cli <tool_name> [--file params.json | --json json | --stdin] [--fields path[,path...]]',
+    '  blueprinthelper-cli task preview --file <task-spec.json> [--format summary|json|full] [--fields path[,path...]]',
+    '  blueprinthelper-cli task execute --file <task-spec.json> [--format summary|json|full] [--fields path[,path...]]',
+    '  blueprinthelper-cli task result --id <task_run_id> [--fields path[,path...]]',
+    '  blueprinthelper-cli context read --file <context-request.json> [--fields path[,path...]]',
+    '  blueprinthelper-cli bridge ping [--fields path[,path...]]',
+    '  blueprinthelper-cli bridge call --command <read_only_command> [--fields path[,path...]]',
   ].join('\n');
 }

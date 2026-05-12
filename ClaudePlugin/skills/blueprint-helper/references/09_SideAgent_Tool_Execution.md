@@ -30,7 +30,9 @@ SideAgent 必须从主 Agent 接收一个精简任务包，而不是完整对话
 
 1. 读取本文件和必要字段模板：`04_MCP_Field_Templates_20260507.md`。
 2. 按需要读取任务 workflow，例如 `04_TaskSpec_Edit_Blueprint_Workflow.md`。
-3. 读取 Blueprint graph 前先判断规模。未知规模时先用 `view.format=summary` 或带 `max_items` 的 `logic_json` 估算节点数量，不要直接读取整个图表的 `logic_md`。
+2.1. 如果主 Agent 指定的 MCP 工具在当前执行环境不可见或不可调用，返回 `mcp_tools_unavailable`，并写明缺失工具名。不要把工具不可用解释为 write session 或 UE 写权限问题。
+2.2. 不要用 shell、`.vs\BlueprintCache`、Saved 导出文件或本地 JSON 解析替代不可用的 MCP 工具。工具不可见时必须回交主 Agent，由主 Agent 请求 MCP 工具权限或处理插件注册问题。
+3. 读取 Blueprint graph 前先判断规模。未知规模时先用 `view.format=summary` 或带 `max_items` 的 `logic_json` 估算节点数量，不要直接读取整个图表的 `logic_md`。如果目标已经明确到 `function`、`event` 或 `custom_event`，可以直接用该 `target_type + target_name + view.format=logic_md` 读取目标入口切片。
 4. 如果工具结果显示节点数量大于 80，或者结果被截断，改用 block、function、event、custom_event 或引用影响面分块读取；无法定位分块目标时返回 `clarification_required`。
 5. 使用 TaskSpec-first 工具链，不直接调用冻结或 legacy 底层入口。
 6. 工具参数必须是 MCP schema root object，不要额外包 `args`。
@@ -70,6 +72,7 @@ blueprinthelper_get_task_result
 遇到以下情况立即停止并回交：
 
 - `clarification_required`: 任务包缺少目标资产、目标图表或创建/修改策略
+- `mcp_tools_unavailable`: 指定的 BlueprintHelper MCP 工具在当前 Claude 工具列表不可见或不可调用
 - `bridge_unavailable`: Bridge 不可达
 - `profile_blocked`: runtime_profile 不允许写入
 - `preview_blocked`: preview 返回阻断

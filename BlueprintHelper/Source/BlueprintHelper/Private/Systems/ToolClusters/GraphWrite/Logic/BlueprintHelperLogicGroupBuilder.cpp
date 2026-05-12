@@ -156,7 +156,8 @@ public:
 
 	static bool IsGroupEntryNode(const FBlueprintHelperLogicNode& Node)
 	{
-		return Node.Kind == EBlueprintHelperLogicNodeKind::Event
+		return Node.Kind == EBlueprintHelperLogicNodeKind::FunctionEntry
+			|| Node.Kind == EBlueprintHelperLogicNodeKind::Event
 			|| Node.Kind == EBlueprintHelperLogicNodeKind::CustomEvent;
 	}
 
@@ -695,6 +696,10 @@ FBlueprintHelperLogicJsonPayload FBlueprintHelperLogicGroupBuilder::BuildTargetE
 	{
 		Payload.Event = TargetName;
 	}
+	else if (Scope == EBlueprintHelperLogicScope::TargetFunction)
+	{
+		Payload.Function = TargetName;
+	}
 
 	if (!RawJson.IsValid())
 	{
@@ -751,6 +756,8 @@ FBlueprintHelperLogicJsonPayload FBlueprintHelperLogicGroupBuilder::BuildTargetE
 	{
 		switch (Scope)
 		{
+		case EBlueprintHelperLogicScope::TargetFunction:
+			return Kind == EBlueprintHelperLogicNodeKind::FunctionEntry;
 		case EBlueprintHelperLogicScope::TargetCustomEvent:
 			return Kind == EBlueprintHelperLogicNodeKind::CustomEvent;
 		case EBlueprintHelperLogicScope::TargetEvent:
@@ -880,6 +887,8 @@ EBlueprintHelperLogicNodeKind FBlueprintHelperLogicGroupBuilder::IdentifyNodeKin
 	NodeObj->TryGetStringField(TEXT("member_name"), MemberName);
 
 	// 根据 class 名或 member_name 推断
+	if (ClassName.Contains(TEXT("K2Node_FunctionEntry")))
+		return EBlueprintHelperLogicNodeKind::FunctionEntry;
 	if (ClassName.Contains(TEXT("K2Node_CustomEvent")) || MemberName.Contains(TEXT("CustomEvent")))
 		return EBlueprintHelperLogicNodeKind::CustomEvent;
 	if (ClassName.Contains(TEXT("K2Node_Event")))
@@ -949,6 +958,7 @@ FString FBlueprintHelperLogicGroupBuilder::ExtractNodeName(const TSharedPtr<FJso
 	FString Name;
 	if (NodeObj->TryGetStringField(TEXT("name"), Name) && !Name.IsEmpty()) return Name;
 	if (NodeObj->TryGetStringField(TEXT("member_name"), Name) && !Name.IsEmpty()) return Name;
+	if (NodeObj->TryGetStringField(TEXT("function_name"), Name) && !Name.IsEmpty()) return Name;
 	const TSharedPtr<FJsonObject>* EventObj = nullptr;
 	if (NodeObj->TryGetObjectField(TEXT("event"), EventObj) && EventObj && EventObj->IsValid())
 	{
@@ -978,6 +988,7 @@ bool FBlueprintHelperLogicGroupBuilder::IsEntryNode(const TSharedPtr<FJsonObject
 	const EBlueprintHelperLogicNodeKind Kind = IdentifyNodeKind(NodeObj);
 	switch (Kind)
 	{
+	case EBlueprintHelperLogicNodeKind::FunctionEntry:
 	case EBlueprintHelperLogicNodeKind::Event:
 	case EBlueprintHelperLogicNodeKind::CustomEvent:
 		return true;

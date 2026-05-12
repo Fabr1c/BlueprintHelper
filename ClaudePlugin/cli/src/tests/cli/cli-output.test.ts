@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import test from 'node:test';
-import { buildCliSummary } from '../../cli/output.js';
+import { buildCliSummary, projectCliFields } from '../../cli/output.js';
 
 test('summary output omits full task_plan and points to artifacts', () => {
   const result = buildCliSummary({
@@ -60,4 +60,31 @@ test('output budget failure still points to full result artifact', () => {
   assert.equal(result.ok, false);
   assert.equal(result.status, 'output_too_large');
   assert.equal((result.artifacts as Record<string, unknown>).full_result, 'artifacts/preview_001/result.json');
+});
+
+test('field projection keeps only requested top-level and nested fields', () => {
+  const result = projectCliFields({
+    ok: true,
+    schema: 'BlueprintHelper.CliResult.v1',
+    operation: 'task.preview',
+    status: 'preview_passed',
+    summary: {
+      target_assets: ['/Game/BP_Player'],
+      planned_steps: 2,
+    },
+    artifacts: {
+      full_result: 'artifacts/preview_001/result.json',
+      task_plan: 'artifacts/preview_001/task_plan.json',
+    },
+  }, ['status', 'summary.target_assets', 'artifacts.full_result']);
+
+  assert.deepEqual(result, {
+    status: 'preview_passed',
+    summary: {
+      target_assets: ['/Game/BP_Player'],
+    },
+    artifacts: {
+      full_result: 'artifacts/preview_001/result.json',
+    },
+  });
 });
