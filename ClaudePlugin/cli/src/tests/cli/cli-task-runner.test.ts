@@ -116,6 +116,140 @@ test('task execute calls the TaskSpec runner and returns executed summary', asyn
   assert.equal(output.task_run_id, 'task_cli_001');
 });
 
+test('task execute can project stdout to selected fields only', async () => {
+  const writes: string[] = [];
+  const runner = {
+    previewTask: async () => { throw new Error('not used'); },
+    executeTask: async () => ({
+      ok: true,
+      schema: 'BlueprintHelper.McpToolResult.v1',
+      operation: 'execute_task',
+      trace_id: 'trace_execute',
+      status: 'completed',
+      modified: true,
+      data: {
+        schema: 'BlueprintHelper.TaskExecution.v1',
+        task_run_id: 'task_cli_002',
+        task: {
+          task_run_id: 'task_cli_002',
+          target_assets: ['/Game/BP_Player'],
+          applied_steps: 1,
+        },
+      },
+    }),
+    getTaskResult: async () => { throw new Error('not used'); },
+    readTaskContext: async () => { throw new Error('not used'); },
+    readReferenceContext: async () => { throw new Error('not used'); },
+  } as TaskSpecRunner;
+
+  const exitCode = await runCli({
+    argv: ['task', 'execute', '--file', 'task-spec.json', '--fields', 'status,task_run_id,artifacts.full_result'],
+    cwd: fixturesDir,
+    runner,
+    stdout: (line) => writes.push(line),
+    stderr: () => {},
+  });
+
+  assert.equal(exitCode, 0);
+  const output = JSON.parse(writes.join('')) as Record<string, unknown>;
+  assert.deepEqual(Object.keys(output).sort(), ['artifacts', 'status', 'task_run_id']);
+  assert.equal(output.status, 'executed');
+  assert.equal(output.task_run_id, 'task_cli_002');
+  assert.equal(typeof (output.artifacts as Record<string, unknown>).full_result, 'string');
+});
+
+test('direct MCP tool name dispatches blueprinthelper_preview_task through TaskSpec runner', async () => {
+  const writes: string[] = [];
+  const runner = {
+    readTaskContext: async () => { throw new Error('not used'); },
+    readReferenceContext: async () => { throw new Error('not used'); },
+    previewTask: async () => ({
+      previewId: 'preview_direct_001',
+      taskPlan: {
+        schema: 'BlueprintHelper.TaskPlan.v1',
+        task_name: 'Direct Preview',
+        task_type: 'edit_blueprint_graph',
+        context_id: 'ctx_direct',
+        target_assets: ['/Game/BP_Player'],
+        execution_policy: { dry_run_mode: 'full', should_compile: true, should_save: false },
+        steps: [],
+      },
+      passed: true,
+      issues: [],
+      toolResult: {
+        ok: true,
+        schema: 'BlueprintHelper.McpToolResult.v1',
+        operation: 'preview_task',
+        trace_id: 'trace_direct',
+        status: 'dry_run',
+        modified: false,
+        data: {
+          schema: 'BlueprintHelper.TaskPreview.v1',
+          preview_id: 'preview_direct_001',
+          passed: true,
+          blocked: false,
+          issues: [],
+        },
+      },
+    }),
+    executeTask: async () => { throw new Error('not used'); },
+    getTaskResult: async () => { throw new Error('not used'); },
+  } as TaskSpecRunner;
+
+  const exitCode = await runCli({
+    argv: ['blueprinthelper_preview_task', '--file', 'task-spec.json', '--select', 'status,preview_id,artifacts.full_result'],
+    cwd: fixturesDir,
+    runner,
+    stdout: (line) => writes.push(line),
+    stderr: () => {},
+  });
+
+  assert.equal(exitCode, 0);
+  const output = JSON.parse(writes.join('')) as Record<string, unknown>;
+  assert.equal(output.status, 'preview_passed');
+  assert.equal(output.preview_id, 'preview_direct_001');
+  assert.equal(typeof (output.artifacts as Record<string, unknown>).full_result, 'string');
+  assert.equal('schema' in output, false);
+});
+
+test('select is an alias for fields', async () => {
+  const writes: string[] = [];
+  const bridge = {
+    sendCommand: async (): Promise<BridgeResponse> => ({
+      request_id: 'bridge_ping',
+      success: true,
+      result: { status: 'completed' },
+    }),
+  };
+
+  const exitCode = await runCli({
+    argv: ['bridge', 'ping', '--select', 'status'],
+    cwd: fixturesDir,
+    bridge,
+    stdout: (line) => writes.push(line),
+    stderr: () => {},
+  });
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(JSON.parse(writes.join('')), { status: 'bridge_available' });
+});
+
+test('invalid field path exits 64', async () => {
+  const stderr: string[] = [];
+  const exitCode = await runCli({
+    argv: ['bridge', 'ping', '--fields', 'status,$schema'],
+    cwd: fixturesDir,
+    bridge: {
+      sendCommand: async () => { throw new Error('not used'); },
+    },
+    stdout: () => {},
+    stderr: (line) => stderr.push(line),
+  });
+
+  assert.equal(exitCode, 64);
+  assert.match(stderr.join(''), /Invalid field path/);
+});
+
 test('task result reads by id and prints compact summary', async () => {
   const writes: string[] = [];
   const runner = {

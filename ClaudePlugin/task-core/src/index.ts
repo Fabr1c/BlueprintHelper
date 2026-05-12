@@ -6,3 +6,7 @@ export * from './task/context/task-context.js';
 export * from './task/runtime/task-result-store.js';
 export * from './task/schema/task-schemas.js';
 export * from './task/service/task-spec-runner.js';
+export * from './tool-surface/types.js';
+export * from './tool-surface/tool-registry.js';
+export * from './project-profile/agent-profile.js';
+export * from './project-profile/editor-paths.js';

@@ -31,7 +31,8 @@ import {
   type ToolResultBase,
   type DiagnosticsMarkdownReport,
 } from '../result/tool-result.js';
-import { registerTaskTools, type TaskToolsConfig } from './task-tools.js';
+import type { TaskToolsConfig } from './task-tools.js';
+import { registerSharedRegistryTools } from './shared-registry-adapter.js';
 import { resolveProjectEngineDir } from '../../project-profile/agent-profile.js';
 import { resolveExplicitProjectFile } from '../../project-profile/editor-paths.js';
 import { execFile, spawn } from 'node:child_process';
@@ -312,6 +313,281 @@ function normalizeReadPayloadSchema(payload: Record<string, unknown>): Record<st
   };
 }
 
+function makeLogicSummaryPayload(
+  payload: Record<string, unknown>,
+  target: z.infer<typeof readContextInputSchema>['target'],
+): Record<string, unknown> {
+  const logic = getRecordField(payload, 'logic');
+  const stats = getRecordField(payload, 'stats') ?? {};
+  const entry = getRecordField(logic, 'entry');
+  const nodes = Array.isArray(logic?.['nodes']) ? logic['nodes'] : undefined;
+  const targetType = target.target_type ?? 'blueprint';
+  const isWholeGraphTarget = ['asset', 'blueprint', 'graph'].includes(targetType);
+  const groups = Array.isArray(logic?.['groups'])
+    ? logic['groups'].filter(isRecord).map((group) => omitUndefined({
+      group_type: getStringField(group, 'group_type'),
+      block_id: getStringField(group, 'block_id'),
+      group_entry_node_path: getStringField(group, 'group_entry_node_path'),
+      name: getStringField(group, 'name'),
+      entry: getRecordField(group, 'entry'),
+      nodes: Array.isArray(group['nodes']) ? group['nodes'].length : undefined,
+    }))
+    : undefined;
+  const targetFound = Boolean(entry || (groups && groups.length > 0) || (isWholeGraphTarget && nodes && nodes.length > 0));
+
+  return omitUndefined({
+    schema: 'LogicSummary.v1',
+    asset_path: getStringField(logic, 'asset_path') ?? target.asset_path,
+    graph: getStringField(logic, 'graph'),
+    target_type: target.target_type,
+    target_name: target.target_name,
+    block_id: target.block_id,
+    scope: getStringField(payload, 'scope'),
+    target_found: targetFound,
+    stats,
+    entry,
+    groups,
+    node_count: typeof stats['nodes'] === 'number' ? stats['nodes'] : nodes?.length,
+    group_count: groups?.length,
+  });
+}
+
+function isTargetEntryLogicRead(target: z.infer<typeof readContextInputSchema>['target']) {
+  return target.target_type === 'function'
+    || target.target_type === 'event'
+    || target.target_type === 'custom_event';
+}
+
+function getRecordArray(record: Record<string, unknown> | undefined, field: string): Record<string, unknown>[] {
+  const value = record?.[field];
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function collectLogicNodes(logic: Record<string, unknown> | undefined): Record<string, unknown>[] {
+  const nodes = getRecordArray(logic, 'nodes');
+  if (nodes.length > 0) {
+    return nodes;
+  }
+
+  const groups = getRecordArray(logic, 'groups');
+  return groups.flatMap((group) => getRecordArray(group, 'nodes'));
+}
+
+function countLogicLinks(nodes: Record<string, unknown>[], type: string): number {
+  return nodes.reduce((count, node) => count + getRecordArray(node, 'links')
+    .filter((link) => getStringField(link, 'type') === type).length, 0);
+}
+
+function countLogicOrphans(nodes: Record<string, unknown>[], entryNodeRef?: string): number {
+  const linkedNodeRefs = new Set<string>();
+  for (const node of nodes) {
+    const nodeRef = getStringField(node, 'node_ref');
+    if (nodeRef) {
+      for (const link of getRecordArray(node, 'links')) {
+        linkedNodeRefs.add(nodeRef);
+        const toNode = getStringField(link, 'to_node');
+        if (toNode) {
+          linkedNodeRefs.add(toNode);
+        }
+      }
+    }
+  }
+
+  return nodes.filter((node) => {
+    const nodeRef = getStringField(node, 'node_ref');
+    return nodeRef && nodeRef !== entryNodeRef && !linkedNodeRefs.has(nodeRef);
+  }).length;
+}
+
+function formatLogicNodeLine(node: Record<string, unknown>): string {
+  const nodeRef = getStringField(node, 'node_ref') ?? '<node>';
+  const kind = getStringField(node, 'kind') ?? 'unknown';
+  const name = getStringField(node, 'name') ?? 'Unnamed';
+  const owner = getStringField(node, 'owner');
+  return owner
+    ? `- ${nodeRef} [${kind}] ${name} owner=${owner}`
+    : `- ${nodeRef} [${kind}] ${name}`;
+}
+
+function makeLogicMdPayloadFromLogicJson(
+  payload: Record<string, unknown>,
+  target: z.infer<typeof readContextInputSchema>['target'],
+): Record<string, unknown> {
+  const logic = getRecordField(payload, 'logic');
+  const entry = getRecordField(logic, 'entry');
+  const nodes = collectLogicNodes(logic);
+  const entryNodeRef = getStringField(entry, 'node_ref');
+  const execLinks = countLogicLinks(nodes, 'exec');
+  const dataLinks = countLogicLinks(nodes, 'data');
+  const orphanNodes = countLogicOrphans(nodes, entryNodeRef);
+  const targetType = target.target_type ?? 'blueprint';
+  const titleByType: Record<string, string> = {
+    function: 'Function',
+    event: 'Event',
+    custom_event: 'Custom Event',
+  };
+  const title = titleByType[targetType] ?? 'Target';
+  const targetName = target.target_name
+    ?? getStringField(logic, 'function')
+    ?? getStringField(logic, 'event')
+    ?? getStringField(entry, 'name')
+    ?? '<unnamed>';
+  const graph = getStringField(logic, 'graph');
+
+  const lines = [
+    '# Logic Graph',
+    '',
+    `${title}: ${targetName}`,
+  ];
+  if (graph) {
+    lines.push(`Graph: ${graph}`);
+  }
+  lines.push(`Nodes: ${nodes.length} | Exec Links: ${execLinks} | Data Links: ${dataLinks} | Orphans: ${orphanNodes}`);
+  lines.push('');
+  lines.push('## Entry');
+  lines.push(entry ? formatLogicNodeLine(entry) : '- <missing>');
+  lines.push('');
+  lines.push('## Nodes');
+  if (nodes.length === 0) {
+    lines.push('- None');
+  } else {
+    lines.push(...nodes.map(formatLogicNodeLine));
+  }
+
+  const allLinks = nodes.flatMap((node) => getRecordArray(node, 'links').map((link) => ({
+    source: getStringField(node, 'node_ref') ?? '<node>',
+    link,
+  })));
+  lines.push('');
+  lines.push('## Execution');
+  const executionLinks = allLinks.filter(({ link }) => getStringField(link, 'type') === 'exec');
+  if (executionLinks.length === 0) {
+    lines.push('- None');
+  } else {
+    for (const { source, link } of executionLinks) {
+      lines.push(`- ${source}.${getStringField(link, 'from_pin') ?? '<pin>'} -> ${getStringField(link, 'to_node') ?? '<node>'}.${getStringField(link, 'to_pin') ?? '<pin>'}`);
+    }
+  }
+
+  const dataDependencyLinks = allLinks.filter(({ link }) => getStringField(link, 'type') === 'data');
+  if (dataDependencyLinks.length > 0) {
+    lines.push('');
+    lines.push('## Data Dependencies');
+    for (const { source, link } of dataDependencyLinks) {
+      lines.push(`- ${source}.${getStringField(link, 'from_pin') ?? '<pin>'} -> ${getStringField(link, 'to_node') ?? '<node>'}.${getStringField(link, 'to_pin') ?? '<pin>'}`);
+    }
+  }
+
+  return {
+    schema: 'LogicMd.v1',
+    format: 'logic_md',
+    importable: false,
+    scope: getStringField(payload, 'scope') ?? inferBlueprintLogicScope(targetType),
+    markdown: lines.join('\n'),
+    stats: {
+      nodes: nodes.length,
+      exec_links: execLinks,
+      data_links: dataLinks,
+      orphan_nodes: orphanNodes,
+    },
+  };
+}
+
+function applyMaxItemsToLogicPayload(
+  payload: Record<string, unknown>,
+  maxItems?: number,
+): { payload: Record<string, unknown>; truncated: boolean } {
+  if (!maxItems) {
+    return { payload, truncated: false };
+  }
+
+  const logic = getRecordField(payload, 'logic');
+  if (!logic) {
+    return { payload, truncated: false };
+  }
+
+  let remaining = maxItems;
+  let nodesTotal = 0;
+  let nodesReturned = 0;
+  let truncated = false;
+  const logicCopy: Record<string, unknown> = { ...logic };
+
+  const topLevelNodes = logic['nodes'];
+  if (Array.isArray(topLevelNodes)) {
+    nodesTotal += topLevelNodes.length;
+    const keptNodes = topLevelNodes.slice(0, Math.max(remaining, 0));
+    logicCopy['nodes'] = keptNodes;
+    nodesReturned += keptNodes.length;
+    remaining -= keptNodes.length;
+    truncated ||= keptNodes.length < topLevelNodes.length;
+  }
+
+  const groups = logic['groups'];
+  if (Array.isArray(groups)) {
+    logicCopy['groups'] = groups.map((group) => {
+      if (!isRecord(group) || !Array.isArray(group['nodes'])) {
+        return group;
+      }
+
+      const groupNodes = group['nodes'];
+      nodesTotal += groupNodes.length;
+      const keptNodes = groupNodes.slice(0, Math.max(remaining, 0));
+      nodesReturned += keptNodes.length;
+      remaining -= keptNodes.length;
+      truncated ||= keptNodes.length < groupNodes.length;
+      return {
+        ...group,
+        nodes: keptNodes,
+        nodes_total: groupNodes.length,
+        nodes_returned: keptNodes.length,
+      };
+    });
+  }
+
+  if (!truncated) {
+    return { payload, truncated: false };
+  }
+
+  return {
+    payload: {
+      ...payload,
+      logic: logicCopy,
+      truncation: {
+        nodes_total: nodesTotal,
+        nodes_returned: nodesReturned,
+      },
+    },
+    truncated: true,
+  };
+}
+
+function prepareReadPayloadForView(
+  payload: Record<string, unknown>,
+  target: z.infer<typeof readContextInputSchema>['target'],
+  format: string,
+  maxItems?: number,
+): { payload: Record<string, unknown>; truncated: boolean } {
+  if (format === 'summary') {
+    return {
+      payload: makeLogicSummaryPayload(payload, target),
+      truncated: false,
+    };
+  }
+
+  if (format === 'logic_md' && isTargetEntryLogicRead(target)) {
+    return {
+      payload: makeLogicMdPayloadFromLogicJson(payload, target),
+      truncated: false,
+    };
+  }
+
+  if (format === 'logic_json') {
+    return applyMaxItemsToLogicPayload(payload, maxItems);
+  }
+
+  return { payload, truncated: false };
+}
+
 function buildReadContextTarget(target: z.infer<typeof readContextInputSchema>['target']) {
   return omitUndefined({
     asset_path: target.asset_path,
@@ -376,11 +652,19 @@ function toReadContextMcpResult(input: {
   readType: string;
   format: string;
   payload: Record<string, unknown>;
+  maxItems?: number;
   status?: string;
   ok?: boolean;
 }) {
   const ok = input.ok ?? true;
-  const payload = normalizeReadPayloadSchema(input.payload);
+  const normalizedPayload = normalizeReadPayloadSchema(input.payload);
+  const prepared = prepareReadPayloadForView(
+    normalizedPayload,
+    input.target,
+    input.format,
+    input.maxItems,
+  );
+  const payload = prepared.payload;
   const scope = typeof payload['scope'] === 'string'
     ? payload['scope']
     : inferBlueprintLogicScope(input.target.target_type);
@@ -399,7 +683,7 @@ function toReadContextMcpResult(input: {
       scope,
       payload,
       stats: isRecord(payload['stats']) ? payload['stats'] : {},
-      truncated: false,
+      truncated: prepared.truncated,
     },
   };
 
@@ -432,7 +716,18 @@ function extractReadPayloadFromBridgeResult(result: unknown): {
 }
 
 export function registerTools(server: McpServer, bridge: BridgeClient, config: EditorConfig): void {
-  registerTaskTools(server, bridge, config);
+  registerSharedRegistryTools(server, bridge, {
+    cwd: process.cwd(),
+    ueEngineDir: config.ueEngineDir,
+    taskCompiler: config.taskCompiler,
+    toolNames: new Set([
+      'blueprinthelper_read_task_context',
+      'blueprinthelper_read_reference_context',
+      'blueprinthelper_preview_task',
+      'blueprinthelper_execute_task',
+      'blueprinthelper_get_task_result',
+    ]),
+  });
   unregisterFrozenToolRegistrations(server);
 
   // 鈹€鈹€鈹€ 1. read_agent_guide 鈹€鈹€鈹€
@@ -510,7 +805,9 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
           });
         }
 
-        const bridgeFormat = format === 'logic_json' ? 'logic_json' : 'logic_md';
+        const bridgeFormat = format === 'logic_json' || format === 'summary' || (format === 'logic_md' && isTargetEntryLogicRead(input.target))
+          ? 'logic_json'
+          : 'logic_md';
         const command = bridgeFormat === 'logic_json'
           ? 'read_blueprint_logic_json'
           : 'read_blueprint_logic_md';
@@ -530,6 +827,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
           readType: input.read_type,
           format,
           payload: readPayload.payload,
+          maxItems: input.view?.max_items,
           status: readPayload.status,
           ok: readPayload.ok,
         });

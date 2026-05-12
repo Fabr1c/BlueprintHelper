@@ -1,0 +1,18 @@
+{
+  "toolResult": {
+    "ok": false,
+    "schema": "BlueprintHelper.McpToolResult.v1",
+    "operation": "blueprint_exec_console_command",
+    "trace_id": "trace_1778576737_0001",
+    "status": "failed",
+    "modified": false,
+    "error": {
+      "code": "expert_flag_required",
+      "stage": "parse_input",
+      "message": "blueprint_exec_console_command requires --expert because it is critical risk.",
+      "retryable": false,
+      "rollback_result": "not_needed"
+    }
+  },
+  "extra": {}
+}

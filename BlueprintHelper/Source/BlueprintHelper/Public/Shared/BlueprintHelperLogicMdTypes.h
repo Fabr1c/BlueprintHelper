@@ -192,6 +192,7 @@ inline const TCHAR* LogicGroupTypeToString(EBlueprintHelperLogicGroupType Type)
 
 enum class EBlueprintHelperLogicNodeKind : uint8
 {
+	FunctionEntry,
 	Event,
 	CustomEvent,
 	CallFunction,
@@ -213,6 +214,7 @@ inline const TCHAR* LogicNodeKindToString(EBlueprintHelperLogicNodeKind Kind)
 {
 	switch (Kind)
 	{
+	case EBlueprintHelperLogicNodeKind::FunctionEntry: return TEXT("function");
 	case EBlueprintHelperLogicNodeKind::Event:        return TEXT("event");
 	case EBlueprintHelperLogicNodeKind::CustomEvent:  return TEXT("custom_event");
 	case EBlueprintHelperLogicNodeKind::CallFunction: return TEXT("call_function");

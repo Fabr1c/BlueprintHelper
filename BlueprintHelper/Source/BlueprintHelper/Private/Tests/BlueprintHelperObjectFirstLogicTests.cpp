@@ -94,6 +94,39 @@ public:
         return Root;
     }
 
+    static TSharedPtr<FJsonObject> MakeFunctionInFunctionGraphRawJsonObject()
+    {
+        TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
+        Root->SetStringField(TEXT("version"), TEXT("2.2"));
+        Root->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.JsonToBlueprint"));
+
+        TArray<TSharedPtr<FJsonValue>> EventGraphNodes;
+        EventGraphNodes.Add(MakeShared<FJsonValueObject>(
+            MakeLogicTestEventNode(TEXT("event_graph_entry"), TEXT("K2Node_CustomEvent"), TEXT("EventGraphDoor"), TEXT("EventGraphDoor"))));
+
+        TArray<TSharedPtr<FJsonValue>> FunctionNodes;
+        TSharedRef<FJsonObject> FunctionEntry = MakeShared<FJsonObject>();
+        FunctionEntry->SetStringField(TEXT("id"), TEXT("function_entry"));
+        FunctionEntry->SetStringField(TEXT("type"), TEXT("K2Node_FunctionEntry"));
+        FunctionEntry->SetStringField(TEXT("name"), TEXT("AddMazeRelativeRotation"));
+        FunctionEntry->SetStringField(TEXT("function_name"), TEXT("AddMazeRelativeRotation"));
+        FunctionNodes.Add(MakeShared<FJsonValueObject>(FunctionEntry));
+
+        TSharedRef<FJsonObject> SetRelativeRotationNode = MakeShared<FJsonObject>();
+        SetRelativeRotationNode->SetStringField(TEXT("id"), TEXT("set_relative_rotation"));
+        SetRelativeRotationNode->SetStringField(TEXT("type"), TEXT("K2Node_CallFunction"));
+        SetRelativeRotationNode->SetStringField(TEXT("name"), TEXT("SetRelativeRotation"));
+        SetRelativeRotationNode->SetStringField(TEXT("function_name"), TEXT("SetRelativeRotation"));
+        FunctionNodes.Add(MakeShared<FJsonValueObject>(SetRelativeRotationNode));
+
+        TArray<TSharedPtr<FJsonValue>> Graphs;
+        Graphs.Add(MakeShared<FJsonValueObject>(MakeLogicTestGraph(TEXT("EventGraph"), EventGraphNodes)));
+        Graphs.Add(MakeShared<FJsonValueObject>(MakeLogicTestGraph(TEXT("AddMazeRelativeRotation"), FunctionNodes)));
+        Root->SetArrayField(TEXT("graphs"), Graphs);
+
+        return Root;
+    }
+
     static TSharedPtr<FJsonObject> MakeCustomEventWithGraphLevelExecLinkRawJsonObject()
     {
         TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
@@ -388,6 +421,39 @@ bool FObjectFirstLogic_CustomEventTargetUsesCustomGraph::RunTest(const FString& 
         TestEqual(TEXT("custom_event target entry kind is custom_event"), Payload.Entry->Kind, EBlueprintHelperLogicNodeKind::CustomEvent);
     }
     TestEqual(TEXT("custom_event target does not return EventGraph nodes"), Payload.Nodes[0].Name, FString(TEXT("OpenDoor")));
+
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FObjectFirstLogic_FunctionTargetUsesFunctionGraph,
+    "BlueprintHelper.ObjectFirst.Logic.FunctionTargetUsesFunctionGraph",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FObjectFirstLogic_FunctionTargetUsesFunctionGraph::RunTest(const FString& Parameters)
+{
+    FBlueprintHelperLogicGroupBuilder Builder;
+    const FBlueprintHelperLogicJsonPayload Payload = Builder.BuildTargetEntry(
+        FBlueprintHelperObjectFirstLogicTestsLocalUtils::MakeFunctionInFunctionGraphRawJsonObject(),
+        TEXT("/Game/Gameplay/Maze/BP_Maze"),
+        TEXT(""),
+        TEXT("AddMazeRelativeRotation"),
+        EBlueprintHelperLogicScope::TargetFunction);
+
+    TestEqual(TEXT("function target resolves function graph"), Payload.Graph, FString(TEXT("AddMazeRelativeRotation")));
+    TestEqual(TEXT("function target records function name"), Payload.Function, FString(TEXT("AddMazeRelativeRotation")));
+    TestTrue(TEXT("function target has an entry"), Payload.Entry.IsSet());
+    if (Payload.Entry.IsSet())
+    {
+        TestEqual(TEXT("function target entry is AddMazeRelativeRotation"), Payload.Entry->Name, FString(TEXT("AddMazeRelativeRotation")));
+        TestEqual(TEXT("function target entry kind is function"), Payload.Entry->Kind, EBlueprintHelperLogicNodeKind::FunctionEntry);
+    }
+    TestTrue(TEXT("function target returns function nodes"), Payload.Nodes.Num() >= 2);
+    if (Payload.Nodes.Num() >= 2)
+    {
+        TestEqual(TEXT("function target first node is function entry"), Payload.Nodes[0].Name, FString(TEXT("AddMazeRelativeRotation")));
+        TestEqual(TEXT("function target includes function body node"), Payload.Nodes[1].Name, FString(TEXT("SetRelativeRotation")));
+    }
 
     return true;
 }

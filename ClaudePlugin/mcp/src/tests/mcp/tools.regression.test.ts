@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import test, { describe, it } from 'node:test';
 import type { BridgeResponse } from '@blueprinthelper/task-core/bridge/bridge-client';
 import { registerWithBridge, registerResourcesWithBridge, invokeTool } from '../../test-support/test-harness.js';
+import { registerSharedRegistryTools } from '../../mcp/tools/shared-registry-adapter.js';
 
 const MCP_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const CLAUDE_PLUGIN_ROOT = path.resolve(MCP_ROOT, '..');
@@ -286,9 +287,12 @@ test('active setup docs do not contain legacy path env pollution', () => {
     path.resolve(CLAUDE_PLUGIN_ROOT, 'skills', 'blueprint-helper', 'references', '04_MCP_Field_Templates_20260507.md'),
     path.resolve(UE_PLUGIN_ROOT, 'Docs', 'Install_MCP_QuickStart.md'),
     path.resolve(UE_PLUGIN_ROOT, 'Docs', 'MCP_Tools_API_Reference.md'),
-    path.resolve(UE_PLUGIN_ROOT, 'Resources', 'Docs', 'SetupGuide_TaskSpecFirst_20260504.md'),
-    path.resolve(UE_PLUGIN_ROOT, 'Resources', 'Docs', 'Guidance_Setup_Convergence_Report_20260504.md'),
-    path.resolve(UE_PLUGIN_ROOT, 'Resources', 'Docs', 'Setup', 'Setup_Wizard_QA.md'),
+    path.resolve(UE_PLUGIN_ROOT, 'Resources', 'AgentGuide', '00_Agent_Onboarding_Index_20260504.md'),
+    path.resolve(UE_PLUGIN_ROOT, 'Resources', 'AgentGuide', 'Reference', '03_Runtime_Profile_And_Diagnostics.md'),
+    path.resolve(UE_PLUGIN_ROOT, 'Resources', 'AgentGuide', 'Reference', '04_MCP_Field_Templates_20260507.md'),
+    path.resolve(UE_PLUGIN_ROOT, 'Resources', 'Docs', 'TaskSpec_TaskPlan_Contract_20260504.md'),
+    path.resolve(UE_PLUGIN_ROOT, 'Resources', 'Docs', 'Setup', 'RuntimeProfile_Example.json'),
+    path.resolve(UE_PLUGIN_ROOT, 'Resources', 'Docs', 'Setup', 'SetupProfile_Example.json'),
   ];
 
   const forbiddenPatterns = [
@@ -302,6 +306,7 @@ test('active setup docs do not contain legacy path env pollution', () => {
   ];
 
   for (const docPath of activeDocs) {
+    assert.ok(existsSync(docPath), `${path.relative(REPO_ROOT, docPath)} should exist`);
     const text = readFileSync(docPath, 'utf8');
     for (const pattern of forbiddenPatterns) {
       assert.doesNotMatch(text, pattern, `${path.relative(REPO_ROOT, docPath)} should not contain ${pattern}`);
@@ -376,6 +381,35 @@ test('AgentGuide markdown does not document frozen direct tool calls', () => {
     for (const pattern of AGENT_GUIDE_FORBIDDEN_PATTERNS) {
       assert.doesNotMatch(text, pattern, `${file} should not expose ${pattern}`);
     }
+  }
+});
+
+test('shared registry MCP adapter can register default task tools', () => {
+  const registered: string[] = [];
+  const server = {
+    registerTool: (name: string) => {
+      registered.push(name);
+    },
+  };
+
+  registerSharedRegistryTools(server as never, {
+    sendCommand: async () => ({ request_id: 'test', success: true }),
+  } as never, {
+    cwd: process.cwd(),
+    ueEngineDir: '',
+    toolNames: new Set([
+      'blueprinthelper_read_task_context',
+      'blueprinthelper_preview_task',
+      'blueprinthelper_execute_task',
+    ]),
+  });
+
+  for (const name of [
+    'blueprinthelper_read_task_context',
+    'blueprinthelper_preview_task',
+    'blueprinthelper_execute_task',
+  ]) {
+    assert.ok(registered.includes(name), name);
   }
 });
 
@@ -460,6 +494,105 @@ test('blueprinthelper_read_context reads blueprint logic as LogicMd through Read
   });
 });
 
+test('blueprinthelper_read_context reads function logic_md through structured target slice', async () => {
+  const calls: Array<{ command: string; payload: Record<string, unknown> | undefined }> = [];
+  const tools = registerWithBridge(async (command, payload) => {
+    calls.push({ command, payload });
+    return {
+      request_id: 'test',
+      success: true,
+      result: {
+        ok: true,
+        schema: 'BlueprintHelper.ToolResultBase.v1',
+        operation: 'read_blueprint_logic_json',
+        status: 'completed',
+        modified: false,
+        target: {
+          asset_path: '/Game/Gameplay/Maze/BP_Maze',
+          target_type: 'function',
+          function: 'AddMazeRelativeRotation',
+        },
+        data: {
+          schema: 'LogicJson.v1',
+          scope: 'target_function',
+          logic: {
+            asset_path: '/Game/Gameplay/Maze/BP_Maze',
+            graph: 'AddMazeRelativeRotation',
+            function: 'AddMazeRelativeRotation',
+            entry: {
+              kind: 'function',
+              name: 'AddMazeRelativeRotation',
+              node_path: '$.graphs[AddMazeRelativeRotation].nodes[0]',
+              node_ref: 'nodes[0]',
+            },
+            nodes: [
+              {
+                node_ref: 'nodes[0]',
+                kind: 'function',
+                name: 'AddMazeRelativeRotation',
+                links: [
+                  {
+                    link_ref: 'links[0]',
+                    type: 'exec',
+                    from_pin: 'then',
+                    to_node: 'nodes[1]',
+                    to_pin: 'execute',
+                  },
+                ],
+              },
+              {
+                node_ref: 'nodes[1]',
+                kind: 'call_function',
+                name: 'SetRelativeRotation',
+              },
+            ],
+          },
+          stats: { nodes: 250, exec_links: 118, data_links: 141, orphan_nodes: 19 },
+        },
+      },
+    };
+  });
+
+  const tool = tools.get('blueprinthelper_read_context');
+  assert.ok(tool);
+
+  const result = await invokeTool(tool, {
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'blueprint_logic',
+    target: {
+      asset_path: '/Game/Gameplay/Maze/BP_Maze',
+      target_type: 'function',
+      target_name: 'AddMazeRelativeRotation',
+    },
+    view: {
+      format: 'logic_md',
+    },
+  });
+
+  assert.deepEqual(calls, [
+    {
+      command: 'read_blueprint_logic_json',
+      payload: {
+        asset_path: '/Game/Gameplay/Maze/BP_Maze',
+        function: 'AddMazeRelativeRotation',
+        scope: 'target_function',
+      },
+    },
+  ]);
+
+  assert.equal(result.isError, false);
+  const data = result.structuredContent?.data as Record<string, unknown>;
+  const payload = data.payload as Record<string, unknown>;
+  assert.equal(data.format, 'logic_md');
+  assert.equal(payload.schema, 'LogicMd.v1');
+  assert.equal(payload.scope, 'target_function');
+  assert.deepEqual(payload.stats, { nodes: 2, exec_links: 1, data_links: 0, orphan_nodes: 0 });
+  const markdown = String(payload.markdown);
+  assert.match(markdown, /Function: AddMazeRelativeRotation/);
+  assert.match(markdown, /SetRelativeRotation/);
+  assert.doesNotMatch(markdown, /Nodes: 250/);
+});
+
 test('blueprinthelper_read_context reads blueprint logic as LogicJson by custom event target', async () => {
   const calls: Array<{ command: string; payload: Record<string, unknown> | undefined }> = [];
   const tools = registerWithBridge(async (command, payload) => {
@@ -521,6 +654,149 @@ test('blueprinthelper_read_context reads blueprint logic as LogicJson by custom 
     logic: { nodes: [{ id: 'OpenDoor_entry' }] },
     scope: 'target_custom_event',
   });
+});
+
+test('blueprinthelper_read_context summary returns compact metadata without LogicMd markdown', async () => {
+  const calls: Array<{ command: string; payload: Record<string, unknown> | undefined }> = [];
+  const tools = registerWithBridge(async (command, payload) => {
+    calls.push({ command, payload });
+    return {
+      request_id: 'test',
+      success: true,
+      result: {
+        ok: true,
+        schema: 'BlueprintHelper.ToolResultBase.v1',
+        operation: 'read_blueprint_logic_json',
+        status: 'completed',
+        modified: false,
+        data: {
+          schema: 'LogicJson.v1',
+          scope: 'target_function',
+          logic: {
+            asset_path: '/Game/Gameplay/Maze/BP_Maze',
+            graph: 'Graph',
+            function: 'AddMazeRelativeRotation',
+            entry: {
+              kind: 'function',
+              name: 'AddMazeRelativeRotation',
+              node_path: 'Graph/node_1',
+              node_ref: 'node_1',
+            },
+            nodes: Array.from({ length: 250 }, (_, index) => ({
+              node_ref: `node_${index + 1}`,
+              kind: 'call_function',
+              name: `Node${index + 1}`,
+            })),
+          },
+          markdown: '# Logic Graph\n\nThis must not leak through summary.',
+          stats: { nodes: 250, exec_links: 118, data_links: 141, orphan_nodes: 19 },
+        },
+      },
+    };
+  });
+
+  const tool = tools.get('blueprinthelper_read_context');
+  assert.ok(tool);
+
+  const result = await invokeTool(tool, {
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'blueprint_logic',
+    target: {
+      asset_path: '/Game/Gameplay/Maze/BP_Maze',
+      target_type: 'function',
+      target_name: 'AddMazeRelativeRotation',
+    },
+    view: {
+      format: 'summary',
+    },
+  });
+
+  assert.deepEqual(calls, [
+    {
+      command: 'read_blueprint_logic_json',
+      payload: {
+        asset_path: '/Game/Gameplay/Maze/BP_Maze',
+        function: 'AddMazeRelativeRotation',
+        scope: 'target_function',
+      },
+    },
+  ]);
+  assert.equal(result.isError, false);
+  const data = result.structuredContent?.data as Record<string, unknown>;
+  const payload = data.payload as Record<string, unknown>;
+  assert.equal(data.format, 'summary');
+  assert.equal(payload.schema, 'LogicSummary.v1');
+  assert.equal(payload.target_found, true);
+  assert.deepEqual(payload.stats, { nodes: 250, exec_links: 118, data_links: 141, orphan_nodes: 19 });
+  assert.deepEqual(payload.entry, {
+    kind: 'function',
+    name: 'AddMazeRelativeRotation',
+    node_path: 'Graph/node_1',
+    node_ref: 'node_1',
+  });
+  assert.equal(Object.hasOwn(payload, 'markdown'), false);
+  assert.equal(Object.hasOwn(payload, 'logic'), false);
+  assert.equal(JSON.stringify(result).includes('This must not leak through summary'), false);
+});
+
+test('blueprinthelper_read_context logic_json honors max_items and marks truncation', async () => {
+  const tools = registerWithBridge(async () => ({
+    request_id: 'test',
+    success: true,
+    result: {
+      ok: true,
+      schema: 'BlueprintHelper.ToolResultBase.v1',
+      operation: 'read_blueprint_logic_json',
+      status: 'completed',
+      modified: false,
+      data: {
+        schema: 'LogicJson.v1',
+        scope: 'target_function',
+        logic: {
+          asset_path: '/Game/Gameplay/Maze/BP_Maze',
+          graph: 'Graph',
+          function: 'AddMazeRelativeRotation',
+          entry: {
+            kind: 'function',
+            name: 'AddMazeRelativeRotation',
+            node_path: 'Graph/node_1',
+            node_ref: 'node_1',
+          },
+          nodes: [
+            { node_ref: 'node_1', kind: 'function', name: 'AddMazeRelativeRotation' },
+            { node_ref: 'node_2', kind: 'call_function', name: 'SetRelativeRotation' },
+            { node_ref: 'node_3', kind: 'call_function', name: 'PrintString' },
+          ],
+        },
+        stats: { nodes: 3 },
+      },
+    },
+  }));
+
+  const tool = tools.get('blueprinthelper_read_context');
+  assert.ok(tool);
+
+  const result = await invokeTool(tool, {
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'blueprint_logic',
+    target: {
+      asset_path: '/Game/Gameplay/Maze/BP_Maze',
+      target_type: 'function',
+      target_name: 'AddMazeRelativeRotation',
+    },
+    view: {
+      format: 'logic_json',
+      max_items: 2,
+    },
+  });
+
+  assert.equal(result.isError, false);
+  const data = result.structuredContent?.data as Record<string, unknown>;
+  const payload = data.payload as Record<string, unknown>;
+  const logic = payload.logic as Record<string, unknown>;
+  assert.equal(data.truncated, true);
+  assert.deepEqual(payload.truncation, { nodes_total: 3, nodes_returned: 2 });
+  assert.equal((logic.nodes as unknown[]).length, 2);
 });
 
 test('blueprinthelper_read_context returns blueprint logic schema without Bridge', async () => {

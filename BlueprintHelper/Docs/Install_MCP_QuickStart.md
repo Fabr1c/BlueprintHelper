@@ -135,11 +135,20 @@ Generic MCP client configuration:
 
 For Codex, Claude, or IDE agents, use the same command, args, and env fields in that client's MCP configuration format.
 
-## 7. Optional TaskSpec CLI Entry
+## 7. CLI Replacement Entry
 
-The CLI is an alternate Agent entry for shell-capable environments. It does not replace MCP or the TaskSpec flow. It calls the same Python compiler, Bridge preview, and UE Task Runtime execution path as the MCP task tools.
+The CLI is the target replacement surface for MCP in shell-capable Agent environments. It does not replace the TaskSpec flow: write commands still call the same Python compiler, Bridge preview, and UE Task Runtime execution path as the MCP task tools.
 
-Use it when an Agent should keep output compact and avoid large MCP escaped JSON responses. Prefer `--format summary` for normal planning and review loops. Use `--format json` only when the Agent truly needs the full payload in context.
+Use it when an Agent should keep output compact and avoid large MCP escaped JSON responses. Prefer `--format summary` plus `--fields` or `--select` for normal planning and review loops, for example `--fields status,summary,artifacts.full_result`. Use `--format json` only when the Agent truly needs the full payload in context.
+
+Preferred CLI form:
+
+```powershell
+bh blueprint_get_runtime_profile --json "{}" --select status,summary
+bh blueprinthelper_read_task_context --file .\context-params.json --select status,summary,artifacts.full_result
+bh blueprinthelper_preview_task --file .\task_spec.json --select status,preview_id,summary,artifacts.full_result
+bh blueprinthelper_execute_task --file .\task_spec.json --select status,task_run_id,summary
+```
 
 See [TaskSpec_CLI_QuickStart.md](TaskSpec_CLI_QuickStart.md) for the CLI commands and usage rules.
 
@@ -155,7 +164,7 @@ npm test
 Editor connection verification from an MCP client:
 
 ```text
-Call blueprint_get_editor_context
+Call blueprint_get_runtime_profile
 ```
 
 Expected result:
@@ -164,43 +173,47 @@ Expected result:
 {
   "success": true,
   "result": {
-    "active_blueprint": "...",
-    "active_graph": "..."
+    "bridge": {
+      "reachable": true
+    },
+    "write_permission": {
+      "enabled": true
+    }
   }
 }
 ```
 
-If no Blueprint is active, the tool may still return a successful editor context with empty asset details. For destructive edits, do not use active context by default. Provide explicit `asset_path` and `target_graph`.
+For destructive edits, do not use active editor context by default. Provide explicit `asset_path` and target graph data in the TaskSpec.
 
 ## 9. First Safe Asset Read
 
-List Blueprints:
+Read a Blueprint summary through the Agent-facing ReadSpec path:
 
 ```text
-Call blueprint_list_assets with path=/Game, class_filter=Blueprint, recursive=true
+Call blueprinthelper_read_context with schema=BlueprintHelper.ReadSpec.v1, read_type=blueprint_logic, target.asset_path=/Game/Blueprints/BP_Player.BP_Player, view.format=summary
 ```
 
 Read a graph as Markdown:
 
 ```text
-Call blueprint_get_logic with target_blueprint=/Game/Blueprints/BP_Player.BP_Player and target_graph=EventGraph
+Call blueprinthelper_read_context with schema=BlueprintHelper.ReadSpec.v1, read_type=blueprint_logic, target.asset_path=/Game/Blueprints/BP_Player.BP_Player, target.target_type=graph, target.target_name=EventGraph, view.format=logic_md
 ```
 
-Use LogicMD or LogicJson for review and planning. Use raw JSON only for precise replay, import, or low-level graph diagnostics.
+Use `logic_md`, `logic_json`, or `summary` views for review and planning. Do not fall back to frozen low-level direct tools for ordinary Agent work.
 
 ## 10. Safe Write Checklist
 
-The same TaskSpec-first checklist applies whether the Agent enters through MCP task tools or the optional TaskSpec CLI.
+The same TaskSpec-first checklist applies whether the Agent enters through MCP task tools or the CLI replacement surface.
 
 For ordinary Agent editor-asset mutations, use the TaskSpec-first flow:
 
 - Confirm the Bridge is reachable.
-- Call `blueprint_get_runtime_profile`.
-- Call `blueprinthelper_read_task_context`.
+- Call `bh blueprint_get_runtime_profile --json "{}" --select status,summary`.
+- Call `bh blueprinthelper_read_task_context --file .\context-params.json --select status,summary,artifacts.full_result`.
 - Produce `BlueprintHelper.TaskSpec.v1` with exact `asset_path`, target graph when relevant, allowed scope, resource references, failure policy, `validation.should_compile`, and `validation.should_save`.
 - Do not submit TaskPlan directly; it is produced by the Python Task Compiler.
-- Run `blueprinthelper_preview_task` and stop on blocked / failed preview.
-- Run `blueprinthelper_execute_task` only after preview passes.
+- Run `bh blueprinthelper_preview_task --file .\task_spec.json --select status,preview_id,summary,artifacts.full_result` and stop on blocked / failed preview.
+- Run `bh blueprinthelper_execute_task --file .\task_spec.json --select status,task_run_id,summary` only after preview passes.
 - Let UE Task Runtime handle TaskPlan execution, `execution_policy.should_compile` / `execution_policy.should_save`, transaction grouping, rollback, and diagnostics.
 - Report partial failures and do not retry blindly.
 

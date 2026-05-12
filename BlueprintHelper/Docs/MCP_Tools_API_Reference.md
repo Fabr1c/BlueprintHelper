@@ -7,14 +7,30 @@ This reference is aligned with the current documentation mainline, where ordinar
 Architecture baseline:
 
 ```text
-Agent -> TaskSpec semantic task -> MCP Task Tools -> Python Task Compiler -> TaskPlan structured edit language / IR -> Bridge task-level preview/execute -> UE Task Runtime lowering -> Existing UE capability clusters / Bridge commands
+Agent -> CLI command or MCP compatibility tool -> task-core -> Python Task Compiler / Read Router -> TaskPlan structured edit language / IR -> Bridge preview/execute/read -> UE Task Runtime lowering -> Existing UE capability clusters / Bridge commands
 ```
 
 Ordinary Agents author `BlueprintHelper.TaskSpec.v1` only. The existing low-level MCP tools remain documented for compatibility, debug / expert workflows, internal Task Runtime capability mapping, and automation tests.
 
-## CLI Parity Rule
+## CLI Replacement Rule
 
-The optional TaskSpec CLI is transport parity for shell-capable Agents. Any CLI write command must be expressible as `BlueprintHelper.TaskSpec.v1` and must pass through preview before execute. Raw Bridge write commands are not an Agent-facing CLI surface. The CLI does not bypass the Python Task Compiler, Bridge preview, or UE Task Runtime execution path.
+The CLI is the target replacement surface for MCP in shell-capable Agent environments. Every default Agent-facing MCP capability should have a CLI command or task-core-backed CLI route. MCP may remain for compatibility, discovery, and non-shell clients, but it should not be the only Agent-facing transport for new capability work.
+
+CLI replacement does not remove the TaskSpec or Python orchestration layer. Any CLI write command must be expressible as `BlueprintHelper.TaskSpec.v1` and must pass through preview before execute. Raw Bridge write commands are not an ordinary Agent-facing CLI write surface. The CLI does not bypass the Python Task Compiler, Bridge preview, or UE Task Runtime execution path.
+
+CLI output should support selected-field projection. Agents can request only fields such as `status`, `task_run_id`, `summary`, or `artifacts.full_result`, omitting envelope fields such as `ok` and `schema` unless explicitly needed.
+
+## Shared Tool Registry Rule
+
+CLI direct tool invocation is backed by the shared registry in `ClaudePlugin/task-core/src/tool-surface`. New Agent-facing tools must be added to that registry first. MCP registers TaskSpec task tools from the shared registry and keeps compatibility-specific wrappers for mature MCP-only behavior such as diagnostics, guide text, and frozen legacy filtering. The shared registry is the active non-frozen surface, not the historical low-level MCP inventory.
+
+The canonical shell form is:
+
+```powershell
+bh <tool_name> [--file params.json | --json "{...}" | --stdin] [--select field[,field...]]
+```
+
+Frozen legacy/expert tools are not available through direct CLI invocation. Passing `--expert` does not re-enable removed MCP tools.
 
 ## Common Return Shape
 
@@ -46,7 +62,7 @@ Default Agent-facing payload schemas:
 | `blueprinthelper_execute_task` | `McpToolResult.v1` with `data.schema = TaskRunSummary.v1` or `TaskRunJournal.v1` |
 | `blueprinthelper_get_task_result` | `McpToolResult.v1` with `data.schema = TaskRunJournal.v1` |
 
-UE façade results use `FBlueprintHelperToolResultBase`; MCP normalizes them into the public `McpToolResult.v1` envelope. Compact debug facts belong under `data.debug`; large asset context should be read through targeted `logic_md` / `logic_json` slices. Developer diagnostics use summary `DebugCase` ids and local `DebugBundle` exports; MCP must not expand default responses with bundle artifacts or large payload refs.
+UE façade results use `FBlueprintHelperToolResultBase`; MCP normalizes them into the public `McpToolResult.v1` envelope. CLI writes the full normalized result to artifacts and may print only a compact `BlueprintHelper.CliResult.v1` summary or selected projected fields to stdout. Compact debug facts belong under `data.debug`; large asset context should be read through targeted `logic_md` / `logic_json` slices. Developer diagnostics use summary `DebugCase` ids and local `DebugBundle` exports; default Agent responses must not expand with bundle artifacts or large payload refs.
 
 TaskSpec validation, semantic, policy, capability, preview, and execution failures are returned as task-level errors. A failed TaskSpec does not require the Agent to inspect raw Bridge / UE operation errors by default:
 
@@ -88,19 +104,21 @@ Default Agent-facing tools:
 - `blueprinthelper_preview_task`
 - `blueprinthelper_execute_task`
 - `blueprinthelper_get_task_result`
-- `blueprinthelper_open_editor`
-- `blueprinthelper_close_editor`
+- `blueprinthelper_get_debug_case`
+- `blueprinthelper_read_task_context`
+- `blueprinthelper_diagnostics_runtime`
+- `blueprint_open_editor`
 
-Legacy/internal/debug/expert tools remain registered only until their TaskSpec / ReadSpec replacements are complete. Capabilities that already have a TaskPlan adapter and TaskSpec compiler coverage should have their old Agent-facing atomic MCP write tools removed first. Remaining old tools stay legacy/internal/debug/expert/test until their adapter and TaskSpec support lands, then they are removed in the same slice. Ordinary Agents should prefer the default tools above unless the user explicitly asks for a low-level debug path or a failure investigation needs raw capability detail.
+Legacy/internal/debug/expert direct tools are frozen and not part of the ordinary MCP or CLI public surface. Capabilities that already have a TaskPlan adapter and TaskSpec compiler coverage should have their old Agent-facing atomic MCP write tools removed first. Remaining old names below are documented only as historical/internal capability inventory and Task Runtime mapping context, not as CLI replacement targets.
 
 Legacy/internal/debug/expert inventory:
 
-- Context, guide, and diagnostics: `blueprinthelper_read_agent_guide`, `blueprint_get_editor_context`, `blueprinthelper_diagnostics_runtime`
+- Legacy context/debug reads: `blueprint_get_editor_context`
 - Direct logic/raw reads and validation: `blueprint_get_logic_md`, `blueprint_validate_json`, `blueprint_export_to_json`, `blueprint_get_logic`, `blueprint_get_logic_json`
 - Asset and component capabilities: `blueprint_create_asset`, `blueprint_read_components`, `blueprint_add_component`, `blueprint_set_component_property`, `blueprint_set_component_properties`, `blueprint_remove_component`, `blueprint_open_asset`, `blueprint_list_assets`, `blueprint_search_assets`, `blueprint_save_asset`, `blueprint_get_asset_info`
 - Blueprint graph/member capabilities: `blueprint_import_json_to_graph`, `blueprint_import_agent_graph`, `blueprint_compile_blueprint`, `blueprint_list_graphs`, `blueprint_list_variables`, `blueprint_list_event_dispatchers`, `blueprint_add_variable`, `blueprint_remove_variable`, `blueprint_add_graph`, `blueprint_remove_graph`, `blueprint_add_event_dispatcher`, `blueprint_delete_nodes`
 - UMG, UObject, and DataTable capabilities: `blueprint_get_widget_tree`, `blueprint_add_widget`, `blueprint_remove_widget`, `blueprint_move_widget`, `blueprint_get_widget_properties`, `blueprint_set_widget_property`, `blueprint_get_object_properties`, `blueprint_set_object_property`, `blueprint_get_datatable_rows`, `blueprint_add_datatable_row`, `blueprint_update_datatable_row`, `blueprint_delete_datatable_row`
-- Editor lifecycle and local process tools: `blueprint_undo`, `blueprint_redo`, `blueprint_play_in_editor`, `blueprint_stop_pie`, `blueprint_create_blueprint`, `blueprint_exec_console_command`, `blueprint_close_editor`, `blueprint_build_project`, `blueprint_open_editor`
+- Editor lifecycle and local process tools: `blueprint_undo`, `blueprint_redo`, `blueprint_play_in_editor`, `blueprint_stop_pie`, `blueprint_create_blueprint`, `blueprint_exec_console_command`, `blueprint_close_editor`, `blueprint_build_project`
 
 ## Task-Level Tool Reference
 

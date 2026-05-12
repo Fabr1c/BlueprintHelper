@@ -72,6 +72,14 @@ Use `tools/list` as final authority. Normal Agent-facing tools:
 }
 ```
 
+`view.format=summary` returns compact `LogicSummary.v1` metadata only. It uses structured logic data internally and must not expose full LogicMD markdown, raw `logic.nodes`, local cache paths, or saved export file content. Use it to estimate target presence and graph size before any detailed read.
+
+`view.format=logic_md` may be used directly for `target_type=function`, `target_type=event`, or `target_type=custom_event` when `target_name` is known. These target-entry reads are generated from structured target slices and report sliced stats. Do not use whole-graph `logic_md` until summary or `logic_json` shows the graph is small enough.
+
+`view.max_items` is a truncation guard for `logic_json`; when truncation happens, the MCP result sets `data.truncated=true` and includes `payload.truncation.nodes_total` plus `payload.truncation.nodes_returned`.
+
+If `blueprinthelper_read_context` is not visible or callable, stop with `mcp_tools_unavailable`. Do not read `.vs\BlueprintCache`, Saved exports, or local JSON files as a substitute for missing MCP tool permission.
+
 ## 5. Reference Context Template
 
 ```json

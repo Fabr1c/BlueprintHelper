@@ -6,6 +6,7 @@ export const CLI_RESULT_SCHEMA = 'BlueprintHelper.CliResult.v1';
 export type CliFormat = 'summary' | 'json' | 'full';
 
 export type CliCommandKind =
+  | 'tool.invoke'
   | 'task.preview'
   | 'task.execute'
   | 'task.result'
@@ -17,11 +18,16 @@ export type CliCommandKind =
 export interface CliCommand {
   kind: CliCommandKind;
   format: CliFormat;
+  toolName?: string;
   file?: string;
+  json?: string;
+  stdin?: boolean;
+  expert?: boolean;
   taskRunId?: string;
   bridgeCommand?: string;
   artifactDir?: string;
   maxBytes?: number;
+  fields?: string[];
 }
 
 export interface CliOutputRuntime {
@@ -65,6 +71,7 @@ export function buildCliSummary(input: {
     ok: input.toolResult.ok,
     schema: CLI_RESULT_SCHEMA,
     operation: input.command.kind,
+    tool_name: input.command.toolName,
     status: mapStatus(input.command, input.toolResult, data),
     task_run_id: taskRunId,
     preview_id: previewId,
@@ -77,6 +84,7 @@ export function buildCliSummary(input: {
       modified: input.toolResult.modified,
     }),
     artifacts: input.artifactRefs,
+    error_code: input.toolResult.ok ? undefined : input.toolResult.error?.code,
     message: input.toolResult.ok ? undefined : input.toolResult.error?.message,
   });
 }
@@ -108,7 +116,7 @@ export function writeCliResult(
     });
   }
 
-  const output = buildOutput(command, toolResult, artifactRefs, extra);
+  const output = projectCliFields(buildOutput(command, toolResult, artifactRefs, extra), command.fields);
   const text = `${JSON.stringify(output)}\n`;
   if (command.maxBytes !== undefined && Buffer.byteLength(text, 'utf8') > command.maxBytes) {
     const budgetResult = outputTooLargeResult(command, artifactRefs);
@@ -125,15 +133,38 @@ export function buildCliError(input: {
   status: string;
   message: string;
   artifactRefs?: Record<string, string>;
+  fields?: string[];
 }): Record<string, unknown> {
-  return omitUndefined({
+  return projectCliFields(omitUndefined({
     ok: false,
     schema: CLI_RESULT_SCHEMA,
     operation: input.operation,
     status: input.status,
     message: input.message,
     artifacts: input.artifactRefs,
-  });
+  }), input.fields);
+}
+
+export function projectCliFields(
+  output: Record<string, unknown>,
+  fields?: string[],
+): Record<string, unknown> {
+  if (!fields || fields.length === 0) {
+    return output;
+  }
+
+  const projected: Record<string, unknown> = {};
+  for (const field of fields) {
+    const parts = field.split('.').filter((part) => part.length > 0);
+    if (parts.length === 0) {
+      continue;
+    }
+    const value = readPath(output, parts);
+    if (value !== undefined) {
+      writePath(projected, parts, value);
+    }
+  }
+  return projected;
 }
 
 function buildOutput(
@@ -150,6 +181,7 @@ function buildOutput(
     ok: toolResult.ok,
     schema: CLI_RESULT_SCHEMA,
     operation: command.kind,
+    tool_name: command.toolName,
     status: mapStatus(command, toolResult, asRecord(toolResult.data)),
     tool_result: toolResult,
     extra,
@@ -163,6 +195,7 @@ function outputTooLargeResult(command: CliCommand, artifactRefs: Record<string, 
     status: 'output_too_large',
     message: 'CLI stdout exceeds --max-bytes. Read the artifact path instead.',
     artifactRefs,
+    fields: command.fields,
   });
 }
 
@@ -174,10 +207,19 @@ function mapStatus(
   if (command.kind === 'task.preview') {
     return data?.['passed'] === false || !toolResult.ok ? 'preview_blocked' : 'preview_passed';
   }
+  if (command.kind === 'tool.invoke' && command.toolName === 'blueprinthelper_preview_task') {
+    return data?.['passed'] === false || !toolResult.ok ? 'preview_blocked' : 'preview_passed';
+  }
   if (command.kind === 'task.execute') {
     return toolResult.ok ? 'executed' : 'execute_failed';
   }
+  if (command.kind === 'tool.invoke' && command.toolName === 'blueprinthelper_execute_task') {
+    return toolResult.ok ? 'executed' : 'execute_failed';
+  }
   if (command.kind === 'task.result') {
+    return toolResult.ok ? 'result_found' : 'result_missing';
+  }
+  if (command.kind === 'tool.invoke' && command.toolName === 'blueprinthelper_get_task_result') {
     return toolResult.ok ? 'result_found' : 'result_missing';
   }
   if (command.kind === 'bridge.ping') {
@@ -264,6 +306,28 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function readPath(record: Record<string, unknown>, parts: string[]): unknown {
+  let current: unknown = record;
+  for (const part of parts) {
+    if (!isRecord(current) || !(part in current)) {
+      return undefined;
+    }
+    current = current[part];
+  }
+  return current;
+}
+
+function writePath(record: Record<string, unknown>, parts: string[], value: unknown): void {
+  let current = record;
+  for (const part of parts.slice(0, -1)) {
+    if (!isRecord(current[part])) {
+      current[part] = {};
+    }
+    current = current[part] as Record<string, unknown>;
+  }
+  current[parts[parts.length - 1]] = value;
 }
 
 function omitUndefined(record: Record<string, unknown>): Record<string, unknown> {

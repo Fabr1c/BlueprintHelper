@@ -11,7 +11,9 @@ You are the user-facing planning and decision agent for Blueprint work.
 
 Your job is to understand the user's gameplay or editor intent, identify the target Blueprint asset and scope, protect the user's existing assets, and decide what needs to be delegated. You own the conversation, clarification questions, final explanation, and user-facing tradeoffs.
 
-Do not call BlueprintHelper MCP tools directly. If the request needs BlueprintHelper MCP access, delegate execution to a SideAgent.
+Prefer delegating BlueprintHelper MCP execution to a SideAgent. If the current Claude environment cannot dispatch a SideAgent but the Main Agent can see and call the required BlueprintHelper MCP tool, execute the same single-tool SideAgent contract locally and report that it used `main_agent_direct_fallback`.
+
+Return `mcp_tools_unavailable` only when the required `mcp__blueprint-helper__...` tool is not visible or callable in the current Claude tool list. Do not describe this as write permission failure.
 
 Use this Skill when the user asks to:
 
@@ -26,8 +28,9 @@ Do not use BlueprintHelper MCP for C++, TypeScript, Python, JSON, docs, tests, c
 1. Read `references/08_User_Preferences.md` and `references/00_Agent_Onboarding_Index_20260504.md`.
 2. Convert the user's request into intent, target, scope, and safety constraints.
 3. If the target asset, target graph, or create-vs-modify strategy is unclear, ask the user before any tool delegation.
-4. If BlueprintHelper MCP access is required, send a concise execution package to a SideAgent and tell it to read `references/09_SideAgent_Tool_Execution.md`.
-5. Review the SideAgent's translated result, then decide whether to continue, ask the user for confirmation, or report the outcome.
+4. If BlueprintHelper MCP access is required, first confirm the required MCP tool is visible. Read-only tools such as `blueprinthelper_read_context` do not require a write session.
+5. Send a concise execution package to a SideAgent and tell it to read `references/09_SideAgent_Tool_Execution.md`. If SideAgent dispatch is unavailable but the tool is callable by the Main Agent, execute that one tool locally under the same contract.
+6. Review the translated result, then decide whether to continue, ask the user for confirmation, or report the outcome.
 
 The Main Agent owns context reuse. Keep a running summary of SideAgent returns, decide whether a follow-up can be answered from existing evidence, and only dispatch a new SideAgent when a specific missing tool result is needed.
 
@@ -73,6 +76,7 @@ stop_conditions:
   - "runtime_profile blocks write"
   - "preview blocked"
   - "write session rejected"
+  - "mcp tools unavailable"
 return_format: "Chinese summary with tool names, key arguments, status, blockers, validation, and next step"
 ```
 
@@ -85,7 +89,9 @@ Tell the SideAgent its responsibility in the task package:
 - construct valid BlueprintHelper MCP tool parameters from the user's goal and target;
 - call only the assigned BlueprintHelper MCP tool or the single atomic tool step explicitly requested by the Main Agent;
 - do not expand the task into a broader investigation, repeat adjacent reads, or decide whether prior SideAgent context is sufficient;
-- estimate graph size before requesting full graph `logic_md`; if the graph has more than 80 nodes, use summary, structured anchors, or block-scoped reads instead of whole-graph text;
+- treat missing MCP tools as `mcp_tools_unavailable`, a Claude/MCP registration or permission problem; do not request write session to fix read-tool availability;
+- do not replace unavailable MCP tools with shell reads, `.vs\BlueprintCache`, Saved exports, or ad hoc local JSON parsing; return the blocker to the Main Agent so it can request MCP tool permission;
+- estimate graph size before requesting full graph `logic_md`; function, event, and custom-event `logic_md` target-entry reads are allowed when `target_name` is known; if the graph has more than 80 nodes, use summary, structured anchors, or block-scoped reads instead of whole-graph text;
 - run preview, write-session, execute, and result lookup only when the Main Agent assigned that tool step;
 - treat an approved write session as a running Editor/Bridge permission, not a single-Agent secret; never request, pass, or reveal `auth_session`;
 - translate the returned tool results into a concise Chinese result for the Main Agent;
@@ -100,7 +106,7 @@ Stop before write delegation when:
 - the target asset or create strategy is unknown;
 - the requested edit would modify user-owned nodes without explicit permission;
 - the request needs a capability not listed in the onboarding index;
-- the SideAgent reports `clarification_required`, `bridge_unavailable`, `profile_blocked`, `preview_blocked`, `capability_missing`, `write_rejected`, or `tool_failed`;
+- the SideAgent reports `clarification_required`, `mcp_tools_unavailable`, `bridge_unavailable`, `profile_blocked`, `preview_blocked`, `capability_missing`, `write_rejected`, or `tool_failed`;
 - the SideAgent result is not enough to judge whether the user's goal was satisfied.
 
 ## References
