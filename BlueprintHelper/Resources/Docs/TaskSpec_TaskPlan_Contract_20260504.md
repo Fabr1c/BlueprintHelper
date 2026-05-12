@@ -7,9 +7,9 @@ This file is the human-readable contract for the TaskSpec-first implementation s
 The machine-readable guard is:
 
 ```text
-BlueprintHelper_MCP_Server/src/task-contract.ts
-BlueprintHelper_MCP_Server/src/task-contract.test.ts
-BlueprintHelper_MCP_Server/src/task-protocol.fixtures.ts
+ClaudePlugin/task-core/src/task/schema/task-contract.ts
+ClaudePlugin/task-core/src/tests/task/task-contract.test.ts
+ClaudePlugin/task-core/src/task/fixtures/task-protocol.fixtures.ts
 ```
 
 The supported chain is:
@@ -71,7 +71,7 @@ Rules:
 Default Agent-facing tools are:
 
 ```text
-blueprinthelper_get_runtime_profile
+blueprint_get_runtime_profile
 blueprinthelper_diagnostics
 blueprinthelper_read_agent_guide
 blueprinthelper_read_context
@@ -885,7 +885,7 @@ Legacy `compile` and `save` keys inside `validation` are rejected. They are not 
 The capability field source for TaskPlan expansion is:
 
 ```text
-Resources/v0.3.6/DoneImplementaion
+Develop/v0.3.6/DoneImplementaion
 ```
 
 The directory name is intentionally kept as-is because it is the current repository path.
@@ -996,10 +996,10 @@ Resolved smoke finding, 2026-05-06: LogicJson `target_type=custom_event` lookup 
 
 Any new TaskSpec or TaskPlan capability must update all of these together:
 
-1. `BlueprintHelper_MCP_Server/src/task-contract.ts`
-2. `BlueprintHelper_MCP_Server/src/task-contract.test.ts`
-3. `BlueprintHelper_MCP_Server/src/task-protocol.fixtures.ts`
-4. `BlueprintHelper_MCP_Server/python/blueprinthelper_task/*`
+1. `ClaudePlugin/task-core/src/task/schema/task-contract.ts`
+2. `ClaudePlugin/task-core/src/tests/task/task-contract.test.ts`
+3. `ClaudePlugin/task-core/src/task/fixtures/task-protocol.fixtures.ts`
+4. `ClaudePlugin/task-core/python/blueprinthelper_task/*`
 5. UE Task Runtime validation or execution code if the TaskPlan shape changes.
 6. This contract document.
 

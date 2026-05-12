@@ -2,7 +2,7 @@
 
 > 本文档记录 BlueprintHelper 插件在自动化蓝图生成（vibe coding）场景下发现的已知 Bug 和架构限制。  
 > 修复后的条目会标注版本号并移至"已修复"章节。  
-> 规则文档参见 [JsonToBlueprintRules.md](JsonToBlueprintRules.md)。
+> 规则文档参见 [AgentGuide](AgentGuide/00_Agent_Onboarding_Index_20260504.md)。
 
 ---
 

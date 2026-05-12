@@ -80,7 +80,7 @@ MCP 服务侧是 **Agent 与 Unreal Editor 之间的协议适配层**。
 ## 包含内容
 
 ```text id="8i1dr2"
-BlueprintHelper_MCP_Server/
+ClaudePlugin/mcp/
 src/tools.ts
 src/bridge-client.ts
 src/config.ts
@@ -286,7 +286,7 @@ BlueprintHelper/
 │  ├─ Content/
 │  └─ Resources/
 │
-├─ BlueprintHelper_MCP_Server/
+├─ ClaudePlugin/mcp/
 │  ├─ src/
 │  ├─ package.json
 │  └─ README.md
@@ -312,10 +312,10 @@ BlueprintHelper/
 如果不想改目录，可以保持现有插件目录，只在文档中采用这个逻辑分类：
 
 ```text id="rol31q"
-BlueprintHelper/Resources/Plan/
+BlueprintHelper/Develop/Plan/
 BlueprintHelper/Resources/Docs/
 BlueprintHelper/Resources/Skills/
-BlueprintHelper/BlueprintHelper_MCP_Server/
+BlueprintHelper/ClaudePlugin/mcp/
 BlueprintHelper/Source/
 ```
 
@@ -402,7 +402,7 @@ blueprinthelper_read_task_context
 blueprinthelper_preview_task
 blueprinthelper_execute_task
 blueprinthelper_get_task_result
-blueprinthelper_get_runtime_profile
+blueprint_get_runtime_profile
 blueprinthelper_diagnostics
 ```
 

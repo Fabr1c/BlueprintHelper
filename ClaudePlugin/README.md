@@ -15,7 +15,7 @@ Agent -> MCP Task Tools -> Python/MCP Task Compiler -> UE Task Runtime -> Existi
 The intended default flow is:
 
 ```text
-blueprinthelper_get_runtime_profile
+blueprint_get_runtime_profile
 -> blueprinthelper_read_task_context
 -> Agent produces BlueprintHelper.TaskSpec.v1
 -> blueprinthelper_preview_task
@@ -23,7 +23,7 @@ blueprinthelper_get_runtime_profile
 -> blueprinthelper_get_task_result when needed
 ```
 
-Existing tool clusters are not removed. They remain as UE Task Runtime capabilities, debug / expert tools, and automation test entry points. See [Resources/Plan/BlueprintHelper_Hybrid_TaskSpec_TaskPlan_Architecture_20260504.md](Resources/Plan/BlueprintHelper_Hybrid_TaskSpec_TaskPlan_Architecture_20260504.md).
+Existing tool clusters are not removed. They remain as UE Task Runtime capabilities, debug / expert tools, and automation test entry points. See [BlueprintHelper_Hybrid_TaskSpec_TaskPlan_Architecture_20260504.md](../BlueprintHelper/Develop/Plan/BlueprintHelper_Hybrid_TaskSpec_TaskPlan_Architecture_20260504.md).
 
 Agents submit `BlueprintHelper.TaskSpec.v1` only; they do not submit TaskPlan. Python / MCP compiles TaskPlan, and UE Task Runtime executes TaskPlan.
 
@@ -34,7 +34,9 @@ Current source metadata:
 | Component | Current value |
 |---|---|
 | Unreal plugin `BlueprintHelper.uplugin` | `VersionName` 0.3.8 |
-| MCP Server `BlueprintHelper_MCP_Server/package.json` | 0.3.8 |
+| MCP Server `ClaudePlugin/mcp/package.json` | 0.3.8 |
+| CLI `ClaudePlugin/cli/package.json` | 0.3.8 |
+| Shared task core `ClaudePlugin/task-core/package.json` | 0.3.8 |
 | Documentation batch | 2026-05-04 TaskSpec mainline |
 | Intended UE version | UE 5.3 or newer |
 
@@ -97,7 +99,7 @@ Save this under `<ProjectDir>/.blueprinthelper/agent-profile.json`. Project `.up
 4. 安装 MCP Server 依赖并构建：
 
 ```powershell
-cd BlueprintHelper_MCP_Server
+cd <PLUGIN_ROOT>\ClaudePlugin\mcp
 npm install
 npm run build
 ```
@@ -132,21 +134,19 @@ Store the UE engine root in `<ProjectDir>/.blueprinthelper/agent-profile.json` a
 node <PLUGIN_ROOT>\ClaudePlugin\mcp\build\index.js
 ```
 
-For full setup details, read [Docs/Install_MCP_QuickStart.md](Docs/Install_MCP_QuickStart.md).
+For full setup details, read [Docs/Install_MCP_QuickStart.md](../BlueprintHelper/Docs/Install_MCP_QuickStart.md).
 
 ## Agent Entry Points
 
 Agents should read these in order:
 
 1. [AGENTS.md](AGENTS.md)
-2. [Resources/AgentGuide/00_Agent_Onboarding_Index_20260504.md](Resources/AgentGuide/00_Agent_Onboarding_Index_20260504.md)
-3. [Resources/Setup/Setup_Questionnaire_20260430.md](Resources/Setup/Setup_Questionnaire_20260430.md)
-4. [Resources/Setup/Setup_Profile_Schema_20260430.md](Resources/Setup/Setup_Profile_Schema_20260430.md)
-5. [Resources/Docs/TaskSpec_TaskPlan_Contract_20260504.md](Resources/Docs/TaskSpec_TaskPlan_Contract_20260504.md)
-6. [Resources/Plan/BlueprintHelper_Hybrid_TaskSpec_TaskPlan_Architecture_20260504.md](Resources/Plan/BlueprintHelper_Hybrid_TaskSpec_TaskPlan_Architecture_20260504.md)
-7. [Docs/MCP_Tools_API_Reference.md](Docs/MCP_Tools_API_Reference.md)
+2. [Resources/AgentGuide/00_Agent_Onboarding_Index_20260504.md](../BlueprintHelper/Resources/AgentGuide/00_Agent_Onboarding_Index_20260504.md)
+3. [Resources/Docs/TaskSpec_TaskPlan_Contract_20260504.md](../BlueprintHelper/Resources/Docs/TaskSpec_TaskPlan_Contract_20260504.md)
+4. [Develop/Plan/README.md](../BlueprintHelper/Develop/Plan/README.md)
+5. [Docs/MCP_Tools_API_Reference.md](../BlueprintHelper/Docs/MCP_Tools_API_Reference.md)
 
-Claude-style agents can also load [.claude/skills/blueprinthelper/SKILL.md](.claude/skills/blueprinthelper/SKILL.md).
+Claude-style agents can also load [skills/blueprint-helper/SKILL.md](skills/blueprint-helper/SKILL.md).
 
 ## Claude Plugin Commands
 
@@ -161,13 +161,13 @@ Claude Code discovers plugin commands from the plugin root `commands/` directory
 
 | Document | Purpose |
 |---|---|
-| [Docs/Install_MCP_QuickStart.md](Docs/Install_MCP_QuickStart.md) | Install, build, configure, and verify MCP connection |
-| [Docs/MCP_Tools_API_Reference.md](Docs/MCP_Tools_API_Reference.md) | Task-level tools plus legacy/internal/debug tool inventory |
-| [Resources/Setup/Setup_Questionnaire_20260430.md](Resources/Setup/Setup_Questionnaire_20260430.md) | Questions for collecting user and project preferences |
-| [Resources/Setup/Setup_Profile_Schema_20260430.md](Resources/Setup/Setup_Profile_Schema_20260430.md) | Stable `.blueprinthelper/agent-profile.json` structure |
-| [Resources/AgentGuide/](Resources/AgentGuide/) | Agent task routing and editor-asset workflows |
-| [Resources/JsonToBlueprintRules.md](Resources/JsonToBlueprintRules.md) | Raw JSON-to-Blueprint conversion rules |
-| [Resources/KnownBugs.md](Resources/KnownBugs.md) | Known bugs and implementation notes |
+| [Docs/Install_MCP_QuickStart.md](../BlueprintHelper/Docs/Install_MCP_QuickStart.md) | Install, build, configure, and verify MCP connection |
+| [Docs/MCP_Tools_API_Reference.md](../BlueprintHelper/Docs/MCP_Tools_API_Reference.md) | Task-level tools plus legacy/internal/debug tool inventory |
+| [Docs/TaskSpec_CLI_QuickStart.md](../BlueprintHelper/Docs/TaskSpec_CLI_QuickStart.md) | Optional CLI transport for compact TaskSpec execution |
+| [Resources/AgentGuide/](../BlueprintHelper/Resources/AgentGuide/) | Agent task routing and editor-asset workflows |
+| [Develop/Plan/README.md](../BlueprintHelper/Develop/Plan/README.md) | Active implementation and verification plan index |
+| [Develop/v0.3.8/README.md](../BlueprintHelper/Develop/v0.3.8/README.md) | Sealed v0.3.8 documentation archive |
+| [Resources/KnownBugs.md](../BlueprintHelper/Resources/KnownBugs.md) | Known bugs and implementation notes |
 
 ## Safe Write Workflow
 

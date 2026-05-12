@@ -32,34 +32,34 @@ Read these first for the web discussion:
 
 | Order | File | Why it matters |
 | --- | --- | --- |
-| 1 | `Resources/Plan/BlueprintHelper_ReviewPanel_UserSide_Constraints_20260506.md` | Most precise current constraints: archive baseline, visible change semantics, Accept / Reject, read-only UI, atomic targets. |
-| 2 | `Resources/Plan/BlueprintHelper_ReviewPanel_UserSide_Design_20260506.md` | Product and UI model for the user-side Review page. |
+| 1 | `Develop/Plan/BlueprintHelper_ReviewPanel_UserSide_Constraints_20260506.md` | Most precise current constraints: archive baseline, visible change semantics, Accept / Reject, read-only UI, atomic targets. |
+| 2 | `Develop/Plan/BlueprintHelper_ReviewPanel_UserSide_Design_20260506.md` | Product and UI model for the user-side Review page. |
 | 3 | `Resources/BlueprintHelper_Hybrid_SourceDocs_Sync_20260504/06_Transaction_Journal_Review_Design_Synced_20260504.md` | Original Transaction / Journal / Review rules: all writes journal internally, Agent-facing boundary, rollback and ownership policy. |
-| 4 | `Resources/Plan/BlueprintHelper_Hybrid_TaskSpec_TaskPlan_Architecture_20260504.md` | Shows where TaskRunJournal, transaction_id, task_run_id grouping, Review, rollback, and UE Task Runtime fit in the TaskSpec-first architecture. |
-| 5 | `Resources/v0.3.6/FieldMapping/BlueprintHelper_TransactionJournalQuery_UE_FieldMapping_20260503.md` | Query boundary and fields for transaction / review summaries. This is the main candidate to fold into the Review record model. |
-| 6 | `Resources/Plan/BlueprintHelper_Current_TODO_20260506.md` | Current unresolved tasks and policy corrections. |
-| 7 | `Resources/Plan/BlueprintHelper_v0.3.6_Current_Implementation_Gap_Matrix_20260505.md` | Current capability status matrix, including TransactionJournalQuery / Review, DebugExport, ownership, and non-owned anchors. |
+| 4 | `Develop/Plan/BlueprintHelper_Hybrid_TaskSpec_TaskPlan_Architecture_20260504.md` | Shows where TaskRunJournal, transaction_id, task_run_id grouping, Review, rollback, and UE Task Runtime fit in the TaskSpec-first architecture. |
+| 5 | `Develop/v0.3.6/FieldMapping/BlueprintHelper_TransactionJournalQuery_UE_FieldMapping_20260503.md` | Query boundary and fields for transaction / review summaries. This is the main candidate to fold into the Review record model. |
+| 6 | `Develop/Plan/BlueprintHelper_Current_TODO_20260506.md` | Current unresolved tasks and policy corrections. |
+| 7 | `Develop/Plan/BlueprintHelper_v0.3.6_Current_Implementation_Gap_Matrix_20260505.md` | Current capability status matrix, including TransactionJournalQuery / Review, DebugExport, ownership, and non-owned anchors. |
 
 ## 3. Core Review Documents
 
 | Area | File | Current meaning |
 | --- | --- | --- |
-| User Review UI design | `Resources/Plan/BlueprintHelper_ReviewPanel_UserSide_Design_20260506.md` | Defines the fake Blueprint Editor review page, final change list, diff frames, ReviewStore, ReviewAction, archive session service, and Accept / Reject semantics. |
-| User Review constraints | `Resources/Plan/BlueprintHelper_ReviewPanel_UserSide_Constraints_20260506.md` | Defines the confirmed contract: read-only UI, archive baseline, final visible changes instead of raw transactions, atomic targets, compaction follow-up, and graph-space diff rendering. |
-| User Review implementation plan | `Resources/Plan/BlueprintHelper_ReviewPanel_UserSide_Implementation_Plan_20260506.md` | Tracks first-slice implementation work and deferred backend work such as archive persistence, real Reject rollback, compaction, and TaskRunJournal grouping. |
+| User Review UI design | `Develop/Plan/BlueprintHelper_ReviewPanel_UserSide_Design_20260506.md` | Defines the fake Blueprint Editor review page, final change list, diff frames, ReviewStore, ReviewAction, archive session service, and Accept / Reject semantics. |
+| User Review constraints | `Develop/Plan/BlueprintHelper_ReviewPanel_UserSide_Constraints_20260506.md` | Defines the confirmed contract: read-only UI, archive baseline, final visible changes instead of raw transactions, atomic targets, compaction follow-up, and graph-space diff rendering. |
+| User Review implementation plan | `Develop/Plan/BlueprintHelper_ReviewPanel_UserSide_Implementation_Plan_20260506.md` | Tracks first-slice implementation work and deferred backend work such as archive persistence, real Reject rollback, compaction, and TaskRunJournal grouping. |
 | Transaction / Journal / Review synced design | `Resources/BlueprintHelper_Hybrid_SourceDocs_Sync_20260504/06_Transaction_Journal_Review_Design_Synced_20260504.md` | Canonical high-level design for internal write journaling, Agent-facing hiding of transaction details, rollback policy, Review UX, and ownership after Accept. |
-| TaskSpec / TaskPlan architecture | `Resources/Plan/BlueprintHelper_Hybrid_TaskSpec_TaskPlan_Architecture_20260504.md` | Defines the four-layer architecture and identifies Review UI task_run_id grouping as part of the task-level model. |
+| TaskSpec / TaskPlan architecture | `Develop/Plan/BlueprintHelper_Hybrid_TaskSpec_TaskPlan_Architecture_20260504.md` | Defines the four-layer architecture and identifies Review UI task_run_id grouping as part of the task-level model. |
 
 ## 4. Transaction Query, Rollback, Cleanup, Ownership
 
 | Area | File | Current meaning |
 | --- | --- | --- |
-| Transaction query field mapping | `Resources/v0.3.6/FieldMapping/BlueprintHelper_TransactionJournalQuery_UE_FieldMapping_20260503.md` | Defines `list_blueprint_helper_transactions` and `read_blueprint_helper_transaction` as read-only query tools. Needs to be re-scoped as a Review transaction record consumer, not normal Agent workflow. |
-| Transaction query implementation plan | `Resources/v0.3.6/DoneImplementaion/BlueprintHelper_TransactionJournalQuery_UE_CPP_Implementation_Plan_20260503.md` | Source layer plan for transaction query services and store paths. |
-| Rollback cleanup field mapping | `Resources/v0.3.6/FieldMapping/BlueprintHelper_RollbackCleanupTransaction_UE_FieldMapping_20260503.md` | Cleanup-transaction rollback field contract. It is narrower than general Review Reject. |
-| Rollback cleanup implementation plan | `Resources/v0.3.6/DoneImplementaion/BlueprintHelper_RollbackCleanupTransaction_UE_CPP_Implementation_Plan_20260503.md` | Source layer plan for rollback cleanup service. |
-| Cleanup block field mapping | `Resources/v0.3.6/FieldMapping/BlueprintHelper_CleanupBlueprintHelperBlock_UE_FieldMapping_20260503.md` | Cleanup operation contract for BlueprintHelper-owned blocks. |
-| Cleanup block implementation plan | `Resources/v0.3.6/DoneImplementaion/BlueprintHelper_CleanupBlueprintHelperBlock_UE_CPP_Implementation_Plan_20260503.md` | Source layer plan for cleanup service. |
+| Transaction query field mapping | `Develop/v0.3.6/FieldMapping/BlueprintHelper_TransactionJournalQuery_UE_FieldMapping_20260503.md` | Defines `list_blueprint_helper_transactions` and `read_blueprint_helper_transaction` as read-only query tools. Needs to be re-scoped as a Review transaction record consumer, not normal Agent workflow. |
+| Transaction query implementation plan | `Develop/v0.3.6/DoneImplementaion/BlueprintHelper_TransactionJournalQuery_UE_CPP_Implementation_Plan_20260503.md` | Source layer plan for transaction query services and store paths. |
+| Rollback cleanup field mapping | `Develop/v0.3.6/FieldMapping/BlueprintHelper_RollbackCleanupTransaction_UE_FieldMapping_20260503.md` | Cleanup-transaction rollback field contract. It is narrower than general Review Reject. |
+| Rollback cleanup implementation plan | `Develop/v0.3.6/DoneImplementaion/BlueprintHelper_RollbackCleanupTransaction_UE_CPP_Implementation_Plan_20260503.md` | Source layer plan for rollback cleanup service. |
+| Cleanup block field mapping | `Develop/v0.3.6/FieldMapping/BlueprintHelper_CleanupBlueprintHelperBlock_UE_FieldMapping_20260503.md` | Cleanup operation contract for BlueprintHelper-owned blocks. |
+| Cleanup block implementation plan | `Develop/v0.3.6/DoneImplementaion/BlueprintHelper_CleanupBlueprintHelperBlock_UE_CPP_Implementation_Plan_20260503.md` | Source layer plan for cleanup service. |
 | GraphWrite setup cleanup | `Resources/BlueprintHelper_Hybrid_SourceDocs_Sync_20260504/GraphWrite_Setup_Cleanup_Synced_20260504.md` | Related cleanup / ownership context for GraphWrite-managed content. |
 
 Ownership conversion sources:
@@ -85,11 +85,11 @@ Current ownership gap:
 | --- | --- | --- |
 | MCP tool API reference | `Docs/MCP_Tools_API_Reference.md` | Defines TaskSpec-first tool shape and Agent-visible `TaskRunJournal.v1` result access. |
 | Agent safety and recovery guide | `Resources/AgentGuide/Workflows/07_Safety_Validation_And_Recovery.md` | Agent-facing preview / execute recovery rules. It must not teach ReviewPanel operation. |
-| Task result store | `BlueprintHelper_MCP_Server/src/task-result-store.ts` | MCP-side in-process and bridge journal normalization. |
-| Task result store tests | `BlueprintHelper_MCP_Server/src/task-result-store.test.ts` | Tests transaction_id extraction and TaskRunJournal normalization. |
-| Task schema | `BlueprintHelper_MCP_Server/src/task-schemas.ts` | Defines `TaskRunJournalSchema`, including `status`, step records, `blocked_by_step_ids`, `transaction_id`, and `recovery`. |
-| TaskRunJournal schema regression | `BlueprintHelper_MCP_Server/src/task-run-journal.schema.test.ts` | Verifies partial failure with blocked dependent steps and recovery guidance. |
-| Task tools | `BlueprintHelper_MCP_Server/src/task-tools.ts` | Implements preview, execute, and get task result. |
+| Task result store | `ClaudePlugin/task-core/src/task/runtime/task-result-store.ts` | MCP-side in-process and bridge journal normalization. |
+| Task result store tests | `ClaudePlugin/task-core/src/tests/task/task-result-store.test.ts` | Tests transaction_id extraction and TaskRunJournal normalization. |
+| Task schema | `ClaudePlugin/task-core/src/task/schema/task-schemas.ts` | Defines `TaskRunJournalSchema`, including `status`, step records, `blocked_by_step_ids`, `transaction_id`, and `recovery`. |
+| TaskRunJournal schema regression | `ClaudePlugin/task-core/src/tests/task/task-run-journal.schema.test.ts` | Verifies partial failure with blocked dependent steps and recovery guidance. |
+| Task tools | `ClaudePlugin/mcp/src/mcp/tools/task-tools.ts` | Implements preview, execute, and get task result. |
 | UE Task Runtime | `Source/BlueprintHelper/Public/TaskRuntime/BlueprintHelperTaskRuntimeService.h` and `Source/BlueprintHelper/Private/TaskRuntime/BlueprintHelperTaskRuntimeService.cpp` | Builds UE-side `TaskRunJournal.v1`, stores task journals in runtime memory, and reports partial failure / recovery. |
 
 Separation that should remain:
@@ -145,13 +145,13 @@ Transaction services:
 | Area | File | Current meaning |
 | --- | --- | --- |
 | Diagnostics synced design | `Resources/BlueprintHelper_Hybrid_SourceDocs_Sync_20260504/05_Validation_Diagnostics_Tools_Design_Synced_20260504.md` | Diagnostic tool boundaries and validation context. |
-| Diagnostics field mapping | `Resources/v0.3.6/FieldMapping/BlueprintHelper_Diagnostics_UE_FieldMapping_20260503.md` | UE diagnostics field contract. |
-| Diagnostics implementation plan | `Resources/v0.3.6/DoneImplementaion/BlueprintHelper_Diagnostics_UE_CPP_Implementation_Plan_20260503.md` | Source implementation plan for diagnostics. |
-| DebugExport field mapping | `Resources/v0.3.6/FieldMapping/BlueprintHelper_DebugExport_LargePayload_UE_FieldMapping_20260503.md` | Old large-payload/debug export mapping. Needs redesign as developer diagnostics, not bulk Agent reading. |
-| DebugExport implementation plan | `Resources/v0.3.6/DoneImplementaion/BlueprintHelper_DebugExport_LargePayload_UE_CPP_Implementation_Plan_20260503.md` | Old implementation plan. Useful only as prior art for debug bundle shape. |
+| Diagnostics field mapping | `Develop/v0.3.6/FieldMapping/BlueprintHelper_Diagnostics_UE_FieldMapping_20260503.md` | UE diagnostics field contract. |
+| Diagnostics implementation plan | `Develop/v0.3.6/DoneImplementaion/BlueprintHelper_Diagnostics_UE_CPP_Implementation_Plan_20260503.md` | Source implementation plan for diagnostics. |
+| DebugExport field mapping | `Develop/v0.3.6/FieldMapping/BlueprintHelper_DebugExport_LargePayload_UE_FieldMapping_20260503.md` | Old large-payload/debug export mapping. Needs redesign as developer diagnostics, not bulk Agent reading. |
+| DebugExport implementation plan | `Develop/v0.3.6/DoneImplementaion/BlueprintHelper_DebugExport_LargePayload_UE_CPP_Implementation_Plan_20260503.md` | Old implementation plan. Useful only as prior art for debug bundle shape. |
 | DebugExport types | `Source/BlueprintHelper/Public/Structure/RuntimeDiagnostics/BlueprintHelperDebugExportTypes.h` | Current DTO/error code starting point for developer debug export. |
-| Current gap matrix | `Resources/Plan/BlueprintHelper_v0.3.6_Current_Implementation_Gap_Matrix_20260505.md` | Tracks DebugExport as an independent developer diagnostics system. |
-| Current TODO | `Resources/Plan/BlueprintHelper_Current_TODO_20260506.md` | Tracks DebugExport and TransactionJournalQuery / Review aggregation as active TODOs. |
+| Current gap matrix | `Develop/Plan/BlueprintHelper_v0.3.6_Current_Implementation_Gap_Matrix_20260505.md` | Tracks DebugExport as an independent developer diagnostics system. |
+| Current TODO | `Develop/Plan/BlueprintHelper_Current_TODO_20260506.md` | Tracks DebugExport and TransactionJournalQuery / Review aggregation as active TODOs. |
 
 Debug linkage decision for Review discussion:
 
@@ -165,17 +165,17 @@ These are not Review model documents, but they describe producers of transaction
 
 | Producer | File |
 | --- | --- |
-| Replace GraphWrite | `Resources/v0.3.6/FieldMapping/BlueprintHelper_ReplaceBlueprintGraph_UE_FieldMapping_20260503.md` |
-| Replace GraphWrite implementation | `Resources/v0.3.6/DoneImplementaion/BlueprintHelper_ReplaceBlueprintGraph_UE_CPP_Implementation_Plan_20260503.md` |
-| Patch GraphWrite | `Resources/v0.3.6/FieldMapping/BlueprintHelper_PatchBlueprintGraph_UE_FieldMapping_20260503.md` |
-| Patch GraphWrite implementation | `Resources/v0.3.6/DoneImplementaion/BlueprintHelper_PatchBlueprintGraph_UE_CPP_Implementation_Plan_20260503.md` |
-| Merge GraphWrite | `Resources/v0.3.6/FieldMapping/BlueprintHelper_MergeBlueprintGraph_UE_FieldMapping_20260503.md` |
-| Merge GraphWrite implementation | `Resources/v0.3.6/DoneImplementaion/BlueprintHelper_MergeBlueprintGraph_UE_CPP_Implementation_Plan_20260503.md` |
-| Function / Event Signature | `Resources/Plan/BlueprintHelper_FunctionEventSignature_UE_CPP_Implementation_Plan_20260503.md` |
-| Runtime profile boundary | `Resources/v0.3.6/FieldMapping/BlueprintHelper_RuntimeProfile_UE_FieldMapping_20260503.md` |
-| Save asset boundary | `Resources/v0.3.6/FieldMapping/BlueprintHelper_SaveAsset_UE_FieldMapping_20260503.md` |
-| Common tool result envelope | `Resources/v0.3.6/FieldMapping/BlueprintHelper_ToolResultBase_CommonEnvelope_UE_FieldMapping_20260503.md` |
-| Logic read grouped ownership | `Resources/v0.3.6/FieldMapping/BlueprintHelper_LogicRead_Grouped_UE_FieldMapping_20260502.md` |
+| Replace GraphWrite | `Develop/v0.3.6/FieldMapping/BlueprintHelper_ReplaceBlueprintGraph_UE_FieldMapping_20260503.md` |
+| Replace GraphWrite implementation | `Develop/v0.3.6/DoneImplementaion/BlueprintHelper_ReplaceBlueprintGraph_UE_CPP_Implementation_Plan_20260503.md` |
+| Patch GraphWrite | `Develop/v0.3.6/FieldMapping/BlueprintHelper_PatchBlueprintGraph_UE_FieldMapping_20260503.md` |
+| Patch GraphWrite implementation | `Develop/v0.3.6/DoneImplementaion/BlueprintHelper_PatchBlueprintGraph_UE_CPP_Implementation_Plan_20260503.md` |
+| Merge GraphWrite | `Develop/v0.3.6/FieldMapping/BlueprintHelper_MergeBlueprintGraph_UE_FieldMapping_20260503.md` |
+| Merge GraphWrite implementation | `Develop/v0.3.6/DoneImplementaion/BlueprintHelper_MergeBlueprintGraph_UE_CPP_Implementation_Plan_20260503.md` |
+| Function / Event Signature | `Develop/Plan/BlueprintHelper_FunctionEventSignature_UE_CPP_Implementation_Plan_20260503.md` |
+| Runtime profile boundary | `Develop/v0.3.6/FieldMapping/BlueprintHelper_RuntimeProfile_UE_FieldMapping_20260503.md` |
+| Save asset boundary | `Develop/v0.3.6/FieldMapping/BlueprintHelper_SaveAsset_UE_FieldMapping_20260503.md` |
+| Common tool result envelope | `Develop/v0.3.6/FieldMapping/BlueprintHelper_ToolResultBase_CommonEnvelope_UE_FieldMapping_20260503.md` |
+| Logic read grouped ownership | `Develop/v0.3.6/FieldMapping/BlueprintHelper_LogicRead_Grouped_UE_FieldMapping_20260502.md` |
 
 Discussion use:
 

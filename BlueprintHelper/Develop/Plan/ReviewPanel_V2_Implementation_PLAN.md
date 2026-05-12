@@ -104,7 +104,7 @@
 
 ### Stage 7: Row Highlight, Graph Bounds Evidence, Lifecycle Root
 
-Detailed execution plan: `Develop/Plan/ReviewPanel_RowHighlight_GraphBounds_LifecycleRoot_PLAN_20260510_CN.md`.
+Detailed execution plan: `Develop/v0.3.8/DoneImplementation/ReviewPanel_RowHighlight_GraphBounds_LifecycleRoot_PLAN_20260510_CN.md`.
 
 1. Non-Graph panel diff contract.
    - Components, MyBlueprint, Details, and WidgetTree no longer use the old anchor overlay path.

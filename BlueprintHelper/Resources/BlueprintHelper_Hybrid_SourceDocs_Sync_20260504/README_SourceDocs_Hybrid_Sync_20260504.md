@@ -103,7 +103,7 @@ Agent 默认通过任务级 MCP 工具提交 TaskSpec。Python / MCP 侧将 Task
 
 ## 3. 新增文档建议
 
-建议在 `BlueprintHelper/Resources/Plan/` 新增以下文档：
+建议在 `BlueprintHelper/Develop/Plan/` 新增以下文档：
 
 ```text
 00_Hybrid_TaskSpec_TaskPlan_Architecture_20260504.md

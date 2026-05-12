@@ -4,7 +4,7 @@
 
 2026-05-09 清理: 本文件保留 capability gap 矩阵和设计待办。当前 grouped Automation、P1/P2 fixture、ReviewPanel、DebugBundle 全线验证入口已统一到 `Develop/Plan/BlueprintHelper_Unified_SmokeRun_Verification_20260509.md`。
 
-本文用于把 `Resources/v0.3.6/DoneImplementaion` 与 `Resources/v0.3.6/FieldMapping` 中已收敛的 UE 能力设计，对照当前源码实现状态。目标不是回到 Agent 直调原子工具，而是确定哪些能力已经能进入当前主架构：
+本文用于把 `Develop/v0.3.6/DoneImplementaion` 与 `Develop/v0.3.6/FieldMapping` 中已收敛的 UE 能力设计，对照当前源码实现状态。目标不是回到 Agent 直调原子工具，而是确定哪些能力已经能进入当前主架构：
 
 ```text
 Agent TaskSpec
@@ -233,7 +233,7 @@ GraphWrite `replace_owned_graph` / `patch_owned_graph` / `merge_owned_graph` 的
 
 ## 后续讨论待办
 
-1. [x] Agent-facing MCP 默认工具集合最终冻结：`blueprinthelper_read_agent_guide`、`blueprinthelper_get_runtime_profile`、`blueprinthelper_diagnostics`、`blueprinthelper_read_context`、`blueprinthelper_read_reference_context`、`blueprinthelper_preview_task`、`blueprinthelper_execute_task`、`blueprinthelper_get_task_result`、`blueprinthelper_open_editor`、`blueprinthelper_close_editor`。
+1. [x] Agent-facing MCP 默认工具集合最终冻结：`blueprinthelper_read_agent_guide`、`blueprint_get_runtime_profile`、`blueprinthelper_diagnostics`、`blueprinthelper_read_context`、`blueprinthelper_read_reference_context`、`blueprinthelper_preview_task`、`blueprinthelper_execute_task`、`blueprinthelper_get_task_result`、`blueprinthelper_open_editor`、`blueprinthelper_close_editor`。
 2. [x] 旧 MCP 原子工具处理策略确认：已实现 TaskPlan adapter + TaskSpec compiler 覆盖的能力优先移除旧 Agent-facing 原子 MCP 工具；未覆盖能力暂保留为 legacy/internal/debug/expert/test，等 adapter 与 TaskSpec 支持落地时同步移除。
 3. [x] 返回体分层最终冻结：`blueprinthelper_read_agent_guide` 返回 Markdown；其他默认读/任务工具使用 `BlueprintHelper.McpToolResult.v1` 外壳；`read_context` -> `ReadContextPack.v1`，`read_reference_context` -> `ReferenceContextPack.v1`，`preview_task` -> `TaskPreviewResult.v1`，`execute_task` -> `TaskRunSummary.v1` 或 `TaskRunJournal.v1`，`get_task_result` -> `TaskRunJournal.v1`；UE façade 统一 `FBlueprintHelperToolResultBase`；普通 Agent 不走批量上下文引用，开发诊断走 DebugCase / DebugBundle summary/export 边界。
 4. [x] TaskRuntime partial failure 拓扑阻断合同：TaskPlan step 使用 `steps[].depends_on` 表达依赖；TaskRunJournal step status 固定为 `completed|failed|blocked|skipped`；blocked step 使用 `blocked_by_step_ids` / `blocked_reason`；partial failure 使用 `recovery.recommended_action`、`safe_to_retry`、`rollback_available`、`notes` 给出用户可读恢复建议；不默认全局 rollback。
@@ -266,7 +266,7 @@ GraphWrite `replace_owned_graph` / `patch_owned_graph` / `merge_owned_graph` 的
 | --- | --- | --- | --- |
 | GraphWrite Patch/Merge block-scoped 写锚点实现与 Replace exec link 修复 | `LogicJson` grouped builder、Bridge node resolver、TaskSpec compiler、GraphWrite Replace/Patch/Merge services/tests | 与新 UE 能力中等冲突 | 5.5 xhigh |
 | Preview blocker / ReferenceContextPack 集成 | `TaskRuntime`、`DependencyAnalysisService`、MCP task result | 与 Runtime 改动冲突 | 5.5 xhigh |
-| ReadSpec 通用读层设计与首片落地 | `BlueprintHelper_MCP_Server/src`，AgentGuide read schema，LogicMD/LogicJson adapter | 与写 Runtime 不冲突 | 5.5 xhigh |
+| ReadSpec 通用读层设计与首片落地 | `ClaudePlugin/mcp/src`，AgentGuide read schema，LogicMD/LogicJson adapter | 与写 Runtime 不冲突 | 5.5 xhigh |
 | Function/Event Signature UE 能力设计落地 | `Source/BlueprintHelper/Public|Private/Services`，`Structure`，Bridge，Tests | 与 Runtime 基础低冲突 | 5.5 xhigh |
 | Component DTO 迁出 Service header | `Structure` + `ComponentService` + tests | 与 Component compiler 不冲突 | 5.3 codex-spark xhigh |
 
