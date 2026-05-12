@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a TaskSpec-first CLI entry that can replace Agent-to-MCP transport for token-sensitive workflows while preserving the existing TaskSpec, Python orchestration, TaskPlan preview, Bridge execution, and UE Task Runtime gates.
+**Goal:** Add a TaskSpec-first CLI entry as the only supported Agent transport for token-sensitive workflows while preserving the existing TaskSpec, Python orchestration, TaskPlan preview, Bridge execution, and UE Task Runtime gates.
 
-**Architecture:** Extract the current MCP task flow into `ClaudePlugin/task-core`. MCP tools and the new CLI both call the same runner, so CLI cannot bypass Python compilation or preview. CLI stdout defaults to a compact summary, while full journals and large payloads are written to local artifacts and returned by path.
+**Architecture:** Extract the current task flow into `ClaudePlugin/task-core` and expose CLI as the only supported Agent entry. Deprecated MCP wrappers and the CLI call the same runner, so CLI cannot bypass Python compilation or preview. CLI stdout defaults to a compact summary, while full journals and large payloads are written to local artifacts and returned by path.
 
 **Tech Stack:** Node.js, TypeScript ESM, existing `BridgeClient` TCP framed JSON protocol, existing Python `blueprinthelper_task` orchestrator, existing TaskSpec and TaskPlan zod schemas, existing node and Python regression tests.
 
@@ -15,10 +15,10 @@
 This plan has been implemented for the v0.3.8 documentation archive.
 
 - `ClaudePlugin/task-core` now owns the shared Bridge client, TaskSpec schemas, Python orchestration, TaskSpec runner, and normalized tool result helpers.
-- `ClaudePlugin/mcp` is the MCP transport only; task tools call `createTaskSpecRunner` from `@blueprinthelper/task-core`.
+- `ClaudePlugin/mcp` is deprecated transport only; task tools call `createTaskSpecRunner` from `@blueprinthelper/task-core`.
 - `ClaudePlugin/cli` is a separate CLI transport with compact `BlueprintHelper.CliResult.v1` output, artifact directory support, and CLI regression tests.
 - The original TaskSpec-first flow is preserved: TaskSpec -> Python compiler -> TaskPlan -> Bridge preview/execute -> UE Task Runtime.
-- MCP and CLI both keep the Python orchestration layer in the critical path; CLI does not submit raw TaskPlan or bypass preview.
+- Deprecated MCP wrappers and CLI both keep the Python orchestration layer in the critical path; CLI does not submit raw TaskPlan or bypass preview.
 
 Verification already run in this workspace:
 
@@ -31,7 +31,7 @@ The checkbox body below is kept as the original execution record.
 
 ## Scope
 
-This plan changes only the Agent entry transport and output contract. It does not remove MCP, does not replace `BlueprintHelper.TaskSpec.v1`, does not let Agents submit `TaskPlan` directly, and does not bypass `preview_task_plan` before writes.
+This plan changes the supported Agent entry and output contract. It does not replace `BlueprintHelper.TaskSpec.v1`, does not let Agents submit `TaskPlan` directly, and does not bypass `preview_task_plan` before writes.
 
 Target chain:
 
@@ -39,10 +39,10 @@ Target chain:
 Agent -> BlueprintHelper CLI -> shared TaskSpec runner -> Python Task compiler -> TaskPlan -> Bridge -> UE Task Runtime
 ```
 
-Compatibility chain remains available:
+Deprecated compatibility chain:
 
 ```text
-Agent -> BlueprintHelper MCP tools -> shared TaskSpec runner -> Python Task compiler -> TaskPlan -> Bridge -> UE Task Runtime
+Deprecated MCP wrapper -> shared TaskSpec runner -> Python Task compiler -> TaskPlan -> Bridge -> UE Task Runtime
 ```
 
 ## Output Contract
@@ -112,8 +112,8 @@ Modify:
 
 - `ClaudePlugin/mcp/src/mcp/tools/task-tools.ts`
 - `ClaudePlugin/mcp/package.json`
-- `BlueprintHelper/Docs/Install_MCP_QuickStart.md`
-- `BlueprintHelper/Docs/MCP_Tools_API_Reference.md`
+- `BlueprintHelper/Docs/Install_CLI_QuickStart.md`
+- `BlueprintHelper/Docs/CLI_Tools_API_Reference.md`
 
 Do not modify:
 
@@ -722,8 +722,8 @@ git commit -m "feat: add safe BlueprintHelper CLI utilities"
 
 **Files:**
 
-- Modify: `BlueprintHelper/Docs/Install_MCP_QuickStart.md`
-- Modify: `BlueprintHelper/Docs/MCP_Tools_API_Reference.md`
+- Replace: `BlueprintHelper/Docs/Install_CLI_QuickStart.md`
+- Replace: `BlueprintHelper/Docs/CLI_Tools_API_Reference.md`
 - Create: `BlueprintHelper/Docs/TaskSpec_CLI_QuickStart.md`
 
 - [ ] **Step 1: Add CLI quickstart**
@@ -768,7 +768,7 @@ Use the artifact paths returned by summary output. Use `--format json` only when
 
 - [ ] **Step 2: Update MCP quickstart without demoting MCP**
 
-In `BlueprintHelper/Docs/Install_MCP_QuickStart.md`, add a section after MCP client configuration:
+In `BlueprintHelper/Docs/Install_CLI_QuickStart.md`, document CLI as the only supported Agent entry:
 
 ```markdown
 ## Optional TaskSpec CLI Entry
@@ -778,7 +778,7 @@ The CLI is an alternate Agent entry for shell-capable environments. It does not 
 
 - [ ] **Step 3: Update API reference boundaries**
 
-In `BlueprintHelper/Docs/MCP_Tools_API_Reference.md`, add:
+In `BlueprintHelper/Docs/CLI_Tools_API_Reference.md`, add:
 
 ```markdown
 CLI parity rule: any CLI write command must be expressible as `BlueprintHelper.TaskSpec.v1` and must pass through preview before execute. Raw Bridge write commands are not an Agent-facing CLI surface.
@@ -798,7 +798,7 @@ Expected: all three documentation locations are found.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add BlueprintHelper/Docs/TaskSpec_CLI_QuickStart.md BlueprintHelper/Docs/Install_MCP_QuickStart.md BlueprintHelper/Docs/MCP_Tools_API_Reference.md
+git add BlueprintHelper/Docs/TaskSpec_CLI_QuickStart.md BlueprintHelper/Docs/Install_CLI_QuickStart.md BlueprintHelper/Docs/CLI_Tools_API_Reference.md
 git commit -m "docs: document TaskSpec CLI migration path"
 ```
 
@@ -887,15 +887,15 @@ If no changes were needed, do not create an empty commit.
 
 ## Migration Acceptance Criteria
 
-- MCP task tools and CLI task commands share one TaskSpec runner.
+- Deprecated MCP wrappers and CLI task commands share one TaskSpec runner.
 - Python `blueprinthelper_task` remains the compiler and orchestration layer for TaskSpec-to-TaskPlan.
 - CLI writes always run preview before execute.
 - Raw CLI Bridge calls cannot execute write commands.
 - Default CLI stdout is compact and artifact-backed.
 - `--format json` and `--format full` are explicit opt-in modes.
-- MCP behavior remains backward compatible.
+- Deprecated MCP behavior remains backward compatible.
 - `npm test` passes in `ClaudePlugin/mcp`.
-- Documentation clearly says CLI is an alternate Agent entry, not a replacement for TaskSpec.
+- Documentation clearly says CLI is the only supported Agent entry and preserves TaskSpec.
 
 ## Rollback Plan
 
@@ -903,7 +903,7 @@ If CLI causes regressions, keep the shared runner only if MCP tests pass. Remove
 
 ## Self-Review Notes
 
-- No plan task removes MCP.
+- No plan task removes the deprecated internal transport package.
 - No plan task lets Agent-authored TaskPlan become public surface.
 - No plan task bypasses Python compilation.
 - No plan task bypasses `preview_task_plan`.

@@ -341,21 +341,7 @@ public:
 
 	static FString FunctionNameForGenerator(const FString& InFunction)
 	{
-		FString Function = InFunction.TrimStartAndEnd();
-		int32 ColonIndex = INDEX_NONE;
-		if (Function.FindLastChar(TEXT(':'), ColonIndex) && ColonIndex < Function.Len() - 1)
-		{
-			Function = Function.Mid(ColonIndex + 1);
-		}
-		else if (Function.StartsWith(TEXT("/Script/")))
-		{
-			int32 DotIndex = INDEX_NONE;
-			if (Function.FindLastChar(TEXT('.'), DotIndex) && DotIndex < Function.Len() - 1)
-			{
-				Function = Function.Mid(DotIndex + 1);
-			}
-		}
-		return Function;
+		return InFunction.TrimStartAndEnd();
 	}
 
 	static FParsedPinType PinTypeFromString(const FString& Type)
@@ -973,6 +959,7 @@ public:
 
 	static bool PreflightRuntimeReferences(
 		UBlueprint* Blueprint,
+		UEdGraph* TargetGraph,
 		const FBlueprintHelperAgentImportParsedRequest& Request,
 		FBlueprintHelperAgentImportResult& Result)
 	{
@@ -1005,11 +992,17 @@ public:
 				}
 
 				const FString FunctionName = FunctionNameForGenerator(Node.Function);
-				if (FunctionName.IsEmpty() || !TextToBlueprintGenerator::FindFunctionByName(FunctionName))
+				const FBlueprintHelperCallFunctionResolveResult ResolveResult =
+					TextToBlueprintGenerator::ResolveFunctionForGraph(TargetGraph, FunctionName, Node.Inputs);
+				if (FunctionName.IsEmpty() || !ResolveResult.IsResolved())
 				{
+					const FString FunctionResolveMessage = ResolveResult.Message.IsEmpty()
+						? FString::Printf(TEXT("Unable to resolve function '%s'."), *Node.Function)
+						: ResolveResult.Message;
 					AddDiagnostic(Result, EBlueprintHelperAgentImportDiagnosticSeverity::Error,
-						TEXT("UnknownFunction"), Path + TEXT(".function"),
-						FString::Printf(TEXT("无法解析函数。s。"), *Node.Function),
+						ResolveResult.ErrorCode.IsEmpty() ? TEXT("UnknownFunction") : ResolveResult.ErrorCode,
+						Path + TEXT(".function"),
+						FunctionResolveMessage,
 						TEXT("使用原生函数名，例如 PrintString，或 /Script/Engine.KismetSystemLibrary:PrintString。"));
 				}
 			}
@@ -1295,7 +1288,7 @@ FBlueprintHelperAgentImportResult FBlueprintHelperAgentImportService::Import(con
 
 	FBlueprintHelperAgentImportServiceLocalUtils::ApplyAutoLayout(TargetGraph, ParsedRequest);
 
-	if (!FBlueprintHelperAgentImportServiceLocalUtils::PreflightRuntimeReferences(Blueprint, ParsedRequest, Result))
+	if (!FBlueprintHelperAgentImportServiceLocalUtils::PreflightRuntimeReferences(Blueprint, TargetGraph, ParsedRequest, Result))
 	{
 		return Result;
 	}

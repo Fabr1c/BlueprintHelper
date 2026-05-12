@@ -2,7 +2,7 @@
 
 ## Goal
 
-以 TaskSpec-first 修改 UE 资产。Agent 只提交 `BlueprintHelper.TaskSpec.v1`，由 MCP/Python 编译器生成 TaskPlan，由 UE Task Runtime 调用内部 capability。
+以 TaskSpec-first 修改 UE 资产。Agent 只提交 `BlueprintHelper.TaskSpec.v1`，由 TaskSpec 编译器生成 TaskPlan，由 UE Task Runtime 调用内部 capability。
 
 ## Preflight
 

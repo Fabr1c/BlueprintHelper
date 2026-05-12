@@ -1,31 +1,31 @@
-# 07 Safety Profile / dry_run 设计文档（已同步确认 Diff）
+﻿# 07 Safety Profile / dry_run 璁捐鏂囨。锛堝凡鍚屾纭 Diff锛?
 
-日期：2026-05-03  
-工具簇：Safety Profile / dry_run 规则工具簇  
-状态：同步确认 Diff 后的修正版  
-同步范围：runtime_profile 为 safety_profile 唯一 Agent 来源、普通工具不返回 safety、移除 parent_class 修改能力、dry_run 字段位置收敛、Setup / runtime profile 权限边界。
+鏃ユ湡锛?026-05-03  
+宸ュ叿绨囷細Safety Profile / dry_run 瑙勫垯宸ュ叿绨? 
+鐘舵€侊細鍚屾纭 Diff 鍚庣殑淇鐗? 
+鍚屾鑼冨洿锛歳untime_profile 涓?safety_profile 鍞竴 Agent 鏉ユ簮銆佹櫘閫氬伐鍏蜂笉杩斿洖 safety銆佺Щ闄?parent_class 淇敼鑳藉姏銆乨ry_run 瀛楁浣嶇疆鏀舵暃銆丼etup / runtime profile 鏉冮檺杈圭晫銆?
 
 ---
 
-## 0. 本次同步结论
+## 0. 鏈鍚屾缁撹
 
-本文件替换旧版中以下过期口径：
+鏈枃浠舵浛鎹㈡棫鐗堜腑浠ヤ笅杩囨湡鍙ｅ緞锛?
 
 ```text
-1. Agent 不从单次工具结果读取 safety_profile。
-2. safety_profile 只从 runtime_profile.active_profile 读取。
-3. 普通成功工具结果不默认返回 safety。
-4. dry_run 数据只在 status=dry_run 时位于 data.dry_run。
-5. Blueprint Class Settings 第一版不支持修改 Parent Class，因此不再把 parent_class 解析不明确列为第一版高风险写入项。
-6. runtime_profile.tool_capabilities 是 unavailable_only 负向稀疏列表，不是完整工具索引。
-7. SetupProfile / Safety Profile 不由 Agent 临时覆盖。
+1. Agent 涓嶄粠鍗曟宸ュ叿缁撴灉璇诲彇 safety_profile銆?
+2. safety_profile 鍙粠 runtime_profile.active_profile 璇诲彇銆?
+3. 鏅€氭垚鍔熷伐鍏风粨鏋滀笉榛樿杩斿洖 safety銆?
+4. dry_run 鏁版嵁鍙湪 status=dry_run 鏃朵綅浜?data.dry_run銆?
+5. Blueprint Class Settings 绗竴鐗堜笉鏀寔淇敼 Parent Class锛屽洜姝や笉鍐嶆妸 parent_class 瑙ｆ瀽涓嶆槑纭垪涓虹涓€鐗堥珮椋庨櫓鍐欏叆椤广€?
+6. runtime_profile.tool_capabilities 鏄?unavailable_only 璐熷悜绋€鐤忓垪琛紝涓嶆槸瀹屾暣宸ュ叿绱㈠紩銆?
+7. SetupProfile / Safety Profile 涓嶇敱 Agent 涓存椂瑕嗙洊銆?
 ```
 
 ---
 
-## 1. Profile 档位
+## 1. Profile 妗ｄ綅
 
-Safety Profile 使用五档：
+Safety Profile 浣跨敤浜旀。锛?
 
 ```text
 ReadOnly
@@ -35,45 +35,45 @@ AutoRepair
 Expert
 ```
 
-Profile 是运行时安全策略，不是 Agent 可随意指定的工具参数。
+Profile 鏄繍琛屾椂瀹夊叏绛栫暐锛屼笉鏄?Agent 鍙殢鎰忔寚瀹氱殑宸ュ叿鍙傛暟銆?
 
-Agent 必须通过：
+Agent 蹇呴』閫氳繃锛?
 
 ```text
 runtime_profile.active_profile.safety_profile
 ```
 
-读取当前生效档位。
+璇诲彇褰撳墠鐢熸晥妗ｄ綅銆?
 
 ---
 
 ## 2. ReadOnly
 
-只允许：
+鍙厑璁革細
 
 ```text
-读取
-搜索
-诊断
-导出
-预览
+璇诲彇
+鎼滅储
+璇婃柇
+瀵煎嚭
+棰勮
 dry_run
-Review 历史查看
+Review 鍘嗗彶鏌ョ湅
 ```
 
-禁止：
+绂佹锛?
 
 ```text
-创建资产
-修改组件
-修改类设置
+鍒涘缓璧勪骇
+淇敼缁勪欢
+淇敼绫昏缃?
 Graph Write
 Cleanup
 Rollback
 Save
 ```
 
-ReadOnly 允许 dry_run，但必须：
+ReadOnly 鍏佽 dry_run锛屼絾蹇呴』锛?
 
 ```text
 execution_allowed=false
@@ -81,68 +81,68 @@ profile="ReadOnly"
 reason="profile_is_read_only"
 ```
 
-ReadOnly 下 dry_run 不允许转为正式写入，不生成审阅用 transaction_id。
+ReadOnly 涓?dry_run 涓嶅厑璁歌浆涓烘寮忓啓鍏ワ紝涓嶇敓鎴愬闃呯敤 transaction_id銆?
 
 ---
 
 ## 3. Conservative
 
-默认安全写入档。
+榛樿瀹夊叏鍐欏叆妗ｃ€?
 
-规则：
+瑙勫垯锛?
 
 ```text
-允许写操作。
-高风险操作必须 dry_run。
-dry_run 无 error / conflict / blocker 后才可执行。
-warning / info 不阻断正式写入。
-error / conflict / blocker 必须阻断正式写入。
-永不自动 save。
-不自动 cleanup 旧 owned block。
-不自动修改用户节点 / 用户组件 / 用户类设置。
+鍏佽鍐欐搷浣溿€?
+楂橀闄╂搷浣滃繀椤?dry_run銆?
+dry_run 鏃?error / conflict / blocker 鍚庢墠鍙墽琛屻€?
+warning / info 涓嶉樆鏂寮忓啓鍏ャ€?
+error / conflict / blocker 蹇呴』闃绘柇姝ｅ紡鍐欏叆銆?
+姘镐笉鑷姩 save銆?
+涓嶈嚜鍔?cleanup 鏃?owned block銆?
+涓嶈嚜鍔ㄤ慨鏀圭敤鎴疯妭鐐?/ 鐢ㄦ埛缁勪欢 / 鐢ㄦ埛绫昏缃€?
 ```
 
-Conservative 下普通低风险新建可直接写，但工具仍必须支持 dry_run。
+Conservative 涓嬫櫘閫氫綆椋庨櫓鏂板缓鍙洿鎺ュ啓锛屼絾宸ュ叿浠嶅繀椤绘敮鎸?dry_run銆?
 
 ---
 
 ## 4. Standard
 
-面向常规 Agent 自动化开发。
+闈㈠悜甯歌 Agent 鑷姩鍖栧紑鍙戙€?
 
-规则：
+瑙勫垯锛?
 
 ```text
-允许更多低风险写操作直接执行。
-允许自动 diagnostics。
-默认不自动 save。
-可在显式参数或 workflow 下自动 save。
-对 owned 内容可做更主动的 replace_owned / cleanup。
-高风险操作仍建议或要求 dry_run。
+鍏佽鏇村浣庨闄╁啓鎿嶄綔鐩存帴鎵ц銆?
+鍏佽鑷姩 diagnostics銆?
+榛樿涓嶈嚜鍔?save銆?
+鍙湪鏄惧紡鍙傛暟鎴?workflow 涓嬭嚜鍔?save銆?
+瀵?owned 鍐呭鍙仛鏇翠富鍔ㄧ殑 replace_owned / cleanup銆?
+楂橀闄╂搷浣滀粛寤鸿鎴栬姹?dry_run銆?
 ```
 
 ---
 
 ## 5. AutoRepair
 
-面向自动修复 BlueprintHelper-owned 问题。
+闈㈠悜鑷姩淇 BlueprintHelper-owned 闂銆?
 
-AutoRepair 不等于无限制自动修改。
+AutoRepair 涓嶇瓑浜庢棤闄愬埗鑷姩淇敼銆?
 
-默认只自动修复 BlueprintHelper-owned 内容，例如：
+榛樿鍙嚜鍔ㄤ慨澶?BlueprintHelper-owned 鍐呭锛屼緥濡傦細
 
 ```text
 owned block
 owned component_group
 owned event_entry
 owned metadata inconsistency
-owned Journal / Review 状态不一致
-owned block 残留
-owned component group 残留
-owned entry 后方 orphan owned nodes
+owned Journal / Review 鐘舵€佷笉涓€鑷?
+owned block 娈嬬暀
+owned component group 娈嬬暀
+owned entry 鍚庢柟 orphan owned nodes
 ```
 
-可读取 Diagnostics 结果后自动调用：
+鍙鍙?Diagnostics 缁撴灉鍚庤嚜鍔ㄨ皟鐢細
 
 ```text
 CleanupBlueprintHelperBlock
@@ -154,57 +154,57 @@ ReplaceBlueprintGraph
 MergeBlueprintGraph
 ```
 
-修复用户内容不是默认允许行为。用户明确指定目标并授权后，通常进入 Expert / 高风险流程。
+淇鐢ㄦ埛鍐呭涓嶆槸榛樿鍏佽琛屼负銆傜敤鎴锋槑纭寚瀹氱洰鏍囧苟鎺堟潈鍚庯紝閫氬父杩涘叆 Expert / 楂橀闄╂祦绋嬨€?
 
 ---
 
 ## 6. Expert
 
-Expert 表示用户显式授权低层、高风险、高自由度操作。
+Expert 琛ㄧず鐢ㄦ埛鏄惧紡鎺堟潈浣庡眰銆侀珮椋庨櫓銆侀珮鑷敱搴︽搷浣溿€?
 
-适用：
+閫傜敤锛?
 
 ```text
-低层 factory_class / asset_class
-通用属性路径高级修复
-复杂 Class Defaults
-高风险用户资产修改
-高级 Debug / Migration
+浣庡眰 factory_class / asset_class
+閫氱敤灞炴€ц矾寰勯珮绾т慨澶?
+澶嶆潅 Class Defaults
+楂橀闄╃敤鎴疯祫浜т慨鏀?
+楂樼骇 Debug / Migration
 ```
 
-Expert 不表示自动修复。Expert 不允许绕过 Journal / Review。
+Expert 涓嶈〃绀鸿嚜鍔ㄤ慨澶嶃€侲xpert 涓嶅厑璁哥粫杩?Journal / Review銆?
 
-禁止：
+绂佹锛?
 
 ```text
 no_review=true
 no_journal=true
-静默修改 UE 资产
+闈欓粯淇敼 UE 璧勪骇
 ```
 
-所有真实 UE 写操作仍必须在 UE 插件内部：
+鎵€鏈夌湡瀹?UE 鍐欐搷浣滀粛蹇呴』鍦?UE 鎻掍欢鍐呴儴锛?
 
 ```text
-生成 transaction_id
-记录 before / after diff
-写入 rollback_data
-进入 Review UI
+鐢熸垚 transaction_id
+璁板綍 before / after diff
+鍐欏叆 rollback_data
+杩涘叆 Review UI
 ```
 
-Expert 不是免审模式。
+Expert 涓嶆槸鍏嶅妯″紡銆?
 
 ---
 
-## 7. Agent-facing safety 字段规则
+## 7. Agent-facing safety 瀛楁瑙勫垯
 
-普通工具成功结果不默认返回：
+鏅€氬伐鍏锋垚鍔熺粨鏋滀笉榛樿杩斿洖锛?
 
 ```text
 safety
 safety_profile
 ```
 
-Agent 只能从 runtime_profile 读取当前 safety profile：
+Agent 鍙兘浠?runtime_profile 璇诲彇褰撳墠 safety profile锛?
 
 ```json
 {
@@ -215,7 +215,7 @@ Agent 只能从 runtime_profile 读取当前 safety profile：
 }
 ```
 
-单次工具结果中的安全阻断应通过：
+鍗曟宸ュ叿缁撴灉涓殑瀹夊叏闃绘柇搴旈€氳繃锛?
 
 ```text
 status=failed
@@ -223,130 +223,130 @@ error.code
 error.stage
 ```
 
-表达。
+琛ㄨ揪銆?
 
-单次工具 dry_run 结果通过：
+鍗曟宸ュ叿 dry_run 缁撴灉閫氳繃锛?
 
 ```text
 status=dry_run
 data.dry_run
 ```
 
-表达。
+琛ㄨ揪銆?
 
 ---
 
-## 8. Conservative 强制 dry_run 高风险表
+## 8. Conservative 寮哄埗 dry_run 楂橀闄╄〃
 
-Conservative 下不是所有写操作都强制 dry_run。
+Conservative 涓嬩笉鏄墍鏈夊啓鎿嶄綔閮藉己鍒?dry_run銆?
 
-高风险写操作必须 dry_run，低风险新建可直接写。
+楂橀闄╁啓鎿嶄綔蹇呴』 dry_run锛屼綆椋庨櫓鏂板缓鍙洿鎺ュ啓銆?
 
-高风险写操作包括：
+楂橀闄╁啓鎿嶄綔鍖呮嫭锛?
 
 ```text
-修改用户已有节点
-修改用户已有组件
-修改用户已有 Class Settings / Class Defaults
-Merge 到已有执行流
-Replace 用户函数体 / 事件体
-删除节点 / 删除组件 / 删除事件入口 / 删除资产
-Cleanup 操作
+淇敼鐢ㄦ埛宸叉湁鑺傜偣
+淇敼鐢ㄦ埛宸叉湁缁勪欢
+淇敼鐢ㄦ埛宸叉湁 Class Settings / Class Defaults
+Merge 鍒板凡鏈夋墽琛屾祦
+Replace 鐢ㄦ埛鍑芥暟浣?/ 浜嬩欢浣?
+鍒犻櫎鑺傜偣 / 鍒犻櫎缁勪欢 / 鍒犻櫎浜嬩欢鍏ュ彛 / 鍒犻櫎璧勪骇
+Cleanup 鎿嶄綔
 replace_owned
-修改 Root Component
-修改组件 parent / attach 关系
-修改 PhysicsConstraint
-修改 Collision
-修改 SimulatePhysics
-修改 Mobility
-修改 Tick / Replication / Spawn / Input 类设置
-迁移普通函数到接口函数实现
-使用低层 factory_class / asset_class
-路径冲突
-复用已有资产
-factory_options 复杂配置
+淇敼 Root Component
+淇敼缁勪欢 parent / attach 鍏崇郴
+淇敼 PhysicsConstraint
+淇敼 Collision
+淇敼 SimulatePhysics
+淇敼 Mobility
+淇敼 Tick / Replication / Spawn / Input 绫昏缃?
+杩佺Щ鏅€氬嚱鏁板埌鎺ュ彛鍑芥暟瀹炵幇
+浣跨敤浣庡眰 factory_class / asset_class
+璺緞鍐茬獊
+澶嶇敤宸叉湁璧勪骇
+factory_options 澶嶆潅閰嶇疆
 ```
 
-已移除第一版高风险项：
+宸茬Щ闄ょ涓€鐗堥珮椋庨櫓椤癸細
 
 ```text
-parent_class 解析不明确
+parent_class 瑙ｆ瀽涓嶆槑纭?
 ```
 
-原因：Blueprint Class Settings 第一版不支持修改 Parent Class。如果用户任务要求修改 Parent Class，Agent 应 stop_and_report，而不是进入 dry_run 写入路径。
+鍘熷洜锛欱lueprint Class Settings 绗竴鐗堜笉鏀寔淇敼 Parent Class銆傚鏋滅敤鎴蜂换鍔¤姹備慨鏀?Parent Class锛孉gent 搴?stop_and_report锛岃€屼笉鏄繘鍏?dry_run 鍐欏叆璺緞銆?
 
-低风险新建操作包括：
+浣庨闄╂柊寤烘搷浣滃寘鎷細
 
 ```text
-在不存在路径创建白名单资产
-在空蓝图 append_only 添加 BlueprintHelper-owned 组件
-创建全新 Interface 资产
-创建全新 Override / Event 入口且不接入已有执行流（未来能力）
-创建全新 owned graph block 到空图表 / 新图表
+鍦ㄤ笉瀛樺湪璺緞鍒涘缓鐧藉悕鍗曡祫浜?
+鍦ㄧ┖钃濆浘 append_only 娣诲姞 BlueprintHelper-owned 缁勪欢
+鍒涘缓鍏ㄦ柊 Interface 璧勪骇
+鍒涘缓鍏ㄦ柊 Override / Event 鍏ュ彛涓斾笉鎺ュ叆宸叉湁鎵ц娴侊紙鏈潵鑳藉姏锛?
+鍒涘缓鍏ㄦ柊 owned graph block 鍒扮┖鍥捐〃 / 鏂板浘琛?
 ```
 
-低风险新建可直接写入，但 UE 插件内部仍必须：
+浣庨闄╂柊寤哄彲鐩存帴鍐欏叆锛屼絾 UE 鎻掍欢鍐呴儴浠嶅繀椤伙細
 
 ```text
-记录 transaction_id
-写入 Journal / Review
-返回 validation.should_compile / validation.should_save
-支持 dry_run
+璁板綍 transaction_id
+鍐欏叆 Journal / Review
+杩斿洖 validation.should_compile / validation.should_save
+鏀寔 dry_run
 ```
 
-Agent-facing 普通结果不因此默认返回 transaction / review。
+Agent-facing 鏅€氱粨鏋滀笉鍥犳榛樿杩斿洖 transaction / review銆?
 
 ---
 
-## 9. warning 阻断规则
+## 9. warning 闃绘柇瑙勫垯
 
-Conservative 下：
+Conservative 涓嬶細
 
 ```text
-info / warning 不阻断正式写入。
-error / conflict / blocker 阻断正式写入。
+info / warning 涓嶉樆鏂寮忓啓鍏ャ€?
+error / conflict / blocker 闃绘柇姝ｅ紡鍐欏叆銆?
 ```
 
-如果某个问题实际应该阻断，就不应标记为 warning，而应升级为 error / conflict / blocker。
+濡傛灉鏌愪釜闂瀹為檯搴旇闃绘柇锛屽氨涓嶅簲鏍囪涓?warning锛岃€屽簲鍗囩骇涓?error / conflict / blocker銆?
 
-warning / info 应进入 Journal / Review / validation_result。
+warning / info 搴旇繘鍏?Journal / Review / validation_result銆?
 
 ---
 
-## 10. 自动保存
+## 10. 鑷姩淇濆瓨
 
-普通写工具默认返回：
+鏅€氬啓宸ュ叿榛樿杩斿洖锛?
 
 ```text
 validation.should_save
 validation.saved
 ```
 
-复杂工作流工具可按需返回：
+澶嶆潅宸ヤ綔娴佸伐鍏峰彲鎸夐渶杩斿洖锛?
 
 ```text
 recommended_next_tool
 recommended_validation_workflow
 ```
 
-规则：
+瑙勫垯锛?
 
 ```text
-Conservative：永不自动 save。
-Standard：默认不自动 save，可在显式参数或 workflow 下 save。
-AutoRepair：修复成功后可按参数或 workflow save。
-Expert：用户显式授权后可自动 save。
+Conservative锛氭案涓嶈嚜鍔?save銆?
+Standard锛氶粯璁や笉鑷姩 save锛屽彲鍦ㄦ樉寮忓弬鏁版垨 workflow 涓?save銆?
+AutoRepair锛氫慨澶嶆垚鍔熷悗鍙寜鍙傛暟鎴?workflow save銆?
+Expert锛氱敤鎴锋樉寮忔巿鏉冨悗鍙嚜鍔?save銆?
 ```
 
-自动 save 必须记录到 Journal 或 transaction validation_result / save_result。
+鑷姩 save 蹇呴』璁板綍鍒?Journal 鎴?transaction validation_result / save_result銆?
 
-Save 是落盘动作，不等同于 Accept。Accept 是审查动作，Save 是资产持久化动作。
+Save 鏄惤鐩樺姩浣滐紝涓嶇瓑鍚屼簬 Accept銆侫ccept 鏄鏌ュ姩浣滐紝Save 鏄祫浜ф寔涔呭寲鍔ㄤ綔銆?
 
 ---
 
-## 11. Runtime Profile 能力规则
+## 11. Runtime Profile 鑳藉姏瑙勫垯
 
-Agent 必须从 runtime_profile 获取当前运行时事实：
+Agent 蹇呴』浠?runtime_profile 鑾峰彇褰撳墠杩愯鏃朵簨瀹烇細
 
 ```text
 bridge_status
@@ -357,7 +357,7 @@ active_profile
 tool_capabilities
 ```
 
-`tool_capabilities` 使用负向稀疏模式：
+`tool_capabilities` 浣跨敤璐熷悜绋€鐤忔ā寮忥細
 
 ```json
 {
@@ -368,16 +368,16 @@ tool_capabilities
 }
 ```
 
-语义：
+璇箟锛?
 
 ```text
-1. runtime_profile 只列出 unavailable / disabled / degraded / blocked 的能力。
-2. 未列出的能力不等于 runtime_profile 已完整确认 schema。
-3. runtime_profile 不是工具索引，也不是 MCP tool schema 文档。
-4. Agent 应从 AgentGuide / tools 索引理解工具簇，从 MCP schema 获取具体参数。
+1. runtime_profile 鍙垪鍑?unavailable / disabled / degraded / blocked 鐨勮兘鍔涖€?
+2. 鏈垪鍑虹殑鑳藉姏涓嶇瓑浜?runtime_profile 宸插畬鏁寸‘璁?schema銆?
+3. runtime_profile 涓嶆槸宸ュ叿绱㈠紩锛屼篃涓嶆槸 CLI command contract 鏂囨。銆?
+4. Agent 搴斾粠 AgentGuide / tools 绱㈠紩鐞嗚В宸ュ叿绨囷紝浠?CLI command contract 鑾峰彇鍏蜂綋鍙傛暟銆?
 ```
 
-unavailable item 只包含：
+unavailable item 鍙寘鍚細
 
 ```text
 cluster
@@ -386,7 +386,7 @@ status
 reason
 ```
 
-不返回：
+涓嶈繑鍥烇細
 
 ```text
 severity
@@ -395,15 +395,14 @@ message
 required_tool
 ```
 
-stop_and_report 由 Agent 根据当前任务、missing_capability_policy、不可用能力和是否存在安全替代路径判断。
+stop_and_report 鐢?Agent 鏍规嵁褰撳墠浠诲姟銆乵issing_capability_policy銆佷笉鍙敤鑳藉姏鍜屾槸鍚﹀瓨鍦ㄥ畨鍏ㄦ浛浠ｈ矾寰勫垽鏂€?
 
 ---
 
-## 12. Profile 配置来源
+## 12. Profile 閰嶇疆鏉ユ簮
 
-Safety Profile 不由 Agent 在每次 MCP 工具调用中自由传入。
-
-Profile 应通过插件 Setup 流程生成：
+Safety Profile 涓嶇敱 Agent 鍦ㄦ瘡娆?CLI 鍛戒护璋冪敤涓嚜鐢变紶鍏ャ€?
+Profile 搴旈€氳繃鎻掍欢 Setup 娴佺▼鐢熸垚锛?
 
 ```text
 /blueprinthelper-setup
@@ -412,43 +411,43 @@ settings.json
 runtime profile
 ```
 
-SetupProfile 应保存在配置文件中，由 MCP / UE runtime 读取后形成当前 active_profile。
+SetupProfile 搴斾繚瀛樺湪閰嶇疆鏂囦欢涓紝鐢?CLI / UE runtime 璇诲彇鍚庡舰鎴愬綋鍓?active_profile銆?
 
-Agent 不允许自行提升 Profile。
-
----
-
-## 13. SetupProfile 修改生效
-
-两种修改场景：
-
-### 插件命令 / Setup Wizard 修改
-
-```text
-受控修改路径。
-用户在插件 UI 或 Setup 流程中完成确认。
-修改后写入 Settings。
-立刻生效或通过明确 reload 生效。
-记录 Setup log / Settings change log。
-```
-
-### 直接修改 Settings 文件
-
-```text
-非受控外部修改路径。
-默认需要重启 UE Editor / MCP Server 后生效。
-运行中检测到 Settings 文件变化，可提示用户重启或执行 reload，但不静默切换高权限 Profile。
-```
-
-UE 插件 UI 应显示当前运行时生效 Profile，而不是仅显示文件中的 Profile。
+Agent 涓嶅厑璁歌嚜琛屾彁鍗?Profile銆?
 
 ---
 
-## 14. 工具调用临时覆盖
+## 13. SetupProfile 淇敼鐢熸晥
 
-工具调用不允许临时覆盖 SetupProfile。
+涓ょ淇敼鍦烘櫙锛?
 
-不支持：
+### 鎻掍欢鍛戒护 / Setup Wizard 淇敼
+
+```text
+鍙楁帶淇敼璺緞銆?
+鐢ㄦ埛鍦ㄦ彃浠?UI 鎴?Setup 娴佺▼涓畬鎴愮‘璁ゃ€?
+淇敼鍚庡啓鍏?Settings銆?
+绔嬪埢鐢熸晥鎴栭€氳繃鏄庣‘ reload 鐢熸晥銆?
+璁板綍 Setup log / Settings change log銆?
+```
+
+### 鐩存帴淇敼 Settings 鏂囦欢
+
+```text
+闈炲彈鎺у閮ㄤ慨鏀硅矾寰勩€?
+榛樿闇€瑕侀噸鍚?UE Editor / CLI Server 鍚庣敓鏁堛€?
+杩愯涓娴嬪埌 Settings 鏂囦欢鍙樺寲锛屽彲鎻愮ず鐢ㄦ埛閲嶅惎鎴栨墽琛?reload锛屼絾涓嶉潤榛樺垏鎹㈤珮鏉冮檺 Profile銆?
+```
+
+UE 鎻掍欢 UI 搴旀樉绀哄綋鍓嶈繍琛屾椂鐢熸晥 Profile锛岃€屼笉鏄粎鏄剧ず鏂囦欢涓殑 Profile銆?
+
+---
+
+## 14. 宸ュ叿璋冪敤涓存椂瑕嗙洊
+
+宸ュ叿璋冪敤涓嶅厑璁镐复鏃惰鐩?SetupProfile銆?
+
+涓嶆敮鎸侊細
 
 ```text
 temporary_profile
@@ -457,31 +456,31 @@ per_call_profile
 one-shot Expert
 ```
 
-所有安全策略以当前运行时 SetupProfile 为准。
+鎵€鏈夊畨鍏ㄧ瓥鐣ヤ互褰撳墠杩愯鏃?SetupProfile 涓哄噯銆?
 
-工具仍可支持业务级 dry_run 参数，但其行为受 SetupProfile 约束。
+宸ュ叿浠嶅彲鏀寔涓氬姟绾?dry_run 鍙傛暟锛屼絾鍏惰涓哄彈 SetupProfile 绾︽潫銆?
 
-如果 SetupProfile 要求某类操作必须 dry_run，则工具调用不能跳过。
+濡傛灉 SetupProfile 瑕佹眰鏌愮被鎿嶄綔蹇呴』 dry_run锛屽垯宸ュ叿璋冪敤涓嶈兘璺宠繃銆?
 
-如果 SetupProfile 不允许某类写操作，则工具调用不能通过参数开启。
+濡傛灉 SetupProfile 涓嶅厑璁告煇绫诲啓鎿嶄綔锛屽垯宸ュ叿璋冪敤涓嶈兘閫氳繃鍙傛暟寮€鍚€?
 
 ---
 
-## 15. 工具参数与 SetupProfile 冲突
+## 15. 宸ュ叿鍙傛暟涓?SetupProfile 鍐茬獊
 
-SetupProfile 是安全策略权威来源。
+SetupProfile 鏄畨鍏ㄧ瓥鐣ユ潈濞佹潵婧愩€?
 
-工具参数与 SetupProfile 冲突时，直接返回 error。
+宸ュ叿鍙傛暟涓?SetupProfile 鍐茬獊鏃讹紝鐩存帴杩斿洖 error銆?
 
-推荐错误码：
+鎺ㄨ崘閿欒鐮侊細
 
 ```text
 ProfilePolicyViolation
 ```
 
-不自动降级执行，不静默忽略冲突参数。
+涓嶈嚜鍔ㄩ檷绾ф墽琛岋紝涓嶉潤榛樺拷鐣ュ啿绐佸弬鏁般€?
 
-工具必须返回：
+宸ュ叿蹇呴』杩斿洖锛?
 
 ```text
 violated_policy
@@ -491,72 +490,72 @@ current_profile
 recommended_action
 ```
 
-示例：
+绀轰緥锛?
 
 ```text
-ReadOnly 下调用写工具 -> ProfilePolicyViolation
-Conservative 下高风险写入但未 dry_run -> ProfilePolicyViolation
-Profile 禁止 auto_save 但工具请求 save_after_write -> ProfilePolicyViolation
-Profile 禁止低层 factory_class 但工具传入 factory_class -> ProfilePolicyViolation
+ReadOnly 涓嬭皟鐢ㄥ啓宸ュ叿 -> ProfilePolicyViolation
+Conservative 涓嬮珮椋庨櫓鍐欏叆浣嗘湭 dry_run -> ProfilePolicyViolation
+Profile 绂佹 auto_save 浣嗗伐鍏疯姹?save_after_write -> ProfilePolicyViolation
+Profile 绂佹浣庡眰 factory_class 浣嗗伐鍏蜂紶鍏?factory_class -> ProfilePolicyViolation
 ```
 
-Agent 收到错误后应停止当前写入，并报告用户或建议通过 Setup Wizard 修改 Profile。
+Agent 鏀跺埌閿欒鍚庡簲鍋滄褰撳墠鍐欏叆锛屽苟鎶ュ憡鐢ㄦ埛鎴栧缓璁€氳繃 Setup Wizard 淇敼 Profile銆?
 
 ---
 
-## 16. Parent Class 修改边界
+## 16. Parent Class 淇敼杈圭晫
 
-Blueprint Class Settings 第一版不支持：
+Blueprint Class Settings 绗竴鐗堜笉鏀寔锛?
 
 ```text
 set_parent_class
 blueprint_reparent
 ```
 
-因此：
+鍥犳锛?
 
 ```text
-1. parent_class 只作为 read_class_settings 的只读字段。
-2. Agent 不应计划通过 Class Settings 修改 Parent Class。
-3. 如果任务要求改变 Parent Class，Agent 应 stop_and_report。
-4. 不存在 parent_class dry_run / confirmed_after_dry_run / parent_class_result 第一版字段。
+1. parent_class 鍙綔涓?read_class_settings 鐨勫彧璇诲瓧娈点€?
+2. Agent 涓嶅簲璁″垝閫氳繃 Class Settings 淇敼 Parent Class銆?
+3. 濡傛灉浠诲姟瑕佹眰鏀瑰彉 Parent Class锛孉gent 搴?stop_and_report銆?
+4. 涓嶅瓨鍦?parent_class dry_run / confirmed_after_dry_run / parent_class_result 绗竴鐗堝瓧娈点€?
 ```
 
 ---
 
-## 17. 验收标准
+## 17. 楠屾敹鏍囧噯
 
 ```text
-1. Agent 只从 runtime_profile.active_profile 读取 safety_profile。
-2. 普通工具成功结果不默认返回 safety。
-3. dry_run 信息只在 status=dry_run 时位于 data.dry_run。
-4. Conservative 下 info/warning 不阻断，error/conflict/blocker 阻断。
-5. 低风险新建可直接写，但必须支持 dry_run。
-6. UE 插件内部仍记录 Journal / Review，但 Agent-facing 普通结果不默认返回 transaction/review。
-7. runtime_profile.tool_capabilities 使用 unavailable_only。
-8. Agent 不把 runtime_profile 当工具索引或 schema 文档。
-9. 工具调用不允许临时覆盖 SetupProfile。
-10. 第一版不支持修改 Parent Class；相关任务 stop_and_report。
+1. Agent 鍙粠 runtime_profile.active_profile 璇诲彇 safety_profile銆?
+2. 鏅€氬伐鍏锋垚鍔熺粨鏋滀笉榛樿杩斿洖 safety銆?
+3. dry_run 淇℃伅鍙湪 status=dry_run 鏃朵綅浜?data.dry_run銆?
+4. Conservative 涓?info/warning 涓嶉樆鏂紝error/conflict/blocker 闃绘柇銆?
+5. 浣庨闄╂柊寤哄彲鐩存帴鍐欙紝浣嗗繀椤绘敮鎸?dry_run銆?
+6. UE 鎻掍欢鍐呴儴浠嶈褰?Journal / Review锛屼絾 Agent-facing 鏅€氱粨鏋滀笉榛樿杩斿洖 transaction/review銆?
+7. runtime_profile.tool_capabilities 浣跨敤 unavailable_only銆?
+8. Agent 涓嶆妸 runtime_profile 褰撳伐鍏风储寮曟垨 schema 鏂囨。銆?
+9. 宸ュ叿璋冪敤涓嶅厑璁镐复鏃惰鐩?SetupProfile銆?
+10. 绗竴鐗堜笉鏀寔淇敼 Parent Class锛涚浉鍏充换鍔?stop_and_report銆?
 ```
 ---
 
-# 2026-05-04 TaskSpec / TaskPlan 安全策略同步
+# 2026-05-04 TaskSpec / TaskPlan 瀹夊叏绛栫暐鍚屾
 
-## 同步结论
+## 鍚屾缁撹
 
-Safety Profile 仍是运行时安全策略权威来源，不由 Agent 在单次工具调用中覆盖。
+Safety Profile 浠嶆槸杩愯鏃跺畨鍏ㄧ瓥鐣ユ潈濞佹潵婧愶紝涓嶇敱 Agent 鍦ㄥ崟娆″伐鍏疯皟鐢ㄤ腑瑕嗙洊銆?
 
-新增任务级执行口径：
+鏂板浠诲姟绾ф墽琛屽彛寰勶細
 
 ```text
-TaskSpec 由 Agent 提交。
-Task Compiler 校验 TaskSpec 与 Safety Profile 是否冲突。
-UE Task Runtime 执行 TaskPlan 前再次检查当前 Safety Profile / write_permission / context stale。
+TaskSpec 鐢?Agent 鎻愪氦銆?
+Task Compiler 鏍￠獙 TaskSpec 涓?Safety Profile 鏄惁鍐茬獊銆?
+UE Task Runtime 鎵ц TaskPlan 鍓嶅啀娆℃鏌ュ綋鍓?Safety Profile / write_permission / context stale銆?
 ```
 
-## 新增 Agent-facing 工具
+## 鏂板 Agent-facing 宸ュ叿
 
-普通写入流程固定为：
+鏅€氬啓鍏ユ祦绋嬪浐瀹氫负锛?
 
 ```text
 read_task_context
@@ -564,22 +563,22 @@ preview_task
 execute_task
 ```
 
-ReadOnly：
+ReadOnly锛?
 
 ```text
-允许 read_task_context / preview_task。
-禁止 execute_task 真实写入。
+鍏佽 read_task_context / preview_task銆?
+绂佹 execute_task 鐪熷疄鍐欏叆銆?
 ```
 
-Conservative：
+Conservative锛?
 
 ```text
-允许 execute_task，但 TaskPlan 内高风险 step 必须 dry_run / preflight 通过。
+鍏佽 execute_task锛屼絾 TaskPlan 鍐呴珮椋庨櫓 step 蹇呴』 dry_run / preflight 閫氳繃銆?
 ```
 
-## TaskSpec 与 Profile 冲突
+## TaskSpec 涓?Profile 鍐茬獊
 
-如果 TaskSpec 请求扩大权限，例如：
+濡傛灉 TaskSpec 璇锋眰鎵╁ぇ鏉冮檺锛屼緥濡傦細
 
 ```json
 {
@@ -589,31 +588,33 @@ Conservative：
 }
 ```
 
-但当前 profile 或 runtime capability 不允许，应返回：
+浣嗗綋鍓?profile 鎴?runtime capability 涓嶅厑璁革紝搴旇繑鍥烇細
 
 ```text
 ProfilePolicyViolation / capability_unavailable
 agent_action = remove_scope_or_stop_and_report
 ```
 
-不允许 Python / MCP / UE Task Runtime 静默降级执行。
+涓嶅厑璁?Python / CLI / UE Task Runtime 闈欓粯闄嶇骇鎵ц銆?
 
 ## Context stale
 
-TaskSpec 可以引用 context_id。execute 前 UE Task Runtime 必须重新检查：
+TaskSpec 鍙互寮曠敤 context_id銆俥xecute 鍓?UE Task Runtime 蹇呴』閲嶆柊妫€鏌ワ細
 
 ```text
-目标资产是否仍存在
-图表 empty/non-empty 状态是否变化
-资源候选是否仍唯一
-组件是否已被用户改动
-write_permission 是否变化
-safety_profile 是否变化
+鐩爣璧勪骇鏄惁浠嶅瓨鍦?
+鍥捐〃 empty/non-empty 鐘舵€佹槸鍚﹀彉鍖?
+璧勬簮鍊欓€夋槸鍚︿粛鍞竴
+缁勪欢鏄惁宸茶鐢ㄦ埛鏀瑰姩
+write_permission 鏄惁鍙樺寲
+safety_profile 鏄惁鍙樺寲
 ```
 
-如果过期：
+濡傛灉杩囨湡锛?
 
 ```text
 status=context_stale
 agent_action=refresh_context_and_retry
 ```
+
+

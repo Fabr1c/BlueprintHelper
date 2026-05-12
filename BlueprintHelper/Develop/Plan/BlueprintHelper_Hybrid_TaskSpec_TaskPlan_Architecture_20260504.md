@@ -2,21 +2,21 @@
 
 日期：2026-05-04  
 状态：已确认的新架构方案  
-适用范围：BlueprintHelper v0.4 / v0.5 之后的 Agent→MCP→Python→UE Task Runtime 架构收敛  
-核心目标：减少 Agent 直接调用大量底层 MCP 工具的复杂度，同时保留既有工具簇、字段协议、Transaction / Review / rollback 设计。
+适用范围：BlueprintHelper v0.4 / v0.5 之后的 Agent→CLI→Python→UE Task Runtime 架构收敛
+核心目标：减少 Agent 直接调用大量底层命令/工具的复杂度，同时保留既有工具簇、字段协议、Transaction / Review / rollback 设计。
 
-文档同步范围：本文是本轮文档主线同步的权威架构说明，不代表本次已经实现新的 MCP Task 工具、Python Task Compiler 或 UE Task Runtime。现有字段映射、DoneImplementation 和 agent-to-MCP cluster 字段文档保留作为底层能力簇、内部协议、debug / expert 工具和测试入口资料；历史按工具拆分的 Agent 规则文档不再作为 AgentGuide 主线入口。
+文档同步范围：本文是本轮文档主线同步的权威架构说明，不代表本次已经实现新的 CLI Task 命令、Python Task Compiler 或 UE Task Runtime。现有字段映射、DoneImplementation 和 agent-to-MCP cluster 字段文档保留作为底层能力簇、内部协议、debug / expert 工具和测试入口资料；历史按工具拆分的 Agent 规则文档不再作为 AgentGuide 主线入口。
 
 ---
 
 ## 0. 结论摘要
 
-本次确认的架构不是推倒现有 MCP 工具簇，而是新增一层任务编译与任务运行时：
+本次确认的架构不是推倒现有工具簇，而是新增一层任务编译与任务运行时：
 
 ```text
 Agent
-→ MCP Agent-facing Task Tools
-→ Python / MCP Task Compiler
+→ BlueprintHelper CLI
+→ task-core / Python Task Compiler
 → UE Plugin Task Runtime
 → Existing UE Capability Clusters
 → Unreal Editor
@@ -26,8 +26,8 @@ Agent
 
 ```text
 Agent：负责把用户目标整理成 TaskSpec。
-MCP：负责标准工具入口、schema、权限边界、返回协议。
-Python / MCP Task Compiler：负责 TaskSpec 校验、上下文打包、语义检查、错误 suggested_patch、生成 TaskPlan。
+CLI / task-core：负责标准命令入口、schema、权限边界、返回协议。
+task-core / Python Task Compiler：负责 TaskSpec 校验、上下文打包、语义检查、错误 suggested_patch、生成 TaskPlan。
 UE Plugin Task Runtime：负责执行 TaskPlan、重新读取真实 UE 状态、TOCTOU 检查、事务、Review、rollback、compile/save。
 现有工具簇：保留为 UE 侧内部 capability / debug tool / 测试入口。
 ```
@@ -36,7 +36,7 @@ UE Plugin Task Runtime：负责执行 TaskPlan、重新读取真实 UE 状态、
 
 ```text
 1. 不推翻现有 11 类工具簇。
-2. 不让 Agent 直接面对大量底层原子 MCP 工具。
+2. 不让 Agent 直接面对大量底层原子工具。
 3. 不把完整 Agent-facing TaskSpec 编译逻辑塞进 UE C++。
 4. UE 插件侧新增 Task Runtime，而不是新增 Agent 大脑。
 5. TaskSpec 不替代 transaction；TaskSpec 是多个 transaction 的上层任务容器。
@@ -48,7 +48,7 @@ UE Plugin Task Runtime：负责执行 TaskPlan、重新读取真实 UE 状态、
 
 ### 1.1 原始问题
 
-如果 Agent 直接调用大量底层 MCP 工具完成一个复杂蓝图任务，例如物理门，会出现以下问题：
+如果 Agent 直接调用大量底层命令/工具完成一个复杂蓝图任务，例如物理门，会出现以下问题：
 
 ```text
 1. Agent 必须记住大量工具边界。
@@ -74,10 +74,10 @@ Graph Write 失败后 Agent 继续 compile/save。
 新架构目标是：
 
 ```text
-1. Agent 不直接拼几十个底层 MCP 调用。
+1. Agent 不直接拼几十个底层调用。
 2. Agent 也不能只传一句自然语言。
 3. Agent 必须传结构化 TaskSpec。
-4. Python / MCP 编译 TaskSpec 为 TaskPlan。
+4. task-core / Python 编译 TaskSpec 为 TaskPlan。
 5. UE Task Runtime 执行 TaskPlan 并管理真实事务。
 6. 现有工具簇作为内部能力边界继续保留。
 ```
@@ -99,7 +99,7 @@ Graph Write 失败后 Agent 继续 compile/save。
                         │
                         ▼
 ┌──────────────────────────────────────────────────────────┐
-│ MCP Agent-facing Task Tools                              │
+│ BlueprintHelper CLI                                      │
 │ - read_task_context                                      │
 │ - preview_task                                           │
 │ - execute_task                                           │
@@ -109,7 +109,7 @@ Graph Write 失败后 Agent 继续 compile/save。
                         │
                         ▼
 ┌──────────────────────────────────────────────────────────┐
-│ Python / MCP Task Compiler                               │
+│ task-core / Python Task Compiler                         │
 │ - TaskSpec schema validation                             │
 │ - semantic validation                                    │
 │ - context packing                                        │
@@ -144,17 +144,17 @@ Graph Write 失败后 Agent 继续 compile/save。
 本架构将“任务编排层”拆成两段：
 
 ```text
-Task Compiler：Python / MCP 侧
+Task Compiler：task-core / Python 侧
 Task Runtime：UE 插件侧
 ```
 
 | 模块 | 建议位置 | 职责 |
 |---|---|---|
-| TaskSpec schema 校验 | Python / MCP | 校验字段结构、类型、必填项、版本 |
-| TaskSpec semantic 校验 | Python / MCP | 检查语义冲突、资源引用、scope policy 矛盾 |
-| TaskContextPack | Python / MCP | 给 Agent 返回足够生成 TaskSpec 的压缩上下文 |
-| suggested_patch | Python / MCP | 告诉 Agent 如何修 TaskSpec |
-| TaskSpec → TaskPlan | Python / MCP | 生成可执行任务计划 |
+| TaskSpec schema 校验 | task-core / Python | 校验字段结构、类型、必填项、版本 |
+| TaskSpec semantic 校验 | task-core / Python | 检查语义冲突、资源引用、scope policy 矛盾 |
+| TaskContextPack | task-core / Python | 给 Agent 返回足够生成 TaskSpec 的压缩上下文 |
+| suggested_patch | task-core / Python | 告诉 Agent 如何修 TaskSpec |
+| TaskSpec → TaskPlan | task-core / Python | 生成可执行任务计划 |
 | TaskPlan 执行 | UE 插件 | 真实执行 UE 操作 |
 | TOCTOU 检查 | UE 插件 | 确认执行前 UE 状态未变化 |
 | task_run_id / transaction_id | UE 插件 | 任务级与写操作级审计 ID |
@@ -162,7 +162,7 @@ Task Runtime：UE 插件侧
 
 ---
 
-## 3. Agent-facing MCP 工具
+## 3. Agent-facing CLI 命令
 
 ### 3.1 默认暴露工具
 
@@ -185,7 +185,7 @@ blueprinthelper_get_task_result
 
 ```text
 1. Python Orchestrator 内部 capability。
-2. Debug / Expert 模式 MCP 工具。
+2. Debug / Expert 模式遗留命令面。
 3. 自动化测试入口。
 4. 失败定位入口。
 ```
@@ -996,7 +996,7 @@ BridgeError → StopAndReportReason
 
 | 工具簇 | 新架构中的位置 |
 |---|---|
-| Asset Factory | UE Capability，供 Task Runtime 调用；可保留 debug MCP 工具 |
+| Asset Factory | UE Capability，供 Task Runtime 调用；可保留 debug 遗留命令面 |
 | Blueprint Component | UE Capability；组件创建和属性设置仍分离 |
 | Blueprint Class Settings | UE Capability；只修改类设置，不写接口函数 body |
 | Enhanced Input Boundary | 仍作为边界规则；默认不编辑 IA / IMC |
@@ -1151,7 +1151,7 @@ I. Agent 最终只报告任务级摘要。
 1. 普通 Agent 默认只看到任务级工具。
 2. 底层工具保留 debug / Expert / 自动化测试入口。
 3. Agent Skill 更新为 TaskSpec-first 工作流。
-4. /agentplan 输出 TaskSpec / TaskPlan 摘要，而不是底层 MCP 工具序列。
+4. /agentplan 输出 TaskSpec / TaskPlan 摘要，而不是底层命令/工具序列。
 ```
 
 ---
@@ -1161,7 +1161,7 @@ I. Agent 最终只报告任务级摘要。
 旧定位：
 
 ```text
-/agentplan 将语义计划细化成 MCP 工具调用顺序。
+/agentplan 将语义计划细化成底层命令调用顺序。
 ```
 
 新定位：
@@ -1191,7 +1191,7 @@ I. Agent 最终只报告任务级摘要。
 ### 14.1 架构验收
 
 ```text
-1. Agent 默认不直接调用大量底层 MCP 工具。
+1. Agent 默认不直接调用大量底层命令/工具。
 2. Agent 可以通过 read_task_context 获取生成 TaskSpec 所需上下文。
 3. Agent 可以提交 TaskSpec 进行 preview。
 4. preview_task 能返回结构化 TaskSpec 错误和 suggested_patch。

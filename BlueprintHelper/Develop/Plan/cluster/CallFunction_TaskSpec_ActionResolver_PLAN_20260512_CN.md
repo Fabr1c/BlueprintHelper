@@ -1,24 +1,17 @@
-# CallFunction TaskSpec Action Resolver Implementation Plan
+﻿# CallFunction TaskSpec Action Resolver Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 扩宽 `call_function` 的解析能力，让 TaskSpec 中的函数名可以按 UE 编辑器可见的函数候选进行匹配，同时不把 UE 右键菜单、action database、node spawner 或编辑器选择状态暴露给普通 Agent。
-
-**Architecture:** Agent 仍只提交 `BlueprintHelper.TaskSpec.v1`，`call_function` 仍只使用 `name` 和 `args`。MCP/Python compiler 继续生成语义 TaskPlan，UE Task Runtime / GraphWrite 在 preview 和 execute 阶段调用内部 `CallFunction` resolver。Resolver 可借用 UE action menu 的候选构建和图兼容性过滤，但输出的是稳定函数身份和可审计诊断，不输出编辑器菜单操作方法。
-
+**Goal:** 鎵╁ `call_function` 鐨勮В鏋愯兘鍔涳紝璁?TaskSpec 涓殑鍑芥暟鍚嶅彲浠ユ寜 UE 缂栬緫鍣ㄥ彲瑙佺殑鍑芥暟鍊欓€夎繘琛屽尮閰嶏紝鍚屾椂涓嶆妸 UE 鍙抽敭鑿滃崟銆乤ction database銆乶ode spawner 鎴栫紪杈戝櫒閫夋嫨鐘舵€佹毚闇茬粰鏅€?Agent銆?
+**Architecture:** Agent 浠嶅彧鎻愪氦 `BlueprintHelper.TaskSpec.v1`锛宍call_function` 浠嶅彧浣跨敤 `name` 鍜?`args`銆侻CP/Python compiler 缁х画鐢熸垚璇箟 TaskPlan锛孶E Task Runtime / GraphWrite 鍦?preview 鍜?execute 闃舵璋冪敤鍐呴儴 `CallFunction` resolver銆俁esolver 鍙€熺敤 UE action menu 鐨勫€欓€夋瀯寤哄拰鍥惧吋瀹规€ц繃婊わ紝浣嗚緭鍑虹殑鏄ǔ瀹氬嚱鏁拌韩浠藉拰鍙璁¤瘖鏂紝涓嶈緭鍑虹紪杈戝櫒鑿滃崟鎿嶄綔鏂规硶銆?
 **Tech Stack:** Unreal Engine 5.6 Editor C++, BlueprintGraph/Kismet action APIs, BlueprintHelper GraphWrite / TaskRuntime, TypeScript TaskSpec compiler tests, UE Automation tests.
 
 ---
 
-## 0. 边界收敛
+## 0. 杈圭晫鏀舵暃
 
-### 0.1 Agent-facing 不变项
-
-- 不新增普通 Agent 可见 MCP 工具。
-- 不新增 `right_click`、`action_menu`、`node_spawner`、`perform_action`、`selected_objects`、`context_target_mask`、`bindings`、`node_class` 等 TaskSpec 字段。
-- 第一版不修改 `BlueprintLogicStatementSchema` 的 Agent-facing 形状。
-- 普通 TaskSpec 仍写：
-
+### 0.1 Agent-facing 涓嶅彉椤?
+- 涓嶆柊澧炴櫘閫?Agent 鍙 CLI 涔嬪鐨勭洿杈惧懡浠ら潰銆?- 涓嶆柊澧?`right_click`銆乣action_menu`銆乣node_spawner`銆乣perform_action`銆乣selected_objects`銆乣context_target_mask`銆乣bindings`銆乣node_class` 绛?TaskSpec 瀛楁銆?- 绗竴鐗堜笉淇敼 `BlueprintLogicStatementSchema` 鐨?Agent-facing 褰㈢姸銆?- 鏅€?TaskSpec 浠嶅啓锛?
 ```json
 {
   "kind": "call_function",
@@ -33,29 +26,23 @@
 }
 ```
 
-- `args` 仍只表达函数参数，不允许把 MCP tool args、Bridge payload、UE action payload 混入这里。
-- 当函数不唯一时，preview 返回 blocked。Agent 只能修改 TaskSpec 的 `name` 为更具体的函数名，不能回退到底层工具。
+- `args` 浠嶅彧琛ㄨ揪鍑芥暟鍙傛暟锛屼笉鍏佽鎶?MCP tool args銆丅ridge payload銆乁E action payload 娣峰叆杩欓噷銆?- 褰撳嚱鏁颁笉鍞竴鏃讹紝preview 杩斿洖 blocked銆侫gent 鍙兘淇敼 TaskSpec 鐨?`name` 涓烘洿鍏蜂綋鐨勫嚱鏁板悕锛屼笉鑳藉洖閫€鍒板簳灞傚伐鍏枫€?
+### 0.2 鍏佽鐨?`name` 杈撳叆
 
-### 0.2 允许的 `name` 输入
+绗竴鐗堝厑璁?resolver 鍐呴儴璇嗗埆杩欎簺瀛楃涓插舰鎬侊細
 
-第一版允许 resolver 内部识别这些字符串形态：
-
-| 输入形态 | 例子 | 解析策略 |
+| 杈撳叆褰㈡€?| 渚嬪瓙 | 瑙ｆ瀽绛栫暐 |
 |---|---|---|
-| 原生函数名 | `PrintString` | 精确优先，唯一后可执行 |
-| DisplayName | `Print String` | 只在候选唯一时可执行 |
-| Owner-qualified | `/Script/Engine.KismetSystemLibrary:PrintString` | 精确匹配 owner class + native function |
-| Script dot-qualified | `/Script/Engine.KismetSystemLibrary.PrintString` | 精确匹配 owner class + native function |
-| 短 owner-qualified | `KismetSystemLibrary.PrintString` | 仅当 owner class 唯一时可执行 |
+| 鍘熺敓鍑芥暟鍚?| `PrintString` | 绮剧‘浼樺厛锛屽敮涓€鍚庡彲鎵ц |
+| DisplayName | `Print String` | 鍙湪鍊欓€夊敮涓€鏃跺彲鎵ц |
+| Owner-qualified | `/Script/Engine.KismetSystemLibrary:PrintString` | 绮剧‘鍖归厤 owner class + native function |
+| Script dot-qualified | `/Script/Engine.KismetSystemLibrary.PrintString` | 绮剧‘鍖归厤 owner class + native function |
+| 鐭?owner-qualified | `KismetSystemLibrary.PrintString` | 浠呭綋 owner class 鍞竴鏃跺彲鎵ц |
 
-明确阻断：
-
-- `DoorMesh.AddAngularImpulseInDegrees` 这类 component/member 前缀在第一版不自动解释为当前编辑器选中组件，也不静默降级为全局函数。preview 返回 `explicit_member_call_not_supported`，提示需要后续单独设计 component member call。
-- 空字符串、自然语言句子、需要创建新函数的名字直接 blocked。
-
-### 0.3 UE 内部可用但不暴露的能力
-
-Resolver 内部可使用：
+鏄庣‘闃绘柇锛?
+- `DoorMesh.AddAngularImpulseInDegrees` 杩欑被 component/member 鍓嶇紑鍦ㄧ涓€鐗堜笉鑷姩瑙ｉ噴涓哄綋鍓嶇紪杈戝櫒閫変腑缁勪欢锛屼篃涓嶉潤榛橀檷绾т负鍏ㄥ眬鍑芥暟銆俻review 杩斿洖 `explicit_member_call_not_supported`锛屾彁绀洪渶瑕佸悗缁崟鐙璁?component member call銆?- 绌哄瓧绗︿覆銆佽嚜鐒惰瑷€鍙ュ瓙銆侀渶瑕佸垱寤烘柊鍑芥暟鐨勫悕瀛楃洿鎺?blocked銆?
+### 0.3 UE 鍐呴儴鍙敤浣嗕笉鏆撮湶鐨勮兘鍔?
+Resolver 鍐呴儴鍙娇鐢細
 
 - `FBlueprintActionContext`
 - `FBlueprintActionMenuUtils::MakeContextMenu`
@@ -64,16 +51,9 @@ Resolver 内部可使用：
 - `UEdGraphSchema_K2::CanFunctionBeUsedInGraph`
 - `UBlueprintFunctionNodeSpawner`
 
-Resolver 内部禁止使用：
-
-- 当前 Content Browser 选择。
-- 当前 Level 选中 Actor。
-- 当前 Blueprint Editor 选中 component/property。
-- 当前鼠标拖出的 `FromPin`。
-- `SGraphActionMenu` UI widget 或任何需要用户交互的菜单实例。
-- 从 focused editor tab 推导目标图。
-
-第一版 action context 只允许：
+Resolver 鍐呴儴绂佹浣跨敤锛?
+- 褰撳墠 Content Browser 閫夋嫨銆?- 褰撳墠 Level 閫変腑 Actor銆?- 褰撳墠 Blueprint Editor 閫変腑 component/property銆?- 褰撳墠榧犳爣鎷栧嚭鐨?`FromPin`銆?- `SGraphActionMenu` UI widget 鎴栦换浣曢渶瑕佺敤鎴蜂氦浜掔殑鑿滃崟瀹炰緥銆?- 浠?focused editor tab 鎺ㄥ鐩爣鍥俱€?
+绗竴鐗?action context 鍙厑璁革細
 
 ```text
 Blueprints = [TaskSpec target blueprint]
@@ -84,53 +64,32 @@ ContextTargetMask = TARGET_Blueprint | TARGET_BlueprintLibraries
 bIsContextSensitive = true
 ```
 
-### 0.4 自动选择门禁
+### 0.4 鑷姩閫夋嫨闂ㄧ
 
-Resolver 必须按以下顺序解析：
+Resolver 蹇呴』鎸変互涓嬮『搴忚В鏋愶細
 
-1. Owner-qualified exact match。
-2. 当前 Blueprint / parent / library action 中的 native name exact match。
-3. DisplayName exact match。
-4. 编辑器搜索文本候选只用于建议列表；只有候选集合最终唯一且稳定身份唯一时才可执行。
-
-歧义规则：
-
-- 多个 owner class 下出现同名函数时 blocked。
-- native name 和 DisplayName 命中不同函数时 blocked。
-- fuzzy 候选分数相近时 blocked。
-- preview 和 execute 两次解析出的 stable id 不一致时 blocked。
-
-稳定身份格式：
-
+1. Owner-qualified exact match銆?2. 褰撳墠 Blueprint / parent / library action 涓殑 native name exact match銆?3. DisplayName exact match銆?4. 缂栬緫鍣ㄦ悳绱㈡枃鏈€欓€夊彧鐢ㄤ簬寤鸿鍒楄〃锛涘彧鏈夊€欓€夐泦鍚堟渶缁堝敮涓€涓旂ǔ瀹氳韩浠藉敮涓€鏃舵墠鍙墽琛屻€?
+姝т箟瑙勫垯锛?
+- 澶氫釜 owner class 涓嬪嚭鐜板悓鍚嶅嚱鏁版椂 blocked銆?- native name 鍜?DisplayName 鍛戒腑涓嶅悓鍑芥暟鏃?blocked銆?- fuzzy 鍊欓€夊垎鏁扮浉杩戞椂 blocked銆?- preview 鍜?execute 涓ゆ瑙ｆ瀽鍑虹殑 stable id 涓嶄竴鑷存椂 blocked銆?
+绋冲畾韬唤鏍煎紡锛?
 ```text
 owner_class_path + ":" + native_function_name
 ```
 
-例子：
-
+渚嬪瓙锛?
 ```text
 /Script/Engine.KismetSystemLibrary:PrintString
 ```
 
-### 0.5 Preview / Execute 合同
+### 0.5 Preview / Execute 鍚堝悓
 
-Preview 行为：
-
-- 对每个 `call_function` statement 解析候选。
-- 唯一时在 preview summary/debug 中记录 normalized summary：`query`、`stable_id`、`owner_class`、`native_name`、`display_name`、`node_class`。
-- 歧义时返回 `preview_blocked`，错误码 `ambiguous_function_call`，列出最多 8 个候选摘要。
-- 不存在时返回 `preview_blocked`，错误码 `function_call_not_found`，列出最多 8 个建议候选。
-
-Execute 行为：
-
-- execute 前重新解析。
-- 若 TaskPlan 或 preview summary 中有 expected stable id，则必须匹配。
-- 若解析结果变成歧义、不存在或 stable id 变化，停止写入。
-- 真实写入后仍走现有 compile/save/review/debug/transaction 流程。
-
+Preview 琛屼负锛?
+- 瀵规瘡涓?`call_function` statement 瑙ｆ瀽鍊欓€夈€?- 鍞竴鏃跺湪 preview summary/debug 涓褰?normalized summary锛歚query`銆乣stable_id`銆乣owner_class`銆乣native_name`銆乣display_name`銆乣node_class`銆?- 姝т箟鏃惰繑鍥?`preview_blocked`锛岄敊璇爜 `ambiguous_function_call`锛屽垪鍑烘渶澶?8 涓€欓€夋憳瑕併€?- 涓嶅瓨鍦ㄦ椂杩斿洖 `preview_blocked`锛岄敊璇爜 `function_call_not_found`锛屽垪鍑烘渶澶?8 涓缓璁€欓€夈€?
+Execute 琛屼负锛?
+- execute 鍓嶉噸鏂拌В鏋愩€?- 鑻?TaskPlan 鎴?preview summary 涓湁 expected stable id锛屽垯蹇呴』鍖归厤銆?- 鑻ヨВ鏋愮粨鏋滃彉鎴愭涔夈€佷笉瀛樺湪鎴?stable id 鍙樺寲锛屽仠姝㈠啓鍏ャ€?- 鐪熷疄鍐欏叆鍚庝粛璧扮幇鏈?compile/save/review/debug/transaction 娴佺▼銆?
 ---
 
-## 1. 文件结构
+## 1. 鏂囦欢缁撴瀯
 
 ### Create
 
@@ -147,7 +106,7 @@ Execute 行为：
 - `BlueprintHelper/Source/BlueprintHelper/Private/Shared/Services/BlueprintHelperAgentImportService.cpp`
 - `BlueprintHelper/Source/BlueprintHelper/Private/Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.cpp`
 - `BlueprintHelper/Resources/AgentGuide/Workflows/05_Edit_Blueprint_Workflow.md`
-- `BlueprintHelper/Resources/AgentGuide/Reference/04_MCP_Field_Templates_20260507.md`
+- `BlueprintHelper/Resources/AgentGuide/Reference/04_Tool_Surface_Field_Templates_20260512.md`
 - `BlueprintHelper/Resources/Docs/TaskSpec_TaskPlan_Contract_20260504.md`
 
 ### Validate
@@ -606,7 +565,7 @@ TestFalse(TEXT("no node spawner leak"), Result.DebugSummary.Contains(TEXT("UBlue
 - Validate: `ClaudePlugin/mcp/src/task/compiler/task-compiler.ts`
 - Validate: `ClaudePlugin/mcp/src/task/schema/task-schemas.ts`
 - Modify: `BlueprintHelper/Resources/AgentGuide/Workflows/05_Edit_Blueprint_Workflow.md`
-- Modify: `BlueprintHelper/Resources/AgentGuide/Reference/04_MCP_Field_Templates_20260507.md`
+- Modify: `BlueprintHelper/Resources/AgentGuide/Reference/04_Tool_Surface_Field_Templates_20260512.md`
 - Modify: `BlueprintHelper/Resources/Docs/TaskSpec_TaskPlan_Contract_20260504.md`
 - Test: `ClaudePlugin/mcp/src/tests/task/task-p1-schema.test.ts`
 - Test: `ClaudePlugin/mcp/src/tests/task/task-contract.test.ts`

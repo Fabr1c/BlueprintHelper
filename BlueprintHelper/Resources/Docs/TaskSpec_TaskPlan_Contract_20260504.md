@@ -15,16 +15,16 @@ ClaudePlugin/task-core/src/task/fixtures/task-protocol.fixtures.ts
 The supported chain is:
 
 ```text
-Agent -> TaskSpec -> MCP/Python compiler -> TaskPlan structured IR -> Bridge/UE Task Runtime
+Agent -> BlueprintHelper CLI -> task-core -> Python compiler -> TaskPlan structured IR -> Bridge/UE Task Runtime
 ```
 
-Ordinary Agents submit `BlueprintHelper.TaskSpec.v1` only. They do not author `BlueprintHelper.TaskPlan.v1`. The MCP/Python Task Compiler owns TaskPlan generation, and UE Task Runtime executes the lowered adapter work derived from that IR.
+Ordinary Agents submit `BlueprintHelper.TaskSpec.v1` only. They do not author `BlueprintHelper.TaskPlan.v1`. task-core dispatches to the Python Task Compiler, which owns TaskPlan generation; UE Task Runtime executes the lowered adapter work derived from that IR.
 
 ## 2. Versioned Schemas
 
 | Data | Schema |
 |---|---|
-| Agent-facing MCP envelope | `BlueprintHelper.McpToolResult.v1` |
+| Normalized tool result envelope | `BlueprintHelper.McpToolResult.v1` |
 | Task context | `BlueprintHelper.TaskContextPack.v1` |
 | Read input | `BlueprintHelper.ReadSpec.v1` |
 | Read context payload | `ReadContextPack.v1` |
@@ -42,8 +42,8 @@ Ordinary Agents submit `BlueprintHelper.TaskSpec.v1` only. They do not author `B
 | Owner | Writes | Reads |
 |---|---|---|
 | Agent | `BlueprintHelper.TaskSpec.v1`, `BlueprintHelper.ReadSpec.v1` | AgentGuide index, ReadContextPack, TaskContextPack, preview summary, task result |
-| MCP/Python Read Router | ReadContextPack / LogicMD / LogicJson views | ReadSpec |
-| MCP/Python Task Compiler | `BlueprintHelper.TaskPlan.v1` | TaskSpec |
+| CLI/task-core/Python Read Router | ReadContextPack / LogicMD / LogicJson views | ReadSpec |
+| CLI/task-core/Python Task Compiler | `BlueprintHelper.TaskPlan.v1` | TaskSpec |
 | UE Task Runtime | `BlueprintHelper.TaskRunJournal.v1` | TaskPlan |
 | Existing Capability Clusters | Bridge/UE operation result facts | TaskPlan step args |
 | Review System | `BlueprintHelper.ReviewRecord.v1` from `BlueprintHelper.WriteReviewEvidence.v1` | Producer-owned write evidence, transaction rollback refs |
@@ -52,15 +52,15 @@ Ordinary Agents submit `BlueprintHelper.TaskSpec.v1` only. They do not author `B
 Rules:
 
 - Agent must not submit a TaskPlan.
-- MCP task tools must not expose low-level atomic tool planning as the default Agent workflow.
+- CLI/task-core task tools must not expose low-level atomic tool planning as the default Agent workflow.
 - UE Task Runtime must treat TaskPlan as the internal execution contract.
 - Existing Bridge/UE operation results remain internal facts and are normalized into task-level results.
-- Read tools should not grow one MCP tool per UE asset domain. New read capability domains should enter through `BlueprintHelper.ReadSpec.v1` and a read router, while write capability domains enter through `BlueprintHelper.TaskSpec.v1` and TaskPlan.
+- Read tools should not grow one tool per UE asset domain. New read capability domains should enter through `BlueprintHelper.ReadSpec.v1` and a read router, while write capability domains enter through `BlueprintHelper.TaskSpec.v1` and TaskPlan.
 - TaskSpec keeps a small semantic top-level surface. A single semantic TaskSpec may combine multiple capability clusters through compiler decomposition, but those clusters must not become new default Agent-facing atomic tools.
 - Preview may expose a TaskPlan summary and debug/expert details, but ordinary Agents do not depend on full TaskPlan payloads or adapter payloads.
 - TaskRuntime execution policy is: dry-run all executable steps first, execute steps sequentially only after dry-run passes, record partial failure in TaskRunJournal if execution fails mid-run, and block dependent downstream steps by TaskPlan topology. It does not promise global rollback by default.
 - Every asset-mutating write cluster must provide producer-owned Review evidence. ReviewStore consumes evidence and does not invent missing atomic anchors.
-- DebugCase / DebugBundle are developer diagnostics. MCP may expose summary-only `debug_case_ids[]` and `get_debug_case`, but must not return DebugBundle artifact contents, local bundle paths, raw payloads, token/settings full values, or source content.
+- DebugCase / DebugBundle are developer diagnostics. CLI/task-core may expose summary-only `debug_case_ids[]` and `get_debug_case`, but must not return DebugBundle artifact contents, local bundle paths, raw payloads, token/settings full values, or source content.
 - Python Orchestration owns TaskSpec validation, TaskPlan generation, TaskPlan summary, and compiler error normalization. It never writes UE assets and never creates ReviewRecord or DebugBundle artifacts.
 - TaskPlan execution uses TaskRuntime as the main Review / Debug / Transaction convergence point.
 - Non-TaskPlan paths may call fixed System Entry points directly. Examples: malformed Bridge request -> DebugEntry, standalone compile/save failure -> DebugEntry, ReviewAction reject failure -> DebugEntry, rollback/cleanup expert failure -> DebugEntry, Debug export failure -> DebugEntry or DebugCaseStore failure result.
@@ -83,7 +83,7 @@ blueprinthelper_open_editor
 blueprinthelper_close_editor
 ```
 
-Task tools take a wrapped TaskSpec parameter. Do not pass the TaskSpec fields directly as the MCP tool arguments:
+Task tools take a wrapped TaskSpec parameter. Do not pass the TaskSpec fields directly as the CLI direct-tool root arguments:
 
 ```json
 {
@@ -95,12 +95,12 @@ Task tools take a wrapped TaskSpec parameter. Do not pass the TaskSpec fields di
 
 Low-level tools remain available only as internal, debug, expert, or test entries while their TaskSpec / ReadSpec replacements are not complete.
 
-Legacy MCP tool removal policy:
+Deprecated atomic tool removal policy:
 
-- If a capability already has a TaskPlan adapter and TaskSpec compiler coverage, remove or hide the corresponding old Agent-facing atomic MCP write tools first.
-- If a capability does not yet have adapter + TaskSpec coverage, keep its old MCP tools as legacy/internal/debug/expert entries until that coverage lands, then remove them in the same implementation slice.
+- If a capability already has a TaskPlan adapter and TaskSpec compiler coverage, remove or hide the corresponding old Agent-facing atomic write tools first.
+- If a capability does not yet have adapter + TaskSpec coverage, keep its old tools as legacy/internal/debug/expert entries until that coverage lands, then remove them in the same implementation slice.
 - Direct read tools follow the same rule after `blueprinthelper_read_context` covers their read domain.
-- Do not add new Agent-facing atomic MCP tools for newly expanded UE capability clusters.
+- Do not add new Agent-facing atomic tools for newly expanded UE capability clusters.
 
 ## 4.1 Result Envelope Layering
 
@@ -115,14 +115,14 @@ Default Agent-facing result layering is fixed as:
 | `blueprinthelper_execute_task` | `BlueprintHelper.McpToolResult.v1` | `TaskRunSummary.v1` by default, or `TaskRunJournal.v1` when returning the full journal |
 | `blueprinthelper_get_task_result` | `BlueprintHelper.McpToolResult.v1` | `TaskRunJournal.v1` |
 
-UE Agent-facing façade commands return `FBlueprintHelperToolResultBase`. MCP task/read tools normalize those results into `BlueprintHelper.McpToolResult.v1` for Agent consumption. Existing Bridge / UE operation results are internal facts for compiler/runtime/journal use; ordinary Agents should not depend on raw adapter payloads.
+UE Agent-facing facade commands return `FBlueprintHelperToolResultBase`. task-core task/read tools normalize those results into `BlueprintHelper.McpToolResult.v1` for full artifacts. Existing Bridge / UE operation results are internal facts for compiler/runtime/journal use; ordinary Agents should not depend on raw adapter payloads.
 
 Debug data must not expand the default top-level shape. Put compact debug facts under `data.debug` only when directly useful. Large asset context should be read through targeted `logic_md` / `logic_json` slices. Developer diagnostics use summary `DebugCase` ids and local `DebugBundle` exports; default tool responses must not expose bundle artifacts, local paths, raw payloads, source content, or large payload refs.
 
 Long-term read entry consolidation is:
 
 ```text
-Agent -> ReadSpec -> MCP Read Tool -> Python/MCP Read Router -> UE Read Capability Cluster -> ReadContextPack / LogicMD / LogicJson
+Agent -> CLI -> ReadSpec -> task-core/Python Read Router -> UE Read Capability Cluster -> ReadContextPack / LogicMD / LogicJson
 ```
 
 `blueprinthelper_read_agent_guide` returns the AgentGuide onboarding index document. Agents use that index to discover the currently documented capability surface and then open the specific AgentGuide files for concrete ReadSpec / TaskSpec formats. This is a documentation entry point, not a runtime capability-schema tool.
@@ -143,7 +143,7 @@ ReadSpec uses common view formats across read domains:
 | `schema` | Return field/schema guidance for the selected `read_type` and format without reading asset content. This is a ReadSpec view format, not a JSON Schema dialect commitment. |
 | `raw_json` | Debug/expert full-fidelity view; not a default Agent workflow. |
 
-`logic_md` and `logic_json` are not Blueprint-only formats. Future material, animation blueprint, widget, data table, and data asset reads should use the same formats where practical, so the MCP surface does not expand one tool per read shape.
+`logic_md` and `logic_json` are not Blueprint-only formats. Future material, animation blueprint, widget, data table, and data asset reads should use the same formats where practical, so the tool surface does not expand one command per read shape.
 
 Initial ReadSpec shape:
 
@@ -198,11 +198,11 @@ Initial supported `read_type` values:
 | `data_table_context` | DataTable schema, rows, and row summaries. |
 | `object_property_context` | UObject / DataAsset reflected property summaries. |
 
-Future read domains such as material graphs and animation blueprints must enter through new `read_type` values instead of new MCP tools.
+Future read domains such as material graphs and animation blueprints must enter through new `read_type` values instead of new tools.
 
 `summary` is for low-token discovery and first-pass asset inspection before choosing a more detailed read. `schema` is for field guidance for the selected `read_type` / format without reading the asset body. Neither format performs writes or returns TaskSpec drafts.
 
-Read result `data.schema` follows the short-name payload rule. `ReadContextPack.v1` does not include a separate `read_id`, and read results do not carry a `diagnostics` array. Payload errors use the outer MCP/ToolResult error envelope; read completeness uses `truncated` plus a recommendation to reread a specific block or context slice.
+Read result `data.schema` follows the short-name payload rule. `ReadContextPack.v1` does not include a separate `read_id`, and read results do not carry a `diagnostics` array. Payload errors use the outer ToolResult error envelope; read completeness uses `truncated` plus a recommendation to reread a specific block or context slice.
 
 ```json
 {
@@ -352,6 +352,8 @@ Agents must not:
 
 Function call statement arguments use this shape:
 
+`call_function.name` may be a native function name, a Blueprint display name, or an owner-qualified native name. Preview resolves the function against the target Blueprint graph. If the name is ambiguous, change `name` to an owner-qualified native name and preview again. Explicit component/member calls are not part of the first CallFunction resolver slice; preview blocks them instead of guessing target object ownership.
+
 ```json
 {
   "kind": "call_function",
@@ -363,6 +365,16 @@ Function call statement arguments use this shape:
       "value": "message"
     }
   }
+}
+```
+
+Blocked first-slice example:
+
+```json
+{
+  "kind": "call_function",
+  "name": "DoorMesh.AddAngularImpulseInDegrees",
+  "args": {}
 }
 ```
 
@@ -441,7 +453,7 @@ The first composite slice is Blueprint Feature composition:
 | `TaskSpec.integration.interface` | Ensure interface implementation entry and replace its function body |
 | `TaskPlan.steps[].capability` | `blueprint_component`, `blueprint_variable`, `blueprint_class_settings`, `blueprint_signature`, `graph_write` |
 
-`create_blueprint_feature` is not a new UE mega-tool. It is a compiler-owned decomposition layer: Agent writes one semantic feature TaskSpec, Python/MCP compiler emits multiple existing capability steps, and UE Task Runtime lowers each step through the existing clusters. The current executable slice supports `integration.interface` by lowering it to class settings, function signature, and GraphWrite function-body steps. It rejects `integration.input` as an explicit out-of-scope area, matching the current UE-side capability boundary, and still rejects `scope_policy.allow_create_assets=true` so asset creation is not silently skipped.
+`create_blueprint_feature` is not a new UE mega-tool. It is a compiler-owned decomposition layer: Agent writes one semantic feature TaskSpec, the Python compiler emits multiple existing capability steps, and UE Task Runtime lowers each step through the existing clusters. The current executable slice supports `integration.interface` by lowering it to class settings, function signature, and GraphWrite function-body steps. It rejects `integration.input` as an explicit out-of-scope area, matching the current UE-side capability boundary, and still rejects `scope_policy.allow_create_assets=true` so asset creation is not silently skipped.
 
 Broader function/event signature management, DataAsset/ObjectProperty, Cleanup/Ownership, and large debug payload export remain future contract extensions. Input mapping integration is intentionally cut from the current roadmap until it is rechartered as a separate capability area.
 
@@ -522,7 +534,7 @@ keys named compile or save inside validation
 Bridge/runtime payload fields (for example append_blueprint_graph/replace_blueprint_graph/patch_blueprint_graph/merge_blueprint_graph arguments)
 ```
 
-`intent` is generated after a completed task by the MCP/Python orchestration layer and recorded in the TaskRunJournal as `generated_intent`; it is not an Agent-authored TaskSpec field.
+`intent` is generated after a completed task by the task-core/Python orchestration layer and recorded in the TaskRunJournal as `generated_intent`; it is not an Agent-authored TaskSpec field.
 
 For composite Blueprint feature creation, Agent must provide:
 
@@ -866,7 +878,7 @@ Completed task journals may include `generated_intent`, produced from the execut
 }
 ```
 
-`blueprinthelper_get_task_result` treats the UE Task Runtime journal as authoritative when `get_task_run_journal` returns `BlueprintHelper.TaskRunJournal.v1`. If the UE journal is unavailable, MCP may return its in-process execution summary. Completed UE journals that do not yet include `generated_intent` are normalized by the orchestration layer before they are returned to the Agent.
+`blueprinthelper_get_task_result` treats the UE Task Runtime journal as authoritative when `get_task_run_journal` returns `BlueprintHelper.TaskRunJournal.v1`. If the UE journal is unavailable, task-core may return its in-process execution summary. Completed UE journals that do not yet include `generated_intent` are normalized by the orchestration layer before they are returned to the Agent.
 
 ## 10. Validation Policy
 
@@ -890,7 +902,7 @@ Develop/v0.3.6/DoneImplementaion
 
 The directory name is intentionally kept as-is because it is the current repository path.
 
-Current UE TaskRuntime GraphWrite contract covers the operations listed below. The Agent-authored TaskSpec first slice may still gate which strategies the MCP/Python Task Compiler emits; this catalog is not permission for ordinary Agents to call low-level tools directly or author TaskPlan by hand.
+Current UE TaskRuntime GraphWrite contract covers the operations listed below. The Agent-authored TaskSpec first slice may still gate which strategies the Python Task Compiler emits; this catalog is not permission for ordinary Agents to call low-level tools directly or author TaskPlan by hand.
 
 ### 11.0 GraphWrite TaskPlan IR And Lowering Adapter
 
@@ -973,7 +985,7 @@ P2 first slice, 2026-05-06:
 - `ensure_event_dispatcher` is a TaskPlan-internal `event_dispatcher_signature` op. It can create a new dispatcher declaration through the internal structure service. Existing dispatcher signature mutation is blocked by policy; `signature_mismatch_policy` must be `block`.
 - `ensure_override_event` is a TaskPlan-internal `override_event_signature` op. `event_kind` must be `native_event` or `override_event`; default `execute_policy=blocked_preflight` still returns a blocked preflight result, while explicit `execute_policy=create_if_missing` can create a missing native/override event entry in the target graph. UE build has passed, but FullTestLog still shows failing override create-if-missing Automation, so this path is not smoke-verified yet.
 - `remove_signature` is TaskPlan-internal. It accepts function, interface function, custom event, interface event, event dispatcher, override event, and native event kinds, but `execute_policy` must be `blocked_preflight` and `require_reference_context` must stay true until reference analysis and cleanup policy are implemented.
-- No new Agent-facing atomic MCP signature tool is introduced.
+- No new Agent-facing atomic signature tool is introduced.
 
 ### 11.2 Support Clusters
 

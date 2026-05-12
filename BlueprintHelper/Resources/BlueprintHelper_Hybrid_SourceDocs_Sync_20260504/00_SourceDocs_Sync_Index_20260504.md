@@ -1,32 +1,32 @@
-# BlueprintHelper 混合 TaskSpec / TaskPlan 架构源文档同步索引
+﻿# BlueprintHelper 娣峰悎 TaskSpec / TaskPlan 鏋舵瀯婧愭枃妗ｅ悓姝ョ储寮?
 
-日期：2026-05-04  
-状态：同步补丁包  
-目标：把新确认的混合架构同步回现有设计文档，而不是推翻原有工具簇文档。
+鏃ユ湡锛?026-05-04  
+鐘舵€侊細鍚屾琛ヤ竵鍖? 
+鐩爣锛氭妸鏂扮‘璁ょ殑娣峰悎鏋舵瀯鍚屾鍥炵幇鏈夎璁℃枃妗ｏ紝鑰屼笉鏄帹缈诲師鏈夊伐鍏风皣鏂囨。銆?
 
 ---
 
-## 1. 本次同步总原则
+## 1. 鏈鍚屾鎬诲師鍒?
 
-本次同步不推翻已有 11 类工具簇，也不推翻原有四层架构。
+鏈鍚屾涓嶆帹缈诲凡鏈?11 绫诲伐鍏风皣锛屼篃涓嶆帹缈诲師鏈夊洓灞傛灦鏋勩€?
 
-新的统一口径是：
+鏂扮殑缁熶竴鍙ｅ緞鏄細
 
 ```text
 Agent
-→ MCP Agent-facing Task Tools
-→ Python / MCP Task Compiler
-→ UE Plugin Task Runtime
-→ Existing UE Capability Clusters
+鈫?BlueprintHelper CLI Task Commands
+鈫?task-core / Python Task Compiler
+鈫?UE Plugin Task Runtime
+鈫?Existing UE Capability Clusters
 ```
 
-已有工具簇改为：
+宸叉湁宸ュ叿绨囨敼涓猴細
 
 ```text
-内部能力簇 / TaskPlan step / Debug-Expert 工具 / 测试入口
+鍐呴儴鑳藉姏绨?/ TaskPlan step / Debug-Expert 宸ュ叿 / 娴嬭瘯鍏ュ彛
 ```
 
-普通 Agent-facing 入口收敛为：
+鏅€?Agent-facing 鍏ュ彛鏀舵暃涓猴細
 
 ```text
 blueprinthelper_read_task_context
@@ -39,22 +39,22 @@ blueprinthelper_diagnostics
 
 ---
 
-## 2. 必须同步的源文档
+## 2. 蹇呴』鍚屾鐨勬簮鏂囨。
 
-| 优先级 | 文档 | 同步内容 |
+| 浼樺厛绾?| 鏂囨。 | 鍚屾鍐呭 |
 |---|---|---|
-| P0 | BlueprintHelper 插件架构 | 增加 Task Compiler / Task Runtime 的混合架构口径 |
-| P0 | 写工具设计.同步稿 | 增加 TaskSpec / TaskPlan / task_run_id 与 Graph Write 关系 |
-| P0 | Transaction / Journal / Review | 增加 task_run_id / TaskRunJournal / Review 按 task 分组 |
-| P0 | Safety Profile / dry_run | 增加 TaskSpec / TaskPlan 安全策略、context_stale、preview/execute 规则 |
-| P0 | Validation / Diagnostics | 增加 read_task_context / preview_task / execute_task 边界 |
-| P1 | Asset Factory / Component / Class Settings / Enhanced Input | 标注为内部 capability / TaskPlan step，不再默认 Agent 直接调用 |
-| P1 | Version Roadmap | 增加 v0.4/v0.5 混合架构版本归属 |
-| P1 | 核心三端能力缺口 | 增加 Task Orchestration Gap |
+| P0 | BlueprintHelper 鎻掍欢鏋舵瀯 | 澧炲姞 Task Compiler / Task Runtime 鐨勬贩鍚堟灦鏋勫彛寰?|
+| P0 | 鍐欏伐鍏疯璁?鍚屾绋?| 澧炲姞 TaskSpec / TaskPlan / task_run_id 涓?Graph Write 鍏崇郴 |
+| P0 | Transaction / Journal / Review | 澧炲姞 task_run_id / TaskRunJournal / Review 鎸?task 鍒嗙粍 |
+| P0 | Safety Profile / dry_run | 澧炲姞 TaskSpec / TaskPlan 瀹夊叏绛栫暐銆乧ontext_stale銆乸review/execute 瑙勫垯 |
+| P0 | Validation / Diagnostics | 澧炲姞 read_task_context / preview_task / execute_task 杈圭晫 |
+| P1 | Asset Factory / Component / Class Settings / Enhanced Input | 鏍囨敞涓哄唴閮?capability / TaskPlan step锛屼笉鍐嶉粯璁?Agent 鐩存帴璋冪敤 |
+| P1 | Version Roadmap | 澧炲姞 v0.4/v0.5 娣峰悎鏋舵瀯鐗堟湰褰掑睘 |
+| P1 | 鏍稿績涓夌鑳藉姏缂哄彛 | 澧炲姞 Task Orchestration Gap |
 
 ---
 
-## 3. 本补丁包文件
+## 3. 鏈ˉ涓佸寘鏂囦欢
 
 ```text
 BlueprintHelper_Architecture_Synced_20260504.md
@@ -72,58 +72,58 @@ Core_Three_End_Gap_Synced_20260504.md
 
 ---
 
-## 4. 不需要改动的核心口径
+## 4. 涓嶉渶瑕佹敼鍔ㄧ殑鏍稿績鍙ｅ緞
 
-以下口径保持不变：
+浠ヤ笅鍙ｅ緞淇濇寔涓嶅彉锛?
 
 ```text
-1. Asset Factory 只创建资产。
-2. add_component 只创建组件和 attachment。
-3. Class Settings 只修改类设置，不写图表逻辑。
-4. Enhanced Input 当前不默认编辑 IA / IMC。
-5. Append / Replace / Patch / Merge 的 Graph Write 边界不变。
-6. transaction_id 仍是一写操作一次。
-7. 所有 UE 写操作内部仍进入 Journal / Review。
-8. 普通工具成功结果不默认返回 transaction / review / safety。
-9. safety_profile 只来自 runtime_profile.active_profile。
-10. dry_run 是写前预检，Review 是写后审计。
+1. Asset Factory 鍙垱寤鸿祫浜с€?
+2. add_component 鍙垱寤虹粍浠跺拰 attachment銆?
+3. Class Settings 鍙慨鏀圭被璁剧疆锛屼笉鍐欏浘琛ㄩ€昏緫銆?
+4. Enhanced Input 褰撳墠涓嶉粯璁ょ紪杈?IA / IMC銆?
+5. Append / Replace / Patch / Merge 鐨?Graph Write 杈圭晫涓嶅彉銆?
+6. transaction_id 浠嶆槸涓€鍐欐搷浣滀竴娆°€?
+7. 鎵€鏈?UE 鍐欐搷浣滃唴閮ㄤ粛杩涘叆 Journal / Review銆?
+8. 鏅€氬伐鍏锋垚鍔熺粨鏋滀笉榛樿杩斿洖 transaction / review / safety銆?
+9. safety_profile 鍙潵鑷?runtime_profile.active_profile銆?
+10. dry_run 鏄啓鍓嶉妫€锛孯eview 鏄啓鍚庡璁°€?
 ```
 
 ---
 
-## 5. 新增核心口径
+## 5. 鏂板鏍稿績鍙ｅ緞
 
 ```text
-1. TaskSpec 是 Agent-facing 语义规格。
-2. TaskPlan 是 Task Compiler 输出给 UE Task Runtime 的执行计划。
-3. TaskContextPack 用于 Agent 生成 TaskSpec 前获取足够上下文。
-4. preview_task 负责 TaskSpec 校验、policy 检查、dry_run/preflight，不写资产。
-5. execute_task 负责执行通过 preview 的 TaskPlan。
-6. task_run_id 是一次 TaskSpec / TaskPlan 执行的总 ID。
-7. TaskRunJournal 负责关联 child transaction_ids。
-8. Review UI 默认应按 task_run_id 分组，再展开 transaction。
-9. Bridge 层错误由 Python / MCP 归一化为 Agent-facing Task Error。
-10. UE 插件侧适合做 Task Runtime，不适合做 Agent TaskSpec suggested_patch 编译器。
+1. TaskSpec 鏄?Agent-facing 璇箟瑙勬牸銆?
+2. TaskPlan 鏄?Task Compiler 杈撳嚭缁?UE Task Runtime 鐨勬墽琛岃鍒掋€?
+3. TaskContextPack 鐢ㄤ簬 Agent 鐢熸垚 TaskSpec 鍓嶈幏鍙栬冻澶熶笂涓嬫枃銆?
+4. preview_task 璐熻矗 TaskSpec 鏍￠獙銆乸olicy 妫€鏌ャ€乨ry_run/preflight锛屼笉鍐欒祫浜с€?
+5. execute_task 璐熻矗鎵ц閫氳繃 preview 鐨?TaskPlan銆?
+6. task_run_id 鏄竴娆?TaskSpec / TaskPlan 鎵ц鐨勬€?ID銆?
+7. TaskRunJournal 璐熻矗鍏宠仈 child transaction_ids銆?
+8. Review UI 榛樿搴旀寜 task_run_id 鍒嗙粍锛屽啀灞曞紑 transaction銆?
+9. Bridge 灞傞敊璇敱 Python / CLI 褰掍竴鍖栦负 Agent-facing Task Error銆?
+10. UE 鎻掍欢渚ч€傚悎鍋?Task Runtime锛屼笉閫傚悎鍋?Agent TaskSpec suggested_patch 缂栬瘧鍣ㄣ€?
 ```
 
 ---
 
-## 6. 建议合入路径
+## 6. 寤鸿鍚堝叆璺緞
 
-本同步包已按新架构检查，以下两处已修正：
+鏈悓姝ュ寘宸叉寜鏂版灦鏋勬鏌ワ紝浠ヤ笅涓ゅ宸蹭慨姝ｏ細
 
 ```text
-1. Task Compiler 统一写作 Python / MCP Task Compiler。
-2. UE 执行层统一写作 UE Task Runtime → Existing UE Capability Clusters。
+1. Task Compiler 缁熶竴鍐欎綔 task-core / Python Task Compiler銆?
+2. UE 鎵ц灞傜粺涓€鍐欎綔 UE Task Runtime 鈫?Existing UE Capability Clusters銆?
 ```
 
-如果保持现有插件目录结构，建议放入：
+濡傛灉淇濇寔鐜版湁鎻掍欢鐩綍缁撴瀯锛屽缓璁斁鍏ワ細
 
 ```text
 BlueprintHelper/Develop/Plan/HybridArchitecture/
 ```
 
-或直接覆盖现有设计文档：
+鎴栫洿鎺ヨ鐩栫幇鏈夎璁℃枃妗ｏ細
 
 ```text
 BlueprintHelper/Develop/Plan/BlueprintHelper_Architecture.md
@@ -135,9 +135,9 @@ BlueprintHelper/Develop/Plan/Validation_Diagnostics.md
 
 ---
 
-## 7. 下一步建议
+## 7. 涓嬩竴姝ュ缓璁?
 
-下一步应优先输出三份 schema 文档：
+涓嬩竴姝ュ簲浼樺厛杈撳嚭涓変唤 schema 鏂囨。锛?
 
 ```text
 1. BlueprintHelper.TaskContextPack.v1
@@ -145,8 +145,10 @@ BlueprintHelper/Develop/Plan/Validation_Diagnostics.md
 3. BlueprintHelper.TaskPlan.v1
 ```
 
-然后再同步 Agent Skill：
+鐒跺悗鍐嶅悓姝?Agent Skill锛?
 
 ```text
-Agent 默认流程：read_task_context → build TaskSpec → preview_task → repair → execute_task → report summary
+Agent 榛樿娴佺▼锛歳ead_task_context 鈫?build TaskSpec 鈫?preview_task 鈫?repair 鈫?execute_task 鈫?report summary
 ```
+
+

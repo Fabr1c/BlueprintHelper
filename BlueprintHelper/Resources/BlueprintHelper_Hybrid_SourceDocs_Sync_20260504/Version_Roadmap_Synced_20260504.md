@@ -133,7 +133,7 @@ This version implements the basic conversion between Unreal Engine Blueprints an
 ### v0.2.0 - MCP Editor Access
 
 v0.2.0 introduces the MCP-based editor access layer.  
-This version allows AI Agents to connect to Unreal Editor through the BlueprintHelper MCP Server and UE Bridge, enabling basic asset browsing, Blueprint editing, UMG operations, DataAsset/DataTable access, compilation, saving, undo/redo, and editor command execution.
+This version allows AI Agents to connect to Unreal Editor through the BlueprintHelper CLI and UE Bridge, enabling basic asset browsing, Blueprint editing, UMG operations, DataAsset/DataTable access, compilation, saving, undo/redo, and editor command execution.
 
 ### v0.3.0 - Agent Stability & Communication Optimization
 

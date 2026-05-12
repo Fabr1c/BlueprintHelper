@@ -102,7 +102,7 @@ ToolResultBase / ToolResultBuilder
 BridgeRouter / RoutePlanner
 TransactionJournal
 BlueprintHelper module startup
-MCP tool registration
+CLI command registration
 ```
 
 P1 exit gate:
