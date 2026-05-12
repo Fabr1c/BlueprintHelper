@@ -1,0 +1,47 @@
+{
+  "schema": "BlueprintHelper.TaskSpec.v1",
+  "context_id": "ctx_cli_fixture",
+  "task_type": "edit_blueprint_graph",
+  "feature_name": "CLI Preview",
+  "target": {
+    "asset_path": "/Game/BP_Player",
+    "target_type": "blueprint"
+  },
+  "scope_policy": {
+    "graph_name": "EventGraph",
+    "allow_modify_user_nodes": false
+  },
+  "behavior": {
+    "graph_strategy": "append_new_owned_graph",
+    "entries": [
+      {
+        "entry_type": "custom_event",
+        "name": "CliPreviewEvent",
+        "body": {
+          "schema": "BlueprintLogicSpec.v1",
+          "statements": [
+            {
+              "kind": "call_function",
+              "name": "PrintString",
+              "args": {
+                "InString": {
+                  "kind": "literal",
+                  "value_type": "string",
+                  "value": "cli preview"
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "execution_policy": {
+    "dry_run_mode": "full",
+    "on_missing_capability": "stop_and_report"
+  },
+  "validation": {
+    "should_compile": false,
+    "should_save": false
+  }
+}

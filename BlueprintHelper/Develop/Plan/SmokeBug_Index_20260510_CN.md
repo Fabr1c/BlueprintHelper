@@ -19,8 +19,8 @@
 
 | ID | 分类 | 优先级 | 摘要 | 状态 |
 |---|---|---|---|---|
-| SMOKE-AF-20260510-01 | AssetFactory | P0 | Blueprint Interface 被创建成 Actor parent，阻断 class settings interface 验证 | 已记录 |
-| SMOKE-AF-20260510-02 | AssetFactory | P1 | PrimaryDataAsset 创建被 asset_type_mismatch 阻断 | 已记录 |
+| SMOKE-AF-20260510-01 | AssetFactory | P0 | Blueprint Interface 被创建成 Actor parent，阻断 class settings interface 验证 | 已修复；Automation 通过 |
+| SMOKE-AF-20260510-02 | AssetFactory | P1 | DataAsset 创建必须指定具体 UDataAsset 子类；新项目 smoke 需先创建 PrimaryDataAsset 蓝图类，再用该类路径创建 DA 实例 | 已修复；Automation 通过 |
 | SMOKE-AF-20260510-03 | AssetFactory | P2 | create_asset legacy schema / 注释与 TaskSpec 能力漂移 | 已记录 |
 | SMOKE-MCP-20260510-01 | MCP Contract | P1 | AgentGuide 在新项目插件副本中定位失败，导致 3 个 Node regression 失败 | 已记录 |
 | SMOKE-MCP-20260510-02 | MCP Contract | P1 | read_context 暴露多 context 需求，但实现只支持 blueprint_logic | 已记录 |
@@ -36,8 +36,8 @@
 
 ## 建议修复顺序
 
-1. `SMOKE-AF-20260510-01`：先修 BPI parent，否则 class settings 和接口 smoke 会继续 blocked。
-2. `SMOKE-AF-20260510-02`：补 DataAsset subclass / PrimaryDataAsset 支持。
+1. `SMOKE-AF-20260510-01`：已修复 BPI parent；继续 smoke 时可解除 class settings / interface 前置阻塞。
+2. `SMOKE-AF-20260510-02`：已补 DataAsset class-aware 复用兼容、缺少具体 `data_asset_class` 的 MCP/Python 合同阻断、抽象基类干净拒绝、以及 Blueprint DataAsset class 路径到 generated class 的解析；完整新项目路径应先建 `parent_class=PrimaryDataAsset` 的蓝图类，再用该蓝图资产路径创建具体 DA。
 3. `SMOKE-MCP-20260510-01`：修 AgentGuide 资源定位，恢复 Node regression 全绿。
 4. `SMOKE-TS-20260510-01` 和 `SMOKE-TS-20260510-02`：补 dry-run 虚拟状态，减少 Agent 被迫拆步骤。
 5. 补跑 `SMOKE-VER-*`，再把 ReviewPanel 和 Debug 的状态从 NOT RUN 更新为 PASS / FAIL。

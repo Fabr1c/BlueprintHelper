@@ -5,14 +5,16 @@
   "type": "module",
   "main": "build/index.js",
   "scripts": {
-    "build": "tsc",
-    "test": "npm run build && npm run test:python && npm run test:node",
+    "build": "npm --prefix ../task-core run build && node ../scripts/clean-build.mjs && node ../scripts/run-tsc.mjs",
+    "build:mcp": "node ../scripts/clean-build.mjs && node ../scripts/run-tsc.mjs",
+    "test": "npm --prefix ../task-core run test && npm run build:mcp && npm run test:node",
     "test:node": "node scripts/run-node-tests.mjs",
-    "test:python": "python -m unittest discover -s python/tests -t python",
+    "test:python": "npm --prefix ../task-core run test:python",
     "start": "node build/index.js",
     "dev": "tsc --watch"
   },
   "dependencies": {
+    "@blueprinthelper/task-core": "file:../task-core",
     "@modelcontextprotocol/sdk": "^1.12.1",
     "zod": "^3.25.1"
   },

@@ -1,0 +1,40 @@
+{
+  "name": "@blueprinthelper/task-core",
+  "version": "0.3.8",
+  "description": "BlueprintHelper Bridge and TaskSpec orchestration core shared by MCP and CLI transports",
+  "type": "module",
+  "main": "build/index.js",
+  "types": "build/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./build/index.d.ts",
+      "import": "./build/index.js"
+    },
+    "./bridge/*": {
+      "types": "./build/bridge/*.d.ts",
+      "import": "./build/bridge/*.js"
+    },
+    "./result/*": {
+      "types": "./build/result/*.d.ts",
+      "import": "./build/result/*.js"
+    },
+    "./task/*": {
+      "types": "./build/task/*.d.ts",
+      "import": "./build/task/*.js"
+    }
+  },
+  "scripts": {
+    "build": "node ../scripts/clean-build.mjs && node ../scripts/run-tsc.mjs",
+    "test": "npm run build && npm run test:python && npm run test:node",
+    "test:node": "node scripts/run-node-tests.mjs",
+    "test:python": "python -m unittest discover -s python/tests -t python",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "zod": "^3.25.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.17",
+    "typescript": "^5.8.0"
+  }
+}

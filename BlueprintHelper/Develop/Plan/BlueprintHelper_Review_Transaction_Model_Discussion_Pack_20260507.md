@@ -230,7 +230,7 @@ Current implementation state:
 - TransactionJournalService writes active transaction JSON and Review store copies.
 - TransactionQuery C++ layer exists.
 - TaskRunJournal schema, MCP store, UE runtime journal builder, and tests exist.
-- Full persistent ReviewRecord aggregation across UE write transactions and task_run_id is still missing.
+- Full persistent ReviewRecord aggregation across UE write transactions and task_run_id is implemented for the current automated scope as of 2026-05-12: `WriteAppendJournal` feeds ReviewRecord source summaries with `task_run_id`, transaction ids, operation kinds, asset paths, and created-at bounds; `FBlueprintHelperReviewRecordQuery` can filter by `task_run_id`; Bridge `query_review_records` returns ReviewRecord summary artifacts. Raw TransactionJournalQuery remains developer diagnostics.
 
 ## 10. Proposed Review Record Shape For Discussion
 

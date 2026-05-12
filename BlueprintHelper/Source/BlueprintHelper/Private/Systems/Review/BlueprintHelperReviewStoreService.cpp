@@ -515,6 +515,14 @@ public:
 		Summary->SetArrayField(TEXT("operation_kinds"), MakeReviewJsonStringArray(Record.SourceTransactionSummary.OperationKinds));
 		Summary->SetArrayField(TEXT("asset_paths"), MakeReviewJsonStringArray(Record.SourceTransactionSummary.AssetPaths));
 		Summary->SetArrayField(TEXT("transaction_ids"), MakeReviewJsonStringArray(Record.SourceTransactionSummary.TransactionIds));
+		if (!Record.SourceTransactionSummary.CreatedAtFirst.IsEmpty())
+		{
+			Summary->SetStringField(TEXT("created_at_first"), Record.SourceTransactionSummary.CreatedAtFirst);
+		}
+		if (!Record.SourceTransactionSummary.CreatedAtLast.IsEmpty())
+		{
+			Summary->SetStringField(TEXT("created_at_last"), Record.SourceTransactionSummary.CreatedAtLast);
+		}
 		Summary->SetStringField(TEXT("final_review_status"),
 			BlueprintHelperReviewChangeStatusToString(Record.SourceTransactionSummary.FinalReviewStatus));
 		Json->SetObjectField(TEXT("source_transaction_summary"), Summary);
@@ -691,6 +699,8 @@ public:
 			ReadReviewStringArray(*Summary, TEXT("operation_kinds"), OutRecord.SourceTransactionSummary.OperationKinds);
 			ReadReviewStringArray(*Summary, TEXT("asset_paths"), OutRecord.SourceTransactionSummary.AssetPaths);
 			ReadReviewStringArray(*Summary, TEXT("transaction_ids"), OutRecord.SourceTransactionSummary.TransactionIds);
+			(*Summary)->TryGetStringField(TEXT("created_at_first"), OutRecord.SourceTransactionSummary.CreatedAtFirst);
+			(*Summary)->TryGetStringField(TEXT("created_at_last"), OutRecord.SourceTransactionSummary.CreatedAtLast);
 			FString FinalReviewStatus;
 			(*Summary)->TryGetStringField(TEXT("final_review_status"), FinalReviewStatus);
 			OutRecord.SourceTransactionSummary.FinalReviewStatus = ParseReviewChangeStatus(FinalReviewStatus);
@@ -797,6 +807,18 @@ public:
 		for (const FString& TransactionId : Incoming.SourceTransactionSummary.TransactionIds)
 		{
 			Existing.SourceTransactionSummary.TransactionIds.AddUnique(TransactionId);
+		}
+		if (!Incoming.SourceTransactionSummary.CreatedAtFirst.IsEmpty()
+			&& (Existing.SourceTransactionSummary.CreatedAtFirst.IsEmpty()
+				|| Incoming.SourceTransactionSummary.CreatedAtFirst < Existing.SourceTransactionSummary.CreatedAtFirst))
+		{
+			Existing.SourceTransactionSummary.CreatedAtFirst = Incoming.SourceTransactionSummary.CreatedAtFirst;
+		}
+		if (!Incoming.SourceTransactionSummary.CreatedAtLast.IsEmpty()
+			&& (Existing.SourceTransactionSummary.CreatedAtLast.IsEmpty()
+				|| Incoming.SourceTransactionSummary.CreatedAtLast > Existing.SourceTransactionSummary.CreatedAtLast))
+		{
+			Existing.SourceTransactionSummary.CreatedAtLast = Incoming.SourceTransactionSummary.CreatedAtLast;
 		}
 		Existing.SourceTransactionSummary.TransactionCount =
 			Existing.SourceTransactionSummary.TransactionIds.Num();
@@ -1087,6 +1109,19 @@ TArray<FBlueprintHelperReviewRecord> FBlueprintHelperReviewStoreService::BuildRe
 		{
 			Record->SourceTransactionSummary.TransactionIds.AddUnique(Evidence.TransactionId);
 		}
+		if (!Evidence.CreatedAt.IsEmpty())
+		{
+			if (Record->SourceTransactionSummary.CreatedAtFirst.IsEmpty()
+				|| Evidence.CreatedAt < Record->SourceTransactionSummary.CreatedAtFirst)
+			{
+				Record->SourceTransactionSummary.CreatedAtFirst = Evidence.CreatedAt;
+			}
+			if (Record->SourceTransactionSummary.CreatedAtLast.IsEmpty()
+				|| Evidence.CreatedAt > Record->SourceTransactionSummary.CreatedAtLast)
+			{
+				Record->SourceTransactionSummary.CreatedAtLast = Evidence.CreatedAt;
+			}
+		}
 		for (const FString& DebugCaseId : Evidence.DebugCaseIds)
 		{
 			Record->DebugCaseIds.AddUnique(DebugCaseId);
@@ -1158,6 +1193,12 @@ TArray<FBlueprintHelperReviewRecord> FBlueprintHelperReviewStoreService::QueryRe
 			continue;
 		}
 		if (!Query.AssetPathFilter.IsEmpty() && Record.AssetPath != Query.AssetPathFilter)
+		{
+			continue;
+		}
+		if (!Query.TaskRunIdFilter.IsEmpty()
+			&& !Record.SourceTaskRunIds.Contains(Query.TaskRunIdFilter)
+			&& !Record.SourceTransactionSummary.TaskRunIds.Contains(Query.TaskRunIdFilter))
 		{
 			continue;
 		}
@@ -1320,6 +1361,14 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewStoreService::BuildReviewRecordSum
 	SourceSummary->SetArrayField(TEXT("operation_kinds"), FBlueprintHelperReviewStoreServiceLocalUtils::MakeReviewJsonStringArray(Record.SourceTransactionSummary.OperationKinds));
 	SourceSummary->SetArrayField(TEXT("asset_paths"), FBlueprintHelperReviewStoreServiceLocalUtils::MakeReviewJsonStringArray(Record.SourceTransactionSummary.AssetPaths));
 	SourceSummary->SetArrayField(TEXT("transaction_ids"), FBlueprintHelperReviewStoreServiceLocalUtils::MakeReviewJsonStringArray(Record.SourceTransactionSummary.TransactionIds));
+	if (!Record.SourceTransactionSummary.CreatedAtFirst.IsEmpty())
+	{
+		SourceSummary->SetStringField(TEXT("created_at_first"), Record.SourceTransactionSummary.CreatedAtFirst);
+	}
+	if (!Record.SourceTransactionSummary.CreatedAtLast.IsEmpty())
+	{
+		SourceSummary->SetStringField(TEXT("created_at_last"), Record.SourceTransactionSummary.CreatedAtLast);
+	}
 	SourceSummary->SetStringField(TEXT("final_review_status"),
 		BlueprintHelperReviewChangeStatusToString(Record.SourceTransactionSummary.FinalReviewStatus));
 	Json->SetObjectField(TEXT("source_transaction_summary"), SourceSummary);

@@ -2,7 +2,7 @@
 
 This guide connects a local Unreal Editor project, the BlueprintHelper Bridge, the BlueprintHelper MCP Server, and an AI agent.
 
-Task orchestration mainline: Agent -> MCP Task Tools -> Python/MCP Task Compiler -> UE Task Runtime -> Existing Capability Clusters.
+Task orchestration mainline: Agent -> MCP Task Tools -> Python Task Compiler -> UE Task Runtime -> Existing Capability Clusters.
 
 ## Prerequisites
 
@@ -28,6 +28,8 @@ Place the plugin at:
 ```
 
 Open the project in Unreal Editor, enable BlueprintHelper if needed, and rebuild the project if prompted.
+
+If you use an Unreal `BuildPlugin` package, that package covers only the UE plugin directory. It does not compile or include the sibling `ClaudePlugin/mcp` server. Keep the agent plugin package available separately, then build `ClaudePlugin/mcp` from that package before configuring the MCP client.
 
 ## 2. Build The MCP Server
 
@@ -133,7 +135,15 @@ Generic MCP client configuration:
 
 For Codex, Claude, or IDE agents, use the same command, args, and env fields in that client's MCP configuration format.
 
-## 7. Minimal Verification
+## 7. Optional TaskSpec CLI Entry
+
+The CLI is an alternate Agent entry for shell-capable environments. It does not replace MCP or the TaskSpec flow. It calls the same Python compiler, Bridge preview, and UE Task Runtime execution path as the MCP task tools.
+
+Use it when an Agent should keep output compact and avoid large MCP escaped JSON responses. Prefer `--format summary` for normal planning and review loops. Use `--format json` only when the Agent truly needs the full payload in context.
+
+See [TaskSpec_CLI_QuickStart.md](TaskSpec_CLI_QuickStart.md) for the CLI commands and usage rules.
+
+## 8. Minimal Verification
 
 Repository verification:
 
@@ -162,7 +172,7 @@ Expected result:
 
 If no Blueprint is active, the tool may still return a successful editor context with empty asset details. For destructive edits, do not use active context by default. Provide explicit `asset_path` and `target_graph`.
 
-## 8. First Safe Asset Read
+## 9. First Safe Asset Read
 
 List Blueprints:
 
@@ -178,7 +188,9 @@ Call blueprint_get_logic with target_blueprint=/Game/Blueprints/BP_Player.BP_Pla
 
 Use LogicMD or LogicJson for review and planning. Use raw JSON only for precise replay, import, or low-level graph diagnostics.
 
-## 9. Safe Write Checklist
+## 10. Safe Write Checklist
+
+The same TaskSpec-first checklist applies whether the Agent enters through MCP task tools or the optional TaskSpec CLI.
 
 For ordinary Agent editor-asset mutations, use the TaskSpec-first flow:
 
@@ -186,7 +198,7 @@ For ordinary Agent editor-asset mutations, use the TaskSpec-first flow:
 - Call `blueprinthelper_get_runtime_profile`.
 - Call `blueprinthelper_read_task_context`.
 - Produce `BlueprintHelper.TaskSpec.v1` with exact `asset_path`, target graph when relevant, allowed scope, resource references, failure policy, `validation.should_compile`, and `validation.should_save`.
-- Do not submit TaskPlan directly; it is produced by the Python/MCP Task Compiler.
+- Do not submit TaskPlan directly; it is produced by the Python Task Compiler.
 - Run `blueprinthelper_preview_task` and stop on blocked / failed preview.
 - Run `blueprinthelper_execute_task` only after preview passes.
 - Let UE Task Runtime handle TaskPlan execution, `execution_policy.should_compile` / `execution_policy.should_save`, transaction grouping, rollback, and diagnostics.

@@ -132,9 +132,10 @@ Compile validation is only for assets that have a Blueprint compile step.
 | `blueprint_class`, Blueprint graph, components, variables, class settings, signatures | `true` | Compile plus read-back |
 | `blueprint_interface` | `true` | Compile plus read-back |
 | `widget_blueprint`, UMG widget edits | `true` | Compile plus widget-tree read-back |
+| DataAsset Blueprint class fixture (`asset_type=blueprint_class`, `parent_class=PrimaryDataAsset`) | `true` | Compile plus class parent read-back |
 | `structure` / UserDefinedStruct | `false` | No Blueprint compile; verify fields by read-back |
 | `data_table` creation or row edits | `false` | No Blueprint compile; verify row struct and rows by read-back |
-| `data_asset` creation or property edits | `false` | No Blueprint compile; verify asset class and properties by read-back |
+| `data_asset` instance creation or property edits | `false` | No Blueprint compile; verify asset class and properties by read-back |
 | `input_action`, `input_mapping_context`, plain UObject properties | `false` | No Blueprint compile; verify properties by read-back |
 
 Do not report a skipped compile or `no_op` reuse as a compile failure for non-Blueprint data assets. For idempotent fixtures, `no_op` is acceptable only when read-back proves the existing asset matches the requested type and content.
@@ -181,6 +182,7 @@ Agent-facing `create_asset` fields under `behavior.asset`:
 | `parent_class` | Conditional | Parent UObject class for Blueprint-class, WidgetBlueprint, or DataAsset-style assets when the factory needs a base class. For ordinary Actor Blueprint fixtures, set `parent_class=Actor` or `/Script/Engine.Actor` even if an alias would normalize to Actor. |
 | `fields` | Conditional | Structure field definitions for `asset_type=structure`. Each entry names a field and type; optional `default_value` may seed the struct field. This is not DataTable row data. |
 | `row_struct` | Conditional | Required for `asset_type=data_table` or alias `datatable`. It points to the row UStruct asset used by the DataTable. Row values are edited later through the DataTable TaskSpec flow. |
+| `data_asset_class` | Conditional | Required for `asset_type=data_asset`. Must be a concrete `UDataAsset` subclass. In a new project, first create a Blueprint class with `asset_type=blueprint_class` and `parent_class=PrimaryDataAsset`, then pass that Blueprint asset path or generated class path here. Do not pass `/Script/Engine.DataAsset` or `/Script/Engine.PrimaryDataAsset`. |
 | `collision_policy` | Optional | Asset collision handling. Prefer `reuse_if_exists` for idempotent smoke fixtures or `fail_if_exists` when reuse would hide a setup problem. |
 
 ## 8. Component Behavior

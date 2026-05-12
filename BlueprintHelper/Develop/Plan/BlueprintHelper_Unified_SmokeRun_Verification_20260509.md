@@ -64,6 +64,19 @@ git diff --check
 
 ## Ring 1: Grouped Failures Rerun
 
+2026-05-12 update: Ring 1 grouped failures are closed for the current automated gate. The multi-filter command below only selected `BlueprintHelper.ObjectFirst.Export` in this environment, so the remaining filters were rerun as split reports under `Saved/Automation/UnifiedSmoke/Ring1_*`. Aggregate result: 12 tests, 12 succeeded, 0 warnings, 0 failed.
+
+Split report map:
+
+- `Ring1`: `BlueprintHelper.ObjectFirst.Export` (5 tests)
+- `Ring1_BlueprintVariableMetadata`: `BlueprintHelper.Safety.BlueprintVariable.SetMemberVariablePropertiesWritesMetadata`
+- `Ring1_TaskRuntimePartialFailureJournal`: `BlueprintHelper.ObjectFirst.Contract.TaskRuntimePartialFailureJournal`
+- `Ring1_ObjectPropertyInvalidDryRun`: `BlueprintHelper.TaskPlan.ObjectPropertyAdapter.ServiceDryRun.RejectsInvalidValue`
+- `Ring1_AssetFactoryStruct`: `BlueprintHelper.AssetFactory.CreatesUserDefinedStructWithFields`
+- `Ring1_AssetFactoryDataTable`: `BlueprintHelper.AssetFactory.CreatesDataTableWithRowStruct`
+- `Ring1_SignatureOverrideDryRun`: `BlueprintHelper.Signature.Service.EnsureOverrideEventCreateIfMissingDryRun`
+- `Ring1_SignatureOverrideExecute`: `BlueprintHelper.Signature.Service.EnsureOverrideEventCreateIfMissingExecute`
+
 目标: 先确认刚修完的 grouped failures 已经从 Full Automation 失败列表中移除。
 
 需要 rerun 的 Automation:
@@ -394,7 +407,7 @@ Editor: F:/UE_5.6/Engine/Binaries/Win64/UnrealEditor.exe
 Branch: CombatSystemUpgrade
 
 Ring 0 baseline: PASS
-Ring 1 grouped failures: FAIL (1 test — EnsureOverrideEventCreateIfMissingExecute, Automation验证层)
+Ring 1 grouped failures: PASS (2026-05-12 split reports: 12/12 succeeded, 0 warnings, 0 failed)
 Ring 2 MCP regression: PASS (140/140 subtests)
 Ring 3 P1 disposable fixtures: PASS (2026-05-10: 3.1 same-graph `branch_fork + owned_block_call` execute/read-back PASS; 3.3/3.4 verified)
 Ring 4 TaskRunJournal controlled failure: PASS (Automation verified)
@@ -436,7 +449,7 @@ ReviewRecord ids:
 DebugCase ids: (none — normal operations)
 DebugBundle manifest ids: (none)
 
-Failures: 1 (Ring 1 - EnsureOverrideEventCreateIfMissingExecute — Automation 验证层问题)
+Failures: 0 for the 2026-05-12 Ring 1 grouped failure rerun. Historical failures below are superseded unless explicitly marked open.
 Blocked by fixture:
   - Closed 2026-05-10: Ring 3.1 `merge_owned_graph + branch_fork + owned_block_call` covered by `Saved/Automation/BranchForkOwnedBlockCall`
   - Ring 3.2 UMG Widget — AssetFactory 创建 UserWidget 输出普通 Blueprint 而非 WidgetBlueprint
@@ -476,7 +489,9 @@ Final verdict: CONDITIONAL PASS (唯一 FAIL 是临时 BP 测试验证问题，M
 
 | 测试 | 状态 | 错误 |
 |------|------|------|
-| BlueprintHelper.Signature.Service.EnsureOverrideEventCreateIfMissingExecute | **Fail** | `override event node exists` = null, `override function flag set` = false |
+| BlueprintHelper.Signature.Service.EnsureOverrideEventCreateIfMissingExecute | **Closed 2026-05-12** | passes in `Saved/Automation/UnifiedSmoke/Ring1_SignatureOverrideExecute`; read-back finds `ReceiveAnyDamage` and second ensure is no-op |
+
+2026-05-12 root-cause update: the old failure was not just a test read-back issue. `EnsureOverrideEvent` was creating/checking native override events with the inherited skeleton function class, while UE stores the event reference against the original declaration class (for example `Actor`). The service now resolves the declaration function/signature class before create and no-op lookup, and the test covers the second ensure no-op path.
 
 ### 失败分析 (2026-05-09 09:26 更新)
 
@@ -582,6 +597,8 @@ Ring 1c Automation 中 `TaskRuntimePartialFailureJournal` 测试已通过。该�
 
 **2026-05-10 update**: the composite preview empty-issues blocker is fixed at the MCP wrapper layer. `dry_run.can_execute=false` now produces a non-empty blocked issue (`task_preview_blocked`) even when UE returns no errors/conflicts/warnings. Regression coverage: `preview_task surfaces composite dry-run can_execute false as a blocked issue when issues are absent`.
 
+**2026-05-12 update**: composite execute now has UE Automation coverage. `BlueprintHelper.TaskRuntime.Composite.CreateBlueprintFeatureExecuteReadBack` executes a disposable Actor Blueprint through component + variable + signature + graph_write TaskPlan steps, then read-backs the SCS component, member variable, custom event, graph body exec link, and completed TaskRunJournal. Report: `Saved/Automation/CompositeCreateBlueprintFeatureExecute`.
+
 **复合路径**: `create_blueprint_feature` composite 在所有组合下被 blocked（空 issues）。改为独立 TaskSpec 验证各 capability：
 
 | Capability | TaskSpec 类型 | task_run_id | 结果 |
@@ -606,7 +623,7 @@ Ring 1c Automation 中 `TaskRuntimePartialFailureJournal` 测试已通过。该�
 | ensure_custom_event | MCP TaskSpec | ✅ created, EventGraph 中可见 |
 | ensure_override_event dry-run | Automation Ring1h | ✅ PASS |
 | ensure_override_event execute | MCP TaskSpec | ✅ created, read-back 可见 |
-| ensure_override_event execute | Automation Ring1i | ❌ 测试验证问题 (详见 Ring 1 分析) |
+| ensure_override_event execute | Automation Ring1i | Closed 2026-05-12: `Saved/Automation/UnifiedSmoke/Ring1_SignatureOverrideExecute`, 1 succeeded, 0 warnings, 0 failed |
 
 ### 7.2 ObjectProperty
 
@@ -691,7 +708,7 @@ Automation evidence:
 
 | # | 优先级 | 问题 | 位置 |
 |---|--------|------|------|
-| 1 | P0 | `EnsureOverrideEventCreateIfMissingExecute` — Automation 临时 BP 验证失败 | Tests/...BlueprintHelperSignatureServiceTests.cpp:777-779 |
+| 1 | CLOSED 2026-05-12 | `EnsureOverrideEventCreateIfMissingExecute` fixed: override event uses declaration function/signature class, read-back finds `ReceiveAnyDamage`, and second ensure no-ops | `Saved/Automation/UnifiedSmoke/Ring1_SignatureOverrideExecute` |
 | 2 | CLOSED 2026-05-10 | `create_blueprint_feature` composite blocked empty issues fixed by MCP blocked-issue fallback | `ClaudePlugin/mcp/src/task-tools.ts` |
 | 3 | P2 | `edit_blueprint_variables` 独立 TaskSpec 格式不支持 | MCP TaskSpec 编译器 |
 | 4 | CLOSED 2026-05-10 | `merge_owned_graph + branch_fork + owned_block_call` same-graph fixture verified | `Saved/Automation/BranchForkOwnedBlockCall` |

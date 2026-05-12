@@ -311,6 +311,7 @@ struct FBlueprintHelperAppendJournalRecord
 	FString TransactionId;
 	FString ArchiveSessionId;
 	FString TaskRunId;
+	FString CreatedAt;
 	FString Tool = TEXT("AppendBlueprintGraph");
 	FString Status;
 	TArray<FString> TargetAssets;
@@ -330,6 +331,7 @@ struct FBlueprintHelperAppendJournalRecord
 		Json->SetStringField(TEXT("transaction_id"), TransactionId);
 		if (!ArchiveSessionId.IsEmpty()) Json->SetStringField(TEXT("archive_session_id"), ArchiveSessionId);
 		if (!TaskRunId.IsEmpty()) Json->SetStringField(TEXT("task_run_id"), TaskRunId);
+		if (!CreatedAt.IsEmpty()) Json->SetStringField(TEXT("created_at"), CreatedAt);
 		Json->SetStringField(TEXT("tool"), Tool);
 		if (!Status.IsEmpty()) Json->SetStringField(TEXT("status"), Status);
 		if (TargetAssets.Num() > 0)

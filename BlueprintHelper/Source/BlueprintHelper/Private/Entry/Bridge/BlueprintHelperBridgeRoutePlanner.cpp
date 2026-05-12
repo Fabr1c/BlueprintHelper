@@ -170,6 +170,11 @@ FBlueprintHelperBridgeRoutePlan FBlueprintHelperBridgeRoutePlanner::BuildPlan(co
 		return FBlueprintHelperBridgeRoutePlannerLocalUtils::MakePlan(Command, EBlueprintHelperBridgeRouteCluster::CleanupOwnership);
 	}
 
+	if (Command == TEXT("query_review_records"))
+	{
+		return FBlueprintHelperBridgeRoutePlannerLocalUtils::MakePlan(Command, EBlueprintHelperBridgeRouteCluster::Review);
+	}
+
 	if (Command == TEXT("list_blueprint_helper_transactions") ||
 		Command == TEXT("read_blueprint_helper_transaction"))
 	{
@@ -217,6 +222,8 @@ const TCHAR* FBlueprintHelperBridgeRoutePlanner::GetClusterName(EBlueprintHelper
 		return TEXT("EditorCommand");
 	case EBlueprintHelperBridgeRouteCluster::CleanupOwnership:
 		return TEXT("CleanupOwnership");
+	case EBlueprintHelperBridgeRouteCluster::Review:
+		return TEXT("Review");
 	case EBlueprintHelperBridgeRouteCluster::Transactions:
 		return TEXT("Transactions");
 	case EBlueprintHelperBridgeRouteCluster::AnimationBlueprint:

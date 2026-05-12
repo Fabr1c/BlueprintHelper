@@ -7,7 +7,8 @@ UMG、DataAsset、DataTable 和 UObject 属性写入都走 TaskSpec-first。不�
 ## Validation Policy
 
 - WidgetBlueprint / UMG writes may request `validation.should_compile=true`.
-- DataAsset, DataTable, UserDefinedStruct, InputAction, InputMappingContext, and plain UObject property writes must use `validation.should_compile=false`.
+- DataAsset instances, DataTable, UserDefinedStruct, InputAction, InputMappingContext, and plain UObject property writes must use `validation.should_compile=false`.
+- A Blueprint class used as a DataAsset type is created with `asset_type=blueprint_class`, usually `parent_class=PrimaryDataAsset`, and must use `validation.should_compile=true`.
 - These data assets do not have a Blueprint compile step. Validate them by read-back: fields, row struct, rows, asset class, or property values.
 - Do not treat `no_op` reuse as failure when the existing fixture passes read-back.
 
@@ -56,6 +57,28 @@ TaskSpec behavior:
       }
     }
   ]
+}
+```
+
+## DataAsset
+
+DataAsset instance creation requires a concrete `UDataAsset` subclass. Do not instantiate abstract base classes. When a smoke or workflow needs a project-owned DataAsset with editable fields, create the DataAsset Blueprint class first, then create the DA instance from that class.
+
+1. Create a Blueprint class asset with `asset_type=blueprint_class`, `parent_class=PrimaryDataAsset`, and `validation.should_compile=true`.
+2. Create the DataAsset instance with `asset_type=data_asset`, `data_asset_class` set to the Blueprint class asset path or generated class path, and `validation.should_compile=false`.
+3. Do not use `/Script/Engine.DataAsset` or `/Script/Engine.PrimaryDataAsset` as the DA instance class. They are base classes, and `PrimaryDataAsset` is abstract.
+4. Validate the DA instance by read-back: asset exists and its class is the generated class from the Blueprint class asset.
+
+TaskSpec behavior for the DA instance:
+
+```json
+{
+  "asset_strategy": "ensure_asset",
+  "asset": {
+    "asset_type": "data_asset",
+    "data_asset_class": "/Game/BlueprintHelper/Smoke/BP_BHSmokeDataAssetClass",
+    "collision_policy": "reuse_if_exists"
+  }
 }
 ```
 

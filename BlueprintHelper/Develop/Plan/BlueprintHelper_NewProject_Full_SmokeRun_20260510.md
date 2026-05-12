@@ -37,7 +37,7 @@ ${SMOKE_ROOT}/DA_BHSmokeData
 - Expected negative cases must return a non-empty `issues[]` with `code`, `path`, and `message`.
 - Every successful execute must return a non-empty `task_run_id`; `blueprinthelper_get_task_result` must load the UE TaskRunJournal.
 - `validation.should_compile` and `validation.should_save` must be explicit for every write.
-- Compile validation is only for Blueprint-backed assets. `structure`, `data_table`, `data_asset`, `input_action`, `input_mapping_context`, and plain UObject property writes must use `validation.should_compile=false` and pass by read-back.
+- Compile validation is only for Blueprint-backed assets. `structure`, `data_table`, `data_asset` instances, `input_action`, `input_mapping_context`, and plain UObject property writes must use `validation.should_compile=false` and pass by read-back. A Blueprint class used as a DataAsset class is still `asset_type=blueprint_class` and must use `validation.should_compile=true`.
 - `no_op` is acceptable for idempotent fixture creation when read-back proves the existing asset type and content match the requested fixture. Do not classify `no_op` on ST/DT/DA as a compile failure.
 - MCP responses must not expose DebugBundle local paths, raw payloads, source content, tokens, settings, or `debug_export_refs`.
 - ReviewRecord may store `debug_case_ids[]`; it must not inline DebugBundle payload or local bundle paths.
@@ -45,7 +45,13 @@ ${SMOKE_ROOT}/DA_BHSmokeData
 
 ## 2. Baseline Build And Local Regression
 
-Run from the plugin repo or copied project plugin folder.
+Run from the plugin repo or copied project plugin folder. Treat the UE plugin and MCP server as separate build artifacts: Unreal `BuildPlugin` packages the UE plugin directory, but it does not compile or package the sibling `ClaudePlugin/mcp` server by itself.
+
+Before the smoke, verify:
+
+- UE side: the target project has rebuilt the BlueprintHelper editor module for the target engine/project.
+- Packaged UE plugin side: `Resources/AgentGuide/...` exists in the package. `Config/FilterPlugin.ini` must package resources recursively.
+- MCP side: `ClaudePlugin/mcp/build/index.js` exists and was produced from the current TypeScript sources.
 
 ```powershell
 & "$env:ENGINE_DIR\Build\BatchFiles\Build.bat" `
@@ -223,9 +229,10 @@ Run equivalent `create_asset` TaskSpecs. Compile only assets that have a Bluepri
 | `${SMOKE_ROOT}/ST_BHSmokeDamageRow` | `structure` | `fields=[Damage:int, DisplayName:string]` | `false` | fields exist by read-back |
 | `${SMOKE_ROOT}/DT_BHSmokeDamage` | `data_table` | `row_struct="${SMOKE_ROOT}/ST_BHSmokeDamageRow"` | `false` | DataTable uses row struct by read-back |
 | `${SMOKE_ROOT}/WBP_BHSmokePanel` | `widget_blueprint` | `parent_class=UserWidget` | `true` | WidgetBlueprint exists and compile has no fatal error |
-| `${SMOKE_ROOT}/DA_BHSmokeData` | `data_asset` | `data_asset_class=/Script/Engine.DataAsset` | `false` | DataAsset exists by read-back |
+| `${SMOKE_ROOT}/BP_BHSmokeDataAssetClass` | `blueprint_class` | `parent_class=PrimaryDataAsset` | `true` | Blueprint class exists, parent is PrimaryDataAsset, compile succeeds |
+| `${SMOKE_ROOT}/DA_BHSmokeData` | `data_asset` | `data_asset_class="${SMOKE_ROOT}/BP_BHSmokeDataAssetClass"` | `false` | DataAsset exists and its class is the generated class from `BP_BHSmokeDataAssetClass` |
 
-For ST/DT/DA, do not request compile and do not fail the smoke for missing compile output. If the create step returns `no_op` because the fixture already exists, run read-back and only fail when the asset type or content is wrong.
+For ST/DT/DA instance assets, do not request compile and do not fail the smoke for missing compile output. DataAsset instances must specify a concrete `UDataAsset` subclass through `data_asset_class`; in a new project smoke, create the PrimaryDataAsset Blueprint class first and compile that class. If the create step returns `no_op` because the fixture already exists, run read-back and only fail when the asset type or content is wrong.
 
 ## 7. Blueprint Capability Ring
 
@@ -757,7 +764,7 @@ Before declaring pass, collect these facts:
 |---|---|
 | Build | project editor target builds |
 | MCP contract | TypeScript, Python, Node tests pass |
-| AssetFactory | BP, BPI, struct, DataTable, WidgetBlueprint, DataAsset exist |
+| AssetFactory | BP, BPI, struct, DataTable, WidgetBlueprint, DataAsset Blueprint class, DataAsset instance exist |
 | Components | component tree includes smoke components |
 | Variables | member variables/defaults exist or known gap recorded |
 | Signature | function, custom event, dispatcher, override event visible |

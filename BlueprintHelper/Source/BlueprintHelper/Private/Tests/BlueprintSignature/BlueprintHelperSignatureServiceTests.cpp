@@ -115,6 +115,25 @@ public:
 		return nullptr;
 	}
 
+	static UFunction* ResolveSignatureEventDeclarationFunction(UFunction* EventFunction)
+	{
+		while (EventFunction && EventFunction->GetSuperFunction())
+		{
+			EventFunction = EventFunction->GetSuperFunction();
+		}
+		return EventFunction;
+	}
+
+	static UClass* ResolveSignatureEventDeclarationClass(UFunction* EventFunction, UClass* FallbackSignatureClass)
+	{
+		UClass* EventSignatureClass = EventFunction ? EventFunction->GetOwnerClass() : nullptr;
+		if (!EventSignatureClass)
+		{
+			EventSignatureClass = FallbackSignatureClass;
+		}
+		return EventSignatureClass ? EventSignatureClass->GetAuthoritativeClass() : nullptr;
+	}
+
 	static UK2Node_Event* FindSignatureOverrideEvent(UBlueprint* Blueprint, const FString& EventName)
 	{
 		if (!Blueprint)
@@ -132,8 +151,14 @@ public:
 		{
 			return nullptr;
 		}
+		UFunction* const EventDeclarationFunction = ResolveSignatureEventDeclarationFunction(EventFunction);
+		UClass* const EventSignatureClass = ResolveSignatureEventDeclarationClass(EventDeclarationFunction, SignatureClass);
+		if (!EventDeclarationFunction || !EventSignatureClass)
+		{
+			return nullptr;
+		}
 
-		if (UK2Node_Event* ExistingEvent = FBlueprintEditorUtils::FindOverrideForFunction(Blueprint, SignatureClass, EventFName))
+		if (UK2Node_Event* ExistingEvent = FBlueprintEditorUtils::FindOverrideForFunction(Blueprint, EventSignatureClass, EventFName))
 		{
 			return ExistingEvent;
 		}
@@ -156,7 +181,8 @@ public:
 				}
 
 				const UClass* MemberParentClass = EventNode->EventReference.GetMemberParentClass(EventNode->GetBlueprintClassFromNode());
-				if (MemberParentClass && MemberParentClass->IsChildOf(SignatureClass))
+				if (MemberParentClass &&
+					(MemberParentClass->IsChildOf(EventSignatureClass) || EventSignatureClass->IsChildOf(MemberParentClass)))
 				{
 					return EventNode;
 				}
@@ -807,6 +833,13 @@ bool FBlueprintHelperSignatureServiceEnsureOverrideEventCreateIfMissingExecuteTe
 	UK2Node_Event* EventNode = FBlueprintHelperSignatureServiceTestsLocalUtils::FindSignatureOverrideEvent(Blueprint, EventName);
 	TestNotNull(TEXT("override event node exists"), EventNode);
 	TestTrue(TEXT("override function flag set"), EventNode && EventNode->bOverrideFunction);
+
+	const int32 NodeCountAfterFirst = Graph ? Graph->Nodes.Num() : 0;
+	const FBlueprintHelperToolResultBase SecondResult = SignatureService.EnsureOverrideEvent(Request);
+	TestTrue(TEXT("second override event ensure succeeds"), SecondResult.bOk);
+	TestEqual(TEXT("second override event ensure is no-op"), SecondResult.Status, EBlueprintHelperToolStatus::NoOp);
+	TestFalse(TEXT("second override event ensure does not modify"), SecondResult.bModified);
+	TestEqual(TEXT("second override event ensure does not add node"), Graph ? Graph->Nodes.Num() : 0, NodeCountAfterFirst);
 	return true;
 }
 

@@ -1,18 +1,18 @@
 /**
- * MCP Tools 注册
+ * MCP Tools 娉ㄥ唽
  *
- * �?42 �?Bridge 命令映射�?MCP 工具，另提供 2 个本地生命周期工具�?
- * Phase 1-3: 8 个蓝图操�?逻辑读取工具
- * Phase 4:   5 个资产浏览工�?
- * Phase 5:   9 个蓝图结构操作工�?
- * Phase 6:   6 �?UMG Widget 操作工具
- * Phase 7:   6 �?DataAsset & DataTable 操作工具
- * Phase 8:   6 个编辑器命令工具
+ * 锟?42 锟?Bridge 鍛戒护鏄犲皠锟?MCP 宸ュ叿锛屽彟鎻愪緵 2 涓湰鍦扮敓鍛藉懆鏈熷伐鍏凤拷?
+ * Phase 1-3: 8 涓摑鍥炬搷锟?閫昏緫璇诲彇宸ュ叿
+ * Phase 4:   5 涓祫浜ф祻瑙堝伐锟?
+ * Phase 5:   9 涓摑鍥剧粨鏋勬搷浣滃伐锟?
+ * Phase 6:   6 锟?UMG Widget 鎿嶄綔宸ュ叿
+ * Phase 7:   6 锟?DataAsset & DataTable 鎿嶄綔宸ュ叿
+ * Phase 8:   6 涓紪杈戝櫒鍛戒护宸ュ叿
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { BridgeClient, BridgeResponse } from '../../bridge/bridge-client.js';
+import { BridgeClient, BridgeResponse } from '@blueprinthelper/task-core/bridge/bridge-client';
 import {
   McpResponseMode,
   buildBlueprintToolResult,
@@ -38,7 +38,7 @@ import { execFile, spawn } from 'node:child_process';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 
-/** 编辑�?引擎路径配置 */
+/** 缂栬緫锟?寮曟搸璺緞閰嶇疆 */
 export interface EditorConfig {
   ueEngineDir: string;
   taskCompiler?: TaskToolsConfig['taskCompiler'];
@@ -73,7 +73,28 @@ function preflightOnlyDescription(description: string): string {
   return `Preflight only. ${description} Use this only to start the explicit target editor before TaskSpec-first work. ${LEGACY_TOOL_GUIDANCE}`;
 }
 
-/** �?Bridge 响应转换�?MCP tool result */
+type RegisterToolConfig = { description?: string };
+type RegisterToolHandler = (...args: unknown[]) => unknown;
+type RegisterToolWrapper = (
+  name: string,
+  toolConfig: RegisterToolConfig,
+  handler: RegisterToolHandler,
+) => unknown;
+
+function unregisterFrozenToolRegistrations(server: McpServer): void {
+  const mutableServer = server as unknown as { registerTool: RegisterToolWrapper };
+  const registerTool = mutableServer.registerTool.bind(server);
+
+  mutableServer.registerTool = (name, toolConfig, handler) => {
+    if (toolConfig.description?.startsWith(FROZEN_TOOL_PREFIX)) {
+      return undefined;
+    }
+
+    return registerTool(name, toolConfig, handler);
+  };
+}
+
+/** 锟?Bridge 鍝嶅簲杞崲锟?MCP tool result */
 function toToolResult(resp: BridgeResponse, isError = false) {
   return {
     content: [{ type: 'text' as const, text: JSON.stringify(resp, null, 2) }],
@@ -215,7 +236,7 @@ function makeLogicJsonStructured(
 
 function getRawJsonPayload(normalizedPayload: unknown) {
   if (!isRecord(normalizedPayload)) return normalizedPayload;
-  // payload 是主要字段（object-first），json 是兼容回退
+  // payload 鏄富瑕佸瓧娈碉紙object-first锛夛紝json 鏄吋瀹瑰洖閫€
   if (normalizedPayload['payload'] !== undefined) return normalizedPayload['payload'];
   if (normalizedPayload['json'] !== undefined) return normalizedPayload['json'];
   return normalizedPayload;
@@ -240,7 +261,7 @@ function toMarkdownToolResult(
   });
 }
 
-/** �?Bridge 错误转换�?MCP tool error result */
+/** 锟?Bridge 閿欒杞崲锟?MCP tool error result */
 function toErrorResult(err: unknown) {
   const message = err instanceof Error ? err.message : String(err);
   return {
@@ -412,8 +433,9 @@ function extractReadPayloadFromBridgeResult(result: unknown): {
 
 export function registerTools(server: McpServer, bridge: BridgeClient, config: EditorConfig): void {
   registerTaskTools(server, bridge, config);
+  unregisterFrozenToolRegistrations(server);
 
-  // ─── 1. read_agent_guide ───
+  // 鈹€鈹€鈹€ 1. read_agent_guide 鈹€鈹€鈹€
   server.registerTool(
     'blueprinthelper_read_agent_guide',
     {
@@ -517,7 +539,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 2. get_editor_context ───
+  // 鈹€鈹€鈹€ 2. get_editor_context 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_get_editor_context',
     {
@@ -534,12 +556,12 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 2.5. get_runtime_profile ───
+  // 鈹€鈹€鈹€ 2.5. get_runtime_profile 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_get_runtime_profile',
     {
       description:
-        '获取当前 BlueprintHelper 运行时事实：版本、Bridge 连接状态、配置状态、写权限、风险命令状态、当前安全档位、不可用能力列表。Agent 应在每次会话开始时调用此工具以了解当前环境能力�?,
+        'Get the current BlueprintHelper runtime profile: version, Bridge status, config status, write permission, risk command status, security profile, and unavailable capabilities.',
       inputSchema: z.object({}),
     },
     async () => {
@@ -549,12 +571,12 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
           return toToolResult(resp);
         }
 
-        // 尝试解析 UE 侧已序列化的 ToolResultBase
+        // 灏濊瘯瑙ｆ瀽 UE 渚у凡搴忓垪鍖栫殑 ToolResultBase
         const raw = resp.result as Record<string, unknown> | undefined;
         if (raw && typeof raw['ok'] === 'boolean') {
           const data = raw['data'] as Record<string, unknown> | undefined;
           const version = typeof data?.['version'] === 'string' ? data['version'] : 'unknown';
-          // UE 侧已经返回了 ToolResultBase JSON，直接使�?
+          // UE 渚у凡缁忚繑鍥炰簡 ToolResultBase JSON锛岀洿鎺ヤ娇锟?
           return {
             content: [{ type: 'text' as const, text: `get_runtime_profile ${raw['status'] ?? 'completed'}: version=${version}, modified=${raw['modified'] ?? false}.` }],
             isError: !raw['ok'],
@@ -562,7 +584,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
           };
         }
 
-        // 回退：用 normalizeToolResult 标准�?
+        // 鍥為€€锛氱敤 normalizeToolResult 鏍囧噯锟?
         const result = normalizeToolResult(resp, 'get_runtime_profile');
         return toMcpResult(result);
       } catch (err) {
@@ -571,7 +593,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 2.6. diagnostics (Static) ───
+  // 鈹€鈹€鈹€ 2.6. diagnostics (Static) 鈹€鈹€鈹€
   server.registerTool(
     'blueprinthelper_request_write_session',
     {
@@ -697,7 +719,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
           });
         }
 
-        // 检�?CLAUDE.md（Global guidance�?
+        // 妫€锟?CLAUDE.md锛圙lobal guidance锟?
         const globalClaudePath = path.join(
           process.env['USERPROFILE'] ?? process.env['HOME'] ?? '',
           '.claude',
@@ -709,7 +731,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
           report.blocking.push({ code: 'global_guidance.missing' });
         }
 
-        // 检�?Skill 入口
+        // 妫€锟?Skill 鍏ュ彛
         const skillPath = path.join(
           process.env['USERPROFILE'] ?? process.env['HOME'] ?? '',
           '.claude',
@@ -723,13 +745,13 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
           report.warnings.push({ code: 'skill_entry.invalid' });
         }
 
-        // 检查项目目录结构（是否�?UE 项目�?
+        // 妫€鏌ラ」鐩洰褰曠粨鏋勶紙鏄惁锟?UE 椤圭洰锟?
         const uprojectFiles = fs
           .readdirSync(projectDir)
           .filter((f) => f.endsWith('.uproject'));
         if (uprojectFiles.length > 0) {
           report.info.push({ code: 'project_structure.valid' });
-          // 检�?Project Marker
+          // 妫€锟?Project Marker
           const projectClaudePath = path.join(projectDir, '.claude', 'CLAUDE.md');
           const projectAgentsPath = path.join(projectDir, 'AGENTS.md');
           if (
@@ -748,7 +770,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
           });
         }
 
-        // 检查版�?
+        // 妫€鏌ョ増锟?
         const packageJsonPath = path.join(
           process.cwd(),
           'plugins',
@@ -795,7 +817,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 2.7. diagnostics_runtime ───
+  // 鈹€鈹€鈹€ 2.7. diagnostics_runtime 鈹€鈹€鈹€
   server.registerTool(
     'blueprinthelper_diagnostics_runtime',
     {
@@ -810,7 +832,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
           return toToolResult(resp);
         }
 
-        // 尝试解析 UE 侧已序列化的 ToolResultBase
+        // 灏濊瘯瑙ｆ瀽 UE 渚у凡搴忓垪鍖栫殑 ToolResultBase
         const raw = resp.result as Record<string, unknown> | undefined;
         if (raw && typeof raw['ok'] === 'boolean') {
           const data = raw['data'] as Record<string, unknown> | undefined;
@@ -827,7 +849,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
           };
         }
 
-        // 回退：用 normalizeToolResult 标准�?
+        // 鍥為€€锛氱敤 normalizeToolResult 鏍囧噯锟?
         const result = normalizeToolResult(resp, 'diagnostics_runtime');
         return toMcpResult(result);
       } catch (err) {
@@ -836,25 +858,25 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 2.8. get_logic_md ───
+  // 鈹€鈹€鈹€ 2.8. get_logic_md 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_get_logic_md',
     {
       description:
-        legacyDebugExpertDescription('以低 Token 成本�?Markdown 格式阅读蓝图逻辑。旧版直接蓝图理解工具。指�?asset_path 和目标（graph/function/event/block_id）即可以人类可读格式获取蓝图执行流和数据依赖。不可用于导入�?),
+        legacyDebugExpertDescription('Read blueprint logic as Markdown. Legacy direct read tool.'),
       inputSchema: z.object({
         asset_path: z.string()
-          .describe('蓝图资产路径，例�?/Game/BP/BP_Player.BP_Player�?),
+          .describe('Blueprint asset path, e.g. /Game/BP/BP_Player.BP_Player'),
         graph: z.string().optional()
-          .describe('目标图表名，例如 EventGraph、EG_PhysicsDoor。默认使�?EventGraph�?),
+          .describe('Target graph name'),
         function: z.string().optional()
-          .describe('目标函数名。与 graph 互斥，指定此参数表示读取特定函数�?),
+          .describe('Target function name'),
         event: z.string().optional()
-          .describe('目标事件名。与 graph/function 互斥，指定此参数表示读取特定事件�?),
+          .describe('Target event name'),
         block_id: z.string().optional()
-          .describe('BlueprintHelper-owned block ID。与上述互斥，指定此参数表示读取特定 block�?),
+          .describe('BlueprintHelper-owned block id'),
         scope: z.enum(['blueprint', 'target_graph', 'target_function', 'target_event']).optional()
-          .describe('覆盖自动推断的作用域。blueprint=全蓝图、target_graph=单图表、target_function=单函数、target_event=单事件�?),
+          .describe('Optional explicit read scope'),
       }),
     },
     async ({ asset_path, graph, function: func, event, block_id, scope }) => {
@@ -871,7 +893,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
           return toToolResult(resp);
         }
 
-        // 尝试解析 UE 侧已序列化的 ToolResultBase
+        // 灏濊瘯瑙ｆ瀽 UE 渚у凡搴忓垪鍖栫殑 ToolResultBase
         const raw = resp.result as Record<string, unknown> | undefined;
         if (raw && typeof raw['ok'] === 'boolean') {
           const data = raw['data'] as Record<string, unknown> | undefined;
@@ -890,7 +912,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
           };
         }
 
-        // 回退
+        // 鍥為€€
         const result = normalizeToolResult(resp, 'read_blueprint_logic_md_by_target');
         return toMcpResult(result);
       } catch (err) {
@@ -899,15 +921,15 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 2.10. create_asset ───
+  // 鈹€鈹€鈹€ 2.10. create_asset 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_create_asset',
     {
       description:
-        legacyWriteExpertDescription('创建 UE 资产（Blueprint Class、Interface、Structure、Input Action、Input Mapping Context、DataAsset、DataTable）。支持冲突策�?fail_if_exists（默认）�?reuse_if_exists。返回标�?ToolResultBase�?),
+        legacyWriteExpertDescription('Create a UE asset such as a Blueprint class, input asset, DataAsset, or DataTable.'),
       inputSchema: z.object({
         asset_path: z.string()
-          .describe('资产路径，例�?/Game/Blueprints/BP_MyActor�?),
+          .describe('Asset path'),
         asset_type: z.enum([
           'blueprint_class',
           'blueprint_interface',
@@ -915,13 +937,13 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
           'input_action',
           'input_mapping_context',
           'data_asset',
-        ]).describe('要创建的资产类型�?),
+        ]).describe('Asset type to create'),
         parent_class: z.string().optional()
-          .describe('父类名称（仅 blueprint_class 需要），例�?Actor、Pawn、Character。默�?Actor�?),
+          .describe('Parent class name for blueprint_class assets'),
         value_type: z.string().optional()
-          .describe('Input Action 值类型（�?input_action 需要）：bool（默认）、axis1d、axis2d、axis3d�?),
+          .describe('Input Action value type'),
         collision: z.enum(['fail_if_exists', 'reuse_if_exists']).optional()
-          .describe('冲突策略。fail_if_exists=已存在则失败（默认），reuse_if_exists=同类型则复用已有资产�?),
+          .describe('Asset collision policy'),
       }),
     },
     async ({ asset_path, asset_type, parent_class, value_type, collision }) => {
@@ -933,7 +955,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
 
         const resp = await bridge.sendCommand('create_asset', payload);
 
-        // 尝试解析 UE 侧已序列化的 ToolResultBase
+        // 灏濊瘯瑙ｆ瀽 UE 渚у凡搴忓垪鍖栫殑 ToolResultBase
         const raw = resp.result as Record<string, unknown> | undefined;
         if (raw && typeof raw['ok'] === 'boolean') {
           const targetInfo = raw['target'] as Record<string, unknown> | undefined;
@@ -965,13 +987,13 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 2.11. read_components ───
+  // 鈹€鈹€鈹€ 2.11. read_components 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_read_components',
     {
-      description: legacyDebugExpertDescription('读取蓝图组件树（SCS），返回组件名、类名、父组件、子组件列表和统计。不修改资产�?),
+      description: legacyDebugExpertDescription('Read the Blueprint component tree.'),
       inputSchema: z.object({
-        asset_path: z.string().describe('蓝图资产路径，例�?/Game/BP/BP_Player.BP_Player�?),
+        asset_path: z.string().describe('Blueprint asset path'),
       }),
     },
     async ({ asset_path }) => {
@@ -988,19 +1010,19 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 2.12. add_component ───
+  // 鈹€鈹€鈹€ 2.12. add_component 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_add_component',
     {
-      description: legacyWriteExpertDescription('向蓝图添加组件。只负责创建+挂接，不设置属性。Transform/Collision/Physics 通过 set_component_property 设置�?),
+      description: legacyWriteExpertDescription('Add a component to a Blueprint.'),
       inputSchema: z.object({
-        asset_path: z.string().describe('蓝图资产路径�?),
-        component_name: z.string().describe('组件名�?),
-        component_class: z.string().describe('组件类，例如 StaticMeshComponent�?Script/Engine.SkeletalMeshComponent�?),
-        parent_component: z.string().optional().describe('父组件名。省略则挂到根组件�?),
-        socket_name: z.string().optional().describe('挂接�?Socket 名�?),
-        attach_rule: z.enum(['keep_relative', 'snap_to_target']).optional().describe('挂接规则。默�?keep_relative�?),
-        name_collision_policy: z.enum(['fail_if_exists', 'reuse_if_exists']).optional().describe('名称冲突策略。默�?fail_if_exists�?),
+        asset_path: z.string().describe('Blueprint asset path'),
+        component_name: z.string().describe('Component name'),
+        component_class: z.string().describe('Component class'),
+        parent_component: z.string().optional().describe('Parent component name'),
+        socket_name: z.string().optional().describe('Attach socket name'),
+        attach_rule: z.enum(['keep_relative', 'snap_to_target']).optional().describe('Attach rule'),
+        name_collision_policy: z.enum(['fail_if_exists', 'reuse_if_exists']).optional().describe('Name collision policy'),
       }),
     },
     async ({ asset_path, component_name, component_class, parent_component, socket_name, attach_rule, name_collision_policy }) => {
@@ -1023,16 +1045,16 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 2.13. set_component_property ───
+  // 鈹€鈹€鈹€ 2.13. set_component_property 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_set_component_property',
     {
-      description: legacyWriteExpertDescription('设置单个组件属性。支�?string/bool/number 值，支持点路径如 BodyInstance.bSimulatePhysics�?),
+      description: legacyWriteExpertDescription('Set a single Blueprint component property.'),
       inputSchema: z.object({
-        asset_path: z.string().describe('蓝图资产路径�?),
-        component_name: z.string().describe('组件名�?),
-        property_path: z.string().describe('属性路径，例如 Mobility、RelativeLocation.X、BodyInstance.bSimulatePhysics�?),
-        value: z.union([z.string(), z.boolean(), z.number()]).describe('属性值�?),
+        asset_path: z.string().describe('Blueprint asset path'),
+        component_name: z.string().describe('Component name'),
+        property_path: z.string().describe('Property path'),
+        value: z.union([z.string(), z.boolean(), z.number()]).describe('Property value'),
       }),
     },
     async ({ asset_path, component_name, property_path, value }) => {
@@ -1050,18 +1072,18 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 2.14. set_component_properties ───
+  // 鈹€鈹€鈹€ 2.14. set_component_properties 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_set_component_properties',
     {
-      description: legacyWriteExpertDescription('批量设置组件属性。事务式：任一属性验证失败则不应用任何属性�?),
+      description: legacyWriteExpertDescription('Set multiple Blueprint component properties transactionally.'),
       inputSchema: z.object({
-        asset_path: z.string().describe('蓝图资产路径�?),
-        component_name: z.string().describe('组件名�?),
+        asset_path: z.string().describe('Blueprint asset path'),
+        component_name: z.string().describe('Component name'),
         settings: z.array(z.object({
-          property_path: z.string().describe('属性路径�?),
-          value: z.union([z.string(), z.boolean(), z.number()]).describe('属性值�?),
-        })).describe('属性设置数组�?),
+          property_path: z.string().describe('Property path'),
+          value: z.union([z.string(), z.boolean(), z.number()]).describe('Property value'),
+        })).describe('Property settings'),
       }),
     },
     async ({ asset_path, component_name, settings }) => {
@@ -1079,14 +1101,14 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 2.15. remove_component ───
+  // 鈹€鈹€鈹€ 2.15. remove_component 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_remove_component',
     {
-      description: legacyWriteExpertDescription('删除蓝图中的组件。要求明确的 component_name。第一版不删除 DefaultSceneRoot 或带子组件的组件�?),
+      description: legacyWriteExpertDescription('Remove a component from a Blueprint.'),
       inputSchema: z.object({
-        asset_path: z.string().describe('蓝图资产路径�?),
-        component_name: z.string().describe('要删除的组件名�?),
+        asset_path: z.string().describe('Blueprint asset path'),
+        component_name: z.string().describe('Component name to remove'),
       }),
     },
     async ({ asset_path, component_name }) => {
@@ -1104,7 +1126,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 3. validate_json ───
+  // 鈹€鈹€鈹€ 3. validate_json 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_validate_json',
     {
@@ -1123,7 +1145,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 4. export_to_json ───
+  // 鈹€鈹€鈹€ 4. export_to_json 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_export_to_json',
     {
@@ -1211,7 +1233,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 5. get_logic ───
+  // 鈹€鈹€鈹€ 5. get_logic 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_get_logic',
     {
@@ -1274,7 +1296,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 6. get_logic_json ───
+  // 鈹€鈹€鈹€ 6. get_logic_json 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_get_logic_json',
     {
@@ -1363,7 +1385,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 7. import_json_to_graph ───
+  // 鈹€鈹€鈹€ 7. import_json_to_graph 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_import_json_to_graph',
     {
@@ -1417,7 +1439,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 8. import_agent_graph ───
+  // 鈹€鈹€鈹€ 8. import_agent_graph 鈹€鈹€鈹€
   const agentImportNodeSchema = z.object({
     id: z.string().describe('Local semantic node id'),
     kind: z.enum([
@@ -1488,7 +1510,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 9. compile_blueprint ───
+  // 鈹€鈹€鈹€ 9. compile_blueprint 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_compile_blueprint',
     {
@@ -1510,11 +1532,11 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ══════════════════════════════════════════════════════════�?
-  // Phase 4 �?资产浏览工具
-  // ══════════════════════════════════════════════════════════�?
+  // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲锟?
+  // Phase 4 锟?璧勪骇娴忚宸ュ叿
+  // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲锟?
 
-  // ─── 9. open_asset ───
+  // 鈹€鈹€鈹€ 9. open_asset 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_open_asset',
     {
@@ -1533,7 +1555,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 10. list_assets ───
+  // 鈹€鈹€鈹€ 10. list_assets 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_list_assets',
     {
@@ -1567,7 +1589,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 11. search_assets ───
+  // 鈹€鈹€鈹€ 11. search_assets 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_search_assets',
     {
@@ -1596,7 +1618,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 12. save_asset ───
+  // 鈹€鈹€鈹€ 12. save_asset 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_save_asset',
     {
@@ -1615,7 +1637,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 13. get_asset_info ───
+  // 鈹€鈹€鈹€ 13. get_asset_info 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_get_asset_info',
     {
@@ -1634,9 +1656,9 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ══════════════════════════════════════════════════════════�?
-  // Phase 5 �?蓝图结构查询与操作工�?
-  // ══════════════════════════════════════════════════════════�?
+  // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲锟?
+  // Phase 5 锟?钃濆浘缁撴瀯鏌ヨ涓庢搷浣滃伐锟?
+  // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲锟?
 
   const targetSchemaFields = {
     target_blueprint: z.string().optional()
@@ -1645,7 +1667,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
       .describe('Graph name. Omit to use the active/default graph.'),
   };
 
-  // ─── 14. list_graphs ───
+  // 鈹€鈹€鈹€ 14. list_graphs 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_list_graphs',
     {
@@ -1666,7 +1688,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 15. list_variables ───
+  // 鈹€鈹€鈹€ 15. list_variables 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_list_variables',
     {
@@ -1687,7 +1709,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 16. list_event_dispatchers ───
+  // 鈹€鈹€鈹€ 16. list_event_dispatchers 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_list_event_dispatchers',
     {
@@ -1708,7 +1730,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 17. add_variable ───
+  // 鈹€鈹€鈹€ 17. add_variable 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_add_variable',
     {
@@ -1746,11 +1768,11 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 18. remove_variable ───
+  // 鈹€鈹€鈹€ 18. remove_variable 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_remove_variable',
     {
-      description: legacyWriteExpertDescription('Remove a member variable from a blueprint by name. Idempotent �?succeeds if variable does not exist.'),
+      description: legacyWriteExpertDescription('Remove a member variable from a blueprint by name. Idempotent 锟?succeeds if variable does not exist.'),
       inputSchema: z.object({
         target_blueprint: targetSchemaFields.target_blueprint,
         name: z.string().describe('Variable name to remove'),
@@ -1768,7 +1790,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 19. add_graph ───
+  // 鈹€鈹€鈹€ 19. add_graph 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_add_graph',
     {
@@ -1816,7 +1838,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 20. remove_graph ───
+  // 鈹€鈹€鈹€ 20. remove_graph 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_remove_graph',
     {
@@ -1838,7 +1860,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 21. add_event_dispatcher ───
+  // 鈹€鈹€鈹€ 21. add_event_dispatcher 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_add_event_dispatcher',
     {
@@ -1870,7 +1892,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 22. delete_nodes ───
+  // 鈹€鈹€鈹€ 22. delete_nodes 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_delete_nodes',
     {
@@ -1893,14 +1915,14 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ══════════════════════════════════════════════════════════�?
-  // Phase 6 �?UMG Widget 操作工具
-  // ══════════════════════════════════════════════════════════�?
+  // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲锟?
+  // Phase 6 锟?UMG Widget 鎿嶄綔宸ュ叿
+  // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲锟?
 
   const widgetAssetPath = z.string()
     .describe('WidgetBlueprint asset path, e.g. /Game/UI/WBP_Main.WBP_Main');
 
-  // ─── 23. get_widget_tree ───
+  // 鈹€鈹€鈹€ 23. get_widget_tree 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_get_widget_tree',
     {
@@ -1919,7 +1941,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 24. add_widget ───
+  // 鈹€鈹€鈹€ 24. add_widget 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_add_widget',
     {
@@ -1947,7 +1969,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 25. remove_widget ───
+  // 鈹€鈹€鈹€ 25. remove_widget 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_remove_widget',
     {
@@ -1967,7 +1989,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 26. move_widget ───
+  // 鈹€鈹€鈹€ 26. move_widget 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_move_widget',
     {
@@ -1992,7 +2014,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 27. get_widget_properties ───
+  // 鈹€鈹€鈹€ 27. get_widget_properties 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_get_widget_properties',
     {
@@ -2012,7 +2034,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 28. set_widget_property ───
+  // 鈹€鈹€鈹€ 28. set_widget_property 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_set_widget_property',
     {
@@ -2036,9 +2058,9 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ══════════════════════════════════════════════════════════�?
-  // Phase 7 �?DataAsset & DataTable 操作 (Tools 29�?4)
-  // ══════════════════════════════════════════════════════════�?
+  // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲锟?
+  // Phase 7 锟?DataAsset & DataTable 鎿嶄綔 (Tools 29锟?4)
+  // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲锟?
 
   const objectAssetPath = z.string()
     .describe('Asset path to any UObject (DataAsset, DataTable, etc.), e.g. /Game/Data/DA_Example.DA_Example');
@@ -2046,7 +2068,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
   const dataTableAssetPath = z.string()
     .describe('DataTable asset path, e.g. /Game/Data/DT_Items.DT_Items');
 
-  // ─── 29. get_object_properties ───
+  // 鈹€鈹€鈹€ 29. get_object_properties 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_get_object_properties',
     {
@@ -2065,7 +2087,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 30. set_object_property ───
+  // 鈹€鈹€鈹€ 30. set_object_property 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_set_object_property',
     {
@@ -2088,7 +2110,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 31. get_datatable_rows ───
+  // 鈹€鈹€鈹€ 31. get_datatable_rows 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_get_datatable_rows',
     {
@@ -2111,7 +2133,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 32. add_datatable_row ───
+  // 鈹€鈹€鈹€ 32. add_datatable_row 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_add_datatable_row',
     {
@@ -2135,7 +2157,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 33. update_datatable_row ───
+  // 鈹€鈹€鈹€ 33. update_datatable_row 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_update_datatable_row',
     {
@@ -2159,7 +2181,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 34. delete_datatable_row ───
+  // 鈹€鈹€鈹€ 34. delete_datatable_row 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_delete_datatable_row',
     {
@@ -2179,11 +2201,11 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ══════════════════════════════════════════════�?
-  // Phase 8: 编辑器命�?(6 tools)
-  // ══════════════════════════════════════════════�?
+  // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲锟?
+  // Phase 8: 缂栬緫鍣ㄥ懡锟?(6 tools)
+  // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲锟?
 
-  // ─── 35. undo ───
+  // 鈹€鈹€鈹€ 35. undo 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_undo',
     {
@@ -2200,7 +2222,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 36. redo ───
+  // 鈹€鈹€鈹€ 36. redo 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_redo',
     {
@@ -2217,7 +2239,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 37. play_in_editor ───
+  // 鈹€鈹€鈹€ 37. play_in_editor 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_play_in_editor',
     {
@@ -2234,7 +2256,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 38. stop_pie ───
+  // 鈹€鈹€鈹€ 38. stop_pie 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_stop_pie',
     {
@@ -2251,7 +2273,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 39. create_blueprint ───
+  // 鈹€鈹€鈹€ 39. create_blueprint 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_create_blueprint',
     {
@@ -2271,7 +2293,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 40. exec_console_command ───
+  // 鈹€鈹€鈹€ 40. exec_console_command 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_exec_console_command',
     {
@@ -2290,11 +2312,11 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ══════════════════════════════════════════════════════════�?
+  // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲锟?
   // Editor Lifecycle Tools (41-43)
-  // ══════════════════════════════════════════════════════════�?
+  // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲锟?
 
-  // ─── 41. close_editor ───
+  // 鈹€鈹€鈹€ 41. close_editor 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_close_editor',
     {
@@ -2319,7 +2341,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 42. build_project ───
+  // 鈹€鈹€鈹€ 42. build_project 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_build_project',
     {
@@ -2417,7 +2439,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // ─── 43. open_editor ───
+  // 鈹€鈹€鈹€ 43. open_editor 鈹€鈹€鈹€
   server.registerTool(
   'blueprint_open_editor',
   {
@@ -2465,7 +2487,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
 
     let child;
     try {
-      // 启动当前项目�?.uproject，而不是打开�?Unreal Editor�?
+      // 鍚姩褰撳墠椤圭洰锟?.uproject锛岃€屼笉鏄墦寮€锟?Unreal Editor锟?
       child = spawn(editorExe, [uprojectFile], {
         detached: true,
         stdio: 'ignore',
@@ -2498,7 +2520,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
       };
     }
 
-    // 轮询 Bridge 直到可用�?
+    // 杞 Bridge 鐩村埌鍙敤锟?
     const startTime = Date.now();
     const pollIntervalMs = 3000;
 

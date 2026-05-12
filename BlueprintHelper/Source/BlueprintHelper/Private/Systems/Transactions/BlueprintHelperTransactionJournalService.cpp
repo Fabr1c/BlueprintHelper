@@ -262,6 +262,7 @@ public:
 			Evidence.ArchiveSessionId = ArchiveSessionId;
 			Evidence.TaskRunId = TaskRunId;
 			Evidence.TransactionId = Record.TransactionId;
+			Evidence.CreatedAt = Record.CreatedAt;
 			Evidence.AssetPath = AssetPath;
 			Evidence.OperationKind = Record.Tool;
 			Evidence.ChangeKind = DeriveReviewChangeKindFromTool(Record.Tool);
@@ -435,6 +436,12 @@ bool FBlueprintHelperTransactionJournalService::WriteAppendJournal(
 	const FBlueprintHelperAppendJournalRecord& Record,
 	FString& OutError) const
 {
+	FBlueprintHelperAppendJournalRecord RecordToWrite = Record;
+	if (RecordToWrite.CreatedAt.IsEmpty())
+	{
+		RecordToWrite.CreatedAt = FDateTime::UtcNow().ToIso8601();
+	}
+
 	const FString JournalDir = GetJournalRootPath();
 	if (!IFileManager::Get().DirectoryExists(*JournalDir))
 	{
@@ -452,7 +459,7 @@ bool FBlueprintHelperTransactionJournalService::WriteAppendJournal(
 	{
 		FString JournalJson;
 		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JournalJson);
-		if (!FJsonSerializer::Serialize(Record.ToJson(), Writer))
+		if (!FJsonSerializer::Serialize(RecordToWrite.ToJson(), Writer))
 		{
 			OutError = TEXT("Journal 记录 JSON 序列化失败。");
 			return false;
@@ -470,7 +477,7 @@ bool FBlueprintHelperTransactionJournalService::WriteAppendJournal(
 	{
 		FString ReviewJson;
 		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ReviewJson);
-		if (!FJsonSerializer::Serialize(Record.ToJson(), Writer))
+		if (!FJsonSerializer::Serialize(RecordToWrite.ToJson(), Writer))
 		{
 			OutError = TEXT("Review 记录 JSON 序列化失败。");
 			return false;
@@ -483,7 +490,7 @@ bool FBlueprintHelperTransactionJournalService::WriteAppendJournal(
 		}
 	}
 
-	const TArray<FBlueprintHelperWriteReviewEvidence> ReviewEvidences = FBlueprintHelperTransactionJournalServiceLocalUtils::BuildReviewEvidencesFromJournal(Record);
+	const TArray<FBlueprintHelperWriteReviewEvidence> ReviewEvidences = FBlueprintHelperTransactionJournalServiceLocalUtils::BuildReviewEvidencesFromJournal(RecordToWrite);
 	if (ReviewEvidences.Num() > 0)
 	{
 		FBlueprintHelperReviewStoreService ReviewStore;
