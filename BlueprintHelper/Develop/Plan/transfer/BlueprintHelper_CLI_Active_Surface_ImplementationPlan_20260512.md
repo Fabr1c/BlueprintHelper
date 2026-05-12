@@ -1,17 +1,17 @@
-# BlueprintHelper CLI MCP Active Surface Implementation Plan
+# BlueprintHelper CLI Active Surface Implementation Plan
 
 > **Status:** Revised after implementation review on 2026-05-12.
 
 ## Goal
 
-Make BlueprintHelper CLI cover the active non-frozen MCP tool surface through direct tool-name calls such as:
+Make BlueprintHelper CLI define the active non-frozen Agent-facing tool surface through direct tool-name calls such as:
 
 ```powershell
 bh blueprinthelper_preview_task --file .\task-spec.json --select status,summary,artifacts.full_result
 bh blueprint_get_runtime_profile --json "{}" --select status,summary
 ```
 
-The migration changes transport only. It must preserve:
+The migration establishes CLI as the only supported Agent entry. It must preserve:
 
 - TaskSpec-first writes.
 - Python Task Compiler orchestration.

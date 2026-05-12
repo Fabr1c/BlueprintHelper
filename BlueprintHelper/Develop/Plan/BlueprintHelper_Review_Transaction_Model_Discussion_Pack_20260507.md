@@ -83,7 +83,7 @@ Current ownership gap:
 
 | Area | File | Current meaning |
 | --- | --- | --- |
-| MCP tool API reference | `Docs/MCP_Tools_API_Reference.md` | Defines TaskSpec-first tool shape and Agent-visible `TaskRunJournal.v1` result access. |
+| CLI tool API reference | `Docs/CLI_Tools_API_Reference.md` | Defines TaskSpec-first command shape and Agent-visible `TaskRunJournal.v1` result access. |
 | Agent safety and recovery guide | `Resources/AgentGuide/Workflows/07_Safety_Validation_And_Recovery.md` | Agent-facing preview / execute recovery rules. It must not teach ReviewPanel operation. |
 | Task result store | `ClaudePlugin/task-core/src/task/runtime/task-result-store.ts` | MCP-side in-process and bridge journal normalization. |
 | Task result store tests | `ClaudePlugin/task-core/src/tests/task/task-result-store.test.ts` | Tests transaction_id extraction and TaskRunJournal normalization. |

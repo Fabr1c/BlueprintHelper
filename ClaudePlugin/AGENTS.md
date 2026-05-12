@@ -1,4 +1,4 @@
-# BlueprintHelper Agent Entry
+﻿# BlueprintHelper Agent Entry
 
 This repository contains the BlueprintHelper Unreal Engine editor plugin. When an AI / IDE / CLI agent is asked to use this plugin, read this file first, then open the guide index:
 
@@ -8,7 +8,7 @@ Resources/AgentGuide/00_Agent_Onboarding_Index_20260504.md
 
 ## Non-negotiable boundary
 
-BlueprintHelper MCP is not a general file-system, code-search, or C++ source-editing API. It is an Unreal Editor bridge for operating editor assets: Blueprint graphs, UMG widgets, DataAssets, DataTables, asset browser operations, compile/save/open, PIE/editor commands, and related diagnostics.
+BlueprintHelper is not a general file-system, code-search, or C++ source-editing API. The active Agent-facing transport is the BlueprintHelper CLI, which talks to a running Unreal Editor through the local Bridge. The deprecated MCP endpoint is compatibility/debug surface only and is not a supported Agent entry.
 
 Use normal repository tools for:
 
@@ -18,7 +18,7 @@ Use normal repository tools for:
 - Updating build scripts.
 - Writing AGENTS.md / memory / project instructions.
 
-Use BlueprintHelper MCP for:
+Use BlueprintHelper CLI / task-core tools for:
 
 - Reading or editing existing UE assets through the running Unreal Editor.
 - Creating or modifying Blueprint graphs, variables, functions, macros, nodes, links, and event dispatchers.
@@ -33,11 +33,12 @@ Use BlueprintHelper MCP for:
 2. Confirm the Bridge is reachable before calling editor-asset tools.
 3. Identify the exact target asset path, for example `/Game/Blueprints/BP_Player`.
 4. Identify the exact target graph when editing graph nodes, for example `EventGraph`.
-5. Prefer TaskSpec-first writes: read task context -> build `BlueprintHelper.TaskSpec.v1` -> preview task -> execute task -> read task result.
+5. Prefer TaskSpec-first writes through the CLI: read task context -> build `BlueprintHelper.TaskSpec.v1` -> preview task -> execute task -> read task result.
 6. If `write_permission` is disabled, call `blueprinthelper_request_write_session` after preview and before execute. The running Editor shows a simple accept/reject approval dialog; if the user rejects it, stop and report instead of trying another write path.
-7. Do not ask for or inject `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session` for ordinary interactive writes. The running Editor/Bridge owns the approved scope and lifetime, so delegated SideAgents can use BlueprintHelper tools after approval without receiving raw session data.
+7. Do not ask for or inject `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session` for ordinary interactive writes. The running Editor/Bridge owns the approved scope and lifetime, so delegated SideAgents can use BlueprintHelper CLI/task-core tools after approval without receiving raw session data.
 8. Never rely on the currently focused editor tab for destructive operations unless the user explicitly says to operate on the active context.
 
 ## Fast path
 
 Open `Resources/AgentGuide/00_Agent_Onboarding_Index_20260504.md` and follow the workflow matching the user request.
+

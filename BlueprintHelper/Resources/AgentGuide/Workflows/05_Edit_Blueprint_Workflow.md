@@ -2,7 +2,7 @@
 
 ## Goal
 
-以 TaskSpec-first 修改 UE 资产。Agent 只提交 `BlueprintHelper.TaskSpec.v1`，由 MCP/Python 编译器生成 TaskPlan，由 UE Task Runtime 调用内部 capability。
+以 TaskSpec-first 修改 UE 资产。Agent 只提交 `BlueprintHelper.TaskSpec.v1`，由 TaskSpec 编译器生成 TaskPlan，由 UE Task Runtime 调用内部 capability。
 
 ## Preflight
 
@@ -39,6 +39,8 @@ profile
 
 函数调用语句中的 `args` 只表示函数参数:
 
+`call_function.name` may be a native function name, a Blueprint display name, or an owner-qualified native name. Preview resolves it against the target Blueprint graph. If preview reports ambiguity, change `name` to an owner-qualified native name such as `/Script/Engine.KismetSystemLibrary:PrintString` and preview again.
+
 ```json
 {
   "kind": "call_function",
@@ -50,6 +52,16 @@ profile
       "value": "message"
     }
   }
+}
+```
+
+Explicit component/member calls are not part of the first CallFunction resolver slice. Preview blocks them instead of guessing target object ownership:
+
+```json
+{
+  "kind": "call_function",
+  "name": "DoorMesh.AddAngularImpulseInDegrees",
+  "args": {}
 }
 ```
 

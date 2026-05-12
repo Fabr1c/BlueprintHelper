@@ -7,6 +7,7 @@
 #include "Systems/Transactions/BlueprintHelperTransactionJournalService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
+#include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
 #include "Shared/BlueprintHelperToolResultTypes.h"
 
 #include "Engine/Blueprint.h"
@@ -238,7 +239,7 @@ FBlueprintHelperAppendBlueprintGraphService::Preflight(const FAppendRequest& Req
 	}
 
 	// 4. 检查节点
-	if (!PreflightNodePayload(Request, Graph, Result))
+	if (!PreflightNodePayload(Request, Blueprint, Graph, Result))
 	{
 		return Result;
 	}
@@ -339,6 +340,7 @@ bool FBlueprintHelperAppendBlueprintGraphService::PreflightGraphTarget(
 
 bool FBlueprintHelperAppendBlueprintGraphService::PreflightNodePayload(
 	const FAppendRequest& Request,
+	UBlueprint* Blueprint,
 	UEdGraph* Graph,
 	FAppendPreflightResult& OutResult) const
 {
@@ -365,6 +367,39 @@ bool FBlueprintHelperAppendBlueprintGraphService::PreflightNodePayload(
 
 		FString Kind;
 		NodeObject->TryGetStringField(TEXT("kind"), Kind);
+
+		if (Kind.Equals(TEXT("call"), ESearchCase::IgnoreCase))
+		{
+			FString FunctionName;
+			NodeObject->TryGetStringField(TEXT("function"), FunctionName);
+			if (FunctionName.IsEmpty())
+			{
+				NodeObject->TryGetStringField(TEXT("function_name"), FunctionName);
+			}
+			if (FunctionName.IsEmpty())
+			{
+				NodeObject->TryGetStringField(TEXT("name"), FunctionName);
+			}
+
+			FBlueprintHelperCallFunctionResolveRequest ResolveRequest;
+			ResolveRequest.Blueprint = Blueprint;
+			ResolveRequest.Graph = Graph;
+			ResolveRequest.Query = FunctionName;
+			const FBlueprintHelperCallFunctionResolveResult ResolveResult =
+				FBlueprintHelperCallFunctionResolver::Resolve(ResolveRequest);
+			if (FunctionName.IsEmpty() || !ResolveResult.IsResolved())
+			{
+				const FString ErrorCode = ResolveResult.ErrorCode.IsEmpty()
+					? TEXT("function_call_not_found")
+					: ResolveResult.ErrorCode;
+				const FString ErrorMessage = ResolveResult.Message.IsEmpty()
+					? FString::Printf(TEXT("call_function resolve failed: %s"), *FunctionName)
+					: ResolveResult.Message;
+				OutResult.bPassed = false;
+				OutResult.BlockedBy.Add(ErrorCode);
+				OutResult.Errors.Add({ErrorCode, ErrorMessage, TEXT("nodes[].function"), TEXT("payload")});
+			}
+		}
 
 		if (Kind.Equals(TEXT("event"), ESearchCase::IgnoreCase))
 		{

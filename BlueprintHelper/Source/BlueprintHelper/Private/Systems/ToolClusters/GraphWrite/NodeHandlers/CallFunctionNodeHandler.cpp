@@ -10,12 +10,26 @@ bool FCallFunctionNodeHandler::CanHandle(EParsedBlueprintNodeType NodeType) cons
 
 UK2Node* FCallFunctionNodeHandler::Spawn(UEdGraph* TargetGraph, const FParsedNode& NodeData, FString& OutError) const
 {
-	UFunction* TargetFunction = TextToBlueprintGenerator::FindFunctionByName(NodeData.FunctionName);
-	if (!TargetFunction)
+	const FBlueprintHelperCallFunctionResolveResult ResolveResult =
+		TextToBlueprintGenerator::ResolveFunctionForGraph(TargetGraph, NodeData.FunctionName, NodeData.DefaultValues);
+
+	if (!ResolveResult.IsResolved())
 	{
-		OutError = FString::Printf(TEXT("未找到蓝图函数：%s"), *NodeData.FunctionName);
+		OutError = ResolveResult.Message.IsEmpty()
+			? FString::Printf(TEXT("call_function resolve failed: %s"), *NodeData.FunctionName)
+			: ResolveResult.Message;
 		return nullptr;
 	}
 
-	return TextToBlueprintGenerator::SpawnFunctionNode(TargetGraph, TargetFunction, NodeData);
+	UK2Node* SpawnedNode = FBlueprintHelperCallFunctionResolver::SpawnResolvedNode(
+		TargetGraph,
+		ResolveResult.Selected,
+		FVector2D(NodeData.X, NodeData.Y),
+		OutError);
+
+	if (SpawnedNode)
+	{
+		TextToBlueprintGenerator::ApplyDefaultValues(SpawnedNode, NodeData.DefaultValues, NodeData.Id);
+	}
+	return SpawnedNode;
 }

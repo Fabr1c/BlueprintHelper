@@ -1,67 +1,68 @@
----
-description: Run BlueprintHelper initial setup — configure UE paths, verify MCP Bridge connectivity, collect safety preferences, and generate SetupProfile
-allowed-tools: Read, Write, AskUserQuestion, mcp__blueprint-helper__blueprinthelper_read_agent_guide, mcp__blueprint-helper__blueprinthelper_get_debug_case, mcp__blueprint-helper__blueprint_get_runtime_profile, mcp__blueprint-helper__blueprinthelper_diagnostics, mcp__blueprint-helper__blueprinthelper_diagnostics_runtime, mcp__blueprint-helper__blueprinthelper_request_write_session, mcp__blueprint-helper__blueprinthelper_read_context, mcp__blueprint-helper__blueprinthelper_read_task_context, mcp__blueprint-helper__blueprinthelper_read_reference_context, mcp__blueprint-helper__blueprinthelper_preview_task, mcp__blueprint-helper__blueprinthelper_execute_task, mcp__blueprint-helper__blueprinthelper_get_task_result, mcp__blueprint-helper__blueprint_open_editor
+﻿---
+description: Run BlueprintHelper initial setup - configure UE paths, verify Bridge connectivity, build CLI packages, collect safety preferences, and generate SetupProfile
+allowed-tools: Read, Write, AskUserQuestion
 ---
 
 # BlueprintHelper Setup
 
-你正在运行 BlueprintHelper 初次配置。按以下步骤逐一完成，不要跳过。
+浣犳鍦ㄨ繍琛?BlueprintHelper 鍒濇閰嶇疆銆傛寜浠ヤ笅姝ラ閫愪竴瀹屾垚锛屼笉瑕佽烦杩囥€?
 
 ---
 
-## 阶段 1：路径配置
+## 闃舵 1锛氳矾寰勯厤缃?
 
-### 1.1 获取 UE 引擎目录
+### 1.1 鑾峰彇 UE 寮曟搸鐩綍
 
-询问用户并确认当前项目使用的 UE Engine 绝对路径，文档中用 `<UE_ENGINE_ROOT>` 表示该路径。该路径只写入项目下的 `<ProjectDir>/.blueprinthelper/agent-profile.json`，字段为 `environment.ue_engine_dir`，不要写入 C 盘全局 Claude settings 或插件 env。
+璇㈤棶鐢ㄦ埛骞剁‘璁ゅ綋鍓嶉」鐩娇鐢ㄧ殑 UE Engine 缁濆璺緞锛屾枃妗ｄ腑鐢?`<UE_ENGINE_ROOT>` 琛ㄧず璇ヨ矾寰勩€傝璺緞鍙啓鍏ラ」鐩笅鐨?`<ProjectDir>/.blueprinthelper/agent-profile.json`锛屽瓧娈典负 `environment.ue_engine_dir`锛屼笉瑕佸啓鍏?C 鐩樺叏灞€ Claude settings 鎴栨彃浠?env銆?
 
-验证规则：
-- 必须是绝对路径
-- 路径下必须存在 `Engine/Binaries/Win64/UnrealEditor.exe`（或对应的平台二进制文件）
-- 如果不存在，提示用户重新输入
+楠岃瘉瑙勫垯锛?
+- 蹇呴』鏄粷瀵硅矾寰?
+- 璺緞涓嬪繀椤诲瓨鍦?`Engine/Binaries/Win64/UnrealEditor.exe`锛堟垨瀵瑰簲鐨勫钩鍙颁簩杩涘埗鏂囦欢锛?
+- 濡傛灉涓嶅瓨鍦紝鎻愮ず鐢ㄦ埛閲嶆柊杈撳叆
 
-### 1.2 发现项目文件
+### 1.2 鍙戠幇椤圭洰鏂囦欢
 
-Agent 使用普通仓库工具在当前项目工作区发现目标 `.uproject` 文件，文档中用 `<ABSOLUTE_UPROJECT_FILE>` 表示该一次性工具参数。
+Agent 浣跨敤鏅€氫粨搴撳伐鍏峰湪褰撳墠椤圭洰宸ヤ綔鍖哄彂鐜扮洰鏍?`.uproject` 鏂囦欢锛屾枃妗ｄ腑鐢?`<ABSOLUTE_UPROJECT_FILE>` 琛ㄧず璇ヤ竴娆℃€у伐鍏峰弬鏁般€?
 
-不要把项目路径写入全局 Claude settings、插件 env、SetupProfile 或 RuntimeProfile。项目路径只在调用 `blueprint_open_editor`、`blueprint_build_project` 等工具时作为显式 `project_file` 参数传入。
+涓嶈鎶婇」鐩矾寰勫啓鍏ュ叏灞€ Claude settings銆佹彃浠?env銆丼etupProfile 鎴?RuntimeProfile銆傞」鐩矾寰勫彧鍦ㄨ皟鐢?`blueprint_open_editor`銆乣blueprint_build_project` 绛夊伐鍏锋椂浣滀负鏄惧紡 `project_file` 鍙傛暟浼犲叆銆?
 
-验证规则：
-- 必须是绝对路径
-- 必须以 `.uproject` 结尾
-- 文件必须存在
-- 如果当前工作区下无法唯一确定目标 `.uproject`，停止并询问用户，不要回退到任何全局项目路径变量
+楠岃瘉瑙勫垯锛?
+- 蹇呴』鏄粷瀵硅矾寰?
+- 蹇呴』浠?`.uproject` 缁撳熬
+- 鏂囦欢蹇呴』瀛樺湪
+- 濡傛灉褰撳墠宸ヤ綔鍖轰笅鏃犳硶鍞竴纭畾鐩爣 `.uproject`锛屽仠姝㈠苟璇㈤棶鐢ㄦ埛锛屼笉瑕佸洖閫€鍒颁换浣曞叏灞€椤圭洰璺緞鍙橀噺
 
-### 1.3 确认 BlueprintHelper 插件已安装
+### 1.3 纭 BlueprintHelper 鎻掍欢宸插畨瑁?
 
-检查以下条件：
-- BlueprintHelper 插件目录存在于项目 `Plugins/` 或引擎 `Engine/Plugins/` 下
-- `BlueprintHelper.uplugin` 文件存在且 `VersionName` 与 MCP Server `package.json` 版本兼容
+妫€鏌ヤ互涓嬫潯浠讹細
+- BlueprintHelper 鎻掍欢鐩綍瀛樺湪浜庨」鐩?`Plugins/` 鎴栧紩鎿?`Engine/Plugins/` 涓?
+- `BlueprintHelper.uplugin` 鏂囦欢瀛樺湪涓?`VersionName` 涓?CLI `package.json` 鐗堟湰鍏煎
 
 ---
 
-## 阶段 2：MCP Server 构建
+## 闃舵 2锛欳LI 鏋勫缓
 
-### 2.1 安装依赖并构建
+### 2.1 瀹夎渚濊禆骞舵瀯寤?
 
-在 `ClaudePlugin/mcp/` 目录下执行：
+鍦?`ClaudePlugin/task-core/` 鍜?`ClaudePlugin/cli/` 鐩綍涓嬫墽琛岋細
 
 ```powershell
+cd <PLUGIN_ROOT>\ClaudePlugin\task-core
+npm install
+npm run build
+
+cd <PLUGIN_ROOT>\ClaudePlugin\cli
 npm install
 npm run build
 ```
 
-### 2.2 验证 MCP Server 可启动
-
-执行 `node build/index.js --help` 或仅检查 `build/index.js` 存在。
-
+### 2.2 楠岃瘉 CLI 鍙繍琛?
+鎵ц `bh --help`锛屾垨浠呮鏌?`ClaudePlugin/cli/build/cli/index.js` 瀛樺湪銆?
 ---
 
-## 阶段 2.5：一次性请求 MCP Tool 权限
-
-在进入 Bridge 连通性验证前，必须用原生交互表单请求用户一次性准许本 setup 可用的 BlueprintHelper MCP Tool 权限。
-
-权限范围只包含非冻结、非废弃、Agent-facing 或 preflight 工具：
+## 闃舵 2.5锛氱‘璁?CLI 鍛戒护闈㈠彲鐢?
+鍦ㄨ繘鍏?Bridge 杩為€氭€ч獙璇佸墠锛屽繀椤荤敤鍘熺敓浜や簰琛ㄥ崟纭鏈?setup 鍙互浣跨敤 BlueprintHelper CLI 鍛戒护闈€?
+鏉冮檺鑼冨洿鍙寘鍚潪鍐荤粨銆侀潪搴熷純銆丄gent-facing 鎴?preflight 宸ュ叿锛?
 - `blueprinthelper_read_agent_guide`
 - `blueprinthelper_get_debug_case`
 - `blueprint_get_runtime_profile`
@@ -76,238 +77,237 @@ npm run build
 - `blueprinthelper_get_task_result`
 - `blueprint_open_editor`
 
-不要请求 `mcp__blueprint-helper` 整服权限，因为它会包含 frozen / legacy / expert 工具。不要请求任何 description 含 `FROZEN / Expert-only` 的工具。
+不要走 deprecated compatibility transport 旧入口。setup 只验证 CLI 命令面，不把 frozen / legacy / expert 入口当作普通工作流。
 
 Use AskUserQuestion:
-- header: "MCP Tools"
-- question: "是否一次性准许 setup 使用非冻结 BlueprintHelper MCP 工具？"
+- header: "CLI Commands"
+- question: "鏄惁纭 setup 浣跨敤 BlueprintHelper CLI 鍛戒护闈紵"
 - multiSelect: false
 - options:
-  - label: "Allow setup MCP tools (Recommended)"
-    description: "准许 TaskSpec、diagnostics、context、runtime profile、write session 和 open_editor preflight 工具"
+  - label: "Allow setup CLI commands (Recommended)"
+    description: "鍏佽 setup 鏋勫缓骞堕獙璇?BlueprintHelper CLI TaskSpec銆乨iagnostics銆乧ontext銆乺untime profile銆亀rite session 鍜?open_editor 鍛戒护"
   - label: "Review tool list first"
-    description: "先展示上方工具清单，再重新请求准许"
-  - label: "Skip MCP tools"
-    description: "只生成本地文件；Bridge、runtime_profile 和 diagnostics 验证将标记为 skipped"
+    description: "鍏堝睍绀轰笂鏂瑰伐鍏锋竻鍗曪紝鍐嶉噸鏂拌姹傚噯璁?
+  - label: "Skip CLI validation"
+    description: "鍙敓鎴愭湰鍦版枃浠讹紱Bridge銆乺untime_profile 鍜?diagnostics 楠岃瘉灏嗘爣璁颁负 skipped"
 
-如果用户选择 `Review tool list first`，展示工具清单后再次输出同一个原生确认表单。
-如果用户选择 `Skip MCP tools` 或拒绝 Claude 权限弹窗，继续完成本地文件生成，但不要调用 MCP 工具，并在最终报告中写明 `MCP verification skipped by user`。
+濡傛灉鐢ㄦ埛閫夋嫨 `Review tool list first`锛屽睍绀哄伐鍏锋竻鍗曞悗鍐嶆杈撳嚭鍚屼竴涓師鐢熺‘璁よ〃鍗曘€?
+濡傛灉鐢ㄦ埛閫夋嫨 `Skip CLI validation` 鎴栨嫆缁?Claude 鏉冮檺寮圭獥锛岀户缁畬鎴愭湰鍦版枃浠剁敓鎴愶紝浣嗕笉瑕佽皟鐢?BlueprintHelper CLI 鍛戒护锛屽苟鍦ㄦ渶缁堟姤鍛婁腑鍐欐槑 `CLI verification skipped by user`銆?
+---
+
+## 闃舵 3锛欱ridge 杩為€氭€?
+
+### 3.1 纭 Unreal Editor 鐘舵€?
+
+妫€鏌ヤ互涓嬩箣涓€锛?
+1. Unreal Editor 姝ｅ湪杩愯涓斿凡鍔犺浇 BlueprintHelper 鎻掍欢
+2. 濡傛灉 Editor 鏈繍琛岋紝纭 `open_editor` 宸ュ叿鍙敤锛堜緷璧栭」鐩?agent-profile 鐨?`environment.ue_engine_dir` 鍜屾樉寮?`project_file` 鍙傛暟锛?
+
+### 3.2 楠岃瘉 Bridge 杩炴帴
+
+Bridge 榛樿鍦板潃 `127.0.0.1:54321`銆?
+
+濡傛灉鍙互璋冪敤 CLI 鍛戒护锛屼娇鐢?`bh blueprinthelper_diagnostics --json "{}"` 妫€鏌ワ細
+- `bridge_status` 搴斾负 `connected`
+- 濡傛灉涓嶆槸锛屾姤鍛婇樆鏂師鍥犲苟璁╃敤鎴锋帓鏌?
 
 ---
 
-## 阶段 3：Bridge 连通性
+## 闃舵 4锛歎ser Preference Wizard
 
-### 3.1 确认 Unreal Editor 状态
+**FIRST**锛氫娇鐢?Read 璇诲彇 `ClaudePlugin/skills/blueprint-helper/references/08_User_Preferences.md`銆?
 
-检查以下之一：
-1. Unreal Editor 正在运行且已加载 BlueprintHelper 插件
-2. 如果 Editor 未运行，确认 `open_editor` 工具可用（依赖项目 agent-profile 的 `environment.ue_engine_dir` 和显式 `project_file` 参数）
+濡傛灉鏂囦欢宸插瓨鍦紝涓嶈鍦?setup 涓繍琛屽亸濂芥洿鏂版祦绋嬨€傚悜鐢ㄦ埛灞曠ず褰撳墠鍋忓ソ鎽樿锛屽苟璇存槑鏇存柊宸叉湁鍋忓ソ鍜?safety profile 璇疯繍琛?`/blueprint-helper:configure`銆傚鏋滅敤鎴锋槑纭姹傞噸鏂板垵濮嬪寲鍋忓ソ锛屽彲缁х画鎵ц涓嬮潰鐨勬柊鐢ㄦ埛 Flow A 骞惰鐩栬鏂囦欢銆?
 
-### 3.2 验证 Bridge 连接
+杩欎簺鍋忓ソ鐢熸垚鐙珛鐨勭敤鎴峰亸濂芥枃浠讹紝涓嶅啓鍏?SetupProfile銆丷untimeProfile 鎴栭」鐩?Marker銆係etupProfile 鍙繚瀛樻満鍣ㄥ彲鎵ц閰嶇疆锛涚敤鎴峰亸濂芥枃浠朵繚瀛?Agent 琛屼负銆佸崗浣滃拰鏂囨。璇诲彇绾﹀畾銆?
 
-Bridge 默认地址 `127.0.0.1:54321`。
+### 鍘熺敓浜や簰琛ㄥ崟瑙勫垯
 
-如果可以调用 MCP 工具，使用 `blueprinthelper_diagnostics` 检查：
-- `bridge_status` 应为 `connected`
-- 如果不是，报告阻断原因并让用户排查
+鎵€鏈夊亸濂介噰闆嗛棶棰橀兘蹇呴』璋冪敤 `AskUserQuestion` 杈撳嚭鍘熺敓浜や簰琛ㄥ崟銆備笉瑕佹妸涓嬮潰鐨?YAML 鎴栭€夐」鍒楄〃褰撲綔鏅€?Markdown 鎵撳嵃缁欑敤鎴凤紝闄ら潪褰撳墠 Claude 鐜娌℃湁 `AskUserQuestion` 宸ュ叿銆?
 
----
-
-## 阶段 4：User Preference Wizard
-
-**FIRST**：使用 Read 读取 `ClaudePlugin/skills/blueprint-helper/references/08_User_Preferences.md`。
-
-如果文件已存在，不要在 setup 中运行偏好更新流程。向用户展示当前偏好摘要，并说明更新已有偏好和 safety profile 请运行 `/blueprint-helper:configure`。如果用户明确要求重新初始化偏好，可继续执行下面的新用户 Flow A 并覆盖该文件。
-
-这些偏好生成独立的用户偏好文件，不写入 SetupProfile、RuntimeProfile 或项目 Marker。SetupProfile 只保存机器可执行配置；用户偏好文件保存 Agent 行为、协作和文档读取约定。
-
-### 原生交互表单规则
-
-所有偏好采集问题都必须调用 `AskUserQuestion` 输出原生交互表单。不要把下面的 YAML 或选项列表当作普通 Markdown 打印给用户，除非当前 Claude 环境没有 `AskUserQuestion` 工具。
-
-每个 Q 都是一个完整的 `AskUserQuestion` payload：
+姣忎釜 Q 閮芥槸涓€涓畬鏁寸殑 `AskUserQuestion` payload锛?
 
 ```yaml
 Use AskUserQuestion:
-  header: "短标题"
-  question: "给用户看的问题"
+  header: "鐭爣棰?
+  question: "缁欑敤鎴风湅鐨勯棶棰?
   multiSelect: false
   options:
-    - label: "选项名 (Recommended)"
-      description: "影响说明"
+    - label: "閫夐」鍚?(Recommended)"
+      description: "褰卞搷璇存槑"
 ```
 
-规则：
-- 生成完整 `AskUserQuestion` 表单
-- 推荐项必须标注 `(Recommended)`。
-- `multiSelect: true` 只用于可叠加偏好。
-- 用户选择自定义文本时，再用 AskUserQuestion 获取自由文本。
-- 用户取消时，输出 `Setup cancelled.`，不要写文件。
-- 如果 `AskUserQuestion` 不可用，才退回 Markdown 文本表单，并明确说明当前环境不支持原生表单。
+瑙勫垯锛?
+- 鐢熸垚瀹屾暣 `AskUserQuestion` 琛ㄥ崟
+- 鎺ㄨ崘椤瑰繀椤绘爣娉?`(Recommended)`銆?
+- `multiSelect: true` 鍙敤浜庡彲鍙犲姞鍋忓ソ銆?
+- 鐢ㄦ埛閫夋嫨鑷畾涔夋枃鏈椂锛屽啀鐢?AskUserQuestion 鑾峰彇鑷敱鏂囨湰銆?
+- 鐢ㄦ埛鍙栨秷鏃讹紝杈撳嚭 `Setup cancelled.`锛屼笉瑕佸啓鏂囦欢銆?
+- 濡傛灉 `AskUserQuestion` 涓嶅彲鐢紝鎵嶉€€鍥?Markdown 鏂囨湰琛ㄥ崟锛屽苟鏄庣‘璇存槑褰撳墠鐜涓嶆敮鎸佸師鐢熻〃鍗曘€?
 
-### Flow A：新用户
+### Flow A锛氭柊鐢ㄦ埛
 
-问题顺序：Safety → Task Flow → Save/Validation → Boundary → Graph/Naming → Input/Asset → Review/Debug → Collaboration。
+闂椤哄簭锛歋afety 鈫?Task Flow 鈫?Save/Validation 鈫?Boundary 鈫?Graph/Naming 鈫?Input/Asset 鈫?Review/Debug 鈫?Collaboration銆?
 
-#### Q1：Safety
+#### Q1锛歋afety
 
 Use AskUserQuestion:
 - header: "Safety"
-- question: "选择 BlueprintHelper 写入安全档位："
+- question: "閫夋嫨 BlueprintHelper 鍐欏叆瀹夊叏妗ｄ綅锛?
 - multiSelect: false
 - options:
   - label: "Conservative (Recommended)"
-    description: "允许写入，但必须 preview + 用户确认，不自动 save"
+    description: "鍏佽鍐欏叆锛屼絾蹇呴』 preview + 鐢ㄦ埛纭锛屼笉鑷姩 save"
   - label: "ReadOnly"
-    description: "只读模式，拒绝所有写入"
+    description: "鍙妯″紡锛屾嫆缁濇墍鏈夊啓鍏?
   - label: "Standard"
-    description: "允许写入，必须 preview，可按请求 save"
+    description: "鍏佽鍐欏叆锛屽繀椤?preview锛屽彲鎸夎姹?save"
   - label: "AutoRepair"
-    description: "允许自动修复 BlueprintHelper-owned 内容"
+    description: "鍏佽鑷姩淇 BlueprintHelper-owned 鍐呭"
   - label: "Expert"
-    description: "允许更少确认和更高风险能力"
+    description: "鍏佽鏇村皯纭鍜屾洿楂橀闄╄兘鍔?
 
-#### Q2：Task Flow
+#### Q2锛歍ask Flow
 
 Use AskUserQuestion:
 - header: "Task Flow"
-- question: "TaskSpec-first 不可用或能力缺失时怎么处理？"
+- question: "TaskSpec-first 涓嶅彲鐢ㄦ垨鑳藉姏缂哄け鏃舵€庝箞澶勭悊锛?
 - multiSelect: false
 - options:
   - label: "Stop and report (Recommended)"
-    description: "停止并说明缺口，不回退到底层冻结入口"
+    description: "鍋滄骞惰鏄庣己鍙ｏ紝涓嶅洖閫€鍒板簳灞傚喕缁撳叆鍙?
   - label: "Ask user"
-    description: "先询问用户是否调整目标或授权替代路径"
+    description: "鍏堣闂敤鎴锋槸鍚﹁皟鏁寸洰鏍囨垨鎺堟潈鏇夸唬璺緞"
   - label: "Debug tools only"
-    description: "允许使用诊断/debug 工具定位问题"
+    description: "鍏佽浣跨敤璇婃柇/debug 宸ュ叿瀹氫綅闂"
   - label: "Legacy direct allowed"
-    description: "允许直接调用底层 MCP 工具"
+    description: "鍏佽鐩存帴璋冪敤搴曞眰閬楃暀鍛戒护闈?
 
-#### Q3：Save/Validation
+#### Q3锛歋ave/Validation
 
 Use AskUserQuestion:
 - header: "Save"
-- question: "保存和验证策略："
+- question: "淇濆瓨鍜岄獙璇佺瓥鐣ワ細"
 - multiSelect: false
 - options:
   - label: "Preview + no auto save (Recommended)"
-    description: "preview 是写入门禁，默认不自动 save"
+    description: "preview 鏄啓鍏ラ棬绂侊紝榛樿涓嶈嚜鍔?save"
   - label: "Save when requested"
-    description: "用户明确要求时可 save"
+    description: "鐢ㄦ埛鏄庣‘瑕佹眰鏃跺彲 save"
   - label: "Workflow save"
-    description: "通过验证后可由工作流 save"
+    description: "閫氳繃楠岃瘉鍚庡彲鐢卞伐浣滄祦 save"
 
-#### Q4：Boundary
+#### Q4锛欱oundary
 
 Use AskUserQuestion:
 - header: "Boundary"
-- question: "Agent 可以触碰哪些工程边界？"
+- question: "Agent 鍙互瑙︾鍝簺宸ョ▼杈圭晫锛?
 - multiSelect: true
 - options:
-  - label: "UE assets through MCP (Recommended)"
-    description: "BlueprintHelper MCP 只处理 UE 编辑器资产"
+  - label: "UE assets through CLI (Recommended)"
+    description: "BlueprintHelper CLI 鍙鐞?UE 缂栬緫鍣ㄨ祫浜?
   - label: "Repo files through normal tools (Recommended)"
-    description: "C++、TS、Python、JSON、文档用普通仓库工具"
+    description: "C++銆乀S銆丳ython銆丣SON銆佹枃妗ｇ敤鏅€氫粨搴撳伐鍏?
   - label: "No C++ edits by default (Recommended)"
-    description: "默认不修改 C++ 源码"
+    description: "榛樿涓嶄慨鏀?C++ 婧愮爜"
   - label: "No reparent by default (Recommended)"
-    description: "Parent Class 修改不支持时 stop_and_report"
+    description: "Parent Class 淇敼涓嶆敮鎸佹椂 stop_and_report"
   - label: "No active tab writes (Recommended)"
-    description: "不依赖当前聚焦编辑器标签执行破坏性操作"
+    description: "涓嶄緷璧栧綋鍓嶈仛鐒︾紪杈戝櫒鏍囩鎵ц鐮村潖鎬ф搷浣?
 
-#### Q5：Graph/Naming
+#### Q5锛欸raph/Naming
 
 Use AskUserQuestion:
 - header: "Graph"
-- question: "Graph Write 和命名偏好："
+- question: "Graph Write 鍜屽懡鍚嶅亸濂斤細"
 - multiSelect: true
 - options:
   - label: "EG_{FeatureName} graphs (Recommended)"
-    description: "新 EventGraph 默认使用 EG_{FeatureName}"
+    description: "鏂?EventGraph 榛樿浣跨敤 EG_{FeatureName}"
   - label: "Descriptive PascalCase (Recommended)"
-    description: "函数和 Custom Event 使用描述型 PascalCase"
+    description: "鍑芥暟鍜?Custom Event 浣跨敤鎻忚堪鍨?PascalCase"
   - label: "UE variable style (Recommended)"
-    description: "变量使用 bDoorOpen、OpenImpulse 等 UE 常规风格"
+    description: "鍙橀噺浣跨敤 bDoorOpen銆丱penImpulse 绛?UE 甯歌椋庢牸"
   - label: "Do not modify user nodes (Recommended)"
-    description: "默认不修改用户已有节点"
+    description: "榛樿涓嶄慨鏀圭敤鎴峰凡鏈夎妭鐐?
   - label: "Do not merge existing exec flow (Recommended)"
-    description: "默认不接入用户已有执行流"
+    description: "榛樿涓嶆帴鍏ョ敤鎴峰凡鏈夋墽琛屾祦"
   - label: "Reject generic names (Recommended)"
-    description: "禁止 NewFunction、DoThing、Temp、MyVar"
+    description: "绂佹 NewFunction銆丏oThing銆乀emp銆丮yVar"
 
-#### Q6：Review/Debug
+#### Q6锛歊eview/Debug
 
 Use AskUserQuestion:
 - header: "Review"
-- question: "Review、回滚和 Debug 证据偏好："
+- question: "Review銆佸洖婊氬拰 Debug 璇佹嵁鍋忓ソ锛?
 - multiSelect: true
 - options:
   - label: "Enable Journal (Recommended)"
-    description: "启用 Transaction Journal"
+    description: "鍚敤 Transaction Journal"
   - label: "Enable Review Store (Recommended)"
-    description: "启用 Review Store"
+    description: "鍚敤 Review Store"
   - label: "Keep rollback until accepted (Recommended)"
-    description: "Pending 保留完整回滚数据，接受后可压缩"
-  - label: "Summary-only MCP debug (Recommended)"
-    description: "MCP 只查 DebugCase 摘要，不读取 DebugBundle artifact 内容"
+    description: "Pending 淇濈暀瀹屾暣鍥炴粴鏁版嵁锛屾帴鍙楀悗鍙帇缂?
+  - label: "Summary-only CLI debug (Recommended)"
+    description: "CLI 鍙煡 DebugCase 鎽樿锛屼笉璇诲彇 DebugBundle artifact 鍐呭"
   - label: "DebugBundle local export shape (Recommended)"
-    description: "UE/本地导出保持 summary.md + artifacts/"
+    description: "UE/鏈湴瀵煎嚭淇濇寔 summary.md + artifacts/"
 
-#### Q7：Collaboration
+#### Q7锛欳ollaboration
 
 Use AskUserQuestion:
 - header: "Workflow"
-- question: "Agent 协作和回复偏好："
+- question: "Agent 鍗忎綔鍜屽洖澶嶅亸濂斤細"
 - multiSelect: true
 - options:
   - label: "Read AGENTS first (Recommended)"
-    description: "任务开始先读仓库 AGENTS.md 或当前等价规则"
+    description: "浠诲姟寮€濮嬪厛璇讳粨搴?AGENTS.md 鎴栧綋鍓嶇瓑浠疯鍒?
   - label: "Prefer concise Chinese (Recommended)"
-    description: "用户未要求时减少括号说明，回复直接"
+    description: "鐢ㄦ埛鏈姹傛椂鍑忓皯鎷彿璇存槑锛屽洖澶嶇洿鎺?
   - label: "Use parallel workers (Recommended)"
-    description: "最大程度并发处理独立读档、diff、测试和实现任务"
+    description: "鏈€澶х▼搴﹀苟鍙戝鐞嗙嫭绔嬭妗ｃ€乨iff銆佹祴璇曞拰瀹炵幇浠诲姟"
   - label: "Precise completion claims (Recommended)"
-    description: "工作区脏或未验证时不说完全完成"
+    description: "宸ヤ綔鍖鸿剰鎴栨湭楠岃瘉鏃朵笉璇村畬鍏ㄥ畬鎴?
   - label: "Write compaction memory (Recommended)"
-    description: "上下文接近上限时写入 .codex/memory 进度文档"
+    description: "涓婁笅鏂囨帴杩戜笂闄愭椂鍐欏叆 .codex/memory 杩涘害鏂囨。"
 
-### 更新已有偏好
+### 鏇存柊宸叉湁鍋忓ソ
 
-已有用户偏好和 safety profile 的更新流程已迁移到 `ClaudePlugin/commands/configure.md`。
+宸叉湁鐢ㄦ埛鍋忓ソ鍜?safety profile 鐨勬洿鏂版祦绋嬪凡杩佺Щ鍒?`ClaudePlugin/commands/configure.md`銆?
 
-使用方式：
+浣跨敤鏂瑰紡锛?
 
 ```text
 /blueprint-helper:configure
 ```
 
-Setup 只负责首次配置。如果用户在 setup 中要求修改已有偏好，停止当前偏好采集并转交 configure 命令，不要在 setup 中复制更新流程。
+Setup 鍙礋璐ｉ娆￠厤缃€傚鏋滅敤鎴峰湪 setup 涓姹備慨鏀瑰凡鏈夊亸濂斤紝鍋滄褰撳墠鍋忓ソ閲囬泦骞惰浆浜?configure 鍛戒护锛屼笉瑕佸湪 setup 涓鍒舵洿鏂版祦绋嬨€?
 
-### 处理逻辑
+### 澶勭悊閫昏緫
 
-新用户：
-1. 从 Conservative 默认集开始。
-2. 应用每个表单选择。
-3. 生成用户偏好文件预览。
+鏂扮敤鎴凤細
+1. 浠?Conservative 榛樿闆嗗紑濮嬨€?
+2. 搴旂敤姣忎釜琛ㄥ崟閫夋嫨銆?
+3. 鐢熸垚鐢ㄦ埛鍋忓ソ鏂囦欢棰勮銆?
 
-### 写入前预览
+### 鍐欏叆鍓嶉瑙?
 
-写入前必须展示：
+鍐欏叆鍓嶅繀椤诲睍绀猴細
 
 ```text
 User Preferences Preview
 
 Safety: Conservative
 Task Flow: TaskSpec-first, stop_and_report
-Boundary: UE assets via MCP; repo files via normal tools; no C++ by default
-Debug: MCP summary-only; local DebugBundle summary.md + artifacts/
+Boundary: UE assets via CLI; repo files via normal tools; no C++ by default
+Debug: CLI summary-only; local DebugBundle summary.md + artifacts/
 Collaboration: AGENTS first; parallel workers; precise completion claims
 
 Write to:
 ClaudePlugin/skills/blueprint-helper/references/08_User_Preferences.md
 ```
 
-然后用原生确认表单询问：
+鐒跺悗鐢ㄥ師鐢熺‘璁よ〃鍗曡闂細
 
 Use AskUserQuestion:
 - header: "Save"
@@ -315,21 +315,21 @@ Use AskUserQuestion:
 - multiSelect: false
 - options:
   - label: "Save (Recommended)"
-    description: "写入用户偏好文件"
+    description: "鍐欏叆鐢ㄦ埛鍋忓ソ鏂囦欢"
   - label: "Cancel"
-    description: "不写入文件并退出 setup"
+    description: "涓嶅啓鍏ユ枃浠跺苟閫€鍑?setup"
 
-如果用户确认，写入 `ClaudePlugin/skills/blueprint-helper/references/08_User_Preferences.md`。如果无变化，输出 `No changes needed - user preferences unchanged.`
+濡傛灉鐢ㄦ埛纭锛屽啓鍏?`ClaudePlugin/skills/blueprint-helper/references/08_User_Preferences.md`銆傚鏋滄棤鍙樺寲锛岃緭鍑?`No changes needed - user preferences unchanged.`
 
-### 用户偏好文件输出格式
+### 鐢ㄦ埛鍋忓ソ鏂囦欢杈撳嚭鏍煎紡
 
-必须写成 Markdown，使用固定标题：
+蹇呴』鍐欐垚 Markdown锛屼娇鐢ㄥ浐瀹氭爣棰橈細
 
 ```markdown
 # 08 - BlueprintHelper User Preferences
 ```
 
-必须包含：
+蹇呴』鍖呭惈锛?
 - `schema: BlueprintHelper.UserPreferences.v1`
 - `generated_by: ClaudePlugin/commands/setup.md`
 - `saved_at`
@@ -343,78 +343,81 @@ Use AskUserQuestion:
 
 ---
 
-## 阶段 5：生成 SetupProfile
+## 闃舵 5锛氱敓鎴?SetupProfile
 
-基于用户答案构造 `BlueprintHelper.SetupProfile.v1` JSON，写入项目配置目录。
+鍩轰簬鐢ㄦ埛绛旀鏋勯€?`BlueprintHelper.SetupProfile.v1` JSON锛屽啓鍏ラ」鐩厤缃洰褰曘€?
 
-推荐的保存路径：`<ProjectDir>/.blueprinthelper/agent-profile.json`
+鎺ㄨ崘鐨勪繚瀛樿矾寰勶細`<ProjectDir>/.blueprinthelper/agent-profile.json`
 
-示例结构参见 `Resources/Docs/Setup/SetupProfile_Example.json`。
+绀轰緥缁撴瀯鍙傝 `Resources/Docs/Setup/SetupProfile_Example.json`銆?
 
-注意：不要把 `08_User_Preferences.md` 的长文本偏好写入 SetupProfile。SetupProfile 只保存安全档位、fallback、自动保存、边界等可执行配置摘要，以及当前项目的 `environment.ue_engine_dir` 和可选 `environment.ue_version`。不要把项目 `.uproject` 路径、`project_file` 或旧的全局项目路径字段写入 SetupProfile。
-
----
-
-## 阶段 5.5：项目 Agent Profile 预检
-
-在进入验证阶段前，使用 Read 读取 `<ProjectDir>/.blueprinthelper/agent-profile.json`。
-
-检查规则：
-- `environment.ue_engine_dir` 应存在，并指向有效 UE Engine 目录
-- `environment.ue_version` 可选，但多版本开发项目建议写入，例如 `5.6`
-- 不要写入或更新全局 Claude settings 的旧 UE 引擎路径或旧项目路径字段
-- 如果发现全局 settings 中已有旧 UE 引擎路径或旧项目路径字段，报告它们已被 BlueprintHelper 项目 profile 流程弃用；可建议用户手动清理，但 setup 不自动修改全局 settings
-- 项目 `.uproject` 路径继续由 Agent 从当前工作区发现，并在工具调用时显式传入 `project_file`
+娉ㄦ剰锛氫笉瑕佹妸 `08_User_Preferences.md` 鐨勯暱鏂囨湰鍋忓ソ鍐欏叆 SetupProfile銆係etupProfile 鍙繚瀛樺畨鍏ㄦ。浣嶃€乫allback銆佽嚜鍔ㄤ繚瀛樸€佽竟鐣岀瓑鍙墽琛岄厤缃憳瑕侊紝浠ュ強褰撳墠椤圭洰鐨?`environment.ue_engine_dir` 鍜屽彲閫?`environment.ue_version`銆備笉瑕佹妸椤圭洰 `.uproject` 璺緞銆乣project_file` 鎴栨棫鐨勫叏灞€椤圭洰璺緞瀛楁鍐欏叆 SetupProfile銆?
 
 ---
 
-## 阶段 6：验证
+## 闃舵 5.5锛氶」鐩?Agent Profile 棰勬
 
-### 6.1 runtime_profile 可读
+鍦ㄨ繘鍏ラ獙璇侀樁娈靛墠锛屼娇鐢?Read 璇诲彇 `<ProjectDir>/.blueprinthelper/agent-profile.json`銆?
 
-调用 `blueprinthelper_get_runtime_profile`，验证：
-- `active_profile.safety_profile` 与用户选择一致
-- `bridge_status` 为 `connected`
-- `config_status` 为 `valid`
+妫€鏌ヨ鍒欙細
+- `environment.ue_engine_dir` 搴斿瓨鍦紝骞舵寚鍚戞湁鏁?UE Engine 鐩綍
+- `environment.ue_version` 鍙€夛紝浣嗗鐗堟湰寮€鍙戦」鐩缓璁啓鍏ワ紝渚嬪 `5.6`
+- 涓嶈鍐欏叆鎴栨洿鏂板叏灞€ Claude settings 鐨勬棫 UE 寮曟搸璺緞鎴栨棫椤圭洰璺緞瀛楁
+- 濡傛灉鍙戠幇鍏ㄥ眬 settings 涓凡鏈夋棫 UE 寮曟搸璺緞鎴栨棫椤圭洰璺緞瀛楁锛屾姤鍛婂畠浠凡琚?BlueprintHelper 椤圭洰 profile 娴佺▼寮冪敤锛涘彲寤鸿鐢ㄦ埛鎵嬪姩娓呯悊锛屼絾 setup 涓嶈嚜鍔ㄤ慨鏀瑰叏灞€ settings
+- 椤圭洰 `.uproject` 璺緞缁х画鐢?Agent 浠庡綋鍓嶅伐浣滃尯鍙戠幇锛屽苟鍦ㄥ伐鍏疯皟鐢ㄦ椂鏄惧紡浼犲叆 `project_file`
 
-### 6.2 diagnostics 通过
+---
 
-调用 `blueprinthelper_diagnostics`，确认：
-- 无 Blocking 项
-- Warning 项已知且可接受
-- Info 项显示链路完整
+## 闃舵 6锛氶獙璇?
 
-### 6.3 生成项目 Marker（可选）
+### 6.1 runtime_profile 鍙
 
-如果项目根目录存在 `CLAUDE.md` 或 `AGENTS.md`，询问是否需要添加 BlueprintHelper 引用指针(如果添加，先清除文档只读状态)：
+璋冪敤 `bh blueprint_get_runtime_profile --json "{}"`锛岄獙璇侊細
+- `active_profile.safety_profile` 涓庣敤鎴烽€夋嫨涓€鑷?
+- `bridge_status` 涓?`connected`
+- `config_status` 涓?`valid`
+
+### 6.2 diagnostics 閫氳繃
+
+璋冪敤 `bh blueprinthelper_diagnostics --json "{}"`锛岀‘璁わ細
+- 鏃?Blocking 椤?
+- Warning 椤瑰凡鐭ヤ笖鍙帴鍙?
+- Info 椤规樉绀洪摼璺畬鏁?
+
+### 6.3 鐢熸垚椤圭洰 Marker锛堝彲閫夛級
+
+濡傛灉椤圭洰鏍圭洰褰曞瓨鍦?`CLAUDE.md` 鎴?`AGENTS.md`锛岃闂槸鍚﹂渶瑕佹坊鍔?BlueprintHelper 寮曠敤鎸囬拡(濡傛灉娣诲姞锛屽厛娓呴櫎鏂囨。鍙鐘舵€?锛?
 
 ```markdown
 ## BlueprintHelper
 
-本项目使用 BlueprintHelper 进行 UE 编辑器资产操作。Agent 请遵循 skill `blueprint-helper` 的 TaskSpec-first 流程。
+鏈」鐩娇鐢?BlueprintHelper 杩涜 UE 缂栬緫鍣ㄨ祫浜ф搷浣溿€侫gent 璇烽伒寰?skill `blueprint-helper` 鐨?TaskSpec-first 娴佺▼銆?
 SetupProfile: <ProjectDir>/.blueprinthelper/agent-profile.json
 UserPreferences: ClaudePlugin/skills/blueprint-helper/references/08_User_Preferences.md
 ```
 
 ---
 
-## 阶段 7：报告
+## 闃舵 7锛氭姤鍛?
 
-Setup 完成后输出摘要：
+Setup 瀹屾垚鍚庤緭鍑烘憳瑕侊細
 
 ```text
-BlueprintHelper Setup 完成
+BlueprintHelper Setup 瀹屾垚
 
 UE Engine:  <UE_ENGINE_ROOT> (from agent-profile environment.ue_engine_dir)
 UE Project: <discovered .uproject used as project_file only>
-Bridge:     <host:port> — <status>
-MCP Tools:  <allowed non-frozen tools / skipped by user>
+Bridge:     <host:port> 鈥?<status>
+CLI Commands: <validated command surface / skipped by user>
 Safety:     <safety_profile>
 Entry Mode: task_spec_first
 Fallback:   <fallback_policy>
 
-SetupProfile 已保存至: <path>
-UserPreferences 已保存至: ClaudePlugin/skills/blueprint-helper/references/08_User_Preferences.md
+SetupProfile 宸蹭繚瀛樿嚦: <path>
+UserPreferences 宸蹭繚瀛樿嚦: ClaudePlugin/skills/blueprint-helper/references/08_User_Preferences.md
 ```
 
-如果任何阶段被阻断，停止并报告具体阻断原因，不要跳过。
+濡傛灉浠讳綍闃舵琚樆鏂紝鍋滄骞舵姤鍛婂叿浣撻樆鏂師鍥狅紝涓嶈璺宠繃銆?
+
+
+

@@ -5,12 +5,12 @@
 Agent 先判断任务是否需要 Unreal Editor:
 
 ```text
-UE asset read or write -> BlueprintHelper MCP TaskSpec-first flow
+UE asset read or write -> BlueprintHelper TaskSpec-first tool flow
 Source/config/docs edit -> normal repository tools
-Mixed task -> split first; code edits do not use BlueprintHelper MCP
+Mixed task -> split first; code edits do not use BlueprintHelper tools
 ```
 
-## 2. BlueprintHelper MCP Scope
+## 2. BlueprintHelper Tool Surface Scope
 
 适用:
 

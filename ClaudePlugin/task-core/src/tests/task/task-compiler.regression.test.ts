@@ -1133,6 +1133,47 @@ describe('TaskSpec GraphWrite Append compiler', () => {
     });
   });
 
+  it('preserves owner-qualified call_function names for UE-side resolution', () => {
+    const spec = makeTaskSpec({
+      behavior: {
+        graph_strategy: 'append_new_owned_graph',
+        entries: [
+          {
+            entry_type: 'custom_event',
+            name: 'ToggleDoor',
+            body: {
+              schema: 'BlueprintLogicSpec.v1',
+              statements: [
+                {
+                  kind: 'call_function',
+                  name: '/Script/Engine.KismetSystemLibrary:PrintString',
+                  args: {
+                    InString: {
+                      kind: 'literal',
+                      value_type: 'string',
+                      value: 'message',
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    const plan = compileTaskSpecToTaskPlan(TaskSpecSchema.parse(spec));
+    const payload = taskPlanToAppendBridgePayload(plan, true);
+    assert.deepEqual(payload.nodes[1], {
+      id: 'ToggleDoor_stmt_1',
+      kind: 'call',
+      function: '/Script/Engine.KismetSystemLibrary:PrintString',
+      inputs: {
+        InString: 'message',
+      },
+    });
+  });
+
   it('rejects GraphWrite user-node mutation until a non-owned anchor contract exists', () => {
     const spec = makeTaskSpec({
       scope_policy: {

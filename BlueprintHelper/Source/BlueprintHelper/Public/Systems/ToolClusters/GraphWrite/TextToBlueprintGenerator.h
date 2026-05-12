@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
+#include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
 
 class UEdGraph;
 class UFunction;
@@ -591,6 +592,12 @@ class BLUEPRINTHELPER_API TextToBlueprintGenerator
 public:
 	/** 查找函数名称对应的蓝图函数。 */
 	static UFunction* FindFunctionByName(const FString& FuncName);
+
+	/** Resolve a call_function query in the target graph context. */
+	static FBlueprintHelperCallFunctionResolveResult ResolveFunctionForGraph(
+		UEdGraph* TargetGraph,
+		const FString& FunctionQuery,
+		const TMap<FString, FString>& DefaultValues);
 
 	/** 根据 JSON 在目标图表中生成蓝图节点。 */
 	static FBlueprintGenerateResult GenerateBlueprintFromJson(UEdGraph* TargetGraph, const FString& JsonString, TArray<TSharedPtr<FUnresolvedNodeItem>>& OutUnresolvedNodes);

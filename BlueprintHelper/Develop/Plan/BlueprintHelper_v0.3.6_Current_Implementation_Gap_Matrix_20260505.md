@@ -1,64 +1,64 @@
-# BlueprintHelper v0.3.6 能力簇与当前实现差距矩阵
+﻿# BlueprintHelper v0.3.6 鑳藉姏绨囦笌褰撳墠瀹炵幇宸窛鐭╅樀
 
-日期：2026-05-05
+鏃ユ湡锛?026-05-05
 
-2026-05-09 清理: 本文件保留 capability gap 矩阵和设计待办。当前 grouped Automation、P1/P2 fixture、ReviewPanel、DebugBundle 全线验证入口已统一到 `Develop/Plan/BlueprintHelper_Unified_SmokeRun_Verification_20260509.md`。
+2026-05-09 娓呯悊: 鏈枃浠朵繚鐣?capability gap 鐭╅樀鍜岃璁″緟鍔炪€傚綋鍓?grouped Automation銆丳1/P2 fixture銆丷eviewPanel銆丏ebugBundle 鍏ㄧ嚎楠岃瘉鍏ュ彛宸茬粺涓€鍒?`Develop/Plan/BlueprintHelper_Unified_SmokeRun_Verification_20260509.md`銆?
 
-本文用于把 `Develop/v0.3.6/DoneImplementaion` 与 `Develop/v0.3.6/FieldMapping` 中已收敛的 UE 能力设计，对照当前源码实现状态。目标不是回到 Agent 直调原子工具，而是确定哪些能力已经能进入当前主架构：
+鏈枃鐢ㄤ簬鎶?`Develop/v0.3.6/DoneImplementaion` 涓?`Develop/v0.3.6/FieldMapping` 涓凡鏀舵暃鐨?UE 鑳藉姏璁捐锛屽鐓у綋鍓嶆簮鐮佸疄鐜扮姸鎬併€傜洰鏍囦笉鏄洖鍒?Agent 鐩磋皟鍘熷瓙宸ュ叿锛岃€屾槸纭畾鍝簺鑳藉姏宸茬粡鑳借繘鍏ュ綋鍓嶄富鏋舵瀯锛?
 
 ```text
 Agent TaskSpec
--> MCP Task Tools
--> Python/MCP Task Compiler
+-> CLI Task Commands
+-> task-core / Python Task Compiler
 -> UE Task Runtime
 -> Existing UE Capability Clusters
 ```
 
-## 2026-05-06 Rerun 4 同步
+## 2026-05-06 Rerun 4 鍚屾
 
-- [x] GraphWrite Level 5 已从源码待验证推进到 smoke verified。
-- [x] `replace_owned_graph` 已验证 Python compiler -> Bridge preview -> Bridge execute -> compile -> LogicMd/LogicJson read-back。
-- [x] Replace relink 已验证：preserved entry -> replacement body exec link 重建后 read-back 为 0 orphans。
-- [x] Replace ownership metadata 已验证：Replace 新建节点的机器 ownership 字段写入 `FMetaData`，进入 grouped LogicJson，并可被 Patch/Merge 通过 `block_id` 定位。
-- [x] `patch_owned_graph` 已验证可 patch Replace-created node。
-- [x] `merge_owned_graph` 已验证 `insert_between + function_call`、`append_after + function_call`、`insert_between + custom_event_call`。
-- [x] LogicJson grouped output 已验证输出 `block_id`、`group_entry_node_path`、组内 `node_ref`、`pin_ref`、`link_ref`。
-- [x] Ownership metadata / `NodeComment` 迁移边界已固定：新写入不再向 `NodeComment` 写 `block_id` / `tx`；机器字段统一写 `FMetaData`；`NodeComment` 中的 `block_id` 只作为旧资产 fallback。
-- [x] AgentGuide 已补 Rerun 4 试错暴露的三类规则：task tool 入参必须包 `task_spec`；Merge anchor 不允许只传 `link_ref`；函数调用参数必须使用结构化 `args`。
+- [x] GraphWrite Level 5 宸蹭粠婧愮爜寰呴獙璇佹帹杩涘埌 smoke verified銆?
+- [x] `replace_owned_graph` 宸查獙璇?Python compiler -> Bridge preview -> Bridge execute -> compile -> LogicMd/LogicJson read-back銆?
+- [x] Replace relink 宸查獙璇侊細preserved entry -> replacement body exec link 閲嶅缓鍚?read-back 涓?0 orphans銆?
+- [x] Replace ownership metadata 宸查獙璇侊細Replace 鏂板缓鑺傜偣鐨勬満鍣?ownership 瀛楁鍐欏叆 `FMetaData`锛岃繘鍏?grouped LogicJson锛屽苟鍙 Patch/Merge 閫氳繃 `block_id` 瀹氫綅銆?
+- [x] `patch_owned_graph` 宸查獙璇佸彲 patch Replace-created node銆?
+- [x] `merge_owned_graph` 宸查獙璇?`insert_between + function_call`銆乣append_after + function_call`銆乣insert_between + custom_event_call`銆?
+- [x] LogicJson grouped output 宸查獙璇佽緭鍑?`block_id`銆乣group_entry_node_path`銆佺粍鍐?`node_ref`銆乣pin_ref`銆乣link_ref`銆?
+- [x] Ownership metadata / `NodeComment` 杩佺Щ杈圭晫宸插浐瀹氾細鏂板啓鍏ヤ笉鍐嶅悜 `NodeComment` 鍐?`block_id` / `tx`锛涙満鍣ㄥ瓧娈电粺涓€鍐?`FMetaData`锛沗NodeComment` 涓殑 `block_id` 鍙綔涓烘棫璧勪骇 fallback銆?
+- [x] AgentGuide 宸茶ˉ Rerun 4 璇曢敊鏆撮湶鐨勪笁绫昏鍒欙細task tool 鍏ュ弬蹇呴』鍖?`task_spec`锛汳erge anchor 涓嶅厑璁稿彧浼?`link_ref`锛涘嚱鏁拌皟鐢ㄥ弬鏁板繀椤讳娇鐢ㄧ粨鏋勫寲 `args`銆?
 
-## 2026-05-07 P1 Remaining Gap Smoke 同步
+## 2026-05-07 P1 Remaining Gap Smoke 鍚屾
 
-- [x] `append_after + custom_event_call` 预览错误已可诊断：preview blocked 返回 `anchor_exec_pin_already_connected`，带 message 和 path，不再是空错误。
-- [x] `branch_fork` 已有 UE smoke fixture：preview 通过 TaskSpec -> Python compiler -> TaskPlan -> Bridge -> UE preview，`capability=graph_write`，`insert_flow` 结构化 IR 正确。
-- [x] `branch_fork` execute / empty-error source fix 已集成：MCP/Bridge 空错误归一化已补，UE MergeService `owned_block_call` 现在会解析已有 BlueprintHelper-owned CustomEvent block 并生成 call node 后再应用 `branch_fork`。
-- [x] R4 已验证 `branch_fork + custom_event_call` execute/read-back：Sequence 创建成功，inserted call 与 original successor 均可达。
-- [ ] 同 graph `branch_fork + owned_block_call` 仍需补一条 execute/read-back smoke，避免 Level 3 只被 `custom_event_call` 覆盖。
-- [ ] UMGWidget / DataTable 仍 blocked_by_fixture：`WBP_WidgetSmoke`、`DT_DataTableSmoke` 缺失；源码已补 Structure fields、DataTable `row_struct`、WidgetBlueprint 创建路径，状态为 source integrated / smoke pending。
-- [x] fixture 创建路径的普通 Blueprint `create_asset` 问题已补 source fix：`asset_type=Actor` / `asset_type=blueprint` 归一为 `blueprint_class + parent_class=Actor`；`create_blueprint_feature` preview 空错误仍需后续归一化。
+- [x] `append_after + custom_event_call` 棰勮閿欒宸插彲璇婃柇锛歱review blocked 杩斿洖 `anchor_exec_pin_already_connected`锛屽甫 message 鍜?path锛屼笉鍐嶆槸绌洪敊璇€?
+- [x] `branch_fork` 宸叉湁 UE smoke fixture锛歱review 閫氳繃 TaskSpec -> Python compiler -> TaskPlan -> Bridge -> UE preview锛宍capability=graph_write`锛宍insert_flow` 缁撴瀯鍖?IR 姝ｇ‘銆?
+- [x] `branch_fork` execute / empty-error source fix 宸查泦鎴愶細MCP/Bridge 绌洪敊璇綊涓€鍖栧凡琛ワ紝UE MergeService `owned_block_call` 鐜板湪浼氳В鏋愬凡鏈?BlueprintHelper-owned CustomEvent block 骞剁敓鎴?call node 鍚庡啀搴旂敤 `branch_fork`銆?
+- [x] R4 宸查獙璇?`branch_fork + custom_event_call` execute/read-back锛歋equence 鍒涘缓鎴愬姛锛宨nserted call 涓?original successor 鍧囧彲杈俱€?
+- [ ] 鍚?graph `branch_fork + owned_block_call` 浠嶉渶琛ヤ竴鏉?execute/read-back smoke锛岄伩鍏?Level 3 鍙 `custom_event_call` 瑕嗙洊銆?
+- [ ] UMGWidget / DataTable 浠?blocked_by_fixture锛歚WBP_WidgetSmoke`銆乣DT_DataTableSmoke` 缂哄け锛涙簮鐮佸凡琛?Structure fields銆丏ataTable `row_struct`銆乄idgetBlueprint 鍒涘缓璺緞锛岀姸鎬佷负 source integrated / smoke pending銆?
+- [x] fixture 鍒涘缓璺緞鐨勬櫘閫?Blueprint `create_asset` 闂宸茶ˉ source fix锛歚asset_type=Actor` / `asset_type=blueprint` 褰掍竴涓?`blueprint_class + parent_class=Actor`锛沗create_blueprint_feature` preview 绌洪敊璇粛闇€鍚庣画褰掍竴鍖栥€?
 
-当前仍不视为 P1 完全清空的边界项：
+褰撳墠浠嶄笉瑙嗕负 P1 瀹屽叏娓呯┖鐨勮竟鐣岄」锛?
 
-- [x] `append_after + custom_event_call` preview 空错误已修复为可诊断 blocker；execute 仅在 preview 通过时再验证。
-- [x] `branch_fork + custom_event_call` merge strategy 已完成 R4 execute/read-back smoke。
-- [ ] `branch_fork + owned_block_call` 仍需同 graph execute/read-back smoke。
-- [ ] UMGWidget / DataTable 仍缺 disposable fixture execute smoke；AssetFactory 相关源码已补，用户侧 UE build 已通过，下一步按 Unified SmokeRun Ring 3 验证。
-- [ ] TaskRunJournal partial failure / topology blocking 仍缺 controlled failure fixture。
-- [ ] runtime profile 中的 GraphWrite merge/journal/review/store 能力标记可能滞后于实际执行能力，需要单独同步。
+- [x] `append_after + custom_event_call` preview 绌洪敊璇凡淇涓哄彲璇婃柇 blocker锛沞xecute 浠呭湪 preview 閫氳繃鏃跺啀楠岃瘉銆?
+- [x] `branch_fork + custom_event_call` merge strategy 宸插畬鎴?R4 execute/read-back smoke銆?
+- [ ] `branch_fork + owned_block_call` 浠嶉渶鍚?graph execute/read-back smoke銆?
+- [ ] UMGWidget / DataTable 浠嶇己 disposable fixture execute smoke锛汚ssetFactory 鐩稿叧婧愮爜宸茶ˉ锛岀敤鎴蜂晶 UE build 宸查€氳繃锛屼笅涓€姝ユ寜 Unified SmokeRun Ring 3 楠岃瘉銆?
+- [ ] TaskRunJournal partial failure / topology blocking 浠嶇己 controlled failure fixture銆?
+- [ ] runtime profile 涓殑 GraphWrite merge/journal/review/store 鑳藉姏鏍囪鍙兘婊炲悗浜庡疄闄呮墽琛岃兘鍔涳紝闇€瑕佸崟鐙悓姝ャ€?
 
-## 状态标记
+## 鐘舵€佹爣璁?
 
-| 标记 | 含义 |
+| 鏍囪 | 鍚箟 |
 | --- | --- |
-| 完成 | 当前层已具备可用实现，并且命令或入口已接通 |
-| 部分 | 只完成了 DTO、Service、Bridge、Runtime 或测试中的一部分 |
-| 缺失 | 当前层没有对应实现 |
-| 内部 | 设计上不是 Agent 主流程能力，仅作为内部支撑、debug 或只读上下文 |
+| 瀹屾垚 | 褰撳墠灞傚凡鍏峰鍙敤瀹炵幇锛屽苟涓斿懡浠ゆ垨鍏ュ彛宸叉帴閫?|
+| 閮ㄥ垎 | 鍙畬鎴愪簡 DTO銆丼ervice銆丅ridge銆丷untime 鎴栨祴璇曚腑鐨勪竴閮ㄥ垎 |
+| 缂哄け | 褰撳墠灞傛病鏈夊搴斿疄鐜?|
+| 鍐呴儴 | 璁捐涓婁笉鏄?Agent 涓绘祦绋嬭兘鍔涳紝浠呬綔涓哄唴閮ㄦ敮鎾戙€乨ebug 鎴栧彧璇讳笂涓嬫枃 |
 
-## 当前主线结论
+## 褰撳墠涓荤嚎缁撹
 
-当前源码已经具备较多底层 UE Service 和 Bridge command，但 TaskSpec-first 闭环还没有覆盖所有 v0.3.6 能力。
+褰撳墠婧愮爜宸茬粡鍏峰杈冨搴曞眰 UE Service 鍜?Bridge command锛屼絾 TaskSpec-first 闂幆杩樻病鏈夎鐩栨墍鏈?v0.3.6 鑳藉姏銆?
 
-当前 UE Task Runtime 支持的 TaskPlan capability：
+褰撳墠 UE Task Runtime 鏀寔鐨?TaskPlan capability锛?
 
 ```text
 graph_write
@@ -73,11 +73,11 @@ object_property
 graph_cleanup_ownership
 ```
 
-当前 Python/MCP Task Compiler 支持从 TaskSpec 编译出的任务类型：
+褰撳墠 task-core / Python Task Compiler 鏀寔浠?TaskSpec 缂栬瘧鍑虹殑浠诲姟绫诲瀷锛?
 
 ```text
-edit_blueprint_graph      -> graph_write，支持 append_new_owned_graph / replace_owned_graph / patch_owned_graph / merge_owned_graph
-edit_blueprint_variables  -> blueprint_variable，支持 member changes/defaults/local variables 编译为结构化 IR
+edit_blueprint_graph      -> graph_write锛屾敮鎸?append_new_owned_graph / replace_owned_graph / patch_owned_graph / merge_owned_graph
+edit_blueprint_variables  -> blueprint_variable锛屾敮鎸?member changes/defaults/local variables 缂栬瘧涓虹粨鏋勫寲 IR
 create_asset              -> asset_factory
 edit_blueprint_components -> blueprint_component
 edit_blueprint_class_settings -> blueprint_class_settings
@@ -85,211 +85,211 @@ edit_umg_widget           -> umg_widget
 edit_data_table           -> data_table
 edit_object_properties    -> object_property
 manage_blueprinthelper_ownership -> graph_cleanup_ownership
-create_blueprint_feature  -> composite compiler，分解为 blueprint_component / blueprint_variable / blueprint_class_settings / blueprint_signature / graph_write
+create_blueprint_feature  -> composite compiler锛屽垎瑙ｄ负 blueprint_component / blueprint_variable / blueprint_class_settings / blueprint_signature / graph_write
 ```
 
-但 2026-05-05 smoke rerun 已确认：**编译支持不等于 execute 闭环可用，preview 通过也不等于已经验证真实写入**。当前真实跑通的 Agent-facing TaskSpec-first 状态分层如下：
+浣?2026-05-05 smoke rerun 宸茬‘璁わ細**缂栬瘧鏀寔涓嶇瓑浜?execute 闂幆鍙敤锛宲review 閫氳繃涔熶笉绛変簬宸茬粡楠岃瘉鐪熷疄鍐欏叆**銆傚綋鍓嶇湡瀹炶窇閫氱殑 Agent-facing TaskSpec-first 鐘舵€佸垎灞傚涓嬶細
 
 ```text
-execute 闭环通过：
-- edit_blueprint_graph + append_new_owned_graph + 全新图名
+execute 闂幆閫氳繃锛?
+- edit_blueprint_graph + append_new_owned_graph + 鍏ㄦ柊鍥惧悕
 - edit_blueprint_variables
 
-preview 闭环通过：
+preview 闂幆閫氳繃锛?
 - create_asset
 - edit_blueprint_components
 - create_blueprint_feature
 ```
 
-GraphWrite `replace_owned_graph` / `patch_owned_graph` / `merge_owned_graph` 的 TaskSpec 子字段合同已经收口：replace 只使用 `behavior.replace`，patch 只使用 `behavior.patches[]`，merge 只使用 `behavior.merges[]`。TS schema、TS fallback compiler、Python compiler、协议 fixtures、合同元数据与 smoke 文档已同步；Agent 仍不应直接调用底层 MCP 原子写工具，默认入口仍是 TaskSpec -> TaskPlan -> UE Task Runtime。2026-05-06 Rerun 4 已确认 Level 5 GraphWrite full pipeline：Replace 通过 compiler/preview/execute/compile/read-back，Patch 可定位并修改 Replace-created node，Merge 已验证 `insert_between + function_call`、`append_after + function_call`、`insert_between + custom_event_call`。Patch/Merge 主线写锚点固定为 v0.3.6 grouped LogicJson / block-scoped anchor：由 `block_id` / `group_entry_node_path` 加组内 `node_ref` / `pin_ref` / `link_ref` 定位 BlueprintHelper-owned block 内部节点与引脚；GUID 只保留为 expert/debug fallback。Ownership 机器字段的新写入统一进入 `FMetaData`，不再写入 `NodeComment`；`NodeComment` 中的 `block_id` 仅保留为 legacy fallback。
+GraphWrite `replace_owned_graph` / `patch_owned_graph` / `merge_owned_graph` 鐨?TaskSpec 瀛愬瓧娈靛悎鍚屽凡缁忔敹鍙ｏ細replace 鍙娇鐢?`behavior.replace`锛宲atch 鍙娇鐢?`behavior.patches[]`锛宮erge 鍙娇鐢?`behavior.merges[]`銆俆S schema銆乀S fallback compiler銆丳ython compiler銆佸崗璁?fixtures銆佸悎鍚屽厓鏁版嵁涓?smoke 鏂囨。宸插悓姝ワ紱Agent 浠嶄笉搴旂洿鎺ヨ皟鐢ㄥ簳灞?MCP 鍘熷瓙鍐欏伐鍏凤紝榛樿鍏ュ彛浠嶆槸 TaskSpec -> TaskPlan -> UE Task Runtime銆?026-05-06 Rerun 4 宸茬‘璁?Level 5 GraphWrite full pipeline锛歊eplace 閫氳繃 compiler/preview/execute/compile/read-back锛孭atch 鍙畾浣嶅苟淇敼 Replace-created node锛孧erge 宸查獙璇?`insert_between + function_call`銆乣append_after + function_call`銆乣insert_between + custom_event_call`銆侾atch/Merge 涓荤嚎鍐欓敋鐐瑰浐瀹氫负 v0.3.6 grouped LogicJson / block-scoped anchor锛氱敱 `block_id` / `group_entry_node_path` 鍔犵粍鍐?`node_ref` / `pin_ref` / `link_ref` 瀹氫綅 BlueprintHelper-owned block 鍐呴儴鑺傜偣涓庡紩鑴氾紱GUID 鍙繚鐣欎负 expert/debug fallback銆侽wnership 鏈哄櫒瀛楁鐨勬柊鍐欏叆缁熶竴杩涘叆 `FMetaData`锛屼笉鍐嶅啓鍏?`NodeComment`锛沗NodeComment` 涓殑 `block_id` 浠呬繚鐣欎负 legacy fallback銆?
 
-## 2026-05-05 / 2026-05-06 进度同步
+## 2026-05-05 / 2026-05-06 杩涘害鍚屾
 
-- [x] UE Task Runtime 已支持多 step 顺序执行，并聚合 child step result。
-- [x] UE Task Runtime 已按 `execution_policy.should_compile` / `execution_policy.should_save` 执行 compile/save post operation。
-- [x] TaskRunJournal 已聚合 step result、post operation result，并支持进程内查询。
-- [x] Blueprint Variable TaskPlan IR 已支持 `member_variables` / `member_defaults` / `local_variables` lowering。
-- [x] Blueprint Variable ensure-only member batch 继续 lower 到 `add_blueprint_member_variables`。
-- [x] Blueprint Variable mixed member/default/local ops lower 到内部 `blueprint_variable_batch`，不暴露 adapter operation 给 Agent。
-- [x] Python/MCP TaskSpec 编译已覆盖 `create_asset`、`edit_blueprint_components`、`edit_blueprint_class_settings`、`edit_umg_widget`、`edit_data_table`。
-- [x] BlueprintVariableService 的 `set_member_variable_properties` 已完成首片真实执行，支持 category/tooltip/instance_editable/expose_on_spawn。
-- [x] BlueprintVariableService 的 `set_member_default(s)` 已完成首片真实执行，写入 `FBPVariableDescription::DefaultValue` 并返回 ToolResultBase。
-- [x] BlueprintVariableService 已重新收敛为 ToolResultBase façade / 编排层；member default 与 member property mutation 细节已迁入 `FBlueprintHelperMemberVariableMutationHandler`。
-- [x] `FBlueprintHelperMemberVariableMutationHandler` 已注册到 `FBlueprintOperationHandlerRegistry`，覆盖 `set_member_default` / `set_member_defaults` / `set_member_variable_properties`。
-- [x] MCP 回归已通过 `npm.cmd test`：Node 106/106，Python 30/30。
-- [x] 11 类工具簇目录分类已完成；源码 UTF-8/TEXT() 修复后，用户本地已确认项目级 `Build.bat` 通过（`Build.bat MrStoneEditor Win64 Development -Project=G:\UnrealPractise\MrStone\MrStone.uproject`）。Codex 沙盒复跑会被 MrStone 工程级 `Intermediate` 写权限限制阻塞。
-- [x] BlueprintVariableService 的 local variable read/add/set/remove 已接入真实 Service/OperationHandler 路径；local variable TaskPlan preview 走真实 dry-run，不再走 synthetic preview。
-- [x] Component / AssetFactory / Widget / DataTable / ClassSettings 已从 Runtime synthetic preview 升级为服务级 true dry-run；TaskPlan preview 会调用对应 Service preflight，但不会进入实际 mutation/Modify/dirty 路径。
-- [x] GraphWrite `replace_owned_graph` / `patch_owned_graph` / `merge_owned_graph` 已完成 TaskSpec schema、TS fallback compiler、Python Task Compiler、协议 fixtures 和 MCP 回归测试；编译结果仍是 compiler-owned `graph_write` structured IR，不暴露 `replace_blueprint_graph` / `patch_blueprint_graph` / `merge_blueprint_graph` 给 Agent。
-- [x] UE TaskRuntime 已补 `replace_body` / `set_pin_default|set_node_comment|set_node_position` / `insert_flow` 的 structured IR lowering 源码与 automation contract tests，分别 lower 到现有 Replace/Patch/Merge capability cluster adapter payload；用户本地已确认项目级 Build.bat 通过。
-- [x] Composite `create_blueprint_feature` 已扩到 `integration.interface` 首片：TS schema、TS fallback compiler、Python Task Compiler、MCP 回归测试已支持把一个 Agent 语义 TaskSpec 分解为现有 `blueprint_component` / `blueprint_variable` / `blueprint_class_settings` / `blueprint_signature` / `graph_write` TaskPlan steps。`integration.input` 已按当前架构确认裁剪，继续显式拒绝；`allow_create_assets=true` 仍拒绝，避免资产创建被静默跳过。
-- [x] TaskSpec / TaskPlan 执行语义已确认：Agent 只写少量语义顶层 TaskSpec；TaskPlan 是 compiler-owned 内部 IR；执行前先 dry-run 全部步骤，通过后顺序 execute；中途失败写入 TaskRunJournal partial failure，并按 TaskPlan 拓扑阻断后续依赖步骤，不默认承诺全局 rollback。
-- [x] 2026-05-05 smoke rerun 已确认两条完整 TaskSpec -> Execute 链路通过：`edit_blueprint_graph` 的 `append_new_owned_graph + 新图名`（`task_5806121649296A709F32088EB10C55F0`）和 `edit_blueprint_variables`（`task_38C6DC0D4AC56E1DD89F4992D9A7B3AB`）。
-- [x] 2026-05-05 smoke rerun 已确认 `create_asset`、`edit_blueprint_components`、`create_blueprint_feature` 的 TaskSpec -> preview 闭环通过；Composite preview 能分解为 component / variable / signature / graph_write 多 step TaskPlan。
-- [x] 2026-05-06 smoke rerun 已确认 GraphWrite Replace/Patch/Merge 正确 TaskSpec shape：Replace 通过 Python compiler、Bridge preview、Bridge execute、compile 历史全链路；Patch/Merge 通过 Python compiler，但当时 Bridge preview 被旧 read ref / write anchor 不兼容阻塞。
-- [x] LogicJson `target_type=custom_event` 自定义图查找问题已修复并通过 smoke read-back；LogicJson 能在自定义图中定位 Custom Event。
-- [ ] ClassSettings / UMGWidget / DataTable 仍缺 disposable fixture smoke；2026-05-07 smoke 确认 fixture assets 缺失，未进入 execute。
-- [x] GraphWrite Replace/Patch/Merge 子字段合同已固定；Replace execute 已通过；Patch/Merge 读写锚点合同已固定为 grouped LogicJson / block-scoped anchor，LogicJson 输出、compiler lowering、UE block-scoped resolver 源码已补；Replace body exec link 重建源码也已补。下一步是本地 build/smoke 验证。
-- [x] P2 首批三簇源码接线已完成到 TaskSpec-first 主线：`blueprint_signature`、`object_property`、`graph_cleanup_ownership` 均有 TaskPlan adapter / Runtime dispatch；`edit_object_properties` 与 `manage_blueprinthelper_ownership` 已接 TS/Python compiler。`blueprint_signature.remove_signature` 已接 TaskPlan preflight/blocked path，但不执行真实删除。
-- [ ] P2 首批三簇仍待统一 build、automation、disposable fixture smoke；当前只标记为 source integrated，不标记为 smoke verified。
+- [x] UE Task Runtime 宸叉敮鎸佸 step 椤哄簭鎵ц锛屽苟鑱氬悎 child step result銆?
+- [x] UE Task Runtime 宸叉寜 `execution_policy.should_compile` / `execution_policy.should_save` 鎵ц compile/save post operation銆?
+- [x] TaskRunJournal 宸茶仛鍚?step result銆乸ost operation result锛屽苟鏀寔杩涚▼鍐呮煡璇€?
+- [x] Blueprint Variable TaskPlan IR 宸叉敮鎸?`member_variables` / `member_defaults` / `local_variables` lowering銆?
+- [x] Blueprint Variable ensure-only member batch 缁х画 lower 鍒?`add_blueprint_member_variables`銆?
+- [x] Blueprint Variable mixed member/default/local ops lower 鍒板唴閮?`blueprint_variable_batch`锛屼笉鏆撮湶 adapter operation 缁?Agent銆?
+- [x] Python/MCP TaskSpec 缂栬瘧宸茶鐩?`create_asset`銆乣edit_blueprint_components`銆乣edit_blueprint_class_settings`銆乣edit_umg_widget`銆乣edit_data_table`銆?
+- [x] BlueprintVariableService 鐨?`set_member_variable_properties` 宸插畬鎴愰鐗囩湡瀹炴墽琛岋紝鏀寔 category/tooltip/instance_editable/expose_on_spawn銆?
+- [x] BlueprintVariableService 鐨?`set_member_default(s)` 宸插畬鎴愰鐗囩湡瀹炴墽琛岋紝鍐欏叆 `FBPVariableDescription::DefaultValue` 骞惰繑鍥?ToolResultBase銆?
+- [x] BlueprintVariableService 宸查噸鏂版敹鏁涗负 ToolResultBase fa莽ade / 缂栨帓灞傦紱member default 涓?member property mutation 缁嗚妭宸茶縼鍏?`FBlueprintHelperMemberVariableMutationHandler`銆?
+- [x] `FBlueprintHelperMemberVariableMutationHandler` 宸叉敞鍐屽埌 `FBlueprintOperationHandlerRegistry`锛岃鐩?`set_member_default` / `set_member_defaults` / `set_member_variable_properties`銆?
+- [x] MCP 鍥炲綊宸查€氳繃 `npm.cmd test`锛歂ode 106/106锛孭ython 30/30銆?
+- [x] 11 绫诲伐鍏风皣鐩綍鍒嗙被宸插畬鎴愶紱婧愮爜 UTF-8/TEXT() 淇鍚庯紝鐢ㄦ埛鏈湴宸茬‘璁ら」鐩骇 `Build.bat` 閫氳繃锛坄Build.bat MrStoneEditor Win64 Development -Project=G:\UnrealPractise\MrStone\MrStone.uproject`锛夈€侰odex 娌欑洅澶嶈窇浼氳 MrStone 宸ョ▼绾?`Intermediate` 鍐欐潈闄愰檺鍒堕樆濉炪€?
+- [x] BlueprintVariableService 鐨?local variable read/add/set/remove 宸叉帴鍏ョ湡瀹?Service/OperationHandler 璺緞锛沴ocal variable TaskPlan preview 璧扮湡瀹?dry-run锛屼笉鍐嶈蛋 synthetic preview銆?
+- [x] Component / AssetFactory / Widget / DataTable / ClassSettings 宸蹭粠 Runtime synthetic preview 鍗囩骇涓烘湇鍔＄骇 true dry-run锛汿askPlan preview 浼氳皟鐢ㄥ搴?Service preflight锛屼絾涓嶄細杩涘叆瀹為檯 mutation/Modify/dirty 璺緞銆?
+- [x] GraphWrite `replace_owned_graph` / `patch_owned_graph` / `merge_owned_graph` 宸插畬鎴?TaskSpec schema銆乀S fallback compiler銆丳ython Task Compiler銆佸崗璁?fixtures 鍜?MCP 鍥炲綊娴嬭瘯锛涚紪璇戠粨鏋滀粛鏄?compiler-owned `graph_write` structured IR锛屼笉鏆撮湶 `replace_blueprint_graph` / `patch_blueprint_graph` / `merge_blueprint_graph` 缁?Agent銆?
+- [x] UE TaskRuntime 宸茶ˉ `replace_body` / `set_pin_default|set_node_comment|set_node_position` / `insert_flow` 鐨?structured IR lowering 婧愮爜涓?automation contract tests锛屽垎鍒?lower 鍒扮幇鏈?Replace/Patch/Merge capability cluster adapter payload锛涚敤鎴锋湰鍦板凡纭椤圭洰绾?Build.bat 閫氳繃銆?
+- [x] Composite `create_blueprint_feature` 宸叉墿鍒?`integration.interface` 棣栫墖锛歍S schema銆乀S fallback compiler銆丳ython Task Compiler銆丮CP 鍥炲綊娴嬭瘯宸叉敮鎸佹妸涓€涓?Agent 璇箟 TaskSpec 鍒嗚В涓虹幇鏈?`blueprint_component` / `blueprint_variable` / `blueprint_class_settings` / `blueprint_signature` / `graph_write` TaskPlan steps銆俙integration.input` 宸叉寜褰撳墠鏋舵瀯纭瑁佸壀锛岀户缁樉寮忔嫆缁濓紱`allow_create_assets=true` 浠嶆嫆缁濓紝閬垮厤璧勪骇鍒涘缓琚潤榛樿烦杩囥€?
+- [x] TaskSpec / TaskPlan 鎵ц璇箟宸茬‘璁わ細Agent 鍙啓灏戦噺璇箟椤跺眰 TaskSpec锛汿askPlan 鏄?compiler-owned 鍐呴儴 IR锛涙墽琛屽墠鍏?dry-run 鍏ㄩ儴姝ラ锛岄€氳繃鍚庨『搴?execute锛涗腑閫斿け璐ュ啓鍏?TaskRunJournal partial failure锛屽苟鎸?TaskPlan 鎷撴墤闃绘柇鍚庣画渚濊禆姝ラ锛屼笉榛樿鎵胯鍏ㄥ眬 rollback銆?
+- [x] 2026-05-05 smoke rerun 宸茬‘璁や袱鏉″畬鏁?TaskSpec -> Execute 閾捐矾閫氳繃锛歚edit_blueprint_graph` 鐨?`append_new_owned_graph + 鏂板浘鍚峘锛坄task_5806121649296A709F32088EB10C55F0`锛夊拰 `edit_blueprint_variables`锛坄task_38C6DC0D4AC56E1DD89F4992D9A7B3AB`锛夈€?
+- [x] 2026-05-05 smoke rerun 宸茬‘璁?`create_asset`銆乣edit_blueprint_components`銆乣create_blueprint_feature` 鐨?TaskSpec -> preview 闂幆閫氳繃锛汣omposite preview 鑳藉垎瑙ｄ负 component / variable / signature / graph_write 澶?step TaskPlan銆?
+- [x] 2026-05-06 smoke rerun 宸茬‘璁?GraphWrite Replace/Patch/Merge 姝ｇ‘ TaskSpec shape锛歊eplace 閫氳繃 Python compiler銆丅ridge preview銆丅ridge execute銆乧ompile 鍘嗗彶鍏ㄩ摼璺紱Patch/Merge 閫氳繃 Python compiler锛屼絾褰撴椂 Bridge preview 琚棫 read ref / write anchor 涓嶅吋瀹归樆濉炪€?
+- [x] LogicJson `target_type=custom_event` 鑷畾涔夊浘鏌ユ壘闂宸蹭慨澶嶅苟閫氳繃 smoke read-back锛汱ogicJson 鑳藉湪鑷畾涔夊浘涓畾浣?Custom Event銆?
+- [ ] ClassSettings / UMGWidget / DataTable 浠嶇己 disposable fixture smoke锛?026-05-07 smoke 纭 fixture assets 缂哄け锛屾湭杩涘叆 execute銆?
+- [x] GraphWrite Replace/Patch/Merge 瀛愬瓧娈靛悎鍚屽凡鍥哄畾锛汻eplace execute 宸查€氳繃锛汸atch/Merge 璇诲啓閿氱偣鍚堝悓宸插浐瀹氫负 grouped LogicJson / block-scoped anchor锛孡ogicJson 杈撳嚭銆乧ompiler lowering銆乁E block-scoped resolver 婧愮爜宸茶ˉ锛汻eplace body exec link 閲嶅缓婧愮爜涔熷凡琛ャ€備笅涓€姝ユ槸鏈湴 build/smoke 楠岃瘉銆?
+- [x] P2 棣栨壒涓夌皣婧愮爜鎺ョ嚎宸插畬鎴愬埌 TaskSpec-first 涓荤嚎锛歚blueprint_signature`銆乣object_property`銆乣graph_cleanup_ownership` 鍧囨湁 TaskPlan adapter / Runtime dispatch锛沗edit_object_properties` 涓?`manage_blueprinthelper_ownership` 宸叉帴 TS/Python compiler銆俙blueprint_signature.remove_signature` 宸叉帴 TaskPlan preflight/blocked path锛屼絾涓嶆墽琛岀湡瀹炲垹闄ゃ€?
+- [ ] P2 棣栨壒涓夌皣浠嶅緟缁熶竴 build銆乤utomation銆乨isposable fixture smoke锛涘綋鍓嶅彧鏍囪涓?source integrated锛屼笉鏍囪涓?smoke verified銆?
 
-### 2026-05-05 / 2026-05-06 GraphWrite 合同收口补记
+### 2026-05-05 / 2026-05-06 GraphWrite 鍚堝悓鏀跺彛琛ヨ
 
-- [x] GraphWrite Replace/Patch/Merge TaskSpec 子字段合同已固定到 TS schema、TS fallback compiler、Python compiler、协议 fixture、合同元数据和 smoke 文档。
-- [x] 字段入口已固定为：`replace_owned_graph -> behavior.replace`、`patch_owned_graph -> behavior.patches[]`、`merge_owned_graph -> behavior.merges[]`。
-- [x] 已禁止把 Replace/Patch/Merge 塞回 `behavior.entries` 或通用 `ops`；2026-05-06 smoke 已证明正确 shape 能进入对应 pipeline，Bridge resolver 与 Replace exec link 行为源码已补，剩余是本地 build/smoke 验证。
-- [x] Patch/Merge 写锚点合同已固定：BlueprintHelper-owned 内容优先使用 `block_id` / `group_entry_node_path` 加组内 `node_ref` / `pin_ref` / `link_ref`；`block_id` 定位 owned block，组内 ref 选择具体节点/引脚/连接；裸 `nodes[index]`、显示名和 GUID-first 不作为 Agent 主线合同，GUID 仅作 expert/debug fallback。
-- [x] Ownership metadata / NodeComment 迁移决策已固定：新写入只把机器字段写入 `FMetaData`；不再在 `NodeComment` 中写 `block_id` / `tx`；旧注释里的 `block_id` 只作为 legacy fallback。
+- [x] GraphWrite Replace/Patch/Merge TaskSpec 瀛愬瓧娈靛悎鍚屽凡鍥哄畾鍒?TS schema銆乀S fallback compiler銆丳ython compiler銆佸崗璁?fixture銆佸悎鍚屽厓鏁版嵁鍜?smoke 鏂囨。銆?
+- [x] 瀛楁鍏ュ彛宸插浐瀹氫负锛歚replace_owned_graph -> behavior.replace`銆乣patch_owned_graph -> behavior.patches[]`銆乣merge_owned_graph -> behavior.merges[]`銆?
+- [x] 宸茬姝㈡妸 Replace/Patch/Merge 濉炲洖 `behavior.entries` 鎴栭€氱敤 `ops`锛?026-05-06 smoke 宸茶瘉鏄庢纭?shape 鑳借繘鍏ュ搴?pipeline锛孊ridge resolver 涓?Replace exec link 琛屼负婧愮爜宸茶ˉ锛屽墿浣欐槸鏈湴 build/smoke 楠岃瘉銆?
+- [x] Patch/Merge 鍐欓敋鐐瑰悎鍚屽凡鍥哄畾锛欱lueprintHelper-owned 鍐呭浼樺厛浣跨敤 `block_id` / `group_entry_node_path` 鍔犵粍鍐?`node_ref` / `pin_ref` / `link_ref`锛沗block_id` 瀹氫綅 owned block锛岀粍鍐?ref 閫夋嫨鍏蜂綋鑺傜偣/寮曡剼/杩炴帴锛涜８ `nodes[index]`銆佹樉绀哄悕鍜?GUID-first 涓嶄綔涓?Agent 涓荤嚎鍚堝悓锛孏UID 浠呬綔 expert/debug fallback銆?
+- [x] Ownership metadata / NodeComment 杩佺Щ鍐崇瓥宸插浐瀹氾細鏂板啓鍏ュ彧鎶婃満鍣ㄥ瓧娈靛啓鍏?`FMetaData`锛涗笉鍐嶅湪 `NodeComment` 涓啓 `block_id` / `tx`锛涙棫娉ㄩ噴閲岀殑 `block_id` 鍙綔涓?legacy fallback銆?
 
-## 总体差距矩阵
+## 鎬讳綋宸窛鐭╅樀
 
-| 能力簇 | v0.3.6 来源 | UE DTO/Structure | UE Service | Bridge command | UE Task Runtime | Python/MCP TaskSpec | 当前状态 | 下一步 |
+| 鑳藉姏绨?| v0.3.6 鏉ユ簮 | UE DTO/Structure | UE Service | Bridge command | UE Task Runtime | Python/MCP TaskSpec | 褰撳墠鐘舵€?| 涓嬩竴姝?|
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| ToolResultBase/CommonEnvelope | Done + FieldMapping | 完成，已迁到 `Structure` | 内部 builder 完成 | 通过各 command 返回 | 被 Runtime 复用 | MCP 侧仍有 normalize 层 | 完成 | 保持为统一返回协议，不再为单簇自定义外壳 |
-| TaskRuntime core | 新架构文档 | TaskPlan/validation 使用 JSON | `TaskRuntime` 完成顺序执行器 | `preview_task_plan` / `execute_task_plan` / `get_task_run_journal` | 完成多 step、compile/save post operation、内存 TaskRunJournal 聚合 | MCP 任务工具已接 Python | 完成基础闭环 | 后续补 TOCTOU、持久 journal、preview blocker 丰富化 |
-| Composite Blueprint Feature | 新架构文档 | TaskSpec schema 已接 `create_blueprint_feature` | 复用现有 Service | 复用 `preview_task_plan` / `execute_task_plan` | 复用多 step Runtime，新增 `blueprint_signature/ensure_function` 首片 | 完成 components/variables/class_settings/behavior/interface integration 分解到现有 capability steps | preview smoke passed / execute pending | 补 disposable execute fixture，验证 component / variable / signature / graph_write 多 step 写入结果 |
-| GraphWrite Append | Done + FieldMapping | 完成 | `AppendBlueprintGraphService` 完成 | `append_blueprint_graph` 完成 | 完成，`ensure_entry(custom_event)` structured IR lowering | 完成 `append_new_owned_graph` | execute smoke passed：`append_new_owned_graph + 新图名` | 扩展更多 entry/statement，不改变 TaskPlan 为结构化 IR 的方向 |
-| GraphWrite Replace | Done + FieldMapping | 完成 | `ReplaceBlueprintGraphService` 完成；preserved entry -> replacement body relink 与 ownership metadata 已验证 | `replace_blueprint_graph` 完成 | `replace_body` -> replace adapter lowering 已验证 | 完成 `replace_owned_graph` TaskSpec 编译 | smoke verified full pipeline | 保持 owned-block 约束；继续补非 owned anchor 决策 |
-| GraphWrite Patch | Done + FieldMapping | 完成 | `PatchBlueprintGraphService` 完成；block-scoped resolver 已验证可定位 Replace-created node | `patch_blueprint_graph` 完成 | `set_pin_default` / `set_node_comment` / `set_node_position` -> patch adapter lowering 已验证首片 | 完成 `patch_owned_graph` TaskSpec 编译 | smoke verified on owned block | 扩更多 patch fixture；非 owned anchor 另行决策 |
-| GraphWrite Merge | Done + FieldMapping | 完成 | `MergeBlueprintGraphService` 完成；block-scoped anchor resolver 与 insert flow 首片已验证；`branch_fork + owned_block_call` source fix 已补；`append_new_owned_graph` dependent append 复用 signature-created entry 源码已补 | `merge_blueprint_graph` 完成 | `insert_flow` -> merge adapter lowering 已验证 `insert_between` / `append_after` 首片 | 完成 `merge_owned_graph` TaskSpec 编译 | smoke verified for supported owned-block strategies；R4 已验证 `branch_fork + custom_event_call` execute/read-back；跨图 `owned_block_call` preview 正确 blocked；same-graph `owned_block_call` source patched / smoke pending | 补同 graph `branch_fork + owned_block_call` execute/read-back smoke；`append_after + custom_event_call` preview 已可诊断 |
-| Cleanup BlueprintHelper Block | Done + FieldMapping | 完成 | `CleanupBlueprintHelperBlockService` 完成 | `cleanup_blueprint_helper_block` 完成 | 已接 `graph_cleanup_ownership` adapter / Runtime dispatch | 已接 `manage_blueprinthelper_ownership` compiler | source integrated / smoke pending | 统一 smoke 后再标记完成；保持 internal TaskPlan capability，不新增 Agent-facing 原子写工具 |
-| Rollback Cleanup Transaction | Done + FieldMapping | 完成 | `RollbackCleanupTransactionService` 完成 | `rollback_cleanup_transaction` 完成 | 已接 `graph_cleanup_ownership` adapter / Runtime dispatch | 已接 `manage_blueprinthelper_ownership` compiler | source integrated / smoke pending | 作为 task rollback/journal 能力接入 Runtime，不作为普通写入默认步骤 |
-| Convert Block To User Owned | Done + FieldMapping | 完成 | `ConvertBlockToUserOwnedService` 完成 | `convert_blueprint_helper_block_to_user_owned` 完成 | 已接 `graph_cleanup_ownership` adapter / Runtime dispatch | 已接 `manage_blueprinthelper_ownership` compiler | source integrated / smoke pending | 统一 smoke 验证后再扩高风险 replace/remove 前置使用 |
-| Blueprint Variables/Defaults/Local Variables | Done | 完成 | `BlueprintVariableService` 已支持 member add/remove、member property settings 首片、member default(s) 首片，以及 local variable read/add/set/remove；member/local mutation 细节已迁入 OperationHandler，Service 保持 ToolResultBase façade | 变量相关 command 完成 | 完成变量 IR lowering：ensure-only -> `add_blueprint_member_variables`，混合 member/default/local -> `blueprint_variable_batch`；local_variables preview 支持真实 dry-run | 完成 TaskSpec 编译：member changes/defaults/local variables | smoke-verified：`edit_blueprint_variables` execute | 扩默认值和属性设置更多类型；补更多 UE automation/smoke 覆盖；用户本地项目级 `Build.bat` 已通过；最近验证 task id：`task_38C6DC0D4AC56E1DD89F4992D9A7B3AB` |
-| Function/Event Signature Management | Plan 文档 | 已新增 `Structure/BlueprintSignature` DTO 首片；TaskPlan 已有 `blueprint_signature` | 已新增内部 `FBlueprintHelperSignatureService` 首片：`ensure_function` dry-run/no-op/execute 与 inputs/outputs；`ensure_custom_event` 已有入口创建首片；`ensure_event_dispatcher` 可通过内部结构服务创建新 dispatcher，现阶段只允许 `signature_mismatch_policy=block`；`ensure_override_event` 默认 blocked，显式 `execute_policy=create_if_missing` 已有源码创建路径；remove-signature 仍 blocked | 无 Agent-facing 原子 command；仅 TaskRuntime 内部执行 | Runtime 已委托 SignatureService 执行 `blueprint_signature` step，并支持 `ensure_function` / `ensure_custom_event` / `ensure_event_dispatcher` / `ensure_override_event` / `remove_signature` lowering；interface function/event 已拆分；`custom_event_definition` 已拆成 Signature declaration + GraphWrite body rewrite；override create-if-missing 已接入；remove 仍返回 blocked preflight | `integration.interface` 与 `custom_event_definition` 可编译到 `blueprint_signature` + `graph_write replace_body` | source integrated / smoke pending | 补真实 remove 执行与 dispatcher 迁移策略；新 Signature 源码路径待 build / automation / smoke 后再标 verified |
-| AssetFactory | FieldMapping | 完成 | `AssetFactoryService` 完成，支持 dry-run 冲突/创建预检且不创建资产；源码已补 Structure fields、DataTable `row_struct`、WidgetBlueprint 创建分支 | `create_asset` 完成 | 完成 adapter，支持 `asset_factory/asset_create/create_asset`；preview 调 Service true dry-run | 完成 `create_asset` TaskSpec 编译；已补 `data_table/datatable`、`widget_blueprint/widgetblueprint/widget` aliases | compiler-ready / preview smoke covered / new asset types source integrated | 后续补 Structure/DataTable/WidgetBlueprint execute smoke，再扩 Material 等资产类型 |
-| AssetDiscovery/EditorNavigation | Done + FieldMapping | 完成 | `AssetBrowseService` 完成 | `list_assets` / `search_assets` / `open_asset` / `get_asset_info` 完成 | 不需要默认写入 Runtime | 后续经 `ReadSpec` / `read_context` 进入只读上下文 | 部分 | 保持只读/导航能力，但不扩散成多 Agent-facing 原子工具 |
-| ProjectContext/SetupState | Done + FieldMapping | 类型存在 | `ContextService` 基础存在 | `get_editor_context` 等入口存在 | 不属于写 Runtime | `read_task_context` 当前定位不清，标记 deprecated；后续经 `read_context` 重定义 | 部分 | 合并到 ReadSpec/CapabilitySchema，不保留模糊独立入口 |
-| RuntimeProfile | Done + FieldMapping | 完成 | `RuntimeProfileService` 完成 | `get_runtime_profile` 完成 | 不属于写 Runtime | MCP 默认工具已有 runtime profile | 完成 | 保持 Agent preflight 只读入口 |
-| Diagnostics | Done + FieldMapping | 完成 | `DiagnosticsService` 完成 | `diagnostics_runtime` 完成 | 未被 TaskRuntime 自动执行 | MCP 默认工具已有 diagnostics | 部分 | TaskRuntime 根据 execution_policy 增加 diagnostics 阶段 |
-| CompileBlueprintAsset | Done + FieldMapping | 完成 | `CompileAssetService` 完成 | `compile_blueprint_asset` 完成 | 只把 `should_compile` 写入 validation，不实际调用 compile | 缺失 | 部分 | TaskRuntime 执行末尾按 `execution_policy.should_compile` 调用 |
-| SaveAsset | Done + FieldMapping | 类型存在 | Bridge 内直接实现 | `save_asset` 完成 | 只把 `should_save` 写入 validation，不实际保存 | 缺失 | 部分 | TaskRuntime 执行末尾按 `execution_policy.should_save` 调用 |
-| EditorLifecycle/RiskCommand | Done + FieldMapping | 完成 | `EditorCommandService` 完成 | undo/redo/PIE/close/console 完成 | 不应默认进入写 Runtime | 缺失 | 内部/debug | `open_editor` / `close_editor` 保留并迁移到 `blueprinthelper_*` 前缀；全局 undo/redo 从默认工具集中移除，后续改做 transaction 级 undo/redo |
-| DebugCase / DebugBundle | Debug 系统架构 | DebugCase / DebugBundleManifest v1 已成为当前 developer diagnostics 口径；旧 DebugExport / LargePayload 不再是 active Agent-facing contract | DebugCaseStore / DebugEntry / Review debug linkage 已有首片 | `get_debug_case` summary-only；DebugBundle 仍是本地开发者导出边界 | TaskRuntime / Review / Transaction failure paths 已接入首片 | Agent 通过块级 `logic_md` / `logic_json` 读取定位；失败只暴露 `debug_case_ids[]` summary ref；DebugBundle 不经 MCP 传输 artifact | source integrated / verification tail pending | ReviewPanel 现场验证、DebugBundle Review summary 边界、compile/post-operation failure debug surfacing、retention / cleanup policy |
-| DataAsset/Object Property | Done + FieldMapping | 类型存在 | `PropertyReflectionService` 完成通用 UObject 属性读写，并新增 ToolResultBase façade / true dry-run 批量设置首片 | `get_object_properties` / `set_object_property` 完成 | 已接 `object_property/property_edit` TaskPlan adapter / Runtime dispatch | 已接 `edit_object_properties` TS/Python compiler | source integrated / smoke pending | 统一 smoke 后扩更完整 value 类型、嵌套路径和 DataAsset fixture |
-| DataTable | Done + FieldMapping | 完成 | `DataTableService` 完成，add/update/delete row 支持 true dry-run | get/add/update/delete row 完成 | 完成 adapter，支持 add/update/delete row；preview 调 Service true dry-run | 完成 `edit_data_table` TaskSpec 编译 | compiler-ready / fixture smoke pending | 确认 read 行为仍只读，不混入写 TaskPlan；补 disposable fixture smoke；扩更完整 row schema/field 类型覆盖 |
-| UMG WidgetBlueprint | Done + FieldMapping | 完成 | `WidgetService` 完成，add/set_property/remove 支持 true dry-run | get/add/remove/move/get_properties/set_property 完成 | 部分 adapter，支持 add/set_property/remove，不支持 move/read；preview 调 Service true dry-run | 完成 `edit_umg_widget` TaskSpec 编译，不支持 move_widget | compiler-ready / fixture smoke pending | Runtime adapter 扩 move_widget 或保持明确不支持；补 disposable WidgetBlueprint fixture smoke |
-| Blueprint Component | FieldMapping | 当前结构在 Service header 内，未完全拆到 Structure | `ComponentService` 完成，已统一 ToolResultBase，add/set/remove 支持 true dry-run | read/add/set/remove command 完成 | 部分 adapter，支持 add/set_properties/remove；preview 调 Service true dry-run | 完成 `edit_blueprint_components` TaskSpec 编译 | preview smoke passed / execute pending | 补 component execute smoke；把 component DTO 进一步迁到 Structure |
-| Blueprint Class Settings | FieldMapping | 完成 | `ClassSettingsService` 完成，interface/default property 写入支持 true dry-run | read/add/remove interface/set class defaults 完成 | 部分 adapter，支持 interface/default property，不支持 reparent；preview 调 Service true dry-run | 完成 `edit_blueprint_class_settings` TaskSpec 编译，reparent 明确拒绝 | compiler-ready / fixture smoke pending | reparent 作为 future 或并入 Function/Event/Class signature 能力；补 interface/default property disposable fixture smoke |
-| Internal Dependency Analysis / Reference Context | Done | 完成 | `Safety/DependencyAnalysisService` 部分完成 | `read_reference_context` 完成 | 不属于默认写 Runtime | MCP 只读工具已存在 | 部分/内部 | 保持 Agent 只读引用查看器；后续让高风险 remove/replace preview 可引用其 summary |
-| LogicMD/LogicJson Read | FieldMapping + 架构文档 | 完成 | `Logic` 层完成 | read logic md/json command 完成 | 不属于写 Runtime | 用于上下文/调试，保留为 Agent 只读逻辑入口 | 只读/TaskSpec 辅助；LogicJson custom_event 自定义图读回已修复 | LogicMD 保持 v0.3.6 逻辑信息样式且不携带 TaskSpec draft；LogicJson 需要输出 grouped block 信息以支持 block-scoped write anchor |
-| TransactionJournalQuery / Review transaction records | Done + FieldMapping | 完成 | `Transactions` 层完成 query，Review Store 独属用户侧 | list/read transaction command 完成 | TaskRunJournal 目前是单独内存 journal | 缺失 | 部分 | 与 Review 聚合成完整持久 Review 记录事务；消费 UE 写事务和 task_run_id 分组，不作为 Agent-facing Review/ReviewPanel 工具 |
+| ToolResultBase/CommonEnvelope | Done + FieldMapping | 瀹屾垚锛屽凡杩佸埌 `Structure` | 鍐呴儴 builder 瀹屾垚 | 閫氳繃鍚?command 杩斿洖 | 琚?Runtime 澶嶇敤 | MCP 渚т粛鏈?normalize 灞?| 瀹屾垚 | 淇濇寔涓虹粺涓€杩斿洖鍗忚锛屼笉鍐嶄负鍗曠皣鑷畾涔夊澹?|
+| TaskRuntime core | 鏂版灦鏋勬枃妗?| TaskPlan/validation 浣跨敤 JSON | `TaskRuntime` 瀹屾垚椤哄簭鎵ц鍣?| `preview_task_plan` / `execute_task_plan` / `get_task_run_journal` | 瀹屾垚澶?step銆乧ompile/save post operation銆佸唴瀛?TaskRunJournal 鑱氬悎 | MCP 浠诲姟宸ュ叿宸叉帴 Python | 瀹屾垚鍩虹闂幆 | 鍚庣画琛?TOCTOU銆佹寔涔?journal銆乸review blocker 涓板瘜鍖?|
+| Composite Blueprint Feature | 鏂版灦鏋勬枃妗?| TaskSpec schema 宸叉帴 `create_blueprint_feature` | 澶嶇敤鐜版湁 Service | 澶嶇敤 `preview_task_plan` / `execute_task_plan` | 澶嶇敤澶?step Runtime锛屾柊澧?`blueprint_signature/ensure_function` 棣栫墖 | 瀹屾垚 components/variables/class_settings/behavior/interface integration 鍒嗚В鍒扮幇鏈?capability steps | preview smoke passed / execute pending | 琛?disposable execute fixture锛岄獙璇?component / variable / signature / graph_write 澶?step 鍐欏叆缁撴灉 |
+| GraphWrite Append | Done + FieldMapping | 瀹屾垚 | `AppendBlueprintGraphService` 瀹屾垚 | `append_blueprint_graph` 瀹屾垚 | 瀹屾垚锛宍ensure_entry(custom_event)` structured IR lowering | 瀹屾垚 `append_new_owned_graph` | execute smoke passed锛歚append_new_owned_graph + 鏂板浘鍚峘 | 鎵╁睍鏇村 entry/statement锛屼笉鏀瑰彉 TaskPlan 涓虹粨鏋勫寲 IR 鐨勬柟鍚?|
+| GraphWrite Replace | Done + FieldMapping | 瀹屾垚 | `ReplaceBlueprintGraphService` 瀹屾垚锛沺reserved entry -> replacement body relink 涓?ownership metadata 宸查獙璇?| `replace_blueprint_graph` 瀹屾垚 | `replace_body` -> replace adapter lowering 宸查獙璇?| 瀹屾垚 `replace_owned_graph` TaskSpec 缂栬瘧 | smoke verified full pipeline | 淇濇寔 owned-block 绾︽潫锛涚户缁ˉ闈?owned anchor 鍐崇瓥 |
+| GraphWrite Patch | Done + FieldMapping | 瀹屾垚 | `PatchBlueprintGraphService` 瀹屾垚锛沚lock-scoped resolver 宸查獙璇佸彲瀹氫綅 Replace-created node | `patch_blueprint_graph` 瀹屾垚 | `set_pin_default` / `set_node_comment` / `set_node_position` -> patch adapter lowering 宸查獙璇侀鐗?| 瀹屾垚 `patch_owned_graph` TaskSpec 缂栬瘧 | smoke verified on owned block | 鎵╂洿澶?patch fixture锛涢潪 owned anchor 鍙﹁鍐崇瓥 |
+| GraphWrite Merge | Done + FieldMapping | 瀹屾垚 | `MergeBlueprintGraphService` 瀹屾垚锛沚lock-scoped anchor resolver 涓?insert flow 棣栫墖宸查獙璇侊紱`branch_fork + owned_block_call` source fix 宸茶ˉ锛沗append_new_owned_graph` dependent append 澶嶇敤 signature-created entry 婧愮爜宸茶ˉ | `merge_blueprint_graph` 瀹屾垚 | `insert_flow` -> merge adapter lowering 宸查獙璇?`insert_between` / `append_after` 棣栫墖 | 瀹屾垚 `merge_owned_graph` TaskSpec 缂栬瘧 | smoke verified for supported owned-block strategies锛汻4 宸查獙璇?`branch_fork + custom_event_call` execute/read-back锛涜法鍥?`owned_block_call` preview 姝ｇ‘ blocked锛泂ame-graph `owned_block_call` source patched / smoke pending | 琛ュ悓 graph `branch_fork + owned_block_call` execute/read-back smoke锛沗append_after + custom_event_call` preview 宸插彲璇婃柇 |
+| Cleanup BlueprintHelper Block | Done + FieldMapping | 瀹屾垚 | `CleanupBlueprintHelperBlockService` 瀹屾垚 | `cleanup_blueprint_helper_block` 瀹屾垚 | 宸叉帴 `graph_cleanup_ownership` adapter / Runtime dispatch | 宸叉帴 `manage_blueprinthelper_ownership` compiler | source integrated / smoke pending | 缁熶竴 smoke 鍚庡啀鏍囪瀹屾垚锛涗繚鎸?internal TaskPlan capability锛屼笉鏂板 Agent-facing 鍘熷瓙鍐欏伐鍏?|
+| Rollback Cleanup Transaction | Done + FieldMapping | 瀹屾垚 | `RollbackCleanupTransactionService` 瀹屾垚 | `rollback_cleanup_transaction` 瀹屾垚 | 宸叉帴 `graph_cleanup_ownership` adapter / Runtime dispatch | 宸叉帴 `manage_blueprinthelper_ownership` compiler | source integrated / smoke pending | 浣滀负 task rollback/journal 鑳藉姏鎺ュ叆 Runtime锛屼笉浣滀负鏅€氬啓鍏ラ粯璁ゆ楠?|
+| Convert Block To User Owned | Done + FieldMapping | 瀹屾垚 | `ConvertBlockToUserOwnedService` 瀹屾垚 | `convert_blueprint_helper_block_to_user_owned` 瀹屾垚 | 宸叉帴 `graph_cleanup_ownership` adapter / Runtime dispatch | 宸叉帴 `manage_blueprinthelper_ownership` compiler | source integrated / smoke pending | 缁熶竴 smoke 楠岃瘉鍚庡啀鎵╅珮椋庨櫓 replace/remove 鍓嶇疆浣跨敤 |
+| Blueprint Variables/Defaults/Local Variables | Done | 瀹屾垚 | `BlueprintVariableService` 宸叉敮鎸?member add/remove銆乵ember property settings 棣栫墖銆乵ember default(s) 棣栫墖锛屼互鍙?local variable read/add/set/remove锛沵ember/local mutation 缁嗚妭宸茶縼鍏?OperationHandler锛孲ervice 淇濇寔 ToolResultBase fa莽ade | 鍙橀噺鐩稿叧 command 瀹屾垚 | 瀹屾垚鍙橀噺 IR lowering锛歟nsure-only -> `add_blueprint_member_variables`锛屾贩鍚?member/default/local -> `blueprint_variable_batch`锛沴ocal_variables preview 鏀寔鐪熷疄 dry-run | 瀹屾垚 TaskSpec 缂栬瘧锛歮ember changes/defaults/local variables | smoke-verified锛歚edit_blueprint_variables` execute | 鎵╅粯璁ゅ€煎拰灞炴€ц缃洿澶氱被鍨嬶紱琛ユ洿澶?UE automation/smoke 瑕嗙洊锛涚敤鎴锋湰鍦伴」鐩骇 `Build.bat` 宸查€氳繃锛涙渶杩戦獙璇?task id锛歚task_38C6DC0D4AC56E1DD89F4992D9A7B3AB` |
+| Function/Event Signature Management | Plan 鏂囨。 | 宸叉柊澧?`Structure/BlueprintSignature` DTO 棣栫墖锛汿askPlan 宸叉湁 `blueprint_signature` | 宸叉柊澧炲唴閮?`FBlueprintHelperSignatureService` 棣栫墖锛歚ensure_function` dry-run/no-op/execute 涓?inputs/outputs锛沗ensure_custom_event` 宸叉湁鍏ュ彛鍒涘缓棣栫墖锛沗ensure_event_dispatcher` 鍙€氳繃鍐呴儴缁撴瀯鏈嶅姟鍒涘缓鏂?dispatcher锛岀幇闃舵鍙厑璁?`signature_mismatch_policy=block`锛沗ensure_override_event` 榛樿 blocked锛屾樉寮?`execute_policy=create_if_missing` 宸叉湁婧愮爜鍒涘缓璺緞锛況emove-signature 浠?blocked | 鏃?Agent-facing 鍘熷瓙 command锛涗粎 TaskRuntime 鍐呴儴鎵ц | Runtime 宸插鎵?SignatureService 鎵ц `blueprint_signature` step锛屽苟鏀寔 `ensure_function` / `ensure_custom_event` / `ensure_event_dispatcher` / `ensure_override_event` / `remove_signature` lowering锛沬nterface function/event 宸叉媶鍒嗭紱`custom_event_definition` 宸叉媶鎴?Signature declaration + GraphWrite body rewrite锛沷verride create-if-missing 宸叉帴鍏ワ紱remove 浠嶈繑鍥?blocked preflight | `integration.interface` 涓?`custom_event_definition` 鍙紪璇戝埌 `blueprint_signature` + `graph_write replace_body` | source integrated / smoke pending | 琛ョ湡瀹?remove 鎵ц涓?dispatcher 杩佺Щ绛栫暐锛涙柊 Signature 婧愮爜璺緞寰?build / automation / smoke 鍚庡啀鏍?verified |
+| AssetFactory | FieldMapping | 瀹屾垚 | `AssetFactoryService` 瀹屾垚锛屾敮鎸?dry-run 鍐茬獊/鍒涘缓棰勬涓斾笉鍒涘缓璧勪骇锛涙簮鐮佸凡琛?Structure fields銆丏ataTable `row_struct`銆乄idgetBlueprint 鍒涘缓鍒嗘敮 | `create_asset` 瀹屾垚 | 瀹屾垚 adapter锛屾敮鎸?`asset_factory/asset_create/create_asset`锛沺review 璋?Service true dry-run | 瀹屾垚 `create_asset` TaskSpec 缂栬瘧锛涘凡琛?`data_table/datatable`銆乣widget_blueprint/widgetblueprint/widget` aliases | compiler-ready / preview smoke covered / new asset types source integrated | 鍚庣画琛?Structure/DataTable/WidgetBlueprint execute smoke锛屽啀鎵?Material 绛夎祫浜х被鍨?|
+| AssetDiscovery/EditorNavigation | Done + FieldMapping | 瀹屾垚 | `AssetBrowseService` 瀹屾垚 | `list_assets` / `search_assets` / `open_asset` / `get_asset_info` 瀹屾垚 | 涓嶉渶瑕侀粯璁ゅ啓鍏?Runtime | 鍚庣画缁?`ReadSpec` / `read_context` 杩涘叆鍙涓婁笅鏂?| 閮ㄥ垎 | 淇濇寔鍙/瀵艰埅鑳藉姏锛屼絾涓嶆墿鏁ｆ垚澶?Agent-facing 鍘熷瓙宸ュ叿 |
+| ProjectContext/SetupState | Done + FieldMapping | 绫诲瀷瀛樺湪 | `ContextService` 鍩虹瀛樺湪 | `get_editor_context` 绛夊叆鍙ｅ瓨鍦?| 涓嶅睘浜庡啓 Runtime | `read_task_context` 褰撳墠瀹氫綅涓嶆竻锛屾爣璁?deprecated锛涘悗缁粡 `read_context` 閲嶅畾涔?| 閮ㄥ垎 | 鍚堝苟鍒?ReadSpec/CapabilitySchema锛屼笉淇濈暀妯＄硦鐙珛鍏ュ彛 |
+| RuntimeProfile | Done + FieldMapping | 瀹屾垚 | `RuntimeProfileService` 瀹屾垚 | `get_runtime_profile` 瀹屾垚 | 涓嶅睘浜庡啓 Runtime | MCP 榛樿宸ュ叿宸叉湁 runtime profile | 瀹屾垚 | 淇濇寔 Agent preflight 鍙鍏ュ彛 |
+| Diagnostics | Done + FieldMapping | 瀹屾垚 | `DiagnosticsService` 瀹屾垚 | `diagnostics_runtime` 瀹屾垚 | 鏈 TaskRuntime 鑷姩鎵ц | MCP 榛樿宸ュ叿宸叉湁 diagnostics | 閮ㄥ垎 | TaskRuntime 鏍规嵁 execution_policy 澧炲姞 diagnostics 闃舵 |
+| CompileBlueprintAsset | Done + FieldMapping | 瀹屾垚 | `CompileAssetService` 瀹屾垚 | `compile_blueprint_asset` 瀹屾垚 | 鍙妸 `should_compile` 鍐欏叆 validation锛屼笉瀹為檯璋冪敤 compile | 缂哄け | 閮ㄥ垎 | TaskRuntime 鎵ц鏈熬鎸?`execution_policy.should_compile` 璋冪敤 |
+| SaveAsset | Done + FieldMapping | 绫诲瀷瀛樺湪 | Bridge 鍐呯洿鎺ュ疄鐜?| `save_asset` 瀹屾垚 | 鍙妸 `should_save` 鍐欏叆 validation锛屼笉瀹為檯淇濆瓨 | 缂哄け | 閮ㄥ垎 | TaskRuntime 鎵ц鏈熬鎸?`execution_policy.should_save` 璋冪敤 |
+| EditorLifecycle/RiskCommand | Done + FieldMapping | 瀹屾垚 | `EditorCommandService` 瀹屾垚 | undo/redo/PIE/close/console 瀹屾垚 | 涓嶅簲榛樿杩涘叆鍐?Runtime | 缂哄け | 鍐呴儴/debug | `open_editor` / `close_editor` 淇濈暀骞惰縼绉诲埌 `blueprinthelper_*` 鍓嶇紑锛涘叏灞€ undo/redo 浠庨粯璁ゅ伐鍏烽泦涓Щ闄わ紝鍚庣画鏀瑰仛 transaction 绾?undo/redo |
+| DebugCase / DebugBundle | Debug 绯荤粺鏋舵瀯 | DebugCase / DebugBundleManifest v1 宸叉垚涓哄綋鍓?developer diagnostics 鍙ｅ緞锛涙棫 DebugExport / LargePayload 涓嶅啀鏄?active Agent-facing contract | DebugCaseStore / DebugEntry / Review debug linkage 宸叉湁棣栫墖 | `get_debug_case` summary-only锛汥ebugBundle 浠嶆槸鏈湴寮€鍙戣€呭鍑鸿竟鐣?| TaskRuntime / Review / Transaction failure paths 宸叉帴鍏ラ鐗?| Agent 閫氳繃鍧楃骇 `logic_md` / `logic_json` 璇诲彇瀹氫綅锛涘け璐ュ彧鏆撮湶 `debug_case_ids[]` summary ref锛汥ebugBundle 涓嶇粡 MCP 浼犺緭 artifact | source integrated / verification tail pending | ReviewPanel 鐜板満楠岃瘉銆丏ebugBundle Review summary 杈圭晫銆乧ompile/post-operation failure debug surfacing銆乺etention / cleanup policy |
+| DataAsset/Object Property | Done + FieldMapping | 绫诲瀷瀛樺湪 | `PropertyReflectionService` 瀹屾垚閫氱敤 UObject 灞炴€ц鍐欙紝骞舵柊澧?ToolResultBase fa莽ade / true dry-run 鎵归噺璁剧疆棣栫墖 | `get_object_properties` / `set_object_property` 瀹屾垚 | 宸叉帴 `object_property/property_edit` TaskPlan adapter / Runtime dispatch | 宸叉帴 `edit_object_properties` TS/Python compiler | source integrated / smoke pending | 缁熶竴 smoke 鍚庢墿鏇村畬鏁?value 绫诲瀷銆佸祵濂楄矾寰勫拰 DataAsset fixture |
+| DataTable | Done + FieldMapping | 瀹屾垚 | `DataTableService` 瀹屾垚锛宎dd/update/delete row 鏀寔 true dry-run | get/add/update/delete row 瀹屾垚 | 瀹屾垚 adapter锛屾敮鎸?add/update/delete row锛沺review 璋?Service true dry-run | 瀹屾垚 `edit_data_table` TaskSpec 缂栬瘧 | compiler-ready / fixture smoke pending | 纭 read 琛屼负浠嶅彧璇伙紝涓嶆贩鍏ュ啓 TaskPlan锛涜ˉ disposable fixture smoke锛涙墿鏇村畬鏁?row schema/field 绫诲瀷瑕嗙洊 |
+| UMG WidgetBlueprint | Done + FieldMapping | 瀹屾垚 | `WidgetService` 瀹屾垚锛宎dd/set_property/remove 鏀寔 true dry-run | get/add/remove/move/get_properties/set_property 瀹屾垚 | 閮ㄥ垎 adapter锛屾敮鎸?add/set_property/remove锛屼笉鏀寔 move/read锛沺review 璋?Service true dry-run | 瀹屾垚 `edit_umg_widget` TaskSpec 缂栬瘧锛屼笉鏀寔 move_widget | compiler-ready / fixture smoke pending | Runtime adapter 鎵?move_widget 鎴栦繚鎸佹槑纭笉鏀寔锛涜ˉ disposable WidgetBlueprint fixture smoke |
+| Blueprint Component | FieldMapping | 褰撳墠缁撴瀯鍦?Service header 鍐咃紝鏈畬鍏ㄦ媶鍒?Structure | `ComponentService` 瀹屾垚锛屽凡缁熶竴 ToolResultBase锛宎dd/set/remove 鏀寔 true dry-run | read/add/set/remove command 瀹屾垚 | 閮ㄥ垎 adapter锛屾敮鎸?add/set_properties/remove锛沺review 璋?Service true dry-run | 瀹屾垚 `edit_blueprint_components` TaskSpec 缂栬瘧 | preview smoke passed / execute pending | 琛?component execute smoke锛涙妸 component DTO 杩涗竴姝ヨ縼鍒?Structure |
+| Blueprint Class Settings | FieldMapping | 瀹屾垚 | `ClassSettingsService` 瀹屾垚锛宨nterface/default property 鍐欏叆鏀寔 true dry-run | read/add/remove interface/set class defaults 瀹屾垚 | 閮ㄥ垎 adapter锛屾敮鎸?interface/default property锛屼笉鏀寔 reparent锛沺review 璋?Service true dry-run | 瀹屾垚 `edit_blueprint_class_settings` TaskSpec 缂栬瘧锛宺eparent 鏄庣‘鎷掔粷 | compiler-ready / fixture smoke pending | reparent 浣滀负 future 鎴栧苟鍏?Function/Event/Class signature 鑳藉姏锛涜ˉ interface/default property disposable fixture smoke |
+| Internal Dependency Analysis / Reference Context | Done | 瀹屾垚 | `Safety/DependencyAnalysisService` 閮ㄥ垎瀹屾垚 | `read_reference_context` 瀹屾垚 | 涓嶅睘浜庨粯璁ゅ啓 Runtime | MCP 鍙宸ュ叿宸插瓨鍦?| 閮ㄥ垎/鍐呴儴 | 淇濇寔 Agent 鍙寮曠敤鏌ョ湅鍣紱鍚庣画璁╅珮椋庨櫓 remove/replace preview 鍙紩鐢ㄥ叾 summary |
+| LogicMD/LogicJson Read | FieldMapping + 鏋舵瀯鏂囨。 | 瀹屾垚 | `Logic` 灞傚畬鎴?| read logic md/json command 瀹屾垚 | 涓嶅睘浜庡啓 Runtime | 鐢ㄤ簬涓婁笅鏂?璋冭瘯锛屼繚鐣欎负 Agent 鍙閫昏緫鍏ュ彛 | 鍙/TaskSpec 杈呭姪锛汱ogicJson custom_event 鑷畾涔夊浘璇诲洖宸蹭慨澶?| LogicMD 淇濇寔 v0.3.6 閫昏緫淇℃伅鏍峰紡涓斾笉鎼哄甫 TaskSpec draft锛汱ogicJson 闇€瑕佽緭鍑?grouped block 淇℃伅浠ユ敮鎸?block-scoped write anchor |
+| TransactionJournalQuery / Review transaction records | Done + FieldMapping | 瀹屾垚 | `Transactions` 灞傚畬鎴?query锛孯eview Store 鐙睘鐢ㄦ埛渚?| list/read transaction command 瀹屾垚 | TaskRunJournal 鐩墠鏄崟鐙唴瀛?journal | 缂哄け | 閮ㄥ垎 | 涓?Review 鑱氬悎鎴愬畬鏁存寔涔?Review 璁板綍浜嬪姟锛涙秷璐?UE 鍐欎簨鍔″拰 task_run_id 鍒嗙粍锛屼笉浣滀负 Agent-facing Review/ReviewPanel 宸ュ叿 |
 
-## 当前 Runtime 能力与 v0.3.6 的主要不一致
+## 褰撳墠 Runtime 鑳藉姏涓?v0.3.6 鐨勪富瑕佷笉涓€鑷?
 
-1. **[x] TaskRuntime 多 step 基础已补齐。**
-   当前 `preview_task_plan` / `execute_task_plan` 已能顺序执行多个 TaskPlan step，并聚合 step result。剩余问题是 TOCTOU、防重入、以及长期持久化 journal。
+1. **[x] TaskRuntime 澶?step 鍩虹宸茶ˉ榻愩€?*
+   褰撳墠 `preview_task_plan` / `execute_task_plan` 宸茶兘椤哄簭鎵ц澶氫釜 TaskPlan step锛屽苟鑱氬悎 step result銆傚墿浣欓棶棰樻槸 TOCTOU銆侀槻閲嶅叆銆佷互鍙婇暱鏈熸寔涔呭寲 journal銆?
 
-2. **[x] `execution_policy.should_compile` / `execution_policy.should_save` 基础执行已补齐。**
-   Runtime 已在非 dry-run 执行末尾调用 `compile_blueprint_asset` / `save_asset` post operation，并写入 runtime data 与 TaskRunJournal。后续需要补更细的失败恢复和 TOCTOU 处理。
+2. **[x] `execution_policy.should_compile` / `execution_policy.should_save` 鍩虹鎵ц宸茶ˉ榻愩€?*
+   Runtime 宸插湪闈?dry-run 鎵ц鏈熬璋冪敤 `compile_blueprint_asset` / `save_asset` post operation锛屽苟鍐欏叆 runtime data 涓?TaskRunJournal銆傚悗缁渶瑕佽ˉ鏇寸粏鐨勫け璐ユ仮澶嶅拰 TOCTOU 澶勭悊銆?
 
-3. **[x] P1 Python Compiler 覆盖已补齐首片。**
-   Python/MCP TaskSpec 已覆盖 `asset_factory`、`blueprint_component`、`blueprint_class_settings`、`umg_widget`、`data_table`，并保持 Agent-facing 字段为语义层，不暴露 adapter operation。
+3. **[x] P1 Python Compiler 瑕嗙洊宸茶ˉ榻愰鐗囥€?*
+   Python/MCP TaskSpec 宸茶鐩?`asset_factory`銆乣blueprint_component`銆乣blueprint_class_settings`銆乣umg_widget`銆乣data_table`锛屽苟淇濇寔 Agent-facing 瀛楁涓鸿涔夊眰锛屼笉鏆撮湶 adapter operation銆?
 
-4. **[x] P1 adapter dry-run 已升级为服务级 true dry-run。**
-   AssetFactory、BlueprintComponent、BlueprintClassSettings、UMGWidget、DataTable 的 TaskPlan adapter 已标记 true dry-run 支持，并在 preview 时调用对应 Service preflight。dry-run 路径会解析目标资产、类/接口/属性/row/widget/component 等执行前置条件，但不会进入 `FBlueprintHelperScopedAssetMutation`、`Modify`、实际 Add/Remove/ImportText 写入、MarkBlueprint、AssetRegistry 创建或 DataTable row mutation 路径。Runtime synthetic preview 仍保留给尚未完成 true dry-run 的其他 adapter。
+4. **[x] P1 adapter dry-run 宸插崌绾т负鏈嶅姟绾?true dry-run銆?*
+   AssetFactory銆丅lueprintComponent銆丅lueprintClassSettings銆乁MGWidget銆丏ataTable 鐨?TaskPlan adapter 宸叉爣璁?true dry-run 鏀寔锛屽苟鍦?preview 鏃惰皟鐢ㄥ搴?Service preflight銆俤ry-run 璺緞浼氳В鏋愮洰鏍囪祫浜с€佺被/鎺ュ彛/灞炴€?row/widget/component 绛夋墽琛屽墠缃潯浠讹紝浣嗕笉浼氳繘鍏?`FBlueprintHelperScopedAssetMutation`銆乣Modify`銆佸疄闄?Add/Remove/ImportText 鍐欏叆銆丮arkBlueprint銆丄ssetRegistry 鍒涘缓鎴?DataTable row mutation 璺緞銆俁untime synthetic preview 浠嶄繚鐣欑粰灏氭湭瀹屾垚 true dry-run 鐨勫叾浠?adapter銆?
 
-5. **P2 新簇已进入 source integrated 阶段，但未统一验证。**
-   BlueprintVariableService 的 member property settings、member defaults、local variables 已完成首片真实执行，且实际 mutation 已迁入 OperationHandler；Function/Event Signature Management、DataAsset/ObjectProperty、Cleanup/Rollback/Ownership 已接入 TaskSpec -> TaskPlan -> Runtime 源码路径。DebugCase / DebugBundle 已替代旧 DebugExport LargePayload 作为当前 developer diagnostics 方向；批量上下文引用不再作为当前 Agent-facing 主线方向；P2 首批三簇需要下一轮统一 automation、disposable fixture smoke 后才能标记为 verified。
-6. **UE 构建验证状态。**
-   后续统一使用项目级 `Build.bat`。源码 UTF-8/TEXT() 修复后，用户本地已确认 `Build.bat MrStoneEditor Win64 Development -Project=G:\UnrealPractise\MrStone\MrStone.uproject` 构建通过。2026-05-09 起当前主线不再按 Codex 环境 build blocked 口径推进；剩余状态是 grouped Automation 和 disposable fixture smoke 未全绿。
+5. **P2 鏂扮皣宸茶繘鍏?source integrated 闃舵锛屼絾鏈粺涓€楠岃瘉銆?*
+   BlueprintVariableService 鐨?member property settings銆乵ember defaults銆乴ocal variables 宸插畬鎴愰鐗囩湡瀹炴墽琛岋紝涓斿疄闄?mutation 宸茶縼鍏?OperationHandler锛汧unction/Event Signature Management銆丏ataAsset/ObjectProperty銆丆leanup/Rollback/Ownership 宸叉帴鍏?TaskSpec -> TaskPlan -> Runtime 婧愮爜璺緞銆侱ebugCase / DebugBundle 宸叉浛浠ｆ棫 DebugExport LargePayload 浣滀负褰撳墠 developer diagnostics 鏂瑰悜锛涙壒閲忎笂涓嬫枃寮曠敤涓嶅啀浣滀负褰撳墠 Agent-facing 涓荤嚎鏂瑰悜锛汸2 棣栨壒涓夌皣闇€瑕佷笅涓€杞粺涓€ automation銆乨isposable fixture smoke 鍚庢墠鑳芥爣璁颁负 verified銆?
+6. **UE 鏋勫缓楠岃瘉鐘舵€併€?*
+   鍚庣画缁熶竴浣跨敤椤圭洰绾?`Build.bat`銆傛簮鐮?UTF-8/TEXT() 淇鍚庯紝鐢ㄦ埛鏈湴宸茬‘璁?`Build.bat MrStoneEditor Win64 Development -Project=G:\UnrealPractise\MrStone\MrStone.uproject` 鏋勫缓閫氳繃銆?026-05-09 璧峰綋鍓嶄富绾夸笉鍐嶆寜 Codex 鐜 build blocked 鍙ｅ緞鎺ㄨ繘锛涘墿浣欑姸鎬佹槸 grouped Automation 鍜?disposable fixture smoke 鏈叏缁裤€?
 
-## 优先级建议
+## 浼樺厛绾у缓璁?
 
-### P0：Runtime 闭环基础
+### P0锛歊untime 闂幆鍩虹
 
-1. [x] TaskRuntime 支持多 step 顺序执行。
-2. [x] TaskRuntime 执行 `execution_policy.should_compile` / `execution_policy.should_save`。
-3. [x] TaskRunJournal 合并 child result、validation、compile/save 结果。
-4. [ ] Preview blocked 时返回更可读的 blockers，并可引用 `ReferenceContextPack`。
+1. [x] TaskRuntime 鏀寔澶?step 椤哄簭鎵ц銆?
+2. [x] TaskRuntime 鎵ц `execution_policy.should_compile` / `execution_policy.should_save`銆?
+3. [x] TaskRunJournal 鍚堝苟 child result銆乿alidation銆乧ompile/save 缁撴灉銆?
+4. [ ] Preview blocked 鏃惰繑鍥炴洿鍙鐨?blockers锛屽苟鍙紩鐢?`ReferenceContextPack`銆?
 
-这些是所有能力簇共同依赖，不应推迟到单个能力后面。
+杩欎簺鏄墍鏈夎兘鍔涚皣鍏卞悓渚濊禆锛屼笉搴旀帹杩熷埌鍗曚釜鑳藉姏鍚庨潰銆?
 
-### P1：补 Python/MCP TaskSpec 编译覆盖
+### P1锛氳ˉ Python/MCP TaskSpec 缂栬瘧瑕嗙洊
 
-优先给已经 TaskPlan-ready 的 UE capability 补 TaskSpec：
+浼樺厛缁欏凡缁?TaskPlan-ready 鐨?UE capability 琛?TaskSpec锛?
 
 1. [x] `asset_factory`
 2. [x] `blueprint_component`
 3. [x] `blueprint_class_settings`
 4. [x] `umg_widget`
 5. [x] `data_table`
-6. [x] `blueprint_variable` 的 set/remove/default/local TaskSpec 与 Runtime lowering
-7. [x] GraphWrite replace/patch/merge TaskSpec compiler 与 structured IR lowering 源码
-8. [x] `create_blueprint_feature` composite compiler 首片：把一个功能级 TaskSpec 分解到已接入的现有 capability steps
+6. [x] `blueprint_variable` 鐨?set/remove/default/local TaskSpec 涓?Runtime lowering
+7. [x] GraphWrite replace/patch/merge TaskSpec compiler 涓?structured IR lowering 婧愮爜
+8. [x] `create_blueprint_feature` composite compiler 棣栫墖锛氭妸涓€涓姛鑳界骇 TaskSpec 鍒嗚В鍒板凡鎺ュ叆鐨勭幇鏈?capability steps
 
-这批不需要先写大量 UE 新能力，主要补 TaskSpec schema、Python compiler、TS schema/test 与 MCP preview/execute contract。这里的 `[x]` 表示 compiler/contract/source 首片已补齐，不等同于全部 UE execute smoke 已通过；当前真实 smoke-verified execute 闭环只有 `edit_blueprint_graph + append_new_owned_graph + 新图名` 与 `edit_blueprint_variables`。
+杩欐壒涓嶉渶瑕佸厛鍐欏ぇ閲?UE 鏂拌兘鍔涳紝涓昏琛?TaskSpec schema銆丳ython compiler銆乀S schema/test 涓?MCP preview/execute contract銆傝繖閲岀殑 `[x]` 琛ㄧず compiler/contract/source 棣栫墖宸茶ˉ榻愶紝涓嶇瓑鍚屼簬鍏ㄩ儴 UE execute smoke 宸查€氳繃锛涘綋鍓嶇湡瀹?smoke-verified execute 闂幆鍙湁 `edit_blueprint_graph + append_new_owned_graph + 鏂板浘鍚峘 涓?`edit_blueprint_variables`銆?
 
-### P2：扩 UE 新能力簇
+### P2锛氭墿 UE 鏂拌兘鍔涚皣
 
-1. [x] Function/Event Signature Management 首片：内部 service、DTO、ensure_function、ensure_custom_event entry 创建、ensure_event_dispatcher 新建声明、ensure_override_event blocked preflight、remove_signature blocked preflight、Runtime delegation。
-2. [x] DataAsset/ObjectProperty 首片：TaskSpec schema、TS/Python compiler、TaskPlan adapter、ToolResultBase façade、Runtime dispatch。
-3. [x] Cleanup/Rollback/Ownership 首片：TaskSpec schema、TS/Python compiler、TaskPlan adapter、Runtime dispatch 到 cleanup / convert / rollback service。
-4. [ ] P2 首批三簇统一 build、automation、disposable fixture smoke。
-5. [x] Signature 边界扩展：函数参数、返回值、interface function vs interface event、event dispatcher signature mutation policy、override/native event default blocked policy、override/native explicit create-if-missing source path、custom_event_definition split、remove execute policy 已固定到 TaskSpec/TaskPlan 与 UE 源码首片。
-6. [x] DebugCase / DebugBundle developer diagnostics 首片：失败路径使用 `debug_case_ids[]` summary ref，DebugBundle 是本地开发者导出物，不再走旧 DebugExport LargePayload 口径。
-7. [ ] Debug diagnostics verification tail：ReviewPanel 现场验证、DebugBundle Review summary export 边界、compile/post-operation failure debug surfacing、retention / cleanup policy。
-7. [ ] DependencyAnalysis 与高风险 preview 的集成。
+1. [x] Function/Event Signature Management 棣栫墖锛氬唴閮?service銆丏TO銆乪nsure_function銆乪nsure_custom_event entry 鍒涘缓銆乪nsure_event_dispatcher 鏂板缓澹版槑銆乪nsure_override_event blocked preflight銆乺emove_signature blocked preflight銆丷untime delegation銆?
+2. [x] DataAsset/ObjectProperty 棣栫墖锛歍askSpec schema銆乀S/Python compiler銆乀askPlan adapter銆乀oolResultBase fa莽ade銆丷untime dispatch銆?
+3. [x] Cleanup/Rollback/Ownership 棣栫墖锛歍askSpec schema銆乀S/Python compiler銆乀askPlan adapter銆丷untime dispatch 鍒?cleanup / convert / rollback service銆?
+4. [ ] P2 棣栨壒涓夌皣缁熶竴 build銆乤utomation銆乨isposable fixture smoke銆?
+5. [x] Signature 杈圭晫鎵╁睍锛氬嚱鏁板弬鏁般€佽繑鍥炲€笺€乮nterface function vs interface event銆乪vent dispatcher signature mutation policy銆乷verride/native event default blocked policy銆乷verride/native explicit create-if-missing source path銆乧ustom_event_definition split銆乺emove execute policy 宸插浐瀹氬埌 TaskSpec/TaskPlan 涓?UE 婧愮爜棣栫墖銆?
+6. [x] DebugCase / DebugBundle developer diagnostics 棣栫墖锛氬け璐ヨ矾寰勪娇鐢?`debug_case_ids[]` summary ref锛孌ebugBundle 鏄湰鍦板紑鍙戣€呭鍑虹墿锛屼笉鍐嶈蛋鏃?DebugExport LargePayload 鍙ｅ緞銆?
+7. [ ] Debug diagnostics verification tail锛歊eviewPanel 鐜板満楠岃瘉銆丏ebugBundle Review summary export 杈圭晫銆乧ompile/post-operation failure debug surfacing銆乺etention / cleanup policy銆?
+7. [ ] DependencyAnalysis 涓庨珮椋庨櫓 preview 鐨勯泦鎴愩€?
 
-## 后续讨论待办
+## 鍚庣画璁ㄨ寰呭姙
 
-1. [x] Agent-facing MCP 默认工具集合最终冻结：`blueprinthelper_read_agent_guide`、`blueprint_get_runtime_profile`、`blueprinthelper_diagnostics`、`blueprinthelper_read_context`、`blueprinthelper_read_reference_context`、`blueprinthelper_preview_task`、`blueprinthelper_execute_task`、`blueprinthelper_get_task_result`、`blueprinthelper_open_editor`、`blueprinthelper_close_editor`。
-2. [x] 旧 MCP 原子工具处理策略确认：已实现 TaskPlan adapter + TaskSpec compiler 覆盖的能力优先移除旧 Agent-facing 原子 MCP 工具；未覆盖能力暂保留为 legacy/internal/debug/expert/test，等 adapter 与 TaskSpec 支持落地时同步移除。
-3. [x] 返回体分层最终冻结：`blueprinthelper_read_agent_guide` 返回 Markdown；其他默认读/任务工具使用 `BlueprintHelper.McpToolResult.v1` 外壳；`read_context` -> `ReadContextPack.v1`，`read_reference_context` -> `ReferenceContextPack.v1`，`preview_task` -> `TaskPreviewResult.v1`，`execute_task` -> `TaskRunSummary.v1` 或 `TaskRunJournal.v1`，`get_task_result` -> `TaskRunJournal.v1`；UE façade 统一 `FBlueprintHelperToolResultBase`；普通 Agent 不走批量上下文引用，开发诊断走 DebugCase / DebugBundle summary/export 边界。
-4. [x] TaskRuntime partial failure 拓扑阻断合同：TaskPlan step 使用 `steps[].depends_on` 表达依赖；TaskRunJournal step status 固定为 `completed|failed|blocked|skipped`；blocked step 使用 `blocked_by_step_ids` / `blocked_reason`；partial failure 使用 `recovery.recommended_action`、`safe_to_retry`、`rollback_available`、`notes` 给出用户可读恢复建议；不默认全局 rollback。
-5. [ ] Function/Event Signature 扩展字段合同：继续补真实 remove 引用清理策略、dispatcher 签名迁移策略，以及 override/native create-if-missing 的 UE automation / smoke 验证记录。
-6. [x] LogicJson 与 TaskSpec 组合语义：已确认 `logic_json` 不返回 `taskspec_hints`，保持只读结构化逻辑视图；其他组合语义后续单独设计。
-7. [x] LogicJson reference 映射边界：已确认 `node_ref` / `link_ref` 不能默认与 TaskSpec patch/merge selector 兼容；它们只是 read-view references。
-8. [ ] ReadSpec 通用读层合同：`BlueprintHelper.ReadSpec.v1`、`blueprinthelper_read_context` 的主线定位已基本确认；能力面发现不再设计运行时 schema 查询工具，改由 `blueprinthelper_read_agent_guide` 返回 AgentGuide 索引，再由 AgentGuide 文件承载具体格式。
-9. [x] 通用读格式：已确认 `logic_md` / `logic_json` 固定为所有可适配 read capability 的通用 view format；默认使用 `logic_md` 节省 token，只有精确定位、diff、patch/merge/debug 时使用 `logic_json`；`summary` 用于低 token 初筛，`schema` 用于字段说明且不读取资产正文。
-10. [x] 移除运行时能力 schema 查询工具方向：能力面通过文档和 AgentGuide 获得，具体格式进入 AgentGuide 文件夹。
-11. [x] Rule markdown 工具改名：从 `blueprint_get_rule_markdown` 迁移到 `blueprinthelper_read_agent_guide`；该工具返回 `Resources/AgentGuide/00_Agent_Onboarding_Index_20260504.md`，不再返回 `JsonToBlueprintRules.md`。
-12. [ ] Transaction 级恢复：移除默认 `blueprint_undo` / `blueprint_redo` 后，设计基于 TaskRunJournal 或 UE transaction 的 undo/redo/replay 能力。
-13. [x] ReadSpec target 字段收敛：已确认 `graph_name` / `function_name` / `event_name` 压缩为 `target.target_name`，由 `target.target_type` 解释；`block_id` 因 ownership/id 语义保留独立字段。
-14. [x] Read result schema 短名规则：已确认 `data.schema` 使用 `ReadContextPack.v1`、`LogicMd.v1`、`LogicJson.v1` 等短名，不重复 `BlueprintHelper.` 前缀。
-15. [x] ReadSpec 首批 `read_type` 已确认：`asset_context`、`blueprint_logic`、`component_context`、`variable_context`、`graph_context`、`widget_context`、`data_table_context`、`object_property_context`。
-16. [x] ReadContextPack 首片返回字段：已确认使用 `payload` 承载具体 read view；不设置独立 `read_id`；只读结果不带 `diagnostics`，错误走外层 `error`，完整性用 `truncated` 和块级/上下文切片重读建议；不再把批量上下文引用作为 Agent 主线。
-17. [x] AgentGuide 工具返回合同：`blueprinthelper_read_agent_guide` 无请求字段，返回 AgentGuide 索引 Markdown；它只负责文档入口，不读取 UE 资产，也不返回动态 schema。
-18. [x] ReadRef 到 WriteAnchor 转换合同：已确认采用 v0.3.6 grouped LogicJson / block-scoped anchor。BlueprintHelper-owned block 用 `block_id` / `group_entry_node_path` 加组内 `node_ref` / `pin_ref` / `link_ref` 映射到 TaskSpec patch/merge selector；裸 `nodes[index]`、显示名和 GUID-first 不作为 Agent 主线写锚点，GUID 仅作 expert/debug fallback。
-19. [x] Signature 能力职责确认：`blueprint_signature` 负责创建/确保、修改、移除函数签名、Custom Event 签名、interface function / interface event 入口、event dispatcher 签名、override/native event 入口；GraphWrite 负责 body、节点、连线、调用、bind/unbind。
-20. [x] Custom Event 入口与 Append 依赖边界确认：`graph_write.ensure_entry(entry_type=custom_event)` 可以保留为 append 语义的结构化 IR，但 Custom Event 入口声明/签名创建必须由 `blueprint_signature.ensure_custom_event` 或 UE 内部 BlueprintSignatureService 完成；不得新增 Agent-facing custom event 原子工具。
-21. [x] `custom_event_definition` 与 Signature 边界：已确认并实现为 Signature 的 `ensure_custom_event` 声明/签名 step 加 GraphWrite 的 `custom_event_body` body rewrite step；不新增 Agent-facing custom event 原子工具。
-22. [x] Interface/override/native event lowering 细节：interface function 降到 `ensure_function`，interface event 降到 `ensure_custom_event`；override/native event 默认 `execute_policy=blocked_preflight`，显式 `execute_policy=create_if_missing` 已有 source-integrated 创建路径，用户侧 UE build 已通过，待 Unified SmokeRun Ring 7 automation / smoke 后再标 verified。
-23. [x] Signature removal 安全合同首片：移除签名必须 `execute_policy=blocked_preflight` 且要求 reference context；当前不执行真实删除，后续再确认引用分析后的真实 cleanup 策略。
-24. [x] Event Dispatcher 字段细节首片：dispatcher 声明、参数和签名属于 Function/Event Signature；dispatcher call/bind/unbind 仍属于 GraphWrite；现阶段现有 dispatcher 签名不匹配时只允许 block。
-25. [ ] 非 BlueprintHelper-owned 图内容的稳定写锚点：owned block 已有 `block_id` 主线；用户已有图节点、非 owned 节点和旧资产迁移场景仍需单独确认稳定 read/write anchor 策略。
-26. [ ] Ownership metadata migration/repair：当前首片不是删除旧资产注释，不影响 TaskSpec / TaskPlan 主线；后续可在 fallback、审计输出和 smoke 覆盖明确后清理旧 `NodeComment` 中的 `block_id` / `tx` 片段。
+1. [x] Agent-facing MCP 榛樿宸ュ叿闆嗗悎鏈€缁堝喕缁擄細`blueprinthelper_read_agent_guide`銆乣blueprint_get_runtime_profile`銆乣blueprinthelper_diagnostics`銆乣blueprinthelper_read_context`銆乣blueprinthelper_read_reference_context`銆乣blueprinthelper_preview_task`銆乣blueprinthelper_execute_task`銆乣blueprinthelper_get_task_result`銆乣blueprinthelper_open_editor`銆乣blueprinthelper_close_editor`銆?
+2. [x] 鏃у師瀛愬伐鍏峰鐞嗙瓥鐣ョ‘璁わ細宸插疄鐜?TaskPlan adapter + TaskSpec compiler 瑕嗙洊鐨勮兘鍔涗紭鍏堢Щ闄ゆ棫 Agent-facing 鍘熷瓙鍛戒护锛涙湭瑕嗙洊鑳藉姏鏆備繚鐣欎负 legacy/internal/debug/expert/test锛岀瓑 adapter 涓?TaskSpec 鏀寔钀藉湴鏃跺悓姝ョЩ闄ゃ€?3. [x] 杩斿洖浣撳垎灞傛渶缁堝喕缁擄細`blueprinthelper_read_agent_guide` 杩斿洖 Markdown锛涘叾浠栭粯璁よ/浠诲姟宸ュ叿浣跨敤 `BlueprintHelper.McpToolResult.v1` 澶栧３锛沗read_context` -> `ReadContextPack.v1`锛宍read_reference_context` -> `ReferenceContextPack.v1`锛宍preview_task` -> `TaskPreviewResult.v1`锛宍execute_task` -> `TaskRunSummary.v1` 鎴?`TaskRunJournal.v1`锛宍get_task_result` -> `TaskRunJournal.v1`锛沀E fa莽ade 缁熶竴 `FBlueprintHelperToolResultBase`锛涙櫘閫?Agent 涓嶈蛋鎵归噺涓婁笅鏂囧紩鐢紝寮€鍙戣瘖鏂蛋 DebugCase / DebugBundle summary/export 杈圭晫銆?
+4. [x] TaskRuntime partial failure 鎷撴墤闃绘柇鍚堝悓锛歍askPlan step 浣跨敤 `steps[].depends_on` 琛ㄨ揪渚濊禆锛汿askRunJournal step status 鍥哄畾涓?`completed|failed|blocked|skipped`锛沚locked step 浣跨敤 `blocked_by_step_ids` / `blocked_reason`锛沺artial failure 浣跨敤 `recovery.recommended_action`銆乣safe_to_retry`銆乣rollback_available`銆乣notes` 缁欏嚭鐢ㄦ埛鍙鎭㈠寤鸿锛涗笉榛樿鍏ㄥ眬 rollback銆?
+5. [ ] Function/Event Signature 鎵╁睍瀛楁鍚堝悓锛氱户缁ˉ鐪熷疄 remove 寮曠敤娓呯悊绛栫暐銆乨ispatcher 绛惧悕杩佺Щ绛栫暐锛屼互鍙?override/native create-if-missing 鐨?UE automation / smoke 楠岃瘉璁板綍銆?
+6. [x] LogicJson 涓?TaskSpec 缁勫悎璇箟锛氬凡纭 `logic_json` 涓嶈繑鍥?`taskspec_hints`锛屼繚鎸佸彧璇荤粨鏋勫寲閫昏緫瑙嗗浘锛涘叾浠栫粍鍚堣涔夊悗缁崟鐙璁°€?
+7. [x] LogicJson reference 鏄犲皠杈圭晫锛氬凡纭 `node_ref` / `link_ref` 涓嶈兘榛樿涓?TaskSpec patch/merge selector 鍏煎锛涘畠浠彧鏄?read-view references銆?
+8. [ ] ReadSpec 閫氱敤璇诲眰鍚堝悓锛歚BlueprintHelper.ReadSpec.v1`銆乣blueprinthelper_read_context` 鐨勪富绾垮畾浣嶅凡鍩烘湰纭锛涜兘鍔涢潰鍙戠幇涓嶅啀璁捐杩愯鏃?schema 鏌ヨ宸ュ叿锛屾敼鐢?`blueprinthelper_read_agent_guide` 杩斿洖 AgentGuide 绱㈠紩锛屽啀鐢?AgentGuide 鏂囦欢鎵胯浇鍏蜂綋鏍煎紡銆?
+9. [x] 閫氱敤璇绘牸寮忥細宸茬‘璁?`logic_md` / `logic_json` 鍥哄畾涓烘墍鏈夊彲閫傞厤 read capability 鐨勯€氱敤 view format锛涢粯璁や娇鐢?`logic_md` 鑺傜渷 token锛屽彧鏈夌簿纭畾浣嶃€乨iff銆乸atch/merge/debug 鏃朵娇鐢?`logic_json`锛沗summary` 鐢ㄤ簬浣?token 鍒濈瓫锛宍schema` 鐢ㄤ簬瀛楁璇存槑涓斾笉璇诲彇璧勪骇姝ｆ枃銆?
+10. [x] 绉婚櫎杩愯鏃惰兘鍔?schema 鏌ヨ宸ュ叿鏂瑰悜锛氳兘鍔涢潰閫氳繃鏂囨。鍜?AgentGuide 鑾峰緱锛屽叿浣撴牸寮忚繘鍏?AgentGuide 鏂囦欢澶广€?
+11. [x] Rule markdown 宸ュ叿鏀瑰悕锛氫粠 `blueprint_get_rule_markdown` 杩佺Щ鍒?`blueprinthelper_read_agent_guide`锛涜宸ュ叿杩斿洖 `Resources/AgentGuide/00_Agent_Onboarding_Index_20260504.md`锛屼笉鍐嶈繑鍥?`JsonToBlueprintRules.md`銆?
+12. [ ] Transaction 绾ф仮澶嶏細绉婚櫎榛樿 `blueprint_undo` / `blueprint_redo` 鍚庯紝璁捐鍩轰簬 TaskRunJournal 鎴?UE transaction 鐨?undo/redo/replay 鑳藉姏銆?
+13. [x] ReadSpec target 瀛楁鏀舵暃锛氬凡纭 `graph_name` / `function_name` / `event_name` 鍘嬬缉涓?`target.target_name`锛岀敱 `target.target_type` 瑙ｉ噴锛沗block_id` 鍥?ownership/id 璇箟淇濈暀鐙珛瀛楁銆?
+14. [x] Read result schema 鐭悕瑙勫垯锛氬凡纭 `data.schema` 浣跨敤 `ReadContextPack.v1`銆乣LogicMd.v1`銆乣LogicJson.v1` 绛夌煭鍚嶏紝涓嶉噸澶?`BlueprintHelper.` 鍓嶇紑銆?
+15. [x] ReadSpec 棣栨壒 `read_type` 宸茬‘璁わ細`asset_context`銆乣blueprint_logic`銆乣component_context`銆乣variable_context`銆乣graph_context`銆乣widget_context`銆乣data_table_context`銆乣object_property_context`銆?
+16. [x] ReadContextPack 棣栫墖杩斿洖瀛楁锛氬凡纭浣跨敤 `payload` 鎵胯浇鍏蜂綋 read view锛涗笉璁剧疆鐙珛 `read_id`锛涘彧璇荤粨鏋滀笉甯?`diagnostics`锛岄敊璇蛋澶栧眰 `error`锛屽畬鏁存€х敤 `truncated` 鍜屽潡绾?涓婁笅鏂囧垏鐗囬噸璇诲缓璁紱涓嶅啀鎶婃壒閲忎笂涓嬫枃寮曠敤浣滀负 Agent 涓荤嚎銆?
+17. [x] AgentGuide 宸ュ叿杩斿洖鍚堝悓锛歚blueprinthelper_read_agent_guide` 鏃犺姹傚瓧娈碉紝杩斿洖 AgentGuide 绱㈠紩 Markdown锛涘畠鍙礋璐ｆ枃妗ｅ叆鍙ｏ紝涓嶈鍙?UE 璧勪骇锛屼篃涓嶈繑鍥炲姩鎬?schema銆?
+18. [x] ReadRef 鍒?WriteAnchor 杞崲鍚堝悓锛氬凡纭閲囩敤 v0.3.6 grouped LogicJson / block-scoped anchor銆侭lueprintHelper-owned block 鐢?`block_id` / `group_entry_node_path` 鍔犵粍鍐?`node_ref` / `pin_ref` / `link_ref` 鏄犲皠鍒?TaskSpec patch/merge selector锛涜８ `nodes[index]`銆佹樉绀哄悕鍜?GUID-first 涓嶄綔涓?Agent 涓荤嚎鍐欓敋鐐癸紝GUID 浠呬綔 expert/debug fallback銆?
+19. [x] Signature 鑳藉姏鑱岃矗纭锛歚blueprint_signature` 璐熻矗鍒涘缓/纭繚銆佷慨鏀广€佺Щ闄ゅ嚱鏁扮鍚嶃€丆ustom Event 绛惧悕銆乮nterface function / interface event 鍏ュ彛銆乪vent dispatcher 绛惧悕銆乷verride/native event 鍏ュ彛锛汫raphWrite 璐熻矗 body銆佽妭鐐广€佽繛绾裤€佽皟鐢ㄣ€乥ind/unbind銆?
+20. [x] Custom Event 鍏ュ彛涓?Append 渚濊禆杈圭晫纭锛歚graph_write.ensure_entry(entry_type=custom_event)` 鍙互淇濈暀涓?append 璇箟鐨勭粨鏋勫寲 IR锛屼絾 Custom Event 鍏ュ彛澹版槑/绛惧悕鍒涘缓蹇呴』鐢?`blueprint_signature.ensure_custom_event` 鎴?UE 鍐呴儴 BlueprintSignatureService 瀹屾垚锛涗笉寰楁柊澧?Agent-facing custom event 鍘熷瓙宸ュ叿銆?
+21. [x] `custom_event_definition` 涓?Signature 杈圭晫锛氬凡纭骞跺疄鐜颁负 Signature 鐨?`ensure_custom_event` 澹版槑/绛惧悕 step 鍔?GraphWrite 鐨?`custom_event_body` body rewrite step锛涗笉鏂板 Agent-facing custom event 鍘熷瓙宸ュ叿銆?
+22. [x] Interface/override/native event lowering 缁嗚妭锛歩nterface function 闄嶅埌 `ensure_function`锛宨nterface event 闄嶅埌 `ensure_custom_event`锛沷verride/native event 榛樿 `execute_policy=blocked_preflight`锛屾樉寮?`execute_policy=create_if_missing` 宸叉湁 source-integrated 鍒涘缓璺緞锛岀敤鎴蜂晶 UE build 宸查€氳繃锛屽緟 Unified SmokeRun Ring 7 automation / smoke 鍚庡啀鏍?verified銆?
+23. [x] Signature removal 瀹夊叏鍚堝悓棣栫墖锛氱Щ闄ょ鍚嶅繀椤?`execute_policy=blocked_preflight` 涓旇姹?reference context锛涘綋鍓嶄笉鎵ц鐪熷疄鍒犻櫎锛屽悗缁啀纭寮曠敤鍒嗘瀽鍚庣殑鐪熷疄 cleanup 绛栫暐銆?
+24. [x] Event Dispatcher 瀛楁缁嗚妭棣栫墖锛歞ispatcher 澹版槑銆佸弬鏁板拰绛惧悕灞炰簬 Function/Event Signature锛沝ispatcher call/bind/unbind 浠嶅睘浜?GraphWrite锛涚幇闃舵鐜版湁 dispatcher 绛惧悕涓嶅尮閰嶆椂鍙厑璁?block銆?
+25. [ ] 闈?BlueprintHelper-owned 鍥惧唴瀹圭殑绋冲畾鍐欓敋鐐癸細owned block 宸叉湁 `block_id` 涓荤嚎锛涚敤鎴峰凡鏈夊浘鑺傜偣銆侀潪 owned 鑺傜偣鍜屾棫璧勪骇杩佺Щ鍦烘櫙浠嶉渶鍗曠嫭纭绋冲畾 read/write anchor 绛栫暐銆?
+26. [ ] Ownership metadata migration/repair锛氬綋鍓嶉鐗囦笉鏄垹闄ゆ棫璧勪骇娉ㄩ噴锛屼笉褰卞搷 TaskSpec / TaskPlan 涓荤嚎锛涘悗缁彲鍦?fallback銆佸璁¤緭鍑哄拰 smoke 瑕嗙洊鏄庣‘鍚庢竻鐞嗘棫 `NodeComment` 涓殑 `block_id` / `tx` 鐗囨銆?
 
-## 下轮可并行拆分
+## 涓嬭疆鍙苟琛屾媶鍒?
 
-| 任务 | 写入范围 | 是否冲突 | 建议模型 |
+| 浠诲姟 | 鍐欏叆鑼冨洿 | 鏄惁鍐茬獊 | 寤鸿妯″瀷 |
 | --- | --- | --- | --- |
-| GraphWrite Patch/Merge block-scoped 写锚点实现与 Replace exec link 修复 | `LogicJson` grouped builder、Bridge node resolver、TaskSpec compiler、GraphWrite Replace/Patch/Merge services/tests | 与新 UE 能力中等冲突 | 5.5 xhigh |
-| Preview blocker / ReferenceContextPack 集成 | `TaskRuntime`、`DependencyAnalysisService`、MCP task result | 与 Runtime 改动冲突 | 5.5 xhigh |
-| ReadSpec 通用读层设计与首片落地 | `ClaudePlugin/mcp/src`，AgentGuide read schema，LogicMD/LogicJson adapter | 与写 Runtime 不冲突 | 5.5 xhigh |
-| Function/Event Signature UE 能力设计落地 | `Source/BlueprintHelper/Public|Private/Services`，`Structure`，Bridge，Tests | 与 Runtime 基础低冲突 | 5.5 xhigh |
-| Component DTO 迁出 Service header | `Structure` + `ComponentService` + tests | 与 Component compiler 不冲突 | 5.3 codex-spark xhigh |
+| GraphWrite Patch/Merge block-scoped 鍐欓敋鐐瑰疄鐜颁笌 Replace exec link 淇 | `LogicJson` grouped builder銆丅ridge node resolver銆乀askSpec compiler銆丟raphWrite Replace/Patch/Merge services/tests | 涓庢柊 UE 鑳藉姏涓瓑鍐茬獊 | 5.5 xhigh |
+| Preview blocker / ReferenceContextPack 闆嗘垚 | `TaskRuntime`銆乣DependencyAnalysisService`銆丮CP task result | 涓?Runtime 鏀瑰姩鍐茬獊 | 5.5 xhigh |
+| ReadSpec 閫氱敤璇诲眰璁捐涓庨鐗囪惤鍦?| `ClaudePlugin/mcp/src`锛孉gentGuide read schema锛孡ogicMD/LogicJson adapter | 涓庡啓 Runtime 涓嶅啿绐?| 5.5 xhigh |
+| Function/Event Signature UE 鑳藉姏璁捐钀藉湴 | `Source/BlueprintHelper/Public|Private/Services`锛宍Structure`锛孊ridge锛孴ests | 涓?Runtime 鍩虹浣庡啿绐?| 5.5 xhigh |
+| Component DTO 杩佸嚭 Service header | `Structure` + `ComponentService` + tests | 涓?Component compiler 涓嶅啿绐?| 5.3 codex-spark xhigh |
 
-## 推荐下一步
+## 鎺ㄨ崘涓嬩竴姝?
 
-P0 与 P1 compiler/contract 首片已经完成，变量簇 member property/default/local variable 首片已经落到 UE Service + OperationHandler，且 `edit_blueprint_variables` 已完成 TaskSpec -> Execute smoke。AssetFactory 与 Component preview 已通过，ClassSettings、UMG、DataTable 还需要 disposable fixture。Composite `create_blueprint_feature` 已能把物理门这类核心功能 TaskSpec 分解为多 step TaskPlan，并已补 `integration.interface` 首片：确保接口、确保函数入口、用 GraphWrite replace_body 写接口函数实现；最新 smoke 已确认 composite preview 通过，但 fixture 创建路径仍暴露 `create_blueprint_feature` 空错误归一化问题，下一步是 execute fixture 和错误归一化。GraphWrite replace/patch/merge 的 TaskSpec compiler 与 Runtime lowering 已进入 Rerun 4 verified 状态：Replace full pipeline 与 read-back 通过，Patch 可修改 owned block，Merge 的 `insert_between + function_call`、`append_after + function_call`、`insert_between + custom_event_call` 已通过；2026-05-07 smoke 进一步确认 `branch_fork` preview 可走通，后续已补 MCP/Bridge 空错误归一化与 `branch_fork + owned_block_call` source fix，仍需本地 UE build / Editor reload 后复跑 execute smoke。
+P0 涓?P1 compiler/contract 棣栫墖宸茬粡瀹屾垚锛屽彉閲忕皣 member property/default/local variable 棣栫墖宸茬粡钀藉埌 UE Service + OperationHandler锛屼笖 `edit_blueprint_variables` 宸插畬鎴?TaskSpec -> Execute smoke銆侫ssetFactory 涓?Component preview 宸查€氳繃锛孋lassSettings銆乁MG銆丏ataTable 杩橀渶瑕?disposable fixture銆侰omposite `create_blueprint_feature` 宸茶兘鎶婄墿鐞嗛棬杩欑被鏍稿績鍔熻兘 TaskSpec 鍒嗚В涓哄 step TaskPlan锛屽苟宸茶ˉ `integration.interface` 棣栫墖锛氱‘淇濇帴鍙ｃ€佺‘淇濆嚱鏁板叆鍙ｃ€佺敤 GraphWrite replace_body 鍐欐帴鍙ｅ嚱鏁板疄鐜帮紱鏈€鏂?smoke 宸茬‘璁?composite preview 閫氳繃锛屼絾 fixture 鍒涘缓璺緞浠嶆毚闇?`create_blueprint_feature` 绌洪敊璇綊涓€鍖栭棶棰橈紝涓嬩竴姝ユ槸 execute fixture 鍜岄敊璇綊涓€鍖栥€侴raphWrite replace/patch/merge 鐨?TaskSpec compiler 涓?Runtime lowering 宸茶繘鍏?Rerun 4 verified 鐘舵€侊細Replace full pipeline 涓?read-back 閫氳繃锛孭atch 鍙慨鏀?owned block锛孧erge 鐨?`insert_between + function_call`銆乣append_after + function_call`銆乣insert_between + custom_event_call` 宸查€氳繃锛?026-05-07 smoke 杩涗竴姝ョ‘璁?`branch_fork` preview 鍙蛋閫氾紝鍚庣画宸茶ˉ MCP/Bridge 绌洪敊璇綊涓€鍖栦笌 `branch_fork + owned_block_call` source fix锛屼粛闇€鏈湴 UE build / Editor reload 鍚庡璺?execute smoke銆?
 
-P2 首批三簇已进入源码接线阶段：`blueprint_signature`、`object_property`、`graph_cleanup_ownership` 都沿 TaskSpec -> TaskPlan -> Runtime dispatch 接入，不新增 Agent-facing 原子写工具。当前状态仍是 source integrated，不是 smoke verified；按用户安排，先不单独测试这些簇，等三个完整簇落齐后统一 Automation 和 disposable fixture smoke。UE build 已通过，不再作为当前阻塞口径。
+P2 棣栨壒涓夌皣宸茶繘鍏ユ簮鐮佹帴绾块樁娈碉細`blueprint_signature`銆乣object_property`銆乣graph_cleanup_ownership` 閮芥部 TaskSpec -> TaskPlan -> Runtime dispatch 鎺ュ叆锛屼笉鏂板 Agent-facing 鍘熷瓙鍐欏伐鍏枫€傚綋鍓嶇姸鎬佷粛鏄?source integrated锛屼笉鏄?smoke verified锛涙寜鐢ㄦ埛瀹夋帓锛屽厛涓嶅崟鐙祴璇曡繖浜涚皣锛岀瓑涓変釜瀹屾暣绨囪惤榻愬悗缁熶竴 Automation 鍜?disposable fixture smoke銆俇E build 宸查€氳繃锛屼笉鍐嶄綔涓哄綋鍓嶉樆濉炲彛寰勩€?
 
-当前 P1/P2 剩余不阻塞继续开发的验证项是：UMG/DataTable disposable fixture、Composite execute fixture、TaskRunJournal partial failure fixture、同 graph `branch_fork + owned_block_call` execute smoke、`create_blueprint_feature` preview 空错误，以及 P2 首批三簇统一验证。R4 已验证 `branch_fork + custom_event_call` execute/read-back；`append_after + custom_event_call` 的 preview 空错误已降级为可诊断 blocker，runtime profile 的 GraphWrite merge stale 标记已从源码移除。2026-05-09 FullTestLog 中的 grouped failure 已完成源码或测试口径修复，下一步按 Unified SmokeRun Ring 1 复跑后再标 smoke verified。
+褰撳墠 P1/P2 鍓╀綑涓嶉樆濉炵户缁紑鍙戠殑楠岃瘉椤规槸锛歎MG/DataTable disposable fixture銆丆omposite execute fixture銆乀askRunJournal partial failure fixture銆佸悓 graph `branch_fork + owned_block_call` execute smoke銆乣create_blueprint_feature` preview 绌洪敊璇紝浠ュ強 P2 棣栨壒涓夌皣缁熶竴楠岃瘉銆俁4 宸查獙璇?`branch_fork + custom_event_call` execute/read-back锛沗append_after + custom_event_call` 鐨?preview 绌洪敊璇凡闄嶇骇涓哄彲璇婃柇 blocker锛宺untime profile 鐨?GraphWrite merge stale 鏍囪宸蹭粠婧愮爜绉婚櫎銆?026-05-09 FullTestLog 涓殑 grouped failure 宸插畬鎴愭簮鐮佹垨娴嬭瘯鍙ｅ緞淇锛屼笅涓€姝ユ寜 Unified SmokeRun Ring 1 澶嶈窇鍚庡啀鏍?smoke verified銆?
 
 ```text
 Prepare fixtures and rerun AssetFactory/Component/UMG/DataTable/Composite execute smoke
 -> Add controlled partial-failure fixture for TaskRunJournal topology blocking
 -> Rerun same-graph branch_fork + owned_block_call execute smoke in the unified Automation / Editor fixture pass, and fix create_blueprint_feature preview empty error
 -> Run grouped P2 verification for Signature / ObjectProperty / CleanupOwnership
--> Function/Event Signature Management 后续字段和 remove execute policy
+-> Function/Event Signature Management 鍚庣画瀛楁鍜?remove execute policy
 -> DebugCase / DebugBundle verification tail and retention / cleanup policy
 ```
 
-这样能继续沿 TaskSpec -> TaskPlan -> Runtime lowering 的结构化编辑语言方向扩展，不会退回到底层工具膨胀。
+杩欐牱鑳界户缁部 TaskSpec -> TaskPlan -> Runtime lowering 鐨勭粨鏋勫寲缂栬緫璇█鏂瑰悜鎵╁睍锛屼笉浼氶€€鍥炲埌搴曞眰宸ュ叿鑶ㄨ儉銆?
 
 ## 2026-05-07 AssetFactory Blueprint Alias Follow-up
 
 - [x] Ordinary Blueprint fixture creation source fix integrated: `create_asset` accepts `asset_type=Actor` and `asset_type=blueprint` as `blueprint_class` with `parent_class=Actor`.
 - [ ] WidgetBlueprint and DataTable factory source is integrated; UE smoke is still pending under Unified SmokeRun Ring 3. `create_blueprint_feature` preview empty-error remains open under Ring 6.
+

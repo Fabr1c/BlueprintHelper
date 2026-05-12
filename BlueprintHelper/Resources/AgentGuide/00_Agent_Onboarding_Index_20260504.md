@@ -1,8 +1,8 @@
 # BlueprintHelper Agent Onboarding Index
 
-If the current Claude environment cannot dispatch a SideAgent but the Main Agent can see and call the required BlueprintHelper MCP tool, the Main Agent may execute one tool locally under the SideAgent single-tool contract and mark the result as `main_agent_direct_fallback`. Report `mcp_tools_unavailable` only when the required `mcp__blueprint-helper__...` tool is not visible or callable.
+If the current Claude environment cannot dispatch a SideAgent but the Main Agent can run the required BlueprintHelper CLI command, the Main Agent may execute one command locally under the SideAgent single-command contract and mark the result as `main_agent_direct_fallback`. Report `tool_unavailable` only when the required BlueprintHelper CLI command is not available.
 
-普通 Agent 只走 TaskSpec-first 主线。MCP 中仍注册了兼容、测试和专家入口，但这些冻结入口不在本指南中作为可选工具暴露。
+普通 Agent 只走 CLI TaskSpec-first 主线。兼容、测试和专家入口可能仍存在于底层传输层，但这些冻结入口不在本指南中作为可选工具暴露。
 
 默认流程:
 
@@ -39,7 +39,7 @@ Write authorization is running Editor/Bridge based: use `blueprinthelper_request
 
 Ordinary Agents must not request, set, or forward `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session`; raw session data is not part of the Agent contract.
 
-Read-only tools such as `blueprinthelper_read_context`, `blueprinthelper_read_task_context`, and `blueprinthelper_read_reference_context` do not require a write session. If these tools are unavailable, diagnose Claude tool permission, plugin MCP registration, MCP server startup, or Bridge connectivity instead of requesting write permission.
+Read-only commands such as `bh blueprinthelper_read_context`, `bh blueprinthelper_read_task_context`, and `bh blueprinthelper_read_reference_context` do not require a write session. If these commands are unavailable, diagnose CLI installation, command registration, package build state, or Bridge connectivity instead of requesting write permission.
 
 `blueprint_open_editor` 仅用于用户明确需要启动目标 Unreal Editor 的 preflight，不属于普通写入主线。
 
@@ -48,7 +48,7 @@ Read-only tools such as `blueprinthelper_read_context`, `blueprinthelper_read_ta
 1. `Resources/AgentGuide/Reference/01_Preflight_And_Boundary.md`
 2. `Resources/AgentGuide/Reference/02_TaskSpec_First_Tool_Selection.md`
 3. `Resources/AgentGuide/Reference/03_Runtime_Profile_And_Diagnostics.md`
-4. `Resources/AgentGuide/Reference/04_MCP_Field_Templates_20260507.md`
+4. `Resources/AgentGuide/Reference/04_Tool_Surface_Field_Templates_20260512.md`
 5. `Resources/AgentGuide/Workflows/04_TaskSpec_Edit_Blueprint_Workflow.md`
 6. `Resources/AgentGuide/Workflows/05_Edit_Blueprint_Workflow.md`
 7. `Resources/AgentGuide/Workflows/06_UMG_Data_Workflows.md`

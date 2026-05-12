@@ -71,7 +71,7 @@ const frozenToolNames = [
   'blueprint_build_project',
 ];
 
-test('shared registry covers only the current non-frozen MCP tool-name surface', () => {
+test('shared registry covers only the current non-frozen CLI tool-name surface', () => {
   const registry = getBlueprintHelperToolRegistry();
   const names = registry.map((tool) => tool.name).sort();
 

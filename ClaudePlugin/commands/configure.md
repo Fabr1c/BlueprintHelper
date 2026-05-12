@@ -105,7 +105,7 @@ Use AskUserQuestion:
   - label: "Debug tools fallback"
     description: "允许诊断/debug 工具定位问题"
   - label: "Legacy direct fallback"
-    description: "允许直接调用底层 MCP 工具"
+    description: "允许直接调用底层遗留命令面"
   - label: "No auto save (Recommended)"
     description: "默认不自动 save"
   - label: "Save when requested"
@@ -120,8 +120,8 @@ Use AskUserQuestion:
 - question: "工程边界偏好："
 - multiSelect: true
 - options:
-  - label: "UE assets through MCP (Recommended)"
-    description: "BlueprintHelper MCP 只处理 UE 编辑器资产"
+  - label: "UE assets through CLI (Recommended)"
+    description: "BlueprintHelper CLI 只处理 UE 编辑器资产"
   - label: "Repo files through normal tools (Recommended)"
     description: "C++、TS、Python、JSON、文档用普通仓库工具"
   - label: "No C++ edits by default (Recommended)"
@@ -172,8 +172,8 @@ Use AskUserQuestion:
     description: "Pending 保留完整回滚数据，接受后可压缩"
   - label: "Validate after reject (Recommended)"
     description: "Reject 后运行 diagnostics 或 compile 检查"
-  - label: "Summary-only MCP debug (Recommended)"
-    description: "MCP 只查 DebugCase 摘要"
+  - label: "Summary-only CLI debug (Recommended)"
+    description: "CLI 只查 DebugCase 摘要"
   - label: "DebugBundle summary.md + artifacts (Recommended)"
     description: "本地 DebugBundle 导出保持 summary.md + artifacts/"
 

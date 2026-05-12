@@ -1,31 +1,31 @@
-# BlueprintHelper
+﻿# BlueprintHelper
 
-BlueprintHelper is an Unreal Engine editor plugin with an MCP Server for AI agents. It lets an agent inspect and modify Unreal Editor assets through a local Bridge: Blueprint graphs, UMG widgets, DataAssets, DataTables, asset browser operations, compile/save/open commands, PIE commands, and related diagnostics.
+BlueprintHelper is an Unreal Engine editor plugin with a CLI-first Agent transport. It lets an agent inspect and modify Unreal Editor assets through a local Bridge: Blueprint graphs, UMG widgets, DataAssets, DataTables, asset browser operations, compile/save/open commands, PIE commands, and related diagnostics.
 
-BlueprintHelper MCP is not a general source editing API. Use normal repository tools for C++, TypeScript, Python, JSON, config files, code search, build scripts, and documentation edits.
+BlueprintHelper is not a general source editing API. Use normal repository tools for C++, TypeScript, Python, JSON, config files, code search, build scripts, and documentation edits. The deprecated MCP endpoint is compatibility/debug surface only and is not a supported Agent entry.
 
 ## TaskSpec-First Architecture
 
-The current documentation mainline is moving from direct Agent calls to many low-level MCP tools toward a task orchestration layer:
+The current architecture uses a CLI-first task orchestration layer. Ordinary Agents author TaskSpec, not low-level Blueprint operation payloads:
 
 ```text
-Agent -> MCP Task Tools -> Python/MCP Task Compiler -> UE Task Runtime -> Existing Capability Clusters
+Agent -> BlueprintHelper CLI -> task-core -> Python Task Compiler -> Bridge preview/execute/read -> UE Task Runtime -> Existing Capability Clusters
 ```
 
 The intended default flow is:
 
 ```text
-blueprint_get_runtime_profile
--> blueprinthelper_read_task_context
+bh blueprint_get_runtime_profile
+-> bh blueprinthelper_read_task_context
 -> Agent produces BlueprintHelper.TaskSpec.v1
--> blueprinthelper_preview_task
--> blueprinthelper_execute_task
--> blueprinthelper_get_task_result when needed
+-> bh blueprinthelper_preview_task
+-> bh blueprinthelper_execute_task
+-> bh blueprinthelper_get_task_result when needed
 ```
 
 Existing tool clusters are not removed. They remain as UE Task Runtime capabilities, debug / expert tools, and automation test entry points. See [BlueprintHelper_Hybrid_TaskSpec_TaskPlan_Architecture_20260504.md](../BlueprintHelper/Develop/Plan/BlueprintHelper_Hybrid_TaskSpec_TaskPlan_Architecture_20260504.md).
 
-Agents submit `BlueprintHelper.TaskSpec.v1` only; they do not submit TaskPlan. Python / MCP compiles TaskPlan, and UE Task Runtime executes TaskPlan.
+Agents submit `BlueprintHelper.TaskSpec.v1` only; they do not submit TaskPlan. task-core dispatches to the Python compiler, and UE Task Runtime executes the compiled TaskPlan.
 
 ## Version
 
@@ -34,13 +34,13 @@ Current source metadata:
 | Component | Current value |
 |---|---|
 | Unreal plugin `BlueprintHelper.uplugin` | `VersionName` 0.3.8 |
-| MCP Server `ClaudePlugin/mcp/package.json` | 0.3.8 |
 | CLI `ClaudePlugin/cli/package.json` | 0.3.8 |
 | Shared task core `ClaudePlugin/task-core/package.json` | 0.3.8 |
-| Documentation batch | 2026-05-04 TaskSpec mainline |
+| Deprecated MCP package `ClaudePlugin/mcp/package.json` | 0.3.8 |
+| Documentation batch | 2026-05-12 CLI-first TaskSpec mainline |
 | Intended UE version | UE 5.3 or newer |
 
-The documentation mainline for this batch targets the TaskSpec / TaskPlan orchestration architecture. Current checked-in plugin and MCP Server metadata may still report older implementation versions. Treat plugin version, MCP Server version, and documentation date as separate version sources until the compatibility matrix is completed.
+The documentation mainline targets the CLI-first TaskSpec / TaskPlan orchestration architecture. Treat plugin version, CLI version, deprecated MCP package version, and documentation date as separate version sources until the compatibility matrix is completed.
 
 ## Core Capabilities
 
@@ -56,32 +56,32 @@ The documentation mainline for this batch targets the TaskSpec / TaskPlan orches
 
 ## Boundaries
 
-Use BlueprintHelper MCP for editor assets through the running Unreal Editor.
+Use BlueprintHelper CLI / task-core tools for editor assets through the running Unreal Editor.
 
-Do not use BlueprintHelper MCP for:
+Do not use BlueprintHelper tools for:
 
 - C++ source edits.
-- TypeScript MCP Server edits.
+- TypeScript / CLI / task-core source edits.
 - Python, JSON, config, or build script edits.
 - General file-system search.
 - General source-code search.
 
-For repository work, use normal shell and editor tools. For editor assets, use the MCP tools after Bridge preflight.
+For repository work, use normal shell and editor tools. For editor assets, use CLI commands after Bridge preflight.
 
 ## Quick Install Path
 
-### Claude Code 插件安装
+### Claude Code Plugin Install
 
-1. 添加 marketplace 并安装插件：
+1. Add the marketplace source and install the plugin:
 
 ```text
 /plugin marketplace add <your-git-remote-or-local-path>
 /plugin install blueprint-helper@blueprint-helper-dev
 ```
 
-2. 重启 Claude Code。
+2. Restart Claude Code.
 
-3. 配置项目 agent profile：
+3. Configure the project agent profile.
 
 Store the UE version and engine root in the project agent profile:
 
@@ -96,30 +96,38 @@ Store the UE version and engine root in the project agent profile:
 
 Save this under `<ProjectDir>/.blueprinthelper/agent-profile.json`. Project `.uproject` paths are not stored in Claude global settings. Agents discover the target `.uproject` from the current workspace and pass it as the explicit `project_file` tool argument when launching or building a project.
 
-4. 安装 MCP Server 依赖并构建：
+4. Build the shared task core and CLI packages:
 
 ```powershell
-cd <PLUGIN_ROOT>\ClaudePlugin\mcp
+cd <PLUGIN_ROOT>\ClaudePlugin\task-core
+npm install
+npm run build
+
+cd <PLUGIN_ROOT>\ClaudePlugin\cli
 npm install
 npm run build
 ```
 
-5. 启动 Unreal Editor 打开目标项目，确保 Bridge 在 `127.0.0.1:54321` 运行。
+5. Start Unreal Editor with the target project and confirm the Bridge is reachable at `127.0.0.1:54321`.
 
-### 手动 MCP Server 安装
+### Manual CLI Setup
 
 1. Put this plugin under a UE project plugin directory, for example `YourProject/Plugins/BlueprintHelper`.
 2. Enable the plugin in Unreal Editor.
 3. Build the project if Unreal asks for a rebuild.
-4. Build the MCP Server. If you installed BlueprintHelper from an Unreal `BuildPlugin` package, keep this `ClaudePlugin` package available separately; UE packaging does not compile or include `ClaudePlugin/mcp`.
+4. Build the CLI package. If you installed BlueprintHelper from an Unreal `BuildPlugin` package, keep this `ClaudePlugin` package available separately; UE packaging does not compile or include `ClaudePlugin/cli`.
 
 ```powershell
-cd <PLUGIN_ROOT>\ClaudePlugin\mcp
+cd <PLUGIN_ROOT>\ClaudePlugin\task-core
+npm install
+npm run build
+
+cd <PLUGIN_ROOT>\ClaudePlugin\cli
 npm install
 npm run build
 ```
 
-5. Set MCP Server environment variables:
+5. Set Bridge connection environment variables when the defaults are not enough:
 
 ```powershell
 $env:BRIDGE_HOST = "127.0.0.1"
@@ -128,13 +136,13 @@ $env:BRIDGE_PORT = "54321"
 
 Store the UE engine root in `<ProjectDir>/.blueprinthelper/agent-profile.json` as `environment.ue_engine_dir`; do not put UE version-specific project configuration in global Claude settings.
 
-6. Start Unreal Editor with the project, then connect your Agent MCP client to:
+6. Start Unreal Editor with the project, then call the CLI:
 
 ```powershell
-node <PLUGIN_ROOT>\ClaudePlugin\mcp\build\index.js
+node <PLUGIN_ROOT>\ClaudePlugin\cli\build\cli\index.js bridge ping
 ```
 
-For full setup details, read [Docs/Install_MCP_QuickStart.md](../BlueprintHelper/Docs/Install_MCP_QuickStart.md).
+For full CLI usage, read [Docs/TaskSpec_CLI_QuickStart.md](../BlueprintHelper/Docs/TaskSpec_CLI_QuickStart.md) and [Docs/Install_CLI_QuickStart.md](../BlueprintHelper/Docs/Install_CLI_QuickStart.md).
 
 ## Agent Entry Points
 
@@ -144,7 +152,8 @@ Agents should read these in order:
 2. [Resources/AgentGuide/00_Agent_Onboarding_Index_20260504.md](../BlueprintHelper/Resources/AgentGuide/00_Agent_Onboarding_Index_20260504.md)
 3. [Resources/Docs/TaskSpec_TaskPlan_Contract_20260504.md](../BlueprintHelper/Resources/Docs/TaskSpec_TaskPlan_Contract_20260504.md)
 4. [Develop/Plan/README.md](../BlueprintHelper/Develop/Plan/README.md)
-5. [Docs/MCP_Tools_API_Reference.md](../BlueprintHelper/Docs/MCP_Tools_API_Reference.md)
+5. [Docs/TaskSpec_CLI_QuickStart.md](../BlueprintHelper/Docs/TaskSpec_CLI_QuickStart.md)
+6. [Docs/CLI_Tools_API_Reference.md](../BlueprintHelper/Docs/CLI_Tools_API_Reference.md)
 
 Claude-style agents can also load [skills/blueprint-helper/SKILL.md](skills/blueprint-helper/SKILL.md).
 
@@ -154,16 +163,16 @@ Claude Code discovers plugin commands from the plugin root `commands/` directory
 
 | Command | Purpose |
 |---|---|
-| `/blueprint-helper:setup` | Initial setup: UE paths, MCP build, Bridge check, first-run preferences, SetupProfile |
+| `/blueprint-helper:setup` | Initial setup: UE paths, CLI build, Bridge check, first-run preferences, SetupProfile |
 | `/blueprint-helper:configure` | Update user preferences and active safety profile after setup |
 
 ## User Documentation
 
 | Document | Purpose |
 |---|---|
-| [Docs/Install_MCP_QuickStart.md](../BlueprintHelper/Docs/Install_MCP_QuickStart.md) | Install, build, configure, and verify MCP connection |
-| [Docs/MCP_Tools_API_Reference.md](../BlueprintHelper/Docs/MCP_Tools_API_Reference.md) | Task-level tools plus legacy/internal/debug tool inventory |
-| [Docs/TaskSpec_CLI_QuickStart.md](../BlueprintHelper/Docs/TaskSpec_CLI_QuickStart.md) | Optional CLI transport for compact TaskSpec execution |
+| [Docs/TaskSpec_CLI_QuickStart.md](../BlueprintHelper/Docs/TaskSpec_CLI_QuickStart.md) | Primary CLI transport for compact TaskSpec execution |
+| [Docs/Install_CLI_QuickStart.md](../BlueprintHelper/Docs/Install_CLI_QuickStart.md) | CLI installation and first-run setup |
+| [Docs/CLI_Tools_API_Reference.md](../BlueprintHelper/Docs/CLI_Tools_API_Reference.md) | Supported CLI command surface and internal/debug compatibility notes |
 | [Resources/AgentGuide/](../BlueprintHelper/Resources/AgentGuide/) | Agent task routing and editor-asset workflows |
 | [Develop/Plan/README.md](../BlueprintHelper/Develop/Plan/README.md) | Active implementation and verification plan index |
 | [Develop/v0.3.8/README.md](../BlueprintHelper/Develop/v0.3.8/README.md) | Sealed v0.3.8 documentation archive |
@@ -184,16 +193,24 @@ For ordinary Agent editor-asset mutations, use the TaskSpec-first loop:
 
 Do not rely on the currently focused editor tab for destructive operations unless the user explicitly asks for active-context editing.
 
-## Bridge 鍗忚 (v2.2+)
+## Bridge Payload Compatibility (v2.2+)
 
-BlueprintHelper Bridge 浣跨敤 object-first 鍗忚浼犻€?RawJson 鏁版嵁銆?
-### 瀵煎嚭
-- `payload` 鈥?缁撴瀯鍖?RawJson 瀵硅薄锛堜富瑕佸瓧娈碉級
-- `json` 鈥?鍏煎鎬у埆鍚?- `json_text` 鈥?浠?`include_json_text: true` 鏃跺嚭鐜?
-### 瀵煎叆
-- 鎺ュ彈 `json` 涓?object 鎴?string
-- 鎷掔粷 LogicJson/LogicMD锛坄importable=false` 鎴?`schema` 浠?`BlueprintHelper.Logic` 寮€澶达級
+BlueprintHelper Bridge uses object-first responses. Large raw graph payloads should stay in resource/artifact references instead of routine Agent stdout.
 
-### MCP 榛樿琛屼负
-- `blueprint_export_to_json` 杩斿洖 `raw_json_ref` (resource link)
-- RawJson resource 鐩存帴杩斿洖 RawJson 鏈綋锛堜笉棰濆鍖呰９锛?- `legacy_text_json` 妯″紡鐢ㄤ簬鍏煎/璋冭瘯
+### Response Input Shape
+
+- `payload` carries structured object data when available.
+- `json` may carry structured object data for compatibility paths.
+- `json_text` is emitted only when a command explicitly requests legacy text JSON.
+
+### Response Output Rules
+
+- Prefer object `json` over stringified JSON.
+- LogicJson and LogicMD reads should report importability explicitly through fields such as `importable` and `schema`.
+
+### Deprecated MCP Compatibility Behavior
+
+- `blueprint_export_to_json` may still return `raw_json_ref` as a resource link in deprecated compatibility paths.
+- RawJson resource handling remains for historical fixtures and recovery workflows.
+- `legacy_text_json` exists only for compatibility with older text-only callers.
+

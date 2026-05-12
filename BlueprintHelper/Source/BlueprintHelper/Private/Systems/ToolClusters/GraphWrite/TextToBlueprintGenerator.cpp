@@ -1552,6 +1552,8 @@ bool TextToBlueprintGenerator::ApplyPinDefaultValue(
 
 UFunction* TextToBlueprintGenerator::FindFunctionByName(const FString& FuncName)
 {
+	// Legacy fallback for older internal node handlers. TaskSpec call_function should use
+	// ResolveFunctionForGraph so graph compatibility and ambiguity checks run before spawning.
 	if (FuncName.IsEmpty())
 	{
 		return nullptr;
@@ -1587,6 +1589,19 @@ UFunction* TextToBlueprintGenerator::FindFunctionByName(const FString& FuncName)
 		}
 	}
 	return nullptr;
+}
+
+FBlueprintHelperCallFunctionResolveResult TextToBlueprintGenerator::ResolveFunctionForGraph(
+	UEdGraph* TargetGraph,
+	const FString& FunctionQuery,
+	const TMap<FString, FString>& DefaultValues)
+{
+	FBlueprintHelperCallFunctionResolveRequest Request;
+	Request.Blueprint = TargetGraph ? FBlueprintEditorUtils::FindBlueprintForGraph(TargetGraph) : nullptr;
+	Request.Graph = TargetGraph;
+	Request.Query = FunctionQuery;
+	DefaultValues.GetKeys(Request.ArgumentNames);
+	return FBlueprintHelperCallFunctionResolver::Resolve(Request);
 }
 
 FBlueprintGenerateResult TextToBlueprintGenerator::GenerateBlueprintFromJson(UEdGraph* TargetGraph, const FString& JsonString,

@@ -1,13 +1,13 @@
-# 04 - MCP Field Templates 20260507
+# 04 - Tool Surface Field Templates 20260512
 
-This page documents only the normal Agent-facing surface and TaskSpec fields. Compatibility-only tools may still exist in MCP, but their direct argument shapes are intentionally not documented here.
+This page documents only the normal Agent-facing tool surface and TaskSpec fields. Compatibility-only transports or wrappers may still exist, but their direct argument shapes are intentionally not documented here.
 
-## 1. Transport Rules
+## 1. Call Shape Rules
 
-- MCP tool arguments are the schema root object.
+- Tool arguments use the schema root object.
 - Do not wrap tool calls in an extra `args` object.
 - `blueprinthelper_preview_task` and `blueprinthelper_execute_task` wrap the TaskSpec under root field `task_spec`.
-- Graph body function calls may use `args`; that is not an MCP transport wrapper.
+- Graph body function calls may use `args`; that is not a BlueprintHelper tool wrapper.
 
 ## 2. Allowed Tool Names
 
@@ -76,9 +76,9 @@ Use `tools/list` as final authority. Normal Agent-facing tools:
 
 `view.format=logic_md` may be used directly for `target_type=function`, `target_type=event`, or `target_type=custom_event` when `target_name` is known. These target-entry reads are generated from structured target slices and report sliced stats. Do not use whole-graph `logic_md` until summary or `logic_json` shows the graph is small enough.
 
-`view.max_items` is a truncation guard for `logic_json`; when truncation happens, the MCP result sets `data.truncated=true` and includes `payload.truncation.nodes_total` plus `payload.truncation.nodes_returned`.
+`view.max_items` is a truncation guard for `logic_json`; when truncation happens, the tool result sets `data.truncated=true` and includes `payload.truncation.nodes_total` plus `payload.truncation.nodes_returned`.
 
-If `blueprinthelper_read_context` is not visible or callable, stop with `mcp_tools_unavailable`. Do not read `.vs\BlueprintCache`, Saved exports, or local JSON files as a substitute for missing MCP tool permission.
+If `blueprinthelper_read_context` is not visible or callable, stop with `tool_unavailable`. Do not read `.vs\BlueprintCache`, Saved exports, or local JSON files as a substitute for missing BlueprintHelper tool availability.
 
 ## 5. Reference Context Template
 
@@ -364,6 +364,8 @@ After a successful `branch_fork` execute, read back LogicJson or LogicMd and ver
 
 ## 15. Function Call Body Statement
 
+`call_function.name` may be a native function name, a Blueprint display name, or an owner-qualified native name. Preview resolves the function against the target Blueprint graph. If the name is ambiguous, change `name` to an owner-qualified native name and preview again.
+
 ```json
 {
   "kind": "call_function",
@@ -375,6 +377,16 @@ After a successful `branch_fork` execute, read back LogicJson or LogicMd and ver
       "value": "message"
     }
   }
+}
+```
+
+Explicit component/member calls are not part of the first CallFunction resolver slice. Preview blocks them instead of guessing target object ownership:
+
+```json
+{
+  "kind": "call_function",
+  "name": "DoorMesh.AddAngularImpulseInDegrees",
+  "args": {}
 }
 ```
 

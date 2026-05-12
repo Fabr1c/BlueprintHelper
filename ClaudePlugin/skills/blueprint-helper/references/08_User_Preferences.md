@@ -8,7 +8,7 @@ updated_by: ClaudePlugin/commands/configure.md
 
 ## Purpose
 
-This file records durable user-facing Agent preferences for BlueprintHelper work. It is intentionally separate from `BlueprintHelper.SetupProfile.v1`, runtime_profile, project markers, and MCP tool results.
+This file records durable user-facing Agent preferences for BlueprintHelper work. It is intentionally separate from `BlueprintHelper.SetupProfile.v1`, runtime_profile, project markers, and BlueprintHelper tool results.
 
 Agents should read this file before BlueprintHelper planning, status review, implementation, verification, or DebugBundle work. If it conflicts with a newer direct user instruction, follow the newer direct instruction and report the conflict briefly.
 
@@ -24,10 +24,10 @@ Agents should read this file before BlueprintHelper planning, status review, imp
 ### Safety And Task Flow
 
 - Default safety profile: `Conservative`.
-- Default entry mode: `task_spec_first`.
+- Default entry mode: `cli_task_spec_first`.
 - Preview is the write gate. Do not execute writes when preview is blocked.
 - Missing capability default: `stop_and_report`.
-- Do not fall back to frozen or legacy low-level MCP tools unless the user explicitly requests expert recovery.
+- Do not fall back to frozen or legacy low-level BlueprintHelper tools unless the user explicitly requests expert recovery.
 - If `write_permission` is disabled, request a write session after preview and before execute; a user rejection is a stop-and-report condition.
 - Do not ask for or inject `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session` for ordinary interactive writes; approved write permission is held by the running Editor/Bridge and can be used by delegated SideAgents within scope and lifetime.
 
@@ -40,10 +40,10 @@ Agents should read this file before BlueprintHelper planning, status review, imp
 
 ### Blueprint, C++, And Repository Boundary
 
-- Use BlueprintHelper MCP for UE editor assets only: Blueprint graphs, UMG, DataAssets, DataTables, compile/save/open, PIE/editor commands, diagnostics, and related asset operations.
+- Use BlueprintHelper CLI commands for UE editor assets only: Blueprint graphs, UMG, DataAssets, DataTables, compile/save/open, PIE/editor commands, diagnostics, and related asset operations.
 - Use normal repository tools for C++, TypeScript, Python, JSON, config, build scripts, documentation, AGENTS files, and memory files.
 - Default C++ edit permission: disabled unless the user explicitly asks for code edits.
-- Default `.uasset` edit permission: allowed only through BlueprintHelper MCP and TaskSpec-first flow.
+- Default `.uasset` edit permission: allowed only through BlueprintHelper CLI TaskSpec-first flow.
 - Parent Class or reparent changes are unsupported by default; stop and report if a task requires them.
 - Do not rely on the currently focused Unreal Editor tab for destructive writes unless the user explicitly asks for active-context editing.
 
@@ -80,8 +80,8 @@ Agents should read this file before BlueprintHelper planning, status review, imp
 - When a Debug gap is found and the user asks to fill it, move to the concrete implementation surface instead of stopping at analysis.
 - Preserve the DebugBundle filesystem contract: `summary.md + artifacts/`.
 - Treat the older `summary.json`-centric layout as insufficient when the design document requires `summary.md + artifacts/`.
-- MCP should stay summary-only for DebugCase lookup through `get_debug_case`.
-- Do not expose DebugBundle artifact contents, local bundle paths, raw payloads, source content, token/settings text, or full ReviewRecord internals through normal MCP Agent flow.
+- DebugCase lookup should stay summary-only through `get_debug_case`.
+- Do not expose DebugBundle artifact contents, local bundle paths, raw payloads, source content, token/settings text, or full ReviewRecord internals through the normal BlueprintHelper Agent flow.
 - ReviewRecord should link stable `debug_case_ids[]`; it should not inline DebugBundle payloads.
 - DebugBundle is a UE/local developer export artifact and can be cleaned independently from ReviewRecord.
 - Prefer targeted DebugBundle verification over broad noisy automation runs when proving export-shape changes.

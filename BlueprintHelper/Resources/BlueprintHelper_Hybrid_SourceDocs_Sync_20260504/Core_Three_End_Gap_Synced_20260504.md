@@ -1,15 +1,15 @@
-我检查了设计稿、`BlueprintHelper-v0.3.2.7z`、`ClaudePlugin/mcp.7z` 的源码。下面结论基于**静态代码检查**，没有编译运行。
+﻿鎴戞鏌ヤ簡璁捐绋裤€乣BlueprintHelper-v0.3.2.7z`銆乣ClaudePlugin/mcp.7z` 鐨勬簮鐮併€備笅闈㈢粨璁哄熀浜?*闈欐€佷唬鐮佹鏌?*锛屾病鏈夌紪璇戣繍琛屻€?
 
-结论先给出：**当前 v0.3.2 已经能复用一大半“读 / 基础写 / object-first 返回 / Token 校验 / AgentImportGraph”基础，但满血原型需要新建一层统一字段协议和事务系统。**  
-最核心的缺口不是“怎么多写几个工具”，而是：**UE 侧写操作没有统一 transaction / block / ownership / diff / review 字段，MCP 侧也没有统一把这些字段稳定返回给 Agent。**
+缁撹鍏堢粰鍑猴細**褰撳墠 v0.3.2 宸茬粡鑳藉鐢ㄤ竴澶у崐鈥滆 / 鍩虹鍐?/ object-first 杩斿洖 / Token 鏍￠獙 / AgentImportGraph鈥濆熀纭€锛屼絾婊¤鍘熷瀷闇€瑕佹柊寤轰竴灞傜粺涓€瀛楁鍗忚鍜屼簨鍔＄郴缁熴€?*  
+鏈€鏍稿績鐨勭己鍙ｄ笉鏄€滄€庝箞澶氬啓鍑犱釜宸ュ叿鈥濓紝鑰屾槸锛?*UE 渚у啓鎿嶄綔娌℃湁缁熶竴 transaction / block / ownership / diff / review 瀛楁锛孧CP 渚т篃娌℃湁缁熶竴鎶婅繖浜涘瓧娈电ǔ瀹氳繑鍥炵粰 Agent銆?*
 
 ---
 
-# 1. 当前已有实现可以复用的部分
+# 1. 褰撳墠宸叉湁瀹炵幇鍙互澶嶇敤鐨勯儴鍒?
 
-## 1.1 UE Bridge 基础协议：可复用，需扩字段
+## 1.1 UE Bridge 鍩虹鍗忚锛氬彲澶嶇敤锛岄渶鎵╁瓧娈?
 
-当前 UE 侧已有基础 Bridge envelope：
+褰撳墠 UE 渚у凡鏈夊熀纭€ Bridge envelope锛?
 
 ```cpp id="w8vvbb"
 FBlueprintHelperBridgeRequest
@@ -30,9 +30,9 @@ FBlueprintHelperBridgeResponse
 }
 ```
 
-可以保留。它已经适合做所有工具的底层通道。
+鍙互淇濈暀銆傚畠宸茬粡閫傚悎鍋氭墍鏈夊伐鍏风殑搴曞眰閫氶亾銆?
 
-需要补的是：
+闇€瑕佽ˉ鐨勬槸锛?
 
 ```json id="t7kmgy"
 {
@@ -45,13 +45,13 @@ FBlueprintHelperBridgeResponse
 }
 ```
 
-`request_id` 继续由 MCP 侧生成；`trace_id` 应允许 MCP 传入，也允许 UE 侧补齐。
+`request_id` 缁х画鐢?CLI 渚х敓鎴愶紱`trace_id` 搴斿厑璁?CLI 浼犲叆锛屼篃鍏佽 UE 渚цˉ榻愩€?
 
 ---
 
-## 1.2 MCP response mode：可复用，但 RawJson 返回要修正
+## 1.2 CLI response mode锛氬彲澶嶇敤锛屼絾 RawJson 杩斿洖瑕佷慨姝?
 
-MCP 侧已经有：
+CLI 渚у凡缁忔湁锛?
 
 ```ts id="41hlq3"
 summary_text
@@ -60,7 +60,7 @@ resource_ref
 legacy_text_json
 ```
 
-以及：
+浠ュ強锛?
 
 ```ts id="9dlqmi"
 logic_md
@@ -71,9 +71,9 @@ resource_link
 structuredContent
 ```
 
-这个方向符合之前“LogicMD / LogicJson / RawJson / resource_ref 四主路径”的设计。v0.3.0 的版本定位本来就是降低 RawJson 依赖、引入 LogicJson / LogicMD、减少 Token 消耗。fileciteturn7file2
+杩欎釜鏂瑰悜绗﹀悎涔嬪墠鈥淟ogicMD / LogicJson / RawJson / resource_ref 鍥涗富璺緞鈥濈殑璁捐銆倂0.3.0 鐨勭増鏈畾浣嶆湰鏉ュ氨鏄檷浣?RawJson 渚濊禆銆佸紩鍏?LogicJson / LogicMD銆佸噺灏?Token 娑堣€椼€傤垁filecite顖倀urn7file2顖?
 
-但当前 `blueprint_export_to_json` 在 `resource_ref` 模式下仍把 `json` 放进 `structuredContent`，这会抵消 resource_ref 的上下文节省。应改为：
+浣嗗綋鍓?`blueprint_export_to_json` 鍦?`resource_ref` 妯″紡涓嬩粛鎶?`json` 鏀捐繘 `structuredContent`锛岃繖浼氭姷娑?resource_ref 鐨勪笂涓嬫枃鑺傜渷銆傚簲鏀逛负锛?
 
 ```json id="qdc6ct"
 {
@@ -87,19 +87,19 @@ structuredContent
 }
 ```
 
-不要默认内联：
+涓嶈榛樿鍐呰仈锛?
 
 ```json id="xscvc8"
-"json": { ...巨大 RawJson... }
+"json": { ...宸ㄥぇ RawJson... }
 ```
 
-只有 `legacy_text_json` 或显式 `inline_payload=true` 才返回完整 RawJson。
+鍙湁 `legacy_text_json` 鎴栨樉寮?`inline_payload=true` 鎵嶈繑鍥炲畬鏁?RawJson銆?
 
 ---
 
-## 1.3 LogicMD / LogicJson：可复用，但 schema 和字段要统一
+## 1.3 LogicMD / LogicJson锛氬彲澶嶇敤锛屼絾 schema 鍜屽瓧娈佃缁熶竴
 
-当前 UE 侧已有：
+褰撳墠 UE 渚у凡鏈夛細
 
 ```text id="wdri9h"
 export_logic
@@ -109,31 +109,31 @@ markdown / logic
 stats
 ```
 
-MCP 侧已有：
+CLI 渚у凡鏈夛細
 
 ```text id="gdyb5n"
 blueprint_get_logic
 blueprint_get_logic_json
 ```
 
-这部分应复用。
+杩欓儴鍒嗗簲澶嶇敤銆?
 
-但要改造：
+浣嗚鏀归€狅細
 
-| 当前问题 | 改造 |
+| 褰撳墠闂 | 鏀归€?|
 |---|---|
-| UE 侧 schema 返回 `BlueprintHelper.LogicMarkdown` / `BlueprintHelper.LogicGraph` | 改为 `BlueprintHelper.LogicMd.v1` / `BlueprintHelper.LogicJson.v1` |
-| UE 侧 Logic 返回缺少稳定 `asset_path` / `graph` | UE 侧直接返回，不只让 MCP 侧 fallback |
-| MCP 侧使用 `assetPath`，设计里多为 `asset_path` | 新字段统一用 `asset_path`，短期保留 `assetPath` 兼容 |
-| LogicJson 只适合分析，不可导入 | 保留 `importable=false`，MCP 继续拒绝传给 import |
+| UE 渚?schema 杩斿洖 `BlueprintHelper.LogicMarkdown` / `BlueprintHelper.LogicGraph` | 鏀逛负 `BlueprintHelper.LogicMd.v1` / `BlueprintHelper.LogicJson.v1` |
+| UE 渚?Logic 杩斿洖缂哄皯绋冲畾 `asset_path` / `graph` | UE 渚х洿鎺ヨ繑鍥烇紝涓嶅彧璁?CLI 渚?fallback |
+| CLI 渚т娇鐢?`assetPath`锛岃璁￠噷澶氫负 `asset_path` | 鏂板瓧娈电粺涓€鐢?`asset_path`锛岀煭鏈熶繚鐣?`assetPath` 鍏煎 |
+| LogicJson 鍙€傚悎鍒嗘瀽锛屼笉鍙鍏?| 淇濈暀 `importable=false`锛孧CP 缁х画鎷掔粷浼犵粰 import |
 
-设计稿里已经明确 LogicMD / LogicJson 是读和分析路径，RawJson 才是保真 / 导入导出路径；MCP 返回协议最低要求也包括 `format`、`schema`、`importable=false` 等字段。fileciteturn3file1
+璁捐绋块噷宸茬粡鏄庣‘ LogicMD / LogicJson 鏄鍜屽垎鏋愯矾寰勶紝RawJson 鎵嶆槸淇濈湡 / 瀵煎叆瀵煎嚭璺緞锛汳CP 杩斿洖鍗忚鏈€浣庤姹備篃鍖呮嫭 `format`銆乣schema`銆乣importable=false` 绛夊瓧娈点€傤垁filecite顖倀urn3file1顖?
 
 ---
 
-## 1.4 AgentImportGraph：可复用为 Append 原型底座，但不应继续作为主工具名
+## 1.4 AgentImportGraph锛氬彲澶嶇敤涓?Append 鍘熷瀷搴曞骇锛屼絾涓嶅簲缁х画浣滀负涓诲伐鍏峰悕
 
-当前 `blueprint_import_agent_graph` 已有：
+褰撳墠 `blueprint_import_agent_graph` 宸叉湁锛?
 
 ```json id="3c55mt"
 {
@@ -155,7 +155,7 @@ blueprint_get_logic_json
 }
 ```
 
-UE 侧 `FBlueprintHelperAgentImportResult` 已经有：
+UE 渚?`FBlueprintHelperAgentImportResult` 宸茬粡鏈夛細
 
 ```text id="wo9008"
 success
@@ -174,50 +174,50 @@ saved
 dry_run
 ```
 
-这非常适合复用为 **AppendBlueprintGraph 的第一版底层实现**。
+杩欓潪甯搁€傚悎澶嶇敤涓?**AppendBlueprintGraph 鐨勭涓€鐗堝簳灞傚疄鐜?*銆?
 
-但设计稿已经明确废弃含糊的 Import 命名，Graph Write 主工具应改为 `AppendBlueprintGraph / ReplaceBlueprintGraph / PatchBlueprintGraph / MergeBlueprintGraph`。fileciteturn5file0
+浣嗚璁＄宸茬粡鏄庣‘搴熷純鍚硦鐨?Import 鍛藉悕锛孏raph Write 涓诲伐鍏峰簲鏀逛负 `AppendBlueprintGraph / ReplaceBlueprintGraph / PatchBlueprintGraph / MergeBlueprintGraph`銆傤垁filecite顖倀urn5file0顖?
 
-因此建议：
+鍥犳寤鸿锛?
 
 ```text id="9r5nrk"
 blueprint_import_agent_graph
-保留 Legacy / Deprecated
+淇濈暀 Legacy / Deprecated
 
-新增：
+鏂板锛?
 blueprint_append_blueprint_graph
-内部第一版可以调用现有 AgentImportService
+鍐呴儴绗竴鐗堝彲浠ヨ皟鐢ㄧ幇鏈?AgentImportService
 ```
 
 ---
 
-## 1.5 现有服务层：大部分可复用
+## 1.5 鐜版湁鏈嶅姟灞傦細澶ч儴鍒嗗彲澶嶇敤
 
-当前 UE 侧这些服务都可以保留并成为新字段协议的执行层：
+褰撳墠 UE 渚ц繖浜涙湇鍔￠兘鍙互淇濈暀骞舵垚涓烘柊瀛楁鍗忚鐨勬墽琛屽眰锛?
 
-| 现有服务 | 复用方式 |
+| 鐜版湁鏈嶅姟 | 澶嶇敤鏂瑰紡 |
 |---|---|
-| `FBlueprintHelperGraphResolver` | 所有 read/write/patch/merge 的目标定位底座 |
-| `FBlueprintHelperExportService` | RawJson / Logic 生成底座 |
-| `FBlueprintHelperLogicProcessor` | LogicMD / LogicJson 继续复用 |
-| `FBlueprintHelperImportService` | RawJson replay / 兼容导入继续保留 |
-| `FBlueprintHelperAgentImportService` | AppendGraph 原型底座 |
-| `FBlueprintHelperValidationService` | 扩展为 dry_run / graph write validation |
-| `FBlueprintHelperCompileService` | 编译闭环复用 |
-| `FBlueprintHelperAssetBrowseService` | open/list/search/save 复用 |
-| `FBlueprintHelperBlueprintStructureService` | 变量、函数图、宏图、dispatcher 复用 |
-| `FBlueprintHelperWidgetService` | UMG 复用 |
-| `FBlueprintHelperPropertyReflectionService` | DataAsset / UObject 属性复用 |
-| `FBlueprintHelperDataTableService` | DataTable 复用 |
-| `FBlueprintHelperScopedAssetMutation` | 写操作 rollback / commit 基础可继续扩展 |
+| `FBlueprintHelperGraphResolver` | 鎵€鏈?read/write/patch/merge 鐨勭洰鏍囧畾浣嶅簳搴?|
+| `FBlueprintHelperExportService` | RawJson / Logic 鐢熸垚搴曞骇 |
+| `FBlueprintHelperLogicProcessor` | LogicMD / LogicJson 缁х画澶嶇敤 |
+| `FBlueprintHelperImportService` | RawJson replay / 鍏煎瀵煎叆缁х画淇濈暀 |
+| `FBlueprintHelperAgentImportService` | AppendGraph 鍘熷瀷搴曞骇 |
+| `FBlueprintHelperValidationService` | 鎵╁睍涓?dry_run / graph write validation |
+| `FBlueprintHelperCompileService` | 缂栬瘧闂幆澶嶇敤 |
+| `FBlueprintHelperAssetBrowseService` | open/list/search/save 澶嶇敤 |
+| `FBlueprintHelperBlueprintStructureService` | 鍙橀噺銆佸嚱鏁板浘銆佸畯鍥俱€乨ispatcher 澶嶇敤 |
+| `FBlueprintHelperWidgetService` | UMG 澶嶇敤 |
+| `FBlueprintHelperPropertyReflectionService` | DataAsset / UObject 灞炴€у鐢?|
+| `FBlueprintHelperDataTableService` | DataTable 澶嶇敤 |
+| `FBlueprintHelperScopedAssetMutation` | 鍐欐搷浣?rollback / commit 鍩虹鍙户缁墿灞?|
 
 ---
 
-# 2. 当前必须改造的部分
+# 2. 褰撳墠蹇呴』鏀归€犵殑閮ㄥ垎
 
-## 2.1 统一 UE 侧返回字段
+## 2.1 缁熶竴 UE 渚ц繑鍥炲瓧娈?
 
-建议所有 UE Bridge 命令最终都返回这种结构：
+寤鸿鎵€鏈?UE Bridge 鍛戒护鏈€缁堥兘杩斿洖杩欑缁撴瀯锛?
 
 ```json id="zvazzn"
 {
@@ -241,9 +241,9 @@ blueprint_append_blueprint_graph
 }
 ```
 
-其中 `result` 按工具类型变化。
+鍏朵腑 `result` 鎸夊伐鍏风被鍨嬪彉鍖栥€?
 
-不要让每个工具随意返回：
+涓嶈璁╂瘡涓伐鍏烽殢鎰忚繑鍥烇細
 
 ```json id="13n6rw"
 { "saved": "..." }
@@ -252,13 +252,13 @@ blueprint_append_blueprint_graph
 { "compile_success": true }
 ```
 
-这些可以保留为内部结果，但 MCP 给 Agent 的字段要稳定。
+杩欎簺鍙互淇濈暀涓哄唴閮ㄧ粨鏋滐紝浣?CLI 缁?Agent 鐨勫瓧娈佃绋冲畾銆?
 
 ---
 
-## 2.2 统一 MCP 侧返回字段
+## 2.2 缁熶竴 CLI 渚ц繑鍥炲瓧娈?
 
-MCP 侧给 Agent 的 `structuredContent` 建议统一为：
+CLI 渚х粰 Agent 鐨?`structuredContent` 寤鸿缁熶竴涓猴細
 
 ```json id="5r67gy"
 {
@@ -288,19 +288,19 @@ MCP 侧给 Agent 的 `structuredContent` 建议统一为：
 }
 ```
 
-MCP 的 `content[0].text` 只放摘要：
+CLI 鐨?`content[0].text` 鍙斁鎽樿锛?
 
 ```text id="u5l7ui"
 AppendBlueprintGraph applied: /Game/Blueprints/BP_Door.EG_PhysicsDoor, blocks=3, nodes=12, links=14.
 ```
 
-不要默认把完整 BridgeResponse JSON 塞进 text。当前 `toToolResult()` 会直接 `JSON.stringify(resp, null, 2)`，这对调试有用，但对 Agent 正常工作会浪费上下文。
+涓嶈榛樿鎶婂畬鏁?BridgeResponse JSON 濉炶繘 text銆傚綋鍓?`toToolResult()` 浼氱洿鎺?`JSON.stringify(resp, null, 2)`锛岃繖瀵硅皟璇曟湁鐢紝浣嗗 Agent 姝ｅ父宸ヤ綔浼氭氮璐逛笂涓嬫枃銆?
 
 ---
 
-## 2.3 字段命名需要收敛
+## 2.3 瀛楁鍛藉悕闇€瑕佹敹鏁?
 
-当前混用：
+褰撳墠娣风敤锛?
 
 ```text id="xxqee2"
 assetPath
@@ -312,17 +312,17 @@ rawUri
 error_code
 ```
 
-建议规则：
+寤鸿瑙勫垯锛?
 
-| 层 | 规范 |
+| 灞?| 瑙勮寖 |
 |---|---|
-| UE Bridge payload 输入 | 保持现有 `target_blueprint` / `target_graph`，减少破坏 |
-| UE Bridge result 输出 | 新增统一 `snake_case` |
-| MCP structuredContent | 统一 `snake_case` |
-| 兼容字段 | 短期保留 `assetPath` / `rawUri`，但标记 legacy alias |
-| 新工具 | 只用 `asset_path` / `raw_uri` |
+| UE Bridge payload 杈撳叆 | 淇濇寔鐜版湁 `target_blueprint` / `target_graph`锛屽噺灏戠牬鍧?|
+| UE Bridge result 杈撳嚭 | 鏂板缁熶竴 `snake_case` |
+| CLI structuredContent | 缁熶竴 `snake_case` |
+| 鍏煎瀛楁 | 鐭湡淇濈暀 `assetPath` / `rawUri`锛屼絾鏍囪 legacy alias |
+| 鏂板伐鍏?| 鍙敤 `asset_path` / `raw_uri` |
 
-最终建议：
+鏈€缁堝缓璁細
 
 ```json id="b703sv"
 {
@@ -334,26 +334,26 @@ error_code
 
 ---
 
-## 2.4 现有 Token / risk_command 要接入 runtime profile
+## 2.4 鐜版湁 Token / risk_command 瑕佹帴鍏?runtime profile
 
-当前 UE 侧已经有：
+褰撳墠 UE 渚у凡缁忔湁锛?
 
 ```text id="38c9oc"
 BLUEPRINTHELPER_BRIDGE_TOKEN
 BLUEPRINTHELPER_ENABLE_HIGH_RISK_COMMANDS
-write command auth_token 校验
-exec_console_command / close_editor high risk 限制
+write command auth_token 鏍￠獙
+exec_console_command / close_editor high risk 闄愬埗
 ```
 
-这部分可以复用。
+杩欓儴鍒嗗彲浠ュ鐢ㄣ€?
 
-但 Agent 不应该靠调用失败才知道不能写。需要新增：
+浣?Agent 涓嶅簲璇ラ潬璋冪敤澶辫触鎵嶇煡閬撲笉鑳藉啓銆傞渶瑕佹柊澧烇細
 
 ```text id="0pk057"
 blueprint_get_runtime_profile
 ```
 
-UE 侧返回字段：
+UE 渚ц繑鍥炲瓧娈碉細
 
 ```json id="okfnmq"
 {
@@ -392,15 +392,15 @@ UE 侧返回字段：
 }
 ```
 
-这属于新建工具，不建议从 `get_editor_context` 里硬塞。
+杩欏睘浜庢柊寤哄伐鍏凤紝涓嶅缓璁粠 `get_editor_context` 閲岀‖濉炪€?
 
 ---
 
-## 2.5 BridgeClient 要从短连接改为持久连接
+## 2.5 BridgeClient 瑕佷粠鐭繛鎺ユ敼涓烘寔涔呰繛鎺?
 
-当前 MCP `BridgeClient` 注释写得很清楚：每次 `sendCommand` 都新建 TCP 连接、发送、读响应、关闭。它已经有 Length-Prefixed JSON framing 和 request timeout，可以复用；但要改造成持久连接池 / 单连接复用。
+褰撳墠 CLI `BridgeClient` 娉ㄩ噴鍐欏緱寰堟竻妤氾細姣忔 `sendCommand` 閮芥柊寤?TCP 杩炴帴銆佸彂閫併€佽鍝嶅簲銆佸叧闂€傚畠宸茬粡鏈?Length-Prefixed JSON framing 鍜?request timeout锛屽彲浠ュ鐢紱浣嗚鏀归€犳垚鎸佷箙杩炴帴姹?/ 鍗曡繛鎺ュ鐢ㄣ€?
 
-改造字段：
+鏀归€犲瓧娈碉細
 
 ```ts id="qgvajj"
 BridgeClientOptions {
@@ -414,7 +414,7 @@ BridgeClientOptions {
 }
 ```
 
-运行时状态：
+杩愯鏃剁姸鎬侊細
 
 ```ts id="2w95qr"
 BridgeConnectionState {
@@ -425,17 +425,17 @@ BridgeConnectionState {
 }
 ```
 
-这与之前通信侧计划一致：v0.5.0 已经把持久 BridgeClient、request_id / trace_id、自动重连、timeout、协议降级列入范围。fileciteturn3file3
+杩欎笌涔嬪墠閫氫俊渚ц鍒掍竴鑷达細v0.5.0 宸茬粡鎶婃寔涔?BridgeClient銆乺equest_id / trace_id銆佽嚜鍔ㄩ噸杩炪€乼imeout銆佸崗璁檷绾у垪鍏ヨ寖鍥淬€傤垁filecite顖倀urn3file3顖?
 
 ---
 
-# 3. 必须新建的 UE 侧字段系统
+# 3. 蹇呴』鏂板缓鐨?UE 渚у瓧娈电郴缁?
 
-## 3.1 Transaction / Ownership / Review 字段
+## 3.1 Transaction / Ownership / Review 瀛楁
 
-设计稿已经明确：`transaction_id` 是一次写工具调用，由 UE 插件侧生成；`block_id` 是可独立审阅、替换、Patch、Cleanup 的逻辑块，也由 UE 插件侧生成。fileciteturn5file1
+璁捐绋垮凡缁忔槑纭細`transaction_id` 鏄竴娆″啓宸ュ叿璋冪敤锛岀敱 UE 鎻掍欢渚х敓鎴愶紱`block_id` 鏄彲鐙珛瀹￠槄銆佹浛鎹€丳atch銆丆leanup 鐨勯€昏緫鍧楋紝涔熺敱 UE 鎻掍欢渚х敓鎴愩€傤垁filecite顖倀urn5file1顖?
 
-UE 侧需要新增：
+UE 渚ч渶瑕佹柊澧烇細
 
 ```cpp id="7x1pr9"
 FBlueprintHelperTransactionInfo
@@ -454,7 +454,7 @@ FBlueprintHelperTransactionInfo
 }
 ```
 
-MCP 返回给 Agent：
+CLI 杩斿洖缁?Agent锛?
 
 ```json id="x3aay0"
 {
@@ -475,15 +475,15 @@ MCP 返回给 Agent：
 }
 ```
 
-注意：**Agent 最终报告默认不需要展开 journal_path、本地路径、完整 diff。**
+娉ㄦ剰锛?*Agent 鏈€缁堟姤鍛婇粯璁や笉闇€瑕佸睍寮€ journal_path銆佹湰鍦拌矾寰勩€佸畬鏁?diff銆?*
 
 ---
 
-## 3.2 节点 Metadata 字段
+## 3.2 鑺傜偣 Metadata 瀛楁
 
-UE 节点 Metadata 只放最小 ownership 索引，不放完整 diff、tool input、LogicJson 快照。设计稿已经明确这一点。fileciteturn5file1
+UE 鑺傜偣 Metadata 鍙斁鏈€灏?ownership 绱㈠紩锛屼笉鏀惧畬鏁?diff銆乼ool input銆丩ogicJson 蹇収銆傝璁＄宸茬粡鏄庣‘杩欎竴鐐广€傤垁filecite顖倀urn5file1顖?
 
-节点 Metadata：
+鑺傜偣 Metadata锛?
 
 ```json id="qfkn1x"
 {
@@ -495,7 +495,7 @@ UE 节点 Metadata 只放最小 ownership 索引，不放完整 diff、tool inpu
 }
 ```
 
-NodeComment：
+NodeComment锛?
 
 ```text id="lricaj"
 [BlueprintHelper]
@@ -504,7 +504,7 @@ tx=tx_20260502_0001
 tool=AppendBlueprintGraph
 ```
 
-需要新建：
+闇€瑕佹柊寤猴細
 
 ```text id="97h3j8"
 FBlueprintHelperOwnershipService
@@ -512,20 +512,20 @@ FBlueprintHelperBlockIdGenerator
 FBlueprintHelperTransactionIdGenerator
 ```
 
-现有代码里没有发现真正写入 `BlueprintHelperOwned` / `BlueprintHelperBlockId` 的逻辑。
+鐜版湁浠ｇ爜閲屾病鏈夊彂鐜扮湡姝ｅ啓鍏?`BlueprintHelperOwned` / `BlueprintHelperBlockId` 鐨勯€昏緫銆?
 
 ---
 
-## 3.3 Journal 字段
+## 3.3 Journal 瀛楁
 
-UE 侧新建本地文件：
+UE 渚ф柊寤烘湰鍦版枃浠讹細
 
 ```text id="wm1jf8"
 <Project>/Saved/BlueprintHelper/Transactions/Active/tx_xxx.json
 <Project>/Saved/BlueprintHelper/Review/
 ```
 
-Journal 最小结构：
+Journal 鏈€灏忕粨鏋勶細
 
 ```json id="s4r2ny"
 {
@@ -568,11 +568,11 @@ Journal 最小结构：
 
 ---
 
-# 4. Graph Write 返回字段设计
+# 4. Graph Write 杩斿洖瀛楁璁捐
 
 ## 4.1 AppendBlueprintGraph
 
-UE result：
+UE result锛?
 
 ```json id="zpmehf"
 {
@@ -617,7 +617,7 @@ UE result：
 }
 ```
 
-MCP structuredContent：
+CLI structuredContent锛?
 
 ```json id="ar0b79"
 {
@@ -649,9 +649,9 @@ MCP structuredContent：
 
 ---
 
-## 4.2 dry_run 返回字段
+## 4.2 dry_run 杩斿洖瀛楁
 
-所有高风险写入统一返回：
+鎵€鏈夐珮椋庨櫓鍐欏叆缁熶竴杩斿洖锛?
 
 ```json id="s4cj20"
 {
@@ -687,13 +687,13 @@ MCP structuredContent：
 }
 ```
 
-设计稿已明确 dry_run 是写入前安全预检，Review 是写入后审阅，两者不能互相替代。fileciteturn5file0
+璁捐绋垮凡鏄庣‘ dry_run 鏄啓鍏ュ墠瀹夊叏棰勬锛孯eview 鏄啓鍏ュ悗瀹￠槄锛屼袱鑰呬笉鑳戒簰鐩告浛浠ｃ€傤垁filecite顖倀urn5file0顖?
 
 ---
 
 ## 4.3 ReplaceBlueprintGraph
 
-UE result 必须体现 replace scope：
+UE result 蹇呴』浣撶幇 replace scope锛?
 
 ```json id="akmbgh"
 {
@@ -733,7 +733,7 @@ UE result 必须体现 replace scope：
 
 ## 4.4 PatchBlueprintGraph
 
-Patch 需要精确定位字段：
+Patch 闇€瑕佺簿纭畾浣嶅瓧娈碉細
 
 ```json id="ri31u6"
 {
@@ -764,7 +764,7 @@ Patch 需要精确定位字段：
 
 ## 4.5 MergeBlueprintGraph
 
-Merge 必须返回执行流变化：
+Merge 蹇呴』杩斿洖鎵ц娴佸彉鍖栵細
 
 ```json id="uvgyft"
 {
@@ -809,15 +809,15 @@ Merge 必须返回执行流变化：
 }
 ```
 
-Merge 是高风险工具，必须 dry_run。设计稿也要求明确目标图表、接入点、目标 Pin、插入策略，不能猜。fileciteturn5file0
+Merge 鏄珮椋庨櫓宸ュ叿锛屽繀椤?dry_run銆傝璁＄涔熻姹傛槑纭洰鏍囧浘琛ㄣ€佹帴鍏ョ偣銆佺洰鏍?Pin銆佹彃鍏ョ瓥鐣ワ紝涓嶈兘鐚溿€傤垁filecite顖倀urn5file0顖?
 
 ---
 
-# 5. Read / Logic 返回字段设计
+# 5. Read / Logic 杩斿洖瀛楁璁捐
 
 ## 5.1 LogicMD
 
-UE result：
+UE result锛?
 
 ```json id="ybvkqd"
 {
@@ -840,13 +840,13 @@ UE result：
 }
 ```
 
-MCP `content[0].text` 可以直接放 markdown；`structuredContent` 放 metadata。
+CLI `content[0].text` 鍙互鐩存帴鏀?markdown锛沗structuredContent` 鏀?metadata銆?
 
 ---
 
 ## 5.2 LogicJson
 
-UE result：
+UE result锛?
 
 ```json id="uapl5p"
 {
@@ -862,7 +862,7 @@ UE result：
 }
 ```
 
-MCP structuredContent：
+CLI structuredContent锛?
 
 ```json id="9elwiv"
 {
@@ -881,7 +881,7 @@ MCP structuredContent：
 
 ## 5.3 RawJson / RawJsonRef
 
-UE result 可以继续 object-first：
+UE result 鍙互缁х画 object-first锛?
 
 ```json id="mw566f"
 {
@@ -897,7 +897,7 @@ UE result 可以继续 object-first：
 }
 ```
 
-MCP 默认返回：
+CLI 榛樿杩斿洖锛?
 
 ```json id="p0pi9a"
 {
@@ -913,7 +913,7 @@ MCP 默认返回：
 
 ---
 
-# 6. Cleanup / Rollback 返回字段设计
+# 6. Cleanup / Rollback 杩斿洖瀛楁璁捐
 
 ## 6.1 CleanupBlueprintHelperBlock
 
@@ -967,78 +967,78 @@ MCP 默认返回：
 }
 ```
 
-Cleanup 设计稿要求只接受明确 `block_id`，feature cleanup 才允许多字段匹配，并且正式执行必须生成 transaction、写 Journal、记录 rollback_data、进入 Review。fileciteturn4file14
+Cleanup 璁捐绋胯姹傚彧鎺ュ彈鏄庣‘ `block_id`锛宖eature cleanup 鎵嶅厑璁稿瀛楁鍖归厤锛屽苟涓旀寮忔墽琛屽繀椤荤敓鎴?transaction銆佸啓 Journal銆佽褰?rollback_data銆佽繘鍏?Review銆傤垁filecite顖倀urn4file14顖?
 
 ---
 
-# 7. 现有功能分类：复用 / 改造 / 新建
+# 7. 鐜版湁鍔熻兘鍒嗙被锛氬鐢?/ 鏀归€?/ 鏂板缓
 
-## 7.1 可直接复用
+## 7.1 鍙洿鎺ュ鐢?
 
-| 模块 | 说明 |
+| 妯″潡 | 璇存槑 |
 |---|---|
-| Bridge request / response 基础结构 | 保留 `request_id / command / auth_token / payload / result` |
-| Length-prefixed JSON framing | 已有，继续用 |
-| Token 写权限校验 | 继续用，接入 runtime profile |
-| high risk command gate | 继续用，接入 runtime profile |
-| ExportService | RawJson 导出继续用 |
-| LogicProcessor | LogicMD / LogicJson 继续用 |
-| ImportService | RawJson 兼容导入继续用 |
-| AgentImportService | 作为 AppendGraph 原型底层实现 |
-| GraphResolver | 所有定位逻辑继续用 |
-| ScopedAssetMutation | 写操作事务/rollback 基础继续用 |
-| CompileService / SaveAsset | 写后验证闭环复用 |
-| Widget / ObjectProperty / DataTable 服务 | 暂不重构，只接统一返回 envelope |
+| Bridge request / response 鍩虹缁撴瀯 | 淇濈暀 `request_id / command / auth_token / payload / result` |
+| Length-prefixed JSON framing | 宸叉湁锛岀户缁敤 |
+| Token 鍐欐潈闄愭牎楠?| 缁х画鐢紝鎺ュ叆 runtime profile |
+| high risk command gate | 缁х画鐢紝鎺ュ叆 runtime profile |
+| ExportService | RawJson 瀵煎嚭缁х画鐢?|
+| LogicProcessor | LogicMD / LogicJson 缁х画鐢?|
+| ImportService | RawJson 鍏煎瀵煎叆缁х画鐢?|
+| AgentImportService | 浣滀负 AppendGraph 鍘熷瀷搴曞眰瀹炵幇 |
+| GraphResolver | 鎵€鏈夊畾浣嶉€昏緫缁х画鐢?|
+| ScopedAssetMutation | 鍐欐搷浣滀簨鍔?rollback 鍩虹缁х画鐢?|
+| CompileService / SaveAsset | 鍐欏悗楠岃瘉闂幆澶嶇敤 |
+| Widget / ObjectProperty / DataTable 鏈嶅姟 | 鏆備笉閲嶆瀯锛屽彧鎺ョ粺涓€杩斿洖 envelope |
 
 ---
 
-## 7.2 需要改造
+## 7.2 闇€瑕佹敼閫?
 
-| 模块 | 改造点 |
+| 妯″潡 | 鏀归€犵偣 |
 |---|---|
-| `mcp-response.ts` | 新增统一 `McpToolResult.v1` envelope；修正 raw_json_ref 默认不内联 RawJson |
-| `tools.ts` | 不再让普通工具默认 `JSON.stringify(resp)`；按 read/write/diagnostic/asset 四类包装 |
-| `BridgeClient` | 从每次短连接改为持久连接 + reconnect + heartbeat |
-| `export_logic` | UE 侧 schema 改名，补 `asset_path / graph / scope / detail / diagnostics` |
-| `export_to_json` | UE 侧保留 payload；MCP 默认转 resource_ref，不内联 payload |
-| `import_agent_graph` | 标记 legacy；新增 `append_blueprint_graph` 包装 |
-| `create_blueprint` | 当前只支持 `BPTYPE_Normal`，需要支持 asset_type / factory_type |
-| `compile_blueprint` | 统一 diagnostics 字段，增加 `should_save / recommended_next_tool` |
-| `save_asset` | 返回 `modified=false` 或 `saved=true`，但不生成 transaction_id |
-| `add_variable / add_graph / add_event_dispatcher` | 接入 transaction / diff / ownership / review |
-| `delete_nodes` | 改为只允许明确目标，接入 Review / rollback / ownership 检查 |
+| `mcp-response.ts` | 鏂板缁熶竴 `McpToolResult.v1` envelope锛涗慨姝?raw_json_ref 榛樿涓嶅唴鑱?RawJson |
+| `tools.ts` | 涓嶅啀璁╂櫘閫氬伐鍏烽粯璁?`JSON.stringify(resp)`锛涙寜 read/write/diagnostic/asset 鍥涚被鍖呰 |
+| `BridgeClient` | 浠庢瘡娆＄煭杩炴帴鏀逛负鎸佷箙杩炴帴 + reconnect + heartbeat |
+| `export_logic` | UE 渚?schema 鏀瑰悕锛岃ˉ `asset_path / graph / scope / detail / diagnostics` |
+| `export_to_json` | UE 渚т繚鐣?payload锛汳CP 榛樿杞?resource_ref锛屼笉鍐呰仈 payload |
+| `import_agent_graph` | 鏍囪 legacy锛涙柊澧?`append_blueprint_graph` 鍖呰 |
+| `create_blueprint` | 褰撳墠鍙敮鎸?`BPTYPE_Normal`锛岄渶瑕佹敮鎸?asset_type / factory_type |
+| `compile_blueprint` | 缁熶竴 diagnostics 瀛楁锛屽鍔?`should_save / recommended_next_tool` |
+| `save_asset` | 杩斿洖 `modified=false` 鎴?`saved=true`锛屼絾涓嶇敓鎴?transaction_id |
+| `add_variable / add_graph / add_event_dispatcher` | 鎺ュ叆 transaction / diff / ownership / review |
+| `delete_nodes` | 鏀逛负鍙厑璁告槑纭洰鏍囷紝鎺ュ叆 Review / rollback / ownership 妫€鏌?|
 
 ---
 
-## 7.3 必须新建
+## 7.3 蹇呴』鏂板缓
 
-| 新模块 | 用途 |
+| 鏂版ā鍧?| 鐢ㄩ€?|
 |---|---|
-| `RuntimeProfileService` | 返回当前版本、Bridge、config、write_permission、risk_command、tool_capabilities |
-| `DiagnosticsService` | `/blueprinthelper-diagnostics` 和 `--runtime` 对应 UE/MCP 只读诊断 |
-| `SettingsService` | 读取 settings.json，暴露 active_profile 摘要 |
-| `TransactionJournalService` | 生成 / 写入 / 查询 transaction journal |
-| `ReviewStoreService` | 保存 review_status，支持 AcceptAll / RejectAll |
-| `OwnershipService` | 写 Metadata / NodeComment，扫描 owned nodes |
-| `BlockIdService` | 按规则生成 block_id |
+| `RuntimeProfileService` | 杩斿洖褰撳墠鐗堟湰銆丅ridge銆乧onfig銆亀rite_permission銆乺isk_command銆乼ool_capabilities |
+| `DiagnosticsService` | `/blueprinthelper-diagnostics` 鍜?`--runtime` 瀵瑰簲 UE/CLI 鍙璇婃柇 |
+| `SettingsService` | 璇诲彇 settings.json锛屾毚闇?active_profile 鎽樿 |
+| `TransactionJournalService` | 鐢熸垚 / 鍐欏叆 / 鏌ヨ transaction journal |
+| `ReviewStoreService` | 淇濆瓨 review_status锛屾敮鎸?AcceptAll / RejectAll |
+| `OwnershipService` | 鍐?Metadata / NodeComment锛屾壂鎻?owned nodes |
+| `BlockIdService` | 鎸夎鍒欑敓鎴?block_id |
 | `DiffSnapshotService` | before / after / deleted snapshot |
-| `AppendBlueprintGraphService` | 新 Graph Write 主工具 |
-| `ReplaceBlueprintGraphService` | 替换 block / function_body / event_body |
-| `PatchBlueprintGraphService` | 精确修改 node/pin/value/link |
-| `MergeBlueprintGraphService` | 接入已有执行流 |
+| `AppendBlueprintGraphService` | 鏂?Graph Write 涓诲伐鍏?|
+| `ReplaceBlueprintGraphService` | 鏇挎崲 block / function_body / event_body |
+| `PatchBlueprintGraphService` | 绮剧‘淇敼 node/pin/value/link |
+| `MergeBlueprintGraphService` | 鎺ュ叆宸叉湁鎵ц娴?|
 | `CleanupService` | block / feature cleanup |
 | `RollbackService` | cleanup / transaction rollback |
-| `AssetFactoryService` | 创建 Blueprint Interface、Structure、InputAction 等 |
-| `BlueprintComponentService` | 添加 / 修改 / 删除组件 |
-| `BlueprintClassSettingsService` | parent、interfaces、class defaults、implemented interfaces |
-| `EnhancedInputService` | 创建 IA、编辑 IMC、绑定按键 |
-| `TargetLogicReadService` | 按 function/event/block/graph 精确读取 LogicMD / LogicJson |
+| `AssetFactoryService` | 鍒涘缓 Blueprint Interface銆丼tructure銆両nputAction 绛?|
+| `BlueprintComponentService` | 娣诲姞 / 淇敼 / 鍒犻櫎缁勪欢 |
+| `BlueprintClassSettingsService` | parent銆乮nterfaces銆乧lass defaults銆乮mplemented interfaces |
+| `EnhancedInputService` | 鍒涘缓 IA銆佺紪杈?IMC銆佺粦瀹氭寜閿?|
+| `TargetLogicReadService` | 鎸?function/event/block/graph 绮剧‘璇诲彇 LogicMD / LogicJson |
 
 ---
 
-# 8. Asset / Component / Input 侧字段设计
+# 8. Asset / Component / Input 渚у瓧娈佃璁?
 
-物理门测试已经暴露出 P0 缺口：不支持 Blueprint Interface、Structure、Input Action、IMC 编辑、蓝图实现接口等。这个测试报告指出 Agent 的方案设计能力超过了当前工具覆盖范围，接口、输入、C++ override 链路逐环断裂。fileciteturn3file6
+鐗╃悊闂ㄦ祴璇曞凡缁忔毚闇插嚭 P0 缂哄彛锛氫笉鏀寔 Blueprint Interface銆丼tructure銆両nput Action銆両MC 缂栬緫銆佽摑鍥惧疄鐜版帴鍙ｇ瓑銆傝繖涓祴璇曟姤鍛婃寚鍑?Agent 鐨勬柟妗堣璁¤兘鍔涜秴杩囦簡褰撳墠宸ュ叿瑕嗙洊鑼冨洿锛屾帴鍙ｃ€佽緭鍏ャ€丆++ override 閾捐矾閫愮幆鏂銆傤垁filecite顖倀urn3file6顖?
 
 ## 8.1 AssetFactoryResult
 
@@ -1139,9 +1139,9 @@ Cleanup 设计稿要求只接受明确 `block_id`，feature cleanup 才允许多
 
 ---
 
-# 9. 错误字段设计
+# 9. 閿欒瀛楁璁捐
 
-UE Bridge error：
+UE Bridge error锛?
 
 ```json id="aph5p2"
 {
@@ -1171,7 +1171,7 @@ UE Bridge error：
 }
 ```
 
-MCP `isError=true`，但仍保留 `structuredContent`：
+CLI `isError=true`锛屼絾浠嶄繚鐣?`structuredContent`锛?
 
 ```json id="2cdni2"
 {
@@ -1191,7 +1191,7 @@ MCP `isError=true`，但仍保留 `structuredContent`：
 }
 ```
 
-错误码需要从现在的：
+閿欒鐮侀渶瑕佷粠鐜板湪鐨勶細
 
 ```text id="faf6fb"
 invalid_request
@@ -1206,7 +1206,7 @@ execution_failed
 internal_error
 ```
 
-扩展为：
+鎵╁睍涓猴細
 
 ```text id="tu2urj"
 target_not_found
@@ -1228,51 +1228,51 @@ rollback_failed
 
 ---
 
-# 10. 推荐实现顺序
+# 10. 鎺ㄨ崘瀹炵幇椤哄簭
 
-不要一次性重写全部工具。建议按这个顺序实现字段协议：
+涓嶈涓€娆℃€ч噸鍐欏叏閮ㄥ伐鍏枫€傚缓璁寜杩欎釜椤哄簭瀹炵幇瀛楁鍗忚锛?
 
-## Phase A：统一返回 envelope
+## Phase A锛氱粺涓€杩斿洖 envelope
 
-先改 MCP 和 UE 基础字段，不动复杂业务：
+鍏堟敼 CLI 鍜?UE 鍩虹瀛楁锛屼笉鍔ㄥ鏉備笟鍔★細
 
 ```text id="pd7l3k"
-1. UE Bridge response 增加 schema / trace_id / diagnostics / meta
-2. MCP tools.ts 新增 normalizeToolResult()
-3. read 工具统一 structuredContent
-4. write 工具统一 status / modified / diagnostics
-5. RawJson resource_ref 不再默认内联 json
+1. UE Bridge response 澧炲姞 schema / trace_id / diagnostics / meta
+2. CLI tool surface 鏂板 normalizeToolResult()
+3. read 宸ュ叿缁熶竴 structuredContent
+4. write 宸ュ叿缁熶竴 status / modified / diagnostics
+5. RawJson resource_ref 涓嶅啀榛樿鍐呰仈 json
 ```
 
-## Phase B：runtime profile / diagnostics
+## Phase B锛歳untime profile / diagnostics
 
 ```text id="56sxhq"
 1. UE RuntimeProfileService
-2. MCP blueprint_get_runtime_profile
+2. CLI blueprint_get_runtime_profile
 3. UE DiagnosticsService
-4. MCP blueprinthelper_diagnostics_runtime
+4. CLI blueprinthelper_diagnostics_runtime
 ```
 
-## Phase C：Transaction / Ownership
+## Phase C锛歍ransaction / Ownership
 
 ```text id="ws9jf4"
 1. TransactionIdGenerator
 2. BlockIdGenerator
 3. OwnershipService
 4. TransactionJournalService
-5. 写入 Metadata + NodeComment
+5. 鍐欏叆 Metadata + NodeComment
 ```
 
-## Phase D：AppendBlueprintGraph
+## Phase D锛欰ppendBlueprintGraph
 
 ```text id="kpbgzi"
-1. 新 MCP tool: blueprint_append_blueprint_graph
-2. UE 内部先复用 AgentImportService
-3. 返回 transaction_id / block_ids / ownership / validation
-4. 旧 blueprint_import_agent_graph 标记 deprecated
+1. 鏂?CLI tool: blueprint_append_blueprint_graph
+2. UE 鍐呴儴鍏堝鐢?AgentImportService
+3. 杩斿洖 transaction_id / block_ids / ownership / validation
+4. 鏃?blueprint_import_agent_graph 鏍囪 deprecated
 ```
 
-## Phase E：Review / Cleanup / Rollback
+## Phase E锛歊eview / Cleanup / Rollback
 
 ```text id="bl8fdy"
 1. ReviewStoreService
@@ -1282,81 +1282,82 @@ rollback_failed
 5. ConvertBlueprintHelperBlockToUserOwned
 ```
 
-## Phase F：补实战 P0 工具
+## Phase F锛氳ˉ瀹炴垬 P0 宸ュ叿
 
 ```text id="76dka3"
 1. AssetFactory: Interface / Structure / InputAction
 2. BlueprintClassSettings: AddImplementedInterface
 3. BlueprintComponentService
 4. EnhancedInputService
-5. Override / parent function visibility 诊断
+5. Override / parent function visibility 璇婃柇
 ```
 
 ---
 
-# 11. 最终判断
+# 11. 鏈€缁堝垽鏂?
 
-当前实现状态可以概括为：
+褰撳墠瀹炵幇鐘舵€佸彲浠ユ鎷负锛?
 
-| 分类 | 当前状态 | 处理 |
+| 鍒嗙被 | 褰撳墠鐘舵€?| 澶勭悊 |
 |---|---|---|
-| Bridge 基础协议 | 已有 | 复用，扩 `trace_id / schema / diagnostics` |
-| Token / high risk gate | 已有 | 复用，接 runtime profile |
-| LogicMD / LogicJson | 已有 | 复用，统一 schema 和字段 |
-| RawJson object-first | 已有 | 复用，MCP 默认 resource_ref，不内联 payload |
-| AgentImportGraph | 已有 | 复用为 Append 原型底座，主工具名改造 |
-| 基础资产 / 蓝图 / UMG / DataTable 工具 | 已有 | 复用，套统一 result envelope |
-| dry_run | AgentImportGraph 局部已有 | 扩成所有高风险写工具通用字段 |
-| rollback | AgentImportGraph 局部已有 | 扩为 Transaction rollback |
-| transaction_id / block_id | 未实现 | 新建 |
-| ownership metadata / NodeComment | 未实现 | 新建 |
-| Transaction Journal / Review Store | 未实现 | 新建 |
-| Append / Replace / Patch / Merge | 未实现为正式工具 | 新建，Append 可复用 AgentImport |
-| runtime profile | 未实现 | 新建 |
-| diagnostics runtime | 未实现 | 新建 |
-| Blueprint Interface / Structure / InputAction / IMC | 缺失 | 新建 |
-| 持久 BridgeClient | 未实现，当前短连接 | 改造 |
+| Bridge 鍩虹鍗忚 | 宸叉湁 | 澶嶇敤锛屾墿 `trace_id / schema / diagnostics` |
+| Token / high risk gate | 宸叉湁 | 澶嶇敤锛屾帴 runtime profile |
+| LogicMD / LogicJson | 宸叉湁 | 澶嶇敤锛岀粺涓€ schema 鍜屽瓧娈?|
+| RawJson object-first | 宸叉湁 | 澶嶇敤锛孧CP 榛樿 resource_ref锛屼笉鍐呰仈 payload |
+| AgentImportGraph | 宸叉湁 | 澶嶇敤涓?Append 鍘熷瀷搴曞骇锛屼富宸ュ叿鍚嶆敼閫?|
+| 鍩虹璧勪骇 / 钃濆浘 / UMG / DataTable 宸ュ叿 | 宸叉湁 | 澶嶇敤锛屽缁熶竴 result envelope |
+| dry_run | AgentImportGraph 灞€閮ㄥ凡鏈?| 鎵╂垚鎵€鏈夐珮椋庨櫓鍐欏伐鍏烽€氱敤瀛楁 |
+| rollback | AgentImportGraph 灞€閮ㄥ凡鏈?| 鎵╀负 Transaction rollback |
+| transaction_id / block_id | 鏈疄鐜?| 鏂板缓 |
+| ownership metadata / NodeComment | 鏈疄鐜?| 鏂板缓 |
+| Transaction Journal / Review Store | 鏈疄鐜?| 鏂板缓 |
+| Append / Replace / Patch / Merge | 鏈疄鐜颁负姝ｅ紡宸ュ叿 | 鏂板缓锛孉ppend 鍙鐢?AgentImport |
+| runtime profile | 鏈疄鐜?| 鏂板缓 |
+| diagnostics runtime | 鏈疄鐜?| 鏂板缓 |
+| Blueprint Interface / Structure / InputAction / IMC | 缂哄け | 鏂板缓 |
+| 鎸佷箙 BridgeClient | 鏈疄鐜帮紝褰撳墠鐭繛鎺?| 鏀归€?|
 
-建议现在先做 **字段协议收敛 + runtime profile + transaction/ownership + AppendBlueprintGraph**。这四件完成后，满血原型才有稳定骨架；否则继续堆工具会让返回字段、审阅、回滚和 Agent 判断逻辑越来越散。
+寤鸿鐜板湪鍏堝仛 **瀛楁鍗忚鏀舵暃 + runtime profile + transaction/ownership + AppendBlueprintGraph**銆傝繖鍥涗欢瀹屾垚鍚庯紝婊¤鍘熷瀷鎵嶆湁绋冲畾楠ㄦ灦锛涘惁鍒欑户缁爢宸ュ叿浼氳杩斿洖瀛楁銆佸闃呫€佸洖婊氬拰 Agent 鍒ゆ柇閫昏緫瓒婃潵瓒婃暎銆?
 ---
 
-# 2026-05-04 三端能力缺口同步：混合任务编排
+# 2026-05-04 涓夌鑳藉姏缂哄彛鍚屾锛氭贩鍚堜换鍔＄紪鎺?
 
-## 新增核心缺口
+## 鏂板鏍稿績缂哄彛
 
-当前三端缺口需要新增一类：
-
-```text
-Task Orchestration Gap / 任务编排缺口
-```
-
-具体包括：
+褰撳墠涓夌缂哄彛闇€瑕佹柊澧炰竴绫伙細
 
 ```text
-1. Agent 直接面对底层 MCP 工具过多，容易漏步骤或顺序错误。
-2. 缺少 TaskContextPack，Agent 生成 TaskSpec 前上下文不足。
-3. 缺少 TaskSpec schema / semantic / policy 错误层。
-4. 缺少 MCP/Python Task Compiler。
-5. 缺少 UE Task Runtime。
-6. 缺少 task_run_id / TaskRunJournal。
-7. Review 目前只能按 transaction 看，缺少 task_run 分组。
+Task Orchestration Gap / 浠诲姟缂栨帓缂哄彛
 ```
 
-## 新增推荐补齐顺序
+鍏蜂綋鍖呮嫭锛?
 
 ```text
-1. TaskContextPack / read_task_context。
-2. TaskSpec schema 与错误层。
-3. preview_task。
-4. TaskPlan v1。
-5. UE Task Runtime v1。
-6. task_run_id / TaskRunJournal。
-7. Review UI 按 task_run_id 分组。
-8. execute_task。
+1. Agent 鐩存帴闈㈠搴曞眰鍛戒护/宸ュ叿杩囧锛屽鏄撴紡姝ラ鎴栭『搴忛敊璇€?2. 缂哄皯 TaskContextPack锛孉gent 鐢熸垚 TaskSpec 鍓嶄笂涓嬫枃涓嶈冻銆?
+3. 缂哄皯 TaskSpec schema / semantic / policy 閿欒灞傘€?
+4. 缂哄皯 CLI/Python Task Compiler銆?
+5. 缂哄皯 UE Task Runtime銆?
+6. 缂哄皯 task_run_id / TaskRunJournal銆?
+7. Review 鐩墠鍙兘鎸?transaction 鐪嬶紝缂哄皯 task_run 鍒嗙粍銆?
 ```
 
-## 与原工具缺口关系
+## 鏂板鎺ㄨ崘琛ラ綈椤哄簭
 
-原来的 Asset / Component / Class Settings / Graph Write / Validation 缺口仍然有效。
+```text
+1. TaskContextPack / read_task_context銆?
+2. TaskSpec schema 涓庨敊璇眰銆?
+3. preview_task銆?
+4. TaskPlan v1銆?
+5. UE Task Runtime v1銆?
+6. task_run_id / TaskRunJournal銆?
+7. Review UI 鎸?task_run_id 鍒嗙粍銆?
+8. execute_task銆?
+```
 
-混合任务编排不是替代这些能力，而是把它们组织成更稳定的任务执行链。
+## 涓庡師宸ュ叿缂哄彛鍏崇郴
+
+鍘熸潵鐨?Asset / Component / Class Settings / Graph Write / Validation 缂哄彛浠嶇劧鏈夋晥銆?
+
+娣峰悎浠诲姟缂栨帓涓嶆槸鏇夸唬杩欎簺鑳藉姏锛岃€屾槸鎶婂畠浠粍缁囨垚鏇寸ǔ瀹氱殑浠诲姟鎵ц閾俱€?
+
+

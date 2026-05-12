@@ -36,7 +36,7 @@ The Editor prompt is intentionally a simple accept/reject dialog. If the user re
 }
 ```
 
-不要把 TaskSpec 顶层字段直接平铺到 MCP 工具参数中。不要额外包 `args`。
+不要把 TaskSpec 顶层字段直接平铺到无关工具根参数中。`blueprinthelper_preview_task` 和 `blueprinthelper_execute_task` 只接受根字段 `task_spec`。不要额外包 `args`。
 
 ## Context And Anchors
 
@@ -52,7 +52,7 @@ link_ref
 
 `append_after` 使用 `block_id + group_entry_node_path + node_ref + pin_ref`。`insert_between` 还必须带 `link_ref`。
 
-Graph body 里的函数调用使用 `args` 表达函数参数。这里的 `args` 不是 MCP 工具参数包装。
+Graph body 里的函数调用使用 `args` 表达函数参数。这里的 `args` 不是 BlueprintHelper 工具参数包装。
 
 ## Frozen Boundary
 

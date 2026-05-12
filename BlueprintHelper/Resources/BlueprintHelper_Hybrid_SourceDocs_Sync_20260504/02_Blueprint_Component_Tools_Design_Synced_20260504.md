@@ -1,41 +1,41 @@
-# 02 Blueprint Component Tools 设计文档（已同步确认 Diff）
+﻿# 02 Blueprint Component Tools 璁捐鏂囨。锛堝凡鍚屾纭 Diff锛?
 
-日期：2026-05-03  
-工具簇：Blueprint Component Tools / 蓝图组件树工具簇  
-状态：同步确认 Diff 后的修正版  
-同步范围：`add_component` 职责收窄、组件属性设置返回摘要、`name_collision` 语义、普通工具不默认返回 transaction/review/safety。
+鏃ユ湡锛?026-05-03  
+宸ュ叿绨囷細Blueprint Component Tools / 钃濆浘缁勪欢鏍戝伐鍏风皣  
+鐘舵€侊細鍚屾纭 Diff 鍚庣殑淇鐗? 
+鍚屾鑼冨洿锛歚add_component` 鑱岃矗鏀剁獎銆佺粍浠跺睘鎬ц缃繑鍥炴憳瑕併€乣name_collision` 璇箟銆佹櫘閫氬伐鍏蜂笉榛樿杩斿洖 transaction/review/safety銆?
 
 ---
 
-## 0. 本次同步结论
+## 0. 鏈鍚屾缁撹
 
-本文件替换旧版中以下过期口径：
+鏈枃浠舵浛鎹㈡棫鐗堜腑浠ヤ笅杩囨湡鍙ｅ緞锛?
 
 ```text
-1. add_component 不再承担 transform / mobility / collision / physics / mesh / material / constraint 参数设置。
-2. add_component 只负责创建组件和建立 attachment。
-3. 组件属性必须通过 set_component_property / set_component_properties 设置。
-4. 组件属性写入成功时只返回 property_result 摘要，不回显 before / after / all_properties。
-5. name_collision 表示组件命名冲突，不是物理 collision。
-6. 第一版 name_collision 只支持 fail_if_exists / reuse_if_exists。
-7. 普通 Component 成功结果不默认返回 transaction / review / safety。
+1. add_component 涓嶅啀鎵挎媴 transform / mobility / collision / physics / mesh / material / constraint 鍙傛暟璁剧疆銆?
+2. add_component 鍙礋璐ｅ垱寤虹粍浠跺拰寤虹珛 attachment銆?
+3. 缁勪欢灞炴€у繀椤婚€氳繃 set_component_property / set_component_properties 璁剧疆銆?
+4. 缁勪欢灞炴€у啓鍏ユ垚鍔熸椂鍙繑鍥?property_result 鎽樿锛屼笉鍥炴樉 before / after / all_properties銆?
+5. name_collision 琛ㄧず缁勪欢鍛藉悕鍐茬獊锛屼笉鏄墿鐞?collision銆?
+6. 绗竴鐗?name_collision 鍙敮鎸?fail_if_exists / reuse_if_exists銆?
+7. 鏅€?Component 鎴愬姛缁撴灉涓嶉粯璁よ繑鍥?transaction / review / safety銆?
 ```
 
 ---
 
-## 1. 定位
+## 1. 瀹氫綅
 
-Blueprint Component Tools 负责编辑 Actor Blueprint 的组件树，即 UE 的 SCS / Component Template 层。
+Blueprint Component Tools 璐熻矗缂栬緫 Actor Blueprint 鐨勭粍浠舵爲锛屽嵆 UE 鐨?SCS / Component Template 灞傘€?
 
-它不属于 Graph Write，不通过 Append / Replace / Patch / Merge 编辑组件树，也不使用 `block_id`。
+瀹冧笉灞炰簬 Graph Write锛屼笉閫氳繃 Append / Replace / Patch / Merge 缂栬緫缁勪欢鏍戯紝涔熶笉浣跨敤 `block_id`銆?
 
-组件树修改仍是 UE 写操作，UE 插件内部必须接入 Transaction Journal / Review，但普通 Component 工具结果不默认把 `transaction / review / safety` 暴露给 Agent。
+缁勪欢鏍戜慨鏀逛粛鏄?UE 鍐欐搷浣滐紝UE 鎻掍欢鍐呴儴蹇呴』鎺ュ叆 Transaction Journal / Review锛屼絾鏅€?Component 宸ュ叿缁撴灉涓嶉粯璁ゆ妸 `transaction / review / safety` 鏆撮湶缁?Agent銆?
 
 ---
 
-## 2. 第一版工具形态
+## 2. 绗竴鐗堝伐鍏峰舰鎬?
 
-第一版工具建议收敛为：
+绗竴鐗堝伐鍏峰缓璁敹鏁涗负锛?
 
 ```text
 read_components
@@ -45,7 +45,7 @@ set_component_properties
 remove_component
 ```
 
-后续可扩展：
+鍚庣画鍙墿灞曪細
 
 ```text
 attach_component
@@ -55,25 +55,25 @@ rename_component
 cleanup_blueprint_helper_component_group
 ```
 
-高频复杂组件配置工具可以作为后续安全封装，但第一版 Agent 规则仍应遵守：
+楂橀澶嶆潅缁勪欢閰嶇疆宸ュ叿鍙互浣滀负鍚庣画瀹夊叏灏佽锛屼絾绗竴鐗?Agent 瑙勫垯浠嶅簲閬靛畧锛?
 
 ```text
-创建组件 = add_component
-设置属性 = set_component_property / set_component_properties
+鍒涘缓缁勪欢 = add_component
+璁剧疆灞炴€?= set_component_property / set_component_properties
 ```
 
 ---
 
-## 3. add_component 职责
+## 3. add_component 鑱岃矗
 
-`add_component` 只做两件事：
+`add_component` 鍙仛涓や欢浜嬶細
 
 ```text
-1. 创建组件。
-2. 建立组件挂接关系。
+1. 鍒涘缓缁勪欢銆?
+2. 寤虹珛缁勪欢鎸傛帴鍏崇郴銆?
 ```
 
-`add_component` 不设置：
+`add_component` 涓嶈缃細
 
 ```text
 Transform
@@ -83,11 +83,11 @@ CollisionEnabled / CollisionProfileName / Collision Response
 Physics / BodyInstance.bSimulatePhysics
 StaticMesh
 Material
-PhysicsConstraint 参数
-任意组件属性
+PhysicsConstraint 鍙傛暟
+浠绘剰缁勪欢灞炴€?
 ```
 
-这些全部属于组件属性修改，必须使用：
+杩欎簺鍏ㄩ儴灞炰簬缁勪欢灞炴€т慨鏀癸紝蹇呴』浣跨敤锛?
 
 ```text
 set_component_property
@@ -96,9 +96,9 @@ set_component_properties
 
 ---
 
-## 4. add_component Agent-facing 返回
+## 4. add_component Agent-facing 杩斿洖
 
-成功示例：
+鎴愬姛绀轰緥锛?
 
 ```json
 {
@@ -138,14 +138,14 @@ set_component_properties
 }
 ```
 
-Agent 应理解：
+Agent 搴旂悊瑙ｏ細
 
 ```text
-组件已创建并挂接。
-组件属性尚未配置。
+缁勪欢宸插垱寤哄苟鎸傛帴銆?
+缁勪欢灞炴€у皻鏈厤缃€?
 ```
 
-默认不返回：
+榛樿涓嶈繑鍥烇細
 
 ```text
 transaction
@@ -161,70 +161,70 @@ material
 
 ---
 
-## 5. name_collision 规则
+## 5. name_collision 瑙勫垯
 
-字段名固定为：
+瀛楁鍚嶅浐瀹氫负锛?
 
 ```text
 name_collision
 ```
 
-不是：
+涓嶆槸锛?
 
 ```text
 collision
 ```
 
-原因：`collision` 容易和物理碰撞设置混淆。
+鍘熷洜锛歚collision` 瀹规槗鍜岀墿鐞嗙鎾炶缃贩娣嗐€?
 
-第一版策略：
+绗竴鐗堢瓥鐣ワ細
 
 ```text
 fail_if_exists
 reuse_if_exists
 ```
 
-不支持：
+涓嶆敮鎸侊細
 
 ```text
 auto_rename
 replace_existing
 ```
 
-Agent 不得自动改名或替换已有组件。
+Agent 涓嶅緱鑷姩鏀瑰悕鎴栨浛鎹㈠凡鏈夌粍浠躲€?
 
 ---
 
-## 6. 组件属性设置
+## 6. 缁勪欢灞炴€ц缃?
 
-调用层区分：
+璋冪敤灞傚尯鍒嗭細
 
 ```text
-set_component_property      单个属性修改
-set_component_properties    多个属性修改
+set_component_property      鍗曚釜灞炴€т慨鏀?
+set_component_properties    澶氫釜灞炴€т慨鏀?
 ```
 
-返回层统一使用：
+杩斿洖灞傜粺涓€浣跨敤锛?
 
 ```text
 data.property_result
 ```
 
-单属性只是：
+鍗曞睘鎬у彧鏄細
 
 ```text
 mode=single
 requested_count=1
 ```
 
-批量属性是：
+鎵归噺灞炴€ф槸锛?
 
 ```text
 mode=batch
 requested_count>1
 ```
 
-成功返回：
+鎴愬姛杩斿洖锛?
 
 ```json
 {
@@ -239,22 +239,22 @@ requested_count>1
 }
 ```
 
-字段解释：
+瀛楁瑙ｉ噴锛?
 
-| 字段 | 含义 |
+| 瀛楁 | 鍚箟 |
 |---|---|
-| `mode` | `single` 或 `batch`。 |
-| `requested_count` | 请求设置数量。 |
-| `applied_count` | 实际应用数量。 |
-| `changed_count` | 实际产生变化的数量。 |
-| `no_op_count` | 已应用但值未变化的数量。 |
-| `invalid_settings` | 无效设置列表。 |
+| `mode` | `single` 鎴?`batch`銆?|
+| `requested_count` | 璇锋眰璁剧疆鏁伴噺銆?|
+| `applied_count` | 瀹為檯搴旂敤鏁伴噺銆?|
+| `changed_count` | 瀹為檯浜х敓鍙樺寲鐨勬暟閲忋€?|
+| `no_op_count` | 宸插簲鐢ㄤ絾鍊兼湭鍙樺寲鐨勬暟閲忋€?|
+| `invalid_settings` | 鏃犳晥璁剧疆鍒楄〃銆?|
 
 ---
 
-## 7. 不回显 property 快照
+## 7. 涓嶅洖鏄?property 蹇収
 
-成功时不返回：
+鎴愬姛鏃朵笉杩斿洖锛?
 
 ```text
 before
@@ -262,27 +262,27 @@ after
 all_properties
 ```
 
-原因：
+鍘熷洜锛?
 
 ```text
-1. before / after 属于 UE 内部 diff / Review / debug。
-2. 大对象属性回显浪费 Token。
-3. 成功结果只需要执行摘要。
+1. before / after 灞炰簬 UE 鍐呴儴 diff / Review / debug銆?
+2. 澶у璞″睘鎬у洖鏄炬氮璐?Token銆?
+3. 鎴愬姛缁撴灉鍙渶瑕佹墽琛屾憳瑕併€?
 ```
 
-如果 Agent 需要确认最终属性值，应调用读取工具或未来专用组件属性读取能力，而不是依赖写工具回显。
+濡傛灉 Agent 闇€瑕佺‘璁ゆ渶缁堝睘鎬у€硷紝搴旇皟鐢ㄨ鍙栧伐鍏锋垨鏈潵涓撶敤缁勪欢灞炴€ц鍙栬兘鍔涳紝鑰屼笉鏄緷璧栧啓宸ュ叿鍥炴樉銆?
 
 ---
 
-## 8. invalid_settings 规则
+## 8. invalid_settings 瑙勫垯
 
-无效设置只出现在：
+鏃犳晥璁剧疆鍙嚭鐜板湪锛?
 
 ```text
 data.property_result.invalid_settings
 ```
 
-示例：
+绀轰緥锛?
 
 ```json
 {
@@ -292,7 +292,7 @@ data.property_result.invalid_settings
 }
 ```
 
-常见 code：
+甯歌 code锛?
 
 ```text
 property_not_found
@@ -307,19 +307,19 @@ component_type_mismatch
 unsupported_property_type
 ```
 
-Agent 应根据 `invalid_settings` 修正计划或 stop_and_report。
+Agent 搴旀牴鎹?`invalid_settings` 淇璁″垝鎴?stop_and_report銆?
 
 ---
 
-## 9. 批量属性事务规则
+## 9. 鎵归噺灞炴€т簨鍔¤鍒?
 
-第一版批量属性修改默认事务式：
+绗竴鐗堟壒閲忓睘鎬т慨鏀归粯璁や簨鍔″紡锛?
 
 ```text
-只要存在 invalid_settings，默认不应用任何属性。
+鍙瀛樺湪 invalid_settings锛岄粯璁や笉搴旂敤浠讳綍灞炴€с€?
 ```
 
-出现无效设置时：
+鍑虹幇鏃犳晥璁剧疆鏃讹細
 
 ```text
 ok=false
@@ -330,20 +330,20 @@ changed_count=0
 no_op_count=0
 ```
 
-第一版不支持：
+绗竴鐗堜笉鏀寔锛?
 
 ```text
 partial apply
 allow_partial=true
 ```
 
-Agent 不得在批量失败后假设部分属性已经成功写入。
+Agent 涓嶅緱鍦ㄦ壒閲忓け璐ュ悗鍋囪閮ㄥ垎灞炴€у凡缁忔垚鍔熷啓鍏ャ€?
 
 ---
 
-## 10. 常见属性路径归属
+## 10. 甯歌灞炴€ц矾寰勫綊灞?
 
-以下都属于属性修改，不能混入 `add_component`：
+浠ヤ笅閮藉睘浜庡睘鎬т慨鏀癸紝涓嶈兘娣峰叆 `add_component`锛?
 
 ```text
 RelativeLocation
@@ -355,10 +355,10 @@ CollisionProfileName
 BodyInstance.bSimulatePhysics
 StaticMesh
 Material
-PhysicsConstraint 参数
+PhysicsConstraint 鍙傛暟
 ```
 
-必须使用：
+蹇呴』浣跨敤锛?
 
 ```text
 set_component_property
@@ -367,38 +367,38 @@ set_component_properties
 
 ---
 
-## 11. Ownership 与 component_group_id
+## 11. Ownership 涓?component_group_id
 
-组件 ownership 采用 Metadata + Journal 双写。
+缁勪欢 ownership 閲囩敤 Metadata + Journal 鍙屽啓銆?
 
-规则：
+瑙勫垯锛?
 
 ```text
-不使用 block_id。
-组件 / SCS 节点 / Component Template 写入最小 ownership metadata。
-Journal 记录完整 diff、rollback_data、组件组关系、创建来源和事务历史。
-不依赖组件命名约定判断 ownership。
-不只依赖 Journal。
+涓嶄娇鐢?block_id銆?
+缁勪欢 / SCS 鑺傜偣 / Component Template 鍐欏叆鏈€灏?ownership metadata銆?
+Journal 璁板綍瀹屾暣 diff銆乺ollback_data銆佺粍浠剁粍鍏崇郴銆佸垱寤烘潵婧愬拰浜嬪姟鍘嗗彶銆?
+涓嶄緷璧栫粍浠跺懡鍚嶇害瀹氬垽鏂?ownership銆?
+涓嶅彧渚濊禆 Journal銆?
 ```
 
-`component_group_id` 可用于：
+`component_group_id` 鍙敤浜庯細
 
 ```text
 replace_owned
 cleanup owned component group
-Review 分组展示
-Rollback 冲突检测
+Review 鍒嗙粍灞曠ず
+Rollback 鍐茬獊妫€娴?
 ```
 
-但普通 Component 工具成功结果是否向 Agent 暴露 `component_group_id` 应按工具簇需要决定，不应与通用 `transaction / review / safety` 混为默认返回 envelope。
+浣嗘櫘閫?Component 宸ュ叿鎴愬姛缁撴灉鏄惁鍚?Agent 鏆撮湶 `component_group_id` 搴旀寜宸ュ叿绨囬渶瑕佸喅瀹氾紝涓嶅簲涓庨€氱敤 `transaction / review / safety` 娣蜂负榛樿杩斿洖 envelope銆?
 
 ---
 
 ## 12. dry_run
 
-所有组件写操作都必须支持 dry_run。
+鎵€鏈夌粍浠跺啓鎿嶄綔閮藉繀椤绘敮鎸?dry_run銆?
 
-Conservative 下高风险组件操作必须 dry_run：
+Conservative 涓嬮珮椋庨櫓缁勪欢鎿嶄綔蹇呴』 dry_run锛?
 
 ```text
 set_root_component
@@ -407,13 +407,13 @@ attach / modify user-owned component
 replace_owned
 remove_component
 configure_physics_constraint
-修改 SimulatePhysics / Collision / Mobility
-修改组件 parent / root / constraint target
+淇敼 SimulatePhysics / Collision / Mobility
+淇敼缁勪欢 parent / root / constraint target
 ```
 
-新建空蓝图内添加 BlueprintHelper-owned 组件，可以不强制 dry_run，但工具仍必须支持 dry_run。
+鏂板缓绌鸿摑鍥惧唴娣诲姞 BlueprintHelper-owned 缁勪欢锛屽彲浠ヤ笉寮哄埗 dry_run锛屼絾宸ュ叿浠嶅繀椤绘敮鎸?dry_run銆?
 
-dry_run 结果位置：
+dry_run 缁撴灉浣嶇疆锛?
 
 ```text
 status=dry_run
@@ -423,25 +423,25 @@ data.dry_run
 
 ---
 
-## 13. 删除与清理
+## 13. 鍒犻櫎涓庢竻鐞?
 
-单个组件精确删除：
+鍗曚釜缁勪欢绮剧‘鍒犻櫎锛?
 
 ```text
 remove_component
 ```
 
-规则：
+瑙勫垯锛?
 
 ```text
-component_name 必须明确。
-不允许模糊删除。
-不允许按 class 批量删除。
+component_name 蹇呴』鏄庣‘銆?
+涓嶅厑璁告ā绯婂垹闄ゃ€?
+涓嶅厑璁告寜 class 鎵归噺鍒犻櫎銆?
 ```
 
-删除组件属于写操作。Agent 应在删除前确认目标明确，必要时先 `read_components`。
+鍒犻櫎缁勪欢灞炰簬鍐欐搷浣溿€侫gent 搴斿湪鍒犻櫎鍓嶇‘璁ょ洰鏍囨槑纭紝蹇呰鏃跺厛 `read_components`銆?
 
-owned 组件组清理由 Cleanup 工具簇负责：
+owned 缁勪欢缁勬竻鐞嗙敱 Cleanup 宸ュ叿绨囪礋璐ｏ細
 
 ```text
 cleanup_blueprint_helper_component_group
@@ -449,20 +449,20 @@ cleanup_blueprint_helper_component_group
 
 ---
 
-## 14. 与 Graph Write 的关系
+## 14. 涓?Graph Write 鐨勫叧绯?
 
 ```text
-组件工具不属于 Graph Write。
-组件工具不使用 block_id。
-组件树修改仍是写操作，内部必须接入 Journal / Review。
-Graph Write 不用于创建或配置组件树。
+缁勪欢宸ュ叿涓嶅睘浜?Graph Write銆?
+缁勪欢宸ュ叿涓嶄娇鐢?block_id銆?
+缁勪欢鏍戜慨鏀逛粛鏄啓鎿嶄綔锛屽唴閮ㄥ繀椤绘帴鍏?Journal / Review銆?
+Graph Write 涓嶇敤浜庡垱寤烘垨閰嶇疆缁勪欢鏍戙€?
 ```
 
 ---
 
-## 15. 物理门任务拆分示例
+## 15. 鐗╃悊闂ㄤ换鍔℃媶鍒嗙ず渚?
 
-物理门任务中，Agent 应拆为：
+鐗╃悊闂ㄤ换鍔′腑锛孉gent 搴旀媶涓猴細
 
 ```text
 1. add_component SceneRoot
@@ -471,91 +471,92 @@ Graph Write 不用于创建或配置组件树。
 4. add_component DoorConstraint attach to SceneRoot
 5. set_component_properties DoorMesh: mesh / relative transform / collision / physics
 6. set_component_properties DoorConstraint: constraint target / angular limits
-7. 后续 Graph Write 写交互逻辑
+7. 鍚庣画 Graph Write 鍐欎氦浜掗€昏緫
 ```
 
-不要把第 5 步混入 `add_component`。
+涓嶈鎶婄 5 姝ユ贩鍏?`add_component`銆?
 
 ---
 
-## 16. Agent 禁止行为
+## 16. Agent 绂佹琛屼负
 
-Agent 不得：
+Agent 涓嶅緱锛?
 
 ```text
-1. 用 add_component 设置属性。
-2. 依赖 add_component 返回 transform / properties。
-3. 自动改名组件。
-4. 自动替换已有组件。
-5. 把 successful property_result 当作完整属性快照。
-6. 在批量属性失败时假设部分属性已应用。
-7. 跨工具簇用 Component 工具写图表逻辑。
-8. 在最终报告中默认输出 transaction_id 或 review_status。
+1. 鐢?add_component 璁剧疆灞炴€с€?
+2. 渚濊禆 add_component 杩斿洖 transform / properties銆?
+3. 鑷姩鏀瑰悕缁勪欢銆?
+4. 鑷姩鏇挎崲宸叉湁缁勪欢銆?
+5. 鎶?successful property_result 褰撲綔瀹屾暣灞炴€у揩鐓с€?
+6. 鍦ㄦ壒閲忓睘鎬уけ璐ユ椂鍋囪閮ㄥ垎灞炴€у凡搴旂敤銆?
+7. 璺ㄥ伐鍏风皣鐢?Component 宸ュ叿鍐欏浘琛ㄩ€昏緫銆?
+8. 鍦ㄦ渶缁堟姤鍛婁腑榛樿杈撳嚭 transaction_id 鎴?review_status銆?
 ```
 
 ---
 
-## 17. 验收标准
+## 17. 楠屾敹鏍囧噯
 
 ```text
-1. Agent 能区分 add_component 与 set_component_property / set_component_properties。
-2. add_component 返回 data.component / data.attachment / data.name_collision。
-3. add_component 不返回 transform / properties。
-4. name_collision 不被误解为物理 collision。
-5. set_component_property / set_component_properties 统一返回 data.property_result。
-6. 成功属性写入不回显 before / after / all_properties。
-7. invalid_settings 是唯一无效设置列表。
-8. 批量属性失败时整体失败，不应用任何属性。
-9. 普通成功结果不默认返回 transaction / review / safety。
-10. Agent 能根据 validation 继续 compile/save。
+1. Agent 鑳藉尯鍒?add_component 涓?set_component_property / set_component_properties銆?
+2. add_component 杩斿洖 data.component / data.attachment / data.name_collision銆?
+3. add_component 涓嶈繑鍥?transform / properties銆?
+4. name_collision 涓嶈璇В涓虹墿鐞?collision銆?
+5. set_component_property / set_component_properties 缁熶竴杩斿洖 data.property_result銆?
+6. 鎴愬姛灞炴€у啓鍏ヤ笉鍥炴樉 before / after / all_properties銆?
+7. invalid_settings 鏄敮涓€鏃犳晥璁剧疆鍒楄〃銆?
+8. 鎵归噺灞炴€уけ璐ユ椂鏁翠綋澶辫触锛屼笉搴旂敤浠讳綍灞炴€с€?
+9. 鏅€氭垚鍔熺粨鏋滀笉榛樿杩斿洖 transaction / review / safety銆?
+10. Agent 鑳芥牴鎹?validation 缁х画 compile/save銆?
 ```
 ---
 
-# 2026-05-04 混合架构同步：工具簇暴露层级
+# 2026-05-04 娣峰悎鏋舵瀯鍚屾锛氬伐鍏风皣鏆撮湶灞傜骇
 
-## 同步结论
+## 鍚屾缁撹
 
-本文档中的工具簇边界不推翻，但 Agent-facing 暴露方式调整。
+鏈枃妗ｄ腑鐨勫伐鍏风皣杈圭晫涓嶆帹缈伙紝浣?Agent-facing 鏆撮湶鏂瑰紡璋冩暣銆?
 
-底层能力簇继续作为：
-
-```text
-1. UE Task Runtime step operation。
-2. Python / MCP Task Compiler 的 capability 模型。
-3. Debug / Expert / 测试入口。
-```
-
-普通 Agent 不应默认直接手动拼装本工具簇调用链。普通流程改为：
+搴曞眰鑳藉姏绨囩户缁綔涓猴細
 
 ```text
-read_task_context → preview_task → execute_task
+1. UE Task Runtime step operation銆?
+2. task-core / Python Task Compiler 鐨?capability 妯″瀷銆?
+3. Debug / Expert / 娴嬭瘯鍏ュ彛銆?
 ```
 
-## 边界仍然有效
-
-本工具簇原有职责边界仍必须被 Task Compiler / Task Runtime 遵守。
-
-例如：
+鏅€?Agent 涓嶅簲榛樿鐩存帴鎵嬪姩鎷艰鏈伐鍏风皣璋冪敤閾俱€傛櫘閫氭祦绋嬫敼涓猴細
 
 ```text
-Asset Factory 只创建资产，不添加接口、不写接口函数 body。
-Component add_component 只创建组件和 attachment，不设置属性。
-Class Settings add_implemented_interface 只修改 Implemented Interfaces。
-Enhanced Input 当前不默认自动编辑 IA / IMC。
+read_task_context 鈫?preview_task 鈫?execute_task
 ```
 
-也就是说，混合架构只改变“谁来调用工具”，不改变“工具能做什么”。
+## 杈圭晫浠嶇劧鏈夋晥
 
-## Agent-facing 返回调整
+鏈伐鍏风皣鍘熸湁鑱岃矗杈圭晫浠嶅繀椤昏 Task Compiler / Task Runtime 閬靛畧銆?
 
-普通 execute_task 成功结果默认不展开本工具簇的底层返回。
-
-底层 transaction / review / safety 仍进入 UE Journal / Review，但普通任务成功摘要只报告：
+渚嬪锛?
 
 ```text
-任务是否完成
-修改了哪些资产
-执行了多少步骤
-是否 compile/save
-异常或未完成项
+Asset Factory 鍙垱寤鸿祫浜э紝涓嶆坊鍔犳帴鍙ｃ€佷笉鍐欐帴鍙ｅ嚱鏁?body銆?
+Component add_component 鍙垱寤虹粍浠跺拰 attachment锛屼笉璁剧疆灞炴€с€?
+Class Settings add_implemented_interface 鍙慨鏀?Implemented Interfaces銆?
+Enhanced Input 褰撳墠涓嶉粯璁よ嚜鍔ㄧ紪杈?IA / IMC銆?
 ```
+
+涔熷氨鏄锛屾贩鍚堟灦鏋勫彧鏀瑰彉鈥滆皝鏉ヨ皟鐢ㄥ伐鍏封€濓紝涓嶆敼鍙樷€滃伐鍏疯兘鍋氫粈涔堚€濄€?
+
+## Agent-facing 杩斿洖璋冩暣
+
+鏅€?execute_task 鎴愬姛缁撴灉榛樿涓嶅睍寮€鏈伐鍏风皣鐨勫簳灞傝繑鍥炪€?
+
+搴曞眰 transaction / review / safety 浠嶈繘鍏?UE Journal / Review锛屼絾鏅€氫换鍔℃垚鍔熸憳瑕佸彧鎶ュ憡锛?
+
+```text
+浠诲姟鏄惁瀹屾垚
+淇敼浜嗗摢浜涜祫浜?
+鎵ц浜嗗灏戞楠?
+鏄惁 compile/save
+寮傚父鎴栨湭瀹屾垚椤?
+```
+

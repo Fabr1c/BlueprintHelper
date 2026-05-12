@@ -158,7 +158,7 @@ test('task execute can project stdout to selected fields only', async () => {
   assert.equal(typeof (output.artifacts as Record<string, unknown>).full_result, 'string');
 });
 
-test('direct MCP tool name dispatches blueprinthelper_preview_task through TaskSpec runner', async () => {
+test('direct CLI tool name dispatches blueprinthelper_preview_task through TaskSpec runner', async () => {
   const writes: string[] = [];
   const runner = {
     readTaskContext: async () => { throw new Error('not used'); },
