@@ -34,6 +34,12 @@ TaskSpec 必须描述：目标资产、feature_name、scope_policy、asset_polic
 
 Patch/Merge 已有 BlueprintHelper-owned block 时，先用 `blueprinthelper_read_context` 读取 `logic_json`。写入锚点必须来自 grouped block：`block_id + group_entry_node_path + node_ref + pin_ref`，`insert_between` 额外需要 `link_ref`。不要把全图级 `nodes[0]`、显示名、GUID-first selector 当普通主线写锚点。
 
+## Non-BlueprintHelper-Owned Graph Boundary
+
+Non-BlueprintHelper-owned graph content is read-only in the normal GraphWrite flow. Normal Agents may use `blueprinthelper_read_context` or `blueprinthelper_read_reference_context` to inspect it, but must not build write anchors for it.
+
+GraphWrite TaskSpecs must keep `scope_policy.allow_modify_user_nodes=false`. If preview or compile returns `unsupported_scope_policy`, stop and report that stable non-owned write anchors are not available yet. Do not switch to full-graph `nodes[index]`, display labels, ad hoc JSONPath, or GUID-first selectors. GUID-first selectors remain expert/debug fallback only.
+
 `merge_owned_graph` 使用 `branch_fork + owned_block_call` 时，Preview 是写入门禁。TaskSpec 必须显式给出 `sequence_order`，且只使用 `original_successor` / `inserted_logic`；`inserted.block_id` 必须在 Preview 阶段解析为已有的 BlueprintHelper-owned CustomEvent block。Preview blocked 时禁止 execute，也不要回退到底层工具。
 
 execute_task 仍可能因 UE 当前状态、资产变化或 Editor 写入失败而失败；失败结果必须带非空 error code/message/stage，报告时使用该错误和 task result/journal，不展开底层 Bridge payload。

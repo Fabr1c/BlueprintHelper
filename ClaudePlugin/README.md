@@ -109,7 +109,7 @@ npm run build
 1. Put this plugin under a UE project plugin directory, for example `YourProject/Plugins/BlueprintHelper`.
 2. Enable the plugin in Unreal Editor.
 3. Build the project if Unreal asks for a rebuild.
-4. Build the MCP Server:
+4. Build the MCP Server. If you installed BlueprintHelper from an Unreal `BuildPlugin` package, keep this `ClaudePlugin` package available separately; UE packaging does not compile or include `ClaudePlugin/mcp`.
 
 ```powershell
 cd <PLUGIN_ROOT>\ClaudePlugin\mcp

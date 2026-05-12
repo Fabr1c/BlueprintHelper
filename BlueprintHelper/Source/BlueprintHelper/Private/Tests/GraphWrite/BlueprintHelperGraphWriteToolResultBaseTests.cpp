@@ -6,6 +6,8 @@
 #include "EdGraphSchema_K2.h"
 #include "Engine/Blueprint.h"
 #include "Engine/BlueprintGeneratedClass.h"
+#include "Engine/SCS_Node.h"
+#include "Engine/SimpleConstructionScript.h"
 #include "GameFramework/Actor.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperBlockIdService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
@@ -573,6 +575,40 @@ public:
 		return false;
 	}
 
+	static bool HasSCSComponentNamed(UBlueprint* Blueprint, const FString& ComponentName)
+	{
+		if (!Blueprint || !Blueprint->SimpleConstructionScript)
+		{
+			return false;
+		}
+
+		for (USCS_Node* Node : Blueprint->SimpleConstructionScript->GetAllNodes())
+		{
+			if (Node && Node->GetVariableName().ToString() == ComponentName)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	static bool HasMemberVariableNamed(UBlueprint* Blueprint, const FName VariableName)
+	{
+		if (!Blueprint)
+		{
+			return false;
+		}
+
+		for (const FBPVariableDescription& VariableDescription : Blueprint->NewVariables)
+		{
+			if (VariableDescription.VarName == VariableName)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
 	static bool LoadActiveJournalJson(const FString& TransactionId, TSharedPtr<FJsonObject>& OutJson)
 	{
 		const FString JournalPath = FPaths::ProjectSavedDir()
@@ -717,6 +753,187 @@ public:
 
 		TArray<TSharedPtr<FJsonValue>> Steps;
 		Steps.Add(MakeShared<FJsonValueObject>(Step));
+		TaskPlan->SetArrayField(TEXT("steps"), Steps);
+
+		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+		Payload->SetObjectField(TEXT("task_plan"), TaskPlan);
+		return Payload;
+	}
+
+	static TSharedRef<FJsonObject> MakeCompositeComponentStep(
+		const FString& StepId,
+		const FString& AssetPath,
+		const FString& ComponentName)
+	{
+		TSharedRef<FJsonObject> Step = MakeShared<FJsonObject>();
+		Step->SetStringField(TEXT("step_id"), StepId);
+		Step->SetStringField(TEXT("capability"), TEXT("blueprint_component"));
+
+		TSharedRef<FJsonObject> Target = MakeShared<FJsonObject>();
+		Target->SetStringField(TEXT("asset_path"), AssetPath);
+		Step->SetObjectField(TEXT("target"), Target);
+
+		TSharedRef<FJsonObject> Op = MakeShared<FJsonObject>();
+		Op->SetStringField(TEXT("op"), TEXT("add_component"));
+		Op->SetStringField(TEXT("component_name"), ComponentName);
+		Op->SetStringField(TEXT("component_class"), TEXT("SceneComponent"));
+		Op->SetStringField(TEXT("name_collision_policy"), TEXT("reuse_if_exists"));
+
+		TArray<TSharedPtr<FJsonValue>> Ops;
+		Ops.Add(MakeShared<FJsonValueObject>(Op));
+
+		TSharedRef<FJsonObject> Write = MakeShared<FJsonObject>();
+		Write->SetStringField(TEXT("strategy"), TEXT("component_tree"));
+		Write->SetArrayField(TEXT("ops"), Ops);
+		Step->SetObjectField(TEXT("write"), Write);
+		return Step;
+	}
+
+	static TSharedRef<FJsonObject> MakeCompositeVariableStep(
+		const FString& StepId,
+		const FString& AssetPath,
+		const FString& VariableName)
+	{
+		TSharedRef<FJsonObject> Step = MakeShared<FJsonObject>();
+		Step->SetStringField(TEXT("step_id"), StepId);
+		Step->SetStringField(TEXT("capability"), TEXT("blueprint_variable"));
+
+		TSharedRef<FJsonObject> Target = MakeShared<FJsonObject>();
+		Target->SetStringField(TEXT("asset_path"), AssetPath);
+		Step->SetObjectField(TEXT("target"), Target);
+
+		TSharedRef<FJsonObject> PinType = MakeShared<FJsonObject>();
+		PinType->SetStringField(TEXT("category"), TEXT("bool"));
+
+		TSharedRef<FJsonObject> Op = MakeShared<FJsonObject>();
+		Op->SetStringField(TEXT("op"), TEXT("ensure_member_variable"));
+		Op->SetStringField(TEXT("name"), VariableName);
+		Op->SetObjectField(TEXT("pin_type"), PinType);
+		Op->SetStringField(TEXT("category"), TEXT("BHSmoke"));
+
+		TArray<TSharedPtr<FJsonValue>> Ops;
+		Ops.Add(MakeShared<FJsonValueObject>(Op));
+
+		TSharedRef<FJsonObject> Write = MakeShared<FJsonObject>();
+		Write->SetStringField(TEXT("strategy"), TEXT("member_variables"));
+		Write->SetArrayField(TEXT("ops"), Ops);
+		Step->SetObjectField(TEXT("write"), Write);
+
+		TSharedRef<FJsonObject> Constraints = MakeShared<FJsonObject>();
+		Constraints->SetBoolField(TEXT("allow_remove_referenced_variables"), false);
+		Step->SetObjectField(TEXT("constraints"), Constraints);
+		return Step;
+	}
+
+	static TSharedRef<FJsonObject> MakeCompositeCustomEventSignatureStep(
+		const FString& StepId,
+		const FString& AssetPath,
+		const FString& GraphName,
+		const FString& EventName)
+	{
+		TSharedRef<FJsonObject> Step = MakeShared<FJsonObject>();
+		Step->SetStringField(TEXT("step_id"), StepId);
+		Step->SetStringField(TEXT("capability"), TEXT("blueprint_signature"));
+
+		TSharedRef<FJsonObject> Target = MakeShared<FJsonObject>();
+		Target->SetStringField(TEXT("asset_path"), AssetPath);
+		Step->SetObjectField(TEXT("target"), Target);
+
+		TSharedRef<FJsonObject> Op = MakeShared<FJsonObject>();
+		Op->SetStringField(TEXT("op"), TEXT("ensure_custom_event"));
+		Op->SetStringField(TEXT("event_name"), EventName);
+		Op->SetStringField(TEXT("graph_name"), GraphName);
+		Op->SetStringField(TEXT("name_collision_policy"), TEXT("reuse_if_exists"));
+
+		TArray<TSharedPtr<FJsonValue>> Ops;
+		Ops.Add(MakeShared<FJsonValueObject>(Op));
+
+		TSharedRef<FJsonObject> Write = MakeShared<FJsonObject>();
+		Write->SetStringField(TEXT("strategy"), TEXT("custom_event_signature"));
+		Write->SetArrayField(TEXT("ops"), Ops);
+		Step->SetObjectField(TEXT("write"), Write);
+		return Step;
+	}
+
+	static TSharedRef<FJsonObject> MakeCompositeGraphWriteStep(
+		const FString& StepId,
+		const FString& AssetPath,
+		const FString& GraphName,
+		const FString& EventName,
+		const FString& DependsOnStepId)
+	{
+		TSharedRef<FJsonObject> Step = MakeShared<FJsonObject>();
+		Step->SetStringField(TEXT("step_id"), StepId);
+		Step->SetStringField(TEXT("capability"), TEXT("graph_write"));
+
+		TSharedRef<FJsonObject> Target = MakeShared<FJsonObject>();
+		Target->SetStringField(TEXT("asset_path"), AssetPath);
+		Target->SetStringField(TEXT("graph"), GraphName);
+		Step->SetObjectField(TEXT("target"), Target);
+
+		TSharedRef<FJsonObject> Selector = MakeShared<FJsonObject>();
+		Selector->SetStringField(TEXT("entry_name"), EventName);
+
+		TArray<TSharedPtr<FJsonValue>> Nodes;
+		Nodes.Add(MakeShared<FJsonValueObject>(MakeReplacementNode()));
+		TSharedRef<FJsonObject> Replacement = MakeShared<FJsonObject>();
+		Replacement->SetArrayField(TEXT("nodes"), Nodes);
+		Replacement->SetArrayField(TEXT("links"), {});
+
+		TSharedRef<FJsonObject> Op = MakeShared<FJsonObject>();
+		Op->SetStringField(TEXT("op"), TEXT("replace_body"));
+		Op->SetStringField(TEXT("replace_scope"), TEXT("custom_event_body"));
+		Op->SetObjectField(TEXT("selector"), Selector);
+		Op->SetObjectField(TEXT("replacement"), Replacement);
+
+		TArray<TSharedPtr<FJsonValue>> Ops;
+		Ops.Add(MakeShared<FJsonValueObject>(Op));
+
+		TSharedRef<FJsonObject> Write = MakeShared<FJsonObject>();
+		Write->SetStringField(TEXT("strategy"), TEXT("owned_graph_edit"));
+		Write->SetArrayField(TEXT("ops"), Ops);
+		Step->SetObjectField(TEXT("write"), Write);
+
+		TSharedRef<FJsonObject> Constraints = MakeShared<FJsonObject>();
+		Constraints->SetBoolField(TEXT("allow_modify_user_nodes"), false);
+		Constraints->SetStringField(TEXT("ownership_scope"), TEXT("blueprinthelper_owned"));
+		Step->SetObjectField(TEXT("constraints"), Constraints);
+
+		TArray<TSharedPtr<FJsonValue>> DependsOn;
+		DependsOn.Add(MakeShared<FJsonValueString>(DependsOnStepId));
+		Step->SetArrayField(TEXT("depends_on"), DependsOn);
+		return Step;
+	}
+
+	static TSharedRef<FJsonObject> MakeCompositeCreateBlueprintFeaturePayload(
+		const FString& AssetPath,
+		const FString& GraphName,
+		const FString& EventName,
+		const FString& ComponentName,
+		const FString& VariableName)
+	{
+		const FString SignatureStepId = TEXT("step_signature_custom_event");
+		TArray<TSharedPtr<FJsonValue>> Steps;
+		Steps.Add(MakeShared<FJsonValueObject>(MakeCompositeComponentStep(TEXT("step_component"), AssetPath, ComponentName)));
+		Steps.Add(MakeShared<FJsonValueObject>(MakeCompositeVariableStep(TEXT("step_variable"), AssetPath, VariableName)));
+		Steps.Add(MakeShared<FJsonValueObject>(MakeCompositeCustomEventSignatureStep(SignatureStepId, AssetPath, GraphName, EventName)));
+		Steps.Add(MakeShared<FJsonValueObject>(MakeCompositeGraphWriteStep(TEXT("step_graph_body"), AssetPath, GraphName, EventName, SignatureStepId)));
+
+		TArray<TSharedPtr<FJsonValue>> TargetAssets;
+		TargetAssets.Add(MakeShared<FJsonValueString>(AssetPath));
+
+		TSharedRef<FJsonObject> ExecutionPolicy = MakeShared<FJsonObject>();
+		ExecutionPolicy->SetStringField(TEXT("dry_run_mode"), TEXT("full"));
+		ExecutionPolicy->SetBoolField(TEXT("should_compile"), true);
+		ExecutionPolicy->SetBoolField(TEXT("should_save"), false);
+
+		TSharedRef<FJsonObject> TaskPlan = MakeShared<FJsonObject>();
+		TaskPlan->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.TaskPlan.v1"));
+		TaskPlan->SetStringField(TEXT("task_name"), TEXT("CompositeExecuteFixture"));
+		TaskPlan->SetStringField(TEXT("task_type"), TEXT("create_blueprint_feature"));
+		TaskPlan->SetStringField(TEXT("context_id"), TEXT("ctx_composite_execute_fixture"));
+		TaskPlan->SetArrayField(TEXT("target_assets"), TargetAssets);
+		TaskPlan->SetObjectField(TEXT("execution_policy"), ExecutionPolicy);
 		TaskPlan->SetArrayField(TEXT("steps"), Steps);
 
 		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
@@ -1825,6 +2042,71 @@ bool FBlueprintHelperGraphWriteTaskRuntimeReplaceCustomEventBodyReconnectsEntryE
 		EntryExecOut && EntryExecOut->LinkedTo.Num() > 0);
 	TestTrue(TEXT("exported graph contains runtime event to replacement PrintString exec link"),
 		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ExportHasExecLinkFromCustomEventToFunction(Graph, TEXT("SmokeCustomEvent"), TEXT("PrintString")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperCompositeCreateBlueprintFeatureExecuteReadBackTest,
+	"BlueprintHelper.TaskRuntime.Composite.CreateBlueprintFeatureExecuteReadBack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperCompositeCreateBlueprintFeatureExecuteReadBackTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("CompositeCreateFeatureExecute"));
+	TestNotNull(TEXT("test Blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	const FString AssetPath = Blueprint->GetPathName();
+	const FString GraphName = Graph->GetName();
+	const FString EventName = TEXT("BH_CompositeExecuteEvent");
+	const FString ComponentName = TEXT("BHCompositeScene");
+	const FString VariableName = TEXT("bBHCompositeEnabled");
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness Harness;
+	const FBlueprintHelperToolResultBase ExecuteResult = Harness.RuntimeService.ExecuteTaskPlan(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeCompositeCreateBlueprintFeaturePayload(
+			AssetPath,
+			GraphName,
+			EventName,
+			ComponentName,
+			VariableName));
+
+	TestTrue(TEXT("composite create_blueprint_feature execute succeeds"), ExecuteResult.bOk);
+	if (!ExecuteResult.bOk && ExecuteResult.Error.IsSet())
+	{
+		TestFalse(TEXT("execute failure has diagnosable message"), ExecuteResult.Error->Message.IsEmpty());
+	}
+	TestEqual(TEXT("composite execute status is applied"), ExecuteResult.Status, EBlueprintHelperToolStatus::Applied);
+
+	FString TaskRunId;
+	TestTrue(TEXT("execute result carries task_run_id"),
+		ExecuteResult.Data.IsValid() && ExecuteResult.Data->TryGetStringField(TEXT("task_run_id"), TaskRunId));
+	const FBlueprintHelperToolResultBase JournalResult = Harness.RuntimeService.GetTaskRunJournal(TaskRunId);
+	TestTrue(TEXT("TaskRunJournal can be loaded for composite execute"), JournalResult.bOk);
+	FString JournalStatus;
+	TestTrue(TEXT("TaskRunJournal has status"),
+		JournalResult.Data.IsValid() && JournalResult.Data->TryGetStringField(TEXT("status"), JournalStatus));
+	TestEqual(TEXT("TaskRunJournal completed"), JournalStatus, FString(TEXT("completed")));
+
+	const TArray<TSharedPtr<FJsonValue>>* JournalSteps = nullptr;
+	TestTrue(TEXT("TaskRunJournal exposes composite steps"),
+		JournalResult.Data.IsValid() && JournalResult.Data->TryGetArrayField(TEXT("steps"), JournalSteps));
+	TestEqual(TEXT("component, variable, signature, and graph_write steps are recorded"), JournalSteps ? JournalSteps->Num() : 0, 4);
+
+	TestTrue(TEXT("read-back finds created component"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::HasSCSComponentNamed(Blueprint, ComponentName));
+	TestTrue(TEXT("read-back finds created variable"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::HasMemberVariableNamed(Blueprint, FName(*VariableName)));
+	TestEqual(TEXT("read-back finds one custom event"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::CountCustomEventsByName(Graph, EventName),
+		1);
+	TestTrue(TEXT("read-back finds custom event body graph write"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ExportHasExecLinkFromCustomEventToFunction(Graph, EventName, TEXT("PrintString")));
 
 	return true;
 }

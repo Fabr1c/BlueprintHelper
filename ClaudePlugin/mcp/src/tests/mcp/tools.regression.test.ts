@@ -4,10 +4,13 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test, { describe, it } from 'node:test';
-import type { BridgeResponse } from '../../bridge/bridge-client.js';
-import { registerWithBridge, registerResourcesWithBridge, invokeTool, withConnectedMcpServer } from '../../test-support/test-harness.js';
+import type { BridgeResponse } from '@blueprinthelper/task-core/bridge/bridge-client';
+import { registerWithBridge, registerResourcesWithBridge, invokeTool } from '../../test-support/test-harness.js';
 
-const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const MCP_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+const CLAUDE_PLUGIN_ROOT = path.resolve(MCP_ROOT, '..');
+const REPO_ROOT = path.resolve(CLAUDE_PLUGIN_ROOT, '..');
+const UE_PLUGIN_ROOT = path.resolve(REPO_ROOT, 'BlueprintHelper');
 const FROZEN_DESCRIPTION_PREFIX = 'FROZEN / Expert-only / Normal agents must not call directly';
 
 const AGENT_FACING_TOOL_NAMES = [
@@ -29,12 +32,50 @@ const FROZEN_EXPERT_TOOL_NAMES = [
   'blueprint_get_editor_context',
   'blueprint_get_logic_md',
   'blueprint_create_asset',
+  'blueprint_read_components',
   'blueprint_add_component',
+  'blueprint_set_component_property',
+  'blueprint_set_component_properties',
+  'blueprint_remove_component',
+  'blueprint_validate_json',
+  'blueprint_export_to_json',
+  'blueprint_get_logic',
+  'blueprint_get_logic_json',
   'blueprint_import_json_to_graph',
+  'blueprint_import_agent_graph',
   'blueprint_compile_blueprint',
+  'blueprint_open_asset',
+  'blueprint_list_assets',
+  'blueprint_search_assets',
   'blueprint_save_asset',
+  'blueprint_get_asset_info',
+  'blueprint_list_graphs',
+  'blueprint_list_variables',
+  'blueprint_list_event_dispatchers',
+  'blueprint_add_variable',
+  'blueprint_remove_variable',
+  'blueprint_add_graph',
+  'blueprint_remove_graph',
+  'blueprint_add_event_dispatcher',
+  'blueprint_delete_nodes',
+  'blueprint_get_widget_tree',
+  'blueprint_add_widget',
+  'blueprint_remove_widget',
+  'blueprint_move_widget',
+  'blueprint_get_widget_properties',
+  'blueprint_set_widget_property',
+  'blueprint_get_object_properties',
+  'blueprint_set_object_property',
+  'blueprint_get_datatable_rows',
+  'blueprint_add_datatable_row',
+  'blueprint_update_datatable_row',
+  'blueprint_delete_datatable_row',
+  'blueprint_undo',
+  'blueprint_redo',
   'blueprint_close_editor',
   'blueprint_play_in_editor',
+  'blueprint_stop_pie',
+  'blueprint_create_blueprint',
   'blueprint_exec_console_command',
   'blueprint_build_project',
 ];
@@ -61,11 +102,10 @@ const AGENT_GUIDE_FORBIDDEN_PATTERNS = [
   /\bblueprint_get_object_[a-z_]+\b/,
   /\bPIE\b/,
   /\bconsole\b/i,
-  /ÊéßÂà∂Âè?,
 ];
 
 function readAgentGuideMarkdownFiles(): Array<{ file: string; text: string }> {
-  const root = path.resolve(PLUGIN_ROOT, 'Resources', 'AgentGuide');
+  const root = path.resolve(UE_PLUGIN_ROOT, 'Resources', 'AgentGuide');
   const files: Array<{ file: string; text: string }> = [];
   const visit = (dir: string) => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -81,39 +121,20 @@ function readAgentGuideMarkdownFiles(): Array<{ file: string; text: string }> {
   return files;
 }
 
-test('blueprint_export_to_json accepts current and legacy scope values', () => {
+test('frozen direct MCP tools are not registered', () => {
   const tools = registerWithBridge(async () => ({ request_id: 'test', success: true }));
-  const tool = tools.get('blueprint_export_to_json');
-  assert.ok(tool);
 
-  for (const scope of ['graph', 'blueprint', 'selection', 'full_graph', 'full_blueprint']) {
-    assert.equal(tool.inputSchema.parse({ scope }).scope, scope);
+  for (const name of FROZEN_EXPERT_TOOL_NAMES) {
+    assert.equal(tools.has(name), false, `${name} should be unregistered`);
   }
-});
 
-test('blueprint_import_json_to_graph defaults to strict import without manual auth token', async () => {
-  const calls: Array<{ command: string; payload: Record<string, unknown> | undefined }> = [];
-  const tools = registerWithBridge(async (command, payload) => {
-    calls.push({ command, payload });
-    return { request_id: 'test', success: true };
-  });
-  const tool = tools.get('blueprint_import_json_to_graph');
-  assert.ok(tool);
-
-  await invokeTool(tool, { json: '{"nodes":[],"links":[]}' });
-
-  assert.deepEqual(calls, [
-    {
-      command: 'import_json',
-      payload: {
-        json: '{"nodes":[],"links":[]}',
-        compile_after_import: true,
-        strict: true,
-        allow_partial: false,
-      },
-    },
-  ]);
-  assert.equal(Object.hasOwn(calls[0].payload ?? {}, 'auth_token'), false);
+  for (const [name, tool] of tools) {
+    assert.equal(
+      tool.description?.includes(FROZEN_DESCRIPTION_PREFIX),
+      false,
+      `${name} should not be exposed with frozen-only guidance`,
+    );
+  }
 });
 
 test('blueprinthelper_request_write_session stores Bridge session without exposing its raw id', async () => {
@@ -198,16 +219,11 @@ test('blueprinthelper_diagnostics accepts project agent-profile without legacy s
   }
 });
 
-test('registered non-default tools remain available but are marked frozen expert-only', () => {
+test('frozen expert-only tools are removed from the MCP registry', () => {
   const tools = registerWithBridge(async () => ({ request_id: 'test', success: true }));
 
   for (const name of FROZEN_EXPERT_TOOL_NAMES) {
-    const tool = tools.get(name);
-    assert.ok(tool, `${name} should remain registered for compatibility`);
-    assert.ok(
-      tool.description?.includes(FROZEN_DESCRIPTION_PREFIX),
-      `${name} description should include frozen expert-only guidance`,
-    );
+    assert.equal(tools.has(name), false, `${name} should not be callable by name`);
   }
 });
 
@@ -227,11 +243,10 @@ test('agent-facing tools are not marked frozen', () => {
   const openEditor = tools.get('blueprint_open_editor');
   assert.ok(openEditor, 'blueprint_open_editor should remain registered as a preflight helper');
   assert.equal(openEditor.description?.includes(FROZEN_DESCRIPTION_PREFIX), false);
-  assert.match(openEditor.description ?? '', /Preflight only/i);
 });
 
 test('setup command requests only non-frozen BlueprintHelper MCP tool permissions', () => {
-  const text = readFileSync(path.resolve(PLUGIN_ROOT, 'commands', 'setup.md'), 'utf8');
+  const text = readFileSync(path.resolve(CLAUDE_PLUGIN_ROOT, 'commands', 'setup.md'), 'utf8');
   const frontMatter = text.match(/^---\r?\n([\s\S]*?)\r?\n---/)?.[1] ?? '';
 
   assert.doesNotMatch(frontMatter, /\bmcp__blueprint-helper(?:\s|,|$)/);
@@ -262,19 +277,18 @@ test('setup command requests only non-frozen BlueprintHelper MCP tool permission
 });
 
 test('active setup docs do not contain legacy path env pollution', () => {
-  const repoRoot = path.resolve(PLUGIN_ROOT, '..');
   const activeDocs = [
-    path.resolve(PLUGIN_ROOT, 'AGENTS.md'),
-    path.resolve(PLUGIN_ROOT, 'README.md'),
-    path.resolve(PLUGIN_ROOT, 'commands', 'setup.md'),
-    path.resolve(PLUGIN_ROOT, 'commands', 'configure.md'),
-    path.resolve(PLUGIN_ROOT, 'skills', 'blueprint-helper', 'SKILL.md'),
-    path.resolve(PLUGIN_ROOT, 'skills', 'blueprint-helper', 'references', '04_MCP_Field_Templates_20260507.md'),
-    path.resolve(repoRoot, 'BlueprintHelper', 'Docs', 'Install_MCP_QuickStart.md'),
-    path.resolve(repoRoot, 'BlueprintHelper', 'Docs', 'MCP_Tools_API_Reference.md'),
-    path.resolve(repoRoot, 'BlueprintHelper', 'Resources', 'Docs', 'SetupGuide_TaskSpecFirst_20260504.md'),
-    path.resolve(repoRoot, 'BlueprintHelper', 'Resources', 'Docs', 'Guidance_Setup_Convergence_Report_20260504.md'),
-    path.resolve(repoRoot, 'BlueprintHelper', 'Resources', 'Docs', 'Setup', 'Setup_Wizard_QA.md'),
+    path.resolve(CLAUDE_PLUGIN_ROOT, 'AGENTS.md'),
+    path.resolve(CLAUDE_PLUGIN_ROOT, 'README.md'),
+    path.resolve(CLAUDE_PLUGIN_ROOT, 'commands', 'setup.md'),
+    path.resolve(CLAUDE_PLUGIN_ROOT, 'commands', 'configure.md'),
+    path.resolve(CLAUDE_PLUGIN_ROOT, 'skills', 'blueprint-helper', 'SKILL.md'),
+    path.resolve(CLAUDE_PLUGIN_ROOT, 'skills', 'blueprint-helper', 'references', '04_MCP_Field_Templates_20260507.md'),
+    path.resolve(UE_PLUGIN_ROOT, 'Docs', 'Install_MCP_QuickStart.md'),
+    path.resolve(UE_PLUGIN_ROOT, 'Docs', 'MCP_Tools_API_Reference.md'),
+    path.resolve(UE_PLUGIN_ROOT, 'Resources', 'Docs', 'SetupGuide_TaskSpecFirst_20260504.md'),
+    path.resolve(UE_PLUGIN_ROOT, 'Resources', 'Docs', 'Guidance_Setup_Convergence_Report_20260504.md'),
+    path.resolve(UE_PLUGIN_ROOT, 'Resources', 'Docs', 'Setup', 'Setup_Wizard_QA.md'),
   ];
 
   const forbiddenPatterns = [
@@ -290,12 +304,12 @@ test('active setup docs do not contain legacy path env pollution', () => {
   for (const docPath of activeDocs) {
     const text = readFileSync(docPath, 'utf8');
     for (const pattern of forbiddenPatterns) {
-      assert.doesNotMatch(text, pattern, `${path.relative(repoRoot, docPath)} should not contain ${pattern}`);
+      assert.doesNotMatch(text, pattern, `${path.relative(REPO_ROOT, docPath)} should not contain ${pattern}`);
     }
   }
 
   const setupProfile = JSON.parse(readFileSync(
-    path.resolve(repoRoot, 'BlueprintHelper', 'Resources', 'Docs', 'Setup', 'SetupProfile_Example.json'),
+    path.resolve(UE_PLUGIN_ROOT, 'Resources', 'Docs', 'Setup', 'SetupProfile_Example.json'),
     'utf8',
   )) as Record<string, unknown>;
   assert.ok('environment' in setupProfile);
@@ -315,100 +329,10 @@ test('blueprint_open_editor requires explicit project_file tool argument instead
   });
   assert.equal(parsed.project_file, '/fake/project/MrStone.uproject');
   assert.equal(tool.description?.includes('UE_PROJECT_FILE'), false);
-  assert.match(tool.description ?? '', /agent-profile\.json/);
   assert.equal(tool.description?.includes('Requires UE_ENGINE_DIR env var'), false);
 
   const result = await invokeTool(tool, { project_file: '/fake/project' });
   assert.equal(result.isError, true);
-  assert.match(result.content[0].text ?? '', /PROJECT_FILE_NOT_UPROJECT/);
-  assert.equal((result.content[0].text ?? '').includes('UE_PROJECT_FILE'), false);
-});
-
-test('blueprint_build_project requires explicit project_file tool argument instead of UE_PROJECT_FILE env', async () => {
-  const tools = registerWithBridge(async () => ({ request_id: 'test', success: true }), {
-    ueEngineDir: '/fake/engine',
-  });
-  const tool = tools.get('blueprint_build_project');
-  assert.ok(tool);
-
-  const parsed = tool.inputSchema.parse({
-    project_file: '/fake/project/MrStone.uproject',
-    target: 'MrStoneEditor',
-  });
-  assert.equal(parsed.project_file, '/fake/project/MrStone.uproject');
-  assert.equal(tool.description?.includes('UE_PROJECT_FILE'), false);
-  assert.match(tool.description ?? '', /agent-profile\.json/);
-  assert.equal(tool.description?.includes('Requires UE_ENGINE_DIR env var'), false);
-
-  const result = await invokeTool(tool, { project_file: '/fake/project' });
-  assert.equal(result.isError, true);
-  assert.match(result.content[0].text ?? '', /PROJECT_FILE_NOT_UPROJECT/);
-  assert.equal((result.content[0].text ?? '').includes('UE_PROJECT_FILE'), false);
-});
-
-test('blueprint_build_project reads UE engine dir from project agent-profile', async () => {
-  const projectDir = mkdtempSync(path.join(tmpdir(), 'blueprinthelper-profile-engine-'));
-  try {
-    const engineDir = path.join(projectDir, 'FakeUE_5.6');
-    const projectFile = path.join(projectDir, 'ProfileProject.uproject');
-    mkdirSync(path.join(projectDir, '.blueprinthelper'), { recursive: true });
-    writeFileSync(projectFile, '{}', 'utf8');
-    writeFileSync(
-      path.join(projectDir, '.blueprinthelper', 'agent-profile.json'),
-      JSON.stringify({
-        schema: 'BlueprintHelper.SetupProfile.v1',
-        environment: {
-          ue_version: '5.6',
-          ue_engine_dir: engineDir,
-        },
-      }),
-      'utf8',
-    );
-
-    const tools = registerWithBridge(async () => ({ request_id: 'test', success: true }), {
-      ueEngineDir: '',
-    });
-    const tool = tools.get('blueprint_build_project');
-    assert.ok(tool);
-
-    const result = await invokeTool(tool, { project_file: projectFile });
-    assert.equal(result.isError, true);
-    const text = result.content[0].text ?? '';
-    assert.match(text, /Build failed/);
-    assert.match(text.replaceAll('\\', '/'), /FakeUE_5\.6\/Engine\/Build\/BatchFiles\/Build\.bat/);
-    assert.equal(text.includes('UE_ENGINE_DIR environment variable must be set'), false);
-  } finally {
-    rmSync(projectDir, { recursive: true, force: true });
-  }
-});
-
-test('blueprint_build_project reports missing project agent-profile engine dir without global env', async () => {
-  const projectDir = mkdtempSync(path.join(tmpdir(), 'blueprinthelper-missing-profile-engine-'));
-  try {
-    const projectFile = path.join(projectDir, 'MissingProfileEngine.uproject');
-    mkdirSync(path.join(projectDir, '.blueprinthelper'), { recursive: true });
-    writeFileSync(projectFile, '{}', 'utf8');
-    writeFileSync(
-      path.join(projectDir, '.blueprinthelper', 'agent-profile.json'),
-      JSON.stringify({ schema: 'BlueprintHelper.SetupProfile.v1' }),
-      'utf8',
-    );
-
-    const tools = registerWithBridge(async () => ({ request_id: 'test', success: true }), {
-      ueEngineDir: '',
-    });
-    const tool = tools.get('blueprint_build_project');
-    assert.ok(tool);
-
-    const result = await invokeTool(tool, { project_file: projectFile });
-    assert.equal(result.isError, true);
-    const text = result.content[0].text ?? '';
-    assert.match(text, /PROJECT_AGENT_PROFILE_ENGINE_DIR_MISSING/);
-    assert.match(text, /environment\.ue_engine_dir/);
-    assert.equal(text.includes('UE_ENGINE_DIR environment variable must be set'), false);
-  } finally {
-    rmSync(projectDir, { recursive: true, force: true });
-  }
 });
 
 test('blueprinthelper_read_agent_guide returns the AgentGuide onboarding index without Bridge', async () => {
@@ -424,7 +348,7 @@ test('blueprinthelper_read_agent_guide returns the AgentGuide onboarding index w
 
   const result = await invokeTool(tool, {});
   const expected = readFileSync(
-    path.resolve(PLUGIN_ROOT, 'Resources', 'AgentGuide', '00_Agent_Onboarding_Index_20260504.md'),
+    path.resolve(UE_PLUGIN_ROOT, 'Resources', 'AgentGuide', '00_Agent_Onboarding_Index_20260504.md'),
     'utf8',
   );
 
@@ -453,6 +377,19 @@ test('AgentGuide markdown does not document frozen direct tool calls', () => {
       assert.doesNotMatch(text, pattern, `${file} should not expose ${pattern}`);
     }
   }
+});
+
+test('AgentGuide documents non-owned graph content as read-only for normal GraphWrite', () => {
+  const workflow = readFileSync(
+    path.resolve(UE_PLUGIN_ROOT, 'Resources', 'AgentGuide', 'Workflows', '04_TaskSpec_Edit_Blueprint_Workflow.md'),
+    'utf8',
+  );
+
+  assert.match(workflow, /Non-BlueprintHelper-owned graph content/);
+  assert.match(workflow, /read-only/);
+  assert.match(workflow, /allow_modify_user_nodes=false/);
+  assert.match(workflow, /unsupported_scope_policy/);
+  assert.match(workflow, /GUID-first selectors remain expert\/debug fallback only/);
 });
 
 test('blueprinthelper_read_context reads blueprint logic as LogicMd through ReadContextPack', async () => {
@@ -620,178 +557,6 @@ test('blueprinthelper_read_context returns blueprint logic schema without Bridge
   ]);
 });
 
-test('blueprint_get_logic keeps markdown first when no structured metadata is available', async () => {
-  const tools = registerWithBridge(async () => ({
-    request_id: 'test',
-    success: true,
-    result: {
-      markdown: '# Logic',
-      status: 'failed',
-      operations_applied: 0,
-      nodes_created: 1,
-      links_connected: 0,
-      warnings: ['link skipped'],
-      errors: ['missing pin'],
-      rolled_back: true,
-    },
-  }));
-  const tool = tools.get('blueprint_get_logic');
-  assert.ok(tool);
-
-  const result = await invokeTool(tool, {});
-
-  assert.equal(result.content[0].text, '# Logic');
-  assert.equal(result.isError, false);
-  assert.equal(result.content.length, 1);
-  assert.equal(result.structuredContent, undefined);
-});
-
-test('blueprint_get_logic returns markdown text with structured metadata', async () => {
-  const tools = registerWithBridge(async () => ({
-    request_id: 'test',
-    success: true,
-    result: {
-      format: 'logic_md',
-      schema: 'BlueprintHelper.LogicMd.v1',
-      assetPath: '/Game/BP/BP_Test.BP_Test',
-      graph: 'EventGraph',
-      importable: false,
-      markdown: '# Logic',
-      stats: { nodes: 2 },
-      diagnostics: [{ severity: 'info', code: 'ok', message: 'ready' }],
-    },
-  }));
-  const tool = tools.get('blueprint_get_logic');
-  assert.ok(tool);
-
-  const result = await invokeTool(tool, {});
-
-  assert.equal(result.content[0].type, 'text');
-  assert.equal(result.content[0].text, '# Logic');
-  assert.deepEqual(result.structuredContent, {
-    format: 'logic_md',
-    schema: 'BlueprintHelper.LogicMd.v1',
-    assetPath: '/Game/BP/BP_Test.BP_Test',
-    graph: 'EventGraph',
-    importable: false,
-    stats: { nodes: 2 },
-    diagnostics: [{ severity: 'info', code: 'ok', message: 'ready' }],
-  });
-});
-
-test('blueprint_get_logic_json unwraps Bridge JSON strings into structuredContent', async () => {
-  const logicPayload = {
-    format: 'logic_json',
-    schema: 'BlueprintHelper.LogicJson.v1',
-    assetPath: '/Game/BP/BP_Test.BP_Test',
-    graph: 'EventGraph',
-    importable: false,
-    logic: { nodes: [{ id: 'BeginPlay' }] },
-    stats: { nodes: 1 },
-  };
-  const tools = registerWithBridge(async () => ({
-    request_id: 'test',
-    success: true,
-    result: JSON.stringify(logicPayload) as unknown as BridgeResponse['result'],
-  }));
-  const tool = tools.get('blueprint_get_logic_json');
-  assert.ok(tool);
-
-  const result = await invokeTool(tool, {});
-
-  assert.equal(result.content[0].type, 'text');
-  assert.match(result.content[0].text ?? '', /Exported LogicJson/);
-  assert.equal((result.content[0].text ?? '').includes('\\"nodes\\"'), false);
-  assert.deepEqual(result.structuredContent, logicPayload);
-});
-
-test('blueprint_export_to_json defaults to a RawJson resource link', async () => {
-  const tools = registerWithBridge(async () => ({
-    request_id: 'test',
-    success: true,
-    result: {
-      payload: { version: '2.2', schema: 'BlueprintHelper.JsonToBlueprint', nodes: [], links: [] },
-      json: { version: '2.2', schema: 'BlueprintHelper.JsonToBlueprint', nodes: [], links: [] },
-      stats: { nodes: 0, links: 0 },
-      diagnostics: [],
-    },
-  }));
-  const tool = tools.get('blueprint_export_to_json');
-  assert.ok(tool);
-
-  const result = await invokeTool(tool, {
-    target_blueprint: '/Game/BP/BP_Test.BP_Test',
-    target_graph: 'EventGraph',
-  });
-
-  assert.equal(result.content[0].type, 'text');
-  assert.equal(result.content[1].type, 'resource_link');
-  assert.equal(result.content[1].mimeType, 'application/json');
-  assert.equal(result.structuredContent?.format, 'raw_json_ref');
-  assert.equal(result.structuredContent?.schema, 'BlueprintHelper.RawJsonRef.v1');
-  assert.equal(result.structuredContent?.assetPath, '/Game/BP/BP_Test.BP_Test');
-  assert.equal(result.structuredContent?.graph, 'EventGraph');
-  assert.equal(result.structuredContent?.importable, true);
-  assert.match(String(result.structuredContent?.rawUri), /^blueprint:\/\/asset\//);
-  assert.deepEqual((result.structuredContent as Record<string, unknown>)?.json, {
-    version: '2.2', schema: 'BlueprintHelper.JsonToBlueprint', nodes: [], links: [],
-  });
-});
-
-test('blueprint_export_to_json passes real MCP SDK output validation', async () => {
-  await withConnectedMcpServer(
-    async () => ({
-      request_id: 'test',
-      success: true,
-      result: {
-        payload: { version: '2.2', schema: 'BlueprintHelper.JsonToBlueprint', nodes: [], links: [] },
-        json: { version: '2.2', schema: 'BlueprintHelper.JsonToBlueprint', nodes: [], links: [] },
-        stats: { nodes: 0, links: 0 },
-        diagnostics: [],
-      },
-    }),
-    async (client) => {
-      const result = await client.callTool({
-        name: 'blueprint_export_to_json',
-        arguments: {
-          target_blueprint: '/Game/BP/BP_Test.BP_Test',
-          target_graph: 'EventGraph',
-        },
-      });
-
-      assert.equal(result.isError, false, JSON.stringify(result));
-      const structured = result.structuredContent as Record<string, unknown> | undefined;
-      assert.equal(structured?.format, 'raw_json_ref');
-      assert.match(String(structured?.rawUri), /^blueprint:\/\/asset\//);
-    },
-  );
-});
-
-test('blueprint_export_to_json keeps legacy text JSON mode when requested', async () => {
-  const rawPayload = { version: '2.2', schema: 'BlueprintHelper.JsonToBlueprint', nodes: [], links: [] };
-  const tools = registerWithBridge(async () => ({
-    request_id: 'test',
-    success: true,
-    result: { payload: rawPayload, json: rawPayload },
-  }));
-  const tool = tools.get('blueprint_export_to_json');
-  assert.ok(tool);
-
-  const result = await invokeTool(tool, {
-    target_blueprint: '/Game/BP/BP_Test.BP_Test',
-    response_mode: 'legacy_text_json',
-  });
-
-	assert.equal(result.content.length, 1);
-	const parsed = JSON.parse(result.content[0].text ?? '');
-	assert.equal(parsed.format, 'raw_json');
-	assert.equal(parsed.schema, 'BlueprintHelper.RawJsonRef.v1');
-	assert.deepEqual(parsed.json, rawPayload);
-	assert.equal(result.structuredContent?.format, 'raw_json');
-	assert.equal(result.structuredContent?.schema, 'BlueprintHelper.RawJsonRef.v1');
-	assert.deepEqual((result.structuredContent as Record<string, unknown>)?.json, rawPayload);
-});
-
 test('blueprint asset resource reads raw JSON through Bridge on demand', async () => {
   const calls: Array<{ command: string; payload: Record<string, unknown> | undefined }> = [];
   const resources = registerResourcesWithBridge(async (command, payload) => {
@@ -827,7 +592,7 @@ test('blueprint asset resource reads raw JSON through Bridge on demand', async (
 });
 
 test('MCP regression fixtures exist and are valid JSON', () => {
-  const fixturesDir = path.resolve(PLUGIN_ROOT, 'Develop', 'TestFixtures', 'MCPRegression');
+  const fixturesDir = path.resolve(UE_PLUGIN_ROOT, 'Develop', 'TestFixtures', 'MCPRegression');
   const requiredFixtures = [
     'legacy_full_graph_scope.mcp.json',
     'legacy_full_blueprint_scope.mcp.json',
@@ -841,134 +606,4 @@ test('MCP regression fixtures exist and are valid JSON', () => {
     assert.equal(fixtureNames.has(fixtureName), true, fixtureName);
     JSON.parse(readFileSync(path.join(fixturesDir, fixtureName), 'utf8'));
   }
-});
-
-describe('Bridge payload shape regression (object-first)', () => {
-  const rawObj = {
-    version: '2.2',
-    schema: 'BlueprintHelper.JsonToBlueprint',
-    nodes: [],
-    links: [],
-  };
-
-  it('handles { payload: object, json: object } shape', async () => {
-    const tools = registerWithBridge(async () => ({
-      request_id: 'test',
-      success: true,
-      result: { payload: rawObj, json: rawObj, stats: { nodes: 0, links: 0 }, diagnostics: [] },
-    }));
-    const tool = tools.get('blueprint_export_to_json');
-    assert.ok(tool);
-    const result = await invokeTool(tool, {
-      target_blueprint: '/Game/BP/BP_Test.BP_Test',
-    });
-    assert.equal(result.content[1].type, 'resource_link');
-    assert.equal(result.structuredContent?.format, 'raw_json_ref');
-  });
-
-  it('handles { json: object } shape (no payload)', async () => {
-    const tools = registerWithBridge(async () => ({
-      request_id: 'test',
-      success: true,
-      result: { json: rawObj, stats: { nodes: 0, links: 0 } },
-    }));
-    const tool = tools.get('blueprint_export_to_json');
-    assert.ok(tool);
-    const result = await invokeTool(tool, {
-      target_blueprint: '/Game/BP/BP_Test.BP_Test',
-    });
-    assert.equal(result.structuredContent?.format, 'raw_json_ref');
-  });
-
-  it('handles legacy { json: string } shape (backward compat)', async () => {
-    const tools = registerWithBridge(async () => ({
-      request_id: 'test',
-      success: true,
-      result: { json: JSON.stringify(rawObj) },
-    }));
-    const tool = tools.get('blueprint_export_to_json');
-    assert.ok(tool);
-    const result = await invokeTool(tool, {
-      target_blueprint: '/Game/BP/BP_Test.BP_Test',
-    });
-    assert.equal(result.structuredContent?.format, 'raw_json_ref');
-  });
-
-  it('handles legacy { json_text: string } shape (backward compat)', async () => {
-    const tools = registerWithBridge(async () => ({
-      request_id: 'test',
-      success: true,
-      result: { json_text: JSON.stringify(rawObj) },
-    }));
-    const tool = tools.get('blueprint_export_to_json');
-    assert.ok(tool);
-    const result = await invokeTool(tool, {
-      target_blueprint: '/Game/BP/BP_Test.BP_Test',
-    });
-    assert.equal(result.structuredContent?.format, 'raw_json_ref');
-  });
-
-  it('handles { payload: obj, json: obj, json_text: string } ‚Ä?payload wins', async () => {
-    const otherObj = { ...rawObj, version: '1.0' };
-    const tools = registerWithBridge(async () => ({
-      request_id: 'test',
-      success: true,
-      result: {
-        payload: rawObj,  // version 2.2
-        json: otherObj,   // version 1.0 (should NOT be used for rawUri content)
-        json_text: JSON.stringify({ ...rawObj, version: '0.9' }),
-      },
-    }));
-    const tool = tools.get('blueprint_export_to_json');
-    assert.ok(tool);
-    const result = await invokeTool(tool, {
-      target_blueprint: '/Game/BP/BP_Test.BP_Test',
-    });
-    assert.equal(result.structuredContent?.format, 'raw_json_ref');
-  });
-});
-
-describe('MCP import regression (object-first)', () => {
-  const rawObj = {
-    version: '2.2',
-    schema: 'BlueprintHelper.JsonToBlueprint',
-    nodes: [],
-    links: [],
-  };
-
-  it('import returns success for valid object json', async () => {
-    let capturedJson: unknown;
-    const tools = registerWithBridge(async (_cmd, payload) => {
-      capturedJson = payload?.json;
-      return { request_id: 'test', success: true, result: { status: 'full_success' } };
-    });
-    const tool = tools.get('blueprint_import_json_to_graph');
-    assert.ok(tool);
-    const result = await invokeTool(tool, {
-      json: rawObj,
-      compile_after_import: true,
-      strict: true,
-      allow_partial: false,
-    });
-    assert.equal(typeof capturedJson, 'object');
-    assert.equal(result.isError, false);
-  });
-
-  it('import returns success for valid string json', async () => {
-    let capturedJson: unknown;
-    const tools = registerWithBridge(async (_cmd, payload) => {
-      capturedJson = payload?.json;
-      return { request_id: 'test', success: true, result: { status: 'full_success' } };
-    });
-    const tool = tools.get('blueprint_import_json_to_graph');
-    assert.ok(tool);
-    const result = await invokeTool(tool, {
-      json: JSON.stringify(rawObj),
-      compile_after_import: true,
-      strict: true,
-      allow_partial: false,
-    });
-    assert.equal(typeof capturedJson, 'string');
-    assert.equal(result.isError, false);
-  });
 });

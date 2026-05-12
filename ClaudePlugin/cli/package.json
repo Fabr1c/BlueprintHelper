@@ -1,0 +1,26 @@
+{
+  "name": "blueprint-helper-cli",
+  "version": "0.3.8",
+  "description": "BlueprintHelper CLI transport for Bridge and TaskSpec workflows",
+  "type": "module",
+  "main": "build/cli/index.js",
+  "bin": {
+    "blueprinthelper-cli": "build/cli/index.js",
+    "bh": "build/cli/index.js"
+  },
+  "scripts": {
+    "build": "npm --prefix ../task-core run build && node ../scripts/clean-build.mjs && node ../scripts/run-tsc.mjs",
+    "test": "npm run build && npm run test:node",
+    "test:node": "node scripts/run-node-tests.mjs",
+    "start": "node build/cli/index.js",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@blueprinthelper/task-core": "file:../task-core",
+    "zod": "^3.25.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.17",
+    "typescript": "^5.8.0"
+  }
+}

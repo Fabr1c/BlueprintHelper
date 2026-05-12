@@ -1,12 +1,12 @@
 /**
- * MCP Resources 注册
+ * MCP Resources 娉ㄥ唽
  *
- * 暴露 2 �?MCP 资源�? * - blueprint://rules/json-to-blueprint  �?转换规则文档
- * - blueprint://context/active-graph     �?当前编辑器上下文
+ * 鏆撮湶 2 涓?MCP 璧勬簮锛? * - blueprint://rules/json-to-blueprint  鈥?杞崲瑙勫垯鏂囨。
+ * - blueprint://context/active-graph     鈥?褰撳墠缂栬緫鍣ㄤ笂涓嬫枃
  */
 
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { BridgeClient } from '../../bridge/bridge-client.js';
+import { BridgeClient } from '@blueprinthelper/task-core/bridge/bridge-client';
 import {
   getBlueprintPayloadBody,
   getStringField,
@@ -17,7 +17,7 @@ import {
 
 export function registerResources(server: McpServer, bridge: BridgeClient): void {
 
-  // ─── 1. 规则文档 ───
+  // 鈹€鈹€鈹€ 1. 瑙勫垯鏂囨。 鈹€鈹€鈹€
   server.registerResource(
     'json-to-blueprint-rules',
     'blueprint://rules/json-to-blueprint',
@@ -43,7 +43,7 @@ export function registerResources(server: McpServer, bridge: BridgeClient): void
     },
   );
 
-  // ─── 2. 编辑器上下文 ───
+  // 鈹€鈹€鈹€ 2. 缂栬緫鍣ㄤ笂涓嬫枃 鈹€鈹€鈹€
   server.registerResource(
     'active-graph-context',
     'blueprint://context/active-graph',
@@ -71,7 +71,7 @@ export function registerResources(server: McpServer, bridge: BridgeClient): void
     },
   );
 
-  // ─── 3. Blueprint asset views ───
+  // 鈹€鈹€鈹€ 3. Blueprint asset views 鈹€鈹€鈹€
   server.registerResource(
     'blueprint-asset-view',
     new ResourceTemplate('blueprint://asset/{assetPath}', { list: undefined }),

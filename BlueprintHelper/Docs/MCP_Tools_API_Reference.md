@@ -7,10 +7,14 @@ This reference is aligned with the current documentation mainline, where ordinar
 Architecture baseline:
 
 ```text
-Agent -> TaskSpec semantic task -> MCP Task Tools -> Python/MCP Task Compiler -> TaskPlan structured edit language / IR -> Bridge task-level preview/execute -> UE Task Runtime lowering -> Existing UE capability clusters / Bridge commands
+Agent -> TaskSpec semantic task -> MCP Task Tools -> Python Task Compiler -> TaskPlan structured edit language / IR -> Bridge task-level preview/execute -> UE Task Runtime lowering -> Existing UE capability clusters / Bridge commands
 ```
 
 Ordinary Agents author `BlueprintHelper.TaskSpec.v1` only. The existing low-level MCP tools remain documented for compatibility, debug / expert workflows, internal Task Runtime capability mapping, and automation tests.
+
+## CLI Parity Rule
+
+The optional TaskSpec CLI is transport parity for shell-capable Agents. Any CLI write command must be expressible as `BlueprintHelper.TaskSpec.v1` and must pass through preview before execute. Raw Bridge write commands are not an Agent-facing CLI surface. The CLI does not bypass the Python Task Compiler, Bridge preview, or UE Task Runtime execution path.
 
 ## Common Return Shape
 

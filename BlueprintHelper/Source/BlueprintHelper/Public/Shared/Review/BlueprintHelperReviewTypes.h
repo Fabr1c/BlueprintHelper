@@ -245,6 +245,7 @@ struct FBlueprintHelperWriteReviewEvidence
 	FString ArchiveSessionId;
 	FString TaskRunId;
 	FString TransactionId;
+	FString CreatedAt;
 	FString AssetPath;
 	FString OperationKind;
 	EBlueprintHelperReviewChangeKind ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
@@ -306,6 +307,7 @@ struct FBlueprintHelperReviewRecordQuery
 {
 	FString ArchiveSessionIdFilter;
 	FString AssetPathFilter;
+	FString TaskRunIdFilter;
 	bool bPendingOnly = true;
 };
 

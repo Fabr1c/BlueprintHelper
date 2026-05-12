@@ -1,16 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { BridgeResponse } from '../../bridge/bridge-client.js';
+import type { BridgeResponse } from '@blueprinthelper/task-core/bridge/bridge-client';
 import {
   compileTaskSpecToTaskPlan,
   summarizeTaskPlan,
-} from '../../task/compiler/task-compiler.js';
+} from '@blueprinthelper/task-core/task/compiler/task-compiler';
 import type { TaskCompiler } from '../../mcp/tools/task-tools.js';
+import { createTaskSpecRunner } from '@blueprinthelper/task-core/task/service/task-spec-runner';
 import {
   type TaskPlan,
   type TaskSpec,
   TaskSpecSchema,
-} from '../../task/schema/task-schemas.js';
+} from '@blueprinthelper/task-core/task/schema/task-schemas';
 import {
   invokeTool,
   registerWithBridge as registerWithBridgeBase,
@@ -266,7 +267,7 @@ function makeDataTableAssetFactoryTaskSpec() {
   };
 }
 
-test('task-level tools are registered without removing legacy tools', () => {
+test('task-level tools are registered without frozen legacy tools', () => {
   const tools = registerWithBridge(async () => ({ request_id: 'test', success: true }));
 
   for (const name of [
@@ -275,7 +276,6 @@ test('task-level tools are registered without removing legacy tools', () => {
     'blueprinthelper_preview_task',
     'blueprinthelper_execute_task',
     'blueprinthelper_get_task_result',
-    'blueprint_get_logic',
   ]) {
     assert.equal(tools.has(name), true, name);
   }
@@ -858,6 +858,50 @@ test('execute_task previews before writing and stores a task result', async () =
   assert.equal(journal.task_run_id, 'task_ue_001');
 });
 
+test('shared TaskSpec runner preserves preview-before-execute Bridge command order', async () => {
+  const calls: Array<{ command: string; payload: Record<string, unknown> | undefined }> = [];
+  const runner = createTaskSpecRunner({
+    bridge: {
+      sendCommand: async (command, payload): Promise<BridgeResponse> => {
+        calls.push({ command, payload });
+        if (command === 'preview_task_plan') {
+          return {
+            request_id: 'preview',
+            success: true,
+            result: {
+              status: 'dry_run',
+              data: {
+                schema: 'BlueprintHelper.TaskRuntimeResult.v1',
+                dry_run: { can_execute: true, warnings: [], conflicts: [], errors: [] },
+                steps: [],
+              },
+            },
+          };
+        }
+        return {
+          request_id: 'execute',
+          success: true,
+          result: {
+            status: 'applied',
+            data: {
+              schema: 'BlueprintHelper.TaskRuntimeResult.v1',
+              task_run_id: 'task_shared_runner_001',
+              steps: [],
+            },
+          },
+        };
+      },
+    },
+    taskCompiler: taskCompilerForTaskToolTests,
+  });
+
+  const result = await runner.executeTask(TaskSpecSchema.parse(makeTaskSpec()));
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(calls.map((call) => call.command), ['preview_task_plan', 'execute_task_plan']);
+  assert.equal(((result.data?.task as Record<string, unknown>) ?? {}).task_run_id, 'task_shared_runner_001');
+});
+
 test('execute_task falls back to an MCP task_run_id when UE omits one', async () => {
   const tools = registerWithBridge(async (command): Promise<BridgeResponse> => {
     if (command === 'preview_task_plan') {
@@ -1083,7 +1127,7 @@ test('get_task_result falls back to UE TaskRunJournal when not stored in process
   const journal = taskResult.structuredContent?.data as Record<string, unknown>;
   assert.equal(journal.schema, 'BlueprintHelper.TaskRunJournal.v1');
   assert.equal(journal.task_run_id, 'task_ue_external');
-  assert.equal(journal.generated_intent, '使用 GraphWrite 写入蓝图逻辑�?BP_Door.EG_DoorFeature');
+  assert.equal(journal.generated_intent, '使用 GraphWrite 写入蓝图逻辑 - BP_Door.EG_DoorFeature');
 });
 
 test('execute_task does not write when preview dry-run is blocked', async () => {

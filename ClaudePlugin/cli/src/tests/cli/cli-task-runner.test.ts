@@ -1,0 +1,284 @@
+import { strict as assert } from 'node:assert';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import test from 'node:test';
+import { runCli } from '../../cli/run.js';
+import type { BridgeResponse } from '@blueprinthelper/task-core/bridge/bridge-client';
+import type { TaskSpecRunner } from '@blueprinthelper/task-core/task/service/task-spec-runner';
+
+const fixturesDir = path.resolve(import.meta.dirname, '..', '..', '..', 'src', 'tests', 'fixtures');
+
+function makeTempDir() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'bph-cli-test-'));
+}
+
+test('task preview reads TaskSpec file and prints compact summary JSON', async () => {
+  const writes: string[] = [];
+  const artifactDir = makeTempDir();
+  const runner = {
+    previewTask: async () => ({
+      previewId: 'preview_cli_001',
+      taskPlan: {
+        schema: 'BlueprintHelper.TaskPlan.v1',
+        task_name: 'CLI Preview',
+        task_type: 'edit_blueprint_graph',
+        context_id: 'ctx_001',
+        target_assets: ['/Game/BP_Player'],
+        execution_policy: { dry_run_mode: 'full', should_compile: true, should_save: false },
+        steps: [],
+      },
+      passed: true,
+      issues: [],
+      toolResult: {
+        ok: true,
+        schema: 'BlueprintHelper.McpToolResult.v1',
+        operation: 'preview_task',
+        trace_id: 'trace_cli',
+        status: 'dry_run',
+        modified: false,
+        data: {
+          schema: 'BlueprintHelper.TaskPreview.v1',
+          preview_id: 'preview_cli_001',
+          passed: true,
+          blocked: false,
+          issues: [],
+        },
+      },
+    }),
+    executeTask: async () => { throw new Error('not used'); },
+    getTaskResult: async () => { throw new Error('not used'); },
+    readTaskContext: async () => { throw new Error('not used'); },
+    readReferenceContext: async () => { throw new Error('not used'); },
+  } as TaskSpecRunner;
+
+  const exitCode = await runCli({
+    argv: ['task', 'preview', '--file', 'task-spec.json', '--artifact-dir', artifactDir],
+    cwd: fixturesDir,
+    runner,
+    stdout: (line) => writes.push(line),
+    stderr: () => {},
+  });
+
+  assert.equal(exitCode, 0);
+  const output = JSON.parse(writes.join('')) as Record<string, unknown>;
+  assert.equal(output.schema, 'BlueprintHelper.CliResult.v1');
+  assert.equal(output.operation, 'task.preview');
+  assert.equal(output.status, 'preview_passed');
+  assert.equal(JSON.stringify(output).includes('TaskPlan.v1'), false);
+});
+
+test('task execute calls the TaskSpec runner and returns executed summary', async () => {
+  const writes: string[] = [];
+  const artifactDir = makeTempDir();
+  let executeCalled = false;
+  const runner = {
+    previewTask: async () => { throw new Error('not used'); },
+    executeTask: async () => {
+      executeCalled = true;
+      return {
+        ok: true,
+        schema: 'BlueprintHelper.McpToolResult.v1',
+        operation: 'execute_task',
+        trace_id: 'trace_execute',
+        status: 'completed',
+        modified: true,
+        data: {
+          schema: 'BlueprintHelper.TaskExecution.v1',
+          task_run_id: 'task_cli_001',
+          preview_id: 'preview_cli_001',
+          task: {
+            task_run_id: 'task_cli_001',
+            target_assets: ['/Game/BP_Player'],
+            applied_steps: 1,
+          },
+        },
+      };
+    },
+    getTaskResult: async () => { throw new Error('not used'); },
+    readTaskContext: async () => { throw new Error('not used'); },
+    readReferenceContext: async () => { throw new Error('not used'); },
+  } as TaskSpecRunner;
+
+  const exitCode = await runCli({
+    argv: ['task', 'execute', '--file', 'task-spec.json', '--artifact-dir', artifactDir],
+    cwd: fixturesDir,
+    runner,
+    stdout: (line) => writes.push(line),
+    stderr: () => {},
+  });
+
+  assert.equal(exitCode, 0);
+  assert.equal(executeCalled, true);
+  const output = JSON.parse(writes.join('')) as Record<string, unknown>;
+  assert.equal(output.operation, 'task.execute');
+  assert.equal(output.status, 'executed');
+  assert.equal(output.task_run_id, 'task_cli_001');
+});
+
+test('task result reads by id and prints compact summary', async () => {
+  const writes: string[] = [];
+  const runner = {
+    previewTask: async () => { throw new Error('not used'); },
+    executeTask: async () => { throw new Error('not used'); },
+    getTaskResult: async (taskRunId: string) => ({
+      ok: true,
+      schema: 'BlueprintHelper.McpToolResult.v1',
+      operation: 'get_task_result',
+      trace_id: 'trace_result',
+      status: 'completed',
+      modified: false,
+      data: {
+        schema: 'BlueprintHelper.TaskRunJournal.v1',
+        task_run_id: taskRunId,
+        task_type: 'edit_blueprint_graph',
+        target_assets: ['/Game/BP_Player'],
+        steps: [{ step_id: 'step_1' }],
+      },
+    }),
+    readTaskContext: async () => { throw new Error('not used'); },
+    readReferenceContext: async () => { throw new Error('not used'); },
+  } as TaskSpecRunner;
+
+  const exitCode = await runCli({
+    argv: ['task', 'result', '--id', 'task_cli_001'],
+    cwd: fixturesDir,
+    runner,
+    stdout: (line) => writes.push(line),
+    stderr: () => {},
+  });
+
+  assert.equal(exitCode, 0);
+  const output = JSON.parse(writes.join('')) as Record<string, unknown>;
+  assert.equal(output.operation, 'task.result');
+  assert.equal(output.status, 'result_found');
+  assert.equal(output.task_run_id, 'task_cli_001');
+  assert.equal(JSON.stringify(output).includes('step_1'), false);
+});
+
+test('unknown commands exit 64', async () => {
+  const stderr: string[] = [];
+  const exitCode = await runCli({
+    argv: ['task', 'unknown'],
+    cwd: fixturesDir,
+    runner: {} as TaskSpecRunner,
+    stdout: () => {},
+    stderr: (line) => stderr.push(line),
+  });
+
+  assert.equal(exitCode, 64);
+  assert.match(stderr.join(''), /Unsupported BlueprintHelper CLI command/);
+});
+
+test('bridge call allows read-only commands and rejects raw write commands', async () => {
+  const writes: string[] = [];
+  const calls: string[] = [];
+  const bridge = {
+    sendCommand: async (command: string): Promise<BridgeResponse> => {
+      calls.push(command);
+      return {
+        request_id: 'bridge_call',
+        success: true,
+        result: { status: 'completed', data: { schema: 'RuntimeProfile.v1' } },
+      };
+    },
+  };
+
+  const okExit = await runCli({
+    argv: ['bridge', 'call', '--command', 'get_runtime_profile'],
+    cwd: fixturesDir,
+    bridge,
+    stdout: (line) => writes.push(line),
+    stderr: () => {},
+  });
+
+  assert.equal(okExit, 0);
+  assert.deepEqual(calls, ['get_runtime_profile']);
+
+  for (const command of ['execute_task_plan', 'preview_task_plan', 'import_agent_graph']) {
+    const exitCode = await runCli({
+      argv: ['bridge', 'call', '--command', command],
+      cwd: fixturesDir,
+      bridge,
+      stdout: () => {},
+      stderr: () => {},
+    });
+    assert.equal(exitCode, 64, command);
+  }
+});
+
+test('bridge ping reports bridge availability through compact output', async () => {
+  const writes: string[] = [];
+  const bridge = {
+    sendCommand: async (command: string): Promise<BridgeResponse> => {
+      assert.equal(command, 'get_editor_context');
+      return {
+        request_id: 'bridge_ping',
+        success: true,
+        result: { status: 'completed', data: { schema: 'EditorContext.v1' } },
+      };
+    },
+  };
+
+  const exitCode = await runCli({
+    argv: ['bridge', 'ping'],
+    cwd: fixturesDir,
+    bridge,
+    stdout: (line) => writes.push(line),
+    stderr: () => {},
+  });
+
+  assert.equal(exitCode, 0);
+  const output = JSON.parse(writes.join('')) as Record<string, unknown>;
+  assert.equal(output.operation, 'bridge.ping');
+  assert.equal(output.status, 'bridge_available');
+});
+
+test('missing option values exit 64 without throwing', async () => {
+  const stderr: string[] = [];
+  const exitCode = await runCli({
+    argv: ['task', 'preview', '--file'],
+    cwd: fixturesDir,
+    runner: {} as TaskSpecRunner,
+    stdout: () => {},
+    stderr: (line) => stderr.push(line),
+  });
+
+  assert.equal(exitCode, 64);
+  assert.match(stderr.join(''), /Missing value for --file/);
+});
+
+test('context read uses TaskSpec runner readTaskContext', async () => {
+  const writes: string[] = [];
+  const runner = {
+    previewTask: async () => { throw new Error('not used'); },
+    executeTask: async () => { throw new Error('not used'); },
+    getTaskResult: async () => { throw new Error('not used'); },
+    readTaskContext: async () => ({
+      ok: true,
+      schema: 'BlueprintHelper.McpToolResult.v1',
+      operation: 'read_task_context',
+      trace_id: 'trace_context',
+      status: 'completed',
+      modified: false,
+      data: {
+        schema: 'BlueprintHelper.TaskContextPack.v1',
+        target: { asset_path: '/Game/BP_Player' },
+      },
+    }),
+    readReferenceContext: async () => { throw new Error('not used'); },
+  } as TaskSpecRunner;
+
+  const exitCode = await runCli({
+    argv: ['context', 'read', '--file', 'context-request.json'],
+    cwd: fixturesDir,
+    runner,
+    stdout: (line) => writes.push(line),
+    stderr: () => {},
+  });
+
+  assert.equal(exitCode, 0);
+  const output = JSON.parse(writes.join('')) as Record<string, unknown>;
+  assert.equal(output.operation, 'context.read');
+  assert.equal(output.status, 'completed');
+});

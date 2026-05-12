@@ -21,6 +21,7 @@
 #include "Misc/PackageName.h"
 #include "PackageTools.h"
 #include "UObject/SavePackage.h"
+#include "UObject/Interface.h"
 #include "UserDefinedStructure/UserDefinedStructEditorData.h"
 #include "WidgetBlueprint.h"
 #include "WidgetBlueprintFactory.h"
@@ -49,22 +50,86 @@ public:
 
 	static UClass* ResolveAssetFactoryClass(const FString& ClassText, UClass* DefaultClass, UClass* RequiredParentClass)
 	{
-		UClass* ResolvedClass = DefaultClass;
 		const FString TrimmedClassText = ClassText.TrimStartAndEnd();
+		UClass* ResolvedClass = TrimmedClassText.IsEmpty() ? DefaultClass : nullptr;
 		if (!TrimmedClassText.IsEmpty())
 		{
-			UClass* FoundClass = FindObject<UClass>(nullptr, *TrimmedClassText);
-			if (!FoundClass)
+			UClass* FoundClass = nullptr;
+			const bool bScriptClassPath = TrimmedClassText.StartsWith(TEXT("/Script/"));
+			const bool bContentPath = TrimmedClassText.StartsWith(TEXT("/")) && !bScriptClassPath;
+
+			TArray<FString> ClassPathCandidates;
+			if (bScriptClassPath)
 			{
-				FoundClass = LoadObject<UClass>(nullptr, *TrimmedClassText);
+				ClassPathCandidates.Add(TrimmedClassText);
 			}
-			if (!FoundClass && !TrimmedClassText.Contains(TEXT(".")) && !TrimmedClassText.StartsWith(TEXT("/Script/")))
+			else if (bContentPath)
 			{
-				FoundClass = FindObject<UClass>(nullptr, *FString::Printf(TEXT("/Script/Engine.%s"), *TrimmedClassText));
+				if (TrimmedClassText.EndsWith(TEXT("_C")))
+				{
+					ClassPathCandidates.Add(TrimmedClassText);
+				}
+				else if (TrimmedClassText.Contains(TEXT(".")))
+				{
+					ClassPathCandidates.Add(FString::Printf(TEXT("%s_C"), *TrimmedClassText));
+				}
+				else
+				{
+					ClassPathCandidates.Add(FString::Printf(
+						TEXT("%s_C"),
+						*BlueprintHelperAssetObjectPath(TrimmedClassText)));
+				}
 			}
-			if (!FoundClass && !TrimmedClassText.Contains(TEXT(".")) && !TrimmedClassText.StartsWith(TEXT("/Script/")))
+			else
 			{
-				FoundClass = FindObject<UClass>(nullptr, *FString::Printf(TEXT("/Script/UMG.%s"), *TrimmedClassText));
+				ClassPathCandidates.Add(TrimmedClassText);
+				if (!TrimmedClassText.Contains(TEXT(".")))
+				{
+					ClassPathCandidates.Add(FString::Printf(TEXT("/Script/Engine.%s"), *TrimmedClassText));
+					ClassPathCandidates.Add(FString::Printf(TEXT("/Script/UMG.%s"), *TrimmedClassText));
+				}
+			}
+
+			for (const FString& ClassPathCandidate : ClassPathCandidates)
+			{
+				FoundClass = FindObject<UClass>(nullptr, *ClassPathCandidate);
+				if (!FoundClass)
+				{
+					FoundClass = LoadObject<UClass>(nullptr, *ClassPathCandidate);
+				}
+				if (FoundClass)
+				{
+					break;
+				}
+			}
+
+			if (!FoundClass && bContentPath)
+			{
+				TArray<FString> BlueprintPathCandidates;
+				BlueprintPathCandidates.Add(TrimmedClassText);
+				if (!TrimmedClassText.Contains(TEXT(".")))
+				{
+					BlueprintPathCandidates.Add(BlueprintHelperAssetObjectPath(TrimmedClassText));
+				}
+
+				for (const FString& BlueprintPathCandidate : BlueprintPathCandidates)
+				{
+					UBlueprint* BlueprintAsset = FindObject<UBlueprint>(nullptr, *BlueprintPathCandidate);
+					if (!BlueprintAsset)
+					{
+						BlueprintAsset = LoadObject<UBlueprint>(nullptr, *BlueprintPathCandidate);
+					}
+					if (BlueprintAsset && BlueprintAsset->GeneratedClass)
+					{
+						FoundClass = BlueprintAsset->GeneratedClass.Get();
+						break;
+					}
+				}
+			}
+
+			if (!FoundClass && !bContentPath)
+			{
+				FoundClass = UClass::TryFindTypeSlow<UClass>(TrimmedClassText);
 			}
 
 			if (FoundClass)
@@ -109,6 +174,63 @@ public:
 		}
 
 		return RowStruct;
+	}
+
+	static UClass* ResolveExistingAssetClass(const FString& AssetPath)
+	{
+		const FString ObjectPath = BlueprintHelperAssetObjectPath(AssetPath);
+		UObject* ExistingObject = FindObject<UObject>(nullptr, *ObjectPath);
+		if (!ExistingObject)
+		{
+			ExistingObject = LoadObject<UObject>(nullptr, *ObjectPath);
+		}
+		if (ExistingObject)
+		{
+			return ExistingObject->GetClass();
+		}
+
+		FAssetRegistryModule& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+		FAssetData AssetData = AssetRegistry.Get().GetAssetByObjectPath(FSoftObjectPath(ObjectPath));
+		if (!AssetData.IsValid())
+		{
+			return nullptr;
+		}
+
+		const FString ClassPath = AssetData.AssetClassPath.ToString();
+		UClass* ExistingClass = FindObject<UClass>(nullptr, *ClassPath);
+		if (!ExistingClass)
+		{
+			ExistingClass = LoadObject<UClass>(nullptr, *ClassPath);
+		}
+		if (!ExistingClass)
+		{
+			ExistingClass = UClass::TryFindTypeSlow<UClass>(AssetData.AssetClassPath.GetAssetName().ToString());
+		}
+
+		return ExistingClass;
+	}
+
+	static bool DoesExistingAssetMatchRequestedType(
+		const FString& AssetPath,
+		EBlueprintHelperAssetType AssetType,
+		const FString& DataAssetClass,
+		const FString& ExpectedAssetClassName)
+	{
+		FAssetRegistryModule& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+		const FAssetData AssetData = AssetRegistry.Get().GetAssetByObjectPath(FSoftObjectPath(BlueprintHelperAssetObjectPath(AssetPath)));
+		if (!AssetData.IsValid())
+		{
+			return false;
+		}
+
+		if (AssetType == EBlueprintHelperAssetType::DataAsset)
+		{
+			UClass* ExistingClass = ResolveExistingAssetClass(AssetPath);
+			UClass* RequestedClass = ResolveAssetFactoryClass(DataAssetClass, UDataAsset::StaticClass(), UDataAsset::StaticClass());
+			return ExistingClass && RequestedClass && ExistingClass->IsChildOf(RequestedClass);
+		}
+
+		return AssetData.AssetClassPath.GetAssetName().ToString().Equals(ExpectedAssetClassName, ESearchCase::IgnoreCase);
 	}
 
 	static bool TryMakeStructFieldPinType(const FString& TypeText, FEdGraphPinType& OutPinType)
@@ -254,8 +376,11 @@ FBlueprintHelperAssetFactoryData FBlueprintHelperAssetFactoryService::CreateAsse
 		if (CollisionPolicy == EBlueprintHelperAssetCollisionPolicy::ReuseIfExists)
 		{
 			// 检查同类型
-			const FString ExistingClass = GetExistingAssetClass(AssetPath);
-			if (ExistingClass.Equals(Data.Asset.AssetClass, ESearchCase::IgnoreCase))
+			if (FBlueprintHelperAssetFactoryServiceLocalUtils::DoesExistingAssetMatchRequestedType(
+				AssetPath,
+				AssetType,
+				DataAssetClass,
+				Data.Asset.AssetClass))
 			{
 				Data.Collision.bHandled = true;
 				Data.Collision.ExistingAssetPath = AssetPath;
@@ -356,6 +481,7 @@ bool FBlueprintHelperAssetFactoryService::TryNormalizeAssetTypeAndParent(
 	if (Key == TEXT("blueprint_interface") || Key == TEXT("blueprintinterface"))
 	{
 		OutAssetType = EBlueprintHelperAssetType::BlueprintInterface;
+		InOutParentClass.Empty();
 		return true;
 	}
 	if (Key == TEXT("structure"))
@@ -495,6 +621,7 @@ bool FBlueprintHelperAssetFactoryService::CreateBlueprintInterface(const FString
 
 	UBlueprintFactory* Factory = NewObject<UBlueprintFactory>();
 	Factory->BlueprintType = BPTYPE_Interface;
+	Factory->ParentClass = UInterface::StaticClass();
 
 	UObject* NewAsset = Factory->FactoryCreateNew(
 		UBlueprint::StaticClass(), Package, *AssetName,
@@ -584,6 +711,7 @@ bool FBlueprintHelperAssetFactoryService::CreateDataAsset(const FString& AssetPa
 
 	UClass* Class = FBlueprintHelperAssetFactoryServiceLocalUtils::ResolveAssetFactoryClass(AssetClass, UDataAsset::StaticClass(), UDataAsset::StaticClass());
 	if (!Class) return false;
+	if (Class->HasAnyClassFlags(CLASS_Abstract)) return false;
 
 	UPackage* Package = CreatePackage(*PackageName);
 	if (!Package) return false;

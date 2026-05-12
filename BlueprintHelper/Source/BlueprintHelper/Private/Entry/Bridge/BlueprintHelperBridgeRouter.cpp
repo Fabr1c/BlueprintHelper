@@ -50,6 +50,8 @@
 #include "Shared/Debug/BlueprintHelperSaveAssetTypes.h"
 #include "Systems/Transactions/BlueprintHelperTransactionQueryService.h"
 #include "Shared/Transactions/BlueprintHelperTransactionQueryTypes.h"
+#include "Systems/Review/BlueprintHelperReviewStoreService.h"
+#include "Shared/Review/BlueprintHelperReviewTypes.h"
 #include "Systems/ToolClusters/BlueprintVariables/BlueprintHelperBlueprintVariableService.h"
 #include "Shared/BlueprintVariables/BlueprintHelperBlueprintVariableTypes.h"
 #include "Shared/BlueprintHelperToolResultTypes.h"
@@ -655,6 +657,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequestWithPl
 	BLUEPRINTHELPER_ROUTE("get_debug_case", Debug, HandleGetDebugCase)
 	BLUEPRINTHELPER_ROUTE("compile_blueprint", Debug, HandleCompileBlueprint)
 	BLUEPRINTHELPER_ROUTE("compile_blueprint_asset", Debug, HandleCompileBlueprintAsset)
+	BLUEPRINTHELPER_ROUTE("query_review_records", Review, HandleQueryReviewRecords)
 
 	BLUEPRINTHELPER_ROUTE("read_reference_context", SharedServices, HandleReadReferenceContext)
 	BLUEPRINTHELPER_ROUTE("read_blueprint_logic_md", SharedServices, HandleReadBlueprintLogicMd)
@@ -1639,6 +1642,58 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleCompileBluepr
 }
 
 // ─── list_blueprint_helper_transactions ───
+
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleQueryReviewRecords(
+	const FBlueprintHelperBridgeRequest& Req) const
+{
+	FBlueprintHelperReviewRecordQuery Query;
+	if (Req.Payload.IsValid())
+	{
+		Req.Payload->TryGetStringField(TEXT("archive_session_id"), Query.ArchiveSessionIdFilter);
+		Req.Payload->TryGetStringField(TEXT("asset_path"), Query.AssetPathFilter);
+		Req.Payload->TryGetStringField(TEXT("task_run_id"), Query.TaskRunIdFilter);
+		Req.Payload->TryGetBoolField(TEXT("pending_only"), Query.bPendingOnly);
+	}
+
+	FBlueprintHelperReviewStoreService ReviewStore;
+	const TArray<FBlueprintHelperReviewRecord> Records = ReviewStore.QueryReviewRecords(Query);
+
+	TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
+	Data->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.ReviewRecordQueryResult.v1"));
+	Data->SetNumberField(TEXT("record_count"), Records.Num());
+
+	TSharedRef<FJsonObject> QueryJson = MakeShared<FJsonObject>();
+	if (!Query.ArchiveSessionIdFilter.IsEmpty())
+	{
+		QueryJson->SetStringField(TEXT("archive_session_id"), Query.ArchiveSessionIdFilter);
+	}
+	if (!Query.AssetPathFilter.IsEmpty())
+	{
+		QueryJson->SetStringField(TEXT("asset_path"), Query.AssetPathFilter);
+	}
+	if (!Query.TaskRunIdFilter.IsEmpty())
+	{
+		QueryJson->SetStringField(TEXT("task_run_id"), Query.TaskRunIdFilter);
+	}
+	QueryJson->SetBoolField(TEXT("pending_only"), Query.bPendingOnly);
+	Data->SetObjectField(TEXT("query"), QueryJson);
+
+	TArray<TSharedPtr<FJsonValue>> RecordValues;
+	for (const FBlueprintHelperReviewRecord& Record : Records)
+	{
+		RecordValues.Add(MakeShared<FJsonValueObject>(ReviewStore.BuildReviewRecordSummaryArtifact(Record)));
+	}
+	Data->SetArrayField(TEXT("records"), RecordValues);
+
+	FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Completed(
+		TEXT("query_review_records"),
+		FBlueprintHelperToolResultBuilder::GenerateTraceId());
+	Result.Data = Data;
+
+	auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
+	Resp.Result = Result.ToJson();
+	return Resp;
+}
 
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleListTransactions(
 	const FBlueprintHelperBridgeRequest& Req) const

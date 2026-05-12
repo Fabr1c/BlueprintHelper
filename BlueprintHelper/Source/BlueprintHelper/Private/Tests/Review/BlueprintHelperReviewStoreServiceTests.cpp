@@ -2596,6 +2596,200 @@ bool FBlueprintHelperReviewRecordIdentityAssetFirstGroupingTest::RunTest(const F
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewRecordSourceTransactionSummaryPersistsCreatedAtBoundsTest,
+	"BlueprintHelper.Review.Record.SourceTransactionSummaryPersistsCreatedAtBounds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewRecordSourceTransactionSummaryPersistsCreatedAtBoundsTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewStoreService Store;
+	const FString ArchiveSessionId =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_source_summary_created"));
+	const FString RecordId = FBlueprintHelperReviewStoreService::MakeReviewRecordId(
+		ArchiveSessionId,
+		TEXT("/Game/BP_Door"));
+
+	FBlueprintHelperReviewRecord Record;
+	Record.ReviewRecordId = RecordId;
+	Record.ArchiveSessionId = ArchiveSessionId;
+	Record.AssetPath = TEXT("/Game/BP_Door");
+	Record.SourceTaskRunIds.Add(TEXT("task_review_source_summary"));
+	Record.SourceTransactionSummary.TransactionCount = 2;
+	Record.SourceTransactionSummary.TaskRunIds.Add(TEXT("task_review_source_summary"));
+	Record.SourceTransactionSummary.OperationKinds.Add(TEXT("append_blueprint_graph"));
+	Record.SourceTransactionSummary.OperationKinds.Add(TEXT("replace_blueprint_graph"));
+	Record.SourceTransactionSummary.AssetPaths.Add(TEXT("/Game/BP_Door"));
+	Record.SourceTransactionSummary.TransactionIds.Add(TEXT("tx_review_source_1"));
+	Record.SourceTransactionSummary.TransactionIds.Add(TEXT("tx_review_source_2"));
+	Record.SourceTransactionSummary.CreatedAtFirst = TEXT("2026-05-12T01:02:03Z");
+	Record.SourceTransactionSummary.CreatedAtLast = TEXT("2026-05-12T01:04:05Z");
+
+	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(RecordId);
+	FString SaveError;
+	TestTrue(TEXT("record with source summary created-at bounds saves"),
+		Store.SaveReviewRecord(Record, SaveError));
+
+	FBlueprintHelperReviewRecord Loaded;
+	FString LoadError;
+	TestTrue(TEXT("record with source summary created-at bounds reloads"),
+		Store.LoadReviewRecordById(RecordId, Loaded, LoadError));
+	TestEqual(TEXT("created_at_first round-trips"),
+		Loaded.SourceTransactionSummary.CreatedAtFirst,
+		FString(TEXT("2026-05-12T01:02:03Z")));
+	TestEqual(TEXT("created_at_last round-trips"),
+		Loaded.SourceTransactionSummary.CreatedAtLast,
+		FString(TEXT("2026-05-12T01:04:05Z")));
+
+	const TSharedRef<FJsonObject> SummaryArtifact = Store.BuildReviewRecordSummaryArtifact(Loaded);
+	const TSharedPtr<FJsonObject>* SourceSummary = nullptr;
+	TestTrue(TEXT("summary artifact exposes source transaction summary"),
+		SummaryArtifact->TryGetObjectField(TEXT("source_transaction_summary"), SourceSummary)
+		&& SourceSummary
+		&& SourceSummary->IsValid());
+	if (SourceSummary && SourceSummary->IsValid())
+	{
+		TestEqual(TEXT("summary artifact exposes created_at_first"),
+			(*SourceSummary)->GetStringField(TEXT("created_at_first")),
+			FString(TEXT("2026-05-12T01:02:03Z")));
+		TestEqual(TEXT("summary artifact exposes created_at_last"),
+			(*SourceSummary)->GetStringField(TEXT("created_at_last")),
+			FString(TEXT("2026-05-12T01:04:05Z")));
+	}
+
+	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(RecordId);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewRecordAggregatesTransactionJournalTaskRunAndCreatedAtTest,
+	"BlueprintHelper.Review.Record.AggregatesTransactionJournalTaskRunAndCreatedAt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewRecordAggregatesTransactionJournalTaskRunAndCreatedAtTest::RunTest(const FString& Parameters)
+{
+	const FString ArchiveSessionId =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_tx_journal_review"));
+	const FString AssetPath = TEXT("/Game/BlueprintHelper/Smoke/BP_SmokeActor.BP_SmokeActor");
+	const FString RecordId = FBlueprintHelperReviewStoreService::MakeReviewRecordId(ArchiveSessionId, AssetPath);
+	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(RecordId);
+
+	FBlueprintHelperAppendJournalRecord FirstRecord;
+	FirstRecord.TransactionId = FString::Printf(TEXT("tx_review_aggregate_1_%s"), *FGuid::NewGuid().ToString(EGuidFormats::Digits));
+	FirstRecord.ArchiveSessionId = ArchiveSessionId;
+	FirstRecord.TaskRunId = TEXT("task_review_aggregate");
+	FirstRecord.Tool = TEXT("AppendBlueprintGraph");
+	FirstRecord.Status = TEXT("applied");
+	FirstRecord.TargetAssets.Add(AssetPath);
+	FirstRecord.GraphId = TEXT("EventGraph");
+	FirstRecord.GraphName = TEXT("EventGraph");
+	FirstRecord.BlockIds.Add(TEXT("EventGraph_DoorFlow"));
+	FirstRecord.RollbackData = TEXT("{\"node_guids\":[]}");
+
+	FBlueprintHelperAppendJournalRecord SecondRecord = FirstRecord;
+	SecondRecord.TransactionId = FString::Printf(TEXT("tx_review_aggregate_2_%s"), *FGuid::NewGuid().ToString(EGuidFormats::Digits));
+	SecondRecord.Tool = TEXT("ReplaceBlueprintGraph");
+	SecondRecord.BlockIds.Reset();
+	SecondRecord.CreatedNodePaths.Add(TEXT("K2Node_CallFunction_0"));
+
+	FBlueprintHelperTransactionJournalService JournalService;
+	FString JournalError;
+	TestTrue(TEXT("first transaction journal writes review record"),
+		JournalService.WriteAppendJournal(FirstRecord, JournalError));
+	TestTrue(TEXT("second transaction journal merges into review record"),
+		JournalService.WriteAppendJournal(SecondRecord, JournalError));
+
+	FBlueprintHelperReviewStoreService Store;
+	FBlueprintHelperReviewRecord Loaded;
+	FString LoadError;
+	TestTrue(TEXT("aggregated review record reloads"),
+		Store.LoadReviewRecordById(RecordId, Loaded, LoadError));
+
+	TestTrue(TEXT("source task run id is preserved"),
+		Loaded.SourceTaskRunIds.Contains(TEXT("task_review_aggregate")));
+	TestEqual(TEXT("source summary counts both transactions"),
+		Loaded.SourceTransactionSummary.TransactionCount,
+		2);
+	TestTrue(TEXT("source summary includes append operation"),
+		Loaded.SourceTransactionSummary.OperationKinds.Contains(TEXT("AppendBlueprintGraph")));
+	TestTrue(TEXT("source summary includes replace operation"),
+		Loaded.SourceTransactionSummary.OperationKinds.Contains(TEXT("ReplaceBlueprintGraph")));
+	TestTrue(TEXT("source summary records created_at_first from journal writes"),
+		!Loaded.SourceTransactionSummary.CreatedAtFirst.IsEmpty());
+	TestTrue(TEXT("source summary records created_at_last from journal writes"),
+		!Loaded.SourceTransactionSummary.CreatedAtLast.IsEmpty());
+
+	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(RecordId);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewRecordQueryFiltersByTaskRunIdTest,
+	"BlueprintHelper.Review.Record.QueryFiltersByTaskRunId",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewRecordQueryFiltersByTaskRunIdTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewStoreService Store;
+	const FString MatchingArchiveSessionId =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_task_filter_match"));
+	const FString OtherArchiveSessionId =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_task_filter_other"));
+
+	FBlueprintHelperReviewRecord MatchingRecord;
+	MatchingRecord.ReviewRecordId = FBlueprintHelperReviewStoreService::MakeReviewRecordId(
+		MatchingArchiveSessionId,
+		TEXT("/Game/BP_TaskFilterMatch"));
+	MatchingRecord.ArchiveSessionId = MatchingArchiveSessionId;
+	MatchingRecord.AssetPath = TEXT("/Game/BP_TaskFilterMatch");
+	MatchingRecord.SourceTaskRunIds.Add(TEXT("task_filter_target"));
+	MatchingRecord.SourceTransactionSummary.TaskRunIds.Add(TEXT("task_filter_target"));
+	MatchingRecord.SourceTransactionSummary.TransactionIds.Add(TEXT("tx_filter_target"));
+	MatchingRecord.SourceTransactionSummary.TransactionCount = 1;
+
+	FBlueprintHelperReviewRecord OtherRecord;
+	OtherRecord.ReviewRecordId = FBlueprintHelperReviewStoreService::MakeReviewRecordId(
+		OtherArchiveSessionId,
+		TEXT("/Game/BP_TaskFilterOther"));
+	OtherRecord.ArchiveSessionId = OtherArchiveSessionId;
+	OtherRecord.AssetPath = TEXT("/Game/BP_TaskFilterOther");
+	OtherRecord.SourceTaskRunIds.Add(TEXT("task_filter_other"));
+	OtherRecord.SourceTransactionSummary.TaskRunIds.Add(TEXT("task_filter_other"));
+	OtherRecord.SourceTransactionSummary.TransactionIds.Add(TEXT("tx_filter_other"));
+	OtherRecord.SourceTransactionSummary.TransactionCount = 1;
+
+	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(MatchingRecord.ReviewRecordId);
+	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(OtherRecord.ReviewRecordId);
+
+	TArray<FBlueprintHelperReviewRecord> RecordsToSave;
+	RecordsToSave.Add(MatchingRecord);
+	RecordsToSave.Add(OtherRecord);
+	FString SaveError;
+	TestTrue(TEXT("task filter records save"), Store.SaveReviewRecords(RecordsToSave, SaveError));
+
+	FBlueprintHelperReviewRecordQuery Query;
+	Query.bPendingOnly = false;
+	Query.TaskRunIdFilter = TEXT("task_filter_target");
+	const TArray<FBlueprintHelperReviewRecord> LoadedRecords = Store.QueryReviewRecords(Query);
+
+	TestEqual(TEXT("task_run_id filter returns only matching review record"),
+		LoadedRecords.Num(),
+		1);
+	if (LoadedRecords.Num() == 1)
+	{
+		TestEqual(TEXT("task_run_id filter keeps matching source task"),
+			LoadedRecords[0].SourceTaskRunIds[0],
+			FString(TEXT("task_filter_target")));
+		TestEqual(TEXT("task_run_id filter keeps matching asset"),
+			LoadedRecords[0].AssetPath,
+			FString(TEXT("/Game/BP_TaskFilterMatch")));
+	}
+
+	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(MatchingRecord.ReviewRecordId);
+	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(OtherRecord.ReviewRecordId);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperReviewRecordVisibleChangesKeepTargetAssetPathTest,
 	"BlueprintHelper.Review.Record.VisibleChangesKeepTargetAssetPath",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

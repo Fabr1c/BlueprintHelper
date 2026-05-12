@@ -1,6 +1,7 @@
 // BlueprintHelper Review row highlight model.
 
 #include "UI/Review/BlueprintHelperReviewRowHighlightModel.h"
+#include "UI/Review/BlueprintHelperReviewAssetContext.h"
 #include "UI/Review/BlueprintHelperReviewSurfaceRouter.h"
 
 #include "Brushes/SlateRoundedBoxBrush.h"

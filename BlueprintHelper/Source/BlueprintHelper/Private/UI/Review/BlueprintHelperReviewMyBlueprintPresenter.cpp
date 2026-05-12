@@ -2,6 +2,7 @@
 
 #include "UI/Review/BlueprintHelperReviewMyBlueprintPresenter.h"
 
+#include "UI/Review/BlueprintHelperReviewAssetContext.h"
 #include "UI/Review/BlueprintHelperReviewRowHighlightModel.h"
 #include "UI/Review/BlueprintHelperReviewSlateRowGeometryRegistry.h"
 #include "UI/Review/BlueprintHelperReviewSurfaceFrameBuilder.h"

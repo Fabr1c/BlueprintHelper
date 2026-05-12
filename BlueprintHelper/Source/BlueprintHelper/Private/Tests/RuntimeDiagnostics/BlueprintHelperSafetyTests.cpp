@@ -561,7 +561,7 @@ bool FBlueprintHelperBlueprintVariableSetMemberVariablePropertiesTest::RunTest(c
 	TArray<TSharedPtr<FJsonValue>> Settings;
 	Settings.Add(MakeSetting(TEXT("category"), MakeShared<FJsonValueString>(TEXT("BHStats"))));
 	Settings.Add(MakeSetting(TEXT("tooltip"), MakeShared<FJsonValueString>(TEXT("Current health."))));
-	Settings.Add(MakeSetting(TEXT("instance_editable"), MakeShared<FJsonValueBoolean>(false)));
+	Settings.Add(MakeSetting(TEXT("instance_editable"), MakeShared<FJsonValueBoolean>(true)));
 	Settings.Add(MakeSetting(TEXT("expose_on_spawn"), MakeShared<FJsonValueBoolean>(true)));
 
 	TSharedRef<FJsonObject> SetPayload = MakeShared<FJsonObject>();
@@ -594,7 +594,7 @@ bool FBlueprintHelperBlueprintVariableSetMemberVariablePropertiesTest::RunTest(c
 	TestNotNull(TEXT("Health variable still exists"), HealthVariable);
 	if (HealthVariable)
 	{
-		TestTrue(TEXT("Health instance editable flag is disabled"),
+		TestFalse(TEXT("Health instance editable flag is enabled"),
 			(HealthVariable->PropertyFlags & CPF_DisableEditOnInstance) != 0);
 	}
 

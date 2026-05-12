@@ -777,6 +777,25 @@ public:
 		return FName(*InEventName);
 	}
 
+	static UFunction* ResolveNativeOrOverrideEventDeclarationFunction(UFunction* EventFunction)
+	{
+		while (EventFunction && EventFunction->GetSuperFunction())
+		{
+			EventFunction = EventFunction->GetSuperFunction();
+		}
+		return EventFunction;
+	}
+
+	static UClass* ResolveNativeOrOverrideEventSignatureClass(UFunction* EventFunction, UClass* FallbackSignatureClass)
+	{
+		UClass* EventSignatureClass = EventFunction ? EventFunction->GetOwnerClass() : nullptr;
+		if (!EventSignatureClass)
+		{
+			EventSignatureClass = FallbackSignatureClass;
+		}
+		return EventSignatureClass ? EventSignatureClass->GetAuthoritativeClass() : nullptr;
+	}
+
 	static UEdGraph* ResolveOverrideEventGraph(
 		const FBlueprintHelperBlueprintStructureService& StructureService,
 		const FBlueprintHelperEnsureOverrideEventSignatureRequest& Request,
@@ -861,14 +880,14 @@ public:
 			return nullptr;
 		}
 
-		EventNode->EventReference.SetExternalMember(EventFunction->GetFName(), EventSignatureClass);
-		EventNode->bOverrideFunction = true;
 		EventNode->SetFlags(RF_Transactional);
 		EventNode->NodePosX = 0;
 		EventNode->NodePosY = 0;
 		Graph->AddNode(EventNode, true, false);
 		EventNode->CreateNewGuid();
 		EventNode->PostPlacedNewNode();
+		EventNode->EventReference.SetExternalMember(EventFunction->GetFName(), EventSignatureClass);
+		EventNode->bOverrideFunction = true;
 		EventNode->AllocateDefaultPins();
 		return EventNode;
 	}
@@ -1620,7 +1639,24 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureOverrideE
 		return Result;
 	}
 
-	if (!UEdGraphSchema_K2::FunctionCanBePlacedAsEvent(EventFunction))
+	UFunction* const EventDeclarationFunction =
+		FBlueprintHelperSignatureServiceLocalUtils::ResolveNativeOrOverrideEventDeclarationFunction(EventFunction);
+	UClass* const EventSignatureClass =
+		FBlueprintHelperSignatureServiceLocalUtils::ResolveNativeOrOverrideEventSignatureClass(EventDeclarationFunction, SignatureClass);
+	if (!EventDeclarationFunction || !EventSignatureClass)
+	{
+		FBlueprintHelperToolResultBase Result = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
+			TEXT("ensure_override_event"),
+			TEXT("override_event_function_not_found"),
+			EBlueprintHelperToolStage::ResolveTarget,
+			FString::Printf(TEXT("Override/native event function declaration not found: %s."), *ResolvedEventName.ToString()),
+			TEXT("event_name"));
+		FBlueprintHelperSignatureServiceLocalUtils::SetOverrideEventTarget(Result, Request);
+		Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);
+		return Result;
+	}
+
+	if (!UEdGraphSchema_K2::FunctionCanBePlacedAsEvent(EventDeclarationFunction))
 	{
 		FBlueprintHelperToolResultBase Result = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
 			TEXT("ensure_override_event"),
@@ -1635,7 +1671,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureOverrideE
 
 	UK2Node_Event* ExistingEvent = FBlueprintEditorUtils::FindOverrideForFunction(
 		Blueprint,
-		SignatureClass,
+		EventSignatureClass,
 		ResolvedEventName);
 
 	if (ExecutePolicy == TEXT("blocked_preflight"))
@@ -1702,8 +1738,8 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureOverrideE
 	FString Error;
 	UK2Node_Event* EventNode = FBlueprintHelperSignatureServiceLocalUtils::CreateOverrideEventNode(
 		Graph,
-		EventFunction,
-		SignatureClass,
+		EventDeclarationFunction,
+		EventSignatureClass,
 		Error);
 	if (!EventNode)
 	{

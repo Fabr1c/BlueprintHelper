@@ -1,0 +1,6 @@
+{
+  "target": {
+    "asset_path": "/Game/BP_Player"
+  },
+  "feature_name": "CLI Context"
+}

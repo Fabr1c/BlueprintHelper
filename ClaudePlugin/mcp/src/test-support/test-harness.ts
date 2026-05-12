@@ -1,7 +1,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { BridgeClient, BridgeResponse } from '../bridge/bridge-client.js';
+import type { BridgeClient, BridgeResponse } from '@blueprinthelper/task-core/bridge/bridge-client';
 import { registerResources } from '../mcp/resources/resources.js';
 import { registerTools, type EditorConfig } from '../mcp/tools/register-tools.js';
 
