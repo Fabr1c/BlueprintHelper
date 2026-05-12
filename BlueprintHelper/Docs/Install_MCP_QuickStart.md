@@ -195,7 +195,7 @@ The same TaskSpec-first checklist applies whether the Agent enters through MCP t
 For ordinary Agent editor-asset mutations, use the TaskSpec-first flow:
 
 - Confirm the Bridge is reachable.
-- Call `blueprinthelper_get_runtime_profile`.
+- Call `blueprint_get_runtime_profile`.
 - Call `blueprinthelper_read_task_context`.
 - Produce `BlueprintHelper.TaskSpec.v1` with exact `asset_path`, target graph when relevant, allowed scope, resource references, failure policy, `validation.should_compile`, and `validation.should_save`.
 - Do not submit TaskPlan directly; it is produced by the Python Task Compiler.

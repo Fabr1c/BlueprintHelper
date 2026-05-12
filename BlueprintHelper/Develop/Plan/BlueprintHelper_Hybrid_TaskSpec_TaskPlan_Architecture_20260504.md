@@ -169,7 +169,7 @@ Task Runtime：UE 插件侧
 普通 Agent 默认只面对少量任务级工具：
 
 ```text
-blueprinthelper_get_runtime_profile
+blueprint_get_runtime_profile
 blueprinthelper_diagnostics
 blueprinthelper_read_task_context
 blueprinthelper_preview_task

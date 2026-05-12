@@ -18,12 +18,12 @@
 本清单整合以下旧文档的未完成项:
 
 - `Develop/Plan/BlueprintHelper_Current_TODO_20260506.md`
-- `Develop/Plan/LowerStepPLAN.md`
-- `Develop/Plan/BlueprintHelper_Current_Capability_Integration_Smoke_20260505.md`
-- `Develop/Plan/BlueprintHelper_P1_Remaining_Gap_Smoke_20260507.md`
-- `Develop/Plan/BlueprintHelper_P1_Remaining_Gap_Smoke_20260507_Rerun.md`
-- `Develop/Plan/BlueprintHelper_TaskSpec_UE_Smoke_Test_20260504.md`
-- `Develop/Plan/BlueprintHelper_Review_E2E_Verification_Test_20260509.md`
+- `Develop/v0.3.8/DoneImplementation/LowerStepPLAN.md`
+- `Develop/v0.3.8/VerificationEvidence/BlueprintHelper_Current_Capability_Integration_Smoke_20260505.md`
+- `Develop/v0.3.8/VerificationEvidence/BlueprintHelper_P1_Remaining_Gap_Smoke_20260507.md`
+- `Develop/v0.3.8/VerificationEvidence/BlueprintHelper_P1_Remaining_Gap_Smoke_20260507_Rerun.md`
+- `Develop/v0.3.8/VerificationEvidence/BlueprintHelper_TaskSpec_UE_Smoke_Test_20260504.md`
+- `Develop/v0.3.8/VerificationEvidence/BlueprintHelper_Review_E2E_Verification_Test_20260509.md`
 - `Develop/Plan/BlueprintHelper_v0.3.6_Current_Implementation_Gap_Matrix_20260505.md`
 
 ## 总原则
@@ -109,7 +109,7 @@ Ring 1 gate:
 命令:
 
 ```powershell
-Set-Location G:/UnrealPractise/MrStone/Plugins/BlueprintHelper/BlueprintHelper_MCP_Server
+Set-Location G:/UnrealPractise/MrStone/Plugins/BlueprintHelper/ClaudePlugin/mcp
 npm.cmd test
 ```
 
@@ -709,6 +709,6 @@ Automation evidence:
 | # | 优先级 | 问题 | 位置 |
 |---|--------|------|------|
 | 1 | CLOSED 2026-05-12 | `EnsureOverrideEventCreateIfMissingExecute` fixed: override event uses declaration function/signature class, read-back finds `ReceiveAnyDamage`, and second ensure no-ops | `Saved/Automation/UnifiedSmoke/Ring1_SignatureOverrideExecute` |
-| 2 | CLOSED 2026-05-10 | `create_blueprint_feature` composite blocked empty issues fixed by MCP blocked-issue fallback | `ClaudePlugin/mcp/src/task-tools.ts` |
+| 2 | CLOSED 2026-05-10 | `create_blueprint_feature` composite blocked empty issues fixed by MCP blocked-issue fallback | `ClaudePlugin/mcp/src/mcp/tools/task-tools.ts` |
 | 3 | P2 | `edit_blueprint_variables` 独立 TaskSpec 格式不支持 | MCP TaskSpec 编译器 |
 | 4 | CLOSED 2026-05-10 | `merge_owned_graph + branch_fork + owned_block_call` same-graph fixture verified | `Saved/Automation/BranchForkOwnedBlockCall` |

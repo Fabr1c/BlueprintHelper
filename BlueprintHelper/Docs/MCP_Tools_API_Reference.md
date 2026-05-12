@@ -80,7 +80,7 @@ Bridge error: Bridge connection error: connect ECONNREFUSED 127.0.0.1:54321
 Default Agent-facing tools:
 
 - `blueprinthelper_read_agent_guide`
-- `blueprinthelper_get_runtime_profile`
+- `blueprint_get_runtime_profile`
 - `blueprinthelper_diagnostics`
 - `blueprinthelper_request_write_session`
 - `blueprinthelper_read_context`
@@ -108,7 +108,7 @@ This is the documented target surface for ordinary Agents. Some entries may be a
 
 | Tool | Type | Purpose | Writes Assets | Notes |
 |---|---|---|---:|---|
-| `blueprinthelper_get_runtime_profile` | Read | Returns version, Bridge state, write permission, safety profile, and unavailable capabilities | No | Call at session start or before write planning |
+| `blueprint_get_runtime_profile` | Read | Returns version, Bridge state, write permission, safety profile, and unavailable capabilities | No | Call at session start or before write planning |
 | `blueprinthelper_diagnostics` | Read | Returns static/runtime diagnostics | No | Blocking diagnostics are business state, not transport failure |
 | `blueprinthelper_read_agent_guide` | Read | Returns the AgentGuide onboarding index Markdown | No | Documentation entry for capability surface and schema guide paths |
 | `blueprinthelper_request_write_session` | Approval | Requests a short-lived Editor-approved write session | No | Required before TaskSpec execute when no active session exists; raw session id is never returned to the Agent |
@@ -319,7 +319,7 @@ For ordinary Agent editor-asset mutations, use TaskSpec-first orchestration:
 
 ```text
 blueprinthelper_read_agent_guide
- -> blueprinthelper_get_runtime_profile
+ -> blueprint_get_runtime_profile
  -> blueprinthelper_read_context
  -> blueprinthelper_preview_task
  -> blueprinthelper_request_write_session when write_permission is disabled

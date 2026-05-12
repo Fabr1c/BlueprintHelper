@@ -10,6 +10,25 @@
 
 ---
 
+## Closure Note - 2026-05-12
+
+This plan has been implemented for the v0.3.8 documentation archive.
+
+- `ClaudePlugin/task-core` now owns the shared Bridge client, TaskSpec schemas, Python orchestration, TaskSpec runner, and normalized tool result helpers.
+- `ClaudePlugin/mcp` is the MCP transport only; task tools call `createTaskSpecRunner` from `@blueprinthelper/task-core`.
+- `ClaudePlugin/cli` is a separate CLI transport with compact `BlueprintHelper.CliResult.v1` output, artifact directory support, and CLI regression tests.
+- The original TaskSpec-first flow is preserved: TaskSpec -> Python compiler -> TaskPlan -> Bridge preview/execute -> UE Task Runtime.
+- MCP and CLI both keep the Python orchestration layer in the critical path; CLI does not submit raw TaskPlan or bypass preview.
+
+Verification already run in this workspace:
+
+- `ClaudePlugin/mcp npm test`
+- `ClaudePlugin/cli npm test`
+- CLI help smoke
+- CLI no-Bridge smoke
+
+The checkbox body below is kept as the original execution record.
+
 ## Scope
 
 This plan changes only the Agent entry transport and output contract. It does not remove MCP, does not replace `BlueprintHelper.TaskSpec.v1`, does not let Agents submit `TaskPlan` directly, and does not bypass `preview_task_plan` before writes.

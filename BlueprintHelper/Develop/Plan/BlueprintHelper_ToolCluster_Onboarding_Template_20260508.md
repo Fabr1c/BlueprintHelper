@@ -33,7 +33,7 @@
 - Debug regression: 失败结果只暴露 `debug_case_ids[]` summary ref，不暴露 DebugBundle artifact、本地路径、raw payload 或 source content。
 - Commands:
   - `git diff --check`
-  - `npm.cmd test` in `BlueprintHelper_MCP_Server`
+  - `npm.cmd test` in `ClaudePlugin/mcp`
   - UE build and Automation in a writable project `Intermediate` environment.
 
 ## Reserved Empty Clusters

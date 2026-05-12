@@ -1,4 +1,4 @@
-我检查了设计稿、`BlueprintHelper-v0.3.2.7z`、`BlueprintHelper_MCP_Server.7z` 的源码。下面结论基于**静态代码检查**，没有编译运行。
+我检查了设计稿、`BlueprintHelper-v0.3.2.7z`、`ClaudePlugin/mcp.7z` 的源码。下面结论基于**静态代码检查**，没有编译运行。
 
 结论先给出：**当前 v0.3.2 已经能复用一大半“读 / 基础写 / object-first 返回 / Token 校验 / AgentImportGraph”基础，但满血原型需要新建一层统一字段协议和事务系统。**  
 最核心的缺口不是“怎么多写几个工具”，而是：**UE 侧写操作没有统一 transaction / block / ownership / diff / review 字段，MCP 侧也没有统一把这些字段稳定返回给 Agent。**
@@ -350,7 +350,7 @@ exec_console_command / close_editor high risk 限制
 但 Agent 不应该靠调用失败才知道不能写。需要新增：
 
 ```text id="0pk057"
-blueprinthelper_get_runtime_profile
+blueprint_get_runtime_profile
 ```
 
 UE 侧返回字段：
@@ -1248,7 +1248,7 @@ rollback_failed
 
 ```text id="56sxhq"
 1. UE RuntimeProfileService
-2. MCP blueprinthelper_get_runtime_profile
+2. MCP blueprint_get_runtime_profile
 3. UE DiagnosticsService
 4. MCP blueprinthelper_diagnostics_runtime
 ```

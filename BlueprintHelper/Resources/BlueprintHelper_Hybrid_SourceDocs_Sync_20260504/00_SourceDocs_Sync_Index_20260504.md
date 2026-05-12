@@ -33,7 +33,7 @@ blueprinthelper_read_task_context
 blueprinthelper_preview_task
 blueprinthelper_execute_task
 blueprinthelper_get_task_result
-blueprinthelper_get_runtime_profile
+blueprint_get_runtime_profile
 blueprinthelper_diagnostics
 ```
 
@@ -120,17 +120,17 @@ Core_Three_End_Gap_Synced_20260504.md
 如果保持现有插件目录结构，建议放入：
 
 ```text
-BlueprintHelper/Resources/Plan/HybridArchitecture/
+BlueprintHelper/Develop/Plan/HybridArchitecture/
 ```
 
 或直接覆盖现有设计文档：
 
 ```text
-BlueprintHelper/Resources/Plan/BlueprintHelper_Architecture.md
-BlueprintHelper/Resources/Plan/GraphWrite_Setup_Cleanup.md
-BlueprintHelper/Resources/Plan/Transaction_Journal_Review.md
-BlueprintHelper/Resources/Plan/Safety_Profile_DryRun.md
-BlueprintHelper/Resources/Plan/Validation_Diagnostics.md
+BlueprintHelper/Develop/Plan/BlueprintHelper_Architecture.md
+BlueprintHelper/Develop/Plan/GraphWrite_Setup_Cleanup.md
+BlueprintHelper/Develop/Plan/Transaction_Journal_Review.md
+BlueprintHelper/Develop/Plan/Safety_Profile_DryRun.md
+BlueprintHelper/Develop/Plan/Validation_Diagnostics.md
 ```
 
 ---

@@ -70,7 +70,7 @@ Source/BlueprintHelper/Public/Entry/Bridge
 Source/BlueprintHelper/Private/Entry/Bridge
 Source/BlueprintHelper/Public/Entry/BlueprintHelper.h
 Source/BlueprintHelper/Private/Entry/BlueprintHelper.cpp
-BlueprintHelper_MCP_Server/src
+ClaudePlugin/mcp/src
 ```
 
 Debug session should create or extend:
@@ -403,7 +403,7 @@ git diff --check
 ```
 
 ```powershell
-cd BlueprintHelper_MCP_Server
+cd ClaudePlugin/mcp
 npm.cmd test
 ```
 

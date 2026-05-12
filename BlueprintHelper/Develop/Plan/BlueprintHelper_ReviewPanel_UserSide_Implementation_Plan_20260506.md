@@ -83,8 +83,8 @@ Known limits:
 
 Implemented:
 
-- Added confirmed constraints document: `Resources/Plan/BlueprintHelper_ReviewPanel_UserSide_Constraints_20260506.md`.
-- Added design document: `Resources/Plan/BlueprintHelper_ReviewPanel_UserSide_Design_20260506.md`.
+- Added confirmed constraints document: `Develop/Plan/BlueprintHelper_ReviewPanel_UserSide_Constraints_20260506.md`.
+- Added design document: `Develop/Plan/BlueprintHelper_ReviewPanel_UserSide_Design_20260506.md`.
 - Added Review visible change DTOs and visible-change collapse service.
 - Added Review action service for first-slice Accept / Reject semantics.
 - Added Review automation tests for color mapping, rename expansion, T1/T2 collapse, Accept, Reject, and widget construction.
@@ -101,7 +101,7 @@ Implemented:
 
 Verification status:
 
-- `git diff --check -- Source/BlueprintHelper/BlueprintHelper.Build.cs Source/BlueprintHelper/Private/Widgets/Review/SBlueprintHelperReviewPanel.cpp Source/BlueprintHelper/Private/Widgets/Review/SBlueprintHelperReviewPanel.h Source/BlueprintHelper/Public/Structure/Review/BlueprintHelperReviewTypes.h Source/BlueprintHelper/Private/Tests/Review/BlueprintHelperReviewStoreServiceTests.cpp Resources/Plan/BlueprintHelper_ReviewPanel_UserSide_Implementation_Plan_20260506.md Resources/Plan/BlueprintHelper_ReviewPanel_UserSide_Design_20260506.md Resources/Plan/BlueprintHelper_ReviewPanel_UserSide_Constraints_20260506.md` passed.
+- `git diff --check -- Source/BlueprintHelper/BlueprintHelper.Build.cs Source/BlueprintHelper/Private/Widgets/Review/SBlueprintHelperReviewPanel.cpp Source/BlueprintHelper/Private/Widgets/Review/SBlueprintHelperReviewPanel.h Source/BlueprintHelper/Public/Structure/Review/BlueprintHelperReviewTypes.h Source/BlueprintHelper/Private/Tests/Review/BlueprintHelperReviewStoreServiceTests.cpp Develop/Plan/BlueprintHelper_ReviewPanel_UserSide_Implementation_Plan_20260506.md Develop/Plan/BlueprintHelper_ReviewPanel_UserSide_Design_20260506.md Develop/Plan/BlueprintHelper_ReviewPanel_UserSide_Constraints_20260506.md` passed.
 - Local Codex environment has `G:\UE_5.3`, but the project declares `EngineAssociation` 5.6 and `G:\UE_5.6\Engine\Build\BatchFiles\Build.bat` is not present, so the UE 5.6 project build was not run here.
 - Earlier project `Build.bat` attempts could not complete inside Codex because `G:\UnrealPractise\MrStone\Intermediate` files were permission-locked. User-side compile progressed far enough to report source compile issues, and the reported issues have been addressed.
 - Review automation tests are written but not yet confirmed passing because the full UE build/test run has not completed in this environment.
@@ -340,7 +340,7 @@ Implemented:
 
 Verification status:
 
-- `git diff --check -- Source/BlueprintHelper/Private/Widgets/Review/SBlueprintHelperReviewPanel.cpp Source/BlueprintHelper/Public/Widgets/Review/SBlueprintHelperReviewPanel.h Source/BlueprintHelper/Private/Widgets/Review/BlueprintHelperReviewGraphBounds.cpp Resources/Plan/BlueprintHelper_ReviewPanel_UserSide_Implementation_Plan_20260506.md` passed.
+- `git diff --check -- Source/BlueprintHelper/Private/Widgets/Review/SBlueprintHelperReviewPanel.cpp Source/BlueprintHelper/Public/Widgets/Review/SBlueprintHelperReviewPanel.h Source/BlueprintHelper/Private/Widgets/Review/BlueprintHelperReviewGraphBounds.cpp Develop/Plan/BlueprintHelper_ReviewPanel_UserSide_Implementation_Plan_20260506.md` passed.
 - Trailing whitespace scan over the touched Review panel, graph-bounds helper, and plan files passed.
 - Static scan confirms `AcceptAllAssetChange`, `RejectAllAssetChange`, `TickGraphDiffBoundsRefresh`, and `CommentStylePadding = 50.0f` are present.
 - `Build.bat MrStoneEditor Win64 Development -Project="G:\UnrealPractise\MrStone\MrStone.uproject" -WaitMutex -NoHotReloadFromIDE` was retried, but UBT still stopped before plugin C++ compilation because it cannot write/rename project and sibling-plugin `Intermediate` files, ending on `G:\UnrealPractise\MrStone\Intermediate\Build\SourceFileCache.bin` access denied.
