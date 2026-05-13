@@ -70,79 +70,22 @@ For repository work, use normal shell and editor tools. For editor assets, use C
 
 ## Quick Install Path
 
-### Claude Code Plugin Install
-
-1. Add the marketplace source and install the plugin:
+Add the marketplace source and install the Claude plugin:
 
 ```text
 /plugin marketplace add <your-git-remote-or-local-path>
 /plugin install blueprint-helper@blueprint-helper-dev
 ```
 
-2. Restart Claude Code.
+Restart Claude Code, then run:
 
-3. Configure the project agent profile.
-
-Store the UE version and engine root in the project agent profile:
-
-```json
-{
-  "environment": {
-    "ue_version": "5.6",
-    "ue_engine_dir": "<UE_ENGINE_ROOT>"
-  }
-}
+```text
+/blueprint-helper:setup
 ```
 
-Save this under `<ProjectDir>/.blueprinthelper/agent-profile.json`. Project `.uproject` paths are not stored in Claude global settings. Agents discover the target `.uproject` from the current workspace and pass it as the explicit `project_file` tool argument when launching or building a project.
+The setup command writes the project agent profile, keeps or creates default Conservative preferences, and asks for at most one diagnostics result. It does not run shell commands or the full preference wizard.
 
-4. Build the shared task core and CLI packages:
-
-```powershell
-cd <PLUGIN_ROOT>\AgentFaceService\task-core
-npm install
-npm run build
-
-cd <PLUGIN_ROOT>\AgentFaceService\cli
-npm install
-npm run build
-```
-
-5. Start Unreal Editor with the target project and confirm the Bridge is reachable at `127.0.0.1:54321`.
-
-### Manual CLI Setup
-
-1. Put this plugin under a UE project plugin directory, for example `YourProject/Plugins/BlueprintHelper`.
-2. Enable the plugin in Unreal Editor.
-3. Build the project if Unreal asks for a rebuild.
-4. Build the CLI package. If you installed BlueprintHelper from an Unreal `BuildPlugin` package, keep the sibling `AgentFaceService` package available separately; UE packaging does not compile or include `AgentFaceService/cli`.
-
-```powershell
-cd <PLUGIN_ROOT>\AgentFaceService\task-core
-npm install
-npm run build
-
-cd <PLUGIN_ROOT>\AgentFaceService\cli
-npm install
-npm run build
-```
-
-5. Set Bridge connection environment variables when the defaults are not enough:
-
-```powershell
-$env:BRIDGE_HOST = "127.0.0.1"
-$env:BRIDGE_PORT = "54321"
-```
-
-Store the UE engine root in `<ProjectDir>/.blueprinthelper/agent-profile.json` as `environment.ue_engine_dir`; do not put UE version-specific project configuration in global Claude settings.
-
-6. Start Unreal Editor with the project, then call the CLI:
-
-```powershell
-node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js bridge ping
-```
-
-For full CLI usage, read [Docs/TaskSpec_CLI_QuickStart.md](../BlueprintHelper/Docs/TaskSpec_CLI_QuickStart.md) and [Docs/Install_CLI_QuickStart.md](../BlueprintHelper/Docs/Install_CLI_QuickStart.md).
+Detailed manual setup lives in [Docs/Install_CLI_QuickStart.md](../BlueprintHelper/Docs/Install_CLI_QuickStart.md). CLI command syntax lives in [Docs/TaskSpec_CLI_QuickStart.md](../BlueprintHelper/Docs/TaskSpec_CLI_QuickStart.md).
 
 ## Agent Entry Points
 
@@ -163,7 +106,7 @@ Claude Code discovers plugin commands from the plugin root `commands/` directory
 
 | Command | Purpose |
 |---|---|
-| `/blueprint-helper:setup` | Initial setup: UE paths, CLI build, Bridge check, first-run preferences, SetupProfile |
+| `/blueprint-helper:setup` | Minimal first-run setup: project profile, default Conservative preferences, one diagnostics check |
 | `/blueprint-helper:configure` | Update user preferences and active safety profile after setup |
 
 ## User Documentation
