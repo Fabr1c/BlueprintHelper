@@ -1,4 +1,4 @@
-﻿# BlueprintHelper CLI QuickStart
+# BlueprintHelper CLI QuickStart
 
 This guide documents the BlueprintHelper CLI entry for shell-capable Agents.
 
@@ -13,18 +13,18 @@ CLI is the only supported Agent entry. Any remaining MCP endpoint is deprecated 
 ## Prerequisites
 
 - Complete the Bridge and project profile setup before running CLI commands.
-- Build `task-core` and the CLI package so the CLI entry exists under `ClaudePlugin/cli/build/cli/`.
+- Build `task-core` and the CLI package so the CLI entry exists under `AgentFaceService/cli/build/cli/`.
 - Start Unreal Editor with BlueprintHelper loaded and the Bridge reachable.
 - Prepare a `BlueprintHelper.TaskSpec.v1` file such as `.\task_spec.json`.
 
 ## Build
 
 ```powershell
-cd <PLUGIN_ROOT>\ClaudePlugin\task-core
+cd <PLUGIN_ROOT>\AgentFaceService\task-core
 npm install
 npm run build
 
-cd <PLUGIN_ROOT>\ClaudePlugin\cli
+cd <PLUGIN_ROOT>\AgentFaceService\cli
 npm install
 npm run build
 ```
@@ -53,7 +53,7 @@ The direct CLI registry is the current non-frozen Agent-facing tool surface. Fro
 Run preview first. This compiles `BlueprintHelper.TaskSpec.v1`, then uses the Bridge preview and UE-side validation path.
 
 ```powershell
-node <PLUGIN_ROOT>\ClaudePlugin\cli\build\cli\index.js task preview --file .\task_spec.json --format summary
+node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js task preview --file .\task_spec.json --format summary
 ```
 
 Use `--format summary` for normal Agent loops so the shell returns compact text plus artifact paths instead of large escaped JSON blobs.
@@ -61,7 +61,7 @@ Use `--format summary` for normal Agent loops so the shell returns compact text 
 The grouped command remains a convenience alias for the direct tool-name protocol:
 
 ```powershell
-node <PLUGIN_ROOT>\ClaudePlugin\cli\build\cli\index.js blueprinthelper_preview_task --file .\task_spec.json --select status,preview_id,artifacts.full_result
+node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js blueprinthelper_preview_task --file .\task_spec.json --select status,preview_id,artifacts.full_result
 ```
 
 ## Execute
@@ -69,7 +69,7 @@ node <PLUGIN_ROOT>\ClaudePlugin\cli\build\cli\index.js blueprinthelper_preview_t
 Execute only after preview passes. This uses the same Python Task Compiler handoff, Bridge task execution, and UE Task Runtime execution path as `blueprinthelper_execute_task`.
 
 ```powershell
-node <PLUGIN_ROOT>\ClaudePlugin\cli\build\cli\index.js task execute --file .\task_spec.json --format summary
+node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js task execute --file .\task_spec.json --format summary
 ```
 
 ## Read Full Result
@@ -85,7 +85,7 @@ For graph writes, `call_function.name` may be a native name, display name, or ow
 Use `--fields` or `--select` to return only the fields the Agent needs in stdout. Field paths can address top-level fields or nested fields with dot notation. Fields that are not selected are omitted, so routine Agent loops do not need to carry `ok`, `schema`, or the full normalized ToolResult envelope.
 
 ```powershell
-node <PLUGIN_ROOT>\ClaudePlugin\cli\build\cli\index.js task execute --file .\task_spec.json --fields status,task_run_id,summary,artifacts.full_result
+node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js task execute --file .\task_spec.json --fields status,task_run_id,summary,artifacts.full_result
 ```
 
 Example projected output:

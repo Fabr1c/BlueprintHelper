@@ -273,7 +273,10 @@ public:
 			Patch);
 	}
 
-	static TSharedRef<FJsonObject> MakeInsertFlowPayload(const FBlockScopedGraph& Fixture)
+	static TSharedRef<FJsonObject> MakeInsertFlowPayload(
+		const FBlockScopedGraph& Fixture,
+		const FString& FunctionName = TEXT("K2_DestroyActor"),
+		bool bDryRun = false)
 	{
 		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
 
@@ -292,9 +295,9 @@ public:
 		Payload->SetObjectField(TEXT("anchor"), Anchor);
 
 		TSharedRef<FJsonObject> Inserted = MakeShared<FJsonObject>();
-		Inserted->SetStringField(TEXT("function"), TEXT("K2_DestroyActor"));
+		Inserted->SetStringField(TEXT("function"), FunctionName);
 		Payload->SetObjectField(TEXT("inserted"), Inserted);
-		Payload->SetBoolField(TEXT("dry_run"), false);
+		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
 		return Payload;
 	}
 
@@ -435,6 +438,48 @@ public:
 		(*DryRunObject)->TryGetStringField(TEXT("result"), OutDryRunResult);
 		(*DryRunObject)->TryGetBoolField(TEXT("can_execute"), bOutCanExecute);
 		return true;
+	}
+
+	static bool GetFirstMergeDryRunError(
+		const FBlueprintHelperToolResultBase& Result,
+		FString& OutCode,
+		FString& OutMessage)
+	{
+		OutCode.Reset();
+		OutMessage.Reset();
+
+		if (!Result.Data.IsValid())
+		{
+			return false;
+		}
+
+		const TSharedPtr<FJsonObject>* DryRunObject = nullptr;
+		if (!Result.Data->TryGetObjectField(TEXT("dry_run"), DryRunObject) ||
+			!DryRunObject ||
+			!DryRunObject->IsValid())
+		{
+			return false;
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* Errors = nullptr;
+		if (!(*DryRunObject)->TryGetArrayField(TEXT("errors"), Errors) ||
+			!Errors ||
+			Errors->Num() == 0)
+		{
+			return false;
+		}
+
+		const TSharedPtr<FJsonObject> ErrorObject = (*Errors)[0].IsValid()
+			? (*Errors)[0]->AsObject()
+			: nullptr;
+		if (!ErrorObject.IsValid())
+		{
+			return false;
+		}
+
+		ErrorObject->TryGetStringField(TEXT("code"), OutCode);
+		ErrorObject->TryGetStringField(TEXT("message"), OutMessage);
+		return !OutCode.IsEmpty() || !OutMessage.IsEmpty();
 	}
 
 };
@@ -601,6 +646,135 @@ bool FBlueprintHelperGraphWriteMergeInsertFlowBlockScopedAnchorTest::RunTest(con
 	TestTrue(TEXT("insert_flow resolves block-local anchor nodes[0]"), Result.bOk);
 	TestTrue(TEXT("owned anchor Then pin receives inserted flow"), OwnedThenPin && OwnedThenPin->LinkedTo.Num() == 1);
 	TestTrue(TEXT("whole-graph nodes[0] was not used as anchor"), !UnownedThenPin || UnownedThenPin->LinkedTo.Num() == 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteMergeInsertFlowDisplayNameFunctionCallTest,
+	"BlueprintHelper.GraphWrite.BlockScopedAnchors.MergeInsertFlowDisplayNameFunctionCall",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteMergeInsertFlowDisplayNameFunctionCallTest::RunTest(const FString& Parameters)
+{
+	const FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FBlockScopedGraph Fixture = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeBlockScopedGraph(TEXT("MergeInsertFlowDisplayNameFunctionCall"));
+	TestNotNull(TEXT("test blueprint is created"), Fixture.Blueprint);
+	TestNotNull(TEXT("owned entry node is created"), Fixture.OwnedEntry);
+	TestNotNull(TEXT("unowned leading node is created"), Fixture.FirstUnownedEvent);
+	if (!Fixture.Blueprint || !Fixture.OwnedEntry || !Fixture.FirstUnownedEvent)
+	{
+		return false;
+	}
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperLogicJsonPathService PathService;
+	FBlueprintHelperTransactionJournalService JournalService;
+	FBlueprintHelperMergeBlueprintGraphService MergeService(Resolver, PathService, JournalService);
+
+	const FBlueprintHelperToolResultBase Result = MergeService.Execute(
+		FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeInsertFlowPayload(Fixture, TEXT("Print String")));
+
+	UEdGraphPin* OwnedThenPin = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindPinByName(Fixture.OwnedEntry, TEXT("Then"));
+	UEdGraphPin* UnownedThenPin = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindPinByName(Fixture.FirstUnownedEvent, TEXT("Then"));
+	UK2Node_CallFunction* InsertedCall = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindCallFunctionNode(Fixture.Graph, FName(TEXT("PrintString")));
+	UEdGraphPin* InsertedExecIn = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindExecPin(InsertedCall, EGPD_Input);
+
+	TestTrue(TEXT("display-name call_function resolves through merge"), Result.bOk);
+	if (!Result.bOk && Result.Error.IsSet())
+	{
+		TestFalse(TEXT("display-name resolve failure message is diagnosable"), Result.Error->Message.IsEmpty());
+	}
+	TestNotNull(TEXT("PrintString call node is created"), InsertedCall);
+	TestTrue(TEXT("owned anchor Then pin links to resolved PrintString"), OwnedThenPin && InsertedExecIn && OwnedThenPin->LinkedTo.Contains(InsertedExecIn));
+	TestTrue(TEXT("whole-graph nodes[0] was not used as anchor"), !UnownedThenPin || UnownedThenPin->LinkedTo.Num() == 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteMergeInsertFlowQualifiedFunctionCallTest,
+	"BlueprintHelper.GraphWrite.BlockScopedAnchors.MergeInsertFlowQualifiedFunctionCall",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteMergeInsertFlowQualifiedFunctionCallTest::RunTest(const FString& Parameters)
+{
+	const FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FBlockScopedGraph Fixture = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeBlockScopedGraph(TEXT("MergeInsertFlowQualifiedFunctionCall"));
+	TestNotNull(TEXT("test blueprint is created"), Fixture.Blueprint);
+	TestNotNull(TEXT("owned entry node is created"), Fixture.OwnedEntry);
+	TestNotNull(TEXT("unowned leading node is created"), Fixture.FirstUnownedEvent);
+	if (!Fixture.Blueprint || !Fixture.OwnedEntry || !Fixture.FirstUnownedEvent)
+	{
+		return false;
+	}
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperLogicJsonPathService PathService;
+	FBlueprintHelperTransactionJournalService JournalService;
+	FBlueprintHelperMergeBlueprintGraphService MergeService(Resolver, PathService, JournalService);
+
+	const FBlueprintHelperToolResultBase Result = MergeService.Execute(
+		FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeInsertFlowPayload(
+			Fixture,
+			TEXT("/Script/Engine.KismetSystemLibrary:PrintString")));
+
+	UEdGraphPin* OwnedThenPin = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindPinByName(Fixture.OwnedEntry, TEXT("Then"));
+	UEdGraphPin* UnownedThenPin = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindPinByName(Fixture.FirstUnownedEvent, TEXT("Then"));
+	UK2Node_CallFunction* InsertedCall = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindCallFunctionNode(Fixture.Graph, FName(TEXT("PrintString")));
+	UEdGraphPin* InsertedExecIn = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindExecPin(InsertedCall, EGPD_Input);
+
+	TestTrue(TEXT("qualified call_function resolves through merge"), Result.bOk);
+	if (!Result.bOk && Result.Error.IsSet())
+	{
+		TestFalse(TEXT("qualified resolve failure message is diagnosable"), Result.Error->Message.IsEmpty());
+	}
+	TestNotNull(TEXT("PrintString call node is created"), InsertedCall);
+	TestTrue(TEXT("owned anchor Then pin links to qualified PrintString"), OwnedThenPin && InsertedExecIn && OwnedThenPin->LinkedTo.Contains(InsertedExecIn));
+	TestTrue(TEXT("whole-graph nodes[0] was not used as anchor"), !UnownedThenPin || UnownedThenPin->LinkedTo.Num() == 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteMergeMemberPrefixBlocksTest,
+	"BlueprintHelper.GraphWrite.BlockScopedAnchors.MergeMemberPrefixBlocks",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteMergeMemberPrefixBlocksTest::RunTest(const FString& Parameters)
+{
+	const FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FBlockScopedGraph Fixture = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeBlockScopedGraph(TEXT("MergeMemberPrefixBlocks"));
+	TestNotNull(TEXT("test blueprint is created"), Fixture.Blueprint);
+	TestNotNull(TEXT("owned entry node is created"), Fixture.OwnedEntry);
+	if (!Fixture.Blueprint || !Fixture.OwnedEntry)
+	{
+		return false;
+	}
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperLogicJsonPathService PathService;
+	FBlueprintHelperTransactionJournalService JournalService;
+	FBlueprintHelperMergeBlueprintGraphService MergeService(Resolver, PathService, JournalService);
+
+	const FBlueprintHelperToolResultBase Result = MergeService.Execute(
+		FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeInsertFlowPayload(
+			Fixture,
+			TEXT("DoorMesh.AddAngularImpulseInDegrees"),
+			true));
+
+	FString DryRunResult;
+	bool bCanExecute = true;
+	TestTrue(TEXT("dry-run status is present"), FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::GetMergeDryRunStatus(Result, DryRunResult, bCanExecute));
+	TestFalse(TEXT("member-prefix function call preview is blocked"), Result.bOk);
+	TestEqual(TEXT("dry-run result is blocked"), DryRunResult, FString(TEXT("blocked")));
+	TestFalse(TEXT("dry-run cannot execute"), bCanExecute);
+	TestTrue(TEXT("member-prefix block returns top-level error"),
+		Result.Error.IsSet() &&
+		Result.Error->Code == TEXT("inserted_logic_not_found") &&
+		Result.Error->Message.Contains(TEXT("explicit_member_call_not_supported")));
+
+	FString FirstErrorCode;
+	FString FirstErrorMessage;
+	TestTrue(TEXT("dry-run error carries resolver diagnostic"),
+		FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::GetFirstMergeDryRunError(Result, FirstErrorCode, FirstErrorMessage));
+	TestEqual(TEXT("dry-run error code is stable"), FirstErrorCode, FString(TEXT("inserted_logic_not_found")));
+	TestTrue(TEXT("dry-run error message names resolver block"),
+		FirstErrorMessage.Contains(TEXT("explicit_member_call_not_supported")));
 	return true;
 }
 

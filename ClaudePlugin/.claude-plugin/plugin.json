@@ -10,7 +10,7 @@
   "mcpServers": {
     "blueprint-helper": {
       "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/mcp/build/index.js"],
+      "args": ["${CLAUDE_PLUGIN_ROOT}/../AgentFaceService/mcp/build/index.js"],
       "env": {
         "BRIDGE_HOST": "127.0.0.1",
         "BRIDGE_PORT": "54321"
