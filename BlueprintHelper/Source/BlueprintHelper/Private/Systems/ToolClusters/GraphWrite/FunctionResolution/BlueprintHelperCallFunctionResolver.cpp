@@ -16,6 +16,27 @@ static FString NormalizeForCompare(const FString& Value)
 	return Result.ToLower();
 }
 
+static FString NormalizeCompactForCompare(const FString& Value)
+{
+	const FString Normalized = NormalizeForCompare(Value);
+	FString Result;
+	Result.Reserve(Normalized.Len());
+	for (const TCHAR Character : Normalized)
+	{
+		if (FChar::IsAlnum(Character))
+		{
+			Result.AppendChar(Character);
+		}
+	}
+	return Result;
+}
+
+static bool CompactEquals(const FString& Left, const FString& Right)
+{
+	const FString NormalizedLeft = NormalizeCompactForCompare(Left);
+	return !NormalizedLeft.IsEmpty() && NormalizedLeft == NormalizeCompactForCompare(Right);
+}
+
 static FString GetOwnerClassPath(const UFunction* Function)
 {
 	const UClass* OwnerClass = Function ? Function->GetOwnerClass() : nullptr;
@@ -288,6 +309,12 @@ static int32 ScoreCandidate(
 	if (Candidate.DisplayName.Equals(Query, ESearchCase::IgnoreCase))
 	{
 		OutMatchReason = TEXT("display exact");
+		return 850;
+	}
+
+	if (CompactEquals(Candidate.NativeFunctionName, Query) || CompactEquals(Candidate.DisplayName, Query))
+	{
+		OutMatchReason = TEXT("compact exact");
 		return 850;
 	}
 

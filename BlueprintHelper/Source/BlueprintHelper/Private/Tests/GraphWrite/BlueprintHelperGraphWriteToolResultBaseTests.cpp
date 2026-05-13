@@ -2,10 +2,14 @@
 
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "Blueprint/WidgetTree.h"
+#include "Components/CanvasPanel.h"
+#include "Components/TextBlock.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraphSchema_K2.h"
 #include "Engine/Blueprint.h"
 #include "Engine/BlueprintGeneratedClass.h"
+#include "Engine/DataTable.h"
 #include "Engine/SCS_Node.h"
 #include "Engine/SimpleConstructionScript.h"
 #include "GameFramework/Actor.h"
@@ -52,10 +56,12 @@
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
 #include "UObject/Class.h"
+#include "UObject/NoExportTypes.h"
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
+#include "WidgetBlueprint.h"
 
 class FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils
 {
@@ -941,6 +947,216 @@ public:
 		return Payload;
 	}
 
+	struct FWidgetRuntimeDryRunFixture
+	{
+		UPackage* Package = nullptr;
+		UWidgetBlueprint* Blueprint = nullptr;
+		UCanvasPanel* Root = nullptr;
+	};
+
+	static FWidgetRuntimeDryRunFixture MakeWidgetRuntimeDryRunFixture(const FString& Prefix)
+	{
+		FWidgetRuntimeDryRunFixture Fixture;
+		Fixture.Package = MakeGraphWriteTestPackage(Prefix);
+		Fixture.Blueprint = NewObject<UWidgetBlueprint>(
+			Fixture.Package,
+			UWidgetBlueprint::StaticClass(),
+			*MakeGraphWriteTestObjectName(TEXT("WBP_TaskRuntimeDryRun")),
+			RF_Public | RF_Standalone | RF_Transactional);
+		if (!Fixture.Blueprint)
+		{
+			return Fixture;
+		}
+
+		Fixture.Blueprint->WidgetTree = NewObject<UWidgetTree>(
+			Fixture.Blueprint,
+			UWidgetTree::StaticClass(),
+			TEXT("WidgetTree"),
+			RF_Transactional);
+		if (!Fixture.Blueprint->WidgetTree)
+		{
+			return Fixture;
+		}
+
+		Fixture.Root = Fixture.Blueprint->WidgetTree->ConstructWidget<UCanvasPanel>(
+			UCanvasPanel::StaticClass(),
+			TEXT("CanvasRoot"));
+		Fixture.Blueprint->WidgetTree->RootWidget = Fixture.Root;
+		Fixture.Package->SetDirtyFlag(false);
+		return Fixture;
+	}
+
+	static UDataTable* MakeVectorDataTableRuntimeDryRunFixture(const FString& Prefix)
+	{
+		UPackage* Package = MakeGraphWriteTestPackage(Prefix);
+		UDataTable* DataTable = NewObject<UDataTable>(
+			Package,
+			UDataTable::StaticClass(),
+			*MakeGraphWriteTestObjectName(TEXT("DT_TaskRuntimeDryRun")),
+			RF_Public | RF_Standalone | RF_Transactional);
+		if (!DataTable)
+		{
+			return nullptr;
+		}
+
+		TMap<FName, const uint8*> RawRows;
+		DataTable->CreateTableFromRawData(RawRows, TBaseStructure<FVector>::Get());
+		Package->SetDirtyFlag(false);
+		return DataTable;
+	}
+
+	static TSharedRef<FJsonObject> MakeStructuredStep(
+		const FString& StepId,
+		const FString& Capability,
+		const FString& AssetPath,
+		const FString& Strategy,
+		const TSharedRef<FJsonObject>& Op)
+	{
+		TSharedRef<FJsonObject> Step = MakeShared<FJsonObject>();
+		Step->SetStringField(TEXT("step_id"), StepId);
+		Step->SetStringField(TEXT("capability"), Capability);
+
+		TSharedRef<FJsonObject> Target = MakeShared<FJsonObject>();
+		Target->SetStringField(TEXT("asset_path"), AssetPath);
+		Step->SetObjectField(TEXT("target"), Target);
+
+		TArray<TSharedPtr<FJsonValue>> Ops;
+		Ops.Add(MakeShared<FJsonValueObject>(Op));
+
+		TSharedRef<FJsonObject> Write = MakeShared<FJsonObject>();
+		Write->SetStringField(TEXT("strategy"), Strategy);
+		Write->SetArrayField(TEXT("ops"), Ops);
+		Step->SetObjectField(TEXT("write"), Write);
+		return Step;
+	}
+
+	static TSharedRef<FJsonObject> MakeMultiStepTaskPlanPayload(
+		const FString& TaskName,
+		const FString& TaskType,
+		const FString& AssetPath,
+		const TArray<TSharedPtr<FJsonValue>>& Steps)
+	{
+		TArray<TSharedPtr<FJsonValue>> TargetAssets;
+		TargetAssets.Add(MakeShared<FJsonValueString>(AssetPath));
+
+		TSharedRef<FJsonObject> ExecutionPolicy = MakeShared<FJsonObject>();
+		ExecutionPolicy->SetStringField(TEXT("dry_run_mode"), TEXT("full"));
+		ExecutionPolicy->SetBoolField(TEXT("should_compile"), false);
+		ExecutionPolicy->SetBoolField(TEXT("should_save"), false);
+
+		TSharedRef<FJsonObject> TaskPlan = MakeShared<FJsonObject>();
+		TaskPlan->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.TaskPlan.v1"));
+		TaskPlan->SetStringField(TEXT("task_name"), TaskName);
+		TaskPlan->SetStringField(TEXT("task_type"), TaskType);
+		TaskPlan->SetStringField(TEXT("context_id"), TEXT("ctx_task_runtime_planned_state"));
+		TaskPlan->SetArrayField(TEXT("target_assets"), TargetAssets);
+		TaskPlan->SetObjectField(TEXT("execution_policy"), ExecutionPolicy);
+		TaskPlan->SetArrayField(TEXT("steps"), Steps);
+
+		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+		Payload->SetObjectField(TEXT("task_plan"), TaskPlan);
+		return Payload;
+	}
+
+	static TSharedRef<FJsonObject> MakeWidgetPlannedPropertyDryRunPayload(const FString& AssetPath)
+	{
+		TSharedRef<FJsonObject> AddOp = MakeShared<FJsonObject>();
+		AddOp->SetStringField(TEXT("op"), TEXT("add_widget"));
+		AddOp->SetStringField(TEXT("widget_class"), TEXT("TextBlock"));
+		AddOp->SetStringField(TEXT("widget_name"), TEXT("PlannedText"));
+		AddOp->SetStringField(TEXT("parent_widget_name"), TEXT("CanvasRoot"));
+
+		TSharedRef<FJsonObject> SetOp = MakeShared<FJsonObject>();
+		SetOp->SetStringField(TEXT("op"), TEXT("set_widget_property"));
+		SetOp->SetStringField(TEXT("widget_name"), TEXT("PlannedText"));
+		SetOp->SetStringField(TEXT("property_path"), TEXT("Text"));
+		SetOp->SetStringField(TEXT("value"), TEXT("Preview Only"));
+
+		TArray<TSharedPtr<FJsonValue>> Steps;
+		Steps.Add(MakeShared<FJsonValueObject>(MakeStructuredStep(
+			TEXT("step_add_widget"),
+			TEXT("umg_widget"),
+			AssetPath,
+			TEXT("widget_tree_edit"),
+			AddOp)));
+		Steps.Add(MakeShared<FJsonValueObject>(MakeStructuredStep(
+			TEXT("step_set_widget_text"),
+			TEXT("umg_widget"),
+			AssetPath,
+			TEXT("widget_property_edit"),
+			SetOp)));
+
+		return MakeMultiStepTaskPlanPayload(
+			TEXT("WidgetPlannedPropertyDryRun"),
+			TEXT("edit_umg_widget"),
+			AssetPath,
+			Steps);
+	}
+
+	static TSharedRef<FJsonObject> MakeDataTablePlannedRowUpdateDryRunPayload(const FString& AssetPath)
+	{
+		TSharedRef<FJsonObject> AddFields = MakeShared<FJsonObject>();
+		AddFields->SetNumberField(TEXT("X"), 1.0);
+		AddFields->SetNumberField(TEXT("Y"), 2.0);
+		AddFields->SetNumberField(TEXT("Z"), 3.0);
+
+		TSharedRef<FJsonObject> AddOp = MakeShared<FJsonObject>();
+		AddOp->SetStringField(TEXT("op"), TEXT("add_row"));
+		AddOp->SetStringField(TEXT("row_name"), TEXT("FutureRow"));
+		AddOp->SetObjectField(TEXT("fields"), AddFields);
+
+		TSharedRef<FJsonObject> UpdateFields = MakeShared<FJsonObject>();
+		UpdateFields->SetNumberField(TEXT("X"), 4.0);
+
+		TSharedRef<FJsonObject> UpdateOp = MakeShared<FJsonObject>();
+		UpdateOp->SetStringField(TEXT("op"), TEXT("update_row"));
+		UpdateOp->SetStringField(TEXT("row_name"), TEXT("FutureRow"));
+		UpdateOp->SetObjectField(TEXT("fields"), UpdateFields);
+
+		TArray<TSharedPtr<FJsonValue>> Steps;
+		Steps.Add(MakeShared<FJsonValueObject>(MakeStructuredStep(
+			TEXT("step_add_row"),
+			TEXT("data_table"),
+			AssetPath,
+			TEXT("row_edit"),
+			AddOp)));
+		Steps.Add(MakeShared<FJsonValueObject>(MakeStructuredStep(
+			TEXT("step_update_row"),
+			TEXT("data_table"),
+			AssetPath,
+			TEXT("row_edit"),
+			UpdateOp)));
+
+		return MakeMultiStepTaskPlanPayload(
+			TEXT("DataTablePlannedRowUpdateDryRun"),
+			TEXT("edit_data_table"),
+			AssetPath,
+			Steps);
+	}
+
+	static void AssertRuntimePreviewCanExecute(
+		FAutomationTestBase& Test,
+		const FBlueprintHelperToolResultBase& Result,
+		int32 ExpectedStepCount)
+	{
+		Test.TestTrue(TEXT("runtime preview succeeds"), Result.bOk);
+		Test.TestEqual(TEXT("runtime preview status is dry-run"), Result.Status, EBlueprintHelperToolStatus::DryRun);
+		Test.TestNotNull(TEXT("runtime preview data exists"), Result.Data.Get());
+
+		const TArray<TSharedPtr<FJsonValue>>* Steps = nullptr;
+		Test.TestTrue(TEXT("runtime preview has child steps"),
+			Result.Data.IsValid() && Result.Data->TryGetArrayField(TEXT("steps"), Steps));
+		Test.TestEqual(TEXT("runtime preview child step count"), Steps ? Steps->Num() : 0, ExpectedStepCount);
+
+		const TSharedPtr<FJsonObject>* DryRun = nullptr;
+		Test.TestTrue(TEXT("runtime preview has dry_run summary"),
+			Result.Data.IsValid() && Result.Data->TryGetObjectField(TEXT("dry_run"), DryRun));
+		bool bCanExecute = false;
+		Test.TestTrue(TEXT("dry_run.can_execute is present"),
+			DryRun && DryRun->IsValid() && (*DryRun)->TryGetBoolField(TEXT("can_execute"), bCanExecute));
+		Test.TestTrue(TEXT("planned-state dry-run can execute"), bCanExecute);
+	}
+
 	static TSharedRef<FJsonObject> MakeReplaceBodyOp()
 	{
 		TSharedRef<FJsonObject> Op = MakeShared<FJsonObject>();
@@ -1759,6 +1975,13 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperTransactionJournalLegacyGuidCreatedNodePathBecomesNodeGuidTest::RunTest(const FString& Parameters)
 {
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("LegacyGuidAnchor"));
+	TestNotNull(TEXT("legacy guid review blueprint is created"), Blueprint);
+	if (!Blueprint)
+	{
+		return false;
+	}
+
 	const FString ArchiveSessionId = FString::Printf(
 		TEXT("archive_legacy_guid_anchor_%s"),
 		*FGuid::NewGuid().ToString(EGuidFormats::Digits));
@@ -1770,7 +1993,7 @@ bool FBlueprintHelperTransactionJournalLegacyGuidCreatedNodePathBecomesNodeGuidT
 	JournalRecord.TaskRunId = TEXT("task_legacy_guid_anchor");
 	JournalRecord.Tool = TEXT("AppendBlueprintGraph");
 	JournalRecord.Status = TEXT("applied");
-	JournalRecord.TargetAssets.Add(TEXT("/Game/BP_LegacyGuidAnchor.BP_LegacyGuidAnchor"));
+	JournalRecord.TargetAssets.Add(Blueprint->GetPathName());
 	JournalRecord.GraphId = TEXT("EventGraph");
 	JournalRecord.GraphName = TEXT("EventGraph");
 	JournalRecord.CreatedNodePaths.Add(LegacyNodeGuid);
@@ -1814,12 +2037,20 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperTransactionJournalStructuredAnchorsCreateBlockRecordedBoundsTest::RunTest(const FString& Parameters)
 {
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("StructuredAnchorBounds"));
+	TestNotNull(TEXT("structured anchor review blueprint is created"), Blueprint);
+	if (!Blueprint)
+	{
+		return false;
+	}
+
+	const FString AssetPath = Blueprint->GetPathName();
 	const FString ArchiveSessionId = FString::Printf(
 		TEXT("archive_structured_anchor_bounds_%s"),
 		*FGuid::NewGuid().ToString(EGuidFormats::Digits));
 
 	FBlueprintHelperGraphReviewNodeAnchor FirstAnchor;
-	FirstAnchor.NodePath = TEXT("/Game/BP_Smoke.BP_Smoke:EventGraph.K2Node_First");
+	FirstAnchor.NodePath = FString::Printf(TEXT("%s:EventGraph.K2Node_First"), *AssetPath);
 	FirstAnchor.NodeGuid = FGuid::NewGuid().ToString(EGuidFormats::Digits);
 	FirstAnchor.DisplayLabel = TEXT("First");
 	FirstAnchor.GraphPosition = FVector2D(100.0f, 40.0f);
@@ -1827,7 +2058,7 @@ bool FBlueprintHelperTransactionJournalStructuredAnchorsCreateBlockRecordedBound
 	FirstAnchor.bHasGraphBounds = true;
 
 	FBlueprintHelperGraphReviewNodeAnchor SecondAnchor;
-	SecondAnchor.NodePath = TEXT("/Game/BP_Smoke.BP_Smoke:EventGraph.K2Node_Second");
+	SecondAnchor.NodePath = FString::Printf(TEXT("%s:EventGraph.K2Node_Second"), *AssetPath);
 	SecondAnchor.NodeGuid = FGuid::NewGuid().ToString(EGuidFormats::Digits);
 	SecondAnchor.DisplayLabel = TEXT("Second");
 	SecondAnchor.GraphPosition = FVector2D(500.0f, 120.0f);
@@ -1840,7 +2071,7 @@ bool FBlueprintHelperTransactionJournalStructuredAnchorsCreateBlockRecordedBound
 	JournalRecord.TaskRunId = TEXT("task_structured_anchor_bounds");
 	JournalRecord.Tool = TEXT("ReplaceBlueprintGraph");
 	JournalRecord.Status = TEXT("applied");
-	JournalRecord.TargetAssets.Add(TEXT("/Game/BP_Smoke.BP_Smoke"));
+	JournalRecord.TargetAssets.Add(AssetPath);
 	JournalRecord.GraphId = TEXT("EventGraph");
 	JournalRecord.GraphName = TEXT("EventGraph");
 	JournalRecord.BlockIds.Add(TEXT("EventGraph_SmokeBlock"));
@@ -2420,6 +2651,98 @@ bool FBlueprintHelperGraphWriteTaskRuntimeCallFunctionMemberPrefixPreviewBlocksT
 	TestTrue(TEXT("runtime dry-run error message names member-prefix block"),
 		FirstErrorMessage.Contains(TEXT("explicit_member_call_not_supported")) ||
 		FirstErrorMessage.Contains(TEXT("explicit member prefix")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTaskRuntimeUMGWidgetDryRunUsesPlannedWidgetStateTest,
+	"BlueprintHelper.TaskRuntime.UMGWidget.DryRunUsesPlannedWidgetState",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperTaskRuntimeUMGWidgetDryRunUsesPlannedWidgetStateTest::RunTest(const FString& Parameters)
+{
+	const FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FWidgetRuntimeDryRunFixture Fixture =
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeWidgetRuntimeDryRunFixture(TEXT("RuntimeUMGPlannedWidget"));
+	TestNotNull(TEXT("WidgetBlueprint fixture is created"), Fixture.Blueprint);
+	TestNotNull(TEXT("WidgetBlueprint root exists"), Fixture.Root);
+	if (!Fixture.Blueprint || !Fixture.Root)
+	{
+		return false;
+	}
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness Harness;
+	const FBlueprintHelperToolResultBase Preview = Harness.RuntimeService.PreviewTaskPlan(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeWidgetPlannedPropertyDryRunPayload(Fixture.Blueprint->GetPathName()));
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AssertRuntimePreviewCanExecute(*this, Preview, 2);
+	TestNull(TEXT("dry-run does not create planned widget"),
+		Fixture.Blueprint->WidgetTree->FindWidget(FName(TEXT("PlannedText"))));
+
+	const TArray<TSharedPtr<FJsonValue>>* Steps = nullptr;
+	TestTrue(TEXT("preview exposes child steps"),
+		Preview.Data.IsValid() && Preview.Data->TryGetArrayField(TEXT("steps"), Steps));
+	if (Steps && Steps->Num() >= 2)
+	{
+		const TSharedPtr<FJsonObject> SecondStep = (*Steps)[1].IsValid() ? (*Steps)[1]->AsObject() : nullptr;
+		const TSharedPtr<FJsonObject>* ResultObject = nullptr;
+		const TSharedPtr<FJsonObject>* DataObject = nullptr;
+		const TSharedPtr<FJsonObject>* DryRunObject = nullptr;
+		FString PreviewKind;
+		TestTrue(TEXT("planned widget second step has result"),
+			SecondStep.IsValid() && SecondStep->TryGetObjectField(TEXT("result"), ResultObject));
+		TestTrue(TEXT("planned widget second step has data"),
+			ResultObject && ResultObject->IsValid() && (*ResultObject)->TryGetObjectField(TEXT("data"), DataObject));
+		TestTrue(TEXT("planned widget second step has dry_run"),
+			DataObject && DataObject->IsValid() && (*DataObject)->TryGetObjectField(TEXT("dry_run"), DryRunObject));
+		TestTrue(TEXT("planned widget preview kind is explicit"),
+			DryRunObject && DryRunObject->IsValid() && (*DryRunObject)->TryGetStringField(TEXT("preview_kind"), PreviewKind));
+		TestEqual(TEXT("planned widget preview kind"), PreviewKind, FString(TEXT("task_runtime_planned_widget")));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTaskRuntimeDataTableDryRunUsesPlannedRowStateTest,
+	"BlueprintHelper.TaskRuntime.DataTable.DryRunUsesPlannedRowState",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperTaskRuntimeDataTableDryRunUsesPlannedRowStateTest::RunTest(const FString& Parameters)
+{
+	UDataTable* DataTable = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeVectorDataTableRuntimeDryRunFixture(TEXT("RuntimeDataTablePlannedRow"));
+	TestNotNull(TEXT("DataTable fixture is created"), DataTable);
+	if (!DataTable)
+	{
+		return false;
+	}
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness Harness;
+	const FBlueprintHelperToolResultBase Preview = Harness.RuntimeService.PreviewTaskPlan(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeDataTablePlannedRowUpdateDryRunPayload(DataTable->GetPathName()));
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AssertRuntimePreviewCanExecute(*this, Preview, 2);
+	TestNull(TEXT("dry-run does not create planned row"),
+		DataTable->FindRowUnchecked(FName(TEXT("FutureRow"))));
+
+	const TArray<TSharedPtr<FJsonValue>>* Steps = nullptr;
+	TestTrue(TEXT("preview exposes child steps"),
+		Preview.Data.IsValid() && Preview.Data->TryGetArrayField(TEXT("steps"), Steps));
+	if (Steps && Steps->Num() >= 2)
+	{
+		const TSharedPtr<FJsonObject> SecondStep = (*Steps)[1].IsValid() ? (*Steps)[1]->AsObject() : nullptr;
+		const TSharedPtr<FJsonObject>* ResultObject = nullptr;
+		const TSharedPtr<FJsonObject>* DataObject = nullptr;
+		const TSharedPtr<FJsonObject>* DryRunObject = nullptr;
+		FString PreviewKind;
+		TestTrue(TEXT("planned row second step has result"),
+			SecondStep.IsValid() && SecondStep->TryGetObjectField(TEXT("result"), ResultObject));
+		TestTrue(TEXT("planned row second step has data"),
+			ResultObject && ResultObject->IsValid() && (*ResultObject)->TryGetObjectField(TEXT("data"), DataObject));
+		TestTrue(TEXT("planned row second step has dry_run"),
+			DataObject && DataObject->IsValid() && (*DataObject)->TryGetObjectField(TEXT("dry_run"), DryRunObject));
+		TestTrue(TEXT("planned row preview kind is explicit"),
+			DryRunObject && DryRunObject->IsValid() && (*DryRunObject)->TryGetStringField(TEXT("preview_kind"), PreviewKind));
+		TestEqual(TEXT("planned row preview kind"), PreviewKind, FString(TEXT("task_runtime_planned_data_table_row")));
+	}
 	return true;
 }
 

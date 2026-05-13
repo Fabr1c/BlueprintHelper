@@ -1,4 +1,7 @@
 import { strict as assert } from 'node:assert';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import test from 'node:test';
 import { getBlueprintHelperToolRegistry } from '../../tool-surface/tool-registry.js';
 import type { TaskSpecRunner } from '../../task/service/task-spec-runner.js';
@@ -88,6 +91,52 @@ test('shared registry does not expose frozen direct tools', () => {
 
   for (const name of frozenToolNames) {
     assert.equal(names.has(name), false, name);
+  }
+});
+
+test('read agent guide resolves from task-core cwd through plugin ancestor layout', async () => {
+  const tool = getBlueprintHelperToolRegistry().find((candidate) => candidate.name === 'blueprinthelper_read_agent_guide');
+  assert.ok(tool);
+
+  const result = await tool.execute({}, {
+    cwd: process.cwd(),
+    bridge: {} as never,
+    taskRunner: {} as TaskSpecRunner,
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.operation, 'blueprinthelper_read_agent_guide');
+  assert.equal(result.data?.['schema'], 'AgentGuideMarkdown.v1');
+  assert.equal(result.data?.['format'], 'markdown');
+  assert.match(String(result.data?.['markdown'] ?? ''), /BlueprintHelper/i);
+});
+
+test('read agent guide resolves from project root plugin copy layout', async () => {
+  const tool = getBlueprintHelperToolRegistry().find((candidate) => candidate.name === 'blueprinthelper_read_agent_guide');
+  assert.ok(tool);
+
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-agent-guide-'));
+  try {
+    const guideDir = path.join(tempRoot, 'Plugins', 'BlueprintHelper', 'BlueprintHelper', 'Resources', 'AgentGuide');
+    fs.mkdirSync(guideDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(guideDir, '00_Agent_Onboarding_Index_20260504.md'),
+      '# BlueprintHelper AgentGuide\n\nFixture guide.',
+      'utf8',
+    );
+
+    const result = await tool.execute({}, {
+      cwd: tempRoot,
+      bridge: {} as never,
+      taskRunner: {} as TaskSpecRunner,
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.data?.['schema'], 'AgentGuideMarkdown.v1');
+    assert.equal(Object.hasOwn(result.data ?? {}, 'path'), false);
+    assert.match(String(result.data?.['markdown'] ?? ''), /Fixture guide/);
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
   }
 });
 

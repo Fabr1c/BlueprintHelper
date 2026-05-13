@@ -76,6 +76,9 @@ public:
 	/** 读取 Json -> 蓝图规则 Markdown。 */
 	FString GetJsonToBlueprintRuleMarkdown() const;
 
+	/** 获取 BlueprintHelper Bridge 当前是否运行。 */
+	bool IsBridgeServerRunning() const;
+
 	// ─── Service Layer 访问 ───
 
 	const FBlueprintHelperGraphResolver& GetGraphResolver() const { return *GraphResolver; }

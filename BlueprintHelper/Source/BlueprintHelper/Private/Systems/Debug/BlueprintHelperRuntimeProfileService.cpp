@@ -1,6 +1,7 @@
 // BlueprintHelper Service Layer 。Runtime Profile 服务实现
 
 #include "Systems/Debug/BlueprintHelperRuntimeProfileService.h"
+#include "Entry/BlueprintHelper.h"
 #include "Shared/Debug/BlueprintHelperRuntimeProfileTypes.h"
 #include "Shared/BlueprintHelperToolResultTypes.h"
 #include "Systems/Authorization/BlueprintHelperWriteAuthorizationService.h"
@@ -26,9 +27,16 @@ FBlueprintHelperRuntimeProfileData FBlueprintHelperRuntimeProfileService::GetRun
 
 EBlueprintHelperBridgeStatus FBlueprintHelperRuntimeProfileService::DetectBridgeStatus()
 {
-	// 简化实现：检查进程是否运行（Server 已在模块启动时创建）
-	// 实际更精确的判断需。BridgeServer 暴露 IsRunning() 接口
-	return EBlueprintHelperBridgeStatus::Connected;
+	const FBlueprintHelperModule* Module =
+		FModuleManager::GetModulePtr<FBlueprintHelperModule>(TEXT("BlueprintHelper"));
+	if (!Module)
+	{
+		return EBlueprintHelperBridgeStatus::Unknown;
+	}
+
+	return Module->IsBridgeServerRunning()
+		? EBlueprintHelperBridgeStatus::Connected
+		: EBlueprintHelperBridgeStatus::Disconnected;
 }
 
 EBlueprintHelperConfigStatus FBlueprintHelperRuntimeProfileService::DetectConfigStatus()

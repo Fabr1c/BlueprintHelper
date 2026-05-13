@@ -542,11 +542,6 @@ TSharedRef<SWidget> FBlueprintHelperReviewRowHighlightModel::BuildRowHighlightOv
 
 	TArray<TSharedPtr<FBlueprintHelperReviewVisibleChange>> HighlightedItems;
 	TMap<FString, FString> PrimaryTargetByChangeId;
-	TSharedPtr<SCanvas> ComponentOverlayCanvas;
-	if (Surface == EBlueprintHelperReviewSurface::Components)
-	{
-		SAssignNew(ComponentOverlayCanvas, SCanvas);
-	}
 
 	for (const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Item : *Args.ChangeItems)
 	{
@@ -641,19 +636,6 @@ TSharedRef<SWidget> FBlueprintHelperReviewRowHighlightModel::BuildRowHighlightOv
 
 		if (bResolved)
 		{
-			if (Surface == EBlueprintHelperReviewSurface::Components)
-			{
-				const FString ActionAssetPath = CurrentAssetPath.IsEmpty() ? Item->AssetPath : CurrentAssetPath;
-				AddComponentRowOverlay(
-					ComponentOverlayCanvas,
-					Anchor,
-					ResolveRowHighlightColor(ActionAssetPath, Surface, TargetText),
-					ActionAssetPath,
-					Surface,
-					TargetText,
-					IsSameChange(Item, Args.SelectedChange));
-			}
-
 			EmitDedupedRowHighlightDebug(
 				Args.AddDebugMessage,
 				FString::Printf(
@@ -681,11 +663,6 @@ TSharedRef<SWidget> FBlueprintHelperReviewRowHighlightModel::BuildRowHighlightOv
 			Item->ChangeId,
 			TEXT("pending"),
 			Reason);
-	}
-
-	if (ComponentOverlayCanvas.IsValid() && ComponentOverlayCanvas->GetChildren()->Num() > 0)
-	{
-		return ComponentOverlayCanvas.ToSharedRef();
 	}
 
 	return SNullWidget::NullWidget;

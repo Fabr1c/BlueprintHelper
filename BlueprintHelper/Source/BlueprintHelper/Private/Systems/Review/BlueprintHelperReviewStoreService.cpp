@@ -418,6 +418,40 @@ public:
 		return JsonValues;
 	}
 
+	static TSharedRef<FJsonObject> MakeReviewJsonVector2D(const FVector2D& Value)
+	{
+		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+		Json->SetNumberField(TEXT("x"), Value.X);
+		Json->SetNumberField(TEXT("y"), Value.Y);
+		return Json;
+	}
+
+	static bool ReadReviewJsonVector2D(
+		const TSharedPtr<FJsonObject>& Json,
+		const TCHAR* FieldName,
+		FVector2D& OutValue)
+	{
+		const TSharedPtr<FJsonObject>* VectorJson = nullptr;
+		if (!Json.IsValid() ||
+			!Json->TryGetObjectField(FieldName, VectorJson) ||
+			!VectorJson ||
+			!VectorJson->IsValid())
+		{
+			return false;
+		}
+
+		double X = 0.0;
+		double Y = 0.0;
+		if (!(*VectorJson)->TryGetNumberField(TEXT("x"), X) ||
+			!(*VectorJson)->TryGetNumberField(TEXT("y"), Y))
+		{
+			return false;
+		}
+
+		OutValue = FVector2D(X, Y);
+		return true;
+	}
+
 	static TSharedRef<FJsonObject> ReviewAtomicTargetToJson(const FBlueprintHelperReviewAtomicTarget& Target)
 	{
 		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
@@ -439,6 +473,12 @@ public:
 		if (!Target.RecordedAfterHash.IsEmpty()) Json->SetStringField(TEXT("recorded_after_hash"), Target.RecordedAfterHash);
 		if (!Target.BaselineHash.IsEmpty()) Json->SetStringField(TEXT("baseline_hash"), Target.BaselineHash);
 		if (!Target.RollbackDataRef.IsEmpty()) Json->SetStringField(TEXT("rollback_data_ref"), Target.RollbackDataRef);
+		if (Target.bHasGraphBounds)
+		{
+			Json->SetBoolField(TEXT("has_graph_bounds"), true);
+			Json->SetObjectField(TEXT("graph_position"), MakeReviewJsonVector2D(Target.GraphPosition));
+			Json->SetObjectField(TEXT("graph_size"), MakeReviewJsonVector2D(Target.GraphSize));
+		}
 		Json->SetStringField(TEXT("status"), BlueprintHelperReviewChangeStatusToString(Target.Status));
 		return Json;
 	}
@@ -648,6 +688,9 @@ public:
 						TargetJson->TryGetStringField(TEXT("recorded_after_hash"), Target.RecordedAfterHash);
 						TargetJson->TryGetStringField(TEXT("baseline_hash"), Target.BaselineHash);
 						TargetJson->TryGetStringField(TEXT("rollback_data_ref"), Target.RollbackDataRef);
+						TargetJson->TryGetBoolField(TEXT("has_graph_bounds"), Target.bHasGraphBounds);
+						ReadReviewJsonVector2D(TargetJson, TEXT("graph_position"), Target.GraphPosition);
+						ReadReviewJsonVector2D(TargetJson, TEXT("graph_size"), Target.GraphSize);
 						FString TargetStatus;
 						TargetJson->TryGetStringField(TEXT("status"), TargetStatus);
 						Target.Status = ParseReviewChangeStatus(TargetStatus);

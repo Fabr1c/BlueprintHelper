@@ -234,6 +234,33 @@ public:
 			: EventNode->CustomFunctionName.ToString();
 	}
 
+	static UFunction* FindOwnedCustomEventFunction(UBlueprint* Blueprint, const FString& EventName)
+	{
+		if (!Blueprint || EventName.IsEmpty())
+		{
+			return nullptr;
+		}
+
+		const FName FunctionName(*EventName);
+		if (Blueprint->SkeletonGeneratedClass)
+		{
+			if (UFunction* Function = Blueprint->SkeletonGeneratedClass->FindFunctionByName(FunctionName))
+			{
+				return Function;
+			}
+		}
+
+		if (Blueprint->GeneratedClass && Blueprint->GeneratedClass != Blueprint->SkeletonGeneratedClass)
+		{
+			if (UFunction* Function = Blueprint->GeneratedClass->FindFunctionByName(FunctionName))
+			{
+				return Function;
+			}
+		}
+
+		return nullptr;
+	}
+
 	struct FOwnedBlockCallableCheck
 	{
 		bool bOk = false;
@@ -288,7 +315,7 @@ public:
 			return Result;
 		}
 
-		Result.Function = ResolveMergeCallableFunction(Blueprint, Graph, Result.EventName, nullptr, nullptr, &Result.Candidate);
+		Result.Function = FindOwnedCustomEventFunction(Blueprint, Result.EventName);
 		if (!Result.Function)
 		{
 			Result.Code = TEXT("inserted_logic_requires_compile");
@@ -831,7 +858,7 @@ bool FBlueprintHelperMergeBlueprintGraphService::ResolveInsertedLogic(
 				return false;
 			}
 
-			UK2Node_CallFunction* CallNode = FBlueprintHelperMergeBlueprintGraphServiceLocalUtils::CreateMergeCallFunctionNode(Context.Graph, InsertedCheck.Candidate);
+			UK2Node_CallFunction* CallNode = FBlueprintHelperMergeBlueprintGraphServiceLocalUtils::CreateMergeCallFunctionNode(Context.Graph, InsertedCheck.Function);
 			if (!CallNode)
 			{
 				OutErrorCode = TEXT("inserted_logic_not_callable");

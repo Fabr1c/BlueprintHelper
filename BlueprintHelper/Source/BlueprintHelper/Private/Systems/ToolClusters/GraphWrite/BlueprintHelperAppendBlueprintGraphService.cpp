@@ -182,6 +182,7 @@ FBlueprintHelperAppendBlueprintGraphService::ParseRequest(const TSharedPtr<FJson
 	Payload->TryGetStringField(TEXT("feature_name"), Request.FeatureName);
 	Payload->TryGetBoolField(TEXT("dry_run"), Request.bDryRun);
 	Payload->TryGetBoolField(TEXT("reuse_existing_entries"), Request.bReuseExistingEntries);
+	Payload->TryGetBoolField(TEXT("allow_existing_graph"), Request.bAllowExistingGraph);
 
 	const TArray<TSharedPtr<FJsonValue>>* NodesArray = nullptr;
 	if (Payload->TryGetArrayField(TEXT("nodes"), NodesArray))
@@ -318,7 +319,7 @@ bool FBlueprintHelperAppendBlueprintGraphService::PreflightGraphTarget(
 				return true;
 			}
 
-			if (Request.bReuseExistingEntries)
+			if (Request.bReuseExistingEntries || Request.bAllowExistingGraph)
 			{
 				return true;
 			}

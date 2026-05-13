@@ -117,7 +117,7 @@ export async function runCli(runtime: CliRuntime): Promise<number> {
 
     if (command.kind === 'bridge.ping') {
       const bridge = getBridge(runtime);
-      const response = await bridge.sendCommand('get_editor_context', {});
+      const response = await bridge.sendCommand('ping', {});
       const toolResult = response.success
         ? successRead('bridge_ping', { target_type: 'asset' }, normalizeBridgeData(response))
         : bridgeFailureResult('bridge_ping', response);

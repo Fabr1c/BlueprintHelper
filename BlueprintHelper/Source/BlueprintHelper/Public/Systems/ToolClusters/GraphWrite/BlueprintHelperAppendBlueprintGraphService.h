@@ -41,6 +41,7 @@ private:
 		FString FeatureName;
 		bool bDryRun = false;
 		bool bReuseExistingEntries = false;
+		bool bAllowExistingGraph = false;
 		TArray<TSharedPtr<FJsonValue>> Nodes;
 		TArray<TSharedPtr<FJsonValue>> Links;
 	};

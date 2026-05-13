@@ -19,6 +19,15 @@ const agentGuideRelativePath = path.join(
   'AgentGuide',
   '00_Agent_Onboarding_Index_20260504.md',
 );
+const agentGuidePackagedRelativePath = path.join(
+  'Resources',
+  'AgentGuide',
+  '00_Agent_Onboarding_Index_20260504.md',
+);
+const agentGuideProjectPluginRelativePaths = [
+  path.join('Plugins', 'BlueprintHelper', 'BlueprintHelper', agentGuidePackagedRelativePath),
+  path.join('Plugins', 'BlueprintHelper', agentGuidePackagedRelativePath),
+];
 
 export const localToolNames = new Set([
   'blueprinthelper_read_agent_guide',
@@ -55,8 +64,19 @@ export async function executeLocalTool(
 }
 
 function readAgentGuide(context: BlueprintHelperToolContext): ToolResultBase {
+  const guidePath = resolveAgentGuidePath(context.cwd);
+  if (!guidePath) {
+    return failureResult('blueprinthelper_read_agent_guide', {
+      code: 'agent_guide_not_found',
+      stage: 'execute',
+      message: `AgentGuide not found from cwd ${context.cwd}.`,
+      retryable: false,
+      rollback_result: 'not_needed',
+    });
+  }
+
   try {
-    const markdown = fs.readFileSync(path.join(context.cwd, agentGuideRelativePath), 'utf8');
+    const markdown = fs.readFileSync(guidePath, 'utf8');
     return successRead('blueprinthelper_read_agent_guide', { target_type: 'asset' }, {
       schema: 'AgentGuideMarkdown.v1',
       format: 'markdown',
@@ -70,6 +90,36 @@ function readAgentGuide(context: BlueprintHelperToolContext): ToolResultBase {
       retryable: false,
       rollback_result: 'not_needed',
     });
+  }
+}
+
+function resolveAgentGuidePath(cwd: string): string | undefined {
+  const candidateRoots = ancestorDirs(path.resolve(cwd));
+  for (const root of candidateRoots) {
+    const candidates = [
+      path.join(root, agentGuideRelativePath),
+      path.join(root, agentGuidePackagedRelativePath),
+      ...agentGuideProjectPluginRelativePaths.map((relativePath) => path.join(root, relativePath)),
+    ];
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+  }
+  return undefined;
+}
+
+function ancestorDirs(start: string): string[] {
+  const dirs: string[] = [];
+  let current = start;
+  for (;;) {
+    dirs.push(current);
+    const parent = path.dirname(current);
+    if (parent === current) {
+      return dirs;
+    }
+    current = parent;
   }
 }
 

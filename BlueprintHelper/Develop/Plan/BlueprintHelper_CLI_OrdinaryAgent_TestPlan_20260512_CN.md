@@ -2064,3 +2064,170 @@ Next fixes:
 - 失败用例返回可诊断 `code/path/message`，且无 UE 写入副作用。
 - 未出现 token/session/raw payload/local bundle path 泄漏。
 - 未使用任何非 CLI 入口作为替代路径。
+
+## 2026-05-13 阶段结果回写（Codex 首轮）
+
+### 本轮范围
+- 1.1 CLI 可启动
+- 1.3 冻结直连命令隔离
+- 2.1 Static diagnostics
+- 2.4 Runtime profile 预检
+- 2.5 Runtime diagnostics
+- Bridge ping 烟雾检查
+
+### 本轮执行说明
+- 用户确认 Unreal Editor 已启动，且 h 已可用。
+- 实际执行入口使用 C:\Users\CharlieNotFound\AppData\Roaming\npm\bh.cmd。
+- 原因：PowerShell h.ps1 受 Execution Policy 影响时，h.cmd 可作为当前终端下的稳定 CLI 入口。
+
+### 阶段结果
+- PASS: h --help
+  - Exit code:  
+  - stdout 包含 BlueprintHelper CLI
+  - stdout 包含 direct tool / task preview / task execute / task result / context read / bridge ping / bridge call 用法
+- PASS: h blueprinthelper_diagnostics --json "{}" --select status,summary
+  - Exit code:  
+  - stdout: {"status":"completed","summary":{"warnings":0,"errors":0,"modified":false}}
+- PASS: h blueprint_exec_console_command --json '{"command":"stat fps"}' --expert
+  - 结果：CLI 明确拒绝该冻结/非普通 Agent 入口
+  - stdout/stderr 关键信息：Unsupported BlueprintHelper CLI command: blueprint_exec_console_command ...
+  - 判定：符合“普通 Agent 不暴露冻结直连命令”的预期方向
+- PARTIAL: h blueprint_get_runtime_profile --json "{}" --select status,summary
+  - 一次执行返回：{"status":"completed","summary":{"warnings":0,"errors":0,"modified":false}}
+  - 后续在未裁剪字段的复查中出现超时，结果不稳定，当前不能据此判定 runtime 链路完全恢复
+- BLOCKED: h blueprinthelper_diagnostics_runtime --json "{}" --select status,summary
+  - 本轮返回：{"status":"bridge_unavailable"}
+  - 判定：运行时 Bridge/Editor 链路仍不可稳定使用
+- BLOCKED: h bridge ping
+  - 本轮表现：30s 超时
+  - 判定：Bridge 可达性需要单独排查
+
+### 阶段结论
+- 当前已确认 CLI 入口层可测，且普通 Agent CLI 命令面基本符合预期。
+- 当前未确认运行时 Bridge 链路稳定，因此本轮不进入 read/write、preview/execute/get result、read-back 资产级测试。
+- 在 lueprinthelper_diagnostics_runtime 与 ridge ping 稳定通过前，后续 2.5 之后的大部分用例应标记为 blocked。
+
+### 当前判定
+- Pass: CLI 启动、静态预检、冻结命令隔离
+- Partial: runtime profile 预检结果存在一次成功但复查不稳定
+- Fail/Blocked: runtime diagnostics、bridge ping
+
+### 下一步建议
+- 先排查 Bridge 可达性与稳定性，再继续 3.x 上下文读取与 4.x/5.x 之后写入链路测试。
+- 运行时恢复后，优先按顺序补测：lueprinthelper_diagnostics_runtime -> lueprinthelper_read_task_context -> lueprinthelper_read_context -> lueprinthelper_preview_task。
+## 2026-05-13 阶段结果回写（Codex 第二轮：Bridge 修复后只读验证）
+
+### 本轮范围
+- Bridge 恢复验证
+- 2.2 Agent guide 可读
+- 2.4 Runtime profile
+- 2.5 Runtime diagnostics
+- CLI ridge ping
+
+### 前置说明
+- 本轮基于用户确认：Unreal Editor 已启动，h 已可用。
+- 本轮前已修复两类实现问题：
+  - Bridge 服务端连接生命周期问题，避免连接卡死导致后续请求超时。
+  - RuntimeProfile Bridge 状态误报问题，不再硬编码 Connected。
+- 实际执行入口：C:\Users\CharlieNotFound\AppData\Roaming\npm\bh.cmd
+
+### 阶段结果
+- PASS: h bridge ping --select status
+  - Exit code:  
+  - stdout: {"status":"bridge_available"}
+  - 判定：CLI 到 UE Bridge 的最小读链路已恢复。
+- PASS: h blueprint_get_runtime_profile --json "{}" --select status,summary
+  - Exit code:  
+  - stdout: {"status":"completed","summary":{"warnings":0,"errors":0,"modified":false}}
+  - 判定：runtime profile 普通 Agent 入口可用，且本轮不再出现先前的超时/假连通状态结论。
+- PASS: h blueprinthelper_diagnostics_runtime --json "{}" --select status,summary
+  - Exit code:  
+  - stdout: {"status":"completed","summary":{"warnings":0,"errors":0,"modified":false}}
+  - 判定：runtime diagnostics 普通 Agent 入口可用。
+- PASS: h blueprinthelper_read_agent_guide --json "{}" --select status,artifacts.full_result
+  - Exit code:  
+  - stdout: {"status":"completed","artifacts":{"full_result":"D:\\UEProjects\\Template\\Plugins\\BlueprintHelper\\Saved\\BlueprintHelper\\Cli\\cli_1778666573842\\result.json"}}
+  - 判定：Agent guide 读取链路可用，artifact 正常生成。
+
+### 本轮结论
+- 先前阻塞普通 Agent 测试的 Bridge/runtime 只读链路已恢复。
+- 当前可进入 3.x 上下文读取测试，以及随后基于 TaskSpec 的 preview/write 会话前置验证。
+- 到本轮为止，普通 Agent CLI 的可用状态可更新为：
+  - Pass: CLI 启动、静态 diagnostics、runtime profile、runtime diagnostics、bridge ping、agent guide 读取、冻结命令隔离
+  - Pending: 3.x 上下文读取、4.x 写权限会话、5.x 之后 preview/execute/get result/read-back 资产级测试
+
+### 下一阶段建议顺序
+- 3.1 lueprinthelper_read_task_context
+- 3.2 / 3.3 / 3.4 / 3.5 lueprinthelper_read_context
+- 3.6 lueprinthelper_read_reference_context
+- 4.1 写权限会话
+- 5.1 preview
+## 2026-05-13 阶段结果回写（Codex 第三轮：3.x 读取与 4.x/5.x 写链前置）
+
+### 本轮范围
+- 3.1 lueprinthelper_read_task_context
+- 3.2 lueprinthelper_read_context schema
+- 3.6 lueprinthelper_read_reference_context
+- 4.1 lueprinthelper_request_write_session
+- 5.1 lueprinthelper_preview_task（create_asset smoke）
+
+### 本轮执行说明
+- 为避免 CLI --file JSON 解析报错，本轮将临时输入文件统一改为 UTF-8 无 BOM。
+- smoke 资产根路径使用：/Game/BlueprintHelperCliSmoke/BH_CLI_20260513_01
+- 本轮尚未进入 execute；先确认 preview 与 write-session 前置链路。
+
+### 阶段结果
+- FAIL: lueprinthelper_read_task_context
+  - 输入：	arget.asset_path=/Game/BlueprintHelperCliSmoke/BH_CLI_20260513_01/BP_CliAgentActor
+  - artifact 关键信息：
+    - operation=read_task_context
+    - error.code=task_context_read_failed
+    - error.message=Bridge connection error: read ECONNRESET
+  - 判定：这是实现缺陷，不是目标资产不存在导致的正常业务失败。
+- PASS: lueprinthelper_read_context schema
+  - stdout: {"status":"completed","artifacts":{"full_result":"..."}}
+  - artifact 关键信息：
+    - operation=read_context
+    - data.schema=ReadContextPack.v1
+    - data.payload.schema=BlueprintLogicReadSchema.v1
+    - 	arget_types=["blueprint","graph","function","event","custom_event","block"]
+    - ormats=["logic_md","logic_json","summary","schema"]
+  - 判定：3.2 schema 读取通过。
+- FAIL: lueprinthelper_read_reference_context
+  - stdout: status=failed
+  - artifact 关键信息：
+    - error.code=asset_not_found
+    - error.stage=resolve_target
+    - message=Target asset was not found: /Game/BlueprintHelperCliSmoke/BH_CLI_20260513_01/BP_CliAgentActor
+  - 判定：这是符合预期的业务失败，说明 smoke 资产尚未创建。
+- PASS: ridge call --command get_editor_context
+  - artifact 显示当前无 active blueprint / active graph：
+    - ctive_blueprint_path=""
+    - ctive_graph_name=""
+  - 判定：Bridge 读链可用，但当前没有可复用的已打开蓝图上下文。
+- PASS: lueprinthelper_preview_task for create_asset / ST_CliAgentRow
+  - stdout: status=preview_passed
+  - 	ask_type=create_asset
+  - planned_steps=1
+- PASS: lueprinthelper_preview_task for create_asset / BP_CliAgentActor
+  - stdout: status=preview_passed
+  - 	ask_type=create_asset
+  - planned_steps=1
+- BLOCKED: lueprinthelper_request_write_session
+  - 结果：status=bridge_unavailable
+  - message: Bridge request timed out after 30000ms
+  - 判定：4.1 写权限会话当前未通过，导致 execute 阶段不能继续作为正向用例推进。
+
+### 新发现实现问题
+- ead_task_context 存在 ECONNRESET 缺陷，需要单独排查 TaskContext 路径。
+- 并行启动两个 preview_task 调用时，返回了相同 preview_id=preview_1778666883187_0001，存在并发 ID 碰撞风险；后续测试应避免并行 preview/execute，且该问题应记录为实现缺陷。
+
+### 本轮结论
+- 3.x 中：ead_context schema 已通过；ead_reference_context 受 smoke 资产未创建限制；ead_task_context 有独立实现缺陷。
+- 5.1 preview 链路对 create_asset 已可用。
+- 当前主阻塞转移到 4.1 equest_write_session，未通过前不能继续 execute/read-back 正向写入验证。
+
+### 下一步建议
+- 先解决 equest_write_session 30s 超时，必要时在 Editor 中立即确认授权提示后重试。
+- ead_task_context 的 ECONNRESET 需要单独建缺陷并修复后回归。
+- 写权限恢复后，按顺序继续：create_asset execute -> get_task_result -> 重新跑 3.1/3.6/3.3/3.4/3.5。

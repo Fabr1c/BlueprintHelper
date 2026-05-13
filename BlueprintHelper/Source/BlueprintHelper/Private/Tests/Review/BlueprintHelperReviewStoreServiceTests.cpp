@@ -1440,6 +1440,77 @@ bool FBlueprintHelperReviewSelectedRowShowsAcceptRejectActionsTest::RunTest(cons
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewRowActionsRemainSelectedChangeOnlyTest,
+	"BlueprintHelper.Review.UI.RowActionsRemainSelectedChangeOnly",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewRowActionsRemainSelectedChangeOnlyTest::RunTest(const FString& Parameters)
+{
+	const FString AssetPath = TEXT("/Game/BlueprintHelper/Smoke/ReviewAssetSelection");
+	TArray<TSharedPtr<FBlueprintHelperReviewVisibleChange>> Items;
+	auto AddVariableChange = [&Items, &AssetPath](const FString& Name)
+	{
+		FBlueprintHelperReviewVisibleChange Change;
+		Change.ChangeId = FString::Printf(TEXT("tx_action_reselect_%s"), *Name);
+		Change.AssetPath = AssetPath;
+		Change.DisplayLabel = Name;
+		Change.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
+
+		FBlueprintHelperReviewAtomicTarget Target;
+		Target.Surface = EBlueprintHelperReviewSurface::MyBlueprint;
+		Target.TargetKind = TEXT("blueprint_variable");
+		Target.TargetKey = FString::Printf(TEXT("blueprint_variable:%s"), *Name);
+		Target.DisplayLabel = Name;
+		Change.AtomicTargets.Add(Target);
+		Items.Add(MakeShared<FBlueprintHelperReviewVisibleChange>(Change));
+	};
+	AddVariableChange(TEXT("SmokeHP"));
+	AddVariableChange(TEXT("SmokeMP"));
+
+	FBlueprintHelperReviewAssetContext Context;
+	Context.AssetPath = AssetPath;
+	Context.AssetKind = EBlueprintHelperReviewAssetKind::Blueprint;
+
+	auto BuildForSelected = [&Context, &Items](const TSharedPtr<FBlueprintHelperReviewVisibleChange>& SelectedChange)
+	{
+		FBlueprintHelperReviewPanelSurfacePresenterArgs Args;
+		Args.AssetContext = &Context;
+		Args.ChangeItems = &Items;
+		Args.SelectedChange = SelectedChange;
+		Args.GetChangeColor = [](EBlueprintHelperReviewChangeKind)
+		{
+			return FSlateColor(FLinearColor::Yellow);
+		};
+		FBlueprintHelperReviewMyBlueprintPresenter::BuildOverlay(Args);
+	};
+
+	BuildForSelected(Items[0]);
+	TestTrue(TEXT("first selected row exposes actions"),
+		FBlueprintHelperReviewRowHighlightModel::GetRowActionsVisibility(
+			AssetPath,
+			EBlueprintHelperReviewSurface::MyBlueprint,
+			TEXT("blueprint_variable:SmokeHP")) == EVisibility::Visible);
+	TestTrue(TEXT("second row hides actions before reselection"),
+		FBlueprintHelperReviewRowHighlightModel::GetRowActionsVisibility(
+			AssetPath,
+			EBlueprintHelperReviewSurface::MyBlueprint,
+			TEXT("blueprint_variable:SmokeMP")) == EVisibility::Collapsed);
+
+	BuildForSelected(Items[1]);
+	TestTrue(TEXT("previously selected row hides actions after reselection"),
+		FBlueprintHelperReviewRowHighlightModel::GetRowActionsVisibility(
+			AssetPath,
+			EBlueprintHelperReviewSurface::MyBlueprint,
+			TEXT("blueprint_variable:SmokeHP")) == EVisibility::Collapsed);
+	TestTrue(TEXT("newly selected row exposes actions after reselection"),
+		FBlueprintHelperReviewRowHighlightModel::GetRowActionsVisibility(
+			AssetPath,
+			EBlueprintHelperReviewSurface::MyBlueprint,
+			TEXT("blueprint_variable:SmokeMP")) == EVisibility::Visible);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperReviewEmptySearchTextDoesNotMatchAnyReviewTargetTest,
 	"BlueprintHelper.Review.UI.EmptySearchTextDoesNotMatchAnyReviewTarget",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -2218,8 +2289,13 @@ bool FBlueprintHelperReviewPresenterOverlayShowsOnlyReadySlateRowGeometryTest::R
 	});
 
 	TSharedRef<SWidget> Overlay = FBlueprintHelperReviewBlueprintComponentsPresenter::BuildOverlay(Args);
-	TestTrue(TEXT("component partial geometry exposes selected-row action host"),
-		&Overlay.Get() != &SNullWidget::NullWidget.Get());
+	TestTrue(TEXT("component partial geometry uses row background instead of overlay host"),
+		&Overlay.Get() == &SNullWidget::NullWidget.Get());
+	TestTrue(TEXT("component partial geometry keeps selected-row actions addressable"),
+		FBlueprintHelperReviewRowHighlightModel::GetRowActionsVisibility(
+			Items[0]->AssetPath,
+			EBlueprintHelperReviewSurface::Components,
+			TEXT("component:Target0")) == EVisibility::Visible);
 
 	bool bSawShownRowHighlight0 = false;
 	bool bSawPendingRow1 = false;
@@ -2669,7 +2745,14 @@ bool FBlueprintHelperReviewRecordAggregatesTransactionJournalTaskRunAndCreatedAt
 {
 	const FString ArchiveSessionId =
 		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_tx_journal_review"));
-	const FString AssetPath = TEXT("/Game/BlueprintHelper/Smoke/BP_SmokeActor.BP_SmokeActor");
+	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewNamedBlueprint(TEXT("ReviewAggregateTransaction"));
+	TestNotNull(TEXT("aggregate transaction review blueprint is created"), Blueprint);
+	if (!Blueprint)
+	{
+		return false;
+	}
+
+	const FString AssetPath = Blueprint->GetPathName();
 	const FString RecordId = FBlueprintHelperReviewStoreService::MakeReviewRecordId(ArchiveSessionId, AssetPath);
 	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(RecordId);
 
@@ -2717,6 +2800,112 @@ bool FBlueprintHelperReviewRecordAggregatesTransactionJournalTaskRunAndCreatedAt
 		!Loaded.SourceTransactionSummary.CreatedAtFirst.IsEmpty());
 	TestTrue(TEXT("source summary records created_at_last from journal writes"),
 		!Loaded.SourceTransactionSummary.CreatedAtLast.IsEmpty());
+
+	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(RecordId);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewReplaceBlueprintGraphLiveRecordCreatesDiffBlockTest,
+	"BlueprintHelper.Review.Record.ReplaceBlueprintGraphLiveRecordCreatesDiffBlock",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewReplaceBlueprintGraphLiveRecordCreatesDiffBlockTest::RunTest(const FString& Parameters)
+{
+	const FString ArchiveSessionId =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_replace_live_record"));
+	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewNamedBlueprint(TEXT("ReplaceLiveRecord"));
+	TestNotNull(TEXT("replace live record test blueprint is created"), Blueprint);
+	if (!Blueprint)
+	{
+		return false;
+	}
+
+	const FString AssetPath = Blueprint->GetPathName();
+	const FString RecordId = FBlueprintHelperReviewStoreService::MakeReviewRecordId(ArchiveSessionId, AssetPath);
+	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(RecordId);
+
+	FBlueprintHelperAppendJournalRecord ReplaceRecord;
+	ReplaceRecord.TransactionId = FString::Printf(
+		TEXT("tx_replace_live_%s"),
+		*FGuid::NewGuid().ToString(EGuidFormats::Digits));
+	ReplaceRecord.ArchiveSessionId = ArchiveSessionId;
+	ReplaceRecord.TaskRunId = TEXT("task_replace_live_record");
+	ReplaceRecord.Tool = TEXT("ReplaceBlueprintGraph");
+	ReplaceRecord.Status = TEXT("applied");
+	ReplaceRecord.TargetAssets.Add(AssetPath);
+	ReplaceRecord.GraphId = TEXT("EventGraph");
+	ReplaceRecord.GraphName = TEXT("EventGraph");
+	ReplaceRecord.BlockIds.Add(TEXT("DoorFlow"));
+	ReplaceRecord.RollbackData = TEXT("{\"snapshot\":\"before\"}");
+
+	FBlueprintHelperGraphReviewNodeAnchor Anchor;
+	Anchor.NodePath = FString::Printf(TEXT("%s:EventGraph.K2Node_CallFunction_0"), *AssetPath);
+	Anchor.NodeGuid = FGuid::NewGuid().ToString(EGuidFormats::Digits);
+	Anchor.DisplayLabel = TEXT("Print String");
+	Anchor.bHasGraphBounds = true;
+	Anchor.GraphPosition = FVector2D(120.0f, 80.0f);
+	Anchor.GraphSize = FVector2D(320.0f, 120.0f);
+	ReplaceRecord.CreatedNodeAnchors.Add(Anchor);
+
+	FBlueprintHelperTransactionJournalService JournalService;
+	FString JournalError;
+	TestTrue(TEXT("replace graph journal writes review record"),
+		JournalService.WriteAppendJournal(ReplaceRecord, JournalError));
+
+	FBlueprintHelperReviewStoreService Store;
+	FBlueprintHelperReviewRecord Loaded;
+	FString LoadError;
+	TestTrue(TEXT("replace graph live review record reloads"),
+		Store.LoadReviewRecordById(RecordId, Loaded, LoadError));
+	TestTrue(TEXT("replace operation is recorded"),
+		Loaded.SourceTransactionSummary.OperationKinds.Contains(TEXT("ReplaceBlueprintGraph")));
+
+	const FBlueprintHelperReviewVisibleChange* DiffBlockChange = Loaded.VisibleChanges.FindByPredicate(
+		[](const FBlueprintHelperReviewVisibleChange& Change)
+		{
+			return Change.LocationKey == TEXT("graph:EventGraph:block:EventGraph_DoorFlow");
+		});
+	TestNotNull(TEXT("replace live record creates graph diff block change"), DiffBlockChange);
+	if (!DiffBlockChange)
+	{
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(RecordId);
+		return false;
+	}
+
+	TestTrue(TEXT("diff block routes to graph presenter"),
+		FBlueprintHelperReviewGraphPresenter::ShouldShowChange(*DiffBlockChange));
+
+	const FBlueprintHelperReviewAtomicTarget* BlockTarget = DiffBlockChange->AtomicTargets.FindByPredicate(
+		[](const FBlueprintHelperReviewAtomicTarget& Target)
+		{
+			return Target.TargetKind == TEXT("graph_block");
+		});
+	TestNotNull(TEXT("diff block change contains graph_block target"), BlockTarget);
+	if (BlockTarget)
+	{
+		TestEqual(TEXT("graph block target key is normalized"),
+			BlockTarget->TargetKey,
+			FString(TEXT("graph:EventGraph:block:EventGraph_DoorFlow")));
+		TestTrue(TEXT("graph block carries aggregate bounds"), BlockTarget->bHasGraphBounds);
+		TestEqual(TEXT("graph block aggregate position x"), BlockTarget->GraphPosition.X, 120.0);
+		TestEqual(TEXT("graph block aggregate size y"), BlockTarget->GraphSize.Y, 120.0);
+	}
+
+	const FBlueprintHelperReviewAtomicTarget* NodeTarget = DiffBlockChange->AtomicTargets.FindByPredicate(
+		[](const FBlueprintHelperReviewAtomicTarget& Target)
+		{
+			return Target.TargetKind == TEXT("graph_node");
+		});
+	TestNotNull(TEXT("diff block change includes structured graph node target"), NodeTarget);
+	if (NodeTarget)
+	{
+		TestEqual(TEXT("node target preserves display label"),
+			NodeTarget->DisplayLabel,
+			FString(TEXT("Print String")));
+		TestTrue(TEXT("node target carries recorded bounds"), NodeTarget->bHasGraphBounds);
+		TestFalse(TEXT("node target stores structured anchor json"), NodeTarget->AnchorJson.IsEmpty());
+	}
 
 	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(RecordId);
 	return true;
@@ -3501,13 +3690,21 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FBlueprintHelperReviewJournalBackedEvidenceIncludesHashesTest::RunTest(const FString& Parameters)
 {
 	const FString ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_journal_evidence"));
+	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewNamedBlueprint(TEXT("JournalEvidence"));
+	TestNotNull(TEXT("journal evidence review blueprint is created"), Blueprint);
+	if (!Blueprint)
+	{
+		return false;
+	}
+
+	const FString AssetPath = Blueprint->GetPathName();
 	FBlueprintHelperAppendJournalRecord JournalRecord;
 	JournalRecord.TransactionId = TEXT("tx_journal_evidence");
 	JournalRecord.ArchiveSessionId = ArchiveSessionId;
 	JournalRecord.TaskRunId = TEXT("task_journal_evidence");
 	JournalRecord.Tool = TEXT("AppendBlueprintGraph");
 	JournalRecord.Status = TEXT("applied");
-	JournalRecord.TargetAssets.Add(TEXT("/Game/BP_Door"));
+	JournalRecord.TargetAssets.Add(AssetPath);
 	JournalRecord.GraphId = TEXT("EventGraph");
 	JournalRecord.GraphName = TEXT("EventGraph");
 	JournalRecord.BlockIds.Add(TEXT("DoorFlow"));
@@ -3535,6 +3732,8 @@ bool FBlueprintHelperReviewJournalBackedEvidenceIncludesHashesTest::RunTest(cons
 	TestEqual(TEXT("journal evidence is complete enough to stay pending"),
 		Target.Status,
 		EBlueprintHelperReviewChangeStatus::Pending);
+	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(
+		FBlueprintHelperReviewStoreService::MakeReviewRecordId(ArchiveSessionId, AssetPath));
 	return true;
 }
 
