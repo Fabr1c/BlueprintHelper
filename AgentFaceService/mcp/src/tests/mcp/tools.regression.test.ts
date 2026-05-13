@@ -9,8 +9,9 @@ import { registerWithBridge, registerResourcesWithBridge, invokeTool } from '../
 import { registerSharedRegistryTools } from '../../mcp/tools/shared-registry-adapter.js';
 
 const MCP_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
-const CLAUDE_PLUGIN_ROOT = path.resolve(MCP_ROOT, '..');
-const REPO_ROOT = path.resolve(CLAUDE_PLUGIN_ROOT, '..');
+const SHARED_PLUGIN_ROOT = path.resolve(MCP_ROOT, '..');
+const REPO_ROOT = path.resolve(SHARED_PLUGIN_ROOT, '..');
+const CLAUDE_PLUGIN_ROOT = path.resolve(REPO_ROOT, 'ClaudePlugin');
 const UE_PLUGIN_ROOT = path.resolve(REPO_ROOT, 'BlueprintHelper');
 const FROZEN_DESCRIPTION_PREFIX = 'FROZEN / Expert-only / Normal agents must not call directly';
 
@@ -246,11 +247,12 @@ test('agent-facing tools are not marked frozen', () => {
   assert.equal(openEditor.description?.includes(FROZEN_DESCRIPTION_PREFIX), false);
 });
 
-test('setup command requests only non-frozen BlueprintHelper MCP tool permissions', () => {
+test('setup command validates the CLI surface without requesting MCP tool permissions', () => {
   const text = readFileSync(path.resolve(CLAUDE_PLUGIN_ROOT, 'commands', 'setup.md'), 'utf8');
   const frontMatter = text.match(/^---\r?\n([\s\S]*?)\r?\n---/)?.[1] ?? '';
 
-  assert.doesNotMatch(frontMatter, /\bmcp__blueprint-helper(?:\s|,|$)/);
+  assert.doesNotMatch(frontMatter, /\bmcp__blueprint-helper(?:__|\s|,|$)/);
+  assert.match(text, /BlueprintHelper CLI/);
 
   const expectedTools = [
     'blueprinthelper_read_agent_guide',
@@ -269,7 +271,7 @@ test('setup command requests only non-frozen BlueprintHelper MCP tool permission
   ];
 
   for (const toolName of expectedTools) {
-    assert.match(frontMatter, new RegExp(`mcp__blueprint-helper__${toolName}\\b`));
+    assert.match(text, new RegExp(`\\b${toolName}\\b`));
   }
 
   for (const toolName of FROZEN_EXPERT_TOOL_NAMES) {

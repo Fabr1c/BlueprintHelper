@@ -692,10 +692,19 @@ FBlueprintHelperToolResultBase FBlueprintHelperMergeBlueprintGraphService::Execu
 	FMergePreflightResult Pre = Preflight(Request, Context, Request.bAllowCompileBeforeCall);
 	if (!Pre.bPassed)
 	{
+		const FBlueprintHelperDryRunIssue* FirstIssue = Pre.Conflicts.Num() > 0
+			? &Pre.Conflicts[0]
+			: (Pre.Errors.Num() > 0 ? &Pre.Errors[0] : nullptr);
+
 		FBlueprintHelperToolError Err;
 		Err.Code = Pre.BlockedBy.Num() > 0 ? Pre.BlockedBy[0] : TEXT("preflight_failed");
 		Err.Stage = EBlueprintHelperToolStage::Preflight;
-		Err.Message = Pre.Conflicts.Num() > 0 ? Pre.Conflicts[0].Message : TEXT("Preflight 未通过。");
+		Err.Message = FirstIssue && !FirstIssue->Message.IsEmpty()
+			? FirstIssue->Message
+			: TEXT("Preflight failed.");
+		Err.Field = FirstIssue && !FirstIssue->Source.IsEmpty()
+			? FirstIssue->Source
+			: TEXT("target.graph");
 		Err.bRetryable = false;
 		Err.RollbackResult = EBlueprintHelperRollbackResult::NotNeeded;
 		return FBlueprintHelperToolResultBuilder::Failure(TEXT("merge_blueprint_graph"), TraceId, Err);

@@ -8,6 +8,19 @@
 
 ---
 
+## Status
+
+**2026-05-13 source backwrite**
+
+- Task 1 source is integrated: resolver DTOs, qualified query parsing, conservative callable-function candidate universe, deterministic ranking, and dedicated resolver automation tests now exist in source.
+- Task 2 source is integrated: raw `call_function.name` is preserved for UE-side resolution, `TextToBlueprintGenerator` exposes `ResolveFunctionForGraph`, `CallFunctionNodeHandler` routes spawning through the resolver, legacy `FindFunctionByName()` is retained as fallback only, and graph-generation resolver tests were added.
+- Task 3 source is integrated for the currently supported Merge contract: Merge now resolves inserted function/custom-event calls through the resolver, keeps merge-level `inserted_logic_not_found: call_function resolve failed: ...` error shaping, and has targeted read-back/source coverage for display name, owner-qualified name, and explicit member-prefix blocking.
+- Task 4 remains architecturally open: current source intentionally leaves `call_function.name` raw during TaskRuntime lowering and resolves in the graph-aware Append/Merge layers. Adapter-level TaskRuntime preview coverage was added, but compact structured candidate summaries, preview stable-id facts, and execute stable-id revalidation are still not implemented.
+- Task 5 is integrated against the active workspace layout: `AgentFaceService/task-core` preserves raw owner-qualified names and its Node tests/build were rerun successfully.
+- Task 6 is partially verified: `AgentFaceService/task-core` build and `test:node` passed on 2026-05-13. UE `Build.bat` was attempted with a workspace log path, but UBT stopped before C++ compilation because it first hit a broken `AgentFaceService/node_modules/@blueprinthelper/.task-core-broken` junction target; resolver/GraphWrite UE Automation was therefore not executed in this environment.
+
+---
+
 ## 0. 杈圭晫鏀舵暃
 
 ### 0.1 Agent-facing 涓嶅彉椤?
@@ -128,7 +141,7 @@ TypeScript files should remain unchanged unless a regression proves the compiler
 - Create: `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.cpp`
 - Test: `BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintHelperCallFunctionResolverTests.cpp`
 
-- [ ] **Step 1: Define resolver DTOs**
+- [x] **Step 1: Define resolver DTOs**
 
 Create the header with this public contract:
 
@@ -201,7 +214,7 @@ public:
 };
 ```
 
-- [ ] **Step 2: Implement query parsing**
+- [x] **Step 2: Implement query parsing**
 
 Rules:
 
@@ -219,7 +232,7 @@ ErrorCode = explicit_member_call_not_supported
 Message = call_function.name uses an explicit member prefix; first slice supports graph/self/library calls only.
 ```
 
-- [ ] **Step 3: Build UE action candidates without editor UI state**
+- [x] **Step 3: Build UE action candidates without editor UI state**
 
 Implementation outline:
 
@@ -256,7 +269,7 @@ for (int32 Index = 0; Index < Builder.GetNumActions(); ++Index)
 
 If `ExtractNodeTemplateFromAction` is insufficient for some entries, keep a conservative fallback that scans callable `UFunction` objects and validates them through `UEdGraphSchema_K2::CanFunctionBeUsedInGraph`. The fallback must not skip graph compatibility checks.
 
-- [ ] **Step 4: Implement deterministic ranking**
+- [x] **Step 4: Implement deterministic ranking**
 
 Ranking must produce deterministic order:
 
@@ -284,7 +297,7 @@ top score >= 850 and no second candidate has the same stable id conflict
 or top score >= 700 and it is the only compatible candidate above 0
 ```
 
-- [ ] **Step 5: Add resolver automation tests**
+- [x] **Step 5: Add resolver automation tests**
 
 Add tests under `BlueprintHelper.GraphWrite.CallFunctionResolver`:
 
@@ -335,7 +348,7 @@ TestTrue(TEXT("graph compatible"), Result.Selected.bGraphCompatible);
 - Modify: `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.cpp`
 - Modify: `BlueprintHelper/Source/BlueprintHelper/Public/Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h`
 
-- [ ] **Step 1: Stop stripping qualified function names before resolver**
+- [x] **Step 1: Stop stripping qualified function names before resolver**
 
 Change `FunctionNameForGenerator()` so `call` nodes preserve the raw trimmed TaskSpec value:
 
@@ -348,7 +361,7 @@ static FString FunctionNameForGenerator(const FString& InFunction)
 
 Reason: `/Script/Engine.KismetSystemLibrary:PrintString` must reach the resolver intact. Stripping owner data before UE-side resolution removes the only deterministic disambiguation input available to TaskSpec.
 
-- [ ] **Step 2: Add context-aware resolve helper to TextToBlueprintGenerator**
+- [x] **Step 2: Add context-aware resolve helper to TextToBlueprintGenerator**
 
 Add a wrapper:
 
@@ -371,7 +384,7 @@ DefaultValues.GetKeys(Request.ArgumentNames);
 return FBlueprintHelperCallFunctionResolver::Resolve(Request);
 ```
 
-- [ ] **Step 3: Update CallFunctionNodeHandler**
+- [x] **Step 3: Update CallFunctionNodeHandler**
 
 Replace direct `FindFunctionByName()` use:
 
@@ -400,7 +413,7 @@ if (SpawnedNode)
 return SpawnedNode;
 ```
 
-- [ ] **Step 4: Keep legacy direct resolver as fallback only for expert/internal paths**
+- [x] **Step 4: Keep legacy direct resolver as fallback only for expert/internal paths**
 
 Do not delete `FindFunctionByName()` in this slice. Mark it as legacy fallback in a comment near the function:
 
@@ -409,7 +422,7 @@ Do not delete `FindFunctionByName()` in this slice. Mark it as legacy fallback i
 // ResolveFunctionForGraph so graph compatibility and ambiguity checks run before spawning.
 ```
 
-- [ ] **Step 5: Add graph generation tests**
+- [x] **Step 5: Add graph generation tests**
 
 Extend or add automation tests that generate a graph from TaskSpec-import style nodes:
 
@@ -436,7 +449,7 @@ TestEqual(TEXT("target function"), CallNode->GetFunctionName(), FName(TEXT("Prin
 - Modify: `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/BlueprintHelperMergeBlueprintGraphService.cpp`
 - Test: `BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintHelperGraphWriteBlockScopedAnchorTests.cpp`
 
-- [ ] **Step 1: Replace local merge function resolution**
+- [x] **Step 1: Replace local merge function resolution**
 
 `ResolveMergeCallableFunction()` currently checks skeleton/generated/parent class and then falls back to global `FindFunctionByName()`. Replace this with the new resolver using `Context.Blueprint`, `Context.Graph`, and `Request.InsertedFunctionName`.
 
@@ -449,7 +462,7 @@ Print String -> resolves if unique
 DoorMesh.AddAngularImpulseInDegrees -> blocks with explicit_member_call_not_supported
 ```
 
-- [ ] **Step 2: Keep merge error codes stable**
+- [x] **Step 2: Keep merge error codes stable**
 
 If resolver returns not found or ambiguous, preserve merge-level category:
 
@@ -459,7 +472,7 @@ inserted_logic_not_found: call_function resolve failed: <resolver message>
 
 This keeps existing callers from treating resolver diagnostics as a new low-level capability.
 
-- [ ] **Step 3: Add merge read-back tests**
+- [x] **Step 3: Add merge read-back tests**
 
 Add targeted coverage:
 
@@ -570,7 +583,7 @@ TestFalse(TEXT("no node spawner leak"), Result.DebugSummary.Contains(TEXT("UBlue
 - Test: `ClaudePlugin/mcp/src/tests/task/task-p1-schema.test.ts`
 - Test: `ClaudePlugin/mcp/src/tests/task/task-contract.test.ts`
 
-- [ ] **Step 1: Verify compiler preserves raw name**
+- [x] **Step 1: Verify compiler preserves raw name**
 
 Add or update a test:
 
@@ -587,7 +600,7 @@ assert.deepEqual(compiledNode, {
 
 Expected result: TypeScript compiler does not parse, strip, or validate UE owner qualifiers. UE resolver owns function identity.
 
-- [ ] **Step 2: Keep schema passthrough but document narrower semantics**
+- [x] **Step 2: Keep schema passthrough but document narrower semantics**
 
 No schema addition is required for first slice. The docs should say:
 
@@ -607,7 +620,7 @@ selected objects
 context target mask
 ```
 
-- [ ] **Step 3: Add forbidden example to docs**
+- [x] **Step 3: Add forbidden example to docs**
 
 Document this as blocked:
 
@@ -625,7 +638,7 @@ Required wording:
 Explicit component/member calls are not part of the first CallFunction resolver slice. Preview blocks them instead of interpreting editor selection state.
 ```
 
-- [ ] **Step 4: Run MCP tests**
+- [x] **Step 4: Run MCP tests**
 
 Command:
 
@@ -717,7 +730,7 @@ Existing append/replace/patch/merge tests still pass.
 New resolver tests pass.
 ```
 
-- [ ] **Step 4: Run MCP task tests**
+- [x] **Step 4: Run MCP task tests**
 
 Command:
 

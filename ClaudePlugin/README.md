@@ -34,9 +34,9 @@ Current source metadata:
 | Component | Current value |
 |---|---|
 | Unreal plugin `BlueprintHelper.uplugin` | `VersionName` 0.3.8 |
-| CLI `ClaudePlugin/cli/package.json` | 0.3.8 |
-| Shared task core `ClaudePlugin/task-core/package.json` | 0.3.8 |
-| Deprecated MCP package `ClaudePlugin/mcp/package.json` | 0.3.8 |
+| CLI `AgentFaceService/cli/package.json` | 0.3.8 |
+| Shared task core `AgentFaceService/task-core/package.json` | 0.3.8 |
+| Deprecated MCP package `AgentFaceService/mcp/package.json` | 0.3.8 |
 | Documentation batch | 2026-05-12 CLI-first TaskSpec mainline |
 | Intended UE version | UE 5.3 or newer |
 
@@ -99,11 +99,11 @@ Save this under `<ProjectDir>/.blueprinthelper/agent-profile.json`. Project `.up
 4. Build the shared task core and CLI packages:
 
 ```powershell
-cd <PLUGIN_ROOT>\ClaudePlugin\task-core
+cd <PLUGIN_ROOT>\AgentFaceService\task-core
 npm install
 npm run build
 
-cd <PLUGIN_ROOT>\ClaudePlugin\cli
+cd <PLUGIN_ROOT>\AgentFaceService\cli
 npm install
 npm run build
 ```
@@ -115,14 +115,14 @@ npm run build
 1. Put this plugin under a UE project plugin directory, for example `YourProject/Plugins/BlueprintHelper`.
 2. Enable the plugin in Unreal Editor.
 3. Build the project if Unreal asks for a rebuild.
-4. Build the CLI package. If you installed BlueprintHelper from an Unreal `BuildPlugin` package, keep this `ClaudePlugin` package available separately; UE packaging does not compile or include `ClaudePlugin/cli`.
+4. Build the CLI package. If you installed BlueprintHelper from an Unreal `BuildPlugin` package, keep the sibling `AgentFaceService` package available separately; UE packaging does not compile or include `AgentFaceService/cli`.
 
 ```powershell
-cd <PLUGIN_ROOT>\ClaudePlugin\task-core
+cd <PLUGIN_ROOT>\AgentFaceService\task-core
 npm install
 npm run build
 
-cd <PLUGIN_ROOT>\ClaudePlugin\cli
+cd <PLUGIN_ROOT>\AgentFaceService\cli
 npm install
 npm run build
 ```
@@ -139,7 +139,7 @@ Store the UE engine root in `<ProjectDir>/.blueprinthelper/agent-profile.json` a
 6. Start Unreal Editor with the project, then call the CLI:
 
 ```powershell
-node <PLUGIN_ROOT>\ClaudePlugin\cli\build\cli\index.js bridge ping
+node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js bridge ping
 ```
 
 For full CLI usage, read [Docs/TaskSpec_CLI_QuickStart.md](../BlueprintHelper/Docs/TaskSpec_CLI_QuickStart.md) and [Docs/Install_CLI_QuickStart.md](../BlueprintHelper/Docs/Install_CLI_QuickStart.md).

@@ -33,16 +33,16 @@ Place the plugin at:
 
 Open the project in Unreal Editor, enable BlueprintHelper if needed, and rebuild the project if prompted.
 
-If you use an Unreal `BuildPlugin` package, keep the sibling `ClaudePlugin` package available separately. UE packaging does not compile or include `ClaudePlugin/cli` or `ClaudePlugin/task-core`.
+If you use an Unreal `BuildPlugin` package, keep the sibling `AgentFaceService` package available separately. UE packaging does not compile or include `AgentFaceService/cli` or `AgentFaceService/task-core`.
 
 ## 2. Build The CLI
 
 ```powershell
-cd <PLUGIN_ROOT>\ClaudePlugin\task-core
+cd <PLUGIN_ROOT>\AgentFaceService\task-core
 npm install
 npm run build
 
-cd <PLUGIN_ROOT>\ClaudePlugin\cli
+cd <PLUGIN_ROOT>\AgentFaceService\cli
 npm install
 npm run build
 ```
@@ -103,7 +103,7 @@ See [TaskSpec_CLI_QuickStart.md](TaskSpec_CLI_QuickStart.md) for command syntax 
 Repository verification:
 
 ```powershell
-cd <PLUGIN_ROOT>\ClaudePlugin\cli
+cd <PLUGIN_ROOT>\AgentFaceService\cli
 npm test
 ```
 

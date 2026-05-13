@@ -1023,6 +1023,38 @@ public:
 		return Op;
 	}
 
+	static TSharedRef<FJsonObject> MakeEnsureEntryCallFunctionOp(
+		const FString& EventName,
+		const FString& FunctionName)
+	{
+		TSharedRef<FJsonObject> Statement = MakeShared<FJsonObject>();
+		Statement->SetStringField(TEXT("kind"), TEXT("call_function"));
+		Statement->SetStringField(TEXT("name"), FunctionName);
+
+		TSharedRef<FJsonObject> InString = MakeShared<FJsonObject>();
+		InString->SetStringField(TEXT("kind"), TEXT("literal"));
+		InString->SetStringField(TEXT("value_type"), TEXT("string"));
+		InString->SetStringField(TEXT("value"), TEXT("runtime call_function"));
+
+		TSharedRef<FJsonObject> Args = MakeShared<FJsonObject>();
+		Args->SetObjectField(TEXT("InString"), InString);
+		Statement->SetObjectField(TEXT("args"), Args);
+
+		TArray<TSharedPtr<FJsonValue>> Statements;
+		Statements.Add(MakeShared<FJsonValueObject>(Statement));
+
+		TSharedRef<FJsonObject> Body = MakeShared<FJsonObject>();
+		Body->SetStringField(TEXT("schema"), TEXT("BlueprintLogicSpec.v1"));
+		Body->SetArrayField(TEXT("statements"), Statements);
+
+		TSharedRef<FJsonObject> Op = MakeShared<FJsonObject>();
+		Op->SetStringField(TEXT("op"), TEXT("ensure_entry"));
+		Op->SetStringField(TEXT("entry_type"), TEXT("custom_event"));
+		Op->SetStringField(TEXT("name"), EventName);
+		Op->SetObjectField(TEXT("body"), Body);
+		return Op;
+	}
+
 	struct FGraphWriteRuntimeHarness
 	{
 		FBlueprintHelperGraphResolver Resolver;
@@ -1130,6 +1162,48 @@ public:
 		Test.TestTrue(TEXT("dry_run.can_execute is present"),
 			DryRun && DryRun->IsValid() && (*DryRun)->TryGetBoolField(TEXT("can_execute"), bCanExecute));
 		Test.TestEqual(TEXT("dry_run.can_execute matches child preflight"), bCanExecute, bExpectedCanExecute);
+	}
+
+	static bool GetRuntimeDryRunFirstError(
+		const FBlueprintHelperToolResultBase& Result,
+		FString& OutCode,
+		FString& OutMessage)
+	{
+		OutCode.Reset();
+		OutMessage.Reset();
+
+		if (!Result.Data.IsValid())
+		{
+			return false;
+		}
+
+		const TSharedPtr<FJsonObject>* DryRun = nullptr;
+		if (!Result.Data->TryGetObjectField(TEXT("dry_run"), DryRun) ||
+			!DryRun ||
+			!DryRun->IsValid())
+		{
+			return false;
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* Errors = nullptr;
+		if (!(*DryRun)->TryGetArrayField(TEXT("errors"), Errors) ||
+			!Errors ||
+			Errors->Num() == 0)
+		{
+			return false;
+		}
+
+		const TSharedPtr<FJsonObject> ErrorObject = (*Errors)[0].IsValid()
+			? (*Errors)[0]->AsObject()
+			: nullptr;
+		if (!ErrorObject.IsValid())
+		{
+			return false;
+		}
+
+		ErrorObject->TryGetStringField(TEXT("code"), OutCode);
+		ErrorObject->TryGetStringField(TEXT("message"), OutMessage);
+		return !OutCode.IsEmpty() || !OutMessage.IsEmpty();
 	}
 
 };
@@ -2223,6 +2297,129 @@ bool FBlueprintHelperGraphWriteTaskRuntimeMergeBranchForkOwnedBlockCallReadBackT
 		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::IsExecReachable(AnchorEntry, InsertedCall));
 	TestTrue(TEXT("original successor is reachable from anchor"),
 		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::IsExecReachable(AnchorEntry, OriginalSuccessor));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteTaskRuntimeCallFunctionDisplayNameReadBackTest,
+	"BlueprintHelper.GraphWrite.TaskRuntime.CallFunction.DisplayNameReadBack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteTaskRuntimeCallFunctionDisplayNameReadBackTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("RuntimeCallFunctionDisplayName"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	const FString EventName = TEXT("RuntimeDisplayNameCall");
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness Harness;
+	const TSharedRef<FJsonObject> TaskPlanPayload = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTaskPlanPayload(
+		Blueprint->GetPathName(),
+		Graph->GetName(),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeEnsureEntryCallFunctionOp(EventName, TEXT("Print String")));
+
+	const FBlueprintHelperToolResultBase Preview = Harness.RuntimeService.PreviewTaskPlan(TaskPlanPayload);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AssertRuntimePreviewReachedGraphWriteService(
+		*this,
+		Preview,
+		TEXT("append_blueprint_graph"),
+		true);
+
+	const FBlueprintHelperToolResultBase ExecuteResult = Harness.RuntimeService.ExecuteTaskPlan(TaskPlanPayload);
+	TestTrue(TEXT("runtime display-name call_function execute succeeds"), ExecuteResult.bOk);
+	if (!ExecuteResult.bOk && ExecuteResult.Error.IsSet())
+	{
+		TestFalse(TEXT("execute failure has diagnosable message"), ExecuteResult.Error->Message.IsEmpty());
+	}
+	TestTrue(TEXT("read-back finds event to resolved PrintString exec link"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ExportHasExecLinkFromCustomEventToFunction(Graph, EventName, TEXT("PrintString")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteTaskRuntimeCallFunctionQualifiedNameReadBackTest,
+	"BlueprintHelper.GraphWrite.TaskRuntime.CallFunction.QualifiedNameReadBack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteTaskRuntimeCallFunctionQualifiedNameReadBackTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("RuntimeCallFunctionQualifiedName"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	const FString EventName = TEXT("RuntimeQualifiedNameCall");
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness Harness;
+	const TSharedRef<FJsonObject> TaskPlanPayload = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTaskPlanPayload(
+		Blueprint->GetPathName(),
+		Graph->GetName(),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeEnsureEntryCallFunctionOp(
+			EventName,
+			TEXT("/Script/Engine.KismetSystemLibrary:PrintString")));
+
+	const FBlueprintHelperToolResultBase Preview = Harness.RuntimeService.PreviewTaskPlan(TaskPlanPayload);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AssertRuntimePreviewReachedGraphWriteService(
+		*this,
+		Preview,
+		TEXT("append_blueprint_graph"),
+		true);
+
+	const FBlueprintHelperToolResultBase ExecuteResult = Harness.RuntimeService.ExecuteTaskPlan(TaskPlanPayload);
+	TestTrue(TEXT("runtime qualified call_function execute succeeds"), ExecuteResult.bOk);
+	if (!ExecuteResult.bOk && ExecuteResult.Error.IsSet())
+	{
+		TestFalse(TEXT("execute failure has diagnosable message"), ExecuteResult.Error->Message.IsEmpty());
+	}
+	TestTrue(TEXT("read-back finds qualified event to PrintString exec link"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ExportHasExecLinkFromCustomEventToFunction(Graph, EventName, TEXT("PrintString")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteTaskRuntimeCallFunctionMemberPrefixPreviewBlocksTest,
+	"BlueprintHelper.GraphWrite.TaskRuntime.CallFunction.MemberPrefixPreviewBlocks",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteTaskRuntimeCallFunctionMemberPrefixPreviewBlocksTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("RuntimeCallFunctionMemberPrefix"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness Harness;
+	const FBlueprintHelperToolResultBase Preview = Harness.RuntimeService.PreviewTaskPlan(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTaskPlanPayload(
+			Blueprint->GetPathName(),
+			Graph->GetName(),
+			FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeEnsureEntryCallFunctionOp(
+				TEXT("RuntimeMemberPrefixCall"),
+				TEXT("DoorMesh.AddAngularImpulseInDegrees"))));
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AssertRuntimePreviewReachedGraphWriteService(
+		*this,
+		Preview,
+		TEXT("append_blueprint_graph"),
+		false);
+
+	FString FirstErrorCode;
+	FString FirstErrorMessage;
+	TestTrue(TEXT("runtime dry-run error carries resolver diagnostic"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::GetRuntimeDryRunFirstError(Preview, FirstErrorCode, FirstErrorMessage));
+	TestEqual(TEXT("runtime dry-run error code is resolver code"), FirstErrorCode, FString(TEXT("explicit_member_call_not_supported")));
+	TestTrue(TEXT("runtime dry-run error message names member-prefix block"),
+		FirstErrorMessage.Contains(TEXT("explicit_member_call_not_supported")) ||
+		FirstErrorMessage.Contains(TEXT("explicit member prefix")));
 	return true;
 }
 

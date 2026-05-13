@@ -44,20 +44,20 @@ Agent 浣跨敤鏅€氫粨搴撳伐鍏峰湪褰撳墠椤圭洰宸ヤ綔鍖�
 
 ### 2.1 瀹夎渚濊禆骞舵瀯寤?
 
-鍦?`ClaudePlugin/task-core/` 鍜?`ClaudePlugin/cli/` 鐩綍涓嬫墽琛岋細
+鍦?`AgentFaceService/task-core/` 鍜?`AgentFaceService/cli/` 鐩綍涓嬫墽琛岋細
 
 ```powershell
-cd <PLUGIN_ROOT>\ClaudePlugin\task-core
+cd <PLUGIN_ROOT>\AgentFaceService\task-core
 npm install
 npm run build
 
-cd <PLUGIN_ROOT>\ClaudePlugin\cli
+cd <PLUGIN_ROOT>\AgentFaceService\cli
 npm install
 npm run build
 ```
 
 ### 2.2 楠岃瘉 CLI 鍙繍琛?
-鎵ц `bh --help`锛屾垨浠呮鏌?`ClaudePlugin/cli/build/cli/index.js` 瀛樺湪銆?
+鎵ц `bh --help`锛屾垨浠呮鏌?`AgentFaceService/cli/build/cli/index.js` 瀛樺湪銆?
 ---
 
 ## 闃舵 2.5锛氱‘璁?CLI 鍛戒护闈㈠彲鐢?

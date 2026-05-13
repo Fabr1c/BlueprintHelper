@@ -14,7 +14,7 @@ const candidates = [
 
 const tscPath = candidates.find((candidate) => existsSync(candidate));
 if (!tscPath) {
-  console.error('Unable to find TypeScript compiler. Run npm install in ClaudePlugin/mcp or the current package.');
+  console.error('Unable to find TypeScript compiler. Run npm install in AgentFaceService/mcp or the current package.');
   process.exit(1);
 }
 

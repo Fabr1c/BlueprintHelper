@@ -7,9 +7,9 @@ This file is the human-readable contract for the TaskSpec-first implementation s
 The machine-readable guard is:
 
 ```text
-ClaudePlugin/task-core/src/task/schema/task-contract.ts
-ClaudePlugin/task-core/src/tests/task/task-contract.test.ts
-ClaudePlugin/task-core/src/task/fixtures/task-protocol.fixtures.ts
+AgentFaceService/task-core/src/task/schema/task-contract.ts
+AgentFaceService/task-core/src/tests/task/task-contract.test.ts
+AgentFaceService/task-core/src/task/fixtures/task-protocol.fixtures.ts
 ```
 
 The supported chain is:
@@ -874,7 +874,7 @@ Completed task journals may include `generated_intent`, produced from the execut
 
 ```json
 {
-  "generated_intent": "使用 GraphWrite 写入蓝图逻辑了 BP_Door.BH_Door"
+  "generated_intent": "使用 GraphWrite 写入蓝图逻辑�?BP_Door.BH_Door"
 }
 ```
 
@@ -1008,10 +1008,10 @@ Resolved smoke finding, 2026-05-06: LogicJson `target_type=custom_event` lookup 
 
 Any new TaskSpec or TaskPlan capability must update all of these together:
 
-1. `ClaudePlugin/task-core/src/task/schema/task-contract.ts`
-2. `ClaudePlugin/task-core/src/tests/task/task-contract.test.ts`
-3. `ClaudePlugin/task-core/src/task/fixtures/task-protocol.fixtures.ts`
-4. `ClaudePlugin/task-core/python/blueprinthelper_task/*`
+1. `AgentFaceService/task-core/src/task/schema/task-contract.ts`
+2. `AgentFaceService/task-core/src/tests/task/task-contract.test.ts`
+3. `AgentFaceService/task-core/src/task/fixtures/task-protocol.fixtures.ts`
+4. `AgentFaceService/task-core/python/blueprinthelper_task/*`
 5. UE Task Runtime validation or execution code if the TaskPlan shape changes.
 6. This contract document.
 
