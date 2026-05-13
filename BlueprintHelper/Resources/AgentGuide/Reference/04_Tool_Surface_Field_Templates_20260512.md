@@ -9,6 +9,25 @@ This page documents only the normal Agent-facing tool surface and TaskSpec field
 - `blueprinthelper_preview_task` and `blueprinthelper_execute_task` wrap the TaskSpec under root field `task_spec`.
 - Graph body function calls may use `args`; that is not a BlueprintHelper tool wrapper.
 
+## 1.1 CLI Output Trimming
+
+The CLI summary output is intentionally small, and full payloads are written to artifacts. Use `--select` or `--fields` whenever stdout size matters.
+
+Use `--omit` when the default summary is useful but specific fields should be removed:
+
+```powershell
+bh blueprinthelper_preview_task --file task-spec.json --omit operation,status
+```
+
+Use `--select` / `--fields` when only a small whitelist is needed:
+
+```powershell
+bh blueprinthelper_execute_task --file task-spec.json --select task_run_id,artifacts.full_result
+bh task result --id task_xxx --select summary.target_assets,artifacts.full_result
+```
+
+Use `--max-bytes <n>` as a hard stdout budget. When the budget is exceeded, read `artifacts.full_result` instead of rerunning the command with a broader selection.
+
 ## 2. Allowed Tool Names
 
 Use `tools/list` as final authority. Normal Agent-facing tools:

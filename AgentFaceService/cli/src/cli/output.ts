@@ -21,6 +21,7 @@ export interface CliCommand {
   toolName?: string;
   file?: string;
   json?: string;
+  params?: Record<string, unknown>;
   stdin?: boolean;
   expert?: boolean;
   taskRunId?: string;
@@ -28,6 +29,7 @@ export interface CliCommand {
   artifactDir?: string;
   maxBytes?: number;
   fields?: string[];
+  omitFields?: string[];
 }
 
 export interface CliOutputRuntime {
@@ -116,7 +118,7 @@ export function writeCliResult(
     });
   }
 
-  const output = projectCliFields(buildOutput(command, toolResult, artifactRefs, extra), command.fields);
+  const output = shapeCliOutput(buildOutput(command, toolResult, artifactRefs, extra), command.fields, command.omitFields);
   const text = `${JSON.stringify(output)}\n`;
   if (command.maxBytes !== undefined && Buffer.byteLength(text, 'utf8') > command.maxBytes) {
     const budgetResult = outputTooLargeResult(command, artifactRefs);
@@ -134,15 +136,24 @@ export function buildCliError(input: {
   message: string;
   artifactRefs?: Record<string, string>;
   fields?: string[];
+  omitFields?: string[];
 }): Record<string, unknown> {
-  return projectCliFields(omitUndefined({
+  return shapeCliOutput(omitUndefined({
     ok: false,
     schema: CLI_RESULT_SCHEMA,
     operation: input.operation,
     status: input.status,
     message: input.message,
     artifacts: input.artifactRefs,
-  }), input.fields);
+  }), input.fields, input.omitFields);
+}
+
+export function shapeCliOutput(
+  output: Record<string, unknown>,
+  fields?: string[],
+  omitFields?: string[],
+): Record<string, unknown> {
+  return omitCliFields(projectCliFields(output, fields), omitFields);
 }
 
 export function projectCliFields(
@@ -165,6 +176,25 @@ export function projectCliFields(
     }
   }
   return projected;
+}
+
+export function omitCliFields(
+  output: Record<string, unknown>,
+  fields?: string[],
+): Record<string, unknown> {
+  if (!fields || fields.length === 0) {
+    return output;
+  }
+
+  const omitted = cloneValue(output) as Record<string, unknown>;
+  for (const field of fields) {
+    const parts = field.split('.').filter((part) => part.length > 0);
+    if (parts.length === 0) {
+      continue;
+    }
+    deletePath(omitted, parts);
+  }
+  return omitted;
 }
 
 function buildOutput(
@@ -196,6 +226,7 @@ function outputTooLargeResult(command: CliCommand, artifactRefs: Record<string, 
     message: 'CLI stdout exceeds --max-bytes. Read the artifact path instead.',
     artifactRefs,
     fields: command.fields,
+    omitFields: command.omitFields,
   });
 }
 
@@ -328,6 +359,31 @@ function writePath(record: Record<string, unknown>, parts: string[], value: unkn
     current = current[part] as Record<string, unknown>;
   }
   current[parts[parts.length - 1]] = value;
+}
+
+function deletePath(record: Record<string, unknown>, parts: string[]): void {
+  let current: unknown = record;
+  for (const part of parts.slice(0, -1)) {
+    if (!isRecord(current)) {
+      return;
+    }
+    current = current[part];
+  }
+  if (isRecord(current)) {
+    delete current[parts[parts.length - 1]];
+  }
+}
+
+function cloneValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => cloneValue(item));
+  }
+  if (isRecord(value)) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, cloneValue(entry)]),
+    );
+  }
+  return value;
 }
 
 function omitUndefined(record: Record<string, unknown>): Record<string, unknown> {

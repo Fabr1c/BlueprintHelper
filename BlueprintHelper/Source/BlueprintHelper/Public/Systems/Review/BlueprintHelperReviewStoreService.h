@@ -61,6 +61,10 @@ public:
 	TArray<FBlueprintHelperReviewVisibleChange> LoadPendingVisibleChanges(
 		const FString& AssetPathFilter = TEXT("")) const;
 
+	FDelegateHandle AddPendingReviewChangedHandler(const FSimpleDelegate& Handler) const;
+	void RemovePendingReviewChangedHandler(FDelegateHandle Handle) const;
+	void NotifyPendingReviewChanged() const;
+
 private:
 	FBlueprintHelperReviewVisibleChange MakeVisibleChange(
 		const FBlueprintHelperReviewTransactionInput& Input,
@@ -82,4 +86,6 @@ private:
 	void AddEvidenceAtomicTargets(
 		const FBlueprintHelperWriteReviewEvidence& Evidence,
 		FBlueprintHelperReviewRecord& Record) const;
+
+	mutable FSimpleMulticastDelegate PendingReviewChangedDelegate;
 };

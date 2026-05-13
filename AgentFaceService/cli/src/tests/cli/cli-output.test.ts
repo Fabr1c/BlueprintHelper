@@ -1,13 +1,13 @@
-import { strict as assert } from 'node:assert';
+﻿import { strict as assert } from 'node:assert';
 import test from 'node:test';
-import { buildCliSummary, projectCliFields } from '../../cli/output.js';
+import { buildCliSummary, omitCliFields, projectCliFields } from '../../cli/output.js';
 
 test('summary output omits full task_plan and points to artifacts', () => {
   const result = buildCliSummary({
     command: { kind: 'task.preview', format: 'summary', artifactDir: 'artifacts', maxBytes: 4096 },
     toolResult: {
       ok: true,
-      schema: 'BlueprintHelper.McpToolResult.v1',
+      schema: 'BlueprintHelper.ToolResult.v1',
       operation: 'preview_task',
       trace_id: 'trace_001',
       status: 'dry_run',
@@ -40,7 +40,7 @@ test('output budget failure still points to full result artifact', () => {
     command: { kind: 'task.preview', format: 'summary', artifactDir: 'artifacts', maxBytes: 40 },
     toolResult: {
       ok: true,
-      schema: 'BlueprintHelper.McpToolResult.v1',
+      schema: 'BlueprintHelper.ToolResult.v1',
       operation: 'preview_task',
       trace_id: 'trace_001',
       status: 'dry_run',
@@ -88,3 +88,33 @@ test('field projection keeps only requested top-level and nested fields', () => 
     },
   });
 });
+
+test('field omission drops requested top-level and nested fields', () => {
+  const result = omitCliFields({
+    ok: true,
+    schema: 'BlueprintHelper.CliResult.v1',
+    operation: 'task.preview',
+    status: 'preview_passed',
+    summary: {
+      target_assets: ['/Game/BP_Player'],
+      planned_steps: 2,
+    },
+    artifacts: {
+      full_result: 'artifacts/preview_001/result.json',
+      task_plan: 'artifacts/preview_001/task_plan.json',
+    },
+  }, ['operation', 'status', 'artifacts.task_plan']);
+
+  assert.deepEqual(result, {
+    ok: true,
+    schema: 'BlueprintHelper.CliResult.v1',
+    summary: {
+      target_assets: ['/Game/BP_Player'],
+      planned_steps: 2,
+    },
+    artifacts: {
+      full_result: 'artifacts/preview_001/result.json',
+    },
+  });
+});
+

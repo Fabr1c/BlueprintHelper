@@ -1,6 +1,6 @@
 {
   "name": "blueprint-helper",
-  "version": "0.3.8",
+  "version": "0.4.1",
   "description": "Codex-facing BlueprintHelper workflow plugin for Unreal Editor asset reads and TaskSpec-first writes through the BlueprintHelper CLI.",
   "author": {
     "name": "Fabric"

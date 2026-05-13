@@ -205,3 +205,122 @@
   - `ReviewRejectAssetLifecycleRootReloadsPendingChangesFromStore`
   - `ReviewRejectAssetLifecycleRootCascadesChildrenWithoutOpeningPanelAgain`
   - 手动验证：Reject 新建 BP 后，不关闭窗口也应立即清空该资产 root 和所有 child Review，Content Browser 不再显示半删除状态。
+
+## 2026-05-13 Physics Door ReviewPanel live bug dedupe
+
+### PD-RP-01: Review visible change collapse fails for repeated variables/components
+
+- Source: physics-door CLI TaskSpec live Editor ReviewPanel observation.
+- Dedupes user-reported Bug1 and Bug6 into one root issue.
+- Observed: four variables each show three identical `修改了[xxx]变量` Review records; the three added components also each show two Review records.
+- Expected: Review system should collapse repeated writes to the same atomic target and show one final visible change per variable/component/function/etc., using the latest write operation.
+- Relation to prior docs: existing ReviewStore / visible-change contract already expects final visible changes rather than raw transaction rows; this entry records the live regression.
+
+### PD-RP-02: Component rows miss row-background diff highlight
+
+- Source: physics-door CLI TaskSpec live Editor ReviewPanel observation.
+- Observed: DoorFrame, DoorPanel, and DoorHingeConstraint are added, but the Components panel does not color the changed component rows.
+- Expected: apply BG-color to the changed row itself; do not render a panel-level overlay card.
+- Relation to prior docs: row-background highlight is already the intended design; this is a live failure instance.
+
+### PD-RP-03: GraphPanel diff block opacity should be 0.35
+
+- Source: physics-door CLI TaskSpec live Editor ReviewPanel observation.
+- Observed: center GraphPanel diff block opacity is too high.
+- Expected: lower GraphPanel diff block fill alpha to 0.35.
+- Relation to prior docs: previous row-highlight docs mention 0.6 for non-Graph rows; no exact prior bug for GraphPanel alpha 0.35 was found.
+
+### PD-RP-04: ReviewAnchor appears in MyBlueprint where native rows are expected
+
+- Source: physics-door CLI TaskSpec live Editor ReviewPanel observation.
+- Observed: MyBlueprint panel displays ReviewAnchor entries, which does not match the UE editor's My Blueprint panel content.
+- Expected: use native-parity rows for normal Blueprint content; ReviewAnchor fallback should appear only for targets that genuinely have no stable row.
+- Relation to prior docs: related to MyBlueprint native-parity and ReviewAnchor fallback notes; this entry records the concrete live bug.
+
+### PD-RP-05: Rejecting InitializeDoor also rejects sibling events
+
+- Source: physics-door CLI TaskSpec live Editor ReviewPanel observation.
+- Observed: Rejecting InitializeDoor also rejected OpenDoor and CloseDoor transactions.
+- Expected: normal selected-row Reject affects only the selected visible change / atomic target. Cascade is only valid for asset lifecycle root Reject after root success.
+- Relation to prior docs: existing Review E2E docs state selected Reject should not cascade to unselected targets; this entry records the live violation.
+
+### PD-RP-06: New signature reviews are not grouped under asset-creation root
+
+- Source: physics-door CLI TaskSpec live Editor ReviewPanel observation.
+- Observed: four newly added signature Review records are not grouped under the created-asset Review record.
+- Expected: asset creation Review should act as the lifecycle root for same-asset child changes; new signatures created as part of the same asset creation / feature flow should be nested under that root.
+- Relation to prior docs: lifecycle-root grouping is already part of the ReviewPanel V2 contract; this entry records the concrete live failure.
+## 2026-05-13 修复进度回写
+
+状态说明：本轮仅做源码修复，未执行构建或编辑器验证；因此未将未验证项标记为完全完成。
+
+1. PD-RP-01 重复 Review 记录
+   - 状态：源码修复已落地，待验证。
+   - 处理：pending visible changes 加载阶段增加 latest-wins 收敛，按资产/Surface/Graph/TargetKey 去重并保留最新记录。
+
+2. PD-RP-03 GraphPanel diff 框透明度过高
+   - 状态：源码修复已落地，待验证。
+   - 处理：Graph diff block 填充透明度调整为 0.35。
+
+3. PD-RP-04 ReviewAnchor 泄漏到 MyBlueprint
+   - 状态：源码修复已落地，待验证。
+   - 处理：MyBlueprint presenter 增加 Ubergraph CustomEvent 行，物理门测试中的事件签名不再需要退回 ReviewAnchor。
+
+4. PD-RP-05 Reject 单个事件误拒绝同事务内其他事件
+   - 状态：源码修复已落地，待验证。
+   - 处理：TaskSpec evidence 的 visible change id 改为 transaction id + visual group key，避免多个可见改动共享 ChangeId。
+
+5. PD-RP-06 新增签名未归到创建资产 Review root
+   - 状态：源码修复已落地，待验证。
+   - 处理：生命周期 root 链接和 ChangeTree 资产分组使用规范化 package path。
+
+6. CLI TaskSpec Review Panel 动态刷新
+   - 状态：源码修复已落地，待验证。
+   - 处理：ReviewPanel 不再轮询；改为 `execute_task_plan` 结束后由 ReviewStoreService 广播一次 pending review changed 事件，ReviewPanel 收到事件后刷新 UI。
+
+7. PD-RP-02 Components Panel Row 背景 diff
+   - 状态：源码修复已落地，待验证。
+   - 处理：native Components row 实际为 STableRow/SBorder 派生；组件行定位成功后直接设置该 row border background color，不再只接受 `SBorder` 类型名。
+
+9. 最终改动面板新增签名未挂到新增资产 root
+   - 状态：源码修复已落地，待验证。
+   - 处理：ChangeTree 构建阶段增加同资产新增资产 root 的兜底挂载；即使签名记录缺少 `ParentChangeId`，也会作为新增资产 root 的叶子显示。
+
+10. MyBlueprint 宏分类缺失
+    - 状态：源码修复已落地，待验证。
+    - 处理：Macros section 改为常驻显示，避免空宏分类被清理。
+
+11. 暂时跳过项
+   - 状态：未完成。
+   - 范围：字段变更/架构变更类问题继续跳过，包括旧文档中需要新增排序字段、重做 MyBlueprint 原生 row 复用策略、函数局部变量 Section 数据模型、Graph 节点稳定锚点等问题。
+## 2026-05-13 ReviewPanel Accept/Reject Persistence Fix
+
+状态说明：本轮仅做源码修复和 CLI/Bridge 命令接入，未执行构建、CLI build 或编辑器验证。
+
+1. Final Changes 面板 Accept/Reject GraphPanel 同一条 Review 无效
+   - 状态：源码修复已落地，待验证。
+   - 处理：ReviewActionService 不再只解析第一个持久化 ReviewRecord；对一个可见 Review 项会解析所有匹配的 ReviewRecord + target_keys，并逐个回写 Accept/Reject。
+
+2. 组件/变量 Review Accept/Reject 后重开 ReviewPanel 又出现
+   - 状态：源码修复已落地，待验证。
+   - 处理：针对 latest-wins 合并后的可见项，Accept/Reject 会回写所有同资产同 target_key 的 pending 持久化记录，避免旧 pending record 在重新加载时复活。
+
+3. DebugBundle 排查能力
+   - 状态：源码接入已落地，待验证。
+   - 处理：Bridge 增加 `list_debug_cases` 与 `export_debug_bundle`；CLI tool surface 增加 `blueprinthelper_list_debug_cases` 与 `blueprinthelper_export_debug_bundle`。
+
+## 2026-05-13 ReviewPanel Accept/Reject Persistence Fix
+
+状态说明：本轮仅做源码修复和 CLI/Bridge 命令接入，未执行构建、CLI build 或编辑器验证。
+
+1. Final Changes 面板 Accept/Reject GraphPanel 同一条 Review 无效
+   - 状态：源码修复已落地，待验证。
+   - 处理：ReviewActionService 不再只解析第一个持久化 ReviewRecord；对一个可见 Review 项会解析所有匹配的 ReviewRecord + target_keys，并逐个回写 Accept/Reject。
+
+2. 组件/变量 Review Accept/Reject 后重开 ReviewPanel 又出现
+   - 状态：源码修复已落地，待验证。
+   - 处理：针对 latest-wins 合并后的可见项，Accept/Reject 会回写所有同资产同 target_key 的 pending 持久化记录，避免旧 pending record 在重新加载时复活。
+
+3. DebugBundle 排查能力
+   - 状态：源码接入已落地，待验证。
+   - 处理：Bridge 增加 `list_debug_cases` 与 `export_debug_bundle`；CLI tool surface 增加 `blueprinthelper_list_debug_cases` 与 `blueprinthelper_export_debug_bundle`。

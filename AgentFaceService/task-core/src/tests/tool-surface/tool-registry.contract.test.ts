@@ -1,4 +1,4 @@
-import { strict as assert } from 'node:assert';
+﻿import { strict as assert } from 'node:assert';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -162,7 +162,7 @@ test('preview task registry handler calls TaskSpecRunner.previewTask', async () 
         issues: [],
         toolResult: {
           ok: true,
-          schema: 'BlueprintHelper.McpToolResult.v1',
+          schema: 'BlueprintHelper.ToolResult.v1',
           operation: 'preview_task',
           trace_id: 'trace_registry',
           status: 'dry_run',
@@ -207,3 +207,4 @@ test('preview task registry handler calls TaskSpecRunner.previewTask', async () 
   assert.equal(called, true);
   assert.equal(result.operation, 'preview_task');
 });
+

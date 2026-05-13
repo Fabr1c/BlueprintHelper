@@ -1,4 +1,4 @@
-import { strict as assert } from 'node:assert';
+﻿import { strict as assert } from 'node:assert';
 import test from 'node:test';
 import { runCli } from '../../cli/run.js';
 import type { BridgeResponse } from '@blueprinthelper/task-core/bridge/bridge-client';
@@ -14,11 +14,11 @@ test('direct blueprint_get_runtime_profile calls matching Bridge command', async
         success: true,
         result: {
           ok: true,
-          schema: 'BlueprintHelper.McpToolResult.v1',
+          schema: 'BlueprintHelper.ToolResult.v1',
           operation: 'get_runtime_profile',
           status: 'completed',
           modified: false,
-          data: { version: '0.3.8' },
+          data: { version: '0.4.1' },
         },
       };
     },
@@ -56,3 +56,4 @@ test('frozen direct Bridge tools are not exposed through CLI tool invocation', a
   assert.equal(writes.join(''), '');
   assert.match(errors.join(''), /Unsupported BlueprintHelper CLI command/);
 });
+

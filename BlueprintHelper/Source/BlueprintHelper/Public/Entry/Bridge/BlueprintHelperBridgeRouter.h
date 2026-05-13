@@ -47,6 +47,7 @@ class FBlueprintHelperConvertBlockToUserOwnedService;
 class FBlueprintHelperCompileAssetService;
 class FBlueprintHelperTransactionQueryService;
 class FBlueprintHelperBlueprintVariableService;
+class FBlueprintHelperReviewStoreService;
 
 /**
  * 命令路由器，将 Bridge 请求分发到对应的静态簇或系统层入口。
@@ -85,7 +86,8 @@ public:
 		const FBlueprintHelperConvertBlockToUserOwnedService& InConvertBlockService,
 		const FBlueprintHelperCompileAssetService& InCompileAssetService,
 		const FBlueprintHelperTransactionQueryService& InTransactionQueryService,
-		const FBlueprintHelperBlueprintVariableService& InVariableService);
+		const FBlueprintHelperBlueprintVariableService& InVariableService,
+		const FBlueprintHelperReviewStoreService& InReviewStoreService);
 
 	/** 路由并执行命令。必须在 GameThread 调用。 */
 	FBlueprintHelperBridgeResponse HandleRequest(const FBlueprintHelperBridgeRequest& Request) const;
@@ -100,6 +102,8 @@ private:
 	FBlueprintHelperBridgeResponse HandleGetRuntimeProfile(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleDiagnosticsRuntime(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleGetDebugCase(const FBlueprintHelperBridgeRequest& Req) const;
+	FBlueprintHelperBridgeResponse HandleListDebugCases(const FBlueprintHelperBridgeRequest& Req) const;
+	FBlueprintHelperBridgeResponse HandleExportDebugBundle(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleReadReferenceContext(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleReadBlueprintLogicMd(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleReadBlueprintLogicJson(const FBlueprintHelperBridgeRequest& Req) const;
@@ -178,4 +182,5 @@ private:
 	FBlueprintHelperTaskRuntimeService TaskRuntimeService;
 	const FBlueprintHelperCompileAssetService& CompileAssetService;
 	const FBlueprintHelperTransactionQueryService& TransactionQueryService;
+	const FBlueprintHelperReviewStoreService& ReviewStoreService;
 };

@@ -4,6 +4,7 @@
 
 #include "HAL/PlatformApplicationMisc.h"
 #include "Misc/DateTime.h"
+#include "Misc/PackageName.h"
 #include "IDetailsView.h"
 #include "PropertyEditorDelegates.h"
 #include "PropertyPath.h"
@@ -29,6 +30,44 @@
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/STableRow.h"
 #include "Widgets/Views/STreeView.h"
+
+SBlueprintHelperReviewPanel::~SBlueprintHelperReviewPanel()
+{
+	if (ReviewStoreService && PendingReviewChangedHandle.IsValid())
+	{
+		ReviewStoreService->RemovePendingReviewChangedHandler(PendingReviewChangedHandle);
+	}
+}
+
+namespace
+{
+static FString MakeReviewPanelAssetTreeKey(const FString& AssetPath)
+{
+	if (AssetPath.IsEmpty())
+	{
+		return AssetPath;
+	}
+
+	FString PackageName;
+	if (FPackageName::TryConvertFilenameToLongPackageName(AssetPath, PackageName))
+	{
+		return PackageName;
+	}
+
+	if (AssetPath.StartsWith(TEXT("/")))
+	{
+		FString Normalized = AssetPath;
+		const int32 ObjectPathIndex = Normalized.Find(TEXT("."));
+		if (ObjectPathIndex != INDEX_NONE)
+		{
+			Normalized.LeftInline(ObjectPathIndex);
+		}
+		return Normalized;
+	}
+
+	return AssetPath;
+}
+}
 
 void SBlueprintHelperReviewPanel::RefreshVisibleChanges(
 	const TArray<FBlueprintHelperReviewVisibleChange>& SourceChanges)
@@ -143,6 +182,7 @@ void SBlueprintHelperReviewPanel::BuildChangeTreeItemsFromChangeItems(
 	OutRootItems.Reset();
 	TMap<FString, FReviewTreeItemPtr> AssetRootsByPath;
 	TMap<FString, FReviewTreeItemPtr> LifecycleRootItemsByAssetAndChangeId;
+	TMap<FString, FReviewTreeItemPtr> LifecycleRootItemsByAsset;
 	TArray<FReviewTreeItemPtr> LeafItems;
 	for (const FReviewChangeItem& Item : SourceItems)
 	{
@@ -152,25 +192,27 @@ void SBlueprintHelperReviewPanel::BuildChangeTreeItemsFromChangeItems(
 		}
 
 		const FString AssetPath = Item->AssetPath.IsEmpty() ? TEXT("(unknown asset)") : Item->AssetPath;
-		FReviewTreeItemPtr* ExistingRoot = AssetRootsByPath.Find(AssetPath);
+		const FString AssetKey = MakeReviewPanelAssetTreeKey(AssetPath);
+		FReviewTreeItemPtr* ExistingRoot = AssetRootsByPath.Find(AssetKey);
 		if (!ExistingRoot)
 		{
 			FReviewTreeItemPtr Root = MakeShared<FReviewTreeItem>();
 			Root->bIsAssetRoot = true;
 			Root->AssetPath = AssetPath;
-			AssetRootsByPath.Add(AssetPath, Root);
+			AssetRootsByPath.Add(AssetKey, Root);
 			OutRootItems.Add(Root);
-			ExistingRoot = AssetRootsByPath.Find(AssetPath);
+			ExistingRoot = AssetRootsByPath.Find(AssetKey);
 		}
 
 		FReviewTreeItemPtr Leaf = MakeShared<FReviewTreeItem>();
-		Leaf->AssetPath = AssetPath;
+		Leaf->AssetPath = AssetKey;
 		Leaf->Change = Item;
 		LeafItems.Add(Leaf);
 		if (Item->bIsAssetLifecycleRoot && !Item->ChangeId.IsEmpty())
 		{
+			LifecycleRootItemsByAsset.Add(AssetKey, Leaf);
 			LifecycleRootItemsByAssetAndChangeId.Add(
-				FString::Printf(TEXT("%s|%s"), *AssetPath, *Item->ChangeId),
+				FString::Printf(TEXT("%s|%s"), *AssetKey, *Item->ChangeId),
 				Leaf);
 		}
 	}
@@ -182,18 +224,27 @@ void SBlueprintHelperReviewPanel::BuildChangeTreeItemsFromChangeItems(
 			continue;
 		}
 
-		const FString AssetPath = Leaf->AssetPath.IsEmpty() ? TEXT("(unknown asset)") : Leaf->AssetPath;
-		FReviewTreeItemPtr* ExistingRoot = AssetRootsByPath.Find(AssetPath);
+		const FString AssetKey = Leaf->AssetPath.IsEmpty() ? TEXT("(unknown asset)") : Leaf->AssetPath;
+		FReviewTreeItemPtr* ExistingRoot = AssetRootsByPath.Find(AssetKey);
 		if (!ExistingRoot || !ExistingRoot->IsValid())
 		{
 			continue;
 		}
 
 		const FBlueprintHelperReviewVisibleChange& Change = *Leaf->Change;
-		if (!Change.bIsAssetLifecycleRoot && !Change.ParentChangeId.IsEmpty())
+		if (!Change.bIsAssetLifecycleRoot)
 		{
-			if (FReviewTreeItemPtr* ParentRoot = LifecycleRootItemsByAssetAndChangeId.Find(
-				FString::Printf(TEXT("%s|%s"), *AssetPath, *Change.ParentChangeId)))
+			FReviewTreeItemPtr* ParentRoot = nullptr;
+			if (!Change.ParentChangeId.IsEmpty())
+			{
+				ParentRoot = LifecycleRootItemsByAssetAndChangeId.Find(
+					FString::Printf(TEXT("%s|%s"), *AssetKey, *Change.ParentChangeId));
+			}
+			if (!ParentRoot)
+			{
+				ParentRoot = LifecycleRootItemsByAsset.Find(AssetKey);
+			}
+			if (ParentRoot)
 			{
 				if (ParentRoot->IsValid())
 				{
@@ -349,6 +400,25 @@ TArray<FBlueprintHelperReviewVisibleChange> SBlueprintHelperReviewPanel::BuildPe
 		}
 	}
 	return PendingChanges;
+}
+
+FString SBlueprintHelperReviewPanel::BuildVisibleChangeRefreshSignature(
+	const TArray<FBlueprintHelperReviewVisibleChange>& Changes)
+{
+	TArray<FString> Parts;
+	Parts.Reserve(Changes.Num());
+	for (const FBlueprintHelperReviewVisibleChange& Change : Changes)
+	{
+		Parts.Add(FString::Printf(
+			TEXT("%s|%s|%s|%s|%s|%s"),
+			*Change.ChangeId,
+			BlueprintHelperReviewChangeStatusToString(Change.Status),
+			*Change.AssetPath,
+			*Change.ParentChangeId,
+			*Change.LocationKey,
+			*Change.LatestTransactionId));
+	}
+	return FString::Join(Parts, TEXT("\n"));
 }
 
 void SBlueprintHelperReviewPanel::SelectNextChangeAfterRemoval(
@@ -1118,6 +1188,41 @@ void SBlueprintHelperReviewPanel::StartFlash()
 {
 	FlashAlpha = 1.0f;
 	RegisterActiveTimer(0.0f, FWidgetActiveTimerDelegate::CreateSP(this, &SBlueprintHelperReviewPanel::TickFlash));
+}
+
+void SBlueprintHelperReviewPanel::RefreshFromReviewStoreIfChanged()
+{
+	if (!ReviewStoreService)
+	{
+		return;
+	}
+
+	const TArray<FBlueprintHelperReviewVisibleChange> LatestChanges = ReviewStoreService->LoadPendingVisibleChanges();
+	const FString LatestSignature = BuildVisibleChangeRefreshSignature(LatestChanges);
+	if (LatestSignature == LastVisibleChangeRefreshSignature)
+	{
+		return;
+	}
+
+	const FString PreviousSelectedChangeId = SelectedChange.IsValid() ? SelectedChange->ChangeId : FString();
+	RefreshVisibleChanges(LatestChanges);
+	LastVisibleChangeRefreshSignature = LatestSignature;
+	SelectedChange = FindChangeItemById(PreviousSelectedChangeId);
+	if (!SelectedChange.IsValid() && ChangeItems.Num() > 0)
+	{
+		SelectedChange = ChangeItems[0];
+	}
+
+	RebuildChangeTreeItems();
+	RefreshChangeTreeWidget();
+	LoadReviewAssetFromSelection();
+	if (GraphEditorBox.IsValid())
+	{
+		GraphEditorBox->SetContent(BuildMainWorkspaceWidget());
+	}
+	RefreshDiffStackWidgets();
+	UpdateDetailsSelection();
+	AddDebugMessage(TEXT("Review store refreshed dynamically."));
 }
 
 void SBlueprintHelperReviewPanel::RefreshDiffStackWidgets()

@@ -42,6 +42,8 @@ blueprinthelper_request_write_session
 blueprinthelper_execute_task
 blueprinthelper_get_task_result
 blueprinthelper_get_debug_case
+blueprinthelper_list_debug_cases
+blueprinthelper_export_debug_bundle
 blueprint_open_editor
 ```
 

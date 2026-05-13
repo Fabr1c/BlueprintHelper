@@ -38,7 +38,7 @@ export async function invokeCliTool(input: {
     });
   }
 
-  const params = await readCliInputObject({
+  const params = input.command.params ?? await readCliInputObject({
     cwd: input.cwd,
     file: input.command.file,
     json: input.command.json,

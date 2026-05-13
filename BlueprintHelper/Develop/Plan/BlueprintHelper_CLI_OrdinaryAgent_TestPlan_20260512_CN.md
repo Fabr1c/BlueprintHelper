@@ -2231,3 +2231,96 @@ Next fixes:
 - 先解决 equest_write_session 30s 超时，必要时在 Editor 中立即确认授权提示后重试。
 - ead_task_context 的 ECONNRESET 需要单独建缺陷并修复后回归。
 - 写权限恢复后，按顺序继续：create_asset execute -> get_task_result -> 重新跑 3.1/3.6/3.3/3.4/3.5。
+## 阶段结果补充（2026-05-13，完整 smoke 续跑）
+
+### 本轮结论
+
+- `Pass`：Bridge 探活、写会话申请、预览、执行、任务结果查询、已创建资产的上下文读取
+- `Known Issue`：`blueprinthelper_get_task_result` 别名命令返回 `cli_error`，但分组命令 `task result --id <task_run_id>` 可正常返回结果
+- `Historical Flake`：`ST_CliAgentRow` 首次执行曾返回 `creation_failed`，本轮重试后成功，当前不能判定为稳定缺陷
+
+### 本轮通过项
+
+#### 1. Bridge / 会话
+
+- `bh bridge ping --select status`
+  - 结果：`{"status":"bridge_available"}`
+- `bh blueprinthelper_request_write_session --file Saved\\CodexTest\\request_write_session.json --select status,artifacts.full_result`
+  - 结果：`completed`
+  - Artifact：`D:\UEProjects\Template\Plugins\BlueprintHelper\Saved\BlueprintHelper\Cli\cli_1778669577744\result.json`
+
+#### 2. actor 写链路闭环
+
+- `blueprinthelper_preview_task` / `task_create_actor.json`
+  - 结果：`preview_passed`
+- `blueprinthelper_execute_task` / `task_create_actor.json`
+  - 结果：`executed`
+  - `task_run_id`：`task_3D0749344E887824C8AE1080266E695D`
+- `bh task result --id task_3D0749344E887824C8AE1080266E695D`
+  - 结果：`result_found`
+  - Artifact：`D:\UEProjects\Template\Plugins\BlueprintHelper\Saved\BlueprintHelper\Cli\task_3D0749344E887824C8AE1080266E695D\result.json`
+- 已创建 actor 的读回验证：
+  - `blueprinthelper_read_context`：`completed`
+  - `blueprinthelper_read_task_context`：`completed`
+  - `blueprinthelper_read_reference_context`：`completed`
+
+#### 3. 其余 create_asset smoke
+
+- `BPI_CliAgentInteract`
+  - Preview：`preview_passed`
+  - Execute：`executed`
+  - `task_run_id`：`task_F42D36374AC04DDA02E267A6100EA7F2`
+  - Task Result：`result_found`
+- `WBP_CliAgentPanel`
+  - Preview：`preview_passed`
+  - Execute：`executed`
+  - `task_run_id`：`task_AEDEADA24793F71DB41B20B9B85F2AB9`
+  - Task Result：`result_found`
+- `BP_CliAgentDataAssetClass`
+  - Preview：`preview_passed`
+  - Execute：`executed`
+  - `task_run_id`：`task_78D5964345CC6B2E826897A648E7E56E`
+  - Task Result：`result_found`
+- `DA_CliAgentData`
+  - Preview：`preview_passed`
+  - Execute：`executed`
+  - `task_run_id`：`task_A9E224EF428E608AA0CE7B825B4A41EA`
+  - Task Result：`result_found`
+- `ST_CliAgentRow`
+  - Preview：`preview_passed`
+  - Execute：`executed`
+  - `task_run_id`：`task_13E83EEA4515E31187F3B587CFD7EDBA`
+  - Task Result：`result_found`
+- `DT_CliAgentRows`
+  - Preview：`preview_passed`
+  - Execute：`executed`
+  - `task_run_id`：`task_ED039D8744582BB491B58F94B6AB5530`
+  - Task Result：`result_found`
+
+### 资产创建结果（当前 smoke 根目录）
+
+- `/Game/BlueprintHelperCliSmoke/BH_CLI_20260513_01/BP_CliAgentActor`
+- `/Game/BlueprintHelperCliSmoke/BH_CLI_20260513_01/BPI_CliAgentInteract`
+- `/Game/BlueprintHelperCliSmoke/BH_CLI_20260513_01/WBP_CliAgentPanel`
+- `/Game/BlueprintHelperCliSmoke/BH_CLI_20260513_01/BP_CliAgentDataAssetClass`
+- `/Game/BlueprintHelperCliSmoke/BH_CLI_20260513_01/DA_CliAgentData`
+- `/Game/BlueprintHelperCliSmoke/BH_CLI_20260513_01/ST_CliAgentRow`
+- `/Game/BlueprintHelperCliSmoke/BH_CLI_20260513_01/DT_CliAgentRows`
+
+### 剩余问题
+
+- `blueprinthelper_get_task_result --json '{"task_run_id":"..."}' --select status,artifacts.full_result`
+  - 当前返回：`{"status":"cli_error"}`
+  - 对照命令：`bh task result --id <task_run_id>`
+  - 对照结果：正常返回 `result_found`
+  - 判断：这是 CLI 别名路由或参数映射问题，不是 Bridge / Editor / TaskResult 存储链路问题
+- 先前已观察到并行 `preview_task` 可能返回相同 `preview_id`
+  - 当前完整 smoke 全程按串行执行，未再触发该问题
+
+### 当前阶段判定
+
+- Ordinary Agent CLI 的只读链路：`Pass`
+- Ordinary Agent CLI 的写会话申请：`Pass`
+- `create_asset` 正向写入 smoke：`Pass`
+- 任务结果回读能力：`Pass`（通过 `task result --id`）
+- `blueprinthelper_get_task_result` 别名命令：`Fail`

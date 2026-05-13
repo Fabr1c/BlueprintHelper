@@ -547,7 +547,8 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	const FBlueprintHelperConvertBlockToUserOwnedService& InConvertBlockService,
 	const FBlueprintHelperCompileAssetService& InCompileAssetService,
 	const FBlueprintHelperTransactionQueryService& InTransactionQueryService,
-	const FBlueprintHelperBlueprintVariableService& InVariableService)
+	const FBlueprintHelperBlueprintVariableService& InVariableService,
+	const FBlueprintHelperReviewStoreService& InReviewStoreService)
 	: ImportService(InImport)
 	, AgentImportService(InAgentImport)
 	, ExportService(InExport)
@@ -600,6 +601,7 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 		&InDebugEntryService)
 	, CompileAssetService(InCompileAssetService)
 	, TransactionQueryService(InTransactionQueryService)
+	, ReviewStoreService(InReviewStoreService)
 {
 }
 
@@ -655,6 +657,8 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequestWithPl
 	BLUEPRINTHELPER_ROUTE("get_runtime_profile", Debug, HandleGetRuntimeProfile)
 	BLUEPRINTHELPER_ROUTE("diagnostics_runtime", Debug, HandleDiagnosticsRuntime)
 	BLUEPRINTHELPER_ROUTE("get_debug_case", Debug, HandleGetDebugCase)
+	BLUEPRINTHELPER_ROUTE("list_debug_cases", Debug, HandleListDebugCases)
+	BLUEPRINTHELPER_ROUTE("export_debug_bundle", Debug, HandleExportDebugBundle)
 	BLUEPRINTHELPER_ROUTE("compile_blueprint", Debug, HandleCompileBlueprint)
 	BLUEPRINTHELPER_ROUTE("compile_blueprint_asset", Debug, HandleCompileBlueprintAsset)
 	BLUEPRINTHELPER_ROUTE("query_review_records", Review, HandleQueryReviewRecords)
@@ -886,6 +890,34 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleGetDebugCase(
 			Req.RequestId,
 			EBlueprintHelperBridgeError::ExecutionFailed,
 			Result.Error.IsSet() ? Result.Error->Message : TEXT("get_debug_case failed."));
+	Resp.Result = Result.ToJson();
+	return Resp;
+}
+
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleListDebugCases(
+	const FBlueprintHelperBridgeRequest& Req) const
+{
+	const FBlueprintHelperToolResultBase Result = DebugEntryService.GetDebugCaseListResult(Req.Payload);
+	auto Resp = Result.bOk
+		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
+		: FBlueprintHelperBridgeResponse::Error(
+			Req.RequestId,
+			EBlueprintHelperBridgeError::ExecutionFailed,
+			Result.Error.IsSet() ? Result.Error->Message : TEXT("list_debug_cases failed."));
+	Resp.Result = Result.ToJson();
+	return Resp;
+}
+
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleExportDebugBundle(
+	const FBlueprintHelperBridgeRequest& Req) const
+{
+	const FBlueprintHelperToolResultBase Result = DebugEntryService.ExportDebugBundleSummaryResult(Req.Payload);
+	auto Resp = Result.bOk
+		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
+		: FBlueprintHelperBridgeResponse::Error(
+			Req.RequestId,
+			EBlueprintHelperBridgeError::ExecutionFailed,
+			Result.Error.IsSet() ? Result.Error->Message : TEXT("export_debug_bundle failed."));
 	Resp.Result = Result.ToJson();
 	return Resp;
 }
@@ -1583,6 +1615,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleExecuteTaskPl
 	const FBlueprintHelperBridgeRequest& Req) const
 {
 	const FBlueprintHelperToolResultBase Result = TaskRuntimeService.ExecuteTaskPlan(Req.Payload);
+	ReviewStoreService.NotifyPendingReviewChanged();
 	const FString ErrorMessage = Result.Error.IsSet() && !Result.Error->Message.IsEmpty()
 		? Result.Error->Message
 		: TEXT("execute_task_plan 执行失败。");

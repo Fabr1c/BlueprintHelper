@@ -86,3 +86,4 @@
 - [x] Review reject debug linkage and DebugBundle Review summary export boundary have targeted automation evidence.
 - [ ] Remaining diagnostics verification: compile/post-operation failure debug surfacing and retention / cleanup policy.
 - [ ] DependencyAnalysis / ReferenceContextPack integration into high-risk preview blockers.
+- [ ] Agent-facing TaskSpec template catalog: provide reusable TaskSpec templates for common ordinary-Agent workflows so Agents do not build every TaskSpec from scratch.

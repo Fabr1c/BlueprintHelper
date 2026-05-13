@@ -138,6 +138,38 @@ public:
 			Target.TargetKey.IsEmpty() ? *FallbackKey : *Target.TargetKey);
 	}
 
+	static FString SanitizeReviewIdSegment(const FString& Value)
+	{
+		FString Result;
+		Result.Reserve(FMath::Min(Value.Len(), 64));
+		for (TCHAR Ch : Value)
+		{
+			const bool bIsAlphaNumeric =
+				(Ch >= TEXT('A') && Ch <= TEXT('Z')) ||
+				(Ch >= TEXT('a') && Ch <= TEXT('z')) ||
+				(Ch >= TEXT('0') && Ch <= TEXT('9'));
+			Result.AppendChar(bIsAlphaNumeric ? Ch : TEXT('_'));
+			if (Result.Len() >= 64)
+			{
+				break;
+			}
+		}
+		Result.TrimStartAndEndInline();
+		return Result;
+	}
+
+	static FString MakeReviewVisibleChangeId(const FString& TransactionId, const FString& VisualGroupKey)
+	{
+		const FString SanitizedGroup = SanitizeReviewIdSegment(VisualGroupKey);
+		if (TransactionId.IsEmpty())
+		{
+			return SanitizedGroup.IsEmpty() ? TEXT("review_change") : SanitizedGroup;
+		}
+		return SanitizedGroup.IsEmpty()
+			? TransactionId
+			: FString::Printf(TEXT("%s_%s"), *TransactionId, *SanitizedGroup);
+	}
+
 	static FString MakeReviewPackageNameFromAssetPath(const FString& AssetPath)
 	{
 		if (AssetPath.IsEmpty())
@@ -162,6 +194,12 @@ public:
 			PackageName = PackageName.Left(ObjectIndex);
 		}
 		return PackageName;
+	}
+
+	static FString MakeReviewAssetLinkKey(const FString& AssetPath)
+	{
+		const FString PackageName = MakeReviewPackageNameFromAssetPath(AssetPath);
+		return PackageName.IsEmpty() ? AssetPath : PackageName;
 	}
 
 	static bool DoesReviewAssetPackageExist(const FString& AssetPath)
@@ -244,7 +282,7 @@ public:
 				continue;
 			}
 
-			PendingRootIndexByAssetPath.Add(Change.AssetPath, Index);
+			PendingRootIndexByAssetPath.Add(MakeReviewAssetLinkKey(Change.AssetPath), Index);
 		}
 
 		for (FBlueprintHelperReviewVisibleChange& Change : Changes)
@@ -260,7 +298,7 @@ public:
 				continue;
 			}
 
-			const int32* RootIndex = PendingRootIndexByAssetPath.Find(Change.AssetPath);
+			const int32* RootIndex = PendingRootIndexByAssetPath.Find(MakeReviewAssetLinkKey(Change.AssetPath));
 			if (!RootIndex || !Changes.IsValidIndex(*RootIndex))
 			{
 				continue;
@@ -270,13 +308,108 @@ public:
 		}
 	}
 
+	static FString MakeLoadedVisibleChangeCollapseKey(const FBlueprintHelperReviewVisibleChange& Change)
+	{
+		const FString AssetKey = MakeReviewAssetLinkKey(Change.AssetPath);
+		const FString RootPrefix = Change.bIsAssetLifecycleRoot ? TEXT("root") : TEXT("change");
+		if (Change.AtomicTargets.Num() > 0)
+		{
+			return FString::Printf(
+				TEXT("%s|%s|%s"),
+				*RootPrefix,
+				*AssetKey,
+				*MakeReviewAtomicLookupKey(Change.AtomicTargets[0], Change.LocationKey));
+		}
+
+		return FString::Printf(
+			TEXT("%s|%s|%s|%s"),
+			*RootPrefix,
+			*AssetKey,
+			*Change.GraphName,
+			*Change.LocationKey);
+	}
+
+	static void AddUniqueReviewStrings(TArray<FString>& Target, const TArray<FString>& Source)
+	{
+		for (const FString& Value : Source)
+		{
+			if (!Value.IsEmpty())
+			{
+				Target.AddUnique(Value);
+			}
+		}
+	}
+
+	static void MergeReviewAtomicTargetsLatestWins(
+		TArray<FBlueprintHelperReviewAtomicTarget>& ExistingTargets,
+		const TArray<FBlueprintHelperReviewAtomicTarget>& IncomingTargets)
+	{
+		for (const FBlueprintHelperReviewAtomicTarget& IncomingTarget : IncomingTargets)
+		{
+			const FString IncomingKey = MakeReviewAtomicLookupKey(IncomingTarget, FString());
+			bool bReplaced = false;
+			for (FBlueprintHelperReviewAtomicTarget& ExistingTarget : ExistingTargets)
+			{
+				if (MakeReviewAtomicLookupKey(ExistingTarget, FString()) == IncomingKey)
+				{
+					ExistingTarget = IncomingTarget;
+					bReplaced = true;
+					break;
+				}
+			}
+			if (!bReplaced)
+			{
+				ExistingTargets.Add(IncomingTarget);
+			}
+		}
+	}
+
+	static void MergeVisibleChangeLatestWins(
+		FBlueprintHelperReviewVisibleChange& Existing,
+		const FBlueprintHelperReviewVisibleChange& Incoming)
+	{
+		TArray<FString> SourceTransactionIds = Existing.SourceTransactionIds;
+		TArray<FString> LatestTransactionIds = Existing.LatestTransactionIds;
+		TArray<FBlueprintHelperReviewAtomicTarget> AtomicTargets = Existing.AtomicTargets;
+
+		AddUniqueReviewStrings(SourceTransactionIds, Incoming.SourceTransactionIds);
+		AddUniqueReviewStrings(LatestTransactionIds, Incoming.LatestTransactionIds);
+		MergeReviewAtomicTargetsLatestWins(AtomicTargets, Incoming.AtomicTargets);
+
+		Existing = Incoming;
+		Existing.SourceTransactionIds = SourceTransactionIds;
+		Existing.LatestTransactionIds = LatestTransactionIds;
+		Existing.AtomicTargets = AtomicTargets;
+		ApplyAssetLifecycleRootMetadata(Existing);
+	}
+
+	static void CollapseVisibleChangesLatestWins(TArray<FBlueprintHelperReviewVisibleChange>& Changes)
+	{
+		TArray<FBlueprintHelperReviewVisibleChange> Collapsed;
+		TMap<FString, int32> ExistingIndexByKey;
+		for (const FBlueprintHelperReviewVisibleChange& Change : Changes)
+		{
+			const FString CollapseKey = MakeLoadedVisibleChangeCollapseKey(Change);
+			if (int32* ExistingIndex = ExistingIndexByKey.Find(CollapseKey))
+			{
+				MergeVisibleChangeLatestWins(Collapsed[*ExistingIndex], Change);
+				continue;
+			}
+
+			ExistingIndexByKey.Add(CollapseKey, Collapsed.Num());
+			Collapsed.Add(Change);
+		}
+
+		Changes = MoveTemp(Collapsed);
+	}
+
 	static FBlueprintHelperReviewVisibleChange MakeVisibleChangeFromEvidence(
 		const FBlueprintHelperWriteReviewEvidence& Evidence,
 		const FBlueprintHelperReviewAtomicTarget& Target,
 		const FString& VisualGroupKey)
 	{
 		FBlueprintHelperReviewVisibleChange Change;
-		Change.ChangeId = Evidence.TransactionId;
+		Change.ChangeId = MakeReviewVisibleChangeId(Evidence.TransactionId, VisualGroupKey);
 		Change.AssetPath = Target.AssetPath.IsEmpty() ? Evidence.AssetPath : Target.AssetPath;
 		Change.GraphName = Target.GraphName;
 		Change.LocationKey = VisualGroupKey;
@@ -1702,8 +1835,27 @@ TArray<FBlueprintHelperReviewVisibleChange> FBlueprintHelperReviewStoreService::
 			}
 		}
 	}
+	FBlueprintHelperReviewStoreServiceLocalUtils::CollapseVisibleChangesLatestWins(RecordChanges);
 	FBlueprintHelperReviewStoreServiceLocalUtils::LinkPendingChildrenToLifecycleRoots(RecordChanges);
 	return RecordChanges;
+}
+
+FDelegateHandle FBlueprintHelperReviewStoreService::AddPendingReviewChangedHandler(const FSimpleDelegate& Handler) const
+{
+	return PendingReviewChangedDelegate.Add(Handler);
+}
+
+void FBlueprintHelperReviewStoreService::RemovePendingReviewChangedHandler(FDelegateHandle Handle) const
+{
+	if (Handle.IsValid())
+	{
+		PendingReviewChangedDelegate.Remove(Handle);
+	}
+}
+
+void FBlueprintHelperReviewStoreService::NotifyPendingReviewChanged() const
+{
+	PendingReviewChangedDelegate.Broadcast();
 }
 
 FBlueprintHelperReviewVisibleChange FBlueprintHelperReviewStoreService::MakeVisibleChange(
@@ -1871,7 +2023,7 @@ void FBlueprintHelperReviewStoreService::AddEvidenceAtomicTargets(
 		Change->LatestTransactionIds.Reset();
 		Change->LatestTransactionIds.Add(Evidence.TransactionId);
 		Change->SourceTransactionIds.AddUnique(Evidence.TransactionId);
-		Change->ChangeId = Evidence.TransactionId;
+		Change->ChangeId = FBlueprintHelperReviewStoreServiceLocalUtils::MakeReviewVisibleChangeId(Evidence.TransactionId, VisualGroupKey);
 		Change->ChangeKind = Evidence.ChangeKind;
 		Change->AfterSummary = Evidence.AfterSummary;
 		FBlueprintHelperReviewStoreServiceLocalUtils::ApplyAssetLifecycleRootMetadata(*Change);
