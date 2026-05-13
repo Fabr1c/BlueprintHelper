@@ -28,6 +28,8 @@ const toolMetas: ToolMeta[] = [
   { name: 'blueprinthelper_get_task_result', description: 'Read a TaskRunJournal by task_run_id.', audience: 'default', risk: 'low' },
   { name: 'blueprinthelper_read_agent_guide', description: 'Read the AgentGuide onboarding index.', audience: 'default', risk: 'none' },
   { name: 'blueprinthelper_get_debug_case', description: 'Read a summary-only DebugCase by id.', audience: 'default', risk: 'low' },
+  { name: 'blueprinthelper_list_debug_cases', description: 'List summary-only DebugCases.', audience: 'default', risk: 'low' },
+  { name: 'blueprinthelper_export_debug_bundle', description: 'Export a local DebugBundle manifest for a DebugCase.', audience: 'default', risk: 'low' },
   { name: 'blueprinthelper_read_context', description: 'Read UE asset context through ReadSpec.', audience: 'default', risk: 'low' },
   { name: 'blueprint_get_runtime_profile', description: 'Read the BlueprintHelper runtime profile.', audience: 'default', risk: 'low' },
   { name: 'blueprinthelper_request_write_session', description: 'Request Editor-approved write permission.', audience: 'default', risk: 'medium' },

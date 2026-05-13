@@ -9,8 +9,10 @@
 #include "UI/Review/BlueprintHelperReviewSurfaceRouter.h"
 #include "UI/Review/SBlueprintHelperReviewGeometryProbe.h"
 #include "EdGraph/EdGraph.h"
+#include "EdGraph/EdGraphNode.h"
 #include "EdGraphSchema_K2.h"
 #include "Engine/Blueprint.h"
+#include "K2Node_CustomEvent.h"
 #include "Styling/AppStyle.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
@@ -329,6 +331,28 @@ TSharedRef<SWidget> FBlueprintHelperReviewMyBlueprintPresenter::BuildContent(
 
 	TSharedRef<FRowItem> GraphSection = AddSection(TEXT("Graphs"));
 	AddGraphRows(GraphSection, Blueprint->UbergraphPages, ERowKind::Graph);
+	for (UEdGraph* Graph : Blueprint->UbergraphPages)
+	{
+		if (!Graph)
+		{
+			continue;
+		}
+
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			const UK2Node_CustomEvent* CustomEvent = Cast<UK2Node_CustomEvent>(Node);
+			if (!CustomEvent)
+			{
+				continue;
+			}
+
+			const FString EventName = CustomEvent->CustomFunctionName.ToString();
+			if (!EventName.IsEmpty())
+			{
+				AddChildRow(GraphSection, EventName, EventName, ERowKind::Event);
+			}
+		}
+	}
 	TSharedRef<FRowItem> FunctionSection = AddSection(TEXT("Functions"));
 	AddGraphRows(FunctionSection, Blueprint->FunctionGraphs, ERowKind::Function);
 	TSharedRef<FRowItem> MacroSection = AddSection(TEXT("Macros"));
@@ -412,7 +436,8 @@ TSharedRef<SWidget> FBlueprintHelperReviewMyBlueprintPresenter::BuildContent(
 	{
 		return Item.IsValid()
 			&& Item->Children.Num() == 0
-			&& Item->Label.ToString() != TEXT("Event Dispatchers");
+			&& Item->Label.ToString() != TEXT("Event Dispatchers")
+			&& Item->Label.ToString() != TEXT("Macros");
 	});
 
 	if (State.RootItems.Num() == 0)

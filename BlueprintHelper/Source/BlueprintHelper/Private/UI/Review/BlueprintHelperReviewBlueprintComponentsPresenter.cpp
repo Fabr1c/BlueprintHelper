@@ -381,7 +381,12 @@ bool FBlueprintHelperReviewBlueprintComponentsPresenter::TryApplyTableRowBackgro
 	}
 
 	const FString RowType = RowWidget->GetTypeAsString();
-	if (RowType != TEXT("SBorder"))
+	const bool bCanUseBorderBackground =
+		RowType == TEXT("SBorder")
+		|| RowType.Contains(TEXT("TableRow"))
+		|| RowType.Contains(TEXT("RowWidget"))
+		|| RowType.Contains(TEXT("Subobject"));
+	if (!bCanUseBorderBackground)
 	{
 		return false;
 	}

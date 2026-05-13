@@ -26,6 +26,12 @@ void SBlueprintHelperReviewPanel::Construct(const FArguments& InArgs)
 		InitialChanges = ReviewStoreService->LoadPendingVisibleChanges();
 	}
 	RefreshVisibleChanges(InitialChanges);
+	LastVisibleChangeRefreshSignature = BuildVisibleChangeRefreshSignature(InitialChanges);
+	if (ReviewStoreService)
+	{
+		PendingReviewChangedHandle = ReviewStoreService->AddPendingReviewChangedHandler(
+			FSimpleDelegate::CreateSP(this, &SBlueprintHelperReviewPanel::RefreshFromReviewStoreIfChanged));
+	}
 	if (ChangeItems.Num() > 0)
 	{
 		SelectedChange = ChangeItems[0];

@@ -115,7 +115,7 @@ private:
 		if (const UBlueprintHelperReviewDiffBlockNode* Node = DiffNode.Get())
 		{
 			Color = Node->DiffColor;
-			Color.A = Node->bHighlighted ? 0.72f : 0.46f;
+			Color.A = 0.35f;
 		}
 
 		BlockBrush = FSlateRoundedBoxBrush(

@@ -1,18 +1,18 @@
-/**
- * BlueprintHelper MCP 鈥?Tool Result Base 鏍囧噯鍖?
+﻿/**
+ * BlueprintHelper MCP 閳?Tool Result Base 閺嶅洤鍣崠?
  *
- * 绗?0 绨囷細缁熶竴鎵€鏈?MCP 宸ュ叿杩斿洖浣撶殑鍩虹瀛楁銆?
- * 浠?Bridge 鍘熷鍝嶅簲鏄犲皠鍒?Agent 鍙鐨勭簿绠€ Tool Result Base銆?
+ * 缁?0 缁ㄥ浄绱扮紒鐔剁閹碘偓閺?MCP 瀹搞儱鍙挎潻鏂挎礀娴ｆ挾娈戦崺铏诡攨鐎涙顔岄妴?
+ * 娴?Bridge 閸樼喎顫愰崫宥呯安閺勭姴鐨犻崚?Agent 閸欘垵顫嗛惃鍕翱缁犫偓 Tool Result Base閵?
  *
- * 绾︽潫锛?
- * - 涓嶈繑鍥?tool / command / request_id / diagnostics / next / ownership 椤跺眰瀛楁 / safety_profile銆?
- * - content[0].text 鍙斁鐭憳瑕併€?
- * - structuredContent 鏀惧畬鏁?ToolResultBase JSON銆?
+ * 缁撅附娼敍?
+ * - 娑撳秷绻戦崶?tool / command / request_id / diagnostics / next / ownership 妞よ泛鐪扮€涙顔?/ safety_profile閵?
+ * - content[0].text 閸欘亝鏂侀惌顓熸喅鐟曚降鈧?
+ * - structuredContent 閺€鎯х暚閺?ToolResultBase JSON閵?
  */
 
 import { BridgeResponse } from '../bridge/bridge-client.js';
 
-// 鈹€鈹€鈹€ 鏋氫妇鍊煎父閲?鈹€鈹€鈹€
+// 閳光偓閳光偓閳光偓 閺嬫矮濡囬崐鐓庣埗闁?閳光偓閳光偓閳光偓
 
 export type ToolStatus =
   | 'completed'
@@ -87,7 +87,7 @@ export type RollbackResult =
   | 'rollback_failed'
   | 'unavailable';
 
-// 鈹€鈹€鈹€ 瀛愮粨鏋勭被鍨?鈹€鈹€鈹€
+// 閳光偓閳光偓閳光偓 鐎涙劗绮ㄩ弸鍕閸?閳光偓閳光偓閳光偓
 
 export interface ToolResultTarget {
   asset_path?: string;
@@ -182,7 +182,7 @@ export interface DryRunData {
   errors: ToolResultValidationMessage[];
 }
 
-// 鈹€鈹€鈹€ 椤跺眰 ToolResultBase 鈹€鈹€鈹€
+// 閳光偓閳光偓閳光偓 妞よ泛鐪?ToolResultBase 閳光偓閳光偓閳光偓
 
 export interface ToolResultBase {
   ok: boolean;
@@ -198,11 +198,11 @@ export interface ToolResultBase {
   error?: ToolResultError;
 }
 
-// 鈹€鈹€鈹€ Schema 鐗堟湰 鈹€鈹€鈹€
+// 閳光偓閳光偓閳光偓 Schema 閻楀牊婀?閳光偓閳光偓閳光偓
 
-export const TOOL_RESULT_SCHEMA = 'BlueprintHelper.McpToolResult.v1';
+export const TOOL_RESULT_SCHEMA = 'BlueprintHelper.ToolResult.v1';
 
-// 鈹€鈹€鈹€ 鐢熸垚鍞竴 ID 鈹€鈹€鈹€
+// 閳光偓閳光偓閳光偓 閻㈢喐鍨氶崬顖欑 ID 閳光偓閳光偓閳光偓
 
 let traceCounter = 0;
 let transactionCounter = 0;
@@ -219,7 +219,7 @@ export function generateTransactionId(prefix = 'tx'): string {
   return `${prefix}_${timePart}_${counterPart}`;
 }
 
-// 鈹€鈹€鈹€ 鐭憳瑕佺敓鎴?鈹€鈹€鈹€
+// 閳光偓閳光偓閳光偓 閻厽鎲崇憰浣烘晸閹?閳光偓閳光偓閳光偓
 
 export function makeSummary(result: ToolResultBase): string {
   const targetInfo = result.target
@@ -235,15 +235,15 @@ export function makeSummary(result: ToolResultBase): string {
   return errorMessage ? `${baseSummary} error=${errorMessage}${debugCases}` : `${baseSummary}${debugCases}`;
 }
 
-// 鈹€鈹€鈹€ 浠?Bridge 鍘熷鍝嶅簲鏍囧噯鍖?鈹€鈹€鈹€
+// 閳光偓閳光偓閳光偓 娴?Bridge 閸樼喎顫愰崫宥呯安閺嶅洤鍣崠?閳光偓閳光偓閳光偓
 
 /**
- * 灏嗗師濮?BridgeResponse 鏍囧噯鍖栦负 ToolResultBase銆?
- * 鐢ㄤ簬 MCP 宸ュ叿 handler 涓浛鎹?toToolResult()銆?
+ * 鐏忓棗甯慨?BridgeResponse 閺嶅洤鍣崠鏍﹁礋 ToolResultBase閵?
+ * 閻劋绨?MCP 瀹搞儱鍙?handler 娑擃厽娴涢幑?toToolResult()閵?
  *
- * @param resp - Bridge 鍘熷鍝嶅簲
- * @param operation - 鍏叡鎿嶄綔鍚嶏紙濡?append_blueprint_graph锛?
- * @param overrides - 鍙€夎鐩栧瓧娈碉紙濡?target, transaction, validation锛?
+ * @param resp - Bridge 閸樼喎顫愰崫宥呯安
+ * @param operation - 閸忣剙鍙￠幙宥勭稊閸氬稄绱欐俊?append_blueprint_graph閿?
+ * @param overrides - 閸欘垶鈧顩惄鏍х摟濞堢绱欐俊?target, transaction, validation閿?
  */
 export function normalizeToolResult(
   resp: BridgeResponse,
@@ -262,7 +262,7 @@ export function normalizeToolResult(
     const error: ToolResultError = {
       code: resp.error_code ?? 'bridge_error',
       stage: 'bridge',
-      message: resp.message ?? '鏈煡 Bridge 閿欒',
+      message: resp.message ?? 'Bridge request failed.',
       retryable: false,
       rollback_result: 'not_needed',
       ...overrides?.error,
@@ -303,12 +303,12 @@ export function normalizeToolResult(
 }
 
 /**
- * 灏?ToolResultBase 杞崲涓?MCP tool result 鏍煎紡銆?
- * - content[0].text: 鐭憳瑕?
- * - structuredContent: 瀹屾暣 ToolResultBase
+ * 鐏?ToolResultBase 鏉烆剚宕叉稉?MCP tool result 閺嶇厧绱￠妴?
+ * - content[0].text: 閻厽鎲崇憰?
+ * - structuredContent: 鐎瑰本鏆?ToolResultBase
  */
 /**
- * 渚挎嵎鏋勯€狅細鎴愬姛璇绘搷浣溿€?
+ * 娓氭寧宓庨弸鍕偓鐙呯窗閹存劕濮涚拠缁樻惙娴ｆ嚎鈧?
  */
 export function successRead(
   operation: string,
@@ -328,7 +328,7 @@ export function successRead(
 }
 
 /**
- * 渚挎嵎鏋勯€狅細鎴愬姛鍐欐搷浣溿€?
+ * 娓氭寧宓庨弸鍕偓鐙呯窗閹存劕濮涢崘娆愭惙娴ｆ嚎鈧?
  */
 export function successWrite(
   operation: string,
@@ -350,7 +350,7 @@ export function successWrite(
 }
 
 /**
- * 渚挎嵎鏋勯€狅細dry_run銆?
+ * 娓氭寧宓庨弸鍕偓鐙呯窗dry_run閵?
  */
 export function successDryRun(
   operation: string,
@@ -370,7 +370,7 @@ export function successDryRun(
 }
 
 /**
- * 渚挎嵎鏋勯€狅細澶辫触銆?
+ * 娓氭寧宓庨弸鍕偓鐙呯窗婢惰精瑙﹂妴?
  */
 export function failureResult(
   operation: string,
@@ -389,10 +389,10 @@ export function failureResult(
   };
 }
 
-// 鈹€鈹€鈹€ Diagnostics 涓撶敤 鈹€鈹€鈹€
+// 閳光偓閳光偓閳光偓 Diagnostics 娑撴挾鏁?閳光偓閳光偓閳光偓
 
 /**
- * 鍗曟潯璇婃柇浠ｇ爜琛屻€?
+ * 閸楁洘娼拠濠冩焽娴狅絿鐖滅悰灞烩偓?
  */
 export interface DiagnosticsCodeLine {
   code: string;
@@ -400,7 +400,7 @@ export interface DiagnosticsCodeLine {
 }
 
 /**
- * Markdown 璇婃柇鎶ュ憡銆?
+ * Markdown 鐠囧﹥鏌囬幎銉ユ啞閵?
  */
 export interface DiagnosticsMarkdownReport {
   blocking: DiagnosticsCodeLine[];
@@ -409,8 +409,8 @@ export interface DiagnosticsMarkdownReport {
 }
 
 /**
- * 鏋勫缓 Markdown 璇婃柇鎶ュ憡瀛楃涓层€?
- * Blocking 鍜?Warning 鍥哄畾鍑虹幇锛孖nfo 鍙€夈€?
+ * 閺嬪嫬缂?Markdown 鐠囧﹥鏌囬幎銉ユ啞鐎涙顑佹稉灞傗偓?
+ * Blocking 閸?Warning 閸ュ搫鐣鹃崙铏瑰箛閿涘瓥nfo 閸欘垶鈧鈧?
  */
 export function buildDiagnosticsMarkdown(report: DiagnosticsMarkdownReport): string {
   const lines: string[] = [];
@@ -463,7 +463,7 @@ export function buildDiagnosticsMarkdown(report: DiagnosticsMarkdownReport): str
 }
 
 /**
- * 鏋勫缓 Diagnostics data payload銆?
+ * 閺嬪嫬缂?Diagnostics data payload閵?
  */
 export function buildDiagnosticsData(
   mode: 'static' | 'runtime',
@@ -476,3 +476,4 @@ export function buildDiagnosticsData(
     markdown,
   };
 }
+

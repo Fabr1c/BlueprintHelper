@@ -41,6 +41,8 @@ Ordinary Agents must not request, set, or forward `BLUEPRINTHELPER_BRIDGE_TOKEN`
 
 Read-only commands such as `bh blueprinthelper_read_context`, `bh blueprinthelper_read_task_context`, and `bh blueprinthelper_read_reference_context` do not require a write session. If these commands are unavailable, diagnose CLI installation, command registration, package build state, or Bridge connectivity instead of requesting write permission.
 
+CLI output is optimized for Agent use. Use `--omit operation,status` when the default summary is useful but envelope fields are not needed. Use `--select` / `--fields` when only a small whitelist is needed, such as `task_run_id`, `summary.target_assets`, or `artifacts.full_result`. Use `--max-bytes` as a hard budget guard; the full payload remains available through the artifact path.
+
 `blueprint_open_editor` 仅用于用户明确需要启动目标 Unreal Editor 的 preflight，不属于普通写入主线。
 
 阅读顺序:

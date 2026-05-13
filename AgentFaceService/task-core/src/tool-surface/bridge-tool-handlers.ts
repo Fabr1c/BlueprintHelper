@@ -53,8 +53,14 @@ const ReadContextInputSchema = z.object({
 
 type ReadContextInput = z.infer<typeof ReadContextInputSchema>;
 
+const DebugCaseInputSchema = z.object({
+  debug_case_id: z.string().min(1),
+});
+
 export const bridgeCommandByToolName: Record<string, string> = {
   blueprinthelper_get_debug_case: 'get_debug_case',
+  blueprinthelper_list_debug_cases: 'list_debug_cases',
+  blueprinthelper_export_debug_bundle: 'export_debug_bundle',
   blueprint_get_runtime_profile: 'get_runtime_profile',
   blueprinthelper_request_write_session: 'request_write_session',
   blueprinthelper_diagnostics_runtime: 'diagnostics_runtime',
@@ -110,6 +116,8 @@ export const bridgeCommandByToolName: Record<string, string> = {
 
 export const bridgeToolSchemas: Record<string, z.ZodTypeAny> = {
   blueprinthelper_read_context: ReadContextInputSchema,
+  blueprinthelper_get_debug_case: DebugCaseInputSchema,
+  blueprinthelper_export_debug_bundle: DebugCaseInputSchema,
 };
 
 export async function executeBridgeTool(

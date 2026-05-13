@@ -1,4 +1,4 @@
-# BlueprintHelper TaskSpec / TaskPlan Contract (2026-05-04)
+﻿# BlueprintHelper TaskSpec / TaskPlan Contract (2026-05-04)
 
 ## 1. Contract Status
 
@@ -24,7 +24,7 @@ Ordinary Agents submit `BlueprintHelper.TaskSpec.v1` only. They do not author `B
 
 | Data | Schema |
 |---|---|
-| Normalized tool result envelope | `BlueprintHelper.McpToolResult.v1` |
+| Normalized tool result envelope | `BlueprintHelper.ToolResult.v1` |
 | Task context | `BlueprintHelper.TaskContextPack.v1` |
 | Read input | `BlueprintHelper.ReadSpec.v1` |
 | Read context payload | `ReadContextPack.v1` |
@@ -109,13 +109,13 @@ Default Agent-facing result layering is fixed as:
 | Tool | Outer shape | `data.schema` / payload |
 |---|---|---|
 | `blueprinthelper_read_agent_guide` | Markdown text only | none |
-| `blueprinthelper_read_context` | `BlueprintHelper.McpToolResult.v1` | `ReadContextPack.v1`, with `payload.schema = LogicMd.v1 / LogicJson.v1 / ...` |
-| `blueprinthelper_read_reference_context` | `BlueprintHelper.McpToolResult.v1` | `ReferenceContextPack.v1` |
-| `blueprinthelper_preview_task` | `BlueprintHelper.McpToolResult.v1` | `TaskPreviewResult.v1` |
-| `blueprinthelper_execute_task` | `BlueprintHelper.McpToolResult.v1` | `TaskRunSummary.v1` by default, or `TaskRunJournal.v1` when returning the full journal |
-| `blueprinthelper_get_task_result` | `BlueprintHelper.McpToolResult.v1` | `TaskRunJournal.v1` |
+| `blueprinthelper_read_context` | `BlueprintHelper.ToolResult.v1` | `ReadContextPack.v1`, with `payload.schema = LogicMd.v1 / LogicJson.v1 / ...` |
+| `blueprinthelper_read_reference_context` | `BlueprintHelper.ToolResult.v1` | `ReferenceContextPack.v1` |
+| `blueprinthelper_preview_task` | `BlueprintHelper.ToolResult.v1` | `TaskPreviewResult.v1` |
+| `blueprinthelper_execute_task` | `BlueprintHelper.ToolResult.v1` | `TaskRunSummary.v1` by default, or `TaskRunJournal.v1` when returning the full journal |
+| `blueprinthelper_get_task_result` | `BlueprintHelper.ToolResult.v1` | `TaskRunJournal.v1` |
 
-UE Agent-facing facade commands return `FBlueprintHelperToolResultBase`. task-core task/read tools normalize those results into `BlueprintHelper.McpToolResult.v1` for full artifacts. Existing Bridge / UE operation results are internal facts for compiler/runtime/journal use; ordinary Agents should not depend on raw adapter payloads.
+UE Agent-facing facade commands return `FBlueprintHelperToolResultBase`. task-core task/read tools normalize those results into `BlueprintHelper.ToolResult.v1` for full artifacts. Existing Bridge / UE operation results are internal facts for compiler/runtime/journal use; ordinary Agents should not depend on raw adapter payloads.
 
 Debug data must not expand the default top-level shape. Put compact debug facts under `data.debug` only when directly useful. Large asset context should be read through targeted `logic_md` / `logic_json` slices. Developer diagnostics use summary `DebugCase` ids and local `DebugBundle` exports; default tool responses must not expose bundle artifacts, local paths, raw payloads, source content, or large payload refs.
 
@@ -206,7 +206,7 @@ Read result `data.schema` follows the short-name payload rule. `ReadContextPack.
 
 ```json
 {
-  "schema": "BlueprintHelper.McpToolResult.v1",
+  "schema": "BlueprintHelper.ToolResult.v1",
   "operation": "read_context",
   "status": "completed",
   "modified": false,
@@ -874,7 +874,7 @@ Completed task journals may include `generated_intent`, produced from the execut
 
 ```json
 {
-  "generated_intent": "使用 GraphWrite 写入蓝图逻辑�?BP_Door.BH_Door"
+  "generated_intent": "浣跨敤 GraphWrite 鍐欏叆钃濆浘閫昏緫浜?BP_Door.BH_Door"
 }
 ```
 
@@ -1016,3 +1016,4 @@ Any new TaskSpec or TaskPlan capability must update all of these together:
 6. This contract document.
 
 Do not silently add fields that alter semantics. Optional metadata may pass through schema validation, but new executable semantics require contract and fixture updates.
+

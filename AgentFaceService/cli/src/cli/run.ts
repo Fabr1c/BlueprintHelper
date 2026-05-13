@@ -48,6 +48,8 @@ const READ_ONLY_BRIDGE_COMMANDS = new Set([
   'diagnostics_runtime',
   'read_reference_context',
   'get_debug_case',
+  'list_debug_cases',
+  'export_debug_bundle',
   'get_task_run_journal',
 ]);
 
@@ -145,6 +147,7 @@ export async function runCli(runtime: CliRuntime): Promise<number> {
       status,
       message: err instanceof Error ? err.message : String(err),
       fields: command.fields,
+      omitFields: command.omitFields,
     }))}\n`);
     return status === 'bridge_unavailable' ? 2 : 1;
   }
@@ -170,6 +173,7 @@ function parseArgs(argv: string[]): ParseResult {
     artifactDir?: string;
     maxBytes?: number;
     fields?: string[];
+    omitFields?: string[];
   } = {};
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -208,6 +212,13 @@ function parseArgs(argv: string[]): ParseResult {
         return { ok: false, message: `${arg} must include at least one field path.` };
       }
       options.fields = fields;
+    } else if (arg === '--omit' || arg === '--exclude') {
+      const rawFields = readOptionValue(argv, ++index, arg);
+      const fields = parseFieldList(rawFields);
+      if (fields.length === 0) {
+        return { ok: false, message: `${arg} must include at least one field path.` };
+      }
+      options.omitFields = fields;
     } else if (arg.startsWith('--')) {
       return { ok: false, message: `Unknown option: ${arg}` };
     } else {
@@ -220,8 +231,21 @@ function parseArgs(argv: string[]): ParseResult {
     artifactDir: options.artifactDir,
     maxBytes: options.maxBytes,
     fields: options.fields,
+    omitFields: options.omitFields,
   };
   const [group, action] = positionals;
+
+  if (positionals.length === 1 && group === 'blueprinthelper_get_task_result' && options.id) {
+    return {
+      ok: true,
+      command: {
+        ...base,
+        kind: 'tool.invoke',
+        toolName: group,
+        params: { task_run_id: options.id },
+      },
+    };
+  }
 
   if (positionals.length === 1 && getBlueprintHelperTool(group)) {
     return {
@@ -350,12 +374,12 @@ function helpText(): string {
     'BlueprintHelper CLI',
     '',
     'Usage:',
-    '  blueprinthelper-cli <tool_name> [--file params.json | --json json | --stdin] [--fields path[,path...]]',
-    '  blueprinthelper-cli task preview --file <task-spec.json> [--format summary|json|full] [--fields path[,path...]]',
-    '  blueprinthelper-cli task execute --file <task-spec.json> [--format summary|json|full] [--fields path[,path...]]',
-    '  blueprinthelper-cli task result --id <task_run_id> [--fields path[,path...]]',
-    '  blueprinthelper-cli context read --file <context-request.json> [--fields path[,path...]]',
-    '  blueprinthelper-cli bridge ping [--fields path[,path...]]',
-    '  blueprinthelper-cli bridge call --command <read_only_command> [--fields path[,path...]]',
+    '  blueprinthelper-cli <tool_name> [--file params.json | --json json | --stdin] [--fields path[,path...]] [--omit path[,path...]]',
+    '  blueprinthelper-cli task preview --file <task-spec.json> [--format summary|json|full] [--fields path[,path...]] [--omit path[,path...]]',
+    '  blueprinthelper-cli task execute --file <task-spec.json> [--format summary|json|full] [--fields path[,path...]] [--omit path[,path...]]',
+    '  blueprinthelper-cli task result --id <task_run_id> [--fields path[,path...]] [--omit path[,path...]]',
+    '  blueprinthelper-cli context read --file <context-request.json> [--fields path[,path...]] [--omit path[,path...]]',
+    '  blueprinthelper-cli bridge ping [--fields path[,path...]] [--omit path[,path...]]',
+    '  blueprinthelper-cli bridge call --command <read_only_command> [--fields path[,path...]] [--omit path[,path...]]',
   ].join('\n');
 }

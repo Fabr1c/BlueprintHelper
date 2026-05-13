@@ -32,6 +32,7 @@ public:
 
 	SLATE_END_ARGS()
 
+	~SBlueprintHelperReviewPanel();
 	void Construct(const FArguments& InArgs);
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -104,6 +105,7 @@ private:
 	FReviewTreeItemPtr FindTreeItemForChange(FReviewChangeItem Item) const;
 	FReviewChangeItem FindChangeItemById(const FString& ChangeId) const;
 	TArray<FBlueprintHelperReviewVisibleChange> BuildPendingChangeSnapshot() const;
+	static FString BuildVisibleChangeRefreshSignature(const TArray<FBlueprintHelperReviewVisibleChange>& Changes);
 	void SelectNextChangeAfterRemoval(const FString& PreferredAssetPath, int32 RemovedIndex);
 	FReply OnAcceptChangeId(const FString& ChangeId);
 	FReply OnRejectChangeId(const FString& ChangeId);
@@ -125,6 +127,7 @@ private:
 
 	EActiveTimerReturnType TickFlash(double InCurrentTime, float InDeltaTime);
 	void StartFlash();
+	void RefreshFromReviewStoreIfChanged();
 	void LoadReviewAssetFromSelection();
 	void UpdateDetailsSelection();
 	void OnDetailsDisplayedPropertiesChanged();
@@ -156,6 +159,8 @@ private:
 	TSharedPtr<SBox> DetailsDiffStackBox;
 	TSharedPtr<SKismetInspector> KismetInspector;
 	FReviewChangeItem SelectedChange;
+	FString LastVisibleChangeRefreshSignature;
+	FDelegateHandle PendingReviewChangedHandle;
 	TArray<FString> DebugMessages;
 	TSharedPtr<SMultiLineEditableTextBox> DebugMessageTextBox;
 	FBlueprintHelperReviewAssetContext ReviewAssetContext;

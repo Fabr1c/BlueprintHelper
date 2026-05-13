@@ -33,6 +33,12 @@
 class FBlueprintHelperReviewActionServiceLocalUtils
 {
 public:
+	struct FPersistedReviewTargetMatch
+	{
+		FString ReviewRecordId;
+		TArray<FString> TargetKeys;
+	};
+
 	static bool ReviewTargetMatches(const FBlueprintHelperReviewAtomicTarget& Target, const TArray<FString>& TargetKeys)
 	{
 		return TargetKeys.Num() == 0 || TargetKeys.Contains(Target.TargetKey);
@@ -178,6 +184,151 @@ public:
 		return TargetKeys;
 	}
 
+	static FString MakeReviewPackageKey(FString AssetPath)
+	{
+		AssetPath.TrimStartAndEndInline();
+		if (AssetPath.IsEmpty())
+		{
+			return FString();
+		}
+		if (FPackageName::IsValidObjectPath(AssetPath))
+		{
+			return FPackageName::ObjectPathToPackageName(AssetPath);
+		}
+
+		int32 SubObjectIndex = INDEX_NONE;
+		if (AssetPath.FindChar(TEXT(':'), SubObjectIndex))
+		{
+			AssetPath = AssetPath.Left(SubObjectIndex);
+		}
+
+		int32 ObjectIndex = INDEX_NONE;
+		if (AssetPath.FindChar(TEXT('.'), ObjectIndex))
+		{
+			AssetPath = AssetPath.Left(ObjectIndex);
+		}
+		return AssetPath;
+	}
+
+	static bool ReviewAssetPathMatches(const FString& Left, const FString& Right)
+	{
+		const FString LeftKey = MakeReviewPackageKey(Left);
+		const FString RightKey = MakeReviewPackageKey(Right);
+		return !LeftKey.IsEmpty() && !RightKey.IsEmpty() && LeftKey == RightKey;
+	}
+
+	static bool IntersectTargetKeys(
+		const TArray<FString>& RequestedTargetKeys,
+		const TArray<FString>& CandidateTargetKeys,
+		TArray<FString>& OutMatchedTargetKeys)
+	{
+		OutMatchedTargetKeys.Reset();
+		for (const FString& CandidateTargetKey : CandidateTargetKeys)
+		{
+			if (!CandidateTargetKey.IsEmpty() && RequestedTargetKeys.Contains(CandidateTargetKey))
+			{
+				OutMatchedTargetKeys.AddUnique(CandidateTargetKey);
+			}
+		}
+		return OutMatchedTargetKeys.Num() > 0;
+	}
+
+	static void AddPersistedReviewTargetMatch(
+		TArray<FPersistedReviewTargetMatch>& Matches,
+		const FString& ReviewRecordId,
+		const TArray<FString>& TargetKeys)
+	{
+		if (ReviewRecordId.IsEmpty() || TargetKeys.Num() == 0)
+		{
+			return;
+		}
+
+		FPersistedReviewTargetMatch* Existing = Matches.FindByPredicate(
+			[&ReviewRecordId](const FPersistedReviewTargetMatch& Candidate)
+			{
+				return Candidate.ReviewRecordId == ReviewRecordId;
+			});
+		if (!Existing)
+		{
+			FPersistedReviewTargetMatch NewMatch;
+			NewMatch.ReviewRecordId = ReviewRecordId;
+			Matches.Add(NewMatch);
+			Existing = &Matches.Last();
+		}
+
+		for (const FString& TargetKey : TargetKeys)
+		{
+			if (!TargetKey.IsEmpty())
+			{
+				Existing->TargetKeys.AddUnique(TargetKey);
+			}
+		}
+	}
+
+	static TArray<FPersistedReviewTargetMatch> ResolvePersistedReviewTargetMatches(
+		const FBlueprintHelperReviewVisibleChange& Change)
+	{
+		TArray<FPersistedReviewTargetMatch> Matches;
+		if (Change.AssetPath.IsEmpty())
+		{
+			return Matches;
+		}
+
+		const TArray<FString> RequestedTargetKeys = CollectTargetKeysFromVisibleChange(Change);
+		FBlueprintHelperReviewRecordQuery Query;
+		Query.bPendingOnly = false;
+
+		FBlueprintHelperReviewStoreService Store;
+		const TArray<FBlueprintHelperReviewRecord> Records = Store.QueryReviewRecords(Query);
+		for (const FBlueprintHelperReviewRecord& Record : Records)
+		{
+			if (!ReviewAssetPathMatches(Change.AssetPath, Record.AssetPath))
+			{
+				continue;
+			}
+
+			for (const FBlueprintHelperReviewVisibleChange& Candidate : Record.VisibleChanges)
+			{
+				if (!ReviewAssetPathMatches(Change.AssetPath, Candidate.AssetPath))
+				{
+					continue;
+				}
+				if (Candidate.Status != EBlueprintHelperReviewChangeStatus::Pending
+					&& Candidate.Status != EBlueprintHelperReviewChangeStatus::NeedsAction
+					&& Candidate.Status != EBlueprintHelperReviewChangeStatus::RejectFailed)
+				{
+					continue;
+				}
+
+				const TArray<FString> CandidateTargetKeys = CollectTargetKeysFromVisibleChange(Candidate);
+				TArray<FString> MatchedTargetKeys;
+				const bool bHasRequestedTarget = RequestedTargetKeys.Num() > 0
+					&& IntersectTargetKeys(RequestedTargetKeys, CandidateTargetKeys, MatchedTargetKeys);
+				const bool bSameChangeIdentity =
+					(!Change.ChangeId.IsEmpty() && Candidate.ChangeId == Change.ChangeId) ||
+					(!Change.LocationKey.IsEmpty() && Candidate.LocationKey == Change.LocationKey) ||
+					(!Change.LatestTransactionId.IsEmpty() && Candidate.LatestTransactionId == Change.LatestTransactionId);
+
+				if (!bHasRequestedTarget && !bSameChangeIdentity)
+				{
+					continue;
+				}
+				if (RequestedTargetKeys.Num() == 0)
+				{
+					MatchedTargetKeys = CandidateTargetKeys;
+				}
+				if (MatchedTargetKeys.Num() == 0)
+				{
+					continue;
+				}
+
+				AddPersistedReviewTargetMatch(Matches, Record.ReviewRecordId, MatchedTargetKeys);
+			}
+		}
+
+		return Matches;
+	}
+
 	static bool DeleteDebugCasesForReviewRecord(
 		const FString& ReviewRecordId,
 		const TArray<FString>& ExplicitDebugCaseIds,
@@ -235,52 +386,15 @@ public:
 		FString& OutReviewRecordId,
 		TArray<FString>& OutTargetKeys)
 	{
-		if (Change.AssetPath.IsEmpty())
+		const TArray<FPersistedReviewTargetMatch> Matches = ResolvePersistedReviewTargetMatches(Change);
+		if (Matches.Num() == 0)
 		{
 			return false;
 		}
 
-		FBlueprintHelperReviewRecordQuery Query;
-		Query.AssetPathFilter = Change.AssetPath;
-		Query.bPendingOnly = false;
-
-		const TArray<FString> RequestedTargetKeys = CollectTargetKeysFromVisibleChange(Change);
-		FBlueprintHelperReviewStoreService Store;
-		const TArray<FBlueprintHelperReviewRecord> Records = Store.QueryReviewRecords(Query);
-		for (const FBlueprintHelperReviewRecord& Record : Records)
-		{
-			for (const FBlueprintHelperReviewVisibleChange& Candidate : Record.VisibleChanges)
-			{
-				const bool bSameChange =
-					(!Change.ChangeId.IsEmpty() && Candidate.ChangeId == Change.ChangeId) ||
-					(!Change.LocationKey.IsEmpty() && Candidate.LocationKey == Change.LocationKey) ||
-					(!Change.LatestTransactionId.IsEmpty() && Candidate.LatestTransactionId == Change.LatestTransactionId);
-				if (!bSameChange)
-				{
-					continue;
-				}
-
-				const TArray<FString> CandidateTargetKeys = CollectTargetKeysFromVisibleChange(Candidate);
-				if (RequestedTargetKeys.Num() > 0)
-				{
-					bool bHasRequestedTarget = false;
-					for (const FString& RequestedTargetKey : RequestedTargetKeys)
-					{
-						bHasRequestedTarget |= CandidateTargetKeys.Contains(RequestedTargetKey);
-					}
-					if (!bHasRequestedTarget)
-					{
-						continue;
-					}
-				}
-
-				OutReviewRecordId = Record.ReviewRecordId;
-				OutTargetKeys = RequestedTargetKeys.Num() > 0 ? RequestedTargetKeys : CandidateTargetKeys;
-				return !OutReviewRecordId.IsEmpty() && OutTargetKeys.Num() > 0;
-			}
-		}
-
-		return false;
+		OutReviewRecordId = Matches[0].ReviewRecordId;
+		OutTargetKeys = Matches[0].TargetKeys;
+		return !OutReviewRecordId.IsEmpty() && OutTargetKeys.Num() > 0;
 	}
 
 	static bool HasInjectedRejectOptions(const FBlueprintHelperReviewRejectOptions& Options)
@@ -967,11 +1081,27 @@ FBlueprintHelperReviewActionService::FBlueprintHelperReviewActionService(
 FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::AcceptVisibleChange(
 	const FBlueprintHelperReviewVisibleChange& Change) const
 {
-	FString ReviewRecordId;
-	TArray<FString> TargetKeys;
-	if (FBlueprintHelperReviewActionServiceLocalUtils::TryResolvePersistedReviewChange(Change, ReviewRecordId, TargetKeys))
+	const TArray<FBlueprintHelperReviewActionServiceLocalUtils::FPersistedReviewTargetMatch> Matches =
+		FBlueprintHelperReviewActionServiceLocalUtils::ResolvePersistedReviewTargetMatches(Change);
+	if (Matches.Num() > 0)
 	{
-		return AcceptReviewTargets(ReviewRecordId, TargetKeys);
+		FBlueprintHelperReviewActionResult LastResult;
+		for (const FBlueprintHelperReviewActionServiceLocalUtils::FPersistedReviewTargetMatch& Match : Matches)
+		{
+			LastResult = AcceptReviewTargets(Match.ReviewRecordId, Match.TargetKeys);
+			if (!LastResult.bSucceeded)
+			{
+				return LastResult;
+			}
+		}
+
+		LastResult.bSucceeded = true;
+		LastResult.TargetTransactionId = Change.LatestTransactionId;
+		LastResult.NewStatus = EBlueprintHelperReviewChangeStatus::Accepted;
+		LastResult.Message = TEXT("accepted");
+		LastResult.bSupersededDataCompactionEligible =
+			Change.SourceTransactionIds.Num() > FMath::Max(1, Change.LatestTransactionIds.Num());
+		return LastResult;
 	}
 
 	FBlueprintHelperReviewActionResult Result;
@@ -987,12 +1117,27 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::AcceptVi
 FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectVisibleChange(
 	const FBlueprintHelperReviewVisibleChange& Change) const
 {
-	FString ReviewRecordId;
-	TArray<FString> TargetKeys;
-	if (FBlueprintHelperReviewActionServiceLocalUtils::TryResolvePersistedReviewChange(Change, ReviewRecordId, TargetKeys))
+	const TArray<FBlueprintHelperReviewActionServiceLocalUtils::FPersistedReviewTargetMatch> Matches =
+		FBlueprintHelperReviewActionServiceLocalUtils::ResolvePersistedReviewTargetMatches(Change);
+	if (Matches.Num() > 0)
 	{
 		FBlueprintHelperReviewRejectOptions Options;
-		return RejectReviewTargets(ReviewRecordId, TargetKeys, Options);
+		FBlueprintHelperReviewActionResult LastResult;
+		for (const FBlueprintHelperReviewActionServiceLocalUtils::FPersistedReviewTargetMatch& Match : Matches)
+		{
+			LastResult = RejectReviewTargets(Match.ReviewRecordId, Match.TargetKeys, Options);
+			if (!LastResult.bSucceeded)
+			{
+				return LastResult;
+			}
+		}
+
+		LastResult.bSucceeded = true;
+		LastResult.TargetTransactionId = Change.LatestTransactionId;
+		LastResult.NewStatus = EBlueprintHelperReviewChangeStatus::Rejected;
+		LastResult.Message = TEXT("rejected");
+		LastResult.bSupersededDataCompactionEligible = true;
+		return LastResult;
 	}
 
 	FBlueprintHelperReviewActionResult Result;
