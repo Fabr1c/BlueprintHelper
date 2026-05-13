@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="BlueprintHelper">
+  <rect width="256" height="256" rx="48" fill="#2563EB"/>
+  <path d="M70 72h54v54H70V72Zm62 0h54v54h-54V72ZM70 134h54v54H70v-54Zm62 0h54v54h-54v-54Z" fill="#EFF6FF"/>
+  <path d="M97 99h62M97 161h62M159 99v62" fill="none" stroke="#1D4ED8" stroke-width="14" stroke-linecap="round"/>
+  <circle cx="97" cy="99" r="11" fill="#0F172A"/>
+  <circle cx="159" cy="99" r="11" fill="#0F172A"/>
+  <circle cx="97" cy="161" r="11" fill="#0F172A"/>
+  <circle cx="159" cy="161" r="11" fill="#0F172A"/>
+</svg>

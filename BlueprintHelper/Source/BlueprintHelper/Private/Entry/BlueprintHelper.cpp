@@ -348,6 +348,11 @@ FString FBlueprintHelperModule::GetJsonToBlueprintRuleMarkdown() const
 	return RuleMarkdown;
 }
 
+bool FBlueprintHelperModule::IsBridgeServerRunning() const
+{
+	return BridgeServer.IsValid() && BridgeServer->IsRunning();
+}
+
 void FBlueprintHelperModule::RegisterMenus()
 {
 	FToolMenuOwnerScoped OwnerScoped(this);

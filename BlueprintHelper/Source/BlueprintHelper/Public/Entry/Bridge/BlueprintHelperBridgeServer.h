@@ -36,6 +36,9 @@ public:
 	/** 获取实际绑定端口。 */
 	int32 GetPort() const { return Port; }
 
+	/** 获取 Bridge 当前是否处于运行态。 */
+	bool IsRunning() const { return ListenerSocket != nullptr && Thread.IsValid() && !bStopping; }
+
 	// FRunnable
 	virtual uint32 Run() override;
 	virtual void Stop() override;

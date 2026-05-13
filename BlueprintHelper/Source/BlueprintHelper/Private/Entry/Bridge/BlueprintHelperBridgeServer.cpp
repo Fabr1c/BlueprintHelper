@@ -1,10 +1,12 @@
-// BlueprintHelper Bridge Layer — TCP Bridge Server 实现
+// BlueprintHelper Bridge Layer 闁?TCP Bridge Server 閻庡湱鍋熼獮?
 
 #include "Entry/Bridge/BlueprintHelperBridgeServer.h"
 #include "Entry/Bridge/BlueprintHelperBridgeRouter.h"
 #include "Entry/Bridge/BlueprintHelperBridgeProtocol.h"
 #include "Systems/Debug/BlueprintHelperDebugEntryService.h"
 #include "Async/Async.h"
+#include "Dom/JsonObject.h"
+#include "HAL/PlatformTime.h"
 #include "Common/TcpSocketBuilder.h"
 #include "Sockets.h"
 #include "SocketSubsystem.h"
@@ -30,15 +32,15 @@ bool FBlueprintHelperBridgeServer::Start()
 {
 	if (Thread.IsValid())
 	{
-		UE_LOG(LogBlueprintHelperBridge, Warning, TEXT("Bridge Server 已在运行中。"));
+		UE_LOG(LogBlueprintHelperBridge, Warning, TEXT("Bridge server is already running."));
 		return false;
 	}
 
-	// 创建监听 socket
+	// 闁告帗绋戠紓鎾绘儎閹存繃鍎?socket
 	ISocketSubsystem* SocketSubsystem = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM);
 	if (!SocketSubsystem)
 	{
-		UE_LOG(LogBlueprintHelperBridge, Error, TEXT("无法获取 SocketSubsystem。"));
+		UE_LOG(LogBlueprintHelperBridge, Error, TEXT("Failed to acquire SocketSubsystem."));
 		return false;
 	}
 
@@ -53,7 +55,7 @@ bool FBlueprintHelperBridgeServer::Start()
 
 	if (!ListenerSocket)
 	{
-		UE_LOG(LogBlueprintHelperBridge, Error, TEXT("无法创建监听 Socket, 端口 %d。"), Port);
+		UE_LOG(LogBlueprintHelperBridge, Error, TEXT("Failed to create listener socket on port %d."), Port);
 		return false;
 	}
 
@@ -61,7 +63,7 @@ bool FBlueprintHelperBridgeServer::Start()
 	Thread = TUniquePtr<FRunnableThread>(
 		FRunnableThread::Create(this, TEXT("BlueprintHelperBridgeThread"), 0, TPri_Normal));
 
-	UE_LOG(LogBlueprintHelperBridge, Log, TEXT("Bridge Server 已启动，监听 127.0.0.1:%d。"), Port);
+	UE_LOG(LogBlueprintHelperBridge, Log, TEXT("Bridge server started on 127.0.0.1:%d."), Port);
 	return true;
 }
 
@@ -86,7 +88,7 @@ void FBlueprintHelperBridgeServer::Shutdown()
 		ListenerSocket = nullptr;
 	}
 
-	UE_LOG(LogBlueprintHelperBridge, Log, TEXT("Bridge Server 已停止。"));
+	UE_LOG(LogBlueprintHelperBridge, Log, TEXT("Bridge server stopped."));
 }
 
 uint32 FBlueprintHelperBridgeServer::Run()
@@ -107,12 +109,12 @@ uint32 FBlueprintHelperBridgeServer::Run()
 			continue;
 		}
 
-		UE_LOG(LogBlueprintHelperBridge, Verbose, TEXT("Bridge 客户端已连接。"));
+	UE_LOG(LogBlueprintHelperBridge, Verbose, TEXT("Bridge client connected."));
 		HandleClient(ClientSocket);
 
 		ClientSocket->Close();
 		ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(ClientSocket);
-		UE_LOG(LogBlueprintHelperBridge, Verbose, TEXT("Bridge 客户端已断开。"));
+	UE_LOG(LogBlueprintHelperBridge, Verbose, TEXT("Bridge client disconnected."));
 	}
 
 	return 0;
@@ -125,10 +127,13 @@ void FBlueprintHelperBridgeServer::Stop()
 
 void FBlueprintHelperBridgeServer::HandleClient(FSocket* ClientSocket)
 {
+	constexpr double IdleTimeoutSeconds = 2.0;
+	double LastActivityTime = FPlatformTime::Seconds();
+
 	while (!bStopping)
 	{
 		uint32 PendingDataSize = 0;
-		if (!ClientSocket->HasPendingData(PendingDataSize))
+		if (!ClientSocket->HasPendingData(PendingDataSize) || PendingDataSize == 0)
 		{
 			const ESocketConnectionState State = ClientSocket->GetConnectionState();
 			if (State != SCS_Connected)
@@ -136,9 +141,17 @@ void FBlueprintHelperBridgeServer::HandleClient(FSocket* ClientSocket)
 				break;
 			}
 
+			if ((FPlatformTime::Seconds() - LastActivityTime) >= IdleTimeoutSeconds)
+			{
+				UE_LOG(LogBlueprintHelperBridge, Verbose, TEXT("Bridge client idle timeout; closing connection."));
+				break;
+			}
+
 			FPlatformProcess::Sleep(0.01f);
 			continue;
 		}
+
+		LastActivityTime = FPlatformTime::Seconds();
 
 		FString RequestJson;
 		if (!ReadMessage(ClientSocket, RequestJson))
@@ -151,50 +164,62 @@ void FBlueprintHelperBridgeServer::HandleClient(FSocket* ClientSocket)
 			break;
 		}
 
-		UE_LOG(LogBlueprintHelperBridge, Verbose, TEXT("收到请求: %s"), *RequestJson.Left(200));
+		UE_LOG(LogBlueprintHelperBridge, Verbose, TEXT("闁衡偓鐠哄搫鐓傞悹鍥敱閻? %s"), *RequestJson.Left(200));
 
-		// 投递到 GameThread 并等待结果
+		// 闁硅埖娲熼埀顒佸笒閸?GameThread 妤犵偛澧庨悺鎴濐嚗閸涱垳娉㈤柡?
 		const TOptional<FBlueprintHelperBridgeRequest> Req =
 			FBlueprintHelperBridgeProtocol::ParseRequest(RequestJson);
 		const FBlueprintHelperBridgeRoutePlan RoutePlan = Req.IsSet()
 			? FBlueprintHelperBridgeRoutePlanner::BuildPlan(Req.GetValue().Command)
 			: FBlueprintHelperBridgeRoutePlan();
 
-		TPromise<FString> Promise;
-		TFuture<FString> Future = Promise.GetFuture();
-
-		AsyncTask(ENamedThreads::GameThread, [this, Req, RoutePlan, &Promise]()
+		FString ResponseJson;
+		if (Req.IsSet() && Req.GetValue().Command == TEXT("ping"))
 		{
-			FBlueprintHelperBridgeResponse Resp;
-			if (Req.IsSet())
+			FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Success(Req.GetValue().RequestId);
+			Resp.Result = MakeShared<FJsonObject>();
+			Resp.Result->SetStringField(TEXT("schema"), TEXT("BridgePing.v1"));
+			Resp.Result->SetBoolField(TEXT("reachable"), true);
+			ResponseJson = FBlueprintHelperBridgeProtocol::SerializeResponse(Resp);
+		}
+		else
+		{
+			TPromise<FString> Promise;
+			TFuture<FString> Future = Promise.GetFuture();
+
+			AsyncTask(ENamedThreads::GameThread, [this, Req, RoutePlan, &Promise]()
 			{
-				Resp = Router.HandleRequestWithPlan(Req.GetValue(), RoutePlan);
-			}
-			else
-			{
-				if (DebugEntryService)
+				FBlueprintHelperBridgeResponse Resp;
+				if (Req.IsSet())
 				{
-					FBlueprintHelperDebugEntryEventInput DebugInput;
-					DebugInput.SourceLayer = TEXT("bridge");
-					DebugInput.Source = TEXT("malformed_bridge_request");
-					DebugInput.Operation = TEXT("bridge");
-					DebugInput.Stage = TEXT("parse_input");
-					DebugInput.Error.Code = TEXT("json_parse_failed");
-					DebugInput.Error.Message = TEXT("Bridge request JSON parse failed.");
-					DebugInput.RecommendedNext = TEXT("send_valid_bridge_request");
-					DebugEntryService->RecordEventBestEffort(DebugInput);
+					Resp = Router.HandleRequestWithPlan(Req.GetValue(), RoutePlan);
 				}
-				Resp = FBlueprintHelperBridgeResponse::Error(
-					TEXT(""), EBlueprintHelperBridgeError::InvalidRequest,
-					TEXT("请求 JSON 解析失败。"));
-			}
+				else
+				{
+					if (DebugEntryService)
+					{
+						FBlueprintHelperDebugEntryEventInput DebugInput;
+						DebugInput.SourceLayer = TEXT("bridge");
+						DebugInput.Source = TEXT("malformed_bridge_request");
+						DebugInput.Operation = TEXT("bridge");
+						DebugInput.Stage = TEXT("parse_input");
+						DebugInput.Error.Code = TEXT("json_parse_failed");
+						DebugInput.Error.Message = TEXT("Bridge request JSON parse failed.");
+						DebugInput.RecommendedNext = TEXT("send_valid_bridge_request");
+						DebugEntryService->RecordEventBestEffort(DebugInput);
+					}
+					Resp = FBlueprintHelperBridgeResponse::Error(
+						TEXT(""), EBlueprintHelperBridgeError::InvalidRequest,
+						TEXT("Bridge request JSON parse failed."));
+				}
 
-			Promise.SetValue(FBlueprintHelperBridgeProtocol::SerializeResponse(Resp));
-		});
+				Promise.SetValue(FBlueprintHelperBridgeProtocol::SerializeResponse(Resp));
+			});
 
-		const FString ResponseJson = Future.Get();
+			ResponseJson = Future.Get();
+		}
 
-		UE_LOG(LogBlueprintHelperBridge, Verbose, TEXT("发送响应: %s"), *ResponseJson.Left(200));
+		UE_LOG(LogBlueprintHelperBridge, Verbose, TEXT("闁告瑦鍨块埀顑跨閹奸攱鎯? %s"), *ResponseJson.Left(200));
 
 		if (!WriteMessage(ClientSocket, ResponseJson))
 		{
@@ -206,6 +231,7 @@ void FBlueprintHelperBridgeServer::HandleClient(FSocket* ClientSocket)
 				Req.IsSet() ? Req.GetValue().RequestId : FString());
 			break;
 		}
+
 	}
 }
 
@@ -239,7 +265,7 @@ void FBlueprintHelperBridgeServer::RecordBridgeFailureBestEffort(
 
 bool FBlueprintHelperBridgeServer::ReadMessage(FSocket* Socket, FString& OutJson) const
 {
-	// 读 4 字节长度头（大端）
+	// 閻?4 閻庢稒顨夋俊顓㈡⒐閸喖顔婂鎯版彧缁辨瑦寰勮椤忣剟鏁?
 	uint8 LengthBytes[4];
 	int32 BytesRead = 0;
 	int32 TotalRead = 0;
@@ -263,10 +289,10 @@ bool FBlueprintHelperBridgeServer::ReadMessage(FSocket* Socket, FString& OutJson
 		(static_cast<uint32>(LengthBytes[2]) << 8) |
 		static_cast<uint32>(LengthBytes[3]);
 
-	// 安全限制：最大 16MB
+	// 閻庣懓顦崣蹇涙⒔閹邦剙鐓戦柨娑欑濞撹埖寰?16MB
 	if (BodyLength == 0 || BodyLength > 16 * 1024 * 1024)
 	{
-		UE_LOG(LogBlueprintHelperBridge, Warning, TEXT("消息长度异常: %u"), BodyLength);
+		UE_LOG(LogBlueprintHelperBridge, Warning, TEXT("婵炴垵鐗婃导鍛存⒐閸喖顔婄€殿喖鍊搁悥? %u"), BodyLength);
 		RecordBridgeFailureBestEffort(
 			TEXT("bridge_transport_failure"),
 			TEXT("bridge"),
@@ -275,7 +301,7 @@ bool FBlueprintHelperBridgeServer::ReadMessage(FSocket* Socket, FString& OutJson
 		return false;
 	}
 
-	// 读 body
+	// 閻?body
 	TArray<uint8> BodyBytes;
 	BodyBytes.SetNumUninitialized(BodyLength);
 	TotalRead = 0;
@@ -293,7 +319,7 @@ bool FBlueprintHelperBridgeServer::ReadMessage(FSocket* Socket, FString& OutJson
 		TotalRead += BytesRead;
 	}
 
-	// UTF-8 → FString
+	// UTF-8 闁?FString
 	FUTF8ToTCHAR Converter(reinterpret_cast<const ANSICHAR*>(BodyBytes.GetData()), BodyLength);
 	OutJson = FString(Converter.Length(), Converter.Get());
 	return true;
@@ -301,11 +327,11 @@ bool FBlueprintHelperBridgeServer::ReadMessage(FSocket* Socket, FString& OutJson
 
 bool FBlueprintHelperBridgeServer::WriteMessage(FSocket* Socket, const FString& Json) const
 {
-	// FString → UTF-8
+	// FString 闁?UTF-8
 	FTCHARToUTF8 Converter(*Json);
 	const uint32 BodyLength = static_cast<uint32>(Converter.Length());
 
-	// 写 4 字节长度头（大端）
+	// 闁?4 閻庢稒顨夋俊顓㈡⒐閸喖顔婂鎯版彧缁辨瑦寰勮椤忣剟鏁?
 	uint8 LengthBytes[4];
 	LengthBytes[0] = static_cast<uint8>((BodyLength >> 24) & 0xFF);
 	LengthBytes[1] = static_cast<uint8>((BodyLength >> 16) & 0xFF);
@@ -318,7 +344,7 @@ bool FBlueprintHelperBridgeServer::WriteMessage(FSocket* Socket, const FString& 
 		return false;
 	}
 
-	// 写 body
+	// 闁?body
 	int32 TotalSent = 0;
 	while (static_cast<uint32>(TotalSent) < BodyLength)
 	{

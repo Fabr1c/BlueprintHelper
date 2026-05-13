@@ -288,7 +288,7 @@ export class BridgeClient {
 
   async ping(): Promise<boolean> {
     try {
-      const resp = await this.sendCommand('get_editor_context');
+      const resp = await this.sendCommand('ping');
       return resp.success;
     } catch {
       return false;

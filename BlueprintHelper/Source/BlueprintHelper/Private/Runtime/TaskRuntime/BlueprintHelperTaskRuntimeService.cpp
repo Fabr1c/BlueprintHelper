@@ -1444,6 +1444,7 @@ public:
 		BridgeTarget->SetStringField(TEXT("graph"), GraphName);
 		Payload->SetObjectField(TEXT("target"), BridgeTarget);
 		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
+		Payload->SetBoolField(TEXT("allow_existing_graph"), true);
 		if (ReadStepDependsOn(StepObject).Num() > 0)
 		{
 			Payload->SetBoolField(TEXT("reuse_existing_entries"), true);
@@ -2558,6 +2559,20 @@ public:
 		return FString::Printf(TEXT("%s\n%s"), *AssetPath, *ComponentName);
 	}
 
+	static FString MakePlannedWidgetKey(
+		const FString& AssetPath,
+		const FString& WidgetName)
+	{
+		return FString::Printf(TEXT("%s\n%s"), *AssetPath, *WidgetName);
+	}
+
+	static FString MakePlannedDataTableRowKey(
+		const FString& AssetPath,
+		const FString& RowName)
+	{
+		return FString::Printf(TEXT("%s\n%s"), *AssetPath, *RowName);
+	}
+
 	static bool TryReadComponentPayloadIdentity(
 		const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
 		FString& OutAssetPath,
@@ -2573,6 +2588,40 @@ public:
 		LoweredStep.Payload->TryGetStringField(TEXT("asset_path"), OutAssetPath);
 		LoweredStep.Payload->TryGetStringField(TEXT("component_name"), OutComponentName);
 		return !OutAssetPath.IsEmpty() && !OutComponentName.IsEmpty();
+	}
+
+	static bool TryReadWidgetPayloadIdentity(
+		const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
+		FString& OutAssetPath,
+		FString& OutWidgetName)
+	{
+		OutAssetPath.Empty();
+		OutWidgetName.Empty();
+		if (!LoweredStep.Payload.IsValid())
+		{
+			return false;
+		}
+
+		LoweredStep.Payload->TryGetStringField(TEXT("asset_path"), OutAssetPath);
+		LoweredStep.Payload->TryGetStringField(TEXT("widget_name"), OutWidgetName);
+		return !OutAssetPath.IsEmpty() && !OutWidgetName.IsEmpty();
+	}
+
+	static bool TryReadDataTablePayloadIdentity(
+		const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
+		FString& OutAssetPath,
+		FString& OutRowName)
+	{
+		OutAssetPath.Empty();
+		OutRowName.Empty();
+		if (!LoweredStep.Payload.IsValid())
+		{
+			return false;
+		}
+
+		LoweredStep.Payload->TryGetStringField(TEXT("asset_path"), OutAssetPath);
+		LoweredStep.Payload->TryGetStringField(TEXT("row_name"), OutRowName);
+		return !OutAssetPath.IsEmpty() && !OutRowName.IsEmpty();
 	}
 
 	static bool IsPlannedComponentPropertyDryRun(
@@ -2600,6 +2649,60 @@ public:
 		FString ComponentName;
 		return TryReadComponentPayloadIdentity(LoweredStep, AssetPath, ComponentName) &&
 			PlannedComponentKeys.Contains(MakePlannedComponentKey(AssetPath, ComponentName));
+	}
+
+	static bool IsPlannedWidgetPropertyDryRun(
+		const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
+		const FBlueprintHelperToolResultBase& StepResult,
+		const TSet<FString>& PlannedWidgetKeys)
+	{
+		if (LoweredStep.AdapterOperation != FBlueprintHelperWidgetTaskPlan::AdapterOperation::SetWidgetProperty ||
+			StepResult.bOk ||
+			!StepResult.Error.IsSet() ||
+			StepResult.Error->Code != TEXT("widget_operation_failed"))
+		{
+			return false;
+		}
+
+		bool bDryRun = false;
+		if (!LoweredStep.Payload.IsValid() ||
+			!LoweredStep.Payload->TryGetBoolField(TEXT("dry_run"), bDryRun) ||
+			!bDryRun)
+		{
+			return false;
+		}
+
+		FString AssetPath;
+		FString WidgetName;
+		return TryReadWidgetPayloadIdentity(LoweredStep, AssetPath, WidgetName) &&
+			PlannedWidgetKeys.Contains(MakePlannedWidgetKey(AssetPath, WidgetName));
+	}
+
+	static bool IsPlannedDataTableRowUpdateDryRun(
+		const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
+		const FBlueprintHelperToolResultBase& StepResult,
+		const TSet<FString>& PlannedDataTableRowKeys)
+	{
+		if (LoweredStep.AdapterOperation != FBlueprintHelperDataTableTaskPlanAdapter::AdapterOperationUpdateRow ||
+			StepResult.bOk ||
+			!StepResult.Error.IsSet() ||
+			StepResult.Error->Code != TEXT("data_table_operation_failed"))
+		{
+			return false;
+		}
+
+		bool bDryRun = false;
+		if (!LoweredStep.Payload.IsValid() ||
+			!LoweredStep.Payload->TryGetBoolField(TEXT("dry_run"), bDryRun) ||
+			!bDryRun)
+		{
+			return false;
+		}
+
+		FString AssetPath;
+		FString RowName;
+		return TryReadDataTablePayloadIdentity(LoweredStep, AssetPath, RowName) &&
+			PlannedDataTableRowKeys.Contains(MakePlannedDataTableRowKey(AssetPath, RowName));
 	}
 
 	static FBlueprintHelperToolResultBase MakePlannedComponentPropertyDryRunResult(
@@ -2662,6 +2765,128 @@ public:
 		TSharedRef<FJsonObject> Data = MakeShared<FJsonObject>();
 		Data->SetStringField(TEXT("schema"), TEXT("BlueprintComponent.v1"));
 		Data->SetObjectField(TEXT("dry_run"), DryRun);
+		Result.Data = Data;
+
+		FBlueprintHelperValidationSummary Validation;
+		Validation.bShouldCompile = false;
+		Validation.bShouldSave = false;
+		Result.Validation = Validation;
+		return Result;
+	}
+
+	static FBlueprintHelperToolResultBase MakePlannedWidgetPropertyDryRunResult(
+		const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep)
+	{
+		FString AssetPath;
+		FString WidgetName;
+		TryReadWidgetPayloadIdentity(LoweredStep, AssetPath, WidgetName);
+
+		FString PropertyName;
+		if (LoweredStep.Payload.IsValid())
+		{
+			LoweredStep.Payload->TryGetStringField(TEXT("property_name"), PropertyName);
+		}
+
+		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::DryRun(
+			LoweredStep.AdapterOperation,
+			FBlueprintHelperToolResultBuilder::GenerateTraceId());
+		Result.CustomTargetJson = MakeRuntimeTarget(AssetPath, TEXT("widget"), WidgetName, TEXT(""), PropertyName);
+
+		TSharedRef<FJsonObject> DryRun = MakeShared<FJsonObject>();
+		DryRun->SetStringField(TEXT("preview_kind"), TEXT("task_runtime_planned_widget"));
+		DryRun->SetBoolField(TEXT("can_execute"), true);
+		DryRun->SetStringField(TEXT("result"), TEXT("passed"));
+		DryRun->SetNumberField(TEXT("would_change_count"), 1);
+		DryRun->SetNumberField(TEXT("would_create_count"), 0);
+		DryRun->SetNumberField(TEXT("would_update_count"), 1);
+		DryRun->SetNumberField(TEXT("would_remove_count"), 0);
+		DryRun->SetNumberField(TEXT("would_no_op_count"), 0);
+		DryRun->SetStringField(
+			TEXT("limitation"),
+			TEXT("Widget property validation is deferred because the widget is created by an earlier dry-run step."));
+
+		TSharedRef<FJsonObject> Warning = MakeShared<FJsonObject>();
+		Warning->SetStringField(TEXT("code"), TEXT("planned_widget_property_validation_deferred"));
+		Warning->SetStringField(TEXT("target"), WidgetName);
+		Warning->SetStringField(
+			TEXT("message"),
+			TEXT("The widget does not exist in the asset during preview, but a prior TaskPlan step plans to create it."));
+		TArray<TSharedPtr<FJsonValue>> Warnings;
+		Warnings.Add(MakeShared<FJsonValueObject>(Warning));
+		DryRun->SetArrayField(TEXT("warnings"), Warnings);
+		DryRun->SetArrayField(TEXT("conflicts"), {});
+		DryRun->SetArrayField(TEXT("errors"), {});
+
+		TSharedRef<FJsonObject> Data = MakeShared<FJsonObject>();
+		Data->SetStringField(TEXT("schema"), TEXT("WidgetMutation.v1"));
+		Data->SetObjectField(TEXT("dry_run"), DryRun);
+		if (!WidgetName.IsEmpty())
+		{
+			Data->SetStringField(TEXT("widget_name"), WidgetName);
+		}
+		if (!PropertyName.IsEmpty())
+		{
+			Data->SetStringField(TEXT("property_name"), PropertyName);
+		}
+		Result.Data = Data;
+
+		FBlueprintHelperValidationSummary Validation;
+		Validation.bShouldCompile = false;
+		Validation.bShouldSave = false;
+		Result.Validation = Validation;
+		return Result;
+	}
+
+	static FBlueprintHelperToolResultBase MakePlannedDataTableRowUpdateDryRunResult(
+		const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep)
+	{
+		FString AssetPath;
+		FString RowName;
+		TryReadDataTablePayloadIdentity(LoweredStep, AssetPath, RowName);
+
+		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::DryRun(
+			LoweredStep.AdapterOperation,
+			FBlueprintHelperToolResultBuilder::GenerateTraceId());
+		Result.CustomTargetJson = MakeRuntimeTarget(AssetPath, TEXT("data_table_row"), TEXT(""), RowName);
+
+		int32 FieldCount = 0;
+		const TSharedPtr<FJsonObject>* Fields = nullptr;
+		if (LoweredStep.Payload.IsValid() &&
+			LoweredStep.Payload->TryGetObjectField(TEXT("fields"), Fields) &&
+			Fields && Fields->IsValid())
+		{
+			FieldCount = (*Fields)->Values.Num();
+		}
+
+		TSharedRef<FJsonObject> DryRun = MakeShared<FJsonObject>();
+		DryRun->SetStringField(TEXT("preview_kind"), TEXT("task_runtime_planned_data_table_row"));
+		DryRun->SetBoolField(TEXT("can_execute"), true);
+		DryRun->SetStringField(TEXT("result"), TEXT("passed"));
+		DryRun->SetNumberField(TEXT("would_change_count"), FieldCount);
+		DryRun->SetNumberField(TEXT("would_create_count"), 0);
+		DryRun->SetNumberField(TEXT("would_update_count"), FieldCount);
+		DryRun->SetNumberField(TEXT("would_remove_count"), 0);
+		DryRun->SetNumberField(TEXT("would_no_op_count"), 0);
+		DryRun->SetStringField(
+			TEXT("limitation"),
+			TEXT("DataTable row update validation is deferred because the row is created by an earlier dry-run step."));
+
+		TSharedRef<FJsonObject> Warning = MakeShared<FJsonObject>();
+		Warning->SetStringField(TEXT("code"), TEXT("planned_datatable_row_update_validation_deferred"));
+		Warning->SetStringField(TEXT("target"), RowName);
+		Warning->SetStringField(
+			TEXT("message"),
+			TEXT("The DataTable row does not exist during preview, but a prior TaskPlan step plans to create it."));
+		TArray<TSharedPtr<FJsonValue>> Warnings;
+		Warnings.Add(MakeShared<FJsonValueObject>(Warning));
+		DryRun->SetArrayField(TEXT("warnings"), Warnings);
+		DryRun->SetArrayField(TEXT("conflicts"), {});
+		DryRun->SetArrayField(TEXT("errors"), {});
+
+		TSharedRef<FJsonObject> Data = MakeShared<FJsonObject>();
+		Data->SetStringField(TEXT("schema"), TEXT("DataTableMutation.v1"));
+		Data->SetObjectField(TEXT("dry_run"), DryRun);
+		Data->SetStringField(TEXT("row_name"), RowName);
 		Result.Data = Data;
 
 		FBlueprintHelperValidationSummary Validation;
@@ -4685,6 +4910,8 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 	bool bSawStepValidation = false;
 	TMap<FString, FBlueprintHelperTaskRuntimeServiceLocalUtils::EBlueprintHelperTaskJournalStepStatus> StepExecutionStatuses;
 	TSet<FString> DryRunPlannedComponentKeys;
+	TSet<FString> DryRunPlannedWidgetKeys;
+	TSet<FString> DryRunPlannedDataTableRowKeys;
 	bool bSawExecutionFailure = false;
 	bool bHasFirstExecutionError = false;
 	FBlueprintHelperToolError FirstExecutionError;
@@ -4877,6 +5104,14 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		{
 			StepResult = FBlueprintHelperTaskRuntimeServiceLocalUtils::MakePlannedComponentPropertyDryRunResult(LoweredStep);
 		}
+		else if (bDryRun && FBlueprintHelperTaskRuntimeServiceLocalUtils::IsPlannedWidgetPropertyDryRun(LoweredStep, StepResult, DryRunPlannedWidgetKeys))
+		{
+			StepResult = FBlueprintHelperTaskRuntimeServiceLocalUtils::MakePlannedWidgetPropertyDryRunResult(LoweredStep);
+		}
+		else if (bDryRun && FBlueprintHelperTaskRuntimeServiceLocalUtils::IsPlannedDataTableRowUpdateDryRun(LoweredStep, StepResult, DryRunPlannedDataTableRowKeys))
+		{
+			StepResult = FBlueprintHelperTaskRuntimeServiceLocalUtils::MakePlannedDataTableRowUpdateDryRunResult(LoweredStep);
+		}
 		StepRecords.Add({LoweredStep, StepResult});
 		if (!bDryRun && StepResult.bOk)
 		{
@@ -4921,6 +5156,28 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 			if (FBlueprintHelperTaskRuntimeServiceLocalUtils::TryReadComponentPayloadIdentity(LoweredStep, PlannedAssetPath, PlannedComponentName))
 			{
 				DryRunPlannedComponentKeys.Add(FBlueprintHelperTaskRuntimeServiceLocalUtils::MakePlannedComponentKey(PlannedAssetPath, PlannedComponentName));
+			}
+		}
+		if (bDryRun &&
+			StepResult.bOk &&
+			LoweredStep.AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::AddWidget)
+		{
+			FString PlannedAssetPath;
+			FString PlannedWidgetName;
+			if (FBlueprintHelperTaskRuntimeServiceLocalUtils::TryReadWidgetPayloadIdentity(LoweredStep, PlannedAssetPath, PlannedWidgetName))
+			{
+				DryRunPlannedWidgetKeys.Add(FBlueprintHelperTaskRuntimeServiceLocalUtils::MakePlannedWidgetKey(PlannedAssetPath, PlannedWidgetName));
+			}
+		}
+		if (bDryRun &&
+			StepResult.bOk &&
+			LoweredStep.AdapterOperation == FBlueprintHelperDataTableTaskPlanAdapter::AdapterOperationAddRow)
+		{
+			FString PlannedAssetPath;
+			FString PlannedRowName;
+			if (FBlueprintHelperTaskRuntimeServiceLocalUtils::TryReadDataTablePayloadIdentity(LoweredStep, PlannedAssetPath, PlannedRowName))
+			{
+				DryRunPlannedDataTableRowKeys.Add(FBlueprintHelperTaskRuntimeServiceLocalUtils::MakePlannedDataTableRowKey(PlannedAssetPath, PlannedRowName));
 			}
 		}
 

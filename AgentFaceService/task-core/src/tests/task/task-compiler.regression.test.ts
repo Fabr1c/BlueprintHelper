@@ -1174,6 +1174,80 @@ describe('TaskSpec GraphWrite Append compiler', () => {
     });
   });
 
+  it('preserves display-name call_function names for UE-side resolution', () => {
+    const spec = makeTaskSpec({
+      behavior: {
+        graph_strategy: 'append_new_owned_graph',
+        entries: [
+          {
+            entry_type: 'custom_event',
+            name: 'ToggleDoor',
+            body: {
+              schema: 'BlueprintLogicSpec.v1',
+              statements: [
+                {
+                  kind: 'call_function',
+                  name: 'Print String',
+                  args: {
+                    InString: {
+                      kind: 'literal',
+                      value_type: 'string',
+                      value: 'message',
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    const plan = compileTaskSpecToTaskPlan(TaskSpecSchema.parse(spec));
+    const payload = taskPlanToAppendBridgePayload(plan, true);
+    assert.deepEqual(payload.nodes[1], {
+      id: 'ToggleDoor_stmt_1',
+      kind: 'call',
+      function: 'Print String',
+      inputs: {
+        InString: 'message',
+      },
+    });
+  });
+
+  it('preserves explicit member-prefix call_function names for UE-side blocking', () => {
+    const spec = makeTaskSpec({
+      behavior: {
+        graph_strategy: 'append_new_owned_graph',
+        entries: [
+          {
+            entry_type: 'custom_event',
+            name: 'ToggleDoor',
+            body: {
+              schema: 'BlueprintLogicSpec.v1',
+              statements: [
+                {
+                  kind: 'call_function',
+                  name: 'DoorMesh.AddAngularImpulseInDegrees',
+                  args: {},
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    const plan = compileTaskSpecToTaskPlan(TaskSpecSchema.parse(spec));
+    const payload = taskPlanToAppendBridgePayload(plan, true);
+    assert.deepEqual(payload.nodes[1], {
+      id: 'ToggleDoor_stmt_1',
+      kind: 'call',
+      function: 'DoorMesh.AddAngularImpulseInDegrees',
+      inputs: {},
+    });
+  });
+
   it('rejects GraphWrite user-node mutation until a non-owned anchor contract exists', () => {
     const spec = makeTaskSpec({
       scope_policy: {
