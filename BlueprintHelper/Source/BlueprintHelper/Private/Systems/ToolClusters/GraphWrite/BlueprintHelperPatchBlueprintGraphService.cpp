@@ -6,6 +6,8 @@
 #include "Systems/Transactions/BlueprintHelperTransactionJournalService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperGraphWriteBlockScopedResolver.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDebugData.h"
 #include "Shared/GraphWrite/BlueprintHelperAppendGraphTypes.h"
 #include "Shared/GraphWrite/BlueprintHelperReplaceGraphTypes.h"
 
@@ -87,6 +89,12 @@ FBlueprintHelperPatchBlueprintGraphService::ParseRequest(const TSharedPtr<FJsonO
 		Req.PatchPayload = *PatchObj;
 	}
 
+	const TSharedPtr<FJsonObject>* LogicSpecObject = nullptr;
+	if (Payload->TryGetObjectField(TEXT("logic_spec"), LogicSpecObject) && LogicSpecObject && LogicSpecObject->IsValid())
+	{
+		Req.LogicSpec = *LogicSpecObject;
+	}
+
 	const TSharedPtr<FJsonObject>* ExpectObj = nullptr;
 	if (Payload->TryGetObjectField(TEXT("expected_old_state"), ExpectObj) && ExpectObj->IsValid())
 	{
@@ -101,9 +109,14 @@ FBlueprintHelperPatchBlueprintGraphService::ParseRequest(const TSharedPtr<FJsonO
 
 FBlueprintHelperPatchBlueprintGraphService::FPatchPreflightResult
 FBlueprintHelperPatchBlueprintGraphService::Preflight(
-	const FPatchRequest& Request, UEdGraph* Graph, FBlueprintHelperResolvedPatchTarget& OutTarget) const
+	const FPatchRequest& Request, UBlueprint* Blueprint, UEdGraph* Graph, FBlueprintHelperResolvedPatchTarget& OutTarget) const
 {
 	FPatchPreflightResult Result;
+
+	if (!PreflightLogicSpec(Request, Blueprint, Result))
+	{
+		return Result;
+	}
 
 	if (Request.PatchType == EBlueprintHelperPatchType::RenameLocalVariableRef ||
 		Request.PatchType == EBlueprintHelperPatchType::SetCallTarget)
@@ -232,7 +245,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::Execu
 	FPatchPreflightResult PreflightResult;
 	if (BP && Graph)
 	{
-		PreflightResult = Preflight(Request, Graph, ResolvedTarget);
+		PreflightResult = Preflight(Request, BP, Graph, ResolvedTarget);
 	}
 	else
 	{
@@ -254,6 +267,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::Execu
 		Data.DryRun.Result = TEXT("passed");
 		Data.DryRun.bCanExecute = true;
 		Result.Data = Data.ToJson();
+		FBlueprintHelperGraphFragmentDebugData::AttachToData(Result.Data, PreflightResult.FragmentDebugData);
 	}
 	else
 	{
@@ -284,6 +298,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::Execu
 			TEXT("patch_blueprint_graph"), TraceId, Error);
 		Result.Target = TargetRef;
 		Result.Data = Data.ToJson();
+		FBlueprintHelperGraphFragmentDebugData::AttachToData(Result.Data, PreflightResult.FragmentDebugData);
 	}
 
 	return Result;
@@ -320,7 +335,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::Execu
 
 	// 3. Preflight
 	FBlueprintHelperResolvedPatchTarget ResolvedTarget;
-	FPatchPreflightResult PreflightResult = Preflight(Request, Graph, ResolvedTarget);
+	FPatchPreflightResult PreflightResult = Preflight(Request, BP, Graph, ResolvedTarget);
 	if (!PreflightResult.bPassed)
 	{
 		FBlueprintHelperToolError Error;
@@ -329,7 +344,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::Execu
 		Error.Message = PreflightResult.Conflicts.Num() > 0 ? PreflightResult.Conflicts[0].Message : TEXT("Preflight 未通过。");
 		Error.bRetryable = false;
 		Error.RollbackResult = EBlueprintHelperRollbackResult::NotNeeded;
-		return FBlueprintHelperToolResultBuilder::Failure(TEXT("patch_blueprint_graph"), TraceId, Error);
+		FBlueprintHelperToolResultBase FailResult = FBlueprintHelperToolResultBuilder::Failure(TEXT("patch_blueprint_graph"), TraceId, Error);
+		FBlueprintHelperGraphFragmentDebugData::AttachToData(FailResult.Data, PreflightResult.FragmentDebugData);
+		return FailResult;
 	}
 
 	// 4. 开始修改
@@ -397,6 +414,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::Execu
 	Data.WriteRef.TransactionId = TransactionId;
 	Data.WriteRef.bJournalRecorded = true;
 	Success.Data = Data.ToJson();
+	FBlueprintHelperGraphFragmentDebugData::AttachToData(Success.Data, PreflightResult.FragmentDebugData);
 
 	if (!bChanged)
 	{
@@ -413,6 +431,32 @@ FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::Execu
 }
 
 // ─── ApplyPatch 分发 ───
+
+bool FBlueprintHelperPatchBlueprintGraphService::PreflightLogicSpec(
+	const FPatchRequest& Request,
+	UBlueprint* Blueprint,
+	FPatchPreflightResult& OutResult) const
+{
+	if (!Request.LogicSpec.IsValid())
+	{
+		return true;
+	}
+
+	OutResult.FragmentDebugData = FBlueprintHelperGraphFragmentDebugData::BuildFromLogicSpec(Request.LogicSpec, Blueprint);
+
+	FBlueprintHelperGraphSemanticIR SemanticIR;
+	FBlueprintHelperGraphSemanticIRBuilder::BuildFromLogicSpec(Request.LogicSpec, Blueprint, SemanticIR);
+	for (const FBlueprintHelperGraphSemanticDiagnostic& Diagnostic : SemanticIR.Diagnostics)
+	{
+		if (Diagnostic.Severity.Equals(TEXT("error"), ESearchCase::IgnoreCase))
+		{
+			OutResult.bPassed = false;
+			OutResult.BlockedBy.Add(Diagnostic.Code);
+			OutResult.Errors.Add({Diagnostic.Code, Diagnostic.Message, Diagnostic.Path, TEXT("logic_spec")});
+		}
+	}
+	return OutResult.bPassed;
+}
 
 bool FBlueprintHelperPatchBlueprintGraphService::ApplyPatch(
 	UBlueprint* Blueprint, UEdGraph* Graph,

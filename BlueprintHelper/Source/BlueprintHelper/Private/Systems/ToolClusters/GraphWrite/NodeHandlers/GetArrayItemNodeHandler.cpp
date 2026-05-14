@@ -1,7 +1,7 @@
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/GetArrayItemNodeHandler.h"
 
 #include "K2Node_GetArrayItem.h"
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 #include "EdGraphSchema_K2.h"
 
 bool FGetArrayItemNodeHandler::CanHandle(EParsedBlueprintNodeType NodeType) const
@@ -25,7 +25,7 @@ UK2Node* FGetArrayItemNodeHandler::Spawn(UEdGraph* TargetGraph, const FParsedNod
 	ArrayItemNode->NodePosY = static_cast<int32>(NodeData.Y);
 	ArrayItemNode->AllocateDefaultPins();
 
-	TextToBlueprintGenerator::ApplyDefaultValues(ArrayItemNode, NodeData.DefaultValues);
+	FBlueprintGraphWriteFacade::ApplyDefaultValues(ArrayItemNode, NodeData.DefaultValues);
 
 	return ArrayItemNode;
 }

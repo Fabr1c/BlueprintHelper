@@ -2,7 +2,7 @@
 #include "K2Node_ComponentBoundEvent.h"
 #include "EdGraph/EdGraph.h"
 #include "Engine/Blueprint.h"
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 
 bool FComponentBoundEventNodeHandler::CanHandle(EParsedBlueprintNodeType NodeType) const
 {

@@ -46,43 +46,6 @@ struct FBlueprintHelperAgentImportOptions
 	bool bReconstructExistingNodes = false;
 };
 
-struct FBlueprintHelperAgentImportVariableDeclaration
-{
-	FString Name;
-	FString Type;
-	FString DefaultValue;
-	bool bEditable = false;
-	FString Category;
-};
-
-struct FBlueprintHelperAgentImportNode
-{
-	FString Id;
-	FString Kind;
-	FString Label;
-	FString Function;
-	FString EventName;
-	FString CustomEventName;
-	FString VariableName;
-	FString VariableType;
-	FString Value;
-	FString Condition;
-	FString CommentText;
-	TArray<FString> Contains;
-	TMap<FString, FString> Inputs;
-	FVector2D Position = FVector2D::ZeroVector;
-	FVector2D Size = FVector2D(400.0f, 100.0f);
-};
-
-struct FBlueprintHelperAgentImportLink
-{
-	FString Kind;
-	FString FromNode;
-	FString FromPin;
-	FString ToNode;
-	FString ToPin;
-	FString Path;
-};
 
 struct FBlueprintHelperAgentImportParsedRequest
 {
@@ -90,9 +53,6 @@ struct FBlueprintHelperAgentImportParsedRequest
 	EBlueprintHelperAgentImportMode Mode = EBlueprintHelperAgentImportMode::Append;
 	EBlueprintHelperAgentLayoutStrategy Layout = EBlueprintHelperAgentLayoutStrategy::Auto;
 	FBlueprintHelperAgentImportOptions Options;
-	TArray<FBlueprintHelperAgentImportVariableDeclaration> Variables;
-	TArray<FBlueprintHelperAgentImportNode> Nodes;
-	TArray<FBlueprintHelperAgentImportLink> Links;
 };
 
 struct FBlueprintHelperAgentImportRequest

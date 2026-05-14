@@ -336,6 +336,22 @@ class GraphWriteAppendCompilerTests(unittest.TestCase):
                     "inputs": {"InString": "hello"},
                 },
             ],
+            "logic_spec": {
+                "schema": "BlueprintLogicSpec.v2",
+                "statements": [
+                    {
+                        "kind": "call_function",
+                        "name": "PrintString",
+                        "args": {
+                            "InString": {
+                                "kind": "literal",
+                                "value_type": "string",
+                                "value": "hello",
+                            },
+                        },
+                    },
+                ],
+            },
             "links": [
                 {"kind": "exec", "from": "ToggleDoor_entry.then", "to": "ToggleDoor_stmt_1.execute"},
             ],

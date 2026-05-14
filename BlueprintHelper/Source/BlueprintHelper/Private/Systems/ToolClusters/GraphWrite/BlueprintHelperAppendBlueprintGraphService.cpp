@@ -1,13 +1,14 @@
 // BlueprintHelper Service Layer — AppendBlueprintGraph 核心服务实现
 
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperAppendBlueprintGraphService.h"
-#include "Shared/Services/BlueprintHelperAgentImportService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperBlockIdService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperOwnershipService.h"
 #include "Systems/Transactions/BlueprintHelperTransactionJournalService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
-#include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDebugData.h"
+#include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphGenerationPipeline.h"
 #include "Shared/BlueprintHelperToolResultTypes.h"
 
 #include "Engine/Blueprint.h"
@@ -133,12 +134,10 @@ public:
 
 FBlueprintHelperAppendBlueprintGraphService::FBlueprintHelperAppendBlueprintGraphService(
 	const FBlueprintHelperGraphResolver& InResolver,
-	const FBlueprintHelperAgentImportService& InAgentImportService,
 	const FBlueprintHelperBlockIdService& InBlockIdService,
 	const FBlueprintHelperOwnershipService& InOwnershipService,
 	const FBlueprintHelperTransactionJournalService& InJournalService)
 	: Resolver(InResolver)
-	, AgentImportService(InAgentImportService)
 	, BlockIdService(InBlockIdService)
 	, OwnershipService(InOwnershipService)
 	, JournalService(InJournalService)
@@ -184,16 +183,10 @@ FBlueprintHelperAppendBlueprintGraphService::ParseRequest(const TSharedPtr<FJson
 	Payload->TryGetBoolField(TEXT("reuse_existing_entries"), Request.bReuseExistingEntries);
 	Payload->TryGetBoolField(TEXT("allow_existing_graph"), Request.bAllowExistingGraph);
 
-	const TArray<TSharedPtr<FJsonValue>>* NodesArray = nullptr;
-	if (Payload->TryGetArrayField(TEXT("nodes"), NodesArray))
+	const TSharedPtr<FJsonObject>* LogicSpecObject = nullptr;
+	if (Payload->TryGetObjectField(TEXT("logic_spec"), LogicSpecObject) && LogicSpecObject && LogicSpecObject->IsValid())
 	{
-		Request.Nodes = *NodesArray;
-	}
-
-	const TArray<TSharedPtr<FJsonValue>>* LinksArray = nullptr;
-	if (Payload->TryGetArrayField(TEXT("links"), LinksArray))
-	{
-		Request.Links = *LinksArray;
+		Request.LogicSpec = *LogicSpecObject;
 	}
 
 	return Request;
@@ -345,121 +338,57 @@ bool FBlueprintHelperAppendBlueprintGraphService::PreflightNodePayload(
 	UEdGraph* Graph,
 	FAppendPreflightResult& OutResult) const
 {
-	if (Request.Nodes.Num() == 0)
+	if (!Request.LogicSpec.IsValid())
 	{
 		OutResult.bPassed = false;
-		OutResult.BlockedBy.Add(TEXT("empty_nodes"));
-		OutResult.Conflicts.Add({TEXT("empty_nodes"),
-			TEXT("nodes 数组不能为空。"), TEXT("nodes"), TEXT("payload")});
+		OutResult.BlockedBy.Add(TEXT("logic_spec_required"));
+		OutResult.Conflicts.Add({TEXT("logic_spec_required"),
+			TEXT("append_blueprint_graph requires logic_spec/SemanticIR input."), TEXT("logic_spec"), TEXT("payload")});
 		return false;
 	}
 
-	// 检查 forbidden event kinds
-	const TArray<FString> CustomEventNames = ExtractCustomEventNames(Request);
-	TSet<FString> SeenNames;
-
-	for (const TSharedPtr<FJsonValue>& NodeValue : Request.Nodes)
+	OutResult.FragmentDebugData = FBlueprintHelperGraphFragmentDebugData::BuildFromLogicSpec(Request.LogicSpec, Blueprint);
+	FBlueprintHelperGraphSemanticIR SemanticIR;
+	FBlueprintHelperGraphSemanticIRBuilder::BuildFromLogicSpec(Request.LogicSpec, Blueprint, SemanticIR);
+	for (const FBlueprintHelperGraphSemanticDiagnostic& Diagnostic : SemanticIR.Diagnostics)
 	{
-		const TSharedPtr<FJsonObject> NodeObject = NodeValue.IsValid() ? NodeValue->AsObject() : nullptr;
-		if (!NodeObject.IsValid())
+		if (Diagnostic.Severity.Equals(TEXT("error"), ESearchCase::IgnoreCase))
 		{
-			continue;
-		}
-
-		FString Kind;
-		NodeObject->TryGetStringField(TEXT("kind"), Kind);
-
-		if (Kind.Equals(TEXT("call"), ESearchCase::IgnoreCase))
-		{
-			FString FunctionName;
-			NodeObject->TryGetStringField(TEXT("function"), FunctionName);
-			if (FunctionName.IsEmpty())
-			{
-				NodeObject->TryGetStringField(TEXT("function_name"), FunctionName);
-			}
-			if (FunctionName.IsEmpty())
-			{
-				NodeObject->TryGetStringField(TEXT("name"), FunctionName);
-			}
-
-			FBlueprintHelperCallFunctionResolveRequest ResolveRequest;
-			ResolveRequest.Blueprint = Blueprint;
-			ResolveRequest.Graph = Graph;
-			ResolveRequest.Query = FunctionName;
-			const FBlueprintHelperCallFunctionResolveResult ResolveResult =
-				FBlueprintHelperCallFunctionResolver::Resolve(ResolveRequest);
-			if (FunctionName.IsEmpty() || !ResolveResult.IsResolved())
-			{
-				const FString ErrorCode = ResolveResult.ErrorCode.IsEmpty()
-					? TEXT("function_call_not_found")
-					: ResolveResult.ErrorCode;
-				const FString ErrorMessage = ResolveResult.Message.IsEmpty()
-					? FString::Printf(TEXT("call_function resolve failed: %s"), *FunctionName)
-					: ResolveResult.Message;
-				OutResult.bPassed = false;
-				OutResult.BlockedBy.Add(ErrorCode);
-				OutResult.Errors.Add({ErrorCode, ErrorMessage, TEXT("nodes[].function"), TEXT("payload")});
-			}
-		}
-
-		if (Kind.Equals(TEXT("event"), ESearchCase::IgnoreCase))
-		{
-			FString EventName;
-			NodeObject->TryGetStringField(TEXT("event"), EventName);
-			if (EventName.IsEmpty())
-			{
-				NodeObject->TryGetStringField(TEXT("event_name"), EventName);
-			}
-
-			if (FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::LooksLikeGlobalEvent(EventName))
-			{
-				OutResult.bPassed = false;
-				OutResult.BlockedBy.Add(TEXT("global_event_creation_disallowed"));
-				OutResult.Conflicts.Add({TEXT("global_event_creation_disallowed"),
-					FString::Printf(TEXT("不允许创建全局事件节点：%s。Append 只能创建 Custom Event。"), *EventName),
-					EventName, TEXT("nodes[].event")});
-			}
-		}
-
-		if (Kind.Equals(TEXT("custom_event"), ESearchCase::IgnoreCase))
-		{
-			FString Name;
-			NodeObject->TryGetStringField(TEXT("name"), Name);
-
-			if (FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::LooksLikeGlobalEvent(Name))
-			{
-				OutResult.bPassed = false;
-				OutResult.BlockedBy.Add(TEXT("global_event_creation_disallowed"));
-				OutResult.Conflicts.Add({TEXT("global_event_creation_disallowed"),
-					FString::Printf(TEXT("不允许创建全局事件节点：%s。"), *Name),
-					Name, TEXT("nodes[].name")});
-			}
-
-			if (SeenNames.Contains(Name))
-			{
-				OutResult.bPassed = false;
-				OutResult.BlockedBy.Add(TEXT("custom_event_already_exists"));
-				OutResult.Conflicts.Add({TEXT("custom_event_already_exists"),
-					FString::Printf(TEXT("Custom Event 名称重复：%s。"), *Name),
-					Name, TEXT("nodes[].name")});
-			}
-			SeenNames.Add(Name);
-
-			if (Request.bReuseExistingEntries && !Request.bDryRun && !FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::FindExistingCustomEventNode(Graph, Name))
-			{
-				OutResult.bPassed = false;
-				OutResult.BlockedBy.Add(TEXT("custom_event_entry_not_found"));
-				OutResult.Conflicts.Add({TEXT("custom_event_entry_not_found"),
-					FString::Printf(TEXT("Custom Event '%s' must already exist when reuse_existing_entries is enabled."), *Name),
-					Name, TEXT("nodes[].name")});
-			}
+			OutResult.bPassed = false;
+			OutResult.BlockedBy.Add(Diagnostic.Code);
+			OutResult.Errors.Add({Diagnostic.Code, Diagnostic.Message, Diagnostic.Path, TEXT("logic_spec")});
 		}
 	}
+	if (!OutResult.bPassed)
+	{
+		return false;
+	}
 
+	TSet<FString> SeenNames;
+	for (const FString& Name : ExtractCustomEventNames(Request))
+	{
+		if (FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::LooksLikeGlobalEvent(Name))
+		{
+			OutResult.bPassed = false;
+			OutResult.BlockedBy.Add(TEXT("global_event_creation_disallowed"));
+			OutResult.Conflicts.Add({TEXT("global_event_creation_disallowed"), FString::Printf(TEXT("Global event creation is not allowed in append_blueprint_graph: %s."), *Name), Name, TEXT("logic_spec.entry.name")});
+		}
+		if (SeenNames.Contains(Name))
+		{
+			OutResult.bPassed = false;
+			OutResult.BlockedBy.Add(TEXT("custom_event_already_exists"));
+			OutResult.Conflicts.Add({TEXT("custom_event_already_exists"), FString::Printf(TEXT("Custom Event name is duplicated: %s."), *Name), Name, TEXT("logic_spec.entry.name")});
+		}
+		SeenNames.Add(Name);
+		if (Request.bReuseExistingEntries && !Request.bDryRun && !FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::FindExistingCustomEventNode(Graph, Name))
+		{
+			OutResult.bPassed = false;
+			OutResult.BlockedBy.Add(TEXT("custom_event_entry_not_found"));
+			OutResult.Conflicts.Add({TEXT("custom_event_entry_not_found"), FString::Printf(TEXT("Custom Event '%s' must already exist when reuse_existing_entries is enabled."), *Name), Name, TEXT("logic_spec.entry.name")});
+		}
+	}
 	return OutResult.bPassed;
 }
-
-// ─── 图表创建/查找 ───
 
 UEdGraph* FBlueprintHelperAppendBlueprintGraphService::FindOrCreateAppendGraph(
 	UBlueprint* Blueprint,
@@ -658,10 +587,8 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 	}
 
 	// 3. 快照 + 开始事务
-	const FString SnapshotJson = BuildAgentImportPayload(Request);
+	const FString GraphWritePayload = BuildSemanticGraphWritePayload(Request);
 
-	FBlueprintHelperAgentImportRequest ImportReq;
-	ImportReq.JsonText = SnapshotJson;
 
 	// 4. 查找/创建目标图表
 	FString GraphError;
@@ -678,10 +605,20 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 	}
 	const TSet<UEdGraphNode*> NodeSnapshot = FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::CaptureGraphNodes(TargetGraph);
 
-	// 5. 通过 AgentImportService 执行节点/连线创建
-	const FBlueprintHelperAgentImportResult ImportResult = AgentImportService.Import(ImportReq);
+	// 5. Create graph nodes through the SemanticIR pipeline.
+	TArray<TSharedPtr<FUnresolvedNodeItem>> UnresolvedNodes;
+	const FBlueprintGenerateResult GenerateResult =
+		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(TargetGraph, GraphWritePayload, UnresolvedNodes);
+	const bool bImportSuccess = GenerateResult.bSucceed;
+	const bool bImportRolledBack = false;
+	FString ImportErrorCode = GenerateResult.bSucceed ? TEXT("") : TEXT("semantic_graph_write_failed");
+	FString ImportMessage = GenerateResult.Message;
+	if (!bImportSuccess && UnresolvedNodes.Num() > 0 && UnresolvedNodes[0].IsValid())
+	{
+		ImportMessage += FString::Printf(TEXT(" First unresolved: %s - %s"), *UnresolvedNodes[0]->DisplayText, *UnresolvedNodes[0]->Reason);
+	}
 
-	if (!ImportResult.bSuccess)
+	if (!bImportSuccess)
 	{
 		// 清理可能半成品的新图表
 		if (TargetGraph->Nodes.Num() == 0)
@@ -691,12 +628,12 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 		}
 
 		FBlueprintHelperToolError Error;
-		Error.Code = ImportResult.ErrorCode.IsEmpty() ? TEXT("node_create_failed") : ImportResult.ErrorCode;
+		Error.Code = ImportErrorCode.IsEmpty() ? TEXT("node_create_failed") : ImportErrorCode;
 		Error.Stage = EBlueprintHelperToolStage::Execute;
-		Error.Message = ImportResult.Message.IsEmpty()
-			? TEXT("Agent 导入执行失败。") : ImportResult.Message;
+		Error.Message = ImportMessage.IsEmpty()
+			? TEXT("Agent 导入执行失败。") : ImportMessage;
 		Error.bRetryable = false;
-		Error.RollbackResult = ImportResult.bRolledBack
+		Error.RollbackResult = bImportRolledBack
 			? EBlueprintHelperRollbackResult::RolledBack : EBlueprintHelperRollbackResult::Failed;
 
 		FBlueprintHelperToolResultBase FailResult = FBlueprintHelperToolResultBuilder::Failure(
@@ -828,6 +765,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 	Data.WriteRef.TransactionId = TransactionId;
 	Data.WriteRef.bJournalRecorded = true;
 	SuccessResult.Data = Data.ToJson();
+	FBlueprintHelperGraphFragmentDebugData::AttachToData(SuccessResult.Data, PreflightResult.FragmentDebugData);
 
 	FBlueprintHelperValidationSummary Validation;
 	Validation.bShouldCompile = true;
@@ -839,7 +777,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 
 // ─── AgentImport 兼容 payload 构建 ───
 
-FString FBlueprintHelperAppendBlueprintGraphService::BuildAgentImportPayload(
+FString FBlueprintHelperAppendBlueprintGraphService::BuildSemanticGraphWritePayload(
 	const FAppendRequest& Request) const
 {
 	TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
@@ -860,21 +798,10 @@ FString FBlueprintHelperAppendBlueprintGraphService::BuildAgentImportPayload(
 	Options->SetBoolField(TEXT("reconstruct_existing_nodes"), Request.bReuseExistingEntries);
 	Root->SetObjectField(TEXT("options"), Options);
 
-	// nodes
-	TArray<TSharedPtr<FJsonValue>> NodesCopy;
-	for (const TSharedPtr<FJsonValue>& Node : Request.Nodes)
+	if (Request.LogicSpec.IsValid())
 	{
-		NodesCopy.Add(Node);
+		Root->SetObjectField(TEXT("logic_spec"), Request.LogicSpec);
 	}
-	Root->SetArrayField(TEXT("nodes"), NodesCopy);
-
-	// links
-	TArray<TSharedPtr<FJsonValue>> LinksCopy;
-	for (const TSharedPtr<FJsonValue>& Link : Request.Links)
-	{
-		LinksCopy.Add(Link);
-	}
-	Root->SetArrayField(TEXT("links"), LinksCopy);
 
 	FString JsonText;
 	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonText);
@@ -884,44 +811,24 @@ FString FBlueprintHelperAppendBlueprintGraphService::BuildAgentImportPayload(
 
 // ─── Helpers ───
 
-bool FBlueprintHelperAppendBlueprintGraphService::IsForbiddenEventKind(
-	const FString& Kind, const FString& EventName) const
-{
-	if (!Kind.Equals(TEXT("event"), ESearchCase::IgnoreCase) &&
-		!Kind.Equals(TEXT("custom_event"), ESearchCase::IgnoreCase))
-	{
-		return false;
-	}
-
-	return FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::LooksLikeGlobalEvent(EventName);
-}
-
 TArray<FString> FBlueprintHelperAppendBlueprintGraphService::ExtractCustomEventNames(
 	const FAppendRequest& Request) const
 {
 	TArray<FString> Names;
-
-	for (const TSharedPtr<FJsonValue>& NodeValue : Request.Nodes)
+	if (Request.LogicSpec.IsValid())
 	{
-		const TSharedPtr<FJsonObject> NodeObject = NodeValue.IsValid() ? NodeValue->AsObject() : nullptr;
-		if (!NodeObject.IsValid())
+		const TSharedPtr<FJsonObject>* EntryObject = nullptr;
+		if (Request.LogicSpec->TryGetObjectField(TEXT("entry"), EntryObject) && EntryObject && EntryObject->IsValid())
 		{
-			continue;
-		}
-
-		FString Kind;
-		NodeObject->TryGetStringField(TEXT("kind"), Kind);
-
-		if (Kind.Equals(TEXT("custom_event"), ESearchCase::IgnoreCase))
-		{
-			FString Name;
-			NodeObject->TryGetStringField(TEXT("name"), Name);
-			if (!Name.IsEmpty())
+			FString EntryKind;
+			(*EntryObject)->TryGetStringField(TEXT("kind"), EntryKind);
+			FString EntryName;
+			(*EntryObject)->TryGetStringField(TEXT("name"), EntryName);
+			if (EntryKind.Equals(TEXT("custom_event"), ESearchCase::IgnoreCase) && !EntryName.IsEmpty())
 			{
-				Names.Add(Name);
+				Names.AddUnique(EntryName);
 			}
 		}
 	}
-
 	return Names;
 }

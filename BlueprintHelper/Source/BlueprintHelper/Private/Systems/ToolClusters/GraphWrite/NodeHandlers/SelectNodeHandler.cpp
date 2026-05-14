@@ -1,7 +1,7 @@
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/SelectNodeHandler.h"
 
 #include "K2Node_Select.h"
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 
 bool FSelectNodeHandler::CanHandle(EParsedBlueprintNodeType NodeType) const
 {
@@ -46,6 +46,6 @@ UK2Node* FSelectNodeHandler::Spawn(UEdGraph* TargetGraph, const FParsedNode& Nod
 		NewNode->AddInputPin();
 	}
 
-	TextToBlueprintGenerator::ApplyDefaultValues(NewNode, NodeData.DefaultValues);
+	FBlueprintGraphWriteFacade::ApplyDefaultValues(NewNode, NodeData.DefaultValues);
 	return NewNode;
 }

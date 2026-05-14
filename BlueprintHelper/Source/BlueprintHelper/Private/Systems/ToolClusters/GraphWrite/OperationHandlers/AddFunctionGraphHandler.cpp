@@ -1,6 +1,6 @@
 #include "Systems/ToolClusters/GraphWrite/OperationHandlers/AddFunctionGraphHandler.h"
 
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 #include "Engine/Blueprint.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "K2Node_FunctionEntry.h"
@@ -103,7 +103,7 @@ bool FAddFunctionGraphHandler::Execute(UBlueprint* Blueprint, const TSharedPtr<F
 				(*PinTypeObj)->TryGetStringField(TEXT("container_type"), ParsedPinType.ContainerType);
 
 				FString ConvertError;
-				TextToBlueprintGenerator::ConvertToEdGraphPinType(ParsedPinType, PinType, ConvertError);
+				FBlueprintGraphWriteFacade::ConvertToEdGraphPinType(ParsedPinType, PinType, ConvertError);
 			}
 
 			TSharedPtr<FUserPinInfo> NewPin = MakeShared<FUserPinInfo>();
@@ -168,7 +168,7 @@ bool FAddFunctionGraphHandler::Execute(UBlueprint* Blueprint, const TSharedPtr<F
 				(*PinTypeObj)->TryGetStringField(TEXT("container_type"), ParsedPinType.ContainerType);
 
 				FString ConvertError;
-				TextToBlueprintGenerator::ConvertToEdGraphPinType(ParsedPinType, PinType, ConvertError);
+				FBlueprintGraphWriteFacade::ConvertToEdGraphPinType(ParsedPinType, PinType, ConvertError);
 			}
 
 			TSharedPtr<FUserPinInfo> NewPin = MakeShared<FUserPinInfo>();

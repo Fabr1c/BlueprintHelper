@@ -4,10 +4,12 @@
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicJsonPathService.h"
 #include "Systems/Transactions/BlueprintHelperTransactionJournalService.h"
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 #include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperGraphWriteBlockScopedResolver.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDebugData.h"
 #include "Shared/GraphWrite/BlueprintHelperAppendGraphTypes.h"
 
 #include "Engine/Blueprint.h"
@@ -131,7 +133,7 @@ public:
 		FParsedNode NodeData;
 		NodeData.Id = Function->GetName();
 		NodeData.FunctionName = Function->GetName();
-		return TextToBlueprintGenerator::SpawnFunctionNode(Graph, Function, NodeData);
+		return FBlueprintGraphWriteFacade::SpawnFunctionNode(Graph, Function, NodeData);
 	}
 
 	static void MarkMergeNodeAsBlueprintHelperOwned(UEdGraphNode* Node, const FString& BlockId)
@@ -377,6 +379,12 @@ FBlueprintHelperMergeBlueprintGraphService::ParseRequest(const TSharedPtr<FJsonO
 		(*Inserted)->TryGetStringField(TEXT("custom_event"), Req.InsertedCustomEventName);
 	}
 
+	const TSharedPtr<FJsonObject>* LogicSpecObject = nullptr;
+	if (Payload->TryGetObjectField(TEXT("logic_spec"), LogicSpecObject) && LogicSpecObject && LogicSpecObject->IsValid())
+	{
+		Req.LogicSpec = *LogicSpecObject;
+	}
+
 	const TArray<TSharedPtr<FJsonValue>>* SeqOrder = nullptr;
 	if (Payload->TryGetArrayField(TEXT("sequence_order"), SeqOrder))
 		for (const auto& V : *SeqOrder)
@@ -396,6 +404,11 @@ FBlueprintHelperMergeBlueprintGraphService::Preflight(
 	bool bAllowInsertedLogicRequiresCompile) const
 {
 	FMergePreflightResult Result;
+
+	if (!PreflightLogicSpec(Request, Context.Blueprint, Result))
+	{
+		return Result;
+	}
 
 	// 1. unsupported scopes
 	if (Request.MergeScope == EBlueprintHelperMergeScope::InlineNodes ||
@@ -513,6 +526,32 @@ FBlueprintHelperMergeBlueprintGraphService::Preflight(
 }
 
 // ─── Anchor 解析 ───
+
+bool FBlueprintHelperMergeBlueprintGraphService::PreflightLogicSpec(
+	const FMergeRequest& Request,
+	UBlueprint* Blueprint,
+	FMergePreflightResult& OutResult) const
+{
+	if (!Request.LogicSpec.IsValid())
+	{
+		return true;
+	}
+
+	OutResult.FragmentDebugData = FBlueprintHelperGraphFragmentDebugData::BuildFromLogicSpec(Request.LogicSpec, Blueprint);
+
+	FBlueprintHelperGraphSemanticIR SemanticIR;
+	FBlueprintHelperGraphSemanticIRBuilder::BuildFromLogicSpec(Request.LogicSpec, Blueprint, SemanticIR);
+	for (const FBlueprintHelperGraphSemanticDiagnostic& Diagnostic : SemanticIR.Diagnostics)
+	{
+		if (Diagnostic.Severity.Equals(TEXT("error"), ESearchCase::IgnoreCase))
+		{
+			OutResult.bPassed = false;
+			OutResult.BlockedBy.Add(Diagnostic.Code);
+			OutResult.Errors.Add({Diagnostic.Code, Diagnostic.Message, Diagnostic.Path, TEXT("logic_spec")});
+		}
+	}
+	return OutResult.bPassed;
+}
 
 bool FBlueprintHelperMergeBlueprintGraphService::ResolveAnchor(
 	const FMergeRequest& Request, FMergeContext& Context, FString& OutError) const
@@ -654,6 +693,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperMergeBlueprintGraphService::Execu
 		Data.DryRun.Result = TEXT("passed");
 		Data.DryRun.bCanExecute = true;
 		Result.Data = Data.ToJson();
+		FBlueprintHelperGraphFragmentDebugData::AttachToData(Result.Data, Pre.FragmentDebugData);
 	}
 	else
 	{
@@ -684,6 +724,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperMergeBlueprintGraphService::Execu
 			TEXT("merge_blueprint_graph"), TraceId, Error);
 		Result.CustomTargetJson = MTarget.ToJson();
 		Result.Data = Data.ToJson();
+		FBlueprintHelperGraphFragmentDebugData::AttachToData(Result.Data, Pre.FragmentDebugData);
 	}
 	return Result;
 }
@@ -734,7 +775,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperMergeBlueprintGraphService::Execu
 			: TEXT("target.graph");
 		Err.bRetryable = false;
 		Err.RollbackResult = EBlueprintHelperRollbackResult::NotNeeded;
-		return FBlueprintHelperToolResultBuilder::Failure(TEXT("merge_blueprint_graph"), TraceId, Err);
+		FBlueprintHelperToolResultBase FailResult = FBlueprintHelperToolResultBuilder::Failure(TEXT("merge_blueprint_graph"), TraceId, Err);
+		FBlueprintHelperGraphFragmentDebugData::AttachToData(FailResult.Data, Pre.FragmentDebugData);
+		return FailResult;
 	}
 
 	// 5. Scoped mutation + resolve inserted logic
@@ -816,6 +859,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperMergeBlueprintGraphService::Execu
 	Data.WriteRef.TransactionId = TxId;
 	Data.WriteRef.bJournalRecorded = true;
 	Success.Data = Data.ToJson();
+	FBlueprintHelperGraphFragmentDebugData::AttachToData(Success.Data, Pre.FragmentDebugData);
 
 	FBlueprintHelperValidationSummary Val;
 	Val.bShouldCompile = true;

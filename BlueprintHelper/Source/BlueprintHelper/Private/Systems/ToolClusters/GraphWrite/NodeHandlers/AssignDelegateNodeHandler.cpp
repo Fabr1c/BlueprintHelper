@@ -1,7 +1,7 @@
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/AssignDelegateNodeHandler.h"
 
 #include "K2Node_AssignDelegate.h"
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Engine/Blueprint.h"
 
@@ -49,6 +49,6 @@ UK2Node* FAssignDelegateNodeHandler::Spawn(UEdGraph* TargetGraph, const FParsedN
 	// 程序化创建时缺少完整上下文会导致空指针崩溃（EXCEPTION_ACCESS_VIOLATION）。
 	DelegateNode->NodePosX = static_cast<int32>(NodeData.X);
 	DelegateNode->NodePosY = static_cast<int32>(NodeData.Y);
-	TextToBlueprintGenerator::ApplyDefaultValues(DelegateNode, NodeData.DefaultValues);
+	FBlueprintGraphWriteFacade::ApplyDefaultValues(DelegateNode, NodeData.DefaultValues);
 	return DelegateNode;
 }

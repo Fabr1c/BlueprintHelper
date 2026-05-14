@@ -24,7 +24,7 @@ export const BlueprintLogicStatementSchema = z.object({
 }).passthrough();
 
 export const BlueprintLogicSpecSchema = z.object({
-  schema: z.literal('BlueprintLogicSpec.v1'),
+  schema: z.union([z.literal('BlueprintLogicSpec.v1'), z.literal('BlueprintLogicSpec.v2')]),
   statements: z.array(BlueprintLogicStatementSchema),
 }).passthrough();
 
@@ -928,6 +928,10 @@ export interface AppendBridgePayload {
     graph: string;
   };
   feature_name?: string;
+  logic_spec?: {
+    schema: 'BlueprintLogicSpec.v2';
+    statements: BlueprintLogicStatement[];
+  };
   nodes: AgentImportNode[];
   links: AgentImportLink[];
   dry_run: boolean;

@@ -3,7 +3,7 @@
 #include "K2Node_MakeArray.h"
 #include "K2Node_MakeSet.h"
 #include "K2Node_MakeMap.h"
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 
 bool FMakeContainerNodeHandler::CanHandle(EParsedBlueprintNodeType NodeType) const
 {
@@ -49,7 +49,7 @@ UK2Node* FMakeContainerNodeHandler::SpawnMakeArray(UEdGraph* TargetGraph, const 
 	ArrayNode->NodePosX = static_cast<int32>(NodeData.X);
 	ArrayNode->NodePosY = static_cast<int32>(NodeData.Y);
 
-	TextToBlueprintGenerator::ApplyDefaultValues(ArrayNode, NodeData.DefaultValues);
+	FBlueprintGraphWriteFacade::ApplyDefaultValues(ArrayNode, NodeData.DefaultValues);
 	return ArrayNode;
 }
 
@@ -68,7 +68,7 @@ UK2Node* FMakeContainerNodeHandler::SpawnMakeSet(UEdGraph* TargetGraph, const FP
 	SetNode->NodePosX = static_cast<int32>(NodeData.X);
 	SetNode->NodePosY = static_cast<int32>(NodeData.Y);
 
-	TextToBlueprintGenerator::ApplyDefaultValues(SetNode, NodeData.DefaultValues);
+	FBlueprintGraphWriteFacade::ApplyDefaultValues(SetNode, NodeData.DefaultValues);
 	return SetNode;
 }
 
@@ -87,6 +87,6 @@ UK2Node* FMakeContainerNodeHandler::SpawnMakeMap(UEdGraph* TargetGraph, const FP
 	MapNode->NodePosX = static_cast<int32>(NodeData.X);
 	MapNode->NodePosY = static_cast<int32>(NodeData.Y);
 
-	TextToBlueprintGenerator::ApplyDefaultValues(MapNode, NodeData.DefaultValues);
+	FBlueprintGraphWriteFacade::ApplyDefaultValues(MapNode, NodeData.DefaultValues);
 	return MapNode;
 }

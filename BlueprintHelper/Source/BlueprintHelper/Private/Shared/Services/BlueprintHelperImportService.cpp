@@ -4,7 +4,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/Debug/BlueprintHelperValidationService.h"
 #include "Systems/Debug/BlueprintHelperCompileService.h"
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 #include "ScopedTransaction.h"
 #include "Dom/JsonObject.h"
 #include "EdGraph/EdGraph.h"
@@ -223,7 +223,7 @@ FBlueprintHelperImportResult FBlueprintHelperImportService::Import(const FBluepr
 		TArray<UEdGraph*> SnapshotGraphs = FBlueprintHelperImportServiceLocalUtils::CollectBlueprintGraphs(Blueprint);
 		NodeSnapshot = FBlueprintHelperImportServiceLocalUtils::CaptureGraphNodeSnapshot(SnapshotGraphs);
 		DirtySnapshot = FBlueprintHelperImportServiceLocalUtils::CapturePackageDirtySnapshot(SnapshotGraphs);
-		GenResult = TextToBlueprintGenerator::GenerateMultiGraphFromJson(Blueprint, EffectiveJsonText, Unresolved);
+		GenResult = FBlueprintGraphWriteFacade::GenerateMultiGraphFromJson(Blueprint, EffectiveJsonText, Unresolved);
 	}
 	else
 	{
@@ -237,7 +237,7 @@ FBlueprintHelperImportResult FBlueprintHelperImportService::Import(const FBluepr
 		SnapshotGraphs.Add(Graph);
 		NodeSnapshot = FBlueprintHelperImportServiceLocalUtils::CaptureGraphNodeSnapshot(SnapshotGraphs);
 		DirtySnapshot = FBlueprintHelperImportServiceLocalUtils::CapturePackageDirtySnapshot(SnapshotGraphs);
-		GenResult = TextToBlueprintGenerator::GenerateBlueprintFromJson(Graph, EffectiveJsonText, Unresolved);
+		GenResult = FBlueprintGraphWriteFacade::GenerateBlueprintFromJson(Graph, EffectiveJsonText, Unresolved);
 	}
 
 	// 4. 转换结果

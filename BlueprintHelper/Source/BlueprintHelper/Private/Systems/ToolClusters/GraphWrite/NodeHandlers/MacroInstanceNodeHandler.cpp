@@ -1,5 +1,5 @@
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/MacroInstanceNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 
 bool FMacroInstanceNodeHandler::CanHandle(EParsedBlueprintNodeType NodeType) const
 {
@@ -8,5 +8,5 @@ bool FMacroInstanceNodeHandler::CanHandle(EParsedBlueprintNodeType NodeType) con
 
 UK2Node* FMacroInstanceNodeHandler::Spawn(UEdGraph* TargetGraph, const FParsedNode& NodeData, FString& OutError) const
 {
-	return TextToBlueprintGenerator::SpawnMacroNode(TargetGraph, NodeData, OutError);
+	return FBlueprintGraphWriteFacade::SpawnMacroNode(TargetGraph, NodeData, OutError);
 }

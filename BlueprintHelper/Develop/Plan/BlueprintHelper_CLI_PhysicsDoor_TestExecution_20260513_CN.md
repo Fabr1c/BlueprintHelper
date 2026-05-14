@@ -206,3 +206,49 @@
 3. DebugBundle 排查能力
    - 状态：源码接入已落地，待验证。
    - 处理：Bridge 增加 `list_debug_cases` 与 `export_debug_bundle`；CLI tool surface 增加 `blueprinthelper_list_debug_cases` 与 `blueprinthelper_export_debug_bundle`。
+
+## 2026-05-13 Physics Door Implementation Blocker
+
+Status: blocked by current running Editor capability, not by TaskSpec authoring.
+
+1. Explicit component/member call is still unavailable in the running Editor process.
+   - Command: `blueprinthelper_preview_task` with `DoorPanel.AddAngularImpulseInDegrees`.
+   - Result: `preview_blocked`.
+   - Error code: `explicit_member_call_not_supported`.
+   - Impact: CLI cannot currently generate the real physics door runtime behavior that calls `DoorPanel.AddAngularImpulseInDegrees` or `DoorHingeConstraint.SetConstrainedComponents`.
+   - Required next step: compile/reload the plugin build that contains the `CallFunctionNodeHandler` explicit object call support, then rerun the physical-door TaskSpec.
+
+2. Do not fake completion with placeholder PrintString logic.
+   - Current decision: stop before writing fake door behavior; component/variable/signature scaffolding exists, but true open/close physics behavior is blocked until the running Editor has the new call-function resolver.
+
+## 2026-05-13 Explicit Member Call Gate Fix
+
+Status: source fix applied, pending build/editor reload verification.
+
+1. Append GraphWrite dry-run no longer treats `Object.Function` as a hard preview blocker when the function part is graph-compatible.
+   - Fixed path: `BlueprintHelperAppendBlueprintGraphService` dry-run.
+   - Runtime path: `CallFunctionNodeHandler` still owns object getter creation and target pin wiring.
+   - Remaining boundary: merge-owned graph writes are intentionally not opened because their direct call-node path does not yet wire explicit object targets.
+
+2. Documentation updated.
+   - Agent docs now state explicit component/member calls are supported for append-owned graph writes.
+   - CLI API error table now describes `explicit_member_call_not_supported` as strategy-specific instead of globally unsupported.
+
+3. Execution issue log created.
+   - New file: `BlueprintHelper_CLI_PhysicsDoor_ExecutionIssues_20260513_CN.md`.
+   - Records PowerShell `bh.ps1` block, BOM JSON parse issue, and the explicit member dry-run gate bug.
+
+## 2026-05-13 Prepared Runtime Door TaskSpecs
+
+Status: prepared, not executed in this turn.
+
+1. Prepared `Saved\CodexTest\physics_door_open_runtime_replace.json`.
+   - Purpose: replace `OpenDoor` body.
+   - Behavior: set `bDoorOpen=true`, then call `DoorPanel.AddAngularImpulseInDegrees` with positive Z impulse.
+
+2. Prepared `Saved\CodexTest\physics_door_close_runtime_replace.json`.
+   - Purpose: replace `CloseDoor` body.
+   - Behavior: set `bDoorOpen=false`, then call `DoorPanel.AddAngularImpulseInDegrees` with negative Z impulse.
+
+3. Execution boundary.
+   - These TaskSpecs should be previewed/executed only after the plugin build containing the append dry-run gate fix is compiled and loaded by the running Editor.

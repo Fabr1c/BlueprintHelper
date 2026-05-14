@@ -1,5 +1,5 @@
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/VariableSetNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphStatementBuilder.h"
 
 bool FVariableSetNodeHandler::CanHandle(EParsedBlueprintNodeType NodeType) const
 {
@@ -8,19 +8,11 @@ bool FVariableSetNodeHandler::CanHandle(EParsedBlueprintNodeType NodeType) const
 
 UK2Node* FVariableSetNodeHandler::Spawn(UEdGraph* TargetGraph, const FParsedNode& NodeData, FString& OutError) const
 {
-	if (NodeData.VariableReference.IsLocalVariable() && NodeData.VariableReference.bEnsureExists)
+	FBlueprintHelperNodeFragment Fragment;
+	if (!FBlueprintHelperGraphStatementBuilder::BuildVariableSetFragment(TargetGraph, NodeData, Fragment, OutError))
 	{
-		FParsedLocalVariableDeclaration LocalDeclaration;
-		LocalDeclaration.Name = NodeData.VariableReference.VariableName;
-		LocalDeclaration.PinType = NodeData.VariableReference.PinType;
-		LocalDeclaration.DefaultValue = NodeData.VariableReference.DefaultValue;
-		LocalDeclaration.bEnsureExists = true;
-		TextToBlueprintGenerator::EnsureLocalVariableExists(TargetGraph, LocalDeclaration, OutError);
-		if (!OutError.IsEmpty())
-		{
-			return nullptr;
-		}
+		return nullptr;
 	}
 
-	return TextToBlueprintGenerator::SpawnVariableSetNode(TargetGraph, NodeData, OutError);
+	return Fragment.PrimaryNode;
 }

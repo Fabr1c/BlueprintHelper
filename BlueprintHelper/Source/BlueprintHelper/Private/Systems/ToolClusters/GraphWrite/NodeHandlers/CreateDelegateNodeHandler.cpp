@@ -1,7 +1,7 @@
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/CreateDelegateNodeHandler.h"
 
 #include "K2Node_CreateDelegate.h"
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 
 bool FCreateDelegateNodeHandler::CanHandle(EParsedBlueprintNodeType NodeType) const
 {
@@ -30,6 +30,6 @@ UK2Node* FCreateDelegateNodeHandler::Spawn(UEdGraph* TargetGraph, const FParsedN
 		DelegateNode->SetFunction(FName(*FunctionName));
 	}
 
-	TextToBlueprintGenerator::ApplyDefaultValues(DelegateNode, NodeData.DefaultValues);
+	FBlueprintGraphWriteFacade::ApplyDefaultValues(DelegateNode, NodeData.DefaultValues);
 	return DelegateNode;
 }

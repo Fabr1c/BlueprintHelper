@@ -1,7 +1,7 @@
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/SelfNodeHandler.h"
 
 #include "K2Node_Self.h"
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 
 bool FSelfNodeHandler::CanHandle(EParsedBlueprintNodeType NodeType) const
 {

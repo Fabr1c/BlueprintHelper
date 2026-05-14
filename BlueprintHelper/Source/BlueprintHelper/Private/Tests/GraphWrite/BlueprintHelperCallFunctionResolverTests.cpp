@@ -14,7 +14,7 @@
 #include "Misc/AutomationTest.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 #include "UObject/Package.h"
 
 class FBlueprintHelperCallFunctionResolverTestsLocalUtils
@@ -209,7 +209,7 @@ bool FBlueprintHelperCallFunctionResolverGeneratorDisplayNameTest::RunTest(const
 	UBlueprint* Blueprint = FBlueprintHelperCallFunctionResolverTestsLocalUtils::MakeBlueprint();
 	UEdGraph* Graph = FBlueprintHelperCallFunctionResolverTestsLocalUtils::FindEventGraph(Blueprint);
 	TArray<TSharedPtr<FUnresolvedNodeItem>> Unresolved;
-	const FBlueprintGenerateResult Result = TextToBlueprintGenerator::GenerateBlueprintFromJson(
+	const FBlueprintGenerateResult Result = FBlueprintGraphWriteFacade::GenerateBlueprintFromJson(
 		Graph,
 		FBlueprintHelperCallFunctionResolverTestsLocalUtils::MakeSingleCallJson(TEXT("Print String")),
 		Unresolved);
@@ -234,7 +234,7 @@ bool FBlueprintHelperCallFunctionResolverGeneratorQualifiedNameTest::RunTest(con
 	UBlueprint* Blueprint = FBlueprintHelperCallFunctionResolverTestsLocalUtils::MakeBlueprint();
 	UEdGraph* Graph = FBlueprintHelperCallFunctionResolverTestsLocalUtils::FindEventGraph(Blueprint);
 	TArray<TSharedPtr<FUnresolvedNodeItem>> Unresolved;
-	const FBlueprintGenerateResult Result = TextToBlueprintGenerator::GenerateBlueprintFromJson(
+	const FBlueprintGenerateResult Result = FBlueprintGraphWriteFacade::GenerateBlueprintFromJson(
 		Graph,
 		FBlueprintHelperCallFunctionResolverTestsLocalUtils::MakeSingleCallJson(TEXT("/Script/Engine.KismetSystemLibrary:PrintString")),
 		Unresolved);
@@ -259,7 +259,7 @@ bool FBlueprintHelperCallFunctionResolverGeneratorAmbiguousNameTest::RunTest(con
 	UBlueprint* Blueprint = FBlueprintHelperCallFunctionResolverTestsLocalUtils::MakeBlueprint();
 	UEdGraph* Graph = FBlueprintHelperCallFunctionResolverTestsLocalUtils::FindEventGraph(Blueprint);
 	TArray<TSharedPtr<FUnresolvedNodeItem>> Unresolved;
-	const FBlueprintGenerateResult Result = TextToBlueprintGenerator::GenerateBlueprintFromJson(
+	const FBlueprintGenerateResult Result = FBlueprintGraphWriteFacade::GenerateBlueprintFromJson(
 		Graph,
 		FBlueprintHelperCallFunctionResolverTestsLocalUtils::MakeSingleCallJson(TEXT("Set")),
 		Unresolved);

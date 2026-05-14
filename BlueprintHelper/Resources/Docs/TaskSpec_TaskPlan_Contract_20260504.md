@@ -352,7 +352,7 @@ Agents must not:
 
 Function call statement arguments use this shape:
 
-`call_function.name` may be a native function name, a Blueprint display name, or an owner-qualified native name. Preview resolves the function against the target Blueprint graph. If the name is ambiguous, change `name` to an owner-qualified native name and preview again. Explicit component/member calls are not part of the first CallFunction resolver slice; preview blocks them instead of guessing target object ownership.
+`call_function.name` may be a native function name, a Blueprint display name, an owner-qualified native name, or an explicit component/member call for append-owned graph writes. Preview resolves the function portion against the target Blueprint graph. If the name is ambiguous, change `name` to an owner-qualified native name and preview again. Explicit component/member calls remain strategy-limited; merge-owned graph writes still require a separate target-wiring path before this syntax can be enabled there.
 
 ```json
 {

@@ -5,7 +5,7 @@
 #include "K2Node_SwitchName.h"
 #include "K2Node_SwitchEnum.h"
 #include "Runtime/Launch/Resources/Version.h"
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 
 bool FSwitchNodeHandler::CanHandle(EParsedBlueprintNodeType NodeType) const
 {
@@ -157,7 +157,7 @@ UK2Node* FSwitchNodeHandler::Spawn(UEdGraph* TargetGraph, const FParsedNode& Nod
 
 	if (ResultNode)
 	{
-		TextToBlueprintGenerator::ApplyDefaultValues(ResultNode, NodeData.DefaultValues);
+		FBlueprintGraphWriteFacade::ApplyDefaultValues(ResultNode, NodeData.DefaultValues);
 	}
 
 	return ResultNode;

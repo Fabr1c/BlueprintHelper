@@ -1,7 +1,7 @@
 #include "Systems/ToolClusters/GraphWrite/OperationHandlers/AddEventDispatcherHandler.h"
 
 #include "K2Node_FunctionEntry.h"
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 #include "EdGraphSchema_K2.h"
 #include "Engine/Blueprint.h"
 #include "Kismet2/BlueprintEditorUtils.h"
@@ -143,7 +143,7 @@ bool FAddEventDispatcherHandler::Execute(UBlueprint* Blueprint, const TSharedPtr
 					(*PinTypeObj)->TryGetStringField(TEXT("container_type"), ParsedPinType.ContainerType);
 
 					FString ConvertError;
-					TextToBlueprintGenerator::ConvertToEdGraphPinType(ParsedPinType, PinType, ConvertError);
+					FBlueprintGraphWriteFacade::ConvertToEdGraphPinType(ParsedPinType, PinType, ConvertError);
 				}
 
 				TSharedPtr<FUserPinInfo> NewPin = MakeShared<FUserPinInfo>();

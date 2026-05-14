@@ -1180,107 +1180,10 @@ public:
 		return true;
 	}
 
-	static bool TryAppendGraphWriteStatement(
-		const TSharedPtr<FJsonObject>& StatementObject,
-		int32 OpIndex,
-		int32 StatementIndex,
-		const FString& EntryId,
-		FString& InOutPreviousExecNodeId,
-		TArray<TSharedPtr<FJsonValue>>& Nodes,
-		TArray<TSharedPtr<FJsonValue>>& Links,
-		FBlueprintHelperToolError& OutError)
-	{
-		if (!StatementObject.IsValid())
-		{
-			OutError = MakeTaskRuntimeError(
-				TEXT("invalid_graph_write_statement"),
-				EBlueprintHelperToolStage::ParseInput,
-				TEXT("GraphWrite statement must be an object."),
-				BuildOpFieldPath(OpIndex, FString::Printf(TEXT("body.statements[%d]"), StatementIndex)));
-			return false;
-		}
-
-		FString StatementKind;
-		if (!StatementObject->TryGetStringField(TEXT("kind"), StatementKind))
-		{
-			OutError = MakeTaskRuntimeError(
-				TEXT("invalid_graph_write_statement"),
-				EBlueprintHelperToolStage::ParseInput,
-				TEXT("GraphWrite statement requires kind."),
-				BuildOpFieldPath(OpIndex, FString::Printf(TEXT("body.statements[%d].kind"), StatementIndex)));
-			return false;
-		}
-
-		const FString NodeId = FString::Printf(
-			TEXT("%s_stmt_%d"),
-			*EntryId,
-			StatementIndex + 1);
-		TSharedRef<FJsonObject> Node = MakeShared<FJsonObject>();
-		Node->SetStringField(TEXT("id"), NodeId);
-
-		if (StatementKind == TEXT("call_function"))
-		{
-			FString FunctionName;
-			if (!StatementObject->TryGetStringField(TEXT("name"), FunctionName) || FunctionName.IsEmpty())
-			{
-				OutError = MakeTaskRuntimeError(
-					TEXT("invalid_graph_write_statement"),
-					EBlueprintHelperToolStage::ParseInput,
-					TEXT("call_function statement requires name."),
-					BuildOpFieldPath(OpIndex, FString::Printf(TEXT("body.statements[%d].name"), StatementIndex)));
-				return false;
-			}
-
-			Node->SetStringField(TEXT("kind"), TEXT("call"));
-			Node->SetStringField(TEXT("function"), FunctionName);
-
-			const TSharedPtr<FJsonObject>* ArgsObjectPtr = nullptr;
-			TSharedRef<FJsonObject> InputsObject = MakeShared<FJsonObject>();
-			if (StatementObject->TryGetObjectField(TEXT("args"), ArgsObjectPtr) &&
-				ArgsObjectPtr && ArgsObjectPtr->IsValid())
-			{
-				CopyLiteralArgsToInputs(*ArgsObjectPtr, InputsObject);
-			}
-			Node->SetObjectField(TEXT("inputs"), InputsObject);
-		}
-		else if (StatementKind == TEXT("set_member_variable"))
-		{
-			FString VariableName;
-			if (!StatementObject->TryGetStringField(TEXT("name"), VariableName) || VariableName.IsEmpty())
-			{
-				OutError = MakeTaskRuntimeError(
-					TEXT("invalid_graph_write_statement"),
-					EBlueprintHelperToolStage::ParseInput,
-					TEXT("set_member_variable statement requires name."),
-					BuildOpFieldPath(OpIndex, FString::Printf(TEXT("body.statements[%d].name"), StatementIndex)));
-				return false;
-			}
-
-			Node->SetStringField(TEXT("kind"), TEXT("set"));
-			Node->SetStringField(TEXT("var"), VariableName);
-			Node->SetStringField(TEXT("value"), JsonValueToString(GetLiteralJsonValue(StatementObject->TryGetField(TEXT("value")))));
-		}
-		else
-		{
-			OutError = MakeTaskRuntimeError(
-				TEXT("unsupported_graph_write_statement_kind"),
-				EBlueprintHelperToolStage::ParseInput,
-				TEXT("GraphWrite owned_graph_edit currently supports call_function and set_member_variable statements."),
-				BuildOpFieldPath(OpIndex, FString::Printf(TEXT("body.statements[%d].kind"), StatementIndex)));
-			return false;
-		}
-
-		Nodes.Add(MakeShared<FJsonValueObject>(Node));
-		Links.Add(MakeShared<FJsonValueObject>(MakeExecLink(InOutPreviousExecNodeId, NodeId)));
-		InOutPreviousExecNodeId = NodeId;
-		return true;
-	}
-
-	static bool TryAppendGraphWriteEnsureEntry(
+	static bool TryBuildGraphWriteEnsureEntryLogicSpec(
 		const TSharedPtr<FJsonObject>& OpObject,
 		int32 OpIndex,
-		TArray<TSharedPtr<FJsonValue>>& Nodes,
-		TArray<TSharedPtr<FJsonValue>>& Links,
+		TSharedPtr<FJsonObject>& OutLogicSpec,
 		FBlueprintHelperToolError& OutError)
 	{
 		if (!OpObject.IsValid())
@@ -1329,46 +1232,36 @@ public:
 		}
 
 		const FString EntryId = FString::Printf(TEXT("%s_entry"), *ToTaskRuntimeIdSegment(EntryName));
-		TSharedRef<FJsonObject> EntryNode = MakeShared<FJsonObject>();
-		EntryNode->SetStringField(TEXT("id"), EntryId);
-		EntryNode->SetStringField(TEXT("kind"), TEXT("custom_event"));
-		EntryNode->SetStringField(TEXT("name"), EntryName);
-		Nodes.Add(MakeShared<FJsonValueObject>(EntryNode));
+		TSharedRef<FJsonObject> EntryObject = MakeShared<FJsonObject>();
+		EntryObject->SetStringField(TEXT("kind"), TEXT("custom_event"));
+		EntryObject->SetStringField(TEXT("name"), EntryName);
+		EntryObject->SetStringField(TEXT("id"), EntryId);
 
+		TSharedRef<FJsonObject> LogicSpec = MakeShared<FJsonObject>();
+		const TSharedPtr<FJsonObject>* LogicSpecObjectPtr = nullptr;
 		const TSharedPtr<FJsonObject>* BodyObjectPtr = nullptr;
-		if (!OpObject->TryGetObjectField(TEXT("body"), BodyObjectPtr) ||
-			!BodyObjectPtr || !BodyObjectPtr->IsValid())
+		if (OpObject->TryGetObjectField(TEXT("logic_spec"), LogicSpecObjectPtr) &&
+			LogicSpecObjectPtr && LogicSpecObjectPtr->IsValid())
 		{
-			return true;
+			CopyObjectFields(*LogicSpecObjectPtr, LogicSpec);
+		}
+		else if (OpObject->TryGetObjectField(TEXT("body"), BodyObjectPtr) &&
+			BodyObjectPtr && BodyObjectPtr->IsValid())
+		{
+			CopyObjectFields(*BodyObjectPtr, LogicSpec);
 		}
 
-		const TArray<TSharedPtr<FJsonValue>>* StatementsArray = nullptr;
-		if (!(*BodyObjectPtr)->TryGetArrayField(TEXT("statements"), StatementsArray) || !StatementsArray)
+		if (!LogicSpec->HasField(TEXT("statements")))
 		{
-			return true;
+			LogicSpec->SetArrayField(TEXT("statements"), {});
+		}
+		LogicSpec->SetStringField(TEXT("schema"), TEXT("BlueprintLogicSpec.v2"));
+		if (!LogicSpec->HasTypedField<EJson::Object>(TEXT("entry")))
+		{
+			LogicSpec->SetObjectField(TEXT("entry"), EntryObject);
 		}
 
-		FString PreviousExecNodeId = EntryId;
-		for (int32 StatementIndex = 0; StatementIndex < StatementsArray->Num(); ++StatementIndex)
-		{
-			const TSharedPtr<FJsonObject> StatementObject =
-				(*StatementsArray)[StatementIndex].IsValid()
-					? (*StatementsArray)[StatementIndex]->AsObject()
-					: nullptr;
-			if (!TryAppendGraphWriteStatement(
-				StatementObject,
-				OpIndex,
-				StatementIndex,
-				EntryId,
-				PreviousExecNodeId,
-				Nodes,
-				Links,
-				OutError))
-			{
-				return false;
-			}
-		}
-
+		OutLogicSpec = LogicSpec;
 		return true;
 	}
 
@@ -1423,18 +1316,24 @@ public:
 			return false;
 		}
 
-		TArray<TSharedPtr<FJsonValue>> Nodes;
-		TArray<TSharedPtr<FJsonValue>> Links;
-		for (int32 OpIndex = 0; OpIndex < OpsArray->Num(); ++OpIndex)
+		if (OpsArray->Num() != 1)
 		{
-			const TSharedPtr<FJsonObject> OpObject =
-				(*OpsArray)[OpIndex].IsValid()
-					? (*OpsArray)[OpIndex]->AsObject()
-					: nullptr;
-			if (!TryAppendGraphWriteEnsureEntry(OpObject, OpIndex, Nodes, Links, OutError))
-			{
-				return false;
-			}
+			OutError = MakeTaskRuntimeError(
+				TEXT("unsupported_graph_write_op_batch"),
+				EBlueprintHelperToolStage::ParseInput,
+				TEXT("SemanticIR append graph_write supports one ensure_entry operation per TaskPlan step."),
+				BuildStepFieldPath(TEXT("write.ops")));
+			return false;
+		}
+
+		const TSharedPtr<FJsonObject> OpObject =
+			(*OpsArray)[0].IsValid()
+				? (*OpsArray)[0]->AsObject()
+				: nullptr;
+		TSharedPtr<FJsonObject> LogicSpec;
+		if (!TryBuildGraphWriteEnsureEntryLogicSpec(OpObject, 0, LogicSpec, OutError))
+		{
+			return false;
 		}
 
 		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
@@ -1456,8 +1355,7 @@ public:
 			Payload->SetStringField(TEXT("feature_name"), FeatureName);
 		}
 
-		Payload->SetArrayField(TEXT("nodes"), Nodes);
-		Payload->SetArrayField(TEXT("links"), Links);
+		Payload->SetObjectField(TEXT("logic_spec"), LogicSpec);
 		OutPayload = Payload;
 		return true;
 	}

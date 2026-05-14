@@ -2,7 +2,7 @@
 #include "K2Node_GetEnumeratorName.h"
 #include "K2Node_GetEnumeratorNameAsString.h"
 #include "EdGraph/EdGraph.h"
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 
 bool FEnumNameNodeHandler::CanHandle(EParsedBlueprintNodeType NodeType) const
 {
@@ -43,6 +43,6 @@ UK2Node* FEnumNameNodeHandler::Spawn(UEdGraph* TargetGraph, const FParsedNode& N
 		ResultNode = NameNode;
 	}
 
-	TextToBlueprintGenerator::ApplyDefaultValues(ResultNode, NodeData.DefaultValues);
+	FBlueprintGraphWriteFacade::ApplyDefaultValues(ResultNode, NodeData.DefaultValues);
 	return ResultNode;
 }

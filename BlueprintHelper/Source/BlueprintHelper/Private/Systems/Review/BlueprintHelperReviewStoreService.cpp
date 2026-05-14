@@ -11,6 +11,7 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentEvidence.h"
 
 class FBlueprintHelperReviewStoreServiceLocalUtils
 {
@@ -168,6 +169,38 @@ public:
 		return SanitizedGroup.IsEmpty()
 			? TransactionId
 			: FString::Printf(TEXT("%s_%s"), *TransactionId, *SanitizedGroup);
+	}
+
+	static bool ShouldAggregateGraphBodyTarget(const FBlueprintHelperReviewAtomicTarget& Target)
+	{
+		if (Target.Surface != EBlueprintHelperReviewSurface::Graph || Target.GraphName.IsEmpty())
+		{
+			return false;
+		}
+
+		const FString TargetKindLower = Target.TargetKind.ToLower();
+		const FString GroupLower = Target.VisualGroupKey.ToLower();
+		return !TargetKindLower.Contains(TEXT("component"))
+			&& !TargetKindLower.Contains(TEXT("variable"))
+			&& !TargetKindLower.Contains(TEXT("property"))
+			&& !GroupLower.Contains(TEXT("component"))
+			&& !GroupLower.Contains(TEXT("variable"))
+			&& !GroupLower.Contains(TEXT("property"));
+	}
+
+	static void ApplyGraphBodyAggregation(FBlueprintHelperReviewAtomicTarget& Target)
+	{
+		if (!ShouldAggregateGraphBodyTarget(Target))
+		{
+			return;
+		}
+
+		Target.TargetKind = Target.TargetKind.IsEmpty() ? TEXT("graph_body") : Target.TargetKind;
+		Target.VisualGroupKey = TEXT("graph_body|") + Target.GraphName;
+		if (Target.DisplayLabel.IsEmpty())
+		{
+			Target.DisplayLabel = FString::Printf(TEXT("Modified [%s] graph body"), *Target.GraphName);
+		}
 	}
 
 	static FString MakeReviewPackageNameFromAssetPath(const FString& AssetPath)
@@ -1331,6 +1364,81 @@ TArray<FBlueprintHelperReviewRecord> FBlueprintHelperReviewStoreService::BuildRe
 	return Records;
 }
 
+TArray<FBlueprintHelperReviewRecord> FBlueprintHelperReviewStoreService::BuildReviewRecordsFromFragmentEvidence(
+	const FBlueprintHelperGraphFragmentEvidenceBundle& FragmentEvidence,
+	const FString& ArchiveSessionId,
+	const FString& AssetPath,
+	const FString& OperationKind,
+	const FString& TaskRunId,
+	const FString& TransactionId,
+	const FString& CreatedAt) const
+{
+	if (ArchiveSessionId.IsEmpty() || AssetPath.IsEmpty() || FragmentEvidence.IsEmpty())
+	{
+		return {};
+	}
+
+	FBlueprintHelperWriteReviewEvidence Evidence;
+	Evidence.ArchiveSessionId = ArchiveSessionId;
+	Evidence.TaskRunId = TaskRunId;
+	Evidence.TransactionId = TransactionId.IsEmpty() ? FragmentEvidence.BundleId : TransactionId;
+	Evidence.CreatedAt = CreatedAt;
+	Evidence.AssetPath = AssetPath;
+	Evidence.OperationKind = OperationKind.IsEmpty() ? TEXT("graph_fragment") : OperationKind;
+	Evidence.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
+	Evidence.DisplayLabel = TEXT("Graph body changes");
+	Evidence.AfterSummary = FString::Printf(
+		TEXT("Fragment evidence scopes=%d fragments=%d diagnostics=%d"),
+		FragmentEvidence.ReviewScopes.Num(),
+		FragmentEvidence.Fragments.Num(),
+		FragmentEvidence.Diagnostics.Num());
+
+	for (const FBlueprintHelperGraphFragmentEvidenceReviewScope& Scope : FragmentEvidence.ReviewScopes)
+	{
+		const FString GraphName = !Scope.GraphName.IsEmpty()
+			? Scope.GraphName
+			: (!Scope.ScopeName.IsEmpty() ? Scope.ScopeName : TEXT("Graph"));
+		const FString ScopeLabel = !Scope.ScopeName.IsEmpty() ? Scope.ScopeName : GraphName;
+
+		FBlueprintHelperReviewAtomicTarget Target;
+		Target.AssetPath = AssetPath;
+		Target.Surface = EBlueprintHelperReviewSurface::Graph;
+		Target.GraphName = GraphName;
+		Target.TargetKind = TEXT("graph_body");
+		Target.TargetKey = Scope.ScopeId.IsEmpty()
+			? FString::Printf(TEXT("graph_body:%s"), *GraphName)
+			: Scope.ScopeId;
+		Target.VisualGroupKey = TEXT("graph_body|") + GraphName;
+		Target.DisplayLabel = FString::Printf(TEXT("Modified [%s] graph body"), *ScopeLabel);
+		if (!Evidence.TransactionId.IsEmpty())
+		{
+			Target.LatestTransactionId = Evidence.TransactionId;
+			Target.SourceTransactionIds.AddUnique(Evidence.TransactionId);
+		}
+		Evidence.AtomicTargets.Add(Target);
+	}
+
+	if (Evidence.AtomicTargets.Num() == 0)
+	{
+		FBlueprintHelperReviewAtomicTarget Target;
+		Target.AssetPath = AssetPath;
+		Target.Surface = EBlueprintHelperReviewSurface::Graph;
+		Target.GraphName = TEXT("Graph");
+		Target.TargetKind = TEXT("graph_body");
+		Target.TargetKey = FragmentEvidence.BundleId.IsEmpty() ? TEXT("graph_body") : FragmentEvidence.BundleId;
+		Target.VisualGroupKey = TEXT("graph_body|Graph");
+		Target.DisplayLabel = TEXT("Modified graph body");
+		if (!Evidence.TransactionId.IsEmpty())
+		{
+			Target.LatestTransactionId = Evidence.TransactionId;
+			Target.SourceTransactionIds.AddUnique(Evidence.TransactionId);
+		}
+		Evidence.AtomicTargets.Add(Target);
+	}
+
+	return BuildReviewRecordsFromEvidence({Evidence});
+}
+
 TArray<FBlueprintHelperReviewRecord> FBlueprintHelperReviewStoreService::QueryReviewRecords(
 	const FBlueprintHelperReviewRecordQuery& Query) const
 {
@@ -1960,6 +2068,7 @@ void FBlueprintHelperReviewStoreService::AddEvidenceAtomicTargets(
 			Target.TargetKey,
 			Target.VisualGroupKey,
 			Evidence.OperationKind);
+		FBlueprintHelperReviewStoreServiceLocalUtils::ApplyGraphBodyAggregation(Target);
 
 		FString NeedsActionReason;
 		if (!FBlueprintHelperReviewStoreServiceLocalUtils::IsReviewEvidenceTargetComplete(Target, NeedsActionReason))
@@ -2055,6 +2164,7 @@ TArray<FBlueprintHelperReviewAtomicTarget> FBlueprintHelperReviewStoreService::M
 				Target.TargetKey,
 				Target.VisualGroupKey,
 				Input.LocationKey);
+			FBlueprintHelperReviewStoreServiceLocalUtils::ApplyGraphBodyAggregation(Target);
 		}
 		return Targets;
 	}
@@ -2098,6 +2208,7 @@ TArray<FBlueprintHelperReviewAtomicTarget> FBlueprintHelperReviewStoreService::M
 		Target.TargetKey,
 		Target.VisualGroupKey,
 		Input.LocationKey);
+	FBlueprintHelperReviewStoreServiceLocalUtils::ApplyGraphBodyAggregation(Target);
 
 	TArray<FBlueprintHelperReviewAtomicTarget> Targets;
 	Targets.Add(Target);

@@ -383,7 +383,7 @@ After a successful `branch_fork` execute, read back LogicJson or LogicMd and ver
 
 ## 15. Function Call Body Statement
 
-`call_function.name` may be a native function name, a Blueprint display name, or an owner-qualified native name. Preview resolves the function against the target Blueprint graph. If the name is ambiguous, change `name` to an owner-qualified native name and preview again.
+`call_function.name` may be a native function name, a Blueprint display name, an owner-qualified native name, or an explicit component/member call for append-owned graph writes. Preview resolves the function against the target Blueprint graph. If the name is ambiguous, change `name` to an owner-qualified native name and preview again.
 
 ```json
 {
@@ -399,7 +399,7 @@ After a successful `branch_fork` execute, read back LogicJson or LogicMd and ver
 }
 ```
 
-Explicit component/member calls are not part of the first CallFunction resolver slice. Preview blocks them instead of guessing target object ownership:
+Append-owned graph writes may use explicit component/member calls. The object prefix must name a Blueprint member or component that can be read through a generated getter, and the function part is resolved by the UE graph-aware resolver:
 
 ```json
 {

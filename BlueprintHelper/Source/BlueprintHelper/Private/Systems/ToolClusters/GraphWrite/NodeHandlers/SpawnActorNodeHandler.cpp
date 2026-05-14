@@ -1,7 +1,7 @@
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/SpawnActorNodeHandler.h"
 
 #include "K2Node_SpawnActorFromClass.h"
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 #include "UObject/UObjectGlobals.h"
 
 bool FSpawnActorNodeHandler::CanHandle(EParsedBlueprintNodeType NodeType) const
@@ -50,7 +50,7 @@ UK2Node* FSpawnActorNodeHandler::Spawn(UEdGraph* TargetGraph, const FParsedNode&
 		}
 	}
 
-	TextToBlueprintGenerator::ApplyDefaultValues(SpawnNode, NodeData.DefaultValues);
+	FBlueprintGraphWriteFacade::ApplyDefaultValues(SpawnNode, NodeData.DefaultValues);
 
 	return SpawnNode;
 }

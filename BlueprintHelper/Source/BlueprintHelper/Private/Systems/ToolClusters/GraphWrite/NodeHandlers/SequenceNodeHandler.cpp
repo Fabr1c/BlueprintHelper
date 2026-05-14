@@ -1,7 +1,7 @@
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/SequenceNodeHandler.h"
 
 #include "K2Node_ExecutionSequence.h"
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 
 bool FSequenceNodeHandler::CanHandle(EParsedBlueprintNodeType NodeType) const
 {
@@ -36,6 +36,6 @@ UK2Node* FSequenceNodeHandler::Spawn(UEdGraph* TargetGraph, const FParsedNode& N
 		}
 	}
 
-	TextToBlueprintGenerator::ApplyDefaultValues(SequenceNode, NodeData.DefaultValues);
+	FBlueprintGraphWriteFacade::ApplyDefaultValues(SequenceNode, NodeData.DefaultValues);
 	return SequenceNode;
 }

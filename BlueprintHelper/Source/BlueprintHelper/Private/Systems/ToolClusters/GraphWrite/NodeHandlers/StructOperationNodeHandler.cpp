@@ -2,7 +2,7 @@
 
 #include "K2Node_MakeStruct.h"
 #include "K2Node_BreakStruct.h"
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 #include "UObject/UObjectIterator.h"
 
 bool FStructOperationNodeHandler::CanHandle(EParsedBlueprintNodeType NodeType) const
@@ -71,7 +71,7 @@ UK2Node* FStructOperationNodeHandler::SpawnMakeStruct(UEdGraph* TargetGraph, con
 	StructNode->NodePosX = static_cast<int32>(NodeData.X);
 	StructNode->NodePosY = static_cast<int32>(NodeData.Y);
 
-	TextToBlueprintGenerator::ApplyDefaultValues(StructNode, NodeData.DefaultValues);
+	FBlueprintGraphWriteFacade::ApplyDefaultValues(StructNode, NodeData.DefaultValues);
 	return StructNode;
 }
 
@@ -93,6 +93,6 @@ UK2Node* FStructOperationNodeHandler::SpawnBreakStruct(UEdGraph* TargetGraph, co
 	StructNode->NodePosX = static_cast<int32>(NodeData.X);
 	StructNode->NodePosY = static_cast<int32>(NodeData.Y);
 
-	TextToBlueprintGenerator::ApplyDefaultValues(StructNode, NodeData.DefaultValues);
+	FBlueprintGraphWriteFacade::ApplyDefaultValues(StructNode, NodeData.DefaultValues);
 	return StructNode;
 }

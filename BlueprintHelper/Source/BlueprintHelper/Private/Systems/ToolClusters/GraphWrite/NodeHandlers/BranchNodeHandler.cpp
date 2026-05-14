@@ -1,7 +1,7 @@
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/BranchNodeHandler.h"
 
 #include "K2Node_IfThenElse.h"
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 
 bool FBranchNodeHandler::CanHandle(EParsedBlueprintNodeType NodeType) const
 {
@@ -23,6 +23,6 @@ UK2Node* FBranchNodeHandler::Spawn(UEdGraph* TargetGraph, const FParsedNode& Nod
 	BranchNode->NodePosX = static_cast<int32>(NodeData.X);
 	BranchNode->NodePosY = static_cast<int32>(NodeData.Y);
 	BranchNode->AllocateDefaultPins();
-	TextToBlueprintGenerator::ApplyDefaultValues(BranchNode, NodeData.DefaultValues);
+	FBlueprintGraphWriteFacade::ApplyDefaultValues(BranchNode, NodeData.DefaultValues);
 	return BranchNode;
 }

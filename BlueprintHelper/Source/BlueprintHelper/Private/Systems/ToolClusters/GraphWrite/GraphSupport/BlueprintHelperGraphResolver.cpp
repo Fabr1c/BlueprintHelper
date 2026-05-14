@@ -4,7 +4,7 @@
 #include "BlueprintEditor.h"
 #include "Editor.h"
 #include "Subsystems/AssetEditorSubsystem.h"
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 
 UEdGraph* FBlueprintHelperGraphResolver::ResolveGraph(const FBlueprintHelperGraphTarget& Target, FBlueprintHelperDiagnosticSet& OutDiag) const
 {
@@ -20,7 +20,7 @@ UEdGraph* FBlueprintHelperGraphResolver::ResolveGraph(const FBlueprintHelperGrap
 		// 显式蓝图路径 。默认查找 EventGraph
 		if (!Target.BlueprintPath.IsEmpty())
 		{
-			UEdGraph* EventGraph = TextToBlueprintGenerator::FindGraphByName(Blueprint, TEXT("EventGraph"));
+			UEdGraph* EventGraph = FBlueprintGraphWriteFacade::FindGraphByName(Blueprint, TEXT("EventGraph"));
 			if (EventGraph)
 			{
 				return EventGraph;
@@ -181,7 +181,7 @@ FBlueprintEditor* FBlueprintHelperGraphResolver::EnsureBlueprintEditorOpen(UBlue
 
 UEdGraph* FBlueprintHelperGraphResolver::FindGraph(UBlueprint* Blueprint, const FString& GraphName, FBlueprintHelperDiagnosticSet& OutDiag) const
 {
-	UEdGraph* Graph = TextToBlueprintGenerator::FindGraphByName(Blueprint, GraphName);
+	UEdGraph* Graph = FBlueprintGraphWriteFacade::FindGraphByName(Blueprint, GraphName);
 	if (!Graph)
 	{
 		TArray<FString> AvailableGraphs;

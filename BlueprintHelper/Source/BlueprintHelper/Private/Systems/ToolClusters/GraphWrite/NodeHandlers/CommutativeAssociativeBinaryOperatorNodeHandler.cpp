@@ -1,7 +1,7 @@
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/CommutativeAssociativeBinaryOperatorNodeHandler.h"
 
 #include "K2Node_CommutativeAssociativeBinaryOperator.h"
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 
 bool FCommutativeAssociativeBinaryOperatorNodeHandler::CanHandle(EParsedBlueprintNodeType NodeType) const
 {
@@ -22,7 +22,7 @@ UK2Node* FCommutativeAssociativeBinaryOperatorNodeHandler::Spawn(UEdGraph* Targe
 		return nullptr;
 	}
 
-	UFunction* TargetFunction = TextToBlueprintGenerator::FindFunctionByName(NodeData.FunctionName);
+	UFunction* TargetFunction = FBlueprintGraphWriteFacade::FindFunctionByName(NodeData.FunctionName);
 	if (!TargetFunction)
 	{
 		OutError = FString::Printf(TEXT("CommutativeAssociativeBinaryOperator 节点生成失败：未找到函数 '%s'。"), *NodeData.FunctionName);
@@ -38,6 +38,6 @@ UK2Node* FCommutativeAssociativeBinaryOperatorNodeHandler::Spawn(UEdGraph* Targe
 	NewNode->NodePosY = static_cast<int32>(NodeData.Y);
 	NewNode->AllocateDefaultPins();
 
-	TextToBlueprintGenerator::ApplyDefaultValues(NewNode, NodeData.DefaultValues);
+	FBlueprintGraphWriteFacade::ApplyDefaultValues(NewNode, NodeData.DefaultValues);
 	return NewNode;
 }
