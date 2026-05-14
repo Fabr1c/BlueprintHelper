@@ -1,7 +1,7 @@
 {
   "name": "blueprint-helper",
   "version": "0.4.1",
-  "description": "Codex-facing BlueprintHelper workflow plugin for Unreal Editor asset reads and TaskSpec-first writes through the BlueprintHelper CLI.",
+  "description": "Codex-facing BlueprintHelper workflow plugin for Unreal Editor lifecycle through MCP and ordinary asset workflows through the CLI.",
   "author": {
     "name": "Fabric"
   },
@@ -15,10 +15,11 @@
     "editor-tools"
   ],
   "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "BlueprintHelper",
-    "shortDescription": "Use BlueprintHelper CLI from Codex for UE asset workflows.",
-    "longDescription": "BlueprintHelper guides Codex through Unreal Editor asset reads and TaskSpec-first Blueprint, UMG, DataAsset, DataTable, compile, save, open, and diagnostics workflows. The Codex plugin exposes the CLI-first workflow and intentionally does not register the deprecated MCP endpoint as a normal Agent entry.",
+    "shortDescription": "Use BlueprintHelper CLI for UE assets and MCP for editor lifecycle.",
+    "longDescription": "BlueprintHelper guides Codex through Unreal Editor asset reads and TaskSpec-first Blueprint, UMG, DataAsset, DataTable, compile, save, open, and diagnostics workflows. The Codex plugin exposes the CLI-first workflow for ordinary tools and registers the MCP endpoint only for editor lifecycle commands.",
     "developerName": "Fabric",
     "category": "Coding",
     "capabilities": [

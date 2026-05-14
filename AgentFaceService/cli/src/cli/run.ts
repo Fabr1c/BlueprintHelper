@@ -26,6 +26,7 @@ import {
   successRead,
   type ToolResultBase,
 } from '@blueprinthelper/task-core/result/tool-result';
+import type { LocalProcessResult } from '@blueprinthelper/task-core/tool-surface/types';
 
 export interface CliRuntime {
   argv: string[];
@@ -33,6 +34,12 @@ export interface CliRuntime {
   runner?: TaskSpecRunner;
   bridge?: TaskRunnerBridge;
   readStdin?: () => Promise<string> | string;
+  runLocalProcess?: (command: string, args: string[], options?: {
+    timeoutMs?: number;
+    detached?: boolean;
+    env?: NodeJS.ProcessEnv;
+  }) => Promise<LocalProcessResult>;
+  sleep?: (ms: number) => Promise<void>;
   stdout: (text: string) => void;
   stderr: (text: string) => void;
 }
@@ -80,6 +87,8 @@ export async function runCli(runtime: CliRuntime): Promise<number> {
         bridge: getBridge(runtime) as BridgeClient,
         taskRunner: getRunner(runtime),
         readStdin: runtime.readStdin ?? readProcessStdin,
+        runLocalProcess: runtime.runLocalProcess,
+        sleep: runtime.sleep,
       });
       const outcome = writeCliResult(runtime, command, toolResult);
       return outcome.outputTooLarge ? 3 : toolResult.ok ? 0 : 2;
@@ -235,6 +244,24 @@ function parseArgs(argv: string[]): ParseResult {
   };
   const [group, action] = positionals;
 
+  if (positionals.length === 1 && (group === 'open_editor' || group === 'close_editor')) {
+    const toolName = group === 'open_editor' ? 'blueprint_open_editor' : 'blueprint_close_editor';
+    const hasInputSource = options.file !== undefined || options.json !== undefined || options.stdin === true;
+    return {
+      ok: true,
+      command: {
+        ...base,
+        kind: 'tool.invoke',
+        toolName,
+        params: hasInputSource ? undefined : {},
+        file: options.file,
+        json: options.json,
+        stdin: options.stdin,
+        expert: options.expert,
+      },
+    };
+  }
+
   if (positionals.length === 1 && group === 'blueprinthelper_get_task_result' && options.id) {
     return {
       ok: true,
@@ -375,6 +402,8 @@ function helpText(): string {
     '',
     'Usage:',
     '  blueprinthelper-cli <tool_name> [--file params.json | --json json | --stdin] [--fields path[,path...]] [--omit path[,path...]]',
+    '  blueprinthelper-cli open_editor [--file params.json | --json json | --stdin] [--fields path[,path...]] [--omit path[,path...]]',
+    '  blueprinthelper-cli close_editor [--file params.json | --json json | --stdin] [--fields path[,path...]] [--omit path[,path...]]',
     '  blueprinthelper-cli task preview --file <task-spec.json> [--format summary|json|full] [--fields path[,path...]] [--omit path[,path...]]',
     '  blueprinthelper-cli task execute --file <task-spec.json> [--format summary|json|full] [--fields path[,path...]] [--omit path[,path...]]',
     '  blueprinthelper-cli task result --id <task_run_id> [--fields path[,path...]] [--omit path[,path...]]',

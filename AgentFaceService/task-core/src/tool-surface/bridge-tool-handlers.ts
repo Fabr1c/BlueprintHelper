@@ -57,6 +57,13 @@ const DebugCaseInputSchema = z.object({
   debug_case_id: z.string().min(1),
 });
 
+const CloseEditorInputSchema = z.object({
+  save_all: z.boolean().optional(),
+  wait_timeout_ms: z.number().optional(),
+  project_file: z.string().optional(),
+  force: z.boolean().optional(),
+});
+
 export const bridgeCommandByToolName: Record<string, string> = {
   blueprinthelper_get_debug_case: 'get_debug_case',
   blueprinthelper_list_debug_cases: 'list_debug_cases',
@@ -118,6 +125,7 @@ export const bridgeToolSchemas: Record<string, z.ZodTypeAny> = {
   blueprinthelper_read_context: ReadContextInputSchema,
   blueprinthelper_get_debug_case: DebugCaseInputSchema,
   blueprinthelper_export_debug_bundle: DebugCaseInputSchema,
+  blueprint_close_editor: CloseEditorInputSchema,
 };
 
 export async function executeBridgeTool(

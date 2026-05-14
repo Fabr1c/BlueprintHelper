@@ -11,7 +11,7 @@ This is a Codex-compatible package for BlueprintHelper.
 
 ## Runtime Model
 
-The active Agent-facing transport is the BlueprintHelper CLI. The MCP endpoint from `AgentFaceService/mcp` is deprecated compatibility/debug surface and is not registered by this Codex plugin as a normal Agent entry.
+The active Agent-facing transport for ordinary TaskSpec reads and writes is the BlueprintHelper CLI. The MCP endpoint from `AgentFaceService/mcp` is registered only for editor lifecycle commands such as opening or closing the Unreal Editor.
 
 Build the CLI when needed:
 
@@ -32,4 +32,4 @@ bh blueprint_get_runtime_profile --json "{}" --select status,summary
 node <BLUEPRINTHELPER_ROOT>\AgentFaceService\cli\build\cli\index.js blueprint_get_runtime_profile --json "{}" --select status,summary
 ```
 
-For editor-asset writes, keep the workflow TaskSpec-first: read context, author `BlueprintHelper.TaskSpec.v1`, preview, request write approval when needed, execute, then inspect the result artifact.
+For editor-asset writes, keep the workflow TaskSpec-first: read context, author `BlueprintHelper.TaskSpec.v1`, preview, request write approval when needed, execute, then inspect the result artifact. Use MCP only for editor lifecycle commands; do not register or call ordinary BlueprintHelper read/write tools through MCP.

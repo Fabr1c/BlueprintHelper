@@ -20,6 +20,7 @@ export interface BlueprintHelperToolContext {
   runLocalProcess?: (command: string, args: string[], options?: {
     timeoutMs?: number;
     detached?: boolean;
+    env?: NodeJS.ProcessEnv;
   }) => Promise<LocalProcessResult>;
   sleep?: (ms: number) => Promise<void>;
 }

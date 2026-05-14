@@ -8,6 +8,7 @@ export async function buildTaskContextPack(bridge: BridgeClient, input: ReadTask
     readBridgeResult(bridge, 'get_asset_info', { asset_path: assetPath }),
     readBridgeResult(bridge, 'list_graphs', { target_blueprint: assetPath }),
   ]);
+  const assetInfo = isBridgeErrorResult(asset) ? undefined : asset;
 
   return {
     schema: TASK_CONTEXT_PACK_SCHEMA,
@@ -19,8 +20,8 @@ export async function buildTaskContextPack(bridge: BridgeClient, input: ReadTask
     },
     target: {
       asset_path: assetPath,
-      exists: asset !== undefined,
-      asset_info: asset,
+      exists: assetInfo !== undefined,
+      asset_info: assetInfo,
     },
     blueprint_summary: {
       graphs: extractGraphs(graphs),
@@ -53,4 +54,8 @@ function extractGraphs(graphsResult: unknown) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isBridgeErrorResult(value: unknown): boolean {
+  return isRecord(value) && typeof value['error_code'] === 'string';
 }

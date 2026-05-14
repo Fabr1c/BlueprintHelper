@@ -350,6 +350,32 @@ static FString ExpressionKindName(const EBlueprintHelperGraphExpressionKind Kind
 	}
 }
 
+static bool IsVectorStructType(const FString& Type)
+{
+	const FString Normalized = Type.TrimStartAndEnd();
+	return Normalized.Equals(TEXT("Vector"), ESearchCase::IgnoreCase)
+		|| Normalized.Equals(TEXT("FVector"), ESearchCase::IgnoreCase)
+		|| Normalized.Equals(TEXT("/Script/CoreUObject.Vector"), ESearchCase::IgnoreCase);
+}
+
+static void AddValueAliasForFirstDataOutput(FBlueprintHelperNodeFragment& Fragment, const FString& Type)
+{
+	if (Fragment.DataOutputs.Contains(TEXT("value")) || !Fragment.PrimaryNode)
+	{
+		return;
+	}
+
+	for (UEdGraphPin* Pin : Fragment.PrimaryNode->Pins)
+	{
+		if (Pin && Pin->Direction == EGPD_Output && Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec)
+		{
+			Fragment.DataOutputs.Add(TEXT("value"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("value"), Type, Pin });
+			Fragment.PinBindings.Add(TEXT("value"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("value"), Type, Pin });
+			return;
+		}
+	}
+}
+
 static FString MakeExpressionFragmentId(const FBlueprintHelperGraphExpressionIR& Expression)
 {
 	const FString SourceId = !Expression.ExpressionId.IsEmpty() ? Expression.ExpressionId : Expression.Path;
@@ -1068,6 +1094,41 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 
 		FParsedNode NodeData;
 		NodeData.Id = MakeExpressionFragmentId(Expression);
+		if (IsVectorStructType(Expression.Type))
+		{
+			NodeData.NodeType = EParsedBlueprintNodeType::CallFunction;
+			NodeData.SourceType = TEXT("K2Node_CallFunction");
+			NodeData.FunctionName = TEXT("/Script/Engine.KismetMathLibrary:MakeVector");
+			for (const TPair<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& ArgPair : Expression.Args)
+			{
+				if (ArgPair.Value.IsValid() && ArgPair.Value->Kind == EBlueprintHelperGraphExpressionKind::Literal)
+				{
+					NodeData.DefaultValues.Add(ArgPair.Key, ArgPair.Value->LiteralValue);
+				}
+			}
+
+			if (!BuildCallFunctionFragment(TargetGraph, NodeData, OutFragment, OutError))
+			{
+				return false;
+			}
+
+			OutFragment.SourceStatementId = Expression.ExpressionId;
+			for (const TPair<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& ArgPair : Expression.Args)
+			{
+				if (ArgPair.Value.IsValid() && ArgPair.Value->Kind != EBlueprintHelperGraphExpressionKind::Literal)
+				{
+					if (UEdGraphPin* FieldPin = FBlueprintGraphWriteFacade::FindPinByAlias(OutFragment.PrimaryNode, ArgPair.Key))
+					{
+						OutFragment.DataInputs.Add(ArgPair.Key, FBlueprintHelperFragmentPinRef{ NodeData.Id, ArgPair.Key, ArgPair.Value->Type, FieldPin });
+						OutFragment.PinBindings.Add(ArgPair.Key, FBlueprintHelperFragmentPinRef{ NodeData.Id, ArgPair.Key, ArgPair.Value->Type, FieldPin });
+					}
+				}
+			}
+			AddValueAliasForFirstDataOutput(OutFragment, Expression.Type);
+			OutFragment.ReviewTargets.Add(Expression.ExpressionId);
+			return true;
+		}
+
 		NodeData.NodeType = EParsedBlueprintNodeType::MakeStruct;
 		NodeData.SourceType = TEXT("K2Node_MakeStruct");
 		NodeData.StructReference.StructPath = Expression.Type;

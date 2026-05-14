@@ -9,7 +9,6 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { BridgeClient } from '@blueprinthelper/task-core/bridge/bridge-client';
 import { registerTools } from '../mcp/tools/register-tools.js';
-import { registerResources } from '../mcp/resources/resources.js';
 
 // 閳光偓閳光偓閳光偓 闁板秶鐤?閳光偓閳光偓閳光偓
 
@@ -31,7 +30,6 @@ async function main() {
 
   // 濞夈劌鍞藉銉ュ徔娑撳氦绁┃?
   registerTools(server, bridge, { ueEngineDir: '' });
-  registerResources(server, bridge);
 
   // stdio 娴肩姾绶?
   const transport = new StdioServerTransport();

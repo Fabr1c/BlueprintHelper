@@ -1,6 +1,10 @@
+> 2026-05-14 修订：BlueprintHelper CLI 是唯一正常 Agent-facing 工具入口；MCP 重新废弃冻结，仅保留遗留兼容/排查，不进入普通任务规划。`blueprint_open_editor` 与 `blueprint_close_editor` 均走 CLI。
+
 # BlueprintHelper Agent Onboarding Index
 
 If the current Claude environment cannot dispatch a SideAgent but the Main Agent can run the required BlueprintHelper CLI command, the Main Agent may execute one command locally under the SideAgent single-command contract and mark the result as `main_agent_direct_fallback`. Report `tool_unavailable` only when the required BlueprintHelper CLI command is not available.
+
+CLI is the ordinary TaskSpec/read/debug-summary mainline. MCP is retained for Editor lifecycle, debug, recovery, and commands that need a long-lived host process. Prefer CLI for `blueprint_open_editor` and `blueprint_close_editor`.
 
 普通 Agent 只走 CLI TaskSpec-first 主线。兼容、测试和专家入口可能仍存在于底层传输层，但这些冻结入口不在本指南中作为可选工具暴露。
 

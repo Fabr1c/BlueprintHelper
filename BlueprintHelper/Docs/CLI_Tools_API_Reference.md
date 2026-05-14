@@ -2,7 +2,7 @@
 
 Document version: 2026-05-12
 
-This reference is aligned with the current documentation mainline, where CLI is the supported Agent entry.
+This reference is aligned with the current documentation mainline, where CLI is the supported Agent entry for ordinary TaskSpec writes.
 
 ## Architecture
 
@@ -14,8 +14,8 @@ Ordinary Agents author `BlueprintHelper.TaskSpec.v1` only. They do not submit `T
 
 ## Entry Rule
 
-- Every supported Agent-facing capability must be reachable through `bh <tool_name>`.
-- Any remaining MCP endpoint is deprecated internal transport, not a supported Agent workflow.
+- Every supported CLI-facing TaskSpec/read/debug summary capability must be reachable through `bh <tool_name>`.
+- MCP is retained for editor launch/lifecycle, debug, recovery, and commands that require a long-lived host process.
 - CLI write commands must still pass through TaskSpec validation, preview, and UE Task Runtime.
 - Raw Bridge write commands are not part of the public Agent surface.
 
@@ -44,7 +44,13 @@ blueprinthelper_get_task_result
 blueprinthelper_get_debug_case
 blueprinthelper_list_debug_cases
 blueprinthelper_export_debug_bundle
+```
+
+Deprecated/frozen MCP compatibility commands:
+
+```text
 blueprint_open_editor
+blueprint_close_editor
 ```
 
 Frozen legacy/expert commands are not part of the supported CLI surface. Passing `--expert` does not re-enable removed commands.

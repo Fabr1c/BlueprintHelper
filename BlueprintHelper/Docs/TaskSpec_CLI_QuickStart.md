@@ -6,9 +6,9 @@ Task write mainline: Agent -> BlueprintHelper CLI -> task-core -> Python Task Co
 
 ## Purpose
 
-Use the CLI when an Agent can run shell commands and should avoid large escaped JSON output. The CLI is the current Agent-facing surface in shell-capable environments. It keeps Agent stdout compact, supports selected-field output, and still preserves TaskSpec-first writes, Python compilation, Bridge preview, and UE Task Runtime execution.
+Use the CLI when an Agent can run shell commands and should avoid large escaped JSON output. The CLI is the current Agent-facing surface for ordinary TaskSpec writes in shell-capable environments. It keeps Agent stdout compact, supports selected-field output, and still preserves TaskSpec-first writes, Python compilation, Bridge preview, and UE Task Runtime execution.
 
-CLI is the only supported Agent entry. Any remaining MCP endpoint is deprecated compatibility/debug transport only.
+MCP is retained as a companion entry for editor launch/lifecycle, debug, recovery, and capabilities that are unreliable from one-shot CLI processes.
 
 ## Prerequisites
 
@@ -43,10 +43,10 @@ Examples:
 bh blueprint_get_runtime_profile --json "{}" --select status,summary
 bh blueprinthelper_preview_task --file .\task_spec.json --select status,preview_id,summary,artifacts.full_result
 bh blueprinthelper_execute_task --file .\task_spec.json --select status,task_run_id,summary
-bh blueprint_open_editor --json "{ \"project_file\": \"<ABSOLUTE_UPROJECT_FILE>\", \"wait_timeout_ms\": 120000 }" --select status,summary
+bh blueprint_get_runtime_profile --json "{}" --select status,summary
 ```
 
-The direct CLI registry is the current non-frozen Agent-facing tool surface. Frozen legacy/expert tools are not re-exposed through CLI, even if `--expert` is passed.
+The direct CLI registry is the current non-frozen Agent-facing TaskSpec/read/debug summary surface. Frozen legacy/expert tools are not re-exposed through CLI, even if `--expert` is passed. Prefer CLI for `blueprint_open_editor`, `blueprint_close_editor`, and other lifecycle commands that require a long-lived host process.
 
 ## Preview
 

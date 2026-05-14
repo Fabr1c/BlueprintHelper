@@ -22,6 +22,7 @@ const expectedToolNames = [
   'blueprinthelper_diagnostics',
   'blueprinthelper_diagnostics_runtime',
   'blueprint_open_editor',
+  'blueprint_close_editor',
 ];
 
 const frozenToolNames = [
@@ -72,7 +73,6 @@ const frozenToolNames = [
   'blueprint_stop_pie',
   'blueprint_create_blueprint',
   'blueprint_exec_console_command',
-  'blueprint_close_editor',
   'blueprint_build_project',
 ];
 
