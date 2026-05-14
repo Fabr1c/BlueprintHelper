@@ -4,28 +4,28 @@
 
 关联设计文档：`BlueprintHelper_GraphStatementFramework_Design_20260513_CN.md`
 
-## 当前覆盖测试结论：2026-05-14
+## 当前覆盖测试结论：2026-05-14 编辑器重启后 SemanticIR smoke
 
-状态：未完全通过。
-
+状态：最小端到端 smoke 通过；未覆盖全部 statement 种类。
 已通过部分：
-1. `bh.cmd` 连接运行中的 Editor/Bridge 成功，runtime diagnostics 无 blocking 项。
-2. `blueprinthelper_request_write_session` 使用 `{ reason, scope, ttl_seconds, asset_paths }` 入参完成写入授权。
-3. 通过 TaskSpec 创建专用覆盖测试资产 `/Game/BP_BH_SemanticCoverageActor`，执行结果 `task_EDC7473F4FB994D86FE9B29A13C42780`，Blueprint 编译成功。
-4. 最小 `call_function -> PrintString` 写入 `EventGraph` 成功，执行结果 `task_74FBDD484DCCFFF7DDD0B8924E81E96D`，GraphWrite 与 Blueprint 编译成功。
+1. `bh.cmd` 连接重启后的 Editor/Bridge 成功，`blueprint_get_runtime_profile` 与 `blueprinthelper_diagnostics_runtime` 返回 completed。
+2. `blueprinthelper_preview_task` 使用 `BlueprintLogicSpec.v2`、短名 `call`、`target: PrintString` 通过 preview，产物为 `preview_1778743995346_0001`。
+3. `blueprinthelper_execute_task` 成功写入 `/Game/BlueprintHelperCliSmoke/BH_PhysicsDoor_20260513/BP_BH_PhysicsDoorActor`，任务为 `task_3C29F27442081416763C7B997D18880D`。
+4. 写入结果创建图 `BH_SemanticIR_CodexSmoke_20260514_001` 和 custom event `BH_CodexSemanticIRSmoke_20260514_001`，GraphWrite 状态为 applied。
+5. 执行产物包含 `fragment_debug.fragment_dag`、`data_edges`、`fragment_evidence`，说明 SemanticIR/fragment evidence 已进入真实写入结果。
+6. 执行后的 post compile 返回 `success: true`、`status: succeeded`、`warning_count: 0`。
+7. `blueprinthelper_read_task_context` 回读目标资产，确认新增图 `BH_SemanticIR_CodexSmoke_20260514_001` 已存在，节点数为 2。
 
-未通过部分：
-1. `let/compare/branch` 覆盖 TaskSpec 在 preview 阶段被 `unsupported_graph_write_statement_kind` 阻止，UE TaskRuntime 仍只放行 `call_function` 和 `set_member_variable`。
-2. 最小写入成功路径的 `adapter_operation` 仍为 `append_blueprint_graph`，说明当前端到端执行仍经过旧 `body.statements -> nodes/links -> append_blueprint_graph` 适配链路，不是 SemanticIR 直接创建 UE 节点的唯一入口。
-3. 使用不存在图名 `EG_SemanticCoverage_Minimal` 时 preview 通过但 execute 返回 `target_graph_not_found`，preview 未提前捕捉目标图缺失。
-4. `bh.ps1` 仍会被 PowerShell Execution Policy 拦截；本次覆盖测试改用 `bh.cmd`。
-5. PowerShell `.cmd` 复杂 `--json` 输入仍不适合 TaskSpec；本次使用 UTF-8 no BOM 的 `--file`。带 BOM 的 JSON 文件会被 CLI 解析拒绝。
+本次修复：
+1. 修复 `append_new_owned_graph` 在真实 execute 阶段错误要求新图 custom event 预先存在的问题；现在只有目标图已存在且启用 `reuse_existing_entries` 时才检查已有 custom event。
+2. 修复后已重新编译 `TemplateEditor Win64 Development`，结果成功。
 
 距离期望的差距：
-1. 尚未证明 `statement tree -> fragment DAG -> composer/linker -> UE mutator` 已经成为唯一真实写入编排。
-2. 尚未证明 `branch/let/compare/select/make_struct/get_property` 能通过 AgentFace TaskSpec 端到端写入真实蓝图。
-3. 需要将 TaskRuntime 的 `ensure_entry` 执行路径从旧 `body` statement 降级器切到 `logic_spec` / SemanticIR 主路径，或在 preview 中明确暴露该阻塞。
-
+1. 本次只验证了最小 `call` statement 的真实写入链路，尚未覆盖 `let/compare/branch/select/make_struct/get_property` 的端到端 UE 写入。
+2. 执行结果仍显示 `adapter_operation: append_blueprint_graph`，虽然 fragment_debug/evidence 已随结果输出，但仍需继续确认 SemanticIR 是否已成为唯一 UE 节点创建入口。
+3. Semantic resolver 对 `PrintString` 仍给出 `semantic.target_unverified` warning；UE 节点写入和编译通过，但 resolver 目标验证还不完整。
+4. 低层 `append_blueprint_graph` 不是当前普通 CLI 暴露命令，本次无法通过普通 CLI 直接验证旧 adapter payload 的拒绝路径。
+5. 热重载后 write session 会丢失，需要重新执行 `blueprinthelper_request_write_session`；这是测试流程约束，不属于本次 GraphStatement 主链路通过证明。
 ## 当前进度总览：2026-05-14 SemanticIR 主路径化同步
 
 ### 阶段状态调整
@@ -777,19 +777,19 @@
 1. 当前 UE Live Coding active，UBT 编译被阻止：`Unable to build while Live Coding is active`。
 2. 需要在编辑器中按 `Ctrl+Alt+F11` 结束 Live Coding，或关闭编辑器后再编译。
 
-## 2026-05-14 AgentImportService SemanticIR-only ���
+## 2026-05-14 AgentImportService SemanticIR-only ���
 
-### �����
-1. `FBlueprintHelperAgentImportService` �Ѽ���Ϊ facade���������������ί�� SemanticIR ִ������
-2. ���� `FBlueprintHelperAgentImportJsonParser`������ AgentImport JSON schema��Ŀ��ͼ��ѡ��� `logic_spec` У�顣
-3. ���� `FBlueprintHelperAgentImportSemanticExecutor`���������Ŀ��ͼ��ͨ�� `FBlueprintGraphGenerationPipeline` ���� SemanticIR ͼд����·����
-4. �� `nodes`��`links`��`variables`��`declarations` �ǿ��������� parser ��ܾ�������·������֧�־� AgentImport �ڵ��ʽ��
-5. `TextToBlueprintGenerator` ��ֽ����ȷ�ϣ������ pipeline/parser/spawner/linker/default-value/local-variable/utility/multi-graph ������Ƕ��� `.h/.cpp`��facade �ļ������� facade ������ݽṹ/ö�١�
+### �����
+1. `FBlueprintHelperAgentImportService` �Ѽ���Ϊ facade���������������ί�� SemanticIR ִ������
+2. ���� `FBlueprintHelperAgentImportJsonParser`������ AgentImport JSON schema��Ŀ��ͼ��ѡ��� `logic_spec` У�顣
+3. ���� `FBlueprintHelperAgentImportSemanticExecutor`���������Ŀ��ͼ��ͨ�� `FBlueprintGraphGenerationPipeline` ���� SemanticIR ͼд����·����
+4. �� `nodes`��`links`��`variables`��`declarations` �ǿ��������� parser ��ܾ�������·������֧�־� AgentImport �ڵ��ʽ��
+5. `TextToBlueprintGenerator` ��ֽ����ȷ�ϣ������ pipeline/parser/spawner/linker/default-value/local-variable/utility/multi-graph ������Ƕ��� `.h/.cpp`��facade �ļ������� facade ������ݽṹ/ö�١�
 
-### �����������
-1. �ɸ�ʽ��ؽṹ���Ա����� public header �У����ڽ��͵�ǰ��������գ�����ʱ�Ѿ��ܾ��� payload���� header ������δִ�С�
-2. `AgentImportService` �� direct dry_run ��ǰֻ�� schema��Ŀ��ͼ�� `logic_spec` ������У�飬��ִ���޸����õ����� SemanticIR Ԥ�ݡ�
-3. ���μ���д����ɳ����Ȩд�� `C:\Users\CharlieNotFound\.codex\memories\extensions\ad_hoc\notes` δ��ɣ���Ҫ�û������Ȩ�޻�����д��
+### �����������
+1. �ɸ�ʽ��ؽṹ���Ա����� public header �У����ڽ��͵�ǰ��������գ�����ʱ�Ѿ��ܾ��� payload���� header ������δִ�С�
+2. `AgentImportService` �� direct dry_run ��ǰֻ�� schema��Ŀ��ͼ�� `logic_spec` ������У�飬��ִ���޸����õ����� SemanticIR Ԥ�ݡ�
+3. ���μ���д����ɳ����Ȩд�� `C:\Users\CharlieNotFound\.codex\memories\extensions\ad_hoc\notes` δ��ɣ���Ҫ�û������Ȩ�޻�����д��
 
 ## 2026-05-14 AgentImportService SemanticIR-only 拆分
 
@@ -816,3 +816,47 @@
 ### 距离期望差距
 1. Source 中仍有 Review/Transaction/BlockScopedAnchor 等历史数据迁移相关 legacy 代码，本次未删除，避免破坏已有 Review/Journal 兼容读取语义。
 2. `FBlueprintHelperAgentImportService` 仍作为 direct SemanticIR import facade 保留；是否完全删除该服务和 bridge command 需要确认是否还需要对外入口。
+## 2026-05-14 SemanticIR smoke execute preflight 修复
+
+### 已完成
+1. 覆盖测试发现 `append_new_owned_graph` 新图尚不存在时，`reuse_existing_entries=true` 会错误触发 `custom_event_entry_not_found`。
+2. 已将该检查收窄为仅在目标图已存在时要求 Custom Event entry 已存在，新图创建路径不再被误阻塞。
+
+### 距离期望差距
+1. 仍需重新编译并重跑同一 TaskSpec execute，确认 SemanticIR 实际落图成功。
+## 2026-05-14 SemanticIR 唯一 UE 节点创建入口收敛
+
+状态：部分完成，GraphWrite 主写入路径已收敛；签名/结构服务不在本轮迁移范围。
+
+已完成内容：
+1. `append_blueprint_graph` / `replace_blueprint_graph` 继续强制 `logic_spec/SemanticIR`，缺少 `logic_spec` 的旧 nodes/links payload 会被拒绝。
+2. `BlueprintGraphGenerationPipeline::GenerateBlueprintFromJson` 与 `GenerateNodesAndLinksForGraph` 已删除可达的旧 nodes/links 解析和 `Handler->Spawn` 路径，仅允许 `logic_spec` 进入 `GenerateSemanticGraphFromJsonObject`。
+3. `BlueprintMultiGraphGenerationPipeline` 的单图 nodes fallback 改为直接拒绝，避免多图入口绕回旧 nodes/links 创建路径。
+4. `merge_blueprint_graph` 插入 call node 改为调用 `FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment`，不再由 MergeService 直接 `SpawnResolvedNode` 或 `SpawnFunctionNode`。
+5. `merge_blueprint_graph` 的 sequence node 创建改为 `FBlueprintHelperGraphStatementBuilder::BuildSequenceFragment`，MergeService 不再直接 `NewObject<UK2Node_ExecutionSequence>` / `AddNode`。
+6. 编辑器 UI 的 unresolved function mapping 直接生成节点入口已禁用，提示必须走 `logic_spec/SemanticIR`。
+7. AgentFace TypeScript / Python append bridge payload 不再输出旧 `nodes/links`，普通 append payload 改为只携带 `logic_spec`。
+
+距离期望的差距：
+1. `NodeHandlers` 内部仍保留具体 `UK2Node` 实例化代码，但其目标定位已从外部入口迁到 GraphStatementBuilder/fragment 构建内部调用；后续如果要物理消除所有 `NewObject<UK2Node*>` 分散点，需要新增专门 `NodeFragmentMutator` 类并迁移 handler 实现。
+2. `patch_blueprint_graph` 主要修改已有节点/连线/default，不负责创建新 `UK2Node`；本轮没有强制它必须携带 `logic_spec`。
+3. BlueprintSignatureService 仍会创建 custom event / override event 等签名节点；该服务属于签名/结构入口，不在本轮 GraphWrite 节点创建入口收敛范围。
+4. 尚未执行编译验证；需要下一步编译确认本轮 C++/TS/Python 改动无语法问题。
+## 2026-05-14 SemanticIR branch smoke 覆盖测试
+
+状态：通过，仍有 resolver warning 待处理。
+
+已完成内容：
+1. 使用 `BH_SemanticIR_BranchSmoke_20260514_001` 执行 `let -> compare -> branch -> then/else call` 端到端 smoke。
+2. `blueprinthelper_preview_task` 返回 `preview_passed`，产物为 `preview_1778746031719_0001`。
+3. `blueprinthelper_execute_task` 返回 `executed`，任务为 `task_AFC403B84D27A0997547D4BCB871E46E`，产物为 `preview_1778746218510_0001`。
+4. 执行结果包含 `fragment_debug.fragment_dag` 和 `fragment_evidence`，fragment_count 为 12，覆盖 `statement_let`、`expr_compare`、`statement_branch`、`join`、then/else `statement_call`。
+5. 执行后 Blueprint post compile 成功，`warning_count: 0`。
+6. `blueprinthelper_read_task_context` 回读确认新增图 `BH_SemanticIR_BranchSmoke_20260514_001` 已存在，节点数为 5。
+7. AgentFace TaskCore 全量测试通过：Node 99/99，Python unittest 48/48。
+8. TS/Python 测试断言已同步为 `logic_spec`-only payload，不再期待旧 `nodes/links`。
+
+距离期望的差距：
+1. Semantic resolver 对 `PrintString` 仍给出 `semantic.target_unverified` warning；UE 写入和编译通过，但 resolver 目标验证仍需补全。
+2. 普通 CLI 不暴露低层 `append_blueprint_graph` 直接命令，本轮没有通过普通 CLI 直接测试旧 `nodes/links` Bridge payload 拒绝路径。
+3. 本轮覆盖了 append 新 owned graph；replace/merge/patch 的真实编辑器写入回归仍需单独用例覆盖。

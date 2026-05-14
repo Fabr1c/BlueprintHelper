@@ -10,6 +10,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/PromotableOperatorNodeHandler.h"
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/SelectNodeHandler.h"
+#include "Systems/ToolClusters/GraphWrite/NodeHandlers/SequenceNodeHandler.h"
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/StructOperationNodeHandler.h"
 
 namespace
@@ -306,18 +307,59 @@ static bool SpawnExplicitObjectCallFragment(
 	return true;
 }
 
+static FString SanitizeGraphFragmentIdPart(const FString& Value)
+{
+	FString Clean = Value.TrimStartAndEnd();
+	if (Clean.IsEmpty())
+	{
+		return TEXT("unnamed");
+	}
+
+	FString Result;
+	Result.Reserve(Clean.Len());
+	for (int32 Index = 0; Index < Clean.Len(); ++Index)
+	{
+		const TCHAR Character = Clean[Index];
+		Result.AppendChar(FChar::IsAlnum(Character) ? Character : TEXT('_'));
+	}
+	return Result.IsEmpty() ? TEXT("unnamed") : Result;
+}
+
+static FString ExpressionKindName(const EBlueprintHelperGraphExpressionKind Kind)
+{
+	switch (Kind)
+	{
+	case EBlueprintHelperGraphExpressionKind::Literal:
+		return TEXT("literal");
+	case EBlueprintHelperGraphExpressionKind::Get:
+		return TEXT("get");
+	case EBlueprintHelperGraphExpressionKind::GetProperty:
+		return TEXT("get_property");
+	case EBlueprintHelperGraphExpressionKind::Ref:
+		return TEXT("ref");
+	case EBlueprintHelperGraphExpressionKind::Call:
+		return TEXT("call");
+	case EBlueprintHelperGraphExpressionKind::Compare:
+		return TEXT("compare");
+	case EBlueprintHelperGraphExpressionKind::Select:
+		return TEXT("select");
+	case EBlueprintHelperGraphExpressionKind::MakeStruct:
+		return TEXT("make_struct");
+	default:
+		return TEXT("unknown");
+	}
+}
+
 static FString MakeExpressionFragmentId(const FBlueprintHelperGraphExpressionIR& Expression)
 {
-	FString Id = Expression.ExpressionId.IsEmpty() ? Expression.Path : Expression.ExpressionId;
-	if (Id.IsEmpty())
+	const FString SourceId = !Expression.ExpressionId.IsEmpty() ? Expression.ExpressionId : Expression.Path;
+	if (!SourceId.Contains(TEXT("$")) && !SourceId.Contains(TEXT(".")) && !SourceId.Contains(TEXT("[")) && !SourceId.Contains(TEXT("]")))
 	{
-		Id = TEXT("expression");
+		return SanitizeGraphFragmentIdPart(SourceId);
 	}
-	Id.ReplaceInline(TEXT("$"), TEXT("root"));
-	Id.ReplaceInline(TEXT("."), TEXT("_"));
-	Id.ReplaceInline(TEXT("["), TEXT("_"));
-	Id.ReplaceInline(TEXT("]"), TEXT(""));
-	return Id;
+
+	const FString Suffix = ExpressionKindName(Expression.Kind);
+	return SanitizeGraphFragmentIdPart(TEXT("expr_") + Suffix + TEXT("_") + SourceId + TEXT("_") + Suffix);
 }
 
 static FString NormalizeCompareOperatorToken(const FString& Operator)
@@ -607,6 +649,38 @@ bool FBlueprintHelperGraphStatementBuilder::BuildVariableSetFragment(
 	OutFragment.DataInputs.Add(TEXT("value"), FBlueprintHelperFragmentPinRef{ NodeData.Id, TEXT("value"), TEXT("value"), ValuePin });
 	OutFragment.PinBindings.Add(NodeData.VariableReference.VariableName, FBlueprintHelperFragmentPinRef{ NodeData.Id, NodeData.VariableReference.VariableName, TEXT("value"), ValuePin });
 	OutFragment.PinBindings.Add(TEXT("value"), FBlueprintHelperFragmentPinRef{ NodeData.Id, TEXT("value"), TEXT("value"), ValuePin });
+	PopulateCommonFragmentMetadata(NodeData, OutFragment);
+	return true;
+}
+
+bool FBlueprintHelperGraphStatementBuilder::BuildSequenceFragment(
+	UEdGraph* TargetGraph,
+	const FString& FragmentId,
+	FBlueprintHelperNodeFragment& OutFragment,
+	FString& OutError)
+{
+	OutFragment = FBlueprintHelperNodeFragment();
+
+	FParsedNode NodeData;
+	NodeData.Id = FragmentId.IsEmpty() ? TEXT("semantic_sequence") : FragmentId;
+	NodeData.NodeType = EParsedBlueprintNodeType::Sequence;
+	NodeData.SourceType = TEXT("K2Node_ExecutionSequence");
+
+	FSequenceNodeHandler Handler;
+	UK2Node* SpawnedNode = Handler.Spawn(TargetGraph, NodeData, OutError);
+	if (!SpawnedNode)
+	{
+		return false;
+	}
+
+	OutFragment.FragmentId = NodeData.Id;
+	OutFragment.SourceStatementId = NodeData.Id;
+	OutFragment.PrimaryNode = SpawnedNode;
+	OutFragment.Nodes.Add(SpawnedNode);
+	OutFragment.ExecEntryPin = FBlueprintGraphWriteFacade::FindPinByAlias(SpawnedNode, TEXT("execute"));
+	OutFragment.ExecExitPin = FBlueprintGraphWriteFacade::FindPinByAlias(SpawnedNode, TEXT("then"));
+	OutFragment.PinBindings.Add(TEXT("execute"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("execute"), TEXT("exec"), OutFragment.ExecEntryPin });
+	OutFragment.PinBindings.Add(TEXT("then"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("then"), TEXT("exec"), OutFragment.ExecExitPin });
 	PopulateCommonFragmentMetadata(NodeData, OutFragment);
 	return true;
 }

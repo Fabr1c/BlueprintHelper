@@ -46,14 +46,6 @@ TArray<TSharedPtr<FEngineFunctionItem>> FBlueprintGraphWriteFacade::GetAllBluepr
 	return FBlueprintGraphNodeUtility::GetAllBlueprintFunctions();
 }
 
-UK2Node_CallFunction* FBlueprintGraphWriteFacade::SpawnFunctionNode(
-	UEdGraph* TargetGraph,
-	UFunction* TargetFunction,
-	const FParsedNode& NodeData)
-{
-	return FBlueprintGraphNodeSpawner::SpawnFunctionNode(TargetGraph, TargetFunction, NodeData);
-}
-
 UK2Node* FBlueprintGraphWriteFacade::SpawnVariableGetNode(
 	UEdGraph* TargetGraph,
 	const FParsedNode& NodeData,

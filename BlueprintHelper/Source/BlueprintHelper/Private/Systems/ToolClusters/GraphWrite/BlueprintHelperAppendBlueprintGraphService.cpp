@@ -380,7 +380,7 @@ bool FBlueprintHelperAppendBlueprintGraphService::PreflightNodePayload(
 			OutResult.Conflicts.Add({TEXT("custom_event_already_exists"), FString::Printf(TEXT("Custom Event name is duplicated: %s."), *Name), Name, TEXT("logic_spec.entry.name")});
 		}
 		SeenNames.Add(Name);
-		if (Request.bReuseExistingEntries && !Request.bDryRun && !FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::FindExistingCustomEventNode(Graph, Name))
+		if (Graph && Request.bReuseExistingEntries && !Request.bDryRun && !FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::FindExistingCustomEventNode(Graph, Name))
 		{
 			OutResult.bPassed = false;
 			OutResult.BlockedBy.Add(TEXT("custom_event_entry_not_found"));

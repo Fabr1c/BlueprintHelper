@@ -918,8 +918,12 @@ def _validate_graph_write_step(step: Any, path: str) -> None:
         _raise_taskplan_invalid("missing_taskplan_step_args", "TaskPlan step requires args.", f"{path}.args")
 
     if operation == "append_blueprint_graph":
-        _required_list(args, "nodes", f"{path}.args.nodes", min_length=1)
-        _required_list(args, "links", f"{path}.args.links")
+        if not isinstance(args.get("logic_spec"), dict):
+            _raise_taskplan_invalid(
+                "logic_spec_required",
+                "append_blueprint_graph requires args.logic_spec/SemanticIR.",
+                f"{path}.args.logic_spec",
+            )
     elif operation == "replace_blueprint_graph":
         replacement = args.get("replacement")
         if not isinstance(replacement, dict):
@@ -1063,8 +1067,6 @@ def _graph_write_taskplan_to_append_bridge_payload(
             **({"entry": logic_entry} if logic_entry else {}),
             "statements": logic_statements,
         },
-        "nodes": nodes,
-        "links": links,
         "dry_run": dry_run,
     })
 

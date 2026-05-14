@@ -1117,23 +1117,17 @@ describe('TaskSpec GraphWrite Append compiler', () => {
         graph: 'EG_DoorFeature',
       },
       feature_name: 'DoorFeature',
-      nodes: [
-        { id: 'ToggleDoor_entry', kind: 'custom_event', name: 'ToggleDoor' },
-        {
-          id: 'ToggleDoor_stmt_1',
-          kind: 'call',
-          function: 'PrintString',
-          inputs: { InString: 'hello' },
-        },
-      ],
       logic_spec: {
         schema: 'BlueprintLogicSpec.v2',
+        entry: { kind: 'custom_event', name: 'ToggleDoor', id: 'ToggleDoor_entry' },
         statements: [
           {
+            id: 'ToggleDoor_stmt_1',
             kind: 'call_function',
             name: 'PrintString',
             args: {
               InString: {
+                id: 'ToggleDoor_stmt_1_arg_InString',
                 kind: 'literal',
                 value_type: 'string',
                 value: 'hello',
@@ -1142,9 +1136,6 @@ describe('TaskSpec GraphWrite Append compiler', () => {
           },
         ],
       },
-      links: [
-        { kind: 'exec', from: 'ToggleDoor_entry.then', to: 'ToggleDoor_stmt_1.execute' },
-      ],
       dry_run: true,
     });
   });
@@ -1181,25 +1172,15 @@ describe('TaskSpec GraphWrite Append compiler', () => {
 
     const plan = compileTaskSpecToTaskPlan(TaskSpecSchema.parse(spec));
     const payload = taskPlanToAppendBridgePayload(plan, true);
-    assert.deepEqual(payload.nodes.slice(1), [
-      {
-        id: 'OpenDoor_stmt_1',
-        kind: 'set',
-        var: 'bDoorOpen',
-        value: 'true',
-      },
-      {
-        id: 'OpenDoor_stmt_2',
-        kind: 'call',
-        function: 'DoorPanel.AddAngularImpulseInDegrees',
-        inputs: {
-          bVelChange: true,
-        },
-      },
+    assert.equal((payload as unknown as Record<string, unknown>).nodes, undefined);
+    assert.equal((payload as unknown as Record<string, unknown>).links, undefined);
+    assert.deepEqual(payload.logic_spec.statements.map((statement) => (statement as Record<string, unknown>).id), [
+      'OpenDoor_stmt_1',
+      'OpenDoor_stmt_2',
     ]);
-    const links = new Set(payload.links.map((link: Record<string, string>) => `${link.kind}:${link.from}->${link.to}`));
-    assert.ok(links.has('exec:OpenDoor_entry.then->OpenDoor_stmt_1.execute'));
-    assert.ok(links.has('exec:OpenDoor_stmt_1.then->OpenDoor_stmt_2.execute'));
+    assert.equal((payload.logic_spec.statements[0] as Record<string, unknown>).kind, 'set');
+    assert.equal((payload.logic_spec.statements[1] as Record<string, unknown>).kind, 'call');
+    assert.equal((payload.logic_spec.statements[1] as Record<string, unknown>).target, 'DoorPanel.AddAngularImpulseInDegrees');
   });
 
   it('compiles AgentFace P1 let/ref/branch/make_struct expressions into nodes and data links', () => {
@@ -1275,41 +1256,15 @@ describe('TaskSpec GraphWrite Append compiler', () => {
 
     const plan = compileTaskSpecToTaskPlan(TaskSpecSchema.parse(spec));
     const payload = taskPlanToAppendBridgePayload(plan, true);
-    const nodesById = new Map(payload.nodes.map((node: Record<string, any>) => [node.id, node]));
-    const links = new Set(payload.links.map((link: Record<string, string>) => `${link.kind}:${link.from}->${link.to}`));
-
-    assert.deepEqual(nodesById.get('OpenDoor_stmt_1_value'), {
-      id: 'OpenDoor_stmt_1_value',
-      kind: 'make_struct',
-      inputs: { Amount: 12 },
-      type: '/Script/BlueprintHelper.AgentFaceDamagePayload',
-      struct_path: '/Script/BlueprintHelper.AgentFaceDamagePayload',
-    });
-    assert.deepEqual(nodesById.get('OpenDoor_stmt_2'), {
-      id: 'OpenDoor_stmt_2',
-      kind: 'branch',
-    });
-    assert.deepEqual(nodesById.get('OpenDoor_stmt_2_condition'), {
-      id: 'OpenDoor_stmt_2_condition',
-      kind: 'compare',
-      inputs: { B: 0.5 },
-      function: '>',
-    });
-    assert.deepEqual(nodesById.get('OpenDoor_stmt_2_then_2_arg_Mode'), {
-      id: 'OpenDoor_stmt_2_then_2_arg_Mode',
-      kind: 'select',
-      inputs: {
-        Option0: 'Open',
-        Option1: 'Closed',
-      },
-    });
-
-    assert.ok(links.has('data:OpenDoor_stmt_1_value_Instigator.PlayerState->OpenDoor_stmt_1_value.Instigator'));
-    assert.ok(links.has('data:OpenDoor_stmt_1_value_ImpactLocation.value->OpenDoor_stmt_1_value.ImpactLocation'));
-    assert.ok(links.has('data:OpenDoor_stmt_1_value.value->OpenDoor_stmt_2_then_1.LastPayload'));
-    assert.ok(links.has('data:OpenDoor_stmt_1_value.value->OpenDoor_stmt_2_then_2.Payload'));
-    assert.ok(links.has('data:OpenDoor_stmt_2_condition.ReturnValue->OpenDoor_stmt_2.Condition'));
-    assert.ok(links.has('data:OpenDoor_stmt_2_then_2_arg_Mode.value->OpenDoor_stmt_2_then_2.Mode'));
+    assert.equal((payload as unknown as Record<string, unknown>).nodes, undefined);
+    assert.equal((payload as unknown as Record<string, unknown>).links, undefined);
+    const serializedLogicSpec = JSON.stringify(payload.logic_spec.statements);
+    assert.match(serializedLogicSpec, /OpenDoor_stmt_1_value/);
+    assert.match(serializedLogicSpec, /OpenDoor_stmt_2_condition/);
+    assert.match(serializedLogicSpec, /OpenDoor_stmt_2_then_2_arg_Mode/);
+    assert.match(serializedLogicSpec, /make_struct/);
+    assert.match(serializedLogicSpec, /compare/);
+    assert.match(serializedLogicSpec, /select/);
   });
 
   it('preserves owner-qualified call_function names for UE-side resolution', () => {
@@ -1343,12 +1298,18 @@ describe('TaskSpec GraphWrite Append compiler', () => {
 
     const plan = compileTaskSpecToTaskPlan(TaskSpecSchema.parse(spec));
     const payload = taskPlanToAppendBridgePayload(plan, true);
-    assert.deepEqual(payload.nodes[1], {
+    assert.equal((payload as unknown as Record<string, unknown>).nodes, undefined);
+    assert.deepEqual(payload.logic_spec.statements[0], {
       id: 'ToggleDoor_stmt_1',
-      kind: 'call',
-      function: '/Script/Engine.KismetSystemLibrary:PrintString',
-      inputs: {
-        InString: 'message',
+      kind: 'call_function',
+      name: '/Script/Engine.KismetSystemLibrary:PrintString',
+      args: {
+        InString: {
+          id: 'ToggleDoor_stmt_1_arg_InString',
+          kind: 'literal',
+          value_type: 'string',
+          value: 'message',
+        },
       },
     });
   });
@@ -1384,12 +1345,18 @@ describe('TaskSpec GraphWrite Append compiler', () => {
 
     const plan = compileTaskSpecToTaskPlan(TaskSpecSchema.parse(spec));
     const payload = taskPlanToAppendBridgePayload(plan, true);
-    assert.deepEqual(payload.nodes[1], {
+    assert.equal((payload as unknown as Record<string, unknown>).nodes, undefined);
+    assert.deepEqual(payload.logic_spec.statements[0], {
       id: 'ToggleDoor_stmt_1',
-      kind: 'call',
-      function: 'Print String',
-      inputs: {
-        InString: 'message',
+      kind: 'call_function',
+      name: 'Print String',
+      args: {
+        InString: {
+          id: 'ToggleDoor_stmt_1_arg_InString',
+          kind: 'literal',
+          value_type: 'string',
+          value: 'message',
+        },
       },
     });
   });
@@ -1419,11 +1386,12 @@ describe('TaskSpec GraphWrite Append compiler', () => {
 
     const plan = compileTaskSpecToTaskPlan(TaskSpecSchema.parse(spec));
     const payload = taskPlanToAppendBridgePayload(plan, true);
-    assert.deepEqual(payload.nodes[1], {
+    assert.equal((payload as unknown as Record<string, unknown>).nodes, undefined);
+    assert.deepEqual(payload.logic_spec.statements[0], {
       id: 'ToggleDoor_stmt_1',
-      kind: 'call',
-      function: 'DoorMesh.AddAngularImpulseInDegrees',
-      inputs: {},
+      kind: 'call_function',
+      name: 'DoorMesh.AddAngularImpulseInDegrees',
+      args: {},
     });
   });
 
@@ -1553,15 +1521,10 @@ describe('TaskSpec GraphWrite Append compiler', () => {
     const plan = compileTaskSpecToTaskPlan(TaskSpecSchema.parse(spec));
     const payload = taskPlanToAppendBridgePayload(plan, false);
 
-    assert.deepEqual(payload.nodes, [
-      { id: 'OpenDoor_entry', kind: 'custom_event', name: 'OpenDoor' },
-      {
-        id: 'OpenDoor_stmt_1',
-        kind: 'set',
-        var: 'bDoorOpen',
-        value: 'true',
-      },
-    ]);
+    assert.equal((payload as unknown as Record<string, unknown>).nodes, undefined);
+    assert.deepEqual(payload.logic_spec.entry, { kind: 'custom_event', name: 'OpenDoor', id: 'OpenDoor_entry' });
+    assert.deepEqual(payload.logic_spec.statements.map((statement) => (statement as Record<string, unknown>).id), ['OpenDoor_stmt_1']);
+    assert.equal((payload.logic_spec.statements[0] as Record<string, unknown>).kind, 'set_member_variable');
     assert.equal(payload.dry_run, false);
   });
 });

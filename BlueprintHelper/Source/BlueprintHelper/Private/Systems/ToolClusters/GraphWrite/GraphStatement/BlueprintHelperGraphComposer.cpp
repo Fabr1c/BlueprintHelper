@@ -57,6 +57,24 @@ static UEdGraphPin* FindNodePinByName(UEdGraphNode* Node, const FString& PinName
 	return nullptr;
 }
 
+static UEdGraphPin* FindFirstNodeDataPin(UEdGraphNode* Node, const EEdGraphPinDirection Direction)
+{
+	if (!Node)
+	{
+		return nullptr;
+	}
+
+	for (UEdGraphPin* Pin : Node->Pins)
+	{
+		if (Pin && Pin->Direction == Direction && Pin->PinType.PinCategory != FName(TEXT("exec")))
+		{
+			return Pin;
+		}
+	}
+
+	return nullptr;
+}
+
 static UEdGraphPin* ResolveFragmentEndpointPin(
 	const FBlueprintHelperNodeFragment& Fragment,
 	const FBlueprintHelperGraphFragmentEndpointRef& Endpoint,
@@ -98,7 +116,48 @@ static UEdGraphPin* ResolveFragmentEndpointPin(
 		}
 	}
 
+	if (Endpoint.PinName.Equals(TEXT("result"), ESearchCase::IgnoreCase)
+		|| Endpoint.PinName.Equals(TEXT("value"), ESearchCase::IgnoreCase)
+		|| Endpoint.PinName.Equals(TEXT("return"), ESearchCase::IgnoreCase))
+	{
+		return FindFirstNodeDataPin(Fragment.PrimaryNode, bSourceEndpoint ? EGPD_Output : EGPD_Input);
+	}
+
 	return nullptr;
+}
+
+static bool TryForceCompatibleDataConnection(UEdGraphPin* FromPin, UEdGraphPin* ToPin)
+{
+	if (!FromPin || !ToPin || FromPin->LinkedTo.Contains(ToPin))
+	{
+		return false;
+	}
+
+	if (FromPin->PinType.PinCategory == FName(TEXT("exec")) || ToPin->PinType.PinCategory == FName(TEXT("exec")))
+	{
+		return false;
+	}
+
+	if (FromPin->Direction != EGPD_Output || ToPin->Direction != EGPD_Input)
+	{
+		return false;
+	}
+
+	if (FromPin->PinType.PinCategory != ToPin->PinType.PinCategory)
+	{
+		return false;
+	}
+
+	FromPin->MakeLinkTo(ToPin);
+	if (UEdGraphNode* FromNode = FromPin->GetOwningNode())
+	{
+		FromNode->NodeConnectionListChanged();
+	}
+	if (UEdGraphNode* ToNode = ToPin->GetOwningNode())
+	{
+		ToNode->NodeConnectionListChanged();
+	}
+	return true;
 }
 }
 
@@ -220,6 +279,11 @@ FBlueprintHelperGraphComposeResult FBlueprintHelperGraphComposer::ConnectDataEdg
 
 		const FPinConnectionResponse ConnectionResponse = Schema->CanCreateConnection(FromPin, ToPin);
 		if (Schema->TryCreateConnection(FromPin, ToPin))
+		{
+			++Result.CreatedDataConnectionCount;
+			continue;
+		}
+		if (TryForceCompatibleDataConnection(FromPin, ToPin))
 		{
 			++Result.CreatedDataConnectionCount;
 			continue;

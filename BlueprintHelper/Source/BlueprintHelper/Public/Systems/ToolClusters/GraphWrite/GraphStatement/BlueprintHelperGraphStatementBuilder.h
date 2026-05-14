@@ -61,6 +61,12 @@ public:
 		FBlueprintHelperNodeFragment& OutFragment,
 		FString& OutError);
 
+	static bool BuildSequenceFragment(
+		UEdGraph* TargetGraph,
+		const FString& FragmentId,
+		FBlueprintHelperNodeFragment& OutFragment,
+		FString& OutError);
+
 	static bool BuildExpressionFragment(
 		UEdGraph* TargetGraph,
 		const FBlueprintHelperGraphExpressionIR& Expression,

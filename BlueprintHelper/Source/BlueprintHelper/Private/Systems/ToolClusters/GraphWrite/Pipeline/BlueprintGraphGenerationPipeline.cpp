@@ -296,14 +296,97 @@ struct FSemanticStatementExecFlow
 	bool bPreservePreviousExits = false;
 };
 
+static FString SanitizeGraphFragmentIdPart(const FString& Value)
+{
+	FString Clean = Value.TrimStartAndEnd();
+	if (Clean.IsEmpty())
+	{
+		return TEXT("unnamed");
+	}
+
+	FString Result;
+	Result.Reserve(Clean.Len());
+	for (int32 Index = 0; Index < Clean.Len(); ++Index)
+	{
+		const TCHAR Character = Clean[Index];
+		Result.AppendChar(FChar::IsAlnum(Character) ? Character : TEXT('_'));
+	}
+	return Result.IsEmpty() ? TEXT("unnamed") : Result;
+}
+
 static FString GetSemanticStatementId(const FBlueprintHelperGraphStatementIR& Statement)
 {
-	return !Statement.StatementId.IsEmpty() ? Statement.StatementId : Statement.Path;
+	const FString SourceId = !Statement.StatementId.IsEmpty() ? Statement.StatementId : Statement.Path;
+	if (!SourceId.Contains(TEXT("$")) && !SourceId.Contains(TEXT(".")) && !SourceId.Contains(TEXT("[")) && !SourceId.Contains(TEXT("]")))
+	{
+		return SanitizeGraphFragmentIdPart(SourceId);
+	}
+
+	FString KindName = TEXT("unknown");
+	switch (Statement.Kind)
+	{
+	case EBlueprintHelperGraphStatementKind::Call:
+		KindName = TEXT("call");
+		break;
+	case EBlueprintHelperGraphStatementKind::Set:
+		KindName = TEXT("set");
+		break;
+	case EBlueprintHelperGraphStatementKind::Branch:
+		KindName = TEXT("branch");
+		break;
+	case EBlueprintHelperGraphStatementKind::Let:
+		KindName = TEXT("let");
+		break;
+	case EBlueprintHelperGraphStatementKind::Return:
+		KindName = TEXT("return");
+		break;
+	default:
+		break;
+	}
+
+	return SanitizeGraphFragmentIdPart(TEXT("stmt_") + KindName + TEXT("_") + SourceId + TEXT("_") + KindName);
 }
 
 static FString GetSemanticExpressionId(const FBlueprintHelperGraphExpressionIR& Expression)
 {
-	return !Expression.ExpressionId.IsEmpty() ? Expression.ExpressionId : Expression.Path;
+	const FString SourceId = !Expression.ExpressionId.IsEmpty() ? Expression.ExpressionId : Expression.Path;
+	if (!SourceId.Contains(TEXT("$")) && !SourceId.Contains(TEXT(".")) && !SourceId.Contains(TEXT("[")) && !SourceId.Contains(TEXT("]")))
+	{
+		return SanitizeGraphFragmentIdPart(SourceId);
+	}
+
+	FString KindName = TEXT("unknown");
+	switch (Expression.Kind)
+	{
+	case EBlueprintHelperGraphExpressionKind::Literal:
+		KindName = TEXT("literal");
+		break;
+	case EBlueprintHelperGraphExpressionKind::Get:
+		KindName = TEXT("get");
+		break;
+	case EBlueprintHelperGraphExpressionKind::GetProperty:
+		KindName = TEXT("get_property");
+		break;
+	case EBlueprintHelperGraphExpressionKind::Ref:
+		KindName = TEXT("ref");
+		break;
+	case EBlueprintHelperGraphExpressionKind::Call:
+		KindName = TEXT("call");
+		break;
+	case EBlueprintHelperGraphExpressionKind::Compare:
+		KindName = TEXT("compare");
+		break;
+	case EBlueprintHelperGraphExpressionKind::Select:
+		KindName = TEXT("select");
+		break;
+	case EBlueprintHelperGraphExpressionKind::MakeStruct:
+		KindName = TEXT("make_struct");
+		break;
+	default:
+		break;
+	}
+
+	return SanitizeGraphFragmentIdPart(TEXT("expr_") + KindName + TEXT("_") + SourceId + TEXT("_") + KindName);
 }
 
 static void AddSemanticUnresolved(
@@ -827,11 +910,11 @@ FBlueprintGenerateResult FBlueprintGraphGenerationPipeline::GenerateBlueprintFro
 	TArray<TSharedPtr<FUnresolvedNodeItem>>& OutUnresolvedNodes)
 {
 	FBlueprintGenerateResult Result;
-	Result.Message = TEXT("生成失败。") ;
+	Result.Message = TEXT("Generation failed.");
 
 	if (!TargetGraph)
 	{
-		Result.Message = TEXT("目标蓝图图表无效。");
+		Result.Message = TEXT("Target graph is invalid.");
 		return Result;
 	}
 
@@ -839,13 +922,13 @@ FBlueprintGenerateResult FBlueprintGraphGenerationPipeline::GenerateBlueprintFro
 	const FString TrimmedJsonString = JsonString.TrimStartAndEnd();
 	if (TrimmedJsonString.IsEmpty())
 	{
-		Result.Message = TEXT("JSON 文本为空，请先执行蓝图转 JSON 或粘贴符合规则的 JSON。");
+		Result.Message = TEXT("JSON text is empty.");
 		return Result;
 	}
 
 	if (!TrimmedJsonString.StartsWith(TEXT("{")))
 	{
-		Result.Message = TEXT("主文本区不是有效 JSON，请先点击“从蓝图文本/剪贴板转换为JSON”。");
+		Result.Message = TEXT("GraphWrite input must be a JSON object.");
 		return Result;
 	}
 
@@ -853,31 +936,29 @@ FBlueprintGenerateResult FBlueprintGraphGenerationPipeline::GenerateBlueprintFro
 	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(TrimmedJsonString);
 	if (!FJsonSerializer::Deserialize(Reader, JsonObject) || !JsonObject.IsValid())
 	{
-		Result.Message = FString::Printf(TEXT("JSON 解析失败：%s"), *Reader->GetErrorMessage());
+		Result.Message = FString::Printf(TEXT("JSON parse failed: %s"), *Reader->GetErrorMessage());
 		return Result;
 	}
 
-	// v2.1 多图 JSON 需要走 Blueprint 级入口，否则 graphs 数组中的节点不会被分发到对应图表。
 	if (JsonObject->HasField(TEXT("graphs")))
 	{
 		UBlueprint* Blueprint = FBlueprintEditorUtils::FindBlueprintForGraph(TargetGraph);
 		if (!Blueprint)
 		{
-			Result.Message = TEXT("无法从目标图表获取蓝图对象，graphs 数组无法执行。");
+			Result.Message = TEXT("Unable to resolve Blueprint for multi-graph SemanticIR input.");
 			return Result;
 		}
 
 		return FBlueprintMultiGraphGenerationPipeline::GenerateMultiGraphFromJson(Blueprint, TrimmedJsonString, OutUnresolvedNodes);
 	}
 
-	// === Schema 2.0：蓝图级操作 ===
 	const TArray<TSharedPtr<FJsonValue>>* BlueprintOpsArray = nullptr;
 	if (JsonObject->TryGetArrayField(TEXT("blueprint_operations"), BlueprintOpsArray) && BlueprintOpsArray && BlueprintOpsArray->Num() > 0)
 	{
 		UBlueprint* Blueprint = FBlueprintEditorUtils::FindBlueprintForGraph(TargetGraph);
 		if (!Blueprint)
 		{
-			Result.Message = TEXT("无法从目标图表获取蓝图对象，blueprint_operations 无法执行。");
+			Result.Message = TEXT("Unable to resolve Blueprint for blueprint_operations.");
 			return Result;
 		}
 
@@ -901,7 +982,7 @@ FBlueprintGenerateResult FBlueprintGraphGenerationPipeline::GenerateBlueprintFro
 			{
 				TSharedPtr<FUnresolvedNodeItem> UnresolvedItem = MakeShared<FUnresolvedNodeItem>();
 				UnresolvedItem->DisplayText = FString::Printf(TEXT("BlueprintOp: %s"), *OpName);
-				UnresolvedItem->Reason = FString::Printf(TEXT("未识别的蓝图级操作：%s"), *OpName);
+				UnresolvedItem->Reason = FString::Printf(TEXT("Unknown Blueprint operation: %s"), *OpName);
 				OutUnresolvedNodes.Add(UnresolvedItem);
 				continue;
 			}
@@ -916,7 +997,6 @@ FBlueprintGenerateResult FBlueprintGraphGenerationPipeline::GenerateBlueprintFro
 			}
 		}
 
-		// 蓝图级操作完成后编译骨架，确保后续节点可引用新创建的变量/函数/分发器
 		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
 	}
 
@@ -926,504 +1006,7 @@ FBlueprintGenerateResult FBlueprintGraphGenerationPipeline::GenerateBlueprintFro
 		return GenerateSemanticGraphFromJsonObject(TargetGraph, JsonObject, OutUnresolvedNodes);
 	}
 
-	Result.Message = TEXT("GraphWrite 现在只接受 logic_spec/SemanticIR；nodes/links 旧节点创建路径已禁用。");
-	return Result;
-
-	TArray<FParsedNode> ParsedNodes;
-	TArray<FParsedLink> ParsedLinks;
-	TArray<FParsedLocalVariableDeclaration> ParsedLocalVariableDeclarations;
-	TArray<FBlueprintGeneratorDiagnostic> DefaultValueDiagnostics;
-	TArray<FBlueprintGeneratorDiagnostic> PinTypeDiagnostics;
-	TArray<FBlueprintGeneratorDiagnostic> ConnectionDiagnostics;
-	FBlueprintGraphJsonParser::ResolveLocalVariableDeclarations(JsonObject, ParsedLocalVariableDeclarations);
-
-	const TArray<TSharedPtr<FJsonValue>>* NodesArray = nullptr;
-	if (JsonObject->TryGetArrayField(TEXT("nodes"), NodesArray) && NodesArray)
-	{
-		for (const TSharedPtr<FJsonValue>& NodeValue : *NodesArray)
-		{
-			const TSharedPtr<FJsonObject> NodeObject = NodeValue->AsObject();
-			if (!NodeObject.IsValid())
-			{
-				continue;
-			}
-
-			FParsedNode ParsedNode;
-			ParsedNode.Id = NodeObject->GetStringField(TEXT("id"));
-			NodeObject->TryGetStringField(TEXT("type"), ParsedNode.SourceType);
-			if (ParsedNode.SourceType.IsEmpty())
-			{
-				NodeObject->TryGetStringField(TEXT("kind"), ParsedNode.SourceType);
-			}
-			ParsedNode.SourceType = FBlueprintGraphNodeUtility::NormalizeNodeTypeName(ParsedNode.SourceType);
-			ParsedNode.NodeType = FBlueprintGraphJsonParser::ResolveNodeType(NodeObject);
-			ParsedNode.FunctionName = FBlueprintGraphJsonParser::ResolveNodeFunctionName(NodeObject);
-			ParsedNode.X = NodeObject->HasField(TEXT("x")) ? static_cast<float>(NodeObject->GetNumberField(TEXT("x"))) : 0.0f;
-			ParsedNode.Y = NodeObject->HasField(TEXT("y")) ? static_cast<float>(NodeObject->GetNumberField(TEXT("y"))) : 0.0f;
-			ParsedNode.VariableReference = FBlueprintGraphJsonParser::ResolveVariableReference(NodeObject);
-			ParsedNode.MacroReference = FBlueprintGraphJsonParser::ResolveMacroReference(NodeObject);
-			ParsedNode.EventReference = FBlueprintGraphJsonParser::ResolveEventReference(NodeObject);
-			ParsedNode.DelegateReference = FBlueprintGraphJsonParser::ResolveDelegateReference(NodeObject);
-			ParsedNode.ContainerReference = FBlueprintGraphJsonParser::ResolveContainerReference(NodeObject);
-			ParsedNode.StructReference = FBlueprintGraphJsonParser::ResolveStructReference(NodeObject);
-			ParsedNode.CastReference = FBlueprintGraphJsonParser::ResolveCastReference(NodeObject);
-			ParsedNode.SpawnReference = FBlueprintGraphJsonParser::ResolveSpawnReference(NodeObject);
-			ParsedNode.FormatTextReference = FBlueprintGraphJsonParser::ResolveFormatTextReference(NodeObject);
-			ParsedNode.TimelineReference = FBlueprintGraphJsonParser::ResolveTimelineReference(NodeObject);
-			ParsedNode.LiteralReference = FBlueprintGraphJsonParser::ResolveLiteralReference(NodeObject);
-			ParsedNode.ComponentBoundEventReference = FBlueprintGraphJsonParser::ResolveComponentBoundEventReference(NodeObject);
-			ParsedNode.CommentReference = FBlueprintGraphJsonParser::ResolveCommentReference(NodeObject);
-			ParsedNode.EnhancedInputActionReference = FBlueprintGraphJsonParser::ResolveEnhancedInputActionReference(NodeObject);
-			ParsedNode.SwitchReference = FBlueprintGraphJsonParser::ResolveSwitchReference(NodeObject);
-			ParsedNode.SelectReference = FBlueprintGraphJsonParser::ResolveSelectReference(NodeObject);
-
-			const TSharedPtr<FJsonObject>* PositionObject = nullptr;
-			if (NodeObject->TryGetObjectField(TEXT("position"), PositionObject) && PositionObject && PositionObject->IsValid())
-			{
-				ParsedNode.X = (*PositionObject)->HasField(TEXT("x")) ? static_cast<float>((*PositionObject)->GetNumberField(TEXT("x"))) : ParsedNode.X;
-				ParsedNode.Y = (*PositionObject)->HasField(TEXT("y")) ? static_cast<float>((*PositionObject)->GetNumberField(TEXT("y"))) : ParsedNode.Y;
-			}
-
-			const TSharedPtr<FJsonObject>* InputsObject = nullptr;
-			if (NodeObject->TryGetObjectField(TEXT("inputs"), InputsObject) && InputsObject && InputsObject->IsValid())
-			{
-				for (const auto& Pair : (*InputsObject)->Values)
-				{
-					ParsedNode.DefaultValues.Add(Pair.Key, FBlueprintGraphJsonParser::ConvertJsonValueToString(Pair.Value));
-				}
-			}
-
-			const TSharedPtr<FJsonObject>* DefaultValuesObject = nullptr;
-			if (NodeObject->TryGetObjectField(TEXT("default_values"), DefaultValuesObject) && DefaultValuesObject && DefaultValuesObject->IsValid())
-			{
-				for (const auto& Pair : (*DefaultValuesObject)->Values)
-				{
-					ParsedNode.DefaultValues.FindOrAdd(Pair.Key) = FBlueprintGraphJsonParser::ConvertJsonValueToString(Pair.Value);
-				}
-			}
-
-			const TSharedPtr<FJsonValue>* ValueField = NodeObject->Values.Find(TEXT("value"));
-			if (ValueField && ValueField->IsValid() && !ParsedNode.VariableReference.VariableName.IsEmpty()
-				&& !ParsedNode.DefaultValues.Contains(ParsedNode.VariableReference.VariableName))
-			{
-				ParsedNode.DefaultValues.Add(
-					ParsedNode.VariableReference.VariableName,
-					FBlueprintGraphJsonParser::ConvertJsonValueToString(*ValueField));
-			}
-
-			ParsedNodes.Add(ParsedNode);
-		}
-	}
-	else
-	{
-		Result.Message = TEXT("JSON 中缺少 nodes 数组。");
-		return Result;
-	}
-
-	const TArray<TSharedPtr<FJsonValue>>* LinksArray = nullptr;
-	if (JsonObject->TryGetArrayField(TEXT("links"), LinksArray) && LinksArray)
-	{
-		for (const TSharedPtr<FJsonValue>& LinkValue : *LinksArray)
-		{
-			const TSharedPtr<FJsonObject> LinkObject = LinkValue->AsObject();
-			if (!LinkObject.IsValid())
-			{
-				continue;
-			}
-
-			FParsedLink ParsedLink;
-			LinkObject->TryGetStringField(TEXT("from_id"), ParsedLink.FromId);
-			LinkObject->TryGetStringField(TEXT("from_pin"), ParsedLink.FromPin);
-			LinkObject->TryGetStringField(TEXT("to_id"), ParsedLink.ToId);
-			LinkObject->TryGetStringField(TEXT("to_pin"), ParsedLink.ToPin);
-
-			auto ResolveEndpoint = [](const FString& Endpoint, FString& OutNodeId, FString& OutPinName)
-			{
-				if (!OutNodeId.IsEmpty() || !OutPinName.IsEmpty() || Endpoint.IsEmpty())
-				{
-					return;
-				}
-
-				FString NodeId;
-				FString PinName;
-				if (Endpoint.Split(TEXT("."), &NodeId, &PinName, ESearchCase::CaseSensitive, ESearchDir::FromEnd))
-				{
-					OutNodeId = NodeId;
-					OutPinName = PinName;
-				}
-			};
-
-			FString FromEndpoint;
-			FString ToEndpoint;
-			LinkObject->TryGetStringField(TEXT("from"), FromEndpoint);
-			LinkObject->TryGetStringField(TEXT("to"), ToEndpoint);
-			ResolveEndpoint(FromEndpoint, ParsedLink.FromId, ParsedLink.FromPin);
-			ResolveEndpoint(ToEndpoint, ParsedLink.ToId, ParsedLink.ToPin);
-			ParsedLinks.Add(ParsedLink);
-		}
-	}
-
-	int32 RequestedDefaultValueCount = 0;
-	int32 RequestedPinTypeCount = 0;
-	for (const FParsedLocalVariableDeclaration& Declaration : ParsedLocalVariableDeclarations)
-	{
-		if (Declaration.PinType.IsValid())
-		{
-			++RequestedPinTypeCount;
-		}
-	}
-	for (const FParsedNode& ParsedNode : ParsedNodes)
-	{
-		RequestedDefaultValueCount += ParsedNode.DefaultValues.Num();
-		RequestedPinTypeCount += FBlueprintGraphNodeUtility::CountRequestedPinTypes(ParsedNode);
-	}
-
-	const FScopedTransaction Transaction(FText::FromString(TEXT("Generate Blueprint from JSON")));
-	TargetGraph->Modify();
-
-	for (const FParsedLocalVariableDeclaration& Declaration : ParsedLocalVariableDeclarations)
-	{
-		if (!Declaration.bEnsureExists)
-		{
-			continue;
-		}
-
-		FString EnsureErrorMessage;
-		if (!FBlueprintGraphLocalVariableService::EnsureLocalVariableExists(TargetGraph, Declaration, EnsureErrorMessage))
-		{
-			if (FBlueprintGraphNodeUtility::IsInvalidPinTypeFailure(EnsureErrorMessage))
-			{
-				PinTypeDiagnostics.Add(FBlueprintGraphNodeUtility::MakeGeneratorDiagnostic(
-					TEXT("invalid_pin_type"),
-					Declaration.Name,
-					Declaration.Name,
-					EnsureErrorMessage));
-			}
-
-			TSharedPtr<FUnresolvedNodeItem> UnresolvedItem = MakeShared<FUnresolvedNodeItem>();
-			UnresolvedItem->DisplayText = FString::Printf(TEXT("LocalVariable %s"), *Declaration.Name);
-			UnresolvedItem->Reason = EnsureErrorMessage;
-			OutUnresolvedNodes.Add(UnresolvedItem);
-		}
-	}
-
-	TMap<FString, UK2Node*> IdToSpawnedNode;
-	TArray<FBlueprintHelperNodeFragment> GeneratedFragments;
-	int32 GeneratedNodeCount = 0;
-	for (const FParsedNode& ParsedNode : ParsedNodes)
-	{
-		// v2.9 — 跳过虚拟入口/结果节点（导出不生成它们，但 AI 可能手动写入；导入时从图表中自动发现）
-		if (ParsedNode.Id == TEXT("__function_entry__") || ParsedNode.Id == TEXT("__function_result__")
-			|| ParsedNode.SourceType.Equals(TEXT("K2Node_FunctionEntry"), ESearchCase::IgnoreCase)
-			|| ParsedNode.SourceType.Equals(TEXT("K2Node_FunctionResult"), ESearchCase::IgnoreCase))
-		{
-			continue;
-		}
-
-		// v2.3 — Comment 节点特殊处理（UEdGraphNode_Comment 不是 UK2Node）
-		if (ParsedNode.NodeType == EParsedBlueprintNodeType::Comment)
-		{
-			UEdGraphNode_Comment* CommentNode = NewObject<UEdGraphNode_Comment>(TargetGraph);
-			TargetGraph->AddNode(CommentNode, true, false);
-			CommentNode->CreateNewGuid();
-			CommentNode->NodePosX = static_cast<int32>(ParsedNode.X);
-			CommentNode->NodePosY = static_cast<int32>(ParsedNode.Y);
-			CommentNode->NodeComment = ParsedNode.CommentReference.CommentText;
-			CommentNode->FontSize = ParsedNode.CommentReference.FontSize;
-			CommentNode->NodeWidth = static_cast<int32>(ParsedNode.CommentReference.Width);
-			CommentNode->NodeHeight = static_cast<int32>(ParsedNode.CommentReference.Height);
-			if (!ParsedNode.CommentReference.CommentColor.IsEmpty())
-			{
-				FLinearColor Color;
-				if (Color.InitFromString(ParsedNode.CommentReference.CommentColor))
-				{
-					CommentNode->CommentColor = Color;
-				}
-			}
-			++GeneratedNodeCount;
-			continue;
-		}
-
-		UK2Node* SpawnedNode = nullptr;
-		FString SpawnErrorMessage;
-		FBlueprintHelperNodeFragment SpawnedFragment;
-		bool bSpawnedFragment = false;
-
-		if (ParsedNode.NodeType == EParsedBlueprintNodeType::CallFunction)
-		{
-			bSpawnedFragment = FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment(
-				TargetGraph,
-				ParsedNode,
-				SpawnedFragment,
-				SpawnErrorMessage);
-			SpawnedNode = bSpawnedFragment ? SpawnedFragment.PrimaryNode : nullptr;
-		}
-		else if (ParsedNode.NodeType == EParsedBlueprintNodeType::VariableSet)
-		{
-			bSpawnedFragment = FBlueprintHelperGraphStatementBuilder::BuildVariableSetFragment(
-				TargetGraph,
-				ParsedNode,
-				SpawnedFragment,
-				SpawnErrorMessage);
-			SpawnedNode = bSpawnedFragment ? SpawnedFragment.PrimaryNode : nullptr;
-		}
-		else
-		{
-			IBlueprintNodeHandler* Handler = FBlueprintNodeHandlerRegistry::Get().FindHandler(ParsedNode.NodeType);
-			if (Handler)
-			{
-				SpawnedNode = Handler->Spawn(TargetGraph, ParsedNode, SpawnErrorMessage);
-			}
-			else
-			{
-				SpawnErrorMessage = ParsedNode.SourceType.IsEmpty()
-					? TEXT("Unknown node type and no function/variable/macro description is available.")
-					: FString::Printf(TEXT("Unknown node type: %s"), *ParsedNode.SourceType);
-			}
-		}
-
-		if (SpawnedNode)		{
-			IdToSpawnedNode.Add(ParsedNode.Id, SpawnedNode);
-			if (bSpawnedFragment)
-			{
-				GeneratedFragments.Add(MoveTemp(SpawnedFragment));
-			}
-			else
-			{
-				FBlueprintHelperNodeFragment DataOnlyFragment = BuildDataOnlyFragment(ParsedNode.Id, SpawnedNode);
-				if (DataOnlyFragment.DataInputs.Num() > 0 || DataOnlyFragment.DataOutputs.Num() > 0)
-				{
-					GeneratedFragments.Add(MoveTemp(DataOnlyFragment));
-				}
-			}
-			++GeneratedNodeCount;
-			continue;
-		}
-
-		if (FBlueprintGraphNodeUtility::IsInvalidPinTypeFailure(SpawnErrorMessage))
-		{
-			PinTypeDiagnostics.Add(FBlueprintGraphNodeUtility::MakeGeneratorDiagnostic(
-				TEXT("invalid_pin_type"),
-				ParsedNode.Id,
-				FBlueprintGraphNodeUtility::FindDiagnosticPinName(ParsedNode, SpawnErrorMessage),
-				SpawnErrorMessage));
-		}
-
-		TSharedPtr<FUnresolvedNodeItem> UnresolvedItem = MakeShared<FUnresolvedNodeItem>();
-		UnresolvedItem->NodeData = ParsedNode;
-		UnresolvedItem->DisplayText = ParsedNode.FunctionName.IsEmpty()
-			? FString::Printf(TEXT("%s (%s)"), *ParsedNode.SourceType, *ParsedNode.Id)
-			: FString::Printf(TEXT("%s (%s)"), *ParsedNode.FunctionName, *ParsedNode.Id);
-		UnresolvedItem->Reason = SpawnErrorMessage.IsEmpty() ? TEXT("不支持的节点类型或配置不完整。") : SpawnErrorMessage;
-		OutUnresolvedNodes.Add(UnresolvedItem);
-	}
-
-	// 将图中已有的 FunctionEntry / FunctionResult 注入 ID 映射，以便连线恢复
-	for (UEdGraphNode* ExistingNode : TargetGraph->Nodes)
-	{
-		if (UK2Node_FunctionEntry* Entry = Cast<UK2Node_FunctionEntry>(ExistingNode))
-		{
-			IdToSpawnedNode.FindOrAdd(TEXT("__function_entry__"), Entry);
-		}
-		else if (UK2Node_FunctionResult* ResultNode = Cast<UK2Node_FunctionResult>(ExistingNode))
-		{
-			IdToSpawnedNode.FindOrAdd(TEXT("__function_result__"), ResultNode);
-		}
-	}
-
-	// v2.9 — existing_node_refs：允许增量导入引用图中已有节点
-	const TArray<TSharedPtr<FJsonValue>>* ExistingRefsArray = nullptr;
-	if (JsonObject->TryGetArrayField(TEXT("existing_node_refs"), ExistingRefsArray) && ExistingRefsArray)
-	{
-		for (const TSharedPtr<FJsonValue>& RefValue : *ExistingRefsArray)
-		{
-			const TSharedPtr<FJsonObject> RefObject = RefValue->AsObject();
-			if (!RefObject.IsValid()) continue;
-
-			FString RefId;
-			RefObject->TryGetStringField(TEXT("id"), RefId);
-			if (RefId.IsEmpty()) continue;
-
-			FString MatchTitle;
-			RefObject->TryGetStringField(TEXT("node_title"), MatchTitle);
-			FString MatchGuid;
-			RefObject->TryGetStringField(TEXT("node_guid"), MatchGuid);
-
-			for (UEdGraphNode* RefCandidate : TargetGraph->Nodes)
-			{
-				UK2Node* K2Existing = Cast<UK2Node>(RefCandidate);
-				if (!K2Existing) continue;
-				if (IdToSpawnedNode.FindKey(K2Existing)) continue; // 已经被映射
-
-				bool bMatched = false;
-				if (!MatchGuid.IsEmpty())
-				{
-					bMatched = RefCandidate->NodeGuid.ToString(EGuidFormats::Digits) == MatchGuid;
-				}
-				else if (!MatchTitle.IsEmpty())
-				{
-					const FString Title = RefCandidate->GetNodeTitle(ENodeTitleType::ListView).ToString();
-					bMatched = Title.Contains(MatchTitle);
-				}
-
-				if (bMatched)
-				{
-					IdToSpawnedNode.Add(RefId, K2Existing);
-					break;
-				}
-			}
-		}
-	}
-
-	// v2.9 — 先 Reconstruct 新生成的节点以确保引脚完整，再连线（避免连线后 Reconstruct 破坏连接）
-	for (const auto& Pair : IdToSpawnedNode)
-	{
-		if (Pair.Value)
-		{
-			TargetGraph->GetSchema()->ReconstructNode(*Pair.Value);
-		}
-	}
-
-	int32 AppliedDefaultValueCount = 0;
-	for (const FParsedNode& ParsedNode : ParsedNodes)
-	{
-		UK2Node** SpawnedNodePtr = IdToSpawnedNode.Find(ParsedNode.Id);
-		if (!SpawnedNodePtr || !*SpawnedNodePtr)
-		{
-			continue;
-		}
-
-		TArray<FBlueprintGeneratorDiagnostic> NodeDiagnostics = FBlueprintGraphDefaultValueApplier::ApplyDefaultValues(*SpawnedNodePtr, ParsedNode.DefaultValues, ParsedNode.Id);
-		AppliedDefaultValueCount += FMath::Max(0, ParsedNode.DefaultValues.Num() - NodeDiagnostics.Num());
-		DefaultValueDiagnostics.Append(NodeDiagnostics);
-	}
-
-	const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
-	int32 CreatedConnectionCount = 0;
-	CreatedConnectionCount += FBlueprintGraphLinker::ConnectFragmentDataEdges(
-		TargetGraph,
-		GeneratedFragments,
-		CollectFragmentDataEdges(TargetGraph, JsonObject, GeneratedFragments),
-		ConnectionDiagnostics);
-	const bool bHasExplicitExecLinks = ParsedLinks.ContainsByPredicate([](const FParsedLink& ParsedLink)
-	{
-		return ParsedLink.FromPin.Equals(TEXT("then"), ESearchCase::IgnoreCase)
-			|| ParsedLink.ToPin.Equals(TEXT("execute"), ESearchCase::IgnoreCase);
-	});
-	if (!bHasExplicitExecLinks && GeneratedFragments.Num() > 1)
-	{
-		const FBlueprintHelperGraphComposeResult ComposeResult =
-			FBlueprintHelperGraphComposer::ConnectLinearExecChain(TargetGraph, GeneratedFragments);
-		CreatedConnectionCount += ComposeResult.CreatedExecConnectionCount;
-		for (const FString& ComposeDiagnostic : ComposeResult.Diagnostics)
-		{
-			ConnectionDiagnostics.Add(FBlueprintGraphNodeUtility::MakeGeneratorDiagnostic(
-				TEXT("composer_exec_connection_rejected"),
-				TEXT("graph_composer"),
-				TEXT("execute"),
-				ComposeDiagnostic));
-		}
-	}
-	for (const FParsedLink& ParsedLink : ParsedLinks)
-	{
-		if (!Schema)
-		{
-			ConnectionDiagnostics.Add(FBlueprintGraphNodeUtility::MakeGeneratorDiagnostic(
-				TEXT("link_connection_rejected"),
-				ParsedLink.FromId,
-				ParsedLink.FromPin,
-				TEXT("连线创建失败：K2 Schema 无效。")));
-			continue;
-		}
-
-		UK2Node** FromNodePtr = IdToSpawnedNode.Find(ParsedLink.FromId);
-		UK2Node** ToNodePtr = IdToSpawnedNode.Find(ParsedLink.ToId);
-		if (!FromNodePtr || !*FromNodePtr)
-		{
-			ConnectionDiagnostics.Add(FBlueprintGraphNodeUtility::MakeGeneratorDiagnostic(
-				TEXT("link_node_not_found"),
-				ParsedLink.FromId,
-				ParsedLink.FromPin,
-				FString::Printf(TEXT("连线来源节点未找到：%s。"), *ParsedLink.FromId)));
-			continue;
-		}
-		if (!ToNodePtr || !*ToNodePtr)
-		{
-			ConnectionDiagnostics.Add(FBlueprintGraphNodeUtility::MakeGeneratorDiagnostic(
-				TEXT("link_node_not_found"),
-				ParsedLink.ToId,
-				ParsedLink.ToPin,
-				FString::Printf(TEXT("连线目标节点未找到：%s。"), *ParsedLink.ToId)));
-			continue;
-		}
-
-		UK2Node* FromNode = *FromNodePtr;
-		UK2Node* ToNode = *ToNodePtr;
-		UEdGraphPin* FromPin = FBlueprintGraphNodeUtility::FindPinByAlias(FromNode, ParsedLink.FromPin);
-		UEdGraphPin* ToPin = FBlueprintGraphNodeUtility::FindPinByAlias(ToNode, ParsedLink.ToPin);
-		if (!FromPin)
-		{
-			ConnectionDiagnostics.Add(FBlueprintGraphNodeUtility::MakeGeneratorDiagnostic(
-				TEXT("link_pin_not_found"),
-				ParsedLink.FromId,
-				ParsedLink.FromPin,
-				FString::Printf(TEXT("连线来源引脚未找到：%s.%s。"), *ParsedLink.FromId, *ParsedLink.FromPin)));
-			continue;
-		}
-		if (!ToPin)
-		{
-			ConnectionDiagnostics.Add(FBlueprintGraphNodeUtility::MakeGeneratorDiagnostic(
-				TEXT("link_pin_not_found"),
-				ParsedLink.ToId,
-				ParsedLink.ToPin,
-				FString::Printf(TEXT("连线目标引脚未找到：%s.%s。"), *ParsedLink.ToId, *ParsedLink.ToPin)));
-			continue;
-		}
-
-		const FPinConnectionResponse ConnectionResponse = Schema->CanCreateConnection(FromPin, ToPin);
-		if (Schema->TryCreateConnection(FromPin, ToPin))
-		{
-			++CreatedConnectionCount;
-		}
-		else
-		{
-			ConnectionDiagnostics.Add(FBlueprintGraphNodeUtility::MakeGeneratorDiagnostic(
-				TEXT("link_connection_rejected"),
-				ParsedLink.FromId,
-				ParsedLink.FromPin,
-				ConnectionResponse.Message.IsEmpty()
-					? FString::Printf(TEXT("Schema 拒绝连线：%s.%s -> %s.%s。"),
-						*ParsedLink.FromId, *ParsedLink.FromPin, *ParsedLink.ToId, *ParsedLink.ToPin)
-					: ConnectionResponse.Message.ToString()));
-		}
-	}
-
-	TargetGraph->NotifyGraphChanged();
-
-	Result.bSucceed = GeneratedNodeCount > 0 || CreatedConnectionCount > 0;
-	Result.GeneratedNodeCount = GeneratedNodeCount;
-	Result.RequestedDefaultValueCount = RequestedDefaultValueCount;
-	Result.AppliedDefaultValueCount = AppliedDefaultValueCount;
-	Result.DefaultValueDiagnostics = MoveTemp(DefaultValueDiagnostics);
-	Result.RequestedPinTypeCount = RequestedPinTypeCount;
-	Result.ResolvedPinTypeCount = FMath::Max(0, RequestedPinTypeCount - PinTypeDiagnostics.Num());
-	Result.PinTypeDiagnostics = MoveTemp(PinTypeDiagnostics);
-	Result.RequestedConnectionCount = ParsedLinks.Num();
-	Result.CreatedConnectionCount = CreatedConnectionCount;
-	Result.ConnectionDiagnostics = MoveTemp(ConnectionDiagnostics);
-	Result.UnresolvedNodeCount = OutUnresolvedNodes.Num();
-	if (Result.bSucceed)
-	{
-		Result.Message = FString::Printf(TEXT("生成完成：成功 %d 个节点，建立 %d 条连线，未匹配 %d 个。"), Result.GeneratedNodeCount, CreatedConnectionCount, Result.UnresolvedNodeCount);
-	}
-	else if (Result.UnresolvedNodeCount > 0)
-	{
-		Result.Message = FString::Printf(TEXT("未生成任何节点：共有 %d 个节点未匹配，请检查 JSON 类型与描述字段。"), Result.UnresolvedNodeCount);
-	}
-	else
-	{
-		Result.Message = TEXT("未生成任何节点，请检查 JSON 内容是否符合规则。");
-	}
+	Result.Message = TEXT("GraphWrite only accepts logic_spec/SemanticIR. nodes/links node creation is disabled.");
 	return Result;
 }
 
@@ -1432,11 +1015,11 @@ FBlueprintGenerateResult FBlueprintGraphGenerationPipeline::GenerateNodesAndLink
 	TArray<TSharedPtr<FUnresolvedNodeItem>>& OutUnresolvedNodes)
 {
 	FBlueprintGenerateResult Result;
-	Result.Message = TEXT("生成失败。");
+	Result.Message = TEXT("Generation failed.");
 
 	if (!TargetGraph || !GraphJsonObject.IsValid())
 	{
-		Result.Message = TEXT("目标图表或 JSON 对象无效。");
+		Result.Message = TEXT("Target graph or graph JSON object is invalid.");
 		return Result;
 	}
 
@@ -1446,468 +1029,7 @@ FBlueprintGenerateResult FBlueprintGraphGenerationPipeline::GenerateNodesAndLink
 		return GenerateSemanticGraphFromJsonObject(TargetGraph, GraphJsonObject, OutUnresolvedNodes);
 	}
 
-	Result.Message = TEXT("GraphWrite 现在只接受 logic_spec/SemanticIR；nodes/links 旧节点创建路径已禁用。");
-	return Result;
-
-	// 解析本地变量声明
-	TArray<FParsedLocalVariableDeclaration> ParsedLocalVariableDeclarations;
-	TArray<FBlueprintGeneratorDiagnostic> DefaultValueDiagnostics;
-	TArray<FBlueprintGeneratorDiagnostic> PinTypeDiagnostics;
-	TArray<FBlueprintGeneratorDiagnostic> ConnectionDiagnostics;
-	FBlueprintGraphJsonParser::ResolveLocalVariableDeclarations(GraphJsonObject, ParsedLocalVariableDeclarations);
-
-	// 解析节点
-	TArray<FParsedNode> ParsedNodes;
-	const TArray<TSharedPtr<FJsonValue>>* NodesArray = nullptr;
-	if (GraphJsonObject->TryGetArrayField(TEXT("nodes"), NodesArray) && NodesArray)
-	{
-		for (const TSharedPtr<FJsonValue>& NodeValue : *NodesArray)
-		{
-			const TSharedPtr<FJsonObject> NodeObject = NodeValue->AsObject();
-			if (!NodeObject.IsValid())
-			{
-				continue;
-			}
-
-			FParsedNode ParsedNode;
-			ParsedNode.Id = NodeObject->GetStringField(TEXT("id"));
-			NodeObject->TryGetStringField(TEXT("type"), ParsedNode.SourceType);
-			ParsedNode.SourceType = FBlueprintGraphNodeUtility::NormalizeNodeTypeName(ParsedNode.SourceType);
-			ParsedNode.NodeType = FBlueprintGraphJsonParser::ResolveNodeType(NodeObject);
-			ParsedNode.FunctionName = FBlueprintGraphJsonParser::ResolveNodeFunctionName(NodeObject);
-			ParsedNode.X = NodeObject->HasField(TEXT("x")) ? static_cast<float>(NodeObject->GetNumberField(TEXT("x"))) : 0.0f;
-			ParsedNode.Y = NodeObject->HasField(TEXT("y")) ? static_cast<float>(NodeObject->GetNumberField(TEXT("y"))) : 0.0f;
-			ParsedNode.VariableReference = FBlueprintGraphJsonParser::ResolveVariableReference(NodeObject);
-			ParsedNode.MacroReference = FBlueprintGraphJsonParser::ResolveMacroReference(NodeObject);
-			ParsedNode.EventReference = FBlueprintGraphJsonParser::ResolveEventReference(NodeObject);
-			ParsedNode.DelegateReference = FBlueprintGraphJsonParser::ResolveDelegateReference(NodeObject);
-			ParsedNode.ContainerReference = FBlueprintGraphJsonParser::ResolveContainerReference(NodeObject);
-			ParsedNode.StructReference = FBlueprintGraphJsonParser::ResolveStructReference(NodeObject);
-			ParsedNode.CastReference = FBlueprintGraphJsonParser::ResolveCastReference(NodeObject);
-			ParsedNode.SpawnReference = FBlueprintGraphJsonParser::ResolveSpawnReference(NodeObject);
-			ParsedNode.FormatTextReference = FBlueprintGraphJsonParser::ResolveFormatTextReference(NodeObject);
-			ParsedNode.TimelineReference = FBlueprintGraphJsonParser::ResolveTimelineReference(NodeObject);
-			ParsedNode.LiteralReference = FBlueprintGraphJsonParser::ResolveLiteralReference(NodeObject);
-			ParsedNode.ComponentBoundEventReference = FBlueprintGraphJsonParser::ResolveComponentBoundEventReference(NodeObject);
-			ParsedNode.CommentReference = FBlueprintGraphJsonParser::ResolveCommentReference(NodeObject);
-			ParsedNode.EnhancedInputActionReference = FBlueprintGraphJsonParser::ResolveEnhancedInputActionReference(NodeObject);
-			ParsedNode.SwitchReference = FBlueprintGraphJsonParser::ResolveSwitchReference(NodeObject);
-			ParsedNode.SelectReference = FBlueprintGraphJsonParser::ResolveSelectReference(NodeObject);
-
-			const TSharedPtr<FJsonObject>* PositionObject = nullptr;
-			if (NodeObject->TryGetObjectField(TEXT("position"), PositionObject) && PositionObject && PositionObject->IsValid())
-			{
-				ParsedNode.X = (*PositionObject)->HasField(TEXT("x")) ? static_cast<float>((*PositionObject)->GetNumberField(TEXT("x"))) : ParsedNode.X;
-				ParsedNode.Y = (*PositionObject)->HasField(TEXT("y")) ? static_cast<float>((*PositionObject)->GetNumberField(TEXT("y"))) : ParsedNode.Y;
-			}
-
-			const TSharedPtr<FJsonObject>* InputsObject = nullptr;
-			if (NodeObject->TryGetObjectField(TEXT("inputs"), InputsObject) && InputsObject && InputsObject->IsValid())
-			{
-				for (const auto& Pair : (*InputsObject)->Values)
-				{
-					ParsedNode.DefaultValues.Add(Pair.Key, FBlueprintGraphJsonParser::ConvertJsonValueToString(Pair.Value));
-				}
-			}
-
-			const TSharedPtr<FJsonObject>* DefaultValuesObject = nullptr;
-			if (NodeObject->TryGetObjectField(TEXT("default_values"), DefaultValuesObject) && DefaultValuesObject && DefaultValuesObject->IsValid())
-			{
-				for (const auto& Pair : (*DefaultValuesObject)->Values)
-				{
-					ParsedNode.DefaultValues.FindOrAdd(Pair.Key) = FBlueprintGraphJsonParser::ConvertJsonValueToString(Pair.Value);
-				}
-			}
-
-			ParsedNodes.Add(ParsedNode);
-		}
-	}
-
-	// 解析连线
-	TArray<FParsedLink> ParsedLinks;
-	const TArray<TSharedPtr<FJsonValue>>* LinksArray = nullptr;
-	if (GraphJsonObject->TryGetArrayField(TEXT("links"), LinksArray) && LinksArray)
-	{
-		for (const TSharedPtr<FJsonValue>& LinkValue : *LinksArray)
-		{
-			const TSharedPtr<FJsonObject> LinkObject = LinkValue->AsObject();
-			if (!LinkObject.IsValid())
-			{
-				continue;
-			}
-
-			FParsedLink ParsedLink;
-			ParsedLink.FromId = LinkObject->GetStringField(TEXT("from_id"));
-			ParsedLink.FromPin = LinkObject->GetStringField(TEXT("from_pin"));
-			ParsedLink.ToId = LinkObject->GetStringField(TEXT("to_id"));
-			ParsedLink.ToPin = LinkObject->GetStringField(TEXT("to_pin"));
-			ParsedLinks.Add(ParsedLink);
-		}
-	}
-
-	int32 RequestedDefaultValueCount = 0;
-	int32 RequestedPinTypeCount = 0;
-	for (const FParsedLocalVariableDeclaration& Declaration : ParsedLocalVariableDeclarations)
-	{
-		if (Declaration.PinType.IsValid())
-		{
-			++RequestedPinTypeCount;
-		}
-	}
-	for (const FParsedNode& ParsedNode : ParsedNodes)
-	{
-		RequestedDefaultValueCount += ParsedNode.DefaultValues.Num();
-		RequestedPinTypeCount += FBlueprintGraphNodeUtility::CountRequestedPinTypes(ParsedNode);
-	}
-
-	if (ParsedNodes.Num() == 0)
-	{
-		Result.bSucceed = true;
-		Result.Message = TEXT("图表无节点数据，跳过。");
-		Result.RequestedDefaultValueCount = RequestedDefaultValueCount;
-		Result.RequestedPinTypeCount = RequestedPinTypeCount;
-		Result.ResolvedPinTypeCount = RequestedPinTypeCount;
-		Result.RequestedConnectionCount = ParsedLinks.Num();
-		return Result;
-	}
-
-	const FScopedTransaction Transaction(FText::FromString(TEXT("Generate Graph Nodes from JSON")));
-	TargetGraph->Modify();
-
-	for (const FParsedLocalVariableDeclaration& Declaration : ParsedLocalVariableDeclarations)
-	{
-		if (!Declaration.bEnsureExists)
-		{
-			continue;
-		}
-		FString EnsureErrorMessage;
-		if (!FBlueprintGraphLocalVariableService::EnsureLocalVariableExists(TargetGraph, Declaration, EnsureErrorMessage))
-		{
-			if (FBlueprintGraphNodeUtility::IsInvalidPinTypeFailure(EnsureErrorMessage))
-			{
-				PinTypeDiagnostics.Add(FBlueprintGraphNodeUtility::MakeGeneratorDiagnostic(
-					TEXT("invalid_pin_type"),
-					Declaration.Name,
-					Declaration.Name,
-					EnsureErrorMessage));
-			}
-
-			TSharedPtr<FUnresolvedNodeItem> UnresolvedItem = MakeShared<FUnresolvedNodeItem>();
-			UnresolvedItem->DisplayText = FString::Printf(TEXT("LocalVariable %s"), *Declaration.Name);
-			UnresolvedItem->Reason = EnsureErrorMessage;
-			OutUnresolvedNodes.Add(UnresolvedItem);
-		}
-	}
-
-	TMap<FString, UK2Node*> IdToSpawnedNode;
-	TArray<FBlueprintHelperNodeFragment> GeneratedFragments;
-	int32 GeneratedNodeCount = 0;
-	for (const FParsedNode& ParsedNode : ParsedNodes)
-	{
-		// v2.9 — 跳过虚拟入口/结果节点（导出不生成它们，但 AI 可能手动写入；导入时从图表中自动发现）
-		if (ParsedNode.Id == TEXT("__function_entry__") || ParsedNode.Id == TEXT("__function_result__")
-			|| ParsedNode.SourceType.Equals(TEXT("K2Node_FunctionEntry"), ESearchCase::IgnoreCase)
-			|| ParsedNode.SourceType.Equals(TEXT("K2Node_FunctionResult"), ESearchCase::IgnoreCase))
-		{
-			continue;
-		}
-
-		// v2.3 — Comment 节点特殊处理（UEdGraphNode_Comment 不是 UK2Node）
-		if (ParsedNode.NodeType == EParsedBlueprintNodeType::Comment)
-		{
-			UEdGraphNode_Comment* CommentNode = NewObject<UEdGraphNode_Comment>(TargetGraph);
-			TargetGraph->AddNode(CommentNode, true, false);
-			CommentNode->CreateNewGuid();
-			CommentNode->NodePosX = static_cast<int32>(ParsedNode.X);
-			CommentNode->NodePosY = static_cast<int32>(ParsedNode.Y);
-			CommentNode->NodeComment = ParsedNode.CommentReference.CommentText;
-			CommentNode->FontSize = ParsedNode.CommentReference.FontSize;
-			CommentNode->NodeWidth = static_cast<int32>(ParsedNode.CommentReference.Width);
-			CommentNode->NodeHeight = static_cast<int32>(ParsedNode.CommentReference.Height);
-			if (!ParsedNode.CommentReference.CommentColor.IsEmpty())
-			{
-				FLinearColor Color;
-				if (Color.InitFromString(ParsedNode.CommentReference.CommentColor))
-				{
-					CommentNode->CommentColor = Color;
-				}
-			}
-			++GeneratedNodeCount;
-			continue;
-		}
-
-		UK2Node* SpawnedNode = nullptr;
-		FString SpawnErrorMessage;
-		FBlueprintHelperNodeFragment SpawnedFragment;
-		bool bSpawnedFragment = false;
-
-		if (ParsedNode.NodeType == EParsedBlueprintNodeType::CallFunction)
-		{
-			bSpawnedFragment = FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment(
-				TargetGraph,
-				ParsedNode,
-				SpawnedFragment,
-				SpawnErrorMessage);
-			SpawnedNode = bSpawnedFragment ? SpawnedFragment.PrimaryNode : nullptr;
-		}
-		else if (ParsedNode.NodeType == EParsedBlueprintNodeType::VariableSet)
-		{
-			bSpawnedFragment = FBlueprintHelperGraphStatementBuilder::BuildVariableSetFragment(
-				TargetGraph,
-				ParsedNode,
-				SpawnedFragment,
-				SpawnErrorMessage);
-			SpawnedNode = bSpawnedFragment ? SpawnedFragment.PrimaryNode : nullptr;
-		}
-		else
-		{
-			IBlueprintNodeHandler* Handler = FBlueprintNodeHandlerRegistry::Get().FindHandler(ParsedNode.NodeType);
-			if (Handler)
-			{
-				SpawnedNode = Handler->Spawn(TargetGraph, ParsedNode, SpawnErrorMessage);
-			}
-			else
-			{
-				SpawnErrorMessage = ParsedNode.SourceType.IsEmpty()
-					? TEXT("Unknown node type and no function/variable/macro description is available.")
-					: FString::Printf(TEXT("Unknown node type: %s"), *ParsedNode.SourceType);
-			}
-		}
-
-		if (SpawnedNode)		{
-			IdToSpawnedNode.Add(ParsedNode.Id, SpawnedNode);
-			if (bSpawnedFragment)
-			{
-				GeneratedFragments.Add(MoveTemp(SpawnedFragment));
-			}
-			else
-			{
-				FBlueprintHelperNodeFragment DataOnlyFragment = BuildDataOnlyFragment(ParsedNode.Id, SpawnedNode);
-				if (DataOnlyFragment.DataInputs.Num() > 0 || DataOnlyFragment.DataOutputs.Num() > 0)
-				{
-					GeneratedFragments.Add(MoveTemp(DataOnlyFragment));
-				}
-			}
-			++GeneratedNodeCount;
-			continue;
-		}
-
-		if (FBlueprintGraphNodeUtility::IsInvalidPinTypeFailure(SpawnErrorMessage))
-		{
-			PinTypeDiagnostics.Add(FBlueprintGraphNodeUtility::MakeGeneratorDiagnostic(
-				TEXT("invalid_pin_type"),
-				ParsedNode.Id,
-				FBlueprintGraphNodeUtility::FindDiagnosticPinName(ParsedNode, SpawnErrorMessage),
-				SpawnErrorMessage));
-		}
-
-		TSharedPtr<FUnresolvedNodeItem> UnresolvedItem = MakeShared<FUnresolvedNodeItem>();
-		UnresolvedItem->NodeData = ParsedNode;
-		UnresolvedItem->DisplayText = ParsedNode.FunctionName.IsEmpty()
-			? FString::Printf(TEXT("%s (%s)"), *ParsedNode.SourceType, *ParsedNode.Id)
-			: FString::Printf(TEXT("%s (%s)"), *ParsedNode.FunctionName, *ParsedNode.Id);
-		UnresolvedItem->Reason = SpawnErrorMessage.IsEmpty() ? TEXT("不支持的节点类型或配置不完整。") : SpawnErrorMessage;
-		OutUnresolvedNodes.Add(UnresolvedItem);
-	}
-
-	// 将图中已有的 FunctionEntry / FunctionResult 注入 ID 映射，以便连线恢复
-	for (UEdGraphNode* ExistingNode : TargetGraph->Nodes)
-	{
-		if (UK2Node_FunctionEntry* Entry = Cast<UK2Node_FunctionEntry>(ExistingNode))
-		{
-			IdToSpawnedNode.FindOrAdd(TEXT("__function_entry__"), Entry);
-		}
-		else if (UK2Node_FunctionResult* ResultNode = Cast<UK2Node_FunctionResult>(ExistingNode))
-		{
-			IdToSpawnedNode.FindOrAdd(TEXT("__function_result__"), ResultNode);
-		}
-	}
-
-	// v2.9 — existing_node_refs：允许增量导入引用图中已有节点
-	const TArray<TSharedPtr<FJsonValue>>* ExistingRefsArray = nullptr;
-	if (GraphJsonObject->TryGetArrayField(TEXT("existing_node_refs"), ExistingRefsArray) && ExistingRefsArray)
-	{
-		for (const TSharedPtr<FJsonValue>& RefValue : *ExistingRefsArray)
-		{
-			const TSharedPtr<FJsonObject> RefObject = RefValue->AsObject();
-			if (!RefObject.IsValid()) continue;
-
-			FString RefId;
-			RefObject->TryGetStringField(TEXT("id"), RefId);
-			if (RefId.IsEmpty()) continue;
-
-			FString MatchTitle;
-			RefObject->TryGetStringField(TEXT("node_title"), MatchTitle);
-			FString MatchGuid;
-			RefObject->TryGetStringField(TEXT("node_guid"), MatchGuid);
-
-			for (UEdGraphNode* RefCandidate : TargetGraph->Nodes)
-			{
-				UK2Node* K2Existing = Cast<UK2Node>(RefCandidate);
-				if (!K2Existing) continue;
-				if (IdToSpawnedNode.FindKey(K2Existing)) continue; // 已经被映射
-
-				bool bMatched = false;
-				if (!MatchGuid.IsEmpty())
-				{
-					bMatched = RefCandidate->NodeGuid.ToString(EGuidFormats::Digits) == MatchGuid;
-				}
-				else if (!MatchTitle.IsEmpty())
-				{
-					const FString Title = RefCandidate->GetNodeTitle(ENodeTitleType::ListView).ToString();
-					bMatched = Title.Contains(MatchTitle);
-				}
-
-				if (bMatched)
-				{
-					IdToSpawnedNode.Add(RefId, K2Existing);
-					break;
-				}
-			}
-		}
-	}
-
-	// v2.9 — 先 Reconstruct 新生成的节点以确保引脚完整，再连线（避免连线后 Reconstruct 破坏连接）
-	for (const auto& Pair : IdToSpawnedNode)
-	{
-		if (Pair.Value)
-		{
-			TargetGraph->GetSchema()->ReconstructNode(*Pair.Value);
-		}
-	}
-
-	int32 AppliedDefaultValueCount = 0;
-	for (const FParsedNode& ParsedNode : ParsedNodes)
-	{
-		UK2Node** SpawnedNodePtr = IdToSpawnedNode.Find(ParsedNode.Id);
-		if (!SpawnedNodePtr || !*SpawnedNodePtr)
-		{
-			continue;
-		}
-
-		TArray<FBlueprintGeneratorDiagnostic> NodeDiagnostics = FBlueprintGraphDefaultValueApplier::ApplyDefaultValues(*SpawnedNodePtr, ParsedNode.DefaultValues, ParsedNode.Id);
-		AppliedDefaultValueCount += FMath::Max(0, ParsedNode.DefaultValues.Num() - NodeDiagnostics.Num());
-		DefaultValueDiagnostics.Append(NodeDiagnostics);
-	}
-
-	const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
-	int32 CreatedConnectionCount = 0;
-	CreatedConnectionCount += FBlueprintGraphLinker::ConnectFragmentDataEdges(
-		TargetGraph,
-		GeneratedFragments,
-		CollectFragmentDataEdges(TargetGraph, GraphJsonObject, GeneratedFragments),
-		ConnectionDiagnostics);
-	const bool bHasExplicitExecLinks = ParsedLinks.ContainsByPredicate([](const FParsedLink& ParsedLink)
-	{
-		return ParsedLink.FromPin.Equals(TEXT("then"), ESearchCase::IgnoreCase)
-			|| ParsedLink.ToPin.Equals(TEXT("execute"), ESearchCase::IgnoreCase);
-	});
-	if (!bHasExplicitExecLinks && GeneratedFragments.Num() > 1)
-	{
-		const FBlueprintHelperGraphComposeResult ComposeResult =
-			FBlueprintHelperGraphComposer::ConnectLinearExecChain(TargetGraph, GeneratedFragments);
-		CreatedConnectionCount += ComposeResult.CreatedExecConnectionCount;
-		for (const FString& ComposeDiagnostic : ComposeResult.Diagnostics)
-		{
-			ConnectionDiagnostics.Add(FBlueprintGraphNodeUtility::MakeGeneratorDiagnostic(
-				TEXT("composer_exec_connection_rejected"),
-				TEXT("graph_composer"),
-				TEXT("execute"),
-				ComposeDiagnostic));
-		}
-	}
-	for (const FParsedLink& ParsedLink : ParsedLinks)
-	{
-		if (!Schema)
-		{
-			ConnectionDiagnostics.Add(FBlueprintGraphNodeUtility::MakeGeneratorDiagnostic(
-				TEXT("link_connection_rejected"),
-				ParsedLink.FromId,
-				ParsedLink.FromPin,
-				TEXT("连线创建失败：K2 Schema 无效。")));
-			continue;
-		}
-
-		UK2Node** FromNodePtr = IdToSpawnedNode.Find(ParsedLink.FromId);
-		UK2Node** ToNodePtr = IdToSpawnedNode.Find(ParsedLink.ToId);
-		if (!FromNodePtr || !*FromNodePtr)
-		{
-			ConnectionDiagnostics.Add(FBlueprintGraphNodeUtility::MakeGeneratorDiagnostic(
-				TEXT("link_node_not_found"),
-				ParsedLink.FromId,
-				ParsedLink.FromPin,
-				FString::Printf(TEXT("连线来源节点未找到：%s。"), *ParsedLink.FromId)));
-			continue;
-		}
-		if (!ToNodePtr || !*ToNodePtr)
-		{
-			ConnectionDiagnostics.Add(FBlueprintGraphNodeUtility::MakeGeneratorDiagnostic(
-				TEXT("link_node_not_found"),
-				ParsedLink.ToId,
-				ParsedLink.ToPin,
-				FString::Printf(TEXT("连线目标节点未找到：%s。"), *ParsedLink.ToId)));
-			continue;
-		}
-
-		UK2Node* FromNode = *FromNodePtr;
-		UK2Node* ToNode = *ToNodePtr;
-		UEdGraphPin* FromPin = FBlueprintGraphNodeUtility::FindPinByAlias(FromNode, ParsedLink.FromPin);
-		UEdGraphPin* ToPin = FBlueprintGraphNodeUtility::FindPinByAlias(ToNode, ParsedLink.ToPin);
-		if (!FromPin)
-		{
-			ConnectionDiagnostics.Add(FBlueprintGraphNodeUtility::MakeGeneratorDiagnostic(
-				TEXT("link_pin_not_found"),
-				ParsedLink.FromId,
-				ParsedLink.FromPin,
-				FString::Printf(TEXT("连线来源引脚未找到：%s.%s。"), *ParsedLink.FromId, *ParsedLink.FromPin)));
-			continue;
-		}
-		if (!ToPin)
-		{
-			ConnectionDiagnostics.Add(FBlueprintGraphNodeUtility::MakeGeneratorDiagnostic(
-				TEXT("link_pin_not_found"),
-				ParsedLink.ToId,
-				ParsedLink.ToPin,
-				FString::Printf(TEXT("连线目标引脚未找到：%s.%s。"), *ParsedLink.ToId, *ParsedLink.ToPin)));
-			continue;
-		}
-
-		const FPinConnectionResponse ConnectionResponse = Schema->CanCreateConnection(FromPin, ToPin);
-		if (Schema->TryCreateConnection(FromPin, ToPin))
-		{
-			++CreatedConnectionCount;
-		}
-		else
-		{
-			ConnectionDiagnostics.Add(FBlueprintGraphNodeUtility::MakeGeneratorDiagnostic(
-				TEXT("link_connection_rejected"),
-				ParsedLink.FromId,
-				ParsedLink.FromPin,
-				ConnectionResponse.Message.IsEmpty()
-					? FString::Printf(TEXT("Schema 拒绝连线：%s.%s -> %s.%s。"),
-						*ParsedLink.FromId, *ParsedLink.FromPin, *ParsedLink.ToId, *ParsedLink.ToPin)
-					: ConnectionResponse.Message.ToString()));
-		}
-	}
-
-	TargetGraph->NotifyGraphChanged();
-
-	Result.bSucceed = GeneratedNodeCount > 0 || CreatedConnectionCount > 0;
-	Result.GeneratedNodeCount = GeneratedNodeCount;
-	Result.RequestedDefaultValueCount = RequestedDefaultValueCount;
-	Result.AppliedDefaultValueCount = AppliedDefaultValueCount;
-	Result.DefaultValueDiagnostics = MoveTemp(DefaultValueDiagnostics);
-	Result.RequestedPinTypeCount = RequestedPinTypeCount;
-	Result.ResolvedPinTypeCount = FMath::Max(0, RequestedPinTypeCount - PinTypeDiagnostics.Num());
-	Result.PinTypeDiagnostics = MoveTemp(PinTypeDiagnostics);
-	Result.RequestedConnectionCount = ParsedLinks.Num();
-	Result.CreatedConnectionCount = CreatedConnectionCount;
-	Result.ConnectionDiagnostics = MoveTemp(ConnectionDiagnostics);
-	Result.UnresolvedNodeCount = OutUnresolvedNodes.Num();
-	if (Result.bSucceed)
-	{
-		Result.Message = FString::Printf(TEXT("生成完成：成功 %d 个节点，建立 %d 条连线，未匹配 %d 个。"), Result.GeneratedNodeCount, CreatedConnectionCount, Result.UnresolvedNodeCount);
-	}
+	Result.Message = TEXT("GraphWrite only accepts logic_spec/SemanticIR. nodes/links node creation is disabled.");
 	return Result;
 }
 
