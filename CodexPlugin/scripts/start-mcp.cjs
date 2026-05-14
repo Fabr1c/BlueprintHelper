@@ -10,6 +10,25 @@ function candidate(entry) {
   return entry ? path.resolve(entry) : undefined;
 }
 
+function codexWorkspaceRoots() {
+  const home = process.env.USERPROFILE || process.env.HOME;
+  if (!home) {
+    return [];
+  }
+
+  const statePath = path.join(home, '.codex', '.codex-global-state.json');
+  try {
+    const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+    return [
+      ...(Array.isArray(state['active-workspace-roots']) ? state['active-workspace-roots'] : []),
+      ...(Array.isArray(state['electron-saved-workspace-roots']) ? state['electron-saved-workspace-roots'] : []),
+      ...(Array.isArray(state['project-order']) ? state['project-order'] : []),
+    ].filter((entry) => typeof entry === 'string');
+  } catch {
+    return [];
+  }
+}
+
 const candidates = [
   candidate(process.env.BLUEPRINTHELPER_MCP_ENTRY),
   process.env.BLUEPRINTHELPER_ROOT
@@ -19,6 +38,7 @@ const candidates = [
   path.resolve(pluginRoot, '..', '..', 'AgentFaceService', 'mcp', 'build', 'index.js'),
   path.resolve(process.cwd(), 'AgentFaceService', 'mcp', 'build', 'index.js'),
   path.resolve(process.cwd(), '..', 'AgentFaceService', 'mcp', 'build', 'index.js'),
+  ...codexWorkspaceRoots().map((root) => path.resolve(root, 'AgentFaceService', 'mcp', 'build', 'index.js')),
 ].filter(Boolean);
 
 const entry = candidates.find((file) => fs.existsSync(file));

@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "blueprint-helper": {
+      "command": "node",
+      "args": [
+        "../scripts/start-mcp.cjs"
+      ]
+    }
+  }
+}

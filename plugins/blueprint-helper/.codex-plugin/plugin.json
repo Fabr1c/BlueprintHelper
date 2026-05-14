@@ -1,6 +1,6 @@
 {
   "name": "blueprint-helper",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Codex-facing BlueprintHelper workflow plugin for Unreal Editor lifecycle through MCP and ordinary asset workflows through the CLI.",
   "author": {
     "name": "Fabric"
