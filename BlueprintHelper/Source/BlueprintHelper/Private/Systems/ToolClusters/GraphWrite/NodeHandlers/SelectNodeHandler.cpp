@@ -1,7 +1,30 @@
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/SelectNodeHandler.h"
 
+#include "EdGraphSchema_K2.h"
 #include "K2Node_Select.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
+
+namespace
+{
+static void ApplyIndexPinType(UK2Node_Select* SelectNode, const FName& PinCategory)
+{
+	if (!SelectNode)
+	{
+		return;
+	}
+
+	UEdGraphPin* IndexPin = SelectNode->GetIndexPin();
+	if (!IndexPin)
+	{
+		return;
+	}
+
+	IndexPin->PinType.PinCategory = PinCategory;
+	IndexPin->PinType.PinSubCategory = NAME_None;
+	IndexPin->PinType.PinSubCategoryObject = nullptr;
+	SelectNode->ChangePinType(IndexPin);
+}
+}
 
 bool FSelectNodeHandler::CanHandle(EParsedBlueprintNodeType NodeType) const
 {
@@ -38,6 +61,14 @@ UK2Node* FSelectNodeHandler::Spawn(UEdGraph* TargetGraph, const FParsedNode& Nod
 	}
 
 	NewNode->AllocateDefaultPins();
+	if (NodeData.SelectReference.EnumPath.IsEmpty())
+	{
+		ApplyIndexPinType(
+			NewNode,
+			NodeData.SelectReference.NumOptions <= 2
+				? UEdGraphSchema_K2::PC_Boolean
+				: UEdGraphSchema_K2::PC_Int);
+	}
 
 	// 按需添加额外选项引脚（默认有 2 个）
 	const int32 ExtraOptions = FMath::Max(0, NodeData.SelectReference.NumOptions - 2);

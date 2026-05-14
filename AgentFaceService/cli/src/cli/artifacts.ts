@@ -16,8 +16,14 @@ export function writeJsonArtifact(input: {
   const dir = path.resolve(input.root, safeSegment(input.runId));
   fs.mkdirSync(dir, { recursive: true });
   const filePath = path.resolve(dir, `${safeSegment(input.name)}.json`);
-  fs.writeFileSync(filePath, `${JSON.stringify(input.value, null, 2)}\n`, 'utf8');
+  fs.writeFileSync(filePath, stringifyJsonArtifact(input.value), 'utf8');
   return filePath;
+}
+
+export function stringifyJsonArtifact(value: unknown): string {
+  return `${JSON.stringify(value, null, 2)}\n`.replace(/[^\u0000-\u007f]/g, (char) => {
+    return `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`;
+  });
 }
 
 function safeSegment(value: string): string {

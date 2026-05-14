@@ -73,7 +73,7 @@ Project `.uproject` paths should not be stored globally. Agents discover the tar
 
 ## 4. Start Unreal Editor
 
-Either start Unreal Editor normally with the project, or let the CLI command launch it later through `blueprint_open_editor` after the project agent profile has `environment.ue_engine_dir`.
+Either start Unreal Editor normally with the project, or use the MCP lifecycle command `blueprint_open_editor` after the project agent profile has `environment.ue_engine_dir`. CLI lifecycle helpers are best-effort in one-shot shell environments.
 
 Bridge smoke check:
 
@@ -85,7 +85,7 @@ If the port is not open, wait for the editor to finish loading, confirm the plug
 
 ## 5. Run The CLI
 
-The CLI is the only supported Agent entry.
+The CLI is the supported Agent entry for ordinary TaskSpec writes. MCP remains the supported companion entry for editor lifecycle and long-lived debug/recovery flows.
 
 Examples:
 

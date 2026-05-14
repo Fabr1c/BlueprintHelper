@@ -506,3 +506,50 @@ test('context read uses TaskSpec runner readTaskContext', async () => {
   assert.equal(output.status, 'completed');
 });
 
+test('context read artifact escapes localized node names as ascii-safe JSON', async () => {
+  const writes: string[] = [];
+  const artifactDir = makeTempDir();
+  const runner = {
+    previewTask: async () => { throw new Error('not used'); },
+    executeTask: async () => { throw new Error('not used'); },
+    getTaskResult: async () => { throw new Error('not used'); },
+    readTaskContext: async () => ({
+      ok: true,
+      schema: 'BlueprintHelper.ToolResult.v1',
+      operation: 'read_task_context',
+      trace_id: 'trace_context_localized',
+      status: 'completed',
+      modified: false,
+      data: {
+        schema: 'BlueprintHelper.TaskContextPack.v1',
+        target: { asset_path: '/Game/BP_Player' },
+        payload: {
+          nodes: [
+            { kind: 'call_function', name: '打印字符串' },
+            { kind: 'branch', name: '分支' },
+          ],
+        },
+      },
+    }),
+    readReferenceContext: async () => { throw new Error('not used'); },
+  } as TaskSpecRunner;
+
+  const exitCode = await runCli({
+    argv: ['context', 'read', '--file', 'context-request.json', '--artifact-dir', artifactDir],
+    cwd: fixturesDir,
+    runner,
+    stdout: (line) => writes.push(line),
+    stderr: () => {},
+  });
+
+  assert.equal(exitCode, 0);
+  const output = JSON.parse(writes.join('')) as Record<string, unknown>;
+  const artifacts = output.artifacts as Record<string, unknown>;
+  const fullResult = String(artifacts.full_result);
+  const rawUtf8 = fs.readFileSync(fullResult, 'utf8');
+  assert.match(rawUtf8, /\\u6253\\u5370\\u5b57\\u7b26\\u4e32/);
+  assert.doesNotMatch(rawUtf8, /打印字符串/);
+  JSON.parse(rawUtf8);
+  JSON.parse(fs.readFileSync(fullResult, 'latin1'));
+});
+

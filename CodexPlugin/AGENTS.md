@@ -2,7 +2,7 @@
 
 This package contains the Codex-facing BlueprintHelper plugin metadata and skill instructions.
 
-Read `skills/blueprint-helper/SKILL.md` before using BlueprintHelper. The supported Agent-facing entry is the BlueprintHelper CLI under the sibling `AgentFaceService/cli` package. Do not use the deprecated MCP endpoint as the ordinary workflow.
+Read `skills/blueprint-helper/SKILL.md` before using BlueprintHelper. The supported Agent-facing entry for ordinary TaskSpec reads and writes is the BlueprintHelper CLI under the sibling `AgentFaceService/cli` package. The MCP endpoint is retained only for editor lifecycle commands.
 
 Use normal repository tools for source files, docs, JSON, config, tests, and build scripts. Use BlueprintHelper CLI only for Unreal Editor assets through the running Editor and Bridge.
 

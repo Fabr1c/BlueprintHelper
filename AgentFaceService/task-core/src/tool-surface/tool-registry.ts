@@ -35,7 +35,8 @@ const toolMetas: ToolMeta[] = [
   { name: 'blueprinthelper_request_write_session', description: 'Request Editor-approved write permission.', audience: 'default', risk: 'medium' },
   { name: 'blueprinthelper_diagnostics', description: 'Run static diagnostics.', audience: 'default', risk: 'none' },
   { name: 'blueprinthelper_diagnostics_runtime', description: 'Run runtime diagnostics through the Bridge.', audience: 'default', risk: 'low' },
-  { name: 'blueprint_open_editor', description: 'Open the editor.', audience: 'compat', risk: 'medium' },
+  { name: 'blueprint_open_editor', description: 'Open the editor from the current project directory or an explicit project_file.', audience: 'compat', risk: 'medium' },
+  { name: 'blueprint_close_editor', description: 'Close the current editor process and return lifecycle status.', audience: 'compat', risk: 'high' },
 ];
 
 export function getBlueprintHelperToolRegistry(): BlueprintHelperToolDefinition[] {

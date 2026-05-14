@@ -1,7 +1,11 @@
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/PromotableOperatorNodeHandler.h"
 
+#include "EdGraph/EdGraphPin.h"
+#include "EdGraphSchema_K2.h"
 #include "K2Node_PromotableOperator.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
+#include "UObject/FieldIterator.h"
+#include "UObject/UnrealType.h"
 
 namespace
 {
@@ -160,6 +164,66 @@ static FString ResolveOperatorFunctionName(const FParsedNode& NodeData)
 
 	return BaseName;
 }
+
+static void ApplyFunctionPinTypes(UK2Node_PromotableOperator* Node, const UFunction* Function)
+{
+	if (!Node || !Function)
+	{
+		return;
+	}
+
+	const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
+	if (!Schema)
+	{
+		return;
+	}
+
+	FEdGraphPinType ReturnType;
+	TArray<FEdGraphPinType> InputTypes;
+	for (TFieldIterator<FProperty> PropIt(Function); PropIt && (PropIt->PropertyFlags & CPF_Parm); ++PropIt)
+	{
+		FProperty* Param = *PropIt;
+		if (!Param)
+		{
+			continue;
+		}
+
+		FEdGraphPinType PinType;
+		if (!Schema->ConvertPropertyToPinType(Param, PinType))
+		{
+			continue;
+		}
+
+		if (Param->HasAnyPropertyFlags(CPF_ReturnParm))
+		{
+			ReturnType = PinType;
+		}
+		else
+		{
+			InputTypes.Add(PinType);
+		}
+	}
+
+	int32 InputIndex = 0;
+	for (UEdGraphPin* Pin : Node->Pins)
+	{
+		if (!Pin)
+		{
+			continue;
+		}
+
+		if (Pin->Direction == EGPD_Output && !ReturnType.PinCategory.IsNone())
+		{
+			Pin->PinType = ReturnType;
+			continue;
+		}
+
+		if (Pin->Direction == EGPD_Input && InputTypes.IsValidIndex(InputIndex))
+		{
+			Pin->PinType = InputTypes[InputIndex++];
+		}
+	}
+}
 }
 
 bool FPromotableOperatorNodeHandler::CanHandle(EParsedBlueprintNodeType NodeType) const
@@ -198,7 +262,9 @@ UK2Node* FPromotableOperatorNodeHandler::Spawn(UEdGraph* TargetGraph, const FPar
 	NewNode->NodePosX = static_cast<int32>(NodeData.X);
 	NewNode->NodePosY = static_cast<int32>(NodeData.Y);
 	NewNode->AllocateDefaultPins();
+	ApplyFunctionPinTypes(NewNode, TargetFunction);
 
 	FBlueprintGraphWriteFacade::ApplyDefaultValues(NewNode, NodeData.DefaultValues);
+	NewNode->NodeConnectionListChanged();
 	return NewNode;
 }

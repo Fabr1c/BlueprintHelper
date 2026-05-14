@@ -1,8 +1,8 @@
-﻿# BlueprintHelper
+# BlueprintHelper
 
-BlueprintHelper is an Unreal Engine editor plugin with a CLI-first Agent transport. It lets an agent inspect and modify Unreal Editor assets through a local Bridge: Blueprint graphs, UMG widgets, DataAssets, DataTables, asset browser operations, compile/save/open commands, PIE commands, and related diagnostics.
+BlueprintHelper is an Unreal Engine editor plugin with a CLI-first TaskSpec transport and an deprecated/frozen MCP compatibility path. It lets an agent inspect and modify Unreal Editor assets through a local Bridge: Blueprint graphs, UMG widgets, DataAssets, DataTables, asset browser operations, compile/save/open commands, PIE commands, and related diagnostics.
 
-BlueprintHelper is not a general source editing API. Use normal repository tools for C++, TypeScript, Python, JSON, config files, code search, build scripts, and documentation edits. The deprecated MCP endpoint is compatibility/debug surface only and is not a supported Agent entry.
+BlueprintHelper is not a general source editing API. Use normal repository tools for C++, TypeScript, Python, JSON, config files, code search, build scripts, and documentation edits. MCP is retained for editor launch/lifecycle, debug, recovery, and capabilities that are unreliable from one-shot CLI processes.
 
 ## TaskSpec-First Architecture
 
@@ -36,11 +36,11 @@ Current source metadata:
 | Unreal plugin `BlueprintHelper.uplugin` | `VersionName` 0.4.1 |
 | CLI `AgentFaceService/cli/package.json` | 0.4.1 |
 | Shared task core `AgentFaceService/task-core/package.json` | 0.4.1 |
-| Deprecated MCP package `AgentFaceService/mcp/package.json` | 0.4.1 |
+| Deprecated/frozen MCP compatibility package `AgentFaceService/mcp/package.json` | 0.4.1 |
 | Documentation batch | 2026-05-12 CLI-first TaskSpec mainline |
 | Intended UE version | UE 5.3 or newer |
 
-The documentation mainline targets the CLI-first TaskSpec / TaskPlan orchestration architecture. Treat plugin version, CLI version, deprecated MCP package version, and documentation date as separate version sources until the compatibility matrix is completed.
+The documentation mainline targets the CLI-first TaskSpec / TaskPlan orchestration architecture with MCP retained for lifecycle/debug companion duties. Treat plugin version, CLI version, MCP package version, and documentation date as separate version sources until the compatibility matrix is completed.
 
 ## Core Capabilities
 
@@ -151,9 +151,10 @@ BlueprintHelper Bridge uses object-first responses. Large raw graph payloads sho
 - Prefer object `json` over stringified JSON.
 - LogicJson and LogicMD reads should report importability explicitly through fields such as `importable` and `schema`.
 
-### Deprecated MCP Compatibility Behavior
+### MCP Companion / Compatibility Behavior
 
-- `blueprint_export_to_json` may still return `raw_json_ref` as a resource link in deprecated compatibility paths.
+- `blueprint_open_editor` and `blueprint_close_editor` are CLI-only lifecycle commands.
+- `blueprint_export_to_json` may still return `raw_json_ref` as a resource link in compatibility paths.
 - RawJson resource handling remains for historical fixtures and recovery workflows.
 - `legacy_text_json` exists only for compatibility with older text-only callers.
 

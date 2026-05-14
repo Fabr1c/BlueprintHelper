@@ -38,6 +38,7 @@ import { resolveExplicitProjectFile } from '../../project-profile/editor-paths.j
 import { execFile, spawn } from 'node:child_process';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
+import { registerEditorLifecycleTools } from './editor-lifecycle-tools.js';
 
 /** 缂栬緫锟?寮曟搸璺緞閰嶇疆 */
 export interface EditorConfig {
@@ -716,6 +717,11 @@ function extractReadPayloadFromBridgeResult(result: unknown): {
 }
 
 export function registerTools(server: McpServer, bridge: BridgeClient, config: EditorConfig): void {
+  registerEditorLifecycleTools(server, bridge, config);
+  if (isEditorLifecycleOnlyMcpSurface()) {
+    return;
+  }
+
   registerSharedRegistryTools(server, bridge, {
     cwd: process.cwd(),
     ueEngineDir: config.ueEngineDir,
@@ -2880,4 +2886,8 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     };
   },
 );
+}
+
+function isEditorLifecycleOnlyMcpSurface(): boolean {
+  return true;
 }

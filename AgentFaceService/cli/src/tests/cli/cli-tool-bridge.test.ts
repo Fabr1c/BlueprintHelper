@@ -1,4 +1,7 @@
-﻿import { strict as assert } from 'node:assert';
+import { strict as assert } from 'node:assert';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import test from 'node:test';
 import { runCli } from '../../cli/run.js';
 import type { BridgeResponse } from '@blueprinthelper/task-core/bridge/bridge-client';
@@ -38,6 +41,119 @@ test('direct blueprint_get_runtime_profile calls matching Bridge command', async
   assert.equal(JSON.parse(writes.join('')).status, 'completed');
 });
 
+test('direct blueprint_close_editor calls matching Bridge command when expert flag is present', async () => {
+  const writes: string[] = [];
+  const calls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
+  const bridge = {
+    sendCommand: async (command: string, payload?: Record<string, unknown>): Promise<BridgeResponse> => {
+      calls.push({ command, payload });
+      return {
+        request_id: 'close_editor',
+        success: true,
+        result: {
+          ok: true,
+          schema: 'BlueprintHelper.ToolResult.v1',
+          operation: 'close_editor',
+          status: 'completed',
+          modified: false,
+          data: { schema: 'CloseEditor.v1', close_scheduled: true },
+        },
+      };
+    },
+  };
+
+  const exitCode = await runCli({
+    argv: ['blueprint_close_editor', '--json', '{ "save_all": false }', '--expert', '--select', 'status,artifacts.full_result'],
+    cwd: process.cwd(),
+    bridge,
+    runner: {} as never,
+    stdout: (line) => writes.push(line),
+    stderr: () => {},
+  });
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(calls, [{ command: 'close_editor', payload: { save_all: false } }]);
+  assert.equal(JSON.parse(writes.join('')).status, 'completed');
+});
+
+test('short close_editor does not require expert flag', async () => {
+  const writes: string[] = [];
+  const calls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
+  const exitCode = await runCli({
+    argv: ['close_editor', '--select', 'status,artifacts.full_result'],
+    cwd: process.cwd(),
+    bridge: {
+      sendCommand: async (command: string, payload?: Record<string, unknown>): Promise<BridgeResponse> => {
+        calls.push({ command, payload });
+        return {
+          request_id: 'close_editor',
+          success: true,
+          result: {
+            ok: true,
+            schema: 'BlueprintHelper.ToolResult.v1',
+            operation: 'close_editor',
+            status: 'completed',
+            modified: false,
+            data: { schema: 'CloseEditor.v1', close_scheduled: true },
+          },
+        };
+      },
+    },
+    runner: {} as never,
+    stdout: (line) => writes.push(line),
+    stderr: () => {},
+  });
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(calls, [{ command: 'close_editor', payload: { save_all: true } }]);
+  const output = JSON.parse(writes.join('')) as Record<string, unknown>;
+  assert.equal(output.status, 'completed');
+});
+
+
+test('short open_editor discovers uproject from cwd and uses robust editor args', async () => {
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-cli-open-editor-'));
+  const projectDir = path.join(tmpRoot, 'Template');
+  const childDir = path.join(projectDir, 'Plugins', 'BlueprintHelper');
+  fs.mkdirSync(path.join(projectDir, '.blueprinthelper'), { recursive: true });
+  fs.mkdirSync(childDir, { recursive: true });
+  fs.writeFileSync(path.join(projectDir, 'Template.uproject'), '{}', 'utf8');
+  fs.writeFileSync(path.join(projectDir, '.blueprinthelper', 'agent-profile.json'), JSON.stringify({
+    environment: { ue_engine_dir: 'E:\\UE_5.6' },
+  }), 'utf8');
+
+  const writes: string[] = [];
+  const launches: Array<{ command: string; args: string[] }> = [];
+  let pingCount = 0;
+  const exitCode = await runCli({
+    argv: ['open_editor', '--select', 'status,artifacts.full_result'],
+    cwd: childDir,
+    bridge: {
+      sendCommand: async () => { throw new Error('must not call sendCommand'); },
+      ping: async () => {
+        pingCount += 1;
+        return pingCount >= 2;
+      },
+    } as never,
+    runner: {} as never,
+    runLocalProcess: async (command, args) => {
+      launches.push({ command, args });
+      return { exitCode: 0, stdout: '', stderr: '' };
+    },
+    sleep: async () => {},
+    stdout: (line) => writes.push(line),
+    stderr: () => {},
+  });
+
+  assert.equal(exitCode, 0);
+  assert.equal(launches.length, 1);
+  assert.equal(path.basename(launches[0].command), 'UnrealEditor.exe');
+  assert.equal(launches[0].args[0], path.join(projectDir, 'Template.uproject'));
+  assert.ok(launches[0].args.includes('-DDC-ForceMemoryCache'));
+  assert.ok(launches[0].args.some((arg) => arg.startsWith('-ShaderWorkingDir=')));
+  assert.ok(launches[0].args.includes('-NoSplash'));
+  assert.equal(JSON.parse(writes.join('')).status, 'completed');
+});
 test('frozen direct Bridge tools are not exposed through CLI tool invocation', async () => {
   const writes: string[] = [];
   const errors: string[] = [];

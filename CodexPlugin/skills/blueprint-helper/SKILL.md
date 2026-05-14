@@ -18,7 +18,7 @@ Do not use BlueprintHelper for normal repository files. Use normal Codex shell a
 
 ## Entry Rule
 
-The supported Agent-facing entry is the BlueprintHelper CLI. Do not plan ordinary workflows around the deprecated MCP endpoint.
+The supported Agent-facing entry for ordinary TaskSpec reads and writes is the BlueprintHelper CLI. MCP is retained only as a long-lived companion entry for editor lifecycle commands.
 
 Preferred CLI shape:
 
@@ -49,7 +49,7 @@ npm run build
 Before any editor-asset write:
 
 1. Confirm the target UE project and `.uproject` path when launch/build is needed.
-2. Confirm Unreal Editor is running with BlueprintHelper loaded, or that `blueprint_open_editor` can launch the explicit project file.
+2. Confirm Unreal Editor is running with BlueprintHelper loaded. Prefer MCP `blueprint_open_editor` when the editor must be launched from an Agent workflow; ordinary BlueprintHelper read/write commands still use CLI.
 3. Confirm the Bridge is reachable.
 4. Identify the exact target asset path, such as `/Game/Blueprints/BP_Player`.
 5. Identify the exact graph/function/widget/table scope when applicable.
@@ -98,10 +98,16 @@ blueprinthelper_get_task_result
 blueprinthelper_get_debug_case
 blueprinthelper_list_debug_cases
 blueprinthelper_export_debug_bundle
-blueprint_open_editor
 ```
 
-Frozen legacy, expert, and low-level direct commands are not the normal Agent workflow. If a capability is missing from the supported CLI surface, stop and report the gap instead of falling back to raw Bridge or deprecated MCP routes.
+MCP-only editor lifecycle companion commands:
+
+```text
+blueprint_open_editor
+blueprint_close_editor
+```
+
+Frozen legacy, expert, and low-level direct commands are not the normal Agent workflow. If a capability is missing from the supported CLI surface, stop and report the gap unless the request falls inside the explicit MCP editor lifecycle boundary above.
 
 ## Read Strategy
 

@@ -4,48 +4,59 @@
 
 关联设计文档：`BlueprintHelper_GraphStatementFramework_Design_20260513_CN.md`
 
-## 当前覆盖测试结论：2026-05-14 编辑器重启后 SemanticIR smoke
+## 当前覆盖测试结论：2026-05-14 SemanticIR branch/compare smoke
 
-状态：最小端到端 smoke 通过；未覆盖全部 statement 种类。
+状态：通过。`BH_SemanticIR_BranchSmoke_20260514_004` 已验证 `let -> compare -> branch.condition` 的端到端写入、data edge 消费和蓝图编译。
+
 已通过部分：
-1. `bh.cmd` 连接重启后的 Editor/Bridge 成功，`blueprint_get_runtime_profile` 与 `blueprinthelper_diagnostics_runtime` 返回 completed。
-2. `blueprinthelper_preview_task` 使用 `BlueprintLogicSpec.v2`、短名 `call`、`target: PrintString` 通过 preview，产物为 `preview_1778743995346_0001`。
-3. `blueprinthelper_execute_task` 成功写入 `/Game/BlueprintHelperCliSmoke/BH_PhysicsDoor_20260513/BP_BH_PhysicsDoorActor`，任务为 `task_3C29F27442081416763C7B997D18880D`。
-4. 写入结果创建图 `BH_SemanticIR_CodexSmoke_20260514_001` 和 custom event `BH_CodexSemanticIRSmoke_20260514_001`，GraphWrite 状态为 applied。
-5. 执行产物包含 `fragment_debug.fragment_dag`、`data_edges`、`fragment_evidence`，说明 SemanticIR/fragment evidence 已进入真实写入结果。
-6. 执行后的 post compile 返回 `success: true`、`status: succeeded`、`warning_count: 0`。
-7. `blueprinthelper_read_task_context` 回读目标资产，确认新增图 `BH_SemanticIR_CodexSmoke_20260514_001` 已存在，节点数为 2。
+1. `bh.cmd` 连接重启后的 Editor/Bridge 成功，`blueprint_get_runtime_profile` 返回 completed，`127.0.0.1:54321` 可连接。
+2. `blueprinthelper_preview_task` 使用 `BlueprintLogicSpec.v2`、短名 `let/compare/branch/call` 通过 preview，产物为 `preview_1778748919479_0001`。
+3. `blueprinthelper_request_write_session` 返回 completed，产物为 `cli_1778748950718`。
+4. `blueprinthelper_execute_task` 成功写入 `/Game/BlueprintHelperCliSmoke/BH_PhysicsDoor_20260513/BP_BH_PhysicsDoorActor`，任务为 `task_F48444134EA5A67A0F29699A8C402825`。
+5. 写入结果创建图 `BH_SemanticIR_BranchSmoke_20260514_004` 和 custom event `BH_CodexBranchSmoke_20260514_004`，GraphWrite 状态为 applied。
+6. `blueprinthelper_read_context` 回读目标图，确认 `ReturnValue -> Condition` data link 已真实写入，`data_links: 1`、`orphan_nodes: 0`、`exec_links: 3`、`nodes: 5`。
+7. 执行后的 post compile 返回 `success: true`、`status: succeeded`、`warning_count: 0`。
+8. 执行产物包含 `fragment_debug.fragment_dag`、`data_edges`、`fragment_evidence`，说明 SemanticIR/fragment evidence 已进入真实写入结果。
 
 本次修复：
-1. 修复 `append_new_owned_graph` 在真实 execute 阶段错误要求新图 custom event 预先存在的问题；现在只有目标图已存在且启用 `reuse_existing_entries` 时才检查已有 custom event。
-2. 修复后已重新编译 `TemplateEditor Win64 Development`，结果成功。
+1. 修复 SemanticIR UE 节点生成 fragment id 与 FragmentDAG fragment id 不一致导致 `FilterSemanticDataEdges` 丢弃 data edge 的问题。
+2. 修复 GraphComposer 对 `result/value/return` 这类语义 output pin 的解析不足问题，并增加受限 data pin fallback 连接。
+3. 修复 `K2Node_PromotableOperator` 在默认值比较场景下 A/B 输入仍为 wildcard，导致蓝图编译失败的问题；现在创建后按目标 UFunction 固定输入/输出 pin 类型再应用默认值。
+4. 修复后已重新编译 `TemplateEditor Win64 Development`，结果成功，并通过 `004` 编辑器写入 smoke。
 
 距离期望的差距：
-1. 本次只验证了最小 `call` statement 的真实写入链路，尚未覆盖 `let/compare/branch/select/make_struct/get_property` 的端到端 UE 写入。
-2. 执行结果仍显示 `adapter_operation: append_blueprint_graph`，虽然 fragment_debug/evidence 已随结果输出，但仍需继续确认 SemanticIR 是否已成为唯一 UE 节点创建入口。
-3. Semantic resolver 对 `PrintString` 仍给出 `semantic.target_unverified` warning；UE 节点写入和编译通过，但 resolver 目标验证还不完整。
-4. 低层 `append_blueprint_graph` 不是当前普通 CLI 暴露命令，本次无法通过普通 CLI 直接验证旧 adapter payload 的拒绝路径。
-5. 热重载后 write session 会丢失，需要重新执行 `blueprinthelper_request_write_session`；这是测试流程约束，不属于本次 GraphStatement 主链路通过证明。
+1. 本次真实写入已覆盖 `let/compare/branch/call` 的最小链路，但尚未端到端覆盖 `select/make_struct/get_property`。
+2. `PrintString` 在 Semantic resolver 中仍给出 `semantic.target_unverified` warning；UE 节点写入和编译通过，但 resolver 目标验证还不完整。
+3. `blueprinthelper_read_context` 产物中 localized node name 仍存在 mojibake/非法 JSON 风险，PowerShell `ConvertFrom-Json` 不能稳定解析完整 artifact；本次通过文本字段确认关键统计和连线。
+4. 低层 `append_blueprint_graph` 仍作为 adapter_operation 出现在结果中；当前验证证明普通 CLI TaskSpec 路径已进入 SemanticIR/FragmentDAG 写入链路，但 replace/merge/patch 的同等覆盖仍需单独验证。
+5. Review evidence 已随结果输出，但 Review UI 中按 function/event/macro 图体聚合后的实际审核体验还未在本轮确认。
 ## 当前进度总览：2026-05-14 SemanticIR 主路径化同步
 
 ### 阶段状态调整
 1. SemanticIR -> fragment DAG 的 data edge emission 已进入 GraphGenerationPipeline 主执行路径：payload 中存在 `logic_spec` 时，会现场构建 SemanticIR 和 FragmentDag，并在节点生成后通过 GraphLinker/GraphComposer 连接可落地 data edge。
-2. AgentFace TypeScript/Python 编译链已为 `logic_spec` statement/expression 注入与 `nodes/links` 一致的稳定 `id`，用于 DAG fragment 与真实 UE node fragment 对齐。
-3. `get_property` resolver 已补充无类型 fallback：当 `TargetStructs` 未命中时，会基于目标类型名通过 `UObjectIterator` 查找 `UStruct/UClass`，再解析 property path。
-4. `compare` resolver 已在 SemanticIR 层稳定回填 `bool` 类型，并保留 UE 侧复杂类型解析由现有 PromotableOperator/函数解析兜底。
-5. fragment data edge 消费已收敛为 `statement tree -> fragment DAG -> composer/linker -> UE pin link` 的主数据连线路径；节点创建仍保留 `nodes/links` 兼容承载。
+2. UE 节点生成侧的 statement/expression fragment id 已与 FragmentDAG id 规则对齐，`FilterSemanticDataEdges` 不再丢弃 `compare.result -> branch.condition` 这类 data edge。
+3. `compare` 的最小 typed 写入链路已通过真实编辑器验证：`K2Node_PromotableOperator.ReturnValue` 成功连接到 `K2Node_IfThenElse.Condition`。
+4. `K2Node_PromotableOperator` 创建后会基于目标 UFunction 固定输入/输出 pin 类型，再应用默认值，避免 wildcard 输入在蓝图编译阶段失败。
+5. fragment data edge 消费已验证走通 `statement tree -> fragment DAG -> composer/linker -> UE pin link` 的主数据连线路径；exec edge 仍主要沿现有语句编排/显式 pin 连接路径处理。
+6. `get_property` resolver 已补充无类型 fallback：当 `TargetStructs` 未命中时，会基于目标类型名通过 `UObjectIterator` 查找 `UStruct/UClass`，再解析 property path。
 
 ### 已验证结果
 1. UE 编译通过：`TemplateEditor Win64 Development`，`Result: Succeeded`。
-2. AgentFace TypeScript build 通过：`npm.cmd --prefix .\AgentFaceService\task-core run build`。
-3. AgentFace Python compileall 通过：`python -m compileall -q .\AgentFaceService\task-core\python`。
+2. `BH_SemanticIR_BranchSmoke_20260514_004` 真实编辑器写入通过，execute 状态为 `executed`。
+3. 回读 `logic_json` 确认 `nodes: 5`、`exec_links: 3`、`data_links: 1`、`orphan_nodes: 0`。
+4. 回读连线确认 `from_pin: ReturnValue` -> `to_pin: Condition`。
+5. 蓝图 post compile 返回 `success: true`、`status: succeeded`、`warning_count: 0`。
+6. AgentFace TypeScript build 通过：`npm.cmd --prefix .\AgentFaceService\task-core run build`。
+7. AgentFace Python compileall 通过：`python -m compileall -q .\AgentFaceService\task-core\python`。
 
 ### 距离期望的差距
-1. SemanticIR 尚未成为唯一 UE 节点创建入口；当前节点实例化仍由 `nodes/links` payload 承载，DAG 主路径化主要完成 data edge emission/consumption。
-2. exec edge 仍主要由现有 explicit links 与 linear composer 兼容路径处理，尚未完整切换到 `FragmentDag.ExecEdges`。
-3. 复杂 `compare` 的最终能力仍受 UE 可解析函数/PromotableOperator 支持范围限制，自定义结构体/容器比较还没有通用签名匹配策略。
-4. 本轮只做编译级验证，未运行 TS/Python 单元测试，也未执行真实编辑器写入场景回归。
-
+1. 本轮只真实验证了 `let/compare/branch/call` 最小链路；`select/make_struct/get_property` 仍需同级别编辑器写入覆盖。
+2. exec edge 尚未完整切换到 `FragmentDag.ExecEdges` 的统一消费路径。
+3. 复杂 `compare` 的最终能力仍受 UE 可解析函数/PromotableOperator 支持范围限制，自定义结构体、容器、枚举、对象比较还没有完整 typed compare resolver。
+4. `blueprinthelper_read_context` artifact 中 localized node name 的编码/转义仍有问题，会影响 JSON 解析型自动验收。
+5. Review evidence 已具备 fragment 字段承载能力，但按 function/event/macro 图体聚合后的实际 UI 审核体验仍需要真实蓝图写入场景验证。
+6. Layout model 目前主要用于 debug/evidence 与 fragment 描述，尚未完整驱动实际 UE 节点排布。
+7. Pattern Registry 的 JSON 数据驱动 alias / pin mapping / 类型转换扩展面还没有完全固化为稳定配置契约。
 ## 当前进度总览（2026-05-14 同步）
 
 ### 阶段完成状态
@@ -860,3 +871,76 @@
 1. Semantic resolver 对 `PrintString` 仍给出 `semantic.target_unverified` warning；UE 写入和编译通过，但 resolver 目标验证仍需补全。
 2. 普通 CLI 不暴露低层 `append_blueprint_graph` 直接命令，本轮没有通过普通 CLI 直接测试旧 `nodes/links` Bridge payload 拒绝路径。
 3. 本轮覆盖了 append 新 owned graph；replace/merge/patch 的真实编辑器写入回归仍需单独用例覆盖。
+## 2026-05-14 快速修复：写会话批准提醒
+
+状态：已修复，待编译和重启编辑器后验证。
+
+完成内容：
+1. `request_write_session` 授权弹窗出现前会触发 BlueprintHelper 编辑器通知，提示当前正在等待写入批准。
+2. Windows 平台会同步触发任务栏闪烁和系统提示音，降低用户错过批准弹窗的概率。
+3. 授权弹窗文案从旧的 `MCP write access` 改为通用 `BlueprintHelper write access`，符合 CLI-only 工具口径。
+
+距离期望差距：
+1. 当前实现是编辑器通知 + Windows 任务栏提醒，不是 Windows Action Center 原生 toast。
+2. 需要编译并重启编辑器后，通过 `blueprinthelper_request_write_session` 实测提醒是否可见。
+## 2026-05-14 修复：make_struct Vector 原生结构编译失败
+
+状态：已修复，待编译和重启编辑器后验证。
+
+发现问题：
+1. SemanticIR 完整覆盖测试中，`make_struct` 使用 `/Script/CoreUObject.Vector` 时 preview 通过，但 execute 后蓝图编译失败。
+2. UE 日志显示：`结构 Make Vector 并非蓝图类型`。
+
+分析结论：
+1. 当前 `make_struct` builder 对所有结构体都生成 `K2Node_MakeStruct`。
+2. `Vector` 这类 UE 原生数学结构应走 KismetMathLibrary 构造函数，而不是 `K2Node_MakeStruct`。
+
+完成内容：
+1. `make_struct` 遇到 `Vector`、`FVector` 或 `/Script/CoreUObject.Vector` 时，改为生成 `/Script/Engine.KismetMathLibrary:MakeVector` 调用片段。
+2. 为该调用片段补充 `value` 输出别名，保持 `statement tree -> fragment DAG -> data edge` 的既有连接语义。
+
+距离期望差距：
+1. 当前只修复 `Vector`，`Rotator`、`Transform`、`Vector2D` 等其他原生结构还未建立统一 alias 表。
+2. 需要编译、重启编辑器并重跑完整覆盖测试确认。
+## 2026-05-14 覆盖测试：SemanticIR 完整表达式链路
+
+状态：通过，存在非阻塞问题。
+
+测试环境：
+1. 用户重新启动编辑器后，CLI `blueprint_get_runtime_profile` 返回 completed，Bridge 可用。
+2. 写会话最终生效，runtime profile 不再报告 `write_permission.disabled`。
+
+完成内容：
+1. 在真实资产 `/Game/BP_BH_SemanticCoverageActor` 上执行变量 TaskSpec，创建 `BH_CodexVector_20260514_190820`，preview 和 execute 均通过。
+2. 执行图写入 TaskSpec，创建 `BH_SemanticIR_FullSmoke_20260514_190820` 和 custom event `BH_CodexFullSmoke_20260514_190820`，preview 和 execute 均通过。
+3. 覆盖链路包含 `make_struct(Vector)`、`set`、`get_property(Vector.X)`、`compare(>)`、`branch.condition`、`compare(==)`、`select`、then/else `call(PrintString)`。
+4. 执行结果包含 `fragment_debug.fragment_dag` 与 `fragment_evidence`，`fragment_count=19`、`evidence_fragment_count=19`。
+5. 回读 `read_task_context` 确认新图 `BH_SemanticIR_FullSmoke_20260514_190820` 存在，节点数为 13。
+6. 蓝图编译后置操作通过，`compile_result.status=succeeded`。
+
+距离期望差距：
+1. `read_task_context.target.asset_info` 返回异常：`path` 被拼成 `/Game/BP_BH_SemanticCoverageActor./Game/BP_BH_SemanticCoverageActor`，`name` 为完整路径，`class` 为 `Package`，需要修正资产信息规范化。
+2. 之前对不存在的 `/Game/BlueprintHelper/Smoke/BP_TaskSpecSmoke`，`read_task_context` 曾返回 `exists=true`，需要修复资产存在性误报。
+3. `fragment_evidence.diagnostics` 中 `PrintString` 仍被 semantic resolver 标记为 `semantic.target_unverified`，说明 resolver 还未把常用库函数验证结果和后续 function resolver 对齐。
+4. `request_write_session` 在等待用户批准期间曾返回 `bridge_unavailable`，但随后 runtime profile 显示写权限已生效；需要让 CLI 对 pending approval/timeout 给出更准确状态。
+5. 编译结果仍有 2 个 warning，当前未展开 warning 明细。
+## 2026-05-14 修复：read_task_context 资产存在性与 asset_info 规范化
+
+状态：修复中，第一轮验证发现缺失资产仍误报，已补二次修复，待重新编译和重启编辑器后验证。
+
+发现问题：
+1. `read_task_context` 对不存在的 `/Game/BlueprintHelper/Smoke/BP_TaskSpecSmoke` 曾返回 `exists=true`。
+2. `read_task_context` 对真实资产 `/Game/BP_BH_SemanticCoverageActor` 的 `asset_info` 返回异常：`path` 被拼接为重复路径，`name` 是完整路径，`class` 为 `Package`。
+
+分析结论：
+1. AgentFace `buildTaskContextPack` 将 `get_asset_info` 的 Bridge 失败对象也当作有效 asset，因此产生存在性误报。
+2. UE `get_asset_info` 直接把 `/Game/AssetName` 传给 AssetRegistry object path 查询，可能解析到 package 而不是 blueprint asset。
+
+完成内容：
+1. AgentFace `task-context.ts` 新增 Bridge error result 判断，`get_asset_info` 失败时 `target.exists=false` 且不再填充错误对象为 `asset_info`。
+2. UE `FBlueprintHelperAssetBrowseService::GetAssetInfo` 新增 object path 规范化：`/Game/AssetName` 会优先按 `/Game/AssetName.AssetName` 查询，再 fallback 原路径。
+3. 第一轮验证发现 fallback 原路径仍会把缺失 package path 解析成 `Package`，因此已移除 fallback，只按规范化 object path 查询；缺失资产应返回 Bridge error。
+
+距离期望差距：
+1. 需要重新构建 AgentFace task-core/CLI，并编译 UE 插件后验证。
+2. 尚未为该问题补单元测试或自动化覆盖。

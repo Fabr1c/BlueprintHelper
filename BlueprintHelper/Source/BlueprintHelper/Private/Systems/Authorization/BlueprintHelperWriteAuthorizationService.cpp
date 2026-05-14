@@ -3,8 +3,21 @@
 #include "Systems/Authorization/BlueprintHelperWriteAuthorizationService.h"
 
 #include "Entry/Bridge/BlueprintHelperRequestValidator.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Framework/Notifications/NotificationManager.h"
+#include "GenericPlatform/GenericWindow.h"
 #include "HAL/PlatformProcess.h"
 #include "Misc/MessageDialog.h"
+#include "Widgets/Notifications/SNotificationList.h"
+#include "Widgets/SWindow.h"
+
+#if PLATFORM_WINDOWS
+#include "Windows/AllowWindowsPlatformTypes.h"
+#include "Windows/PreWindowsApi.h"
+#include <Windows.h>
+#include "Windows/PostWindowsApi.h"
+#include "Windows/HideWindowsPlatformTypes.h"
+#endif
 
 namespace
 {
@@ -108,6 +121,86 @@ namespace
 		}
 
 		return OutAssetPaths.Num() > 0;
+	}
+
+	FString BuildWriteApprovalSummary(const FBlueprintHelperWriteSessionRequest& Request, const FString& Scope)
+	{
+		const FString Reason = Request.Reason.IsEmpty() ? FString(TEXT("(not provided)")) : Request.Reason;
+		if (Request.AssetPaths.Num() > 0)
+		{
+			return FString::Printf(
+				TEXT("Reason: %s | Scope: %s | Asset: %s"),
+				*Reason,
+				*Scope,
+				*Request.AssetPaths[0]);
+		}
+
+		return FString::Printf(
+			TEXT("Reason: %s | Scope: %s"),
+			*Reason,
+			*Scope);
+	}
+
+	void ShowWriteApprovalEditorNotification(const FBlueprintHelperWriteSessionRequest& Request, const FString& Scope)
+	{
+		if (!FSlateApplication::IsInitialized())
+		{
+			return;
+		}
+
+		FNotificationInfo Info(FText::FromString(FString::Printf(
+			TEXT("BlueprintHelper is waiting for write approval. %s"),
+			*BuildWriteApprovalSummary(Request, Scope))));
+		Info.bFireAndForget = true;
+		Info.bUseLargeFont = false;
+		Info.bUseThrobber = true;
+		Info.bUseSuccessFailIcons = false;
+		Info.FadeInDuration = 0.1f;
+		Info.FadeOutDuration = 0.5f;
+		Info.ExpireDuration = 12.0f;
+
+		FSlateNotificationManager::Get().AddNotification(Info);
+	}
+
+#if PLATFORM_WINDOWS
+	void FlashEditorWindowForWriteApproval()
+	{
+		MessageBeep(MB_ICONEXCLAMATION);
+
+		if (!FSlateApplication::IsInitialized())
+		{
+			return;
+		}
+
+		const TSharedPtr<SWindow> ActiveWindow = FSlateApplication::Get().GetActiveTopLevelWindow();
+		if (!ActiveWindow.IsValid() || !ActiveWindow->GetNativeWindow().IsValid())
+		{
+			return;
+		}
+
+		void* WindowHandle = ActiveWindow->GetNativeWindow()->GetOSWindowHandle();
+		if (!WindowHandle)
+		{
+			return;
+		}
+
+		FLASHWINFO FlashInfo = {};
+		FlashInfo.cbSize = sizeof(FLASHWINFO);
+		FlashInfo.hwnd = static_cast<HWND>(WindowHandle);
+		FlashInfo.dwFlags = FLASHW_TRAY | FLASHW_TIMERNOFG;
+		FlashInfo.uCount = 5;
+		FlashInfo.dwTimeout = 0;
+		FlashWindowEx(&FlashInfo);
+	}
+#endif
+
+	void NotifyUserAboutPendingWriteApproval(const FBlueprintHelperWriteSessionRequest& Request, const FString& Scope)
+	{
+		ShowWriteApprovalEditorNotification(Request, Scope);
+
+#if PLATFORM_WINDOWS
+		FlashEditorWindowForWriteApproval();
+#endif
 	}
 }
 
@@ -262,8 +355,10 @@ bool FBlueprintHelperWriteAuthorizationService::RequestUserApproval(
 	const FBlueprintHelperWriteSessionRequest& Request) const
 {
 	const FString Scope = NormalizeScope(Request.Scope);
+	NotifyUserAboutPendingWriteApproval(Request, Scope);
+
 	const FString Message = FString::Printf(
-		TEXT("Allow BlueprintHelper MCP write access?\n\nReason: %s\nScope: %s\nLifetime: %d seconds"),
+		TEXT("Allow BlueprintHelper write access?\n\nReason: %s\nScope: %s\nLifetime: %d seconds"),
 		Request.Reason.IsEmpty() ? TEXT("(not provided)") : *Request.Reason,
 		*Scope,
 		ClampTtlSeconds(Request.TtlSeconds));

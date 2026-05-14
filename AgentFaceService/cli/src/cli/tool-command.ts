@@ -4,6 +4,7 @@ import {
 } from '@blueprinthelper/task-core/result/tool-result';
 import type { BridgeClient } from '@blueprinthelper/task-core/bridge/bridge-client';
 import type { TaskSpecRunner } from '@blueprinthelper/task-core/task/service/task-spec-runner';
+import type { LocalProcessResult } from '@blueprinthelper/task-core/tool-surface/types';
 import {
   getBlueprintHelperTool,
 } from '@blueprinthelper/task-core/tool-surface/tool-registry';
@@ -16,6 +17,12 @@ export async function invokeCliTool(input: {
   bridge: BridgeClient;
   taskRunner: TaskSpecRunner;
   readStdin?: () => Promise<string> | string;
+  runLocalProcess?: (command: string, args: string[], options?: {
+    timeoutMs?: number;
+    detached?: boolean;
+    env?: NodeJS.ProcessEnv;
+  }) => Promise<LocalProcessResult>;
+  sleep?: (ms: number) => Promise<void>;
 }): Promise<ToolResultBase> {
   const toolName = input.command.toolName ?? '';
   const tool = getBlueprintHelperTool(toolName);
@@ -50,5 +57,7 @@ export async function invokeCliTool(input: {
     cwd: input.cwd,
     bridge: input.bridge,
     taskRunner: input.taskRunner,
+    runLocalProcess: input.runLocalProcess,
+    sleep: input.sleep,
   });
 }

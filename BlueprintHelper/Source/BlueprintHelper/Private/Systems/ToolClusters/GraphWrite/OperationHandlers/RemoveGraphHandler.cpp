@@ -33,6 +33,15 @@ bool FRemoveGraphHandler::Execute(UBlueprint* Blueprint, const TSharedPtr<FJsonO
 	}
 
 	// 在函数图中查找
+	for (int32 GraphIndex = 0; GraphIndex < Blueprint->UbergraphPages.Num(); ++GraphIndex)
+	{
+		UEdGraph* Graph = Blueprint->UbergraphPages[GraphIndex];
+		if (Graph && Graph->GetFName() == FName(*GraphName))
+		{
+			FBlueprintEditorUtils::RemoveGraph(Blueprint, Graph);
+			return true;
+		}
+	}
 	for (UEdGraph* Graph : Blueprint->FunctionGraphs)
 	{
 		if (Graph && Graph->GetFName() == FName(*GraphName))
