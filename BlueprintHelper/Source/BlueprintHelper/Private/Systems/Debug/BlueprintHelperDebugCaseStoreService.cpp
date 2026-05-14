@@ -322,6 +322,102 @@ bool FBlueprintHelperDebugCaseStoreService::ExportTransactionSummaryArtifacts(
 	return true;
 }
 
+bool FBlueprintHelperDebugCaseStoreService::ExportFragmentSummaryArtifact(
+	const FBlueprintHelperDebugCase& DebugCase,
+	const FString& BundleDir,
+	FBlueprintHelperDebugBundleManifest& Manifest,
+	FString* OutError)
+{
+	FBlueprintHelperDebugFragmentArtifactRefs FragmentArtifacts = DebugCase.FragmentArtifacts;
+	TSharedPtr<FJsonObject> FragmentDag;
+	TSharedPtr<FJsonObject> FragmentEvidence;
+
+	for (const FBlueprintHelperDebugEvent& Event : DebugCase.Events)
+	{
+		if (!Event.ToolResultSummary.IsValid())
+		{
+			continue;
+		}
+
+		const TSharedPtr<FJsonObject>* DataObject = nullptr;
+		if (!Event.ToolResultSummary->TryGetObjectField(TEXT("data"), DataObject) || !DataObject)
+		{
+			continue;
+		}
+
+		const TSharedPtr<FJsonObject>* FragmentDebugObject = nullptr;
+		if (!(*DataObject)->TryGetObjectField(TEXT("fragment_debug"), FragmentDebugObject) || !FragmentDebugObject)
+		{
+			continue;
+		}
+
+		const TSharedPtr<FJsonObject>* FragmentDagObject = nullptr;
+		if (!FragmentDag.IsValid()
+			&& (*FragmentDebugObject)->TryGetObjectField(TEXT("fragment_dag"), FragmentDagObject)
+			&& FragmentDagObject)
+		{
+			FragmentDag = *FragmentDagObject;
+		}
+
+		const TSharedPtr<FJsonObject>* FragmentEvidenceObject = nullptr;
+		if (!FragmentEvidence.IsValid()
+			&& (*FragmentDebugObject)->TryGetObjectField(TEXT("fragment_evidence"), FragmentEvidenceObject)
+			&& FragmentEvidenceObject)
+		{
+			FragmentEvidence = *FragmentEvidenceObject;
+		}
+
+		if (!FragmentArtifacts.IsValid())
+		{
+			const TSharedPtr<FJsonObject>* FragmentArtifactsObject = nullptr;
+			if ((*FragmentDebugObject)->TryGetObjectField(TEXT("fragment_artifacts"), FragmentArtifactsObject) && FragmentArtifactsObject)
+			{
+				FragmentArtifacts = FBlueprintHelperDebugFragmentArtifactRefs::FromJson(*FragmentArtifactsObject);
+			}
+		}
+	}
+
+	if (!FragmentArtifacts.IsValid() && !FragmentDag.IsValid() && !FragmentEvidence.IsValid())
+	{
+		return true;
+	}
+
+	if (FragmentDag.IsValid())
+	{
+		const FString DagRef = TEXT("artifacts/graph_fragment_dag.v1.json");
+		if (!WriteJsonArtifact(BundleDir, DagRef, FragmentDag.ToSharedRef(), OutError))
+		{
+			return false;
+		}
+		FragmentArtifacts.FragmentDagRef = DagRef;
+		Manifest.Contents.AddUnique(DagRef);
+	}
+
+	if (FragmentEvidence.IsValid())
+	{
+		const FString EvidenceRef = TEXT("artifacts/graph_fragment_evidence.v1.json");
+		if (!WriteJsonArtifact(BundleDir, EvidenceRef, FragmentEvidence.ToSharedRef(), OutError))
+		{
+			return false;
+		}
+		FragmentArtifacts.FragmentEvidenceRef = EvidenceRef;
+		Manifest.Contents.AddUnique(EvidenceRef);
+	}
+
+	const FString ArtifactRef = TEXT("artifacts/graph_fragment.summary.json");
+	TSharedRef<FJsonObject> FragmentSummary = MakeShared<FJsonObject>();
+	FragmentSummary->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.DebugGraphFragmentSummary.v1"));
+	FragmentSummary->SetObjectField(TEXT("fragment_refs"), FragmentArtifacts.ToJson());
+	if (!WriteJsonArtifact(BundleDir, ArtifactRef, FragmentSummary, OutError))
+	{
+		return false;
+	}
+
+	Manifest.FragmentArtifacts = FragmentArtifacts;
+	Manifest.Contents.AddUnique(ArtifactRef);
+	return true;
+}
+
 FString FBlueprintHelperDebugCaseStoreService::MakeSafeArtifactFileName(const FString& RawId)
 {
 	FString Safe;
@@ -597,6 +693,7 @@ FBlueprintHelperDebugCaseSummary FBlueprintHelperDebugCaseStoreService::BuildSum
 	Summary.TransactionLinks = DebugCase.TransactionLinks;
 	Summary.Error = DebugCase.Error;
 	Summary.RecommendedNext = DebugCase.RecommendedNext;
+	Summary.FragmentArtifacts = DebugCase.FragmentArtifacts;
 	Summary.EventCount = DebugCase.Events.Num();
 	if (Summary.RecommendedNext.IsEmpty() && DebugCase.Events.Num() > 0)
 	{
@@ -707,6 +804,10 @@ bool FBlueprintHelperDebugCaseStoreService::ExportDebugBundleSummary(
 		return false;
 	}
 	if (!ExportTransactionSummaryArtifacts(DebugCase, BundleDir, OutManifest, OutError))
+	{
+		return false;
+	}
+	if (!ExportFragmentSummaryArtifact(DebugCase, BundleDir, OutManifest, OutError))
 	{
 		return false;
 	}

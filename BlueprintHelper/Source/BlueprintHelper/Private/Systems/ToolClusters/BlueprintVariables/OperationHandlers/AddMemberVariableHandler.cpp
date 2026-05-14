@@ -1,6 +1,6 @@
 #include "Systems/ToolClusters/BlueprintVariables/OperationHandlers/AddMemberVariableHandler.h"
 
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 #include "Engine/Blueprint.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Dom/JsonObject.h"
@@ -47,7 +47,7 @@ bool FAddMemberVariableHandler::Execute(UBlueprint* Blueprint, const TSharedPtr<
 		(*PinTypeObject)->TryGetStringField(TEXT("container_type"), ParsedPinType.ContainerType);
 
 		FString ConvertError;
-		if (!TextToBlueprintGenerator::ConvertToEdGraphPinType(ParsedPinType, PinType, ConvertError))
+		if (!FBlueprintGraphWriteFacade::ConvertToEdGraphPinType(ParsedPinType, PinType, ConvertError))
 		{
 			OutError = FString::Printf(TEXT("add_member_variable '%s' 失败：类型转换错误%s"), *VarName, *ConvertError);
 			return false;

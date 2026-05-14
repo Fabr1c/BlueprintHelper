@@ -1,7 +1,7 @@
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/LiteralNodeHandler.h"
 #include "K2Node_Literal.h"
 #include "EdGraph/EdGraph.h"
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 #include "UObject/UObjectGlobals.h"
 
 bool FLiteralNodeHandler::CanHandle(EParsedBlueprintNodeType NodeType) const

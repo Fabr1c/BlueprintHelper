@@ -1,7 +1,7 @@
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/FormatTextNodeHandler.h"
 
 #include "K2Node_FormatText.h"
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 #include "EdGraphSchema_K2.h"
 
 bool FFormatTextNodeHandler::CanHandle(EParsedBlueprintNodeType NodeType) const
@@ -43,7 +43,7 @@ UK2Node* FFormatTextNodeHandler::Spawn(UEdGraph* TargetGraph, const FParsedNode&
 
 	FormatNode->ReconstructNode();
 
-	TextToBlueprintGenerator::ApplyDefaultValues(FormatNode, NodeData.DefaultValues);
+	FBlueprintGraphWriteFacade::ApplyDefaultValues(FormatNode, NodeData.DefaultValues);
 
 	return FormatNode;
 }

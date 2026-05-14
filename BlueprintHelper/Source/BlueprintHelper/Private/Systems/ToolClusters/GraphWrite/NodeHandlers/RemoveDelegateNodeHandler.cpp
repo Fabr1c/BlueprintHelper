@@ -1,7 +1,7 @@
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/RemoveDelegateNodeHandler.h"
 
 #include "K2Node_RemoveDelegate.h"
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Engine/Blueprint.h"
 
@@ -48,6 +48,6 @@ UK2Node* FRemoveDelegateNodeHandler::Spawn(UEdGraph* TargetGraph, const FParsedN
 	DelegateNode->NodePosX = static_cast<int32>(NodeData.X);
 	DelegateNode->NodePosY = static_cast<int32>(NodeData.Y);
 	DelegateNode->AllocateDefaultPins();
-	TextToBlueprintGenerator::ApplyDefaultValues(DelegateNode, NodeData.DefaultValues);
+	FBlueprintGraphWriteFacade::ApplyDefaultValues(DelegateNode, NodeData.DefaultValues);
 	return DelegateNode;
 }

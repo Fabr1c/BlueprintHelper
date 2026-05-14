@@ -1303,8 +1303,8 @@ public:
 		FGraphWriteRuntimeHarness()
 			: CompileService(Resolver)
 			, AgentImportService(Resolver, CompileService, AssetBrowseService)
-			, AppendGraphService(Resolver, AgentImportService, BlockIdService, OwnershipService, JournalService)
-			, ReplaceGraphService(Resolver, AgentImportService, BlockIdService, OwnershipService, JournalService, SnapshotService)
+			, AppendGraphService(Resolver, BlockIdService, OwnershipService, JournalService)
+			, ReplaceGraphService(Resolver, BlockIdService, OwnershipService, JournalService, SnapshotService)
 			, PatchGraphService(Resolver, PathService, JournalService)
 			, MergeGraphService(Resolver, PathService, JournalService)
 			, StructureService(Resolver)
@@ -1452,7 +1452,6 @@ bool FBlueprintHelperGraphWriteAppendBlockedDryRunErrorEnvelopeTest::RunTest(con
 	FBlueprintHelperTransactionJournalService JournalService;
 	FBlueprintHelperAppendBlueprintGraphService AppendService(
 		Resolver,
-		AgentImportService,
 		BlockIdService,
 		OwnershipService,
 		JournalService);
@@ -1498,7 +1497,6 @@ bool FBlueprintHelperGraphWriteReplaceBlockedDryRunErrorEnvelopeTest::RunTest(co
 	FBlueprintHelperGraphSnapshotService SnapshotService;
 	FBlueprintHelperReplaceBlueprintGraphService ReplaceService(
 		Resolver,
-		AgentImportService,
 		BlockIdService,
 		OwnershipService,
 		JournalService,
@@ -1664,7 +1662,6 @@ bool FBlueprintHelperGraphWriteReplaceCustomEventBodyReconnectsEntryExecTest::Ru
 	FBlueprintHelperGraphSnapshotService SnapshotService;
 	FBlueprintHelperReplaceBlueprintGraphService ReplaceService(
 		Resolver,
-		AgentImportService,
 		BlockIdService,
 		OwnershipService,
 		JournalService,
@@ -1740,7 +1737,6 @@ bool FBlueprintHelperGraphWriteReplaceEmitsReviewNodeAnchorsForDiffBoundsTest::R
 	FBlueprintHelperGraphSnapshotService SnapshotService;
 	FBlueprintHelperReplaceBlueprintGraphService ReplaceService(
 		Resolver,
-		AgentImportService,
 		BlockIdService,
 		OwnershipService,
 		JournalService,
@@ -2205,7 +2201,6 @@ bool FBlueprintHelperGraphWriteAppendOwnershipWritesMetadataWithoutManagedCommen
 	FBlueprintHelperTransactionJournalService JournalService;
 	FBlueprintHelperAppendBlueprintGraphService AppendService(
 		Resolver,
-		AgentImportService,
 		BlockIdService,
 		OwnershipService,
 		JournalService);
@@ -2289,7 +2284,6 @@ bool FBlueprintHelperGraphWriteAppendReusesSignatureEntryTest::RunTest(const FSt
 	FBlueprintHelperTransactionJournalService JournalService;
 	FBlueprintHelperAppendBlueprintGraphService AppendService(
 		Resolver,
-		AgentImportService,
 		BlockIdService,
 		OwnershipService,
 		JournalService);
@@ -2614,11 +2608,11 @@ bool FBlueprintHelperGraphWriteTaskRuntimeCallFunctionQualifiedNameReadBackTest:
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperGraphWriteTaskRuntimeCallFunctionMemberPrefixPreviewBlocksTest,
-	"BlueprintHelper.GraphWrite.TaskRuntime.CallFunction.MemberPrefixPreviewBlocks",
+	FBlueprintHelperGraphWriteTaskRuntimeCallFunctionMemberPrefixPreviewAllowsAppendTest,
+	"BlueprintHelper.GraphWrite.TaskRuntime.CallFunction.MemberPrefixPreviewAllowsAppend",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FBlueprintHelperGraphWriteTaskRuntimeCallFunctionMemberPrefixPreviewBlocksTest::RunTest(const FString& Parameters)
+bool FBlueprintHelperGraphWriteTaskRuntimeCallFunctionMemberPrefixPreviewAllowsAppendTest::RunTest(const FString& Parameters)
 {
 	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("RuntimeCallFunctionMemberPrefix"));
 	TestNotNull(TEXT("test blueprint is created"), Blueprint);
@@ -2641,16 +2635,7 @@ bool FBlueprintHelperGraphWriteTaskRuntimeCallFunctionMemberPrefixPreviewBlocksT
 		*this,
 		Preview,
 		TEXT("append_blueprint_graph"),
-		false);
-
-	FString FirstErrorCode;
-	FString FirstErrorMessage;
-	TestTrue(TEXT("runtime dry-run error carries resolver diagnostic"),
-		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::GetRuntimeDryRunFirstError(Preview, FirstErrorCode, FirstErrorMessage));
-	TestEqual(TEXT("runtime dry-run error code is resolver code"), FirstErrorCode, FString(TEXT("explicit_member_call_not_supported")));
-	TestTrue(TEXT("runtime dry-run error message names member-prefix block"),
-		FirstErrorMessage.Contains(TEXT("explicit_member_call_not_supported")) ||
-		FirstErrorMessage.Contains(TEXT("explicit member prefix")));
+		true);
 	return true;
 }
 

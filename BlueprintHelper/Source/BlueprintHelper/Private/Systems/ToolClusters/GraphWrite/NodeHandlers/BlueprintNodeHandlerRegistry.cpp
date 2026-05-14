@@ -1,5 +1,5 @@
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/BlueprintNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 
 FBlueprintNodeHandlerRegistry& FBlueprintNodeHandlerRegistry::Get()
 {

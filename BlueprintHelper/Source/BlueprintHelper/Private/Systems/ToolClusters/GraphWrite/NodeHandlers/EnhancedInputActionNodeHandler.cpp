@@ -2,7 +2,7 @@
 
 #include "K2Node_EnhancedInputAction.h"
 #include "InputAction.h"
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 
 bool FEnhancedInputActionNodeHandler::CanHandle(EParsedBlueprintNodeType NodeType) const
 {
@@ -47,6 +47,6 @@ UK2Node* FEnhancedInputActionNodeHandler::Spawn(UEdGraph* TargetGraph, const FPa
 	NewNode->NodePosY = static_cast<int32>(NodeData.Y);
 	NewNode->AllocateDefaultPins();
 
-	TextToBlueprintGenerator::ApplyDefaultValues(NewNode, NodeData.DefaultValues);
+	FBlueprintGraphWriteFacade::ApplyDefaultValues(NewNode, NodeData.DefaultValues);
 	return NewNode;
 }

@@ -6,6 +6,7 @@
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
 
 class FJsonObject;
+struct FBlueprintHelperGraphFragmentEvidenceBundle;
 
 class BLUEPRINTHELPER_API FBlueprintHelperReviewStoreService
 {
@@ -23,6 +24,15 @@ public:
 
 	TArray<FBlueprintHelperReviewRecord> BuildReviewRecordsFromEvidence(
 		const TArray<FBlueprintHelperWriteReviewEvidence>& Evidences) const;
+
+	TArray<FBlueprintHelperReviewRecord> BuildReviewRecordsFromFragmentEvidence(
+		const FBlueprintHelperGraphFragmentEvidenceBundle& FragmentEvidence,
+		const FString& ArchiveSessionId,
+		const FString& AssetPath,
+		const FString& OperationKind,
+		const FString& TaskRunId = TEXT(""),
+		const FString& TransactionId = TEXT(""),
+		const FString& CreatedAt = TEXT("")) const;
 
 	TArray<FBlueprintHelperReviewRecord> QueryReviewRecords(
 		const FBlueprintHelperReviewRecordQuery& Query = FBlueprintHelperReviewRecordQuery()) const;

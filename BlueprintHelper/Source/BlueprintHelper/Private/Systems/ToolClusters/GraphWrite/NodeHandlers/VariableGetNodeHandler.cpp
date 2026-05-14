@@ -1,5 +1,5 @@
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/VariableGetNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 
 bool FVariableGetNodeHandler::CanHandle(EParsedBlueprintNodeType NodeType) const
 {
@@ -15,12 +15,12 @@ UK2Node* FVariableGetNodeHandler::Spawn(UEdGraph* TargetGraph, const FParsedNode
 		LocalDeclaration.PinType = NodeData.VariableReference.PinType;
 		LocalDeclaration.DefaultValue = NodeData.VariableReference.DefaultValue;
 		LocalDeclaration.bEnsureExists = true;
-		TextToBlueprintGenerator::EnsureLocalVariableExists(TargetGraph, LocalDeclaration, OutError);
+		FBlueprintGraphWriteFacade::EnsureLocalVariableExists(TargetGraph, LocalDeclaration, OutError);
 		if (!OutError.IsEmpty())
 		{
 			return nullptr;
 		}
 	}
 
-	return TextToBlueprintGenerator::SpawnVariableGetNode(TargetGraph, NodeData, OutError);
+	return FBlueprintGraphWriteFacade::SpawnVariableGetNode(TargetGraph, NodeData, OutError);
 }

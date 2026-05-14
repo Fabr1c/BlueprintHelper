@@ -1,7 +1,7 @@
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/KnotNodeHandler.h"
 #include "K2Node_Knot.h"
 #include "EdGraph/EdGraph.h"
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 
 bool FKnotNodeHandler::CanHandle(EParsedBlueprintNodeType NodeType) const
 {

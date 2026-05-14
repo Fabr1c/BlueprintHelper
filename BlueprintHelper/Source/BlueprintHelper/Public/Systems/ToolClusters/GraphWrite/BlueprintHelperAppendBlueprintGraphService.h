@@ -8,7 +8,6 @@
 #include "Shared/BlueprintHelperToolResultTypes.h"
 
 class FBlueprintHelperGraphResolver;
-class FBlueprintHelperAgentImportService;
 class FBlueprintHelperBlockIdService;
 class FBlueprintHelperOwnershipService;
 class FBlueprintHelperTransactionJournalService;
@@ -23,7 +22,6 @@ class BLUEPRINTHELPER_API FBlueprintHelperAppendBlueprintGraphService
 public:
 	FBlueprintHelperAppendBlueprintGraphService(
 		const FBlueprintHelperGraphResolver& InResolver,
-		const FBlueprintHelperAgentImportService& InAgentImportService,
 		const FBlueprintHelperBlockIdService& InBlockIdService,
 		const FBlueprintHelperOwnershipService& InOwnershipService,
 		const FBlueprintHelperTransactionJournalService& InJournalService);
@@ -42,6 +40,7 @@ private:
 		bool bDryRun = false;
 		bool bReuseExistingEntries = false;
 		bool bAllowExistingGraph = false;
+		TSharedPtr<FJsonObject> LogicSpec;
 		TArray<TSharedPtr<FJsonValue>> Nodes;
 		TArray<TSharedPtr<FJsonValue>> Links;
 	};
@@ -52,6 +51,7 @@ private:
 		TArray<FString> BlockedBy;
 		TArray<FBlueprintHelperDryRunIssue> Conflicts;
 		TArray<FBlueprintHelperDryRunIssue> Errors;
+		TSharedPtr<FJsonObject> FragmentDebugData;
 	};
 
 	// ─── 解析 ───
@@ -77,15 +77,13 @@ private:
 
 	// ─── 构建 AgentImport 兼容 JSON ───
 
-	FString BuildAgentImportPayload(const FAppendRequest& Request) const;
+	FString BuildSemanticGraphWritePayload(const FAppendRequest& Request) const;
 
 	// ─── Helpers ───
 
-	bool IsForbiddenEventKind(const FString& Kind, const FString& EventName) const;
 	TArray<FString> ExtractCustomEventNames(const FAppendRequest& Request) const;
 
 	const FBlueprintHelperGraphResolver& Resolver;
-	const FBlueprintHelperAgentImportService& AgentImportService;
 	const FBlueprintHelperBlockIdService& BlockIdService;
 	const FBlueprintHelperOwnershipService& OwnershipService;
 	const FBlueprintHelperTransactionJournalService& JournalService;

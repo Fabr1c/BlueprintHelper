@@ -192,9 +192,9 @@ void FBlueprintHelperModule::StartupModule()
 	JournalService = MakeUnique<FBlueprintHelperTransactionJournalService>();
 	SnapshotService = MakeUnique<FBlueprintHelperGraphSnapshotService>();
 	AppendGraphService = MakeUnique<FBlueprintHelperAppendBlueprintGraphService>(
-		*GraphResolver, *AgentImportService, *BlockIdService, *OwnershipService, *JournalService);
+		*GraphResolver, *BlockIdService, *OwnershipService, *JournalService);
 	ReplaceGraphService = MakeUnique<FBlueprintHelperReplaceBlueprintGraphService>(
-		*GraphResolver, *AgentImportService, *BlockIdService, *OwnershipService, *JournalService, *SnapshotService);
+		*GraphResolver, *BlockIdService, *OwnershipService, *JournalService, *SnapshotService);
 	LogicJsonPathService = MakeUnique<FBlueprintHelperLogicJsonPathService>();
 	PatchGraphService = MakeUnique<FBlueprintHelperPatchBlueprintGraphService>(
 		*GraphResolver, *LogicJsonPathService, *JournalService);

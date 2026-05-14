@@ -8,7 +8,6 @@
 #include "Shared/BlueprintHelperToolResultTypes.h"
 
 class FBlueprintHelperGraphResolver;
-class FBlueprintHelperAgentImportService;
 class FBlueprintHelperBlockIdService;
 class FBlueprintHelperOwnershipService;
 class FBlueprintHelperTransactionJournalService;
@@ -24,7 +23,6 @@ class BLUEPRINTHELPER_API FBlueprintHelperReplaceBlueprintGraphService
 public:
 	FBlueprintHelperReplaceBlueprintGraphService(
 		const FBlueprintHelperGraphResolver& InResolver,
-		const FBlueprintHelperAgentImportService& InAgentImportService,
 		const FBlueprintHelperBlockIdService& InBlockIdService,
 		const FBlueprintHelperOwnershipService& InOwnershipService,
 		const FBlueprintHelperTransactionJournalService& InJournalService,
@@ -49,6 +47,7 @@ private:
 
 		TArray<TSharedPtr<FJsonValue>> Nodes;
 		TArray<TSharedPtr<FJsonValue>> Links;
+		TSharedPtr<FJsonObject> LogicSpec;
 		bool bDryRun = false;
 		bool bStrict = true;
 		bool bPreserveLayout = false;
@@ -60,6 +59,7 @@ private:
 		TArray<FString> BlockedBy;
 		TArray<FBlueprintHelperGraphWriteIssue> Conflicts;
 		TArray<FBlueprintHelperGraphWriteIssue> Errors;
+		TSharedPtr<FJsonObject> FragmentDebugData;
 	};
 
 	// ─── 解析 ───
@@ -70,6 +70,7 @@ private:
 
 	FReplacePreflightResult Preflight(const FReplaceRequest& Request) const;
 	bool PreflightBlueprint(const FString& AssetPath, UBlueprint*& OutBlueprint, FReplacePreflightResult& OutResult) const;
+	bool PreflightLogicSpec(const FReplaceRequest& Request, UBlueprint* Blueprint, FReplacePreflightResult& OutResult) const;
 	bool PreflightGraphTarget(UBlueprint* Blueprint, const FString& GraphName, EBlueprintHelperReplaceScope Scope, UEdGraph*& OutGraph, FReplacePreflightResult& OutResult) const;
 	bool PreflightReplaceScope(EBlueprintHelperReplaceScope Scope, FReplacePreflightResult& OutResult) const;
 
@@ -111,7 +112,7 @@ private:
 
 	// ─── 构建 AgentImport 兼容 payload ───
 
-	FString BuildAgentImportPayload(const FReplaceRequest& Request) const;
+	FString BuildSemanticGraphWritePayload(const FReplaceRequest& Request) const;
 
 	// ─── 删除旧实。───
 
@@ -123,7 +124,6 @@ private:
 		FString& OutError) const;
 
 	const FBlueprintHelperGraphResolver& Resolver;
-	const FBlueprintHelperAgentImportService& AgentImportService;
 	const FBlueprintHelperBlockIdService& BlockIdService;
 	const FBlueprintHelperOwnershipService& OwnershipService;
 	const FBlueprintHelperTransactionJournalService& JournalService;

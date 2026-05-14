@@ -27,7 +27,7 @@ void SHelperMainWidget::Construct(const FArguments& InArgs)
 	GraphResolverPtr = InArgs._GraphResolver;
 
 	// 初始化所有函数库
-	FunctionSource = TextToBlueprintGenerator::GetAllBlueprintFunctions();
+	FunctionSource = FBlueprintGraphWriteFacade::GetAllBlueprintFunctions();
 	FilteredFunctionSource = FunctionSource;
 
 	ChildSlot
@@ -300,7 +300,7 @@ FReply SHelperMainWidget::OnGenerateFromTextClicked()
 		return FReply::Handled();
 	}
 
-	const FBlueprintGenerateResult GenerateResult = TextToBlueprintGenerator::GenerateBlueprintFromJson(TargetGraph, JsonText, UnresolvedSource);
+	const FBlueprintGenerateResult GenerateResult = FBlueprintGraphWriteFacade::GenerateBlueprintFromJson(TargetGraph, JsonText, UnresolvedSource);
 	RefreshUnresolvedList();
 	SetStatusMessage(GenerateResult.Message);
 	return FReply::Handled();
@@ -375,7 +375,7 @@ void SHelperMainWidget::GenerateMappedNodeForCurrentSelection(UFunction* TargetF
 	const FScopedTransaction Transaction(FText::FromString(TEXT("Map Unresolved Node")));
 	TargetGraph->Modify();
 
-	if (!TextToBlueprintGenerator::SpawnFunctionNode(TargetGraph, TargetFunction, CurrentSelectedUnresolved->NodeData))
+	if (!FBlueprintGraphWriteFacade::SpawnFunctionNode(TargetGraph, TargetFunction, CurrentSelectedUnresolved->NodeData))
 	{
 		SetStatusMessage(TEXT("映射生成失败，请检查目标函数是否可用于蓝图调用。"));
 		return;

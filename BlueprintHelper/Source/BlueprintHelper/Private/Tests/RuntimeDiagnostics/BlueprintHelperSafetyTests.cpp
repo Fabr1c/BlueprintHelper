@@ -57,7 +57,7 @@
 #include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
 #include "Systems/Debug/BlueprintHelperValidationService.h"
 #include "Systems/ToolClusters/UMGWidget/BlueprintHelperWidgetService.h"
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 #include "UObject/Package.h"
 #include "WidgetBlueprint.h"
 
@@ -254,7 +254,7 @@ static FBPVariableDescription* FindSafetyMemberVariable(UBlueprint* Blueprint, c
 
 static UEdGraph* GetSafetyEventGraph(UBlueprint* Blueprint)
 {
-	return Blueprint ? TextToBlueprintGenerator::FindGraphByName(Blueprint, TEXT("EventGraph")) : nullptr;
+	return Blueprint ? FBlueprintGraphWriteFacade::FindGraphByName(Blueprint, TEXT("EventGraph")) : nullptr;
 }
 
 static int32 GetSafetyEventGraphNodeCount(UBlueprint* Blueprint)
@@ -286,25 +286,6 @@ static bool HasDiagnosticCode(const FBlueprintHelperDiagnosticSet& Diagnostics, 
 	});
 }
 
-static FBlueprintHelperAgentImportResult RunAgentImport(const FString& JsonText)
-{
-	FBlueprintHelperGraphResolver Resolver;
-	FBlueprintHelperCompileService CompileService(Resolver);
-	FBlueprintHelperAssetBrowseService AssetBrowseService;
-	FBlueprintHelperAgentImportService AgentImportService(Resolver, CompileService, AssetBrowseService);
-
-	FBlueprintHelperAgentImportRequest Request;
-	Request.JsonText = JsonText;
-	return AgentImportService.Import(Request);
-}
-
-static bool HasAgentDiagnosticCode(const FBlueprintHelperAgentImportResult& Result, const FString& Code)
-{
-	return Result.Diagnostics.ContainsByPredicate([&Code](const FBlueprintHelperAgentImportDiagnostic& Diagnostic)
-	{
-		return Diagnostic.Code == Code;
-	});
-}
 
 };
 
@@ -401,10 +382,10 @@ bool FBlueprintHelperBridgeExportEffectiveScopeTest::RunTest(const FString& Para
 	FBlueprintHelperOwnershipService OwnershipService;
 	FBlueprintHelperTransactionJournalService JournalService;
 	FBlueprintHelperAppendBlueprintGraphService AppendGraphService(
-		GraphResolver, AgentImportService, BlockIdService, OwnershipService, JournalService);
+		GraphResolver, BlockIdService, OwnershipService, JournalService);
 	FBlueprintHelperGraphSnapshotService SnapshotService;
 	FBlueprintHelperReplaceBlueprintGraphService ReplaceGraphService(
-		GraphResolver, AgentImportService, BlockIdService, OwnershipService, JournalService, SnapshotService);
+		GraphResolver, BlockIdService, OwnershipService, JournalService, SnapshotService);
 	FBlueprintHelperLogicJsonPathService LogicJsonPathService;
 	FBlueprintHelperPatchBlueprintGraphService PatchGraphService(
 		GraphResolver, LogicJsonPathService, JournalService);
@@ -1141,174 +1122,6 @@ bool FBlueprintHelperImportStrictRollsBackOnInvalidPinTypeTest::RunTest(const FS
 	TestTrue(TEXT("strict rollback diagnostic is returned"),
 		FBlueprintHelperSafetyTestsLocalUtils::HasDiagnosticCode(Result.Diagnostics, TEXT("strict_import_rolled_back")));
 	TestEqual(TEXT("failed strict import leaves graph node count unchanged"),
-		FBlueprintHelperSafetyTestsLocalUtils::GetSafetyEventGraphNodeCount(Blueprint), NodeCountBefore);
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperAgentImportGraphSimpleBeginPlayPrintStringStrictTest,
-	"BlueprintHelper.Safety.AgentImportGraph.SimpleBeginPlayPrintStringStrict",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FBlueprintHelperAgentImportGraphSimpleBeginPlayPrintStringStrictTest::RunTest(const FString& Parameters)
-{
-	UBlueprint* Blueprint = FBlueprintHelperSafetyTestsLocalUtils::MakeSafetyActorBlueprint(TEXT("AgentImportSimple"));
-	TestNotNull(TEXT("test Blueprint is created"), Blueprint);
-	TestNotNull(TEXT("test EventGraph exists"), FBlueprintHelperSafetyTestsLocalUtils::GetSafetyEventGraph(Blueprint));
-
-	const int32 NodeCountBefore = FBlueprintHelperSafetyTestsLocalUtils::GetSafetyEventGraphNodeCount(Blueprint);
-	const FString Json = FString::Printf(TEXT(R"JSON(
-	{
-		"schema": "BlueprintHelper.AgentImportGraph",
-		"version": "1.0",
-		"target_blueprint": "%s",
-		"target_graph": "EventGraph",
-		"mode": "append",
-		"nodes": [
-			{"id": "begin_play", "kind": "event", "event": "BeginPlay"},
-			{"id": "print", "kind": "call", "function": "PrintString", "inputs": {"InString": "Hello from AgentImportGraph"}}
-		],
-		"links": [
-			{"kind": "exec", "from": "begin_play.then", "to": "print.execute"}
-		],
-		"options": {"compile": false}
-	}
-	)JSON"), *Blueprint->GetPathName());
-
-	const FBlueprintHelperAgentImportResult Result = FBlueprintHelperSafetyTestsLocalUtils::RunAgentImport(Json);
-	TestTrue(TEXT("simple AgentImportGraph succeeds without explicit strict option"), Result.bSuccess);
-	TestEqual(TEXT("simple AgentImportGraph status is full_success"), Result.Status, FString(TEXT("full_success")));
-	TestEqual(TEXT("simple AgentImportGraph creates two nodes"), Result.CreatedNodeCount, 2);
-	TestEqual(TEXT("simple AgentImportGraph creates one link"), Result.CreatedLinkCount, 1);
-	TestEqual(TEXT("simple AgentImportGraph has no warnings"), Result.WarningCount, 0);
-	TestEqual(TEXT("simple AgentImportGraph has no errors"), Result.ErrorCount, 0);
-	TestFalse(TEXT("simple AgentImportGraph does not roll back"), Result.bRolledBack);
-	TestEqual(TEXT("simple AgentImportGraph returns zero rollbacks"), Result.RollbackCount, 0);
-	TestEqual(TEXT("simple AgentImportGraph writes expected nodes"),
-		FBlueprintHelperSafetyTestsLocalUtils::GetSafetyEventGraphNodeCount(Blueprint), NodeCountBefore + 2);
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperAgentImportGraphRejectsGraphTypoTest,
-	"BlueprintHelper.Safety.AgentImportGraph.RejectsGraphTypoWithoutWritingEventGraph",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FBlueprintHelperAgentImportGraphRejectsGraphTypoTest::RunTest(const FString& Parameters)
-{
-	UBlueprint* Blueprint = FBlueprintHelperSafetyTestsLocalUtils::MakeSafetyActorBlueprint(TEXT("AgentImportGraphTypo"));
-	TestNotNull(TEXT("test Blueprint is created"), Blueprint);
-	TestNotNull(TEXT("test EventGraph exists"), FBlueprintHelperSafetyTestsLocalUtils::GetSafetyEventGraph(Blueprint));
-
-	const int32 NodeCountBefore = FBlueprintHelperSafetyTestsLocalUtils::GetSafetyEventGraphNodeCount(Blueprint);
-	const FString Json = FString::Printf(TEXT(R"JSON(
-	{
-		"schema": "BlueprintHelper.AgentImportGraph",
-		"version": "1.0",
-		"target_blueprint": "%s",
-		"target_graph": "EventGrph",
-		"mode": "append",
-		"nodes": [
-			{"id": "begin_play", "kind": "event", "event": "BeginPlay"}
-		],
-		"links": [],
-		"options": {"compile": false}
-	}
-	)JSON"), *Blueprint->GetPathName());
-
-	const FBlueprintHelperAgentImportResult Result = FBlueprintHelperSafetyTestsLocalUtils::RunAgentImport(Json);
-	TestFalse(TEXT("graph typo import fails"), Result.bSuccess);
-	TestEqual(TEXT("graph typo status is failed"), Result.Status, FString(TEXT("failed")));
-	TestTrue(TEXT("graph typo returns graph_not_found"),
-		FBlueprintHelperSafetyTestsLocalUtils::HasAgentDiagnosticCode(Result, TEXT("graph_not_found")));
-	TestTrue(TEXT("graph typo diagnostic includes available EventGraph"),
-		Result.Message.Contains(TEXT("EventGraph")));
-	TestEqual(TEXT("graph typo leaves EventGraph node count unchanged"),
-		FBlueprintHelperSafetyTestsLocalUtils::GetSafetyEventGraphNodeCount(Blueprint), NodeCountBefore);
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperAgentImportGraphDefaultStrictRollsBackOnMissingLinkPinTest,
-	"BlueprintHelper.Safety.AgentImportGraph.DefaultStrictRollsBackOnMissingLinkPin",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FBlueprintHelperAgentImportGraphDefaultStrictRollsBackOnMissingLinkPinTest::RunTest(const FString& Parameters)
-{
-	UBlueprint* Blueprint = FBlueprintHelperSafetyTestsLocalUtils::MakeSafetyActorBlueprint(TEXT("AgentImportMissingLinkPin"));
-	TestNotNull(TEXT("test Blueprint is created"), Blueprint);
-	TestNotNull(TEXT("test EventGraph exists"), FBlueprintHelperSafetyTestsLocalUtils::GetSafetyEventGraph(Blueprint));
-
-	const int32 NodeCountBefore = FBlueprintHelperSafetyTestsLocalUtils::GetSafetyEventGraphNodeCount(Blueprint);
-	const FString Json = FString::Printf(TEXT(R"JSON(
-	{
-		"schema": "BlueprintHelper.AgentImportGraph",
-		"version": "1.0",
-		"target_blueprint": "%s",
-		"target_graph": "EventGraph",
-		"mode": "append",
-		"nodes": [
-			{"id": "begin_play", "kind": "event", "event": "BeginPlay"},
-			{"id": "print", "kind": "call", "function": "PrintString"}
-		],
-		"links": [
-			{"kind": "exec", "from": "begin_play.then", "to": "print.missing_exec_pin"}
-		],
-		"options": {"compile": false}
-	}
-	)JSON"), *Blueprint->GetPathName());
-
-	const FBlueprintHelperAgentImportResult Result = FBlueprintHelperSafetyTestsLocalUtils::RunAgentImport(Json);
-	TestFalse(TEXT("missing link pin fails under default strict"), Result.bSuccess);
-	TestEqual(TEXT("missing link pin status is failed"), Result.Status, FString(TEXT("failed")));
-	TestTrue(TEXT("missing link pin reports rollback"), Result.bRolledBack);
-	TestEqual(TEXT("missing link pin returns one rollback"), Result.RollbackCount, 1);
-	TestTrue(TEXT("missing link pin diagnostic is returned"),
-		FBlueprintHelperSafetyTestsLocalUtils::HasAgentDiagnosticCode(Result, TEXT("link_pin_not_found")));
-	TestTrue(TEXT("strict rollback diagnostic is returned"),
-		FBlueprintHelperSafetyTestsLocalUtils::HasAgentDiagnosticCode(Result, TEXT("strict_import_rolled_back")));
-	TestEqual(TEXT("missing link pin leaves graph node count unchanged"),
-		FBlueprintHelperSafetyTestsLocalUtils::GetSafetyEventGraphNodeCount(Blueprint), NodeCountBefore);
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperAgentImportGraphDefaultStrictRollsBackOnMissingDefaultPinTest,
-	"BlueprintHelper.Safety.AgentImportGraph.DefaultStrictRollsBackOnMissingDefaultPin",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FBlueprintHelperAgentImportGraphDefaultStrictRollsBackOnMissingDefaultPinTest::RunTest(const FString& Parameters)
-{
-	UBlueprint* Blueprint = FBlueprintHelperSafetyTestsLocalUtils::MakeSafetyActorBlueprint(TEXT("AgentImportMissingDefaultPin"));
-	TestNotNull(TEXT("test Blueprint is created"), Blueprint);
-	TestNotNull(TEXT("test EventGraph exists"), FBlueprintHelperSafetyTestsLocalUtils::GetSafetyEventGraph(Blueprint));
-
-	const int32 NodeCountBefore = FBlueprintHelperSafetyTestsLocalUtils::GetSafetyEventGraphNodeCount(Blueprint);
-	const FString Json = FString::Printf(TEXT(R"JSON(
-	{
-		"schema": "BlueprintHelper.AgentImportGraph",
-		"version": "1.0",
-		"target_blueprint": "%s",
-		"target_graph": "EventGraph",
-		"mode": "append",
-		"nodes": [
-			{"id": "print", "kind": "call", "function": "PrintString", "inputs": {"missing_default_pin": "bad"}}
-		],
-		"links": [],
-		"options": {"compile": false}
-	}
-	)JSON"), *Blueprint->GetPathName());
-
-	const FBlueprintHelperAgentImportResult Result = FBlueprintHelperSafetyTestsLocalUtils::RunAgentImport(Json);
-	TestFalse(TEXT("missing default pin fails under default strict"), Result.bSuccess);
-	TestEqual(TEXT("missing default pin status is failed"), Result.Status, FString(TEXT("failed")));
-	TestTrue(TEXT("missing default pin reports rollback"), Result.bRolledBack);
-	TestEqual(TEXT("missing default pin returns one rollback"), Result.RollbackCount, 1);
-	TestTrue(TEXT("missing default pin diagnostic is returned"),
-		FBlueprintHelperSafetyTestsLocalUtils::HasAgentDiagnosticCode(Result, TEXT("default_pin_not_found")));
-	TestTrue(TEXT("strict rollback diagnostic is returned"),
-		FBlueprintHelperSafetyTestsLocalUtils::HasAgentDiagnosticCode(Result, TEXT("strict_import_rolled_back")));
-	TestEqual(TEXT("missing default pin leaves graph node count unchanged"),
 		FBlueprintHelperSafetyTestsLocalUtils::GetSafetyEventGraphNodeCount(Blueprint), NodeCountBefore);
 	return true;
 }

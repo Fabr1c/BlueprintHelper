@@ -1,6 +1,6 @@
 #include "Systems/ToolClusters/GraphWrite/OperationHandlers/AddMacroGraphHandler.h"
 
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 #include "Engine/Blueprint.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "K2Node_Tunnel.h"
@@ -105,7 +105,7 @@ bool FAddMacroGraphHandler::Execute(UBlueprint* Blueprint, const TSharedPtr<FJso
 				(*PinTypeObj)->TryGetStringField(TEXT("container_type"), ParsedPinType.ContainerType);
 
 				FString ConvertError;
-				TextToBlueprintGenerator::ConvertToEdGraphPinType(ParsedPinType, PinType, ConvertError);
+				FBlueprintGraphWriteFacade::ConvertToEdGraphPinType(ParsedPinType, PinType, ConvertError);
 			}
 
 			TSharedPtr<FUserPinInfo> NewPin = MakeShared<FUserPinInfo>();
@@ -150,7 +150,7 @@ bool FAddMacroGraphHandler::Execute(UBlueprint* Blueprint, const TSharedPtr<FJso
 				(*PinTypeObj)->TryGetStringField(TEXT("container_type"), ParsedPinType.ContainerType);
 
 				FString ConvertError;
-				TextToBlueprintGenerator::ConvertToEdGraphPinType(ParsedPinType, PinType, ConvertError);
+				FBlueprintGraphWriteFacade::ConvertToEdGraphPinType(ParsedPinType, PinType, ConvertError);
 			}
 
 			TSharedPtr<FUserPinInfo> NewPin = MakeShared<FUserPinInfo>();

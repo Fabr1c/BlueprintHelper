@@ -114,7 +114,7 @@ Preview blocks ambiguous or unsupported calls instead of guessing. Use the resol
 |---|---|---|
 | `ambiguous_function_call` | Multiple graph-usable functions match the name | Use owner-qualified native name |
 | `function_call_not_found` | No graph-usable function matches the name | Read task context and choose an available function |
-| `explicit_member_call_not_supported` | The first resolver slice does not support component/member target prefixes | Model the target through supported TaskSpec fields instead of embedding member syntax in `name` |
+| `explicit_member_call_not_supported` | The current graph write path does not support component/member target prefixes for this strategy | Use `Object.Function` only with append-owned graph writes, or model the target through supported TaskSpec fields |
 
 ## ReadSpec Commands
 

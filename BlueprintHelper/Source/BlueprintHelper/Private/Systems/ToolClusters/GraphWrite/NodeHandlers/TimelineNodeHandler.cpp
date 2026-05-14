@@ -1,7 +1,7 @@
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/TimelineNodeHandler.h"
 
 #include "K2Node_Timeline.h"
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 #include "EdGraphSchema_K2.h"
 #include "Engine/TimelineTemplate.h"
 #include "Kismet2/BlueprintEditorUtils.h"
@@ -76,7 +76,7 @@ UK2Node* FTimelineNodeHandler::Spawn(UEdGraph* TargetGraph, const FParsedNode& N
 	TimelineNode->NodePosY = static_cast<int32>(NodeData.Y);
 	TimelineNode->AllocateDefaultPins();
 
-	TextToBlueprintGenerator::ApplyDefaultValues(TimelineNode, NodeData.DefaultValues);
+	FBlueprintGraphWriteFacade::ApplyDefaultValues(TimelineNode, NodeData.DefaultValues);
 
 	return TimelineNode;
 }

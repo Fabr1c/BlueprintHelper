@@ -34,6 +34,7 @@ private:
 		FString AnchorBlockId, AnchorGroupEntryNodePath;
 		FString AnchorNodeRef, AnchorPinRef, AnchorNodePath, AnchorPinPath;
 		FString InsertedBlockId, InsertedBlockRef, InsertedFunctionName, InsertedCustomEventName;
+		TSharedPtr<FJsonObject> LogicSpec;
 		TArray<FString> SequenceOrder;
 		bool bAllowCompileBeforeCall = false;
 		bool bDryRun = false;
@@ -58,6 +59,7 @@ private:
 		TArray<FString> BlockedBy;
 		TArray<FBlueprintHelperDryRunIssue> Conflicts;
 		TArray<FBlueprintHelperDryRunIssue> Errors;
+		TSharedPtr<FJsonObject> FragmentDebugData;
 	};
 
 	FMergeRequest ParseRequest(const TSharedPtr<FJsonObject>& Payload) const;
@@ -65,6 +67,7 @@ private:
 		const FMergeRequest& Request,
 		FMergeContext& Context,
 		bool bAllowInsertedLogicRequiresCompile) const;
+	bool PreflightLogicSpec(const FMergeRequest& Request, UBlueprint* Blueprint, FMergePreflightResult& OutResult) const;
 	FBlueprintHelperToolResultBase ExecuteDryRun(const FMergeRequest& Request) const;
 	FBlueprintHelperToolResultBase ExecuteWrite(const FMergeRequest& Request) const;
 

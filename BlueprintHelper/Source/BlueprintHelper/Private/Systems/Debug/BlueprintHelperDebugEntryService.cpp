@@ -4,6 +4,57 @@
 #include "Systems/Debug/BlueprintHelperDebugCaseStoreService.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
 
+namespace
+{
+static bool TryReadFragmentArtifactsObject(
+	const TSharedPtr<FJsonObject>& Json,
+	FBlueprintHelperDebugFragmentArtifactRefs& OutRefs)
+{
+	if (!Json.IsValid())
+	{
+		return false;
+	}
+
+	const TSharedPtr<FJsonObject>* FragmentArtifactsObject = nullptr;
+	if (Json->TryGetObjectField(TEXT("fragment_artifacts"), FragmentArtifactsObject) && FragmentArtifactsObject)
+	{
+		OutRefs = FBlueprintHelperDebugFragmentArtifactRefs::FromJson(*FragmentArtifactsObject);
+		return OutRefs.IsValid();
+	}
+
+	return false;
+}
+
+static FBlueprintHelperDebugFragmentArtifactRefs ExtractFragmentArtifactsFromToolResultSummary(
+	const TSharedPtr<FJsonObject>& ToolResultSummary)
+{
+	FBlueprintHelperDebugFragmentArtifactRefs Refs;
+	if (TryReadFragmentArtifactsObject(ToolResultSummary, Refs))
+	{
+		return Refs;
+	}
+
+	const TSharedPtr<FJsonObject>* DataObject = nullptr;
+	if (ToolResultSummary.IsValid()
+		&& ToolResultSummary->TryGetObjectField(TEXT("data"), DataObject)
+		&& DataObject)
+	{
+		if (TryReadFragmentArtifactsObject(*DataObject, Refs))
+		{
+			return Refs;
+		}
+
+		const TSharedPtr<FJsonObject>* FragmentDebugObject = nullptr;
+		if ((*DataObject)->TryGetObjectField(TEXT("fragment_debug"), FragmentDebugObject) && FragmentDebugObject)
+		{
+			TryReadFragmentArtifactsObject(*FragmentDebugObject, Refs);
+		}
+	}
+
+	return Refs;
+}
+}
+
 FBlueprintHelperDebugEntryService::FBlueprintHelperDebugEntryService(
 	const FBlueprintHelperDebugCaseStoreService& InStore,
 	const FBlueprintHelperReviewStoreService* InReviewStore)
@@ -73,6 +124,7 @@ FBlueprintHelperDebugEntryRecordResult FBlueprintHelperDebugEntryService::Record
 	DebugCase.TransactionLinks = Input.TransactionLinks;
 	DebugCase.Error = Input.Error;
 	DebugCase.RecommendedNext = Input.RecommendedNext;
+	DebugCase.FragmentArtifacts = ExtractFragmentArtifactsFromToolResultSummary(Input.ToolResultSummary);
 	DebugCase.Events.Add(Event);
 
 	FString SaveError;

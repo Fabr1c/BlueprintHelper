@@ -1,7 +1,7 @@
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/EventNodeHandler.h"
 
 #include "K2Node_Event.h"
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Engine/Blueprint.h"
 
@@ -108,6 +108,6 @@ UK2Node* FEventNodeHandler::Spawn(UEdGraph* TargetGraph, const FParsedNode& Node
 	EventNode->NodePosX = static_cast<int32>(NodeData.X);
 	EventNode->NodePosY = static_cast<int32>(NodeData.Y);
 	EventNode->AllocateDefaultPins();
-	TextToBlueprintGenerator::ApplyDefaultValues(EventNode, NodeData.DefaultValues);
+	FBlueprintGraphWriteFacade::ApplyDefaultValues(EventNode, NodeData.DefaultValues);
 	return EventNode;
 }

@@ -46,6 +46,7 @@ private:
 		FString NodeRef, PinRef, LinkRef;
 		FString NodePath, PinPath, LinkPath;
 		TSharedPtr<FJsonObject> PatchPayload;
+		TSharedPtr<FJsonObject> LogicSpec;
 		FString ExpectedOldValue;
 		bool bExpectedOldStateProvided = false;
 	};
@@ -57,10 +58,12 @@ private:
 		TArray<FBlueprintHelperGraphWriteIssue> Conflicts;
 		TArray<FBlueprintHelperGraphWriteIssue> Errors;
 		FString BeforeValue;
+		TSharedPtr<FJsonObject> FragmentDebugData;
 	};
 
 	FPatchRequest ParseRequest(const TSharedPtr<FJsonObject>& Payload) const;
-	FPatchPreflightResult Preflight(const FPatchRequest& Request, UEdGraph* Graph, FBlueprintHelperResolvedPatchTarget& OutTarget) const;
+	FPatchPreflightResult Preflight(const FPatchRequest& Request, UBlueprint* Blueprint, UEdGraph* Graph, FBlueprintHelperResolvedPatchTarget& OutTarget) const;
+	bool PreflightLogicSpec(const FPatchRequest& Request, UBlueprint* Blueprint, FPatchPreflightResult& OutResult) const;
 	FBlueprintHelperToolResultBase ExecuteDryRun(const FPatchRequest& Request) const;
 	FBlueprintHelperToolResultBase ExecuteWrite(const FPatchRequest& Request) const;
 

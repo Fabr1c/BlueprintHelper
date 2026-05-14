@@ -1,13 +1,15 @@
-// BlueprintHelper Service Layer — ReplaceBlueprintGraph 核心服务实现
+// BlueprintHelper Service Layer 鈥?ReplaceBlueprintGraph 鏍稿績鏈嶅姟瀹炵幇
 
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperReplaceBlueprintGraphService.h"
-#include "Shared/Services/BlueprintHelperAgentImportService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperBlockIdService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperOwnershipService.h"
 #include "Systems/Transactions/BlueprintHelperTransactionJournalService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphSnapshotService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDebugData.h"
+#include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphGenerationPipeline.h"
 #include "Shared/GraphWrite/BlueprintHelperAppendGraphTypes.h"
 #include "Shared/GraphWrite/BlueprintHelperReplaceGraphTypes.h"
 
@@ -227,17 +229,15 @@ public:
 
 };
 
-// ─── 构造 ───
+// 鈹€鈹€鈹€ 鏋勯€?鈹€鈹€鈹€
 
 FBlueprintHelperReplaceBlueprintGraphService::FBlueprintHelperReplaceBlueprintGraphService(
 	const FBlueprintHelperGraphResolver& InResolver,
-	const FBlueprintHelperAgentImportService& InAgentImportService,
 	const FBlueprintHelperBlockIdService& InBlockIdService,
 	const FBlueprintHelperOwnershipService& InOwnershipService,
 	const FBlueprintHelperTransactionJournalService& InJournalService,
 	const FBlueprintHelperGraphSnapshotService& InSnapshotService)
 	: Resolver(InResolver)
-	, AgentImportService(InAgentImportService)
 	, BlockIdService(InBlockIdService)
 	, OwnershipService(InOwnershipService)
 	, JournalService(InJournalService)
@@ -245,7 +245,7 @@ FBlueprintHelperReplaceBlueprintGraphService::FBlueprintHelperReplaceBlueprintGr
 {
 }
 
-// ─── 公共入口 ───
+// 鈹€鈹€鈹€ 鍏叡鍏ュ彛 鈹€鈹€鈹€
 
 FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Execute(
 	const TSharedPtr<FJsonObject>& Payload) const
@@ -260,7 +260,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 	return ExecuteWrite(Request);
 }
 
-// ─── 解析 ───
+// 鈹€鈹€鈹€ 瑙ｆ瀽 鈹€鈹€鈹€
 
 FBlueprintHelperReplaceBlueprintGraphService::FReplaceRequest
 FBlueprintHelperReplaceBlueprintGraphService::ParseRequest(const TSharedPtr<FJsonObject>& Payload) const
@@ -296,21 +296,10 @@ FBlueprintHelperReplaceBlueprintGraphService::ParseRequest(const TSharedPtr<FJso
 		(*SelectorObject)->TryGetStringField(TEXT("node_path"), Request.NodePath);
 	}
 
-	// replacement
-	const TSharedPtr<FJsonObject>* ReplacementObject = nullptr;
-	if (Payload->TryGetObjectField(TEXT("replacement"), ReplacementObject) && ReplacementObject->IsValid())
+	const TSharedPtr<FJsonObject>* LogicSpecObject = nullptr;
+	if (Payload->TryGetObjectField(TEXT("logic_spec"), LogicSpecObject) && LogicSpecObject && LogicSpecObject->IsValid())
 	{
-		const TArray<TSharedPtr<FJsonValue>>* NodesArray = nullptr;
-		if ((*ReplacementObject)->TryGetArrayField(TEXT("nodes"), NodesArray))
-		{
-			Request.Nodes = *NodesArray;
-		}
-
-		const TArray<TSharedPtr<FJsonValue>>* LinksArray = nullptr;
-		if ((*ReplacementObject)->TryGetArrayField(TEXT("links"), LinksArray))
-		{
-			Request.Links = *LinksArray;
-		}
+		Request.LogicSpec = *LogicSpecObject;
 	}
 
 	// options
@@ -325,7 +314,7 @@ FBlueprintHelperReplaceBlueprintGraphService::ParseRequest(const TSharedPtr<FJso
 	return Request;
 }
 
-// ─── Preflight ───
+// 鈹€鈹€鈹€ Preflight 鈹€鈹€鈹€
 
 FBlueprintHelperReplaceBlueprintGraphService::FReplacePreflightResult
 FBlueprintHelperReplaceBlueprintGraphService::Preflight(const FReplaceRequest& Request) const
@@ -338,7 +327,7 @@ FBlueprintHelperReplaceBlueprintGraphService::Preflight(const FReplaceRequest& R
 		Result.bPassed = false;
 		Result.BlockedBy.Add(TEXT("target_blueprint_not_found"));
 		Result.Conflicts.Add({TEXT("target_blueprint_not_found"),
-			TEXT("缺少 target.asset_path。"), TEXT("target.asset_path"), TEXT("payload")});
+			TEXT("Missing target.asset_path."), TEXT("target.asset_path"), TEXT("payload")});
 		return Result;
 	}
 
@@ -348,7 +337,7 @@ FBlueprintHelperReplaceBlueprintGraphService::Preflight(const FReplaceRequest& R
 		Result.bPassed = false;
 		Result.BlockedBy.Add(TEXT("target_graph_not_found"));
 		Result.Conflicts.Add({TEXT("target_graph_not_found"),
-			TEXT("缺少 target.graph。"), TEXT("target.graph"), TEXT("payload")});
+			TEXT("Missing target.graph."), TEXT("target.graph"), TEXT("payload")});
 		return Result;
 	}
 
@@ -359,42 +348,38 @@ FBlueprintHelperReplaceBlueprintGraphService::Preflight(const FReplaceRequest& R
 		Result.bPassed = false;
 		Result.BlockedBy.Add(TEXT("replace_scope_unsupported"));
 		Result.Conflicts.Add({TEXT("replace_scope_unsupported"),
-			TEXT("function_definition / event_definition 的正式写入暂不支持，请使用 dry_run。"),
+			TEXT("function_definition / event_definition write is not supported; use dry_run."),
 			TEXT("target.replace_scope"), TEXT("payload")});
 		return Result;
 	}
 
-	// 4. replacement nodes
-	if (Request.Nodes.Num() == 0)
-	{
-		Result.bPassed = false;
-		Result.BlockedBy.Add(TEXT("empty_replacement"));
-		Result.Conflicts.Add({TEXT("empty_replacement"),
-			TEXT("replacement.nodes 不能为空。"), TEXT("replacement.nodes"), TEXT("payload")});
-		return Result;
-	}
 
-	// 5. 蓝图校验
+	// 5. 钃濆浘鏍￠獙
 	UBlueprint* Blueprint = nullptr;
 	if (!PreflightBlueprint(Request.AssetPath, Blueprint, Result))
 	{
 		return Result;
 	}
 
-	// 6. 图表校验
+	if (!PreflightLogicSpec(Request, Blueprint, Result))
+	{
+		return Result;
+	}
+
+	// 6. 鍥捐〃鏍￠獙
 	UEdGraph* Graph = nullptr;
 	if (!PreflightGraphTarget(Blueprint, Request.GraphName, Request.Scope, Graph, Result))
 	{
 		return Result;
 	}
 
-	// 7. scope 校验
+	// 7. scope 鏍￠獙
 	if (!PreflightReplaceScope(Request.Scope, Result))
 	{
 		return Result;
 	}
 
-	// 8. selector 存在性检查
+	// 8. selector 瀛樺湪鎬ф鏌?
 	if (Request.Scope == EBlueprintHelperReplaceScope::BlockImplementation)
 	{
 		if (Request.BlockId.IsEmpty() && Request.TargetRef.IsEmpty() && Request.NodePath.IsEmpty())
@@ -402,7 +387,7 @@ FBlueprintHelperReplaceBlueprintGraphService::Preflight(const FReplaceRequest& R
 			Result.bPassed = false;
 			Result.BlockedBy.Add(TEXT("target_block_not_found"));
 			Result.Conflicts.Add({TEXT("target_block_not_found"),
-				TEXT("block_implementation 需要 selector.block_id、selector.target_ref 或 selector.node_path。"),
+				TEXT("block_implementation requires selector.block_id, selector.target_ref, or selector.node_path."),
 				TEXT("selector"), TEXT("payload")});
 		}
 	}
@@ -424,7 +409,7 @@ bool FBlueprintHelperReplaceBlueprintGraphService::PreflightBlueprint(
 		OutResult.bPassed = false;
 		OutResult.BlockedBy.Add(TEXT("target_blueprint_not_found"));
 		OutResult.Conflicts.Add({TEXT("target_blueprint_not_found"),
-			FString::Printf(TEXT("蓝图资产未找到：%s"), *AssetPath),
+			FString::Printf(TEXT("钃濆浘璧勪骇鏈壘鍒帮細%s"), *AssetPath),
 			AssetPath, TEXT("target.asset_path")});
 		return false;
 	}
@@ -432,11 +417,41 @@ bool FBlueprintHelperReplaceBlueprintGraphService::PreflightBlueprint(
 	return true;
 }
 
+bool FBlueprintHelperReplaceBlueprintGraphService::PreflightLogicSpec(
+	const FReplaceRequest& Request,
+	UBlueprint* Blueprint,
+	FReplacePreflightResult& OutResult) const
+{
+	if (!Request.LogicSpec.IsValid())
+	{
+		OutResult.bPassed = false;
+		OutResult.BlockedBy.Add(TEXT("logic_spec_required"));
+		OutResult.Conflicts.Add({TEXT("logic_spec_required"),
+			TEXT("replace_blueprint_graph requires logic_spec/SemanticIR input."), TEXT("logic_spec"), TEXT("payload")});
+		return false;
+	}
+
+	OutResult.FragmentDebugData = FBlueprintHelperGraphFragmentDebugData::BuildFromLogicSpec(Request.LogicSpec, Blueprint);
+
+	FBlueprintHelperGraphSemanticIR SemanticIR;
+	FBlueprintHelperGraphSemanticIRBuilder::BuildFromLogicSpec(Request.LogicSpec, Blueprint, SemanticIR);
+	for (const FBlueprintHelperGraphSemanticDiagnostic& Diagnostic : SemanticIR.Diagnostics)
+	{
+		if (Diagnostic.Severity.Equals(TEXT("error"), ESearchCase::IgnoreCase))
+		{
+			OutResult.bPassed = false;
+			OutResult.BlockedBy.Add(Diagnostic.Code);
+			OutResult.Errors.Add({Diagnostic.Code, Diagnostic.Message, Diagnostic.Path, TEXT("logic_spec")});
+		}
+	}
+	return OutResult.bPassed;
+}
+
 bool FBlueprintHelperReplaceBlueprintGraphService::PreflightGraphTarget(
 	UBlueprint* Blueprint, const FString& GraphName, EBlueprintHelperReplaceScope Scope,
 	UEdGraph*& OutGraph, FReplacePreflightResult& OutResult) const
 {
-	// 函数图 (function_body)
+	// 鍑芥暟鍥?(function_body)
 	if (Scope == EBlueprintHelperReplaceScope::FunctionBody)
 	{
 		for (UEdGraph* FnGraph : Blueprint->FunctionGraphs)
@@ -450,11 +465,11 @@ bool FBlueprintHelperReplaceBlueprintGraphService::PreflightGraphTarget(
 		OutResult.bPassed = false;
 		OutResult.BlockedBy.Add(TEXT("target_function_not_found"));
 		OutResult.Conflicts.Add({TEXT("target_function_not_found"),
-			FString::Printf(TEXT("函数图 %s 未找到。"), *GraphName), GraphName, TEXT("target.graph")});
+			FString::Printf(TEXT("Function graph %s was not found."), *GraphName), GraphName, TEXT("target.graph")});
 		return false;
 	}
 
-	// 事件图 (block_implementation / event_body / custom_event_body / graph)
+	// 浜嬩欢鍥?(block_implementation / event_body / custom_event_body / graph)
 	for (UEdGraph* UbergraphPage : Blueprint->UbergraphPages)
 	{
 		if (UbergraphPage && UbergraphPage->GetName() == GraphName)
@@ -467,7 +482,7 @@ bool FBlueprintHelperReplaceBlueprintGraphService::PreflightGraphTarget(
 	OutResult.bPassed = false;
 	OutResult.BlockedBy.Add(TEXT("target_graph_not_found"));
 	OutResult.Conflicts.Add({TEXT("target_graph_not_found"),
-		FString::Printf(TEXT("图表 %s 未找到。"), *GraphName), GraphName, TEXT("target.graph")});
+		FString::Printf(TEXT("Graph %s was not found."), *GraphName), GraphName, TEXT("target.graph")});
 	return false;
 }
 
@@ -480,13 +495,13 @@ bool FBlueprintHelperReplaceBlueprintGraphService::PreflightReplaceScope(
 		OutResult.bPassed = false;
 		OutResult.BlockedBy.Add(TEXT("replace_scope_unsupported"));
 		OutResult.Conflicts.Add({TEXT("replace_scope_unsupported"),
-			TEXT("该 replace_scope 的正式写入尚未实现。"), TEXT("target.replace_scope"), TEXT("payload")});
+			TEXT("This replace_scope write path is not implemented."), TEXT("target.replace_scope"), TEXT("payload")});
 		return false;
 	}
 	return true;
 }
 
-// ─── DryRun ───
+// 鈹€鈹€鈹€ DryRun 鈹€鈹€鈹€
 
 FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::ExecuteDryRun(
 	const FReplaceRequest& Request) const
@@ -503,8 +518,8 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 	TargetRef.Graph = Request.GraphName;
 	Result.Target = TargetRef;
 
-	// 特殊：Replace dry_run target 不输出 target_type，但 include replace_scope
-	// 通过直接设置 JSON 字段实现
+	// 鐗规畩锛歊eplace dry_run target 涓嶈緭鍑?target_type锛屼絾 include replace_scope
+	// 閫氳繃鐩存帴璁剧疆 JSON 瀛楁瀹炵幇
 	TargetRef.TargetType = EBlueprintHelperTargetType::None;
 
 	if (PreflightResult.bPassed)
@@ -513,6 +528,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 		DryRunData.DryRun.Result = TEXT("passed");
 		DryRunData.DryRun.bCanExecute = true;
 		Result.Data = DryRunData.ToJson();
+		FBlueprintHelperGraphFragmentDebugData::AttachToData(Result.Data, PreflightResult.FragmentDebugData);
 	}
 	else
 	{
@@ -543,12 +559,13 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 			TEXT("replace_blueprint_graph"), TraceId, Error);
 		Result.Target = TargetRef;
 		Result.Data = DryRunData.ToJson();
+		FBlueprintHelperGraphFragmentDebugData::AttachToData(Result.Data, PreflightResult.FragmentDebugData);
 	}
 
 	return Result;
 }
 
-// ─── 正式写入 ───
+// 鈹€鈹€鈹€ 姝ｅ紡鍐欏叆 鈹€鈹€鈹€
 
 FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::ExecuteWrite(
 	const FReplaceRequest& Request) const
@@ -564,13 +581,15 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 		Error.Code = PreflightResult.BlockedBy.Num() > 0 ? PreflightResult.BlockedBy[0] : TEXT("preflight_failed");
 		Error.Stage = EBlueprintHelperToolStage::Preflight;
 		Error.Message = PreflightResult.Conflicts.Num() > 0
-			? PreflightResult.Conflicts[0].Message : TEXT("Preflight 未通过。");
+			? PreflightResult.Conflicts[0].Message : TEXT("Preflight failed.");
 		Error.bRetryable = false;
 		Error.RollbackResult = EBlueprintHelperRollbackResult::NotNeeded;
-		return FBlueprintHelperToolResultBuilder::Failure(TEXT("replace_blueprint_graph"), TraceId, Error);
+		FBlueprintHelperToolResultBase FailResult = FBlueprintHelperToolResultBuilder::Failure(TEXT("replace_blueprint_graph"), TraceId, Error);
+		FBlueprintHelperGraphFragmentDebugData::AttachToData(FailResult.Data, PreflightResult.FragmentDebugData);
+		return FailResult;
 	}
 
-	// 2. 解析蓝图
+	// 2. 瑙ｆ瀽钃濆浘
 	FBlueprintHelperGraphTarget BPTarget;
 	BPTarget.BlueprintPath = Request.AssetPath;
 	FBlueprintHelperDiagnosticSet Diag;
@@ -580,13 +599,13 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 		FBlueprintHelperToolError Error;
 		Error.Code = TEXT("target_blueprint_not_found");
 		Error.Stage = EBlueprintHelperToolStage::ResolveTarget;
-		Error.Message = FString::Printf(TEXT("蓝图 %s 未找到。"), *Request.AssetPath);
+		Error.Message = FString::Printf(TEXT("Blueprint %s was not found."), *Request.AssetPath);
 		Error.bRetryable = false;
 		Error.RollbackResult = EBlueprintHelperRollbackResult::NotNeeded;
 		return FBlueprintHelperToolResultBuilder::Failure(TEXT("replace_blueprint_graph"), TraceId, Error);
 	}
 
-	// 3. 解析替换目标
+	// 3. 瑙ｆ瀽鏇挎崲鐩爣
 	FResolvedReplaceTarget Resolved;
 	FString ResolveError;
 	if (!ResolveReplaceTarget(Request, Blueprint, Resolved, ResolveError))
@@ -601,16 +620,16 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 		return FBlueprintHelperToolResultBuilder::Failure(TEXT("replace_blueprint_graph"), TraceId, Error);
 	}
 
-	// 4. 捕获 before snapshot
+	// 4. 鎹曡幏 before snapshot
 	const FBlueprintHelperGraphSnapshot BeforeSnapshot = SnapshotService.CaptureNodeSnapshot(
 		Resolved.Graph, Resolved.NodesToDelete);
 
-	// 5. 开始修改
+	// 5. 寮€濮嬩慨鏀?
 	FBlueprintHelperScopedAssetMutation Mutation(
 		FText::FromString(TEXT("BlueprintHelper Replace Blueprint Graph")), Blueprint);
 	Mutation.Modify(Resolved.Graph);
 
-	// 6. 删除旧实现
+	// 6. 鍒犻櫎鏃у疄鐜?
 	if (!DeleteOldImplementation(Blueprint, Resolved.Graph, Resolved.NodesToDelete))
 	{
 		Mutation.Rollback();
@@ -618,7 +637,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 		FBlueprintHelperToolError Error;
 		Error.Code = TEXT("node_create_failed");
 		Error.Stage = EBlueprintHelperToolStage::Execute;
-		Error.Message = TEXT("删除旧实现失败。");
+		Error.Message = TEXT("Failed to delete old implementation.");
 		Error.bRetryable = false;
 		Error.RollbackResult = EBlueprintHelperRollbackResult::RolledBack;
 		return FBlueprintHelperToolResultBuilder::Failure(TEXT("replace_blueprint_graph"), TraceId, Error);
@@ -633,28 +652,35 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 		}
 	}
 
-	// 7. 通过 AgentImportService 创建新节点/连线
-	const FString ImportPayload = BuildAgentImportPayload(Request);
+	// 7. 閫氳繃 AgentImportService 鍒涘缓鏂拌妭鐐?杩炵嚎
+	const FString GraphWritePayload = BuildSemanticGraphWritePayload(Request);
+	TArray<TSharedPtr<FUnresolvedNodeItem>> UnresolvedNodes;
+	const FBlueprintGenerateResult GenerateResult =
+		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(Resolved.Graph, GraphWritePayload, UnresolvedNodes);
 
-	FBlueprintHelperAgentImportRequest ImportReq;
-	ImportReq.JsonText = ImportPayload;
-	const FBlueprintHelperAgentImportResult ImportResult = AgentImportService.Import(ImportReq);
-
-	if (!ImportResult.bSuccess)
+	if (!GenerateResult.bSucceed)
 	{
 		Mutation.Rollback();
 
+		FString ErrorMessage = GenerateResult.Message.IsEmpty()
+			? TEXT("Failed to create replacement implementation through SemanticIR.")
+			: GenerateResult.Message;
+		if (UnresolvedNodes.Num() > 0 && UnresolvedNodes[0].IsValid())
+		{
+			ErrorMessage += FString::Printf(
+				TEXT(" First unresolved: %s - %s"),
+				*UnresolvedNodes[0]->DisplayText,
+				*UnresolvedNodes[0]->Reason);
+		}
+
 		FBlueprintHelperToolError Error;
-		Error.Code = ImportResult.ErrorCode.IsEmpty() ? TEXT("node_create_failed") : ImportResult.ErrorCode;
+		Error.Code = TEXT("semantic_graph_write_failed");
 		Error.Stage = EBlueprintHelperToolStage::Execute;
-		Error.Message = ImportResult.Message.IsEmpty()
-			? TEXT("替换实现创建失败。") : ImportResult.Message;
+		Error.Message = ErrorMessage;
 		Error.bRetryable = false;
-		Error.RollbackResult = ImportResult.bRolledBack
-			? EBlueprintHelperRollbackResult::RolledBack : EBlueprintHelperRollbackResult::Failed;
+		Error.RollbackResult = EBlueprintHelperRollbackResult::RolledBack;
 		return FBlueprintHelperToolResultBuilder::Failure(TEXT("replace_blueprint_graph"), TraceId, Error);
 	}
-
 	FString ReconnectError;
 	if (!ReconnectPreservedEntryToNewBody(Request, Resolved, NodesBeforeImport, ReconnectError))
 	{
@@ -664,13 +690,13 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 		Error.Code = TEXT("entry_reconnect_failed");
 		Error.Stage = EBlueprintHelperToolStage::Execute;
 		Error.Message = ReconnectError.IsEmpty()
-			? TEXT("替换实现后重建入口执行连线失败。") : ReconnectError;
+			? TEXT("Failed to rebuild entry exec link after replacement.") : ReconnectError;
 		Error.bRetryable = false;
 		Error.RollbackResult = EBlueprintHelperRollbackResult::RolledBack;
 		return FBlueprintHelperToolResultBuilder::Failure(TEXT("replace_blueprint_graph"), TraceId, Error);
 	}
 
-	// 8. 写入 ownership（如果目标为 owned block）
+	// 8. 鍐欏叆 ownership锛堝鏋滅洰鏍囦负 owned block锛?
 	TArray<UEdGraphNode*> NewNodes;
 	for (UEdGraphNode* Node : Resolved.Graph->Nodes)
 	{
@@ -702,7 +728,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 		}
 	}
 
-	// 9. 写入 Journal
+	// 9. 鍐欏叆 Journal
 	FBlueprintHelperAppendJournalRecord JournalRecord;
 	JournalRecord.TransactionId = TransactionId;
 	JournalRecord.Tool = TEXT("ReplaceBlueprintGraph");
@@ -744,7 +770,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 		return FBlueprintHelperToolResultBuilder::Failure(TEXT("replace_blueprint_graph"), TraceId, Error);
 	}
 
-	// 10. 标记修改
+	// 10. 鏍囪淇敼
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
 	if (Blueprint->GetOutermost())
 	{
@@ -752,13 +778,13 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 	}
 	Mutation.Commit();
 
-	// 11. 成功结果
+	// 11. 鎴愬姛缁撴灉
 	FBlueprintHelperToolResultBase SuccessResult = FBlueprintHelperToolResultBuilder::Applied(
 		TEXT("replace_blueprint_graph"), TraceId);
 
 	FBlueprintHelperTargetRef SuccessTarget;
 	SuccessTarget.AssetPath = Request.AssetPath;
-	SuccessTarget.TargetType = EBlueprintHelperTargetType::None; // 不输出 target_type
+	SuccessTarget.TargetType = EBlueprintHelperTargetType::None; // 涓嶈緭鍑?target_type
 	SuccessTarget.Graph = Request.GraphName;
 	SuccessResult.Target = SuccessTarget;
 
@@ -768,6 +794,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 	Data.WriteRef.TransactionId = TransactionId;
 	Data.WriteRef.bJournalRecorded = true;
 	SuccessResult.Data = Data.ToJson();
+	FBlueprintHelperGraphFragmentDebugData::AttachToData(SuccessResult.Data, PreflightResult.FragmentDebugData);
 
 	FBlueprintHelperValidationSummary Validation;
 	Validation.bShouldCompile = true;
@@ -777,12 +804,12 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 	return SuccessResult;
 }
 
-// ─── 目标解析 ───
+// 鈹€鈹€鈹€ 鐩爣瑙ｆ瀽 鈹€鈹€鈹€
 
 bool FBlueprintHelperReplaceBlueprintGraphService::ResolveReplaceTarget(
 	const FReplaceRequest& Request, UBlueprint* Blueprint, FResolvedReplaceTarget& OutTarget, FString& OutError) const
 {
-	// 查找图表
+	// 鏌ユ壘鍥捐〃
 	UEdGraph* Graph = nullptr;
 	if (Request.Scope == EBlueprintHelperReplaceScope::FunctionBody)
 	{
@@ -809,7 +836,7 @@ bool FBlueprintHelperReplaceBlueprintGraphService::ResolveReplaceTarget(
 
 	if (!Graph)
 	{
-		OutError = FString::Printf(TEXT("图表 %s 未找到。"), *Request.GraphName);
+		OutError = FString::Printf(TEXT("Graph %s was not found."), *Request.GraphName);
 		return false;
 	}
 
@@ -828,7 +855,7 @@ bool FBlueprintHelperReplaceBlueprintGraphService::ResolveReplaceTarget(
 	if (Request.Scope == EBlueprintHelperReplaceScope::FunctionBody)
 	{
 		OutTarget.TargetRef = Request.GraphName;
-		// 收集 body 节点（保留 FunctionEntry/Result）
+		// 鏀堕泦 body 鑺傜偣锛堜繚鐣?FunctionEntry/Result锛?
 		for (UEdGraphNode* Node : Graph->Nodes)
 		{
 			if (Node && !Node->IsA<UK2Node_FunctionEntry>())
@@ -844,12 +871,12 @@ bool FBlueprintHelperReplaceBlueprintGraphService::ResolveReplaceTarget(
 		return true;
 	}
 
-	// event_body / custom_event_body / graph: 回退到 block_implementation 语义
+	// event_body / custom_event_body / graph: 鍥為€€鍒?block_implementation 璇箟
 	if (Request.Scope == EBlueprintHelperReplaceScope::CustomEventBody ||
 		Request.Scope == EBlueprintHelperReplaceScope::EventBody ||
 		Request.Scope == EBlueprintHelperReplaceScope::Graph)
 	{
-		// 简化：删除所有非 entry 节点
+		// 绠€鍖栵細鍒犻櫎鎵€鏈夐潪 entry 鑺傜偣
 		OutTarget.TargetRef = Request.EntryName.IsEmpty() ? Request.GraphName : Request.EntryName;
 		for (UEdGraphNode* Node : Graph->Nodes)
 		{
@@ -881,14 +908,14 @@ bool FBlueprintHelperReplaceBlueprintGraphService::ResolveReplaceTarget(
 		return true;
 	}
 
-	OutError = TEXT("不支持的 replace_scope。");
+	OutError = TEXT("Unsupported replace_scope.");
 	return false;
 }
 
 bool FBlueprintHelperReplaceBlueprintGraphService::ResolveBlockImplementation(
 	UEdGraph* Graph, const FReplaceRequest& Request, FResolvedReplaceTarget& OutTarget, FString& OutError) const
 {
-	// 扫描图表中的 BlueprintHelper-owned 节点
+	// 鎵弿鍥捐〃涓殑 BlueprintHelper-owned 鑺傜偣
 	FString SearchBlockId = Request.BlockId;
 	if (SearchBlockId.IsEmpty() && !Request.TargetRef.IsEmpty())
 	{
@@ -915,7 +942,7 @@ bool FBlueprintHelperReplaceBlueprintGraphService::ResolveBlockImplementation(
 		OwnedNodes.Add(Node);
 		if (FoundBlockRef.IsEmpty())
 		{
-			// 从 block_id 提取 block_ref
+			// 浠?block_id 鎻愬彇 block_ref
 			const FString Prefix = Request.GraphName + TEXT("_");
 			if (NodeBlockId.StartsWith(Prefix))
 			{
@@ -928,11 +955,11 @@ bool FBlueprintHelperReplaceBlueprintGraphService::ResolveBlockImplementation(
 	{
 		if (SearchBlockId.IsEmpty())
 		{
-			OutError = TEXT("未找到任何 BlueprintHelper-owned 节点。请指定 selector.block_id 或 selector.target_ref。");
+			OutError = TEXT("No BlueprintHelper-owned node found. Provide selector.block_id or selector.target_ref.");
 		}
 		else
 		{
-			OutError = FString::Printf(TEXT("目标 block %s 未找到或不属于 BlueprintHelper。"), *SearchBlockId);
+			OutError = FString::Printf(TEXT("Target block %s was not found or is not owned by BlueprintHelper."), *SearchBlockId);
 		}
 		return false;
 	}
@@ -947,7 +974,7 @@ bool FBlueprintHelperReplaceBlueprintGraphService::ResolveBlockImplementation(
 	return true;
 }
 
-// ─── 删除旧实现 ───
+// 鈹€鈹€鈹€ 鍒犻櫎鏃у疄鐜?鈹€鈹€鈹€
 
 bool FBlueprintHelperReplaceBlueprintGraphService::DeleteOldImplementation(
 	UBlueprint* Blueprint, UEdGraph* Graph, const TArray<UEdGraphNode*>& NodesToDelete) const
@@ -985,7 +1012,7 @@ bool FBlueprintHelperReplaceBlueprintGraphService::ReconnectPreservedEntryToNewB
 
 	if (!Resolved.Graph)
 	{
-		OutError = TEXT("替换图表为空，无法重建入口执行连线。");
+		OutError = TEXT("Replacement graph is null; cannot rebuild entry exec link.");
 		return false;
 	}
 
@@ -1010,8 +1037,8 @@ bool FBlueprintHelperReplaceBlueprintGraphService::ReconnectPreservedEntryToNewB
 	if (!EntryNode)
 	{
 		OutError = Request.EntryName.IsEmpty()
-			? TEXT("未找到可重连的保留入口节点。")
-			: FString::Printf(TEXT("未找到可重连的保留入口节点：%s。"), *Request.EntryName);
+			? TEXT("No preserved entry node was found for reconnection.")
+			: FString::Printf(TEXT("No preserved entry node was found for reconnection: %s."), *Request.EntryName);
 		return false;
 	}
 
@@ -1019,7 +1046,7 @@ bool FBlueprintHelperReplaceBlueprintGraphService::ReconnectPreservedEntryToNewB
 	UEdGraphNode* FirstBodyNode = FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::FindFirstImportedExecutableBodyNode(Resolved.Graph, NodesBeforeImport);
 	if (!EntryExecOut)
 	{
-		OutError = TEXT("入口节点或替换 body 首节点缺少 Exec Pin。");
+		OutError = TEXT("Entry node or replacement body first node is missing an Exec pin.");
 		return false;
 	}
 
@@ -1057,7 +1084,7 @@ bool FBlueprintHelperReplaceBlueprintGraphService::ReconnectPreservedEntryToNewB
 	if (!Schema->TryCreateConnection(EntryExecOut, BodyExecIn) ||
 		!FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::PinsHaveSingleConnectionToEachOther(EntryExecOut, BodyExecIn))
 	{
-		OutError = FString::Printf(TEXT("无法连接入口 %s 到替换 body 首节点 %s。"),
+		OutError = FString::Printf(TEXT("Cannot connect entry %s to replacement body first node %s."),
 			*EntryNode->GetName(), *FirstBodyNode->GetName());
 		return false;
 	}
@@ -1066,9 +1093,9 @@ bool FBlueprintHelperReplaceBlueprintGraphService::ReconnectPreservedEntryToNewB
 	return true;
 }
 
-// ─── AgentImport payload 构建 ───
+// 鈹€鈹€鈹€ AgentImport payload 鏋勫缓 鈹€鈹€鈹€
 
-FString FBlueprintHelperReplaceBlueprintGraphService::BuildAgentImportPayload(
+FString FBlueprintHelperReplaceBlueprintGraphService::BuildSemanticGraphWritePayload(
 	const FReplaceRequest& Request) const
 {
 	TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
@@ -1088,20 +1115,10 @@ FString FBlueprintHelperReplaceBlueprintGraphService::BuildAgentImportPayload(
 	Options->SetBoolField(TEXT("reconstruct_existing_nodes"), false);
 	Root->SetObjectField(TEXT("options"), Options);
 
-	TArray<TSharedPtr<FJsonValue>> NodesCopy;
-	for (const TSharedPtr<FJsonValue>& Node : Request.Nodes)
+	if (Request.LogicSpec.IsValid())
 	{
-		NodesCopy.Add(Node);
+		Root->SetObjectField(TEXT("logic_spec"), Request.LogicSpec);
 	}
-	Root->SetArrayField(TEXT("nodes"), NodesCopy);
-
-	TArray<TSharedPtr<FJsonValue>> LinksCopy;
-	for (const TSharedPtr<FJsonValue>& Link : Request.Links)
-	{
-		LinksCopy.Add(Link);
-	}
-	Root->SetArrayField(TEXT("links"), LinksCopy);
-
 	FString JsonText;
 	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonText);
 	FJsonSerializer::Serialize(Root, Writer);

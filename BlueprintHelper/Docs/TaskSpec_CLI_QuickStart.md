@@ -78,7 +78,7 @@ Use the artifact paths returned by summary output for follow-up inspection. Use 
 
 ## CallFunction Notes
 
-For graph writes, `call_function.name` may be a native name, display name, or owner-qualified native name such as `/Script/Engine.KismetSystemLibrary:PrintString`. Preview resolves the function inside UE and blocks ambiguous names with `ambiguous_function_call`; repair those by using an owner-qualified native name. Explicit component/member call prefixes are not supported in the first resolver slice and are reported as `explicit_member_call_not_supported`.
+For graph writes, `call_function.name` may be a native name, display name, owner-qualified native name such as `/Script/Engine.KismetSystemLibrary:PrintString`, or an explicit component/member call such as `DoorPanel.AddAngularImpulseInDegrees` for append-owned graph writes. Preview resolves the function part inside UE and blocks ambiguous names with `ambiguous_function_call`; repair those by using an owner-qualified native name. Explicit component/member calls are still limited to append-owned graph writes until merge-owned graph target wiring lands.
 
 ## Select Fields
 

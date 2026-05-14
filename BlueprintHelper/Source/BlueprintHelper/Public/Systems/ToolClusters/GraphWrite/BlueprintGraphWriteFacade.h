@@ -1,9 +1,10 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
 
 class UEdGraph;
+class UBlueprint;
 class UFunction;
 class UK2Node;
 class UK2Node_CallFunction;
@@ -587,137 +588,21 @@ struct FBlueprintGenerateResult
 /**
  * 文本转蓝图生成器，负责解析 JSON 并在图表中生成函数节点。
  */
-class BLUEPRINTHELPER_API TextToBlueprintGenerator
+class BLUEPRINTHELPER_API FBlueprintGraphWriteFacade
 {
 public:
-	/** 查找函数名称对应的蓝图函数。 */
 	static UFunction* FindFunctionByName(const FString& FuncName);
-
-	/** Resolve a call_function query in the target graph context. */
-	static FBlueprintHelperCallFunctionResolveResult ResolveFunctionForGraph(
-		UEdGraph* TargetGraph,
-		const FString& FunctionQuery,
-		const TMap<FString, FString>& DefaultValues);
-
-	/** 根据 JSON 在目标图表中生成蓝图节点。 */
+	static FBlueprintHelperCallFunctionResolveResult ResolveFunctionForGraph(UEdGraph* TargetGraph, const FString& FunctionQuery, const TMap<FString, FString>& DefaultValues);
 	static FBlueprintGenerateResult GenerateBlueprintFromJson(UEdGraph* TargetGraph, const FString& JsonString, TArray<TSharedPtr<FUnresolvedNodeItem>>& OutUnresolvedNodes);
-
-	/** 在蓝图的多个图表中根据 JSON 生成节点（支持 graphs 数组和单图模式）。v2.1 */
 	static FBlueprintGenerateResult GenerateMultiGraphFromJson(UBlueprint* Blueprint, const FString& JsonString, TArray<TSharedPtr<FUnresolvedNodeItem>>& OutUnresolvedNodes);
-
-	/** 按名称查找蓝图中的图表（EventGraph / 函数图 / 宏图）。v2.1 */
 	static UEdGraph* FindGraphByName(UBlueprint* Blueprint, const FString& GraphName);
-
-	/** 获取所有可用于蓝图调用的函数列表。 */
 	static TArray<TSharedPtr<FEngineFunctionItem>> GetAllBlueprintFunctions();
-
-	/** 在目标图表中生成一个函数节点。 */
 	static UK2Node_CallFunction* SpawnFunctionNode(UEdGraph* TargetGraph, UFunction* TargetFunction, const FParsedNode& NodeData);
-
-	/** 在目标图表中生成一个变量读取节点。 */
 	static UK2Node* SpawnVariableGetNode(UEdGraph* TargetGraph, const FParsedNode& NodeData, FString& OutErrorMessage);
-
-	/** 在目标图表中生成一个变量写入节点。 */
 	static UK2Node* SpawnVariableSetNode(UEdGraph* TargetGraph, const FParsedNode& NodeData, FString& OutErrorMessage);
-
-	/** 在目标图表中生成一个宏节点。 */
 	static UK2Node* SpawnMacroNode(UEdGraph* TargetGraph, const FParsedNode& NodeData, FString& OutErrorMessage);
-
-	/** 为目标节点应用默认值，并返回结构化诊断。 */
-	static TArray<FBlueprintGeneratorDiagnostic> ApplyDefaultValues(
-		UK2Node* TargetNode,
-		const TMap<FString, FString>& DefaultValues,
-		const FString& NodeId = TEXT(""));
-
-	/** 确保目标函数图中存在指定本地变量。失败时填写 OutErrorMessage。 */
+	static TArray<FBlueprintGeneratorDiagnostic> ApplyDefaultValues(UK2Node* TargetNode, const TMap<FString, FString>& DefaultValues, const FString& NodeId = TEXT(""));
 	static bool EnsureLocalVariableExists(UEdGraph* TargetGraph, const FParsedLocalVariableDeclaration& Declaration, FString& OutErrorMessage);
-
-	/** 将轻量引脚类型转换为 UE 引脚类型。 */
 	static bool ConvertToEdGraphPinType(const FParsedPinType& InPinType, struct FEdGraphPinType& OutPinType, FString& OutErrorMessage);
-
-	/** 根据别名查找节点引脚。 */
 	static class UEdGraphPin* FindPinByAlias(UK2Node* TargetNode, const FString& RequestedPinName);
-
-private:
-	/** 解析 JSON 中的节点类型字段。 */
-	static EParsedBlueprintNodeType ResolveNodeType(const TSharedPtr<class FJsonObject>& NodeObject);
-
-	/** 将 Json 值转换为字符串。 */
-	static FString ConvertJsonValueToString(const TSharedPtr<class FJsonValue>& JsonValue);
-
-	/** 解析 JSON 节点中的函数名字段。 */
-	static FString ResolveNodeFunctionName(const TSharedPtr<class FJsonObject>& NodeObject);
-
-	/** 解析 JSON 中的轻量引脚类型。 */
-	static FParsedPinType ResolvePinType(const TSharedPtr<class FJsonObject>& PinTypeObject);
-
-	/** 解析 JSON 中的变量引用描述。 */
-	static FParsedVariableReference ResolveVariableReference(const TSharedPtr<class FJsonObject>& NodeObject);
-
-	/** 解析 JSON 中的宏引用描述。 */
-	static FParsedMacroReference ResolveMacroReference(const TSharedPtr<class FJsonObject>& NodeObject);
-
-	/** 解析顶层本地变量声明。 */
-	static void ResolveLocalVariableDeclarations(const TSharedPtr<class FJsonObject>& JsonObject, TArray<FParsedLocalVariableDeclaration>& OutDeclarations);
-
-	/** 从图表解析本地变量作用域结构。 */
-	static class UStruct* ResolveLocalVariableScope(UEdGraph* TargetGraph, FString& OutErrorMessage);
-
-	/** 从变量描述解析变量节点的来源结构。 */
-	static class UStruct* ResolveVariableSource(UEdGraph* TargetGraph, const FParsedVariableReference& VariableReference, FString& OutErrorMessage);
-
-	/** 查找标准宏图。 */
-	static class UEdGraph* ResolveMacroGraph(const FParsedMacroReference& MacroReference, FString& OutErrorMessage);
-
-	/** 解析 JSON 中的事件引用描述。 */
-	static FParsedEventReference ResolveEventReference(const TSharedPtr<class FJsonObject>& NodeObject);
-
-	/** 解析 JSON 中的委托引用描述。 */
-	static FParsedDelegateReference ResolveDelegateReference(const TSharedPtr<class FJsonObject>& NodeObject);
-
-	/** 解析 JSON 中的容器构造引用描述。 */
-	static FParsedContainerReference ResolveContainerReference(const TSharedPtr<class FJsonObject>& NodeObject);
-
-	/** 解析 JSON 中的结构体操作引用描述。 */
-	static FParsedStructReference ResolveStructReference(const TSharedPtr<class FJsonObject>& NodeObject);
-
-	/** 解析 JSON 中的类型转换引用描述。v2.2 */
-	static FParsedCastReference ResolveCastReference(const TSharedPtr<class FJsonObject>& NodeObject);
-
-	/** 解析 JSON 中的 SpawnActor 引用描述。v2.2 */
-	static FParsedSpawnReference ResolveSpawnReference(const TSharedPtr<class FJsonObject>& NodeObject);
-
-	/** 解析 JSON 中的 FormatText 引用描述。v2.2 */
-	static FParsedFormatTextReference ResolveFormatTextReference(const TSharedPtr<class FJsonObject>& NodeObject);
-
-	/** 解析 JSON 中的 Timeline 引用描述。v2.2 */
-	static FParsedTimelineReference ResolveTimelineReference(const TSharedPtr<class FJsonObject>& NodeObject);
-
-	/** 解析 JSON 中的 Literal 引用描述。v2.3 */
-	static FParsedLiteralReference ResolveLiteralReference(const TSharedPtr<class FJsonObject>& NodeObject);
-
-	/** 解析 JSON 中的 ComponentBoundEvent 引用描述。v2.3 */
-	static FParsedComponentBoundEventReference ResolveComponentBoundEventReference(const TSharedPtr<class FJsonObject>& NodeObject);
-
-	/** 解析 JSON 中的 Comment 引用描述。v2.3 */
-	static FParsedCommentReference ResolveCommentReference(const TSharedPtr<class FJsonObject>& NodeObject);
-
-	/** 解析 JSON 中的 Enhanced Input Action 引用描述。v2.9 */
-	static FParsedEnhancedInputActionReference ResolveEnhancedInputActionReference(const TSharedPtr<class FJsonObject>& NodeObject);
-
-	/** 解析 JSON 中的 Switch 引用描述。v2.9 */
-	static FParsedSwitchReference ResolveSwitchReference(const TSharedPtr<class FJsonObject>& NodeObject);
-
-	/** 解析 JSON 中的 Select 引用描述。v2.9 */
-	static FParsedSelectReference ResolveSelectReference(const TSharedPtr<class FJsonObject>& NodeObject);
-
-	/** 在指定图表中根据 JSON 子对象生成节点和连线（内部辅助）。v2.1 */
-	static FBlueprintGenerateResult GenerateNodesAndLinksForGraph(UEdGraph* TargetGraph, const TSharedPtr<class FJsonObject>& GraphJsonObject, TArray<TSharedPtr<FUnresolvedNodeItem>>& OutUnresolvedNodes);
-
-	/** 设置单个引脚默认值。 */
-	static bool ApplyPinDefaultValue(
-		class UEdGraphPin* TargetPin,
-		const FString& InValue,
-		FString& OutDiagnosticCode,
-		FString& OutMessage);
 };

@@ -60,6 +60,11 @@ private:
 		const FString& BundleDir,
 		FBlueprintHelperDebugBundleManifest& Manifest,
 		FString* OutError);
+	static bool ExportFragmentSummaryArtifact(
+		const FBlueprintHelperDebugCase& DebugCase,
+		const FString& BundleDir,
+		FBlueprintHelperDebugBundleManifest& Manifest,
+		FString* OutError);
 	static FString MakeSafeArtifactFileName(const FString& RawId);
 	static bool ExportReviewSummaryArtifacts(
 		const FBlueprintHelperDebugCase& DebugCase,

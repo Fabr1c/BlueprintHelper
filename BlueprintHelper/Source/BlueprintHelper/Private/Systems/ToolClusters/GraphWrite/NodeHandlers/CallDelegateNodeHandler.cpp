@@ -1,7 +1,7 @@
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/CallDelegateNodeHandler.h"
 
 #include "K2Node_CallDelegate.h"
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Engine/Blueprint.h"
 
@@ -48,6 +48,6 @@ UK2Node* FCallDelegateNodeHandler::Spawn(UEdGraph* TargetGraph, const FParsedNod
 	DelegateNode->NodePosX = static_cast<int32>(NodeData.X);
 	DelegateNode->NodePosY = static_cast<int32>(NodeData.Y);
 	DelegateNode->AllocateDefaultPins();
-	TextToBlueprintGenerator::ApplyDefaultValues(DelegateNode, NodeData.DefaultValues);
+	FBlueprintGraphWriteFacade::ApplyDefaultValues(DelegateNode, NodeData.DefaultValues);
 	return DelegateNode;
 }

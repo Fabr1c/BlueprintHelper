@@ -1,7 +1,7 @@
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/DynamicCastNodeHandler.h"
 
 #include "K2Node_DynamicCast.h"
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 #include "UObject/UObjectGlobals.h"
 
 bool FDynamicCastNodeHandler::CanHandle(EParsedBlueprintNodeType NodeType) const
@@ -44,7 +44,7 @@ UK2Node* FDynamicCastNodeHandler::Spawn(UEdGraph* TargetGraph, const FParsedNode
 	CastNode->NodePosY = static_cast<int32>(NodeData.Y);
 	CastNode->AllocateDefaultPins();
 
-	TextToBlueprintGenerator::ApplyDefaultValues(CastNode, NodeData.DefaultValues);
+	FBlueprintGraphWriteFacade::ApplyDefaultValues(CastNode, NodeData.DefaultValues);
 
 	return CastNode;
 }

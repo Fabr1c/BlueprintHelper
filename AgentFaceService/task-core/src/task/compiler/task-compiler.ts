@@ -995,6 +995,8 @@ function graphWriteTaskPlanToAppendBridgePayload(
 
   const nodes: AgentImportNode[] = [];
   const links: AgentImportLink[] = [];
+  const logicStatements: BlueprintLogicStatement[] = [];
+  let logicEntry: Record<string, unknown> | undefined;
   step.write.ops.forEach((rawOp, opIndex) => {
     if (rawOp.op !== 'ensure_entry') {
       throw new TaskSpecCompileError('unsupported_graph_write_op', `Unsupported GraphWrite op for append lowering: ${rawOp.op}`, [
@@ -1006,7 +1008,14 @@ function graphWriteTaskPlanToAppendBridgePayload(
       ]);
     }
 
-    compileEnsureEntryOpIntoAppendPayload(nodes, links, rawOp as Record<string, unknown>, `steps[0].write.ops[${opIndex}]`);
+    logicStatements.push(...compileEnsureEntryOpIntoAppendPayload(nodes, links, rawOp as Record<string, unknown>, `steps[0].write.ops[${opIndex}]`));
+    if (!logicEntry && isRecord(rawOp) && rawOp.entry_type === 'custom_event' && typeof rawOp.name === 'string') {
+      logicEntry = {
+        kind: 'custom_event',
+        name: rawOp.name,
+        id: `${toIdSegment(rawOp.name)}_entry`,
+      };
+    }
   });
 
   return {
@@ -1015,6 +1024,11 @@ function graphWriteTaskPlanToAppendBridgePayload(
       graph: step.target.graph,
     },
     ...(taskPlan.task_name ? { feature_name: taskPlan.task_name } : {}),
+    logic_spec: {
+      schema: 'BlueprintLogicSpec.v2',
+      ...(logicEntry ? { entry: logicEntry } : {}),
+      statements: logicStatements,
+    },
     nodes,
     links,
     dry_run: dryRun,
@@ -1362,14 +1376,25 @@ function compileMergeGraphWriteOps(behavior: Record<string, unknown>): GraphWrit
 
 function validateSupportedStatements(statements: BlueprintLogicStatement[], path: string): void {
   statements.forEach((statement, statementIndex) => {
-    if (statement.kind !== 'call_function' && statement.kind !== 'set_member_variable') {
-      throw new TaskSpecCompileError('unsupported_statement_kind', 'Only call_function and set_member_variable statements are supported in this GraphWrite slice.', [
+    if (!['call', 'set', 'branch', 'let', 'return', 'call_function', 'set_member_variable'].includes(statement.kind)) {
+      throw new TaskSpecCompileError('unsupported_statement_kind', 'Only call and set statements are supported in this GraphWrite slice.', [
         {
           code: 'unsupported_statement_kind',
           path: `${path}[${statementIndex}].kind`,
-          message: 'Use call_function or set_member_variable, or split this work into a later GraphWrite capability.',
+          message: 'Use call, set, branch, let, or return, or split this work into a later GraphWrite capability.',
         },
       ]);
+    }
+    if (statement.kind === 'branch') {
+      const branchStatement = statement as BlueprintLogicStatement & { then?: unknown; else?: unknown };
+      const thenStatements = Array.isArray(branchStatement.then)
+        ? (branchStatement.then as BlueprintLogicStatement[])
+        : [];
+      const elseStatements = Array.isArray(branchStatement.else)
+        ? (branchStatement.else as BlueprintLogicStatement[])
+        : [];
+      validateSupportedStatements(thenStatements, `${path}[${statementIndex}].then`);
+      validateSupportedStatements(elseStatements, `${path}[${statementIndex}].else`);
     }
   });
 }
@@ -1379,19 +1404,377 @@ function compileLogicBodyToImportPayload(
   prefix: string,
   path: string,
 ): { nodes: AgentImportNode[]; links: AgentImportLink[] } {
+  const flow = compileStatementSequence(body.statements, `${toIdSegment(prefix)}_stmt`, `${path}.statements`, makeCompileFlowContext());
+  return { nodes: flow.nodes, links: flow.links };
+}
+
+interface CompiledSymbolValue {
+  output?: string;
+  defaultValue?: unknown;
+}
+
+interface CompileFlowContext {
+  symbols: Map<string, CompiledSymbolValue>;
+}
+
+interface CompiledStatementFlow {
+  nodes: AgentImportNode[];
+  links: AgentImportLink[];
+  entry?: string;
+  exits: string[];
+  preservePreviousExits?: boolean;
+}
+
+function makeCompileFlowContext(parent?: CompileFlowContext): CompileFlowContext {
+  return {
+    symbols: new Map(parent ? parent.symbols : []),
+  };
+}
+
+function cloneLogicExpressionWithCompiledIds(expression: unknown, nodeId: string): unknown {
+  if (!isRecord(expression)) {
+    return expression;
+  }
+
+  const kind = typeof expression.kind === 'string' ? expression.kind : 'literal';
+  const out: Record<string, unknown> = { ...expression, id: nodeId };
+
+  if (kind === 'compare') {
+    out.left = cloneLogicExpressionWithCompiledIds(expression.left, `${nodeId}_left`);
+    out.right = cloneLogicExpressionWithCompiledIds(expression.right, `${nodeId}_right`);
+  } else if (kind === 'select') {
+    out.condition = cloneLogicExpressionWithCompiledIds(expression.condition, `${nodeId}_index`);
+    if (Array.isArray(expression.options)) {
+      out.options = expression.options.map((option, index) => cloneLogicExpressionWithCompiledIds(option, `${nodeId}_option_${index}`));
+    }
+  } else if (kind === 'make_struct' && isRecord(expression.args)) {
+    out.args = Object.fromEntries(
+      Object.entries(expression.args).map(([argName, argValue]) => [
+        argName,
+        cloneLogicExpressionWithCompiledIds(argValue, `${nodeId}_${toIdSegment(argName)}`),
+      ]),
+    );
+  } else if (isRecord(expression.args)) {
+    out.args = Object.fromEntries(
+      Object.entries(expression.args).map(([argName, argValue]) => [
+        argName,
+        cloneLogicExpressionWithCompiledIds(argValue, `${nodeId}_${toIdSegment(argName)}`),
+      ]),
+    );
+  }
+
+  return out;
+}
+
+function cloneLogicStatementWithCompiledIds(statement: BlueprintLogicStatement, statementId: string): BlueprintLogicStatement {
+  const out: Record<string, unknown> = { ...(statement as Record<string, unknown>), id: statementId };
+
+  if (statement.kind === 'branch') {
+    out.condition = cloneLogicExpressionWithCompiledIds((statement as Record<string, unknown>).condition, `${statementId}_condition`);
+    const thenStatements = Array.isArray((statement as Record<string, unknown>).then)
+      ? ((statement as Record<string, unknown>).then as BlueprintLogicStatement[])
+      : [];
+    const elseStatements = Array.isArray((statement as Record<string, unknown>).else)
+      ? ((statement as Record<string, unknown>).else as BlueprintLogicStatement[])
+      : [];
+    out.then = cloneLogicStatementSequenceWithCompiledIds(thenStatements, `${statementId}_then`);
+    out.else = cloneLogicStatementSequenceWithCompiledIds(elseStatements, `${statementId}_else`);
+  } else if (statement.kind === 'let') {
+    out.value = cloneLogicExpressionWithCompiledIds((statement as Record<string, unknown>).value, `${statementId}_value`);
+  } else if (statement.kind === 'set' || statement.kind === 'set_member_variable') {
+    out.value = cloneLogicExpressionWithCompiledIds((statement as Record<string, unknown>).value, `${statementId}_value`);
+  } else if ((statement.kind === 'call' || statement.kind === 'call_function') && isRecord((statement as Record<string, unknown>).args)) {
+    const args = (statement as Record<string, unknown>).args as Record<string, unknown>;
+    out.args = Object.fromEntries(
+      Object.entries(args).map(([argName, argValue]) => [
+        argName,
+        cloneLogicExpressionWithCompiledIds(argValue, `${statementId}_arg_${toIdSegment(argName)}`),
+      ]),
+    );
+  }
+
+  return out as BlueprintLogicStatement;
+}
+
+function cloneLogicStatementSequenceWithCompiledIds(statements: BlueprintLogicStatement[], idPrefix: string): BlueprintLogicStatement[] {
+  return statements.map((statement, statementIndex) => cloneLogicStatementWithCompiledIds(statement, `${idPrefix}_${statementIndex + 1}`));
+}
+
+function compileStatementSequence(
+  statements: BlueprintLogicStatement[],
+  idPrefix: string,
+  path: string,
+  context: CompileFlowContext,
+): CompiledStatementFlow {
   const nodes: AgentImportNode[] = [];
   const links: AgentImportLink[] = [];
-  let previousNodeId: string | undefined;
-  body.statements.forEach((statement, statementIndex) => {
-    const nodeId = `${toIdSegment(prefix)}_stmt_${statementIndex + 1}`;
-    const node = compileStatementNode(statement, nodeId, `${path}.statements[${statementIndex}]`);
-    nodes.push(node);
-    if (previousNodeId) {
-      links.push({ kind: 'exec', from: `${previousNodeId}.then`, to: `${nodeId}.execute` });
+  let entry: string | undefined;
+  let previousExits: string[] = [];
+
+  statements.forEach((statement, statementIndex) => {
+    const statementId = `${idPrefix}_${statementIndex + 1}`;
+    const statementPath = `${path}[${statementIndex}]`;
+    const flow = compileStatementFlow(statement, statementId, statementPath, context);
+    nodes.push(...flow.nodes);
+    links.push(...flow.links);
+    if (!entry) {
+      entry = flow.entry;
     }
-    previousNodeId = nodeId;
+    const flowEntry = flow.entry;
+    if (flowEntry) {
+      previousExits.forEach((exit) => {
+        links.push({ kind: 'exec', from: exit, to: flowEntry });
+      });
+      previousExits = flow.exits;
+    } else if (!flow.preservePreviousExits) {
+      previousExits = flow.exits;
+    }
   });
-  return { nodes, links };
+
+  return { nodes, links, entry, exits: previousExits };
+}
+
+function compileStatementFlow(statement: BlueprintLogicStatement, nodeId: string, path: string, context: CompileFlowContext): CompiledStatementFlow {
+  if (statement.kind === 'branch') {
+    return compileBranchStatementFlow(statement, nodeId, path, context);
+  }
+  if (statement.kind === 'let') {
+    const name = getRequiredString(statement, 'name', `${path}.name`);
+    const valueFlow = compileValueExpression(statement['value'], `${nodeId}_value`, `${path}.value`, context);
+    context.symbols.set(name.toLowerCase(), {
+      output: valueFlow.output,
+      defaultValue: valueFlow.defaultValue,
+    });
+    return {
+      nodes: valueFlow.nodes,
+      links: valueFlow.links,
+      exits: [],
+      preservePreviousExits: true,
+    };
+  }
+  if (statement.kind === 'return') {
+    return {
+      nodes: [],
+      links: [],
+      exits: [],
+    };
+  }
+
+  const node = compileStatementNode(statement, nodeId, path);
+  const nodes: AgentImportNode[] = [node];
+  const links: AgentImportLink[] = [];
+  if (statement.kind === 'call' || statement.kind === 'call_function') {
+    const inputValues: Record<string, unknown> = {};
+    if (isRecord(statement['args'])) {
+      for (const [argName, argValue] of Object.entries(statement['args'])) {
+        const argFlow = compileValueExpression(argValue, `${nodeId}_arg_${toIdSegment(argName)}`, `${path}.args.${argName}`, context);
+        nodes.push(...argFlow.nodes);
+        links.push(...argFlow.links);
+        if (argFlow.output) {
+          links.push({ kind: 'data', from: argFlow.output, to: `${nodeId}.${argName}` });
+        } else {
+          inputValues[argName] = argFlow.defaultValue;
+        }
+      }
+    }
+    node.inputs = inputValues;
+  }
+  if (statement.kind === 'set' || statement.kind === 'set_member_variable') {
+    const variableName = statement.kind === 'set'
+      ? getRequiredString(statement, 'target', `${path}.target`)
+      : getRequiredString(statement, 'name', `${path}.name`);
+    const valueFlow = compileValueExpression(statement['value'], `${nodeId}_value`, `${path}.value`, context);
+    nodes.push(...valueFlow.nodes);
+    links.push(...valueFlow.links);
+    if (valueFlow.output) {
+      links.push({ kind: 'data', from: valueFlow.output, to: `${nodeId}.${variableName}` });
+      delete node.value;
+    } else {
+      node.value = valueExprToString(valueFlow.defaultValue);
+    }
+  }
+  return {
+    nodes,
+    links,
+    entry: `${nodeId}.execute`,
+    exits: [`${nodeId}.then`],
+  };
+}
+
+function compileBranchStatementFlow(statement: BlueprintLogicStatement, nodeId: string, path: string, context: CompileFlowContext): CompiledStatementFlow {
+  const branchStatement = statement as BlueprintLogicStatement & {
+    condition?: unknown;
+    then?: unknown;
+    else?: unknown;
+  };
+  const branchNode: AgentImportNode = { id: nodeId, kind: 'branch' };
+  const nodes: AgentImportNode[] = [branchNode];
+  const links: AgentImportLink[] = [];
+  const conditionFlow = compileBranchCondition(branchStatement.condition, `${nodeId}_condition`, `${path}.condition`, context);
+  nodes.push(...conditionFlow.nodes);
+  links.push(...conditionFlow.links);
+  if (conditionFlow.output) {
+    links.push({ kind: 'data', from: conditionFlow.output, to: `${nodeId}.Condition` });
+  }
+  if (conditionFlow.defaultValue !== undefined) {
+    branchNode.inputs = { Condition: conditionFlow.defaultValue };
+  }
+
+  const thenStatements = Array.isArray(branchStatement.then)
+    ? (branchStatement.then as BlueprintLogicStatement[])
+    : [];
+  const elseStatements = Array.isArray(branchStatement.else)
+    ? (branchStatement.else as BlueprintLogicStatement[])
+    : [];
+  const thenFlow = compileStatementSequence(thenStatements, `${nodeId}_then`, `${path}.then`, makeCompileFlowContext(context));
+  const elseFlow = compileStatementSequence(elseStatements, `${nodeId}_else`, `${path}.else`, makeCompileFlowContext(context));
+  nodes.push(...thenFlow.nodes, ...elseFlow.nodes);
+  links.push(...thenFlow.links, ...elseFlow.links);
+
+  const exits: string[] = [];
+  if (thenFlow.entry) {
+    links.push({ kind: 'exec', from: `${nodeId}.then`, to: thenFlow.entry });
+    exits.push(...thenFlow.exits);
+  } else {
+    exits.push(`${nodeId}.then`);
+  }
+  if (elseFlow.entry) {
+    links.push({ kind: 'exec', from: `${nodeId}.else`, to: elseFlow.entry });
+    exits.push(...elseFlow.exits);
+  } else {
+    exits.push(`${nodeId}.else`);
+  }
+
+  return {
+    nodes,
+    links,
+    entry: `${nodeId}.execute`,
+    exits,
+  };
+}
+
+interface CompiledConditionFlow {
+  nodes: AgentImportNode[];
+  links: AgentImportLink[];
+  output?: string;
+  defaultValue?: unknown;
+}
+
+function compileBranchCondition(condition: unknown, nodeId: string, path: string, context: CompileFlowContext): CompiledConditionFlow {
+  return compileValueExpression(condition, nodeId, path, context);
+}
+
+function compileValueExpression(expression: unknown, nodeId: string, path: string, context: CompileFlowContext): CompiledConditionFlow {
+  if (!isRecord(expression)) {
+    return { nodes: [], links: [], defaultValue: literalValue(expression) };
+  }
+
+  const kind = typeof expression.kind === 'string' ? expression.kind : 'literal';
+  if (kind === 'literal') {
+    return { nodes: [], links: [], defaultValue: literalValue(expression) };
+  }
+
+  if (kind === 'ref') {
+    const symbolName = typeof expression.name === 'string'
+      ? expression.name
+      : typeof expression.target === 'string'
+        ? expression.target
+        : undefined;
+    if (!symbolName) {
+      throw new TaskSpecCompileError('invalid_ref_expression', 'ref expression requires name or target.', [
+        { code: 'invalid_ref_expression', path, message: 'Provide ref.name or ref.target.' },
+      ]);
+    }
+    const symbol = context.symbols.get(symbolName.toLowerCase());
+    if (!symbol) {
+      throw new TaskSpecCompileError('ref_symbol_not_found', `Temporary symbol not found: ${symbolName}.`, [
+        { code: 'ref_symbol_not_found', path, message: `Define let.name="${symbolName}" before this ref.` },
+      ]);
+    }
+    return { nodes: [], links: [], output: symbol.output, defaultValue: symbol.defaultValue };
+  }
+
+  if (kind === 'get' || kind === 'get_property') {
+    const target = typeof expression.target === 'string'
+      ? expression.target
+      : typeof expression.name === 'string'
+        ? expression.name
+        : typeof expression.var === 'string'
+          ? expression.var
+          : undefined;
+    if (!target) {
+      throw new TaskSpecCompileError('invalid_get_expression', 'get expression requires target, name, or var.', [
+        { code: 'invalid_get_expression', path, message: 'Provide get.target, get.name, or get.var.' },
+      ]);
+    }
+    const outputPin = kind === 'get_property' ? 'value' : target;
+    return {
+      nodes: [{ id: nodeId, kind, var: target, target }],
+      links: [],
+      output: `${nodeId}.${outputPin}`,
+    };
+  }
+
+  const nodes: AgentImportNode[] = [];
+  const links: AgentImportLink[] = [];
+  const node: AgentImportNode = {
+    id: nodeId,
+    kind,
+    inputs: {},
+  };
+  if (kind === 'call') {
+    node.function = getRequiredString(expression, 'target', `${path}.target`);
+  }
+  if (kind === 'compare') {
+    node.function = typeof expression.op === 'string' ? expression.op : undefined;
+    compileExpressionInput(expression['left'], 'A', `${nodeId}_left`, `${path}.left`, node, nodes, links, context);
+    compileExpressionInput(expression['right'], 'B', `${nodeId}_right`, `${path}.right`, node, nodes, links, context);
+  } else if (kind === 'select') {
+    if (Array.isArray(expression.options)) {
+      expression.options.forEach((option, index) => {
+        compileExpressionInput(option, `Option${index}`, `${nodeId}_option_${index}`, `${path}.options[${index}]`, node, nodes, links, context);
+      });
+    }
+    compileExpressionInput(expression['condition'], 'Index', `${nodeId}_index`, `${path}.condition`, node, nodes, links, context);
+  } else if (kind === 'make_struct') {
+    const structType = typeof expression.type === 'string' ? expression.type : undefined;
+    (node as Record<string, unknown>).type = structType;
+    (node as Record<string, unknown>).struct_path = structType;
+    if (isRecord(expression.args)) {
+      for (const [argName, argValue] of Object.entries(expression.args)) {
+        compileExpressionInput(argValue, argName, `${nodeId}_${toIdSegment(argName)}`, `${path}.args.${argName}`, node, nodes, links, context);
+      }
+    }
+  } else if (isRecord(expression.args)) {
+    for (const [argName, argValue] of Object.entries(expression.args)) {
+      compileExpressionInput(argValue, argName, `${nodeId}_${toIdSegment(argName)}`, `${path}.args.${argName}`, node, nodes, links, context);
+    }
+  }
+  nodes.unshift(node);
+
+  const outputPin = kind === 'make_struct' || kind === 'select' ? 'value' : 'ReturnValue';
+  return { nodes, links, output: `${nodeId}.${outputPin}` };
+}
+
+function compileExpressionInput(
+  expression: unknown,
+  pinName: string,
+  nodeId: string,
+  path: string,
+  targetNode: AgentImportNode,
+  nodes: AgentImportNode[],
+  links: AgentImportLink[],
+  context: CompileFlowContext,
+): void {
+  const valueFlow = compileValueExpression(expression, nodeId, path, context);
+  nodes.push(...valueFlow.nodes);
+  links.push(...valueFlow.links);
+  if (valueFlow.output) {
+    links.push({ kind: 'data', from: valueFlow.output, to: `${targetNode.id}.${pinName}` });
+  } else {
+    targetNode.inputs = targetNode.inputs ?? {};
+    targetNode.inputs[pinName] = valueFlow.defaultValue;
+  }
 }
 
 function defaultPatchScope(kind: string): string {
@@ -2029,8 +2412,10 @@ function omitUndefined(record: Record<string, unknown>): Record<string, unknown>
 }
 
 function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string, path: string): AgentImportNode {
-  if (statement.kind === 'call_function') {
-    const functionName = getRequiredString(statement, 'name', `${path}.name`);
+  if (statement.kind === 'call' || statement.kind === 'call_function') {
+    const functionName = statement.kind === 'call'
+      ? getRequiredString(statement, 'target', `${path}.target`)
+      : getRequiredString(statement, 'name', `${path}.name`);
     return {
       id: nodeId,
       kind: 'call',
@@ -2039,8 +2424,10 @@ function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string
     };
   }
 
-  if (statement.kind === 'set_member_variable') {
-    const variableName = getRequiredString(statement, 'name', `${path}.name`);
+  if (statement.kind === 'set' || statement.kind === 'set_member_variable') {
+    const variableName = statement.kind === 'set'
+      ? getRequiredString(statement, 'target', `${path}.target`)
+      : getRequiredString(statement, 'name', `${path}.name`);
     return {
       id: nodeId,
       kind: 'set',
@@ -2063,7 +2450,7 @@ function compileEnsureEntryOpIntoAppendPayload(
   links: AgentImportLink[],
   op: Record<string, unknown>,
   path: string,
-) {
+): BlueprintLogicStatement[] {
   const entryType = getRequiredString(op, 'entry_type', `${path}.entry_type`);
   if (entryType !== 'custom_event') {
     throw new TaskSpecCompileError('unsupported_entry_type', 'Only custom_event entries are supported in the first MCP slice.', [
@@ -2080,14 +2467,13 @@ function compileEnsureEntryOpIntoAppendPayload(
   const entryId = `${toIdSegment(entryName)}_entry`;
   nodes.push({ id: entryId, kind: 'custom_event', name: entryName });
 
-  let previousExecEndpoint = `${entryId}.then`;
-  body.statements.forEach((statement, statementIndex) => {
-    const nodeId = `${toIdSegment(entryName)}_stmt_${statementIndex + 1}`;
-    const node = compileStatementNode(statement, nodeId, `${path}.body.statements[${statementIndex}]`);
-    nodes.push(node);
-    links.push({ kind: 'exec', from: previousExecEndpoint, to: `${nodeId}.execute` });
-    previousExecEndpoint = `${nodeId}.then`;
-  });
+  const flow = compileStatementSequence(body.statements, `${toIdSegment(entryName)}_stmt`, `${path}.body.statements`, makeCompileFlowContext());
+  nodes.push(...flow.nodes);
+  links.push(...flow.links);
+  if (flow.entry) {
+    links.push({ kind: 'exec', from: `${entryId}.then`, to: flow.entry });
+  }
+  return cloneLogicStatementSequenceWithCompiledIds(body.statements, `${toIdSegment(entryName)}_stmt`);
 }
 
 function compileArgs(args: unknown): Record<string, unknown> {

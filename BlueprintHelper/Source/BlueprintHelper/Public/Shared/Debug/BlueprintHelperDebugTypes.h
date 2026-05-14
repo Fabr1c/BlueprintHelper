@@ -457,6 +457,64 @@ struct FBlueprintHelperDebugEvent
 	}
 };
 
+struct FBlueprintHelperDebugFragmentArtifactRefs
+{
+	FString FragmentDagRef;
+	FString FragmentEvidenceRef;
+	int32 FragmentCount = 0;
+	int32 EvidenceFragmentCount = 0;
+	FString FragmentSignature;
+
+	bool IsValid() const
+	{
+		return !FragmentDagRef.IsEmpty() || !FragmentEvidenceRef.IsEmpty();
+	}
+
+	TSharedRef<FJsonObject> ToJson() const
+	{
+		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+		Json->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.DebugFragmentArtifacts.v1"));
+		if (!FragmentDagRef.IsEmpty() && FPaths::IsRelative(FragmentDagRef))
+		{
+			Json->SetStringField(TEXT("fragment_dag_ref"), FragmentDagRef);
+		}
+		if (!FragmentEvidenceRef.IsEmpty() && FPaths::IsRelative(FragmentEvidenceRef))
+		{
+			Json->SetStringField(TEXT("fragment_evidence_ref"), FragmentEvidenceRef);
+		}
+		Json->SetNumberField(TEXT("fragment_count"), FragmentCount);
+		Json->SetNumberField(TEXT("evidence_fragment_count"), EvidenceFragmentCount);
+		if (!FragmentSignature.IsEmpty())
+		{
+			Json->SetStringField(TEXT("fragment_signature"), FBlueprintHelperDebugJson::RedactString(FragmentSignature));
+		}
+		return Json;
+	}
+
+	static FBlueprintHelperDebugFragmentArtifactRefs FromJson(const TSharedPtr<FJsonObject>& Json)
+	{
+		FBlueprintHelperDebugFragmentArtifactRefs Refs;
+		if (!Json.IsValid())
+		{
+			return Refs;
+		}
+
+		Json->TryGetStringField(TEXT("fragment_dag_ref"), Refs.FragmentDagRef);
+		Json->TryGetStringField(TEXT("fragment_evidence_ref"), Refs.FragmentEvidenceRef);
+		double Count = 0.0;
+		if (Json->TryGetNumberField(TEXT("fragment_count"), Count))
+		{
+			Refs.FragmentCount = static_cast<int32>(Count);
+		}
+		if (Json->TryGetNumberField(TEXT("evidence_fragment_count"), Count))
+		{
+			Refs.EvidenceFragmentCount = static_cast<int32>(Count);
+		}
+		Json->TryGetStringField(TEXT("fragment_signature"), Refs.FragmentSignature);
+		return Refs;
+	}
+};
+
 struct FBlueprintHelperDebugCase
 {
 	FString DebugCaseId;
@@ -474,6 +532,7 @@ struct FBlueprintHelperDebugCase
 	TArray<FBlueprintHelperDebugTransactionLink> TransactionLinks;
 	FBlueprintHelperDebugError Error;
 	FString RecommendedNext;
+	FBlueprintHelperDebugFragmentArtifactRefs FragmentArtifacts;
 	TArray<FBlueprintHelperDebugEvent> Events;
 
 	TSharedRef<FJsonObject> ToJson() const
@@ -503,6 +562,7 @@ struct FBlueprintHelperDebugCase
 		}
 		if (!Error.Code.IsEmpty() || !Error.Message.IsEmpty()) Json->SetObjectField(TEXT("error"), Error.ToJson());
 		if (!RecommendedNext.IsEmpty()) Json->SetStringField(TEXT("recommended_next"), RecommendedNext);
+		if (FragmentArtifacts.IsValid()) Json->SetObjectField(TEXT("fragment_artifacts"), FragmentArtifacts.ToJson());
 		if (Events.Num() > 0)
 		{
 			TArray<TSharedPtr<FJsonValue>> EventValues;
@@ -553,6 +613,11 @@ struct FBlueprintHelperDebugCase
 			DebugCase.Error = FBlueprintHelperDebugError::FromJson(*ErrorObject);
 		}
 		Json->TryGetStringField(TEXT("recommended_next"), DebugCase.RecommendedNext);
+		const TSharedPtr<FJsonObject>* FragmentArtifactsObject = nullptr;
+		if (Json->TryGetObjectField(TEXT("fragment_artifacts"), FragmentArtifactsObject))
+		{
+			DebugCase.FragmentArtifacts = FBlueprintHelperDebugFragmentArtifactRefs::FromJson(*FragmentArtifactsObject);
+		}
 		const TArray<TSharedPtr<FJsonValue>>* EventValues = nullptr;
 		if (Json->TryGetArrayField(TEXT("events"), EventValues))
 		{
@@ -585,6 +650,7 @@ struct FBlueprintHelperDebugCaseSummary
 	TArray<FBlueprintHelperDebugTransactionLink> TransactionLinks;
 	FBlueprintHelperDebugError Error;
 	FString RecommendedNext;
+	FBlueprintHelperDebugFragmentArtifactRefs FragmentArtifacts;
 	int32 EventCount = 0;
 
 	TSharedRef<FJsonObject> ToJson() const
@@ -614,6 +680,7 @@ struct FBlueprintHelperDebugCaseSummary
 		}
 		if (!Error.Code.IsEmpty() || !Error.Message.IsEmpty()) Json->SetObjectField(TEXT("error"), Error.ToJson());
 		if (!RecommendedNext.IsEmpty()) Json->SetStringField(TEXT("recommended_next"), RecommendedNext);
+		if (FragmentArtifacts.IsValid()) Json->SetObjectField(TEXT("fragment_artifacts"), FragmentArtifacts.ToJson());
 		Json->SetNumberField(TEXT("event_count"), EventCount);
 		return Json;
 	}
@@ -642,6 +709,7 @@ struct FBlueprintHelperDebugBundleManifest
 	TArray<FString> Contents;
 	TArray<FString> ReviewSummaryRefs;
 	TArray<FBlueprintHelperDebugSkippedArtifact> SkippedArtifacts;
+	FBlueprintHelperDebugFragmentArtifactRefs FragmentArtifacts;
 
 	TSharedRef<FJsonObject> ToJson() const
 	{
@@ -673,6 +741,10 @@ struct FBlueprintHelperDebugBundleManifest
 		if (SafeReviewRefs.Num() > 0)
 		{
 			Json->SetArrayField(TEXT("review_summary_refs"), SafeReviewRefs);
+		}
+		if (FragmentArtifacts.IsValid())
+		{
+			Json->SetObjectField(TEXT("fragment_artifacts"), FragmentArtifacts.ToJson());
 		}
 		if (SkippedArtifacts.Num() > 0)
 		{

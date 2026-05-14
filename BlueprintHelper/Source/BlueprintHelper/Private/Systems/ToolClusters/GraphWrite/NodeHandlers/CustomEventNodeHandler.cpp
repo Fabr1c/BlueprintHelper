@@ -1,7 +1,7 @@
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/CustomEventNodeHandler.h"
 
 #include "K2Node_CustomEvent.h"
-#include "Systems/ToolClusters/GraphWrite/TextToBlueprintGenerator.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 #include "EdGraphSchema_K2.h"
 
 bool FCustomEventNodeHandler::CanHandle(EParsedBlueprintNodeType NodeType) const
@@ -29,7 +29,7 @@ UK2Node* FCustomEventNodeHandler::Spawn(UEdGraph* TargetGraph, const FParsedNode
 	{
 		FEdGraphPinType PinType;
 		FString ConvertError;
-		if (!TextToBlueprintGenerator::ConvertToEdGraphPinType(Param.PinType, PinType, ConvertError))
+		if (!FBlueprintGraphWriteFacade::ConvertToEdGraphPinType(Param.PinType, PinType, ConvertError))
 		{
 			OutError = FString::Printf(TEXT("CustomEvent 参数 '%s' 类型转换失败：%s"), *Param.Name, *ConvertError);
 			return nullptr;
@@ -51,6 +51,6 @@ UK2Node* FCustomEventNodeHandler::Spawn(UEdGraph* TargetGraph, const FParsedNode
 		EventNode->CreateUserDefinedPin(*Param.Key, Param.Value, EGPD_Output);
 	}
 
-	TextToBlueprintGenerator::ApplyDefaultValues(EventNode, NodeData.DefaultValues);
+	FBlueprintGraphWriteFacade::ApplyDefaultValues(EventNode, NodeData.DefaultValues);
 	return EventNode;
 }

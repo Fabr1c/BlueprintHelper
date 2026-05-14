@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import re
@@ -1028,6 +1028,8 @@ def _graph_write_taskplan_to_append_bridge_payload(
 
     nodes: List[Dict[str, Any]] = []
     links: List[Dict[str, Any]] = []
+    logic_statements: List[Dict[str, Any]] = []
+    logic_entry: Optional[Dict[str, Any]] = None
     ops = _required_list(write, "ops", "steps[0].write.ops", min_length=1)
     for op_index, op in enumerate(ops):
         if not isinstance(op, dict):
@@ -1042,7 +1044,13 @@ def _graph_write_taskplan_to_append_bridge_payload(
                     "message": "Only ensure_entry lowers to append_blueprint_graph in the first MCP slice.",
                 }],
             )
-        _compile_ensure_entry_op_into_append_payload(nodes, links, op, f"steps[0].write.ops[{op_index}]")
+        logic_statements.extend(_compile_ensure_entry_op_into_append_payload(nodes, links, op, f"steps[0].write.ops[{op_index}]"))
+        if logic_entry is None and op.get("entry_type") == "custom_event" and isinstance(op.get("name"), str):
+            logic_entry = {
+                "kind": "custom_event",
+                "name": op["name"],
+                "id": f"{_to_id_segment(op['name'])}_entry",
+            }
 
     return _omit_none({
         "target": {
@@ -1050,6 +1058,11 @@ def _graph_write_taskplan_to_append_bridge_payload(
             "graph": step["target"]["graph"],
         },
         "feature_name": task_plan.get("task_name"),
+        "logic_spec": {
+            "schema": "BlueprintLogicSpec.v2",
+            **({"entry": logic_entry} if logic_entry else {}),
+            "statements": logic_statements,
+        },
         "nodes": nodes,
         "links": links,
         "dry_run": dry_run,
@@ -1431,16 +1444,21 @@ def _compile_merge_graph_write_ops(behavior: Dict[str, Any]) -> List[Dict[str, A
 
 def _validate_supported_statements(statements: List[Dict[str, Any]], path: str) -> None:
     for statement_index, statement in enumerate(statements):
-        if statement.get("kind") not in {"call_function", "set_member_variable"}:
+        if statement.get("kind") not in {"call", "set", "branch", "let", "return", "call_function", "set_member_variable"}:
             raise TaskSpecCompileError(
                 "unsupported_statement_kind",
-                "Only call_function and set_member_variable statements are supported in this GraphWrite slice.",
+                "Only call and set statements are supported in this GraphWrite slice.",
                 [{
                     "code": "unsupported_statement_kind",
                     "path": f"{path}[{statement_index}].kind",
-                    "message": "Use call_function or set_member_variable, or split this work into a later GraphWrite capability.",
+                    "message": "Use call, set, branch, let, or return, or split this work into a later GraphWrite capability.",
                 }],
             )
+        if statement.get("kind") == "branch":
+            then_statements = statement.get("then") if isinstance(statement.get("then"), list) else []
+            else_statements = statement.get("else") if isinstance(statement.get("else"), list) else []
+            _validate_supported_statements(then_statements, f"{path}[{statement_index}].then")
+            _validate_supported_statements(else_statements, f"{path}[{statement_index}].else")
 
 
 def _compile_logic_body_to_import_payload(
@@ -1448,17 +1466,280 @@ def _compile_logic_body_to_import_payload(
     prefix: str,
     path: str,
 ) -> Dict[str, List[Dict[str, Any]]]:
+    flow = _compile_statement_sequence(body["statements"], f"{_to_id_segment(prefix)}_stmt", f"{path}.statements", _make_compile_flow_context())
+    return {"nodes": flow["nodes"], "links": flow["links"]}
+
+
+def _make_compile_flow_context(parent: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    return {"symbols": dict(parent.get("symbols", {})) if isinstance(parent, dict) else {}}
+
+
+def _clone_logic_expression_with_compiled_ids(expression: Any, node_id: str) -> Any:
+    if not isinstance(expression, dict):
+        return expression
+
+    kind = expression.get("kind") if isinstance(expression.get("kind"), str) else "literal"
+    out = dict(expression)
+    out["id"] = node_id
+
+    if kind == "compare":
+        out["left"] = _clone_logic_expression_with_compiled_ids(expression.get("left"), f"{node_id}_left")
+        out["right"] = _clone_logic_expression_with_compiled_ids(expression.get("right"), f"{node_id}_right")
+    elif kind == "select":
+        out["condition"] = _clone_logic_expression_with_compiled_ids(expression.get("condition"), f"{node_id}_index")
+        options = expression.get("options")
+        if isinstance(options, list):
+            out["options"] = [
+                _clone_logic_expression_with_compiled_ids(option, f"{node_id}_option_{index}")
+                for index, option in enumerate(options)
+            ]
+    elif kind == "make_struct" and isinstance(expression.get("args"), dict):
+        out["args"] = {
+            arg_name: _clone_logic_expression_with_compiled_ids(arg_value, f"{node_id}_{_to_id_segment(str(arg_name))}")
+            for arg_name, arg_value in expression["args"].items()
+        }
+    elif isinstance(expression.get("args"), dict):
+        out["args"] = {
+            arg_name: _clone_logic_expression_with_compiled_ids(arg_value, f"{node_id}_{_to_id_segment(str(arg_name))}")
+            for arg_name, arg_value in expression["args"].items()
+        }
+
+    return out
+
+
+def _clone_logic_statement_with_compiled_ids(statement: Dict[str, Any], statement_id: str) -> Dict[str, Any]:
+    out = dict(statement)
+    out["id"] = statement_id
+    kind = statement.get("kind")
+
+    if kind == "branch":
+        out["condition"] = _clone_logic_expression_with_compiled_ids(statement.get("condition"), f"{statement_id}_condition")
+        then_statements = statement.get("then") if isinstance(statement.get("then"), list) else []
+        else_statements = statement.get("else") if isinstance(statement.get("else"), list) else []
+        out["then"] = _clone_logic_statement_sequence_with_compiled_ids(then_statements, f"{statement_id}_then")
+        out["else"] = _clone_logic_statement_sequence_with_compiled_ids(else_statements, f"{statement_id}_else")
+    elif kind == "let":
+        out["value"] = _clone_logic_expression_with_compiled_ids(statement.get("value"), f"{statement_id}_value")
+    elif kind in {"set", "set_member_variable"}:
+        out["value"] = _clone_logic_expression_with_compiled_ids(statement.get("value"), f"{statement_id}_value")
+    elif kind in {"call", "call_function"} and isinstance(statement.get("args"), dict):
+        out["args"] = {
+            arg_name: _clone_logic_expression_with_compiled_ids(arg_value, f"{statement_id}_arg_{_to_id_segment(str(arg_name))}")
+            for arg_name, arg_value in statement["args"].items()
+        }
+
+    return out
+
+
+def _clone_logic_statement_sequence_with_compiled_ids(statements: List[Dict[str, Any]], id_prefix: str) -> List[Dict[str, Any]]:
+    return [
+        _clone_logic_statement_with_compiled_ids(statement, f"{id_prefix}_{statement_index + 1}")
+        for statement_index, statement in enumerate(statements)
+        if isinstance(statement, dict)
+    ]
+
+
+def _compile_statement_sequence(statements: List[Dict[str, Any]], id_prefix: str, path: str, context: Dict[str, Any]) -> Dict[str, Any]:
     nodes: List[Dict[str, Any]] = []
     links: List[Dict[str, Any]] = []
-    previous_node_id = None
-    for statement_index, statement in enumerate(body["statements"]):
-        node_id = f"{_to_id_segment(prefix)}_stmt_{statement_index + 1}"
-        node = _compile_statement_node(statement, node_id, f"{path}.statements[{statement_index}]")
-        nodes.append(node)
-        if previous_node_id:
-            links.append({"kind": "exec", "from": f"{previous_node_id}.then", "to": f"{node_id}.execute"})
-        previous_node_id = node_id
-    return {"nodes": nodes, "links": links}
+    entry = None
+    previous_exits: List[str] = []
+
+    for statement_index, statement in enumerate(statements):
+        statement_id = f"{id_prefix}_{statement_index + 1}"
+        statement_path = f"{path}[{statement_index}]"
+        flow = _compile_statement_flow(statement, statement_id, statement_path, context)
+        nodes.extend(flow["nodes"])
+        links.extend(flow["links"])
+        if not entry:
+            entry = flow.get("entry")
+        if flow.get("entry"):
+            for exit_endpoint in previous_exits:
+                links.append({"kind": "exec", "from": exit_endpoint, "to": flow["entry"]})
+            previous_exits = flow["exits"]
+        elif not flow.get("preserve_previous_exits"):
+            previous_exits = flow["exits"]
+
+    return {"nodes": nodes, "links": links, "entry": entry, "exits": previous_exits}
+
+
+def _compile_statement_flow(statement: Dict[str, Any], node_id: str, path: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    if statement.get("kind") == "branch":
+        return _compile_branch_statement_flow(statement, node_id, path, context)
+    if statement.get("kind") == "let":
+        name = _required_string(statement, "name", f"{path}.name")
+        value_flow = _compile_value_expression(statement.get("value"), f"{node_id}_value", f"{path}.value", context)
+        context["symbols"][name.lower()] = {
+            "output": value_flow.get("output"),
+            "default_value": value_flow.get("default_value"),
+        }
+        return {"nodes": value_flow["nodes"], "links": value_flow["links"], "exits": [], "preserve_previous_exits": True}
+    if statement.get("kind") == "return":
+        return {"nodes": [], "links": [], "exits": []}
+    node = _compile_statement_node(statement, node_id, path)
+    nodes: List[Dict[str, Any]] = [node]
+    links: List[Dict[str, Any]] = []
+    if statement.get("kind") in {"call", "call_function"}:
+        input_values: Dict[str, Any] = {}
+        args = statement.get("args")
+        if isinstance(args, dict):
+            for arg_name, arg_value in args.items():
+                arg_flow = _compile_value_expression(arg_value, f"{node_id}_arg_{_to_id_segment(str(arg_name))}", f"{path}.args.{arg_name}", context)
+                nodes.extend(arg_flow["nodes"])
+                links.extend(arg_flow["links"])
+                if arg_flow.get("output"):
+                    links.append({"kind": "data", "from": arg_flow["output"], "to": f"{node_id}.{arg_name}"})
+                else:
+                    input_values[arg_name] = arg_flow.get("default_value")
+        node["inputs"] = input_values
+    if statement.get("kind") in {"set", "set_member_variable"}:
+        variable_name = _required_string(statement, "target" if statement.get("kind") == "set" else "name", f"{path}.{'target' if statement.get('kind') == 'set' else 'name'}")
+        value_flow = _compile_value_expression(statement.get("value"), f"{node_id}_value", f"{path}.value", context)
+        nodes.extend(value_flow["nodes"])
+        links.extend(value_flow["links"])
+        if value_flow.get("output"):
+            links.append({"kind": "data", "from": value_flow["output"], "to": f"{node_id}.{variable_name}"})
+            node.pop("value", None)
+        else:
+            node["value"] = _value_expr_to_string(value_flow.get("default_value"))
+    return {
+        "nodes": nodes,
+        "links": links,
+        "entry": f"{node_id}.execute",
+        "exits": [f"{node_id}.then"],
+    }
+
+
+def _compile_branch_statement_flow(statement: Dict[str, Any], node_id: str, path: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    branch_node: Dict[str, Any] = {"id": node_id, "kind": "branch"}
+    nodes: List[Dict[str, Any]] = [branch_node]
+    links: List[Dict[str, Any]] = []
+    condition_flow = _compile_branch_condition(statement.get("condition"), f"{node_id}_condition", f"{path}.condition", context)
+    nodes.extend(condition_flow["nodes"])
+    links.extend(condition_flow["links"])
+    if condition_flow.get("output"):
+        links.append({"kind": "data", "from": condition_flow["output"], "to": f"{node_id}.Condition"})
+    if "default_value" in condition_flow:
+        branch_node["inputs"] = {"Condition": condition_flow["default_value"]}
+
+    then_statements = statement.get("then") if isinstance(statement.get("then"), list) else []
+    else_statements = statement.get("else") if isinstance(statement.get("else"), list) else []
+    then_flow = _compile_statement_sequence(then_statements, f"{node_id}_then", f"{path}.then", _make_compile_flow_context(context))
+    else_flow = _compile_statement_sequence(else_statements, f"{node_id}_else", f"{path}.else", _make_compile_flow_context(context))
+    nodes.extend(then_flow["nodes"])
+    nodes.extend(else_flow["nodes"])
+    links.extend(then_flow["links"])
+    links.extend(else_flow["links"])
+
+    exits: List[str] = []
+    if then_flow.get("entry"):
+        links.append({"kind": "exec", "from": f"{node_id}.then", "to": then_flow["entry"]})
+        exits.extend(then_flow["exits"])
+    else:
+        exits.append(f"{node_id}.then")
+    if else_flow.get("entry"):
+        links.append({"kind": "exec", "from": f"{node_id}.else", "to": else_flow["entry"]})
+        exits.extend(else_flow["exits"])
+    else:
+        exits.append(f"{node_id}.else")
+
+    return {"nodes": nodes, "links": links, "entry": f"{node_id}.execute", "exits": exits}
+
+
+def _compile_branch_condition(condition: Any, node_id: str, path: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    return _compile_value_expression(condition, node_id, path, context)
+
+
+def _compile_value_expression(expression: Any, node_id: str, path: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(expression, dict):
+        return {"nodes": [], "links": [], "default_value": _literal_value(expression)}
+
+    kind = expression.get("kind") if isinstance(expression.get("kind"), str) else "literal"
+    if kind == "literal":
+        return {"nodes": [], "links": [], "default_value": _literal_value(expression)}
+
+    if kind == "ref":
+        symbol_name = expression.get("name") or expression.get("target")
+        if not isinstance(symbol_name, str) or not symbol_name.strip():
+            raise TaskSpecCompileError(
+                "invalid_ref_expression",
+                "ref expression requires name or target.",
+                [{"code": "invalid_ref_expression", "path": path, "message": "Provide ref.name or ref.target."}],
+            )
+        symbol = context.get("symbols", {}).get(symbol_name.lower())
+        if not symbol:
+            raise TaskSpecCompileError(
+                "ref_symbol_not_found",
+                f"Temporary symbol not found: {symbol_name}.",
+                [{"code": "ref_symbol_not_found", "path": path, "message": f'Define let.name="{symbol_name}" before this ref.'}],
+            )
+        return {"nodes": [], "links": [], "output": symbol.get("output"), "default_value": symbol.get("default_value")}
+
+    if kind in {"get", "get_property"}:
+        target = expression.get("target") or expression.get("name") or expression.get("var")
+        if not isinstance(target, str) or not target.strip():
+            raise TaskSpecCompileError(
+                "invalid_get_expression",
+                "get expression requires target, name, or var.",
+                [{"code": "invalid_get_expression", "path": path, "message": "Provide get.target, get.name, or get.var."}],
+            )
+        output_pin = "value" if kind == "get_property" else target
+        return {
+            "nodes": [{"id": node_id, "kind": kind, "var": target, "target": target}],
+            "links": [],
+            "output": f"{node_id}.{output_pin}",
+        }
+
+    nodes: List[Dict[str, Any]] = []
+    links: List[Dict[str, Any]] = []
+    node: Dict[str, Any] = {"id": node_id, "kind": kind, "inputs": {}}
+    if kind == "call":
+        node["function"] = _required_string(expression, "target", f"{path}.target")
+    if kind == "compare":
+        if isinstance(expression.get("op"), str):
+            node["function"] = expression["op"]
+        _compile_expression_input(expression.get("left"), "A", f"{node_id}_left", f"{path}.left", node, nodes, links, context)
+        _compile_expression_input(expression.get("right"), "B", f"{node_id}_right", f"{path}.right", node, nodes, links, context)
+    elif kind == "select":
+        options = expression.get("options")
+        if isinstance(options, list):
+            for index, option in enumerate(options):
+                _compile_expression_input(option, f"Option{index}", f"{node_id}_option_{index}", f"{path}.options[{index}]", node, nodes, links, context)
+        _compile_expression_input(expression.get("condition"), "Index", f"{node_id}_index", f"{path}.condition", node, nodes, links, context)
+    elif kind == "make_struct":
+        if isinstance(expression.get("type"), str):
+            node["type"] = expression["type"]
+            node["struct_path"] = expression["type"]
+        args = expression.get("args")
+        if isinstance(args, dict):
+            for arg_name, arg_value in args.items():
+                _compile_expression_input(arg_value, str(arg_name), f"{node_id}_{_to_id_segment(str(arg_name))}", f"{path}.args.{arg_name}", node, nodes, links, context)
+    elif isinstance(expression.get("args"), dict):
+        for arg_name, arg_value in expression["args"].items():
+            _compile_expression_input(arg_value, str(arg_name), f"{node_id}_{_to_id_segment(str(arg_name))}", f"{path}.args.{arg_name}", node, nodes, links, context)
+    nodes.insert(0, node)
+
+    output_pin = "value" if kind in {"make_struct", "select"} else "ReturnValue"
+    return {"nodes": nodes, "links": links, "output": f"{node_id}.{output_pin}"}
+
+
+def _compile_expression_input(
+    expression: Any,
+    pin_name: str,
+    node_id: str,
+    path: str,
+    target_node: Dict[str, Any],
+    nodes: List[Dict[str, Any]],
+    links: List[Dict[str, Any]],
+    context: Dict[str, Any],
+) -> None:
+    value_flow = _compile_value_expression(expression, node_id, path, context)
+    nodes.extend(value_flow["nodes"])
+    links.extend(value_flow["links"])
+    if value_flow.get("output"):
+        links.append({"kind": "data", "from": value_flow["output"], "to": f"{target_node['id']}.{pin_name}"})
+    else:
+        target_node.setdefault("inputs", {})[pin_name] = value_flow.get("default_value")
 
 
 def _default_patch_scope(kind: str) -> str:
@@ -2066,19 +2347,19 @@ def _required_non_empty_list(record: Dict[str, Any], field: str, path: str) -> L
 
 def _compile_statement_node(statement: Dict[str, Any], node_id: str, path: str) -> Dict[str, Any]:
     kind = statement.get("kind")
-    if kind == "call_function":
+    if kind in {"call", "call_function"}:
         return {
             "id": node_id,
             "kind": "call",
-            "function": _required_string(statement, "name", f"{path}.name"),
+            "function": _required_string(statement, "target" if kind == "call" else "name", f"{path}.{'target' if kind == 'call' else 'name'}"),
             "inputs": _compile_args(statement.get("args")),
         }
 
-    if kind == "set_member_variable":
+    if kind in {"set", "set_member_variable"}:
         return {
             "id": node_id,
             "kind": "set",
-            "var": _required_string(statement, "name", f"{path}.name"),
+            "var": _required_string(statement, "target" if kind == "set" else "name", f"{path}.{'target' if kind == 'set' else 'name'}"),
             "value": _value_expr_to_string(statement.get("value")),
         }
 
@@ -2098,7 +2379,7 @@ def _compile_ensure_entry_op_into_append_payload(
     links: List[Dict[str, Any]],
     op: Dict[str, Any],
     path: str,
-) -> None:
+) -> List[Dict[str, Any]]:
     entry_type = _required_string(op, "entry_type", f"{path}.entry_type")
     if entry_type != "custom_event":
         raise TaskSpecCompileError(
@@ -2116,17 +2397,12 @@ def _compile_ensure_entry_op_into_append_payload(
     entry_id = f"{_to_id_segment(entry_name)}_entry"
     nodes.append({"id": entry_id, "kind": "custom_event", "name": entry_name})
 
-    previous_exec_endpoint = f"{entry_id}.then"
-    for statement_index, statement in enumerate(body["statements"]):
-        node_id = f"{_to_id_segment(entry_name)}_stmt_{statement_index + 1}"
-        node = _compile_statement_node(
-            statement,
-            node_id,
-            f"{path}.body.statements[{statement_index}]",
-        )
-        nodes.append(node)
-        links.append({"kind": "exec", "from": previous_exec_endpoint, "to": f"{node_id}.execute"})
-        previous_exec_endpoint = f"{node_id}.then"
+    flow = _compile_statement_sequence(body["statements"], f"{_to_id_segment(entry_name)}_stmt", f"{path}.body.statements", _make_compile_flow_context())
+    nodes.extend(flow["nodes"])
+    links.extend(flow["links"])
+    if flow.get("entry"):
+        links.append({"kind": "exec", "from": f"{entry_id}.then", "to": flow["entry"]})
+    return _clone_logic_statement_sequence_with_compiled_ids(body["statements"], f"{_to_id_segment(entry_name)}_stmt")
 
 
 def _compile_args(args: Any) -> Dict[str, Any]:
@@ -2199,3 +2475,4 @@ def _omit_none_deep(value: Any) -> Any:
     if isinstance(value, list):
         return [_omit_none_deep(item) for item in value]
     return value
+
