@@ -966,14 +966,25 @@ export function taskPlanToAppendBridgePayload(taskPlan: TaskPlan, dryRun: boolea
   }
 
   const appendStep = step as AppendTaskPlanStep;
+  const appendArgs = appendStep.args as Record<string, unknown>;
+  const logicSpec = appendArgs['logic_spec'];
+  if (!isRecord(logicSpec)) {
+    throw new TaskSpecCompileError('logic_spec_required', 'append_blueprint_graph requires args.logic_spec/SemanticIR.', [
+      {
+        code: 'logic_spec_required',
+        path: 'steps[0].args.logic_spec',
+        message: 'Legacy nodes/links append payloads are disabled. Provide BlueprintLogicSpec.v2 logic_spec.',
+      },
+    ]);
+  }
+
   return {
     target: {
       asset_path: appendStep.target.asset_path,
       graph: appendStep.target.graph,
     },
     ...(appendStep.args.feature_name ? { feature_name: appendStep.args.feature_name } : {}),
-    nodes: appendStep.args.nodes,
-    links: appendStep.args.links,
+    logic_spec: logicSpec as AppendBridgePayload['logic_spec'],
     dry_run: dryRun,
   };
 }
@@ -1029,8 +1040,6 @@ function graphWriteTaskPlanToAppendBridgePayload(
       ...(logicEntry ? { entry: logicEntry } : {}),
       statements: logicStatements,
     },
-    nodes,
-    links,
     dry_run: dryRun,
   };
 }

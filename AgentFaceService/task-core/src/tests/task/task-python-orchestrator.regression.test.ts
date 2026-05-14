@@ -328,23 +328,17 @@ describePythonOrchestrator('Python task orchestrator adapter', () => {
         graph: 'EG_DoorFeature',
       },
       feature_name: 'DoorFeature',
-      nodes: [
-        { id: 'ToggleDoor_entry', kind: 'custom_event', name: 'ToggleDoor' },
-        {
-          id: 'ToggleDoor_stmt_1',
-          kind: 'call',
-          function: 'PrintString',
-          inputs: { InString: 'hello' },
-        },
-      ],
       logic_spec: {
         schema: 'BlueprintLogicSpec.v2',
+        entry: { kind: 'custom_event', name: 'ToggleDoor', id: 'ToggleDoor_entry' },
         statements: [
           {
+            id: 'ToggleDoor_stmt_1',
             kind: 'call_function',
             name: 'PrintString',
             args: {
               InString: {
+                id: 'ToggleDoor_stmt_1_arg_InString',
                 kind: 'literal',
                 value_type: 'string',
                 value: 'hello',
@@ -353,9 +347,6 @@ describePythonOrchestrator('Python task orchestrator adapter', () => {
           },
         ],
       },
-      links: [
-        { kind: 'exec', from: 'ToggleDoor_entry.then', to: 'ToggleDoor_stmt_1.execute' },
-      ],
       dry_run: true,
     });
   });

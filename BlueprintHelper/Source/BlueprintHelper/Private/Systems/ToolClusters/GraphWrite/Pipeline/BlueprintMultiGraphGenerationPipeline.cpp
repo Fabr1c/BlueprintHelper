@@ -154,27 +154,10 @@ FBlueprintGenerateResult FBlueprintMultiGraphGenerationPipeline::GenerateMultiGr
 			Result.ConnectionDiagnostics.Append(GraphResult.ConnectionDiagnostics);
 		}
 	}
-	else if (JsonObject->HasField(TEXT("nodes")))
+	else if (JsonObject->HasField(TEXT("nodes")) || JsonObject->HasField(TEXT("links")))
 	{
-		// 单图回退：使用默认 EventGraph
-		UEdGraph* DefaultGraph = FBlueprintGraphGenerationPipeline::FindGraphByName(Blueprint, TEXT("EventGraph"));
-		if (!DefaultGraph)
-		{
-			Result.Message = TEXT("蓝图中未找到 EventGraph。");
-			return Result;
-		}
-
-		FBlueprintGenerateResult GraphResult = FBlueprintGraphGenerationPipeline::GenerateNodesAndLinksForGraph(DefaultGraph, JsonObject, OutUnresolvedNodes);
-		TotalGenerated = GraphResult.GeneratedNodeCount;
-		TotalRequestedDefaultValues = GraphResult.RequestedDefaultValueCount;
-		TotalAppliedDefaultValues = GraphResult.AppliedDefaultValueCount;
-		Result.DefaultValueDiagnostics = MoveTemp(GraphResult.DefaultValueDiagnostics);
-		TotalRequestedPinTypes = GraphResult.RequestedPinTypeCount;
-		TotalResolvedPinTypes = GraphResult.ResolvedPinTypeCount;
-		Result.PinTypeDiagnostics = MoveTemp(GraphResult.PinTypeDiagnostics);
-		TotalRequestedConnections = GraphResult.RequestedConnectionCount;
-		TotalCreatedConnections = GraphResult.CreatedConnectionCount;
-		Result.ConnectionDiagnostics = MoveTemp(GraphResult.ConnectionDiagnostics);
+		Result.Message = TEXT("GraphWrite only accepts logic_spec/SemanticIR. nodes/links node creation is disabled.");
+		return Result;
 	}
 
 	Result.bSucceed = TotalGenerated > 0;

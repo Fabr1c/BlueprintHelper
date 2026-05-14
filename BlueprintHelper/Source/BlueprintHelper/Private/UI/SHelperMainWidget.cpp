@@ -372,21 +372,7 @@ void SHelperMainWidget::GenerateMappedNodeForCurrentSelection(UFunction* TargetF
 		return;
 	}
 
-	const FScopedTransaction Transaction(FText::FromString(TEXT("Map Unresolved Node")));
-	TargetGraph->Modify();
-
-	if (!FBlueprintGraphWriteFacade::SpawnFunctionNode(TargetGraph, TargetFunction, CurrentSelectedUnresolved->NodeData))
-	{
-		SetStatusMessage(TEXT("映射生成失败，请检查目标函数是否可用于蓝图调用。"));
-		return;
-	}
-
-	const FString ResolvedName = CurrentSelectedUnresolved->NodeData.FunctionName;
-	UnresolvedSource.Remove(CurrentSelectedUnresolved);
-	CurrentSelectedUnresolved.Reset();
-	RefreshUnresolvedList();
-	TargetGraph->NotifyGraphChanged();
-	SetStatusMessage(FString::Printf(TEXT("已完成未匹配节点映射：%s"), *ResolvedName));
+	SetStatusMessage(TEXT("Unresolved node mapping is disabled. GraphWrite node creation must enter through logic_spec/SemanticIR."));
 }
 
 END_SLATE_FUNCTION_BUILD_OPTIMIZATION

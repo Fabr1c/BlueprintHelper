@@ -9,6 +9,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperGraphWriteBlockScopedResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphStatementBuilder.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDebugData.h"
 #include "Shared/GraphWrite/BlueprintHelperAppendGraphTypes.h"
 
@@ -118,9 +119,20 @@ public:
 		UEdGraph* Graph,
 		const FBlueprintHelperCallFunctionCandidate& Candidate)
 	{
+		if (!Graph || !Candidate.Function.IsValid())
+		{
+			return nullptr;
+		}
+
+		FParsedNode NodeData;
+		NodeData.Id = Candidate.Function->GetName();
+		NodeData.FunctionName = Candidate.Function->GetName();
+
+		FBlueprintHelperNodeFragment Fragment;
 		FString Error;
-		UK2Node* Node = FBlueprintHelperCallFunctionResolver::SpawnResolvedNode(Graph, Candidate, FVector2D::ZeroVector, Error);
-		return Cast<UK2Node_CallFunction>(Node);
+		return FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment(Graph, NodeData, Fragment, Error)
+			? Cast<UK2Node_CallFunction>(Fragment.PrimaryNode)
+			: nullptr;
 	}
 
 	static UK2Node_CallFunction* CreateMergeCallFunctionNode(UEdGraph* Graph, UFunction* Function)
@@ -133,7 +145,11 @@ public:
 		FParsedNode NodeData;
 		NodeData.Id = Function->GetName();
 		NodeData.FunctionName = Function->GetName();
-		return FBlueprintGraphWriteFacade::SpawnFunctionNode(Graph, Function, NodeData);
+		FBlueprintHelperNodeFragment Fragment;
+		FString Error;
+		return FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment(Graph, NodeData, Fragment, Error)
+			? Cast<UK2Node_CallFunction>(Fragment.PrimaryNode)
+			: nullptr;
 	}
 
 	static void MarkMergeNodeAsBlueprintHelperOwned(UEdGraphNode* Node, const FString& BlockId)
@@ -1144,12 +1160,25 @@ bool FBlueprintHelperMergeBlueprintGraphService::ApplyBranchFork(
 		}
 	}
 
-	// Create Sequence node
-	UK2Node_ExecutionSequence* SeqNode = NewObject<UK2Node_ExecutionSequence>(Graph);
-	Graph->AddNode(SeqNode, true, false);
-	SeqNode->CreateNewGuid();
-	SeqNode->PostPlacedNewNode();
-	SeqNode->AllocateDefaultPins();
+	// Create Sequence node through the graph statement builder so GraphWrite node creation remains inside the SemanticIR fragment path.
+	FBlueprintHelperNodeFragment SequenceFragment;
+	FString SequenceError;
+	if (!FBlueprintHelperGraphStatementBuilder::BuildSequenceFragment(
+		Graph,
+		Request.AnchorBlockId + TEXT("_merge_sequence"),
+		SequenceFragment,
+		SequenceError))
+	{
+		OutError = SequenceError.IsEmpty() ? TEXT("sequence_node_create_failed") : SequenceError;
+		return false;
+	}
+
+	UK2Node_ExecutionSequence* SeqNode = Cast<UK2Node_ExecutionSequence>(SequenceFragment.PrimaryNode);
+	if (!SeqNode)
+	{
+		OutError = TEXT("sequence_node_create_failed");
+		return false;
+	}
 	FBlueprintHelperMergeBlueprintGraphServiceLocalUtils::MarkMergeNodeAsBlueprintHelperOwned(SeqNode, Request.AnchorBlockId);
 	Context.SequenceNode = SeqNode;
 

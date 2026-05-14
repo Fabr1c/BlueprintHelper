@@ -928,11 +928,10 @@ export interface AppendBridgePayload {
     graph: string;
   };
   feature_name?: string;
-  logic_spec?: {
+  logic_spec: {
     schema: 'BlueprintLogicSpec.v2';
+    entry?: Record<string, unknown>;
     statements: BlueprintLogicStatement[];
   };
-  nodes: AgentImportNode[];
-  links: AgentImportLink[];
   dry_run: boolean;
 }
