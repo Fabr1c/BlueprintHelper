@@ -2,12 +2,18 @@
 
 #include "UI/Review/SBlueprintHelperReviewPanel.h"
 
+#include "Async/Async.h"
+#include "HAL/CriticalSection.h"
 #include "HAL/PlatformApplicationMisc.h"
 #include "Misc/DateTime.h"
+#include "Misc/FileHelper.h"
 #include "Misc/PackageName.h"
+#include "Misc/Paths.h"
 #include "IDetailsView.h"
 #include "PropertyEditorDelegates.h"
 #include "PropertyPath.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
 #include "SKismetInspector.h"
 #include "Systems/Review/BlueprintHelperReviewActionService.h"
@@ -42,10 +48,63 @@ SBlueprintHelperReviewPanel::~SBlueprintHelperReviewPanel()
 	{
 		ReviewStoreService->RemovePendingReviewChangedHandler(PendingReviewChangedHandle);
 	}
+	FlushAsyncTasks();
 }
 
 namespace
 {
+static FCriticalSection GReviewPanelAsyncTaskCriticalSection;
+static TArray<TFuture<void>> GReviewPanelAsyncTasks;
+static bool bReviewPanelAsyncShutdown = false;
+
+static bool IsReviewPanelAsyncShutdownRequested()
+{
+	FScopeLock Lock(&GReviewPanelAsyncTaskCriticalSection);
+	return bReviewPanelAsyncShutdown;
+}
+
+static void TrackReviewPanelAsyncTask(TFuture<void>&& Future)
+{
+	bool bWaitImmediately = false;
+	{
+		FScopeLock Lock(&GReviewPanelAsyncTaskCriticalSection);
+		for (int32 Index = GReviewPanelAsyncTasks.Num() - 1; Index >= 0; --Index)
+		{
+			if (GReviewPanelAsyncTasks[Index].IsReady())
+			{
+				GReviewPanelAsyncTasks.RemoveAtSwap(Index, 1, EAllowShrinking::No);
+			}
+		}
+		if (bReviewPanelAsyncShutdown)
+		{
+			bWaitImmediately = true;
+		}
+		else
+		{
+			GReviewPanelAsyncTasks.Add(MoveTemp(Future));
+			return;
+		}
+	}
+	if (bWaitImmediately)
+	{
+		Future.Wait();
+	}
+}
+
+static void FlushReviewPanelAsyncTasksInternal(bool bShutdown)
+{
+	TArray<TFuture<void>> Tasks;
+	{
+		FScopeLock Lock(&GReviewPanelAsyncTaskCriticalSection);
+		bReviewPanelAsyncShutdown = bReviewPanelAsyncShutdown || bShutdown;
+		Tasks = MoveTemp(GReviewPanelAsyncTasks);
+	}
+	for (TFuture<void>& Task : Tasks)
+	{
+		Task.Wait();
+	}
+}
+
 static void AddReviewDetailsObjectCandidate(TArray<FString>& Candidates, const FString& Text)
 {
 	FString Trimmed = Text;
@@ -216,6 +275,117 @@ static FString MakeReviewPanelAssetTreeKey(const FString& AssetPath)
 
 	return AssetPath;
 }
+
+static bool ExtractReviewPanelRollbackTransactionId(const FString& RollbackDataRef, FString& OutTransactionId)
+{
+	const FString Prefix = TEXT("transaction://");
+	const FString Suffix = TEXT("/rollback_data");
+	if (!RollbackDataRef.StartsWith(Prefix) || !RollbackDataRef.EndsWith(Suffix))
+	{
+		return false;
+	}
+
+	OutTransactionId = RollbackDataRef.Mid(Prefix.Len());
+	OutTransactionId.LeftChopInline(Suffix.Len());
+	return !OutTransactionId.IsEmpty();
+}
+
+static FBlueprintHelperReviewPreparedRollbackJournal PrepareReviewPanelRollbackJournal(const FString& TransactionId)
+{
+	FBlueprintHelperReviewPreparedRollbackJournal Prepared;
+	Prepared.TransactionId = TransactionId;
+
+	const FString ActivePath = FPaths::ProjectSavedDir()
+		/ TEXT("BlueprintHelper")
+		/ TEXT("Transactions")
+		/ TEXT("Active")
+		/ FString::Printf(TEXT("%s.json"), *TransactionId);
+	const FString ReviewPath = FPaths::ProjectSavedDir()
+		/ TEXT("BlueprintHelper")
+		/ TEXT("Review")
+		/ FString::Printf(TEXT("%s.json"), *TransactionId);
+
+	FString Content;
+	if (!FFileHelper::LoadFileToString(Content, *ActivePath)
+		&& !FFileHelper::LoadFileToString(Content, *ReviewPath))
+	{
+		Prepared.Error = FString::Printf(TEXT("rollback_ref_not_found:%s"), *TransactionId);
+		return Prepared;
+	}
+
+	TSharedPtr<FJsonObject> Json;
+	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Content);
+	if (!FJsonSerializer::Deserialize(Reader, Json) || !Json.IsValid())
+	{
+		Prepared.Error = FString::Printf(TEXT("rollback_ref_parse_failed:%s"), *TransactionId);
+		return Prepared;
+	}
+
+	if (!Json->TryGetStringField(TEXT("tool"), Prepared.Tool) || Prepared.Tool.IsEmpty())
+	{
+		Prepared.Error = FString::Printf(TEXT("rollback_journal_tool_missing:%s"), *TransactionId);
+		return Prepared;
+	}
+
+	TSharedPtr<FJsonObject> RollbackData;
+	const TSharedPtr<FJsonObject>* RollbackDataObject = nullptr;
+	if (Json->TryGetObjectField(TEXT("rollback_data"), RollbackDataObject)
+		&& RollbackDataObject
+		&& RollbackDataObject->IsValid())
+	{
+		RollbackData = *RollbackDataObject;
+	}
+	else
+	{
+		FString RollbackDataString;
+		if (Json->TryGetStringField(TEXT("rollback_data"), RollbackDataString)
+			&& !RollbackDataString.IsEmpty())
+		{
+			TSharedRef<TJsonReader<>> RollbackReader = TJsonReaderFactory<>::Create(RollbackDataString);
+			FJsonSerializer::Deserialize(RollbackReader, RollbackData);
+		}
+	}
+
+	if (RollbackData.IsValid())
+	{
+		Prepared.bHasRollbackData = true;
+		RollbackData->TryGetStringField(TEXT("exported_text"), Prepared.ExportedText);
+		RollbackData->TryGetStringField(TEXT("entry_identity"), Prepared.EntryIdentity);
+		RollbackData->TryGetStringField(TEXT("replace_scope"), Prepared.ReplaceScope);
+		RollbackData->TryGetStringField(TEXT("owner_block_id"), Prepared.OwnerBlockId);
+	}
+
+	return Prepared;
+}
+
+static FBlueprintHelperReviewRejectOptions PrepareReviewPanelRejectOptions(
+	const FBlueprintHelperReviewVisibleChange& Change)
+{
+	FBlueprintHelperReviewRejectOptions Options;
+	for (const FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
+	{
+		FString TransactionId;
+		if (!Target.RollbackDataRef.IsEmpty()
+			&& ExtractReviewPanelRollbackTransactionId(Target.RollbackDataRef, TransactionId)
+			&& !Options.PreparedRollbackJournalsByTransactionId.Contains(TransactionId))
+		{
+			Options.PreparedRollbackJournalsByTransactionId.Add(
+				TransactionId,
+				PrepareReviewPanelRollbackJournal(TransactionId));
+		}
+	}
+	return Options;
+}
+}
+
+void SBlueprintHelperReviewPanel::FlushAsyncTasks()
+{
+	FlushReviewPanelAsyncTasksInternal(false);
+}
+
+void SBlueprintHelperReviewPanel::ShutdownAsyncTasks()
+{
+	FlushReviewPanelAsyncTasksInternal(true);
 }
 
 void SBlueprintHelperReviewPanel::RefreshVisibleChanges(
@@ -903,17 +1073,10 @@ FReply SBlueprintHelperReviewPanel::OnAcceptChange(FReviewChangeItem Item)
 
 	if (Result.bSucceeded)
 	{
+		const FString PreferredAssetPath = Item->AssetPath;
 		const int32 RemovedIndex = ChangeItems.IndexOfByKey(Item);
 		ChangeItems.Remove(Item);
-		if (ChangeItems.Num() > 0)
-		{
-			const int32 NextIndex = FMath::Clamp(RemovedIndex, 0, ChangeItems.Num() - 1);
-			SelectedChange = ChangeItems[NextIndex];
-		}
-		else
-		{
-			SelectedChange.Reset();
-		}
+		SelectNextChangeAfterRemoval(PreferredAssetPath, RemovedIndex);
 		RebuildChangeTreeItems();
 		RefreshChangeTreeWidget();
 		LoadReviewAssetFromSelection();
@@ -941,6 +1104,9 @@ FReply SBlueprintHelperReviewPanel::OnRejectChange(FReviewChangeItem Item)
 	{
 		return FReply::Handled();
 	}
+
+	QueueRejectChange(Item);
+	return FReply::Handled();
 
 	SelectedChange = Item;
 
@@ -1063,6 +1229,288 @@ FReply SBlueprintHelperReviewPanel::OnRejectChange(FReviewChangeItem Item)
 	return FReply::Handled();
 }
 
+void SBlueprintHelperReviewPanel::QueueRejectChange(FReviewChangeItem Item)
+{
+	if (!Item.IsValid())
+	{
+		return;
+	}
+
+	const FString ChangeId = !Item->ChangeId.IsEmpty() ? Item->ChangeId : Item->LatestTransactionId;
+	if (ChangeId.IsEmpty())
+	{
+		AddDebugMessage(TEXT("Reject queue failed reason=missing_change_id"));
+		return;
+	}
+	if (RejectActionInProgressChangeIds.Contains(ChangeId))
+	{
+		AddDebugMessage(FString::Printf(TEXT("Reject queue skipped id=%s reason=already_pending"), *ChangeId));
+		return;
+	}
+
+	RejectActionInProgressChangeIds.Add(ChangeId);
+	PendingRejectChangeIds.Add(ChangeId);
+	SelectedChange = Item;
+	Item->Status = EBlueprintHelperReviewChangeStatus::NeedsAction;
+	Item->NeedsActionReason = TEXT("reject_queued");
+	RebuildChangeTreeItems();
+	RefreshChangeTreeWidget();
+	RefreshDiffStackWidgets();
+	UpdateDetailsSelection();
+	AddDebugMessage(FString::Printf(TEXT("Reject queued id=%s"), *ChangeId));
+	RegisterActiveTimer(
+		0.03f,
+		FWidgetActiveTimerDelegate::CreateSP(this, &SBlueprintHelperReviewPanel::TickAsyncRejectPrepare));
+}
+
+EActiveTimerReturnType SBlueprintHelperReviewPanel::TickAsyncRejectPrepare(double InCurrentTime, float InDeltaTime)
+{
+	if (bAsyncRejectPrepareActive || bAsyncRejectMutationScheduled)
+	{
+		return EActiveTimerReturnType::Stop;
+	}
+
+	while (PendingRejectChangeIds.Num() > 0)
+	{
+		const FString ChangeId = PendingRejectChangeIds[0];
+		PendingRejectChangeIds.RemoveAt(0);
+		FReviewChangeItem Item = FindChangeItemById(ChangeId);
+		if (!Item.IsValid())
+		{
+			FinishAsyncReject(ChangeId);
+			continue;
+		}
+
+		ActiveRejectChangeId = ChangeId;
+		bAsyncRejectPrepareActive = true;
+		Item->Status = EBlueprintHelperReviewChangeStatus::NeedsAction;
+		Item->NeedsActionReason = TEXT("reject_preparing_rollback_journal");
+		RebuildChangeTreeItems();
+		RefreshChangeTreeWidget();
+		RefreshDiffStackWidgets();
+
+		const FBlueprintHelperReviewVisibleChange ChangeSnapshot = *Item;
+		TWeakPtr<SBlueprintHelperReviewPanel> WeakPanel =
+			StaticCastSharedRef<SBlueprintHelperReviewPanel>(AsShared());
+		TFuture<void> PrepareTask = Async(EAsyncExecution::ThreadPool, [WeakPanel, ChangeId, ChangeSnapshot]()
+		{
+			FBlueprintHelperReviewRejectOptions PreparedOptions =
+				PrepareReviewPanelRejectOptions(ChangeSnapshot);
+			if (IsReviewPanelAsyncShutdownRequested())
+			{
+				return;
+			}
+			AsyncTask(ENamedThreads::GameThread, [WeakPanel, ChangeId, PreparedOptions]()
+			{
+				if (TSharedPtr<SBlueprintHelperReviewPanel> Panel = WeakPanel.Pin())
+				{
+					Panel->HandlePreparedRejectReady(ChangeId, PreparedOptions);
+				}
+			});
+		});
+		TrackReviewPanelAsyncTask(MoveTemp(PrepareTask));
+		return EActiveTimerReturnType::Stop;
+	}
+
+	return EActiveTimerReturnType::Stop;
+}
+
+void SBlueprintHelperReviewPanel::HandlePreparedRejectReady(
+	const FString& ChangeId,
+	const FBlueprintHelperReviewRejectOptions& PreparedOptions)
+{
+	bAsyncRejectPrepareActive = false;
+	PreparedRejectOptionsByChangeId.Add(ChangeId, PreparedOptions);
+	if (FReviewChangeItem Item = FindChangeItemById(ChangeId))
+	{
+		Item->Status = EBlueprintHelperReviewChangeStatus::NeedsAction;
+		Item->NeedsActionReason = TEXT("reject_mutation_scheduled");
+		RebuildChangeTreeItems();
+		RefreshChangeTreeWidget();
+		RefreshDiffStackWidgets();
+	}
+	AddDebugMessage(FString::Printf(
+		TEXT("Reject rollback journal prepared id=%s journals=%d"),
+		*ChangeId,
+		PreparedOptions.PreparedRollbackJournalsByTransactionId.Num()));
+	bAsyncRejectMutationScheduled = true;
+	RegisterActiveTimer(
+		0.03f,
+		FWidgetActiveTimerDelegate::CreateSP(this, &SBlueprintHelperReviewPanel::TickAsyncRejectMutation));
+}
+
+EActiveTimerReturnType SBlueprintHelperReviewPanel::TickAsyncRejectMutation(double InCurrentTime, float InDeltaTime)
+{
+	bAsyncRejectMutationScheduled = false;
+	ExecutePreparedRejectMutation(ActiveRejectChangeId);
+	return EActiveTimerReturnType::Stop;
+}
+
+void SBlueprintHelperReviewPanel::ExecutePreparedRejectMutation(const FString& ChangeId)
+{
+	FReviewChangeItem Item = FindChangeItemById(ChangeId);
+	if (!Item.IsValid())
+	{
+		FinishAsyncReject(ChangeId);
+		return;
+	}
+
+	FBlueprintHelperReviewRejectOptions Options;
+	if (const FBlueprintHelperReviewRejectOptions* PreparedOptions =
+		PreparedRejectOptionsByChangeId.Find(ChangeId))
+	{
+		Options = *PreparedOptions;
+	}
+
+	SelectedChange = Item;
+	Item->Status = EBlueprintHelperReviewChangeStatus::NeedsAction;
+	Item->NeedsActionReason = TEXT("reject_mutating_single_frame");
+	RebuildChangeTreeItems();
+	RefreshChangeTreeWidget();
+	RefreshDiffStackWidgets();
+	AddDebugMessage(FString::Printf(
+		TEXT("Reject mutation started id=%s mode=single_frame_transaction preparedJournals=%d"),
+		*ChangeId,
+		Options.PreparedRollbackJournalsByTransactionId.Num()));
+
+	if (Item->bIsAssetLifecycleRoot)
+	{
+		FBlueprintHelperReviewCascadeActionResult CascadeResult;
+		if (ReviewActionService)
+		{
+			CascadeResult = ReviewActionService->RejectLifecycleRootVisibleChange(
+				*Item,
+				BuildPendingChangeSnapshot(),
+				Options);
+		}
+		else
+		{
+			CascadeResult.RootResult.bSucceeded = false;
+			CascadeResult.RootResult.TargetTransactionId = Item->LatestTransactionId;
+			CascadeResult.RootResult.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
+			CascadeResult.RootResult.RollbackMode = TEXT("archive_baseline");
+			CascadeResult.RootResult.Message = TEXT("Reject requires archive-baseline rollback service.");
+		}
+
+		if (CascadeResult.RootResult.bSucceeded)
+		{
+			const FString PreferredAssetPath = Item->AssetPath;
+			const int32 RemovedIndex = ChangeItems.IndexOfByKey(Item);
+			TSet<FString> RemovedChangeIds;
+			if (!Item->ChangeId.IsEmpty())
+			{
+				RemovedChangeIds.Add(Item->ChangeId);
+			}
+			for (const FString& RemovedChildChangeId : CascadeResult.RemovedChildChangeIds)
+			{
+				RemovedChangeIds.Add(RemovedChildChangeId);
+			}
+
+			ChangeItems.RemoveAll([&RemovedChangeIds, &Item](const FReviewChangeItem& Candidate)
+			{
+				return Candidate == Item
+					|| (Candidate.IsValid()
+						&& !Candidate->ChangeId.IsEmpty()
+						&& RemovedChangeIds.Contains(Candidate->ChangeId));
+			});
+			SelectNextChangeAfterRemoval(PreferredAssetPath, RemovedIndex);
+		}
+		else
+		{
+			Item->Status = CascadeResult.RootResult.NewStatus;
+			Item->NeedsActionReason = CascadeResult.RootResult.Message;
+		}
+
+		RebuildChangeTreeItems();
+		RefreshChangeTreeWidget();
+		LoadReviewAssetFromSelection();
+		RefreshDiffStackWidgets();
+		if (GraphEditorBox.IsValid())
+		{
+			GraphEditorBox->SetContent(BuildMainWorkspaceWidget());
+		}
+		UpdateDetailsSelection();
+		LastVisibleChangeRefreshSignature.Reset();
+		RefreshFromReviewStoreIfChanged();
+		AddDebugMessage(FString::Printf(
+			TEXT("Reject lifecycle root id=%s success=%d removedChildren=%d status=%s message=\"%s\""),
+			*Item->ChangeId,
+			CascadeResult.RootResult.bSucceeded ? 1 : 0,
+			CascadeResult.RemovedChildChangeIds.Num(),
+			BlueprintHelperReviewChangeStatusToString(CascadeResult.RootResult.NewStatus),
+			*CascadeResult.RootResult.Message));
+		FinishAsyncReject(ChangeId);
+		return;
+	}
+
+	FBlueprintHelperReviewActionResult Result;
+	if (ReviewActionService)
+	{
+		Result = ReviewActionService->RejectVisibleChange(*Item, Options);
+	}
+	else
+	{
+		Result.bSucceeded = false;
+		Result.TargetTransactionId = Item->LatestTransactionId;
+		Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
+		Result.RollbackMode = TEXT("archive_baseline");
+		Result.Message = TEXT("Reject requires archive-baseline rollback service.");
+	}
+
+	if (Result.bSucceeded)
+	{
+		const FString PreferredAssetPath = Item->AssetPath;
+		const int32 RemovedIndex = ChangeItems.IndexOfByKey(Item);
+		ChangeItems.RemoveAll([&Item](const FReviewChangeItem& Candidate)
+		{
+			return Candidate == Item;
+		});
+		SelectNextChangeAfterRemoval(PreferredAssetPath, RemovedIndex);
+	}
+	else
+	{
+		Item->Status = Result.NewStatus;
+		Item->NeedsActionReason = Result.Message;
+	}
+	RebuildChangeTreeItems();
+	RefreshChangeTreeWidget();
+	LoadReviewAssetFromSelection();
+	RefreshDiffStackWidgets();
+	if (GraphEditorBox.IsValid())
+	{
+		GraphEditorBox->SetContent(BuildMainWorkspaceWidget());
+	}
+	UpdateDetailsSelection();
+	LastVisibleChangeRefreshSignature.Reset();
+	RefreshFromReviewStoreIfChanged();
+
+	AddDebugMessage(FString::Printf(
+		TEXT("Reject change id=%s success=%d status=%s message=\"%s\""),
+		*Item->ChangeId,
+		Result.bSucceeded ? 1 : 0,
+		BlueprintHelperReviewChangeStatusToString(Result.NewStatus),
+		*Result.Message));
+	FinishAsyncReject(ChangeId);
+}
+
+void SBlueprintHelperReviewPanel::FinishAsyncReject(const FString& ChangeId)
+{
+	RejectActionInProgressChangeIds.Remove(ChangeId);
+	PreparedRejectOptionsByChangeId.Remove(ChangeId);
+	if (ActiveRejectChangeId == ChangeId)
+	{
+		ActiveRejectChangeId.Reset();
+	}
+	bAsyncRejectPrepareActive = false;
+	bAsyncRejectMutationScheduled = false;
+	if (PendingRejectChangeIds.Num() > 0)
+	{
+		RegisterActiveTimer(
+			0.03f,
+			FWidgetActiveTimerDelegate::CreateSP(this, &SBlueprintHelperReviewPanel::TickAsyncRejectPrepare));
+	}
+}
+
 
 FReply SBlueprintHelperReviewPanel::OnAcceptAll()
 {
@@ -1133,6 +1581,24 @@ FReply SBlueprintHelperReviewPanel::OnRejectAll()
 	{
 		AssetPath = SelectedChange->AssetPath;
 	}
+
+	TArray<FReviewChangeItem> ItemsToQueue;
+	for (const FReviewChangeItem& Item : ChangeItems)
+	{
+		if (Item.IsValid() && (AssetPath.IsEmpty() || Item->AssetPath == AssetPath))
+		{
+			ItemsToQueue.Add(Item);
+		}
+	}
+	for (const FReviewChangeItem& Item : ItemsToQueue)
+	{
+		QueueRejectChange(Item);
+	}
+	AddDebugMessage(FString::Printf(
+		TEXT("RejectAll queued asset=\"%s\" count=%d"),
+		*AssetPath,
+		ItemsToQueue.Num()));
+	return FReply::Handled();
 
 	FReviewChangeItem LifecycleRoot;
 	for (const FReviewChangeItem& Item : ChangeItems)

@@ -1,0 +1,13 @@
+{
+  "schema": "BlueprintHelper.ReadSpec.v1",
+  "read_type": "blueprint_logic",
+  "target": {
+    "asset_path": "__BLUEPRINT_ASSET_PATH__",
+    "target_type": "event",
+    "target_name": "__EVENT_NAME__"
+  },
+  "view": {
+    "format": "logic_md",
+    "detail": "normal"
+  }
+}

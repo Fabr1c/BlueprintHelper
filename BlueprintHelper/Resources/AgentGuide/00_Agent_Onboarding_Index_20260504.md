@@ -47,6 +47,8 @@ Read-only commands such as `bh blueprinthelper_read_context`, `bh blueprinthelpe
 
 CLI output is optimized for Agent use. Use `--omit operation,status` when the default summary is useful but envelope fields are not needed. Use `--select` / `--fields` when only a small whitelist is needed, such as `task_run_id`, `summary.target_assets`, or `artifacts.full_result`. Use `--max-bytes` as a hard budget guard; the full payload remains available through the artifact path.
 
+Template-first authoring is available at `Resources/AgentGuide/Templates/README.md`. Prefer copying a matching JSON template, editing placeholders, and calling the CLI with `--file` instead of authoring large JSON directly in shell command strings.
+
 `blueprint_open_editor` 仅用于用户明确需要启动目标 Unreal Editor 的 preflight，不属于普通写入主线。
 
 阅读顺序:
@@ -55,10 +57,11 @@ CLI output is optimized for Agent use. Use `--omit operation,status` when the de
 2. `Resources/AgentGuide/Reference/02_TaskSpec_First_Tool_Selection.md`
 3. `Resources/AgentGuide/Reference/03_Runtime_Profile_And_Diagnostics.md`
 4. `Resources/AgentGuide/Reference/04_Tool_Surface_Field_Templates_20260512.md`
-5. `Resources/AgentGuide/Workflows/04_TaskSpec_Edit_Blueprint_Workflow.md`
-6. `Resources/AgentGuide/Workflows/05_Edit_Blueprint_Workflow.md`
-7. `Resources/AgentGuide/Workflows/06_UMG_Data_Workflows.md`
-8. `Resources/AgentGuide/Workflows/07_Safety_Validation_And_Recovery.md`
+5. `Resources/AgentGuide/Templates/README.md`
+6. `Resources/AgentGuide/Workflows/04_TaskSpec_Edit_Blueprint_Workflow.md`
+7. `Resources/AgentGuide/Workflows/05_Edit_Blueprint_Workflow.md`
+8. `Resources/AgentGuide/Workflows/06_UMG_Data_Workflows.md`
+9. `Resources/AgentGuide/Workflows/07_Safety_Validation_And_Recovery.md`
 
 规则:
 

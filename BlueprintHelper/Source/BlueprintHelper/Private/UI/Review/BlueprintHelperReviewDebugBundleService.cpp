@@ -2,7 +2,9 @@
 
 #include "UI/Review/BlueprintHelperReviewDebugBundleService.h"
 
+#include "Async/Async.h"
 #include "HAL/FileManager.h"
+#include "HAL/CriticalSection.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Dom/JsonObject.h"
@@ -11,6 +13,70 @@
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
+
+namespace
+{
+static FCriticalSection GReviewPanelDebugBundleWriteCriticalSection;
+static FCriticalSection GReviewPanelDebugBundleTaskCriticalSection;
+static TArray<TFuture<void>> GReviewPanelDebugBundleWriteTasks;
+static bool bReviewPanelDebugBundleAsyncShutdown = false;
+
+static bool IsReviewPanelDebugBundleAsyncShutdownRequested()
+{
+	FScopeLock Lock(&GReviewPanelDebugBundleTaskCriticalSection);
+	return bReviewPanelDebugBundleAsyncShutdown;
+}
+
+static void TrackReviewPanelDebugBundleWriteTask(TFuture<void>&& Future)
+{
+	bool bWaitImmediately = false;
+	{
+		FScopeLock Lock(&GReviewPanelDebugBundleTaskCriticalSection);
+		for (int32 Index = GReviewPanelDebugBundleWriteTasks.Num() - 1; Index >= 0; --Index)
+		{
+			if (GReviewPanelDebugBundleWriteTasks[Index].IsReady())
+			{
+				GReviewPanelDebugBundleWriteTasks.RemoveAtSwap(Index, 1, EAllowShrinking::No);
+			}
+		}
+		if (bReviewPanelDebugBundleAsyncShutdown)
+		{
+			bWaitImmediately = true;
+		}
+		else
+		{
+			GReviewPanelDebugBundleWriteTasks.Add(MoveTemp(Future));
+			return;
+		}
+	}
+	if (bWaitImmediately)
+	{
+		Future.Wait();
+	}
+}
+
+static void FlushReviewPanelDebugBundleWriteTasksInternal(bool bShutdown)
+{
+	TArray<TFuture<void>> Tasks;
+	{
+		FScopeLock Lock(&GReviewPanelDebugBundleTaskCriticalSection);
+		bReviewPanelDebugBundleAsyncShutdown = bReviewPanelDebugBundleAsyncShutdown || bShutdown;
+		Tasks = MoveTemp(GReviewPanelDebugBundleWriteTasks);
+	}
+	for (TFuture<void>& Task : Tasks)
+	{
+		Task.Wait();
+	}
+}
+
+static FString SanitizeReviewPanelDebugBundleText(FString Text)
+{
+	Text.ReplaceInline(TEXT("\r\n"), TEXT("\\n"), ESearchCase::CaseSensitive);
+	Text.ReplaceInline(TEXT("\r"), TEXT("\\n"), ESearchCase::CaseSensitive);
+	Text.ReplaceInline(TEXT("\n"), TEXT("\\n"), ESearchCase::CaseSensitive);
+	return Text;
+}
+}
 
 FString FBlueprintHelperReviewDebugBundleService::GetDebugRootDir()
 {
@@ -125,7 +191,7 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewDebugBundleService::BuildLogEvent(
 	Event->SetStringField(TEXT("session_id"), SessionId);
 	Event->SetStringField(TEXT("created_at"), FDateTime::UtcNow().ToIso8601());
 	Event->SetStringField(TEXT("asset_path"), AssetPath);
-	Event->SetStringField(TEXT("message"), Message);
+	Event->SetStringField(TEXT("message"), SanitizeReviewPanelDebugBundleText(Message));
 	Event->SetObjectField(TEXT("selected_change"), BuildChangeSummary(SelectedChange));
 	return Event;
 }
@@ -147,7 +213,7 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewDebugBundleService::BuildFocusEven
 	Event->SetStringField(TEXT("asset_path"), AssetPath);
 	Event->SetNumberField(TEXT("index"), Index);
 	Event->SetNumberField(TEXT("count"), Count);
-	Event->SetStringField(TEXT("reason"), Reason);
+	Event->SetStringField(TEXT("reason"), SanitizeReviewPanelDebugBundleText(Reason));
 	Event->SetObjectField(TEXT("change"), BuildChangeSummary(Change));
 	return Event;
 }
@@ -250,21 +316,66 @@ bool FBlueprintHelperReviewDebugBundleService::AppendEvent(
 	const TSharedRef<FJsonObject>& Event,
 	FString* OutError)
 {
-	TSharedPtr<FJsonObject> Bundle;
-	if (!LoadOrCreateBundle(BundlePath, SessionId, Bundle, OutError) || !Bundle.IsValid())
+	const FString NormalizedPath = NormalizeBundlePath(BundlePath);
+	if (!IsPathInsideDebugRoot(NormalizedPath))
 	{
+		SetError(OutError, TEXT("debug bundle path must stay inside Saved/BlueprintHelper/Debug"));
 		return false;
 	}
 
-	TArray<TSharedPtr<FJsonValue>> Events;
-	const TArray<TSharedPtr<FJsonValue>>* ExistingEvents = nullptr;
-	if (Bundle->TryGetArrayField(TEXT("events"), ExistingEvents) && ExistingEvents)
+	const FString SessionIdCopy = SessionId;
+	TSharedRef<FJsonObject> EventCopy = Event;
+	if (IsReviewPanelDebugBundleAsyncShutdownRequested())
 	{
-		Events = *ExistingEvents;
+		SetError(OutError, TEXT("debug bundle async writer is shutting down"));
+		return false;
 	}
-	Events.Add(MakeShared<FJsonValueObject>(Event));
-	Bundle->SetArrayField(TEXT("events"), Events);
-	return SaveBundle(BundlePath, Bundle.ToSharedRef(), OutError);
+
+	TFuture<void> WriteTask = Async(EAsyncExecution::ThreadPool, [NormalizedPath, SessionIdCopy, EventCopy]()
+	{
+		if (IsReviewPanelDebugBundleAsyncShutdownRequested())
+		{
+			return;
+		}
+		FScopeLock Lock(&GReviewPanelDebugBundleWriteCriticalSection);
+		FString IgnoredError;
+		TSharedPtr<FJsonObject> Bundle;
+		if (!FBlueprintHelperReviewDebugBundleService::LoadOrCreateBundle(
+			NormalizedPath,
+			SessionIdCopy,
+			Bundle,
+			&IgnoredError) || !Bundle.IsValid())
+		{
+			return;
+		}
+
+		TArray<TSharedPtr<FJsonValue>> Events;
+		const TArray<TSharedPtr<FJsonValue>>* ExistingEvents = nullptr;
+		if (Bundle->TryGetArrayField(TEXT("events"), ExistingEvents) && ExistingEvents)
+		{
+			Events = *ExistingEvents;
+		}
+		Events.Add(MakeShared<FJsonValueObject>(EventCopy));
+		Bundle->SetArrayField(TEXT("events"), Events);
+		FBlueprintHelperReviewDebugBundleService::SaveBundle(
+			NormalizedPath,
+			Bundle.ToSharedRef(),
+			&IgnoredError);
+	});
+	TrackReviewPanelDebugBundleWriteTask(MoveTemp(WriteTask));
+
+	SetError(OutError, FString());
+	return true;
+}
+
+void FBlueprintHelperReviewDebugBundleService::FlushAsyncWrites()
+{
+	FlushReviewPanelDebugBundleWriteTasksInternal(false);
+}
+
+void FBlueprintHelperReviewDebugBundleService::ShutdownAsyncWrites()
+{
+	FlushReviewPanelDebugBundleWriteTasksInternal(true);
 }
 
 bool FBlueprintHelperReviewDebugBundleService::LoadBundleText(

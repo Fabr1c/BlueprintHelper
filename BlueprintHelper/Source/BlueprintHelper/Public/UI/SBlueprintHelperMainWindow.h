@@ -30,10 +30,13 @@ public:
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
+	static void FlushCleanupTasks();
+	static void ShutdownCleanupTasks();
 
 private:
 	FReply ShowToolsPage();
 	FReply ShowReviewPage();
+	FReply OnCleanupReviewDataClicked();
 	FSlateColor GetToolsTabColor() const;
 	FSlateColor GetReviewTabColor() const;
 
@@ -42,5 +45,7 @@ private:
 	const FBlueprintHelperReviewStoreService* ReviewStoreService = nullptr;
 	const FBlueprintHelperReviewActionService* ReviewActionService = nullptr;
 	TSharedPtr<SWidgetSwitcher> PageSwitcher;
+	FString LastCleanupStatus;
+	bool bCleanupInProgress = false;
 	int32 ActivePageIndex = 0;
 };

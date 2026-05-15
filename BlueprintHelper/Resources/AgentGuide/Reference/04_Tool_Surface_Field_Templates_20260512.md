@@ -2,6 +2,10 @@
 
 This page documents only the normal Agent-facing tool surface and TaskSpec fields. Compatibility-only transports or wrappers may still exist, but their direct argument shapes are intentionally not documented here.
 
+Concrete copy-and-edit JSON files live in `Resources/AgentGuide/Templates/`.
+Use those templates for routine CLI work; this reference explains the field
+contract behind them.
+
 ## 1. Call Shape Rules
 
 - Tool arguments use the schema root object.
@@ -54,7 +58,7 @@ Use `tools/list` as final authority. Normal Agent-facing tools:
 | `blueprint_get_runtime_profile` | `{}` |
 | `blueprinthelper_diagnostics` | `{}` |
 | `blueprinthelper_diagnostics_runtime` | `{}` |
-| `blueprinthelper_request_write_session` | `{ "reason": "...", "scope": "project", "ttl_seconds": 900, "asset_paths": ["/Game/..."] }` |
+| `blueprinthelper_request_write_session` | `{ "reason": "...", "scope": "project", "ttl_seconds": 900 }` or `{ "reason": "...", "scope": "asset_list", "ttl_seconds": 900, "asset_paths": ["/Game/..."] }` |
 | `blueprinthelper_read_agent_guide` | `{}` |
 | `blueprinthelper_read_context` | `BlueprintHelper.ReadSpec.v1` fields at root |
 | `blueprinthelper_read_task_context` | `{ "target": { "asset_path": "..." }, "feature_name": "..." }` |

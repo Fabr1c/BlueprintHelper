@@ -1,0 +1,12 @@
+{
+  "schema": "BlueprintHelper.ReadSpec.v1",
+  "read_type": "object_property_context",
+  "target": {
+    "asset_path": "__OBJECT_ASSET_PATH__",
+    "target_type": "object_property",
+    "target_name": "__PROPERTY_PATH__"
+  },
+  "view": {
+    "format": "summary"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "schema": "BlueprintHelper.ReadSpec.v1",
+  "read_type": "widget_context",
+  "target": {
+    "asset_path": "__WIDGET_BLUEPRINT_ASSET_PATH__",
+    "target_type": "blueprint"
+  },
+  "view": {
+    "format": "summary"
+  }
+}

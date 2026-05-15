@@ -615,3 +615,16 @@ A5 本轮 ReviewPanel 反馈修正：
 - 验证：AgentFaceService/task-core npm.cmd run build 通过；AgentFaceService/cli npm.cmd run build 通过。
 - 距离期望差距：当前 tool-surface 中间层已完成解耦；未发现剩余拆分阻塞。
 - 阻塞内容：无。
+## 2026-05-15 ReviewPanel DebugBundle 110409 闭环修复
+- 输入证据：D:/UEProjects/Template/Saved/BlueprintHelper/Debug/ReviewPanelBundles/review_panel_20260515_110409.json。
+- 问题1：Reject 某个 Graph 内容后节点确实删除，但最终变更仍保留记录。
+- 修复：Graph added target 在 rollback 后再次处理同组 node target 时，
+ode_not_found 视为目标已缺失并返回 rejected，使持久化 PurgeReviewTargets 能清除该 Review 记录。
+- 问题2：至少 1 个事件无法 Accept/Reject。
+- 修复：持久化 Review 匹配在 ChangeId/LocationKey/LatestTransactionId 命中但 target key 形态不一致时，回退使用记录内 candidate target keys，避免可见事件无法路由到持久化 ReviewRecord。
+- 问题3：Accept 某条后直接跳到下一个资产。
+- 修复：单条 Accept 删除后复用同资产优先选择策略，只有该资产没有 Review 事件后才跳到其他资产。
+- 附带修复：ReviewPanel DebugBundle 写入前清理 debug message/reason 中的原始换行，降低非法 JSON 风险。
+- 验证：E:/UE_5.6/Engine/Build/BatchFiles/Build.bat TemplateEditor Win64 Development D:/UEProjects/Template/Template.uproject -WaitMutex 通过。
+- 距离期望差距：需要用户在编辑器中复测实际 UI 行为；代码层编译已通过。
+- 阻塞内容：无。

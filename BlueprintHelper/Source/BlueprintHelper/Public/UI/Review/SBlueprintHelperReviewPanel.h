@@ -4,12 +4,12 @@
 
 #include "CoreMinimal.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
+#include "Systems/Review/BlueprintHelperReviewActionService.h"
 #include "UI/Review/BlueprintHelperReviewAssetContext.h"
 #include "UI/Review/BlueprintHelperReviewAssetPresenters.h"
 #include "UI/Review/BlueprintHelperReviewSurfacePresenter.h"
 #include "Widgets/SCompoundWidget.h"
 
-class FBlueprintHelperReviewActionService;
 class FBlueprintHelperReviewStoreService;
 class FJsonObject;
 class SEditableTextBox;
@@ -36,6 +36,8 @@ public:
 
 	~SBlueprintHelperReviewPanel();
 	void Construct(const FArguments& InArgs);
+	static void FlushAsyncTasks();
+	static void ShutdownAsyncTasks();
 
 #if WITH_DEV_AUTOMATION_TESTS
 	struct FReviewTreeSnapshotEntry
@@ -127,6 +129,12 @@ private:
 	FReply OnRejectChange(FReviewChangeItem Item);
 	FReply OnAcceptAll();
 	FReply OnRejectAll();
+	void QueueRejectChange(FReviewChangeItem Item);
+	EActiveTimerReturnType TickAsyncRejectPrepare(double InCurrentTime, float InDeltaTime);
+	EActiveTimerReturnType TickAsyncRejectMutation(double InCurrentTime, float InDeltaTime);
+	void HandlePreparedRejectReady(const FString& ChangeId, const FBlueprintHelperReviewRejectOptions& PreparedOptions);
+	void ExecutePreparedRejectMutation(const FString& ChangeId);
+	void FinishAsyncReject(const FString& ChangeId);
 
 	FText GetSelectedTitle() const;
 	FText GetSelectedBefore() const;
@@ -178,6 +186,12 @@ private:
 	TSharedPtr<SEditableTextBox> DebugBundlePathTextBox;
 	FString DebugBundleSessionId;
 	FString DebugBundlePath;
+	TArray<FString> PendingRejectChangeIds;
+	TSet<FString> RejectActionInProgressChangeIds;
+	TMap<FString, FBlueprintHelperReviewRejectOptions> PreparedRejectOptionsByChangeId;
+	FString ActiveRejectChangeId;
+	bool bAsyncRejectPrepareActive = false;
+	bool bAsyncRejectMutationScheduled = false;
 	TArray<FReviewChangeItem> DebugFocusTraversalItems;
 	int32 DebugFocusTraversalIndex = 0;
 	int32 DebugFocusTraversalGeometryRetryCount = 0;

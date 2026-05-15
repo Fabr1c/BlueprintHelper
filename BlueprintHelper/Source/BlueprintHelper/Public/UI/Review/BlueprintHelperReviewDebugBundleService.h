@@ -36,6 +36,8 @@ public:
 		const FString& SessionId,
 		const TSharedRef<FJsonObject>& Event,
 		FString* OutError = nullptr);
+	static void FlushAsyncWrites();
+	static void ShutdownAsyncWrites();
 
 	static bool LoadBundleText(
 		const FString& BundlePath,

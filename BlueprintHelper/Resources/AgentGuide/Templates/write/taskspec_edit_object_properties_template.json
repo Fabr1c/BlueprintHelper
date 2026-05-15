@@ -1,0 +1,28 @@
+{
+  "schema": "BlueprintHelper.TaskSpec.v1",
+  "task_type": "edit_object_properties",
+  "feature_name": "__FEATURE_NAME__",
+  "target": {
+    "asset_path": "__OBJECT_ASSET_PATH__",
+    "target_type": "asset"
+  },
+  "behavior": {
+    "property_strategy": "property_edit",
+    "changes": [
+      {
+        "kind": "set_object_property",
+        "property_path": "__PROPERTY_PATH__",
+        "value": "__VALUE__"
+      }
+    ]
+  },
+  "execution_policy": {
+    "dry_run_mode": "full",
+    "on_missing_capability": "stop_and_report",
+    "review_baseline_dirty_asset_policy": "block"
+  },
+  "validation": {
+    "should_compile": false,
+    "should_save": false
+  }
+}

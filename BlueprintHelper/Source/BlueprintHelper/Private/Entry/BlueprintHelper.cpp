@@ -51,6 +51,8 @@
 #include "Systems/ToolClusters/BlueprintVariables/OperationHandlers/RemoveMemberVariableHandler.h"
 #include "UI/SHelperMainWidget.h"
 #include "UI/SBlueprintHelperMainWindow.h"
+#include "UI/Review/BlueprintHelperReviewDebugBundleService.h"
+#include "UI/Review/SBlueprintHelperReviewPanel.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/Debug/BlueprintHelperValidationService.h"
 #include "Shared/Services/BlueprintHelperExportService.h"
@@ -230,6 +232,10 @@ void FBlueprintHelperModule::StartupModule()
 
 void FBlueprintHelperModule::ShutdownModule()
 {
+	SBlueprintHelperMainWindow::ShutdownCleanupTasks();
+	SBlueprintHelperReviewPanel::ShutdownAsyncTasks();
+	FBlueprintHelperReviewDebugBundleService::ShutdownAsyncWrites();
+
 	// ─── Bridge Layer 销。───
 	if (BridgeServer) { BridgeServer->Shutdown(); }
 	BridgeServer.Reset();
