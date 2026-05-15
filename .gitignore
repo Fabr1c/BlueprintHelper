@@ -1,0 +1,12 @@
+.claude/                         
+.codex/                          
+BlueprintHelper/Intermediate/     
+BlueprintHelper/Saved/
+BlueprintHelper/Binaries/
+__pycache__/                   
+*.pyc
+node_modules/
+ClaudePlugin/**/node_modules/
+ClaudePlugin/**/build/
+ClaudePlugin/**/Saved/
+*.7z          
