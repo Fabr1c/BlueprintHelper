@@ -728,6 +728,17 @@ public:
 		Target.GraphName = GraphName;
 		Target.TargetKey = TargetKey;
 		Target.TargetKind = TargetKind;
+		if (TargetKind == TEXT("component"))
+		{
+			Target.ComponentPath = TargetName;
+		}
+		if (TargetKind == TEXT("object_property") ||
+			TargetKind == TEXT("data_asset_property") ||
+			TargetKind == TEXT("class_default_property") ||
+			TargetKind == TEXT("umg_widget_property"))
+		{
+			Target.PropertyPath = TargetName;
+		}
 		Target.VisualGroupKey = VisualGroupKey;
 		Target.Surface = BlueprintHelperReviewNormalizeSurfaceForTarget(
 			Surface,
@@ -748,6 +759,34 @@ public:
 			*MakeTaskRuntimeReviewRefSegment(TargetKey));
 		Target.Ownership = TEXT("blueprinthelper_owned");
 		Evidence.AtomicTargets.Add(Target);
+	}
+
+	static void PopulateTaskRuntimeReviewTargetSnapshots(
+		FBlueprintHelperWriteReviewEvidence& Evidence,
+		bool bBeforeSnapshot)
+	{
+		FBlueprintHelperReviewBaselineSnapshotService SnapshotService;
+		for (FBlueprintHelperReviewAtomicTarget& Target : Evidence.AtomicTargets)
+		{
+			FString SnapshotJson;
+			FString SnapshotHash;
+			FString SnapshotError;
+			if (!SnapshotService.CaptureTargetSnapshot(Target, SnapshotJson, SnapshotHash, SnapshotError))
+			{
+				continue;
+			}
+
+			if (bBeforeSnapshot)
+			{
+				Target.BeforeSnapshotJson = SnapshotJson;
+				Target.BaselineHash = SnapshotHash;
+			}
+			else
+			{
+				Target.AfterSnapshotJson = SnapshotJson;
+				Target.RecordedAfterHash = SnapshotHash;
+			}
+		}
 	}
 
 	static void AddTaskRuntimeReviewTargetsFromStringArray(
@@ -5268,6 +5307,24 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 				FString::Printf(TEXT("task_plan.steps[%d]"), StepIndex)));
 		}
 
+		FBlueprintHelperWriteReviewEvidence PreStepReviewEvidence;
+		bool bHasPreStepReviewEvidence = false;
+		if (!bDryRun)
+		{
+			bHasPreStepReviewEvidence = FBlueprintHelperTaskRuntimeServiceLocalUtils::TryBuildTaskRuntimeReviewEvidence(
+				LoweredStep,
+				ArchiveSessionId,
+				TaskRunId,
+				StepIndex,
+				PreStepReviewEvidence);
+			if (bHasPreStepReviewEvidence)
+			{
+				FBlueprintHelperTaskRuntimeServiceLocalUtils::PopulateTaskRuntimeReviewTargetSnapshots(
+					PreStepReviewEvidence,
+					true);
+			}
+		}
+
 		FBlueprintHelperToolResultBase StepResult = ExecuteLoweredStep(LoweredStep);
 		if (bDryRun && FBlueprintHelperTaskRuntimeServiceLocalUtils::IsPlannedComponentPropertyDryRun(LoweredStep, StepResult, DryRunPlannedComponentKeys))
 		{
@@ -5284,15 +5341,19 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		StepRecords.Add({LoweredStep, StepResult});
 		if (!bDryRun && StepResult.bOk)
 		{
-			FBlueprintHelperWriteReviewEvidence RuntimeEvidence;
-			if (ClusterHub->BuildReviewEvidence(
+			FBlueprintHelperWriteReviewEvidence RuntimeEvidence = PreStepReviewEvidence;
+			const bool bHasReviewEvidence = bHasPreStepReviewEvidence || ClusterHub->BuildReviewEvidence(
 				LoweredStep,
 				StepResult,
 				ArchiveSessionId,
 				TaskRunId,
 				StepIndex,
-				RuntimeEvidence))
+				RuntimeEvidence);
+			if (bHasReviewEvidence)
 			{
+				FBlueprintHelperTaskRuntimeServiceLocalUtils::PopulateTaskRuntimeReviewTargetSnapshots(
+					RuntimeEvidence,
+					false);
 				FBlueprintHelperReviewStoreService ReviewStore;
 				TArray<FBlueprintHelperWriteReviewEvidence> RuntimeEvidences;
 				RuntimeEvidences.Add(RuntimeEvidence);

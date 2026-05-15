@@ -68,6 +68,12 @@ const ReviewRecordQueryInputSchema = z.object({
   pending_only: z.boolean().optional(),
 });
 
+const ReviewActionInputSchema = z.object({
+  review_record_id: z.string().min(1),
+  action: z.enum(['accept', 'reject']),
+  target_keys: z.array(z.string().min(1)).optional(),
+});
+
 const CloseEditorInputSchema = z.object({
   save_all: z.boolean().optional(),
   wait_timeout_ms: z.number().optional(),
@@ -80,6 +86,7 @@ export const bridgeCommandByToolName: Record<string, string> = {
   blueprinthelper_list_debug_cases: 'list_debug_cases',
   blueprinthelper_export_debug_bundle: 'export_debug_bundle',
   blueprinthelper_query_review_records: 'query_review_records',
+  blueprinthelper_apply_review_action: 'apply_review_action',
   blueprint_get_runtime_profile: 'get_runtime_profile',
   blueprinthelper_request_write_session: 'request_write_session',
   blueprinthelper_diagnostics_runtime: 'diagnostics_runtime',
@@ -139,6 +146,7 @@ export const bridgeToolSchemas: Record<string, z.ZodTypeAny> = {
   blueprinthelper_list_debug_cases: DebugCaseListInputSchema,
   blueprinthelper_export_debug_bundle: DebugCaseInputSchema,
   blueprinthelper_query_review_records: ReviewRecordQueryInputSchema,
+  blueprinthelper_apply_review_action: ReviewActionInputSchema,
   blueprint_close_editor: CloseEditorInputSchema,
 };
 

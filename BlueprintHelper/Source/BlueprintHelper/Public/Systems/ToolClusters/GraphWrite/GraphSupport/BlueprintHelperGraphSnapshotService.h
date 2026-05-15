@@ -27,6 +27,8 @@ struct FBlueprintHelperGraphSnapshot
 	TArray<FString> OwnershipMetadata;
 	FString OwnerBlockId;
 	FString EntryIdentity;
+	FString ReplaceScope;
+	FString ExportedText;
 
 	bool IsEmpty() const { return NodeGuids.Num() == 0 && PinSummaries.Num() == 0 && LinkSummaries.Num() == 0; }
 
@@ -36,6 +38,8 @@ struct FBlueprintHelperGraphSnapshot
 		Json->SetStringField(TEXT("graph_name"), GraphName);
 		if (!OwnerBlockId.IsEmpty()) Json->SetStringField(TEXT("owner_block_id"), OwnerBlockId);
 		if (!EntryIdentity.IsEmpty()) Json->SetStringField(TEXT("entry_identity"), EntryIdentity);
+		if (!ReplaceScope.IsEmpty()) Json->SetStringField(TEXT("replace_scope"), ReplaceScope);
+		if (!ExportedText.IsEmpty()) Json->SetStringField(TEXT("exported_text"), ExportedText);
 
 		auto StringArray = [](const TCHAR* Key, const TArray<FString>& Arr, TSharedRef<FJsonObject> J)
 		{

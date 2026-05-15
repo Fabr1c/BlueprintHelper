@@ -28,7 +28,8 @@ public:
 		int32 Index,
 		int32 Count,
 		const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Change,
-		const FString& AssetPath);
+		const FString& AssetPath,
+		const FString& Reason = FString());
 
 	static bool AppendEvent(
 		const FString& BundlePath,
@@ -39,6 +40,11 @@ public:
 	static bool LoadBundleText(
 		const FString& BundlePath,
 		FString& OutText,
+		FString* OutError = nullptr);
+
+	static bool LoadBundleSummaryText(
+		const FString& BundlePath,
+		FString& OutSummaryText,
 		FString* OutError = nullptr);
 
 private:

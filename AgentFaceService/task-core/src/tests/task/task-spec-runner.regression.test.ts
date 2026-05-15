@@ -14,6 +14,7 @@ test('executeTask propagates modified state from Bridge execution result', async
       dry_run_mode: 'full',
       should_compile: true,
       should_save: false,
+      review_baseline_dirty_asset_policy: 'block',
     },
     steps: [
       {

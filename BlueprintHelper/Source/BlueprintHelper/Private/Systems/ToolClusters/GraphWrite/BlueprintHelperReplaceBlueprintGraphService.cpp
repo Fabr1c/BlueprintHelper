@@ -7,6 +7,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphSnapshotService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
+#include "Systems/Review/BlueprintHelperReviewHashService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDebugData.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphGenerationPipeline.h"
@@ -621,8 +622,25 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 	}
 
 	// 4. 鎹曡幏 before snapshot
-	const FBlueprintHelperGraphSnapshot BeforeSnapshot = SnapshotService.CaptureNodeSnapshot(
+	FBlueprintHelperGraphSnapshot BeforeSnapshot = SnapshotService.CaptureNodeSnapshot(
 		Resolved.Graph, Resolved.NodesToDelete);
+	BeforeSnapshot.OwnerBlockId = Resolved.OriginalBlockId;
+	BeforeSnapshot.EntryIdentity = Request.EntryName.IsEmpty() ? Resolved.TargetRef : Request.EntryName;
+	BeforeSnapshot.ReplaceScope = ReplaceScopeToString(Request.Scope);
+	const FString ReviewBlockTargetKey = !Resolved.OriginalBlockId.IsEmpty()
+		? FString::Printf(TEXT("graph:%s:block:%s"), *Request.GraphName, *Resolved.OriginalBlockId)
+		: FString();
+	FString BeforeBlockHash;
+	if (!ReviewBlockTargetKey.IsEmpty())
+	{
+		FBlueprintHelperReviewAtomicTarget BeforeBlockTarget;
+		BeforeBlockTarget.AssetPath = Request.AssetPath;
+		BeforeBlockTarget.GraphName = Request.GraphName;
+		BeforeBlockTarget.TargetKind = TEXT("graph_block");
+		BeforeBlockTarget.TargetKey = ReviewBlockTargetKey;
+		FString HashError;
+		FBlueprintHelperReviewHashService::ComputeAtomicTargetHash(BeforeBlockTarget, BeforeBlockHash, HashError);
+	}
 
 	// 5. 寮€濮嬩慨鏀?
 	FBlueprintHelperScopedAssetMutation Mutation(
@@ -740,6 +758,21 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 	{
 		JournalRecord.BlockIds.Add(Resolved.OriginalBlockId);
 	}
+	if (!ReviewBlockTargetKey.IsEmpty() && !BeforeBlockHash.IsEmpty())
+	{
+		FBlueprintHelperReviewAtomicTarget AfterBlockTarget;
+		AfterBlockTarget.AssetPath = Request.AssetPath;
+		AfterBlockTarget.GraphName = Request.GraphName;
+		AfterBlockTarget.TargetKind = TEXT("graph_block");
+		AfterBlockTarget.TargetKey = ReviewBlockTargetKey;
+		FString AfterBlockHash;
+		FString HashError;
+		if (FBlueprintHelperReviewHashService::ComputeAtomicTargetHash(AfterBlockTarget, AfterBlockHash, HashError))
+		{
+			JournalRecord.BaselineHashesByTargetKey.Add(ReviewBlockTargetKey, BeforeBlockHash);
+			JournalRecord.RecordedAfterHashesByTargetKey.Add(ReviewBlockTargetKey, AfterBlockHash);
+		}
+	}
 	for (UEdGraphNode* Node : NewNodes)
 	{
 		if (!Node)
@@ -753,6 +786,27 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 		}
 		JournalRecord.CreatedNodeAnchors.Add(
 			FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::MakeReviewNodeAnchor(Node));
+		if (Node->NodeGuid.IsValid())
+		{
+			const FString NodeGuid = Node->NodeGuid.ToString(EGuidFormats::Digits);
+			const FString NodeTargetKey = FString::Printf(
+				TEXT("graph:%s:node:%s"),
+				*Request.GraphName,
+				*NodeGuid);
+			FBlueprintHelperReviewAtomicTarget NodeTarget;
+			NodeTarget.AssetPath = Request.AssetPath;
+			NodeTarget.GraphName = Request.GraphName;
+			NodeTarget.TargetKind = TEXT("graph_node");
+			NodeTarget.TargetKey = NodeTargetKey;
+			NodeTarget.NodeGuid = NodeGuid;
+			FString NodeAfterHash;
+			FString HashError;
+			if (FBlueprintHelperReviewHashService::ComputeAtomicTargetHash(NodeTarget, NodeAfterHash, HashError))
+			{
+				JournalRecord.BaselineHashesByTargetKey.Add(NodeTargetKey, NodeAfterHash);
+				JournalRecord.RecordedAfterHashesByTargetKey.Add(NodeTargetKey, NodeAfterHash);
+			}
+		}
 	}
 	JournalRecord.RollbackData = BeforeSnapshot.ToJsonString();
 

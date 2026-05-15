@@ -149,6 +149,7 @@ private:
 	// ─── CompileBlueprintAsset ───
 	FBlueprintHelperBridgeResponse HandleCompileBlueprintAsset(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleQueryReviewRecords(const FBlueprintHelperBridgeRequest& Req) const;
+	FBlueprintHelperBridgeResponse HandleApplyReviewAction(const FBlueprintHelperBridgeRequest& Req) const;
 
 	// ─── Transaction Query ───
 	FBlueprintHelperBridgeResponse HandleListTransactions(const FBlueprintHelperBridgeRequest& Req) const;

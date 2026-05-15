@@ -24,7 +24,7 @@ private:
 	static UEdGraph* FindGraph(UBlueprint* Blueprint, const FString& GraphName);
 	static UEdGraphNode* FindNodeByName(UEdGraph* Graph, const FString& NodeName);
 	static FString ExtractAnchorName(const FString& TargetKey, const FString& Prefix);
-	static FString ComputeNodeHash(UEdGraphNode* Node);
+	static FString ComputeNodeHash(UEdGraphNode* Node, bool bUseStableSemanticIdentity = false);
 	static bool ComputeGraphNodeHash(
 		UBlueprint* Blueprint,
 		const FBlueprintHelperReviewAtomicTarget& Target,

@@ -172,7 +172,8 @@ FBlueprintHelperBridgeRoutePlan FBlueprintHelperBridgeRoutePlanner::BuildPlan(co
 		return FBlueprintHelperBridgeRoutePlannerLocalUtils::MakePlan(Command, EBlueprintHelperBridgeRouteCluster::CleanupOwnership);
 	}
 
-	if (Command == TEXT("query_review_records"))
+	if (Command == TEXT("query_review_records") ||
+		Command == TEXT("apply_review_action"))
 	{
 		return FBlueprintHelperBridgeRoutePlannerLocalUtils::MakePlan(Command, EBlueprintHelperBridgeRouteCluster::Review);
 	}

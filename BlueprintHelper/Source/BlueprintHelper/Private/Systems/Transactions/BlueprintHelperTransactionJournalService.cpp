@@ -190,7 +190,9 @@ public:
 		bool bHasGraphBounds = false,
 		FVector2D GraphPosition = FVector2D::ZeroVector,
 		FVector2D GraphSize = FVector2D(360.0f, 180.0f),
-		const FString& AnchorJson = FString())
+		const FString& AnchorJson = FString(),
+		const FString& ExplicitBaselineHash = FString(),
+		const FString& ExplicitRecordedAfterHash = FString())
 	{
 		FBlueprintHelperReviewAtomicTarget Target;
 		Target.AssetPath = Evidence.AssetPath;
@@ -228,6 +230,14 @@ public:
 			CurrentTargetHashError))
 		{
 			Target.RecordedAfterHash = CurrentTargetHash;
+		}
+		if (!ExplicitBaselineHash.IsEmpty())
+		{
+			Target.BaselineHash = ExplicitBaselineHash;
+		}
+		if (!ExplicitRecordedAfterHash.IsEmpty())
+		{
+			Target.RecordedAfterHash = ExplicitRecordedAfterHash;
 		}
 		Target.Ownership = TEXT("blueprinthelper_owned");
 		Evidence.AtomicTargets.Add(Target);
@@ -291,7 +301,14 @@ public:
 					TEXT("graph_block"),
 					VisualGroupKey,
 					BlockId,
-					RollbackDataRef);
+					RollbackDataRef,
+					FString(),
+					false,
+					FVector2D::ZeroVector,
+					FVector2D(360.0f, 180.0f),
+					FString(),
+					Record.BaselineHashesByTargetKey.FindRef(VisualGroupKey),
+					Record.RecordedAfterHashesByTargetKey.FindRef(VisualGroupKey));
 				if (bHasAggregateRecordedBounds)
 				{
 					ApplyRecordedBounds(
@@ -343,7 +360,9 @@ public:
 						Anchor.bHasGraphBounds,
 						Anchor.GraphPosition,
 						Anchor.GraphSize,
-						MakeStructuredAnchorJson(Anchor));
+						MakeStructuredAnchorJson(Anchor),
+						Record.BaselineHashesByTargetKey.FindRef(FString::Printf(TEXT("graph:%s:node:%s"), *GraphName, *NodeId)),
+						Record.RecordedAfterHashesByTargetKey.FindRef(FString::Printf(TEXT("graph:%s:node:%s"), *GraphName, *NodeId)));
 				}
 			}
 			else

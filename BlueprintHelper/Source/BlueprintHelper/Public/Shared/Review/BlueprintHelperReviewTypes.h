@@ -186,8 +186,10 @@ struct FBlueprintHelperReviewAtomicTarget
 	FString GraphName;
 	FString TargetKey;
 	FString TargetKind;
+	FString ScopeIdentity;
 	FString VisualGroupKey;
 	FString DisplayLabel;
+	FString FirstTransactionId;
 	FString LatestTransactionId;
 	TArray<FString> SourceTransactionIds;
 	FString Ownership = TEXT("unknown");
@@ -196,6 +198,8 @@ struct FBlueprintHelperReviewAtomicTarget
 	FString PropertyPath;
 	FString ComponentPath;
 	FString AnchorJson;
+	FString BeforeSnapshotJson;
+	FString AfterSnapshotJson;
 	FString RecordedAfterHash;
 	FString BaselineHash;
 	FString RollbackDataRef;
@@ -231,11 +235,16 @@ struct FBlueprintHelperReviewVisibleChange
 	TArray<FString> LatestTransactionIds;
 	TArray<FString> SourceTransactionIds;
 	TArray<FBlueprintHelperReviewAtomicTarget> AtomicTargets;
+	FString ScopeIdentity;
 	EBlueprintHelperReviewChangeKind ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
 	EBlueprintHelperReviewChangeStatus Status = EBlueprintHelperReviewChangeStatus::Pending;
 	FString DisplayLabel;
 	FString BeforeSummary;
 	FString AfterSummary;
+	FString BeforeSnapshotJson;
+	FString AfterSnapshotJson;
+	FString BeforeHash;
+	FString AfterHash;
 	FString NeedsActionReason;
 	FString ParentChangeId;
 	int32 ExecutionOrder = INDEX_NONE;

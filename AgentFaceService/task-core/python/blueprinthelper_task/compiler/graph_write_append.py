@@ -38,6 +38,7 @@ def compile_graph_write_append(task_spec: Dict[str, Any], dry_run: bool) -> Dict
             "dry_run_mode": execution_policy.get("dry_run_mode", "full"),
             "should_compile": validation.get("should_compile", False),
             "should_save": validation.get("should_save", False),
+            "review_baseline_dirty_asset_policy": execution_policy.get("review_baseline_dirty_asset_policy", "block"),
         },
         "steps": _make_graph_write_task_plan_steps(task_spec, ops),
     }
@@ -204,6 +205,7 @@ def compile_blueprint_feature(task_spec: Dict[str, Any], dry_run: bool) -> Dict[
             "dry_run_mode": execution_policy.get("dry_run_mode", "full") if isinstance(execution_policy, dict) else "full",
             "should_compile": validation.get("should_compile", False) if isinstance(validation, dict) else False,
             "should_save": validation.get("should_save", False) if isinstance(validation, dict) else False,
+            "review_baseline_dirty_asset_policy": execution_policy.get("review_baseline_dirty_asset_policy", "block") if isinstance(execution_policy, dict) else "block",
         },
         "steps": _renumber_steps(steps),
     }
@@ -237,6 +239,7 @@ def compile_blueprint_variables(task_spec: Dict[str, Any], dry_run: bool) -> Dic
             "dry_run_mode": execution_policy.get("dry_run_mode", "full"),
             "should_compile": validation.get("should_compile", False),
             "should_save": validation.get("should_save", False),
+            "review_baseline_dirty_asset_policy": execution_policy.get("review_baseline_dirty_asset_policy", "block"),
         },
         "steps": steps,
     }

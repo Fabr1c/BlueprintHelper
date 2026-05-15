@@ -448,3 +448,73 @@ bh.cmd blueprint_get_runtime_profile --json "{}" --select status,summary
 稳定做法：文档替换/追加脚本中包含 JSON 示例时，使用 here-string 保存整段文本，或把命令示例拆成单引号字符串，不要在普通双引号字符串里嵌套 `"{}"`。
 
 分类：PowerShell 脚本文本转义错误，不是 BlueprintHelper 插件 Bug。
+## 2026-05-15 `task preview/execute` 需要裸 TaskSpec
+
+现象：把旧文档里的 `{ "task_spec": { ... } }` 直接传给 `bh.cmd task preview --file ...`，会触发 Zod union 校验错误，提示根路径缺少 `schema/task_type/target/behavior`。
+
+原因：当前 CLI 的 `task preview` / `task execute` 入参是裸 `BlueprintHelper.TaskSpec.v1`，不是带 `task_spec` 包装的对象。旧 runbook 中的包装示例不能直接作为 CLI 文件传入。
+
+稳定做法：文件根对象直接写：
+
+```json
+{
+  "schema": "BlueprintHelper.TaskSpec.v1",
+  "task_type": "create_asset",
+  "target": { "asset_path": "/Game/...", "target_type": "asset" },
+  "behavior": {}
+}
+```
+
+## 2026-05-15 PowerShell 写 TaskSpec 文件需要 UTF-8 no BOM
+
+现象：使用 `Set-Content -Encoding utf8` 写出的 TaskSpec 在部分 PowerShell 环境下会带 UTF-8 BOM，CLI 读取 `--file` 时可能报 `Unexpected token '﻿' ... is not valid JSON`。
+
+稳定写法：使用 .NET no BOM 编码写入文件。
+
+```powershell
+$json = $object | ConvertTo-Json -Depth 32
+[System.IO.File]::WriteAllText($path, $json, [System.Text.UTF8Encoding]::new($false))
+```
+
+## 2026-05-15 本地 build CLI 的 TaskSpec 命令入口
+
+现象：直接运行 `node ...\AgentFaceService\cli\build\cli\index.js blueprinthelper_execute_task_spec --file ...` 会返回 `Unsupported BlueprintHelper CLI command`。
+
+原因：本地 build CLI 的 TaskSpec 入口是分组命令，不是旧工具名命令。
+
+稳定做法：
+
+```powershell
+node D:\UEProjects\Template\Plugins\BlueprintHelper\AgentFaceService\cli\build\cli\index.js task execute --file D:\Path\task.json --format full --fields status,summary,artifacts.full_result
+node D:\UEProjects\Template\Plugins\BlueprintHelper\AgentFaceService\cli\build\cli\index.js task preview --file D:\Path\task.json --format full
+```
+
+说明：Bridge 工具类命令仍可用 `<tool_name> --file params.json`，例如 `blueprinthelper_query_review_records`。
+
+## 2026-05-15 PowerShell 场景避免复杂 `--json`
+
+现象：PowerShell 中传入 `--json '{"..."}'` 容易因为引号/转义导致 CLI 解析错误或 `cli_error`。
+
+稳定做法：不扩大 `--json` 转义容忍，复杂参数统一写入 UTF-8 no BOM JSON 文件，再使用 `--file`。
+
+```powershell
+$path = 'D:\UEProjects\Template\Saved\BlueprintHelper\CodexTaskSpecs\params.json'
+$json = @{ task_run_id='task_xxx'; pending_only=$true } | ConvertTo-Json -Depth 8
+[System.IO.File]::WriteAllText($path, $json, [System.Text.UTF8Encoding]::new($false))
+node D:\UEProjects\Template\Plugins\BlueprintHelper\AgentFaceService\cli\build\cli\index.js blueprinthelper_query_review_records --file $path --format full
+```
+## 2026-05-15 Graph TaskSpec 语句使用短名
+
+现象：`append_new_owned_graph` 中继续使用旧 `kind="call_function"` 会在 preview 阶段返回 `statement_kind_unsupported`。
+
+稳定做法：GraphStatementFramework 主链路使用短名，例如 `kind="call"` + `target="PrintString"`。
+
+```json
+{
+  "kind": "call",
+  "target": "PrintString",
+  "args": {
+    "InString": { "kind": "literal", "value_type": "string", "value": "hello" }
+  }
+}
+```

@@ -321,6 +321,8 @@ struct FBlueprintHelperAppendJournalRecord
 	TArray<FString> CreatedNodePaths;
 	TArray<FBlueprintHelperGraphReviewNodeAnchor> CreatedNodeAnchors;
 	TArray<FString> CreatedLinkPaths;
+	TMap<FString, FString> BaselineHashesByTargetKey;
+	TMap<FString, FString> RecordedAfterHashesByTargetKey;
 	FString DiffSummary;
 	FString RollbackData;
 	TArray<FString> Validation;

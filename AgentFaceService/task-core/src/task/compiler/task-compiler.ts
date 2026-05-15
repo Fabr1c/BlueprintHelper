@@ -66,6 +66,7 @@ export function compileTaskSpecToTaskPlan(taskSpec: TaskSpec): TaskPlan {
       dry_run_mode: taskSpec.execution_policy.dry_run_mode,
       should_compile: taskSpec.validation.should_compile,
       should_save: taskSpec.validation.should_save,
+      review_baseline_dirty_asset_policy: taskSpec.execution_policy.review_baseline_dirty_asset_policy ?? 'block',
     },
     steps: makeGraphWriteTaskPlanSteps(taskSpec, graphWriteOps),
   };
@@ -103,6 +104,7 @@ function compileCompositeBlueprintFeatureTaskSpecToTaskPlan(
       dry_run_mode: taskSpec.execution_policy.dry_run_mode,
       should_compile: taskSpec.validation.should_compile,
       should_save: taskSpec.validation.should_save,
+      review_baseline_dirty_asset_policy: taskSpec.execution_policy.review_baseline_dirty_asset_policy ?? 'block',
     },
     steps: renumberSteps(steps),
   };
@@ -582,6 +584,7 @@ function compileBlueprintVariablesTaskSpecToTaskPlan(taskSpec: Extract<TaskSpec,
       dry_run_mode: taskSpec.execution_policy.dry_run_mode,
       should_compile: taskSpec.validation.should_compile,
       should_save: taskSpec.validation.should_save,
+      review_baseline_dirty_asset_policy: taskSpec.execution_policy.review_baseline_dirty_asset_policy ?? 'block',
     },
     steps: compileBlueprintVariableSteps(taskSpec.target.asset_path, behavior, strategy),
   };
@@ -904,6 +907,7 @@ function makeTaskPlanWithSteps(taskSpec: TaskSpec, steps: TaskPlanStep[]): TaskP
       dry_run_mode: taskSpec.execution_policy.dry_run_mode,
       should_compile: taskSpec.validation.should_compile,
       should_save: taskSpec.validation.should_save,
+      review_baseline_dirty_asset_policy: taskSpec.execution_policy.review_baseline_dirty_asset_policy ?? 'block',
     },
     steps: renumberSteps(steps),
   };

@@ -76,6 +76,7 @@ private:
 	FReply OnLoadDebugBundle();
 	FReply OnCaptureFocusDebugBundle();
 	EActiveTimerReturnType TickDebugFocusTraversal(double InCurrentTime, float InDeltaTime);
+	bool IsDebugFocusTraversalChangeReady(FReviewChangeItem Item, FString& OutReason);
 	void EnsureDebugBundleSession();
 	void AppendDebugBundleEvent(const TSharedRef<FJsonObject>& Event);
 
@@ -179,6 +180,8 @@ private:
 	FString DebugBundlePath;
 	TArray<FReviewChangeItem> DebugFocusTraversalItems;
 	int32 DebugFocusTraversalIndex = 0;
+	int32 DebugFocusTraversalGeometryRetryCount = 0;
+	bool bDebugFocusTraversalAwaitingGeometry = false;
 	bool bDebugFocusTraversalActive = false;
 	FBlueprintHelperReviewAssetContext ReviewAssetContext;
 	EBlueprintHelperReviewSurface DetailsSurface = EBlueprintHelperReviewSurface::Unknown;

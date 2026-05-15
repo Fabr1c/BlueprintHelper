@@ -50,6 +50,7 @@
 #include "Shared/Debug/BlueprintHelperSaveAssetTypes.h"
 #include "Systems/Transactions/BlueprintHelperTransactionQueryService.h"
 #include "Shared/Transactions/BlueprintHelperTransactionQueryTypes.h"
+#include "Systems/Review/BlueprintHelperReviewActionService.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
 #include "Systems/ToolClusters/BlueprintVariables/BlueprintHelperBlueprintVariableService.h"
@@ -662,6 +663,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequestWithPl
 	BLUEPRINTHELPER_ROUTE("compile_blueprint", Debug, HandleCompileBlueprint)
 	BLUEPRINTHELPER_ROUTE("compile_blueprint_asset", Debug, HandleCompileBlueprintAsset)
 	BLUEPRINTHELPER_ROUTE("query_review_records", Review, HandleQueryReviewRecords)
+	BLUEPRINTHELPER_ROUTE("apply_review_action", Review, HandleApplyReviewAction)
 
 	BLUEPRINTHELPER_ROUTE("read_reference_context", SharedServices, HandleReadReferenceContext)
 	BLUEPRINTHELPER_ROUTE("read_blueprint_logic_md", SharedServices, HandleReadBlueprintLogicMd)
@@ -1728,6 +1730,89 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleQueryReviewRe
 	return Resp;
 }
 
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleApplyReviewAction(
+	const FBlueprintHelperBridgeRequest& Req) const
+{
+	if (!Req.Payload.IsValid())
+	{
+		return FBlueprintHelperBridgeResponse::Error(
+			Req.RequestId,
+			EBlueprintHelperBridgeError::InvalidRequest,
+			TEXT("payload is required."));
+	}
+
+	FString ReviewRecordId;
+	FString Action;
+	Req.Payload->TryGetStringField(TEXT("review_record_id"), ReviewRecordId);
+	Req.Payload->TryGetStringField(TEXT("action"), Action);
+
+	TArray<FString> TargetKeys;
+	const TArray<TSharedPtr<FJsonValue>>* TargetKeyValues = nullptr;
+	if (Req.Payload->TryGetArrayField(TEXT("target_keys"), TargetKeyValues) && TargetKeyValues)
+	{
+		for (const TSharedPtr<FJsonValue>& TargetKeyValue : *TargetKeyValues)
+		{
+			FString TargetKey;
+			if (TargetKeyValue.IsValid() && TargetKeyValue->TryGetString(TargetKey) && !TargetKey.IsEmpty())
+			{
+				TargetKeys.Add(TargetKey);
+			}
+		}
+	}
+
+	FBlueprintHelperReviewActionService ActionService(&DebugEntryService);
+	FBlueprintHelperReviewActionResult ActionResult;
+	if (Action.Equals(TEXT("accept"), ESearchCase::IgnoreCase))
+	{
+		ActionResult = ActionService.AcceptReviewTargets(ReviewRecordId, TargetKeys);
+	}
+	else if (Action.Equals(TEXT("reject"), ESearchCase::IgnoreCase))
+	{
+		FBlueprintHelperReviewRejectOptions Options;
+		ActionResult = ActionService.RejectReviewTargets(ReviewRecordId, TargetKeys, Options);
+	}
+	else
+	{
+		return FBlueprintHelperBridgeResponse::Error(
+			Req.RequestId,
+			EBlueprintHelperBridgeError::InvalidRequest,
+			TEXT("action must be accept or reject."));
+	}
+
+	ReviewStoreService.NotifyPendingReviewChanged();
+
+	TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
+	Data->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.ReviewActionResult.v1"));
+	Data->SetStringField(TEXT("review_record_id"), ReviewRecordId);
+	Data->SetStringField(TEXT("action"), Action.ToLower());
+	Data->SetBoolField(TEXT("succeeded"), ActionResult.bSucceeded);
+	Data->SetStringField(TEXT("status"), BlueprintHelperReviewChangeStatusToString(ActionResult.NewStatus));
+	Data->SetStringField(TEXT("message"), ActionResult.Message);
+	if (!ActionResult.TargetTransactionId.IsEmpty())
+	{
+		Data->SetStringField(TEXT("target_transaction_id"), ActionResult.TargetTransactionId);
+	}
+	if (!ActionResult.RollbackMode.IsEmpty())
+	{
+		Data->SetStringField(TEXT("rollback_mode"), ActionResult.RollbackMode);
+	}
+	TArray<TSharedPtr<FJsonValue>> TargetKeyJson;
+	for (const FString& TargetKey : TargetKeys)
+	{
+		TargetKeyJson.Add(MakeShared<FJsonValueString>(TargetKey));
+	}
+	Data->SetArrayField(TEXT("target_keys"), TargetKeyJson);
+
+	FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Completed(
+		TEXT("apply_review_action"),
+		FBlueprintHelperToolResultBuilder::GenerateTraceId());
+	Result.Data = Data;
+	Result.bModified = ActionResult.bSucceeded;
+
+	FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
+	Resp.Result = Result.ToJson();
+	return Resp;
+}
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleListTransactions(
 	const FBlueprintHelperBridgeRequest& Req) const
 {
