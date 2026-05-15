@@ -107,7 +107,11 @@ public:
 		else
 		{
 			const bool bHasInvalidSettings = MutationResult.PropertyResult.InvalidSettings.Num() > 0;
-			const FString ErrorCode = bHasInvalidSettings && !MutationResult.PropertyResult.InvalidSettings[0].Code.IsEmpty()
+			const bool bTargetAssetNotFound = !bHasInvalidSettings &&
+				MutationResult.ErrorMessage.StartsWith(TEXT("Cannot load asset/object:"));
+			const FString ErrorCode = bTargetAssetNotFound
+				? TEXT("target_asset_not_found")
+				: bHasInvalidSettings && !MutationResult.PropertyResult.InvalidSettings[0].Code.IsEmpty()
 				? MutationResult.PropertyResult.InvalidSettings[0].Code
 				: TEXT("object_property_operation_failed");
 			Result = FBlueprintHelperToolResultBuilder::Failure(
@@ -115,9 +119,9 @@ public:
 				TraceId,
 				MakeObjectPropertyToolError(
 					ErrorCode,
-					bHasInvalidSettings ? EBlueprintHelperToolStage::Preflight : EBlueprintHelperToolStage::Execute,
+					bTargetAssetNotFound ? EBlueprintHelperToolStage::ResolveTarget : bHasInvalidSettings ? EBlueprintHelperToolStage::Preflight : EBlueprintHelperToolStage::Execute,
 					BuildObjectPropertyErrorMessage(MutationResult.ErrorMessage, MutationResult.PropertyResult),
-					GetObjectPropertyErrorField(MutationResult.PropertyResult)));
+					bTargetAssetNotFound ? TEXT("asset_path") : GetObjectPropertyErrorField(MutationResult.PropertyResult)));
 		}
 
 		Result.CustomTargetJson = MakeObjectPropertyTarget(AssetPath, PropertyPath);

@@ -69,6 +69,8 @@ TSharedRef<SWidget> FBlueprintHelperReviewStructurePresenter::BuildContent(
 			MakeShared<FBlueprintHelperReviewDataAssetRowItem>();
 		Row->Label = FriendlyName;
 		Row->Value = Variable.ToPinType().PinCategory.ToString();
+		Row->PinType = Variable.ToPinType();
+		Row->bHasPinType = true;
 		Row->SearchText = FString::Printf(
 			TEXT("struct_field:%s structure_field:%s %s"),
 			*FriendlyName,

@@ -82,7 +82,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperCompileAssetService::BuildResultF
 
 	FBlueprintHelperToolResultBase Result;
 	Result.bOk = true;
-	Result.Schema = TEXT("BlueprintHelper.McpToolResult.v1");
+	Result.Schema = FBlueprintHelperProtocol::ToolResultSchema;
 	Result.Operation = TEXT("compile_blueprint_asset");
 	Result.TraceId = TraceId;
 	Result.Status = EBlueprintHelperToolStatus::Completed;

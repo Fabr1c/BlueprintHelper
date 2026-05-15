@@ -848,6 +848,7 @@ export const TaskPlanSchema = z.object({
     dry_run_mode: z.enum(['none', 'quick', 'full']),
     should_compile: z.boolean(),
     should_save: z.boolean(),
+    review_baseline_dirty_asset_policy: z.enum(['block', 'save_before_archive', 'allow_stale_disk_snapshot']).optional().default('block'),
   }),
   steps: z.array(TaskPlanStepSchema).min(1),
 });

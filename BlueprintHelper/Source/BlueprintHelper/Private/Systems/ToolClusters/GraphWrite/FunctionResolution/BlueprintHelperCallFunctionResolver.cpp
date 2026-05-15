@@ -428,6 +428,78 @@ static bool HasNativeDisplayConflict(const TArray<FBlueprintHelperCallFunctionCa
 	}
 	return NativeExactStableIds.Num() > 1;
 }
+
+static void PreferGeneratedClassOverSkeletonDuplicates(
+	TArray<FBlueprintHelperCallFunctionCandidate>& Candidates,
+	const UBlueprint* Blueprint)
+{
+	if (!Blueprint || !Blueprint->GeneratedClass || !Blueprint->SkeletonGeneratedClass)
+	{
+		return;
+	}
+
+	TSet<FString> GeneratedFunctionKeys;
+	for (const FBlueprintHelperCallFunctionCandidate& Candidate : Candidates)
+	{
+		const UFunction* Function = Candidate.Function.Get();
+		if (Function && Function->GetOwnerClass() == Blueprint->GeneratedClass)
+		{
+			GeneratedFunctionKeys.Add(NormalizeForCompare(Candidate.NativeFunctionName));
+		}
+	}
+
+	if (GeneratedFunctionKeys.Num() == 0)
+	{
+		return;
+	}
+
+	Candidates.RemoveAll([Blueprint, &GeneratedFunctionKeys](const FBlueprintHelperCallFunctionCandidate& Candidate)
+	{
+		const UFunction* Function = Candidate.Function.Get();
+		return Function &&
+			Function->GetOwnerClass() == Blueprint->SkeletonGeneratedClass &&
+			GeneratedFunctionKeys.Contains(NormalizeForCompare(Candidate.NativeFunctionName));
+	});
+}
+
+static void PreferTargetBlueprintCandidates(
+	TArray<FBlueprintHelperCallFunctionCandidate>& Candidates,
+	const UBlueprint* Blueprint)
+{
+	if (!Blueprint || (!Blueprint->GeneratedClass && !Blueprint->SkeletonGeneratedClass))
+	{
+		return;
+	}
+
+	auto IsTargetBlueprintClass = [Blueprint](const UClass* Class)
+	{
+		return Class &&
+			(Class == Blueprint->GeneratedClass || Class == Blueprint->SkeletonGeneratedClass);
+	};
+
+	TSet<FString> TargetFunctionKeys;
+	for (const FBlueprintHelperCallFunctionCandidate& Candidate : Candidates)
+	{
+		const UFunction* Function = Candidate.Function.Get();
+		if (Function && IsTargetBlueprintClass(Function->GetOwnerClass()))
+		{
+			TargetFunctionKeys.Add(NormalizeForCompare(Candidate.NativeFunctionName));
+		}
+	}
+
+	if (TargetFunctionKeys.Num() == 0)
+	{
+		return;
+	}
+
+	Candidates.RemoveAll([&IsTargetBlueprintClass, &TargetFunctionKeys](const FBlueprintHelperCallFunctionCandidate& Candidate)
+	{
+		const UFunction* Function = Candidate.Function.Get();
+		return Function &&
+			!IsTargetBlueprintClass(Function->GetOwnerClass()) &&
+			TargetFunctionKeys.Contains(NormalizeForCompare(Candidate.NativeFunctionName));
+	});
+}
 }
 
 FBlueprintHelperCallFunctionResolveResult FBlueprintHelperCallFunctionResolver::Resolve(
@@ -476,6 +548,11 @@ FBlueprintHelperCallFunctionResolveResult FBlueprintHelperCallFunctionResolver::
 		}
 	}
 
+	if (!bQualifiedQuery)
+	{
+		PreferTargetBlueprintCandidates(ScoredCandidates, Request.Blueprint);
+		PreferGeneratedClassOverSkeletonDuplicates(ScoredCandidates, Request.Blueprint);
+	}
 	SortCandidates(ScoredCandidates);
 	SetTopCandidates(Result, ScoredCandidates, Request.MaxCandidates);
 

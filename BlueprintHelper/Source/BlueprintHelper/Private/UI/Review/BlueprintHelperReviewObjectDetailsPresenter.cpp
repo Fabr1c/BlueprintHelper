@@ -19,9 +19,24 @@ bool FBlueprintHelperReviewObjectDetailsPresenterUtils::IsReviewPropertyEditingE
 
 bool FBlueprintHelperReviewObjectDetailsPresenter::ShouldShowChange(const FBlueprintHelperReviewVisibleChange& Change)
 {
-	return FBlueprintHelperReviewSurfacePresenterRouter::ShouldShowChangeOnSurface(
+	if (FBlueprintHelperReviewSurfacePresenterRouter::ShouldShowChangeOnSurface(
 		Change,
-		EBlueprintHelperReviewSurface::Details);
+		EBlueprintHelperReviewSurface::Details))
+	{
+		return true;
+	}
+
+	for (const FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
+	{
+		if (BlueprintHelperReviewTargetKindCanRouteToDetails(Target.TargetKind)
+			|| !Target.PropertyPath.IsEmpty()
+			|| !Target.ComponentPath.IsEmpty())
+		{
+			return true;
+		}
+	}
+
+	return false;
 }
 
 TSharedRef<SWidget> FBlueprintHelperReviewObjectDetailsPresenter::BuildContent(

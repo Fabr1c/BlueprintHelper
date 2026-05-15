@@ -1,5 +1,7 @@
 # BlueprintHelper CLI 普通 Agent 全面测试文档
 
+> 2026-05-14 状态转移：本文中的未达期待、待验证项和阻塞项已迁移到 [BlueprintHelper_UnmetExpectations_Consolidated_20260514_CN.md](BlueprintHelper_UnmetExpectations_Consolidated_20260514_CN.md)。本文保留为历史上下文；开放项跟踪迁移完成，后续当前状态以总账为准。
+
 Date: 2026-05-12
 
 本文从普通 Agent 视角验证 BlueprintHelper。唯一入口是 CLI direct tool invocation:

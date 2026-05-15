@@ -1,5 +1,7 @@
 # BlueprintHelper CLI Physics Door Execution Issues 2026-05-13
 
+> 2026-05-14 状态转移：本文中的未达期待、待验证项和阻塞项已迁移到 [BlueprintHelper_UnmetExpectations_Consolidated_20260514_CN.md](BlueprintHelper_UnmetExpectations_Consolidated_20260514_CN.md)。本文保留为历史上下文；开放项跟踪迁移完成，后续当前状态以总账为准。
+
 ## Scope
 
 本文件单独记录物理门 CLI 执行期间遇到的能力缺失和 Bug。实现进度仍以 `BlueprintHelper_CLI_PhysicsDoor_TestExecution_20260513_CN.md` 为主。

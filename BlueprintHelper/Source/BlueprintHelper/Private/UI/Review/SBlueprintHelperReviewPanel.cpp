@@ -17,7 +17,12 @@
 #include "UI/Review/BlueprintHelperReviewPanelStyle.h"
 #include "UI/Review/BlueprintHelperReviewAssetPresenters.h"
 #include "UI/Review/BlueprintHelperReviewSurfacePresenter.h"
+#include "Components/ActorComponent.h"
+#include "Engine/Blueprint.h"
+#include "Engine/SCS_Node.h"
+#include "Engine/SimpleConstructionScript.h"
 #include "Styling/AppStyle.h"
+#include "UObject/UnrealType.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SMultiLineEditableTextBox.h"
 #include "Widgets/Layout/SBorder.h"
@@ -41,6 +46,150 @@ SBlueprintHelperReviewPanel::~SBlueprintHelperReviewPanel()
 
 namespace
 {
+static void AddReviewDetailsObjectCandidate(TArray<FString>& Candidates, const FString& Text)
+{
+	FString Trimmed = Text;
+	Trimmed.TrimStartAndEndInline();
+	if (Trimmed.IsEmpty())
+	{
+		return;
+	}
+
+	Candidates.AddUnique(Trimmed);
+
+	int32 LastDot = INDEX_NONE;
+	if (Trimmed.FindLastChar(TEXT('.'), LastDot) && LastDot + 1 < Trimmed.Len())
+	{
+		Candidates.AddUnique(Trimmed.Mid(LastDot + 1));
+	}
+
+	int32 LastColon = INDEX_NONE;
+	if (Trimmed.FindLastChar(TEXT(':'), LastColon) && LastColon + 1 < Trimmed.Len())
+	{
+		Candidates.AddUnique(Trimmed.Mid(LastColon + 1));
+	}
+
+	int32 LastSlash = INDEX_NONE;
+	if (Trimmed.FindLastChar(TEXT('/'), LastSlash) && LastSlash + 1 < Trimmed.Len())
+	{
+		Candidates.AddUnique(Trimmed.Mid(LastSlash + 1));
+	}
+
+	int32 OpenBracket = INDEX_NONE;
+	int32 CloseBracket = INDEX_NONE;
+	if (Trimmed.FindChar(TEXT('['), OpenBracket)
+		&& Trimmed.FindChar(TEXT(']'), CloseBracket)
+		&& CloseBracket > OpenBracket + 1)
+	{
+		Candidates.AddUnique(Trimmed.Mid(OpenBracket + 1, CloseBracket - OpenBracket - 1));
+	}
+}
+
+static FString NormalizeReviewDetailsObjectCandidate(const FString& Text)
+{
+	FString Normalized;
+	for (int32 Index = 0; Index < Text.Len(); ++Index)
+	{
+		const TCHAR Character = FChar::ToLower(Text[Index]);
+		if (FChar::IsAlnum(Character))
+		{
+			Normalized.AppendChar(Character);
+		}
+	}
+	return Normalized;
+}
+
+static bool ReviewDetailsObjectCandidateMatches(const TArray<FString>& Candidates, const FString& ObjectName)
+{
+	const FString NormalizedObjectName = NormalizeReviewDetailsObjectCandidate(ObjectName);
+	if (NormalizedObjectName.IsEmpty())
+	{
+		return false;
+	}
+
+	for (const FString& Candidate : Candidates)
+	{
+		const FString NormalizedCandidate = NormalizeReviewDetailsObjectCandidate(Candidate);
+		if (NormalizedCandidate.IsEmpty())
+		{
+			continue;
+		}
+
+		if (NormalizedCandidate == NormalizedObjectName
+			|| NormalizedCandidate.Contains(NormalizedObjectName)
+			|| NormalizedObjectName.Contains(NormalizedCandidate))
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+static bool ReviewChangeLooksLikeComponentDetailsTarget(const FBlueprintHelperReviewVisibleChange& Change)
+{
+	const FString ChangeText = (Change.LocationKey + TEXT(" ") + Change.DisplayLabel).ToLower();
+	if (ChangeText.Contains(TEXT("component")) || ChangeText.Contains(TEXT("组件")))
+	{
+		return true;
+	}
+
+	for (const FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
+	{
+		const EBlueprintHelperReviewSurface TargetSurface = BlueprintHelperReviewNormalizeSurfaceForTarget(
+			Target.Surface,
+			Target.TargetKind,
+			Target.TargetKey,
+			Target.VisualGroupKey,
+			Change.LocationKey);
+		const FString TargetText = (Target.TargetKind + TEXT(" ") + Target.TargetKey + TEXT(" ") + Target.DisplayLabel + TEXT(" ") + Target.ComponentPath).ToLower();
+
+		if (TargetSurface == EBlueprintHelperReviewSurface::Components
+			|| TargetText.Contains(TEXT("component"))
+			|| TargetText.Contains(TEXT("组件"))
+			|| !Target.ComponentPath.IsEmpty())
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+static TArray<FString> BuildReviewDetailsObjectCandidates(const FBlueprintHelperReviewVisibleChange& Change)
+{
+	TArray<FString> Candidates;
+	AddReviewDetailsObjectCandidate(Candidates, Change.LocationKey);
+	AddReviewDetailsObjectCandidate(Candidates, Change.DisplayLabel);
+	AddReviewDetailsObjectCandidate(Candidates, Change.GraphName);
+
+	for (const FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
+	{
+		AddReviewDetailsObjectCandidate(Candidates, Target.TargetKey);
+		AddReviewDetailsObjectCandidate(Candidates, Target.DisplayLabel);
+		AddReviewDetailsObjectCandidate(Candidates, Target.VisualGroupKey);
+		AddReviewDetailsObjectCandidate(Candidates, Target.PropertyPath);
+		AddReviewDetailsObjectCandidate(Candidates, Target.ComponentPath);
+	}
+
+	return Candidates;
+}
+
+static UActorComponent* GetSCSNodeComponentTemplate(USCS_Node* Node)
+{
+	if (!Node)
+	{
+		return nullptr;
+	}
+
+	if (FObjectProperty* ComponentTemplateProperty = FindFProperty<FObjectProperty>(USCS_Node::StaticClass(), TEXT("ComponentTemplate")))
+	{
+		return Cast<UActorComponent>(ComponentTemplateProperty->GetObjectPropertyValue_InContainer(Node));
+	}
+
+	return nullptr;
+}
+
 static FString MakeReviewPanelAssetTreeKey(const FString& AssetPath)
 {
 	if (AssetPath.IsEmpty())
@@ -198,7 +347,7 @@ void SBlueprintHelperReviewPanel::BuildChangeTreeItemsFromChangeItems(
 		{
 			FReviewTreeItemPtr Root = MakeShared<FReviewTreeItem>();
 			Root->bIsAssetRoot = true;
-			Root->AssetPath = AssetPath;
+			Root->AssetPath = AssetKey;
 			AssetRootsByPath.Add(AssetKey, Root);
 			OutRootItems.Add(Root);
 			ExistingRoot = AssetRootsByPath.Find(AssetKey);
@@ -550,6 +699,7 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildScopedDiffStack(
 {
 	TSharedRef<SScrollBox> Stack = SNew(SScrollBox);
 	const FString CurrentAssetPath = SelectedChange.IsValid() ? SelectedChange->AssetPath : FString();
+	const FString CurrentAssetKey = MakeReviewPanelAssetTreeKey(CurrentAssetPath);
 	int32 VisibleRowCount = 0;
 	for (const FReviewChangeItem& Item : ChangeItems)
 	{
@@ -557,7 +707,8 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildScopedDiffStack(
 		{
 			continue;
 		}
-		if (!CurrentAssetPath.IsEmpty() && Item->AssetPath != CurrentAssetPath)
+		const FString ItemAssetKey = MakeReviewPanelAssetTreeKey(Item->AssetPath);
+		if (!CurrentAssetKey.IsEmpty() && ItemAssetKey != CurrentAssetKey)
 		{
 			continue;
 		}
@@ -1359,6 +1510,7 @@ void SBlueprintHelperReviewPanel::UpdateDetailsSelection()
 		KismetInspector->ShowDetailsForSingleObject(
 			DetailsObject,
 			SKismetInspector::FShowDetailsOptions(GetSelectedTitle(), true));
+		RefreshSurfaceOverlay(EBlueprintHelperReviewSurface::Details);
 		return;
 	}
 
@@ -1366,6 +1518,7 @@ void SBlueprintHelperReviewPanel::UpdateDetailsSelection()
 	KismetInspector->ShowDetailsForObjects(
 		EmptySelection,
 		SKismetInspector::FShowDetailsOptions(FText::GetEmpty(), true));
+	RefreshSurfaceOverlay(EBlueprintHelperReviewSurface::Details);
 }
 
 void SBlueprintHelperReviewPanel::OnDetailsDisplayedPropertiesChanged()
@@ -1608,6 +1761,14 @@ UObject* SBlueprintHelperReviewPanel::ResolveDetailsObjectForSelectedChange() co
 		return nullptr;
 	}
 
+	if (SelectedChange.IsValid())
+	{
+		if (UObject* ComponentDetailsObject = ResolveComponentDetailsObjectForChange(*SelectedChange))
+		{
+			return ComponentDetailsObject;
+		}
+	}
+
 	if (SelectedChange.IsValid()
 		&& FBlueprintHelperReviewGraphPresenter::ShouldShowChange(*SelectedChange))
 	{
@@ -1622,6 +1783,50 @@ UObject* SBlueprintHelperReviewPanel::ResolveDetailsObjectForSelectedChange() co
 		return ReviewAssetContext.DefaultObject.Get();
 	}
 	return ReviewAssetContext.AssetObject.Get();
+}
+
+UObject* SBlueprintHelperReviewPanel::ResolveComponentDetailsObjectForChange(const FBlueprintHelperReviewVisibleChange& Change) const
+{
+	if (!ReviewChangeLooksLikeComponentDetailsTarget(Change))
+	{
+		return nullptr;
+	}
+
+	UBlueprint* Blueprint = ReviewAssetContext.Blueprint.Get();
+	if (!Blueprint || !Blueprint->SimpleConstructionScript)
+	{
+		return nullptr;
+	}
+
+	const TArray<FString> Candidates = BuildReviewDetailsObjectCandidates(Change);
+	if (Candidates.Num() == 0)
+	{
+		return nullptr;
+	}
+
+	TArray<USCS_Node*> Nodes = Blueprint->SimpleConstructionScript->GetAllNodes();
+	for (USCS_Node* Node : Nodes)
+	{
+		if (!Node)
+		{
+			continue;
+		}
+
+		UActorComponent* ComponentTemplate = GetSCSNodeComponentTemplate(Node);
+		if (!ComponentTemplate)
+		{
+			continue;
+		}
+
+		if (ReviewDetailsObjectCandidateMatches(Candidates, Node->GetVariableName().ToString())
+			|| ReviewDetailsObjectCandidateMatches(Candidates, ComponentTemplate->GetName())
+			|| ReviewDetailsObjectCandidateMatches(Candidates, ComponentTemplate->GetFName().ToString()))
+		{
+			return ComponentTemplate;
+		}
+	}
+
+	return nullptr;
 }
 
 UEdGraph* SBlueprintHelperReviewPanel::ResolveGraphForSelectedChange() const

@@ -1,5 +1,7 @@
 # Smoke Bug - Verification Gaps 2026-05-10
 
+> 2026-05-14 状态转移：本文中的未达期待、待验证项和阻塞项已迁移到 [BlueprintHelper_UnmetExpectations_Consolidated_20260514_CN.md](BlueprintHelper_UnmetExpectations_Consolidated_20260514_CN.md)。本文保留为历史上下文；开放项跟踪迁移完成，后续当前状态以总账为准。
+
 来源：`BlueprintHelper_NewProject_Full_SmokeRun_20260510.md`
 
 本文记录 smoke 已暴露但尚未完成验证的缺口。这里不把未执行项伪装成失败，只记录需要补跑或重写用例的事项。

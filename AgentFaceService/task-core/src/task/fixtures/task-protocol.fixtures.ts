@@ -255,18 +255,23 @@ export const graphWriteReplaceExpectedTaskPlanFixture = {
               graph_id: 'EventGraph',
               node_ref: 'InitializeStoneGateEntry',
             },
-            replacement: {
-              nodes: [
+            logic_spec: {
+              schema: 'BlueprintLogicSpec.v2',
+              statements: [
                 {
-                  id: 'replace_stmt_1',
                   kind: 'call',
-                  function: 'PrintString',
-                  inputs: {
-                    InString: 'Stone gate replaced',
+                  target: 'PrintString',
+                  args: {
+                    InString: {
+                      id: 'replace_stmt_1_arg_InString',
+                      kind: 'literal',
+                      value_type: 'string',
+                      value: 'Stone gate replaced',
+                    },
                   },
+                  id: 'replace_stmt_1',
                 },
               ],
-              links: [],
             },
             options: {
               strict: true,

@@ -1,5 +1,7 @@
 # Review Baseline Snapshot Future Implementation Plan
 
+> 2026-05-14 状态转移：本文中的未达期待、待验证项和阻塞项已迁移到 [BlueprintHelper_UnmetExpectations_Consolidated_20260514_CN.md](BlueprintHelper_UnmetExpectations_Consolidated_20260514_CN.md)。本文保留为历史上下文；开放项跟踪迁移完成，后续当前状态以总账为准。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Upgrade Review baseline capture so pending review, diff, debug, and future rollback never depend on stale disk-only `.uasset` snapshots.
@@ -235,3 +237,23 @@ Manual smoke:
 - Whether semantic snapshots should be compacted after Accept.
 - Whether rejected/needs_action records must retain full semantic snapshots indefinitely.
 - Whether full `.uasset` package snapshots should be kept for large assets or only generated on explicit debug export.
+## 2026-05-15 Stage 1 Partial Implementation Note
+
+- 已实现 `review_baseline_dirty_asset_policy` schema 和运行时解析，默认值为 `block`。
+- 已实现 dirty target package preflight：默认 `block` 会在 ArchiveSession 创建前失败并返回 `review_baseline_dirty_target_assets`。
+- 已实现 `save_before_archive`：ArchiveSession 创建前使用现有 SaveAsset 路径保存 dirty target；保存失败或保存后仍 dirty 则失败。
+- 已实现 `allow_stale_disk_snapshot`：允许继续捕获 disk snapshot，但 ArchiveSession 记录 `snapshot_trust=stale_disk_copy` 和 warning。
+- ArchiveSession 已持久化 baseline metadata；DebugBundle Review summary artifact 已导出 baseline policy、trust、dirty target、disk refs、semantic refs。
+- 未完成：`baseline.semantic.json` live semantic baseline service、Review/Diff/Debug 首选 semantic baseline、Reject semantic hash safety、完整 TaskRunJournal pre-archive save 明细。
+- 编译状态：2026-05-15 `Build.bat TemplateEditor Win64 Development -Project=D:\UEProjects\Template\Template.uproject -WaitMutex -FromMsBuild` 返回 `Result: Succeeded`。
+
+## 2026-05-15 Stage 1.5 Partial Implementation Note
+
+- 已新增最小 `baseline.semantic.json` live semantic baseline service：ArchiveSession 创建阶段写出每个 target asset 的 semantic snapshot，并把 ref 记录到 `baseline_semantic_snapshot_refs`。
+- 已新增 TaskRunJournal `review_baseline` 区块：记录 dirty policy、snapshot trust、dirty targets、`save_before_archive` 保存资产、warning 和 pre-archive save operation 结果。
+- 当前 semantic snapshot 覆盖 Blueprint graphs/nodes/pins、变量、SCS 组件、WidgetTree、DataTable rows 和 UObject editable properties。
+- 未完成：Review/Diff/Debug 首选 semantic baseline、Reject semantic hash safety、按 Review atomic target key 的完整 semantic hash、完整人工/Automation 验证。
+- 编译状态：2026-05-15 `Build.bat TemplateEditor Win64 Development -Project=D:\UEProjects\Template\Template.uproject -WaitMutex -FromMsBuild` 返回 `Result: Succeeded`。
+- 2026-05-15 补充：DebugBundle Review summary 导出会复制 semantic snapshot artifact，并在 DebugCase 自动化 fixture 中增加可读性与 schema 断言。
+
+- Bridge/CLI 运行态证据：重启编辑器后 `bh.cmd blueprint_get_runtime_profile --json "{}" --select status,summary` 返回 `status=completed`、`warnings=0`、`errors=0`。

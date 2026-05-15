@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "EdGraph/EdGraphPin.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
 #include "UI/Review/BlueprintHelperReviewPresenterTypes.h"
 #include "Widgets/SWidget.h"
@@ -31,6 +32,8 @@ public:
 		FText Label;
 		FString SearchText;
 		FName IconName;
+		FEdGraphPinType PinType;
+		bool bHasPinType = false;
 		ERowKind Kind = ERowKind::ReviewOnly;
 		TArray<TSharedPtr<FRowItem>> Children;
 		TWeakPtr<SWidget> RowWidget;

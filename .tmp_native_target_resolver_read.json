@@ -1,0 +1,6 @@
+{
+  "schema": "BlueprintHelper.ReadSpec.v1",
+  "read_type": "blueprint_logic",
+  "target": { "asset_path": "/Game/BP_BH_SemanticCoverageActor", "target_type": "graph", "target_name": "BH_NativeTargetResolverSmoke_20260514_221521" },
+  "view": { "format": "logic_json", "detail": "debug", "max_items": 100 }
+}

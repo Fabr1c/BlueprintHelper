@@ -2,6 +2,7 @@
 
 #include "Entry/Bridge/BlueprintHelperRequestValidator.h"
 #include "Systems/Authorization/BlueprintHelperWriteAuthorizationService.h"
+#include "Systems/Config/BlueprintHelperSafetyProfileResolver.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Misc/Parse.h"
@@ -810,6 +811,11 @@ bool FBlueprintHelperRequestValidator::ValidateAuthorization(
 		return true;
 	}
 
+	if (IsWriteCommand(Request.Command) && FBlueprintHelperSafetyProfileResolver::IsAutoRepair())
+	{
+		return true;
+	}
+
 	return FBlueprintHelperWriteAuthorizationService::Get().ValidateSessionForCommand(
 		Request.AuthSession,
 		Request.Command,
@@ -881,8 +887,7 @@ TEXT("create_blueprint"),
 
 bool FBlueprintHelperRequestValidator::IsHighRiskCommand(const FString& Command)
 {
-	return FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("exec_console_command"))
-		|| FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("close_editor"));
+	return FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("exec_console_command"));
 }
 
 bool FBlueprintHelperRequestValidator::IsHighRiskCommandEnabled()

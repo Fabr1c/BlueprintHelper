@@ -7,7 +7,7 @@
 #include "UI/Review/BlueprintHelperReviewPresenterTypes.h"
 #include "Widgets/SWidget.h"
 
-class SSubobjectBlueprintEditor;
+class SBlueprintHelperReviewComponentsPanel;
 struct FBlueprintHelperReviewAssetContext;
 
 class BLUEPRINTHELPER_API FBlueprintHelperReviewBlueprintComponentsPresenter
@@ -16,7 +16,7 @@ public:
 	struct FState
 	{
 		FString AssetPath;
-		TSharedPtr<SSubobjectBlueprintEditor> SubobjectEditor;
+		TSharedPtr<SBlueprintHelperReviewComponentsPanel> ComponentsPanel;
 		FBlueprintHelperReviewGeometryInvalidated OnGeometryInvalidated;
 	};
 

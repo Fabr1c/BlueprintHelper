@@ -5,6 +5,7 @@
 #include "Shared/Debug/BlueprintHelperRuntimeProfileTypes.h"
 #include "Shared/BlueprintHelperToolResultTypes.h"
 #include "Systems/Authorization/BlueprintHelperWriteAuthorizationService.h"
+#include "Systems/Config/BlueprintHelperSafetyProfileResolver.h"
 #include "Interfaces/IPluginManager.h"
 #include "Misc/ConfigCacheIni.h"
 #include "HAL/PlatformProcess.h"
@@ -65,6 +66,21 @@ EBlueprintHelperConfigStatus FBlueprintHelperRuntimeProfileService::DetectConfig
 FBlueprintHelperWritePermissionState FBlueprintHelperRuntimeProfileService::BuildWritePermissionState()
 {
 	FBlueprintHelperWritePermissionState State;
+	const EBlueprintHelperSafetyProfile ResolvedProfile = BuildActiveProfileState().SafetyProfile;
+
+	if (ResolvedProfile == EBlueprintHelperSafetyProfile::ReadOnly)
+	{
+		State.bEnabled = false;
+		State.Reason = EBlueprintHelperWritePermissionReason::SafetyProfileReadOnly;
+		return State;
+	}
+
+	if (ResolvedProfile == EBlueprintHelperSafetyProfile::AutoRepair)
+	{
+		State.bEnabled = true;
+		State.Reason = EBlueprintHelperWritePermissionReason::Ok;
+		return State;
+	}
 
 	if (!FBlueprintHelperWriteAuthorizationService::Get().HasActiveSession())
 	{
@@ -96,14 +112,14 @@ FBlueprintHelperRiskCommandState FBlueprintHelperRuntimeProfileService::BuildRis
 	{
 		State.bEnabled = false;
 		State.Reason = EBlueprintHelperRiskCommandReason::RiskCommandMissing;
-		State.BlockedCommands = { TEXT("close_editor"), TEXT("exec_console_command") };
+		State.BlockedCommands = { TEXT("exec_console_command") };
 		return State;
 	}
 
 	// 默认风险命令禁用（需要显式配置）
 	State.bEnabled = false;
 	State.Reason = EBlueprintHelperRiskCommandReason::RiskCommandMissing;
-	State.BlockedCommands = { TEXT("close_editor"), TEXT("exec_console_command") };
+	State.BlockedCommands = { TEXT("exec_console_command") };
 
 	return State;
 }
@@ -115,6 +131,8 @@ FBlueprintHelperActiveProfileState FBlueprintHelperRuntimeProfileService::BuildA
 	// 默认使用 conservative 安全档位
 	State.SafetyProfile = EBlueprintHelperSafetyProfile::Conservative;
 	State.MissingCapabilityPolicy = EBlueprintHelperMissingCapabilityPolicy::StopAndReport;
+	State.SafetyProfile = FBlueprintHelperSafetyProfileResolver::ResolveSafetyProfile();
+	return State;
 
 	// 尝试从插件配置中读取
 	const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("BlueprintHelper"));

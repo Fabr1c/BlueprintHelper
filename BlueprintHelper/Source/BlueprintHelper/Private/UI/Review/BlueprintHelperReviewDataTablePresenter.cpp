@@ -12,6 +12,7 @@
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SSpacer.h"
 #include "Widgets/SBoxPanel.h"
+#include "Widgets/Input/SButton.h"
 #include "Widgets/SNullWidget.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/SHeaderRow.h"
@@ -20,6 +21,68 @@
 
 using FDataTableReviewColumnPtr = TSharedPtr<FDataTableEditorColumnHeaderData>;
 using FDataTableReviewRowPtr = TSharedPtr<FDataTableEditorRowListViewData>;
+
+static FString GetDataTableReviewRowName(const FDataTableReviewRowPtr& RowData)
+{
+	return RowData.IsValid() ? RowData->RowId.ToString() : FString(TEXT("<invalid>"));
+}
+
+static FString GetDataTableReviewRowSearchText(const FDataTableReviewRowPtr& RowData)
+{
+	return FString::Printf(TEXT("datatable_row:%s"), *GetDataTableReviewRowName(RowData));
+}
+
+static void BuildDataTableSelectedRowFields(
+	const FDataTableReviewRowPtr& RowData,
+	const TArray<FDataTableReviewColumnPtr>& Columns,
+	TArray<TSharedPtr<FBlueprintHelperReviewDataAssetRowItem>>& OutRows)
+{
+	OutRows.Reset();
+	if (!RowData.IsValid())
+	{
+		return;
+	}
+
+	const FString RowName = GetDataTableReviewRowName(RowData);
+	const FString RowSearchText = GetDataTableReviewRowSearchText(RowData);
+
+	TSharedRef<FBlueprintHelperReviewDataAssetRowItem> SummaryRow =
+		MakeShared<FBlueprintHelperReviewDataAssetRowItem>();
+	SummaryRow->Label = FString::Printf(TEXT("Row: %s"), *RowName);
+	SummaryRow->Value = FString::Printf(TEXT("Fields: %d"), Columns.Num());
+	SummaryRow->SearchText = RowSearchText;
+	SummaryRow->bIsSection = true;
+	OutRows.Add(SummaryRow);
+
+	for (int32 ColumnIndex = 0; ColumnIndex < Columns.Num(); ++ColumnIndex)
+	{
+		const FDataTableReviewColumnPtr& Column = Columns[ColumnIndex];
+		if (!Column.IsValid())
+		{
+			continue;
+		}
+
+		TSharedRef<FBlueprintHelperReviewDataAssetRowItem> FieldRow =
+			MakeShared<FBlueprintHelperReviewDataAssetRowItem>();
+		const FString FieldName = Column->DisplayName.ToString();
+		const FString FieldValue = RowData->CellData.IsValidIndex(ColumnIndex)
+			? RowData->CellData[ColumnIndex].ToString()
+			: FString();
+		FieldRow->Label = FieldName;
+		FieldRow->Value = FieldValue;
+		FieldRow->Depth = 1;
+		FieldRow->SearchText = FString::Printf(
+			TEXT("%s datatable_cell:%s.%s data_table_cell:%s.%s %s %s"),
+			*RowSearchText,
+			*RowName,
+			*FieldName,
+			*RowName,
+			*FieldName,
+			*FieldName,
+			*FieldValue);
+		OutRows.Add(FieldRow);
+	}
+}
 
 class SBlueprintHelperReviewDataTableRow : public SMultiColumnTableRow<FDataTableReviewRowPtr>
 {
@@ -48,19 +111,29 @@ public:
 
 	virtual TSharedRef<SWidget> GenerateWidgetForColumn(const FName& ColumnName) override
 	{
-		const FString RowName = RowData.IsValid() ? RowData->RowId.ToString() : FString(TEXT("<invalid>"));
-		const FString SearchText = FString::Printf(TEXT("datatable_row:%s"), *RowName);
-		TSharedRef<SWidget> Cell = BuildCellWidget(ColumnName);
+		const FString RowName = GetDataTableReviewRowName(RowData);
+		const FString SearchText = GetDataTableReviewRowSearchText(RowData);
+		const bool bActionsColumn = ColumnName == FBlueprintHelperReviewPresenterWidgetUtils::GetDataTableActionsColumnId();
+		TSharedRef<SWidget> Cell = bActionsColumn ? BuildHoverActions(SearchText) : BuildCellWidget(ColumnName);
 		TSharedRef<SWidget> RowCell = SNew(SBlueprintHelperReviewGeometryProbe)
 			.Surface(EBlueprintHelperReviewSurface::DataTable)
 			.TargetKey(SearchText)
 			.OnGeometryInvalidated(OnGeometryInvalidated)
 			[
-				FBlueprintHelperReviewPresenterWidgetUtils::BuildRowHighlightShell(
-					AssetPath,
-					EBlueprintHelperReviewSurface::DataTable,
-					SearchText,
-					Cell)
+				SNew(SBorder)
+				.BorderImage(FAppStyle::GetBrush(TEXT("Brushes.White")))
+				.BorderBackgroundColor_Lambda([AssetPath = AssetPath, SearchText]()
+				{
+					return FBlueprintHelperReviewPresenterWidgetUtils::GetRowBackgroundOrDefault(
+						AssetPath,
+						EBlueprintHelperReviewSurface::DataTable,
+						SearchText,
+						FLinearColor::Transparent);
+				})
+				.Padding(FMargin(4.0f, 3.0f))
+				[
+					Cell
+				]
 			];
 
 		FBlueprintHelperReviewPresenterWidgetUtils::RegisterRowSearchAliases(
@@ -79,6 +152,52 @@ public:
 	}
 
 private:
+	TSharedRef<SWidget> BuildHoverActions(const FString& SearchText) const
+	{
+		return SNew(SHorizontalBox)
+			.Visibility_Lambda([this, SearchText]()
+			{
+				const bool bHasDiff = FBlueprintHelperReviewRowHighlightModel::GetRowBackgroundColor(
+					AssetPath,
+					EBlueprintHelperReviewSurface::DataTable,
+					SearchText).GetSpecifiedColor().A > 0.0f;
+				const bool bSelected = FBlueprintHelperReviewRowHighlightModel::GetRowActionsVisibility(
+					AssetPath,
+					EBlueprintHelperReviewSurface::DataTable,
+					SearchText) == EVisibility::Visible;
+				return bHasDiff && (IsHovered() || bSelected)
+					? EVisibility::Visible
+					: EVisibility::Collapsed;
+			})
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.Padding(0.0f, 0.0f, 4.0f, 0.0f)
+			[
+				SNew(SButton)
+				.Text(FText::FromString(TEXT("Accept")))
+				.OnClicked_Lambda([AssetPath = AssetPath, SearchText]()
+				{
+					return FBlueprintHelperReviewRowHighlightModel::AcceptHighlightedRow(
+						AssetPath,
+						EBlueprintHelperReviewSurface::DataTable,
+						SearchText);
+				})
+			]
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			[
+				SNew(SButton)
+				.Text(FText::FromString(TEXT("Reject")))
+				.OnClicked_Lambda([AssetPath = AssetPath, SearchText]()
+				{
+					return FBlueprintHelperReviewRowHighlightModel::RejectHighlightedRow(
+						AssetPath,
+						EBlueprintHelperReviewSurface::DataTable,
+						SearchText);
+				})
+			];
+	}
+
 	TSharedRef<SWidget> BuildCellWidget(const FName& ColumnName) const
 	{
 		if (!RowData.IsValid())
@@ -139,7 +258,10 @@ TSharedRef<SWidget> FBlueprintHelperReviewDataTablePresenter::BuildContent(
 {
 	State.Columns.Reset();
 	State.Rows.Reset();
+	State.SelectedRowFields.Reset();
+	State.SelectedRow.Reset();
 	State.ListView.Reset();
+	State.SelectedRowFieldListView.Reset();
 
 	UDataTable* DataTable = Context.DataTable.Get();
 	if (!DataTable)
@@ -162,6 +284,11 @@ TSharedRef<SWidget> FBlueprintHelperReviewDataTablePresenter::BuildContent(
 	}
 
 	FDataTableEditorUtils::CacheDataTableForEditing(DataTable, State.Columns, State.Rows);
+	if (State.Rows.Num() > 0)
+	{
+		State.SelectedRow = State.Rows[0];
+		BuildDataTableSelectedRowFields(State.SelectedRow, State.Columns, State.SelectedRowFields);
+	}
 
 	TSharedRef<SHeaderRow> HeaderRow = SNew(SHeaderRow)
 		+ SHeaderRow::Column(FBlueprintHelperReviewPresenterWidgetUtils::GetDataTableRowNameColumnId())
@@ -185,11 +312,28 @@ TSharedRef<SWidget> FBlueprintHelperReviewDataTablePresenter::BuildContent(
 
 	const FString AssetPath = Context.AssetPath;
 	TArray<FDataTableReviewColumnPtr>* ColumnSource = &State.Columns;
+	FBlueprintHelperReviewDataTablePresenterState* StatePtr = &State;
 	TSharedRef<SListView<FDataTableReviewRowPtr>> ListView =
 		SAssignNew(State.ListView, SListView<FDataTableReviewRowPtr>)
 		.ListItemsSource(&State.Rows)
-		.SelectionMode(ESelectionMode::None)
+		.SelectionMode(ESelectionMode::Single)
 		.HeaderRow(HeaderRow)
+		.OnSelectionChanged_Lambda([StatePtr, ColumnSource, OnGeometryInvalidated](
+			FDataTableReviewRowPtr SelectedRow,
+			ESelectInfo::Type)
+		{
+			if (!StatePtr)
+			{
+				return;
+			}
+			StatePtr->SelectedRow = SelectedRow;
+			BuildDataTableSelectedRowFields(SelectedRow, *ColumnSource, StatePtr->SelectedRowFields);
+			if (StatePtr->SelectedRowFieldListView.IsValid())
+			{
+				StatePtr->SelectedRowFieldListView->RequestListRefresh();
+			}
+			OnGeometryInvalidated.ExecuteIfBound(EBlueprintHelperReviewSurface::DataTable);
+		})
 		.OnGenerateRow_Lambda([AssetPath, OnGeometryInvalidated, ColumnSource](
 			FDataTableReviewRowPtr RowData,
 			const TSharedRef<STableViewBase>& OwnerTable) -> TSharedRef<ITableRow>
@@ -199,6 +343,27 @@ TSharedRef<SWidget> FBlueprintHelperReviewDataTablePresenter::BuildContent(
 				.Columns(ColumnSource)
 				.AssetPath(AssetPath)
 				.OnGeometryInvalidated(OnGeometryInvalidated);
+		});
+	if (State.SelectedRow.IsValid())
+	{
+		ListView->SetSelection(State.SelectedRow);
+	}
+
+	TSharedRef<SListView<TSharedPtr<FBlueprintHelperReviewDataAssetRowItem>>> SelectedRowFieldListView =
+		SAssignNew(State.SelectedRowFieldListView, SListView<TSharedPtr<FBlueprintHelperReviewDataAssetRowItem>>)
+		.ListItemsSource(&State.SelectedRowFields)
+		.SelectionMode(ESelectionMode::None)
+		.OnGenerateRow_Lambda([AssetPath, OnGeometryInvalidated](
+			TSharedPtr<FBlueprintHelperReviewDataAssetRowItem> Item,
+			const TSharedRef<STableViewBase>& OwnerTable) -> TSharedRef<ITableRow>
+		{
+			return FBlueprintHelperReviewPresenterWidgetUtils::GenerateDataAssetRow(
+				Item,
+				OwnerTable,
+				AssetPath,
+				OnGeometryInvalidated,
+				EBlueprintHelperReviewSurface::DataTable,
+				FMargin(4.0f, 3.0f));
 		});
 
 	const FString AssetName = FBlueprintHelperReviewPresenterWidgetUtils::GetAssetShortName(Context.AssetPath);
@@ -225,9 +390,22 @@ TSharedRef<SWidget> FBlueprintHelperReviewDataTablePresenter::BuildContent(
 					SummarySearchText)
 			]
 			+ SVerticalBox::Slot()
-			.FillHeight(1.0f)
+			.FillHeight(0.42f)
 			[
 				ListView
+			]
+			+ SVerticalBox::Slot()
+			.AutoHeight()
+			.Padding(0.0f, 6.0f, 0.0f, 4.0f)
+			[
+				SNew(STextBlock)
+				.Text(FText::FromString(TEXT("Selected Row Details")))
+				.ColorAndOpacity(FSlateColor(FLinearColor(0.72f, 0.72f, 0.72f, 1.0f)))
+			]
+			+ SVerticalBox::Slot()
+			.FillHeight(0.58f)
+			[
+				SelectedRowFieldListView
 			]
 		];
 }

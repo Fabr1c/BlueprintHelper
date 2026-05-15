@@ -626,6 +626,8 @@ TSharedRef<SWidget> FBlueprintHelperReviewRowHighlightModel::BuildRowHighlightOv
 		}
 	}
 
+	TSharedPtr<SCanvas> DetailsOverlayCanvas;
+	bool bHasDetailsOverlay = false;
 	for (const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Item : HighlightedItems)
 	{
 		FBlueprintHelperReviewSurfaceGeometryAnchor Anchor;
@@ -636,6 +638,28 @@ TSharedRef<SWidget> FBlueprintHelperReviewRowHighlightModel::BuildRowHighlightOv
 
 		if (bResolved)
 		{
+			if (Surface == EBlueprintHelperReviewSurface::Details)
+			{
+				if (!DetailsOverlayCanvas.IsValid())
+				{
+					DetailsOverlayCanvas = SNew(SCanvas);
+				}
+
+				const FSlateColor SourceColor = State.GetChangeColor
+					? State.GetChangeColor(Item->ChangeKind)
+					: FSlateColor(FLinearColor::Yellow);
+				const FSlateColor FillColor(GetRowHighlightFillColor(SourceColor.GetSpecifiedColor()));
+				const FString OverlayAssetPath = Item->AssetPath.IsEmpty() ? CurrentAssetPath : Item->AssetPath;
+				AddComponentRowOverlay(
+					DetailsOverlayCanvas,
+					Anchor,
+					FillColor,
+					OverlayAssetPath,
+					Surface,
+					TargetText,
+					IsSameChange(Item, Args.SelectedChange));
+				bHasDetailsOverlay = true;
+			}
 			EmitDedupedRowHighlightDebug(
 				Args.AddDebugMessage,
 				FString::Printf(
@@ -665,6 +689,10 @@ TSharedRef<SWidget> FBlueprintHelperReviewRowHighlightModel::BuildRowHighlightOv
 			Reason);
 	}
 
+	if (bHasDetailsOverlay && DetailsOverlayCanvas.IsValid())
+	{
+		return DetailsOverlayCanvas.ToSharedRef();
+	}
 	return SNullWidget::NullWidget;
 }
 

@@ -113,6 +113,7 @@ export function createTaskSpecRunner(input: {
 
         const taskRunId = extractUeTaskRunId(writeResponse) ?? nextTaskRunId();
         const bridgeResult = asRecord(writeResponse.result);
+        const modified = isBridgeResultModified(bridgeResult);
         storeTaskResult({
           taskRunId,
           previewId: preview.previewId,
@@ -121,7 +122,7 @@ export function createTaskSpecRunner(input: {
           bridgeResult,
         });
 
-        return successRead(
+        const result = successRead(
           'execute_task',
           { target_type: 'blueprint', asset_path: preview.taskPlan.target_assets[0] },
           {
@@ -138,6 +139,8 @@ export function createTaskSpecRunner(input: {
             bridge_result: bridgeResult,
           },
         ) as ToolResultBase;
+        result.modified = modified;
+        return result;
       } catch (err) {
         return taskErrorFromUnknown('execute_task', err);
       }
@@ -394,6 +397,23 @@ function extractBridgeTaskRunJournal(
   return taskRunId === requestedTaskRunId && schema === 'BlueprintHelper.TaskRunJournal.v1'
     ? journal
     : undefined;
+}
+
+function isBridgeResultModified(value: unknown): boolean {
+  const result = asRecord(value);
+  if (result?.['modified'] === true) {
+    return true;
+  }
+
+  const data = asRecord(result?.['data']);
+  const steps = arrayOfRecords(data?.['steps']);
+  return steps.some((step) => {
+    if (step['modified'] === true) {
+      return true;
+    }
+    const stepResult = asRecord(step['result']);
+    return stepResult?.['modified'] === true;
+  });
 }
 
 function extractDryRun(resp: BridgeResponse): { canExecute: boolean; issues: TaskIssue[] } {

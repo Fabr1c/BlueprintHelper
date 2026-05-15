@@ -1,5 +1,7 @@
 # BlueprintHelper CLI 物理门测试执行记录 2026-05-13
 
+> 2026-05-14 状态转移：本文中的未达期待、待验证项和阻塞项已迁移到 [BlueprintHelper_UnmetExpectations_Consolidated_20260514_CN.md](BlueprintHelper_UnmetExpectations_Consolidated_20260514_CN.md)。本文保留为历史上下文；开放项跟踪迁移完成，后续当前状态以总账为准。
+
 ## 目标
 
 - 使用 BlueprintHelper CLI 在任意 Actor 中实现可开关的物理门相关功能。
@@ -20,6 +22,12 @@
 3. `blueprinthelper_read_context` 对 `target_type=component` 的 summary 读回只确认目标和状态，未返回组件属性细节。
    - 影响：不能仅靠该读回直接证明 `BodyInstance.bSimulatePhysics` 的最终属性值。
    - 当前佐证：`task result` for `task_7F9B52CD48110151378D4288F28425A2` 返回 `status=applied`、`component_name=DoorPanel`、`applied_count=1`、`invalid_settings=[]`。
+4. 2026-05-14 曾发现 `append_new_owned_graph` 多入口 TaskSpec 在运行时需要人工拆分。
+   - 实测现象：完整物理门 runtime feature 包含 `InitializeDoor`、`OpenDoor`、`CloseDoor`、`ToggleDoor` 多个 `entries` 时，preview 可通过但 execute 失败。
+   - 实测错误：`unsupported_graph_write_op_batch`
+   - 影响：Agent 不能用一个完整 TaskSpec 一次性表达物理门图逻辑，必须把每个入口拆成独立 TaskSpec。
+   - 修复状态：已修复。TypeScript/Python TaskPlan 编译器现在把每个 `ensure_entry` 编排为独立 `graph_write` step，不再打包到单个 step。
+   - 复测结果：`physics_door_fullflow2_runtime_feature_20260514.json` execute 通过，`planned_steps=9`、`warnings=0`、`errors=0`。
 
 ## 遭遇 Bug 记录
 
@@ -35,6 +43,29 @@
    - Artifact：`D:\UEProjects\Template\Plugins\BlueprintHelper\Saved\BlueprintHelper\Cli\cli_1778673260007\result.json`
    - 影响：需要拆分属性写入才能定位问题。
    - 当前规避：先执行不带属性的最小门功能，再单独写入 `DoorPanel.BodyInstance.bSimulatePhysics=true`。
+3. 2026-05-14 旧物理门测试资产被其他 SemanticIR smoke 图污染，导致 runtime replace 编译失败。
+   - 受影响资产：`/Game/BlueprintHelperCliSmoke/BH_PhysicsDoor_20260513/BP_BH_PhysicsDoorActor`
+   - 实测现象：`physics_door_open_runtime_replace.json` 与 `physics_door_close_runtime_replace.json` preview 通过，但 execute 因 Blueprint compile failed 回滚。
+   - 关键日志：旧资产中残留 `BH_CodexSelectStructPropertySmoke_20260514_001`，并出现 Select wildcard/index 编译错误。
+   - Artifact：`D:\UEProjects\Template\Plugins\BlueprintHelper\Saved\BlueprintHelper\Cli\cli_1778769731083\result.json`、`D:\UEProjects\Template\Plugins\BlueprintHelper\Saved\BlueprintHelper\Cli\cli_1778769733216\result.json`
+   - 判断：测试资产隔离不足；CLI artifact 只返回聚合 `compile_failed`，需要 UE log 才能定位到污染图。
+   - 当前规避：改用新建干净资产路径 `/Game/BlueprintHelperCliSmoke/BH_PhysicsDoor_20260514/`。
+4. 2026-05-14 `append_new_owned_graph` 旧签名拆分路径与 SemanticIR 入口创建冲突。
+   - 实测现象：TaskPlan 先生成 `blueprint_signature ensure_custom_event`，随后 `graph_write ensure_entry` 再创建同名 CustomEvent，导致 `InitializeDoor` duplicate function compile failed。
+   - 影响：append 新入口时会出现重复 CustomEvent，preview/execute 行为不一致。
+   - 修复状态：已修复。TypeScript/Python 编译器对 `append_new_owned_graph` 不再生成旧 `blueprint_signature` 步骤，SemanticIR graph write 成为入口创建路径。
+5. 2026-05-14 append dry-run / rollback 清理 CustomEvent 节点存在元数据残留风险。
+   - 实测背景：duplicate CustomEvent 问题排查中发现 dry-run 和失败回滚路径直接 `Graph->RemoveNode`。
+   - 影响：CustomEvent/function 元数据可能没有通过 Blueprint 工具链完整清理，后续 compile 可能残留重复签名。
+   - 修复状态：已修复。清理路径改为 `FBlueprintEditorUtils::RemoveNode(Blueprint, Node, true)`。
+6. 2026-05-14 call resolver 对同名 Blueprint 自有事件的 GeneratedClass/SkeletonGeneratedClass 候选判定为歧义。
+   - 实测现象：`ToggleDoor` 调用 `CloseDoor`/`OpenDoor` 时，resolver 同时看到 GeneratedClass 与 SkeletonGeneratedClass 候选并返回 ambiguous。
+   - Artifact：`D:\UEProjects\Template\Plugins\BlueprintHelper\Saved\BlueprintHelper\Cli\cli_1778770483061\result.json`
+   - 修复状态：已修复。无限定查询时优先保留 GeneratedClass，去除同名 SkeletonGeneratedClass 重复候选。
+7. 2026-05-14 call resolver 对无限定 Blueprint 自有调用没有优先收敛到目标 Blueprint，导致跨资产同名事件污染。
+   - 实测现象：完整物理门 TaskSpec 中 `CloseDoor` 被解析为当前资产 SKEL 候选与旧 `BP_BH_PhysicsDoorActor_Saved` 候选的歧义。
+   - Artifact：`D:\UEProjects\Template\Plugins\BlueprintHelper\Saved\BlueprintHelper\Cli\cli_1778770983070\result.json`
+   - 修复状态：已修复。无限定查询时，如果目标 Blueprint 自己存在同名函数/事件候选，则先移除其他 Blueprint/全局同名候选，再做 Generated/Skeleton 去重。
 
 ## 阶段结果
 
@@ -79,9 +110,10 @@
 ## 当前实现边界
 
 1. 已实现：门 Actor 资产、门框组件、门板组件、物理约束组件、门状态变量、开/关/切换事件入口、门板物理模拟属性写入。
-2. 未完整实现：真正的物理开关动作，例如对 `DoorPanel` 施加角冲量或约束 motor 驱动。
-3. 未完整实现：`ToggleDoor` 的条件分支逻辑。
-4. 原因：当前普通 Agent-facing GraphWrite 能力缺少组件成员物理调用和基础控制流表达能力。
+2. 已实现：`OpenDoor` / `CloseDoor` 对 `DoorPanel` 调用 `AddAngularImpulseInDegrees`，分别施加正向/反向 Z 角冲量。
+3. 已实现：`ToggleDoor` 通过 `Get bDoorOpen -> Branch` 分支调用 `CloseDoor` 或 `OpenDoor`。
+4. 已实现：保存型完整物理门资产 `/Game/BlueprintHelperCliSmoke/BH_PhysicsDoor_20260514/BP_BH_PhysicsDoorActor_FullFlow_20260514_002` 创建、写图、组件物理属性写入和 logic_json 读回。
+5. 未纳入本轮：角色侧交互、关卡放置/PIE 行为验证、ReviewPanel UI 回归测试。
 
 ## 2026-05-13 Capability Patch Note
 
@@ -209,17 +241,17 @@
 
 ## 2026-05-13 Physics Door Implementation Blocker
 
-Status: blocked by current running Editor capability, not by TaskSpec authoring.
+Status: historical blocker, resolved in the 2026-05-14 loop.
 
 1. Explicit component/member call is still unavailable in the running Editor process.
    - Command: `blueprinthelper_preview_task` with `DoorPanel.AddAngularImpulseInDegrees`.
    - Result: `preview_blocked`.
    - Error code: `explicit_member_call_not_supported`.
    - Impact: CLI cannot currently generate the real physics door runtime behavior that calls `DoorPanel.AddAngularImpulseInDegrees` or `DoorHingeConstraint.SetConstrainedComponents`.
-   - Required next step: compile/reload the plugin build that contains the `CallFunctionNodeHandler` explicit object call support, then rerun the physical-door TaskSpec.
+   - Resolution: compiled/reloaded the plugin build with explicit object call support, then validated `DoorPanel.AddAngularImpulseInDegrees` in `OpenDoor` and `CloseDoor`.
 
 2. Do not fake completion with placeholder PrintString logic.
-   - Current decision: stop before writing fake door behavior; component/variable/signature scaffolding exists, but true open/close physics behavior is blocked until the running Editor has the new call-function resolver.
+   - Current decision: satisfied. The final validated asset uses real `DoorPanel.AddAngularImpulseInDegrees` calls instead of placeholder PrintString-only behavior.
 
 ## 2026-05-13 Explicit Member Call Gate Fix
 
@@ -240,7 +272,7 @@ Status: source fix applied, pending build/editor reload verification.
 
 ## 2026-05-13 Prepared Runtime Door TaskSpecs
 
-Status: prepared, not executed in this turn.
+Status: superseded by 2026-05-14 saved full-flow TaskSpecs.
 
 1. Prepared `Saved\CodexTest\physics_door_open_runtime_replace.json`.
    - Purpose: replace `OpenDoor` body.
@@ -251,4 +283,36 @@ Status: prepared, not executed in this turn.
    - Behavior: set `bDoorOpen=false`, then call `DoorPanel.AddAngularImpulseInDegrees` with negative Z impulse.
 
 3. Execution boundary.
-   - These TaskSpecs should be previewed/executed only after the plugin build containing the append dry-run gate fix is compiled and loaded by the running Editor.
+   - Superseded by `physics_door_fullflow2_runtime_feature_20260514.json`, which ran after plugin rebuild/reload and executed successfully as a single multi-entry runtime feature TaskSpec.
+
+## 2026-05-14 Physics Door Full-Flow Completion
+
+状态：非 ReviewPanel 范围内已完成并验证；ReviewPanel UI 测试仍按既定边界排除。
+
+1. 新建保存型测试资产。
+   - 资产：`/Game/BlueprintHelperCliSmoke/BH_PhysicsDoor_20260514/BP_BH_PhysicsDoorActor_FullFlow_20260514_002`
+   - TaskSpec：`Saved\CodexTest\physics_door_fullflow2_create_actor_20260514.json`
+   - 结果：execute 通过，`task_run_id=task_6FCFD0B64807B3B416059FAD694BEB52`，`warnings=0`，`errors=0`。
+2. 单个完整 runtime feature TaskSpec 写入门逻辑。
+   - TaskSpec：`Saved\CodexTest\physics_door_fullflow2_runtime_feature_20260514.json`
+   - 写入内容：`DoorFrame`、`DoorPanel`、`DoorHingeConstraint`、`bDoorOpen`、`OpenKickImpulse`、`CloseKickImpulse`、`MaxOpenAngle`、`InitializeDoor`、`OpenDoor`、`CloseDoor`、`ToggleDoor`。
+   - 结果：execute 通过，`task_run_id=task_F0B1199D44352ABBD271EBA6B6A5F98C`，`planned_steps=9`，`warnings=0`，`errors=0`。
+3. 门板物理属性写入。
+   - TaskSpec：`Saved\CodexTest\physics_door_fullflow2_panel_physics_20260514.json`
+   - 写入内容：`DoorPanel.BodyInstance.bSimulatePhysics=true`
+   - 结果：execute 通过，`task_run_id=task_3C8C28BD48ABBC9D4B0145BFC4BE3A1D`，`warnings=0`，`errors=0`。
+4. logic_json 读回验证。
+   - ReadSpec：`Saved\CodexTest\physics_door_fullflow2_read_eventgraph_logic_20260514.json`
+   - Artifact：`D:\UEProjects\Template\Plugins\BlueprintHelper\Saved\BlueprintHelper\Cli\cli_1778771119198\result.json`
+   - 已确认：`InitializeDoor`、`OpenDoor`、`CloseDoor`、`ToggleDoor`、`Set bDoorOpen`、`Get bDoorOpen`、`Get DoorPanel`、`branch` 出现在 `EventGraph` 读回中。
+5. 编译与编辑器闭环。
+   - TypeScript task-core build：通过。
+   - Python compiler compileall：通过。
+   - CLI build：通过。
+   - UE `TemplateEditor Win64 Development` build：通过。
+   - Editor lifecycle：通过 MCP close/open 完成，Bridge 可用。
+
+距离期望差距：
+
+1. 未做 PIE/物理模拟层面的行为观测；当前验证到 Blueprint 资产结构、图逻辑、组件物理属性写入和 Blueprint compile/execute 成功。
+2. 未做 ReviewPanel UI 回归；该项按用户前置说明暂不纳入本轮物理门完成判断。

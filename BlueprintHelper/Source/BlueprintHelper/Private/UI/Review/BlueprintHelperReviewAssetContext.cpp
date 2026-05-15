@@ -158,9 +158,9 @@ FString FBlueprintHelperReviewAssetContext::MakeObjectPathFromAssetPath(const FS
 FBlueprintHelperReviewAssetContext FBlueprintHelperReviewAssetContext::LoadForAssetPath(const FString& InAssetPath)
 {
 	FBlueprintHelperReviewAssetContext Context;
-	Context.AssetPath = InAssetPath;
 	Context.PackageName = MakePackageNameFromAssetPath(InAssetPath);
 	Context.ObjectPath = MakeObjectPathFromAssetPath(InAssetPath);
+	Context.AssetPath = Context.PackageName.IsEmpty() ? InAssetPath : Context.PackageName;
 
 	UObject* Object = BlueprintHelperReviewAssetContextPrivate::ResolveLoadedOrLoadObject(
 		Context.ObjectPath,

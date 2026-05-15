@@ -1,5 +1,183 @@
 # BlueprintHelper 图语句框架实现进度记录
 
+> 2026-05-14 状态转移：本文中的未达期待、待验证项和阻塞项已迁移到 [BlueprintHelper_UnmetExpectations_Consolidated_20260514_CN.md](BlueprintHelper_UnmetExpectations_Consolidated_20260514_CN.md)。本文保留为历史上下文；开放项跟踪迁移完成，后续当前状态以总账为准。
+## 当前验收总览：2026-05-14 GraphStatementFramework first-slice 闭环状态
+
+状态：当前 first-slice 期望已闭环；历史章节中被后续修复覆盖的差距不再作为当前阻塞。
+已收敛的历史差距：
+1. `semantic.target_unverified` 针对 `PrintString` 的误报已通过 Kismet library context 注册修复，并通过真实编辑器 CLI 验证 `target.verified=true`。
+2. `semantic.target_unverified` 针对 `/Script/Engine.Actor:K2_SetActorLocation` 的 owner-qualified native path 误报已修复，并通过真实编辑器 CLI 验证 `hasTargetUnverified=false`。
+3. `select/make_struct/get_property` 已在 append 路径真实覆盖，包含 `get_property -> compare -> branch.condition`、`select -> PrintString.InString`、`make_struct(Vector) -> K2_SetActorLocation.NewLocation`。
+4. `replace_owned_graph` 已切换为 `logic_spec: BlueprintLogicSpec.v2` 成功路径，并通过真实编辑器 CLI 覆盖。
+5. `patch_owned_graph` 已真实覆盖 `set_node_comment`、`set_pin_default`、`set_node_position`。
+6. `merge_owned_graph` 已真实覆盖 `insert_between`、`branch_fork`、`append_after`。
+7. `blueprinthelper_read_context` localized node name / artifact JSON 风险已收敛：真实 artifact 可 `JSON.parse`，CLI artifact 使用 ASCII-safe JSON，C++ 节点显示文本加入控制字符清洗，TS 桥接层拒绝不可解析字符串 payload。
+8. C++ ToolResult schema 已从 `BlueprintHelper.McpToolResult.v1` 收敛为 `BlueprintHelper.ToolResult.v1`，并通过重启编辑器后的真实 CLI artifact 验证。
+9. AgentFace `execute_task` 外层 `modified` 已从 Bridge 执行结果穿透，CLI summary 不再把真实写入误报为 `modified=false`。
+10. append preview 已接入 SemanticIR 生成预检，能提前阻断模糊/失败写入；append execute 失败回滚已修复。
+11. `close_editor` 直接 `QUIT_EDITOR` 触发蓝图编辑器 `PreviewScene.GetWorld()` 关闭期断言的风险已修复：关闭前先 `CloseAllAssetEditors()`，再延迟一帧调度退出；已编译并通过 MCP 启动/关闭回归验证。
+当前非阻塞限制：
+1. `connect_pins/disconnect_link/replace_link` 属于低层 patch 能力，当前 AgentFace first-slice schema 未暴露，不作为本轮期望。
+2. user-node anchor 合同尚未设计完成，当前验收范围限定为 BlueprintHelper-owned graph anchor。
+3. Review UI 按 function/event/macro 聚合仍需要单独 UI 验收；本轮已验证 fragment/debug/evidence 字段进入执行结果，但未把 UI 交互体验纳入 GraphStatementFramework first-slice 闭环。
+4. 目标测试资产仍返回 `warning_count=2`；图写入相关 post compile 成功，本轮未展开处理资产既有 warning。
+5. Layout model 仍主要用于 debug/evidence 与 fragment 描述，尚未声明为实际 UE 节点排布驱动器。
+## 当前循环验证结论：2026-05-14 close_editor 蓝图编辑器关闭崩溃修复
+
+状态：已修复并验证。
+
+已完成内容：
+1. 复现依据：关闭编辑器日志显示 `Cmd: QUIT_EDITOR` 后进入世界清理，并触发 `BlueprintEditor.cpp` 的 `PreviewScene.GetWorld()` 断言。
+2. 根因判断：`close_editor` 在蓝图资产编辑器窗口仍存在时直接调度 `QUIT_EDITOR`，可能让 BlueprintEditor 在 PreviewScene 已释放或正在释放时继续处理关闭期逻辑。
+3. 修复 `FBlueprintHelperEditorCommandService::CloseEditor`：保存脏包逻辑保持不变；退出前通过 `UAssetEditorSubsystem::CloseAllAssetEditors()` 主动关闭所有资产编辑器。
+4. 关闭资产编辑器失败时不再继续退出，返回明确错误，避免半关闭状态继续触发退出命令。
+5. `QUIT_EDITOR` 改为通过 `FTSTicker` 延迟 0.25 秒调度，给 Bridge 响应返回和资产编辑器 teardown 留出一帧以上缓冲。
+6. MCP `blueprint_close_editor` 返回消息已更新为 `Closed asset editors and scheduled delayed editor shutdown without saving.`，确认走到新路径。
+7. UE 编译通过：`TemplateEditor Win64 Development`，`Result: Succeeded`。
+8. 通过全局 MCP 启动编辑器并执行关闭回归；编辑器进程正常退出，日志尾部出现 `Editor shut down` / `Log file closed`，未再出现 `PreviewScene.GetWorld()` 断言。
+
+距离期望的差距：
+1. 本轮自动回归覆盖了 MCP 启动后的关闭路径；由于 `blueprint_open_asset` 不在当前 CLI 注册面内，未自动打开蓝图资产编辑器窗口做同场景复现。当前修复已在关闭前覆盖所有资产编辑器窗口，后续如需更强覆盖，应增加受控调试入口或恢复只读安全的资产打开测试能力。
+
+阻塞内容：
+1. 无当前阻塞；剩余是更强复现覆盖能力，不影响本次 crash 修复闭环。
+## 当前循环验证结论：2026-05-14 patch/merge 变体覆盖补齐
+
+状态：已通过真实编辑器 CLI 覆盖。
+已完成内容：
+1. `patch_owned_graph` 的 `set_pin_default` 变体通过：定位 `nodes[4].B`，将比较右值默认值改为 `-998.0`，结果 `patch_type=set_pin_default`、`changed=true`。
+2. `patch_owned_graph` 的 `set_node_position` 变体通过：定位 `nodes[10]`，修改节点位置，结果 `patch_type=set_node_position`、`changed=true`。
+3. 两个 patch 变体均显示外层 `modified=true`，内部 step `modified=true`，post compile 成功。
+4. `merge_owned_graph` 的 `branch_fork` 变体通过：基于 `nodes[5].then` 和 `links[5]` 插入 `PrintString`，并按 `sequence_order=[inserted_logic, original_successor]` 生成 Sequence。
+5. branch_fork 结果包含 `sequence_ref=K2Node_ExecutionSequence_0`，post compile 成功。
+6. `merge_owned_graph` 的 `append_after` 变体通过：基于 `K2_SetActorLocation.then` 追加 `PrintString`，结果 `inserted_ref=PrintString`，post compile 成功。
+距离期望的差距：
+1. `patch_owned_graph` 已覆盖 `set_node_comment`、`set_pin_default`、`set_node_position`，但尚未覆盖更底层的 `connect_pins/disconnect_link/replace_link`；这些不是当前 AgentFace first-slice schema 暴露项。
+2. `merge_owned_graph` 已覆盖 `insert_between`、`branch_fork` 和 `append_after` 三种当前 AgentFace 暴露策略；当前无 merge 策略覆盖缺口。
+3. 所有覆盖均基于 BlueprintHelper-owned graph anchor，尚未验证未来 user-node anchor 合同。
+## 当前循环验证结论：2026-05-14 owner-qualified native target resolver 修复
+
+状态：已编译并通过重启编辑器后的真实 CLI 复测。
+已完成内容：
+1. 修复 SemanticIR call target resolver 对 `ClassPath:FunctionName` 的解析顺序，优先识别 `/Script/Engine.Actor:K2_SetActorLocation` 这类 native owner-qualified 函数路径。
+2. dot 形式 owner/member call 的验证逻辑补充 fallback：当 owner struct 无法解析时，可用 member 函数名或完整 target 在函数上下文中验证，避免纯命名形式误报。
+3. UE 编译通过：`TemplateEditor Win64 Development`，`Result: Succeeded`。
+4. 重启编辑器后执行真实 TaskSpec 覆盖：`get_property(DefaultSceneRoot.RelativeLocation.X) -> compare -> branch`，then 分支调用 `/Script/Engine.Actor:K2_SetActorLocation`，并使用 `make_struct(Vector)` 连接 `NewLocation`。
+5. 执行结果显示 `hasTargetUnverified=false`，SemanticIR evidence 不再出现 `semantic.target_unverified`。
+6. post compile 成功：`compile_result.success=true`、`status=succeeded`。
+距离期望的差距：
+1. 当前验证覆盖了 Actor native owner-qualified function path；其他 native library、component owner 和 plugin class owner 仍建议后续按实际场景补充样例。
+2. 编译仍返回 `warning_count=2`，当前判断为目标测试资产既有 warning；本轮未展开处理资产 warning 明细。
+## 当前循环验证结论：2026-05-14 patch/merge 覆盖与 read_context 输出风险收敛
+
+状态：已编译并通过重启编辑器后的真实 CLI 复测。
+已完成内容：
+1. `patch_owned_graph` 真实编辑器覆盖通过：基于 `BH_SelectStructProperty_20260514_215723` 的 owned block anchor，对 `nodes[7]` 执行 `set_node_comment`，preview/execute 均通过。
+2. `patch_owned_graph` 执行结果显示内部 `bridge_result.modified=true`、`modified_assets=1`、`patch.changed=true`，post compile 成功。
+3. `merge_owned_graph` 真实编辑器覆盖通过：基于 `nodes[7].then -> nodes[12].execute` 的 `links[7]` 执行 `insert_between`，插入 `PrintString`，preview/execute 均通过。
+4. `merge_owned_graph` 执行结果显示内部 `bridge_result.modified=true`、`modified_assets=1`、`inserted_ref=PrintString`，post compile 成功。
+5. 修复 AgentFace `execute_task` 外层 `ToolResult.modified` 未从 Bridge 执行结果穿透的问题，并新增 `task-spec-runner.regression.test.ts` 覆盖。
+6. 将 C++ 公共 ToolResult schema 从 `BlueprintHelper.McpToolResult.v1` 收敛为 `BlueprintHelper.ToolResult.v1`，避免 CLI artifact 内层结果继续残留 MCPToolResult 命名。
+7. `blueprinthelper_read_context` 真实读取 `logic_json` artifact 已可被 Node `JSON.parse` 解析，中文 localized node name 通过 JSON artifact 路径保持可解析。
+8. 新增 `LogicGroupBuilder` 节点显示文本清洗：节点名/owner 去除控制字符并限制长度，不改变 `node_ref/link_ref/node_path` 等结构性 anchor 字段。
+9. 强化 AgentFace `read_context` Bridge payload 形态约束：字符串 payload 必须是可解析 JSON 对象，否则返回标准 `invalid_read_context_payload`，不再模糊透传。
+距离期望的差距：
+1. C++ schema 常量、节点文本清洗、外层 modified 穿透已通过编译与真实 CLI 复测；当前无该项剩余差距。
+2. `patch_owned_graph` 和 `merge_owned_graph` 已覆盖最小真实路径，但还未覆盖 `branch_fork`、`set_pin_default`、`set_node_position` 等变体。
+3. `merge_owned_graph` 仍属于现有 merge service 的插入型变更路径，不是 statement tree -> fragment DAG 的完整新逻辑生成路径；当前验收目标是 GraphWrite 四策略均可经 TaskSpec 主链路落地。
+4. Review UI 按 function/event/macro 聚合仍未在真实 UI 中验收；当前只验证了 fragment/debug/evidence 字段和图写入结果。
+5. `/Script/Engine.Actor:K2_SetActorLocation` 的 `semantic.target_unverified` warning 仍需后续补 owner-qualified native path resolver。
+
+## 当前循环验证结论：2026-05-14 select/make_struct/get_property 覆盖与 append preview 校验修复
+
+状态：已修复并验证。
+
+已完成内容：
+1. 新增 append dry-run 语义生成预检：`append_new_owned_graph` preview 不再只做 TaskPlan/Preflight 校验，会在可回滚路径中执行一次 SemanticIR -> UE 节点生成。
+2. 修复 append execute 失败回滚：SemanticIR 生成失败时，新建图会整图删除，既有图会移除本次新增节点，避免半成品 custom event 残留导致后续蓝图编译重复函数名。
+3. 复测模糊目标 `SetActorLocation`：preview 已能提前返回 `semantic_graph_write_failed`，不再等到 execute 阶段才失败。
+4. 使用精确目标 `/Script/Engine.Actor:K2_SetActorLocation` 重新执行真实覆盖。
+5. 真实覆盖图：`BH_SelectStructProperty_20260514_215723`，事件：`BH_CodexSelectStructProperty_20260514_215723`。
+6. 覆盖表达式链路：`get_property(DefaultSceneRoot.RelativeLocation.X) -> compare -> branch.condition`。
+7. 覆盖表达式链路：`select(bool, string, string) -> PrintString.InString`。
+8. 覆盖表达式链路：`get_property(DefaultSceneRoot.RelativeLocation.X) -> make_struct(/Script/CoreUObject.Vector) -> K2_SetActorLocation.NewLocation`。
+9. 执行结果包含 `fragment_debug.fragment_dag`，其中 `data_edges=13`、`exec_edges=5`、`fragment_count=18`。
+10. post compile 已执行并成功：`compile_result.success=true`、`status=succeeded`、`warning_count=2`。
+11. UE 编译通过：`TemplateEditor Win64 Development`，`Result: Succeeded`。
+
+距离期望的差距：
+1. `/Script/Engine.Actor:K2_SetActorLocation` 当前仍在 SemanticIR evidence 中出现 `semantic.target_unverified` warning；CallFunctionResolver 可以成功落地，但 SemanticIR context 尚不能验证 owner-qualified native path。
+2. 本轮覆盖了 append 路径中的 `select/make_struct/get_property`，尚未在 replace/merge/patch 路径做同等组合覆盖。
+3. append dry-run 语义预检已能捕捉生成失败，但当前实现会在真实蓝图上做可回滚临时生成；后续可评估是否改为 transient duplicate Blueprint，以进一步降低预览副作用风险。
+4. `validation_policy` 是无效旧字段，正确字段为 `validation.should_compile/should_save`；本轮已记录到 CLI Tips。
+5. Review evidence 仍显示 `unknown:unknown` scope，function/event/macro 聚合 UI 仍未真实验收。
+
+## 当前循环验证结论：2026-05-14 replace_owned_graph SemanticIR 成功路径修复
+
+状态：已修复并验证。
+
+已完成内容：
+1. 修复 TypeScript GraphWrite 编译器：`replace_owned_graph` 不再输出旧 `replacement.nodes/links`，改为输出 `logic_spec: BlueprintLogicSpec.v2`。
+2. 修复 Python GraphWrite 编译器：CLI 默认 Python 编译链已同步输出 `logic_spec`，并将旧输入 `call_function/name`、`set_member_variable/name` 规范化为短名 `call/target`、`set/target`。
+3. 修复 UE TaskRuntime replace 适配层：`replace_body` structural op 读取 `logic_spec` 并转发给 `replace_blueprint_graph`，不再要求旧 `replacement`。
+4. 同步 TypeScript、Python 和 fixture 测试期望，确保短名 SemanticIR 是 TaskPlan/Bridge payload 成功路径。
+5. AgentFace task-core 全量测试通过：Node 101/101，Python unittest 48/48。
+6. 工作区 CLI build 通过：`npm.cmd --prefix AgentFaceService\cli run build`。
+7. UE 编译通过：`TemplateEditor Win64 Development`，`Result: Succeeded`。
+8. 真实编辑器覆盖通过：先用 `append_new_owned_graph` 创建 `BH_ReplaceRegression_20260514_213405`，再用 `replace_owned_graph` 替换 `BH_CodexReplaceBase_20260514_213405` 自定义事件体。
+9. replace preview 已通过，不再出现 `logic_spec_required` 或 `GraphWrite structural op requires logic_spec object`。
+10. replace execute 已通过，返回 `status=completed`，Bridge step `adapter_operation=replace_blueprint_graph`，结果包含 `fragment_debug.fragment_dag`、`data_edges`、`fragment_evidence`。
+11. 已按闭环流程关闭编辑器、编译、重新启动编辑器，并确认 Bridge 可用。
+
+距离期望的差距：
+1. `replace_owned_graph` 的最小真实成功路径已闭环，但 `patch_owned_graph` 和 `merge_owned_graph` 仍需同级真实编辑器覆盖。
+2. 当前 replace 覆盖使用单条 `call PrintString`，尚未覆盖 `branch/select/make_struct/get_property` 在 replace 路径中的组合写入。
+3. `fragment_evidence.review_scopes` 当前仍出现 `unknown:unknown`，Review UI 按 function/event/macro 图体聚合的真实体验仍需单独验证。
+4. append/replace 结果内仍显示低层 `adapter_operation`，这是运行时执行记录，不影响普通 TaskSpec 成功路径；后续若要完全隐藏低层语言，需要另做结果裁切/展示策略。
+5. 本轮发现两个 CLI 使用层问题并已写入 Tips：Windows PowerShell `Set-Content -Encoding utf8` 会写 BOM 导致 JSON parse error；全局 `bh.cmd` 可能滞后于工作区源码，开发验证应优先使用工作区 CLI build。
+
+## 当前循环验证结论：2026-05-14 PrintString semantic resolver 修复
+
+状态：已修复并验证。
+
+已完成内容：
+1. 通过真实 CLI TaskSpec 复现 `PrintString` 写入成功但 SemanticIR 报 `semantic.target_unverified` 的问题。
+2. 根因定位为 SemanticIR context 仅登记蓝图自身、父类、组件和变量成员，未登记常用 Blueprint library 函数；实际节点生成阶段的 CallFunctionResolver 能解析 `PrintString`，但 SemanticIR 预验证阶段不能验证该目标。
+3. 已在 `FBlueprintHelperGraphSemanticContext::FromBlueprint` 中登记常用 Kismet library 函数。
+4. 已同步登记函数 display name，避免 `Print String` 这类显示名在 semantic context 中继续误报。
+5. UE 编译通过：`TemplateEditor Win64 Development`，`Result: Succeeded`。
+6. 重启编辑器后重新执行 PrintString 最小 TaskSpec，通过真实写入验证 `target.verified=true`。
+7. 复测结果中 `fragment_debug.fragment_dag.diagnostics=[]`，`fragment_evidence.diagnostics=[]`。
+
+距离期望的差距：
+1. 本轮仅登记 `UKismetSystemLibrary` 和 `UKismetMathLibrary` 两类常用 Blueprint library；其他 library 例如 GameplayStatics 是否纳入，需要后续基于实际场景决定。
+2. SemanticIR 仍只是“目标可被上下文识别”的预验证，不替代最终 CallFunctionResolver 的唯一性、图兼容性和歧义判断。
+3. 尚未为 SemanticIR context 单独补 C++ 自动化测试；本轮以真实编辑器 CLI 覆盖验证为准。
+
+## 当前循环验证结论：2026-05-14 read_task_context 资产存在性修复
+
+状态：已修复并验证。
+
+已完成内容：
+1. 已按闭环流程写入记忆：补全文档期望内容、启动编辑器、CLI 测试、发现问题、分析问题、修复、关闭编辑器、编译、继续补全文档。
+2. 已新增 CLI Tips 文档，用于记录非插件代码导致的错误，例如错误 CLI 参数、PowerShell 语法、编码和本地命令调用问题。
+3. 已通过全局 MCP 启动编辑器并确认 Bridge 可用。
+4. 复测确认真实资产 `/Game/BP_BH_SemanticCoverageActor` 的 `asset_info` 已规范化为 `/Game/BP_BH_SemanticCoverageActor.BP_BH_SemanticCoverageActor`、`name=BP_BH_SemanticCoverageActor`、`class=Blueprint`。
+5. 复测发现缺失资产 `/Game/BlueprintHelper/Smoke/BP_TaskSpecSmoke` 仍被 `read_task_context` 误报为 `exists=true`，根因是 AgentFace 将 Bridge 返回的空 `asset_info={}` 当作有效资产。
+6. 已修复 AgentFace `buildTaskContextPack`：只有包含有效 `path/name/class` 的 asset info 才会被认定为存在资产。
+7. 已新增 `task-context.regression.test.ts`，覆盖空 `get_asset_info` 结果不得被视为存在资产，以及有效 asset info 应保持存在资产两条路径。
+8. AgentFace 全量测试通过：Node 101/101，Python unittest 48/48。
+9. CLI 复测通过：缺失资产返回 `exists=false`；真实资产返回 `exists=true` 且保留规范化 `asset_info`。
+10. 已通过 MCP 关闭编辑器并保存脏资源。
+11. UE 编译通过：`TemplateEditor Win64 Development`，`Result: Succeeded`。
+
+距离期望的差距：
+1. UE Bridge 的 `get_asset_info` 对缺失资产仍可能返回空对象；本轮是在 AgentFace 层收敛为空对象无效，后续可进一步让 UE 侧直接返回明确 Bridge error 或 `exists=false`。
+2. `PrintString` 仍存在 `semantic.target_unverified` resolver warning，尚未在本轮处理。
+3. `request_write_session` pending approval/timeout 状态精确化尚未处理；当前 AutoRepair 已绕过弹窗，但普通档位仍需独立验证。
+4. replace/merge/patch 的完整真实编辑器回归仍需继续覆盖。
+5. Review UI 按 function/event/macro 聚合后的真实审核体验尚未在本轮验证。
+
 日期：2026-05-13
 
 关联设计文档：`BlueprintHelper_GraphStatementFramework_Design_20260513_CN.md`

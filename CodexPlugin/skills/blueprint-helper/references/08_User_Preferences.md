@@ -30,6 +30,9 @@ Agents should read this file before BlueprintHelper planning, status review, imp
 - Do not fall back to frozen or legacy low-level BlueprintHelper tools unless the user explicitly requests expert recovery.
 - If `write_permission` is disabled, request a write session after preview and before execute; a user rejection is a stop-and-report condition.
 - Do not ask for or inject `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session` for ordinary interactive writes; approved write permission is held by the running Editor/Bridge and can be used by delegated SideAgents within scope and lifetime.
+- Editor lifecycle commands must use the global MCP server tools `mcp__blueprint_helper__blueprint_open_editor` and `mcp__blueprint_helper__blueprint_close_editor`; do not validate lifecycle through plugin-local MCP or one-shot shell MCP clients.
+- `AutoRepair` safety profile bypasses the write request popup and defaults write permission to enabled while keeping preview, Journal, and Review evidence.
+- `AutoRepair` safety profile bypasses the write request popup and defaults write permission to enabled while keeping preview, Journal, and Review evidence.
 
 ### Save And Validation
 
@@ -40,7 +43,7 @@ Agents should read this file before BlueprintHelper planning, status review, imp
 
 ### Blueprint, C++, And Repository Boundary
 
-- Use BlueprintHelper CLI commands for UE editor assets only: Blueprint graphs, UMG, DataAssets, DataTables, compile/save/open, PIE/editor commands, diagnostics, and related asset operations.
+- Use BlueprintHelper CLI commands for ordinary UE editor asset reads and writes only: Blueprint graphs, UMG, DataAssets, DataTables, compile/save, diagnostics, and related asset operations. Use global MCP only for editor lifecycle open/close.
 - Use normal repository tools for C++, TypeScript, Python, JSON, config, build scripts, documentation, AGENTS files, and memory files.
 - Default C++ edit permission: disabled unless the user explicitly asks for code edits.
 - Default `.uasset` edit permission: allowed only through BlueprintHelper CLI TaskSpec-first flow.

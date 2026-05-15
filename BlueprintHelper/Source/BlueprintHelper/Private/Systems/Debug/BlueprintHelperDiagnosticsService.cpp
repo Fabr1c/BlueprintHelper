@@ -5,6 +5,7 @@
 #include "Shared/Debug/BlueprintHelperRuntimeProfileTypes.h"
 #include "Shared/BlueprintHelperToolResultTypes.h"
 #include "Systems/Authorization/BlueprintHelperWriteAuthorizationService.h"
+#include "Systems/Config/BlueprintHelperSafetyProfileResolver.h"
 #include "Interfaces/IPluginManager.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Misc/Paths.h"
@@ -54,17 +55,21 @@ FBlueprintHelperDiagnosticsData FBlueprintHelperDiagnosticsService::RunRuntimeDi
 	// ══════。Warning 检。══════。
 
 	// Write Permission
-	const FString SafetyProfile = GetSafetyProfileStr();
+	const EBlueprintHelperSafetyProfile SafetyProfile = FBlueprintHelperSafetyProfileResolver::ResolveSafetyProfile();
 
-	if (!FBlueprintHelperWriteAuthorizationService::Get().HasActiveSession())
-	{
-		Report.AddWarning(TEXT("write_permission.disabled"),
-			TEXT("reason: write_session_missing"));
-	}
-	else if (SafetyProfile.Equals(TEXT("readonly"), ESearchCase::IgnoreCase))
+	if (SafetyProfile == EBlueprintHelperSafetyProfile::ReadOnly)
 	{
 		Report.AddWarning(TEXT("write_permission.disabled"),
 			TEXT("reason: safety_profile_read_only"));
+	}
+	else if (SafetyProfile == EBlueprintHelperSafetyProfile::AutoRepair)
+	{
+		Report.AddInfo(TEXT("write_permission.enabled"));
+	}
+	else if (!FBlueprintHelperWriteAuthorizationService::Get().HasActiveSession())
+	{
+		Report.AddWarning(TEXT("write_permission.disabled"),
+			TEXT("reason: write_session_missing"));
 	}
 	else
 	{
@@ -83,7 +88,7 @@ FBlueprintHelperDiagnosticsData FBlueprintHelperDiagnosticsService::RunRuntimeDi
 	else
 	{
 		Report.AddWarning(TEXT("risk_command.disabled"),
-			TEXT("reason: risk_command_missing\nblocked_commands: close_editor, exec_console_command"));
+			TEXT("reason: risk_command_missing\nblocked_commands: exec_console_command"));
 	}
 
 	// Project Marker

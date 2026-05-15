@@ -3,6 +3,7 @@
 #include "Systems/Authorization/BlueprintHelperWriteAuthorizationService.h"
 
 #include "Entry/Bridge/BlueprintHelperRequestValidator.h"
+#include "Systems/Config/BlueprintHelperSafetyProfileResolver.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "GenericPlatform/GenericWindow.h"
@@ -235,6 +236,11 @@ TOptional<FBlueprintHelperWriteSessionGrant> FBlueprintHelperWriteAuthorizationS
 	const FBlueprintHelperWriteSessionRequest& Request,
 	FString& OutError)
 {
+	if (FBlueprintHelperSafetyProfileResolver::IsAutoRepair())
+	{
+		return CreateGrant(Request);
+	}
+
 	const bool bApproved = ApprovalProviderForTesting
 		? ApprovalProviderForTesting(Request)
 		: RequestUserApproval(Request);

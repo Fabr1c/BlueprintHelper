@@ -1,5 +1,7 @@
 # ReviewPanel Native Row Geometry Implementation Plan
 
+> 2026-05-14 状态转移：本文中的未达期待、待验证项和阻塞项已迁移到 [BlueprintHelper_UnmetExpectations_Consolidated_20260514_CN.md](BlueprintHelper_UnmetExpectations_Consolidated_20260514_CN.md)。本文保留为历史上下文；开放项跟踪迁移完成，后续当前状态以总账为准。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 让 ReviewPanel 的 Blueprint 组件、WidgetTree、我的蓝图三个内置面板生成真实行级 Diff 高亮，不再用带文字的覆盖卡片伪装成精准定位。

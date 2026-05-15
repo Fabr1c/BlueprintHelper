@@ -491,10 +491,140 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 
 	if (PreflightResult.bPassed)
 	{
-		FBlueprintHelperAppendDryRunData DryRunData;
-		DryRunData.DryRun.Result = EBlueprintHelperDryRunResult::Passed;
-		DryRunData.DryRun.bCanExecute = true;
-		Result.Data = DryRunData.ToJson();
+		FBlueprintHelperGraphTarget GraphTarget;
+		GraphTarget.BlueprintPath = Request.AssetPath;
+		FBlueprintHelperDiagnosticSet Diag;
+		UBlueprint* Blueprint = Resolver.ResolveBlueprint(GraphTarget, Diag);
+		if (!Blueprint)
+		{
+			FBlueprintHelperAppendDryRunData DryRunData;
+			DryRunData.DryRun.Result = EBlueprintHelperDryRunResult::Blocked;
+			DryRunData.DryRun.bCanExecute = false;
+			DryRunData.DryRun.BlockedBy.Add(TEXT("target_blueprint_not_found"));
+			DryRunData.DryRun.Errors.Add({TEXT("target_blueprint_not_found"),
+				FString::Printf(TEXT("Blueprint %s was not found."), *Request.AssetPath),
+				Request.AssetPath,
+				TEXT("target.asset_path")});
+
+			FBlueprintHelperToolError Error;
+			Error.Code = TEXT("target_blueprint_not_found");
+			Error.Stage = EBlueprintHelperToolStage::ResolveTarget;
+			Error.Message = FString::Printf(TEXT("Blueprint %s was not found."), *Request.AssetPath);
+			Error.Field = TEXT("target.asset_path");
+			Error.bRetryable = false;
+			Error.RollbackResult = EBlueprintHelperRollbackResult::NotNeeded;
+
+			Result = FBlueprintHelperToolResultBuilder::Failure(
+				TEXT("append_blueprint_graph"), TraceId, Error);
+			Result.Target = TargetRef;
+			Result.Data = DryRunData.ToJson();
+		}
+		else
+		{
+			UEdGraph* ExistingGraph = nullptr;
+			for (UEdGraph* Page : Blueprint->UbergraphPages)
+			{
+				if (Page && Page->GetName() == Request.GraphName)
+				{
+					ExistingGraph = Page;
+					break;
+				}
+			}
+
+			const bool bGraphExisted = ExistingGraph != nullptr;
+			const bool bPackageWasDirty = Blueprint->GetOutermost() ? Blueprint->GetOutermost()->IsDirty() : false;
+			FString GraphError;
+			UEdGraph* PreviewGraph = FindOrCreateAppendGraph(Blueprint, Request.GraphName, GraphError);
+			if (!PreviewGraph)
+			{
+				FBlueprintHelperAppendDryRunData DryRunData;
+				DryRunData.DryRun.Result = EBlueprintHelperDryRunResult::Blocked;
+				DryRunData.DryRun.bCanExecute = false;
+				DryRunData.DryRun.BlockedBy.Add(TEXT("preview_graph_create_failed"));
+				DryRunData.DryRun.Errors.Add({TEXT("preview_graph_create_failed"), GraphError, Request.GraphName, TEXT("target.graph")});
+
+				FBlueprintHelperToolError Error;
+				Error.Code = TEXT("preview_graph_create_failed");
+				Error.Stage = EBlueprintHelperToolStage::Preflight;
+				Error.Message = GraphError;
+				Error.Field = TEXT("target.graph");
+				Error.bRetryable = false;
+				Error.RollbackResult = EBlueprintHelperRollbackResult::NotNeeded;
+
+				Result = FBlueprintHelperToolResultBuilder::Failure(
+					TEXT("append_blueprint_graph"), TraceId, Error);
+				Result.Target = TargetRef;
+				Result.Data = DryRunData.ToJson();
+			}
+			else
+			{
+				const TSet<UEdGraphNode*> NodeSnapshot = FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::CaptureGraphNodes(PreviewGraph);
+				const FString GraphWritePayload = BuildSemanticGraphWritePayload(Request);
+				TArray<TSharedPtr<FUnresolvedNodeItem>> UnresolvedNodes;
+				const FBlueprintGenerateResult GenerateResult =
+					FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(PreviewGraph, GraphWritePayload, UnresolvedNodes);
+
+				if (!bGraphExisted)
+				{
+					FBlueprintEditorUtils::RemoveGraph(Blueprint, PreviewGraph);
+					FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+				}
+				else
+				{
+					TArray<UEdGraphNode*> NodesToRemove;
+					for (UEdGraphNode* Node : PreviewGraph->Nodes)
+					{
+						if (Node && !NodeSnapshot.Contains(Node))
+						{
+							NodesToRemove.Add(Node);
+						}
+					}
+					for (UEdGraphNode* Node : NodesToRemove)
+					{
+						FBlueprintEditorUtils::RemoveNode(Blueprint, Node, true);
+					}
+				}
+				if (Blueprint->GetOutermost())
+				{
+					Blueprint->GetOutermost()->SetDirtyFlag(bPackageWasDirty);
+				}
+
+				if (GenerateResult.bSucceed)
+				{
+					FBlueprintHelperAppendDryRunData DryRunData;
+					DryRunData.DryRun.Result = EBlueprintHelperDryRunResult::Passed;
+					DryRunData.DryRun.bCanExecute = true;
+					Result.Data = DryRunData.ToJson();
+				}
+				else
+				{
+					FString ImportMessage = GenerateResult.Message;
+					if (UnresolvedNodes.Num() > 0 && UnresolvedNodes[0].IsValid())
+					{
+						ImportMessage += FString::Printf(TEXT(" First unresolved: %s - %s"), *UnresolvedNodes[0]->DisplayText, *UnresolvedNodes[0]->Reason);
+					}
+
+					FBlueprintHelperAppendDryRunData DryRunData;
+					DryRunData.DryRun.Result = EBlueprintHelperDryRunResult::Blocked;
+					DryRunData.DryRun.bCanExecute = false;
+					DryRunData.DryRun.BlockedBy.Add(TEXT("semantic_graph_write_failed"));
+					DryRunData.DryRun.Errors.Add({TEXT("semantic_graph_write_failed"), ImportMessage, TEXT("logic_spec"), TEXT("logic_spec")});
+
+					FBlueprintHelperToolError Error;
+					Error.Code = TEXT("semantic_graph_write_failed");
+					Error.Stage = EBlueprintHelperToolStage::Preflight;
+					Error.Message = ImportMessage;
+					Error.Field = TEXT("logic_spec");
+					Error.bRetryable = false;
+					Error.RollbackResult = EBlueprintHelperRollbackResult::NotNeeded;
+
+					Result = FBlueprintHelperToolResultBuilder::Failure(
+						TEXT("append_blueprint_graph"), TraceId, Error);
+					Result.Target = TargetRef;
+					Result.Data = DryRunData.ToJson();
+				}
+			}
+		}
 	}
 	else
 	{
@@ -591,6 +721,16 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 
 
 	// 4. 查找/创建目标图表
+	UEdGraph* ExistingGraph = nullptr;
+	for (UEdGraph* Page : Blueprint->UbergraphPages)
+	{
+		if (Page && Page->GetName() == Request.GraphName)
+		{
+			ExistingGraph = Page;
+			break;
+		}
+	}
+	const bool bGraphExistedBeforeWrite = ExistingGraph != nullptr;
 	FString GraphError;
 	UEdGraph* TargetGraph = FindOrCreateAppendGraph(Blueprint, Request.GraphName, GraphError);
 	if (!TargetGraph)
@@ -610,7 +750,6 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 	const FBlueprintGenerateResult GenerateResult =
 		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(TargetGraph, GraphWritePayload, UnresolvedNodes);
 	const bool bImportSuccess = GenerateResult.bSucceed;
-	const bool bImportRolledBack = false;
 	FString ImportErrorCode = GenerateResult.bSucceed ? TEXT("") : TEXT("semantic_graph_write_failed");
 	FString ImportMessage = GenerateResult.Message;
 	if (!bImportSuccess && UnresolvedNodes.Num() > 0 && UnresolvedNodes[0].IsValid())
@@ -621,10 +760,25 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 	if (!bImportSuccess)
 	{
 		// 清理可能半成品的新图表
-		if (TargetGraph->Nodes.Num() == 0)
+		if (!bGraphExistedBeforeWrite)
 		{
 			FBlueprintEditorUtils::RemoveGraph(Blueprint, TargetGraph);
 			FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+		}
+		else
+		{
+			TArray<UEdGraphNode*> NodesToRemove;
+			for (UEdGraphNode* Node : TargetGraph->Nodes)
+			{
+				if (Node && !NodeSnapshot.Contains(Node))
+				{
+					NodesToRemove.Add(Node);
+				}
+			}
+			for (UEdGraphNode* Node : NodesToRemove)
+			{
+				FBlueprintEditorUtils::RemoveNode(Blueprint, Node, true);
+			}
 		}
 
 		FBlueprintHelperToolError Error;
@@ -633,8 +787,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 		Error.Message = ImportMessage.IsEmpty()
 			? TEXT("Agent 导入执行失败。") : ImportMessage;
 		Error.bRetryable = false;
-		Error.RollbackResult = bImportRolledBack
-			? EBlueprintHelperRollbackResult::RolledBack : EBlueprintHelperRollbackResult::Failed;
+		Error.RollbackResult = EBlueprintHelperRollbackResult::RolledBack;
 
 		FBlueprintHelperToolResultBase FailResult = FBlueprintHelperToolResultBuilder::Failure(
 			TEXT("append_blueprint_graph"), TraceId, Error);

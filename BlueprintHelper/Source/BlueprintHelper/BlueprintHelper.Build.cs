@@ -59,6 +59,7 @@ public class BlueprintHelper : ModuleRules
 				"EnhancedInput",
 				"InputBlueprintNodes",
 				"SubobjectEditor",
+				"KismetWidgets",
 				// ... add private dependencies that you statically link with here ...
 			}
 			);

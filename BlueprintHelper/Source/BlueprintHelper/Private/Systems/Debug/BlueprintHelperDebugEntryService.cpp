@@ -230,16 +230,28 @@ FBlueprintHelperToolResultBase FBlueprintHelperDebugEntryService::GetDebugCaseLi
 			Error);
 	}
 
+	int32 Limit = 25;
+	if (Payload.IsValid())
+	{
+		double RequestedLimit = 0.0;
+		if (Payload->TryGetNumberField(TEXT("limit"), RequestedLimit))
+		{
+			Limit = FMath::Clamp(static_cast<int32>(RequestedLimit), 1, 200);
+		}
+	}
+
 	FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Completed(
 		TEXT("debug_case_list"),
 		FBlueprintHelperToolResultBuilder::GenerateTraceId());
 	TSharedRef<FJsonObject> Data = MakeShared<FJsonObject>();
 	Data->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.DebugCaseList.v1"));
 	Data->SetNumberField(TEXT("count"), Summaries.Num());
+	Data->SetNumberField(TEXT("returned_count"), FMath::Min(Limit, Summaries.Num()));
+	Data->SetNumberField(TEXT("limit"), Limit);
 	TArray<TSharedPtr<FJsonValue>> CaseValues;
-	for (const FBlueprintHelperDebugCaseSummary& Summary : Summaries)
+	for (int32 Index = 0; Index < Summaries.Num() && Index < Limit; ++Index)
 	{
-		CaseValues.Add(MakeShared<FJsonValueObject>(Summary.ToJson()));
+		CaseValues.Add(MakeShared<FJsonValueObject>(Summaries[Index].ToJson()));
 	}
 	Data->SetArrayField(TEXT("debug_cases"), CaseValues);
 	Result.Data = Data;

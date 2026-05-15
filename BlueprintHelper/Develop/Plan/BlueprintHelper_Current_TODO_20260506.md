@@ -1,5 +1,7 @@
 # BlueprintHelper Current TODO (2026-05-06)
 
+> 2026-05-14 状态转移：本文中的未达期待、待验证项和阻塞项已迁移到 [BlueprintHelper_UnmetExpectations_Consolidated_20260514_CN.md](BlueprintHelper_UnmetExpectations_Consolidated_20260514_CN.md)。本文保留为历史上下文；开放项跟踪迁移完成，后续当前状态以总账为准。
+
 本页只记录当前主线待验证事项，不回写 `Resources/v0.3.6` 归档文档。
 
 2026-05-09 清理: 全线测试执行入口已统一到 `Develop/Plan/BlueprintHelper_Unified_SmokeRun_Verification_20260509.md`。本文件只保留主线 TODO 摘要，不再作为 smoke 执行清单。

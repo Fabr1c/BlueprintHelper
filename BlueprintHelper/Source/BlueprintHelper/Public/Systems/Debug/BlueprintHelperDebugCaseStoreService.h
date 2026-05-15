@@ -38,6 +38,7 @@ public:
 
 private:
 	static bool IsSafeDebugCaseId(const FString& DebugCaseId);
+	static bool IsPathInsideDirectory(const FString& Path, const FString& Directory);
 	static bool IsPathInsideDebugRoot(const FString& Path);
 	static FBlueprintHelperDebugCaseSummary BuildSummary(const FBlueprintHelperDebugCase& DebugCase);
 	static void BuildSkippedArtifacts(const FBlueprintHelperDebugCase& DebugCase, FBlueprintHelperDebugBundleManifest& Manifest);

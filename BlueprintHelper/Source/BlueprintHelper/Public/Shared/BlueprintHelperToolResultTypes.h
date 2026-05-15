@@ -12,7 +12,7 @@
 class FBlueprintHelperProtocol
 {
 public:
-	static constexpr const TCHAR* ToolResultSchema = TEXT("BlueprintHelper.McpToolResult.v1");
+	static constexpr const TCHAR* ToolResultSchema = TEXT("BlueprintHelper.ToolResult.v1");
 
 	struct Status
 	{
@@ -677,7 +677,7 @@ struct FBlueprintHelperToolResultBase
 	/** 工具调用是否成功。 */
 	bool bOk = false;
 
-	/** Schema 版本标识，例如 BlueprintHelper.McpToolResult.v1。 */
+	/** Schema 版本标识，例如 BlueprintHelper.ToolResult.v1。 */
 	FString Schema;
 
 	/** 公共操作名，不暴露 MCP tool name / Bridge command。 */
@@ -779,7 +779,7 @@ class BLUEPRINTHELPER_API FBlueprintHelperToolResultBuilder
 {
 public:
 	/** 设置 Schema 版本。 */
-	static constexpr const TCHAR* DefaultSchema = TEXT("BlueprintHelper.McpToolResult.v1");
+	static constexpr const TCHAR* DefaultSchema = TEXT("BlueprintHelper.ToolResult.v1");
 
 	/** 构造成功结果。 */
 	static FBlueprintHelperToolResultBase Success(const FString& Operation, const FString& TraceId);

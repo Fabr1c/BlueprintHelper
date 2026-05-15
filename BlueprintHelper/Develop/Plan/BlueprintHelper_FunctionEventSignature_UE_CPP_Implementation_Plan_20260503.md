@@ -1,5 +1,7 @@
 # BlueprintHelper Blueprint Function / Event Signature Management UE 侧 C++ 可执行实现计划
 
+> 2026-05-14 状态转移：本文中的未达期待、待验证项和阻塞项已迁移到 [BlueprintHelper_UnmetExpectations_Consolidated_20260514_CN.md](BlueprintHelper_UnmetExpectations_Consolidated_20260514_CN.md)。本文保留为历史上下文；开放项跟踪迁移完成，后续当前状态以总账为准。
+
 日期：2026-05-03  
 适用范围：BlueprintHelper v0.4 / v0.5 前置实现  
 来源字段稿：`BlueprintHelper_FunctionEventSignature_UE_FieldMapping_20260503.md`  

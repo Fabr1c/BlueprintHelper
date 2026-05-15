@@ -4,6 +4,8 @@
 #include "Engine/Blueprint.h"
 #include "Engine/SCS_Node.h"
 #include "Engine/SimpleConstructionScript.h"
+#include "Kismet/KismetMathLibrary.h"
+#include "Kismet/KismetSystemLibrary.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "UObject/FieldIterator.h"
@@ -213,13 +215,26 @@ static FBlueprintHelperGraphResolvedTarget ResolveTargetString(
 	if (StatementKind == EBlueprintHelperGraphStatementKind::Call
 		|| ExpressionKind == EBlueprintHelperGraphExpressionKind::Call)
 	{
+		FString NativeOwner;
+		FString NativeMember;
+		if (Target.Raw.Split(TEXT(":"), &NativeOwner, &NativeMember, ESearchCase::CaseSensitive, ESearchDir::FromEnd)
+			&& !NativeMember.IsEmpty())
+		{
+			Target.Kind = EBlueprintHelperGraphTargetKind::Function;
+			Target.Owner = NativeOwner;
+			Target.Member = NativeMember;
+			Target.Type = Context.FindTargetType(NativeMember);
+			Target.bVerifiedByContext = Context.IsFunction(NativeMember) || Context.IsFunction(Target.Raw);
+			return Target;
+		}
+
 		if (bHasOwner)
 		{
 			Target.Kind = EBlueprintHelperGraphTargetKind::ComponentMemberFunction;
 			Target.Owner = Owner;
 			Target.Member = Remainder;
 			Target.Type = Context.FindTargetType(Owner);
-			Target.bVerifiedByContext = Context.HasMemberFunction(Owner, Remainder);
+			Target.bVerifiedByContext = Context.HasMemberFunction(Owner, Remainder) || Context.IsFunction(Remainder) || Context.IsFunction(Target.Raw);
 			return Target;
 		}
 
@@ -414,7 +429,7 @@ FBlueprintHelperGraphSemanticContext FBlueprintHelperGraphSemanticContext::FromB
 		}
 	}
 
-	auto AddClassMembers = [&Context, &AddTypedName, &AddTargetStruct, &ResolvePropertyStruct](const UClass* Class)
+	auto AddClassFunctions = [&Context, &AddTypedName](const UClass* Class)
 	{
 		if (!Class)
 		{
@@ -422,8 +437,28 @@ FBlueprintHelperGraphSemanticContext FBlueprintHelperGraphSemanticContext::FromB
 		}
 		for (TFieldIterator<UFunction> FunctionIt(Class, EFieldIteratorFlags::IncludeSuper); FunctionIt; ++FunctionIt)
 		{
-			AddTypedName(Context.FunctionNames, FunctionIt->GetName(), TEXT("function"));
+			const UFunction* Function = *FunctionIt;
+			if (!Function)
+			{
+				continue;
+			}
+
+			AddTypedName(Context.FunctionNames, Function->GetName(), TEXT("function"));
+			const FString DisplayName = Function->GetDisplayNameText().ToString();
+			if (!DisplayName.IsEmpty())
+			{
+				AddTypedName(Context.FunctionNames, DisplayName, TEXT("function"));
+			}
 		}
+	};
+
+	auto AddClassMembers = [&Context, &AddTypedName, &AddTargetStruct, &ResolvePropertyStruct, &AddClassFunctions](const UClass* Class)
+	{
+		if (!Class)
+		{
+			return;
+		}
+		AddClassFunctions(Class);
 		for (TFieldIterator<FProperty> PropertyIt(Class, EFieldIteratorFlags::IncludeSuper); PropertyIt; ++PropertyIt)
 		{
 			AddTypedName(Context.VariableNames, PropertyIt->GetName(), PropertyIt->GetCPPType());
@@ -434,6 +469,8 @@ FBlueprintHelperGraphSemanticContext FBlueprintHelperGraphSemanticContext::FromB
 	AddClassMembers(Blueprint->SkeletonGeneratedClass);
 	AddClassMembers(Blueprint->GeneratedClass);
 	AddClassMembers(Blueprint->ParentClass);
+	AddClassFunctions(UKismetSystemLibrary::StaticClass());
+	AddClassFunctions(UKismetMathLibrary::StaticClass());
 	return Context;
 }
 

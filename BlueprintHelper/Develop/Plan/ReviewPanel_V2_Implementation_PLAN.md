@@ -1,5 +1,7 @@
 # ReviewPanel v2 执行计划
 
+> 2026-05-14 状态转移：本文中的未达期待、待验证项和阻塞项已迁移到 [BlueprintHelper_UnmetExpectations_Consolidated_20260514_CN.md](BlueprintHelper_UnmetExpectations_Consolidated_20260514_CN.md)。本文保留为历史上下文；开放项跟踪迁移完成，后续当前状态以总账为准。
+
 ## Summary
 
 目标是按已批准的 `BlueprintHelper_ReviewPanel_V2_Architecture_Design_20260509_CN.md` 执行第一轮架构改造：先修正资产上下文和 surface 路由合同，再把 Graph/Components/MyBlueprint/Details 从单体面板中拆出 presenter 边界。Stage 1 必须先交付可验证行为：非 Blueprint 资产能进入 ReviewPanel，Graph 不再为非 Graph anchor 画 fallback 框，现有 true Graph review 不回退。

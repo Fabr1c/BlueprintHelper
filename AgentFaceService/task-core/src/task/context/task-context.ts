@@ -8,7 +8,7 @@ export async function buildTaskContextPack(bridge: BridgeClient, input: ReadTask
     readBridgeResult(bridge, 'get_asset_info', { asset_path: assetPath }),
     readBridgeResult(bridge, 'list_graphs', { target_blueprint: assetPath }),
   ]);
-  const assetInfo = isBridgeErrorResult(asset) ? undefined : asset;
+  const assetInfo = isValidAssetInfo(asset) ? asset : undefined;
 
   return {
     schema: TASK_CONTEXT_PACK_SCHEMA,
@@ -58,4 +58,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isBridgeErrorResult(value: unknown): boolean {
   return isRecord(value) && typeof value['error_code'] === 'string';
+}
+
+function isValidAssetInfo(value: unknown): value is Record<string, unknown> {
+  if (isBridgeErrorResult(value) || !isRecord(value)) return false;
+  return typeof value['path'] === 'string'
+    && value['path'].length > 0
+    && typeof value['name'] === 'string'
+    && value['name'].length > 0
+    && typeof value['class'] === 'string'
+    && value['class'].length > 0;
 }

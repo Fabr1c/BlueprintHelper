@@ -8,6 +8,9 @@
 #include "DataTableEditorUtils.h"
 #include "IDetailTreeNode.h"
 #include "PropertyHandle.h"
+#include "EdGraphSchema_K2.h"
+#include "Kismet2/BlueprintEditorUtils.h"
+#include "SPinTypeSelector.h"
 #include "Styling/AppStyle.h"
 #include "UI/Review/BlueprintHelperReviewRowHighlightModel.h"
 #include "UI/Review/BlueprintHelperReviewSlateRowGeometryRegistry.h"
@@ -262,7 +265,8 @@ TSharedRef<SWidget> FBlueprintHelperReviewPresenterWidgetUtils::BuildRowHighligh
 	EBlueprintHelperReviewSurface Surface,
 	const FString& SearchText,
 	TSharedRef<SWidget> Content,
-	const FLinearColor& DefaultBackground)
+	const FLinearColor& DefaultBackground,
+	const FMargin& Padding)
 {
 	return SNew(SBorder)
 		.BorderImage(FAppStyle::GetBrush(TEXT("Brushes.White")))
@@ -270,7 +274,7 @@ TSharedRef<SWidget> FBlueprintHelperReviewPresenterWidgetUtils::BuildRowHighligh
 		{
 			return GetRowBackgroundOrDefault(AssetPath, Surface, SearchText, DefaultBackground);
 		})
-		.Padding(FMargin(4.0f, 2.0f))
+		.Padding(Padding)
 		[
 			SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot()
@@ -693,7 +697,11 @@ TSharedRef<SWidget> FBlueprintHelperReviewPresenterWidgetUtils::BuildDataAssetRo
 		const FNodeWidgets NodeWidgets = Item->DetailNode->CreateNodeWidgets();
 		if (NodeWidgets.WholeRowWidget.IsValid())
 		{
-			return NodeWidgets.WholeRowWidget.ToSharedRef();
+			return SNew(SBox)
+				.IsEnabled(false)
+				[
+					NodeWidgets.WholeRowWidget.ToSharedRef()
+				];
 		}
 		TSharedRef<SWidget> NameWidget = NodeWidgets.NameWidget.IsValid()
 			? NodeWidgets.NameWidget.ToSharedRef()
@@ -701,20 +709,43 @@ TSharedRef<SWidget> FBlueprintHelperReviewPresenterWidgetUtils::BuildDataAssetRo
 		TSharedRef<SWidget> ValueWidget = NodeWidgets.ValueWidget.IsValid()
 			? NodeWidgets.ValueWidget.ToSharedRef()
 			: StaticCastSharedRef<SWidget>(SNew(STextBlock).Text(FText::FromString(Item->Value)));
-		return SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot()
-			.FillWidth(0.42f)
-			.VAlign(VAlign_Center)
+		return SNew(SBox)
+			.IsEnabled(false)
 			[
-				NameWidget
-			]
-			+ SHorizontalBox::Slot()
-			.FillWidth(0.58f)
-			.Padding(8.0f, 0.0f, 0.0f, 0.0f)
-			.VAlign(VAlign_Center)
-			[
-				ValueWidget
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot()
+				.FillWidth(0.42f)
+				.VAlign(VAlign_Center)
+				[
+					NameWidget
+				]
+				+ SHorizontalBox::Slot()
+				.FillWidth(0.58f)
+				.Padding(8.0f, 0.0f, 0.0f, 0.0f)
+				.VAlign(VAlign_Center)
+				[
+					ValueWidget
+				]
 			];
+	}
+
+	const UEdGraphSchema_K2* K2Schema = GetDefault<UEdGraphSchema_K2>();
+	const FText VariableTypeText = Item->bHasPinType
+		? UEdGraphSchema_K2::TypeToText(Item->PinType)
+		: FText::GetEmpty();
+	TSharedRef<SWidget> VariableTypeIcon = SNew(SSpacer);
+	if (Item->bHasPinType && K2Schema)
+	{
+		const FSlateBrush* PrimaryIcon = FBlueprintEditorUtils::GetIconFromPin(Item->PinType);
+		const FSlateColor PrimaryColor = K2Schema->GetPinTypeColor(Item->PinType);
+		const FSlateBrush* SecondaryIcon = FBlueprintEditorUtils::GetSecondaryIconFromPin(Item->PinType);
+		const FSlateColor SecondaryColor = K2Schema->GetSecondaryPinTypeColor(Item->PinType);
+		VariableTypeIcon = SPinTypeSelector::ConstructPinTypeImage(
+			PrimaryIcon,
+			PrimaryColor,
+			SecondaryIcon,
+			SecondaryColor,
+			TSharedPtr<SToolTip>());
 	}
 
 	return SNew(SHorizontalBox)
@@ -727,6 +758,31 @@ TSharedRef<SWidget> FBlueprintHelperReviewPresenterWidgetUtils::BuildDataAssetRo
 			.ColorAndOpacity(FSlateColor(Item->bIsSection
 				? FLinearColor(0.88f, 0.88f, 0.88f, 1.0f)
 				: FLinearColor(0.72f, 0.72f, 0.72f, 1.0f)))
+		]
+		+ SHorizontalBox::Slot()
+		.AutoWidth()
+		.Padding(8.0f, 0.0f, 0.0f, 0.0f)
+		.VAlign(VAlign_Center)
+		[
+			SNew(SHorizontalBox)
+			.Visibility(Item->bHasPinType ? EVisibility::Visible : EVisibility::Collapsed)
+			.ToolTipText(VariableTypeText)
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			[
+				VariableTypeIcon
+			]
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(3.0f, 0.0f, 0.0f, 0.0f)
+			[
+				SNew(STextBlock)
+				.Font(FAppStyle::GetFontStyle(TEXT("SmallFont")))
+				.ColorAndOpacity(FSlateColor::UseSubduedForeground())
+				.Text(VariableTypeText)
+			]
 		]
 		+ SHorizontalBox::Slot()
 		.AutoWidth()
@@ -743,7 +799,9 @@ TSharedRef<ITableRow> FBlueprintHelperReviewPresenterWidgetUtils::GenerateDataAs
 	TSharedPtr<FBlueprintHelperReviewDataAssetRowItem> Item,
 	const TSharedRef<STableViewBase>& OwnerTable,
 	const FString& AssetPath,
-	FBlueprintHelperReviewGeometryInvalidated OnGeometryInvalidated)
+	FBlueprintHelperReviewGeometryInvalidated OnGeometryInvalidated,
+	EBlueprintHelperReviewSurface Surface,
+	const FMargin& HighlightPadding)
 {
 	const FString SearchText = Item.IsValid() && !Item->SearchText.IsEmpty()
 		? Item->SearchText
@@ -756,16 +814,17 @@ TSharedRef<ITableRow> FBlueprintHelperReviewPresenterWidgetUtils::GenerateDataAs
 		: FLinearColor::Transparent;
 
 	TSharedRef<SWidget> RowContent = SNew(SBlueprintHelperReviewGeometryProbe)
-		.Surface(EBlueprintHelperReviewSurface::DataAsset)
+		.Surface(Surface)
 		.TargetKey(SearchText)
 		.OnGeometryInvalidated(OnGeometryInvalidated)
 		[
 			BuildRowHighlightShell(
 				AssetPath,
-				EBlueprintHelperReviewSurface::DataAsset,
+				Surface,
 				SearchText,
 				BuildDataAssetRowContent(Item),
-				DefaultBackground)
+				DefaultBackground,
+				HighlightPadding)
 		];
 
 	TSharedRef<STableRow<TSharedPtr<FBlueprintHelperReviewDataAssetRowItem>>> RowWidget =
@@ -780,13 +839,13 @@ TSharedRef<ITableRow> FBlueprintHelperReviewPresenterWidgetUtils::GenerateDataAs
 		Item->RowWidget = RowContent;
 		RegisterRowSearchAliases(
 			AssetPath,
-			EBlueprintHelperReviewSurface::DataAsset,
+			Surface,
 			SearchText,
 			RowContent,
 			Item->DetailNode.IsValid() ? TEXT("native_details_row") : TEXT("native_structure_row"));
 		RegisterRowSearchAliases(
 			AssetPath,
-			EBlueprintHelperReviewSurface::DataAsset,
+			Surface,
 			Item->Label,
 			RowContent,
 			Item->DetailNode.IsValid() ? TEXT("native_details_row") : TEXT("native_structure_row"));

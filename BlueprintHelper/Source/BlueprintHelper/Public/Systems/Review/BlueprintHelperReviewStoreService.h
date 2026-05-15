@@ -68,6 +68,11 @@ public:
 		const FBlueprintHelperReviewArchiveSession& ArchiveSession,
 		FString& OutError) const;
 
+	bool LoadArchiveSession(
+		const FString& ArchiveSessionId,
+		FBlueprintHelperReviewArchiveSession& OutArchiveSession,
+		FString& OutError) const;
+
 	TArray<FBlueprintHelperReviewVisibleChange> LoadPendingVisibleChanges(
 		const FString& AssetPathFilter = TEXT("")) const;
 
