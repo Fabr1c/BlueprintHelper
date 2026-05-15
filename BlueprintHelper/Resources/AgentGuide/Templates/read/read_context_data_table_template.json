@@ -1,0 +1,11 @@
+{
+  "schema": "BlueprintHelper.ReadSpec.v1",
+  "read_type": "data_table_context",
+  "target": {
+    "asset_path": "__DATA_TABLE_ASSET_PATH__",
+    "target_type": "data_table"
+  },
+  "view": {
+    "format": "summary"
+  }
+}

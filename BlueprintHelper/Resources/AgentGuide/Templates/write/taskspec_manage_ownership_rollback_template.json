@@ -1,0 +1,28 @@
+{
+  "schema": "BlueprintHelper.TaskSpec.v1",
+  "task_type": "manage_blueprinthelper_ownership",
+  "feature_name": "__FEATURE_NAME__",
+  "target": {
+    "asset_path": "__BLUEPRINT_ASSET_PATH__",
+    "target_type": "blueprint"
+  },
+  "behavior": {
+    "ownership_strategy": "owned_block_lifecycle",
+    "changes": [
+      {
+        "kind": "rollback_cleanup_transaction",
+        "transaction_id": "__TRANSACTION_ID__",
+        "already_rolled_back_policy": "ignore"
+      }
+    ]
+  },
+  "execution_policy": {
+    "dry_run_mode": "full",
+    "on_missing_capability": "stop_and_report",
+    "review_baseline_dirty_asset_policy": "block"
+  },
+  "validation": {
+    "should_compile": true,
+    "should_save": false
+  }
+}

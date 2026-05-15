@@ -1,0 +1,35 @@
+{
+  "schema": "BlueprintHelper.TaskSpec.v1",
+  "task_type": "edit_umg_widget",
+  "feature_name": "__FEATURE_NAME__",
+  "target": {
+    "asset_path": "__WIDGET_BLUEPRINT_ASSET_PATH__",
+    "target_type": "blueprint"
+  },
+  "behavior": {
+    "widget_strategy": "widget_blueprint_edit",
+    "changes": [
+      {
+        "kind": "create_widget",
+        "widget_name": "__WIDGET_NAME__",
+        "widget_class": "__WIDGET_CLASS__",
+        "parent_widget_name": "__PARENT_WIDGET_NAME__"
+      },
+      {
+        "kind": "update_widget_property",
+        "widget_name": "__WIDGET_NAME__",
+        "property_path": "__PROPERTY_PATH__",
+        "value": "__VALUE__"
+      }
+    ]
+  },
+  "execution_policy": {
+    "dry_run_mode": "full",
+    "on_missing_capability": "stop_and_report",
+    "review_baseline_dirty_asset_policy": "block"
+  },
+  "validation": {
+    "should_compile": true,
+    "should_save": false
+  }
+}

@@ -24,9 +24,22 @@ struct FBlueprintHelperReviewCascadeActionResult
 	bool bChildrenRemoved = false;
 };
 
+struct FBlueprintHelperReviewPreparedRollbackJournal
+{
+	FString TransactionId;
+	FString Tool;
+	bool bHasRollbackData = false;
+	FString ExportedText;
+	FString EntryIdentity;
+	FString ReplaceScope;
+	FString OwnerBlockId;
+	FString Error;
+};
+
 struct FBlueprintHelperReviewRejectOptions
 {
 	TMap<FString, FString> CurrentHashesByTargetKey;
+	TMap<FString, FBlueprintHelperReviewPreparedRollbackJournal> PreparedRollbackJournalsByTransactionId;
 	bool bRollbackExecutorAvailable = false;
 	bool bRollbackSucceeded = false;
 	FString RollbackFailureMessage;

@@ -333,7 +333,7 @@ public:
 				{
 					continue;
 				}
-				if (RequestedTargetKeys.Num() == 0)
+				if (RequestedTargetKeys.Num() == 0 || (MatchedTargetKeys.Num() == 0 && bSameChangeIdentity))
 				{
 					MatchedTargetKeys = CandidateTargetKeys;
 				}
@@ -423,6 +423,23 @@ public:
 			|| Options.bRollbackExecutorAvailable
 			|| Options.bRollbackSucceeded
 			|| !Options.RollbackFailureMessage.IsEmpty();
+	}
+
+	static TSharedRef<FJsonObject> BuildJournalRecordFromPreparedRollbackJournal(
+		const FBlueprintHelperReviewPreparedRollbackJournal& Prepared)
+	{
+		TSharedRef<FJsonObject> JournalRecord = MakeShared<FJsonObject>();
+		JournalRecord->SetStringField(TEXT("tool"), Prepared.Tool);
+		if (Prepared.bHasRollbackData)
+		{
+			TSharedRef<FJsonObject> RollbackData = MakeShared<FJsonObject>();
+			RollbackData->SetStringField(TEXT("exported_text"), Prepared.ExportedText);
+			RollbackData->SetStringField(TEXT("entry_identity"), Prepared.EntryIdentity);
+			RollbackData->SetStringField(TEXT("replace_scope"), Prepared.ReplaceScope);
+			RollbackData->SetStringField(TEXT("owner_block_id"), Prepared.OwnerBlockId);
+			JournalRecord->SetObjectField(TEXT("rollback_data"), RollbackData);
+		}
+		return JournalRecord;
 	}
 
 	static FBlueprintHelperReviewActionResult MakeRejectFailureResult(
@@ -2075,7 +2092,8 @@ public:
 	}
 
 	static FBlueprintHelperReviewActionResult RejectVisibleChangeWithDefaultDispatcher(
-		const FBlueprintHelperReviewVisibleChange& Change)
+		const FBlueprintHelperReviewVisibleChange& Change,
+		const FBlueprintHelperReviewRejectOptions* Options = nullptr)
 	{
 		if (Change.AtomicTargets.Num() == 0)
 		{
@@ -2129,7 +2147,9 @@ public:
 			FString HashError;
 			if (!FBlueprintHelperReviewHashService::ComputeAtomicTargetHash(Target, CurrentHash, HashError))
 			{
-				if (HashError.Contains(TEXT("graph_not_found")) || HashError.Contains(TEXT("anchor_not_found")))
+				if (HashError.Contains(TEXT("graph_not_found"))
+					|| HashError.Contains(TEXT("anchor_not_found"))
+					|| HashError.Contains(TEXT("node_not_found")))
 				{
 					FBlueprintHelperReviewActionResult Result;
 					Result.bSucceeded = true;
@@ -2156,7 +2176,20 @@ public:
 
 			TSharedPtr<FJsonObject> JournalRecord;
 			FString JournalError;
-			if (!LoadJournalRecordForReviewRollback(RollbackTransactionId, JournalRecord, JournalError))
+			if (Options)
+			{
+				if (const FBlueprintHelperReviewPreparedRollbackJournal* Prepared =
+					Options->PreparedRollbackJournalsByTransactionId.Find(RollbackTransactionId))
+				{
+					if (!Prepared->Error.IsEmpty())
+					{
+						return MakeRejectFailureResult(Change, EBlueprintHelperReviewChangeStatus::NeedsAction, Prepared->Error);
+					}
+					JournalRecord = BuildJournalRecordFromPreparedRollbackJournal(*Prepared);
+				}
+			}
+			if (!JournalRecord.IsValid()
+				&& !LoadJournalRecordForReviewRollback(RollbackTransactionId, JournalRecord, JournalError))
 			{
 				return MakeRejectFailureResult(Change, EBlueprintHelperReviewChangeStatus::NeedsAction, JournalError);
 			}
@@ -2314,6 +2347,35 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectVi
 	const FBlueprintHelperReviewVisibleChange& Change,
 	const FBlueprintHelperReviewRejectOptions& Options) const
 {
+	if (!FBlueprintHelperReviewActionServiceLocalUtils::HasInjectedRejectOptions(Options))
+	{
+		const TArray<FBlueprintHelperReviewActionServiceLocalUtils::FPersistedReviewTargetMatch> Matches =
+			FBlueprintHelperReviewActionServiceLocalUtils::ResolvePersistedReviewTargetMatches(Change);
+		if (Matches.Num() > 0)
+		{
+			FBlueprintHelperReviewActionResult LastResult;
+			for (const FBlueprintHelperReviewActionServiceLocalUtils::FPersistedReviewTargetMatch& Match : Matches)
+			{
+				LastResult = RejectReviewTargets(Match.ReviewRecordId, Match.TargetKeys, Options);
+				if (!LastResult.bSucceeded)
+				{
+					return LastResult;
+				}
+			}
+
+			LastResult.bSucceeded = true;
+			LastResult.TargetTransactionId = Change.LatestTransactionId;
+			LastResult.NewStatus = EBlueprintHelperReviewChangeStatus::Rejected;
+			LastResult.Message = TEXT("rejected");
+			LastResult.bSupersededDataCompactionEligible = true;
+			return LastResult;
+		}
+
+		return FBlueprintHelperReviewActionServiceLocalUtils::RejectVisibleChangeWithDefaultDispatcher(
+			Change,
+			&Options);
+	}
+
 	FBlueprintHelperReviewActionResult Result;
 	Result.TargetTransactionId = Change.LatestTransactionId;
 	Result.RollbackMode = TEXT("archive_baseline");
@@ -2634,7 +2696,9 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectRe
 			TargetChange.AtomicTargets.Add(TargetForReject);
 			const FBlueprintHelperReviewActionResult TargetResult = bUseInjectedOptions
 				? RejectVisibleChange(TargetChange, Options)
-				: FBlueprintHelperReviewActionServiceLocalUtils::RejectVisibleChangeWithDefaultDispatcher(TargetChange);
+				: FBlueprintHelperReviewActionServiceLocalUtils::RejectVisibleChangeWithDefaultDispatcher(
+					TargetChange,
+					&Options);
 			const bool bTargetStatusRejected = TargetResult.NewStatus == EBlueprintHelperReviewChangeStatus::Rejected;
 			Target.Status = TargetResult.NewStatus;
 			Change.NeedsActionReason = bTargetStatusRejected ? FString() : TargetResult.Message;

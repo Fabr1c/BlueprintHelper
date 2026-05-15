@@ -1,0 +1,6 @@
+{
+  "target": {
+    "asset_path": "__ASSET_PATH__"
+  },
+  "feature_name": "__FEATURE_NAME__"
+}

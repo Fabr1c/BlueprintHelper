@@ -1,0 +1,30 @@
+{
+  "schema": "BlueprintHelper.TaskSpec.v1",
+  "task_type": "edit_data_table",
+  "feature_name": "__FEATURE_NAME__",
+  "target": {
+    "asset_path": "__DATA_TABLE_ASSET_PATH__",
+    "target_type": "asset"
+  },
+  "behavior": {
+    "row_strategy": "row_edit",
+    "rows": [
+      {
+        "action": "add",
+        "row_name": "__ROW_NAME__",
+        "fields": {
+          "__FIELD_NAME__": "__VALUE__"
+        }
+      }
+    ]
+  },
+  "execution_policy": {
+    "dry_run_mode": "full",
+    "on_missing_capability": "stop_and_report",
+    "review_baseline_dirty_asset_policy": "block"
+  },
+  "validation": {
+    "should_compile": false,
+    "should_save": false
+  }
+}
