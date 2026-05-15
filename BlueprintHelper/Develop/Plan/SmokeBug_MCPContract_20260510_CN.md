@@ -16,6 +16,9 @@
 - 失败集中在 AgentGuide path / fixtures。
 - 报告记录：AgentGuide file at Plugin `Resources/` path not found from Project root。
 
+
+2026-05-15 复测结果：`blueprinthelper_read_context` 已覆盖 Component、WidgetTree、WidgetProperty、DataTable、DataTable row、ObjectProperty、DataAsset、Variable、Graph 和 Asset context，不再只支持 `blueprint_logic`。
+
 **实现证据**
 
 - `tools.ts` 中 `AGENT_GUIDE_INDEX_RELATIVE_PATH` 固定为 `Resources/AgentGuide/00_Agent_Onboarding_Index_20260504.md`。
@@ -33,6 +36,8 @@ MCP 运行在新项目拷贝或不同 cwd 时，资源目录没有稳定来源�
 - Node regression 增加“从项目根启动”和“从 ClaudePlugin/mcp 启动”两种 fixture。
 
 ## SMOKE-MCP-20260510-02: read_context schema 暗示多种 context，但实现只支持 blueprint_logic
+
+状态更新：2026-05-15 已修复并通过 CLI 覆盖验证。
 
 **优先级**：P1
 
@@ -75,3 +80,21 @@ Bridge 层把部分 UE 导出失败包装成空数据，而不是标准 `issues[
 - 缺失资产统一返回 `target_asset_not_found`。
 - `blueprinthelper_preview_task` 应把该错误提升为 blocked。
 - 增加 regression：`ReadContextMissingAssetReturnsStructuredIssue`。
+
+## 2026-05-15 复测记录：read_context 全入口闭环
+
+状态：SMOKE-MCP-20260510-02 已完成。
+
+验证：
+1. asset_context: AssetContext.v1 completed
+2. component_context: BlueprintComponent.v1 completed, components=4, root_components=1
+3. variable_context: ReadMemberVariables.v1 completed, variables=1 after target_name filter
+4. graph_context: LogicJson.v1 completed, nodes=2, exec_links=1
+5. data_table_context: DataTableContext.v1 completed, rows=1, columns=4
+6. data_table_row_context: DataTableContext.v1 completed, row_names=JsonNumberBool, rows=1
+7. object_property_context: ObjectPropertyContext.v1 completed, properties=1 after target_name filter
+8. data_asset_context: DataAssetContext.v1 completed against DA_RC_DataAsset, properties=0 because fixture class has no custom fields
+9. widget_context: WidgetContext.v1 completed, widgets=2
+10. widget_property_context: WidgetPropertyContext.v1 completed, properties=40 for TitleText
+
+说明：MCP 仍只保留编辑器生命周期职责；普通 read_context 继续由 CLI 承载。

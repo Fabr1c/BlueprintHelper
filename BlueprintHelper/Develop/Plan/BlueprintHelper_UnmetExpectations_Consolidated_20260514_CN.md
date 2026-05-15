@@ -13,11 +13,15 @@
 
 ## 当前总览
 
+
+> 2026-05-15 ReadContext 闭环更新：D3 已从未完成项收敛为已完成项。`blueprinthelper_read_context` 已覆盖 asset、blueprint logic/graph、component、variable/event dispatcher、widget tree/widget property、data table/row、object/data asset property。TypeScript task-core 与 CLI build 均通过，真实编辑器 Bridge 覆盖验证全部完成。
+
 > 2026-05-14 本轮闭环更新：已开始 P0 ReviewPanel DataTable live smoke。编辑器通过 MCP 启动成功，DataTable 创建通过；Struct 创建暴露 `CreateStructure` 字段应用失败后留下半成品资产的问题，导致后续 DataTable row 写入只看到 `Damage` 字段而缺少 `DisplayName`。源码已修复，待关闭编辑器、编译、重启后用新资产路径复测；A1 不可标记完成。
 
 1. 已真实闭环：GraphStatementFramework first-slice、CLI 物理门非 ReviewPanel 范围、AssetFactory BPI/PrimaryDataAsset 两个 smoke bug、`close_editor` 蓝图编辑器关闭崩溃修复。
 2. 源码已修但待 UI/人工复核：ReviewPanel DataTable BUG-01/02、多个 2026-05-13 ReviewPanel live bug 修复项。
-3. 仍未完成：ReviewPanel live smoke、Debug/DebugBundle 手动环中需要 UI/needs_action 参与的部分、Data/UMG dry-run 中 UMG 未来状态模拟、`read_context` 数据/对象属性统一入口、ReviewPanel BUG-03 以后架构级问题。ObjectProperty 正向 TaskSpec 写入、DataTable JSON number/bool 写入、缺失资产 negative preview 已完成自动闭环验证；2026-05-15 DebugBundle 已暴露 Reject 结果状态不一致与目标已缺失清理策略问题，源码已修正并编译通过；Graph Replace Review Reject 后端链路已通过 CLI 闭环，ReviewPanel UI 视觉复测仍待人工确认。
+3. 仍未完成：ReviewPanel live smoke、Debug/DebugBundle 手动环中需要 UI/needs_action 参与的部分、Data/UMG dry-run 中 UMG 未来状态模拟、ReviewPanel BUG-03 以后架构级问题。ObjectProperty 正向 TaskSpec 写入、DataTable JSON number/bool 写入、缺失资产 negative preview 已完成自动闭环验证；2026-05-15 DebugBundle 已暴露 Reject 结果状态不一致与目标已缺失清理策略问题，源码已修正并编译通过；Graph Replace Review Reject 后端链路已通过 CLI 闭环，ReviewPanel UI 视觉复测仍待人工确认。
+   - 2026-05-15 修正：`read_context` 数据/对象属性统一入口已完成并通过 CLI 覆盖验证，后续不再作为 D 类未完成项追踪。
 4. 文档层待整理：CLI/MCP 边界旧文档冲突已于 2026-05-14 修正；旧 v0.3.6 gap matrix 有乱码且被新总账覆盖。
 
 ## A. ReviewPanel 未达期待
@@ -353,22 +357,38 @@ A5 本轮 ReviewPanel 反馈修正：
 
 距离期望差距：2026-05-15 自动闭环先复现 JSON number 写入 DataTable int 字段被转成 `"42.0"` 导致 `字段 Damage 值导入失败`；随后修复 TaskRuntime JSON number 到 UE import text 的整数格式化路径，关闭编辑器、编译、重启后复测通过。`/Game/BlueprintHelperCliSmoke/AutoExpectations_20260515_003213/DT_AE_NumberBool_20260515_003213` 的 rows preview passed、execute applied，覆盖 `Damage:int` JSON number、`bEnabled:bool` JSON bool、`Ratio:float` JSON number 和 `DisplayName:string`。同轮 ObjectProperty 正向 TaskSpec 也覆盖 `string/float/bool` literal 写入并 applied。
 
-### D3. `read_context` 仍不是所有资产类型统一上下文入口
-
+### D3. `read_context` 统一上下文入口
+状态：已完成。
 来源文档：
-
 - `SmokeBug_MCPContract_20260510_CN.md`
 - `BlueprintHelper_CLI_OrdinaryAgent_TestPlan_20260512_CN.md`
 
-状态：未完成。
+已完成内容：
+1. `ReadSpec.target.target_type` 已扩展支持 `data_table`、`data_asset`、`object_property`、`property`。
+2. `read_type` 已覆盖 `asset_context`、`blueprint_logic`、`graph_context`、`component_context`、`variable_context`、`widget_context`、`data_table_context`、`data_asset_context`、`object_property_context`。
+3. 非 Blueprint logic 的读取统一返回 `ReadContextPack.v1`，payload 继续保留各自短 schema，例如 `ComponentContext.v1`、`DataTableContext.v1`、`ObjectPropertyContext.v1`、`WidgetContext.v1`。
+4. `target_name` 已接入变量、组件、DataTable row、Object/DataAsset property、Widget property 的定向读取或后置过滤。
+5. `member_variables` 已纳入变量统计和过滤，避免底层字段名为 `member_variables` 时统计为 0。
+6. `schema` 格式可返回当前 read_context 支持矩阵，便于 Agent 发现稳定入口。
 
-未达期待：
+验证记录：
+1. asset_context: AssetContext.v1 completed
+2. component_context: BlueprintComponent.v1 completed, components=4, root_components=1
+3. variable_context: ReadMemberVariables.v1 completed, variables=1 after target_name filter
+4. graph_context: LogicJson.v1 completed, nodes=2, exec_links=1
+5. data_table_context: DataTableContext.v1 completed, rows=1, columns=4
+6. data_table_row_context: DataTableContext.v1 completed, row_names=JsonNumberBool, rows=1
+7. object_property_context: ObjectPropertyContext.v1 completed, properties=1 after target_name filter
+8. data_asset_context: DataAssetContext.v1 completed against DA_RC_DataAsset, properties=0 because fixture class has no custom fields
+9. widget_context: WidgetContext.v1 completed, widgets=2
+10. widget_property_context: WidgetPropertyContext.v1 completed, properties=40 for TitleText
 
-1. `read_context` 目前主要覆盖 blueprint logic。
-2. UMG / Component / Data 类任务缺少统一 read context。
-3. 普通 Agent TaskSpec-first 写入前仍需要更完整上下文入口。
+编译记录：
+1. `AgentFaceService/task-core` 执行 `npm.cmd run build` 通过。
+2. `AgentFaceService/cli` 执行 `npm.cmd run build` 通过。
 
-距离期望差距：2026-05-15 自动闭环确认该缺口仍存在：`blueprinthelper_read_context` 的 schema 不接受 `target_type=data_table`；改用 `target_type=asset` 后，`read_type=data_table_context` 返回 `unsupported_read_type`，提示当前只支持 `blueprint_logic`。`read_type=object_property_context` 同样返回 `unsupported_read_type`。直接尝试 `blueprint_get_datatable_rows` 和 `blueprint_get_object_properties` 也被当前 CLI registry 拒绝为 unsupported command。该项属于统一上下文/工具面能力缺口，本轮按“不拓展工具、不改架构”范围不处理。
+距离期望差距：无当前阻塞。测试用 `DA_RC_DataAsset` 的 DataAsset class 没有自定义字段，因此 `data_asset_context` 返回 `properties=0` 是 fixture 状态，不是 read_context 链路缺口。
+阻塞内容：无。
 
 ### D4. 缺失资产 negative read 诊断不够强
 
@@ -568,3 +588,30 @@ A5 本轮 ReviewPanel 反馈修正：
 - 验证：`BH_GraphRejectRollback_20260515_174513` 中 replace task `task_71E0E3AB46624F30D40F2EBE22C877BB` 生成 1 条 pending ReviewRecord；`blueprinthelper_apply_review_action` Reject 返回 `succeeded=true` / `status=rejected`；再次查询 pending 为 0。
 - 距离期望差距：该验证覆盖 CLI/Store/rollback 后端链路；ReviewPanel UI 点击后的视觉刷新仍需人工验收。
 - 阻塞内容：无代码阻塞。
+
+## 2026-05-15 AgentFace tool-surface 架构拆分记录
+
+状态：已完成本轮 Bridge/read_context 拆分。
+
+完成内容：
+1. 保持 `tool-registry.ts` 外部消费方式不变。
+2. `bridge-tool-handlers.ts` 变为兼容 facade。
+3. Bridge command map、schema、dispatcher、generic handler、write session handler、read_context schema/router/payload/handler 已分离。
+
+验证记录：
+1. `AgentFaceService/task-core` build 通过。
+2. `AgentFaceService/cli` build 通过。
+
+距离期望差距：本轮未拆 `local-tool-handlers.ts`；如需完全对齐“工具/路由/业务”分层，下一轮应继续拆 local tool surface。
+阻塞内容：无。
+
+## 2026-05-15 tool-surface 完全解耦记录
+- 状态：完成。
+- 完成内容：tool-surface 顶层 ridge-tool-handlers.ts、local-tool-handlers.ts、	ask-tool-handlers.ts、	ool-registry.ts 均已降级为兼容 facade。
+- 完成内容：Bridge/read_context、本地工具、任务工具、注册层均拆成 schema/handler/dispatcher/source/builder 职责边界。
+- 完成内容：本地工具拆分为 AgentGuide、Diagnostics、BuildProject、ProjectFileResolver、ProcessRunner、EditorLifecycle 子模块。
+- 完成内容：任务工具拆分为 ReadReferenceContext schema、Task schemas、Context handlers、Execution handlers、Dispatcher。
+- 完成内容：注册层拆分为 ToolMeta、ToolSource 接口、task/local/bridge ToolSource、ToolSource 列表、handler router、registry builder。
+- 验证：AgentFaceService/task-core npm.cmd run build 通过；AgentFaceService/cli npm.cmd run build 通过。
+- 距离期望差距：当前 tool-surface 中间层已完成解耦；未发现剩余拆分阻塞。
+- 阻塞内容：无。
