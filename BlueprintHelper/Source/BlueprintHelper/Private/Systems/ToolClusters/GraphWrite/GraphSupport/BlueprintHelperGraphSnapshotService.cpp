@@ -1,6 +1,7 @@
 // BlueprintHelper Service Layer — 图表快照服务实现
 
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphSnapshotService.h"
+#include "EdGraphUtilities.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraph/EdGraphPin.h"
@@ -19,6 +20,7 @@ FBlueprintHelperGraphSnapshot FBlueprintHelperGraphSnapshotService::CaptureNodeS
 	}
 
 	Snapshot.GraphName = Graph->GetName();
+	TSet<UObject*> NodesToExport;
 
 	for (UEdGraphNode* Node : Nodes)
 	{
@@ -27,6 +29,7 @@ FBlueprintHelperGraphSnapshot FBlueprintHelperGraphSnapshotService::CaptureNodeS
 			continue;
 		}
 
+		NodesToExport.Add(Node);
 		Snapshot.NodeGuids.Add(Node->NodeGuid.ToString());
 		Snapshot.NodeClasses.Add(Node->GetClass()->GetName());
 		Snapshot.NodeTitles.Add(Node->GetNodeTitle(ENodeTitleType::FullTitle).ToString());
@@ -63,6 +66,11 @@ FBlueprintHelperGraphSnapshot FBlueprintHelperGraphSnapshotService::CaptureNodeS
 					*Node->GetName(), *OwnedStr, *BlockId));
 			}
 		}
+	}
+
+	if (NodesToExport.Num() > 0)
+	{
+		FEdGraphUtilities::ExportNodesToText(NodesToExport, Snapshot.ExportedText);
 	}
 
 	// Link 摘要

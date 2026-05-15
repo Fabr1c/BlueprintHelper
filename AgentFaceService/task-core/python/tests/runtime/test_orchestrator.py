@@ -260,6 +260,7 @@ class GraphWriteAppendCompilerTests(unittest.TestCase):
             "dry_run_mode": "full",
             "should_compile": False,
             "should_save": False,
+            "review_baseline_dirty_asset_policy": "block",
         })
         self.assertNotIn("operation", result["task_plan"]["steps"][0])
         self.assertEqual(result["task_plan"]["steps"], [

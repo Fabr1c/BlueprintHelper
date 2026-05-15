@@ -163,13 +163,6 @@ public:
 	FBlueprintHelperToolResultBase SetObjectProperties(
 		const FBlueprintHelperSetObjectPropertiesRequest& Request) const;
 
-private:
-	/** 根据资产路径加载 UObject。 */
-	UObject* ResolveAsset(const FString& AssetPath, FString& OutError) const;
-
-	/** 构建属性标志摘要字符串。 */
-	static FString BuildFlagsSummary(uint64 PropertyFlags);
-
 	static bool ResolvePropertyPath(
 		UObject* RootObject,
 		const FString& PropertyPath,
@@ -178,6 +171,13 @@ private:
 		FString& OutExpectedType,
 		FString& OutErrorCode,
 		FString& OutErrorMessage);
+
+private:
+	/** 根据资产路径加载 UObject。 */
+	UObject* ResolveAsset(const FString& AssetPath, FString& OutError) const;
+
+	/** 构建属性标志摘要字符串。 */
+	static FString BuildFlagsSummary(uint64 PropertyFlags);
 
 	static bool JsonValueToImportText(
 		const TSharedPtr<FJsonValue>& Value,

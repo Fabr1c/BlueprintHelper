@@ -923,6 +923,8 @@ FReply SBlueprintHelperReviewPanel::OnAcceptChange(FReviewChangeItem Item)
 		}
 		RefreshDiffStackWidgets();
 		UpdateDetailsSelection();
+		LastVisibleChangeRefreshSignature.Reset();
+		RefreshFromReviewStoreIfChanged();
 	}
 
 	AddDebugMessage(FString::Printf(
@@ -998,6 +1000,8 @@ FReply SBlueprintHelperReviewPanel::OnRejectChange(FReviewChangeItem Item)
 			GraphEditorBox->SetContent(BuildMainWorkspaceWidget());
 		}
 		UpdateDetailsSelection();
+		LastVisibleChangeRefreshSignature.Reset();
+		RefreshFromReviewStoreIfChanged();
 
 		AddDebugMessage(FString::Printf(
 			TEXT("Reject lifecycle root id=%s success=%d removedChildren=%d status=%s message=\"%s\""),
@@ -1047,6 +1051,8 @@ FReply SBlueprintHelperReviewPanel::OnRejectChange(FReviewChangeItem Item)
 		GraphEditorBox->SetContent(BuildMainWorkspaceWidget());
 	}
 	UpdateDetailsSelection();
+	LastVisibleChangeRefreshSignature.Reset();
+	RefreshFromReviewStoreIfChanged();
 
 	AddDebugMessage(FString::Printf(
 		TEXT("Reject change id=%s success=%d status=%s message=\"%s\""),
@@ -1110,6 +1116,8 @@ FReply SBlueprintHelperReviewPanel::OnAcceptAll()
 		GraphEditorBox->SetContent(BuildMainWorkspaceWidget());
 	}
 	UpdateDetailsSelection();
+	LastVisibleChangeRefreshSignature.Reset();
+	RefreshFromReviewStoreIfChanged();
 	AddDebugMessage(FString::Printf(
 		TEXT("AcceptAll asset=\"%s\" remainingVisibleChanges=%d"),
 		*AssetPath,
@@ -1244,6 +1252,8 @@ FReply SBlueprintHelperReviewPanel::OnRejectAll()
 		GraphEditorBox->SetContent(BuildMainWorkspaceWidget());
 	}
 	UpdateDetailsSelection();
+	LastVisibleChangeRefreshSignature.Reset();
+	RefreshFromReviewStoreIfChanged();
 	AddDebugMessage(FString::Printf(
 		TEXT("RejectAll asset=\"%s\" cascadeRemoved=%d"),
 		*AssetPath,

@@ -17,7 +17,7 @@
 
 1. 已真实闭环：GraphStatementFramework first-slice、CLI 物理门非 ReviewPanel 范围、AssetFactory BPI/PrimaryDataAsset 两个 smoke bug、`close_editor` 蓝图编辑器关闭崩溃修复。
 2. 源码已修但待 UI/人工复核：ReviewPanel DataTable BUG-01/02、多个 2026-05-13 ReviewPanel live bug 修复项。
-3. 仍未完成：ReviewPanel live smoke、Debug/DebugBundle 手动环中需要 UI/needs_action 参与的部分、Data/UMG dry-run 中 UMG 未来状态模拟、`read_context` 数据/对象属性统一入口、ReviewPanel BUG-03 以后架构级问题。ObjectProperty 正向 TaskSpec 写入、DataTable JSON number/bool 写入、缺失资产 negative preview 已完成自动闭环验证；2026-05-15 DebugBundle 已暴露 Reject 结果状态不一致与目标已缺失清理策略问题，源码已修正并编译通过，待编辑器内复测。
+3. 仍未完成：ReviewPanel live smoke、Debug/DebugBundle 手动环中需要 UI/needs_action 参与的部分、Data/UMG dry-run 中 UMG 未来状态模拟、`read_context` 数据/对象属性统一入口、ReviewPanel BUG-03 以后架构级问题。ObjectProperty 正向 TaskSpec 写入、DataTable JSON number/bool 写入、缺失资产 negative preview 已完成自动闭环验证；2026-05-15 DebugBundle 已暴露 Reject 结果状态不一致与目标已缺失清理策略问题，源码已修正并编译通过；Graph Replace Review Reject 后端链路已通过 CLI 闭环，ReviewPanel UI 视觉复测仍待人工确认。
 4. 文档层待整理：CLI/MCP 边界旧文档冲突已于 2026-05-14 修正；旧 v0.3.6 gap matrix 有乱码且被新总账覆盖。
 
 ## A. ReviewPanel 未达期待
@@ -115,7 +115,7 @@ A5 本轮 ReviewPanel 反馈修正：
 
 距离期望差距：当前 state 没有稳定 `FocusedGraph` / `SelectedFunctionGraph` / `FunctionScopeKey`。
 
-### A7. Graph 事件/节点 Reject 稳定锚点未完成
+### A7. Graph 事件/节点 Reject 稳定锚点部分完成
 
 来源文档：
 
@@ -123,7 +123,7 @@ A5 本轮 ReviewPanel 反馈修正：
 - `ReviewPanel_V2_Implementation_PLAN.md`
 - `BlueprintHelper_GraphStatementFramework_Progress_20260513_CN.md`
 
-状态：未完成。
+状态：部分完成，Graph block CLI Reject 已闭环；ReviewPanel UI 视觉验收仍未完成。
 
 未达期待：
 
@@ -132,7 +132,7 @@ A5 本轮 ReviewPanel 反馈修正：
 3. GraphDiff 和 Reject 需要共用同一 anchor resolver。
 4. 旧记录只有 `K2Node_*` 名称且当前图找不到节点时，应明确输出 `unstable_node_name_anchor`。
 
-距离期望差距：当前仍有路径依赖易变节点名，Graph Review Reject 可进入 `needs_action`。
+距离期望差距：新 `ReplaceBlueprintGraph` 记录已具备可回放 rollback_data，Graph block CLI Reject 已验证 pending 清零；旧记录缺少 `exported_text` 仍可能进入 needs_action，ReviewPanel UI 点击 Reject 的视觉刷新仍需人工验证。
 
 ### A8. Reject asset lifecycle root 后 UI detach / reload / cascade 未完成
 
@@ -522,7 +522,7 @@ A5 本轮 ReviewPanel 反馈修正：
 
 ## 2026-05-15 ReviewPanel 待修补充
 
-- 状态：待修，未开始实现。
+- 状态：源码已由“ReviewPanel 循环修理 - 第 1 轮”覆盖实现并编译通过，等待编辑器内 UI 验证。
 - ST Row：ST 中央/详情 Row 需要复用 MyBlueprint 面板的 Variable Row 风格与只读呈现能力。
 - DT 中央面板结构：需要拆成上下两部分；上方负责行列表选择，下方根据当前选择行渲染具体 ST/字段值，从而复用 ST 面板并适配更多列/更多变量的 DataTable。
 - DA 中央面板：Row 已能显示变更，但当前仍可编辑，需要改为只读模式。
@@ -530,8 +530,8 @@ A5 本轮 ReviewPanel 反馈修正：
 - DT Row 操作：中央面板 Row 需要支持 hover/overlap 显示 Accept/Reject。
 - DT Row padding：中央面板 Row 的 border 区域需要增加上下 3.0 padding。
 - DetailsView 联动修正：变量/组件选择后的 DetailsView 定位能力可用；当前问题不是定位失败，而是 Details surface 未绘制 diff 框或 diff 框未命中可见 row。
-- 距离期望差距：尚未实现上述待修项，Details diff 框绘制还需要排查 row geometry/overlay predicate/DetailsView 刷新时序。
-- 阻塞内容：DT 拆分方案需先按用户确认的理解推进；其余无已知代码阻塞。
+- 距离期望差距：源码实现已覆盖上述待修项；仍需编辑器内确认 DA 只读、DT 上下拆分/hover 操作、Details diff 框与原生 DetailsView row 对齐。
+- 阻塞内容：无代码阻塞；剩余为编辑器 UI 验证。
 
 ## 2026-05-15 ReviewPanel 循环修理 - 第 1 轮
 
@@ -560,3 +560,11 @@ A5 本轮 ReviewPanel 反馈修正：
 - 2026-05-15 DebugBundle 排查：最新 bundle `review_panel_20260515_055606.json` 显示多次 Reject 中存在 `status=rejected` 但 `success=0` 的状态不一致，导致 UI 仍按失败路径保留 Review 项；另有 `current_hash_unavailable:graph_not_found:*` 和 `current_state_changed:*` 两类真实 needs_action。
 - 已修正：`RejectReviewTargets` 改为以 target 最终 `NewStatus==Rejected` 聚合成功状态和清理条件，避免已拒绝目标因为 `bSucceeded=false` 残留；`graph_not_found` / `anchor_not_found` 视为 `target_already_missing` 并允许清理；`current_state_changed` 仍保留 needs_action，避免覆盖用户或后续写入造成的真实状态漂移。
 - 距离期望差距：本轮源码已修正并通过 `TemplateEditor Win64 Development` 编译；尚未完成编辑器内再次点击 Reject 的视觉/状态复测，需要确认 Final Changes Row、Components Row、Graph diff Row 的 Reject 后都能从 pending 列表稳定移除。- 阻塞内容：无代码阻塞；等待编辑器内验证结果。
+
+## 2026-05-15 A7/B2 补充：Graph Replace Review Reject CLI 闭环
+
+- 状态：代码实现完成，编译通过，CLI 闭环通过。
+- 已完成：`ReplaceBlueprintGraph` journal 写入可回放 `exported_text`，Review Reject 可删除当前 body、导入 baseline 节点文本、恢复 ownership 并重连 entry。
+- 验证：`BH_GraphRejectRollback_20260515_174513` 中 replace task `task_71E0E3AB46624F30D40F2EBE22C877BB` 生成 1 条 pending ReviewRecord；`blueprinthelper_apply_review_action` Reject 返回 `succeeded=true` / `status=rejected`；再次查询 pending 为 0。
+- 距离期望差距：该验证覆盖 CLI/Store/rollback 后端链路；ReviewPanel UI 点击后的视觉刷新仍需人工验收。
+- 阻塞内容：无代码阻塞。

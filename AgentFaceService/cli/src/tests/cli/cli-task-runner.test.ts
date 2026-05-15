@@ -1,4 +1,4 @@
-﻿import { strict as assert } from 'node:assert';
+import { strict as assert } from 'node:assert';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -25,7 +25,7 @@ test('task preview reads TaskSpec file and prints compact summary JSON', async (
         task_type: 'edit_blueprint_graph',
         context_id: 'ctx_001',
         target_assets: ['/Game/BP_Player'],
-        execution_policy: { dry_run_mode: 'full', should_compile: true, should_save: false },
+        execution_policy: { dry_run_mode: 'full', should_compile: true, should_save: false, review_baseline_dirty_asset_policy: 'block' },
         steps: [],
       },
       passed: true,
@@ -171,7 +171,7 @@ test('direct CLI tool name dispatches blueprinthelper_preview_task through TaskS
         task_type: 'edit_blueprint_graph',
         context_id: 'ctx_direct',
         target_assets: ['/Game/BP_Player'],
-        execution_policy: { dry_run_mode: 'full', should_compile: true, should_save: false },
+        execution_policy: { dry_run_mode: 'full', should_compile: true, should_save: false, review_baseline_dirty_asset_policy: 'block' },
         steps: [],
       },
       passed: true,

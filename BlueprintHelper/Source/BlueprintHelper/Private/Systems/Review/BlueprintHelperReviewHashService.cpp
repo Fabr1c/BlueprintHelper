@@ -85,6 +85,165 @@ UEdGraphNode* FBlueprintHelperReviewHashService::FindNodeByName(UEdGraph* Graph,
 	return nullptr;
 }
 
+static UEdGraphNode* FindReviewNodeByGuid(UEdGraph* Graph, const FString& NodeGuid)
+{
+	if (!Graph || NodeGuid.IsEmpty())
+	{
+		return nullptr;
+	}
+
+	FGuid ParsedGuid;
+	const bool bParsedGuid = FGuid::Parse(NodeGuid, ParsedGuid);
+	const FString NormalizedNodeGuid = NodeGuid.Replace(TEXT("-"), TEXT(""));
+	if (!bParsedGuid && NormalizedNodeGuid.IsEmpty())
+	{
+		return nullptr;
+	}
+
+	for (UEdGraphNode* Node : Graph->Nodes)
+	{
+		if (!Node)
+		{
+			continue;
+		}
+
+		if (bParsedGuid && Node->NodeGuid == ParsedGuid)
+		{
+			return Node;
+		}
+		if (Node->NodeGuid.ToString(EGuidFormats::Digits) == NormalizedNodeGuid)
+		{
+			return Node;
+		}
+	}
+	return nullptr;
+}
+
+static bool IsReviewIgnoredGraphNode(const UEdGraphNode* Node)
+{
+	if (!Node || !Node->GetClass())
+	{
+		return false;
+	}
+
+	const FString ClassName = Node->GetClass()->GetName();
+	return ClassName.Contains(TEXT("Comment"))
+		|| ClassName.Contains(TEXT("K2Node_Knot"))
+		|| ClassName.Contains(TEXT("Knot"));
+}
+
+static FString GetReviewNodeMetadataValue(const UEdGraphNode* Node, const TCHAR* Key)
+{
+	if (!Node || !Key)
+	{
+		return FString();
+	}
+
+	UPackage* Package = Node->GetOutermost();
+	if (!Package)
+	{
+		return FString();
+	}
+
+	FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
+	return MetaData.GetValue(Node, Key);
+}
+
+static FString MakeReviewNodeLocalSemanticIdentity(const UEdGraphNode* Node)
+{
+	if (!Node)
+	{
+		return FString();
+	}
+
+	const TCHAR* StableMetadataKeys[] = {
+		TEXT("BlueprintHelperNodeId"),
+		TEXT("BlueprintHelperFragmentId"),
+		TEXT("BlueprintHelperStatementId"),
+	};
+	for (const TCHAR* Key : StableMetadataKeys)
+	{
+		const FString Value = GetReviewNodeMetadataValue(Node, Key);
+		if (!Value.IsEmpty())
+		{
+			return FString::Printf(TEXT("meta:%s=%s"), Key, *Value);
+		}
+	}
+
+	TArray<FString> PinParts;
+	for (const UEdGraphPin* Pin : Node->Pins)
+	{
+		if (!Pin)
+		{
+			continue;
+		}
+
+		PinParts.Add(FString::Printf(
+			TEXT("%s|%d|%s|%s|%s"),
+			*Pin->PinName.ToString(),
+			static_cast<int32>(Pin->Direction),
+			*Pin->PinType.PinCategory.ToString(),
+			*Pin->PinType.PinSubCategory.ToString(),
+			*Pin->DefaultValue));
+	}
+	PinParts.Sort();
+
+	const FString NodeClassPath = Node->GetClass() ? Node->GetClass()->GetPathName() : FString();
+	return FBlueprintHelperReviewHashService::MakeStableHash(FString::Printf(
+		TEXT("node_local_semantic|%s|%s"),
+		*NodeClassPath,
+		*FString::Join(PinParts, TEXT(";"))));
+}
+
+static void CollectReviewSemanticLinkedPins(
+	const UEdGraphPin* SourcePin,
+	const UEdGraphPin* SearchPin,
+	TSet<const UEdGraphPin*>& VisitedPins,
+	TArray<FString>& OutLinkParts,
+	bool bUseStableSemanticIdentity)
+{
+	if (!SearchPin || VisitedPins.Contains(SearchPin))
+	{
+		return;
+	}
+	VisitedPins.Add(SearchPin);
+
+	for (const UEdGraphPin* LinkedPin : SearchPin->LinkedTo)
+	{
+		if (!LinkedPin || LinkedPin == SourcePin)
+		{
+			continue;
+		}
+
+		const UEdGraphNode* LinkedNode = LinkedPin->GetOwningNode();
+		if (!LinkedNode)
+		{
+			continue;
+		}
+
+		if (IsReviewIgnoredGraphNode(LinkedNode))
+		{
+			for (const UEdGraphPin* BridgePin : LinkedNode->Pins)
+			{
+				if (BridgePin && BridgePin != LinkedPin)
+				{
+					CollectReviewSemanticLinkedPins(SourcePin, BridgePin, VisitedPins, OutLinkParts, bUseStableSemanticIdentity);
+				}
+			}
+			continue;
+		}
+
+		const FString LinkedNodeIdentity = bUseStableSemanticIdentity
+			? MakeReviewNodeLocalSemanticIdentity(LinkedNode)
+			: LinkedNode->NodeGuid.ToString(EGuidFormats::Digits);
+		OutLinkParts.Add(FString::Printf(
+			TEXT("%s.%s.%d"),
+			*LinkedNodeIdentity,
+			*LinkedPin->PinName.ToString(),
+			static_cast<int32>(LinkedPin->Direction)));
+	}
+}
+
 FString FBlueprintHelperReviewHashService::ExtractAnchorName(
 	const FString& TargetKey,
 	const FString& Prefix)
@@ -104,7 +263,7 @@ FString FBlueprintHelperReviewHashService::ExtractAnchorName(
 	return TargetKey;
 }
 
-FString FBlueprintHelperReviewHashService::ComputeNodeHash(UEdGraphNode* Node)
+FString FBlueprintHelperReviewHashService::ComputeNodeHash(UEdGraphNode* Node, bool bUseStableSemanticIdentity)
 {
 	if (!Node)
 	{
@@ -119,23 +278,30 @@ FString FBlueprintHelperReviewHashService::ComputeNodeHash(UEdGraphNode* Node)
 			continue;
 		}
 
+		TArray<FString> LinkParts;
+		TSet<const UEdGraphPin*> VisitedPins;
+		CollectReviewSemanticLinkedPins(Pin, Pin, VisitedPins, LinkParts, bUseStableSemanticIdentity);
+		LinkParts.Sort();
+
 		PinParts.Add(FString::Printf(
-			TEXT("%s|%d|%s|%s|%s"),
+			TEXT("%s|%d|%s|%s|%s|%s"),
 			*Pin->PinName.ToString(),
 			static_cast<int32>(Pin->Direction),
 			*Pin->PinType.PinCategory.ToString(),
 			*Pin->PinType.PinSubCategory.ToString(),
-			*Pin->DefaultValue));
+			*Pin->DefaultValue,
+			*FString::Join(LinkParts, TEXT(","))));
 	}
 	PinParts.Sort();
 
+	const FString NodeClassPath = Node->GetClass() ? Node->GetClass()->GetPathName() : FString();
+	const FString NodeIdentity = bUseStableSemanticIdentity
+		? MakeReviewNodeLocalSemanticIdentity(Node)
+		: Node->NodeGuid.ToString(EGuidFormats::Digits);
 	const FString Payload = FString::Printf(
-		TEXT("node|%s|%s|%s|%d|%d|%s"),
-		*Node->GetName(),
-		*Node->NodeGuid.ToString(EGuidFormats::Digits),
-		*Node->NodeComment,
-		Node->NodePosX,
-		Node->NodePosY,
+		TEXT("node|%s|%s|%s"),
+		*NodeClassPath,
+		*NodeIdentity,
 		*FString::Join(PinParts, TEXT(";")));
 	return MakeStableHash(Payload);
 }
@@ -153,13 +319,18 @@ bool FBlueprintHelperReviewHashService::ComputeGraphNodeHash(
 		return false;
 	}
 
-	const FString NodeName = Target.NodeGuid.IsEmpty()
-		? ExtractAnchorName(Target.TargetKey, TEXT("node"))
-		: Target.NodeGuid;
-	UEdGraphNode* Node = FindNodeByName(Graph, NodeName);
+	UEdGraphNode* Node = FindReviewNodeByGuid(Graph, Target.NodeGuid);
+	const FString NodeName = ExtractAnchorName(Target.TargetKey, TEXT("node"));
 	if (!Node)
 	{
-		OutError = FString::Printf(TEXT("node_not_found:%s"), *NodeName);
+		Node = FindNodeByName(Graph, NodeName);
+	}
+	if (!Node || IsReviewIgnoredGraphNode(Node))
+	{
+		OutError = FString::Printf(
+			TEXT("%s:%s"),
+			Node ? TEXT("node_ignored") : TEXT("node_not_found"),
+			Target.NodeGuid.IsEmpty() ? *NodeName : *Target.NodeGuid);
 		return false;
 	}
 
@@ -184,7 +355,7 @@ bool FBlueprintHelperReviewHashService::ComputeGraphBlockHash(
 	TArray<FString> NodeHashes;
 	for (UEdGraphNode* Node : Graph->Nodes)
 	{
-		if (!Node)
+		if (!Node || IsReviewIgnoredGraphNode(Node))
 		{
 			continue;
 		}
@@ -198,7 +369,7 @@ bool FBlueprintHelperReviewHashService::ComputeGraphBlockHash(
 		const FString NodeBlockId = MetaData.GetValue(Node, TEXT("BlueprintHelperBlockId"));
 		if (NodeBlockId == BlockId)
 		{
-			NodeHashes.Add(ComputeNodeHash(Node));
+			NodeHashes.Add(ComputeNodeHash(Node, true));
 		}
 	}
 

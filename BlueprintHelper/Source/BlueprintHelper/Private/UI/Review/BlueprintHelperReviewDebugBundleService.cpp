@@ -84,6 +84,11 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewDebugBundleService::BuildChangeSum
 	Json->SetStringField(TEXT("latest_transaction_id"), Change->LatestTransactionId);
 	Json->SetStringField(TEXT("change_kind"), BlueprintHelperReviewChangeKindToString(Change->ChangeKind));
 	Json->SetStringField(TEXT("status"), BlueprintHelperReviewChangeStatusToString(Change->Status));
+	Json->SetStringField(TEXT("scope_identity"), Change->ScopeIdentity);
+	Json->SetStringField(TEXT("before_hash"), Change->BeforeHash);
+	Json->SetStringField(TEXT("after_hash"), Change->AfterHash);
+	Json->SetBoolField(TEXT("has_before_snapshot"), !Change->BeforeSnapshotJson.IsEmpty());
+	Json->SetBoolField(TEXT("has_after_snapshot"), !Change->AfterSnapshotJson.IsEmpty());
 	Json->SetNumberField(TEXT("atomic_target_count"), Change->AtomicTargets.Num());
 
 	TArray<TSharedPtr<FJsonValue>> Targets;
@@ -96,6 +101,13 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewDebugBundleService::BuildChangeSum
 		TargetJson->SetStringField(TEXT("display_label"), Target.DisplayLabel);
 		TargetJson->SetStringField(TEXT("property_path"), Target.PropertyPath);
 		TargetJson->SetStringField(TEXT("component_path"), Target.ComponentPath);
+		TargetJson->SetStringField(TEXT("scope_identity"), Target.ScopeIdentity);
+		TargetJson->SetStringField(TEXT("first_transaction_id"), Target.FirstTransactionId);
+		TargetJson->SetStringField(TEXT("latest_transaction_id"), Target.LatestTransactionId);
+		TargetJson->SetStringField(TEXT("baseline_hash"), Target.BaselineHash);
+		TargetJson->SetStringField(TEXT("recorded_after_hash"), Target.RecordedAfterHash);
+		TargetJson->SetBoolField(TEXT("has_before_snapshot"), !Target.BeforeSnapshotJson.IsEmpty());
+		TargetJson->SetBoolField(TEXT("has_after_snapshot"), !Target.AfterSnapshotJson.IsEmpty());
 		Targets.Add(MakeShared<FJsonValueObject>(TargetJson));
 	}
 	Json->SetArrayField(TEXT("atomic_targets"), Targets);
@@ -124,7 +136,8 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewDebugBundleService::BuildFocusEven
 	int32 Index,
 	int32 Count,
 	const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Change,
-	const FString& AssetPath)
+	const FString& AssetPath,
+	const FString& Reason)
 {
 	TSharedRef<FJsonObject> Event = MakeShared<FJsonObject>();
 	Event->SetStringField(TEXT("event_type"), TEXT("focus_traversal"));
@@ -134,6 +147,7 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewDebugBundleService::BuildFocusEven
 	Event->SetStringField(TEXT("asset_path"), AssetPath);
 	Event->SetNumberField(TEXT("index"), Index);
 	Event->SetNumberField(TEXT("count"), Count);
+	Event->SetStringField(TEXT("reason"), Reason);
 	Event->SetObjectField(TEXT("change"), BuildChangeSummary(Change));
 	return Event;
 }
@@ -271,6 +285,90 @@ bool FBlueprintHelperReviewDebugBundleService::LoadBundleText(
 		return false;
 	}
 
+	SetError(OutError, FString());
+	return true;
+}
+
+bool FBlueprintHelperReviewDebugBundleService::LoadBundleSummaryText(
+	const FString& BundlePath,
+	FString& OutSummaryText,
+	FString* OutError)
+{
+	FString BundleText;
+	if (!LoadBundleText(BundlePath, BundleText, OutError))
+	{
+		return false;
+	}
+
+	TSharedPtr<FJsonObject> Bundle;
+	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(BundleText);
+	if (!FJsonSerializer::Deserialize(Reader, Bundle) || !Bundle.IsValid())
+	{
+		SetError(OutError, TEXT("debug bundle json is invalid"));
+		return false;
+	}
+
+	FString Schema;
+	FString SessionId;
+	FString CreatedAt;
+	FString UpdatedAt;
+	Bundle->TryGetStringField(TEXT("schema"), Schema);
+	Bundle->TryGetStringField(TEXT("session_id"), SessionId);
+	Bundle->TryGetStringField(TEXT("created_at"), CreatedAt);
+	Bundle->TryGetStringField(TEXT("updated_at"), UpdatedAt);
+
+	const TArray<TSharedPtr<FJsonValue>>* Events = nullptr;
+	const int32 EventCount = Bundle->TryGetArrayField(TEXT("events"), Events) && Events ? Events->Num() : 0;
+	TMap<FString, int32> TypeCounts;
+	FString FirstEventAt;
+	FString LastEventAt;
+	if (Events)
+	{
+		for (const TSharedPtr<FJsonValue>& EventValue : *Events)
+		{
+			const TSharedPtr<FJsonObject> Event = EventValue.IsValid() ? EventValue->AsObject() : nullptr;
+			if (!Event.IsValid())
+			{
+				continue;
+			}
+
+			FString EventType;
+			Event->TryGetStringField(TEXT("event_type"), EventType);
+			if (EventType.IsEmpty())
+			{
+				EventType = TEXT("unknown");
+			}
+			TypeCounts.FindOrAdd(EventType)++;
+
+			FString EventCreatedAt;
+			if (Event->TryGetStringField(TEXT("created_at"), EventCreatedAt) && !EventCreatedAt.IsEmpty())
+			{
+				if (FirstEventAt.IsEmpty())
+				{
+					FirstEventAt = EventCreatedAt;
+				}
+				LastEventAt = EventCreatedAt;
+			}
+		}
+	}
+
+	TArray<FString> TypeParts;
+	for (const TPair<FString, int32>& Pair : TypeCounts)
+	{
+		TypeParts.Add(FString::Printf(TEXT("%s=%d"), *Pair.Key, Pair.Value));
+	}
+	TypeParts.Sort();
+
+	OutSummaryText = FString::Printf(
+		TEXT("DebugBundle Summary\nschema: %s\nsession_id: %s\ncreated_at: %s\nupdated_at: %s\nevents: %d\nevent_types: %s\nfirst_event_at: %s\nlast_event_at: %s"),
+		*Schema,
+		*SessionId,
+		*CreatedAt,
+		*UpdatedAt,
+		EventCount,
+		*FString::Join(TypeParts, TEXT(", ")),
+		*FirstEventAt,
+		*LastEventAt);
 	SetError(OutError, FString());
 	return true;
 }

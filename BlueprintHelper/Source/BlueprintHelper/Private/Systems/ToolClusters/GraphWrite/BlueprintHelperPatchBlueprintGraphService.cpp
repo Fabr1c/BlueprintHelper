@@ -371,25 +371,51 @@ FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::Execu
 	}
 
 	// 6. 写 Journal
-	FBlueprintHelperAppendJournalRecord JRecord;
-	JRecord.TransactionId = TransactionId;
-	JRecord.Tool = TEXT("PatchBlueprintGraph");
-	JRecord.Status = bChanged ? TEXT("applied") : TEXT("no_op");
-	JRecord.TargetAssets.Add(Request.AssetPath);
-	JRecord.GraphId = Request.GraphName;
-	JRecord.GraphName = Request.GraphName;
-
-	FString JError;
-	if (!JournalService.WriteAppendJournal(JRecord, JError))
+	const bool bShouldRecordReview = Request.PatchType != EBlueprintHelperPatchType::SetNodePosition
+		&& Request.PatchType != EBlueprintHelperPatchType::SetNodeComment;
+	bool bJournalRecorded = false;
+	if (bShouldRecordReview)
 	{
-		Mutation.Rollback();
-		FBlueprintHelperToolError Error;
-		Error.Code = TEXT("journal_write_failed");
-		Error.Stage = EBlueprintHelperToolStage::Execute;
-		Error.Message = JError;
-		Error.bRetryable = false;
-		Error.RollbackResult = EBlueprintHelperRollbackResult::RolledBack;
-		return FBlueprintHelperToolResultBuilder::Failure(TEXT("patch_blueprint_graph"), TraceId, Error);
+		FBlueprintHelperAppendJournalRecord JRecord;
+		JRecord.TransactionId = TransactionId;
+		JRecord.Tool = TEXT("PatchBlueprintGraph");
+		JRecord.Status = bChanged ? TEXT("applied") : TEXT("no_op");
+		JRecord.TargetAssets.Add(Request.AssetPath);
+		JRecord.GraphId = Request.GraphName;
+		JRecord.GraphName = Request.GraphName;
+		if (!Request.BlockId.IsEmpty())
+		{
+			JRecord.BlockIds.Add(Request.BlockId);
+		}
+		if (ResolvedTarget.Node)
+		{
+			FBlueprintHelperGraphReviewNodeAnchor Anchor;
+			Anchor.NodePath = ResolvedTarget.Node->GetPathName();
+			Anchor.NodeGuid = ResolvedTarget.Node->NodeGuid.IsValid()
+				? ResolvedTarget.Node->NodeGuid.ToString(EGuidFormats::Digits)
+				: FString();
+			Anchor.DisplayLabel = ResolvedTarget.Node->GetName();
+			Anchor.GraphPosition = FVector2D(ResolvedTarget.Node->NodePosX, ResolvedTarget.Node->NodePosY);
+			Anchor.GraphSize = FVector2D(
+				FMath::Max(ResolvedTarget.Node->NodeWidth, 360),
+				FMath::Max(ResolvedTarget.Node->NodeHeight, 180));
+			Anchor.bHasGraphBounds = true;
+			JRecord.CreatedNodeAnchors.Add(Anchor);
+		}
+
+		FString JError;
+		if (!JournalService.WriteAppendJournal(JRecord, JError))
+		{
+			Mutation.Rollback();
+			FBlueprintHelperToolError Error;
+			Error.Code = TEXT("journal_write_failed");
+			Error.Stage = EBlueprintHelperToolStage::Execute;
+			Error.Message = JError;
+			Error.bRetryable = false;
+			Error.RollbackResult = EBlueprintHelperRollbackResult::RolledBack;
+			return FBlueprintHelperToolResultBuilder::Failure(TEXT("patch_blueprint_graph"), TraceId, Error);
+		}
+		bJournalRecorded = true;
 	}
 
 	// 7. 标记修改
@@ -412,7 +438,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::Execu
 	Data.PatchResult.Patch.bExpectedOldStateProvided = Request.bExpectedOldStateProvided;
 	Data.PatchResult.Patch.bChanged = bChanged;
 	Data.WriteRef.TransactionId = TransactionId;
-	Data.WriteRef.bJournalRecorded = true;
+	Data.WriteRef.bJournalRecorded = bJournalRecorded;
 	Success.Data = Data.ToJson();
 	FBlueprintHelperGraphFragmentDebugData::AttachToData(Success.Data, PreflightResult.FragmentDebugData);
 

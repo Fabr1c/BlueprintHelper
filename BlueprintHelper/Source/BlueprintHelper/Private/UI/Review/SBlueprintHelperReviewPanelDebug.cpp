@@ -140,6 +140,13 @@ FReply SBlueprintHelperReviewPanel::OnLoadDebugBundle()
 		return FReply::Handled();
 	}
 
+	FString BundleSummary;
+	if (!FBlueprintHelperReviewDebugBundleService::LoadBundleSummaryText(DebugBundlePath, BundleSummary, &Error))
+	{
+		BundleSummary = FString::Printf(TEXT("DebugBundle summary failed: %s"), *Error);
+	}
+
+	DebugMessages.Insert(BundleSummary, 0);
 	DebugMessages.Insert(BundleText, 0);
 	if (DebugMessageTextBox.IsValid())
 	{
@@ -189,6 +196,8 @@ FReply SBlueprintHelperReviewPanel::OnCaptureFocusDebugBundle()
 	}
 
 	DebugFocusTraversalIndex = 0;
+	DebugFocusTraversalGeometryRetryCount = 0;
+	bDebugFocusTraversalAwaitingGeometry = false;
 	bDebugFocusTraversalActive = true;
 	AppendDebugBundleEvent(FBlueprintHelperReviewDebugBundleService::BuildFocusEvent(
 		DebugBundleSessionId,
@@ -208,6 +217,8 @@ FReply SBlueprintHelperReviewPanel::OnCaptureFocusDebugBundle()
 
 EActiveTimerReturnType SBlueprintHelperReviewPanel::TickDebugFocusTraversal(double, float)
 {
+	static constexpr int32 MaxGeometryRetryCount = 5;
+
 	if (!bDebugFocusTraversalActive)
 	{
 		return EActiveTimerReturnType::Stop;
@@ -216,6 +227,8 @@ EActiveTimerReturnType SBlueprintHelperReviewPanel::TickDebugFocusTraversal(doub
 	if (!DebugFocusTraversalItems.IsValidIndex(DebugFocusTraversalIndex))
 	{
 		bDebugFocusTraversalActive = false;
+		bDebugFocusTraversalAwaitingGeometry = false;
+		DebugFocusTraversalGeometryRetryCount = 0;
 		AppendDebugBundleEvent(FBlueprintHelperReviewDebugBundleService::BuildFocusEvent(
 			DebugBundleSessionId,
 			TEXT("complete"),
@@ -230,16 +243,103 @@ EActiveTimerReturnType SBlueprintHelperReviewPanel::TickDebugFocusTraversal(doub
 	}
 
 	const FReviewChangeItem Item = DebugFocusTraversalItems[DebugFocusTraversalIndex];
+	if (!bDebugFocusTraversalAwaitingGeometry)
+	{
+		AppendDebugBundleEvent(FBlueprintHelperReviewDebugBundleService::BuildFocusEvent(
+			DebugBundleSessionId,
+			TEXT("focus"),
+			DebugFocusTraversalIndex + 1,
+			DebugFocusTraversalItems.Num(),
+			Item,
+			ReviewAssetContext.AssetPath));
+		OnChangeSelectionChanged(Item, ESelectInfo::Direct);
+		bDebugFocusTraversalAwaitingGeometry = true;
+		DebugFocusTraversalGeometryRetryCount = 0;
+		return EActiveTimerReturnType::Continue;
+	}
+
+	FString GeometryReason;
+	if (IsDebugFocusTraversalChangeReady(Item, GeometryReason))
+	{
+		AppendDebugBundleEvent(FBlueprintHelperReviewDebugBundleService::BuildFocusEvent(
+			DebugBundleSessionId,
+			TEXT("focus_ready"),
+			DebugFocusTraversalIndex + 1,
+			DebugFocusTraversalItems.Num(),
+			Item,
+			ReviewAssetContext.AssetPath,
+			GeometryReason));
+		bDebugFocusTraversalAwaitingGeometry = false;
+		DebugFocusTraversalGeometryRetryCount = 0;
+		++DebugFocusTraversalIndex;
+		return EActiveTimerReturnType::Continue;
+	}
+
+	++DebugFocusTraversalGeometryRetryCount;
 	AppendDebugBundleEvent(FBlueprintHelperReviewDebugBundleService::BuildFocusEvent(
 		DebugBundleSessionId,
-		TEXT("focus"),
+		DebugFocusTraversalGeometryRetryCount >= MaxGeometryRetryCount ? TEXT("focus_timeout") : TEXT("wait_geometry"),
 		DebugFocusTraversalIndex + 1,
 		DebugFocusTraversalItems.Num(),
 		Item,
-		ReviewAssetContext.AssetPath));
-	OnChangeSelectionChanged(Item, ESelectInfo::Direct);
-	++DebugFocusTraversalIndex;
+		ReviewAssetContext.AssetPath,
+		GeometryReason));
+	if (DebugFocusTraversalGeometryRetryCount >= MaxGeometryRetryCount)
+	{
+		AddDebugMessage(FString::Printf(
+			TEXT("Debug focus traversal geometry timeout: %s reason=%s"),
+			Item.IsValid() ? *Item->ChangeId : TEXT("(invalid)"),
+			*GeometryReason));
+		bDebugFocusTraversalAwaitingGeometry = false;
+		DebugFocusTraversalGeometryRetryCount = 0;
+		++DebugFocusTraversalIndex;
+	}
 	return EActiveTimerReturnType::Continue;
+}
+
+bool SBlueprintHelperReviewPanel::IsDebugFocusTraversalChangeReady(FReviewChangeItem Item, FString& OutReason)
+{
+	if (!Item.IsValid())
+	{
+		OutReason = TEXT("invalid_change");
+		return true;
+	}
+
+	bool bHasRowSurfaceTarget = false;
+	FString LastReason;
+	for (const FBlueprintHelperReviewAtomicTarget& Target : Item->AtomicTargets)
+	{
+		const EBlueprintHelperReviewSurface Surface = Target.Surface;
+		const bool bRowSurface =
+			Surface == EBlueprintHelperReviewSurface::Components ||
+			Surface == EBlueprintHelperReviewSurface::UMGWidgetTree ||
+			Surface == EBlueprintHelperReviewSurface::MyBlueprint ||
+			Surface == EBlueprintHelperReviewSurface::Details ||
+			Surface == EBlueprintHelperReviewSurface::DataTable ||
+			Surface == EBlueprintHelperReviewSurface::DataAsset;
+		if (!bRowSurface)
+		{
+			continue;
+		}
+
+		bHasRowSurfaceTarget = true;
+		FBlueprintHelperReviewSurfaceGeometryAnchor Anchor;
+		if (ResolveReviewRowGeometry(*Item, Surface, Anchor))
+		{
+			OutReason = FString::Printf(TEXT("geometry_ready:%s"), BlueprintHelperReviewSurfaceToString(Surface));
+			return true;
+		}
+		LastReason = Anchor.Reason;
+	}
+
+	if (!bHasRowSurfaceTarget)
+	{
+		OutReason = TEXT("no_row_surface_required");
+		return true;
+	}
+
+	OutReason = LastReason.IsEmpty() ? TEXT("geometry_not_ready") : LastReason;
+	return false;
 }
 
 TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildDebugPanel()

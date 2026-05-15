@@ -139,6 +139,48 @@ public:
 			Target.TargetKey.IsEmpty() ? *FallbackKey : *Target.TargetKey);
 	}
 
+	static FString MakeReviewScopeIdentity(const FBlueprintHelperReviewAtomicTarget& Target, const FString& FallbackKey)
+	{
+		if (!Target.ScopeIdentity.IsEmpty())
+		{
+			return Target.ScopeIdentity;
+		}
+
+		return MakeReviewAtomicLookupKey(Target, FallbackKey);
+	}
+
+	static bool IsReviewTargetNetNoChange(const FBlueprintHelperReviewAtomicTarget& Target)
+	{
+		return !Target.BaselineHash.IsEmpty()
+			&& !Target.RecordedAfterHash.IsEmpty()
+			&& Target.BaselineHash == Target.RecordedAfterHash;
+	}
+
+	static void PreserveFirstBaselineFields(
+		FBlueprintHelperReviewAtomicTarget& Target,
+		const FBlueprintHelperReviewAtomicTarget& Existing,
+		const FBlueprintHelperReviewAtomicTarget& Incoming)
+	{
+		Target.ScopeIdentity = !Existing.ScopeIdentity.IsEmpty() ? Existing.ScopeIdentity : Incoming.ScopeIdentity;
+		Target.FirstTransactionId = !Existing.FirstTransactionId.IsEmpty()
+			? Existing.FirstTransactionId
+			: (!Existing.LatestTransactionId.IsEmpty() ? Existing.LatestTransactionId : Incoming.LatestTransactionId);
+		Target.BaselineHash = !Existing.BaselineHash.IsEmpty() ? Existing.BaselineHash : Incoming.BaselineHash;
+		Target.BeforeSnapshotJson = !Existing.BeforeSnapshotJson.IsEmpty() ? Existing.BeforeSnapshotJson : Incoming.BeforeSnapshotJson;
+		Target.RollbackDataRef = !Existing.RollbackDataRef.IsEmpty() ? Existing.RollbackDataRef : Incoming.RollbackDataRef;
+	}
+
+	static void PreserveFirstBaselineFields(
+		FBlueprintHelperReviewVisibleChange& Change,
+		const FBlueprintHelperReviewVisibleChange& Existing,
+		const FBlueprintHelperReviewVisibleChange& Incoming)
+	{
+		Change.ScopeIdentity = !Existing.ScopeIdentity.IsEmpty() ? Existing.ScopeIdentity : Incoming.ScopeIdentity;
+		Change.BeforeSummary = !Existing.BeforeSummary.IsEmpty() ? Existing.BeforeSummary : Incoming.BeforeSummary;
+		Change.BeforeHash = !Existing.BeforeHash.IsEmpty() ? Existing.BeforeHash : Incoming.BeforeHash;
+		Change.BeforeSnapshotJson = !Existing.BeforeSnapshotJson.IsEmpty() ? Existing.BeforeSnapshotJson : Incoming.BeforeSnapshotJson;
+	}
+
 	static FString SanitizeReviewIdSegment(const FString& Value)
 	{
 		FString Result;
@@ -399,7 +441,7 @@ public:
 				TEXT("%s|%s|%s"),
 				*RootPrefix,
 				*AssetKey,
-				*MakeReviewAtomicLookupKey(Change.AtomicTargets[0], Change.LocationKey));
+				*MakeReviewScopeIdentity(Change.AtomicTargets[0], Change.LocationKey));
 		}
 
 		return FString::Printf(
@@ -464,6 +506,30 @@ public:
 		ApplyAssetLifecycleRootMetadata(Existing);
 	}
 
+	static void RemoveNetNoChangeVisibleChanges(TArray<FBlueprintHelperReviewVisibleChange>& Changes)
+	{
+		for (int32 ChangeIndex = Changes.Num() - 1; ChangeIndex >= 0; --ChangeIndex)
+		{
+			FBlueprintHelperReviewVisibleChange& Change = Changes[ChangeIndex];
+			const bool bHadAtomicTargets = Change.AtomicTargets.Num() > 0;
+			for (int32 TargetIndex = Change.AtomicTargets.Num() - 1; TargetIndex >= 0; --TargetIndex)
+			{
+				if (IsReviewTargetNetNoChange(Change.AtomicTargets[TargetIndex]))
+				{
+					Change.AtomicTargets.RemoveAt(TargetIndex);
+				}
+			}
+
+			const bool bChangeHashNoChange = !Change.BeforeHash.IsEmpty()
+				&& !Change.AfterHash.IsEmpty()
+				&& Change.BeforeHash == Change.AfterHash;
+			if ((bHadAtomicTargets && Change.AtomicTargets.Num() == 0) || bChangeHashNoChange)
+			{
+				Changes.RemoveAt(ChangeIndex);
+			}
+		}
+	}
+
 	static void CollapseVisibleChangesLatestWins(TArray<FBlueprintHelperReviewVisibleChange>& Changes)
 	{
 		TArray<FBlueprintHelperReviewVisibleChange> Collapsed;
@@ -482,6 +548,7 @@ public:
 		}
 
 		Changes = MoveTemp(Collapsed);
+		RemoveNetNoChangeVisibleChanges(Changes);
 	}
 
 	static FBlueprintHelperReviewVisibleChange MakeVisibleChangeFromEvidence(
@@ -497,10 +564,15 @@ public:
 		Change.LatestTransactionId = Evidence.TransactionId;
 		Change.LatestTransactionIds.Add(Evidence.TransactionId);
 		Change.SourceTransactionIds.Add(Evidence.TransactionId);
+		Change.ScopeIdentity = Target.ScopeIdentity;
 		Change.ChangeKind = Evidence.ChangeKind;
 		Change.DisplayLabel = Target.DisplayLabel.IsEmpty() ? Evidence.DisplayLabel : Target.DisplayLabel;
 		Change.BeforeSummary = Evidence.BeforeSummary;
 		Change.AfterSummary = Evidence.AfterSummary;
+		Change.BeforeHash = Target.BaselineHash;
+		Change.AfterHash = Target.RecordedAfterHash;
+		Change.BeforeSnapshotJson = Target.BeforeSnapshotJson;
+		Change.AfterSnapshotJson = Target.AfterSnapshotJson;
 		Change.ExecutionOrder = Target.ExecutionOrder;
 		Change.TaskStepIndex = Target.TaskStepIndex;
 		Change.AtomicIndex = Target.AtomicIndex;
@@ -677,8 +749,10 @@ public:
 		if (!Target.GraphName.IsEmpty()) Json->SetStringField(TEXT("graph_name"), Target.GraphName);
 		Json->SetStringField(TEXT("target_key"), Target.TargetKey);
 		if (!Target.TargetKind.IsEmpty()) Json->SetStringField(TEXT("target_kind"), Target.TargetKind);
+		if (!Target.ScopeIdentity.IsEmpty()) Json->SetStringField(TEXT("scope_identity"), Target.ScopeIdentity);
 		if (!Target.VisualGroupKey.IsEmpty()) Json->SetStringField(TEXT("visual_group_key"), Target.VisualGroupKey);
 		if (!Target.DisplayLabel.IsEmpty()) Json->SetStringField(TEXT("display_label"), Target.DisplayLabel);
+		if (!Target.FirstTransactionId.IsEmpty()) Json->SetStringField(TEXT("first_transaction_id"), Target.FirstTransactionId);
 		if (!Target.LatestTransactionId.IsEmpty()) Json->SetStringField(TEXT("latest_transaction_id"), Target.LatestTransactionId);
 		Json->SetArrayField(TEXT("source_transaction_ids"), MakeReviewJsonStringArray(Target.SourceTransactionIds));
 		if (!Target.Ownership.IsEmpty()) Json->SetStringField(TEXT("ownership"), Target.Ownership);
@@ -689,6 +763,8 @@ public:
 		if (!Target.AnchorJson.IsEmpty()) Json->SetStringField(TEXT("anchor"), Target.AnchorJson);
 		if (!Target.RecordedAfterHash.IsEmpty()) Json->SetStringField(TEXT("recorded_after_hash"), Target.RecordedAfterHash);
 		if (!Target.BaselineHash.IsEmpty()) Json->SetStringField(TEXT("baseline_hash"), Target.BaselineHash);
+		if (!Target.BeforeSnapshotJson.IsEmpty()) Json->SetStringField(TEXT("before_snapshot_json"), Target.BeforeSnapshotJson);
+		if (!Target.AfterSnapshotJson.IsEmpty()) Json->SetStringField(TEXT("after_snapshot_json"), Target.AfterSnapshotJson);
 		if (!Target.RollbackDataRef.IsEmpty()) Json->SetStringField(TEXT("rollback_data_ref"), Target.RollbackDataRef);
 		if (Target.ExecutionOrder != INDEX_NONE) Json->SetNumberField(TEXT("execution_order"), Target.ExecutionOrder);
 		if (Target.TaskStepIndex != INDEX_NONE) Json->SetNumberField(TEXT("task_step_index"), Target.TaskStepIndex);
@@ -710,6 +786,7 @@ public:
 		Json->SetStringField(TEXT("asset_path"), Change.AssetPath);
 		if (!Change.GraphName.IsEmpty()) Json->SetStringField(TEXT("graph_name"), Change.GraphName);
 		Json->SetStringField(TEXT("visual_group_key"), Change.LocationKey);
+		if (!Change.ScopeIdentity.IsEmpty()) Json->SetStringField(TEXT("scope_identity"), Change.ScopeIdentity);
 		Json->SetStringField(TEXT("latest_transaction_id"), Change.LatestTransactionId);
 		Json->SetArrayField(TEXT("latest_transaction_ids"), MakeReviewJsonStringArray(Change.LatestTransactionIds));
 		Json->SetArrayField(TEXT("source_transaction_ids"), MakeReviewJsonStringArray(Change.SourceTransactionIds));
@@ -717,7 +794,11 @@ public:
 		Json->SetStringField(TEXT("status"), BlueprintHelperReviewChangeStatusToString(Change.Status));
 		if (!Change.DisplayLabel.IsEmpty()) Json->SetStringField(TEXT("display_label"), Change.DisplayLabel);
 		if (!Change.BeforeSummary.IsEmpty()) Json->SetStringField(TEXT("before_summary"), Change.BeforeSummary);
+		if (!Change.BeforeHash.IsEmpty()) Json->SetStringField(TEXT("before_hash"), Change.BeforeHash);
+		if (!Change.BeforeSnapshotJson.IsEmpty()) Json->SetStringField(TEXT("before_snapshot_json"), Change.BeforeSnapshotJson);
 		if (!Change.AfterSummary.IsEmpty()) Json->SetStringField(TEXT("after_summary"), Change.AfterSummary);
+		if (!Change.AfterHash.IsEmpty()) Json->SetStringField(TEXT("after_hash"), Change.AfterHash);
+		if (!Change.AfterSnapshotJson.IsEmpty()) Json->SetStringField(TEXT("after_snapshot_json"), Change.AfterSnapshotJson);
 		if (!Change.NeedsActionReason.IsEmpty()) Json->SetStringField(TEXT("needs_action_reason"), Change.NeedsActionReason);
 		if (!Change.ParentChangeId.IsEmpty()) Json->SetStringField(TEXT("parent_change_id"), Change.ParentChangeId);
 		if (Change.ExecutionOrder != INDEX_NONE) Json->SetNumberField(TEXT("execution_order"), Change.ExecutionOrder);
@@ -911,6 +992,7 @@ public:
 				ChangeJson->TryGetStringField(TEXT("asset_path"), Change.AssetPath);
 				ChangeJson->TryGetStringField(TEXT("graph_name"), Change.GraphName);
 				ChangeJson->TryGetStringField(TEXT("visual_group_key"), Change.LocationKey);
+				ChangeJson->TryGetStringField(TEXT("scope_identity"), Change.ScopeIdentity);
 				ChangeJson->TryGetStringField(TEXT("latest_transaction_id"), Change.LatestTransactionId);
 				ReadReviewStringArray(ChangeJson, TEXT("latest_transaction_ids"), Change.LatestTransactionIds);
 				ReadReviewStringArray(ChangeJson, TEXT("source_transaction_ids"), Change.SourceTransactionIds);
@@ -922,7 +1004,11 @@ public:
 				Change.ChangeKind = ParseReviewChangeKind(ChangeKind);
 				ChangeJson->TryGetStringField(TEXT("display_label"), Change.DisplayLabel);
 				ChangeJson->TryGetStringField(TEXT("before_summary"), Change.BeforeSummary);
+				ChangeJson->TryGetStringField(TEXT("before_hash"), Change.BeforeHash);
+				ChangeJson->TryGetStringField(TEXT("before_snapshot_json"), Change.BeforeSnapshotJson);
 				ChangeJson->TryGetStringField(TEXT("after_summary"), Change.AfterSummary);
+				ChangeJson->TryGetStringField(TEXT("after_hash"), Change.AfterHash);
+				ChangeJson->TryGetStringField(TEXT("after_snapshot_json"), Change.AfterSnapshotJson);
 				ChangeJson->TryGetStringField(TEXT("needs_action_reason"), Change.NeedsActionReason);
 				ChangeJson->TryGetStringField(TEXT("parent_change_id"), Change.ParentChangeId);
 				double OrderValue = 0.0;
@@ -962,8 +1048,10 @@ public:
 						TargetJson->TryGetStringField(TEXT("graph_name"), Target.GraphName);
 						TargetJson->TryGetStringField(TEXT("target_key"), Target.TargetKey);
 						TargetJson->TryGetStringField(TEXT("target_kind"), Target.TargetKind);
+						TargetJson->TryGetStringField(TEXT("scope_identity"), Target.ScopeIdentity);
 						TargetJson->TryGetStringField(TEXT("visual_group_key"), Target.VisualGroupKey);
 						TargetJson->TryGetStringField(TEXT("display_label"), Target.DisplayLabel);
+						TargetJson->TryGetStringField(TEXT("first_transaction_id"), Target.FirstTransactionId);
 						TargetJson->TryGetStringField(TEXT("latest_transaction_id"), Target.LatestTransactionId);
 						ReadReviewStringArray(TargetJson, TEXT("source_transaction_ids"), Target.SourceTransactionIds);
 						TargetJson->TryGetStringField(TEXT("ownership"), Target.Ownership);
@@ -974,6 +1062,8 @@ public:
 						TargetJson->TryGetStringField(TEXT("anchor"), Target.AnchorJson);
 						TargetJson->TryGetStringField(TEXT("recorded_after_hash"), Target.RecordedAfterHash);
 						TargetJson->TryGetStringField(TEXT("baseline_hash"), Target.BaselineHash);
+						TargetJson->TryGetStringField(TEXT("before_snapshot_json"), Target.BeforeSnapshotJson);
+						TargetJson->TryGetStringField(TEXT("after_snapshot_json"), Target.AfterSnapshotJson);
 						TargetJson->TryGetStringField(TEXT("rollback_data_ref"), Target.RollbackDataRef);
 						double TargetOrderValue = 0.0;
 						if (TargetJson->TryGetNumberField(TEXT("execution_order"), TargetOrderValue))
@@ -1485,6 +1575,11 @@ TArray<FBlueprintHelperReviewRecord> FBlueprintHelperReviewStoreService::BuildRe
 		{
 			FBlueprintHelperReviewStoreServiceLocalUtils::LinkPendingChildrenToLifecycleRoots(Record->VisibleChanges);
 			FBlueprintHelperReviewStoreServiceLocalUtils::SortVisibleChangesByReviewOrder(Record->VisibleChanges);
+			if (Record->VisibleChanges.Num() == 0)
+			{
+				continue;
+			}
+
 			bool bNeedsAction = false;
 			bool bHasPending = false;
 			for (const FBlueprintHelperReviewVisibleChange& Change : Record->VisibleChanges)
@@ -1607,6 +1702,10 @@ TArray<FBlueprintHelperReviewRecord> FBlueprintHelperReviewStoreService::QueryRe
 
 		FBlueprintHelperReviewRecord Record;
 		if (!FBlueprintHelperReviewStoreServiceLocalUtils::ReadReviewRecordFromJson(Json, Record))
+		{
+			continue;
+		}
+		if (Record.VisibleChanges.Num() == 0)
 		{
 			continue;
 		}
@@ -1833,6 +1932,7 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewStoreService::BuildReviewRecordSum
 		if (!Change.LocationKey.IsEmpty())
 		{
 			ChangeJson->SetStringField(TEXT("visual_group_key"), Change.LocationKey);
+		if (!Change.ScopeIdentity.IsEmpty()) ChangeJson->SetStringField(TEXT("scope_identity"), Change.ScopeIdentity);
 		}
 		ChangeJson->SetStringField(TEXT("change_kind"), BlueprintHelperReviewChangeKindToString(Change.ChangeKind));
 		ChangeJson->SetStringField(TEXT("status"), BlueprintHelperReviewChangeStatusToString(Change.Status));
@@ -1905,8 +2005,14 @@ bool FBlueprintHelperReviewStoreService::SaveReviewRecord(
 	}
 
 	FBlueprintHelperReviewRecord RecordToWrite = Record;
+	FBlueprintHelperReviewStoreServiceLocalUtils::CollapseVisibleChangesLatestWins(RecordToWrite.VisibleChanges);
 	FBlueprintHelperReviewStoreServiceLocalUtils::LinkPendingChildrenToLifecycleRoots(RecordToWrite.VisibleChanges);
 	FBlueprintHelperReviewStoreServiceLocalUtils::SortVisibleChangesByReviewOrder(RecordToWrite.VisibleChanges);
+	if (RecordToWrite.VisibleChanges.Num() == 0)
+	{
+		return DeleteReviewRecord(Record.ReviewRecordId, OutError);
+	}
+	FBlueprintHelperReviewStoreServiceLocalUtils::RefreshReviewRecordStatus(RecordToWrite);
 
 	FString JsonText;
 	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonText);
@@ -1964,7 +2070,17 @@ bool FBlueprintHelperReviewStoreService::SaveReviewRecords(
 		}
 
 		FBlueprintHelperReviewStoreServiceLocalUtils::LinkPendingChildrenToLifecycleRoots(RecordToWrite.VisibleChanges);
+		FBlueprintHelperReviewStoreServiceLocalUtils::CollapseVisibleChangesLatestWins(RecordToWrite.VisibleChanges);
+		if (RecordToWrite.VisibleChanges.Num() == 0)
+		{
+			if (!DeleteReviewRecord(Record.ReviewRecordId, OutError))
+			{
+				return false;
+			}
+			continue;
+		}
 		FBlueprintHelperReviewStoreServiceLocalUtils::SortVisibleChangesByReviewOrder(RecordToWrite.VisibleChanges);
+		FBlueprintHelperReviewStoreServiceLocalUtils::RefreshReviewRecordStatus(RecordToWrite);
 
 		FString JsonText;
 		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonText);
@@ -2269,9 +2385,9 @@ void FBlueprintHelperReviewStoreService::AddEvidenceAtomicTargets(
 		Change.ChangeKind = Evidence.ChangeKind;
 		Change.Status = EBlueprintHelperReviewChangeStatus::NeedsAction;
 		Change.DisplayLabel = Evidence.DisplayLabel.IsEmpty() ? Evidence.OperationKind : Evidence.DisplayLabel;
-		Change.NeedsActionReason = TEXT("missing_atomic_targets");
-		Record.VisibleChanges.Add(Change);
-		return;
+			Change.NeedsActionReason = TEXT("missing_atomic_targets");
+			Record.VisibleChanges.Add(Change);
+			return;
 	}
 
 	for (int32 Index = 0; Index < Evidence.AtomicTargets.Num(); ++Index)
@@ -2284,6 +2400,15 @@ void FBlueprintHelperReviewStoreService::AddEvidenceAtomicTargets(
 		{
 			Target.ExecutionOrder = Target.TaskStepIndex * 1000 + Index;
 		}
+		Target.ScopeIdentity = FBlueprintHelperReviewStoreServiceLocalUtils::MakeReviewScopeIdentity(
+			Target,
+			FBlueprintHelperReviewStoreServiceLocalUtils::MakeReviewInternalMissingAnchorKey(Evidence.TransactionId, Index));
+		Target.FirstTransactionId = Target.FirstTransactionId.IsEmpty()
+			? Evidence.TransactionId
+			: Target.FirstTransactionId;
+		Target.AfterSnapshotJson = Target.AfterSnapshotJson.IsEmpty()
+			? Target.AnchorJson
+			: Target.AfterSnapshotJson;
 		Record.SourceTransactionSummary.AssetPaths.AddUnique(Target.AssetPath);
 		Target.LatestTransactionId = Evidence.TransactionId;
 		Target.SourceTransactionIds.AddUnique(Evidence.TransactionId);
@@ -2326,6 +2451,11 @@ void FBlueprintHelperReviewStoreService::AddEvidenceAtomicTargets(
 				Target,
 				VisualGroupKey);
 			NewChange.AtomicTargets.Add(Target);
+			NewChange.ScopeIdentity = Target.ScopeIdentity;
+			NewChange.BeforeHash = Target.BaselineHash;
+			NewChange.AfterHash = Target.RecordedAfterHash;
+			NewChange.BeforeSnapshotJson = Target.BeforeSnapshotJson;
+			NewChange.AfterSnapshotJson = Target.AfterSnapshotJson;
 			FBlueprintHelperReviewStoreServiceLocalUtils::ApplyAssetLifecycleRootMetadata(NewChange);
 			if (!NeedsActionReason.IsEmpty())
 			{
@@ -2353,17 +2483,28 @@ void FBlueprintHelperReviewStoreService::AddEvidenceAtomicTargets(
 				SourceTransactionIds.AddUnique(SourceTransactionId);
 			}
 
-			*ExistingTarget = Target;
-			ExistingTarget->SourceTransactionIds = SourceTransactionIds;
+			FBlueprintHelperReviewAtomicTarget MergedTarget = Target;
+			FBlueprintHelperReviewStoreServiceLocalUtils::PreserveFirstBaselineFields(MergedTarget, *ExistingTarget, Target);
+			MergedTarget.SourceTransactionIds = SourceTransactionIds;
+			*ExistingTarget = MergedTarget;
 		}
 
+		const FString OriginalBeforeSummary = Change->BeforeSummary;
+		const FString OriginalBeforeHash = Change->BeforeHash;
+		const FString OriginalBeforeSnapshotJson = Change->BeforeSnapshotJson;
 		Change->LatestTransactionId = Evidence.TransactionId;
 		Change->LatestTransactionIds.Reset();
 		Change->LatestTransactionIds.Add(Evidence.TransactionId);
 		Change->SourceTransactionIds.AddUnique(Evidence.TransactionId);
 		Change->ChangeId = FBlueprintHelperReviewStoreServiceLocalUtils::MakeReviewVisibleChangeId(Evidence.TransactionId, VisualGroupKey);
+		Change->ScopeIdentity = Change->ScopeIdentity.IsEmpty() ? Target.ScopeIdentity : Change->ScopeIdentity;
 		Change->ChangeKind = Evidence.ChangeKind;
+		Change->BeforeSummary = OriginalBeforeSummary.IsEmpty() ? Evidence.BeforeSummary : OriginalBeforeSummary;
 		Change->AfterSummary = Evidence.AfterSummary;
+		Change->BeforeHash = OriginalBeforeHash.IsEmpty() ? Target.BaselineHash : OriginalBeforeHash;
+		Change->AfterHash = Target.RecordedAfterHash;
+		Change->BeforeSnapshotJson = OriginalBeforeSnapshotJson.IsEmpty() ? Target.BeforeSnapshotJson : OriginalBeforeSnapshotJson;
+		Change->AfterSnapshotJson = Target.AfterSnapshotJson;
 		Change->ExecutionOrder = Target.ExecutionOrder;
 		Change->TaskStepIndex = Target.TaskStepIndex;
 		Change->AtomicIndex = Target.AtomicIndex;
@@ -2374,6 +2515,8 @@ void FBlueprintHelperReviewStoreService::AddEvidenceAtomicTargets(
 			Change->NeedsActionReason = NeedsActionReason;
 		}
 	}
+
+	FBlueprintHelperReviewStoreServiceLocalUtils::RemoveNetNoChangeVisibleChanges(Record.VisibleChanges);
 }
 
 TArray<FBlueprintHelperReviewAtomicTarget> FBlueprintHelperReviewStoreService::MakeAtomicTargetsForInput(

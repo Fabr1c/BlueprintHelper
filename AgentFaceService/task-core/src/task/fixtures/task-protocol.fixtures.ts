@@ -83,6 +83,7 @@ export const graphWriteAppendExpectedTaskPlanFixture = {
     dry_run_mode: 'full',
     should_compile: true,
     should_save: false,
+    review_baseline_dirty_asset_policy: 'block',
   },
   steps: [
     {
@@ -235,6 +236,7 @@ export const graphWriteReplaceExpectedTaskPlanFixture = {
     dry_run_mode: 'full',
     should_compile: true,
     should_save: false,
+    review_baseline_dirty_asset_policy: 'block',
   },
   steps: [
     {
@@ -348,6 +350,7 @@ export const graphWritePatchExpectedTaskPlanFixture = {
     dry_run_mode: 'full',
     should_compile: true,
     should_save: false,
+    review_baseline_dirty_asset_policy: 'block',
   },
   steps: [
     {
@@ -441,6 +444,7 @@ export const graphWriteMergeExpectedTaskPlanFixture = {
     dry_run_mode: 'full',
     should_compile: true,
     should_save: false,
+    review_baseline_dirty_asset_policy: 'block',
   },
   steps: [
     {
@@ -488,6 +492,7 @@ export const graphWriteAppendLoweringAdapterTaskPlanFixture = {
     dry_run_mode: 'full',
     should_compile: true,
     should_save: false,
+    review_baseline_dirty_asset_policy: 'block',
   },
   steps: [
     {
@@ -561,6 +566,7 @@ export const graphWriteReplaceTaskPlanFixture = {
     dry_run_mode: 'full',
     should_compile: true,
     should_save: false,
+    review_baseline_dirty_asset_policy: 'block',
   },
   steps: [
     {
@@ -608,6 +614,7 @@ export const graphWritePatchTaskPlanFixture = {
     dry_run_mode: 'full',
     should_compile: true,
     should_save: false,
+    review_baseline_dirty_asset_policy: 'block',
   },
   steps: [
     {
@@ -647,6 +654,7 @@ export const graphWriteMergeTaskPlanFixture = {
     dry_run_mode: 'full',
     should_compile: true,
     should_save: false,
+    review_baseline_dirty_asset_policy: 'block',
   },
   steps: [
     {
@@ -688,6 +696,7 @@ export const graphWriteStructuredIrTaskPlanFixture = {
     dry_run_mode: 'full',
     should_compile: true,
     should_save: false,
+    review_baseline_dirty_asset_policy: 'block',
   },
   steps: [
     {
@@ -841,6 +850,7 @@ export const blueprintVariableMemberChangesTaskPlanFixture = {
     dry_run_mode: 'full',
     should_compile: true,
     should_save: false,
+    review_baseline_dirty_asset_policy: 'block',
   },
   steps: [
     {
@@ -925,6 +935,7 @@ export const blueprintVariableMemberDefaultsTaskPlanFixture = {
     dry_run_mode: 'full',
     should_compile: true,
     should_save: false,
+    review_baseline_dirty_asset_policy: 'block',
   },
   steps: [
     {
@@ -1006,6 +1017,7 @@ export const blueprintVariableLocalChangesTaskPlanFixture = {
     dry_run_mode: 'full',
     should_compile: true,
     should_save: false,
+    review_baseline_dirty_asset_policy: 'block',
   },
   steps: [
     {
@@ -1100,6 +1112,7 @@ export const createAssetTaskPlanFixture = {
     dry_run_mode: 'full',
     should_compile: true,
     should_save: false,
+    review_baseline_dirty_asset_policy: 'block',
   },
   steps: [
     {
@@ -1176,6 +1189,7 @@ export const componentTaskPlanFixture = {
     dry_run_mode: 'full',
     should_compile: true,
     should_save: false,
+    review_baseline_dirty_asset_policy: 'block',
   },
   steps: [
     {
@@ -1278,6 +1292,7 @@ export const classSettingsTaskPlanFixture = {
     dry_run_mode: 'full',
     should_compile: true,
     should_save: false,
+    review_baseline_dirty_asset_policy: 'block',
   },
   steps: [
     {
@@ -1386,6 +1401,7 @@ export const widgetTaskPlanFixture = {
     dry_run_mode: 'full',
     should_compile: true,
     should_save: false,
+    review_baseline_dirty_asset_policy: 'block',
   },
   steps: [
     {
@@ -1496,6 +1512,7 @@ export const dataTableTaskPlanFixture = {
     dry_run_mode: 'full',
     should_compile: true,
     should_save: false,
+    review_baseline_dirty_asset_policy: 'block',
   },
   steps: [
     {

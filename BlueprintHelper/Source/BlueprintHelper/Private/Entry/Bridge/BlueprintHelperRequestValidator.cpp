@@ -772,6 +772,15 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 		};
 		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("apply_review_action")))
+	{
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("review_record_id"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("action"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("target_keys"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Array, false},
+		};
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
+	}
 	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("list_blueprint_helper_transactions")))
 	{
 		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {

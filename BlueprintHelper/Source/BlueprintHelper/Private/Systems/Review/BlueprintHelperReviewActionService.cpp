@@ -5,16 +5,33 @@
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
 
 #include "Dom/JsonObject.h"
+#include "Dom/JsonValue.h"
+#include "Blueprint/WidgetTree.h"
+#include "Components/PanelSlot.h"
+#include "Components/PanelWidget.h"
+#include "Components/Widget.h"
+#include "DataTableEditorUtils.h"
+#include "Engine/SCS_Node.h"
+#include "Engine/SimpleConstructionScript.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
+#include "EdGraph/EdGraphPin.h"
+#include "EdGraphUtilities.h"
 #include "Engine/Blueprint.h"
+#include "Engine/DataTable.h"
+#include "Components/ActorComponent.h"
 #include "Systems/Debug/BlueprintHelperDebugCaseStoreService.h"
 #include "Systems/Debug/BlueprintHelperDebugEntryService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperOwnershipService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
+#include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
 #include "HAL/FileManager.h"
 #include "Kismet2/BlueprintEditorUtils.h"
+#include "K2Node_CustomEvent.h"
+#include "K2Node_Event.h"
+#include "K2Node_FunctionEntry.h"
+#include "EdGraphSchema_K2.h"
 #include "Misc/PackageName.h"
 #include "Misc/DateTime.h"
 #include "Misc/FileHelper.h"
@@ -28,7 +45,10 @@
 #include "Shared/BlueprintHelperVersionCompat.h"
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
+#include "UObject/SoftObjectPath.h"
+#include "UObject/UnrealType.h"
 #include "UObject/UObjectGlobals.h"
+#include "WidgetBlueprint.h"
 
 class FBlueprintHelperReviewActionServiceLocalUtils
 {
@@ -424,6 +444,746 @@ public:
 			|| Target.TargetKey.StartsWith(TEXT("asset_factory:"), ESearchCase::IgnoreCase);
 	}
 
+	static FString ExtractTargetName(const FBlueprintHelperReviewAtomicTarget& Target)
+	{
+		if (!Target.PropertyPath.IsEmpty())
+		{
+			return Target.PropertyPath;
+		}
+		if (!Target.ComponentPath.IsEmpty())
+		{
+			return Target.ComponentPath;
+		}
+
+		int32 LastColon = INDEX_NONE;
+		if (Target.TargetKey.FindLastChar(TEXT(':'), LastColon))
+		{
+			return Target.TargetKey.Mid(LastColon + 1);
+		}
+		return Target.DisplayLabel;
+	}
+
+	static void SplitWidgetPropertyTarget(
+		const FString& TargetName,
+		FString& OutWidgetName,
+		FString& OutPropertyName)
+	{
+		OutWidgetName = TargetName;
+		OutPropertyName.Reset();
+
+		FString Left;
+		FString Right;
+		if (TargetName.Split(TEXT("."), &Left, &Right) && !Left.IsEmpty())
+		{
+			OutWidgetName = Left;
+			OutPropertyName = Right;
+		}
+	}
+
+	static bool ParseReviewSnapshotJson(
+		const FString& SnapshotJson,
+		TSharedPtr<FJsonObject>& OutSnapshot,
+		FString& OutError)
+	{
+		if (SnapshotJson.IsEmpty())
+		{
+			OutError = TEXT("missing_before_snapshot_json");
+			return false;
+		}
+
+		TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(SnapshotJson);
+		if (!FJsonSerializer::Deserialize(Reader, OutSnapshot) || !OutSnapshot.IsValid())
+		{
+			OutError = TEXT("before_snapshot_json_parse_failed");
+			return false;
+		}
+		return true;
+	}
+
+	static int32 FindBlueprintVariableIndex(UBlueprint* Blueprint, const FName VariableName)
+	{
+		if (!Blueprint)
+		{
+			return INDEX_NONE;
+		}
+
+		for (int32 Index = 0; Index < Blueprint->NewVariables.Num(); ++Index)
+		{
+			if (Blueprint->NewVariables[Index].VarName == VariableName)
+			{
+				return Index;
+			}
+		}
+		return INDEX_NONE;
+	}
+
+	static USCS_Node* FindScsNodeByName(UBlueprint* Blueprint, const FString& ComponentName)
+	{
+		if (!Blueprint || !Blueprint->SimpleConstructionScript)
+		{
+			return nullptr;
+		}
+
+		for (USCS_Node* Node : Blueprint->SimpleConstructionScript->GetAllNodes())
+		{
+			if (Node && Node->GetVariableName().ToString() == ComponentName)
+			{
+				return Node;
+			}
+		}
+		return nullptr;
+	}
+
+	static void MarkBlueprintReviewRestoreModified(UBlueprint* Blueprint)
+	{
+		if (!Blueprint)
+		{
+			return;
+		}
+
+		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+		if (Blueprint->GetOutermost())
+		{
+			Blueprint->GetOutermost()->MarkPackageDirty();
+		}
+	}
+
+	static bool RestoreBlueprintVariableFromSnapshot(
+		const FBlueprintHelperReviewAtomicTarget& Target,
+		const TSharedPtr<FJsonObject>& Snapshot,
+		FString& OutError)
+	{
+		UBlueprint* Blueprint = Cast<UBlueprint>(StaticLoadObject(UBlueprint::StaticClass(), nullptr, *Target.AssetPath));
+		if (!Blueprint)
+		{
+			OutError = FString::Printf(TEXT("blueprint_not_found:%s"), *Target.AssetPath);
+			return false;
+		}
+
+		const FString VariableName = ExtractTargetName(Target);
+		if (VariableName.IsEmpty())
+		{
+			OutError = TEXT("missing_variable_name");
+			return false;
+		}
+
+		bool bSnapshotExists = false;
+		Snapshot->TryGetBoolField(TEXT("exists"), bSnapshotExists);
+		const FName VariableFName(*VariableName);
+		const int32 VariableIndex = FindBlueprintVariableIndex(Blueprint, VariableFName);
+
+		const FScopedTransaction Transaction(FText::FromString(TEXT("BlueprintHelper Review Restore Variable")));
+		Blueprint->Modify();
+		if (!bSnapshotExists)
+		{
+			if (VariableIndex != INDEX_NONE)
+			{
+				FBlueprintEditorUtils::RemoveMemberVariable(Blueprint, VariableFName);
+				MarkBlueprintReviewRestoreModified(Blueprint);
+			}
+			return true;
+		}
+
+		if (VariableIndex == INDEX_NONE)
+		{
+			FString PinCategory;
+			FString PinSubCategory;
+			FString PinSubCategoryObjectPath;
+			Snapshot->TryGetStringField(TEXT("pin_category"), PinCategory);
+			Snapshot->TryGetStringField(TEXT("pin_sub_category"), PinSubCategory);
+			Snapshot->TryGetStringField(TEXT("pin_sub_category_object"), PinSubCategoryObjectPath);
+			if (PinCategory.IsEmpty())
+			{
+				OutError = FString::Printf(TEXT("snapshot_restore_variable_missing_type:%s"), *VariableName);
+				return false;
+			}
+
+			FEdGraphPinType PinType;
+			PinType.PinCategory = FName(*PinCategory);
+			PinType.PinSubCategory = FName(*PinSubCategory);
+			if (!PinSubCategoryObjectPath.IsEmpty())
+			{
+				PinType.PinSubCategoryObject = LoadObject<UObject>(nullptr, *PinSubCategoryObjectPath);
+			}
+
+			if (!FBlueprintEditorUtils::AddMemberVariable(Blueprint, VariableFName, PinType))
+			{
+				OutError = FString::Printf(TEXT("snapshot_restore_variable_recreate_failed:%s"), *VariableName);
+				return false;
+			}
+
+			const int32 NewVariableIndex = FindBlueprintVariableIndex(Blueprint, VariableFName);
+			if (NewVariableIndex == INDEX_NONE)
+			{
+				OutError = FString::Printf(TEXT("snapshot_restore_variable_recreate_missing:%s"), *VariableName);
+				return false;
+			}
+
+			FString Category;
+			if (Snapshot->TryGetStringField(TEXT("category"), Category))
+			{
+				Blueprint->NewVariables[NewVariableIndex].Category = FText::FromString(Category);
+			}
+
+			FString GuidString;
+			FGuid ParsedGuid;
+			if (Snapshot->TryGetStringField(TEXT("guid"), GuidString) && FGuid::Parse(GuidString, ParsedGuid))
+			{
+				Blueprint->NewVariables[NewVariableIndex].VarGuid = ParsedGuid;
+			}
+
+			FString DefaultValue;
+			if (Snapshot->TryGetStringField(TEXT("default_value"), DefaultValue))
+			{
+				Blueprint->NewVariables[NewVariableIndex].DefaultValue = DefaultValue;
+			}
+			MarkBlueprintReviewRestoreModified(Blueprint);
+			return true;
+		}
+
+		FString DefaultValue;
+		if (Snapshot->TryGetStringField(TEXT("default_value"), DefaultValue))
+		{
+			Blueprint->NewVariables[VariableIndex].DefaultValue = DefaultValue;
+		}
+		MarkBlueprintReviewRestoreModified(Blueprint);
+		return true;
+	}
+
+	static bool RestoreComponentPropertiesFromSnapshot(
+		UObject* ComponentTemplate,
+		const TSharedPtr<FJsonObject>& Snapshot,
+		FString& OutError)
+	{
+		if (!ComponentTemplate)
+		{
+			OutError = TEXT("missing_component_template");
+			return false;
+		}
+
+		const TSharedPtr<FJsonObject>* PropertiesObject = nullptr;
+		if (!Snapshot->TryGetObjectField(TEXT("properties"), PropertiesObject) || !PropertiesObject || !PropertiesObject->IsValid())
+		{
+			return true;
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* PropertiesArray = nullptr;
+		if (!(*PropertiesObject)->TryGetArrayField(TEXT("properties"), PropertiesArray) || !PropertiesArray)
+		{
+			return true;
+		}
+
+		for (const TSharedPtr<FJsonValue>& PropertyValue : *PropertiesArray)
+		{
+			const TSharedPtr<FJsonObject> PropertyJson = PropertyValue.IsValid() ? PropertyValue->AsObject() : nullptr;
+			if (!PropertyJson.IsValid())
+			{
+				continue;
+			}
+
+			FString PropertyName;
+			FString ValueText;
+			if (!PropertyJson->TryGetStringField(TEXT("name"), PropertyName) ||
+				!PropertyJson->TryGetStringField(TEXT("value"), ValueText) ||
+				PropertyName.IsEmpty())
+			{
+				continue;
+			}
+
+			FProperty* Property = ComponentTemplate->GetClass()
+				? ComponentTemplate->GetClass()->FindPropertyByName(FName(*PropertyName))
+				: nullptr;
+			if (!Property)
+			{
+				continue;
+			}
+
+			void* ValuePtr = Property->ContainerPtrToValuePtr<void>(ComponentTemplate);
+			if (!Property->ImportText_Direct(*ValueText, ValuePtr, ComponentTemplate, PPF_None))
+			{
+				OutError = FString::Printf(TEXT("component_property_restore_failed:%s"), *PropertyName);
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	static bool RestoreComponentFromSnapshot(
+		const FBlueprintHelperReviewAtomicTarget& Target,
+		const TSharedPtr<FJsonObject>& Snapshot,
+		FString& OutError)
+	{
+		UBlueprint* Blueprint = Cast<UBlueprint>(StaticLoadObject(UBlueprint::StaticClass(), nullptr, *Target.AssetPath));
+		if (!Blueprint || !Blueprint->SimpleConstructionScript)
+		{
+			OutError = FString::Printf(TEXT("blueprint_not_found:%s"), *Target.AssetPath);
+			return false;
+		}
+
+		const FString ComponentName = ExtractTargetName(Target);
+		if (ComponentName.IsEmpty())
+		{
+			OutError = TEXT("missing_component_name");
+			return false;
+		}
+
+		bool bSnapshotExists = false;
+		Snapshot->TryGetBoolField(TEXT("exists"), bSnapshotExists);
+		USCS_Node* Node = FindScsNodeByName(Blueprint, ComponentName);
+
+		const FScopedTransaction Transaction(FText::FromString(TEXT("BlueprintHelper Review Restore Component")));
+		Blueprint->Modify();
+		Blueprint->SimpleConstructionScript->Modify();
+		if (!bSnapshotExists)
+		{
+			if (Node)
+			{
+				Node->Modify();
+				Blueprint->SimpleConstructionScript->RemoveNode(Node);
+				MarkBlueprintReviewRestoreModified(Blueprint);
+			}
+			return true;
+		}
+
+		if (!Node || !Node->ComponentTemplate)
+		{
+			FString ComponentClassPath;
+			if (!Snapshot->TryGetStringField(TEXT("component_class"), ComponentClassPath) || ComponentClassPath.IsEmpty())
+			{
+				OutError = FString::Printf(TEXT("snapshot_restore_component_missing_class:%s"), *ComponentName);
+				return false;
+			}
+
+			UClass* ComponentClass = LoadObject<UClass>(nullptr, *ComponentClassPath);
+			if (!ComponentClass || !ComponentClass->IsChildOf(UActorComponent::StaticClass()))
+			{
+				OutError = FString::Printf(TEXT("snapshot_restore_component_invalid_class:%s"), *ComponentClassPath);
+				return false;
+			}
+
+			Node = Blueprint->SimpleConstructionScript->CreateNode(ComponentClass, FName(*ComponentName));
+			if (!Node || !Node->ComponentTemplate)
+			{
+				OutError = FString::Printf(TEXT("snapshot_restore_component_recreate_failed:%s"), *ComponentName);
+				return false;
+			}
+
+			FString ParentComponentName;
+			Snapshot->TryGetStringField(TEXT("parent_component"), ParentComponentName);
+			if (!ParentComponentName.IsEmpty())
+			{
+				if (USCS_Node* ParentNode = FindScsNodeByName(Blueprint, ParentComponentName))
+				{
+					ParentNode->Modify();
+					ParentNode->AddChildNode(Node);
+				}
+				else
+				{
+					Blueprint->SimpleConstructionScript->AddNode(Node);
+				}
+			}
+			else
+			{
+				Blueprint->SimpleConstructionScript->AddNode(Node);
+			}
+		}
+
+		Node->Modify();
+		Node->ComponentTemplate->Modify();
+		if (!RestoreComponentPropertiesFromSnapshot(Node->ComponentTemplate, Snapshot, OutError))
+		{
+			return false;
+		}
+		MarkBlueprintReviewRestoreModified(Blueprint);
+		return true;
+	}
+
+	static UObject* LoadReviewTargetAsset(const FString& AssetPath)
+	{
+		if (AssetPath.IsEmpty())
+		{
+			return nullptr;
+		}
+
+		if (UObject* Asset = FSoftObjectPath(AssetPath).TryLoad())
+		{
+			return Asset;
+		}
+		if (!AssetPath.Contains(TEXT(".")) && FPackageName::IsValidLongPackageName(AssetPath))
+		{
+			const FString ObjectPath = FString::Printf(
+				TEXT("%s.%s"),
+				*AssetPath,
+				*FPackageName::GetShortName(AssetPath));
+			return FSoftObjectPath(ObjectPath).TryLoad();
+		}
+		return nullptr;
+	}
+
+	static bool RestoreDataTableRowFromSnapshot(
+		const FBlueprintHelperReviewAtomicTarget& Target,
+		const TSharedPtr<FJsonObject>& Snapshot,
+		FString& OutError)
+	{
+		UDataTable* DataTable = Cast<UDataTable>(LoadReviewTargetAsset(Target.AssetPath));
+		if (!DataTable || !DataTable->GetRowStruct())
+		{
+			OutError = FString::Printf(TEXT("datatable_not_found:%s"), *Target.AssetPath);
+			return false;
+		}
+
+		const FString RowName = ExtractTargetName(Target);
+		if (RowName.IsEmpty())
+		{
+			OutError = TEXT("missing_datatable_row_name");
+			return false;
+		}
+
+		bool bSnapshotExists = false;
+		Snapshot->TryGetBoolField(TEXT("exists"), bSnapshotExists);
+		const FName RowFName(*RowName);
+		uint8* const* RowData = DataTable->GetRowMap().Find(RowFName);
+
+		const FScopedTransaction Transaction(FText::FromString(TEXT("BlueprintHelper Review Restore DataTable Row")));
+		DataTable->Modify();
+		if (!bSnapshotExists)
+		{
+			if (RowData)
+			{
+				DataTable->RemoveRow(RowFName);
+				DataTable->MarkPackageDirty();
+			}
+			return true;
+		}
+
+		if (!RowData || !*RowData)
+		{
+			FDataTableEditorUtils::BroadcastPreChange(DataTable, FDataTableEditorUtils::EDataTableChangeInfo::RowList);
+			uint8* NewRowData = FDataTableEditorUtils::AddRow(DataTable, RowFName);
+			FDataTableEditorUtils::BroadcastPostChange(DataTable, FDataTableEditorUtils::EDataTableChangeInfo::RowList);
+			if (!NewRowData)
+			{
+				OutError = FString::Printf(TEXT("snapshot_restore_datatable_row_recreate_failed:%s"), *RowName);
+				return false;
+			}
+			RowData = DataTable->GetRowMap().Find(RowFName);
+			if (!RowData || !*RowData)
+			{
+				OutError = FString::Printf(TEXT("snapshot_restore_datatable_row_recreate_missing:%s"), *RowName);
+				return false;
+			}
+		}
+
+		FString RowValue;
+		if (Snapshot->TryGetStringField(TEXT("value"), RowValue))
+		{
+			const TCHAR* ImportResult = DataTable->GetRowStruct()->ImportText(
+				*RowValue,
+				*RowData,
+				nullptr,
+				PPF_None,
+				nullptr,
+				DataTable->GetRowStruct()->GetName());
+			if (!ImportResult)
+			{
+				OutError = FString::Printf(TEXT("datatable_row_restore_failed:%s"), *RowName);
+				return false;
+			}
+			DataTable->MarkPackageDirty();
+		}
+		return true;
+	}
+
+	static bool RestoreObjectPropertyFromSnapshot(
+		const FBlueprintHelperReviewAtomicTarget& Target,
+		const TSharedPtr<FJsonObject>& Snapshot,
+		FString& OutError)
+	{
+		UObject* Asset = LoadReviewTargetAsset(Target.AssetPath);
+		if (!Asset || !Asset->GetClass())
+		{
+			OutError = FString::Printf(TEXT("asset_not_found:%s"), *Target.AssetPath);
+			return false;
+		}
+
+		UBlueprint* Blueprint = Target.TargetKind == TEXT("class_default_property")
+			? Cast<UBlueprint>(Asset)
+			: nullptr;
+		UObject* PropertyOwner = Asset;
+		if (Blueprint)
+		{
+			UClass* DefaultClass = Blueprint->GeneratedClass
+				? Blueprint->GeneratedClass
+				: Blueprint->SkeletonGeneratedClass;
+			PropertyOwner = DefaultClass ? DefaultClass->GetDefaultObject() : nullptr;
+		}
+		if (!PropertyOwner || !PropertyOwner->GetClass())
+		{
+			OutError = FString::Printf(TEXT("property_owner_not_found:%s"), *Target.AssetPath);
+			return false;
+		}
+
+		const FString PropertyPath = ExtractTargetName(Target);
+		if (PropertyPath.IsEmpty())
+		{
+			OutError = TEXT("missing_property_path");
+			return false;
+		}
+
+		bool bSnapshotExists = false;
+		Snapshot->TryGetBoolField(TEXT("exists"), bSnapshotExists);
+		if (!bSnapshotExists)
+		{
+			return true;
+		}
+
+		FProperty* Property = nullptr;
+		void* ValuePtr = nullptr;
+		FString ExpectedType;
+		FString ErrorCode;
+		FString ErrorMessage;
+		if (!FBlueprintHelperPropertyReflectionService::ResolvePropertyPath(
+			PropertyOwner,
+			PropertyPath,
+			Property,
+			ValuePtr,
+			ExpectedType,
+			ErrorCode,
+			ErrorMessage) ||
+			!Property ||
+			!ValuePtr)
+		{
+			OutError = FString::Printf(
+				TEXT("property_not_found:%s:%s:%s"),
+				*PropertyPath,
+				*ErrorCode,
+				*ErrorMessage);
+			return false;
+		}
+
+		FString ValueText;
+		if (!Snapshot->TryGetStringField(TEXT("value"), ValueText))
+		{
+			return true;
+		}
+
+		const FScopedTransaction Transaction(FText::FromString(TEXT("BlueprintHelper Review Restore Object Property")));
+		if (Blueprint)
+		{
+			Blueprint->Modify();
+		}
+		PropertyOwner->Modify();
+		PropertyOwner->PreEditChange(Property);
+		if (!Property->ImportText_Direct(*ValueText, ValuePtr, PropertyOwner, PPF_None))
+		{
+			OutError = FString::Printf(TEXT("object_property_restore_failed:%s"), *PropertyPath);
+			return false;
+		}
+		FPropertyChangedEvent PropertyChangedEvent(Property, EPropertyChangeType::ValueSet);
+		PropertyOwner->PostEditChangeProperty(PropertyChangedEvent);
+		if (Blueprint)
+		{
+			FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
+		}
+		else
+		{
+			Asset->MarkPackageDirty();
+		}
+		return true;
+	}
+
+	static bool RestoreWidgetFromSnapshot(
+		const FBlueprintHelperReviewAtomicTarget& Target,
+		const TSharedPtr<FJsonObject>& Snapshot,
+		FString& OutError)
+	{
+		UWidgetBlueprint* WidgetBlueprint = Cast<UWidgetBlueprint>(LoadReviewTargetAsset(Target.AssetPath));
+		if (!WidgetBlueprint || !WidgetBlueprint->WidgetTree)
+		{
+			OutError = FString::Printf(TEXT("widget_blueprint_not_found:%s"), *Target.AssetPath);
+			return false;
+		}
+
+		FString WidgetName;
+		FString PropertyName;
+		SplitWidgetPropertyTarget(ExtractTargetName(Target), WidgetName, PropertyName);
+		if (WidgetName.IsEmpty())
+		{
+			OutError = TEXT("missing_widget_name");
+			return false;
+		}
+
+		bool bSnapshotExists = false;
+		Snapshot->TryGetBoolField(TEXT("exists"), bSnapshotExists);
+		UWidget* Widget = WidgetBlueprint->WidgetTree->FindWidget(FName(*WidgetName));
+
+		const FScopedTransaction Transaction(FText::FromString(TEXT("BlueprintHelper Review Restore Widget")));
+		WidgetBlueprint->Modify();
+		WidgetBlueprint->WidgetTree->Modify();
+		if (!bSnapshotExists)
+		{
+			if (Widget)
+			{
+				Widget->Modify();
+				WidgetBlueprint->WidgetTree->RemoveWidget(Widget);
+				MarkBlueprintReviewRestoreModified(WidgetBlueprint);
+			}
+			return true;
+		}
+
+		if (!Widget)
+		{
+			FString WidgetClassPath;
+			if (!Snapshot->TryGetStringField(TEXT("widget_class"), WidgetClassPath) || WidgetClassPath.IsEmpty())
+			{
+				OutError = FString::Printf(TEXT("snapshot_restore_widget_missing_class:%s"), *WidgetName);
+				return false;
+			}
+
+			UClass* WidgetClass = LoadObject<UClass>(nullptr, *WidgetClassPath);
+			if (!WidgetClass || !WidgetClass->IsChildOf(UWidget::StaticClass()))
+			{
+				OutError = FString::Printf(TEXT("snapshot_restore_widget_invalid_class:%s"), *WidgetClassPath);
+				return false;
+			}
+
+			Widget = WidgetBlueprint->WidgetTree->ConstructWidget<UWidget>(WidgetClass, FName(*WidgetName));
+			if (!Widget)
+			{
+				OutError = FString::Printf(TEXT("snapshot_restore_widget_recreate_failed:%s"), *WidgetName);
+				return false;
+			}
+
+			FString ParentWidgetName;
+			Snapshot->TryGetStringField(TEXT("parent_widget"), ParentWidgetName);
+			if (!ParentWidgetName.IsEmpty())
+			{
+				UWidget* ParentWidget = WidgetBlueprint->WidgetTree->FindWidget(FName(*ParentWidgetName));
+				UPanelWidget* ParentPanel = Cast<UPanelWidget>(ParentWidget);
+				if (!ParentPanel)
+				{
+					OutError = FString::Printf(TEXT("snapshot_restore_widget_parent_not_panel:%s"), *ParentWidgetName);
+					return false;
+				}
+
+				int32 ChildIndex = INDEX_NONE;
+				double ChildIndexNumber = INDEX_NONE;
+				if (Snapshot->TryGetNumberField(TEXT("child_index"), ChildIndexNumber))
+				{
+					ChildIndex = FMath::RoundToInt(ChildIndexNumber);
+				}
+				UPanelSlot* NewSlot = ChildIndex >= 0 && ChildIndex <= ParentPanel->GetChildrenCount()
+					? ParentPanel->InsertChildAt(ChildIndex, Widget)
+					: ParentPanel->AddChild(Widget);
+				if (!NewSlot)
+				{
+					OutError = FString::Printf(TEXT("snapshot_restore_widget_attach_failed:%s"), *WidgetName);
+					return false;
+				}
+			}
+			else if (!WidgetBlueprint->WidgetTree->RootWidget)
+			{
+				WidgetBlueprint->WidgetTree->RootWidget = Widget;
+			}
+		}
+
+		if (Target.TargetKind == TEXT("umg_widget_property"))
+		{
+			if (PropertyName.IsEmpty())
+			{
+				Snapshot->TryGetStringField(TEXT("property_path"), PropertyName);
+			}
+			if (PropertyName.IsEmpty())
+			{
+				return true;
+			}
+
+			FProperty* Property = Widget->GetClass()
+				? Widget->GetClass()->FindPropertyByName(FName(*PropertyName))
+				: nullptr;
+			if (!Property)
+			{
+				OutError = FString::Printf(TEXT("widget_property_not_found:%s"), *PropertyName);
+				return false;
+			}
+
+			FString ValueText;
+			if (Snapshot->TryGetStringField(TEXT("value"), ValueText))
+			{
+				Widget->Modify();
+				void* ValuePtr = Property->ContainerPtrToValuePtr<void>(Widget);
+				if (!Property->ImportText_Direct(*ValueText, ValuePtr, Widget, PPF_None))
+				{
+					OutError = FString::Printf(TEXT("widget_property_restore_failed:%s"), *PropertyName);
+					return false;
+				}
+				MarkBlueprintReviewRestoreModified(WidgetBlueprint);
+			}
+		}
+		else
+		{
+			Widget->Modify();
+			if (!RestoreComponentPropertiesFromSnapshot(Widget, Snapshot, OutError))
+			{
+				return false;
+			}
+			MarkBlueprintReviewRestoreModified(WidgetBlueprint);
+		}
+
+		return true;
+	}
+
+	static bool ExecuteSnapshotRestore(
+		const FBlueprintHelperReviewAtomicTarget& Target,
+		FString& OutError)
+	{
+		TSharedPtr<FJsonObject> Snapshot;
+		if (!ParseReviewSnapshotJson(Target.BeforeSnapshotJson, Snapshot, OutError))
+		{
+			return false;
+		}
+
+		if (Target.TargetKind == TEXT("blueprint_variable"))
+		{
+			return RestoreBlueprintVariableFromSnapshot(Target, Snapshot, OutError);
+		}
+		if (Target.TargetKind == TEXT("component"))
+		{
+			return RestoreComponentFromSnapshot(Target, Snapshot, OutError);
+		}
+		if (Target.TargetKind == TEXT("datatable_row"))
+		{
+			return RestoreDataTableRowFromSnapshot(Target, Snapshot, OutError);
+		}
+		if (Target.TargetKind == TEXT("object_property") ||
+			Target.TargetKind == TEXT("data_asset_property") ||
+			Target.TargetKind == TEXT("class_default_property"))
+		{
+			return RestoreObjectPropertyFromSnapshot(Target, Snapshot, OutError);
+		}
+		if (Target.TargetKind == TEXT("umg_widget") || Target.TargetKind == TEXT("umg_widget_property"))
+		{
+			return RestoreWidgetFromSnapshot(Target, Snapshot, OutError);
+		}
+
+		OutError = FString::Printf(TEXT("snapshot_restore_unsupported_target_kind:%s"), *Target.TargetKind);
+		return false;
+	}
+
+	static bool ShouldUseSnapshotRestore(const FBlueprintHelperReviewAtomicTarget& Target)
+	{
+		return !Target.BeforeSnapshotJson.IsEmpty()
+			&& (Target.TargetKind == TEXT("blueprint_variable")
+				|| Target.TargetKind == TEXT("component")
+				|| Target.TargetKind == TEXT("datatable_row")
+				|| Target.TargetKind == TEXT("object_property")
+				|| Target.TargetKind == TEXT("data_asset_property")
+				|| Target.TargetKind == TEXT("class_default_property")
+				|| Target.TargetKind == TEXT("umg_widget")
+				|| Target.TargetKind == TEXT("umg_widget_property"));
+	}
+
 	static FString MakeObjectPathFromAssetPath(FString AssetPath)
 	{
 		AssetPath.TrimStartAndEndInline();
@@ -566,6 +1326,236 @@ public:
 		return TargetKey;
 	}
 
+	static FString NormalizeReviewGuidCandidate(const FString& Candidate)
+	{
+		FString Trimmed = Candidate;
+		Trimmed.TrimStartAndEndInline();
+		if (Trimmed.IsEmpty())
+		{
+			return FString();
+		}
+
+		FGuid ParsedGuid;
+		if (FGuid::Parse(Trimmed, ParsedGuid))
+		{
+			return ParsedGuid.ToString(EGuidFormats::Digits);
+		}
+
+		FString HexDigits;
+		HexDigits.Reserve(Trimmed.Len());
+		for (const TCHAR Ch : Trimmed)
+		{
+			if (FChar::IsHexDigit(Ch))
+			{
+				HexDigits.AppendChar(Ch);
+			}
+		}
+		return HexDigits.Len() == 32 ? HexDigits : Trimmed;
+	}
+
+	static bool DoesReviewNodeMatchStableId(const UEdGraphNode* Node, const FString& Candidate)
+	{
+		if (!Node || Candidate.IsEmpty())
+		{
+			return false;
+		}
+
+		if (Node->GetName().Equals(Candidate, ESearchCase::IgnoreCase))
+		{
+			return true;
+		}
+
+		const FString NodeGuidDigits = Node->NodeGuid.ToString(EGuidFormats::Digits);
+		const FString CandidateGuidDigits = NormalizeReviewGuidCandidate(Candidate);
+		if (!NodeGuidDigits.IsEmpty() && NodeGuidDigits.Equals(CandidateGuidDigits, ESearchCase::IgnoreCase))
+		{
+			return true;
+		}
+
+		if (UPackage* Package = Node->GetOutermost())
+		{
+			FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
+			return MetaData.GetValue(Node, TEXT("BlueprintHelperBlockId")).Equals(Candidate, ESearchCase::IgnoreCase)
+				|| MetaData.GetValue(Node, TEXT("BlueprintHelperTransactionId")).Equals(Candidate, ESearchCase::IgnoreCase)
+				|| MetaData.GetValue(Node, TEXT("BlueprintHelperFeatureName")).Equals(Candidate, ESearchCase::IgnoreCase);
+		}
+		return false;
+	}
+
+	static UEdGraphPin* FindFirstExecPin(UEdGraphNode* Node, EEdGraphPinDirection Direction)
+	{
+		if (!Node)
+		{
+			return nullptr;
+		}
+
+		for (UEdGraphPin* Pin : Node->Pins)
+		{
+			if (Pin && Pin->Direction == Direction && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+			{
+				return Pin;
+			}
+		}
+		return nullptr;
+	}
+
+	static bool NodeMatchesEntryName(UEdGraphNode* Node, const FString& EntryName)
+	{
+		if (!Node)
+		{
+			return false;
+		}
+		if (EntryName.IsEmpty())
+		{
+			return true;
+		}
+
+		if (UK2Node_CustomEvent* CustomEvent = Cast<UK2Node_CustomEvent>(Node))
+		{
+			if (CustomEvent->CustomFunctionName.ToString().Equals(EntryName, ESearchCase::IgnoreCase))
+			{
+				return true;
+			}
+		}
+
+		if (UK2Node_Event* EventNode = Cast<UK2Node_Event>(Node))
+		{
+			if (EventNode->GetFunctionName().ToString().Equals(EntryName, ESearchCase::IgnoreCase) ||
+				EventNode->EventReference.GetMemberName().ToString().Equals(EntryName, ESearchCase::IgnoreCase))
+			{
+				return true;
+			}
+		}
+
+		if (UK2Node_FunctionEntry* FunctionEntry = Cast<UK2Node_FunctionEntry>(Node))
+		{
+			if (FunctionEntry->FunctionReference.GetMemberName().ToString().Equals(EntryName, ESearchCase::IgnoreCase) ||
+				FunctionEntry->CustomGeneratedFunctionName.ToString().Equals(EntryName, ESearchCase::IgnoreCase))
+			{
+				return true;
+			}
+		}
+
+		const FString NodeName = Node->GetName();
+		const FString NodeTitle = Node->GetNodeTitle(ENodeTitleType::FullTitle).ToString();
+		return NodeName.Equals(EntryName, ESearchCase::IgnoreCase) ||
+			NodeTitle.Equals(EntryName, ESearchCase::IgnoreCase);
+	}
+
+	static bool HasInboundExecLinkFromImportedNode(UEdGraphPin* ExecInputPin, const TSet<UEdGraphNode*>& ImportedNodes)
+	{
+		if (!ExecInputPin)
+		{
+			return false;
+		}
+
+		for (UEdGraphPin* LinkedPin : ExecInputPin->LinkedTo)
+		{
+			if (!LinkedPin ||
+				LinkedPin->Direction != EGPD_Output ||
+				LinkedPin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec)
+			{
+				continue;
+			}
+
+			if (ImportedNodes.Contains(LinkedPin->GetOwningNode()))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	static UEdGraphNode* FindFirstExecutableBodyNode(const TSet<UEdGraphNode*>& ImportedNodes)
+	{
+		TArray<UEdGraphNode*> ImportedExecutableNodes;
+		for (UEdGraphNode* Node : ImportedNodes)
+		{
+			if (Node && FindFirstExecPin(Node, EGPD_Input))
+			{
+				ImportedExecutableNodes.Add(Node);
+			}
+		}
+
+		ImportedExecutableNodes.Sort(
+			[](const UEdGraphNode& Left, const UEdGraphNode& Right)
+			{
+				return Left.NodePosX == Right.NodePosX
+					? Left.NodePosY < Right.NodePosY
+					: Left.NodePosX < Right.NodePosX;
+			});
+
+		for (UEdGraphNode* Node : ImportedExecutableNodes)
+		{
+			if (!HasInboundExecLinkFromImportedNode(FindFirstExecPin(Node, EGPD_Input), ImportedNodes))
+			{
+				return Node;
+			}
+		}
+
+		return ImportedExecutableNodes.Num() > 0 ? ImportedExecutableNodes[0] : nullptr;
+	}
+
+	static bool PinsHaveSingleConnectionToEachOther(UEdGraphPin* FirstPin, UEdGraphPin* SecondPin)
+	{
+		return FirstPin &&
+			SecondPin &&
+			FirstPin->LinkedTo.Num() == 1 &&
+			SecondPin->LinkedTo.Num() == 1 &&
+			FirstPin->LinkedTo[0] == SecondPin &&
+			SecondPin->LinkedTo[0] == FirstPin;
+	}
+
+	static void BreakAllPinLinksWithModify(UEdGraphPin* Pin)
+	{
+		if (!Pin)
+		{
+			return;
+		}
+
+		Pin->Modify();
+		Pin->BreakAllPinLinks(true);
+	}
+
+	static bool TryGetRollbackDataObject(
+		const TSharedPtr<FJsonObject>& JournalRecord,
+		TSharedPtr<FJsonObject>& OutRollbackData,
+		FString& OutError)
+	{
+		OutRollbackData.Reset();
+		if (!JournalRecord.IsValid())
+		{
+			OutError = TEXT("rollback_journal_missing");
+			return false;
+		}
+
+		const TSharedPtr<FJsonObject>* RollbackDataObject = nullptr;
+		if (JournalRecord->TryGetObjectField(TEXT("rollback_data"), RollbackDataObject) &&
+			RollbackDataObject &&
+			RollbackDataObject->IsValid())
+		{
+			OutRollbackData = *RollbackDataObject;
+			return true;
+		}
+
+		FString RollbackDataString;
+		if (JournalRecord->TryGetStringField(TEXT("rollback_data"), RollbackDataString) &&
+			!RollbackDataString.IsEmpty())
+		{
+			TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(RollbackDataString);
+			if (FJsonSerializer::Deserialize(Reader, OutRollbackData) && OutRollbackData.IsValid())
+			{
+				return true;
+			}
+			OutError = TEXT("rollback_data_parse_failed");
+			return false;
+		}
+
+		OutError = TEXT("rollback_data_missing");
+		return false;
+	}
+
 	static bool TryFindReviewAtomicTarget(
 		const FBlueprintHelperReviewRecord& Record,
 		const FString& TargetKey,
@@ -676,8 +1666,7 @@ public:
 				continue;
 			}
 
-			const FString NodeGuid = Node->NodeGuid.ToString(EGuidFormats::Digits);
-			if (Node->GetName() == NodeName || NodeGuid == NodeName)
+			if (DoesReviewNodeMatchStableId(Node, NodeName))
 			{
 				return Node;
 			}
@@ -841,7 +1830,7 @@ public:
 				: Target.NodeGuid;
 			for (UEdGraphNode* Node : Graph->Nodes)
 			{
-				if (Node && Node->GetName() == NodeName)
+				if (DoesReviewNodeMatchStableId(Node, NodeName))
 				{
 					OutNodes.AddUnique(Node);
 					return;
@@ -884,7 +1873,9 @@ public:
 			OutError = TEXT("rollback_journal_tool_missing");
 			return false;
 		}
-		if (Tool != TEXT("AppendBlueprintGraph"))
+		const bool bAppendRollback = Tool == TEXT("AppendBlueprintGraph");
+		const bool bReplaceRollback = Tool == TEXT("ReplaceBlueprintGraph");
+		if (!bAppendRollback && !bReplaceRollback)
 		{
 			OutError = FString::Printf(TEXT("rollback_executor_unimplemented:%s"), *Tool);
 			return false;
@@ -906,10 +1897,55 @@ public:
 
 		TArray<UEdGraphNode*> NodesToRemove;
 		CollectRollbackNodesForTarget(Graph, Target, NodesToRemove);
-		if (NodesToRemove.Num() == 0)
+		if (!bReplaceRollback && NodesToRemove.Num() == 0)
 		{
 			OutError = FString::Printf(TEXT("anchor_not_found:%s"), *Target.TargetKey);
 			return false;
+		}
+
+		TSharedPtr<FJsonObject> RollbackData;
+		FString ExportedText;
+		FString EntryIdentity;
+		FString ReplaceScope;
+		FString OwnerBlockId;
+		bool bNeedsEntryReconnect = false;
+		if (bReplaceRollback)
+		{
+			if (!TryGetRollbackDataObject(JournalRecord, RollbackData, OutError))
+			{
+				return false;
+			}
+			RollbackData->TryGetStringField(TEXT("exported_text"), ExportedText);
+			RollbackData->TryGetStringField(TEXT("entry_identity"), EntryIdentity);
+			RollbackData->TryGetStringField(TEXT("replace_scope"), ReplaceScope);
+			RollbackData->TryGetStringField(TEXT("owner_block_id"), OwnerBlockId);
+			bNeedsEntryReconnect =
+				ReplaceScope.Equals(TEXT("function_body"), ESearchCase::IgnoreCase) ||
+				ReplaceScope.Equals(TEXT("event_body"), ESearchCase::IgnoreCase) ||
+				ReplaceScope.Equals(TEXT("custom_event_body"), ESearchCase::IgnoreCase);
+			if (ExportedText.IsEmpty())
+			{
+				OutError = TEXT("replace_rollback_exported_text_missing");
+				return false;
+			}
+			if (!FEdGraphUtilities::CanImportNodesFromText(Graph, ExportedText))
+			{
+				OutError = TEXT("replace_rollback_exported_text_not_importable");
+				return false;
+			}
+			if (bNeedsEntryReconnect)
+			{
+				NodesToRemove.RemoveAll(
+					[](UEdGraphNode* Node)
+					{
+						return Node && (Node->IsA<UK2Node_FunctionEntry>() || Node->IsA<UK2Node_CustomEvent>() || Node->IsA<UK2Node_Event>());
+					});
+			}
+			if (NodesToRemove.Num() == 0)
+			{
+				OutError = FString::Printf(TEXT("anchor_not_found:%s"), *Target.TargetKey);
+				return false;
+			}
 		}
 
 		const FScopedTransaction Transaction(FText::FromString(TEXT("BlueprintHelper Review Reject")));
@@ -922,11 +1958,119 @@ public:
 				FBlueprintEditorUtils::RemoveNode(Blueprint, Node, true);
 			}
 		}
+		if (bReplaceRollback)
+		{
+			TSet<UEdGraphNode*> ImportedNodes;
+			FEdGraphUtilities::ImportNodesFromText(Graph, ExportedText, ImportedNodes);
+			if (ImportedNodes.Num() == 0)
+			{
+				OutError = TEXT("replace_rollback_imported_no_nodes");
+				return false;
+			}
+
+			if (!OwnerBlockId.IsEmpty())
+			{
+				TArray<UEdGraphNode*> ImportedNodeArray;
+				for (UEdGraphNode* Node : ImportedNodes)
+				{
+					if (Node)
+					{
+						ImportedNodeArray.Add(Node);
+					}
+				}
+
+				FBlueprintHelperOwnershipService OwnershipService;
+				FString OwnershipError;
+				const FString RollbackTransactionId = Target.LatestTransactionId.IsEmpty()
+					? TEXT("review_reject")
+					: FString::Printf(TEXT("%s_reject"), *Target.LatestTransactionId);
+				if (!OwnershipService.WriteBlockOwnership(
+					Blueprint,
+					ImportedNodeArray,
+					OwnerBlockId,
+					RollbackTransactionId,
+					TEXT("ReplaceRollback"),
+					OwnershipError))
+				{
+					OutError = OwnershipError.IsEmpty() ? TEXT("replace_rollback_ownership_write_failed") : OwnershipError;
+					return false;
+				}
+			}
+
+			if (bNeedsEntryReconnect)
+			{
+				UEdGraphNode* EntryNode = nullptr;
+				for (UEdGraphNode* Node : Graph->Nodes)
+				{
+					if (!Node || ImportedNodes.Contains(Node))
+					{
+						continue;
+					}
+
+					const bool bMatchesScope =
+						(ReplaceScope.Equals(TEXT("function_body"), ESearchCase::IgnoreCase) && Node->IsA<UK2Node_FunctionEntry>()) ||
+						(!ReplaceScope.Equals(TEXT("function_body"), ESearchCase::IgnoreCase) && FindFirstExecPin(Node, EGPD_Output) != nullptr);
+					if (bMatchesScope && NodeMatchesEntryName(Node, EntryIdentity))
+					{
+						EntryNode = Node;
+						break;
+					}
+				}
+
+				if (!EntryNode)
+				{
+					OutError = EntryIdentity.IsEmpty()
+						? TEXT("replace_rollback_entry_not_found")
+						: FString::Printf(TEXT("replace_rollback_entry_not_found:%s"), *EntryIdentity);
+					return false;
+				}
+
+				UEdGraphPin* EntryExecOut = FindFirstExecPin(EntryNode, EGPD_Output);
+				if (!EntryExecOut)
+				{
+					OutError = TEXT("replace_rollback_entry_exec_missing");
+					return false;
+				}
+
+				if (UEdGraphNode* FirstBodyNode = FindFirstExecutableBodyNode(ImportedNodes))
+				{
+					UEdGraphPin* BodyExecIn = FindFirstExecPin(FirstBodyNode, EGPD_Input);
+					if (!BodyExecIn)
+					{
+						OutError = TEXT("replace_rollback_body_exec_missing");
+						return false;
+					}
+
+					if (!PinsHaveSingleConnectionToEachOther(EntryExecOut, BodyExecIn))
+					{
+						const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
+						if (!Schema)
+						{
+							OutError = TEXT("replace_rollback_k2_schema_missing");
+							return false;
+						}
+						BreakAllPinLinksWithModify(EntryExecOut);
+						BreakAllPinLinksWithModify(BodyExecIn);
+						if (!Schema->TryCreateConnection(EntryExecOut, BodyExecIn) ||
+							!PinsHaveSingleConnectionToEachOther(EntryExecOut, BodyExecIn))
+						{
+							OutError = TEXT("replace_rollback_entry_reconnect_failed");
+							return false;
+						}
+					}
+				}
+				else
+				{
+					BreakAllPinLinksWithModify(EntryExecOut);
+				}
+			}
+		}
 		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
 		if (Blueprint->GetOutermost())
 		{
 			Blueprint->GetOutermost()->MarkPackageDirty();
 		}
+		Graph->NotifyGraphChanged();
 		return true;
 	}
 
@@ -958,6 +2102,20 @@ public:
 			{
 				return MakeRejectFailureResult(Change, EBlueprintHelperReviewChangeStatus::NeedsAction, TEXT("missing_anchor"));
 			}
+			if (ShouldUseSnapshotRestore(Target))
+			{
+				FString SnapshotRestoreError;
+				if (!ExecuteSnapshotRestore(Target, SnapshotRestoreError))
+				{
+					return MakeRejectFailureResult(
+						Change,
+						SnapshotRestoreError.Contains(TEXT("_recreate_required"))
+							? EBlueprintHelperReviewChangeStatus::NeedsAction
+							: EBlueprintHelperReviewChangeStatus::RejectFailed,
+						SnapshotRestoreError);
+				}
+				continue;
+			}
 			if (Target.RollbackDataRef.IsEmpty())
 			{
 				return MakeRejectFailureResult(Change, EBlueprintHelperReviewChangeStatus::NeedsAction, TEXT("missing_rollback_data_ref"));
@@ -987,14 +2145,6 @@ public:
 					EBlueprintHelperReviewChangeStatus::NeedsAction,
 					FString::Printf(TEXT("current_hash_unavailable:%s"), *HashError));
 			}
-			if (CurrentHash != Target.RecordedAfterHash)
-			{
-				return MakeRejectFailureResult(
-					Change,
-					EBlueprintHelperReviewChangeStatus::NeedsAction,
-					FString::Printf(TEXT("current_state_changed:%s"), *Target.TargetKey));
-			}
-
 			FString RollbackTransactionId;
 			if (!ExtractRollbackTransactionId(Target.RollbackDataRef, RollbackTransactionId))
 			{
@@ -1183,6 +2333,19 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectVi
 			Result.Message = TEXT("missing_anchor");
 			return Result;
 		}
+		if (FBlueprintHelperReviewActionServiceLocalUtils::ShouldUseSnapshotRestore(Target))
+		{
+			FString SnapshotRestoreError;
+			if (!FBlueprintHelperReviewActionServiceLocalUtils::ExecuteSnapshotRestore(Target, SnapshotRestoreError))
+			{
+				Result.NewStatus = SnapshotRestoreError.Contains(TEXT("_recreate_required"))
+					? EBlueprintHelperReviewChangeStatus::NeedsAction
+					: EBlueprintHelperReviewChangeStatus::RejectFailed;
+				Result.Message = SnapshotRestoreError;
+				return Result;
+			}
+			continue;
+		}
 		if (Target.RollbackDataRef.IsEmpty())
 		{
 			Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
@@ -1201,12 +2364,6 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectVi
 		{
 			Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
 			Result.Message = FString::Printf(TEXT("missing_current_hash:%s"), *Target.TargetKey);
-			return Result;
-		}
-		if (*CurrentHash != Target.RecordedAfterHash)
-		{
-			Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
-			Result.Message = FString::Printf(TEXT("current_state_changed:%s"), *Target.TargetKey);
 			return Result;
 		}
 	}
@@ -1457,7 +2614,24 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectRe
 			bMatchedAny = true;
 			FBlueprintHelperReviewVisibleChange TargetChange = Change;
 			TargetChange.AtomicTargets.Reset();
-			TargetChange.AtomicTargets.Add(Target);
+			FBlueprintHelperReviewAtomicTarget TargetForReject = Target;
+			if (TargetForReject.BeforeSnapshotJson.IsEmpty())
+			{
+				TargetForReject.BeforeSnapshotJson = Change.BeforeSnapshotJson;
+			}
+			if (TargetForReject.AfterSnapshotJson.IsEmpty())
+			{
+				TargetForReject.AfterSnapshotJson = Change.AfterSnapshotJson;
+			}
+			if (TargetForReject.BaselineHash.IsEmpty())
+			{
+				TargetForReject.BaselineHash = Change.BeforeHash;
+			}
+			if (TargetForReject.RecordedAfterHash.IsEmpty())
+			{
+				TargetForReject.RecordedAfterHash = Change.AfterHash;
+			}
+			TargetChange.AtomicTargets.Add(TargetForReject);
 			const FBlueprintHelperReviewActionResult TargetResult = bUseInjectedOptions
 				? RejectVisibleChange(TargetChange, Options)
 				: FBlueprintHelperReviewActionServiceLocalUtils::RejectVisibleChangeWithDefaultDispatcher(TargetChange);

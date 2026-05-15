@@ -2,8 +2,11 @@
 
 #include "Systems/Review/BlueprintHelperReviewBaselineSnapshotService.h"
 
+#include "Shared/Review/BlueprintHelperReviewTypes.h"
+
 #include "Blueprint/WidgetTree.h"
 #include "Components/ActorComponent.h"
+#include "Components/PanelWidget.h"
 #include "Components/Widget.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -22,6 +25,8 @@
 #include "Misc/Paths.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
+#include "UObject/Package.h"
 #include "UObject/SoftObjectPath.h"
 #include "UObject/UnrealType.h"
 #include "WidgetBlueprint.h"
@@ -46,6 +51,88 @@ namespace BlueprintHelperReviewBaselineSnapshotServiceLocal
 	static FString GetObjectClassPathNameSafe(const UObject* Object)
 	{
 		return Object && Object->GetClass() ? Object->GetClass()->GetPathName() : FString();
+	}
+
+	static FString SerializeJsonObject(const TSharedRef<FJsonObject>& Json)
+	{
+		FString Serialized;
+		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Serialized);
+		FJsonSerializer::Serialize(Json, Writer);
+		return Serialized;
+	}
+
+	static FString ExtractTargetName(const FBlueprintHelperReviewAtomicTarget& Target)
+	{
+		if (!Target.PropertyPath.IsEmpty())
+		{
+			return Target.PropertyPath;
+		}
+		if (!Target.ComponentPath.IsEmpty())
+		{
+			return Target.ComponentPath;
+		}
+
+		int32 LastColon = INDEX_NONE;
+		if (Target.TargetKey.FindLastChar(TEXT(':'), LastColon))
+		{
+			return Target.TargetKey.Mid(LastColon + 1);
+		}
+		return Target.DisplayLabel;
+	}
+
+	static UObject* ResolveClassDefaultSnapshotObject(UObject* Asset)
+	{
+		UBlueprint* Blueprint = Cast<UBlueprint>(Asset);
+		if (!Blueprint)
+		{
+			return Asset;
+		}
+
+		UClass* DefaultClass = Blueprint->GeneratedClass
+			? Blueprint->GeneratedClass
+			: Blueprint->SkeletonGeneratedClass;
+		return DefaultClass ? DefaultClass->GetDefaultObject() : nullptr;
+	}
+
+	static void SplitWidgetPropertyTarget(
+		const FString& TargetName,
+		FString& OutWidgetName,
+		FString& OutPropertyName)
+	{
+		OutWidgetName = TargetName;
+		OutPropertyName.Reset();
+
+		FString Left;
+		FString Right;
+		if (TargetName.Split(TEXT("."), &Left, &Right) && !Left.IsEmpty())
+		{
+			OutWidgetName = Left;
+			OutPropertyName = Right;
+		}
+	}
+
+	static FString FindScsParentComponentName(const UBlueprint* Blueprint, const USCS_Node* ChildNode)
+	{
+		if (!Blueprint || !Blueprint->SimpleConstructionScript || !ChildNode)
+		{
+			return FString();
+		}
+
+		for (const USCS_Node* CandidateParent : Blueprint->SimpleConstructionScript->GetAllNodes())
+		{
+			if (!CandidateParent)
+			{
+				continue;
+			}
+			for (const USCS_Node* CandidateChild : CandidateParent->GetChildNodes())
+			{
+				if (CandidateChild == ChildNode)
+				{
+					return CandidateParent->GetVariableName().ToString();
+				}
+			}
+		}
+		return FString();
 	}
 
 	static FString PinDirectionToString(const EEdGraphPinDirection Direction)
@@ -114,6 +201,29 @@ TArray<FString> FBlueprintHelperReviewBaselineSnapshotService::CaptureSemanticBa
 	}
 
 	return SnapshotRefs;
+}
+
+bool FBlueprintHelperReviewBaselineSnapshotService::CaptureTargetSnapshot(
+	const FBlueprintHelperReviewAtomicTarget& Target,
+	FString& OutSnapshotJson,
+	FString& OutSnapshotHash,
+	FString& OutError) const
+{
+	OutSnapshotJson.Reset();
+	OutSnapshotHash.Reset();
+	OutError.Reset();
+
+	if (Target.AssetPath.IsEmpty())
+	{
+		OutError = TEXT("missing_asset_path");
+		return false;
+	}
+
+	UObject* Asset = LoadAssetForSnapshot(Target.AssetPath);
+	const TSharedRef<FJsonObject> Snapshot = BuildTargetSnapshot(Target, Asset, Asset != nullptr);
+	OutSnapshotJson = BlueprintHelperReviewBaselineSnapshotServiceLocal::SerializeJsonObject(Snapshot);
+	OutSnapshotHash = FString::Printf(TEXT("crc32_%08x"), FCrc::StrCrc32(*OutSnapshotJson));
+	return true;
 }
 
 FString FBlueprintHelperReviewBaselineSnapshotService::MakeSnapshotKey(const FString& AssetPath)
@@ -300,6 +410,244 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildBlue
 		}
 	}
 
+	return Json;
+}
+
+TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTargetSnapshot(
+	const FBlueprintHelperReviewAtomicTarget& Target,
+	UObject* Asset,
+	bool bAssetExists)
+{
+	TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+	const FString TargetName = BlueprintHelperReviewBaselineSnapshotServiceLocal::ExtractTargetName(Target);
+	Json->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.ReviewTargetSnapshot.v1"));
+	Json->SetStringField(TEXT("asset_path"), Target.AssetPath);
+	Json->SetStringField(TEXT("target_kind"), Target.TargetKind);
+	Json->SetStringField(TEXT("target_key"), Target.TargetKey);
+	Json->SetStringField(TEXT("target_name"), TargetName);
+	Json->SetBoolField(TEXT("asset_exists"), bAssetExists);
+	Json->SetStringField(TEXT("asset_class"), BlueprintHelperReviewBaselineSnapshotServiceLocal::GetObjectClassPathNameSafe(Asset));
+
+	if (!bAssetExists)
+	{
+		Json->SetBoolField(TEXT("exists"), false);
+		return Json;
+	}
+
+	if (UBlueprint* Blueprint = Cast<UBlueprint>(Asset))
+	{
+		if (Target.TargetKind == TEXT("blueprint_variable"))
+		{
+			Json->SetStringField(TEXT("surface"), TEXT("my_blueprint"));
+			for (const FBPVariableDescription& Variable : Blueprint->NewVariables)
+			{
+				if (Variable.VarName.ToString() != TargetName)
+				{
+					continue;
+				}
+
+				Json->SetBoolField(TEXT("exists"), true);
+				Json->SetStringField(TEXT("name"), Variable.VarName.ToString());
+				Json->SetStringField(TEXT("guid"), Variable.VarGuid.ToString(EGuidFormats::Digits));
+				Json->SetStringField(TEXT("category"), Variable.Category.ToString());
+				Json->SetStringField(TEXT("pin_category"), Variable.VarType.PinCategory.ToString());
+				Json->SetStringField(TEXT("pin_sub_category"), Variable.VarType.PinSubCategory.ToString());
+				Json->SetStringField(TEXT("pin_sub_category_object"), BlueprintHelperReviewBaselineSnapshotServiceLocal::GetObjectPathNameSafe(Variable.VarType.PinSubCategoryObject.Get()));
+				Json->SetStringField(TEXT("default_value"), Variable.DefaultValue);
+				return Json;
+			}
+
+			Json->SetBoolField(TEXT("exists"), false);
+			return Json;
+		}
+
+		if (Target.TargetKind == TEXT("component"))
+		{
+			Json->SetStringField(TEXT("surface"), TEXT("components"));
+			if (Blueprint->SimpleConstructionScript)
+			{
+				for (USCS_Node* Node : Blueprint->SimpleConstructionScript->GetAllNodes())
+				{
+					if (!Node || Node->GetVariableName().ToString() != TargetName)
+					{
+						continue;
+					}
+
+					Json->SetBoolField(TEXT("exists"), true);
+					Json->SetStringField(TEXT("name"), Node->GetVariableName().ToString());
+					Json->SetStringField(TEXT("parent_component"), BlueprintHelperReviewBaselineSnapshotServiceLocal::FindScsParentComponentName(Blueprint, Node));
+					const UActorComponent* ComponentTemplate = Node->ComponentTemplate;
+					Json->SetStringField(
+						TEXT("component_class"),
+						ComponentTemplate && ComponentTemplate->GetClass() ? ComponentTemplate->GetClass()->GetPathName() : FString());
+					if (ComponentTemplate)
+					{
+						Json->SetObjectField(TEXT("properties"), BuildGenericObjectSnapshot(const_cast<UActorComponent*>(ComponentTemplate)));
+					}
+					return Json;
+				}
+			}
+
+			Json->SetBoolField(TEXT("exists"), false);
+			return Json;
+		}
+
+		if (Target.TargetKind == TEXT("signature"))
+		{
+			Json->SetStringField(TEXT("surface"), TEXT("my_blueprint"));
+			Json->SetBoolField(TEXT("exists"), false);
+			TArray<UEdGraph*> Graphs;
+			BlueprintHelperReviewBaselineSnapshotServiceLocal::AppendGraphs(Graphs, Blueprint->UbergraphPages);
+			BlueprintHelperReviewBaselineSnapshotServiceLocal::AppendGraphs(Graphs, Blueprint->FunctionGraphs);
+			BlueprintHelperReviewBaselineSnapshotServiceLocal::AppendGraphs(Graphs, Blueprint->MacroGraphs);
+			BlueprintHelperReviewBaselineSnapshotServiceLocal::AppendGraphs(Graphs, Blueprint->DelegateSignatureGraphs);
+			for (const UEdGraph* Graph : Graphs)
+			{
+				if (Graph && Graph->GetName() == TargetName)
+				{
+					Json->SetBoolField(TEXT("exists"), true);
+					Json->SetObjectField(TEXT("graph"), BuildGraphSnapshot(Graph, Graph->GetName()));
+					return Json;
+				}
+			}
+			return Json;
+		}
+
+		if (Target.TargetKind == TEXT("umg_widget") || Target.TargetKind == TEXT("umg_widget_property"))
+		{
+			Json->SetStringField(TEXT("surface"), TEXT("umg_widget_tree"));
+			UWidgetBlueprint* WidgetBlueprint = Cast<UWidgetBlueprint>(Blueprint);
+			if (!WidgetBlueprint || !WidgetBlueprint->WidgetTree)
+			{
+				Json->SetBoolField(TEXT("exists"), false);
+				return Json;
+			}
+
+			FString WidgetName;
+			FString PropertyName;
+			BlueprintHelperReviewBaselineSnapshotServiceLocal::SplitWidgetPropertyTarget(TargetName, WidgetName, PropertyName);
+			UWidget* Widget = WidgetBlueprint->WidgetTree->FindWidget(FName(*WidgetName));
+			if (!Widget)
+			{
+				Json->SetBoolField(TEXT("exists"), false);
+				Json->SetStringField(TEXT("widget_name"), WidgetName);
+				if (!PropertyName.IsEmpty())
+				{
+					Json->SetStringField(TEXT("property_path"), PropertyName);
+				}
+				return Json;
+			}
+
+			Json->SetBoolField(TEXT("exists"), true);
+			Json->SetStringField(TEXT("widget_name"), WidgetName);
+			Json->SetStringField(TEXT("widget_class"), Widget->GetClass() ? Widget->GetClass()->GetPathName() : FString());
+			int32 ChildIndex = INDEX_NONE;
+			if (UPanelWidget* ParentWidget = UWidgetTree::FindWidgetParent(Widget, ChildIndex))
+			{
+				Json->SetStringField(TEXT("parent_widget"), ParentWidget->GetName());
+				Json->SetNumberField(TEXT("child_index"), ChildIndex);
+				Json->SetStringField(TEXT("slot_class"), Widget->Slot ? Widget->Slot->GetClass()->GetPathName() : FString());
+			}
+			if (Target.TargetKind == TEXT("umg_widget_property"))
+			{
+				Json->SetStringField(TEXT("property_path"), PropertyName);
+				if (FProperty* Property = Widget->GetClass() ? Widget->GetClass()->FindPropertyByName(FName(*PropertyName)) : nullptr)
+				{
+					Json->SetStringField(TEXT("property_class"), Property->GetClass()->GetName());
+					FString Value;
+					Property->ExportText_InContainer(0, Value, Widget, Widget, Widget, PPF_None);
+					Json->SetStringField(TEXT("value"), Value);
+				}
+			}
+			else
+			{
+				Json->SetObjectField(TEXT("properties"), BuildGenericObjectSnapshot(Widget));
+			}
+			return Json;
+		}
+	}
+
+	if (UDataTable* DataTable = Cast<UDataTable>(Asset))
+	{
+		if (Target.TargetKind == TEXT("datatable_row"))
+		{
+			Json->SetStringField(TEXT("surface"), TEXT("data_table"));
+			Json->SetStringField(TEXT("row_struct"), DataTable->GetRowStruct() ? DataTable->GetRowStruct()->GetPathName() : FString());
+			if (const UScriptStruct* RowStruct = DataTable->GetRowStruct())
+			{
+				if (uint8* const* RowData = DataTable->GetRowMap().Find(FName(*TargetName)))
+				{
+					Json->SetBoolField(TEXT("exists"), true);
+					FString RowValue;
+					if (*RowData)
+					{
+						RowStruct->ExportText(RowValue, *RowData, nullptr, DataTable, PPF_None, nullptr);
+					}
+					Json->SetStringField(TEXT("value"), RowValue);
+					return Json;
+				}
+			}
+
+			Json->SetBoolField(TEXT("exists"), false);
+			return Json;
+		}
+	}
+
+	if (Target.TargetKind == TEXT("object_property") ||
+		Target.TargetKind == TEXT("data_asset_property") ||
+		Target.TargetKind == TEXT("class_default_property"))
+	{
+		Json->SetStringField(TEXT("surface"), TEXT("details"));
+		UObject* PropertyOwner = Target.TargetKind == TEXT("class_default_property")
+			? BlueprintHelperReviewBaselineSnapshotServiceLocal::ResolveClassDefaultSnapshotObject(Asset)
+			: Asset;
+		Json->SetStringField(TEXT("property_owner_class"), BlueprintHelperReviewBaselineSnapshotServiceLocal::GetObjectClassPathNameSafe(PropertyOwner));
+		Json->SetStringField(TEXT("property_owner_path"), BlueprintHelperReviewBaselineSnapshotServiceLocal::GetObjectPathNameSafe(PropertyOwner));
+		if (PropertyOwner && PropertyOwner->GetClass())
+		{
+			FProperty* Property = nullptr;
+			void* ValuePtr = nullptr;
+			FString ExpectedType;
+			FString ErrorCode;
+			FString ErrorMessage;
+			if (FBlueprintHelperPropertyReflectionService::ResolvePropertyPath(
+				PropertyOwner,
+				TargetName,
+				Property,
+				ValuePtr,
+				ExpectedType,
+				ErrorCode,
+				ErrorMessage) &&
+				Property &&
+				ValuePtr)
+			{
+				Json->SetBoolField(TEXT("exists"), true);
+				Json->SetStringField(TEXT("property_path"), TargetName);
+				Json->SetStringField(TEXT("property_class"), Property->GetClass()->GetName());
+				Json->SetStringField(TEXT("expected_type"), ExpectedType);
+				FString Value;
+				Property->ExportText_Direct(Value, ValuePtr, nullptr, PropertyOwner, PPF_None);
+				Json->SetStringField(TEXT("value"), Value);
+				return Json;
+			}
+			Json->SetStringField(TEXT("resolve_error_code"), ErrorCode);
+			Json->SetStringField(TEXT("resolve_error_message"), ErrorMessage);
+		}
+
+		Json->SetBoolField(TEXT("exists"), false);
+		return Json;
+	}
+
+	if (Target.TargetKind == TEXT("asset_factory"))
+	{
+		Json->SetStringField(TEXT("surface"), TEXT("asset"));
+		Json->SetBoolField(TEXT("exists"), true);
+		Json->SetObjectField(TEXT("asset"), BuildAssetSnapshot(Target.AssetPath, Asset));
+		return Json;
+	}
+
+	Json->SetBoolField(TEXT("exists"), true);
+	Json->SetObjectField(TEXT("asset"), BuildAssetSnapshot(Target.AssetPath, Asset));
 	return Json;
 }
 

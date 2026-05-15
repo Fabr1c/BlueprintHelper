@@ -13,6 +13,7 @@ test('stores GraphWrite IR task results without requiring adapter operation on t
       dry_run_mode: 'full',
       should_compile: true,
       should_save: false,
+      review_baseline_dirty_asset_policy: 'block',
     },
     steps: [
       {
@@ -94,6 +95,7 @@ test('generated intent uses the primary TaskSpec capability instead of signature
       dry_run_mode: 'full',
       should_compile: false,
       should_save: false,
+      review_baseline_dirty_asset_policy: 'block',
     },
     steps: [
       {

@@ -325,6 +325,7 @@ def _make_task_plan(task_spec: Dict[str, Any], steps: List[Dict[str, Any]]) -> D
             "dry_run_mode": execution_policy.get("dry_run_mode", "full") if isinstance(execution_policy, dict) else "full",
             "should_compile": validation.get("should_compile", False) if isinstance(validation, dict) else False,
             "should_save": validation.get("should_save", False) if isinstance(validation, dict) else False,
+            "review_baseline_dirty_asset_policy": execution_policy.get("review_baseline_dirty_asset_policy", "block") if isinstance(execution_policy, dict) else "block",
         },
         "steps": steps,
     }
