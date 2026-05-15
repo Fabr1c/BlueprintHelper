@@ -218,59 +218,38 @@ $enc = New-Object System.Text.UTF8Encoding($false)
 [System.IO.File]::WriteAllText((Resolve-Path '.\task.json'), $json, $enc)
 ```
 
-## 11. `read_context` 的 `target_type` 不接受 `data_table`
+## 11. `read_context` 的 `target_type=data_table` 历史问题已修复
 
-错误写法：
+历史现象：旧版 `ReadSpec.target.target_type` 不接受 `data_table`，且 `read_type=data_table_context` / `object_property_context` 曾返回 `unsupported_read_type`。
 
+当前状态：2026-05-15 已修复。`blueprinthelper_read_context` 可直接读取 DataTable、DataTable row、ObjectProperty、DataAsset、WidgetTree、WidgetProperty、Component、Variable 和 Graph context。
+
+稳定写法：
 ```powershell
-bh.cmd blueprinthelper_read_context --file read_datatable.json --format full
+$path = 'D:\UEProjects\Template\Saved\BlueprintHelper\CodexTaskSpecs\read_datatable.json'
+$json = @{
+  schema = 'BlueprintHelper.ReadSpec.v1'
+  read_type = 'data_table_context'
+  target = @{ asset_path = '/Game/Path/DT_Test'; target_type = 'data_table'; target_name = 'RowName' }
+  format = 'summary'
+} | ConvertTo-Json -Depth 16
+[System.IO.File]::WriteAllText($path, $json, [System.Text.UTF8Encoding]::new($false))
+node D:\UEProjects\Template\Plugins\BlueprintHelper\AgentFaceService\cli\build\cli\index.js blueprinthelper_read_context --file $path --format full
 ```
 
-其中参数包含：
+注意：`schema` 必须为 `BlueprintHelper.ReadSpec.v1`；复杂 JSON 仍建议走 UTF-8 no BOM `--file`。
 
-```json
-{
-  "read_type": "data_table_context",
-  "target": {
-    "asset_path": "/Game/DT_Test",
-    "target_type": "data_table"
-  }
-}
-```
+## 12. 不要用直接 Bridge 读命令替代 `blueprinthelper_read_context`
 
-现象：
+历史现象：`blueprint_get_datatable_rows`、`blueprint_get_object_properties` 不是稳定 Agent-facing CLI 命令，直接调用可能返回 unsupported command。
 
-```text
-Invalid enum value ... received 'data_table'
-```
+当前策略：DataTable/ObjectProperty/DataAsset 的稳定读回入口已经收敛到 `blueprinthelper_read_context`。普通 Agent 测试不应假设内部 Bridge 命令暴露。
 
-稳定策略：
-
-1. 当前 `ReadSpec.target.target_type` 枚举没有 `data_table`，不要填写该值。
-2. DataTable 资产级目标先用 `target_type=asset`；具体行目标才使用 `target_type=data_table_row`。
-3. 即使修正 target_type，当前 `blueprinthelper_read_context` 仍主要支持 `blueprint_logic`，DataTable/ObjectProperty 统一 read context 属于未完成能力，不要把它当作已可用读回入口。
-
-## 12. 当前 CLI 未注册直接 DataTable/ObjectProperty 读命令
-
-错误写法：
-
-```powershell
-bh.cmd blueprint_get_datatable_rows --file params.json --format full
-bh.cmd blueprint_get_object_properties --file params.json --format full
-```
-
-现象：
-
-```text
-Unsupported BlueprintHelper CLI command: blueprint_get_datatable_rows --file ...
-Unsupported BlueprintHelper CLI command: blueprint_get_object_properties --file ...
-```
-
-稳定策略：
-
-1. 这些 Bridge 内部命令当前不属于 Agent-facing CLI registry，不能作为普通 CLI smoke 的读回入口。
-2. 自动验证优先使用 `blueprinthelper_preview_task` / `blueprinthelper_execute_task` artifact 中的 runtime result、task_run_id、applied_count、changed_count 等证据。
-3. 如果未来需要稳定读回，应补统一 `read_context` 能力或正式注册读命令，而不是在测试脚本中假设内部 Bridge 命令已暴露。
+稳定写法：
+1. DataTable：`read_type=data_table_context`，`target_type=data_table`。
+2. Object property：`read_type=object_property_context`，`target_type=property` 或 `object_property`。
+3. DataAsset：`read_type=data_asset_context`，`target_type=data_asset`。
+4. Widget：`read_type=widget_context`，无 `target_name` 读取树，有 `target_name` 读取 widget property。
 
 ## 11. 开发验证时不要默认使用全局 `bh.cmd`
 
@@ -518,3 +497,48 @@ node D:\UEProjects\Template\Plugins\BlueprintHelper\AgentFaceService\cli\build\c
   }
 }
 ```
+## 2026-05-15 `blueprinthelper_read_context` 文件必须是 ReadSpec 根对象
+
+现象：只写 `read_type/target/format`，缺少 `schema` 时，CLI 返回 `Invalid literal value, expected "BlueprintHelper.ReadSpec.v1"`。
+
+稳定写法：文件根对象必须包含：
+```json
+{
+  "schema": "BlueprintHelper.ReadSpec.v1",
+  "read_type": "object_property_context",
+  "target": { "asset_path": "/Game/Asset", "target_type": "property" },
+  "format": "summary"
+}
+```
+
+分类：CLI 参数文件格式错误，不是插件 Bug。
+
+## 2026-05-15 PowerShell 外部命令参数中不要直接嵌入 `(Join-Path ...)`
+
+现象：在外部 CLI 命令参数位置直接写 `--file (Join-Path $base 'x.json')` 可能不会按预期求值为单个路径参数。
+
+稳定写法：先赋值再传参。
+```powershell
+$file = Join-Path $base 'read_object_bp.json'
+node D:\UEProjects\Template\Plugins\BlueprintHelper\AgentFaceService\cli\build\cli\index.js blueprinthelper_read_context --file $file --format full
+```
+
+分类：PowerShell 外部命令参数求值问题，不是插件 Bug。
+
+## 2026-05-15 `review_baseline_dirty_asset_policy` 合法值
+
+现象：TaskSpec 中写 `review_baseline_dirty_asset_policy=allow_auto_save` 会触发 Zod enum 错误。
+
+当前合法值：
+1. `block`
+2. `save_before_archive`
+3. `allow_stale_disk_snapshot`
+
+稳定写法：需要自动保存当前脏资产再归档 baseline 时使用 `save_before_archive`。
+
+分类：TaskSpec 参数值错误，不是插件 Bug。
+
+## 2026-05-15 PowerShell 长命令写入限制
+- 现象：一次性用 PowerShell here-string 写入大量文件时，Windows 进程创建可能失败并返回 CreateProcessAsUserW failed: 206。
+- 原因：命令行过长，不是 BlueprintHelper 插件或 CLI 协议错误。
+- 稳定处理：改用 pply_patch、分批短命令，或先写临时脚本文件再执行；不要把大量文件内容塞进同一个 powershell -Command。

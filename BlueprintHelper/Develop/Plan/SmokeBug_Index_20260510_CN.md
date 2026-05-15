@@ -25,7 +25,7 @@
 | SMOKE-AF-20260510-02 | AssetFactory | P1 | DataAsset 创建必须指定具体 UDataAsset 子类；新项目 smoke 需先创建 PrimaryDataAsset 蓝图类，再用该类路径创建 DA 实例 | 已修复；Automation 通过 |
 | SMOKE-AF-20260510-03 | AssetFactory | P2 | create_asset legacy schema / 注释与 TaskSpec 能力漂移 | 已记录 |
 | SMOKE-MCP-20260510-01 | MCP Contract | P1 | AgentGuide 在新项目插件副本中定位失败，导致 3 个 Node regression 失败 | 已记录 |
-| SMOKE-MCP-20260510-02 | MCP Contract | P1 | read_context 暴露多 context 需求，但实现只支持 blueprint_logic | 已记录 |
+| SMOKE-MCP-20260510-02 | MCP Contract | P1 | read_context 暴露多 context 需求，但实现只支持 blueprint_logic | 已修复，CLI 覆盖通过 |
 | SMOKE-MCP-20260510-03 | MCP Contract | P2 | 缺失资产 read_context 返回 partial / empty，不是结构化 blocked issue | 已记录 |
 | SMOKE-TS-20260510-01 | TaskSpec Data / UMG | P1 | UMG dry-run 无法解析同一 TaskSpec 内跨步骤 Widget 依赖 | 已记录 |
 | SMOKE-TS-20260510-02 | TaskSpec Data / UMG | P1 | DataTable dry-run 不能预览未来行的 update | 已记录 |

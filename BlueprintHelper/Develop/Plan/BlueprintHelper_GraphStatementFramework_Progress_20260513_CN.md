@@ -2,6 +2,8 @@
 
 > 2026-05-14 状态转移：本文中的未达期待、待验证项和阻塞项已迁移到 [BlueprintHelper_UnmetExpectations_Consolidated_20260514_CN.md](BlueprintHelper_UnmetExpectations_Consolidated_20260514_CN.md)。本文保留为历史上下文；开放项跟踪迁移完成，后续当前状态以总账为准。
 ## 当前验收总览：2026-05-14 GraphStatementFramework first-slice 闭环状态
+状态更新：2026-05-15 `blueprinthelper_read_context` 完整体已完成并通过真实编辑器 Bridge 覆盖测试。该项不再作为 GraphStatementFramework 或统一上下文入口阻塞项。
+
 
 状态：当前 first-slice 期望已闭环；历史章节中被后续修复覆盖的差距不再作为当前阻塞。
 已收敛的历史差距：
@@ -1122,3 +1124,63 @@
 距离期望差距：
 1. 需要重新构建 AgentFace task-core/CLI，并编译 UE 插件后验证。
 2. 尚未为该问题补单元测试或自动化覆盖。
+
+## 2026-05-15 ReadContext 完整体闭环
+
+状态：已完成。
+
+完成内容：
+1. AgentFace `blueprinthelper_read_context` 从 Blueprint logic 单一路径扩展为统一上下文入口。
+2. 支持 asset、component、variable/event dispatcher、graph/blueprint logic、widget tree/widget property、data table/row、object/data asset property。
+3. 非 logic 读取统一封装为 `ReadContextPack.v1`，具体 payload 保持短 schema。
+4. 变量读取兼容底层 `member_variables` 字段，`target_name` 过滤后统计正确。
+
+验证记录：
+1. asset_context: AssetContext.v1 completed
+2. component_context: BlueprintComponent.v1 completed, components=4, root_components=1
+3. variable_context: ReadMemberVariables.v1 completed, variables=1 after target_name filter
+4. graph_context: LogicJson.v1 completed, nodes=2, exec_links=1
+5. data_table_context: DataTableContext.v1 completed, rows=1, columns=4
+6. data_table_row_context: DataTableContext.v1 completed, row_names=JsonNumberBool, rows=1
+7. object_property_context: ObjectPropertyContext.v1 completed, properties=1 after target_name filter
+8. data_asset_context: DataAssetContext.v1 completed against DA_RC_DataAsset, properties=0 because fixture class has no custom fields
+9. widget_context: WidgetContext.v1 completed, widgets=2
+10. widget_property_context: WidgetPropertyContext.v1 completed, properties=40 for TitleText
+
+编译记录：
+1. `AgentFaceService/task-core` build 通过。
+2. `AgentFaceService/cli` build 通过。
+
+距离期望差距：无当前阻塞；DataAsset fixture 无自定义属性导致 `properties=0`，不影响链路完成结论。
+阻塞内容：无。
+
+
+## 2026-05-15 AgentFace tool-surface 拆分
+
+状态：已完成。
+
+完成内容：
+1. `bridge-tool-handlers.ts` 已减重为兼容 facade，只保留 `bridgeCommandByToolName`、`bridgeToolSchemas`、`executeBridgeTool` 三个既有导出，外部 registry 调用方式不变。
+2. 新增 `tool-surface/bridge/bridge-tool-command-map.ts`，集中维护 CLI tool name 到 UE Bridge command 的映射。
+3. 新增 `tool-surface/bridge/bridge-tool-schemas.ts`，集中维护 Bridge-facing tool 的 Zod schema。
+4. 新增 `tool-surface/bridge/bridge-tool-dispatcher.ts`，负责 read_context、write_session、generic bridge tool 的分发。
+5. 新增 `tool-surface/bridge/generic-bridge-tool-handler.ts` 和 `write-session-handler.ts`，将通用 Bridge 调用和写会话特殊处理从 read_context 业务中剥离。
+6. 新增 `tool-surface/bridge/read-context/` 子目录，按 schema、target、route builder、payload postprocess、handler 拆分 read_context 业务。
+
+验证记录：
+1. `AgentFaceService/task-core` 执行 `npm.cmd run build` 通过。
+2. `AgentFaceService/cli` 执行 `npm.cmd run build` 通过。
+
+距离期望差距：当前仅完成 Bridge/read_context 侧拆分；`local-tool-handlers.ts` 仍包含本地进程、编辑器启动/关闭、诊断、AgentGuide 读取等多类职责，后续如果继续按同一标准，需要再拆 local tool surface。
+阻塞内容：无。
+
+## 2026-05-15 tool-surface 完全解耦记录
+- 状态：完成。
+- 完成内容：tool-surface 顶层 ridge-tool-handlers.ts、local-tool-handlers.ts、	ask-tool-handlers.ts、	ool-registry.ts 均已降级为兼容 facade。
+- 完成内容：Bridge/read_context、本地工具、任务工具、注册层均拆成 schema/handler/dispatcher/source/builder 职责边界。
+- 完成内容：本地工具拆分为 AgentGuide、Diagnostics、BuildProject、ProjectFileResolver、ProcessRunner、EditorLifecycle 子模块。
+- 完成内容：任务工具拆分为 ReadReferenceContext schema、Task schemas、Context handlers、Execution handlers、Dispatcher。
+- 完成内容：注册层拆分为 ToolMeta、ToolSource 接口、task/local/bridge ToolSource、ToolSource 列表、handler router、registry builder。
+- 验证：AgentFaceService/task-core npm.cmd run build 通过；AgentFaceService/cli npm.cmd run build 通过。
+- 距离期望差距：当前 tool-surface 中间层已完成解耦；未发现剩余拆分阻塞。
+- 阻塞内容：无。
