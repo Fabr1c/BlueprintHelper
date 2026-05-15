@@ -72,7 +72,8 @@ public:
 		EBlueprintHelperReviewSurface Surface,
 		const FString& SearchText,
 		TSharedRef<SWidget> Content,
-		const FLinearColor& DefaultBackground = FLinearColor::Transparent);
+		const FLinearColor& DefaultBackground = FLinearColor::Transparent,
+		const FMargin& Padding = FMargin(4.0f, 2.0f));
 
 	static void RegisterRowSearchAliases(
 		const FString& AssetPath,
@@ -139,6 +140,8 @@ public:
 		TSharedPtr<FBlueprintHelperReviewDataAssetRowItem> Item,
 		const TSharedRef<STableViewBase>& OwnerTable,
 		const FString& AssetPath,
-		FBlueprintHelperReviewGeometryInvalidated OnGeometryInvalidated);
+		FBlueprintHelperReviewGeometryInvalidated OnGeometryInvalidated,
+		EBlueprintHelperReviewSurface Surface = EBlueprintHelperReviewSurface::DataAsset,
+		const FMargin& HighlightPadding = FMargin(4.0f, 2.0f));
 };
 

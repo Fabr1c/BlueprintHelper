@@ -4,12 +4,11 @@
 
 #include "Engine/Blueprint.h"
 #include "GameFramework/Actor.h"
-#include "SSubobjectBlueprintEditor.h"
-#include "SSubobjectEditor.h"
 #include "Styling/AppStyle.h"
 #include "UI/Review/BlueprintHelperReviewAssetContext.h"
 #include "UI/Review/BlueprintHelperReviewRowHighlightModel.h"
 #include "UI/Review/BlueprintHelperReviewSurfaceRouter.h"
+#include "UI/Review/Native/Components/SBlueprintHelperReviewComponentsPanel.h"
 #include "UI/Review/SBlueprintHelperReviewGeometryProbe.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Text/STextBlock.h"
@@ -27,7 +26,7 @@ TSharedRef<SWidget> FBlueprintHelperReviewBlueprintComponentsPresenter::BuildCon
 	FState& State,
 	FBlueprintHelperReviewGeometryInvalidated OnGeometryInvalidated)
 {
-	State.SubobjectEditor.Reset();
+	State.ComponentsPanel.Reset();
 	State.AssetPath = Context.AssetPath;
 	State.OnGeometryInvalidated = OnGeometryInvalidated;
 
@@ -35,20 +34,16 @@ TSharedRef<SWidget> FBlueprintHelperReviewBlueprintComponentsPresenter::BuildCon
 	{
 		if (Blueprint->GeneratedClass && Blueprint->GeneratedClass->IsChildOf(AActor::StaticClass()))
 		{
-			if (AActor* ActorCDO = Cast<AActor>(Blueprint->GeneratedClass->GetDefaultObject()))
-			{
-				TSharedRef<SSubobjectBlueprintEditor> Editor = SAssignNew(State.SubobjectEditor, SSubobjectBlueprintEditor)
-					.ObjectContext(ActorCDO)
-					.AllowEditing(false)
-					.HideComponentClassCombo(true);
-				return SNew(SBlueprintHelperReviewGeometryProbe)
-					.Surface(EBlueprintHelperReviewSurface::Components)
-					.TargetKey(Context.AssetPath)
+			return SNew(SBlueprintHelperReviewGeometryProbe)
+				.Surface(EBlueprintHelperReviewSurface::Components)
+				.TargetKey(Context.AssetPath)
+				.OnGeometryInvalidated(OnGeometryInvalidated)
+				[
+					SAssignNew(State.ComponentsPanel, SBlueprintHelperReviewComponentsPanel)
+					.Blueprint(Blueprint)
+					.AssetPath(Context.AssetPath)
 					.OnGeometryInvalidated(OnGeometryInvalidated)
-					[
-						Editor
-					];
-			}
+				];
 		}
 	}
 
@@ -70,7 +65,7 @@ bool FBlueprintHelperReviewBlueprintComponentsPresenter::ResolveRowGeometry(
 	const TSharedPtr<SWidget>& OverlayWidget,
 	FBlueprintHelperReviewSurfaceGeometryAnchor& OutAnchor)
 {
-	if (!State.SubobjectEditor.IsValid())
+	if (!State.ComponentsPanel.IsValid())
 	{
 		OutAnchor.Reason = TEXT("component_editor_unavailable");
 		return false;
@@ -102,77 +97,28 @@ bool FBlueprintHelperReviewBlueprintComponentsPresenter::ResolveRowGeometry(
 		return false;
 	}
 
-	const TSharedPtr<SSubobjectEditorDragDropTree> Tree = State.SubobjectEditor->GetDragDropTree();
-	if (!Tree.IsValid())
+	TSharedPtr<FBlueprintHelperReviewComponentRowItem> RowItem = State.ComponentsPanel->FindRowByCandidates(Candidates);
+	if (!RowItem.IsValid())
 	{
-		OutAnchor.Reason = TEXT("component_tree_unavailable");
+		OutAnchor.Reason = TEXT("no_matching_component_row");
 		return false;
 	}
 
-	bool bFoundNode = false;
-	for (const FString& Candidate : Candidates)
+	const TSharedPtr<SWidget> RowWidget = State.ComponentsPanel->GetRowWidgetForItem(RowItem);
+	if (!RowWidget.IsValid())
 	{
-		FSubobjectEditorTreeNodePtrType Node = State.SubobjectEditor->FindSlateNodeForVariableName(FName(*Candidate));
-		if (!Node.IsValid())
-		{
-			TArray<FSubobjectEditorTreeNodePtrType> PendingNodes = State.SubobjectEditor->GetRootNodes();
-			for (int32 NodeIndex = 0; NodeIndex < PendingNodes.Num(); ++NodeIndex)
-			{
-				const FSubobjectEditorTreeNodePtrType& PendingNode = PendingNodes[NodeIndex];
-				if (!PendingNode.IsValid())
-				{
-					continue;
-				}
-
-				if (SearchTextMatchesAnyCandidate(PendingNode->GetVariableName().ToString(), Candidates)
-					|| SearchTextMatchesAnyCandidate(PendingNode->GetDisplayString(), Candidates))
-				{
-					Node = PendingNode;
-					break;
-				}
-
-				PendingNodes.Append(PendingNode->GetChildren());
-			}
-		}
-		if (!Node.IsValid())
-		{
-			continue;
-		}
-
-		bFoundNode = true;
-		const TSharedPtr<ITableRow> Row = Tree->WidgetFromItem(Node);
-		if (!Row.IsValid())
-		{
-			Tree->RequestScrollIntoView(Node);
-			OutAnchor.TargetText = Candidate;
-			OutAnchor.Reason = TEXT("slate_row_geometry_not_ready");
-			return false;
-		}
-
-		const FString AssetPath = State.AssetPath.IsEmpty() ? Change.AssetPath : State.AssetPath;
-		FSlateColor RowColor = FBlueprintHelperReviewRowHighlightModel::GetRowBackgroundColor(
-			AssetPath,
-			EBlueprintHelperReviewSurface::Components,
-			Candidate);
-		if (RowColor.GetSpecifiedColor().A <= 0.0f && AssetPath != Change.AssetPath)
-		{
-			RowColor = FBlueprintHelperReviewRowHighlightModel::GetRowBackgroundColor(
-				Change.AssetPath,
-				EBlueprintHelperReviewSurface::Components,
-				Candidate);
-		}
-		TryApplyTableRowBackgroundColor(Row->AsWidget(), RowColor);
-
-		return BuildGeometryAnchorFromRowWidget(
-			Row->AsWidget(),
-			OverlayWidget,
-			Candidate,
-			TEXT("subobject_row"),
-			OutAnchor);
+		State.ComponentsPanel->RequestScrollIntoView(RowItem);
+		OutAnchor.TargetText = RowItem->ComponentName;
+		OutAnchor.Reason = TEXT("slate_row_geometry_not_ready");
+		return false;
 	}
 
-	OutAnchor.Reason = bFoundNode ? TEXT("slate_row_geometry_not_ready") : TEXT("no_matching_component_row");
-	return false;
+	return BuildGeometryAnchorFromRowWidget(
+		RowWidget,
+		OverlayWidget,
+		RowItem->ComponentName,
+		TEXT("native_component_row"),
+		OutAnchor);
 }
 
 TSharedRef<SWidget> FBlueprintHelperReviewBlueprintComponentsPresenter::BuildReviewPlaceholder(const FString& Message)

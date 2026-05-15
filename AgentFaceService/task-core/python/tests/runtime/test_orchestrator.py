@@ -333,8 +333,8 @@ class GraphWriteAppendCompilerTests(unittest.TestCase):
                 "statements": [
                     {
                         "id": "ToggleDoor_stmt_1",
-                        "kind": "call_function",
-                        "name": "PrintString",
+                        "kind": "call",
+                        "target": "PrintString",
                         "args": {
                             "InString": {
                                 "id": "ToggleDoor_stmt_1_arg_InString",
@@ -504,18 +504,23 @@ class GraphWriteAppendCompilerTests(unittest.TestCase):
                     "graph_id": "EventGraph",
                     "node_ref": "ToggleDoorEntry",
                 },
-                "replacement": {
-                    "nodes": [
+                "logic_spec": {
+                    "schema": "BlueprintLogicSpec.v2",
+                    "statements": [
                         {
-                            "id": "replace_stmt_1",
                             "kind": "call",
-                            "function": "PrintString",
-                            "inputs": {
-                                "InString": "replaced",
+                            "target": "PrintString",
+                            "args": {
+                                "InString": {
+                                    "id": "replace_stmt_1_arg_InString",
+                                    "kind": "literal",
+                                    "value_type": "string",
+                                    "value": "replaced",
+                                },
                             },
+                            "id": "replace_stmt_1",
                         },
                     ],
-                    "links": [],
                 },
                 "options": {
                     "strict": True,

@@ -971,6 +971,17 @@ public:
 			FString HashError;
 			if (!FBlueprintHelperReviewHashService::ComputeAtomicTargetHash(Target, CurrentHash, HashError))
 			{
+				if (HashError.Contains(TEXT("graph_not_found")) || HashError.Contains(TEXT("anchor_not_found")))
+				{
+					FBlueprintHelperReviewActionResult Result;
+					Result.bSucceeded = true;
+					Result.TargetTransactionId = Change.LatestTransactionId;
+					Result.RollbackMode = TEXT("archive_baseline");
+					Result.NewStatus = EBlueprintHelperReviewChangeStatus::Rejected;
+					Result.Message = FString::Printf(TEXT("target_already_missing:%s"), *HashError);
+					Result.bSupersededDataCompactionEligible = true;
+					return Result;
+				}
 				return MakeRejectFailureResult(
 					Change,
 					EBlueprintHelperReviewChangeStatus::NeedsAction,
@@ -1428,6 +1439,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectRe
 
 	bool bMatchedAny = false;
 	bool bAllRejected = true;
+	bool bAllTargetStatusesRejected = true;
 	const bool bUseInjectedOptions = FBlueprintHelperReviewActionServiceLocalUtils::HasInjectedRejectOptions(Options);
 	FString SourceTransactionId;
 	FString LastMessage;
@@ -1449,12 +1461,14 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectRe
 			const FBlueprintHelperReviewActionResult TargetResult = bUseInjectedOptions
 				? RejectVisibleChange(TargetChange, Options)
 				: FBlueprintHelperReviewActionServiceLocalUtils::RejectVisibleChangeWithDefaultDispatcher(TargetChange);
+			const bool bTargetStatusRejected = TargetResult.NewStatus == EBlueprintHelperReviewChangeStatus::Rejected;
 			Target.Status = TargetResult.NewStatus;
-			Change.NeedsActionReason = TargetResult.bSucceeded ? FString() : TargetResult.Message;
+			Change.NeedsActionReason = bTargetStatusRejected ? FString() : TargetResult.Message;
 			SourceTransactionId = Target.LatestTransactionId;
 			LastMessage = TargetResult.Message;
 			LastStatus = TargetResult.NewStatus;
 			bAllRejected &= TargetResult.bSucceeded;
+			bAllTargetStatusesRejected &= bTargetStatusRejected;
 		}
 	}
 
@@ -1464,7 +1478,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectRe
 		return Result;
 	}
 
-	if (bAllRejected)
+	if (bAllTargetStatusesRejected)
 	{
 		TArray<FString> DebugCaseIdsToDelete;
 		bool bRecordDeleted = false;
@@ -1503,7 +1517,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectRe
 		Record,
 		TargetKeys,
 		SourceTransactionId,
-		bAllRejected ? EBlueprintHelperReviewChangeStatus::Rejected : LastStatus,
+		bAllTargetStatusesRejected ? EBlueprintHelperReviewChangeStatus::Rejected : LastStatus,
 		LastMessage);
 
 	if (!Store.SaveReviewRecord(Record, Error))
@@ -1512,12 +1526,12 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectRe
 		return Result;
 	}
 
-	Result.bSucceeded = bAllRejected;
+	Result.bSucceeded = bAllTargetStatusesRejected;
 	Result.TargetTransactionId = SourceTransactionId;
-	Result.NewStatus = bAllRejected ? EBlueprintHelperReviewChangeStatus::Rejected : LastStatus;
+	Result.NewStatus = bAllTargetStatusesRejected ? EBlueprintHelperReviewChangeStatus::Rejected : LastStatus;
 	Result.RollbackMode = TEXT("archive_baseline");
 	Result.Message = LastMessage;
-	Result.bSupersededDataCompactionEligible = bAllRejected;
+	Result.bSupersededDataCompactionEligible = bAllTargetStatusesRejected;
 	return Result;
 }
 

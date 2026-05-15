@@ -11,6 +11,8 @@
 
 class FBlueprintHelperReviewActionService;
 class FBlueprintHelperReviewStoreService;
+class FJsonObject;
+class SEditableTextBox;
 class SKismetInspector;
 class SBox;
 class SMultiLineEditableTextBox;
@@ -67,7 +69,15 @@ private:
 	void AddDebugMessage(const FString& Message);
 	FString BuildDebugMessagesString() const;
 	FText GetDebugMessagesText() const;
+	FText GetDebugBundlePathText() const;
+	void OnDebugBundlePathCommitted(const FText& Text, ETextCommit::Type CommitType);
 	FReply OnCopyDebugMessages() const;
+	FReply OnCopyDebugBundlePath() const;
+	FReply OnLoadDebugBundle();
+	FReply OnCaptureFocusDebugBundle();
+	EActiveTimerReturnType TickDebugFocusTraversal(double InCurrentTime, float InDeltaTime);
+	void EnsureDebugBundleSession();
+	void AppendDebugBundleEvent(const TSharedRef<FJsonObject>& Event);
 
 	TSharedRef<SWidget> BuildFinalChangeSidebar();
 	TSharedRef<SWidget> BuildComponentsPanel();
@@ -141,6 +151,7 @@ private:
 		const TSharedPtr<SWidget>& OverlayWidget,
 		FBlueprintHelperReviewSurfaceGeometryAnchor& OutAnchor);
 	UObject* ResolveDetailsObjectForSelectedChange() const;
+	UObject* ResolveComponentDetailsObjectForChange(const FBlueprintHelperReviewVisibleChange& Change) const;
 	UEdGraph* ResolveGraphForSelectedChange() const;
 
 	const FBlueprintHelperReviewStoreService* ReviewStoreService = nullptr;
@@ -163,6 +174,12 @@ private:
 	FDelegateHandle PendingReviewChangedHandle;
 	TArray<FString> DebugMessages;
 	TSharedPtr<SMultiLineEditableTextBox> DebugMessageTextBox;
+	TSharedPtr<SEditableTextBox> DebugBundlePathTextBox;
+	FString DebugBundleSessionId;
+	FString DebugBundlePath;
+	TArray<FReviewChangeItem> DebugFocusTraversalItems;
+	int32 DebugFocusTraversalIndex = 0;
+	bool bDebugFocusTraversalActive = false;
 	FBlueprintHelperReviewAssetContext ReviewAssetContext;
 	EBlueprintHelperReviewSurface DetailsSurface = EBlueprintHelperReviewSurface::Unknown;
 	FBlueprintHelperReviewGraphPresenterState GraphPresenterState;

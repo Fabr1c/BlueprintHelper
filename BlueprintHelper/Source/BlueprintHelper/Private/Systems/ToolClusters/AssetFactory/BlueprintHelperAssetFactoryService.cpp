@@ -260,6 +260,49 @@ public:
 		return false;
 	}
 
+	static bool ShouldSkipStructDefaultValue(const FEdGraphPinType& PinType, const FString& DefaultValue)
+	{
+		const FString TrimmedValue = DefaultValue.TrimStartAndEnd();
+		if (PinType.PinCategory == UEdGraphSchema_K2::PC_String)
+		{
+			return TrimmedValue.IsEmpty();
+		}
+		if (PinType.PinCategory == UEdGraphSchema_K2::PC_Int)
+		{
+			return TrimmedValue == TEXT("0");
+		}
+		if (PinType.PinCategory == UEdGraphSchema_K2::PC_Real)
+		{
+			return TrimmedValue == TEXT("0") || TrimmedValue == TEXT("0.0") || TrimmedValue == TEXT("0.000000");
+		}
+		if (PinType.PinCategory == UEdGraphSchema_K2::PC_Boolean)
+		{
+			return TrimmedValue.Equals(TEXT("false"), ESearchCase::IgnoreCase) || TrimmedValue == TEXT("0");
+		}
+		return false;
+	}
+
+	static void DiscardFailedUserDefinedStruct(UUserDefinedStruct* Struct, UPackage* Package)
+	{
+		if (!Struct)
+		{
+			return;
+		}
+
+		Struct->ClearFlags(RF_Public | RF_Standalone);
+		const FName DiscardName = MakeUniqueObjectName(
+			GetTransientPackage(),
+			UUserDefinedStruct::StaticClass(),
+			FName(*FString::Printf(TEXT("%s_Failed"), *Struct->GetName())));
+		Struct->Rename(*DiscardName.ToString(), GetTransientPackage(), REN_DontCreateRedirectors | REN_NonTransactional);
+		Struct->MarkAsGarbage();
+
+		if (Package)
+		{
+			Package->ClearDirtyFlag();
+		}
+	}
+
 	static bool ApplyUserDefinedStructFields(UUserDefinedStruct* Struct, const TArray<FBlueprintHelperAssetFactoryFieldSpec>& Fields)
 	{
 		if (!Struct || Fields.Num() == 0)
@@ -310,7 +353,9 @@ public:
 			{
 				return false;
 			}
-			if (Field.bHasDefaultValue && !FStructureEditorUtils::ChangeVariableDefaultValue(Struct, VarGuid, Field.DefaultValue))
+			if (Field.bHasDefaultValue &&
+				!ShouldSkipStructDefaultValue(PinType, Field.DefaultValue) &&
+				!FStructureEditorUtils::ChangeVariableDefaultValue(Struct, VarGuid, Field.DefaultValue))
 			{
 				return false;
 			}
@@ -656,6 +701,7 @@ bool FBlueprintHelperAssetFactoryService::CreateStructure(
 
 	if (!FBlueprintHelperAssetFactoryServiceLocalUtils::ApplyUserDefinedStructFields(NewStruct, Fields))
 	{
+		FBlueprintHelperAssetFactoryServiceLocalUtils::DiscardFailedUserDefinedStruct(NewStruct, Package);
 		return false;
 	}
 

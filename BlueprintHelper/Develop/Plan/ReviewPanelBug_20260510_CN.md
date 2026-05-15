@@ -1,8 +1,15 @@
 # ReviewPanel Bug 跟踪 2026-05-10
 
-本文记录当前用户手动 ReviewPanel smoke 中发现的问题、初步根因和后续修复方向。状态均为分析结论，尚未实现修复。
+> 2026-05-14 状态转移：本文中的未达期待、待验证项和阻塞项已迁移到 [BlueprintHelper_UnmetExpectations_Consolidated_20260514_CN.md](BlueprintHelper_UnmetExpectations_Consolidated_20260514_CN.md)。本文保留为历史上下文；开放项跟踪迁移完成，后续当前状态以总账为准。
+
+本文记录用户手动 ReviewPanel smoke 中发现的问题、初步根因、修复进度和验证边界。早期条目的根因描述仍保留原始分析；后续修复状态以各 bug 条目下的“当前状态”和阶段回写为准，未完成或未验证项不可标记为完成。
 
 ## BUG-20260510-01: DataTable 每个 Column 都绘制 row diff/action
+
+**当前状态**
+
+- 2026-05-14 源码修复已落地，编译通过，运行态预检通过；尚未做人工 UI 视觉复核。
+- 修复方式：DataTable 普通数据列只绘制 row 背景高亮，不再绘制 `Accept` / `Reject`；只有 `ReviewActions` column 生成行级操作入口。
 
 **现象**
 
@@ -22,6 +29,11 @@
 - `ReviewActions` column 使用同一 `datatable_row:<RowName>` search key 查询 selected state，并只生成一次 action bar。
 
 ## BUG-20260510-02: DataTable 同一资产出现 `/DT` 与 `/DT.DT` 两个 Review scope，中央面板缺少 ReviewDiff
+
+**当前状态**
+
+- 2026-05-14 源码修复已落地，编译通过，运行态预检通过；尚未做人工 UI 视觉复核。
+- 修复方式：Review asset context 的 UI scope 改为 canonical package path；Final Changes 资产根和 scoped diff stack 比较均使用同一 package path key，避免 `/DT` 与 `/DT.DT` 被分成两个 scope。
 
 **现象**
 
@@ -308,6 +320,39 @@
 3. DebugBundle 排查能力
    - 状态：源码接入已落地，待验证。
    - 处理：Bridge 增加 `list_debug_cases` 与 `export_debug_bundle`；CLI tool surface 增加 `blueprinthelper_list_debug_cases` 与 `blueprinthelper_export_debug_bundle`。
+
+## 2026-05-14 ReviewPanel DataTable 修复闭环
+
+状态说明：本轮完成 BUG-20260510-01 与 BUG-20260510-02 的源码修复、C++ 编译、编辑器启动和运行态预检；未做人工 UI 视觉复核，因此不标记为 UI 完全验收。
+
+1. BUG-20260510-01 DataTable 每个 Column 都绘制 row action
+   - 状态：源码修复已落地，编译通过，待人工 UI 复核。
+   - 处理：`SBlueprintHelperReviewDataTableRow::GenerateWidgetForColumn()` 区分普通列和 `ReviewActions` 列；普通列只用 row background highlight shell，`ReviewActions` 列才绘制 `Accept` / `Reject`。
+   - 期望结果：同一 DataTable row 的 `Accept` / `Reject` 只在行末 actions column 出现一次，不再随 column 数量重复。
+
+2. BUG-20260510-02 `/DT` 与 `/DT.DT` Review scope 分裂
+   - 状态：源码修复已落地，编译通过，待人工 UI 复核。
+   - 处理：`FBlueprintHelperReviewAssetContext::LoadForAssetPath()` 将 `Context.AssetPath` 规范化为 package path；`SBlueprintHelperReviewPanel` 的资产树显示和 scoped diff stack 过滤统一使用 canonical package path key。
+   - 期望结果：Final Changes 中同一 DataTable 不再分裂成 `/DT` 和 `/DT.DT` 两个 root；中央 DataTable 面板的 row diff 能按同一 asset scope 命中。
+
+3. 验证记录
+   - UE `TemplateEditor Win64 Development` 编译：通过。
+   - MCP `blueprint_open_editor`：通过，Bridge 可用。
+   - CLI `blueprint_get_runtime_profile`：通过，`warnings=0`、`errors=0`。
+   - CLI `blueprinthelper_diagnostics_runtime`：通过，`warnings=0`、`errors=0`。
+
+距离期望差距：
+
+1. 未执行人工 ReviewPanel UI smoke，因此无法确认视觉层面“只出现一次按钮”和“中央 DataTable row diff 命中”的最终表现。
+2. 未处理 BUG-20260510-03 以后需要 evidence 字段、排序字段、MyBlueprint 原生 parity、函数局部变量 scope、Graph 稳定锚点等更大范围变更。
+
+能力缺失记录：
+
+1. 当前缺少可由 CLI 自动断言 ReviewPanel Slate 行按钮数量、DataTable row diff 命中范围的自动化能力；本轮只能做到编译、编辑器启动和运行态预检。
+
+遭遇 Bug 记录：
+
+1. 本轮未新增非文档已知 Bug；主要修复对象即 BUG-20260510-01 与 BUG-20260510-02。
 
 ## 2026-05-13 ReviewPanel Accept/Reject Persistence Fix
 

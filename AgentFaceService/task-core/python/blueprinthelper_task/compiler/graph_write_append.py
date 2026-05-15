@@ -59,47 +59,25 @@ def _make_graph_write_task_plan_steps(task_spec: Dict[str, Any], ops: List[Dict[
     scope_policy = task_spec["scope_policy"]
     strategy = task_spec["behavior"]["graph_strategy"]
     if strategy == "append_new_owned_graph":
-        signature_steps = []
-        for index, op in enumerate([
-            op for op in ops
-            if op.get("op") == "ensure_entry" and op.get("entry_type") == "custom_event"
-        ]):
-            signature_steps.append({
+        return [
+            {
                 "step_id": f"step_{index + 1:03d}",
-                "capability": "blueprint_signature",
+                "capability": "graph_write",
                 "target": {
                     "asset_path": target["asset_path"],
+                    "graph": scope_policy["graph_name"],
                 },
                 "write": {
-                    "strategy": "custom_event_signature",
-                    "ops": [{
-                        "op": "ensure_custom_event",
-                        "event_name": op["name"],
-                        "graph_name": scope_policy["graph_name"],
-                        "name_collision_policy": "reuse_if_exists",
-                    }],
+                    "strategy": "owned_graph_edit",
+                    "ops": [_strip_graph_write_compiler_metadata(op)],
                 },
-            })
-
-        graph_write_step = {
-            "step_id": f"step_{len(signature_steps) + 1:03d}",
-            "capability": "graph_write",
-            "target": {
-                "asset_path": target["asset_path"],
-                "graph": scope_policy["graph_name"],
-            },
-            "write": {
-                "strategy": "owned_graph_edit",
-                "ops": ops,
-            },
-            "constraints": {
-                "allow_modify_user_nodes": scope_policy["allow_modify_user_nodes"],
-                "ownership_scope": "blueprinthelper_owned",
-            },
-        }
-        if signature_steps:
-            graph_write_step["depends_on"] = [step["step_id"] for step in signature_steps]
-        return signature_steps + [graph_write_step]
+                "constraints": {
+                    "allow_modify_user_nodes": scope_policy["allow_modify_user_nodes"],
+                    "ownership_scope": "blueprinthelper_owned",
+                },
+            }
+            for index, op in enumerate(ops)
+        ]
 
     if strategy == "replace_owned_graph" and len(ops) == 1 and isinstance(ops[0].get("__signature_split"), dict):
         signature_op = ops[0]["__signature_split"]
@@ -1317,8 +1295,8 @@ def _compile_replace_graph_write_op(behavior: Dict[str, Any]) -> Dict[str, Any]:
     )
     body = _required_logic_body(replace, "body", "behavior.replace.body")
     _validate_supported_statements(body["statements"], "behavior.replace.body.statements")
-    replacement = _compile_logic_body_to_import_payload(body, "replace", "behavior.replace.body")
-    if len(replacement["nodes"]) == 0:
+    logic_spec = _compile_logic_body_to_semantic_logic_spec(body, "replace")
+    if len(logic_spec["statements"]) == 0:
         raise TaskSpecCompileError(
             "taskspec_semantic_invalid",
             "replace_owned_graph requires at least one replacement statement.",
@@ -1333,7 +1311,7 @@ def _compile_replace_graph_write_op(behavior: Dict[str, Any]) -> Dict[str, Any]:
         "op": "replace_body",
         "replace_scope": graph_write_replace_scope,
         "selector": selector,
-        "replacement": replacement,
+        "logic_spec": logic_spec,
         "options": replace.get("options") if isinstance(replace.get("options"), dict) else None,
         "__signature_split": {
             "op": "ensure_custom_event",
@@ -1472,6 +1450,16 @@ def _compile_logic_body_to_import_payload(
     return {"nodes": flow["nodes"], "links": flow["links"]}
 
 
+def _compile_logic_body_to_semantic_logic_spec(
+    body: Dict[str, List[Dict[str, Any]]],
+    prefix: str,
+) -> Dict[str, Any]:
+    return {
+        "schema": "BlueprintLogicSpec.v2",
+        "statements": _clone_logic_statement_sequence_with_compiled_ids(body["statements"], f"{_to_id_segment(prefix)}_stmt"),
+    }
+
+
 def _make_compile_flow_context(parent: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     return {"symbols": dict(parent.get("symbols", {})) if isinstance(parent, dict) else {}}
 
@@ -1513,6 +1501,18 @@ def _clone_logic_statement_with_compiled_ids(statement: Dict[str, Any], statemen
     out = dict(statement)
     out["id"] = statement_id
     kind = statement.get("kind")
+    if kind == "call_function":
+        out["kind"] = "call"
+        if "target" not in out:
+            out["target"] = statement.get("name")
+        out.pop("name", None)
+        kind = "call"
+    elif kind == "set_member_variable":
+        out["kind"] = "set"
+        if "target" not in out:
+            out["target"] = statement.get("name")
+        out.pop("name", None)
+        kind = "set"
 
     if kind == "branch":
         out["condition"] = _clone_logic_expression_with_compiled_ids(statement.get("condition"), f"{statement_id}_condition")
@@ -1522,9 +1522,9 @@ def _clone_logic_statement_with_compiled_ids(statement: Dict[str, Any], statemen
         out["else"] = _clone_logic_statement_sequence_with_compiled_ids(else_statements, f"{statement_id}_else")
     elif kind == "let":
         out["value"] = _clone_logic_expression_with_compiled_ids(statement.get("value"), f"{statement_id}_value")
-    elif kind in {"set", "set_member_variable"}:
+    elif kind == "set":
         out["value"] = _clone_logic_expression_with_compiled_ids(statement.get("value"), f"{statement_id}_value")
-    elif kind in {"call", "call_function"} and isinstance(statement.get("args"), dict):
+    elif kind == "call" and isinstance(statement.get("args"), dict):
         out["args"] = {
             arg_name: _clone_logic_expression_with_compiled_ids(arg_value, f"{statement_id}_arg_{_to_id_segment(str(arg_name))}")
             for arg_name, arg_value in statement["args"].items()

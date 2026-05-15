@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "EdGraph/EdGraphNode.h"
+#include "EdGraphNode_Comment.h"
 #include "Input/Reply.h"
 #include "Templates/Function.h"
 
@@ -12,7 +12,7 @@
 class SGraphNode;
 
 UCLASS()
-class UBlueprintHelperReviewDiffBlockNode : public UEdGraphNode
+class UBlueprintHelperReviewDiffBlockNode : public UEdGraphNode_Comment
 {
 	GENERATED_BODY()
 

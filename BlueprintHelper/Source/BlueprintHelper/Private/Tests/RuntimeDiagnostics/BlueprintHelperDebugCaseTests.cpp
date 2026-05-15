@@ -56,6 +56,15 @@ static FString ExpectedReviewRecordPath(const FString& ReviewRecordId)
 		/ FString::Printf(TEXT("%s.json"), *ReviewRecordId);
 }
 
+static FString ExpectedArchiveSessionPath(const FString& ArchiveSessionId)
+{
+	return FPaths::ProjectSavedDir()
+		/ TEXT("BlueprintHelper")
+		/ TEXT("Review")
+		/ TEXT("ArchiveSessions")
+		/ FString::Printf(TEXT("%s.json"), *ArchiveSessionId);
+}
+
 static void CleanupDebugCaseFile(const FString& DebugCaseId)
 {
 	IFileManager::Get().Delete(*ExpectedDebugCasePath(DebugCaseId), false, true);
@@ -64,6 +73,28 @@ static void CleanupDebugCaseFile(const FString& DebugCaseId)
 static void CleanupReviewRecordFile(const FString& ReviewRecordId)
 {
 	IFileManager::Get().Delete(*ExpectedReviewRecordPath(ReviewRecordId), false, true);
+}
+
+static void CleanupArchiveSessionFile(const FString& ArchiveSessionId)
+{
+	IFileManager::Get().Delete(*ExpectedArchiveSessionPath(ArchiveSessionId), false, true);
+}
+
+static FString ExpectedReviewSnapshotDirectory(const FString& ArchiveSessionId)
+{
+	return FPaths::ProjectSavedDir()
+		/ TEXT("BlueprintHelper")
+		/ TEXT("Review")
+		/ TEXT("Snapshots")
+		/ ArchiveSessionId;
+}
+
+static void CleanupReviewSnapshotDirectory(const FString& ArchiveSessionId)
+{
+	IFileManager::Get().DeleteDirectory(
+		*ExpectedReviewSnapshotDirectory(ArchiveSessionId),
+		false,
+		true);
 }
 
 static void CleanupDebugBundleDirectory(const FString& BundleId)
@@ -160,6 +191,8 @@ bool FBlueprintHelperDebugDtoSchemaTest::RunTest(const FString& Parameters)
 	Manifest.CreatedAt = Event.CreatedAt;
 	Manifest.Contents.Add(TEXT("manifest.json"));
 	Manifest.Contents.Add(FPaths::ProjectSavedDir() / TEXT("BlueprintHelper") / TEXT("Debug") / TEXT("raw.json"));
+	Manifest.Contents.Add(TEXT("../escape.json"));
+	Manifest.Contents.Add(TEXT("artifacts/debug_export_refs.json"));
 
 	TSharedRef<FJsonObject> ManifestJson = Manifest.ToJson();
 	TestEqual(TEXT("manifest schema is stable"), ManifestJson->GetStringField(TEXT("schema")),
@@ -168,6 +201,25 @@ bool FBlueprintHelperDebugDtoSchemaTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("manifest exposes contents"), ManifestJson->TryGetArrayField(TEXT("contents"), Contents));
 	TestTrue(TEXT("manifest contents are relative only"), Contents && Contents->Num() == 1);
 	TestTrue(TEXT("manifest privacy is present"), ManifestJson->HasTypedField<EJson::Object>(TEXT("privacy")));
+	const TSharedPtr<FJsonObject>* Privacy = nullptr;
+	TestTrue(TEXT("manifest privacy says legacy debug export refs are absent"),
+		ManifestJson->TryGetObjectField(TEXT("privacy"), Privacy)
+		&& Privacy
+		&& Privacy->IsValid()
+		&& (*Privacy)->GetBoolField(TEXT("contains_legacy_debug_export_refs")) == false);
+	const TSharedPtr<FJsonObject>* ArtifactSummary = nullptr;
+	TestTrue(TEXT("manifest exposes artifact summary"),
+		ManifestJson->TryGetObjectField(TEXT("artifact_summary"), ArtifactSummary)
+		&& ArtifactSummary
+		&& ArtifactSummary->IsValid());
+	if (ArtifactSummary && ArtifactSummary->IsValid())
+	{
+		TestEqual(TEXT("artifact summary counts only safe contents"),
+			static_cast<int32>((*ArtifactSummary)->GetNumberField(TEXT("content_count"))),
+			1);
+		TestFalse(TEXT("artifact summary says legacy debug export refs are absent"),
+			(*ArtifactSummary)->GetBoolField(TEXT("contains_legacy_debug_export_refs")));
+	}
 	return true;
 }
 
@@ -335,6 +387,8 @@ bool FBlueprintHelperDebugBundleExportsReviewSummaryArtifactTest::RunTest(const 
 		TEXT("/Game/BP_DebugReview"));
 	FBlueprintHelperDebugCaseTestsLocalUtils::CleanupDebugCaseFile(DebugCaseId);
 	FBlueprintHelperDebugCaseTestsLocalUtils::CleanupReviewRecordFile(ReviewRecordId);
+	FBlueprintHelperDebugCaseTestsLocalUtils::CleanupArchiveSessionFile(TEXT("archive_debug_bundle_review"));
+	FBlueprintHelperDebugCaseTestsLocalUtils::CleanupReviewSnapshotDirectory(TEXT("archive_debug_bundle_review"));
 
 	FBlueprintHelperReviewRecord ReviewRecord;
 	ReviewRecord.ReviewRecordId = ReviewRecordId;
@@ -363,6 +417,34 @@ bool FBlueprintHelperDebugBundleExportsReviewSummaryArtifactTest::RunTest(const 
 
 	FBlueprintHelperReviewStoreService ReviewStore;
 	FString ReviewError;
+	FBlueprintHelperReviewArchiveSession ArchiveSession;
+	ArchiveSession.ArchiveSessionId = ReviewRecord.ArchiveSessionId;
+	ArchiveSession.TaskRunId = TEXT("task_review_summary");
+	ArchiveSession.AllowedTargetAssets.Add(TEXT("/Game/BP_DebugReview"));
+	ArchiveSession.BaselineDirtyAssetPolicy = TEXT("allow_stale_disk_snapshot");
+	ArchiveSession.BaselineSnapshotTrust = TEXT("stale_disk_copy");
+	ArchiveSession.DirtyTargetAssets.Add(TEXT("/Game/BP_DebugReview"));
+	ArchiveSession.BaselineSnapshotRefs.Add(TEXT("review://archive/archive_debug_bundle_review/baseline/_Game_BP_DebugReview.uasset"));
+	ArchiveSession.BaselineSemanticSnapshotRefs.Add(TEXT("review://archive/archive_debug_bundle_review/baseline/_Game_BP_DebugReview_semantic/baseline.semantic.json"));
+	ArchiveSession.BaselineWarnings.Add(TEXT("Review baseline snapshot copied from disk while target asset was dirty in editor."));
+
+	const FString SemanticSnapshotDir =
+		FBlueprintHelperDebugCaseTestsLocalUtils::ExpectedReviewSnapshotDirectory(TEXT("archive_debug_bundle_review"))
+		/ TEXT("_Game_BP_DebugReview_semantic");
+	IFileManager::Get().MakeDirectory(*SemanticSnapshotDir, true);
+	TSharedRef<FJsonObject> SemanticSnapshot = MakeShared<FJsonObject>();
+	SemanticSnapshot->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.ReviewBaselineSemanticSnapshot.v1"));
+	SemanticSnapshot->SetStringField(TEXT("asset_path"), TEXT("/Game/BP_DebugReview"));
+	FString SemanticSnapshotText;
+	TSharedRef<TJsonWriter<>> SemanticSnapshotWriter = TJsonWriterFactory<>::Create(&SemanticSnapshotText);
+	FJsonSerializer::Serialize(SemanticSnapshot, SemanticSnapshotWriter);
+	TestTrue(TEXT("semantic baseline snapshot fixture writes"),
+		FFileHelper::SaveStringToFile(
+			SemanticSnapshotText,
+			*(SemanticSnapshotDir / TEXT("baseline.semantic.json")),
+			FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM));
+	TestTrue(TEXT("archive session saves before bundle export"),
+		ReviewStore.SaveArchiveSession(ArchiveSession, ReviewError));
 	TestTrue(TEXT("review record saves before bundle export"),
 		ReviewStore.SaveReviewRecord(ReviewRecord, ReviewError));
 
@@ -399,6 +481,8 @@ bool FBlueprintHelperDebugBundleExportsReviewSummaryArtifactTest::RunTest(const 
 		FBlueprintHelperDebugCaseTestsLocalUtils::CleanupDebugBundleDirectory(Manifest.BundleId);
 		FBlueprintHelperDebugCaseTestsLocalUtils::CleanupDebugCaseFile(DebugCaseId);
 		FBlueprintHelperDebugCaseTestsLocalUtils::CleanupReviewRecordFile(ReviewRecordId);
+		FBlueprintHelperDebugCaseTestsLocalUtils::CleanupArchiveSessionFile(TEXT("archive_debug_bundle_review"));
+		FBlueprintHelperDebugCaseTestsLocalUtils::CleanupReviewSnapshotDirectory(TEXT("archive_debug_bundle_review"));
 		return false;
 	}
 	TestTrue(TEXT("review summary ref is relative"),
@@ -420,6 +504,29 @@ bool FBlueprintHelperDebugBundleExportsReviewSummaryArtifactTest::RunTest(const 
 		ReviewSummaryText.Contains(TEXT("debug_export_refs")));
 	TestFalse(TEXT("review summary artifact omits local paths"),
 		ReviewSummaryText.Contains(TEXT("Saved/BlueprintHelper")));
+	TestTrue(TEXT("review summary artifact carries baseline dirty policy"),
+		ReviewSummaryText.Contains(TEXT("allow_stale_disk_snapshot")));
+	TestTrue(TEXT("review summary artifact carries baseline trust"),
+		ReviewSummaryText.Contains(TEXT("stale_disk_copy")));
+	TestTrue(TEXT("review summary artifact carries disk snapshot refs"),
+		ReviewSummaryText.Contains(TEXT("disk_snapshot_refs")));
+	bool bFoundSemanticSnapshotArtifact = false;
+	for (const FString& ContentRef : Manifest.Contents)
+	{
+		if (ContentRef.Contains(TEXT("baseline.semantic")))
+		{
+			bFoundSemanticSnapshotArtifact = true;
+			const FString SemanticArtifactPath =
+				FBlueprintHelperDebugCaseStoreService::GetBundleDirectory(Manifest.BundleId) / ContentRef;
+			FString SemanticArtifactText;
+			TestTrue(TEXT("semantic baseline artifact is readable"),
+				FFileHelper::LoadFileToString(SemanticArtifactText, *SemanticArtifactPath));
+			TestTrue(TEXT("semantic baseline artifact carries schema"),
+				SemanticArtifactText.Contains(TEXT("BlueprintHelper.ReviewBaselineSemanticSnapshot.v1")));
+			break;
+		}
+	}
+	TestTrue(TEXT("debug bundle includes semantic baseline artifact"), bFoundSemanticSnapshotArtifact);
 
 	FBlueprintHelperReviewRecord ReloadedReviewRecord;
 	FString ReloadError;
@@ -431,6 +538,8 @@ bool FBlueprintHelperDebugBundleExportsReviewSummaryArtifactTest::RunTest(const 
 	FBlueprintHelperDebugCaseTestsLocalUtils::CleanupDebugBundleDirectory(Manifest.BundleId);
 	FBlueprintHelperDebugCaseTestsLocalUtils::CleanupDebugCaseFile(DebugCaseId);
 	FBlueprintHelperDebugCaseTestsLocalUtils::CleanupReviewRecordFile(ReviewRecordId);
+	FBlueprintHelperDebugCaseTestsLocalUtils::CleanupArchiveSessionFile(TEXT("archive_debug_bundle_review"));
+	FBlueprintHelperDebugCaseTestsLocalUtils::CleanupReviewSnapshotDirectory(TEXT("archive_debug_bundle_review"));
 	return true;
 }
 

@@ -29,6 +29,8 @@ FBlueprintHelperBridgeRoutePlan FBlueprintHelperBridgeRoutePlanner::BuildPlan(co
 	if (Command == TEXT("get_runtime_profile") ||
 		Command == TEXT("diagnostics_runtime") ||
 		Command == TEXT("get_debug_case") ||
+		Command == TEXT("list_debug_cases") ||
+		Command == TEXT("export_debug_bundle") ||
 		Command == TEXT("compile_blueprint") ||
 		Command == TEXT("compile_blueprint_asset"))
 	{

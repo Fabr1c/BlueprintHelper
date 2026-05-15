@@ -1,5 +1,7 @@
 # BlueprintHelper User Review Panel Implementation Plan
 
+> 2026-05-14 状态转移：本文中的未达期待、待验证项和阻塞项已迁移到 [BlueprintHelper_UnmetExpectations_Consolidated_20260514_CN.md](BlueprintHelper_UnmetExpectations_Consolidated_20260514_CN.md)。本文保留为历史上下文；开放项跟踪迁移完成，后续当前状态以总账为准。
+
 > For agentic workers: implement task-by-task. Steps use checkbox syntax for tracking.
 
 Goal: Build the first user-side Review UI slice with Scheme B, a fake Blueprint Review page, final visible change list, read-only GraphEditor page, and service-backed Accept/Reject callbacks.

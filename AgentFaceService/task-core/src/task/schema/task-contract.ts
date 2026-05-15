@@ -48,6 +48,7 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
     'execution_policy.dry_run_mode',
     'execution_policy.should_compile',
     'execution_policy.should_save',
+    'execution_policy.review_baseline_dirty_asset_policy',
     'steps[].step_id',
     'steps[].capability',
     'steps[].target.asset_path',

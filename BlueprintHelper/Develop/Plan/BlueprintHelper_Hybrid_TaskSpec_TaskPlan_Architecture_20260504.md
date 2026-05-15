@@ -1,5 +1,7 @@
 # BlueprintHelper 混合任务编排架构方案
 
+> 2026-05-14 状态转移：本文中的未达期待、待验证项和阻塞项已迁移到 [BlueprintHelper_UnmetExpectations_Consolidated_20260514_CN.md](BlueprintHelper_UnmetExpectations_Consolidated_20260514_CN.md)。本文保留为历史上下文；开放项跟踪迁移完成，后续当前状态以总账为准。
+
 日期：2026-05-04  
 状态：已确认的新架构方案  
 适用范围：BlueprintHelper v0.4 / v0.5 之后的 Agent→CLI→Python→UE Task Runtime 架构收敛

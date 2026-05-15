@@ -794,10 +794,8 @@ bool FBlueprintHelperRequestValidatorHighRiskDefaultTest::RunTest(const FString&
 	CloseRequest.AuthSession = Grant.SessionId;
 
 	Error = FBlueprintHelperBridgeValidationError();
-	TestFalse(TEXT("close_editor is disabled by default"),
+	TestTrue(TEXT("close_editor is allowed as editor lifecycle by default"),
 		FBlueprintHelperRequestValidator::ValidateAuthorization(CloseRequest, Error));
-	TestEqual(TEXT("close_editor rejection uses command_disabled"),
-		Error.Code, FString(TEXT("command_disabled")));
 
 	AuthService.ResetForTesting();
 	return true;

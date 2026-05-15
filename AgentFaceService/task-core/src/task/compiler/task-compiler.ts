@@ -477,49 +477,22 @@ function makeGraphWriteTaskPlanSteps(
   const behavior = taskSpec.behavior as Record<string, unknown>;
   const strategy = String(behavior['graph_strategy']);
   if (strategy === 'append_new_owned_graph') {
-    const signatureSteps = graphWriteOps
-      .filter((op) => op.op === 'ensure_entry' && op.entry_type === 'custom_event')
-      .map((op, index) => ({
-        step_id: `step_${String(index + 1).padStart(3, '0')}`,
-        capability: 'blueprint_signature' as const,
-        target: {
-          asset_path: taskSpec.target.asset_path,
-        },
-        write: {
-          strategy: 'custom_event_signature',
-          ops: [
-            {
-              op: 'ensure_custom_event',
-              event_name: op.name,
-              graph_name: taskSpec.scope_policy.graph_name,
-              name_collision_policy: 'reuse_if_exists',
-            },
-          ],
-        },
-      } as TaskPlanStep));
-
-    return [
-      ...signatureSteps,
-      {
-        step_id: `step_${String(signatureSteps.length + 1).padStart(3, '0')}`,
-        capability: 'graph_write',
-        target: {
-          asset_path: taskSpec.target.asset_path,
-          graph: taskSpec.scope_policy.graph_name,
-        },
-        write: {
-          strategy: 'owned_graph_edit',
-          ops: graphWriteOps,
-        },
-        constraints: {
-          allow_modify_user_nodes: taskSpec.scope_policy.allow_modify_user_nodes,
-          ownership_scope: 'blueprinthelper_owned',
-        },
-        ...(signatureSteps.length > 0
-          ? { depends_on: signatureSteps.map((step) => step.step_id) }
-          : {}),
-      } as TaskPlanStep,
-    ];
+    return graphWriteOps.map((op, index) => ({
+      step_id: `step_${String(index + 1).padStart(3, '0')}`,
+      capability: 'graph_write',
+      target: {
+        asset_path: taskSpec.target.asset_path,
+        graph: taskSpec.scope_policy.graph_name,
+      },
+      write: {
+        strategy: 'owned_graph_edit',
+        ops: [stripGraphWriteCompilerMetadata(op)],
+      },
+      constraints: {
+        allow_modify_user_nodes: taskSpec.scope_policy.allow_modify_user_nodes,
+        ownership_scope: 'blueprinthelper_owned',
+      },
+    } as TaskPlanStep));
   }
 
   if (strategy === 'replace_owned_graph' && graphWriteOps.length === 1) {
@@ -1254,8 +1227,7 @@ function compileReplaceGraphWriteOp(behavior: Record<string, unknown>): GraphWri
   );
   const body = getRequiredLogicBody(replace, 'body', 'behavior.replace.body');
   validateSupportedStatements(body.statements, 'behavior.replace.body.statements');
-  const replacement = compileLogicBodyToImportPayload(body, 'replace', 'behavior.replace.body');
-  if (replacement.nodes.length === 0) {
+  if (body.statements.length === 0) {
     throw new TaskSpecCompileError('taskspec_semantic_invalid', 'replace_owned_graph requires at least one replacement statement.', [
       {
         code: 'empty_replacement',
@@ -1269,7 +1241,7 @@ function compileReplaceGraphWriteOp(behavior: Record<string, unknown>): GraphWri
     op: 'replace_body',
     replace_scope: graphWriteReplaceScope,
     selector,
-    replacement,
+    logic_spec: compileLogicBodyToSemanticLogicSpec(body, 'replace'),
     options: isRecord(replace['options']) ? replace['options'] : undefined,
     __signature_split: replaceScope === 'custom_event_definition'
       ? {
@@ -1417,6 +1389,16 @@ function compileLogicBodyToImportPayload(
   return { nodes: flow.nodes, links: flow.links };
 }
 
+function compileLogicBodyToSemanticLogicSpec(
+  body: { statements: BlueprintLogicStatement[] },
+  prefix: string,
+): Record<string, unknown> {
+  return {
+    schema: 'BlueprintLogicSpec.v2',
+    statements: cloneLogicStatementSequenceWithCompiledIds(body.statements, `${toIdSegment(prefix)}_stmt`),
+  };
+}
+
 interface CompiledSymbolValue {
   output?: string;
   defaultValue?: unknown;
@@ -1477,6 +1459,16 @@ function cloneLogicExpressionWithCompiledIds(expression: unknown, nodeId: string
 
 function cloneLogicStatementWithCompiledIds(statement: BlueprintLogicStatement, statementId: string): BlueprintLogicStatement {
   const out: Record<string, unknown> = { ...(statement as Record<string, unknown>), id: statementId };
+
+  if (statement.kind === 'call_function') {
+    out.kind = 'call';
+    out.target = (statement as Record<string, unknown>).name;
+    delete out.name;
+  } else if (statement.kind === 'set_member_variable') {
+    out.kind = 'set';
+    out.target = (statement as Record<string, unknown>).name;
+    delete out.name;
+  }
 
   if (statement.kind === 'branch') {
     out.condition = cloneLogicExpressionWithCompiledIds((statement as Record<string, unknown>).condition, `${statementId}_condition`);

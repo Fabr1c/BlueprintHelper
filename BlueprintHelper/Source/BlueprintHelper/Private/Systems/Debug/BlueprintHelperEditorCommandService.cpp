@@ -5,9 +5,11 @@
 #include "PlayInEditorDataTypes.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "AssetRegistry/AssetRegistryModule.h"
+#include "Containers/Ticker.h"
 #include "Engine/Blueprint.h"
 #include "FileHelpers.h"
 #include "Misc/StringFormatArg.h"
+#include "Subsystems/AssetEditorSubsystem.h"
 
 // ═══════════════════════════════════════════════════════════
 // Undo / Redo
@@ -284,11 +286,27 @@ FBlueprintHelperCommandResult FBlueprintHelperEditorCommandService::CloseEditor(
 	}
 
 	// 延迟到下一帧退出，确保本次 Bridge 响应能发送回去
-	GEngine->DeferredCommands.Add(TEXT("QUIT_EDITOR"));
+	if (UAssetEditorSubsystem* AssetEditorSubsystem = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>())
+	{
+		if (!AssetEditorSubsystem->CloseAllAssetEditors())
+		{
+			Result.ErrorMessage = TEXT("CloseEditor: unable to close all asset editors; exit was cancelled.");
+			return Result;
+		}
+	}
+
+	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([](float)
+	{
+		if (GEngine)
+		{
+			GEngine->DeferredCommands.Add(TEXT("QUIT_EDITOR"));
+		}
+		return false;
+	}), 0.25f);
 
 	Result.bSuccess = true;
 	Result.Message = bSaveAll
-		? TEXT("已保存所有脏资源，编辑器将在下一帧关闭。")
-		: TEXT("编辑器将在下一帧关闭（未保存）。");
+		? TEXT("Saved dirty packages, closed asset editors, and scheduled delayed editor shutdown.")
+		: TEXT("Closed asset editors and scheduled delayed editor shutdown without saving.");
 	return Result;
 }

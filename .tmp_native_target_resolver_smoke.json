@@ -1,0 +1,54 @@
+{
+  "schema": "BlueprintHelper.TaskSpec.v1",
+  "task_type": "edit_blueprint_graph",
+  "target": { "asset_path": "/Game/BP_BH_SemanticCoverageActor" },
+  "scope_policy": {
+    "graph_name": "BH_NativeTargetResolverSmoke_20260514_221521",
+    "allow_modify_user_nodes": false
+  },
+  "behavior": {
+    "graph_strategy": "append_new_owned_graph",
+    "entries": [
+      {
+        "entry_type": "custom_event",
+        "name": "BH_CodexNativeTargetResolverSmoke_20260514_221521",
+        "name_collision_policy": "rename",
+        "body": {
+          "schema": "BlueprintLogicSpec.v2",
+          "statements": [
+            {
+              "kind": "branch",
+              "condition": {
+                "kind": "compare",
+                "op": ">",
+                "left": { "kind": "get_property", "target": "DefaultSceneRoot.RelativeLocation.X" },
+                "right": { "kind": "literal", "value_type": "float", "value": -999.0 }
+              },
+              "then": [
+                {
+                  "kind": "call",
+                  "target": "/Script/Engine.Actor:K2_SetActorLocation",
+                  "args": {
+                    "NewLocation": {
+                      "kind": "make_struct",
+                      "type": "/Script/CoreUObject.Vector",
+                      "args": {
+                        "X": { "kind": "get_property", "target": "DefaultSceneRoot.RelativeLocation.X" },
+                        "Y": { "kind": "literal", "value_type": "float", "value": 0.0 },
+                        "Z": { "kind": "literal", "value_type": "float", "value": 120.0 }
+                      }
+                    },
+                    "bSweep": { "kind": "literal", "value_type": "bool", "value": false },
+                    "bTeleport": { "kind": "literal", "value_type": "bool", "value": false }
+                  }
+                }
+              ],
+              "else": [ { "kind": "return" } ]
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "validation": { "should_compile": true, "should_save": false }
+}

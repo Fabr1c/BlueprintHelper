@@ -675,18 +675,23 @@ describe('TaskSpec GraphWrite Append compiler', () => {
           graph_id: 'EventGraph',
           node_ref: 'ToggleDoorEntry',
         },
-        replacement: {
-          nodes: [
+        logic_spec: {
+          schema: 'BlueprintLogicSpec.v2',
+          statements: [
             {
-              id: 'replace_stmt_1',
               kind: 'call',
-              function: 'PrintString',
-              inputs: {
-                InString: 'replaced',
+              target: 'PrintString',
+              args: {
+                InString: {
+                  id: 'replace_stmt_1_arg_InString',
+                  kind: 'literal',
+                  value_type: 'string',
+                  value: 'replaced',
+                },
               },
+              id: 'replace_stmt_1',
             },
           ],
-          links: [],
         },
         options: {
           strict: true,
@@ -1123,8 +1128,8 @@ describe('TaskSpec GraphWrite Append compiler', () => {
         statements: [
           {
             id: 'ToggleDoor_stmt_1',
-            kind: 'call_function',
-            name: 'PrintString',
+            kind: 'call',
+            target: 'PrintString',
             args: {
               InString: {
                 id: 'ToggleDoor_stmt_1_arg_InString',
@@ -1301,8 +1306,8 @@ describe('TaskSpec GraphWrite Append compiler', () => {
     assert.equal((payload as unknown as Record<string, unknown>).nodes, undefined);
     assert.deepEqual(payload.logic_spec.statements[0], {
       id: 'ToggleDoor_stmt_1',
-      kind: 'call_function',
-      name: '/Script/Engine.KismetSystemLibrary:PrintString',
+      kind: 'call',
+      target: '/Script/Engine.KismetSystemLibrary:PrintString',
       args: {
         InString: {
           id: 'ToggleDoor_stmt_1_arg_InString',
@@ -1348,8 +1353,8 @@ describe('TaskSpec GraphWrite Append compiler', () => {
     assert.equal((payload as unknown as Record<string, unknown>).nodes, undefined);
     assert.deepEqual(payload.logic_spec.statements[0], {
       id: 'ToggleDoor_stmt_1',
-      kind: 'call_function',
-      name: 'Print String',
+      kind: 'call',
+      target: 'Print String',
       args: {
         InString: {
           id: 'ToggleDoor_stmt_1_arg_InString',
@@ -1389,8 +1394,8 @@ describe('TaskSpec GraphWrite Append compiler', () => {
     assert.equal((payload as unknown as Record<string, unknown>).nodes, undefined);
     assert.deepEqual(payload.logic_spec.statements[0], {
       id: 'ToggleDoor_stmt_1',
-      kind: 'call_function',
-      name: 'DoorMesh.AddAngularImpulseInDegrees',
+      kind: 'call',
+      target: 'DoorMesh.AddAngularImpulseInDegrees',
       args: {},
     });
   });
@@ -1524,7 +1529,7 @@ describe('TaskSpec GraphWrite Append compiler', () => {
     assert.equal((payload as unknown as Record<string, unknown>).nodes, undefined);
     assert.deepEqual(payload.logic_spec.entry, { kind: 'custom_event', name: 'OpenDoor', id: 'OpenDoor_entry' });
     assert.deepEqual(payload.logic_spec.statements.map((statement) => (statement as Record<string, unknown>).id), ['OpenDoor_stmt_1']);
-    assert.equal((payload.logic_spec.statements[0] as Record<string, unknown>).kind, 'set_member_variable');
+    assert.equal((payload.logic_spec.statements[0] as Record<string, unknown>).kind, 'set');
     assert.equal(payload.dry_run, false);
   });
 });

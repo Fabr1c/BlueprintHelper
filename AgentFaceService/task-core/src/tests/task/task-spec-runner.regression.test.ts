@@ -1,0 +1,115 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { createTaskSpecRunner } from '../../task/service/task-spec-runner.js';
+import type { TaskPlan, TaskSpec } from '../../task/schema/task-schemas.js';
+import type { BridgeResponse } from '../../bridge/bridge-client.js';
+
+test('executeTask propagates modified state from Bridge execution result', async () => {
+  const taskPlan = {
+    schema: 'BlueprintHelper.TaskPlan.v1',
+    task_name: 'ModifiedPropagation',
+    task_type: 'edit_blueprint_graph',
+    target_assets: ['/Game/BP/BP_Door'],
+    execution_policy: {
+      dry_run_mode: 'full',
+      should_compile: true,
+      should_save: false,
+    },
+    steps: [
+      {
+        step_id: 'step_001',
+        capability: 'graph_write',
+        target: {
+          asset_path: '/Game/BP/BP_Door',
+          graph: 'BH_Door',
+        },
+        write: {
+          strategy: 'owned_graph_edit',
+          ops: [
+            {
+              op: 'insert_flow',
+            },
+          ],
+        },
+        constraints: {
+          allow_modify_user_nodes: false,
+          ownership_scope: 'blueprinthelper_owned',
+        },
+      },
+    ],
+  } satisfies TaskPlan;
+
+  const bridge = {
+    async sendCommand(command: string): Promise<BridgeResponse> {
+      if (command === 'preview_task_plan') {
+        return {
+          success: true,
+          request_id: 'preview_request',
+          result: {
+            ok: true,
+            schema: 'BlueprintHelper.ToolResult.v1',
+            operation: 'preview_task_plan',
+            status: 'dry_run',
+            modified: false,
+            data: {
+              dry_run: {
+                result: 'passed',
+                can_execute: true,
+              },
+            },
+          },
+        };
+      }
+
+      if (command === 'execute_task_plan') {
+        return {
+          success: true,
+          request_id: 'execute_request',
+          result: {
+            ok: true,
+            schema: 'BlueprintHelper.ToolResult.v1',
+            operation: 'execute_task_plan',
+            status: 'applied',
+            modified: true,
+            data: {
+              schema: 'BlueprintHelper.TaskRuntimeResult.v1',
+              task_run_id: 'task_modified_propagation',
+              steps: [
+                {
+                  step_id: 'step_001',
+                  capability: 'graph_write',
+                  operation: 'graph_write',
+                  adapter_operation: 'merge_blueprint_graph',
+                  result: {
+                    ok: true,
+                    operation: 'merge_blueprint_graph',
+                    status: 'applied',
+                    modified: true,
+                  },
+                },
+              ],
+            },
+          },
+        };
+      }
+
+      throw new Error(`Unexpected command: ${command}`);
+    },
+  };
+
+  const runner = createTaskSpecRunner({
+    bridge,
+    taskCompiler: async () => ({
+      schema: 'BlueprintHelper.TaskCompilerResult.v1',
+      task_plan: taskPlan,
+      bridge_payload: {},
+      task_plan_summary: {},
+    }),
+  });
+
+  const result = await runner.executeTask({} as TaskSpec);
+
+  assert.equal(result.ok, true);
+  assert.equal(result.modified, true);
+  assert.equal((result.data as Record<string, any>).task.modified_assets, 1);
+});

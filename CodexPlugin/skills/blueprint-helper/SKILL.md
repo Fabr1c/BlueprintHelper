@@ -1,6 +1,6 @@
----
+﻿---
 name: blueprint-helper
-description: Use when a user request requires reading, inspecting, creating, or modifying Unreal Engine Blueprint-related editor assets through BlueprintHelper from Codex.
+description: Use when a user request requires reading, inspecting, creating, modifying, or configuring Unreal Engine Blueprint-related editor assets and BlueprintHelper behavior from Codex.
 ---
 
 # BlueprintHelper for Codex
@@ -13,12 +13,22 @@ Use this skill when a user asks Codex to work with Unreal Editor assets through 
 - UMG widget trees and widget properties.
 - UObject, DataAsset, and DataTable values.
 - Compile, save, open, PIE, diagnostics, and Bridge/runtime checks related to editor assets.
+- BlueprintHelper Codex configuration, safety profile, editor lifecycle policy, and Agent workflow preferences.
+- BlueprintHelper Codex configuration, safety profile, editor lifecycle policy, and Agent workflow preferences.
+- BlueprintHelper Codex configuration, safety profile, editor lifecycle policy, and Agent workflow preferences.
 
 Do not use BlueprintHelper for normal repository files. Use normal Codex shell and edit tools for C++, TypeScript, Python, JSON, config, docs, tests, build scripts, and source search.
 
 ## Entry Rule
 
 The supported Agent-facing entry for ordinary TaskSpec reads and writes is the BlueprintHelper CLI. MCP is retained only as a long-lived companion entry for editor lifecycle commands.
+
+Important: call editor lifecycle commands through the global MCP tools `mcp__blueprint_helper__blueprint_open_editor` and `mcp__blueprint_helper__blueprint_close_editor`. Do not validate lifecycle behavior through plugin-local MCP or one-shot shell MCP clients because the sandbox may reap child editor processes.
+
+## Configure Routing
+
+When the user asks to configure BlueprintHelper for Codex, update safety/profile preferences, or asks for the Codex equivalent of Claude `/blueprint-helper:configure`, use the sibling `blueprint-helper-configure` skill. If that skill is not indexed in the current Codex session, follow `skills/blueprint-helper-configure/SKILL.md` from this plugin package as the fallback configure workflow.
+
 
 Preferred CLI shape:
 

@@ -341,6 +341,54 @@ public:
 		}
 	}
 
+	static int32 GetReviewSortValue(int32 Value)
+	{
+		return Value == INDEX_NONE ? MAX_int32 : Value;
+	}
+
+	static void SortVisibleChangesByReviewOrder(TArray<FBlueprintHelperReviewVisibleChange>& Changes)
+	{
+		Changes.Sort([](
+			const FBlueprintHelperReviewVisibleChange& Left,
+			const FBlueprintHelperReviewVisibleChange& Right)
+		{
+			const FString LeftAsset = MakeReviewAssetLinkKey(Left.AssetPath);
+			const FString RightAsset = MakeReviewAssetLinkKey(Right.AssetPath);
+			if (LeftAsset != RightAsset)
+			{
+				return LeftAsset < RightAsset;
+			}
+
+			const int32 LeftExecutionOrder = GetReviewSortValue(Left.ExecutionOrder);
+			const int32 RightExecutionOrder = GetReviewSortValue(Right.ExecutionOrder);
+			if (LeftExecutionOrder != RightExecutionOrder)
+			{
+				return LeftExecutionOrder < RightExecutionOrder;
+			}
+
+			const int32 LeftStep = GetReviewSortValue(Left.TaskStepIndex);
+			const int32 RightStep = GetReviewSortValue(Right.TaskStepIndex);
+			if (LeftStep != RightStep)
+			{
+				return LeftStep < RightStep;
+			}
+
+			const int32 LeftAtomic = GetReviewSortValue(Left.AtomicIndex);
+			const int32 RightAtomic = GetReviewSortValue(Right.AtomicIndex);
+			if (LeftAtomic != RightAtomic)
+			{
+				return LeftAtomic < RightAtomic;
+			}
+
+			if (Left.bIsAssetLifecycleRoot != Right.bIsAssetLifecycleRoot)
+			{
+				return Left.bIsAssetLifecycleRoot;
+			}
+
+			return Left.LocationKey < Right.LocationKey;
+		});
+	}
+
 	static FString MakeLoadedVisibleChangeCollapseKey(const FBlueprintHelperReviewVisibleChange& Change)
 	{
 		const FString AssetKey = MakeReviewAssetLinkKey(Change.AssetPath);
@@ -453,6 +501,9 @@ public:
 		Change.DisplayLabel = Target.DisplayLabel.IsEmpty() ? Evidence.DisplayLabel : Target.DisplayLabel;
 		Change.BeforeSummary = Evidence.BeforeSummary;
 		Change.AfterSummary = Evidence.AfterSummary;
+		Change.ExecutionOrder = Target.ExecutionOrder;
+		Change.TaskStepIndex = Target.TaskStepIndex;
+		Change.AtomicIndex = Target.AtomicIndex;
 		if (IsAssetLifecycleRootTarget(Target, Change.ChangeKind))
 		{
 			Change.bIsAssetLifecycleRoot = true;
@@ -639,6 +690,9 @@ public:
 		if (!Target.RecordedAfterHash.IsEmpty()) Json->SetStringField(TEXT("recorded_after_hash"), Target.RecordedAfterHash);
 		if (!Target.BaselineHash.IsEmpty()) Json->SetStringField(TEXT("baseline_hash"), Target.BaselineHash);
 		if (!Target.RollbackDataRef.IsEmpty()) Json->SetStringField(TEXT("rollback_data_ref"), Target.RollbackDataRef);
+		if (Target.ExecutionOrder != INDEX_NONE) Json->SetNumberField(TEXT("execution_order"), Target.ExecutionOrder);
+		if (Target.TaskStepIndex != INDEX_NONE) Json->SetNumberField(TEXT("task_step_index"), Target.TaskStepIndex);
+		if (Target.AtomicIndex != INDEX_NONE) Json->SetNumberField(TEXT("atomic_index"), Target.AtomicIndex);
 		if (Target.bHasGraphBounds)
 		{
 			Json->SetBoolField(TEXT("has_graph_bounds"), true);
@@ -666,6 +720,9 @@ public:
 		if (!Change.AfterSummary.IsEmpty()) Json->SetStringField(TEXT("after_summary"), Change.AfterSummary);
 		if (!Change.NeedsActionReason.IsEmpty()) Json->SetStringField(TEXT("needs_action_reason"), Change.NeedsActionReason);
 		if (!Change.ParentChangeId.IsEmpty()) Json->SetStringField(TEXT("parent_change_id"), Change.ParentChangeId);
+		if (Change.ExecutionOrder != INDEX_NONE) Json->SetNumberField(TEXT("execution_order"), Change.ExecutionOrder);
+		if (Change.TaskStepIndex != INDEX_NONE) Json->SetNumberField(TEXT("task_step_index"), Change.TaskStepIndex);
+		if (Change.AtomicIndex != INDEX_NONE) Json->SetNumberField(TEXT("atomic_index"), Change.AtomicIndex);
 		if (Change.bIsAssetLifecycleRoot) Json->SetBoolField(TEXT("is_asset_lifecycle_root"), true);
 		if (Change.bRejectRemovesChildren) Json->SetBoolField(TEXT("reject_removes_children"), true);
 
@@ -747,11 +804,62 @@ public:
 		Json->SetStringField(TEXT("task_run_id"), ArchiveSession.TaskRunId);
 		Json->SetArrayField(TEXT("allowed_target_assets"), MakeReviewJsonStringArray(ArchiveSession.AllowedTargetAssets));
 		Json->SetArrayField(TEXT("baseline_snapshot_refs"), MakeReviewJsonStringArray(ArchiveSession.BaselineSnapshotRefs));
+		Json->SetArrayField(TEXT("baseline_semantic_snapshot_refs"), MakeReviewJsonStringArray(ArchiveSession.BaselineSemanticSnapshotRefs));
+		TSharedRef<FJsonObject> Baseline = MakeShared<FJsonObject>();
+		if (!ArchiveSession.BaselineDirtyAssetPolicy.IsEmpty())
+		{
+			Baseline->SetStringField(TEXT("dirty_asset_policy"), ArchiveSession.BaselineDirtyAssetPolicy);
+		}
+		if (!ArchiveSession.BaselineSnapshotTrust.IsEmpty())
+		{
+			Baseline->SetStringField(TEXT("snapshot_trust"), ArchiveSession.BaselineSnapshotTrust);
+		}
+		Baseline->SetArrayField(TEXT("dirty_target_assets"), MakeReviewJsonStringArray(ArchiveSession.DirtyTargetAssets));
+		Baseline->SetArrayField(TEXT("warnings"), MakeReviewJsonStringArray(ArchiveSession.BaselineWarnings));
+		Baseline->SetArrayField(TEXT("disk_snapshot_refs"), MakeReviewJsonStringArray(ArchiveSession.BaselineSnapshotRefs));
+		Baseline->SetArrayField(TEXT("semantic_snapshot_refs"), MakeReviewJsonStringArray(ArchiveSession.BaselineSemanticSnapshotRefs));
+		Json->SetObjectField(TEXT("baseline"), Baseline);
 		if (!ArchiveSession.CreatedAt.IsEmpty())
 		{
 			Json->SetStringField(TEXT("created_at"), ArchiveSession.CreatedAt);
 		}
 		return Json;
+	}
+
+	static bool ReadReviewArchiveSessionFromJson(
+		const TSharedPtr<FJsonObject>& Json,
+		FBlueprintHelperReviewArchiveSession& OutArchiveSession)
+	{
+		if (!Json.IsValid())
+		{
+			return false;
+		}
+
+		FString Schema;
+		Json->TryGetStringField(TEXT("schema"), Schema);
+		if (Schema != TEXT("BlueprintHelper.ArchiveSession.v1"))
+		{
+			return false;
+		}
+
+		OutArchiveSession = FBlueprintHelperReviewArchiveSession();
+		OutArchiveSession.Schema = Schema;
+		Json->TryGetStringField(TEXT("archive_session_id"), OutArchiveSession.ArchiveSessionId);
+		Json->TryGetStringField(TEXT("task_run_id"), OutArchiveSession.TaskRunId);
+		Json->TryGetStringField(TEXT("created_at"), OutArchiveSession.CreatedAt);
+		ReadReviewStringArray(Json, TEXT("allowed_target_assets"), OutArchiveSession.AllowedTargetAssets);
+		ReadReviewStringArray(Json, TEXT("baseline_snapshot_refs"), OutArchiveSession.BaselineSnapshotRefs);
+		ReadReviewStringArray(Json, TEXT("baseline_semantic_snapshot_refs"), OutArchiveSession.BaselineSemanticSnapshotRefs);
+
+		const TSharedPtr<FJsonObject>* BaselineJson = nullptr;
+		if (Json->TryGetObjectField(TEXT("baseline"), BaselineJson) && BaselineJson && BaselineJson->IsValid())
+		{
+			(*BaselineJson)->TryGetStringField(TEXT("dirty_asset_policy"), OutArchiveSession.BaselineDirtyAssetPolicy);
+			(*BaselineJson)->TryGetStringField(TEXT("snapshot_trust"), OutArchiveSession.BaselineSnapshotTrust);
+			ReadReviewStringArray(*BaselineJson, TEXT("dirty_target_assets"), OutArchiveSession.DirtyTargetAssets);
+			ReadReviewStringArray(*BaselineJson, TEXT("warnings"), OutArchiveSession.BaselineWarnings);
+		}
+		return !OutArchiveSession.ArchiveSessionId.IsEmpty();
 	}
 
 	static bool ReadReviewRecordFromJson(const TSharedPtr<FJsonObject>& Json, FBlueprintHelperReviewRecord& OutRecord)
@@ -817,6 +925,19 @@ public:
 				ChangeJson->TryGetStringField(TEXT("after_summary"), Change.AfterSummary);
 				ChangeJson->TryGetStringField(TEXT("needs_action_reason"), Change.NeedsActionReason);
 				ChangeJson->TryGetStringField(TEXT("parent_change_id"), Change.ParentChangeId);
+				double OrderValue = 0.0;
+				if (ChangeJson->TryGetNumberField(TEXT("execution_order"), OrderValue))
+				{
+					Change.ExecutionOrder = static_cast<int32>(OrderValue);
+				}
+				if (ChangeJson->TryGetNumberField(TEXT("task_step_index"), OrderValue))
+				{
+					Change.TaskStepIndex = static_cast<int32>(OrderValue);
+				}
+				if (ChangeJson->TryGetNumberField(TEXT("atomic_index"), OrderValue))
+				{
+					Change.AtomicIndex = static_cast<int32>(OrderValue);
+				}
 				ChangeJson->TryGetBoolField(TEXT("is_asset_lifecycle_root"), Change.bIsAssetLifecycleRoot);
 				ChangeJson->TryGetBoolField(TEXT("reject_removes_children"), Change.bRejectRemovesChildren);
 
@@ -854,6 +975,19 @@ public:
 						TargetJson->TryGetStringField(TEXT("recorded_after_hash"), Target.RecordedAfterHash);
 						TargetJson->TryGetStringField(TEXT("baseline_hash"), Target.BaselineHash);
 						TargetJson->TryGetStringField(TEXT("rollback_data_ref"), Target.RollbackDataRef);
+						double TargetOrderValue = 0.0;
+						if (TargetJson->TryGetNumberField(TEXT("execution_order"), TargetOrderValue))
+						{
+							Target.ExecutionOrder = static_cast<int32>(TargetOrderValue);
+						}
+						if (TargetJson->TryGetNumberField(TEXT("task_step_index"), TargetOrderValue))
+						{
+							Target.TaskStepIndex = static_cast<int32>(TargetOrderValue);
+						}
+						if (TargetJson->TryGetNumberField(TEXT("atomic_index"), TargetOrderValue))
+						{
+							Target.AtomicIndex = static_cast<int32>(TargetOrderValue);
+						}
 						TargetJson->TryGetBoolField(TEXT("has_graph_bounds"), Target.bHasGraphBounds);
 						ReadReviewJsonVector2D(TargetJson, TEXT("graph_position"), Target.GraphPosition);
 						ReadReviewJsonVector2D(TargetJson, TEXT("graph_size"), Target.GraphSize);
@@ -990,6 +1124,9 @@ public:
 			ExistingChange->ChangeKind = IncomingChange.ChangeKind;
 			ExistingChange->AfterSummary = IncomingChange.AfterSummary;
 			ExistingChange->ParentChangeId = IncomingChange.ParentChangeId;
+			ExistingChange->ExecutionOrder = IncomingChange.ExecutionOrder;
+			ExistingChange->TaskStepIndex = IncomingChange.TaskStepIndex;
+			ExistingChange->AtomicIndex = IncomingChange.AtomicIndex;
 			ExistingChange->bIsAssetLifecycleRoot = IncomingChange.bIsAssetLifecycleRoot;
 			ExistingChange->bRejectRemovesChildren = IncomingChange.bRejectRemovesChildren;
 			if (IncomingChange.Status == EBlueprintHelperReviewChangeStatus::NeedsAction
@@ -1346,6 +1483,8 @@ TArray<FBlueprintHelperReviewRecord> FBlueprintHelperReviewStoreService::BuildRe
 	{
 		if (FBlueprintHelperReviewRecord* Record = RecordsById.Find(RecordId))
 		{
+			FBlueprintHelperReviewStoreServiceLocalUtils::LinkPendingChildrenToLifecycleRoots(Record->VisibleChanges);
+			FBlueprintHelperReviewStoreServiceLocalUtils::SortVisibleChangesByReviewOrder(Record->VisibleChanges);
 			bool bNeedsAction = false;
 			bool bHasPending = false;
 			for (const FBlueprintHelperReviewVisibleChange& Change : Record->VisibleChanges)
@@ -1639,6 +1778,30 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewStoreService::BuildReviewRecordSum
 	Json->SetArrayField(TEXT("source_task_run_ids"), FBlueprintHelperReviewStoreServiceLocalUtils::MakeReviewJsonStringArray(Record.SourceTaskRunIds));
 	Json->SetArrayField(TEXT("debug_case_ids"), FBlueprintHelperReviewStoreServiceLocalUtils::MakeReviewJsonStringArray(Record.DebugCaseIds));
 
+	FBlueprintHelperReviewArchiveSession ArchiveSession;
+	FString ArchiveSessionError;
+	if (!Record.ArchiveSessionId.IsEmpty() && LoadArchiveSession(Record.ArchiveSessionId, ArchiveSession, ArchiveSessionError))
+	{
+		TSharedRef<FJsonObject> Baseline = MakeShared<FJsonObject>();
+		if (!ArchiveSession.BaselineDirtyAssetPolicy.IsEmpty())
+		{
+			Baseline->SetStringField(TEXT("dirty_asset_policy"), ArchiveSession.BaselineDirtyAssetPolicy);
+		}
+		if (!ArchiveSession.BaselineSnapshotTrust.IsEmpty())
+		{
+			Baseline->SetStringField(TEXT("snapshot_trust"), ArchiveSession.BaselineSnapshotTrust);
+		}
+		Baseline->SetArrayField(TEXT("dirty_target_assets"),
+			FBlueprintHelperReviewStoreServiceLocalUtils::MakeReviewJsonStringArray(ArchiveSession.DirtyTargetAssets));
+		Baseline->SetArrayField(TEXT("warnings"),
+			FBlueprintHelperReviewStoreServiceLocalUtils::MakeReviewJsonStringArray(ArchiveSession.BaselineWarnings));
+		Baseline->SetArrayField(TEXT("disk_snapshot_refs"),
+			FBlueprintHelperReviewStoreServiceLocalUtils::MakeReviewJsonStringArray(ArchiveSession.BaselineSnapshotRefs));
+		Baseline->SetArrayField(TEXT("semantic_snapshot_refs"),
+			FBlueprintHelperReviewStoreServiceLocalUtils::MakeReviewJsonStringArray(ArchiveSession.BaselineSemanticSnapshotRefs));
+		Json->SetObjectField(TEXT("baseline"), Baseline);
+	}
+
 	TSharedRef<FJsonObject> SourceSummary = MakeShared<FJsonObject>();
 	SourceSummary->SetNumberField(TEXT("transaction_count"), Record.SourceTransactionSummary.TransactionCount);
 	SourceSummary->SetArrayField(TEXT("task_run_ids"), FBlueprintHelperReviewStoreServiceLocalUtils::MakeReviewJsonStringArray(Record.SourceTransactionSummary.TaskRunIds));
@@ -1693,6 +1856,18 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewStoreService::BuildReviewRecordSum
 		{
 			ChangeJson->SetStringField(TEXT("parent_change_id"), Change.ParentChangeId);
 		}
+		if (Change.ExecutionOrder != INDEX_NONE)
+		{
+			ChangeJson->SetNumberField(TEXT("execution_order"), Change.ExecutionOrder);
+		}
+		if (Change.TaskStepIndex != INDEX_NONE)
+		{
+			ChangeJson->SetNumberField(TEXT("task_step_index"), Change.TaskStepIndex);
+		}
+		if (Change.AtomicIndex != INDEX_NONE)
+		{
+			ChangeJson->SetNumberField(TEXT("atomic_index"), Change.AtomicIndex);
+		}
 		if (Change.bIsAssetLifecycleRoot)
 		{
 			ChangeJson->SetBoolField(TEXT("is_asset_lifecycle_root"), true);
@@ -1729,9 +1904,13 @@ bool FBlueprintHelperReviewStoreService::SaveReviewRecord(
 		IFileManager::Get().MakeDirectory(*RecordsDir, true);
 	}
 
+	FBlueprintHelperReviewRecord RecordToWrite = Record;
+	FBlueprintHelperReviewStoreServiceLocalUtils::LinkPendingChildrenToLifecycleRoots(RecordToWrite.VisibleChanges);
+	FBlueprintHelperReviewStoreServiceLocalUtils::SortVisibleChangesByReviewOrder(RecordToWrite.VisibleChanges);
+
 	FString JsonText;
 	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonText);
-	if (!FJsonSerializer::Serialize(FBlueprintHelperReviewStoreServiceLocalUtils::ReviewRecordToJson(Record), Writer))
+	if (!FJsonSerializer::Serialize(FBlueprintHelperReviewStoreServiceLocalUtils::ReviewRecordToJson(RecordToWrite), Writer))
 	{
 		OutError = FString::Printf(TEXT("failed to serialize review record: %s"), *Record.ReviewRecordId);
 		return false;
@@ -1783,6 +1962,9 @@ bool FBlueprintHelperReviewStoreService::SaveReviewRecords(
 				RecordToWrite = ExistingRecord;
 			}
 		}
+
+		FBlueprintHelperReviewStoreServiceLocalUtils::LinkPendingChildrenToLifecycleRoots(RecordToWrite.VisibleChanges);
+		FBlueprintHelperReviewStoreServiceLocalUtils::SortVisibleChangesByReviewOrder(RecordToWrite.VisibleChanges);
 
 		FString JsonText;
 		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonText);
@@ -1836,6 +2018,43 @@ bool FBlueprintHelperReviewStoreService::SaveArchiveSession(
 		return false;
 	}
 
+	return true;
+}
+
+bool FBlueprintHelperReviewStoreService::LoadArchiveSession(
+	const FString& ArchiveSessionId,
+	FBlueprintHelperReviewArchiveSession& OutArchiveSession,
+	FString& OutError) const
+{
+	if (ArchiveSessionId.IsEmpty())
+	{
+		OutError = TEXT("archive_session_id is required");
+		return false;
+	}
+
+	const FString Path = FPaths::ProjectSavedDir()
+		/ TEXT("BlueprintHelper")
+		/ TEXT("Review")
+		/ TEXT("ArchiveSessions")
+		/ FString::Printf(TEXT("%s.json"), *ArchiveSessionId);
+
+	FString JsonText;
+	if (!FFileHelper::LoadFileToString(JsonText, *Path))
+	{
+		OutError = FString::Printf(TEXT("archive session not found: %s"), *ArchiveSessionId);
+		return false;
+	}
+
+	TSharedPtr<FJsonObject> Json;
+	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonText);
+	if (!FJsonSerializer::Deserialize(Reader, Json)
+		|| !FBlueprintHelperReviewStoreServiceLocalUtils::ReadReviewArchiveSessionFromJson(Json, OutArchiveSession))
+	{
+		OutError = FString::Printf(TEXT("failed to parse archive session: %s"), *ArchiveSessionId);
+		return false;
+	}
+
+	OutError.Empty();
 	return true;
 }
 
@@ -1945,6 +2164,7 @@ TArray<FBlueprintHelperReviewVisibleChange> FBlueprintHelperReviewStoreService::
 	}
 	FBlueprintHelperReviewStoreServiceLocalUtils::CollapseVisibleChangesLatestWins(RecordChanges);
 	FBlueprintHelperReviewStoreServiceLocalUtils::LinkPendingChildrenToLifecycleRoots(RecordChanges);
+	FBlueprintHelperReviewStoreServiceLocalUtils::SortVisibleChangesByReviewOrder(RecordChanges);
 	return RecordChanges;
 }
 
@@ -2023,6 +2243,9 @@ void FBlueprintHelperReviewStoreService::GroupAtomicVisibleChange(
 		Existing.DisplayLabel = AtomicChange.DisplayLabel.IsEmpty() ? Existing.DisplayLabel : AtomicChange.DisplayLabel;
 		Existing.AfterSummary = AtomicChange.AfterSummary;
 		Existing.ChangeId = AtomicChange.ChangeId;
+		Existing.ExecutionOrder = AtomicChange.ExecutionOrder;
+		Existing.TaskStepIndex = AtomicChange.TaskStepIndex;
+		Existing.AtomicIndex = AtomicChange.AtomicIndex;
 		FBlueprintHelperReviewStoreServiceLocalUtils::ApplyAssetLifecycleRootMetadata(Existing);
 		return;
 	}
@@ -2055,6 +2278,12 @@ void FBlueprintHelperReviewStoreService::AddEvidenceAtomicTargets(
 	{
 		FBlueprintHelperReviewAtomicTarget Target = Evidence.AtomicTargets[Index];
 		Target.AssetPath = Target.AssetPath.IsEmpty() ? Evidence.AssetPath : Target.AssetPath;
+		Target.TaskStepIndex = Evidence.TaskStepIndex;
+		Target.AtomicIndex = Index;
+		if (Target.ExecutionOrder == INDEX_NONE && Target.TaskStepIndex != INDEX_NONE)
+		{
+			Target.ExecutionOrder = Target.TaskStepIndex * 1000 + Index;
+		}
 		Record.SourceTransactionSummary.AssetPaths.AddUnique(Target.AssetPath);
 		Target.LatestTransactionId = Evidence.TransactionId;
 		Target.SourceTransactionIds.AddUnique(Evidence.TransactionId);
@@ -2135,6 +2364,9 @@ void FBlueprintHelperReviewStoreService::AddEvidenceAtomicTargets(
 		Change->ChangeId = FBlueprintHelperReviewStoreServiceLocalUtils::MakeReviewVisibleChangeId(Evidence.TransactionId, VisualGroupKey);
 		Change->ChangeKind = Evidence.ChangeKind;
 		Change->AfterSummary = Evidence.AfterSummary;
+		Change->ExecutionOrder = Target.ExecutionOrder;
+		Change->TaskStepIndex = Target.TaskStepIndex;
+		Change->AtomicIndex = Target.AtomicIndex;
 		FBlueprintHelperReviewStoreServiceLocalUtils::ApplyAssetLifecycleRootMetadata(*Change);
 		if (!NeedsActionReason.IsEmpty())
 		{

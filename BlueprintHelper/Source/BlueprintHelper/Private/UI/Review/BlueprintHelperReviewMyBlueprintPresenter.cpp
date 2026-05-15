@@ -7,6 +7,7 @@
 #include "UI/Review/BlueprintHelperReviewSlateRowGeometryRegistry.h"
 #include "UI/Review/BlueprintHelperReviewSurfaceFrameBuilder.h"
 #include "UI/Review/BlueprintHelperReviewSurfaceRouter.h"
+#include "UI/Review/Native/MyBlueprint/SBlueprintHelperReviewMyBlueprintPanel.h"
 #include "UI/Review/SBlueprintHelperReviewGeometryProbe.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
@@ -282,6 +283,17 @@ TSharedRef<SWidget> FBlueprintHelperReviewMyBlueprintPresenter::BuildContent(
 		return Row;
 	};
 
+	auto MakeVariableRow = [](const FString& Label, const FString& SearchText, ERowKind Kind, const FEdGraphPinType& PinType)
+	{
+		TSharedRef<FRowItem> Row = MakeShared<FRowItem>();
+		Row->Label = FText::FromString(Label);
+		Row->SearchText = SearchText;
+		Row->Kind = Kind;
+		Row->PinType = PinType;
+		Row->bHasPinType = true;
+		return Row;
+	};
+
 	auto AddSection = [&State, &MakeRow](const TCHAR* Label)
 	{
 		TSharedRef<FRowItem> Section = MakeRow(Label, FString(), ERowKind::Section);
@@ -289,28 +301,27 @@ TSharedRef<SWidget> FBlueprintHelperReviewMyBlueprintPresenter::BuildContent(
 		return Section;
 	};
 
-	TArray<FString> KnownRowSearchTexts;
-	auto RememberRowSearchText = [&KnownRowSearchTexts](const FString& SearchText)
-	{
-		if (!SearchText.IsEmpty())
-		{
-			KnownRowSearchTexts.AddUnique(SearchText);
-			const FString Tail = FBlueprintHelperReviewMyBlueprintPresenterUtils::ExtractReadableTail(SearchText);
-			if (!Tail.IsEmpty())
-			{
-				KnownRowSearchTexts.AddUnique(Tail);
-			}
-		}
-	};
-
-	auto AddChildRow = [&MakeRow, &RememberRowSearchText](
+	auto AddChildRow = [&MakeRow](
 		const TSharedRef<FRowItem>& Section,
 		const FString& Label,
 		const FString& SearchText,
 		ERowKind Kind)
 	{
-		Section->Children.Add(MakeRow(Label, SearchText, Kind));
-		RememberRowSearchText(SearchText);
+		TSharedRef<FRowItem> Row = MakeRow(Label, SearchText, Kind);
+		Section->Children.Add(Row);
+		return Row;
+	};
+
+	auto AddVariableChildRow = [&MakeVariableRow](
+		const TSharedRef<FRowItem>& Section,
+		const FString& Label,
+		const FString& SearchText,
+		ERowKind Kind,
+		const FEdGraphPinType& PinType)
+	{
+		TSharedRef<FRowItem> Row = MakeVariableRow(Label, SearchText, Kind, PinType);
+		Section->Children.Add(Row);
+		return Row;
 	};
 
 	auto AddGraphRows = [&AddChildRow](
@@ -318,6 +329,7 @@ TSharedRef<SWidget> FBlueprintHelperReviewMyBlueprintPresenter::BuildContent(
 		const TArray<TObjectPtr<UEdGraph>>& Graphs,
 		ERowKind Kind)
 	{
+		TArray<TSharedRef<FRowItem>> Rows;
 		for (UEdGraph* Graph : Graphs)
 		{
 			if (!Graph)
@@ -325,12 +337,12 @@ TSharedRef<SWidget> FBlueprintHelperReviewMyBlueprintPresenter::BuildContent(
 				continue;
 			}
 			const FString GraphName = Graph->GetName();
-			AddChildRow(Section, GraphName, GraphName, Kind);
+			Rows.Add(AddChildRow(Section, GraphName, GraphName, Kind));
 		}
+		return Rows;
 	};
 
 	TSharedRef<FRowItem> GraphSection = AddSection(TEXT("Graphs"));
-	AddGraphRows(GraphSection, Blueprint->UbergraphPages, ERowKind::Graph);
 	for (UEdGraph* Graph : Blueprint->UbergraphPages)
 	{
 		if (!Graph)
@@ -338,6 +350,8 @@ TSharedRef<SWidget> FBlueprintHelperReviewMyBlueprintPresenter::BuildContent(
 			continue;
 		}
 
+		const FString GraphName = Graph->GetName();
+		TSharedRef<FRowItem> GraphRow = AddChildRow(GraphSection, GraphName, GraphName, ERowKind::Graph);
 		for (UEdGraphNode* Node : Graph->Nodes)
 		{
 			const UK2Node_CustomEvent* CustomEvent = Cast<UK2Node_CustomEvent>(Node);
@@ -349,10 +363,11 @@ TSharedRef<SWidget> FBlueprintHelperReviewMyBlueprintPresenter::BuildContent(
 			const FString EventName = CustomEvent->CustomFunctionName.ToString();
 			if (!EventName.IsEmpty())
 			{
-				AddChildRow(GraphSection, EventName, EventName, ERowKind::Event);
+				GraphRow->Children.Add(MakeRow(EventName, EventName, ERowKind::Event));
 			}
 		}
 	}
+
 	TSharedRef<FRowItem> FunctionSection = AddSection(TEXT("Functions"));
 	AddGraphRows(FunctionSection, Blueprint->FunctionGraphs, ERowKind::Function);
 	TSharedRef<FRowItem> MacroSection = AddSection(TEXT("Macros"));
@@ -370,215 +385,21 @@ TSharedRef<SWidget> FBlueprintHelperReviewMyBlueprintPresenter::BuildContent(
 		const bool bIsDispatcher = Variable.VarType.PinCategory == UEdGraphSchema_K2::PC_MCDelegate;
 		if (bIsDispatcher)
 		{
-			AddChildRow(DispatcherSection, VariableName, VariableName, ERowKind::Dispatcher);
+			AddVariableChildRow(DispatcherSection, VariableName, VariableName, ERowKind::Dispatcher, Variable.VarType);
 		}
 		else
 		{
-			AddChildRow(VariableSection, VariableName, VariableName, ERowKind::Variable);
+			AddVariableChildRow(VariableSection, VariableName, VariableName, ERowKind::Variable, Variable.VarType);
 		}
 	}
 
-	AddGraphRows(DispatcherSection, Blueprint->DelegateSignatureGraphs, ERowKind::Dispatcher);
-
-	auto HasKnownRow = [&KnownRowSearchTexts](const FString& Candidate)
-	{
-		if (Candidate.IsEmpty())
-		{
-			return true;
-		}
-		for (const FString& Known : KnownRowSearchTexts)
-		{
-			if (FBlueprintHelperReviewMyBlueprintPresenterUtils::GeometrySearchTextMatches(Known, Candidate)
-				|| FBlueprintHelperReviewMyBlueprintPresenterUtils::GeometrySearchTextMatches(Candidate, Known))
-			{
-				return true;
-			}
-		}
-		return false;
-	};
-
-	TSharedPtr<FRowItem> ReviewAnchorSection;
-	auto EnsureReviewAnchorSection = [&State, &MakeRow, &ReviewAnchorSection]()
-	{
-		if (!ReviewAnchorSection.IsValid())
-		{
-			ReviewAnchorSection = MakeRow(TEXT("Review Anchors"), FString(), ERowKind::Section);
-			State.RootItems.Add(ReviewAnchorSection.ToSharedRef());
-		}
-		return ReviewAnchorSection.ToSharedRef();
-	};
-
-	for (const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Change : ChangeItems)
-	{
-		if (!Change.IsValid() || !ShouldShowChange(*Change))
-		{
-			continue;
-		}
-		for (const FBlueprintHelperReviewAtomicTarget& Target : Change->AtomicTargets)
-		{
-			if (Target.Surface != EBlueprintHelperReviewSurface::MyBlueprint)
-			{
-				continue;
-			}
-			const FString Candidate = !Target.TargetKey.IsEmpty()
-				? Target.TargetKey
-				: (!Target.DisplayLabel.IsEmpty() ? Target.DisplayLabel : Change->DisplayLabel);
-			const FString Label = FBlueprintHelperReviewMyBlueprintPresenterUtils::ExtractReadableTail(Candidate);
-			if (Label.IsEmpty() || HasKnownRow(Candidate) || HasKnownRow(Label))
-			{
-				continue;
-			}
-			AddChildRow(EnsureReviewAnchorSection(), Label, Candidate, ERowKind::ReviewOnly);
-		}
-	}
-
-	State.RootItems.RemoveAll([](const TSharedPtr<FRowItem>& Item)
-	{
-		return Item.IsValid()
-			&& Item->Children.Num() == 0
-			&& Item->Label.ToString() != TEXT("Event Dispatchers")
-			&& Item->Label.ToString() != TEXT("Macros");
-	});
-
-	if (State.RootItems.Num() == 0)
-	{
-		return FBlueprintHelperReviewMyBlueprintPresenterUtils::BuildReviewPlaceholder(
-			TEXT("No Blueprint outline loaded."));
-	}
-
-	const FString AssetPath = Context.AssetPath;
-	TSharedRef<STreeView<TSharedPtr<FRowItem>>> Tree = SAssignNew(State.TreeView, STreeView<TSharedPtr<FRowItem>>)
-		.TreeItemsSource(&State.RootItems)
-		.SelectionMode(ESelectionMode::None)
-		.OnGenerateRow_Lambda([AssetPath, OnGeometryInvalidated](
-			TSharedPtr<FRowItem> Item,
-			const TSharedRef<STableViewBase>& OwnerTable) -> TSharedRef<ITableRow>
-		{
-			const bool bIsSection = Item.IsValid() && Item->Kind == ERowKind::Section;
-			const FSlateColor TextColor = bIsSection
-				? FSlateColor(FLinearColor(0.84f, 0.84f, 0.84f, 1.0f))
-				: FSlateColor(FLinearColor(0.72f, 0.72f, 0.72f, 1.0f));
-			const FSlateColor SectionBackgroundColor(FLinearColor(0.18f, 0.18f, 0.18f, 1.0f));
-			const FString SearchText = Item.IsValid() ? Item->SearchText : FString();
-			TSharedRef<SWidget> RowContent =
-				SNew(SBlueprintHelperReviewGeometryProbe)
-				.Surface(EBlueprintHelperReviewSurface::MyBlueprint)
-				.TargetKey(SearchText)
-				.OnGeometryInvalidated(OnGeometryInvalidated)
-				[
-					SNew(SBorder)
-					.BorderImage(FAppStyle::GetBrush(TEXT("Brushes.White")))
-					.BorderBackgroundColor_Lambda([AssetPath, SearchText, bIsSection, SectionBackgroundColor]()
-					{
-						if (bIsSection)
-						{
-							return SectionBackgroundColor;
-						}
-						return FBlueprintHelperReviewRowHighlightModel::GetRowBackgroundColor(
-							AssetPath,
-							EBlueprintHelperReviewSurface::MyBlueprint,
-							SearchText);
-					})
-					.Padding(FMargin(4.0f, 2.0f))
-					[
-						SNew(SHorizontalBox)
-						+ SHorizontalBox::Slot()
-						.FillWidth(1.0f)
-						.VAlign(VAlign_Center)
-						[
-							SNew(STextBlock)
-							.Text(Item.IsValid() ? Item->Label : FText::GetEmpty())
-							.ColorAndOpacity(TextColor)
-						]
-						+ SHorizontalBox::Slot()
-						.AutoWidth()
-						.Padding(6.0f, 0.0f, 0.0f, 0.0f)
-						.VAlign(VAlign_Center)
-						[
-							SNew(SHorizontalBox)
-							.Visibility_Lambda([AssetPath, SearchText, bIsSection]()
-							{
-								if (bIsSection)
-								{
-									return EVisibility::Collapsed;
-								}
-								return FBlueprintHelperReviewRowHighlightModel::GetRowActionsVisibility(
-									AssetPath,
-									EBlueprintHelperReviewSurface::MyBlueprint,
-									SearchText);
-							})
-							+ SHorizontalBox::Slot()
-							.AutoWidth()
-							.Padding(0.0f, 0.0f, 4.0f, 0.0f)
-							[
-								SNew(SButton)
-								.Text(FText::FromString(TEXT("Accept")))
-								.OnClicked_Lambda([AssetPath, SearchText]()
-								{
-									return FBlueprintHelperReviewRowHighlightModel::AcceptHighlightedRow(
-										AssetPath,
-										EBlueprintHelperReviewSurface::MyBlueprint,
-										SearchText);
-								})
-							]
-							+ SHorizontalBox::Slot()
-							.AutoWidth()
-							[
-								SNew(SButton)
-								.Text(FText::FromString(TEXT("Reject")))
-								.OnClicked_Lambda([AssetPath, SearchText]()
-								{
-									return FBlueprintHelperReviewRowHighlightModel::RejectHighlightedRow(
-										AssetPath,
-										EBlueprintHelperReviewSurface::MyBlueprint,
-										SearchText);
-								})
-							]
-						]
-					]
-				];
-			TSharedRef<STableRow<TSharedPtr<FRowItem>>> RowWidget =
-				SNew(STableRow<TSharedPtr<FRowItem>>, OwnerTable)
-				.Padding(FMargin(2.0f, 1.0f))
-				[
-					RowContent
-				];
-
-			if (Item.IsValid())
-			{
-				Item->RowWidget = RowContent;
-				if (!SearchText.IsEmpty())
-				{
-					FBlueprintHelperReviewSlateRowGeometryRegistry::RegisterRow(
-						AssetPath,
-						EBlueprintHelperReviewSurface::MyBlueprint,
-						SearchText,
-						RowContent,
-						TEXT("owned_tree_row"));
-				}
-			}
-			return RowWidget;
-		})
-		.OnGetChildren_Lambda([](TSharedPtr<FRowItem> Item, TArray<TSharedPtr<FRowItem>>& OutChildren)
-		{
-			if (Item.IsValid())
-			{
-				OutChildren.Append(Item->Children);
-			}
-		});
-
-	for (const TSharedPtr<FRowItem>& Root : State.RootItems)
-	{
-		State.TreeView->SetItemExpansion(Root, true);
-	}
-
-	return SNew(SBorder)
-		.Padding(6.0f)
-		[
-			Tree
-		];
+	TSharedRef<SBlueprintHelperReviewMyBlueprintPanel> Panel = SNew(SBlueprintHelperReviewMyBlueprintPanel)
+		.RootItemsSource(&State.RootItems)
+		.AssetPath(Context.AssetPath)
+		.OnGeometryInvalidated(OnGeometryInvalidated);
+	State.TreeView = Panel->GetTreeView();
+	return Panel;
 }
-
 TSharedRef<SWidget> FBlueprintHelperReviewMyBlueprintPresenter::BuildOverlay(
 	const FBlueprintHelperReviewPanelSurfacePresenterArgs& Args)
 {

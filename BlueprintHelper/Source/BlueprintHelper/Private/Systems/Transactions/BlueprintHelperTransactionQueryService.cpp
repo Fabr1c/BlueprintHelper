@@ -43,7 +43,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTransactionQueryService::List(con
 
 	FBlueprintHelperToolResultBase Result;
 	Result.bOk = true;
-	Result.Schema = TEXT("BlueprintHelper.McpToolResult.v1");
+	Result.Schema = FBlueprintHelperProtocol::ToolResultSchema;
 	Result.Operation = TEXT("list_blueprint_helper_transactions");
 	Result.TraceId = TraceId;
 	Result.Status = EBlueprintHelperToolStatus::Completed;
@@ -84,7 +84,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTransactionQueryService::Read(con
 
 	FBlueprintHelperToolResultBase Result;
 	Result.bOk = true;
-	Result.Schema = TEXT("BlueprintHelper.McpToolResult.v1");
+	Result.Schema = FBlueprintHelperProtocol::ToolResultSchema;
 	Result.Operation = TEXT("read_blueprint_helper_transaction");
 	Result.TraceId = TraceId;
 	Result.Status = EBlueprintHelperToolStatus::Completed;

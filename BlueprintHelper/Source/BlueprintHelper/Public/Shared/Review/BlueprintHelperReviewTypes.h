@@ -200,6 +200,9 @@ struct FBlueprintHelperReviewAtomicTarget
 	FString BaselineHash;
 	FString RollbackDataRef;
 	EBlueprintHelperReviewChangeStatus Status = EBlueprintHelperReviewChangeStatus::Pending;
+	int32 ExecutionOrder = INDEX_NONE;
+	int32 TaskStepIndex = INDEX_NONE;
+	int32 AtomicIndex = INDEX_NONE;
 	bool bHasGraphBounds = false;
 	FVector2D GraphPosition = FVector2D::ZeroVector;
 	FVector2D GraphSize = FVector2D(360.0f, 180.0f);
@@ -235,6 +238,9 @@ struct FBlueprintHelperReviewVisibleChange
 	FString AfterSummary;
 	FString NeedsActionReason;
 	FString ParentChangeId;
+	int32 ExecutionOrder = INDEX_NONE;
+	int32 TaskStepIndex = INDEX_NONE;
+	int32 AtomicIndex = INDEX_NONE;
 	bool bIsAssetLifecycleRoot = false;
 	bool bRejectRemovesChildren = false;
 };
@@ -252,6 +258,7 @@ struct FBlueprintHelperWriteReviewEvidence
 	FString DisplayLabel;
 	FString BeforeSummary;
 	FString AfterSummary;
+	int32 TaskStepIndex = INDEX_NONE;
 	TArray<FString> DebugCaseIds;
 	TArray<FBlueprintHelperReviewAtomicTarget> AtomicTargets;
 };
@@ -263,6 +270,11 @@ struct FBlueprintHelperReviewArchiveSession
 	FString TaskRunId;
 	TArray<FString> AllowedTargetAssets;
 	TArray<FString> BaselineSnapshotRefs;
+	TArray<FString> BaselineSemanticSnapshotRefs;
+	TArray<FString> DirtyTargetAssets;
+	TArray<FString> BaselineWarnings;
+	FString BaselineDirtyAssetPolicy;
+	FString BaselineSnapshotTrust;
 	FString CreatedAt;
 };
 
@@ -357,6 +369,11 @@ inline bool BlueprintHelperReviewTargetKindCanRouteToDetails(const FString& Targ
 	return Kind.Contains(TEXT("class_default"))
 		|| Kind.Contains(TEXT("blueprint_default"))
 		|| Kind.Contains(TEXT("blueprint_setting"))
+		|| Kind.Contains(TEXT("blueprint_variable"))
+		|| Kind.Contains(TEXT("variable"))
+		|| Kind.Contains(TEXT("component"))
+		|| Kind.Contains(TEXT("object_property"))
+		|| Kind.Contains(TEXT("property"))
 		|| Kind.Contains(TEXT("class_setting"))
 		|| Kind.Contains(TEXT("blueprint_class"))
 		|| Kind.Contains(TEXT("interface"))

@@ -334,8 +334,8 @@ describePythonOrchestrator('Python task orchestrator adapter', () => {
         statements: [
           {
             id: 'ToggleDoor_stmt_1',
-            kind: 'call_function',
-            name: 'PrintString',
+            kind: 'call',
+            target: 'PrintString',
             args: {
               InString: {
                 id: 'ToggleDoor_stmt_1_arg_InString',

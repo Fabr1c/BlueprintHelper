@@ -66,6 +66,25 @@ public:
 		return TEXT("");
 	}
 
+	static FString SanitizeDisplayText(const FString& InValue)
+	{
+		FString Result;
+		Result.Reserve(InValue.Len());
+		for (const TCHAR Char : InValue)
+		{
+			if (Char == TEXT('\t') || Char == TEXT('\n') || Char == TEXT('\r') || Char >= 0x20)
+			{
+				Result.AppendChar(Char);
+			}
+		}
+		Result.TrimStartAndEndInline();
+		if (Result.Len() > 256)
+		{
+			Result.LeftInline(256, EAllowShrinking::No);
+		}
+		return Result;
+	}
+
 	static bool TryReadNestedStringField(
 		const TSharedPtr<FJsonObject>& Object,
 		const TCHAR* ObjectFieldName,
@@ -956,20 +975,21 @@ FString FBlueprintHelperLogicGroupBuilder::ExtractNodeName(const TSharedPtr<FJso
 	if (!NodeObj.IsValid()) return TEXT("Unknown");
 
 	FString Name;
-	if (NodeObj->TryGetStringField(TEXT("name"), Name) && !Name.IsEmpty()) return Name;
-	if (NodeObj->TryGetStringField(TEXT("member_name"), Name) && !Name.IsEmpty()) return Name;
-	if (NodeObj->TryGetStringField(TEXT("function_name"), Name) && !Name.IsEmpty()) return Name;
+	if (NodeObj->TryGetStringField(TEXT("name"), Name) && !Name.IsEmpty()) return FBlueprintHelperLogicGroupBuilderLocalUtils::SanitizeDisplayText(Name);
+	if (NodeObj->TryGetStringField(TEXT("member_name"), Name) && !Name.IsEmpty()) return FBlueprintHelperLogicGroupBuilderLocalUtils::SanitizeDisplayText(Name);
+	if (NodeObj->TryGetStringField(TEXT("function_name"), Name) && !Name.IsEmpty()) return FBlueprintHelperLogicGroupBuilderLocalUtils::SanitizeDisplayText(Name);
 	const TSharedPtr<FJsonObject>* EventObj = nullptr;
 	if (NodeObj->TryGetObjectField(TEXT("event"), EventObj) && EventObj && EventObj->IsValid())
 	{
-		if ((*EventObj)->TryGetStringField(TEXT("event_name"), Name) && !Name.IsEmpty()) return Name;
+		if ((*EventObj)->TryGetStringField(TEXT("event_name"), Name) && !Name.IsEmpty()) return FBlueprintHelperLogicGroupBuilderLocalUtils::SanitizeDisplayText(Name);
 	}
 	NodeObj->TryGetStringField(TEXT("class"), Name);
 	if (Name.IsEmpty())
 	{
 		NodeObj->TryGetStringField(TEXT("type"), Name);
 	}
-	return Name.IsEmpty() ? TEXT("Unknown") : Name;
+	const FString SanitizedName = FBlueprintHelperLogicGroupBuilderLocalUtils::SanitizeDisplayText(Name);
+	return SanitizedName.IsEmpty() ? TEXT("Unknown") : SanitizedName;
 }
 
 FString FBlueprintHelperLogicGroupBuilder::ExtractOwner(const TSharedPtr<FJsonObject>& NodeObj)
@@ -978,7 +998,7 @@ FString FBlueprintHelperLogicGroupBuilder::ExtractOwner(const TSharedPtr<FJsonOb
 
 	FString Owner;
 	NodeObj->TryGetStringField(TEXT("owner"), Owner);
-	return Owner;
+	return FBlueprintHelperLogicGroupBuilderLocalUtils::SanitizeDisplayText(Owner);
 }
 
 bool FBlueprintHelperLogicGroupBuilder::IsEntryNode(const TSharedPtr<FJsonObject>& NodeObj)

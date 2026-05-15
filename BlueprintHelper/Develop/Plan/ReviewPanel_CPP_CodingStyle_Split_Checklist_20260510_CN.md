@@ -1,5 +1,7 @@
 # ReviewPanel C++ Coding Style 拆分清单
 
+> 2026-05-14 状态转移：本文中的未达期待、待验证项和阻塞项已迁移到 [BlueprintHelper_UnmetExpectations_Consolidated_20260514_CN.md](BlueprintHelper_UnmetExpectations_Consolidated_20260514_CN.md)。本文保留为历史上下文；开放项跟踪迁移完成，后续当前状态以总账为准。
+
 ## 2026-05-10 执行进度同步
 
 已修复本轮“Git/迁移损坏”的实际问题：Git object 检查无致命损坏，损坏点是 ReviewPanel 迁移半成品中的重复定义、文件内 helper class 和编译错误。当前 Review UI 迁移代码已经恢复到可编译状态。

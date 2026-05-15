@@ -242,7 +242,7 @@ bool FBlueprintHelperDebugCaseStoreService::WriteJsonArtifact(
 	FString NormalizedBundleDir = BundleDir;
 	FPaths::NormalizeFilename(NormalizedArtifactPath);
 	FPaths::NormalizeDirectoryName(NormalizedBundleDir);
-	if (!NormalizedArtifactPath.StartsWith(NormalizedBundleDir)
+	if (!IsPathInsideDirectory(NormalizedArtifactPath, NormalizedBundleDir)
 		|| !IsPathInsideDebugRoot(NormalizedArtifactPath))
 	{
 		SetError(OutError, TEXT("debug artifact path escaped debug bundle directory"));
@@ -492,7 +492,7 @@ bool FBlueprintHelperDebugCaseStoreService::ExportReviewSummaryArtifacts(
 		const FString SafeReviewId = MakeSafeArtifactFileName(ReviewRecordId);
 		const FString ReviewSummaryRef = TEXT("artifacts/review/") + SafeReviewId + TEXT(".summary.json");
 		const FString ReviewSummaryPath = BundleDir / ReviewSummaryRef;
-		if (!ReviewSummaryPath.StartsWith(BundleDir))
+		if (!IsPathInsideDirectory(ReviewSummaryPath, BundleDir))
 		{
 			SetError(OutError, TEXT("review summary path escaped debug bundle directory"));
 			return false;
@@ -509,6 +509,89 @@ bool FBlueprintHelperDebugCaseStoreService::ExportReviewSummaryArtifacts(
 
 		Manifest.Contents.AddUnique(ReviewSummaryRef);
 		Manifest.ReviewSummaryRefs.AddUnique(ReviewSummaryRef);
+
+		FBlueprintHelperReviewArchiveSession ArchiveSession;
+		FString ArchiveSessionError;
+		if (!ReviewRecord.ArchiveSessionId.IsEmpty()
+			&& ReviewStore->LoadArchiveSession(ReviewRecord.ArchiveSessionId, ArchiveSession, ArchiveSessionError))
+		{
+			int32 SemanticSnapshotIndex = 0;
+			const FString RefPrefix = FString::Printf(
+				TEXT("review://archive/%s/baseline/"),
+				*ArchiveSession.ArchiveSessionId);
+			for (const FString& SemanticSnapshotRef : ArchiveSession.BaselineSemanticSnapshotRefs)
+			{
+				if (!SemanticSnapshotRef.StartsWith(RefPrefix)
+					|| !SemanticSnapshotRef.EndsWith(TEXT("/baseline.semantic.json")))
+				{
+					FBlueprintHelperDebugSkippedArtifact Skipped;
+					Skipped.Artifact = TEXT("semantic_baseline:") + SemanticSnapshotRef;
+					Skipped.Reason = TEXT("semantic baseline ref did not match review archive ref format");
+					Manifest.SkippedArtifacts.Add(Skipped);
+					continue;
+				}
+
+				FString SnapshotKey = SemanticSnapshotRef.Mid(RefPrefix.Len());
+				SnapshotKey.LeftChopInline(FString(TEXT("/baseline.semantic.json")).Len());
+				if (SnapshotKey.IsEmpty()
+					|| SnapshotKey.Contains(TEXT(".."))
+					|| SnapshotKey.Contains(TEXT("/"))
+					|| SnapshotKey.Contains(TEXT("\\")))
+				{
+					FBlueprintHelperDebugSkippedArtifact Skipped;
+					Skipped.Artifact = TEXT("semantic_baseline:") + SemanticSnapshotRef;
+					Skipped.Reason = TEXT("semantic baseline snapshot key was unsafe");
+					Manifest.SkippedArtifacts.Add(Skipped);
+					continue;
+				}
+
+				const FString SnapshotPath = FPaths::Combine(
+					FPaths::ProjectSavedDir(),
+					TEXT("BlueprintHelper"),
+					TEXT("Review"),
+					TEXT("Snapshots"),
+					ArchiveSession.ArchiveSessionId,
+					SnapshotKey,
+					TEXT("baseline.semantic.json"));
+				if (!IFileManager::Get().FileExists(*SnapshotPath))
+				{
+					FBlueprintHelperDebugSkippedArtifact Skipped;
+					Skipped.Artifact = TEXT("semantic_baseline:") + SemanticSnapshotRef;
+					Skipped.Reason = TEXT("semantic baseline snapshot file not found");
+					Manifest.SkippedArtifacts.Add(Skipped);
+					continue;
+				}
+
+				FString SnapshotText;
+				if (!FFileHelper::LoadFileToString(SnapshotText, *SnapshotPath))
+				{
+					SetError(OutError, TEXT("failed to read semantic baseline snapshot"));
+					return false;
+				}
+
+				TSharedPtr<FJsonObject> SnapshotJson;
+				const TSharedRef<TJsonReader<>> SnapshotReader = TJsonReaderFactory<>::Create(SnapshotText);
+				if (!FJsonSerializer::Deserialize(SnapshotReader, SnapshotJson) || !SnapshotJson.IsValid())
+				{
+					FBlueprintHelperDebugSkippedArtifact Skipped;
+					Skipped.Artifact = TEXT("semantic_baseline:") + SemanticSnapshotRef;
+					Skipped.Reason = TEXT("semantic baseline snapshot JSON could not be parsed");
+					Manifest.SkippedArtifacts.Add(Skipped);
+					continue;
+				}
+
+				++SemanticSnapshotIndex;
+				const FString SemanticSnapshotArtifactRef = TEXT("artifacts/review/")
+					+ SafeReviewId
+					+ FString::Printf(TEXT(".baseline.semantic.%d.json"), SemanticSnapshotIndex);
+				if (!WriteJsonArtifact(BundleDir, SemanticSnapshotArtifactRef, SnapshotJson.ToSharedRef(), OutError))
+				{
+					return false;
+				}
+
+				Manifest.Contents.AddUnique(SemanticSnapshotArtifactRef);
+			}
+		}
 	}
 
 	return true;
@@ -523,13 +606,29 @@ bool FBlueprintHelperDebugCaseStoreService::IsCleanupProtectedCase(const FBluepr
 		|| ErrorCodeLower.Contains(TEXT("rollback"));
 }
 
-bool FBlueprintHelperDebugCaseStoreService::IsPathInsideDebugRoot(const FString& Path)
+bool FBlueprintHelperDebugCaseStoreService::IsPathInsideDirectory(const FString& Path, const FString& Directory)
 {
 	FString NormalizedPath = Path;
-	FString NormalizedRoot = GetDebugRootDir();
+	FString NormalizedRoot = Directory;
 	FPaths::NormalizeFilename(NormalizedPath);
 	FPaths::NormalizeDirectoryName(NormalizedRoot);
-	return NormalizedPath.StartsWith(NormalizedRoot);
+	FPaths::CollapseRelativeDirectories(NormalizedPath);
+	FPaths::CollapseRelativeDirectories(NormalizedRoot);
+
+	if (NormalizedPath.Equals(NormalizedRoot, ESearchCase::IgnoreCase))
+	{
+		return true;
+	}
+
+	const FString RootPrefix = NormalizedRoot.EndsWith(TEXT("/"))
+		? NormalizedRoot
+		: NormalizedRoot + TEXT("/");
+	return NormalizedPath.StartsWith(RootPrefix, ESearchCase::IgnoreCase);
+}
+
+bool FBlueprintHelperDebugCaseStoreService::IsPathInsideDebugRoot(const FString& Path)
+{
+	return IsPathInsideDirectory(Path, GetDebugRootDir());
 }
 
 bool FBlueprintHelperDebugCaseStoreService::SaveCase(const FBlueprintHelperDebugCase& DebugCase, FString* OutError) const

@@ -713,6 +713,20 @@ struct FBlueprintHelperDebugBundleManifest
 
 	TSharedRef<FJsonObject> ToJson() const
 	{
+		auto IsSafeRelativeArtifactRef = [](FString Ref)
+		{
+			Ref.TrimStartAndEndInline();
+			FPaths::NormalizeFilename(Ref);
+			return !Ref.IsEmpty()
+				&& FPaths::IsRelative(Ref)
+				&& !FBlueprintHelperDebugJson::IsLocalDebugPath(Ref)
+				&& Ref != TEXT("..")
+				&& !Ref.StartsWith(TEXT("../"))
+				&& !Ref.Contains(TEXT("/../"))
+				&& !Ref.EndsWith(TEXT("/.."))
+				&& !Ref.Contains(TEXT("debug_export_refs"));
+		};
+
 		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
 		Json->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.DebugBundleManifest.v1"));
 		if (!BundleId.IsEmpty()) Json->SetStringField(TEXT("bundle_id"), BundleId);
@@ -720,11 +734,11 @@ struct FBlueprintHelperDebugBundleManifest
 		Json->SetStringField(TEXT("format"), TEXT("directory"));
 		if (!CreatedAt.IsEmpty()) Json->SetStringField(TEXT("created_at"), CreatedAt);
 		Json->SetNumberField(TEXT("manifest_version"), 1);
-		if (!SummaryRef.IsEmpty() && FPaths::IsRelative(SummaryRef)) Json->SetStringField(TEXT("summary_ref"), SummaryRef);
+		if (IsSafeRelativeArtifactRef(SummaryRef)) Json->SetStringField(TEXT("summary_ref"), SummaryRef);
 		TArray<TSharedPtr<FJsonValue>> SafeContents;
 		for (const FString& Content : Contents)
 		{
-			if (!Content.IsEmpty() && FPaths::IsRelative(Content) && !FBlueprintHelperDebugJson::IsLocalDebugPath(Content))
+			if (IsSafeRelativeArtifactRef(Content))
 			{
 				SafeContents.Add(MakeShared<FJsonValueString>(Content));
 			}
@@ -733,7 +747,7 @@ struct FBlueprintHelperDebugBundleManifest
 		TArray<TSharedPtr<FJsonValue>> SafeReviewRefs;
 		for (const FString& ReviewSummaryRef : ReviewSummaryRefs)
 		{
-			if (!ReviewSummaryRef.IsEmpty() && FPaths::IsRelative(ReviewSummaryRef) && !FBlueprintHelperDebugJson::IsLocalDebugPath(ReviewSummaryRef))
+			if (IsSafeRelativeArtifactRef(ReviewSummaryRef))
 			{
 				SafeReviewRefs.Add(MakeShared<FJsonValueString>(ReviewSummaryRef));
 			}
@@ -755,6 +769,13 @@ struct FBlueprintHelperDebugBundleManifest
 			}
 			Json->SetArrayField(TEXT("skipped_artifacts"), SkippedValues);
 		}
+		TSharedRef<FJsonObject> ArtifactSummary = MakeShared<FJsonObject>();
+		ArtifactSummary->SetNumberField(TEXT("content_count"), SafeContents.Num());
+		ArtifactSummary->SetNumberField(TEXT("review_summary_count"), SafeReviewRefs.Num());
+		ArtifactSummary->SetNumberField(TEXT("skipped_count"), SkippedArtifacts.Num());
+		ArtifactSummary->SetBoolField(TEXT("contains_legacy_debug_export_refs"), false);
+		ArtifactSummary->SetBoolField(TEXT("contains_local_absolute_paths"), false);
+		Json->SetObjectField(TEXT("artifact_summary"), ArtifactSummary);
 		TSharedRef<FJsonObject> Privacy = MakeShared<FJsonObject>();
 		Privacy->SetStringField(TEXT("profile"), TEXT("standard"));
 		Privacy->SetBoolField(TEXT("summary_only"), true);
@@ -764,6 +785,7 @@ struct FBlueprintHelperDebugBundleManifest
 		Privacy->SetBoolField(TEXT("contains_local_absolute_paths"), false);
 		Privacy->SetBoolField(TEXT("contains_full_asset_raw_json"), false);
 		Privacy->SetBoolField(TEXT("contains_source_files"), false);
+		Privacy->SetBoolField(TEXT("contains_legacy_debug_export_refs"), false);
 		TArray<TSharedPtr<FJsonValue>> Redactions;
 		Redactions.Add(MakeShared<FJsonValueString>(TEXT("tokens")));
 		Redactions.Add(MakeShared<FJsonValueString>(TEXT("env_values")));
@@ -771,6 +793,7 @@ struct FBlueprintHelperDebugBundleManifest
 		Redactions.Add(MakeShared<FJsonValueString>(TEXT("local_absolute_paths")));
 		Redactions.Add(MakeShared<FJsonValueString>(TEXT("full_raw_json")));
 		Redactions.Add(MakeShared<FJsonValueString>(TEXT("source_content")));
+		Redactions.Add(MakeShared<FJsonValueString>(TEXT("legacy_debug_export_refs")));
 		Privacy->SetArrayField(TEXT("redactions"), Redactions);
 		Json->SetObjectField(TEXT("privacy"), Privacy);
 		return Json;
