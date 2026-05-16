@@ -1,9 +1,9 @@
 # 08 - BlueprintHelper User Preferences
 
 schema: BlueprintHelper.UserPreferences.v1
-generated_by: ClaudePlugin/commands/setup.md
+generated_by: install.ps1
 saved_at: 2026-05-10
-source: setup_user_preference_wizard
+source: install_default_conservative_profile
 updated_by: ClaudePlugin/commands/configure.md
 
 ## Purpose
@@ -88,9 +88,9 @@ Agents should read this file before BlueprintHelper planning, status review, imp
 
 ## Preference Collection Forms
 
-The setup command should create this file during first-run configuration. The configure command should update this file and the active safety profile after setup.
+The root `install.ps1` script creates this file only when it is missing. The configure command should update this file and the active safety profile after installation.
 
-Both commands should call `AskUserQuestion` to render native interactive forms. Do not print the form schema as plain Markdown unless `AskUserQuestion` is unavailable in the current Claude environment.
+The configure command should call `AskUserQuestion` to render native interactive forms. Do not print the form schema as plain Markdown unless `AskUserQuestion` is unavailable in the current Claude environment.
 
 Each native form should include:
 
