@@ -15,14 +15,14 @@ struct FBlueprintHelperRuntimeProfileData;
 class BLUEPRINTHELPER_API FBlueprintHelperRuntimeProfileService
 {
 public:
-	FBlueprintHelperRuntimeProfileService();
+	explicit FBlueprintHelperRuntimeProfileService(TFunction<bool()> InBridgeRunningProvider = TFunction<bool()>());
 
 	/** 获取当前运行。Profile 完整数据。*/
 	FBlueprintHelperRuntimeProfileData GetRuntimeProfile() const;
 
 private:
 	/** 判断 Bridge 连接状态。*/
-	static EBlueprintHelperBridgeStatus DetectBridgeStatus();
+	EBlueprintHelperBridgeStatus DetectBridgeStatus() const;
 
 	/** 判断配置状态。*/
 	static EBlueprintHelperConfigStatus DetectConfigStatus();
@@ -41,4 +41,6 @@ private:
 
 	/** 获取插件版本号（。uplugin 或编译宏）。*/
 	static FString GetPluginVersion();
+
+	TFunction<bool()> BridgeRunningProvider;
 };

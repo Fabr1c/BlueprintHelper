@@ -13,7 +13,7 @@
 #include "Runtime/TaskRuntime/Clusters/ObjectProperty/BlueprintHelperObjectPropertyTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/Signature/BlueprintHelperSignatureTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/UMGWidget/BlueprintHelperUMGWidgetTaskRuntimeCluster.h"
-#include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.h"
+#include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeTypes.h"
 
 class FBlueprintHelperAppendBlueprintGraphService;
 class FBlueprintHelperReplaceBlueprintGraphService;

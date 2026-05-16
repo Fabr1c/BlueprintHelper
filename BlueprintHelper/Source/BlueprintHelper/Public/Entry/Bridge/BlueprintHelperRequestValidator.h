@@ -6,15 +6,6 @@
 #include "Entry/Bridge/BlueprintHelperBridgeTypes.h"
 #include "Shared/BlueprintHelperServiceTypes.h"
 
-struct BLUEPRINTHELPER_API FBlueprintHelperBridgeValidationError
-{
-	FString Code;
-	FString Field;
-	FString ExpectedType;
-	FString ActualType;
-	FString Message;
-};
-
 class BLUEPRINTHELPER_API FBlueprintHelperRequestValidator
 {
 public:

@@ -1,7 +1,6 @@
 // BlueprintHelper Service Layer 。Runtime Profile 服务实现
 
 #include "Systems/Debug/BlueprintHelperRuntimeProfileService.h"
-#include "Entry/BlueprintHelper.h"
 #include "Shared/Debug/BlueprintHelperRuntimeProfileTypes.h"
 #include "Shared/BlueprintHelperToolResultTypes.h"
 #include "Systems/Authorization/BlueprintHelperWriteAuthorizationService.h"
@@ -10,7 +9,10 @@
 #include "Misc/ConfigCacheIni.h"
 #include "HAL/PlatformProcess.h"
 
-FBlueprintHelperRuntimeProfileService::FBlueprintHelperRuntimeProfileService() = default;
+FBlueprintHelperRuntimeProfileService::FBlueprintHelperRuntimeProfileService(TFunction<bool()> InBridgeRunningProvider)
+	: BridgeRunningProvider(MoveTemp(InBridgeRunningProvider))
+{
+}
 
 FBlueprintHelperRuntimeProfileData FBlueprintHelperRuntimeProfileService::GetRuntimeProfile() const
 {
@@ -26,16 +28,14 @@ FBlueprintHelperRuntimeProfileData FBlueprintHelperRuntimeProfileService::GetRun
 	return Data;
 }
 
-EBlueprintHelperBridgeStatus FBlueprintHelperRuntimeProfileService::DetectBridgeStatus()
+EBlueprintHelperBridgeStatus FBlueprintHelperRuntimeProfileService::DetectBridgeStatus() const
 {
-	const FBlueprintHelperModule* Module =
-		FModuleManager::GetModulePtr<FBlueprintHelperModule>(TEXT("BlueprintHelper"));
-	if (!Module)
+	if (!BridgeRunningProvider)
 	{
 		return EBlueprintHelperBridgeStatus::Unknown;
 	}
 
-	return Module->IsBridgeServerRunning()
+	return BridgeRunningProvider()
 		? EBlueprintHelperBridgeStatus::Connected
 		: EBlueprintHelperBridgeStatus::Disconnected;
 }

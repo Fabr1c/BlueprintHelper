@@ -178,13 +178,16 @@ void FBlueprintHelperModule::StartupModule()
 	PropertyReflectionService = MakeUnique<FBlueprintHelperPropertyReflectionService>();
 	DataTableService = MakeUnique<FBlueprintHelperDataTableService>();
 	EditorCommandService = MakeUnique<FBlueprintHelperEditorCommandService>();
-	RuntimeProfileService = MakeUnique<FBlueprintHelperRuntimeProfileService>();
+	RuntimeProfileService = MakeUnique<FBlueprintHelperRuntimeProfileService>([this]()
+	{
+		return IsBridgeServerRunning();
+	});
 	DiagnosticsService = MakeUnique<FBlueprintHelperDiagnosticsService>();
 	DebugCaseStoreService = MakeUnique<FBlueprintHelperDebugCaseStoreService>();
 	ReviewStoreService = MakeUnique<FBlueprintHelperReviewStoreService>();
 	DebugEntryService = MakeUnique<FBlueprintHelperDebugEntryService>(*DebugCaseStoreService, ReviewStoreService.Get());
-	LogicMdReadService = MakeUnique<FBlueprintHelperLogicMdReadService>();
-	LogicJsonReadService = MakeUnique<FBlueprintHelperLogicJsonReadService>();
+	LogicMdReadService = MakeUnique<FBlueprintHelperLogicMdReadService>(*ExportService);
+	LogicJsonReadService = MakeUnique<FBlueprintHelperLogicJsonReadService>(*ExportService);
 	AssetFactoryService = MakeUnique<FBlueprintHelperAssetFactoryService>();
 	ComponentService = MakeUnique<FBlueprintHelperComponentService>(*GraphResolver);
 	ClassSettingsService = MakeUnique<FBlueprintHelperClassSettingsService>(*GraphResolver);

@@ -8,9 +8,21 @@
 #include "Shared/Services/BlueprintHelperExportService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicProcessor.h"
-#include "Entry/BlueprintHelper.h"
 
-FBlueprintHelperLogicJsonReadService::FBlueprintHelperLogicJsonReadService() = default;
+FBlueprintHelperLogicJsonReadService::FBlueprintHelperLogicJsonReadService()
+{
+	OwnedGraphResolver = MakeUnique<FBlueprintHelperGraphResolver>();
+	OwnedExportService = MakeUnique<FBlueprintHelperExportService>(*OwnedGraphResolver);
+	ExportService = OwnedExportService.Get();
+}
+
+FBlueprintHelperLogicJsonReadService::FBlueprintHelperLogicJsonReadService(
+	const FBlueprintHelperExportService& InExportService)
+	: ExportService(&InExportService)
+{
+}
+
+FBlueprintHelperLogicJsonReadService::~FBlueprintHelperLogicJsonReadService() = default;
 
 class FBlueprintHelperLogicJsonReadServiceLocalUtils
 {
@@ -57,8 +69,7 @@ FBlueprintHelperLogicJsonData FBlueprintHelperLogicJsonReadService::ReadLogicJso
 		? EBlueprintHelperExportScope::FullBlueprint
 		: ScopeToExportScope(Scope);
 
-	const FBlueprintHelperModule& Module = FBlueprintHelperModule::Get();
-	const FBlueprintHelperExportResult ExportResult = Module.GetExportService().Export(ExportReq);
+	const FBlueprintHelperExportResult ExportResult = ExportService->Export(ExportReq);
 
 	if (!ExportResult.bSuccess || !ExportResult.JsonObject.IsValid())
 	{

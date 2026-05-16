@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Entry/Bridge/BlueprintHelperBridgeTypes.h"
+#include "Shared/Bridge/BlueprintHelperBridgeTypes.h"
 
 class FBlueprintHelperGraphResolver;
 

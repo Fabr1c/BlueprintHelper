@@ -3,7 +3,6 @@
 #include "Systems/ToolClusters/BlueprintComponent/BlueprintHelperComponentService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
-#include "Entry/BlueprintHelper.h"
 
 #include "Engine/Blueprint.h"
 #include "Engine/SimpleConstructionScript.h"
