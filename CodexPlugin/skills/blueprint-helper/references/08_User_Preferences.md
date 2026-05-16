@@ -1,10 +1,10 @@
 # 08 - BlueprintHelper User Preferences
 
 schema: BlueprintHelper.UserPreferences.v1
-generated_by: ClaudePlugin/commands/setup.md
+generated_by: install.ps1
 saved_at: 2026-05-10
-source: setup_user_preference_wizard
-updated_by: ClaudePlugin/commands/configure.md
+source: install_default_conservative_profile
+updated_by: CodexPlugin/skills/blueprint-helper-configure/SKILL.md
 
 ## Purpose
 
@@ -24,14 +24,13 @@ Agents should read this file before BlueprintHelper planning, status review, imp
 ### Safety And Task Flow
 
 - Default safety profile: `Conservative`.
-- Default entry mode: `cli_task_spec_first`.
+- Default transport: `cli_task_spec_first`.
 - Preview is the write gate. Do not execute writes when preview is blocked.
 - Missing capability default: `stop_and_report`.
 - Do not fall back to frozen or legacy low-level BlueprintHelper tools unless the user explicitly requests expert recovery.
 - If `write_permission` is disabled, request a write session after preview and before execute; a user rejection is a stop-and-report condition.
-- Do not ask for or inject `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session` for ordinary interactive writes; approved write permission is held by the running Editor/Bridge and can be used by delegated SideAgents within scope and lifetime.
+- Do not ask for or inject `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session` for ordinary interactive writes; approved write permission is held by the running Editor/Bridge and can be used by scoped BlueprintHelper operations within the approved session.
 - Editor lifecycle commands must use the global MCP server tools `mcp__blueprint_helper__blueprint_open_editor` and `mcp__blueprint_helper__blueprint_close_editor`; do not validate lifecycle through plugin-local MCP or one-shot shell MCP clients.
-- `AutoRepair` safety profile bypasses the write request popup and defaults write permission to enabled while keeping preview, Journal, and Review evidence.
 - `AutoRepair` safety profile bypasses the write request popup and defaults write permission to enabled while keeping preview, Journal, and Review evidence.
 
 ### Save And Validation
@@ -91,16 +90,16 @@ Agents should read this file before BlueprintHelper planning, status review, imp
 
 ## Preference Collection Forms
 
-The setup command should create this file during first-run configuration. The configure command should update this file and the active safety profile after setup.
+The root `install.ps1` script creates this file only when it is missing. The `blueprint-helper-configure` skill should update this file and the active safety profile after installation.
 
-Both commands should call `AskUserQuestion` to render native interactive forms. Do not print the form schema as plain Markdown unless `AskUserQuestion` is unavailable in the current Claude environment.
+The `blueprint-helper-configure` skill should use Codex plan/question UI when available. If native UI is unavailable, present the compact configure plan block from `CodexPlugin/skills/blueprint-helper-configure/SKILL.md`.
 
-Each native form should include:
+Each Codex decision prompt or fallback plan block should include:
 
-- `header`
-- `question`
-- `multiSelect`
-- `options`
+- a stable decision ID;
+- a short user-facing prompt;
+- recommended option labeling;
+- one-sentence consequence text for each option.
 
 Recommended options should be marked `(Recommended)`. Custom free-text notes should be collected only after the user selects a custom-text option.
 

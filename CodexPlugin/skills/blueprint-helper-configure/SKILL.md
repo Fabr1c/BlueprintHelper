@@ -1,11 +1,11 @@
 ---
 name: blueprint-helper-configure
-description: Use for BlueprintHelper Codex setup/configuration, plan-mode configuration questions, safety profiles ReadOnly/Conservative/Standard/AutoRepair, mandatory subagent workflow, .blueprinthelper/agent-profile.json, UserPreferences, missing capability policy, save policy, or the Codex equivalent of Claude /blueprint-helper:configure.
+description: Use for BlueprintHelper Codex setup/configuration, plan-mode configuration questions, safety profiles ReadOnly/Conservative/Standard/AutoRepair, .blueprinthelper/agent-profile.json, UserPreferences, missing capability policy, save policy, and editor lifecycle policy.
 ---
 
 # BlueprintHelper Configure for Codex
 
-Use this skill as the Codex-compatible replacement for the Claude `/blueprint-helper:configure` command. It is intentionally a skill, not a slash command.
+Use this skill for BlueprintHelper Codex configuration. It is intentionally a skill, not a slash command.
 
 ## Scope
 
@@ -15,6 +15,8 @@ Configure these files when requested:
 - `<ProjectDir>/.blueprinthelper/agent-profile.json` when the user provides or confirms a project profile path
 
 Do not edit ClaudePlugin files from this skill unless the user explicitly asks for ClaudePlugin compatibility.
+
+Do not configure Codex subagent workflow or a subagent model map here. The mandatory Codex subagent workflow is fixed in `CodexPlugin/skills/blueprint-helper/SKILL.md`.
 
 ## Current Safety Reality
 
@@ -80,24 +82,12 @@ Decisions:
       A) Keep Journal and Review evidence enabled; DebugBundle only when needed  [recommended]
       B) Minimal evidence, no DebugBundle unless explicitly requested
 
-  [W] Codex workflow
-      A) Mandatory subagents for BlueprintHelper editor-asset tasks  [recommended]
-      B) Ask before spawning subagents
-      C) Disable subagents only when the user explicitly opts out
-
-  [G] Subagent model map
-      A) Use plugin defaults  [recommended]
-         blueprint-explorer=gpt-5.4-mini/xhigh
-         sourcecode-explorer=gpt-5.3-codex-spark
-         task-worker=gpt-5.4/high
-      B) Custom model map supplied by user
-
 Suggested selection:
-  S=A M=A V=A B=A R=A W=A G=A
+  S=A M=A V=A B=A R=A
 
 Reply with one of:
   apply recommended
-  S=A M=A V=A B=A R=A W=A G=A
+  S=A M=A V=A B=A R=A
   custom: <your requested policy changes>
 ```
 
@@ -118,8 +108,6 @@ Selected options:
   V=<value>
   B=<value>
   R=<value>
-  W=<value>
-  G=<value>
 
 Files to update:
   UserPreferences: <path>
@@ -130,8 +118,6 @@ Planned changes:
   missing_capability_policy: <old> -> <new>
   auto_save_policy: <old> -> <new>
   editor_lifecycle: global_lifecycle_only_mcp
-  codex_workflow: mandatory_subagents
-  subagent_models: <model map>
   approval_bypass: true only for AutoRepair
 
 Confirm with:
@@ -155,26 +141,7 @@ When writing `<ProjectDir>/.blueprinthelper/agent-profile.json`, preserve unknow
     "auto_save_policy": "never_auto_save"
   },
   "agent": {
-    "agent_entry_mode": "codex_mandatory_subagents_cli_task_spec_first",
     "fallback_when_task_tools_unavailable": "stop_and_report"
-  },
-  "codex_subagents": {
-    "mode": "mandatory_for_blueprinthelper_editor_assets",
-    "blueprint_explorer": {
-      "agent": "blueprint-explorer",
-      "model": "gpt-5.4-mini",
-      "reasoning_effort": "xhigh"
-    },
-    "sourcecode_explorer": {
-      "agent": "sourcecode-explorer",
-      "model": "gpt-5.3-codex-spark"
-    },
-    "task_worker": {
-      "agent": "task-worker",
-      "model": "gpt-5.4",
-      "reasoning_effort": "high",
-      "template_first": true
-    }
   },
   "editor_lifecycle": {
     "entry": "global_lifecycle_only_mcp",
@@ -204,11 +171,7 @@ For `AutoRepair`, write:
 
 Update the active preference sections with these facts:
 
-- Default entry mode is `codex_mandatory_subagents_cli_task_spec_first`.
-- BlueprintHelper editor-asset tasks spawn Codex subagents by default.
-- `blueprint-explorer` gathers Blueprint/UMG/DataAsset/DataTable context only.
-- `sourcecode-explorer` gathers repository source-code/schema/template context only.
-- `task-worker` constructs template-first TaskSpecs, runs preview/execute through CLI, and returns filtered diagnostic results.
+- Do not write subagent workflow or subagent model-map preferences here; the main `blueprint-helper` skill owns the mandatory Codex subagent workflow.
 - Editor lifecycle commands must use global lifecycle-only MCP tools.
 - Only the Main Agent may call `mcp__blueprint_helper__blueprint_open_editor` and `mcp__blueprint_helper__blueprint_close_editor`.
 - Ordinary reads/writes must use the CLI.

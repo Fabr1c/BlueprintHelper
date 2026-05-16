@@ -25,6 +25,15 @@ Project file: discovered from the workspace when possible; pass explicit `projec
 
 ## 1. Install The Plugin
 
+For normal first-run setup, use the repository-root installer:
+
+```powershell
+cd <PLUGIN_ROOT>
+.\install.ps1 -ProjectFile <Project.uproject> -EngineRoot <UE root>
+```
+
+The installer builds the Agent runtime, links `bh`, registers the Codex desktop plugin marketplace, installs Codex subagents and lifecycle-only MCP, writes the project agent profile when project and UE root are known, and creates default user preference files only when they are missing.
+
 Place the plugin at:
 
 ```text
@@ -35,7 +44,9 @@ Open the project in Unreal Editor, enable BlueprintHelper if needed, and rebuild
 
 If you use an Unreal `BuildPlugin` package, keep the sibling `AgentFaceService` package available separately. UE packaging does not compile or include `AgentFaceService/cli` or `AgentFaceService/task-core`.
 
-## 2. Build The CLI
+## 2. Manual CLI Build Fallback
+
+Use this only when you skipped the installer build step or are developing the CLI packages directly.
 
 ```powershell
 cd <PLUGIN_ROOT>\AgentFaceService\task-core
@@ -47,7 +58,9 @@ npm install
 npm run build
 ```
 
-## 3. Configure Project Agent Profile
+## 3. Manual Project Agent Profile Fallback
+
+Use this only when the installer could not discover a unique `.uproject` or you intentionally passed `-SkipProjectProfile`.
 
 Store UE version-specific configuration in the project profile:
 
@@ -60,7 +73,7 @@ Store UE version-specific configuration in the project profile:
 }
 ```
 
-Save this file as `<ProjectDir>/.blueprinthelper/agent-profile.json`.
+Save this file as `<ProjectDir>/.blueprinthelper/agent-profile.json`. The root installer writes this automatically when `-ProjectFile` and `-EngineRoot` are supplied.
 
 Bridge connectivity environment variables:
 

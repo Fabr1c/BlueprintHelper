@@ -247,32 +247,14 @@ test('agent-facing tools are not marked frozen', () => {
   assert.equal(openEditor.description?.includes(FROZEN_DESCRIPTION_PREFIX), false);
 });
 
-test('setup command validates the CLI surface without requesting MCP tool permissions', () => {
+test('setup command is a retired compatibility pointer to the root installer', () => {
   const text = readFileSync(path.resolve(CLAUDE_PLUGIN_ROOT, 'commands', 'setup.md'), 'utf8');
   const frontMatter = text.match(/^---\r?\n([\s\S]*?)\r?\n---/)?.[1] ?? '';
 
   assert.doesNotMatch(frontMatter, /\bmcp__blueprint-helper(?:__|\s|,|$)/);
-  assert.match(text, /BlueprintHelper CLI/);
-
-  const expectedTools = [
-    'blueprinthelper_read_agent_guide',
-    'blueprinthelper_get_debug_case',
-    'blueprint_get_runtime_profile',
-    'blueprinthelper_diagnostics',
-    'blueprinthelper_diagnostics_runtime',
-    'blueprinthelper_request_write_session',
-    'blueprinthelper_read_context',
-    'blueprinthelper_read_task_context',
-    'blueprinthelper_read_reference_context',
-    'blueprinthelper_preview_task',
-    'blueprinthelper_execute_task',
-    'blueprinthelper_get_task_result',
-    'blueprint_open_editor',
-  ];
-
-  for (const toolName of expectedTools) {
-    assert.match(text, new RegExp(`\\b${toolName}\\b`));
-  }
+  assert.match(text, /install\.ps1/);
+  assert.match(text, /retired/i);
+  assert.match(text, /Do not recreate the old setup flow/);
 
   for (const toolName of FROZEN_EXPERT_TOOL_NAMES) {
     assert.doesNotMatch(frontMatter, new RegExp(`mcp__blueprint-helper__${toolName}\\b`));

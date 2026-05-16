@@ -2,7 +2,7 @@
 
 BlueprintHelper 是一个面向 Unreal Engine 编辑器资产的辅助插件，核心目标是让 AI Agent 能够通过本地 CLI 和 Unreal Editor Bridge 安全地读取、预览和修改蓝图相关资产。
 
-当前版本：`v0.4.1`
+当前版本：`v0.4.4`
 
 ## 插件用途
 
@@ -85,17 +85,14 @@ blueprint_get_runtime_profile
 
 1. 将仓库放入 Unreal 项目的插件目录，例如 `YourProject/Plugins/BlueprintHelper`。
 2. 在 Unreal Editor 中启用 BlueprintHelper，并按需重新编译项目。
-3. 构建共享 task-core 和 CLI：
+3. 在仓库根目录运行一键安装脚本：
 
 ```powershell
-cd <PLUGIN_ROOT>\AgentFaceService\task-core
-npm install
-npm run build
-
-cd <PLUGIN_ROOT>\AgentFaceService\cli
-npm install
-npm run build
+cd <PLUGIN_ROOT>
+.\install.ps1 -ProjectFile <Project.uproject> -EngineRoot <UE root>
 ```
+
+安装脚本会构建 AgentFaceService、链接 `bh` CLI、注册 Codex 本地 marketplace、安装 Codex subagents 和全局生命周期 MCP，并在能确认项目和 UE 根目录时写入 `<ProjectDir>/.blueprinthelper/agent-profile.json`。需要 Claude subagents 时追加 `-InstallClaudeAgents`；需要引擎级安装 UE 插件时追加 `-InstallUePluginToEngine`。
 
 4. 启动目标 Unreal Editor 项目；Agent 工作流需要代管启动/关闭时使用全局 MCP 生命周期工具。
 5. 使用 CLI 检查运行状态：
@@ -118,7 +115,7 @@ BlueprintHelper 当前优先接收来自真实 Unreal Editor 项目使用过程�
 
 ## 版本同步
 
-`v0.4.1` 同步到以下层级：
+`v0.4.4` 同步到以下层级：
 
 - Unreal 插件：`BlueprintHelper/BlueprintHelper.uplugin`
 - CLI：`AgentFaceService/cli/package.json`
