@@ -8,7 +8,7 @@ Resources/AgentGuide/00_Agent_Onboarding_Index_20260504.md
 
 ## Non-negotiable boundary
 
-BlueprintHelper is not a general file-system, code-search, or C++ source-editing API. The active Agent-facing transport for ordinary TaskSpec writes is the BlueprintHelper CLI, which talks to a running Unreal Editor through the local Bridge. MCP is retained for editor launch/lifecycle, debug, recovery, and commands that need a long-lived host process.
+BlueprintHelper is not a general file-system, code-search, or C++ source-editing API. The active Agent-facing transport for ordinary TaskSpec writes is the BlueprintHelper CLI, which talks to a running Unreal Editor through the local Bridge. Global MCP is retained for editor launch/lifecycle, debug, recovery, and commands that need a long-lived host process.
 
 Use normal repository tools for:
 
@@ -27,15 +27,15 @@ Use BlueprintHelper CLI / task-core tools for:
 - Reading or editing DataTable rows.
 - Compiling, opening, saving, validating, importing, or exporting Blueprint-related editor assets.
 
-Do not use MCP for normal workflows; legacy MCP only covers:
+Do not use MCP for normal asset workflows; global MCP only covers:
 
 - Opening or closing the Unreal Editor from an Agent workflow.
 - Lifecycle, debug, or recovery commands that need a long-lived host process.
-- Capabilities explicitly documented as CLI-only.
+- Capabilities explicitly documented as MCP lifecycle/debug/recovery commands.
 
 ## Required preflight before any write operation
 
-1. Confirm the user has a target UE project and the Unreal Editor is running, or use MCP `blueprint_open_editor` after confirming the project `.blueprinthelper/agent-profile.json` has `environment.ue_engine_dir` configured.
+1. Confirm the user has a target UE project and the Unreal Editor is running, or use the global MCP `blueprint_open_editor` after confirming the project `.blueprinthelper/agent-profile.json` has `environment.ue_engine_dir` configured.
 2. Confirm the Bridge is reachable before calling editor-asset tools.
 3. Identify the exact target asset path, for example `/Game/Blueprints/BP_Player`.
 4. Identify the exact target graph when editing graph nodes, for example `EventGraph`.
@@ -47,4 +47,6 @@ Do not use MCP for normal workflows; legacy MCP only covers:
 ## Fast path
 
 Open `Resources/AgentGuide/00_Agent_Onboarding_Index_20260504.md` and follow the workflow matching the user request.
+
+For complex JSON inputs, copy a matching template from `Resources/AgentGuide/Templates/` and call the CLI with `--file`.
 

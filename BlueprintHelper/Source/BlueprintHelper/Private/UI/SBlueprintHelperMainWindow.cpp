@@ -1,41 +1,23 @@
-// BlueprintHelper main window shell implementation.
+﻿// BlueprintHelper main window shell implementation.
 
 #include "UI/SBlueprintHelperMainWindow.h"
 
 #include "Async/Async.h"
-#include "Dom/JsonObject.h"
-#include "Dom/JsonValue.h"
 #include "HAL/CriticalSection.h"
-#include "HAL/FileManager.h"
-#include "Misc/FileHelper.h"
-#include "Misc/Paths.h"
-#include "Serialization/JsonReader.h"
-#include "Serialization/JsonSerializer.h"
+#include "Framework/Notifications/NotificationManager.h"
+#include "Systems/Review/BlueprintHelperReviewedDataCleanupService.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
 #include "UI/SHelperMainWidget.h"
-#include "UI/Review/BlueprintHelperReviewDebugBundleService.h"
 #include "Styling/AppStyle.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SWidgetSwitcher.h"
+#include "Widgets/Notifications/SNotificationList.h"
 #include "UI/Review/SBlueprintHelperReviewPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
 namespace
 {
-struct FBlueprintHelperReviewedDataCleanupResult
-{
-	int32 RecordsSaved = 0;
-	int32 RecordsDeleted = 0;
-	int32 ChangesRemoved = 0;
-	int32 TransactionFilesDeleted = 0;
-	int32 SessionFilesDeleted = 0;
-	int32 OldDebugBundlesDeleted = 0;
-	int32 CompletedDebugBundlesDeleted = 0;
-	int32 Failures = 0;
-	FString Error;
-};
-
 static FCriticalSection GBlueprintHelperReviewedDataCleanupTaskCriticalSection;
 static TArray<TFuture<void>> GBlueprintHelperReviewedDataCleanupTasks;
 static bool bBlueprintHelperReviewedDataCleanupShutdown = false;
@@ -86,313 +68,6 @@ static void FlushBlueprintHelperReviewedDataCleanupTasksInternal(bool bShutdown)
 	{
 		Task.Wait();
 	}
-}
-
-static bool IsBlueprintHelperReviewedTerminalStatus(EBlueprintHelperReviewChangeStatus Status)
-{
-	return Status == EBlueprintHelperReviewChangeStatus::Accepted
-		|| Status == EBlueprintHelperReviewChangeStatus::Rejected
-		|| Status == EBlueprintHelperReviewChangeStatus::Superseded;
-}
-
-static bool IsBlueprintHelperOpenReviewStatusText(const FString& Status)
-{
-	return Status.Equals(TEXT("pending"), ESearchCase::IgnoreCase)
-		|| Status.Equals(TEXT("needs_action"), ESearchCase::IgnoreCase)
-		|| Status.Equals(TEXT("reject_failed"), ESearchCase::IgnoreCase);
-}
-
-static void AddBlueprintHelperReviewTransactionId(TSet<FString>& TransactionIds, const FString& TransactionId)
-{
-	if (!TransactionId.IsEmpty())
-	{
-		TransactionIds.Add(TransactionId);
-	}
-}
-
-static void AddBlueprintHelperRollbackRefTransactionId(TSet<FString>& TransactionIds, const FString& RollbackDataRef)
-{
-	const FString Prefix = TEXT("transaction://");
-	const FString Suffix = TEXT("/rollback_data");
-	if (!RollbackDataRef.StartsWith(Prefix) || !RollbackDataRef.EndsWith(Suffix))
-	{
-		return;
-	}
-	FString TransactionId = RollbackDataRef.Mid(Prefix.Len());
-	TransactionId.LeftChopInline(Suffix.Len());
-	AddBlueprintHelperReviewTransactionId(TransactionIds, TransactionId);
-}
-
-static void CollectBlueprintHelperRetainedTransactionIds(
-	const FBlueprintHelperReviewVisibleChange& Change,
-	TSet<FString>& TransactionIds)
-{
-	AddBlueprintHelperReviewTransactionId(TransactionIds, Change.LatestTransactionId);
-	for (const FString& TransactionId : Change.LatestTransactionIds)
-	{
-		AddBlueprintHelperReviewTransactionId(TransactionIds, TransactionId);
-	}
-	for (const FString& TransactionId : Change.SourceTransactionIds)
-	{
-		AddBlueprintHelperReviewTransactionId(TransactionIds, TransactionId);
-	}
-	for (const FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
-	{
-		AddBlueprintHelperReviewTransactionId(TransactionIds, Target.FirstTransactionId);
-		AddBlueprintHelperReviewTransactionId(TransactionIds, Target.LatestTransactionId);
-		for (const FString& TransactionId : Target.SourceTransactionIds)
-		{
-			AddBlueprintHelperReviewTransactionId(TransactionIds, TransactionId);
-		}
-		AddBlueprintHelperRollbackRefTransactionId(TransactionIds, Target.RollbackDataRef);
-	}
-}
-
-static void InspectBlueprintHelperDebugBundleChangeObject(
-	const TSharedPtr<FJsonObject>& ChangeObject,
-	bool& bHasReviewStatus,
-	bool& bHasOpenReviewStatus)
-{
-	if (!ChangeObject.IsValid())
-	{
-		return;
-	}
-
-	bool bValidChange = true;
-	ChangeObject->TryGetBoolField(TEXT("valid"), bValidChange);
-	if (!bValidChange)
-	{
-		return;
-	}
-
-	FString Status;
-	if (ChangeObject->TryGetStringField(TEXT("status"), Status) && !Status.IsEmpty())
-	{
-		bHasReviewStatus = true;
-		if (IsBlueprintHelperOpenReviewStatusText(Status))
-		{
-			bHasOpenReviewStatus = true;
-		}
-	}
-}
-
-static bool IsBlueprintHelperCompletedReviewPanelBundle(const FString& BundlePath)
-{
-	FString JsonText;
-	if (!FFileHelper::LoadFileToString(JsonText, *BundlePath))
-	{
-		return false;
-	}
-
-	TSharedPtr<FJsonObject> Bundle;
-	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonText);
-	if (!FJsonSerializer::Deserialize(Reader, Bundle) || !Bundle.IsValid())
-	{
-		return false;
-	}
-
-	const TArray<TSharedPtr<FJsonValue>>* Events = nullptr;
-	if (!Bundle->TryGetArrayField(TEXT("events"), Events) || !Events)
-	{
-		return false;
-	}
-
-	bool bHasReviewStatus = false;
-	bool bHasOpenReviewStatus = false;
-	for (const TSharedPtr<FJsonValue>& EventValue : *Events)
-	{
-		const TSharedPtr<FJsonObject> EventObject = EventValue.IsValid()
-			? EventValue->AsObject()
-			: nullptr;
-		if (!EventObject.IsValid())
-		{
-			continue;
-		}
-
-		const TSharedPtr<FJsonObject>* SelectedChangeObject = nullptr;
-		if (EventObject->TryGetObjectField(TEXT("selected_change"), SelectedChangeObject)
-			&& SelectedChangeObject)
-		{
-			InspectBlueprintHelperDebugBundleChangeObject(
-				*SelectedChangeObject,
-				bHasReviewStatus,
-				bHasOpenReviewStatus);
-		}
-
-		const TSharedPtr<FJsonObject>* ChangeObject = nullptr;
-		if (EventObject->TryGetObjectField(TEXT("change"), ChangeObject)
-			&& ChangeObject)
-		{
-			InspectBlueprintHelperDebugBundleChangeObject(
-				*ChangeObject,
-				bHasReviewStatus,
-				bHasOpenReviewStatus);
-		}
-	}
-
-	return bHasReviewStatus && !bHasOpenReviewStatus;
-}
-
-static void CleanupBlueprintHelperReviewPanelBundles(
-	int32& OldDeletedCount,
-	int32& CompletedDeletedCount,
-	int32& FailureCount)
-{
-	const FString BundleDir = FBlueprintHelperReviewDebugBundleService::GetReviewPanelBundleDir();
-	IFileManager& FileManager = IFileManager::Get();
-	if (!FileManager.DirectoryExists(*BundleDir))
-	{
-		return;
-	}
-
-	TArray<FString> FileNames;
-	FileManager.FindFiles(FileNames, *(BundleDir / TEXT("*.json")), true, false);
-	const FDateTime OldBundleCutoff = FDateTime::Now() - FTimespan::FromDays(7);
-	for (const FString& FileName : FileNames)
-	{
-		const FString Path = BundleDir / FileName;
-		const FDateTime Timestamp = FileManager.GetTimeStamp(*Path);
-		const bool bOldBundle = Timestamp != FDateTime::MinValue()
-			&& Timestamp < OldBundleCutoff;
-		const bool bCompletedSessionBundle = IsBlueprintHelperCompletedReviewPanelBundle(Path);
-		if (!bOldBundle && !bCompletedSessionBundle)
-		{
-			continue;
-		}
-
-		if (FileManager.Delete(*Path, false, true))
-		{
-			if (bOldBundle)
-			{
-				++OldDeletedCount;
-			}
-			else
-			{
-				++CompletedDeletedCount;
-			}
-		}
-		else
-		{
-			++FailureCount;
-		}
-	}
-}
-
-static void DeleteBlueprintHelperUnreferencedJsonFiles(
-	const FString& Directory,
-	const TSet<FString>& RetainedIds,
-	int32& DeletedCount,
-	int32& FailureCount)
-{
-	IFileManager& FileManager = IFileManager::Get();
-	if (!FileManager.DirectoryExists(*Directory))
-	{
-		return;
-	}
-
-	TArray<FString> FileNames;
-	FileManager.FindFiles(FileNames, *(Directory / TEXT("*.json")), true, false);
-	for (const FString& FileName : FileNames)
-	{
-		const FString Id = FPaths::GetBaseFilename(FileName);
-		if (RetainedIds.Contains(Id))
-		{
-			continue;
-		}
-		const FString Path = Directory / FileName;
-		if (FileManager.Delete(*Path, false, true))
-		{
-			++DeletedCount;
-		}
-		else
-		{
-			++FailureCount;
-		}
-	}
-}
-
-static FBlueprintHelperReviewedDataCleanupResult CleanupBlueprintHelperReviewedData()
-{
-	FBlueprintHelperReviewedDataCleanupResult Result;
-	SBlueprintHelperReviewPanel::FlushAsyncTasks();
-
-	FBlueprintHelperReviewStoreService Store;
-	FBlueprintHelperReviewRecordQuery Query;
-	Query.bPendingOnly = false;
-	TArray<FBlueprintHelperReviewRecord> Records = Store.QueryReviewRecords(Query);
-	TSet<FString> RetainedTransactionIds;
-	TSet<FString> RetainedArchiveSessionIds;
-
-	for (FBlueprintHelperReviewRecord& Record : Records)
-	{
-		TArray<FBlueprintHelperReviewVisibleChange> RetainedChanges;
-		bool bRemovedTerminalChange = false;
-		for (const FBlueprintHelperReviewVisibleChange& Change : Record.VisibleChanges)
-		{
-			if (IsBlueprintHelperReviewedTerminalStatus(Change.Status))
-			{
-				++Result.ChangesRemoved;
-				bRemovedTerminalChange = true;
-				continue;
-			}
-			RetainedChanges.Add(Change);
-			CollectBlueprintHelperRetainedTransactionIds(Change, RetainedTransactionIds);
-		}
-
-		if (RetainedChanges.Num() > 0)
-		{
-			RetainedArchiveSessionIds.Add(Record.ArchiveSessionId);
-			if (bRemovedTerminalChange)
-			{
-				Record.VisibleChanges = MoveTemp(RetainedChanges);
-				FString SaveError;
-				if (Store.SaveReviewRecord(Record, SaveError))
-				{
-					++Result.RecordsSaved;
-				}
-				else
-				{
-					++Result.Failures;
-					Result.Error = SaveError;
-				}
-			}
-			continue;
-		}
-
-		FString DeleteError;
-		if (Store.DeleteReviewRecord(Record.ReviewRecordId, DeleteError))
-		{
-			++Result.RecordsDeleted;
-		}
-		else
-		{
-			++Result.Failures;
-			Result.Error = DeleteError;
-		}
-	}
-
-	const FString BlueprintHelperSavedRoot = FPaths::ProjectSavedDir() / TEXT("BlueprintHelper");
-	DeleteBlueprintHelperUnreferencedJsonFiles(
-		BlueprintHelperSavedRoot / TEXT("Transactions") / TEXT("Active"),
-		RetainedTransactionIds,
-		Result.TransactionFilesDeleted,
-		Result.Failures);
-	DeleteBlueprintHelperUnreferencedJsonFiles(
-		BlueprintHelperSavedRoot / TEXT("Review"),
-		RetainedTransactionIds,
-		Result.TransactionFilesDeleted,
-		Result.Failures);
-	DeleteBlueprintHelperUnreferencedJsonFiles(
-		BlueprintHelperSavedRoot / TEXT("Review") / TEXT("Sessions"),
-		RetainedArchiveSessionIds,
-		Result.SessionFilesDeleted,
-		Result.Failures);
-	CleanupBlueprintHelperReviewPanelBundles(
-		Result.OldDebugBundlesDeleted,
-		Result.CompletedDebugBundlesDeleted,
-		Result.Failures);
-
-	return Result;
 }
 }
 
@@ -503,39 +178,119 @@ FReply SBlueprintHelperMainWindow::OnCleanupReviewDataClicked()
 	}
 
 	bCleanupInProgress = true;
-	LastCleanupStatus = TEXT("CleanReviewData running...");
+	LastCleanupStatus = TEXT("CleanReviewData scanning...");
+	ShowCleanupNotification(TEXT("扫描中"));
 	TWeakPtr<SBlueprintHelperMainWindow> WeakWindow =
 		StaticCastSharedRef<SBlueprintHelperMainWindow>(AsShared());
-	TFuture<void> CleanupTask = Async(EAsyncExecution::ThreadPool, [WeakWindow]()
+	TFuture<void> ScanTask = Async(EAsyncExecution::ThreadPool, [WeakWindow]()
 	{
-		const FBlueprintHelperReviewedDataCleanupResult Result =
-			CleanupBlueprintHelperReviewedData();
-		AsyncTask(ENamedThreads::GameThread, [WeakWindow, Result]()
+		const FBlueprintHelperReviewedDataCleanupPlan Plan =
+			FBlueprintHelperReviewedDataCleanupService::ScanCleanupPlan();
+		AsyncTask(ENamedThreads::GameThread, [WeakWindow, Plan]()
 		{
 			if (TSharedPtr<SBlueprintHelperMainWindow> Window = WeakWindow.Pin())
 			{
-				Window->bCleanupInProgress = false;
-				Window->LastCleanupStatus = FString::Printf(
-					TEXT("CleanReviewData reviewedChangesRemoved=%d recordsSaved=%d recordsDeleted=%d transactionFilesDeleted=%d sessionFilesDeleted=%d oldDebugBundlesDeleted=%d completedDebugBundlesDeleted=%d failures=%d error=\"%s\""),
-					Result.ChangesRemoved,
-					Result.RecordsSaved,
-					Result.RecordsDeleted,
-					Result.TransactionFilesDeleted,
-					Result.SessionFilesDeleted,
-					Result.OldDebugBundlesDeleted,
-					Result.CompletedDebugBundlesDeleted,
-					Result.Failures,
-					*Result.Error);
-				UE_LOG(LogTemp, Log, TEXT("BlueprintHelper %s"), *Window->LastCleanupStatus);
-				if (Window->ReviewStoreService)
+				if (IsBlueprintHelperReviewedDataCleanupShutdownRequested())
 				{
-					Window->ReviewStoreService->NotifyPendingReviewChanged();
+					Window->bCleanupInProgress = false;
+					Window->LastCleanupStatus = TEXT("CleanReviewData skipped: cleanup worker is shutting down");
+					Window->UpdateCleanupNotification(TEXT("失败"), false, true);
+					UE_LOG(LogTemp, Warning, TEXT("BlueprintHelper %s"), *Window->LastCleanupStatus);
+					return;
 				}
+
+				Window->LastCleanupStatus = FString::Printf(
+					TEXT("CleanReviewData cleaning... recordsScanned=%d reviewedChangesToRemove=%d filesToDelete=%d"),
+					Plan.RecordsScanned,
+					Plan.ChangesRemoved,
+					Plan.TransactionFilePathsToDelete.Num()
+						+ Plan.SessionFilePathsToDelete.Num()
+						+ Plan.OldDebugBundlePathsToDelete.Num()
+						+ Plan.CompletedDebugBundlePathsToDelete.Num());
+				Window->UpdateCleanupNotification(TEXT("清理中"), true, false);
+				UE_LOG(LogTemp, Log, TEXT("BlueprintHelper %s"), *Window->LastCleanupStatus);
+
+				TFuture<void> CleanupTask = Async(EAsyncExecution::ThreadPool, [WeakWindow, Plan]()
+				{
+					const FBlueprintHelperReviewedDataCleanupResult Result =
+						FBlueprintHelperReviewedDataCleanupService::ExecuteCleanupPlan(Plan);
+					AsyncTask(ENamedThreads::GameThread, [WeakWindow, Result]()
+					{
+						if (TSharedPtr<SBlueprintHelperMainWindow> Window = WeakWindow.Pin())
+						{
+							Window->bCleanupInProgress = false;
+							Window->LastCleanupStatus = FString::Printf(
+								TEXT("CleanReviewData reviewedChangesRemoved=%d recordsSaved=%d recordsDeleted=%d transactionFilesDeleted=%d sessionFilesDeleted=%d oldDebugBundlesDeleted=%d completedDebugBundlesDeleted=%d failures=%d error=\"%s\""),
+								Result.ChangesRemoved,
+								Result.RecordsSaved,
+								Result.RecordsDeleted,
+								Result.TransactionFilesDeleted,
+								Result.SessionFilesDeleted,
+								Result.OldDebugBundlesDeleted,
+								Result.CompletedDebugBundlesDeleted,
+								Result.Failures,
+								*Result.Error);
+							Window->UpdateCleanupNotification(
+								Result.Failures == 0 ? TEXT("完成") : TEXT("失败"),
+								Result.Failures == 0,
+								true);
+							UE_LOG(LogTemp, Log, TEXT("BlueprintHelper %s"), *Window->LastCleanupStatus);
+							if (Window->ReviewStoreService)
+							{
+								Window->ReviewStoreService->NotifyPendingReviewChanged();
+							}
+						}
+					});
+				});
+				TrackBlueprintHelperReviewedDataCleanupTask(MoveTemp(CleanupTask));
 			}
 		});
 	});
-	TrackBlueprintHelperReviewedDataCleanupTask(MoveTemp(CleanupTask));
+	TrackBlueprintHelperReviewedDataCleanupTask(MoveTemp(ScanTask));
 	return FReply::Handled();
+}
+
+void SBlueprintHelperMainWindow::ShowCleanupNotification(const FString& StatusText)
+{
+	FNotificationInfo Info(FText::FromString(StatusText));
+	Info.bFireAndForget = false;
+	Info.bUseThrobber = true;
+	Info.bUseSuccessFailIcons = false;
+	Info.FadeOutDuration = 0.5f;
+	Info.ExpireDuration = 4.0f;
+
+	CleanupNotification = FSlateNotificationManager::Get().AddNotification(Info);
+	if (TSharedPtr<SNotificationItem> Notification = CleanupNotification.Pin())
+	{
+		Notification->SetCompletionState(SNotificationItem::CS_Pending);
+	}
+}
+
+void SBlueprintHelperMainWindow::UpdateCleanupNotification(
+	const FString& StatusText,
+	bool bSucceeded,
+	bool bExpire)
+{
+	TSharedPtr<SNotificationItem> Notification = CleanupNotification.Pin();
+	if (!Notification.IsValid() && !bExpire)
+	{
+		ShowCleanupNotification(StatusText);
+		Notification = CleanupNotification.Pin();
+	}
+	if (!Notification.IsValid())
+	{
+		return;
+	}
+
+	Notification->SetText(FText::FromString(StatusText));
+	Notification->SetCompletionState(bExpire
+		? (bSucceeded ? SNotificationItem::CS_Success : SNotificationItem::CS_Fail)
+		: SNotificationItem::CS_Pending);
+	if (bExpire)
+	{
+		Notification->ExpireAndFadeout();
+		CleanupNotification.Reset();
+	}
 }
 
 FSlateColor SBlueprintHelperMainWindow::GetToolsTabColor() const
@@ -551,3 +306,4 @@ FSlateColor SBlueprintHelperMainWindow::GetReviewTabColor() const
 		? FLinearColor(0.18f, 0.34f, 0.62f, 1.0f)
 		: FLinearColor(0.08f, 0.08f, 0.08f, 1.0f));
 }
+

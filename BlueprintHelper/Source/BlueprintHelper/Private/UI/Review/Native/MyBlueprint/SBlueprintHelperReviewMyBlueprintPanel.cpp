@@ -11,6 +11,7 @@ void SBlueprintHelperReviewMyBlueprintPanel::Construct(const FArguments& InArgs)
 	RootItemsSource = InArgs._RootItemsSource;
 	AssetPath = InArgs._AssetPath;
 	OnGeometryInvalidated = InArgs._OnGeometryInvalidated;
+	OnNavigateToGraph = InArgs._OnNavigateToGraph;
 
 	ChildSlot
 	[
@@ -43,7 +44,8 @@ TSharedRef<ITableRow> SBlueprintHelperReviewMyBlueprintPanel::OnGenerateRow(
 	return SNew(SBlueprintHelperReviewMyBlueprintRow, OwnerTable)
 		.Item(Item)
 		.AssetPath(AssetPath)
-		.OnGeometryInvalidated(OnGeometryInvalidated);
+		.OnGeometryInvalidated(OnGeometryInvalidated)
+		.OnNavigateToGraph(OnNavigateToGraph);
 }
 
 void SBlueprintHelperReviewMyBlueprintPanel::OnGetChildren(

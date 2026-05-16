@@ -1,19 +1,17 @@
-// BlueprintHelper Service Layer 。通用编辑器命令服务实。
+// BlueprintHelper editor command service.
 
 #include "Systems/Debug/BlueprintHelperEditorCommandService.h"
-#include "Editor.h"
-#include "PlayInEditorDataTypes.h"
-#include "Kismet2/KismetEditorUtilities.h"
+
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Containers/Ticker.h"
+#include "Editor.h"
 #include "Engine/Blueprint.h"
 #include "FileHelpers.h"
+#include "Kismet2/KismetEditorUtilities.h"
+#include "Misc/PackageName.h"
 #include "Misc/StringFormatArg.h"
-#include "Subsystems/AssetEditorSubsystem.h"
-
-// ═══════════════════════════════════════════════════════════
-// Undo / Redo
-// ═══════════════════════════════════════════════════════════
+#include "PlayInEditorDataTypes.h"
+#include "UObject/UObjectIterator.h"
 
 FBlueprintHelperCommandResult FBlueprintHelperEditorCommandService::Undo() const
 {
@@ -21,25 +19,25 @@ FBlueprintHelperCommandResult FBlueprintHelperEditorCommandService::Undo() const
 
 	if (!GEditor)
 	{
-		Result.ErrorMessage = TEXT("GEditor 不可用。");
+		Result.ErrorMessage = TEXT("GEditor is not available.");
 		return Result;
 	}
 
 	if (GEditor->IsTransactionActive())
 	{
-		Result.ErrorMessage = TEXT("当前有活跃事务，无法撤销。");
+		Result.ErrorMessage = TEXT("Cannot undo while a transaction is active.");
 		return Result;
 	}
 
 	const bool bUndone = GEditor->UndoTransaction();
 	if (!bUndone)
 	{
-		Result.ErrorMessage = TEXT("没有可撤销的操作。");
+		Result.ErrorMessage = TEXT("No transaction was undone.");
 		return Result;
 	}
 
 	Result.bSuccess = true;
-	Result.Message = TEXT("撤销成功。");
+	Result.Message = TEXT("Undo succeeded.");
 	return Result;
 }
 
@@ -49,31 +47,27 @@ FBlueprintHelperCommandResult FBlueprintHelperEditorCommandService::Redo() const
 
 	if (!GEditor)
 	{
-		Result.ErrorMessage = TEXT("GEditor 不可用。");
+		Result.ErrorMessage = TEXT("GEditor is not available.");
 		return Result;
 	}
 
 	if (GEditor->IsTransactionActive())
 	{
-		Result.ErrorMessage = TEXT("当前有活跃事务，无法重做。");
+		Result.ErrorMessage = TEXT("Cannot redo while a transaction is active.");
 		return Result;
 	}
 
 	const bool bRedone = GEditor->RedoTransaction();
 	if (!bRedone)
 	{
-		Result.ErrorMessage = TEXT("没有可重做的操作。");
+		Result.ErrorMessage = TEXT("No transaction was redone.");
 		return Result;
 	}
 
 	Result.bSuccess = true;
-	Result.Message = TEXT("重做成功。");
+	Result.Message = TEXT("Redo succeeded.");
 	return Result;
 }
-
-// ═══════════════════════════════════════════════════════════
-// PIE 控制
-// ═══════════════════════════════════════════════════════════
 
 FBlueprintHelperCommandResult FBlueprintHelperEditorCommandService::PlayInEditor() const
 {
@@ -81,13 +75,13 @@ FBlueprintHelperCommandResult FBlueprintHelperEditorCommandService::PlayInEditor
 
 	if (!GEditor)
 	{
-		Result.ErrorMessage = TEXT("GEditor 不可用。");
+		Result.ErrorMessage = TEXT("GEditor is not available.");
 		return Result;
 	}
 
 	if (GEditor->IsPlaySessionInProgress())
 	{
-		Result.ErrorMessage = TEXT("PIE 会话已在运行中。");
+		Result.ErrorMessage = TEXT("A PIE session is already running.");
 		return Result;
 	}
 
@@ -95,7 +89,7 @@ FBlueprintHelperCommandResult FBlueprintHelperEditorCommandService::PlayInEditor
 	GEditor->RequestPlaySession(Params);
 
 	Result.bSuccess = true;
-	Result.Message = TEXT("PIE 会话启动请求已发送（将在下一帧启动）。");
+	Result.Message = TEXT("PIE start was requested.");
 	return Result;
 }
 
@@ -105,49 +99,51 @@ FBlueprintHelperCommandResult FBlueprintHelperEditorCommandService::StopPIE() co
 
 	if (!GEditor)
 	{
-		Result.ErrorMessage = TEXT("GEditor 不可用。");
+		Result.ErrorMessage = TEXT("GEditor is not available.");
 		return Result;
 	}
 
 	if (!GEditor->IsPlayingSessionInEditor())
 	{
-		Result.ErrorMessage = TEXT("当前没有运行中的 PIE 会话。");
+		Result.ErrorMessage = TEXT("No PIE session is running.");
 		return Result;
 	}
 
 	GEditor->RequestEndPlayMap();
 
 	Result.bSuccess = true;
-	Result.Message = TEXT("PIE 停止请求已发送。");
+	Result.Message = TEXT("PIE stop was requested.");
 	return Result;
 }
 
-// ═══════════════════════════════════════════════════════════
-// Create Blueprint
-// ═══════════════════════════════════════════════════════════
-
 UClass* FBlueprintHelperEditorCommandService::ResolveParentClass(
-	const FString& ClassName, FString& OutError)
+	const FString& ClassName,
+	FString& OutError)
 {
 	if (ClassName.IsEmpty())
 	{
-		OutError = TEXT("父类名不能为空。");
+		OutError = TEXT("Parent class name cannot be empty.");
 		return nullptr;
 	}
 
-	// 尝试直接查找（常见类名如 Actor、Pawn、Character）
 	UClass* Found = FindFirstObject<UClass>(*ClassName, EFindFirstObjectOptions::ExactClass, ELogVerbosity::NoLogging);
-	if (Found) return Found;
+	if (Found)
+	{
+		return Found;
+	}
 
-	// 尝试。A 前缀（AActor 等）
 	Found = FindFirstObject<UClass>(*(TEXT("A") + ClassName), EFindFirstObjectOptions::ExactClass, ELogVerbosity::NoLogging);
-	if (Found) return Found;
+	if (Found)
+	{
+		return Found;
+	}
 
-	// 尝试。U 前缀
 	Found = FindFirstObject<UClass>(*(TEXT("U") + ClassName), EFindFirstObjectOptions::ExactClass, ELogVerbosity::NoLogging);
-	if (Found) return Found;
+	if (Found)
+	{
+		return Found;
+	}
 
-	// 遍历查找
 	for (TObjectIterator<UClass> It; It; ++It)
 	{
 		if (It->GetName() == ClassName || It->GetName() == (TEXT("A") + ClassName) || It->GetName() == (TEXT("U") + ClassName))
@@ -156,7 +152,7 @@ UClass* FBlueprintHelperEditorCommandService::ResolveParentClass(
 		}
 	}
 
-	OutError = FString::Printf(TEXT("未找到父类: %s"), *ClassName);
+	OutError = FString::Printf(TEXT("Parent class not found: %s"), *ClassName);
 	return nullptr;
 }
 
@@ -168,11 +164,10 @@ FBlueprintHelperCreateBlueprintResult FBlueprintHelperEditorCommandService::Crea
 
 	if (AssetPath.IsEmpty())
 	{
-		Result.ErrorMessage = TEXT("asset_path 不能为空。");
+		Result.ErrorMessage = TEXT("asset_path cannot be empty.");
 		return Result;
 	}
 
-	// 解析父类
 	FString ClassError;
 	UClass* ParentClass = ResolveParentClass(ParentClassName, ClassError);
 	if (!ParentClass)
@@ -181,43 +176,39 @@ FBlueprintHelperCreateBlueprintResult FBlueprintHelperEditorCommandService::Crea
 		return Result;
 	}
 
-	// 检查能否基于该类创建蓝图
 	if (!FKismetEditorUtilities::CanCreateBlueprintOfClass(ParentClass))
 	{
-		Result.ErrorMessage = FString::Printf(
-			TEXT("无法基于 %s 创建蓝图。"), *ParentClass->GetName());
+		Result.ErrorMessage = FString::Printf(TEXT("Cannot create a Blueprint based on %s."), *ParentClass->GetName());
 		return Result;
 	}
 
-	// 从路径中提取包名和资产名
 	const FString PackagePath = AssetPath;
 	const FString AssetName = FPackageName::GetShortName(AssetPath);
 
-	// 检查是否已存在
 	if (StaticLoadObject(UObject::StaticClass(), nullptr, *AssetPath))
 	{
-		Result.ErrorMessage = FString::Printf(TEXT("资产已存在: %s"), *AssetPath);
+		Result.ErrorMessage = FString::Printf(TEXT("Asset already exists: %s"), *AssetPath);
 		return Result;
 	}
 
-	// 创建包
 	UPackage* Package = CreatePackage(*PackagePath);
 	if (!Package)
 	{
-		Result.ErrorMessage = FString::Printf(TEXT("无法创建包: %s"), *PackagePath);
+		Result.ErrorMessage = FString::Printf(TEXT("Failed to create package: %s"), *PackagePath);
 		return Result;
 	}
 
-	// 创建蓝图
 	UBlueprint* NewBP = FKismetEditorUtilities::CreateBlueprint(
-		ParentClass, Package, FName(*AssetName), BPTYPE_Normal);
+		ParentClass,
+		Package,
+		FName(*AssetName),
+		BPTYPE_Normal);
 	if (!NewBP)
 	{
-		Result.ErrorMessage = FString::Printf(TEXT("创建蓝图失败: %s"), *AssetPath);
+		Result.ErrorMessage = FString::Printf(TEXT("Failed to create Blueprint: %s"), *AssetPath);
 		return Result;
 	}
 
-	// 注册。AssetRegistry
 	FAssetRegistryModule::AssetCreated(NewBP);
 	Package->MarkPackageDirty();
 
@@ -228,10 +219,6 @@ FBlueprintHelperCreateBlueprintResult FBlueprintHelperEditorCommandService::Crea
 	return Result;
 }
 
-// ═══════════════════════════════════════════════════════════
-// Console Command
-// ═══════════════════════════════════════════════════════════
-
 FBlueprintHelperCommandResult FBlueprintHelperEditorCommandService::ExecConsoleCommand(
 	const FString& Command) const
 {
@@ -239,29 +226,24 @@ FBlueprintHelperCommandResult FBlueprintHelperEditorCommandService::ExecConsoleC
 
 	if (Command.IsEmpty())
 	{
-		Result.ErrorMessage = TEXT("command 不能为空。");
+		Result.ErrorMessage = TEXT("command cannot be empty.");
 		return Result;
 	}
 
 	if (!GEditor)
 	{
-		Result.ErrorMessage = TEXT("GEditor 不可用。");
+		Result.ErrorMessage = TEXT("GEditor is not available.");
 		return Result;
 	}
 
-	// 捕获命令输出
 	FStringOutputDevice OutputDevice;
 	UWorld* World = GEditor->GetEditorWorldContext().World();
 	GEditor->Exec(World, *Command, OutputDevice);
 
 	Result.bSuccess = true;
-	Result.Message = OutputDevice.IsEmpty() ? TEXT("命令已执行（无输出）。") : *OutputDevice;
+	Result.Message = OutputDevice.IsEmpty() ? TEXT("Command executed without output.") : *OutputDevice;
 	return Result;
 }
-
-// ═══════════════════════════════════════════════════════════
-// Close Editor
-// ═══════════════════════════════════════════════════════════
 
 FBlueprintHelperCommandResult FBlueprintHelperEditorCommandService::CloseEditor(bool bSaveAll) const
 {
@@ -269,7 +251,7 @@ FBlueprintHelperCommandResult FBlueprintHelperEditorCommandService::CloseEditor(
 
 	if (!GEditor)
 	{
-		Result.ErrorMessage = TEXT("GEditor 不可用。");
+		Result.ErrorMessage = TEXT("GEditor is not available.");
 		return Result;
 	}
 
@@ -281,20 +263,14 @@ FBlueprintHelperCommandResult FBlueprintHelperEditorCommandService::CloseEditor(
 			/*bSaveContentPackages=*/ true);
 		if (!bSaved)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[BlueprintHelper] CloseEditor: 部分包保存失败，仍将继续关闭。"));
+			UE_LOG(LogTemp, Warning, TEXT("[BlueprintHelper] CloseEditor: some dirty packages failed to save; shutdown will still be requested."));
 		}
 	}
 
-	// 延迟到下一帧退出，确保本次 Bridge 响应能发送回去
-	if (UAssetEditorSubsystem* AssetEditorSubsystem = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>())
-	{
-		if (!AssetEditorSubsystem->CloseAllAssetEditors())
-		{
-			Result.ErrorMessage = TEXT("CloseEditor: unable to close all asset editors; exit was cancelled.");
-			return Result;
-		}
-	}
-
+	// Do not call CloseAllAssetEditors here. Some Blueprint/asset editor teardown
+	// paths can assert while the Bridge request is still unwinding. Save first,
+	// then schedule a single editor quit command so the caller can receive a
+	// response before the Bridge connection drops.
 	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([](float)
 	{
 		if (GEngine)
@@ -306,7 +282,7 @@ FBlueprintHelperCommandResult FBlueprintHelperEditorCommandService::CloseEditor(
 
 	Result.bSuccess = true;
 	Result.Message = bSaveAll
-		? TEXT("Saved dirty packages, closed asset editors, and scheduled delayed editor shutdown.")
-		: TEXT("Closed asset editors and scheduled delayed editor shutdown without saving.");
+		? TEXT("Saved dirty packages and scheduled delayed editor shutdown.")
+		: TEXT("Scheduled delayed editor shutdown without saving.");
 	return Result;
 }

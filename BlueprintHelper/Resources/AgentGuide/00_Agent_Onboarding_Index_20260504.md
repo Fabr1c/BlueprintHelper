@@ -1,10 +1,10 @@
-> 2026-05-14 修订：BlueprintHelper CLI 是唯一正常 Agent-facing 工具入口；MCP 重新废弃冻结，仅保留遗留兼容/排查，不进入普通任务规划。`blueprint_open_editor` 与 `blueprint_close_editor` 均走 CLI。
+> 2026-05-15 修订：BlueprintHelper CLI 是普通 TaskSpec/ReadSpec/诊断/结果查询入口；Editor 启动和关闭由全局 BlueprintHelper MCP 生命周期工具负责。CLI lifecycle helper 只作为兼容/手动 fallback，不作为普通资产工作流入口。
 
 # BlueprintHelper Agent Onboarding Index
 
-If the current Claude environment cannot dispatch a SideAgent but the Main Agent can run the required BlueprintHelper CLI command, the Main Agent may execute one command locally under the SideAgent single-command contract and mark the result as `main_agent_direct_fallback`. Report `tool_unavailable` only when the required BlueprintHelper CLI command is not available.
+If the current Agent environment cannot dispatch a SideAgent but the Main Agent can run the required BlueprintHelper CLI command, the Main Agent may execute one command locally under the SideAgent single-command contract and mark the result as `main_agent_direct_fallback`. Report `tool_unavailable` only when the required BlueprintHelper CLI command is not available.
 
-CLI is the ordinary TaskSpec/read/debug-summary mainline. MCP is retained for Editor lifecycle, debug, recovery, and commands that need a long-lived host process. Prefer CLI for `blueprint_open_editor` and `blueprint_close_editor`.
+CLI is the ordinary TaskSpec/read/debug-summary mainline. Global MCP owns Editor lifecycle when an Agent must open or close Unreal Editor. Do not use plugin-local MCP or one-shot shell lifecycle calls as lifecycle validation.
 
 普通 Agent 只走 CLI TaskSpec-first 主线。兼容、测试和专家入口可能仍存在于底层传输层，但这些冻结入口不在本指南中作为可选工具暴露。
 
@@ -13,7 +13,7 @@ CLI is the ordinary TaskSpec/read/debug-summary mainline. MCP is retained for Ed
 ```text
 blueprint_get_runtime_profile
 -> blueprinthelper_read_agent_guide
--> blueprinthelper_read_context or blueprinthelper_read_reference_context
+-> blueprinthelper_read_task_context or blueprinthelper_read_context or blueprinthelper_read_reference_context
 -> build BlueprintHelper.TaskSpec.v1
 -> blueprinthelper_preview_task
 -> repair TaskSpec or stop_and_report
@@ -37,7 +37,13 @@ blueprinthelper_read_reference_context
 blueprinthelper_preview_task
 blueprinthelper_execute_task
 blueprinthelper_get_task_result
+blueprinthelper_get_debug_case
+blueprinthelper_list_debug_cases
+blueprinthelper_export_debug_bundle
+blueprinthelper_query_review_records
 ```
+
+`blueprinthelper_apply_review_action` is plugin-development/internal and is not part of ordinary Agent-facing templates or workflows.
 
 Write authorization is running Editor/Bridge based: use `blueprinthelper_request_write_session` only after a successful preview when `write_permission` is disabled. The approved scope and lifetime are held by the running Editor, so delegated SideAgents can call BlueprintHelper tools after approval as long as they stay within that scope. The Editor UI is intentionally a minimal accept/reject prompt. If it is rejected, stop and report.
 
@@ -49,7 +55,7 @@ CLI output is optimized for Agent use. Use `--omit operation,status` when the de
 
 Template-first authoring is available at `Resources/AgentGuide/Templates/README.md`. Prefer copying a matching JSON template, editing placeholders, and calling the CLI with `--file` instead of authoring large JSON directly in shell command strings.
 
-`blueprint_open_editor` 仅用于用户明确需要启动目标 Unreal Editor 的 preflight，不属于普通写入主线。
+`blueprint_open_editor` / `blueprint_close_editor` 仅用于用户明确需要启动或关闭目标 Unreal Editor 的 lifecycle preflight；Agent 工作流优先调用全局 MCP 生命周期工具。
 
 阅读顺序:
 

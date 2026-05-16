@@ -68,6 +68,7 @@ private:
 	void GetChangeTreeChildren(FReviewTreeItemPtr Item, TArray<FReviewTreeItemPtr>& OutChildren) const;
 	void OnChangeSelectionChanged(FReviewChangeItem Item, ESelectInfo::Type SelectInfo);
 	void OnChangeTreeSelectionChanged(FReviewTreeItemPtr Item, ESelectInfo::Type SelectInfo);
+	void OnMyBlueprintGraphNavigationRequested(const FString& ChangeId, const FString& GraphName);
 	void AddDebugMessage(const FString& Message);
 	FString BuildDebugMessagesString() const;
 	FText GetDebugMessagesText() const;
@@ -105,6 +106,7 @@ private:
 	TSharedRef<SWidget> BuildDiffRow(FReviewChangeItem Item, bool bShowActions);
 	TSharedRef<SWidget> BuildDiffFrame(FReviewChangeItem Item, const TSharedRef<SWidget>& Content, bool bShowActions);
 	void RefreshDiffStackWidgets();
+	void RefreshMainWorkspaceAfterReviewStateChanged();
 	void RefreshSurfaceOverlay(EBlueprintHelperReviewSurface Surface);
 	void RebuildChangeTreeItems();
 	void RefreshChangeTreeWidget();
@@ -135,6 +137,7 @@ private:
 	void HandlePreparedRejectReady(const FString& ChangeId, const FBlueprintHelperReviewRejectOptions& PreparedOptions);
 	void ExecutePreparedRejectMutation(const FString& ChangeId);
 	void FinishAsyncReject(const FString& ChangeId);
+	EActiveTimerReturnType TickDetailsGeometryRetry(double InCurrentTime, float InDeltaTime);
 
 	FText GetSelectedTitle() const;
 	FText GetSelectedBefore() const;
@@ -197,6 +200,8 @@ private:
 	int32 DebugFocusTraversalGeometryRetryCount = 0;
 	bool bDebugFocusTraversalAwaitingGeometry = false;
 	bool bDebugFocusTraversalActive = false;
+	int32 DetailsGeometryRetryCount = 0;
+	bool bDetailsGeometryRetryActive = false;
 	FBlueprintHelperReviewAssetContext ReviewAssetContext;
 	EBlueprintHelperReviewSurface DetailsSurface = EBlueprintHelperReviewSurface::Unknown;
 	FBlueprintHelperReviewGraphPresenterState GraphPresenterState;

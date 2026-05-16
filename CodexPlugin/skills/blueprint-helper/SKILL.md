@@ -14,8 +14,6 @@ Use this skill when a user asks Codex to work with Unreal Editor assets through 
 - UObject, DataAsset, and DataTable values.
 - Compile, save, open, PIE, diagnostics, and Bridge/runtime checks related to editor assets.
 - BlueprintHelper Codex configuration, safety profile, editor lifecycle policy, and Agent workflow preferences.
-- BlueprintHelper Codex configuration, safety profile, editor lifecycle policy, and Agent workflow preferences.
-- BlueprintHelper Codex configuration, safety profile, editor lifecycle policy, and Agent workflow preferences.
 
 Do not use BlueprintHelper for normal repository files. Use normal Codex shell and edit tools for C++, TypeScript, Python, JSON, config, docs, tests, build scripts, and source search.
 
@@ -59,7 +57,7 @@ npm run build
 Before any editor-asset write:
 
 1. Confirm the target UE project and `.uproject` path when launch/build is needed.
-2. Confirm Unreal Editor is running with BlueprintHelper loaded. Prefer MCP `blueprint_open_editor` when the editor must be launched from an Agent workflow; ordinary BlueprintHelper read/write commands still use CLI.
+2. Confirm Unreal Editor is running with BlueprintHelper loaded. Use the global MCP lifecycle tools when the editor must be launched or closed from an Agent workflow; ordinary BlueprintHelper read/write commands still use CLI.
 3. Confirm the Bridge is reachable.
 4. Identify the exact target asset path, such as `/Game/Blueprints/BP_Player`.
 5. Identify the exact graph/function/widget/table scope when applicable.
@@ -85,9 +83,11 @@ Use compact output for routine loops:
 
 ```powershell
 bh blueprint_get_runtime_profile --json "{}" --select status,summary
-bh blueprinthelper_preview_task --file .\task_spec.json --select status,preview_id,summary,artifacts.full_result
-bh blueprinthelper_execute_task --file .\task_spec.json --select status,task_run_id,summary,artifacts.full_result
+bh task preview --file .\task_spec.json --select status,preview_id,summary,artifacts.full_result
+bh task execute --file .\task_spec.json --select status,task_run_id,summary,artifacts.full_result
 ```
+
+For complex JSON, prefer copying templates from `BlueprintHelper/Resources/AgentGuide/Templates/` and calling the CLI with `--file`. If you call the direct tool-name entries `blueprinthelper_preview_task` or `blueprinthelper_execute_task`, use the wrapper templates with root field `task_spec`; if you call grouped `task preview` or `task execute`, use a bare `BlueprintHelper.TaskSpec.v1` file.
 
 ## Supported Agent-Facing Commands
 
@@ -108,7 +108,10 @@ blueprinthelper_get_task_result
 blueprinthelper_get_debug_case
 blueprinthelper_list_debug_cases
 blueprinthelper_export_debug_bundle
+blueprinthelper_query_review_records
 ```
+
+`blueprinthelper_apply_review_action` is plugin-development/internal and is not part of ordinary Codex Agent workflows.
 
 MCP-only editor lifecycle companion commands:
 

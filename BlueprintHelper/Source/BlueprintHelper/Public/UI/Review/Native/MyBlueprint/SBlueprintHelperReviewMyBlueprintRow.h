@@ -17,9 +17,11 @@ public:
 		SLATE_ARGUMENT(TSharedPtr<FBlueprintHelperReviewMyBlueprintPresenter::FRowItem>, Item)
 		SLATE_ARGUMENT(FString, AssetPath)
 		SLATE_ARGUMENT(FBlueprintHelperReviewGeometryInvalidated, OnGeometryInvalidated)
+		SLATE_ARGUMENT(FBlueprintHelperReviewMyBlueprintNavigateToGraph, OnNavigateToGraph)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs, const TSharedRef<STableViewBase>& OwnerTable);
+	virtual FReply OnMouseButtonDoubleClick(const FGeometry& InMyGeometry, const FPointerEvent& InMouseEvent) override;
 
 private:
 	FSlateColor GetRowBackgroundColor() const;
@@ -32,5 +34,6 @@ private:
 
 	TSharedPtr<FBlueprintHelperReviewMyBlueprintPresenter::FRowItem> Item;
 	FString AssetPath;
+	FBlueprintHelperReviewMyBlueprintNavigateToGraph OnNavigateToGraph;
 	mutable FSlateRoundedBoxBrush DiffBrush = FSlateRoundedBoxBrush(FLinearColor::Transparent, 0.0f);
 };

@@ -20,7 +20,7 @@ Path placeholders used in this guide:
 
 ```text
 Plugin: <PLUGIN_ROOT>
-Project file: discovered by the Agent and passed as explicit `project_file`
+Project file: discovered from the workspace when possible; pass explicit `project_file` only when lifecycle tooling cannot infer it safely
 ```
 
 ## 1. Install The Plugin
@@ -69,11 +69,11 @@ $env:BRIDGE_HOST = "127.0.0.1"
 $env:BRIDGE_PORT = "54321"
 ```
 
-Project `.uproject` paths should not be stored globally. Agents discover the target `.uproject` from the current workspace and pass it explicitly as `project_file`.
+Project `.uproject` paths should not be stored globally. Agents discover the target `.uproject` from the current workspace; explicit `project_file` remains available for ambiguous workspaces.
 
 ## 4. Start Unreal Editor
 
-Either start Unreal Editor normally with the project, or use the MCP lifecycle command `blueprint_open_editor` after the project agent profile has `environment.ue_engine_dir`. CLI lifecycle helpers are best-effort in one-shot shell environments.
+Either start Unreal Editor normally with the project, or use the global MCP lifecycle command `blueprint_open_editor` after the project agent profile has `environment.ue_engine_dir`. CLI lifecycle helpers are compatibility/manual fallbacks; do not use one-shot shell lifecycle checks as proof that Agent lifecycle behavior is correct.
 
 Bridge smoke check:
 
@@ -92,8 +92,8 @@ Examples:
 ```powershell
 bh blueprint_get_runtime_profile --json "{}" --select status,summary
 bh blueprinthelper_read_task_context --file .\context-params.json --select status,summary,artifacts.full_result
-bh blueprinthelper_preview_task --file .\task_spec.json --select status,preview_id,summary,artifacts.full_result
-bh blueprinthelper_execute_task --file .\task_spec.json --select status,task_run_id,summary
+bh task preview --file .\task_spec.json --select status,preview_id,summary,artifacts.full_result
+bh task execute --file .\task_spec.json --select status,task_run_id,summary
 ```
 
 See [TaskSpec_CLI_QuickStart.md](TaskSpec_CLI_QuickStart.md) for command syntax and output rules.
@@ -134,14 +134,16 @@ Expected bridge facts:
 Read a Blueprint summary:
 
 ```powershell
-bh blueprinthelper_read_context --json "{ \"schema\": \"BlueprintHelper.ReadSpec.v1\", \"read_type\": \"blueprint_logic\", \"target\": { \"asset_path\": \"/Game/Blueprints/BP_Player.BP_Player\" }, \"view\": { \"format\": \"summary\" } }" --select status,summary,artifacts.full_result
+bh blueprinthelper_read_context --file .\read_blueprint_summary.json --select status,summary,artifacts.full_result
 ```
 
 Read a graph as Markdown:
 
 ```powershell
-bh blueprinthelper_read_context --json "{ \"schema\": \"BlueprintHelper.ReadSpec.v1\", \"read_type\": \"blueprint_logic\", \"target\": { \"asset_path\": \"/Game/Blueprints/BP_Player.BP_Player\", \"target_type\": \"graph\", \"target_name\": \"EventGraph\" }, \"view\": { \"format\": \"logic_md\" } }" --select status,summary,artifacts.full_result
+bh blueprinthelper_read_context --file .\read_eventgraph_logic_md.json --select status,summary,artifacts.full_result
 ```
+
+Copy matching inputs from `Resources/AgentGuide/Templates/read/` and edit placeholders instead of embedding complex JSON in PowerShell.
 
 ## 8. Safe Write Checklist
 
@@ -152,8 +154,8 @@ For ordinary Agent editor-asset mutations, use the TaskSpec-first flow:
 - Run `bh blueprinthelper_read_task_context --file .\context-params.json --select status,summary,artifacts.full_result`.
 - Produce `BlueprintHelper.TaskSpec.v1` with exact `asset_path`, target graph when relevant, allowed scope, resource references, failure policy, `validation.should_compile`, and `validation.should_save`.
 - Do not submit TaskPlan directly; it is produced by the Python Task Compiler.
-- Run `bh blueprinthelper_preview_task --file .\task_spec.json --select status,preview_id,summary,artifacts.full_result` and stop on blocked / failed preview.
-- Run `bh blueprinthelper_execute_task --file .\task_spec.json --select status,task_run_id,summary` only after preview passes.
+- Run `bh task preview --file .\task_spec.json --select status,preview_id,summary,artifacts.full_result` and stop on blocked / failed preview.
+- Run `bh task execute --file .\task_spec.json --select status,task_run_id,summary` only after preview passes.
 - Let UE Task Runtime handle TaskPlan execution, compile/save policy, transaction grouping, rollback, and diagnostics.
 
 Low-level legacy/internal/debug/expert commands are documented in [CLI_Tools_API_Reference.md](CLI_Tools_API_Reference.md), but they are not part of the supported Agent entry.

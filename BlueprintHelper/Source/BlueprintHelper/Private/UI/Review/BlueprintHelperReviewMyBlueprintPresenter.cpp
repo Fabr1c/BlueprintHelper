@@ -257,12 +257,12 @@ TSharedRef<SWidget> FBlueprintHelperReviewMyBlueprintPresenter::BuildContent(
 	const FBlueprintHelperReviewAssetContext& Context,
 	FState& State,
 	const TArray<TSharedPtr<FBlueprintHelperReviewVisibleChange>>& ChangeItems,
-	FBlueprintHelperReviewGeometryInvalidated OnGeometryInvalidated)
+	FBlueprintHelperReviewGeometryInvalidated OnGeometryInvalidated,
+	FBlueprintHelperReviewMyBlueprintNavigateToGraph OnNavigateToGraph)
 {
 	State.RootItems.Reset();
 	State.TreeView.Reset();
 	State.OnGeometryInvalidated = OnGeometryInvalidated;
-	(void)ChangeItems;
 
 	UBlueprint* Blueprint = Context.Blueprint.Get();
 	if (!Blueprint)
@@ -324,6 +324,12 @@ TSharedRef<SWidget> FBlueprintHelperReviewMyBlueprintPresenter::BuildContent(
 		return Row;
 	};
 
+	auto IsGraphNavigableRowKind = [](ERowKind Kind)
+	{
+		return Kind == ERowKind::Function
+			|| Kind == ERowKind::Event;
+	};
+
 	auto AddGraphRows = [&AddChildRow](
 		const TSharedRef<FRowItem>& Section,
 		const TArray<TObjectPtr<UEdGraph>>& Graphs,
@@ -337,7 +343,9 @@ TSharedRef<SWidget> FBlueprintHelperReviewMyBlueprintPresenter::BuildContent(
 				continue;
 			}
 			const FString GraphName = Graph->GetName();
-			Rows.Add(AddChildRow(Section, GraphName, GraphName, Kind));
+			TSharedRef<FRowItem> Row = AddChildRow(Section, GraphName, GraphName, Kind);
+			Row->NavigateGraphName = GraphName;
+			Rows.Add(Row);
 		}
 		return Rows;
 	};
@@ -352,6 +360,7 @@ TSharedRef<SWidget> FBlueprintHelperReviewMyBlueprintPresenter::BuildContent(
 
 		const FString GraphName = Graph->GetName();
 		TSharedRef<FRowItem> GraphRow = AddChildRow(GraphSection, GraphName, GraphName, ERowKind::Graph);
+		GraphRow->NavigateGraphName = GraphName;
 		for (UEdGraphNode* Node : Graph->Nodes)
 		{
 			const UK2Node_CustomEvent* CustomEvent = Cast<UK2Node_CustomEvent>(Node);
@@ -363,7 +372,9 @@ TSharedRef<SWidget> FBlueprintHelperReviewMyBlueprintPresenter::BuildContent(
 			const FString EventName = CustomEvent->CustomFunctionName.ToString();
 			if (!EventName.IsEmpty())
 			{
-				GraphRow->Children.Add(MakeRow(EventName, EventName, ERowKind::Event));
+				TSharedRef<FRowItem> EventRow = MakeRow(EventName, EventName, ERowKind::Event);
+				EventRow->NavigateGraphName = GraphName;
+				GraphRow->Children.Add(EventRow);
 			}
 		}
 	}
@@ -393,10 +404,54 @@ TSharedRef<SWidget> FBlueprintHelperReviewMyBlueprintPresenter::BuildContent(
 		}
 	}
 
+	TFunction<void(const TArray<TSharedPtr<FRowItem>>&)> BindGraphNavigation;
+	BindGraphNavigation = [&BindGraphNavigation, &ChangeItems, &IsGraphNavigableRowKind](const TArray<TSharedPtr<FRowItem>>& Rows)
+	{
+		for (const TSharedPtr<FRowItem>& Row : Rows)
+		{
+			if (!Row.IsValid())
+			{
+				continue;
+			}
+
+			if (IsGraphNavigableRowKind(Row->Kind) && !Row->SearchText.IsEmpty())
+			{
+				for (const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Change : ChangeItems)
+				{
+					if (!Change.IsValid()
+						|| Change->ChangeId.IsEmpty()
+						|| !FBlueprintHelperReviewMyBlueprintPresenter::ShouldShowChange(*Change))
+					{
+						continue;
+					}
+
+					const FString TargetText = FBlueprintHelperReviewSurfaceFrameBuilder::GetReviewTargetText(
+						*Change,
+						EBlueprintHelperReviewSurface::MyBlueprint);
+					if (FBlueprintHelperReviewMyBlueprintPresenterUtils::GeometrySearchTextMatches(Row->SearchText, TargetText)
+						|| FBlueprintHelperReviewMyBlueprintPresenterUtils::GeometrySearchTextMatches(Row->SearchText, Change->DisplayLabel)
+						|| FBlueprintHelperReviewMyBlueprintPresenterUtils::GeometrySearchTextMatches(Row->SearchText, Change->LocationKey))
+					{
+						Row->NavigateChangeId = Change->ChangeId;
+						if (Row->NavigateGraphName.IsEmpty())
+						{
+							Row->NavigateGraphName = Row->SearchText;
+						}
+						break;
+					}
+				}
+			}
+
+			BindGraphNavigation(Row->Children);
+		}
+	};
+	BindGraphNavigation(State.RootItems);
+
 	TSharedRef<SBlueprintHelperReviewMyBlueprintPanel> Panel = SNew(SBlueprintHelperReviewMyBlueprintPanel)
 		.RootItemsSource(&State.RootItems)
 		.AssetPath(Context.AssetPath)
-		.OnGeometryInvalidated(OnGeometryInvalidated);
+		.OnGeometryInvalidated(OnGeometryInvalidated)
+		.OnNavigateToGraph(OnNavigateToGraph);
 	State.TreeView = Panel->GetTreeView();
 	return Panel;
 }

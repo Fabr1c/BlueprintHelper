@@ -39,6 +39,8 @@ profile
 
 函数调用语句中的 `args` 只表示函数参数:
 
+`call_function.name` may be a native function name, a Blueprint display name, an owner-qualified native name, or an explicit component/member call for append-owned graph writes. Preview resolves it against the target Blueprint graph. If preview reports ambiguity, change `name` to an owner-qualified native name such as `/Script/Engine.KismetSystemLibrary:PrintString` and preview again.
+
 ```json
 {
   "kind": "call_function",
@@ -50,6 +52,16 @@ profile
       "value": "message"
     }
   }
+}
+```
+
+Append-owned graph writes may use explicit component/member calls. The object prefix must name a Blueprint member or component that can be read through a generated getter, and the function part is resolved by the UE graph-aware resolver:
+
+```json
+{
+  "kind": "call_function",
+  "name": "DoorMesh.AddAngularImpulseInDegrees",
+  "args": {}
 }
 ```
 

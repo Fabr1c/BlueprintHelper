@@ -8,14 +8,14 @@ Task write mainline: Agent -> BlueprintHelper CLI -> task-core -> Python Task Co
 
 Use the CLI when an Agent can run shell commands and should avoid large escaped JSON output. The CLI is the current Agent-facing surface for ordinary TaskSpec writes in shell-capable environments. It keeps Agent stdout compact, supports selected-field output, and still preserves TaskSpec-first writes, Python compilation, Bridge preview, and UE Task Runtime execution.
 
-MCP is retained as a companion entry for editor launch/lifecycle, debug, recovery, and capabilities that are unreliable from one-shot CLI processes.
+Editor launch/close is handled through the global BlueprintHelper MCP lifecycle tools when an Agent owns lifecycle. The CLI remains the ordinary transport for TaskSpec, ReadSpec, diagnostics, and result queries.
 
 ## Prerequisites
 
 - Complete the Bridge and project profile setup before running CLI commands.
 - Build `task-core` and the CLI package so the CLI entry exists under `AgentFaceService/cli/build/cli/`.
 - Start Unreal Editor with BlueprintHelper loaded and the Bridge reachable.
-- Prepare a `BlueprintHelper.TaskSpec.v1` file such as `.\task_spec.json`.
+- Prepare a bare `BlueprintHelper.TaskSpec.v1` file such as `.\task_spec.json`, or copy one from `Resources/AgentGuide/Templates/write/`.
 
 ## Build
 
@@ -41,12 +41,12 @@ Examples:
 
 ```powershell
 bh blueprint_get_runtime_profile --json "{}" --select status,summary
-bh blueprinthelper_preview_task --file .\task_spec.json --select status,preview_id,summary,artifacts.full_result
-bh blueprinthelper_execute_task --file .\task_spec.json --select status,task_run_id,summary
+bh blueprinthelper_preview_task --file .\preview_wrapper.json --select status,preview_id,summary,artifacts.full_result
+bh blueprinthelper_execute_task --file .\execute_wrapper.json --select status,task_run_id,summary
 bh blueprint_get_runtime_profile --json "{}" --select status,summary
 ```
 
-The direct CLI registry is the current non-frozen Agent-facing TaskSpec/read/debug summary surface. Frozen legacy/expert tools are not re-exposed through CLI, even if `--expert` is passed. Prefer CLI for `blueprint_open_editor`, `blueprint_close_editor`, and other lifecycle commands that require a long-lived host process.
+The direct CLI registry is the current non-frozen Agent-facing TaskSpec/read/debug summary surface. Frozen legacy/expert tools are not re-exposed through CLI, even if `--expert` is passed. Use the global MCP lifecycle tools for Agent-owned `blueprint_open_editor` / `blueprint_close_editor`.
 
 ## Preview
 
@@ -58,10 +58,10 @@ node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js task preview --file .
 
 Use `--format summary` for normal Agent loops so the shell returns compact text plus artifact paths instead of large escaped JSON blobs.
 
-The grouped command remains a convenience alias for the direct tool-name protocol:
+The direct tool-name command uses the tool input shape. Prefer the wrapper templates:
 
 ```powershell
-node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js blueprinthelper_preview_task --file .\task_spec.json --select status,preview_id,artifacts.full_result
+node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js blueprinthelper_preview_task --file .\preview_wrapper.json --select status,preview_id,artifacts.full_result
 ```
 
 ## Execute
@@ -108,6 +108,8 @@ Example projected output:
 ## Rules
 
 - Keep writes TaskSpec-first. Any CLI write should start from `BlueprintHelper.TaskSpec.v1`.
+- Use bare TaskSpec files with `task preview` / `task execute`; use `task_spec` wrapper files with `blueprinthelper_preview_task` / `blueprinthelper_execute_task`.
+- Prefer `Resources/AgentGuide/Templates/` copy-and-edit JSON templates over inline PowerShell `--json` for complex inputs.
 - Preview before execute.
 - The CLI is the Agent-facing transport layer; it does not replace the Python Task Compiler or UE Task Runtime.
 - The CLI is not a raw Bridge write surface for ordinary asset writes.

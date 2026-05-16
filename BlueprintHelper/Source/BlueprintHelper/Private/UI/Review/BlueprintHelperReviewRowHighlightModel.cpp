@@ -253,7 +253,8 @@ bool FBlueprintHelperReviewRowHighlightModel::FindRowHighlightEntry(
 	const FString& AssetPath,
 	EBlueprintHelperReviewSurface Surface,
 	const FString& SearchText,
-	FRowHighlightEntry& OutEntry)
+	FRowHighlightEntry& OutEntry,
+	bool bAllowFuzzyMatch)
 {
 	const FRowHighlightSurfaceState* State =
 		GetRowHighlightSurfaceStates().Find(BuildRowHighlightStateKey(AssetPath, Surface));
@@ -266,6 +267,11 @@ bool FBlueprintHelperReviewRowHighlightModel::FindRowHighlightEntry(
 	{
 		OutEntry = *Exact;
 		return true;
+	}
+
+	if (!bAllowFuzzyMatch)
+	{
+		return false;
 	}
 
 	for (const TPair<FString, FRowHighlightEntry>& Pair : State->TargetKeyToHighlight)
@@ -295,7 +301,7 @@ FReply FBlueprintHelperReviewRowHighlightModel::ExecuteHighlightedRowAction(
 	}
 
 	FRowHighlightEntry Entry;
-	if (!FindRowHighlightEntry(AssetPath, Surface, SearchText, Entry) || !Entry.Change.IsValid())
+	if (!FindRowHighlightEntry(AssetPath, Surface, SearchText, Entry, true) || !Entry.Change.IsValid())
 	{
 		return FReply::Handled();
 	}
@@ -313,7 +319,7 @@ FSlateColor FBlueprintHelperReviewRowHighlightModel::ResolveRowHighlightColor(
 	const FString& SearchText)
 {
 	FRowHighlightEntry Entry;
-	if (!FindRowHighlightEntry(AssetPath, Surface, SearchText, Entry))
+	if (!FindRowHighlightEntry(AssetPath, Surface, SearchText, Entry, true))
 	{
 		return FSlateColor(FLinearColor::Transparent);
 	}
@@ -333,7 +339,7 @@ EVisibility FBlueprintHelperReviewRowHighlightModel::ResolveRowActionsVisibility
 	const FString& SearchText)
 {
 	FRowHighlightEntry Entry;
-	return FindRowHighlightEntry(AssetPath, Surface, SearchText, Entry) && Entry.bSelected
+	return FindRowHighlightEntry(AssetPath, Surface, SearchText, Entry, false) && Entry.bSelected
 		? EVisibility::Visible
 		: EVisibility::Collapsed;
 }
@@ -470,6 +476,38 @@ bool FBlueprintHelperReviewRowHighlightModel::IsRowHighlightSurface(EBlueprintHe
 		|| Surface == EBlueprintHelperReviewSurface::UMGWidgetTree
 		|| Surface == EBlueprintHelperReviewSurface::DataTable
 		|| Surface == EBlueprintHelperReviewSurface::DataAsset;
+}
+
+void FBlueprintHelperReviewRowHighlightModel::InvalidateSurfaceState(
+	const FString& AssetPath,
+	EBlueprintHelperReviewSurface Surface)
+{
+	if (AssetPath.IsEmpty())
+	{
+		return;
+	}
+	GetRowHighlightSurfaceStates().Remove(BuildRowHighlightStateKey(AssetPath, Surface));
+}
+
+void FBlueprintHelperReviewRowHighlightModel::InvalidateAssetStates(const FString& AssetPath)
+{
+	if (AssetPath.IsEmpty())
+	{
+		return;
+	}
+
+	TArray<FString> KeysToRemove;
+	for (const TPair<FString, FRowHighlightSurfaceState>& Pair : GetRowHighlightSurfaceStates())
+	{
+		if (Pair.Value.AssetPath == AssetPath || Pair.Key.StartsWith(AssetPath + TEXT("|")))
+		{
+			KeysToRemove.Add(Pair.Key);
+		}
+	}
+	for (const FString& Key : KeysToRemove)
+	{
+		GetRowHighlightSurfaceStates().Remove(Key);
+	}
 }
 
 FLinearColor FBlueprintHelperReviewRowHighlightModel::GetRowHighlightFillColor(const FLinearColor& ChangeColor)

@@ -1,8 +1,8 @@
 # BlueprintHelper
 
-BlueprintHelper is an Unreal Engine editor plugin with a CLI-first TaskSpec transport and an deprecated/frozen MCP compatibility path. It lets an agent inspect and modify Unreal Editor assets through a local Bridge: Blueprint graphs, UMG widgets, DataAssets, DataTables, asset browser operations, compile/save/open commands, PIE commands, and related diagnostics.
+BlueprintHelper is an Unreal Engine editor plugin with a CLI-first TaskSpec transport and a global MCP lifecycle companion. It lets an agent inspect and modify Unreal Editor assets through a local Bridge: Blueprint graphs, UMG widgets, DataAssets, DataTables, asset browser operations, compile/save/open commands, PIE commands, and related diagnostics.
 
-BlueprintHelper is not a general source editing API. Use normal repository tools for C++, TypeScript, Python, JSON, config files, code search, build scripts, and documentation edits. MCP is retained for editor launch/lifecycle, debug, recovery, and capabilities that are unreliable from one-shot CLI processes.
+BlueprintHelper is not a general source editing API. Use normal repository tools for C++, TypeScript, Python, JSON, config files, code search, build scripts, and documentation edits. Global MCP is retained for editor launch/lifecycle, debug, recovery, and capabilities that are unreliable from one-shot CLI processes.
 
 ## TaskSpec-First Architecture
 
@@ -18,8 +18,8 @@ The intended default flow is:
 bh blueprint_get_runtime_profile
 -> bh blueprinthelper_read_task_context
 -> Agent produces BlueprintHelper.TaskSpec.v1
--> bh blueprinthelper_preview_task
--> bh blueprinthelper_execute_task
+-> bh task preview
+-> bh task execute
 -> bh blueprinthelper_get_task_result when needed
 ```
 
@@ -36,8 +36,8 @@ Current source metadata:
 | Unreal plugin `BlueprintHelper.uplugin` | `VersionName` 0.4.1 |
 | CLI `AgentFaceService/cli/package.json` | 0.4.1 |
 | Shared task core `AgentFaceService/task-core/package.json` | 0.4.1 |
-| Deprecated/frozen MCP compatibility package `AgentFaceService/mcp/package.json` | 0.4.1 |
-| Documentation batch | 2026-05-12 CLI-first TaskSpec mainline |
+| Global MCP lifecycle companion package `AgentFaceService/mcp/package.json` | 0.4.1 |
+| Documentation batch | 2026-05-15 CLI TaskSpec mainline + global MCP lifecycle boundary |
 | Intended UE version | UE 5.3 or newer |
 
 The documentation mainline targets the CLI-first TaskSpec / TaskPlan orchestration architecture with MCP retained for lifecycle/debug companion duties. Treat plugin version, CLI version, MCP package version, and documentation date as separate version sources until the compatibility matrix is completed.
@@ -52,7 +52,7 @@ The documentation mainline targets the CLI-first TaskSpec / TaskPlan orchestrati
 | Data assets | Read/set editable UObject properties |
 | DataTables | Read, add, update, delete rows |
 | Editor commands | Compile/save/open assets, create Blueprint, PIE start/stop, undo/redo, console commands |
-| Local process commands | Open Unreal Editor, build the Unreal project |
+| Local process commands | Build the Unreal project; Editor open/close is handled through global MCP lifecycle tools when Agent-controlled |
 
 ## Boundaries
 
@@ -85,7 +85,7 @@ Restart Claude Code, then run:
 
 The setup command writes the project agent profile, keeps or creates default Conservative preferences, and asks for at most one diagnostics result. It does not run shell commands or the full preference wizard.
 
-Detailed manual setup lives in [Docs/Install_CLI_QuickStart.md](../BlueprintHelper/Docs/Install_CLI_QuickStart.md). CLI command syntax lives in [Docs/TaskSpec_CLI_QuickStart.md](../BlueprintHelper/Docs/TaskSpec_CLI_QuickStart.md).
+Detailed manual setup lives in [Docs/Install_CLI_QuickStart.md](../BlueprintHelper/Docs/Install_CLI_QuickStart.md). CLI command syntax lives in [Docs/TaskSpec_CLI_QuickStart.md](../BlueprintHelper/Docs/TaskSpec_CLI_QuickStart.md). Copy-and-edit JSON templates live in [Resources/AgentGuide/Templates](../BlueprintHelper/Resources/AgentGuide/Templates/README.md).
 
 ## Agent Entry Points
 
@@ -125,7 +125,7 @@ Claude Code discovers plugin commands from the plugin root `commands/` directory
 
 For ordinary Agent editor-asset mutations, use the TaskSpec-first loop:
 
-1. Confirm Unreal Editor is running, or `<ProjectDir>/.blueprinthelper/agent-profile.json` has `environment.ue_engine_dir` and the target `.uproject` can be passed as `project_file`.
+1. Confirm Unreal Editor is running, or use the global MCP lifecycle tool after `<ProjectDir>/.blueprinthelper/agent-profile.json` has `environment.ue_engine_dir`.
 2. Confirm the Bridge is reachable.
 3. Read runtime profile and TaskContextPack.
 4. Produce an explicit `BlueprintHelper.TaskSpec.v1` with `validation.should_compile` and `validation.should_save`.
@@ -153,7 +153,7 @@ BlueprintHelper Bridge uses object-first responses. Large raw graph payloads sho
 
 ### MCP Companion / Compatibility Behavior
 
-- `blueprint_open_editor` and `blueprint_close_editor` are CLI-only lifecycle commands.
+- `blueprint_open_editor` and `blueprint_close_editor` are global MCP lifecycle companion commands for Agent-owned editor lifecycle. CLI lifecycle helpers are compatibility/manual fallbacks only.
 - `blueprint_export_to_json` may still return `raw_json_ref` as a resource link in compatibility paths.
 - RawJson resource handling remains for historical fixtures and recovery workflows.
 - `legacy_text_json` exists only for compatibility with older text-only callers.

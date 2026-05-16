@@ -12,6 +12,8 @@ struct FBlueprintHelperReviewAssetContext;
 struct FBlueprintHelperReviewPanelSurfacePresenterArgs;
 template <typename ItemType> class STreeView;
 
+DECLARE_DELEGATE_TwoParams(FBlueprintHelperReviewMyBlueprintNavigateToGraph, const FString&, const FString&);
+
 class BLUEPRINTHELPER_API FBlueprintHelperReviewMyBlueprintPresenter
 {
 public:
@@ -35,6 +37,8 @@ public:
 		FEdGraphPinType PinType;
 		bool bHasPinType = false;
 		ERowKind Kind = ERowKind::ReviewOnly;
+		FString NavigateChangeId;
+		FString NavigateGraphName;
 		TArray<TSharedPtr<FRowItem>> Children;
 		TWeakPtr<SWidget> RowWidget;
 	};
@@ -51,7 +55,8 @@ public:
 		const FBlueprintHelperReviewAssetContext& Context,
 		FState& State,
 		const TArray<TSharedPtr<FBlueprintHelperReviewVisibleChange>>& ChangeItems,
-		FBlueprintHelperReviewGeometryInvalidated OnGeometryInvalidated = FBlueprintHelperReviewGeometryInvalidated());
+		FBlueprintHelperReviewGeometryInvalidated OnGeometryInvalidated = FBlueprintHelperReviewGeometryInvalidated(),
+		FBlueprintHelperReviewMyBlueprintNavigateToGraph OnNavigateToGraph = FBlueprintHelperReviewMyBlueprintNavigateToGraph());
 	static TSharedRef<SWidget> BuildOverlay(const FBlueprintHelperReviewPanelSurfacePresenterArgs& Args);
 	static bool ResolveRowGeometry(
 		const FBlueprintHelperReviewVisibleChange& Change,

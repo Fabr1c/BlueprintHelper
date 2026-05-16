@@ -14,6 +14,7 @@ public:
 		SLATE_ARGUMENT(TArray<TSharedPtr<FBlueprintHelperReviewMyBlueprintPresenter::FRowItem>>*, RootItemsSource)
 		SLATE_ARGUMENT(FString, AssetPath)
 		SLATE_ARGUMENT(FBlueprintHelperReviewGeometryInvalidated, OnGeometryInvalidated)
+		SLATE_ARGUMENT(FBlueprintHelperReviewMyBlueprintNavigateToGraph, OnNavigateToGraph)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
@@ -35,5 +36,6 @@ private:
 	TArray<TSharedPtr<FBlueprintHelperReviewMyBlueprintPresenter::FRowItem>>* RootItemsSource = nullptr;
 	FString AssetPath;
 	FBlueprintHelperReviewGeometryInvalidated OnGeometryInvalidated;
+	FBlueprintHelperReviewMyBlueprintNavigateToGraph OnNavigateToGraph;
 	TSharedPtr<STreeView<TSharedPtr<FBlueprintHelperReviewMyBlueprintPresenter::FRowItem>>> TreeView;
 };

@@ -20,7 +20,7 @@
 TaskSpec 必须描述：目标资产、feature_name、scope_policy、asset_policy、resources、components、variables、class_settings、behavior、validation。
 `feature_name` 只作为任务显示名 / journal 标签；图表名、函数名、变量名、block_id 必须显式填写，不能由 `feature_name` 推断。不要填写 `intent`，执行后的 `generated_intent` 由编排层写入 Journal。
 
-调用 `blueprinthelper_preview_task` / `blueprinthelper_execute_task` 时，工具参数固定为：
+调用 `blueprinthelper_preview_task` / `blueprinthelper_execute_task` 工具名入口时，优先使用：
 
 ```json
 {
@@ -30,7 +30,7 @@ TaskSpec 必须描述：目标资产、feature_name、scope_policy、asset_polic
 }
 ```
 
-不要把完整 TaskSpec 的顶层字段直接平铺到工具参数里。
+使用 `task preview --file` / `task execute --file` 分组命令时，文件根对象必须是裸 `BlueprintHelper.TaskSpec.v1`。不要把 wrapper 传给分组命令，也不要额外包 `args`。
 
 Patch/Merge 已有 BlueprintHelper-owned block 时，先用 `blueprinthelper_read_context` 读取 `logic_json`。写入锚点必须来自 grouped block：`block_id + group_entry_node_path + node_ref + pin_ref`，`insert_between` 额外需要 `link_ref`。不要把全图级 `nodes[0]`、显示名、GUID-first selector 当普通主线写锚点。
 
@@ -44,12 +44,12 @@ GraphWrite TaskSpecs must keep `scope_policy.allow_modify_user_nodes=false`. If 
 
 execute_task 仍可能因 UE 当前状态、资产变化或 Editor 写入失败而失败；失败结果必须带非空 error code/message/stage，报告时使用该错误和 task result/journal，不展开底层 Bridge payload。
 
-GraphWrite body 内的函数调用使用 `args`，每个参数值是结构化 literal：
+GraphWrite body 内的函数调用优先使用 GraphStatement 短名 `kind="call"` + `target`。`args` 表达函数参数，每个参数值是结构化 literal：
 
 ```json
 {
-  "kind": "call_function",
-  "name": "PrintString",
+  "kind": "call",
+  "target": "PrintString",
   "args": {
     "InString": {
       "kind": "literal",
@@ -83,6 +83,7 @@ Resources/AgentGuide/Reference/04_Tool_Surface_Field_Templates_20260512.md
 read_context: schema/read_type/target/view/context 位于工具参数根对象
 preview_task: 根对象只有 task_spec
 execute_task: 根对象只有 task_spec
+task preview/execute grouped command: 裸 BlueprintHelper.TaskSpec.v1 文件
 get_task_result: 根对象只有 task_run_id
 ```
 

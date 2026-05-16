@@ -12,7 +12,7 @@ BlueprintHelper 用于把 Agent 的高层编辑意图转换成 Unreal Editor 内
 - 通过 `BlueprintHelper.TaskSpec.v1` 描述写入意图，并在执行前生成预览。
 - 修改 Blueprint 逻辑、结构、组件、类设置、事件分发器等编辑器资产内容。
 - 读取和修改 UMG Widget 树、Widget 属性、DataAsset 属性和 DataTable 行数据。
-- 执行编译、保存、打开资产、PIE、诊断等 Unreal Editor 操作。
+- 执行编译、保存、PIE、诊断等 Unreal Editor 相关操作；Agent 控制 Editor 启动/关闭时使用全局 MCP 生命周期工具。
 
 ## 使用范围
 
@@ -33,9 +33,10 @@ BlueprintHelper 用于把 Agent 的高层编辑意图转换成 Unreal Editor 内
 
 ## 核心特色
 
-- CLI-first Agent 入口：默认通过 `bh <tool_name>` 访问能力，适合普通 shell-capable Agent 集成。
+- CLI-first 普通资产入口：默认通过 `bh <tool_name>` 访问 TaskSpec、ReadSpec、诊断和结果查询能力，适合普通 shell-capable Agent 集成。
 - TaskSpec-first 写入架构：Agent 只提交语义化 `BlueprintHelper.TaskSpec.v1`，底层 TaskPlan 由 task-core 和编译器生成。
 - 写入前预览：普通编辑流程先读取上下文，再 preview，最后 execute，减少盲写和误操作。
+- Template-first JSON 编写：AgentGuide 提供可复制模板，减少 CLI 字段形态和 shell 转义错误。
 - Unreal Editor Bridge：通过本地 Bridge 与正在运行的 Unreal Editor 通信，读写真实编辑器资产。
 - 多资产面支持：覆盖 Blueprint、UMG、DataAsset、DataTable、编译保存、打开资产和运行时诊断。
 - 安全边界清晰：源码文件仍由常规仓库工具处理，编辑器资产由 BlueprintHelper 处理。
@@ -45,12 +46,18 @@ BlueprintHelper 用于把 Agent 的高层编辑意图转换成 Unreal Editor 内
 
 ```text
 Agent
-  -> BlueprintHelper CLI
+  -> BlueprintHelper CLI for ordinary reads/writes
   -> AgentFaceService task-core
   -> TaskSpec compiler / read router
   -> Unreal Editor Bridge
   -> UE Task Runtime
   -> BlueprintHelper capability clusters
+```
+
+Editor lifecycle boundary:
+
+```text
+Agent -> global BlueprintHelper MCP lifecycle tool -> open/close target Unreal Editor
 ```
 
 普通写入流程：
@@ -70,7 +77,7 @@ blueprint_get_runtime_profile
 - `BlueprintHelper/`：Unreal Engine Editor 插件主体。
 - `AgentFaceService/task-core/`：Bridge client、TaskSpec schema、任务编排和工具注册。
 - `AgentFaceService/cli/`：Agent 使用的 CLI 入口。
-- `AgentFaceService/mcp/`：已废弃的 MCP 兼容/调试入口。
+- `AgentFaceService/mcp/`：全局 MCP 生命周期入口和兼容/调试支持。
 - `CodexPlugin/`：Codex 插件封装和 skill。
 - `ClaudePlugin/`：Claude Code 插件封装和文档。
 
@@ -90,7 +97,7 @@ npm install
 npm run build
 ```
 
-4. 启动目标 Unreal Editor 项目，确认 BlueprintHelper Bridge 可访问。
+4. 启动目标 Unreal Editor 项目；Agent 工作流需要代管启动/关闭时使用全局 MCP 生命周期工具。
 5. 使用 CLI 检查运行状态：
 
 ```powershell
@@ -110,7 +117,7 @@ node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js blueprint_get_runtime
 - Unreal 插件：`BlueprintHelper/BlueprintHelper.uplugin`
 - CLI：`AgentFaceService/cli/package.json`
 - 共享 task-core：`AgentFaceService/task-core/package.json`
-- MCP 兼容入口：`AgentFaceService/mcp/package.json`
+- MCP 生命周期/兼容入口：`AgentFaceService/mcp/package.json`
 - Codex 插件 manifest：`CodexPlugin/.codex-plugin/plugin.json`
 - Claude 插件 manifest：`ClaudePlugin/.claude-plugin/plugin.json`
 

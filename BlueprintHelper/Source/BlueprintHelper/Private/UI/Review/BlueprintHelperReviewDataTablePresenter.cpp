@@ -293,7 +293,7 @@ TSharedRef<SWidget> FBlueprintHelperReviewDataTablePresenter::BuildContent(
 	TSharedRef<SHeaderRow> HeaderRow = SNew(SHeaderRow)
 		+ SHeaderRow::Column(FBlueprintHelperReviewPresenterWidgetUtils::GetDataTableRowNameColumnId())
 		.DefaultLabel(FText::FromString(TEXT("Row")))
-		.ManualWidth(160.0f);
+		.FillWidth(0.45f);
 	for (const FDataTableReviewColumnPtr& Column : State.Columns)
 	{
 		if (!Column.IsValid())
@@ -303,7 +303,7 @@ TSharedRef<SWidget> FBlueprintHelperReviewDataTablePresenter::BuildContent(
 		HeaderRow->AddColumn(
 			SHeaderRow::Column(Column->ColumnId)
 			.DefaultLabel(Column->DisplayName)
-			.ManualWidth(FMath::Max(96.0f, Column->DesiredColumnWidth)));
+			.FillWidth(1.0f));
 	}
 	HeaderRow->AddColumn(
 		SHeaderRow::Column(FBlueprintHelperReviewPresenterWidgetUtils::GetDataTableActionsColumnId())

@@ -30,6 +30,12 @@ public:
 		EBlueprintHelperReviewSurface Surface,
 		bool (*Predicate)(const FBlueprintHelperReviewVisibleChange&));
 
+	static void InvalidateSurfaceState(
+		const FString& AssetPath,
+		EBlueprintHelperReviewSurface Surface);
+
+	static void InvalidateAssetStates(const FString& AssetPath);
+
 	static FSlateColor GetRowBackgroundColor(
 		const FString& AssetPath,
 		EBlueprintHelperReviewSurface Surface,
@@ -89,7 +95,8 @@ private:
 		const FString& AssetPath,
 		EBlueprintHelperReviewSurface Surface,
 		const FString& SearchText,
-		FRowHighlightEntry& OutEntry);
+		FRowHighlightEntry& OutEntry,
+		bool bAllowFuzzyMatch);
 	static FReply ExecuteHighlightedRowAction(
 		const FString& AssetPath,
 		EBlueprintHelperReviewSurface Surface,

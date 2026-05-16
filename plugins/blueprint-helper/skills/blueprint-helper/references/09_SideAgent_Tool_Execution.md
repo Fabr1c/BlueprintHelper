@@ -28,7 +28,7 @@ SideAgent 必须从主 Agent 接收一个精简任务包，而不是完整对话
 
 ## 执行规则
 
-1. 读取本文件和必要字段模板：`04_Tool_Surface_Field_Templates_20260512.md`。
+1. 读取本文件和必要字段模板：`04_Tool_Surface_Field_Templates_20260512.md`。构造复杂 CLI JSON 时，优先从 `BlueprintHelper/Resources/AgentGuide/Templates/` 复制模板到工作文件后再修改。
 2. 按需要读取任务 workflow，例如 `04_TaskSpec_Edit_Blueprint_Workflow.md`。
 2.1. 如果主 Agent 指定的 BlueprintHelper CLI 命令在当前执行环境不可用，返回 `tool_unavailable`，并写明缺失命令名。不要把命令不可用解释为 write session 或 UE 写权限问题。
 2.2. 不要用 shell、`.vs\BlueprintCache`、Saved 导出文件或本地 JSON 解析替代不可用的 BlueprintHelper CLI 命令。命令不可用时必须回交主 Agent，由主 Agent 修复 CLI 安装、构建或命令注册问题。
@@ -36,7 +36,7 @@ SideAgent 必须从主 Agent 接收一个精简任务包，而不是完整对话
 4. 如果工具结果显示节点数量大于 80，或者结果被截断，改用 block、function、event、custom_event 或引用影响面分块读取；无法定位分块目标时返回 `clarification_required`。
 5. 使用 TaskSpec-first 工具链，不直接调用冻结或 legacy 底层入口。
 6. 工具参数必须使用 schema root object，不要额外包 `args`。
-7. `blueprinthelper_preview_task` 和 `blueprinthelper_execute_task` 必须把 TaskSpec 包在 `task_spec` 字段下。
+7. 直接调用 `blueprinthelper_preview_task` / `blueprinthelper_execute_task` 工具名入口时，优先把 TaskSpec 包在 `task_spec` 字段下；调用 `task preview --file` / `task execute --file` 分组命令时，文件根必须是裸 `BlueprintHelper.TaskSpec.v1`。
 8. 如果 `write_permission` 被禁用，只在 preview 成功后请求 write session。
 9. write session 是运行中 Editor/Bridge 的短时许可，不是单个 Agent 的 secret。SideAgent 可以在许可 scope/lifetime 内继续执行，但不能请求、传递或回传 `auth_session`。
 10. SideAgent 只执行主 Agent 指定的单个工具调用或单个原子工具步骤，不自行扩展为连续调查。
@@ -63,9 +63,15 @@ blueprinthelper_preview_task
 blueprinthelper_request_write_session
 blueprinthelper_execute_task
 blueprinthelper_get_task_result
+blueprinthelper_get_debug_case
+blueprinthelper_list_debug_cases
+blueprinthelper_export_debug_bundle
+blueprinthelper_query_review_records
 ```
 
-`blueprint_open_editor` 只用于主 Agent 明确要求启动目标 Editor 的 preflight。调用时必须传显式 `project_file`。
+`blueprint_open_editor` / `blueprint_close_editor` 属于全局 MCP editor lifecycle 边界。主 Agent 明确要求启动或关闭目标 Editor 时才使用；CLI lifecycle helper 只作为兼容/手动 fallback，不作为普通读写工具链。
+
+`blueprinthelper_apply_review_action` 只用于插件开发/内部验证，不属于普通 Agent 或 SideAgent 工具链。
 
 ## 停止条件
 
