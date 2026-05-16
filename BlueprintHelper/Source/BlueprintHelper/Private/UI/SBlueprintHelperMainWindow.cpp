@@ -3,10 +3,12 @@
 #include "UI/SBlueprintHelperMainWindow.h"
 
 #include "Framework/Notifications/NotificationManager.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutCoordinator.h"
 #include "UI/BlueprintHelperMainWindowPresenter.h"
 #include "UI/Utils/BlueprintHelperMainWindowCleanupAsyncUtils.h"
-#include "UI/SHelperMainWidget.h"
+#include "UI/Layout/SBlueprintHelperLayoutRuleEditor.h"
 #include "Styling/AppStyle.h"
+#include "UI/TaskSpecWorkbench/SBlueprintHelperTaskSpecWorkbench.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SWidgetSwitcher.h"
@@ -45,11 +47,21 @@ void SBlueprintHelperMainWindow::Construct(const FArguments& InArgs)
 			]
 			+ SHorizontalBox::Slot()
 			.AutoWidth()
+			.Padding(0.0f, 0.0f, 6.0f, 0.0f)
 			[
 				SNew(SButton)
 				.ButtonColorAndOpacity(this, &SBlueprintHelperMainWindow::GetReviewTabColor)
 				.Text(FText::FromString(TEXT("Review")))
 				.OnClicked(this, &SBlueprintHelperMainWindow::ShowReviewPage)
+			]
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.Padding(0.0f, 0.0f, 6.0f, 0.0f)
+			[
+				SNew(SButton)
+				.ButtonColorAndOpacity(this, &SBlueprintHelperMainWindow::GetLayoutTabColor)
+				.Text(FText::FromString(TEXT("Layout")))
+				.OnClicked(this, &SBlueprintHelperMainWindow::ShowLayoutPage)
 			]
 			+ SHorizontalBox::Slot()
 			.AutoWidth()
@@ -68,8 +80,7 @@ void SBlueprintHelperMainWindow::Construct(const FArguments& InArgs)
 			.WidgetIndex(ActivePageIndex)
 			+ SWidgetSwitcher::Slot()
 			[
-				SNew(SHelperMainWidget)
-				.ImportService(ImportService)
+				SNew(SBlueprintHelperTaskSpecWorkbench)
 				.GraphResolver(GraphResolver)
 			]
 			+ SWidgetSwitcher::Slot()
@@ -77,6 +88,15 @@ void SBlueprintHelperMainWindow::Construct(const FArguments& InArgs)
 				SNew(SBlueprintHelperReviewPanel)
 				.ReviewStoreService(ReviewStoreService)
 				.ReviewActionService(ReviewActionService)
+			]
+			+ SWidgetSwitcher::Slot()
+			[
+				SNew(SBlueprintHelperLayoutRuleEditor)
+				.InitialRuleSetJson(FBlueprintHelperGraphLayoutCoordinator::LoadConfiguredRuleSetJson())
+				.DefaultRuleSetJson(FBlueprintHelperGraphLayoutCoordinator::GetDefaultRuleSetJson())
+				.OnImportJson(FBlueprintHelperLayoutRuleEditorImportJson::CreateStatic(&FBlueprintHelperGraphLayoutCoordinator::LoadConfiguredRuleSetJson))
+				.OnExportJson(FBlueprintHelperLayoutRuleEditorExportJson::CreateStatic(&FBlueprintHelperGraphLayoutCoordinator::SaveConfiguredRuleSetJson))
+				.OnValidateJson(FBlueprintHelperLayoutRuleEditorValidateJson::CreateStatic(&FBlueprintHelperGraphLayoutCoordinator::ValidateRuleSetJson))
 			]
 		]
 	];
@@ -105,6 +125,16 @@ FReply SBlueprintHelperMainWindow::ShowToolsPage()
 FReply SBlueprintHelperMainWindow::ShowReviewPage()
 {
 	ActivePageIndex = 1;
+	if (PageSwitcher.IsValid())
+	{
+		PageSwitcher->SetActiveWidgetIndex(ActivePageIndex);
+	}
+	return FReply::Handled();
+}
+
+FReply SBlueprintHelperMainWindow::ShowLayoutPage()
+{
+	ActivePageIndex = 2;
 	if (PageSwitcher.IsValid())
 	{
 		PageSwitcher->SetActiveWidgetIndex(ActivePageIndex);
@@ -204,3 +234,9 @@ FSlateColor SBlueprintHelperMainWindow::GetReviewTabColor() const
 		: FLinearColor(0.08f, 0.08f, 0.08f, 1.0f));
 }
 
+FSlateColor SBlueprintHelperMainWindow::GetLayoutTabColor() const
+{
+	return FSlateColor(ActivePageIndex == 2
+		? FLinearColor(0.18f, 0.34f, 0.62f, 1.0f)
+		: FLinearColor(0.08f, 0.08f, 0.08f, 1.0f));
+}

@@ -15,6 +15,7 @@ enum class EBlueprintHelperPatchScope : uint8
 	PinDefault,
 	NodeProperty,
 	NodeComment,
+	// DEPRECATED_LAYOUT: node_position is a legacy GraphWrite mutation. New layout must go through GraphLayout.
 	NodePosition,
 	ConnectPins,
 	DisconnectLink,
@@ -61,6 +62,7 @@ enum class EBlueprintHelperPatchType : uint8
 	SetPinDefault,
 	SetNodeProperty,
 	SetNodeComment,
+	// DEPRECATED_LAYOUT: set_node_position is retained only for legacy compatibility until GraphLayout replaces it.
 	SetNodePosition,
 	ConnectPins,
 	DisconnectLink,

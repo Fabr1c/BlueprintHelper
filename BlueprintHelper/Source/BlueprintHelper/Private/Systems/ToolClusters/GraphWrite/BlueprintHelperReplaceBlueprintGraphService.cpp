@@ -11,6 +11,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDebugData.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphGenerationPipeline.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutCoordinator.h"
 #include "Shared/GraphWrite/BlueprintHelperAppendGraphTypes.h"
 #include "Shared/GraphWrite/BlueprintHelperReplaceGraphTypes.h"
 
@@ -854,6 +855,8 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 	Validation.bShouldCompile = true;
 	Validation.bShouldSave = true;
 	SuccessResult.Validation = Validation;
+
+	FBlueprintHelperGraphLayoutCoordinator::RecordGeneratedNodes(Resolved.Graph, NewNodes);
 
 	return SuccessResult;
 }

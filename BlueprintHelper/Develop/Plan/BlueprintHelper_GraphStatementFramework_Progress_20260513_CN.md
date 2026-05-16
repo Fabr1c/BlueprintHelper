@@ -5,7 +5,7 @@
 状态更新：2026-05-15 `blueprinthelper_read_context` 完整体已完成并通过真实编辑器 Bridge 覆盖测试。该项不再作为 GraphStatementFramework 或统一上下文入口阻塞项。
 
 
-状态：当前 first-slice 期望已闭环；历史章节中被后续修复覆盖的差距不再作为当前阻塞。
+状态：当前 first-slice 期望已闭环；2026-05-16 CallFunction K2 上下文、target_object、typed data edge、schema conversion 覆盖已完成，历史章节中被后续修复覆盖的差距不再作为当前阻塞。
 已收敛的历史差距：
 1. `semantic.target_unverified` 针对 `PrintString` 的误报已通过 Kismet library context 注册修复，并通过真实编辑器 CLI 验证 `target.verified=true`。
 2. `semantic.target_unverified` 针对 `/Script/Engine.Actor:K2_SetActorLocation` 的 owner-qualified native path 误报已修复，并通过真实编辑器 CLI 验证 `hasTargetUnverified=false`。
@@ -1334,3 +1334,99 @@
 
 阻塞内容：
 1. 无。
+
+## 2026-05-16 Layout Deprecation Note
+
+Historical references in this file to `LayoutHints`, fragment `layout`, `set_node_position`, `preserve_layout`, or payload-level `layout:auto` are retained only as old verification/progress records. The current boundary is: TaskPlan / GraphWrite generate nodes and links only; UE-side GraphLayout owns final configurable node placement. Central source fields now carry `DEPRECATED_LAYOUT` comments and should be migrated or removed.
+
+## 2026-05-16 CallFunction 架构硬性修复记录
+
+时间：2026-05-16 17:28:45
+
+完成内容：
+1. call 语义保持函数调用语义，不再自动降级或升级为变量/属性写入；set / 后续 set_property 仍是变量/属性写入语义。
+2. 普通函数调用不再无条件携带 TargetObjectType，避免 PrintString 等库函数被错误当成对象成员调用过滤。
+3. 显式对象调用改为先创建对象 getter 并读取输出 pin 的 typed pin 信息，再用该 typed target 约束 CallFunctionResolver，从而区分 SmokeMesh.SetVisibility 的组件函数版本与 UMG Widget 同名函数版本。
+4. GraphPatternRegistry 将 pin alias 和 defaults 拆分：解析阶段只应用 alias；默认值延后到候选函数解析完成后再应用，避免全局默认值污染 resolver 参数过滤。
+5. 参数名匹配补充 UE 风格兼容：支持 property display name，以及 bool 参数 NewVisibility 与 AgentFace NewVisibility 的匹配。
+6. CallFunction 节点创建路径保持 UBlueprintNodeSpawner::Invoke() 主路径，不恢复 NewObject<UK2Node_CallFunction> + SetFromFunction legacy 入口。
+
+验证结果：
+1. 编译通过：TemplateEditor Win64 Development -Project=D:\UEProjects\Template\Template.uproject -WaitMutex -NoHotReload。
+2. PrintString(InString=...) preview 通过，execute 通过。
+3. candidate_functions 已按 [{ target, candidates }] 返回结构化候选。
+4. 在测试蓝图补齐 SmokeMesh: StaticMeshComponent 后，SmokeMesh.SetVisibility(NewVisibility=true) preview 通过，execute 通过。
+
+距离期望差距：
+1. 当前结论覆盖 K2 Blueprint 图表中的函数调用，不声明支持 Material Graph 或 AnimGraph 节点创建。
+2. 更广泛的组件函数、Blueprint 自定义函数、继承函数和多参数重载仍需要继续扩大烟测矩阵，但主路径已不再依赖旧 legacy 节点创建。
+
+阻塞内容：
+1. 无当前阻塞。
+
+## 2026-05-16 进度：CallFunction K2 上下文与 typed data edge 闭环
+
+状态：已完成本轮实现、编译、编辑器启动和 CLI 覆盖测试。
+
+新增内容：
+1. 新增 `FBlueprintHelperK2CallContext`，用于承载 TaskSpec/Graph 可推导出的 K2 上下文，不要求 AgentFace 增加大量字段。
+2. `FParsedNode`、SemanticIR builder、GraphGenerationPipeline 已接入 `ArgumentPinTypes` / `TargetObjectPinType`。
+3. FragmentDAG data edge 的真实 pin type 已传入 call resolver；非 literal expression 可以参与 CallFunction 候选约束。
+4. `candidate_functions` 结构化候选增加 input pin type、wildcard metadata 和 mismatch 摘要字段。
+5. Graph composer 增加 wildcard 节点连接后的延迟 `ReconstructNode` 路径。
+
+修复内容：
+1. 修复 `FUNC_CustomThunk` 未定义导致的 UE 5.6 编译失败。
+2. 修复 CallFunction 候选无法暴露 wildcard/generic 元数据的问题。
+3. 修复非 literal expression 数据边只能停留在 DAG evidence、不能进入 call 参数类型约束的问题。
+
+变更需求：
+1. 按用户确认，不接 Schema Menu Builder；继续使用 ActionDatabase、BlueprintActionFilter、NodeSpawner、SemanticIR typed context 的非 UI 菜单主路径。
+2. candidate_functions 当前期望为结构化对象数组，而不是旧的字符串数组。
+
+验证结果：
+1. UE C++ 编译通过。
+2. 编辑器通过 MCP 启动，Bridge 可用。
+3. `PrintString(InString=literal)` preview/execute 通过。
+4. `SmokeMesh.SetVisibility(NewVisibility=false)` preview/execute 通过。
+5. `candidate_functions` 模糊查询返回结构化候选，包含 `input_pin_types`。
+6. `Array` 模糊查询返回 `Array_Add` / `Array_AddUnique`，可见 `custom_thunk=true`、`array_parm=true`、`array_type_dependent_params=true`。
+7. `select -> PrintString.InString` preview/execute 通过，fragment DAG 记录 `select.result(string)` 到 `PrintString.InString(string)` 的 data edge。
+
+距离期望差距：
+1. 本轮期望内差距已补齐：Context effective consumption、target_object 主路径、schema data connection、candidate mismatch reason 均已覆盖到本轮验证场景。
+2. 本阶段只声明 K2 Blueprint 支持；Material Graph / AnimGraph 与更大规模函数矩阵不纳入本阶段能力声明。
+
+阻塞内容：
+1. 无当前阻塞。
+## 2026-05-16 进度：CallFunction 剩余差距补齐
+
+新增内容：
+1. `target_object` 已进入 SemanticIR statement/expression 解析、resolve 和 CallFunction fragment builder 主路径。
+2. `FParsedNode.TargetObjectName` 连接 AgentFace 精简 target_object 表达与 UE object getter/Target pin wiring。
+3. data edge 连接收敛到 schema-aware connection，支持 UE schema conversion/promotion 路径。
+
+修复内容：
+1. 修复存在 target_object 时 `SetVisibility` 被直接解析成未连接 Target 的函数节点，导致 execute 编译失败的问题。
+2. 修复显式 object call Target pin 连接成功判定不够严格的问题。
+3. 修复 candidate_functions JSON 控制字符转义风险和 mismatch reason 覆盖不足的问题。
+
+变更需求：
+1. 不接 Schema Menu Builder；维持 ActionDatabase + BlueprintActionFilter + NodeSpawner + SemanticIR typed context 架构。
+
+快速修复：
+1. 本轮自动化继续使用 `bh.cmd` 绕过 PowerShell ExecutionPolicy 对 `bh.ps1` 的拦截。
+
+验证结果：
+1. UE C++ 编译通过。
+2. 全局 MCP 启动编辑器成功。
+3. Fresh asset 覆盖：创建 Actor Blueprint、添加 `SmokeMesh`、执行 `SmokeMesh.SetVisibility(NewVisibility=false)` 成功。
+4. `select(int) -> PrintString.InString` execute 成功。
+5. mismatch preview 正常 blocked 并返回结构化候选。
+
+距离期望差距：
+1. 本轮期望内差距已补齐。
+2. 非 K2 Blueprint 图表和更大规模函数矩阵不纳入本阶段声明。
+
+阻塞内容：
+1. 无当前阻塞。

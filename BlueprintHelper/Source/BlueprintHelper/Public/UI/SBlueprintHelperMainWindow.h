@@ -39,12 +39,14 @@ public:
 private:
 	FReply ShowToolsPage();
 	FReply ShowReviewPage();
+	FReply ShowLayoutPage();
 	FReply OnCleanupReviewDataClicked();
 	void HandleMainWindowPresenterEvent(const FBlueprintHelperMainWindowPresenterEvent& Event);
 	void ShowCleanupNotification(const FString& StatusText);
 	void UpdateCleanupNotification(const FString& StatusText, bool bSucceeded, bool bExpire);
 	FSlateColor GetToolsTabColor() const;
 	FSlateColor GetReviewTabColor() const;
+	FSlateColor GetLayoutTabColor() const;
 
 	const FBlueprintHelperImportService* ImportService = nullptr;
 	const FBlueprintHelperGraphResolver* GraphResolver = nullptr;

@@ -36,8 +36,46 @@ FBlueprintHelperCallFunctionResolveResult FBlueprintHelperCallFunctionResolver::
 	const bool bQualifiedQuery = TryParseQualifiedQuery(Query, QualifiedOwner, QualifiedFunction);
 	const bool bPickBest = Request.AmbiguityPolicy.Equals(TEXT("pick_best"), ESearchCase::IgnoreCase)
 		|| Request.AmbiguityPolicy.Equals(TEXT("best"), ESearchCase::IgnoreCase);
+	const FBlueprintHelperK2CallContext EffectiveContext =
+		FBlueprintHelperCallFunctionResolverUtils::BuildEffectiveContext(Request);
 
 	TArray<FBlueprintHelperCallFunctionCandidate> Candidates = FBlueprintHelperCallFunctionResolverUtils::BuildCandidateUniverse(Request);
+	if (bQualifiedQuery && !FBlueprintHelperCallFunctionResolverUtils::HasOwnerCandidate(Candidates, QualifiedOwner))
+	{
+		if (UClass* QualifiedOwnerClass = FBlueprintHelperCallFunctionResolverUtils::ResolveClassByTypeName(QualifiedOwner))
+		{
+			TSet<FString> ExistingStableIds;
+			for (const FBlueprintHelperCallFunctionCandidate& Candidate : Candidates)
+			{
+				ExistingStableIds.Add(Candidate.StableId);
+			}
+
+			TMap<FString, FBlueprintHelperCallFunctionCandidate> QualifiedCandidates;
+			for (UClass* Class = QualifiedOwnerClass; Class; Class = Class->GetSuperClass())
+			{
+				if (!FBlueprintHelperCallFunctionResolverUtils::IsUsableOwnerClass(Class))
+				{
+					continue;
+				}
+
+				for (TFieldIterator<UFunction> FuncIt(Class, EFieldIteratorFlags::ExcludeSuper); FuncIt; ++FuncIt)
+				{
+					FBlueprintHelperCallFunctionResolverUtils::AddCandidateForFunction(*FuncIt, Request, QualifiedCandidates);
+				}
+			}
+
+			TArray<FBlueprintHelperCallFunctionCandidate> OwnerCandidates;
+			QualifiedCandidates.GenerateValueArray(OwnerCandidates);
+			for (FBlueprintHelperCallFunctionCandidate& Candidate : OwnerCandidates)
+			{
+				if (!ExistingStableIds.Contains(Candidate.StableId))
+				{
+					Candidates.Add(MoveTemp(Candidate));
+				}
+			}
+		}
+	}
+
 	if (bQualifiedQuery && !FBlueprintHelperCallFunctionResolverUtils::HasOwnerCandidate(Candidates, QualifiedOwner) && !QualifiedOwner.StartsWith(TEXT("/Script/")))
 	{
 		Result.Status = EBlueprintHelperCallFunctionResolveStatus::Blocked;
@@ -46,20 +84,56 @@ FBlueprintHelperCallFunctionResolveResult FBlueprintHelperCallFunctionResolver::
 		return Result;
 	}
 
+	int32 MetadataCompatibleCandidateCount = 0;
+	int32 TextMatchedCandidateCount = 0;
+	int32 GraphRejectedCandidateCount = 0;
+	FString FirstTextMatchedCandidate;
+	TArray<FBlueprintHelperCallFunctionCandidate> DiagnosticCandidates;
 	TArray<FBlueprintHelperCallFunctionCandidate> ScoredCandidates;
 	for (FBlueprintHelperCallFunctionCandidate& Candidate : Candidates)
 	{
-		if (!FBlueprintHelperCallFunctionResolverUtils::PassesMetadataFilters(Candidate, Request))
-		{
-			continue;
-		}
-
 		FString MatchReason;
 		const int32 Score = FBlueprintHelperCallFunctionResolverUtils::ScoreCandidate(Candidate, Query, QualifiedOwner, QualifiedFunction, Request, MatchReason);
 		if (Score <= 0)
 		{
 			continue;
 		}
+		++TextMatchedCandidateCount;
+		Candidate.Score = Score;
+		Candidate.MatchReason = MatchReason;
+		Candidate.MismatchReason = FBlueprintHelperCallFunctionResolverUtils::DescribeCandidateMismatch(Candidate, Request);
+		if (FirstTextMatchedCandidate.IsEmpty())
+		{
+			const bool bCallable = Candidate.bBlueprintCallable || Candidate.bBlueprintPure;
+			const bool bImpureGraphOk = !(Candidate.bLatent || (!Candidate.bBlueprintPure && Candidate.bBlueprintCallable))
+				|| FBlueprintHelperCallFunctionResolverUtils::DoesGraphSupportImpureFunctions(EffectiveContext.Graph);
+			const bool bTargetOk = Candidate.MismatchReason.IsEmpty()
+				|| !Candidate.MismatchReason.StartsWith(TEXT("target_object_type_mismatch"));
+			const bool bArgsOk = Candidate.MismatchReason.IsEmpty()
+				|| (!Candidate.MismatchReason.StartsWith(TEXT("missing_argument_pin"))
+					&& !Candidate.MismatchReason.StartsWith(TEXT("argument_type_mismatch"))
+					&& !Candidate.MismatchReason.StartsWith(TEXT("argument_pin_type_mismatch")));
+			FirstTextMatchedCandidate = FString::Printf(
+				TEXT("%s inputs=[%s] callable=%d impure_graph_ok=%d target_ok=%d args_ok=%d mismatch=\"%s\""),
+				*Candidate.StableId,
+				*FString::Join(Candidate.InputPins, TEXT(",")),
+				bCallable ? 1 : 0,
+				bImpureGraphOk ? 1 : 0,
+				bTargetOk ? 1 : 0,
+				bArgsOk ? 1 : 0,
+				*Candidate.MismatchReason);
+		}
+
+		if (DiagnosticCandidates.Num() < Request.MaxCandidates)
+		{
+			DiagnosticCandidates.Add(Candidate);
+		}
+
+		if (!FBlueprintHelperCallFunctionResolverUtils::PassesMetadataFilters(Candidate, Request))
+		{
+			continue;
+		}
+		++MetadataCompatibleCandidateCount;
 
 		Candidate.Score = Score;
 		Candidate.MatchReason = MatchReason;
@@ -67,21 +141,34 @@ FBlueprintHelperCallFunctionResolveResult FBlueprintHelperCallFunctionResolver::
 		{
 			ScoredCandidates.Add(Candidate);
 		}
+		else
+		{
+			++GraphRejectedCandidateCount;
+		}
 	}
 
 	if (!bQualifiedQuery)
 	{
-		FBlueprintHelperCallFunctionResolverUtils::PreferTargetBlueprintCandidates(ScoredCandidates, Request.Blueprint);
-		FBlueprintHelperCallFunctionResolverUtils::PreferGeneratedClassOverSkeletonDuplicates(ScoredCandidates, Request.Blueprint);
+		FBlueprintHelperCallFunctionResolverUtils::PreferTargetBlueprintCandidates(ScoredCandidates, EffectiveContext.Blueprint);
+		FBlueprintHelperCallFunctionResolverUtils::PreferGeneratedClassOverSkeletonDuplicates(ScoredCandidates, EffectiveContext.Blueprint);
 	}
 	FBlueprintHelperCallFunctionResolverUtils::SortCandidates(ScoredCandidates);
 	FBlueprintHelperCallFunctionResolverUtils::SetTopCandidates(Result, ScoredCandidates, Request.MaxCandidates);
 
 	if (ScoredCandidates.Num() == 0)
 	{
+		FBlueprintHelperCallFunctionResolverUtils::SortCandidates(DiagnosticCandidates);
+		FBlueprintHelperCallFunctionResolverUtils::SetTopCandidates(Result, DiagnosticCandidates, Request.MaxCandidates);
 		Result.Status = EBlueprintHelperCallFunctionResolveStatus::NotFound;
 		Result.ErrorCode = TEXT("function_call_not_found");
-		Result.Message = FString::Printf(TEXT("call_function resolve failed: no graph-compatible function matched '%s'."), *Query);
+		Result.Message = FString::Printf(
+			TEXT("call_function resolve failed: no graph-compatible function matched '%s' (candidates=%d metadata_compatible=%d text_matched=%d graph_rejected=%d first_text_match=\"%s\")."),
+			*Query,
+			Candidates.Num(),
+			MetadataCompatibleCandidateCount,
+			TextMatchedCandidateCount,
+			GraphRejectedCandidateCount,
+			*FirstTextMatchedCandidate);
 		return Result;
 	}
 
@@ -242,14 +329,20 @@ UK2Node* FBlueprintHelperCallFunctionResolver::SpawnResolvedNode(
 		return nullptr;
 	}
 
-	if (UBlueprintNodeSpawner* NodeSpawner = Candidate.NodeSpawner.Get())
+	UBlueprintNodeSpawner* NodeSpawner = Candidate.NodeSpawner.Get();
+	if (!NodeSpawner)
+	{
+		NodeSpawner = UBlueprintFunctionNodeSpawner::Create(Function);
+	}
+
+	if (NodeSpawner)
 	{
 		IBlueprintNodeBinder::FBindingSet Bindings;
 		UEdGraphNode* SpawnedNode = NodeSpawner->Invoke(Graph, Bindings, Location);
 		UK2Node* K2Node = Cast<UK2Node>(SpawnedNode);
 		if (!K2Node)
 		{
-			OutError = FString::Printf(TEXT("call_function spawn failed: action database spawner did not create a K2 node for %s."), *Candidate.StableId);
+			OutError = FString::Printf(TEXT("call_function spawn failed: function node spawner did not create a K2 node for %s."), *Candidate.StableId);
 			return nullptr;
 		}
 		K2Node->NodePosX = static_cast<int32>(Location.X);
@@ -262,7 +355,7 @@ UK2Node* FBlueprintHelperCallFunctionResolver::SpawnResolvedNode(
 	}
 
 	OutError = FString::Printf(
-		TEXT("call_function spawn failed: '%s' has no ActionDatabase NodeSpawner; legacy SetFromFunction fallback is disabled."),
+		TEXT("call_function spawn failed: could not create a BlueprintFunctionNodeSpawner for '%s'."),
 		*Candidate.StableId);
 	return nullptr;
 }

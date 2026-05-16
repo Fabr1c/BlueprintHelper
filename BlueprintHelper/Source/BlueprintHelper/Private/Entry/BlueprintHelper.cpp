@@ -92,6 +92,7 @@
 #include "Systems/Transactions/BlueprintHelperTransactionJournalService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphSnapshotService.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicJsonPathService.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutCoordinator.h"
 #include "Entry/Bridge/BlueprintHelperBridgeRouter.h"
 #include "Entry/Bridge/BlueprintHelperBridgeServer.h"
 #include "Styling/AppStyle.h"
@@ -118,6 +119,7 @@ FBlueprintHelperModule& FBlueprintHelperModule::Get()
 void FBlueprintHelperModule::StartupModule()
 {
 	UE_LOG(LogBlueprintHelperEditor, Log, TEXT("BlueprintHelper StartupModule begin."));
+	FBlueprintHelperGraphLayoutCoordinator::Startup();
 
 	FBlueprintNodeHandlerRegistry& Registry = FBlueprintNodeHandlerRegistry::Get();
 	Registry.Register(MakeShared<FCallFunctionNodeHandler>());
@@ -241,6 +243,7 @@ void FBlueprintHelperModule::ShutdownModule()
 
 	// ─── Bridge Layer 销。───
 	if (BridgeServer) { BridgeServer->Shutdown(); }
+	FBlueprintHelperGraphLayoutCoordinator::Shutdown();
 	BridgeServer.Reset();
 	BridgeRouter.Reset();
 	ContextService.Reset();

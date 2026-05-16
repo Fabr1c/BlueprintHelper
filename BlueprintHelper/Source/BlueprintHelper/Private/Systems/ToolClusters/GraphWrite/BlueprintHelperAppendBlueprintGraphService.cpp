@@ -9,6 +9,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDebugData.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphGenerationPipeline.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutCoordinator.h"
 #include "Shared/BlueprintHelperToolResultTypes.h"
 
 #include "Engine/Blueprint.h"
@@ -944,6 +945,8 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 	Validation.bShouldCompile = true;
 	Validation.bShouldSave = true;
 	SuccessResult.Validation = Validation;
+
+	FBlueprintHelperGraphLayoutCoordinator::RecordGeneratedNodes(TargetGraph, CreatedNodes);
 
 	return SuccessResult;
 }

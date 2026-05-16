@@ -50,6 +50,7 @@ private:
 		TSharedPtr<FJsonObject> LogicSpec;
 		bool bDryRun = false;
 		bool bStrict = true;
+		// DEPRECATED_LAYOUT: preserve_layout is legacy GraphWrite behavior. GraphLayout owns final placement.
 		bool bPreserveLayout = false;
 	};
 

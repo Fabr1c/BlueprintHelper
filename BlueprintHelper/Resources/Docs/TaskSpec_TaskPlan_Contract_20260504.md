@@ -4,6 +4,12 @@
 
 This file is the human-readable contract for the TaskSpec-first implementation slice.
 
+### 2026-05-16 Layout Deprecation Note
+
+Layout is no longer a TaskPlan / GraphWrite responsibility. TaskPlan and GraphWrite must generate graph structure only: nodes, pins, links, defaults, ownership, review/debug facts. Any existing references to `set_node_position`, `node_position`, `preserve_layout`, `layout_hints`, fragment `layout`, or payload-level `layout:auto` are legacy compatibility notes, not current architecture direction.
+
+The UE-side GraphLayout system is the only intended owner for configurable node placement. Existing low-level layout fields should be treated as deprecated until removed or migrated behind GraphLayout.
+
 The machine-readable guard is:
 
 ```text

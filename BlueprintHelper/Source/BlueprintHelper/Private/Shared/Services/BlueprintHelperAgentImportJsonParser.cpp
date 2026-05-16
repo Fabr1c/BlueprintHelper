@@ -143,6 +143,7 @@ bool FBlueprintHelperAgentImportJsonParser::Parse(
 	FString Layout;
 	if (Root->TryGetStringField(TEXT("layout"), Layout) && !Layout.IsEmpty())
 	{
+		// DEPRECATED_LAYOUT: AgentImport layout is a legacy import hint. New layout is configured by GraphLayout rules.
 		if (Layout.Equals(TEXT("append_right"), ESearchCase::IgnoreCase))
 		{
 			OutRequest.Layout = EBlueprintHelperAgentLayoutStrategy::AppendRight;

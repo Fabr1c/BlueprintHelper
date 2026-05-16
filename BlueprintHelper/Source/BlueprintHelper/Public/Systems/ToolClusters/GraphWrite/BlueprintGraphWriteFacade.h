@@ -433,7 +433,10 @@ struct FParsedNode
 
 	/** 节点 X 坐标。 */
 	TMap<FString, FString> ArgumentTypes;
+	TMap<FString, FBlueprintHelperCallFunctionPinType> ArgumentPinTypes;
+	FString TargetObjectName;
 	FString TargetObjectType;
+	FBlueprintHelperCallFunctionPinType TargetObjectPinType;
 
 	float X = 0.0f;
 

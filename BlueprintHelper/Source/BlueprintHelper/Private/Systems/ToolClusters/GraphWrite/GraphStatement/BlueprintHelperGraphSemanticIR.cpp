@@ -369,6 +369,10 @@ TSharedPtr<FBlueprintHelperGraphStatementIR> FBlueprintHelperGraphSemanticIRBuil
 	StatementObject->TryGetStringField(TEXT("ambiguity_policy"), Statement->AmbiguityPolicy);
 	FBlueprintHelperGraphSemanticIRUtils::ReadOptionalStringArrayField(StatementObject, TEXT("category_priority"), Statement->CategoryPriority);
 	ParseExpressionMap(StatementObject, TEXT("args"), Path + TEXT(".args"), Statement->Args, OutIR);
+	if (const TSharedPtr<FJsonValue>* TargetObject = StatementObject->Values.Find(TEXT("target_object")))
+	{
+		Statement->TargetObject = ParseExpression(*TargetObject, Path + TEXT(".target_object"), OutIR);
+	}
 
 	if (const TSharedPtr<FJsonValue>* Value = StatementObject->Values.Find(TEXT("value")))
 	{
@@ -468,6 +472,10 @@ TSharedPtr<FBlueprintHelperGraphExpressionIR> FBlueprintHelperGraphSemanticIRBui
 	}
 
 	ParseExpressionMap(ExpressionObject, TEXT("args"), Path + TEXT(".args"), Expression->Args, OutIR);
+	if (const TSharedPtr<FJsonValue>* TargetObject = ExpressionObject->Values.Find(TEXT("target_object")))
+	{
+		Expression->TargetObject = ParseExpression(*TargetObject, Path + TEXT(".target_object"), OutIR);
+	}
 	if (const TSharedPtr<FJsonValue>* Condition = ExpressionObject->Values.Find(TEXT("condition")))
 	{
 		Expression->Args.Add(TEXT("condition"), ParseExpression(*Condition, Path + TEXT(".condition"), OutIR));
@@ -593,6 +601,7 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveStatement(
 	}
 	ResolveExpression(Statement->Value, OutIR, Context, ScopeStack);
 	ResolveExpression(Statement->Condition, OutIR, Context, ScopeStack);
+	ResolveExpression(Statement->TargetObject, OutIR, Context, ScopeStack);
 	if (Statement->Kind == EBlueprintHelperGraphStatementKind::Branch &&
 		Statement->Condition.IsValid() &&
 		!Statement->Condition->Type.IsEmpty() &&
@@ -724,6 +733,7 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveExpression(
 	}
 	ResolveExpression(Expression->Left, OutIR, Context, ScopeStack);
 	ResolveExpression(Expression->Right, OutIR, Context, ScopeStack);
+	ResolveExpression(Expression->TargetObject, OutIR, Context, ScopeStack);
 
 	if (Expression->Kind == EBlueprintHelperGraphExpressionKind::Select && Expression->Type.IsEmpty())
 	{

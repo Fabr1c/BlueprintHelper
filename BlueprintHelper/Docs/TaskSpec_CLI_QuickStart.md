@@ -81,10 +81,10 @@ Use the artifact paths returned by summary output for follow-up inspection. Use 
 UE-bound Bridge requests can wait behind editor-side work. When a Bridge call is still pending, the CLI writes progress hints to `stderr` such as:
 
 ```text
-[BlueprintHelper CLI] waiting for UE Bridge response: command=preview_task_plan elapsed_ms=5000. UE-bound requests are serialized on the editor side; keep waiting unless the CLI exits.
+[BlueprintHelper CLI] waiting for UE Bridge response: command=preview_task_plan elapsed_ms=30000. UE-bound requests are serialized on the editor side; keep waiting unless the CLI exits.
 ```
 
-Agents should treat these lines as keep-alive/progress messages, not command output. Parse only `stdout` for the final `BlueprintHelper.CliResult.v1` JSON. The default CLI Bridge request timeout is 10 minutes for Agent workflows. Tune it with `BPH_CLI_BRIDGE_REQUEST_TIMEOUT_MS`; tune or disable hints with `BPH_CLI_WAIT_HINT_INITIAL_MS`, `BPH_CLI_WAIT_HINT_INTERVAL_MS`, or `BPH_CLI_WAIT_HINTS=0`.
+Agents should treat these lines as keep-alive/progress messages, not command output. Parse only `stdout` for the final `BlueprintHelper.CliResult.v1` JSON. The default wait-hint cadence is once every 30 seconds, and the default CLI Bridge request timeout is 10 minutes for Agent workflows. Tune it with `BPH_CLI_BRIDGE_REQUEST_TIMEOUT_MS`; tune or disable hints with `BPH_CLI_WAIT_HINT_INITIAL_MS`, `BPH_CLI_WAIT_HINT_INTERVAL_MS`, or `BPH_CLI_WAIT_HINTS=0`.
 
 ## CallFunction Notes
 

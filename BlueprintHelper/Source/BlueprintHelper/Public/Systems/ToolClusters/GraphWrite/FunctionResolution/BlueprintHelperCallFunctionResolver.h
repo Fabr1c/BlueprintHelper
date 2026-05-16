@@ -6,7 +6,9 @@
 
 class UBlueprint;
 class UBlueprintNodeSpawner;
+class UClass;
 class UEdGraph;
+class UEdGraphSchema;
 class UFunction;
 class UK2Node;
 class UK2Node_CallFunction;
@@ -39,6 +41,8 @@ struct FBlueprintHelperCallFunctionCandidateInfo
 	FString WorldContextPin;
 	FString TargetObjectPin;
 	TArray<FString> InputPins;
+	TMap<FString, FString> InputPinTypes;
+	FString MismatchReason;
 	int32 Score = 0;
 	bool bGraphCompatible = false;
 	bool bFromActionDatabase = false;
@@ -46,6 +50,24 @@ struct FBlueprintHelperCallFunctionCandidateInfo
 	bool bBlueprintPure = false;
 	bool bLatent = false;
 	bool bRequiresWorldContext = false;
+	bool bCustomThunk = false;
+	bool bHasArrayParm = false;
+	bool bHasArrayTypeDependentParams = false;
+	bool bDeterminesOutputType = false;
+};
+
+struct FBlueprintHelperK2CallContext
+{
+	UBlueprint* Blueprint = nullptr;
+	UEdGraph* Graph = nullptr;
+	const UEdGraphSchema* Schema = nullptr;
+	UClass* SelfClass = nullptr;
+	FString GraphKind;
+	TArray<FString> ArgumentNames;
+	TMap<FString, FString> ArgumentTypes;
+	TMap<FString, FBlueprintHelperCallFunctionPinType> ArgumentPinTypes;
+	FString TargetObjectType;
+	FBlueprintHelperCallFunctionPinType TargetObjectPinType;
 };
 
 enum class EBlueprintHelperCallFunctionResolveStatus : uint8
@@ -69,6 +91,8 @@ struct FBlueprintHelperCallFunctionCandidate
 	FString WorldContextPin;
 	FString TargetObjectPin;
 	TArray<FString> InputPins;
+	TMap<FString, FString> InputPinTypes;
+	FString MismatchReason;
 	int32 Score = 0;
 	bool bGraphCompatible = false;
 	bool bFromActionDatabase = false;
@@ -76,6 +100,10 @@ struct FBlueprintHelperCallFunctionCandidate
 	bool bBlueprintPure = false;
 	bool bLatent = false;
 	bool bRequiresWorldContext = false;
+	bool bCustomThunk = false;
+	bool bHasArrayParm = false;
+	bool bHasArrayTypeDependentParams = false;
+	bool bDeterminesOutputType = false;
 	TWeakObjectPtr<UFunction> Function;
 	TSubclassOf<UK2Node_CallFunction> NodeClass;
 	TWeakObjectPtr<UBlueprintNodeSpawner> NodeSpawner;
@@ -94,6 +122,7 @@ struct FBlueprintHelperCallFunctionResolveRequest
 	TMap<FString, FBlueprintHelperCallFunctionPinType> ArgumentPinTypes;
 	FString TargetObjectType;
 	FBlueprintHelperCallFunctionPinType TargetObjectPinType;
+	FBlueprintHelperK2CallContext Context;
 	bool bAllowFuzzyUnique = true;
 	int32 MaxCandidates = 8;
 };

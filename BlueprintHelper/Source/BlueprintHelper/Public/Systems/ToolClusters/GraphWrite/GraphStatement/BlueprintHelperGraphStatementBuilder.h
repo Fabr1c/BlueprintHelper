@@ -35,6 +35,8 @@ struct BLUEPRINTHELPER_API FBlueprintHelperNodeFragment
 	TMap<FString, FBlueprintHelperFragmentPinRef> DataInputs;
 	TMap<FString, FBlueprintHelperFragmentPinRef> DataOutputs;
 	TMap<FString, FBlueprintHelperFragmentPinRef> PinBindings;
+	// DEPRECATED_LAYOUT: legacy hint bag. GraphWrite must not be the source of layout rules.
+	// New layout behavior belongs to the UE-side GraphLayout system rule set.
 	TMap<FString, FString> LayoutHints;
 	TMap<FString, FString> OwnershipTags;
 	TArray<FString> ReviewTargets;
