@@ -22,6 +22,35 @@ static bool IsExecRole(ENodeRole Role)
 		Role == ENodeRole::DelegateNode;
 }
 
+static bool IsDataInputRole(ENodeRole Role)
+{
+	return Role == ENodeRole::VariableInput ||
+		Role == ENodeRole::PureFunction ||
+		Role == ENodeRole::OperatorOrCompare;
+}
+
+static float GetDataInputOffsetX(ENodeRole Role, const FRuleSet& RuleSet)
+{
+	return Role == ENodeRole::VariableInput
+		? RuleSet.VariableInputOffsetX
+		: RuleSet.PureInputOffsetX;
+}
+
+static const TCHAR* GetDataInputAlignmentReason(ENodeRole Role)
+{
+	switch (Role)
+	{
+	case ENodeRole::VariableInput:
+		return TEXT("node_input_variable_alignment");
+	case ENodeRole::OperatorOrCompare:
+		return TEXT("node_input_operator_or_compare_alignment");
+	case ENodeRole::PureFunction:
+		return TEXT("node_input_pure_alignment");
+	default:
+		return TEXT("node_input_alignment");
+	}
+}
+
 static const FNodeSnapshot* FindNode(const TMap<FString, FWorkingNode>& Nodes, const FString& NodeId)
 {
 	const FWorkingNode* Node = Nodes.Find(NodeId);
@@ -140,18 +169,22 @@ static void LayoutExecChain(
 	}
 }
 
-static void AlignInputsToTargetPinOrder(TMap<FString, FWorkingNode>& Nodes, const FRuleSet& RuleSet)
+static bool AlignInputsToConsumerPinOrder(
+	const FGraphSnapshot& Snapshot,
+	TMap<FString, FWorkingNode>& Nodes,
+	const FRuleSet& RuleSet)
 {
-	for (auto& Pair : Nodes)
+	bool bChanged = false;
+	for (const FNodeSnapshot& ConsumerSnapshot : Snapshot.Nodes)
 	{
-		FWorkingNode& TargetNode = Pair.Value;
-		if (!TargetNode.Snapshot || !TargetNode.bHasTarget)
+		FWorkingNode* ConsumerNode = Nodes.Find(ConsumerSnapshot.NodeId);
+		if (!ConsumerNode || !ConsumerNode->Snapshot || !ConsumerNode->bHasTarget)
 		{
 			continue;
 		}
 
 		int32 InputOrder = 0;
-		for (const FPinSnapshot& Pin : TargetNode.Snapshot->Pins)
+		for (const FPinSnapshot& Pin : ConsumerNode->Snapshot->Pins)
 		{
 			if (Pin.Direction != EPinDirection::Input || Pin.bExec)
 			{
@@ -166,61 +199,19 @@ static void AlignInputsToTargetPinOrder(TMap<FString, FWorkingNode>& Nodes, cons
 					continue;
 				}
 
-				if (SourceNode->Role == ENodeRole::VariableInput)
+				if (IsDataInputRole(SourceNode->Role) && !SourceNode->bHasTarget)
 				{
 					const FVector2D Target(
-						TargetNode.Target.X - RuleSet.VariableInputOffsetX,
-						TargetNode.Target.Y + InputOrder * RuleSet.InputPinRowSpacing);
-					SetTarget(Nodes, LinkedNodeId, Target, TEXT("target_pin_order_variable_input_alignment"));
-				}
-				else if (SourceNode->Role == ENodeRole::PureFunction && !SourceNode->bHasTarget)
-				{
-					const FVector2D Target(
-						TargetNode.Target.X - RuleSet.PureInputOffsetX,
-						TargetNode.Target.Y + InputOrder * RuleSet.InputPinRowSpacing);
-					SetTarget(Nodes, LinkedNodeId, Target, TEXT("pure_input_alignment"));
+						ConsumerNode->Target.X - GetDataInputOffsetX(SourceNode->Role, RuleSet),
+						ConsumerNode->Target.Y + InputOrder * RuleSet.InputPinRowSpacing);
+					SetTarget(Nodes, LinkedNodeId, Target, GetDataInputAlignmentReason(SourceNode->Role));
+					bChanged = true;
 				}
 			}
 			++InputOrder;
 		}
 	}
-}
-
-static void StraightenExistingReroutes(TMap<FString, FWorkingNode>& Nodes)
-{
-	for (auto& Pair : Nodes)
-	{
-		FWorkingNode& Reroute = Pair.Value;
-		if (!Reroute.Snapshot || Reroute.Role != ENodeRole::Reroute || !Reroute.Snapshot->bExisting)
-		{
-			continue;
-		}
-
-		TArray<FVector2D> NeighborTargets;
-		for (const FPinSnapshot& Pin : Reroute.Snapshot->Pins)
-		{
-			for (const FString& LinkedNodeId : Pin.LinkedNodeIds)
-			{
-				const FWorkingNode* LinkedNode = Nodes.Find(LinkedNodeId);
-				if (LinkedNode && LinkedNode->bHasTarget && LinkedNode->Role != ENodeRole::Reroute)
-				{
-					NeighborTargets.Add(LinkedNode->Target);
-				}
-			}
-		}
-
-		if (NeighborTargets.Num() == 0)
-		{
-			continue;
-		}
-
-		FVector2D Sum = FVector2D::ZeroVector;
-		for (const FVector2D& Target : NeighborTargets)
-		{
-			Sum += Target;
-		}
-		SetTarget(Nodes, Reroute.Snapshot->NodeId, Sum / static_cast<float>(NeighborTargets.Num()), TEXT("straighten_existing_reroute"));
-	}
+	return bChanged;
 }
 
 FLayoutPlan FSolver::Solve(const FGraphSnapshot& Snapshot, const FRuleSet& RuleSet)
@@ -270,14 +261,12 @@ FLayoutPlan FSolver::Solve(const FGraphSnapshot& Snapshot, const FRuleSet& RuleS
 		}
 	}
 
-	if (RuleSet.bUseTargetPinOrderForVariableInputs)
+	for (int32 PassIndex = 0; PassIndex < Snapshot.Nodes.Num(); ++PassIndex)
 	{
-		AlignInputsToTargetPinOrder(Nodes, RuleSet);
-	}
-
-	if (RuleSet.bStraightenExistingReroutes)
-	{
-		StraightenExistingReroutes(Nodes);
+		if (!AlignInputsToConsumerPinOrder(Snapshot, Nodes, RuleSet))
+		{
+			break;
+		}
 	}
 
 	for (const FNodeSnapshot& Node : Snapshot.Nodes)
@@ -288,10 +277,8 @@ FLayoutPlan FSolver::Solve(const FGraphSnapshot& Snapshot, const FRuleSet& RuleS
 		Placement.Role = WorkingNode ? WorkingNode->Role : ENodeRole::Unknown;
 		Placement.CurrentPosition = Node.Position;
 		Placement.TargetPosition = WorkingNode && WorkingNode->bHasTarget ? WorkingNode->Target : Node.Position;
-		Placement.bStraightenExistingReroute = WorkingNode && WorkingNode->Role == ENodeRole::Reroute && WorkingNode->bHasTarget && WorkingNode->Reason == TEXT("straighten_existing_reroute");
 		Placement.bMoveExisting = (!Node.bExisting && RuleSet.bMoveGeneratedNodes) ||
-			(Node.bExisting && RuleSet.bMoveExistingNodes) ||
-			Placement.bStraightenExistingReroute;
+			(Node.bExisting && RuleSet.bMoveExistingNodes);
 		Placement.Reason = WorkingNode && WorkingNode->bHasTarget ? WorkingNode->Reason : TEXT("no_target_generated");
 		Plan.Placements.Add(Placement);
 	}

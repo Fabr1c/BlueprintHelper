@@ -69,6 +69,14 @@ static bool TryReadVector2D(const TSharedPtr<FJsonObject>& Json, FVector2D& OutV
 	return true;
 }
 
+static bool IsDeprecatedIgnoredRoleText(const FString& Value)
+{
+	return Value.Equals(TEXT("Reroute"), ESearchCase::IgnoreCase) ||
+		Value.Equals(TEXT("reroute"), ESearchCase::IgnoreCase) ||
+		Value.Equals(TEXT("Knot"), ESearchCase::IgnoreCase) ||
+		Value.Equals(TEXT("K2Node_Knot"), ESearchCase::IgnoreCase);
+}
+
 static void ReadStringArrayOrScalar(
 	const TSharedPtr<FJsonObject>& Json,
 	const TCHAR* FieldName,
@@ -230,6 +238,11 @@ FValidationResult FRuleSetJson::Validate(const TSharedPtr<FJsonObject>& Json)
 			{
 				RuleObject->TryGetStringField(TEXT("id"), RoleText);
 			}
+			if (IsDeprecatedIgnoredRoleText(RoleText))
+			{
+				Validation.Warnings.Add(FString::Printf(TEXT("role_rules[%d] uses deprecated Reroute/Knot role and will be ignored."), Index));
+				continue;
+			}
 			if (RoleText.IsEmpty() || !LexTryParseString(Role, RoleText))
 			{
 				Validation.AddError(FString::Printf(TEXT("role_rules[%d].role is missing or unsupported."), Index));
@@ -268,7 +281,6 @@ bool FRuleSetJson::Import(const TSharedPtr<FJsonObject>& Json, FRuleSet& OutRule
 	TryReadPositiveNumber(Json, TEXT("variable_input_offset_x"), OutRuleSet.VariableInputOffsetX, OutValidation);
 	TryReadPositiveNumber(Json, TEXT("input_pin_row_spacing"), OutRuleSet.InputPinRowSpacing, OutValidation);
 	Json->TryGetBoolField(TEXT("target_pin_order_variable_input_alignment"), OutRuleSet.bUseTargetPinOrderForVariableInputs);
-	Json->TryGetBoolField(TEXT("straighten_existing_reroutes"), OutRuleSet.bStraightenExistingReroutes);
 	Json->TryGetBoolField(TEXT("move_generated_nodes"), OutRuleSet.bMoveGeneratedNodes);
 	Json->TryGetBoolField(TEXT("move_existing_nodes"), OutRuleSet.bMoveExistingNodes);
 	TryReadPositiveInt(Json, TEXT("max_nodes_per_frame"), OutRuleSet.MaxNodesPerFrame, OutValidation);
@@ -308,7 +320,7 @@ bool FRuleSetJson::Import(const TSharedPtr<FJsonObject>& Json, FRuleSet& OutRule
 			for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : (*RoleCentersObject)->Values)
 			{
 				ENodeRole Role = ENodeRole::Unknown;
-				if (!LexTryParseString(Role, Pair.Key) || Role == ENodeRole::Unknown)
+				if (IsDeprecatedIgnoredRoleText(Pair.Key) || !LexTryParseString(Role, Pair.Key) || Role == ENodeRole::Unknown)
 				{
 					continue;
 				}
@@ -346,6 +358,10 @@ bool FRuleSetJson::Import(const TSharedPtr<FJsonObject>& Json, FRuleSet& OutRule
 			if (!RuleObject->TryGetStringField(TEXT("role"), RoleText))
 			{
 				RoleText = Rule.Id;
+			}
+			if (IsDeprecatedIgnoredRoleText(RoleText))
+			{
+				continue;
 			}
 			if (!RoleText.IsEmpty())
 			{

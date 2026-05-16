@@ -508,3 +508,23 @@ Execute 使用 preview 阶段同一 resolver�?
 
 阻塞内容：
 1. 无当前阻塞。
+## 23. 2026-05-16 通用 struct construction resolver / typed operator promotion 落地记录
+
+新增内容：
+1. 新增 FBlueprintHelperStructConstructionResolver，为 make_struct 提供通用结构构造解析路径。
+2. make_struct 遇到带 HasNativeMake metadata 的原生结构体时，优先通过 ActionResolver/expected return type 解析真实 Make 函数，而不是硬建 UK2Node_MakeStruct。
+3. CallFunction resolver 增加 expected return type / expected return pin type 约束，支持返回值类型参与候选过滤与评分。
+4. compare/operator expression 将 literal/semantic operand type 下沉到 FParsedNode.ArgumentTypes，供 typed operator resolver 消费。
+
+变更需求：
+1. typed operator 写图路径从依赖 UK2Node_PromotableOperator 的交互式 wildcard promotion，改为解析到具体 UE 运算函数后生成稳定 UK2Node_CallFunction 节点。
+2. 该变更不是针对 Greater_IntInt 或 MakeVector 的局部补丁，而是通用 resolver/typed constraint 的主路径收敛。
+
+验证结果：
+1. 编译通过：Build.bat TemplateEditor Win64 Development -Project=D:\UEProjects\Template\Template.uproject -WaitMutex -NoHotReload。
+2. 真实编辑器 CLI 覆盖通过：$runDir。
+3. 已通过用例：P6 make_struct(Vector) -> K2_SetActorLocation、P7 compare(int > int) -> branch、PSEL select(compare(int == int)) -> PrintString。
+
+距离期望差距：
+1. 当前 K2 Blueprint 主路径已达到本轮 struct/operator 期望。
+2. 非 K2 图、完整右键菜单排序等仍按原边界处理，不因本轮通过而声明支持。

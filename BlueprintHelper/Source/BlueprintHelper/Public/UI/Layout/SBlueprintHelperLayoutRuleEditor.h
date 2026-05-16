@@ -8,6 +8,7 @@
 class SMultiLineEditableTextBox;
 class SBlueprintHelperLayoutRuleCanvas;
 class STextBlock;
+class SWidget;
 
 DECLARE_DELEGATE_RetVal(FString, FBlueprintHelperLayoutRuleEditorImportJson);
 DECLARE_DELEGATE_RetVal_OneParam(bool, FBlueprintHelperLayoutRuleEditorExportJson, const FString&);
@@ -53,6 +54,13 @@ private:
 
 	void HandleRuleSetTextChanged(const FText& InText);
 	void HandleCanvasRuleSetChanged(const FString& InRuleSetJson);
+	TSharedRef<SWidget> BuildSettingsPanel();
+	void RefreshSettingsFromJson();
+	void HandleTextSettingCommitted(int32 SettingId, const FText& NewValue);
+	void HandleFloatSettingChanged(int32 SettingId, float NewValue);
+	void HandleIntSettingChanged(int32 SettingId, int32 NewValue);
+	void HandleBoolSettingChanged(int32 SettingId, bool bNewValue);
+	void CommitSettingsRuleSetJson(const FString& InUpdatedRuleSetJson);
 	void SetStatusMessage(const FString& InMessage, bool bInValid);
 	bool ValidateRuleSetJson(FString& OutMessage) const;
 	void RefreshCanvasFromJson();
@@ -65,6 +73,22 @@ private:
 	FString DefaultRuleSetJson;
 	bool bLastValidationPassed = false;
 	bool bUpdatingTextFromCode = false;
+	bool bUpdatingSettingsFromJson = false;
+
+	FString SettingsRuleId = TEXT("default_readable_exec_with_left_data");
+	FString SettingsDisplayName = TEXT("Default Readable Exec With Left Data");
+	float SettingsExecColumnSpacing = 360.0f;
+	float SettingsExecRowSpacing = 220.0f;
+	float SettingsBranchRowSpacing = 260.0f;
+	float SettingsPureInputOffsetX = 300.0f;
+	float SettingsVariableInputOffsetX = 260.0f;
+	float SettingsInputPinRowSpacing = 44.0f;
+	float SettingsMaxMillisecondsPerFrame = 2.0f;
+	int32 SettingsMaxNodesPerFrame = 24;
+	bool bSettingsMoveGeneratedNodes = true;
+	bool bSettingsMoveExistingNodes = false;
+	bool bSettingsMarkDirtyAfterApply = true;
+	bool bSettingsSaveAfterApply = false;
 
 	FBlueprintHelperLayoutRuleEditorImportJson ImportJsonDelegate;
 	FBlueprintHelperLayoutRuleEditorExportJson ExportJsonDelegate;

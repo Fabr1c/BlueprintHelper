@@ -13,8 +13,12 @@
 #include "SlateOptMacros.h"
 #include "Styling/CoreStyle.h"
 #include "Widgets/Input/SButton.h"
+#include "Widgets/Input/SCheckBox.h"
+#include "Widgets/Input/SEditableTextBox.h"
 #include "Widgets/Input/SMultiLineEditableTextBox.h"
+#include "Widgets/Input/SSpinBox.h"
 #include "Widgets/Layout/SBorder.h"
+#include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SWrapBox.h"
 #include "Widgets/SLeafWidget.h"
 #include "Widgets/Text/STextBlock.h"
@@ -36,6 +40,36 @@ namespace BlueprintHelperLayoutRuleEditorLocal
 	const FVector2D CanvasNodeSize(128.0f, 44.0f);
 	const float CanvasRuleScale = 0.45f;
 
+	enum ETextSetting : int32
+	{
+		RuleId = 0,
+		DisplayName
+	};
+
+	enum EFloatSetting : int32
+	{
+		ExecColumnSpacing = 0,
+		ExecRowSpacing,
+		BranchRowSpacing,
+		PureInputOffsetX,
+		VariableInputOffsetX,
+		InputPinRowSpacing,
+		MaxMillisecondsPerFrame
+	};
+
+	enum EIntSetting : int32
+	{
+		MaxNodesPerFrame = 0
+	};
+
+	enum EBoolSetting : int32
+	{
+		MoveGeneratedNodes = 0,
+		MoveExistingNodes,
+		MarkDirtyAfterApply,
+		SaveAfterApply
+	};
+
 	FString GetFallbackDefaultJson()
 	{
 #if BLUEPRINTHELPER_LAYOUT_RULE_EDITOR_HAS_GRAPH_LAYOUT_RULESET_JSON
@@ -54,6 +88,138 @@ namespace BlueprintHelperLayoutRuleEditorLocal
 			.Text(Label)
 			.ToolTipText(ToolTip)
 			.OnClicked(OnClicked);
+	}
+
+	TSharedRef<SWidget> BuildSettingsSectionHeader(const FText& Label)
+	{
+		return SNew(STextBlock)
+			.Text(Label)
+			.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 11))
+			.ColorAndOpacity(FLinearColor(0.86f, 0.86f, 0.86f, 1.0f));
+	}
+
+	TSharedRef<SWidget> BuildTextSettingRow(
+		const FText& Label,
+		const FText& ToolTip,
+		TFunction<FString()> GetValue,
+		TFunction<void(const FText&)> SetValue)
+	{
+		return SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot()
+			.FillWidth(0.42f)
+			.VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.Text(Label)
+				.ToolTipText(ToolTip)
+			]
+			+ SHorizontalBox::Slot()
+			.FillWidth(0.58f)
+			[
+				SNew(SEditableTextBox)
+				.Text_Lambda([GetValue]()
+				{
+					return FText::FromString(GetValue());
+				})
+				.ToolTipText(ToolTip)
+				.OnTextCommitted_Lambda([SetValue](const FText& NewText, ETextCommit::Type)
+				{
+					SetValue(NewText);
+				})
+			];
+	}
+
+	TSharedRef<SWidget> BuildFloatSettingRow(
+		const FText& Label,
+		const FText& ToolTip,
+		TFunction<float()> GetValue,
+		TFunction<void(float)> SetValue,
+		float MinValue,
+		float MaxValue,
+		float Delta)
+	{
+		return SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot()
+			.FillWidth(1.0f)
+			.VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.Text(Label)
+				.ToolTipText(ToolTip)
+			]
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			[
+				SNew(SSpinBox<float>)
+				.MinValue(MinValue)
+				.MaxValue(MaxValue)
+				.Delta(Delta)
+				.Value_Lambda([GetValue]()
+				{
+					return GetValue();
+				})
+				.OnValueChanged_Lambda([SetValue](float NewValue)
+				{
+					SetValue(NewValue);
+				})
+			];
+	}
+
+	TSharedRef<SWidget> BuildIntSettingRow(
+		const FText& Label,
+		const FText& ToolTip,
+		TFunction<int32()> GetValue,
+		TFunction<void(int32)> SetValue,
+		int32 MinValue,
+		int32 MaxValue)
+	{
+		return SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot()
+			.FillWidth(1.0f)
+			.VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.Text(Label)
+				.ToolTipText(ToolTip)
+			]
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			[
+				SNew(SSpinBox<int32>)
+				.MinValue(MinValue)
+				.MaxValue(MaxValue)
+				.Delta(1)
+				.Value_Lambda([GetValue]()
+				{
+					return GetValue();
+				})
+				.OnValueChanged_Lambda([SetValue](int32 NewValue)
+				{
+					SetValue(NewValue);
+				})
+			];
+	}
+
+	TSharedRef<SWidget> BuildBoolSettingRow(
+		const FText& Label,
+		const FText& ToolTip,
+		TFunction<bool()> GetValue,
+		TFunction<void(bool)> SetValue)
+	{
+		return SNew(SCheckBox)
+			.ToolTipText(ToolTip)
+			.IsChecked_Lambda([GetValue]()
+			{
+				return GetValue() ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+			})
+			.OnCheckStateChanged_Lambda([SetValue](ECheckBoxState NewState)
+			{
+				SetValue(NewState == ECheckBoxState::Checked);
+			})
+			[
+				SNew(STextBlock)
+				.Text(Label)
+			];
 	}
 
 	TSharedRef<SWidget> BuildRoleChip(const FText& Label, const FLinearColor& Color)
@@ -76,10 +242,10 @@ namespace BlueprintHelperLayoutRuleEditorLocal
 		case BlueprintHelper::GraphLayout::ENodeRole::ExecNode: return FLinearColor(0.85f, 0.1f, 0.08f, 1.0f);
 		case BlueprintHelper::GraphLayout::ENodeRole::BranchControl: return FLinearColor(0.88f, 0.45f, 0.08f, 1.0f);
 		case BlueprintHelper::GraphLayout::ENodeRole::PureFunction: return FLinearColor(0.1f, 0.65f, 0.25f, 1.0f);
+		case BlueprintHelper::GraphLayout::ENodeRole::OperatorOrCompare: return FLinearColor(0.42f, 0.78f, 0.1f, 1.0f);
 		case BlueprintHelper::GraphLayout::ENodeRole::VariableInput: return FLinearColor(0.0f, 0.5f, 0.85f, 1.0f);
 		case BlueprintHelper::GraphLayout::ENodeRole::AsyncNode: return FLinearColor(0.0f, 0.68f, 0.78f, 1.0f);
 		case BlueprintHelper::GraphLayout::ENodeRole::DelegateNode: return FLinearColor(0.78f, 0.66f, 0.08f, 1.0f);
-		case BlueprintHelper::GraphLayout::ENodeRole::Reroute: return FLinearColor(0.32f, 0.32f, 0.32f, 1.0f);
 		case BlueprintHelper::GraphLayout::ENodeRole::Comment: return FLinearColor(0.22f, 0.22f, 0.22f, 1.0f);
 		default: return FLinearColor(0.18f, 0.18f, 0.18f, 1.0f);
 		}
@@ -164,11 +330,11 @@ public:
 			BlueprintHelper::GraphLayout::ENodeRole::ExecNode,
 			FLinearColor(0.1f, 0.75f, 0.32f, 1.0f));
 		DrawRelationship(OutDrawElements, AllottedGeometry, LayerId + 1,
-			BlueprintHelper::GraphLayout::ENodeRole::VariableInput,
-			BlueprintHelper::GraphLayout::ENodeRole::Reroute,
-			FLinearColor(0.0f, 0.62f, 0.9f, 1.0f));
+			BlueprintHelper::GraphLayout::ENodeRole::OperatorOrCompare,
+			BlueprintHelper::GraphLayout::ENodeRole::ExecNode,
+			FLinearColor(0.42f, 0.84f, 0.12f, 1.0f));
 		DrawRelationship(OutDrawElements, AllottedGeometry, LayerId + 1,
-			BlueprintHelper::GraphLayout::ENodeRole::Reroute,
+			BlueprintHelper::GraphLayout::ENodeRole::VariableInput,
 			BlueprintHelper::GraphLayout::ENodeRole::ExecNode,
 			FLinearColor(0.0f, 0.62f, 0.9f, 1.0f));
 		DrawRelationship(OutDrawElements, AllottedGeometry, LayerId + 1,
@@ -255,7 +421,6 @@ public:
 		NewCenter.X = FMath::Clamp(NewCenter.X, 40.0f, FMath::Max(40.0f, CanvasSize.X - 40.0f));
 		NewCenter.Y = FMath::Clamp(NewCenter.Y, 40.0f, FMath::Max(40.0f, CanvasSize.Y - 40.0f));
 		RoleCenters.Add(DraggedRole.GetValue(), NewCenter);
-		UpdateDependentReroute();
 		Invalidate(EInvalidateWidgetReason::Paint);
 		return FReply::Handled();
 	}
@@ -290,8 +455,8 @@ private:
 			{ENodeRole::ExecNode, LOCTEXT("CanvasExecNode", "ExecNode"), RoleCenters.FindRef(ENodeRole::ExecNode), true},
 			{ENodeRole::BranchControl, LOCTEXT("CanvasBranchControl", "BranchControl"), RoleCenters.FindRef(ENodeRole::BranchControl), true},
 			{ENodeRole::PureFunction, LOCTEXT("CanvasPureFunction", "PureFunction"), RoleCenters.FindRef(ENodeRole::PureFunction), true},
+			{ENodeRole::OperatorOrCompare, LOCTEXT("CanvasOperatorOrCompare", "OperatorOrCompare"), RoleCenters.FindRef(ENodeRole::OperatorOrCompare), true},
 			{ENodeRole::VariableInput, LOCTEXT("CanvasVariableInput", "VariableInput"), RoleCenters.FindRef(ENodeRole::VariableInput), true},
-			{ENodeRole::Reroute, LOCTEXT("CanvasReroute", "Reroute"), RoleCenters.FindRef(ENodeRole::Reroute), false},
 			{ENodeRole::AsyncNode, LOCTEXT("CanvasAsyncNode", "AsyncNode"), RoleCenters.FindRef(ENodeRole::AsyncNode), true},
 			{ENodeRole::DelegateNode, LOCTEXT("CanvasDelegateNode", "DelegateNode"), RoleCenters.FindRef(ENodeRole::DelegateNode), true}
 		};
@@ -305,6 +470,7 @@ private:
 		const FVector2D ExecCenter = EventCenter + FVector2D(RuleSet.ExecColumnSpacing * Scale, 0.0f);
 		const FVector2D BranchCenter = ExecCenter + FVector2D(RuleSet.ExecColumnSpacing * Scale, RuleSet.BranchRowSpacing * Scale);
 		const FVector2D PureCenter = ExecCenter - FVector2D(RuleSet.PureInputOffsetX * Scale, RuleSet.InputPinRowSpacing * Scale);
+		const FVector2D OperatorCenter = ExecCenter - FVector2D(RuleSet.PureInputOffsetX * Scale, 0.0f);
 		const FVector2D VariableCenter = ExecCenter + FVector2D(-RuleSet.VariableInputOffsetX * Scale, RuleSet.InputPinRowSpacing * Scale);
 		const FVector2D AsyncCenter = ExecCenter + FVector2D(RuleSet.ExecColumnSpacing * Scale, RuleSet.ExecRowSpacing * Scale);
 		RoleCenters.Reset();
@@ -313,26 +479,18 @@ private:
 		RoleCenters.Add(ENodeRole::ExecNode, ExecCenter);
 		RoleCenters.Add(ENodeRole::BranchControl, BranchCenter);
 		RoleCenters.Add(ENodeRole::PureFunction, PureCenter);
+		RoleCenters.Add(ENodeRole::OperatorOrCompare, OperatorCenter);
 		RoleCenters.Add(ENodeRole::VariableInput, VariableCenter);
 		RoleCenters.Add(ENodeRole::AsyncNode, AsyncCenter);
 		RoleCenters.Add(ENodeRole::DelegateNode, AsyncCenter + FVector2D(0.0f, 58.0f));
 
 		for (const TPair<ENodeRole, FVector2D>& SavedCenter : RuleSet.EditorCanvasRoleCenters)
 		{
-			if (SavedCenter.Key != ENodeRole::Reroute && RoleCenters.Contains(SavedCenter.Key))
+			if (RoleCenters.Contains(SavedCenter.Key))
 			{
 				RoleCenters.Add(SavedCenter.Key, SavedCenter.Value);
 			}
 		}
-		UpdateDependentReroute();
-	}
-
-	void UpdateDependentReroute()
-	{
-		using namespace BlueprintHelper::GraphLayout;
-		const FVector2D VariableCenter = RoleCenters.FindRef(ENodeRole::VariableInput);
-		const FVector2D ExecCenter = RoleCenters.FindRef(ENodeRole::ExecNode);
-		RoleCenters.Add(ENodeRole::Reroute, (VariableCenter + ExecCenter) * 0.5f + FVector2D(0.0f, 18.0f));
 	}
 
 	TOptional<BlueprintHelper::GraphLayout::ENodeRole> HitTestRole(const FVector2D& LocalPos) const
@@ -432,7 +590,7 @@ private:
 		RuleSet.EditorCanvasRoleCenters.Reset();
 		for (const TPair<ENodeRole, FVector2D>& Pair : RoleCenters)
 		{
-			if (Pair.Key != ENodeRole::Unknown && Pair.Key != ENodeRole::Reroute)
+			if (Pair.Key != ENodeRole::Unknown)
 			{
 				RuleSet.EditorCanvasRoleCenters.Add(Pair.Key, Pair.Value);
 			}
@@ -480,7 +638,11 @@ void SBlueprintHelperLayoutRuleEditor::Construct(const FArguments& InArgs)
 
 	ChildSlot
 	[
-		SNew(SVerticalBox)
+		SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot()
+		.FillWidth(0.58f)
+		[
+			SNew(SVerticalBox)
 		+ SVerticalBox::Slot()
 		.AutoHeight()
 		.Padding(8.0f, 8.0f, 8.0f, 6.0f)
@@ -516,6 +678,10 @@ void SBlueprintHelperLayoutRuleEditor::Construct(const FArguments& InArgs)
 			]
 			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
 			[
+				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleOperatorOrCompare", "OperatorOrCompare"), FLinearColor(0.42f, 0.78f, 0.1f, 1.0f))
+			]
+			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
+			[
 				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleVariableInput", "VariableInput"), FLinearColor(0.0f, 0.5f, 0.85f, 1.0f))
 			]
 			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
@@ -525,10 +691,6 @@ void SBlueprintHelperLayoutRuleEditor::Construct(const FArguments& InArgs)
 			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
 			[
 				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleDelegateNode", "DelegateNode"), FLinearColor(0.78f, 0.66f, 0.08f, 1.0f))
-			]
-			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
-			[
-				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleReroute", "Reroute"), FLinearColor(0.32f, 0.32f, 0.32f, 1.0f))
 			]
 			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
 			[
@@ -546,7 +708,7 @@ void SBlueprintHelperLayoutRuleEditor::Construct(const FArguments& InArgs)
 			[
 				BlueprintHelperLayoutRuleEditorLocal::BuildToolbarButton(
 					LOCTEXT("ImportJson", "Import JSON"),
-					LOCTEXT("ImportJsonTooltip", "Import RuleSet JSON through the bound config hook, or from the default Saved file when unbound."),
+					LOCTEXT("ImportJsonTooltip", "通过已绑定的配置入口导入 RuleSet JSON；未绑定时从默认 Saved 文件读取。"),
 					FOnClicked::CreateSP(this, &SBlueprintHelperLayoutRuleEditor::OnImportJsonClicked))
 			]
 			+ SHorizontalBox::Slot()
@@ -555,7 +717,7 @@ void SBlueprintHelperLayoutRuleEditor::Construct(const FArguments& InArgs)
 			[
 				BlueprintHelperLayoutRuleEditorLocal::BuildToolbarButton(
 					LOCTEXT("ExportJson", "Export JSON"),
-					LOCTEXT("ExportJsonTooltip", "Export the current RuleSet JSON through the bound config hook, or to the default Saved file when unbound."),
+					LOCTEXT("ExportJsonTooltip", "通过已绑定的配置入口导出当前 RuleSet JSON；未绑定时写入默认 Saved 文件。"),
 					FOnClicked::CreateSP(this, &SBlueprintHelperLayoutRuleEditor::OnExportJsonClicked))
 			]
 			+ SHorizontalBox::Slot()
@@ -564,7 +726,7 @@ void SBlueprintHelperLayoutRuleEditor::Construct(const FArguments& InArgs)
 			[
 				BlueprintHelperLayoutRuleEditorLocal::BuildToolbarButton(
 					LOCTEXT("CopyJson", "Copy JSON"),
-					LOCTEXT("CopyJsonTooltip", "Copy the current RuleSet JSON text to the clipboard."),
+					LOCTEXT("CopyJsonTooltip", "将当前 RuleSet JSON 文本复制到剪贴板。"),
 					FOnClicked::CreateSP(this, &SBlueprintHelperLayoutRuleEditor::OnCopyJsonClicked))
 			]
 			+ SHorizontalBox::Slot()
@@ -573,7 +735,7 @@ void SBlueprintHelperLayoutRuleEditor::Construct(const FArguments& InArgs)
 			[
 				BlueprintHelperLayoutRuleEditorLocal::BuildToolbarButton(
 					LOCTEXT("PasteJson", "Paste JSON"),
-					LOCTEXT("PasteJsonTooltip", "Replace the RuleSet JSON text with clipboard content."),
+					LOCTEXT("PasteJsonTooltip", "用剪贴板内容替换当前 RuleSet JSON 文本。"),
 					FOnClicked::CreateSP(this, &SBlueprintHelperLayoutRuleEditor::OnPasteJsonClicked))
 			]
 			+ SHorizontalBox::Slot()
@@ -582,7 +744,7 @@ void SBlueprintHelperLayoutRuleEditor::Construct(const FArguments& InArgs)
 			[
 				BlueprintHelperLayoutRuleEditorLocal::BuildToolbarButton(
 					LOCTEXT("Validate", "Validate"),
-					LOCTEXT("ValidateTooltip", "Validate the current RuleSet JSON. A bound GraphLayout validator can provide schema-level checks."),
+					LOCTEXT("ValidateTooltip", "校验当前 RuleSet JSON；已绑定的 GraphLayout 校验器会提供 schema 级检查。"),
 					FOnClicked::CreateSP(this, &SBlueprintHelperLayoutRuleEditor::OnValidateClicked))
 			]
 			+ SHorizontalBox::Slot()
@@ -590,7 +752,7 @@ void SBlueprintHelperLayoutRuleEditor::Construct(const FArguments& InArgs)
 			[
 				BlueprintHelperLayoutRuleEditorLocal::BuildToolbarButton(
 					LOCTEXT("ResetDefault", "Reset to Default"),
-					LOCTEXT("ResetDefaultTooltip", "Replace the current text with the configured default RuleSet JSON."),
+					LOCTEXT("ResetDefaultTooltip", "用已配置的默认 RuleSet JSON 替换当前文本。"),
 					FOnClicked::CreateSP(this, &SBlueprintHelperLayoutRuleEditor::OnResetToDefaultClicked))
 			]
 		]
@@ -603,7 +765,7 @@ void SBlueprintHelperLayoutRuleEditor::Construct(const FArguments& InArgs)
 			[
 				SAssignNew(RuleSetTextBox, SMultiLineEditableTextBox)
 				.Text(FText::FromString(RuleSetJson))
-				.HintText(LOCTEXT("RuleSetJsonHint", "Edit GraphLayout RuleSet JSON here."))
+				.HintText(LOCTEXT("RuleSetJsonHint", "在此编辑 GraphLayout RuleSet JSON。"))
 				.OnTextChanged(this, &SBlueprintHelperLayoutRuleEditor::HandleRuleSetTextChanged)
 			]
 		]
@@ -617,12 +779,205 @@ void SBlueprintHelperLayoutRuleEditor::Construct(const FArguments& InArgs)
 				? BlueprintHelperLayoutRuleEditorLocal::ValidStatusColor
 				: BlueprintHelperLayoutRuleEditorLocal::InvalidStatusColor)
 		]
+		]
+		+ SHorizontalBox::Slot()
+		.FillWidth(0.42f)
+		.Padding(0.0f, 8.0f, 8.0f, 8.0f)
+		[
+			SNew(SBorder)
+			.Padding(10.0f)
+			[
+				BuildSettingsPanel()
+			]
+		]
 	];
 
 	RefreshCanvasFromJson();
+	RefreshSettingsFromJson();
 }
 
 END_SLATE_FUNCTION_BUILD_OPTIMIZATION
+
+TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildSettingsPanel()
+{
+	using namespace BlueprintHelperLayoutRuleEditorLocal;
+
+	return SNew(SScrollBox)
+		+ SScrollBox::Slot()
+		.Padding(0.0f, 0.0f, 0.0f, 8.0f)
+		[
+			BuildSettingsSectionHeader(LOCTEXT("SettingsPanelTitle", "Rule Settings"))
+		]
+		+ SScrollBox::Slot()
+		.Padding(0.0f, 0.0f, 0.0f, 6.0f)
+		[
+			BuildSettingsSectionHeader(LOCTEXT("SettingsRuleHeader", "Rule"))
+		]
+		+ SScrollBox::Slot()
+		.Padding(0.0f, 0.0f, 0.0f, 5.0f)
+		[
+			BuildTextSettingRow(
+				LOCTEXT("RuleIdLabel", "ID"),
+				LOCTEXT("RuleIdTooltip", "布局规则集的稳定标识。"),
+				[this]() { return SettingsRuleId; },
+				[this](const FText& NewValue) { HandleTextSettingCommitted(RuleId, NewValue); })
+		]
+		+ SScrollBox::Slot()
+		.Padding(0.0f, 0.0f, 0.0f, 12.0f)
+		[
+			BuildTextSettingRow(
+				LOCTEXT("DisplayNameLabel", "Display name"),
+				LOCTEXT("DisplayNameTooltip", "布局规则集在界面中显示的名称。"),
+				[this]() { return SettingsDisplayName; },
+				[this](const FText& NewValue) { HandleTextSettingCommitted(DisplayName, NewValue); })
+		]
+		+ SScrollBox::Slot()
+		.Padding(0.0f, 0.0f, 0.0f, 6.0f)
+		[
+			BuildSettingsSectionHeader(LOCTEXT("SettingsSpacingHeader", "Spacing"))
+		]
+		+ SScrollBox::Slot()
+		.Padding(0.0f, 0.0f, 0.0f, 5.0f)
+		[
+			BuildFloatSettingRow(
+				LOCTEXT("ExecColumnSpacingLabel", "Exec column"),
+				LOCTEXT("ExecColumnSpacingTooltip", "执行节点之间的水平间距。"),
+				[this]() { return SettingsExecColumnSpacing; },
+				[this](float NewValue) { HandleFloatSettingChanged(ExecColumnSpacing, NewValue); },
+				120.0f,
+				1200.0f,
+				10.0f)
+		]
+		+ SScrollBox::Slot()
+		.Padding(0.0f, 0.0f, 0.0f, 5.0f)
+		[
+			BuildFloatSettingRow(
+				LOCTEXT("ExecRowSpacingLabel", "Exec row"),
+				LOCTEXT("ExecRowSpacingTooltip", "执行链路之间的垂直间距。"),
+				[this]() { return SettingsExecRowSpacing; },
+				[this](float NewValue) { HandleFloatSettingChanged(ExecRowSpacing, NewValue); },
+				80.0f,
+				900.0f,
+				10.0f)
+		]
+		+ SScrollBox::Slot()
+		.Padding(0.0f, 0.0f, 0.0f, 5.0f)
+		[
+			BuildFloatSettingRow(
+				LOCTEXT("BranchRowSpacingLabel", "Branch row"),
+				LOCTEXT("BranchRowSpacingTooltip", "分支链路使用的垂直间距。"),
+				[this]() { return SettingsBranchRowSpacing; },
+				[this](float NewValue) { HandleFloatSettingChanged(BranchRowSpacing, NewValue); },
+				80.0f,
+				900.0f,
+				10.0f)
+		]
+		+ SScrollBox::Slot()
+		.Padding(0.0f, 0.0f, 0.0f, 5.0f)
+		[
+			BuildFloatSettingRow(
+				LOCTEXT("PureInputOffsetLabel", "Pure offset"),
+				LOCTEXT("PureInputOffsetTooltip", "纯函数和运算/比较输入节点的左侧偏移。"),
+				[this]() { return SettingsPureInputOffsetX; },
+				[this](float NewValue) { HandleFloatSettingChanged(PureInputOffsetX, NewValue); },
+				80.0f,
+				900.0f,
+				10.0f)
+		]
+		+ SScrollBox::Slot()
+		.Padding(0.0f, 0.0f, 0.0f, 5.0f)
+		[
+			BuildFloatSettingRow(
+				LOCTEXT("VariableInputOffsetLabel", "Variable offset"),
+				LOCTEXT("VariableInputOffsetTooltip", "变量输入节点的左侧偏移。"),
+				[this]() { return SettingsVariableInputOffsetX; },
+				[this](float NewValue) { HandleFloatSettingChanged(VariableInputOffsetX, NewValue); },
+				80.0f,
+				900.0f,
+				10.0f)
+		]
+		+ SScrollBox::Slot()
+		.Padding(0.0f, 0.0f, 0.0f, 12.0f)
+		[
+			BuildFloatSettingRow(
+				LOCTEXT("InputPinRowSpacingLabel", "Input pin row"),
+				LOCTEXT("InputPinRowSpacingTooltip", "输入引脚行之间的垂直间距。"),
+				[this]() { return SettingsInputPinRowSpacing; },
+				[this](float NewValue) { HandleFloatSettingChanged(InputPinRowSpacing, NewValue); },
+				24.0f,
+				220.0f,
+				2.0f)
+		]
+		+ SScrollBox::Slot()
+		.Padding(0.0f, 0.0f, 0.0f, 6.0f)
+		[
+			BuildSettingsSectionHeader(LOCTEXT("SettingsApplyHeader", "Apply"))
+		]
+		+ SScrollBox::Slot()
+		.Padding(0.0f, 0.0f, 0.0f, 5.0f)
+		[
+			BuildIntSettingRow(
+				LOCTEXT("MaxNodesPerFrameLabel", "Nodes / frame"),
+				LOCTEXT("MaxNodesPerFrameTooltip", "每个编辑器帧最多应用的布局节点移动数量。"),
+				[this]() { return SettingsMaxNodesPerFrame; },
+				[this](int32 NewValue) { HandleIntSettingChanged(MaxNodesPerFrame, NewValue); },
+				1,
+				256)
+		]
+		+ SScrollBox::Slot()
+		.Padding(0.0f, 0.0f, 0.0f, 5.0f)
+		[
+			BuildFloatSettingRow(
+				LOCTEXT("MaxMillisecondsPerFrameLabel", "MS / frame"),
+				LOCTEXT("MaxMillisecondsPerFrameTooltip", "每个编辑器帧最多用于应用布局的时间。"),
+				[this]() { return SettingsMaxMillisecondsPerFrame; },
+				[this](float NewValue) { HandleFloatSettingChanged(MaxMillisecondsPerFrame, NewValue); },
+				0.25f,
+				20.0f,
+				0.25f)
+		]
+		+ SScrollBox::Slot()
+		.Padding(0.0f, 0.0f, 0.0f, 5.0f)
+		[
+			BuildBoolSettingRow(
+				LOCTEXT("MoveGeneratedNodesLabel", "Move generated nodes"),
+				LOCTEXT("MoveGeneratedNodesTooltip", "允许布局移动本次 Task 生成的节点。"),
+				[this]() { return bSettingsMoveGeneratedNodes; },
+				[this](bool bNewValue) { HandleBoolSettingChanged(MoveGeneratedNodes, bNewValue); })
+		]
+		+ SScrollBox::Slot()
+		.Padding(0.0f, 0.0f, 0.0f, 12.0f)
+		[
+			BuildBoolSettingRow(
+				LOCTEXT("MoveExistingNodesLabel", "Move existing nodes"),
+				LOCTEXT("MoveExistingNodesTooltip", "允许布局移动图中已有的用户节点。"),
+				[this]() { return bSettingsMoveExistingNodes; },
+				[this](bool bNewValue) { HandleBoolSettingChanged(MoveExistingNodes, bNewValue); })
+		]
+		+ SScrollBox::Slot()
+		.Padding(0.0f, 0.0f, 0.0f, 6.0f)
+		[
+			BuildSettingsSectionHeader(LOCTEXT("SettingsPersistenceHeader", "Persistence"))
+		]
+		+ SScrollBox::Slot()
+		.Padding(0.0f, 0.0f, 0.0f, 5.0f)
+		[
+			BuildBoolSettingRow(
+				LOCTEXT("MarkDirtyAfterApplyLabel", "Mark dirty after apply"),
+				LOCTEXT("MarkDirtyAfterApplyTooltip", "布局位置变更后将图所在包标记为 dirty。"),
+				[this]() { return bSettingsMarkDirtyAfterApply; },
+				[this](bool bNewValue) { HandleBoolSettingChanged(MarkDirtyAfterApply, bNewValue); })
+		]
+		+ SScrollBox::Slot()
+		.Padding(0.0f, 0.0f, 0.0f, 0.0f)
+		[
+			BuildBoolSettingRow(
+				LOCTEXT("SaveAfterApplyLabel", "Save after apply"),
+				LOCTEXT("SaveAfterApplyTooltip", "布局位置变更应用后保存图所在包。"),
+				[this]() { return bSettingsSaveAfterApply; },
+				[this](bool bNewValue) { HandleBoolSettingChanged(SaveAfterApply, bNewValue); })
+		];
+}
 
 FString SBlueprintHelperLayoutRuleEditor::GetRuleSetJson() const
 {
@@ -643,6 +998,7 @@ void SBlueprintHelperLayoutRuleEditor::SetRuleSetJson(const FString& InRuleSetJs
 	bLastValidationPassed = ValidateRuleSetJson(Message);
 	SetStatusMessage(Message, bLastValidationPassed);
 	RefreshCanvasFromJson();
+	RefreshSettingsFromJson();
 
 	if (RuleSetJsonChangedDelegate.IsBound())
 	{
@@ -744,6 +1100,7 @@ void SBlueprintHelperLayoutRuleEditor::HandleRuleSetTextChanged(const FText& InT
 	RuleSetJson = InText.ToString();
 	SetStatusMessage(TEXT("RuleSet JSON edited. Validate before export."), false);
 	RefreshCanvasFromJson();
+	RefreshSettingsFromJson();
 
 	if (RuleSetJsonChangedDelegate.IsBound())
 	{
@@ -763,6 +1120,7 @@ void SBlueprintHelperLayoutRuleEditor::HandleCanvasRuleSetChanged(const FString&
 
 	FString Message;
 	bLastValidationPassed = ValidateRuleSetJson(Message);
+	RefreshSettingsFromJson();
 	if (bLastValidationPassed)
 	{
 		bool bSaved = false;
@@ -779,6 +1137,218 @@ void SBlueprintHelperLayoutRuleEditor::HandleCanvasRuleSetChanged(const FString&
 			bSaved = SaveJsonToDefaultFile(RuleSetJson, ExportMessage);
 		}
 		SetStatusMessage(ExportMessage, bSaved);
+	}
+	else
+	{
+		SetStatusMessage(Message, false);
+	}
+
+	if (RuleSetJsonChangedDelegate.IsBound())
+	{
+		RuleSetJsonChangedDelegate.Execute(RuleSetJson);
+	}
+}
+
+void SBlueprintHelperLayoutRuleEditor::RefreshSettingsFromJson()
+{
+	BlueprintHelper::GraphLayout::FRuleSet ParsedRuleSet;
+	BlueprintHelper::GraphLayout::FValidationResult Validation;
+	if (!BlueprintHelper::GraphLayout::FRuleSetJson::ImportString(RuleSetJson, ParsedRuleSet, Validation))
+	{
+		return;
+	}
+
+	TGuardValue<bool> UpdatingSettingsGuard(bUpdatingSettingsFromJson, true);
+	SettingsRuleId = ParsedRuleSet.Id;
+	SettingsDisplayName = ParsedRuleSet.DisplayName;
+	SettingsExecColumnSpacing = ParsedRuleSet.ExecColumnSpacing;
+	SettingsExecRowSpacing = ParsedRuleSet.ExecRowSpacing;
+	SettingsBranchRowSpacing = ParsedRuleSet.BranchRowSpacing;
+	SettingsPureInputOffsetX = ParsedRuleSet.PureInputOffsetX;
+	SettingsVariableInputOffsetX = ParsedRuleSet.VariableInputOffsetX;
+	SettingsInputPinRowSpacing = ParsedRuleSet.InputPinRowSpacing;
+	SettingsMaxNodesPerFrame = ParsedRuleSet.MaxNodesPerFrame;
+	SettingsMaxMillisecondsPerFrame = ParsedRuleSet.MaxMillisecondsPerFrame;
+	bSettingsMoveGeneratedNodes = ParsedRuleSet.bMoveGeneratedNodes;
+	bSettingsMoveExistingNodes = ParsedRuleSet.bMoveExistingNodes;
+	bSettingsMarkDirtyAfterApply = ParsedRuleSet.bMarkDirtyAfterApply;
+	bSettingsSaveAfterApply = ParsedRuleSet.bSaveAfterApply;
+	Invalidate(EInvalidateWidgetReason::Paint);
+}
+
+void SBlueprintHelperLayoutRuleEditor::HandleTextSettingCommitted(int32 SettingId, const FText& NewValue)
+{
+	if (bUpdatingSettingsFromJson)
+	{
+		return;
+	}
+
+	BlueprintHelper::GraphLayout::FRuleSet ParsedRuleSet;
+	BlueprintHelper::GraphLayout::FValidationResult Validation;
+	if (!BlueprintHelper::GraphLayout::FRuleSetJson::ImportString(RuleSetJson, ParsedRuleSet, Validation))
+	{
+		SetStatusMessage(TEXT("RuleSet JSON is invalid; settings were not applied."), false);
+		return;
+	}
+
+	using namespace BlueprintHelperLayoutRuleEditorLocal;
+	const FString NewString = NewValue.ToString().TrimStartAndEnd();
+	switch (SettingId)
+	{
+	case RuleId:
+		ParsedRuleSet.Id = NewString;
+		break;
+	case DisplayName:
+		ParsedRuleSet.DisplayName = NewString;
+		break;
+	default:
+		return;
+	}
+
+	CommitSettingsRuleSetJson(BlueprintHelper::GraphLayout::FRuleSetJson::ExportString(ParsedRuleSet));
+}
+
+void SBlueprintHelperLayoutRuleEditor::HandleFloatSettingChanged(int32 SettingId, float NewValue)
+{
+	if (bUpdatingSettingsFromJson)
+	{
+		return;
+	}
+
+	BlueprintHelper::GraphLayout::FRuleSet ParsedRuleSet;
+	BlueprintHelper::GraphLayout::FValidationResult Validation;
+	if (!BlueprintHelper::GraphLayout::FRuleSetJson::ImportString(RuleSetJson, ParsedRuleSet, Validation))
+	{
+		SetStatusMessage(TEXT("RuleSet JSON is invalid; settings were not applied."), false);
+		return;
+	}
+
+	using namespace BlueprintHelperLayoutRuleEditorLocal;
+	switch (SettingId)
+	{
+	case ExecColumnSpacing:
+		ParsedRuleSet.ExecColumnSpacing = FMath::Clamp(NewValue, 120.0f, 1200.0f);
+		break;
+	case ExecRowSpacing:
+		ParsedRuleSet.ExecRowSpacing = FMath::Clamp(NewValue, 80.0f, 900.0f);
+		break;
+	case BranchRowSpacing:
+		ParsedRuleSet.BranchRowSpacing = FMath::Clamp(NewValue, 80.0f, 900.0f);
+		break;
+	case PureInputOffsetX:
+		ParsedRuleSet.PureInputOffsetX = FMath::Clamp(NewValue, 80.0f, 900.0f);
+		break;
+	case VariableInputOffsetX:
+		ParsedRuleSet.VariableInputOffsetX = FMath::Clamp(NewValue, 80.0f, 900.0f);
+		break;
+	case InputPinRowSpacing:
+		ParsedRuleSet.InputPinRowSpacing = FMath::Clamp(NewValue, 24.0f, 220.0f);
+		break;
+	case MaxMillisecondsPerFrame:
+		ParsedRuleSet.MaxMillisecondsPerFrame = FMath::Clamp(NewValue, 0.25f, 20.0f);
+		break;
+	default:
+		return;
+	}
+
+	CommitSettingsRuleSetJson(BlueprintHelper::GraphLayout::FRuleSetJson::ExportString(ParsedRuleSet));
+}
+
+void SBlueprintHelperLayoutRuleEditor::HandleIntSettingChanged(int32 SettingId, int32 NewValue)
+{
+	if (bUpdatingSettingsFromJson)
+	{
+		return;
+	}
+
+	BlueprintHelper::GraphLayout::FRuleSet ParsedRuleSet;
+	BlueprintHelper::GraphLayout::FValidationResult Validation;
+	if (!BlueprintHelper::GraphLayout::FRuleSetJson::ImportString(RuleSetJson, ParsedRuleSet, Validation))
+	{
+		SetStatusMessage(TEXT("RuleSet JSON is invalid; settings were not applied."), false);
+		return;
+	}
+
+	using namespace BlueprintHelperLayoutRuleEditorLocal;
+	switch (SettingId)
+	{
+	case MaxNodesPerFrame:
+		ParsedRuleSet.MaxNodesPerFrame = FMath::Clamp(NewValue, 1, 256);
+		break;
+	default:
+		return;
+	}
+
+	CommitSettingsRuleSetJson(BlueprintHelper::GraphLayout::FRuleSetJson::ExportString(ParsedRuleSet));
+}
+
+void SBlueprintHelperLayoutRuleEditor::HandleBoolSettingChanged(int32 SettingId, bool bNewValue)
+{
+	if (bUpdatingSettingsFromJson)
+	{
+		return;
+	}
+
+	BlueprintHelper::GraphLayout::FRuleSet ParsedRuleSet;
+	BlueprintHelper::GraphLayout::FValidationResult Validation;
+	if (!BlueprintHelper::GraphLayout::FRuleSetJson::ImportString(RuleSetJson, ParsedRuleSet, Validation))
+	{
+		SetStatusMessage(TEXT("RuleSet JSON is invalid; settings were not applied."), false);
+		return;
+	}
+
+	using namespace BlueprintHelperLayoutRuleEditorLocal;
+	switch (SettingId)
+	{
+	case MoveGeneratedNodes:
+		ParsedRuleSet.bMoveGeneratedNodes = bNewValue;
+		break;
+	case MoveExistingNodes:
+		ParsedRuleSet.bMoveExistingNodes = bNewValue;
+		break;
+	case MarkDirtyAfterApply:
+		ParsedRuleSet.bMarkDirtyAfterApply = bNewValue;
+		break;
+	case SaveAfterApply:
+		ParsedRuleSet.bSaveAfterApply = bNewValue;
+		break;
+	default:
+		return;
+	}
+
+	CommitSettingsRuleSetJson(BlueprintHelper::GraphLayout::FRuleSetJson::ExportString(ParsedRuleSet));
+}
+
+void SBlueprintHelperLayoutRuleEditor::CommitSettingsRuleSetJson(const FString& InUpdatedRuleSetJson)
+{
+	RuleSetJson = InUpdatedRuleSetJson;
+
+	if (RuleSetTextBox.IsValid())
+	{
+		TGuardValue<bool> UpdatingTextGuard(bUpdatingTextFromCode, true);
+		RuleSetTextBox->SetText(FText::FromString(RuleSetJson));
+	}
+
+	RefreshCanvasFromJson();
+	RefreshSettingsFromJson();
+
+	FString Message;
+	bLastValidationPassed = ValidateRuleSetJson(Message);
+	if (bLastValidationPassed)
+	{
+		bool bSaved = false;
+		if (ExportJsonDelegate.IsBound())
+		{
+			bSaved = ExportJsonDelegate.Execute(RuleSetJson);
+		}
+		else
+		{
+			FString ExportMessage;
+			bSaved = SaveJsonToDefaultFile(RuleSetJson, ExportMessage);
+		}
+		SetStatusMessage(
+			bSaved ? TEXT("RuleSet updated and saved from settings.") : TEXT("RuleSet updated from settings, but save failed."),
+			bSaved);
 	}
 	else
 	{

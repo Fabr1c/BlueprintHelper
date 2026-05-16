@@ -91,23 +91,52 @@ FRuleSet::FRuleSet()
 	}
 	RoleRules.Add(MakeClassRoleRule(TEXT("PureFunction"), ENodeRole::PureFunction, TEXT("green"), 40, {
 		TEXT("K2Node_CallFunction"),
-		TEXT("K2Node_CommutativeAssociativeBinaryOperator"),
 		TEXT("K2Node_Select"),
 		TEXT("K2Node_FormatText"),
 		TEXT("K2Node_Make")
 	}));
+	RoleRules.Add(MakeClassRoleRule(TEXT("OperatorOrCompare"), ENodeRole::OperatorOrCompare, TEXT("lime"), 45, {
+		TEXT("K2Node_CommutativeAssociativeBinaryOperator"),
+		TEXT("K2Node_PromotableOperator")
+	}));
+	{
+		FRoleRule Rule;
+		Rule.Id = TEXT("OperatorOrCompareTitle");
+		Rule.Role = ENodeRole::OperatorOrCompare;
+		Rule.Color = TEXT("lime");
+		Rule.Priority = 44;
+		Rule.MatchTitleContains.Append({
+			TEXT("=="),
+			TEXT("!="),
+			TEXT(">"),
+			TEXT("<"),
+			TEXT("+"),
+			TEXT("-"),
+			TEXT("*"),
+			TEXT("/"),
+			TEXT("AND"),
+			TEXT("OR"),
+			TEXT("NOT"),
+			TEXT("Equal"),
+			TEXT("Greater"),
+			TEXT("Less"),
+			TEXT("Is Valid"),
+			TEXT("IsValid")
+		});
+		RoleRules.Add(Rule);
+	}
 	RoleRules.Add(MakeClassRoleRule(TEXT("VariableInput"), ENodeRole::VariableInput, TEXT("blue"), 30, {
 		TEXT("K2Node_VariableGet"),
 		TEXT("K2Node_Self"),
 		TEXT("K2Node_Literal")
 	}));
-	RoleRules.Add(MakeClassRoleRule(TEXT("Reroute"), ENodeRole::Reroute, TEXT("gray"), 20, {
-		TEXT("K2Node_Knot"),
-		TEXT("Reroute")
-	}));
 	RoleRules.Add(MakeClassRoleRule(TEXT("Comment"), ENodeRole::Comment, TEXT("gray"), 10, {
 		TEXT("EdGraphNode_Comment")
 	}));
+	RoleRules.Sort([](const FRoleRule& Left, const FRoleRule& Right)
+	{
+		return Left.Priority > Right.Priority;
+	});
 }
 
 void FValidationResult::AddError(const FString& Message)
@@ -124,11 +153,11 @@ const TCHAR* ToString(ENodeRole Role)
 	case ENodeRole::ExecNode: return TEXT("ExecNode");
 	case ENodeRole::BranchControl: return TEXT("BranchControl");
 	case ENodeRole::PureFunction: return TEXT("PureFunction");
+	case ENodeRole::OperatorOrCompare: return TEXT("OperatorOrCompare");
 	case ENodeRole::VariableInput: return TEXT("VariableInput");
 	case ENodeRole::AsyncNode: return TEXT("AsyncNode");
 	case ENodeRole::DelegateNode: return TEXT("DelegateNode");
 	case ENodeRole::Comment: return TEXT("Comment");
-	case ENodeRole::Reroute: return TEXT("Reroute");
 	default: return TEXT("Unknown");
 	}
 }
@@ -155,6 +184,14 @@ bool LexTryParseString(ENodeRole& OutRole, const FString& Value)
 		OutRole = ENodeRole::PureFunction;
 		return true;
 	}
+	if (Value.Equals(TEXT("OperatorOrCompare"), ESearchCase::IgnoreCase) ||
+		Value.Equals(TEXT("operator_or_compare"), ESearchCase::IgnoreCase) ||
+		Value.Equals(TEXT("Operator"), ESearchCase::IgnoreCase) ||
+		Value.Equals(TEXT("Compare"), ESearchCase::IgnoreCase))
+	{
+		OutRole = ENodeRole::OperatorOrCompare;
+		return true;
+	}
 	if (Value.Equals(TEXT("VariableInput"), ESearchCase::IgnoreCase) || Value.Equals(TEXT("variable_input"), ESearchCase::IgnoreCase))
 	{
 		OutRole = ENodeRole::VariableInput;
@@ -173,11 +210,6 @@ bool LexTryParseString(ENodeRole& OutRole, const FString& Value)
 	if (Value.Equals(TEXT("Comment"), ESearchCase::IgnoreCase) || Value.Equals(TEXT("comment"), ESearchCase::IgnoreCase))
 	{
 		OutRole = ENodeRole::Comment;
-		return true;
-	}
-	if (Value.Equals(TEXT("Reroute"), ESearchCase::IgnoreCase) || Value.Equals(TEXT("reroute"), ESearchCase::IgnoreCase))
-	{
-		OutRole = ENodeRole::Reroute;
 		return true;
 	}
 	if (Value.Equals(TEXT("Unknown"), ESearchCase::IgnoreCase) || Value.Equals(TEXT("unknown"), ESearchCase::IgnoreCase))
@@ -215,7 +247,6 @@ TSharedRef<FJsonObject> ToJson(const FRuleSet& RuleSet)
 	Json->SetNumberField(TEXT("variable_input_offset_x"), RuleSet.VariableInputOffsetX);
 	Json->SetNumberField(TEXT("input_pin_row_spacing"), RuleSet.InputPinRowSpacing);
 	Json->SetBoolField(TEXT("target_pin_order_variable_input_alignment"), RuleSet.bUseTargetPinOrderForVariableInputs);
-	Json->SetBoolField(TEXT("straighten_existing_reroutes"), RuleSet.bStraightenExistingReroutes);
 	Json->SetBoolField(TEXT("move_generated_nodes"), RuleSet.bMoveGeneratedNodes);
 	Json->SetBoolField(TEXT("move_existing_nodes"), RuleSet.bMoveExistingNodes);
 	Json->SetNumberField(TEXT("max_nodes_per_frame"), RuleSet.MaxNodesPerFrame);
@@ -302,7 +333,6 @@ TSharedRef<FJsonObject> ToJson(const FLayoutPlan& Plan)
 		Item->SetObjectField(TEXT("current_position"), VectorToJson(Placement.CurrentPosition));
 		Item->SetObjectField(TEXT("target_position"), VectorToJson(Placement.TargetPosition));
 		Item->SetBoolField(TEXT("move_existing"), Placement.bMoveExisting);
-		Item->SetBoolField(TEXT("straighten_existing_reroute"), Placement.bStraightenExistingReroute);
 		Item->SetStringField(TEXT("reason"), Placement.Reason);
 		Placements.Add(MakeShared<FJsonValueObject>(Item));
 	}

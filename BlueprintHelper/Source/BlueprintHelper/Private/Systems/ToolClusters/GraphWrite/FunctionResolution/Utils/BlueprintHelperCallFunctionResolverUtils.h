@@ -41,6 +41,9 @@ public:
 	static bool IsTargetObjectTypeCompatible(
 		const FBlueprintHelperCallFunctionCandidate& Candidate,
 		const FBlueprintHelperCallFunctionResolveRequest& Request);
+	static bool IsExpectedReturnTypeCompatible(
+		const FBlueprintHelperCallFunctionCandidate& Candidate,
+		const FBlueprintHelperCallFunctionResolveRequest& Request);
 	static bool AreRequestedArgumentsCompatible(
 		const FBlueprintHelperCallFunctionCandidate& Candidate,
 		const FBlueprintHelperCallFunctionResolveRequest& Request);

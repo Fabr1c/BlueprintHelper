@@ -28,7 +28,7 @@ Layout 不改变 Blueprint 逻辑，不进入 Review 系统，不记录 layout d
 - 不让 Review 系统展示或记录 layout diff。
 - 不让 Layout Apply 阻塞 TaskRun 完成。
 - 不在 worker 线程访问 `UEdGraph`、`UEdGraphNode`、`UEdGraphPin`、`UK2Node`、Slate Widget 或 Editor subsystem。
-- 不在第一版自动新增 Reroute 节点。第一版只移动已有 Reroute；自动插入 Reroute 作为后续能力。
+- 不再把 Reroute / Knot 作为 Layout 角色；现有 Reroute 节点不由 GraphLayout 移动或拉直。
 
 ## 3. 已废弃旧内容
 
@@ -79,7 +79,7 @@ TaskPlan execute
 | `FBlueprintHelperGraphLayoutRuleSetJson` | RuleSet JSON 导入、导出、校验、版本迁移 | Game Thread 或 worker；不访问 UObject |
 | `FBlueprintHelperGraphLayoutSnapshotBuilder` | 从 `UEdGraph` 捕获不可变快照 | Game Thread only |
 | `FBlueprintHelperGraphLayoutClassifier` | 根据 RuleSet 将节点分类为角色 | Worker-safe |
-| `FBlueprintHelperGraphLayoutSolver` | 计算节点、已有 Reroute 的目标位置 | Worker-safe |
+| `FBlueprintHelperGraphLayoutSolver` | 计算节点目标位置 | Worker-safe |
 | `FBlueprintHelperGraphLayoutCoordinator` | 管理 LayoutJob 生命周期、取消、过期校验 | Game Thread orchestration |
 | `FBlueprintHelperGraphLayoutApplyQueue` | Game Thread 分帧应用 `NodePosX/Y` | Game Thread tick |
 | `SBlueprintHelperLayoutRuleEditor` | 可视化编辑、预览、导入导出 RuleSet | Slate / Game Thread |
@@ -108,7 +108,6 @@ links
 ownership tags
 created_or_reused_by_task flag
 is_user_node flag
-is_reroute flag
 ```
 
 Snapshot 之后 worker 不得持有或访问 UObject 指针。
@@ -132,8 +131,6 @@ FBlueprintHelperGraphLayoutPlan:
   ruleset_version
   node_targets:
     node_guid -> target_x / target_y
-  reroute_targets:
-    node_guid -> target_x / target_y
   warnings
   stale_guards
 ```
@@ -143,9 +140,8 @@ Worker 只做纯数据计算：
 - 节点角色分类。
 - Exec 主干排序。
 - Branch / Switch / Sequence 分支 lane。
-- PureFunction / VariableInput 数据依赖树。
-- 多个 VariableInput 的对齐。
-- 已有 Reroute 拉直。
+- PureFunction / OperatorOrCompare / VariableInput 数据依赖树。
+- 每个 Node 的非 Exec 输入都按同一套 consumer input pin 顺序左侧对齐。
 - 碰撞避让。
 
 ### 6.3 GameThread Async Apply
@@ -239,7 +235,7 @@ persistence.save_after_apply = true
 
 ## 8. RuleSet 工作方式
 
-RuleSet 描述角色、相对关系、对齐、Reroute、Solver 和 Apply 策略。它不描述某次 TaskRun 的具体节点坐标。
+RuleSet 描述角色、相对关系、对齐、Solver 和 Apply 策略。它不描述某次 TaskRun 的具体节点坐标。
 
 ### 8.1 节点角色
 
@@ -251,10 +247,10 @@ RuleSet 描述角色、相对关系、对齐、Reroute、Solver 和 Apply 策略
 | `ExecNode` | red | 普通有 Exec pin 的执行节点 |
 | `BranchControl` | orange | Branch、Switch、Sequence、Gate、DoOnce、Loop |
 | `PureFunction` | green | 无 Exec pin、有数据输出的纯函数或表达式节点 |
+| `OperatorOrCompare` | lime | Math、Boolean、Comparison、Enum Equal、IsValid pure 等短表达式 |
 | `VariableInput` | blue | Variable Get、Self、Literal、Component Get、对象引用 getter |
 | `AsyncNode` | cyan | Delay、Timeline、Async Action、latent node |
 | `DelegateNode` | yellow | Bind、Assign、Unbind、Call Dispatcher |
-| `Reroute` | gray | Knot / Reroute |
 | `Comment` | gray | Comment node，不参与主求解 |
 
 分类规则必须有 priority。更具体的角色优先，例如 Branch 同时有 Exec pin，但应优先归为 `BranchControl`。
@@ -271,21 +267,29 @@ ExecNode -> ExecNode: right
 BranchControl.then -> child exec chain: right_above
 BranchControl.else -> child exec chain: right_below
 PureFunction -> consuming node: left
+OperatorOrCompare -> consuming node: left
 VariableInput -> consuming node: left
 AsyncNode.completed -> ExecNode: right
 ```
 
-### 8.3 VariableInput 对齐规则
+### 8.3 Node 输入对齐硬规则
 
-多个 VariableInput 输入同一个消费节点时，应可配置左右对齐。
+每个 Node 的非 Exec 输入都当作 ExecNode 的输入排版。换句话说，只要某个 Node 已经有目标位置，它的所有非 Exec 输入源都会按该 Node 的 input pin 顺序排在左侧。
+
+该规则是硬性规则：
+
+- 适用于 ExecNode、BranchControl、PureFunction、OperatorOrCompare、VariableInput、AsyncNode、DelegateNode 等所有已有 target 的节点。
+- 不只处理最终执行节点，也处理 PureFunction / OperatorOrCompare 自己的输入。
+- Solver 通过多轮传播处理数据依赖链：先放好主链节点，再放它们的输入；新放好的 PureFunction / OperatorOrCompare 会继续作为 consumer 排自己的输入。
+- `target_pin_order_variable_input_alignment` 保留为旧 JSON 兼容字段，但不再作为是否启用该硬规则的开关。
 
 第一版建议规则：
 
 ```text
 alignment_groups:
-  - id: variable_inputs_to_same_consumer
+  - id: node_inputs_to_same_consumer
     match:
-      source_role: VariableInput
+      source_role: VariableInput | PureFunction | OperatorOrCompare
       same_target_node: true
       link_kind: data
     align:
@@ -301,33 +305,15 @@ alignment_groups:
 - `direct_source`：只对直接输入节点对齐。第一版默认。
 - `chain_root`：对表达式链最左源头对齐。后续增强。
 
-### 8.4 Reroute 拉直规则
+### 8.4 Reroute / Knot 策略
 
-Reroute 作为一等规则进入 RuleSet。
+Reroute / Knot 不作为 GraphLayout 的角色或规则对象。现有 Reroute 节点会被分类为 ignored/unknown，不参与 solver，也不会被移动、拉直或自动新增。
 
-第一版支持：
+原因：
 
-```text
-reroute_policy:
-  mode: preserve | straighten_existing
-  apply_to: data_links | exec_links | both
-  max_added_reroutes_per_link: 0
-  straighten_threshold_px: 24
-```
-
-说明：
-
-- `preserve`：不移动 Reroute。
-- `straighten_existing`：只移动本次可移动范围内已有 Reroute。
-- `max_added_reroutes_per_link=0`：第一版不自动新增 Reroute。
-
-后续可扩展：
-
-```text
-mode: insert_and_straighten
-```
-
-但它会新增节点，虽然不改变逻辑，仍需要单独的生命周期和回滚策略。
+- Reroute 属于连线可读性的细节，不应该成为第一版规则系统的主抽象。
+- 自动新增或重排 Reroute 会引入额外节点生命周期，容易和 TaskRun / Review 边界混淆。
+- 用户当前明确取消 Reroute 角色，后续不再围绕 Reroute 设计规则。
 
 ## 9. RuleSet JSON 导入导出
 
@@ -370,6 +356,15 @@ BlueprintHelper.GraphLayoutRuleSet.v1
       "priority": 50,
       "match": {
         "has_exec_pin": true
+      }
+    },
+    {
+      "id": "OperatorOrCompare",
+      "color": "lime",
+      "priority": 45,
+      "match": {
+        "node_classes": ["K2Node_CommutativeAssociativeBinaryOperator", "K2Node_PromotableOperator"],
+        "title_contains": ["==", "!=", "AND", "OR", "Equal", "Is Valid"]
       }
     },
     {
@@ -426,12 +421,6 @@ BlueprintHelper.GraphLayoutRuleSet.v1
       }
     }
   ],
-  "reroute_policy": {
-    "mode": "straighten_existing",
-    "apply_to": "data_links",
-    "max_added_reroutes_per_link": 0,
-    "straighten_threshold_px": 24
-  },
   "solver": {
     "exec_horizontal_spacing": 420,
     "data_horizontal_spacing": 260,
@@ -529,7 +518,6 @@ role relationship
 alignment group
 spacing
 priority
-reroute policy
 ```
 
 不是编辑绝对坐标。
@@ -561,9 +549,9 @@ failed
 2. RuleSet v1 可导入、导出、校验。
 3. TaskRun 完成后才 enqueue LayoutJob。
 4. Snapshot 在 Game Thread 完成，并且 worker 不访问 UObject。
-5. Solver 能处理 EventEntry、ExecNode、BranchControl、PureFunction、VariableInput、Reroute 的基础规则。
-6. 多个 VariableInput 到同一消费节点时可按 `target_pin_order` 左侧对齐。
-7. 已有 Reroute 可按 `straighten_existing` 拉直。
+5. Solver 能处理 EventEntry、ExecNode、BranchControl、PureFunction、OperatorOrCompare、VariableInput 的基础规则。
+6. 每个 Node 的非 Exec 输入都按 consumer 的 `target_pin_order` 左侧递归对齐。
+7. Reroute / Knot 不进入 Layout solver，旧配置中的 Reroute 角色会被忽略。
 8. ApplyQueue 分帧写入，每帧受 `max_nodes_per_frame` 和 `max_ms_per_frame` 双限制。
 9. Layout 不生成 ReviewRecord，不记录 layout diff，不影响 TaskRun success/failed。
 10. Widget 可以导入/导出 JSON，并能展示校验 warning/error。
@@ -576,7 +564,7 @@ failed
 | Apply 期间用户编辑图 | Apply 前校验 graph_revision / node existence；过期则 abort |
 | 分帧 Apply 留下半排版状态 | Job status 显示 applying；下一帧继续；过期时 abort |
 | Layout Apply 后资产变 dirty | persistence policy 显式配置，默认 mark dirty but not autosave |
-| 自动新增 Reroute 改变图结构 | 第一版禁用新增，只移动已有 Reroute |
+| Reroute 改变图结构或引入视觉副作用 | GraphLayout 不新增、不移动、不拉直 Reroute / Knot |
 | RuleSet JSON 被 Agent 写坏 | dry-run validate；导入失败不覆盖当前配置 |
 | Review 噪声 | Layout 不进入 Review/TaskRun diff |
 
@@ -600,9 +588,9 @@ failed
 - 新增 `FBlueprintHelperGraphLayoutCoordinator`：Task 后置触发、GameThread snapshot、worker solve、GameThread 分帧 apply。
 - GraphWrite 成功路径只记录本次生成节点候选，不承担 layout 语义；真正 enqueue 发生在 `execute_task_plan` 返回后。
 - ApplyQueue 使用 `max_nodes_per_frame` / `max_ms_per_frame` 双限制，默认 `24` 个节点、`2.0ms` 每帧。
-- Solver 已覆盖 `EventEntry`、`ExecNode`、`BranchControl`、`PureFunction`、`VariableInput`、`AsyncNode`、`DelegateNode`、`Reroute`、`Comment` 的基础分类。
-- 多个 `VariableInput` 默认按消费节点 input pin 顺序左侧对齐。
-- 已有 `Reroute` 默认按邻近已布局节点做拉直；第一版不自动新增 Reroute。
+- Solver 已覆盖 `EventEntry`、`ExecNode`、`BranchControl`、`PureFunction`、`OperatorOrCompare`、`VariableInput`、`AsyncNode`、`DelegateNode`、`Comment` 的基础分类。
+- `VariableInput`、`PureFunction`、`OperatorOrCompare` 默认按每个消费节点 input pin 顺序左侧递归对齐。
+- `Reroute` / `Knot` 已从 Layout 角色中取消；旧配置中的 Reroute 角色会被忽略并在下次保存时从导出 JSON 中消失。
 - 新增 `SBlueprintHelperLayoutRuleEditor` 并接入 BlueprintHelper 主窗口 `Layout` 页，支持 Import / Export / Copy / Paste / Validate / Reset。
 - RuleSet JSON 配置默认落在 `Saved/BlueprintHelper/GraphLayoutRules.json`，未配置时使用内置默认规则。
 - Layout 不写 ReviewRecord，不写 TaskRun diff，不改变 TaskRun success/failed。
@@ -611,7 +599,7 @@ failed
 
 - 拖拽式规则画布已实现第一版；拖拽仍主要编辑 RuleSet 的参数化关系，同时会把 editor-only 画布角色位置保存到 `editor_canvas.role_centers`，保证关闭并重新打开 Widget 后视觉位置稳定。
 - `save_after_apply` 已接入实际保存；保存失败仍只记录 GraphLayout job warning，不反向改变 TaskRun / Review。
-- 自动插入 Reroute 仍然禁用，后续需要单独生命周期与回滚策略。
+- 不再规划 Reroute 角色；Layout 系统不负责 Reroute 自动插入或拉直。
 
 ## 16. 2026-05-16 Drag Canvas And Save Apply Update
 
@@ -624,7 +612,72 @@ failed
 
 已完成：
 
-- `SBlueprintHelperLayoutRuleEditor` 内新增拖拽式规则画布，展示 EventEntry、ExecNode、BranchControl、PureFunction、VariableInput、AsyncNode、DelegateNode、Reroute、Comment 等角色关系。
-- 拖动核心角色会同步 RuleSet JSON，并自动触发现有配置保存入口；Reroute 当前由 VariableInput 到 ExecNode 的关系自动派生位置，不作为独立可拖拽源。
+- `SBlueprintHelperLayoutRuleEditor` 内新增拖拽式规则画布，展示 EventEntry、ExecNode、BranchControl、PureFunction、OperatorOrCompare、VariableInput、AsyncNode、DelegateNode、Comment 等角色关系。
+- 拖动核心角色会同步 RuleSet JSON，并自动触发现有配置保存入口；VariableInput 现在直接表达到消费节点的左侧对齐关系，不再经过 Reroute。
 - 画布角色位置作为 editor-only JSON 写入 `editor_canvas.role_centers`，不参与运行时 solver 逻辑，只用于规则编辑器恢复可视化状态。
 - `save_after_apply=true` 时，ApplyQueue 分帧应用完实际位置变化后，通过 editor save API 保存 graph outer package；无位置变化时不触发额外保存。
+
+## 17. 2026-05-16 Reroute Role Removal Update
+
+本轮调整：
+
+- 取消 `Reroute` / `Knot` 作为 Layout 角色，默认 RuleSet 不再导出 Reroute 规则。
+- Classifier 对 `K2Node_Knot` / Reroute 类节点返回 ignored/unknown，不进入 solver。
+- Solver 移除已有 Reroute 拉直逻辑，不再写入 reroute target 或 `straighten_existing_reroute` 结果。
+- 规则画布删除 Reroute 色块和派生位置，VariableInput 直接连到 ExecNode。
+- 旧 JSON 中的 Reroute / Knot role rule 以 warning 形式兼容导入并忽略，避免用户已有配置直接失效。
+
+## 18. 常用 Node 角色补充候选
+
+当前已有角色：EventEntry、ExecNode、BranchControl、PureFunction、OperatorOrCompare、VariableInput、AsyncNode、DelegateNode、Comment。
+
+用户确认后的归类：
+
+- `VariableSet` / `StateMutation` 归入 `ExecNode`。
+- `FunctionEntryExit` 归入 `EventEntry` / `ExecNode`，不单独拆。
+- `CastOrTypeCheck` 归入 `BranchControl`。
+- `LoopControl` 归入 `BranchControl`。
+- `FactoryOrSpawn` 归入 `ExecNode`。
+- `DataStructure` 归入 `PureFunction`。
+- `OperatorOrCompare` 单独补充角色。
+- `ConstantInput` 暂不作为角色。它不是稳定 UE 节点类名，而是之前用于描述 Self、literal、Enum/Class/Asset reference、GameplayTag literal 等“常量输入”的布局语义；当前按 `VariableInput` 或 `PureFunction` 处理。
+
+可以暂时不单独拆的类型：
+
+- `LatentAction`：Delay、Timeline、Async Action 当前可先归到 AsyncNode，除非后续要区分 latent completion lane。
+- `DelegateBinding`：Bind/Assign/Call/Clear 当前可先归到 DelegateNode。
+- `GenericImpureCall`：普通带 exec 的函数调用当前可继续归到 ExecNode，等规则画布需要更细控制再拆。
+
+## 19. 2026-05-16 OperatorOrCompare Update
+
+本轮调整：
+
+- 新增 `OperatorOrCompare` 角色，用于 Math、Boolean、Comparison、Enum Equal、IsValid pure 等短表达式节点。
+- 默认规则匹配 `K2Node_CommutativeAssociativeBinaryOperator`、`K2Node_PromotableOperator`，并通过 title token 覆盖常见比较/布尔/数学表达式。
+- Solver 暂复用 `PureFunction` 的左侧输入对齐 offset，不新增 RuleSet spacing 字段。
+- 规则画布新增 lime 色块和 OperatorOrCompare -> ExecNode 关系线。
+- `ConstantInput` 不落为角色；它只是常量输入布局语义，当前继续归入 `VariableInput` 或 `PureFunction`。
+
+## 20. 2026-05-16 Recursive Node Input Alignment Update
+
+本轮硬规则：
+
+- 每个 Node 的非 Exec 输入都当作 ExecNode 输入排版。
+- Solver 不再只对最终 ExecNode 的数据输入做对齐；任何已有 target 的节点都会作为 consumer 排它自己的数据输入。
+- PureFunction / OperatorOrCompare 的输入会被递归排版：当它们被消费节点放到左侧后，下一轮继续把它们自己的输入按 pin 顺序放到左侧。
+- VariableInput 使用 `variable_input_offset_x`，PureFunction / OperatorOrCompare 使用 `pure_input_offset_x`；本轮不新增 spacing 字段。
+- 该规则不再依赖 `target_pin_order_variable_input_alignment` 开关，该字段仅保留旧 JSON 兼容。
+
+## 21. 2026-05-16 Right Settings Panel Update
+
+本轮 UI 调整：
+
+- `Layout` 页右侧新增用户友好的 Rule Settings 面板，用于编辑 RuleSet JSON 中的非画布标量参数。
+- 当前面板覆盖 `id`、`display_name`、spacing / offset、分帧 apply 限制、move policy、mark dirty 和 `save_after_apply`。
+- JSON 文本框修改后，如果 RuleSet 可通过 `FRuleSetJson::ImportString` 解析，右侧面板会刷新到同一份配置状态。
+- 右侧面板修改后，通过 `FRuleSetJson::ExportString` 重新生成规范化 JSON，同步刷新 JSON 文本框和规则画布，并复用现有配置保存入口。
+- 面板不直接编辑 `editor_canvas.role_centers`；画布位置仍由拖拽画布负责。
+- 面板不把 `role_rules` 拆成临时 UI 结构；角色匹配规则仍由 RuleSet JSON / 后续专门规则编辑器负责。
+- `schema`、`version` 和兼容字段 `target_pin_order_variable_input_alignment` 不暴露为普通用户设置，避免用户误以为这些字段会改变当前 solver 行为。
+- 面板内所有用户提示文案使用中文，避免中英文混杂影响配置理解。
+- UI 仍只做配置映射和展示；JSON 解析、校验、默认值归一化、solver/apply 语义继续留在 GraphLayout 服务层。
