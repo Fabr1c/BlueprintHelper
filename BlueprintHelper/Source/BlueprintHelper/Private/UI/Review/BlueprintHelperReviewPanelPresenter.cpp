@@ -1,0 +1,145 @@
+// BlueprintHelper Review panel presenter implementation.
+
+#include "UI/Review/BlueprintHelperReviewPanelPresenter.h"
+
+#include "Systems/Review/BlueprintHelperReviewStoreService.h"
+
+FBlueprintHelperReviewPanelVisualEvent FBlueprintHelperReviewPanelVisualEvent::AcceptVisibleChange(
+	const FBlueprintHelperReviewVisibleChange& InChange)
+{
+	FBlueprintHelperReviewPanelVisualEvent Event;
+	Event.Type = EBlueprintHelperReviewPanelVisualEventType::AcceptVisibleChange;
+	Event.Change = InChange;
+	return Event;
+}
+
+FBlueprintHelperReviewPanelVisualEvent FBlueprintHelperReviewPanelVisualEvent::RejectVisibleChange(
+	const FBlueprintHelperReviewVisibleChange& InChange,
+	const FBlueprintHelperReviewRejectOptions& InRejectOptions)
+{
+	FBlueprintHelperReviewPanelVisualEvent Event;
+	Event.Type = EBlueprintHelperReviewPanelVisualEventType::RejectVisibleChange;
+	Event.Change = InChange;
+	Event.RejectOptions = InRejectOptions;
+	return Event;
+}
+
+FBlueprintHelperReviewPanelVisualEvent
+FBlueprintHelperReviewPanelVisualEvent::RejectLifecycleRootVisibleChange(
+	const FBlueprintHelperReviewVisibleChange& InChange,
+	const FBlueprintHelperReviewPanelDataSnapshot& InDataSnapshot,
+	const FBlueprintHelperReviewRejectOptions& InRejectOptions)
+{
+	FBlueprintHelperReviewPanelVisualEvent Event;
+	Event.Type = EBlueprintHelperReviewPanelVisualEventType::RejectLifecycleRootVisibleChange;
+	Event.Change = InChange;
+	Event.DataSnapshot = InDataSnapshot;
+	Event.RejectOptions = InRejectOptions;
+	return Event;
+}
+
+FBlueprintHelperReviewPanelPresenterEvent
+FBlueprintHelperReviewPanelPresenterEvent::FromActionResult(
+	const FBlueprintHelperReviewActionResult& InResult)
+{
+	FBlueprintHelperReviewPanelPresenterEvent Event;
+	Event.Type = EBlueprintHelperReviewPanelPresenterEventType::ActionResult;
+	Event.ActionResult = InResult;
+	return Event;
+}
+
+FBlueprintHelperReviewPanelPresenterEvent
+FBlueprintHelperReviewPanelPresenterEvent::FromCascadeActionResult(
+	const FBlueprintHelperReviewCascadeActionResult& InResult)
+{
+	FBlueprintHelperReviewPanelPresenterEvent Event;
+	Event.Type = EBlueprintHelperReviewPanelPresenterEventType::CascadeActionResult;
+	Event.CascadeActionResult = InResult;
+	return Event;
+}
+
+FBlueprintHelperReviewPanelPresenter::FBlueprintHelperReviewPanelPresenter(
+	const FBlueprintHelperReviewStoreService* InReviewStoreService,
+	const FBlueprintHelperReviewActionService* InReviewActionService)
+	: ReviewStoreService(InReviewStoreService)
+	, CommandService(InReviewActionService)
+{
+}
+
+TArray<FBlueprintHelperReviewVisibleChange>
+FBlueprintHelperReviewPanelPresenter::LoadPendingVisibleChanges() const
+{
+	return ReviewStoreService
+		? ReviewStoreService->LoadPendingVisibleChanges()
+		: TArray<FBlueprintHelperReviewVisibleChange>();
+}
+
+FDelegateHandle FBlueprintHelperReviewPanelPresenter::AddPendingReviewChangedHandler(
+	FSimpleDelegate InDelegate) const
+{
+	return ReviewStoreService
+		? ReviewStoreService->AddPendingReviewChangedHandler(MoveTemp(InDelegate))
+		: FDelegateHandle();
+}
+
+void FBlueprintHelperReviewPanelPresenter::RemovePendingReviewChangedHandler(
+	FDelegateHandle& InHandle) const
+{
+	if (ReviewStoreService && InHandle.IsValid())
+	{
+		ReviewStoreService->RemovePendingReviewChangedHandler(InHandle);
+		InHandle.Reset();
+	}
+}
+
+FBlueprintHelperReviewPanelPresenterEvent FBlueprintHelperReviewPanelPresenter::HandleVisualEvent(
+	const FBlueprintHelperReviewPanelVisualEvent& Event) const
+{
+	if (Event.Type == EBlueprintHelperReviewPanelVisualEventType::AcceptVisibleChange)
+	{
+		return HandleAcceptVisibleChange(Event.Change);
+	}
+	if (Event.Type == EBlueprintHelperReviewPanelVisualEventType::RejectVisibleChange)
+	{
+		return HandleRejectVisibleChange(Event.Change, Event.RejectOptions);
+	}
+	if (Event.Type == EBlueprintHelperReviewPanelVisualEventType::RejectLifecycleRootVisibleChange)
+	{
+		return HandleRejectLifecycleRootVisibleChange(
+			Event.Change,
+			Event.DataSnapshot,
+			Event.RejectOptions);
+	}
+
+	FBlueprintHelperReviewActionResult Result;
+	Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
+	Result.Message = TEXT("Unhandled ReviewPanel visual event.");
+	return FBlueprintHelperReviewPanelPresenterEvent::FromActionResult(Result);
+}
+
+FBlueprintHelperReviewPanelPresenterEvent
+FBlueprintHelperReviewPanelPresenter::HandleAcceptVisibleChange(
+	const FBlueprintHelperReviewVisibleChange& Change) const
+{
+	return FBlueprintHelperReviewPanelPresenterEvent::FromActionResult(
+		CommandService.AcceptVisibleChange(Change));
+}
+
+FBlueprintHelperReviewPanelPresenterEvent
+FBlueprintHelperReviewPanelPresenter::HandleRejectVisibleChange(
+	const FBlueprintHelperReviewVisibleChange& Change,
+	const FBlueprintHelperReviewRejectOptions& Options) const
+{
+	return FBlueprintHelperReviewPanelPresenterEvent::FromActionResult(
+		CommandService.RejectVisibleChange(Change, Options));
+}
+
+FBlueprintHelperReviewPanelPresenterEvent
+FBlueprintHelperReviewPanelPresenter::HandleRejectLifecycleRootVisibleChange(
+	const FBlueprintHelperReviewVisibleChange& Change,
+	const FBlueprintHelperReviewPanelDataSnapshot& DataSnapshot,
+	const FBlueprintHelperReviewRejectOptions& Options) const
+{
+	return FBlueprintHelperReviewPanelPresenterEvent::FromCascadeActionResult(
+		CommandService.RejectLifecycleRootVisibleChange(Change, DataSnapshot.PendingChanges, Options));
+}

@@ -23,16 +23,30 @@ enum class EBlueprintHelperReviewAssetKind : uint8
 
 inline const TCHAR* BlueprintHelperReviewAssetKindToString(EBlueprintHelperReviewAssetKind Kind)
 {
-	switch (Kind)
+	struct FBlueprintHelperReviewAssetKindName
 	{
-	case EBlueprintHelperReviewAssetKind::Blueprint:       return TEXT("blueprint");
-	case EBlueprintHelperReviewAssetKind::WidgetBlueprint: return TEXT("widget_blueprint");
-	case EBlueprintHelperReviewAssetKind::DataTable:       return TEXT("data_table");
-	case EBlueprintHelperReviewAssetKind::DataAsset:       return TEXT("data_asset");
-	case EBlueprintHelperReviewAssetKind::Structure:       return TEXT("structure");
-	case EBlueprintHelperReviewAssetKind::GenericObject:   return TEXT("generic_object");
-	default:                                               return TEXT("unknown");
+		EBlueprintHelperReviewAssetKind Kind;
+		const TCHAR* Name;
+	};
+
+	static const FBlueprintHelperReviewAssetKindName KindNames[] =
+	{
+		{ EBlueprintHelperReviewAssetKind::Blueprint, TEXT("blueprint") },
+		{ EBlueprintHelperReviewAssetKind::WidgetBlueprint, TEXT("widget_blueprint") },
+		{ EBlueprintHelperReviewAssetKind::DataTable, TEXT("data_table") },
+		{ EBlueprintHelperReviewAssetKind::DataAsset, TEXT("data_asset") },
+		{ EBlueprintHelperReviewAssetKind::Structure, TEXT("structure") },
+		{ EBlueprintHelperReviewAssetKind::GenericObject, TEXT("generic_object") }
+	};
+
+	for (const FBlueprintHelperReviewAssetKindName& Entry : KindNames)
+	{
+		if (Entry.Kind == Kind)
+		{
+			return Entry.Name;
+		}
 	}
+	return TEXT("unknown");
 }
 
 struct BLUEPRINTHELPER_API FBlueprintHelperReviewAssetContext

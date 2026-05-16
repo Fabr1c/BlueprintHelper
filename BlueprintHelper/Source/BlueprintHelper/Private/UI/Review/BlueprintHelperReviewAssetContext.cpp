@@ -8,6 +8,7 @@
 #include "Engine/DataTable.h"
 #include "Misc/PackageName.h"
 #include "Runtime/Launch/Resources/Version.h"
+#include "UI/Review/Utils/BlueprintHelperReviewAssetContextUtils.h"
 #if ENGINE_MAJOR_VERSION > 5 || (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 6)
 #include "StructUtils/UserDefinedStruct.h"
 #else
@@ -15,88 +16,6 @@
 #endif
 #include "UObject/UObjectGlobals.h"
 #include "WidgetBlueprint.h"
-
-namespace BlueprintHelperReviewAssetContextPrivate
-{
-	static UObject* ResolveLoadedOrLoadObject(const FString& ObjectPath, const FString& AssetPath)
-	{
-		if (ObjectPath.IsEmpty())
-		{
-			return nullptr;
-		}
-
-		if (UObject* ExistingObject = FindObject<UObject>(nullptr, *ObjectPath))
-		{
-			return ExistingObject;
-		}
-		if (ObjectPath != AssetPath)
-		{
-			if (UObject* ExistingObject = FindObject<UObject>(nullptr, *AssetPath))
-			{
-				return ExistingObject;
-			}
-		}
-
-		const FString PackageName = FBlueprintHelperReviewAssetContext::MakePackageNameFromAssetPath(AssetPath);
-		if (!FPackageName::IsValidLongPackageName(PackageName)
-			|| !FPackageName::DoesPackageExist(PackageName))
-		{
-			return nullptr;
-		}
-
-		if (UObject* LoadedObject = LoadObject<UObject>(nullptr, *ObjectPath))
-		{
-			return LoadedObject;
-		}
-		if (ObjectPath != AssetPath)
-		{
-			return LoadObject<UObject>(nullptr, *AssetPath);
-		}
-		return nullptr;
-	}
-
-	static void PopulateBlueprintContext(
-		FBlueprintHelperReviewAssetContext& Context,
-		UBlueprint* Blueprint)
-	{
-		Context.Blueprint = Blueprint;
-		Context.AssetKind = Cast<UWidgetBlueprint>(Blueprint)
-			? EBlueprintHelperReviewAssetKind::WidgetBlueprint
-			: EBlueprintHelperReviewAssetKind::Blueprint;
-		if (Blueprint && Blueprint->GeneratedClass)
-		{
-			Context.DefaultObject = Blueprint->GeneratedClass->GetDefaultObject();
-			if (Blueprint->GeneratedClass->IsChildOf(UUserWidget::StaticClass()))
-			{
-				Context.AssetKind = EBlueprintHelperReviewAssetKind::WidgetBlueprint;
-			}
-		}
-	}
-
-	static void PopulateClassContext(
-		FBlueprintHelperReviewAssetContext& Context,
-		UClass* Class)
-	{
-		if (!Class)
-		{
-			return;
-		}
-
-		Context.DefaultObject = Class->GetDefaultObject();
-		if (UBlueprint* GeneratedByBlueprint = Cast<UBlueprint>(Class->ClassGeneratedBy))
-		{
-			PopulateBlueprintContext(Context, GeneratedByBlueprint);
-			if (Context.AssetObject.IsValid())
-			{
-				Context.AssetObject = Class;
-			}
-		}
-		else if (Class->IsChildOf(UUserWidget::StaticClass()))
-		{
-			Context.AssetKind = EBlueprintHelperReviewAssetKind::WidgetBlueprint;
-		}
-	}
-}
 
 bool FBlueprintHelperReviewAssetContext::IsValid() const
 {
@@ -162,7 +81,7 @@ FBlueprintHelperReviewAssetContext FBlueprintHelperReviewAssetContext::LoadForAs
 	Context.ObjectPath = MakeObjectPathFromAssetPath(InAssetPath);
 	Context.AssetPath = Context.PackageName.IsEmpty() ? InAssetPath : Context.PackageName;
 
-	UObject* Object = BlueprintHelperReviewAssetContextPrivate::ResolveLoadedOrLoadObject(
+	UObject* Object = FBlueprintHelperReviewAssetContextUtils::ResolveLoadedOrLoadObject(
 		Context.ObjectPath,
 		InAssetPath);
 	if (!Object)
@@ -173,7 +92,7 @@ FBlueprintHelperReviewAssetContext FBlueprintHelperReviewAssetContext::LoadForAs
 	Context.AssetObject = Object;
 	if (UBlueprint* Blueprint = Cast<UBlueprint>(Object))
 	{
-		BlueprintHelperReviewAssetContextPrivate::PopulateBlueprintContext(Context, Blueprint);
+		FBlueprintHelperReviewAssetContextUtils::PopulateBlueprintContext(Context, Blueprint);
 		return Context;
 	}
 	if (UDataTable* DataTable = Cast<UDataTable>(Object))
@@ -195,7 +114,7 @@ FBlueprintHelperReviewAssetContext FBlueprintHelperReviewAssetContext::LoadForAs
 	}
 	if (UClass* Class = Cast<UClass>(Object))
 	{
-		BlueprintHelperReviewAssetContextPrivate::PopulateClassContext(Context, Class);
+		FBlueprintHelperReviewAssetContextUtils::PopulateClassContext(Context, Class);
 		if (Context.AssetKind != EBlueprintHelperReviewAssetKind::Unknown)
 		{
 			return Context;

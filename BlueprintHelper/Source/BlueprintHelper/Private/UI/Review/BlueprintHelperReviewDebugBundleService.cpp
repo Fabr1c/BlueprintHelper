@@ -13,70 +13,7 @@
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
-
-namespace
-{
-static FCriticalSection GReviewPanelDebugBundleWriteCriticalSection;
-static FCriticalSection GReviewPanelDebugBundleTaskCriticalSection;
-static TArray<TFuture<void>> GReviewPanelDebugBundleWriteTasks;
-static bool bReviewPanelDebugBundleAsyncShutdown = false;
-
-static bool IsReviewPanelDebugBundleAsyncShutdownRequested()
-{
-	FScopeLock Lock(&GReviewPanelDebugBundleTaskCriticalSection);
-	return bReviewPanelDebugBundleAsyncShutdown;
-}
-
-static void TrackReviewPanelDebugBundleWriteTask(TFuture<void>&& Future)
-{
-	bool bWaitImmediately = false;
-	{
-		FScopeLock Lock(&GReviewPanelDebugBundleTaskCriticalSection);
-		for (int32 Index = GReviewPanelDebugBundleWriteTasks.Num() - 1; Index >= 0; --Index)
-		{
-			if (GReviewPanelDebugBundleWriteTasks[Index].IsReady())
-			{
-				GReviewPanelDebugBundleWriteTasks.RemoveAtSwap(Index, 1, EAllowShrinking::No);
-			}
-		}
-		if (bReviewPanelDebugBundleAsyncShutdown)
-		{
-			bWaitImmediately = true;
-		}
-		else
-		{
-			GReviewPanelDebugBundleWriteTasks.Add(MoveTemp(Future));
-			return;
-		}
-	}
-	if (bWaitImmediately)
-	{
-		Future.Wait();
-	}
-}
-
-static void FlushReviewPanelDebugBundleWriteTasksInternal(bool bShutdown)
-{
-	TArray<TFuture<void>> Tasks;
-	{
-		FScopeLock Lock(&GReviewPanelDebugBundleTaskCriticalSection);
-		bReviewPanelDebugBundleAsyncShutdown = bReviewPanelDebugBundleAsyncShutdown || bShutdown;
-		Tasks = MoveTemp(GReviewPanelDebugBundleWriteTasks);
-	}
-	for (TFuture<void>& Task : Tasks)
-	{
-		Task.Wait();
-	}
-}
-
-static FString SanitizeReviewPanelDebugBundleText(FString Text)
-{
-	Text.ReplaceInline(TEXT("\r\n"), TEXT("\\n"), ESearchCase::CaseSensitive);
-	Text.ReplaceInline(TEXT("\r"), TEXT("\\n"), ESearchCase::CaseSensitive);
-	Text.ReplaceInline(TEXT("\n"), TEXT("\\n"), ESearchCase::CaseSensitive);
-	return Text;
-}
-}
+#include "UI/Review/Utils/BlueprintHelperReviewDebugBundleUtils.h"
 
 FString FBlueprintHelperReviewDebugBundleService::GetDebugRootDir()
 {
@@ -191,7 +128,7 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewDebugBundleService::BuildLogEvent(
 	Event->SetStringField(TEXT("session_id"), SessionId);
 	Event->SetStringField(TEXT("created_at"), FDateTime::UtcNow().ToIso8601());
 	Event->SetStringField(TEXT("asset_path"), AssetPath);
-	Event->SetStringField(TEXT("message"), SanitizeReviewPanelDebugBundleText(Message));
+	Event->SetStringField(TEXT("message"), FBlueprintHelperReviewDebugBundleUtils::SanitizeText(Message));
 	Event->SetObjectField(TEXT("selected_change"), BuildChangeSummary(SelectedChange));
 	return Event;
 }
@@ -213,7 +150,7 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewDebugBundleService::BuildFocusEven
 	Event->SetStringField(TEXT("asset_path"), AssetPath);
 	Event->SetNumberField(TEXT("index"), Index);
 	Event->SetNumberField(TEXT("count"), Count);
-	Event->SetStringField(TEXT("reason"), SanitizeReviewPanelDebugBundleText(Reason));
+		Event->SetStringField(TEXT("reason"), FBlueprintHelperReviewDebugBundleUtils::SanitizeText(Reason));
 	Event->SetObjectField(TEXT("change"), BuildChangeSummary(Change));
 	return Event;
 }
@@ -325,7 +262,7 @@ bool FBlueprintHelperReviewDebugBundleService::AppendEvent(
 
 	const FString SessionIdCopy = SessionId;
 	TSharedRef<FJsonObject> EventCopy = Event;
-	if (IsReviewPanelDebugBundleAsyncShutdownRequested())
+	if (FBlueprintHelperReviewDebugBundleUtils::IsShutdownRequested())
 	{
 		SetError(OutError, TEXT("debug bundle async writer is shutting down"));
 		return false;
@@ -333,11 +270,11 @@ bool FBlueprintHelperReviewDebugBundleService::AppendEvent(
 
 	TFuture<void> WriteTask = Async(EAsyncExecution::ThreadPool, [NormalizedPath, SessionIdCopy, EventCopy]()
 	{
-		if (IsReviewPanelDebugBundleAsyncShutdownRequested())
+		if (FBlueprintHelperReviewDebugBundleUtils::IsShutdownRequested())
 		{
 			return;
 		}
-		FScopeLock Lock(&GReviewPanelDebugBundleWriteCriticalSection);
+		FScopeLock Lock(&FBlueprintHelperReviewDebugBundleUtils::GetWriteCriticalSection());
 		FString IgnoredError;
 		TSharedPtr<FJsonObject> Bundle;
 		if (!FBlueprintHelperReviewDebugBundleService::LoadOrCreateBundle(
@@ -362,7 +299,7 @@ bool FBlueprintHelperReviewDebugBundleService::AppendEvent(
 			Bundle.ToSharedRef(),
 			&IgnoredError);
 	});
-	TrackReviewPanelDebugBundleWriteTask(MoveTemp(WriteTask));
+	FBlueprintHelperReviewDebugBundleUtils::TrackWriteTask(MoveTemp(WriteTask));
 
 	SetError(OutError, FString());
 	return true;
@@ -370,12 +307,12 @@ bool FBlueprintHelperReviewDebugBundleService::AppendEvent(
 
 void FBlueprintHelperReviewDebugBundleService::FlushAsyncWrites()
 {
-	FlushReviewPanelDebugBundleWriteTasksInternal(false);
+	FBlueprintHelperReviewDebugBundleUtils::FlushWriteTasks();
 }
 
 void FBlueprintHelperReviewDebugBundleService::ShutdownAsyncWrites()
 {
-	FlushReviewPanelDebugBundleWriteTasksInternal(true);
+	FBlueprintHelperReviewDebugBundleUtils::ShutdownWriteTasks();
 }
 
 bool FBlueprintHelperReviewDebugBundleService::LoadBundleText(

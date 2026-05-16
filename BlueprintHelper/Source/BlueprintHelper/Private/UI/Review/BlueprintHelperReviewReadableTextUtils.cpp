@@ -238,17 +238,27 @@ FString FBlueprintHelperReviewReadableTextUtils::GetReadableTargetSuffix(const F
 
 FString FBlueprintHelperReviewReadableTextUtils::GetReadableChangeVerb(EBlueprintHelperReviewChangeKind ChangeKind)
 {
-	switch (ChangeKind)
+	struct FBlueprintHelperReviewChangeKindVerb
 	{
-	case EBlueprintHelperReviewChangeKind::Added:
-		return TEXT("\u65b0\u589e\u4e86");
-	case EBlueprintHelperReviewChangeKind::Removed:
-		return TEXT("\u5220\u9664\u4e86");
-	case EBlueprintHelperReviewChangeKind::Renamed:
-		return TEXT("\u91cd\u547d\u540d\u4e86");
-	default:
-		return TEXT("\u4fee\u6539\u4e86");
+		EBlueprintHelperReviewChangeKind Kind;
+		const TCHAR* Verb;
+	};
+
+	static const FBlueprintHelperReviewChangeKindVerb VerbByKind[] =
+	{
+		{ EBlueprintHelperReviewChangeKind::Added, TEXT("\u65b0\u589e\u4e86") },
+		{ EBlueprintHelperReviewChangeKind::Removed, TEXT("\u5220\u9664\u4e86") },
+		{ EBlueprintHelperReviewChangeKind::Renamed, TEXT("\u91cd\u547d\u540d\u4e86") }
+	};
+
+	for (const FBlueprintHelperReviewChangeKindVerb& Entry : VerbByKind)
+	{
+		if (Entry.Kind == ChangeKind)
+		{
+			return Entry.Verb;
+		}
 	}
+	return TEXT("\u4fee\u6539\u4e86");
 }
 
 FString FBlueprintHelperReviewReadableTextUtils::GetReviewListTargetText(
