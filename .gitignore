@@ -6,7 +6,9 @@ BlueprintHelper/Binaries/
 __pycache__/                   
 *.pyc
 node_modules/
-ClaudePlugin/**/node_modules/
-ClaudePlugin/**/build/
-ClaudePlugin/**/Saved/
+AgentFaceService/**/node_modules/
+AgentFaceService/**/build/
+AgentFaceService/**/Saved/
+AgentFaceService/**/tests/
 *.7z          
+/Saved/

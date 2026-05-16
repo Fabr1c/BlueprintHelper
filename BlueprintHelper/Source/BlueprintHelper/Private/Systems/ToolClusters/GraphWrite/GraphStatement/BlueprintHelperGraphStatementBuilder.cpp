@@ -9,13 +9,12 @@
 #include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphPatternRegistry.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphStatementTypeUtils.h"
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/PromotableOperatorNodeHandler.h"
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/SelectNodeHandler.h"
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/SequenceNodeHandler.h"
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/StructOperationNodeHandler.h"
 
-namespace
-{
 static void PopulateCallFragmentPins(UK2Node* CallNode, FBlueprintHelperNodeFragment& OutFragment)
 {
 	OutFragment.ExecEntryPin = FBlueprintGraphWriteFacade::FindPinByAlias(CallNode, TEXT("execute"));
@@ -336,253 +335,6 @@ static bool SpawnExplicitObjectCallFragment(
 	return true;
 }
 
-static FString SanitizeGraphFragmentIdPart(const FString& Value)
-{
-	FString Clean = Value.TrimStartAndEnd();
-	if (Clean.IsEmpty())
-	{
-		return TEXT("unnamed");
-	}
-
-	FString Result;
-	Result.Reserve(Clean.Len());
-	for (int32 Index = 0; Index < Clean.Len(); ++Index)
-	{
-		const TCHAR Character = Clean[Index];
-		Result.AppendChar(FChar::IsAlnum(Character) ? Character : TEXT('_'));
-	}
-	return Result.IsEmpty() ? TEXT("unnamed") : Result;
-}
-
-static FString ExpressionKindName(const EBlueprintHelperGraphExpressionKind Kind)
-{
-	switch (Kind)
-	{
-	case EBlueprintHelperGraphExpressionKind::Literal:
-		return TEXT("literal");
-	case EBlueprintHelperGraphExpressionKind::Get:
-		return TEXT("get");
-	case EBlueprintHelperGraphExpressionKind::GetProperty:
-		return TEXT("get_property");
-	case EBlueprintHelperGraphExpressionKind::Ref:
-		return TEXT("ref");
-	case EBlueprintHelperGraphExpressionKind::Call:
-		return TEXT("call");
-	case EBlueprintHelperGraphExpressionKind::Compare:
-		return TEXT("compare");
-	case EBlueprintHelperGraphExpressionKind::Select:
-		return TEXT("select");
-	case EBlueprintHelperGraphExpressionKind::MakeStruct:
-		return TEXT("make_struct");
-	default:
-		return TEXT("unknown");
-	}
-}
-
-static FString MakeExpressionFragmentId(const FBlueprintHelperGraphExpressionIR& Expression)
-{
-	const FString SourceId = !Expression.ExpressionId.IsEmpty() ? Expression.ExpressionId : Expression.Path;
-	if (!SourceId.Contains(TEXT("$")) && !SourceId.Contains(TEXT(".")) && !SourceId.Contains(TEXT("[")) && !SourceId.Contains(TEXT("]")))
-	{
-		return SanitizeGraphFragmentIdPart(SourceId);
-	}
-
-	const FString Suffix = ExpressionKindName(Expression.Kind);
-	return SanitizeGraphFragmentIdPart(TEXT("expr_") + Suffix + TEXT("_") + SourceId + TEXT("_") + Suffix);
-}
-
-static FString NormalizeCompareOperatorToken(const FString& Operator)
-{
-	return Operator.TrimStartAndEnd().ToLower();
-}
-
-static FString ResolveCompareOperatorBaseName(const FString& Operator)
-{
-	const FString Token = NormalizeCompareOperatorToken(Operator);
-	if (Token == TEXT(">") || Token == TEXT("gt") || Token == TEXT("greater"))
-	{
-		return TEXT("Greater");
-	}
-	if (Token == TEXT(">=") || Token == TEXT("gte") || Token == TEXT("greater_equal") || Token == TEXT("greaterequal"))
-	{
-		return TEXT("GreaterEqual");
-	}
-	if (Token == TEXT("<") || Token == TEXT("lt") || Token == TEXT("less"))
-	{
-		return TEXT("Less");
-	}
-	if (Token == TEXT("<=") || Token == TEXT("lte") || Token == TEXT("less_equal") || Token == TEXT("lessequal"))
-	{
-		return TEXT("LessEqual");
-	}
-	if (Token == TEXT("==") || Token == TEXT("=") || Token == TEXT("eq") || Token == TEXT("equal") || Token == TEXT("equals"))
-	{
-		return TEXT("EqualEqual");
-	}
-	if (Token == TEXT("!=") || Token == TEXT("<>") || Token == TEXT("ne") || Token == TEXT("not_equal") || Token == TEXT("notequal"))
-	{
-		return TEXT("NotEqual");
-	}
-	if (Token == TEXT("&&") || Token == TEXT("and") || Token == TEXT("boolean_and") || Token == TEXT("booleanand"))
-	{
-		return TEXT("BooleanAND");
-	}
-	if (Token == TEXT("||") || Token == TEXT("or") || Token == TEXT("boolean_or") || Token == TEXT("booleanor"))
-	{
-		return TEXT("BooleanOR");
-	}
-	return Operator.TrimStartAndEnd();
-}
-
-static FString NormalizeCompareTypeToken(const FString& Type)
-{
-	FString Token = Type;
-	Token.TrimStartAndEndInline();
-	Token.ToLowerInline();
-	Token.ReplaceInline(TEXT(" "), TEXT(""));
-	Token.ReplaceInline(TEXT("-"), TEXT(""));
-	Token.ReplaceInline(TEXT("_"), TEXT(""));
-	return Token;
-}
-
-static void AddUniqueString(TArray<FString>& Values, const FString& Value)
-{
-	if (!Value.IsEmpty() && !Values.Contains(Value))
-	{
-		Values.Add(Value);
-	}
-}
-
-static void AddCompareTypeSuffixesForToken(const FString& TypeToken, TArray<FString>& Suffixes)
-{
-	if (TypeToken.Contains(TEXT("bool")))
-	{
-		AddUniqueString(Suffixes, TEXT("BoolBool"));
-	}
-	if (TypeToken.Contains(TEXT("int64")) || TypeToken.Contains(TEXT("long")))
-	{
-		AddUniqueString(Suffixes, TEXT("Int64Int64"));
-	}
-	if (TypeToken.Contains(TEXT("int")) || TypeToken.Contains(TEXT("integer")))
-	{
-		AddUniqueString(Suffixes, TEXT("IntInt"));
-	}
-	if (TypeToken.Contains(TEXT("byte")))
-	{
-		AddUniqueString(Suffixes, TEXT("ByteByte"));
-	}
-	if (TypeToken.Contains(TEXT("double")) || TypeToken.Contains(TEXT("real")) || TypeToken.Contains(TEXT("number")))
-	{
-		AddUniqueString(Suffixes, TEXT("DoubleDouble"));
-		AddUniqueString(Suffixes, TEXT("FloatFloat"));
-	}
-	if (TypeToken.Contains(TEXT("float")))
-	{
-		AddUniqueString(Suffixes, TEXT("FloatFloat"));
-		AddUniqueString(Suffixes, TEXT("DoubleDouble"));
-	}
-	if (TypeToken.Contains(TEXT("string")))
-	{
-		AddUniqueString(Suffixes, TEXT("StrStr"));
-	}
-	if (TypeToken.Contains(TEXT("name")))
-	{
-		AddUniqueString(Suffixes, TEXT("NameName"));
-	}
-	if (TypeToken.Contains(TEXT("text")))
-	{
-		AddUniqueString(Suffixes, TEXT("TextText"));
-	}
-	if (TypeToken.Contains(TEXT("vector")))
-	{
-		AddUniqueString(Suffixes, TEXT("VectorVector"));
-	}
-	if (TypeToken.Contains(TEXT("rotator")))
-	{
-		AddUniqueString(Suffixes, TEXT("RotatorRotator"));
-	}
-	if (TypeToken.Contains(TEXT("transform")))
-	{
-		AddUniqueString(Suffixes, TEXT("TransformTransform"));
-	}
-	if (TypeToken.Contains(TEXT("object")) || TypeToken.Contains(TEXT("actor")) || TypeToken.Contains(TEXT("component")))
-	{
-		AddUniqueString(Suffixes, TEXT("ObjectObject"));
-	}
-}
-
-static TArray<FString> BuildCompareTypeSuffixCandidates(const FBlueprintHelperGraphExpressionIR& Expression)
-{
-	TArray<FString> Suffixes;
-	if (Expression.Left.IsValid())
-	{
-		AddCompareTypeSuffixesForToken(NormalizeCompareTypeToken(Expression.Left->Type), Suffixes);
-	}
-	if (Expression.Right.IsValid())
-	{
-		AddCompareTypeSuffixesForToken(NormalizeCompareTypeToken(Expression.Right->Type), Suffixes);
-	}
-
-	AddUniqueString(Suffixes, TEXT("DoubleDouble"));
-	AddUniqueString(Suffixes, TEXT("FloatFloat"));
-	AddUniqueString(Suffixes, TEXT("IntInt"));
-	AddUniqueString(Suffixes, TEXT("Int64Int64"));
-	AddUniqueString(Suffixes, TEXT("BoolBool"));
-	AddUniqueString(Suffixes, TEXT("ByteByte"));
-	AddUniqueString(Suffixes, TEXT("ObjectObject"));
-	AddUniqueString(Suffixes, TEXT("NameName"));
-	AddUniqueString(Suffixes, TEXT("StrStr"));
-	AddUniqueString(Suffixes, TEXT("TextText"));
-	AddUniqueString(Suffixes, TEXT("VectorVector"));
-	AddUniqueString(Suffixes, TEXT("RotatorRotator"));
-	AddUniqueString(Suffixes, TEXT("TransformTransform"));
-	return Suffixes;
-}
-
-static FString ResolveCompareOperatorFunctionName(const FBlueprintHelperGraphExpressionIR& Expression)
-{
-	const FString RawOperator = Expression.Operator.TrimStartAndEnd();
-	if (RawOperator.IsEmpty())
-	{
-		return FString();
-	}
-
-	if (FBlueprintGraphWriteFacade::FindFunctionByName(RawOperator))
-	{
-		return RawOperator;
-	}
-
-	const FString BaseName = ResolveCompareOperatorBaseName(RawOperator);
-	if (BaseName.IsEmpty())
-	{
-		return RawOperator;
-	}
-
-	if (BaseName.Equals(TEXT("BooleanAND"), ESearchCase::IgnoreCase)
-		|| BaseName.Equals(TEXT("BooleanOR"), ESearchCase::IgnoreCase))
-	{
-		return BaseName;
-	}
-
-	TArray<FString> Candidates;
-	for (const FString& Suffix : BuildCompareTypeSuffixCandidates(Expression))
-	{
-		AddUniqueString(Candidates, BaseName + TEXT("_") + Suffix);
-	}
-	AddUniqueString(Candidates, BaseName);
-
-	for (const FString& Candidate : Candidates)
-	{
-		if (FBlueprintGraphWriteFacade::FindFunctionByName(Candidate))
-		{
-			return Candidate;
-		}
-	}
-
-	return BaseName;
-}
-}
-
 bool FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment(
 	UEdGraph* TargetGraph,
 	const FParsedNode& NodeData,
@@ -748,7 +500,7 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 		}
 
 		FParsedNode NodeData;
-		NodeData.Id = MakeExpressionFragmentId(Expression);
+		NodeData.Id = FBlueprintHelperGraphStatementTypeUtils::MakeExpressionFragmentId(Expression);
 		NodeData.NodeType = EParsedBlueprintNodeType::VariableGet;
 		NodeData.SourceType = TEXT("K2Node_VariableGet");
 		NodeData.VariableReference.ScopeType = TEXT("member");
@@ -805,7 +557,7 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 			return false;
 		}
 
-		const FString BaseId = MakeExpressionFragmentId(Expression);
+		const FString BaseId = FBlueprintHelperGraphStatementTypeUtils::MakeExpressionFragmentId(Expression);
 		FParsedNode OwnerGetterData;
 		OwnerGetterData.Id = BaseId + TEXT("_owner");
 		OwnerGetterData.NodeType = EParsedBlueprintNodeType::VariableGet;
@@ -975,7 +727,7 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 		}
 
 		FParsedNode NodeData;
-		NodeData.Id = MakeExpressionFragmentId(Expression);
+		NodeData.Id = FBlueprintHelperGraphStatementTypeUtils::MakeExpressionFragmentId(Expression);
 		NodeData.NodeType = EParsedBlueprintNodeType::CallFunction;
 		NodeData.SourceType = TEXT("K2Node_CallFunction");
 		NodeData.FunctionName = Expression.Target;
@@ -1017,10 +769,10 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 		}
 
 		FParsedNode NodeData;
-		NodeData.Id = MakeExpressionFragmentId(Expression);
+		NodeData.Id = FBlueprintHelperGraphStatementTypeUtils::MakeExpressionFragmentId(Expression);
 		NodeData.NodeType = EParsedBlueprintNodeType::PromotableOperator;
 		NodeData.SourceType = TEXT("K2Node_PromotableOperator");
-		NodeData.FunctionName = ResolveCompareOperatorFunctionName(Expression);
+		NodeData.FunctionName = FBlueprintHelperGraphStatementTypeUtils::ResolveCompareOperatorFunctionName(Expression);
 		if (Expression.Left.IsValid() && Expression.Left->Kind == EBlueprintHelperGraphExpressionKind::Literal)
 		{
 			NodeData.DefaultValues.Add(TEXT("A"), Expression.Left->LiteralValue);
@@ -1057,7 +809,7 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 	if (Expression.Kind == EBlueprintHelperGraphExpressionKind::Select)
 	{
 		FParsedNode NodeData;
-		NodeData.Id = MakeExpressionFragmentId(Expression);
+		NodeData.Id = FBlueprintHelperGraphStatementTypeUtils::MakeExpressionFragmentId(Expression);
 		NodeData.NodeType = EParsedBlueprintNodeType::Select;
 		NodeData.SourceType = TEXT("K2Node_Select");
 		NodeData.SelectReference.NumOptions = FMath::Max(2, Expression.Options.Num());
@@ -1121,7 +873,7 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 		}
 
 		FParsedNode NodeData;
-		NodeData.Id = MakeExpressionFragmentId(Expression);
+		NodeData.Id = FBlueprintHelperGraphStatementTypeUtils::MakeExpressionFragmentId(Expression);
 		NodeData.NodeType = EParsedBlueprintNodeType::MakeStruct;
 		NodeData.SourceType = TEXT("K2Node_MakeStruct");
 		NodeData.StructReference.StructPath = Expression.Type;
