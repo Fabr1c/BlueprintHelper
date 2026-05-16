@@ -64,6 +64,7 @@ describe('TaskSpec/TaskPlan protocol contract', () => {
       'execution_policy.dry_run_mode',
       'execution_policy.should_compile',
       'execution_policy.should_save',
+      'execution_policy.review_baseline_dirty_asset_policy',
       'steps[].step_id',
       'steps[].capability',
       'steps[].target.asset_path',
@@ -444,6 +445,7 @@ describe('TaskSpec/TaskPlan protocol contract', () => {
       'dry_run_mode',
       'should_compile',
       'should_save',
+      'review_baseline_dirty_asset_policy',
     ]);
   });
 });

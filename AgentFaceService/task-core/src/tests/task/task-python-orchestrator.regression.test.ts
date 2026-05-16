@@ -321,6 +321,7 @@ describePythonOrchestrator('Python task orchestrator adapter', () => {
       dry_run_mode: 'full',
       should_compile: false,
       should_save: false,
+      review_baseline_dirty_asset_policy: 'block',
     });
     assert.deepEqual(result.bridge_payload, {
       target: {
@@ -405,6 +406,7 @@ describePythonOrchestrator('Python task orchestrator adapter', () => {
       dry_run_mode: 'full',
       should_compile: false,
       should_save: true,
+      review_baseline_dirty_asset_policy: 'block',
     });
 
     const step = result.task_plan.steps[0];

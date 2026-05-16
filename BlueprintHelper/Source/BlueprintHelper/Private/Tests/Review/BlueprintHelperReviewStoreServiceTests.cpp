@@ -2934,6 +2934,12 @@ bool FBlueprintHelperReviewRecordQueryFiltersByTaskRunIdTest::RunTest(const FStr
 	MatchingRecord.SourceTransactionSummary.TaskRunIds.Add(TEXT("task_filter_target"));
 	MatchingRecord.SourceTransactionSummary.TransactionIds.Add(TEXT("tx_filter_target"));
 	MatchingRecord.SourceTransactionSummary.TransactionCount = 1;
+	FBlueprintHelperReviewVisibleChange MatchingChange;
+	MatchingChange.AssetPath = MatchingRecord.AssetPath;
+	MatchingChange.LocationKey = TEXT("graph:EventGraph:block:TaskFilterMatch");
+	MatchingChange.DisplayLabel = TEXT("TaskFilterMatch");
+	MatchingChange.Status = EBlueprintHelperReviewChangeStatus::Pending;
+	MatchingRecord.VisibleChanges.Add(MatchingChange);
 
 	FBlueprintHelperReviewRecord OtherRecord;
 	OtherRecord.ReviewRecordId = FBlueprintHelperReviewStoreService::MakeReviewRecordId(
@@ -2945,6 +2951,12 @@ bool FBlueprintHelperReviewRecordQueryFiltersByTaskRunIdTest::RunTest(const FStr
 	OtherRecord.SourceTransactionSummary.TaskRunIds.Add(TEXT("task_filter_other"));
 	OtherRecord.SourceTransactionSummary.TransactionIds.Add(TEXT("tx_filter_other"));
 	OtherRecord.SourceTransactionSummary.TransactionCount = 1;
+	FBlueprintHelperReviewVisibleChange OtherChange;
+	OtherChange.AssetPath = OtherRecord.AssetPath;
+	OtherChange.LocationKey = TEXT("graph:EventGraph:block:TaskFilterOther");
+	OtherChange.DisplayLabel = TEXT("TaskFilterOther");
+	OtherChange.Status = EBlueprintHelperReviewChangeStatus::Pending;
+	OtherRecord.VisibleChanges.Add(OtherChange);
 
 	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(MatchingRecord.ReviewRecordId);
 	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(OtherRecord.ReviewRecordId);

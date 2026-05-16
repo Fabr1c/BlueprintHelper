@@ -24,6 +24,7 @@
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraphSchema_K2.h"
 #include "K2Node_CallFunction.h"
+#include "K2Node_CustomEvent.h"
 #include "K2Node_MacroInstance.h"
 #include "K2Node_VariableGet.h"
 #include "K2Node_VariableSet.h"
@@ -42,6 +43,38 @@ namespace
 static bool TryReadStringField(const TSharedPtr<FJsonObject>& Object, const TCHAR* FieldName, FString& OutValue)
 {
 	return Object.IsValid() && Object->TryGetStringField(FieldName, OutValue) && !OutValue.IsEmpty();
+}
+
+static bool ShouldReconstructExistingNodes(const TSharedPtr<FJsonObject>& Object)
+{
+	const TSharedPtr<FJsonObject>* OptionsObject = nullptr;
+	bool bReconstructExistingNodes = false;
+	if (Object.IsValid()
+		&& Object->TryGetObjectField(TEXT("options"), OptionsObject)
+		&& OptionsObject
+		&& OptionsObject->IsValid())
+	{
+		(*OptionsObject)->TryGetBoolField(TEXT("reconstruct_existing_nodes"), bReconstructExistingNodes);
+	}
+	return bReconstructExistingNodes;
+}
+
+static UK2Node_CustomEvent* FindExistingCustomEventNode(UEdGraph* Graph, const FString& EventName)
+{
+	if (!Graph || EventName.IsEmpty())
+	{
+		return nullptr;
+	}
+
+	for (UEdGraphNode* Node : Graph->Nodes)
+	{
+		UK2Node_CustomEvent* CustomEvent = Cast<UK2Node_CustomEvent>(Node);
+		if (CustomEvent && CustomEvent->CustomFunctionName.ToString().Equals(EventName, ESearchCase::IgnoreCase))
+		{
+			return CustomEvent;
+		}
+	}
+	return nullptr;
 }
 
 static void ReadFragmentEndpointRef(
@@ -1027,8 +1060,14 @@ static FBlueprintGenerateResult GenerateSemanticGraphFromJsonObject(
 		EntryNodeData.SourceType = TEXT("K2Node_CustomEvent");
 		EntryNodeData.EventReference.EventName = EntryName;
 		FString EntryError;
-		IBlueprintNodeHandler* EntryHandler = FBlueprintNodeHandlerRegistry::Get().FindHandler(EntryNodeData.NodeType);
-		UK2Node* EntryNode = EntryHandler ? EntryHandler->Spawn(TargetGraph, EntryNodeData, EntryError) : nullptr;
+		UK2Node* EntryNode = ShouldReconstructExistingNodes(JsonObject)
+			? FindExistingCustomEventNode(TargetGraph, EntryName)
+			: nullptr;
+		if (!EntryNode)
+		{
+			IBlueprintNodeHandler* EntryHandler = FBlueprintNodeHandlerRegistry::Get().FindHandler(EntryNodeData.NodeType);
+			EntryNode = EntryHandler ? EntryHandler->Spawn(TargetGraph, EntryNodeData, EntryError) : nullptr;
+		}
 		if (EntryNode)
 		{
 			FBlueprintHelperNodeFragment EntryFragment = BuildDataOnlyFragment(EntryId, EntryNode);

@@ -274,7 +274,15 @@ bool FBlueprintHelperReviewTargetKindRegistry::ShouldAggregateAsGraphBody(
 	}
 
 	const FString TargetKindLower = BlueprintHelperReviewNormalizeRegistryToken(Target.TargetKind);
+	const FString TargetKeyLower = BlueprintHelperReviewNormalizeRegistryToken(Target.TargetKey);
 	const FString GroupLower = BlueprintHelperReviewNormalizeRegistryToken(Target.VisualGroupKey);
+	if (IsGraphBlockTarget(Target.TargetKind, Target.TargetKey)
+		|| BlueprintHelperReviewTextContainsToken(TargetKeyLower, TEXT(":block:"))
+		|| BlueprintHelperReviewTextContainsToken(GroupLower, TEXT(":block:")))
+	{
+		return false;
+	}
+
 	static const TCHAR* NonGraphBodyTokens[] =
 	{
 		TEXT("component"),

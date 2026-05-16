@@ -1161,43 +1161,12 @@ FString FBlueprintHelperCallFunctionResolverUtils::BuildCandidateSummary(const F
 
 FString FBlueprintHelperCallFunctionResolverUtils::BuildCandidateFunctionJsonString(const FBlueprintHelperCallFunctionCandidate& Candidate)
 {
-	TArray<FString> InputPins;
-	for (const FString& InputPin : Candidate.InputPins)
-	{
-		InputPins.Add(JsonQuote(InputPin));
-	}
-	TArray<FString> InputPinTypes;
-	for (const TPair<FString, FString>& Pair : Candidate.InputPinTypes)
-	{
-		InputPinTypes.Add(FString::Printf(TEXT("%s:%s"), *JsonQuote(Pair.Key), *JsonQuote(Pair.Value)));
-	}
-
 	return FString::Printf(
-		TEXT("{\"stable_id\":%s,\"display_name\":%s,\"owner\":%s,\"native_name\":%s,\"category\":%s,\"node_class\":%s,\"match_reason\":%s,\"return_type\":%s,\"score\":%d,\"graph_compatible\":%s,\"from_action_database\":%s,\"blueprint_callable\":%s,\"blueprint_pure\":%s,\"latent\":%s,\"requires_world_context\":%s,\"custom_thunk\":%s,\"array_parm\":%s,\"array_type_dependent_params\":%s,\"determines_output_type\":%s,\"world_context_pin\":%s,\"target_object_pin\":%s,\"mismatch_reason\":%s,\"input_pins\":[%s],\"input_pin_types\":{%s}}"),
+		TEXT("{\"stable_id\":%s,\"display_name\":%s,\"owner_class\":%s,\"native_name\":%s}"),
 		*JsonQuote(Candidate.StableId),
 		*JsonQuote(Candidate.DisplayName),
 		*JsonQuote(Candidate.OwnerClassPath),
-		*JsonQuote(Candidate.NativeFunctionName),
-		*JsonQuote(Candidate.Category),
-		*JsonQuote(Candidate.NodeClassPath),
-		*JsonQuote(Candidate.MatchReason),
-		*JsonQuote(Candidate.ReturnType),
-		Candidate.Score,
-		Candidate.bGraphCompatible ? TEXT("true") : TEXT("false"),
-		Candidate.bFromActionDatabase ? TEXT("true") : TEXT("false"),
-		Candidate.bBlueprintCallable ? TEXT("true") : TEXT("false"),
-		Candidate.bBlueprintPure ? TEXT("true") : TEXT("false"),
-		Candidate.bLatent ? TEXT("true") : TEXT("false"),
-		Candidate.bRequiresWorldContext ? TEXT("true") : TEXT("false"),
-		Candidate.bCustomThunk ? TEXT("true") : TEXT("false"),
-		Candidate.bHasArrayParm ? TEXT("true") : TEXT("false"),
-		Candidate.bHasArrayTypeDependentParams ? TEXT("true") : TEXT("false"),
-		Candidate.bDeterminesOutputType ? TEXT("true") : TEXT("false"),
-		*JsonQuote(Candidate.WorldContextPin),
-		*JsonQuote(Candidate.TargetObjectPin),
-		*JsonQuote(Candidate.MismatchReason),
-		*FString::Join(InputPins, TEXT(",")),
-		*FString::Join(InputPinTypes, TEXT(",")));
+		*JsonQuote(Candidate.NativeFunctionName));
 }
 
 FBlueprintHelperCallFunctionCandidateInfo FBlueprintHelperCallFunctionResolverUtils::BuildCandidateFunctionInfo(const FBlueprintHelperCallFunctionCandidate& Candidate)
@@ -1287,7 +1256,7 @@ FString FBlueprintHelperCallFunctionResolverUtils::BuildCandidateListMessage(
 		CandidateFunctions.Add(BuildCandidateFunctionJsonString(Candidate));
 	}
 	const FString CandidateFunctionGroup = FString::Printf(
-		TEXT("{\"target\":%s,\"candidates\":[%s]}"),
+		TEXT("{\"query\":%s,\"candidates\":[%s]}"),
 		*JsonQuote(TargetQuery),
 		*FString::Join(CandidateFunctions, TEXT(",")));
 	return FString::Printf(
@@ -1358,6 +1327,38 @@ void FBlueprintHelperCallFunctionResolverUtils::PreferGeneratedClassOverSkeleton
 	TArray<FBlueprintHelperCallFunctionCandidate>& Candidates,
 	const UBlueprint* Blueprint)
 {
+	auto MakeBlueprintFunctionKey = [](const UBlueprint* OwnerBlueprint, const FString& FunctionName)
+	{
+		return OwnerBlueprint
+			? FString::Printf(TEXT("%s:%s"), *OwnerBlueprint->GetPathName(), *NormalizeForCompare(FunctionName))
+			: FString();
+	};
+
+	TSet<FString> AnyBlueprintGeneratedFunctionKeys;
+	for (const FBlueprintHelperCallFunctionCandidate& Candidate : Candidates)
+	{
+		const UFunction* Function = Candidate.Function.Get();
+		const UClass* OwnerClass = Function ? Function->GetOwnerClass() : nullptr;
+		const UBlueprint* OwnerBlueprint = OwnerClass ? Cast<UBlueprint>(OwnerClass->ClassGeneratedBy) : nullptr;
+		if (OwnerBlueprint && OwnerBlueprint->GeneratedClass.Get() == OwnerClass)
+		{
+			AnyBlueprintGeneratedFunctionKeys.Add(MakeBlueprintFunctionKey(OwnerBlueprint, Candidate.NativeFunctionName));
+		}
+	}
+
+	if (AnyBlueprintGeneratedFunctionKeys.Num() > 0)
+	{
+		Candidates.RemoveAll([&AnyBlueprintGeneratedFunctionKeys, &MakeBlueprintFunctionKey](const FBlueprintHelperCallFunctionCandidate& Candidate)
+		{
+			const UFunction* Function = Candidate.Function.Get();
+			const UClass* OwnerClass = Function ? Function->GetOwnerClass() : nullptr;
+			const UBlueprint* OwnerBlueprint = OwnerClass ? Cast<UBlueprint>(OwnerClass->ClassGeneratedBy) : nullptr;
+			return OwnerBlueprint &&
+				OwnerBlueprint->SkeletonGeneratedClass.Get() == OwnerClass &&
+				AnyBlueprintGeneratedFunctionKeys.Contains(MakeBlueprintFunctionKey(OwnerBlueprint, Candidate.NativeFunctionName));
+		});
+	}
+
 	if (!Blueprint || !Blueprint->GeneratedClass || !Blueprint->SkeletonGeneratedClass)
 	{
 		return;

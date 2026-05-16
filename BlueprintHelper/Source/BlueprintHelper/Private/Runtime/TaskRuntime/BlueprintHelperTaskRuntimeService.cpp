@@ -36,10 +36,15 @@
 #include "Runtime/TaskRuntime/TaskPlanAdapters/UMGWidget/BlueprintHelperWidgetTaskPlanAdapter.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeClusterHub.h"
 #include "Runtime/TaskRuntime/Utils/BlueprintHelperTaskRuntimeClusterExecutionUtils.h"
+#include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
 
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "EdGraph/EdGraph.h"
+#include "EdGraph/EdGraphSchema.h"
+#include "Engine/Blueprint.h"
 #include "HAL/FileManager.h"
+#include "Kismet2/BlueprintEditorUtils.h"
 #include "Misc/Crc.h"
 #include "Misc/DateTime.h"
 #include "Misc/PackageName.h"
@@ -375,6 +380,409 @@ public:
 		DryRun->SetArrayField(TEXT("errors"), {});
 		Data->SetObjectField(TEXT("dry_run"), DryRun);
 		return Data;
+	}
+
+	struct FResolvedCallFunctionRuntimeFact
+	{
+		FString StepId;
+		FString StatementPath;
+		FString Query;
+		FString StableId;
+		FString NativeName;
+		FString DisplayName;
+		FString OwnerClassPath;
+	};
+
+	struct FCallFunctionStatementRef
+	{
+		TSharedPtr<FJsonObject> StatementObject;
+		FString StatementPath;
+		FString NamePath;
+		FString Query;
+	};
+
+	static UBlueprint* ResolveTaskRuntimeBlueprint(const FString& AssetPath)
+	{
+		if (AssetPath.IsEmpty())
+		{
+			return nullptr;
+		}
+		if (UBlueprint* Existing = FindObject<UBlueprint>(nullptr, *AssetPath))
+		{
+			return Existing;
+		}
+		return Cast<UBlueprint>(StaticLoadObject(UBlueprint::StaticClass(), nullptr, *AssetPath));
+	}
+
+	static UEdGraph* ResolveTaskRuntimeGraph(UBlueprint* Blueprint, const FString& GraphName)
+	{
+		if (!Blueprint)
+		{
+			return nullptr;
+		}
+
+		auto FindInGraphs = [&GraphName](const TArray<TObjectPtr<UEdGraph>>& Graphs) -> UEdGraph*
+		{
+			for (UEdGraph* Graph : Graphs)
+			{
+				if (Graph && Graph->GetName().Equals(GraphName, ESearchCase::IgnoreCase))
+				{
+					return Graph;
+				}
+			}
+			return nullptr;
+		};
+
+		if (UEdGraph* Graph = FindInGraphs(Blueprint->UbergraphPages))
+		{
+			return Graph;
+		}
+		if (UEdGraph* Graph = FindInGraphs(Blueprint->FunctionGraphs))
+		{
+			return Graph;
+		}
+		if (UEdGraph* Graph = FindInGraphs(Blueprint->MacroGraphs))
+		{
+			return Graph;
+		}
+		return Blueprint->UbergraphPages.Num() > 0 ? Blueprint->UbergraphPages[0] : nullptr;
+	}
+
+	static void CollectCallFunctionStatements(
+		const TArray<TSharedPtr<FJsonValue>>& StatementValues,
+		const FString& StatementsPath,
+		TArray<FCallFunctionStatementRef>& OutStatements)
+	{
+		for (int32 StatementIndex = 0; StatementIndex < StatementValues.Num(); ++StatementIndex)
+		{
+			const TSharedPtr<FJsonObject> StatementObject = StatementValues[StatementIndex].IsValid()
+				? StatementValues[StatementIndex]->AsObject()
+				: nullptr;
+			if (!StatementObject.IsValid())
+			{
+				continue;
+			}
+
+			const FString StatementPath = FString::Printf(TEXT("%s[%d]"), *StatementsPath, StatementIndex);
+			FString Kind;
+			StatementObject->TryGetStringField(TEXT("kind"), Kind);
+			if (Kind.Equals(TEXT("call"), ESearchCase::IgnoreCase) ||
+				Kind.Equals(TEXT("call_function"), ESearchCase::IgnoreCase))
+			{
+				FString Query;
+				bool bHasName = StatementObject->TryGetStringField(TEXT("name"), Query) && !Query.TrimStartAndEnd().IsEmpty();
+				if (!bHasName)
+				{
+					bHasName = false;
+					StatementObject->TryGetStringField(TEXT("target"), Query);
+				}
+
+				Query.TrimStartAndEndInline();
+				if (!Query.IsEmpty())
+				{
+					FCallFunctionStatementRef Ref;
+					Ref.StatementObject = StatementObject;
+					Ref.StatementPath = StatementPath;
+					Ref.NamePath = StatementPath + (bHasName ? TEXT(".name") : TEXT(".target"));
+					Ref.Query = Query;
+					OutStatements.Add(MoveTemp(Ref));
+				}
+			}
+
+			const TArray<TSharedPtr<FJsonValue>>* ThenStatements = nullptr;
+			if (StatementObject->TryGetArrayField(TEXT("then"), ThenStatements) && ThenStatements)
+			{
+				CollectCallFunctionStatements(*ThenStatements, StatementPath + TEXT(".then"), OutStatements);
+			}
+
+			const TArray<TSharedPtr<FJsonValue>>* ElseStatements = nullptr;
+			if (StatementObject->TryGetArrayField(TEXT("else"), ElseStatements) && ElseStatements)
+			{
+				CollectCallFunctionStatements(*ElseStatements, StatementPath + TEXT(".else"), OutStatements);
+			}
+		}
+	}
+
+	static TArray<TSharedPtr<FJsonValue>> MakeResolvedCallFunctionFactArray(
+		const TArray<FResolvedCallFunctionRuntimeFact>& Facts)
+	{
+		TArray<TSharedPtr<FJsonValue>> Values;
+		for (const FResolvedCallFunctionRuntimeFact& Fact : Facts)
+		{
+			TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+			if (!Fact.StepId.IsEmpty())
+			{
+				Json->SetStringField(TEXT("step_id"), Fact.StepId);
+			}
+			Json->SetStringField(TEXT("statement_path"), Fact.StatementPath);
+			Json->SetStringField(TEXT("query"), Fact.Query);
+			Json->SetStringField(TEXT("stable_id"), Fact.StableId);
+			Json->SetStringField(TEXT("native_name"), Fact.NativeName);
+			Json->SetStringField(TEXT("display_name"), Fact.DisplayName);
+			if (!Fact.OwnerClassPath.IsEmpty())
+			{
+				Json->SetStringField(TEXT("owner_class"), Fact.OwnerClassPath);
+			}
+			Values.Add(MakeShared<FJsonValueObject>(Json));
+		}
+		return Values;
+	}
+
+	static void AttachRuntimeFacts(
+		TSharedPtr<FJsonObject> Data,
+		const TArray<FResolvedCallFunctionRuntimeFact>& ResolvedCallFunctionFacts)
+	{
+		if (!Data.IsValid() || ResolvedCallFunctionFacts.Num() == 0)
+		{
+			return;
+		}
+
+		TSharedRef<FJsonObject> RuntimeFacts = MakeShared<FJsonObject>();
+		RuntimeFacts->SetArrayField(
+			TEXT("resolved_call_functions"),
+			MakeResolvedCallFunctionFactArray(ResolvedCallFunctionFacts));
+		Data->SetObjectField(TEXT("runtime_facts"), RuntimeFacts);
+	}
+
+	static TSharedRef<FJsonObject> MakeCompactCallFunctionCandidateJson(
+		const FBlueprintHelperCallFunctionCandidateInfo& Candidate)
+	{
+		TSharedRef<FJsonObject> CandidateJson = MakeShared<FJsonObject>();
+		CandidateJson->SetStringField(TEXT("stable_id"), Candidate.StableId);
+		CandidateJson->SetStringField(TEXT("display_name"), Candidate.DisplayName);
+		CandidateJson->SetStringField(TEXT("owner_class"), Candidate.OwnerClassPath);
+		CandidateJson->SetStringField(TEXT("native_name"), Candidate.NativeFunctionName);
+		return CandidateJson;
+	}
+
+	static TArray<TSharedPtr<FJsonValue>> MakeCandidateFunctionGroupsJson(
+		const FString& Query,
+		const TArray<FBlueprintHelperCallFunctionCandidateInfo>& Candidates)
+	{
+		TArray<TSharedPtr<FJsonValue>> Groups;
+		if (Candidates.Num() == 0)
+		{
+			return Groups;
+		}
+
+		TSharedRef<FJsonObject> Group = MakeShared<FJsonObject>();
+		Group->SetStringField(TEXT("query"), Query);
+
+		TArray<TSharedPtr<FJsonValue>> CandidateValues;
+		for (const FBlueprintHelperCallFunctionCandidateInfo& Candidate : Candidates)
+		{
+			CandidateValues.Add(MakeShared<FJsonValueObject>(MakeCompactCallFunctionCandidateJson(Candidate)));
+		}
+		Group->SetArrayField(TEXT("candidates"), CandidateValues);
+		Groups.Add(MakeShared<FJsonValueObject>(Group));
+		return Groups;
+	}
+
+	static TSharedRef<FJsonObject> MakeCallFunctionResolutionBlockedData(
+		const FString& Code,
+		EBlueprintHelperToolStage Stage,
+		const FString& Message,
+		const FString& Query,
+		const FString& Path,
+		const TArray<FBlueprintHelperCallFunctionCandidateInfo>& Candidates)
+	{
+		TSharedRef<FJsonObject> Data = MakeShared<FJsonObject>();
+		TSharedRef<FJsonObject> DryRun = MakeShared<FJsonObject>();
+		DryRun->SetStringField(TEXT("result"), TEXT("blocked"));
+		DryRun->SetBoolField(TEXT("can_execute"), false);
+		DryRun->SetArrayField(TEXT("conflicts"), {});
+
+		TSharedRef<FJsonObject> Issue = MakeShared<FJsonObject>();
+		Issue->SetStringField(TEXT("code"), Code);
+		Issue->SetStringField(TEXT("stage"), ToolStageToString(Stage));
+		Issue->SetStringField(TEXT("path"), Path);
+		Issue->SetStringField(TEXT("source"), Path);
+		Issue->SetStringField(TEXT("target"), Query);
+		if (!Message.IsEmpty())
+		{
+			Issue->SetStringField(TEXT("message"), Message);
+		}
+		const TArray<TSharedPtr<FJsonValue>> CandidateGroups = MakeCandidateFunctionGroupsJson(Query, Candidates);
+		if (CandidateGroups.Num() > 0)
+		{
+			Issue->SetArrayField(TEXT("candidate_functions"), CandidateGroups);
+		}
+
+		TArray<TSharedPtr<FJsonValue>> Errors;
+		Errors.Add(MakeShared<FJsonValueObject>(Issue));
+		DryRun->SetArrayField(TEXT("errors"), Errors);
+		Data->SetObjectField(TEXT("dry_run"), DryRun);
+		return Data;
+	}
+
+	static void PopulateCallFunctionResolveContext(
+		FBlueprintHelperCallFunctionResolveRequest& Request,
+		UBlueprint* Blueprint,
+		UEdGraph* Graph)
+	{
+		Request.Blueprint = Blueprint;
+		Request.Graph = Graph;
+		Request.Context.Blueprint = Blueprint;
+		Request.Context.Graph = Graph;
+		Request.Context.Schema = Graph ? Graph->GetSchema() : nullptr;
+		Request.Context.SelfClass = Blueprint
+			? (Blueprint->GeneratedClass ? Blueprint->GeneratedClass.Get() : Blueprint->SkeletonGeneratedClass.Get())
+			: nullptr;
+		Request.Context.GraphKind = Graph && Graph->GetClass() ? Graph->GetClass()->GetName() : FString();
+		Request.Context.ArgumentNames = Request.ArgumentNames;
+		Request.Context.ArgumentTypes = Request.ArgumentTypes;
+		Request.Context.TargetObjectType = Request.TargetObjectType;
+	}
+
+	static bool TryResolveTaskRuntimeCallFunctions(
+		const TSharedPtr<FJsonObject>& StepObject,
+		int32 StepIndex,
+		const FString& StepId,
+		bool bDryRun,
+		TArray<FResolvedCallFunctionRuntimeFact>& OutResolvedFacts,
+		FBlueprintHelperToolError& OutError,
+		TSharedPtr<FJsonObject>& OutBlockedStepData)
+	{
+		const TSharedPtr<FJsonObject>* WriteObjectPtr = nullptr;
+		if (!StepObject.IsValid() ||
+			!StepObject->TryGetObjectField(TEXT("write"), WriteObjectPtr) ||
+			!WriteObjectPtr || !WriteObjectPtr->IsValid())
+		{
+			return true;
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* OpsArray = nullptr;
+		if (!(*WriteObjectPtr)->TryGetArrayField(TEXT("ops"), OpsArray) || !OpsArray)
+		{
+			return true;
+		}
+
+		const TSharedPtr<FJsonObject>* TargetObjectPtr = nullptr;
+		FString AssetPath;
+		FString GraphName;
+		if (StepObject->TryGetObjectField(TEXT("target"), TargetObjectPtr) &&
+			TargetObjectPtr && TargetObjectPtr->IsValid())
+		{
+			(*TargetObjectPtr)->TryGetStringField(TEXT("asset_path"), AssetPath);
+			(*TargetObjectPtr)->TryGetStringField(TEXT("graph"), GraphName);
+		}
+
+		UBlueprint* Blueprint = ResolveTaskRuntimeBlueprint(AssetPath);
+		UEdGraph* Graph = ResolveTaskRuntimeGraph(Blueprint, GraphName);
+		if (!Blueprint)
+		{
+			return true;
+		}
+
+		for (int32 OpIndex = 0; OpIndex < OpsArray->Num(); ++OpIndex)
+		{
+			const TSharedPtr<FJsonObject> OpObject =
+				(*OpsArray)[OpIndex].IsValid()
+					? (*OpsArray)[OpIndex]->AsObject()
+					: nullptr;
+			if (!OpObject.IsValid())
+			{
+				continue;
+			}
+
+			TSharedPtr<FJsonObject> LogicSpec;
+			FString LogicSpecPath;
+			const TSharedPtr<FJsonObject>* BodyObjectPtr = nullptr;
+			if (OpObject->TryGetObjectField(TEXT("body"), BodyObjectPtr) &&
+				BodyObjectPtr && BodyObjectPtr->IsValid())
+			{
+				LogicSpec = *BodyObjectPtr;
+				LogicSpecPath = FString::Printf(TEXT("write.ops[%d].body"), OpIndex);
+			}
+			else if (OpObject->TryGetObjectField(TEXT("logic_spec"), BodyObjectPtr) &&
+				BodyObjectPtr && BodyObjectPtr->IsValid())
+			{
+				LogicSpec = *BodyObjectPtr;
+				LogicSpecPath = FString::Printf(TEXT("write.ops[%d].logic_spec"), OpIndex);
+			}
+
+			const TArray<TSharedPtr<FJsonValue>>* StatementValues = nullptr;
+			if (!LogicSpec.IsValid() ||
+				!LogicSpec->TryGetArrayField(TEXT("statements"), StatementValues) ||
+				!StatementValues)
+			{
+				continue;
+			}
+
+			TArray<FCallFunctionStatementRef> CallStatements;
+			CollectCallFunctionStatements(
+				*StatementValues,
+				LogicSpecPath + TEXT(".statements"),
+				CallStatements);
+
+			for (const FCallFunctionStatementRef& CallStatement : CallStatements)
+			{
+				FBlueprintHelperCallFunctionResolveRequest ResolveRequest;
+				ResolveRequest.Query = CallStatement.Query;
+				CallStatement.StatementObject->TryGetStringField(TEXT("search_mode"), ResolveRequest.SearchMode);
+				CallStatement.StatementObject->TryGetStringField(TEXT("ambiguity"), ResolveRequest.AmbiguityPolicy);
+				CallStatement.StatementObject->TryGetStringField(TEXT("ambiguity_policy"), ResolveRequest.AmbiguityPolicy);
+				const TArray<TSharedPtr<FJsonValue>>* CategoryPriorityValues = nullptr;
+				if (CallStatement.StatementObject->TryGetArrayField(TEXT("category_priority"), CategoryPriorityValues) &&
+					CategoryPriorityValues)
+				{
+					for (const TSharedPtr<FJsonValue>& Value : *CategoryPriorityValues)
+					{
+						if (Value.IsValid())
+						{
+							ResolveRequest.CategoryPriority.Add(Value->AsString());
+						}
+					}
+				}
+				const TSharedPtr<FJsonObject>* ArgsObjectPtr = nullptr;
+				if (CallStatement.StatementObject->TryGetObjectField(TEXT("args"), ArgsObjectPtr) &&
+					ArgsObjectPtr && ArgsObjectPtr->IsValid())
+				{
+					(*ArgsObjectPtr)->Values.GetKeys(ResolveRequest.ArgumentNames);
+				}
+				PopulateCallFunctionResolveContext(ResolveRequest, Blueprint, Graph);
+
+				const FBlueprintHelperCallFunctionResolveResult ResolveResult =
+					FBlueprintHelperCallFunctionResolver::Resolve(ResolveRequest);
+				if (!ResolveResult.IsResolved())
+				{
+					const FString Code = ResolveResult.ErrorCode.IsEmpty()
+						? TEXT("function_call_not_found")
+						: ResolveResult.ErrorCode;
+					const FString Message = ResolveResult.Message.IsEmpty()
+						? FString::Printf(TEXT("call_function resolve failed: %s"), *CallStatement.Query)
+						: ResolveResult.Message;
+					const EBlueprintHelperToolStage Stage = bDryRun
+						? EBlueprintHelperToolStage::DryRun
+						: EBlueprintHelperToolStage::Execute;
+					OutError = MakeTaskRuntimeError(
+						Code,
+						Stage,
+						Message,
+						FString::Printf(TEXT("task_plan.steps[%d].%s"), StepIndex, *CallStatement.NamePath));
+					OutBlockedStepData = MakeCallFunctionResolutionBlockedData(
+						Code,
+						Stage,
+						Message,
+						CallStatement.Query,
+						CallStatement.NamePath,
+						ResolveResult.CandidateFunctions);
+					return false;
+				}
+
+				FResolvedCallFunctionRuntimeFact Fact;
+				Fact.StepId = StepId;
+				Fact.StatementPath = CallStatement.StatementPath;
+				Fact.Query = CallStatement.Query;
+				Fact.StableId = ResolveResult.Selected.StableId;
+				Fact.NativeName = ResolveResult.Selected.NativeFunctionName;
+				Fact.DisplayName = ResolveResult.Selected.DisplayName;
+				Fact.OwnerClassPath = ResolveResult.Selected.OwnerClassPath;
+				OutResolvedFacts.Add(MoveTemp(Fact));
+			}
+		}
+
+		return true;
 	}
 
 	static bool TryReadStepTarget(
@@ -3689,6 +4097,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 
 	TArray<FBlueprintHelperTaskRuntimeStepRecord> StepRecords;
 	TArray<FBlueprintHelperTaskRuntimePostOperationRecord> PostOperationRecords;
+	TArray<FBlueprintHelperTaskRuntimeServiceLocalUtils::FResolvedCallFunctionRuntimeFact> ResolvedCallFunctionFacts;
 	FBlueprintHelperValidationSummary BaseValidation;
 	bool bSawStepValidation = false;
 	TMap<FString, FBlueprintHelperTaskRuntimeServiceLocalUtils::EBlueprintHelperTaskJournalStepStatus> StepExecutionStatuses;
@@ -3766,16 +4175,23 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 				RuntimeResult.Data->SetObjectField(TEXT("dry_run"), DryRun);
 			}
 		}
+		FBlueprintHelperTaskRuntimeServiceLocalUtils::AttachRuntimeFacts(
+			RuntimeResult.Data,
+			ResolvedCallFunctionFacts);
 
 		if (!bDryRun && !TaskRunId.IsEmpty() && (StepRecords.Num() > 0 || PostOperationRecords.Num() > 0))
 		{
-			TaskRunJournals.Add(TaskRunId, FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRunJournal(
+			TSharedRef<FJsonObject> Journal = FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRunJournal(
 				TaskRunId,
 				*TaskPlanPtr,
 				StepRecords,
 				PostOperationRecords,
 				true,
-				FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeReviewBaselinePolicyJson(BaselinePolicy)));
+				FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeReviewBaselinePolicyJson(BaselinePolicy));
+			FBlueprintHelperTaskRuntimeServiceLocalUtils::AttachRuntimeFacts(
+				Journal,
+				ResolvedCallFunctionFacts);
+			TaskRunJournals.Add(TaskRunId, Journal);
 		}
 
 		if (DebugEntryService)
@@ -3882,6 +4298,34 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 				TEXT("Task Runtime lowering did not produce a payload."),
 				FString::Printf(TEXT("task_plan.steps[%d]"), StepIndex)));
 		}
+
+		TArray<FBlueprintHelperTaskRuntimeServiceLocalUtils::FResolvedCallFunctionRuntimeFact> StepResolvedCallFunctionFacts;
+		FBlueprintHelperToolError CallFunctionResolutionError;
+		TSharedPtr<FJsonObject> CallFunctionBlockedData;
+		if (!FBlueprintHelperTaskRuntimeServiceLocalUtils::TryResolveTaskRuntimeCallFunctions(
+			StepObject,
+			StepIndex,
+			LoweredStep.StepId,
+			bDryRun,
+			StepResolvedCallFunctionFacts,
+			CallFunctionResolutionError,
+			CallFunctionBlockedData))
+		{
+			const FString StepOperation = LoweredStep.AdapterOperation.IsEmpty()
+				? LoweredStep.RuntimeOperation
+				: LoweredStep.AdapterOperation;
+			FBlueprintHelperToolResultBase StepResult = FBlueprintHelperToolResultBuilder::Failure(
+				StepOperation.IsEmpty() ? TEXT("graph_write") : StepOperation,
+				FBlueprintHelperToolResultBuilder::GenerateTraceId(),
+				CallFunctionResolutionError);
+			StepResult.Data = CallFunctionBlockedData;
+			StepRecords.Add({LoweredStep, StepResult});
+			StepExecutionStatuses.Add(
+				LoweredStep.StepId,
+				FBlueprintHelperTaskRuntimeServiceLocalUtils::EBlueprintHelperTaskJournalStepStatus::Failed);
+			return BuildFailureResult(CallFunctionResolutionError);
+		}
+		ResolvedCallFunctionFacts.Append(StepResolvedCallFunctionFacts);
 
 		FBlueprintHelperWriteReviewEvidence PreStepReviewEvidence;
 		bool bHasPreStepReviewEvidence = false;
@@ -4099,16 +4543,23 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		StepRecords,
 		PostOperationRecords,
 		bDryRun);
+	FBlueprintHelperTaskRuntimeServiceLocalUtils::AttachRuntimeFacts(
+		RuntimeResult.Data,
+		ResolvedCallFunctionFacts);
 
 	if (!bDryRun && !TaskRunId.IsEmpty())
 	{
-		TaskRunJournals.Add(TaskRunId, FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRunJournal(
+		TSharedRef<FJsonObject> Journal = FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRunJournal(
 			TaskRunId,
 			*TaskPlanPtr,
 			StepRecords,
 			PostOperationRecords,
 			false,
-			FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeReviewBaselinePolicyJson(BaselinePolicy)));
+			FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeReviewBaselinePolicyJson(BaselinePolicy));
+		FBlueprintHelperTaskRuntimeServiceLocalUtils::AttachRuntimeFacts(
+			Journal,
+			ResolvedCallFunctionFacts);
+		TaskRunJournals.Add(TaskRunId, Journal);
 	}
 
 	return RuntimeResult;
