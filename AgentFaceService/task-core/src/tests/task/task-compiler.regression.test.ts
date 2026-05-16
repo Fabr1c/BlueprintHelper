@@ -1070,6 +1070,7 @@ describe('TaskSpec GraphWrite Append compiler', () => {
       dry_run_mode: 'full',
       should_compile: false,
       should_save: false,
+      review_baseline_dirty_asset_policy: 'block',
     });
     assert.equal(signatureStep.capability, 'blueprint_signature');
     assert.equal(signatureStep.write.ops[0].op, 'ensure_custom_event');
@@ -1543,6 +1544,7 @@ describe('TaskSpec Blueprint Variables compiler', () => {
       dry_run_mode: 'full',
       should_compile: true,
       should_save: false,
+      review_baseline_dirty_asset_policy: 'block',
     });
     assert.ok(step && 'capability' in step);
     assert.equal(Object.hasOwn(step as Record<string, unknown>, 'operation'), false);

@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Math/Vector2D.h"
+#include "Shared/GraphWrite/BlueprintHelperCallFunctionCandidateTypes.h"
 #include "Templates/SubclassOf.h"
 
 class UBlueprint;
@@ -26,34 +27,6 @@ struct FBlueprintHelperCallFunctionPinType
 	{
 		return !Category.IsEmpty() || !ObjectPath.IsEmpty();
 	}
-};
-
-struct FBlueprintHelperCallFunctionCandidateInfo
-{
-	FString StableId;
-	FString DisplayName;
-	FString OwnerClassPath;
-	FString NativeFunctionName;
-	FString Category;
-	FString NodeClassPath;
-	FString MatchReason;
-	FString ReturnType;
-	FString WorldContextPin;
-	FString TargetObjectPin;
-	TArray<FString> InputPins;
-	TMap<FString, FString> InputPinTypes;
-	FString MismatchReason;
-	int32 Score = 0;
-	bool bGraphCompatible = false;
-	bool bFromActionDatabase = false;
-	bool bBlueprintCallable = false;
-	bool bBlueprintPure = false;
-	bool bLatent = false;
-	bool bRequiresWorldContext = false;
-	bool bCustomThunk = false;
-	bool bHasArrayParm = false;
-	bool bHasArrayTypeDependentParams = false;
-	bool bDeterminesOutputType = false;
 };
 
 struct FBlueprintHelperK2CallContext

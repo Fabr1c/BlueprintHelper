@@ -692,7 +692,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperMergeBlueprintGraphService::Execu
 	Context.Graph = Graph;
 
 	FMergePreflightResult Pre;
-	if (BP && Graph) Pre = Preflight(Request, Context, false);
+	if (BP && Graph) Pre = Preflight(Request, Context, Request.bAllowCompileBeforeCall);
 	else { Pre.bPassed = false; Pre.BlockedBy.Add(BP ? TEXT("target_graph_not_found") : TEXT("target_blueprint_not_found")); }
 
 	FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::DryRun(TEXT("merge_blueprint_graph"), TraceId);

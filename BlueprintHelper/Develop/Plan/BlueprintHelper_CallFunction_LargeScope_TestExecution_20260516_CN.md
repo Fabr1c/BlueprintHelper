@@ -56,7 +56,7 @@ AgentFace TaskSpec / BlueprintLogicSpec
 | B2 | Array wildcard/generic 查询 | 应暴露 wildcard metadata；不要求 execute | preview only | 通过：preview_blocked |
 | B3 | 缺失 target_object | 通过：preview_blocked（continuation asset 隔离复测） | preview only | 未通过：bridge_unavailable； |
 | B4 | 更复杂 conversion/cast/promote | 当前只验证 UE schema data connection 能处理的路径，不承诺完整拖线等价 | 文档边界 | 不执行 |
-| B5 | Blueprint 自定义函数/继承函数/多参数重载 | 属于扩大测试矩阵，不是本轮闭环必过项 | 文档边界 | 不执行 |
+| B5 | Blueprint 自定义函数/继承函数/多参数重载 | 属于扩大测试矩阵，不是本轮闭环必过项 | resolver automation stress matrix | 覆盖通过：多参数、继承目标、重载阻断/消歧、Blueprint-authored custom function 继承与 overload-like 命名 |
 
 ## 4. 当前明确无法做到或不声明支持的内容
 
@@ -105,3 +105,63 @@ AgentFace TaskSpec / BlueprintLogicSpec
 
 1. P6 已达预期：`make_struct(/Script/CoreUObject.Vector)` 已通过通用 struct construction resolver 生成真实 Make 函数调用并编译通过。
 2. P7 已达预期：`compare(int > int)` 已通过 typed operator promotion 生成稳定 typed call function 节点并编译通过。
+
+## 8. 2026-05-17 stress matrix plan: multi-parameter / inheritance / overload
+
+Goal: extend the resolver automation matrix for the B5 boundary item without adding new Agent-facing TaskSpec fields and without reintroducing UE menu/spawner payloads into diagnostics.
+
+Planned automation scope:
+
+| ID | Scenario | Expected behavior |
+| --- | --- | --- |
+| S1 | Multi-parameter function: `InRange_IntInt(Value, Min, Max, InclusiveMin, InclusiveMax)` | Native query resolves and all requested argument pins/types are honored. |
+| S2 | Inherited target object: `ACharacter` target resolving parent `AActor::K2_DestroyActor` | Target object type may be a child class of the function owner; result stable id remains `/Script/Engine.Actor:K2_DestroyActor`. |
+| S3 | Inheritance rejection: component target resolving actor instance function | Resolver must not falsely pick the actor function for unrelated target object types. |
+| S4 | Overload pressure: short `EqualEqual` query with typed A/B pins | Resolver blocks as ambiguous rather than picking a false unique candidate. |
+| S5 | Overload disambiguation: `EqualEqual` plus category/native priority | Resolver can select `EqualEqual_IntInt` when the caller supplies a valid priority hint. |
+
+Verification target:
+
+```text
+Automation RunTests BlueprintHelper.GraphWrite.CallFunctionResolver
+Build.bat TemplateEditor Win64 Development -Project=D:\UEProjects\Template\Template.uproject -WaitMutex -NoHotReload
+```
+
+### 2026-05-17 stress matrix result
+
+Implemented and passed resolver automation:
+
+| ID | Automation test | Result |
+| --- | --- | --- |
+| S1 | `BlueprintHelper.GraphWrite.CallFunctionResolver.Stress.MultiParameterInRangeResolves` | passed |
+| S2 | `BlueprintHelper.GraphWrite.CallFunctionResolver.Stress.InheritedTargetResolvesParentFunction` | passed |
+| S3 | `BlueprintHelper.GraphWrite.CallFunctionResolver.Stress.UnrelatedTargetRejectsParentFunction` | passed |
+| S4 | `BlueprintHelper.GraphWrite.CallFunctionResolver.Stress.OverloadShortQueryBlocksAmbiguous` | passed |
+| S5 | `BlueprintHelper.GraphWrite.CallFunctionResolver.Stress.OverloadPrioritySelectsInteger` | passed |
+
+Verification:
+
+- `Build.bat TemplateEditor Win64 Development -Project=D:\UEProjects\Template\Template.uproject -WaitMutex -NoHotReload -Log=Saved/BuildLogs/UBT-CallFunctionStress-20260517.log`: passed.
+- `Automation RunTests BlueprintHelper.GraphWrite.CallFunctionResolver`, report `Saved/Automation/CallFunctionStress_20260517_001/index.json`: 16 total, 15 succeeded, 1 succeeded with EOS offline warnings, 0 failed.
+
+Follow-up closure:
+
+| ID | Automation test | Result |
+| --- | --- | --- |
+| S6 | `BlueprintHelper.GraphWrite.CallFunctionResolver.Stress.BlueprintAuthoredInheritedFunctionResolves` | passed |
+| S7 | `BlueprintHelper.GraphWrite.CallFunctionResolver.Stress.BlueprintAuthoredOverloadLikeNameBlocksAmbiguous` | passed |
+| S8 | `BlueprintHelper.GraphWrite.CallFunctionResolver.Stress.BlueprintAuthoredOverloadLikePrioritySelectsChild` | passed |
+| S9 | `BlueprintHelper.GraphWrite.CallFunctionResolver.Stress.BlueprintAuthoredInheritedFunctionGraphGenerationSpawns` | passed |
+
+Additional verification:
+
+- `Build.bat TemplateEditor Win64 Development -Project=D:\UEProjects\Template\Template.uproject -WaitMutex -NoHotReload -Log=Saved/BuildLogs/UBT-CallFunctionBlueprintAuthored-20260517-r4.log`: passed.
+- `Automation RunTests BlueprintHelper.GraphWrite.CallFunctionResolver`, report `Saved/Automation/CallFunctionBlueprintAuthored_20260517_003/index.json`: 20 total, 19 succeeded, 1 succeeded with EOS offline warnings, 0 failed.
+
+Review follow-up:
+
+- gpt5.4 high review found the first Blueprint-authored tests over-relied on explicit `TargetObjectType`. The follow-up tightened coverage to child-graph context without `TargetObjectType`, added graph generation coverage for a child Blueprint calling a parent Blueprint-authored function, and fixed resolver duplicate handling so parent Blueprint generated/skeleton UFunction pairs do not create false ambiguity.
+
+Remaining gap:
+
+- B5 resolver automation gap is closed for Blueprint-authored custom function inheritance and overload-like naming. The remaining non-goals stay unchanged: Material Graph / AnimGraph, exact UE menu ordering, and full pin-drag interaction context.

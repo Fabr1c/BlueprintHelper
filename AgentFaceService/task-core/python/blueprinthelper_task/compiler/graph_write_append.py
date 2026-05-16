@@ -60,25 +60,43 @@ def _make_graph_write_task_plan_steps(task_spec: Dict[str, Any], ops: List[Dict[
     scope_policy = task_spec["scope_policy"]
     strategy = task_spec["behavior"]["graph_strategy"]
     if strategy == "append_new_owned_graph":
-        return [
+        signature_steps = [
             {
                 "step_id": f"step_{index + 1:03d}",
-                "capability": "graph_write",
+                "capability": "blueprint_signature",
                 "target": {
                     "asset_path": target["asset_path"],
-                    "graph": scope_policy["graph_name"],
                 },
                 "write": {
-                    "strategy": "owned_graph_edit",
-                    "ops": [_strip_graph_write_compiler_metadata(op)],
-                },
-                "constraints": {
-                    "allow_modify_user_nodes": scope_policy["allow_modify_user_nodes"],
-                    "ownership_scope": "blueprinthelper_owned",
+                    "strategy": "custom_event_signature",
+                    "ops": [{
+                        "op": "ensure_custom_event",
+                        "event_name": op["name"],
+                        "graph_name": scope_policy["graph_name"],
+                        "name_collision_policy": "reuse_if_exists",
+                    }],
                 },
             }
             for index, op in enumerate(ops)
         ]
+        graph_write_step = {
+            "step_id": f"step_{len(signature_steps) + 1:03d}",
+            "capability": "graph_write",
+            "target": {
+                "asset_path": target["asset_path"],
+                "graph": scope_policy["graph_name"],
+            },
+            "write": {
+                "strategy": "owned_graph_edit",
+                "ops": [_strip_graph_write_compiler_metadata(op) for op in ops],
+            },
+            "constraints": {
+                "allow_modify_user_nodes": scope_policy["allow_modify_user_nodes"],
+                "ownership_scope": "blueprinthelper_owned",
+            },
+            "depends_on": [step["step_id"] for step in signature_steps],
+        }
+        return [*signature_steps, graph_write_step]
 
     if strategy == "replace_owned_graph" and len(ops) == 1 and isinstance(ops[0].get("__signature_split"), dict):
         signature_op = ops[0]["__signature_split"]

@@ -121,6 +121,78 @@ public:
 		return FunctionGraph;
 	}
 
+	static TSharedRef<FJsonObject> MakeStringLiteralExpression(const FString& Value)
+	{
+		TSharedRef<FJsonObject> Literal = MakeShared<FJsonObject>();
+		Literal->SetStringField(TEXT("kind"), TEXT("literal"));
+		Literal->SetStringField(TEXT("value_type"), TEXT("string"));
+		Literal->SetStringField(TEXT("value"), Value);
+		return Literal;
+	}
+
+	static TSharedRef<FJsonObject> MakeCallStatement(const FString& FunctionName, const FString& Message = TEXT("graph write test"))
+	{
+		TSharedRef<FJsonObject> Statement = MakeShared<FJsonObject>();
+		Statement->SetStringField(TEXT("kind"), TEXT("call"));
+		Statement->SetStringField(TEXT("target"), FunctionName);
+
+		TSharedRef<FJsonObject> Args = MakeShared<FJsonObject>();
+		Args->SetObjectField(TEXT("InString"), MakeStringLiteralExpression(Message));
+		Statement->SetObjectField(TEXT("args"), Args);
+		return Statement;
+	}
+
+	static TSharedRef<FJsonObject> MakeCallNameStatement(const FString& FunctionName)
+	{
+		TSharedRef<FJsonObject> Statement = MakeShared<FJsonObject>();
+		Statement->SetStringField(TEXT("kind"), TEXT("call"));
+		Statement->SetStringField(TEXT("name"), FunctionName);
+		return Statement;
+	}
+
+	static TSharedRef<FJsonObject> MakeGraphWriteLogicSpec(
+		const FString& EventName,
+		const TArray<TSharedPtr<FJsonValue>>& Statements)
+	{
+		TSharedRef<FJsonObject> LogicSpec = MakeShared<FJsonObject>();
+		LogicSpec->SetStringField(TEXT("schema"), TEXT("BlueprintLogicSpec.v2"));
+		if (!EventName.IsEmpty())
+		{
+			TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
+			Entry->SetStringField(TEXT("id"), EventName + TEXT("_entry"));
+			Entry->SetStringField(TEXT("kind"), TEXT("custom_event"));
+			Entry->SetStringField(TEXT("name"), EventName);
+			LogicSpec->SetObjectField(TEXT("entry"), Entry);
+		}
+		LogicSpec->SetArrayField(TEXT("statements"), Statements);
+		return LogicSpec;
+	}
+
+	static TSharedRef<FJsonObject> MakeEntryOnlyLogicSpec(const FString& EventName)
+	{
+		TArray<TSharedPtr<FJsonValue>> Statements;
+		return MakeGraphWriteLogicSpec(EventName, Statements);
+	}
+
+	static TSharedRef<FJsonObject> MakeCallLogicSpec(
+		const FString& EventName,
+		const FString& FunctionName,
+		const FString& Message = TEXT("graph write test"))
+	{
+		TArray<TSharedPtr<FJsonValue>> Statements;
+		Statements.Add(MakeShared<FJsonValueObject>(MakeCallStatement(FunctionName, Message)));
+		return MakeGraphWriteLogicSpec(EventName, Statements);
+	}
+
+	static TSharedRef<FJsonObject> MakeCallNameLogicSpec(
+		const FString& EventName,
+		const FString& FunctionName)
+	{
+		TArray<TSharedPtr<FJsonValue>> Statements;
+		Statements.Add(MakeShared<FJsonValueObject>(MakeCallNameStatement(FunctionName)));
+		return MakeGraphWriteLogicSpec(EventName, Statements);
+	}
+
 	static TSharedRef<FJsonObject> MakeAppendPreviewPayload(const FString& AssetPath, const FString& GraphName)
 	{
 		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
@@ -129,16 +201,7 @@ public:
 		Target->SetStringField(TEXT("graph"), GraphName);
 		Payload->SetObjectField(TEXT("target"), Target);
 		Payload->SetBoolField(TEXT("dry_run"), true);
-
-		TSharedRef<FJsonObject> EntryNode = MakeShared<FJsonObject>();
-		EntryNode->SetStringField(TEXT("id"), TEXT("entry_01"));
-		EntryNode->SetStringField(TEXT("kind"), TEXT("custom_event"));
-		EntryNode->SetStringField(TEXT("name"), TEXT("SmokeCustomEvent"));
-
-		TArray<TSharedPtr<FJsonValue>> Nodes;
-		Nodes.Add(MakeShared<FJsonValueObject>(EntryNode));
-		Payload->SetArrayField(TEXT("nodes"), Nodes);
-		Payload->SetArrayField(TEXT("links"), {});
+		Payload->SetObjectField(TEXT("logic_spec"), MakeEntryOnlyLogicSpec(TEXT("SmokeCustomEvent")));
 		return Payload;
 	}
 
@@ -154,29 +217,9 @@ public:
 	{
 		TSharedRef<FJsonObject> Payload = MakeAppendExecutePayload(AssetPath, GraphName);
 		Payload->SetBoolField(TEXT("reuse_existing_entries"), true);
-
-		TArray<TSharedPtr<FJsonValue>> Nodes;
-		TSharedRef<FJsonObject> EntryNode = MakeShared<FJsonObject>();
-		EntryNode->SetStringField(TEXT("id"), TEXT("entry_01"));
-		EntryNode->SetStringField(TEXT("kind"), TEXT("custom_event"));
-		EntryNode->SetStringField(TEXT("name"), TEXT("SmokeCustomEvent"));
-		Nodes.Add(MakeShared<FJsonValueObject>(EntryNode));
-
-		TSharedRef<FJsonObject> CallNode = MakeShared<FJsonObject>();
-		CallNode->SetStringField(TEXT("id"), TEXT("print_01"));
-		CallNode->SetStringField(TEXT("kind"), TEXT("call"));
-		CallNode->SetStringField(TEXT("function"), TEXT("PrintString"));
-		Nodes.Add(MakeShared<FJsonValueObject>(CallNode));
-		Payload->SetArrayField(TEXT("nodes"), Nodes);
-
-		TArray<TSharedPtr<FJsonValue>> Links;
-		TSharedRef<FJsonObject> ExecLink = MakeShared<FJsonObject>();
-		ExecLink->SetStringField(TEXT("kind"), TEXT("exec"));
-		ExecLink->SetStringField(TEXT("from"), TEXT("entry_01.then"));
-		ExecLink->SetStringField(TEXT("to"), TEXT("print_01.execute"));
-		Links.Add(MakeShared<FJsonValueObject>(ExecLink));
-		Payload->SetArrayField(TEXT("links"), Links);
-
+		Payload->SetObjectField(
+			TEXT("logic_spec"),
+			MakeCallLogicSpec(TEXT("SmokeCustomEvent"), TEXT("PrintString"), TEXT("append reuse")));
 		return Payload;
 	}
 
@@ -203,12 +246,9 @@ public:
 		Selector->SetStringField(TEXT("entry_name"), TEXT("SmokeCustomEvent"));
 		Payload->SetObjectField(TEXT("selector"), Selector);
 
-		TArray<TSharedPtr<FJsonValue>> Nodes;
-		Nodes.Add(MakeShared<FJsonValueObject>(MakeReplacementNode()));
-		TSharedRef<FJsonObject> Replacement = MakeShared<FJsonObject>();
-		Replacement->SetArrayField(TEXT("nodes"), Nodes);
-		Replacement->SetArrayField(TEXT("links"), {});
-		Payload->SetObjectField(TEXT("replacement"), Replacement);
+		Payload->SetObjectField(
+			TEXT("logic_spec"),
+			MakeCallLogicSpec(FString(), TEXT("PrintString"), TEXT("replace body")));
 
 		TSharedRef<FJsonObject> Options = MakeShared<FJsonObject>();
 		Options->SetBoolField(TEXT("dry_run"), true);
@@ -755,6 +795,7 @@ public:
 		ExecutionPolicy->SetStringField(TEXT("dry_run_mode"), TEXT("full"));
 		ExecutionPolicy->SetBoolField(TEXT("should_compile"), bShouldCompile);
 		ExecutionPolicy->SetBoolField(TEXT("should_save"), false);
+		ExecutionPolicy->SetStringField(TEXT("review_baseline_dirty_asset_policy"), TEXT("allow_stale_disk_snapshot"));
 		TaskPlan->SetObjectField(TEXT("execution_policy"), ExecutionPolicy);
 
 		TArray<TSharedPtr<FJsonValue>> Steps;
@@ -880,17 +921,13 @@ public:
 		TSharedRef<FJsonObject> Selector = MakeShared<FJsonObject>();
 		Selector->SetStringField(TEXT("entry_name"), EventName);
 
-		TArray<TSharedPtr<FJsonValue>> Nodes;
-		Nodes.Add(MakeShared<FJsonValueObject>(MakeReplacementNode()));
-		TSharedRef<FJsonObject> Replacement = MakeShared<FJsonObject>();
-		Replacement->SetArrayField(TEXT("nodes"), Nodes);
-		Replacement->SetArrayField(TEXT("links"), {});
-
 		TSharedRef<FJsonObject> Op = MakeShared<FJsonObject>();
 		Op->SetStringField(TEXT("op"), TEXT("replace_body"));
 		Op->SetStringField(TEXT("replace_scope"), TEXT("custom_event_body"));
 		Op->SetObjectField(TEXT("selector"), Selector);
-		Op->SetObjectField(TEXT("replacement"), Replacement);
+		Op->SetObjectField(
+			TEXT("logic_spec"),
+			MakeCallLogicSpec(FString(), TEXT("PrintString"), TEXT("replace body")));
 
 		TArray<TSharedPtr<FJsonValue>> Ops;
 		Ops.Add(MakeShared<FJsonValueObject>(Op));
@@ -1167,12 +1204,9 @@ public:
 		Selector->SetStringField(TEXT("entry_name"), TEXT("SmokeCustomEvent"));
 		Op->SetObjectField(TEXT("selector"), Selector);
 
-		TArray<TSharedPtr<FJsonValue>> Nodes;
-		Nodes.Add(MakeShared<FJsonValueObject>(MakeReplacementNode()));
-		TSharedRef<FJsonObject> Replacement = MakeShared<FJsonObject>();
-		Replacement->SetArrayField(TEXT("nodes"), Nodes);
-		Replacement->SetArrayField(TEXT("links"), {});
-		Op->SetObjectField(TEXT("replacement"), Replacement);
+		Op->SetObjectField(
+			TEXT("logic_spec"),
+			MakeCallLogicSpec(FString(), TEXT("PrintString"), TEXT("replace body")));
 		return Op;
 	}
 
@@ -1243,31 +1277,27 @@ public:
 		const FString& EventName,
 		const FString& FunctionName)
 	{
-		TSharedRef<FJsonObject> Statement = MakeShared<FJsonObject>();
-		Statement->SetStringField(TEXT("kind"), TEXT("call_function"));
-		Statement->SetStringField(TEXT("name"), FunctionName);
-
-		TSharedRef<FJsonObject> InString = MakeShared<FJsonObject>();
-		InString->SetStringField(TEXT("kind"), TEXT("literal"));
-		InString->SetStringField(TEXT("value_type"), TEXT("string"));
-		InString->SetStringField(TEXT("value"), TEXT("runtime call_function"));
-
-		TSharedRef<FJsonObject> Args = MakeShared<FJsonObject>();
-		Args->SetObjectField(TEXT("InString"), InString);
-		Statement->SetObjectField(TEXT("args"), Args);
-
-		TArray<TSharedPtr<FJsonValue>> Statements;
-		Statements.Add(MakeShared<FJsonValueObject>(Statement));
-
-		TSharedRef<FJsonObject> Body = MakeShared<FJsonObject>();
-		Body->SetStringField(TEXT("schema"), TEXT("BlueprintLogicSpec.v1"));
-		Body->SetArrayField(TEXT("statements"), Statements);
-
 		TSharedRef<FJsonObject> Op = MakeShared<FJsonObject>();
 		Op->SetStringField(TEXT("op"), TEXT("ensure_entry"));
 		Op->SetStringField(TEXT("entry_type"), TEXT("custom_event"));
 		Op->SetStringField(TEXT("name"), EventName);
-		Op->SetObjectField(TEXT("body"), Body);
+		Op->SetObjectField(
+			TEXT("body"),
+			MakeCallLogicSpec(FString(), FunctionName, TEXT("runtime call_function")));
+		return Op;
+	}
+
+	static TSharedRef<FJsonObject> MakeEnsureEntryCallFunctionNameOp(
+		const FString& EventName,
+		const FString& FunctionName)
+	{
+		TSharedRef<FJsonObject> Op = MakeShared<FJsonObject>();
+		Op->SetStringField(TEXT("op"), TEXT("ensure_entry"));
+		Op->SetStringField(TEXT("entry_type"), TEXT("custom_event"));
+		Op->SetStringField(TEXT("name"), EventName);
+		Op->SetObjectField(
+			TEXT("body"),
+			MakeCallNameLogicSpec(FString(), FunctionName));
 		return Op;
 	}
 
@@ -1420,6 +1450,70 @@ public:
 		ErrorObject->TryGetStringField(TEXT("code"), OutCode);
 		ErrorObject->TryGetStringField(TEXT("message"), OutMessage);
 		return !OutCode.IsEmpty() || !OutMessage.IsEmpty();
+	}
+
+	static bool GetRuntimeDryRunFirstErrorObject(
+		const FBlueprintHelperToolResultBase& Result,
+		TSharedPtr<FJsonObject>& OutError)
+	{
+		OutError.Reset();
+		if (!Result.Data.IsValid())
+		{
+			return false;
+		}
+
+		const TSharedPtr<FJsonObject>* DryRun = nullptr;
+		if (!Result.Data->TryGetObjectField(TEXT("dry_run"), DryRun) ||
+			!DryRun ||
+			!DryRun->IsValid())
+		{
+			return false;
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* Errors = nullptr;
+		if (!(*DryRun)->TryGetArrayField(TEXT("errors"), Errors) ||
+			!Errors ||
+			Errors->Num() == 0)
+		{
+			return false;
+		}
+
+		OutError = (*Errors)[0].IsValid()
+			? (*Errors)[0]->AsObject()
+			: nullptr;
+		return OutError.IsValid();
+	}
+
+	static bool GetFirstResolvedCallFunctionFact(
+		const TSharedPtr<FJsonObject>& Data,
+		TSharedPtr<FJsonObject>& OutFact)
+	{
+		OutFact.Reset();
+		if (!Data.IsValid())
+		{
+			return false;
+		}
+
+		const TSharedPtr<FJsonObject>* RuntimeFacts = nullptr;
+		if (!Data->TryGetObjectField(TEXT("runtime_facts"), RuntimeFacts) ||
+			!RuntimeFacts ||
+			!RuntimeFacts->IsValid())
+		{
+			return false;
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* ResolvedCalls = nullptr;
+		if (!(*RuntimeFacts)->TryGetArrayField(TEXT("resolved_call_functions"), ResolvedCalls) ||
+			!ResolvedCalls ||
+			ResolvedCalls->Num() == 0)
+		{
+			return false;
+		}
+
+		OutFact = (*ResolvedCalls)[0].IsValid()
+			? (*ResolvedCalls)[0]->AsObject()
+			: nullptr;
+		return OutFact.IsValid();
 	}
 
 };
@@ -2608,11 +2702,237 @@ bool FBlueprintHelperGraphWriteTaskRuntimeCallFunctionQualifiedNameReadBackTest:
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperGraphWriteTaskRuntimeCallFunctionMemberPrefixPreviewAllowsAppendTest,
-	"BlueprintHelper.GraphWrite.TaskRuntime.CallFunction.MemberPrefixPreviewAllowsAppend",
+	FBlueprintHelperGraphWriteCallFunctionResolverPreviewBlocksAmbiguousFunctionTest,
+	"BlueprintHelper.GraphWrite.CallFunctionResolver.PreviewBlocksAmbiguousFunction",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FBlueprintHelperGraphWriteTaskRuntimeCallFunctionMemberPrefixPreviewAllowsAppendTest::RunTest(const FString& Parameters)
+bool FBlueprintHelperGraphWriteCallFunctionResolverPreviewBlocksAmbiguousFunctionTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("RuntimeCallFunctionPreviewAmbiguous"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	const FString EventName = TEXT("RuntimeAmbiguousCall");
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness Harness;
+	const FBlueprintHelperToolResultBase Preview = Harness.RuntimeService.PreviewTaskPlan(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTaskPlanPayload(
+			Blueprint->GetPathName(),
+			Graph->GetName(),
+			FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeEnsureEntryCallFunctionNameOp(EventName, TEXT("Set"))));
+
+	TestTrue(TEXT("preview returns dry-run envelope"), Preview.bOk);
+	TestEqual(TEXT("preview status is dry-run"), Preview.Status, EBlueprintHelperToolStatus::DryRun);
+
+	const TSharedPtr<FJsonObject>* DryRun = nullptr;
+	TestTrue(TEXT("preview has dry_run diagnostics"),
+		Preview.Data.IsValid() && Preview.Data->TryGetObjectField(TEXT("dry_run"), DryRun));
+	if (DryRun && DryRun->IsValid())
+	{
+		FString Result;
+		bool bCanExecute = true;
+		TestTrue(TEXT("dry_run.result exists"), (*DryRun)->TryGetStringField(TEXT("result"), Result));
+		TestTrue(TEXT("dry_run.can_execute exists"), (*DryRun)->TryGetBoolField(TEXT("can_execute"), bCanExecute));
+		TestEqual(TEXT("dry_run blocks ambiguous function"), Result, FString(TEXT("blocked")));
+		TestFalse(TEXT("blocked preview cannot execute"), bCanExecute);
+	}
+
+	TSharedPtr<FJsonObject> ErrorObject;
+	TestTrue(TEXT("dry_run exposes first error"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::GetRuntimeDryRunFirstErrorObject(Preview, ErrorObject));
+	if (ErrorObject.IsValid())
+	{
+		FString Code;
+		FString Stage;
+		FString Path;
+		ErrorObject->TryGetStringField(TEXT("code"), Code);
+		ErrorObject->TryGetStringField(TEXT("stage"), Stage);
+		ErrorObject->TryGetStringField(TEXT("path"), Path);
+		TestEqual(TEXT("error code"), Code, FString(TEXT("ambiguous_function_call")));
+		TestEqual(TEXT("error stage"), Stage, FString(TEXT("dry_run")));
+		TestEqual(TEXT("error path"), Path, FString(TEXT("write.ops[0].body.statements[0].name")));
+	}
+
+	TestEqual(TEXT("blocked preview does not create the event"), FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::CountCustomEventsByName(Graph, EventName), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteCallFunctionResolverPreviewReportsCandidateSummariesTest,
+	"BlueprintHelper.GraphWrite.CallFunctionResolver.PreviewReportsCandidateSummaries",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteCallFunctionResolverPreviewReportsCandidateSummariesTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("RuntimeCallFunctionCandidateSummary"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness Harness;
+	const FBlueprintHelperToolResultBase Preview = Harness.RuntimeService.PreviewTaskPlan(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTaskPlanPayload(
+			Blueprint->GetPathName(),
+			Graph->GetName(),
+			FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeEnsureEntryCallFunctionNameOp(
+				TEXT("RuntimeCandidateSummaryCall"),
+				TEXT("Set"))));
+
+	TSharedPtr<FJsonObject> ErrorObject;
+	TestTrue(TEXT("dry_run exposes first error"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::GetRuntimeDryRunFirstErrorObject(Preview, ErrorObject));
+
+	const TArray<TSharedPtr<FJsonValue>>* CandidateGroups = nullptr;
+	TestTrue(TEXT("error includes candidate_functions"),
+		ErrorObject.IsValid() && ErrorObject->TryGetArrayField(TEXT("candidate_functions"), CandidateGroups));
+	TestTrue(TEXT("candidate_functions has a group"), CandidateGroups && CandidateGroups->Num() > 0);
+	if (!CandidateGroups || CandidateGroups->Num() == 0)
+	{
+		return false;
+	}
+
+	const TSharedPtr<FJsonObject> Group = (*CandidateGroups)[0].IsValid()
+		? (*CandidateGroups)[0]->AsObject()
+		: nullptr;
+	TestNotNull(TEXT("candidate group is object"), Group.Get());
+	if (!Group.IsValid())
+	{
+		return false;
+	}
+
+	FString Query;
+	TestTrue(TEXT("candidate group records query"), Group->TryGetStringField(TEXT("query"), Query));
+	TestEqual(TEXT("candidate group query"), Query, FString(TEXT("Set")));
+
+	const TArray<TSharedPtr<FJsonValue>>* Candidates = nullptr;
+	TestTrue(TEXT("candidate group includes candidates"), Group->TryGetArrayField(TEXT("candidates"), Candidates));
+	TestTrue(TEXT("candidate summary exists"), Candidates && Candidates->Num() > 0);
+	if (!Candidates || Candidates->Num() == 0)
+	{
+		return false;
+	}
+
+	const TSharedPtr<FJsonObject> Candidate = (*Candidates)[0].IsValid()
+		? (*Candidates)[0]->AsObject()
+		: nullptr;
+	TestNotNull(TEXT("candidate summary is object"), Candidate.Get());
+	if (!Candidate.IsValid())
+	{
+		return false;
+	}
+
+	FString StableId;
+	FString DisplayName;
+	FString OwnerClass;
+	TestTrue(TEXT("candidate stable_id is present"), Candidate->TryGetStringField(TEXT("stable_id"), StableId));
+	TestTrue(TEXT("candidate display_name is present"), Candidate->TryGetStringField(TEXT("display_name"), DisplayName));
+	TestTrue(TEXT("candidate owner_class is present"), Candidate->TryGetStringField(TEXT("owner_class"), OwnerClass));
+	TestFalse(TEXT("stable_id is not empty"), StableId.IsEmpty());
+	TestFalse(TEXT("display_name is not empty"), DisplayName.IsEmpty());
+	TestFalse(TEXT("owner_class is not empty"), OwnerClass.IsEmpty());
+	TestFalse(TEXT("node_class is not exposed"), Candidate->HasField(TEXT("node_class")));
+	TestFalse(TEXT("match_reason is not exposed"), Candidate->HasField(TEXT("match_reason")));
+	TestFalse(TEXT("input_pins are not exposed"), Candidate->HasField(TEXT("input_pins")));
+
+	const FString PreviewJson = Preview.ToJsonString();
+	TestFalse(TEXT("no node spawner leak"), PreviewJson.Contains(TEXT("UBlueprintFunctionNodeSpawner")));
+	TestFalse(TEXT("no schema action leak"), PreviewJson.Contains(TEXT("FEdGraphSchemaAction")));
+	TestFalse(TEXT("no binding object leak"), PreviewJson.Contains(TEXT("Binding")));
+	TestFalse(TEXT("no selected object payload leak"), PreviewJson.Contains(TEXT("SelectedObjects")));
+	TestFalse(TEXT("no debug bundle path leak"), PreviewJson.Contains(TEXT("DebugBundle")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteCallFunctionResolverExecuteRevalidatesStableIdTest,
+	"BlueprintHelper.GraphWrite.CallFunctionResolver.ExecuteRevalidatesStableId",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteCallFunctionResolverExecuteRevalidatesStableIdTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("RuntimeCallFunctionStableId"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	const FString EventName = TEXT("RuntimeStableIdCall");
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness Harness;
+	const TSharedRef<FJsonObject> TaskPlanPayload = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTaskPlanPayload(
+		Blueprint->GetPathName(),
+		Graph->GetName(),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeEnsureEntryCallFunctionOp(EventName, TEXT("Print String")));
+
+	const FBlueprintHelperToolResultBase Preview = Harness.RuntimeService.PreviewTaskPlan(TaskPlanPayload);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AssertRuntimePreviewReachedGraphWriteService(
+		*this,
+		Preview,
+		TEXT("append_blueprint_graph"),
+		true);
+
+	TSharedPtr<FJsonObject> PreviewFact;
+	TestTrue(TEXT("preview records resolved call_function runtime fact"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::GetFirstResolvedCallFunctionFact(Preview.Data, PreviewFact));
+	FString PreviewStableId;
+	FString PreviewNativeName;
+	FString PreviewDisplayName;
+	if (PreviewFact.IsValid())
+	{
+		PreviewFact->TryGetStringField(TEXT("stable_id"), PreviewStableId);
+		PreviewFact->TryGetStringField(TEXT("native_name"), PreviewNativeName);
+		PreviewFact->TryGetStringField(TEXT("display_name"), PreviewDisplayName);
+		TestEqual(TEXT("preview stable_id"), PreviewStableId, FString(TEXT("/Script/Engine.KismetSystemLibrary:PrintString")));
+		TestEqual(TEXT("preview native_name"), PreviewNativeName, FString(TEXT("PrintString")));
+		TestFalse(TEXT("preview display_name is present"), PreviewDisplayName.IsEmpty());
+	}
+
+	const FBlueprintHelperToolResultBase ExecuteResult = Harness.RuntimeService.ExecuteTaskPlan(TaskPlanPayload);
+	TestTrue(TEXT("execute succeeds after stable-id revalidation"), ExecuteResult.bOk);
+	TSharedPtr<FJsonObject> ExecuteFact;
+	TestTrue(TEXT("execute records resolved call_function runtime fact"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::GetFirstResolvedCallFunctionFact(ExecuteResult.Data, ExecuteFact));
+	FString ExecuteStableId;
+	if (ExecuteFact.IsValid())
+	{
+		ExecuteFact->TryGetStringField(TEXT("stable_id"), ExecuteStableId);
+		TestEqual(TEXT("execute stable_id matches preview"), ExecuteStableId, PreviewStableId);
+	}
+
+	FString TaskRunId;
+	TestTrue(TEXT("execute result carries task_run_id"),
+		ExecuteResult.Data.IsValid() && ExecuteResult.Data->TryGetStringField(TEXT("task_run_id"), TaskRunId));
+	TestFalse(TEXT("task_run_id is not empty"), TaskRunId.IsEmpty());
+	const FBlueprintHelperToolResultBase JournalResult = Harness.RuntimeService.GetTaskRunJournal(TaskRunId);
+	TestTrue(TEXT("journal read succeeds"), JournalResult.bOk);
+	TSharedPtr<FJsonObject> JournalFact;
+	TestTrue(TEXT("journal records resolved call_function runtime fact"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::GetFirstResolvedCallFunctionFact(JournalResult.Data, JournalFact));
+	if (JournalFact.IsValid())
+	{
+		FString JournalStableId;
+		JournalFact->TryGetStringField(TEXT("stable_id"), JournalStableId);
+		TestEqual(TEXT("journal stable_id matches execute"), JournalStableId, ExecuteStableId);
+	}
+
+	TestTrue(TEXT("execute creates event to resolved PrintString exec link"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ExportHasExecLinkFromCustomEventToFunction(Graph, EventName, TEXT("PrintString")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteTaskRuntimeCallFunctionMemberPrefixPreviewBlocksTest,
+	"BlueprintHelper.GraphWrite.TaskRuntime.CallFunction.MemberPrefixPreviewBlocks",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteTaskRuntimeCallFunctionMemberPrefixPreviewBlocksTest::RunTest(const FString& Parameters)
 {
 	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("RuntimeCallFunctionMemberPrefix"));
 	TestNotNull(TEXT("test blueprint is created"), Blueprint);
@@ -2631,11 +2951,28 @@ bool FBlueprintHelperGraphWriteTaskRuntimeCallFunctionMemberPrefixPreviewAllowsA
 				TEXT("RuntimeMemberPrefixCall"),
 				TEXT("DoorMesh.AddAngularImpulseInDegrees"))));
 
-	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AssertRuntimePreviewReachedGraphWriteService(
-		*this,
-		Preview,
-		TEXT("append_blueprint_graph"),
-		true);
+	TestTrue(TEXT("member-prefix preview returns dry-run envelope"), Preview.bOk);
+	TestEqual(TEXT("member-prefix preview status is dry-run"), Preview.Status, EBlueprintHelperToolStatus::DryRun);
+
+	TSharedPtr<FJsonObject> ErrorObject;
+	TestTrue(TEXT("member-prefix preview exposes first error"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::GetRuntimeDryRunFirstErrorObject(Preview, ErrorObject));
+	if (ErrorObject.IsValid())
+	{
+		FString Code;
+		FString Stage;
+		FString Path;
+		ErrorObject->TryGetStringField(TEXT("code"), Code);
+		ErrorObject->TryGetStringField(TEXT("stage"), Stage);
+		ErrorObject->TryGetStringField(TEXT("path"), Path);
+		TestEqual(TEXT("member-prefix code"), Code, FString(TEXT("explicit_member_call_not_supported")));
+		TestEqual(TEXT("member-prefix stage"), Stage, FString(TEXT("dry_run")));
+		TestEqual(TEXT("member-prefix path"), Path, FString(TEXT("write.ops[0].body.statements[0].target")));
+	}
+
+	TestEqual(TEXT("member-prefix preview does not create event"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::CountCustomEventsByName(Graph, TEXT("RuntimeMemberPrefixCall")),
+		0);
 	return true;
 }
 

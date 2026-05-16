@@ -16,6 +16,8 @@ const expectedToolNames = [
   'blueprinthelper_get_debug_case',
   'blueprinthelper_list_debug_cases',
   'blueprinthelper_export_debug_bundle',
+  'blueprinthelper_query_review_records',
+  'blueprinthelper_apply_review_action',
   'blueprinthelper_read_context',
   'blueprint_get_runtime_profile',
   'blueprinthelper_request_write_session',

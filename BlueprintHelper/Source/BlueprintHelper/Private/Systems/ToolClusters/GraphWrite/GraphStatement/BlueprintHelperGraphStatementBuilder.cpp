@@ -466,13 +466,6 @@ bool FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment(
 
 	if (!ResolveResult.IsResolved())
 	{
-		FString ObjectName;
-		FString FunctionName;
-		if (TryParseExplicitObjectCall(ResolveResult, BoundNodeData.FunctionName, ObjectName, FunctionName))
-		{
-			return SpawnExplicitObjectCallFragment(TargetGraph, BoundNodeData, ObjectName, FunctionName, OutFragment, OutError, OutCandidateFunctions);
-		}
-
 		AppendCandidateFunctionGroup(BoundNodeData.FunctionName, ResolveResult, OutCandidateFunctions);
 		OutError = ResolveResult.Message.IsEmpty()
 			? FString::Printf(TEXT("call_function resolve failed: %s"), *BoundNodeData.FunctionName)

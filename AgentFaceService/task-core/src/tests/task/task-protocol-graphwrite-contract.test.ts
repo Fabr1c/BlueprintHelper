@@ -82,6 +82,7 @@ describe('GraphWrite TaskPlan canonical fixtures', () => {
         'dry_run_mode',
         'should_compile',
         'should_save',
+        'review_baseline_dirty_asset_policy',
       ]);
     }
   });

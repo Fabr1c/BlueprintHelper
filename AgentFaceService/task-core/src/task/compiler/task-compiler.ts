@@ -479,8 +479,26 @@ function makeGraphWriteTaskPlanSteps(
   const behavior = taskSpec.behavior as Record<string, unknown>;
   const strategy = String(behavior['graph_strategy']);
   if (strategy === 'append_new_owned_graph') {
-    return graphWriteOps.map((op, index) => ({
+    const signatureSteps = graphWriteOps.map((op, index) => ({
       step_id: `step_${String(index + 1).padStart(3, '0')}`,
+      capability: 'blueprint_signature',
+      target: {
+        asset_path: taskSpec.target.asset_path,
+      },
+      write: {
+        strategy: 'custom_event_signature',
+        ops: [
+          {
+            op: 'ensure_custom_event',
+            event_name: String(op['name']),
+            graph_name: taskSpec.scope_policy.graph_name,
+            name_collision_policy: 'reuse_if_exists',
+          },
+        ],
+      },
+    } as TaskPlanStep));
+    const graphWriteStep = {
+      step_id: `step_${String(signatureSteps.length + 1).padStart(3, '0')}`,
       capability: 'graph_write',
       target: {
         asset_path: taskSpec.target.asset_path,
@@ -488,13 +506,15 @@ function makeGraphWriteTaskPlanSteps(
       },
       write: {
         strategy: 'owned_graph_edit',
-        ops: [stripGraphWriteCompilerMetadata(op)],
+        ops: graphWriteOps.map(stripGraphWriteCompilerMetadata),
       },
       constraints: {
         allow_modify_user_nodes: taskSpec.scope_policy.allow_modify_user_nodes,
         ownership_scope: 'blueprinthelper_owned',
       },
-    } as TaskPlanStep));
+      depends_on: signatureSteps.map((step) => step.step_id),
+    } as TaskPlanStep;
+    return [...signatureSteps, graphWriteStep];
   }
 
   if (strategy === 'replace_owned_graph' && graphWriteOps.length === 1) {

@@ -15,7 +15,7 @@
 - Task 1 source is integrated: resolver DTOs, qualified query parsing, conservative callable-function candidate universe, deterministic ranking, and dedicated resolver automation tests now exist in source.
 - Task 2 source is integrated: raw `call_function.name` is preserved for UE-side resolution, `TextToBlueprintGenerator` exposes `ResolveFunctionForGraph`, `CallFunctionNodeHandler` routes spawning through the resolver, legacy `FindFunctionByName()` is retained as fallback only, and graph-generation resolver tests were added.
 - Task 3 source is integrated for the currently supported Merge contract: Merge now resolves inserted function/custom-event calls through the resolver, keeps merge-level `inserted_logic_not_found: call_function resolve failed: ...` error shaping, and has targeted read-back/source coverage for display name, owner-qualified name, and explicit member-prefix blocking.
-- Task 4 remains architecturally open: current source intentionally leaves `call_function.name` raw during TaskRuntime lowering and resolves in the graph-aware Append/Merge layers. Adapter-level TaskRuntime preview/execute/read-back coverage now passes for display name, owner-qualified name, and explicit member-prefix blocking; compact structured candidate summaries, preview stable-id facts, and execute stable-id revalidation are still not implemented.
+- Task 4 is integrated on 2026-05-17: TaskRuntime now pre-resolves GraphWrite `call_function` statements for preview/execute, blocks ambiguous/not found/member-prefix calls before write execution, emits compact candidate summaries, and records resolved call identity in runtime result data plus TaskRunJournal metadata.
 - Task 5 is integrated against the active workspace layout: `AgentFaceService/task-core` preserves raw owner-qualified names and its Node tests/build were rerun successfully.
 - Task 6 is verified for the current automated scope on 2026-05-13: `AgentFaceService/task-core` build and `test:node` passed; UE `Build.bat` passed; `BlueprintHelper.GraphWrite.CallFunctionResolver` passed 8/8; `BlueprintHelper.GraphWrite.TaskRuntime.CallFunction` passed 3/3 with no automation errors; `BlueprintHelper.TaskRuntime` passed 11/11.
 
@@ -500,7 +500,7 @@ TestTrue(TEXT("message has resolver code"), ErrorMessage.Contains(TEXT("explicit
 - Test: `BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintHelperGraphWriteToolResultBaseTests.cpp`
 - Test: `BlueprintHelper/Source/BlueprintHelper/Private/Tests/RuntimeDiagnostics/BlueprintHelperDebugCaseTests.cpp`
 
-- [ ] **Step 1: Resolve during dry-run**
+- [x] **Step 1: Resolve during dry-run**
 
 When TaskRuntime lowers a `call_function` statement in dry-run, resolve the function before constructing node JSON. A blocked resolver result must produce preview blocked and no write.
 
@@ -512,7 +512,7 @@ stage = DryRun
 path = write.ops[<opIndex>].body.statements[<statementIndex>].name
 ```
 
-- [ ] **Step 2: Include compact candidate summaries**
+- [x] **Step 2: Include compact candidate summaries**
 
 For ambiguous/not found responses, include compact diagnostics:
 
@@ -531,7 +531,7 @@ For ambiguous/not found responses, include compact diagnostics:
 
 Do not include `FEdGraphSchemaAction`, `UBlueprintNodeSpawner`, menu section names, binding objects, selected object payloads, local DebugBundle paths, or raw source content.
 
-- [ ] **Step 3: Store resolved identity in internal runtime facts**
+- [x] **Step 3: Store resolved identity in internal runtime facts**
 
 On successful preview and execute, record:
 
@@ -551,7 +551,7 @@ On successful preview and execute, record:
 
 This is runtime/debug metadata. It is not a new Agent-authored TaskSpec field.
 
-- [ ] **Step 4: Add dry-run diagnostics tests**
+- [x] **Step 4: Add dry-run diagnostics tests**
 
 Add tests:
 
@@ -568,6 +568,19 @@ TestEqual(TEXT("error code"), Result.Error.Code, FString(TEXT("ambiguous_functio
 TestTrue(TEXT("candidate summary"), Result.DebugSummary.Contains(TEXT("stable_id")));
 TestFalse(TEXT("no node spawner leak"), Result.DebugSummary.Contains(TEXT("UBlueprintFunctionNodeSpawner")));
 ```
+
+### 2026-05-17 implementation backwrite
+
+- Implemented in `BlueprintHelperTaskRuntimeService.cpp`, resolver candidate serialization, Append dry-run issue JSON, and GraphStatement explicit-member fallback behavior. `TextToBlueprintGenerator.cpp` did not require a Task 4 change because the covered path is TaskRuntime preview/execute pre-resolution plus GraphWrite compact diagnostics.
+- Preview blocked diagnostics now use `dry_run.result = blocked`, `can_execute = false`, error `stage = dry_run`, and paths such as `write.ops[0].body.statements[0].name` / `.target`.
+- Compact candidate groups now use `query` and candidate objects limited to stable/display/owner/native identity fields; no node spawner/action/binding/debug bundle details are emitted.
+- Successful preview and execute attach `runtime_facts.resolved_call_functions[]`; execute journals carry the same resolved identity facts. `display_name` is locale-dependent, so tests assert stable/native identity and non-empty display text.
+- Added and passed: `BlueprintHelper.GraphWrite.CallFunctionResolver.PreviewBlocksAmbiguousFunction`, `BlueprintHelper.GraphWrite.CallFunctionResolver.PreviewReportsCandidateSummaries`, and `BlueprintHelper.GraphWrite.CallFunctionResolver.ExecuteRevalidatesStableId`.
+- Verification:
+  - `Build.bat TemplateEditor Win64 Development ... UBT-Task4-20260517-rerun.log`: passed.
+  - `Automation RunTests BlueprintHelper.GraphWrite.CallFunctionResolver`: 11 total, 0 failed, 1 EOS offline warning, report `Saved/Automation/Task4_CallFunction_20260517_002/index.json`.
+  - `Automation RunTests BlueprintHelper.GraphWrite.TaskRuntime.CallFunction`: 3 total, 0 failed, 1 EOS offline warning, report `Saved/Automation/Task4_TaskRuntime_CallFunction_20260517_001/index.json`.
+  - `Automation RunTests BlueprintHelper.RuntimeDiagnostics.Debug`: 9 total, 0 failed, report `Saved/Automation/Task4_RuntimeDiagnostics_Debug_20260517_001/index.json`.
 
 ---
 
