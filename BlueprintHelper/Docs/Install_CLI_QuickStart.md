@@ -73,13 +73,13 @@ Project `.uproject` paths should not be stored globally. Agents discover the tar
 
 ## 4. Start Unreal Editor
 
-Either start Unreal Editor normally with the project, or use the CLI lifecycle command after the project agent profile has `environment.ue_engine_dir`:
+Either start Unreal Editor normally with the project, or use the global lifecycle-only MCP command after the project agent profile has `environment.ue_engine_dir`. CLI lifecycle aliases are compatibility/manual fallbacks:
 
 ```powershell
 bh open_editor --select status,summary,artifacts.full_result
 ```
 
-Older MCP lifecycle wiring is deprecated and should not be the documented setup path for new Agent workflows.
+Do not use plugin-local MCP or one-shot shell MCP clients as proof of Agent lifecycle behavior. The normal Agent-owned lifecycle path is the global MCP lifecycle server.
 
 Bridge smoke check:
 
@@ -91,7 +91,7 @@ If the port is not open, wait for the editor to finish loading, confirm the plug
 
 ## 5. Run The CLI
 
-The CLI is the supported Agent entry for ordinary TaskSpec writes, reads, diagnostics, result queries, and editor lifecycle.
+The CLI is the supported Agent entry for ordinary TaskSpec writes, reads, diagnostics, debug summaries, write-session requests, and result queries. Editor lifecycle belongs to the global lifecycle-only MCP companion; CLI lifecycle aliases exist for compatibility/manual fallback.
 
 Examples:
 

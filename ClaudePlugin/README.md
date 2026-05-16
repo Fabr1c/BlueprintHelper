@@ -1,8 +1,8 @@
 # BlueprintHelper
 
-BlueprintHelper is an Unreal Engine editor plugin with a CLI-first TaskSpec transport. It lets an agent inspect and modify Unreal Editor assets through a local Bridge: Blueprint graphs, UMG widgets, DataAssets, DataTables, asset browser operations, compile/save/open commands, PIE commands, and related diagnostics.
+BlueprintHelper is an Unreal Engine editor plugin with a CLI-first TaskSpec transport and a lifecycle-only global MCP companion. It lets an agent inspect and modify Unreal Editor assets through a local Bridge: Blueprint graphs, UMG widgets, DataAssets, DataTables, asset browser operations, compile/save/open commands, PIE commands, and related diagnostics.
 
-BlueprintHelper is not a general source editing API. Use normal repository tools for C++, TypeScript, Python, JSON, config files, code search, build scripts, and documentation edits. The current Agent-facing surface is CLI-first; older MCP lifecycle wiring is deprecated.
+BlueprintHelper is not a general source editing API. Use normal repository tools for C++, TypeScript, Python, JSON, config files, code search, build scripts, and documentation edits. The current Agent-facing surface is CLI-first for ordinary asset work; global MCP is retained only for editor lifecycle.
 
 ## TaskSpec-First Architecture
 
@@ -36,11 +36,11 @@ Current source metadata:
 | Unreal plugin `BlueprintHelper.uplugin` | `VersionName` 0.4.1 |
 | CLI `AgentFaceService/cli/package.json` | 0.4.1 |
 | Shared task core `AgentFaceService/task-core/package.json` | 0.4.1 |
-| Deprecated MCP package `AgentFaceService/mcp/package.json` | 0.4.1 |
-| Documentation batch | 2026-05-16 CLI lifecycle and wait-hint update |
+| Global lifecycle-only MCP package `AgentFaceService/mcp/package.json` | 0.4.1 |
+| Documentation batch | 2026-05-16 implementation sync: CLI ordinary tools + global MCP lifecycle |
 | Intended UE version | UE 5.3 or newer |
 
-The documentation mainline targets the CLI-first TaskSpec / TaskPlan orchestration architecture, including editor lifecycle commands. Treat plugin version, CLI version, deprecated MCP package version, and documentation date as separate version sources until the compatibility matrix is completed.
+The documentation mainline targets the CLI-first TaskSpec / TaskPlan orchestration architecture, with global MCP retained for editor lifecycle. Treat plugin version, CLI version, MCP package version, and documentation date as separate version sources until the compatibility matrix is completed.
 
 ## Core Capabilities
 
@@ -52,7 +52,7 @@ The documentation mainline targets the CLI-first TaskSpec / TaskPlan orchestrati
 | Data assets | Read/set editable UObject properties |
 | DataTables | Read, add, update, delete rows |
 | Editor commands | Compile/save/open assets, create Blueprint, PIE start/stop, undo/redo, console commands |
-| Local process commands | Build the Unreal project; Editor open/close is handled through CLI lifecycle commands when Agent-controlled |
+| Local process commands | Build the Unreal project; Editor open/close is handled through global MCP lifecycle tools when Agent-controlled |
 
 ## Boundaries
 
@@ -125,7 +125,7 @@ Claude Code discovers plugin commands from the plugin root `commands/` directory
 
 For ordinary Agent editor-asset mutations, use the TaskSpec-first loop:
 
-1. Confirm Unreal Editor is running, or use `bh open_editor` after `<ProjectDir>/.blueprinthelper/agent-profile.json` has `environment.ue_engine_dir`.
+1. Confirm Unreal Editor is running, or use the global MCP lifecycle tool after `<ProjectDir>/.blueprinthelper/agent-profile.json` has `environment.ue_engine_dir`.
 2. Confirm the Bridge is reachable.
 3. Read runtime profile and TaskContextPack.
 4. Produce an explicit `BlueprintHelper.TaskSpec.v1` with `validation.should_compile` and `validation.should_save`.
@@ -151,9 +151,9 @@ BlueprintHelper Bridge uses object-first responses. Large raw graph payloads sho
 - Prefer object `json` over stringified JSON.
 - LogicJson and LogicMD reads should report importability explicitly through fields such as `importable` and `schema`.
 
-### Deprecated MCP Compatibility Behavior
+### MCP Lifecycle / Compatibility Behavior
 
-- `blueprint_open_editor` and `blueprint_close_editor` are CLI lifecycle commands for Agent-owned editor lifecycle. Older MCP lifecycle wiring is deprecated.
+- `blueprint_open_editor` and `blueprint_close_editor` are global MCP lifecycle companion commands for Agent-owned editor lifecycle. CLI lifecycle aliases are compatibility/manual fallback only.
 - `blueprint_export_to_json` may still return `raw_json_ref` as a resource link in compatibility paths.
 - RawJson resource handling remains for historical fixtures and recovery workflows.
 - `legacy_text_json` exists only for compatibility with older text-only callers.

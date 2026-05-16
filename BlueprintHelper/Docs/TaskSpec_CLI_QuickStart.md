@@ -8,7 +8,7 @@ Task write mainline: Agent -> BlueprintHelper CLI -> task-core -> Python Task Co
 
 Use the CLI when an Agent can run shell commands and should avoid large escaped JSON output. The CLI is the current Agent-facing surface for ordinary TaskSpec writes in shell-capable environments. It keeps Agent stdout compact, supports selected-field output, and still preserves TaskSpec-first writes, Python compilation, Bridge preview, and UE Task Runtime execution.
 
-Editor launch/close, TaskSpec, ReadSpec, diagnostics, and result queries all use the CLI in the current Agent workflow. Older MCP lifecycle wiring is deprecated and should not be the documented mainline for new Agent setup.
+TaskSpec, ReadSpec, diagnostics, debug summaries, write-session requests, and result queries use the CLI in the current Agent workflow. Editor launch/close is owned by the global lifecycle-only MCP companion when an Agent controls lifecycle; CLI lifecycle aliases remain available for compatibility and manual fallback.
 
 ## Prerequisites
 
@@ -43,10 +43,9 @@ Examples:
 bh blueprint_get_runtime_profile --json "{}" --select status,summary
 bh blueprinthelper_preview_task --file .\preview_wrapper.json --select status,preview_id,summary,artifacts.full_result
 bh blueprinthelper_execute_task --file .\execute_wrapper.json --select status,task_run_id,summary
-bh blueprint_get_runtime_profile --json "{}" --select status,summary
 ```
 
-The direct CLI registry is the current non-frozen Agent-facing TaskSpec/read/debug summary surface. Frozen legacy/expert tools are not re-exposed through CLI, even if `--expert` is passed. Use `bh open_editor` / `bh close_editor`, or the direct `blueprint_open_editor` / `blueprint_close_editor` names, when an Agent owns editor lifecycle.
+The direct CLI registry is the current non-frozen Agent-facing TaskSpec/read/debug summary surface. Frozen legacy/expert tools are not re-exposed through CLI, even if `--expert` is passed. Use the global lifecycle-only MCP tools when an Agent owns editor lifecycle; use `bh open_editor` / `bh close_editor`, or the direct `blueprint_open_editor` / `blueprint_close_editor` names, only as compatibility/manual fallback.
 
 ## Preview
 
@@ -123,5 +122,6 @@ Example projected output:
 - Preview before execute.
 - The CLI is the Agent-facing transport layer; it does not replace the Python Task Compiler or UE Task Runtime.
 - The CLI is not a raw Bridge write surface for ordinary asset writes.
+- Use global lifecycle-only MCP for Agent-owned Editor open/close; CLI lifecycle aliases are compatibility/manual fallback.
 - For schema and boundary details, use [TaskSpec_TaskPlan_Contract_20260504.md](../Resources/Docs/TaskSpec_TaskPlan_Contract_20260504.md).
 

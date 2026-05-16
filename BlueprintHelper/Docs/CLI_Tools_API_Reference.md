@@ -1,8 +1,8 @@
 # BlueprintHelper CLI Tools API Reference
 
-Document version: 2026-05-15
+Document version: 2026-05-16
 
-This reference is aligned with the current documentation mainline, where CLI is the supported Agent entry for ordinary TaskSpec writes.
+This reference is aligned with the current implementation: the CLI is the supported Agent entry for ordinary TaskSpec, ReadSpec, diagnostics, debug-summary, write-session, and result-query work. Editor lifecycle is implemented as a global lifecycle-only MCP companion; the CLI still exposes lifecycle aliases for compatibility and manual fallback.
 
 ## Architecture
 
@@ -15,8 +15,8 @@ Ordinary Agents author `BlueprintHelper.TaskSpec.v1` only. They do not submit `T
 ## Entry Rule
 
 - Every supported CLI-facing TaskSpec/read/debug summary capability must be reachable through `bh <tool_name>`.
-- Editor lifecycle is owned by CLI commands in the current Agent workflow.
-- Older MCP lifecycle wiring is deprecated; do not document it as the mainline for new Agent setup.
+- Agent-owned Editor lifecycle should use the global lifecycle-only MCP tools.
+- CLI lifecycle aliases `bh open_editor` / `bh close_editor` and direct `blueprint_open_editor` / `blueprint_close_editor` are compatibility/manual fallback entries, not ordinary asset workflow tools.
 - CLI write commands must still pass through TaskSpec validation, preview, and UE Task Runtime.
 - Raw Bridge write commands are not part of the public Agent surface.
 
@@ -48,14 +48,14 @@ blueprinthelper_export_debug_bundle
 blueprinthelper_query_review_records
 ```
 
-Lifecycle companion commands:
+Lifecycle compatibility commands:
 
 ```text
 blueprint_open_editor
 blueprint_close_editor
 ```
 
-Use these through CLI in Agent workflows. Short aliases `bh open_editor` and `bh close_editor` map to the same lifecycle tools.
+Use the global lifecycle-only MCP server for normal Agent-owned lifecycle. If the CLI compatibility path is explicitly needed, short aliases `bh open_editor` and `bh close_editor` map to these same lifecycle tool names.
 
 Internal/plugin-development command not exposed to ordinary Agents:
 
@@ -64,6 +64,19 @@ blueprinthelper_apply_review_action
 ```
 
 Frozen legacy/expert commands are not part of the supported CLI surface. Passing `--expert` does not re-enable removed commands.
+
+Grouped CLI commands implemented by `AgentFaceService/cli`:
+
+```text
+bh task preview --file <bare-task-spec.json>
+bh task execute --file <bare-task-spec.json>
+bh task result --id <task_run_id>
+bh context read --file <read-task-context.json>
+bh bridge ping
+bh bridge call --command <read_only_bridge_command>
+```
+
+`context read` uses the same root shape as `blueprinthelper_read_task_context`. `bridge call` is read-only and sends an empty payload; prefer direct tool names for parameterized reads.
 
 ## Common Return Shape
 
@@ -184,6 +197,22 @@ Canonical contract details remain in [TaskSpec_TaskPlan_Contract_20260504.md](..
 - Approval belongs to the running Editor/Bridge for the approved scope and lifetime.
 - `scope` is `project` or `asset_list`; include `asset_paths` for `asset_list`.
 - Agents must not request, inject, or forward `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session` for ordinary interactive writes.
+
+## Internal Review Action Shape
+
+`blueprinthelper_apply_review_action` is registered by the shared tool registry for plugin development and internal validation. It is not included in ordinary AgentGuide templates and ordinary Agents must not use it as a write recovery path.
+
+Current root shape:
+
+```json
+{
+  "review_record_id": "review_record_id",
+  "action": "accept",
+  "target_keys": [
+    "optional_target_key"
+  ]
+}
+```
 
 ## Legacy / Internal Inventory
 

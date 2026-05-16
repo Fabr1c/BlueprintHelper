@@ -8,7 +8,7 @@ Resources/AgentGuide/00_Agent_Onboarding_Index_20260504.md
 
 ## Non-negotiable boundary
 
-BlueprintHelper is not a general file-system, code-search, or C++ source-editing API. The active Agent-facing transport for ordinary TaskSpec writes, reads, diagnostics, result queries, and editor lifecycle is the BlueprintHelper CLI, which talks to a running Unreal Editor through the local Bridge. Older MCP lifecycle wiring is deprecated.
+BlueprintHelper is not a general file-system, code-search, or C++ source-editing API. The active Agent-facing transport for ordinary TaskSpec writes, reads, diagnostics, debug summaries, write-session requests, and result queries is the BlueprintHelper CLI, which talks to a running Unreal Editor through the local Bridge. Global MCP is retained for editor lifecycle only.
 
 Use normal repository tools for:
 
@@ -27,11 +27,11 @@ Use BlueprintHelper CLI / task-core tools for:
 - Reading or editing DataTable rows.
 - Compiling, opening, saving, validating, importing, or exporting Blueprint-related editor assets.
 
-Do not use MCP for normal asset workflows. New Agent workflows should use CLI commands for lifecycle and asset operations.
+Do not use MCP for normal asset workflows. New Agent workflows should use CLI commands for ordinary asset operations and global MCP lifecycle tools for Agent-owned editor open/close.
 
 ## Required preflight before any write operation
 
-1. Confirm the user has a target UE project and the Unreal Editor is running, or use `bh open_editor` after confirming the project `.blueprinthelper/agent-profile.json` has `environment.ue_engine_dir` configured.
+1. Confirm the user has a target UE project and the Unreal Editor is running, or use the global MCP lifecycle tool after confirming the project `.blueprinthelper/agent-profile.json` has `environment.ue_engine_dir` configured.
 2. Confirm the Bridge is reachable before calling editor-asset tools.
 3. Identify the exact target asset path, for example `/Game/Blueprints/BP_Player`.
 4. Identify the exact target graph when editing graph nodes, for example `EventGraph`.
