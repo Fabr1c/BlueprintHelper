@@ -15,8 +15,8 @@ Ordinary Agents author `BlueprintHelper.TaskSpec.v1` only. They do not submit `T
 ## Entry Rule
 
 - Every supported CLI-facing TaskSpec/read/debug summary capability must be reachable through `bh <tool_name>`.
-- Editor lifecycle is owned by the global BlueprintHelper MCP tools when an Agent needs to start or close Unreal Editor.
-- CLI lifecycle helpers remain compatibility/manual fallbacks, not the ordinary asset workflow.
+- Editor lifecycle is owned by CLI commands in the current Agent workflow.
+- Older MCP lifecycle wiring is deprecated; do not document it as the mainline for new Agent setup.
 - CLI write commands must still pass through TaskSpec validation, preview, and UE Task Runtime.
 - Raw Bridge write commands are not part of the public Agent surface.
 
@@ -55,7 +55,7 @@ blueprint_open_editor
 blueprint_close_editor
 ```
 
-Use these through the global MCP lifecycle server in Agent workflows. The CLI may expose compatibility aliases, but ordinary asset reads/writes still use the CLI TaskSpec/ReadSpec surface.
+Use these through CLI in Agent workflows. Short aliases `bh open_editor` and `bh close_editor` map to the same lifecycle tools.
 
 Internal/plugin-development command not exposed to ordinary Agents:
 
@@ -87,6 +87,8 @@ Typical summary projection:
 ```
 
 Use `--select` or `--fields` for the smallest possible stdout payload. Large asset context, raw payloads, and debug artifacts belong in follow-up reads or artifact files, not inline summaries.
+
+Long UE Bridge waits emit keep-alive progress hints to `stderr`; `stdout` remains reserved for the final JSON result. Agents should continue waiting when they see a line like `waiting for UE Bridge response` and should not parse it as command output. CLI-created Bridge clients default to a 10-minute request timeout for Agent workflows; use `BPH_CLI_BRIDGE_REQUEST_TIMEOUT_MS` to tune it. Use `BPH_CLI_WAIT_HINT_INITIAL_MS`, `BPH_CLI_WAIT_HINT_INTERVAL_MS`, or `BPH_CLI_WAIT_HINTS=0` to tune or disable the `stderr` hints.
 
 Copy-and-edit JSON templates live under `BlueprintHelper/Resources/AgentGuide/Templates/`. Prefer those files over inline PowerShell `--json` for complex parameters.
 

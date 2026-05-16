@@ -136,3 +136,37 @@ Visual click/selection event
 2. 再做 ReviewTargetHandler，把 snapshot/restore/hash/display/route 能力归到同一注册表。
 3. 合并 TaskRuntime evidence 的 ServiceLocalUtils 与 ClusterExecutionUtils 重复实现，让 TaskRuntimeService 只做编排。
 4. 最后处理 GraphWrite classifier registry 和 UI geometry descriptor，降低一次性变更风险。
+
+## 2026-05-16 架构收敛执行记录
+
+本轮按“保持通用性、高内聚低耦合”的目标继续收敛 Review/TaskRuntime/GraphWrite 相关实现，并避开并行 Agent 正在修改的 CallFunction 代码路径。
+
+### 已完成
+
+1. 新增 `FBlueprintHelperReviewTargetKindRegistry`，集中管理 TargetKind -> Surface、Details 可路由性、handler kind、asset factory surface、snapshot restore 支持、graph node/block legacy 匹配等规则。
+2. `BlueprintHelperReviewTypes.h` 中的 surface 路由和 `ShouldShowIn*` 逻辑改为委托 registry；`BlueprintHelperReviewSurfaceRouter` 删除本地 fallback predicate，统一调用 `BlueprintHelperReviewShouldShowOnSurface(...)`。
+3. `BlueprintHelperReviewActionService`、`BlueprintHelperReviewBaselineSnapshotService`、`BlueprintHelperReviewHashService` 改为通过 registry 判断 graph node/block、asset_factory、class_default_property、snapshot restore handler，去掉 Review 核心路径上的 TargetKind 字符串特判。
+4. 新增 `FBlueprintHelperReviewEnumUtils`，集中解析 Review status/change kind/storage status/surface；`BlueprintHelperReviewStoreService` 和 `BlueprintHelperReviewedDataCleanupServiceUtils` 不再维护各自的状态/surface if 链。
+5. `BlueprintHelperReviewGraphBoundsLocalUtils` 与 `BlueprintHelperReviewGraphResolverLocalUtils` 已拆到 `Private/UI/Review/Utils/BlueprintHelperReviewGraphBoundsUtils.*` 和 `BlueprintHelperReviewGraphResolverUtils.*`，满足独立 `.h/.cpp` 与 `/Utils/xxxxUtils` 约束。
+6. TaskRuntime pre-step review evidence 构建已从 `BlueprintHelperTaskRuntimeService` 迁到 `FBlueprintHelperTaskRuntimeClusterExecutionUtils::TryBuildTaskRuntimeReviewEvidence(...)`，Service 不再保留重复 evidence 构建逻辑。
+7. GraphWrite logic 节点分类、link 类型识别、导出节点 kind 识别已集中到 `FBlueprintHelperGraphWriteClassificationUtils`，`LogicProcessor`/`LogicGroupBuilder` 不再各自维护重复分类表。
+8. `FBlueprintHelperVersionCompat` 已从 namespace 改为同名 class，现有 `FBlueprintHelperVersionCompat::...` 调用保持不变。
+
+### 扫描结果
+
+- Review 范围内扫描 `TargetKind.Equals(TEXT("asset_factory"))`、`TargetKindLower`、`ChangeKind.Equals(TEXT(...))`、`Status.Equals(TEXT(...))`、`Surface.Equals(TEXT(...))`、`Target.TargetKind == TEXT(...)`、`TargetKey.Contains(TEXT(...))`：无匹配。
+- Review 范围内扫描 `namespace` / `using namespace`：无匹配。
+- Public Shared 范围内原 `FBlueprintHelperVersionCompat` namespace 已清理；全仓仍有匿名 namespace 残留，集中在 GraphWrite/Debug/Config 等非 Review 文件。CallFunction 相关 namespace 本轮按并行修改约束未触碰。
+- Review 范围内仍存在 `FBlueprintHelperReviewActionServiceLocalUtils`、`FBlueprintHelperReviewStoreServiceLocalUtils`。这两个是大体量服务内部编排/序列化工具集合，本轮先消除其中最影响复用的 TargetKind/status/surface 特判；完整拆分需要单独按职责切成 action prepare、snapshot restore、record serialization、collapse/sort、target normalization 等多个 utils/service，避免一次性大拆影响并行改动。
+
+### 验证结果
+
+- `git diff --check`：通过；仅输出现有工作区 LF/CRLF 提示。
+- `E:\UE_5.6\Engine\Build\BatchFiles\Build.bat TemplateEditor Win64 Development -Project=D:\UEProjects\Template\Template.uproject -WaitMutex -FromMsBuild`：通过。
+
+### 剩余架构项
+
+1. `FBlueprintHelperReviewActionServiceLocalUtils` 拆分为独立 Action/Restore utils 或 service。
+2. `FBlueprintHelperReviewStoreServiceLocalUtils` 拆分为独立 record serialization、visible change collapse、target normalization utils。
+3. `GraphStatementBuilder` 中 compare operator/type suffix 仍有类型特判；因 CallFunction 优化正在并行进行，本轮未修改该文件，避免覆盖新增代码。
+4. `UI geometry descriptor` 仍需把文本匹配 fallback 进一步下沉为结构化 target descriptor。

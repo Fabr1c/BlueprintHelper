@@ -1,7 +1,7 @@
 {
   "name": "blueprint-helper",
-  "version": "0.4.3",
-  "description": "Codex-facing BlueprintHelper workflow plugin for Unreal Editor lifecycle through MCP and ordinary asset workflows through the CLI.",
+  "version": "0.4.4",
+  "description": "Codex-facing BlueprintHelper workflow plugin with mandatory subagents, CLI TaskSpec workflows, and global lifecycle-only MCP.",
   "author": {
     "name": "Fabr1c",
     "email": "chairfabric@gmail.com"
@@ -16,15 +16,16 @@
     "codex",
     "cli",
     "configure",
-    "editor-tools"
+    "editor-tools",
+    "subagents",
+    "taskspec"
   ],
   "skills": "./skills/",
   "hooks": "./hooks.json",
-  "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "BlueprintHelper",
-    "shortDescription": "Use BlueprintHelper CLI for UE assets and MCP for editor lifecycle.",
-    "longDescription": "BlueprintHelper guides Codex through Unreal Editor asset reads and TaskSpec-first Blueprint, UMG, DataAsset, DataTable, compile, save, open, diagnostics, and Codex configuration workflows. The Codex plugin exposes the CLI-first workflow for ordinary tools, a configure skill for safety/profile preferences, and registers the MCP endpoint only for editor lifecycle commands.",
+    "shortDescription": "Use mandatory Codex subagents and CLI TaskSpec workflows for UE editor assets.",
+    "longDescription": "BlueprintHelper routes Codex through a mandatory subagent workflow for Blueprint, UMG, DataAsset, DataTable, Bridge/runtime, preview, execute, compile, save, and diagnostics work. The Main Agent owns preflight and global lifecycle-only MCP tools; blueprint-explorer gathers UE asset context, sourcecode-explorer gathers repository context, and task-worker constructs template-first TaskSpecs through the CLI.",
     "developerName": "Fabric",
     "category": "Coding",
     "capabilities": [
@@ -33,9 +34,9 @@
       "Write"
     ],
     "defaultPrompt": [
-      "Inspect a Blueprint with BlueprintHelper CLI",
+      "Inspect a Blueprint with BlueprintHelper subagents",
       "Configure BlueprintHelper safety profile for Codex",
-      "Preview a TaskSpec before executing an edit",
+      "Preview and execute a template-first TaskSpec",
       "Diagnose BlueprintHelper Bridge connectivity"
     ],
     "brandColor": "#2563EB",

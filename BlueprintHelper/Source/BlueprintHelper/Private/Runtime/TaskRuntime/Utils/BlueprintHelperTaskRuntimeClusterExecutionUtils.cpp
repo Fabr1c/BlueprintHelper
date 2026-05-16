@@ -12,6 +12,7 @@
 #include "Runtime/TaskRuntime/TaskPlanAdapters/DataTable/BlueprintHelperDataTableTaskPlanAdapter.h"
 #include "Runtime/TaskRuntime/TaskPlanAdapters/UMGWidget/BlueprintHelperWidgetTaskPlanAdapter.h"
 #include "Shared/AssetFactory/BlueprintHelperAssetFactoryTypes.h"
+#include "Shared/Review/BlueprintHelperReviewTargetKindRegistry.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
 #include "Systems/Review/BlueprintHelperReviewBaselineSnapshotService.h"
 #include "Systems/ToolClusters/AssetFactory/BlueprintHelperAssetFactoryService.h"
@@ -143,14 +144,11 @@ static void AddTaskRuntimeReviewTarget(
 	Target.GraphName = GraphName;
 	Target.TargetKey = TargetKey;
 	Target.TargetKind = TargetKind;
-	if (TargetKind == TEXT("component"))
+	if (FBlueprintHelperReviewTargetKindRegistry::IsComponentTargetKind(TargetKind))
 	{
 		Target.ComponentPath = TargetName;
 	}
-	if (TargetKind == TEXT("object_property") ||
-		TargetKind == TEXT("data_asset_property") ||
-		TargetKind == TEXT("class_default_property") ||
-		TargetKind == TEXT("umg_widget_property"))
+	if (FBlueprintHelperReviewTargetKindRegistry::IsPropertyTargetKind(TargetKind))
 	{
 		Target.PropertyPath = TargetName;
 	}
@@ -721,18 +719,13 @@ bool FBlueprintHelperTaskRuntimeClusterExecutionUtils::TryBuildTaskRuntimeReview
 			AddTaskRuntimeReviewTarget(
 				OutEvidence,
 				LoweredStep.Payload,
-				AssetType.Contains(TEXT("DataTable"), ESearchCase::IgnoreCase)
-					? EBlueprintHelperReviewSurface::DataTable
-					: (AssetType.Contains(TEXT("Widget"), ESearchCase::IgnoreCase)
-						? EBlueprintHelperReviewSurface::UMGWidgetTree
-						: EBlueprintHelperReviewSurface::DataAsset),
+				FBlueprintHelperReviewTargetKindRegistry::ResolveAssetFactorySurface(AssetType),
 				TEXT("asset_factory"),
 				OutEvidence.AssetPath,
 				TEXT("asset_factory"),
 				AssetType.IsEmpty() ? OutEvidence.OperationKind : AssetType);
 
-			const FString NormalizedAssetType = AssetType.ToLower();
-			if (NormalizedAssetType == TEXT("structure") || NormalizedAssetType == TEXT("struct"))
+			if (FBlueprintHelperReviewTargetKindRegistry::IsStructureAssetType(AssetType))
 			{
 				AddTaskRuntimeReviewTargetsFromObjectArray(
 					OutEvidence,

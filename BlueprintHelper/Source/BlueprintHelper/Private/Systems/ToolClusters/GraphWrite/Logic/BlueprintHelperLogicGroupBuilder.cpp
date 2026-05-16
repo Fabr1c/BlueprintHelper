@@ -1,6 +1,7 @@
 // BlueprintHelper Service Layer — Logic Group Builder 实现
 
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicGroupBuilder.h"
+#include "Systems/ToolClusters/GraphWrite/Logic/Utils/BlueprintHelperGraphWriteClassificationUtils.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 
@@ -372,49 +373,18 @@ public:
 		return UniqueBlockId;
 	}
 
-	static bool IsExecPinName(const FString& PinName)
-	{
-		const FString Key = NormalizeLogicToken(PinName);
-		return Key.Equals(TEXT("exec"))
-			|| Key.Equals(TEXT("execute"))
-			|| Key.Equals(TEXT("then"))
-			|| Key.StartsWith(TEXT("then"))
-			|| Key.Equals(TEXT("completed"))
-			|| Key.Equals(TEXT("complete"))
-			|| Key.Equals(TEXT("finished"))
-			|| Key.Equals(TEXT("true"))
-			|| Key.Equals(TEXT("false"))
-			|| Key.Equals(TEXT("loopbody"))
-			|| Key.Equals(TEXT("body"));
-	}
-
 	static EBlueprintHelperLogicLinkType IdentifyGraphLinkType(
 		const TSharedPtr<FJsonObject>& LinkObj,
 		const FString& FromPin,
 		const FString& ToPin)
 	{
 		const FString ExplicitKind = ReadFirstStringField(LinkObj, TEXT("kind"), TEXT("type"));
-		const FString KindKey = NormalizeLogicToken(ExplicitKind);
-		if (KindKey.Contains(TEXT("data")) || KindKey.Contains(TEXT("value")) || KindKey.Contains(TEXT("dependency")))
-		{
-			return EBlueprintHelperLogicLinkType::Data;
-		}
-		if (KindKey.Contains(TEXT("exec")) || KindKey.Contains(TEXT("execution")) || KindKey.Contains(TEXT("flow")))
-		{
-			return EBlueprintHelperLogicLinkType::Exec;
-		}
-
 		const FString PinType = ReadFirstStringField(LinkObj, TEXT("from_pin_type"), TEXT("to_pin_type"));
-		if (!PinType.IsEmpty())
-		{
-			return NormalizeLogicToken(PinType).Equals(TEXT("exec"))
-				? EBlueprintHelperLogicLinkType::Exec
-				: EBlueprintHelperLogicLinkType::Data;
-		}
-
-		return IsExecPinName(FromPin) || IsExecPinName(ToPin)
-			? EBlueprintHelperLogicLinkType::Exec
-			: EBlueprintHelperLogicLinkType::Data;
+		return FBlueprintHelperGraphWriteClassificationUtils::IdentifyGraphLinkType(
+			ExplicitKind,
+			PinType,
+			FromPin,
+			ToPin);
 	}
 
 	static bool HasEquivalentLink(
@@ -905,31 +875,7 @@ EBlueprintHelperLogicNodeKind FBlueprintHelperLogicGroupBuilder::IdentifyNodeKin
 	FString MemberName;
 	NodeObj->TryGetStringField(TEXT("member_name"), MemberName);
 
-	// 根据 class 名或 member_name 推断
-	if (ClassName.Contains(TEXT("K2Node_FunctionEntry")))
-		return EBlueprintHelperLogicNodeKind::FunctionEntry;
-	if (ClassName.Contains(TEXT("K2Node_CustomEvent")) || MemberName.Contains(TEXT("CustomEvent")))
-		return EBlueprintHelperLogicNodeKind::CustomEvent;
-	if (ClassName.Contains(TEXT("K2Node_Event")))
-		return EBlueprintHelperLogicNodeKind::Event;
-	if (ClassName.Contains(TEXT("K2Node_CallFunction")))
-		return EBlueprintHelperLogicNodeKind::CallFunction;
-	if (ClassName.Contains(TEXT("K2Node_IfThenElse")))
-		return EBlueprintHelperLogicNodeKind::Branch;
-	if (ClassName.Contains(TEXT("K2Node_ExecutionSequence")))
-		return EBlueprintHelperLogicNodeKind::Sequence;
-	if (ClassName.Contains(TEXT("K2Node_VariableGet")))
-		return EBlueprintHelperLogicNodeKind::VariableGet;
-	if (ClassName.Contains(TEXT("K2Node_VariableSet")))
-		return EBlueprintHelperLogicNodeKind::VariableSet;
-	if (ClassName.Contains(TEXT("K2Node_MacroInstance")))
-		return EBlueprintHelperLogicNodeKind::Macro;
-	if (ClassName.Contains(TEXT("K2Node_CreateDelegate")))
-		return EBlueprintHelperLogicNodeKind::DelegateBind;
-	if (ClassName.Contains(TEXT("Timeline")))
-		return EBlueprintHelperLogicNodeKind::Timeline;
-
-	return EBlueprintHelperLogicNodeKind::Unknown;
+	return FBlueprintHelperGraphWriteClassificationUtils::IdentifyNodeKind(ClassName, MemberName);
 }
 
 FBlueprintHelperLogicNode FBlueprintHelperLogicGroupBuilder::ConvertNode(const TSharedPtr<FJsonObject>& NodeObj, int32 Index)
@@ -953,15 +899,18 @@ FBlueprintHelperLogicNode FBlueprintHelperLogicGroupBuilder::ConvertNode(const T
 			FBlueprintHelperLogicLink Link;
 			Link.LinkRef = FBlueprintHelperLogicGroupBuilderLocalUtils::MakeLinkRef(j);
 
-			FString LinkTypeStr;
-			(*LinkObjPtr)->TryGetStringField(TEXT("type"), LinkTypeStr);
-			Link.Type = LinkTypeStr.Equals(TEXT("data"), ESearchCase::IgnoreCase)
-				? EBlueprintHelperLogicLinkType::Data : EBlueprintHelperLogicLinkType::Exec;
-
 			(*LinkObjPtr)->TryGetStringField(TEXT("from_pin"), Link.FromPin);
 			Link.PinRef = Link.FromPin;
-			(*LinkObjPtr)->TryGetStringField(TEXT("to_node"), Link.ToNode);
-			(*LinkObjPtr)->TryGetStringField(TEXT("to_pin"), Link.ToPin);
+			Link.ToNode = FBlueprintHelperLogicGroupBuilderLocalUtils::ReadFirstStringField(
+				*LinkObjPtr,
+				TEXT("to_node"),
+				TEXT("target_id"),
+				TEXT("to_id"));
+			Link.ToPin = FBlueprintHelperLogicGroupBuilderLocalUtils::ReadFirstStringField(
+				*LinkObjPtr,
+				TEXT("to_pin"),
+				TEXT("target_pin"));
+			Link.Type = FBlueprintHelperLogicGroupBuilderLocalUtils::IdentifyGraphLinkType(*LinkObjPtr, Link.FromPin, Link.ToPin);
 
 			Node.Links.Add(MoveTemp(Link));
 		}

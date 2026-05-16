@@ -2,6 +2,7 @@
 
 #include "Systems/Review/BlueprintHelperReviewHashService.h"
 
+#include "Shared/Review/BlueprintHelperReviewTargetKindRegistry.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraph/EdGraphPin.h"
@@ -398,11 +399,11 @@ bool FBlueprintHelperReviewHashService::ComputeAtomicTargetHash(
 		return false;
 	}
 
-	if (Target.TargetKind == TEXT("graph_node") || Target.TargetKey.Contains(TEXT(":node:")))
+	if (FBlueprintHelperReviewTargetKindRegistry::IsGraphNodeTarget(Target.TargetKind, Target.TargetKey))
 	{
 		return ComputeGraphNodeHash(Blueprint, Target, OutHash, OutError);
 	}
-	if (Target.TargetKind == TEXT("graph_block") || Target.TargetKey.Contains(TEXT(":block:")))
+	if (FBlueprintHelperReviewTargetKindRegistry::IsGraphBlockTarget(Target.TargetKind, Target.TargetKey))
 	{
 		return ComputeGraphBlockHash(Blueprint, Target, OutHash, OutError);
 	}

@@ -1,6 +1,6 @@
 ---
 name: blueprint-helper-configure
-description: description: Use for BlueprintHelper Codex setup/configuration, safety profiles ReadOnly/Conservative/Standard/AutoRepair, .blueprinthelper/agent-profile.json, UserPreferences, missing capability policy, save policy, or the Codex equivalent of Claude /blueprint-helper:configure.
+description: Use for BlueprintHelper Codex setup/configuration, plan-mode configuration questions, safety profiles ReadOnly/Conservative/Standard/AutoRepair, mandatory subagent workflow, .blueprinthelper/agent-profile.json, UserPreferences, missing capability policy, save policy, or the Codex equivalent of Claude /blueprint-helper:configure.
 ---
 
 # BlueprintHelper Configure for Codex
@@ -32,38 +32,117 @@ Important: the fourth profile, `AutoRepair`, bypasses the write approval popup a
 
 1. Read the current UserPreferences file if present.
 2. Read the project `.blueprinthelper/agent-profile.json` if the user provided a path or if a single obvious project profile exists.
-3. Ask for missing decisions concisely. Prefer native UI questions when available; otherwise ask plain text.
-4. Show a short preview before writing.
-5. Write only after the user confirms.
+3. Build a single plan-mode decision sheet for every missing configuration decision.
+4. Present options as IDs with recommended defaults and consequences.
+5. Stop after the decision sheet. Do not write files in the same turn that first asks for choices.
+6. After the user selects options, show `BlueprintHelper Configure Apply Preview`.
+7. Write only after the user explicitly confirms the apply preview.
 
-## Questions
+## Plan-Mode Question Output
 
-Ask these in order when values are not already supplied by the user:
+Do not ask configuration questions as direct conversational questions such as "Which safety profile do you want?".
 
-1. Safety profile:
-   - `Conservative` recommended: preview required, no auto-save, write session approval required.
-   - `ReadOnly`: no real UE asset writes.
-   - `Standard`: preview required, save only when requested or explicitly configured.
-   - `AutoRepair`: BlueprintHelper-owned repair is allowed and write approval is bypassed by default.
-2. Missing capability policy:
-   - `stop_and_report` recommended.
-   - `ask_user`.
-   - `debug_tools_fallback`.
-3. Save policy:
-   - `never_auto_save` recommended.
-   - `save_when_requested`.
-   - `workflow_save`.
-4. Boundary policy:
-   - Ordinary BlueprintHelper asset reads/writes use CLI.
-   - Editor lifecycle open/close uses global MCP.
-   - Repository source/docs/config edits use normal Codex tools.
-5. Review/debug policy:
-   - Keep Journal and Review evidence enabled.
-   - Export DebugBundle only when needed.
-6. Collaboration preference:
-   - Concise Chinese final reports.
-   - Accurate completion claims.
-   - Use subagents only when explicitly requested or when the user asks for parallel work.
+When decisions are missing, output one structured plan-mode block instead. Prefer native Codex plan/question UI if available. If native UI is unavailable, use this exact text structure:
+
+```text
+BlueprintHelper Configure Plan
+
+Status: waiting_for_selection
+Files:
+  UserPreferences: <path or not found>
+  SetupProfile: <path or not selected>
+
+Decisions:
+  [S] Safety profile
+      A) Conservative  [recommended]
+         Preview required, no auto-save, write session approval required.
+      B) ReadOnly
+         No real UE asset writes.
+      C) Standard
+         Preview required, save only when requested or explicitly configured.
+      D) AutoRepair
+         BlueprintHelper-owned repair is allowed; write approval popup is bypassed by default.
+
+  [M] Missing capability policy
+      A) stop_and_report  [recommended]
+      B) ask_user
+      C) debug_tools_fallback
+
+  [V] Save policy
+      A) never_auto_save  [recommended]
+      B) save_when_requested
+      C) workflow_save
+
+  [B] Boundary policy
+      A) CLI TaskSpec reads/writes + global lifecycle-only MCP  [recommended]
+      B) CLI-only, no editor lifecycle MCP
+
+  [R] Review/debug policy
+      A) Keep Journal and Review evidence enabled; DebugBundle only when needed  [recommended]
+      B) Minimal evidence, no DebugBundle unless explicitly requested
+
+  [W] Codex workflow
+      A) Mandatory subagents for BlueprintHelper editor-asset tasks  [recommended]
+      B) Ask before spawning subagents
+      C) Disable subagents only when the user explicitly opts out
+
+  [G] Subagent model map
+      A) Use plugin defaults  [recommended]
+         blueprint-explorer=gpt-5.4-mini/xhigh
+         sourcecode-explorer=gpt-5.3-codex-spark
+         task-worker=gpt-5.4/high
+      B) Custom model map supplied by user
+
+Suggested selection:
+  S=A M=A V=A B=A R=A W=A G=A
+
+Reply with one of:
+  apply recommended
+  S=A M=A V=A B=A R=A W=A G=A
+  custom: <your requested policy changes>
+```
+
+If some values were already supplied by the user, pre-fill them in the plan and mark them as `selected_from_user`. Still show remaining options in the same plan-mode block.
+
+## Apply Preview Format
+
+After the user selects options, show this preview before writing:
+
+```text
+BlueprintHelper Configure Apply Preview
+
+Status: waiting_for_apply_confirmation
+
+Selected options:
+  S=<value>
+  M=<value>
+  V=<value>
+  B=<value>
+  R=<value>
+  W=<value>
+  G=<value>
+
+Files to update:
+  UserPreferences: <path>
+  SetupProfile: <path or not updated>
+
+Planned changes:
+  Safety: <old> -> <new>
+  missing_capability_policy: <old> -> <new>
+  auto_save_policy: <old> -> <new>
+  editor_lifecycle: global_lifecycle_only_mcp
+  codex_workflow: mandatory_subagents
+  subagent_models: <model map>
+  approval_bypass: true only for AutoRepair
+
+Confirm with:
+  apply
+
+Cancel with:
+  cancel
+```
+
+Do not write until the user confirms with `apply` or an equivalent explicit confirmation.
 
 ## SetupProfile Mapping
 
@@ -77,13 +156,32 @@ When writing `<ProjectDir>/.blueprinthelper/agent-profile.json`, preserve unknow
     "auto_save_policy": "never_auto_save"
   },
   "agent": {
-    "agent_entry_mode": "cli_task_spec_first",
+    "agent_entry_mode": "codex_mandatory_subagents_cli_task_spec_first",
     "fallback_when_task_tools_unavailable": "stop_and_report"
   },
+  "codex_subagents": {
+    "mode": "mandatory_for_blueprinthelper_editor_assets",
+    "blueprint_explorer": {
+      "agent": "blueprint-explorer",
+      "model": "gpt-5.4-mini",
+      "reasoning_effort": "xhigh"
+    },
+    "sourcecode_explorer": {
+      "agent": "sourcecode-explorer",
+      "model": "gpt-5.3-codex-spark"
+    },
+    "task_worker": {
+      "agent": "task-worker",
+      "model": "gpt-5.4",
+      "reasoning_effort": "high",
+      "template_first": true
+    }
+  },
   "editor_lifecycle": {
-    "entry": "global_mcp",
+    "entry": "global_lifecycle_only_mcp",
     "open_tool": "mcp__blueprint_helper__blueprint_open_editor",
-    "close_tool": "mcp__blueprint_helper__blueprint_close_editor"
+    "close_tool": "mcp__blueprint_helper__blueprint_close_editor",
+    "main_agent_only": true
   }
 }
 ```
@@ -107,35 +205,17 @@ For `AutoRepair`, write:
 
 Update the active preference sections with these facts:
 
-- Default entry mode is `cli_task_spec_first`.
-- Editor lifecycle commands must use global MCP tools.
+- Default entry mode is `codex_mandatory_subagents_cli_task_spec_first`.
+- BlueprintHelper editor-asset tasks spawn Codex subagents by default.
+- `blueprint-explorer` gathers Blueprint/UMG/DataAsset/DataTable context only.
+- `sourcecode-explorer` gathers repository source-code/schema/template context only.
+- `task-worker` constructs template-first TaskSpecs, runs preview/execute through CLI, and returns filtered diagnostic results.
+- Editor lifecycle commands must use global lifecycle-only MCP tools.
+- Only the Main Agent may call `mcp__blueprint_helper__blueprint_open_editor` and `mcp__blueprint_helper__blueprint_close_editor`.
 - Ordinary reads/writes must use the CLI.
 - Fourth safety profile `AutoRepair` skips the write approval popup and defaults write permission to enabled.
 - Missing capability default is `stop_and_report`.
 - Do not request or pass Bridge tokens or raw auth session values.
-
-## Preview Format
-
-Before writing, show:
-
-```text
-BlueprintHelper Configure Preview
-
-UserPreferences:
-  <path>
-
-SetupProfile:
-  <path or not updated>
-
-Safety:
-  <old> -> <new>
-
-Policies:
-  missing_capability_policy: <value>
-  auto_save_policy: <value>
-  editor_lifecycle: global_mcp
-  approval_bypass: true only for AutoRepair
-```
 
 ## Final Report
 

@@ -1,0 +1,17 @@
+{
+  "toolResult": {
+    "ok": true,
+    "schema": "BlueprintHelper.McpToolResult.v1",
+    "operation": "bridge.get_runtime_profile",
+    "trace_id": "trace_1778561670_0001",
+    "status": "completed",
+    "modified": false,
+    "data": {
+      "status": "completed",
+      "data": {
+        "schema": "RuntimeProfile.v1"
+      }
+    }
+  },
+  "extra": {}
+}

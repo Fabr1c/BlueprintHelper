@@ -1,0 +1,20 @@
+{
+  "toolResult": {
+    "ok": true,
+    "schema": "BlueprintHelper.McpToolResult.v1",
+    "operation": "bridge_ping",
+    "trace_id": "trace_1778561670_0002",
+    "status": "completed",
+    "modified": false,
+    "target": {
+      "target_type": "asset"
+    },
+    "data": {
+      "status": "completed",
+      "data": {
+        "schema": "EditorContext.v1"
+      }
+    }
+  },
+  "extra": {}
+}

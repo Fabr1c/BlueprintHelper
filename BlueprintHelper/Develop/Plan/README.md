@@ -23,6 +23,7 @@ This folder contains active or intentionally retained planning documents. Implem
 
 ## Active Design And Discussion
 
+- `BlueprintHelper_CLI_Agent_WaitHint_Architecture_20260516_CN.md`
 - `BlueprintHelper_Hybrid_TaskSpec_TaskPlan_Architecture_20260504.md`
 - `BlueprintHelper_Review_Transaction_Model_Discussion_Pack_20260507.md`
 - `BlueprintHelper_ReviewPanel_UserSide_Constraints_20260506.md`

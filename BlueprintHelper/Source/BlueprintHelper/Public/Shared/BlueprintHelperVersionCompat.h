@@ -17,9 +17,10 @@ using FBlueprintHelperPackageMetaData = FMetaData;
 using FBlueprintHelperPackageMetaData = UMetaData;
 #endif
 
-namespace FBlueprintHelperVersionCompat
+class FBlueprintHelperVersionCompat
 {
-	FORCEINLINE FBlueprintHelperPackageMetaData& GetPackageMetaData(UPackage* Package)
+public:
+	static FORCEINLINE FBlueprintHelperPackageMetaData& GetPackageMetaData(UPackage* Package)
 	{
 #if BLUEPRINTHELPER_UE_HAS_FPACKAGE_METADATA
 		return Package->GetMetaData();
@@ -29,7 +30,7 @@ namespace FBlueprintHelperVersionCompat
 	}
 
 	template<typename ArrayType>
-	FORCEINLINE auto PopNoShrink(ArrayType& Array) -> decltype(Array.Pop(false))
+	static FORCEINLINE auto PopNoShrink(ArrayType& Array) -> decltype(Array.Pop(false))
 	{
 #if ENGINE_MAJOR_VERSION > 5 || (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 6)
 		return Array.Pop(EAllowShrinking::No);
@@ -37,4 +38,4 @@ namespace FBlueprintHelperVersionCompat
 		return Array.Pop(false);
 #endif
 	}
-}
+};

@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Dom/JsonObject.h"
+#include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
 
 // ─── Append 阶段枚举 ───
 
@@ -202,7 +203,7 @@ struct FBlueprintHelperAppendGraphResultData
 struct FBlueprintHelperDryRunCandidateFunctionGroup
 {
 	FString Target;
-	TArray<FString> Candidates;
+	TArray<FBlueprintHelperCallFunctionCandidateInfo> Candidates;
 
 	TSharedRef<FJsonObject> ToJson() const
 	{
@@ -211,9 +212,42 @@ struct FBlueprintHelperDryRunCandidateFunctionGroup
 		if (Candidates.Num() > 0)
 		{
 			TArray<TSharedPtr<FJsonValue>> Arr;
-			for (const FString& Candidate : Candidates)
+			for (const FBlueprintHelperCallFunctionCandidateInfo& Candidate : Candidates)
 			{
-				Arr.Add(MakeShared<FJsonValueString>(Candidate));
+				TSharedRef<FJsonObject> CandidateJson = MakeShared<FJsonObject>();
+				CandidateJson->SetStringField(TEXT("stable_id"), Candidate.StableId);
+				CandidateJson->SetStringField(TEXT("display_name"), Candidate.DisplayName);
+				CandidateJson->SetStringField(TEXT("owner"), Candidate.OwnerClassPath);
+				CandidateJson->SetStringField(TEXT("native_name"), Candidate.NativeFunctionName);
+				CandidateJson->SetStringField(TEXT("category"), Candidate.Category);
+				CandidateJson->SetStringField(TEXT("node_class"), Candidate.NodeClassPath);
+				CandidateJson->SetStringField(TEXT("match_reason"), Candidate.MatchReason);
+				CandidateJson->SetStringField(TEXT("return_type"), Candidate.ReturnType);
+				CandidateJson->SetNumberField(TEXT("score"), Candidate.Score);
+				CandidateJson->SetBoolField(TEXT("graph_compatible"), Candidate.bGraphCompatible);
+				CandidateJson->SetBoolField(TEXT("from_action_database"), Candidate.bFromActionDatabase);
+				CandidateJson->SetBoolField(TEXT("blueprint_callable"), Candidate.bBlueprintCallable);
+				CandidateJson->SetBoolField(TEXT("blueprint_pure"), Candidate.bBlueprintPure);
+				CandidateJson->SetBoolField(TEXT("latent"), Candidate.bLatent);
+				CandidateJson->SetBoolField(TEXT("requires_world_context"), Candidate.bRequiresWorldContext);
+				if (!Candidate.WorldContextPin.IsEmpty())
+				{
+					CandidateJson->SetStringField(TEXT("world_context_pin"), Candidate.WorldContextPin);
+				}
+				if (!Candidate.TargetObjectPin.IsEmpty())
+				{
+					CandidateJson->SetStringField(TEXT("target_object_pin"), Candidate.TargetObjectPin);
+				}
+				if (Candidate.InputPins.Num() > 0)
+				{
+					TArray<TSharedPtr<FJsonValue>> PinArr;
+					for (const FString& Pin : Candidate.InputPins)
+					{
+						PinArr.Add(MakeShared<FJsonValueString>(Pin));
+					}
+					CandidateJson->SetArrayField(TEXT("input_pins"), PinArr);
+				}
+				Arr.Add(MakeShared<FJsonValueObject>(CandidateJson));
 			}
 			Json->SetArrayField(TEXT("candidates"), Arr);
 		}

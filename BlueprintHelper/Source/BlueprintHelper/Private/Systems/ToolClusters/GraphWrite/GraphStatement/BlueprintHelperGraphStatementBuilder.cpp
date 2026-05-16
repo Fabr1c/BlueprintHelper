@@ -248,6 +248,8 @@ static bool SpawnExplicitObjectCallFragment(
 	ObjectCallRequest.SearchMode = NodeData.SearchMode;
 	ObjectCallRequest.AmbiguityPolicy = NodeData.AmbiguityPolicy;
 	ObjectCallRequest.CategoryPriority = NodeData.CategoryPriority;
+	ObjectCallRequest.ArgumentTypes = NodeData.ArgumentTypes;
+	ObjectCallRequest.TargetObjectType = NodeData.TargetObjectType;
 	NodeData.DefaultValues.GetKeys(ObjectCallRequest.ArgumentNames);
 	const FBlueprintHelperCallFunctionResolveResult ObjectCallResolveResult =
 		FBlueprintHelperCallFunctionResolver::Resolve(ObjectCallRequest);
@@ -599,6 +601,8 @@ bool FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment(
 	ResolveRequest.SearchMode = BoundNodeData.SearchMode;
 	ResolveRequest.AmbiguityPolicy = BoundNodeData.AmbiguityPolicy;
 	ResolveRequest.CategoryPriority = BoundNodeData.CategoryPriority;
+	ResolveRequest.ArgumentTypes = BoundNodeData.ArgumentTypes;
+	ResolveRequest.TargetObjectType = BoundNodeData.TargetObjectType;
 	BoundNodeData.DefaultValues.GetKeys(ResolveRequest.ArgumentNames);
 	const FBlueprintHelperCallFunctionResolveResult ResolveResult =
 		FBlueprintHelperCallFunctionResolver::Resolve(ResolveRequest);
@@ -978,9 +982,18 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 		NodeData.SearchMode = Expression.SearchMode;
 		NodeData.AmbiguityPolicy = Expression.AmbiguityPolicy;
 		NodeData.CategoryPriority = Expression.CategoryPriority;
+		NodeData.TargetObjectType = Expression.ResolvedTarget.Type;
 		for (const TPair<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& ArgPair : Expression.Args)
 		{
-			if (ArgPair.Value.IsValid() && ArgPair.Value->Kind == EBlueprintHelperGraphExpressionKind::Literal)
+			if (!ArgPair.Value.IsValid())
+			{
+				continue;
+			}
+			if (!ArgPair.Value->Type.IsEmpty())
+			{
+				NodeData.ArgumentTypes.Add(ArgPair.Key, ArgPair.Value->Type);
+			}
+			if (ArgPair.Value->Kind == EBlueprintHelperGraphExpressionKind::Literal)
 			{
 				NodeData.DefaultValues.Add(ArgPair.Key, ArgPair.Value->LiteralValue);
 			}

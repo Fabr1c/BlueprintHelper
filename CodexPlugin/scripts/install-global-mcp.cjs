@@ -11,7 +11,7 @@ if (!home) {
 }
 
 const configPath = path.join(home, '.codex', 'config.toml');
-const mcpScriptPath = path.resolve(__dirname, 'start-mcp.cjs');
+const mcpScriptPath = path.resolve(__dirname, 'start-lifecycle-mcp.cjs');
 const escapedMcpScriptPath = mcpScriptPath.replace(/\\/g, '\\\\');
 
 const block = [
@@ -66,6 +66,8 @@ console.log(JSON.stringify({
   success: true,
   config_path: configPath,
   mcp_server: 'blueprint-helper',
+  lifecycle_only: true,
+  exposed_tools: ['blueprint_open_editor', 'blueprint_close_editor'],
   command: 'node',
   args: [mcpScriptPath],
 }, null, 2));

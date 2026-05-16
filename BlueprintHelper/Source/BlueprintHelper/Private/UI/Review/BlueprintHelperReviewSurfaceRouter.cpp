@@ -22,7 +22,7 @@ FBlueprintHelperReviewSurfaceRouteDecision FBlueprintHelperReviewSurfacePresente
 		return Decision;
 	}
 
-	Decision.bShouldShow = LegacyFallbackMatchesSurface(Change, Surface);
+	Decision.bShouldShow = BlueprintHelperReviewShouldShowOnSurface(Change, Surface);
 	Decision.Reason = Decision.bShouldShow ? TEXT("legacy_fallback") : TEXT("legacy_no_match");
 	return Decision;
 }
@@ -129,80 +129,4 @@ const TCHAR* FBlueprintHelperReviewSurfacePresenterRouter::SurfaceDebugName(
 		}
 	}
 	return TEXT("Unknown");
-}
-
-bool FBlueprintHelperReviewSurfacePresenterRouter::LegacyFallbackMatchesSurface(
-	const FBlueprintHelperReviewVisibleChange& Change,
-	EBlueprintHelperReviewSurface Surface)
-{
-	const FString Location = BlueprintHelperReviewNormalizeLocation(Change);
-	using FSurfacePredicate = TFunction<bool()>;
-	const TArray<TPair<EBlueprintHelperReviewSurface, FSurfacePredicate>> SurfacePredicates =
-	{
-		TPair<EBlueprintHelperReviewSurface, FSurfacePredicate>(
-			EBlueprintHelperReviewSurface::Graph,
-			[&Change, &Location]()
-			{
-				return !Change.GraphName.IsEmpty()
-					|| Location.Contains(TEXT("graph:"))
-					|| Location.Contains(TEXT("node:"))
-					|| Location.Contains(TEXT("pin:"));
-			}),
-		TPair<EBlueprintHelperReviewSurface, FSurfacePredicate>(
-			EBlueprintHelperReviewSurface::Components,
-			[&Location]()
-			{
-				return Location.Contains(TEXT("component"));
-			}),
-		TPair<EBlueprintHelperReviewSurface, FSurfacePredicate>(
-			EBlueprintHelperReviewSurface::MyBlueprint,
-			[&Location]()
-			{
-				return !Location.Contains(TEXT("component"))
-					&& (Location.Contains(TEXT("my_blueprint"))
-						|| Location.Contains(TEXT("function"))
-						|| Location.Contains(TEXT("macro"))
-						|| Location.Contains(TEXT("variable"))
-						|| Location.Contains(TEXT("dispatcher"))
-						|| Location.Contains(TEXT("delegate")));
-			}),
-		TPair<EBlueprintHelperReviewSurface, FSurfacePredicate>(
-			EBlueprintHelperReviewSurface::Details,
-			[&Change, &Location]()
-			{
-				return Change.ChangeKind == EBlueprintHelperReviewChangeKind::VariableModified
-					|| Change.ChangeKind == EBlueprintHelperReviewChangeKind::SignatureModified
-					|| Location.Contains(TEXT("property"))
-					|| Location.Contains(TEXT("variable"))
-					|| Location.Contains(TEXT("signature"))
-					|| Location.Contains(TEXT("dispatcher"));
-			}),
-		TPair<EBlueprintHelperReviewSurface, FSurfacePredicate>(
-			EBlueprintHelperReviewSurface::UMGWidgetTree,
-			[&Change]()
-			{
-				return BlueprintHelperReviewShouldShowInUMGWidgetTree(Change);
-			}),
-		TPair<EBlueprintHelperReviewSurface, FSurfacePredicate>(
-			EBlueprintHelperReviewSurface::DataTable,
-			[&Change]()
-			{
-				return BlueprintHelperReviewShouldShowInDataTable(Change);
-			}),
-		TPair<EBlueprintHelperReviewSurface, FSurfacePredicate>(
-			EBlueprintHelperReviewSurface::DataAsset,
-			[&Change]()
-			{
-				return BlueprintHelperReviewShouldShowInDataAsset(Change);
-			})
-	};
-
-	for (const TPair<EBlueprintHelperReviewSurface, FSurfacePredicate>& Predicate : SurfacePredicates)
-	{
-		if (Predicate.Key == Surface)
-		{
-			return Predicate.Value();
-		}
-	}
-	return false;
 }

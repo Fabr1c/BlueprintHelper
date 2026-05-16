@@ -1274,3 +1274,63 @@
 
 阻塞内容：
 1. 无当前阻塞。
+## 2026-05-16 进度：typed pin model 继续约束 CallFunction 候选
+
+时间：2026-05-16 14:54:29
+
+新增内容：
+1. CallFunction 候选函数从字符串升级为结构化对象返回。
+2. resolver 请求增加参数类型、pin 类型、target object 类型约束。
+3. SemanticIR call 路径把表达式类型与 target 类型下沉到 CallFunction resolver。
+
+修复内容：
+1. ActionDatabase 已过滤通过的函数不再被二次 graph compatibility 误挡。
+2. typed target object 存在时，候选扫描收敛到目标类继承链，降低 member call 的全量扫描风险。
+3. world context、latent、pure/callable、argument compatibility、target object compatibility 过滤进入主路径。
+
+变更需求：
+1. candidate_functions[].candidates 当前期望为结构化对象数组，不再是旧的字符串数组。
+
+快速修复：
+1. 无。
+
+验证结果：
+1. UE 构建已执行；CallFunction resolver 源文件编译动作未报错。
+2. smoke 创建 Actor Blueprint 与 StaticMeshComponent 成功。
+3. smoke preview 确认 candidate_functions 已返回结构化候选对象。
+
+距离期望差距：
+1. 新 DLL 未能完成全流程重启复测，因为全量编译被 Review 系统无关错误阻断。
+2. PrintString、typed target object member call 需要在 Review 编译错误修复后重跑。
+3. typed pin 的容器/ref/const 细粒度评分仍待后续补齐。
+
+阻塞内容：
+1. Review 系统文件 BlueprintHelperReviewGraphBounds.cpp 编译失败，不属于本任务可修改范围。
+## 2026-05-16 进度：GraphWrite 去旧兼容与新架构主路径化
+
+时间：2026-05-16 15:10:25
+
+新增内容：
+1. CallFunction 创建入口收敛到 ActionDatabase -> BlueprintActionFilter -> UBlueprintNodeSpawner。
+2. out_links 与 graph-level links 使用同一 link 分类规则。
+
+修复内容：
+1. 修复 out_links data edge 被默认当成 exec edge 的风险。
+2. 修复 typed target pin-only 情况会误清空 ActionDatabase 候选的问题。
+3. 修复候选函数 message JSON 控制字符转义不足的问题。
+
+变更需求：
+1. 移除旧 FBlueprintGraphNodeSpawner::SpawnFunctionNode。
+2. 移除 SpawnResolvedNode 的旧 SetFromFunction fallback，不再做旧 Agent/旧写图兼容。
+
+快速修复：
+1. 无。
+
+验证结果：
+1. UE C++ 编译通过并完成 UnrealEditor-BlueprintHelper.dll 链接。
+
+距离期望差距：
+1. 尚未运行编辑器端 CLI 覆盖测试，需要下一轮启动编辑器验证 PrintString、模糊候选、typed target member call。
+
+阻塞内容：
+1. 无。

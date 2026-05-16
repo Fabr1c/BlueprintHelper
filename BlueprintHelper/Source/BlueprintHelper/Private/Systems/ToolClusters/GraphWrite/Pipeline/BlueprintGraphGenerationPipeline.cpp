@@ -532,11 +532,22 @@ static void BuildSemanticExpressionFragments(
 	AddSemanticFragment(Fragment, GeneratedFragments, GeneratedFragmentIds, GeneratedNodeCount);
 }
 
-static void FillLiteralArgsAsDefaults(const TMap<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& Args, TMap<FString, FString>& OutDefaultValues)
+static void FillCallArgsAsDefaultsAndTypes(
+	const TMap<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& Args,
+	TMap<FString, FString>& OutDefaultValues,
+	TMap<FString, FString>& OutArgumentTypes)
 {
 	for (const TPair<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& Pair : Args)
 	{
-		if (Pair.Value.IsValid() && Pair.Value->Kind == EBlueprintHelperGraphExpressionKind::Literal)
+		if (!Pair.Value.IsValid())
+		{
+			continue;
+		}
+		if (!Pair.Value->Type.IsEmpty())
+		{
+			OutArgumentTypes.Add(Pair.Key, Pair.Value->Type);
+		}
+		if (Pair.Value->Kind == EBlueprintHelperGraphExpressionKind::Literal)
 		{
 			OutDefaultValues.Add(Pair.Key, Pair.Value->LiteralValue);
 		}
@@ -567,7 +578,8 @@ static bool SpawnSemanticStatementFragment(
 		NodeData.SearchMode = Statement->SearchMode;
 		NodeData.AmbiguityPolicy = Statement->AmbiguityPolicy;
 		NodeData.CategoryPriority = Statement->CategoryPriority;
-		FillLiteralArgsAsDefaults(Statement->Args, NodeData.DefaultValues);
+		NodeData.TargetObjectType = Statement->ResolvedTarget.Type;
+		FillCallArgsAsDefaultsAndTypes(Statement->Args, NodeData.DefaultValues, NodeData.ArgumentTypes);
 		return FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment(TargetGraph, NodeData, OutFragment, OutError, OutCandidateFunctions);
 	}
 

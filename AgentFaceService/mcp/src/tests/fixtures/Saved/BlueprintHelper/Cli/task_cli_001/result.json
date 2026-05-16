@@ -1,0 +1,24 @@
+{
+  "toolResult": {
+    "ok": true,
+    "schema": "BlueprintHelper.McpToolResult.v1",
+    "operation": "get_task_result",
+    "trace_id": "trace_result",
+    "status": "completed",
+    "modified": false,
+    "data": {
+      "schema": "BlueprintHelper.TaskRunJournal.v1",
+      "task_run_id": "task_cli_001",
+      "task_type": "edit_blueprint_graph",
+      "target_assets": [
+        "/Game/BP_Player"
+      ],
+      "steps": [
+        {
+          "step_id": "step_1"
+        }
+      ]
+    }
+  },
+  "extra": {}
+}

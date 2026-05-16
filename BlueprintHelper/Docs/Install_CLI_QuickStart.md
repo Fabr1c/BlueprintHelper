@@ -73,7 +73,13 @@ Project `.uproject` paths should not be stored globally. Agents discover the tar
 
 ## 4. Start Unreal Editor
 
-Either start Unreal Editor normally with the project, or use the global MCP lifecycle command `blueprint_open_editor` after the project agent profile has `environment.ue_engine_dir`. CLI lifecycle helpers are compatibility/manual fallbacks; do not use one-shot shell lifecycle checks as proof that Agent lifecycle behavior is correct.
+Either start Unreal Editor normally with the project, or use the CLI lifecycle command after the project agent profile has `environment.ue_engine_dir`:
+
+```powershell
+bh open_editor --select status,summary,artifacts.full_result
+```
+
+Older MCP lifecycle wiring is deprecated and should not be the documented setup path for new Agent workflows.
 
 Bridge smoke check:
 
@@ -85,7 +91,7 @@ If the port is not open, wait for the editor to finish loading, confirm the plug
 
 ## 5. Run The CLI
 
-The CLI is the supported Agent entry for ordinary TaskSpec writes. MCP remains the supported companion entry for editor lifecycle and long-lived debug/recovery flows.
+The CLI is the supported Agent entry for ordinary TaskSpec writes, reads, diagnostics, result queries, and editor lifecycle.
 
 Examples:
 
@@ -97,6 +103,8 @@ bh task execute --file .\task_spec.json --select status,task_run_id,summary
 ```
 
 See [TaskSpec_CLI_QuickStart.md](TaskSpec_CLI_QuickStart.md) for command syntax and output rules.
+
+When a UE-bound command waits on the Bridge, the CLI emits keep-alive hints to `stderr` and keeps `stdout` reserved for the final JSON result. Agents should keep waiting on `waiting for UE Bridge response` hints unless the CLI exits.
 
 ## 6. Minimal Verification
 

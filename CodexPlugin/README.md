@@ -5,15 +5,53 @@ This is a Codex-compatible package for BlueprintHelper.
 ## Contents
 
 - `.codex-plugin/plugin.json` is the Codex plugin manifest.
+- `.codex/agents/` contains the Codex subagent definitions used by the BlueprintHelper workflow.
 - `skills/blueprint-helper/SKILL.md` is the Codex-facing workflow entry.
 - `skills/blueprint-helper/references/` mirrors the BlueprintHelper agent references from the canonical `BlueprintHelper/Resources/AgentGuide` docs.
 - `assets/blueprint-helper.svg` is the local plugin icon referenced by the manifest.
 
 ## Runtime Model
 
-The active Agent-facing transport for ordinary TaskSpec reads and writes is the BlueprintHelper CLI. The MCP endpoint from `AgentFaceService/mcp` is registered only for editor lifecycle commands such as opening or closing the Unreal Editor.
+The active Agent-facing transport for ordinary TaskSpec reads and writes is the BlueprintHelper CLI. The global MCP endpoint is lifecycle-only and should expose only:
 
-Important: editor lifecycle commands must be called through the global MCP server (`mcp__blueprint_helper__blueprint_open_editor` and `mcp__blueprint_helper__blueprint_close_editor`). Plugin-local MCP or one-shot shell MCP clients may be reaped by the sandbox and should not be used for lifecycle validation.
+```text
+mcp__blueprint_helper__blueprint_open_editor
+mcp__blueprint_helper__blueprint_close_editor
+```
+
+Only the Main Agent may call MCP lifecycle tools. Subagents must not call MCP tools.
+
+## Mandatory Subagent Workflow
+
+When a request involves Blueprint, UMG, DataAsset, DataTable, Bridge/runtime, preview, execute, compile, save, or other UE editor asset work, Codex must use the BlueprintHelper subagent workflow:
+
+```text
+Main Agent preflight
+-> at most one blueprint-explorer
+-> at most one sourcecode-explorer
+-> task-worker template-first TaskSpec construction
+-> preview
+-> write session when needed
+-> execute
+-> result filtering
+-> Main Agent closed-loop decision
+```
+
+Subagents:
+
+```text
+blueprint-explorer   Collects Blueprint/UMG/DataAsset/DataTable/editor-asset context.
+sourcecode-explorer  Collects repository source-code/schema/template context.
+task-worker          Constructs TaskSpec from templates, runs preview/execute, and returns concise diagnostics.
+```
+
+Install the subagent definitions globally:
+
+```powershell
+node <BLUEPRINTHELPER_ROOT>\plugins\blueprint-helper\scripts\install-codex-agents.cjs
+```
+
+## CLI Setup
 
 Build the CLI when needed:
 
@@ -34,10 +72,22 @@ bh blueprint_get_runtime_profile --json "{}" --select status,summary
 node <BLUEPRINTHELPER_ROOT>\AgentFaceService\cli\build\cli\index.js blueprint_get_runtime_profile --json "{}" --select status,summary
 ```
 
-Install the editor lifecycle MCP globally when plugin-local MCP cannot start the editor from the current sandbox:
+## Global lifecycle-only MCP
+
+Build the MCP package when needed:
+
+```powershell
+cd <BLUEPRINTHELPER_ROOT>\AgentFaceService\mcp
+npm install
+npm run build
+```
+
+Install the lifecycle-only MCP globally:
 
 ```powershell
 node <BLUEPRINTHELPER_ROOT>\plugins\blueprint-helper\scripts\install-global-mcp.cjs
 ```
 
-For editor-asset writes, keep the workflow TaskSpec-first: read context, author `BlueprintHelper.TaskSpec.v1`, preview, request write approval when needed, execute, then inspect the result artifact. Use MCP only for editor lifecycle commands; do not register or call ordinary BlueprintHelper read/write tools through MCP. Prefer `BlueprintHelper/Resources/AgentGuide/Templates/` for copy-and-edit JSON inputs.
+Plugin-local MCP is not the normal Codex entry. Do not register or call ordinary BlueprintHelper read/write tools through MCP. Use MCP only for editor lifecycle commands; use CLI for ordinary reads, diagnostics, TaskSpec preview, write-session requests, execute, and result lookup.
+
+For editor-asset writes, keep the workflow TaskSpec-first. Prefer `BlueprintHelper/Resources/AgentGuide/Templates/` for copy-and-edit JSON inputs.

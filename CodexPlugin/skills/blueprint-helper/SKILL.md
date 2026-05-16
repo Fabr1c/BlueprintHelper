@@ -1,6 +1,6 @@
-﻿---
+---
 name: blueprint-helper
-description: description: Use for BlueprintHelper, UE5/Unreal Engine Blueprint asset reads or writes, Blueprint graph TaskSpec preview/execute, UMG/DataAsset/DataTable editor assets, Bridge/runtime diagnostics, and BlueprintHelper Codex configuration. Do not use for ordinary repo source files.
+description: Use for BlueprintHelper, UE5/Unreal Engine Blueprint asset reads or writes, mandatory Codex subagents, Blueprint graph TaskSpec preview/execute, UMG/DataAsset/DataTable editor assets, Bridge/runtime diagnostics, lifecycle MCP, and BlueprintHelper Codex configuration. Do not use for ordinary repo source files.
 ---
 
 # BlueprintHelper for Codex
@@ -19,14 +19,15 @@ Do not use BlueprintHelper for normal repository files. Use normal Codex shell a
 
 ## Entry Rule
 
-The supported Agent-facing entry for ordinary TaskSpec reads and writes is the BlueprintHelper CLI. MCP is retained only as a long-lived companion entry for editor lifecycle commands.
+The supported Agent-facing entry for ordinary TaskSpec reads and writes is the BlueprintHelper CLI. The global MCP endpoint is retained only for editor lifecycle commands.
 
-Important: call editor lifecycle commands through the global MCP tools `mcp__blueprint_helper__blueprint_open_editor` and `mcp__blueprint_helper__blueprint_close_editor`. Do not validate lifecycle behavior through plugin-local MCP or one-shot shell MCP clients because the sandbox may reap child editor processes.
+Important: call editor lifecycle commands only through the global MCP tools `mcp__blueprint_helper__blueprint_open_editor` and `mcp__blueprint_helper__blueprint_close_editor`. Do not validate lifecycle behavior through plugin-local MCP or one-shot shell MCP clients because the sandbox may reap child editor processes.
 
 ## Configure Routing
 
 When the user asks to configure BlueprintHelper for Codex, update safety/profile preferences, or asks for the Codex equivalent of Claude `/blueprint-helper:configure`, use the sibling `blueprint-helper-configure` skill. If that skill is not indexed in the current Codex session, follow `skills/blueprint-helper-configure/SKILL.md` from this plugin package as the fallback configure workflow.
 
+## CLI Entry
 
 Preferred CLI shape:
 
@@ -52,33 +53,6 @@ npm install
 npm run build
 ```
 
-## Required Preflight
-
-Before any editor-asset write:
-
-1. Confirm the target UE project and `.uproject` path when launch/build is needed.
-2. Confirm Unreal Editor is running with BlueprintHelper loaded. Use the global MCP lifecycle tools when the editor must be launched or closed from an Agent workflow; ordinary BlueprintHelper read/write commands still use CLI.
-3. Confirm the Bridge is reachable.
-4. Identify the exact target asset path, such as `/Game/Blueprints/BP_Player`.
-5. Identify the exact graph/function/widget/table scope when applicable.
-6. Prefer TaskSpec-first writes: read context, build `BlueprintHelper.TaskSpec.v1`, preview, request write session if needed, execute, then read result.
-7. Never request, set, print, or forward `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session`.
-8. Never rely on the currently focused editor tab for destructive operations unless the user explicitly asks for active-context editing.
-
-## Default Workflow
-
-Use this mainline for ordinary writes:
-
-```text
-blueprint_get_runtime_profile
--> blueprinthelper_read_task_context or blueprinthelper_read_context
--> author BlueprintHelper.TaskSpec.v1
--> blueprinthelper_preview_task
--> blueprinthelper_request_write_session when write_permission is disabled
--> blueprinthelper_execute_task
--> blueprinthelper_get_task_result when needed
-```
-
 Use compact output for routine loops:
 
 ```powershell
@@ -89,7 +63,109 @@ bh task execute --file .\task_spec.json --select status,task_run_id,summary,arti
 
 For complex JSON, prefer copying templates from `BlueprintHelper/Resources/AgentGuide/Templates/` and calling the CLI with `--file`. If you call the direct tool-name entries `blueprinthelper_preview_task` or `blueprinthelper_execute_task`, use the wrapper templates with root field `task_spec`; if you call grouped `task preview` or `task execute`, use a bare `BlueprintHelper.TaskSpec.v1` file.
 
-## Supported Agent-Facing Commands
+## Mandatory Codex Subagent Workflow
+
+When the request involves BlueprintHelper, Unreal Engine Blueprint assets, UMG, DataAsset, DataTable, graph edits, editor asset diagnostics, Bridge/runtime checks, preview, execute, compile, save, or UE editor asset writes, the Main Agent must use the Codex subagent workflow.
+
+Do not fall back to local Main Agent execution for BlueprintHelper editor-asset work unless the user explicitly disables subagents. If Codex cannot dispatch subagents, stop and report `sideagent_unavailable`.
+
+Configured subagents:
+
+```text
+blueprint-explorer   -> collects Blueprint/UMG/DataAsset/DataTable/editor-asset context
+sourcecode-explorer  -> collects repository source-code/schema/template context
+task-worker          -> constructs template-first TaskSpec, runs preview/execute, filters diagnostics
+```
+
+### Main Agent ownership
+
+The Main Agent owns:
+
+- user intent and clarification questions;
+- target asset, graph, widget, table, or object scope confirmation;
+- safety decisions and write boundary decisions;
+- project/editor preflight;
+- Bridge/runtime availability checks;
+- global MCP editor lifecycle tools;
+- final user response;
+- closed-loop decisions after subagent results.
+
+Only the Main Agent may call:
+
+```text
+mcp__blueprint_helper__blueprint_open_editor
+mcp__blueprint_helper__blueprint_close_editor
+```
+
+Subagents must not call MCP tools.
+
+### Preflight before dispatch
+
+Before dispatching BlueprintHelper subagents:
+
+1. Identify the target UE project and `.uproject` path when editor launch/build may be required.
+2. Confirm BlueprintHelper CLI is available: `bh` or the built CLI entry.
+3. Check runtime profile with CLI:
+   `bh blueprint_get_runtime_profile --json "{}" --select status,summary`
+4. Confirm Bridge connectivity with CLI diagnostics/runtime profile.
+5. If the editor must be launched or closed, use only the global MCP lifecycle tools.
+6. Never request, set, print, or forward `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session`.
+7. Never rely on the currently focused editor tab for destructive operations unless the user explicitly asks for active-context editing.
+
+### Explorer dispatch
+
+For each user request, dispatch at most:
+
+- one `blueprint-explorer`;
+- one `sourcecode-explorer`.
+
+Dispatch `blueprint-explorer` when Blueprint/UMG/DataAsset/DataTable/editor asset context is needed.
+
+Dispatch `sourcecode-explorer` when source-code, schema, CLI, C++, TypeScript, config, tests, or template context is needed.
+
+The explorers return compact context to the Main Agent. They do not write, preview, execute, launch/close the editor, call MCP, or request write sessions.
+
+### Task worker dispatch
+
+After collecting enough context, the Main Agent builds a task package for `task-worker`.
+
+The task package must include:
+
+```yaml
+user_goal: "<what the user wants>"
+target_asset_path: "<UE asset path>"
+target_graph_or_scope: "<graph/function/event/widget/table/object scope>"
+operation_mode: "create_new | modify_existing | inspect_only | validate_only"
+required_operations: []
+blueprint_context_summary: "<from blueprint-explorer>"
+source_context_summary: "<from sourcecode-explorer or none>"
+safety_profile: "<runtime profile safety>"
+write_policy: "<write permission/session policy>"
+allowed_tools: []
+template_hint: "<preferred template path or search target>"
+stop_conditions: []
+```
+
+`task-worker` must prefer templates from `BlueprintHelper/Resources/AgentGuide/Templates/`, construct `BlueprintHelper.TaskSpec.v1`, run preview, request write session only when needed, run execute, and return filtered diagnostic results.
+
+### Closed loop
+
+If `task-worker` returns a failure, the Main Agent must inspect:
+
+- error code;
+- failed operation;
+- affected asset/graph/node/pin when available;
+- preview vs execute phase;
+- whether the issue is missing context, capability missing, bridge/runtime failure, or malformed TaskSpec.
+
+Then the Main Agent may either:
+
+- dispatch a corrected task package to `task-worker`;
+- dispatch one additional bounded context request;
+- ask the user for a missing decision;
+- stop and report the blocker.
+
+## Supported Agent-Facing CLI Commands
 
 Default Agent-facing commands:
 
@@ -129,11 +205,9 @@ Frozen legacy, expert, and low-level direct commands are not the normal Agent wo
 - Use `logic_json` when stable owned-block anchors or importability checks are needed.
 - Keep large payloads in artifacts; use `--select` or `--fields` for stdout.
 
-## Codex Collaboration
+## Reporting
 
-Codex should execute the needed shell and file operations locally unless the user explicitly asks for sub-agents or parallel delegation. When delegation is explicitly requested, pass a small execution package with one missing tool result or one bounded implementation scope.
-
-Report results in the user's language. Include tool names, key arguments, status, blockers, validation, and the next step when useful.
+Report results in the user's language. Include tool names, key arguments, status, blockers, validation, and the next step when useful. Do not claim completion unless preview/execute/result evidence supports it.
 
 ## References
 

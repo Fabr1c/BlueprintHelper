@@ -11,6 +11,8 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "Shared/Review/BlueprintHelperReviewEnumUtils.h"
+#include "Shared/Review/BlueprintHelperReviewTargetKindRegistry.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentEvidence.h"
 
 class FBlueprintHelperReviewStoreServiceLocalUtils
@@ -215,19 +217,7 @@ public:
 
 	static bool ShouldAggregateGraphBodyTarget(const FBlueprintHelperReviewAtomicTarget& Target)
 	{
-		if (Target.Surface != EBlueprintHelperReviewSurface::Graph || Target.GraphName.IsEmpty())
-		{
-			return false;
-		}
-
-		const FString TargetKindLower = Target.TargetKind.ToLower();
-		const FString GroupLower = Target.VisualGroupKey.ToLower();
-		return !TargetKindLower.Contains(TEXT("component"))
-			&& !TargetKindLower.Contains(TEXT("variable"))
-			&& !TargetKindLower.Contains(TEXT("property"))
-			&& !GroupLower.Contains(TEXT("component"))
-			&& !GroupLower.Contains(TEXT("variable"))
-			&& !GroupLower.Contains(TEXT("property"));
+		return FBlueprintHelperReviewTargetKindRegistry::ShouldAggregateAsGraphBody(Target);
 	}
 
 	static void ApplyGraphBodyAggregation(FBlueprintHelperReviewAtomicTarget& Target)
@@ -319,7 +309,7 @@ public:
 		EBlueprintHelperReviewChangeKind ChangeKind)
 	{
 		return ChangeKind == EBlueprintHelperReviewChangeKind::Added
-			&& Target.TargetKind.Equals(TEXT("asset_factory"), ESearchCase::IgnoreCase);
+			&& FBlueprintHelperReviewTargetKindRegistry::IsAssetFactoryTargetKind(Target.TargetKind);
 	}
 
 	static void ApplyAssetLifecycleRootMetadata(FBlueprintHelperReviewVisibleChange& Change)
@@ -587,89 +577,17 @@ public:
 
 	static EBlueprintHelperReviewChangeStatus ParseReviewChangeStatus(const FString& Status)
 	{
-		if (Status.Equals(TEXT("accepted"), ESearchCase::IgnoreCase))
-		{
-			return EBlueprintHelperReviewChangeStatus::Accepted;
-		}
-		if (Status.Equals(TEXT("rejected"), ESearchCase::IgnoreCase))
-		{
-			return EBlueprintHelperReviewChangeStatus::Rejected;
-		}
-		if (Status.Equals(TEXT("needs_action"), ESearchCase::IgnoreCase))
-		{
-			return EBlueprintHelperReviewChangeStatus::NeedsAction;
-		}
-		if (Status.Equals(TEXT("superseded"), ESearchCase::IgnoreCase))
-		{
-			return EBlueprintHelperReviewChangeStatus::Superseded;
-		}
-		if (Status.Equals(TEXT("reject_failed"), ESearchCase::IgnoreCase))
-		{
-			return EBlueprintHelperReviewChangeStatus::RejectFailed;
-		}
-		return EBlueprintHelperReviewChangeStatus::Pending;
+		return FBlueprintHelperReviewEnumUtils::ParseChangeStatus(Status);
 	}
 
 	static EBlueprintHelperReviewChangeKind ParseReviewChangeKind(const FString& ChangeKind)
 	{
-		if (ChangeKind.Equals(TEXT("added"), ESearchCase::IgnoreCase))
-		{
-			return EBlueprintHelperReviewChangeKind::Added;
-		}
-		if (ChangeKind.Equals(TEXT("removed"), ESearchCase::IgnoreCase))
-		{
-			return EBlueprintHelperReviewChangeKind::Removed;
-		}
-		if (ChangeKind.Equals(TEXT("renamed"), ESearchCase::IgnoreCase))
-		{
-			return EBlueprintHelperReviewChangeKind::Renamed;
-		}
-		if (ChangeKind.Equals(TEXT("variable_modified"), ESearchCase::IgnoreCase))
-		{
-			return EBlueprintHelperReviewChangeKind::VariableModified;
-		}
-		if (ChangeKind.Equals(TEXT("signature_modified"), ESearchCase::IgnoreCase))
-		{
-			return EBlueprintHelperReviewChangeKind::SignatureModified;
-		}
-		return EBlueprintHelperReviewChangeKind::Modified;
+		return FBlueprintHelperReviewEnumUtils::ParseChangeKind(ChangeKind);
 	}
 
 	static EBlueprintHelperReviewSurface ParseReviewSurface(const FString& Surface)
 	{
-		if (Surface.Equals(TEXT("components"), ESearchCase::IgnoreCase))
-		{
-			return EBlueprintHelperReviewSurface::Components;
-		}
-		if (Surface.Equals(TEXT("my_blueprint"), ESearchCase::IgnoreCase))
-		{
-			return EBlueprintHelperReviewSurface::MyBlueprint;
-		}
-		if (Surface.Equals(TEXT("details"), ESearchCase::IgnoreCase))
-		{
-			return EBlueprintHelperReviewSurface::Details;
-		}
-		if (Surface.Equals(TEXT("umg_widget_tree"), ESearchCase::IgnoreCase)
-			|| Surface.Equals(TEXT("umg"), ESearchCase::IgnoreCase)
-			|| Surface.Equals(TEXT("umg_widget"), ESearchCase::IgnoreCase))
-		{
-			return EBlueprintHelperReviewSurface::UMGWidgetTree;
-		}
-		if (Surface.Equals(TEXT("data_table"), ESearchCase::IgnoreCase)
-			|| Surface.Equals(TEXT("datatable"), ESearchCase::IgnoreCase))
-		{
-			return EBlueprintHelperReviewSurface::DataTable;
-		}
-		if (Surface.Equals(TEXT("data_asset"), ESearchCase::IgnoreCase)
-			|| Surface.Equals(TEXT("object_details"), ESearchCase::IgnoreCase))
-		{
-			return EBlueprintHelperReviewSurface::DataAsset;
-		}
-		if (Surface.Equals(TEXT("graph"), ESearchCase::IgnoreCase))
-		{
-			return EBlueprintHelperReviewSurface::Graph;
-		}
-		return EBlueprintHelperReviewSurface::Unknown;
+		return FBlueprintHelperReviewEnumUtils::ParseSurface(Surface);
 	}
 
 	static void ReadReviewStringArray(
@@ -969,10 +887,7 @@ public:
 
 		FString StorageStatus;
 		Json->TryGetStringField(TEXT("storage_status"), StorageStatus);
-		if (StorageStatus.Equals(TEXT("compacted"), ESearchCase::IgnoreCase))
-		{
-			OutRecord.StorageStatus = EBlueprintHelperReviewStorageStatus::Compacted;
-		}
+		OutRecord.StorageStatus = FBlueprintHelperReviewEnumUtils::ParseStorageStatus(StorageStatus);
 
 		const TArray<TSharedPtr<FJsonValue>>* Changes = nullptr;
 		if (Json->TryGetArrayField(TEXT("visible_changes"), Changes) && Changes)
