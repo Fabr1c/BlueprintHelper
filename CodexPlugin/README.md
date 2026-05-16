@@ -45,10 +45,10 @@ sourcecode-explorer  Collects repository source-code/schema/template context.
 task-worker          Constructs TaskSpec from templates, runs preview/execute, and returns concise diagnostics.
 ```
 
-Install the subagent definitions globally:
+Install the subagent definitions globally from the source checkout:
 
 ```powershell
-node <BLUEPRINTHELPER_ROOT>\plugins\blueprint-helper\scripts\install-codex-agents.cjs
+node <BLUEPRINTHELPER_ROOT>\CodexPlugin\scripts\install-codex-agents.cjs
 ```
 
 ## CLI Setup
@@ -85,7 +85,7 @@ npm run build
 Install the lifecycle-only MCP globally:
 
 ```powershell
-node <BLUEPRINTHELPER_ROOT>\plugins\blueprint-helper\scripts\install-global-mcp.cjs
+node <BLUEPRINTHELPER_ROOT>\CodexPlugin\scripts\install-global-mcp.cjs
 ```
 
 Plugin-local MCP is not the normal Codex entry. Do not register or call ordinary BlueprintHelper read/write tools through MCP. Use MCP only for editor lifecycle commands; use CLI for ordinary reads, diagnostics, TaskSpec preview, write-session requests, execute, and result lookup.

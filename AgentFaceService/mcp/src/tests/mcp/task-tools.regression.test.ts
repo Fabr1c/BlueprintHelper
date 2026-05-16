@@ -66,6 +66,7 @@ function compileTaskSpecForTaskToolTests(taskSpec: TaskSpec): TaskPlan {
       dry_run_mode: taskSpec.execution_policy.dry_run_mode,
       should_compile: taskSpec.validation.should_compile,
       should_save: taskSpec.validation.should_save,
+      review_baseline_dirty_asset_policy: taskSpec.execution_policy.review_baseline_dirty_asset_policy ?? 'block',
     },
     steps: [
       {

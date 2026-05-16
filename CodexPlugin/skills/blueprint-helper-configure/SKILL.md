@@ -12,7 +12,6 @@ Use this skill as the Codex-compatible replacement for the Claude `/blueprint-he
 Configure these files when requested:
 
 - `CodexPlugin/skills/blueprint-helper/references/08_User_Preferences.md`
-- `plugins/blueprint-helper/skills/blueprint-helper/references/08_User_Preferences.md`
 - `<ProjectDir>/.blueprinthelper/agent-profile.json` when the user provides or confirms a project profile path
 
 Do not edit ClaudePlugin files from this skill unless the user explicitly asks for ClaudePlugin compatibility.
@@ -75,7 +74,7 @@ Decisions:
 
   [B] Boundary policy
       A) CLI TaskSpec reads/writes + global lifecycle-only MCP  [recommended]
-      B) CLI-only, no editor lifecycle MCP
+      B) CLI lifecycle fallback only
 
   [R] Review/debug policy
       A) Keep Journal and Review evidence enabled; DebugBundle only when needed  [recommended]

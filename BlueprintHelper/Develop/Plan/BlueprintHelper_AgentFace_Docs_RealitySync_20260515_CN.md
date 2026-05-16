@@ -1,4 +1,4 @@
-# BlueprintHelper AgentFace Docs Reality Sync 2026-05-15
+# BlueprintHelper AgentFace Docs Reality Sync 2026-05-15 / 2026-05-16
 
 ## Goal
 
@@ -9,6 +9,14 @@
 - AgentGuide 模板优先：复制 JSON 模板、修改副本、用 CLI `--file` 调用。
 - TaskSpec 命令分清两种根形态：直接工具名入口优先 `task_spec` wrapper；`task preview` / `task execute` 分组命令使用裸 `BlueprintHelper.TaskSpec.v1`。
 - `blueprinthelper_apply_review_action` 只属于插件开发/内部验证，不暴露给普通 Agent。
+
+2026-05-16 继续同步到当前实现：
+
+- `AgentFaceService/mcp/src/server/lifecycle-only.ts` 和 `editor-lifecycle-tools.ts` 仍是 lifecycle-only MCP companion；文档中“旧 MCP 生命周期已废弃 / lifecycle 走 CLI 主线”的说法需要改回 global MCP lifecycle + CLI fallback。
+- `AgentFaceService/cli/src/cli/run.ts` 当前实现支持直接工具名、`task preview/execute/result`、`context read`、`bridge ping/call`；CLI API 文档需要覆盖这些 grouped commands。
+- `blueprinthelper_apply_review_action` 当前在 shared registry 中有 schema，但仍只作为插件开发/内部验证字段记录，不进入普通 Agent 模板。
+- CLI JSON 模板必须能被 Node `JSON.parse` 直接读取；模板文件不应带 UTF-8 BOM。
+- MCP build 当前会编译 MCP regression test fixtures；这些 fixtures 也需要跟随 `TaskPlan.execution_policy.review_baseline_dirty_asset_policy` 当前必填字段。
 
 ## Scope
 
@@ -23,6 +31,8 @@
 | Codex plugin docs | done | Codex README/AGENTS/SKILL/reference mirrors 已同步。 |
 | Claude plugin docs | done | Claude README/AGENTS/SKILL/reference mirrors 已同步。 |
 | Packaged Codex plugin mirror | done | `plugins/blueprint-helper` 当前内容已与新口径一致；批量覆盖时遇到短暂文件锁，后续扫描确认关键旧口径未残留。 |
+| 2026-05-16 implementation resync | done | 修正 CLI docs / Claude docs 中 lifecycle CLI-mainline 旧口径；补充 grouped CLI commands 和 internal Review action shape；修复 CodexPlugin 脚本路径；去掉一个模板 BOM。 |
+| MCP test fixture compile sync | done | `AgentFaceService/mcp/src/tests/mcp/task-tools.regression.test.ts` 的 create_asset TaskPlan fixture 补齐 `review_baseline_dirty_asset_policy`。 |
 
 ## Findings
 
@@ -41,3 +51,14 @@ Completed:
 | `npm --prefix AgentFaceService/task-core run build` | pass | TypeScript build passed. |
 | `npm --prefix AgentFaceService/cli run build` | pass | CLI build passed; includes nested task-core build. |
 | AgentGuide template JSON/schema check | pass | 64 JSON templates parsed; 60 schema-backed checks passed; 18 TS-compiler-supported TaskSpecs compiled; 13 Python-owned task types were schema-valid and intentionally skipped by TS fallback compiler. |
+
+2026-05-16 rerun:
+
+| Check | Result | Notes |
+|---|---|---|
+| `npm --prefix AgentFaceService/task-core run build` | pass | TypeScript build passed. |
+| `npm --prefix AgentFaceService/cli run build` | pass | CLI build passed; includes nested task-core build. |
+| `npm --prefix AgentFaceService/mcp run build` | pass | Initial failure exposed stale test fixture; after adding `review_baseline_dirty_asset_policy`, MCP build passed. |
+| stale lifecycle/path scan | pass | No `MCP lifecycle wiring is deprecated`, `deprecated MCP`, `旧 MCP 生命周期路径已废弃`, `CLI-only, no editor lifecycle MCP`, or stale `plugins/blueprint-helper` source paths remain. |
+| CLI help smoke | pass | Built CLI help lists direct tools plus `open_editor`, `close_editor`, `task preview/execute/result`, `context read`, and `bridge ping/call`. |
+| AgentGuide template JSON/schema check | pass | 64 JSON templates parsed; no template BOM; 60 schema-backed checks passed; 18 TS-compiler-supported TaskSpecs compiled; 13 Python-owned task types were schema-valid and intentionally skipped by TS fallback compiler. |

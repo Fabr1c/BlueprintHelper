@@ -110,6 +110,12 @@ bh blueprint_get_runtime_profile --json "{}" --select status,summary
 node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js blueprint_get_runtime_profile --json "{}" --select status,summary
 ```
 
+## 参与贡献
+
+BlueprintHelper 当前优先接收来自真实 Unreal Editor 项目使用过程中的问题反馈和 bug 修复。提交前请尽量提供可复现步骤、目标资产范围、preview / execute 结果和验证命令。
+
+详细说明见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
 ## 版本同步
 
 `v0.4.1` 同步到以下层级：
