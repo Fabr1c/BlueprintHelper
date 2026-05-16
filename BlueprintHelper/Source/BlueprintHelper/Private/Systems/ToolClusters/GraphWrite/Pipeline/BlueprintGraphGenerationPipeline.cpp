@@ -554,12 +554,136 @@ static void FillCallArgsAsDefaultsAndTypes(
 	}
 }
 
+static FBlueprintHelperCallFunctionPinType MakeCallFunctionPinTypeFromEdGraphPin(const UEdGraphPin* Pin)
+{
+	FBlueprintHelperCallFunctionPinType Result;
+	if (!Pin)
+	{
+		return Result;
+	}
+
+	Result.Category = Pin->PinType.PinCategory.ToString();
+	Result.SubCategory = Pin->PinType.PinSubCategory.ToString();
+	if (Pin->PinType.PinSubCategoryObject.IsValid())
+	{
+		Result.ObjectPath = Pin->PinType.PinSubCategoryObject->GetPathName();
+	}
+	Result.bIsReference = Pin->PinType.bIsReference;
+	Result.bIsConst = Pin->PinType.bIsConst;
+	return Result;
+}
+
+static FBlueprintHelperCallFunctionPinType MakeCallFunctionPinTypeFromDagRef(const FBlueprintHelperGraphFragmentPinTypeRef& PinType)
+{
+	FBlueprintHelperCallFunctionPinType Result;
+	Result.Category = PinType.Category;
+	Result.SubCategory = PinType.SubCategory;
+	Result.ObjectPath = PinType.ObjectPath;
+	Result.ContainerType = PinType.ContainerType;
+	Result.bIsReference = PinType.bIsReference;
+	Result.bIsConst = PinType.bIsConst;
+	return Result;
+}
+
+static UEdGraphPin* FindFragmentPinByKey(
+	const TMap<FString, FBlueprintHelperFragmentPinRef>& Pins,
+	const FString& Key)
+{
+	if (Key.IsEmpty())
+	{
+		return nullptr;
+	}
+	if (const FBlueprintHelperFragmentPinRef* PinRef = Pins.Find(Key))
+	{
+		return PinRef->Pin;
+	}
+	for (const TPair<FString, FBlueprintHelperFragmentPinRef>& Pair : Pins)
+	{
+		if (Pair.Key.Equals(Key, ESearchCase::IgnoreCase))
+		{
+			return Pair.Value.Pin;
+		}
+	}
+	return nullptr;
+}
+
+static const FBlueprintHelperNodeFragment* FindGeneratedFragment(
+	const TArray<FBlueprintHelperNodeFragment>& GeneratedFragments,
+	const FString& FragmentId)
+{
+	for (const FBlueprintHelperNodeFragment& Fragment : GeneratedFragments)
+	{
+		if (Fragment.FragmentId.Equals(FragmentId, ESearchCase::CaseSensitive))
+		{
+			return &Fragment;
+		}
+	}
+	return nullptr;
+}
+
+static FBlueprintHelperCallFunctionPinType ResolveSemanticDataEdgeSourcePinType(
+	const FBlueprintHelperGraphFragmentDataEdge& DataEdge,
+	const TArray<FBlueprintHelperNodeFragment>& GeneratedFragments)
+{
+	if (const FBlueprintHelperNodeFragment* SourceFragment = FindGeneratedFragment(GeneratedFragments, DataEdge.From.FragmentId))
+	{
+		UEdGraphPin* SourcePin = FindFragmentPinByKey(SourceFragment->DataOutputs, DataEdge.From.PinName);
+		if (!SourcePin)
+		{
+			SourcePin = FindFragmentPinByKey(SourceFragment->DataOutputs, DataEdge.From.PortId);
+		}
+		if (!SourcePin)
+		{
+			SourcePin = FindFragmentPinByKey(SourceFragment->PinBindings, DataEdge.From.PinName);
+		}
+		if (!SourcePin)
+		{
+			SourcePin = FindFragmentPinByKey(SourceFragment->PinBindings, DataEdge.From.PortId);
+		}
+		if (SourcePin)
+		{
+			return MakeCallFunctionPinTypeFromEdGraphPin(SourcePin);
+		}
+	}
+
+	return MakeCallFunctionPinTypeFromDagRef(DataEdge.From.PinType);
+}
+
+static TMap<FString, FBlueprintHelperCallFunctionPinType> CollectSemanticArgumentPinTypes(
+	const FBlueprintHelperGraphFragmentDag& FragmentDag,
+	const TArray<FBlueprintHelperNodeFragment>& GeneratedFragments,
+	const FString& ConsumerFragmentId)
+{
+	TMap<FString, FBlueprintHelperCallFunctionPinType> Result;
+	for (const FBlueprintHelperGraphFragmentDataEdge& DataEdge : FragmentDag.DataEdges)
+	{
+		if (!DataEdge.To.FragmentId.Equals(ConsumerFragmentId, ESearchCase::CaseSensitive))
+		{
+			continue;
+		}
+
+		const FString ArgumentName = !DataEdge.To.PinName.IsEmpty() ? DataEdge.To.PinName : DataEdge.To.PortId;
+		if (ArgumentName.IsEmpty())
+		{
+			continue;
+		}
+
+		const FBlueprintHelperCallFunctionPinType PinType = ResolveSemanticDataEdgeSourcePinType(DataEdge, GeneratedFragments);
+		if (PinType.IsValid())
+		{
+			Result.Add(ArgumentName, PinType);
+		}
+	}
+	return Result;
+}
+
 static bool SpawnSemanticStatementFragment(
 	UEdGraph* TargetGraph,
 	const TSharedPtr<FBlueprintHelperGraphStatementIR>& Statement,
 	FBlueprintHelperNodeFragment& OutFragment,
 	FString& OutError,
-	TArray<FBlueprintHelperCandidateFunctionGroup>* OutCandidateFunctions = nullptr)
+	TArray<FBlueprintHelperCandidateFunctionGroup>* OutCandidateFunctions = nullptr,
+	const TMap<FString, FBlueprintHelperCallFunctionPinType>* SemanticArgumentPinTypes = nullptr)
 {
 	if (!Statement.IsValid())
 	{
@@ -578,8 +702,22 @@ static bool SpawnSemanticStatementFragment(
 		NodeData.SearchMode = Statement->SearchMode;
 		NodeData.AmbiguityPolicy = Statement->AmbiguityPolicy;
 		NodeData.CategoryPriority = Statement->CategoryPriority;
-		NodeData.TargetObjectType = Statement->ResolvedTarget.Type;
+		if (Statement->ResolvedTarget.Kind == EBlueprintHelperGraphTargetKind::ComponentMemberFunction)
+		{
+			NodeData.TargetObjectType = Statement->ResolvedTarget.Type;
+		}
+		if (Statement->TargetObject.IsValid())
+		{
+			NodeData.TargetObjectName = !Statement->TargetObject->ResolvedTarget.Member.IsEmpty()
+				? Statement->TargetObject->ResolvedTarget.Member
+				: (!Statement->TargetObject->Target.IsEmpty() ? Statement->TargetObject->Target : Statement->TargetObject->Name);
+			NodeData.TargetObjectType = Statement->TargetObject->Type;
+		}
 		FillCallArgsAsDefaultsAndTypes(Statement->Args, NodeData.DefaultValues, NodeData.ArgumentTypes);
+		if (SemanticArgumentPinTypes)
+		{
+			NodeData.ArgumentPinTypes.Append(*SemanticArgumentPinTypes);
+		}
 		return FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment(TargetGraph, NodeData, OutFragment, OutError, OutCandidateFunctions);
 	}
 
@@ -637,6 +775,7 @@ static bool SpawnSemanticStatementFragment(
 
 static FSemanticStatementExecFlow BuildSemanticStatementArray(
 	UEdGraph* TargetGraph,
+	const FBlueprintHelperGraphFragmentDag& FragmentDag,
 	const TArray<TSharedPtr<FBlueprintHelperGraphStatementIR>>& Statements,
 	TArray<UEdGraphPin*> IncomingExits,
 	TArray<FBlueprintHelperNodeFragment>& GeneratedFragments,
@@ -648,6 +787,7 @@ static FSemanticStatementExecFlow BuildSemanticStatementArray(
 
 static FSemanticStatementExecFlow BuildSemanticStatement(
 	UEdGraph* TargetGraph,
+	const FBlueprintHelperGraphFragmentDag& FragmentDag,
 	const TSharedPtr<FBlueprintHelperGraphStatementIR>& Statement,
 	TArray<FBlueprintHelperNodeFragment>& GeneratedFragments,
 	TSet<FString>& GeneratedFragmentIds,
@@ -679,7 +819,12 @@ static FSemanticStatementExecFlow BuildSemanticStatement(
 	FBlueprintHelperNodeFragment StatementFragment;
 	FString Error;
 	TArray<FBlueprintHelperCandidateFunctionGroup> CandidateFunctions;
-	if (!SpawnSemanticStatementFragment(TargetGraph, Statement, StatementFragment, Error, &CandidateFunctions))
+	const FString StatementId = GetSemanticStatementId(*Statement);
+	const TMap<FString, FBlueprintHelperCallFunctionPinType> SemanticArgumentPinTypes =
+		Statement->Kind == EBlueprintHelperGraphStatementKind::Call
+			? CollectSemanticArgumentPinTypes(FragmentDag, GeneratedFragments, StatementId)
+			: TMap<FString, FBlueprintHelperCallFunctionPinType>();
+	if (!SpawnSemanticStatementFragment(TargetGraph, Statement, StatementFragment, Error, &CandidateFunctions, &SemanticArgumentPinTypes))
 	{
 		AddSemanticUnresolved(
 			OutUnresolvedNodes,
@@ -712,6 +857,7 @@ static FSemanticStatementExecFlow BuildSemanticStatement(
 
 		FSemanticStatementExecFlow ThenFlow = BuildSemanticStatementArray(
 			TargetGraph,
+			FragmentDag,
 			Statement->ThenStatements,
 			ThenIncoming,
 			GeneratedFragments,
@@ -722,6 +868,7 @@ static FSemanticStatementExecFlow BuildSemanticStatement(
 			CreatedConnectionCount);
 		FSemanticStatementExecFlow ElseFlow = BuildSemanticStatementArray(
 			TargetGraph,
+			FragmentDag,
 			Statement->ElseStatements,
 			ElseIncoming,
 			GeneratedFragments,
@@ -745,6 +892,7 @@ static FSemanticStatementExecFlow BuildSemanticStatement(
 
 static FSemanticStatementExecFlow BuildSemanticStatementArray(
 	UEdGraph* TargetGraph,
+	const FBlueprintHelperGraphFragmentDag& FragmentDag,
 	const TArray<TSharedPtr<FBlueprintHelperGraphStatementIR>>& Statements,
 	TArray<UEdGraphPin*> IncomingExits,
 	TArray<FBlueprintHelperNodeFragment>& GeneratedFragments,
@@ -761,6 +909,7 @@ static FSemanticStatementExecFlow BuildSemanticStatementArray(
 	{
 		FSemanticStatementExecFlow CurrentFlow = BuildSemanticStatement(
 			TargetGraph,
+			FragmentDag,
 			Statement,
 			GeneratedFragments,
 			GeneratedFragmentIds,
@@ -897,6 +1046,7 @@ static FBlueprintGenerateResult GenerateSemanticGraphFromJsonObject(
 
 	BuildSemanticStatementArray(
 		TargetGraph,
+		FragmentDag,
 		SemanticIR.Statements,
 		InitialExits,
 		GeneratedFragments,

@@ -34,7 +34,7 @@ FString FBlueprintHelperGraphPatternRegistry::ResolveAlias(const FString& Patter
 	return Name;
 }
 
-void FBlueprintHelperGraphPatternRegistry::ApplyPinAliasesAndDefaults(
+void FBlueprintHelperGraphPatternRegistry::ApplyPinAliases(
 	const FString& PatternName,
 	TMap<FString, FString>& Values)
 {
@@ -52,11 +52,30 @@ void FBlueprintHelperGraphPatternRegistry::ApplyPinAliasesAndDefaults(
 			Values.FindOrAdd(AliasPair.Value, Value);
 		}
 	}
+}
+
+void FBlueprintHelperGraphPatternRegistry::ApplyDefaults(
+	const FString& PatternName,
+	TMap<FString, FString>& Values)
+{
+	const FBlueprintHelperGraphPatternBinding* Binding = FindBinding(PatternName);
+	if (!Binding || !Binding->bEnabled)
+	{
+		return;
+	}
 
 	for (const TPair<FString, FString>& DefaultPair : Binding->Defaults)
 	{
 		Values.FindOrAdd(DefaultPair.Key, DefaultPair.Value);
 	}
+}
+
+void FBlueprintHelperGraphPatternRegistry::ApplyPinAliasesAndDefaults(
+	const FString& PatternName,
+	TMap<FString, FString>& Values)
+{
+	ApplyPinAliases(PatternName, Values);
+	ApplyDefaults(PatternName, Values);
 }
 
 void FBlueprintHelperGraphPatternRegistry::ResetForTests()

@@ -11,6 +11,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphStatementBuilder.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDebugData.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutCoordinator.h"
 #include "Shared/GraphWrite/BlueprintHelperAppendGraphTypes.h"
 
 #include "Engine/Blueprint.h"
@@ -881,6 +882,17 @@ FBlueprintHelperToolResultBase FBlueprintHelperMergeBlueprintGraphService::Execu
 	Val.bShouldCompile = true;
 	Val.bShouldSave = true;
 	Success.Validation = Val;
+
+	TArray<UEdGraphNode*> GeneratedNodes;
+	if (Context.InsertedNode)
+	{
+		GeneratedNodes.Add(Context.InsertedNode);
+	}
+	if (Context.SequenceNode)
+	{
+		GeneratedNodes.AddUnique(Context.SequenceNode);
+	}
+	FBlueprintHelperGraphLayoutCoordinator::RecordGeneratedNodes(Graph, GeneratedNodes);
 
 	return Success;
 }

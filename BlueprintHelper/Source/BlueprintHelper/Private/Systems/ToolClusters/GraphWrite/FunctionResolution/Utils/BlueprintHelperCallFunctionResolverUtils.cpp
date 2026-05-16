@@ -11,10 +11,95 @@
 #include "EdGraphSchema_K2.h"
 #include "Engine/Blueprint.h"
 #include "K2Node_CallFunction.h"
+#include "Kismet/GameplayStatics.h"
+#include "Kismet/BlueprintFunctionLibrary.h"
+#include "Kismet/KismetArrayLibrary.h"
+#include "Kismet/KismetMathLibrary.h"
+#include "Kismet/KismetStringLibrary.h"
+#include "Kismet/KismetSystemLibrary.h"
+#include "Kismet/KismetTextLibrary.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "UObject/FieldIterator.h"
 #include "UObject/UObjectIterator.h"
 #include "UObject/UnrealType.h"
+
+namespace
+{
+static FString DescribePinTypeForDiagnostics(const FBlueprintHelperCallFunctionPinType& PinType)
+{
+	TArray<FString> Parts;
+	if (!PinType.Category.IsEmpty())
+	{
+		Parts.Add(FString::Printf(TEXT("category=%s"), *PinType.Category));
+	}
+	if (!PinType.SubCategory.IsEmpty())
+	{
+		Parts.Add(FString::Printf(TEXT("subcategory=%s"), *PinType.SubCategory));
+	}
+	if (!PinType.ObjectPath.IsEmpty())
+	{
+		Parts.Add(FString::Printf(TEXT("object=%s"), *PinType.ObjectPath));
+	}
+	if (!PinType.ContainerType.IsEmpty())
+	{
+		Parts.Add(FString::Printf(TEXT("container=%s"), *PinType.ContainerType));
+	}
+	if (PinType.bIsReference)
+	{
+		Parts.Add(TEXT("ref"));
+	}
+	if (PinType.bIsConst)
+	{
+		Parts.Add(TEXT("const"));
+	}
+	return Parts.Num() > 0 ? FString::Join(Parts, TEXT(",")) : FString(TEXT("unknown"));
+}
+
+static UClass* ResolveClassFromPinType(const FBlueprintHelperCallFunctionPinType& PinType)
+{
+	if (!PinType.ObjectPath.IsEmpty())
+	{
+		if (UClass* Class = FBlueprintHelperCallFunctionResolverUtils::ResolveClassByTypeName(PinType.ObjectPath))
+		{
+			return Class;
+		}
+	}
+	if (!PinType.SubCategory.IsEmpty())
+	{
+		if (UClass* Class = FBlueprintHelperCallFunctionResolverUtils::ResolveClassByTypeName(PinType.SubCategory))
+		{
+			return Class;
+		}
+	}
+	return nullptr;
+}
+
+static bool IsContainerPinCompatibleWithProperty(const FBlueprintHelperCallFunctionPinType& PinType, const FProperty* Property)
+{
+	const FString ContainerToken = FBlueprintHelperCallFunctionResolverUtils::NormalizeTypeToken(PinType.ContainerType);
+	const FString CategoryToken = FBlueprintHelperCallFunctionResolverUtils::NormalizeTypeToken(PinType.Category);
+	if (ContainerToken.IsEmpty() && CategoryToken != TEXT("tarray") && CategoryToken != TEXT("array")
+		&& CategoryToken != TEXT("tset") && CategoryToken != TEXT("set")
+		&& CategoryToken != TEXT("tmap") && CategoryToken != TEXT("map"))
+	{
+		return true;
+	}
+
+	if (ContainerToken == TEXT("array") || CategoryToken == TEXT("tarray") || CategoryToken == TEXT("array"))
+	{
+		return CastField<FArrayProperty>(Property) != nullptr;
+	}
+	if (ContainerToken == TEXT("set") || CategoryToken == TEXT("tset") || CategoryToken == TEXT("set"))
+	{
+		return CastField<FSetProperty>(Property) != nullptr;
+	}
+	if (ContainerToken == TEXT("map") || CategoryToken == TEXT("tmap") || CategoryToken == TEXT("map"))
+	{
+		return CastField<FMapProperty>(Property) != nullptr;
+	}
+	return true;
+}
+}
 
 FString FBlueprintHelperCallFunctionResolverUtils::NormalizeForCompare(const FString& Value)
 {
@@ -35,6 +120,22 @@ FString FBlueprintHelperCallFunctionResolverUtils::NormalizeCompactForCompare(co
 		}
 	}
 	return Result;
+}
+
+static FString StripLeadingBoolPrefixForCompare(const FString& Name)
+{
+	if (Name.Len() <= 1 || !Name.StartsWith(TEXT("b")))
+	{
+		return Name;
+	}
+
+	const TCHAR NextChar = Name[1];
+	if (!FChar::IsUpper(NextChar))
+	{
+		return Name;
+	}
+
+	return Name.RightChop(1);
 }
 
 bool FBlueprintHelperCallFunctionResolverUtils::CompactEquals(const FString& Left, const FString& Right)
@@ -170,31 +271,26 @@ bool FBlueprintHelperCallFunctionResolverUtils::IsGraphCompatible(const UFunctio
 		return true;
 	}
 
-	UBlueprint* TargetBlueprint = Blueprint ? Blueprint : FBlueprintEditorUtils::FindBlueprintForGraph(Graph);
-	const UClass* BlueprintClass = nullptr;
-	if (TargetBlueprint)
-	{
-		BlueprintClass = TargetBlueprint->SkeletonGeneratedClass
-			? TargetBlueprint->SkeletonGeneratedClass
-			: (TargetBlueprint->GeneratedClass ? TargetBlueprint->GeneratedClass : TargetBlueprint->ParentClass);
-	}
-
 	const UEdGraphSchema_K2* K2Schema = GetDefault<UEdGraphSchema_K2>();
 	if (!K2Schema)
 	{
 		return false;
 	}
 
-	uint32 AllowedFunctionTypes =
-		UEdGraphSchema_K2::EFunctionType::FT_Pure |
-		UEdGraphSchema_K2::EFunctionType::FT_Const |
-		UEdGraphSchema_K2::EFunctionType::FT_Protected;
-	if (K2Schema->DoesGraphSupportImpureFunctions(Graph))
+	const bool bImpureCall = Function->HasMetaData(TEXT("Latent"))
+		|| Function->HasMetaData(TEXT("LatentInfo"))
+		|| !Function->HasAnyFunctionFlags(FUNC_BlueprintPure);
+	if (bImpureCall && !K2Schema->DoesGraphSupportImpureFunctions(Graph))
 	{
-		AllowedFunctionTypes |= UEdGraphSchema_K2::EFunctionType::FT_Imperative;
+		return false;
 	}
 
-	return K2Schema->CanFunctionBeUsedInGraph(BlueprintClass, Function, Graph, AllowedFunctionTypes, false);
+	if (Function->HasMetaData(TEXT("WorldContext")) && !Blueprint && !FBlueprintEditorUtils::FindBlueprintForGraph(Graph))
+	{
+		return false;
+	}
+
+	return true;
 }
 
 bool FBlueprintHelperCallFunctionResolverUtils::IsFunctionInputProperty(const FProperty* Property)
@@ -264,7 +360,18 @@ FProperty* FBlueprintHelperCallFunctionResolverUtils::FindInputPropertyByName(co
 		}
 
 		const FString PropertyName = Property->GetName();
-		if (NormalizeForCompare(PropertyName) == Wanted || NormalizeCompactForCompare(PropertyName) == WantedCompact)
+		const FString PropertyDisplayName = Property->GetDisplayNameText().ToString();
+		const FString BoolPrefixStrippedName = CastField<FBoolProperty>(Property)
+			? StripLeadingBoolPrefixForCompare(PropertyName)
+			: FString();
+		if (NormalizeForCompare(PropertyName) == Wanted
+			|| NormalizeCompactForCompare(PropertyName) == WantedCompact
+			|| (!PropertyDisplayName.IsEmpty()
+				&& (NormalizeForCompare(PropertyDisplayName) == Wanted
+					|| NormalizeCompactForCompare(PropertyDisplayName) == WantedCompact))
+			|| (!BoolPrefixStrippedName.IsEmpty()
+				&& (NormalizeForCompare(BoolPrefixStrippedName) == Wanted
+					|| NormalizeCompactForCompare(BoolPrefixStrippedName) == WantedCompact)))
 		{
 			return Property;
 		}
@@ -290,24 +397,33 @@ bool FBlueprintHelperCallFunctionResolverUtils::IsSemanticTypeCompatibleWithProp
 
 	if (Token == TEXT("bool") || Token == TEXT("boolean"))
 	{
-		return CastField<FBoolProperty>(Property) != nullptr;
+		return CastField<FBoolProperty>(Property) != nullptr
+			|| CastField<FStrProperty>(Property) != nullptr
+			|| CastField<FTextProperty>(Property) != nullptr;
 	}
 	if (Token == TEXT("string"))
 	{
-		return CastField<FStrProperty>(Property) != nullptr;
+		return CastField<FStrProperty>(Property) != nullptr
+			|| CastField<FTextProperty>(Property) != nullptr
+			|| CastField<FNameProperty>(Property) != nullptr;
 	}
 	if (Token == TEXT("name"))
 	{
-		return CastField<FNameProperty>(Property) != nullptr;
+		return CastField<FNameProperty>(Property) != nullptr
+			|| CastField<FStrProperty>(Property) != nullptr
+			|| CastField<FTextProperty>(Property) != nullptr;
 	}
 	if (Token == TEXT("text"))
 	{
-		return CastField<FTextProperty>(Property) != nullptr;
+		return CastField<FTextProperty>(Property) != nullptr
+			|| CastField<FStrProperty>(Property) != nullptr;
 	}
 	if (IsNumericSemanticType(Token))
 	{
 		const FNumericProperty* Numeric = CastField<FNumericProperty>(Property);
-		return Numeric != nullptr && (Numeric->IsInteger() || Numeric->IsFloatingPoint());
+		return (Numeric != nullptr && (Numeric->IsInteger() || Numeric->IsFloatingPoint()))
+			|| CastField<FStrProperty>(Property) != nullptr
+			|| CastField<FTextProperty>(Property) != nullptr;
 	}
 
 	if (const FStructProperty* StructProperty = CastField<FStructProperty>(Property))
@@ -321,13 +437,17 @@ bool FBlueprintHelperCallFunctionResolverUtils::IsSemanticTypeCompatibleWithProp
 	if (const FObjectPropertyBase* ObjectProperty = CastField<FObjectPropertyBase>(Property))
 	{
 		UClass* RequestedClass = ResolveClassByTypeName(Type);
-		return !RequestedClass || !ObjectProperty->PropertyClass || RequestedClass->IsChildOf(ObjectProperty->PropertyClass);
+		return !RequestedClass || !ObjectProperty->PropertyClass
+			|| RequestedClass->IsChildOf(ObjectProperty->PropertyClass)
+			|| ObjectProperty->PropertyClass->IsChildOf(RequestedClass);
 	}
 
 	if (const FClassProperty* ClassProperty = CastField<FClassProperty>(Property))
 	{
 		UClass* RequestedClass = ResolveClassByTypeName(Type);
-		return !RequestedClass || !ClassProperty->MetaClass || RequestedClass->IsChildOf(ClassProperty->MetaClass);
+		return !RequestedClass || !ClassProperty->MetaClass
+			|| RequestedClass->IsChildOf(ClassProperty->MetaClass)
+			|| ClassProperty->MetaClass->IsChildOf(RequestedClass);
 	}
 
 	return true;
@@ -336,6 +456,14 @@ bool FBlueprintHelperCallFunctionResolverUtils::IsSemanticTypeCompatibleWithProp
 bool FBlueprintHelperCallFunctionResolverUtils::IsPinTypeCompatibleWithProperty(const FBlueprintHelperCallFunctionPinType& PinType, const FProperty* Property)
 {
 	if (!PinType.IsValid())
+	{
+		return true;
+	}
+	if (!IsContainerPinCompatibleWithProperty(PinType, Property))
+	{
+		return false;
+	}
+	if (NormalizeTypeToken(PinType.Category) == TEXT("wildcard"))
 	{
 		return true;
 	}
@@ -348,13 +476,78 @@ bool FBlueprintHelperCallFunctionResolverUtils::IsPinTypeCompatibleWithProperty(
 
 bool FBlueprintHelperCallFunctionResolverUtils::DoesGraphSupportImpureFunctions(UEdGraph* Graph)
 {
-	const UEdGraphSchema_K2* K2Schema = GetDefault<UEdGraphSchema_K2>();
-	return !Graph || !K2Schema || K2Schema->DoesGraphSupportImpureFunctions(Graph);
+	if (!Graph)
+	{
+		return true;
+	}
+
+	const UEdGraphSchema_K2* K2Schema = Cast<const UEdGraphSchema_K2>(Graph->GetSchema());
+	if (!K2Schema)
+	{
+		K2Schema = GetDefault<UEdGraphSchema_K2>();
+	}
+	return !K2Schema || K2Schema->DoesGraphSupportImpureFunctions(Graph);
+}
+
+FBlueprintHelperK2CallContext FBlueprintHelperCallFunctionResolverUtils::BuildEffectiveContext(
+	const FBlueprintHelperCallFunctionResolveRequest& Request)
+{
+	FBlueprintHelperK2CallContext Context = Request.Context;
+	if (!Context.Blueprint)
+	{
+		Context.Blueprint = Request.Blueprint;
+	}
+	if (!Context.Graph)
+	{
+		Context.Graph = Request.Graph;
+	}
+	if (!Context.Schema && Context.Graph)
+	{
+		Context.Schema = Context.Graph->GetSchema();
+	}
+	if (!Context.Blueprint && Context.Graph)
+	{
+		Context.Blueprint = FBlueprintEditorUtils::FindBlueprintForGraph(Context.Graph);
+	}
+	if (!Context.SelfClass && Context.Blueprint)
+	{
+		Context.SelfClass = Context.Blueprint->GeneratedClass
+			? Context.Blueprint->GeneratedClass
+			: (Context.Blueprint->SkeletonGeneratedClass
+				? Context.Blueprint->SkeletonGeneratedClass
+				: Context.Blueprint->ParentClass);
+	}
+	if (Context.GraphKind.IsEmpty() && Context.Graph)
+	{
+		Context.GraphKind = Context.Graph->GetClass()->GetName();
+	}
+	if (Context.ArgumentNames.Num() == 0)
+	{
+		Context.ArgumentNames = Request.ArgumentNames;
+	}
+	if (Context.ArgumentTypes.Num() == 0)
+	{
+		Context.ArgumentTypes = Request.ArgumentTypes;
+	}
+	if (Context.ArgumentPinTypes.Num() == 0)
+	{
+		Context.ArgumentPinTypes = Request.ArgumentPinTypes;
+	}
+	if (Context.TargetObjectType.IsEmpty())
+	{
+		Context.TargetObjectType = Request.TargetObjectType;
+	}
+	if (!Context.TargetObjectPinType.IsValid())
+	{
+		Context.TargetObjectPinType = Request.TargetObjectPinType;
+	}
+	return Context;
 }
 
 bool FBlueprintHelperCallFunctionResolverUtils::IsTargetObjectTypeCompatible(const FBlueprintHelperCallFunctionCandidate& Candidate, const FBlueprintHelperCallFunctionResolveRequest& Request)
 {
-	if (Request.TargetObjectType.TrimStartAndEnd().IsEmpty() && !Request.TargetObjectPinType.IsValid())
+	const FBlueprintHelperK2CallContext Context = BuildEffectiveContext(Request);
+	if (Context.TargetObjectType.TrimStartAndEnd().IsEmpty() && !Context.TargetObjectPinType.IsValid())
 	{
 		return true;
 	}
@@ -365,7 +558,11 @@ bool FBlueprintHelperCallFunctionResolverUtils::IsTargetObjectTypeCompatible(con
 		return false;
 	}
 
-	UClass* RequestedClass = ResolveClassByTypeName(Request.TargetObjectType);
+	UClass* RequestedClass = ResolveClassByTypeName(Context.TargetObjectType);
+	if (!RequestedClass && Context.TargetObjectPinType.IsValid())
+	{
+		RequestedClass = ResolveClassFromPinType(Context.TargetObjectPinType);
+	}
 	if (RequestedClass && Function->GetOwnerClass() && !Function->HasAnyFunctionFlags(FUNC_Static))
 	{
 		return RequestedClass->IsChildOf(Function->GetOwnerClass());
@@ -374,8 +571,8 @@ bool FBlueprintHelperCallFunctionResolverUtils::IsTargetObjectTypeCompatible(con
 	const FString TargetPinName = !Candidate.TargetObjectPin.IsEmpty() ? Candidate.TargetObjectPin : FString(TEXT("self"));
 	if (FProperty* TargetProperty = FindInputPropertyByName(Function, TargetPinName))
 	{
-		return IsSemanticTypeCompatibleWithProperty(Request.TargetObjectType, TargetProperty)
-			&& IsPinTypeCompatibleWithProperty(Request.TargetObjectPinType, TargetProperty);
+		return IsSemanticTypeCompatibleWithProperty(Context.TargetObjectType, TargetProperty)
+			&& IsPinTypeCompatibleWithProperty(Context.TargetObjectPinType, TargetProperty);
 	}
 
 	return !RequestedClass || !Function->GetOwnerClass() || RequestedClass->IsChildOf(Function->GetOwnerClass());
@@ -389,7 +586,8 @@ bool FBlueprintHelperCallFunctionResolverUtils::AreRequestedArgumentsCompatible(
 		return false;
 	}
 
-	for (const FString& ArgumentName : Request.ArgumentNames)
+	const FBlueprintHelperK2CallContext Context = BuildEffectiveContext(Request);
+	for (const FString& ArgumentName : Context.ArgumentNames)
 	{
 		if (!FindInputPropertyByName(Function, ArgumentName))
 		{
@@ -397,7 +595,7 @@ bool FBlueprintHelperCallFunctionResolverUtils::AreRequestedArgumentsCompatible(
 		}
 	}
 
-	for (const TPair<FString, FString>& Pair : Request.ArgumentTypes)
+	for (const TPair<FString, FString>& Pair : Context.ArgumentTypes)
 	{
 		FProperty* Property = FindInputPropertyByName(Function, Pair.Key);
 		if (!Property || !IsSemanticTypeCompatibleWithProperty(Pair.Value, Property))
@@ -406,7 +604,7 @@ bool FBlueprintHelperCallFunctionResolverUtils::AreRequestedArgumentsCompatible(
 		}
 	}
 
-	for (const TPair<FString, FBlueprintHelperCallFunctionPinType>& Pair : Request.ArgumentPinTypes)
+	for (const TPair<FString, FBlueprintHelperCallFunctionPinType>& Pair : Context.ArgumentPinTypes)
 	{
 		FProperty* Property = FindInputPropertyByName(Function, Pair.Key);
 		if (!Property || !IsPinTypeCompatibleWithProperty(Pair.Value, Property))
@@ -418,32 +616,92 @@ bool FBlueprintHelperCallFunctionResolverUtils::AreRequestedArgumentsCompatible(
 	return true;
 }
 
-bool FBlueprintHelperCallFunctionResolverUtils::PassesMetadataFilters(const FBlueprintHelperCallFunctionCandidate& Candidate, const FBlueprintHelperCallFunctionResolveRequest& Request)
+FString FBlueprintHelperCallFunctionResolverUtils::DescribeCandidateMismatch(
+	const FBlueprintHelperCallFunctionCandidate& Candidate,
+	const FBlueprintHelperCallFunctionResolveRequest& Request)
 {
+	const UFunction* Function = Candidate.Function.Get();
+	if (!Function)
+	{
+		return TEXT("function_invalid");
+	}
 	if (!Candidate.bBlueprintCallable && !Candidate.bBlueprintPure)
 	{
-		return false;
+		return TEXT("not_blueprint_callable");
 	}
 
-	if ((Candidate.bLatent || (!Candidate.bBlueprintPure && Candidate.bBlueprintCallable)) && !DoesGraphSupportImpureFunctions(Request.Graph))
+	const FBlueprintHelperK2CallContext Context = BuildEffectiveContext(Request);
+	if ((Candidate.bLatent || (!Candidate.bBlueprintPure && Candidate.bBlueprintCallable))
+		&& !DoesGraphSupportImpureFunctions(Context.Graph))
 	{
-		return false;
+		return TEXT("impure_or_latent_call_not_supported_by_graph");
 	}
-
-	if (Candidate.bRequiresWorldContext && !Request.Graph && !Request.Blueprint)
+	if (!Candidate.bGraphCompatible)
 	{
-		return false;
+		return TEXT("graph_incompatible");
+	}
+	if (!IsTargetObjectTypeCompatible(Candidate, Request))
+	{
+		return FString::Printf(
+			TEXT("target_object_type_mismatch:target=%s target_pin=%s"),
+			*Context.TargetObjectType,
+			*DescribePinTypeForDiagnostics(Context.TargetObjectPinType));
 	}
 
-	return IsTargetObjectTypeCompatible(Candidate, Request) && AreRequestedArgumentsCompatible(Candidate, Request);
+	for (const FString& ArgumentName : Context.ArgumentNames)
+	{
+		if (!FindInputPropertyByName(Function, ArgumentName))
+		{
+			return FString::Printf(TEXT("missing_argument_pin:%s"), *ArgumentName);
+		}
+	}
+	for (const TPair<FString, FString>& Pair : Context.ArgumentTypes)
+	{
+		FProperty* Property = FindInputPropertyByName(Function, Pair.Key);
+		if (!Property)
+		{
+			return FString::Printf(TEXT("missing_argument_pin:%s"), *Pair.Key);
+		}
+		if (!IsSemanticTypeCompatibleWithProperty(Pair.Value, Property))
+		{
+			return FString::Printf(
+				TEXT("argument_type_mismatch:%s expected=%s actual=%s"),
+				*Pair.Key,
+				*GetPropertySemanticType(Property),
+				*Pair.Value);
+		}
+	}
+	for (const TPair<FString, FBlueprintHelperCallFunctionPinType>& Pair : Context.ArgumentPinTypes)
+	{
+		FProperty* Property = FindInputPropertyByName(Function, Pair.Key);
+		if (!Property)
+		{
+			return FString::Printf(TEXT("missing_argument_pin:%s"), *Pair.Key);
+		}
+		if (!IsPinTypeCompatibleWithProperty(Pair.Value, Property))
+		{
+			return FString::Printf(
+				TEXT("argument_pin_type_mismatch:%s expected=%s actual=%s"),
+				*Pair.Key,
+				*GetPropertySemanticType(Property),
+				*DescribePinTypeForDiagnostics(Pair.Value));
+		}
+	}
+	return FString();
+}
+
+bool FBlueprintHelperCallFunctionResolverUtils::PassesMetadataFilters(const FBlueprintHelperCallFunctionCandidate& Candidate, const FBlueprintHelperCallFunctionResolveRequest& Request)
+{
+	return DescribeCandidateMismatch(Candidate, Request).IsEmpty();
 }
 
 int32 FBlueprintHelperCallFunctionResolverUtils::ComputeTypedConstraintBonus(const FBlueprintHelperCallFunctionResolveRequest& Request)
 {
+	const FBlueprintHelperK2CallContext Context = BuildEffectiveContext(Request);
 	int32 Bonus = 0;
-	Bonus += FMath::Min(160, Request.ArgumentTypes.Num() * 40);
-	Bonus += FMath::Min(160, Request.ArgumentPinTypes.Num() * 40);
-	if (!Request.TargetObjectType.IsEmpty() || Request.TargetObjectPinType.IsValid())
+	Bonus += FMath::Min(160, Context.ArgumentTypes.Num() * 40);
+	Bonus += FMath::Min(160, Context.ArgumentPinTypes.Num() * 40);
+	if (!Context.TargetObjectType.IsEmpty() || Context.TargetObjectPinType.IsValid())
 	{
 		Bonus += 120;
 	}
@@ -560,6 +818,7 @@ void FBlueprintHelperCallFunctionResolverUtils::AddCandidateForFunction(
 	}
 
 	FBlueprintHelperCallFunctionCandidate Candidate;
+	const FBlueprintHelperK2CallContext Context = BuildEffectiveContext(Request);
 	Candidate.StableId = StableId;
 	Candidate.OwnerClassPath = GetOwnerClassPath(Function);
 	Candidate.NativeFunctionName = Function->GetName();
@@ -568,12 +827,16 @@ void FBlueprintHelperCallFunctionResolverUtils::AddCandidateForFunction(
 	Candidate.NodeClass = UK2Node_CallFunction::StaticClass();
 	Candidate.NodeClassPath = UK2Node_CallFunction::StaticClass()->GetPathName();
 	Candidate.bFromActionDatabase = NodeSpawner != nullptr;
-	Candidate.bGraphCompatible = Candidate.bFromActionDatabase || IsGraphCompatible(Function, Request.Blueprint, Request.Graph);
+	Candidate.bGraphCompatible = Candidate.bFromActionDatabase || IsGraphCompatible(Function, Context.Blueprint, Context.Graph);
 	Candidate.bBlueprintCallable = Function->HasAnyFunctionFlags(FUNC_BlueprintCallable);
 	Candidate.bBlueprintPure = Function->HasAnyFunctionFlags(FUNC_BlueprintPure);
 	Candidate.bLatent = Function->HasMetaData(TEXT("Latent")) || Function->HasMetaData(TEXT("LatentInfo"));
 	Candidate.WorldContextPin = Function->HasMetaData(TEXT("WorldContext")) ? Function->GetMetaData(TEXT("WorldContext")) : FString();
 	Candidate.bRequiresWorldContext = !Candidate.WorldContextPin.IsEmpty();
+	Candidate.bCustomThunk = Function->HasMetaData(TEXT("CustomThunk"));
+	Candidate.bHasArrayParm = Function->HasMetaData(TEXT("ArrayParm"));
+	Candidate.bHasArrayTypeDependentParams = Function->HasMetaData(TEXT("ArrayTypeDependentParams"));
+	Candidate.bDeterminesOutputType = Function->HasMetaData(TEXT("DeterminesOutputType"));
 	Candidate.TargetObjectPin = Function->HasAnyFunctionFlags(FUNC_Static) ? Function->GetMetaData(TEXT("DefaultToSelf")) : FString(TEXT("self"));
 	for (TFieldIterator<FProperty> PropIt(Function); PropIt; ++PropIt)
 	{
@@ -581,6 +844,7 @@ void FBlueprintHelperCallFunctionResolverUtils::AddCandidateForFunction(
 		if (IsFunctionInputProperty(Property))
 		{
 			Candidate.InputPins.Add(Property->GetName());
+			Candidate.InputPinTypes.Add(Property->GetName(), GetPropertySemanticType(Property));
 		}
 		else if (IsFunctionOutputProperty(Property) && Candidate.ReturnType.IsEmpty())
 		{
@@ -596,14 +860,15 @@ void FBlueprintHelperCallFunctionResolverUtils::AddActionDatabaseCandidates(
 	const FBlueprintHelperCallFunctionResolveRequest& Request,
 	TMap<FString, FBlueprintHelperCallFunctionCandidate>& InOutCandidates)
 {
+	const FBlueprintHelperK2CallContext EffectiveContext = BuildEffectiveContext(Request);
 	FBlueprintActionContext Context;
-	if (Request.Blueprint)
+	if (EffectiveContext.Blueprint)
 	{
-		Context.Blueprints.Add(Request.Blueprint);
+		Context.Blueprints.Add(EffectiveContext.Blueprint);
 	}
-	if (Request.Graph)
+	if (EffectiveContext.Graph)
 	{
-		Context.Graphs.Add(Request.Graph);
+		Context.Graphs.Add(EffectiveContext.Graph);
 	}
 
 	FBlueprintActionFilter Filter(FBlueprintActionFilter::BPFILTER_RejectIncompatibleThreadSafety);
@@ -643,7 +908,12 @@ TArray<FBlueprintHelperCallFunctionCandidate> FBlueprintHelperCallFunctionResolv
 	const FBlueprintHelperCallFunctionResolveRequest& Request)
 {
 	TMap<FString, FBlueprintHelperCallFunctionCandidate> CandidateMap;
-	UClass* RequestedTargetClass = ResolveClassByTypeName(Request.TargetObjectType);
+	const FBlueprintHelperK2CallContext Context = BuildEffectiveContext(Request);
+	UClass* RequestedTargetClass = ResolveClassByTypeName(Context.TargetObjectType);
+	if (!RequestedTargetClass && Context.TargetObjectPinType.IsValid())
+	{
+		RequestedTargetClass = ResolveClassFromPinType(Context.TargetObjectPinType);
+	}
 	AddActionDatabaseCandidates(Request, CandidateMap);
 
 	auto AddClassFunctions = [&CandidateMap, &Request](UClass* Class)
@@ -659,6 +929,39 @@ TArray<FBlueprintHelperCallFunctionCandidate> FBlueprintHelperCallFunctionResolv
 		}
 	};
 
+	auto AddBlueprintFunctionLibraryFunctions = [&AddClassFunctions]()
+	{
+		UClass* SeedLibraries[] =
+		{
+			UKismetSystemLibrary::StaticClass(),
+			UKismetMathLibrary::StaticClass(),
+			UKismetStringLibrary::StaticClass(),
+			UKismetTextLibrary::StaticClass(),
+			UKismetArrayLibrary::StaticClass(),
+			UGameplayStatics::StaticClass()
+		};
+
+		for (UClass* Class : SeedLibraries)
+		{
+			AddClassFunctions(Class);
+		}
+
+		for (TObjectIterator<UClass> ClassIt; ClassIt; ++ClassIt)
+		{
+			UClass* Class = *ClassIt;
+			if (!Class
+				|| Class->HasAnyClassFlags(CLASS_Deprecated | CLASS_NewerVersionExists)
+				|| !Class->IsChildOf(UBlueprintFunctionLibrary::StaticClass()))
+			{
+				continue;
+			}
+
+			AddClassFunctions(Class);
+		}
+	};
+
+	AddBlueprintFunctionLibraryFunctions();
+
 	if (RequestedTargetClass)
 	{
 		for (UClass* Class = RequestedTargetClass; Class; Class = Class->GetSuperClass())
@@ -666,11 +969,11 @@ TArray<FBlueprintHelperCallFunctionCandidate> FBlueprintHelperCallFunctionResolv
 			AddClassFunctions(Class);
 		}
 	}
-	else if (Request.Blueprint)
+	else if (Context.Blueprint)
 	{
-		AddClassFunctions(Request.Blueprint->SkeletonGeneratedClass);
-		AddClassFunctions(Request.Blueprint->GeneratedClass);
-		AddClassFunctions(Request.Blueprint->ParentClass);
+		AddClassFunctions(Context.Blueprint->SkeletonGeneratedClass);
+		AddClassFunctions(Context.Blueprint->GeneratedClass);
+		AddClassFunctions(Context.Blueprint->ParentClass);
 	}
 
 	TArray<FBlueprintHelperCallFunctionCandidate> Candidates;
@@ -813,9 +1116,14 @@ FString FBlueprintHelperCallFunctionResolverUtils::BuildCandidateFunctionJsonStr
 	{
 		InputPins.Add(JsonQuote(InputPin));
 	}
+	TArray<FString> InputPinTypes;
+	for (const TPair<FString, FString>& Pair : Candidate.InputPinTypes)
+	{
+		InputPinTypes.Add(FString::Printf(TEXT("%s:%s"), *JsonQuote(Pair.Key), *JsonQuote(Pair.Value)));
+	}
 
 	return FString::Printf(
-		TEXT("{\"stable_id\":%s,\"display_name\":%s,\"owner\":%s,\"native_name\":%s,\"category\":%s,\"node_class\":%s,\"match_reason\":%s,\"return_type\":%s,\"score\":%d,\"graph_compatible\":%s,\"from_action_database\":%s,\"blueprint_callable\":%s,\"blueprint_pure\":%s,\"latent\":%s,\"requires_world_context\":%s,\"world_context_pin\":%s,\"target_object_pin\":%s,\"input_pins\":[%s]}"),
+		TEXT("{\"stable_id\":%s,\"display_name\":%s,\"owner\":%s,\"native_name\":%s,\"category\":%s,\"node_class\":%s,\"match_reason\":%s,\"return_type\":%s,\"score\":%d,\"graph_compatible\":%s,\"from_action_database\":%s,\"blueprint_callable\":%s,\"blueprint_pure\":%s,\"latent\":%s,\"requires_world_context\":%s,\"custom_thunk\":%s,\"array_parm\":%s,\"array_type_dependent_params\":%s,\"determines_output_type\":%s,\"world_context_pin\":%s,\"target_object_pin\":%s,\"mismatch_reason\":%s,\"input_pins\":[%s],\"input_pin_types\":{%s}}"),
 		*JsonQuote(Candidate.StableId),
 		*JsonQuote(Candidate.DisplayName),
 		*JsonQuote(Candidate.OwnerClassPath),
@@ -831,9 +1139,15 @@ FString FBlueprintHelperCallFunctionResolverUtils::BuildCandidateFunctionJsonStr
 		Candidate.bBlueprintPure ? TEXT("true") : TEXT("false"),
 		Candidate.bLatent ? TEXT("true") : TEXT("false"),
 		Candidate.bRequiresWorldContext ? TEXT("true") : TEXT("false"),
+		Candidate.bCustomThunk ? TEXT("true") : TEXT("false"),
+		Candidate.bHasArrayParm ? TEXT("true") : TEXT("false"),
+		Candidate.bHasArrayTypeDependentParams ? TEXT("true") : TEXT("false"),
+		Candidate.bDeterminesOutputType ? TEXT("true") : TEXT("false"),
 		*JsonQuote(Candidate.WorldContextPin),
 		*JsonQuote(Candidate.TargetObjectPin),
-		*FString::Join(InputPins, TEXT(",")));
+		*JsonQuote(Candidate.MismatchReason),
+		*FString::Join(InputPins, TEXT(",")),
+		*FString::Join(InputPinTypes, TEXT(",")));
 }
 
 FBlueprintHelperCallFunctionCandidateInfo FBlueprintHelperCallFunctionResolverUtils::BuildCandidateFunctionInfo(const FBlueprintHelperCallFunctionCandidate& Candidate)
@@ -850,6 +1164,8 @@ FBlueprintHelperCallFunctionCandidateInfo FBlueprintHelperCallFunctionResolverUt
 	Info.WorldContextPin = Candidate.WorldContextPin;
 	Info.TargetObjectPin = Candidate.TargetObjectPin;
 	Info.InputPins = Candidate.InputPins;
+	Info.InputPinTypes = Candidate.InputPinTypes;
+	Info.MismatchReason = Candidate.MismatchReason;
 	Info.Score = Candidate.Score;
 	Info.bGraphCompatible = Candidate.bGraphCompatible;
 	Info.bFromActionDatabase = Candidate.bFromActionDatabase;
@@ -857,19 +1173,54 @@ FBlueprintHelperCallFunctionCandidateInfo FBlueprintHelperCallFunctionResolverUt
 	Info.bBlueprintPure = Candidate.bBlueprintPure;
 	Info.bLatent = Candidate.bLatent;
 	Info.bRequiresWorldContext = Candidate.bRequiresWorldContext;
+	Info.bCustomThunk = Candidate.bCustomThunk;
+	Info.bHasArrayParm = Candidate.bHasArrayParm;
+	Info.bHasArrayTypeDependentParams = Candidate.bHasArrayTypeDependentParams;
+	Info.bDeterminesOutputType = Candidate.bDeterminesOutputType;
 	return Info;
 }
 
 FString FBlueprintHelperCallFunctionResolverUtils::JsonQuote(const FString& Value)
 {
-	FString Escaped = Value;
-	Escaped.ReplaceInline(TEXT("\\"), TEXT("\\\\"));
-	Escaped.ReplaceInline(TEXT("\""), TEXT("\\\""));
-	Escaped.ReplaceInline(TEXT("\r"), TEXT("\\r"));
-	Escaped.ReplaceInline(TEXT("\n"), TEXT("\\n"));
-	Escaped.ReplaceInline(TEXT("\t"), TEXT("\\t"));
-	Escaped.ReplaceInline(TEXT("\b"), TEXT("\\b"));
-	Escaped.ReplaceInline(TEXT("\f"), TEXT("\\f"));
+	FString Escaped;
+	Escaped.Reserve(Value.Len());
+	for (const TCHAR Character : Value)
+	{
+		switch (Character)
+		{
+		case TEXT('\\'):
+			Escaped += TEXT("\\\\");
+			break;
+		case TEXT('"'):
+			Escaped += TEXT("\\\"");
+			break;
+		case TEXT('\r'):
+			Escaped += TEXT("\\r");
+			break;
+		case TEXT('\n'):
+			Escaped += TEXT("\\n");
+			break;
+		case TEXT('\t'):
+			Escaped += TEXT("\\t");
+			break;
+		case TEXT('\b'):
+			Escaped += TEXT("\\b");
+			break;
+		case TEXT('\f'):
+			Escaped += TEXT("\\f");
+			break;
+		default:
+			if (Character < 0x20)
+			{
+				Escaped += FString::Printf(TEXT("\\u%04x"), static_cast<uint32>(Character));
+			}
+			else
+			{
+				Escaped.AppendChar(Character);
+			}
+			break;
+		}
+	}
 	return FString::Printf(TEXT("\"%s\""), *Escaped);
 }
 

@@ -247,6 +247,23 @@ struct FBlueprintHelperDryRunCandidateFunctionGroup
 					}
 					CandidateJson->SetArrayField(TEXT("input_pins"), PinArr);
 				}
+				if (Candidate.InputPinTypes.Num() > 0)
+				{
+					TSharedRef<FJsonObject> PinTypesJson = MakeShared<FJsonObject>();
+					for (const TPair<FString, FString>& Pair : Candidate.InputPinTypes)
+					{
+						PinTypesJson->SetStringField(Pair.Key, Pair.Value);
+					}
+					CandidateJson->SetObjectField(TEXT("input_pin_types"), PinTypesJson);
+				}
+				if (!Candidate.MismatchReason.IsEmpty())
+				{
+					CandidateJson->SetStringField(TEXT("mismatch_reason"), Candidate.MismatchReason);
+				}
+				CandidateJson->SetBoolField(TEXT("custom_thunk"), Candidate.bCustomThunk);
+				CandidateJson->SetBoolField(TEXT("array_parm"), Candidate.bHasArrayParm);
+				CandidateJson->SetBoolField(TEXT("array_type_dependent_params"), Candidate.bHasArrayTypeDependentParams);
+				CandidateJson->SetBoolField(TEXT("determines_output_type"), Candidate.bDeterminesOutputType);
 				Arr.Add(MakeShared<FJsonValueObject>(CandidateJson));
 			}
 			Json->SetArrayField(TEXT("candidates"), Arr);

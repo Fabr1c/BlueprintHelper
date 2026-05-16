@@ -929,3 +929,7 @@ enhanced_input_bind
 4. Graph body Review 按 function/event/macro 聚合。
 5. Pattern JSON 配置采用插件内置和项目覆盖两级目录。
 6. 直接切换到短名语句，旧字段随短名实现进度逐步移除。
+
+## 2026-05-16 Layout Deprecation Note
+
+Historical references in this file to `layout_hints`, local layout, or fragment layout model are deprecated. The new boundary is: GraphStatement / GraphWrite do not own final node placement rules. TaskPlan / GraphWrite generate nodes and links only. Configurable placement moves to the UE-side GraphLayout system and its RuleSet / Widget editor.

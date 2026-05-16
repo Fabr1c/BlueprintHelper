@@ -32,6 +32,7 @@
 #include "Shared/BlueprintClassSettings/BlueprintHelperClassSettingsTypes.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperAppendBlueprintGraphService.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutCoordinator.h"
 #include "Shared/GraphWrite/BlueprintHelperAppendGraphTypes.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperReplaceBlueprintGraphService.h"
 #include "Shared/GraphWrite/BlueprintHelperReplaceGraphTypes.h"
@@ -1617,6 +1618,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleExecuteTaskPl
 	const FBlueprintHelperBridgeRequest& Req) const
 {
 	const FBlueprintHelperToolResultBase Result = TaskRuntimeService.ExecuteTaskPlan(Req.Payload);
+	FBlueprintHelperGraphLayoutCoordinator::FlushPendingTaskLayouts();
 	ReviewStoreService.NotifyPendingReviewChanged();
 	const FString ErrorMessage = Result.Error.IsSet() && !Result.Error->Message.IsEmpty()
 		? Result.Error->Message

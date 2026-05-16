@@ -466,3 +466,24 @@ ame_collision_policy=reuse_if_exists。
 
 阻塞内容：
 1. 无。
+## 2026-05-16 CallFunction K2Context 覆盖测试 CLI Tips
+
+新增内容：
+1. 当前 CLI 任务命令应使用 `bh.cmd task preview --file <TaskSpec.json>` 和 `bh.cmd task execute --file <TaskSpec.json>`；旧式 `bh.cmd execute_task --file ...` 会返回 `Unsupported BlueprintHelper CLI command`。
+2. Windows PowerShell `Set-Content -Encoding UTF8` 在当前环境会写入 UTF-8 BOM，`bh.cmd task preview --file` 读取 TaskSpec 时可能报 `Unexpected token '﻿' is not valid JSON`。
+3. 写入 TaskSpec 文件时使用 UTF-8 no BOM：`[System.IO.File]::WriteAllText($path, $json, [System.Text.UTF8Encoding]::new($false))`。
+4. `--fields` 会裁切错误详情；排查 CLI 参数、JSON 或 schema 问题时先用 `--format full`，确认错误后再恢复字段裁切。
+
+修复内容：
+1. 本轮测试 spec 已用 UTF-8 no BOM 重写后通过 CLI JSON parse。
+
+变更需求：
+1. 开发验证文档和脚本应统一使用 `task preview/task execute` 命令族，不再写旧 `execute_task` 形式。
+
+阻塞内容：
+1. 无。
+## 2026-05-16 PowerShell bh.ps1 ExecutionPolicy 再确认
+
+现象：在 PowerShell 中执行 `bh ...` 时会优先命中 npm shim `bh.ps1`，如果当前 ExecutionPolicy 禁止脚本，会报“无法加载文件 ...\bh.ps1，因为在此系统上禁止运行脚本”。
+稳定做法：自动化脚本固定使用 `bh.cmd ...`，或直接使用工作区 node CLI 入口；不要在任务中临时修改用户机器 ExecutionPolicy。
+分类：本地 PowerShell/npm shim 调用限制，不是 BlueprintHelper 插件 Bug。

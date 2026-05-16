@@ -1,0 +1,137 @@
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Dom/JsonObject.h"
+
+namespace BlueprintHelper::GraphLayout
+{
+inline constexpr const TCHAR* RuleSetSchemaV1 = TEXT("BlueprintHelper.GraphLayoutRuleSet.v1");
+
+enum class ENodeRole : uint8
+{
+	Unknown,
+	EventEntry,
+	ExecNode,
+	BranchControl,
+	PureFunction,
+	VariableInput,
+	AsyncNode,
+	DelegateNode,
+	Comment,
+	Reroute
+};
+
+enum class EPinDirection : uint8
+{
+	Input,
+	Output
+};
+
+struct FValidationResult
+{
+	bool bValid = true;
+	TArray<FString> Errors;
+	TArray<FString> Warnings;
+
+	void AddError(const FString& Message);
+};
+
+struct FRoleRule
+{
+	FString Id;
+	FString Color = TEXT("gray");
+	int32 Priority = 0;
+	TArray<FString> MatchClassContains;
+	TArray<FString> MatchTitleContains;
+	bool bHasExecPinMatcher = false;
+	bool bMatchHasExecPin = false;
+	ENodeRole Role = ENodeRole::Unknown;
+};
+
+struct FRuleSet
+{
+	FRuleSet();
+
+	FString Schema = RuleSetSchemaV1;
+	FString Id = TEXT("default_readable_exec_with_left_data");
+	FString DisplayName = TEXT("Default Readable Exec With Left Data");
+	int32 Version = 1;
+	float ExecColumnSpacing = 360.0f;
+	float ExecRowSpacing = 220.0f;
+	float BranchRowSpacing = 260.0f;
+	float PureInputOffsetX = 300.0f;
+	float VariableInputOffsetX = 260.0f;
+	float InputPinRowSpacing = 44.0f;
+	bool bUseTargetPinOrderForVariableInputs = true;
+	bool bStraightenExistingReroutes = true;
+	bool bMoveGeneratedNodes = true;
+	bool bMoveExistingNodes = false;
+	int32 MaxNodesPerFrame = 24;
+	float MaxMillisecondsPerFrame = 2.0f;
+	bool bMarkDirtyAfterApply = true;
+	bool bSaveAfterApply = false;
+	TArray<FRoleRule> RoleRules;
+	TMap<ENodeRole, FVector2D> EditorCanvasRoleCenters;
+};
+
+struct FPinSnapshot
+{
+	FString PinId;
+	FString Name;
+	EPinDirection Direction = EPinDirection::Input;
+	FString Category;
+	bool bExec = false;
+	TArray<FString> LinkedNodeIds;
+};
+
+struct FNodeSnapshot
+{
+	FString NodeId;
+	FString StableName;
+	FString ClassPath;
+	FString Title;
+	FVector2D Position = FVector2D::ZeroVector;
+	FVector2D Size = FVector2D(180.0f, 80.0f);
+	bool bExisting = true;
+	TArray<FPinSnapshot> Pins;
+};
+
+struct FGraphSnapshot
+{
+	FString GraphName;
+	TArray<FNodeSnapshot> Nodes;
+};
+
+struct FNodeClassification
+{
+	FString NodeId;
+	ENodeRole Role = ENodeRole::Unknown;
+	FString Reason;
+};
+
+struct FNodePlacement
+{
+	FString NodeId;
+	ENodeRole Role = ENodeRole::Unknown;
+	FVector2D CurrentPosition = FVector2D::ZeroVector;
+	FVector2D TargetPosition = FVector2D::ZeroVector;
+	bool bMoveExisting = false;
+	bool bStraightenExistingReroute = false;
+	FString Reason;
+};
+
+struct FLayoutPlan
+{
+	FString Schema = TEXT("BlueprintHelper.GraphLayoutPlan.v1");
+	TArray<FNodeClassification> Classifications;
+	TArray<FNodePlacement> Placements;
+	TArray<FString> Issues;
+};
+
+BLUEPRINTHELPER_API const TCHAR* ToString(ENodeRole Role);
+BLUEPRINTHELPER_API bool LexTryParseString(ENodeRole& OutRole, const FString& Value);
+BLUEPRINTHELPER_API const TCHAR* ToString(EPinDirection Direction);
+
+BLUEPRINTHELPER_API TSharedRef<FJsonObject> ToJson(const FRuleSet& RuleSet);
+BLUEPRINTHELPER_API TSharedRef<FJsonObject> ToJson(const FLayoutPlan& Plan);
+}

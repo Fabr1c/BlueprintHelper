@@ -13,13 +13,13 @@ CLI 必须给 Agent 明确的等待信号，否则长时间没有输出会被误
 - `stdout` 只保留最终 `BlueprintHelper.CliResult.v1` JSON，便于 Agent 稳定解析。
 - 等待 UE Bridge 响应时，CLI 向 `stderr` 输出 keep-alive 提示。
 - 提示文本必须明确包含 command、elapsed_ms 和继续等待语义。
-- 默认 1 秒后首次提示，之后每 5 秒提示一次。
+- 默认 30 秒后首次提示，之后每 30 秒提示一次。
 - CLI 创建的 BridgeClient 默认请求超时为 10 分钟，避免 UE-bound preview/execute 被 30 秒传输默认值截断。
 
 示例：
 
 ```text
-[BlueprintHelper CLI] waiting for UE Bridge response: command=preview_task_plan elapsed_ms=5000. UE-bound requests are serialized on the editor side; keep waiting unless the CLI exits.
+[BlueprintHelper CLI] waiting for UE Bridge response: command=preview_task_plan elapsed_ms=30000. UE-bound requests are serialized on the editor side; keep waiting unless the CLI exits.
 ```
 
 可调环境变量：

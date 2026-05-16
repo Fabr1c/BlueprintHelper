@@ -5,6 +5,48 @@
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraph/EdGraphSchema.h"
+#include "EdGraphSchema_K2.h"
+#include "K2Node.h"
+
+namespace
+{
+static bool NodeHasWildcardPins(const UEdGraphNode* Node)
+{
+	if (!Node)
+	{
+		return false;
+	}
+	for (const UEdGraphPin* Pin : Node->Pins)
+	{
+		if (Pin && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Wildcard)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+static void AddNodeForDeferredReconstruct(UEdGraphPin* Pin, TSet<UEdGraphNode*>& NodesToReconstruct)
+{
+	UEdGraphNode* Node = Pin ? Pin->GetOwningNode() : nullptr;
+	if (Node && NodeHasWildcardPins(Node))
+	{
+		NodesToReconstruct.Add(Node);
+	}
+}
+
+static void ReconstructWildcardNodes(const TSet<UEdGraphNode*>& NodesToReconstruct)
+{
+	for (UEdGraphNode* Node : NodesToReconstruct)
+	{
+		if (UK2Node* K2Node = Cast<UK2Node>(Node))
+		{
+			K2Node->ReconstructNode();
+		}
+		Node->NodeConnectionListChanged();
+	}
+}
+}
 
 FBlueprintHelperGraphComposeResult FBlueprintHelperGraphComposer::ConnectLinearExecChain(
 	UEdGraph* TargetGraph,
@@ -88,8 +130,9 @@ FBlueprintHelperGraphComposeResult FBlueprintHelperGraphComposer::ConnectDataEdg
 		{
 			FragmentById.Add(Fragment.FragmentId, &Fragment);
 		}
-	}
+		}
 
+	TSet<UEdGraphNode*> NodesToReconstruct;
 	for (const FBlueprintHelperGraphFragmentDataEdge& Edge : DataEdges)
 	{
 		const FBlueprintHelperNodeFragment* const* FromFragmentPtr = FragmentById.Find(Edge.From.FragmentId);
@@ -122,27 +165,26 @@ FBlueprintHelperGraphComposeResult FBlueprintHelperGraphComposer::ConnectDataEdg
 			continue;
 		}
 
-		const FPinConnectionResponse ConnectionResponse = Schema->CanCreateConnection(FromPin, ToPin);
-		if (Schema->TryCreateConnection(FromPin, ToPin))
-		{
-			++Result.CreatedDataConnectionCount;
-			continue;
-		}
-		if (FBlueprintHelperGraphComposerUtils::TryForceCompatibleDataConnection(FromPin, ToPin))
+		AddNodeForDeferredReconstruct(FromPin, NodesToReconstruct);
+		AddNodeForDeferredReconstruct(ToPin, NodesToReconstruct);
+		FString ConnectionFailureReason;
+		if (FBlueprintHelperGraphComposerUtils::TryCreateSchemaDataConnection(FromPin, ToPin, ConnectionFailureReason))
 		{
 			++Result.CreatedDataConnectionCount;
 			continue;
 		}
 
-		Result.Diagnostics.Add(ConnectionResponse.Message.IsEmpty()
+		Result.Diagnostics.Add(ConnectionFailureReason.IsEmpty()
 			? FString::Printf(
 				TEXT("GraphComposer rejected data edge: %s.%s -> %s.%s."),
 				*Edge.From.FragmentId,
 				*Edge.From.PortId,
 				*Edge.To.FragmentId,
 				*Edge.To.PortId)
-			: ConnectionResponse.Message.ToString());
+			: ConnectionFailureReason);
 	}
+
+	ReconstructWildcardNodes(NodesToReconstruct);
 
 	Result.bSucceeded = Result.Diagnostics.Num() == 0;
 	return Result;

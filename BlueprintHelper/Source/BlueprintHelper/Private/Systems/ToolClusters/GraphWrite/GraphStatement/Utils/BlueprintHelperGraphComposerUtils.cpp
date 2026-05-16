@@ -1,7 +1,9 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphComposerUtils.h"
 
+#include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraph/EdGraphPin.h"
+#include "EdGraph/EdGraphSchema.h"
 
 UEdGraphPin* FBlueprintHelperGraphComposerUtils::FindPinRefInMap(
 	const TMap<FString, FBlueprintHelperFragmentPinRef>& PinMap,
@@ -125,6 +127,86 @@ UEdGraphPin* FBlueprintHelperGraphComposerUtils::ResolveFragmentEndpointPin(
 	}
 
 	return nullptr;
+}
+
+bool FBlueprintHelperGraphComposerUtils::TryCreateSchemaDataConnection(
+	UEdGraphPin* FromPin,
+	UEdGraphPin* ToPin,
+	FString& OutFailureReason)
+{
+	OutFailureReason.Reset();
+	if (!FromPin || !ToPin)
+	{
+		OutFailureReason = TEXT("schema_data_connection_failed:invalid_pin");
+		return false;
+	}
+	if (FromPin->LinkedTo.Contains(ToPin))
+	{
+		return true;
+	}
+	if (FromPin->PinType.PinCategory == FName(TEXT("exec")) || ToPin->PinType.PinCategory == FName(TEXT("exec")))
+	{
+		OutFailureReason = TEXT("schema_data_connection_failed:exec_pin_in_data_edge");
+		return false;
+	}
+	if (FromPin->Direction != EGPD_Output || ToPin->Direction != EGPD_Input)
+	{
+		OutFailureReason = FString::Printf(
+			TEXT("schema_data_connection_failed:direction_mismatch:%s(%d)->%s(%d)"),
+			*FromPin->PinName.ToString(),
+			static_cast<int32>(FromPin->Direction),
+			*ToPin->PinName.ToString(),
+			static_cast<int32>(ToPin->Direction));
+		return false;
+	}
+
+	const UEdGraphNode* SourceNode = FromPin->GetOwningNode();
+	const UEdGraph* Graph = SourceNode ? SourceNode->GetGraph() : nullptr;
+	const UEdGraphSchema* Schema = Graph ? Graph->GetSchema() : nullptr;
+	if (!Schema)
+	{
+		OutFailureReason = TEXT("schema_data_connection_failed:missing_schema");
+		return false;
+	}
+
+	const FPinConnectionResponse ConnectionResponse = Schema->CanCreateConnection(FromPin, ToPin);
+	if (ConnectionResponse.Response == CONNECT_RESPONSE_MAKE_WITH_CONVERSION_NODE)
+	{
+		if (Schema->CreateAutomaticConversionNodeAndConnections(FromPin, ToPin))
+		{
+			return true;
+		}
+	}
+	else if (ConnectionResponse.Response == CONNECT_RESPONSE_MAKE_WITH_PROMOTION)
+	{
+		if (Schema->CreatePromotedConnection(FromPin, ToPin) || Schema->TryCreateConnection(FromPin, ToPin))
+		{
+			return true;
+		}
+	}
+	else if (ConnectionResponse.Response != CONNECT_RESPONSE_DISALLOW)
+	{
+		if (Schema->TryCreateConnection(FromPin, ToPin))
+		{
+			return true;
+		}
+	}
+
+	if (TryForceCompatibleDataConnection(FromPin, ToPin))
+	{
+		return true;
+	}
+
+	OutFailureReason = ConnectionResponse.Message.IsEmpty()
+		? FString::Printf(
+			TEXT("schema_data_connection_failed:%s(%s)->%s(%s) response=%d"),
+			*FromPin->PinName.ToString(),
+			*FromPin->PinType.PinCategory.ToString(),
+			*ToPin->PinName.ToString(),
+			*ToPin->PinType.PinCategory.ToString(),
+			static_cast<int32>(ConnectionResponse.Response.GetValue()))
+		: ConnectionResponse.Message.ToString();
+	return false;
 }
 
 bool FBlueprintHelperGraphComposerUtils::TryForceCompatibleDataConnection(

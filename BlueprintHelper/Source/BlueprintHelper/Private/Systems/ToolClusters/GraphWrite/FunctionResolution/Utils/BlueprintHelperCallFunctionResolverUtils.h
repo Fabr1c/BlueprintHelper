@@ -36,10 +36,15 @@ public:
 	static bool IsSemanticTypeCompatibleWithProperty(const FString& Type, const FProperty* Property);
 	static bool IsPinTypeCompatibleWithProperty(const FBlueprintHelperCallFunctionPinType& PinType, const FProperty* Property);
 	static bool DoesGraphSupportImpureFunctions(UEdGraph* Graph);
+	static FBlueprintHelperK2CallContext BuildEffectiveContext(
+		const FBlueprintHelperCallFunctionResolveRequest& Request);
 	static bool IsTargetObjectTypeCompatible(
 		const FBlueprintHelperCallFunctionCandidate& Candidate,
 		const FBlueprintHelperCallFunctionResolveRequest& Request);
 	static bool AreRequestedArgumentsCompatible(
+		const FBlueprintHelperCallFunctionCandidate& Candidate,
+		const FBlueprintHelperCallFunctionResolveRequest& Request);
+	static FString DescribeCandidateMismatch(
 		const FBlueprintHelperCallFunctionCandidate& Candidate,
 		const FBlueprintHelperCallFunctionResolveRequest& Request);
 	static bool PassesMetadataFilters(

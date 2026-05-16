@@ -108,6 +108,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphExpressionIR
 	FString AmbiguityPolicy;
 	TArray<FString> CategoryPriority;
 	FBlueprintHelperGraphResolvedTarget ResolvedTarget;
+	TSharedPtr<FBlueprintHelperGraphExpressionIR> TargetObject;
 	TMap<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>> Args;
 	TArray<TSharedPtr<FBlueprintHelperGraphExpressionIR>> Options;
 	TSharedPtr<FBlueprintHelperGraphExpressionIR> Left;
@@ -129,6 +130,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphStatementIR
 	FBlueprintHelperGraphResolvedTarget ResolvedTarget;
 	TSharedPtr<FBlueprintHelperGraphExpressionIR> Value;
 	TSharedPtr<FBlueprintHelperGraphExpressionIR> Condition;
+	TSharedPtr<FBlueprintHelperGraphExpressionIR> TargetObject;
 	TMap<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>> Args;
 	TArray<TSharedPtr<FBlueprintHelperGraphStatementIR>> ThenStatements;
 	TArray<TSharedPtr<FBlueprintHelperGraphStatementIR>> ElseStatements;

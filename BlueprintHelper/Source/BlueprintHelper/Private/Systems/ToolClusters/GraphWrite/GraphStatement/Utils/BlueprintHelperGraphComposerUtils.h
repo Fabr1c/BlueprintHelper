@@ -16,6 +16,11 @@ public:
 		const FBlueprintHelperGraphFragmentEndpointRef& Endpoint,
 		bool bSourceEndpoint);
 
+	static bool TryCreateSchemaDataConnection(
+		UEdGraphPin* FromPin,
+		UEdGraphPin* ToPin,
+		FString& OutFailureReason);
+
 	static bool TryForceCompatibleDataConnection(UEdGraphPin* FromPin, UEdGraphPin* ToPin);
 
 private:

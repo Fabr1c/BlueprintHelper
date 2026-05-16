@@ -57,8 +57,8 @@ type CliBridge = TaskRunnerBridge & {
 };
 
 const DEFAULT_CLI_BRIDGE_REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
-const DEFAULT_WAIT_HINT_INITIAL_MS = 1000;
-const DEFAULT_WAIT_HINT_INTERVAL_MS = 5000;
+const DEFAULT_WAIT_HINT_INITIAL_MS = 30000;
+const DEFAULT_WAIT_HINT_INTERVAL_MS = 30000;
 
 const runtimeBridgeCache = new WeakMap<CliRuntime, CliBridge>();
 

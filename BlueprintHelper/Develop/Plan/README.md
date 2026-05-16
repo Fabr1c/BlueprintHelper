@@ -13,6 +13,7 @@ This folder contains active or intentionally retained planning documents. Implem
 
 ## Active Implementation Plans
 
+- `BlueprintHelper_TaskSpec_ReadContext_Workbench_UI_Reset_Plan_20260516_CN.md`
 - `cluster/CallFunction_TaskSpec_ActionResolver_PLAN_20260512_CN.md`
 - `ReviewPanel_CPP_CodingStyle_Split_Checklist_20260510_CN.md`
 - `ReviewPanel_Native_Row_Geometry_PLAN_20260510_CN.md`
@@ -24,6 +25,7 @@ This folder contains active or intentionally retained planning documents. Implem
 ## Active Design And Discussion
 
 - `BlueprintHelper_CLI_Agent_WaitHint_Architecture_20260516_CN.md`
+- `BlueprintHelper_GraphLayout_System_Design_20260516_CN.md`
 - `BlueprintHelper_Hybrid_TaskSpec_TaskPlan_Architecture_20260504.md`
 - `BlueprintHelper_Review_Transaction_Model_Discussion_Pack_20260507.md`
 - `BlueprintHelper_ReviewPanel_UserSide_Constraints_20260506.md`

@@ -17,6 +17,8 @@ public:
 
 	const FBlueprintHelperGraphPatternBinding* FindBinding(const FString& PatternName);
 	FString ResolveAlias(const FString& PatternName, const FString& Name);
+	void ApplyPinAliases(const FString& PatternName, TMap<FString, FString>& Values);
+	void ApplyDefaults(const FString& PatternName, TMap<FString, FString>& Values);
 	void ApplyPinAliasesAndDefaults(const FString& PatternName, TMap<FString, FString>& Values);
 	void ResetForTests();
 

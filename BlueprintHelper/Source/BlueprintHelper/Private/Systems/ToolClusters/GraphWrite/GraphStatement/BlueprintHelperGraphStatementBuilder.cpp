@@ -4,11 +4,13 @@
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraph/EdGraphSchema.h"
 #include "EdGraphSchema_K2.h"
+#include "Engine/Blueprint.h"
 #include "K2Node_CallFunction.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphPatternRegistry.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphComposerUtils.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphStatementTypeUtils.h"
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/PromotableOperatorNodeHandler.h"
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/SelectNodeHandler.h"
@@ -61,6 +63,8 @@ static void PopulateCommonFragmentMetadata(const FParsedNode& NodeData, FBluepri
 {
 	OutFragment.OwnershipTags.Add(TEXT("statement_id"), NodeData.Id);
 	OutFragment.ReviewTargets.Add(NodeData.Id);
+	// DEPRECATED_LAYOUT: these x/y hints are legacy spawn metadata only.
+	// Final node positions must come from the UE-side GraphLayout system.
 	OutFragment.LayoutHints.Add(TEXT("x"), LexToString(NodeData.X));
 	OutFragment.LayoutHints.Add(TEXT("y"), LexToString(NodeData.Y));
 }
@@ -81,7 +85,31 @@ static void ApplyCallPatternBindings(FParsedNode& NodeData)
 		NodeData.FunctionName = Registry.ResolveAlias(TEXT("call"), NodeData.FunctionName);
 	}
 
-	Registry.ApplyPinAliasesAndDefaults(TEXT("call"), NodeData.DefaultValues);
+	Registry.ApplyPinAliases(TEXT("call"), NodeData.DefaultValues);
+	Registry.ApplyPinAliases(TEXT("call"), NodeData.ArgumentTypes);
+}
+
+static void ApplyCallPatternDefaults(FParsedNode& NodeData)
+{
+	FBlueprintHelperGraphPatternRegistry::Get().ApplyDefaults(TEXT("call"), NodeData.DefaultValues);
+}
+
+static void PopulateK2CallContext(
+	FBlueprintHelperCallFunctionResolveRequest& Request,
+	UEdGraph* TargetGraph)
+{
+	Request.Context.Blueprint = Request.Blueprint;
+	Request.Context.Graph = Request.Graph;
+	Request.Context.Schema = TargetGraph ? TargetGraph->GetSchema() : nullptr;
+	Request.Context.SelfClass = Request.Blueprint
+		? (Request.Blueprint->GeneratedClass ? Request.Blueprint->GeneratedClass.Get() : Request.Blueprint->SkeletonGeneratedClass.Get())
+		: nullptr;
+	Request.Context.GraphKind = TargetGraph && TargetGraph->GetClass() ? TargetGraph->GetClass()->GetName() : FString();
+	Request.Context.ArgumentNames = Request.ArgumentNames;
+	Request.Context.ArgumentTypes = Request.ArgumentTypes;
+	Request.Context.ArgumentPinTypes = Request.ArgumentPinTypes;
+	Request.Context.TargetObjectType = Request.TargetObjectType;
+	Request.Context.TargetObjectPinType = Request.TargetObjectPinType;
 }
 
 static bool TryParseExplicitObjectCall(
@@ -144,11 +172,56 @@ static UEdGraphPin* FindFirstDataInputPin(UK2Node* Node)
 	return nullptr;
 }
 
-static UEdGraphPin* FindCallTargetPin(UK2Node* CallNode)
+static bool IsObjectLikeInputPin(const UEdGraphPin* Pin)
+{
+	return Pin
+		&& Pin->Direction == EGPD_Input
+		&& Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec
+		&& (Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Object
+			|| Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Interface);
+}
+
+static bool CanConnectObjectOutputToTargetPin(const UEdGraphPin* ObjectOutputPin, const UEdGraphPin* TargetPin)
+{
+	if (!ObjectOutputPin || !TargetPin)
+	{
+		return false;
+	}
+
+	const UEdGraph* Graph = TargetPin->GetOwningNode() ? TargetPin->GetOwningNode()->GetGraph() : nullptr;
+	const UEdGraphSchema_K2* Schema = Graph ? Cast<UEdGraphSchema_K2>(Graph->GetSchema()) : nullptr;
+	if (!Schema)
+	{
+		return false;
+	}
+
+	return Schema->CanCreateConnection(ObjectOutputPin, TargetPin).Response != CONNECT_RESPONSE_DISALLOW;
+}
+
+static UEdGraphPin* FindCallTargetPin(UK2Node* CallNode, UEdGraphPin* ObjectOutputPin = nullptr)
 {
 	if (!CallNode)
 	{
 		return nullptr;
+	}
+
+	if (ObjectOutputPin)
+	{
+		for (UEdGraphPin* Pin : CallNode->Pins)
+		{
+			if (IsObjectLikeInputPin(Pin) && CanConnectObjectOutputToTargetPin(ObjectOutputPin, Pin))
+			{
+				return Pin;
+			}
+		}
+	}
+
+	for (UEdGraphPin* Pin : CallNode->Pins)
+	{
+		if (IsObjectLikeInputPin(Pin))
+		{
+			return Pin;
+		}
 	}
 
 	const TCHAR* AliasCandidates[] = {
@@ -164,23 +237,34 @@ static UEdGraphPin* FindCallTargetPin(UK2Node* CallNode)
 		{
 			if (Pin->Direction == EGPD_Input && Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec)
 			{
+				if (ObjectOutputPin && !CanConnectObjectOutputToTargetPin(ObjectOutputPin, Pin))
+				{
+					continue;
+				}
 				return Pin;
 			}
 		}
 	}
-
-	for (UEdGraphPin* Pin : CallNode->Pins)
-	{
-		if (Pin
-			&& Pin->Direction == EGPD_Input
-			&& Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec
-			&& (Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Object
-				|| Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Interface))
-		{
-			return Pin;
-		}
-	}
 	return nullptr;
+}
+
+static FBlueprintHelperCallFunctionPinType MakeCallFunctionPinTypeFromPin(const UEdGraphPin* Pin)
+{
+	FBlueprintHelperCallFunctionPinType Result;
+	if (!Pin)
+	{
+		return Result;
+	}
+
+	Result.Category = Pin->PinType.PinCategory.ToString();
+	Result.SubCategory = Pin->PinType.PinSubCategory.ToString();
+	if (Pin->PinType.PinSubCategoryObject.IsValid())
+	{
+		Result.ObjectPath = Pin->PinType.PinSubCategoryObject->GetPathName();
+	}
+	Result.bIsReference = Pin->PinType.bIsReference;
+	Result.bIsConst = Pin->PinType.bIsConst;
+	return Result;
 }
 
 static bool TryConnectDataPins(
@@ -196,22 +280,16 @@ static bool TryConnectDataPins(
 		return false;
 	}
 
-	const UEdGraphSchema* Schema = TargetGraph ? TargetGraph->GetSchema() : nullptr;
-	if (!Schema)
-	{
-		OutError = FString::Printf(TEXT("%s failed: graph schema is invalid."), *Context);
-		return false;
-	}
-
-	const FPinConnectionResponse ConnectionResponse = Schema->CanCreateConnection(FromPin, ToPin);
-	if (Schema->TryCreateConnection(FromPin, ToPin))
+	FString FailureReason;
+	if (FBlueprintHelperGraphComposerUtils::TryCreateSchemaDataConnection(FromPin, ToPin, FailureReason)
+		&& ToPin->LinkedTo.Num() > 0)
 	{
 		return true;
 	}
 
-	OutError = ConnectionResponse.Message.IsEmpty()
+	OutError = FailureReason.IsEmpty()
 		? FString::Printf(TEXT("%s rejected: %s -> %s."), *Context, *FromPin->PinName.ToString(), *ToPin->PinName.ToString())
-		: ConnectionResponse.Message.ToString();
+		: FString::Printf(TEXT("%s rejected: %s"), *Context, *FailureReason);
 	return false;
 }
 
@@ -240,45 +318,14 @@ static bool SpawnExplicitObjectCallFragment(
 	FString& OutError,
 	TArray<FBlueprintHelperCandidateFunctionGroup>* OutCandidateFunctions)
 {
-	FBlueprintHelperCallFunctionResolveRequest ObjectCallRequest;
-	ObjectCallRequest.Graph = TargetGraph;
-	ObjectCallRequest.Blueprint = FBlueprintEditorUtils::FindBlueprintForGraph(TargetGraph);
-	ObjectCallRequest.Query = FunctionName;
-	ObjectCallRequest.SearchMode = NodeData.SearchMode;
-	ObjectCallRequest.AmbiguityPolicy = NodeData.AmbiguityPolicy;
-	ObjectCallRequest.CategoryPriority = NodeData.CategoryPriority;
-	ObjectCallRequest.ArgumentTypes = NodeData.ArgumentTypes;
-	ObjectCallRequest.TargetObjectType = NodeData.TargetObjectType;
-	NodeData.DefaultValues.GetKeys(ObjectCallRequest.ArgumentNames);
-	const FBlueprintHelperCallFunctionResolveResult ObjectCallResolveResult =
-		FBlueprintHelperCallFunctionResolver::Resolve(ObjectCallRequest);
-	if (!ObjectCallResolveResult.IsResolved())
-	{
-		AppendCandidateFunctionGroup(FunctionName, ObjectCallResolveResult, OutCandidateFunctions);
-		OutError = ObjectCallResolveResult.Message.IsEmpty()
-			? FString::Printf(TEXT("explicit object call resolve failed: %s"), *FunctionName)
-			: ObjectCallResolveResult.Message;
-		return false;
-	}
-
-	UK2Node* CallNode = FBlueprintHelperCallFunctionResolver::SpawnResolvedNode(
-		TargetGraph,
-		ObjectCallResolveResult.Selected,
-		FVector2D(NodeData.X, NodeData.Y),
-		OutError);
-	if (!CallNode)
-	{
-		return false;
-	}
-
-	FBlueprintGraphWriteFacade::ApplyDefaultValues(CallNode, NodeData.DefaultValues, NodeData.Id);
+	FParsedNode BoundNodeData = NodeData;
 
 	FParsedNode ObjectGetterData;
-	ObjectGetterData.Id = NodeData.Id + TEXT("_target");
+	ObjectGetterData.Id = BoundNodeData.Id + TEXT("_target");
 	ObjectGetterData.NodeType = EParsedBlueprintNodeType::VariableGet;
 	ObjectGetterData.SourceType = TEXT("K2Node_VariableGet");
-	ObjectGetterData.X = NodeData.X - 260.0f;
-	ObjectGetterData.Y = NodeData.Y;
+	ObjectGetterData.X = BoundNodeData.X - 260.0f;
+	ObjectGetterData.Y = BoundNodeData.Y;
 	ObjectGetterData.VariableReference.ScopeType = TEXT("member");
 	ObjectGetterData.VariableReference.VariableName = ObjectName;
 	ObjectGetterData.VariableReference.bSelfContext = true;
@@ -294,7 +341,53 @@ static bool SpawnExplicitObjectCallFragment(
 	}
 
 	UEdGraphPin* ObjectOutputPin = FindFirstDataOutputPin(ObjectGetterNode);
-	UEdGraphPin* CallTargetPin = FindCallTargetPin(CallNode);
+	if (!ObjectOutputPin)
+	{
+		ObjectGetterNode->DestroyNode();
+		OutError = FString::Printf(TEXT("explicit object call target output pin not found: %s"), *ObjectName);
+		return false;
+	}
+
+	FBlueprintHelperCallFunctionResolveRequest ObjectCallRequest;
+	ObjectCallRequest.Graph = TargetGraph;
+	ObjectCallRequest.Blueprint = FBlueprintEditorUtils::FindBlueprintForGraph(TargetGraph);
+	ObjectCallRequest.Query = FunctionName;
+	ObjectCallRequest.SearchMode = BoundNodeData.SearchMode;
+	ObjectCallRequest.AmbiguityPolicy = BoundNodeData.AmbiguityPolicy;
+	ObjectCallRequest.CategoryPriority = BoundNodeData.CategoryPriority;
+	ObjectCallRequest.ArgumentTypes = BoundNodeData.ArgumentTypes;
+	ObjectCallRequest.ArgumentPinTypes = BoundNodeData.ArgumentPinTypes;
+	ObjectCallRequest.TargetObjectType = BoundNodeData.TargetObjectType;
+	ObjectCallRequest.TargetObjectPinType = MakeCallFunctionPinTypeFromPin(ObjectOutputPin);
+	BoundNodeData.DefaultValues.GetKeys(ObjectCallRequest.ArgumentNames);
+	PopulateK2CallContext(ObjectCallRequest, TargetGraph);
+	const FBlueprintHelperCallFunctionResolveResult ObjectCallResolveResult =
+		FBlueprintHelperCallFunctionResolver::Resolve(ObjectCallRequest);
+	if (!ObjectCallResolveResult.IsResolved())
+	{
+		ObjectGetterNode->DestroyNode();
+		AppendCandidateFunctionGroup(FunctionName, ObjectCallResolveResult, OutCandidateFunctions);
+		OutError = ObjectCallResolveResult.Message.IsEmpty()
+			? FString::Printf(TEXT("explicit object call resolve failed: %s"), *FunctionName)
+			: ObjectCallResolveResult.Message;
+		return false;
+	}
+
+	UK2Node* CallNode = FBlueprintHelperCallFunctionResolver::SpawnResolvedNode(
+		TargetGraph,
+		ObjectCallResolveResult.Selected,
+		FVector2D(NodeData.X, NodeData.Y),
+		OutError);
+	if (!CallNode)
+	{
+		ObjectGetterNode->DestroyNode();
+		return false;
+	}
+
+	ApplyCallPatternDefaults(BoundNodeData);
+	FBlueprintGraphWriteFacade::ApplyDefaultValues(CallNode, BoundNodeData.DefaultValues, BoundNodeData.Id);
+
+	UEdGraphPin* CallTargetPin = FindCallTargetPin(CallNode, ObjectOutputPin);
 	if (!ObjectOutputPin || !CallTargetPin)
 	{
 		OutError = FString::Printf(
@@ -304,33 +397,27 @@ static bool SpawnExplicitObjectCallFragment(
 		return false;
 	}
 
-	const UEdGraphSchema* Schema = TargetGraph ? TargetGraph->GetSchema() : nullptr;
-	if (!Schema)
+	FString ConnectionFailureReason;
+	if (!FBlueprintHelperGraphComposerUtils::TryCreateSchemaDataConnection(ObjectOutputPin, CallTargetPin, ConnectionFailureReason)
+		|| CallTargetPin->LinkedTo.Num() == 0)
 	{
-		OutError = TEXT("explicit object call connection failed: graph schema is invalid.");
-		return false;
-	}
-
-	const FPinConnectionResponse ConnectionResponse = Schema->CanCreateConnection(ObjectOutputPin, CallTargetPin);
-	if (!Schema->TryCreateConnection(ObjectOutputPin, CallTargetPin))
-	{
-		OutError = ConnectionResponse.Message.IsEmpty()
+		OutError = ConnectionFailureReason.IsEmpty()
 			? FString::Printf(TEXT("explicit object call connection rejected: %s.%s"), *ObjectName, *FunctionName)
-			: ConnectionResponse.Message.ToString();
+			: FString::Printf(TEXT("explicit object call connection rejected: %s"), *ConnectionFailureReason);
 		return false;
 	}
 
-	OutFragment.FragmentId = NodeData.Id;
-	OutFragment.SourceStatementId = NodeData.Id;
+	OutFragment.FragmentId = BoundNodeData.Id;
+	OutFragment.SourceStatementId = BoundNodeData.Id;
 	OutFragment.PrimaryNode = CallNode;
 	OutFragment.Nodes.Add(ObjectGetterNode);
 	OutFragment.Nodes.Add(CallNode);
 	PopulateCallFragmentPins(CallNode, OutFragment);
-	PopulateCommonFragmentMetadata(NodeData, OutFragment);
+	PopulateCommonFragmentMetadata(BoundNodeData, OutFragment);
 	OutFragment.DataInputs.Add(ObjectName, FBlueprintHelperFragmentPinRef{ ObjectGetterData.Id, ObjectName, TEXT("object"), ObjectOutputPin });
 	OutFragment.InternalLinks.Add(FBlueprintHelperFragmentLink{
 		FBlueprintHelperFragmentPinRef{ ObjectGetterData.Id, ObjectName, TEXT("object"), ObjectOutputPin },
-		FBlueprintHelperFragmentPinRef{ NodeData.Id, TEXT("target"), TEXT("object"), CallTargetPin }
+		FBlueprintHelperFragmentPinRef{ BoundNodeData.Id, TEXT("target"), TEXT("object"), CallTargetPin }
 	});
 	return true;
 }
@@ -346,6 +433,19 @@ bool FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment(
 	FParsedNode BoundNodeData = NodeData;
 	ApplyCallPatternBindings(BoundNodeData);
 
+	const FString ExplicitTargetObjectName = BoundNodeData.TargetObjectName.TrimStartAndEnd();
+	if (!ExplicitTargetObjectName.IsEmpty())
+	{
+		return SpawnExplicitObjectCallFragment(
+			TargetGraph,
+			BoundNodeData,
+			ExplicitTargetObjectName,
+			BoundNodeData.FunctionName,
+			OutFragment,
+			OutError,
+			OutCandidateFunctions);
+	}
+
 	FBlueprintHelperCallFunctionResolveRequest ResolveRequest;
 	ResolveRequest.Graph = TargetGraph;
 	ResolveRequest.Blueprint = FBlueprintEditorUtils::FindBlueprintForGraph(TargetGraph);
@@ -354,8 +454,11 @@ bool FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment(
 	ResolveRequest.AmbiguityPolicy = BoundNodeData.AmbiguityPolicy;
 	ResolveRequest.CategoryPriority = BoundNodeData.CategoryPriority;
 	ResolveRequest.ArgumentTypes = BoundNodeData.ArgumentTypes;
+	ResolveRequest.ArgumentPinTypes = BoundNodeData.ArgumentPinTypes;
 	ResolveRequest.TargetObjectType = BoundNodeData.TargetObjectType;
+	ResolveRequest.TargetObjectPinType = BoundNodeData.TargetObjectPinType;
 	BoundNodeData.DefaultValues.GetKeys(ResolveRequest.ArgumentNames);
+	PopulateK2CallContext(ResolveRequest, TargetGraph);
 	const FBlueprintHelperCallFunctionResolveResult ResolveResult =
 		FBlueprintHelperCallFunctionResolver::Resolve(ResolveRequest);
 
@@ -374,6 +477,8 @@ bool FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment(
 			: ResolveResult.Message;
 		return false;
 	}
+
+	ApplyCallPatternDefaults(BoundNodeData);
 
 	UK2Node* SpawnedNode = FBlueprintHelperCallFunctionResolver::SpawnResolvedNode(
 		TargetGraph,
@@ -669,7 +774,7 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 					return false;
 				}
 
-				UEdGraphPin* TargetPin = FindCallTargetPin(PropertyGetterNode);
+				UEdGraphPin* TargetPin = FindCallTargetPin(PropertyGetterNode, CurrentOutputPin);
 				if (!TryConnectDataPins(TargetGraph, CurrentOutputPin, TargetPin, TEXT("get_property object access"), OutError))
 				{
 					return false;
@@ -734,7 +839,17 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 		NodeData.SearchMode = Expression.SearchMode;
 		NodeData.AmbiguityPolicy = Expression.AmbiguityPolicy;
 		NodeData.CategoryPriority = Expression.CategoryPriority;
-		NodeData.TargetObjectType = Expression.ResolvedTarget.Type;
+		if (Expression.ResolvedTarget.Kind == EBlueprintHelperGraphTargetKind::ComponentMemberFunction)
+		{
+			NodeData.TargetObjectType = Expression.ResolvedTarget.Type;
+		}
+		if (Expression.TargetObject.IsValid())
+		{
+			NodeData.TargetObjectName = !Expression.TargetObject->ResolvedTarget.Member.IsEmpty()
+				? Expression.TargetObject->ResolvedTarget.Member
+				: (!Expression.TargetObject->Target.IsEmpty() ? Expression.TargetObject->Target : Expression.TargetObject->Name);
+			NodeData.TargetObjectType = Expression.TargetObject->Type;
+		}
 		for (const TPair<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& ArgPair : Expression.Args)
 		{
 			if (!ArgPair.Value.IsValid())

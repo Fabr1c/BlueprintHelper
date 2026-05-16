@@ -61,6 +61,8 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphFragmentPinTypeRef
 
 struct BLUEPRINTHELPER_API FBlueprintHelperGraphFragmentLayoutRef
 {
+	// DEPRECATED_LAYOUT: fragment layout metadata is retained for legacy debug evidence only.
+	// It must not become a layout solver input; the UE-side GraphLayout system owns layout rules.
 	EBlueprintHelperGraphFragmentLayoutKind Kind = EBlueprintHelperGraphFragmentLayoutKind::Unknown;
 	int32 Row = INDEX_NONE;
 	int32 Column = INDEX_NONE;
