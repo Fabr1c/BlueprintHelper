@@ -2,114 +2,20 @@
 
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
-
-namespace
-{
-static FString NormalizeFragmentId(const FString& FragmentId)
-{
-	return FragmentId.TrimStartAndEnd();
-}
-
-static const TCHAR* SeverityToString(const EBlueprintHelperGraphFragmentDiagnosticSeverity Severity)
-{
-	switch (Severity)
-	{
-	case EBlueprintHelperGraphFragmentDiagnosticSeverity::Info:
-		return TEXT("info");
-	case EBlueprintHelperGraphFragmentDiagnosticSeverity::Warning:
-		return TEXT("warning");
-	default:
-		return TEXT("error");
-	}
-}
-
-static const TCHAR* DirectionToString(const EBlueprintHelperGraphFragmentPortDirection Direction)
-{
-	switch (Direction)
-	{
-	case EBlueprintHelperGraphFragmentPortDirection::ExecInput:
-		return TEXT("exec_input");
-	case EBlueprintHelperGraphFragmentPortDirection::ExecOutput:
-		return TEXT("exec_output");
-	case EBlueprintHelperGraphFragmentPortDirection::DataInput:
-		return TEXT("data_input");
-	case EBlueprintHelperGraphFragmentPortDirection::DataOutput:
-		return TEXT("data_output");
-	default:
-		return TEXT("unknown");
-	}
-}
-
-static const TCHAR* LayoutKindToString(const EBlueprintHelperGraphFragmentLayoutKind Kind)
-{
-	switch (Kind)
-	{
-	case EBlueprintHelperGraphFragmentLayoutKind::Statement:
-		return TEXT("statement");
-	case EBlueprintHelperGraphFragmentLayoutKind::Expression:
-		return TEXT("expression");
-	case EBlueprintHelperGraphFragmentLayoutKind::Join:
-		return TEXT("join");
-	default:
-		return TEXT("unknown");
-	}
-}
-
-static TSharedRef<FJsonObject> Vector2DToJson(const FVector2D& Value)
-{
-	TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
-	Json->SetNumberField(TEXT("x"), Value.X);
-	Json->SetNumberField(TEXT("y"), Value.Y);
-	return Json;
-}
-
-static TArray<TSharedPtr<FJsonValue>> StringMapToJsonArray(const TMap<FString, FString>& Values)
-{
-	TArray<FString> Keys;
-	Values.GetKeys(Keys);
-	Keys.Sort();
-
-	TArray<TSharedPtr<FJsonValue>> Entries;
-	for (const FString& Key : Keys)
-	{
-		const FString* Value = Values.Find(Key);
-		if (!Value || Key.IsEmpty())
-		{
-			continue;
-		}
-
-		TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
-		Entry->SetStringField(TEXT("key"), Key);
-		Entry->SetStringField(TEXT("value"), *Value);
-		Entries.Add(MakeShared<FJsonValueObject>(Entry));
-	}
-	return Entries;
-}
-
-static TArray<TSharedPtr<FJsonValue>> EndpointsToJsonArray(const TArray<FBlueprintHelperGraphFragmentEndpointRef>& Endpoints)
-{
-	TArray<TSharedPtr<FJsonValue>> Values;
-	for (const FBlueprintHelperGraphFragmentEndpointRef& Endpoint : Endpoints)
-	{
-		Values.Add(MakeShared<FJsonValueObject>(Endpoint.ToJson()));
-	}
-	return Values;
-}
-}
-
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphFragmentDagUtils.h"
 TSharedRef<FJsonObject> FBlueprintHelperGraphFragmentDiagnostic::ToJson() const
 {
 	TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
 	if (!Code.IsEmpty()) Json->SetStringField(TEXT("code"), Code);
 	if (!Path.IsEmpty()) Json->SetStringField(TEXT("path"), Path);
 	if (!Message.IsEmpty()) Json->SetStringField(TEXT("message"), Message);
-	Json->SetStringField(TEXT("severity"), SeverityToString(Severity));
+	Json->SetStringField(TEXT("severity"), FBlueprintHelperGraphFragmentDagUtils::SeverityToString(Severity));
 	return Json;
 }
 
 bool FBlueprintHelperGraphFragmentRef::IsValid() const
 {
-	return !NormalizeFragmentId(FragmentId).IsEmpty();
+	return !FBlueprintHelperGraphFragmentDagUtils::NormalizeFragmentId(FragmentId).IsEmpty();
 }
 
 bool FBlueprintHelperGraphFragmentPinTypeRef::IsValid() const
@@ -137,12 +43,12 @@ TSharedRef<FJsonObject> FBlueprintHelperGraphFragmentPinTypeRef::ToJson() const
 TSharedRef<FJsonObject> FBlueprintHelperGraphFragmentLayoutRef::ToJson() const
 {
 	TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
-	Json->SetStringField(TEXT("kind"), LayoutKindToString(Kind));
+	Json->SetStringField(TEXT("kind"), FBlueprintHelperGraphFragmentDagUtils::LayoutKindToString(Kind));
 	if (Row != INDEX_NONE) Json->SetNumberField(TEXT("row"), Row);
 	if (Column != INDEX_NONE) Json->SetNumberField(TEXT("column"), Column);
-	if (bHasPosition) Json->SetObjectField(TEXT("position"), Vector2DToJson(Position));
-	if (bHasSize) Json->SetObjectField(TEXT("size"), Vector2DToJson(Size));
-	if (Hints.Num() > 0) Json->SetArrayField(TEXT("hints"), StringMapToJsonArray(Hints));
+	if (bHasPosition) Json->SetObjectField(TEXT("position"), FBlueprintHelperGraphFragmentDagUtils::Vector2DToJson(Position));
+	if (bHasSize) Json->SetObjectField(TEXT("size"), FBlueprintHelperGraphFragmentDagUtils::Vector2DToJson(Size));
+	if (Hints.Num() > 0) Json->SetArrayField(TEXT("hints"), FBlueprintHelperGraphFragmentDagUtils::StringMapToJsonArray(Hints));
 	return Json;
 }
 
@@ -154,13 +60,13 @@ TSharedRef<FJsonObject> FBlueprintHelperGraphFragmentRef::ToJson() const
 	if (!Path.IsEmpty()) Json->SetStringField(TEXT("path"), Path);
 	if (!Kind.IsEmpty()) Json->SetStringField(TEXT("kind"), Kind);
 	Json->SetObjectField(TEXT("layout"), Layout.ToJson());
-	if (Metadata.Num() > 0) Json->SetArrayField(TEXT("metadata"), StringMapToJsonArray(Metadata));
+	if (Metadata.Num() > 0) Json->SetArrayField(TEXT("metadata"), FBlueprintHelperGraphFragmentDagUtils::StringMapToJsonArray(Metadata));
 	return Json;
 }
 
 bool FBlueprintHelperGraphFragmentEndpointRef::IsValid() const
 {
-	return !NormalizeFragmentId(FragmentId).IsEmpty() && !PortId.TrimStartAndEnd().IsEmpty();
+	return !FBlueprintHelperGraphFragmentDagUtils::NormalizeFragmentId(FragmentId).IsEmpty() && !PortId.TrimStartAndEnd().IsEmpty();
 }
 
 TSharedRef<FJsonObject> FBlueprintHelperGraphFragmentEndpointRef::ToJson() const
@@ -170,7 +76,7 @@ TSharedRef<FJsonObject> FBlueprintHelperGraphFragmentEndpointRef::ToJson() const
 	if (!PortId.IsEmpty()) Json->SetStringField(TEXT("port_id"), PortId);
 	if (!PinName.IsEmpty()) Json->SetStringField(TEXT("pin_name"), PinName);
 	if (!Type.IsEmpty()) Json->SetStringField(TEXT("type"), Type);
-	Json->SetStringField(TEXT("direction"), DirectionToString(Direction));
+	Json->SetStringField(TEXT("direction"), FBlueprintHelperGraphFragmentDagUtils::DirectionToString(Direction));
 	if (PinType.IsValid()) Json->SetObjectField(TEXT("pin_type"), PinType.ToJson());
 	return Json;
 }
@@ -215,8 +121,8 @@ bool FBlueprintHelperGraphFragmentEntryExitRefs::HasExit() const
 TSharedRef<FJsonObject> FBlueprintHelperGraphFragmentEntryExitRefs::ToJson() const
 {
 	TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
-	Json->SetArrayField(TEXT("entries"), EndpointsToJsonArray(Entries));
-	Json->SetArrayField(TEXT("exits"), EndpointsToJsonArray(Exits));
+	Json->SetArrayField(TEXT("entries"), FBlueprintHelperGraphFragmentDagUtils::EndpointsToJsonArray(Entries));
+	Json->SetArrayField(TEXT("exits"), FBlueprintHelperGraphFragmentDagUtils::EndpointsToJsonArray(Exits));
 	return Json;
 }
 
@@ -242,10 +148,10 @@ bool FBlueprintHelperGraphFragmentDag::TryFindFragment(
 	const FString& FragmentId,
 	FBlueprintHelperGraphFragmentRef& OutFragment) const
 {
-	const FString NormalizedFragmentId = NormalizeFragmentId(FragmentId);
+	const FString NormalizedFragmentId = FBlueprintHelperGraphFragmentDagUtils::NormalizeFragmentId(FragmentId);
 	for (const FBlueprintHelperGraphFragmentRef& Fragment : Fragments)
 	{
-		if (NormalizeFragmentId(Fragment.FragmentId).Equals(NormalizedFragmentId, ESearchCase::CaseSensitive))
+		if (FBlueprintHelperGraphFragmentDagUtils::NormalizeFragmentId(Fragment.FragmentId).Equals(NormalizedFragmentId, ESearchCase::CaseSensitive))
 		{
 			OutFragment = Fragment;
 			return true;
@@ -292,7 +198,7 @@ TSharedRef<FJsonObject> FBlueprintHelperGraphFragmentDag::ToJson() const
 
 	if (Metadata.Num() > 0)
 	{
-		Json->SetArrayField(TEXT("metadata"), StringMapToJsonArray(Metadata));
+		Json->SetArrayField(TEXT("metadata"), FBlueprintHelperGraphFragmentDagUtils::StringMapToJsonArray(Metadata));
 	}
 
 	return Json;

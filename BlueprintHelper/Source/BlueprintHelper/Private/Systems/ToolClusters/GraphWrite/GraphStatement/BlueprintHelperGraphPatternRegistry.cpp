@@ -6,64 +6,7 @@
 #include "Misc/Paths.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
-
-namespace
-{
-static FString NormalizePatternKey(const FString& PatternName)
-{
-	return PatternName.TrimStartAndEnd().ToLower();
-}
-
-static FString NormalizeLookupKey(const FString& Name)
-{
-	return Name.TrimStartAndEnd().ToLower();
-}
-
-static FString JsonValueToBindingString(const TSharedPtr<FJsonValue>& Value)
-{
-	if (!Value.IsValid())
-	{
-		return FString();
-	}
-
-	switch (Value->Type)
-	{
-	case EJson::String:
-		return Value->AsString();
-	case EJson::Number:
-		return FString::SanitizeFloat(Value->AsNumber());
-	case EJson::Boolean:
-		return Value->AsBool() ? TEXT("true") : TEXT("false");
-	default:
-		return FString();
-	}
-}
-
-static void ReadStringMapField(
-	const TSharedPtr<FJsonObject>& Object,
-	const FString& FieldName,
-	TMap<FString, FString>& OutMap,
-	bool bNormalizeKeys)
-{
-	const TSharedPtr<FJsonObject>* MapObject = nullptr;
-	if (!Object.IsValid() || !Object->TryGetObjectField(FieldName, MapObject) || !MapObject || !MapObject->IsValid())
-	{
-		return;
-	}
-
-	for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : (*MapObject)->Values)
-	{
-		const FString ValueString = JsonValueToBindingString(Pair.Value);
-		if (ValueString.IsEmpty())
-		{
-			continue;
-		}
-
-		OutMap.Add(bNormalizeKeys ? NormalizeLookupKey(Pair.Key) : Pair.Key, ValueString);
-	}
-}
-}
-
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphPatternRegistryUtils.h"
 FBlueprintHelperGraphPatternRegistry& FBlueprintHelperGraphPatternRegistry::Get()
 {
 	static FBlueprintHelperGraphPatternRegistry Registry;
@@ -73,7 +16,7 @@ FBlueprintHelperGraphPatternRegistry& FBlueprintHelperGraphPatternRegistry::Get(
 const FBlueprintHelperGraphPatternBinding* FBlueprintHelperGraphPatternRegistry::FindBinding(const FString& PatternName)
 {
 	EnsureLoaded();
-	return Bindings.Find(NormalizePatternKey(PatternName));
+	return Bindings.Find(FBlueprintHelperGraphPatternRegistryUtils::NormalizePatternKey(PatternName));
 }
 
 FString FBlueprintHelperGraphPatternRegistry::ResolveAlias(const FString& PatternName, const FString& Name)
@@ -84,7 +27,7 @@ FString FBlueprintHelperGraphPatternRegistry::ResolveAlias(const FString& Patter
 		return Name;
 	}
 
-	if (const FString* Alias = Binding->Aliases.Find(NormalizeLookupKey(Name)))
+	if (const FString* Alias = Binding->Aliases.Find(FBlueprintHelperGraphPatternRegistryUtils::NormalizeLookupKey(Name)))
 	{
 		return *Alias;
 	}
@@ -188,9 +131,9 @@ void FBlueprintHelperGraphPatternRegistry::LoadFile(const FString& FilePath)
 
 	FBlueprintHelperGraphPatternBinding Binding;
 	JsonObject->TryGetBoolField(TEXT("enabled"), Binding.bEnabled);
-	ReadStringMapField(JsonObject, TEXT("aliases"), Binding.Aliases, true);
-	ReadStringMapField(JsonObject, TEXT("pin_aliases"), Binding.PinAliases, true);
-	ReadStringMapField(JsonObject, TEXT("defaults"), Binding.Defaults, false);
+	FBlueprintHelperGraphPatternRegistryUtils::ReadStringMapField(JsonObject, TEXT("aliases"), Binding.Aliases, true);
+	FBlueprintHelperGraphPatternRegistryUtils::ReadStringMapField(JsonObject, TEXT("pin_aliases"), Binding.PinAliases, true);
+	FBlueprintHelperGraphPatternRegistryUtils::ReadStringMapField(JsonObject, TEXT("defaults"), Binding.Defaults, false);
 	MergeBinding(PatternName, Binding);
 }
 
@@ -198,7 +141,7 @@ void FBlueprintHelperGraphPatternRegistry::MergeBinding(
 	const FString& PatternName,
 	const FBlueprintHelperGraphPatternBinding& Binding)
 {
-	FBlueprintHelperGraphPatternBinding& Target = Bindings.FindOrAdd(NormalizePatternKey(PatternName));
+	FBlueprintHelperGraphPatternBinding& Target = Bindings.FindOrAdd(FBlueprintHelperGraphPatternRegistryUtils::NormalizePatternKey(PatternName));
 	Target.bEnabled = Binding.bEnabled;
 
 	for (const TPair<FString, FString>& Pair : Binding.Aliases)

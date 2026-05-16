@@ -1,0 +1,429 @@
+// BlueprintHelper Review BlueprintHelperReviewStoreTargetUtils implementation.
+
+#include "Systems/Review/Utils/BlueprintHelperReviewStoreTargetUtils.h"
+
+#include "Dom/JsonObject.h"
+#include "Dom/JsonValue.h"
+#include "HAL/FileManager.h"
+#include "Misc/FileHelper.h"
+#include "Misc/PackageName.h"
+#include "Misc/Paths.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonWriter.h"
+#include "Shared/Review/BlueprintHelperReviewEnumUtils.h"
+#include "Shared/Review/BlueprintHelperReviewStatusUtils.h"
+#include "Shared/Review/BlueprintHelperReviewTargetKindRegistry.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentEvidence.h"
+
+FString FBlueprintHelperReviewStoreTargetUtils::ExtractReviewNodeIdentifier(const FString& RawNodePath)
+	{
+		FString Identifier = RawNodePath;
+
+		int32 DotIndex = INDEX_NONE;
+		if (Identifier.FindLastChar(TEXT('.'), DotIndex))
+		{
+			Identifier = Identifier.Mid(DotIndex + 1);
+		}
+
+		return Identifier;
+	}
+FBlueprintHelperReviewAtomicTarget FBlueprintHelperReviewStoreTargetUtils::MakeGraphRecordTarget(
+		const FBlueprintHelperReviewTransactionInput& Input,
+		const FString& TargetId,
+		const FString& TargetPrefix)
+	{
+		FBlueprintHelperReviewAtomicTarget Target;
+		Target.AssetPath = Input.AssetPath;
+		Target.GraphName = Input.GraphName;
+		Target.Surface = EBlueprintHelperReviewSurface::Graph;
+		Target.TargetKey = FString::Printf(TEXT("%s:%s:%s"), *Input.LocationKey, *TargetPrefix, *TargetId);
+		Target.VisualGroupKey = Input.LocationKey;
+		Target.DisplayLabel = Input.DisplayLabel;
+		Target.NodeGuid = TargetId;
+		Target.SourceTransactionIds.Add(Input.TransactionId);
+		return Target;
+	}
+void FBlueprintHelperReviewStoreTargetUtils::AddGraphTargetsFromStringArrayField(
+		const TSharedPtr<FJsonObject>& Record,
+		const TCHAR* FieldName,
+		const FString& TargetPrefix,
+		bool bExtractNodeName,
+		FBlueprintHelperReviewTransactionInput& Input)
+	{
+		const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;
+		if (!Record.IsValid() || !Record->TryGetArrayField(FieldName, Values) || !Values)
+		{
+			return;
+		}
+
+		for (const TSharedPtr<FJsonValue>& Value : *Values)
+		{
+			if (!Value.IsValid())
+			{
+				continue;
+			}
+
+			const FString RawValue = Value->AsString();
+			FString TargetId = bExtractNodeName ? ExtractReviewNodeIdentifier(RawValue) : RawValue;
+			if (FCString::Stricmp(*TargetPrefix, TEXT("block")) == 0)
+			{
+				TargetId = FBlueprintHelperReviewStoreService::NormalizeGraphBlockTargetId(
+					Input.GraphName,
+					TargetId);
+			}
+			if (TargetId.IsEmpty())
+			{
+				continue;
+			}
+
+			Input.AtomicTargets.Add(MakeGraphRecordTarget(Input, TargetId, TargetPrefix));
+		}
+	}
+void FBlueprintHelperReviewStoreTargetUtils::AddGraphTargetsFromRollbackData(FBlueprintHelperReviewTransactionInput& Input, const TSharedPtr<FJsonObject>& Record)
+	{
+		TSharedPtr<FJsonObject> RollbackObject;
+		if (!Record.IsValid())
+		{
+			return;
+		}
+
+		FString RollbackDataString;
+		if (Record->TryGetStringField(TEXT("rollback_data"), RollbackDataString) && !RollbackDataString.IsEmpty())
+		{
+			const TSharedRef<TJsonReader<>> RollbackReader = TJsonReaderFactory<>::Create(RollbackDataString);
+			FJsonSerializer::Deserialize(RollbackReader, RollbackObject);
+		}
+		else
+		{
+			const TSharedPtr<FJsonObject>* RollbackObjectPtr = nullptr;
+			if (Record->TryGetObjectField(TEXT("rollback_data"), RollbackObjectPtr) && RollbackObjectPtr)
+			{
+				RollbackObject = *RollbackObjectPtr;
+			}
+		}
+
+		if (!RollbackObject.IsValid())
+		{
+			return;
+		}
+
+		AddGraphTargetsFromStringArrayField(
+			RollbackObject,
+			TEXT("node_guids"),
+			TEXT("rollback_node"),
+			false,
+			Input);
+	}
+FString FBlueprintHelperReviewStoreTargetUtils::MakeReviewInternalMissingAnchorKey(const FString& TransactionId, int32 Index)
+	{
+		return FString::Printf(TEXT("__missing_anchor|%s|%d"), *TransactionId, Index);
+	}
+FString FBlueprintHelperReviewStoreTargetUtils::MakeReviewInternalMissingGroupKey(const FString& TransactionId, int32 Index)
+	{
+		return FString::Printf(TEXT("__missing_visual_group|%s|%d"), *TransactionId, Index);
+	}
+FString FBlueprintHelperReviewStoreTargetUtils::MakeReviewAtomicLookupKey(const FBlueprintHelperReviewAtomicTarget& Target, const FString& FallbackKey)
+	{
+		return FString::Printf(
+			TEXT("%s|%s|%s|%s"),
+			*Target.AssetPath,
+			BlueprintHelperReviewSurfaceToString(Target.Surface),
+			*Target.GraphName,
+			Target.TargetKey.IsEmpty() ? *FallbackKey : *Target.TargetKey);
+	}
+FString FBlueprintHelperReviewStoreTargetUtils::MakeReviewScopeIdentity(const FBlueprintHelperReviewAtomicTarget& Target, const FString& FallbackKey)
+	{
+		if (!Target.ScopeIdentity.IsEmpty())
+		{
+			return Target.ScopeIdentity;
+		}
+
+		return MakeReviewAtomicLookupKey(Target, FallbackKey);
+	}
+bool FBlueprintHelperReviewStoreTargetUtils::IsReviewTargetNetNoChange(const FBlueprintHelperReviewAtomicTarget& Target)
+	{
+		return !Target.BaselineHash.IsEmpty()
+			&& !Target.RecordedAfterHash.IsEmpty()
+			&& Target.BaselineHash == Target.RecordedAfterHash;
+	}
+void FBlueprintHelperReviewStoreTargetUtils::PreserveFirstBaselineFields(
+		FBlueprintHelperReviewAtomicTarget& Target,
+		const FBlueprintHelperReviewAtomicTarget& Existing,
+		const FBlueprintHelperReviewAtomicTarget& Incoming)
+	{
+		Target.ScopeIdentity = !Existing.ScopeIdentity.IsEmpty() ? Existing.ScopeIdentity : Incoming.ScopeIdentity;
+		Target.FirstTransactionId = !Existing.FirstTransactionId.IsEmpty()
+			? Existing.FirstTransactionId
+			: (!Existing.LatestTransactionId.IsEmpty() ? Existing.LatestTransactionId : Incoming.LatestTransactionId);
+		Target.BaselineHash = !Existing.BaselineHash.IsEmpty() ? Existing.BaselineHash : Incoming.BaselineHash;
+		Target.BeforeSnapshotJson = !Existing.BeforeSnapshotJson.IsEmpty() ? Existing.BeforeSnapshotJson : Incoming.BeforeSnapshotJson;
+		Target.RollbackDataRef = !Existing.RollbackDataRef.IsEmpty() ? Existing.RollbackDataRef : Incoming.RollbackDataRef;
+	}
+void FBlueprintHelperReviewStoreTargetUtils::PreserveFirstBaselineFields(
+		FBlueprintHelperReviewVisibleChange& Change,
+		const FBlueprintHelperReviewVisibleChange& Existing,
+		const FBlueprintHelperReviewVisibleChange& Incoming)
+	{
+		Change.ScopeIdentity = !Existing.ScopeIdentity.IsEmpty() ? Existing.ScopeIdentity : Incoming.ScopeIdentity;
+		Change.BeforeSummary = !Existing.BeforeSummary.IsEmpty() ? Existing.BeforeSummary : Incoming.BeforeSummary;
+		Change.BeforeHash = !Existing.BeforeHash.IsEmpty() ? Existing.BeforeHash : Incoming.BeforeHash;
+		Change.BeforeSnapshotJson = !Existing.BeforeSnapshotJson.IsEmpty() ? Existing.BeforeSnapshotJson : Incoming.BeforeSnapshotJson;
+	}
+FString FBlueprintHelperReviewStoreTargetUtils::SanitizeReviewIdSegment(const FString& Value)
+	{
+		FString Result;
+		Result.Reserve(FMath::Min(Value.Len(), 64));
+		for (TCHAR Ch : Value)
+		{
+			const bool bIsAlphaNumeric =
+				(Ch >= TEXT('A') && Ch <= TEXT('Z')) ||
+				(Ch >= TEXT('a') && Ch <= TEXT('z')) ||
+				(Ch >= TEXT('0') && Ch <= TEXT('9'));
+			Result.AppendChar(bIsAlphaNumeric ? Ch : TEXT('_'));
+			if (Result.Len() >= 64)
+			{
+				break;
+			}
+		}
+		Result.TrimStartAndEndInline();
+		return Result;
+	}
+FString FBlueprintHelperReviewStoreTargetUtils::MakeReviewVisibleChangeId(const FString& TransactionId, const FString& VisualGroupKey)
+	{
+		const FString SanitizedGroup = SanitizeReviewIdSegment(VisualGroupKey);
+		if (TransactionId.IsEmpty())
+		{
+			return SanitizedGroup.IsEmpty() ? TEXT("review_change") : SanitizedGroup;
+		}
+		return SanitizedGroup.IsEmpty()
+			? TransactionId
+			: FString::Printf(TEXT("%s_%s"), *TransactionId, *SanitizedGroup);
+	}
+bool FBlueprintHelperReviewStoreTargetUtils::ShouldAggregateGraphBodyTarget(const FBlueprintHelperReviewAtomicTarget& Target)
+	{
+		return FBlueprintHelperReviewTargetKindRegistry::ShouldAggregateAsGraphBody(Target);
+	}
+void FBlueprintHelperReviewStoreTargetUtils::ApplyGraphBodyAggregation(FBlueprintHelperReviewAtomicTarget& Target)
+	{
+		if (!ShouldAggregateGraphBodyTarget(Target))
+		{
+			return;
+		}
+
+		Target.TargetKind = Target.TargetKind.IsEmpty() ? TEXT("graph_body") : Target.TargetKind;
+		Target.VisualGroupKey = TEXT("graph_body|") + Target.GraphName;
+		if (Target.DisplayLabel.IsEmpty())
+		{
+			Target.DisplayLabel = FString::Printf(TEXT("Modified [%s] graph body"), *Target.GraphName);
+		}
+	}
+FString FBlueprintHelperReviewStoreTargetUtils::MakeReviewPackageNameFromAssetPath(const FString& AssetPath)
+	{
+		if (AssetPath.IsEmpty())
+		{
+			return FString();
+		}
+		if (FPackageName::IsValidObjectPath(AssetPath))
+		{
+			return FPackageName::ObjectPathToPackageName(AssetPath);
+		}
+
+		FString PackageName = AssetPath;
+		int32 SubObjectIndex = INDEX_NONE;
+		if (PackageName.FindChar(TEXT(':'), SubObjectIndex))
+		{
+			PackageName = PackageName.Left(SubObjectIndex);
+		}
+
+		int32 ObjectIndex = INDEX_NONE;
+		if (PackageName.FindChar(TEXT('.'), ObjectIndex))
+		{
+			PackageName = PackageName.Left(ObjectIndex);
+		}
+		return PackageName;
+	}
+FString FBlueprintHelperReviewStoreTargetUtils::MakeReviewAssetLinkKey(const FString& AssetPath)
+	{
+		const FString PackageName = MakeReviewPackageNameFromAssetPath(AssetPath);
+		return PackageName.IsEmpty() ? AssetPath : PackageName;
+	}
+bool FBlueprintHelperReviewStoreTargetUtils::DoesReviewAssetPackageExist(const FString& AssetPath)
+	{
+		const FString PackageName = MakeReviewPackageNameFromAssetPath(AssetPath);
+		return FPackageName::IsValidLongPackageName(PackageName)
+			&& FPackageName::DoesPackageExist(PackageName);
+	}
+bool FBlueprintHelperReviewStoreTargetUtils::IsReviewEvidenceTargetComplete(const FBlueprintHelperReviewAtomicTarget& Target, FString& OutReason)
+	{
+		if (Target.TargetKey.IsEmpty())
+		{
+			OutReason = TEXT("missing_anchor");
+			return false;
+		}
+		if (Target.VisualGroupKey.IsEmpty())
+		{
+			OutReason = TEXT("missing_visible_change_group");
+			return false;
+		}
+		if (Target.RecordedAfterHash.IsEmpty())
+		{
+			OutReason = TEXT("missing_recorded_after_hash");
+			return false;
+		}
+		if (Target.BaselineHash.IsEmpty())
+		{
+			OutReason = TEXT("missing_baseline_hash");
+			return false;
+		}
+		if (Target.RollbackDataRef.IsEmpty())
+		{
+			OutReason = TEXT("missing_rollback_data_ref");
+			return false;
+		}
+		return true;
+	}
+bool FBlueprintHelperReviewStoreTargetUtils::IsAssetLifecycleRootTarget(
+		const FBlueprintHelperReviewAtomicTarget& Target,
+		EBlueprintHelperReviewChangeKind ChangeKind)
+	{
+		return ChangeKind == EBlueprintHelperReviewChangeKind::Added
+			&& FBlueprintHelperReviewTargetKindRegistry::IsAssetFactoryTargetKind(Target.TargetKind);
+	}
+void FBlueprintHelperReviewStoreTargetUtils::ApplyAssetLifecycleRootMetadata(FBlueprintHelperReviewVisibleChange& Change)
+	{
+		const bool bHasAssetFactoryAddedTarget = Change.AtomicTargets.ContainsByPredicate(
+			[&Change](const FBlueprintHelperReviewAtomicTarget& Target)
+			{
+				return IsAssetLifecycleRootTarget(Target, Change.ChangeKind);
+			});
+		if (!bHasAssetFactoryAddedTarget)
+		{
+			return;
+		}
+
+		Change.bIsAssetLifecycleRoot = true;
+		Change.bRejectRemovesChildren = true;
+		Change.ParentChangeId.Reset();
+	}
+bool FBlueprintHelperReviewStoreTargetUtils::IsPendingLifecycleLinkCandidate(const FBlueprintHelperReviewVisibleChange& Change)
+	{
+		return Change.Status == EBlueprintHelperReviewChangeStatus::Pending;
+	}
+void FBlueprintHelperReviewStoreTargetUtils::LinkPendingChildrenToLifecycleRoots(TArray<FBlueprintHelperReviewVisibleChange>& Changes)
+	{
+		TMap<FString, int32> PendingRootIndexByAssetPath;
+		for (int32 Index = 0; Index < Changes.Num(); ++Index)
+		{
+			const FBlueprintHelperReviewVisibleChange& Change = Changes[Index];
+			if (!IsPendingLifecycleLinkCandidate(Change)
+				|| !Change.bIsAssetLifecycleRoot
+				|| Change.AssetPath.IsEmpty())
+			{
+				continue;
+			}
+
+			PendingRootIndexByAssetPath.Add(MakeReviewAssetLinkKey(Change.AssetPath), Index);
+		}
+
+		for (FBlueprintHelperReviewVisibleChange& Change : Changes)
+		{
+			if (!IsPendingLifecycleLinkCandidate(Change) || Change.AssetPath.IsEmpty())
+			{
+				continue;
+			}
+
+			if (Change.bIsAssetLifecycleRoot)
+			{
+				Change.ParentChangeId.Reset();
+				continue;
+			}
+
+			const int32* RootIndex = PendingRootIndexByAssetPath.Find(MakeReviewAssetLinkKey(Change.AssetPath));
+			if (!RootIndex || !Changes.IsValidIndex(*RootIndex))
+			{
+				continue;
+			}
+
+			Change.ParentChangeId = Changes[*RootIndex].ChangeId;
+		}
+	}
+int32 FBlueprintHelperReviewStoreTargetUtils::GetReviewSortValue(int32 Value)
+	{
+		return Value == INDEX_NONE ? MAX_int32 : Value;
+	}
+void FBlueprintHelperReviewStoreTargetUtils::SortVisibleChangesByReviewOrder(TArray<FBlueprintHelperReviewVisibleChange>& Changes)
+	{
+		Changes.Sort([](
+			const FBlueprintHelperReviewVisibleChange& Left,
+			const FBlueprintHelperReviewVisibleChange& Right)
+		{
+			const FString LeftAsset = MakeReviewAssetLinkKey(Left.AssetPath);
+			const FString RightAsset = MakeReviewAssetLinkKey(Right.AssetPath);
+			if (LeftAsset != RightAsset)
+			{
+				return LeftAsset < RightAsset;
+			}
+
+			const int32 LeftExecutionOrder = GetReviewSortValue(Left.ExecutionOrder);
+			const int32 RightExecutionOrder = GetReviewSortValue(Right.ExecutionOrder);
+			if (LeftExecutionOrder != RightExecutionOrder)
+			{
+				return LeftExecutionOrder < RightExecutionOrder;
+			}
+
+			const int32 LeftStep = GetReviewSortValue(Left.TaskStepIndex);
+			const int32 RightStep = GetReviewSortValue(Right.TaskStepIndex);
+			if (LeftStep != RightStep)
+			{
+				return LeftStep < RightStep;
+			}
+
+			const int32 LeftAtomic = GetReviewSortValue(Left.AtomicIndex);
+			const int32 RightAtomic = GetReviewSortValue(Right.AtomicIndex);
+			if (LeftAtomic != RightAtomic)
+			{
+				return LeftAtomic < RightAtomic;
+			}
+
+			if (Left.bIsAssetLifecycleRoot != Right.bIsAssetLifecycleRoot)
+			{
+				return Left.bIsAssetLifecycleRoot;
+			}
+
+			return Left.LocationKey < Right.LocationKey;
+		});
+	}
+FBlueprintHelperReviewVisibleChange FBlueprintHelperReviewStoreTargetUtils::MakeVisibleChangeFromEvidence(
+		const FBlueprintHelperWriteReviewEvidence& Evidence,
+		const FBlueprintHelperReviewAtomicTarget& Target,
+		const FString& VisualGroupKey)
+	{
+		FBlueprintHelperReviewVisibleChange Change;
+		Change.ChangeId = MakeReviewVisibleChangeId(Evidence.TransactionId, VisualGroupKey);
+		Change.AssetPath = Target.AssetPath.IsEmpty() ? Evidence.AssetPath : Target.AssetPath;
+		Change.GraphName = Target.GraphName;
+		Change.LocationKey = VisualGroupKey;
+		Change.LatestTransactionId = Evidence.TransactionId;
+		Change.LatestTransactionIds.Add(Evidence.TransactionId);
+		Change.SourceTransactionIds.Add(Evidence.TransactionId);
+		Change.ScopeIdentity = Target.ScopeIdentity;
+		Change.ChangeKind = Evidence.ChangeKind;
+		Change.DisplayLabel = Target.DisplayLabel.IsEmpty() ? Evidence.DisplayLabel : Target.DisplayLabel;
+		Change.BeforeSummary = Evidence.BeforeSummary;
+		Change.AfterSummary = Evidence.AfterSummary;
+		Change.BeforeHash = Target.BaselineHash;
+		Change.AfterHash = Target.RecordedAfterHash;
+		Change.BeforeSnapshotJson = Target.BeforeSnapshotJson;
+		Change.AfterSnapshotJson = Target.AfterSnapshotJson;
+		Change.ExecutionOrder = Target.ExecutionOrder;
+		Change.TaskStepIndex = Target.TaskStepIndex;
+		Change.AtomicIndex = Target.AtomicIndex;
+		if (IsAssetLifecycleRootTarget(Target, Change.ChangeKind))
+		{
+			Change.bIsAssetLifecycleRoot = true;
+			Change.bRejectRemovesChildren = true;
+			Change.ParentChangeId.Reset();
+		}
+		return Change;
+	}
