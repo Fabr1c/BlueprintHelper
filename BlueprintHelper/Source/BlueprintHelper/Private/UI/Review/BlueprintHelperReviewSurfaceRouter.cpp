@@ -63,20 +63,31 @@ EBlueprintHelperReviewSurface FBlueprintHelperReviewSurfacePresenterRouter::GetS
 EBlueprintHelperReviewSurface FBlueprintHelperReviewSurfacePresenterRouter::GetMainWorkspaceSurfaceForAssetKind(
 	EBlueprintHelperReviewAssetKind AssetKind)
 {
-	switch (AssetKind)
+	struct FBlueprintHelperReviewAssetWorkspaceRoute
 	{
-	case EBlueprintHelperReviewAssetKind::DataTable:
-		return EBlueprintHelperReviewSurface::DataTable;
-	case EBlueprintHelperReviewAssetKind::DataAsset:
-	case EBlueprintHelperReviewAssetKind::Structure:
-	case EBlueprintHelperReviewAssetKind::GenericObject:
-		return EBlueprintHelperReviewSurface::DataAsset;
-	case EBlueprintHelperReviewAssetKind::Blueprint:
-	case EBlueprintHelperReviewAssetKind::WidgetBlueprint:
-	case EBlueprintHelperReviewAssetKind::Unknown:
-	default:
-		return EBlueprintHelperReviewSurface::Graph;
+		EBlueprintHelperReviewAssetKind AssetKind;
+		EBlueprintHelperReviewSurface Surface;
+	};
+
+	static const FBlueprintHelperReviewAssetWorkspaceRoute Routes[] =
+	{
+		{ EBlueprintHelperReviewAssetKind::DataTable, EBlueprintHelperReviewSurface::DataTable },
+		{ EBlueprintHelperReviewAssetKind::DataAsset, EBlueprintHelperReviewSurface::DataAsset },
+		{ EBlueprintHelperReviewAssetKind::Structure, EBlueprintHelperReviewSurface::DataAsset },
+		{ EBlueprintHelperReviewAssetKind::GenericObject, EBlueprintHelperReviewSurface::DataAsset },
+		{ EBlueprintHelperReviewAssetKind::Blueprint, EBlueprintHelperReviewSurface::Graph },
+		{ EBlueprintHelperReviewAssetKind::WidgetBlueprint, EBlueprintHelperReviewSurface::Graph },
+		{ EBlueprintHelperReviewAssetKind::Unknown, EBlueprintHelperReviewSurface::Graph }
+	};
+
+	for (const FBlueprintHelperReviewAssetWorkspaceRoute& Route : Routes)
+	{
+		if (Route.AssetKind == AssetKind)
+		{
+			return Route.Surface;
+		}
 	}
+	return EBlueprintHelperReviewSurface::Graph;
 }
 
 bool FBlueprintHelperReviewSurfacePresenterRouter::ShouldDetailsPanelOwnOverlay(EBlueprintHelperReviewSurface Surface)
@@ -93,17 +104,31 @@ bool FBlueprintHelperReviewSurfacePresenterRouter::ShouldMainWorkspaceOwnOverlay
 const TCHAR* FBlueprintHelperReviewSurfacePresenterRouter::SurfaceDebugName(
 	EBlueprintHelperReviewSurface Surface)
 {
-	switch (Surface)
+	struct FBlueprintHelperReviewSurfaceDebugName
 	{
-	case EBlueprintHelperReviewSurface::Graph:       return TEXT("Graph");
-	case EBlueprintHelperReviewSurface::Components:  return TEXT("Components");
-	case EBlueprintHelperReviewSurface::MyBlueprint: return TEXT("MyBlueprint");
-	case EBlueprintHelperReviewSurface::Details:     return TEXT("Details");
-	case EBlueprintHelperReviewSurface::UMGWidgetTree: return TEXT("UMGWidgetTree");
-	case EBlueprintHelperReviewSurface::DataTable:   return TEXT("DataTable");
-	case EBlueprintHelperReviewSurface::DataAsset:   return TEXT("DataAsset");
-	default:                                         return TEXT("Unknown");
+		EBlueprintHelperReviewSurface Surface;
+		const TCHAR* Name;
+	};
+
+	static const FBlueprintHelperReviewSurfaceDebugName SurfaceNames[] =
+	{
+		{ EBlueprintHelperReviewSurface::Graph, TEXT("Graph") },
+		{ EBlueprintHelperReviewSurface::Components, TEXT("Components") },
+		{ EBlueprintHelperReviewSurface::MyBlueprint, TEXT("MyBlueprint") },
+		{ EBlueprintHelperReviewSurface::Details, TEXT("Details") },
+		{ EBlueprintHelperReviewSurface::UMGWidgetTree, TEXT("UMGWidgetTree") },
+		{ EBlueprintHelperReviewSurface::DataTable, TEXT("DataTable") },
+		{ EBlueprintHelperReviewSurface::DataAsset, TEXT("DataAsset") }
+	};
+
+	for (const FBlueprintHelperReviewSurfaceDebugName& Entry : SurfaceNames)
+	{
+		if (Entry.Surface == Surface)
+		{
+			return Entry.Name;
+		}
 	}
+	return TEXT("Unknown");
 }
 
 bool FBlueprintHelperReviewSurfacePresenterRouter::LegacyFallbackMatchesSurface(
@@ -111,40 +136,73 @@ bool FBlueprintHelperReviewSurfacePresenterRouter::LegacyFallbackMatchesSurface(
 	EBlueprintHelperReviewSurface Surface)
 {
 	const FString Location = BlueprintHelperReviewNormalizeLocation(Change);
-	switch (Surface)
+	using FSurfacePredicate = TFunction<bool()>;
+	const TArray<TPair<EBlueprintHelperReviewSurface, FSurfacePredicate>> SurfacePredicates =
 	{
-	case EBlueprintHelperReviewSurface::Graph:
-		return !Change.GraphName.IsEmpty()
-			|| Location.Contains(TEXT("graph:"))
-			|| Location.Contains(TEXT("node:"))
-			|| Location.Contains(TEXT("pin:"));
-	case EBlueprintHelperReviewSurface::Components:
-		return Location.Contains(TEXT("component"));
-	case EBlueprintHelperReviewSurface::MyBlueprint:
-		if (Location.Contains(TEXT("component")))
+		TPair<EBlueprintHelperReviewSurface, FSurfacePredicate>(
+			EBlueprintHelperReviewSurface::Graph,
+			[&Change, &Location]()
+			{
+				return !Change.GraphName.IsEmpty()
+					|| Location.Contains(TEXT("graph:"))
+					|| Location.Contains(TEXT("node:"))
+					|| Location.Contains(TEXT("pin:"));
+			}),
+		TPair<EBlueprintHelperReviewSurface, FSurfacePredicate>(
+			EBlueprintHelperReviewSurface::Components,
+			[&Location]()
+			{
+				return Location.Contains(TEXT("component"));
+			}),
+		TPair<EBlueprintHelperReviewSurface, FSurfacePredicate>(
+			EBlueprintHelperReviewSurface::MyBlueprint,
+			[&Location]()
+			{
+				return !Location.Contains(TEXT("component"))
+					&& (Location.Contains(TEXT("my_blueprint"))
+						|| Location.Contains(TEXT("function"))
+						|| Location.Contains(TEXT("macro"))
+						|| Location.Contains(TEXT("variable"))
+						|| Location.Contains(TEXT("dispatcher"))
+						|| Location.Contains(TEXT("delegate")));
+			}),
+		TPair<EBlueprintHelperReviewSurface, FSurfacePredicate>(
+			EBlueprintHelperReviewSurface::Details,
+			[&Change, &Location]()
+			{
+				return Change.ChangeKind == EBlueprintHelperReviewChangeKind::VariableModified
+					|| Change.ChangeKind == EBlueprintHelperReviewChangeKind::SignatureModified
+					|| Location.Contains(TEXT("property"))
+					|| Location.Contains(TEXT("variable"))
+					|| Location.Contains(TEXT("signature"))
+					|| Location.Contains(TEXT("dispatcher"));
+			}),
+		TPair<EBlueprintHelperReviewSurface, FSurfacePredicate>(
+			EBlueprintHelperReviewSurface::UMGWidgetTree,
+			[&Change]()
+			{
+				return BlueprintHelperReviewShouldShowInUMGWidgetTree(Change);
+			}),
+		TPair<EBlueprintHelperReviewSurface, FSurfacePredicate>(
+			EBlueprintHelperReviewSurface::DataTable,
+			[&Change]()
+			{
+				return BlueprintHelperReviewShouldShowInDataTable(Change);
+			}),
+		TPair<EBlueprintHelperReviewSurface, FSurfacePredicate>(
+			EBlueprintHelperReviewSurface::DataAsset,
+			[&Change]()
+			{
+				return BlueprintHelperReviewShouldShowInDataAsset(Change);
+			})
+	};
+
+	for (const TPair<EBlueprintHelperReviewSurface, FSurfacePredicate>& Predicate : SurfacePredicates)
+	{
+		if (Predicate.Key == Surface)
 		{
-			return false;
+			return Predicate.Value();
 		}
-		return Location.Contains(TEXT("my_blueprint"))
-			|| Location.Contains(TEXT("function"))
-			|| Location.Contains(TEXT("macro"))
-			|| Location.Contains(TEXT("variable"))
-			|| Location.Contains(TEXT("dispatcher"))
-			|| Location.Contains(TEXT("delegate"));
-	case EBlueprintHelperReviewSurface::Details:
-		return Change.ChangeKind == EBlueprintHelperReviewChangeKind::VariableModified
-			|| Change.ChangeKind == EBlueprintHelperReviewChangeKind::SignatureModified
-			|| Location.Contains(TEXT("property"))
-			|| Location.Contains(TEXT("variable"))
-			|| Location.Contains(TEXT("signature"))
-			|| Location.Contains(TEXT("dispatcher"));
-	case EBlueprintHelperReviewSurface::UMGWidgetTree:
-		return BlueprintHelperReviewShouldShowInUMGWidgetTree(Change);
-	case EBlueprintHelperReviewSurface::DataTable:
-		return BlueprintHelperReviewShouldShowInDataTable(Change);
-	case EBlueprintHelperReviewSurface::DataAsset:
-		return BlueprintHelperReviewShouldShowInDataAsset(Change);
-	default:
-		return false;
 	}
+	return false;
 }

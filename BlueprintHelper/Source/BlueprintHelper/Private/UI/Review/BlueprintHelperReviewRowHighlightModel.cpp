@@ -111,17 +111,31 @@ bool FBlueprintHelperReviewRowHighlightModel::GeometrySearchTextMatches(
 const TCHAR* FBlueprintHelperReviewRowHighlightModel::SurfaceDebugName(
 	EBlueprintHelperReviewSurface Surface)
 {
-	switch (Surface)
+	struct FBlueprintHelperReviewSurfaceDebugName
 	{
-	case EBlueprintHelperReviewSurface::Graph:       return TEXT("Graph");
-	case EBlueprintHelperReviewSurface::Components:  return TEXT("Components");
-	case EBlueprintHelperReviewSurface::MyBlueprint: return TEXT("MyBlueprint");
-	case EBlueprintHelperReviewSurface::Details:     return TEXT("Details");
-	case EBlueprintHelperReviewSurface::UMGWidgetTree: return TEXT("UMGWidgetTree");
-	case EBlueprintHelperReviewSurface::DataTable:   return TEXT("DataTable");
-	case EBlueprintHelperReviewSurface::DataAsset:   return TEXT("DataAsset");
-	default:                                         return TEXT("Unknown");
+		EBlueprintHelperReviewSurface Surface;
+		const TCHAR* Name;
+	};
+
+	static const FBlueprintHelperReviewSurfaceDebugName SurfaceNames[] =
+	{
+		{ EBlueprintHelperReviewSurface::Graph, TEXT("Graph") },
+		{ EBlueprintHelperReviewSurface::Components, TEXT("Components") },
+		{ EBlueprintHelperReviewSurface::MyBlueprint, TEXT("MyBlueprint") },
+		{ EBlueprintHelperReviewSurface::Details, TEXT("Details") },
+		{ EBlueprintHelperReviewSurface::UMGWidgetTree, TEXT("UMGWidgetTree") },
+		{ EBlueprintHelperReviewSurface::DataTable, TEXT("DataTable") },
+		{ EBlueprintHelperReviewSurface::DataAsset, TEXT("DataAsset") }
+	};
+
+	for (const FBlueprintHelperReviewSurfaceDebugName& Entry : SurfaceNames)
+	{
+		if (Entry.Surface == Surface)
+		{
+			return Entry.Name;
+		}
 	}
+	return TEXT("Unknown");
 }
 
 bool FBlueprintHelperReviewRowHighlightModel::IsSameChange(

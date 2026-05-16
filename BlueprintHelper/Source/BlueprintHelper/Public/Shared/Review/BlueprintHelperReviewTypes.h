@@ -16,30 +16,54 @@ enum class EBlueprintHelperReviewChangeKind : uint8
 
 inline const TCHAR* BlueprintHelperReviewChangeKindToString(EBlueprintHelperReviewChangeKind Kind)
 {
-	switch (Kind)
+	struct FBlueprintHelperReviewChangeKindName
 	{
-	case EBlueprintHelperReviewChangeKind::Added:             return TEXT("added");
-	case EBlueprintHelperReviewChangeKind::Removed:           return TEXT("removed");
-	case EBlueprintHelperReviewChangeKind::VariableModified:  return TEXT("variable_modified");
-	case EBlueprintHelperReviewChangeKind::SignatureModified: return TEXT("signature_modified");
-	case EBlueprintHelperReviewChangeKind::Modified:          return TEXT("modified");
-	case EBlueprintHelperReviewChangeKind::Renamed:           return TEXT("renamed");
-	default:                                                  return TEXT("unknown");
+		EBlueprintHelperReviewChangeKind Kind;
+		const TCHAR* Name;
+	};
+	static const FBlueprintHelperReviewChangeKindName Names[] =
+	{
+		{ EBlueprintHelperReviewChangeKind::Added, TEXT("added") },
+		{ EBlueprintHelperReviewChangeKind::Removed, TEXT("removed") },
+		{ EBlueprintHelperReviewChangeKind::VariableModified, TEXT("variable_modified") },
+		{ EBlueprintHelperReviewChangeKind::SignatureModified, TEXT("signature_modified") },
+		{ EBlueprintHelperReviewChangeKind::Modified, TEXT("modified") },
+		{ EBlueprintHelperReviewChangeKind::Renamed, TEXT("renamed") }
+	};
+	for (const FBlueprintHelperReviewChangeKindName& Entry : Names)
+	{
+		if (Entry.Kind == Kind)
+		{
+			return Entry.Name;
+		}
 	}
+	return TEXT("unknown");
 }
 
 inline const TCHAR* BlueprintHelperReviewChangeKindToColorName(EBlueprintHelperReviewChangeKind Kind)
 {
-	switch (Kind)
+	struct FBlueprintHelperReviewChangeKindColor
 	{
-	case EBlueprintHelperReviewChangeKind::Added:             return TEXT("green");
-	case EBlueprintHelperReviewChangeKind::Removed:           return TEXT("red");
-	case EBlueprintHelperReviewChangeKind::VariableModified:  return TEXT("yellow");
-	case EBlueprintHelperReviewChangeKind::SignatureModified: return TEXT("yellow");
-	case EBlueprintHelperReviewChangeKind::Modified:          return TEXT("yellow");
-	case EBlueprintHelperReviewChangeKind::Renamed:           return TEXT("green");
-	default:                                                  return TEXT("none");
+		EBlueprintHelperReviewChangeKind Kind;
+		const TCHAR* Color;
+	};
+	static const FBlueprintHelperReviewChangeKindColor Colors[] =
+	{
+		{ EBlueprintHelperReviewChangeKind::Added, TEXT("green") },
+		{ EBlueprintHelperReviewChangeKind::Removed, TEXT("red") },
+		{ EBlueprintHelperReviewChangeKind::VariableModified, TEXT("yellow") },
+		{ EBlueprintHelperReviewChangeKind::SignatureModified, TEXT("yellow") },
+		{ EBlueprintHelperReviewChangeKind::Modified, TEXT("yellow") },
+		{ EBlueprintHelperReviewChangeKind::Renamed, TEXT("green") }
+	};
+	for (const FBlueprintHelperReviewChangeKindColor& Entry : Colors)
+	{
+		if (Entry.Kind == Kind)
+		{
+			return Entry.Color;
+		}
 	}
+	return TEXT("none");
 }
 
 enum class EBlueprintHelperReviewChangeStatus : uint8
@@ -54,16 +78,28 @@ enum class EBlueprintHelperReviewChangeStatus : uint8
 
 inline const TCHAR* BlueprintHelperReviewChangeStatusToString(EBlueprintHelperReviewChangeStatus Status)
 {
-	switch (Status)
+	struct FBlueprintHelperReviewChangeStatusName
 	{
-	case EBlueprintHelperReviewChangeStatus::Pending:     return TEXT("pending");
-	case EBlueprintHelperReviewChangeStatus::Accepted:    return TEXT("accepted");
-	case EBlueprintHelperReviewChangeStatus::Rejected:    return TEXT("rejected");
-	case EBlueprintHelperReviewChangeStatus::NeedsAction: return TEXT("needs_action");
-	case EBlueprintHelperReviewChangeStatus::Superseded:  return TEXT("superseded");
-	case EBlueprintHelperReviewChangeStatus::RejectFailed: return TEXT("reject_failed");
-	default:                                              return TEXT("unknown");
+		EBlueprintHelperReviewChangeStatus Status;
+		const TCHAR* Name;
+	};
+	static const FBlueprintHelperReviewChangeStatusName Names[] =
+	{
+		{ EBlueprintHelperReviewChangeStatus::Pending, TEXT("pending") },
+		{ EBlueprintHelperReviewChangeStatus::Accepted, TEXT("accepted") },
+		{ EBlueprintHelperReviewChangeStatus::Rejected, TEXT("rejected") },
+		{ EBlueprintHelperReviewChangeStatus::NeedsAction, TEXT("needs_action") },
+		{ EBlueprintHelperReviewChangeStatus::Superseded, TEXT("superseded") },
+		{ EBlueprintHelperReviewChangeStatus::RejectFailed, TEXT("reject_failed") }
+	};
+	for (const FBlueprintHelperReviewChangeStatusName& Entry : Names)
+	{
+		if (Entry.Status == Status)
+		{
+			return Entry.Name;
+		}
 	}
+	return TEXT("unknown");
 }
 
 enum class EBlueprintHelperReviewStorageStatus : uint8
@@ -74,12 +110,24 @@ enum class EBlueprintHelperReviewStorageStatus : uint8
 
 inline const TCHAR* BlueprintHelperReviewStorageStatusToString(EBlueprintHelperReviewStorageStatus Status)
 {
-	switch (Status)
+	struct FBlueprintHelperReviewStorageStatusName
 	{
-	case EBlueprintHelperReviewStorageStatus::Active:    return TEXT("active");
-	case EBlueprintHelperReviewStorageStatus::Compacted: return TEXT("compacted");
-	default:                                             return TEXT("unknown");
+		EBlueprintHelperReviewStorageStatus Status;
+		const TCHAR* Name;
+	};
+	static const FBlueprintHelperReviewStorageStatusName Names[] =
+	{
+		{ EBlueprintHelperReviewStorageStatus::Active, TEXT("active") },
+		{ EBlueprintHelperReviewStorageStatus::Compacted, TEXT("compacted") }
+	};
+	for (const FBlueprintHelperReviewStorageStatusName& Entry : Names)
+	{
+		if (Entry.Status == Status)
+		{
+			return Entry.Name;
+		}
 	}
+	return TEXT("unknown");
 }
 
 enum class EBlueprintHelperReviewSurface : uint8
@@ -96,18 +144,30 @@ enum class EBlueprintHelperReviewSurface : uint8
 
 inline const TCHAR* BlueprintHelperReviewSurfaceToString(EBlueprintHelperReviewSurface Surface)
 {
-	switch (Surface)
+	struct FBlueprintHelperReviewSurfaceName
 	{
-	case EBlueprintHelperReviewSurface::Unknown:     return TEXT("unknown");
-	case EBlueprintHelperReviewSurface::Graph:       return TEXT("graph");
-	case EBlueprintHelperReviewSurface::Components:  return TEXT("components");
-	case EBlueprintHelperReviewSurface::MyBlueprint: return TEXT("my_blueprint");
-	case EBlueprintHelperReviewSurface::Details:     return TEXT("details");
-	case EBlueprintHelperReviewSurface::UMGWidgetTree: return TEXT("umg_widget_tree");
-	case EBlueprintHelperReviewSurface::DataTable:   return TEXT("data_table");
-	case EBlueprintHelperReviewSurface::DataAsset:   return TEXT("data_asset");
-	default:                                         return TEXT("unknown");
+		EBlueprintHelperReviewSurface Surface;
+		const TCHAR* Name;
+	};
+	static const FBlueprintHelperReviewSurfaceName Names[] =
+	{
+		{ EBlueprintHelperReviewSurface::Unknown, TEXT("unknown") },
+		{ EBlueprintHelperReviewSurface::Graph, TEXT("graph") },
+		{ EBlueprintHelperReviewSurface::Components, TEXT("components") },
+		{ EBlueprintHelperReviewSurface::MyBlueprint, TEXT("my_blueprint") },
+		{ EBlueprintHelperReviewSurface::Details, TEXT("details") },
+		{ EBlueprintHelperReviewSurface::UMGWidgetTree, TEXT("umg_widget_tree") },
+		{ EBlueprintHelperReviewSurface::DataTable, TEXT("data_table") },
+		{ EBlueprintHelperReviewSurface::DataAsset, TEXT("data_asset") }
+	};
+	for (const FBlueprintHelperReviewSurfaceName& Entry : Names)
+	{
+		if (Entry.Surface == Surface)
+		{
+			return Entry.Name;
+		}
 	}
+	return TEXT("unknown");
 }
 
 inline EBlueprintHelperReviewSurface BlueprintHelperReviewNormalizeSurfaceForTarget(

@@ -4,6 +4,7 @@
 
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
 #include "UI/Review/BlueprintHelperReviewPanelStyle.h"
+#include "UI/Review/BlueprintHelperReviewPanelPresenter.h"
 #include "Styling/AppStyle.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
@@ -17,19 +18,20 @@
 
 void SBlueprintHelperReviewPanel::Construct(const FArguments& InArgs)
 {
-	ReviewStoreService = InArgs._ReviewStoreService;
-	ReviewActionService = InArgs._ReviewActionService;
+	ReviewPanelPresenter = MakeShared<FBlueprintHelperReviewPanelPresenter>(
+		InArgs._ReviewStoreService,
+		InArgs._ReviewActionService);
 
 	TArray<FBlueprintHelperReviewVisibleChange> InitialChanges = InArgs._InitialChanges;
-	if (InitialChanges.Num() == 0 && ReviewStoreService)
+	if (InitialChanges.Num() == 0 && ReviewPanelPresenter.IsValid())
 	{
-		InitialChanges = ReviewStoreService->LoadPendingVisibleChanges();
+		InitialChanges = ReviewPanelPresenter->LoadPendingVisibleChanges();
 	}
 	RefreshVisibleChanges(InitialChanges);
 	LastVisibleChangeRefreshSignature = BuildVisibleChangeRefreshSignature(InitialChanges);
-	if (ReviewStoreService)
+	if (ReviewPanelPresenter.IsValid())
 	{
-		PendingReviewChangedHandle = ReviewStoreService->AddPendingReviewChangedHandler(
+		PendingReviewChangedHandle = ReviewPanelPresenter->AddPendingReviewChangedHandler(
 			FSimpleDelegate::CreateSP(this, &SBlueprintHelperReviewPanel::RefreshFromReviewStoreIfChanged));
 	}
 	if (ChangeItems.Num() > 0)

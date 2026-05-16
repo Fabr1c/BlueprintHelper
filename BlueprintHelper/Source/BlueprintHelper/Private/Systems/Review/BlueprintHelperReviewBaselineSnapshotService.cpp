@@ -26,131 +26,12 @@
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 #include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
+#include "Systems/Review/Utils/BlueprintHelperReviewBaselineSnapshotServiceUtils.h"
 #include "UObject/Package.h"
 #include "UObject/SoftObjectPath.h"
 #include "UObject/UnrealType.h"
 #include "WidgetBlueprint.h"
 
-namespace BlueprintHelperReviewBaselineSnapshotServiceLocal
-{
-	static TArray<TSharedPtr<FJsonValue>> MakeStringArray(const TArray<FString>& Values)
-	{
-		TArray<TSharedPtr<FJsonValue>> Result;
-		for (const FString& Value : Values)
-		{
-			Result.Add(MakeShared<FJsonValueString>(Value));
-		}
-		return Result;
-	}
-
-	static FString GetObjectPathNameSafe(const UObject* Object)
-	{
-		return Object ? Object->GetPathName() : FString();
-	}
-
-	static FString GetObjectClassPathNameSafe(const UObject* Object)
-	{
-		return Object && Object->GetClass() ? Object->GetClass()->GetPathName() : FString();
-	}
-
-	static FString SerializeJsonObject(const TSharedRef<FJsonObject>& Json)
-	{
-		FString Serialized;
-		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Serialized);
-		FJsonSerializer::Serialize(Json, Writer);
-		return Serialized;
-	}
-
-	static FString ExtractTargetName(const FBlueprintHelperReviewAtomicTarget& Target)
-	{
-		if (!Target.PropertyPath.IsEmpty())
-		{
-			return Target.PropertyPath;
-		}
-		if (!Target.ComponentPath.IsEmpty())
-		{
-			return Target.ComponentPath;
-		}
-
-		int32 LastColon = INDEX_NONE;
-		if (Target.TargetKey.FindLastChar(TEXT(':'), LastColon))
-		{
-			return Target.TargetKey.Mid(LastColon + 1);
-		}
-		return Target.DisplayLabel;
-	}
-
-	static UObject* ResolveClassDefaultSnapshotObject(UObject* Asset)
-	{
-		UBlueprint* Blueprint = Cast<UBlueprint>(Asset);
-		if (!Blueprint)
-		{
-			return Asset;
-		}
-
-		UClass* DefaultClass = Blueprint->GeneratedClass
-			? Blueprint->GeneratedClass
-			: Blueprint->SkeletonGeneratedClass;
-		return DefaultClass ? DefaultClass->GetDefaultObject() : nullptr;
-	}
-
-	static void SplitWidgetPropertyTarget(
-		const FString& TargetName,
-		FString& OutWidgetName,
-		FString& OutPropertyName)
-	{
-		OutWidgetName = TargetName;
-		OutPropertyName.Reset();
-
-		FString Left;
-		FString Right;
-		if (TargetName.Split(TEXT("."), &Left, &Right) && !Left.IsEmpty())
-		{
-			OutWidgetName = Left;
-			OutPropertyName = Right;
-		}
-	}
-
-	static FString FindScsParentComponentName(const UBlueprint* Blueprint, const USCS_Node* ChildNode)
-	{
-		if (!Blueprint || !Blueprint->SimpleConstructionScript || !ChildNode)
-		{
-			return FString();
-		}
-
-		for (const USCS_Node* CandidateParent : Blueprint->SimpleConstructionScript->GetAllNodes())
-		{
-			if (!CandidateParent)
-			{
-				continue;
-			}
-			for (const USCS_Node* CandidateChild : CandidateParent->GetChildNodes())
-			{
-				if (CandidateChild == ChildNode)
-				{
-					return CandidateParent->GetVariableName().ToString();
-				}
-			}
-		}
-		return FString();
-	}
-
-	static FString PinDirectionToString(const EEdGraphPinDirection Direction)
-	{
-		return Direction == EGPD_Output ? TEXT("output") : TEXT("input");
-	}
-
-	static void AppendGraphs(TArray<UEdGraph*>& OutGraphs, const TArray<UEdGraph*>& InGraphs)
-	{
-		for (UEdGraph* Graph : InGraphs)
-		{
-			if (Graph)
-			{
-				OutGraphs.Add(Graph);
-			}
-		}
-	}
-}
 
 TArray<FString> FBlueprintHelperReviewBaselineSnapshotService::CaptureSemanticBaselineSnapshots(
 	const FString& ArchiveSessionId,
@@ -221,7 +102,7 @@ bool FBlueprintHelperReviewBaselineSnapshotService::CaptureTargetSnapshot(
 
 	UObject* Asset = LoadAssetForSnapshot(Target.AssetPath);
 	const TSharedRef<FJsonObject> Snapshot = BuildTargetSnapshot(Target, Asset, Asset != nullptr);
-	OutSnapshotJson = BlueprintHelperReviewBaselineSnapshotServiceLocal::SerializeJsonObject(Snapshot);
+	OutSnapshotJson = FBlueprintHelperReviewBaselineSnapshotServiceUtils::SerializeJsonObject(Snapshot);
 	OutSnapshotHash = FString::Printf(TEXT("crc32_%08x"), FCrc::StrCrc32(*OutSnapshotJson));
 	return true;
 }
@@ -325,8 +206,8 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildAsse
 	Snapshot->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.ReviewBaselineSemanticSnapshot.v1"));
 	Snapshot->SetStringField(TEXT("asset_path"), AssetPath);
 	Snapshot->SetStringField(TEXT("object_name"), GetNameSafe(Asset));
-	Snapshot->SetStringField(TEXT("object_path"), BlueprintHelperReviewBaselineSnapshotServiceLocal::GetObjectPathNameSafe(Asset));
-	Snapshot->SetStringField(TEXT("object_class"), BlueprintHelperReviewBaselineSnapshotServiceLocal::GetObjectClassPathNameSafe(Asset));
+	Snapshot->SetStringField(TEXT("object_path"), FBlueprintHelperReviewBaselineSnapshotServiceUtils::GetObjectPathNameSafe(Asset));
+	Snapshot->SetStringField(TEXT("object_class"), FBlueprintHelperReviewBaselineSnapshotServiceUtils::GetObjectClassPathNameSafe(Asset));
 	Snapshot->SetStringField(TEXT("captured_at"), FDateTime::UtcNow().ToIso8601());
 
 	if (const UBlueprint* Blueprint = Cast<UBlueprint>(Asset))
@@ -359,7 +240,7 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildBlue
 			VariableJson->SetStringField(TEXT("category"), Variable.Category.ToString());
 			VariableJson->SetStringField(TEXT("pin_category"), Variable.VarType.PinCategory.ToString());
 			VariableJson->SetStringField(TEXT("pin_sub_category"), Variable.VarType.PinSubCategory.ToString());
-			VariableJson->SetStringField(TEXT("pin_sub_category_object"), BlueprintHelperReviewBaselineSnapshotServiceLocal::GetObjectPathNameSafe(Variable.VarType.PinSubCategoryObject.Get()));
+			VariableJson->SetStringField(TEXT("pin_sub_category_object"), FBlueprintHelperReviewBaselineSnapshotServiceUtils::GetObjectPathNameSafe(Variable.VarType.PinSubCategoryObject.Get()));
 			VariableJson->SetStringField(TEXT("default_value"), Variable.DefaultValue);
 			Variables.Add(MakeShared<FJsonValueObject>(VariableJson));
 		}
@@ -389,10 +270,10 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildBlue
 	TArray<UEdGraph*> Graphs;
 	if (Blueprint)
 	{
-		BlueprintHelperReviewBaselineSnapshotServiceLocal::AppendGraphs(Graphs, Blueprint->UbergraphPages);
-		BlueprintHelperReviewBaselineSnapshotServiceLocal::AppendGraphs(Graphs, Blueprint->FunctionGraphs);
-		BlueprintHelperReviewBaselineSnapshotServiceLocal::AppendGraphs(Graphs, Blueprint->MacroGraphs);
-		BlueprintHelperReviewBaselineSnapshotServiceLocal::AppendGraphs(Graphs, Blueprint->DelegateSignatureGraphs);
+		FBlueprintHelperReviewBaselineSnapshotServiceUtils::AppendGraphs(Graphs, Blueprint->UbergraphPages);
+		FBlueprintHelperReviewBaselineSnapshotServiceUtils::AppendGraphs(Graphs, Blueprint->FunctionGraphs);
+		FBlueprintHelperReviewBaselineSnapshotServiceUtils::AppendGraphs(Graphs, Blueprint->MacroGraphs);
+		FBlueprintHelperReviewBaselineSnapshotServiceUtils::AppendGraphs(Graphs, Blueprint->DelegateSignatureGraphs);
 	}
 
 	TArray<TSharedPtr<FJsonValue>> GraphJsonValues;
@@ -419,14 +300,14 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 	bool bAssetExists)
 {
 	TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
-	const FString TargetName = BlueprintHelperReviewBaselineSnapshotServiceLocal::ExtractTargetName(Target);
+	const FString TargetName = FBlueprintHelperReviewBaselineSnapshotServiceUtils::ExtractTargetName(Target);
 	Json->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.ReviewTargetSnapshot.v1"));
 	Json->SetStringField(TEXT("asset_path"), Target.AssetPath);
 	Json->SetStringField(TEXT("target_kind"), Target.TargetKind);
 	Json->SetStringField(TEXT("target_key"), Target.TargetKey);
 	Json->SetStringField(TEXT("target_name"), TargetName);
 	Json->SetBoolField(TEXT("asset_exists"), bAssetExists);
-	Json->SetStringField(TEXT("asset_class"), BlueprintHelperReviewBaselineSnapshotServiceLocal::GetObjectClassPathNameSafe(Asset));
+	Json->SetStringField(TEXT("asset_class"), FBlueprintHelperReviewBaselineSnapshotServiceUtils::GetObjectClassPathNameSafe(Asset));
 
 	if (!bAssetExists)
 	{
@@ -452,7 +333,7 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 				Json->SetStringField(TEXT("category"), Variable.Category.ToString());
 				Json->SetStringField(TEXT("pin_category"), Variable.VarType.PinCategory.ToString());
 				Json->SetStringField(TEXT("pin_sub_category"), Variable.VarType.PinSubCategory.ToString());
-				Json->SetStringField(TEXT("pin_sub_category_object"), BlueprintHelperReviewBaselineSnapshotServiceLocal::GetObjectPathNameSafe(Variable.VarType.PinSubCategoryObject.Get()));
+				Json->SetStringField(TEXT("pin_sub_category_object"), FBlueprintHelperReviewBaselineSnapshotServiceUtils::GetObjectPathNameSafe(Variable.VarType.PinSubCategoryObject.Get()));
 				Json->SetStringField(TEXT("default_value"), Variable.DefaultValue);
 				return Json;
 			}
@@ -475,7 +356,7 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 
 					Json->SetBoolField(TEXT("exists"), true);
 					Json->SetStringField(TEXT("name"), Node->GetVariableName().ToString());
-					Json->SetStringField(TEXT("parent_component"), BlueprintHelperReviewBaselineSnapshotServiceLocal::FindScsParentComponentName(Blueprint, Node));
+					Json->SetStringField(TEXT("parent_component"), FBlueprintHelperReviewBaselineSnapshotServiceUtils::FindScsParentComponentName(Blueprint, Node));
 					const UActorComponent* ComponentTemplate = Node->ComponentTemplate;
 					Json->SetStringField(
 						TEXT("component_class"),
@@ -497,10 +378,10 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 			Json->SetStringField(TEXT("surface"), TEXT("my_blueprint"));
 			Json->SetBoolField(TEXT("exists"), false);
 			TArray<UEdGraph*> Graphs;
-			BlueprintHelperReviewBaselineSnapshotServiceLocal::AppendGraphs(Graphs, Blueprint->UbergraphPages);
-			BlueprintHelperReviewBaselineSnapshotServiceLocal::AppendGraphs(Graphs, Blueprint->FunctionGraphs);
-			BlueprintHelperReviewBaselineSnapshotServiceLocal::AppendGraphs(Graphs, Blueprint->MacroGraphs);
-			BlueprintHelperReviewBaselineSnapshotServiceLocal::AppendGraphs(Graphs, Blueprint->DelegateSignatureGraphs);
+			FBlueprintHelperReviewBaselineSnapshotServiceUtils::AppendGraphs(Graphs, Blueprint->UbergraphPages);
+			FBlueprintHelperReviewBaselineSnapshotServiceUtils::AppendGraphs(Graphs, Blueprint->FunctionGraphs);
+			FBlueprintHelperReviewBaselineSnapshotServiceUtils::AppendGraphs(Graphs, Blueprint->MacroGraphs);
+			FBlueprintHelperReviewBaselineSnapshotServiceUtils::AppendGraphs(Graphs, Blueprint->DelegateSignatureGraphs);
 			for (const UEdGraph* Graph : Graphs)
 			{
 				if (Graph && Graph->GetName() == TargetName)
@@ -525,7 +406,7 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 
 			FString WidgetName;
 			FString PropertyName;
-			BlueprintHelperReviewBaselineSnapshotServiceLocal::SplitWidgetPropertyTarget(TargetName, WidgetName, PropertyName);
+			FBlueprintHelperReviewBaselineSnapshotServiceUtils::SplitWidgetPropertyTarget(TargetName, WidgetName, PropertyName);
 			UWidget* Widget = WidgetBlueprint->WidgetTree->FindWidget(FName(*WidgetName));
 			if (!Widget)
 			{
@@ -599,10 +480,10 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 	{
 		Json->SetStringField(TEXT("surface"), TEXT("details"));
 		UObject* PropertyOwner = Target.TargetKind == TEXT("class_default_property")
-			? BlueprintHelperReviewBaselineSnapshotServiceLocal::ResolveClassDefaultSnapshotObject(Asset)
+			? FBlueprintHelperReviewBaselineSnapshotServiceUtils::ResolveClassDefaultSnapshotObject(Asset)
 			: Asset;
-		Json->SetStringField(TEXT("property_owner_class"), BlueprintHelperReviewBaselineSnapshotServiceLocal::GetObjectClassPathNameSafe(PropertyOwner));
-		Json->SetStringField(TEXT("property_owner_path"), BlueprintHelperReviewBaselineSnapshotServiceLocal::GetObjectPathNameSafe(PropertyOwner));
+		Json->SetStringField(TEXT("property_owner_class"), FBlueprintHelperReviewBaselineSnapshotServiceUtils::GetObjectClassPathNameSafe(PropertyOwner));
+		Json->SetStringField(TEXT("property_owner_path"), FBlueprintHelperReviewBaselineSnapshotServiceUtils::GetObjectPathNameSafe(PropertyOwner));
 		if (PropertyOwner && PropertyOwner->GetClass())
 		{
 			FProperty* Property = nullptr;
@@ -738,7 +619,7 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildNode
 	TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
 	Json->SetStringField(TEXT("name"), Node ? Node->GetName() : FString());
 	Json->SetStringField(TEXT("guid"), Node ? Node->NodeGuid.ToString(EGuidFormats::Digits) : FString());
-	Json->SetStringField(TEXT("class"), BlueprintHelperReviewBaselineSnapshotServiceLocal::GetObjectClassPathNameSafe(Node));
+	Json->SetStringField(TEXT("class"), FBlueprintHelperReviewBaselineSnapshotServiceUtils::GetObjectClassPathNameSafe(Node));
 	Json->SetStringField(TEXT("title"), Node ? Node->GetNodeTitle(ENodeTitleType::ListView).ToString() : FString());
 	Json->SetNumberField(TEXT("x"), Node ? Node->NodePosX : 0);
 	Json->SetNumberField(TEXT("y"), Node ? Node->NodePosY : 0);
@@ -755,7 +636,7 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildNode
 
 			TSharedRef<FJsonObject> PinJson = MakeShared<FJsonObject>();
 			PinJson->SetStringField(TEXT("name"), Pin->PinName.ToString());
-			PinJson->SetStringField(TEXT("direction"), BlueprintHelperReviewBaselineSnapshotServiceLocal::PinDirectionToString(Pin->Direction));
+			PinJson->SetStringField(TEXT("direction"), FBlueprintHelperReviewBaselineSnapshotServiceUtils::PinDirectionToString(Pin->Direction));
 			PinJson->SetStringField(TEXT("pin_category"), Pin->PinType.PinCategory.ToString());
 			PinJson->SetStringField(TEXT("pin_sub_category"), Pin->PinType.PinSubCategory.ToString());
 			PinJson->SetStringField(TEXT("default_value"), Pin->DefaultValue);
@@ -772,7 +653,7 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildNode
 					*LinkedPin->GetOwningNode()->NodeGuid.ToString(EGuidFormats::Digits),
 					*LinkedPin->PinName.ToString()));
 			}
-			PinJson->SetArrayField(TEXT("linked_to"), BlueprintHelperReviewBaselineSnapshotServiceLocal::MakeStringArray(LinkedPins));
+			PinJson->SetArrayField(TEXT("linked_to"), FBlueprintHelperReviewBaselineSnapshotServiceUtils::MakeStringArray(LinkedPins));
 			Pins.Add(MakeShared<FJsonValueObject>(PinJson));
 		}
 	}

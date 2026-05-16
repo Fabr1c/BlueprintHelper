@@ -11,6 +11,7 @@
 #include "Widgets/SCompoundWidget.h"
 
 class FBlueprintHelperReviewStoreService;
+class FBlueprintHelperReviewPanelPresenter;
 class FJsonObject;
 class SEditableTextBox;
 class SKismetInspector;
@@ -166,8 +167,7 @@ private:
 	UObject* ResolveComponentDetailsObjectForChange(const FBlueprintHelperReviewVisibleChange& Change) const;
 	UEdGraph* ResolveGraphForSelectedChange() const;
 
-	const FBlueprintHelperReviewStoreService* ReviewStoreService = nullptr;
-	const FBlueprintHelperReviewActionService* ReviewActionService = nullptr;
+	TSharedPtr<FBlueprintHelperReviewPanelPresenter> ReviewPanelPresenter;
 
 	TArray<FReviewChangeItem> ChangeItems;
 	TArray<FReviewTreeItemPtr> ChangeTreeRootItems;
