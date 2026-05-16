@@ -437,6 +437,8 @@ struct FParsedNode
 	FString TargetObjectName;
 	FString TargetObjectType;
 	FBlueprintHelperCallFunctionPinType TargetObjectPinType;
+	FString ExpectedReturnType;
+	FBlueprintHelperCallFunctionPinType ExpectedReturnPinType;
 
 	float X = 0.0f;
 

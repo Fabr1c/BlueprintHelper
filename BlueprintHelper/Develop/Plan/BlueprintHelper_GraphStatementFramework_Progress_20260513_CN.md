@@ -1430,3 +1430,23 @@ Historical references in this file to `LayoutHints`, fragment `layout`, `set_nod
 
 阻塞内容：
 1. 无当前阻塞。
+## 2026-05-16 进度：通用 struct construction resolver 与 typed operator promotion
+
+状态：完成并真实验证通过。
+
+新增内容：
+1. make_struct 增加通用 struct construction resolver，基于结构体 metadata、expected return type 和 ActionResolver 解析真实 Make 函数。
+2. CallFunction resolver 增加 expected return type / expected return pin type，用于结构构造函数候选过滤。
+3. compare/operator 增加 typed operand 下沉，避免只靠默认值字符串推断。
+
+变更需求：
+1. typed operator 不再把 UK2Node_PromotableOperator 作为最终稳定写图节点；当 resolver 已命中具体 UE 运算函数时，生成 UK2Node_CallFunction，避免编辑器交互式 wildcard promotion 在 CLI 写图中失败。
+
+验证结果：
+1. 编译通过：Build.bat TemplateEditor Win64 Development -Project=D:\UEProjects\Template\Template.uproject -WaitMutex -NoHotReload。
+2. 真实 CLI 执行通过：$runDir。
+3. P6、P7、PSEL 均为 executed。
+
+距离期望差距：
+1. 本轮明确阻塞项已清零。
+2. 更大范围压力矩阵仍需后续单独覆盖，不在本轮完成声明内。

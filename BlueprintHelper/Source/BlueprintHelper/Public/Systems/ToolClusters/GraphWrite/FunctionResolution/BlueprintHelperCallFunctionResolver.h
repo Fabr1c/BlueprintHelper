@@ -68,6 +68,8 @@ struct FBlueprintHelperK2CallContext
 	TMap<FString, FBlueprintHelperCallFunctionPinType> ArgumentPinTypes;
 	FString TargetObjectType;
 	FBlueprintHelperCallFunctionPinType TargetObjectPinType;
+	FString ExpectedReturnType;
+	FBlueprintHelperCallFunctionPinType ExpectedReturnPinType;
 };
 
 enum class EBlueprintHelperCallFunctionResolveStatus : uint8
@@ -122,6 +124,8 @@ struct FBlueprintHelperCallFunctionResolveRequest
 	TMap<FString, FBlueprintHelperCallFunctionPinType> ArgumentPinTypes;
 	FString TargetObjectType;
 	FBlueprintHelperCallFunctionPinType TargetObjectPinType;
+	FString ExpectedReturnType;
+	FBlueprintHelperCallFunctionPinType ExpectedReturnPinType;
 	FBlueprintHelperK2CallContext Context;
 	bool bAllowFuzzyUnique = true;
 	int32 MaxCandidates = 8;

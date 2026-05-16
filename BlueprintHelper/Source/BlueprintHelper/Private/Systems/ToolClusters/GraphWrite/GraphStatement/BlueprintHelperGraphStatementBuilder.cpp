@@ -110,6 +110,8 @@ static void PopulateK2CallContext(
 	Request.Context.ArgumentPinTypes = Request.ArgumentPinTypes;
 	Request.Context.TargetObjectType = Request.TargetObjectType;
 	Request.Context.TargetObjectPinType = Request.TargetObjectPinType;
+	Request.Context.ExpectedReturnType = Request.ExpectedReturnType;
+	Request.Context.ExpectedReturnPinType = Request.ExpectedReturnPinType;
 }
 
 static bool TryParseExplicitObjectCall(
@@ -892,9 +894,17 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 		{
 			NodeData.DefaultValues.Add(TEXT("A"), Expression.Left->LiteralValue);
 		}
+		if (Expression.Left.IsValid() && !Expression.Left->Type.TrimStartAndEnd().IsEmpty())
+		{
+			NodeData.ArgumentTypes.Add(TEXT("A"), Expression.Left->Type);
+		}
 		if (Expression.Right.IsValid() && Expression.Right->Kind == EBlueprintHelperGraphExpressionKind::Literal)
 		{
 			NodeData.DefaultValues.Add(TEXT("B"), Expression.Right->LiteralValue);
+		}
+		if (Expression.Right.IsValid() && !Expression.Right->Type.TrimStartAndEnd().IsEmpty())
+		{
+			NodeData.ArgumentTypes.Add(TEXT("B"), Expression.Right->Type);
 		}
 
 		FPromotableOperatorNodeHandler Handler;
@@ -992,12 +1002,17 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 		NodeData.NodeType = EParsedBlueprintNodeType::MakeStruct;
 		NodeData.SourceType = TEXT("K2Node_MakeStruct");
 		NodeData.StructReference.StructPath = Expression.Type;
+		NodeData.ExpectedReturnType = Expression.Type;
 
 		for (const TPair<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& ArgPair : Expression.Args)
 		{
 			if (ArgPair.Value.IsValid() && ArgPair.Value->Kind == EBlueprintHelperGraphExpressionKind::Literal)
 			{
 				NodeData.DefaultValues.Add(ArgPair.Key, ArgPair.Value->LiteralValue);
+			}
+			if (ArgPair.Value.IsValid() && !ArgPair.Value->Type.TrimStartAndEnd().IsEmpty())
+			{
+				NodeData.ArgumentTypes.Add(ArgPair.Key, ArgPair.Value->Type);
 			}
 		}
 

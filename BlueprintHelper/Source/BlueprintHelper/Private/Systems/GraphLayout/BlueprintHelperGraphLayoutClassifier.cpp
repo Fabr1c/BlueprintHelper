@@ -48,6 +48,34 @@ static bool HasLinkedInput(const FNodeSnapshot& Node)
 	return false;
 }
 
+static bool IsOperatorOrCompareNode(const FNodeSnapshot& Node)
+{
+	static const TArray<FString> ClassTokens = {
+		TEXT("K2Node_CommutativeAssociativeBinaryOperator"),
+		TEXT("K2Node_PromotableOperator")
+	};
+	static const TArray<FString> TitleTokens = {
+		TEXT("=="),
+		TEXT("!="),
+		TEXT(">"),
+		TEXT("<"),
+		TEXT("+"),
+		TEXT("-"),
+		TEXT("*"),
+		TEXT("/"),
+		TEXT("AND"),
+		TEXT("OR"),
+		TEXT("NOT"),
+		TEXT("Equal"),
+		TEXT("Greater"),
+		TEXT("Less"),
+		TEXT("Is Valid"),
+		TEXT("IsValid")
+	};
+	return ContainsAnyIgnoreCase(Node.ClassPath, ClassTokens) ||
+		ContainsAnyIgnoreCase(Node.Title, TitleTokens);
+}
+
 FNodeClassification FClassifier::ClassifyNode(const FNodeSnapshot& Node, const FRuleSet& RuleSet)
 {
 	FNodeClassification Result;
@@ -68,8 +96,8 @@ FNodeClassification FClassifier::ClassifyNode(const FNodeSnapshot& Node, const F
 
 	if (ContainsIgnoreCase(Node.ClassPath, TEXT("K2Node_Knot")) || ContainsIgnoreCase(Node.ClassPath, TEXT("Reroute")) || ContainsIgnoreCase(Node.Title, TEXT("reroute")))
 	{
-		Result.Role = ENodeRole::Reroute;
-		Result.Reason = TEXT("knot_or_reroute_class");
+		Result.Role = ENodeRole::Unknown;
+		Result.Reason = TEXT("deprecated_reroute_ignored");
 		return Result;
 	}
 
@@ -119,6 +147,13 @@ FNodeClassification FClassifier::ClassifyNode(const FNodeSnapshot& Node, const F
 	{
 		Result.Role = HasExecPin(Node, EPinDirection::Input) || HasExecPin(Node, EPinDirection::Output) ? ENodeRole::ExecNode : ENodeRole::VariableInput;
 		Result.Reason = Result.Role == ENodeRole::VariableInput ? TEXT("variable_get_without_exec") : TEXT("variable_with_exec");
+		return Result;
+	}
+
+	if (IsOperatorOrCompareNode(Node))
+	{
+		Result.Role = ENodeRole::OperatorOrCompare;
+		Result.Reason = TEXT("operator_or_compare");
 		return Result;
 	}
 

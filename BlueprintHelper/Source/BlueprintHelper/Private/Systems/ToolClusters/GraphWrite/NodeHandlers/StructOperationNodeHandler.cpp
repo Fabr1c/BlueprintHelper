@@ -3,6 +3,7 @@
 #include "K2Node_MakeStruct.h"
 #include "K2Node_BreakStruct.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
+#include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperStructConstructionResolver.h"
 #include "UObject/UObjectIterator.h"
 
 bool FStructOperationNodeHandler::CanHandle(EParsedBlueprintNodeType NodeType) const
@@ -59,6 +60,19 @@ UK2Node* FStructOperationNodeHandler::SpawnMakeStruct(UEdGraph* TargetGraph, con
 	if (!TargetStruct)
 	{
 		return nullptr;
+	}
+
+	if (TargetStruct->HasMetaData(TEXT("HasNativeMake")))
+	{
+		FString ResolverError;
+		if (UK2Node* ResolvedStructNode = FBlueprintHelperStructConstructionResolver::SpawnMakeStructNode(TargetGraph, NodeData, TargetStruct, ResolverError))
+		{
+			return ResolvedStructNode;
+		}
+		if (!ResolverError.IsEmpty())
+		{
+			OutError = ResolverError;
+		}
 	}
 
 	UK2Node_MakeStruct* StructNode = NewObject<UK2Node_MakeStruct>(TargetGraph);

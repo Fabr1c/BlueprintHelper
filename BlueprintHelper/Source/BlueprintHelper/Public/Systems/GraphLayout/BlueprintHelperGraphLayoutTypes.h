@@ -14,11 +14,11 @@ enum class ENodeRole : uint8
 	ExecNode,
 	BranchControl,
 	PureFunction,
+	OperatorOrCompare,
 	VariableInput,
 	AsyncNode,
 	DelegateNode,
-	Comment,
-	Reroute
+	Comment
 };
 
 enum class EPinDirection : uint8
@@ -63,7 +63,6 @@ struct FRuleSet
 	float VariableInputOffsetX = 260.0f;
 	float InputPinRowSpacing = 44.0f;
 	bool bUseTargetPinOrderForVariableInputs = true;
-	bool bStraightenExistingReroutes = true;
 	bool bMoveGeneratedNodes = true;
 	bool bMoveExistingNodes = false;
 	int32 MaxNodesPerFrame = 24;
@@ -116,7 +115,6 @@ struct FNodePlacement
 	FVector2D CurrentPosition = FVector2D::ZeroVector;
 	FVector2D TargetPosition = FVector2D::ZeroVector;
 	bool bMoveExisting = false;
-	bool bStraightenExistingReroute = false;
 	FString Reason;
 };
 

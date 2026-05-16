@@ -541,6 +541,14 @@ FBlueprintHelperK2CallContext FBlueprintHelperCallFunctionResolverUtils::BuildEf
 	{
 		Context.TargetObjectPinType = Request.TargetObjectPinType;
 	}
+	if (Context.ExpectedReturnType.IsEmpty())
+	{
+		Context.ExpectedReturnType = Request.ExpectedReturnType;
+	}
+	if (!Context.ExpectedReturnPinType.IsValid())
+	{
+		Context.ExpectedReturnPinType = Request.ExpectedReturnPinType;
+	}
 	return Context;
 }
 
@@ -576,6 +584,36 @@ bool FBlueprintHelperCallFunctionResolverUtils::IsTargetObjectTypeCompatible(con
 	}
 
 	return !RequestedClass || !Function->GetOwnerClass() || RequestedClass->IsChildOf(Function->GetOwnerClass());
+}
+
+bool FBlueprintHelperCallFunctionResolverUtils::IsExpectedReturnTypeCompatible(const FBlueprintHelperCallFunctionCandidate& Candidate, const FBlueprintHelperCallFunctionResolveRequest& Request)
+{
+	const FBlueprintHelperK2CallContext Context = BuildEffectiveContext(Request);
+	if (Context.ExpectedReturnType.TrimStartAndEnd().IsEmpty() && !Context.ExpectedReturnPinType.IsValid())
+	{
+		return true;
+	}
+
+	const UFunction* Function = Candidate.Function.Get();
+	if (!Function)
+	{
+		return false;
+	}
+
+	const FProperty* ReturnProperty = nullptr;
+	for (TFieldIterator<FProperty> PropIt(Function); PropIt && (PropIt->PropertyFlags & CPF_Parm); ++PropIt)
+	{
+		const FProperty* Property = *PropIt;
+		if (Property && Property->HasAnyPropertyFlags(CPF_ReturnParm))
+		{
+			ReturnProperty = Property;
+			break;
+		}
+	}
+
+	return ReturnProperty
+		&& IsSemanticTypeCompatibleWithProperty(Context.ExpectedReturnType, ReturnProperty)
+		&& IsPinTypeCompatibleWithProperty(Context.ExpectedReturnPinType, ReturnProperty);
 }
 
 bool FBlueprintHelperCallFunctionResolverUtils::AreRequestedArgumentsCompatible(const FBlueprintHelperCallFunctionCandidate& Candidate, const FBlueprintHelperCallFunctionResolveRequest& Request)
@@ -647,6 +685,14 @@ FString FBlueprintHelperCallFunctionResolverUtils::DescribeCandidateMismatch(
 			*Context.TargetObjectType,
 			*DescribePinTypeForDiagnostics(Context.TargetObjectPinType));
 	}
+	if (!IsExpectedReturnTypeCompatible(Candidate, Request))
+	{
+		return FString::Printf(
+			TEXT("return_type_mismatch:expected=%s expected_pin=%s actual=%s"),
+			*Context.ExpectedReturnType,
+			*DescribePinTypeForDiagnostics(Context.ExpectedReturnPinType),
+			*Candidate.ReturnType);
+	}
 
 	for (const FString& ArgumentName : Context.ArgumentNames)
 	{
@@ -704,6 +750,10 @@ int32 FBlueprintHelperCallFunctionResolverUtils::ComputeTypedConstraintBonus(con
 	if (!Context.TargetObjectType.IsEmpty() || Context.TargetObjectPinType.IsValid())
 	{
 		Bonus += 120;
+	}
+	if (!Context.ExpectedReturnType.IsEmpty() || Context.ExpectedReturnPinType.IsValid())
+	{
+		Bonus += 80;
 	}
 	return Bonus;
 }
