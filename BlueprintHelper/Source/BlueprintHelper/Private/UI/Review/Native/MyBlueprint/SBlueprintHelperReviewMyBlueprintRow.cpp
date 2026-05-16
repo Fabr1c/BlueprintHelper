@@ -9,6 +9,7 @@
 #include "EdGraphSchema_K2.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "SPinTypeSelector.h"
+#include "Input/Events.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
@@ -23,6 +24,7 @@ void SBlueprintHelperReviewMyBlueprintRow::Construct(
 {
 	Item = InArgs._Item;
 	AssetPath = InArgs._AssetPath;
+	OnNavigateToGraph = InArgs._OnNavigateToGraph;
 	const FBlueprintHelperReviewGeometryInvalidated OnGeometryInvalidated = InArgs._OnGeometryInvalidated;
 
 	const FText Label = Item.IsValid() ? Item->Label : FText::GetEmpty();
@@ -175,6 +177,24 @@ void SBlueprintHelperReviewMyBlueprintRow::Construct(
 			RowWidget
 		],
 		OwnerTable);
+}
+
+FReply SBlueprintHelperReviewMyBlueprintRow::OnMouseButtonDoubleClick(
+	const FGeometry& InMyGeometry,
+	const FPointerEvent& InMouseEvent)
+{
+	if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton
+		&& Item.IsValid()
+		&& !Item->NavigateChangeId.IsEmpty()
+		&& OnNavigateToGraph.IsBound())
+	{
+		OnNavigateToGraph.Execute(Item->NavigateChangeId, Item->NavigateGraphName);
+		return FReply::Handled();
+	}
+
+	return STableRow<TSharedPtr<FBlueprintHelperReviewMyBlueprintPresenter::FRowItem>>::OnMouseButtonDoubleClick(
+		InMyGeometry,
+		InMouseEvent);
 }
 
 FSlateColor SBlueprintHelperReviewMyBlueprintRow::GetRowBackgroundColor() const

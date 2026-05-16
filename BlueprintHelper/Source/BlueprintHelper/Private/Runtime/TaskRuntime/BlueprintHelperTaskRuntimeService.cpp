@@ -5467,10 +5467,16 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 					PostOperationRecords.Add({TEXT("compile_blueprint_asset"), CompileResult});
 					if (!CompileResult.bOk)
 					{
-						return BuildFailureResult(
+						FBlueprintHelperToolResultBase FailureResult = BuildFailureResult(
 							CompileResult.Error.IsSet()
 								? *CompileResult.Error
 								: FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRuntimeError(TEXT("task_compile_failed"), EBlueprintHelperToolStage::Execute, TEXT("TaskPlan compile post operation failed.")));
+						if (!FailureResult.Data.IsValid())
+						{
+							FailureResult.Data = MakeShared<FJsonObject>();
+						}
+						FailureResult.Data->SetObjectField(TEXT("post_operation_failure"), CompileResult.ToJson());
+						return FailureResult;
 					}
 				}
 			}

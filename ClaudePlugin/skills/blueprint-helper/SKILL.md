@@ -23,6 +23,12 @@ Use this Skill when the user asks to:
 
 Do not use BlueprintHelper tools for C++, TypeScript, Python, JSON, docs, tests, config, `AGENTS.md`, or memory files. Use normal repository tools for those.
 
+## Entry Rule
+
+The supported Agent-facing entry for ordinary BlueprintHelper reads and writes is the BlueprintHelper CLI. Use the global BlueprintHelper MCP lifecycle commands only for opening or closing Unreal Editor from an Agent workflow; do not route ordinary read/write tools through MCP.
+
+For complex JSON input, copy a template from `BlueprintHelper/Resources/AgentGuide/Templates/`, edit the copy, then call the CLI with `--file`. Direct tool-name TaskSpec calls use wrapper templates with root field `task_spec`; grouped `task preview` / `task execute` calls use bare `BlueprintHelper.TaskSpec.v1` files.
+
 ## Main Agent Flow
 
 1. Read `references/08_User_Preferences.md` and `references/00_Agent_Onboarding_Index_20260504.md`.
@@ -87,6 +93,7 @@ Example: if the user says "在蓝图实现一个可以开关的物理门" and do
 Tell the SideAgent its responsibility in the task package:
 
 - construct valid BlueprintHelper tool parameters from the user's goal and target;
+- prefer copy-and-edit templates from `BlueprintHelper/Resources/AgentGuide/Templates/` for CLI JSON input;
 - call only the assigned BlueprintHelper tool or the single atomic tool step explicitly requested by the Main Agent;
 - do not expand the task into a broader investigation, repeat adjacent reads, or decide whether prior SideAgent context is sufficient;
 - treat missing commands as `tool_unavailable`, a CLI installation or registration problem; do not request write session to fix read-command availability;
@@ -122,3 +129,4 @@ Stop before write delegation when:
 - `references/05_Edit_Blueprint_Workflow.md` - legacy Blueprint edit workflow
 - `references/06_UMG_Data_Workflows.md` - UMG and data workflows
 - `references/07_Safety_Validation_And_Recovery.md` - safety validation and recovery
+- `BlueprintHelper/Resources/AgentGuide/Templates/README.md` - copy-and-edit CLI JSON templates

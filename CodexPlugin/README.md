@@ -6,7 +6,7 @@ This is a Codex-compatible package for BlueprintHelper.
 
 - `.codex-plugin/plugin.json` is the Codex plugin manifest.
 - `skills/blueprint-helper/SKILL.md` is the Codex-facing workflow entry.
-- `skills/blueprint-helper/references/` mirrors the BlueprintHelper agent references from `ClaudePlugin`.
+- `skills/blueprint-helper/references/` mirrors the BlueprintHelper agent references from the canonical `BlueprintHelper/Resources/AgentGuide` docs.
 - `assets/blueprint-helper.svg` is the local plugin icon referenced by the manifest.
 
 ## Runtime Model
@@ -40,4 +40,4 @@ Install the editor lifecycle MCP globally when plugin-local MCP cannot start the
 node <BLUEPRINTHELPER_ROOT>\plugins\blueprint-helper\scripts\install-global-mcp.cjs
 ```
 
-For editor-asset writes, keep the workflow TaskSpec-first: read context, author `BlueprintHelper.TaskSpec.v1`, preview, request write approval when needed, execute, then inspect the result artifact. Use MCP only for editor lifecycle commands; do not register or call ordinary BlueprintHelper read/write tools through MCP.
+For editor-asset writes, keep the workflow TaskSpec-first: read context, author `BlueprintHelper.TaskSpec.v1`, preview, request write approval when needed, execute, then inspect the result artifact. Use MCP only for editor lifecycle commands; do not register or call ordinary BlueprintHelper read/write tools through MCP. Prefer `BlueprintHelper/Resources/AgentGuide/Templates/` for copy-and-edit JSON inputs.

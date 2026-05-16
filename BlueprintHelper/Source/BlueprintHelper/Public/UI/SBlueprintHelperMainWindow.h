@@ -9,6 +9,7 @@ class FBlueprintHelperGraphResolver;
 class FBlueprintHelperImportService;
 class FBlueprintHelperReviewActionService;
 class FBlueprintHelperReviewStoreService;
+class SNotificationItem;
 class SWidgetSwitcher;
 
 class SBlueprintHelperMainWindow : public SCompoundWidget
@@ -37,6 +38,8 @@ private:
 	FReply ShowToolsPage();
 	FReply ShowReviewPage();
 	FReply OnCleanupReviewDataClicked();
+	void ShowCleanupNotification(const FString& StatusText);
+	void UpdateCleanupNotification(const FString& StatusText, bool bSucceeded, bool bExpire);
 	FSlateColor GetToolsTabColor() const;
 	FSlateColor GetReviewTabColor() const;
 
@@ -45,6 +48,7 @@ private:
 	const FBlueprintHelperReviewStoreService* ReviewStoreService = nullptr;
 	const FBlueprintHelperReviewActionService* ReviewActionService = nullptr;
 	TSharedPtr<SWidgetSwitcher> PageSwitcher;
+	TWeakPtr<SNotificationItem> CleanupNotification;
 	FString LastCleanupStatus;
 	bool bCleanupInProgress = false;
 	int32 ActivePageIndex = 0;

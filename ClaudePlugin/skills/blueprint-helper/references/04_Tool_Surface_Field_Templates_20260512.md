@@ -2,12 +2,35 @@
 
 This page documents only the normal Agent-facing tool surface and TaskSpec fields. Compatibility-only transports or wrappers may still exist, but their direct argument shapes are intentionally not documented here.
 
+Concrete copy-and-edit JSON files live in `Resources/AgentGuide/Templates/`.
+Use those templates for routine CLI work; this reference explains the field
+contract behind them.
+
 ## 1. Call Shape Rules
 
 - Tool arguments use the schema root object.
 - Do not wrap tool calls in an extra `args` object.
-- `blueprinthelper_preview_task` and `blueprinthelper_execute_task` wrap the TaskSpec under root field `task_spec`.
+- `blueprinthelper_preview_task` and `blueprinthelper_execute_task` tool-name inputs prefer wrapping the TaskSpec under root field `task_spec`; grouped `task preview` / `task execute` commands use a bare TaskSpec file.
 - Graph body function calls may use `args`; that is not a BlueprintHelper tool wrapper.
+
+## 1.1 CLI Output Trimming
+
+The CLI summary output is intentionally small, and full payloads are written to artifacts. Use `--select` or `--fields` whenever stdout size matters.
+
+Use `--omit` when the default summary is useful but specific fields should be removed:
+
+```powershell
+bh blueprinthelper_preview_task --file preview-wrapper.json --omit operation,status
+```
+
+Use `--select` / `--fields` when only a small whitelist is needed:
+
+```powershell
+bh blueprinthelper_execute_task --file execute-wrapper.json --select task_run_id,artifacts.full_result
+bh task result --id task_xxx --select summary.target_assets,artifacts.full_result
+```
+
+Use `--max-bytes <n>` as a hard stdout budget. When the budget is exceeded, read `artifacts.full_result` instead of rerunning the command with a broader selection.
 
 ## 2. Allowed Tool Names
 
@@ -26,7 +49,14 @@ Use `tools/list` as final authority. Normal Agent-facing tools:
 | Preview TaskSpec | `blueprinthelper_preview_task` |
 | Execute TaskSpec | `blueprinthelper_execute_task` |
 | Query task result | `blueprinthelper_get_task_result` |
-| Start target Editor preflight | `blueprint_open_editor` |
+| Debug case summary | `blueprinthelper_get_debug_case` |
+| Debug case list | `blueprinthelper_list_debug_cases` |
+| Debug bundle manifest | `blueprinthelper_export_debug_bundle` |
+| Review record summary query | `blueprinthelper_query_review_records` |
+
+Lifecycle companion tools are available through the global MCP lifecycle server for Agent-owned Editor open/close. CLI lifecycle helpers may exist as compatibility/manual fallbacks, but ordinary Agents should not plan asset workflows around them.
+
+`blueprinthelper_apply_review_action` is plugin-development/internal and is intentionally omitted from ordinary Agent-facing templates.
 
 ## 3. Root Argument Shapes
 
@@ -35,7 +65,7 @@ Use `tools/list` as final authority. Normal Agent-facing tools:
 | `blueprint_get_runtime_profile` | `{}` |
 | `blueprinthelper_diagnostics` | `{}` |
 | `blueprinthelper_diagnostics_runtime` | `{}` |
-| `blueprinthelper_request_write_session` | `{ "reason": "...", "scope": "project", "ttl_seconds": 900, "asset_paths": ["/Game/..."] }` |
+| `blueprinthelper_request_write_session` | `{ "reason": "...", "scope": "project", "ttl_seconds": 900 }` or `{ "reason": "...", "scope": "asset_list", "ttl_seconds": 900, "asset_paths": ["/Game/..."] }` |
 | `blueprinthelper_read_agent_guide` | `{}` |
 | `blueprinthelper_read_context` | `BlueprintHelper.ReadSpec.v1` fields at root |
 | `blueprinthelper_read_task_context` | `{ "target": { "asset_path": "..." }, "feature_name": "..." }` |
@@ -43,7 +73,9 @@ Use `tools/list` as final authority. Normal Agent-facing tools:
 | `blueprinthelper_preview_task` | `{ "task_spec": { ...BlueprintHelper.TaskSpec.v1... } }` |
 | `blueprinthelper_execute_task` | `{ "task_spec": { ...BlueprintHelper.TaskSpec.v1... } }` |
 | `blueprinthelper_get_task_result` | `{ "task_run_id": "..." }` |
-| `blueprint_open_editor` | `{ "project_file": "<ABSOLUTE_UPROJECT_FILE>", "wait_timeout_ms": 120000 }` |
+| `blueprinthelper_get_debug_case` / `blueprinthelper_export_debug_bundle` | `{ "debug_case_id": "..." }` |
+| `blueprinthelper_list_debug_cases` | `{ "limit": 20 }` |
+| `blueprinthelper_query_review_records` | `{ "asset_path": "...", "task_run_id": "...", "pending_only": true }` |
 
 `blueprinthelper_request_write_session` is only called after a successful preview when `write_permission` is disabled. The running Editor shows a minimal accept/reject prompt. The approval is owned by the running Editor/Bridge for the approved scope and lifetime, and can be used by delegated SideAgents. The tool response omits the raw session id; Agents must not pass `auth_session`, `auth_token`, or `BLUEPRINTHELPER_BRIDGE_TOKEN` in later tool calls.
 
@@ -56,7 +88,7 @@ Use `tools/list` as final authority. Normal Agent-facing tools:
   "target": {
     "asset_path": "required. UE asset path such as /Game/Blueprints/BP_Door.",
     "asset_type": "optional. Asset class hint. Usually omit.",
-    "target_type": "optional, default blueprint. asset, blueprint, graph, function, event, custom_event, component, member_variable, event_dispatcher, widget, data_table_row, or block.",
+    "target_type": "optional, default blueprint. asset, blueprint, graph, function, event, custom_event, component, member_variable, event_dispatcher, widget, data_table, data_table_row, data_asset, object_property, property, or block.",
     "target_name": "optional. Name for graph, function, event, widget, row, or other target.",
     "block_id": "optional. BlueprintHelper-owned block id when target_type is block."
   },
@@ -99,6 +131,10 @@ If `blueprinthelper_read_context` is not visible or callable, stop with `tool_un
 ```
 
 ## 6. Task Tool Wrapper
+
+Use this wrapper with `blueprinthelper_preview_task` and
+`blueprinthelper_execute_task`. Use a bare `BlueprintHelper.TaskSpec.v1` root
+with grouped `task preview --file` and `task execute --file`.
 
 ```json
 {
@@ -364,12 +400,12 @@ After a successful `branch_fork` execute, read back LogicJson or LogicMd and ver
 
 ## 15. Function Call Body Statement
 
-`call_function.name` may be a native function name, a Blueprint display name, or an owner-qualified native name. Preview resolves the function against the target Blueprint graph. If the name is ambiguous, change `name` to an owner-qualified native name and preview again.
+Prefer the short GraphStatement form `kind="call"` + `target`. The legacy-compatible `kind="call_function"` + `name` remains accepted by the compiler. The target/name may be a native function name, a Blueprint display name, an owner-qualified native name, or an explicit component/member call for append-owned graph writes. Preview resolves the function against the target Blueprint graph. If the target is ambiguous, use an owner-qualified native name and preview again.
 
 ```json
 {
-  "kind": "call_function",
-  "name": "PrintString",
+  "kind": "call",
+  "target": "PrintString",
   "args": {
     "InString": {
       "kind": "literal",
@@ -380,12 +416,12 @@ After a successful `branch_fork` execute, read back LogicJson or LogicMd and ver
 }
 ```
 
-Explicit component/member calls are not part of the first CallFunction resolver slice. Preview blocks them instead of guessing target object ownership:
+Append-owned graph writes may use explicit component/member calls. The object prefix must name a Blueprint member or component that can be read through a generated getter, and the function part is resolved by the UE graph-aware resolver:
 
 ```json
 {
-  "kind": "call_function",
-  "name": "DoorMesh.AddAngularImpulseInDegrees",
+  "kind": "call",
+  "target": "DoorMesh.AddAngularImpulseInDegrees",
   "args": {}
 }
 ```

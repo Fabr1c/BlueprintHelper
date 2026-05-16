@@ -32,24 +32,37 @@ FBlueprintHelperToolResultBase FBlueprintHelperCompileAssetService::BuildResultF
 	FBlueprintHelperCompileAssetResultData Data;
 	Data.CompileResult.bSuccess = CompileResult.bSuccess;
 	Data.CompileResult.Status = CompileResult.bSuccess ? TEXT("succeeded") : TEXT("failed");
+	Data.CompileResult.ErrorCount = CompileResult.Diagnostics.ErrorCount;
 	Data.CompileResult.WarningCount = CompileResult.Diagnostics.WarningCount;
+	Data.CompileResult.CompilerResults = CompileResult.Diagnostics.Items;
 
+	FString CompilerResultsMarkdown;
 	if (!CompileResult.bSuccess)
 	{
 		Data.CompileResult.Format = TEXT("markdown");
-		FString Markdown = TEXT("## Compile Errors\n\n");
+		CompilerResultsMarkdown = TEXT("## Compiler Results\n\n");
 		for (const FBlueprintHelperDiagnosticItem& Item : CompileResult.Diagnostics.Items)
 		{
+			const TCHAR* SeverityText = TEXT("info");
 			if (Item.Severity == EBlueprintHelperDiagnosticSeverity::Error)
 			{
-				Markdown += FString::Printf(TEXT("- `unmapped`: %s\n"), *Item.Message);
+				SeverityText = TEXT("error");
+			}
+			else if (Item.Severity == EBlueprintHelperDiagnosticSeverity::Warning)
+			{
+				SeverityText = TEXT("warning");
+			}
+
+			if (!Item.Message.IsEmpty())
+			{
+				CompilerResultsMarkdown += FString::Printf(TEXT("- `%s`: %s\n"), SeverityText, *Item.Message);
 			}
 		}
-		if (Markdown == TEXT("## Compile Errors\n\n"))
+		if (CompilerResultsMarkdown == TEXT("## Compiler Results\n\n"))
 		{
-			Markdown += TEXT("- `unmapped`: Blueprint compile failed without mapped diagnostics.\n");
+			CompilerResultsMarkdown += TEXT("- `unmapped`: Blueprint compile failed without mapped diagnostics.\n");
 		}
-		Data.CompileResult.Markdown = Markdown;
+		Data.CompileResult.Markdown = CompilerResultsMarkdown;
 	}
 
 	if (!CompileResult.bSuccess)
@@ -61,6 +74,8 @@ FBlueprintHelperToolResultBase FBlueprintHelperCompileAssetService::BuildResultF
 			TEXT("Blueprint compile failed for %s with %d error(s)."),
 			*AssetPath,
 			CompileResult.Diagnostics.ErrorCount);
+		Err.Expected = TEXT("Blueprint compile success");
+		Err.Actual = CompilerResultsMarkdown;
 		Err.bRetryable = false;
 
 		FBlueprintHelperToolResultBase Failure =

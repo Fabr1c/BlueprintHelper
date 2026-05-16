@@ -221,15 +221,25 @@ FSlateColor FBlueprintHelperReviewPresenterWidgetUtils::GetRowBackgroundOrDefaul
 TSharedRef<SWidget> FBlueprintHelperReviewPresenterWidgetUtils::BuildRowActions(
 	const FString& AssetPath,
 	EBlueprintHelperReviewSurface Surface,
-	const FString& SearchText)
+	const FString& SearchText,
+	TWeakPtr<SWidget> HoverSource)
 {
 	return SNew(SHorizontalBox)
-		.Visibility_Lambda([AssetPath, Surface, SearchText]()
+		.Visibility_Lambda([AssetPath, Surface, SearchText, HoverSource]()
 		{
-			return FBlueprintHelperReviewRowHighlightModel::GetRowActionsVisibility(
+			const bool bHasDiff = FBlueprintHelperReviewRowHighlightModel::GetRowBackgroundColor(
 				AssetPath,
 				Surface,
-				SearchText);
+				SearchText).GetSpecifiedColor().A > 0.0f;
+			const bool bSelected = FBlueprintHelperReviewRowHighlightModel::GetRowActionsVisibility(
+				AssetPath,
+				Surface,
+				SearchText) == EVisibility::Visible;
+			const TSharedPtr<SWidget> HoverWidget = HoverSource.Pin();
+			const bool bHovered = HoverWidget.IsValid() && HoverWidget->IsHovered();
+			return bHasDiff && (bHovered || bSelected)
+				? EVisibility::Visible
+				: EVisibility::Collapsed;
 		})
 		+ SHorizontalBox::Slot()
 		.AutoWidth()
@@ -268,14 +278,16 @@ TSharedRef<SWidget> FBlueprintHelperReviewPresenterWidgetUtils::BuildRowHighligh
 	const FLinearColor& DefaultBackground,
 	const FMargin& Padding)
 {
-	return SNew(SBorder)
+	TSharedPtr<SBorder> RowBorder;
+	SAssignNew(RowBorder, SBorder)
 		.BorderImage(FAppStyle::GetBrush(TEXT("Brushes.White")))
 		.BorderBackgroundColor_Lambda([AssetPath, Surface, SearchText, DefaultBackground]()
 		{
 			return GetRowBackgroundOrDefault(AssetPath, Surface, SearchText, DefaultBackground);
 		})
-		.Padding(Padding)
-		[
+		.Padding(Padding);
+
+	RowBorder->SetContent(
 			SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot()
 			.FillWidth(1.0f)
@@ -288,9 +300,10 @@ TSharedRef<SWidget> FBlueprintHelperReviewPresenterWidgetUtils::BuildRowHighligh
 			.Padding(6.0f, 0.0f, 0.0f, 0.0f)
 			.VAlign(VAlign_Center)
 			[
-				BuildRowActions(AssetPath, Surface, SearchText)
+				BuildRowActions(AssetPath, Surface, SearchText, RowBorder)
 			]
-		];
+		);
+	return RowBorder.ToSharedRef();
 }
 
 void FBlueprintHelperReviewPresenterWidgetUtils::RegisterRowSearchAliases(

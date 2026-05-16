@@ -1,6 +1,6 @@
 # BlueprintHelper CLI Tools API Reference
 
-Document version: 2026-05-12
+Document version: 2026-05-15
 
 This reference is aligned with the current documentation mainline, where CLI is the supported Agent entry for ordinary TaskSpec writes.
 
@@ -15,7 +15,8 @@ Ordinary Agents author `BlueprintHelper.TaskSpec.v1` only. They do not submit `T
 ## Entry Rule
 
 - Every supported CLI-facing TaskSpec/read/debug summary capability must be reachable through `bh <tool_name>`.
-- MCP is retained for editor launch/lifecycle, debug, recovery, and commands that require a long-lived host process.
+- Editor lifecycle is owned by the global BlueprintHelper MCP tools when an Agent needs to start or close Unreal Editor.
+- CLI lifecycle helpers remain compatibility/manual fallbacks, not the ordinary asset workflow.
 - CLI write commands must still pass through TaskSpec validation, preview, and UE Task Runtime.
 - Raw Bridge write commands are not part of the public Agent surface.
 
@@ -44,13 +45,22 @@ blueprinthelper_get_task_result
 blueprinthelper_get_debug_case
 blueprinthelper_list_debug_cases
 blueprinthelper_export_debug_bundle
+blueprinthelper_query_review_records
 ```
 
-Deprecated/frozen MCP compatibility commands:
+Lifecycle companion commands:
 
 ```text
 blueprint_open_editor
 blueprint_close_editor
+```
+
+Use these through the global MCP lifecycle server in Agent workflows. The CLI may expose compatibility aliases, but ordinary asset reads/writes still use the CLI TaskSpec/ReadSpec surface.
+
+Internal/plugin-development command not exposed to ordinary Agents:
+
+```text
+blueprinthelper_apply_review_action
 ```
 
 Frozen legacy/expert commands are not part of the supported CLI surface. Passing `--expert` does not re-enable removed commands.
@@ -78,6 +88,8 @@ Typical summary projection:
 
 Use `--select` or `--fields` for the smallest possible stdout payload. Large asset context, raw payloads, and debug artifacts belong in follow-up reads or artifact files, not inline summaries.
 
+Copy-and-edit JSON templates live under `BlueprintHelper/Resources/AgentGuide/Templates/`. Prefer those files over inline PowerShell `--json` for complex parameters.
+
 ## TaskSpec Commands
 
 The TaskSpec-first write loop is:
@@ -92,7 +104,7 @@ bh blueprint_get_runtime_profile
 -> bh blueprinthelper_get_task_result when needed
 ```
 
-Task commands wrap TaskSpec under root field `task_spec`:
+Tool-name task commands prefer wrapping TaskSpec under root field `task_spec`:
 
 ```json
 {
@@ -102,13 +114,20 @@ Task commands wrap TaskSpec under root field `task_spec`:
 }
 ```
 
-Do not flatten TaskSpec root fields into the command root object.
+Grouped commands use a bare TaskSpec file:
+
+```powershell
+bh task preview --file .\task_spec.json
+bh task execute --file .\task_spec.json
+```
+
+Do not add an extra `args` wrapper. Prefer the AgentGuide template files when authoring JSON by hand.
 
 ### CallFunction Resolution
 
-TaskSpec `body.statements[]` entries with `kind: "call_function"` are resolved during preview and execute by the UE-side internal GraphWrite CallFunctionResolver. The CLI does not expose Blueprint action menus, editor right-click context, selected editor state, or K2 spawner concepts to Agents.
+TaskSpec `body.statements[]` entries should use the GraphStatement short form `kind: "call"` with `target`, or the legacy-compatible `kind: "call_function"` with `name`. They are resolved during preview and execute by the UE-side internal GraphWrite CallFunctionResolver. The CLI does not expose Blueprint action menus, editor right-click context, selected editor state, or K2 spawner concepts to Agents.
 
-Allowed `call_function.name` forms:
+Allowed call target forms:
 
 - Native function name, for example `PrintString`.
 - Blueprint display name, for example `Print String`.
@@ -161,6 +180,7 @@ Canonical contract details remain in [TaskSpec_TaskPlan_Contract_20260504.md](..
 - Interactive writes use `blueprinthelper_request_write_session`.
 - The running Unreal Editor shows a simple accept/reject prompt.
 - Approval belongs to the running Editor/Bridge for the approved scope and lifetime.
+- `scope` is `project` or `asset_list`; include `asset_paths` for `asset_list`.
 - Agents must not request, inject, or forward `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session` for ordinary interactive writes.
 
 ## Legacy / Internal Inventory

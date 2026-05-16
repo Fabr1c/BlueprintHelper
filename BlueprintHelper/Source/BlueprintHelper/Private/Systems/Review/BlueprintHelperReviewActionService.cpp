@@ -28,6 +28,7 @@
 #include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
 #include "HAL/FileManager.h"
 #include "Kismet2/BlueprintEditorUtils.h"
+#include "Kismet2/StructureEditorUtils.h"
 #include "K2Node_CustomEvent.h"
 #include "K2Node_Event.h"
 #include "K2Node_FunctionEntry.h"
@@ -48,6 +49,7 @@
 #include "UObject/SoftObjectPath.h"
 #include "UObject/UnrealType.h"
 #include "UObject/UObjectGlobals.h"
+#include "UserDefinedStructure/UserDefinedStructEditorData.h"
 #include "WidgetBlueprint.h"
 
 class FBlueprintHelperReviewActionServiceLocalUtils
@@ -324,19 +326,25 @@ public:
 				TArray<FString> MatchedTargetKeys;
 				const bool bHasRequestedTarget = RequestedTargetKeys.Num() > 0
 					&& IntersectTargetKeys(RequestedTargetKeys, CandidateTargetKeys, MatchedTargetKeys);
+				if (RequestedTargetKeys.Num() > 0)
+				{
+					if (bHasRequestedTarget)
+					{
+						AddPersistedReviewTargetMatch(Matches, Record.ReviewRecordId, MatchedTargetKeys);
+					}
+					continue;
+				}
+
 				const bool bSameChangeIdentity =
 					(!Change.ChangeId.IsEmpty() && Candidate.ChangeId == Change.ChangeId) ||
 					(!Change.LocationKey.IsEmpty() && Candidate.LocationKey == Change.LocationKey) ||
 					(!Change.LatestTransactionId.IsEmpty() && Candidate.LatestTransactionId == Change.LatestTransactionId);
 
-				if (!bHasRequestedTarget && !bSameChangeIdentity)
+				if (!bSameChangeIdentity)
 				{
 					continue;
 				}
-				if (RequestedTargetKeys.Num() == 0 || (MatchedTargetKeys.Num() == 0 && bSameChangeIdentity))
-				{
-					MatchedTargetKeys = CandidateTargetKeys;
-				}
+				MatchedTargetKeys = CandidateTargetKeys;
 				if (MatchedTargetKeys.Num() == 0)
 				{
 					continue;
@@ -895,21 +903,135 @@ public:
 		FString RowValue;
 		if (Snapshot->TryGetStringField(TEXT("value"), RowValue))
 		{
+			FDataTableEditorUtils::BroadcastPreChange(DataTable, FDataTableEditorUtils::EDataTableChangeInfo::RowData);
 			const TCHAR* ImportResult = DataTable->GetRowStruct()->ImportText(
 				*RowValue,
 				*RowData,
-				nullptr,
-				PPF_None,
-				nullptr,
-				DataTable->GetRowStruct()->GetName());
+				DataTable,
+				PPF_Copy,
+				GWarn,
+				GetPathNameSafe(DataTable->GetRowStruct()));
 			if (!ImportResult)
 			{
+				FDataTableEditorUtils::BroadcastPostChange(DataTable, FDataTableEditorUtils::EDataTableChangeInfo::RowData);
 				OutError = FString::Printf(TEXT("datatable_row_restore_failed:%s"), *RowName);
 				return false;
 			}
+			DataTable->HandleDataTableChanged(RowFName);
+			FDataTableEditorUtils::BroadcastPostChange(DataTable, FDataTableEditorUtils::EDataTableChangeInfo::RowData);
 			DataTable->MarkPackageDirty();
 		}
 		return true;
+	}
+
+	static FStructVariableDescription* FindStructFieldByReviewName(
+		UUserDefinedStruct* Struct,
+		const FString& FieldName)
+	{
+		if (!Struct || FieldName.IsEmpty())
+		{
+			return nullptr;
+		}
+
+		TArray<FStructVariableDescription>& Descriptions = FStructureEditorUtils::GetVarDesc(Struct);
+		for (FStructVariableDescription& Description : Descriptions)
+		{
+			const FString VarName = Description.VarName.ToString();
+			const FString FriendlyName = Description.FriendlyName;
+			const FString DisplayName = FStructureEditorUtils::GetVariableFriendlyName(Struct, Description.VarGuid);
+			if (VarName.Equals(FieldName, ESearchCase::IgnoreCase)
+				|| FriendlyName.Equals(FieldName, ESearchCase::IgnoreCase)
+				|| DisplayName.Equals(FieldName, ESearchCase::IgnoreCase)
+				|| VarName.StartsWith(FieldName + TEXT("_"), ESearchCase::IgnoreCase))
+			{
+				return &Description;
+			}
+		}
+		return nullptr;
+	}
+
+	static bool RestoreStructFieldFromSnapshot(
+		const FBlueprintHelperReviewAtomicTarget& Target,
+		const TSharedPtr<FJsonObject>& Snapshot,
+		FString& OutError)
+	{
+		UUserDefinedStruct* Struct = Cast<UUserDefinedStruct>(LoadReviewTargetAsset(Target.AssetPath));
+		if (!Struct)
+		{
+			OutError = FString::Printf(TEXT("struct_not_found:%s"), *Target.AssetPath);
+			return false;
+		}
+
+		const FString FieldName = ExtractTargetName(Target);
+		if (FieldName.IsEmpty())
+		{
+			OutError = TEXT("missing_struct_field_name");
+			return false;
+		}
+
+		bool bSnapshotExists = false;
+		Snapshot->TryGetBoolField(TEXT("exists"), bSnapshotExists);
+		FStructVariableDescription* FieldDescription = FindStructFieldByReviewName(Struct, FieldName);
+
+		if (!bSnapshotExists)
+		{
+			if (FieldDescription)
+			{
+				const FGuid FieldGuid = FieldDescription->VarGuid;
+				Struct->Modify();
+				if (!FStructureEditorUtils::RemoveVariable(Struct, FieldGuid))
+				{
+					OutError = FString::Printf(TEXT("struct_field_remove_failed:%s"), *FieldName);
+					return false;
+				}
+				if (Struct->GetOutermost())
+				{
+					Struct->GetOutermost()->MarkPackageDirty();
+				}
+			}
+			return true;
+		}
+
+		if (!FieldDescription)
+		{
+			OutError = FString::Printf(TEXT("struct_field_recreate_required:%s"), *FieldName);
+			return false;
+		}
+
+		FString DefaultValue;
+		if (Snapshot->TryGetStringField(TEXT("default_value"), DefaultValue))
+		{
+			Struct->Modify();
+			if (!FStructureEditorUtils::ChangeVariableDefaultValue(Struct, FieldDescription->VarGuid, DefaultValue))
+			{
+				OutError = FString::Printf(TEXT("struct_field_default_restore_failed:%s"), *FieldName);
+				return false;
+			}
+			if (Struct->GetOutermost())
+			{
+				Struct->GetOutermost()->MarkPackageDirty();
+			}
+		}
+		return true;
+	}
+
+	static bool ParseSnapshotBoolValue(const FString& ValueText, bool& OutValue)
+	{
+		const FString Normalized = ValueText.TrimStartAndEnd();
+		if (Normalized.IsEmpty()
+			|| Normalized.Equals(TEXT("false"), ESearchCase::IgnoreCase)
+			|| Normalized == TEXT("0"))
+		{
+			OutValue = false;
+			return true;
+		}
+		if (Normalized.Equals(TEXT("true"), ESearchCase::IgnoreCase)
+			|| Normalized == TEXT("1"))
+		{
+			OutValue = true;
+			return true;
+		}
+		return false;
 	}
 
 	static bool RestoreObjectPropertyFromSnapshot(
@@ -992,7 +1114,17 @@ public:
 		}
 		PropertyOwner->Modify();
 		PropertyOwner->PreEditChange(Property);
-		if (!Property->ImportText_Direct(*ValueText, ValuePtr, PropertyOwner, PPF_None))
+		if (FBoolProperty* BoolProperty = CastField<FBoolProperty>(Property))
+		{
+			bool bBoolValue = false;
+			if (!ParseSnapshotBoolValue(ValueText, bBoolValue))
+			{
+				OutError = FString::Printf(TEXT("object_property_bool_restore_failed:%s"), *PropertyPath);
+				return false;
+			}
+			BoolProperty->SetPropertyValue(ValuePtr, bBoolValue);
+		}
+		else if (!Property->ImportText_Direct(*ValueText, ValuePtr, PropertyOwner, PPF_None))
 		{
 			OutError = FString::Printf(TEXT("object_property_restore_failed:%s"), *PropertyPath);
 			return false;
@@ -1173,6 +1305,11 @@ public:
 		{
 			return RestoreDataTableRowFromSnapshot(Target, Snapshot, OutError);
 		}
+		if (Target.TargetKind == TEXT("struct_field") ||
+			Target.TargetKind == TEXT("structure_field"))
+		{
+			return RestoreStructFieldFromSnapshot(Target, Snapshot, OutError);
+		}
 		if (Target.TargetKind == TEXT("object_property") ||
 			Target.TargetKind == TEXT("data_asset_property") ||
 			Target.TargetKind == TEXT("class_default_property"))
@@ -1194,6 +1331,8 @@ public:
 			&& (Target.TargetKind == TEXT("blueprint_variable")
 				|| Target.TargetKind == TEXT("component")
 				|| Target.TargetKind == TEXT("datatable_row")
+				|| Target.TargetKind == TEXT("struct_field")
+				|| Target.TargetKind == TEXT("structure_field")
 				|| Target.TargetKind == TEXT("object_property")
 				|| Target.TargetKind == TEXT("data_asset_property")
 				|| Target.TargetKind == TEXT("class_default_property")

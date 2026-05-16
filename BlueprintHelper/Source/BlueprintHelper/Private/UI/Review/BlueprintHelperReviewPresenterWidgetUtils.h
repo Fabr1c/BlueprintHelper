@@ -65,7 +65,8 @@ public:
 	static TSharedRef<SWidget> BuildRowActions(
 		const FString& AssetPath,
 		EBlueprintHelperReviewSurface Surface,
-		const FString& SearchText);
+		const FString& SearchText,
+		TWeakPtr<SWidget> HoverSource = TWeakPtr<SWidget>());
 
 	static TSharedRef<SWidget> BuildRowHighlightShell(
 		const FString& AssetPath,
