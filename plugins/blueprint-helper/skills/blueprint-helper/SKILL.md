@@ -1,6 +1,6 @@
 ﻿---
 name: blueprint-helper
-description: Use when a user request requires reading, inspecting, creating, modifying, or configuring Unreal Engine Blueprint-related editor assets and BlueprintHelper behavior from Codex.
+description: description: Use for BlueprintHelper, UE5/Unreal Engine Blueprint asset reads or writes, Blueprint graph TaskSpec preview/execute, UMG/DataAsset/DataTable editor assets, Bridge/runtime diagnostics, and BlueprintHelper Codex configuration. Do not use for ordinary repo source files.
 ---
 
 # BlueprintHelper for Codex

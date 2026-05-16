@@ -69,3 +69,70 @@ Visual click/selection event
 
 - ReviewPanel 仍有较多 Visual 内部刷新编排函数，这是 Slate 层复杂度，不是服务写命令耦合；后续可以继续把刷新组合拆为 ViewBinder。
 - Native row/presenter 组件仍通过回调把按钮事件传回 ReviewPanel；目前已保持 Visual 事件路径，后续可以进一步统一成 ReviewPanelPresenterEventSink。
+
+## 2026-05-16 特判函数扫描问题
+
+本节记录对 `BlueprintHelper/Source/BlueprintHelper` 的静态扫描结果，重点检查是否仍存在违背高复用性原则的硬编码分支、字符串特判、迁移残留和不符合 coding style 的局部工具类。当前结论：Review 主写路径已经按 Visual -> Presenter -> Data 拆分，但 Review target 语义、TaskRuntime evidence、GraphWrite 分类仍存在多处特判实现，需要后续继续收敛。
+
+### P1: Review Surface 路由仍依赖字符串特判
+
+- 证据：
+  - `Source/BlueprintHelper/Public/Shared/Review/BlueprintHelperReviewTypes.h:173` 的 `BlueprintHelperReviewNormalizeSurfaceForTarget(...)` 将 `TargetKind`、`TargetKey`、`VisualGroupKey`、`LocationKey` 拼成文本后用 `Contains(...)` 判断 Graph、Components、MyBlueprint、UMGWidgetTree、DataTable、DataAsset。
+  - `Source/BlueprintHelper/Public/Shared/Review/BlueprintHelperReviewTypes.h:434` 的 `BlueprintHelperReviewTargetKindCanRouteToDetails(...)` 用 `TargetKind.Contains(...)` 判断 Details 可路由性。
+  - `Source/BlueprintHelper/Public/Shared/Review/BlueprintHelperReviewTypes.h:484` 到 `:584` 的 `BlueprintHelperReviewShouldShowIn*` 系列函数仍保留 legacy location 文本判断。
+  - `Source/BlueprintHelper/Private/UI/Review/BlueprintHelperReviewSurfaceRouter.cpp:134` 的 `LegacyFallbackMatchesSurface(...)` 又维护一套 surface fallback predicate。
+- 风险：新增 TargetKind 或 Surface 时需要同步修改多个函数，容易出现 UI 路由、Details 路由和 legacy fallback 行为不一致。
+- 建议：新增 `FBlueprintHelperReviewTargetKindRegistry` 或 `FBlueprintHelperReviewSurfaceRouteRegistry`，由每个 TargetKind 声明 `Surface`、`bCanRouteToDetails`、`DisplayKind` 和 legacy alias；Presenter/Visual 只查 registry，不直接解析字符串。
+
+### P1: Snapshot、Restore、Hash 对 TargetKind 的处理分散硬编码
+
+- 证据：
+  - `Source/BlueprintHelper/Private/Systems/Review/BlueprintHelperReviewBaselineSnapshotService.cpp:318` 到 `:522` 按 `blueprint_variable`、`component`、`signature`、`umg_widget`、`datatable_row`、`object_property`、`asset_factory` 分支构建 snapshot。
+  - `Source/BlueprintHelper/Private/Systems/Review/BlueprintHelperReviewActionService.cpp:1296` 到 `:1340` 按同一批 TargetKind 分支选择 restore handler 和 snapshot restore 支持范围。
+  - `Source/BlueprintHelper/Private/Systems/Review/BlueprintHelperReviewHashService.cpp:401` 和 `:405` 对 `graph_node` / `graph_block` 使用 TargetKind 与 TargetKey 文本双重特判。
+- 风险：TargetKind 的能力定义没有集中归属，新增或调整一种 target 需要改 snapshot、restore、hash、route、display 多处实现。
+- 建议：抽象 `IBlueprintHelperReviewTargetHandler` 或等价表驱动 handler，统一提供 `BuildSnapshot`、`Restore`、`ComputeHash`、`Route`、`BuildReadableText` 能力；ReviewActionService 和 BaselineSnapshotService 只调度 handler。
+
+### P1: TaskRuntime Review Evidence 存在重复实现和迁移残留
+
+- 证据：
+  - `Source/BlueprintHelper/Private/Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.cpp:207` 到 `:590` 保留 `FBlueprintHelperTaskRuntimeServiceLocalUtils::TryBuildTaskRuntimeReviewEvidence(...)` 相关 evidence 构建逻辑。
+  - `Source/BlueprintHelper/Private/Runtime/TaskRuntime/Utils/BlueprintHelperTaskRuntimeClusterExecutionUtils.cpp:84` 到 `:895` 存在相似的 evidence 构建、Target 添加和路由逻辑。
+  - 当前主执行路径 `Source/BlueprintHelper/Private/Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.cpp:4279` 仍调用 ServiceLocalUtils 版本，ClusterHub 的 `BuildReviewEvidence(...)` 是后置路径。
+- 风险：同一 TaskRuntime review evidence 规则存在两套来源，后续改 cluster 或 target 映射时可能只更新其中一处。
+- 建议：将 pre-step evidence 构建迁出 TaskRuntimeService，统一由 Cluster/ClusterExecutionUtils 或专门的 `FBlueprintHelperTaskRuntimeReviewEvidenceService` 提供；TaskRuntimeService 只负责编排，不保留 per-capability 特判。
+
+### P2: GraphWrite 节点、Link、类型分类仍是字符串启发式
+
+- 证据：
+  - `Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicProcessor.cpp:206` 的 `ClassifyNode(...)` 用 `TypeKey.Contains(...)` 区分 branch、switch、sequence、loop、delegate、event、variable、call 等。
+  - `Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicGroupBuilder.cpp:391` 的 `IdentifyGraphLinkType(...)` 和 `:909` 的 `IdentifyNodeKind(...)` 通过 pin/type/class/member_name 文本判断节点或连线类型。
+  - `Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphStatementBuilder.cpp:436` 的 `AddCompareTypeSuffixesForToken(...)` 用类型文本包含关系推导 compare suffix。
+- 风险：GraphWrite 对 UE 节点、schema 类型和 TaskSpec 别名的支持会不断堆字符串判断，难以扩展和测试覆盖。
+- 建议：建立 `FBlueprintHelperGraphNodeClassifierRegistry`、`FBlueprintHelperGraphLinkTypeRegistry` 和 `FBlueprintHelperGraphCompareTypeRegistry`，把匹配 token、UE class、输出类型、优先级放进规则表或 handler。
+
+### P2: UI Details/Geometry 匹配仍依赖显示文本和模糊匹配
+
+- 证据：
+  - `Source/BlueprintHelper/Private/UI/Review/Utils/BlueprintHelperReviewPanelLocalUtils.cpp:99` 的 `ChangeLooksLikeComponentDetailsTarget(...)` 使用 `component` / `组件` 文本判断组件详情目标。
+  - `Source/BlueprintHelper/Private/UI/Review/SBlueprintHelperReviewPanel.cpp:1642` 到 `:1820` 的 Details row geometry 通过候选文本解析、查找 property、递归匹配 Slate 文本。
+  - `Source/BlueprintHelper/Private/UI/Review/BlueprintHelperReviewReadableTextUtils.cpp:142` 和 `:218` 通过资产名前缀、descriptor 文本、TargetKind 文本推导 readable suffix。
+- 风险：显示文本变化、中文/英文别名、资产命名前缀变化都会影响路由和几何定位，Presenter 对 Data 的读取仍不够结构化。
+- 建议：Data 层输出稳定 `FBlueprintHelperReviewTargetDescriptor`，包含 `Surface`、`TargetKind`、`StableObjectPath`、`PropertyPath`、`ComponentPath`、`WidgetName` 等结构化字段；Visual 几何解析优先用稳定 id，文本匹配只作为最后 fallback。
+
+### P2: coding style 仍有局部 LocalUtils 类残留
+
+- 证据：
+  - `Source/BlueprintHelper/Private/Systems/Review/BlueprintHelperReviewActionService.cpp:55` 定义 `FBlueprintHelperReviewActionServiceLocalUtils`。
+  - `Source/BlueprintHelper/Private/Systems/Review/BlueprintHelperReviewStoreService.cpp:16` 定义 `FBlueprintHelperReviewStoreServiceLocalUtils`。
+  - `Source/BlueprintHelper/Private/UI/Review/BlueprintHelperReviewGraphBounds.cpp:15` 定义 `FBlueprintHelperReviewGraphBoundsLocalUtils`。
+  - `Source/BlueprintHelper/Private/UI/Review/BlueprintHelperReviewGraphResolver.cpp:6` 定义 `FBlueprintHelperReviewGraphResolverLocalUtils`。
+- 风险：这些不是 namespace，但仍是 `.cpp` 内的局部工具类，不符合“所有类单独 `.h/.cpp`，utils 放 `/Utils/xxxxUtils`”的约束。
+- 建议：按职责移动到对应 `/Utils/` 目录并补齐独立 `.h/.cpp`；若只服务单个服务类且无需共享，可以改为 service private 成员函数，避免额外 class。
+
+### 后续整改顺序建议
+
+1. 先做 Review TargetKind/Surface registry，替换 `BlueprintHelperReviewNormalizeSurfaceForTarget(...)`、`BlueprintHelperReviewTargetKindCanRouteToDetails(...)` 和 `LegacyFallbackMatchesSurface(...)` 的字符串特判。
+2. 再做 ReviewTargetHandler，把 snapshot/restore/hash/display/route 能力归到同一注册表。
+3. 合并 TaskRuntime evidence 的 ServiceLocalUtils 与 ClusterExecutionUtils 重复实现，让 TaskRuntimeService 只做编排。
+4. 最后处理 GraphWrite classifier registry 和 UI geometry descriptor，降低一次性变更风险。

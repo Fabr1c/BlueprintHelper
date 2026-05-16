@@ -465,11 +465,18 @@ function collectIssues(dryRun: Record<string, unknown> | undefined): TaskIssue[]
     ...arrayOfRecords(dryRun['conflicts']),
     ...arrayOfRecords(dryRun['warnings']),
   ];
-  return rawIssues.map((issue, index) => ({
-    code: typeof issue['code'] === 'string' ? issue['code'] : 'dry_run_issue',
-    path: typeof issue['target'] === 'string' ? issue['target'] : `dry_run.issues[${index}]`,
-    message: typeof issue['message'] === 'string' ? issue['message'] : JSON.stringify(issue),
-  }));
+  return rawIssues.map((issue, index) => {
+    const normalized: Record<string, unknown> = {
+      code: typeof issue['code'] === 'string' ? issue['code'] : 'dry_run_issue',
+      path: typeof issue['target'] === 'string' ? issue['target'] : `dry_run.issues[${index}]`,
+      message: typeof issue['message'] === 'string' ? issue['message'] : JSON.stringify(issue),
+    };
+    for (const [key, value] of Object.entries(issue)) {
+      if (key === 'code' || key === 'target' || key === 'message') continue;
+      normalized[key] = value;
+    }
+    return normalized as TaskIssue;
+  });
 }
 
 function arrayOfRecords(value: unknown): Array<Record<string, unknown>> {

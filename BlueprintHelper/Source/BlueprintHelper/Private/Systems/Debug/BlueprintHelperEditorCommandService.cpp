@@ -269,16 +269,18 @@ FBlueprintHelperCommandResult FBlueprintHelperEditorCommandService::CloseEditor(
 
 	// Do not call CloseAllAssetEditors here. Some Blueprint/asset editor teardown
 	// paths can assert while the Bridge request is still unwinding. Save first,
-	// then schedule a single editor quit command so the caller can receive a
-	// response before the Bridge connection drops.
+	// then schedule the MainFrame close command so Slate/asset editor tabs get
+	// their normal CanCloseManager teardown before the engine exit request.
+	// QUIT_EDITOR goes straight to UUnrealEdEngine::CloseEditor and can bypass
+	// enough tab teardown to trip BlueprintEditor PreviewScene assertions.
 	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([](float)
 	{
 		if (GEngine)
 		{
-			GEngine->DeferredCommands.Add(TEXT("QUIT_EDITOR"));
+			GEngine->DeferredCommands.AddUnique(TEXT("CLOSE_SLATE_MAINFRAME"));
 		}
 		return false;
-	}), 0.25f);
+	}), 0.75f);
 
 	Result.bSuccess = true;
 	Result.Message = bSaveAll

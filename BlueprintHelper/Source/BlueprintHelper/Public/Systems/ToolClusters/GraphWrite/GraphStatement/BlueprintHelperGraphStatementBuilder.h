@@ -53,7 +53,8 @@ public:
 		UEdGraph* TargetGraph,
 		const FParsedNode& NodeData,
 		FBlueprintHelperNodeFragment& OutFragment,
-		FString& OutError);
+		FString& OutError,
+		TArray<FBlueprintHelperCandidateFunctionGroup>* OutCandidateFunctions = nullptr);
 
 	static bool BuildVariableSetFragment(
 		UEdGraph* TargetGraph,
@@ -71,5 +72,6 @@ public:
 		UEdGraph* TargetGraph,
 		const FBlueprintHelperGraphExpressionIR& Expression,
 		FBlueprintHelperNodeFragment& OutFragment,
-		FString& OutError);
+		FString& OutError,
+		TArray<FBlueprintHelperCandidateFunctionGroup>* OutCandidateFunctions = nullptr);
 };

@@ -414,3 +414,38 @@ node D:\UEProjects\Template\Plugins\BlueprintHelper\AgentFaceService\cli\build\c
 ## 2026-05-15 PowerShell 闀垮懡浠ゅ啓鍏ラ檺鍒?- 鐜拌薄锛氫竴娆℃€х敤 PowerShell here-string 鍐欏叆澶ч噺鏂囦欢鏃讹紝Windows 杩涚▼鍒涘缓鍙兘澶辫触骞惰繑鍥?CreateProcessAsUserW failed: 206銆?- 鍘熷洜锛氬懡浠よ杩囬暱锛屼笉鏄?BlueprintHelper 鎻掍欢鎴?CLI 鍗忚閿欒銆?- 绋冲畾澶勭悊锛氭敼鐢?pply_patch銆佸垎鎵圭煭鍛戒护锛屾垨鍏堝啓涓存椂鑴氭湰鏂囦欢鍐嶆墽琛岋紱涓嶈鎶婂ぇ閲忔枃浠跺唴瀹瑰杩涘悓涓€涓?powershell -Command銆?## 2026-05-15 ReviewPanel UI 楠岃瘉 CLI Tips
 
 - 鍦?PowerShell 涓洿鎺ヨ皟鐢?h 鍙兘瑙ｆ瀽鍒?h.ps1锛屽苟琚?ExecutionPolicy 闃绘鎵ц銆傜ǔ瀹氬仛娉曪細鍦?Codex/PowerShell 鑷姩鍖栬剼鏈腑鏄惧紡璋冪敤 h.cmd銆?- 鏈澶嶇幇鍛戒护锛?h.cmd blueprinthelper_preview_task --file <TaskSpec.json> --select status,summary,artifacts.full_result銆?- 鑻ュ垱寤虹被 TaskSpec 杩斿洖 sset_already_exists锛屼笉瑕佽鍒や负鎻掍欢宕╂簝锛涜繖鏄?preview 闃绘柇锛屽悗缁彲鏀圭敤鍞竴璧勪骇鍚嶆垨鎵ц edit/update 绫?TaskSpec銆?- DataTable 琛?add 杩斿洖鈥?<RowName>' 宸插瓨鍦ㄢ€濇椂锛屾敼鐢ㄥ敮涓€琛屽悕锛屾垨鏄庣‘浣跨敤 update 琛岀瓥鐣ャ€
+## 2026-05-16 全量功能 ReviewEvent Smoke 中新增的 CLI Tips
+
+1. 在 PowerShell 中优先使用 h.cmd，不要直接用 h；直接用 h 可能解析到 h.ps1，并被 ExecutionPolicy 拦截。
+2. PowerShell here-string 的 @' 或 @\" 后面不能同行写 { 或其他字符，JSON 正文必须从下一行开始。
+3. Windows PowerShell 5 的 Set-Content -Encoding UTF8 会写入 UTF-8 BOM；CLI JSON 文件应使用 UTF-8 no BOM，例如 [System.IO.File]::WriteAllText(path, json, [System.Text.UTF8Encoding]::new(False))。
+4. execution_policy.review_baseline_dirty_asset_policy 的有效值是 lock、save_before_archive、llow_stale_disk_snapshot，不是 llow。
+5. 自动化脚本判断 preview 是否可执行时必须把 preview_blocked 当作阻塞状态，不能只判断 locked。
+6. 当前组件 TaskSpec 模板里的 on_name_conflict=reuse_existing 与 UE 侧不一致；本轮可用写法是 
+ame_collision_policy=reuse_if_exists。
+## 2026-05-16 CallFunction Resolver 闭环测试 Tips
+
+新增内容：
+1. PowerShell 当前环境不应使用 ?? null coalescing 写一次性脚本；会出现 表达式或语句中包含意外的标记“??”。改用显式 if 或 Join-Path 判断。
+2. PowerShell 中复杂 g 命令不要混用未转义的单双引号；出现 字符串缺少终止符 时，拆成单引号 pattern 或减少一层 shell 字符串包装。
+3. 仓库根是 D:\UEProjects\Template\Plugins\BlueprintHelper，计划文档目录是 BlueprintHelper\Develop\Plan，不是根目录下的 Develop。
+4. 不要并行运行多个 	ask preview 去读同一类 preview artifact；本轮观察到并行 preview 可能让后续读取混到相同/相近 preview 输出，排查时应顺序运行。
+5. ppend_new_owned_graph 的 scope_policy.graph_name 不应与 Custom Event entries[].name 相同，否则 execute 编译阶段会因为 UE 生成同名图表/函数而失败。
+
+修复内容：
+1. candidate_functions 现在可直接从 issues[].candidate_functions 读取，不需要从 message 中正则解析。
+
+阻塞内容：
+1. 无。
+## 2026-05-16 close_editor 崩溃处理 Tips
+
+修复内容：
+1. close_editor 不应使用 QUIT_EDITOR 作为默认关闭路径；该路径会直接进入 UUnrealEdEngine::CloseEditor()，可能绕过资产编辑器 Tab 的正常 Slate teardown。
+2. 当前使用 CLOSE_SLATE_MAINFRAME，让 MainFrame 先走 CanCloseManager，再请求编辑器退出。
+
+验证结果：
+1. MCP open_editor 后调用 close_editor 返回成功。
+2. 等待 8 秒后 UnrealEditor.exe 已退出。
+
+阻塞内容：
+1. 若未来只在打开复杂蓝图编辑器/ReviewPanel 后复现崩溃，需要记录当时打开的 Tab 和 DebugBundle，再把关闭流程升级为分阶段显式关闭面板。

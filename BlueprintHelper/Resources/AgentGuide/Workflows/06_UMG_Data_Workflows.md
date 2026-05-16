@@ -14,6 +14,9 @@ UMG、DataAsset、DataTable 和 UObject 属性写入都走 TaskSpec-first。不�
 
 ## UMG
 
+- Root widget creation: use `edit_umg_widget` with `kind: "create_widget"` and omit `parent_widget_name`, or pass it as an empty string. `widget_class` selects the root type; the UE layer still validates whether the class can be used as a root/container.
+- Child widget creation: set `parent_widget_name` to the parent/root widget name. Do not use WidgetBlueprint asset creation as a substitute for WidgetTree edits.
+
 1. 用 `blueprinthelper_read_context` 读取目标 Widget Blueprint 摘要。
 2. 用 `edit_umg_widget` 描述控件创建、属性更新或删除。
 3. preview 通过后执行。

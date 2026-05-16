@@ -359,6 +359,14 @@ public:
 			return false;
 		}
 
+		FString NameCollisionPolicy;
+		if (OpObject.IsValid() &&
+			OpObject->TryGetStringField(TEXT("name_collision_policy"), NameCollisionPolicy) &&
+			NameCollisionPolicy.Equals(TEXT("reuse_existing"), ESearchCase::IgnoreCase))
+		{
+			OpObject->SetStringField(TEXT("name_collision_policy"), TEXT("reuse_if_exists"));
+		}
+
 		if (!ComponentTryValidateStringEnum(
 				OpObject,
 				TEXT("attach_rule"),

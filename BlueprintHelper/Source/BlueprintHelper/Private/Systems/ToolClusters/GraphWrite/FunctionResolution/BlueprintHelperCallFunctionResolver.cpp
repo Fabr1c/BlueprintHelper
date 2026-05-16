@@ -1,6 +1,12 @@
 #include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
 
+#include "BlueprintActionDatabase.h"
+#include "BlueprintActionFilter.h"
+#include "BlueprintFunctionNodeSpawner.h"
+#include "BlueprintNodeBinder.h"
+#include "BlueprintNodeSpawner.h"
 #include "EdGraph/EdGraph.h"
+#include "EdGraph/EdGraphNode.h"
 #include "EdGraph/EdGraphSchema.h"
 #include "EdGraphSchema_K2.h"
 #include "Engine/Blueprint.h"
@@ -219,7 +225,8 @@ static bool HasExactToken(const FString& Query, const FString& SearchText)
 static void AddCandidateForFunction(
 	UFunction* Function,
 	const FBlueprintHelperCallFunctionResolveRequest& Request,
-	TMap<FString, FBlueprintHelperCallFunctionCandidate>& InOutCandidates)
+	TMap<FString, FBlueprintHelperCallFunctionCandidate>& InOutCandidates,
+	UBlueprintNodeSpawner* NodeSpawner = nullptr)
 {
 	if (!IsBlueprintCallableFunction(Function))
 	{
@@ -241,14 +248,64 @@ static void AddCandidateForFunction(
 	Candidate.NodeClass = UK2Node_CallFunction::StaticClass();
 	Candidate.NodeClassPath = UK2Node_CallFunction::StaticClass()->GetPathName();
 	Candidate.bGraphCompatible = IsGraphCompatible(Function, Request.Blueprint, Request.Graph);
+	Candidate.bFromActionDatabase = NodeSpawner != nullptr;
 	Candidate.Function = Function;
+	Candidate.NodeSpawner = NodeSpawner;
 	InOutCandidates.Add(StableId, Candidate);
+}
+
+static void AddActionDatabaseCandidates(
+	const FBlueprintHelperCallFunctionResolveRequest& Request,
+	TMap<FString, FBlueprintHelperCallFunctionCandidate>& InOutCandidates)
+{
+	FBlueprintActionContext Context;
+	if (Request.Blueprint)
+	{
+		Context.Blueprints.Add(Request.Blueprint);
+	}
+	if (Request.Graph)
+	{
+		Context.Graphs.Add(Request.Graph);
+	}
+
+	FBlueprintActionFilter Filter(FBlueprintActionFilter::BPFILTER_RejectIncompatibleThreadSafety);
+	Filter.Context = Context;
+	Filter.PermittedNodeTypes.Add(UK2Node_CallFunction::StaticClass());
+
+	const FBlueprintActionDatabase::FActionRegistry& ActionRegistry = FBlueprintActionDatabase::Get().GetAllActions();
+	for (const TPair<FObjectKey, FBlueprintActionDatabase::FActionList>& RegistryPair : ActionRegistry)
+	{
+		const UObject* ActionOwner = RegistryPair.Key.ResolveObjectPtr();
+		for (const TObjectPtr<UBlueprintNodeSpawner>& SpawnerPtr : RegistryPair.Value)
+		{
+			UBlueprintNodeSpawner* Spawner = SpawnerPtr.Get();
+			if (!Spawner)
+			{
+				continue;
+			}
+
+			FBlueprintActionInfo ActionInfo(ActionOwner, Spawner);
+			if (Filter.IsFiltered(ActionInfo))
+			{
+				continue;
+			}
+
+			UFunction const* AssociatedFunction = ActionInfo.GetAssociatedFunction();
+			if (!AssociatedFunction)
+			{
+				continue;
+			}
+
+			AddCandidateForFunction(const_cast<UFunction*>(AssociatedFunction), Request, InOutCandidates, Spawner);
+		}
+	}
 }
 
 static TArray<FBlueprintHelperCallFunctionCandidate> BuildCandidateUniverse(
 	const FBlueprintHelperCallFunctionResolveRequest& Request)
 {
 	TMap<FString, FBlueprintHelperCallFunctionCandidate> CandidateMap;
+	AddActionDatabaseCandidates(Request, CandidateMap);
 
 	auto AddClassFunctions = [&CandidateMap, &Request](UClass* Class)
 	{
@@ -280,14 +337,46 @@ static TArray<FBlueprintHelperCallFunctionCandidate> BuildCandidateUniverse(
 	return Candidates;
 }
 
+static int32 ApplyCategoryPriorityBonus(
+	const FBlueprintHelperCallFunctionCandidate& Candidate,
+	const TArray<FString>& CategoryPriority)
+{
+	for (int32 Index = 0; Index < CategoryPriority.Num(); ++Index)
+	{
+		const FString Priority = CategoryPriority[Index].TrimStartAndEnd();
+		if (Priority.IsEmpty())
+		{
+			continue;
+		}
+
+		if (Candidate.Category.Contains(Priority, ESearchCase::IgnoreCase)
+			|| Candidate.OwnerClassPath.Contains(Priority, ESearchCase::IgnoreCase)
+			|| Candidate.NativeFunctionName.Contains(Priority, ESearchCase::IgnoreCase)
+			|| Candidate.DisplayName.Contains(Priority, ESearchCase::IgnoreCase))
+		{
+			return FMath::Max(10, 80 - Index * 10);
+		}
+	}
+	return 0;
+}
+
+static bool IsExactSearchMode(const FString& SearchMode)
+{
+	return SearchMode.Equals(TEXT("exact"), ESearchCase::IgnoreCase)
+		|| SearchMode.Equals(TEXT("precise"), ESearchCase::IgnoreCase);
+}
+
 static int32 ScoreCandidate(
 	const FBlueprintHelperCallFunctionCandidate& Candidate,
 	const FString& Query,
 	const FString& QualifiedOwner,
 	const FString& QualifiedFunction,
+	const FBlueprintHelperCallFunctionResolveRequest& Request,
 	FString& OutMatchReason)
 {
 	OutMatchReason.Reset();
+	const int32 PriorityBonus = ApplyCategoryPriorityBonus(Candidate, Request.CategoryPriority);
+	const bool bExactMode = IsExactSearchMode(Request.SearchMode);
 
 	if (!QualifiedFunction.IsEmpty())
 	{
@@ -295,40 +384,51 @@ static int32 ScoreCandidate(
 			Candidate.NativeFunctionName.Equals(QualifiedFunction, ESearchCase::IgnoreCase))
 		{
 			OutMatchReason = TEXT("owner-qualified exact native");
-			return 1000;
+			return 1000 + PriorityBonus;
 		}
 		return 0;
+	}
+
+	if (Candidate.StableId.Equals(Query, ESearchCase::IgnoreCase))
+	{
+		OutMatchReason = TEXT("stable id exact");
+		return 1000 + PriorityBonus;
 	}
 
 	if (Candidate.NativeFunctionName.Equals(Query, ESearchCase::IgnoreCase))
 	{
 		OutMatchReason = TEXT("native exact");
-		return 900;
+		return 900 + PriorityBonus;
 	}
 
 	if (Candidate.DisplayName.Equals(Query, ESearchCase::IgnoreCase))
 	{
 		OutMatchReason = TEXT("display exact");
-		return 850;
+		return 850 + PriorityBonus;
+	}
+
+	if (bExactMode)
+	{
+		return 0;
 	}
 
 	if (CompactEquals(Candidate.NativeFunctionName, Query) || CompactEquals(Candidate.DisplayName, Query))
 	{
 		OutMatchReason = TEXT("compact exact");
-		return 850;
+		return 850 + PriorityBonus;
 	}
 
 	const FString SearchText = BuildSearchText(Candidate);
 	if (HasExactToken(Query, SearchText))
 	{
 		OutMatchReason = TEXT("search token exact");
-		return 700;
+		return 700 + PriorityBonus;
 	}
 
 	if (AllQueryTokensContained(Query, SearchText))
 	{
 		OutMatchReason = TEXT("search tokens contained");
-		return 500;
+		return 500 + PriorityBonus;
 	}
 
 	return 0;
@@ -363,14 +463,44 @@ static FString BuildCandidateSummary(const FBlueprintHelperCallFunctionCandidate
 		*Candidate.OwnerClassPath);
 }
 
-static FString BuildCandidateListMessage(const FString& Prefix, const TArray<FBlueprintHelperCallFunctionCandidate>& Candidates)
+static FString BuildCandidateFunctionString(const FBlueprintHelperCallFunctionCandidate& Candidate)
+{
+	return FString::Printf(
+		TEXT("%s | %s | %s"),
+		*Candidate.StableId,
+		*Candidate.DisplayName,
+		*Candidate.Category);
+}
+
+static FString JsonQuote(const FString& Value)
+{
+	FString Escaped = Value;
+	Escaped.ReplaceInline(TEXT("\\"), TEXT("\\\\"));
+	Escaped.ReplaceInline(TEXT("\""), TEXT("\\\""));
+	return FString::Printf(TEXT("\"%s\""), *Escaped);
+}
+
+static FString BuildCandidateListMessage(
+	const FString& Prefix,
+	const FString& TargetQuery,
+	const TArray<FBlueprintHelperCallFunctionCandidate>& Candidates)
 {
 	TArray<FString> Summaries;
+	TArray<FString> CandidateFunctions;
 	for (const FBlueprintHelperCallFunctionCandidate& Candidate : Candidates)
 	{
 		Summaries.Add(BuildCandidateSummary(Candidate));
+		CandidateFunctions.Add(JsonQuote(BuildCandidateFunctionString(Candidate)));
 	}
-	return FString::Printf(TEXT("%s Candidates: %s"), *Prefix, *FString::Join(Summaries, TEXT("; ")));
+	const FString CandidateFunctionGroup = FString::Printf(
+		TEXT("{\"target\":%s,\"candidates\":[%s]}"),
+		*JsonQuote(TargetQuery),
+		*FString::Join(CandidateFunctions, TEXT(",")));
+	return FString::Printf(
+		TEXT("%s candidate_functions=[%s] Candidates: %s"),
+		*Prefix,
+		*CandidateFunctionGroup,
+		*FString::Join(Summaries, TEXT("; ")));
 }
 
 static void SetTopCandidates(
@@ -386,6 +516,7 @@ static void SetTopCandidates(
 			break;
 		}
 		Result.Candidates.Add(Candidate);
+		Result.CandidateFunctions.Add(BuildCandidateFunctionString(Candidate));
 	}
 }
 
@@ -520,6 +651,8 @@ FBlueprintHelperCallFunctionResolveResult FBlueprintHelperCallFunctionResolver::
 	FString QualifiedOwner;
 	FString QualifiedFunction;
 	const bool bQualifiedQuery = TryParseQualifiedQuery(Query, QualifiedOwner, QualifiedFunction);
+	const bool bPickBest = Request.AmbiguityPolicy.Equals(TEXT("pick_best"), ESearchCase::IgnoreCase)
+		|| Request.AmbiguityPolicy.Equals(TEXT("best"), ESearchCase::IgnoreCase);
 
 	TArray<FBlueprintHelperCallFunctionCandidate> Candidates = BuildCandidateUniverse(Request);
 	if (bQualifiedQuery && !HasOwnerCandidate(Candidates, QualifiedOwner) && !QualifiedOwner.StartsWith(TEXT("/Script/")))
@@ -534,7 +667,7 @@ FBlueprintHelperCallFunctionResolveResult FBlueprintHelperCallFunctionResolver::
 	for (FBlueprintHelperCallFunctionCandidate& Candidate : Candidates)
 	{
 		FString MatchReason;
-		const int32 Score = ScoreCandidate(Candidate, Query, QualifiedOwner, QualifiedFunction, MatchReason);
+		const int32 Score = ScoreCandidate(Candidate, Query, QualifiedOwner, QualifiedFunction, Request, MatchReason);
 		if (Score <= 0)
 		{
 			continue;
@@ -566,10 +699,19 @@ FBlueprintHelperCallFunctionResolveResult FBlueprintHelperCallFunctionResolver::
 
 	if (!bQualifiedQuery && HasNativeDisplayConflict(ScoredCandidates))
 	{
+		if (bPickBest)
+		{
+			Result.Status = EBlueprintHelperCallFunctionResolveStatus::Resolved;
+			Result.Selected = ScoredCandidates[0];
+			Result.Message = FString::Printf(TEXT("call_function resolved '%s' to %s by pick_best."), *Query, *ScoredCandidates[0].StableId);
+			return Result;
+		}
+
 		Result.Status = EBlueprintHelperCallFunctionResolveStatus::Ambiguous;
 		Result.ErrorCode = TEXT("ambiguous_function_call");
 		Result.Message = BuildCandidateListMessage(
 			FString::Printf(TEXT("call_function resolve failed: native and display-name matches conflict for '%s'."), *Query),
+			Query,
 			Result.Candidates);
 		return Result;
 	}
@@ -577,6 +719,14 @@ FBlueprintHelperCallFunctionResolveResult FBlueprintHelperCallFunctionResolver::
 	const FBlueprintHelperCallFunctionCandidate& Top = ScoredCandidates[0];
 	if (Top.Score >= 850)
 	{
+		if (bPickBest)
+		{
+			Result.Status = EBlueprintHelperCallFunctionResolveStatus::Resolved;
+			Result.Selected = Top;
+			Result.Message = FString::Printf(TEXT("call_function resolved '%s' to %s by pick_best."), *Query, *Top.StableId);
+			return Result;
+		}
+
 		for (int32 Index = 1; Index < ScoredCandidates.Num(); ++Index)
 		{
 			const FBlueprintHelperCallFunctionCandidate& Candidate = ScoredCandidates[Index];
@@ -586,6 +736,7 @@ FBlueprintHelperCallFunctionResolveResult FBlueprintHelperCallFunctionResolver::
 				Result.ErrorCode = TEXT("ambiguous_function_call");
 				Result.Message = BuildCandidateListMessage(
 					FString::Printf(TEXT("call_function resolve failed: '%s' is ambiguous."), *Query),
+					Query,
 					Result.Candidates);
 				return Result;
 			}
@@ -599,6 +750,14 @@ FBlueprintHelperCallFunctionResolveResult FBlueprintHelperCallFunctionResolver::
 
 	if (Top.Score >= 700)
 	{
+		if (bPickBest)
+		{
+			Result.Status = EBlueprintHelperCallFunctionResolveStatus::Resolved;
+			Result.Selected = Top;
+			Result.Message = FString::Printf(TEXT("call_function resolved '%s' to %s by pick_best."), *Query, *Top.StableId);
+			return Result;
+		}
+
 		int32 CompatibleAboveZero = 0;
 		for (const FBlueprintHelperCallFunctionCandidate& Candidate : ScoredCandidates)
 		{
@@ -617,10 +776,19 @@ FBlueprintHelperCallFunctionResolveResult FBlueprintHelperCallFunctionResolver::
 		}
 	}
 
+	if (bPickBest)
+	{
+		Result.Status = EBlueprintHelperCallFunctionResolveStatus::Resolved;
+		Result.Selected = Top;
+		Result.Message = FString::Printf(TEXT("call_function resolved '%s' to %s by pick_best."), *Query, *Top.StableId);
+		return Result;
+	}
+
 	Result.Status = EBlueprintHelperCallFunctionResolveStatus::Ambiguous;
 	Result.ErrorCode = TEXT("ambiguous_function_call");
 	Result.Message = BuildCandidateListMessage(
 		FString::Printf(TEXT("call_function resolve failed: '%s' did not identify a unique function."), *Query),
+		Query,
 		Result.Candidates);
 	return Result;
 }
@@ -684,6 +852,25 @@ UK2Node* FBlueprintHelperCallFunctionResolver::SpawnResolvedNode(
 	{
 		OutError = TEXT("call_function spawn failed: resolved function is no longer valid.");
 		return nullptr;
+	}
+
+	if (UBlueprintNodeSpawner* NodeSpawner = Candidate.NodeSpawner.Get())
+	{
+		IBlueprintNodeBinder::FBindingSet Bindings;
+		UEdGraphNode* SpawnedNode = NodeSpawner->Invoke(Graph, Bindings, Location);
+		UK2Node* K2Node = Cast<UK2Node>(SpawnedNode);
+		if (!K2Node)
+		{
+			OutError = FString::Printf(TEXT("call_function spawn failed: action database spawner did not create a K2 node for %s."), *Candidate.StableId);
+			return nullptr;
+		}
+		K2Node->NodePosX = static_cast<int32>(Location.X);
+		K2Node->NodePosY = static_cast<int32>(Location.Y);
+		if (Graph->GetSchema())
+		{
+			Graph->GetSchema()->ReconstructNode(*K2Node);
+		}
+		return K2Node;
 	}
 
 	UClass* NodeClass = Candidate.NodeClass.Get();

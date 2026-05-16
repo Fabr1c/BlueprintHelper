@@ -50,6 +50,31 @@ static FString JsonValueToString(const TSharedPtr<FJsonValue>& Value)
 	}
 }
 
+static FString JsonValueToSemanticType(const TSharedPtr<FJsonValue>& Value)
+{
+	if (!Value.IsValid())
+	{
+		return FString();
+	}
+
+	switch (Value->Type)
+	{
+	case EJson::Boolean:
+		return TEXT("bool");
+	case EJson::Number:
+	{
+		const double Number = Value->AsNumber();
+		return FMath::IsNearlyEqual(Number, FMath::TruncToDouble(Number))
+			? FString(TEXT("int"))
+			: FString(TEXT("double"));
+	}
+	case EJson::String:
+		return TEXT("string");
+	default:
+		return FString();
+	}
+}
+
 static EBlueprintHelperGraphStatementKind ParseStatementKind(const FString& Kind)
 {
 	if (Kind.Equals(TEXT("call"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Call;
@@ -88,9 +113,83 @@ static void AddDiagnostic(
 	OutIR.Diagnostics.Add(MoveTemp(Diagnostic));
 }
 
+static void ReadOptionalStringArrayField(
+	const TSharedPtr<FJsonObject>& Object,
+	const FString& FieldName,
+	TArray<FString>& OutValues)
+{
+	OutValues.Reset();
+	const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;
+	if (!Object.IsValid() || !Object->TryGetArrayField(FieldName, Values) || !Values)
+	{
+		return;
+	}
+
+	for (const TSharedPtr<FJsonValue>& Value : *Values)
+	{
+		FString Text;
+		if (Value.IsValid() && Value->TryGetString(Text) && !Text.TrimStartAndEnd().IsEmpty())
+		{
+			OutValues.Add(Text.TrimStartAndEnd());
+		}
+	}
+}
+
 static FString NormalizeSymbolKey(const FString& Name)
 {
 	return Name.TrimStartAndEnd().ToLower();
+}
+
+static FString NormalizeSemanticTypeToken(const FString& Type)
+{
+	FString Token = Type;
+	Token.TrimStartAndEndInline();
+	Token.ToLowerInline();
+	Token.ReplaceInline(TEXT(" "), TEXT(""));
+	Token.ReplaceInline(TEXT("-"), TEXT(""));
+	Token.ReplaceInline(TEXT("_"), TEXT(""));
+	if (Token.StartsWith(TEXT("f")) || Token.StartsWith(TEXT("u")) || Token.StartsWith(TEXT("a")))
+	{
+		Token.RightChopInline(1);
+	}
+	return Token;
+}
+
+static bool IsSemanticBoolType(const FString& Type)
+{
+	const FString Token = NormalizeSemanticTypeToken(Type);
+	return Token == TEXT("bool") || Token == TEXT("boolean");
+}
+
+static bool IsSemanticIntegerType(const FString& Type)
+{
+	const FString Token = NormalizeSemanticTypeToken(Type);
+	return Token == TEXT("int") || Token == TEXT("integer") || Token == TEXT("int32") || Token == TEXT("int64") || Token == TEXT("byte");
+}
+
+static bool IsSemanticNumericType(const FString& Type)
+{
+	const FString Token = NormalizeSemanticTypeToken(Type);
+	return IsSemanticIntegerType(Type) || Token == TEXT("float") || Token == TEXT("double") || Token == TEXT("real") || Token == TEXT("number");
+}
+
+static bool AreSemanticTypesCompatible(const FString& Left, const FString& Right)
+{
+	const FString LeftToken = NormalizeSemanticTypeToken(Left);
+	const FString RightToken = NormalizeSemanticTypeToken(Right);
+	if (LeftToken.IsEmpty() || RightToken.IsEmpty())
+	{
+		return true;
+	}
+	if (LeftToken == RightToken)
+	{
+		return true;
+	}
+	if (IsSemanticNumericType(LeftToken) && IsSemanticNumericType(RightToken))
+	{
+		return true;
+	}
+	return false;
 }
 
 static FString NormalizeTypeLookupKey(const FString& Name)
@@ -703,6 +802,10 @@ TSharedPtr<FBlueprintHelperGraphStatementIR> FBlueprintHelperGraphSemanticIRBuil
 
 	StatementObject->TryGetStringField(TEXT("target"), Statement->Target);
 	StatementObject->TryGetStringField(TEXT("name"), Statement->Name);
+	StatementObject->TryGetStringField(TEXT("search_mode"), Statement->SearchMode);
+	StatementObject->TryGetStringField(TEXT("ambiguity"), Statement->AmbiguityPolicy);
+	StatementObject->TryGetStringField(TEXT("ambiguity_policy"), Statement->AmbiguityPolicy);
+	ReadOptionalStringArrayField(StatementObject, TEXT("category_priority"), Statement->CategoryPriority);
 	ParseExpressionMap(StatementObject, TEXT("args"), Path + TEXT(".args"), Statement->Args, OutIR);
 
 	if (const TSharedPtr<FJsonValue>* Value = StatementObject->Values.Find(TEXT("value")))
@@ -748,6 +851,7 @@ TSharedPtr<FBlueprintHelperGraphExpressionIR> FBlueprintHelperGraphSemanticIRBui
 	{
 		Expression->Kind = EBlueprintHelperGraphExpressionKind::Literal;
 		Expression->LiteralValue = JsonValueToString(ExpressionValue);
+		Expression->Type = JsonValueToSemanticType(ExpressionValue);
 		return Expression;
 	}
 
@@ -769,6 +873,10 @@ TSharedPtr<FBlueprintHelperGraphExpressionIR> FBlueprintHelperGraphSemanticIRBui
 
 	ExpressionObject->TryGetStringField(TEXT("target"), Expression->Target);
 	ExpressionObject->TryGetStringField(TEXT("name"), Expression->Name);
+	ExpressionObject->TryGetStringField(TEXT("search_mode"), Expression->SearchMode);
+	ExpressionObject->TryGetStringField(TEXT("ambiguity"), Expression->AmbiguityPolicy);
+	ExpressionObject->TryGetStringField(TEXT("ambiguity_policy"), Expression->AmbiguityPolicy);
+	ReadOptionalStringArrayField(ExpressionObject, TEXT("category_priority"), Expression->CategoryPriority);
 	ExpressionObject->TryGetStringField(TEXT("type"), Expression->Type);
 	if (Expression->Type.IsEmpty())
 	{
@@ -783,6 +891,10 @@ TSharedPtr<FBlueprintHelperGraphExpressionIR> FBlueprintHelperGraphSemanticIRBui
 	if (const TSharedPtr<FJsonValue>* LiteralValue = ExpressionObject->Values.Find(TEXT("value")))
 	{
 		Expression->LiteralValue = JsonValueToString(*LiteralValue);
+		if (Expression->Type.IsEmpty())
+		{
+			Expression->Type = JsonValueToSemanticType(*LiteralValue);
+		}
 	}
 	if (const TSharedPtr<FJsonValue>* Left = ExpressionObject->Values.Find(TEXT("left")))
 	{
@@ -919,6 +1031,17 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveStatement(
 	}
 	ResolveExpression(Statement->Value, OutIR, Context, ScopeStack);
 	ResolveExpression(Statement->Condition, OutIR, Context, ScopeStack);
+	if (Statement->Kind == EBlueprintHelperGraphStatementKind::Branch &&
+		Statement->Condition.IsValid() &&
+		!Statement->Condition->Type.IsEmpty() &&
+		!IsSemanticBoolType(Statement->Condition->Type))
+	{
+		AddDiagnostic(
+			OutIR,
+			TEXT("branch_condition_type_mismatch"),
+			Statement->Path + TEXT(".condition"),
+			FString::Printf(TEXT("branch condition must be bool, got %s."), *Statement->Condition->Type));
+	}
 
 	if (Statement->Kind == EBlueprintHelperGraphStatementKind::Let)
 	{
@@ -1048,6 +1171,49 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveExpression(
 			{
 				Expression->Type = Option->Type;
 				break;
+			}
+		}
+	}
+	if (Expression->Kind == EBlueprintHelperGraphExpressionKind::Compare &&
+		Expression->Left.IsValid() &&
+		Expression->Right.IsValid() &&
+		!AreSemanticTypesCompatible(Expression->Left->Type, Expression->Right->Type))
+	{
+		AddDiagnostic(
+			OutIR,
+			TEXT("compare_operand_type_mismatch"),
+			Expression->Path,
+			FString::Printf(TEXT("compare operands have incompatible types: %s vs %s."), *Expression->Left->Type, *Expression->Right->Type));
+	}
+	if (Expression->Kind == EBlueprintHelperGraphExpressionKind::Select)
+	{
+		const TSharedPtr<FBlueprintHelperGraphExpressionIR>* ConditionExpressionPtr = Expression->Args.Find(TEXT("condition"));
+		const TSharedPtr<FBlueprintHelperGraphExpressionIR> ConditionExpression = ConditionExpressionPtr ? *ConditionExpressionPtr : nullptr;
+		if (ConditionExpression.IsValid() &&
+			!ConditionExpression->Type.IsEmpty() &&
+			!IsSemanticBoolType(ConditionExpression->Type) &&
+			!IsSemanticIntegerType(ConditionExpression->Type))
+		{
+			AddDiagnostic(
+				OutIR,
+				TEXT("select_condition_type_mismatch"),
+				Expression->Path + TEXT(".condition"),
+				FString::Printf(TEXT("select condition/index must be bool or integer-compatible, got %s."), *ConditionExpression->Type));
+		}
+
+		for (int32 OptionIndex = 0; OptionIndex < Expression->Options.Num(); ++OptionIndex)
+		{
+			const TSharedPtr<FBlueprintHelperGraphExpressionIR>& Option = Expression->Options[OptionIndex];
+			if (Option.IsValid() &&
+				!Expression->Type.IsEmpty() &&
+				!Option->Type.IsEmpty() &&
+				!AreSemanticTypesCompatible(Expression->Type, Option->Type))
+			{
+				AddDiagnostic(
+					OutIR,
+					TEXT("select_option_type_mismatch"),
+					FString::Printf(TEXT("%s.options[%d]"), *Expression->Path, OptionIndex),
+					FString::Printf(TEXT("select option type %s does not match inferred select type %s."), *Option->Type, *Expression->Type));
 			}
 		}
 	}

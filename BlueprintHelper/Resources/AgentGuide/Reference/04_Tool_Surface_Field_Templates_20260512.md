@@ -271,7 +271,7 @@ Agent-facing `create_asset` fields under `behavior.asset`:
       "kind": "required. create_widget, update_widget_property, or delete_widget.",
       "widget_name": "required by named widget operations.",
       "widget_class": "optional. Widget class for create_widget.",
-      "parent_widget_name": "optional. Parent widget name.",
+      "parent_widget_name": "optional. Parent widget name. Omit or pass an empty string when creating the root widget; widget_class controls the root type and the UE layer still validates root/container compatibility.",
       "property_name": "optional. Property name.",
       "property_path": "optional. Property path.",
       "value": "optional. New property value."

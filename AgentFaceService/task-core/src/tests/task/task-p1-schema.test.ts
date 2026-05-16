@@ -125,6 +125,7 @@ describe('P1 TaskSpec schema validation', () => {
             kind: 'create_widget',
             widget_class: 'TextBlock',
             widget_name: 'TitleText',
+            parent_widget_name: '',
           },
         ],
       }, {

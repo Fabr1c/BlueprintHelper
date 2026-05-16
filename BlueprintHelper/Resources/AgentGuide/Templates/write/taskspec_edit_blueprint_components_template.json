@@ -1,4 +1,4 @@
-{
+﻿{
   "schema": "BlueprintHelper.TaskSpec.v1",
   "task_type": "edit_blueprint_components",
   "feature_name": "__FEATURE_NAME__",
@@ -17,7 +17,7 @@
           "parent": "__PARENT_COMPONENT_NAME__",
           "rule": "keep_relative"
         },
-        "on_name_conflict": "reuse_existing",
+        "on_name_conflict": "reuse_if_exists",
         "properties": [
           {
             "property_path": "__PROPERTY_PATH__",
