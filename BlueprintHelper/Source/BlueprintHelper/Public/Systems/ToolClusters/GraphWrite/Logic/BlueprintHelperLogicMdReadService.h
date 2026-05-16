@@ -10,6 +10,8 @@
 
 struct FBlueprintHelperLogicMdData;
 struct FBlueprintHelperTargetRef;
+class FBlueprintHelperExportService;
+class FBlueprintHelperGraphResolver;
 
 /**
  * LogicMD 只读服务。
@@ -21,6 +23,8 @@ class BLUEPRINTHELPER_API FBlueprintHelperLogicMdReadService
 {
 public:
 	FBlueprintHelperLogicMdReadService();
+	explicit FBlueprintHelperLogicMdReadService(const FBlueprintHelperExportService& InExportService);
+	~FBlueprintHelperLogicMdReadService();
 
 	/**
 	 * 根据 TargetRef 读取 LogicMD。
@@ -36,4 +40,7 @@ private:
 
 	/** LogicGroupBuilder 实例。 */
 	FBlueprintHelperLogicGroupBuilder GroupBuilder;
+	TUniquePtr<FBlueprintHelperGraphResolver> OwnedGraphResolver;
+	TUniquePtr<FBlueprintHelperExportService> OwnedExportService;
+	const FBlueprintHelperExportService* ExportService = nullptr;
 };

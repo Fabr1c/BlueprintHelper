@@ -2,7 +2,7 @@
 
 #include "Systems/Authorization/BlueprintHelperWriteAuthorizationService.h"
 
-#include "Entry/Bridge/BlueprintHelperRequestValidator.h"
+#include "Shared/Bridge/BlueprintHelperBridgeTypes.h"
 #include "Systems/Config/BlueprintHelperSafetyProfileResolver.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Notifications/NotificationManager.h"

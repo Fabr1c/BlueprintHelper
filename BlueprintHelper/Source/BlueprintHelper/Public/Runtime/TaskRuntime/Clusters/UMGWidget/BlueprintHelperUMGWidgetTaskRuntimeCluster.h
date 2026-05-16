@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.h"
+#include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeTypes.h"
 
 class FBlueprintHelperWidgetService;
 struct FBlueprintHelperWriteReviewEvidence;

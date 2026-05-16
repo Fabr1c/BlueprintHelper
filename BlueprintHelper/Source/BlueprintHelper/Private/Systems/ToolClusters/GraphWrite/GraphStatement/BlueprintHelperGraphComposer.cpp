@@ -1,165 +1,10 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphComposer.h"
 
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphComposerUtils.h"
+
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraph/EdGraphSchema.h"
-
-namespace
-{
-static UEdGraphPin* FindPinRefInMap(
-	const TMap<FString, FBlueprintHelperFragmentPinRef>& PinMap,
-	const FString& Key)
-{
-	if (Key.IsEmpty())
-	{
-		return nullptr;
-	}
-
-	if (const FBlueprintHelperFragmentPinRef* PinRef = PinMap.Find(Key))
-	{
-		if (PinRef->Pin)
-		{
-			return PinRef->Pin;
-		}
-	}
-
-	for (const TPair<FString, FBlueprintHelperFragmentPinRef>& Pair : PinMap)
-	{
-		if (Pair.Key.Equals(Key, ESearchCase::IgnoreCase) && Pair.Value.Pin)
-		{
-			return Pair.Value.Pin;
-		}
-	}
-
-	return nullptr;
-}
-
-static UEdGraphPin* FindNodePinByName(UEdGraphNode* Node, const FString& PinName)
-{
-	if (!Node || PinName.IsEmpty())
-	{
-		return nullptr;
-	}
-
-	if (UEdGraphPin* ExactPin = Node->FindPin(PinName))
-	{
-		return ExactPin;
-	}
-
-	for (UEdGraphPin* Pin : Node->Pins)
-	{
-		if (Pin && Pin->PinName.ToString().Equals(PinName, ESearchCase::IgnoreCase))
-		{
-			return Pin;
-		}
-	}
-
-	return nullptr;
-}
-
-static UEdGraphPin* FindFirstNodeDataPin(UEdGraphNode* Node, const EEdGraphPinDirection Direction)
-{
-	if (!Node)
-	{
-		return nullptr;
-	}
-
-	for (UEdGraphPin* Pin : Node->Pins)
-	{
-		if (Pin && Pin->Direction == Direction && Pin->PinType.PinCategory != FName(TEXT("exec")))
-		{
-			return Pin;
-		}
-	}
-
-	return nullptr;
-}
-
-static UEdGraphPin* ResolveFragmentEndpointPin(
-	const FBlueprintHelperNodeFragment& Fragment,
-	const FBlueprintHelperGraphFragmentEndpointRef& Endpoint,
-	const bool bSourceEndpoint)
-{
-	const FString PortId = Endpoint.PortId.IsEmpty() ? Endpoint.PinName : Endpoint.PortId;
-	if (!PortId.IsEmpty())
-	{
-		if (UEdGraphPin* BindingPin = FindPinRefInMap(Fragment.PinBindings, PortId))
-		{
-			return BindingPin;
-		}
-
-		const TMap<FString, FBlueprintHelperFragmentPinRef>& DirectionMap =
-			bSourceEndpoint ? Fragment.DataOutputs : Fragment.DataInputs;
-		if (UEdGraphPin* DirectionPin = FindPinRefInMap(DirectionMap, PortId))
-		{
-			return DirectionPin;
-		}
-	}
-
-	if (!Endpoint.PinName.IsEmpty())
-	{
-		const TMap<FString, FBlueprintHelperFragmentPinRef>& DirectionMap =
-			bSourceEndpoint ? Fragment.DataOutputs : Fragment.DataInputs;
-		if (UEdGraphPin* DirectionPin = FindPinRefInMap(DirectionMap, Endpoint.PinName))
-		{
-			return DirectionPin;
-		}
-
-		if (UEdGraphPin* BindingPin = FindPinRefInMap(Fragment.PinBindings, Endpoint.PinName))
-		{
-			return BindingPin;
-		}
-
-		if (UEdGraphPin* NodePin = FindNodePinByName(Fragment.PrimaryNode, Endpoint.PinName))
-		{
-			return NodePin;
-		}
-	}
-
-	if (Endpoint.PinName.Equals(TEXT("result"), ESearchCase::IgnoreCase)
-		|| Endpoint.PinName.Equals(TEXT("value"), ESearchCase::IgnoreCase)
-		|| Endpoint.PinName.Equals(TEXT("return"), ESearchCase::IgnoreCase))
-	{
-		return FindFirstNodeDataPin(Fragment.PrimaryNode, bSourceEndpoint ? EGPD_Output : EGPD_Input);
-	}
-
-	return nullptr;
-}
-
-static bool TryForceCompatibleDataConnection(UEdGraphPin* FromPin, UEdGraphPin* ToPin)
-{
-	if (!FromPin || !ToPin || FromPin->LinkedTo.Contains(ToPin))
-	{
-		return false;
-	}
-
-	if (FromPin->PinType.PinCategory == FName(TEXT("exec")) || ToPin->PinType.PinCategory == FName(TEXT("exec")))
-	{
-		return false;
-	}
-
-	if (FromPin->Direction != EGPD_Output || ToPin->Direction != EGPD_Input)
-	{
-		return false;
-	}
-
-	if (FromPin->PinType.PinCategory != ToPin->PinType.PinCategory)
-	{
-		return false;
-	}
-
-	FromPin->MakeLinkTo(ToPin);
-	if (UEdGraphNode* FromNode = FromPin->GetOwningNode())
-	{
-		FromNode->NodeConnectionListChanged();
-	}
-	if (UEdGraphNode* ToNode = ToPin->GetOwningNode())
-	{
-		ToNode->NodeConnectionListChanged();
-	}
-	return true;
-}
-}
 
 FBlueprintHelperGraphComposeResult FBlueprintHelperGraphComposer::ConnectLinearExecChain(
 	UEdGraph* TargetGraph,
@@ -260,8 +105,8 @@ FBlueprintHelperGraphComposeResult FBlueprintHelperGraphComposer::ConnectDataEdg
 			continue;
 		}
 
-		UEdGraphPin* FromPin = ResolveFragmentEndpointPin(**FromFragmentPtr, Edge.From, true);
-		UEdGraphPin* ToPin = ResolveFragmentEndpointPin(**ToFragmentPtr, Edge.To, false);
+		UEdGraphPin* FromPin = FBlueprintHelperGraphComposerUtils::ResolveFragmentEndpointPin(**FromFragmentPtr, Edge.From, true);
+		UEdGraphPin* ToPin = FBlueprintHelperGraphComposerUtils::ResolveFragmentEndpointPin(**ToFragmentPtr, Edge.To, false);
 		if (!FromPin)
 		{
 			Result.Diagnostics.Add(FString::Printf(TEXT("GraphComposer data edge source pin not found: %s.%s."), *Edge.From.FragmentId, *Edge.From.PortId));
@@ -283,7 +128,7 @@ FBlueprintHelperGraphComposeResult FBlueprintHelperGraphComposer::ConnectDataEdg
 			++Result.CreatedDataConnectionCount;
 			continue;
 		}
-		if (TryForceCompatibleDataConnection(FromPin, ToPin))
+		if (FBlueprintHelperGraphComposerUtils::TryForceCompatibleDataConnection(FromPin, ToPin))
 		{
 			++Result.CreatedDataConnectionCount;
 			continue;

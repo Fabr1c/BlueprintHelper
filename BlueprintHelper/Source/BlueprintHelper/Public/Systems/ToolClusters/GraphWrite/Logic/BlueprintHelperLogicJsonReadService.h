@@ -10,6 +10,8 @@
 
 struct FBlueprintHelperLogicJsonData;
 struct FBlueprintHelperTargetRef;
+class FBlueprintHelperExportService;
+class FBlueprintHelperGraphResolver;
 
 /**
  * LogicJson 只读服务。
@@ -21,6 +23,8 @@ class BLUEPRINTHELPER_API FBlueprintHelperLogicJsonReadService
 {
 public:
 	FBlueprintHelperLogicJsonReadService();
+	explicit FBlueprintHelperLogicJsonReadService(const FBlueprintHelperExportService& InExportService);
+	~FBlueprintHelperLogicJsonReadService();
 
 	/** 根据 TargetRef 读取 LogicJson。 */
 	FBlueprintHelperLogicJsonData ReadLogicJson(const FBlueprintHelperTargetRef& Target) const;
@@ -34,4 +38,7 @@ private:
 
 	/** LogicGroupBuilder 实例。 */
 	FBlueprintHelperLogicGroupBuilder GroupBuilder;
+	TUniquePtr<FBlueprintHelperGraphResolver> OwnedGraphResolver;
+	TUniquePtr<FBlueprintHelperExportService> OwnedExportService;
+	const FBlueprintHelperExportService* ExportService = nullptr;
 };

@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Shared/BlueprintHelperToolResultTypes.h"
+#include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeTypes.h"
 
 class FBlueprintHelperAppendBlueprintGraphService;
 class FBlueprintHelperReplaceBlueprintGraphService;
@@ -24,30 +24,6 @@ class FBlueprintHelperCompileAssetService;
 class FBlueprintHelperAssetBrowseService;
 class FBlueprintHelperDebugEntryService;
 class FBlueprintHelperTaskRuntimeClusterHub;
-class FJsonObject;
-
-struct BLUEPRINTHELPER_API FBlueprintHelperTaskRuntimeLoweredStep
-{
-	FString StepId;
-	FString Capability;
-	FString RuntimeOperation;
-	FString AdapterOperation;
-	TSharedPtr<FJsonObject> Payload;
-	bool bAdapterDryRunSupported = true;
-};
-
-struct BLUEPRINTHELPER_API FBlueprintHelperTaskRuntimeStepRecord
-{
-	FBlueprintHelperTaskRuntimeLoweredStep Step;
-	FBlueprintHelperToolResultBase Result;
-};
-
-struct BLUEPRINTHELPER_API FBlueprintHelperTaskRuntimePostOperationRecord
-{
-	FString Operation;
-	FBlueprintHelperToolResultBase Result;
-};
-
 /**
  * Executes BlueprintHelper.TaskPlan.v1 steps through existing capability services.
  * The first runtime cluster supports graph write TaskPlan steps backed by existing services.

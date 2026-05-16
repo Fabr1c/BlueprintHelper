@@ -8,9 +8,21 @@
 #include "Shared/Services/BlueprintHelperExportService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicProcessor.h"
-#include "Entry/BlueprintHelper.h"
 
-FBlueprintHelperLogicMdReadService::FBlueprintHelperLogicMdReadService() = default;
+FBlueprintHelperLogicMdReadService::FBlueprintHelperLogicMdReadService()
+{
+	OwnedGraphResolver = MakeUnique<FBlueprintHelperGraphResolver>();
+	OwnedExportService = MakeUnique<FBlueprintHelperExportService>(*OwnedGraphResolver);
+	ExportService = OwnedExportService.Get();
+}
+
+FBlueprintHelperLogicMdReadService::FBlueprintHelperLogicMdReadService(
+	const FBlueprintHelperExportService& InExportService)
+	: ExportService(&InExportService)
+{
+}
+
+FBlueprintHelperLogicMdReadService::~FBlueprintHelperLogicMdReadService() = default;
 
 class FBlueprintHelperLogicMdReadServiceLocalUtils
 {
@@ -264,8 +276,7 @@ FBlueprintHelperLogicMdData FBlueprintHelperLogicMdReadService::ReadLogicMd(cons
 		: ScopeToExportScope(Scope);
 
 	// 使用模块的 ExportService 导出 Raw JSON
-	const FBlueprintHelperModule& Module = FBlueprintHelperModule::Get();
-	const FBlueprintHelperExportResult ExportResult = Module.GetExportService().Export(ExportReq);
+	const FBlueprintHelperExportResult ExportResult = ExportService->Export(ExportReq);
 
 	if (!ExportResult.bSuccess)
 	{

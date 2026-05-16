@@ -2,11 +2,9 @@
 
 #include "UI/SBlueprintHelperMainWindow.h"
 
-#include "Async/Async.h"
-#include "HAL/CriticalSection.h"
 #include "Framework/Notifications/NotificationManager.h"
-#include "Systems/Review/BlueprintHelperReviewedDataCleanupService.h"
-#include "Systems/Review/BlueprintHelperReviewStoreService.h"
+#include "UI/BlueprintHelperMainWindowPresenter.h"
+#include "UI/Utils/BlueprintHelperMainWindowCleanupAsyncUtils.h"
 #include "UI/SHelperMainWidget.h"
 #include "Styling/AppStyle.h"
 #include "Widgets/Input/SButton.h"
@@ -16,67 +14,17 @@
 #include "UI/Review/SBlueprintHelperReviewPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
-namespace
-{
-static FCriticalSection GBlueprintHelperReviewedDataCleanupTaskCriticalSection;
-static TArray<TFuture<void>> GBlueprintHelperReviewedDataCleanupTasks;
-static bool bBlueprintHelperReviewedDataCleanupShutdown = false;
-
-static bool IsBlueprintHelperReviewedDataCleanupShutdownRequested()
-{
-	FScopeLock Lock(&GBlueprintHelperReviewedDataCleanupTaskCriticalSection);
-	return bBlueprintHelperReviewedDataCleanupShutdown;
-}
-
-static void TrackBlueprintHelperReviewedDataCleanupTask(TFuture<void>&& Future)
-{
-	bool bWaitImmediately = false;
-	{
-		FScopeLock Lock(&GBlueprintHelperReviewedDataCleanupTaskCriticalSection);
-		for (int32 Index = GBlueprintHelperReviewedDataCleanupTasks.Num() - 1; Index >= 0; --Index)
-		{
-			if (GBlueprintHelperReviewedDataCleanupTasks[Index].IsReady())
-			{
-				GBlueprintHelperReviewedDataCleanupTasks.RemoveAtSwap(Index, 1, EAllowShrinking::No);
-			}
-		}
-		if (bBlueprintHelperReviewedDataCleanupShutdown)
-		{
-			bWaitImmediately = true;
-		}
-		else
-		{
-			GBlueprintHelperReviewedDataCleanupTasks.Add(MoveTemp(Future));
-			return;
-		}
-	}
-	if (bWaitImmediately)
-	{
-		Future.Wait();
-	}
-}
-
-static void FlushBlueprintHelperReviewedDataCleanupTasksInternal(bool bShutdown)
-{
-	TArray<TFuture<void>> Tasks;
-	{
-		FScopeLock Lock(&GBlueprintHelperReviewedDataCleanupTaskCriticalSection);
-		bBlueprintHelperReviewedDataCleanupShutdown = bBlueprintHelperReviewedDataCleanupShutdown || bShutdown;
-		Tasks = MoveTemp(GBlueprintHelperReviewedDataCleanupTasks);
-	}
-	for (TFuture<void>& Task : Tasks)
-	{
-		Task.Wait();
-	}
-}
-}
-
 void SBlueprintHelperMainWindow::Construct(const FArguments& InArgs)
 {
 	ImportService = InArgs._ImportService;
 	GraphResolver = InArgs._GraphResolver;
 	ReviewStoreService = InArgs._ReviewStoreService;
 	ReviewActionService = InArgs._ReviewActionService;
+	MainWindowPresenter = MakeShared<FBlueprintHelperMainWindowPresenter>(ReviewStoreService);
+	MainWindowPresenter->SetEventSink([this](const FBlueprintHelperMainWindowPresenterEvent& Event)
+	{
+		HandleMainWindowPresenterEvent(Event);
+	});
 
 	ChildSlot
 	[
@@ -136,12 +84,12 @@ void SBlueprintHelperMainWindow::Construct(const FArguments& InArgs)
 
 void SBlueprintHelperMainWindow::FlushCleanupTasks()
 {
-	FlushBlueprintHelperReviewedDataCleanupTasksInternal(false);
+	FBlueprintHelperMainWindowCleanupAsyncUtils::FlushCleanupTasks();
 }
 
 void SBlueprintHelperMainWindow::ShutdownCleanupTasks()
 {
-	FlushBlueprintHelperReviewedDataCleanupTasksInternal(true);
+	FBlueprintHelperMainWindowCleanupAsyncUtils::ShutdownCleanupTasks();
 }
 
 FReply SBlueprintHelperMainWindow::ShowToolsPage()
@@ -166,88 +114,37 @@ FReply SBlueprintHelperMainWindow::ShowReviewPage()
 
 FReply SBlueprintHelperMainWindow::OnCleanupReviewDataClicked()
 {
-	if (bCleanupInProgress)
-	{
-		return FReply::Handled();
-	}
-	if (IsBlueprintHelperReviewedDataCleanupShutdownRequested())
-	{
-		LastCleanupStatus = TEXT("CleanReviewData skipped: cleanup worker is shutting down");
-		UE_LOG(LogTemp, Warning, TEXT("BlueprintHelper %s"), *LastCleanupStatus);
-		return FReply::Handled();
-	}
+	return MainWindowPresenter.IsValid()
+		? MainWindowPresenter->HandleVisualEvent(
+			FBlueprintHelperMainWindowVisualEvent::CleanupReviewDataClicked())
+		: FReply::Handled();
+}
 
-	bCleanupInProgress = true;
-	LastCleanupStatus = TEXT("CleanReviewData scanning...");
-	ShowCleanupNotification(TEXT("扫描中"));
-	TWeakPtr<SBlueprintHelperMainWindow> WeakWindow =
-		StaticCastSharedRef<SBlueprintHelperMainWindow>(AsShared());
-	TFuture<void> ScanTask = Async(EAsyncExecution::ThreadPool, [WeakWindow]()
+void SBlueprintHelperMainWindow::HandleMainWindowPresenterEvent(
+	const FBlueprintHelperMainWindowPresenterEvent& Event)
+{
+	if (!Event.LogMessage.IsEmpty())
 	{
-		const FBlueprintHelperReviewedDataCleanupPlan Plan =
-			FBlueprintHelperReviewedDataCleanupService::ScanCleanupPlan();
-		AsyncTask(ENamedThreads::GameThread, [WeakWindow, Plan]()
+		if (Event.bLogAsWarning)
 		{
-			if (TSharedPtr<SBlueprintHelperMainWindow> Window = WeakWindow.Pin())
-			{
-				if (IsBlueprintHelperReviewedDataCleanupShutdownRequested())
-				{
-					Window->bCleanupInProgress = false;
-					Window->LastCleanupStatus = TEXT("CleanReviewData skipped: cleanup worker is shutting down");
-					Window->UpdateCleanupNotification(TEXT("失败"), false, true);
-					UE_LOG(LogTemp, Warning, TEXT("BlueprintHelper %s"), *Window->LastCleanupStatus);
-					return;
-				}
-
-				Window->LastCleanupStatus = FString::Printf(
-					TEXT("CleanReviewData cleaning... recordsScanned=%d reviewedChangesToRemove=%d filesToDelete=%d"),
-					Plan.RecordsScanned,
-					Plan.ChangesRemoved,
-					Plan.TransactionFilePathsToDelete.Num()
-						+ Plan.SessionFilePathsToDelete.Num()
-						+ Plan.OldDebugBundlePathsToDelete.Num()
-						+ Plan.CompletedDebugBundlePathsToDelete.Num());
-				Window->UpdateCleanupNotification(TEXT("清理中"), true, false);
-				UE_LOG(LogTemp, Log, TEXT("BlueprintHelper %s"), *Window->LastCleanupStatus);
-
-				TFuture<void> CleanupTask = Async(EAsyncExecution::ThreadPool, [WeakWindow, Plan]()
-				{
-					const FBlueprintHelperReviewedDataCleanupResult Result =
-						FBlueprintHelperReviewedDataCleanupService::ExecuteCleanupPlan(Plan);
-					AsyncTask(ENamedThreads::GameThread, [WeakWindow, Result]()
-					{
-						if (TSharedPtr<SBlueprintHelperMainWindow> Window = WeakWindow.Pin())
-						{
-							Window->bCleanupInProgress = false;
-							Window->LastCleanupStatus = FString::Printf(
-								TEXT("CleanReviewData reviewedChangesRemoved=%d recordsSaved=%d recordsDeleted=%d transactionFilesDeleted=%d sessionFilesDeleted=%d oldDebugBundlesDeleted=%d completedDebugBundlesDeleted=%d failures=%d error=\"%s\""),
-								Result.ChangesRemoved,
-								Result.RecordsSaved,
-								Result.RecordsDeleted,
-								Result.TransactionFilesDeleted,
-								Result.SessionFilesDeleted,
-								Result.OldDebugBundlesDeleted,
-								Result.CompletedDebugBundlesDeleted,
-								Result.Failures,
-								*Result.Error);
-							Window->UpdateCleanupNotification(
-								Result.Failures == 0 ? TEXT("完成") : TEXT("失败"),
-								Result.Failures == 0,
-								true);
-							UE_LOG(LogTemp, Log, TEXT("BlueprintHelper %s"), *Window->LastCleanupStatus);
-							if (Window->ReviewStoreService)
-							{
-								Window->ReviewStoreService->NotifyPendingReviewChanged();
-							}
-						}
-					});
-				});
-				TrackBlueprintHelperReviewedDataCleanupTask(MoveTemp(CleanupTask));
-			}
-		});
-	});
-	TrackBlueprintHelperReviewedDataCleanupTask(MoveTemp(ScanTask));
-	return FReply::Handled();
+			UE_LOG(LogTemp, Warning, TEXT("BlueprintHelper %s"), *Event.LogMessage);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Log, TEXT("BlueprintHelper %s"), *Event.LogMessage);
+		}
+	}
+	if (Event.bShowCleanupNotification)
+	{
+		ShowCleanupNotification(Event.CleanupStatusText);
+	}
+	if (Event.bUpdateCleanupNotification)
+	{
+		UpdateCleanupNotification(
+			Event.CleanupStatusText,
+			Event.bCleanupSucceeded,
+			Event.bExpireCleanupNotification);
+	}
 }
 
 void SBlueprintHelperMainWindow::ShowCleanupNotification(const FString& StatusText)
