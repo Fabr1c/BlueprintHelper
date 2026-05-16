@@ -8,7 +8,7 @@
       "name": "blueprint-helper",
       "source": {
         "source": "local",
-        "path": "./plugins/blueprint-helper"
+        "path": "./CodexPlugin"
       },
       "policy": {
         "installation": "AVAILABLE",

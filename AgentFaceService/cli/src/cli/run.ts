@@ -49,6 +49,19 @@ type ParseResult =
   | { ok: true; help: true }
   | { ok: false; message: string };
 
+type CliBridge = TaskRunnerBridge & {
+  ping(): Promise<boolean>;
+  setWriteSessionId(sessionId: string): void;
+  clearWriteSessionId(): void;
+  close(): void;
+};
+
+const DEFAULT_CLI_BRIDGE_REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
+const DEFAULT_WAIT_HINT_INITIAL_MS = 1000;
+const DEFAULT_WAIT_HINT_INTERVAL_MS = 5000;
+
+const runtimeBridgeCache = new WeakMap<CliRuntime, CliBridge>();
+
 const READ_ONLY_BRIDGE_COMMANDS = new Set([
   'get_editor_context',
   'get_runtime_profile',
@@ -354,14 +367,100 @@ function getRunner(runtime: CliRuntime): TaskSpecRunner {
   });
 }
 
-function getBridge(runtime: CliRuntime): TaskRunnerBridge {
-  if (runtime.bridge) {
-    return runtime.bridge;
+function getBridge(runtime: CliRuntime): CliBridge {
+  const cached = runtimeBridgeCache.get(runtime);
+  if (cached) {
+    return cached;
   }
-  return new BridgeClient({
+
+  const baseBridge = runtime.bridge ?? new BridgeClient({
     host: process.env['BRIDGE_HOST'] ?? '127.0.0.1',
     port: Number(process.env['BRIDGE_PORT'] ?? 54321),
+    requestTimeoutMs: readPositiveEnvInt(
+      'BPH_CLI_BRIDGE_REQUEST_TIMEOUT_MS',
+      readPositiveEnvInt('BRIDGE_REQUEST_TIMEOUT_MS', DEFAULT_CLI_BRIDGE_REQUEST_TIMEOUT_MS),
+    ),
   });
+  const bridge = createWaitHintBridge(baseBridge, runtime);
+  runtimeBridgeCache.set(runtime, bridge);
+  return bridge;
+}
+
+function createWaitHintBridge(baseBridge: TaskRunnerBridge, runtime: CliRuntime): CliBridge {
+  const optionalBridge = baseBridge as TaskRunnerBridge & Partial<CliBridge>;
+  let bridge: CliBridge;
+  bridge = {
+    sendCommand(command, payload) {
+      return runWithWaitHints(runtime, command, () => baseBridge.sendCommand(command, payload));
+    },
+    ping() {
+      if (typeof optionalBridge.ping === 'function') {
+        return runWithWaitHints(runtime, 'ping', () => optionalBridge.ping!());
+      }
+      return Promise.resolve(false);
+    },
+    setWriteSessionId(sessionId) {
+      optionalBridge.setWriteSessionId?.(sessionId);
+    },
+    clearWriteSessionId() {
+      optionalBridge.clearWriteSessionId?.();
+    },
+    close() {
+      optionalBridge.close?.();
+    },
+  };
+  return bridge;
+}
+
+async function runWithWaitHints<T>(
+  runtime: CliRuntime,
+  command: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  if (isWaitHintDisabled()) {
+    return await operation();
+  }
+
+  const initialMs = readPositiveEnvInt('BPH_CLI_WAIT_HINT_INITIAL_MS', DEFAULT_WAIT_HINT_INITIAL_MS);
+  const intervalMs = readPositiveEnvInt('BPH_CLI_WAIT_HINT_INTERVAL_MS', DEFAULT_WAIT_HINT_INTERVAL_MS);
+  const startedAt = Date.now();
+  let interval: ReturnType<typeof setInterval> | undefined;
+  const emitHint = () => {
+    const elapsedMs = Date.now() - startedAt;
+    runtime.stderr(
+      `[BlueprintHelper CLI] waiting for UE Bridge response: command=${command} elapsed_ms=${elapsedMs}. `
+      + 'UE-bound requests are serialized on the editor side; keep waiting unless the CLI exits.\n',
+    );
+  };
+  const initial = setTimeout(() => {
+    emitHint();
+    interval = setInterval(emitHint, intervalMs);
+    interval.unref?.();
+  }, initialMs);
+  initial.unref?.();
+
+  try {
+    return await operation();
+  } finally {
+    clearTimeout(initial);
+    if (interval) {
+      clearInterval(interval);
+    }
+  }
+}
+
+function isWaitHintDisabled(): boolean {
+  const raw = process.env['BPH_CLI_WAIT_HINTS'];
+  return raw === '0' || raw?.toLowerCase() === 'false';
+}
+
+function readPositiveEnvInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) {
+    return fallback;
+  }
+  const value = Number(raw);
+  return Number.isInteger(value) && value > 0 ? value : fallback;
 }
 
 function readJsonFile(filePath: string): unknown {
@@ -410,5 +509,8 @@ function helpText(): string {
     '  blueprinthelper-cli context read --file <context-request.json> [--fields path[,path...]] [--omit path[,path...]]',
     '  blueprinthelper-cli bridge ping [--fields path[,path...]] [--omit path[,path...]]',
     '  blueprinthelper-cli bridge call --command <read_only_command> [--fields path[,path...]] [--omit path[,path...]]',
+    '',
+    'Notes:',
+    '  Long UE Bridge waits emit progress hints to stderr. Stdout remains final JSON.',
   ].join('\n');
 }

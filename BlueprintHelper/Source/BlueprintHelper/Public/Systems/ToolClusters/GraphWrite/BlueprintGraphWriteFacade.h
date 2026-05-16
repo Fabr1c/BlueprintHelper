@@ -432,6 +432,9 @@ struct FParsedNode
 	TArray<FString> CategoryPriority;
 
 	/** 节点 X 坐标。 */
+	TMap<FString, FString> ArgumentTypes;
+	FString TargetObjectType;
+
 	float X = 0.0f;
 
 	/** 节点 Y 坐标。 */
@@ -495,7 +498,7 @@ struct FParsedNode
 struct FBlueprintHelperCandidateFunctionGroup
 {
 	FString Target;
-	TArray<FString> Candidates;
+	TArray<FBlueprintHelperCallFunctionCandidateInfo> Candidates;
 };
 
 struct FUnresolvedNodeItem

@@ -9,6 +9,7 @@
 #include "Misc/Paths.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
+#include "Shared/Review/BlueprintHelperReviewEnumUtils.h"
 
 bool FBlueprintHelperReviewedDataCleanupServiceUtils::IsReviewedTerminalStatus(
 	EBlueprintHelperReviewChangeStatus Status)
@@ -20,9 +21,11 @@ bool FBlueprintHelperReviewedDataCleanupServiceUtils::IsReviewedTerminalStatus(
 
 bool FBlueprintHelperReviewedDataCleanupServiceUtils::IsOpenReviewStatusText(const FString& Status)
 {
-	return Status.Equals(TEXT("pending"), ESearchCase::IgnoreCase)
-		|| Status.Equals(TEXT("needs_action"), ESearchCase::IgnoreCase)
-		|| Status.Equals(TEXT("reject_failed"), ESearchCase::IgnoreCase);
+	const EBlueprintHelperReviewChangeStatus ParsedStatus =
+		FBlueprintHelperReviewEnumUtils::ParseChangeStatus(Status);
+	return ParsedStatus == EBlueprintHelperReviewChangeStatus::Pending
+		|| ParsedStatus == EBlueprintHelperReviewChangeStatus::NeedsAction
+		|| ParsedStatus == EBlueprintHelperReviewChangeStatus::RejectFailed;
 }
 
 void FBlueprintHelperReviewedDataCleanupServiceUtils::AddReviewTransactionId(

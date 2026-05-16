@@ -144,22 +144,3 @@ UK2Node* FBlueprintGraphNodeSpawner::SpawnMacroNode(UEdGraph* TargetGraph, const
 	return MacroNode;
 }
 
-UK2Node_CallFunction* FBlueprintGraphNodeSpawner::SpawnFunctionNode(UEdGraph* TargetGraph, UFunction* TargetFunction, const FParsedNode& NodeData)
-{
-	if (!TargetGraph || !TargetFunction)
-	{
-		return nullptr;
-	}
-
-	UK2Node_CallFunction* CallFunctionNode = NewObject<UK2Node_CallFunction>(TargetGraph);
-	TargetGraph->AddNode(CallFunctionNode, true, false);
-	CallFunctionNode->CreateNewGuid();
-	CallFunctionNode->PostPlacedNewNode();
-	CallFunctionNode->SetFromFunction(TargetFunction);
-	CallFunctionNode->NodePosX = static_cast<int32>(NodeData.X);
-	CallFunctionNode->NodePosY = static_cast<int32>(NodeData.Y);
-	CallFunctionNode->AllocateDefaultPins();
-	TargetGraph->GetSchema()->ReconstructNode(*CallFunctionNode);
-	FBlueprintGraphDefaultValueApplier::ApplyDefaultValues(CallFunctionNode, NodeData.DefaultValues, NodeData.Id);
-	return CallFunctionNode;
-}

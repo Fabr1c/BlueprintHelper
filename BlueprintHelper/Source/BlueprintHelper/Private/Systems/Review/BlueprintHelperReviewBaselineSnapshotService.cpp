@@ -2,6 +2,7 @@
 
 #include "Systems/Review/BlueprintHelperReviewBaselineSnapshotService.h"
 
+#include "Shared/Review/BlueprintHelperReviewTargetKindRegistry.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
 
 #include "Blueprint/WidgetTree.h"
@@ -315,9 +316,12 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 		return Json;
 	}
 
+	const EBlueprintHelperReviewTargetHandlerKind HandlerKind =
+		FBlueprintHelperReviewTargetKindRegistry::GetHandlerKind(Target.TargetKind);
+
 	if (UBlueprint* Blueprint = Cast<UBlueprint>(Asset))
 	{
-		if (Target.TargetKind == TEXT("blueprint_variable"))
+		if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::BlueprintVariable)
 		{
 			Json->SetStringField(TEXT("surface"), TEXT("my_blueprint"));
 			for (const FBPVariableDescription& Variable : Blueprint->NewVariables)
@@ -342,7 +346,7 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 			return Json;
 		}
 
-		if (Target.TargetKind == TEXT("component"))
+		if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::Component)
 		{
 			Json->SetStringField(TEXT("surface"), TEXT("components"));
 			if (Blueprint->SimpleConstructionScript)
@@ -373,7 +377,7 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 			return Json;
 		}
 
-		if (Target.TargetKind == TEXT("signature"))
+		if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::Signature)
 		{
 			Json->SetStringField(TEXT("surface"), TEXT("my_blueprint"));
 			Json->SetBoolField(TEXT("exists"), false);
@@ -394,7 +398,8 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 			return Json;
 		}
 
-		if (Target.TargetKind == TEXT("umg_widget") || Target.TargetKind == TEXT("umg_widget_property"))
+		if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::UMGWidget
+			|| HandlerKind == EBlueprintHelperReviewTargetHandlerKind::UMGWidgetProperty)
 		{
 			Json->SetStringField(TEXT("surface"), TEXT("umg_widget_tree"));
 			UWidgetBlueprint* WidgetBlueprint = Cast<UWidgetBlueprint>(Blueprint);
@@ -429,7 +434,7 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 				Json->SetNumberField(TEXT("child_index"), ChildIndex);
 				Json->SetStringField(TEXT("slot_class"), Widget->Slot ? Widget->Slot->GetClass()->GetPathName() : FString());
 			}
-			if (Target.TargetKind == TEXT("umg_widget_property"))
+			if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::UMGWidgetProperty)
 			{
 				Json->SetStringField(TEXT("property_path"), PropertyName);
 				if (FProperty* Property = Widget->GetClass() ? Widget->GetClass()->FindPropertyByName(FName(*PropertyName)) : nullptr)
@@ -450,7 +455,7 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 
 	if (UDataTable* DataTable = Cast<UDataTable>(Asset))
 	{
-		if (Target.TargetKind == TEXT("datatable_row"))
+		if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::DataTableRow)
 		{
 			Json->SetStringField(TEXT("surface"), TEXT("data_table"));
 			Json->SetStringField(TEXT("row_struct"), DataTable->GetRowStruct() ? DataTable->GetRowStruct()->GetPathName() : FString());
@@ -474,12 +479,10 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 		}
 	}
 
-	if (Target.TargetKind == TEXT("object_property") ||
-		Target.TargetKind == TEXT("data_asset_property") ||
-		Target.TargetKind == TEXT("class_default_property"))
+	if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::ObjectProperty)
 	{
 		Json->SetStringField(TEXT("surface"), TEXT("details"));
-		UObject* PropertyOwner = Target.TargetKind == TEXT("class_default_property")
+		UObject* PropertyOwner = FBlueprintHelperReviewTargetKindRegistry::IsClassDefaultPropertyTargetKind(Target.TargetKind)
 			? FBlueprintHelperReviewBaselineSnapshotServiceUtils::ResolveClassDefaultSnapshotObject(Asset)
 			: Asset;
 		Json->SetStringField(TEXT("property_owner_class"), FBlueprintHelperReviewBaselineSnapshotServiceUtils::GetObjectClassPathNameSafe(PropertyOwner));
@@ -519,7 +522,7 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 		return Json;
 	}
 
-	if (Target.TargetKind == TEXT("asset_factory"))
+	if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::AssetFactory)
 	{
 		Json->SetStringField(TEXT("surface"), TEXT("asset"));
 		Json->SetBoolField(TEXT("exists"), true);

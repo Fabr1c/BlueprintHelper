@@ -11,6 +11,43 @@ class UFunction;
 class UK2Node;
 class UK2Node_CallFunction;
 
+struct FBlueprintHelperCallFunctionPinType
+{
+	FString Category;
+	FString SubCategory;
+	FString ObjectPath;
+	FString ContainerType;
+	bool bIsReference = false;
+	bool bIsConst = false;
+
+	bool IsValid() const
+	{
+		return !Category.IsEmpty() || !ObjectPath.IsEmpty();
+	}
+};
+
+struct FBlueprintHelperCallFunctionCandidateInfo
+{
+	FString StableId;
+	FString DisplayName;
+	FString OwnerClassPath;
+	FString NativeFunctionName;
+	FString Category;
+	FString NodeClassPath;
+	FString MatchReason;
+	FString ReturnType;
+	FString WorldContextPin;
+	FString TargetObjectPin;
+	TArray<FString> InputPins;
+	int32 Score = 0;
+	bool bGraphCompatible = false;
+	bool bFromActionDatabase = false;
+	bool bBlueprintCallable = false;
+	bool bBlueprintPure = false;
+	bool bLatent = false;
+	bool bRequiresWorldContext = false;
+};
+
 enum class EBlueprintHelperCallFunctionResolveStatus : uint8
 {
 	Resolved,
@@ -28,9 +65,17 @@ struct FBlueprintHelperCallFunctionCandidate
 	FString Category;
 	FString NodeClassPath;
 	FString MatchReason;
+	FString ReturnType;
+	FString WorldContextPin;
+	FString TargetObjectPin;
+	TArray<FString> InputPins;
 	int32 Score = 0;
 	bool bGraphCompatible = false;
 	bool bFromActionDatabase = false;
+	bool bBlueprintCallable = false;
+	bool bBlueprintPure = false;
+	bool bLatent = false;
+	bool bRequiresWorldContext = false;
 	TWeakObjectPtr<UFunction> Function;
 	TSubclassOf<UK2Node_CallFunction> NodeClass;
 	TWeakObjectPtr<UBlueprintNodeSpawner> NodeSpawner;
@@ -45,6 +90,10 @@ struct FBlueprintHelperCallFunctionResolveRequest
 	FString AmbiguityPolicy;
 	TArray<FString> CategoryPriority;
 	TArray<FString> ArgumentNames;
+	TMap<FString, FString> ArgumentTypes;
+	TMap<FString, FBlueprintHelperCallFunctionPinType> ArgumentPinTypes;
+	FString TargetObjectType;
+	FBlueprintHelperCallFunctionPinType TargetObjectPinType;
 	bool bAllowFuzzyUnique = true;
 	int32 MaxCandidates = 8;
 };
@@ -56,7 +105,7 @@ struct FBlueprintHelperCallFunctionResolveResult
 	FString Message;
 	FBlueprintHelperCallFunctionCandidate Selected;
 	TArray<FBlueprintHelperCallFunctionCandidate> Candidates;
-	TArray<FString> CandidateFunctions;
+	TArray<FBlueprintHelperCallFunctionCandidateInfo> CandidateFunctions;
 
 	bool IsResolved() const
 	{

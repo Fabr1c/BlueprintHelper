@@ -41,6 +41,54 @@ test('direct blueprint_get_runtime_profile calls matching Bridge command', async
   assert.equal(JSON.parse(writes.join('')).status, 'completed');
 });
 
+test('delayed Bridge calls emit Agent wait hints to stderr without contaminating stdout JSON', async () => {
+  const writes: string[] = [];
+  const errors: string[] = [];
+  const previousInitial = process.env['BPH_CLI_WAIT_HINT_INITIAL_MS'];
+  const previousInterval = process.env['BPH_CLI_WAIT_HINT_INTERVAL_MS'];
+  process.env['BPH_CLI_WAIT_HINT_INITIAL_MS'] = '1';
+  process.env['BPH_CLI_WAIT_HINT_INTERVAL_MS'] = '50';
+  try {
+    const bridge = {
+      sendCommand: async (command: string, payload?: Record<string, unknown>): Promise<BridgeResponse> => {
+        assert.equal(command, 'get_runtime_profile');
+        assert.deepEqual(payload, {});
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        return {
+          request_id: 'runtime_profile',
+          success: true,
+          result: {
+            ok: true,
+            schema: 'BlueprintHelper.ToolResult.v1',
+            operation: 'get_runtime_profile',
+            status: 'completed',
+            modified: false,
+            data: { version: '0.4.1' },
+          },
+        };
+      },
+    };
+
+    const exitCode = await runCli({
+      argv: ['blueprint_get_runtime_profile', '--json', '{}', '--select', 'status'],
+      cwd: process.cwd(),
+      bridge,
+      runner: {} as never,
+      stdout: (line) => writes.push(line),
+      stderr: (line) => errors.push(line),
+    });
+
+    assert.equal(exitCode, 0);
+    assert.equal(JSON.parse(writes.join('')).status, 'completed');
+    assert.doesNotMatch(writes.join(''), /waiting for UE Bridge response/);
+    assert.match(errors.join(''), /waiting for UE Bridge response: command=get_runtime_profile/);
+    assert.match(errors.join(''), /keep waiting unless the CLI exits/);
+  } finally {
+    restoreEnv('BPH_CLI_WAIT_HINT_INITIAL_MS', previousInitial);
+    restoreEnv('BPH_CLI_WAIT_HINT_INTERVAL_MS', previousInterval);
+  }
+});
+
 test('direct blueprint_close_editor calls matching Bridge command when expert flag is present', async () => {
   const writes: string[] = [];
   const calls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
@@ -172,4 +220,12 @@ test('frozen direct Bridge tools are not exposed through CLI tool invocation', a
   assert.equal(writes.join(''), '');
   assert.match(errors.join(''), /Unsupported BlueprintHelper CLI command/);
 });
+
+function restoreEnv(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+  process.env[name] = value;
+}
 

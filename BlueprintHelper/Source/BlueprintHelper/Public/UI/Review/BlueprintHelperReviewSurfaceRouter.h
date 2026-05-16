@@ -39,7 +39,4 @@ public:
 
 private:
 	static const TCHAR* SurfaceDebugName(EBlueprintHelperReviewSurface Surface);
-	static bool LegacyFallbackMatchesSurface(
-		const FBlueprintHelperReviewVisibleChange& Change,
-		EBlueprintHelperReviewSurface Surface);
 };

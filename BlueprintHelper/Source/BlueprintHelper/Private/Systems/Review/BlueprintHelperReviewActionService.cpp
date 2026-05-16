@@ -44,6 +44,7 @@
 #include "Systems/ToolClusters/CleanupOwnership/BlueprintHelperConvertBlockToUserOwnedService.h"
 #include "Systems/Transactions/BlueprintHelperTransactionJournalService.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
+#include "Shared/Review/BlueprintHelperReviewTargetKindRegistry.h"
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
 #include "UObject/SoftObjectPath.h"
@@ -465,7 +466,7 @@ public:
 
 	static bool IsAssetFactoryTarget(const FBlueprintHelperReviewAtomicTarget& Target)
 	{
-		return Target.TargetKind.Equals(TEXT("asset_factory"), ESearchCase::IgnoreCase)
+		return FBlueprintHelperReviewTargetKindRegistry::IsAssetFactoryTargetKind(Target.TargetKind)
 			|| Target.TargetKey.StartsWith(TEXT("asset_factory:"), ESearchCase::IgnoreCase);
 	}
 
@@ -1046,7 +1047,8 @@ public:
 			return false;
 		}
 
-		UBlueprint* Blueprint = Target.TargetKind == TEXT("class_default_property")
+		UBlueprint* Blueprint =
+			FBlueprintHelperReviewTargetKindRegistry::IsClassDefaultPropertyTargetKind(Target.TargetKind)
 			? Cast<UBlueprint>(Asset)
 			: nullptr;
 		UObject* PropertyOwner = Asset;
@@ -1237,7 +1239,8 @@ public:
 			}
 		}
 
-		if (Target.TargetKind == TEXT("umg_widget_property"))
+		if (FBlueprintHelperReviewTargetKindRegistry::GetHandlerKind(Target.TargetKind)
+			== EBlueprintHelperReviewTargetHandlerKind::UMGWidgetProperty)
 		{
 			if (PropertyName.IsEmpty())
 			{
@@ -1293,32 +1296,32 @@ public:
 			return false;
 		}
 
-		if (Target.TargetKind == TEXT("blueprint_variable"))
+		using FSnapshotRestoreHandler = TFunction<bool()>;
+		struct FSnapshotRestoreRoute
 		{
-			return RestoreBlueprintVariableFromSnapshot(Target, Snapshot, OutError);
-		}
-		if (Target.TargetKind == TEXT("component"))
+			EBlueprintHelperReviewTargetHandlerKind HandlerKind;
+			FSnapshotRestoreHandler Handler;
+		};
+
+		const TArray<FSnapshotRestoreRoute> Routes =
 		{
-			return RestoreComponentFromSnapshot(Target, Snapshot, OutError);
-		}
-		if (Target.TargetKind == TEXT("datatable_row"))
+			{ EBlueprintHelperReviewTargetHandlerKind::BlueprintVariable, [&Target, &Snapshot, &OutError]() { return RestoreBlueprintVariableFromSnapshot(Target, Snapshot, OutError); } },
+			{ EBlueprintHelperReviewTargetHandlerKind::Component, [&Target, &Snapshot, &OutError]() { return RestoreComponentFromSnapshot(Target, Snapshot, OutError); } },
+			{ EBlueprintHelperReviewTargetHandlerKind::DataTableRow, [&Target, &Snapshot, &OutError]() { return RestoreDataTableRowFromSnapshot(Target, Snapshot, OutError); } },
+			{ EBlueprintHelperReviewTargetHandlerKind::StructField, [&Target, &Snapshot, &OutError]() { return RestoreStructFieldFromSnapshot(Target, Snapshot, OutError); } },
+			{ EBlueprintHelperReviewTargetHandlerKind::ObjectProperty, [&Target, &Snapshot, &OutError]() { return RestoreObjectPropertyFromSnapshot(Target, Snapshot, OutError); } },
+			{ EBlueprintHelperReviewTargetHandlerKind::UMGWidget, [&Target, &Snapshot, &OutError]() { return RestoreWidgetFromSnapshot(Target, Snapshot, OutError); } },
+			{ EBlueprintHelperReviewTargetHandlerKind::UMGWidgetProperty, [&Target, &Snapshot, &OutError]() { return RestoreWidgetFromSnapshot(Target, Snapshot, OutError); } }
+		};
+
+		const EBlueprintHelperReviewTargetHandlerKind HandlerKind =
+			FBlueprintHelperReviewTargetKindRegistry::GetHandlerKind(Target.TargetKind);
+		for (const FSnapshotRestoreRoute& Route : Routes)
 		{
-			return RestoreDataTableRowFromSnapshot(Target, Snapshot, OutError);
-		}
-		if (Target.TargetKind == TEXT("struct_field") ||
-			Target.TargetKind == TEXT("structure_field"))
-		{
-			return RestoreStructFieldFromSnapshot(Target, Snapshot, OutError);
-		}
-		if (Target.TargetKind == TEXT("object_property") ||
-			Target.TargetKind == TEXT("data_asset_property") ||
-			Target.TargetKind == TEXT("class_default_property"))
-		{
-			return RestoreObjectPropertyFromSnapshot(Target, Snapshot, OutError);
-		}
-		if (Target.TargetKind == TEXT("umg_widget") || Target.TargetKind == TEXT("umg_widget_property"))
-		{
-			return RestoreWidgetFromSnapshot(Target, Snapshot, OutError);
+			if (Route.HandlerKind == HandlerKind)
+			{
+				return Route.Handler();
+			}
 		}
 
 		OutError = FString::Printf(TEXT("snapshot_restore_unsupported_target_kind:%s"), *Target.TargetKind);
@@ -1328,16 +1331,7 @@ public:
 	static bool ShouldUseSnapshotRestore(const FBlueprintHelperReviewAtomicTarget& Target)
 	{
 		return !Target.BeforeSnapshotJson.IsEmpty()
-			&& (Target.TargetKind == TEXT("blueprint_variable")
-				|| Target.TargetKind == TEXT("component")
-				|| Target.TargetKind == TEXT("datatable_row")
-				|| Target.TargetKind == TEXT("struct_field")
-				|| Target.TargetKind == TEXT("structure_field")
-				|| Target.TargetKind == TEXT("object_property")
-				|| Target.TargetKind == TEXT("data_asset_property")
-				|| Target.TargetKind == TEXT("class_default_property")
-				|| Target.TargetKind == TEXT("umg_widget")
-				|| Target.TargetKind == TEXT("umg_widget_property"));
+			&& FBlueprintHelperReviewTargetKindRegistry::SupportsSnapshotRestore(Target.TargetKind);
 	}
 
 	static FString MakeObjectPathFromAssetPath(FString AssetPath)
@@ -1979,7 +1973,7 @@ public:
 			return;
 		}
 
-		if (Target.TargetKind == TEXT("graph_node") || Target.TargetKey.Contains(TEXT(":node:")))
+		if (FBlueprintHelperReviewTargetKindRegistry::IsGraphNodeTarget(Target.TargetKind, Target.TargetKey))
 		{
 			const FString NodeName = Target.NodeGuid.IsEmpty()
 				? ExtractReviewTargetTail(Target.TargetKey, TEXT("node"))
@@ -1995,7 +1989,7 @@ public:
 			return;
 		}
 
-		if (Target.TargetKind == TEXT("graph_block") || Target.TargetKey.Contains(TEXT(":block:")))
+		if (FBlueprintHelperReviewTargetKindRegistry::IsGraphBlockTarget(Target.TargetKind, Target.TargetKey))
 		{
 			const FString BlockId = ExtractReviewTargetTail(Target.TargetKey, TEXT("block"));
 			for (UEdGraphNode* Node : Graph->Nodes)
@@ -3018,7 +3012,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::ConvertO
 	{
 		return PersistFailure(TEXT("convert_owner_block_target_not_found"), FString());
 	}
-	if (MatchedTarget.TargetKind != TEXT("graph_block") && !MatchedTarget.TargetKey.Contains(TEXT(":block:")))
+	if (!FBlueprintHelperReviewTargetKindRegistry::IsGraphBlockTarget(MatchedTarget.TargetKind, MatchedTarget.TargetKey))
 	{
 		return PersistFailure(TEXT("convert_owner_block_requires_graph_block_target"), FString());
 	}

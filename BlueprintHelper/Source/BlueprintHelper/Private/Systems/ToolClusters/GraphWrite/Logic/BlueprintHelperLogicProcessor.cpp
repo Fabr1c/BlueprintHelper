@@ -1,4 +1,5 @@
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicProcessor.h"
+#include "Systems/ToolClusters/GraphWrite/Logic/Utils/BlueprintHelperGraphWriteClassificationUtils.h"
 
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -123,51 +124,6 @@ public:
 		return false;
 	}
 
-	static FString NormalizeToken(const FString& InValue)
-	{
-		FString Result = InValue;
-		Result.TrimStartAndEndInline();
-		Result.ReplaceInline(TEXT("\""), TEXT(""));
-		Result.ReplaceInline(TEXT("'"), TEXT(""));
-		Result.ReplaceInline(TEXT(" "), TEXT(""));
-		Result.ReplaceInline(TEXT("_"), TEXT(""));
-		Result.ReplaceInline(TEXT("-"), TEXT(""));
-		return Result.ToLower();
-	}
-
-	static FString NormalizeNodeTypeName(const FString& InValue)
-	{
-		FString Result = InValue;
-		Result.TrimStartAndEndInline();
-		Result.ReplaceInline(TEXT("\""), TEXT(""));
-
-		const int32 LastSlashIndex = Result.Find(TEXT("/"), ESearchCase::IgnoreCase, ESearchDir::FromEnd);
-		if (LastSlashIndex != INDEX_NONE)
-		{
-			Result = Result.Mid(LastSlashIndex + 1);
-		}
-
-		const int32 LastDotIndex = Result.Find(TEXT("."), ESearchCase::IgnoreCase, ESearchDir::FromEnd);
-		if (LastDotIndex != INDEX_NONE)
-		{
-			Result = Result.Mid(LastDotIndex + 1);
-		}
-
-		return Result.TrimStartAndEnd();
-	}
-
-	static bool ContainsAny(const FString& Text, std::initializer_list<const TCHAR*> Needles)
-	{
-		for (const TCHAR* Needle : Needles)
-		{
-			if (Needle && Text.Contains(Needle, ESearchCase::IgnoreCase))
-			{
-				return true;
-			}
-		}
-		return false;
-	}
-
 	static FString ResolveGraphName(const TSharedPtr<FJsonObject>& GraphObject, int32 GraphIndex)
 	{
 		FString Name = ReadFirstStringField(GraphObject, TEXT("name"), TEXT("graph"), TEXT("graph_name"));
@@ -201,92 +157,6 @@ public:
 		}
 
 		return NodeId;
-	}
-
-	static FString ClassifyNode(const TSharedPtr<FJsonObject>& NodeObject, const FString& RawType)
-	{
-		const FString NormalizedType = NormalizeNodeTypeName(RawType);
-		const FString TypeKey = NormalizeToken(NormalizedType);
-
-		if (NodeObject->HasField(TEXT("comment")) || TypeKey.Contains(TEXT("comment")))
-		{
-			return TEXT("comment");
-		}
-		if (TypeKey.Contains(TEXT("ifthenelse")) || TypeKey.Contains(TEXT("branch")))
-		{
-			return TEXT("branch");
-		}
-		if (TypeKey.Contains(TEXT("switch")))
-		{
-			return TEXT("switch");
-		}
-		if (TypeKey.Contains(TEXT("executionsequence")) || TypeKey.Contains(TEXT("sequence")))
-		{
-			return TEXT("sequence");
-		}
-		if (TypeKey.Contains(TEXT("loop")) || TypeKey.Contains(TEXT("foreach")) || TypeKey.Contains(TEXT("while")))
-		{
-			return TEXT("loop");
-		}
-		if (TypeKey.Contains(TEXT("calldelegate")) || TypeKey.Contains(TEXT("broadcast")))
-		{
-			return TEXT("broadcast");
-		}
-		if (TypeKey.Contains(TEXT("adddelegate")) || TypeKey.Contains(TEXT("assigndelegate")) || TypeKey.Contains(TEXT("createdelegate")) || TypeKey.Contains(TEXT("binddelegate")))
-		{
-			return TEXT("bind_delegate");
-		}
-		if (TypeKey.Contains(TEXT("removedelegate")) || TypeKey.Contains(TEXT("cleardelegate")) || TypeKey.Contains(TEXT("unbinddelegate")))
-		{
-			return TEXT("unbind_delegate");
-		}
-		if (NodeObject->HasField(TEXT("timeline")) || TypeKey.Contains(TEXT("timeline")))
-		{
-			return TEXT("timeline");
-		}
-		if (NodeObject->HasField(TEXT("cast")) || TypeKey.Contains(TEXT("dynamiccast")) || TypeKey.Contains(TEXT("cast")))
-		{
-			return TEXT("cast");
-		}
-		if (TypeKey.Contains(TEXT("knot")) || TypeKey.Contains(TEXT("reroute")))
-		{
-			return TEXT("reroute");
-		}
-		if (NodeObject->HasField(TEXT("event"))
-			|| NodeObject->HasField(TEXT("component_event"))
-			|| NodeObject->HasField(TEXT("input_action_path"))
-			|| TypeKey.Contains(TEXT("customevent"))
-			|| TypeKey.Contains(TEXT("componentboundevent"))
-			|| TypeKey.Contains(TEXT("enhancedinputaction"))
-			|| TypeKey.Equals(TEXT("k2nodeevent"))
-			|| TypeKey.Equals(TEXT("event")))
-		{
-			return TEXT("event");
-		}
-		if (NodeObject->HasField(TEXT("variable")) || TypeKey.Contains(TEXT("variableget")))
-		{
-			if (TypeKey.Contains(TEXT("variableset")))
-			{
-				return TEXT("set");
-			}
-			return TEXT("get");
-		}
-		if (TypeKey.Contains(TEXT("variableset")))
-		{
-			return TEXT("set");
-		}
-		if (ContainsAny(TypeKey, {TEXT("self"), TEXT("literal"), TEXT("getenumerator"), TEXT("getarrayitem")}))
-		{
-			return TEXT("get");
-		}
-		if (ContainsAny(TypeKey, {TEXT("callfunction"), TEXT("macroinstance"), TEXT("promotableoperator"), TEXT("commutativeassociativebinaryoperator"), TEXT("spawnactor"), TEXT("formattext"), TEXT("select")})
-			|| NodeObject->HasField(TEXT("function_name"))
-			|| NodeObject->HasField(TEXT("macro")))
-		{
-			return TEXT("call");
-		}
-
-		return TEXT("unknown");
 	}
 
 	static void ResolveNodePosition(const TSharedPtr<FJsonObject>& NodeObject, FLogicNode& OutNode)
@@ -325,7 +195,7 @@ public:
 
 		TryReadStringField(NodeObject, TEXT("type"), Node.RawType);
 		Node.Label = ResolveNodeLabel(NodeObject, Node.Id);
-		Node.Category = ClassifyNode(NodeObject, Node.RawType);
+		Node.Category = FBlueprintHelperGraphWriteClassificationUtils::ClassifyLogicNode(NodeObject, Node.RawType);
 		ResolveNodePosition(NodeObject, Node);
 		return Node;
 	}
@@ -395,20 +265,6 @@ public:
 		}
 	}
 
-	static FString NormalizeExplicitKind(const FString& RawKind)
-	{
-		const FString KindKey = NormalizeToken(RawKind);
-		if (KindKey.Contains(TEXT("exec")) || KindKey.Contains(TEXT("execution")) || KindKey.Contains(TEXT("flow")) || KindKey.Contains(TEXT("control")))
-		{
-			return TEXT("exec");
-		}
-		if (KindKey.Contains(TEXT("data")) || KindKey.Contains(TEXT("value")) || KindKey.Contains(TEXT("dependency")) || KindKey.Contains(TEXT("property")))
-		{
-			return TEXT("data");
-		}
-		return TEXT("unknown");
-	}
-
 	static bool TryReadPinTypeCategory(const TSharedPtr<FJsonObject>& Object, FString& OutCategory)
 	{
 		if (!Object.IsValid())
@@ -461,28 +317,6 @@ public:
 		return false;
 	}
 
-	static bool IsExecPinName(const FString& PinName)
-	{
-		const FString Key = NormalizeToken(PinName);
-		return Key.Equals(TEXT("exec"))
-			|| Key.Equals(TEXT("execute"))
-			|| Key.Equals(TEXT("then"))
-			|| Key.StartsWith(TEXT("then"))
-			|| Key.Equals(TEXT("completed"))
-			|| Key.Equals(TEXT("complete"))
-			|| Key.Equals(TEXT("finished"))
-			|| Key.Equals(TEXT("true"))
-			|| Key.Equals(TEXT("false"))
-			|| Key.Equals(TEXT("loopbody"))
-			|| Key.Equals(TEXT("body"))
-			|| Key.Equals(TEXT("castsucceeded"))
-			|| Key.Equals(TEXT("castfailed"))
-			|| Key.Equals(TEXT("valid"))
-			|| Key.Equals(TEXT("notvalid"))
-			|| Key.Equals(TEXT("isvalid"))
-			|| Key.Equals(TEXT("isnotvalid"));
-	}
-
 	static FLogicLink ParseLink(const TSharedPtr<FJsonObject>& LinkObject)
 	{
 		FLogicLink Link;
@@ -492,7 +326,7 @@ public:
 		FString ExplicitKind;
 		if (TryReadStringField(LinkObject, TEXT("kind"), ExplicitKind) || TryReadStringField(LinkObject, TEXT("type"), ExplicitKind))
 		{
-			Link.Kind = NormalizeExplicitKind(ExplicitKind);
+			Link.Kind = FBlueprintHelperGraphWriteClassificationUtils::NormalizeExplicitLinkKind(ExplicitKind);
 			Link.Confidence = Link.Kind == TEXT("unknown") ? TEXT("unknown") : TEXT("explicit");
 			return Link;
 		}
@@ -502,7 +336,7 @@ public:
 			|| TryReadEndpointPinTypeCategory(LinkObject, TEXT("source"), PinTypeCategory)
 			|| TryReadEndpointPinTypeCategory(LinkObject, TEXT("target"), PinTypeCategory))
 		{
-			Link.Kind = NormalizeToken(PinTypeCategory).Equals(TEXT("exec")) ? TEXT("exec") : TEXT("data");
+			Link.Kind = FBlueprintHelperGraphWriteClassificationUtils::NormalizeToken(PinTypeCategory).Equals(TEXT("exec")) ? TEXT("exec") : TEXT("data");
 			Link.Confidence = TEXT("explicit");
 			return Link;
 		}
@@ -514,7 +348,8 @@ public:
 			return Link;
 		}
 
-		if (IsExecPinName(Link.SourcePin) || IsExecPinName(Link.TargetPin))
+		if (FBlueprintHelperGraphWriteClassificationUtils::IsExecPinName(Link.SourcePin)
+			|| FBlueprintHelperGraphWriteClassificationUtils::IsExecPinName(Link.TargetPin))
 		{
 			Link.Kind = TEXT("exec");
 			Link.Confidence = TEXT("inferred");

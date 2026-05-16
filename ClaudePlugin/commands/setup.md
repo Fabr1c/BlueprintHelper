@@ -107,7 +107,7 @@ Report `Preferences: created default Conservative`. Tell the user to run `/bluep
 
 ## Step 4 - One Diagnostics Check
 
-Do not ask for broad CLI or MCP command-surface permission. CLI is the TaskSpec write mainline; MCP remains available for editor lifecycle and long-lived debug/recovery flows. The full CLI command list belongs in `CLI_Tools_API_Reference.md`.
+Do not ask for broad command-surface permission. CLI is the TaskSpec, read, diagnostics, result-query, and lifecycle mainline. The full CLI command list belongs in `CLI_Tools_API_Reference.md`.
 
 Because this command has no shell permission, ask the user whether they want to run exactly one diagnostics command themselves:
 

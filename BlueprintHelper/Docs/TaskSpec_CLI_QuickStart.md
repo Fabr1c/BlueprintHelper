@@ -8,7 +8,7 @@ Task write mainline: Agent -> BlueprintHelper CLI -> task-core -> Python Task Co
 
 Use the CLI when an Agent can run shell commands and should avoid large escaped JSON output. The CLI is the current Agent-facing surface for ordinary TaskSpec writes in shell-capable environments. It keeps Agent stdout compact, supports selected-field output, and still preserves TaskSpec-first writes, Python compilation, Bridge preview, and UE Task Runtime execution.
 
-Editor launch/close is handled through the global BlueprintHelper MCP lifecycle tools when an Agent owns lifecycle. The CLI remains the ordinary transport for TaskSpec, ReadSpec, diagnostics, and result queries.
+Editor launch/close, TaskSpec, ReadSpec, diagnostics, and result queries all use the CLI in the current Agent workflow. Older MCP lifecycle wiring is deprecated and should not be the documented mainline for new Agent setup.
 
 ## Prerequisites
 
@@ -46,7 +46,7 @@ bh blueprinthelper_execute_task --file .\execute_wrapper.json --select status,ta
 bh blueprint_get_runtime_profile --json "{}" --select status,summary
 ```
 
-The direct CLI registry is the current non-frozen Agent-facing TaskSpec/read/debug summary surface. Frozen legacy/expert tools are not re-exposed through CLI, even if `--expert` is passed. Use the global MCP lifecycle tools for Agent-owned `blueprint_open_editor` / `blueprint_close_editor`.
+The direct CLI registry is the current non-frozen Agent-facing TaskSpec/read/debug summary surface. Frozen legacy/expert tools are not re-exposed through CLI, even if `--expert` is passed. Use `bh open_editor` / `bh close_editor`, or the direct `blueprint_open_editor` / `blueprint_close_editor` names, when an Agent owns editor lifecycle.
 
 ## Preview
 
@@ -75,6 +75,16 @@ node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js task execute --file .
 ## Read Full Result
 
 Use the artifact paths returned by summary output for follow-up inspection. Use `--format json` only when the Agent truly needs the full JSON in context.
+
+## Waiting Hints
+
+UE-bound Bridge requests can wait behind editor-side work. When a Bridge call is still pending, the CLI writes progress hints to `stderr` such as:
+
+```text
+[BlueprintHelper CLI] waiting for UE Bridge response: command=preview_task_plan elapsed_ms=5000. UE-bound requests are serialized on the editor side; keep waiting unless the CLI exits.
+```
+
+Agents should treat these lines as keep-alive/progress messages, not command output. Parse only `stdout` for the final `BlueprintHelper.CliResult.v1` JSON. The default CLI Bridge request timeout is 10 minutes for Agent workflows. Tune it with `BPH_CLI_BRIDGE_REQUEST_TIMEOUT_MS`; tune or disable hints with `BPH_CLI_WAIT_HINT_INITIAL_MS`, `BPH_CLI_WAIT_HINT_INTERVAL_MS`, or `BPH_CLI_WAIT_HINTS=0`.
 
 ## CallFunction Notes
 

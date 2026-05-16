@@ -2,6 +2,8 @@
 
 #include "UI/Review/BlueprintHelperReviewReadableTextUtils.h"
 
+#include "Shared/Review/BlueprintHelperReviewTargetKindRegistry.h"
+
 FString FBlueprintHelperReviewReadableTextUtils::ExtractReadableTail(FString Text)
 {
 	Text.TrimStartAndEndInline();
@@ -93,7 +95,7 @@ bool FBlueprintHelperReviewReadableTextUtils::IsAssetFactoryChange(const FBluepr
 	return Change.AtomicTargets.ContainsByPredicate(
 		[](const FBlueprintHelperReviewAtomicTarget& Target)
 		{
-			return Target.TargetKind.Equals(TEXT("asset_factory"), ESearchCase::IgnoreCase)
+			return FBlueprintHelperReviewTargetKindRegistry::IsAssetFactoryTargetKind(Target.TargetKind)
 				|| Target.TargetKey.StartsWith(TEXT("asset_factory:"), ESearchCase::IgnoreCase);
 		});
 }
@@ -204,7 +206,9 @@ FString FBlueprintHelperReviewReadableTextUtils::GetReadableTargetSuffix(const F
 	const FBlueprintHelperReviewAtomicTarget* Target = Change.AtomicTargets.Num() > 0
 		? &Change.AtomicTargets[0]
 		: nullptr;
-	const FString TargetKind = Target ? Target->TargetKind.ToLower() : FString();
+	const EBlueprintHelperReviewTargetHandlerKind HandlerKind = Target
+		? FBlueprintHelperReviewTargetKindRegistry::GetHandlerKind(Target->TargetKind)
+		: EBlueprintHelperReviewTargetHandlerKind::Unsupported;
 	const EBlueprintHelperReviewSurface Surface = Target ? Target->Surface : EBlueprintHelperReviewSurface::Unknown;
 
 	if (IsAssetFactoryChange(Change))
@@ -215,20 +219,23 @@ FString FBlueprintHelperReviewReadableTextUtils::GetReadableTargetSuffix(const F
 	{
 		return FString();
 	}
-	if (TargetKind.Contains(TEXT("datatable_row")) || Surface == EBlueprintHelperReviewSurface::DataTable)
+	if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::DataTableRow
+		|| Surface == EBlueprintHelperReviewSurface::DataTable)
 	{
 		return TEXT("\u884c");
 	}
-	if (TargetKind.Contains(TEXT("component")) || Surface == EBlueprintHelperReviewSurface::Components)
+	if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::Component
+		|| Surface == EBlueprintHelperReviewSurface::Components)
 	{
 		return TEXT("\u7ec4\u4ef6");
 	}
-	if (TargetKind.Contains(TEXT("signature")))
+	if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::Signature)
 	{
 		return TEXT("\u7b7e\u540d");
 	}
-	if (TargetKind.Contains(TEXT("variable"))
-		|| TargetKind.Contains(TEXT("property"))
+	if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::BlueprintVariable
+		|| HandlerKind == EBlueprintHelperReviewTargetHandlerKind::ObjectProperty
+		|| HandlerKind == EBlueprintHelperReviewTargetHandlerKind::UMGWidgetProperty
 		|| Surface == EBlueprintHelperReviewSurface::DataAsset)
 	{
 		return TEXT("\u53d8\u91cf");

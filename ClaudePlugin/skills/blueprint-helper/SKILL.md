@@ -25,7 +25,9 @@ Do not use BlueprintHelper tools for C++, TypeScript, Python, JSON, docs, tests,
 
 ## Entry Rule
 
-The supported Agent-facing entry for ordinary BlueprintHelper reads and writes is the BlueprintHelper CLI. Use the global BlueprintHelper MCP lifecycle commands only for opening or closing Unreal Editor from an Agent workflow; do not route ordinary read/write tools through MCP.
+The supported Agent-facing entry for BlueprintHelper reads, writes, diagnostics, result queries, and editor lifecycle is the BlueprintHelper CLI. Older MCP lifecycle wiring is deprecated; do not route ordinary workflows through MCP.
+
+When a CLI command waits on UE Bridge work, it may emit `waiting for UE Bridge response` lines to `stderr`. Treat those lines as keep-alive progress and continue waiting unless the CLI exits; parse only `stdout` as the final JSON result.
 
 For complex JSON input, copy a template from `BlueprintHelper/Resources/AgentGuide/Templates/`, edit the copy, then call the CLI with `--file`. Direct tool-name TaskSpec calls use wrapper templates with root field `task_spec`; grouped `task preview` / `task execute` calls use bare `BlueprintHelper.TaskSpec.v1` files.
 

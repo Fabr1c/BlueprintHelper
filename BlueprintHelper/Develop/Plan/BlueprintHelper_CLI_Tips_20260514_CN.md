@@ -449,3 +449,20 @@ ame_collision_policy=reuse_if_exists。
 
 阻塞内容：
 1. 若未来只在打开复杂蓝图编辑器/ReviewPanel 后复现崩溃，需要记录当时打开的 Tab 和 DebugBundle，再把关闭流程升级为分阶段显式关闭面板。
+## 2026-05-16 CallFunction typed pin smoke CLI Tips
+
+新增内容：
+1. 当前 Windows PowerShell 环境不支持 Set-Content -Encoding utf8NoBOM，会报无法转换枚举值；写 CLI JSON 文件时使用 [System.IO.File]::WriteAllText(, , [System.Text.UTF8Encoding]::new(False))。
+2. h.cmd task preview/execute --file 读取的是 TaskSpec 根对象，不接受 { "task_spec": { ... } } 包装层；如果用了包装层，Zod 会在根路径报 schema/task_type/target/behavior Required。
+
+修复内容：
+1. 自动化 smoke 脚本应固定使用 UTF-8 no BOM 写文件，并避免 --json 复杂转义。
+
+变更需求：
+1. 旧文档中带 { task_spec: ... } 的示例只适合作为历史示例；当前 CLI task 命令应传入根 TaskSpec。
+
+快速修复：
+1. 无。
+
+阻塞内容：
+1. 无。

@@ -170,74 +170,12 @@ inline const TCHAR* BlueprintHelperReviewSurfaceToString(EBlueprintHelperReviewS
 	return TEXT("unknown");
 }
 
-inline EBlueprintHelperReviewSurface BlueprintHelperReviewNormalizeSurfaceForTarget(
+BLUEPRINTHELPER_API EBlueprintHelperReviewSurface BlueprintHelperReviewNormalizeSurfaceForTarget(
 	EBlueprintHelperReviewSurface Surface,
 	const FString& TargetKind,
 	const FString& TargetKey,
 	const FString& VisualGroupKey = FString(),
-	const FString& LocationKey = FString())
-{
-	FString Text = TargetKind + TEXT(" ") + TargetKey + TEXT(" ") + VisualGroupKey + TEXT(" ") + LocationKey;
-	Text.ToLowerInline();
-
-	if (Text.Contains(TEXT("graph_block"))
-		|| Text.Contains(TEXT("graph_node"))
-		|| Text.Contains(TEXT("graph_pin"))
-		|| Text.Contains(TEXT("graph_link"))
-		|| Text.Contains(TEXT("graph:"))
-		|| Text.Contains(TEXT("node:"))
-		|| Text.Contains(TEXT("pin:")))
-	{
-		return EBlueprintHelperReviewSurface::Graph;
-	}
-
-	if (Text.Contains(TEXT("component")))
-	{
-		return EBlueprintHelperReviewSurface::Components;
-	}
-
-	if (Text.Contains(TEXT("blueprint_variable"))
-		|| Text.Contains(TEXT("signature"))
-		|| Text.Contains(TEXT("dispatcher"))
-		|| Text.Contains(TEXT("delegate"))
-		|| Text.Contains(TEXT("function"))
-		|| Text.Contains(TEXT("macro"))
-		|| Text.Contains(TEXT("my_blueprint")))
-	{
-		return EBlueprintHelperReviewSurface::MyBlueprint;
-	}
-
-	if (Text.Contains(TEXT("umg_widget"))
-		|| Text.Contains(TEXT("widget_tree"))
-		|| Text.Contains(TEXT("widgetblueprint"))
-		|| Text.Contains(TEXT("widget_blueprint")))
-	{
-		return EBlueprintHelperReviewSurface::UMGWidgetTree;
-	}
-
-	if (Text.Contains(TEXT("datatable"))
-		|| Text.Contains(TEXT("data_table")))
-	{
-		return EBlueprintHelperReviewSurface::DataTable;
-	}
-
-	if (Text.Contains(TEXT("data_asset_property"))
-		|| Text.Contains(TEXT("dataasset"))
-		|| Text.Contains(TEXT("data_asset"))
-		|| Text.Contains(TEXT("structure"))
-		|| Text.Contains(TEXT("struct_field"))
-		|| Text.Contains(TEXT("object_property")))
-	{
-		return EBlueprintHelperReviewSurface::DataAsset;
-	}
-
-	if (Surface != EBlueprintHelperReviewSurface::Unknown)
-	{
-		return Surface;
-	}
-
-	return EBlueprintHelperReviewSurface::Details;
-}
+	const FString& LocationKey = FString());
 
 struct FBlueprintHelperReviewAtomicTarget
 {
@@ -405,181 +343,28 @@ struct FBlueprintHelperReviewConvertOwnerBlockRequest
 	bool bSettingProfileAllowsConversion = false;
 };
 
-inline FString BlueprintHelperReviewNormalizeLocation(const FBlueprintHelperReviewVisibleChange& Change)
-{
-	FString Location = Change.LocationKey;
-	if (Location.IsEmpty())
-	{
-		Location = Change.DisplayLabel;
-	}
-	Location.ToLowerInline();
-	return Location;
-}
+BLUEPRINTHELPER_API FString BlueprintHelperReviewNormalizeLocation(
+	const FBlueprintHelperReviewVisibleChange& Change);
 
-inline int32 BlueprintHelperReviewCountSurfaceTargets(
+BLUEPRINTHELPER_API int32 BlueprintHelperReviewCountSurfaceTargets(
 	const FBlueprintHelperReviewVisibleChange& Change,
-	EBlueprintHelperReviewSurface Surface)
-{
-	int32 Count = 0;
-	for (const FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
-	{
-		if (Target.Surface == Surface)
-		{
-			++Count;
-		}
-	}
-	return Count;
-}
+	EBlueprintHelperReviewSurface Surface);
 
-inline bool BlueprintHelperReviewTargetKindCanRouteToDetails(const FString& TargetKind)
-{
-	FString Kind = TargetKind;
-	Kind.ToLowerInline();
-	return Kind.Contains(TEXT("class_default"))
-		|| Kind.Contains(TEXT("blueprint_default"))
-		|| Kind.Contains(TEXT("blueprint_setting"))
-		|| Kind.Contains(TEXT("blueprint_variable"))
-		|| Kind.Contains(TEXT("variable"))
-		|| Kind.Contains(TEXT("component"))
-		|| Kind.Contains(TEXT("object_property"))
-		|| Kind.Contains(TEXT("property"))
-		|| Kind.Contains(TEXT("class_setting"))
-		|| Kind.Contains(TEXT("blueprint_class"))
-		|| Kind.Contains(TEXT("interface"))
-		|| Kind.Contains(TEXT("signature"))
-		|| Kind.Contains(TEXT("dispatcher"))
-		|| Kind.Contains(TEXT("blueprint_variable"))
-		|| Kind.Contains(TEXT("variable_default"))
-		|| Kind.Contains(TEXT("object_property"));
-}
+BLUEPRINTHELPER_API bool BlueprintHelperReviewTargetKindCanRouteToDetails(const FString& TargetKind);
 
-inline int32 BlueprintHelperReviewCountDetailsTargets(
-	const FBlueprintHelperReviewVisibleChange& Change)
-{
-	int32 Count = 0;
-	for (const FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
-	{
-		if (Target.Surface == EBlueprintHelperReviewSurface::Details)
-		{
-			++Count;
-			continue;
-		}
+BLUEPRINTHELPER_API int32 BlueprintHelperReviewCountDetailsTargets(
+	const FBlueprintHelperReviewVisibleChange& Change);
 
-		if (Target.Surface != EBlueprintHelperReviewSurface::DataAsset
-			&& Target.Surface != EBlueprintHelperReviewSurface::DataTable
-			&& Target.Surface != EBlueprintHelperReviewSurface::UMGWidgetTree
-			&& BlueprintHelperReviewTargetKindCanRouteToDetails(Target.TargetKind))
-		{
-			++Count;
-		}
-	}
-	return Count;
-}
+BLUEPRINTHELPER_API bool BlueprintHelperReviewHasExplicitTargets(const FBlueprintHelperReviewVisibleChange& Change);
 
-inline bool BlueprintHelperReviewHasExplicitTargets(const FBlueprintHelperReviewVisibleChange& Change)
-{
-	return Change.AtomicTargets.Num() > 0;
-}
+BLUEPRINTHELPER_API bool BlueprintHelperReviewShouldShowOnSurface(
+	const FBlueprintHelperReviewVisibleChange& Change,
+	EBlueprintHelperReviewSurface Surface);
 
-inline bool BlueprintHelperReviewShouldShowInComponents(const FBlueprintHelperReviewVisibleChange& Change)
-{
-	if (BlueprintHelperReviewHasExplicitTargets(Change))
-	{
-		return BlueprintHelperReviewCountSurfaceTargets(Change, EBlueprintHelperReviewSurface::Components) > 0;
-	}
-
-	const FString Location = BlueprintHelperReviewNormalizeLocation(Change);
-	return Location.Contains(TEXT("component"));
-}
-
-inline bool BlueprintHelperReviewShouldShowInGraph(const FBlueprintHelperReviewVisibleChange& Change)
-{
-	if (BlueprintHelperReviewHasExplicitTargets(Change))
-	{
-		return BlueprintHelperReviewCountSurfaceTargets(Change, EBlueprintHelperReviewSurface::Graph) > 0;
-	}
-
-	const FString Location = BlueprintHelperReviewNormalizeLocation(Change);
-	return !Change.GraphName.IsEmpty()
-		|| Location.Contains(TEXT("graph:"))
-		|| Location.Contains(TEXT("node:"))
-		|| Location.Contains(TEXT("pin:"));
-}
-
-inline bool BlueprintHelperReviewShouldShowInDetails(const FBlueprintHelperReviewVisibleChange& Change)
-{
-	if (BlueprintHelperReviewHasExplicitTargets(Change))
-	{
-		return BlueprintHelperReviewCountDetailsTargets(Change) > 0;
-	}
-
-	const FString Location = BlueprintHelperReviewNormalizeLocation(Change);
-	return Change.ChangeKind == EBlueprintHelperReviewChangeKind::VariableModified
-		|| Change.ChangeKind == EBlueprintHelperReviewChangeKind::SignatureModified
-		|| Location.Contains(TEXT("property"))
-		|| Location.Contains(TEXT("variable"))
-		|| Location.Contains(TEXT("signature"))
-		|| Location.Contains(TEXT("dispatcher"));
-}
-
-inline bool BlueprintHelperReviewShouldShowInUMGWidgetTree(const FBlueprintHelperReviewVisibleChange& Change)
-{
-	if (BlueprintHelperReviewHasExplicitTargets(Change))
-	{
-		return BlueprintHelperReviewCountSurfaceTargets(Change, EBlueprintHelperReviewSurface::UMGWidgetTree) > 0;
-	}
-
-	const FString Location = BlueprintHelperReviewNormalizeLocation(Change);
-	return Location.Contains(TEXT("umg_widget"))
-		|| Location.Contains(TEXT("widget_tree"))
-		|| Location.Contains(TEXT("widgetblueprint"))
-		|| Location.Contains(TEXT("widget_blueprint"));
-}
-
-inline bool BlueprintHelperReviewShouldShowInDataTable(const FBlueprintHelperReviewVisibleChange& Change)
-{
-	if (BlueprintHelperReviewHasExplicitTargets(Change))
-	{
-		return BlueprintHelperReviewCountSurfaceTargets(Change, EBlueprintHelperReviewSurface::DataTable) > 0;
-	}
-
-	const FString Location = BlueprintHelperReviewNormalizeLocation(Change);
-	return Location.Contains(TEXT("datatable"))
-		|| Location.Contains(TEXT("data_table"));
-}
-
-inline bool BlueprintHelperReviewShouldShowInDataAsset(const FBlueprintHelperReviewVisibleChange& Change)
-{
-	if (BlueprintHelperReviewHasExplicitTargets(Change))
-	{
-		return BlueprintHelperReviewCountSurfaceTargets(Change, EBlueprintHelperReviewSurface::DataAsset) > 0;
-	}
-
-	const FString Location = BlueprintHelperReviewNormalizeLocation(Change);
-	return Location.Contains(TEXT("data_asset"))
-		|| Location.Contains(TEXT("dataasset"))
-		|| Location.Contains(TEXT("structure"))
-		|| Location.Contains(TEXT("struct_field"))
-		|| Location.Contains(TEXT("object_property"));
-}
-
-inline bool BlueprintHelperReviewShouldShowInMyBlueprint(const FBlueprintHelperReviewVisibleChange& Change)
-{
-	if (BlueprintHelperReviewHasExplicitTargets(Change))
-	{
-		return BlueprintHelperReviewCountSurfaceTargets(Change, EBlueprintHelperReviewSurface::MyBlueprint) > 0;
-	}
-
-	if (BlueprintHelperReviewShouldShowInComponents(Change))
-	{
-		return false;
-	}
-
-	const FString Location = BlueprintHelperReviewNormalizeLocation(Change);
-	return Location.Contains(TEXT("my_blueprint"))
-		|| Location.Contains(TEXT("function"))
-		|| Location.Contains(TEXT("macro"))
-		|| Location.Contains(TEXT("variable"))
-		|| Location.Contains(TEXT("dispatcher"))
-		|| Location.Contains(TEXT("delegate"));
-}
+BLUEPRINTHELPER_API bool BlueprintHelperReviewShouldShowInComponents(const FBlueprintHelperReviewVisibleChange& Change);
+BLUEPRINTHELPER_API bool BlueprintHelperReviewShouldShowInGraph(const FBlueprintHelperReviewVisibleChange& Change);
+BLUEPRINTHELPER_API bool BlueprintHelperReviewShouldShowInDetails(const FBlueprintHelperReviewVisibleChange& Change);
+BLUEPRINTHELPER_API bool BlueprintHelperReviewShouldShowInUMGWidgetTree(const FBlueprintHelperReviewVisibleChange& Change);
+BLUEPRINTHELPER_API bool BlueprintHelperReviewShouldShowInDataTable(const FBlueprintHelperReviewVisibleChange& Change);
+BLUEPRINTHELPER_API bool BlueprintHelperReviewShouldShowInDataAsset(const FBlueprintHelperReviewVisibleChange& Change);
+BLUEPRINTHELPER_API bool BlueprintHelperReviewShouldShowInMyBlueprint(const FBlueprintHelperReviewVisibleChange& Change);
