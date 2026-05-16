@@ -333,8 +333,8 @@ export const UMGWidgetTaskSpecSchema = TaskSpecBaseSchema.extend({
       kind: z.string().min(1),
       widget_name: z.string().min(1).optional(),
       widget_class: z.string().min(1).optional(),
-      parent_widget_name: z.string().min(1).optional(),
-      parent_name: z.string().min(1).optional(),
+      parent_widget_name: z.string().optional(),
+      parent_name: z.string().optional(),
       property_name: z.string().min(1).optional(),
       property_path: z.string().min(1).optional(),
       value: z.unknown().optional(),
@@ -589,7 +589,7 @@ export const TaskIssueSchema = z.object({
   path: z.string(),
   message: z.string().min(1),
   suggested_patch: z.record(z.unknown()).optional(),
-});
+}).passthrough();
 
 export const TaskContextPackSchema = z.object({
   schema: z.literal(TASK_CONTEXT_PACK_SCHEMA),

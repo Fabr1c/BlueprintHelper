@@ -1184,3 +1184,93 @@
 - 验证：AgentFaceService/task-core npm.cmd run build 通过；AgentFaceService/cli npm.cmd run build 通过。
 - 距离期望差距：当前 tool-surface 中间层已完成解耦；未发现剩余拆分阻塞。
 - 阻塞内容：无。
+## 2026-05-16 进度：CallFunction 通用 UE ActionDatabase 解析路径
+
+状态：已完成本轮实现并通过构建验证。
+
+已完成内容：
+1. `callfunction` 候选解析从单纯扫描 `UFunction` 扩展为优先使用 UE `FBlueprintActionDatabase`。
+2. 接入 `FBlueprintActionFilter`，按当前 `UBlueprint` 与 `UEdGraph` 过滤可用 `UK2Node_CallFunction` action。
+3. resolver candidate 保存 `UBlueprintNodeSpawner`，执行创建节点时优先走 UE spawner 路径，fallback 才走旧 `UK2Node_CallFunction + SetFromFunction`。
+4. 移除 `Break Vector / Make Vector` 的局部硬编码排序补丁，改为通用 `category_priority` 排序加权。
+5. `search_mode`、`ambiguity`、`category_priority` 已从 SemanticIR statement/expression 解析贯通到 call fragment 构建。
+6. `candidate_functions` ambiguity message 保持按目标函数分组格式，便于 Agent 在不唯一时回填稳定候选。
+7. `make_struct` 移除 Vector 专用 `MakeVector` 创建路径，回到通用 struct operation builder。
+8. `reuse_existing -> reuse_if_exists` 兼容 alias 已在 TS/Python/C++ 三侧保留，模板应改用规范值 `reuse_if_exists`。
+
+验证结果：
+1. `npm.cmd --prefix .\AgentFaceService\task-core run build` 通过。
+2. `npm.cmd --prefix .\AgentFaceService\cli run build` 通过。
+3. `Build.bat TemplateEditor Win64 Development -Project=D:\UEProjects\Template\Template.uproject -WaitMutex -NoHotReload` 通过。
+
+距离期望差距：
+1. 尚未运行真实编辑器覆盖测试确认复杂函数搜索场景的排序与 UE 菜单完全一致。
+2. 多 call TaskSpec 的 `candidate_functions` 当前在单 resolver message 中分组，尚未由 preview 汇总层聚合成跨目标数组。
+3. typed pin compatibility 评分尚未完整接入候选 pin 级别的类型约束，只完成了 SemanticIR 层的基础类型校验和通用 category priority。
+
+阻塞内容：
+1. 无当前编译阻塞；后续需要编辑器端覆盖测试与 preview 汇总层实现。
+## 2026-05-16 进度：CallFunction 候选函数结构化返回闭环
+
+时间：2026-05-16 13:36:20
+
+新增内容：
+1. 完成 UE dry_run issue 的结构化 candidate_functions 字段输出。
+2. 完成 AgentFace TaskIssue 扩展字段透传，避免 Agent 从 message 文本解析候选函数。
+3. 保持通用 UE ActionDatabase/Filter/Spawner 解析路径，不对 Break Vector / Make Vector 做片面特判。
+
+修复内容：
+1. 修复 candidate_functions 仅作为 message 内嵌 JSON 字符串出现的问题。
+2. 修复测试 TaskSpec 中 Graph 名与 Custom Event 名相同导致 execute 编译失败的用例问题。
+
+变更需求：
+1. 候选函数返回按目标函数分组，返回形状为 candidate_functions: [{ target, candidates }]。
+
+快速修复：
+1. TS task-core build 通过。
+2. CLI build 通过。
+3. UE TemplateEditor Win64 Development 编译通过。
+
+验证结果：
+1. create_asset Actor Blueprint execute 成功。
+2. Print String callfunction preview 成功。
+3. Print String callfunction execute 成功。
+4. Break 模糊查询 preview 被正确 blocked，并返回结构化 candidate_functions 数组。
+
+距离期望差距：
+1. 当前已达到本轮关于通用 CallFunction 解析和候选函数结构化返回的核心期望。
+2. 多目标、多 call 同一 TaskSpec 的批量候选聚合尚未做压力测试；当前结构已支持继续扩展。
+
+阻塞内容：
+1. 无。
+## 2026-05-16 进度：close_editor PreviewScene 崩溃修复
+
+时间：2026-05-16 13:41:05
+
+新增内容：
+1. close_editor 关闭策略从延迟 QUIT_EDITOR 调整为延迟 CLOSE_SLATE_MAINFRAME。
+2. 关闭命令延迟从 0.25 秒调整为 0.75 秒，确保 Bridge 响应返回后再进入 MainFrame 关闭流程。
+
+修复内容：
+1. 修复 close_editor 仍可能触发 BlueprintEditor PreviewScene.GetWorld() 断言崩溃的问题。
+2. 关闭路径不再直接进入 UUnrealEdEngine::CloseEditor()，改为让 MainFrame/Slate 的 CanCloseManager 先处理资产编辑器 Tab teardown。
+
+变更需求：
+1. MCP 仍保留编辑器生命周期职责；普通 BlueprintHelper 操作继续走 CLI。
+
+快速修复：
+1. TS task-core build 通过。
+2. CLI build 通过。
+3. UE TemplateEditor Win64 Development 编译通过。
+
+验证结果：
+1. MCP lueprint_open_editor 启动成功并等待 Bridge 可用。
+2. MCP lueprint_close_editor(save_all=true) 返回成功。
+3. 关闭命令返回 8 秒后未发现 UnrealEditor.exe 残留进程。
+
+距离期望差距：
+1. 当前 close_editor 基础开关编辑器验证通过。
+2. 尚未覆盖“打开多个 BlueprintEditor/ReviewPanel 子窗口后关闭”的压力场景；如果再次出现断言，需要进一步把关闭动作拆为显式关闭资产编辑器 Tab + MainFrame close 的分阶段状态机。
+
+阻塞内容：
+1. 无当前阻塞。

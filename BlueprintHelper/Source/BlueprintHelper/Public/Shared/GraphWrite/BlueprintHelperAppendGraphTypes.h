@@ -199,12 +199,35 @@ struct FBlueprintHelperAppendGraphResultData
 // ─── DryRunIssue ───
 
 /** dry_run 阻断问题。 */
+struct FBlueprintHelperDryRunCandidateFunctionGroup
+{
+	FString Target;
+	TArray<FString> Candidates;
+
+	TSharedRef<FJsonObject> ToJson() const
+	{
+		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+		if (!Target.IsEmpty()) Json->SetStringField(TEXT("target"), Target);
+		if (Candidates.Num() > 0)
+		{
+			TArray<TSharedPtr<FJsonValue>> Arr;
+			for (const FString& Candidate : Candidates)
+			{
+				Arr.Add(MakeShared<FJsonValueString>(Candidate));
+			}
+			Json->SetArrayField(TEXT("candidates"), Arr);
+		}
+		return Json;
+	}
+};
+
 struct FBlueprintHelperDryRunIssue
 {
 	FString Code;
 	FString Message;
 	FString Target;
 	FString Source;
+	TArray<FBlueprintHelperDryRunCandidateFunctionGroup> CandidateFunctions;
 
 	TSharedRef<FJsonObject> ToJson() const
 	{
@@ -213,6 +236,15 @@ struct FBlueprintHelperDryRunIssue
 		if (!Message.IsEmpty()) Json->SetStringField(TEXT("message"), Message);
 		if (!Target.IsEmpty()) Json->SetStringField(TEXT("target"), Target);
 		if (!Source.IsEmpty()) Json->SetStringField(TEXT("source"), Source);
+		if (CandidateFunctions.Num() > 0)
+		{
+			TArray<TSharedPtr<FJsonValue>> Arr;
+			for (const FBlueprintHelperDryRunCandidateFunctionGroup& Group : CandidateFunctions)
+			{
+				Arr.Add(MakeShared<FJsonValueObject>(Group.ToJson()));
+			}
+			Json->SetArrayField(TEXT("candidate_functions"), Arr);
+		}
 		return Json;
 	}
 };

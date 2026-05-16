@@ -1,6 +1,6 @@
 ---
 name: blueprint-helper-configure
-description: Use when the user wants to configure BlueprintHelper for Codex, update safety/profile preferences, change Agent workflow policy, or asks for the Codex equivalent of the Claude `/blueprint-helper:configure` command.
+description: description: Use for BlueprintHelper Codex setup/configuration, safety profiles ReadOnly/Conservative/Standard/AutoRepair, .blueprinthelper/agent-profile.json, UserPreferences, missing capability policy, save policy, or the Codex equivalent of Claude /blueprint-helper:configure.
 ---
 
 # BlueprintHelper Configure for Codex

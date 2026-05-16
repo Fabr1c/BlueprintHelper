@@ -608,7 +608,27 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 					DryRunData.DryRun.Result = EBlueprintHelperDryRunResult::Blocked;
 					DryRunData.DryRun.bCanExecute = false;
 					DryRunData.DryRun.BlockedBy.Add(TEXT("semantic_graph_write_failed"));
-					DryRunData.DryRun.Errors.Add({TEXT("semantic_graph_write_failed"), ImportMessage, TEXT("logic_spec"), TEXT("logic_spec")});
+					FBlueprintHelperDryRunIssue SemanticIssue{
+						TEXT("semantic_graph_write_failed"),
+						ImportMessage,
+						TEXT("logic_spec"),
+						TEXT("logic_spec")
+					};
+					for (const TSharedPtr<FUnresolvedNodeItem>& UnresolvedNode : UnresolvedNodes)
+					{
+						if (!UnresolvedNode.IsValid())
+						{
+							continue;
+						}
+						for (const FBlueprintHelperCandidateFunctionGroup& Group : UnresolvedNode->CandidateFunctions)
+						{
+							FBlueprintHelperDryRunCandidateFunctionGroup DryRunGroup;
+							DryRunGroup.Target = Group.Target;
+							DryRunGroup.Candidates = Group.Candidates;
+							SemanticIssue.CandidateFunctions.Add(MoveTemp(DryRunGroup));
+						}
+					}
+					DryRunData.DryRun.Errors.Add(MoveTemp(SemanticIssue));
 
 					FBlueprintHelperToolError Error;
 					Error.Code = TEXT("semantic_graph_write_failed");

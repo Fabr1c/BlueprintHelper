@@ -203,6 +203,10 @@ struct FParsedDelegateReference
 
 	/** 绑定的函数名称（用于 CreateDelegate / AssignDelegate）。 */
 	FString FunctionName;
+
+	FString SearchMode;
+	FString AmbiguityPolicy;
+	TArray<FString> CategoryPriority;
 };
 
 /**
@@ -423,6 +427,10 @@ struct FParsedNode
 	/** 节点对应的函数名称。 */
 	FString FunctionName;
 
+	FString SearchMode;
+	FString AmbiguityPolicy;
+	TArray<FString> CategoryPriority;
+
 	/** 节点 X 坐标。 */
 	float X = 0.0f;
 
@@ -484,6 +492,12 @@ struct FParsedNode
 /**
  * 未匹配节点数据，供 Slate 左侧列表展示与手动映射使用。
  */
+struct FBlueprintHelperCandidateFunctionGroup
+{
+	FString Target;
+	TArray<FString> Candidates;
+};
+
 struct FUnresolvedNodeItem
 {
 	/** 原始节点数据。 */
@@ -494,6 +508,7 @@ struct FUnresolvedNodeItem
 
 	/** 未解析原因。 */
 	FString Reason;
+	TArray<FBlueprintHelperCandidateFunctionGroup> CandidateFunctions;
 };
 
 /**
@@ -532,6 +547,10 @@ struct FEngineFunctionItem
 
 	/** 显示函数名称。 */
 	FString FunctionName;
+
+	FString SearchMode;
+	FString AmbiguityPolicy;
+	TArray<FString> CategoryPriority;
 
 	/** 原生函数名称。 */
 	FString NativeFunctionName;

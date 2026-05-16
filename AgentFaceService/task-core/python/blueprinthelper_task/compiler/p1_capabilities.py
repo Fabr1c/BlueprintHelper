@@ -22,6 +22,12 @@ def supports_p1_task_type(task_type: Any) -> bool:
     return task_type in P1_TASK_TYPES
 
 
+def _normalize_name_collision_policy(value: Any) -> Any:
+    if isinstance(value, str) and value.strip() == "reuse_existing":
+        return "reuse_if_exists"
+    return value
+
+
 def compile_p1_task_spec(task_spec: Dict[str, Any], dry_run: bool) -> Dict[str, Any]:
     task_type = task_spec.get("task_type")
     if task_type == "create_asset":
@@ -141,6 +147,9 @@ def _compile_component_task_plan(task_spec: Dict[str, Any]) -> Dict[str, Any]:
                 _copy_optional_string_as(attach, compiled, "parent", "parent_component", f"{path}.attach.parent")
                 _copy_optional_string_as(attach, compiled, "socket", "socket_name", f"{path}.attach.socket")
                 _copy_optional_string_as(attach, compiled, "rule", "attach_rule", f"{path}.attach.rule")
+            if "on_name_conflict" in op:
+                op = dict(op)
+                op["on_name_conflict"] = _normalize_name_collision_policy(op.get("on_name_conflict"))
             _copy_optional_string_as(op, compiled, "on_name_conflict", "name_collision_policy", f"{path}.on_name_conflict")
         elif op_name == "set_component_properties":
             compiled["settings"] = _validate_settings(op, "properties", f"{path}.properties")
@@ -274,6 +283,8 @@ def _compile_umg_widget_task_plan(task_spec: Dict[str, Any]) -> Dict[str, Any]:
             _copy_required_string(op, compiled, "widget_class", f"{path}.widget_class")
             _copy_required_string(op, compiled, "widget_name", f"{path}.widget_name")
             for field in ["parent_widget_name", "parent_name"]:
+                if field in op and op[field] == "":
+                    continue
                 _copy_optional_string(op, compiled, field, f"{path}.{field}")
         elif op_name == "set_widget_property":
             strategy = "widget_property_edit"

@@ -392,11 +392,13 @@ static FString GetSemanticExpressionId(const FBlueprintHelperGraphExpressionIR& 
 static void AddSemanticUnresolved(
 	TArray<TSharedPtr<FUnresolvedNodeItem>>& OutUnresolvedNodes,
 	const FString& DisplayText,
-	const FString& Reason)
+	const FString& Reason,
+	const TArray<FBlueprintHelperCandidateFunctionGroup>& CandidateFunctions = TArray<FBlueprintHelperCandidateFunctionGroup>())
 {
 	TSharedPtr<FUnresolvedNodeItem> UnresolvedItem = MakeShared<FUnresolvedNodeItem>();
 	UnresolvedItem->DisplayText = DisplayText;
 	UnresolvedItem->Reason = Reason;
+	UnresolvedItem->CandidateFunctions = CandidateFunctions;
 	OutUnresolvedNodes.Add(UnresolvedItem);
 }
 
@@ -516,12 +518,14 @@ static void BuildSemanticExpressionFragments(
 
 	FBlueprintHelperNodeFragment Fragment;
 	FString Error;
-	if (!FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(TargetGraph, *Expression, Fragment, Error))
+	TArray<FBlueprintHelperCandidateFunctionGroup> CandidateFunctions;
+	if (!FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(TargetGraph, *Expression, Fragment, Error, &CandidateFunctions))
 	{
 		AddSemanticUnresolved(
 			OutUnresolvedNodes,
 			FString::Printf(TEXT("Expression %s"), *ExpressionId),
-			Error.IsEmpty() ? TEXT("Semantic expression node creation failed.") : Error);
+			Error.IsEmpty() ? TEXT("Semantic expression node creation failed.") : Error,
+			CandidateFunctions);
 		return;
 	}
 
@@ -543,7 +547,8 @@ static bool SpawnSemanticStatementFragment(
 	UEdGraph* TargetGraph,
 	const TSharedPtr<FBlueprintHelperGraphStatementIR>& Statement,
 	FBlueprintHelperNodeFragment& OutFragment,
-	FString& OutError)
+	FString& OutError,
+	TArray<FBlueprintHelperCandidateFunctionGroup>* OutCandidateFunctions = nullptr)
 {
 	if (!Statement.IsValid())
 	{
@@ -559,8 +564,11 @@ static bool SpawnSemanticStatementFragment(
 		NodeData.NodeType = EParsedBlueprintNodeType::CallFunction;
 		NodeData.SourceType = TEXT("K2Node_CallFunction");
 		NodeData.FunctionName = !Statement->Target.IsEmpty() ? Statement->Target : Statement->Name;
+		NodeData.SearchMode = Statement->SearchMode;
+		NodeData.AmbiguityPolicy = Statement->AmbiguityPolicy;
+		NodeData.CategoryPriority = Statement->CategoryPriority;
 		FillLiteralArgsAsDefaults(Statement->Args, NodeData.DefaultValues);
-		return FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment(TargetGraph, NodeData, OutFragment, OutError);
+		return FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment(TargetGraph, NodeData, OutFragment, OutError, OutCandidateFunctions);
 	}
 
 	if (Statement->Kind == EBlueprintHelperGraphStatementKind::Set)
@@ -658,12 +666,14 @@ static FSemanticStatementExecFlow BuildSemanticStatement(
 
 	FBlueprintHelperNodeFragment StatementFragment;
 	FString Error;
-	if (!SpawnSemanticStatementFragment(TargetGraph, Statement, StatementFragment, Error))
+	TArray<FBlueprintHelperCandidateFunctionGroup> CandidateFunctions;
+	if (!SpawnSemanticStatementFragment(TargetGraph, Statement, StatementFragment, Error, &CandidateFunctions))
 	{
 		AddSemanticUnresolved(
 			OutUnresolvedNodes,
 			FString::Printf(TEXT("Statement %s"), *GetSemanticStatementId(*Statement)),
-			Error.IsEmpty() ? TEXT("Semantic statement node creation failed.") : Error);
+			Error.IsEmpty() ? TEXT("Semantic statement node creation failed.") : Error,
+			CandidateFunctions);
 		return Flow;
 	}
 

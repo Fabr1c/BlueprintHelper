@@ -2564,6 +2564,7 @@ function compositeComponentAttachRule(component: Record<string, unknown>): unkno
 }
 
 function normalizeComponentCollisionPolicy(value: unknown): string | undefined {
+  if (value === 'reuse_existing') return 'reuse_if_exists';
   if (value === 'reuse_if_type_matches' || value === 'reuse_if_exists') return 'reuse_if_exists';
   if (value === 'fail_if_exists') return 'fail_if_exists';
   return undefined;

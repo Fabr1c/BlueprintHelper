@@ -8,19 +8,24 @@
   },
   "behavior": {
     "widget_strategy": "widget_blueprint_edit",
-    "changes": [
-      {
-        "kind": "create_widget",
-        "widget_name": "__WIDGET_NAME__",
-        "widget_class": "__WIDGET_CLASS__",
-        "parent_widget_name": "__PARENT_WIDGET_NAME__"
-      },
-      {
-        "kind": "update_widget_property",
-        "widget_name": "__WIDGET_NAME__",
-        "property_path": "__PROPERTY_PATH__",
-        "value": "__VALUE__"
-      }
+      "changes": [
+        {
+          "kind": "create_widget",
+          "widget_name": "__ROOT_WIDGET_NAME__",
+          "widget_class": "__ROOT_WIDGET_CLASS__"
+        },
+        {
+          "kind": "create_widget",
+          "widget_name": "__CHILD_WIDGET_NAME__",
+          "widget_class": "__CHILD_WIDGET_CLASS__",
+          "parent_widget_name": "__ROOT_WIDGET_NAME__"
+        },
+        {
+          "kind": "update_widget_property",
+          "widget_name": "__CHILD_WIDGET_NAME__",
+          "property_path": "__PROPERTY_PATH__",
+          "value": "__VALUE__"
+        }
     ]
   },
   "execution_policy": {

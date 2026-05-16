@@ -477,6 +477,12 @@ static FBlueprintHelperGraphFragmentRef& AddExpressionFragment(
 	AddMetadata(Fragment, TEXT("type"), Expression.Type);
 	AddMetadata(Fragment, TEXT("operator"), Expression.Operator);
 	AddMetadata(Fragment, TEXT("literal"), Expression.LiteralValue);
+	AddMetadata(Fragment, TEXT("search_mode"), Expression.SearchMode);
+	AddMetadata(Fragment, TEXT("ambiguity"), Expression.AmbiguityPolicy);
+	if (Expression.CategoryPriority.Num() > 0)
+	{
+		AddMetadata(Fragment, TEXT("category_priority"), FString::Join(Expression.CategoryPriority, TEXT("|")));
+	}
 	AddResolvedTargetMetadata(Fragment, Expression.ResolvedTarget);
 	Fragment.Layout.Kind = EBlueprintHelperGraphFragmentLayoutKind::Expression;
 	Fragment.Layout.Hints.Add(TEXT("source_path"), Expression.Path);
@@ -726,6 +732,12 @@ static FBlueprintHelperGraphFragmentRef& AddStatementFragment(
 	AddMetadata(Fragment, TEXT("target"), Statement.Target);
 	AddMetadata(Fragment, TEXT("name"), Statement.Name);
 	AddMetadata(Fragment, TEXT("result_symbol"), Statement.ResultSymbolName);
+	AddMetadata(Fragment, TEXT("search_mode"), Statement.SearchMode);
+	AddMetadata(Fragment, TEXT("ambiguity"), Statement.AmbiguityPolicy);
+	if (Statement.CategoryPriority.Num() > 0)
+	{
+		AddMetadata(Fragment, TEXT("category_priority"), FString::Join(Statement.CategoryPriority, TEXT("|")));
+	}
 	AddResolvedTargetMetadata(Fragment, Statement.ResolvedTarget);
 	Fragment.Layout.Kind = EBlueprintHelperGraphFragmentLayoutKind::Statement;
 	Fragment.Layout.Hints.Add(TEXT("source_path"), Statement.Path);

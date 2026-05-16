@@ -3,8 +3,11 @@
   "version": "0.4.3",
   "description": "Codex-facing BlueprintHelper workflow plugin for Unreal Editor lifecycle through MCP and ordinary asset workflows through the CLI.",
   "author": {
-    "name": "Fabric"
+    "name": "Fabr1c",
+    "email": "chairfabric@gmail.com"
   },
+  "homepage": "https://github.com/Fabr1c/BlueprintHelper",
+  "repository": "https://github.com/Fabr1c/BlueprintHelper",
   "license": "MIT",
   "keywords": [
     "unreal-engine",

@@ -5,6 +5,7 @@
 #include "EdGraph/EdGraphSchema.h"
 #include "EdGraphSchema_K2.h"
 #include "K2Node_CallFunction.h"
+#include "Kismet2/BlueprintEditorUtils.h"
 #include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphPatternRegistry.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
@@ -215,18 +216,44 @@ static bool TryConnectDataPins(
 	return false;
 }
 
+static void AppendCandidateFunctionGroup(
+	const FString& Target,
+	const FBlueprintHelperCallFunctionResolveResult& ResolveResult,
+	TArray<FBlueprintHelperCandidateFunctionGroup>* OutCandidateFunctions)
+{
+	if (!OutCandidateFunctions || ResolveResult.CandidateFunctions.Num() == 0)
+	{
+		return;
+	}
+
+	FBlueprintHelperCandidateFunctionGroup Group;
+	Group.Target = Target;
+	Group.Candidates = ResolveResult.CandidateFunctions;
+	OutCandidateFunctions->Add(MoveTemp(Group));
+}
+
 static bool SpawnExplicitObjectCallFragment(
 	UEdGraph* TargetGraph,
 	const FParsedNode& NodeData,
 	const FString& ObjectName,
 	const FString& FunctionName,
 	FBlueprintHelperNodeFragment& OutFragment,
-	FString& OutError)
+	FString& OutError,
+	TArray<FBlueprintHelperCandidateFunctionGroup>* OutCandidateFunctions)
 {
+	FBlueprintHelperCallFunctionResolveRequest ObjectCallRequest;
+	ObjectCallRequest.Graph = TargetGraph;
+	ObjectCallRequest.Blueprint = FBlueprintEditorUtils::FindBlueprintForGraph(TargetGraph);
+	ObjectCallRequest.Query = FunctionName;
+	ObjectCallRequest.SearchMode = NodeData.SearchMode;
+	ObjectCallRequest.AmbiguityPolicy = NodeData.AmbiguityPolicy;
+	ObjectCallRequest.CategoryPriority = NodeData.CategoryPriority;
+	NodeData.DefaultValues.GetKeys(ObjectCallRequest.ArgumentNames);
 	const FBlueprintHelperCallFunctionResolveResult ObjectCallResolveResult =
-		FBlueprintGraphWriteFacade::ResolveFunctionForGraph(TargetGraph, FunctionName, NodeData.DefaultValues);
+		FBlueprintHelperCallFunctionResolver::Resolve(ObjectCallRequest);
 	if (!ObjectCallResolveResult.IsResolved())
 	{
+		AppendCandidateFunctionGroup(FunctionName, ObjectCallResolveResult, OutCandidateFunctions);
 		OutError = ObjectCallResolveResult.Message.IsEmpty()
 			? FString::Printf(TEXT("explicit object call resolve failed: %s"), *FunctionName)
 			: ObjectCallResolveResult.Message;
@@ -347,32 +374,6 @@ static FString ExpressionKindName(const EBlueprintHelperGraphExpressionKind Kind
 		return TEXT("make_struct");
 	default:
 		return TEXT("unknown");
-	}
-}
-
-static bool IsVectorStructType(const FString& Type)
-{
-	const FString Normalized = Type.TrimStartAndEnd();
-	return Normalized.Equals(TEXT("Vector"), ESearchCase::IgnoreCase)
-		|| Normalized.Equals(TEXT("FVector"), ESearchCase::IgnoreCase)
-		|| Normalized.Equals(TEXT("/Script/CoreUObject.Vector"), ESearchCase::IgnoreCase);
-}
-
-static void AddValueAliasForFirstDataOutput(FBlueprintHelperNodeFragment& Fragment, const FString& Type)
-{
-	if (Fragment.DataOutputs.Contains(TEXT("value")) || !Fragment.PrimaryNode)
-	{
-		return;
-	}
-
-	for (UEdGraphPin* Pin : Fragment.PrimaryNode->Pins)
-	{
-		if (Pin && Pin->Direction == EGPD_Output && Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec)
-		{
-			Fragment.DataOutputs.Add(TEXT("value"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("value"), Type, Pin });
-			Fragment.PinBindings.Add(TEXT("value"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("value"), Type, Pin });
-			return;
-		}
 	}
 }
 
@@ -584,14 +585,23 @@ bool FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment(
 	UEdGraph* TargetGraph,
 	const FParsedNode& NodeData,
 	FBlueprintHelperNodeFragment& OutFragment,
-	FString& OutError)
+	FString& OutError,
+	TArray<FBlueprintHelperCandidateFunctionGroup>* OutCandidateFunctions)
 {
 	OutFragment = FBlueprintHelperNodeFragment();
 	FParsedNode BoundNodeData = NodeData;
 	ApplyCallPatternBindings(BoundNodeData);
 
+	FBlueprintHelperCallFunctionResolveRequest ResolveRequest;
+	ResolveRequest.Graph = TargetGraph;
+	ResolveRequest.Blueprint = FBlueprintEditorUtils::FindBlueprintForGraph(TargetGraph);
+	ResolveRequest.Query = BoundNodeData.FunctionName;
+	ResolveRequest.SearchMode = BoundNodeData.SearchMode;
+	ResolveRequest.AmbiguityPolicy = BoundNodeData.AmbiguityPolicy;
+	ResolveRequest.CategoryPriority = BoundNodeData.CategoryPriority;
+	BoundNodeData.DefaultValues.GetKeys(ResolveRequest.ArgumentNames);
 	const FBlueprintHelperCallFunctionResolveResult ResolveResult =
-		FBlueprintGraphWriteFacade::ResolveFunctionForGraph(TargetGraph, BoundNodeData.FunctionName, BoundNodeData.DefaultValues);
+		FBlueprintHelperCallFunctionResolver::Resolve(ResolveRequest);
 
 	if (!ResolveResult.IsResolved())
 	{
@@ -599,9 +609,10 @@ bool FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment(
 		FString FunctionName;
 		if (TryParseExplicitObjectCall(ResolveResult, BoundNodeData.FunctionName, ObjectName, FunctionName))
 		{
-			return SpawnExplicitObjectCallFragment(TargetGraph, BoundNodeData, ObjectName, FunctionName, OutFragment, OutError);
+			return SpawnExplicitObjectCallFragment(TargetGraph, BoundNodeData, ObjectName, FunctionName, OutFragment, OutError, OutCandidateFunctions);
 		}
 
+		AppendCandidateFunctionGroup(BoundNodeData.FunctionName, ResolveResult, OutCandidateFunctions);
 		OutError = ResolveResult.Message.IsEmpty()
 			? FString::Printf(TEXT("call_function resolve failed: %s"), *BoundNodeData.FunctionName)
 			: ResolveResult.Message;
@@ -715,7 +726,8 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 	UEdGraph* TargetGraph,
 	const FBlueprintHelperGraphExpressionIR& Expression,
 	FBlueprintHelperNodeFragment& OutFragment,
-	FString& OutError)
+	FString& OutError,
+	TArray<FBlueprintHelperCandidateFunctionGroup>* OutCandidateFunctions)
 {
 	OutFragment = FBlueprintHelperNodeFragment();
 	OutError.Reset();
@@ -963,6 +975,9 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 		NodeData.NodeType = EParsedBlueprintNodeType::CallFunction;
 		NodeData.SourceType = TEXT("K2Node_CallFunction");
 		NodeData.FunctionName = Expression.Target;
+		NodeData.SearchMode = Expression.SearchMode;
+		NodeData.AmbiguityPolicy = Expression.AmbiguityPolicy;
+		NodeData.CategoryPriority = Expression.CategoryPriority;
 		for (const TPair<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& ArgPair : Expression.Args)
 		{
 			if (ArgPair.Value.IsValid() && ArgPair.Value->Kind == EBlueprintHelperGraphExpressionKind::Literal)
@@ -971,7 +986,7 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 			}
 		}
 
-		if (!BuildCallFunctionFragment(TargetGraph, NodeData, OutFragment, OutError))
+		if (!BuildCallFunctionFragment(TargetGraph, NodeData, OutFragment, OutError, OutCandidateFunctions))
 		{
 			return false;
 		}
@@ -1094,41 +1109,6 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 
 		FParsedNode NodeData;
 		NodeData.Id = MakeExpressionFragmentId(Expression);
-		if (IsVectorStructType(Expression.Type))
-		{
-			NodeData.NodeType = EParsedBlueprintNodeType::CallFunction;
-			NodeData.SourceType = TEXT("K2Node_CallFunction");
-			NodeData.FunctionName = TEXT("/Script/Engine.KismetMathLibrary:MakeVector");
-			for (const TPair<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& ArgPair : Expression.Args)
-			{
-				if (ArgPair.Value.IsValid() && ArgPair.Value->Kind == EBlueprintHelperGraphExpressionKind::Literal)
-				{
-					NodeData.DefaultValues.Add(ArgPair.Key, ArgPair.Value->LiteralValue);
-				}
-			}
-
-			if (!BuildCallFunctionFragment(TargetGraph, NodeData, OutFragment, OutError))
-			{
-				return false;
-			}
-
-			OutFragment.SourceStatementId = Expression.ExpressionId;
-			for (const TPair<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& ArgPair : Expression.Args)
-			{
-				if (ArgPair.Value.IsValid() && ArgPair.Value->Kind != EBlueprintHelperGraphExpressionKind::Literal)
-				{
-					if (UEdGraphPin* FieldPin = FBlueprintGraphWriteFacade::FindPinByAlias(OutFragment.PrimaryNode, ArgPair.Key))
-					{
-						OutFragment.DataInputs.Add(ArgPair.Key, FBlueprintHelperFragmentPinRef{ NodeData.Id, ArgPair.Key, ArgPair.Value->Type, FieldPin });
-						OutFragment.PinBindings.Add(ArgPair.Key, FBlueprintHelperFragmentPinRef{ NodeData.Id, ArgPair.Key, ArgPair.Value->Type, FieldPin });
-					}
-				}
-			}
-			AddValueAliasForFirstDataOutput(OutFragment, Expression.Type);
-			OutFragment.ReviewTargets.Add(Expression.ExpressionId);
-			return true;
-		}
-
 		NodeData.NodeType = EParsedBlueprintNodeType::MakeStruct;
 		NodeData.SourceType = TEXT("K2Node_MakeStruct");
 		NodeData.StructReference.StructPath = Expression.Type;

@@ -5,6 +5,7 @@
 #include "Templates/SubclassOf.h"
 
 class UBlueprint;
+class UBlueprintNodeSpawner;
 class UEdGraph;
 class UFunction;
 class UK2Node;
@@ -29,8 +30,10 @@ struct FBlueprintHelperCallFunctionCandidate
 	FString MatchReason;
 	int32 Score = 0;
 	bool bGraphCompatible = false;
+	bool bFromActionDatabase = false;
 	TWeakObjectPtr<UFunction> Function;
 	TSubclassOf<UK2Node_CallFunction> NodeClass;
+	TWeakObjectPtr<UBlueprintNodeSpawner> NodeSpawner;
 };
 
 struct FBlueprintHelperCallFunctionResolveRequest
@@ -38,6 +41,9 @@ struct FBlueprintHelperCallFunctionResolveRequest
 	UBlueprint* Blueprint = nullptr;
 	UEdGraph* Graph = nullptr;
 	FString Query;
+	FString SearchMode;
+	FString AmbiguityPolicy;
+	TArray<FString> CategoryPriority;
 	TArray<FString> ArgumentNames;
 	bool bAllowFuzzyUnique = true;
 	int32 MaxCandidates = 8;
@@ -50,6 +56,7 @@ struct FBlueprintHelperCallFunctionResolveResult
 	FString Message;
 	FBlueprintHelperCallFunctionCandidate Selected;
 	TArray<FBlueprintHelperCallFunctionCandidate> Candidates;
+	TArray<FString> CandidateFunctions;
 
 	bool IsResolved() const
 	{
