@@ -1,7 +1,7 @@
 {
 	"FileVersion": 3,
-	"Version": 401,
-	"VersionName": "0.4.1",
+	"Version": 404,
+	"VersionName": "0.4.4",
 	"FriendlyName": "BlueprintHelper",
 	"Description": "蓝图辅助工具",
 	"Category": "Helper",

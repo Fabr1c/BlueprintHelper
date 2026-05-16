@@ -33,7 +33,7 @@ function makeProjectEngineDirMissingError(projectFile: string, profilePath: stri
         agent_profile_path: profilePath,
         expected_field: 'environment.ue_engine_dir',
         agent_instruction:
-          'Run /blueprint-helper:setup or /blueprint-helper:configure for this project, then store the UE engine root in .blueprinthelper/agent-profile.json. Do not write project-specific UE paths to global Claude settings.',
+          'Run install.ps1 from the BlueprintHelper repository root with -ProjectFile and -EngineRoot, or update this project with /blueprint-helper:configure. Do not write project-specific UE paths to global Claude settings.',
       },
       null,
       2,
@@ -63,7 +63,7 @@ export function resolveProjectEngineDir(
             agent_profile_path: profilePath,
             error: err instanceof Error ? err.message : String(err),
             agent_instruction:
-              'Fix .blueprinthelper/agent-profile.json or rerun /blueprint-helper:setup for this project.',
+              'Fix .blueprinthelper/agent-profile.json or rerun install.ps1 from the BlueprintHelper repository root with -ProjectFile and -EngineRoot.',
           },
           null,
           2,

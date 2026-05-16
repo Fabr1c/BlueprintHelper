@@ -21,7 +21,7 @@ test('direct blueprint_get_runtime_profile calls matching Bridge command', async
           operation: 'get_runtime_profile',
           status: 'completed',
           modified: false,
-          data: { version: '0.4.1' },
+          data: { version: '0.4.4' },
         },
       };
     },
@@ -63,7 +63,7 @@ test('delayed Bridge calls emit Agent wait hints to stderr without contaminating
             operation: 'get_runtime_profile',
             status: 'completed',
             modified: false,
-            data: { version: '0.4.1' },
+            data: { version: '0.4.4' },
           },
         };
       },

@@ -36,8 +36,7 @@
     "defaultPrompt": [
       "Inspect a Blueprint with BlueprintHelper subagents",
       "Configure BlueprintHelper safety profile for Codex",
-      "Preview and execute a template-first TaskSpec",
-      "Diagnose BlueprintHelper Bridge connectivity"
+      "Preview and execute a template-first TaskSpec"
     ],
     "brandColor": "#2563EB",
     "composerIcon": "./assets/blueprint-helper.svg",

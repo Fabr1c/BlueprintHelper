@@ -1,10 +1,10 @@
-> 2026-05-16 修订：BlueprintHelper CLI 是普通 TaskSpec/ReadSpec/诊断/结果查询和 Editor 生命周期入口；旧 MCP 生命周期路径已废弃。
+> 2026-05-16 修订：BlueprintHelper CLI 是普通 TaskSpec/ReadSpec/诊断/结果查询入口；Editor 启动和关闭由全局 BlueprintHelper MCP 生命周期工具负责。CLI lifecycle helper 只作为兼容/手动 fallback，不作为普通资产工作流入口。
 
 # BlueprintHelper Agent Onboarding Index
 
 If the current Agent environment cannot dispatch a SideAgent but the Main Agent can run the required BlueprintHelper CLI command, the Main Agent may execute one command locally under the SideAgent single-command contract and mark the result as `main_agent_direct_fallback`. Report `tool_unavailable` only when the required BlueprintHelper CLI command is not available.
 
-CLI is the ordinary TaskSpec/read/debug-summary and Editor lifecycle mainline. Older MCP lifecycle wiring is deprecated.
+CLI is the ordinary TaskSpec/read/debug-summary mainline. Global MCP owns Editor lifecycle when an Agent must open or close Unreal Editor. Do not use plugin-local MCP or one-shot shell lifecycle calls as lifecycle validation.
 
 普通 Agent 只走 CLI TaskSpec-first 主线。兼容、测试和专家入口可能仍存在于底层传输层，但这些冻结入口不在本指南中作为可选工具暴露。
 
@@ -55,7 +55,7 @@ CLI output is optimized for Agent use. Use `--omit operation,status` when the de
 
 Template-first authoring is available at `Resources/AgentGuide/Templates/README.md`. Prefer copying a matching JSON template, editing placeholders, and calling the CLI with `--file` instead of authoring large JSON directly in shell command strings.
 
-`blueprint_open_editor` / `blueprint_close_editor` 仅用于用户明确需要启动或关闭目标 Unreal Editor 的 lifecycle preflight；Agent 工作流使用 CLI 生命周期命令。
+`blueprint_open_editor` / `blueprint_close_editor` 仅用于用户明确需要启动或关闭目标 Unreal Editor 的 lifecycle preflight；Agent 工作流优先调用全局 MCP 生命周期工具。
 
 阅读顺序:
 

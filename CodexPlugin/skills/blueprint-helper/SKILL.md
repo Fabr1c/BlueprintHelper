@@ -13,7 +13,7 @@ Use this skill when a user asks Codex to work with Unreal Editor assets through 
 - UMG widget trees and widget properties.
 - UObject, DataAsset, and DataTable values.
 - Compile, save, open, PIE, diagnostics, and Bridge/runtime checks related to editor assets.
-- BlueprintHelper Codex configuration, safety profile, editor lifecycle policy, and Agent workflow preferences.
+- BlueprintHelper Codex configuration, safety profile, and editor lifecycle policy.
 
 Do not use BlueprintHelper for normal repository files. Use normal Codex shell and edit tools for C++, TypeScript, Python, JSON, config, docs, tests, build scripts, and source search.
 
@@ -25,7 +25,7 @@ Important: call editor lifecycle commands only through the global MCP tools `mcp
 
 ## Configure Routing
 
-When the user asks to configure BlueprintHelper for Codex, update safety/profile preferences, or asks for the Codex equivalent of Claude `/blueprint-helper:configure`, use the sibling `blueprint-helper-configure` skill. If that skill is not indexed in the current Codex session, follow `skills/blueprint-helper-configure/SKILL.md` from this plugin package as the fallback configure workflow.
+When the user asks to configure BlueprintHelper safety/profile preferences for Codex, use the sibling `blueprint-helper-configure` skill. If that skill is not indexed in the current Codex session, follow `skills/blueprint-helper-configure/SKILL.md` from this plugin package as the fallback configure workflow.
 
 ## CLI Entry
 
@@ -67,7 +67,7 @@ For complex JSON, prefer copying templates from `BlueprintHelper/Resources/Agent
 
 When the request involves BlueprintHelper, Unreal Engine Blueprint assets, UMG, DataAsset, DataTable, graph edits, editor asset diagnostics, Bridge/runtime checks, preview, execute, compile, save, or UE editor asset writes, the Main Agent must use the Codex subagent workflow.
 
-Do not fall back to local Main Agent execution for BlueprintHelper editor-asset work unless the user explicitly disables subagents. If Codex cannot dispatch subagents, stop and report `sideagent_unavailable`.
+Do not expose this mandatory subagent workflow as a configure-time preference. Do not fall back to local Main Agent execution for BlueprintHelper editor-asset work. If Codex cannot dispatch subagents, stop and report `sideagent_unavailable`.
 
 Configured subagents:
 
