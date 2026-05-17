@@ -79,3 +79,45 @@ The following are intentionally excluded from this Total PASS result because the
 ## Follow-Up Entry
 
 Next validation target is not more MCP testing. The next meaningful gap is live ReviewPanel UI smoke against the current build.
+
+## 2026-05-17 ReviewPanel Automation Addendum
+
+Additional ReviewPanel automation was run after the report above:
+
+| Suite | Result | Report |
+|---|---|---|
+| `BlueprintHelper.Review.UI` | PASS: 45 succeeded, 0 failed | `Saved/Automation/ReviewPanel_UI_20260517_002/index.json` |
+| `BlueprintHelper.Review.VisibleChange` | PASS: 15 succeeded, 0 failed | `Saved/Automation/ReviewPanel_VisibleChange_20260517_001/index.json` |
+| `BlueprintHelper.Review.GraphBounds` | PASS: 2 succeeded, 0 failed | `Saved/Automation/ReviewPanel_GraphBounds_20260517_001/index.json` |
+| `BlueprintHelper.Review.Action` | PASS: 18 succeeded, 0 failed | `Saved/Automation/ReviewPanel_Action_20260517_001/index.json` |
+| `BlueprintHelper.Review.Record` | PASS: 16 succeeded, 0 failed | `Saved/Automation/ReviewPanel_Record_20260517_002/index.json` |
+
+Detailed notes: `ReviewPanel_Automation_Validation_20260517_CN.md`.
+
+This addendum still does not close live ReviewPanel UI smoke. Manual Editor UI validation remains required for real hover/click behavior, GraphPanel visual underlay, and DebugPanel `LoadBundle` / `CaptureFocus`.
+
+## 2026-05-17 Reference / Signature Boundary Addendum
+
+This addendum closes the current automated boundary scope for dependency analysis and signature safety. Deprecated MCP task-tool registration tests are excluded by design; MCP remains only `open` / `close` / `exec command`, while ordinary functionality is validated through CLI / task-core / UE Automation.
+
+| Area | Result | Evidence |
+|---|---|---|
+| task-core schema/build | PASS | `npm.cmd --prefix AgentFaceService\task-core run build` |
+| task-core node tests | PASS: 106 succeeded, 0 failed | `npm.cmd --prefix AgentFaceService\task-core run test:node` |
+| UBT compile | PASS | `Build.bat TemplateEditor Win64 Development -Project=D:\UEProjects\Template\Template.uproject -WaitMutex -NoHotReload` |
+| UMG Widget property binding reference | PASS | `BlueprintHelper.DependencyAnalysis.Service.FindsWidgetPropertyBindingReference` |
+| UMG Widget function binding reference | PASS | `BlueprintHelper.DependencyAnalysis.Service.FindsWidgetFunctionBindingReference` |
+| remove_signature dry-run blocked policy | PASS | `BlueprintHelper.Signature.Service.RemoveSignatureDryRunBlocked` |
+| event dispatcher remove dry-run blocked policy | PASS | `BlueprintHelper.Signature.Service.RemoveEventDispatcherDryRunBlocked` |
+| native event remove dry-run blocked policy | PASS | `BlueprintHelper.Signature.Service.RemoveNativeEventDryRunBlocked` |
+| real function remove when unreferenced | PASS | `BlueprintHelper.Signature.Service.RemoveFunctionExecuteIfUnreferenced` |
+| real custom event remove when unreferenced | PASS | `BlueprintHelper.Signature.Service.RemoveCustomEventExecuteIfUnreferenced` |
+| dispatcher signature migration when unreferenced | PASS | `BlueprintHelper.Signature.Service.MigratesEventDispatcherWhenUnreferenced` |
+
+Closed items:
+
+1. WidgetBlueprint delegate bindings now participate in dependency analysis for member and function/event targets.
+2. `remove_signature` supports real execution through `execute_policy=execute_if_unreferenced`, gated by `read_reference_context`.
+3. `ensure_event_dispatcher` supports `signature_mismatch_policy=migrate_if_unreferenced`, gated by `read_reference_context`.
+4. Self declaration nodes for custom/override events are informational, not blockers.
+5. Automation isolation now ignores only unrelated historical `BlueprintHelperCliSmoke` compile logs during transient signature mutation tests.

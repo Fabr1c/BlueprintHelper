@@ -31,11 +31,51 @@ function editorLifecycleDescription(description: string): string {
   return `Editor lifecycle only. ${description} Ordinary BlueprintHelper reads and writes must use the CLI surface, not MCP.`;
 }
 
+function developerOnlyDescription(description: string): string {
+  return `Developer-only MCP tool. ${description} Ordinary agents must not call this tool; use BlueprintHelper CLI/TaskSpec workflows or editor lifecycle tools instead.`;
+}
+
 export function registerEditorLifecycleTools(
   server: McpServer,
   bridge: BridgeClient,
   config: EditorLifecycleConfig,
 ): void {
+  server.registerTool(
+    'blueprint_developer_exec_console_command',
+    {
+      title: 'BlueprintHelper Developer Exec Console Command',
+      description: developerOnlyDescription(
+        'Execute an Unreal Editor console command through the BlueprintHelper Bridge for local BlueprintHelper development and test orchestration only. The running Editor Bridge still enforces high-risk command configuration and write-session authorization.',
+      ),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+      _meta: {
+        'blueprinthelper/audience': 'developer',
+        'blueprinthelper/ordinaryAgentCallable': false,
+        'blueprinthelper/bridgeCommand': 'exec_console_command',
+      },
+      inputSchema: z.object({
+        command: z.string().min(1).describe('Unreal Editor console command to execute.'),
+        reason: z
+          .string()
+          .min(1)
+          .describe('Developer-facing reason for executing this high-risk console command.'),
+      }),
+    },
+    async ({ command }) => {
+      try {
+        const resp = await bridge.sendCommand('exec_console_command', { command });
+        return toToolResult(resp);
+      } catch (err) {
+        return toErrorResult(err);
+      }
+    },
+  );
+
   server.registerTool(
     'blueprint_close_editor',
     {

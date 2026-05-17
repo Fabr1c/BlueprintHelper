@@ -1,7 +1,8 @@
-// BlueprintHelper Service Layer - internal Blueprint function/event signature service.
+﻿// BlueprintHelper Service Layer - internal Blueprint function/event signature service.
 
 #include "Systems/ToolClusters/BlueprintSignature/BlueprintHelperSignatureService.h"
 
+#include "AssetRegistry/AssetRegistryModule.h"
 #include "Dom/JsonObject.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraphSchema_K2.h"
@@ -9,10 +10,16 @@
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
+#include "Systems/ToolClusters/BlueprintSignature/Utils/BlueprintHelperSignatureMutationUtils.h"
+#include "Systems/ToolClusters/BlueprintSignature/Utils/BlueprintHelperSignatureReferenceContextUtils.h"
 #include "K2Node_CustomEvent.h"
+#include "K2Node_CreateDelegate.h"
 #include "K2Node_EditablePinBase.h"
 #include "K2Node_Event.h"
 #include "Kismet2/BlueprintEditorUtils.h"
+#include "Misc/PackageName.h"
+#include "Modules/ModuleManager.h"
+#include "Shared/Safety/BlueprintHelperDependencyAnalysisService.h"
 #include "Shared/Services/BlueprintHelperBlueprintStructureService.h"
 
 class FBlueprintHelperSignatureServiceLocalUtils
@@ -389,6 +396,26 @@ public:
 					*RequestedPin.Name);
 				return false;
 			}
+		}
+		return true;
+	}
+
+	static bool EventDispatcherSignatureExactlyMatches(
+		const FBlueprintHelperEventDispatcherInfo& ExistingDispatcher,
+		const TArray<FBlueprintHelperSignaturePinSpec>& RequestedPins,
+		FString& OutMessage)
+	{
+		if (!EventDispatcherSignatureMatches(ExistingDispatcher, RequestedPins, OutMessage))
+		{
+			return false;
+		}
+		if (ExistingDispatcher.Params.Num() != RequestedPins.Num())
+		{
+			OutMessage = FString::Printf(
+				TEXT("Existing event dispatcher signature has %d inputs but requested %d."),
+				ExistingDispatcher.Params.Num(),
+				RequestedPins.Num());
+			return false;
 		}
 		return true;
 	}
@@ -1012,7 +1039,6 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureFunction(
 	Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(true, true);
 	return Result;
 }
-
 FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureCustomEvent(
 	const FBlueprintHelperEnsureCustomEventSignatureRequest& Request) const
 {
@@ -1215,6 +1241,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureCustomEve
 FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::RemoveSignature(
 	const FBlueprintHelperRemoveSignatureRequest& Request) const
 {
+	const FString ExecutePolicy = Request.ExecutePolicy.IsEmpty() ? TEXT("blocked_preflight") : Request.ExecutePolicy;
 	if (Request.AssetPath.IsEmpty() || Request.SignatureName.IsEmpty() || Request.SignatureKind.IsEmpty())
 	{
 		FBlueprintHelperToolResultBase Result = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
@@ -1233,21 +1260,21 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::RemoveSignature
 		return Result;
 	}
 
-	if (Request.ExecutePolicy.IsEmpty() || Request.ExecutePolicy != TEXT("blocked_preflight"))
+	if (ExecutePolicy != TEXT("blocked_preflight") && ExecutePolicy != TEXT("execute_if_unreferenced"))
 	{
 		FBlueprintHelperToolResultBase Result = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
 			TEXT("remove_signature"),
 			TEXT("invalid_signature_remove_policy"),
 			EBlueprintHelperToolStage::ParseInput,
-			TEXT("remove_signature execute_policy must be blocked_preflight in this slice."),
+			TEXT("remove_signature execute_policy must be blocked_preflight or execute_if_unreferenced."),
 			TEXT("execute_policy"));
 		FBlueprintHelperSignatureServiceLocalUtils::SetRemoveSignatureTarget(Result, Request);
 		Result.Data = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureBlockedData(
 			Request.bDryRun,
 			TEXT("invalid_signature_remove_policy"),
-			TEXT("remove_signature execute_policy must be blocked_preflight in this slice."),
+			TEXT("remove_signature execute_policy must be blocked_preflight or execute_if_unreferenced."),
 			TEXT("execute_policy"));
-		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("remove_signature_result"), TEXT("execute_policy"), Request.ExecutePolicy);
+		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("remove_signature_result"), TEXT("execute_policy"), ExecutePolicy);
 		Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);
 		return Result;
 	}
@@ -1364,23 +1391,161 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::RemoveSignature
 		}
 	}
 
-	FBlueprintHelperToolResultBase Result = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
+	if (ExecutePolicy == TEXT("blocked_preflight"))
+	{
+		FBlueprintHelperToolResultBase Result = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
+			TEXT("remove_signature"),
+			TEXT("signature_remove_blocked_by_policy"),
+			Request.bDryRun ? EBlueprintHelperToolStage::DryRun : EBlueprintHelperToolStage::Preflight,
+			TEXT("Signature removal requires execute_policy=execute_if_unreferenced."),
+			TEXT("execute_policy"));
+		FBlueprintHelperSignatureServiceLocalUtils::SetRemoveSignatureTarget(Result, Request);
+		Result.Data = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureBlockedData(
+			Request.bDryRun,
+			TEXT("signature_remove_blocked_by_policy"),
+			TEXT("Signature removal requires execute_policy=execute_if_unreferenced."),
+			TEXT("execute_policy"));
+		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("remove_signature_result"), TEXT("signature_kind"), Request.SignatureKind);
+		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("remove_signature_result"), TEXT("signature_name"), Request.SignatureName);
+		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("remove_signature_result"), TEXT("execute_policy"), ExecutePolicy);
+		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("remove_signature_result"), TEXT("requires_reference_context"), Request.bRequireReferenceContext);
+		FBlueprintHelperSignatureReferenceContextUtils::AttachRemoveSignatureReferenceContextHint(Result.Data, Request);
+		Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);
+		return Result;
+	}
+
+	FBlueprintHelperReferenceContextPack ReferenceContext;
+	FString ReferenceContextError;
+	if (!FBlueprintHelperSignatureReferenceContextUtils::TryBuildSignatureReferenceContext(
+		Request.AssetPath,
+		FBlueprintHelperSignatureReferenceContextUtils::ReferenceContextTargetTypeForSignatureKind(Request.SignatureKind),
+		Request.SignatureName,
+		Request.GraphName,
+		ReferenceContext,
+		ReferenceContextError))
+	{
+		FBlueprintHelperToolResultBase Result = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
+			TEXT("remove_signature"),
+			TEXT("signature_reference_context_failed"),
+			EBlueprintHelperToolStage::Preflight,
+			ReferenceContextError,
+			TEXT("reference_context"));
+		FBlueprintHelperSignatureServiceLocalUtils::SetRemoveSignatureTarget(Result, Request);
+		Result.Data = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureBlockedData(
+			Request.bDryRun,
+			TEXT("signature_reference_context_failed"),
+			ReferenceContextError,
+			TEXT("reference_context"));
+		FBlueprintHelperSignatureReferenceContextUtils::AttachRemoveSignatureReferenceContextHint(Result.Data, Request);
+		Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);
+		return Result;
+	}
+
+	if (!FBlueprintHelperSignatureReferenceContextUtils::IsReferenceContextSafeForMutation(ReferenceContext))
+	{
+		FBlueprintHelperToolResultBase Result = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
+			TEXT("remove_signature"),
+			TEXT("signature_remove_blocked_by_references"),
+			EBlueprintHelperToolStage::Preflight,
+			TEXT("Signature removal is blocked by reference context."),
+			TEXT("reference_context"));
+		FBlueprintHelperSignatureServiceLocalUtils::SetRemoveSignatureTarget(Result, Request);
+		Result.Data = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureBlockedData(
+			Request.bDryRun,
+			TEXT("signature_remove_blocked_by_references"),
+			TEXT("Signature removal is blocked by reference context."),
+			TEXT("reference_context"));
+		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("remove_signature_result"), TEXT("signature_kind"), Request.SignatureKind);
+		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("remove_signature_result"), TEXT("signature_name"), Request.SignatureName);
+		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("remove_signature_result"), TEXT("execute_policy"), ExecutePolicy);
+		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("remove_signature_result"), TEXT("requires_reference_context"), Request.bRequireReferenceContext);
+		FBlueprintHelperSignatureReferenceContextUtils::AttachRemoveSignatureReferenceContextSummary(Result.Data, Request, ReferenceContext);
+		Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);
+		return Result;
+	}
+
+	if (Request.bDryRun)
+	{
+		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::DryRun(
+			TEXT("remove_signature"),
+			FBlueprintHelperToolResultBuilder::GenerateTraceId());
+		FBlueprintHelperSignatureServiceLocalUtils::SetRemoveSignatureTarget(Result, Request);
+		Result.Data = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureResultData(true, TEXT("remove_signature_result"), false);
+		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("remove_signature_result"), TEXT("signature_kind"), Request.SignatureKind);
+		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("remove_signature_result"), TEXT("signature_name"), Request.SignatureName);
+		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("remove_signature_result"), TEXT("execute_policy"), ExecutePolicy);
+		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("remove_signature_result"), TEXT("can_execute"), true);
+		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("remove_signature_result"), TEXT("requires_reference_context"), Request.bRequireReferenceContext);
+		FBlueprintHelperSignatureReferenceContextUtils::AttachRemoveSignatureReferenceContextSummary(Result.Data, Request, ReferenceContext);
+		Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);
+		return Result;
+	}
+
+	UBlueprint* Blueprint = FBlueprintHelperSignatureMutationUtils::LoadSignatureBlueprint(Request.AssetPath);
+	if (!Blueprint)
+	{
+		FBlueprintHelperToolResultBase Result = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
+			TEXT("remove_signature"),
+			TEXT("target_blueprint_not_found"),
+			EBlueprintHelperToolStage::ResolveTarget,
+			FString::Printf(TEXT("Unable to load Blueprint: %s."), *Request.AssetPath),
+			TEXT("asset_path"));
+		FBlueprintHelperSignatureServiceLocalUtils::SetRemoveSignatureTarget(Result, Request);
+		Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);
+		return Result;
+	}
+
+	FBlueprintHelperScopedAssetMutation Mutation(
+		FText::FromString(TEXT("BlueprintHelper Remove Signature")),
+		Blueprint);
+
+	bool bRemoved = false;
+	FString RemoveError;
+	if (!FBlueprintHelperSignatureMutationUtils::RemoveSignatureDirect(Blueprint, Request, bRemoved, RemoveError))
+	{
+		Mutation.Rollback();
+		FBlueprintHelperToolResultBase Result = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
+			TEXT("remove_signature"),
+			TEXT("signature_remove_failed"),
+			EBlueprintHelperToolStage::Execute,
+			RemoveError.IsEmpty() ? TEXT("Failed to remove signature.") : RemoveError,
+			TEXT("remove_signature"));
+		FBlueprintHelperSignatureServiceLocalUtils::SetRemoveSignatureTarget(Result, Request);
+		Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);
+		return Result;
+	}
+
+	if (!bRemoved)
+	{
+		Mutation.Rollback();
+		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::NoOp(
+			TEXT("remove_signature"),
+			FBlueprintHelperToolResultBuilder::GenerateTraceId());
+		FBlueprintHelperSignatureServiceLocalUtils::SetRemoveSignatureTarget(Result, Request);
+		Result.Data = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureResultData(false, TEXT("remove_signature_result"), false);
+		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("remove_signature_result"), TEXT("signature_kind"), Request.SignatureKind);
+		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("remove_signature_result"), TEXT("signature_name"), Request.SignatureName);
+		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("remove_signature_result"), TEXT("execute_policy"), ExecutePolicy);
+		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("remove_signature_result"), TEXT("removed"), false);
+		FBlueprintHelperSignatureReferenceContextUtils::AttachRemoveSignatureReferenceContextSummary(Result.Data, Request, ReferenceContext);
+		Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);
+		return Result;
+	}
+
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+	Mutation.Commit();
+
+	FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Applied(
 		TEXT("remove_signature"),
-		TEXT("signature_remove_unsupported"),
-		Request.bDryRun ? EBlueprintHelperToolStage::DryRun : EBlueprintHelperToolStage::Preflight,
-		TEXT("Signature removal is not wired for safe execution yet."),
-		TEXT("remove_signature"));
+		FBlueprintHelperToolResultBuilder::GenerateTraceId());
 	FBlueprintHelperSignatureServiceLocalUtils::SetRemoveSignatureTarget(Result, Request);
-	Result.Data = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureBlockedData(
-		Request.bDryRun,
-		TEXT("signature_remove_unsupported"),
-		TEXT("Signature removal is not wired for safe execution yet."),
-		TEXT("remove_signature"));
+	Result.Data = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureResultData(false, TEXT("remove_signature_result"), false);
 	FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("remove_signature_result"), TEXT("signature_kind"), Request.SignatureKind);
 	FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("remove_signature_result"), TEXT("signature_name"), Request.SignatureName);
-	FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("remove_signature_result"), TEXT("execute_policy"), Request.ExecutePolicy);
-	FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("remove_signature_result"), TEXT("requires_reference_context"), Request.bRequireReferenceContext);
-	Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);
+	FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("remove_signature_result"), TEXT("execute_policy"), ExecutePolicy);
+	FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("remove_signature_result"), TEXT("removed"), true);
+	FBlueprintHelperSignatureReferenceContextUtils::AttachRemoveSignatureReferenceContextSummary(Result.Data, Request, ReferenceContext);
+	Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(true, true);
 	return Result;
 }
 
@@ -1413,13 +1578,14 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureEventDisp
 		return Result;
 	}
 
-	if (Request.SignatureMismatchPolicy.IsEmpty() || Request.SignatureMismatchPolicy != TEXT("block"))
+	const FString SignatureMismatchPolicy = Request.SignatureMismatchPolicy.IsEmpty() ? TEXT("block") : Request.SignatureMismatchPolicy;
+	if (SignatureMismatchPolicy != TEXT("block") && SignatureMismatchPolicy != TEXT("migrate_if_unreferenced"))
 	{
 		FBlueprintHelperToolResultBase Result = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
 			TEXT("ensure_event_dispatcher"),
 			TEXT("invalid_event_dispatcher_mutation_policy"),
 			EBlueprintHelperToolStage::ParseInput,
-			TEXT("ensure_event_dispatcher signature_mismatch_policy must be block in this slice."),
+			TEXT("ensure_event_dispatcher signature_mismatch_policy must be block or migrate_if_unreferenced."),
 			TEXT("signature_mismatch_policy"));
 		FBlueprintHelperSignatureServiceLocalUtils::SetEventDispatcherTarget(Result, Request.AssetPath, Request.DispatcherName);
 		Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);
@@ -1479,7 +1645,11 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureEventDisp
 	if (bExists)
 	{
 		FString MismatchMessage;
-		if (!FBlueprintHelperSignatureServiceLocalUtils::EventDispatcherSignatureMatches(ExistingDispatcher, RequestedPins, MismatchMessage))
+		const bool bSignatureExactlyMatches = FBlueprintHelperSignatureServiceLocalUtils::EventDispatcherSignatureExactlyMatches(
+			ExistingDispatcher,
+			RequestedPins,
+			MismatchMessage);
+		if (!bSignatureExactlyMatches && SignatureMismatchPolicy == TEXT("block"))
 		{
 			FBlueprintHelperToolResultBase Result = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
 				TEXT("ensure_event_dispatcher"),
@@ -1497,6 +1667,175 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureEventDisp
 			Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);
 			return Result;
 		}
+
+		if (!bSignatureExactlyMatches && SignatureMismatchPolicy == TEXT("migrate_if_unreferenced"))
+		{
+			FBlueprintHelperReferenceContextPack ReferenceContext;
+			FString ReferenceContextError;
+			if (!FBlueprintHelperSignatureReferenceContextUtils::TryBuildSignatureReferenceContext(
+				Request.AssetPath,
+				TEXT("event_dispatcher"),
+				Request.DispatcherName,
+				FString(),
+				ReferenceContext,
+				ReferenceContextError))
+			{
+				FBlueprintHelperToolResultBase Result = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
+					TEXT("ensure_event_dispatcher"),
+					TEXT("signature_reference_context_failed"),
+					EBlueprintHelperToolStage::Preflight,
+					ReferenceContextError,
+					TEXT("reference_context"));
+				FBlueprintHelperSignatureServiceLocalUtils::SetEventDispatcherTarget(Result, Request.AssetPath, Request.DispatcherName);
+				Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);
+				return Result;
+			}
+
+			if (!FBlueprintHelperSignatureReferenceContextUtils::IsReferenceContextSafeForMutation(ReferenceContext))
+			{
+				FBlueprintHelperToolResultBase Result = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
+					TEXT("ensure_event_dispatcher"),
+					TEXT("event_dispatcher_signature_migration_blocked_by_references"),
+					EBlueprintHelperToolStage::Preflight,
+					TEXT("Event dispatcher signature migration is blocked by reference context."),
+					TEXT("reference_context"));
+				FBlueprintHelperSignatureServiceLocalUtils::SetEventDispatcherTarget(Result, Request.AssetPath, Request.DispatcherName);
+				Result.Data = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureBlockedData(
+					Request.bDryRun,
+					TEXT("event_dispatcher_signature_migration_blocked_by_references"),
+					TEXT("Event dispatcher signature migration is blocked by reference context."),
+					TEXT("reference_context"),
+					TEXT("event_dispatcher_result"));
+				FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("event_dispatcher_result"), TEXT("signature_mismatch_policy"), SignatureMismatchPolicy);
+				FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("event_dispatcher_result"), TEXT("signature_matches"), false);
+				const TSharedPtr<FJsonObject>* EventDispatcherResult = nullptr;
+				if (Result.Data.IsValid() &&
+					Result.Data->TryGetObjectField(TEXT("event_dispatcher_result"), EventDispatcherResult) &&
+					EventDispatcherResult && EventDispatcherResult->IsValid())
+				{
+					(*EventDispatcherResult)->SetObjectField(TEXT("reference_context_request"),
+						FBlueprintHelperSignatureReferenceContextUtils::MakeReferenceContextRequestJson(
+							Request.AssetPath,
+							TEXT("event_dispatcher"),
+							Request.DispatcherName,
+							FString()));
+				}
+				FBlueprintHelperSignatureReferenceContextUtils::AttachReferenceContextSummary(Result.Data, TEXT("event_dispatcher_result"), ReferenceContext);
+				Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);
+				return Result;
+			}
+
+			if (Request.bDryRun)
+			{
+				FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::DryRun(
+					TEXT("ensure_event_dispatcher"),
+					FBlueprintHelperToolResultBuilder::GenerateTraceId());
+				FBlueprintHelperSignatureServiceLocalUtils::SetEventDispatcherTarget(Result, Request.AssetPath, Request.DispatcherName);
+				Result.Data = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureResultData(true, TEXT("event_dispatcher_result"), false);
+				FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("event_dispatcher_result"), TEXT("exists"), true);
+				FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("event_dispatcher_result"), TEXT("signature_matches"), false);
+				FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("event_dispatcher_result"), TEXT("can_migrate"), true);
+				FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("event_dispatcher_result"), TEXT("signature_mismatch_policy"), SignatureMismatchPolicy);
+				const TSharedPtr<FJsonObject>* EventDispatcherResult = nullptr;
+				if (Result.Data.IsValid() &&
+					Result.Data->TryGetObjectField(TEXT("event_dispatcher_result"), EventDispatcherResult) &&
+					EventDispatcherResult && EventDispatcherResult->IsValid())
+				{
+					(*EventDispatcherResult)->SetObjectField(TEXT("reference_context_request"),
+						FBlueprintHelperSignatureReferenceContextUtils::MakeReferenceContextRequestJson(
+							Request.AssetPath,
+							TEXT("event_dispatcher"),
+							Request.DispatcherName,
+							FString()));
+				}
+				FBlueprintHelperSignatureReferenceContextUtils::AttachReferenceContextSummary(Result.Data, TEXT("event_dispatcher_result"), ReferenceContext);
+				Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(true, true);
+				return Result;
+			}
+
+			UBlueprint* Blueprint = FBlueprintHelperSignatureMutationUtils::LoadSignatureBlueprint(Request.AssetPath);
+			if (!Blueprint)
+			{
+				FBlueprintHelperToolResultBase Result = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
+					TEXT("ensure_event_dispatcher"),
+					TEXT("target_blueprint_not_found"),
+					EBlueprintHelperToolStage::ResolveTarget,
+					FString::Printf(TEXT("Unable to load Blueprint: %s."), *Request.AssetPath),
+					TEXT("asset_path"));
+				FBlueprintHelperSignatureServiceLocalUtils::SetEventDispatcherTarget(Result, Request.AssetPath, Request.DispatcherName);
+				Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);
+				return Result;
+			}
+
+			FBlueprintHelperScopedAssetMutation Mutation(
+				FText::FromString(TEXT("BlueprintHelper Migrate Event Dispatcher Signature")),
+				Blueprint);
+			bool bRemoved = false;
+			FString RemoveError;
+			if (!FBlueprintHelperSignatureMutationUtils::RemoveEventDispatcherSignatureDirect(Blueprint, Request.DispatcherName, bRemoved, RemoveError))
+			{
+				Mutation.Rollback();
+				FBlueprintHelperToolResultBase Result = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
+					TEXT("ensure_event_dispatcher"),
+					TEXT("event_dispatcher_migration_remove_failed"),
+					EBlueprintHelperToolStage::Execute,
+					RemoveError.IsEmpty() ? TEXT("Failed to remove existing event dispatcher signature.") : RemoveError,
+					TEXT("dispatcher_name"));
+				FBlueprintHelperSignatureServiceLocalUtils::SetEventDispatcherTarget(Result, Request.AssetPath, Request.DispatcherName);
+				Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);
+				return Result;
+			}
+
+			TSharedPtr<FJsonObject> Params = MakeShared<FJsonObject>();
+			Params->SetStringField(TEXT("name"), Request.DispatcherName);
+			if (Request.Inputs.Num() > 0)
+			{
+				Params->SetArrayField(TEXT("params"), Request.Inputs);
+			}
+
+			FString AddError;
+			if (!StructureService.AddEventDispatcher(FBlueprintHelperSignatureServiceLocalUtils::MakeGraphTarget(Request.AssetPath), Params, AddError))
+			{
+				Mutation.Rollback();
+				FBlueprintHelperToolResultBase Result = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
+					TEXT("ensure_event_dispatcher"),
+					TEXT("event_dispatcher_migration_create_failed"),
+					EBlueprintHelperToolStage::Execute,
+					AddError.IsEmpty() ? TEXT("Failed to recreate event dispatcher signature.") : AddError,
+					TEXT("dispatcher_name"));
+				FBlueprintHelperSignatureServiceLocalUtils::SetEventDispatcherTarget(Result, Request.AssetPath, Request.DispatcherName);
+				Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);
+				return Result;
+			}
+
+			Mutation.Commit();
+
+			FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Applied(
+				TEXT("ensure_event_dispatcher"),
+				FBlueprintHelperToolResultBuilder::GenerateTraceId());
+			FBlueprintHelperSignatureServiceLocalUtils::SetEventDispatcherTarget(Result, Request.AssetPath, Request.DispatcherName);
+			Result.Data = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureResultData(false, TEXT("event_dispatcher_result"), false);
+			FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("event_dispatcher_result"), TEXT("exists"), true);
+			FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("event_dispatcher_result"), TEXT("signature_matches"), true);
+			FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("event_dispatcher_result"), TEXT("migrated"), bRemoved);
+			FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultNumber(Result.Data, TEXT("event_dispatcher_result"), TEXT("added_inputs"), RequestedPins.Num());
+			FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("event_dispatcher_result"), TEXT("signature_mismatch_policy"), SignatureMismatchPolicy);
+			const TSharedPtr<FJsonObject>* EventDispatcherResult = nullptr;
+			if (Result.Data.IsValid() &&
+				Result.Data->TryGetObjectField(TEXT("event_dispatcher_result"), EventDispatcherResult) &&
+				EventDispatcherResult && EventDispatcherResult->IsValid())
+			{
+				(*EventDispatcherResult)->SetObjectField(TEXT("reference_context_request"),
+					FBlueprintHelperSignatureReferenceContextUtils::MakeReferenceContextRequestJson(
+						Request.AssetPath,
+						TEXT("event_dispatcher"),
+						Request.DispatcherName,
+						FString()));
+			}
+			FBlueprintHelperSignatureReferenceContextUtils::AttachReferenceContextSummary(Result.Data, TEXT("event_dispatcher_result"), ReferenceContext);
+			Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(true, true);
+			return Result;
+		}
 	}
 
 	if (Request.bDryRun)
@@ -1507,7 +1846,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureEventDisp
 		FBlueprintHelperSignatureServiceLocalUtils::SetEventDispatcherTarget(Result, Request.AssetPath, Request.DispatcherName);
 		Result.Data = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureResultData(true, TEXT("event_dispatcher_result"), false);
 		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("event_dispatcher_result"), TEXT("exists"), bExists);
-		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("event_dispatcher_result"), TEXT("signature_mismatch_policy"), Request.SignatureMismatchPolicy);
+		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("event_dispatcher_result"), TEXT("signature_mismatch_policy"), SignatureMismatchPolicy);
 		Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(!bExists, !bExists);
 		return Result;
 	}
@@ -1520,7 +1859,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureEventDisp
 		FBlueprintHelperSignatureServiceLocalUtils::SetEventDispatcherTarget(Result, Request.AssetPath, Request.DispatcherName);
 		Result.Data = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureResultData(false, TEXT("event_dispatcher_result"), false);
 		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("event_dispatcher_result"), TEXT("exists"), true);
-		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("event_dispatcher_result"), TEXT("signature_mismatch_policy"), Request.SignatureMismatchPolicy);
+		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("event_dispatcher_result"), TEXT("signature_mismatch_policy"), SignatureMismatchPolicy);
 		Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);
 		return Result;
 	}
@@ -1553,7 +1892,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureEventDisp
 	Result.Data = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureResultData(false, TEXT("event_dispatcher_result"), false);
 	FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("event_dispatcher_result"), TEXT("exists"), true);
 	FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultNumber(Result.Data, TEXT("event_dispatcher_result"), TEXT("added_inputs"), RequestedPins.Num());
-	FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("event_dispatcher_result"), TEXT("signature_mismatch_policy"), Request.SignatureMismatchPolicy);
+	FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("event_dispatcher_result"), TEXT("signature_mismatch_policy"), SignatureMismatchPolicy);
 	Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(true, true);
 	return Result;
 }

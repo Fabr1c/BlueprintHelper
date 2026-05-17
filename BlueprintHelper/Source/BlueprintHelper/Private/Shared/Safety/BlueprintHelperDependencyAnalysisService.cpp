@@ -1,247 +1,38 @@
 // BlueprintHelper Service Layer - internal dependency analysis service.
 
 #include "Shared/Safety/BlueprintHelperDependencyAnalysisService.h"
+#include "Shared/Safety/Utils/BlueprintHelperDependencyAnalysisServiceUtils.h"
 
 #include "AssetRegistry/AssetData.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
-#include "Misc/AssetRegistryInterface.h"
+#include "EdGraph/EdGraph.h"
+#include "Engine/Blueprint.h"
+#include "FindInBlueprintManager.h"
+#include "K2Node_AddDelegate.h"
+#include "K2Node_AssignDelegate.h"
+#include "K2Node_BaseMCDelegate.h"
+#include "K2Node_CallDelegate.h"
+#include "K2Node_CallFunction.h"
+#include "K2Node_ClearDelegate.h"
+#include "K2Node_CustomEvent.h"
+#include "K2Node_Event.h"
+#include "K2Node_RemoveDelegate.h"
+#include "K2Node_Variable.h"
+#include "K2Node_VariableGet.h"
+#include "K2Node_VariableSet.h"
 #include "Misc/Guid.h"
 #include "Misc/PackageName.h"
 #include "Modules/ModuleManager.h"
+#include "UObject/SoftObjectPath.h"
 #include "UObject/UObjectGlobals.h"
-
-class FBlueprintHelperDependencyAnalysisServiceLocalUtils
-{
-public:
-	static constexpr int32 DefaultMaxResults = 50;
-	static constexpr int32 MaxAllowedResults = 500;
-
-	static FString NormalizeScope(const FString& Scope)
-	{
-		const FString LowerScope = Scope.IsEmpty() ? TEXT("safety_context") : Scope.ToLower();
-		if (LowerScope == TEXT("dependencies") ||
-			LowerScope == TEXT("referencers") ||
-			LowerScope == TEXT("external_dependents") ||
-			LowerScope == TEXT("all"))
-		{
-			return LowerScope;
-		}
-		return TEXT("safety_context");
-	}
-
-	static bool ShouldReadDependencies(const FString& Scope)
-	{
-		return Scope == TEXT("safety_context") || Scope == TEXT("dependencies") || Scope == TEXT("all");
-	}
-
-	static bool ShouldReadReferencers(const FString& Scope)
-	{
-		return Scope == TEXT("safety_context") || Scope == TEXT("referencers") || Scope == TEXT("all");
-	}
-
-	static bool ShouldReadExternalDependents(const FString& Scope)
-	{
-		return Scope == TEXT("safety_context") || Scope == TEXT("external_dependents") || Scope == TEXT("all");
-	}
-
-	static int32 ClampMaxResults(int32 MaxResults)
-	{
-		if (MaxResults <= 0)
-		{
-			return DefaultMaxResults;
-		}
-		return FMath::Clamp(MaxResults, 1, MaxAllowedResults);
-	}
-
-	static FString PackageNameFromAssetPath(const FString& AssetPath)
-	{
-		if (AssetPath.IsEmpty())
-		{
-			return FString();
-		}
-		if (FPackageName::IsValidLongPackageName(AssetPath))
-		{
-			return AssetPath;
-		}
-		if (FPackageName::IsValidObjectPath(AssetPath))
-		{
-			return FPackageName::ObjectPathToPackageName(AssetPath);
-		}
-		return AssetPath.Contains(TEXT(".")) ? FPackageName::ObjectPathToPackageName(AssetPath) : AssetPath;
-	}
-
-	static FString ObjectPathFromPackageName(const FString& PackageName)
-	{
-		if (PackageName.IsEmpty())
-		{
-			return FString();
-		}
-		return PackageName + TEXT(".") + FPackageName::GetLongPackageAssetName(PackageName);
-	}
-
-	static FString AssetPathFromDataOrPackage(const FAssetData& AssetData, const FName& PackageName)
-	{
-		if (AssetData.IsValid())
-		{
-			return AssetData.GetObjectPathString();
-		}
-		return PackageName.ToString();
-	}
-
-	static FString AssetTypeFromData(const FAssetData& AssetData)
-	{
-		if (!AssetData.IsValid())
-		{
-			return TEXT("unknown");
-		}
-		return AssetData.AssetClassPath.ToString();
-	}
-
-	static bool TryFindAssetData(IAssetRegistry& Registry, const FName PackageName, FAssetData& OutAssetData)
-	{
-		TArray<FAssetData> Assets;
-		Registry.GetAssetsByPackageName(PackageName, Assets, false);
-		if (Assets.Num() > 0)
-		{
-			OutAssetData = Assets[0];
-			return true;
-		}
-		return false;
-	}
-
-	static bool TryResolveTargetAsset(
-		IAssetRegistry& Registry,
-		const FString& AssetPath,
-		FName& OutPackageName,
-		FAssetData& OutAssetData,
-		FString& OutErrorCode,
-		FString& OutErrorMessage)
-	{
-		if (AssetPath.IsEmpty())
-		{
-			OutErrorCode = TEXT("invalid_request");
-			OutErrorMessage = TEXT("asset_path is required.");
-			return false;
-		}
-
-		const FString PackageName = PackageNameFromAssetPath(AssetPath);
-		OutPackageName = FName(*PackageName);
-		if (TryFindAssetData(Registry, OutPackageName, OutAssetData))
-		{
-			return true;
-		}
-
-		UObject* LoadedAsset = StaticLoadObject(UObject::StaticClass(), nullptr, *AssetPath);
-		if (!LoadedAsset && FPackageName::IsValidLongPackageName(PackageName))
-		{
-			const FString ObjectPath = ObjectPathFromPackageName(PackageName);
-			LoadedAsset = StaticLoadObject(UObject::StaticClass(), nullptr, *ObjectPath);
-		}
-		if (LoadedAsset)
-		{
-			const FString LoadedPackageName = LoadedAsset->GetOutermost()->GetName();
-			OutPackageName = FName(*LoadedPackageName);
-			TryFindAssetData(Registry, OutPackageName, OutAssetData);
-			return true;
-		}
-
-		OutErrorCode = TEXT("asset_not_found");
-		OutErrorMessage = FString::Printf(TEXT("Target asset was not found: %s"), *AssetPath);
-		return false;
-	}
-
-	static FBlueprintHelperAssetRefSummary MakeAssetRefSummary(
-		IAssetRegistry& Registry,
-		const FName PackageName,
-		const FString& EvidencePath = FString())
-	{
-		FAssetData AssetData;
-		TryFindAssetData(Registry, PackageName, AssetData);
-
-		FBlueprintHelperAssetRefSummary Summary;
-		Summary.AssetPath = AssetPathFromDataOrPackage(AssetData, PackageName);
-		Summary.AssetType = AssetTypeFromData(AssetData);
-		Summary.ReferenceKind = TEXT("package");
-		Summary.Source = TEXT("asset_registry");
-		Summary.EvidencePath = EvidencePath.IsEmpty() ? PackageName.ToString() : EvidencePath;
-		Summary.Confidence = TEXT("high");
-		return Summary;
-	}
-
-	static void AddUnsupportedCheck(TArray<FString>& UnsupportedChecks, const FString& Check)
-	{
-		UnsupportedChecks.AddUnique(Check);
-	}
-
-	static void AddUnsupportedChecksForOptions(
-		const FBlueprintHelperDependencyAnalysisOptions& Options,
-		TArray<FString>& UnsupportedChecks)
-	{
-		if (Options.bAnalyzeBlueprintCalls)
-		{
-			AddUnsupportedCheck(UnsupportedChecks, TEXT("blueprint_calls"));
-		}
-		if (Options.bAnalyzeWidgetBindings)
-		{
-			AddUnsupportedCheck(UnsupportedChecks, TEXT("widget_bindings"));
-		}
-		if (Options.bAnalyzeDataTableRows)
-		{
-			AddUnsupportedCheck(UnsupportedChecks, TEXT("data_table_rows"));
-		}
-		if (Options.bAnalyzeRuntimeStringLookup)
-		{
-			AddUnsupportedCheck(UnsupportedChecks, TEXT("runtime_string_lookup"));
-		}
-		if (Options.bAnalyzeDynamicSoftReferences)
-		{
-			AddUnsupportedCheck(UnsupportedChecks, TEXT("dynamic_soft_references"));
-		}
-	}
-
-	static void AppendPackageRefs(
-		IAssetRegistry& Registry,
-		const TArray<FName>& PackageNames,
-		const FString& ReferenceKind,
-		int32 MaxResults,
-		bool bIncludeSamples,
-		int32& InOutFullCount,
-		TArray<FBlueprintHelperAssetRefSummary>& OutSamples,
-		bool& bOutTruncated)
-	{
-		InOutFullCount += PackageNames.Num();
-		if (!bIncludeSamples)
-		{
-			return;
-		}
-
-		for (const FName PackageName : PackageNames)
-		{
-			if (OutSamples.Num() >= MaxResults)
-			{
-				bOutTruncated = true;
-				continue;
-			}
-
-			FBlueprintHelperAssetRefSummary Summary = MakeAssetRefSummary(
-				Registry,
-				PackageName,
-				PackageName.ToString());
-			Summary.ReferenceKind = ReferenceKind;
-			OutSamples.Add(Summary);
-		}
-	}
-
-};
+#include "UObject/UnrealType.h"
+#include "WidgetBlueprint.h"
 
 bool FBlueprintHelperDependencyAnalysisService::TryBuildReferenceContext(
 	const FBlueprintHelperDependencyAnalysisTarget& Target,
 	const FBlueprintHelperDependencyAnalysisOptions& Options,
-	const FString& Scope,
-	bool bIncludeSamples,
-	FBlueprintHelperReferenceContextPack& OutContext,
-	FString& OutErrorCode,
+	FBlueprintHelperReferenceContextPack& OutContext, FString& OutErrorCode,
 	FString& OutErrorMessage) const
 {
 	OutContext = FBlueprintHelperReferenceContextPack();
@@ -249,134 +40,211 @@ bool FBlueprintHelperDependencyAnalysisService::TryBuildReferenceContext(
 	OutErrorMessage.Empty();
 
 	FAssetRegistryModule& AssetRegistryModule =
-		FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+		FModuleManager::LoadModuleChecked<FAssetRegistryModule>(
+			TEXT("AssetRegistry"));
 	IAssetRegistry& AssetRegistry = AssetRegistryModule.Get();
 
 	FName TargetPackageName;
 	FAssetData TargetAssetData;
-	if (!FBlueprintHelperDependencyAnalysisServiceLocalUtils::TryResolveTargetAsset(
-		AssetRegistry,
-		Target.AssetPath,
-		TargetPackageName,
-		TargetAssetData,
-		OutErrorCode,
-		OutErrorMessage))
+	if (!FBlueprintHelperDependencyAnalysisServiceUtils::TryResolveTargetAsset(
+			AssetRegistry, Target.AssetPath, TargetPackageName, TargetAssetData,
+			OutErrorCode, OutErrorMessage))
 	{
 		return false;
 	}
 
-	const FString EffectiveScope = FBlueprintHelperDependencyAnalysisServiceLocalUtils::NormalizeScope(Scope);
-	const int32 EffectiveMaxResults = FBlueprintHelperDependencyAnalysisServiceLocalUtils::ClampMaxResults(Options.MaxResultCount);
+	const FString TargetType =
+		FBlueprintHelperDependencyAnalysisServiceUtils::NormalizeTargetType(
+			Target.TargetType);
+	const FString EffectiveScope =
+		FBlueprintHelperDependencyAnalysisServiceUtils::NormalizeLegacyScope(
+			Options.LegacyScope);
+	const FString SearchScope =
+		FBlueprintHelperDependencyAnalysisServiceUtils::NormalizeSearchScope(
+			Options.SearchScope);
+	const FString ResolutionPolicy =
+		FBlueprintHelperDependencyAnalysisServiceUtils::NormalizeResolutionPolicy(
+			Options.ResolutionPolicy);
+	const FString Detail =
+		FBlueprintHelperDependencyAnalysisServiceUtils::NormalizeDetail(
+			Options.Detail);
+	const int32 EffectiveMaxResults =
+		FBlueprintHelperDependencyAnalysisServiceUtils::ClampMaxResults(
+			Options.MaxResultCount);
+	const bool bIncludeSamples =
+		FBlueprintHelperDependencyAnalysisServiceUtils::ShouldIncludeSamples(
+			Detail);
 	bool bTruncated = false;
-
-	TArray<FName> HardDependencies;
-	TArray<FName> SoftDependencies;
-	TArray<FName> HardReferencers;
-	TArray<FName> SoftReferencers;
-
-	if (FBlueprintHelperDependencyAnalysisServiceLocalUtils::ShouldReadDependencies(EffectiveScope) && Options.bIncludeHardReferences)
-	{
-		AssetRegistry.GetDependencies(
-			TargetPackageName,
-			HardDependencies,
-			UE::AssetRegistry::EDependencyCategory::Package,
-			UE::AssetRegistry::FDependencyQuery(UE::AssetRegistry::EDependencyQuery::Hard));
-	}
-	if (FBlueprintHelperDependencyAnalysisServiceLocalUtils::ShouldReadDependencies(EffectiveScope) && Options.bIncludeSoftReferences)
-	{
-		AssetRegistry.GetDependencies(
-			TargetPackageName,
-			SoftDependencies,
-			UE::AssetRegistry::EDependencyCategory::Package,
-			UE::AssetRegistry::FDependencyQuery(UE::AssetRegistry::EDependencyQuery::Soft));
-	}
-
-	if (FBlueprintHelperDependencyAnalysisServiceLocalUtils::ShouldReadReferencers(EffectiveScope))
-	{
-		AssetRegistry.GetReferencers(
-			TargetPackageName,
-			HardReferencers,
-			UE::AssetRegistry::EDependencyCategory::Package,
-			UE::AssetRegistry::FDependencyQuery(UE::AssetRegistry::EDependencyQuery::Hard));
-		AssetRegistry.GetReferencers(
-			TargetPackageName,
-			SoftReferencers,
-			UE::AssetRegistry::EDependencyCategory::Package,
-			UE::AssetRegistry::FDependencyQuery(UE::AssetRegistry::EDependencyQuery::Soft));
-	}
 
 	OutContext.ContextId = FString::Printf(
 		TEXT("refctx_%s"),
 		*FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphensLower));
-	OutContext.Analysis.Scope = EffectiveScope;
-	OutContext.Analysis.MaxResults = EffectiveMaxResults;
-	OutContext.Analysis.UnsupportedChecks.Reset();
+	OutContext.IndexStatus.UnindexedCount =
+		FFindInBlueprintSearchManager::Get().GetNumberUnindexedAssets();
+	OutContext.IndexStatus.OutOfDateCount = 0;
+	OutContext.IndexStatus.FailedCount =
+		FFindInBlueprintSearchManager::Get().GetFailedToCacheCount();
 
-	if (FBlueprintHelperDependencyAnalysisServiceLocalUtils::ShouldReadExternalDependents(EffectiveScope))
+	if ((TargetType == TEXT("asset") ||
+		 !FBlueprintHelperDependencyAnalysisServiceUtils::IsMemberTarget(
+			 TargetType)) &&
+		FBlueprintHelperDependencyAnalysisServiceUtils::ShouldReadDependencies(
+			EffectiveScope))
 	{
-		FBlueprintHelperDependencyAnalysisServiceLocalUtils::AddUnsupportedChecksForOptions(Options, OutContext.Analysis.UnsupportedChecks);
+		TArray<FName> HardDependencies;
+		TArray<FName> SoftDependencies;
+		if (Options.bIncludeHardReferences)
+		{
+			AssetRegistry.GetDependencies(
+				TargetPackageName, HardDependencies,
+				UE::AssetRegistry::EDependencyCategory::Package,
+				UE::AssetRegistry::FDependencyQuery(
+					UE::AssetRegistry::EDependencyQuery::Hard));
+		}
+		if (Options.bIncludeSoftReferences)
+		{
+			AssetRegistry.GetDependencies(
+				TargetPackageName, SoftDependencies,
+				UE::AssetRegistry::EDependencyCategory::Package,
+				UE::AssetRegistry::FDependencyQuery(
+					UE::AssetRegistry::EDependencyQuery::Soft));
+		}
+
+		FBlueprintHelperDependencyAnalysisServiceUtils::AppendPackageRefs(
+			AssetRegistry, HardDependencies, TEXT("asset_reference"), TEXT("info"),
+			EffectiveMaxResults, OutContext.Dependencies, bTruncated);
+		FBlueprintHelperDependencyAnalysisServiceUtils::AppendPackageRefs(
+			AssetRegistry, SoftDependencies, TEXT("asset_reference"), TEXT("info"),
+			EffectiveMaxResults, OutContext.Dependencies, bTruncated);
 	}
 
-	int32 DependencyCount = 0;
-	FBlueprintHelperDependencyAnalysisServiceLocalUtils::AppendPackageRefs(
-		AssetRegistry,
-		HardDependencies,
-		TEXT("hard_package"),
-		EffectiveMaxResults,
-		bIncludeSamples,
-		DependencyCount,
-		OutContext.Dependencies,
-		bTruncated);
-	FBlueprintHelperDependencyAnalysisServiceLocalUtils::AppendPackageRefs(
-		AssetRegistry,
-		SoftDependencies,
-		TEXT("soft_package"),
-		EffectiveMaxResults,
-		bIncludeSamples,
-		DependencyCount,
-		OutContext.Dependencies,
-		bTruncated);
-
-	int32 ReferencerCount = 0;
-	FBlueprintHelperDependencyAnalysisServiceLocalUtils::AppendPackageRefs(
-		AssetRegistry,
-		HardReferencers,
-		TEXT("hard_package"),
-		EffectiveMaxResults,
-		bIncludeSamples,
-		ReferencerCount,
-		OutContext.Referencers,
-		bTruncated);
-	FBlueprintHelperDependencyAnalysisServiceLocalUtils::AppendPackageRefs(
-		AssetRegistry,
-		SoftReferencers,
-		TEXT("soft_package"),
-		EffectiveMaxResults,
-		bIncludeSamples,
-		ReferencerCount,
-		OutContext.Referencers,
-		bTruncated);
-
-	OutContext.Summary.DependencyCount = DependencyCount;
-	OutContext.Summary.ReferencerCount = ReferencerCount;
-	OutContext.Summary.ExternalDependentCount = 0;
-	OutContext.Summary.BlockingDependentCount = 0;
-	OutContext.Summary.WarningCount = OutContext.Analysis.UnsupportedChecks.Num() > 0 ? 1 : 0;
-	OutContext.Analysis.bPartial = OutContext.Analysis.UnsupportedChecks.Num() > 0;
-	OutContext.Analysis.bTruncated = bTruncated;
-	OutContext.AgentHints.bCanEditSafely =
-		OutContext.Summary.ReferencerCount == 0 &&
-		OutContext.Summary.ExternalDependentCount == 0;
-	OutContext.AgentHints.bRequiresPreview = true;
-	OutContext.AgentHints.RecommendedTaskStrategy = TEXT("preview_before_write");
-	if (OutContext.Summary.ReferencerCount > 0)
+	if ((TargetType == TEXT("asset") ||
+		 !FBlueprintHelperDependencyAnalysisServiceUtils::IsMemberTarget(
+			 TargetType)) &&
+		FBlueprintHelperDependencyAnalysisServiceUtils::ShouldReadReferencers(
+			EffectiveScope))
 	{
-		OutContext.AgentHints.Blockers.Add(TEXT("external_referencers_exist"));
-	}
-	if (OutContext.Summary.BlockingDependentCount > 0)
-	{
-		OutContext.AgentHints.Blockers.Add(TEXT("blocking_dependents_exist"));
+		TArray<FName> HardReferencers;
+		TArray<FName> SoftReferencers;
+		AssetRegistry.GetReferencers(
+			TargetPackageName, HardReferencers,
+			UE::AssetRegistry::EDependencyCategory::Package,
+			UE::AssetRegistry::FDependencyQuery(
+				UE::AssetRegistry::EDependencyQuery::Hard));
+		AssetRegistry.GetReferencers(
+			TargetPackageName, SoftReferencers,
+			UE::AssetRegistry::EDependencyCategory::Package,
+			UE::AssetRegistry::FDependencyQuery(
+				UE::AssetRegistry::EDependencyQuery::Soft));
+
+		FBlueprintHelperDependencyAnalysisServiceUtils::AppendPackageRefs(
+			AssetRegistry, HardReferencers, TEXT("asset_reference"),
+			TEXT("blocking"), EffectiveMaxResults, OutContext.Referencers,
+			bTruncated);
+		FBlueprintHelperDependencyAnalysisServiceUtils::AppendPackageRefs(
+			AssetRegistry, SoftReferencers, TEXT("asset_reference"),
+			TEXT("warning"), EffectiveMaxResults, OutContext.Referencers,
+			bTruncated);
 	}
 
+	if (FBlueprintHelperDependencyAnalysisServiceUtils::IsMemberTarget(
+			TargetType))
+	{
+		if (Target.TargetName.IsEmpty())
+		{
+			OutErrorCode = TEXT("invalid_request");
+			OutErrorMessage =
+				TEXT("target_name is required for member-level reference context.");
+			return false;
+		}
+		if (TargetType == TEXT("local_variable") && Target.GraphName.IsEmpty())
+		{
+			OutErrorCode = TEXT("invalid_request");
+			OutErrorMessage =
+				TEXT("graph_name is required for local_variable reference context.");
+			return false;
+		}
+
+		UClass* TargetClass =
+			FBlueprintHelperDependencyAnalysisServiceUtils::ResolveTargetClass(
+				Target);
+		if (ResolutionPolicy == TEXT("ue_only") && !TargetClass)
+		{
+			FBlueprintHelperDependencyAnalysisServiceUtils::AddUnsupportedCheck(
+				OutContext.UnsupportedChecks, TEXT("target_resolution_failed"));
+		}
+
+		TArray<FAssetData> CandidateAssets;
+		FBlueprintHelperDependencyAnalysisServiceUtils::GatherBlueprintCandidates(
+			AssetRegistry, SearchScope, TargetPackageName, TargetAssetData,
+			CandidateAssets);
+
+		TMap<FString, FBlueprintHelperReferenceAssetSummary> AggregatedReferencers;
+		bool bUsedFallback = false;
+		int32 FailedLoadCount = 0;
+		for (const FAssetData& CandidateAsset : CandidateAssets)
+		{
+			UBlueprint* CandidateBlueprint =
+				FBlueprintHelperDependencyAnalysisServiceUtils::
+					LoadBlueprintFromAssetData(CandidateAsset);
+			if (!CandidateBlueprint)
+			{
+				++FailedLoadCount;
+				continue;
+			}
+			FBlueprintHelperDependencyAnalysisServiceUtils::
+				ScanBlueprintForMemberReferences(
+					Target, TargetType, ResolutionPolicy, TargetClass,
+					CandidateBlueprint, CandidateAsset.GetObjectPathString(),
+					FBlueprintHelperDependencyAnalysisServiceUtils::AssetTypeFromData(
+						CandidateAsset),
+					bIncludeSamples, Options.bAnalyzeWidgetBindings,
+					AggregatedReferencers, OutContext.UnsupportedChecks,
+					bUsedFallback);
+		}
+		if (CandidateAssets.Num() == 0 && SearchScope == TEXT("asset"))
+		{
+			if (UBlueprint* TargetBlueprint =
+					FBlueprintHelperDependencyAnalysisServiceUtils::
+						LoadBlueprintFromPath(Target.AssetPath))
+			{
+				FBlueprintHelperDependencyAnalysisServiceUtils::
+					ScanBlueprintForMemberReferences(
+						Target, TargetType, ResolutionPolicy, TargetClass,
+						TargetBlueprint, Target.AssetPath, TEXT("Blueprint"),
+						bIncludeSamples, Options.bAnalyzeWidgetBindings,
+						AggregatedReferencers, OutContext.UnsupportedChecks,
+						bUsedFallback);
+			}
+		}
+
+		if (FailedLoadCount > 0)
+		{
+			FBlueprintHelperDependencyAnalysisServiceUtils::AddUnsupportedCheck(
+				OutContext.UnsupportedChecks,
+				FString::Printf(TEXT("blueprint_load_failed:%d"), FailedLoadCount));
+		}
+		if (bUsedFallback)
+		{
+			FBlueprintHelperDependencyAnalysisServiceUtils::AddUnsupportedCheck(
+				OutContext.UnsupportedChecks, TEXT("name_fallback_used"));
+		}
+
+		FBlueprintHelperDependencyAnalysisServiceUtils::EmitAggregatedSummaries(
+			AggregatedReferencers, EffectiveMaxResults, OutContext.Referencers,
+			bTruncated);
+	}
+
+	OutContext.Summary.bTruncated = bTruncated;
+	OutContext.Summary.bPartial =
+		OutContext.UnsupportedChecks.Num() > 0 ||
+		OutContext.IndexStatus.FailedCount > 0 ||
+		(ResolutionPolicy == TEXT("ue_only") &&
+		 FBlueprintHelperDependencyAnalysisServiceUtils::IsMemberTarget(
+			 TargetType) &&
+		 !FBlueprintHelperDependencyAnalysisServiceUtils::ResolveTargetClass(
+			 Target));
+	FBlueprintHelperDependencyAnalysisServiceUtils::FillSummaryAndHints(
+		OutContext);
 	return true;
 }

@@ -28,7 +28,15 @@ bool FBlueprintHelperReviewObjectDetailsPresenter::ShouldShowChange(const FBluep
 
 	for (const FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
 	{
-		if (BlueprintHelperReviewTargetKindCanRouteToDetails(Target.TargetKind)
+		if (Target.Surface == EBlueprintHelperReviewSurface::DataAsset
+			|| Target.Surface == EBlueprintHelperReviewSurface::DataTable
+			|| Target.Surface == EBlueprintHelperReviewSurface::UMGWidgetTree)
+		{
+			continue;
+		}
+
+		if (Target.Surface == EBlueprintHelperReviewSurface::Details
+			|| BlueprintHelperReviewTargetKindCanRouteToDetails(Target.TargetKind)
 			|| !Target.PropertyPath.IsEmpty()
 			|| !Target.ComponentPath.IsEmpty())
 		{

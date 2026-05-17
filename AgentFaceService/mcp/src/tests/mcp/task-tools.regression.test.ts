@@ -433,44 +433,39 @@ test('read_reference_context forwards compact read request to the Bridge', async
         trace_id: 'trace_reference_context',
         status: 'completed',
         modified: false,
-        target: {
-          target_type: 'asset',
-          asset_path: '/Game/BP/BP_Door',
-        },
         data: {
-          schema: 'BlueprintHelper.ReferenceContextPack.v1',
+          schema: 'ReferenceContextPack.v1',
           context_id: 'refctx_001',
-          analysis: {
-            scope: 'safety_context',
+          summary: {
+            asset_count: 1,
+            reference_count: 1,
+            blocking_count: 1,
+            warning_count: 0,
             partial: true,
             truncated: false,
-            max_results: 50,
-            unsupported_checks: ['blueprint_calls'],
           },
-          summary: {
-            dependency_count: 0,
-            referencer_count: 1,
-            external_dependent_count: 0,
-            blocking_dependent_count: 0,
-            warning_count: 1,
+          index_status: {
+            unindexed_count: 0,
+            out_of_date_count: 0,
+            failed_count: 0,
           },
           dependencies: [],
           referencers: [
             {
               asset_path: '/Game/BP/BP_DoorUser',
               asset_type: 'Blueprint',
-              reference_kind: 'package',
-              evidence_path: '/Game/BP/BP_DoorUser',
-              confidence: 'high',
+              match_count: 1,
+              reference_kinds: ['asset_reference'],
+              safety: 'blocking',
             },
           ],
-          external_dependents: [],
           agent_hints: {
             can_edit_safely: false,
             requires_preview: true,
             recommended_task_strategy: 'preview_before_write',
             blockers: ['external_referencers_exist'],
           },
+          unsupported_checks: ['blueprint_calls'],
         },
       },
     };
@@ -482,9 +477,10 @@ test('read_reference_context forwards compact read request to the Bridge', async
   const result = await invokeTool(tool, {
     asset_path: '/Game/BP/BP_Door',
     target_type: 'asset',
-    scope: 'safety_context',
+    search_scope: 'project',
+    resolution_policy: 'ue_then_name',
+    detail: 'samples',
     max_results: 50,
-    include_samples: true,
   });
 
   assert.equal(result.isError, false);
@@ -493,13 +489,15 @@ test('read_reference_context forwards compact read request to the Bridge', async
   assert.deepEqual(calls[0]?.payload, {
     asset_path: '/Game/BP/BP_Door',
     target_type: 'asset',
-    scope: 'safety_context',
+    search_scope: 'project',
+    resolution_policy: 'ue_then_name',
+    detail: 'samples',
     max_results: 50,
-    include_samples: true,
   });
   assert.equal(result.structuredContent?.operation, 'read_reference_context');
   assert.equal(result.structuredContent?.modified, false);
-  assert.equal((result.structuredContent?.data as Record<string, unknown>)?.schema, 'BlueprintHelper.ReferenceContextPack.v1');
+  assert.equal(Object.hasOwn(result.structuredContent ?? {}, 'target'), false);
+  assert.equal((result.structuredContent?.data as Record<string, unknown>)?.schema, 'ReferenceContextPack.v1');
 });
 
 test('read_reference_context maps failed Bridge response as MCP error', async () => {
@@ -521,6 +519,56 @@ test('read_reference_context maps failed Bridge response as MCP error', async ()
   assert.equal(result.structuredContent?.ok, false);
   assert.equal(result.structuredContent?.operation, 'read_reference_context');
   assert.equal((result.structuredContent?.error as Record<string, unknown>)?.code, 'asset_not_found');
+});
+
+test('read_reference_context rejects guid and incomplete member targets before Bridge', async () => {
+  const calls: Array<{ command: string; payload: Record<string, unknown> | undefined }> = [];
+  const tools = registerWithBridge(async (command, payload): Promise<BridgeResponse> => {
+    calls.push({ command, payload });
+    return {
+      request_id: 'unexpected',
+      success: true,
+      result: { ok: true, operation: 'read_reference_context' },
+    };
+  });
+  const tool = tools.get('blueprinthelper_read_reference_context');
+  assert.ok(tool);
+
+  await assert.rejects(
+    () => invokeTool(tool, {
+      asset_path: '/Game/BP/BP_Door',
+      target_type: 'function',
+      target_guid: '00000000000000000000000000000000',
+    }),
+    /target_guid/,
+  );
+
+  await assert.rejects(
+    () => invokeTool(tool, {
+      asset_path: '/Game/BP/BP_Door',
+      target_type: 'local_variable',
+      target_name: 'LoopIndex',
+    }),
+    /graph_name/,
+  );
+
+  await assert.rejects(
+    () => invokeTool(tool, {
+      asset_path: '/Game/BP/BP_Door',
+      include_samples: true,
+    }),
+    /include_samples/,
+  );
+
+  await assert.rejects(
+    () => invokeTool(tool, {
+      asset_path: '/Game/BP/BP_Door',
+      scope: 'all',
+    }),
+    /scope/,
+  );
+
+  assert.equal(calls.length, 0);
 });
 
 test('preview_task compiles append GraphWrite TaskSpec and previews a UE TaskPlan', async () => {

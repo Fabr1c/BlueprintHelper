@@ -42,8 +42,21 @@ public:
 			UBlueprint::StaticClass(),
 			UBlueprintGeneratedClass::StaticClass(),
 			TEXT("BlueprintHelperSignatureServiceTests"));
+		if (Blueprint)
+		{
+			// Keep service unit tests isolated from unrelated dirty project Blueprints queued for skeleton compile.
+			Blueprint->Status = BS_BeingCreated;
+		}
 		Package->SetDirtyFlag(false);
 		return Blueprint;
+	}
+
+	static void SuppressExternalSmokeAssetCompileErrors(FAutomationTestBase& Test)
+	{
+		// These signature tests mutate transient Blueprints. In a dirty project, UE may flush
+		// unrelated loaded smoke assets during structural Blueprint updates; keep that noise
+		// from failing tests that only assert the transient asset under test.
+		Test.AddExpectedErrorPlain(TEXT("BlueprintHelperCliSmoke"), EAutomationExpectedErrorFlags::Contains, -1);
 	}
 
 	static UEdGraph* FindSignatureFunctionGraph(UBlueprint* Blueprint, const FString& FunctionName)
@@ -354,6 +367,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperSignatureServiceEnsureFunctionExecuteTest::RunTest(const FString& Parameters)
 {
+	FBlueprintHelperSignatureServiceTestsLocalUtils::SuppressExternalSmokeAssetCompileErrors(*this);
+
 	UBlueprint* Blueprint = FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureServiceActorBlueprint(TEXT("Execute"));
 	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
 
@@ -399,6 +414,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperSignatureServiceEnsureFunctionReuseTest::RunTest(const FString& Parameters)
 {
+	FBlueprintHelperSignatureServiceTestsLocalUtils::SuppressExternalSmokeAssetCompileErrors(*this);
+
 	UBlueprint* Blueprint = FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureServiceActorBlueprint(TEXT("Reuse"));
 	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
 
@@ -465,6 +482,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperSignatureServiceEnsureCustomEventExecuteTest::RunTest(const FString& Parameters)
 {
+	FBlueprintHelperSignatureServiceTestsLocalUtils::SuppressExternalSmokeAssetCompileErrors(*this);
+
 	UBlueprint* Blueprint = FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureServiceActorBlueprint(TEXT("CustomEventExecute"));
 	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
 	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0)
@@ -502,6 +521,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperSignatureServiceEnsureCustomEventReuseTest::RunTest(const FString& Parameters)
 {
+	FBlueprintHelperSignatureServiceTestsLocalUtils::SuppressExternalSmokeAssetCompileErrors(*this);
+
 	UBlueprint* Blueprint = FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureServiceActorBlueprint(TEXT("CustomEventReuse"));
 	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
 	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0)
@@ -561,7 +582,7 @@ bool FBlueprintHelperSignatureServiceRemoveSignatureDryRunBlockedTest::RunTest(c
 	TestTrue(TEXT("remove signature has error"), Result.Error.IsSet());
 	if (Result.Error.IsSet())
 	{
-		TestEqual(TEXT("remove signature unsupported code"), Result.Error->Code, FString(TEXT("signature_remove_unsupported")));
+		TestEqual(TEXT("remove signature blocked policy code"), Result.Error->Code, FString(TEXT("signature_remove_blocked_by_policy")));
 	}
 
 	const TSharedPtr<FJsonObject>* DryRunObject = nullptr;
@@ -573,7 +594,107 @@ bool FBlueprintHelperSignatureServiceRemoveSignatureDryRunBlockedTest::RunTest(c
 		TestTrue(TEXT("remove dry_run carries blocked result"), (*DryRunObject)->TryGetStringField(TEXT("result"), DryRunResult));
 		TestEqual(TEXT("remove dry_run is blocked"), DryRunResult, FString(TEXT("blocked")));
 	}
+
+	const TSharedPtr<FJsonObject>* RemoveResultObject = nullptr;
+	TestTrue(TEXT("remove signature exposes result object"),
+		Result.Data.IsValid() && Result.Data->TryGetObjectField(TEXT("remove_signature_result"), RemoveResultObject) &&
+		RemoveResultObject && RemoveResultObject->IsValid());
+	if (RemoveResultObject && RemoveResultObject->IsValid())
+	{
+		const TSharedPtr<FJsonObject>* ReferenceContextRequest = nullptr;
+		TestTrue(TEXT("remove signature carries reference context request"),
+			(*RemoveResultObject)->TryGetObjectField(TEXT("reference_context_request"), ReferenceContextRequest) &&
+			ReferenceContextRequest && ReferenceContextRequest->IsValid());
+		if (ReferenceContextRequest && ReferenceContextRequest->IsValid())
+		{
+			FString TargetType;
+			FString ResolutionPolicy;
+			TestTrue(TEXT("reference context request has target type"), (*ReferenceContextRequest)->TryGetStringField(TEXT("target_type"), TargetType));
+			TestEqual(TEXT("custom event remove uses custom_event reference target"), TargetType, FString(TEXT("custom_event")));
+			TestTrue(TEXT("reference context request has ue_only policy"), (*ReferenceContextRequest)->TryGetStringField(TEXT("resolution_policy"), ResolutionPolicy));
+			TestEqual(TEXT("remove reference context uses ue_only"), ResolutionPolicy, FString(TEXT("ue_only")));
+		}
+	}
 	TestEqual(TEXT("remove signature dry-run does not mutate graph"), Graph ? Graph->Nodes.Num() : 0, NodeCountBefore);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperSignatureServiceRemoveFunctionExecuteIfUnreferencedTest,
+	"BlueprintHelper.Signature.Service.RemoveFunctionExecuteIfUnreferenced",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperSignatureServiceRemoveFunctionExecuteIfUnreferencedTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperSignatureServiceTestsLocalUtils::SuppressExternalSmokeAssetCompileErrors(*this);
+
+	UBlueprint* Blueprint = FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureServiceActorBlueprint(TEXT("RemoveFunctionExecute"));
+	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlueprintStructureService StructureService(Resolver);
+	FBlueprintHelperSignatureService SignatureService(StructureService);
+
+	const FString FunctionName = TEXT("BH_RemoveFunctionWhenSafe");
+	const FBlueprintHelperToolResultBase EnsureResult = SignatureService.EnsureFunction(
+		FBlueprintHelperSignatureServiceTestsLocalUtils::MakeEnsureFunctionRequest(Blueprint, FunctionName, false));
+	TestTrue(TEXT("function ensure succeeds"), EnsureResult.bOk);
+	TestNotNull(TEXT("function graph exists before remove"),
+		FBlueprintHelperSignatureServiceTestsLocalUtils::FindSignatureFunctionGraph(Blueprint, FunctionName));
+
+	FBlueprintHelperRemoveSignatureRequest RemoveRequest =
+		FBlueprintHelperSignatureServiceTestsLocalUtils::MakeRemoveSignatureRequest(Blueprint, TEXT("function"), FunctionName, false);
+	RemoveRequest.ExecutePolicy = TEXT("execute_if_unreferenced");
+
+	const FBlueprintHelperToolResultBase RemoveResult = SignatureService.RemoveSignature(RemoveRequest);
+
+	TestTrue(TEXT("remove function succeeds"), RemoveResult.bOk);
+	TestEqual(TEXT("remove function is applied"), RemoveResult.Status, EBlueprintHelperToolStatus::Applied);
+	TestTrue(TEXT("remove function modifies"), RemoveResult.bModified);
+	TestNull(TEXT("function graph removed"),
+		FBlueprintHelperSignatureServiceTestsLocalUtils::FindSignatureFunctionGraph(Blueprint, FunctionName));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperSignatureServiceRemoveCustomEventExecuteIfUnreferencedTest,
+	"BlueprintHelper.Signature.Service.RemoveCustomEventExecuteIfUnreferenced",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperSignatureServiceRemoveCustomEventExecuteIfUnreferencedTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperSignatureServiceTestsLocalUtils::SuppressExternalSmokeAssetCompileErrors(*this);
+
+	UBlueprint* Blueprint = FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureServiceActorBlueprint(TEXT("RemoveCustomEventExecute"));
+	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0)
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlueprintStructureService StructureService(Resolver);
+	FBlueprintHelperSignatureService SignatureService(StructureService);
+
+	const FString EventName = TEXT("BH_RemoveCustomEventWhenSafe");
+	const FBlueprintHelperToolResultBase EnsureResult = SignatureService.EnsureCustomEvent(
+		FBlueprintHelperSignatureServiceTestsLocalUtils::MakeEnsureCustomEventRequest(Blueprint, Graph->GetName(), EventName, false));
+	TestTrue(TEXT("custom event ensure succeeds"), EnsureResult.bOk);
+	TestNotNull(TEXT("custom event exists before remove"),
+		FBlueprintHelperSignatureServiceTestsLocalUtils::FindSignatureCustomEvent(Graph, EventName));
+
+	FBlueprintHelperRemoveSignatureRequest RemoveRequest =
+		FBlueprintHelperSignatureServiceTestsLocalUtils::MakeRemoveCustomEventSignatureRequest(Blueprint, Graph->GetName(), EventName, false);
+	RemoveRequest.ExecutePolicy = TEXT("execute_if_unreferenced");
+
+	const FBlueprintHelperToolResultBase RemoveResult = SignatureService.RemoveSignature(RemoveRequest);
+
+	TestTrue(TEXT("remove custom event succeeds"), RemoveResult.bOk);
+	TestEqual(TEXT("remove custom event is applied"), RemoveResult.Status, EBlueprintHelperToolStatus::Applied);
+	TestTrue(TEXT("remove custom event modifies"), RemoveResult.bModified);
+	TestNull(TEXT("custom event removed"),
+		FBlueprintHelperSignatureServiceTestsLocalUtils::FindSignatureCustomEvent(Graph, EventName));
 	return true;
 }
 
@@ -600,7 +721,7 @@ bool FBlueprintHelperSignatureServiceRemoveEventDispatcherDryRunBlockedTest::Run
 	TestTrue(TEXT("remove signature has error"), Result.Error.IsSet());
 	if (Result.Error.IsSet())
 	{
-		TestEqual(TEXT("event dispatcher remove blocked code"), Result.Error->Code, FString(TEXT("signature_remove_unsupported")));
+		TestEqual(TEXT("event dispatcher remove blocked code"), Result.Error->Code, FString(TEXT("signature_remove_blocked_by_policy")));
 	}
 	return true;
 }
@@ -657,7 +778,7 @@ bool FBlueprintHelperSignatureServiceRemoveNativeEventDryRunBlockedTest::RunTest
 	TestTrue(TEXT("remove signature has error"), Result.Error.IsSet());
 	if (Result.Error.IsSet())
 	{
-		TestEqual(TEXT("native event remove blocked code"), Result.Error->Code, FString(TEXT("signature_remove_unsupported")));
+		TestEqual(TEXT("native event remove blocked code"), Result.Error->Code, FString(TEXT("signature_remove_blocked_by_policy")));
 	}
 	return true;
 }
@@ -799,6 +920,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperSignatureServiceEnsureOverrideEventCreateIfMissingExecuteTest::RunTest(const FString& Parameters)
 {
+	FBlueprintHelperSignatureServiceTestsLocalUtils::SuppressExternalSmokeAssetCompileErrors(*this);
+
 	UBlueprint* Blueprint = FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureServiceActorBlueprint(TEXT("OverrideEventCreateExecute"));
 	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
 	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0)
@@ -840,6 +963,59 @@ bool FBlueprintHelperSignatureServiceEnsureOverrideEventCreateIfMissingExecuteTe
 	TestEqual(TEXT("second override event ensure is no-op"), SecondResult.Status, EBlueprintHelperToolStatus::NoOp);
 	TestFalse(TEXT("second override event ensure does not modify"), SecondResult.bModified);
 	TestEqual(TEXT("second override event ensure does not add node"), Graph ? Graph->Nodes.Num() : 0, NodeCountAfterFirst);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperSignatureServiceMigratesEventDispatcherWhenUnreferencedTest,
+	"BlueprintHelper.Signature.Service.MigratesEventDispatcherWhenUnreferenced",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperSignatureServiceMigratesEventDispatcherWhenUnreferencedTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperSignatureServiceTestsLocalUtils::SuppressExternalSmokeAssetCompileErrors(*this);
+
+	UBlueprint* Blueprint = FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureServiceActorBlueprint(TEXT("DispatcherMigration"));
+	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlueprintStructureService StructureService(Resolver);
+	FBlueprintHelperSignatureService SignatureService(StructureService);
+
+	const FString DispatcherName = TEXT("BH_OnDoorOpenedMigration");
+	const FBlueprintHelperToolResultBase EnsureResult = SignatureService.EnsureEventDispatcher(
+		FBlueprintHelperSignatureServiceTestsLocalUtils::MakeEnsureEventDispatcherRequest(Blueprint, DispatcherName, false));
+	TestTrue(TEXT("initial dispatcher ensure succeeds"), EnsureResult.bOk);
+
+	FBlueprintHelperEnsureEventDispatcherSignatureRequest MigrationRequest =
+		FBlueprintHelperSignatureServiceTestsLocalUtils::MakeEnsureEventDispatcherRequest(Blueprint, DispatcherName, false);
+	MigrationRequest.SignatureMismatchPolicy = TEXT("migrate_if_unreferenced");
+	MigrationRequest.Inputs.Reset();
+	MigrationRequest.Inputs.Add(FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureParamValue(TEXT("Count"), TEXT("int")));
+
+	const FBlueprintHelperToolResultBase MigrationResult = SignatureService.EnsureEventDispatcher(MigrationRequest);
+
+	TestTrue(TEXT("dispatcher migration succeeds"), MigrationResult.bOk);
+	TestEqual(TEXT("dispatcher migration is applied"), MigrationResult.Status, EBlueprintHelperToolStatus::Applied);
+	TestTrue(TEXT("dispatcher migration modifies"), MigrationResult.bModified);
+
+	FBlueprintHelperGraphTarget ListTarget;
+	ListTarget.BlueprintPath = Blueprint->GetPathName();
+	const FBlueprintHelperListDispatchersResult Dispatchers =
+		StructureService.ListEventDispatchers(ListTarget);
+	TestTrue(TEXT("dispatcher list succeeds"), Dispatchers.bSuccess);
+	const FBlueprintHelperEventDispatcherInfo* MigratedDispatcher = Dispatchers.Dispatchers.FindByPredicate(
+		[&DispatcherName](const FBlueprintHelperEventDispatcherInfo& Dispatcher)
+		{
+			return Dispatcher.Name == DispatcherName;
+		});
+	TestNotNull(TEXT("migrated dispatcher exists"), MigratedDispatcher);
+	if (MigratedDispatcher)
+	{
+		TestEqual(TEXT("migrated dispatcher has one param"), MigratedDispatcher->Params.Num(), 1);
+		TestTrue(TEXT("migrated dispatcher carries Count int"),
+			MigratedDispatcher->Params.Contains(TEXT("Count:int")));
+	}
 	return true;
 }
 

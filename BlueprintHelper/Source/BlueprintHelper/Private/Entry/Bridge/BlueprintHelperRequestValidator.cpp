@@ -635,16 +635,46 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 			{TEXT("target_type"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
 			{TEXT("target_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
 			{TEXT("graph_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("declaring_class_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
 			{TEXT("block_id"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
 			{TEXT("widget_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
 			{TEXT("row_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
 			{TEXT("interface_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("scope"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("search_scope"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("resolution_policy"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("detail"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
 			{TEXT("max_results"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Number, false},
-			{TEXT("include_samples"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
 		};
 		if (!FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError))
 		{
+			return false;
+		}
+
+		if (Payload->HasField(TEXT("target_guid")))
+		{
+			FBlueprintHelperRequestValidatorLocalUtils::SetValidationError(
+				OutError,
+				TEXT("payload.target_guid"),
+				TEXT("unsupported"),
+				TEXT("present"));
+			return false;
+		}
+		if (Payload->HasField(TEXT("scope")))
+		{
+			FBlueprintHelperRequestValidatorLocalUtils::SetValidationError(
+				OutError,
+				TEXT("payload.scope"),
+				TEXT("unsupported"),
+				TEXT("present"));
+			return false;
+		}
+		if (Payload->HasField(TEXT("include_samples")))
+		{
+			FBlueprintHelperRequestValidatorLocalUtils::SetValidationError(
+				OutError,
+				TEXT("payload.include_samples"),
+				TEXT("unsupported"),
+				TEXT("present"));
 			return false;
 		}
 
@@ -656,6 +686,8 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 			TEXT("event"),
 			TEXT("custom_event"),
 			TEXT("member_variable"),
+			TEXT("local_variable"),
+			TEXT("event_dispatcher"),
 			TEXT("block"),
 			TEXT("widget"),
 			TEXT("data_table_row"),
@@ -666,14 +698,66 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 			return false;
 		}
 
-		const TSet<FString> Scopes = {
-			TEXT("safety_context"),
-			TEXT("dependencies"),
-			TEXT("referencers"),
-			TEXT("external_dependents"),
-			TEXT("all"),
+		FString TargetType;
+		Payload->TryGetStringField(TEXT("target_type"), TargetType);
+		TargetType = TargetType.IsEmpty() ? TEXT("asset") : TargetType.ToLower();
+		if (TargetType == TEXT("function") ||
+			TargetType == TEXT("event") ||
+			TargetType == TEXT("custom_event") ||
+			TargetType == TEXT("member_variable") ||
+			TargetType == TEXT("local_variable") ||
+			TargetType == TEXT("event_dispatcher"))
+		{
+			FString TargetName;
+			if (!Payload->TryGetStringField(TEXT("target_name"), TargetName) || TargetName.IsEmpty())
+			{
+				FBlueprintHelperRequestValidatorLocalUtils::SetValidationError(
+					OutError,
+					TEXT("payload.target_name"),
+					TEXT("string"),
+					TEXT("missing"));
+				return false;
+			}
+		}
+		if (TargetType == TEXT("local_variable"))
+		{
+			FString GraphName;
+			if (!Payload->TryGetStringField(TEXT("graph_name"), GraphName) || GraphName.IsEmpty())
+			{
+				FBlueprintHelperRequestValidatorLocalUtils::SetValidationError(
+					OutError,
+					TEXT("payload.graph_name"),
+					TEXT("string"),
+					TEXT("missing"));
+				return false;
+			}
+		}
+
+		const TSet<FString> SearchScopes = {
+			TEXT("asset"),
+			TEXT("project"),
 		};
-		return FBlueprintHelperRequestValidatorLocalUtils::ValidateOptionalStringEnum(Payload, TEXT("scope"), Scopes, OutError);
+		if (!FBlueprintHelperRequestValidatorLocalUtils::ValidateOptionalStringEnum(Payload, TEXT("search_scope"), SearchScopes, OutError))
+		{
+			return false;
+		}
+
+		const TSet<FString> ResolutionPolicies = {
+			TEXT("ue_then_name"),
+			TEXT("ue_only"),
+			TEXT("name_only"),
+		};
+		if (!FBlueprintHelperRequestValidatorLocalUtils::ValidateOptionalStringEnum(Payload, TEXT("resolution_policy"), ResolutionPolicies, OutError))
+		{
+			return false;
+		}
+
+		const TSet<FString> Details = {
+			TEXT("summary"),
+			TEXT("samples"),
+			TEXT("full"),
+		};
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateOptionalStringEnum(Payload, TEXT("detail"), Details, OutError);
 	}
 	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("append_blueprint_graph")))
 	{

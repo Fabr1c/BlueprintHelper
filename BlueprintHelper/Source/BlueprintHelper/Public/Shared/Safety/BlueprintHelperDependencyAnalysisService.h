@@ -11,8 +11,6 @@ public:
 	bool TryBuildReferenceContext(
 		const FBlueprintHelperDependencyAnalysisTarget& Target,
 		const FBlueprintHelperDependencyAnalysisOptions& Options,
-		const FString& Scope,
-		bool bIncludeSamples,
 		FBlueprintHelperReferenceContextPack& OutContext,
 		FString& OutErrorCode,
 		FString& OutErrorMessage) const;

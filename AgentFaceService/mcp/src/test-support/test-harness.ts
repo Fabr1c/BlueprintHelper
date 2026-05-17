@@ -19,10 +19,12 @@ export type ToolHandler = (args: Record<string, unknown>) => Promise<{
 }>;
 
 export interface RegisteredTool {
+  annotations?: Record<string, unknown>;
   description?: string;
   inputSchema: {
     parse(input: unknown): Record<string, unknown>;
   };
+  meta?: Record<string, unknown>;
   handler: ToolHandler;
 }
 
@@ -42,8 +44,23 @@ export function registerWithBridge(
 ): Map<string, RegisteredTool> {
   const tools = new Map<string, RegisteredTool>();
   const server = {
-    registerTool(name: string, config: { description?: string; inputSchema: RegisteredTool['inputSchema'] }, handler: ToolHandler) {
-      tools.set(name, { description: config.description, inputSchema: config.inputSchema, handler });
+    registerTool(
+      name: string,
+      config: {
+        annotations?: Record<string, unknown>;
+        description?: string;
+        inputSchema: RegisteredTool['inputSchema'];
+        _meta?: Record<string, unknown>;
+      },
+      handler: ToolHandler,
+    ) {
+      tools.set(name, {
+        annotations: config.annotations,
+        description: config.description,
+        inputSchema: config.inputSchema,
+        meta: config._meta,
+        handler,
+      });
     },
   } as unknown as McpServer;
 

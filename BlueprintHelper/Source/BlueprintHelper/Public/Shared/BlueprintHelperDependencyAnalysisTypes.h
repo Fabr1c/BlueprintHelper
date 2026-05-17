@@ -1,5 +1,4 @@
-// BlueprintHelper Service Layer �?Internal Dependency Analysis 内部类型定义
-// 不导出独�?Agent-facing MCP 工具簇，仅供 Cleanup/Replace/Remove 等调用方内部使用
+// BlueprintHelper Service Layer - internal dependency analysis types.
 
 #pragma once
 
@@ -10,33 +9,29 @@
 class FBlueprintHelperReferenceContextProtocol
 {
 public:
-	static constexpr const TCHAR* Schema = TEXT("BlueprintHelper.ReferenceContextPack.v1");
+	static constexpr const TCHAR* Schema = TEXT("ReferenceContextPack.v1");
 };
 
 class FBlueprintHelperDependencyAnalysisJson
 {
 public:
-	static TArray<TSharedPtr<FJsonValue>> StringArray(const TArray<FString>& Items)
-	{
-		TArray<TSharedPtr<FJsonValue>> Values;
-		for (const FString& Item : Items)
-		{
-			Values.Add(MakeShared<FJsonValueString>(Item));
-		}
-		return Values;
-	}
+	static TArray<TSharedPtr<FJsonValue>> StringArray(const TArray<FString>& Items);
 };
-
-// ─── 内部目标描述 ───
 
 struct FBlueprintHelperDependencyAnalysisTarget
 {
 	FString AssetPath;
-	FString TargetType; // asset | function | event | custom_event | block | widget | data_table_row | interface
-	FString TargetName, BlockId, GraphName, RowName, WidgetName, InterfacePath;
-};
+	FString TargetType = TEXT("asset");
+	FString TargetName;
+	FString GraphName;
+	FString DeclaringClassPath;
 
-// ─── 内部 Options ───
+	// Legacy target selectors kept for older callers. They are not echoed in ReferenceContextPack.
+	FString BlockId;
+	FString RowName;
+	FString WidgetName;
+	FString InterfacePath;
+};
 
 struct FBlueprintHelperDependencyAnalysisOptions
 {
@@ -48,143 +43,63 @@ struct FBlueprintHelperDependencyAnalysisOptions
 	bool bScanCppSource = false;
 	bool bAnalyzeRuntimeStringLookup = false;
 	bool bAnalyzeDynamicSoftReferences = false;
-	int32 MaxResultCount = 100;
+	int32 MaxResultCount = 50;
+
+	FString LegacyScope = TEXT("safety_context");
+	FString SearchScope = TEXT("project");
+	FString ResolutionPolicy = TEXT("ue_then_name");
+	FString Detail = TEXT("samples");
 };
 
-// ─── 内部 ref 摘要 ───
-
-struct FBlueprintHelperAssetRefSummary
+struct FBlueprintHelperReferenceSampleSummary
 {
-	FString AssetPath, AssetType;
-	FString ReferenceKind = TEXT("package");
-	FString Source = TEXT("asset_registry");
-	FString EvidencePath;
-	FString Confidence = TEXT("high");
+	FString GraphName;
+	FString ReferenceKind = TEXT("unknown");
 
-	TSharedRef<FJsonObject> ToDependencyJson() const
-	{
-		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
-		Json->SetStringField(TEXT("asset_path"), AssetPath);
-		Json->SetStringField(TEXT("asset_type"), AssetType);
-		Json->SetStringField(TEXT("reference_kind"), ReferenceKind);
-		Json->SetStringField(TEXT("source"), Source);
-		Json->SetStringField(TEXT("confidence"), Confidence);
-		return Json;
-	}
-
-	TSharedRef<FJsonObject> ToReferencerJson() const
-	{
-		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
-		Json->SetStringField(TEXT("asset_path"), AssetPath);
-		Json->SetStringField(TEXT("asset_type"), AssetType);
-		Json->SetStringField(TEXT("reference_kind"), ReferenceKind);
-		Json->SetStringField(TEXT("evidence_path"), EvidencePath.IsEmpty() ? AssetPath : EvidencePath);
-		Json->SetStringField(TEXT("confidence"), Confidence);
-		return Json;
-	}
+	TSharedRef<FJsonObject> ToJson() const;
 };
 
-struct FBlueprintHelperDependentRefSummary
+struct FBlueprintHelperReferenceAssetSummary
 {
 	FString AssetPath;
-	FString DependentType; // asset_reference | blueprint_call | interface_call | widget_binding | data_table_row_reference | soft_reference | unknown
-	FString AssetType;
-	FString GraphName;
-	FString MemberName;
-	FString WidgetName;
-	FString RowName;
-	FString Impact;
-	FString Safety;
-	FString Evidence;
-	FString SuggestedAction;
+	FString AssetType = TEXT("unknown");
+	int32 MatchCount = 0;
+	TArray<FString> ReferenceKinds;
+	FString Safety = TEXT("info");
+	TArray<FBlueprintHelperReferenceSampleSummary> Samples;
 
-	TSharedRef<FJsonObject> ToJson() const
-	{
-		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
-		Json->SetStringField(TEXT("dependent_type"), DependentType);
-		if (!AssetPath.IsEmpty()) Json->SetStringField(TEXT("asset_path"), AssetPath);
-		if (!AssetType.IsEmpty()) Json->SetStringField(TEXT("asset_type"), AssetType);
-		if (!GraphName.IsEmpty()) Json->SetStringField(TEXT("graph_name"), GraphName);
-		if (!MemberName.IsEmpty()) Json->SetStringField(TEXT("member_name"), MemberName);
-		if (!WidgetName.IsEmpty()) Json->SetStringField(TEXT("widget_name"), WidgetName);
-		if (!RowName.IsEmpty()) Json->SetStringField(TEXT("row_name"), RowName);
-		if (!Impact.IsEmpty()) Json->SetStringField(TEXT("impact"), Impact);
-		if (!Safety.IsEmpty()) Json->SetStringField(TEXT("safety"), Safety);
-		if (!Evidence.IsEmpty()) Json->SetStringField(TEXT("evidence"), Evidence);
-		if (!SuggestedAction.IsEmpty()) Json->SetStringField(TEXT("suggested_action"), SuggestedAction);
-		return Json;
-	}
+	void AddReference(
+		const FString& ReferenceKind,
+		const FString& GraphName,
+		const FString& InSafety,
+		bool bIncludeSample,
+		int32 MaxSamples);
+
+	TSharedRef<FJsonObject> ToJson(bool bIncludeSamples) const;
+
+private:
+	void EscalateSafety(const FString& InSafety);
 };
 
-// ─── Dependencies (target �?external assets) ───
-
-struct FBlueprintHelperAssetDependencySummary
+struct FBlueprintHelperReferenceIndexStatus
 {
-	int32 DependencyCount = 0;
-	TArray<FBlueprintHelperAssetRefSummary> Dependencies;
-	bool bPartial = false;
-	TArray<FString> UnsupportedChecks;
-};
+	int32 UnindexedCount = 0;
+	int32 OutOfDateCount = 0;
+	int32 FailedCount = 0;
 
-// ─── Referencers (external assets �?target) ───
-
-struct FBlueprintHelperAssetReferencerSummary
-{
-	int32 ReferencerCount = 0;
-	TArray<FBlueprintHelperAssetRefSummary> Referencers;
-	bool bPartial = false;
-	TArray<FString> UnsupportedChecks;
-};
-
-// ─── Logical External Dependents ───
-
-struct FBlueprintHelperExternalDependentSummary
-{
-	bool bHasExternalDependents = false;
-	int32 ExternalDependentCount = 0;
-	TArray<FBlueprintHelperDependentRefSummary> Dependents;
-	bool bPartial = false;
-	TArray<FString> UnsupportedChecks;
-};
-
-struct FBlueprintHelperReferenceContextAnalysis
-{
-	FString Scope = TEXT("safety_context");
-	bool bPartial = false;
-	bool bTruncated = false;
-	int32 MaxResults = 50;
-	TArray<FString> UnsupportedChecks;
-
-	TSharedRef<FJsonObject> ToJson() const
-	{
-		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
-		Json->SetStringField(TEXT("scope"), Scope);
-		Json->SetBoolField(TEXT("partial"), bPartial);
-		Json->SetBoolField(TEXT("truncated"), bTruncated);
-		Json->SetNumberField(TEXT("max_results"), MaxResults);
-		Json->SetArrayField(TEXT("unsupported_checks"), FBlueprintHelperDependencyAnalysisJson::StringArray(UnsupportedChecks));
-		return Json;
-	}
+	TSharedRef<FJsonObject> ToJson() const;
 };
 
 struct FBlueprintHelperReferenceContextSummary
 {
-	int32 DependencyCount = 0;
-	int32 ReferencerCount = 0;
-	int32 ExternalDependentCount = 0;
-	int32 BlockingDependentCount = 0;
+	int32 AssetCount = 0;
+	int32 ReferenceCount = 0;
+	int32 BlockingCount = 0;
 	int32 WarningCount = 0;
+	bool bPartial = false;
+	bool bTruncated = false;
 
-	TSharedRef<FJsonObject> ToJson() const
-	{
-		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
-		Json->SetNumberField(TEXT("dependency_count"), DependencyCount);
-		Json->SetNumberField(TEXT("referencer_count"), ReferencerCount);
-		Json->SetNumberField(TEXT("external_dependent_count"), ExternalDependentCount);
-		Json->SetNumberField(TEXT("blocking_dependent_count"), BlockingDependentCount);
-		Json->SetNumberField(TEXT("warning_count"), WarningCount);
-		return Json;
-	}
+	TSharedRef<FJsonObject> ToJson() const;
 };
 
 struct FBlueprintHelperReferenceContextAgentHints
@@ -194,56 +109,18 @@ struct FBlueprintHelperReferenceContextAgentHints
 	FString RecommendedTaskStrategy = TEXT("preview_before_write");
 	TArray<FString> Blockers;
 
-	TSharedRef<FJsonObject> ToJson() const
-	{
-		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
-		Json->SetBoolField(TEXT("can_edit_safely"), bCanEditSafely);
-		Json->SetBoolField(TEXT("requires_preview"), bRequiresPreview);
-		Json->SetStringField(TEXT("recommended_task_strategy"), RecommendedTaskStrategy);
-		Json->SetArrayField(TEXT("blockers"), FBlueprintHelperDependencyAnalysisJson::StringArray(Blockers));
-		return Json;
-	}
+	TSharedRef<FJsonObject> ToJson() const;
 };
 
 struct FBlueprintHelperReferenceContextPack
 {
 	FString ContextId;
-	FBlueprintHelperReferenceContextAnalysis Analysis;
 	FBlueprintHelperReferenceContextSummary Summary;
-	TArray<FBlueprintHelperAssetRefSummary> Dependencies;
-	TArray<FBlueprintHelperAssetRefSummary> Referencers;
-	TArray<FBlueprintHelperDependentRefSummary> ExternalDependents;
+	FBlueprintHelperReferenceIndexStatus IndexStatus;
+	TArray<FBlueprintHelperReferenceAssetSummary> Dependencies;
+	TArray<FBlueprintHelperReferenceAssetSummary> Referencers;
 	FBlueprintHelperReferenceContextAgentHints AgentHints;
+	TArray<FString> UnsupportedChecks;
 
-	TSharedRef<FJsonObject> ToJson() const
-	{
-		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
-		Json->SetStringField(TEXT("schema"), FBlueprintHelperReferenceContextProtocol::Schema);
-		Json->SetStringField(TEXT("context_id"), ContextId);
-		Json->SetObjectField(TEXT("analysis"), Analysis.ToJson());
-		Json->SetObjectField(TEXT("summary"), Summary.ToJson());
-
-		TArray<TSharedPtr<FJsonValue>> DependencyValues;
-		for (const FBlueprintHelperAssetRefSummary& Dependency : Dependencies)
-		{
-			DependencyValues.Add(MakeShared<FJsonValueObject>(Dependency.ToDependencyJson()));
-		}
-		Json->SetArrayField(TEXT("dependencies"), DependencyValues);
-
-		TArray<TSharedPtr<FJsonValue>> ReferencerValues;
-		for (const FBlueprintHelperAssetRefSummary& Referencer : Referencers)
-		{
-			ReferencerValues.Add(MakeShared<FJsonValueObject>(Referencer.ToReferencerJson()));
-		}
-		Json->SetArrayField(TEXT("referencers"), ReferencerValues);
-
-		TArray<TSharedPtr<FJsonValue>> ExternalDependentValues;
-		for (const FBlueprintHelperDependentRefSummary& Dependent : ExternalDependents)
-		{
-			ExternalDependentValues.Add(MakeShared<FJsonValueObject>(Dependent.ToJson()));
-		}
-		Json->SetArrayField(TEXT("external_dependents"), ExternalDependentValues);
-		Json->SetObjectField(TEXT("agent_hints"), AgentHints.ToJson());
-		return Json;
-	}
+	TSharedRef<FJsonObject> ToJson() const;
 };

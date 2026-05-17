@@ -5,6 +5,7 @@
 #include "Dom/JsonValue.h"
 #include "Misc/AutomationTest.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.h"
+#include "Shared/BlueprintHelperDependencyAnalysisTypes.h"
 
 class FBlueprintHelperObjectFirstContractTestsLocalUtils
 {
@@ -1538,16 +1539,139 @@ bool FBlueprintHelperContractReadReferenceContextPayloadTest::RunTest(const FStr
 		Payload->SetStringField(TEXT("target_type"), TEXT("custom_event"));
 		Payload->SetStringField(TEXT("target_name"), TEXT("ToggleDoor"));
 		Payload->SetStringField(TEXT("graph_name"), TEXT("EventGraph"));
-		Payload->SetStringField(TEXT("scope"), TEXT("all"));
+		Payload->SetStringField(TEXT("search_scope"), TEXT("project"));
+		Payload->SetStringField(TEXT("resolution_policy"), TEXT("ue_then_name"));
+		Payload->SetStringField(TEXT("detail"), TEXT("samples"));
 		Payload->SetNumberField(TEXT("max_results"), 25);
-		Payload->SetBoolField(TEXT("include_samples"), true);
 
 		TestTrue(TEXT("read_reference_context accepts scoped custom_event request"),
 			FBlueprintHelperRequestValidator::ValidatePayloadForCommand(TEXT("read_reference_context"), Payload, Error));
 	}
 
+	{
+		TSharedPtr<FJsonObject> Payload = MakeShared<FJsonObject>();
+		Payload->SetStringField(TEXT("asset_path"), TEXT("/Game/BP/BP_Door"));
+		Payload->SetStringField(TEXT("target_type"), TEXT("local_variable"));
+		Payload->SetStringField(TEXT("target_name"), TEXT("LoopIndex"));
+		Payload->SetStringField(TEXT("graph_name"), TEXT("BuildDoor"));
+		Payload->SetStringField(TEXT("search_scope"), TEXT("asset"));
+		Payload->SetStringField(TEXT("resolution_policy"), TEXT("ue_only"));
+		Payload->SetStringField(TEXT("detail"), TEXT("summary"));
+
+		TestTrue(TEXT("read_reference_context accepts local_variable request"),
+			FBlueprintHelperRequestValidator::ValidatePayloadForCommand(TEXT("read_reference_context"), Payload, Error));
+	}
+
+	{
+		TSharedPtr<FJsonObject> Payload = MakeShared<FJsonObject>();
+		Payload->SetStringField(TEXT("asset_path"), TEXT("/Game/BP/BP_Door"));
+		Payload->SetStringField(TEXT("target_type"), TEXT("function"));
+		Payload->SetStringField(TEXT("search_scope"), TEXT("project"));
+
+		TestFalse(TEXT("read_reference_context rejects member target without target_name"),
+			FBlueprintHelperRequestValidator::ValidatePayloadForCommand(TEXT("read_reference_context"), Payload, Error));
+		TestEqual(TEXT("missing target_name error field"), Error.Field, FString(TEXT("payload.target_name")));
+	}
+
+	{
+		TSharedPtr<FJsonObject> Payload = MakeShared<FJsonObject>();
+		Payload->SetStringField(TEXT("asset_path"), TEXT("/Game/BP/BP_Door"));
+		Payload->SetStringField(TEXT("target_type"), TEXT("function"));
+		Payload->SetStringField(TEXT("target_name"), TEXT("ToggleDoor"));
+		Payload->SetStringField(TEXT("target_guid"), TEXT("00000000000000000000000000000000"));
+
+		TestFalse(TEXT("read_reference_context rejects target_guid"),
+			FBlueprintHelperRequestValidator::ValidatePayloadForCommand(TEXT("read_reference_context"), Payload, Error));
+		TestEqual(TEXT("target_guid error field"), Error.Field, FString(TEXT("payload.target_guid")));
+	}
+
+	{
+		TSharedPtr<FJsonObject> Payload = MakeShared<FJsonObject>();
+		Payload->SetStringField(TEXT("asset_path"), TEXT("/Game/BP/BP_Door"));
+		Payload->SetBoolField(TEXT("include_samples"), true);
+
+		TestFalse(TEXT("read_reference_context rejects include_samples"),
+			FBlueprintHelperRequestValidator::ValidatePayloadForCommand(TEXT("read_reference_context"), Payload, Error));
+		TestEqual(TEXT("include_samples error field"), Error.Field, FString(TEXT("payload.include_samples")));
+	}
+
+	{
+		TSharedPtr<FJsonObject> Payload = MakeShared<FJsonObject>();
+		Payload->SetStringField(TEXT("asset_path"), TEXT("/Game/BP/BP_Door"));
+		Payload->SetStringField(TEXT("scope"), TEXT("all"));
+
+		TestFalse(TEXT("read_reference_context rejects legacy scope"),
+			FBlueprintHelperRequestValidator::ValidatePayloadForCommand(TEXT("read_reference_context"), Payload, Error));
+		TestEqual(TEXT("scope error field"), Error.Field, FString(TEXT("payload.scope")));
+	}
+
 	TestFalse(TEXT("read_reference_context is not a write command"),
 		FBlueprintHelperRequestValidator::IsWriteCommand(TEXT("read_reference_context")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReferenceContextPackShapeTest,
+	"BlueprintHelper.ObjectFirst.Contract.ReferenceContextPackShape",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReferenceContextPackShapeTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReferenceContextPack Pack;
+	Pack.ContextId = TEXT("refctx_contract");
+	Pack.Summary.AssetCount = 1;
+	Pack.Summary.ReferenceCount = 2;
+	Pack.Summary.BlockingCount = 1;
+	Pack.Summary.bPartial = false;
+	Pack.Summary.bTruncated = false;
+	Pack.IndexStatus.UnindexedCount = 0;
+	Pack.IndexStatus.OutOfDateCount = 0;
+	Pack.IndexStatus.FailedCount = 0;
+
+	FBlueprintHelperReferenceAssetSummary Referencer;
+	Referencer.AssetPath = TEXT("/Game/BP/BP_DoorUser.BP_DoorUser");
+	Referencer.AssetType = TEXT("Blueprint");
+	Referencer.AddReference(TEXT("function_call"), TEXT("EventGraph"), TEXT("blocking"), true, 3);
+	Referencer.AddReference(TEXT("function_call"), TEXT("DoorLogic"), TEXT("blocking"), true, 3);
+	Pack.Referencers.Add(Referencer);
+	Pack.AgentHints.bCanEditSafely = false;
+	Pack.AgentHints.Blockers.Add(TEXT("1 assets have blocking references."));
+
+	const TSharedRef<FJsonObject> Json = Pack.ToJson();
+	FString Schema;
+	TestTrue(TEXT("reference context pack has schema"), Json->TryGetStringField(TEXT("schema"), Schema));
+	TestEqual(TEXT("reference context pack schema has no BlueprintHelper prefix"), Schema, FString(TEXT("ReferenceContextPack.v1")));
+	TestFalse(TEXT("reference context pack does not echo target"), Json->HasField(TEXT("target")));
+	TestFalse(TEXT("reference context pack does not echo query"), Json->HasField(TEXT("query")));
+	TestFalse(TEXT("reference context pack omits legacy analysis block"), Json->HasField(TEXT("analysis")));
+	TestFalse(TEXT("reference context pack omits legacy external_dependents block"), Json->HasField(TEXT("external_dependents")));
+
+	const TSharedPtr<FJsonObject>* SummaryObject = nullptr;
+	TestTrue(TEXT("summary exists"), Json->TryGetObjectField(TEXT("summary"), SummaryObject));
+	if (SummaryObject && SummaryObject->IsValid())
+	{
+		TestTrue(TEXT("summary carries partial"), (*SummaryObject)->HasField(TEXT("partial")));
+		TestTrue(TEXT("summary carries truncated"), (*SummaryObject)->HasField(TEXT("truncated")));
+	}
+
+	const TArray<TSharedPtr<FJsonValue>>* ReferencerValues = nullptr;
+	TestTrue(TEXT("referencers exists"), Json->TryGetArrayField(TEXT("referencers"), ReferencerValues));
+	if (ReferencerValues && ReferencerValues->Num() > 0)
+	{
+		const TSharedPtr<FJsonObject> ReferencerJson = (*ReferencerValues)[0]->AsObject();
+		TestTrue(TEXT("referencer is asset-level aggregate"), ReferencerJson->HasField(TEXT("match_count")));
+		TestTrue(TEXT("referencer has reference kinds"), ReferencerJson->HasField(TEXT("reference_kinds")));
+		const TArray<TSharedPtr<FJsonValue>>* SampleValues = nullptr;
+		TestTrue(TEXT("referencer has compact samples"), ReferencerJson->TryGetArrayField(TEXT("samples"), SampleValues));
+		if (SampleValues && SampleValues->Num() > 0)
+		{
+			const TSharedPtr<FJsonObject> SampleJson = (*SampleValues)[0]->AsObject();
+			TestTrue(TEXT("sample has graph name"), SampleJson->HasField(TEXT("graph_name")));
+			TestTrue(TEXT("sample has reference kind"), SampleJson->HasField(TEXT("reference_kind")));
+			TestFalse(TEXT("sample does not expose node guid"), SampleJson->HasField(TEXT("node_guid")));
+		}
+	}
 
 	return true;
 }

@@ -21,7 +21,7 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
-  console.error('[BlueprintHelper Lifecycle MCP] Server running (stdio mode, lifecycle tools only)');
+  console.error('[BlueprintHelper Lifecycle MCP] Server running (stdio mode, lifecycle tools plus developer-only exec)');
 }
 
 process.on('SIGINT', () => {

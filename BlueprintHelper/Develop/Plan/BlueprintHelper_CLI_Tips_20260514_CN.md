@@ -1,217 +1,290 @@
 # BlueprintHelper CLI Tips
 
-## 0. 统一错误返回策略：stdout 可裁切，artifact 必须可诊断
+更新时间：2026-05-17
 
-原则：
+本文只记录本地 CLI、PowerShell、JSON 文件、命令入口选择等非插件代码问题。插件内部失败必须通过 CLI/Bridge 返回可诊断的 artifact；不要把插件缺少错误细节的问题转成 Agent 猜测或手工查 UE 面板。
 
-1. CLI 的 `--select status,summary,artifacts.full_result` 可以只返回短摘要，避免 stdout 过大。
-2. 任何 `cli_error`、`preview_blocked`、`execute_failed`、`compile_failed` 都必须在 `artifacts.full_result` 指向的 JSON 中保留可诊断细节。
-3. 如果错误来自 UE 编译失败，artifact 里必须包含编辑器 Compiler Results 等价信息：`data.compile_result.compiler_results[]` 和可读 markdown；同时 `error.actual` 应携带可直接给 Agent 阅读的编译结果摘要。
-4. 如果 artifact 只有笼统错误，如仅有 `Blueprint compile failed with N error(s)`，应视为 CLI/Bridge 错误返回能力缺口，而不是要求 Agent 去猜测或手动查 UE 面板。
-5. Tips 文档中的 PowerShell、JSON、ExecutionPolicy、BOM 等条目只记录“非插件代码导致的调用问题”；插件内部失败必须优先把细节回传到 artifact。
+## 0. 总原则
+
+1. 普通资产读写走 BlueprintHelper CLI 和 TaskSpec-first 流程。
+2. Agent 主动管理 Unreal Editor 生命周期时，优先使用全局 MCP lifecycle 工具；CLI 的 `open_editor`/`close_editor` 只作为兼容或人工 fallback。
+3. 复杂参数先从 `BlueprintHelper/Resources/AgentGuide/Templates` 复制模板，再改字段，并用 `--file` 传入 UTF-8 no BOM JSON。
+4. 排查阶段先用 `--format full`；确认无误后再用 `--select` 或 `--fields` 缩短 stdout。
+5. 遇到 `cli_error`、`preview_blocked`、`execute_failed`、`compile_failed`，先打开 `artifacts.full_result` 指向的 JSON。
+6. 如果 artifact 里只有泛化错误，例如 `Blueprint compile failed with N error(s)`，这是 CLI/Bridge 诊断能力缺口，应修复返回结构，不要求 Agent 猜测。
 
 稳定排查命令：
 
 ```powershell
-bh.cmd <tool_name> --file params.json --select status,summary,artifacts.full_result
+bh.cmd <tool_name> --file .\params.json --select status,summary,artifacts.full_result
+bh.cmd <tool_name> --file .\params.json --format full
 ```
 
-若 stdout 仍不足，打开 `artifacts.full_result`；不要把“stdout 被裁切”与“artifact 缺失诊断”混为同一类问题。
-鏃ユ湡锛?026-05-14
+## 1. 命令入口
 
-鐢ㄩ€旓細璁板綍 BlueprintHelper CLI 璋冪敤杩囩▼涓湡瀹為亣鍒扮殑闂銆佸師鍥犲拰绋冲畾鍐欐硶锛屼緵鍚庣画娴嬭瘯涓?Agent 鎵ц鍙傝€冦€?
-## 1. 鏃犲弬 CLI 鍛戒护涔熼渶瑕佹樉寮忓弬鏁拌緭鍏ユ簮
+### 1.1 无业务参数也要传输入源
 
-閿欒鍛戒护锛?
-```powershell
-bh.cmd blueprint_get_runtime_profile --format full
-```
+CLI 需要明确参数输入源。无参数工具使用空 JSON：
 
-鐜拌薄锛?
-```text
-Choose exactly one params input source: --file, --json, or --stdin.
-```
-
-绋冲畾鍐欐硶锛?
 ```powershell
 bh.cmd blueprint_get_runtime_profile --json "{}" --format full
 ```
 
-鍘熷洜锛?
-CLI 褰撳墠缁熶竴瑕佹眰姣忔璋冪敤鎭板ソ鎻愪緵涓€涓弬鏁拌緭鍏ユ簮锛屽嵆浣胯宸ュ叿娌℃湁涓氬姟鍙傛暟锛屼篃闇€瑕佷娇鐢?`--json "{}"`銆乣--file empty.json` 鎴?`--stdin`銆?
-## 2. PowerShell here-string 鏍囬琛屽悗涓嶈兘鐩存帴璺?JSON 鍐呭
+不要只写：
 
-閿欒鍐欐硶锛?
+```powershell
+bh.cmd blueprint_get_runtime_profile --format full
+```
+
+否则可能返回：
+
+```text
+Choose exactly one params input source: --file, --json, or --stdin.
+```
+
+### 1.2 直接工具名和 grouped TaskSpec 命令的根对象不同
+
+直接工具名 `blueprinthelper_preview_task` / `blueprinthelper_execute_task` 使用 wrapper：
+
+```json
+{
+  "task_spec": {
+    "schema": "BlueprintHelper.TaskSpec.v1"
+  }
+}
+```
+
+Grouped 命令 `task preview` / `task execute` 使用裸 `BlueprintHelper.TaskSpec.v1`：
+
+```powershell
+bh.cmd task preview --file .\task.json --format full
+bh.cmd task execute --file .\task.json --format full
+```
+
+`task.json` 根对象示例：
+
+```json
+{
+  "schema": "BlueprintHelper.TaskSpec.v1",
+  "task_type": "create_asset",
+  "target": {
+    "asset_path": "/Game/BlueprintHelper/Examples/BP_Example",
+    "target_type": "asset"
+  },
+  "behavior": {},
+  "validation": {
+    "should_compile": false,
+    "should_save": false
+  }
+}
+```
+
+### 1.3 只调用 Agent-facing CLI 命令
+
+不要把 Bridge 内部函数名当 CLI 命令。普通 Agent 不直接调用：
+
+```text
+blueprint_get_asset_info
+blueprint_get_datatable_rows
+blueprint_get_object_properties
+execute_task
+blueprinthelper_apply_review_action
+```
+
+常用替代入口：
+
+```text
+blueprinthelper_read_context
+blueprinthelper_read_task_context
+blueprinthelper_read_reference_context
+blueprinthelper_query_review_records
+blueprinthelper_get_task_result
+task preview
+task execute
+```
+
+`blueprinthelper_apply_review_action` 只用于插件开发或内部验证，不暴露给普通 Agent 工作流。
+
+### 1.4 验证源码改动时使用工作区 CLI
+
+如果正在验证当前仓库的 TypeScript/CLI 改动，先构建并直接运行工作区入口，避免命中全局旧版本：
+
+```powershell
+npm.cmd --prefix AgentFaceService\cli run build
+node .\AgentFaceService\cli\build\cli\index.js task preview --file .\task.json --format full
+```
+
+### 1.5 Editor lifecycle
+
+Agent 主动开关编辑器时，使用全局 MCP lifecycle 工具。普通资产读写、TaskSpec preview/execute、diagnostics、debug bundle 查询仍走 CLI。
+
+CLI lifecycle alias 只作为兼容或人工 fallback，不作为 AgentGuide 普通工具选择。
+
+## 2. PowerShell 稳定写法
+
+### 2.1 固定使用 `bh.cmd`
+
+PowerShell 里直接运行 `bh` 可能命中 npm shim `bh.ps1`，并被 ExecutionPolicy 拦截。自动化脚本固定使用：
+
+```powershell
+bh.cmd blueprint_get_runtime_profile --json "{}" --select status,summary
+```
+
+不要在任务中临时修改用户机器的 ExecutionPolicy。
+
+### 2.2 here-string 正文必须从下一行开始
+
+错误写法：
+
 ```powershell
 @'{"target":{"asset_path":"/Game/BP"}}'@
 ```
 
-鐜拌薄锛?
-```text
-here-string 鏍囬鍚庨潰鍜岃灏句箣鍓嶄笉鍏佽鍖呭惈浠讳綍瀛楃銆?```
+稳定写法：
 
-绋冲畾鍐欐硶锛?
 ```powershell
 @'
 {"target":{"asset_path":"/Game/BP"}}
 '@ | Set-Content -LiteralPath params.json -Encoding utf8
 ```
 
-鏇存帹鑽愮殑 no BOM 鍐欐硶锛?
+需要 no BOM 时使用 `.NET` 写文件，见下一条。
+
+### 2.3 复杂 JSON 使用 `--file`
+
+PowerShell 对引号、反斜杠和 JSON 大括号的转义容易把参数拆坏。复杂 JSON 不走 `--json`，先写 UTF-8 no BOM 文件：
+
 ```powershell
-$enc = New-Object System.Text.UTF8Encoding($false)
-[System.IO.File]::WriteAllText($p, '{"target":{"asset_path":"/Game/BP"}}', $enc)
-```
-
-## 3. 鏃х増 Windows PowerShell 涓嶆敮鎸?`ConvertFrom-Json -AsHashtable`
-
-閿欒鍐欐硶锛?
-```powershell
-$profile = $json | ConvertFrom-Json -AsHashtable
-```
-
-鐜拌薄锛?
-```text
-鎵句笉鍒颁笌鍙傛暟鍚嶇О鈥淎sHashtable鈥濆尮閰嶇殑鍙傛暟銆?```
-
-绋冲畾绛栫暐锛?
-1. 闇€瑕佷繚鐣欐湭鐭ュ瓧娈靛苟鍐?JSON 鏃讹紝浼樺厛鐢?Node.js 璇诲啓銆?2. 濡傛灉蹇呴』鐢?Windows PowerShell 5.1锛岄伩鍏嶄緷璧?`-AsHashtable`锛屾敼鐢?`PSCustomObject` 鎴栨墜鍐欏璞°€?
-鎺ㄨ崘 Node.js 鍐欐硶锛?
-```powershell
-@'
-const fs = require('fs');
-const path = 'D:/UEProjects/Template/.blueprinthelper/agent-profile.json';
-const profile = JSON.parse(fs.readFileSync(path, 'utf8'));
-profile.active_profile = profile.active_profile || {};
-profile.active_profile.safety_profile = 'AutoRepair';
-fs.writeFileSync(path, JSON.stringify(profile, null, 2) + '\n', 'utf8');
-'@ | node -
-```
-
-## 4. 涓嶈鍦?PowerShell 涓娇鐢?`$profile` 浣滀负鏅€氬彉閲忓悕
-
-闂锛?
-PowerShell 鍙橀噺鍚嶅ぇ灏忓啓涓嶆晱鎰燂紝`$profile` 浼氱鍒板唴缃?`$PROFILE` 鑷姩鍙橀噺璇箟锛屽鏄撴妸鐢ㄦ埛 PowerShell profile 璺緞瀵硅薄璇啓杩?JSON銆?
-鏈疆鐜拌薄锛?
-`agent-profile.json` 鏇捐姹℃煋涓?PowerShell profile 璺緞瀵硅薄锛屽悗缁凡鐢?Node.js 鎭㈠銆?
-绋冲畾鍐欐硶锛?
-```powershell
-$agentProfile = @{}
-$agentProfile['schema'] = 'BlueprintHelper.AgentProfile.v1'
-```
-
-## 5. `--select` 浼氳鍒囩粨鏋滐紝鎺掓煡閿欒鏃跺簲鏀圭敤 `--format full`
-
-闂锛?
-`--select status,summary,artifacts.full_result` 閫傚悎姝ｅ父鏌ョ湅闃舵缁撴灉锛屼絾鍙兘闅愯棌 CLI 瑙ｆ瀽閿欒鍜?Bridge 閿欒缁嗚妭銆?
-鎺掓煡鍐欐硶锛?
-```powershell
-bh.cmd <tool_name> --json "{}" --format full
-```
-
-## 6. CLI 鍙傛暟鏂囦欢寤鸿浣跨敤 UTF-8 no BOM
-
-鎺ㄨ崘鍐欐硶锛?
-```powershell
-$enc = New-Object System.Text.UTF8Encoding($false)
-[System.IO.File]::WriteAllText($p, $jsonText, $enc)
-bh.cmd <tool_name> --file $p --format full
-```
-
-鍘熷洜锛?
-澶嶆潅 JSON銆佷腑鏂囧瓧娈点€佷互鍙婂悗缁法 Node/PowerShell/UE Bridge 瑙ｆ瀽鏃讹紝UTF-8 no BOM 鏇寸ǔ瀹氾紝鑳藉噺灏戠紪鐮佸拰闈炴硶 JSON 椋庨櫓銆?
-## 7. 閬垮厤鐢?PowerShell here-string 鐩存帴绠￠亾澶嶆潅涓枃 Markdown 鍒?Node
-
-闂锛?
-PowerShell 鍛戒护瀛楃涓蹭腑鍚屾椂鍖呭惈涓枃銆丮arkdown 鍙嶅紩鍙峰拰 JavaScript template string 鏃讹紝鍙兘鍦ㄤ紶缁?Node 鍚庡嚭鐜颁贡鐮佹垨鑴氭湰瑙ｆ瀽閿欒銆?
-鏈疆鐜拌薄锛?
-```text
-SyntaxError: Unexpected token '??'
-```
-
-绋冲畾绛栫暐锛?
-1. 淇敼 Markdown 鏂囨。鏃朵紭鍏堜娇鐢?`apply_patch`銆?2. 濡傛灉蹇呴』鐢?Node 鑴氭湰鍐欐枃妗ｏ紝灏介噺浠庡閮ㄦ枃浠惰鍙栨鏂囷紝閬垮厤鍦ㄥ懡浠よ鍐呭祵澶嶆潅涓枃 Markdown銆?3. Markdown 姝ｆ枃閲屾湁鍙嶅紩鍙锋椂锛屼笉瑕佺洿鎺ュ杩?JavaScript template string锛涙敼鐢ㄦ暟缁勮鎷兼帴鎴?JSON 瀛楃涓叉枃浠躲€?
-## 8. PowerShell 涓鏉?`--json` 瀹规槗琚敊璇浆涔夋垚鍛戒护鍚?
-閿欒鍐欐硶锛?
-```powershell
-bh.cmd blueprint_get_asset_info --json "{\"asset_path\":\"/Game/BP\"}" --format full
-```
-
-鏈疆鐜拌薄锛?
-```text
-Unsupported BlueprintHelper CLI command: blueprint_get_asset_info --json ...
-```
-
-绋冲畾绛栫暐锛?
-1. PowerShell 涓嬪鏉?JSON 浼樺厛鍐欏叆 UTF-8 no BOM 鏂囦欢锛屽啀鐢?`--file`銆?2. 鍙湪闈炲父绠€鍗曚笖宸查獙璇佺殑鍦烘櫙浣跨敤 `--json "{}"`銆?
-鎺ㄨ崘鍐欐硶锛?
-```powershell
-$enc = New-Object System.Text.UTF8Encoding($false)
-[System.IO.File]::WriteAllText($p, '{"asset_path":"/Game/BP"}', $enc)
-bh.cmd blueprint_get_asset_info --file $p --format full
-```
-
-## 9. 涓嶈鍋囪鎵€鏈?Bridge 鍛戒护閮芥湁鐩存帴 CLI 鏆撮湶
-
-鏈疆鐜拌薄锛?
-```text
-Unsupported BlueprintHelper CLI command: blueprint_get_asset_info --file ...
-```
-
-鍘熷洜锛?
-`get_asset_info` 鏄?Bridge 鍐呴儴鍛戒护锛屼絾褰撳墠 CLI 瀵瑰绋冲畾鍏ュ彛涓嶄竴瀹氭毚闇插搴旂殑 `blueprint_get_asset_info` 鐩存帴鍛戒护銆?
-绋冲畾绛栫暐锛?
-1. 鏅€?Agent 鑾峰彇璧勪骇涓婁笅鏂囧簲浣跨敤 `blueprinthelper_read_task_context`銆?2. 鍙湁 `tool-registry` 鏄庣‘鍒楀嚭鐨?CLI 鍛戒护鎵嶄綔涓?Agent 鍙敤 surface銆?3. 濡傛灉蹇呴』娴嬭瘯 Bridge 鍐呴儴鍛戒护锛屼娇鐢ㄤ笓闂?Debug/Bridge 鑴氭湰锛屼笉瑕佹妸瀹冨綋浣滄櫘閫?CLI surface銆?
-## 10. Windows PowerShell 鐨?`Set-Content -Encoding utf8` 鍙兘鍐欏叆 BOM
-
-閿欒鍐欐硶锛?```powershell
-$taskSpec | ConvertTo-Json -Depth 40 | Set-Content -Path task.json -Encoding utf8
-bh.cmd blueprinthelper_preview_task --file .\task.json --format full
-```
-
-鏈疆鐜拌薄锛?```text
-Unexpected token '锘?, "锘縶 ... is not valid JSON
-```
-
-鍘熷洜锛?Windows PowerShell 5.1 鐨?`-Encoding utf8` 榛樿浼氬啓 UTF-8 BOM锛屽綋鍓?CLI JSON parser 涓嶆帴鍙楁枃浠跺紑澶寸殑 BOM銆?
-绋冲畾鍐欐硶锛?```powershell
-$json = $taskSpec | ConvertTo-Json -Depth 40
-$enc = New-Object System.Text.UTF8Encoding($false)
-[System.IO.File]::WriteAllText((Resolve-Path '.\task.json'), $json, $enc)
-```
-
-## 11. `read_context` 鐨?`target_type=data_table` 鍘嗗彶闂宸蹭慨澶?
-鍘嗗彶鐜拌薄锛氭棫鐗?`ReadSpec.target.target_type` 涓嶆帴鍙?`data_table`锛屼笖 `read_type=data_table_context` / `object_property_context` 鏇捐繑鍥?`unsupported_read_type`銆?
-褰撳墠鐘舵€侊細2026-05-15 宸蹭慨澶嶃€俙blueprinthelper_read_context` 鍙洿鎺ヨ鍙?DataTable銆丏ataTable row銆丱bjectProperty銆丏ataAsset銆乄idgetTree銆乄idgetProperty銆丆omponent銆乂ariable 鍜?Graph context銆?
-绋冲畾鍐欐硶锛?```powershell
-$path = 'D:\UEProjects\Template\Saved\BlueprintHelper\CodexTaskSpecs\read_datatable.json'
+$path = Join-Path (Get-Location) 'params.json'
 $json = @{
-  schema = 'BlueprintHelper.ReadSpec.v1'
-  read_type = 'data_table_context'
-  target = @{ asset_path = '/Game/Path/DT_Test'; target_type = 'data_table'; target_name = 'RowName' }
-  format = 'summary'
+  limit = 5
 } | ConvertTo-Json -Depth 16
 [System.IO.File]::WriteAllText($path, $json, [System.Text.UTF8Encoding]::new($false))
-node D:\UEProjects\Template\Plugins\BlueprintHelper\AgentFaceService\cli\build\cli\index.js blueprinthelper_read_context --file $path --format full
+bh.cmd blueprinthelper_list_debug_cases --file $path --format full
 ```
 
-娉ㄦ剰锛歚schema` 蹇呴』涓?`BlueprintHelper.ReadSpec.v1`锛涘鏉?JSON 浠嶅缓璁蛋 UTF-8 no BOM `--file`銆?
-## 12. 涓嶈鐢ㄧ洿鎺?Bridge 璇诲懡浠ゆ浛浠?`blueprinthelper_read_context`
+### 2.4 Windows PowerShell 5.1 不支持 `utf8NoBOM`
 
-鍘嗗彶鐜拌薄锛歚blueprint_get_datatable_rows`銆乣blueprint_get_object_properties` 涓嶆槸绋冲畾 Agent-facing CLI 鍛戒护锛岀洿鎺ヨ皟鐢ㄥ彲鑳借繑鍥?unsupported command銆?
-褰撳墠绛栫暐锛欴ataTable/ObjectProperty/DataAsset 鐨勭ǔ瀹氳鍥炲叆鍙ｅ凡缁忔敹鏁涘埌 `blueprinthelper_read_context`銆傛櫘閫?Agent 娴嬭瘯涓嶅簲鍋囪鍐呴儴 Bridge 鍛戒护鏆撮湶銆?
-绋冲畾鍐欐硶锛?1. DataTable锛歚read_type=data_table_context`锛宍target_type=data_table`銆?2. Object property锛歚read_type=object_property_context`锛宍target_type=property` 鎴?`object_property`銆?3. DataAsset锛歚read_type=data_asset_context`锛宍target_type=data_asset`銆?4. Widget锛歚read_type=widget_context`锛屾棤 `target_name` 璇诲彇鏍戯紝鏈?`target_name` 璇诲彇 widget property銆?
-## 11. 寮€鍙戦獙璇佹椂涓嶈榛樿浣跨敤鍏ㄥ眬 `bh.cmd`
+`Set-Content -Encoding utf8NoBOM` 在 Windows PowerShell 5.1 可能报无法转换枚举值；`Set-Content -Encoding utf8` 又可能写入 UTF-8 BOM。CLI JSON 文件统一使用：
 
-鏈疆鐜拌薄锛?宸ヤ綔鍖?TypeScript 缂栬瘧鍣ㄥ凡缁忚緭鍑?`logic_spec`锛屼絾鐩存帴璋冪敤鍏ㄥ眬 `bh.cmd` 浠嶅彲鑳藉鐜版棫琛屼负锛屽師鍥犳槸鍏ㄥ眬鍛戒护鍙兘鎸囧悜宸插畨瑁呮彃浠剁紦瀛樼増鏈紝鑰屼笉鏄綋鍓嶆簮鐮佸伐浣滃尯銆?
-绋冲畾绛栫暐锛?1. 楠岃瘉鏈彂甯冪殑宸ヤ綔鍖烘簮鐮佹敼鍔ㄦ椂锛屽厛鏋勫缓宸ヤ綔鍖?CLI銆?2. 浣跨敤宸ヤ綔鍖?CLI 鍏ュ彛鎵ц娴嬭瘯锛岃€屼笉鏄叏灞€ `bh.cmd`銆?
-鎺ㄨ崘鍐欐硶锛?```powershell
-npm.cmd --prefix AgentFaceService\cli run build
-node .\AgentFaceService\cli\build\cli\index.js blueprinthelper_preview_task --file .\task.json --format full
+```powershell
+$json = $object | ConvertTo-Json -Depth 40
+$encoding = [System.Text.UTF8Encoding]::new($false)
+[System.IO.File]::WriteAllText((Join-Path (Get-Location) 'task.json'), $json, $encoding)
 ```
-## 12. TaskSpec 缂栬瘧/淇濆瓨绛栫暐瀛楁鏄?`validation`锛屼笉鏄?`validation_policy`
 
-閿欒鍐欐硶锛?```json
+### 2.5 不要用 `$profile` 做普通变量名
+
+`$PROFILE` 是 PowerShell 预定义变量，大小写不敏感。处理 `agent-profile.json` 等配置时，使用 `$agentProfile`、`$runtimeProfile` 这类变量名。
+
+### 2.6 不依赖 `ConvertFrom-Json -AsHashtable`
+
+Windows PowerShell 5.1 不支持 `ConvertFrom-Json -AsHashtable`。跨环境脚本可以用 `PSCustomObject` 属性访问，或用 Node.js 处理 JSON。
+
+### 2.7 外部命令参数不要内联 `(Join-Path ...)`
+
+外部命令不一定按 PowerShell 表达式预期接收参数。先赋值再传：
+
+```powershell
+$file = Join-Path $base 'read_object_bp.json'
+bh.cmd blueprinthelper_read_context --file $file --format full
+```
+
+### 2.8 `WriteAllText` 与 `-replace` 分开写
+
+错误风险写法：
+
+```powershell
+[System.IO.File]::WriteAllText($path, $text -replace 'a','b', $encoding)
+```
+
+稳定写法：
+
+```powershell
+$newText = $text -replace 'a', 'b'
+[System.IO.File]::WriteAllText($path, $newText, $encoding)
+```
+
+### 2.9 长文本或 Markdown 修改使用 patch
+
+长 here-string 可能触发 Windows 命令行长度限制，例如 `CreateProcessAsUserW failed: 206`。修改文档或源码时优先使用 `apply_patch`，或把复杂输入落到文件后再调用 CLI。
+
+### 2.10 复杂 `rg` pattern 使用单引号
+
+PowerShell 中混用双引号、管道符和反斜杠时，`rg` pattern 很容易被 shell 拆坏。优先写：
+
+```powershell
+rg -n 'Make.*StringArray|FJsonValueString|SetArrayField' 'BlueprintHelper\Source\BlueprintHelper\Private'
+```
+
+### 2.11 当前一次性脚本避免 `??`
+
+当前 PowerShell 环境里，一次性脚本不要使用 null coalescing `??`。使用显式 `if` 或提前计算变量，避免解析错误。
+
+## 3. 输出与 artifact
+
+`--select` 和 `--fields` 会裁剪 stdout，也可能隐藏错误字段。排查 CLI 参数、JSON、schema 或 UE compile 问题时，先用：
+
+```powershell
+bh.cmd <tool_name> --file .\params.json --format full
+```
+
+如果 stdout 太短，打开 `artifacts.full_result`。不要把“stdout 被裁剪”和“artifact 缺少诊断”混为同一个问题。
+
+UE compile 失败时，artifact 应包含可读的 compiler results，例如 `data.compile_result.compiler_results[]` 或等价 markdown 摘要。
+
+## 4. 常见字段错误
+
+### 4.1 `read_context` 使用 ReadSpec 根对象
+
+`blueprinthelper_read_context` 参数根对象就是 `BlueprintHelper.ReadSpec.v1` 字段，不要再包 `args`。
+
+稳定写法：
+
+```json
+{
+  "schema": "BlueprintHelper.ReadSpec.v1",
+  "read_type": "object_property_context",
+  "target": {
+    "asset_path": "/Game/Asset",
+    "target_type": "object_property",
+    "property_path": "SomeProperty"
+  },
+  "view": {
+    "format": "summary"
+  }
+}
+```
+
+不要把 `format` 放到顶层；使用 `view.format`。
+
+### 4.2 ReadSpec 常用组合
+
+| 需求 | `read_type` | `target.target_type` |
+| --- | --- | --- |
+| 资产摘要 | `asset_context` | `asset` |
+| 蓝图逻辑摘要 | `blueprint_logic` | `blueprint` |
+| 图表上下文 | `graph_context` | `graph` |
+| 图表逻辑 JSON | `blueprint_logic` | `graph` |
+| 函数逻辑 | `blueprint_logic` | `function` |
+| Event 逻辑 | `blueprint_logic` | `event` |
+| CustomEvent 逻辑 | `blueprint_logic` | `custom_event` |
+| 组件 | `component_context` | `blueprint` |
+| 变量 | `variable_context` | `member_variable` |
+| Event Dispatcher | `variable_context` | `event_dispatcher` |
+| Widget tree | `widget_context` | `blueprint` |
+| Widget property | `widget_context` | `widget` |
+| DataTable | `data_table_context` | `data_table` |
+| DataTable row | `data_table_context` | `data_table_row` |
+| DataAsset | `data_asset_context` | `data_asset` |
+| UObject 属性 | `object_property_context` | `object_property` 或 `property` |
+| BlueprintHelper-owned block | `blueprint_logic` | `block` |
+
+### 4.3 TaskSpec 字段是 `validation`
+
+不要写旧字段：
+
+```json
 {
   "validation_policy": {
     "should_compile": true,
@@ -220,8 +293,9 @@ node .\AgentFaceService\cli\build\cli\index.js blueprinthelper_preview_task --fi
 }
 ```
 
-鏈疆鐜拌薄锛?TaskSpec 鍐欏叆鎴愬姛锛屼絾鎵ц缁撴灉椤堕儴鏄剧ず `validation.should_compile=false`锛屾病鏈夋墽琛?post compile銆傚悗鏉ユ敼鎴?`validation.should_compile=true` 鍚庯紝缁撴灉涓嚭鐜?`post_operations.compile_blueprint_asset`銆?
-绋冲畾鍐欐硶锛?```json
+稳定写法：
+
+```json
 {
   "validation": {
     "should_compile": true,
@@ -230,14 +304,12 @@ node .\AgentFaceService\cli\build\cli\index.js blueprinthelper_preview_task --fi
 }
 ```
 
-鍘熷洜锛?褰撳墠 AgentFace TaskSpec schema 浣跨敤 `validation` 瀛楁锛沗validation_policy` 浼氫綔涓烘湭鐭ュ瓧娈?passthrough锛屼絾涓嶄細鍙備笌 TaskPlan execution policy銆?## 13. PowerShell 璋冪敤 .NET WriteAllText 鏃朵笉瑕佹妸 -replace 琛ㄨ揪寮忕洿鎺ュ杩涘弬鏁板垪琛?
-鐜拌薄锛歚[System.IO.File]::WriteAllText($path, $text -replace 'a','b', $encoding)` 浼氳 PowerShell 瑙ｆ瀽鎴?4 涓弬鏁帮紝鎶モ€滄壘涓嶅埌 WriteAllText 鐨勯噸杞斤紝鍙傛暟璁℃暟涓?4鈥濄€?
-寤鸿锛氬厛鐢ㄤ腑闂村彉閲忎繚瀛樻浛鎹㈢粨鏋滐紝鍐嶈皟鐢ㄤ笁鍙傛暟閲嶈浇锛歚$new = $text -replace 'a','b'; [System.IO.File]::WriteAllText($path, $new, $encoding)`銆?
-## 14. 闇€瑕佽法缂栬緫鍣ㄩ噸鍚獙璇佺殑璧勪骇蹇呴』璁剧疆 `validation.should_save=true`
+DataAsset、DataTable、普通 UObject 属性写入通常 `should_compile=false`。Blueprint class、WidgetBlueprint、蓝图图表和签名修改按需要 `should_compile=true`。
 
-鐜拌薄锛歍askSpec 鎵ц鎴愬姛鍚庡叧闂苟閲嶆柊鍚姩缂栬緫鍣紝鍐嶆墽琛屽悗缁?TaskSpec 鏃跺嚭鐜?`target_blueprint_not_found`銆?
-鏈疆鍘熷洜锛氭祴璇曡祫浜т娇鐢ㄤ簡 `validation.should_save=false`锛岃祫浜у彧瀛樺湪浜庡綋鍓嶇紪杈戝櫒鍐呭瓨/鏈繚瀛樺寘鐘舵€佷腑锛涢噸鍚紪杈戝櫒鍚庡悗缁?TaskSpec 鎵句笉鍒扮洰鏍?Blueprint銆?
-绋冲畾鍐欐硶锛?
+### 4.4 跨编辑器重启或持久化验证需要 `should_save=true`
+
+`validation.should_save=false` 只保证当前编辑器内存态。后续流程会重启编辑器、跨进程读取、或要求磁盘持久化时，TaskSpec 应设置：
+
 ```json
 {
   "validation": {
@@ -247,243 +319,118 @@ node .\AgentFaceService\cli\build\cli\index.js blueprinthelper_preview_task --fi
 }
 ```
 
-寤鸿锛?
-1. 鍗曡疆涓存椂鍐欏叆銆佸悓涓€缂栬緫鍣ㄤ細璇濆唴椹笂楠岃瘉锛屽彲浠ヤ娇鐢?`should_save=false`銆?2. 浠讳綍闇€瑕佸叧闂?閲嶅惎缂栬緫鍣ㄣ€佸娴嬫寔涔呭寲銆佹垨浜ょ粰涓嬩竴杞?TaskSpec 缁х画鍐欏叆鐨勮祫浜э紝閮藉簲浣跨敤 `should_save=true`銆?
-## 15. Windows PowerShell 5.1 涓嶆敮鎸?`Set-Content -Encoding utf8NoBOM`
+### 4.5 `review_baseline_dirty_asset_policy` 合法值
 
-鐜拌薄锛?```text
-Set-Content : 鏃犳硶缁戝畾鍙傛暟鈥淓ncoding鈥濄€傛棤娉曞皢鍊尖€渦tf8NoBOM鈥濊浆鎹负绫诲瀷鈥淢icrosoft.PowerShell.Commands.FileSystemCmdletProviderEncoding鈥濄€?```
+只使用：
 
-鍘熷洜锛?Windows PowerShell 5.1 鐨?`Set-Content -Encoding` 鏋氫妇娌℃湁 `utf8NoBOM`锛岃鍐欐硶鍙€傜敤浜庤緝鏂扮殑 PowerShell 鐗堟湰銆?
-绋冲畾鍐欐硶锛?```powershell
-$json = $object | ConvertTo-Json -Depth 40
-$encoding = [System.Text.UTF8Encoding]::new($false)
-[System.IO.File]::WriteAllText((Join-Path (Get-Location) 'task.json'), $json, $encoding)
+```text
+block
+save_before_archive
+allow_stale_disk_snapshot
 ```
 
-寤鸿锛?1. BlueprintHelper CLI 鐨勫鏉?JSON 浠嶄紭鍏堣蛋 `--file`銆?2. 鍦?Windows PowerShell 5.1 涓嬪啓 `--file` JSON 鏃朵娇鐢?.NET `UTF8Encoding($false)`锛屼笉瑕佷娇鐢?`utf8NoBOM` 鏋氫妇鍚嶃€?
-## 16. `blueprinthelper_export_debug_bundle` 鍙帴鍙?`debug_case_id`
+不要写 `allow`、`allow_auto_save` 等旧值。
 
-閿欒鍐欐硶锛?```powershell
-bh blueprinthelper_export_debug_bundle --json '{"asset_path":"/Game/Asset","reason":"manual"}'
-```
+### 4.6 `blueprinthelper_export_debug_bundle` 只接收 `debug_case_id`
 
-鐜拌薄锛?```json
-{"status":"cli_error"}
-```
-
-鍘熷洜锛?AgentFace schema 浣跨敤 `DebugCaseInputSchema`锛岃鍛戒护鍙帴鍙?`debug_case_id: string`銆俙asset_path` 鍜?`reason` 涓嶆槸鍚堟硶瀛楁銆?
-姝ｇ‘鍐欐硶锛?```powershell
-bh blueprinthelper_export_debug_bundle --json '{"debug_case_id":"<debug_case_id>"}'
-# 鎴栧啓鍏?UTF-8 no BOM 鏂囦欢鍚庯細
-bh blueprinthelper_export_debug_bundle --file .\debug_case.json
-```
-
-寤鸿锛?1. 鍏堢敤 `blueprinthelper_list_debug_cases` 鎴?`blueprinthelper_get_debug_case` 鑾峰彇鏈夋晥 `debug_case_id`銆?2. 濡傛灉鍙湁 asset path锛屽厛瑙﹀彂/鏌ヨ鑳戒骇鐢?DebugCase 鐨勬祦绋嬶紝涓嶈鐩存帴璋冪敤 export銆?
-## 17. Windows PowerShell 涓嬪鏉?`--json` 浠嶅彲鑳芥薄鏌?CLI command name
-
-鐜拌薄锛?```text
-Unsupported BlueprintHelper CLI command: blueprinthelper_list_debug_cases --json {\ limit\:5} --format full
-```
-
-鍘熷洜锛?Windows PowerShell 鐨勫紩鍙峰拰鍙嶆枩鏉犺鍒欏彲鑳借澶嶆潅 JSON 娌℃湁浣滀负鍗曠嫭鍙傛暟浼犲叆 CLI锛屽鑷?CLI 鎶婂悗缁弬鏁版嫾杩?command name銆?
-绋冲畾鍐欐硶锛?```powershell
-$json = @'
-{
-  "limit": 5
-}
-'@
-[System.IO.File]::WriteAllText((Join-Path (Get-Location) 'list_debug_cases_limit5.json'), $json, [System.Text.UTF8Encoding]::new($false))
-bh blueprinthelper_list_debug_cases --file .\list_debug_cases_limit5.json --format full
-```
-
-寤鸿锛?澶嶆潅 JSON銆佸甫寮曞彿 JSON銆佹垨闇€瑕佽法 shell 绋冲畾澶嶇幇鐨勫懡浠ょ粺涓€浣跨敤 UTF-8 no BOM `--file`銆?
-## 15. UE 婧愮爜澶嶅埗蹇収鍓嶅厛纭 Public / Private 瀹為檯璺緞
-
-鐜拌薄锛欰5 鍘熺敓闈㈡澘婧愮爜蹇収鏃讹紝鏈€鍒濆亣璁?`SReadOnlyHierarchyView.h` 浣嶄簬 `UMGEditor/Private/Hierarchy`锛孭owerShell `Copy-Item` 鍓嶇疆鏍￠獙杩斿洖 missing source file銆?
-鍘熷洜锛歎E 5.6 涓?`SReadOnlyHierarchyView.cpp` 浣嶄簬 `UMGEditor/Private/Hierarchy`锛屼絾 `SReadOnlyHierarchyView.h` 浣嶄簬 `UMGEditor/Public/Hierarchy`銆?
-绋冲畾鍋氭硶锛氬鍒?UE 鍘熺敓婧愮爜鍓嶅厛鐢?`rg -n "ClassOrFileName" E:\UE_5.6\Engine\Source\Editor -g "*.h" -g "*.cpp"` 纭鐪熷疄璺緞锛屽啀鎵ц `Copy-Item -LiteralPath <source> -Destination <snapshot>`銆備笉瑕佺洿鎺ユ妸鏈€傞厤 `.cpp` 澶嶅埗鍒版彃浠?`Source` 缂栬瘧鐩綍銆?## 2026-05-15 PowerShell rg 姝ｅ垯寮曞彿瑙勯伩
-
-鐜拌薄锛氬湪 PowerShell 涓洿鎺ュ啓鍖呭惈 `"`銆乣.`銆乣|`銆佹嫭鍙风殑澶嶆潅 `rg` 姝ｅ垯鏃讹紝PowerShell 鍙兘鍏堟寜鑷韩杞箟/鎴愬憳璁块棶瑙勫垯瑙ｆ瀽锛屾姤 `寮曠敤杩愮畻绗﹀悗闈㈢己灏戝睘鎬у悕绉癭锛屽懡浠よ繕娌¤繘鍏?`rg`銆?
-绋冲畾鍋氭硶锛歅owerShell 閲屼紭鍏堢敤鍗曞紩鍙峰寘浣忓鏉?`rg` pattern锛屼緥濡傦細
-
-```powershell
-rg -n 'Make.*StringArray|FJsonValueString|SetArrayField' 'D:\UEProjects\Template\Plugins\BlueprintHelper\BlueprintHelper\Source\BlueprintHelper\Private\Runtime\TaskRuntime\BlueprintHelperTaskRuntimeService.cpp'
-```
-
-鍒嗙被锛氭湰鍦?shell 璋冪敤閿欒锛屼笉鏄?BlueprintHelper 鎻掍欢 Bug銆?## 2026-05-15 PowerShell ExecutionPolicy 鎷︽埅 bh.ps1
-
-鐜拌薄锛氬湪 PowerShell 涓墽琛?`bh ...` 鏃讹紝鍛戒护瑙ｆ瀽鍒?npm shim `bh.ps1`锛屽鏋滃綋鍓嶇郴缁熸墽琛岀瓥鐣ョ姝㈣剼鏈紝浼氭姤 `鏃犳硶鍔犺浇鏂囦欢 ...\bh.ps1锛屽洜涓哄湪姝ょ郴缁熶笂绂佹杩愯鑴氭湰`銆?
-绋冲畾鍋氭硶锛氭湰鍦颁笉璋冩暣 ExecutionPolicy 鏃讹紝鐩存帴璋冪敤 `bh.cmd ...`锛屼緥濡傦細
-
-```powershell
-bh.cmd blueprint_get_runtime_profile --json "{}" --select status,summary
-```
-
-鍒嗙被锛歅owerShell/npm shim 璋冪敤闄愬埗锛屼笉鏄?BlueprintHelper 鎻掍欢 Bug銆?## 2026-05-15 PowerShell 鏂囨。鑴氭湰鍐呭祵 --json 澶ф嫭鍙疯閬?
-鐜拌薄锛氬湪 PowerShell 鑴氭湰鐨勬櫘閫氬弻寮曞彿瀛楃涓蹭腑鐩存帴鍐?``--json "{}"``锛宍{}` 鍜岃浆涔夊紩鍙峰彲鑳借 PowerShell 瑙ｆ瀽涓鸿〃杈惧紡鐗囨锛屾姤鈥滆〃杈惧紡鎴栬鍙ヤ腑鍖呭惈鎰忓鐨勬爣璁?`{`鈥濄€?
-绋冲畾鍋氭硶锛氭枃妗ｆ浛鎹?杩藉姞鑴氭湰涓寘鍚?JSON 绀轰緥鏃讹紝浣跨敤 here-string 淇濆瓨鏁存鏂囨湰锛屾垨鎶婂懡浠ょず渚嬫媶鎴愬崟寮曞彿瀛楃涓诧紝涓嶈鍦ㄦ櫘閫氬弻寮曞彿瀛楃涓查噷宓屽 `"{}"`銆?
-鍒嗙被锛歅owerShell 鑴氭湰鏂囨湰杞箟閿欒锛屼笉鏄?BlueprintHelper 鎻掍欢 Bug銆?## 2026-05-15 `task preview/execute` 闇€瑕佽８ TaskSpec
-
-鐜拌薄锛氭妸鏃ф枃妗ｉ噷鐨?`{ "task_spec": { ... } }` 鐩存帴浼犵粰 `bh.cmd task preview --file ...`锛屼細瑙﹀彂 Zod union 鏍￠獙閿欒锛屾彁绀烘牴璺緞缂哄皯 `schema/task_type/target/behavior`銆?
-鍘熷洜锛氬綋鍓?CLI 鐨?`task preview` / `task execute` 鍏ュ弬鏄８ `BlueprintHelper.TaskSpec.v1`锛屼笉鏄甫 `task_spec` 鍖呰鐨勫璞°€傛棫 runbook 涓殑鍖呰绀轰緥涓嶈兘鐩存帴浣滀负 CLI 鏂囦欢浼犲叆銆?
-绋冲畾鍋氭硶锛氭枃浠舵牴瀵硅薄鐩存帴鍐欙細
+错误方向：
 
 ```json
 {
-  "schema": "BlueprintHelper.TaskSpec.v1",
-  "task_type": "create_asset",
-  "target": { "asset_path": "/Game/...", "target_type": "asset" },
-  "behavior": {}
+  "asset_path": "/Game/Asset",
+  "reason": "manual"
 }
 ```
 
-## 2026-05-15 PowerShell 鍐?TaskSpec 鏂囦欢闇€瑕?UTF-8 no BOM
+稳定写法：
 
-鐜拌薄锛氫娇鐢?`Set-Content -Encoding utf8` 鍐欏嚭鐨?TaskSpec 鍦ㄩ儴鍒?PowerShell 鐜涓嬩細甯?UTF-8 BOM锛孋LI 璇诲彇 `--file` 鏃跺彲鑳芥姤 `Unexpected token '锘? ... is not valid JSON`銆?
-绋冲畾鍐欐硶锛氫娇鐢?.NET no BOM 缂栫爜鍐欏叆鏂囦欢銆?
-```powershell
-$json = $object | ConvertTo-Json -Depth 32
-[System.IO.File]::WriteAllText($path, $json, [System.Text.UTF8Encoding]::new($false))
+```json
+{
+  "debug_case_id": "<debug_case_id>"
+}
 ```
 
-## 2026-05-15 鏈湴 build CLI 鐨?TaskSpec 鍛戒护鍏ュ彛
+先通过 `blueprinthelper_list_debug_cases` 或 `blueprinthelper_get_debug_case` 找到 `debug_case_id`。
 
-鐜拌薄锛氱洿鎺ヨ繍琛?`node ...\AgentFaceService\cli\build\cli\index.js blueprinthelper_execute_task_spec --file ...` 浼氳繑鍥?`Unsupported BlueprintHelper CLI command`銆?
-鍘熷洜锛氭湰鍦?build CLI 鐨?TaskSpec 鍏ュ彛鏄垎缁勫懡浠わ紝涓嶆槸鏃у伐鍏峰悕鍛戒护銆?
-绋冲畾鍋氭硶锛?
-```powershell
-node D:\UEProjects\Template\Plugins\BlueprintHelper\AgentFaceService\cli\build\cli\index.js task execute --file D:\Path\task.json --format full --fields status,summary,artifacts.full_result
-node D:\UEProjects\Template\Plugins\BlueprintHelper\AgentFaceService\cli\build\cli\index.js task preview --file D:\Path\task.json --format full
-```
+### 4.7 Graph statement 调用函数使用 `kind=call`
 
-璇存槑锛欱ridge 宸ュ叿绫诲懡浠や粛鍙敤 `<tool_name> --file params.json`锛屼緥濡?`blueprinthelper_query_review_records`銆?
-## 2026-05-15 PowerShell 鍦烘櫙閬垮厤澶嶆潅 `--json`
+不要写旧值 `call_function`。稳定写法：
 
-鐜拌薄锛歅owerShell 涓紶鍏?`--json '{"..."}'` 瀹规槗鍥犱负寮曞彿/杞箟瀵艰嚧 CLI 瑙ｆ瀽閿欒鎴?`cli_error`銆?
-绋冲畾鍋氭硶锛氫笉鎵╁ぇ `--json` 杞箟瀹瑰繊锛屽鏉傚弬鏁扮粺涓€鍐欏叆 UTF-8 no BOM JSON 鏂囦欢锛屽啀浣跨敤 `--file`銆?
-```powershell
-$path = 'D:\UEProjects\Template\Saved\BlueprintHelper\CodexTaskSpecs\params.json'
-$json = @{ task_run_id='task_xxx'; pending_only=$true } | ConvertTo-Json -Depth 8
-[System.IO.File]::WriteAllText($path, $json, [System.Text.UTF8Encoding]::new($false))
-node D:\UEProjects\Template\Plugins\BlueprintHelper\AgentFaceService\cli\build\cli\index.js blueprinthelper_query_review_records --file $path --format full
-```
-## 2026-05-15 Graph TaskSpec 璇彞浣跨敤鐭悕
-
-鐜拌薄锛歚append_new_owned_graph` 涓户缁娇鐢ㄦ棫 `kind="call_function"` 浼氬湪 preview 闃舵杩斿洖 `statement_kind_unsupported`銆?
-绋冲畾鍋氭硶锛欸raphStatementFramework 涓婚摼璺娇鐢ㄧ煭鍚嶏紝渚嬪 `kind="call"` + `target="PrintString"`銆?
 ```json
 {
   "kind": "call",
   "target": "PrintString",
   "args": {
-    "InString": { "kind": "literal", "value_type": "string", "value": "hello" }
+    "InString": {
+      "kind": "literal",
+      "value_type": "string",
+      "value": "hello"
+    }
   }
 }
 ```
-## 2026-05-15 `blueprinthelper_read_context` 鏂囦欢蹇呴』鏄?ReadSpec 鏍瑰璞?
-鐜拌薄锛氬彧鍐?`read_type/target/format`锛岀己灏?`schema` 鏃讹紝CLI 杩斿洖 `Invalid literal value, expected "BlueprintHelper.ReadSpec.v1"`銆?
-绋冲畾鍐欐硶锛氭枃浠舵牴瀵硅薄蹇呴』鍖呭惈锛?```json
-{
-  "schema": "BlueprintHelper.ReadSpec.v1",
-  "read_type": "object_property_context",
-  "target": { "asset_path": "/Game/Asset", "target_type": "property" },
-  "format": "summary"
-}
+
+### 4.8 `scope_policy.graph_name` 不要等于 CustomEvent 名
+
+`append_new_owned_graph` 中，`scope_policy.graph_name` 不应与 `entries[].name` 的 Custom Event 名相同，否则 execute 编译阶段可能因为 UE 生成同名图表/函数失败。
+
+### 4.9 组件重名策略按当前模板字段写
+
+不要使用旧模板值 `reuse_existing`。组件 TaskSpec 模板使用 `on_name_conflict=reuse_if_exists`；编译后的 TaskPlan 内部字段可表现为 `name_collision_policy=reuse_if_exists`。
+
+## 5. Preview/Execute 工作流
+
+1. 写入前必须 preview。
+2. `preview_blocked` 是阻断状态，不要只检查 `blocked` 字段。
+3. `asset_already_exists` 是 preview 阻断，不是崩溃；应改资产名，或切换到 edit/update 类 TaskSpec。
+4. DataTable add row 遇到同名 row 已存在时，使用唯一 row name，或改用 update row 流程。
+5. 排查 preview artifact 时不要并行跑多个读取同类 artifact 的 preview；按顺序执行，避免读取混到相近输出。
+6. Preview blocked 时，修 TaskSpec 或停止报告，不要绕到底层 capability 工具。
+
+## 6. 模板优先流程
+
+模板目录：
+
+```text
+BlueprintHelper/Resources/AgentGuide/Templates
+BlueprintHelper/Resources/AgentGuide/Templates/read
+BlueprintHelper/Resources/AgentGuide/Templates/write
 ```
 
-鍒嗙被锛欳LI 鍙傛暟鏂囦欢鏍煎紡閿欒锛屼笉鏄彃浠?Bug銆?
-## 2026-05-15 PowerShell 澶栭儴鍛戒护鍙傛暟涓笉瑕佺洿鎺ュ祵鍏?`(Join-Path ...)`
+推荐流程：
 
-鐜拌薄锛氬湪澶栭儴 CLI 鍛戒护鍙傛暟浣嶇疆鐩存帴鍐?`--file (Join-Path $base 'x.json')` 鍙兘涓嶄細鎸夐鏈熸眰鍊间负鍗曚釜璺緞鍙傛暟銆?
-绋冲畾鍐欐硶锛氬厛璧嬪€煎啀浼犲弬銆?```powershell
-$file = Join-Path $base 'read_object_bp.json'
-node D:\UEProjects\Template\Plugins\BlueprintHelper\AgentFaceService\cli\build\cli\index.js blueprinthelper_read_context --file $file --format full
+```powershell
+Copy-Item -LiteralPath BlueprintHelper\Resources\AgentGuide\Templates\write\task_preview_bare_taskspec_template.json -Destination .\task.json
+# 修改 task.json 中的占位字段
+bh.cmd task preview --file .\task.json --format full
 ```
 
-鍒嗙被锛歅owerShell 澶栭儴鍛戒护鍙傛暟姹傚€奸棶棰橈紝涓嶆槸鎻掍欢 Bug銆?
-## 2026-05-15 `review_baseline_dirty_asset_policy` 鍚堟硶鍊?
-鐜拌薄锛歍askSpec 涓啓 `review_baseline_dirty_asset_policy=allow_auto_save` 浼氳Е鍙?Zod enum 閿欒銆?
-褰撳墠鍚堟硶鍊硷細
-1. `block`
-2. `save_before_archive`
-3. `allow_stale_disk_snapshot`
+根目录模板用于 runtime/profile/diagnostics/debug/write-session 等非逻辑上下文读取；`read` 目录用于获取资产逻辑上下文；`write` 目录用于 TaskSpec-first preview/execute 和写入场景。
 
-绋冲畾鍐欐硶锛氶渶瑕佽嚜鍔ㄤ繚瀛樺綋鍓嶈剰璧勪骇鍐嶅綊妗?baseline 鏃朵娇鐢?`save_before_archive`銆?
-鍒嗙被锛歍askSpec 鍙傛暟鍊奸敊璇紝涓嶆槸鎻掍欢 Bug銆?
-## 2026-05-15 PowerShell 闀垮懡浠ゅ啓鍏ラ檺鍒?- 鐜拌薄锛氫竴娆℃€х敤 PowerShell here-string 鍐欏叆澶ч噺鏂囦欢鏃讹紝Windows 杩涚▼鍒涘缓鍙兘澶辫触骞惰繑鍥?CreateProcessAsUserW failed: 206銆?- 鍘熷洜锛氬懡浠よ杩囬暱锛屼笉鏄?BlueprintHelper 鎻掍欢鎴?CLI 鍗忚閿欒銆?- 绋冲畾澶勭悊锛氭敼鐢?pply_patch銆佸垎鎵圭煭鍛戒护锛屾垨鍏堝啓涓存椂鑴氭湰鏂囦欢鍐嶆墽琛岋紱涓嶈鎶婂ぇ閲忔枃浠跺唴瀹瑰杩涘悓涓€涓?powershell -Command銆?## 2026-05-15 ReviewPanel UI 楠岃瘉 CLI Tips
+## 7. 本地源码和文档操作
 
-- 鍦?PowerShell 涓洿鎺ヨ皟鐢?h 鍙兘瑙ｆ瀽鍒?h.ps1锛屽苟琚?ExecutionPolicy 闃绘鎵ц銆傜ǔ瀹氬仛娉曪細鍦?Codex/PowerShell 鑷姩鍖栬剼鏈腑鏄惧紡璋冪敤 h.cmd銆?- 鏈澶嶇幇鍛戒护锛?h.cmd blueprinthelper_preview_task --file <TaskSpec.json> --select status,summary,artifacts.full_result銆?- 鑻ュ垱寤虹被 TaskSpec 杩斿洖 sset_already_exists锛屼笉瑕佽鍒や负鎻掍欢宕╂簝锛涜繖鏄?preview 闃绘柇锛屽悗缁彲鏀圭敤鍞竴璧勪骇鍚嶆垨鎵ц edit/update 绫?TaskSpec銆?- DataTable 琛?add 杩斿洖鈥?<RowName>' 宸插瓨鍦ㄢ€濇椂锛屾敼鐢ㄥ敮涓€琛屽悕锛屾垨鏄庣‘浣跨敤 update 琛岀瓥鐣ャ€
-## 2026-05-16 全量功能 ReviewEvent Smoke 中新增的 CLI Tips
+1. 修改 Markdown、JSON 模板或源码时，优先用 patch，避免 PowerShell 长 here-string 和编码问题。
+2. 复制 UE 源码快照前，先用 `rg` 确认真实 Public/Private 路径。
+3. 不要把 UE Engine `.cpp` 快照误复制进插件 `Source` 目录，除非任务明确要求。
 
-1. 在 PowerShell 中优先使用 h.cmd，不要直接用 h；直接用 h 可能解析到 h.ps1，并被 ExecutionPolicy 拦截。
-2. PowerShell here-string 的 @' 或 @\" 后面不能同行写 { 或其他字符，JSON 正文必须从下一行开始。
-3. Windows PowerShell 5 的 Set-Content -Encoding UTF8 会写入 UTF-8 BOM；CLI JSON 文件应使用 UTF-8 no BOM，例如 [System.IO.File]::WriteAllText(path, json, [System.Text.UTF8Encoding]::new(False))。
-4. execution_policy.review_baseline_dirty_asset_policy 的有效值是 lock、save_before_archive、llow_stale_disk_snapshot，不是 llow。
-5. 自动化脚本判断 preview 是否可执行时必须把 preview_blocked 当作阻塞状态，不能只判断 locked。
-6. 当前组件 TaskSpec 模板里的 on_name_conflict=reuse_existing 与 UE 侧不一致；本轮可用写法是 
-ame_collision_policy=reuse_if_exists。
-## 2026-05-16 CallFunction Resolver 闭环测试 Tips
+示例：
 
-新增内容：
-1. PowerShell 当前环境不应使用 ?? null coalescing 写一次性脚本；会出现 表达式或语句中包含意外的标记“??”。改用显式 if 或 Join-Path 判断。
-2. PowerShell 中复杂 g 命令不要混用未转义的单双引号；出现 字符串缺少终止符 时，拆成单引号 pattern 或减少一层 shell 字符串包装。
-3. 仓库根是 D:\UEProjects\Template\Plugins\BlueprintHelper，计划文档目录是 BlueprintHelper\Develop\Plan，不是根目录下的 Develop。
-4. 不要并行运行多个 	ask preview 去读同一类 preview artifact；本轮观察到并行 preview 可能让后续读取混到相同/相近 preview 输出，排查时应顺序运行。
-5. ppend_new_owned_graph 的 scope_policy.graph_name 不应与 Custom Event entries[].name 相同，否则 execute 编译阶段会因为 UE 生成同名图表/函数而失败。
+```powershell
+rg -n 'SReadOnlyHierarchyView' 'E:\UE_5.6\Engine\Source\Editor' -g '*.h' -g '*.cpp'
+```
 
-修复内容：
-1. candidate_functions 现在可直接从 issues[].candidate_functions 读取，不需要从 message 中正则解析。
+## 8. 快速索引
 
-阻塞内容：
-1. 无。
-## 2026-05-16 close_editor 崩溃处理 Tips
-
-修复内容：
-1. close_editor 不应使用 QUIT_EDITOR 作为默认关闭路径；该路径会直接进入 UUnrealEdEngine::CloseEditor()，可能绕过资产编辑器 Tab 的正常 Slate teardown。
-2. 当前使用 CLOSE_SLATE_MAINFRAME，让 MainFrame 先走 CanCloseManager，再请求编辑器退出。
-
-验证结果：
-1. MCP open_editor 后调用 close_editor 返回成功。
-2. 等待 8 秒后 UnrealEditor.exe 已退出。
-
-阻塞内容：
-1. 若未来只在打开复杂蓝图编辑器/ReviewPanel 后复现崩溃，需要记录当时打开的 Tab 和 DebugBundle，再把关闭流程升级为分阶段显式关闭面板。
-## 2026-05-16 CallFunction typed pin smoke CLI Tips
-
-新增内容：
-1. 当前 Windows PowerShell 环境不支持 Set-Content -Encoding utf8NoBOM，会报无法转换枚举值；写 CLI JSON 文件时使用 [System.IO.File]::WriteAllText(, , [System.Text.UTF8Encoding]::new(False))。
-2. h.cmd task preview/execute --file 读取的是 TaskSpec 根对象，不接受 { "task_spec": { ... } } 包装层；如果用了包装层，Zod 会在根路径报 schema/task_type/target/behavior Required。
-
-修复内容：
-1. 自动化 smoke 脚本应固定使用 UTF-8 no BOM 写文件，并避免 --json 复杂转义。
-
-变更需求：
-1. 旧文档中带 { task_spec: ... } 的示例只适合作为历史示例；当前 CLI task 命令应传入根 TaskSpec。
-
-快速修复：
-1. 无。
-
-阻塞内容：
-1. 无。
-## 2026-05-16 CallFunction K2Context 覆盖测试 CLI Tips
-
-新增内容：
-1. 当前 CLI 任务命令应使用 `bh.cmd task preview --file <TaskSpec.json>` 和 `bh.cmd task execute --file <TaskSpec.json>`；旧式 `bh.cmd execute_task --file ...` 会返回 `Unsupported BlueprintHelper CLI command`。
-2. Windows PowerShell `Set-Content -Encoding UTF8` 在当前环境会写入 UTF-8 BOM，`bh.cmd task preview --file` 读取 TaskSpec 时可能报 `Unexpected token '﻿' is not valid JSON`。
-3. 写入 TaskSpec 文件时使用 UTF-8 no BOM：`[System.IO.File]::WriteAllText($path, $json, [System.Text.UTF8Encoding]::new($false))`。
-4. `--fields` 会裁切错误详情；排查 CLI 参数、JSON 或 schema 问题时先用 `--format full`，确认错误后再恢复字段裁切。
-
-修复内容：
-1. 本轮测试 spec 已用 UTF-8 no BOM 重写后通过 CLI JSON parse。
-
-变更需求：
-1. 开发验证文档和脚本应统一使用 `task preview/task execute` 命令族，不再写旧 `execute_task` 形式。
-
-阻塞内容：
-1. 无。
-## 2026-05-16 PowerShell bh.ps1 ExecutionPolicy 再确认
-
-现象：在 PowerShell 中执行 `bh ...` 时会优先命中 npm shim `bh.ps1`，如果当前 ExecutionPolicy 禁止脚本，会报“无法加载文件 ...\bh.ps1，因为在此系统上禁止运行脚本”。
-稳定做法：自动化脚本固定使用 `bh.cmd ...`，或直接使用工作区 node CLI 入口；不要在任务中临时修改用户机器 ExecutionPolicy。
-分类：本地 PowerShell/npm shim 调用限制，不是 BlueprintHelper 插件 Bug。
+| 现象 | 稳定处理 |
+| --- | --- |
+| `Choose exactly one params input source` | 加 `--json "{}"`、`--file` 或 `--stdin` |
+| `bh.ps1` 被 ExecutionPolicy 拦截 | 使用 `bh.cmd` |
+| JSON parse 出现 BOM 或乱码 | 用 `[System.Text.UTF8Encoding]::new($false)` 写文件 |
+| PowerShell 把 `--json` 拆成命令名一部分 | 改用 UTF-8 no BOM `--file` |
+| `task preview` 报根字段缺失 | grouped 命令传裸 TaskSpec，不传 `{ "task_spec": ... }` |
+| 直接工具名 preview/execute 报缺少 `task_spec` | 直接工具名传 `{ "task_spec": { ... } }` |
+| `unsupported command` | 检查是否调用了 Bridge 内部名或旧 CLI 名 |
+| `validation_policy` 无效 | 改为 `validation` |
+| `allow_auto_save` 无效 | 改为 `block`、`save_before_archive` 或 `allow_stale_disk_snapshot` |
+| Debug bundle 参数无效 | 只传 `debug_case_id` |
+| `--fields` 看不到错误细节 | 用 `--format full` 并打开 `artifacts.full_result` |
