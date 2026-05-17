@@ -4,6 +4,7 @@ export const bridgeCommandByToolName: Record<string, string> = {
   blueprinthelper_export_debug_bundle: 'export_debug_bundle',
   blueprinthelper_query_review_records: 'query_review_records',
   blueprinthelper_apply_review_action: 'apply_review_action',
+  blueprinthelper_read_function_chain_context: 'read_function_chain_context',
   blueprint_get_runtime_profile: 'get_runtime_profile',
   blueprinthelper_request_write_session: 'request_write_session',
   blueprinthelper_diagnostics_runtime: 'diagnostics_runtime',

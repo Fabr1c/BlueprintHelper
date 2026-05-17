@@ -4,6 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import test from 'node:test';
 import { successRead } from '../../result/tool-result.js';
+import { ReadFunctionChainContextInputSchema } from '../../tool-surface/bridge/function-chain-context-schema.js';
 import { getBlueprintHelperToolRegistry } from '../../tool-surface/tool-registry.js';
 import type { TaskSpecRunner } from '../../task/service/task-spec-runner.js';
 
@@ -19,6 +20,7 @@ const expectedToolNames = [
   'blueprinthelper_export_debug_bundle',
   'blueprinthelper_query_review_records',
   'blueprinthelper_apply_review_action',
+  'blueprinthelper_read_function_chain_context',
   'blueprinthelper_read_context',
   'blueprint_get_runtime_profile',
   'blueprinthelper_request_write_session',
@@ -262,6 +264,91 @@ test('apply_review_action is expert-only and sanitized when invoked through the 
   assert.equal(result.ok, true);
   assertNoUnsafeAgentFacingKeys(result);
   assert.equal(result.data?.['review_record_id'], 'review_opaque_id_is_allowed');
+});
+
+test('function chain context input schema accepts compact entry requests and rejects GUID selectors', () => {
+  const parsed = ReadFunctionChainContextInputSchema.parse({
+    asset_path: '/Game/BP_PlayerController',
+    target_type: 'event',
+    target_name: 'Input_Fire',
+  });
+
+  assert.equal(parsed.asset_path, '/Game/BP_PlayerController');
+  assert.equal(parsed.target_type, 'event');
+  assert.equal(parsed.target_name, 'Input_Fire');
+  assert.equal(parsed.max_depth, 3);
+  assert.equal(parsed.include_data_dependencies, true);
+  assert.equal(parsed.expand_cross_asset, true);
+
+  assert.throws(() => ReadFunctionChainContextInputSchema.parse({
+    asset_path: '/Game/BP_PlayerController',
+    target_type: 'event',
+    target_name: 'Input_Fire',
+    target_guid: '00000000000000000000000000000000',
+  }), /Unrecognized key/);
+});
+
+test('function chain context registry dispatch strips forbidden identity fields from Bridge payload', async () => {
+  const tool = getBlueprintHelperToolRegistry().find((candidate) => candidate.name === 'blueprinthelper_read_function_chain_context');
+  assert.ok(tool);
+
+  const result = await tool.execute({
+    asset_path: '/Game/BP_PlayerController',
+    target_type: 'event',
+    target_name: 'Input_Fire',
+  }, {
+    cwd: process.cwd(),
+    bridge: {
+      async sendCommand(command: string, payload?: Record<string, unknown>) {
+        assert.equal(command, 'read_function_chain_context');
+        assert.equal(payload?.['asset_path'], '/Game/BP_PlayerController');
+        assert.equal(payload?.['target_type'], 'event');
+        assert.equal(payload?.['target_name'], 'Input_Fire');
+        return {
+          success: true,
+          request_id: 'req_function_chain',
+          result: successRead('read_function_chain_context', { target_type: 'asset' }, {
+            schema: 'BlueprintHelper.FunctionChainContext.v1',
+            entry: { asset_path: '/Game/BP_PlayerController' },
+            target: { asset_path: '/Game/BP_PlayerController' },
+            query: { target_name: 'Input_Fire' },
+            custom_logic_refs: [
+              {
+                order: 1,
+                depth: 1,
+                parent_order: 0,
+                asset_path: '/Game/BP_Weapon',
+                owner_asset_path: '/Game/BP_Weapon',
+                target_type: 'function',
+                target_name: 'CanFire',
+                graph_name: 'CanFire',
+                call_kind: 'pure_function',
+                reason: 'branch_condition',
+                node_guid: '00000000000000000000000000000000',
+                node_ref: 'K2Node_CallFunction_0',
+                node_path: 'EventGraph.K2Node_CallFunction_0',
+              },
+            ],
+            summary: {
+              returned_custom_refs: 1,
+            },
+          }) as unknown as Record<string, unknown>,
+        };
+      },
+    } as never,
+    taskRunner: {} as TaskSpecRunner,
+  });
+
+  assert.equal(result.ok, true);
+  const data = result.data as Record<string, unknown>;
+  assertNoUnsafeAgentFacingKeys(data);
+  assert.equal(data['schema'], 'FunctionChainContext.v1');
+  assert.equal(Array.isArray(data['custom_logic_refs']), true);
+  const refs = data['custom_logic_refs'] as Array<Record<string, unknown>>;
+  assert.equal(refs[0]?.['call_kind'], 'pure_function');
+  assert.equal(refs[0]?.['reason'], 'branch_condition');
+  assert.equal(Object.hasOwn(refs[0] ?? {}, 'node_ref'), false);
+  assert.equal(Object.hasOwn(refs[0] ?? {}, 'node_path'), false);
 });
 
 test('preview task registry handler calls TaskSpecRunner.previewTask', async () => {

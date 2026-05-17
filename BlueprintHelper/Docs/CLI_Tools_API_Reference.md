@@ -1,6 +1,6 @@
 # BlueprintHelper CLI Tools API Reference
 
-Document version: 2026-05-16
+Document version: 2026-05-17
 
 This reference is aligned with the current implementation: the CLI is the supported Agent entry for ordinary TaskSpec, ReadSpec, diagnostics, debug-summary, write-session, and result-query work. MCP is restricted to `blueprint_open_editor`, `blueprint_close_editor`, and developer-only `blueprint_developer_exec_console_command`; the CLI still exposes lifecycle aliases for compatibility and manual fallback.
 
@@ -39,6 +39,7 @@ blueprinthelper_read_agent_guide
 blueprinthelper_read_context
 blueprinthelper_read_task_context
 blueprinthelper_read_reference_context
+blueprinthelper_read_function_chain_context
 blueprinthelper_preview_task
 blueprinthelper_request_write_session
 blueprinthelper_execute_task
@@ -178,11 +179,39 @@ Read commands use `BlueprintHelper.ReadSpec.v1` at the root object:
 
 Use `summary` before whole-graph `logic_md` when graph size is unknown. Use `logic_json` for stable owned-block anchors.
 
+### Function Chain Context
+
+Use `blueprinthelper_read_function_chain_context` when an Agent has an entry function/event/custom event and needs the next project-authored Blueprint logic entries to inspect. The tool returns a compact index only; follow up with `blueprinthelper_read_context` for each returned function/event body.
+
+Root argument shape:
+
+```json
+{
+  "asset_path": "/Game/BP_PlayerController",
+  "target_type": "custom_event",
+  "target_name": "Input_Fire",
+  "graph_name": "EventGraph",
+  "max_depth": 3,
+  "include_data_dependencies": true,
+  "expand_cross_asset": true
+}
+```
+
+Rules:
+
+- `target_type` is `function`, `event`, or `custom_event`.
+- Do not send `target_guid`, `entry`, `target`, `query`, or owner fields.
+- Results use `FunctionChainContext.v1`.
+- `custom_logic_refs[]` contains project Blueprint custom functions/events/custom events, including pure functions used as branch conditions or argument sources.
+- Engine/trusted plugin/native utility calls are filtered into summary counts only.
+- Result refs do not include `node_ref`, `node_path`, owner fields, or raw GUID fields.
+
 ## Primary Schemas
 
 | Schema | Producer / Owner | Purpose |
 |---|---|---|
 | `BlueprintHelper.ReadSpec.v1` | Agent | Generic read request |
+| `FunctionChainContext.v1` | Bridge read service | Compact project custom logic call-chain index |
 | `BlueprintHelper.TaskSpec.v1` | Agent | Semantic task specification |
 | `BlueprintHelper.TaskPlan.v1` | task-core / Python compiler | Compiler-owned structured execution plan |
 | `BlueprintHelper.TaskRunJournal.v1` | UE Task Runtime | Task-level execution journal |

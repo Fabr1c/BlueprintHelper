@@ -5,11 +5,55 @@ import {
 } from '../../result/tool-result.js';
 import type { BridgeResponse } from '../../bridge/bridge-client.js';
 
+const functionChainLegacySchema = 'BlueprintHelper.FunctionChainContext.v1';
+const functionChainSchema = 'FunctionChainContext.v1';
+
 export function normalizeBridgeToolResult(toolName: string, response: BridgeResponse): ToolResultBase {
-  if (isToolResultBase(response.result)) {
-    return sanitizeAgentFacingToolResult(response.result);
+  const normalized = isToolResultBase(response.result)
+    ? sanitizeAgentFacingToolResult(response.result)
+    : normalizeToolResult(response, toolName);
+  return toolName === 'blueprinthelper_read_function_chain_context'
+    ? normalizeFunctionChainPayload(normalized)
+    : normalized;
+}
+
+function normalizeFunctionChainPayload(result: ToolResultBase): ToolResultBase {
+  return normalizeFunctionChainValue(stripKeysRecursive(result, new Set(['node_ref', 'node_path']))) as ToolResultBase;
+}
+
+function normalizeFunctionChainValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeFunctionChainValue(item));
   }
-  return normalizeToolResult(response, toolName);
+  if (!isRecord(value)) {
+    return value;
+  }
+
+  const normalized: Record<string, unknown> = {};
+  for (const [key, entryValue] of Object.entries(value)) {
+    normalized[key] = key === 'schema' && entryValue === functionChainLegacySchema
+      ? functionChainSchema
+      : normalizeFunctionChainValue(entryValue);
+  }
+  return normalized;
+}
+
+function stripKeysRecursive(value: unknown, keysToStrip: ReadonlySet<string>): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => stripKeysRecursive(item, keysToStrip));
+  }
+  if (!isRecord(value)) {
+    return value;
+  }
+
+  const stripped: Record<string, unknown> = {};
+  for (const [key, entryValue] of Object.entries(value)) {
+    if (keysToStrip.has(key)) {
+      continue;
+    }
+    stripped[key] = stripKeysRecursive(entryValue, keysToStrip);
+  }
+  return stripped;
 }
 
 export function extractBridgePayload(result: unknown): { ok: true; payload: Record<string, unknown> } | { ok: false; message: string } {

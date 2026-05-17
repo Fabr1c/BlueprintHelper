@@ -164,6 +164,28 @@ Read a graph as Markdown:
 bh blueprinthelper_read_context --file .\read_eventgraph_logic_md.json --select status,summary,artifacts.full_result
 ```
 
+Read the project-authored function/event chain from a known Blueprint entry:
+
+```powershell
+bh blueprinthelper_read_function_chain_context --file .\function_chain.json --select status,summary,artifacts.full_result
+```
+
+Minimal `function_chain.json`:
+
+```json
+{
+  "asset_path": "/Game/BP_PlayerController",
+  "target_type": "custom_event",
+  "target_name": "Input_Fire",
+  "graph_name": "EventGraph",
+  "max_depth": 3,
+  "include_data_dependencies": true,
+  "expand_cross_asset": true
+}
+```
+
+The result is a compact `FunctionChainContext.v1` index. Follow `custom_logic_refs[]` with scoped `blueprinthelper_read_context` calls when the function body is needed.
+
 Copy matching inputs from `Resources/AgentGuide/Templates/read/` and edit placeholders instead of embedding complex JSON in PowerShell.
 
 ## 8. Safe Write Checklist

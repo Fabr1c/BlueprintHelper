@@ -35,6 +35,7 @@ Ordinary Agents submit `BlueprintHelper.TaskSpec.v1` only. They do not author `B
 | Read input | `BlueprintHelper.ReadSpec.v1` |
 | Read context payload | `ReadContextPack.v1` |
 | Reference context payload | `ReferenceContextPack.v1` |
+| Function chain context payload | `FunctionChainContext.v1` |
 | Agent input | `BlueprintHelper.TaskSpec.v1` |
 | Compiler output | `BlueprintHelper.TaskPlan.v1` |
 | Preview payload | `TaskPreviewResult.v1` |
@@ -82,6 +83,7 @@ blueprinthelper_diagnostics
 blueprinthelper_read_agent_guide
 blueprinthelper_read_context
 blueprinthelper_read_reference_context
+blueprinthelper_read_function_chain_context
 blueprinthelper_preview_task
 blueprinthelper_execute_task
 blueprinthelper_get_task_result
@@ -117,6 +119,7 @@ Default Agent-facing result layering is fixed as:
 | `blueprinthelper_read_agent_guide` | Markdown text only | none |
 | `blueprinthelper_read_context` | `BlueprintHelper.ToolResult.v1` | `ReadContextPack.v1`, with `payload.schema = LogicMd.v1 / LogicJson.v1 / ...` |
 | `blueprinthelper_read_reference_context` | `BlueprintHelper.ToolResult.v1` | `ReferenceContextPack.v1` |
+| `blueprinthelper_read_function_chain_context` | `BlueprintHelper.ToolResult.v1` | `FunctionChainContext.v1` |
 | `blueprinthelper_preview_task` | `BlueprintHelper.ToolResult.v1` | `TaskPreviewResult.v1` |
 | `blueprinthelper_execute_task` | `BlueprintHelper.ToolResult.v1` | `TaskRunSummary.v1` by default, or `TaskRunJournal.v1` when returning the full journal |
 | `blueprinthelper_get_task_result` | `BlueprintHelper.ToolResult.v1` | `TaskRunJournal.v1` |
@@ -136,6 +139,8 @@ Agent -> CLI -> ReadSpec -> task-core/Python Read Router -> UE Read Capability C
 `blueprinthelper_read_context` is the generic read entry for asset-domain reads. `blueprinthelper_read_task_context` is deprecated until a clearer role is redefined; new read capability should enter through ReadSpec.
 
 `blueprinthelper_read_reference_context` remains an independent Agent-facing read tool. It is a generic reference viewer for asset, variable, function, graph, widget, data table row, and other reference scopes. Its implementation may internally compose multiple reference analyzers, but the Agent sees one reference context envelope.
+
+`blueprinthelper_read_function_chain_context` remains an independent Agent-facing read tool for project-authored Blueprint logic traversal. It starts from one function/event/custom event and returns only compact `custom_logic_refs[]` indexes for follow-up `blueprinthelper_read_context` calls. It must not echo request `entry` / `target` / `query`, expose owner fields, expose `node_ref` / `node_path`, expose GUID fields, or list Engine/trusted plugin/native utility calls beyond summary counts.
 
 Editor lifecycle tools should use the `blueprinthelper_*` prefix. `blueprint_undo` and `blueprint_redo` are not part of the default future surface; recovery should move to transaction-level undo/redo or task journal replay instead of global editor undo/redo.
 

@@ -43,6 +43,7 @@ Examples:
 
 ```powershell
 bh blueprint_get_runtime_profile --json "{}" --select status,summary
+bh blueprinthelper_read_function_chain_context --file .\function_chain.json --select status,artifacts.full_result
 bh blueprinthelper_preview_task --file .\preview_wrapper.json --select status,preview_id,summary,artifacts.full_result
 bh blueprinthelper_execute_task --file .\execute_wrapper.json --select status,task_run_id,summary
 ```
@@ -76,6 +77,24 @@ node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js task execute --file .
 ## Read Full Result
 
 Use the artifact paths returned by summary output for follow-up inspection. Use `--format json` only when the Agent truly needs the full JSON in context.
+
+## Function Chain Reads
+
+Use `blueprinthelper_read_function_chain_context` after reading an entry graph when the next step is to inspect project-authored functions/events reached from that entry. It returns `FunctionChainContext.v1` with `custom_logic_refs[]`, not full graph bodies.
+
+```json
+{
+  "asset_path": "/Game/BP_PlayerController",
+  "target_type": "custom_event",
+  "target_name": "Input_Fire",
+  "graph_name": "EventGraph",
+  "max_depth": 3,
+  "include_data_dependencies": true,
+  "expand_cross_asset": true
+}
+```
+
+Do not pass GUID or owner fields. Engine and trusted plugin calls are summarized by count; follow returned refs with `blueprinthelper_read_context` when detailed logic is needed.
 
 ## Waiting Hints
 

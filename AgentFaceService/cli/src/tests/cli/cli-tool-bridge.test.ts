@@ -41,6 +41,71 @@ test('direct blueprint_get_runtime_profile calls matching Bridge command', async
   assert.equal(JSON.parse(writes.join('')).status, 'completed');
 });
 
+test('direct function chain context read calls matching Bridge command', async () => {
+  const writes: string[] = [];
+  const calls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
+  const payload = {
+    asset_path: '/Game/BP_PlayerController',
+    target_type: 'custom_event',
+    target_name: 'Input_Fire',
+    graph_name: 'EventGraph',
+    max_depth: 3,
+  };
+  const bridge = {
+    sendCommand: async (command: string, commandPayload?: Record<string, unknown>): Promise<BridgeResponse> => {
+      calls.push({ command, payload: commandPayload });
+      return {
+        request_id: 'function_chain_context',
+        success: true,
+        result: {
+          ok: true,
+          schema: 'BlueprintHelper.ToolResult.v1',
+          operation: 'read_function_chain_context',
+          status: 'completed',
+          modified: false,
+          data: {
+            schema: 'BlueprintHelper.FunctionChainContext.v1',
+            custom_logic_refs: [],
+            summary: { returned_custom_refs: 0 },
+            unresolved: [],
+            ambiguous: [],
+          },
+        },
+      };
+    },
+  };
+
+  const exitCode = await runCli({
+    argv: [
+      'blueprinthelper_read_function_chain_context',
+      '--json',
+      JSON.stringify(payload),
+      '--select',
+      'status,artifacts.full_result',
+    ],
+    cwd: process.cwd(),
+    bridge,
+    runner: {} as never,
+    stdout: (line) => writes.push(line),
+    stderr: () => {},
+  });
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(calls, [{
+    command: 'read_function_chain_context',
+    payload: {
+      ...payload,
+      include_data_dependencies: true,
+      expand_cross_asset: true,
+    },
+  }]);
+  const output = JSON.parse(writes.join(''));
+  assert.equal(output.status, 'completed');
+  const fullResultPath = String(output.artifacts.full_result);
+  const fullResult = JSON.parse(fs.readFileSync(fullResultPath, 'utf8'));
+  assert.equal(fullResult.toolResult.data.schema, 'FunctionChainContext.v1');
+});
+
 test('delayed Bridge calls emit Agent wait hints to stderr without contaminating stdout JSON', async () => {
   const writes: string[] = [];
   const errors: string[] = [];

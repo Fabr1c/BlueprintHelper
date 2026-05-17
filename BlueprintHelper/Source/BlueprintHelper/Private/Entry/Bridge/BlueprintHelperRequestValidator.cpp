@@ -759,6 +759,55 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 		};
 		return FBlueprintHelperRequestValidatorLocalUtils::ValidateOptionalStringEnum(Payload, TEXT("detail"), Details, OutError);
 	}
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("read_function_chain_context")))
+	{
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("target_type"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("target_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("graph_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("max_depth"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Number, false},
+			{TEXT("include_data_dependencies"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
+			{TEXT("expand_cross_asset"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
+		};
+		if (!FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError))
+		{
+			return false;
+		}
+
+		const TSet<FString> TargetTypes = {
+			TEXT("function"),
+			TEXT("event"),
+			TEXT("custom_event"),
+		};
+		if (!FBlueprintHelperRequestValidatorLocalUtils::ValidateOptionalStringEnum(Payload, TEXT("target_type"), TargetTypes, OutError))
+		{
+			return false;
+		}
+
+		if (Payload->HasField(TEXT("target_guid")))
+		{
+			FBlueprintHelperRequestValidatorLocalUtils::SetValidationError(
+				OutError,
+				TEXT("payload.target_guid"),
+				TEXT("unsupported"),
+				TEXT("present"));
+			return false;
+		}
+		if (Payload->HasField(TEXT("entry")) ||
+			Payload->HasField(TEXT("target")) ||
+			Payload->HasField(TEXT("query")) ||
+			Payload->HasField(TEXT("owner_asset_path")))
+		{
+			FBlueprintHelperRequestValidatorLocalUtils::SetValidationError(
+				OutError,
+				TEXT("payload"),
+				TEXT("function_chain_minimal_fields"),
+				TEXT("unsupported_echo_or_owner_field"));
+			return false;
+		}
+		return true;
+	}
 	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("append_blueprint_graph")))
 	{
 		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
