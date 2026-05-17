@@ -4,7 +4,7 @@ Document version / 文档版本: `2026-05-17`
 
 ## 中文
 
-本参考与当前实现对齐：CLI 是普通 Agent 执行 TaskSpec、ReadSpec、diagnostics、debug summary、write-session 和 result query 的支持入口。MCP 限制为 `blueprint_open_editor`、`blueprint_close_editor` 和 developer-only `blueprint_developer_exec_console_command`；CLI lifecycle alias 只作为兼容/手动 fallback。
+本参考与当前实现对齐：CLI 是普通 Agent 执行 TaskSpec、ReadSpec、diagnostics、debug summary、write-session 和 result query 的支持入口。MCP 限制为 `blueprint_open_editor` 和 `blueprint_close_editor` lifecycle 入口；CLI lifecycle alias 只作为兼容/手动 fallback。
 
 ### 架构
 
@@ -21,7 +21,7 @@ Agent -> CLI command -> task-core -> Python Task Compiler / Read Router -> Bridg
 - CLI lifecycle alias `bh open_editor` / `bh close_editor` 和 direct `blueprint_open_editor` / `blueprint_close_editor` 是兼容/手动 fallback，不是普通资产工作流工具。
 - CLI 写入必须经过 TaskSpec validation、preview 和 UE Task Runtime。
 - Raw Bridge write command 不是公开 Agent surface。
-- 废弃 MCP 普通工具不是 fallback，不要使用、测试或恢复。
+- 废弃 MCP 普通工具不是 fallback，也不是普通 Agent 可选入口。
 
 通用命令形态：
 
@@ -210,11 +210,11 @@ Read command 使用根对象 `BlueprintHelper.ReadSpec.v1`：
 
 ### Legacy / Internal
 
-Legacy/internal/debug/expert commands 可能仍存在于内部 transport 后面，但不属于普通 Agent surface。它们只服务于内部 Task Runtime lowering、expert/debug recovery、非废弃 MCP 普通工具面的 regression fixture 和历史兼容维护。
+Legacy/internal/debug/expert commands 可能仍存在于内部 transport 后面，但不属于普通 Agent surface，也不作为 Agent-facing fallback 暴露。
 
 ## English
 
-This reference matches the current implementation: the CLI is the supported entry for ordinary Agent TaskSpec, ReadSpec, diagnostics, debug-summary, write-session, and result-query work. MCP is restricted to `blueprint_open_editor`, `blueprint_close_editor`, and developer-only `blueprint_developer_exec_console_command`; CLI lifecycle aliases are compatibility/manual fallback only.
+This reference matches the current implementation: the CLI is the supported entry for ordinary Agent TaskSpec, ReadSpec, diagnostics, debug-summary, write-session, and result-query work. MCP is restricted to the `blueprint_open_editor` and `blueprint_close_editor` lifecycle entries; CLI lifecycle aliases are compatibility/manual fallback only.
 
 ### Architecture
 
@@ -420,4 +420,4 @@ Rules:
 
 ### Legacy / Internal
 
-Legacy/internal/debug/expert commands may still exist behind internal transport, but they are not part of the ordinary Agent surface. They are kept only for internal Task Runtime lowering, expert/debug recovery, regression fixtures outside the deprecated MCP ordinary-tool surface, and historical compatibility maintenance.
+Legacy/internal/debug/expert commands may still exist behind internal transport, but they are not part of the ordinary Agent surface and are not exposed as Agent-facing fallbacks.

@@ -1,6 +1,7 @@
 // BlueprintHelper Review debug bundle utility functions implementation.
 
 #include "UI/Review/Utils/BlueprintHelperReviewDebugBundleUtils.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 
 FCriticalSection FBlueprintHelperReviewDebugBundleUtils::WriteCriticalSection;
 FCriticalSection FBlueprintHelperReviewDebugBundleUtils::TaskCriticalSection;
@@ -27,7 +28,7 @@ void FBlueprintHelperReviewDebugBundleUtils::TrackWriteTask(TFuture<void>&& Futu
 		{
 			if (WriteTasks[Index].IsReady())
 			{
-				WriteTasks.RemoveAtSwap(Index, 1, EAllowShrinking::No);
+				FBlueprintHelperVersionCompat::RemoveAtSwapNoShrink(WriteTasks, Index, 1);
 			}
 		}
 		if (bShutdownRequested)

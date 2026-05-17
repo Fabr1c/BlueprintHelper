@@ -482,7 +482,8 @@ bool FBlueprintHelperReviewSnapshotRestoreService::RestoreDataTableRowFromSnapsh
 		if (Snapshot->TryGetStringField(TEXT("value"), RowValue))
 		{
 			FDataTableEditorUtils::BroadcastPreChange(DataTable, FDataTableEditorUtils::EDataTableChangeInfo::RowData);
-			const TCHAR* ImportResult = DataTable->GetRowStruct()->ImportText(
+			const TCHAR* ImportResult = FBlueprintHelperVersionCompat::ImportScriptStructText(
+				DataTable->GetRowStruct(),
 				*RowValue,
 				*RowData,
 				DataTable,

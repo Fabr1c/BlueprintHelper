@@ -15,6 +15,7 @@
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Misc/AutomationTest.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "Shared/Services/BlueprintHelperBlueprintStructureService.h"
 #include "Systems/ToolClusters/BlueprintSignature/BlueprintHelperSignatureService.h"
 #include "UObject/Package.h"
@@ -56,7 +57,11 @@ public:
 		// These signature tests mutate transient Blueprints. In a dirty project, UE may flush
 		// unrelated loaded smoke assets during structural Blueprint updates; keep that noise
 		// from failing tests that only assert the transient asset under test.
-		Test.AddExpectedErrorPlain(TEXT("BlueprintHelperCliSmoke"), EAutomationExpectedErrorFlags::Contains, -1);
+		FBlueprintHelperVersionCompat::AddExpectedErrorPlainCompat(
+			Test,
+			TEXT("BlueprintHelperCliSmoke"),
+			EAutomationExpectedErrorFlags::Contains,
+			-1);
 	}
 
 	static UEdGraph* FindSignatureFunctionGraph(UBlueprint* Blueprint, const FString& FunctionName)

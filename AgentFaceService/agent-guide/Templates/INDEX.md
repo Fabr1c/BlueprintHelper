@@ -15,9 +15,9 @@ The category semantic indexes contain the per-intent template lists.
 2. Use `write/` only for TaskSpec preview or execute inputs.
 3. Use `other/` for workflow support commands that are not asset-context reads
    and not TaskSpec authoring.
-4. Do not add templates for deprecated MCP ordinary tools. The ordinary
-   Agent-facing surface is the BlueprintHelper CLI; MCP is retained only for
-   the explicit editor lifecycle and developer exec allowlist.
+4. Templates are only for the ordinary BlueprintHelper CLI surface. MCP is
+   retained only for explicit editor lifecycle open/close and is not a
+   template surface for ordinary asset workflows.
 
 ## Category Ownership
 
@@ -26,4 +26,3 @@ The category semantic indexes contain the per-intent template lists.
 | Asset, graph, property, dependency, task-context, or function-chain read | `read/` |
 | TaskSpec wrapper, bare TaskSpec, or write behavior example | `write/` |
 | Runtime, diagnostics, guide, authorization, result, debug, or Review summary query | `other/` |
-

@@ -8,9 +8,9 @@ Task write mainline: Agent -> BlueprintHelper CLI -> task-core -> Python Task Co
 
 Use the CLI when an Agent can run shell commands and should avoid large escaped JSON output. The CLI is the current Agent-facing surface for ordinary TaskSpec writes in shell-capable environments. It keeps Agent stdout compact, supports selected-field output, and still preserves TaskSpec-first writes, Python compilation, Bridge preview, and UE Task Runtime execution.
 
-TaskSpec, ReadSpec, diagnostics, debug summaries, write-session requests, and result queries use the CLI in the current Agent workflow. MCP is restricted to `blueprint_open_editor`, `blueprint_close_editor`, and developer-only `blueprint_developer_exec_console_command`. CLI lifecycle aliases remain available for compatibility and manual fallback.
+TaskSpec, ReadSpec, diagnostics, debug summaries, write-session requests, and result queries use the CLI in the current Agent workflow. MCP is restricted to editor open/close lifecycle in ordinary Agent workflows. CLI lifecycle aliases remain available for compatibility and manual fallback.
 
-Deprecated MCP ordinary tools are not an alternate transport. Do not use them, do not write tests for them, and do not run old MCP tool regression/import/task/debug tests.
+Deprecated MCP ordinary tools are not an alternate transport or fallback path.
 
 ## Prerequisites
 
@@ -18,18 +18,6 @@ Deprecated MCP ordinary tools are not an alternate transport. Do not use them, d
 - Build `task-core` and the CLI package so the CLI entry exists under `AgentFaceService/cli/build/cli/`.
 - Start Unreal Editor with BlueprintHelper loaded and the Bridge reachable.
 - Prepare a bare `BlueprintHelper.TaskSpec.v1` file such as `.\task_spec.json`, or copy one from `AgentFaceService/agent-guide/Templates/write/`.
-
-## Build
-
-```powershell
-cd <PLUGIN_ROOT>\AgentFaceService\task-core
-npm install
-npm run build
-
-cd <PLUGIN_ROOT>\AgentFaceService\cli
-npm install
-npm run build
-```
 
 ## Direct Tool Name Invocation
 
@@ -144,5 +132,5 @@ Example projected output:
 - The CLI is the Agent-facing transport layer; it does not replace the Python Task Compiler or UE Task Runtime.
 - The CLI is not a raw Bridge write surface for ordinary asset writes.
 - Use global MCP allowlist for Agent-owned Editor open/close; CLI lifecycle aliases are compatibility/manual fallback.
-- Never use, add, or run deprecated MCP ordinary tool tests.
-- For schema and boundary details, use [TaskSpec_TaskPlan_Contract_20260504.md](TaskSpec_TaskPlan_Contract_20260504.md).
+- Deprecated MCP ordinary tools are not fallback paths for ordinary Agent workflows.
+- For ordinary Agent input shapes, use [CLI_Tools_API_Reference.md](CLI_Tools_API_Reference.md) and `AgentFaceService/agent-guide/Templates/`.

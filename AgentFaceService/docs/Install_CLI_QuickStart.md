@@ -44,19 +44,16 @@ Open the project in Unreal Editor, enable BlueprintHelper if needed, and rebuild
 
 If you use an Unreal `BuildPlugin` package, keep the sibling `AgentFaceService` package available separately. UE packaging does not compile or include `AgentFaceService/cli` or `AgentFaceService/task-core`.
 
-## 2. Manual CLI Build Fallback
+## 2. Installer Variants
 
-Use this only when you skipped the installer build step or are developing the CLI packages directly.
+Use the root installer for setup and rebuilds. Do not duplicate per-package Node build commands in Agent-facing docs.
 
 ```powershell
-cd <PLUGIN_ROOT>\AgentFaceService\task-core
-npm install
-npm run build
-
-cd <PLUGIN_ROOT>\AgentFaceService\cli
-npm install
-npm run build
+.\install.ps1 -ProjectFile <Project.uproject> -EngineRoot <UE root>
+.\install.ps1 -ProjectFile <Project.uproject> -EngineRoot <UE root> -RunDiagnostics
 ```
+
+Windows users can also run `install.cmd`; it opens the interactive installer when launched without arguments and passes arguments through to `install.ps1` when supplied.
 
 ## 3. Manual Project Agent Profile Fallback
 
@@ -92,7 +89,7 @@ Either start Unreal Editor normally with the project, or use the global MCP allo
 bh open_editor --select status,summary,artifacts.full_result
 ```
 
-Do not use plugin-local MCP, deprecated MCP ordinary tools, or one-shot shell MCP clients as proof of Agent lifecycle or asset-workflow behavior. The normal Agent-owned lifecycle path is the global MCP allowlist server.
+Do not use plugin-local MCP or deprecated MCP ordinary tools as proof of Agent lifecycle or asset-workflow behavior. The normal Agent-owned lifecycle path is the global MCP allowlist server.
 
 Bridge smoke check:
 
@@ -104,7 +101,7 @@ If the port is not open, wait for the editor to finish loading, confirm the plug
 
 ## 5. Run The CLI
 
-The CLI is the supported Agent entry for ordinary TaskSpec writes, reads, diagnostics, debug summaries, write-session requests, and result queries. MCP is restricted to editor open, editor close, and developer-only exec command; CLI lifecycle aliases exist for compatibility/manual fallback. Do not add or run tests for deprecated MCP ordinary tools.
+The CLI is the supported Agent entry for ordinary TaskSpec writes, reads, diagnostics, debug summaries, write-session requests, and result queries. MCP is restricted to editor open/close lifecycle in ordinary Agent workflows; CLI lifecycle aliases exist for compatibility/manual fallback. Deprecated MCP ordinary tools are not fallback paths.
 
 Examples:
 
@@ -124,8 +121,7 @@ When a UE-bound command waits on the Bridge, the CLI emits keep-alive hints to `
 Repository verification:
 
 ```powershell
-cd <PLUGIN_ROOT>\AgentFaceService\cli
-npm test
+.\install.ps1 -ProjectFile <Project.uproject> -EngineRoot <UE root> -RunDiagnostics
 ```
 
 Editor connection verification:

@@ -1,6 +1,7 @@
 // BlueprintHelper main window cleanup async task utilities implementation.
 
 #include "UI/Utils/BlueprintHelperMainWindowCleanupAsyncUtils.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 
 FCriticalSection FBlueprintHelperMainWindowCleanupAsyncUtils::TaskCriticalSection;
 TArray<TFuture<void>> FBlueprintHelperMainWindowCleanupAsyncUtils::CleanupTasks;
@@ -21,7 +22,7 @@ void FBlueprintHelperMainWindowCleanupAsyncUtils::TrackCleanupTask(TFuture<void>
 		{
 			if (CleanupTasks[Index].IsReady())
 			{
-				CleanupTasks.RemoveAtSwap(Index, 1, EAllowShrinking::No);
+				FBlueprintHelperVersionCompat::RemoveAtSwapNoShrink(CleanupTasks, Index, 1);
 			}
 		}
 		if (bShutdownRequested)

@@ -1,6 +1,7 @@
 // BlueprintHelper Service Layer — Logic Group Builder 实现
 
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicGroupBuilder.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/Utils/BlueprintHelperGraphWriteClassificationUtils.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -81,7 +82,7 @@ public:
 		Result.TrimStartAndEndInline();
 		if (Result.Len() > 256)
 		{
-			Result.LeftInline(256, EAllowShrinking::No);
+			FBlueprintHelperVersionCompat::LeftInlineNoShrink(Result, 256);
 		}
 		return Result;
 	}
