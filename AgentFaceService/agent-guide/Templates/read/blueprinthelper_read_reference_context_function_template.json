@@ -1,0 +1,9 @@
+{
+  "asset_path": "__ASSET_PATH__",
+  "target_type": "function",
+  "target_name": "__FUNCTION_NAME__",
+  "search_scope": "project",
+  "resolution_policy": "ue_then_name",
+  "detail": "samples",
+  "max_results": 50
+}

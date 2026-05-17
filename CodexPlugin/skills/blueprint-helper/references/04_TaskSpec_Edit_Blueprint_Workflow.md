@@ -1,4 +1,4 @@
-# 04 - TaskSpec 修改蓝图工作流
+﻿# 04 - TaskSpec 修改蓝图工作流
 
 标准流程：
 
@@ -74,7 +74,7 @@ execute_task 成功后，普通报告只输出任务摘要、目标资产、主�
 在执行 smoke 或写入任务前，对照：
 
 ```text
-Resources/AgentGuide/Reference/04_Tool_Surface_Field_Templates_20260512.md
+AgentFaceService/agent-guide/Reference/04_Tool_Surface_Field_Templates_20260512.md
 ```
 
 执行顺序中的参数形状应为：

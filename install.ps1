@@ -8,8 +8,10 @@ param(
   [switch]$SkipProjectProfile,
   [switch]$SkipDefaultPreferences,
   [switch]$InstallClaudeAgents,
+  [switch]$InstallClaudePlugin,
   [switch]$InstallUePluginToEngine,
   [switch]$RunDiagnostics,
+  [switch]$Interactive,
   [string]$ProjectFile,
   [string]$EngineRoot,
   [string]$EnginePluginDir,
@@ -99,6 +101,106 @@ function Invoke-Npm {
   Invoke-External -Description "npm --prefix $PackageDir $($Arguments -join ' ')" -FilePath $script:NpmCommand -Arguments (@('--prefix', $PackageDir) + $Arguments)
 }
 
+function Read-InstallText {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Prompt,
+    [string]$DefaultValue = ''
+  )
+
+  $Suffix = if ($DefaultValue) { " [$DefaultValue]" } else { '' }
+  $Value = Read-Host "$Prompt$Suffix"
+  if ([string]::IsNullOrWhiteSpace($Value)) {
+    return $DefaultValue
+  }
+  return $Value.Trim()
+}
+
+function Read-InstallYesNo {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Prompt,
+    [bool]$DefaultYes = $true
+  )
+
+  $Hint = if ($DefaultYes) { 'Y/n' } else { 'y/N' }
+  while ($true) {
+    $Raw = Read-Host "$Prompt [$Hint]"
+    if ([string]::IsNullOrWhiteSpace($Raw)) {
+      return $DefaultYes
+    }
+
+    switch -Regex ($Raw.Trim()) {
+      '^(y|yes|Y|YES|是|好|1)$' { return $true }
+      '^(n|no|N|NO|否|不|0)$' { return $false }
+      default { Write-Host 'Please answer y or n.' }
+    }
+  }
+}
+
+function Invoke-InteractiveInstallWizard {
+  Write-Host ''
+  Write-Host 'BlueprintHelper interactive install'
+  Write-Host "Source root: $Root"
+  Write-Host ''
+
+  $script:SkipBuild = -not (Read-InstallYesNo -Prompt 'Build AgentFaceService packages' -DefaultYes:(-not $SkipBuild))
+  $script:SkipCliLink = -not (Read-InstallYesNo -Prompt 'Link the bh CLI globally' -DefaultYes:(-not $SkipCliLink))
+
+  if (Read-InstallYesNo -Prompt 'Install Codex Desktop plugin support' -DefaultYes:(-not ($SkipCodexMarketplace -and $SkipCodexAgents -and $SkipLifecycleMcp))) {
+    $script:SkipCodexMarketplace = -not (Read-InstallYesNo -Prompt '  Register Codex local marketplace entry' -DefaultYes:(-not $SkipCodexMarketplace))
+    $script:SkipCodexAgents = -not (Read-InstallYesNo -Prompt '  Install Codex subagents' -DefaultYes:(-not $SkipCodexAgents))
+    $script:SkipLifecycleMcp = -not (Read-InstallYesNo -Prompt '  Install global lifecycle-only MCP config' -DefaultYes:(-not $SkipLifecycleMcp))
+  } else {
+    $script:SkipCodexMarketplace = $true
+    $script:SkipCodexAgents = $true
+    $script:SkipLifecycleMcp = $true
+  }
+
+  if (Read-InstallYesNo -Prompt 'Install Claude Code plugin support' -DefaultYes:$InstallClaudePlugin) {
+    $script:InstallClaudePlugin = $true
+    $script:InstallClaudeAgents = Read-InstallYesNo -Prompt '  Install Claude sideAgent definitions' -DefaultYes:$true
+  } else {
+    $script:InstallClaudePlugin = $false
+    $script:InstallClaudeAgents = Read-InstallYesNo -Prompt 'Install only Claude sideAgent definitions' -DefaultYes:$InstallClaudeAgents
+  }
+
+  $script:SkipProjectProfile = -not (Read-InstallYesNo -Prompt 'Write or update project .blueprinthelper/agent-profile.json' -DefaultYes:(-not $SkipProjectProfile))
+  if (-not $script:SkipProjectProfile) {
+    $ProjectFileInput = Read-InstallText -Prompt '  Project .uproject path, blank to auto-detect' -DefaultValue $ProjectFile
+    if ($ProjectFileInput) {
+      $script:ProjectFile = $ProjectFileInput
+    }
+
+    $EngineRootInput = Read-InstallText -Prompt '  UE root, for example E:\UE_5.6 or E:\UE_5.6\Engine' -DefaultValue $EngineRoot
+    if ($EngineRootInput) {
+      $script:EngineRoot = $EngineRootInput
+    }
+  }
+
+  $script:SkipDefaultPreferences = -not (Read-InstallYesNo -Prompt 'Create default Claude/Codex user preference files when missing' -DefaultYes:(-not $SkipDefaultPreferences))
+  $script:RunDiagnostics = Read-InstallYesNo -Prompt 'Run BlueprintHelper diagnostics after install' -DefaultYes:$RunDiagnostics
+
+  $script:InstallUePluginToEngine = Read-InstallYesNo -Prompt 'Copy the UE plugin into the engine Plugins/Marketplace folder' -DefaultYes:$InstallUePluginToEngine
+  if ($script:InstallUePluginToEngine) {
+    if (-not $script:EnginePluginDir) {
+      $EnginePluginDirInput = Read-InstallText -Prompt '  Engine plugin target directory, blank to derive from UE root' -DefaultValue $EnginePluginDir
+      if ($EnginePluginDirInput) {
+        $script:EnginePluginDir = $EnginePluginDirInput
+      }
+    }
+    if (-not $script:EngineRoot -and -not $script:EnginePluginDir) {
+      $EngineRootInput = Read-InstallText -Prompt '  UE root required for engine plugin install' -DefaultValue $EngineRoot
+      if ($EngineRootInput) {
+        $script:EngineRoot = $EngineRootInput
+      }
+    }
+  }
+
+  $script:Force = Read-InstallYesNo -Prompt 'Allow replacing existing local links or engine plugin target when needed' -DefaultYes:$Force
+  Write-Host ''
+}
+
 function Ensure-CodexHomeMarketplace {
   param(
     [Parameter(Mandatory = $true)]
@@ -169,6 +271,30 @@ function Ensure-CodexHomeMarketplace {
 
   if ($script:ThisCmdlet.ShouldProcess($MarketplacePath, 'Update Codex home marketplace')) {
     $Marketplace | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $MarketplacePath -Encoding utf8
+  }
+}
+
+function Get-ClaudePluginInstallInfo {
+  $ManifestPath = Join-Path $ClaudePluginRoot '.claude-plugin\plugin.json'
+  $MarketplacePath = Join-Path $ClaudePluginRoot '.claude-plugin\marketplace.json'
+
+  Assert-File -Path $ManifestPath -Name 'Claude plugin manifest'
+  Assert-File -Path $MarketplacePath -Name 'Claude plugin marketplace'
+
+  $SourcePath = './ClaudePlugin'
+  $MarketplaceCommand = "/plugin marketplace add $SourcePath"
+  $InstallCommand = '/plugin install blueprint-helper@blueprint-helper-dev'
+
+  Write-Host "==> Claude plugin source: $SourcePath"
+  Write-Host '    Start Claude Code from this repository root, then run:'
+  Write-Host "    $MarketplaceCommand"
+  Write-Host "    $InstallCommand"
+
+  return [pscustomobject]@{
+    status = 'ready_for_claude_code'
+    source_path = $SourcePath
+    marketplace_command = $MarketplaceCommand
+    install_command = $InstallCommand
   }
 }
 
@@ -532,10 +658,16 @@ Assert-Directory -Path $ClaudePluginRoot -Name 'ClaudePlugin'
 Assert-Directory -Path $AgentFaceServiceRoot -Name 'AgentFaceService'
 Assert-Directory -Path $UePluginRoot -Name 'BlueprintHelper UE plugin'
 Assert-File -Path (Join-Path $CodexPluginRoot '.codex-plugin\plugin.json') -Name 'Codex plugin manifest'
+Assert-File -Path (Join-Path $ClaudePluginRoot '.claude-plugin\plugin.json') -Name 'Claude plugin manifest'
+Assert-File -Path (Join-Path $ClaudePluginRoot '.claude-plugin\marketplace.json') -Name 'Claude plugin marketplace'
 Assert-File -Path (Join-Path $UePluginRoot 'BlueprintHelper.uplugin') -Name 'UE plugin descriptor'
 
 $script:NodeCommand = Resolve-CommandPath -Names @('node') -DisplayName 'Node.js'
 $script:NpmCommand = Resolve-CommandPath -Names @('npm.cmd', 'npm') -DisplayName 'npm'
+
+if ($Interactive) {
+  Invoke-InteractiveInstallWizard
+}
 
 if (-not $SkipBuild) {
   Invoke-Npm -PackageDir (Join-Path $AgentFaceServiceRoot 'task-core') -Arguments @('install')
@@ -577,6 +709,15 @@ $ProjectProfileResult = [pscustomobject]@{
   engine_root = $null
 }
 
+$ClaudePluginResult = [pscustomobject]@{
+  status = 'skipped'
+  source_path = $null
+  marketplace_command = $null
+  install_command = $null
+}
+
+$ClaudeAgentsStatus = 'skipped'
+
 if (-not $SkipProjectProfile) {
   $ProjectProfileResult = Ensure-ProjectAgentProfile
 }
@@ -590,8 +731,13 @@ if ($RunDiagnostics) {
   $DiagnosticsStatus = Invoke-BlueprintHelperDiagnostics -ProjectProfileResult $ProjectProfileResult
 }
 
-if ($InstallClaudeAgents) {
+if ($InstallClaudePlugin) {
+  $ClaudePluginResult = Get-ClaudePluginInstallInfo
+}
+
+if ($InstallClaudeAgents -or $InstallClaudePlugin) {
   Invoke-External -Description 'Install Claude subagents' -FilePath $script:NodeCommand -Arguments @((Join-Path $CodexPluginRoot 'scripts\install-claude-agents.cjs'))
+  $ClaudeAgentsStatus = if ($WhatIfPreference) { 'whatif' } else { 'installed' }
 }
 
 if ($InstallUePluginToEngine) {
@@ -603,6 +749,13 @@ Write-Host 'BlueprintHelper install finished.'
 Write-Host "Source root: $Root"
 Write-Host 'CLI: bh or blueprinthelper-cli'
 Write-Host 'Codex plugin: blueprint-helper'
+Write-Host "Claude plugin: $($ClaudePluginResult.status)"
+if ($ClaudePluginResult.source_path) {
+  Write-Host "Claude plugin source: $($ClaudePluginResult.source_path)"
+  Write-Host "Claude marketplace command: $($ClaudePluginResult.marketplace_command)"
+  Write-Host "Claude install command: $($ClaudePluginResult.install_command)"
+}
+Write-Host "Claude agents: $ClaudeAgentsStatus"
 Write-Host "Project profile: $($ProjectProfileResult.status)"
 if ($ProjectProfileResult.path) {
   Write-Host "Project profile path: $($ProjectProfileResult.path)"

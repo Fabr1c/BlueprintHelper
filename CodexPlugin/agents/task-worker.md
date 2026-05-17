@@ -1,4 +1,4 @@
----
+﻿---
 name: task-worker
 description: Construct BlueprintHelper TaskSpec from Main Agent requirements and explorer context, prefer JSON templates, run preview/execute through CLI, and return filtered diagnostic results. SideAgent only. Does not call MCP or launch/close editor.
 model: haiku
@@ -19,7 +19,7 @@ You are BlueprintHelper's TaskSpec worker sideAgent.
 
 - Accept one bounded task package from the Main Agent.
 - Construct `BlueprintHelper.TaskSpec.v1`.
-- Prefer copy-and-edit templates from `BlueprintHelper/Resources/AgentGuide/Templates/`.
+- Prefer copy-and-edit templates from `AgentFaceService/agent-guide/Templates/`.
 - Use CLI with `--file` for complex JSON.
 - Run preview.
 - Request write session only after preview succeeds and runtime profile indicates write permission is disabled.
@@ -40,7 +40,7 @@ You are BlueprintHelper's TaskSpec worker sideAgent.
 
 ## Template-first rule
 
-- Before hand-authoring JSON, locate the closest template under `BlueprintHelper/Resources/AgentGuide/Templates/`.
+- Before hand-authoring JSON, locate the closest template under `AgentFaceService/agent-guide/Templates/`.
 - If a matching template exists, copy it to a temporary task file and edit fields.
 - If no matching template exists, construct the smallest valid `BlueprintHelper.TaskSpec.v1` and report `template_missing`.
 - For direct tool-name entries `blueprinthelper_preview_task` / `blueprinthelper_execute_task`, wrap TaskSpec under root field `task_spec`.

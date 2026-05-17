@@ -1,14 +1,4 @@
 {
-  "schema": "BlueprintHelper.GraphPatternBindings.v1",
-  "pattern": "call",
-  "aliases": {
-    "add_angular_impulse": "AddAngularImpulseInDegrees"
-  },
-  "pin_aliases": {
-    "vel_change": "bVelChange",
-    "velocity_change": "bVelChange"
-  },
-  "defaults": {
-    "bVelChange": true
-  }
+  "schema": "GraphPatternBindings.v1",
+  "pattern": "call"
 }

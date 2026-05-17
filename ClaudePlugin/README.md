@@ -1,4 +1,4 @@
-# BlueprintHelper
+﻿# BlueprintHelper
 
 BlueprintHelper is an Unreal Engine editor plugin with a CLI-first TaskSpec transport and a global MCP allowlist companion. It lets an agent inspect and modify Unreal Editor assets through a local Bridge: Blueprint graphs, UMG widgets, DataAssets, DataTables, asset browser operations, compile/save/open commands, PIE commands, and related diagnostics.
 
@@ -87,18 +87,18 @@ Then add the marketplace source and install the Claude plugin:
 
 `/blueprint-helper:setup` is retained only as a compatibility pointer to `install.ps1`; it no longer owns first-run setup.
 
-Detailed manual setup lives in [Docs/Install_CLI_QuickStart.md](../BlueprintHelper/Docs/Install_CLI_QuickStart.md). CLI command syntax lives in [Docs/TaskSpec_CLI_QuickStart.md](../BlueprintHelper/Docs/TaskSpec_CLI_QuickStart.md). Copy-and-edit JSON templates live in [Resources/AgentGuide/Templates](../BlueprintHelper/Resources/AgentGuide/Templates/README.md).
+Detailed manual setup lives in [Docs/Install_CLI_QuickStart.md](../AgentFaceService/docs/Install_CLI_QuickStart.md). CLI command syntax lives in [Docs/TaskSpec_CLI_QuickStart.md](../AgentFaceService/docs/TaskSpec_CLI_QuickStart.md). Copy-and-edit JSON templates live in [AgentFaceService/agent-guide/Templates](../AgentFaceService/agent-guide/Templates/README.md).
 
 ## Agent Entry Points
 
 Agents should read these in order:
 
 1. [AGENTS.md](AGENTS.md)
-2. [Resources/AgentGuide/00_Agent_Onboarding_Index_20260504.md](../BlueprintHelper/Resources/AgentGuide/00_Agent_Onboarding_Index_20260504.md)
-3. [Resources/Docs/TaskSpec_TaskPlan_Contract_20260504.md](../BlueprintHelper/Resources/Docs/TaskSpec_TaskPlan_Contract_20260504.md)
+2. [AgentFaceService/agent-guide/00_Agent_Onboarding_Index_20260504.md](../AgentFaceService/agent-guide/00_Agent_Onboarding_Index_20260504.md)
+3. [AgentFaceService/docs/TaskSpec_TaskPlan_Contract_20260504.md](../AgentFaceService/docs/TaskSpec_TaskPlan_Contract_20260504.md)
 4. [Develop/Plan/README.md](../BlueprintHelper/Develop/Plan/README.md)
-5. [Docs/TaskSpec_CLI_QuickStart.md](../BlueprintHelper/Docs/TaskSpec_CLI_QuickStart.md)
-6. [Docs/CLI_Tools_API_Reference.md](../BlueprintHelper/Docs/CLI_Tools_API_Reference.md)
+5. [Docs/TaskSpec_CLI_QuickStart.md](../AgentFaceService/docs/TaskSpec_CLI_QuickStart.md)
+6. [Docs/CLI_Tools_API_Reference.md](../AgentFaceService/docs/CLI_Tools_API_Reference.md)
 
 Claude-style agents can also load [skills/blueprint-helper/SKILL.md](skills/blueprint-helper/SKILL.md).
 
@@ -115,10 +115,10 @@ Claude Code discovers plugin commands from the plugin root `commands/` directory
 
 | Document | Purpose |
 |---|---|
-| [Docs/TaskSpec_CLI_QuickStart.md](../BlueprintHelper/Docs/TaskSpec_CLI_QuickStart.md) | Primary CLI transport for compact TaskSpec execution |
-| [Docs/Install_CLI_QuickStart.md](../BlueprintHelper/Docs/Install_CLI_QuickStart.md) | CLI installation and first-run setup |
-| [Docs/CLI_Tools_API_Reference.md](../BlueprintHelper/Docs/CLI_Tools_API_Reference.md) | Supported CLI command surface and internal/debug compatibility notes |
-| [Resources/AgentGuide/](../BlueprintHelper/Resources/AgentGuide/) | Agent task routing and editor-asset workflows |
+| [Docs/TaskSpec_CLI_QuickStart.md](../AgentFaceService/docs/TaskSpec_CLI_QuickStart.md) | Primary CLI transport for compact TaskSpec execution |
+| [Docs/Install_CLI_QuickStart.md](../AgentFaceService/docs/Install_CLI_QuickStart.md) | CLI installation and first-run setup |
+| [Docs/CLI_Tools_API_Reference.md](../AgentFaceService/docs/CLI_Tools_API_Reference.md) | Supported CLI command surface and internal/debug compatibility notes |
+| [AgentFaceService/agent-guide/](../AgentFaceService/agent-guide/) | Agent task routing and editor-asset workflows |
 | [Develop/Plan/README.md](../BlueprintHelper/Develop/Plan/README.md) | Active implementation and verification plan index |
 | [Develop/v0.3.8/README.md](../BlueprintHelper/Develop/v0.3.8/README.md) | Sealed v0.3.8 documentation archive |
 | [Resources/KnownBugs.md](../BlueprintHelper/Resources/KnownBugs.md) | Known bugs and implementation notes |
@@ -160,4 +160,3 @@ BlueprintHelper Bridge uses object-first responses. Large raw graph payloads sho
 - `blueprint_export_to_json` may still return `raw_json_ref` as a resource link in compatibility paths.
 - RawJson resource handling remains for historical fixtures and recovery workflows.
 - `legacy_text_json` exists only for compatibility with older text-only callers.
-

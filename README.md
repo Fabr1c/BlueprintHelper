@@ -1,4 +1,4 @@
-# BlueprintHelper
+﻿# BlueprintHelper
 
 BlueprintHelper 是一个面向 Unreal Engine 编辑器资产的辅助插件，核心目标是让 AI Agent 能够通过本地 CLI 和 Unreal Editor Bridge 安全地读取、预览和修改蓝图相关资产。
 

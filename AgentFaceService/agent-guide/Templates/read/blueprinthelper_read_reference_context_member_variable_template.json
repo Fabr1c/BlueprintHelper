@@ -1,0 +1,9 @@
+{
+  "asset_path": "__ASSET_PATH__",
+  "target_type": "member_variable",
+  "target_name": "__VARIABLE_NAME__",
+  "search_scope": "project",
+  "resolution_policy": "ue_then_name",
+  "detail": "samples",
+  "max_results": 50
+}

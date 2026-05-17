@@ -1,4 +1,4 @@
----
+﻿---
 name: blueprint-helper
 description: Use for BlueprintHelper, UE5/Unreal Engine Blueprint asset reads or writes, mandatory Codex subagents, Blueprint graph TaskSpec preview/execute, UMG/DataAsset/DataTable editor assets, Bridge/runtime diagnostics, lifecycle MCP, and BlueprintHelper Codex configuration. Do not use for ordinary repo source files.
 ---
@@ -63,7 +63,7 @@ bh task preview --file .\task_spec.json --select status,preview_id,summary,artif
 bh task execute --file .\task_spec.json --select status,task_run_id,summary,artifacts.full_result
 ```
 
-For complex JSON, prefer copying templates from `BlueprintHelper/Resources/AgentGuide/Templates/` and calling the CLI with `--file`. If you call the direct tool-name entries `blueprinthelper_preview_task` or `blueprinthelper_execute_task`, use the wrapper templates with root field `task_spec`; if you call grouped `task preview` or `task execute`, use a bare `BlueprintHelper.TaskSpec.v1` file.
+For complex JSON, open `AgentFaceService/agent-guide/Templates/INDEX.md`, choose the category semantic index, copy a matching template, and call the CLI with `--file`. If you call the direct tool-name entries `blueprinthelper_preview_task` or `blueprinthelper_execute_task`, use the wrapper templates with root field `task_spec`; if you call grouped `task preview` or `task execute`, use a bare `BlueprintHelper.TaskSpec.v1` file.
 
 ## Mandatory Codex Subagent Workflow
 
@@ -148,7 +148,7 @@ template_hint: "<preferred template path or search target>"
 stop_conditions: []
 ```
 
-`task-worker` must prefer templates from `BlueprintHelper/Resources/AgentGuide/Templates/`, construct `BlueprintHelper.TaskSpec.v1`, run preview, request write session only when needed, run execute, and return filtered diagnostic results.
+`task-worker` must prefer templates from `AgentFaceService/agent-guide/Templates/`, construct `BlueprintHelper.TaskSpec.v1`, run preview, request write session only when needed, run execute, and return filtered diagnostic results.
 
 ### Closed loop
 

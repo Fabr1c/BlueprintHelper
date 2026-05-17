@@ -1,4 +1,4 @@
-# BlueprintHelper Codex Agent Entry
+﻿# BlueprintHelper Codex Agent Entry
 
 This package contains the Codex-facing BlueprintHelper plugin metadata, skill instructions, subagent definitions, and lifecycle MCP setup scripts.
 
@@ -26,6 +26,6 @@ For writes, follow the TaskSpec-first closed loop:
 main preflight -> explorer context -> task-worker TaskSpec -> preview -> write session if needed -> execute -> result -> main-agent next decision
 ```
 
-For complex CLI inputs, copy a matching JSON template from `BlueprintHelper/Resources/AgentGuide/Templates/` and use `--file`.
+For complex CLI inputs, start at `AgentFaceService/agent-guide/Templates/INDEX.md`, choose the category semantic index, copy a matching JSON template, and use `--file`.
 
 Never request or forward raw Bridge auth tokens. Interactive write approval belongs to the running Editor/Bridge session.

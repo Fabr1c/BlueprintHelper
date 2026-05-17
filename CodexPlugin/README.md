@@ -1,4 +1,4 @@
-# BlueprintHelper Codex Plugin
+﻿# BlueprintHelper Codex Plugin
 
 This is a Codex-compatible package for BlueprintHelper.
 
@@ -15,7 +15,7 @@ See `INSTALL.md` at the repository root for Codex Desktop, CLI, lifecycle MCP, a
 - `.codex-plugin/plugin.json` is the Codex plugin manifest.
 - `.codex/agents/` contains the Codex subagent definitions used by the BlueprintHelper workflow.
 - `skills/blueprint-helper/SKILL.md` is the Codex-facing workflow entry.
-- `skills/blueprint-helper/references/` mirrors the BlueprintHelper agent references from the canonical `BlueprintHelper/Resources/AgentGuide` docs.
+- `skills/blueprint-helper/references/` mirrors the BlueprintHelper agent references from the canonical `AgentFaceService/agent-guide` docs.
 - `assets/blueprint-helper.svg` is the local plugin icon referenced by the manifest.
 
 ## Runtime Model
@@ -99,4 +99,4 @@ node <BLUEPRINTHELPER_ROOT>\CodexPlugin\scripts\install-global-mcp.cjs
 
 Plugin-local MCP is not the normal Codex entry. Do not register or call ordinary BlueprintHelper read/write tools through MCP. Use MCP only for editor open/close plus developer-only exec command; use CLI for ordinary reads, diagnostics, TaskSpec preview, write-session requests, execute, and result lookup. Do not add or run tests for deprecated MCP ordinary tools.
 
-For editor-asset writes, keep the workflow TaskSpec-first. Prefer `BlueprintHelper/Resources/AgentGuide/Templates/` for copy-and-edit JSON inputs.
+For editor-asset writes, keep the workflow TaskSpec-first. Prefer `AgentFaceService/agent-guide/Templates/` for copy-and-edit JSON inputs.
