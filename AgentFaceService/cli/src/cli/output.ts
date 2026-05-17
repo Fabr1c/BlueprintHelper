@@ -1,4 +1,8 @@
-import type { ToolResultBase } from '@blueprinthelper/task-core/result/tool-result';
+import {
+  sanitizeAgentFacingToolResult,
+  sanitizeAgentFacingValue,
+  type ToolResultBase,
+} from '@blueprinthelper/task-core/result/tool-result';
 import { resolveArtifactRoot, writeJsonArtifact } from './artifacts.js';
 
 export const CLI_RESULT_SCHEMA = 'BlueprintHelper.CliResult.v1';
@@ -97,18 +101,20 @@ export function writeCliResult(
   toolResult: ToolResultBase,
   extra: Record<string, unknown> = {},
 ): CliWriteOutcome {
+  const safeToolResult = sanitizeAgentFacingToolResult(toolResult);
+  const safeExtra = sanitizeAgentFacingValue(extra);
   const artifactRoot = resolveArtifactRoot({ cwd: runtime.cwd, cliDir: command.artifactDir });
-  const runId = inferRunId(command, toolResult, extra);
+  const runId = inferRunId(command, safeToolResult, safeExtra);
   const artifactRefs: Record<string, string> = {
     full_result: writeJsonArtifact({
       root: artifactRoot,
       runId,
       name: 'result',
-      value: { toolResult, extra },
+      value: { toolResult: safeToolResult, extra: safeExtra },
     }),
   };
 
-  const taskPlan = asTaskPlanLike(extra['taskPlan']) ?? asTaskPlanLike(asRecord(toolResult.data)?.['task_plan']);
+  const taskPlan = asTaskPlanLike(safeExtra['taskPlan']) ?? asTaskPlanLike(asRecord(safeToolResult.data)?.['task_plan']);
   if (taskPlan) {
     artifactRefs['task_plan'] = writeJsonArtifact({
       root: artifactRoot,
@@ -118,7 +124,7 @@ export function writeCliResult(
     });
   }
 
-  const output = shapeCliOutput(buildOutput(command, toolResult, artifactRefs, extra), command.fields, command.omitFields);
+  const output = shapeCliOutput(buildOutput(command, safeToolResult, artifactRefs, safeExtra), command.fields, command.omitFields);
   const text = `${JSON.stringify(output)}\n`;
   if (command.maxBytes !== undefined && Buffer.byteLength(text, 'utf8') > command.maxBytes) {
     const budgetResult = outputTooLargeResult(command, artifactRefs);

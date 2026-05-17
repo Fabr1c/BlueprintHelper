@@ -1,8 +1,8 @@
 # BlueprintHelper
 
-BlueprintHelper is an Unreal Engine editor plugin with a CLI-first TaskSpec transport and a lifecycle-only global MCP companion. It lets an agent inspect and modify Unreal Editor assets through a local Bridge: Blueprint graphs, UMG widgets, DataAssets, DataTables, asset browser operations, compile/save/open commands, PIE commands, and related diagnostics.
+BlueprintHelper is an Unreal Engine editor plugin with a CLI-first TaskSpec transport and a global MCP allowlist companion. It lets an agent inspect and modify Unreal Editor assets through a local Bridge: Blueprint graphs, UMG widgets, DataAssets, DataTables, asset browser operations, compile/save/open commands, PIE commands, and related diagnostics.
 
-BlueprintHelper is not a general source editing API. Use normal repository tools for C++, TypeScript, Python, JSON, config files, code search, build scripts, and documentation edits. The current Agent-facing surface is CLI-first for ordinary asset work; global MCP is retained only for editor lifecycle.
+BlueprintHelper is not a general source editing API. Use normal repository tools for C++, TypeScript, Python, JSON, config files, code search, build scripts, and documentation edits. The current Agent-facing surface is CLI-first for ordinary asset work; global MCP is retained only for editor open, editor close, and developer-only exec command.
 
 ## TaskSpec-First Architecture
 
@@ -36,11 +36,11 @@ Current source metadata:
 | Unreal plugin `BlueprintHelper.uplugin` | `VersionName` 0.4.4 |
 | CLI `AgentFaceService/cli/package.json` | 0.4.4 |
 | Shared task core `AgentFaceService/task-core/package.json` | 0.4.4 |
-| Global lifecycle-only MCP package `AgentFaceService/mcp/package.json` | 0.4.4 |
-| Documentation batch | 2026-05-16 implementation sync: CLI ordinary tools + global MCP lifecycle |
+| Global MCP allowlist package `AgentFaceService/mcp/package.json` | 0.4.4 |
+| Documentation batch | 2026-05-17 implementation sync: CLI ordinary tools + MCP allowlist |
 | Intended UE version | UE 5.3 or newer |
 
-The documentation mainline targets the CLI-first TaskSpec / TaskPlan orchestration architecture, with global MCP retained for editor lifecycle. Treat plugin version, CLI version, MCP package version, and documentation date as separate version sources until the compatibility matrix is completed.
+The documentation mainline targets the CLI-first TaskSpec / TaskPlan orchestration architecture, with global MCP restricted to editor open, editor close, and developer-only exec command. Treat plugin version, CLI version, MCP package version, and documentation date as separate version sources until the compatibility matrix is completed.
 
 ## Core Capabilities
 
@@ -52,7 +52,7 @@ The documentation mainline targets the CLI-first TaskSpec / TaskPlan orchestrati
 | Data assets | Read/set editable UObject properties |
 | DataTables | Read, add, update, delete rows |
 | Editor commands | Compile/save/open assets, create Blueprint, PIE start/stop, undo/redo, console commands |
-| Local process commands | Build the Unreal project; Editor open/close is handled through global MCP lifecycle tools when Agent-controlled |
+| Local process commands | Build the Unreal project; Editor open/close is handled through global MCP lifecycle tools when Agent-controlled; developer exec command is local test orchestration only |
 
 ## Boundaries
 
@@ -155,7 +155,8 @@ BlueprintHelper Bridge uses object-first responses. Large raw graph payloads sho
 
 ### MCP Lifecycle / Compatibility Behavior
 
-- `blueprint_open_editor` and `blueprint_close_editor` are global MCP lifecycle companion commands for Agent-owned editor lifecycle. CLI lifecycle aliases are compatibility/manual fallback only.
+- `blueprint_open_editor` and `blueprint_close_editor` are global MCP lifecycle companion commands for Agent-owned editor lifecycle. `blueprint_developer_exec_console_command` is developer-only for local test orchestration. CLI lifecycle aliases are compatibility/manual fallback only.
+- Deprecated MCP ordinary tools are not fallback paths; do not add or run tests for them.
 - `blueprint_export_to_json` may still return `raw_json_ref` as a resource link in compatibility paths.
 - RawJson resource handling remains for historical fixtures and recovery workflows.
 - `legacy_text_json` exists only for compatibility with older text-only callers.

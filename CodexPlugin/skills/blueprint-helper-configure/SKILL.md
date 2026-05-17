@@ -75,7 +75,7 @@ Decisions:
       C) workflow_save
 
   [B] Boundary policy
-      A) CLI TaskSpec reads/writes + global lifecycle-only MCP  [recommended]
+      A) CLI TaskSpec reads/writes + global MCP allowlist  [recommended]
       B) CLI lifecycle fallback only
 
   [R] Review/debug policy
@@ -172,7 +172,7 @@ For `AutoRepair`, write:
 Update the active preference sections with these facts:
 
 - Do not write subagent workflow or subagent model-map preferences here; the main `blueprint-helper` skill owns the mandatory Codex subagent workflow.
-- Editor lifecycle commands must use global lifecycle-only MCP tools.
+- Editor lifecycle commands must use global MCP allowlist tools. Deprecated MCP ordinary tools must not be used, tested, or restored.
 - Only the Main Agent may call `mcp__blueprint_helper__blueprint_open_editor` and `mcp__blueprint_helper__blueprint_close_editor`.
 - Ordinary reads/writes must use the CLI.
 - Fourth safety profile `AutoRepair` skips the write approval popup and defaults write permission to enabled.

@@ -16,6 +16,7 @@ import {
 import {
   TOOL_RESULT_SCHEMA,
   failureResult,
+  sanitizeAgentFacingToolResult,
   successRead,
   type ToolResultBase,
   type ToolResultError,
@@ -242,7 +243,7 @@ async function previewTask(
     taskPlan,
     passed,
     issues,
-    toolResult: {
+    toolResult: sanitizeAgentFacingToolResult({
       ok: true,
       schema: TOOL_RESULT_SCHEMA,
       operation: 'preview_task',
@@ -258,14 +259,14 @@ async function previewTask(
         task_plan: summarizeTaskPlan(taskPlan),
         issues,
       },
-    },
+    }),
   };
 }
 
 function referenceContextToolResult(response: BridgeResponse, assetPath: string): ToolResultBase {
   const raw = asRecord(response.result);
   if (raw && typeof raw['ok'] === 'boolean' && raw['schema'] === TOOL_RESULT_SCHEMA) {
-    return raw as unknown as ToolResultBase;
+    return sanitizeAgentFacingToolResult(raw as unknown as ToolResultBase);
   }
 
   if (!response.success) {

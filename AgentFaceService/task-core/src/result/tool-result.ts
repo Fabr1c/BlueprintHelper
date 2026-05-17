@@ -202,6 +202,73 @@ export interface ToolResultBase {
 
 export const TOOL_RESULT_SCHEMA = 'BlueprintHelper.ToolResult.v1';
 
+const AGENT_FACING_REDIRECTED_KEYS = new Set([
+  'atomic_targets',
+  'before_snapshot_json',
+  'after_snapshot_json',
+  'rollback_data',
+  'target_key',
+  'target_keys',
+  'visual_group_key',
+]);
+
+function isAgentFacingInternalKey(key: string): boolean {
+  const normalized = key.toLowerCase();
+  const tokenized = normalized.replace(/[^a-z0-9]+/g, '_');
+  const compact = normalized.replace(/[^a-z0-9]+/g, '');
+  const isGuidKey =
+    tokenized === 'guid' ||
+    tokenized === 'guids' ||
+    tokenized.startsWith('guid_') ||
+    tokenized.startsWith('guids_') ||
+    tokenized.endsWith('_guid') ||
+    tokenized.endsWith('_guids') ||
+    tokenized.includes('_guid_') ||
+    tokenized.includes('_guids_') ||
+    compact.endsWith('guid') ||
+    compact.endsWith('guids');
+  return isGuidKey || AGENT_FACING_REDIRECTED_KEYS.has(normalized);
+}
+
+export function sanitizeAgentFacingValue<T>(value: T): T {
+  return sanitizeAgentFacingUnknown(value, new WeakSet<object>()) as T;
+}
+
+export function sanitizeAgentFacingToolResult(result: ToolResultBase): ToolResultBase {
+  return sanitizeAgentFacingValue(result);
+}
+
+function sanitizeAgentFacingUnknown(value: unknown, seen: WeakSet<object>): unknown {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => sanitizeAgentFacingUnknown(item, seen))
+      .filter((item) => item !== undefined);
+  }
+
+  if (value === null || typeof value !== 'object') {
+    return value;
+  }
+
+  if (seen.has(value)) {
+    return undefined;
+  }
+  seen.add(value);
+
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, entryValue] of Object.entries(value as Record<string, unknown>)) {
+    if (isAgentFacingInternalKey(key)) {
+      continue;
+    }
+    const nextValue = sanitizeAgentFacingUnknown(entryValue, seen);
+    if (nextValue !== undefined) {
+      sanitized[key] = nextValue;
+    }
+  }
+
+  seen.delete(value);
+  return sanitized;
+}
+
 // 閳光偓閳光偓閳光偓 閻㈢喐鍨氶崬顖欑 ID 閳光偓閳光偓閳光偓
 
 let traceCounter = 0;
@@ -268,7 +335,7 @@ export function normalizeToolResult(
       ...overrides?.error,
     };
 
-    return {
+    return sanitizeAgentFacingToolResult({
       ok: false,
       schema: TOOL_RESULT_SCHEMA,
       operation,
@@ -277,7 +344,7 @@ export function normalizeToolResult(
       modified: false,
       target: overrides?.target as ToolResultTarget | undefined,
       error,
-    };
+    });
   }
 
   const result = (resp.result ?? {}) as Record<string, unknown>;
@@ -299,7 +366,7 @@ export function normalizeToolResult(
     base.validation = overrides.validation as ToolResultValidation;
   }
 
-  return base;
+  return sanitizeAgentFacingToolResult(base);
 }
 
 /**
@@ -314,8 +381,8 @@ export function successRead(
   operation: string,
   target?: ToolResultTarget,
   data?: Record<string, unknown>,
-) {
-  return {
+): ToolResultBase {
+  return sanitizeAgentFacingToolResult({
     ok: true,
     schema: TOOL_RESULT_SCHEMA,
     operation,
@@ -324,7 +391,7 @@ export function successRead(
     modified: false,
     target,
     data,
-  };
+  });
 }
 
 /**
@@ -336,7 +403,7 @@ export function successWrite(
   data?: Record<string, unknown>,
   validation?: ToolResultValidation,
 ): ToolResultBase {
-  return {
+  return sanitizeAgentFacingToolResult({
     ok: true,
     schema: TOOL_RESULT_SCHEMA,
     operation,
@@ -346,7 +413,7 @@ export function successWrite(
     target,
     data,
     validation,
-  };
+  });
 }
 
 /**
@@ -357,7 +424,7 @@ export function successDryRun(
   target: ToolResultTarget,
   dryRun: DryRunData,
 ): ToolResultBase {
-  return {
+  return sanitizeAgentFacingToolResult({
     ok: true,
     schema: TOOL_RESULT_SCHEMA,
     operation,
@@ -366,7 +433,7 @@ export function successDryRun(
     modified: false,
     target,
     data: { dry_run: dryRun },
-  };
+  });
 }
 
 /**
@@ -377,7 +444,7 @@ export function failureResult(
   error: ToolResultError,
   target?: ToolResultTarget,
 ): ToolResultBase {
-  return {
+  return sanitizeAgentFacingToolResult({
     ok: false,
     schema: TOOL_RESULT_SCHEMA,
     operation,
@@ -386,7 +453,7 @@ export function failureResult(
     modified: false,
     target,
     error,
-  };
+  });
 }
 
 // 閳光偓閳光偓閳光偓 Diagnostics 娑撴挾鏁?閳光偓閳光偓閳光偓

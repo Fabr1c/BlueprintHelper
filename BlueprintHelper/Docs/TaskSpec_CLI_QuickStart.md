@@ -8,7 +8,9 @@ Task write mainline: Agent -> BlueprintHelper CLI -> task-core -> Python Task Co
 
 Use the CLI when an Agent can run shell commands and should avoid large escaped JSON output. The CLI is the current Agent-facing surface for ordinary TaskSpec writes in shell-capable environments. It keeps Agent stdout compact, supports selected-field output, and still preserves TaskSpec-first writes, Python compilation, Bridge preview, and UE Task Runtime execution.
 
-TaskSpec, ReadSpec, diagnostics, debug summaries, write-session requests, and result queries use the CLI in the current Agent workflow. Editor launch/close is owned by the global lifecycle-only MCP companion when an Agent controls lifecycle; CLI lifecycle aliases remain available for compatibility and manual fallback.
+TaskSpec, ReadSpec, diagnostics, debug summaries, write-session requests, and result queries use the CLI in the current Agent workflow. MCP is restricted to `blueprint_open_editor`, `blueprint_close_editor`, and developer-only `blueprint_developer_exec_console_command`. CLI lifecycle aliases remain available for compatibility and manual fallback.
+
+Deprecated MCP ordinary tools are not an alternate transport. Do not use them, do not write tests for them, and do not run old MCP tool regression/import/task/debug tests.
 
 ## Prerequisites
 
@@ -45,7 +47,7 @@ bh blueprinthelper_preview_task --file .\preview_wrapper.json --select status,pr
 bh blueprinthelper_execute_task --file .\execute_wrapper.json --select status,task_run_id,summary
 ```
 
-The direct CLI registry is the current non-frozen Agent-facing TaskSpec/read/debug summary surface. Frozen legacy/expert tools are not re-exposed through CLI, even if `--expert` is passed. Use the global lifecycle-only MCP tools when an Agent owns editor lifecycle; use `bh open_editor` / `bh close_editor`, or the direct `blueprint_open_editor` / `blueprint_close_editor` names, only as compatibility/manual fallback.
+The direct CLI registry is the current non-frozen Agent-facing TaskSpec/read/debug summary surface. Frozen legacy/expert tools are not re-exposed through CLI, even if `--expert` is passed. Use the global MCP allowlist when an Agent owns editor lifecycle; use `bh open_editor` / `bh close_editor`, or the direct `blueprint_open_editor` / `blueprint_close_editor` names, only as compatibility/manual fallback.
 
 ## Preview
 
@@ -122,6 +124,7 @@ Example projected output:
 - Preview before execute.
 - The CLI is the Agent-facing transport layer; it does not replace the Python Task Compiler or UE Task Runtime.
 - The CLI is not a raw Bridge write surface for ordinary asset writes.
-- Use global lifecycle-only MCP for Agent-owned Editor open/close; CLI lifecycle aliases are compatibility/manual fallback.
+- Use global MCP allowlist for Agent-owned Editor open/close; CLI lifecycle aliases are compatibility/manual fallback.
+- Never use, add, or run deprecated MCP ordinary tool tests.
 - For schema and boundary details, use [TaskSpec_TaskPlan_Contract_20260504.md](../Resources/Docs/TaskSpec_TaskPlan_Contract_20260504.md).
 

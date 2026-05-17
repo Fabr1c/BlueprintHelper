@@ -11,7 +11,7 @@ allowed-tools: Read
 .\install.ps1 -ProjectFile <Project.uproject> -EngineRoot <UE root>
 ```
 
-Run that script from the BlueprintHelper repository root. It builds the CLI/runtime packages, links `bh`, registers the Codex marketplace entry, installs Codex subagents and lifecycle-only MCP, writes the project `.blueprinthelper/agent-profile.json` when project and UE root are known, and creates default user preferences only when they are missing.
+Run that script from the BlueprintHelper repository root. It builds the CLI/runtime packages, links `bh`, registers the Codex marketplace entry, installs Codex subagents and the MCP allowlist entry, writes the project `.blueprinthelper/agent-profile.json` when project and UE root are known, and creates default user preferences only when they are missing.
 
 Use `/blueprint-helper:configure` only after installation when the user wants to change safety profile, save policy, missing-capability policy, or workflow preferences.
 
