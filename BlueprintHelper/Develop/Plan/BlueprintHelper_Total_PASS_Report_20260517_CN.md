@@ -62,7 +62,7 @@ The following are intentionally excluded from this Total PASS result because the
 2. ReviewPanel DebugBundle UI ring: `LoadBundle`, `CaptureFocus`, and actual UI state after reject.
 3. Native panel parity: DetailsView row alignment, WidgetTree/Components/MyBlueprint/GraphPanel exact visual behavior.
 4. Function scope / Local Variables Review.
-5. Baseline semantic snapshot Stage 2/3 adoption by ReviewPanel/Diff/Reject.
+5. Baseline semantic snapshot Stage 2/3 adoption by ReviewPanel/Diff/Reject. 2026-05-17 已完成 core path：semantic target snapshot hash 全量替换旧 graph hash，旧 `FBlueprintHelperReviewHashService` 已删除，ReviewStore/Reject/GraphWrite journal/Debug summary 已切换；验证结果见 `BlueprintHelper_BaselineSemanticHash_Migration_20260517_CN.md`。
 
 ## Current Source Changes Covered
 

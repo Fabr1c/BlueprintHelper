@@ -1,9 +1,10 @@
 // BlueprintHelper Service Layer 。Transaction Journal 服务实现
 
 #include "Systems/Transactions/BlueprintHelperTransactionJournalService.h"
-#include "Systems/Review/BlueprintHelperReviewHashService.h"
+#include "Systems/Review/BlueprintHelperReviewBaselineSnapshotService.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
 #include "Shared/GraphWrite/BlueprintHelperAppendGraphTypes.h"
+#include "Shared/Review/BlueprintHelperReviewTargetKindRegistry.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
 #include "HAL/PlatformFilemanager.h"
 #include "Misc/FileHelper.h"
@@ -49,28 +50,6 @@ public:
 			return EBlueprintHelperReviewChangeKind::Added;
 		}
 		return EBlueprintHelperReviewChangeKind::Modified;
-	}
-
-	static FString MakeStableReviewHash(const FString& Payload)
-	{
-		return FBlueprintHelperReviewHashService::MakeStableHash(Payload);
-	}
-
-	static FString MakeReviewTargetHashPayload(
-		const FString& Phase,
-		const FBlueprintHelperWriteReviewEvidence& Evidence,
-		const FString& GraphName,
-		const FString& TargetKind,
-		const FString& TargetKey)
-	{
-		return FString::Printf(
-			TEXT("%s|%s|%s|%s|%s|%s"),
-			*Phase,
-			*Evidence.ArchiveSessionId,
-			*Evidence.AssetPath,
-			*GraphName,
-			*TargetKind,
-			*TargetKey);
 	}
 
 	static bool TryNormalizeGuidString(const FString& Value, FString& OutGuid)
@@ -191,8 +170,8 @@ public:
 		FVector2D GraphPosition = FVector2D::ZeroVector,
 		FVector2D GraphSize = FVector2D(360.0f, 180.0f),
 		const FString& AnchorJson = FString(),
-		const FString& ExplicitBaselineHash = FString(),
-		const FString& ExplicitRecordedAfterHash = FString())
+		const FString& ExplicitBeforeSnapshotJson = FString(),
+		const FString& ExplicitAfterSnapshotJson = FString())
 	{
 		FBlueprintHelperReviewAtomicTarget Target;
 		Target.AssetPath = Evidence.AssetPath;
@@ -210,34 +189,40 @@ public:
 		Target.GraphPosition = GraphPosition;
 		Target.GraphSize = GraphSize;
 		Target.AnchorJson = AnchorJson;
-		Target.BaselineHash = MakeStableReviewHash(MakeReviewTargetHashPayload(
-			TEXT("baseline"),
-			Evidence,
-			GraphName,
-			TargetKind,
-			TargetKey));
-		Target.RecordedAfterHash = MakeStableReviewHash(MakeReviewTargetHashPayload(
-			Evidence.TransactionId,
-			Evidence,
-			GraphName,
-			TargetKind,
-			TargetKey));
-		FString CurrentTargetHash;
-		FString CurrentTargetHashError;
-		if (FBlueprintHelperReviewHashService::ComputeAtomicTargetHash(
-			Target,
-			CurrentTargetHash,
-			CurrentTargetHashError))
+
+		if (!ExplicitBeforeSnapshotJson.IsEmpty())
 		{
-			Target.RecordedAfterHash = CurrentTargetHash;
+			Target.BeforeSnapshotJson = ExplicitBeforeSnapshotJson;
+			Target.BaselineHash =
+				FBlueprintHelperReviewBaselineSnapshotService::ComputeSemanticSnapshotHash(ExplicitBeforeSnapshotJson);
 		}
-		if (!ExplicitBaselineHash.IsEmpty())
+		else if (Evidence.ChangeKind == EBlueprintHelperReviewChangeKind::Added
+			&& !FBlueprintHelperReviewTargetKindRegistry::SupportsSnapshotRestore(Target.TargetKind))
 		{
-			Target.BaselineHash = ExplicitBaselineHash;
+			FBlueprintHelperReviewBaselineSnapshotService::MakeMissingTargetSnapshot(
+				Target,
+				true,
+				Target.BeforeSnapshotJson,
+				Target.BaselineHash);
 		}
-		if (!ExplicitRecordedAfterHash.IsEmpty())
+
+		if (!ExplicitAfterSnapshotJson.IsEmpty())
 		{
-			Target.RecordedAfterHash = ExplicitRecordedAfterHash;
+			Target.AfterSnapshotJson = ExplicitAfterSnapshotJson;
+			Target.RecordedAfterHash =
+				FBlueprintHelperReviewBaselineSnapshotService::ComputeSemanticSnapshotHash(ExplicitAfterSnapshotJson);
+		}
+		else
+		{
+			FBlueprintHelperReviewBaselineSnapshotService SnapshotService;
+			FString SnapshotJson;
+			FString SnapshotHash;
+			FString SnapshotError;
+			if (SnapshotService.CaptureTargetSnapshot(Target, SnapshotJson, SnapshotHash, SnapshotError))
+			{
+				Target.AfterSnapshotJson = SnapshotJson;
+				Target.RecordedAfterHash = SnapshotHash;
+			}
 		}
 		Target.Ownership = TEXT("blueprinthelper_owned");
 		Evidence.AtomicTargets.Add(Target);
@@ -307,8 +292,8 @@ public:
 					FVector2D::ZeroVector,
 					FVector2D(360.0f, 180.0f),
 					FString(),
-					Record.BaselineHashesByTargetKey.FindRef(VisualGroupKey),
-					Record.RecordedAfterHashesByTargetKey.FindRef(VisualGroupKey));
+					Record.BaselineSnapshotsByTargetKey.FindRef(VisualGroupKey),
+					Record.RecordedAfterSnapshotsByTargetKey.FindRef(VisualGroupKey));
 				if (bHasAggregateRecordedBounds)
 				{
 					ApplyRecordedBounds(
@@ -361,8 +346,8 @@ public:
 						Anchor.GraphPosition,
 						Anchor.GraphSize,
 						MakeStructuredAnchorJson(Anchor),
-						Record.BaselineHashesByTargetKey.FindRef(FString::Printf(TEXT("graph:%s:node:%s"), *GraphName, *NodeId)),
-						Record.RecordedAfterHashesByTargetKey.FindRef(FString::Printf(TEXT("graph:%s:node:%s"), *GraphName, *NodeId)));
+						Record.BaselineSnapshotsByTargetKey.FindRef(FString::Printf(TEXT("graph:%s:node:%s"), *GraphName, *NodeId)),
+						Record.RecordedAfterSnapshotsByTargetKey.FindRef(FString::Printf(TEXT("graph:%s:node:%s"), *GraphName, *NodeId)));
 				}
 			}
 			else

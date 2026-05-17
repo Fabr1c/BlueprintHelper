@@ -23,13 +23,16 @@
 #include "Systems/Debug/BlueprintHelperDebugCaseStoreService.h"
 #include "Systems/Debug/BlueprintHelperDebugEntryService.h"
 #include "Systems/Review/BlueprintHelperReviewActionService.h"
+#include "Systems/Review/BlueprintHelperReviewBaselineSnapshotService.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
+#include "Systems/Review/Utils/BlueprintHelperReviewRejectService.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
 #include "Shared/GraphWrite/BlueprintHelperAppendGraphTypes.h"
 #include "Systems/Transactions/BlueprintHelperTransactionJournalService.h"
 #include "UI/Review/BlueprintHelperReviewDebugText.h"
 #include "UI/Review/BlueprintHelperReviewAssetContext.h"
 #include "UI/Review/BlueprintHelperReviewAssetPresenters.h"
+#include "UI/Review/BlueprintHelperReviewDebugBundleService.h"
 #include "UI/Review/BlueprintHelperReviewGraphBounds.h"
 #include "UI/Review/BlueprintHelperReviewGraphResolver.h"
 #include "UI/Review/BlueprintHelperReviewSurfacePresenter.h"
@@ -47,6 +50,8 @@
 #include "UObject/MetaData.h"
 #include "UObject/NoExportTypes.h"
 #include "UObject/Package.h"
+#include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonWriter.h"
 #include "UserDefinedStructure/UserDefinedStructEditorData.h"
 #include "WidgetBlueprint.h"
 
@@ -71,6 +76,7 @@ public:
 		Target.SourceTransactionIds.Add(TransactionId);
 		Target.RecordedAfterHash = RecordedAfterHash;
 		Target.BaselineHash = TEXT("baseline_hash");
+		Target.BeforeSnapshotJson = TEXT("{\"schema\":\"BlueprintHelper.ReviewTargetSnapshot.v1\",\"exists\":true}");
 		Target.RollbackDataRef = TEXT("review://rollback/door_flow");
 		Target.Ownership = TEXT("blueprinthelper_owned");
 		return Target;
@@ -420,6 +426,509 @@ public:
 	}
 
 };
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewBaselineSemanticHashCapturesGraphNodeTest,
+	"BlueprintHelper.Review.Baseline.SemanticHashCapturesGraphNode",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewBaselineSemanticHashCapturesGraphNodeTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewConversionTestBlueprint(TEXT("SemanticHashGraphNode"));
+	TestNotNull(TEXT("test blueprint created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* Node = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewConversionEventNode(Graph, TEXT("SemanticHashNode"));
+	TestNotNull(TEXT("graph node created"), Node);
+	if (!Node)
+	{
+		return false;
+	}
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.AssetPath = Blueprint->GetPathName();
+	Target.GraphName = Graph->GetName();
+	Target.TargetKind = TEXT("graph_node");
+	Target.TargetKey = FString::Printf(TEXT("graph:%s:node:%s"), *Graph->GetName(), *Node->NodeGuid.ToString(EGuidFormats::Digits));
+	Target.NodeGuid = Node->NodeGuid.ToString(EGuidFormats::Digits);
+
+	FBlueprintHelperReviewBaselineSnapshotService SnapshotService;
+	FString SnapshotJson;
+	FString SnapshotHash;
+	FString SnapshotError;
+	TestTrue(TEXT("graph node target snapshot captured"),
+		SnapshotService.CaptureTargetSnapshot(Target, SnapshotJson, SnapshotHash, SnapshotError));
+	TestFalse(TEXT("graph node snapshot hash emitted"), SnapshotHash.IsEmpty());
+	TestTrue(TEXT("graph node snapshot marks existing target"), SnapshotJson.Contains(TEXT("\"exists\": true")));
+	TestTrue(TEXT("graph node snapshot carries node object"), SnapshotJson.Contains(TEXT("\"node\"")));
+	TestEqual(TEXT("semantic hash is canonical rehash of snapshot"),
+		SnapshotHash,
+		FBlueprintHelperReviewBaselineSnapshotService::ComputeSemanticSnapshotHash(SnapshotJson));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewBaselineSemanticHashCapturesGraphBlockTest,
+	"BlueprintHelper.Review.Baseline.SemanticHashCapturesGraphBlock",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewBaselineSemanticHashCapturesGraphBlockTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewConversionTestBlueprint(TEXT("SemanticHashGraphBlock"));
+	TestNotNull(TEXT("test blueprint created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	const FString BlockId = FBlueprintHelperReviewStoreService::NormalizeGraphBlockTargetId(Graph->GetName(), TEXT("SemanticBlock"));
+	UK2Node_CustomEvent* FirstNode = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewConversionEventNode(Graph, TEXT("SemanticBlockA"));
+	UK2Node_CustomEvent* SecondNode = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewConversionEventNode(Graph, TEXT("SemanticBlockB"));
+	TestNotNull(TEXT("first block node created"), FirstNode);
+	TestNotNull(TEXT("second block node created"), SecondNode);
+	if (!FirstNode || !SecondNode)
+	{
+		return false;
+	}
+	FBlueprintHelperReviewStoreServiceTestsLocalUtils::MarkReviewNodeAsBlueprintHelperOwned(FirstNode, BlockId);
+	FBlueprintHelperReviewStoreServiceTestsLocalUtils::MarkReviewNodeAsBlueprintHelperOwned(SecondNode, BlockId);
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.AssetPath = Blueprint->GetPathName();
+	Target.GraphName = Graph->GetName();
+	Target.TargetKind = TEXT("graph_block");
+	Target.TargetKey = FString::Printf(TEXT("graph:%s:block:%s"), *Graph->GetName(), *BlockId);
+
+	FBlueprintHelperReviewBaselineSnapshotService SnapshotService;
+	FString FirstSnapshotJson;
+	FString FirstSnapshotHash;
+	FString SnapshotError;
+	TestTrue(TEXT("graph block target snapshot captured"),
+		SnapshotService.CaptureTargetSnapshot(Target, FirstSnapshotJson, FirstSnapshotHash, SnapshotError));
+	FString SecondSnapshotJson;
+	FString SecondSnapshotHash;
+	TestTrue(TEXT("graph block target snapshot is recapturable"),
+		SnapshotService.CaptureTargetSnapshot(Target, SecondSnapshotJson, SecondSnapshotHash, SnapshotError));
+	TestFalse(TEXT("graph block snapshot hash emitted"), FirstSnapshotHash.IsEmpty());
+	TestEqual(TEXT("graph block hash is stable across captures"), FirstSnapshotHash, SecondSnapshotHash);
+	TestTrue(TEXT("graph block snapshot carries block id"), FirstSnapshotJson.Contains(BlockId));
+	TestTrue(TEXT("graph block snapshot carries nodes"), FirstSnapshotJson.Contains(TEXT("\"nodes\"")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewStoreUsesSemanticHashForGraphTargetTest,
+	"BlueprintHelper.Review.Store.UsesSemanticHashForGraphTarget",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewStoreUsesSemanticHashForGraphTargetTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewConversionTestBlueprint(TEXT("StoreSemanticGraph"));
+	TestNotNull(TEXT("test blueprint created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* Node = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewConversionEventNode(Graph, TEXT("StoreSemanticNode"));
+	TestNotNull(TEXT("graph node created"), Node);
+	if (!Node)
+	{
+		return false;
+	}
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.AssetPath = Blueprint->GetPathName();
+	Target.GraphName = Graph->GetName();
+	Target.Surface = EBlueprintHelperReviewSurface::Graph;
+	Target.TargetKind = TEXT("graph_node");
+	Target.TargetKey = FString::Printf(TEXT("graph:%s:node:%s"), *Graph->GetName(), *Node->NodeGuid.ToString(EGuidFormats::Digits));
+	Target.VisualGroupKey = Target.TargetKey;
+	Target.NodeGuid = Node->NodeGuid.ToString(EGuidFormats::Digits);
+	Target.RollbackDataRef = TEXT("transaction://tx_store_semantic/rollback_data");
+
+	FBlueprintHelperWriteReviewEvidence Evidence;
+	Evidence.ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_store_semantic"));
+	Evidence.TaskRunId = TEXT("task_store_semantic");
+	Evidence.TransactionId = TEXT("tx_store_semantic");
+	Evidence.AssetPath = Blueprint->GetPathName();
+	Evidence.OperationKind = TEXT("append_blueprint_graph");
+	Evidence.ChangeKind = EBlueprintHelperReviewChangeKind::Added;
+	Evidence.AtomicTargets.Add(Target);
+
+	FBlueprintHelperReviewStoreService Store;
+	const TArray<FBlueprintHelperReviewRecord> Records = Store.BuildReviewRecordsFromEvidence({Evidence});
+	TestEqual(TEXT("one semantic review record built"), Records.Num(), 1);
+	if (Records.Num() != 1 || Records[0].VisibleChanges.Num() != 1 || Records[0].VisibleChanges[0].AtomicTargets.Num() != 1)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperReviewAtomicTarget& StoredTarget = Records[0].VisibleChanges[0].AtomicTargets[0];
+	TestFalse(TEXT("store emits semantic baseline hash"), StoredTarget.BaselineHash.IsEmpty());
+	TestFalse(TEXT("store emits semantic recorded-after hash"), StoredTarget.RecordedAfterHash.IsEmpty());
+	TestTrue(TEXT("store writes before snapshot"), StoredTarget.BeforeSnapshotJson.Contains(TEXT("\"exists\": false")));
+	TestTrue(TEXT("store writes after snapshot"), StoredTarget.AfterSnapshotJson.Contains(TEXT("\"exists\": true")));
+	TestEqual(TEXT("recorded-after hash matches canonical target snapshot"),
+		StoredTarget.RecordedAfterHash,
+		FBlueprintHelperReviewBaselineSnapshotService::ComputeSemanticSnapshotHash(StoredTarget.AfterSnapshotJson));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewRejectGraphTargetUsesSemanticHashGuardTest,
+	"BlueprintHelper.Review.Reject.GraphTargetUsesSemanticHashGuard",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewRejectGraphTargetUsesSemanticHashGuardTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewConversionTestBlueprint(TEXT("RejectSemanticGuard"));
+	TestNotNull(TEXT("test blueprint created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* Node = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewConversionEventNode(Graph, TEXT("RejectSemanticNode"));
+	TestNotNull(TEXT("graph node created"), Node);
+	if (!Node)
+	{
+		return false;
+	}
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.AssetPath = Blueprint->GetPathName();
+	Target.GraphName = Graph->GetName();
+	Target.TargetKind = TEXT("graph_node");
+	Target.TargetKey = FString::Printf(TEXT("graph:%s:node:%s"), *Graph->GetName(), *Node->NodeGuid.ToString(EGuidFormats::Digits));
+	Target.VisualGroupKey = Target.TargetKey;
+	Target.NodeGuid = Node->NodeGuid.ToString(EGuidFormats::Digits);
+	Target.RollbackDataRef = TEXT("transaction://tx_reject_semantic/rollback_data");
+	Target.RecordedAfterHash = TEXT("legacy_graph_hash");
+	Target.BaselineHash = TEXT("legacy_baseline_hash");
+
+	FBlueprintHelperReviewVisibleChange Change;
+	Change.ChangeId = TEXT("change_reject_semantic");
+	Change.AssetPath = Blueprint->GetPathName();
+	Change.GraphName = Graph->GetName();
+	Change.LatestTransactionId = TEXT("tx_reject_semantic");
+	Change.AtomicTargets.Add(Target);
+
+	FBlueprintHelperReviewRejectOptions Options;
+	const FBlueprintHelperReviewActionResult DirectResult =
+		FBlueprintHelperReviewRejectService::RejectVisibleChangeWithDefaultDispatcher(Change, &Options);
+	TestFalse(TEXT("legacy hash blocks default reject"), DirectResult.bSucceeded);
+	TestEqual(TEXT("legacy hash mismatch requires user action"),
+		DirectResult.NewStatus,
+		EBlueprintHelperReviewChangeStatus::NeedsAction);
+	TestTrue(TEXT("semantic guard reports current state changed"),
+		DirectResult.Message.Contains(TEXT("current_state_changed")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewRejectNeedsActionWithoutRecoverableBeforeSnapshotTest,
+	"BlueprintHelper.Review.Reject.NeedsActionWithoutRecoverableBeforeSnapshot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewRejectNeedsActionWithoutRecoverableBeforeSnapshotTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewAtomicTarget Target =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
+			TEXT("blueprint_variable:Health"),
+			TEXT("blueprint_variable:Health"),
+			TEXT("tx_missing_recoverable"),
+			TEXT("after_semantic"));
+	Target.TargetKind = TEXT("blueprint_variable");
+	Target.Surface = EBlueprintHelperReviewSurface::MyBlueprint;
+	Target.BeforeSnapshotJson.Reset();
+
+	FBlueprintHelperReviewVisibleChange Change;
+	Change.ChangeId = TEXT("change_missing_recoverable");
+	Change.AssetPath = Target.AssetPath;
+	Change.LatestTransactionId = Target.LatestTransactionId;
+	Change.AtomicTargets.Add(Target);
+
+	FBlueprintHelperReviewRejectOptions Options;
+	Options.CurrentHashesByTargetKey.Add(Target.TargetKey, Target.RecordedAfterHash);
+	Options.bRollbackExecutorAvailable = true;
+	Options.bRollbackSucceeded = true;
+
+	FBlueprintHelperReviewActionService ActionService;
+	const FBlueprintHelperReviewActionResult Result = ActionService.RejectVisibleChange(Change, Options);
+	TestFalse(TEXT("snapshot-restorable target without before snapshot is blocked"), Result.bSucceeded);
+	TestEqual(TEXT("missing recoverable before snapshot enters needs action"),
+		Result.NewStatus,
+		EBlueprintHelperReviewChangeStatus::NeedsAction);
+	TestEqual(TEXT("reason is explicit"),
+		Result.Message,
+		FString(TEXT("missing_recoverable_snapshot")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewDebugBundleSummarizesSemanticHashSourceTest,
+	"BlueprintHelper.Review.DebugBundle.SummarizesSemanticHashSource",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewDebugBundleSummarizesSemanticHashSourceTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FBlueprintHelperReviewVisibleChange> Change = MakeShared<FBlueprintHelperReviewVisibleChange>();
+	Change->ChangeId = TEXT("change_debug_semantic");
+	Change->AssetPath = TEXT("/Game/BP_DebugSemantic");
+	Change->LatestTransactionId = TEXT("tx_debug_semantic");
+	Change->BeforeHash = TEXT("crc32_before");
+	Change->AfterHash = TEXT("crc32_after");
+	FBlueprintHelperReviewAtomicTarget Target =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
+			TEXT("graph:EventGraph:node:DebugSemantic"),
+			TEXT("graph:EventGraph:node:DebugSemantic"),
+			TEXT("tx_debug_semantic"),
+			TEXT("crc32_after"));
+	Target.NodeGuid = TEXT("00112233445566778899aabbccddeeff");
+	Change->AtomicTargets.Add(Target);
+
+	const TSharedRef<FJsonObject> Event = FBlueprintHelperReviewDebugBundleService::BuildLogEvent(
+		TEXT("session_debug_semantic"),
+		TEXT("debug"),
+		Change,
+		Change->AssetPath);
+	const TSharedPtr<FJsonObject>* SelectedChangePtr = nullptr;
+	TestTrue(TEXT("debug event carries selected change"),
+		Event->TryGetObjectField(TEXT("selected_change"), SelectedChangePtr) && SelectedChangePtr && SelectedChangePtr->IsValid());
+	if (!SelectedChangePtr || !SelectedChangePtr->IsValid())
+	{
+		return false;
+	}
+
+	FString HashSource;
+	FString SnapshotSchema;
+	TestTrue(TEXT("selected change exposes semantic hash source"),
+		(*SelectedChangePtr)->TryGetStringField(TEXT("hash_source"), HashSource));
+	TestEqual(TEXT("hash source is semantic target snapshot"),
+		HashSource,
+		FString(TEXT("semantic_target_snapshot")));
+	TestTrue(TEXT("selected change exposes target snapshot schema"),
+		(*SelectedChangePtr)->TryGetStringField(TEXT("snapshot_schema"), SnapshotSchema));
+	TestEqual(TEXT("snapshot schema is target snapshot"),
+		SnapshotSchema,
+		FString(TEXT("BlueprintHelper.ReviewTargetSnapshot.v1")));
+
+	FString SerializedEvent;
+	const TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&SerializedEvent);
+	FJsonSerializer::Serialize(Event, Writer);
+	TestFalse(TEXT("agent-facing debug summary does not expose guid field"), SerializedEvent.Contains(TEXT("\"guid\"")));
+	TestFalse(TEXT("agent-facing debug summary does not expose node_guid field"), SerializedEvent.Contains(TEXT("node_guid")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewStoreUsesSemanticHashForSnapshotRestoreTargetTest,
+	"BlueprintHelper.Review.Store.UsesSemanticHashForSnapshotRestoreTarget",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewStoreUsesSemanticHashForSnapshotRestoreTargetTest::RunTest(const FString& Parameters)
+{
+	UDataTable* DataTable = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewDataTable(TEXT("StoreSemanticDataTable"));
+	TestNotNull(TEXT("test data table created"), DataTable);
+	if (!DataTable)
+	{
+		return false;
+	}
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.AssetPath = DataTable->GetPathName();
+	Target.Surface = EBlueprintHelperReviewSurface::DataTable;
+	Target.TargetKind = TEXT("datatable_row");
+	Target.TargetKey = TEXT("datatable_row:DamageSmall");
+	Target.VisualGroupKey = Target.TargetKey;
+	Target.DisplayLabel = TEXT("DamageSmall");
+	Target.RollbackDataRef = TEXT("review://archive/archive_store_restore/rollback/row");
+
+	FBlueprintHelperReviewBaselineSnapshotService SnapshotService;
+	FString BeforeSnapshotJson;
+	FString BeforeSnapshotHash;
+	FString SnapshotError;
+	TestTrue(TEXT("datatable before snapshot captured"),
+		SnapshotService.CaptureTargetSnapshot(Target, BeforeSnapshotJson, BeforeSnapshotHash, SnapshotError));
+	Target.BeforeSnapshotJson = BeforeSnapshotJson;
+	Target.BaselineHash = BeforeSnapshotHash;
+
+	const FVector UpdatedValue(9.0, 8.0, 7.0);
+	TMap<FName, const uint8*> RawRows;
+	RawRows.Add(FName(TEXT("DamageSmall")), reinterpret_cast<const uint8*>(&UpdatedValue));
+	DataTable->CreateTableFromRawData(RawRows, TBaseStructure<FVector>::Get());
+
+	FBlueprintHelperWriteReviewEvidence Evidence;
+	Evidence.ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_store_restore"));
+	Evidence.TaskRunId = TEXT("task_store_restore");
+	Evidence.TransactionId = TEXT("tx_store_restore");
+	Evidence.AssetPath = DataTable->GetPathName();
+	Evidence.OperationKind = TEXT("datatable_update_row");
+	Evidence.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
+	Evidence.AtomicTargets.Add(Target);
+
+	FBlueprintHelperReviewStoreService Store;
+	const TArray<FBlueprintHelperReviewRecord> Records = Store.BuildReviewRecordsFromEvidence({Evidence});
+	TestEqual(TEXT("one snapshot-restore semantic record built"), Records.Num(), 1);
+	if (Records.Num() != 1 || Records[0].VisibleChanges.Num() != 1 || Records[0].VisibleChanges[0].AtomicTargets.Num() != 1)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperReviewAtomicTarget& StoredTarget = Records[0].VisibleChanges[0].AtomicTargets[0];
+	TestFalse(TEXT("snapshot-restore target remains pending with before snapshot"),
+		StoredTarget.Status == EBlueprintHelperReviewChangeStatus::NeedsAction);
+	TestFalse(TEXT("snapshot-restore after snapshot is captured"), StoredTarget.AfterSnapshotJson.IsEmpty());
+	TestEqual(TEXT("snapshot-restore baseline hash is semantic"),
+		StoredTarget.BaselineHash,
+		FBlueprintHelperReviewBaselineSnapshotService::ComputeSemanticSnapshotHash(StoredTarget.BeforeSnapshotJson));
+	TestEqual(TEXT("snapshot-restore recorded-after hash is semantic"),
+		StoredTarget.RecordedAfterHash,
+		FBlueprintHelperReviewBaselineSnapshotService::ComputeSemanticSnapshotHash(StoredTarget.AfterSnapshotJson));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewRejectBlocksWhenSemanticHashChangedTest,
+	"BlueprintHelper.Review.Reject.BlocksWhenSemanticHashChanged",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewRejectBlocksWhenSemanticHashChangedTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewConversionTestBlueprint(TEXT("RejectSemanticMismatch"));
+	TestNotNull(TEXT("test blueprint created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* Node = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewConversionEventNode(Graph, TEXT("RejectSemanticMismatchNode"));
+	TestNotNull(TEXT("graph node created"), Node);
+	if (!Node)
+	{
+		return false;
+	}
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.AssetPath = Blueprint->GetPathName();
+	Target.GraphName = Graph->GetName();
+	Target.TargetKind = TEXT("graph_node");
+	Target.TargetKey = FString::Printf(TEXT("graph:%s:node:%s"), *Graph->GetName(), *Node->NodeGuid.ToString(EGuidFormats::Digits));
+	Target.VisualGroupKey = Target.TargetKey;
+	Target.NodeGuid = Node->NodeGuid.ToString(EGuidFormats::Digits);
+	Target.RollbackDataRef = TEXT("transaction://tx_reject_semantic_mismatch/rollback_data");
+	Target.RecordedAfterHash = TEXT("crc32_00000000");
+
+	FBlueprintHelperReviewVisibleChange Change;
+	Change.ChangeId = TEXT("change_reject_semantic_mismatch");
+	Change.AssetPath = Blueprint->GetPathName();
+	Change.LatestTransactionId = TEXT("tx_reject_semantic_mismatch");
+	Change.AtomicTargets.Add(Target);
+
+	const FBlueprintHelperReviewActionResult Result =
+		FBlueprintHelperReviewRejectService::RejectVisibleChangeWithDefaultDispatcher(Change, nullptr);
+	TestFalse(TEXT("semantic hash mismatch blocks reject"), Result.bSucceeded);
+	TestEqual(TEXT("semantic hash mismatch enters needs action"),
+		Result.NewStatus,
+		EBlueprintHelperReviewChangeStatus::NeedsAction);
+	TestTrue(TEXT("message reports current state changed"),
+		Result.Message.Contains(TEXT("current_state_changed")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewAgentFacingSummaryDoesNotExposeGuidTest,
+	"BlueprintHelper.Review.Summary.AgentFacingSummaryDoesNotExposeGuid",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewAgentFacingSummaryDoesNotExposeGuidTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewRecord Record;
+	Record.ReviewRecordId = TEXT("review_no_guid");
+	Record.ArchiveSessionId = TEXT("archive_no_guid");
+	Record.AssetPath = TEXT("/Game/BP_NoGuid");
+
+	FBlueprintHelperReviewVisibleChange Change;
+	Change.ChangeId = TEXT("change_no_guid");
+	Change.AssetPath = Record.AssetPath;
+	Change.Status = EBlueprintHelperReviewChangeStatus::Pending;
+	FBlueprintHelperReviewAtomicTarget Target =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
+			TEXT("graph:EventGraph:node:NoGuid"),
+			TEXT("graph:EventGraph:node:NoGuid"),
+			TEXT("tx_no_guid"));
+	Target.NodeGuid = TEXT("00112233445566778899aabbccddeeff");
+	Change.AtomicTargets.Add(Target);
+	Record.VisibleChanges.Add(Change);
+
+	FBlueprintHelperReviewStoreService Store;
+	const TSharedRef<FJsonObject> Summary = Store.BuildReviewRecordSummaryArtifact(Record);
+	FString SummaryJson;
+	const TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&SummaryJson);
+	FJsonSerializer::Serialize(Summary, Writer);
+	TestFalse(TEXT("summary does not expose guid field"), SummaryJson.Contains(TEXT("\"guid\"")));
+	TestFalse(TEXT("summary does not expose node_guid field"), SummaryJson.Contains(TEXT("node_guid")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewOldLegacyHashRecordNeedsActionTest,
+	"BlueprintHelper.Review.Reject.OldLegacyHashRecordNeedsAction",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewOldLegacyHashRecordNeedsActionTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewConversionTestBlueprint(TEXT("RejectLegacyHash"));
+	TestNotNull(TEXT("test blueprint created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* Node = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewConversionEventNode(Graph, TEXT("RejectLegacyHashNode"));
+	TestNotNull(TEXT("graph node created"), Node);
+	if (!Node)
+	{
+		return false;
+	}
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.AssetPath = Blueprint->GetPathName();
+	Target.GraphName = Graph->GetName();
+	Target.TargetKind = TEXT("graph_node");
+	Target.TargetKey = FString::Printf(TEXT("graph:%s:node:%s"), *Graph->GetName(), *Node->NodeGuid.ToString(EGuidFormats::Digits));
+	Target.VisualGroupKey = Target.TargetKey;
+	Target.NodeGuid = Node->NodeGuid.ToString(EGuidFormats::Digits);
+	Target.RollbackDataRef = TEXT("transaction://tx_legacy_hash/rollback_data");
+	Target.RecordedAfterHash = TEXT("legacy_graph_v1_hash");
+	Target.BaselineHash = TEXT("legacy_graph_v1_baseline");
+
+	FBlueprintHelperReviewVisibleChange Change;
+	Change.ChangeId = TEXT("change_legacy_hash");
+	Change.AssetPath = Blueprint->GetPathName();
+	Change.LatestTransactionId = TEXT("tx_legacy_hash");
+	Change.AtomicTargets.Add(Target);
+
+	const FBlueprintHelperReviewActionResult Result =
+		FBlueprintHelperReviewRejectService::RejectVisibleChangeWithDefaultDispatcher(Change, nullptr);
+	TestFalse(TEXT("legacy hash record is not auto-compatible"), Result.bSucceeded);
+	TestEqual(TEXT("legacy hash record enters needs action"),
+		Result.NewStatus,
+		EBlueprintHelperReviewChangeStatus::NeedsAction);
+	TestTrue(TEXT("legacy hash record reports current state changed"),
+		Result.Message.Contains(TEXT("current_state_changed")));
+	return true;
+}
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperReviewColorMappingTest,

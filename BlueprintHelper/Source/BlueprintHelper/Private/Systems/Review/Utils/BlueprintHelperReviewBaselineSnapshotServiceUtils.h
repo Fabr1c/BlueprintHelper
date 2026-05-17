@@ -20,6 +20,7 @@ public:
 	static FString GetObjectPathNameSafe(const UObject* Object);
 	static FString GetObjectClassPathNameSafe(const UObject* Object);
 	static FString SerializeJsonObject(const TSharedRef<FJsonObject>& Json);
+	static FString SerializeJsonObjectCanonical(const TSharedRef<FJsonObject>& Json);
 	static FString ExtractTargetName(const FBlueprintHelperReviewAtomicTarget& Target);
 	static UObject* ResolveClassDefaultSnapshotObject(UObject* Asset);
 	static void SplitWidgetPropertyTarget(

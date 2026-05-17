@@ -24,14 +24,258 @@
 #include "Misc/FileHelper.h"
 #include "Misc/PackageName.h"
 #include "Misc/Paths.h"
+#include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewBaselineSnapshotServiceUtils.h"
+#include "UObject/MetaData.h"
 #include "UObject/Package.h"
 #include "UObject/SoftObjectPath.h"
 #include "UObject/UnrealType.h"
 #include "WidgetBlueprint.h"
+
+namespace
+{
+	static FString ExtractReviewSnapshotAnchorName(const FString& TargetKey, const FString& Prefix)
+	{
+		const FString Marker = Prefix + TEXT(":");
+		const int32 MarkerPos = TargetKey.Find(Marker, ESearchCase::CaseSensitive, ESearchDir::FromEnd);
+		if (MarkerPos != INDEX_NONE)
+		{
+			return TargetKey.Mid(MarkerPos + Marker.Len());
+		}
+
+		int32 LastColon = INDEX_NONE;
+		if (TargetKey.FindLastChar(TEXT(':'), LastColon))
+		{
+			return TargetKey.Mid(LastColon + 1);
+		}
+		return TargetKey;
+	}
+
+	static bool IsReviewSnapshotIgnoredGraphNode(const UEdGraphNode* Node)
+	{
+		if (!Node || !Node->GetClass())
+		{
+			return false;
+		}
+
+		const FString ClassName = Node->GetClass()->GetName();
+		return ClassName.Contains(TEXT("Comment"))
+			|| ClassName.Contains(TEXT("K2Node_Knot"))
+			|| ClassName.Contains(TEXT("Knot"));
+	}
+
+	static FString GetReviewSnapshotNodeMetadataValue(const UEdGraphNode* Node, const TCHAR* Key)
+	{
+		if (!Node || !Key)
+		{
+			return FString();
+		}
+
+		UPackage* Package = Node->GetOutermost();
+		if (!Package)
+		{
+			return FString();
+		}
+
+		FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
+		return MetaData.GetValue(Node, Key);
+	}
+
+	static FString GetReviewSnapshotNodeBlockId(const UEdGraphNode* Node)
+	{
+		return GetReviewSnapshotNodeMetadataValue(Node, TEXT("BlueprintHelperBlockId"));
+	}
+
+	static FString MakeReviewSnapshotNodeSortKey(const UEdGraphNode* Node)
+	{
+		if (!Node)
+		{
+			return FString();
+		}
+		return FString::Printf(
+			TEXT("%s|%s"),
+			*Node->NodeGuid.ToString(EGuidFormats::Digits),
+			*Node->GetName());
+	}
+
+	static void AppendReviewSnapshotGraphs(TArray<const UEdGraph*>& OutGraphs, const TArray<UEdGraph*>& InGraphs)
+	{
+		for (const UEdGraph* Graph : InGraphs)
+		{
+			if (Graph)
+			{
+				OutGraphs.Add(Graph);
+			}
+		}
+	}
+
+	static const UEdGraph* FindReviewSnapshotGraph(const UBlueprint* Blueprint, const FString& GraphName)
+	{
+		if (!Blueprint)
+		{
+			return nullptr;
+		}
+
+		TArray<const UEdGraph*> Graphs;
+		AppendReviewSnapshotGraphs(Graphs, Blueprint->UbergraphPages);
+		AppendReviewSnapshotGraphs(Graphs, Blueprint->FunctionGraphs);
+		AppendReviewSnapshotGraphs(Graphs, Blueprint->MacroGraphs);
+		AppendReviewSnapshotGraphs(Graphs, Blueprint->DelegateSignatureGraphs);
+
+		for (const UEdGraph* Graph : Graphs)
+		{
+			if (Graph && (GraphName.IsEmpty() || Graph->GetName() == GraphName))
+			{
+				return Graph;
+			}
+		}
+		return nullptr;
+	}
+
+	static const UEdGraphNode* FindReviewSnapshotNodeByGuid(const UEdGraph* Graph, const FString& NodeGuid)
+	{
+		if (!Graph || NodeGuid.IsEmpty())
+		{
+			return nullptr;
+		}
+
+		FGuid ParsedGuid;
+		const bool bParsedGuid = FGuid::Parse(NodeGuid, ParsedGuid);
+		const FString NormalizedNodeGuid = NodeGuid.Replace(TEXT("-"), TEXT(""));
+		if (!bParsedGuid && NormalizedNodeGuid.IsEmpty())
+		{
+			return nullptr;
+		}
+
+		for (const UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (!Node)
+			{
+				continue;
+			}
+			if (bParsedGuid && Node->NodeGuid == ParsedGuid)
+			{
+				return Node;
+			}
+			if (Node->NodeGuid.ToString(EGuidFormats::Digits) == NormalizedNodeGuid)
+			{
+				return Node;
+			}
+		}
+		return nullptr;
+	}
+
+	static const UEdGraphNode* FindReviewSnapshotNodeByName(const UEdGraph* Graph, const FString& NodeName)
+	{
+		if (!Graph || NodeName.IsEmpty())
+		{
+			return nullptr;
+		}
+
+		for (const UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (Node && Node->GetName() == NodeName)
+			{
+				return Node;
+			}
+		}
+		return nullptr;
+	}
+
+	static TSharedPtr<FJsonObject> FindBaselineGraphObject(
+		const TSharedPtr<FJsonObject>& BlueprintSnapshot,
+		const FString& GraphName)
+	{
+		if (!BlueprintSnapshot.IsValid())
+		{
+			return nullptr;
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* Graphs = nullptr;
+		if (!BlueprintSnapshot->TryGetArrayField(TEXT("graphs"), Graphs) || !Graphs)
+		{
+			return nullptr;
+		}
+
+		for (const TSharedPtr<FJsonValue>& GraphValue : *Graphs)
+		{
+			const TSharedPtr<FJsonObject> GraphObject = GraphValue.IsValid() ? GraphValue->AsObject() : nullptr;
+			FString CandidateName;
+			if (GraphObject.IsValid()
+				&& GraphObject->TryGetStringField(TEXT("name"), CandidateName)
+				&& (GraphName.IsEmpty() || CandidateName == GraphName))
+			{
+				return GraphObject;
+			}
+		}
+		return nullptr;
+	}
+
+	static TSharedPtr<FJsonObject> FindBaselineNodeObject(
+		const TSharedPtr<FJsonObject>& GraphObject,
+		const FString& NodeGuid,
+		const FString& NodeName)
+	{
+		if (!GraphObject.IsValid())
+		{
+			return nullptr;
+		}
+
+		const FString NormalizedNodeGuid = NodeGuid.Replace(TEXT("-"), TEXT(""));
+		const TArray<TSharedPtr<FJsonValue>>* Nodes = nullptr;
+		if (!GraphObject->TryGetArrayField(TEXT("nodes"), Nodes) || !Nodes)
+		{
+			return nullptr;
+		}
+
+		for (const TSharedPtr<FJsonValue>& NodeValue : *Nodes)
+		{
+			const TSharedPtr<FJsonObject> NodeObject = NodeValue.IsValid() ? NodeValue->AsObject() : nullptr;
+			if (!NodeObject.IsValid())
+			{
+				continue;
+			}
+
+			FString CandidateGuid;
+			FString CandidateName;
+			NodeObject->TryGetStringField(TEXT("guid"), CandidateGuid);
+			NodeObject->TryGetStringField(TEXT("name"), CandidateName);
+			if ((!NormalizedNodeGuid.IsEmpty() && CandidateGuid == NormalizedNodeGuid)
+				|| (!NodeName.IsEmpty() && CandidateName == NodeName))
+			{
+				return NodeObject;
+			}
+		}
+		return nullptr;
+	}
+
+	static bool BaselineJsonObjectStringFieldEquals(
+		const TSharedPtr<FJsonObject>& Object,
+		const TCHAR* FieldName,
+		const FString& Expected)
+	{
+		FString Value;
+		return Object.IsValid()
+			&& Object->TryGetStringField(FieldName, Value)
+			&& Value == Expected;
+	}
+
+	static TArray<TSharedPtr<FJsonValue>> CopyBaselineJsonArray(
+		const TSharedPtr<FJsonObject>& Object,
+		const TCHAR* FieldName)
+	{
+		const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;
+		if (Object.IsValid() && Object->TryGetArrayField(FieldName, Values) && Values)
+		{
+			return *Values;
+		}
+		return {};
+	}
+}
 
 
 TArray<FString> FBlueprintHelperReviewBaselineSnapshotService::CaptureSemanticBaselineSnapshots(
@@ -104,8 +348,87 @@ bool FBlueprintHelperReviewBaselineSnapshotService::CaptureTargetSnapshot(
 	UObject* Asset = LoadAssetForSnapshot(Target.AssetPath);
 	const TSharedRef<FJsonObject> Snapshot = BuildTargetSnapshot(Target, Asset, Asset != nullptr);
 	OutSnapshotJson = FBlueprintHelperReviewBaselineSnapshotServiceUtils::SerializeJsonObject(Snapshot);
-	OutSnapshotHash = FString::Printf(TEXT("crc32_%08x"), FCrc::StrCrc32(*OutSnapshotJson));
+	OutSnapshotHash = ComputeSemanticSnapshotHash(Snapshot);
 	return true;
+}
+
+bool FBlueprintHelperReviewBaselineSnapshotService::TryLoadBaselineTargetSnapshot(
+	const FString& ArchiveSessionId,
+	const FBlueprintHelperReviewAtomicTarget& Target,
+	FString& OutSnapshotJson,
+	FString& OutSnapshotHash,
+	FString& OutError) const
+{
+	OutSnapshotJson.Reset();
+	OutSnapshotHash.Reset();
+	OutError.Reset();
+
+	if (ArchiveSessionId.IsEmpty())
+	{
+		OutError = TEXT("missing_archive_session_id");
+		return false;
+	}
+	if (Target.AssetPath.IsEmpty())
+	{
+		OutError = TEXT("missing_asset_path");
+		return false;
+	}
+
+	const FString SnapshotPath = FPaths::Combine(
+		MakeSnapshotDirectory(ArchiveSessionId, MakeSnapshotKey(Target.AssetPath)),
+		TEXT("baseline.semantic.json"));
+	FString SnapshotText;
+	if (!FFileHelper::LoadFileToString(SnapshotText, *SnapshotPath))
+	{
+		OutError = FString::Printf(TEXT("baseline_semantic_snapshot_not_found:%s"), *SnapshotPath);
+		return false;
+	}
+
+	TSharedPtr<FJsonObject> AssetSnapshot;
+	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(SnapshotText);
+	if (!FJsonSerializer::Deserialize(Reader, AssetSnapshot) || !AssetSnapshot.IsValid())
+	{
+		OutError = FString::Printf(TEXT("baseline_semantic_snapshot_parse_failed:%s"), *SnapshotPath);
+		return false;
+	}
+
+	const TSharedRef<FJsonObject> TargetSnapshot =
+		BuildTargetSnapshotFromBaselineAssetSnapshot(Target, AssetSnapshot);
+	OutSnapshotJson = FBlueprintHelperReviewBaselineSnapshotServiceUtils::SerializeJsonObject(TargetSnapshot);
+	OutSnapshotHash = ComputeSemanticSnapshotHash(TargetSnapshot);
+	return true;
+}
+
+void FBlueprintHelperReviewBaselineSnapshotService::MakeMissingTargetSnapshot(
+	const FBlueprintHelperReviewAtomicTarget& Target,
+	bool bAssetExists,
+	FString& OutSnapshotJson,
+	FString& OutSnapshotHash)
+{
+	TSharedRef<FJsonObject> Snapshot = BuildTargetSnapshotHeader(Target, bAssetExists, FString());
+	Snapshot->SetBoolField(TEXT("exists"), false);
+	OutSnapshotJson = FBlueprintHelperReviewBaselineSnapshotServiceUtils::SerializeJsonObject(Snapshot);
+	OutSnapshotHash = ComputeSemanticSnapshotHash(Snapshot);
+}
+
+FString FBlueprintHelperReviewBaselineSnapshotService::ComputeSemanticSnapshotHash(
+	const FString& SnapshotJson)
+{
+	TSharedPtr<FJsonObject> Snapshot;
+	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(SnapshotJson);
+	if (!FJsonSerializer::Deserialize(Reader, Snapshot) || !Snapshot.IsValid())
+	{
+		return FString::Printf(TEXT("crc32_%08x"), FCrc::StrCrc32(*SnapshotJson));
+	}
+	return ComputeSemanticSnapshotHash(Snapshot.ToSharedRef());
+}
+
+FString FBlueprintHelperReviewBaselineSnapshotService::ComputeSemanticSnapshotHash(
+	const TSharedRef<FJsonObject>& Snapshot)
+{
+	const FString CanonicalSnapshot =
+		FBlueprintHelperReviewBaselineSnapshotServiceUtils::SerializeJsonObjectCanonical(Snapshot);
+	return FString::Printf(TEXT("crc32_%08x"), FCrc::StrCrc32(*CanonicalSnapshot));
 }
 
 FString FBlueprintHelperReviewBaselineSnapshotService::MakeSnapshotKey(const FString& AssetPath)
@@ -295,10 +618,10 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildBlue
 	return Json;
 }
 
-TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTargetSnapshot(
+TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTargetSnapshotHeader(
 	const FBlueprintHelperReviewAtomicTarget& Target,
-	UObject* Asset,
-	bool bAssetExists)
+	bool bAssetExists,
+	const FString& AssetClass)
 {
 	TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
 	const FString TargetName = FBlueprintHelperReviewBaselineSnapshotServiceUtils::ExtractTargetName(Target);
@@ -308,7 +631,20 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 	Json->SetStringField(TEXT("target_key"), Target.TargetKey);
 	Json->SetStringField(TEXT("target_name"), TargetName);
 	Json->SetBoolField(TEXT("asset_exists"), bAssetExists);
-	Json->SetStringField(TEXT("asset_class"), FBlueprintHelperReviewBaselineSnapshotServiceUtils::GetObjectClassPathNameSafe(Asset));
+	Json->SetStringField(TEXT("asset_class"), AssetClass);
+	return Json;
+}
+
+TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTargetSnapshot(
+	const FBlueprintHelperReviewAtomicTarget& Target,
+	UObject* Asset,
+	bool bAssetExists)
+{
+	TSharedRef<FJsonObject> Json = BuildTargetSnapshotHeader(
+		Target,
+		bAssetExists,
+		FBlueprintHelperReviewBaselineSnapshotServiceUtils::GetObjectClassPathNameSafe(Asset));
+	const FString TargetName = FBlueprintHelperReviewBaselineSnapshotServiceUtils::ExtractTargetName(Target);
 
 	if (!bAssetExists)
 	{
@@ -321,6 +657,81 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 
 	if (UBlueprint* Blueprint = Cast<UBlueprint>(Asset))
 	{
+		if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::GraphNode)
+		{
+			Json->SetStringField(TEXT("surface"), TEXT("graph"));
+			Json->SetStringField(TEXT("graph_name"), Target.GraphName);
+			const UEdGraph* Graph = FindReviewSnapshotGraph(Blueprint, Target.GraphName);
+			if (!Graph)
+			{
+				Json->SetBoolField(TEXT("exists"), false);
+				Json->SetStringField(TEXT("resolve_error_code"), TEXT("graph_not_found"));
+				return Json;
+			}
+
+			const FString NodeName = ExtractReviewSnapshotAnchorName(Target.TargetKey, TEXT("node"));
+			const UEdGraphNode* Node = FindReviewSnapshotNodeByGuid(Graph, Target.NodeGuid);
+			if (!Node)
+			{
+				Node = FindReviewSnapshotNodeByName(Graph, NodeName);
+			}
+			if (!Node || IsReviewSnapshotIgnoredGraphNode(Node))
+			{
+				Json->SetBoolField(TEXT("exists"), false);
+				Json->SetStringField(TEXT("resolve_error_code"), Node ? TEXT("node_ignored") : TEXT("node_not_found"));
+				return Json;
+			}
+
+			Json->SetBoolField(TEXT("exists"), true);
+			Json->SetObjectField(TEXT("node"), BuildNodeSnapshot(Node));
+			return Json;
+		}
+
+		if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::GraphBlock)
+		{
+			Json->SetStringField(TEXT("surface"), TEXT("graph"));
+			Json->SetStringField(TEXT("graph_name"), Target.GraphName);
+			const FString BlockId = ExtractReviewSnapshotAnchorName(Target.TargetKey, TEXT("block"));
+			Json->SetStringField(TEXT("block_id"), BlockId);
+			const UEdGraph* Graph = FindReviewSnapshotGraph(Blueprint, Target.GraphName);
+			if (!Graph)
+			{
+				Json->SetBoolField(TEXT("exists"), false);
+				Json->SetStringField(TEXT("resolve_error_code"), TEXT("graph_not_found"));
+				return Json;
+			}
+
+			TArray<const UEdGraphNode*> BlockNodes;
+			for (const UEdGraphNode* Node : Graph->Nodes)
+			{
+				if (!Node || IsReviewSnapshotIgnoredGraphNode(Node))
+				{
+					continue;
+				}
+				if (GetReviewSnapshotNodeBlockId(Node) == BlockId)
+				{
+					BlockNodes.Add(Node);
+				}
+			}
+			BlockNodes.Sort([](const UEdGraphNode& Left, const UEdGraphNode& Right)
+			{
+				return MakeReviewSnapshotNodeSortKey(&Left) < MakeReviewSnapshotNodeSortKey(&Right);
+			});
+
+			TArray<TSharedPtr<FJsonValue>> Nodes;
+			for (const UEdGraphNode* Node : BlockNodes)
+			{
+				Nodes.Add(MakeShared<FJsonValueObject>(BuildNodeSnapshot(Node)));
+			}
+			Json->SetBoolField(TEXT("exists"), BlockNodes.Num() > 0);
+			Json->SetArrayField(TEXT("nodes"), Nodes);
+			if (BlockNodes.Num() == 0)
+			{
+				Json->SetStringField(TEXT("resolve_error_code"), TEXT("block_not_found"));
+			}
+			return Json;
+		}
+
 		if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::BlueprintVariable)
 		{
 			Json->SetStringField(TEXT("surface"), TEXT("my_blueprint"));
@@ -535,6 +946,279 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 	return Json;
 }
 
+TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTargetSnapshotFromBaselineAssetSnapshot(
+	const FBlueprintHelperReviewAtomicTarget& Target,
+	const TSharedPtr<FJsonObject>& AssetSnapshot)
+{
+	FString AssetClass;
+	if (AssetSnapshot.IsValid())
+	{
+		AssetSnapshot->TryGetStringField(TEXT("object_class"), AssetClass);
+	}
+
+	TSharedRef<FJsonObject> Json = BuildTargetSnapshotHeader(Target, AssetSnapshot.IsValid(), AssetClass);
+	const FString TargetName = FBlueprintHelperReviewBaselineSnapshotServiceUtils::ExtractTargetName(Target);
+	if (!AssetSnapshot.IsValid())
+	{
+		Json->SetBoolField(TEXT("exists"), false);
+		return Json;
+	}
+
+	const EBlueprintHelperReviewTargetHandlerKind HandlerKind =
+		FBlueprintHelperReviewTargetKindRegistry::GetHandlerKind(Target.TargetKind);
+
+	const TSharedPtr<FJsonObject>* BlueprintSnapshotPtr = nullptr;
+	const TSharedPtr<FJsonObject> BlueprintSnapshot =
+		AssetSnapshot->TryGetObjectField(TEXT("blueprint"), BlueprintSnapshotPtr) && BlueprintSnapshotPtr
+			? *BlueprintSnapshotPtr
+			: nullptr;
+
+	if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::GraphNode)
+	{
+		Json->SetStringField(TEXT("surface"), TEXT("graph"));
+		Json->SetStringField(TEXT("graph_name"), Target.GraphName);
+		const TSharedPtr<FJsonObject> GraphObject = FindBaselineGraphObject(BlueprintSnapshot, Target.GraphName);
+		if (!GraphObject.IsValid())
+		{
+			Json->SetBoolField(TEXT("exists"), false);
+			Json->SetStringField(TEXT("resolve_error_code"), TEXT("graph_not_found"));
+			return Json;
+		}
+
+		const FString NodeName = ExtractReviewSnapshotAnchorName(Target.TargetKey, TEXT("node"));
+		const TSharedPtr<FJsonObject> NodeObject = FindBaselineNodeObject(GraphObject, Target.NodeGuid, NodeName);
+		if (!NodeObject.IsValid())
+		{
+			Json->SetBoolField(TEXT("exists"), false);
+			Json->SetStringField(TEXT("resolve_error_code"), TEXT("node_not_found"));
+			return Json;
+		}
+
+		Json->SetBoolField(TEXT("exists"), true);
+		Json->SetObjectField(TEXT("node"), NodeObject);
+		return Json;
+	}
+
+	if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::GraphBlock)
+	{
+		Json->SetStringField(TEXT("surface"), TEXT("graph"));
+		Json->SetStringField(TEXT("graph_name"), Target.GraphName);
+		const FString BlockId = ExtractReviewSnapshotAnchorName(Target.TargetKey, TEXT("block"));
+		Json->SetStringField(TEXT("block_id"), BlockId);
+		const TSharedPtr<FJsonObject> GraphObject = FindBaselineGraphObject(BlueprintSnapshot, Target.GraphName);
+		if (!GraphObject.IsValid())
+		{
+			Json->SetBoolField(TEXT("exists"), false);
+			Json->SetStringField(TEXT("resolve_error_code"), TEXT("graph_not_found"));
+			return Json;
+		}
+
+		TArray<TSharedPtr<FJsonObject>> BlockNodes;
+		const TArray<TSharedPtr<FJsonValue>>* NodeValues = nullptr;
+		if (GraphObject->TryGetArrayField(TEXT("nodes"), NodeValues) && NodeValues)
+		{
+			for (const TSharedPtr<FJsonValue>& NodeValue : *NodeValues)
+			{
+				TSharedPtr<FJsonObject> NodeObject = NodeValue.IsValid() ? NodeValue->AsObject() : nullptr;
+				if (BaselineJsonObjectStringFieldEquals(NodeObject, TEXT("block_id"), BlockId))
+				{
+					BlockNodes.Add(NodeObject);
+				}
+			}
+		}
+		BlockNodes.Sort([](const TSharedPtr<FJsonObject>& Left, const TSharedPtr<FJsonObject>& Right)
+		{
+			FString LeftGuid;
+			FString RightGuid;
+			FString LeftName;
+			FString RightName;
+			if (Left.IsValid())
+			{
+				Left->TryGetStringField(TEXT("guid"), LeftGuid);
+				Left->TryGetStringField(TEXT("name"), LeftName);
+			}
+			if (Right.IsValid())
+			{
+				Right->TryGetStringField(TEXT("guid"), RightGuid);
+				Right->TryGetStringField(TEXT("name"), RightName);
+			}
+			return (LeftGuid + TEXT("|") + LeftName) < (RightGuid + TEXT("|") + RightName);
+		});
+
+		TArray<TSharedPtr<FJsonValue>> Nodes;
+		for (const TSharedPtr<FJsonObject>& NodeObject : BlockNodes)
+		{
+			if (NodeObject.IsValid())
+			{
+				Nodes.Add(MakeShared<FJsonValueObject>(NodeObject));
+			}
+		}
+		Json->SetBoolField(TEXT("exists"), Nodes.Num() > 0);
+		Json->SetArrayField(TEXT("nodes"), Nodes);
+		if (Nodes.Num() == 0)
+		{
+			Json->SetStringField(TEXT("resolve_error_code"), TEXT("block_not_found"));
+		}
+		return Json;
+	}
+
+	if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::BlueprintVariable)
+	{
+		Json->SetStringField(TEXT("surface"), TEXT("my_blueprint"));
+		for (const TSharedPtr<FJsonValue>& VariableValue : CopyBaselineJsonArray(BlueprintSnapshot, TEXT("variables")))
+		{
+			const TSharedPtr<FJsonObject> VariableObject = VariableValue.IsValid() ? VariableValue->AsObject() : nullptr;
+			if (BaselineJsonObjectStringFieldEquals(VariableObject, TEXT("name"), TargetName))
+			{
+				Json->SetBoolField(TEXT("exists"), true);
+				for (const TPair<FString, TSharedPtr<FJsonValue>>& Field : VariableObject->Values)
+				{
+					Json->SetField(Field.Key, Field.Value);
+				}
+				return Json;
+			}
+		}
+		Json->SetBoolField(TEXT("exists"), false);
+		return Json;
+	}
+
+	if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::Component)
+	{
+		Json->SetStringField(TEXT("surface"), TEXT("components"));
+		for (const TSharedPtr<FJsonValue>& ComponentValue : CopyBaselineJsonArray(BlueprintSnapshot, TEXT("components")))
+		{
+			const TSharedPtr<FJsonObject> ComponentObject = ComponentValue.IsValid() ? ComponentValue->AsObject() : nullptr;
+			if (BaselineJsonObjectStringFieldEquals(ComponentObject, TEXT("name"), TargetName))
+			{
+				Json->SetBoolField(TEXT("exists"), true);
+				for (const TPair<FString, TSharedPtr<FJsonValue>>& Field : ComponentObject->Values)
+				{
+					Json->SetField(Field.Key, Field.Value);
+				}
+				return Json;
+			}
+		}
+		Json->SetBoolField(TEXT("exists"), false);
+		return Json;
+	}
+
+	if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::Signature)
+	{
+		Json->SetStringField(TEXT("surface"), TEXT("my_blueprint"));
+		const TSharedPtr<FJsonObject> GraphObject = FindBaselineGraphObject(BlueprintSnapshot, TargetName);
+		Json->SetBoolField(TEXT("exists"), GraphObject.IsValid());
+		if (GraphObject.IsValid())
+		{
+			Json->SetObjectField(TEXT("graph"), GraphObject);
+		}
+		return Json;
+	}
+
+	if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::UMGWidget
+		|| HandlerKind == EBlueprintHelperReviewTargetHandlerKind::UMGWidgetProperty)
+	{
+		Json->SetStringField(TEXT("surface"), TEXT("umg_widget_tree"));
+		FString WidgetName;
+		FString PropertyName;
+		FBlueprintHelperReviewBaselineSnapshotServiceUtils::SplitWidgetPropertyTarget(TargetName, WidgetName, PropertyName);
+		Json->SetStringField(TEXT("widget_name"), WidgetName);
+		if (!PropertyName.IsEmpty())
+		{
+			Json->SetStringField(TEXT("property_path"), PropertyName);
+		}
+
+		const TSharedPtr<FJsonObject>* WidgetTreePtr = nullptr;
+		const TSharedPtr<FJsonObject> WidgetTreeSnapshot =
+			BlueprintSnapshot.IsValid() && BlueprintSnapshot->TryGetObjectField(TEXT("widget_tree"), WidgetTreePtr) && WidgetTreePtr
+				? *WidgetTreePtr
+				: nullptr;
+		for (const TSharedPtr<FJsonValue>& WidgetValue : CopyBaselineJsonArray(WidgetTreeSnapshot, TEXT("widgets")))
+		{
+			const TSharedPtr<FJsonObject> WidgetObject = WidgetValue.IsValid() ? WidgetValue->AsObject() : nullptr;
+			if (BaselineJsonObjectStringFieldEquals(WidgetObject, TEXT("name"), WidgetName))
+			{
+				Json->SetBoolField(TEXT("exists"), true);
+				FString WidgetClass;
+				WidgetObject->TryGetStringField(TEXT("class"), WidgetClass);
+				Json->SetStringField(TEXT("widget_class"), WidgetClass);
+				return Json;
+			}
+		}
+		Json->SetBoolField(TEXT("exists"), false);
+		return Json;
+	}
+
+	if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::DataTableRow)
+	{
+		Json->SetStringField(TEXT("surface"), TEXT("data_table"));
+		const TSharedPtr<FJsonObject>* DataTablePtr = nullptr;
+		const TSharedPtr<FJsonObject> DataTableSnapshot =
+			AssetSnapshot->TryGetObjectField(TEXT("data_table"), DataTablePtr) && DataTablePtr
+				? *DataTablePtr
+				: nullptr;
+		FString RowStruct;
+		if (DataTableSnapshot.IsValid())
+		{
+			DataTableSnapshot->TryGetStringField(TEXT("row_struct"), RowStruct);
+		}
+		Json->SetStringField(TEXT("row_struct"), RowStruct);
+		for (const TSharedPtr<FJsonValue>& RowValue : CopyBaselineJsonArray(DataTableSnapshot, TEXT("rows")))
+		{
+			const TSharedPtr<FJsonObject> RowObject = RowValue.IsValid() ? RowValue->AsObject() : nullptr;
+			if (BaselineJsonObjectStringFieldEquals(RowObject, TEXT("name"), TargetName))
+			{
+				Json->SetBoolField(TEXT("exists"), true);
+				FString Value;
+				RowObject->TryGetStringField(TEXT("value"), Value);
+				Json->SetStringField(TEXT("value"), Value);
+				return Json;
+			}
+		}
+		Json->SetBoolField(TEXT("exists"), false);
+		return Json;
+	}
+
+	if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::ObjectProperty)
+	{
+		Json->SetStringField(TEXT("surface"), TEXT("details"));
+		const TSharedPtr<FJsonObject>* ObjectPropertiesPtr = nullptr;
+		const TSharedPtr<FJsonObject> ObjectPropertiesSnapshot =
+			AssetSnapshot->TryGetObjectField(TEXT("object_properties"), ObjectPropertiesPtr) && ObjectPropertiesPtr
+				? *ObjectPropertiesPtr
+				: nullptr;
+		for (const TSharedPtr<FJsonValue>& PropertyValue : CopyBaselineJsonArray(ObjectPropertiesSnapshot, TEXT("properties")))
+		{
+			const TSharedPtr<FJsonObject> PropertyObject = PropertyValue.IsValid() ? PropertyValue->AsObject() : nullptr;
+			if (BaselineJsonObjectStringFieldEquals(PropertyObject, TEXT("name"), TargetName))
+			{
+				Json->SetBoolField(TEXT("exists"), true);
+				Json->SetStringField(TEXT("property_path"), TargetName);
+				FString PropertyClass;
+				FString Value;
+				PropertyObject->TryGetStringField(TEXT("class"), PropertyClass);
+				PropertyObject->TryGetStringField(TEXT("value"), Value);
+				Json->SetStringField(TEXT("property_class"), PropertyClass);
+				Json->SetStringField(TEXT("value"), Value);
+				return Json;
+			}
+		}
+		Json->SetBoolField(TEXT("exists"), false);
+		return Json;
+	}
+
+	if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::AssetFactory)
+	{
+		Json->SetStringField(TEXT("surface"), TEXT("asset"));
+		Json->SetBoolField(TEXT("exists"), true);
+		Json->SetObjectField(TEXT("asset"), AssetSnapshot);
+		return Json;
+	}
+
+	Json->SetBoolField(TEXT("exists"), true);
+	Json->SetObjectField(TEXT("asset"), AssetSnapshot);
+	return Json;
+}
+
 TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildDataTableSnapshot(const UDataTable* DataTable)
 {
 	TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
@@ -544,14 +1228,21 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildData
 	if (DataTable && DataTable->GetRowStruct())
 	{
 		const UScriptStruct* RowStruct = DataTable->GetRowStruct();
-		for (const TPair<FName, uint8*>& RowPair : DataTable->GetRowMap())
+		TArray<FName> RowNames;
+		DataTable->GetRowMap().GetKeys(RowNames);
+		RowNames.Sort([](const FName& Left, const FName& Right)
 		{
+			return Left.ToString() < Right.ToString();
+		});
+		for (const FName& RowName : RowNames)
+		{
+			uint8* const* RowData = DataTable->GetRowMap().Find(RowName);
 			TSharedRef<FJsonObject> RowJson = MakeShared<FJsonObject>();
-			RowJson->SetStringField(TEXT("name"), RowPair.Key.ToString());
+			RowJson->SetStringField(TEXT("name"), RowName.ToString());
 			FString RowValue;
-			if (RowPair.Value)
+			if (RowData && *RowData)
 			{
-				RowStruct->ExportText(RowValue, RowPair.Value, nullptr, const_cast<UDataTable*>(DataTable), PPF_None, nullptr);
+				RowStruct->ExportText(RowValue, *RowData, nullptr, const_cast<UDataTable*>(DataTable), PPF_None, nullptr);
 			}
 			RowJson->SetStringField(TEXT("value"), RowValue);
 			Rows.Add(MakeShared<FJsonValueObject>(RowJson));
@@ -605,12 +1296,21 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildGrap
 	TArray<TSharedPtr<FJsonValue>> Nodes;
 	if (Graph)
 	{
+		TArray<const UEdGraphNode*> SortedNodes;
 		for (const UEdGraphNode* Node : Graph->Nodes)
 		{
 			if (Node)
 			{
-				Nodes.Add(MakeShared<FJsonValueObject>(BuildNodeSnapshot(Node)));
+				SortedNodes.Add(Node);
 			}
+		}
+		SortedNodes.Sort([](const UEdGraphNode& Left, const UEdGraphNode& Right)
+		{
+			return MakeReviewSnapshotNodeSortKey(&Left) < MakeReviewSnapshotNodeSortKey(&Right);
+		});
+		for (const UEdGraphNode* Node : SortedNodes)
+		{
+			Nodes.Add(MakeShared<FJsonValueObject>(BuildNodeSnapshot(Node)));
 		}
 	}
 	Json->SetArrayField(TEXT("nodes"), Nodes);
@@ -624,6 +1324,7 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildNode
 	Json->SetStringField(TEXT("guid"), Node ? Node->NodeGuid.ToString(EGuidFormats::Digits) : FString());
 	Json->SetStringField(TEXT("class"), FBlueprintHelperReviewBaselineSnapshotServiceUtils::GetObjectClassPathNameSafe(Node));
 	Json->SetStringField(TEXT("title"), Node ? Node->GetNodeTitle(ENodeTitleType::ListView).ToString() : FString());
+	Json->SetStringField(TEXT("block_id"), GetReviewSnapshotNodeBlockId(Node));
 	Json->SetNumberField(TEXT("x"), Node ? Node->NodePosX : 0);
 	Json->SetNumberField(TEXT("y"), Node ? Node->NodePosY : 0);
 
@@ -656,6 +1357,7 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildNode
 					*LinkedPin->GetOwningNode()->NodeGuid.ToString(EGuidFormats::Digits),
 					*LinkedPin->PinName.ToString()));
 			}
+			LinkedPins.Sort();
 			PinJson->SetArrayField(TEXT("linked_to"), FBlueprintHelperReviewBaselineSnapshotServiceUtils::MakeStringArray(LinkedPins));
 			Pins.Add(MakeShared<FJsonValueObject>(PinJson));
 		}

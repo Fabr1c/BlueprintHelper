@@ -27,6 +27,22 @@ public:
 		FString& OutSnapshotHash,
 		FString& OutError) const;
 
+	bool TryLoadBaselineTargetSnapshot(
+		const FString& ArchiveSessionId,
+		const FBlueprintHelperReviewAtomicTarget& Target,
+		FString& OutSnapshotJson,
+		FString& OutSnapshotHash,
+		FString& OutError) const;
+
+	static void MakeMissingTargetSnapshot(
+		const FBlueprintHelperReviewAtomicTarget& Target,
+		bool bAssetExists,
+		FString& OutSnapshotJson,
+		FString& OutSnapshotHash);
+
+	static FString ComputeSemanticSnapshotHash(const FString& SnapshotJson);
+	static FString ComputeSemanticSnapshotHash(const TSharedRef<FJsonObject>& Snapshot);
+
 private:
 	static FString MakeSnapshotKey(const FString& AssetPath);
 	static FString MakeSnapshotDirectory(const FString& ArchiveSessionId, const FString& SnapshotKey);
@@ -45,8 +61,15 @@ private:
 	static TSharedRef<FJsonObject> BuildGraphSnapshot(const UEdGraph* Graph, const FString& Surface);
 	static TSharedRef<FJsonObject> BuildNodeSnapshot(const UEdGraphNode* Node);
 	static TSharedRef<FJsonObject> BuildWidgetTreeSnapshot(UWidgetTree* WidgetTree);
+	static TSharedRef<FJsonObject> BuildTargetSnapshotHeader(
+		const FBlueprintHelperReviewAtomicTarget& Target,
+		bool bAssetExists,
+		const FString& AssetClass);
 	static TSharedRef<FJsonObject> BuildTargetSnapshot(
 		const FBlueprintHelperReviewAtomicTarget& Target,
 		UObject* Asset,
 		bool bAssetExists);
+	static TSharedRef<FJsonObject> BuildTargetSnapshotFromBaselineAssetSnapshot(
+		const FBlueprintHelperReviewAtomicTarget& Target,
+		const TSharedPtr<FJsonObject>& AssetSnapshot);
 };

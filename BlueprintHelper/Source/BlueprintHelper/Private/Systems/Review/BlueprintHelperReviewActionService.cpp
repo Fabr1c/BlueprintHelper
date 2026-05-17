@@ -1,7 +1,7 @@
 // BlueprintHelper Review action service implementation.
 
 #include "Systems/Review/BlueprintHelperReviewActionService.h"
-#include "Systems/Review/BlueprintHelperReviewHashService.h"
+#include "Systems/Review/BlueprintHelperReviewBaselineSnapshotService.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
 
 #include "Dom/JsonObject.h"
@@ -190,6 +190,33 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectVi
 			Result.Message = TEXT("missing_anchor");
 			return Result;
 		}
+		if (Target.RecordedAfterHash.IsEmpty())
+		{
+			Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
+			Result.Message = TEXT("missing_recorded_after_hash");
+			return Result;
+		}
+		if (FBlueprintHelperReviewTargetKindRegistry::SupportsSnapshotRestore(Target.TargetKind)
+			&& Target.BeforeSnapshotJson.IsEmpty())
+		{
+			Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
+			Result.Message = TEXT("missing_recoverable_snapshot");
+			return Result;
+		}
+
+		const FString* CurrentHash = Options.CurrentHashesByTargetKey.Find(Target.TargetKey);
+		if (!CurrentHash)
+		{
+			Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
+			Result.Message = FString::Printf(TEXT("missing_current_hash:%s"), *Target.TargetKey);
+			return Result;
+		}
+		if (!CurrentHash->Equals(Target.RecordedAfterHash, ESearchCase::CaseSensitive))
+		{
+			Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
+			Result.Message = FString::Printf(TEXT("current_state_changed:%s"), *Target.TargetKey);
+			return Result;
+		}
 		if (FBlueprintHelperReviewSnapshotRestoreService::ShouldUseSnapshotRestore(Target))
 		{
 			FString SnapshotRestoreError;
@@ -207,26 +234,6 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectVi
 		{
 			Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
 			Result.Message = TEXT("missing_rollback_data_ref");
-			return Result;
-		}
-		if (Target.RecordedAfterHash.IsEmpty())
-		{
-			Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
-			Result.Message = TEXT("missing_recorded_after_hash");
-			return Result;
-		}
-
-		const FString* CurrentHash = Options.CurrentHashesByTargetKey.Find(Target.TargetKey);
-		if (!CurrentHash)
-		{
-			Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
-			Result.Message = FString::Printf(TEXT("missing_current_hash:%s"), *Target.TargetKey);
-			return Result;
-		}
-		if (!CurrentHash->Equals(Target.RecordedAfterHash, ESearchCase::CaseSensitive))
-		{
-			Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
-			Result.Message = FString::Printf(TEXT("current_state_changed:%s"), *Target.TargetKey);
 			return Result;
 		}
 	}
