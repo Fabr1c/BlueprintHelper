@@ -66,8 +66,9 @@ console.log(JSON.stringify({
   success: true,
   config_path: configPath,
   mcp_server: 'blueprint-helper',
-  lifecycle_only: true,
-  exposed_tools: ['blueprint_open_editor', 'blueprint_close_editor'],
+  surface: 'lifecycle_plus_developer',
+  agent_facing_tools: ['blueprint_open_editor', 'blueprint_close_editor'],
+  developer_tools: ['blueprint_developer_exec_console_command'],
   command: 'node',
   args: [mcpScriptPath],
 }, null, 2));

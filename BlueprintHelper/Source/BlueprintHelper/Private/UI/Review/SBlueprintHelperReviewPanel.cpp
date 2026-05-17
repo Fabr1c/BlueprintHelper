@@ -193,7 +193,6 @@ void SBlueprintHelperReviewPanel::BuildChangeTreeItemsFromChangeItems(
 	OutRootItems.Reset();
 	TMap<FString, FReviewTreeItemPtr> AssetRootsByPath;
 	TMap<FString, FReviewTreeItemPtr> LifecycleRootItemsByAssetAndChangeId;
-	TMap<FString, FReviewTreeItemPtr> LifecycleRootItemsByAsset;
 	TArray<FReviewTreeItemPtr> LeafItems;
 	for (const FReviewChangeItem& Item : SourceItems)
 	{
@@ -221,7 +220,6 @@ void SBlueprintHelperReviewPanel::BuildChangeTreeItemsFromChangeItems(
 		LeafItems.Add(Leaf);
 		if (Item->bIsAssetLifecycleRoot && !Item->ChangeId.IsEmpty())
 		{
-			LifecycleRootItemsByAsset.Add(AssetKey, Leaf);
 			LifecycleRootItemsByAssetAndChangeId.Add(
 				FString::Printf(TEXT("%s|%s"), *AssetKey, *Item->ChangeId),
 				Leaf);
@@ -250,10 +248,6 @@ void SBlueprintHelperReviewPanel::BuildChangeTreeItemsFromChangeItems(
 			{
 				ParentRoot = LifecycleRootItemsByAssetAndChangeId.Find(
 					FString::Printf(TEXT("%s|%s"), *AssetKey, *Change.ParentChangeId));
-			}
-			if (!ParentRoot)
-			{
-				ParentRoot = LifecycleRootItemsByAsset.Find(AssetKey);
 			}
 			if (ParentRoot)
 			{

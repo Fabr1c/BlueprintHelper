@@ -492,6 +492,7 @@ public:
 		Payload->TryGetStringField(TEXT("target_name"), Target.TargetName);
 		Payload->TryGetStringField(TEXT("block_id"), Target.BlockId);
 		Payload->TryGetStringField(TEXT("graph_name"), Target.GraphName);
+		Payload->TryGetStringField(TEXT("declaring_class_path"), Target.DeclaringClassPath);
 		Payload->TryGetStringField(TEXT("row_name"), Target.RowName);
 		Payload->TryGetStringField(TEXT("widget_name"), Target.WidgetName);
 		Payload->TryGetStringField(TEXT("interface_path"), Target.InterfacePath);
@@ -513,7 +514,6 @@ public:
 			TEXT("read_reference_context"),
 			FBlueprintHelperToolResultBuilder::GenerateTraceId(),
 			MakeReferenceContextError(Code, Stage, Message, Field));
-		Result.CustomTargetJson = MakeReferenceContextTargetJson(Payload);
 		return Result;
 	}
 
@@ -933,29 +933,17 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadReference
 	const TSharedPtr<FJsonObject> Payload = Req.Payload;
 	const FBlueprintHelperDependencyAnalysisTarget Target = FBlueprintHelperBridgeRouterLocalUtils::ReadReferenceContextTarget(Payload);
 
-	FString Scope = TEXT("safety_context");
+	FString SearchScope = TEXT("project");
+	FString ResolutionPolicy = TEXT("ue_then_name");
+	FString Detail = TEXT("samples");
 	if (Payload.IsValid())
 	{
-		Payload->TryGetStringField(TEXT("scope"), Scope);
+		Payload->TryGetStringField(TEXT("search_scope"), SearchScope);
+		Payload->TryGetStringField(TEXT("resolution_policy"), ResolutionPolicy);
+		Payload->TryGetStringField(TEXT("detail"), Detail);
 	}
 
-	bool bIncludeSamples = true;
 	FBlueprintHelperBridgeValidationError ValidationError;
-	if (!FBlueprintHelperBridgeRouterLocalUtils::TryReadBoolOption(Payload, TEXT("include_samples"), bIncludeSamples, ValidationError))
-	{
-		FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Error(
-			Req.RequestId,
-			EBlueprintHelperBridgeError::InvalidRequest,
-			ValidationError.Message);
-		Resp.Result = FBlueprintHelperBridgeRouterLocalUtils::MakeReferenceContextFailureResult(
-			Payload,
-			TEXT("invalid_request"),
-			EBlueprintHelperToolStage::ParseInput,
-			ValidationError.Message,
-			ValidationError.Field).ToJson();
-		return Resp;
-	}
-
 	double MaxResults = 50.0;
 	if (!FBlueprintHelperBridgeRouterLocalUtils::TryReadNumberField(Payload, TEXT("max_results"), false, MaxResults, ValidationError))
 	{
@@ -974,6 +962,9 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadReference
 
 	FBlueprintHelperDependencyAnalysisOptions Options;
 	Options.MaxResultCount = FMath::RoundToInt(MaxResults);
+	Options.SearchScope = SearchScope;
+	Options.ResolutionPolicy = ResolutionPolicy;
+	Options.Detail = Detail;
 
 	FBlueprintHelperReferenceContextPack ContextPack;
 	FString ErrorCode;
@@ -981,8 +972,6 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadReference
 	if (!DependencyAnalysisService.TryBuildReferenceContext(
 		Target,
 		Options,
-		Scope,
-		bIncludeSamples,
 		ContextPack,
 		ErrorCode,
 		ErrorMessage))
@@ -1007,7 +996,6 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadReference
 	FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Completed(
 		TEXT("read_reference_context"),
 		FBlueprintHelperToolResultBuilder::GenerateTraceId());
-	Result.CustomTargetJson = FBlueprintHelperBridgeRouterLocalUtils::MakeReferenceContextTargetJson(Payload);
 	Result.Data = ContextPack.ToJson();
 
 	FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);

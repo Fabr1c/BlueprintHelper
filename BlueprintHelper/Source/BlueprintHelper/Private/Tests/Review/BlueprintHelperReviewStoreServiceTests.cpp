@@ -114,6 +114,30 @@ public:
 		return Evidence;
 	}
 
+	static FBlueprintHelperReviewVisibleChange MakeReviewTestVisibleChange(
+		const FString& ChangeId,
+		const FString& AssetPath)
+	{
+		FBlueprintHelperReviewVisibleChange Change;
+		Change.ChangeId = ChangeId;
+		Change.AssetPath = AssetPath;
+		Change.GraphName = TEXT("EventGraph");
+		Change.LocationKey = TEXT("graph:EventGraph:block:DoorFlow");
+		Change.LatestTransactionId = ChangeId;
+		Change.SourceTransactionIds.Add(ChangeId);
+		Change.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
+		Change.Status = EBlueprintHelperReviewChangeStatus::Pending;
+		Change.DisplayLabel = TEXT("Door flow");
+
+		FBlueprintHelperReviewAtomicTarget Target = MakeReviewTestTarget(
+			TEXT("graph_node:N1"),
+			TEXT("graph:EventGraph:block:DoorFlow"),
+			ChangeId);
+		Target.AssetPath = AssetPath;
+		Change.AtomicTargets.Add(Target);
+		return Change;
+	}
+
 	static FString MakeUniqueReviewArchiveId(const FString& Prefix)
 	{
 		return Prefix + TEXT("_") + FGuid::NewGuid().ToString(EGuidFormats::Digits);
@@ -2699,6 +2723,9 @@ bool FBlueprintHelperReviewRecordSourceTransactionSummaryPersistsCreatedAtBounds
 	Record.SourceTransactionSummary.TransactionIds.Add(TEXT("tx_review_source_2"));
 	Record.SourceTransactionSummary.CreatedAtFirst = TEXT("2026-05-12T01:02:03Z");
 	Record.SourceTransactionSummary.CreatedAtLast = TEXT("2026-05-12T01:04:05Z");
+	Record.VisibleChanges.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestVisibleChange(
+		TEXT("tx_review_source_visible"),
+		Record.AssetPath));
 
 	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(RecordId);
 	FString SaveError;
@@ -3379,6 +3406,9 @@ bool FBlueprintHelperReviewRecordPersistsDebugCaseIdsTest::RunTest(const FString
 	Record.ArchiveSessionId = ArchiveSessionId;
 	Record.AssetPath = TEXT("/Game/BP_Door");
 	Record.DebugCaseIds.Add(TEXT("debug_case_preview_blocked"));
+	Record.VisibleChanges.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestVisibleChange(
+		TEXT("tx_debug_case_ids_visible"),
+		Record.AssetPath));
 
 	FString SaveError;
 	TestTrue(TEXT("record with debug case ids saves"), Store.SaveReviewRecord(Record, SaveError));
@@ -3410,6 +3440,9 @@ bool FBlueprintHelperReviewRecordMergesDebugCaseIdsTest::RunTest(const FString& 
 	Existing.ArchiveSessionId = ArchiveSessionId;
 	Existing.AssetPath = TEXT("/Game/BP_Door");
 	Existing.DebugCaseIds.Add(TEXT("debug_case_existing"));
+	Existing.VisibleChanges.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestVisibleChange(
+		TEXT("tx_debug_case_merge_visible"),
+		Existing.AssetPath));
 
 	FString SaveError;
 	TestTrue(TEXT("existing debug case record saves"), Store.SaveReviewRecord(Existing, SaveError));

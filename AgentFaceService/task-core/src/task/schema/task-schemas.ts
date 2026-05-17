@@ -440,9 +440,9 @@ const BlueprintSignatureChangeSchema = z.object({
   outputs: z.array(z.record(z.unknown())).optional(),
   is_pure: z.boolean().optional(),
   name_collision_policy: z.enum(['reuse_if_exists', 'fail_if_exists']).optional(),
-  signature_mismatch_policy: z.enum(['block']).optional(),
+  signature_mismatch_policy: z.enum(['block', 'migrate_if_unreferenced']).optional(),
   event_kind: z.enum(['native_event', 'override_event']).optional(),
-  execute_policy: z.enum(['blocked_preflight', 'create_if_missing']).optional(),
+  execute_policy: z.enum(['blocked_preflight', 'create_if_missing', 'execute_if_unreferenced']).optional(),
   require_reference_context: z.literal(true).optional(),
 }).passthrough();
 

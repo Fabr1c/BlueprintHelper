@@ -96,6 +96,7 @@ const AGENT_GUIDE_FORBIDDEN_PATTERNS = [
   /\bblueprint_undo\b/,
   /\bblueprint_redo\b/,
   /\bblueprint_exec_console_command\b/,
+  /\bblueprint_developer_exec_console_command\b/,
   /\bblueprint_build_project\b/,
   /\bblueprint_create_blueprint\b/,
   /\bblueprint_get_logic(?:_md|_json)?\b/,
@@ -137,6 +138,41 @@ test('frozen direct MCP tools are not registered', () => {
       `${name} should not be exposed with frozen-only guidance`,
     );
   }
+});
+
+test('developer exec console MCP tool is registered outside ordinary agent-facing surface', async () => {
+  const calls: Array<{ command: string; payload: Record<string, unknown> | undefined }> = [];
+  const tools = registerWithBridge(async (command, payload) => {
+    calls.push({ command, payload });
+    return { request_id: 'test', success: true, result: { output: 'ok' } };
+  });
+
+  assert.equal(tools.has('blueprint_exec_console_command'), false);
+  assert.equal(AGENT_FACING_TOOL_NAMES.includes('blueprint_developer_exec_console_command'), false);
+
+  const tool = tools.get('blueprint_developer_exec_console_command');
+  assert.ok(tool);
+  assert.match(tool.description ?? '', /Developer-only MCP tool/);
+  assert.match(tool.description ?? '', /Ordinary agents must not call/);
+  assert.equal(tool.meta?.['blueprinthelper/audience'], 'developer');
+  assert.equal(tool.meta?.['blueprinthelper/ordinaryAgentCallable'], false);
+  assert.equal(tool.meta?.['blueprinthelper/bridgeCommand'], 'exec_console_command');
+  assert.equal(tool.annotations?.['destructiveHint'], true);
+
+  const result = await invokeTool(tool, {
+    command: 'Automation RunTests BlueprintHelper.Review.UI',
+    reason: 'run local developer automation',
+  });
+
+  assert.equal(result.isError, false);
+  assert.deepEqual(calls, [
+    {
+      command: 'exec_console_command',
+      payload: {
+        command: 'Automation RunTests BlueprintHelper.Review.UI',
+      },
+    },
+  ]);
 });
 
 test('blueprinthelper_request_write_session stores Bridge session without exposing its raw id', async () => {
