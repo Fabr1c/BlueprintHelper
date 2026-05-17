@@ -223,6 +223,12 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectVi
 			Result.Message = FString::Printf(TEXT("missing_current_hash:%s"), *Target.TargetKey);
 			return Result;
 		}
+		if (!CurrentHash->Equals(Target.RecordedAfterHash, ESearchCase::CaseSensitive))
+		{
+			Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
+			Result.Message = FString::Printf(TEXT("current_state_changed:%s"), *Target.TargetKey);
+			return Result;
+		}
 	}
 
 	if (!Options.bRollbackExecutorAvailable)

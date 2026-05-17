@@ -130,6 +130,13 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewRejectService::RejectVi
 					EBlueprintHelperReviewChangeStatus::NeedsAction,
 					FString::Printf(TEXT("current_hash_unavailable:%s"), *HashError));
 			}
+			if (!CurrentHash.Equals(Target.RecordedAfterHash, ESearchCase::CaseSensitive))
+			{
+				return FBlueprintHelperReviewActionRecordUtils::MakeRejectFailureResult(
+					Change,
+					EBlueprintHelperReviewChangeStatus::NeedsAction,
+					FString::Printf(TEXT("current_state_changed:%s"), *Target.TargetKey));
+			}
 			FString RollbackTransactionId;
 			if (!FBlueprintHelperReviewGraphRollbackService::ExtractRollbackTransactionId(Target.RollbackDataRef, RollbackTransactionId))
 			{

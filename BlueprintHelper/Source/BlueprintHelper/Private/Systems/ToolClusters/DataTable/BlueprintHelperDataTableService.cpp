@@ -20,7 +20,11 @@ UDataTable* FBlueprintHelperDataTableService::ResolveDataTable(
 		return nullptr;
 	}
 
-	UObject* Obj = StaticLoadObject(UDataTable::StaticClass(), nullptr, *AssetPath);
+	UObject* Obj = StaticFindObject(UDataTable::StaticClass(), nullptr, *AssetPath);
+	if (!Obj)
+	{
+		Obj = StaticLoadObject(UDataTable::StaticClass(), nullptr, *AssetPath);
+	}
 	UDataTable* DT = Cast<UDataTable>(Obj);
 	if (!DT)
 	{
