@@ -46,6 +46,7 @@ Use `tools/list` as final authority. Normal Agent-facing tools:
 | ReadSpec context | `blueprinthelper_read_context` |
 | Task context | `blueprinthelper_read_task_context` |
 | Reference context | `blueprinthelper_read_reference_context` |
+| Function chain context | `blueprinthelper_read_function_chain_context` |
 | Preview TaskSpec | `blueprinthelper_preview_task` |
 | Execute TaskSpec | `blueprinthelper_execute_task` |
 | Query task result | `blueprinthelper_get_task_result` |
@@ -70,6 +71,7 @@ Lifecycle companion tools are available through the global MCP allowlist for Age
 | `blueprinthelper_read_context` | `BlueprintHelper.ReadSpec.v1` fields at root |
 | `blueprinthelper_read_task_context` | `{ "target": { "asset_path": "..." }, "feature_name": "..." }` |
 | `blueprinthelper_read_reference_context` | Reference fields at root |
+| `blueprinthelper_read_function_chain_context` | Function chain fields at root |
 | `blueprinthelper_preview_task` | `{ "task_spec": { ...BlueprintHelper.TaskSpec.v1... } }` |
 | `blueprinthelper_execute_task` | `{ "task_spec": { ...BlueprintHelper.TaskSpec.v1... } }` |
 | `blueprinthelper_get_task_result` | `{ "task_run_id": "..." }` |
@@ -129,6 +131,24 @@ If `blueprinthelper_read_context` is not visible or callable, stop with `tool_un
   "include_samples": "optional, default true."
 }
 ```
+
+## 5.5 Function Chain Context Template
+
+Use this read-only tool when an Agent needs the next project-authored Blueprint logic entries reachable from one function/event/custom event. It returns an index for follow-up `blueprinthelper_read_context` calls, not full graph bodies.
+
+```json
+{
+  "asset_path": "required. UE Blueprint asset path such as /Game/BP_PlayerController.",
+  "target_type": "required. function, event, or custom_event.",
+  "target_name": "required. Entry function or event name.",
+  "graph_name": "optional. Graph name for event/custom_event disambiguation.",
+  "max_depth": "optional, default 3. Cross custom-logic expansion depth.",
+  "include_data_dependencies": "optional, default true. Include custom pure functions feeding branch conditions, arguments, returns, or set values.",
+  "expand_cross_asset": "optional, default true. Expand uniquely resolved project Blueprint calls in other assets."
+}
+```
+
+Returned data schema is `FunctionChainContext.v1`. `custom_logic_refs[]` does not include `node_ref`, `node_path`, owner fields, or raw GUID fields. Do not send `target_guid`, `entry`, `target`, `query`, or owner fields.
 
 ## 6. Task Tool Wrapper
 

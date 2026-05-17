@@ -21,6 +21,7 @@
 #include "Shared/Debug/BlueprintHelperDiagnosticsTypes.h"
 #include "Systems/Debug/BlueprintHelperDebugEntryService.h"
 #include "Shared/BlueprintHelperDependencyAnalysisTypes.h"
+#include "Shared/FunctionChain/BlueprintHelperFunctionChainContextTypes.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicMdReadService.h"
 #include "Shared/BlueprintHelperLogicMdTypes.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicJsonReadService.h"
@@ -667,6 +668,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequestWithPl
 	BLUEPRINTHELPER_ROUTE("apply_review_action", Review, HandleApplyReviewAction)
 
 	BLUEPRINTHELPER_ROUTE("read_reference_context", SharedServices, HandleReadReferenceContext)
+	BLUEPRINTHELPER_ROUTE("read_function_chain_context", SharedServices, HandleReadFunctionChainContext)
 	BLUEPRINTHELPER_ROUTE("read_blueprint_logic_md", SharedServices, HandleReadBlueprintLogicMd)
 	BLUEPRINTHELPER_ROUTE("read_blueprint_logic_json", SharedServices, HandleReadBlueprintLogicJson)
 	BLUEPRINTHELPER_ROUTE("validate_json", SharedServices, HandleValidateJson)
@@ -995,6 +997,72 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadReference
 
 	FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Completed(
 		TEXT("read_reference_context"),
+		FBlueprintHelperToolResultBuilder::GenerateTraceId());
+	Result.Data = ContextPack.ToJson();
+
+	FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
+	Resp.Result = Result.ToJson();
+	return Resp;
+}
+
+// --- read_function_chain_context ---
+
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadFunctionChainContext(
+	const FBlueprintHelperBridgeRequest& Req) const
+{
+	const TSharedPtr<FJsonObject> Payload = Req.Payload;
+
+	FBlueprintHelperFunctionChainContextRequest Request;
+	if (Payload.IsValid())
+	{
+		Payload->TryGetStringField(TEXT("asset_path"), Request.AssetPath);
+		Payload->TryGetStringField(TEXT("target_type"), Request.TargetType);
+		Payload->TryGetStringField(TEXT("target_name"), Request.TargetName);
+		Payload->TryGetStringField(TEXT("graph_name"), Request.GraphName);
+
+		double MaxDepth = Request.MaxDepth;
+		if (Payload->TryGetNumberField(TEXT("max_depth"), MaxDepth))
+		{
+			Request.MaxDepth = FMath::Clamp(FMath::RoundToInt(MaxDepth), 0, 12);
+		}
+		Payload->TryGetBoolField(TEXT("include_data_dependencies"), Request.bIncludeDataDependencies);
+		Payload->TryGetBoolField(TEXT("expand_cross_asset"), Request.bExpandCrossAsset);
+	}
+
+	FBlueprintHelperFunctionChainContextPack ContextPack;
+	FString ErrorCode;
+	FString ErrorMessage;
+	if (!FunctionChainContextService.TryBuildFunctionChainContext(Request, ContextPack, ErrorCode, ErrorMessage))
+	{
+		FBlueprintHelperToolError Error;
+		Error.Code = ErrorCode.IsEmpty() ? TEXT("function_chain_context_failed") : ErrorCode;
+		Error.Stage = Error.Code == TEXT("asset_not_found") || Error.Code == TEXT("target_entry_not_found")
+			? EBlueprintHelperToolStage::ResolveTarget
+			: EBlueprintHelperToolStage::ParseInput;
+		Error.Message = ErrorMessage.IsEmpty() ? TEXT("read_function_chain_context failed.") : ErrorMessage;
+		Error.bRetryable = false;
+		Error.RollbackResult = EBlueprintHelperRollbackResult::NotNeeded;
+		Error.Field = Error.Code == TEXT("asset_path_required") || Error.Code == TEXT("asset_not_found")
+			? TEXT("payload.asset_path")
+			: TEXT("payload.target_name");
+
+		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Failure(
+			TEXT("read_function_chain_context"),
+			FBlueprintHelperToolResultBuilder::GenerateTraceId(),
+			Error);
+
+		FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Error(
+			Req.RequestId,
+			Error.Code == TEXT("asset_not_found")
+				? EBlueprintHelperBridgeError::AssetNotFound
+				: EBlueprintHelperBridgeError::ExecutionFailed,
+			Error.Message);
+		Resp.Result = Result.ToJson();
+		return Resp;
+	}
+
+	FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Completed(
+		TEXT("read_function_chain_context"),
 		FBlueprintHelperToolResultBuilder::GenerateTraceId());
 	Result.Data = ContextPack.ToJson();
 

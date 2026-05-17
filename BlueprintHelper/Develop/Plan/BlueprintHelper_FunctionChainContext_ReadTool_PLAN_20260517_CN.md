@@ -2,6 +2,46 @@
 
 日期：2026-05-17
 
+## 0. 当前落地状态（2026-05-17）
+
+状态：已完成（第一阶段 K2 Blueprint 读侧工具）。
+
+已落地范围：
+
+- Agent-facing 工具 `blueprinthelper_read_function_chain_context` 已注册到 task-core / CLI 默认读侧工具面，内部 Bridge 命令为 `read_function_chain_context`。
+- UE 侧新增 `Shared/FunctionChain` 服务、DTO 和 traversal utils；Bridge Router 只做 payload 转换和 ToolResult 包装，FunctionChain service 负责 orchestration，遍历/过滤逻辑在独立 utils。
+- 返回结果保持紧凑：根字段只有 `schema`、`custom_logic_refs`、`summary`、`unresolved`、`ambiguous`；不返回 `entry`、`target`、`query`、owner 字段或 raw GUID。
+- 遍历覆盖同资产自定义函数、纯函数数据依赖、跨资产 Blueprint 函数、递归 cycle、max_depth 截断、interface ambiguous、Engine/native utility 过滤和项目 C++ native terminal 计数。
+- 未接入废弃 MCP 普通工具；普通入口保持 CLI / task-core / Bridge，MCP 只保留编辑器生命周期/开发执行边界。
+
+本轮发现并修复的问题：
+
+- 初版 native 分类会把项目 C++ `BlueprintCallable` 调用因为 `OwnerBlueprint == null` 误计入 Engine/trusted 过滤数量；已改为按 `/Script/<ProjectName>` 判断项目 native，并计入 `project_native_terminal_calls`。
+- UE automation 补充 `CountsProjectNativeTerminalCall`，防止该计数回退。
+- UE 命令行一次拼接多个 `Automation RunTests` 时后续命令会被识别为 Unknown automation command；相关 contract 测试已拆成独立运行记录。
+- 2026-05-17 二次收口：按最终返回字段约定，移除 FunctionChain agent-facing 输出中的 `node_ref` / `node_path`；调用点或 block 级定位不属于本工具 v1 输出。
+- 2026-05-17 三次收口：按返回 schema 短名规则，将 FunctionChain payload schema 收口为 `FunctionChainContext.v1`；task-core 对旧 Bridge payload 做兼容归一化，但新 UE 输出和文档均使用短名。
+
+验证记录：
+
+| 验证项 | 结果 | 证据 |
+| --- | --- | --- |
+| task-core build | 通过 | `npm.cmd run build` |
+| task-core node tests | 111/111 通过 | `npm.cmd run test:node` |
+| CLI build | 通过 | `node ..\scripts\clean-build.mjs` + `node ..\scripts\run-tsc.mjs` |
+| CLI node tests | 32/32 通过 | `npm.cmd run test:node` |
+| UE build | 通过 | `D:\UEProjects\Template\Saved\BuildLogs\UBT-FunctionChain-20260517-r7.log` |
+| FunctionChain automation | 6/6 通过 | `D:\UEProjects\Template\Saved\Automation\FunctionChain_20260517_005\index.json` |
+| payload contract automation | 1/1 通过 | `D:\UEProjects\Template\Saved\Automation\FunctionChain_20260517_contract_001\index.json` |
+| pack shape contract automation | 1/1 通过 | `D:\UEProjects\Template\Saved\Automation\FunctionChain_20260517_contract_005\index.json` |
+| route planner automation | 1/1 通过 | `D:\UEProjects\Template\Saved\Automation\FunctionChain_20260517_contract_003\index.json` |
+
+验收结论：
+
+- 计划中的第一阶段完整期望已满足。
+- CLI smoke 在本轮采用分层自动化覆盖：CLI direct dispatch 测试确认 Agent-facing 命令、默认字段和 Bridge command；UE automation transient fixture 确认 Controller/Pawn 跨资产、自定义纯函数、Engine 过滤等运行时行为；Bridge/contract automation 确认 payload、返回 shape 和路由。
+- 没有剩余 blocker。后续 Material Graph、AnimGraph、dispatcher 静态接收方展开、可信插件配置化过滤可作为单独扩展阶段处理。
+
 ## 1. 目标
 
 新增一个读侧聚合工具，用于从指定 Blueprint `function` / `event` / `custom_event` 入口开始，追踪该入口实际调用到的项目自定义逻辑，并返回 Agent 可继续精确读取的最小定位数组。
@@ -15,7 +55,7 @@
 - 不返回请求回显字段，例如 `entry`、`target`、`query`。
 - 不返回 `owner`、`owner_asset_path`、`owner_kind` 等字段；被调用自定义逻辑的定位资产就是 `asset_path`。
 - 不返回 UE Engine 或可信插件封装函数列表；这些只进入过滤数量摘要。
-- 不返回 GUID-first 字段。需要定位调用点时只返回稳定 `node_ref` / `node_path`，不可直接暴露 raw node guid。
+- 不返回调用点定位字段，例如 `node_ref`、`node_path`、raw node guid。该工具只返回可继续精读的自定义逻辑入口索引。
 - 不声明 Material Graph / AnimGraph 支持；第一阶段只覆盖 K2 Blueprint 图。
 
 ## 3. 工具命名
@@ -35,7 +75,7 @@ read_function_chain_context
 返回 schema：
 
 ```text
-BlueprintHelper.FunctionChainContext.v1
+FunctionChainContext.v1
 ```
 
 ## 4. 请求字段
@@ -74,7 +114,7 @@ BlueprintHelper.FunctionChainContext.v1
 
 ```json
 {
-  "schema": "BlueprintHelper.FunctionChainContext.v1",
+  "schema": "FunctionChainContext.v1",
   "custom_logic_refs": [
     {
       "order": 1,
@@ -85,9 +125,7 @@ BlueprintHelper.FunctionChainContext.v1
       "target_name": "CanFire",
       "graph_name": "CanFire",
       "call_kind": "pure_function",
-      "reason": "branch_condition",
-      "node_ref": "optional_stable_ref",
-      "node_path": "optional_stable_path"
+      "reason": "branch_condition"
     },
     {
       "order": 2,
@@ -139,7 +177,6 @@ BlueprintHelper.FunctionChainContext.v1
 | `graph_name` | 可传给 `read_context` 的图名；能解析则填。 |
 | `call_kind` | `pure_function`、`impure_function`、`event`、`custom_event`、`interface_call`。 |
 | `reason` | 为什么进入链路：`exec_call`、`branch_condition`、`argument_source`、`return_value_source`、`set_value_source`。 |
-| `node_ref` / `node_path` | 可选稳定调用点定位。不得是 raw GUID。 |
 
 ### `summary`
 

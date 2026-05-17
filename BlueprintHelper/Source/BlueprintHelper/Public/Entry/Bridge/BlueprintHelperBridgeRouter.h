@@ -15,6 +15,7 @@
 #include "Entry/Bridge/Routes/BlueprintHelperUMGWidgetBridgeRoutes.h"
 #include "Entry/Bridge/BlueprintHelperBridgeTypes.h"
 #include "Shared/Safety/BlueprintHelperDependencyAnalysisService.h"
+#include "Shared/FunctionChain/BlueprintHelperFunctionChainContextService.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.h"
 
 class FBlueprintHelperImportService;
@@ -105,6 +106,7 @@ private:
 	FBlueprintHelperBridgeResponse HandleListDebugCases(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleExportDebugBundle(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleReadReferenceContext(const FBlueprintHelperBridgeRequest& Req) const;
+	FBlueprintHelperBridgeResponse HandleReadFunctionChainContext(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleReadBlueprintLogicMd(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleReadBlueprintLogicJson(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleValidateJson(const FBlueprintHelperBridgeRequest& Req) const;
@@ -180,6 +182,7 @@ private:
 	const FBlueprintHelperBlueprintVariableService& VariableService;
 	FBlueprintHelperBlueprintVariablesBridgeRoutes BlueprintVariablesRoutes;
 	FBlueprintHelperDependencyAnalysisService DependencyAnalysisService;
+	FBlueprintHelperFunctionChainContextService FunctionChainContextService;
 	FBlueprintHelperTaskRuntimeService TaskRuntimeService;
 	const FBlueprintHelperCompileAssetService& CompileAssetService;
 	const FBlueprintHelperTransactionQueryService& TransactionQueryService;

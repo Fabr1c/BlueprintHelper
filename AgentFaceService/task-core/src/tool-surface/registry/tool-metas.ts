@@ -20,6 +20,7 @@ export const toolMetas: ToolMeta[] = [
   { name: 'blueprinthelper_export_debug_bundle', description: 'Export a local DebugBundle manifest for a DebugCase.', audience: 'default', risk: 'low' },
   { name: 'blueprinthelper_query_review_records', description: 'Query summary ReviewRecords by asset, task run, or pending state.', audience: 'default', risk: 'low' },
   { name: 'blueprinthelper_apply_review_action', description: 'Accept or reject ReviewRecord targets through the Review action service.', audience: 'expert', risk: 'high', requiresExpert: true },
+  { name: 'blueprinthelper_read_function_chain_context', description: 'Read compact project custom function/event call-chain references from a Blueprint entry.', audience: 'default', risk: 'low' },
   { name: 'blueprinthelper_read_context', description: 'Read UE asset context through ReadSpec.', audience: 'default', risk: 'low' },
   { name: 'blueprint_get_runtime_profile', description: 'Read the BlueprintHelper runtime profile.', audience: 'default', risk: 'low' },
   { name: 'blueprinthelper_request_write_session', description: 'Request Editor-approved write permission.', audience: 'default', risk: 'medium' },

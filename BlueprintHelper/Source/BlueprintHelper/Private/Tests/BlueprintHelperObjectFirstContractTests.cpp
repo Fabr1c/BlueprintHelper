@@ -6,6 +6,7 @@
 #include "Misc/AutomationTest.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.h"
 #include "Shared/BlueprintHelperDependencyAnalysisTypes.h"
+#include "Shared/FunctionChain/BlueprintHelperFunctionChainContextTypes.h"
 
 class FBlueprintHelperObjectFirstContractTestsLocalUtils
 {
@@ -1671,6 +1672,115 @@ bool FBlueprintHelperReferenceContextPackShapeTest::RunTest(const FString& Param
 			TestTrue(TEXT("sample has reference kind"), SampleJson->HasField(TEXT("reference_kind")));
 			TestFalse(TEXT("sample does not expose node guid"), SampleJson->HasField(TEXT("node_guid")));
 		}
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperContractReadFunctionChainContextPayloadTest,
+	"BlueprintHelper.ObjectFirst.Contract.ReadFunctionChainContextPayload",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperContractReadFunctionChainContextPayloadTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperBridgeValidationError Error;
+
+	{
+		TSharedPtr<FJsonObject> Payload = MakeShared<FJsonObject>();
+		Payload->SetStringField(TEXT("asset_path"), TEXT("/Game/BP/BP_PlayerController"));
+		Payload->SetStringField(TEXT("target_type"), TEXT("event"));
+		Payload->SetStringField(TEXT("target_name"), TEXT("Input_Fire"));
+
+		TestTrue(TEXT("read_function_chain_context accepts minimal event entry"),
+			FBlueprintHelperRequestValidator::ValidatePayloadForCommand(TEXT("read_function_chain_context"), Payload, Error));
+	}
+
+	{
+		TSharedPtr<FJsonObject> Payload = MakeShared<FJsonObject>();
+		Payload->SetStringField(TEXT("asset_path"), TEXT("/Game/BP/BP_PlayerController"));
+		Payload->SetStringField(TEXT("target_type"), TEXT("function"));
+		Payload->SetStringField(TEXT("target_name"), TEXT("TryFire"));
+		Payload->SetNumberField(TEXT("max_depth"), 4);
+		Payload->SetBoolField(TEXT("include_data_dependencies"), true);
+		Payload->SetBoolField(TEXT("expand_cross_asset"), true);
+
+		TestTrue(TEXT("read_function_chain_context accepts all supported options"),
+			FBlueprintHelperRequestValidator::ValidatePayloadForCommand(TEXT("read_function_chain_context"), Payload, Error));
+	}
+
+	{
+		TSharedPtr<FJsonObject> Payload = MakeShared<FJsonObject>();
+		Payload->SetStringField(TEXT("asset_path"), TEXT("/Game/BP/BP_PlayerController"));
+		Payload->SetStringField(TEXT("target_type"), TEXT("blueprint"));
+		Payload->SetStringField(TEXT("target_name"), TEXT("Input_Fire"));
+
+		TestFalse(TEXT("read_function_chain_context rejects unsupported target_type"),
+			FBlueprintHelperRequestValidator::ValidatePayloadForCommand(TEXT("read_function_chain_context"), Payload, Error));
+		TestEqual(TEXT("invalid function chain target_type field"), Error.Field, FString(TEXT("payload.target_type")));
+	}
+
+	{
+		TSharedPtr<FJsonObject> Payload = MakeShared<FJsonObject>();
+		Payload->SetStringField(TEXT("asset_path"), TEXT("/Game/BP/BP_PlayerController"));
+		Payload->SetStringField(TEXT("target_type"), TEXT("event"));
+		Payload->SetStringField(TEXT("target_name"), TEXT("Input_Fire"));
+		Payload->SetStringField(TEXT("target_guid"), TEXT("00000000000000000000000000000000"));
+
+		TestFalse(TEXT("read_function_chain_context rejects target_guid"),
+			FBlueprintHelperRequestValidator::ValidatePayloadForCommand(TEXT("read_function_chain_context"), Payload, Error));
+		TestEqual(TEXT("function chain target_guid error field"), Error.Field, FString(TEXT("payload.target_guid")));
+	}
+
+	TestFalse(TEXT("read_function_chain_context is not a write command"),
+		FBlueprintHelperRequestValidator::IsWriteCommand(TEXT("read_function_chain_context")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperFunctionChainContextPackShapeTest,
+	"BlueprintHelper.ObjectFirst.Contract.FunctionChainContextPackShape",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperFunctionChainContextPackShapeTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperFunctionChainContextPack Pack;
+
+	FBlueprintHelperFunctionChainLogicRef Ref;
+	Ref.Order = 1;
+	Ref.Depth = 1;
+	Ref.ParentOrder = 0;
+	Ref.AssetPath = TEXT("/Game/BP_Weapon");
+	Ref.TargetType = TEXT("function");
+	Ref.TargetName = TEXT("CanFire");
+	Ref.GraphName = TEXT("CanFire");
+	Ref.CallKind = TEXT("pure_function");
+	Ref.Reason = TEXT("branch_condition");
+	Pack.CustomLogicRefs.Add(Ref);
+	Pack.Summary.VisitedNodes = 3;
+	Pack.Summary.ReturnedCustomRefs = 1;
+	Pack.Summary.FilteredEngineOrTrustedPluginCalls = 2;
+
+	const TSharedRef<FJsonObject> Json = Pack.ToJson();
+	FString Schema;
+	TestTrue(TEXT("function chain context pack has schema"), Json->TryGetStringField(TEXT("schema"), Schema));
+	TestEqual(TEXT("function chain schema is expected"), Schema, FString(TEXT("FunctionChainContext.v1")));
+	TestFalse(TEXT("function chain pack does not echo entry"), Json->HasField(TEXT("entry")));
+	TestFalse(TEXT("function chain pack does not echo target"), Json->HasField(TEXT("target")));
+	TestFalse(TEXT("function chain pack does not echo query"), Json->HasField(TEXT("query")));
+	TestFalse(TEXT("function chain pack does not expose owner"), Json->HasField(TEXT("owner")));
+
+	const TArray<TSharedPtr<FJsonValue>>* RefValues = nullptr;
+	TestTrue(TEXT("function chain refs exist"), Json->TryGetArrayField(TEXT("custom_logic_refs"), RefValues));
+	if (RefValues && RefValues->Num() > 0)
+	{
+		const TSharedPtr<FJsonObject> RefJson = (*RefValues)[0]->AsObject();
+		TestTrue(TEXT("ref has pure function call kind"), RefJson->HasField(TEXT("call_kind")));
+		TestFalse(TEXT("ref has no owner asset path"), RefJson->HasField(TEXT("owner_asset_path")));
+		TestFalse(TEXT("ref has no node ref"), RefJson->HasField(TEXT("node_ref")));
+		TestFalse(TEXT("ref has no node path"), RefJson->HasField(TEXT("node_path")));
+		TestFalse(TEXT("ref has no node guid"), RefJson->HasField(TEXT("node_guid")));
 	}
 
 	return true;

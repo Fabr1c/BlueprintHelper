@@ -434,3 +434,4 @@ rg -n 'SReadOnlyHierarchyView' 'E:\UE_5.6\Engine\Source\Editor' -g '*.h' -g '*.c
 | `allow_auto_save` 无效 | 改为 `block`、`save_before_archive` 或 `allow_stale_disk_snapshot` |
 | Debug bundle 参数无效 | 只传 `debug_case_id` |
 | `--fields` 看不到错误细节 | 用 `--format full` 并打开 `artifacts.full_result` |
+| CLI `npm run build` 把 `../task-core` 解析到 Codex sandbox cwd | 先在 `AgentFaceService/task-core` 跑 `npm.cmd run build`，再在 `AgentFaceService/cli` 依次跑 `node ..\scripts\clean-build.mjs` 和 `node ..\scripts\run-tsc.mjs` |

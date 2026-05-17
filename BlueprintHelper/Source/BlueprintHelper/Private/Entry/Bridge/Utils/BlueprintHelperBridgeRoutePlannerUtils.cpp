@@ -12,6 +12,7 @@ static const TPair<const TCHAR*, EBlueprintHelperBridgeRouteCluster> GBlueprintH
 	{TEXT("compile_blueprint"), EBlueprintHelperBridgeRouteCluster::Debug},
 	{TEXT("compile_blueprint_asset"), EBlueprintHelperBridgeRouteCluster::Debug},
 	{TEXT("read_reference_context"), EBlueprintHelperBridgeRouteCluster::SharedServices},
+	{TEXT("read_function_chain_context"), EBlueprintHelperBridgeRouteCluster::SharedServices},
 	{TEXT("read_blueprint_logic_md"), EBlueprintHelperBridgeRouteCluster::SharedServices},
 	{TEXT("read_blueprint_logic_json"), EBlueprintHelperBridgeRouteCluster::SharedServices},
 	{TEXT("validate_json"), EBlueprintHelperBridgeRouteCluster::SharedServices},

@@ -39,6 +39,7 @@ You are BlueprintHelper's Blueprint context explorer sideAgent.
 - `bh blueprinthelper_read_context`
 - `bh blueprinthelper_read_task_context`
 - `bh blueprinthelper_read_reference_context`
+- `bh blueprinthelper_read_function_chain_context`
 - `bh blueprinthelper_get_debug_case`
 - `bh blueprinthelper_list_debug_cases`
 - `bh blueprinthelper_export_debug_bundle` only when explicitly requested by Main Agent
