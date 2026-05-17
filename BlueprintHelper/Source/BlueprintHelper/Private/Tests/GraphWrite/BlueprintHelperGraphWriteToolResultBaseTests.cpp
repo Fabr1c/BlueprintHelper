@@ -1023,6 +1023,29 @@ public:
 		return Fixture;
 	}
 
+	static FWidgetRuntimeDryRunFixture MakeWidgetRuntimeExecuteFixture(const FString& Prefix)
+	{
+		FWidgetRuntimeDryRunFixture Fixture;
+		Fixture.Package = MakeGraphWriteTestPackage(Prefix);
+		Fixture.Blueprint = NewObject<UWidgetBlueprint>(
+			Fixture.Package,
+			UWidgetBlueprint::StaticClass(),
+			*MakeGraphWriteTestObjectName(TEXT("WBP_TaskRuntimeExecute")),
+			RF_Public | RF_Standalone | RF_Transactional);
+		if (!Fixture.Blueprint)
+		{
+			return Fixture;
+		}
+
+		Fixture.Blueprint->WidgetTree = NewObject<UWidgetTree>(
+			Fixture.Blueprint,
+			UWidgetTree::StaticClass(),
+			TEXT("WidgetTree"),
+			RF_Transactional);
+		Fixture.Package->SetDirtyFlag(false);
+		return Fixture;
+	}
+
 	static UDataTable* MakeVectorDataTableRuntimeDryRunFixture(const FString& Prefix)
 	{
 		UPackage* Package = MakeGraphWriteTestPackage(Prefix);
@@ -1093,6 +1116,52 @@ public:
 		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
 		Payload->SetObjectField(TEXT("task_plan"), TaskPlan);
 		return Payload;
+	}
+
+	static TSharedRef<FJsonObject> MakeWidgetTreeExecutePayload(const FString& AssetPath)
+	{
+		TSharedRef<FJsonObject> AddRootOp = MakeShared<FJsonObject>();
+		AddRootOp->SetStringField(TEXT("op"), TEXT("add_widget"));
+		AddRootOp->SetStringField(TEXT("widget_class"), TEXT("CanvasPanel"));
+		AddRootOp->SetStringField(TEXT("widget_name"), TEXT("RootCanvas"));
+
+		TSharedRef<FJsonObject> AddChildOp = MakeShared<FJsonObject>();
+		AddChildOp->SetStringField(TEXT("op"), TEXT("add_widget"));
+		AddChildOp->SetStringField(TEXT("widget_class"), TEXT("TextBlock"));
+		AddChildOp->SetStringField(TEXT("widget_name"), TEXT("SmokeText"));
+		AddChildOp->SetStringField(TEXT("parent_widget_name"), TEXT("RootCanvas"));
+
+		TSharedRef<FJsonObject> SetOpacityOp = MakeShared<FJsonObject>();
+		SetOpacityOp->SetStringField(TEXT("op"), TEXT("set_widget_property"));
+		SetOpacityOp->SetStringField(TEXT("widget_name"), TEXT("SmokeText"));
+		SetOpacityOp->SetStringField(TEXT("property_path"), TEXT("RenderOpacity"));
+		SetOpacityOp->SetStringField(TEXT("value"), TEXT("0.35"));
+
+		TArray<TSharedPtr<FJsonValue>> Steps;
+		Steps.Add(MakeShared<FJsonValueObject>(MakeStructuredStep(
+			TEXT("step_add_root"),
+			TEXT("umg_widget"),
+			AssetPath,
+			TEXT("widget_tree_edit"),
+			AddRootOp)));
+		Steps.Add(MakeShared<FJsonValueObject>(MakeStructuredStep(
+			TEXT("step_add_child"),
+			TEXT("umg_widget"),
+			AssetPath,
+			TEXT("widget_tree_edit"),
+			AddChildOp)));
+		Steps.Add(MakeShared<FJsonValueObject>(MakeStructuredStep(
+			TEXT("step_set_child_opacity"),
+			TEXT("umg_widget"),
+			AssetPath,
+			TEXT("widget_property_edit"),
+			SetOpacityOp)));
+
+		return MakeMultiStepTaskPlanPayload(
+			TEXT("WidgetTreeExecuteSmoke"),
+			TEXT("edit_umg_widget"),
+			AssetPath,
+			Steps);
 	}
 
 	static TSharedRef<FJsonObject> MakeWidgetPlannedPropertyDryRunPayload(const FString& AssetPath)
@@ -2973,6 +3042,65 @@ bool FBlueprintHelperGraphWriteTaskRuntimeCallFunctionMemberPrefixPreviewBlocksT
 	TestEqual(TEXT("member-prefix preview does not create event"),
 		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::CountCustomEventsByName(Graph, TEXT("RuntimeMemberPrefixCall")),
 		0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTaskRuntimeUMGWidgetTreeExecuteSmokeTest,
+	"BlueprintHelper.TaskRuntime.UMGWidget.WidgetTreeExecuteSmoke",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperTaskRuntimeUMGWidgetTreeExecuteSmokeTest::RunTest(const FString& Parameters)
+{
+	const FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FWidgetRuntimeDryRunFixture Fixture =
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeWidgetRuntimeExecuteFixture(TEXT("RuntimeUMGExecute"));
+	TestNotNull(TEXT("WidgetBlueprint fixture is created"), Fixture.Blueprint);
+	TestNotNull(TEXT("WidgetTree fixture is created"), Fixture.Blueprint ? Fixture.Blueprint->WidgetTree.Get() : nullptr);
+	if (!Fixture.Blueprint || !Fixture.Blueprint->WidgetTree)
+	{
+		return false;
+	}
+
+	TestNull(TEXT("fixture starts without a root widget"), Fixture.Blueprint->WidgetTree->RootWidget);
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness Harness;
+	const FBlueprintHelperToolResultBase ExecuteResult = Harness.RuntimeService.ExecuteTaskPlan(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeWidgetTreeExecutePayload(Fixture.Blueprint->GetPathName()));
+
+	TestTrue(TEXT("UMG widget tree execute succeeds"), ExecuteResult.bOk);
+	if (!ExecuteResult.bOk && ExecuteResult.Error.IsSet())
+	{
+		TestFalse(TEXT("execute failure has diagnosable message"), ExecuteResult.Error->Message.IsEmpty());
+	}
+	TestEqual(TEXT("UMG execute status is applied"), ExecuteResult.Status, EBlueprintHelperToolStatus::Applied);
+
+	FString TaskRunId;
+	TestTrue(TEXT("execute result carries task_run_id"),
+		ExecuteResult.Data.IsValid() && ExecuteResult.Data->TryGetStringField(TEXT("task_run_id"), TaskRunId));
+	const FBlueprintHelperToolResultBase JournalResult = Harness.RuntimeService.GetTaskRunJournal(TaskRunId);
+	TestTrue(TEXT("TaskRunJournal can be loaded for UMG execute"), JournalResult.bOk);
+	FString JournalStatus;
+	TestTrue(TEXT("TaskRunJournal has status"),
+		JournalResult.Data.IsValid() && JournalResult.Data->TryGetStringField(TEXT("status"), JournalStatus));
+	TestEqual(TEXT("TaskRunJournal completed"), JournalStatus, FString(TEXT("completed")));
+
+	UWidget* RootWidget = Fixture.Blueprint->WidgetTree->RootWidget;
+	TestNotNull(TEXT("RootCanvas becomes the root widget"), RootWidget);
+	TestEqual(TEXT("root widget name"), RootWidget ? RootWidget->GetName() : FString(), FString(TEXT("RootCanvas")));
+
+	UTextBlock* SmokeText = Cast<UTextBlock>(Fixture.Blueprint->WidgetTree->FindWidget(FName(TEXT("SmokeText"))));
+	TestNotNull(TEXT("SmokeText child is created"), SmokeText);
+	TestEqual(TEXT("SmokeText opacity is written through TaskRuntime"),
+		SmokeText ? SmokeText->GetRenderOpacity() : -1.0f,
+		0.35f);
+
+	UCanvasPanel* RootCanvas = Cast<UCanvasPanel>(RootWidget);
+	TestNotNull(TEXT("root widget is a CanvasPanel"), RootCanvas);
+	TestEqual(TEXT("RootCanvas has one child"), RootCanvas ? RootCanvas->GetChildrenCount() : 0, 1);
+	TestEqual(TEXT("RootCanvas child is SmokeText"),
+		RootCanvas && RootCanvas->GetChildrenCount() > 0 ? RootCanvas->GetChildAt(0) : nullptr,
+		Cast<UWidget>(SmokeText));
+
 	return true;
 }
 

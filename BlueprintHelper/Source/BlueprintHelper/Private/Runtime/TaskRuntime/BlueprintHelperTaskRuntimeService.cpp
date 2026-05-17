@@ -667,12 +667,9 @@ public:
 			(*TargetObjectPtr)->TryGetStringField(TEXT("graph"), GraphName);
 		}
 
-		UBlueprint* Blueprint = ResolveTaskRuntimeBlueprint(AssetPath);
-		UEdGraph* Graph = ResolveTaskRuntimeGraph(Blueprint, GraphName);
-		if (!Blueprint)
-		{
-			return true;
-		}
+		UBlueprint* Blueprint = nullptr;
+		UEdGraph* Graph = nullptr;
+		bool bTriedResolveBlueprint = false;
 
 		for (int32 OpIndex = 0; OpIndex < OpsArray->Num(); ++OpIndex)
 		{
@@ -714,6 +711,21 @@ public:
 				*StatementValues,
 				LogicSpecPath + TEXT(".statements"),
 				CallStatements);
+			if (CallStatements.IsEmpty())
+			{
+				continue;
+			}
+
+			if (!bTriedResolveBlueprint)
+			{
+				Blueprint = ResolveTaskRuntimeBlueprint(AssetPath);
+				Graph = ResolveTaskRuntimeGraph(Blueprint, GraphName);
+				bTriedResolveBlueprint = true;
+			}
+			if (!Blueprint)
+			{
+				return true;
+			}
 
 			for (const FCallFunctionStatementRef& CallStatement : CallStatements)
 			{
@@ -1178,7 +1190,11 @@ public:
 				continue;
 			}
 
-			UObject* Asset = StaticLoadObject(UObject::StaticClass(), nullptr, *AssetPath);
+			UObject* Asset = StaticFindObject(UObject::StaticClass(), nullptr, *AssetPath);
+			if (!Asset)
+			{
+				Asset = StaticLoadObject(UObject::StaticClass(), nullptr, *AssetPath);
+			}
 			if (!Asset)
 			{
 				continue;

@@ -1,11 +1,14 @@
 # BlueprintHelper Active Plan Index
 
-Date: 2026-05-12
+Date: 2026-05-17
 
 This folder contains active or intentionally retained planning documents. Implemented v0.3.8 plans and unused legacy docs are archived in `../v0.3.8/`.
 
 ## Current Status And Verification
 
+- `BlueprintHelper_UnmetExpectations_Consolidated_20260514_CN.md`
+- `BlueprintHelper_Total_PASS_Report_20260517_CN.md`
+- `BlueprintHelper_Smoke_Rerun_UMG_FutureState_Debug_20260517_CN.md`
 - `BlueprintHelper_Current_TODO_20260506.md`
 - `BlueprintHelper_Unified_SmokeRun_Verification_20260509.md`
 - `BlueprintHelper_NewProject_Full_SmokeRun_20260510.md`

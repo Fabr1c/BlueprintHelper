@@ -4386,6 +4386,18 @@ bool FBlueprintHelperReviewRejectLifecycleRootRemovesChildrenTest::RunTest(const
 	{
 		return false;
 	}
+	const FBlueprintHelperReviewVisibleChange* Child = PendingChanges.FindByPredicate(
+		[](const FBlueprintHelperReviewVisibleChange& Change)
+		{
+			return Change.LatestTransactionId == TEXT("tx_reject_lifecycle_child");
+		});
+	TestNotNull(TEXT("lifecycle child is available for cascade reject"), Child);
+	if (!Child)
+	{
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(Records[0].ReviewRecordId);
+		return false;
+	}
+	const FString ChildChangeId = Child->ChangeId;
 
 	FBlueprintHelperReviewRejectOptions Options;
 	Options.CurrentHashesByTargetKey.Add(TEXT("asset_factory:create_asset"), TEXT("after_root"));
@@ -4398,7 +4410,7 @@ bool FBlueprintHelperReviewRejectLifecycleRootRemovesChildrenTest::RunTest(const
 	TestTrue(TEXT("root reject succeeds"), Result.RootResult.bSucceeded);
 	TestTrue(TEXT("cascade reports child removal"), Result.bChildrenRemoved);
 	TestTrue(TEXT("child change id is returned"),
-		Result.RemovedChildChangeIds.Contains(TEXT("tx_reject_lifecycle_child")));
+		Result.RemovedChildChangeIds.Contains(ChildChangeId));
 
 	FBlueprintHelperReviewRecord Loaded;
 	FString LoadError;
@@ -4584,6 +4596,18 @@ bool FBlueprintHelperReviewRejectLifecycleRootFailureKeepsChildrenTest::RunTest(
 	{
 		return false;
 	}
+	const FBlueprintHelperReviewVisibleChange* Child = PendingChanges.FindByPredicate(
+		[](const FBlueprintHelperReviewVisibleChange& Change)
+		{
+			return Change.LatestTransactionId == TEXT("tx_reject_lifecycle_failure_child");
+		});
+	TestNotNull(TEXT("lifecycle child is available before failed cascade reject"), Child);
+	if (!Child)
+	{
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(Records[0].ReviewRecordId);
+		return false;
+	}
+	const FString ChildChangeId = Child->ChangeId;
 
 	FBlueprintHelperReviewRejectOptions Options;
 	Options.CurrentHashesByTargetKey.Add(TEXT("asset_factory:create_asset"), TEXT("changed_after_root"));
@@ -4602,9 +4626,9 @@ bool FBlueprintHelperReviewRejectLifecycleRootFailureKeepsChildrenTest::RunTest(
 	TestTrue(TEXT("failed cascade record reloads"),
 		Store.LoadReviewRecordById(Records[0].ReviewRecordId, Loaded, LoadError));
 	const FBlueprintHelperReviewVisibleChange* LoadedChild = Loaded.VisibleChanges.FindByPredicate(
-		[](const FBlueprintHelperReviewVisibleChange& Change)
+		[&ChildChangeId](const FBlueprintHelperReviewVisibleChange& Change)
 		{
-			return Change.ChangeId == TEXT("tx_reject_lifecycle_failure_child");
+			return Change.ChangeId == ChildChangeId;
 		});
 	TestNotNull(TEXT("loaded child exists after root failure"), LoadedChild);
 	if (LoadedChild)
@@ -4683,6 +4707,19 @@ bool FBlueprintHelperReviewAcceptLifecycleRootDoesNotAcceptChildrenTest::RunTest
 	{
 		return false;
 	}
+	const FBlueprintHelperReviewVisibleChange* Child = PendingChanges.FindByPredicate(
+		[](const FBlueprintHelperReviewVisibleChange& Change)
+		{
+			return Change.LatestTransactionId == TEXT("tx_accept_lifecycle_child");
+		});
+	TestNotNull(TEXT("lifecycle child is available for accept"), Child);
+	if (!Child)
+	{
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(Records[0].ReviewRecordId);
+		return false;
+	}
+	const FString RootChangeId = Root->ChangeId;
+	const FString ChildChangeId = Child->ChangeId;
 
 	FBlueprintHelperReviewActionService ActionService;
 	const FBlueprintHelperReviewActionResult Result = ActionService.AcceptVisibleChange(*Root);
@@ -4693,14 +4730,14 @@ bool FBlueprintHelperReviewAcceptLifecycleRootDoesNotAcceptChildrenTest::RunTest
 	TestTrue(TEXT("accepted lifecycle root record reloads"),
 		Store.LoadReviewRecordById(Records[0].ReviewRecordId, Loaded, LoadError));
 	const FBlueprintHelperReviewVisibleChange* LoadedRoot = Loaded.VisibleChanges.FindByPredicate(
-		[](const FBlueprintHelperReviewVisibleChange& Change)
+		[&RootChangeId](const FBlueprintHelperReviewVisibleChange& Change)
 		{
-			return Change.ChangeId == TEXT("tx_accept_lifecycle_root");
+			return Change.ChangeId == RootChangeId;
 		});
 	const FBlueprintHelperReviewVisibleChange* LoadedChild = Loaded.VisibleChanges.FindByPredicate(
-		[](const FBlueprintHelperReviewVisibleChange& Change)
+		[&ChildChangeId](const FBlueprintHelperReviewVisibleChange& Change)
 		{
-			return Change.ChangeId == TEXT("tx_accept_lifecycle_child");
+			return Change.ChangeId == ChildChangeId;
 		});
 	TestNotNull(TEXT("accepted root exists"), LoadedRoot);
 	TestNotNull(TEXT("child exists after root accept"), LoadedChild);

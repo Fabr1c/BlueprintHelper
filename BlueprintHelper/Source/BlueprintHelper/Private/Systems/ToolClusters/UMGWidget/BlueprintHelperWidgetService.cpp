@@ -441,6 +441,8 @@ FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::AddWidget(
 		return Result;
 	}
 
+	NewWidget->SetFlags(RF_Transactional);
+
 	if (ParentPanel)
 	{
 		UPanelSlot* Slot = ParentPanel->AddChild(NewWidget);
@@ -456,6 +458,13 @@ FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::AddWidget(
 		// 设置为根
 		Tree->RootWidget = NewWidget;
 	}
+
+#if WITH_EDITORONLY_DATA
+	if (!WBP->WidgetVariableNameToGuidMap.Contains(NewWidget->GetFName()))
+	{
+		WBP->OnVariableAdded(NewWidget->GetFName());
+	}
+#endif
 
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(WBP);
 	Mutation.Commit();
@@ -507,6 +516,13 @@ FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::RemoveWidget
 		Mutation.Rollback();
 		return Result;
 	}
+
+#if WITH_EDITORONLY_DATA
+	if (WBP->WidgetVariableNameToGuidMap.Contains(Widget->GetFName()))
+	{
+		WBP->OnVariableRemoved(Widget->GetFName());
+	}
+#endif
 
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(WBP);
 	Mutation.Commit();
