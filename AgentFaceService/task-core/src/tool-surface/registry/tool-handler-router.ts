@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { sanitizeAgentFacingToolResult } from '../../result/tool-result.js';
 import type { BlueprintHelperToolContext } from '../types.js';
 import type { ToolMeta } from './tool-metas.js';
 import { toolSources } from './tool-sources.js';
@@ -13,7 +14,7 @@ export function createToolExecutor(meta: ToolMeta) {
     if (!source) {
       throw new Error(`Tool is registered without a handler: ${meta.name}`);
     }
-    return source.execute(meta.name, input, context);
+    return sanitizeAgentFacingToolResult(await source.execute(meta.name, input, context));
   };
 }
 

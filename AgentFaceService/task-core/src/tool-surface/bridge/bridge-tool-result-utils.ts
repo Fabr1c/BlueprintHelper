@@ -1,9 +1,13 @@
-import { normalizeToolResult, type ToolResultBase } from '../../result/tool-result.js';
+import {
+  normalizeToolResult,
+  sanitizeAgentFacingToolResult,
+  type ToolResultBase,
+} from '../../result/tool-result.js';
 import type { BridgeResponse } from '../../bridge/bridge-client.js';
 
 export function normalizeBridgeToolResult(toolName: string, response: BridgeResponse): ToolResultBase {
   if (isToolResultBase(response.result)) {
-    return response.result;
+    return sanitizeAgentFacingToolResult(response.result);
   }
   return normalizeToolResult(response, toolName);
 }

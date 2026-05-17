@@ -2,7 +2,9 @@
 
 This package contains the Codex-facing BlueprintHelper plugin metadata, skill instructions, subagent definitions, and lifecycle MCP setup scripts.
 
-Read `skills/blueprint-helper/SKILL.md` before using BlueprintHelper. The supported Agent-facing entry for ordinary TaskSpec reads and writes is the BlueprintHelper CLI under the sibling `AgentFaceService/cli` package. The global MCP endpoint is retained only for editor lifecycle commands.
+Read `skills/blueprint-helper/SKILL.md` before using BlueprintHelper. The supported Agent-facing entry for ordinary TaskSpec reads and writes is the BlueprintHelper CLI under the sibling `AgentFaceService/cli` package. The global MCP endpoint is retained only for the explicit allowlist: editor open, editor close, and developer-only exec command.
+
+Deprecated MCP read/write/debug/task tools are not fallback paths. Do not call them, do not add tests for them, and do not run deleted or legacy test files that validate those deprecated tools.
 
 Use normal repository tools for source files, docs, JSON, config, tests, and build scripts. Use BlueprintHelper CLI only for Unreal Editor assets through the running Editor and Bridge.
 
@@ -16,7 +18,7 @@ sourcecode-explorer  -> repository source-code/schema/template context collectio
 task-worker          -> template-first TaskSpec construction, preview, execute, result filtering
 ```
 
-The Main Agent performs preflight and owns global MCP lifecycle tools. Subagents must not call MCP tools.
+The Main Agent performs preflight and owns allowed global MCP lifecycle tools. Subagents must not call MCP tools. The developer exec command is for local BlueprintHelper development/test orchestration only, not for ordinary Agent asset workflows.
 
 For writes, follow the TaskSpec-first closed loop:
 

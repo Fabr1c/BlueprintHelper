@@ -25,7 +25,7 @@ BlueprintHelper 当前更需要来自真实 Unreal Editor 使用场景的反馈�
 
 - 使用场景：你要让 BlueprintHelper 完成什么实际任务。
 - 目标资产：例如 `/Game/Blueprints/BP_Door`，以及具体 graph、function、widget、table 或 property 范围。
-- 执行入口：使用的是 `bh` CLI、CodexPlugin、ClaudePlugin，还是 MCP 生命周期入口。
+- 执行入口：使用的是 `bh` CLI、CodexPlugin、ClaudePlugin，还是 MCP allowlist 入口。
 - 复现步骤：从启动 Unreal Editor、读取上下文、preview 到 execute 的关键命令或操作。
 - 实际结果：错误消息、CLI 输出、artifact 路径、Unreal 日志或截图。
 - 期望结果：你认为正确的 BlueprintHelper 行为。
@@ -51,6 +51,8 @@ npm.cmd --prefix AgentFaceService\cli test
 ```
 
 如果只改文档，可以不跑完整测试，但请至少确认 Markdown 中的路径、命令和版本说明仍然准确。
+
+不要恢复、编写或运行已经废弃的 MCP 普通工具测试。MCP 只允许验证 editor open、editor close、developer-only exec command，以及不涉及废弃工具面的协议/打包边界测试；普通资产读写、TaskSpec、ReadSpec、诊断和结果查询测试应落在 CLI 或 task-core。
 
 涉及 Unreal Editor 资产读写时，建议执行一条只读检查和一条 preview 检查：
 
@@ -87,4 +89,4 @@ BlueprintHelper 的普通编辑路径应保持：
 read context -> author TaskSpec -> preview -> request write session when needed -> execute -> inspect result
 ```
 
-贡献中不要引入让普通 Agent 绕过 preview、授权、TaskSpec 校验或结果检查的路径。低层级 Bridge、legacy MCP 或 expert/debug 能力只应服务内部诊断和兼容场景。
+贡献中不要引入让普通 Agent 绕过 preview、授权、TaskSpec 校验或结果检查的路径。legacy MCP 普通工具面已经废弃：不要把它作为兼容 fallback，不要新增对应测试，也不要运行旧测试。低层级 Bridge 或 expert/debug 能力只应服务内部诊断和明确的开发场景。

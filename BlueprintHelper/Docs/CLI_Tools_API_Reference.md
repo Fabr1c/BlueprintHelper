@@ -2,7 +2,7 @@
 
 Document version: 2026-05-16
 
-This reference is aligned with the current implementation: the CLI is the supported Agent entry for ordinary TaskSpec, ReadSpec, diagnostics, debug-summary, write-session, and result-query work. Editor lifecycle is implemented as a global lifecycle-only MCP companion; the CLI still exposes lifecycle aliases for compatibility and manual fallback.
+This reference is aligned with the current implementation: the CLI is the supported Agent entry for ordinary TaskSpec, ReadSpec, diagnostics, debug-summary, write-session, and result-query work. MCP is restricted to `blueprint_open_editor`, `blueprint_close_editor`, and developer-only `blueprint_developer_exec_console_command`; the CLI still exposes lifecycle aliases for compatibility and manual fallback.
 
 ## Architecture
 
@@ -15,10 +15,11 @@ Ordinary Agents author `BlueprintHelper.TaskSpec.v1` only. They do not submit `T
 ## Entry Rule
 
 - Every supported CLI-facing TaskSpec/read/debug summary capability must be reachable through `bh <tool_name>`.
-- Agent-owned Editor lifecycle should use the global lifecycle-only MCP tools.
+- Agent-owned Editor lifecycle should use the global MCP allowlist tools.
 - CLI lifecycle aliases `bh open_editor` / `bh close_editor` and direct `blueprint_open_editor` / `blueprint_close_editor` are compatibility/manual fallback entries, not ordinary asset workflow tools.
 - CLI write commands must still pass through TaskSpec validation, preview, and UE Task Runtime.
 - Raw Bridge write commands are not part of the public Agent surface.
+- Deprecated MCP ordinary tools are not fallback entries. Do not use them, do not write tests for them, and do not run old MCP tool tests.
 
 Canonical shell form:
 
@@ -55,7 +56,7 @@ blueprint_open_editor
 blueprint_close_editor
 ```
 
-Use the global lifecycle-only MCP server for normal Agent-owned lifecycle. If the CLI compatibility path is explicitly needed, short aliases `bh open_editor` and `bh close_editor` map to these same lifecycle tool names.
+Use the global MCP allowlist for normal Agent-owned lifecycle. If the CLI compatibility path is explicitly needed, short aliases `bh open_editor` and `bh close_editor` map to these same lifecycle tool names. The developer-only `blueprint_developer_exec_console_command` is reserved for local BlueprintHelper development/test orchestration and is not an ordinary Agent asset workflow tool.
 
 Internal/plugin-development command not exposed to ordinary Agents:
 
@@ -200,7 +201,7 @@ Canonical contract details remain in [TaskSpec_TaskPlan_Contract_20260504.md](..
 
 ## Internal Review Action Shape
 
-`blueprinthelper_apply_review_action` is registered by the shared tool registry for plugin development and internal validation. It is not included in ordinary AgentGuide templates and ordinary Agents must not use it as a write recovery path.
+`blueprinthelper_apply_review_action` is registered as an expert-only shared-registry tool for plugin development and internal validation. It is not included in ordinary AgentGuide templates and ordinary Agents must not use it as a write recovery path.
 
 Current root shape:
 
@@ -216,11 +217,11 @@ Current root shape:
 
 ## Legacy / Internal Inventory
 
-Legacy/internal/debug/expert commands may still exist behind internal transport and tests, but they are not part of the supported Agent surface. They are kept only for:
+Legacy/internal/debug/expert commands may still exist behind internal transport, but deprecated MCP ordinary tools are not part of the supported Agent surface and must not be restored through tests. Internal commands are kept only for:
 
 - internal Task Runtime lowering targets
 - expert/debug recovery
-- regression fixtures
+- regression fixtures outside the deprecated MCP ordinary tool surface
 - historical compatibility maintenance
 
 Ordinary Agents should not plan around those commands.

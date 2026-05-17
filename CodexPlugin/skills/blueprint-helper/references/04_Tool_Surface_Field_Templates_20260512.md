@@ -54,7 +54,7 @@ Use `tools/list` as final authority. Normal Agent-facing tools:
 | Debug bundle manifest | `blueprinthelper_export_debug_bundle` |
 | Review record summary query | `blueprinthelper_query_review_records` |
 
-Lifecycle companion tools are available through the global MCP lifecycle server for Agent-owned Editor open/close. CLI lifecycle helpers may exist as compatibility/manual fallbacks, but ordinary Agents should not plan asset workflows around them.
+Lifecycle companion tools are available through the global MCP allowlist for Agent-owned Editor open/close. Developer-only exec command is for local BlueprintHelper test orchestration. CLI lifecycle helpers may exist as compatibility/manual fallbacks, but ordinary Agents should not plan asset workflows around them. Deprecated MCP ordinary tools must not be used, tested, or restored.
 
 `blueprinthelper_apply_review_action` is plugin-development/internal and is intentionally omitted from ordinary Agent-facing templates.
 

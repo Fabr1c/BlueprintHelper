@@ -3,6 +3,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import test from 'node:test';
+import { successRead } from '../../result/tool-result.js';
 import { getBlueprintHelperToolRegistry } from '../../tool-surface/tool-registry.js';
 import type { TaskSpecRunner } from '../../task/service/task-spec-runner.js';
 
@@ -144,6 +145,125 @@ test('read agent guide resolves from project root plugin copy layout', async () 
   }
 });
 
+test('agent-facing sanitizer removes UE GUID and review target selector fields recursively', () => {
+  const result = successRead('fixture_read', { target_type: 'asset', asset_path: '/Game/BP_Door' }, {
+    schema: 'Fixture.v1',
+    task_run_id: 'task_opaque_id_is_allowed',
+    review_record_id: 'review_opaque_id_is_allowed',
+    payload: {
+      node_guid: '11111111111111111111111111111111',
+      target_guid: '22222222222222222222222222222222',
+      node_ref: 'nodes[0]',
+      nested: {
+        guid: '33333333333333333333333333333333',
+        guidance: 'ordinary guidance text is not a GUID field',
+        target_keys: ['graph:EventGraph:node:44444444444444444444444444444444'],
+        target_key: 'graph:EventGraph:node:55555555555555555555555555555555',
+        atomic_targets: [{ node_guid: '66666666666666666666666666666666' }],
+        visual_group_key: 'EventGraph:node:77777777777777777777777777777777',
+        safe_label: 'Door setup',
+      },
+    },
+  });
+
+  assertNoUnsafeAgentFacingKeys(result);
+  assert.equal(result.data?.['task_run_id'], 'task_opaque_id_is_allowed');
+  assert.equal(result.data?.['review_record_id'], 'review_opaque_id_is_allowed');
+
+  const payload = result.data?.['payload'] as Record<string, unknown>;
+  assert.equal(payload['node_ref'], 'nodes[0]');
+  assert.equal((payload['nested'] as Record<string, unknown>)['safe_label'], 'Door setup');
+  assert.equal((payload['nested'] as Record<string, unknown>)['guidance'], 'ordinary guidance text is not a GUID field');
+});
+
+test('read_context registry output strips GUID fields from Bridge logic_json payload', async () => {
+  const tool = getBlueprintHelperToolRegistry().find((candidate) => candidate.name === 'blueprinthelper_read_context');
+  assert.ok(tool);
+
+  const result = await tool.execute({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'blueprint_logic',
+    target: {
+      asset_path: '/Game/BP_Door',
+      target_type: 'graph',
+      target_name: 'EventGraph',
+    },
+    view: {
+      format: 'logic_json',
+    },
+  }, {
+    cwd: process.cwd(),
+    bridge: {
+      async sendCommand(command: string) {
+        assert.equal(command, 'read_blueprint_logic_json');
+        return {
+          success: true,
+          request_id: 'read_context_redaction',
+          result: {
+            schema: 'BlueprintHelper.LogicGraph',
+            nodes: [{
+              id: 'Node_0',
+              node_guid: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+              ref: 'BeginPlay',
+              node_ref: 'nodes[0]',
+            }],
+            links: [{
+              link_ref: 'links[0]',
+              target_key: 'graph:EventGraph:node:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+            }],
+          },
+        };
+      },
+    } as never,
+    taskRunner: {} as TaskSpecRunner,
+  });
+
+  assert.equal(result.ok, true);
+  assertNoUnsafeAgentFacingKeys(result);
+  assert.match(JSON.stringify(result), /nodes\[0\]/);
+});
+
+test('apply_review_action is expert-only and sanitized when invoked through the registry', async () => {
+  const tool = getBlueprintHelperToolRegistry().find((candidate) => candidate.name === 'blueprinthelper_apply_review_action');
+  assert.ok(tool);
+  assert.equal(tool.audience, 'expert');
+  assert.equal(tool.requiresExpert, true);
+
+  const result = await tool.execute({
+    review_record_id: 'review_opaque_id_is_allowed',
+    action: 'reject',
+    target_keys: ['graph:EventGraph:node:cccccccccccccccccccccccccccccccc'],
+  }, {
+    cwd: process.cwd(),
+    bridge: {
+      async sendCommand(command: string) {
+        assert.equal(command, 'apply_review_action');
+        return {
+          success: true,
+          request_id: 'review_action_redaction',
+          result: {
+            ok: true,
+            schema: 'BlueprintHelper.ToolResult.v1',
+            operation: 'apply_review_action',
+            status: 'applied',
+            modified: true,
+            data: {
+              review_record_id: 'review_opaque_id_is_allowed',
+              target_keys: ['graph:EventGraph:node:dddddddddddddddddddddddddddddddd'],
+              target_guid: 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+            },
+          },
+        };
+      },
+    } as never,
+    taskRunner: {} as TaskSpecRunner,
+  });
+
+  assert.equal(result.ok, true);
+  assertNoUnsafeAgentFacingKeys(result);
+  assert.equal(result.data?.['review_record_id'], 'review_opaque_id_is_allowed');
+});
+
 test('preview task registry handler calls TaskSpecRunner.previewTask', async () => {
   const tool = getBlueprintHelperToolRegistry().find((candidate) => candidate.name === 'blueprinthelper_preview_task');
   assert.ok(tool);
@@ -211,4 +331,53 @@ test('preview task registry handler calls TaskSpecRunner.previewTask', async () 
   assert.equal(called, true);
   assert.equal(result.operation, 'preview_task');
 });
+
+function assertNoUnsafeAgentFacingKeys(value: unknown): void {
+  const violations = collectUnsafeAgentFacingKeys(value);
+  assert.deepEqual(violations, []);
+}
+
+function collectUnsafeAgentFacingKeys(value: unknown, currentPath = '$'): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap((item, index) => collectUnsafeAgentFacingKeys(item, `${currentPath}[${index}]`));
+  }
+  if (!isRecord(value)) {
+    return [];
+  }
+
+  return Object.entries(value).flatMap(([key, entryValue]) => {
+    const normalized = key.toLowerCase();
+    const nextPath = `${currentPath}.${key}`;
+    const selfViolation = isUnsafeAgentFacingKey(normalized)
+      ? [nextPath]
+      : [];
+    return [
+      ...selfViolation,
+      ...collectUnsafeAgentFacingKeys(entryValue, nextPath),
+    ];
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isUnsafeAgentFacingKey(normalized: string): boolean {
+  const tokenized = normalized.replace(/[^a-z0-9]+/g, '_');
+  const compact = normalized.replace(/[^a-z0-9]+/g, '');
+  return tokenized === 'guid'
+    || tokenized === 'guids'
+    || tokenized.startsWith('guid_')
+    || tokenized.startsWith('guids_')
+    || tokenized.endsWith('_guid')
+    || tokenized.endsWith('_guids')
+    || tokenized.includes('_guid_')
+    || tokenized.includes('_guids_')
+    || compact.endsWith('guid')
+    || compact.endsWith('guids')
+    || normalized === 'target_key'
+    || normalized === 'target_keys'
+    || normalized === 'atomic_targets'
+    || normalized === 'visual_group_key';
+}
 

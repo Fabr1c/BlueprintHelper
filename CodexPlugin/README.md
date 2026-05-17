@@ -20,14 +20,15 @@ See `INSTALL.md` at the repository root for Codex Desktop, CLI, lifecycle MCP, a
 
 ## Runtime Model
 
-The active Agent-facing transport for ordinary TaskSpec reads and writes is the BlueprintHelper CLI. The global MCP endpoint is lifecycle-only and should expose only:
+The active Agent-facing transport for ordinary TaskSpec reads and writes is the BlueprintHelper CLI. The global MCP endpoint is an allowlist and should expose only:
 
 ```text
 mcp__blueprint_helper__blueprint_open_editor
 mcp__blueprint_helper__blueprint_close_editor
+mcp__blueprint_helper__blueprint_developer_exec_console_command
 ```
 
-Only the Main Agent may call MCP lifecycle tools. Subagents must not call MCP tools.
+Only the Main Agent may call MCP lifecycle tools. `mcp__blueprint_helper__blueprint_developer_exec_console_command` is developer-only for local BlueprintHelper test orchestration and is not an ordinary Agent asset workflow tool. Subagents must not call MCP tools.
 
 ## Mandatory Subagent Workflow
 
@@ -80,7 +81,7 @@ bh blueprint_get_runtime_profile --json "{}" --select status,summary
 node <BLUEPRINTHELPER_ROOT>\AgentFaceService\cli\build\cli\index.js blueprint_get_runtime_profile --json "{}" --select status,summary
 ```
 
-## Global lifecycle-only MCP
+## Global MCP Allowlist
 
 Build the MCP package when needed:
 
@@ -90,12 +91,12 @@ npm install
 npm run build
 ```
 
-Install the lifecycle-only MCP globally:
+Install the MCP allowlist globally:
 
 ```powershell
 node <BLUEPRINTHELPER_ROOT>\CodexPlugin\scripts\install-global-mcp.cjs
 ```
 
-Plugin-local MCP is not the normal Codex entry. Do not register or call ordinary BlueprintHelper read/write tools through MCP. Use MCP only for editor lifecycle commands; use CLI for ordinary reads, diagnostics, TaskSpec preview, write-session requests, execute, and result lookup.
+Plugin-local MCP is not the normal Codex entry. Do not register or call ordinary BlueprintHelper read/write tools through MCP. Use MCP only for editor open/close plus developer-only exec command; use CLI for ordinary reads, diagnostics, TaskSpec preview, write-session requests, execute, and result lookup. Do not add or run tests for deprecated MCP ordinary tools.
 
 For editor-asset writes, keep the workflow TaskSpec-first. Prefer `BlueprintHelper/Resources/AgentGuide/Templates/` for copy-and-edit JSON inputs.

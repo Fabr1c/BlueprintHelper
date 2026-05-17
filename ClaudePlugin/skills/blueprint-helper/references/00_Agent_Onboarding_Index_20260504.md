@@ -1,12 +1,12 @@
-> 2026-05-16 修订：BlueprintHelper CLI 是普通 TaskSpec/ReadSpec/诊断/结果查询入口；Editor 启动和关闭由全局 BlueprintHelper MCP 生命周期工具负责。CLI lifecycle helper 只作为兼容/手动 fallback，不作为普通资产工作流入口。
+> 2026-05-17 修订：BlueprintHelper CLI 是普通 TaskSpec/ReadSpec/诊断/结果查询入口；MCP 只保留 editor open、editor close 和 developer-only exec command 允许项。废弃 MCP 普通工具不作为 fallback，不新增测试，也不运行旧测试。
 
 # BlueprintHelper Agent Onboarding Index
 
 If the current Agent environment cannot dispatch a SideAgent but the Main Agent can run the required BlueprintHelper CLI command, the Main Agent may execute one command locally under the SideAgent single-command contract and mark the result as `main_agent_direct_fallback`. Report `tool_unavailable` only when the required BlueprintHelper CLI command is not available.
 
-CLI is the ordinary TaskSpec/read/debug-summary mainline. Global MCP owns Editor lifecycle when an Agent must open or close Unreal Editor. Do not use plugin-local MCP or one-shot shell lifecycle calls as lifecycle validation.
+CLI is the ordinary TaskSpec/read/debug-summary mainline. Global MCP owns Editor lifecycle when an Agent must open or close Unreal Editor, and exposes a developer-only exec command for local test orchestration. Do not use plugin-local MCP, deprecated MCP ordinary tools, or one-shot shell MCP clients as lifecycle or asset-workflow validation.
 
-普通 Agent 只走 CLI TaskSpec-first 主线。兼容、测试和专家入口可能仍存在于底层传输层，但这些冻结入口不在本指南中作为可选工具暴露。
+普通 Agent 只走 CLI TaskSpec-first 主线。废弃 MCP 普通工具即使仍有历史代码，也不在本指南中作为可选工具暴露，不作为 fallback，不允许新增或运行对应测试。
 
 默认流程:
 
@@ -55,7 +55,7 @@ CLI output is optimized for Agent use. Use `--omit operation,status` when the de
 
 Template-first authoring is available at `Resources/AgentGuide/Templates/README.md`. Prefer copying a matching JSON template, editing placeholders, and calling the CLI with `--file` instead of authoring large JSON directly in shell command strings.
 
-`blueprint_open_editor` / `blueprint_close_editor` 仅用于用户明确需要启动或关闭目标 Unreal Editor 的 lifecycle preflight；Agent 工作流优先调用全局 MCP 生命周期工具。
+`blueprint_open_editor` / `blueprint_close_editor` 仅用于用户明确需要启动或关闭目标 Unreal Editor 的 lifecycle preflight；Agent 工作流优先调用全局 MCP 生命周期工具。`blueprint_developer_exec_console_command` 仅用于 BlueprintHelper 本地开发/测试编排，不属于普通资产工作流。
 
 阅读顺序:
 
@@ -74,3 +74,4 @@ Template-first authoring is available at `Resources/AgentGuide/Templates/README.
 - Agent 写入 UE 资产时只提交 `BlueprintHelper.TaskSpec.v1`。
 - TaskPlan、底层 capability、Bridge command 和冻结工具名不作为普通 Agent 选择项。
 - preview blocked 时停止报告或修正 TaskSpec，不回退到冻结入口。
+- 废弃 MCP 普通工具不允许使用、补测或运行旧测试。
