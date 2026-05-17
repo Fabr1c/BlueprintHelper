@@ -1,4 +1,4 @@
-# 09 - SideAgent Tool Execution
+﻿# 09 - SideAgent Tool Execution
 
 本文件只给 BlueprintHelper SideAgent 使用。SideAgent 的身份是工具参数构造、工具调用和结果翻译执行者，不是面向用户对话的主 Agent。
 
@@ -28,7 +28,7 @@ SideAgent 必须从主 Agent 接收一个精简任务包，而不是完整对话
 
 ## 执行规则
 
-1. 读取本文件和必要字段模板：`04_Tool_Surface_Field_Templates_20260512.md`。构造复杂 CLI JSON 时，优先从 `BlueprintHelper/Resources/AgentGuide/Templates/` 复制模板到工作文件后再修改。
+1. 读取本文件和必要字段模板：`04_Tool_Surface_Field_Templates_20260512.md`。构造复杂 CLI JSON 时，优先从 `AgentFaceService/agent-guide/Templates/` 复制模板到工作文件后再修改。
 2. 按需要读取任务 workflow，例如 `04_TaskSpec_Edit_Blueprint_Workflow.md`。
 2.1. 如果主 Agent 指定的 BlueprintHelper CLI 命令在当前执行环境不可用，返回 `tool_unavailable`，并写明缺失命令名。不要把命令不可用解释为 write session 或 UE 写权限问题。
 2.2. 不要用 shell、`.vs\BlueprintCache`、Saved 导出文件或本地 JSON 解析替代不可用的 BlueprintHelper CLI 命令。命令不可用时必须回交主 Agent，由主 Agent 修复 CLI 安装、构建或命令注册问题。

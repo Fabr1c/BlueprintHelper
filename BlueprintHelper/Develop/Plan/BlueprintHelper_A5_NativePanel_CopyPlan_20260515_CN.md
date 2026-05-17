@@ -5,17 +5,17 @@
 - 本轮先做：MyBlueprint、Components 的复制改名方案。
 - 本轮暂缓：WidgetTree、Details。
 - GraphPanel：只做底层绘制方案验证，不进入完整复制实现。
-- 原则：UE 原生源码先放在 `Develop/Reference/A5_UE56_NativePanelSourceSnapshot/`，完成改名、裁剪和扩展点设计后，再把可编译切片迁移到 `Source`。
+- 归档参考：UE 原生源码快照已移至 `Develop/v0.4.3/ArchivedReference/A5_UE56_NativePanelSourceSnapshot/`。该目录只作为 UE 5.6 原生面板源码参考；完成改名、裁剪和扩展点设计后，可编译切片才迁移到 `Source`。
 - C++ 类文件规则：每个 C++ 类单独一个 `.h/.cpp`；结构体、数据类、枚举除外。
 
 ## 2. MyBlueprint 复制改名方案
 
 ### 2.1 源文件
 
-- `Develop/Reference/A5_UE56_NativePanelSourceSnapshot/Kismet/SMyBlueprint.h`
-- `Develop/Reference/A5_UE56_NativePanelSourceSnapshot/Kismet/SMyBlueprint.cpp`
-- `Develop/Reference/A5_UE56_NativePanelSourceSnapshot/GraphEditor/SGraphActionMenu.h`
-- `Develop/Reference/A5_UE56_NativePanelSourceSnapshot/GraphEditor/SGraphActionMenu.cpp`
+- `Develop/v0.4.3/ArchivedReference/A5_UE56_NativePanelSourceSnapshot/Kismet/SMyBlueprint.h`
+- `Develop/v0.4.3/ArchivedReference/A5_UE56_NativePanelSourceSnapshot/Kismet/SMyBlueprint.cpp`
+- `Develop/v0.4.3/ArchivedReference/A5_UE56_NativePanelSourceSnapshot/GraphEditor/SGraphActionMenu.h`
+- `Develop/v0.4.3/ArchivedReference/A5_UE56_NativePanelSourceSnapshot/GraphEditor/SGraphActionMenu.cpp`
 
 ### 2.2 目标类和文件
 
@@ -71,10 +71,10 @@
 
 ### 3.1 源文件
 
-- `Develop/Reference/A5_UE56_NativePanelSourceSnapshot/SubobjectEditor/SSubobjectEditor.h`
-- `Develop/Reference/A5_UE56_NativePanelSourceSnapshot/SubobjectEditor/SSubobjectEditor.cpp`
-- `Develop/Reference/A5_UE56_NativePanelSourceSnapshot/SubobjectEditor/SSubobjectBlueprintEditor.h`
-- `Develop/Reference/A5_UE56_NativePanelSourceSnapshot/SubobjectEditor/SSubobjectBlueprintEditor.cpp`
+- `Develop/v0.4.3/ArchivedReference/A5_UE56_NativePanelSourceSnapshot/SubobjectEditor/SSubobjectEditor.h`
+- `Develop/v0.4.3/ArchivedReference/A5_UE56_NativePanelSourceSnapshot/SubobjectEditor/SSubobjectEditor.cpp`
+- `Develop/v0.4.3/ArchivedReference/A5_UE56_NativePanelSourceSnapshot/SubobjectEditor/SSubobjectBlueprintEditor.h`
+- `Develop/v0.4.3/ArchivedReference/A5_UE56_NativePanelSourceSnapshot/SubobjectEditor/SSubobjectBlueprintEditor.cpp`
 
 ### 3.2 目标类和文件
 

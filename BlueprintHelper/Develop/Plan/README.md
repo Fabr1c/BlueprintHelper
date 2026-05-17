@@ -2,7 +2,7 @@
 
 Date: 2026-05-17
 
-This folder contains active or intentionally retained planning documents. Implemented v0.3.8 plans and unused legacy docs are archived in `../v0.3.8/`.
+This folder contains active or intentionally retained planning documents. Historical setup docs, old smoke bug reports, v0.3.x/v0.4.1 plan records, and superseded AgentGuide migration notes are archived under `../v0.4.1/` and `../v0.4.3/`.
 
 ## Current Status And Verification
 
@@ -11,40 +11,40 @@ This folder contains active or intentionally retained planning documents. Implem
 - `BlueprintHelper_AgentFace_Tool_Return_Field_Audit_20260517_CN.md`
 - `ReviewPanel_Automation_Validation_20260517_CN.md`
 - `BlueprintHelper_Smoke_Rerun_UMG_FutureState_Debug_20260517_CN.md`
-- `BlueprintHelper_Current_TODO_20260506.md`
-- `BlueprintHelper_Unified_SmokeRun_Verification_20260509.md`
-- `BlueprintHelper_NewProject_Full_SmokeRun_20260510.md`
-- `SmokeBug_Index_20260510_CN.md`
+- `BlueprintHelper_FullFeature_ReviewEvent_Smoke_20260516_CN.md`
 
 ## Active Implementation Plans
 
 - `BlueprintHelper_TaskSpec_ReadContext_Workbench_UI_Reset_Plan_20260516_CN.md`
-- `cluster/CallFunction_TaskSpec_ActionResolver_PLAN_20260512_CN.md`
-- `ReviewPanel_CPP_CodingStyle_Split_Checklist_20260510_CN.md`
-- `ReviewPanel_Native_Row_Geometry_PLAN_20260510_CN.md`
-- `ReviewPanel_V2_Implementation_PLAN.md`
-- `BlueprintHelper_FunctionEventSignature_UE_CPP_Implementation_Plan_20260503.md`
-- `BlueprintHelper_Review_Debug_Parallel_Execution_Plan_20260508.md`
-- `BlueprintHelper_v0.3.6_Current_Implementation_Gap_Matrix_20260505.md`
+- `BlueprintHelper_FunctionChainContext_ReadTool_PLAN_20260517_CN.md`
+- `BlueprintHelper_CallFunction_UEActionResolver_Design_20260516_CN.md`
+- `BlueprintHelper_CallFunction_LargeScope_TestExecution_20260516_CN.md`
+- `BlueprintHelper_BaselineSemanticHash_Migration_20260517_CN.md`
+- `BlueprintHelper_ReviewBaselineEvidence_Design_20260515_CN.md`
+- `BlueprintHelper_ReviewRejectAsyncOptimizationPlan_20260515_CN.md`
+- `ReviewPanel_UI_Validation_Runbook_20260515_2018_CN.md`
 
-## Active Design And Discussion
+## Active Design And Architecture
 
 - `BlueprintHelper_ReferenceContext_FiB_Design_20260517_CN.md`
 - `BlueprintHelper_MCP_Developer_Exec_Command_20260517_CN.md`
 - `BlueprintHelper_CLI_Agent_WaitHint_Architecture_20260516_CN.md`
 - `BlueprintHelper_GraphLayout_System_Design_20260516_CN.md`
-- `BlueprintHelper_Hybrid_TaskSpec_TaskPlan_Architecture_20260504.md`
-- `BlueprintHelper_Review_Transaction_Model_Discussion_Pack_20260507.md`
-- `BlueprintHelper_ReviewPanel_UserSide_Constraints_20260506.md`
-- `BlueprintHelper_ReviewPanel_UserSide_Design_20260506.md`
-- `BlueprintHelper_ReviewPanel_UserSide_Implementation_Plan_20260506.md`
-- `BlueprintHelper_ReviewPanel_V2_Architecture_Design_20260509_CN.md`
+- `BlueprintHelper_FourLayerArchitecture_CohesionCoupling_Report_20260516_CN.md`
+- `BlueprintHelper_P0_TaskRuntime_ArchitectureOptimization_20260516_CN.md`
+- `BlueprintHelper_P1_P2_P3_ArchitectureOptimization_20260516_CN.md`
+- `BlueprintHelper_ReviewSystem_VisualPresenterData_Refactor_20260516_CN.md`
+- `BlueprintHelper_UI_VisualPresenterData_Architecture_20260516_CN.md`
+- `BlueprintHelper_A5_NativePanel_CopyPlan_20260515_CN.md`
 
-## Future Or Backlog
+## Living Tips
 
-- `BlueprintHelper_Review_BaselineSnapshot_FuturePlan_20260509.md`
-- `BlueprintHelper_ToolCluster_Onboarding_Template_20260508.md`
+- `BlueprintHelper_CLI_Tips_20260514_CN.md`
 
 ## Archive
 
-- `../v0.3.8/README.md`
+- `../v0.4.3/ArchivedReference/RetiredAgentDocs_20260517/`
+- `../v0.4.3/ArchivedReference/RetiredSetupDocs_20260517/`
+- `../v0.4.1/ArchivedReference/RetiredPlanDocs_20260517/`
+- `../v0.4.1/ArchivedReference/RetiredSetupDocs_20260517/`
+- `../v0.3.8/`

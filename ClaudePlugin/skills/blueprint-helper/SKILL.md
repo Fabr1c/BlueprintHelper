@@ -1,4 +1,4 @@
----
+﻿---
 name: blueprint-helper
 description: Use when a user request requires accessing Unreal Engine Blueprint assets through BlueprintHelper, including reading, inspecting, creating, or modifying Blueprint-related UE editor assets.
 ---
@@ -31,7 +31,7 @@ Deprecated MCP ordinary read/write/debug/task tools are not fallback paths. Do n
 
 When a CLI command waits on UE Bridge work, it may emit `waiting for UE Bridge response` lines to `stderr`. Treat those lines as keep-alive progress and continue waiting unless the CLI exits; parse only `stdout` as the final JSON result.
 
-For complex JSON input, copy a template from `BlueprintHelper/Resources/AgentGuide/Templates/`, edit the copy, then call the CLI with `--file`. Direct tool-name TaskSpec calls use wrapper templates with root field `task_spec`; grouped `task preview` / `task execute` calls use bare `BlueprintHelper.TaskSpec.v1` files.
+For complex JSON input, copy a template from `AgentFaceService/agent-guide/Templates/`, edit the copy, then call the CLI with `--file`. Direct tool-name TaskSpec calls use wrapper templates with root field `task_spec`; grouped `task preview` / `task execute` calls use bare `BlueprintHelper.TaskSpec.v1` files.
 
 ## Main Agent Flow
 
@@ -97,7 +97,7 @@ Example: if the user says "在蓝图实现一个可以开关的物理门" and do
 Tell the SideAgent its responsibility in the task package:
 
 - construct valid BlueprintHelper tool parameters from the user's goal and target;
-- prefer copy-and-edit templates from `BlueprintHelper/Resources/AgentGuide/Templates/` for CLI JSON input;
+- prefer copy-and-edit templates from `AgentFaceService/agent-guide/Templates/` for CLI JSON input;
 - call only the assigned BlueprintHelper tool or the single atomic tool step explicitly requested by the Main Agent;
 - do not expand the task into a broader investigation, repeat adjacent reads, or decide whether prior SideAgent context is sufficient;
 - treat missing commands as `tool_unavailable`, a CLI installation or registration problem; do not request write session to fix read-command availability;
@@ -133,4 +133,4 @@ Stop before write delegation when:
 - `references/05_Edit_Blueprint_Workflow.md` - legacy Blueprint edit workflow
 - `references/06_UMG_Data_Workflows.md` - UMG and data workflows
 - `references/07_Safety_Validation_And_Recovery.md` - safety validation and recovery
-- `BlueprintHelper/Resources/AgentGuide/Templates/README.md` - copy-and-edit CLI JSON templates
+- `AgentFaceService/agent-guide/Templates/README.md` - copy-and-edit CLI JSON templates

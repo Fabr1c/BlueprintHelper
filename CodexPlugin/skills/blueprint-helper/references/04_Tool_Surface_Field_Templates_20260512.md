@@ -1,8 +1,8 @@
-# 04 - Tool Surface Field Templates 20260512
+﻿# 04 - Tool Surface Field Templates 20260512
 
 This page documents only the normal Agent-facing tool surface and TaskSpec fields. Compatibility-only transports or wrappers may still exist, but their direct argument shapes are intentionally not documented here.
 
-Concrete copy-and-edit JSON files live in `Resources/AgentGuide/Templates/`.
+Concrete copy-and-edit JSON files live in `AgentFaceService/agent-guide/Templates/`.
 Use those templates for routine CLI work; this reference explains the field
 contract behind them.
 
@@ -119,18 +119,26 @@ If `blueprinthelper_read_context` is not visible or callable, stop with `tool_un
 ```json
 {
   "asset_path": "required. UE asset path to analyze.",
-  "target_type": "optional, default asset. asset, blueprint, graph, function, event, custom_event, member_variable, block, widget, data_table_row, or interface.",
+  "target_type": "optional, default asset. asset, blueprint, graph, function, event, custom_event, member_variable, local_variable, event_dispatcher, block, widget, data_table_row, or interface.",
   "target_name": "optional. Named target.",
   "graph_name": "optional. Graph name for graph-scoped checks.",
+  "declaring_class_path": "optional. Native or generated class path used to disambiguate inherited members.",
   "block_id": "optional. BlueprintHelper-owned block id.",
   "widget_name": "optional. Widget name.",
   "row_name": "optional. DataTable row name.",
   "interface_path": "optional. Interface asset path.",
-  "scope": "optional, default safety_context. safety_context, dependencies, referencers, external_dependents, or all.",
-  "max_results": "optional, default 50, max 500.",
-  "include_samples": "optional, default true."
+  "search_scope": "optional, default project. asset or project.",
+  "resolution_policy": "optional, default ue_then_name. ue_then_name, ue_only, or name_only.",
+  "detail": "optional, default samples. summary, samples, or full.",
+  "max_results": "optional, default 50, max 500."
 }
 ```
+
+For member-level targets (`function`, `event`, `custom_event`,
+`member_variable`, `local_variable`, or `event_dispatcher`), `target_name` is
+required. For `local_variable`, `graph_name` is also required. Do not send
+`target_guid`, `scope`, or `include_samples`; those fields are not part of the
+current Agent-facing contract.
 
 ## 5.5 Function Chain Context Template
 
@@ -291,7 +299,7 @@ Agent-facing `create_asset` fields under `behavior.asset`:
       "kind": "required. create_widget, update_widget_property, or delete_widget.",
       "widget_name": "required by named widget operations.",
       "widget_class": "optional. Widget class for create_widget.",
-      "parent_widget_name": "optional. Parent widget name.",
+      "parent_widget_name": "optional. Parent widget name. Omit or pass an empty string when creating the root widget; widget_class controls the root type and the UE layer still validates root/container compatibility.",
       "property_name": "optional. Property name.",
       "property_path": "optional. Property path.",
       "value": "optional. New property value."

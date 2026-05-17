@@ -1,0 +1,66 @@
+﻿[
+    {
+        "source":  "E:\\UE_5.6\\Engine\\Source\\Editor\\Kismet\\Public\\SMyBlueprint.h",
+        "snapshot":  "D:\\UEProjects\\Template\\Plugins\\BlueprintHelper\\BlueprintHelper\\Develop\\v0.4.3\\ArchivedReference\\A5_UE56_NativePanelSourceSnapshot\\Kismet\\SMyBlueprint.h"
+    },
+    {
+        "source":  "E:\\UE_5.6\\Engine\\Source\\Editor\\Kismet\\Private\\SMyBlueprint.cpp",
+        "snapshot":  "D:\\UEProjects\\Template\\Plugins\\BlueprintHelper\\BlueprintHelper\\Develop\\v0.4.3\\ArchivedReference\\A5_UE56_NativePanelSourceSnapshot\\Kismet\\SMyBlueprint.cpp"
+    },
+    {
+        "source":  "E:\\UE_5.6\\Engine\\Source\\Editor\\GraphEditor\\Public\\SGraphActionMenu.h",
+        "snapshot":  "D:\\UEProjects\\Template\\Plugins\\BlueprintHelper\\BlueprintHelper\\Develop\\v0.4.3\\ArchivedReference\\A5_UE56_NativePanelSourceSnapshot\\GraphEditor\\SGraphActionMenu.h"
+    },
+    {
+        "source":  "E:\\UE_5.6\\Engine\\Source\\Editor\\GraphEditor\\Private\\SGraphActionMenu.cpp",
+        "snapshot":  "D:\\UEProjects\\Template\\Plugins\\BlueprintHelper\\BlueprintHelper\\Develop\\v0.4.3\\ArchivedReference\\A5_UE56_NativePanelSourceSnapshot\\GraphEditor\\SGraphActionMenu.cpp"
+    },
+    {
+        "source":  "E:\\UE_5.6\\Engine\\Source\\Editor\\SubobjectEditor\\Public\\SSubobjectEditor.h",
+        "snapshot":  "D:\\UEProjects\\Template\\Plugins\\BlueprintHelper\\BlueprintHelper\\Develop\\v0.4.3\\ArchivedReference\\A5_UE56_NativePanelSourceSnapshot\\SubobjectEditor\\SSubobjectEditor.h"
+    },
+    {
+        "source":  "E:\\UE_5.6\\Engine\\Source\\Editor\\SubobjectEditor\\Private\\SSubobjectEditor.cpp",
+        "snapshot":  "D:\\UEProjects\\Template\\Plugins\\BlueprintHelper\\BlueprintHelper\\Develop\\v0.4.3\\ArchivedReference\\A5_UE56_NativePanelSourceSnapshot\\SubobjectEditor\\SSubobjectEditor.cpp"
+    },
+    {
+        "source":  "E:\\UE_5.6\\Engine\\Source\\Editor\\SubobjectEditor\\Public\\SSubobjectBlueprintEditor.h",
+        "snapshot":  "D:\\UEProjects\\Template\\Plugins\\BlueprintHelper\\BlueprintHelper\\Develop\\v0.4.3\\ArchivedReference\\A5_UE56_NativePanelSourceSnapshot\\SubobjectEditor\\SSubobjectBlueprintEditor.h"
+    },
+    {
+        "source":  "E:\\UE_5.6\\Engine\\Source\\Editor\\SubobjectEditor\\Private\\SSubobjectBlueprintEditor.cpp",
+        "snapshot":  "D:\\UEProjects\\Template\\Plugins\\BlueprintHelper\\BlueprintHelper\\Develop\\v0.4.3\\ArchivedReference\\A5_UE56_NativePanelSourceSnapshot\\SubobjectEditor\\SSubobjectBlueprintEditor.cpp"
+    },
+    {
+        "source":  "E:\\UE_5.6\\Engine\\Source\\Editor\\UMGEditor\\Private\\Hierarchy\\SHierarchyView.h",
+        "snapshot":  "D:\\UEProjects\\Template\\Plugins\\BlueprintHelper\\BlueprintHelper\\Develop\\v0.4.3\\ArchivedReference\\A5_UE56_NativePanelSourceSnapshot\\Private\\SHierarchyView.h"
+    },
+    {
+        "source":  "E:\\UE_5.6\\Engine\\Source\\Editor\\UMGEditor\\Private\\Hierarchy\\SHierarchyView.cpp",
+        "snapshot":  "D:\\UEProjects\\Template\\Plugins\\BlueprintHelper\\BlueprintHelper\\Develop\\v0.4.3\\ArchivedReference\\A5_UE56_NativePanelSourceSnapshot\\Private\\SHierarchyView.cpp"
+    },
+    {
+        "source":  "E:\\UE_5.6\\Engine\\Source\\Editor\\UMGEditor\\Private\\Hierarchy\\SHierarchyViewItem.h",
+        "snapshot":  "D:\\UEProjects\\Template\\Plugins\\BlueprintHelper\\BlueprintHelper\\Develop\\v0.4.3\\ArchivedReference\\A5_UE56_NativePanelSourceSnapshot\\Private\\SHierarchyViewItem.h"
+    },
+    {
+        "source":  "E:\\UE_5.6\\Engine\\Source\\Editor\\UMGEditor\\Private\\Hierarchy\\SHierarchyViewItem.cpp",
+        "snapshot":  "D:\\UEProjects\\Template\\Plugins\\BlueprintHelper\\BlueprintHelper\\Develop\\v0.4.3\\ArchivedReference\\A5_UE56_NativePanelSourceSnapshot\\Private\\SHierarchyViewItem.cpp"
+    },
+    {
+        "source":  "E:\\UE_5.6\\Engine\\Source\\Editor\\UMGEditor\\Private\\Hierarchy\\SReadOnlyHierarchyView.cpp",
+        "snapshot":  "D:\\UEProjects\\Template\\Plugins\\BlueprintHelper\\BlueprintHelper\\Develop\\v0.4.3\\ArchivedReference\\A5_UE56_NativePanelSourceSnapshot\\Private\\SReadOnlyHierarchyView.cpp"
+    },
+    {
+        "source":  "E:\\UE_5.6\\Engine\\Source\\Editor\\GraphEditor\\Public\\SGraphPanel.h",
+        "snapshot":  "D:\\UEProjects\\Template\\Plugins\\BlueprintHelper\\BlueprintHelper\\Develop\\v0.4.3\\ArchivedReference\\A5_UE56_NativePanelSourceSnapshot\\GraphEditor\\SGraphPanel.h"
+    },
+    {
+        "source":  "E:\\UE_5.6\\Engine\\Source\\Editor\\GraphEditor\\Private\\SGraphPanel.cpp",
+        "snapshot":  "D:\\UEProjects\\Template\\Plugins\\BlueprintHelper\\BlueprintHelper\\Develop\\v0.4.3\\ArchivedReference\\A5_UE56_NativePanelSourceSnapshot\\GraphEditor\\SGraphPanel.cpp"
+    },
+    {
+        "source":  "E:\\UE_5.6\\Engine\\Source\\Editor\\UMGEditor\\Public\\Hierarchy\\SReadOnlyHierarchyView.h",
+        "snapshot":  "D:\\UEProjects\\Template\\Plugins\\BlueprintHelper\\BlueprintHelper\\Develop\\v0.4.3\\ArchivedReference\\A5_UE56_NativePanelSourceSnapshot\\UMGEditor\\SReadOnlyHierarchyView.h"
+    }
+]

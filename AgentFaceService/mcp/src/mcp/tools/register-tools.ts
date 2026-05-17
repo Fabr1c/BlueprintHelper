@@ -38,6 +38,7 @@ import { resolveExplicitProjectFile } from '../../project-profile/editor-paths.j
 import { execFile, spawn } from 'node:child_process';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { registerEditorLifecycleTools } from './editor-lifecycle-tools.js';
 
 /** 缂栬緫锟?寮曟搸璺緞閰嶇疆 */
@@ -57,10 +58,24 @@ const LEGACY_TOOL_GUIDANCE =
 const FROZEN_TOOL_PREFIX =
   'FROZEN / Expert-only / Normal agents must not call directly.';
 
+const AGENT_GUIDE_INDEX_FILE_NAME = '00_Agent_Onboarding_Index_20260504.md';
 const AGENT_GUIDE_INDEX_RELATIVE_PATH = path.join(
-  'Resources',
-  'AgentGuide',
-  '00_Agent_Onboarding_Index_20260504.md',
+  'AgentFaceService',
+  'agent-guide',
+  AGENT_GUIDE_INDEX_FILE_NAME,
+);
+const AGENT_GUIDE_LOCAL_INDEX_RELATIVE_PATH = path.join(
+  'agent-guide',
+  AGENT_GUIDE_INDEX_FILE_NAME,
+);
+const AGENT_GUIDE_MODULE_INDEX_PATH = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '..',
+  '..',
+  '..',
+  'agent-guide',
+  AGENT_GUIDE_INDEX_FILE_NAME,
 );
 
 function legacyDebugExpertDescription(description: string): string {
@@ -272,30 +287,31 @@ function toErrorResult(err: unknown) {
   };
 }
 
-function resolvePluginResourcePath(relativePath: string): string {
+function resolveAgentGuideIndexPath(): string {
   const cwd = process.cwd();
   const candidates = [
-    cwd,
-    path.resolve(cwd, 'BlueprintHelper'),
-    path.resolve(cwd, '..'),
-    path.resolve(cwd, '..', 'BlueprintHelper'),
-    path.resolve(cwd, '..', '..', 'BlueprintHelper'),
-    path.resolve(cwd, 'Plugins', 'BlueprintHelper'),
-    path.resolve(cwd, '..', 'Plugins', 'BlueprintHelper'),
+    path.resolve(cwd, AGENT_GUIDE_INDEX_RELATIVE_PATH),
+    path.resolve(cwd, AGENT_GUIDE_LOCAL_INDEX_RELATIVE_PATH),
+    path.resolve(cwd, '..', AGENT_GUIDE_INDEX_RELATIVE_PATH),
+    path.resolve(cwd, '..', AGENT_GUIDE_LOCAL_INDEX_RELATIVE_PATH),
+    path.resolve(cwd, '..', '..', AGENT_GUIDE_INDEX_RELATIVE_PATH),
   ];
 
-  for (const root of candidates) {
-    const candidate = path.resolve(root, relativePath);
+  for (const candidate of candidates) {
     if (fs.existsSync(candidate)) {
       return candidate;
     }
   }
 
-  throw new Error(`Unable to find ${relativePath} from ${cwd}`);
+  if (fs.existsSync(AGENT_GUIDE_MODULE_INDEX_PATH)) {
+    return AGENT_GUIDE_MODULE_INDEX_PATH;
+  }
+
+  throw new Error(`Unable to find ${AGENT_GUIDE_INDEX_RELATIVE_PATH} from ${cwd}`);
 }
 
 function readAgentGuideIndexMarkdown(): string {
-  return fs.readFileSync(resolvePluginResourcePath(AGENT_GUIDE_INDEX_RELATIVE_PATH), 'utf8');
+  return fs.readFileSync(resolveAgentGuideIndexPath(), 'utf8');
 }
 
 function makeReadTraceId(): string {

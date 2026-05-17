@@ -1,4 +1,4 @@
-# BlueprintHelper CLI Tips
+﻿# BlueprintHelper CLI Tips
 
 更新时间：2026-05-17
 
@@ -8,7 +8,7 @@
 
 1. 普通资产读写走 BlueprintHelper CLI 和 TaskSpec-first 流程。
 2. Agent 主动管理 Unreal Editor 生命周期时，优先使用全局 MCP lifecycle 工具；CLI 的 `open_editor`/`close_editor` 只作为兼容或人工 fallback。
-3. 复杂参数先从 `BlueprintHelper/Resources/AgentGuide/Templates` 复制模板，再改字段，并用 `--file` 传入 UTF-8 no BOM JSON。
+3. 复杂参数先从 `AgentFaceService/agent-guide/Templates` 复制模板，再改字段，并用 `--file` 传入 UTF-8 no BOM JSON。
 4. 排查阶段先用 `--format full`；确认无误后再用 `--select` 或 `--fields` 缩短 stdout。
 5. 遇到 `cli_error`、`preview_blocked`、`execute_failed`、`compile_failed`，先打开 `artifacts.full_result` 指向的 JSON。
 6. 如果 artifact 里只有泛化错误，例如 `Blueprint compile failed with N error(s)`，这是 CLI/Bridge 诊断能力缺口，应修复返回结构，不要求 Agent 猜测。
@@ -392,15 +392,15 @@ allow_stale_disk_snapshot
 模板目录：
 
 ```text
-BlueprintHelper/Resources/AgentGuide/Templates
-BlueprintHelper/Resources/AgentGuide/Templates/read
-BlueprintHelper/Resources/AgentGuide/Templates/write
+AgentFaceService/agent-guide/Templates
+AgentFaceService/agent-guide/Templates/read
+AgentFaceService/agent-guide/Templates/write
 ```
 
 推荐流程：
 
 ```powershell
-Copy-Item -LiteralPath BlueprintHelper\Resources\AgentGuide\Templates\write\task_preview_bare_taskspec_template.json -Destination .\task.json
+Copy-Item -LiteralPath AgentFaceService\agent-guide\Templates\write\task_preview_bare_taskspec_template.json -Destination .\task.json
 # 修改 task.json 中的占位字段
 bh.cmd task preview --file .\task.json --format full
 ```

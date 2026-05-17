@@ -1,4 +1,4 @@
-> 2026-05-17 修订：BlueprintHelper CLI 是普通 TaskSpec/ReadSpec/诊断/结果查询入口；MCP 只保留 editor open、editor close 和 developer-only exec command 允许项。废弃 MCP 普通工具不作为 fallback，不新增测试，也不运行旧测试。
+﻿> 2026-05-17 修订：BlueprintHelper CLI 是普通 TaskSpec/ReadSpec/诊断/结果查询入口；MCP 只保留 editor open、editor close 和 developer-only exec command 允许项。废弃 MCP 普通工具不作为 fallback，不新增测试，也不运行旧测试。
 
 # BlueprintHelper Agent Onboarding Index
 
@@ -54,21 +54,21 @@ Read-only commands such as `bh blueprinthelper_read_context`, `bh blueprinthelpe
 
 CLI output is optimized for Agent use. Use `--omit operation,status` when the default summary is useful but envelope fields are not needed. Use `--select` / `--fields` when only a small whitelist is needed, such as `task_run_id`, `summary.target_assets`, or `artifacts.full_result`. Use `--max-bytes` as a hard budget guard; the full payload remains available through the artifact path.
 
-Template-first authoring is available at `Resources/AgentGuide/Templates/README.md`. Prefer copying a matching JSON template, editing placeholders, and calling the CLI with `--file` instead of authoring large JSON directly in shell command strings.
+Template-first authoring is available at `AgentFaceService/agent-guide/Templates/README.md`. Prefer copying a matching JSON template, editing placeholders, and calling the CLI with `--file` instead of authoring large JSON directly in shell command strings.
 
 `blueprint_open_editor` / `blueprint_close_editor` 仅用于用户明确需要启动或关闭目标 Unreal Editor 的 lifecycle preflight；Agent 工作流优先调用全局 MCP 生命周期工具。`blueprint_developer_exec_console_command` 仅用于 BlueprintHelper 本地开发/测试编排，不属于普通资产工作流。
 
 阅读顺序:
 
-1. `Resources/AgentGuide/Reference/01_Preflight_And_Boundary.md`
-2. `Resources/AgentGuide/Reference/02_TaskSpec_First_Tool_Selection.md`
-3. `Resources/AgentGuide/Reference/03_Runtime_Profile_And_Diagnostics.md`
-4. `Resources/AgentGuide/Reference/04_Tool_Surface_Field_Templates_20260512.md`
-5. `Resources/AgentGuide/Templates/README.md`
-6. `Resources/AgentGuide/Workflows/04_TaskSpec_Edit_Blueprint_Workflow.md`
-7. `Resources/AgentGuide/Workflows/05_Edit_Blueprint_Workflow.md`
-8. `Resources/AgentGuide/Workflows/06_UMG_Data_Workflows.md`
-9. `Resources/AgentGuide/Workflows/07_Safety_Validation_And_Recovery.md`
+1. `AgentFaceService/agent-guide/Reference/01_Preflight_And_Boundary.md`
+2. `AgentFaceService/agent-guide/Reference/02_TaskSpec_First_Tool_Selection.md`
+3. `AgentFaceService/agent-guide/Reference/03_Runtime_Profile_And_Diagnostics.md`
+4. `AgentFaceService/agent-guide/Reference/04_Tool_Surface_Field_Templates_20260512.md`
+5. `AgentFaceService/agent-guide/Templates/README.md`
+6. `AgentFaceService/agent-guide/Workflows/04_TaskSpec_Edit_Blueprint_Workflow.md`
+7. `AgentFaceService/agent-guide/Workflows/05_Edit_Blueprint_Workflow.md`
+8. `AgentFaceService/agent-guide/Workflows/06_UMG_Data_Workflows.md`
+9. `AgentFaceService/agent-guide/Workflows/07_Safety_Validation_And_Recovery.md`
 
 规则:
 

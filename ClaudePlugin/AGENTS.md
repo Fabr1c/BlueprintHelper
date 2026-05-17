@@ -1,9 +1,9 @@
-# BlueprintHelper Agent Entry
+﻿# BlueprintHelper Agent Entry
 
 This repository contains the BlueprintHelper Unreal Engine editor plugin. When an AI / IDE / CLI agent is asked to use this plugin, read this file first, then open the guide index:
 
 ```text
-Resources/AgentGuide/00_Agent_Onboarding_Index_20260504.md
+AgentFaceService/agent-guide/00_Agent_Onboarding_Index_20260504.md
 ```
 
 ## Non-negotiable boundary
@@ -42,7 +42,7 @@ Do not use MCP for normal asset workflows. New Agent workflows should use CLI co
 
 ## Fast path
 
-Open `Resources/AgentGuide/00_Agent_Onboarding_Index_20260504.md` and follow the workflow matching the user request.
+Open `AgentFaceService/agent-guide/00_Agent_Onboarding_Index_20260504.md` and follow the workflow matching the user request.
 
-For complex JSON inputs, copy a matching template from `Resources/AgentGuide/Templates/` and call the CLI with `--file`.
+For complex JSON inputs, start at `AgentFaceService/agent-guide/Templates/INDEX.md`, choose the category semantic index, copy a matching template, and call the CLI with `--file`.
 

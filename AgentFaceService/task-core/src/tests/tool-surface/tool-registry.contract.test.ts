@@ -118,13 +118,13 @@ test('read agent guide resolves from task-core cwd through plugin ancestor layou
   assert.match(String(result.data?.['markdown'] ?? ''), /BlueprintHelper/i);
 });
 
-test('read agent guide resolves from project root plugin copy layout', async () => {
+test('read agent guide resolves from project root AgentFaceService layout', async () => {
   const tool = getBlueprintHelperToolRegistry().find((candidate) => candidate.name === 'blueprinthelper_read_agent_guide');
   assert.ok(tool);
 
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-agent-guide-'));
   try {
-    const guideDir = path.join(tempRoot, 'Plugins', 'BlueprintHelper', 'BlueprintHelper', 'Resources', 'AgentGuide');
+    const guideDir = path.join(tempRoot, 'AgentFaceService', 'agent-guide');
     fs.mkdirSync(guideDir, { recursive: true });
     fs.writeFileSync(
       path.join(guideDir, '00_Agent_Onboarding_Index_20260504.md'),

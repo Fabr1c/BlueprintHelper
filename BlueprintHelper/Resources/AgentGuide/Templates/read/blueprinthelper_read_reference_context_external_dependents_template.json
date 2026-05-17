@@ -1,7 +1,0 @@
-{
-  "asset_path": "__ASSET_PATH__",
-  "target_type": "asset",
-  "scope": "external_dependents",
-  "max_results": 50,
-  "include_samples": true
-}
