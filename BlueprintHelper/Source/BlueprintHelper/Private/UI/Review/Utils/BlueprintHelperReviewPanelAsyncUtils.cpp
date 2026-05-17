@@ -1,6 +1,7 @@
 // BlueprintHelper Review panel async task utilities implementation.
 
 #include "UI/Review/Utils/BlueprintHelperReviewPanelAsyncUtils.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 
 FCriticalSection FBlueprintHelperReviewPanelAsyncUtils::TaskCriticalSection;
 TArray<TFuture<void>> FBlueprintHelperReviewPanelAsyncUtils::Tasks;
@@ -21,7 +22,7 @@ void FBlueprintHelperReviewPanelAsyncUtils::TrackTask(TFuture<void>&& Future)
 		{
 			if (Tasks[Index].IsReady())
 			{
-				Tasks.RemoveAtSwap(Index, 1, EAllowShrinking::No);
+				FBlueprintHelperVersionCompat::RemoveAtSwapNoShrink(Tasks, Index, 1);
 			}
 		}
 		if (bShutdownRequested)

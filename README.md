@@ -13,7 +13,7 @@ BlueprintHelper 用于把 Agent 的高层编辑意图转换成 Unreal Editor 内
 - 修改 Blueprint 逻辑、结构、组件、类设置、事件分发器等编辑器资产内容。
 - 读取和修改 UMG Widget 树、Widget 属性、DataAsset 属性和 DataTable 行数据。
 - 执行编译、保存、PIE、诊断等 Unreal Editor 相关操作；Agent 控制 Editor 启动/关闭时使用全局 MCP 生命周期工具。
-- MCP 只保留 `blueprint_open_editor`、`blueprint_close_editor` 和开发者 `blueprint_developer_exec_console_command` 允许项；废弃 MCP 普通工具不作为 fallback，不新增测试，也不运行旧测试。
+- MCP 只保留 `blueprint_open_editor`、`blueprint_close_editor` lifecycle 入口；废弃 MCP 普通工具不作为 fallback。
 
 ## 使用范围
 
@@ -55,11 +55,10 @@ Agent
   -> BlueprintHelper capability clusters
 ```
 
-Editor lifecycle / developer command boundary:
+Editor lifecycle boundary:
 
 ```text
 Agent -> global BlueprintHelper MCP allowlist -> open/close target Unreal Editor
-Developer/test orchestration -> blueprint_developer_exec_console_command
 ```
 
 普通写入流程：
@@ -79,7 +78,7 @@ blueprint_get_runtime_profile
 - `BlueprintHelper/`：Unreal Engine Editor 插件主体。
 - `AgentFaceService/task-core/`：Bridge client、TaskSpec schema、任务编排和工具注册。
 - `AgentFaceService/cli/`：Agent 使用的 CLI 入口。
-- `AgentFaceService/mcp/`：全局 MCP allowlist 入口，只保留 editor open、editor close 和 developer-only exec command；废弃普通 MCP 工具面不得用于 Agent 工作流。
+- `AgentFaceService/mcp/`：全局 MCP allowlist 入口，只保留 editor open、editor close lifecycle。
 - `CodexPlugin/`：Codex 插件封装和 skill。
 - `ClaudePlugin/`：Claude Code 插件封装和文档。
 

@@ -25,9 +25,9 @@ Do not use BlueprintHelper tools for C++, TypeScript, Python, JSON, docs, tests,
 
 ## Entry Rule
 
-The supported Agent-facing entry for ordinary BlueprintHelper reads, writes, diagnostics, debug summaries, write-session requests, and result queries is the BlueprintHelper CLI. Use global BlueprintHelper MCP only for editor open, editor close, and developer-only exec command; do not route ordinary workflows through MCP.
+The supported Agent-facing entry for ordinary BlueprintHelper reads, writes, diagnostics, debug summaries, write-session requests, and result queries is the BlueprintHelper CLI. Use global BlueprintHelper MCP only for editor open/close lifecycle; do not route ordinary workflows through MCP.
 
-Deprecated MCP ordinary read/write/debug/task tools are not fallback paths. Do not use them, do not write tests for them, and do not run old MCP tool tests.
+Deprecated MCP ordinary read/write/debug/task tools are not fallback paths. Do not use them as fallback.
 
 When a CLI command waits on UE Bridge work, it may emit `waiting for UE Bridge response` lines to `stderr`. Treat those lines as keep-alive progress and continue waiting unless the CLI exits; parse only `stdout` as the final JSON result.
 

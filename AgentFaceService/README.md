@@ -10,24 +10,12 @@
 - `docs/`: CLI、TaskSpec 和共享契约文档的规范位置。
 - `task-core/`: Bridge client、TaskSpec schema、Python 编排、共享 task runner、结果 helper 和活动工具注册表。
 - `cli/`: shell-capable Agents 使用的 BlueprintHelper CLI transport。
-- `mcp/`: 长驻全局 MCP companion，用于 editor launch/lifecycle，以及少量 one-shot CLI 不可靠的 debug/recovery 兼容流程。
+- `mcp/`: 长驻全局 MCP companion，用于 editor launch/lifecycle。
 - `scripts/`: 共享 package build helper。
 
-### 构建
+### 安装与构建
 
-```powershell
-cd <BLUEPRINTHELPER_ROOT>\AgentFaceService\task-core
-npm install
-npm run build
-
-cd <BLUEPRINTHELPER_ROOT>\AgentFaceService\cli
-npm install
-npm run build
-
-cd <BLUEPRINTHELPER_ROOT>\AgentFaceService\mcp
-npm install
-npm run build
-```
+安装、构建和打包说明集中在 `docs/Install_CLI_QuickStart.md`。
 
 CLI 入口：
 
@@ -51,24 +39,12 @@ node <BLUEPRINTHELPER_ROOT>\AgentFaceService\mcp\build\index.js
 - `docs/`: canonical CLI, TaskSpec, and shared contract documentation.
 - `task-core/`: Bridge client, TaskSpec schemas, Python orchestration, shared task runner, result helpers, and active tool registry.
 - `cli/`: BlueprintHelper CLI transport used by shell-capable Agents.
-- `mcp/`: long-lived global MCP companion for editor launch/lifecycle plus debug/recovery compatibility flows that are unreliable from one-shot CLI processes.
+- `mcp/`: long-lived global MCP companion for editor launch/lifecycle.
 - `scripts/`: shared package build helpers.
 
-### Build
+### Install And Build
 
-```powershell
-cd <BLUEPRINTHELPER_ROOT>\AgentFaceService\task-core
-npm install
-npm run build
-
-cd <BLUEPRINTHELPER_ROOT>\AgentFaceService\cli
-npm install
-npm run build
-
-cd <BLUEPRINTHELPER_ROOT>\AgentFaceService\mcp
-npm install
-npm run build
-```
+Install, build, and packaging notes live in `docs/Install_CLI_QuickStart.md`.
 
 CLI entry:
 

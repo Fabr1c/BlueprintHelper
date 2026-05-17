@@ -8,7 +8,7 @@ AgentFaceService/agent-guide/00_Agent_Onboarding_Index_20260504.md
 
 ## Non-negotiable boundary
 
-BlueprintHelper is not a general file-system, code-search, or C++ source-editing API. The active Agent-facing transport for ordinary TaskSpec writes, reads, diagnostics, debug summaries, write-session requests, and result queries is the BlueprintHelper CLI, which talks to a running Unreal Editor through the local Bridge. Global MCP is retained only for editor open, editor close, and developer-only exec command.
+BlueprintHelper is not a general file-system, code-search, or C++ source-editing API. The active Agent-facing transport for ordinary TaskSpec writes, reads, diagnostics, debug summaries, write-session requests, and result queries is the BlueprintHelper CLI, which talks to a running Unreal Editor through the local Bridge. Global MCP is retained only for editor open/close lifecycle in ordinary Agent workflows.
 
 Use normal repository tools for:
 
@@ -27,7 +27,7 @@ Use BlueprintHelper CLI / task-core tools for:
 - Reading or editing DataTable rows.
 - Compiling, opening, saving, validating, importing, or exporting Blueprint-related editor assets.
 
-Do not use MCP for normal asset workflows. New Agent workflows should use CLI commands for ordinary asset operations and global MCP lifecycle tools for Agent-owned editor open/close. Deprecated MCP ordinary tools are not fallback paths; do not add or run tests for them.
+Do not use MCP for normal asset workflows. New Agent workflows should use CLI commands for ordinary asset operations and global MCP lifecycle tools for Agent-owned editor open/close. Deprecated MCP ordinary tools are not fallback paths for ordinary Agent workflows.
 
 ## Required preflight before any write operation
 

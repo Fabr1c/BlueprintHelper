@@ -19,11 +19,11 @@ Do not use BlueprintHelper for normal repository files. Use normal Codex shell a
 
 ## Entry Rule
 
-The supported Agent-facing entry for ordinary TaskSpec reads and writes is the BlueprintHelper CLI. The global MCP endpoint is retained only for editor open/close plus the developer-only exec command.
+The supported Agent-facing entry for ordinary TaskSpec reads and writes is the BlueprintHelper CLI. The global MCP endpoint is retained only for editor open/close lifecycle in ordinary Agent workflows.
 
 Important: call editor lifecycle commands only through the global MCP tools `mcp__blueprint_helper__blueprint_open_editor` and `mcp__blueprint_helper__blueprint_close_editor`. Do not validate lifecycle behavior through plugin-local MCP or one-shot shell MCP clients because the sandbox may reap child editor processes.
 
-Deprecated MCP ordinary read/write/debug/task tools are forbidden for Agent workflows. Do not use them as fallback, do not add tests for them, and do not run old MCP tool tests. The developer exec command is not a normal asset workflow tool.
+Deprecated MCP ordinary read/write/debug/task tools are forbidden for Agent workflows. Do not use them as fallback.
 
 ## Configure Routing
 
@@ -41,18 +41,6 @@ If `bh` is not on PATH, use the built CLI entry:
 
 ```powershell
 node <BLUEPRINTHELPER_ROOT>\AgentFaceService\cli\build\cli\index.js <tool_name> [args]
-```
-
-Build prerequisites when the CLI is missing:
-
-```powershell
-cd <BLUEPRINTHELPER_ROOT>\AgentFaceService\task-core
-npm install
-npm run build
-
-cd <BLUEPRINTHELPER_ROOT>\AgentFaceService\cli
-npm install
-npm run build
 ```
 
 Use compact output for routine loops:
@@ -192,15 +180,14 @@ blueprinthelper_query_review_records
 
 `blueprinthelper_apply_review_action` is plugin-development/internal and is not part of ordinary Codex Agent workflows.
 
-MCP allowlist companion commands:
+MCP lifecycle companion commands:
 
 ```text
 blueprint_open_editor
 blueprint_close_editor
-blueprint_developer_exec_console_command
 ```
 
-`blueprint_developer_exec_console_command` is developer-only for local BlueprintHelper test orchestration. Frozen legacy, expert, and low-level direct commands are not the normal Agent workflow. If a capability is missing from the supported CLI surface, stop and report the gap unless the request falls inside the explicit MCP allowlist boundary above.
+Frozen legacy, expert, and low-level direct commands are not the normal Agent workflow. If a capability is missing from the supported CLI surface, stop and report the gap unless the request falls inside the explicit MCP lifecycle boundary above.
 
 ## Read Strategy
 

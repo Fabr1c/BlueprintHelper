@@ -10,6 +10,7 @@
 #include "Components/PanelWidget.h"
 #include "Components/Widget.h"
 #include "Kismet2/BlueprintEditorUtils.h"
+#include "Shared/BlueprintHelperWidgetVersionCompat.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
 #include "Shared/BlueprintHelperServiceTypes.h"
 #include "WidgetBlueprint.h"
@@ -459,12 +460,7 @@ FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::AddWidget(
 		Tree->RootWidget = NewWidget;
 	}
 
-#if WITH_EDITORONLY_DATA
-	if (!WBP->WidgetVariableNameToGuidMap.Contains(NewWidget->GetFName()))
-	{
-		WBP->OnVariableAdded(NewWidget->GetFName());
-	}
-#endif
+	FBlueprintHelperWidgetVersionCompat::RegisterWidgetVariable(WBP, NewWidget);
 
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(WBP);
 	Mutation.Commit();
@@ -517,12 +513,7 @@ FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::RemoveWidget
 		return Result;
 	}
 
-#if WITH_EDITORONLY_DATA
-	if (WBP->WidgetVariableNameToGuidMap.Contains(Widget->GetFName()))
-	{
-		WBP->OnVariableRemoved(Widget->GetFName());
-	}
-#endif
+	FBlueprintHelperWidgetVersionCompat::UnregisterWidgetVariable(WBP, Widget);
 
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(WBP);
 	Mutation.Commit();

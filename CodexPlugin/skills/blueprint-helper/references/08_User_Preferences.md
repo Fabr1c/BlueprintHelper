@@ -42,7 +42,7 @@ Agents should read this file before BlueprintHelper planning, status review, imp
 
 ### Blueprint, C++, And Repository Boundary
 
-- Use BlueprintHelper CLI commands for ordinary UE editor asset reads and writes only: Blueprint graphs, UMG, DataAssets, DataTables, compile/save, diagnostics, and related asset operations. Use global MCP only for editor lifecycle open/close and developer-only exec command. Deprecated MCP ordinary tools must not be used, tested, or restored.
+- Use BlueprintHelper CLI commands for ordinary UE editor asset reads and writes only: Blueprint graphs, UMG, DataAssets, DataTables, compile/save, diagnostics, and related asset operations. Use global MCP only for editor lifecycle open/close. Deprecated MCP ordinary tools are not ordinary Agent entry points or fallback paths.
 - Use normal repository tools for C++, TypeScript, Python, JSON, config, build scripts, documentation, AGENTS files, and memory files.
 - Default C++ edit permission: disabled unless the user explicitly asks for code edits.
 - Default `.uasset` edit permission: allowed only through BlueprintHelper CLI TaskSpec-first flow.

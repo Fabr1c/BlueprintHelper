@@ -20,15 +20,14 @@ See `INSTALL.md` at the repository root for Codex Desktop, CLI, lifecycle MCP, a
 
 ## Runtime Model
 
-The active Agent-facing transport for ordinary TaskSpec reads and writes is the BlueprintHelper CLI. The global MCP endpoint is an allowlist and should expose only:
+The active Agent-facing transport for ordinary TaskSpec reads and writes is the BlueprintHelper CLI. The global MCP endpoint is an allowlist for editor lifecycle only in ordinary Agent workflows:
 
 ```text
 mcp__blueprint_helper__blueprint_open_editor
 mcp__blueprint_helper__blueprint_close_editor
-mcp__blueprint_helper__blueprint_developer_exec_console_command
 ```
 
-Only the Main Agent may call MCP lifecycle tools. `mcp__blueprint_helper__blueprint_developer_exec_console_command` is developer-only for local BlueprintHelper test orchestration and is not an ordinary Agent asset workflow tool. Subagents must not call MCP tools.
+Only the Main Agent may call MCP lifecycle tools. Subagents must not call MCP tools.
 
 ## Mandatory Subagent Workflow
 
@@ -60,19 +59,7 @@ Install the subagent definitions globally from the source checkout:
 node <BLUEPRINTHELPER_ROOT>\CodexPlugin\scripts\install-codex-agents.cjs
 ```
 
-## CLI Setup
-
-Build the CLI when needed:
-
-```powershell
-cd <BLUEPRINTHELPER_ROOT>\AgentFaceService\task-core
-npm install
-npm run build
-
-cd <BLUEPRINTHELPER_ROOT>\AgentFaceService\cli
-npm install
-npm run build
-```
+## CLI Entry
 
 Use either `bh` on PATH or the built CLI entry:
 
@@ -81,22 +68,8 @@ bh blueprint_get_runtime_profile --json "{}" --select status,summary
 node <BLUEPRINTHELPER_ROOT>\AgentFaceService\cli\build\cli\index.js blueprint_get_runtime_profile --json "{}" --select status,summary
 ```
 
-## Global MCP Allowlist
+## Global MCP Lifecycle
 
-Build the MCP package when needed:
-
-```powershell
-cd <BLUEPRINTHELPER_ROOT>\AgentFaceService\mcp
-npm install
-npm run build
-```
-
-Install the MCP allowlist globally:
-
-```powershell
-node <BLUEPRINTHELPER_ROOT>\CodexPlugin\scripts\install-global-mcp.cjs
-```
-
-Plugin-local MCP is not the normal Codex entry. Do not register or call ordinary BlueprintHelper read/write tools through MCP. Use MCP only for editor open/close plus developer-only exec command; use CLI for ordinary reads, diagnostics, TaskSpec preview, write-session requests, execute, and result lookup. Do not add or run tests for deprecated MCP ordinary tools.
+Plugin-local MCP is not the normal Codex entry. Do not register or call ordinary BlueprintHelper read/write tools through MCP. Use MCP only for editor open/close lifecycle in ordinary Agent workflows; use CLI for ordinary reads, diagnostics, TaskSpec preview, write-session requests, execute, and result lookup. Deprecated MCP ordinary tools are not fallback paths.
 
 For editor-asset writes, keep the workflow TaskSpec-first. Prefer `AgentFaceService/agent-guide/Templates/` for copy-and-edit JSON inputs.
