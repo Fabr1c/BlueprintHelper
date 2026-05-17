@@ -257,3 +257,52 @@ Manual smoke:
 - 2026-05-15 补充：DebugBundle Review summary 导出会复制 semantic snapshot artifact，并在 DebugCase 自动化 fixture 中增加可读性与 schema 断言。
 
 - Bridge/CLI 运行态证据：重启编辑器后 `bh.cmd blueprint_get_runtime_profile --json "{}" --select status,summary` 返回 `status=completed`、`warnings=0`、`errors=0`。
+
+## 2026-05-17 Stage 2/3 Hash Decision
+
+This decision supersedes the earlier compatibility discussion for Review semantic hash migration.
+
+Hard rules:
+
+1. Stage 2/3 will fully replace legacy graph hash with the new semantic target snapshot hash.
+2. No compatibility fallback will be kept for legacy graph hash records.
+3. New Review records must write `BaselineHash` and `RecordedAfterHash` from canonical semantic target snapshots for all supported target kinds, including graph node and graph block targets.
+4. Reject must validate the current target state against the semantic `RecordedAfterHash`. If the current semantic hash differs, Reject must return `needs_action`.
+5. Snapshot-restorable targets without a recoverable `BeforeSnapshotJson` must return `needs_action`; the system must not infer or synthesize a rollback baseline.
+6. Existing pending Review records created with legacy graph hash are not guaranteed to remain rejectable after this migration. They must be regenerated, accepted/rejected before migration, or surfaced as `needs_action`.
+7. Internal semantic snapshot artifacts may keep UE-only identifiers such as node or variable GUIDs for locating and hashing. Agent-facing and summary outputs must not expose GUID fields.
+8. Retention policy must become a configure-time user choice with at least `diagnostic`, `standard`, and `lean` modes.
+
+Implementation entry document:
+
+- `BlueprintHelper_BaselineSemanticHash_Migration_20260517_CN.md`
+
+## 2026-05-17 Stage 2/3 Implementation Closeout
+
+Status: implemented and verified.
+
+Completed:
+
+- Live semantic target snapshot hash is the only Review hash source for new graph node/block and supported non-graph target snapshots.
+- Legacy `FBlueprintHelperReviewHashService` and every `ComputeAtomicTargetHash` call site were removed.
+- ReviewStore writes semantic `BaselineHash` / `RecordedAfterHash` from target snapshots when snapshots are present or can be captured.
+- Reject validates current target state with semantic target snapshot hash before snapshot restore or graph rollback.
+- Snapshot-restorable targets without recoverable `BeforeSnapshotJson` return `needs_action`.
+- GraphWrite journal and ReplaceGraph now pass target snapshot JSON instead of legacy graph hash maps.
+- DebugBundle / Review summary expose semantic hash source and snapshot schema without GUID fields in agent-facing summaries.
+
+Verified:
+
+- UBT compile passed for `TemplateEditor Win64 Development`.
+- `BlueprintHelper.Review.Baseline.SemanticHashCapturesGraphNode`
+- `BlueprintHelper.Review.Baseline.SemanticHashCapturesGraphBlock`
+- `BlueprintHelper.Review.Store.UsesSemanticHashForGraphTarget`
+- `BlueprintHelper.Review.Store.UsesSemanticHashForSnapshotRestoreTarget`
+- `BlueprintHelper.Review.Reject.BlocksWhenSemanticHashChanged`
+- `BlueprintHelper.Review.Reject.GraphTargetUsesSemanticHashGuard`
+- `BlueprintHelper.Review.Reject.NeedsActionWithoutRecoverableBeforeSnapshot`
+- `BlueprintHelper.Review.DebugBundle.SummarizesSemanticHashSource`
+- `BlueprintHelper.Review.Summary.AgentFacingSummaryDoesNotExposeGuid`
+- `BlueprintHelper.Review.Reject.OldLegacyHashRecordNeedsAction`
+- `BlueprintHelper.Review.Action` regression, 18 tests
+- `BlueprintHelper.Review.Rollback.RejectRemovesOnlySelectedGraphNode`

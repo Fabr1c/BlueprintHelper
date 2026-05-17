@@ -14,11 +14,71 @@
 #include "Shared/Review/BlueprintHelperReviewEnumUtils.h"
 #include "Shared/Review/BlueprintHelperReviewStatusUtils.h"
 #include "Shared/Review/BlueprintHelperReviewTargetKindRegistry.h"
+#include "Systems/Review/BlueprintHelperReviewBaselineSnapshotService.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewStoreJsonUtils.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewStoreMergeUtils.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewStorePathUtils.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewStoreTargetUtils.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentEvidence.h"
+
+namespace
+{
+	static void NormalizeReviewTargetSemanticSnapshots(
+		const FBlueprintHelperWriteReviewEvidence& Evidence,
+		FBlueprintHelperReviewAtomicTarget& Target)
+	{
+		FBlueprintHelperReviewBaselineSnapshotService SnapshotService;
+
+		if (!Target.BeforeSnapshotJson.IsEmpty())
+		{
+			Target.BaselineHash =
+				FBlueprintHelperReviewBaselineSnapshotService::ComputeSemanticSnapshotHash(Target.BeforeSnapshotJson);
+		}
+		else
+		{
+			FString BaselineSnapshotJson;
+			FString BaselineSnapshotHash;
+			FString BaselineSnapshotError;
+			if (SnapshotService.TryLoadBaselineTargetSnapshot(
+				Evidence.ArchiveSessionId,
+				Target,
+				BaselineSnapshotJson,
+				BaselineSnapshotHash,
+				BaselineSnapshotError))
+			{
+				Target.BeforeSnapshotJson = BaselineSnapshotJson;
+				Target.BaselineHash = BaselineSnapshotHash;
+			}
+			else if (Evidence.ChangeKind == EBlueprintHelperReviewChangeKind::Added
+				&& !FBlueprintHelperReviewTargetKindRegistry::SupportsSnapshotRestore(Target.TargetKind))
+			{
+				FBlueprintHelperReviewBaselineSnapshotService::MakeMissingTargetSnapshot(
+					Target,
+					true,
+					Target.BeforeSnapshotJson,
+					Target.BaselineHash);
+			}
+		}
+
+		if (!Target.AfterSnapshotJson.IsEmpty())
+		{
+			Target.RecordedAfterHash =
+				FBlueprintHelperReviewBaselineSnapshotService::ComputeSemanticSnapshotHash(Target.AfterSnapshotJson);
+		}
+		else if (Target.RecordedAfterHash.IsEmpty())
+		{
+			FString AfterSnapshotJson;
+			FString AfterSnapshotHash;
+			FString AfterSnapshotError;
+			if (SnapshotService.CaptureTargetSnapshot(Target, AfterSnapshotJson, AfterSnapshotHash, AfterSnapshotError))
+			{
+				Target.AfterSnapshotJson = AfterSnapshotJson;
+				Target.RecordedAfterHash = AfterSnapshotHash;
+			}
+		}
+	}
+}
+
 FString FBlueprintHelperReviewStoreService::NormalizeGraphBlockTargetId(
 	const FString& GraphName,
 	const FString& BlockRefOrId)
@@ -505,6 +565,9 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewStoreService::BuildReviewRecordSum
 		{
 			Baseline->SetStringField(TEXT("snapshot_trust"), ArchiveSession.BaselineSnapshotTrust);
 		}
+		Baseline->SetStringField(TEXT("hash_source"), TEXT("semantic_target_snapshot"));
+		Baseline->SetStringField(TEXT("snapshot_schema"), TEXT("BlueprintHelper.ReviewBaselineSemanticSnapshot.v1"));
+		Baseline->SetStringField(TEXT("retention_mode"), TEXT("standard"));
 		Baseline->SetArrayField(TEXT("dirty_target_assets"),
 			FBlueprintHelperReviewStoreJsonUtils::MakeReviewJsonStringArray(ArchiveSession.DirtyTargetAssets));
 		Baseline->SetArrayField(TEXT("warnings"),
@@ -1038,6 +1101,7 @@ void FBlueprintHelperReviewStoreService::AddEvidenceAtomicTargets(
 			Target.VisualGroupKey,
 			Evidence.OperationKind);
 		FBlueprintHelperReviewStoreTargetUtils::ApplyGraphBodyAggregation(Target);
+		NormalizeReviewTargetSemanticSnapshots(Evidence, Target);
 
 		FString NeedsActionReason;
 		if (!FBlueprintHelperReviewStoreTargetUtils::IsReviewEvidenceTargetComplete(Target, NeedsActionReason))

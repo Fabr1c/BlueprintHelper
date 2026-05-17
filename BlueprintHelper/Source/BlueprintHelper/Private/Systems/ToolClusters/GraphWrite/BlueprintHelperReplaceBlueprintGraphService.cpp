@@ -7,13 +7,14 @@
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphSnapshotService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
-#include "Systems/Review/BlueprintHelperReviewHashService.h"
+#include "Systems/Review/BlueprintHelperReviewBaselineSnapshotService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDebugData.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphGenerationPipeline.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutCoordinator.h"
 #include "Shared/GraphWrite/BlueprintHelperAppendGraphTypes.h"
 #include "Shared/GraphWrite/BlueprintHelperReplaceGraphTypes.h"
+#include "Shared/Review/BlueprintHelperReviewTypes.h"
 
 #include "Engine/Blueprint.h"
 #include "EdGraph/EdGraph.h"
@@ -631,7 +632,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 	const FString ReviewBlockTargetKey = !Resolved.OriginalBlockId.IsEmpty()
 		? FString::Printf(TEXT("graph:%s:block:%s"), *Request.GraphName, *Resolved.OriginalBlockId)
 		: FString();
-	FString BeforeBlockHash;
+	FString BeforeBlockSnapshotJson;
 	if (!ReviewBlockTargetKey.IsEmpty())
 	{
 		FBlueprintHelperReviewAtomicTarget BeforeBlockTarget;
@@ -639,8 +640,14 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 		BeforeBlockTarget.GraphName = Request.GraphName;
 		BeforeBlockTarget.TargetKind = TEXT("graph_block");
 		BeforeBlockTarget.TargetKey = ReviewBlockTargetKey;
-		FString HashError;
-		FBlueprintHelperReviewHashService::ComputeAtomicTargetHash(BeforeBlockTarget, BeforeBlockHash, HashError);
+		FString BeforeBlockHash;
+		FString SnapshotError;
+		FBlueprintHelperReviewBaselineSnapshotService SemanticSnapshotService;
+		SemanticSnapshotService.CaptureTargetSnapshot(
+			BeforeBlockTarget,
+			BeforeBlockSnapshotJson,
+			BeforeBlockHash,
+			SnapshotError);
 	}
 
 	// 5. 寮€濮嬩慨鏀?
@@ -759,19 +766,25 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 	{
 		JournalRecord.BlockIds.Add(Resolved.OriginalBlockId);
 	}
-	if (!ReviewBlockTargetKey.IsEmpty() && !BeforeBlockHash.IsEmpty())
+	if (!ReviewBlockTargetKey.IsEmpty() && !BeforeBlockSnapshotJson.IsEmpty())
 	{
 		FBlueprintHelperReviewAtomicTarget AfterBlockTarget;
 		AfterBlockTarget.AssetPath = Request.AssetPath;
 		AfterBlockTarget.GraphName = Request.GraphName;
 		AfterBlockTarget.TargetKind = TEXT("graph_block");
 		AfterBlockTarget.TargetKey = ReviewBlockTargetKey;
+		FString AfterBlockSnapshotJson;
 		FString AfterBlockHash;
-		FString HashError;
-		if (FBlueprintHelperReviewHashService::ComputeAtomicTargetHash(AfterBlockTarget, AfterBlockHash, HashError))
+		FString SnapshotError;
+		FBlueprintHelperReviewBaselineSnapshotService SemanticSnapshotService;
+		if (SemanticSnapshotService.CaptureTargetSnapshot(
+			AfterBlockTarget,
+			AfterBlockSnapshotJson,
+			AfterBlockHash,
+			SnapshotError))
 		{
-			JournalRecord.BaselineHashesByTargetKey.Add(ReviewBlockTargetKey, BeforeBlockHash);
-			JournalRecord.RecordedAfterHashesByTargetKey.Add(ReviewBlockTargetKey, AfterBlockHash);
+			JournalRecord.BaselineSnapshotsByTargetKey.Add(ReviewBlockTargetKey, BeforeBlockSnapshotJson);
+			JournalRecord.RecordedAfterSnapshotsByTargetKey.Add(ReviewBlockTargetKey, AfterBlockSnapshotJson);
 		}
 	}
 	for (UEdGraphNode* Node : NewNodes)
@@ -800,12 +813,21 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 			NodeTarget.TargetKind = TEXT("graph_node");
 			NodeTarget.TargetKey = NodeTargetKey;
 			NodeTarget.NodeGuid = NodeGuid;
+			FString MissingNodeSnapshotJson;
+			FString MissingNodeHash;
+			FBlueprintHelperReviewBaselineSnapshotService::MakeMissingTargetSnapshot(
+				NodeTarget,
+				true,
+				MissingNodeSnapshotJson,
+				MissingNodeHash);
+			FString NodeAfterSnapshotJson;
 			FString NodeAfterHash;
-			FString HashError;
-			if (FBlueprintHelperReviewHashService::ComputeAtomicTargetHash(NodeTarget, NodeAfterHash, HashError))
+			FString SnapshotError;
+			FBlueprintHelperReviewBaselineSnapshotService SemanticSnapshotService;
+			if (SemanticSnapshotService.CaptureTargetSnapshot(NodeTarget, NodeAfterSnapshotJson, NodeAfterHash, SnapshotError))
 			{
-				JournalRecord.BaselineHashesByTargetKey.Add(NodeTargetKey, NodeAfterHash);
-				JournalRecord.RecordedAfterHashesByTargetKey.Add(NodeTargetKey, NodeAfterHash);
+				JournalRecord.BaselineSnapshotsByTargetKey.Add(NodeTargetKey, MissingNodeSnapshotJson);
+				JournalRecord.RecordedAfterSnapshotsByTargetKey.Add(NodeTargetKey, NodeAfterSnapshotJson);
 			}
 		}
 	}

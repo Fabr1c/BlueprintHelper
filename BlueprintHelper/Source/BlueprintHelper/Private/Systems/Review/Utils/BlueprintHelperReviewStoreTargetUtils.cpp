@@ -276,6 +276,12 @@ bool FBlueprintHelperReviewStoreTargetUtils::IsReviewEvidenceTargetComplete(cons
 			OutReason = TEXT("missing_baseline_hash");
 			return false;
 		}
+		if (FBlueprintHelperReviewTargetKindRegistry::SupportsSnapshotRestore(Target.TargetKind)
+			&& Target.BeforeSnapshotJson.IsEmpty())
+		{
+			OutReason = TEXT("missing_recoverable_snapshot");
+			return false;
+		}
 		if (Target.RollbackDataRef.IsEmpty())
 		{
 			OutReason = TEXT("missing_rollback_data_ref");

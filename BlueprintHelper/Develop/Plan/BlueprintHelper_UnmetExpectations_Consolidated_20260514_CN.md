@@ -117,15 +117,23 @@
 
 ### B2. Baseline semantic snapshot Stage 2/3
 
-状态：Future / Open。
+状态：Core path complete on 2026-05-17。
 
 已完成 Stage 1：dirty policy、baseline trust metadata、最小 `baseline.semantic.json`、TaskRunJournal baseline 诊断、DebugBundle artifact 输出。
 
-未完成：
+本轮已完成：
 
-1. ReviewPanel / Diff / Reject 全量优先使用 semantic baseline。
-2. semantic snapshot 从最小摘要升级为 Review/Diff 主数据源。
-3. baseline semantic schema 和 skipped artifact 策略继续固化。
+1. ReviewStore / Reject / GraphWrite journal / Debug summary 已切换到 semantic target snapshot hash。
+2. graph node / graph block 已纳入统一 target snapshot。
+3. 旧 `FBlueprintHelperReviewHashService` 与 `ComputeAtomicTargetHash` 调用点已删除，不保留 legacy graph hash fallback。
+4. 缺少可恢复 before snapshot 的 snapshot-restore target 会进入 `needs_action`。
+5. 新增 semantic hash / reject guard / DebugBundle 自动化并通过。
+
+2026-05-17 决策：Stage 2/3 采用 semantic target snapshot hash 全量替换旧 graph hash，不保留兼容层；旧 pending Review records 不做自动迁移，遇到旧 hash 应重新生成 Review evidence 或进入 `needs_action`。迁移计划见 `BlueprintHelper_BaselineSemanticHash_Migration_20260517_CN.md`。
+
+剩余边界：
+
+1. Accept 后 snapshot compaction 仍为非目标项，需等 retention 配置阶段单独排期。
 
 ### C1/C2/D5. 总体 SmokeRun / Total PASS 报告刷新
 

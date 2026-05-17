@@ -12,6 +12,144 @@
 #include "Serialization/JsonWriter.h"
 #include "UObject/UObjectBaseUtility.h"
 
+namespace
+{
+	static bool ShouldOmitCanonicalReviewSnapshotField(const FString& Key)
+	{
+		return Key.Equals(TEXT("captured_at"), ESearchCase::CaseSensitive)
+			|| Key.Equals(TEXT("warnings"), ESearchCase::CaseSensitive)
+			|| Key.Equals(TEXT("debug"), ESearchCase::CaseSensitive)
+			|| Key.Equals(TEXT("debug_only"), ESearchCase::CaseSensitive);
+	}
+
+	static void AppendCanonicalJsonString(const FString& Value, FString& Out)
+	{
+		Out.AppendChar(TEXT('"'));
+		for (const TCHAR Ch : Value)
+		{
+			switch (Ch)
+			{
+			case TEXT('"'):
+				Out += TEXT("\\\"");
+				break;
+			case TEXT('\\'):
+				Out += TEXT("\\\\");
+				break;
+			case TEXT('\b'):
+				Out += TEXT("\\b");
+				break;
+			case TEXT('\f'):
+				Out += TEXT("\\f");
+				break;
+			case TEXT('\n'):
+				Out += TEXT("\\n");
+				break;
+			case TEXT('\r'):
+				Out += TEXT("\\r");
+				break;
+			case TEXT('\t'):
+				Out += TEXT("\\t");
+				break;
+			default:
+				if (Ch < 0x20)
+				{
+					Out += FString::Printf(TEXT("\\u%04x"), static_cast<uint32>(Ch));
+				}
+				else
+				{
+					Out.AppendChar(Ch);
+				}
+				break;
+			}
+		}
+		Out.AppendChar(TEXT('"'));
+	}
+
+	static void AppendCanonicalJsonValue(const TSharedPtr<FJsonValue>& Value, FString& Out);
+
+	static void AppendCanonicalJsonObject(const TSharedPtr<FJsonObject>& Object, FString& Out)
+	{
+		if (!Object.IsValid())
+		{
+			Out += TEXT("null");
+			return;
+		}
+
+		TArray<FString> Keys;
+		Object->Values.GetKeys(Keys);
+		Keys.RemoveAll([](const FString& Key)
+		{
+			return ShouldOmitCanonicalReviewSnapshotField(Key);
+		});
+		Keys.Sort();
+
+		Out.AppendChar(TEXT('{'));
+		bool bFirst = true;
+		for (const FString& Key : Keys)
+		{
+			const TSharedPtr<FJsonValue>* FieldValue = Object->Values.Find(Key);
+			if (!FieldValue)
+			{
+				continue;
+			}
+
+			if (!bFirst)
+			{
+				Out.AppendChar(TEXT(','));
+			}
+			bFirst = false;
+			AppendCanonicalJsonString(Key, Out);
+			Out.AppendChar(TEXT(':'));
+			AppendCanonicalJsonValue(*FieldValue, Out);
+		}
+		Out.AppendChar(TEXT('}'));
+	}
+
+	static void AppendCanonicalJsonValue(const TSharedPtr<FJsonValue>& Value, FString& Out)
+	{
+		if (!Value.IsValid() || Value->Type == EJson::Null)
+		{
+			Out += TEXT("null");
+			return;
+		}
+
+		switch (Value->Type)
+		{
+		case EJson::String:
+			AppendCanonicalJsonString(Value->AsString(), Out);
+			break;
+		case EJson::Number:
+			Out += LexToString(Value->AsNumber());
+			break;
+		case EJson::Boolean:
+			Out += Value->AsBool() ? TEXT("true") : TEXT("false");
+			break;
+		case EJson::Array:
+			Out.AppendChar(TEXT('['));
+			{
+				bool bFirst = true;
+				for (const TSharedPtr<FJsonValue>& ArrayValue : Value->AsArray())
+				{
+					if (!bFirst)
+					{
+						Out.AppendChar(TEXT(','));
+					}
+					bFirst = false;
+					AppendCanonicalJsonValue(ArrayValue, Out);
+				}
+			}
+			Out.AppendChar(TEXT(']'));
+			break;
+		case EJson::Object:
+			AppendCanonicalJsonObject(Value->AsObject(), Out);
+			break;
+		default:
+			Out += TEXT("null");
+			break;
+		}
+	}
+}
+
 TArray<TSharedPtr<FJsonValue>> FBlueprintHelperReviewBaselineSnapshotServiceUtils::MakeStringArray(
 	const TArray<FString>& Values)
 {
@@ -40,6 +178,14 @@ FString FBlueprintHelperReviewBaselineSnapshotServiceUtils::SerializeJsonObject(
 	FString Serialized;
 	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Serialized);
 	FJsonSerializer::Serialize(Json, Writer);
+	return Serialized;
+}
+
+FString FBlueprintHelperReviewBaselineSnapshotServiceUtils::SerializeJsonObjectCanonical(
+	const TSharedRef<FJsonObject>& Json)
+{
+	FString Serialized;
+	AppendCanonicalJsonObject(Json, Serialized);
 	return Serialized;
 }
 
