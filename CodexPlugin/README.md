@@ -13,7 +13,7 @@ See `INSTALL.md` at the repository root for Codex Desktop, CLI, lifecycle MCP, a
 ## Contents
 
 - `.codex-plugin/plugin.json` is the Codex plugin manifest.
-- `.codex/agents/` contains the Codex subagent definitions used by the BlueprintHelper workflow.
+- `agents/` contains the Codex `.toml` subagent definitions and Claude `.md` sideAgent definitions used by the BlueprintHelper workflow.
 - `skills/blueprint-helper/SKILL.md` is the Codex-facing workflow entry.
 - `skills/blueprint-helper/references/` mirrors the BlueprintHelper agent references from the canonical `AgentFaceService/agent-guide` docs.
 - `assets/blueprint-helper.svg` is the local plugin icon referenced by the manifest.

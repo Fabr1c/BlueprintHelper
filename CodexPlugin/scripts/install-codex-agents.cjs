@@ -11,7 +11,7 @@ if (!home) {
 }
 
 const pluginRoot = path.resolve(__dirname, '..');
-const sourceDir = path.join(pluginRoot, '.codex', 'agents');
+const sourceDir = path.join(pluginRoot, 'agents');
 const targetDir = path.join(home, '.codex', 'agents');
 const agentFiles = [
   'blueprint-explorer.toml',
@@ -35,6 +35,10 @@ for (const file of agentFiles) {
     console.error(`[BlueprintHelper Agents] Missing agent definition: ${src}`);
     process.exit(1);
   }
+  if (fs.statSync(src).size === 0) {
+    console.error(`[BlueprintHelper Agents] Empty agent definition: ${src}`);
+    process.exit(1);
+  }
 
   fs.copyFileSync(src, dst);
   installed.push(dst);
@@ -42,6 +46,7 @@ for (const file of agentFiles) {
 
 console.log(JSON.stringify({
   success: true,
+  source_dir: sourceDir,
   target_dir: targetDir,
   installed,
   agents: [
