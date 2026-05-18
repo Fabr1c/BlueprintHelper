@@ -1,0 +1,47 @@
+{
+  "schema": "BlueprintHelper.TaskSpec.v1",
+  "task_type": "edit_blueprint_variables",
+  "feature_name": "ReviewPanel_UI_03_EditBlueprintVariables",
+  "target": {
+    "asset_path": "/Game/BlueprintHelperCliSmoke/ReviewPanelManual_20260518_001/BP_RP_UI_Actor_20260518_001",
+    "target_type": "blueprint"
+  },
+  "behavior": {
+    "variable_strategy": "member_variables",
+    "changes": [
+      {
+        "kind": "ensure_member_variable",
+        "name": "bSmokeFlag",
+        "pin_type": {
+          "category": "bool"
+        },
+        "default": "false"
+      },
+      {
+        "kind": "ensure_member_variable",
+        "name": "SmokeLabel",
+        "pin_type": {
+          "category": "string"
+        },
+        "default": "Manual Alpha"
+      },
+      {
+        "kind": "ensure_member_variable",
+        "name": "SmokeFloat",
+        "pin_type": {
+          "category": "float"
+        },
+        "default": "1.25"
+      }
+    ]
+  },
+  "execution_policy": {
+    "dry_run_mode": "full",
+    "on_missing_capability": "stop_and_report",
+    "review_baseline_dirty_asset_policy": "block"
+  },
+  "validation": {
+    "should_compile": true,
+    "should_save": true
+  }
+}

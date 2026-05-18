@@ -1,0 +1,26 @@
+{
+  "schema": "BlueprintHelper.TaskSpec.v1",
+  "task_type": "create_asset",
+  "feature_name": "ReviewPanel_UI_13_CreateWidgetBlueprint",
+  "target": {
+    "asset_path": "/Game/BlueprintHelperCliSmoke/ReviewPanelManual_20260518_001/WBP_RP_UI_Widget_20260518_001",
+    "target_type": "asset"
+  },
+  "behavior": {
+    "asset_strategy": "ensure_asset",
+    "asset": {
+      "asset_type": "widget_blueprint",
+      "parent_class": "UserWidget",
+      "collision_policy": "reuse_if_exists"
+    }
+  },
+  "execution_policy": {
+    "dry_run_mode": "full",
+    "on_missing_capability": "stop_and_report",
+    "review_baseline_dirty_asset_policy": "block"
+  },
+  "validation": {
+    "should_compile": true,
+    "should_save": true
+  }
+}
