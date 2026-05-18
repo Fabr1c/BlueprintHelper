@@ -7,6 +7,9 @@
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.h"
 #include "Shared/BlueprintHelperDependencyAnalysisTypes.h"
 #include "Shared/FunctionChain/BlueprintHelperFunctionChainContextTypes.h"
+#include "Shared/Services/BlueprintHelperAgentImportJsonParser.h"
+#include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonWriter.h"
 
 class FBlueprintHelperObjectFirstContractTestsLocalUtils
 {
@@ -164,11 +167,79 @@ public:
 		return Step;
 	}
 
+	static FString SerializeJsonObject(const TSharedPtr<FJsonObject>& Object)
+	{
+		FString JsonText;
+		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonText);
+		FJsonSerializer::Serialize(Object.ToSharedRef(), Writer);
+		return JsonText;
+	}
+
 };
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperContractAgentImportRejectsRetiredRootFieldsTest,
+	"BlueprintHelper.ObjectFirst.Contract.AgentImportRejectsRetiredRootFields",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperContractAgentImportRejectsRetiredRootFieldsTest::RunTest(const FString& Parameters)
+{
+	const TCHAR* RetiredFields[] = {
+		TEXT("nodes"),
+		TEXT("links"),
+		TEXT("declarations"),
+		TEXT("layout")
+	};
+
+	for (const TCHAR* FieldName : RetiredFields)
+	{
+		TSharedPtr<FJsonObject> Root = MakeShared<FJsonObject>();
+		Root->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.AgentImportGraph"));
+		Root->SetStringField(TEXT("version"), TEXT("1.0"));
+		Root->SetStringField(TEXT("target_blueprint"), TEXT("/Game/Blueprints/BP_StoneGate"));
+		Root->SetStringField(TEXT("target_graph"), TEXT("EventGraph"));
+
+		TSharedPtr<FJsonObject> LogicSpec = MakeShared<FJsonObject>();
+		LogicSpec->SetStringField(TEXT("schema"), TEXT("BlueprintLogicSpec.v1"));
+		TArray<TSharedPtr<FJsonValue>> Statements;
+		LogicSpec->SetArrayField(TEXT("statements"), Statements);
+		Root->SetObjectField(TEXT("logic_spec"), LogicSpec);
+
+		const FString Field(FieldName);
+		if (Field == TEXT("layout"))
+		{
+			Root->SetStringField(FieldName, TEXT("auto"));
+		}
+		else if (Field == TEXT("declarations"))
+		{
+			Root->SetObjectField(FieldName, MakeShared<FJsonObject>());
+		}
+		else
+		{
+			TArray<TSharedPtr<FJsonValue>> EmptyArray;
+			Root->SetArrayField(FieldName, EmptyArray);
+		}
+
+		FBlueprintHelperAgentImportParsedRequest ParsedRequest;
+		FBlueprintHelperAgentImportResult Result;
+		const bool bParsed = FBlueprintHelperAgentImportJsonParser::Parse(
+			FBlueprintHelperObjectFirstContractTestsLocalUtils::SerializeJsonObject(Root),
+			ParsedRequest,
+			Result);
+
+		TestFalse(FString::Printf(TEXT("AgentImport rejects retired root field %s"), FieldName), bParsed);
+		TestEqual(
+			FString::Printf(TEXT("AgentImport retired field %s reports expected error"), FieldName),
+			Result.ErrorCode,
+			FString(TEXT("retired_agent_import_field")));
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperContractExportIncludeJsonTextTest,
-	"BlueprintHelper.ObjectFirst.Contract.ExportIncludeJsonText",
+	"BlueprintHelper.ObjectFirst.Contract.ExportRejectsIncludeJsonText",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FBlueprintHelperContractExportIncludeJsonTextTest::RunTest(const FString& Parameters)
@@ -186,21 +257,21 @@ bool FBlueprintHelperContractExportIncludeJsonTextTest::RunTest(const FString& P
 			FBlueprintHelperRequestValidator::ValidatePayloadForCommand(TEXT("export_to_json"), Payload, Error));
 	}
 
-	// include_json_text: true 应该被接受
+	// include_json_text 已归档，不再接受
 	{
 		TSharedPtr<FJsonObject> Payload = MakeShared<FJsonObject>();
 		Payload->SetBoolField(TEXT("include_json_text"), true);
 
-		TestTrue(TEXT("export_to_json 接受 include_json_text: true"),
+		TestFalse(TEXT("export_to_json 拒绝 include_json_text"),
 			FBlueprintHelperRequestValidator::ValidatePayloadForCommand(TEXT("export_to_json"), Payload, Error));
 	}
 
-	// include_json_text: false 应该被接受
+	// include_json_text 即使为 false 也不再接受
 	{
 		TSharedPtr<FJsonObject> Payload = MakeShared<FJsonObject>();
 		Payload->SetBoolField(TEXT("include_json_text"), false);
 
-		TestTrue(TEXT("export_to_json 接受 include_json_text: false"),
+		TestFalse(TEXT("export_to_json 拒绝 include_json_text:false"),
 			FBlueprintHelperRequestValidator::ValidatePayloadForCommand(TEXT("export_to_json"), Payload, Error));
 	}
 
@@ -234,12 +305,12 @@ bool FBlueprintHelperContractImportJsonObjectTest::RunTest(const FString& Parame
 			FBlueprintHelperRequestValidator::ValidatePayloadForCommand(TEXT("import_json"), Payload, Error));
 	}
 
-	// import_json 接受 string 类型的 json（兼容旧格式）
+	// import_json 不再接受 string 类型的 json
 	{
 		TSharedPtr<FJsonObject> Payload = MakeShared<FJsonObject>();
 		Payload->SetStringField(TEXT("json"), TEXT("{\"version\":\"2.2\",\"nodes\":[]}"));
 
-		TestTrue(TEXT("import_json 接受 string 类型的 json"),
+		TestFalse(TEXT("import_json 拒绝 string 类型的 json"),
 			FBlueprintHelperRequestValidator::ValidatePayloadForCommand(TEXT("import_json"), Payload, Error));
 	}
 

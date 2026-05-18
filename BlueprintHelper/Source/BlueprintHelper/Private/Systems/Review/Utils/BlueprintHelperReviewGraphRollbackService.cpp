@@ -37,7 +37,6 @@
 #include "Systems/Debug/BlueprintHelperDebugCaseStoreService.h"
 #include "Systems/Debug/BlueprintHelperDebugEntryService.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
-#include "Systems/ToolClusters/CleanupOwnership/BlueprintHelperConvertBlockToUserOwnedService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperOwnershipService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
@@ -352,38 +351,25 @@ FString FBlueprintHelperReviewGraphRollbackService::ResolveConversionTransaction
 			? JournalService.GenerateTransactionId()
 			: Request.ConversionTransactionId;
 	}
-FString FBlueprintHelperReviewGraphRollbackService::MakeConvertBlockFailureMessage(const FBlueprintHelperToolResultBase& ToolResult)
-	{
-		if (ToolResult.Error.IsSet())
-		{
-			if (!ToolResult.Error->Code.IsEmpty() && !ToolResult.Error->Message.IsEmpty())
-			{
-				return FString::Printf(TEXT("%s:%s"), *ToolResult.Error->Code, *ToolResult.Error->Message);
-			}
-			if (!ToolResult.Error->Code.IsEmpty())
-			{
-				return ToolResult.Error->Code;
-			}
-			if (!ToolResult.Error->Message.IsEmpty())
-			{
-				return ToolResult.Error->Message;
-			}
-		}
-		return TEXT("convert_owner_block_failed");
-	}
 bool FBlueprintHelperReviewGraphRollbackService::ExecuteBhToUserOwnerBlockConversion(
 		const FBlueprintHelperReviewAtomicTarget& Target,
 		const FBlueprintHelperReviewConvertOwnerBlockRequest& Request,
 		const FString& ConversionTransactionId,
 		FString& OutError)
 	{
-		FBlueprintHelperGraphResolver Resolver;
-		FBlueprintHelperOwnershipService OwnershipService;
-		FBlueprintHelperTransactionJournalService JournalService;
-		FBlueprintHelperConvertBlockToUserOwnedService ConvertService(
-			Resolver,
-			OwnershipService,
-			JournalService);
+		UBlueprint* Blueprint = Cast<UBlueprint>(StaticLoadObject(UBlueprint::StaticClass(), nullptr, *Target.AssetPath));
+		if (!Blueprint)
+		{
+			OutError = FString::Printf(TEXT("blueprint_not_found:%s"), *Target.AssetPath);
+			return false;
+		}
+
+		UEdGraph* Graph = FindReviewRollbackGraph(Blueprint, Target.GraphName);
+		if (!Graph)
+		{
+			OutError = FString::Printf(TEXT("graph_not_found:%s"), *Target.GraphName);
+			return false;
+		}
 
 		const FString BlockRef = Request.DesiredBlockRef.IsEmpty()
 			? ExtractReviewTargetTail(Target.TargetKey, TEXT("block"))
@@ -392,22 +378,111 @@ bool FBlueprintHelperReviewGraphRollbackService::ExecuteBhToUserOwnerBlockConver
 			Target.GraphName,
 			BlockRef);
 
-		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
-		Payload->SetStringField(TEXT("asset_path"), Target.AssetPath);
-		Payload->SetStringField(TEXT("graph"), Target.GraphName);
-		Payload->SetStringField(TEXT("block_ref"), BlockRef);
-		Payload->SetStringField(TEXT("block_id"), BlockId);
-		Payload->SetStringField(TEXT("ownership_scope"), TEXT("block"));
-		Payload->SetStringField(TEXT("already_user_owned_policy"), TEXT("error"));
-		Payload->SetStringField(TEXT("transaction_id"), ConversionTransactionId);
-		Payload->SetBoolField(TEXT("dry_run"), false);
-
-		const FBlueprintHelperToolResultBase ToolResult = ConvertService.Execute(Payload);
-		if (!ToolResult.bOk)
+		TArray<UEdGraphNode*> Nodes;
+		for (UEdGraphNode* Node : Graph->Nodes)
 		{
-			OutError = MakeConvertBlockFailureMessage(ToolResult);
+			if (!Node)
+			{
+				continue;
+			}
+
+			UPackage* Package = Node->GetOutermost();
+			if (!Package)
+			{
+				continue;
+			}
+
+			FBlueprintHelperPackageMetaData& Meta = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
+			if (Meta.GetValue(Node, TEXT("BlueprintHelperBlockId")) == BlockId)
+			{
+				if (Meta.GetValue(Node, TEXT("BlueprintHelperOwned")) != TEXT("true"))
+				{
+					OutError = FString::Printf(TEXT("target_not_owned:%s"), *BlockId);
+					return false;
+				}
+				Nodes.Add(Node);
+			}
+		}
+
+		if (Nodes.Num() == 0)
+		{
+			OutError = FString::Printf(TEXT("block_not_found:%s"), *BlockId);
 			return false;
 		}
+
+		FBlueprintHelperScopedAssetMutation Mutation(
+			FText::FromString(TEXT("BlueprintHelper Review Convert Owner Block")),
+			Blueprint);
+		Mutation.Modify(Graph);
+
+		for (UEdGraphNode* Node : Nodes)
+		{
+			Mutation.Modify(Node);
+			UPackage* Package = Node->GetOutermost();
+			if (!Package)
+			{
+				Mutation.Rollback();
+				OutError = TEXT("node_package_unavailable");
+				return false;
+			}
+
+			FBlueprintHelperPackageMetaData& Meta = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
+			Meta.RemoveValue(Node, TEXT("BlueprintHelperOwned"));
+			Meta.RemoveValue(Node, TEXT("BlueprintHelperBlockId"));
+			Meta.RemoveValue(Node, TEXT("BlueprintHelperTransactionId"));
+			Meta.RemoveValue(Node, TEXT("BlueprintHelperTool"));
+			Meta.RemoveValue(Node, TEXT("BlueprintHelperFeatureName"));
+
+			const FString Marker = TEXT("[BlueprintHelper]");
+			const int32 MarkerPos = Node->NodeComment.Find(Marker, ESearchCase::CaseSensitive);
+			if (MarkerPos != INDEX_NONE)
+			{
+				int32 EndPos = Node->NodeComment.Find(TEXT("\n"), ESearchCase::CaseSensitive, ESearchDir::FromStart, MarkerPos + Marker.Len());
+				if (EndPos == INDEX_NONE)
+				{
+					EndPos = Node->NodeComment.Len();
+				}
+
+				FString Before = Node->NodeComment.Left(MarkerPos).TrimEnd();
+				FString After = EndPos < Node->NodeComment.Len()
+					? Node->NodeComment.Mid(EndPos + 1).TrimStart()
+					: FString();
+				Node->NodeComment = Before;
+				if (!After.IsEmpty())
+				{
+					if (!Node->NodeComment.IsEmpty())
+					{
+						Node->NodeComment += TEXT("\n");
+					}
+					Node->NodeComment += After;
+				}
+			}
+		}
+
+		FBlueprintHelperAppendJournalRecord JournalRecord;
+		JournalRecord.TransactionId = ConversionTransactionId;
+		JournalRecord.Tool = TEXT("ConvertOwnerBlock");
+		JournalRecord.Status = TEXT("applied");
+		JournalRecord.TargetAssets.Add(Target.AssetPath);
+		JournalRecord.GraphId = Target.GraphName;
+		JournalRecord.GraphName = Target.GraphName;
+		JournalRecord.BlockIds.Add(BlockId);
+
+		FBlueprintHelperTransactionJournalService JournalService;
+		FString JournalError;
+		if (!JournalService.WriteAppendJournal(JournalRecord, JournalError))
+		{
+			Mutation.Rollback();
+			OutError = JournalError;
+			return false;
+		}
+
+		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+		if (Blueprint->GetOutermost())
+		{
+			Blueprint->GetOutermost()->MarkPackageDirty();
+		}
+		Mutation.Commit();
 		return true;
 	}
 UEdGraphNode* FBlueprintHelperReviewGraphRollbackService::FindReviewNodeByAnchor(UEdGraph* Graph, const FString& Anchor)
@@ -522,9 +597,6 @@ bool FBlueprintHelperReviewGraphRollbackService::ExecuteUserToBhOwnerBlockConver
 		JournalRecord.GraphId = Target.GraphName;
 		JournalRecord.GraphName = Target.GraphName;
 		JournalRecord.BlockIds.Add(BlockId);
-		JournalRecord.RollbackData = FString::Printf(
-			TEXT("{\"direction\":\"user_to_bh\",\"block_id\":\"%s\"}"),
-			*BlockId);
 
 		FBlueprintHelperTransactionJournalService JournalService;
 		FString JournalError;

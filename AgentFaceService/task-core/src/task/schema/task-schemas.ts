@@ -366,51 +366,6 @@ export const ObjectPropertyTaskSpecSchema = TaskSpecBaseSchema.extend({
   }).passthrough(),
 }).passthrough();
 
-export const GraphCleanupOwnershipTaskSpecSchema = TaskSpecBaseSchema.extend({
-  task_type: z.literal('manage_blueprinthelper_ownership'),
-  behavior: z.object({
-    ownership_strategy: z.literal('owned_block_lifecycle'),
-    changes: z.array(z.object({
-      kind: z.enum([
-        'cleanup_block',
-        'cleanup_blueprint_helper_block',
-        'convert_block_to_user_owned',
-        'convert_blueprint_helper_block_to_user_owned',
-        'rollback_cleanup_transaction',
-      ]),
-      graph_name: z.string().min(1).optional(),
-      graph_id: z.string().min(1).optional(),
-      block_ref: z.string().min(1).optional(),
-      block_id: z.string().min(1).optional(),
-      transaction_id: z.string().min(1).optional(),
-      missing_policy: z.enum(['error', 'ignore']).optional(),
-      already_user_owned_policy: z.enum(['error', 'ignore']).optional(),
-      already_rolled_back_policy: z.enum(['error', 'ignore']).optional(),
-    }).passthrough()).min(1),
-  }).passthrough(),
-}).passthrough().superRefine((value, ctx) => {
-  value.behavior.changes.forEach((change, index) => {
-    const path = ['behavior', 'changes', index];
-    if (change.kind === 'rollback_cleanup_transaction') {
-      if (!change.transaction_id) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: [...path, 'transaction_id'],
-          message: 'rollback_cleanup_transaction requires transaction_id.',
-        });
-      }
-      return;
-    }
-    if (!change.block_id && !(change.graph_id && change.block_ref)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path,
-        message: 'Owned block operations require block_id or graph_id + block_ref.',
-      });
-    }
-  });
-});
-
 const BlueprintSignatureChangeSchema = z.object({
   kind: z.enum([
     'ensure_function',
@@ -545,7 +500,6 @@ export const TaskSpecSchema: z.ZodTypeAny = z.union([
   UMGWidgetTaskSpecSchema,
   DataTableTaskSpecSchema,
   ObjectPropertyTaskSpecSchema,
-  GraphCleanupOwnershipTaskSpecSchema,
   BlueprintSignatureTaskSpecSchema,
 ]).superRefine((value, ctx) => {
   if (value && typeof value === 'object' && !Array.isArray(value) && Object.hasOwn(value, 'intent')) {
@@ -820,11 +774,6 @@ export const ObjectPropertyTaskPlanStepSchema = structuredCapabilityStepSchema(
   ['property_edit'],
 );
 
-export const GraphCleanupOwnershipTaskPlanStepSchema = structuredCapabilityStepSchema(
-  'graph_cleanup_ownership',
-  ['owned_block_lifecycle'],
-);
-
 export const TaskPlanStepSchema = z.union([
   GraphWriteTaskPlanStepSchema,
   BlueprintVariableTaskPlanStepSchema,
@@ -835,7 +784,6 @@ export const TaskPlanStepSchema = z.union([
   UMGWidgetTaskPlanStepSchema,
   DataTableTaskPlanStepSchema,
   ObjectPropertyTaskPlanStepSchema,
-  GraphCleanupOwnershipTaskPlanStepSchema,
 ]);
 
 export const TaskPlanSchema = z.object({
@@ -916,7 +864,6 @@ export type BlueprintSignatureTaskPlanStep = z.infer<typeof BlueprintSignatureTa
 export type UMGWidgetTaskPlanStep = z.infer<typeof UMGWidgetTaskPlanStepSchema>;
 export type DataTableTaskPlanStep = z.infer<typeof DataTableTaskPlanStepSchema>;
 export type ObjectPropertyTaskPlanStep = z.infer<typeof ObjectPropertyTaskPlanStepSchema>;
-export type GraphCleanupOwnershipTaskPlanStep = z.infer<typeof GraphCleanupOwnershipTaskPlanStepSchema>;
 export type BlueprintSignatureTaskSpec = z.infer<typeof BlueprintSignatureTaskSpecSchema>;
 export type TaskPlanStep = z.infer<typeof TaskPlanStepSchema>;
 export type TaskPlan = z.infer<typeof TaskPlanSchema>;

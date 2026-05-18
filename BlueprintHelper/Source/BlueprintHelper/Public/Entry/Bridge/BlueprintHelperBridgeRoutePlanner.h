@@ -23,7 +23,6 @@ enum class EBlueprintHelperBridgeRouteCluster : uint8
 	DataTable,
 	ObjectProperty,
 	EditorCommand,
-	CleanupOwnership,
 	Review,
 	Transactions,
 	AnimationBlueprint,

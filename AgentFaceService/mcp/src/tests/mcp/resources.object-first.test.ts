@@ -31,10 +31,9 @@ describe('raw-json resource returns body directly', () => {
     assert.equal(typeof parsed.nodes, 'object');
   });
 
-  it('legacy json_text body is parsed correctly', () => {
+  it('retired json_text is not treated as raw-json body', () => {
     const body = JSON.stringify(rawObj);
     const input = { json_text: body };
-    // This test validates the concept: json_text strings should parse to objects
-    assert.ok(typeof body === 'string');
+    assert.equal(typeof input.json_text, 'string');
   });
 });

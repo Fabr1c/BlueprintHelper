@@ -18,6 +18,8 @@
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Misc/AutomationTest.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 #include "Shared/Services/BlueprintHelperAgentImportService.h"
 #include "Systems/Debug/BlueprintHelperAssetBrowseService.h"
 #include "Shared/Services/BlueprintHelperBlueprintStructureService.h"
@@ -39,9 +41,6 @@
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperReplaceBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperPatchBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperMergeBlueprintGraphService.h"
-#include "Systems/ToolClusters/CleanupOwnership/BlueprintHelperCleanupBlueprintHelperBlockService.h"
-#include "Systems/ToolClusters/CleanupOwnership/BlueprintHelperRollbackCleanupTransactionService.h"
-#include "Systems/ToolClusters/CleanupOwnership/BlueprintHelperConvertBlockToUserOwnedService.h"
 #include "Systems/Debug/BlueprintHelperCompileAssetService.h"
 #include "Systems/Transactions/BlueprintHelperTransactionQueryService.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
@@ -272,7 +271,8 @@ static FBlueprintHelperImportResult RunStrictImport(UBlueprint* Blueprint, const
 	FBlueprintHelperImportRequest Request;
 	Request.Target.BlueprintPath = Blueprint ? Blueprint->GetPathName() : TEXT("");
 	Request.Target.GraphName = TEXT("EventGraph");
-	Request.JsonText = JsonText;
+	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonText);
+	FJsonSerializer::Deserialize(Reader, Request.JsonObject);
 	Request.bStrict = true;
 	Request.bAllowPartial = false;
 	return ImportService.Import(Request);
@@ -327,15 +327,20 @@ bool FBlueprintHelperRequestValidatorScopeTest::RunTest(const FString& Parameter
 	FString EffectiveScope;
 	FString Error;
 
-	TestTrue(TEXT("legacy full_graph is accepted"),
-		FBlueprintHelperRequestValidator::NormalizeExportScope(TEXT("full_graph"), Scope, EffectiveScope, Error));
-	TestEqual(TEXT("full_graph maps to graph"), EffectiveScope, FString(TEXT("graph")));
-	TestEqual(TEXT("full_graph maps to SingleGraph"), static_cast<uint8>(Scope), static_cast<uint8>(EBlueprintHelperExportScope::SingleGraph));
+	TestTrue(TEXT("graph scope is accepted"),
+		FBlueprintHelperRequestValidator::NormalizeExportScope(TEXT("graph"), Scope, EffectiveScope, Error));
+	TestEqual(TEXT("graph maps to graph"), EffectiveScope, FString(TEXT("graph")));
+	TestEqual(TEXT("graph maps to SingleGraph"), static_cast<uint8>(Scope), static_cast<uint8>(EBlueprintHelperExportScope::SingleGraph));
 
-	TestTrue(TEXT("legacy full_blueprint is accepted"),
+	TestTrue(TEXT("blueprint scope is accepted"),
+		FBlueprintHelperRequestValidator::NormalizeExportScope(TEXT("blueprint"), Scope, EffectiveScope, Error));
+	TestEqual(TEXT("blueprint maps to blueprint"), EffectiveScope, FString(TEXT("blueprint")));
+	TestEqual(TEXT("blueprint maps to FullBlueprint"), static_cast<uint8>(Scope), static_cast<uint8>(EBlueprintHelperExportScope::FullBlueprint));
+
+	TestFalse(TEXT("legacy full_graph is rejected"),
+		FBlueprintHelperRequestValidator::NormalizeExportScope(TEXT("full_graph"), Scope, EffectiveScope, Error));
+	TestFalse(TEXT("legacy full_blueprint is rejected"),
 		FBlueprintHelperRequestValidator::NormalizeExportScope(TEXT("full_blueprint"), Scope, EffectiveScope, Error));
-	TestEqual(TEXT("full_blueprint maps to blueprint"), EffectiveScope, FString(TEXT("blueprint")));
-	TestEqual(TEXT("full_blueprint maps to FullBlueprint"), static_cast<uint8>(Scope), static_cast<uint8>(EBlueprintHelperExportScope::FullBlueprint));
 
 	TestFalse(TEXT("unknown scope is rejected"),
 		FBlueprintHelperRequestValidator::NormalizeExportScope(TEXT("everything"), Scope, EffectiveScope, Error));
@@ -391,12 +396,6 @@ bool FBlueprintHelperBridgeExportEffectiveScopeTest::RunTest(const FString& Para
 		GraphResolver, LogicJsonPathService, JournalService);
 	FBlueprintHelperMergeBlueprintGraphService MergeGraphService(
 		GraphResolver, LogicJsonPathService, JournalService);
-	FBlueprintHelperCleanupBlueprintHelperBlockService CleanupBlockService(
-		GraphResolver, JournalService);
-	FBlueprintHelperRollbackCleanupTransactionService RollbackCleanupService(
-		GraphResolver, JournalService);
-	FBlueprintHelperConvertBlockToUserOwnedService ConvertBlockService(
-		GraphResolver, OwnershipService, JournalService);
 	FBlueprintHelperCompileAssetService CompileAssetService(CompileService);
 	FBlueprintHelperTransactionQueryService TransactionQueryService;
 	FBlueprintHelperBlueprintVariableService VariableService(GraphResolver, StructureService);
@@ -426,9 +425,6 @@ bool FBlueprintHelperBridgeExportEffectiveScopeTest::RunTest(const FString& Para
 		ReplaceGraphService,
 		PatchGraphService,
 		MergeGraphService,
-		CleanupBlockService,
-		RollbackCleanupService,
-		ConvertBlockService,
 		CompileAssetService,
 		TransactionQueryService,
 		VariableService,
@@ -440,7 +436,7 @@ bool FBlueprintHelperBridgeExportEffectiveScopeTest::RunTest(const FString& Para
 	Request.Payload = MakeShared<FJsonObject>();
 	Request.Payload->SetStringField(TEXT("target_blueprint"), Blueprint->GetPathName());
 	Request.Payload->SetStringField(TEXT("target_graph"), TEXT("EventGraph"));
-	Request.Payload->SetStringField(TEXT("scope"), TEXT("full_graph"));
+	Request.Payload->SetStringField(TEXT("scope"), TEXT("graph"));
 
 	const FBlueprintHelperBridgeResponse Response = Router.HandleRequest(Request);
 	TestTrue(TEXT("export_to_json succeeds"), Response.bSuccess);
@@ -451,7 +447,7 @@ bool FBlueprintHelperBridgeExportEffectiveScopeTest::RunTest(const FString& Para
 		FString EffectiveScope;
 		TestTrue(TEXT("response includes effective_scope"),
 			Response.Result->TryGetStringField(TEXT("effective_scope"), EffectiveScope));
-		TestEqual(TEXT("legacy full_graph returns effective graph scope"),
+		TestEqual(TEXT("graph scope returns effective graph scope"),
 			EffectiveScope, FString(TEXT("graph")));
 	}
 

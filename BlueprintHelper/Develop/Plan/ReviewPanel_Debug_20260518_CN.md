@@ -120,3 +120,86 @@
 
 1. 当前没有本次失败点击对应的最新 DebugBundle 路径，因此无法把每个 Reject 失败精确归因到 `legacy_graph_hash`、`current_hash_unavailable`、`target_keys_not_found` 或 snapshot restore failure。
 2. 若要确认“新生成的 graph ReviewEvent 是否仍 Reject 无效”，需要重新构造一批当前版本 ReviewEvent 并导出 DebugBundle。
+
+## 2026-05-18 Reject 语义与旧事务路径清理记录
+
+### 本轮结论
+
+Reject 主语义调整为：以 evidence 的 `before` 作为唯一恢复目标。`current_hash != recorded_after_hash` 不再阻塞 Reject，只写入 DebugBundle/ActionResult 诊断字段，用于提示用户当前资产状态已经偏离 latest after。
+
+### 已完成
+
+1. `FBlueprintHelperReviewRejectService` 不再因为 `missing_recorded_after_hash`、`current_hash_unavailable`、`current_state_changed` 阻塞 Reject。
+2. `FBlueprintHelperReviewActionService` 的 injected-options 路径同样不再因为 current/latest after 不一致阻塞 Reject。
+3. `HashGuardTargetKey`、`HashGuardExpectedHash`、`HashGuardCurrentHash`、`HashGuardCurrentSnapshotJson`、`HashGuardRecordedAfterSnapshotJson` 继续保留，作为 DebugBundle 诊断输入。
+4. TaskRuntime/ReviewStore 不再接受 `review://archive/.../rollback/...` 这类虚构 rollback ref 作为可用回滚依据。
+5. `FBlueprintHelperAppendJournalRecord` 移除 legacy `CreatedNodePaths` 与 `created_nodes` journal 输出，只保留 structured `CreatedNodeAnchors`。
+6. `MergeBlueprintGraph` 移除 `block_id=` 注释回退解析，只接受 BlueprintHelper metadata。
+7. `rollback_cleanup_transaction` 已移除公开工具入口，后续 cleanup rollback 必须进入 Review evidence + `blueprinthelper_apply_review_action` 链路。
+8. Review surface router 不再对缺少 explicit atomic target 的旧记录做 `legacy_fallback` 展示，缺少显式 target 时返回 `missing_explicit_targets`。
+9. C++ 编译通过：`TemplateEditor Win64 Development`。
+
+### UI legacy anchor 评估
+
+GraphPanel 里旧文档提到的 legacy anchor 实际分两类：
+
+1. Surface fallback：没有 explicit atomic target 时用 location/change kind 猜 surface。该路径已移除，因为它会掩盖 evidence 缺失。
+2. recorded bounds fallback：target 已经是 explicit target，但只有 `bHasGraphBounds/GraphPosition/GraphSize`，没有 structured `AnchorJson`。该路径暂时保留，因为它只影响 GraphPanel diff 框定位，不参与 rollback 语义。
+
+当前判断：Surface fallback 应移除；recorded bounds fallback 应保留并后续改名/同步到新架构字段，例如 `recorded_bounds` 或 `graph_bounds_anchor`，避免继续叫 legacy。
+
+### 剩余差距
+
+1. `transaction://.../rollback_data` 仍是 graph rollback journal 的真实执行入口，尚未完全替换成纯 snapshot restore。
+2. `PatchBlueprintGraph` 与 `MergeBlueprintGraph` 的 Review rollback executor 仍需要按新 Review 架构补齐。
+3. ~~CleanupOwnership 的服务类和路由仍保留，但执行入口已禁用；后续应从 TaskSpec/Bridge surface 移除该命令。~~ 已完成：CleanupOwnership 公开工具簇已从 Bridge/TaskPlan/TaskRuntime surface 移除。
+4. UI recorded-bounds fallback 还没有改名为新架构字段。
+
+## 2026-05-18 Graph Reject snapshot restore 迁移记录
+
+### 已完成
+- Graph Review Reject 主路径改为 `BeforeSnapshotJson` snapshot restore，不再读取 `rollback_data_ref` / transaction rollback journal。
+- `graph_node`、`graph_block` 标记为可 snapshot restore；`graph_pin` / `graph_link` 不再被误认为完整可恢复目标。
+- Graph target snapshot 写入 `restore_text` 作为还原 payload，并在 semantic hash 计算中排除 `restore_text`，避免导出文本中的非语义字段污染 diff 判断。
+- `AppendJournalRecord` 移除 `RollbackData` 字段输出；TransactionJournal 不再生成 `transaction://.../rollback_data` review target ref。
+- PatchBlueprintGraph 在 mutation 前捕获目标 `graph_node` before snapshot，并写入 `BaselineSnapshotsByTargetKey`。
+- MergeBlueprintGraph 记录真实生成节点 anchor，配合 `Merge` change kind 进入 added/missing-before snapshot 路径。
+- Reject fallback 改为 `snapshot_restore_unsupported_target_kind`，不再回退旧 rollback executor。
+
+### CleanupOwnership 最终处理
+- `rollback_cleanup_transaction` 已不作为 Review Reject 的恢复路径保留，旧 rollback_data 语义与新 evidence-before/snapshot restore 架构冲突。
+- `cleanup_blueprint_helper_block` 与 `convert_block_to_user_owned` 不再作为公开维护工具保留，旧图块不再兼容。
+- `CleanupOwnership` 公开工具簇已从 Bridge/TaskPlan/TaskRuntime surface 移除；Accept 后 ownership metadata 清理策略属于后续用户配置项，本轮不实现。
+
+### 验证
+- 已执行 UE 5.6 `TemplateEditor Win64 Development` 编译，结果通过。
+
+### 距离期望差距
+- 本轮未做编辑器端 ReviewPanel 手动点击验证。
+- CleanupOwnership 公开工具簇移除后尚未执行编译验证。
+
+## 2026-05-18 CleanupOwnership 公开工具簇移除记录
+
+### 本轮结论
+
+1. `rollback_cleanup_transaction`、`cleanup_blueprint_helper_block`、`convert_blueprint_helper_block_to_user_owned` 不再作为公开 Bridge/CLI/TaskPlan 能力存在。
+2. `graph_cleanup_ownership` TaskPlan capability 移除，不再允许 Agent 通过旧 CleanupOwnership 路径写资产。
+3. Review Reject 继续以 evidence before / snapshot restore 为唯一恢复语义，不再保留旧事务 rollback 入口。
+4. Accept 后 ownership metadata 清理策略属于后续用户配置项，本轮不实现，避免继续引入新旧语义冲突。
+
+### 距离期望差距
+
+- 本轮未执行编译和编辑器端验证；需要下一轮闭环编译确认所有旧引用已清空。
+
+## 2026-05-18 CleanupOwnership 编译与编辑器端验证补充
+
+### 已完成
+1. AgentFaceService `task-core` 与 `cli` 已重新构建，旧 CleanupOwnership TaskSpec schema、compiler、contract、模板与生成产物残留已清除。
+2. UE 5.6 `TemplateEditor Win64 Development` 编译通过。
+3. MCP 启动编辑器后，`bh.cmd blueprint_get_runtime_profile --json '{}' --select status,summary` 返回 `status=completed`、`errors=0`。
+4. `bh.cmd cleanup_blueprint_helper_block ...` 返回 unsupported command，旧公开 CLI 命令不再可用。
+5. `blueprinthelper_preview_task` 输入 `task_type=manage_blueprinthelper_ownership` 返回 schema invalid，旧 TaskSpec 类型不再出现在 expected 候选分支中。
+6. 残留检查已覆盖 `AgentFaceService` 与 `BlueprintHelper/Source`，排除文档说明后未发现旧 CleanupOwnership 代码引用。
+
+### 距离期望差距
+- 未执行 ReviewPanel 手动点击验证；本轮只验证编译、Bridge、CLI 正向路径与旧 CleanupOwnership 负向路径。

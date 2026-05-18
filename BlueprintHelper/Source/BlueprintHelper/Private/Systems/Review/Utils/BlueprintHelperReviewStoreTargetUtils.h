@@ -22,7 +22,6 @@ public:
 				const FString& TargetPrefix,
 				bool bExtractNodeName,
 				FBlueprintHelperReviewTransactionInput& Input);
-	static void AddGraphTargetsFromRollbackData(FBlueprintHelperReviewTransactionInput& Input, const TSharedPtr<FJsonObject>& Record);
 	static FString MakeReviewInternalMissingAnchorKey(const FString& TransactionId, int32 Index);
 	static FString MakeReviewInternalMissingGroupKey(const FString& TransactionId, int32 Index);
 	static FString MakeReviewAtomicLookupKey(const FBlueprintHelperReviewAtomicTarget& Target, const FString& FallbackKey);

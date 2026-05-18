@@ -62,10 +62,5 @@ FBlueprintHelperExportResult FBlueprintHelperExportService::Export(const FBluepr
 		}
 	}
 
-	if (Result.bSuccess && Request.bIncludeJsonText)
-	{
-		Result.JsonText = FBlueprintToTextConverter::SerializeJsonObject(Result.JsonObject);
-	}
-
 	return Result;
 }

@@ -106,7 +106,6 @@ struct FBlueprintHelperImportRequest
 {
 	FBlueprintHelperGraphTarget Target;
 	TSharedPtr<FJsonObject> JsonObject;
-	FString JsonText;
 	bool bAutoCompile = false;
 	bool bStrict = true;
 	bool bAllowPartial = false;
@@ -155,7 +154,6 @@ struct FBlueprintHelperExportRequest
 {
 	FBlueprintHelperGraphTarget Target;
 	EBlueprintHelperExportScope Scope = EBlueprintHelperExportScope::SingleGraph;
-	bool bIncludeJsonText = false;
 };
 
 /** 导出结果。 */
@@ -163,7 +161,6 @@ struct FBlueprintHelperExportResult
 {
 	bool bSuccess = false;
 	TSharedPtr<FJsonObject> JsonObject;
-	FString JsonText;
 	FString EffectiveScope;
 	FBlueprintHelperDiagnosticSet Diagnostics;
 };

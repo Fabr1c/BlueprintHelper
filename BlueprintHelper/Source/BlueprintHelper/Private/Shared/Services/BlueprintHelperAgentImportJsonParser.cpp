@@ -77,6 +77,35 @@ void ParseOptions(
 	(*OptionsObject)->TryGetBoolField(TEXT("reconstruct_existing_nodes"), OutOptions.bReconstructExistingNodes);
 }
 
+void RejectRetiredRootFields(
+	const TSharedPtr<FJsonObject>& Root,
+	FBlueprintHelperAgentImportResult& Result)
+{
+	const TCHAR* RetiredFields[] = {
+		TEXT("nodes"),
+		TEXT("links"),
+		TEXT("declarations"),
+		TEXT("layout")
+	};
+
+	for (const TCHAR* FieldName : RetiredFields)
+	{
+		const FString Field(FieldName);
+		if (!Root->HasField(Field))
+		{
+			continue;
+		}
+
+		AddAgentImportDiagnostic(
+			Result,
+			EBlueprintHelperAgentImportDiagnosticSeverity::Error,
+			TEXT("retired_agent_import_field"),
+			TEXT("$.") + Field,
+			FString::Printf(TEXT("AgentImport root field '%s' is retired and is no longer accepted."), *Field),
+			TEXT("Use logic_spec/SemanticIR input only."));
+	}
+}
+
 }
 
 bool FBlueprintHelperAgentImportJsonParser::Parse(
@@ -140,29 +169,7 @@ bool FBlueprintHelperAgentImportJsonParser::Parse(
 	}
 	OutRequest.Mode = EBlueprintHelperAgentImportMode::Append;
 
-	FString Layout;
-	if (Root->TryGetStringField(TEXT("layout"), Layout) && !Layout.IsEmpty())
-	{
-		// DEPRECATED_LAYOUT: AgentImport layout is a legacy import hint. New layout is configured by GraphLayout rules.
-		if (Layout.Equals(TEXT("append_right"), ESearchCase::IgnoreCase))
-		{
-			OutRequest.Layout = EBlueprintHelperAgentLayoutStrategy::AppendRight;
-		}
-		else if (Layout.Equals(TEXT("auto"), ESearchCase::IgnoreCase))
-		{
-			OutRequest.Layout = EBlueprintHelperAgentLayoutStrategy::Auto;
-		}
-		else
-		{
-			AddAgentImportDiagnostic(
-				OutResult,
-				EBlueprintHelperAgentImportDiagnosticSeverity::Error,
-				TEXT("unsupported_layout"),
-				TEXT("$.layout"),
-				TEXT("SemanticIR AgentImport supports layout 'auto' or 'append_right'."));
-		}
-	}
-
+	RejectRetiredRootFields(Root, OutResult);
 	ParseOptions(Root, OutRequest.Options);
 
 	const TSharedPtr<FJsonObject>* LogicSpecObject = nullptr;

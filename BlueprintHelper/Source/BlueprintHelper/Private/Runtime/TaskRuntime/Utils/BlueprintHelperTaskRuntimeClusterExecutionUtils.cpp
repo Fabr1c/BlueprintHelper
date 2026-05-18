@@ -7,7 +7,6 @@
 #include "Runtime/TaskRuntime/TaskPlanAdapters/BlueprintComponent/BlueprintHelperComponentTaskPlanAdapter.h"
 #include "Runtime/TaskRuntime/TaskPlanAdapters/BlueprintSignature/BlueprintHelperSignatureTaskPlanAdapter.h"
 #include "Runtime/TaskRuntime/TaskPlanAdapters/BlueprintVariables/BlueprintHelperBlueprintVariableTaskPlanAdapter.h"
-#include "Runtime/TaskRuntime/TaskPlanAdapters/CleanupOwnership/BlueprintHelperCleanupOwnershipTaskPlanAdapter.h"
 #include "Runtime/TaskRuntime/TaskPlanAdapters/DataAssetObjectProperty/BlueprintHelperObjectPropertyTaskPlanAdapter.h"
 #include "Runtime/TaskRuntime/TaskPlanAdapters/DataTable/BlueprintHelperDataTableTaskPlanAdapter.h"
 #include "Runtime/TaskRuntime/TaskPlanAdapters/UMGWidget/BlueprintHelperWidgetTaskPlanAdapter.h"
@@ -20,16 +19,12 @@
 #include "Systems/ToolClusters/BlueprintComponent/BlueprintHelperComponentService.h"
 #include "Systems/ToolClusters/BlueprintSignature/BlueprintHelperSignatureService.h"
 #include "Systems/ToolClusters/BlueprintVariables/BlueprintHelperBlueprintVariableService.h"
-#include "Systems/ToolClusters/CleanupOwnership/BlueprintHelperCleanupBlueprintHelperBlockService.h"
-#include "Systems/ToolClusters/CleanupOwnership/BlueprintHelperConvertBlockToUserOwnedService.h"
-#include "Systems/ToolClusters/CleanupOwnership/BlueprintHelperRollbackCleanupTransactionService.h"
 #include "Systems/ToolClusters/DataTable/BlueprintHelperDataTableService.h"
 #include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
 #include "Systems/ToolClusters/UMGWidget/BlueprintHelperWidgetService.h"
 
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
-#include "Misc/Crc.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 
@@ -60,11 +55,6 @@ static FString SerializeTaskRuntimeReviewPayload(const TSharedPtr<FJsonObject>& 
 	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Serialized);
 	FJsonSerializer::Serialize(Payload.ToSharedRef(), Writer);
 	return Serialized;
-}
-
-static FString MakeTaskRuntimeReviewHash(const FString& Payload)
-{
-	return FString::Printf(TEXT("crc32_%08x"), FCrc::StrCrc32(*Payload));
 }
 
 static FString MakeTaskRuntimeReviewRefSegment(const FString& RawValue)
@@ -130,14 +120,6 @@ static void AddTaskRuntimeReviewTarget(
 	const FString TargetKey = FString::Printf(TEXT("%s:%s"), *TargetKind, *SafeTargetName);
 	const FString VisualGroupKey = FString::Printf(TEXT("%s:%s"), *VisualGroupPrefix, *SafeTargetName);
 	const FString PayloadText = SerializeTaskRuntimeReviewPayload(Payload);
-	const FString HashSeed = FString::Printf(
-		TEXT("%s|%s|%s|%s|%s|%s"),
-		*Evidence.ArchiveSessionId,
-		*Evidence.TransactionId,
-		*Evidence.AssetPath,
-		*TargetKind,
-		*TargetName,
-		*PayloadText);
 
 	FBlueprintHelperReviewAtomicTarget Target;
 	Target.AssetPath = Evidence.AssetPath;
@@ -163,13 +145,6 @@ static void AddTaskRuntimeReviewTarget(
 	Target.LatestTransactionId = Evidence.TransactionId;
 	Target.SourceTransactionIds.Add(Evidence.TransactionId);
 	Target.AnchorJson = PayloadText;
-	Target.BaselineHash = MakeTaskRuntimeReviewHash(FString(TEXT("baseline|")) + HashSeed);
-	Target.RecordedAfterHash = MakeTaskRuntimeReviewHash(FString(TEXT("after|")) + HashSeed);
-	Target.RollbackDataRef = FString::Printf(
-		TEXT("review://archive/%s/rollback/%s/%s"),
-		*Evidence.ArchiveSessionId,
-		*Evidence.TransactionId,
-		*MakeTaskRuntimeReviewRefSegment(TargetKey));
 	Target.Ownership = TEXT("blueprinthelper_owned");
 	Evidence.AtomicTargets.Add(Target);
 }
@@ -1434,46 +1409,6 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeClusterExecutionUtils:
 		TEXT("unsupported_object_property_adapter_operation"),
 		EBlueprintHelperToolStage::ParseInput,
 		TEXT("Unsupported object_property adapter operation."));
-}
-
-FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeClusterExecutionUtils::ExecuteCleanupOwnershipTaskPlanStep(
-	const FBlueprintHelperCleanupBlueprintHelperBlockService& CleanupBlockService,
-	const FBlueprintHelperConvertBlockToUserOwnedService& ConvertBlockService,
-	const FBlueprintHelperRollbackCleanupTransactionService& RollbackCleanupService,
-	const FString& AdapterOperation,
-	const TSharedPtr<FJsonObject>& Payload)
-{
-	using FCleanupOperationHandler = TFunction<FBlueprintHelperToolResultBase()>;
-	TMap<FString, FCleanupOperationHandler> OperationHandlers;
-	OperationHandlers.Add(
-		FBlueprintHelperCleanupOwnershipTaskPlanAdapter::AdapterOperationCleanupBlueprintHelperBlock,
-		[&CleanupBlockService, Payload]()
-		{
-			return CleanupBlockService.Execute(Payload);
-		});
-	OperationHandlers.Add(
-		FBlueprintHelperCleanupOwnershipTaskPlanAdapter::AdapterOperationConvertBlueprintHelperBlockToUserOwned,
-		[&ConvertBlockService, Payload]()
-		{
-			return ConvertBlockService.Execute(Payload);
-		});
-	OperationHandlers.Add(
-		FBlueprintHelperCleanupOwnershipTaskPlanAdapter::AdapterOperationRollbackCleanupTransaction,
-		[&RollbackCleanupService, Payload]()
-		{
-			return RollbackCleanupService.Execute(Payload);
-		});
-
-	if (const FCleanupOperationHandler* Handler = OperationHandlers.Find(AdapterOperation))
-	{
-		return (*Handler)();
-	}
-
-	return MakeFailure(
-		TEXT("graph_cleanup_ownership"),
-		TEXT("unsupported_cleanup_ownership_adapter_operation"),
-		EBlueprintHelperToolStage::ParseInput,
-		TEXT("Unsupported Cleanup/Ownership adapter operation."));
 }
 
 FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeClusterExecutionUtils::ExecuteSignatureTaskPlanStep(

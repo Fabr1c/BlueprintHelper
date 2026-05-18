@@ -6,7 +6,6 @@
 #include "Runtime/TaskRuntime/Clusters/AssetFactory/BlueprintHelperAssetFactoryTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/BlueprintVariables/BlueprintHelperBlueprintVariablesTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/ClassSettings/BlueprintHelperClassSettingsTaskRuntimeCluster.h"
-#include "Runtime/TaskRuntime/Clusters/CleanupOwnership/BlueprintHelperCleanupOwnershipTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/Component/BlueprintHelperComponentTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/DataTable/BlueprintHelperDataTableTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/GraphWrite/BlueprintHelperGraphWriteTaskRuntimeCluster.h"
@@ -27,9 +26,6 @@ class FBlueprintHelperClassSettingsService;
 class FBlueprintHelperWidgetService;
 class FBlueprintHelperDataTableService;
 class FBlueprintHelperPropertyReflectionService;
-class FBlueprintHelperCleanupBlueprintHelperBlockService;
-class FBlueprintHelperRollbackCleanupTransactionService;
-class FBlueprintHelperConvertBlockToUserOwnedService;
 struct FBlueprintHelperWriteReviewEvidence;
 
 enum class EBlueprintHelperTaskRuntimeCluster : uint8
@@ -44,7 +40,6 @@ enum class EBlueprintHelperTaskRuntimeCluster : uint8
 	UMGWidget,
 	DataTable,
 	ObjectProperty,
-	CleanupOwnership,
 	AnimationBlueprint,
 	Material
 };
@@ -64,10 +59,7 @@ public:
 		const FBlueprintHelperClassSettingsService& InClassSettingsService,
 		const FBlueprintHelperWidgetService& InWidgetService,
 		const FBlueprintHelperDataTableService& InDataTableService,
-		const FBlueprintHelperPropertyReflectionService& InPropertyReflectionService,
-		const FBlueprintHelperCleanupBlueprintHelperBlockService& InCleanupBlockService,
-		const FBlueprintHelperRollbackCleanupTransactionService& InRollbackCleanupService,
-		const FBlueprintHelperConvertBlockToUserOwnedService& InConvertBlockService);
+		const FBlueprintHelperPropertyReflectionService& InPropertyReflectionService);
 
 	static bool TryLowerStep(
 		const TSharedPtr<FJsonObject>& TaskPlan,
@@ -103,5 +95,4 @@ private:
 	FBlueprintHelperUMGWidgetTaskRuntimeCluster UMGWidgetCluster;
 	FBlueprintHelperDataTableTaskRuntimeCluster DataTableCluster;
 	FBlueprintHelperObjectPropertyTaskRuntimeCluster ObjectPropertyCluster;
-	FBlueprintHelperCleanupOwnershipTaskRuntimeCluster CleanupOwnershipCluster;
 };

@@ -41,12 +41,6 @@
 #include "Shared/GraphWrite/BlueprintHelperPatchGraphTypes.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperMergeBlueprintGraphService.h"
 #include "Shared/GraphWrite/BlueprintHelperMergeGraphTypes.h"
-#include "Systems/ToolClusters/CleanupOwnership/BlueprintHelperCleanupBlueprintHelperBlockService.h"
-#include "Shared/CleanupOwnership/BlueprintHelperCleanupBlockTypes.h"
-#include "Systems/ToolClusters/CleanupOwnership/BlueprintHelperRollbackCleanupTransactionService.h"
-#include "Shared/CleanupOwnership/BlueprintHelperRollbackCleanupTypes.h"
-#include "Systems/ToolClusters/CleanupOwnership/BlueprintHelperConvertBlockToUserOwnedService.h"
-#include "Shared/CleanupOwnership/BlueprintHelperConvertBlockToUserOwnedTypes.h"
 #include "Systems/Debug/BlueprintHelperCompileAssetService.h"
 #include "Shared/Debug/BlueprintHelperCompileAssetTypes.h"
 #include "Shared/Debug/BlueprintHelperSaveAssetTypes.h"
@@ -545,9 +539,6 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	const FBlueprintHelperReplaceBlueprintGraphService& InReplaceGraphService,
 	const FBlueprintHelperPatchBlueprintGraphService& InPatchGraphService,
 	const FBlueprintHelperMergeBlueprintGraphService& InMergeGraphService,
-	const FBlueprintHelperCleanupBlueprintHelperBlockService& InCleanupBlockService,
-	const FBlueprintHelperRollbackCleanupTransactionService& InRollbackCleanupService,
-	const FBlueprintHelperConvertBlockToUserOwnedService& InConvertBlockService,
 	const FBlueprintHelperCompileAssetService& InCompileAssetService,
 	const FBlueprintHelperTransactionQueryService& InTransactionQueryService,
 	const FBlueprintHelperBlueprintVariableService& InVariableService,
@@ -577,10 +568,6 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 		InReplaceGraphService,
 		InPatchGraphService,
 		InMergeGraphService)
-	, CleanupOwnershipRoutes(
-		InCleanupBlockService,
-		InRollbackCleanupService,
-		InConvertBlockService)
 	, VariableService(InVariableService)
 	, BlueprintVariablesRoutes(InVariableService)
 	, TaskRuntimeService(
@@ -596,9 +583,6 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 		InWidget,
 		InDataTable,
 		InPropertyReflection,
-		InCleanupBlockService,
-		InRollbackCleanupService,
-		InConvertBlockService,
 		InCompileAssetService,
 		InAssetBrowse,
 		&InDebugEntryService)
@@ -751,12 +735,6 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequestWithPl
 		FBlueprintHelperGraphWriteBridgeRoutes::IsGraphWriteCommand(Request.Command))
 	{
 		return GraphWriteRoutes.HandleRequest(Request);
-	}
-
-	if (RoutePlan.Cluster == EBlueprintHelperBridgeRouteCluster::CleanupOwnership &&
-		FBlueprintHelperCleanupOwnershipBridgeRoutes::IsCleanupOwnershipCommand(Request.Command))
-	{
-		return CleanupOwnershipRoutes.HandleRequest(Request);
 	}
 
 	BLUEPRINTHELPER_ROUTE("list_blueprint_helper_transactions", Transactions, HandleListTransactions)
@@ -1288,10 +1266,6 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleExportToJson(
 				ScopeError);
 		}
 
-		// 读取 include_json_text 选项
-		bool bIncludeJsonText = false;
-		Req.Payload->TryGetBoolField(TEXT("include_json_text"), bIncludeJsonText);
-		ExportReq.bIncludeJsonText = bIncludeJsonText;
 	}
 	else
 	{
@@ -1349,12 +1323,6 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleExportToJson(
 	}
 	Resp.Result->SetArrayField(TEXT("diagnostics"), DiagArray);
 
-	// json_text — 仅在请求时包含
-	if (ExportReq.bIncludeJsonText && !ExportResult.JsonText.IsEmpty())
-	{
-		Resp.Result->SetStringField(TEXT("json_text"), ExportResult.JsonText);
-	}
-
 	return Resp;
 }
 
@@ -1367,7 +1335,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleExportLogic(
 	FString FormatStr;
 	FString DetailStr;
 	FBlueprintHelperBridgeValidationError ParseError;
-	if (!FBlueprintHelperBridgeRouterLocalUtils::TryReadStringOption(Payload, TEXT("scope"), TEXT("single_graph"), ScopeStr, ParseError)
+	if (!FBlueprintHelperBridgeRouterLocalUtils::TryReadStringOption(Payload, TEXT("scope"), TEXT("graph"), ScopeStr, ParseError)
 		|| !FBlueprintHelperBridgeRouterLocalUtils::TryReadStringOption(Payload, TEXT("format"), TEXT("logic_md"), FormatStr, ParseError)
 		|| !FBlueprintHelperBridgeRouterLocalUtils::TryReadStringOption(Payload, TEXT("detail"), TEXT("normal"), DetailStr, ParseError))
 	{
@@ -1381,11 +1349,11 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleExportLogic(
 		Payload->TryGetStringField(TEXT("target_graph"), ExportReq.Target.GraphName);
 	}
 
-	if (ScopeStr == TEXT("single_graph"))
+	if (ScopeStr == TEXT("graph"))
 	{
 		ExportReq.Scope = EBlueprintHelperExportScope::SingleGraph;
 	}
-	else if (ScopeStr == TEXT("full_blueprint"))
+	else if (ScopeStr == TEXT("blueprint"))
 	{
 		ExportReq.Scope = EBlueprintHelperExportScope::FullBlueprint;
 	}
@@ -1510,7 +1478,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleExportLogic(
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleImportJson(
 	const FBlueprintHelperBridgeRequest& Req) const
 {
-	// 接受 object 或 string json
+	// import_json now accepts object-first payload.json only.
 	FBlueprintHelperImportRequest ImportReq;
 	FBlueprintHelperBridgeValidationError ParseError;
 
@@ -1526,11 +1494,6 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleImportJson(
 				ImportReq.JsonObject = JsonVal->AsObject();
 				bHasJson = true;
 			}
-			else if (JsonVal->Type == EJson::String)
-			{
-				ImportReq.JsonText = JsonVal->AsString();
-				bHasJson = true;
-			}
 		}
 	}
 
@@ -1539,7 +1502,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleImportJson(
 		return FBlueprintHelperBridgeResponse::Error(
 			Req.RequestId,
 			EBlueprintHelperBridgeError::InvalidRequest,
-			TEXT("payload 缺少 json 字段，或类型不被支持（需要 object 或 string）。"));
+			TEXT("payload 缺少 json 字段，或类型不被支持（需要 object）。"));
 	}
 
 	if (Req.Payload.IsValid())
@@ -1554,7 +1517,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleImportJson(
 		return FBlueprintHelperBridgeRouterLocalUtils::ValidationErrorResponse(Req.RequestId, ParseError);
 	}
 
-	// ImportService.ResolveImportJsonText() 会处。JsonObject/JsonText 解析。schema/importable 守卫
+	// ImportService.ResolveImportJsonText() serializes object-first RawJson before schema/importable guards.
 	FBlueprintHelperImportResult ImportResult = ImportService.Import(ImportReq);
 
 	if (!ImportResult.bSuccess && ImportResult.Diagnostics.HasErrors())

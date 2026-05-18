@@ -41,7 +41,6 @@
 #include "ScopedTransaction.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
-#include "Systems/ToolClusters/CleanupOwnership/BlueprintHelperConvertBlockToUserOwnedService.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewActionRecordUtils.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewActionTargetUtils.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewGraphRollbackService.h"
@@ -190,12 +189,6 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectVi
 			Result.Message = TEXT("missing_anchor");
 			return Result;
 		}
-		if (Target.RecordedAfterHash.IsEmpty())
-		{
-			Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
-			Result.Message = TEXT("missing_recorded_after_hash");
-			return Result;
-		}
 		if (FBlueprintHelperReviewTargetKindRegistry::SupportsSnapshotRestore(Target.TargetKind)
 			&& Target.BeforeSnapshotJson.IsEmpty())
 		{
@@ -205,21 +198,15 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectVi
 		}
 
 		const FString* CurrentHash = Options.CurrentHashesByTargetKey.Find(Target.TargetKey);
-		if (!CurrentHash)
+		if (CurrentHash
+			&& !Target.RecordedAfterHash.IsEmpty()
+			&& !CurrentHash->Equals(Target.RecordedAfterHash, ESearchCase::CaseSensitive)
+			&& Result.HashGuardTargetKey.IsEmpty())
 		{
-			Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
-			Result.Message = FString::Printf(TEXT("missing_current_hash:%s"), *Target.TargetKey);
-			return Result;
-		}
-		if (!CurrentHash->Equals(Target.RecordedAfterHash, ESearchCase::CaseSensitive))
-		{
-			Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
-			Result.Message = FString::Printf(TEXT("current_state_changed:%s"), *Target.TargetKey);
 			Result.HashGuardTargetKey = Target.TargetKey;
 			Result.HashGuardExpectedHash = Target.RecordedAfterHash;
 			Result.HashGuardCurrentHash = *CurrentHash;
 			Result.HashGuardRecordedAfterSnapshotJson = Target.AfterSnapshotJson;
-			return Result;
 		}
 		if (FBlueprintHelperReviewSnapshotRestoreService::ShouldUseSnapshotRestore(Target))
 		{
@@ -234,27 +221,8 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectVi
 			}
 			continue;
 		}
-		if (Target.RollbackDataRef.IsEmpty())
-		{
-			Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
-			Result.Message = TEXT("missing_rollback_data_ref");
-			return Result;
-		}
-	}
-
-	if (!Options.bRollbackExecutorAvailable)
-	{
 		Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
-		Result.Message = TEXT("rollback_executor_unavailable");
-		return Result;
-	}
-
-	if (!Options.bRollbackSucceeded)
-	{
-		Result.NewStatus = EBlueprintHelperReviewChangeStatus::RejectFailed;
-		Result.Message = Options.RollbackFailureMessage.IsEmpty()
-			? TEXT("rollback_failed")
-			: Options.RollbackFailureMessage;
+		Result.Message = FString::Printf(TEXT("snapshot_restore_unsupported_target_kind:%s"), *Target.TargetKind);
 		return Result;
 	}
 

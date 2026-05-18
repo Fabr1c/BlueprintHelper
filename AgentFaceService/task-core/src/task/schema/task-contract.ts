@@ -574,26 +574,6 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
         ],
       },
       {
-        cluster: 'graph_cleanup_ownership',
-        agent_exposure: 'taskplan_internal',
-        taskplan_capability: 'graph_cleanup_ownership',
-        runtime_adapter_operations: [
-          'cleanup_blueprint_helper_block',
-          'convert_blueprint_helper_block_to_user_owned',
-          'rollback_cleanup_transaction',
-        ],
-        ue_commands: [
-          'cleanup_blueprint_helper_block',
-          'convert_blueprint_helper_block_to_user_owned',
-          'rollback_cleanup_transaction',
-        ],
-        documents: [
-          'BlueprintHelper_CleanupBlueprintHelperBlock_UE_CPP_Implementation_Plan_20260503.md',
-          'BlueprintHelper_ConvertBlockToUserOwned_UE_CPP_Implementation_Plan_20260503.md',
-          'BlueprintHelper_RollbackCleanupTransaction_UE_CPP_Implementation_Plan_20260503.md',
-        ],
-      },
-      {
         cluster: 'blueprint_variables',
         agent_exposure: 'taskspec_only',
         taskplan_capability: 'blueprint_variable',

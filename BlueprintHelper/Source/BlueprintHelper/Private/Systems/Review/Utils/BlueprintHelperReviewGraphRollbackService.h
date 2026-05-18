@@ -41,7 +41,6 @@ public:
 	static FString ResolveConversionTransactionId(
 				const FBlueprintHelperReviewConvertOwnerBlockRequest& Request,
 				const FBlueprintHelperTransactionJournalService& JournalService);
-	static FString MakeConvertBlockFailureMessage(const FBlueprintHelperToolResultBase& ToolResult);
 	static bool ExecuteBhToUserOwnerBlockConversion(
 				const FBlueprintHelperReviewAtomicTarget& Target,
 				const FBlueprintHelperReviewConvertOwnerBlockRequest& Request,

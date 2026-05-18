@@ -66,6 +66,10 @@ public:
 				const FBlueprintHelperReviewAtomicTarget& Target,
 				const TSharedPtr<FJsonObject>& Snapshot,
 				FString& OutError);
+	static bool RestoreGraphFromSnapshot(
+				const FBlueprintHelperReviewAtomicTarget& Target,
+				const TSharedPtr<FJsonObject>& Snapshot,
+				FString& OutError);
 	static bool ExecuteSnapshotRestore(
 				const FBlueprintHelperReviewAtomicTarget& Target,
 				FString& OutError);

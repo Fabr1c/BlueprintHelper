@@ -20,9 +20,6 @@
 #include "Shared/Services/BlueprintHelperAgentImportService.h"
 #include "Shared/Services/BlueprintHelperBlueprintStructureService.h"
 #include "Systems/ToolClusters/BlueprintVariables/BlueprintHelperBlueprintVariableService.h"
-#include "Systems/ToolClusters/CleanupOwnership/BlueprintHelperCleanupBlueprintHelperBlockService.h"
-#include "Systems/ToolClusters/CleanupOwnership/BlueprintHelperConvertBlockToUserOwnedService.h"
-#include "Systems/ToolClusters/CleanupOwnership/BlueprintHelperRollbackCleanupTransactionService.h"
 #include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
 #include "Systems/ToolClusters/DataTable/BlueprintHelperDataTableService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperAppendBlueprintGraphService.h"
@@ -65,9 +62,6 @@ public:
 		FBlueprintHelperWidgetService WidgetService;
 		FBlueprintHelperDataTableService DataTableService;
 		FBlueprintHelperPropertyReflectionService PropertyReflectionService;
-		FBlueprintHelperCleanupBlueprintHelperBlockService CleanupBlockService;
-		FBlueprintHelperRollbackCleanupTransactionService RollbackCleanupService;
-		FBlueprintHelperConvertBlockToUserOwnedService ConvertBlockService;
 		FBlueprintHelperCompileAssetService CompileAssetService;
 		FBlueprintHelperTaskRuntimeService TaskRuntimeService;
 
@@ -82,9 +76,6 @@ public:
 			, VariableService(Resolver, StructureService)
 			, ComponentService(Resolver)
 			, ClassSettingsService(Resolver)
-			, CleanupBlockService(Resolver, JournalService)
-			, RollbackCleanupService(Resolver, JournalService)
-			, ConvertBlockService(Resolver, OwnershipService, JournalService)
 			, CompileAssetService(CompileService)
 			, TaskRuntimeService(
 				AppendGraphService,
@@ -99,9 +90,6 @@ public:
 				WidgetService,
 				DataTableService,
 				PropertyReflectionService,
-				CleanupBlockService,
-				RollbackCleanupService,
-				ConvertBlockService,
 				CompileAssetService,
 				AssetBrowseService)
 		{

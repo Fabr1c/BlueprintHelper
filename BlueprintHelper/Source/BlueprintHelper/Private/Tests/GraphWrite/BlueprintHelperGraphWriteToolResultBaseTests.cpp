@@ -35,9 +35,6 @@
 #include "Systems/ToolClusters/BlueprintComponent/BlueprintHelperComponentService.h"
 #include "Shared/Services/BlueprintHelperBlueprintStructureService.h"
 #include "Systems/ToolClusters/BlueprintVariables/BlueprintHelperBlueprintVariableService.h"
-#include "Systems/ToolClusters/CleanupOwnership/BlueprintHelperCleanupBlueprintHelperBlockService.h"
-#include "Systems/ToolClusters/CleanupOwnership/BlueprintHelperConvertBlockToUserOwnedService.h"
-#include "Systems/ToolClusters/CleanupOwnership/BlueprintHelperRollbackCleanupTransactionService.h"
 #include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
 #include "Systems/ToolClusters/DataTable/BlueprintHelperDataTableService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperAppendBlueprintGraphService.h"
@@ -1393,9 +1390,6 @@ public:
 		FBlueprintHelperWidgetService WidgetService;
 		FBlueprintHelperDataTableService DataTableService;
 		FBlueprintHelperPropertyReflectionService PropertyReflectionService;
-		FBlueprintHelperCleanupBlueprintHelperBlockService CleanupBlockService;
-		FBlueprintHelperRollbackCleanupTransactionService RollbackCleanupService;
-		FBlueprintHelperConvertBlockToUserOwnedService ConvertBlockService;
 		FBlueprintHelperCompileAssetService CompileAssetService;
 		FBlueprintHelperTaskRuntimeService RuntimeService;
 
@@ -1410,9 +1404,6 @@ public:
 			, VariableService(Resolver, StructureService)
 			, ComponentService(Resolver)
 			, ClassSettingsService(Resolver)
-			, CleanupBlockService(Resolver, JournalService)
-			, RollbackCleanupService(Resolver, JournalService)
-			, ConvertBlockService(Resolver, OwnershipService, JournalService)
 			, CompileAssetService(CompileService)
 			, RuntimeService(
 				AppendGraphService,
@@ -1427,9 +1418,6 @@ public:
 				WidgetService,
 				DataTableService,
 				PropertyReflectionService,
-				CleanupBlockService,
-				RollbackCleanupService,
-				ConvertBlockService,
 				CompileAssetService,
 				AssetBrowseService)
 		{
@@ -1928,9 +1916,6 @@ bool FBlueprintHelperGraphWriteReplaceEmitsReviewNodeAnchorsForDiffBoundsTest::R
 	TSharedPtr<FJsonObject> JournalJson;
 	TestTrue(TEXT("replace journal can be reloaded"),
 		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::LoadActiveJournalJson(TransactionId, JournalJson));
-	const TArray<TSharedPtr<FJsonValue>>* CreatedNodePaths = nullptr;
-	TestTrue(TEXT("replace journal preserves legacy created_nodes"),
-		JournalJson.IsValid() && JournalJson->TryGetArrayField(TEXT("created_nodes"), CreatedNodePaths) && CreatedNodePaths && CreatedNodePaths->Num() > 0);
 	const TArray<TSharedPtr<FJsonValue>>* CreatedNodeAnchors = nullptr;
 	TestTrue(TEXT("replace journal emits structured created node anchors"),
 		JournalJson.IsValid() && JournalJson->TryGetArrayField(TEXT("created_node_anchors"), CreatedNodeAnchors) && CreatedNodeAnchors && CreatedNodeAnchors->Num() > 0);
@@ -2155,8 +2140,10 @@ bool FBlueprintHelperTransactionJournalLegacyGuidCreatedNodePathBecomesNodeGuidT
 	JournalRecord.TargetAssets.Add(Blueprint->GetPathName());
 	JournalRecord.GraphId = TEXT("EventGraph");
 	JournalRecord.GraphName = TEXT("EventGraph");
-	JournalRecord.CreatedNodePaths.Add(LegacyNodeGuid);
-	JournalRecord.RollbackData = TEXT("{\"node_guids\":[]}");
+	FBlueprintHelperGraphReviewNodeAnchor Anchor;
+	Anchor.NodePath = TEXT("K2Node_CallFunction_0");
+	Anchor.NodeGuid = LegacyNodeGuid;
+	JournalRecord.CreatedNodeAnchors.Add(Anchor);
 
 	FBlueprintHelperTransactionJournalService JournalService;
 	FString JournalError;
@@ -2236,7 +2223,6 @@ bool FBlueprintHelperTransactionJournalStructuredAnchorsCreateBlockRecordedBound
 	JournalRecord.BlockIds.Add(TEXT("EventGraph_SmokeBlock"));
 	JournalRecord.CreatedNodeAnchors.Add(FirstAnchor);
 	JournalRecord.CreatedNodeAnchors.Add(SecondAnchor);
-	JournalRecord.RollbackData = TEXT("{\"node_guids\":[]}");
 
 	FBlueprintHelperTransactionJournalService JournalService;
 	FString JournalError;

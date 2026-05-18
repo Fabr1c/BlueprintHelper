@@ -21,12 +21,6 @@ enum class EBlueprintHelperAgentImportMode : uint8
 	Append
 };
 
-enum class EBlueprintHelperAgentLayoutStrategy : uint8
-{
-	Auto,
-	AppendRight
-};
-
 struct FBlueprintHelperAgentImportDiagnostic
 {
 	EBlueprintHelperAgentImportDiagnosticSeverity Severity = EBlueprintHelperAgentImportDiagnosticSeverity::Info;
@@ -51,7 +45,6 @@ struct FBlueprintHelperAgentImportParsedRequest
 {
 	FBlueprintHelperGraphTarget Target;
 	EBlueprintHelperAgentImportMode Mode = EBlueprintHelperAgentImportMode::Append;
-	EBlueprintHelperAgentLayoutStrategy Layout = EBlueprintHelperAgentLayoutStrategy::Auto;
 	FBlueprintHelperAgentImportOptions Options;
 };
 

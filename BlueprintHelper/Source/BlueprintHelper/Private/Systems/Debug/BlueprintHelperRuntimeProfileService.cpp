@@ -179,9 +179,6 @@ TArray<FBlueprintHelperUnavailableCapability> FBlueprintHelperRuntimeProfileServ
 		Unavailable.Add(Item);
 	};
 
-	// cleanup 。- 整体尚未实现
-	AddUnavailable(TEXT("cleanup"), TEXT("cleanup_blueprinthelper_block"));
-
 	// transaction / review 。- 尚未实现完整结构
 	AddUnavailable(TEXT("transaction"), TEXT("journal"));
 	AddUnavailable(TEXT("review"), TEXT("store"));

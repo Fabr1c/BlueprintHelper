@@ -37,10 +37,7 @@ EBlueprintHelperTaskRuntimeCluster FBlueprintHelperTaskRuntimeClusterHubUtils::R
 			&FBlueprintHelperDataTableTaskRuntimeCluster::CanExecuteStep),
 		MakeTuple(
 			EBlueprintHelperTaskRuntimeCluster::ObjectProperty,
-			&FBlueprintHelperObjectPropertyTaskRuntimeCluster::CanExecuteStep),
-		MakeTuple(
-			EBlueprintHelperTaskRuntimeCluster::CleanupOwnership,
-			&FBlueprintHelperCleanupOwnershipTaskRuntimeCluster::CanExecuteStep)
+			&FBlueprintHelperObjectPropertyTaskRuntimeCluster::CanExecuteStep)
 	};
 
 	for (const FClusterRoute& Route : Routes)

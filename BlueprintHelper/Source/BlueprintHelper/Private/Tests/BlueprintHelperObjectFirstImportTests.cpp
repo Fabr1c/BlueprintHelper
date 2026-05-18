@@ -95,21 +95,15 @@ bool FObjectFirstImport_ImportableFalseRejected::RunTest(const FString& Paramete
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FObjectFirstImport_LegacyStringStillAccepted,
-	"BlueprintHelper.ObjectFirst.Import.LegacyStringStillAccepted",
+	FObjectFirstImport_StringRequestRetired,
+	"BlueprintHelper.ObjectFirst.Import.StringRequestRetired",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
-bool FObjectFirstImport_LegacyStringStillAccepted::RunTest(const FString& Parameters)
+bool FObjectFirstImport_StringRequestRetired::RunTest(const FString& Parameters)
 {
-	// 验证传统 string JsonText 仍然被接受
 	FBlueprintHelperImportRequest Request;
-	Request.JsonText = TEXT("{\"version\":\"2.2\",\"schema\":\"BlueprintHelper.JsonToBlueprint\",\"nodes\":[],\"links\":[]}");
 
-	TestFalse(TEXT("Legacy JsonText is not empty"), Request.JsonText.IsEmpty());
-	TestFalse(TEXT("JsonObject is null for string-only request"), Request.JsonObject.IsValid());
-
-	// 传统字符串路径不受影响
-	TestTrue(TEXT("Legacy string path intact"), true);
+	TestFalse(TEXT("String-only import request is retired"), Request.JsonObject.IsValid());
 	return true;
 }
 

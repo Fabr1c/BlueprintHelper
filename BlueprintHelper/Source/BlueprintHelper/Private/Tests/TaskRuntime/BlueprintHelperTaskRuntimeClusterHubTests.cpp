@@ -3,7 +3,6 @@
 #include "Runtime/TaskRuntime/Clusters/AssetFactory/BlueprintHelperAssetFactoryTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/BlueprintVariables/BlueprintHelperBlueprintVariablesTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/ClassSettings/BlueprintHelperClassSettingsTaskRuntimeCluster.h"
-#include "Runtime/TaskRuntime/Clusters/CleanupOwnership/BlueprintHelperCleanupOwnershipTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/Component/BlueprintHelperComponentTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/DataTable/BlueprintHelperDataTableTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/GraphWrite/BlueprintHelperGraphWriteTaskRuntimeCluster.h"
@@ -53,7 +52,6 @@ bool FBlueprintHelperTaskRuntimeClusterHub_ResolvesLoweredSteps::RunTest(const F
 		{FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT("umg_widget"), TEXT("")), EBlueprintHelperTaskRuntimeCluster::UMGWidget},
 		{FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT("data_table"), TEXT("")), EBlueprintHelperTaskRuntimeCluster::DataTable},
 		{FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT("object_property"), TEXT("")), EBlueprintHelperTaskRuntimeCluster::ObjectProperty},
-		{FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT("graph_cleanup_ownership"), TEXT("")), EBlueprintHelperTaskRuntimeCluster::CleanupOwnership},
 	};
 
 	for (const TPair<FBlueprintHelperTaskRuntimeLoweredStep, EBlueprintHelperTaskRuntimeCluster>& Case : Cases)
@@ -103,8 +101,8 @@ bool FBlueprintHelperGraphWriteTaskRuntimeCluster_RecognizesOnlyGraphWriteSteps:
 		TEXT("graph_write capability resolves as GraphWrite"),
 		FBlueprintHelperGraphWriteTaskRuntimeCluster::CanExecuteStep(FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT("graph_write"), TEXT(""))));
 	TestFalse(
-		TEXT("cleanup lowered step is not GraphWrite"),
-		FBlueprintHelperGraphWriteTaskRuntimeCluster::CanExecuteStep(FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT("graph_cleanup_ownership"), TEXT(""))));
+		TEXT("unknown lowered step is not GraphWrite"),
+		FBlueprintHelperGraphWriteTaskRuntimeCluster::CanExecuteStep(FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT("unknown_capability"), TEXT(""))));
 	return true;
 }
 
@@ -170,15 +168,8 @@ bool FBlueprintHelperFinalBatchTaskRuntimeClusters_RecognizeOnlyOwnedSteps::RunT
 		TEXT("ObjectProperty cluster recognizes object property capability"),
 		FBlueprintHelperObjectPropertyTaskRuntimeCluster::CanExecuteStep(FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT("object_property"), TEXT(""))));
 	TestFalse(
-		TEXT("ObjectProperty cluster rejects cleanup capability"),
-		FBlueprintHelperObjectPropertyTaskRuntimeCluster::CanExecuteStep(FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT("graph_cleanup_ownership"), TEXT(""))));
-
-	TestTrue(
-		TEXT("CleanupOwnership cluster recognizes cleanup capability"),
-		FBlueprintHelperCleanupOwnershipTaskRuntimeCluster::CanExecuteStep(FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT("graph_cleanup_ownership"), TEXT(""))));
-	TestFalse(
-		TEXT("CleanupOwnership cluster rejects graph write capability"),
-		FBlueprintHelperCleanupOwnershipTaskRuntimeCluster::CanExecuteStep(FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT("graph_write"), TEXT(""))));
+		TEXT("ObjectProperty cluster rejects graph write capability"),
+		FBlueprintHelperObjectPropertyTaskRuntimeCluster::CanExecuteStep(FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT("graph_write"), TEXT(""))));
 	return true;
 }
 

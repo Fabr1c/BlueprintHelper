@@ -9,12 +9,9 @@ class FBlueprintHelperAssetFactoryService;
 class FBlueprintHelperBlueprintStructureService;
 class FBlueprintHelperBlueprintVariableService;
 class FBlueprintHelperClassSettingsService;
-class FBlueprintHelperCleanupBlueprintHelperBlockService;
 class FBlueprintHelperComponentService;
-class FBlueprintHelperConvertBlockToUserOwnedService;
 class FBlueprintHelperDataTableService;
 class FBlueprintHelperPropertyReflectionService;
-class FBlueprintHelperRollbackCleanupTransactionService;
 class FBlueprintHelperWidgetService;
 struct FBlueprintHelperWriteReviewEvidence;
 
@@ -65,13 +62,6 @@ public:
 
 	static FBlueprintHelperToolResultBase ExecuteObjectPropertyTaskPlanStep(
 		const FBlueprintHelperPropertyReflectionService& Service,
-		const FString& AdapterOperation,
-		const TSharedPtr<FJsonObject>& Payload);
-
-	static FBlueprintHelperToolResultBase ExecuteCleanupOwnershipTaskPlanStep(
-		const FBlueprintHelperCleanupBlueprintHelperBlockService& CleanupBlockService,
-		const FBlueprintHelperConvertBlockToUserOwnedService& ConvertBlockService,
-		const FBlueprintHelperRollbackCleanupTransactionService& RollbackCleanupService,
 		const FString& AdapterOperation,
 		const TSharedPtr<FJsonObject>& Payload);
 

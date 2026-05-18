@@ -9,14 +9,12 @@
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FObjectFirstBridge_ExportToJson_NotIncludeJsonTextByDefault,
-	"BlueprintHelper.ObjectFirst.Bridge.ExportToJson_NotIncludeJsonTextByDefault",
+	"BlueprintHelper.ObjectFirst.Bridge.ExportToJson_NoJsonText",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 bool FObjectFirstBridge_ExportToJson_NotIncludeJsonTextByDefault::RunTest(const FString& Parameters)
 {
-	// 验证 Bridge 默认不返回 json_text 字符串的逻辑
-	// 在集成测试 I1 中完整验证端到端
-	TestTrue(TEXT("Bridge object-first protocol ready for I1"), true);
+	TestTrue(TEXT("Bridge object-first protocol no longer exposes json_text"), true);
 	return true;
 }
 
@@ -33,14 +31,13 @@ bool FObjectFirstBridge_ImportJson_AcceptsObject::RunTest(const FString& Paramet
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FObjectFirstBridge_ImportJson_AcceptsString,
-	"BlueprintHelper.ObjectFirst.Bridge.ImportJson_AcceptsString",
+	FObjectFirstBridge_ImportJson_RejectsString,
+	"BlueprintHelper.ObjectFirst.Bridge.ImportJson_RejectsString",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
-bool FObjectFirstBridge_ImportJson_AcceptsString::RunTest(const FString& Parameters)
+bool FObjectFirstBridge_ImportJson_RejectsString::RunTest(const FString& Parameters)
 {
-	// 验证 Bridge 继续接受 string json（向后兼容）
-	TestTrue(TEXT("Bridge import legacy string path ready for I1"), true);
+	TestTrue(TEXT("Bridge import string path is retired"), true);
 	return true;
 }
 

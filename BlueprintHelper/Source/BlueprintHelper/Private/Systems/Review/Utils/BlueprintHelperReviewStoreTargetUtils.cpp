@@ -8,9 +8,6 @@
 #include "Misc/FileHelper.h"
 #include "Misc/PackageName.h"
 #include "Misc/Paths.h"
-#include "Serialization/JsonReader.h"
-#include "Serialization/JsonSerializer.h"
-#include "Serialization/JsonWriter.h"
 #include "Shared/Review/BlueprintHelperReviewEnumUtils.h"
 #include "Shared/Review/BlueprintHelperReviewStatusUtils.h"
 #include "Shared/Review/BlueprintHelperReviewTargetKindRegistry.h"
@@ -80,41 +77,6 @@ void FBlueprintHelperReviewStoreTargetUtils::AddGraphTargetsFromStringArrayField
 			Input.AtomicTargets.Add(MakeGraphRecordTarget(Input, TargetId, TargetPrefix));
 		}
 	}
-void FBlueprintHelperReviewStoreTargetUtils::AddGraphTargetsFromRollbackData(FBlueprintHelperReviewTransactionInput& Input, const TSharedPtr<FJsonObject>& Record)
-	{
-		TSharedPtr<FJsonObject> RollbackObject;
-		if (!Record.IsValid())
-		{
-			return;
-		}
-
-		FString RollbackDataString;
-		if (Record->TryGetStringField(TEXT("rollback_data"), RollbackDataString) && !RollbackDataString.IsEmpty())
-		{
-			const TSharedRef<TJsonReader<>> RollbackReader = TJsonReaderFactory<>::Create(RollbackDataString);
-			FJsonSerializer::Deserialize(RollbackReader, RollbackObject);
-		}
-		else
-		{
-			const TSharedPtr<FJsonObject>* RollbackObjectPtr = nullptr;
-			if (Record->TryGetObjectField(TEXT("rollback_data"), RollbackObjectPtr) && RollbackObjectPtr)
-			{
-				RollbackObject = *RollbackObjectPtr;
-			}
-		}
-
-		if (!RollbackObject.IsValid())
-		{
-			return;
-		}
-
-		AddGraphTargetsFromStringArrayField(
-			RollbackObject,
-			TEXT("node_guids"),
-			TEXT("rollback_node"),
-			false,
-			Input);
-	}
 FString FBlueprintHelperReviewStoreTargetUtils::MakeReviewInternalMissingAnchorKey(const FString& TransactionId, int32 Index)
 	{
 		return FString::Printf(TEXT("__missing_anchor|%s|%d"), *TransactionId, Index);
@@ -158,7 +120,7 @@ void FBlueprintHelperReviewStoreTargetUtils::PreserveFirstBaselineFields(
 			: (!Existing.LatestTransactionId.IsEmpty() ? Existing.LatestTransactionId : Incoming.LatestTransactionId);
 		Target.BaselineHash = !Existing.BaselineHash.IsEmpty() ? Existing.BaselineHash : Incoming.BaselineHash;
 		Target.BeforeSnapshotJson = !Existing.BeforeSnapshotJson.IsEmpty() ? Existing.BeforeSnapshotJson : Incoming.BeforeSnapshotJson;
-		Target.RollbackDataRef = !Existing.RollbackDataRef.IsEmpty() ? Existing.RollbackDataRef : Incoming.RollbackDataRef;
+		Target.RollbackDataRef.Reset();
 	}
 void FBlueprintHelperReviewStoreTargetUtils::PreserveFirstBaselineFields(
 		FBlueprintHelperReviewVisibleChange& Change,
@@ -276,15 +238,16 @@ bool FBlueprintHelperReviewStoreTargetUtils::IsReviewEvidenceTargetComplete(cons
 			OutReason = TEXT("missing_baseline_hash");
 			return false;
 		}
-		if (FBlueprintHelperReviewTargetKindRegistry::SupportsSnapshotRestore(Target.TargetKind)
-			&& Target.BeforeSnapshotJson.IsEmpty())
+		const bool bSupportsSnapshotRestore =
+			FBlueprintHelperReviewTargetKindRegistry::SupportsSnapshotRestore(Target.TargetKind);
+		if (bSupportsSnapshotRestore && Target.BeforeSnapshotJson.IsEmpty())
 		{
 			OutReason = TEXT("missing_recoverable_snapshot");
 			return false;
 		}
-		if (Target.RollbackDataRef.IsEmpty())
+		if (!bSupportsSnapshotRestore)
 		{
-			OutReason = TEXT("missing_rollback_data_ref");
+			OutReason = TEXT("unsupported_snapshot_restore_target");
 			return false;
 		}
 		return true;

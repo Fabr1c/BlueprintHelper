@@ -17,9 +17,6 @@ class FBlueprintHelperClassSettingsService;
 class FBlueprintHelperWidgetService;
 class FBlueprintHelperDataTableService;
 class FBlueprintHelperPropertyReflectionService;
-class FBlueprintHelperCleanupBlueprintHelperBlockService;
-class FBlueprintHelperRollbackCleanupTransactionService;
-class FBlueprintHelperConvertBlockToUserOwnedService;
 class FBlueprintHelperCompileAssetService;
 class FBlueprintHelperAssetBrowseService;
 class FBlueprintHelperDebugEntryService;
@@ -44,9 +41,6 @@ public:
 		const FBlueprintHelperWidgetService& InWidgetService,
 		const FBlueprintHelperDataTableService& InDataTableService,
 		const FBlueprintHelperPropertyReflectionService& InPropertyReflectionService,
-		const FBlueprintHelperCleanupBlueprintHelperBlockService& InCleanupBlockService,
-		const FBlueprintHelperRollbackCleanupTransactionService& InRollbackCleanupService,
-		const FBlueprintHelperConvertBlockToUserOwnedService& InConvertBlockService,
 		const FBlueprintHelperCompileAssetService& InCompileAssetService,
 		const FBlueprintHelperAssetBrowseService& InAssetBrowseService,
 		const FBlueprintHelperDebugEntryService* InDebugEntryService = nullptr);
