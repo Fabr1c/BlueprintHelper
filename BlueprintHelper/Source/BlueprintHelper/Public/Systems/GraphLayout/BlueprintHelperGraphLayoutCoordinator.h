@@ -11,6 +11,7 @@ public:
 	static void Startup();
 	static void RecordGeneratedNodes(UEdGraph* Graph, const TArray<UEdGraphNode*>& GeneratedNodes);
 	static void FlushPendingTaskLayouts();
+	static void DiscardPendingTaskLayouts();
 	static void Shutdown();
 
 	static FString GetDefaultRuleSetJson();
