@@ -9,7 +9,7 @@
     "bh": "build/cli/index.js"
   },
   "scripts": {
-    "build": "npm --prefix ../task-core run build && node ../scripts/clean-build.mjs && node ../scripts/run-tsc.mjs",
+    "build": "node ../scripts/run-package-npm.mjs ../task-core run build && node ../scripts/clean-build.mjs && node ../scripts/run-tsc.mjs",
     "test": "npm run build && npm run test:node",
     "test:node": "node scripts/run-node-tests.mjs",
     "start": "node build/cli/index.js",
