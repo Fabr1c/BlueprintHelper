@@ -5,11 +5,11 @@
   "type": "module",
   "main": "build/index.js",
   "scripts": {
-    "build": "npm --prefix ../task-core run build && node ../scripts/clean-build.mjs && node ../scripts/run-tsc.mjs",
+    "build": "node ../scripts/run-package-npm.mjs ../task-core run build && node ../scripts/clean-build.mjs && node ../scripts/run-tsc.mjs",
     "build:mcp": "node ../scripts/clean-build.mjs && node ../scripts/run-tsc.mjs",
-    "test": "npm --prefix ../task-core run test && npm run build:mcp && npm run test:node",
+    "test": "node ../scripts/run-package-npm.mjs ../task-core run test && npm run build:mcp && npm run test:node",
     "test:node": "node scripts/run-node-tests.mjs",
-    "test:python": "npm --prefix ../task-core run test:python",
+    "test:python": "node ../scripts/run-package-npm.mjs ../task-core run test:python",
     "start": "node build/index.js",
     "dev": "tsc --watch"
   },

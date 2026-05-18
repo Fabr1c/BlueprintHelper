@@ -154,7 +154,16 @@ function Invoke-Npm {
     [string[]]$Arguments
   )
 
-  Invoke-External -Description "npm --prefix $PackageDir $($Arguments -join ' ')" -FilePath (Get-NpmCommand) -Arguments (@('--prefix', $PackageDir) + $Arguments)
+  $ResolvedPackageDir = [System.IO.Path]::GetFullPath($PackageDir)
+  Assert-Directory -Path $ResolvedPackageDir -Name 'npm package directory'
+  Assert-File -Path (Join-Path $ResolvedPackageDir 'package.json') -Name 'npm package manifest'
+
+  Push-Location $ResolvedPackageDir
+  try {
+    Invoke-External -Description "npm --cwd $ResolvedPackageDir $($Arguments -join ' ')" -FilePath (Get-NpmCommand) -Arguments $Arguments
+  } finally {
+    Pop-Location
+  }
 }
 
 function Write-InstallTips {
@@ -212,7 +221,41 @@ function Read-InstallYesNo {
   }
 }
 
-function Invoke-InteractiveInstallWizard {
+function Read-InstallPathDetails {
+  if (-not $script:SkipProjectProfile) {
+    $ProjectFileInput = Read-InstallText -Prompt '  Project .uproject path, blank to auto-detect' -DefaultValue $ProjectFile
+    if ($ProjectFileInput) {
+      $script:ProjectFile = $ProjectFileInput
+    }
+
+    $EngineRootInput = Read-InstallText -Prompt '  UE root, for example E:\UE_5.6 or E:\UE_5.6\Engine' -DefaultValue $EngineRoot
+    if ($EngineRootInput) {
+      $script:EngineRoot = $EngineRootInput
+    }
+  }
+
+  if ($script:InstallUePluginToEngine) {
+    if (-not $script:EnginePluginDir) {
+      $EnginePluginDirInput = Read-InstallText -Prompt '  Engine plugin target directory, blank to derive from UE root' -DefaultValue $EnginePluginDir
+      if ($EnginePluginDirInput) {
+        $script:EnginePluginDir = $EnginePluginDirInput
+      }
+    }
+    if (-not $script:EngineRoot -and -not $script:EnginePluginDir) {
+      $EngineRootInput = Read-InstallText -Prompt '  UE root required for engine plugin install' -DefaultValue $EngineRoot
+      if ($EngineRootInput) {
+        $script:EngineRoot = $EngineRootInput
+      }
+    }
+    if (-not $script:EngineRoot -and -not $script:EnginePluginDir) {
+      Write-Warning 'UE plugin engine install skipped: no EnginePluginDir or UE root was provided.'
+      $script:InstallUePluginToEngine = $false
+    }
+  }
+}
+
+function Invoke-SequentialInstallWizard {
+  Write-InstallTips -TipsBase64 $InstallTipsBase64
   Write-Host ''
   Write-Host 'BlueprintHelper interactive install'
   Write-Host "Source root: $Root"
@@ -240,43 +283,261 @@ function Invoke-InteractiveInstallWizard {
   }
 
   $script:SkipProjectProfile = -not (Read-InstallYesNo -Prompt 'Write or update project .blueprinthelper/agent-profile.json' -DefaultYes:(-not $SkipProjectProfile))
-  if (-not $script:SkipProjectProfile) {
-    $ProjectFileInput = Read-InstallText -Prompt '  Project .uproject path, blank to auto-detect' -DefaultValue $ProjectFile
-    if ($ProjectFileInput) {
-      $script:ProjectFile = $ProjectFileInput
-    }
-
-    $EngineRootInput = Read-InstallText -Prompt '  UE root, for example E:\UE_5.6 or E:\UE_5.6\Engine' -DefaultValue $EngineRoot
-    if ($EngineRootInput) {
-      $script:EngineRoot = $EngineRootInput
-    }
-  }
-
   $script:SkipDefaultPreferences = -not (Read-InstallYesNo -Prompt 'Create default Claude/Codex user preference files when missing' -DefaultYes:(-not $SkipDefaultPreferences))
   $script:RunDiagnostics = Read-InstallYesNo -Prompt 'Run BlueprintHelper diagnostics after install' -DefaultYes:$RunDiagnostics
 
   $script:InstallUePluginToEngine = Read-InstallYesNo -Prompt 'Copy the UE plugin into the engine Plugins/Marketplace folder' -DefaultYes:$InstallUePluginToEngine
-  if ($script:InstallUePluginToEngine) {
-    if (-not $script:EnginePluginDir) {
-      $EnginePluginDirInput = Read-InstallText -Prompt '  Engine plugin target directory, blank to derive from UE root' -DefaultValue $EnginePluginDir
-      if ($EnginePluginDirInput) {
-        $script:EnginePluginDir = $EnginePluginDirInput
+  $script:Force = Read-InstallYesNo -Prompt 'Allow replacing existing local links or engine plugin target when needed' -DefaultYes:$Force
+  Read-InstallPathDetails
+  Write-Host ''
+}
+
+function New-InstallMenuOption {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Key,
+    [Parameter(Mandatory = $true)]
+    [string]$Label,
+    [Parameter(Mandatory = $true)]
+    [bool]$Selected,
+    [Parameter(Mandatory = $true)]
+    [string]$Tip,
+    [int]$Indent = 0,
+    [string]$Parent = ''
+  )
+
+  return [pscustomobject]@{
+    Key = $Key
+    Label = $Label
+    Selected = $Selected
+    Tip = $Tip
+    Indent = $Indent
+    Parent = $Parent
+    Enabled = $true
+  }
+}
+
+function Get-InstallMenuOption {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object[]]$Options,
+    [Parameter(Mandatory = $true)]
+    [string]$Key
+  )
+
+  foreach ($Option in $Options) {
+    if ($Option.Key -eq $Key) {
+      return $Option
+    }
+  }
+  return $null
+}
+
+function New-InstallMenuOptions {
+  return @(
+    (New-InstallMenuOption -Key 'build' -Label 'Build AgentFaceService packages' -Selected:(-not $SkipBuild) -Tip 'Install and build the shared task-core package, CLI package, and MCP compatibility package. Requires Node.js and npm on PATH.'),
+    (New-InstallMenuOption -Key 'cliLink' -Label 'Link bh CLI globally' -Selected:(-not $SkipCliLink) -Tip 'Run npm link for the CLI package so bh and blueprinthelper-cli are available as global commands.'),
+    (New-InstallMenuOption -Key 'codexSupport' -Label 'Codex Desktop plugin support' -Selected:(-not ($SkipCodexMarketplace -and $SkipCodexAgents -and $SkipLifecycleMcp)) -Tip 'Enable Codex Desktop integration. Child items control marketplace registration, subagents, and lifecycle MCP config.'),
+    (New-InstallMenuOption -Key 'codexMarketplace' -Label 'Register Codex local marketplace entry' -Selected:(-not $SkipCodexMarketplace) -Tip 'Create/update the local Codex marketplace entry under the user profile so the plugin can be installed by Codex Desktop.' -Indent 1 -Parent 'codexSupport'),
+    (New-InstallMenuOption -Key 'codexAgents' -Label 'Install Codex subagents' -Selected:(-not $SkipCodexAgents) -Tip 'Install BlueprintHelper Codex subagent definitions into the user Codex agents directory.' -Indent 1 -Parent 'codexSupport'),
+    (New-InstallMenuOption -Key 'lifecycleMcp' -Label 'Install lifecycle MCP config' -Selected:(-not $SkipLifecycleMcp) -Tip 'Install the global lifecycle-only MCP config used for opening and closing Unreal Editor from Codex.' -Indent 1 -Parent 'codexSupport'),
+    (New-InstallMenuOption -Key 'claudePlugin' -Label 'Claude Code plugin support' -Selected:$InstallClaudePlugin -Tip 'Prepare Claude Code plugin installation information and print the marketplace/install commands.'),
+    (New-InstallMenuOption -Key 'claudeAgents' -Label 'Install Claude sideAgent definitions' -Selected:($InstallClaudeAgents -or $InstallClaudePlugin) -Tip 'Install Claude sideAgent definitions. This can be selected with or without the Claude plugin support item.'),
+    (New-InstallMenuOption -Key 'projectProfile' -Label 'Write project agent-profile.json' -Selected:(-not $SkipProjectProfile) -Tip 'Create or update .blueprinthelper/agent-profile.json for the detected Unreal project. Path prompts appear after menu confirmation.'),
+    (New-InstallMenuOption -Key 'defaultPreferences' -Label 'Create default user preference files' -Selected:(-not $SkipDefaultPreferences) -Tip 'Create missing Claude/Codex BlueprintHelper user preference files without overwriting existing preference files.'),
+    (New-InstallMenuOption -Key 'diagnostics' -Label 'Run diagnostics after install' -Selected:$RunDiagnostics -Tip 'Run BlueprintHelper static diagnostics after installation. Useful for validating CLI, profile, Bridge, and runtime configuration.'),
+    (New-InstallMenuOption -Key 'ueEnginePlugin' -Label 'Copy UE plugin to Engine' -Selected:$InstallUePluginToEngine -Tip 'Copy the UE-side BlueprintHelper plugin into an Engine Plugins/Marketplace folder. Path prompts appear after menu confirmation.'),
+    (New-InstallMenuOption -Key 'force' -Label 'Allow replacing existing targets' -Selected:$Force -Tip 'Allow the installer to replace existing local links or engine plugin targets when needed.')
+  )
+}
+
+function Update-InstallMenuDependencies {
+  param([Parameter(Mandatory = $true)][object[]]$Options)
+
+  $CodexSupport = Get-InstallMenuOption -Options $Options -Key 'codexSupport'
+  $CodexChildren = @(
+    (Get-InstallMenuOption -Options $Options -Key 'codexMarketplace'),
+    (Get-InstallMenuOption -Options $Options -Key 'codexAgents'),
+    (Get-InstallMenuOption -Options $Options -Key 'lifecycleMcp')
+  )
+
+  foreach ($Child in $CodexChildren) {
+    $Child.Enabled = $CodexSupport.Selected
+    if (-not $CodexSupport.Selected) {
+      $Child.Selected = $false
+    }
+  }
+}
+
+function Toggle-InstallMenuOption {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object[]]$Options,
+    [Parameter(Mandatory = $true)]
+    [object]$Option
+  )
+
+  if (-not $Option.Enabled) {
+    return
+  }
+
+  $Option.Selected = -not $Option.Selected
+
+  if ($Option.Key -eq 'codexSupport') {
+    $CodexChildren = @(
+      (Get-InstallMenuOption -Options $Options -Key 'codexMarketplace'),
+      (Get-InstallMenuOption -Options $Options -Key 'codexAgents'),
+      (Get-InstallMenuOption -Options $Options -Key 'lifecycleMcp')
+    )
+    foreach ($Child in $CodexChildren) {
+      $Child.Selected = $Option.Selected
+    }
+  } elseif ($Option.Parent -eq 'codexSupport') {
+    $CodexSupport = Get-InstallMenuOption -Options $Options -Key 'codexSupport'
+    $AnyCodexChildSelected = $false
+    foreach ($Key in @('codexMarketplace', 'codexAgents', 'lifecycleMcp')) {
+      if ((Get-InstallMenuOption -Options $Options -Key $Key).Selected) {
+        $AnyCodexChildSelected = $true
       }
     }
-    if (-not $script:EngineRoot -and -not $script:EnginePluginDir) {
-      $EngineRootInput = Read-InstallText -Prompt '  UE root required for engine plugin install' -DefaultValue $EngineRoot
-      if ($EngineRootInput) {
-        $script:EngineRoot = $EngineRootInput
-      }
+    $CodexSupport.Selected = $AnyCodexChildSelected
+  } elseif ($Option.Key -eq 'claudePlugin' -and $Option.Selected) {
+    (Get-InstallMenuOption -Options $Options -Key 'claudeAgents').Selected = $true
+  }
+
+  Update-InstallMenuDependencies -Options $Options
+}
+
+function Render-InstallMenu {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object[]]$Options,
+    [Parameter(Mandatory = $true)]
+    [int]$SelectedIndex
+  )
+
+  Clear-Host
+  Write-Host 'BlueprintHelper interactive install'
+  Write-Host "Source root: $Root"
+  Write-Host ''
+  Write-Host 'Use Up/Down to move, Space to toggle, Enter to start install, Esc to cancel.'
+  Write-Host ''
+
+  for ($Index = 0; $Index -lt $Options.Count; $Index++) {
+    $Option = $Options[$Index]
+    $Cursor = if ($Index -eq $SelectedIndex) { '>' } else { ' ' }
+    $Check = if ($Option.Selected) { '[x]' } else { '[ ]' }
+    if (-not $Option.Enabled) {
+      $Check = '[-]'
     }
-    if (-not $script:EngineRoot -and -not $script:EnginePluginDir) {
-      Write-Warning 'UE plugin engine install skipped: no EnginePluginDir or UE root was provided.'
-      $script:InstallUePluginToEngine = $false
+    $Indent = '  ' * $Option.Indent
+    $Line = "$Cursor $Indent$Check $($Option.Label)"
+
+    if (-not $Option.Enabled) {
+      Write-Host $Line -ForegroundColor DarkGray
+    } elseif ($Index -eq $SelectedIndex) {
+      Write-Host $Line -ForegroundColor Cyan
+    } else {
+      Write-Host $Line
     }
   }
 
-  $script:Force = Read-InstallYesNo -Prompt 'Allow replacing existing local links or engine plugin target when needed' -DefaultYes:$Force
+  $Current = $Options[$SelectedIndex]
   Write-Host ''
+  Write-Host 'Tip:' -ForegroundColor Yellow
+  if ($Current.Enabled) {
+    Write-Host $Current.Tip
+  } else {
+    Write-Host "$($Current.Tip) Enable the parent option first."
+  }
+}
+
+function Test-InstallMenuSupported {
+  try {
+    if ([Console]::IsInputRedirected -or [Console]::IsOutputRedirected) {
+      return $false
+    }
+    $null = $Host.UI.RawUI.WindowSize
+    return $true
+  } catch {
+    return $false
+  }
+}
+
+function Apply-InstallMenuOptions {
+  param([Parameter(Mandatory = $true)][object[]]$Options)
+
+  $CodexSupport = (Get-InstallMenuOption -Options $Options -Key 'codexSupport').Selected
+  $script:SkipBuild = -not (Get-InstallMenuOption -Options $Options -Key 'build').Selected
+  $script:SkipCliLink = -not (Get-InstallMenuOption -Options $Options -Key 'cliLink').Selected
+  $script:SkipCodexMarketplace = -not ($CodexSupport -and (Get-InstallMenuOption -Options $Options -Key 'codexMarketplace').Selected)
+  $script:SkipCodexAgents = -not ($CodexSupport -and (Get-InstallMenuOption -Options $Options -Key 'codexAgents').Selected)
+  $script:SkipLifecycleMcp = -not ($CodexSupport -and (Get-InstallMenuOption -Options $Options -Key 'lifecycleMcp').Selected)
+  $script:InstallClaudePlugin = (Get-InstallMenuOption -Options $Options -Key 'claudePlugin').Selected
+  $script:InstallClaudeAgents = (Get-InstallMenuOption -Options $Options -Key 'claudeAgents').Selected
+  $script:SkipProjectProfile = -not (Get-InstallMenuOption -Options $Options -Key 'projectProfile').Selected
+  $script:SkipDefaultPreferences = -not (Get-InstallMenuOption -Options $Options -Key 'defaultPreferences').Selected
+  $script:RunDiagnostics = (Get-InstallMenuOption -Options $Options -Key 'diagnostics').Selected
+  $script:InstallUePluginToEngine = (Get-InstallMenuOption -Options $Options -Key 'ueEnginePlugin').Selected
+  $script:Force = (Get-InstallMenuOption -Options $Options -Key 'force').Selected
+}
+
+function Invoke-MenuInstallWizard {
+  $Options = New-InstallMenuOptions
+  Update-InstallMenuDependencies -Options $Options
+  $SelectedIndex = 0
+
+  while ($true) {
+    Render-InstallMenu -Options $Options -SelectedIndex $SelectedIndex
+    $KeyInfo = [Console]::ReadKey($true)
+
+    switch ($KeyInfo.Key) {
+      'UpArrow' {
+        $SelectedIndex--
+        if ($SelectedIndex -lt 0) {
+          $SelectedIndex = $Options.Count - 1
+        }
+      }
+      'DownArrow' {
+        $SelectedIndex++
+        if ($SelectedIndex -ge $Options.Count) {
+          $SelectedIndex = 0
+        }
+      }
+      'Spacebar' {
+        Toggle-InstallMenuOption -Options $Options -Option $Options[$SelectedIndex]
+      }
+      'Enter' {
+        Apply-InstallMenuOptions -Options $Options
+        Clear-Host
+        Write-Host 'BlueprintHelper install selections confirmed.'
+        Write-Host "Source root: $Root"
+        Write-Host ''
+        Read-InstallPathDetails
+        Write-Host ''
+        return
+      }
+      'Escape' {
+        throw 'Install cancelled by user.'
+      }
+    }
+  }
+}
+
+function Invoke-InteractiveInstallWizard {
+  if (Test-InstallMenuSupported) {
+    try {
+      Invoke-MenuInstallWizard
+    } catch {
+      if ($_.Exception.Message -eq 'Install cancelled by user.') {
+        throw
+      }
+      Write-Warning "Interactive menu is unavailable. Falling back to legacy prompts. $($_.Exception.Message)"
+      Invoke-SequentialInstallWizard
+    }
+  } else {
+    Invoke-SequentialInstallWizard
+  }
 }
 
 function Ensure-CodexHomeMarketplace {
@@ -739,8 +1000,6 @@ Assert-File -Path (Join-Path $CodexPluginRoot '.codex-plugin\plugin.json') -Name
 Assert-File -Path (Join-Path $ClaudePluginRoot '.claude-plugin\plugin.json') -Name 'Claude plugin manifest'
 Assert-File -Path (Join-Path $ClaudePluginRoot '.claude-plugin\marketplace.json') -Name 'Claude plugin marketplace'
 Assert-File -Path (Join-Path $UePluginRoot 'BlueprintHelper.uplugin') -Name 'UE plugin descriptor'
-
-Write-InstallTips -TipsBase64 $InstallTipsBase64
 
 if ($Interactive) {
   Invoke-InteractiveInstallWizard
