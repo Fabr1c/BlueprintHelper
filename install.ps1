@@ -195,6 +195,10 @@ function Invoke-InteractiveInstallWizard {
         $script:EngineRoot = $EngineRootInput
       }
     }
+    if (-not $script:EngineRoot -and -not $script:EnginePluginDir) {
+      Write-Warning 'UE plugin engine install skipped: no EnginePluginDir or UE root was provided.'
+      $script:InstallUePluginToEngine = $false
+    }
   }
 
   $script:Force = Read-InstallYesNo -Prompt 'Allow replacing existing local links or engine plugin target when needed' -DefaultYes:$Force
