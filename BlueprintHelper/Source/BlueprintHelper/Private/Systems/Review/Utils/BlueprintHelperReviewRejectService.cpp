@@ -182,14 +182,41 @@ FBlueprintHelperReviewCascadeActionResult FBlueprintHelperReviewRejectService::C
 		}
 
 		TSet<FString> ChildChangeIds;
+		TSet<FString> ChildReviewRecordIdsToDelete;
+		const bool bRootIsAssetFactory = Root.AtomicTargets.ContainsByPredicate(
+			[](const FBlueprintHelperReviewAtomicTarget& Target)
+			{
+				return FBlueprintHelperReviewTargetKindRegistry::IsAssetFactoryTargetKind(Target.TargetKind);
+			});
 		for (const FBlueprintHelperReviewVisibleChange& PendingChange : PendingChanges)
 		{
-			if (PendingChange.AssetPath == Root.AssetPath
-				&& !PendingChange.bIsAssetLifecycleRoot
-				&& PendingChange.Status == EBlueprintHelperReviewChangeStatus::Pending
-				&& !PendingChange.ChangeId.IsEmpty())
+			const bool bActionable =
+				PendingChange.Status == EBlueprintHelperReviewChangeStatus::Pending
+				|| PendingChange.Status == EBlueprintHelperReviewChangeStatus::NeedsAction;
+			const bool bLinkedChild =
+				!bRootIsAssetFactory
+				&& PendingChange.ParentChangeId == Root.ChangeId;
+			const bool bAssetLifecycleChild =
+				bRootIsAssetFactory
+				&& PendingChange.AssetPath == Root.AssetPath
+				&& PendingChange.ChangeId != Root.ChangeId;
+			if (!bActionable
+				|| PendingChange.ChangeId.IsEmpty()
+				|| (!bLinkedChild && !bAssetLifecycleChild))
 			{
-				ChildChangeIds.Add(PendingChange.ChangeId);
+				continue;
+			}
+
+			ChildChangeIds.Add(PendingChange.ChangeId);
+			FString ChildReviewRecordId;
+			TArray<FString> ChildTargetKeys;
+			if (FBlueprintHelperReviewActionTargetUtils::TryResolvePersistedReviewChange(
+				PendingChange,
+				ChildReviewRecordId,
+				ChildTargetKeys)
+				&& !ChildReviewRecordId.IsEmpty())
+			{
+				ChildReviewRecordIdsToDelete.Add(ChildReviewRecordId);
 			}
 		}
 
@@ -209,6 +236,18 @@ FBlueprintHelperReviewCascadeActionResult FBlueprintHelperReviewRejectService::C
 			CascadeResult.RootResult.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
 			CascadeResult.RootResult.Message = Error;
 			return CascadeResult;
+		}
+
+		ChildReviewRecordIdsToDelete.Remove(ReviewRecordId);
+		for (const FString& ChildReviewRecordId : ChildReviewRecordIdsToDelete)
+		{
+			if (!FBlueprintHelperReviewActionRecordUtils::DeleteReviewRecordAndLinkedDebugCases(Store, ChildReviewRecordId, Error))
+			{
+				CascadeResult.RootResult.bSucceeded = false;
+				CascadeResult.RootResult.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
+				CascadeResult.RootResult.Message = Error;
+				return CascadeResult;
+			}
 		}
 
 		for (const FString& ChildChangeId : ChildChangeIds)

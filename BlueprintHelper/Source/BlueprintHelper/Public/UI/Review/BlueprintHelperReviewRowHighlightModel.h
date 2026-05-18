@@ -97,6 +97,11 @@ private:
 		const FString& SearchText,
 		FRowHighlightEntry& OutEntry,
 		bool bAllowFuzzyMatch);
+	static bool FindActionRowHighlightEntry(
+		const FString& AssetPath,
+		EBlueprintHelperReviewSurface Surface,
+		const FString& SearchText,
+		FRowHighlightEntry& OutEntry);
 	static FReply ExecuteHighlightedRowAction(
 		const FString& AssetPath,
 		EBlueprintHelperReviewSurface Surface,

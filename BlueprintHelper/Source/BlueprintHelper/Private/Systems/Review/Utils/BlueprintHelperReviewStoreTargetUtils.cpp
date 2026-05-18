@@ -255,17 +255,25 @@ bool FBlueprintHelperReviewStoreTargetUtils::IsAssetLifecycleRootTarget(
 		const FBlueprintHelperReviewAtomicTarget& Target,
 		EBlueprintHelperReviewChangeKind ChangeKind)
 	{
-		return ChangeKind == EBlueprintHelperReviewChangeKind::Added
-			&& FBlueprintHelperReviewTargetKindRegistry::IsAssetFactoryTargetKind(Target.TargetKind);
+		if (ChangeKind != EBlueprintHelperReviewChangeKind::Added)
+		{
+			return false;
+		}
+
+		const EBlueprintHelperReviewTargetHandlerKind HandlerKind =
+			FBlueprintHelperReviewTargetKindRegistry::GetHandlerKind(Target.TargetKind);
+		return HandlerKind == EBlueprintHelperReviewTargetHandlerKind::AssetFactory
+			|| HandlerKind == EBlueprintHelperReviewTargetHandlerKind::Component
+			|| HandlerKind == EBlueprintHelperReviewTargetHandlerKind::UMGWidget;
 	}
 void FBlueprintHelperReviewStoreTargetUtils::ApplyAssetLifecycleRootMetadata(FBlueprintHelperReviewVisibleChange& Change)
 	{
-		const bool bHasAssetFactoryAddedTarget = Change.AtomicTargets.ContainsByPredicate(
+		const bool bHasLifecycleRootTarget = Change.AtomicTargets.ContainsByPredicate(
 			[&Change](const FBlueprintHelperReviewAtomicTarget& Target)
 			{
 				return IsAssetLifecycleRootTarget(Target, Change.ChangeKind);
 			});
-		if (!bHasAssetFactoryAddedTarget)
+		if (!bHasLifecycleRootTarget)
 		{
 			return;
 		}
@@ -279,9 +287,144 @@ bool FBlueprintHelperReviewStoreTargetUtils::IsPendingLifecycleLinkCandidate(con
 		return Change.Status == EBlueprintHelperReviewChangeStatus::Pending
 			|| Change.Status == EBlueprintHelperReviewChangeStatus::NeedsAction;
 	}
+
+static FString BlueprintHelperReviewExtractLifecycleName(FString Value)
+	{
+		Value.TrimStartAndEndInline();
+		if (Value.IsEmpty())
+		{
+			return FString();
+		}
+
+		int32 DelimiterIndex = INDEX_NONE;
+		if (Value.FindChar(TEXT(':'), DelimiterIndex))
+		{
+			Value = Value.Mid(DelimiterIndex + 1);
+		}
+		if (Value.FindChar(TEXT('.'), DelimiterIndex))
+		{
+			Value = Value.Left(DelimiterIndex);
+		}
+		Value.TrimStartAndEndInline();
+		Value.ToLowerInline();
+		return Value;
+	}
+
+static FString BlueprintHelperReviewLifecycleObjectNameFromTarget(const FBlueprintHelperReviewAtomicTarget& Target)
+	{
+		const EBlueprintHelperReviewTargetHandlerKind HandlerKind =
+			FBlueprintHelperReviewTargetKindRegistry::GetHandlerKind(Target.TargetKind);
+		if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::Component)
+		{
+			if (!Target.ComponentPath.IsEmpty())
+			{
+				return BlueprintHelperReviewExtractLifecycleName(Target.ComponentPath);
+			}
+			if (!Target.TargetKey.IsEmpty())
+			{
+				return BlueprintHelperReviewExtractLifecycleName(Target.TargetKey);
+			}
+			return BlueprintHelperReviewExtractLifecycleName(Target.DisplayLabel);
+		}
+
+		if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::UMGWidget
+			|| HandlerKind == EBlueprintHelperReviewTargetHandlerKind::UMGWidgetProperty)
+		{
+			if (!Target.PropertyPath.IsEmpty())
+			{
+				return BlueprintHelperReviewExtractLifecycleName(Target.PropertyPath);
+			}
+			if (!Target.TargetKey.IsEmpty())
+			{
+				return BlueprintHelperReviewExtractLifecycleName(Target.TargetKey);
+			}
+			return BlueprintHelperReviewExtractLifecycleName(Target.DisplayLabel);
+		}
+
+		return FString();
+	}
+
+static FString BlueprintHelperReviewLifecycleKey(
+	const FString& AssetPath,
+	const TCHAR* ObjectKind,
+	const FString& ObjectName)
+	{
+		if (AssetPath.IsEmpty() || !ObjectKind || ObjectName.IsEmpty())
+		{
+			return FString();
+		}
+		return FString::Printf(
+			TEXT("%s|%s|%s"),
+			*FBlueprintHelperReviewStoreTargetUtils::MakeReviewAssetLinkKey(AssetPath),
+			ObjectKind,
+			*ObjectName);
+	}
+
+static void BlueprintHelperReviewCollectLifecycleRootKeys(
+	const FBlueprintHelperReviewVisibleChange& Change,
+	TArray<FString>& OutKeys)
+	{
+		for (const FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
+		{
+			const EBlueprintHelperReviewTargetHandlerKind HandlerKind =
+				FBlueprintHelperReviewTargetKindRegistry::GetHandlerKind(Target.TargetKind);
+			if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::AssetFactory)
+			{
+				OutKeys.AddUnique(BlueprintHelperReviewLifecycleKey(
+					Change.AssetPath,
+					TEXT("asset"),
+					TEXT("asset")));
+				continue;
+			}
+			if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::Component)
+			{
+				OutKeys.AddUnique(BlueprintHelperReviewLifecycleKey(
+					Change.AssetPath,
+					TEXT("component"),
+					BlueprintHelperReviewLifecycleObjectNameFromTarget(Target)));
+				continue;
+			}
+			if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::UMGWidget)
+			{
+				OutKeys.AddUnique(BlueprintHelperReviewLifecycleKey(
+					Change.AssetPath,
+					TEXT("widget"),
+					BlueprintHelperReviewLifecycleObjectNameFromTarget(Target)));
+			}
+		}
+	}
+
+static void BlueprintHelperReviewCollectLifecycleChildKeys(
+	const FBlueprintHelperReviewVisibleChange& Change,
+	TArray<FString>& OutKeys)
+	{
+		for (const FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
+		{
+			const EBlueprintHelperReviewTargetHandlerKind HandlerKind =
+				FBlueprintHelperReviewTargetKindRegistry::GetHandlerKind(Target.TargetKind);
+			if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::Component)
+			{
+				OutKeys.AddUnique(BlueprintHelperReviewLifecycleKey(
+					Change.AssetPath,
+					TEXT("component"),
+					BlueprintHelperReviewLifecycleObjectNameFromTarget(Target)));
+				continue;
+			}
+			if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::UMGWidget
+				|| HandlerKind == EBlueprintHelperReviewTargetHandlerKind::UMGWidgetProperty)
+			{
+				OutKeys.AddUnique(BlueprintHelperReviewLifecycleKey(
+					Change.AssetPath,
+					TEXT("widget"),
+					BlueprintHelperReviewLifecycleObjectNameFromTarget(Target)));
+			}
+		}
+	}
+
 void FBlueprintHelperReviewStoreTargetUtils::LinkPendingChildrenToLifecycleRoots(TArray<FBlueprintHelperReviewVisibleChange>& Changes)
 	{
-		TMap<FString, int32> PendingRootIndexByAssetPath;
+		TMap<FString, int32> PendingAssetRootIndexByAssetPath;
+		TMap<FString, int32> PendingRootIndexByLifecycleKey;
 		for (int32 Index = 0; Index < Changes.Num(); ++Index)
 		{
 			const FBlueprintHelperReviewVisibleChange& Change = Changes[Index];
@@ -292,7 +435,24 @@ void FBlueprintHelperReviewStoreTargetUtils::LinkPendingChildrenToLifecycleRoots
 				continue;
 			}
 
-			PendingRootIndexByAssetPath.Add(MakeReviewAssetLinkKey(Change.AssetPath), Index);
+			TArray<FString> RootKeys;
+			BlueprintHelperReviewCollectLifecycleRootKeys(Change, RootKeys);
+			for (const FString& RootKey : RootKeys)
+			{
+				if (!RootKey.IsEmpty())
+				{
+					PendingRootIndexByLifecycleKey.Add(RootKey, Index);
+				}
+			}
+
+			const FString AssetRootKey = BlueprintHelperReviewLifecycleKey(
+				Change.AssetPath,
+				TEXT("asset"),
+				TEXT("asset"));
+			if (RootKeys.Contains(AssetRootKey))
+			{
+				PendingAssetRootIndexByAssetPath.Add(MakeReviewAssetLinkKey(Change.AssetPath), Index);
+			}
 		}
 
 		for (FBlueprintHelperReviewVisibleChange& Change : Changes)
@@ -308,7 +468,22 @@ void FBlueprintHelperReviewStoreTargetUtils::LinkPendingChildrenToLifecycleRoots
 				continue;
 			}
 
-			const int32* RootIndex = PendingRootIndexByAssetPath.Find(MakeReviewAssetLinkKey(Change.AssetPath));
+			const int32* RootIndex = nullptr;
+			TArray<FString> ChildKeys;
+			BlueprintHelperReviewCollectLifecycleChildKeys(Change, ChildKeys);
+			for (const FString& ChildKey : ChildKeys)
+			{
+				RootIndex = PendingRootIndexByLifecycleKey.Find(ChildKey);
+				if (RootIndex)
+				{
+					break;
+				}
+			}
+
+			if (!RootIndex)
+			{
+				RootIndex = PendingAssetRootIndexByAssetPath.Find(MakeReviewAssetLinkKey(Change.AssetPath));
+			}
 			if (!RootIndex || !Changes.IsValidIndex(*RootIndex))
 			{
 				continue;
