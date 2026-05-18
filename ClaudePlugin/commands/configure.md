@@ -124,6 +124,8 @@ Use AskUserQuestion:
     description: "BlueprintHelper CLI 只处理 UE 编辑器资产"
   - label: "Repo files through normal tools (Recommended)"
     description: "C++、TS、Python、JSON、文档用普通仓库工具"
+  - label: "No plugin source reads (Recommended)"
+    description: "普通插件使用只读 skill、AgentGuide、CLI reference 和 templates，不读取 BlueprintHelper 插件源码"
   - label: "No C++ edits by default (Recommended)"
     description: "默认不修改 C++ 源码"
   - label: "Allow C++ edits when requested"

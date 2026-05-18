@@ -886,6 +886,23 @@ FBlueprintHelperLogicNode FBlueprintHelperLogicGroupBuilder::ConvertNode(const T
 	Node.Kind = IdentifyNodeKind(NodeObj);
 	Node.Name = ExtractNodeName(NodeObj);
 	Node.Owner = ExtractOwner(NodeObj);
+	const TSharedPtr<FJsonObject>* InputsObj = nullptr;
+	if (NodeObj->TryGetObjectField(TEXT("inputs"), InputsObj) && InputsObj && InputsObj->IsValid())
+	{
+		Node.Inputs = *InputsObj;
+	}
+
+	const TSharedPtr<FJsonObject>* InputDefaultsObj = nullptr;
+	if (NodeObj->TryGetObjectField(TEXT("input_defaults"), InputDefaultsObj) && InputDefaultsObj && InputDefaultsObj->IsValid())
+	{
+		Node.InputDefaults = *InputDefaultsObj;
+	}
+
+	const TSharedPtr<FJsonObject>* OutputsObj = nullptr;
+	if (NodeObj->TryGetObjectField(TEXT("outputs"), OutputsObj) && OutputsObj && OutputsObj->IsValid())
+	{
+		Node.Outputs = *OutputsObj;
+	}
 
 	// 提取 outgoing links
 	const TArray<TSharedPtr<FJsonValue>>* LinksArray = nullptr;

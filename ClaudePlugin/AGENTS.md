@@ -18,6 +18,8 @@ Use normal repository tools for:
 - Updating build scripts.
 - Writing AGENTS.md / memory / project instructions.
 
+When the task is ordinary BlueprintHelper plugin usage, do not inspect the BlueprintHelper plugin package or implementation source (`CodexPlugin/`, `ClaudePlugin/`, `AgentFaceService/`, or the UE `BlueprintHelper/` source) to learn how to use it. Use the installed skill instructions, AgentGuide, CLI reference, and templates instead. Reading plugin source is allowed only for explicit BlueprintHelper plugin development, installation repair, or debugging tasks.
+
 Use BlueprintHelper CLI / task-core tools for:
 
 - Reading or editing existing UE assets through the running Unreal Editor.

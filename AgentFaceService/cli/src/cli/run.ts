@@ -512,5 +512,6 @@ function helpText(): string {
     '',
     'Notes:',
     '  Long UE Bridge waits emit progress hints to stderr. Stdout remains final JSON.',
+    '  In PowerShell, prefer --file or --stdin for generated JSON; inline --json may lose quotes.',
   ].join('\n');
 }

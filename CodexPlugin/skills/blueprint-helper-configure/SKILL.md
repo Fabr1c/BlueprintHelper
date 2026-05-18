@@ -77,6 +77,7 @@ Decisions:
   [B] Boundary policy
       A) CLI TaskSpec reads/writes + global MCP allowlist  [recommended]
       B) CLI lifecycle fallback only
+      C) No plugin source reads for ordinary plugin usage  [required]
 
   [R] Review/debug policy
       A) Keep Journal and Review evidence enabled; DebugBundle only when needed  [recommended]
@@ -175,6 +176,7 @@ Update the active preference sections with these facts:
 - Editor lifecycle commands must use global MCP allowlist tools. Deprecated MCP ordinary tools are not ordinary Agent entry points or fallback paths.
 - Only the Main Agent may call `mcp__blueprint_helper__blueprint_open_editor` and `mcp__blueprint_helper__blueprint_close_editor`.
 - Ordinary reads/writes must use the CLI.
+- Ordinary plugin usage must not read BlueprintHelper plugin package or implementation source; use installed skill instructions, AgentGuide, CLI reference, and templates. Plugin source reads are allowed only for explicit plugin development, installation repair, or debugging.
 - Fourth safety profile `AutoRepair` skips the write approval popup and defaults write permission to enabled.
 - Missing capability default is `stop_and_report`.
 - Do not request or pass Bridge tokens or raw auth session values.

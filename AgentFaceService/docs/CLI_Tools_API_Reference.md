@@ -29,6 +29,12 @@ Agent -> CLI command -> task-core -> Python Task Compiler / Read Router -> Bridg
 bh <tool_name> [--file params.json | --json "{...}" | --stdin] [--select field[,field...]] [--format summary|json|full]
 ```
 
+PowerShell-safe input rule: `--file` and `--stdin` are the stable JSON input paths. Inline `--json` is acceptable for `{}` and very small literals, but generated JSON should be piped:
+
+```powershell
+$json | bh blueprinthelper_read_context --stdin --format full
+```
+
 ### 支持命令面
 
 默认 Agent-facing commands:
@@ -238,6 +244,8 @@ Canonical shell form:
 ```powershell
 bh <tool_name> [--file params.json | --json "{...}" | --stdin] [--select field[,field...]] [--format summary|json|full]
 ```
+
+PowerShell-safe input rule: prefer `--file` or `--stdin`; inline `--json $json` can arrive at Node with quotes stripped.
 
 ### Supported Command Surface
 

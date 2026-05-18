@@ -23,6 +23,8 @@ Use this Skill when the user asks to:
 
 Do not use BlueprintHelper tools for C++, TypeScript, Python, JSON, docs, tests, config, `AGENTS.md`, or memory files. Use normal repository tools for those.
 
+Do not inspect the BlueprintHelper plugin package or implementation source (`CodexPlugin/`, `ClaudePlugin/`, `AgentFaceService/`, or the UE `BlueprintHelper/` source) merely to learn how to use the plugin. That is redundant and forbidden for ordinary plugin usage. Use this skill, the AgentGuide, CLI reference, and templates instead. Read plugin source only when the user explicitly asks for BlueprintHelper plugin development, installation repair, or debugging.
+
 ## Entry Rule
 
 The supported Agent-facing entry for ordinary BlueprintHelper reads, writes, diagnostics, debug summaries, write-session requests, and result queries is the BlueprintHelper CLI. Use global BlueprintHelper MCP only for editor open/close lifecycle; do not route ordinary workflows through MCP.
@@ -31,7 +33,9 @@ Deprecated MCP ordinary read/write/debug/task tools are not fallback paths. Do n
 
 When a CLI command waits on UE Bridge work, it may emit `waiting for UE Bridge response` lines to `stderr`. Treat those lines as keep-alive progress and continue waiting unless the CLI exits; parse only `stdout` as the final JSON result.
 
-For complex JSON input, copy a template from `AgentFaceService/agent-guide/Templates/`, edit the copy, then call the CLI with `--file`. Direct tool-name TaskSpec calls use wrapper templates with root field `task_spec`; grouped `task preview` / `task execute` calls use bare `BlueprintHelper.TaskSpec.v1` files.
+For complex JSON input, copy a template from `AgentFaceService/agent-guide/Templates/`, edit the copy, then call the CLI with `--file`; for generated JSON, pipe it to `--stdin`. Do not pass non-trivial generated payloads as inline PowerShell `--json $json`, because PowerShell can strip quotes before Node receives the argument. Direct tool-name TaskSpec calls use wrapper templates with root field `task_spec`; grouped `task preview` / `task execute` calls use bare `BlueprintHelper.TaskSpec.v1` files.
+
+On Windows PowerShell, `bh` should resolve to the `.cmd` launcher installed by `install.ps1`. If an older install resolves to blocked `bh.ps1`, rerun the root installer or call `bh.cmd`.
 
 ## Main Agent Flow
 

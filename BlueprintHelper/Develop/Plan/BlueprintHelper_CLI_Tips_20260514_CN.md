@@ -1,4 +1,4 @@
-﻿# BlueprintHelper CLI Tips
+# BlueprintHelper CLI Tips
 
 更新时间：2026-05-17
 
@@ -435,3 +435,11 @@ rg -n 'SReadOnlyHierarchyView' 'E:\UE_5.6\Engine\Source\Editor' -g '*.h' -g '*.c
 | Debug bundle 参数无效 | 只传 `debug_case_id` |
 | `--fields` 看不到错误细节 | 用 `--format full` 并打开 `artifacts.full_result` |
 | CLI `npm run build` 把 `../task-core` 解析到 Codex sandbox cwd | 先在 `AgentFaceService/task-core` 跑 `npm.cmd run build`，再在 `AgentFaceService/cli` 依次跑 `node ..\scripts\clean-build.mjs` 和 `node ..\scripts\run-tsc.mjs` |
+
+## UBT RulesError：Saved/BuildPlugin_* 打包产物导致 Build.cs 重名
+
+现象：执行项目编译时，UBT 在规则扫描阶段报告 `The namespace '<global namespace>' already contains a definition for 'BlueprintHelper'`，路径指向 `Plugins/BlueprintHelper/Saved/BuildPlugin_UE53/Source/BlueprintHelper/BlueprintHelper.Build.cs` 或 `Saved/BuildPlugin_UE56/Source/BlueprintHelper/BlueprintHelper.Build.cs`。
+
+原因：`Saved/BuildPlugin_*` 是打包插件输出目录，但其中仍包含同名模块规则文件。项目编译时 UBT 会扫描到这些 `.Build.cs`，与真实插件源码下的 `BlueprintHelper.Build.cs` 发生重名冲突。
+
+处理：编译前清理或隔离 `Plugins/BlueprintHelper/Saved/BuildPlugin_*` 打包输出目录，再重新执行项目编译。该错误不是业务 C++ 源码编译错误。

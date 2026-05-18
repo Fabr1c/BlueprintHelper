@@ -68,6 +68,8 @@ bh blueprint_get_runtime_profile --json "{}" --select status,summary
 node <BLUEPRINTHELPER_ROOT>\AgentFaceService\cli\build\cli\index.js blueprint_get_runtime_profile --json "{}" --select status,summary
 ```
 
+The root installer removes npm-generated PowerShell `.ps1` shims when `.cmd` launchers are present, so `bh` is not blocked by ExecutionPolicy. For generated JSON in PowerShell, pipe to `--stdin` or use `--file`; avoid inline `--json $json`.
+
 ## Global MCP Lifecycle
 
 Plugin-local MCP is not the normal Codex entry. Do not register or call ordinary BlueprintHelper read/write tools through MCP. Use MCP only for editor open/close lifecycle in ordinary Agent workflows; use CLI for ordinary reads, diagnostics, TaskSpec preview, write-session requests, execute, and result lookup. Deprecated MCP ordinary tools are not fallback paths.

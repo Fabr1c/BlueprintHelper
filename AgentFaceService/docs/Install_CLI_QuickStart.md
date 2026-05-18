@@ -55,6 +55,8 @@ Use the root installer for setup and rebuilds. Do not duplicate per-package Node
 
 Windows users can also run `install.cmd`; it opens the interactive installer when launched without arguments and passes arguments through to `install.ps1` when supplied.
 
+After `npm link`, the installer removes npm-generated `bh.ps1` / `blueprinthelper-cli.ps1` shims when matching `.cmd` launchers exist. This avoids PowerShell ExecutionPolicy blocking `bh`. If an older install still resolves `bh` to a `.ps1` file, rerun the root installer or call `bh.cmd`.
+
 ## 3. Manual Project Agent Profile Fallback
 
 Use this only when the installer could not discover a unique `.uproject` or you intentionally passed `-SkipProjectProfile`.
@@ -113,6 +115,12 @@ bh task execute --file .\task_spec.json --select status,task_run_id,summary
 ```
 
 See [TaskSpec_CLI_QuickStart.md](TaskSpec_CLI_QuickStart.md) for command syntax and output rules.
+
+PowerShell can corrupt inline JSON strings before the CLI receives them. For anything beyond `{}`, prefer `--file` or pipe JSON to `--stdin`:
+
+```powershell
+$json | bh blueprinthelper_read_context --stdin --format full
+```
 
 When a UE-bound command waits on the Bridge, the CLI emits keep-alive hints to `stderr` and keeps `stdout` reserved for the final JSON result. Agents should keep waiting on `waiting for UE Bridge response` hints unless the CLI exits.
 

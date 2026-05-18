@@ -166,6 +166,56 @@ function Invoke-Npm {
   }
 }
 
+function Resolve-NpmGlobalBinDirectory {
+  $NpmCommand = Get-NpmCommand
+  $PrefixOutput = & $NpmCommand 'config' 'get' 'prefix' 2>$null
+  if ($LASTEXITCODE -ne 0) {
+    Write-Warning "Unable to resolve npm global prefix with '$NpmCommand config get prefix'."
+    return $null
+  }
+
+  $Prefix = ($PrefixOutput | Select-Object -First 1)
+  if ([string]::IsNullOrWhiteSpace($Prefix)) {
+    Write-Warning 'npm global prefix was empty; cannot repair CLI shims.'
+    return $null
+  }
+
+  $ResolvedPrefix = [System.IO.Path]::GetFullPath($Prefix.Trim())
+  if ($env:OS -eq 'Windows_NT') {
+    return $ResolvedPrefix
+  }
+  return Join-Path $ResolvedPrefix 'bin'
+}
+
+function Repair-BlueprintHelperCliShims {
+  $GlobalBinDir = Resolve-NpmGlobalBinDirectory
+  if (-not $GlobalBinDir) {
+    return
+  }
+
+  $Removed = @()
+  foreach ($CommandName in @('bh', 'blueprinthelper-cli')) {
+    $PowerShellShim = Join-Path $GlobalBinDir "$CommandName.ps1"
+    $CmdShim = Join-Path $GlobalBinDir "$CommandName.cmd"
+    if ((Test-Path -LiteralPath $PowerShellShim -PathType Leaf) -and (Test-Path -LiteralPath $CmdShim -PathType Leaf)) {
+      if ($script:ThisCmdlet.ShouldProcess($PowerShellShim, 'Remove PowerShell shim so Windows resolves the .cmd launcher')) {
+        Remove-Item -LiteralPath $PowerShellShim -Force
+      }
+      $Removed += $PowerShellShim
+    }
+  }
+
+  if ($Removed.Count -gt 0) {
+    Write-Host "==> CLI shims: removed PowerShell .ps1 shims that can be blocked by ExecutionPolicy"
+    foreach ($Path in $Removed) {
+      Write-Host "    $Path"
+    }
+    Write-Host '    PowerShell will resolve bh/blueprinthelper-cli to the .cmd launchers installed by npm link.'
+  } else {
+    Write-Host '==> CLI shims: no blocking PowerShell .ps1 shims found, or .cmd launchers were not present.'
+  }
+}
+
 function Write-InstallTips {
   param([string]$TipsBase64)
 
@@ -336,7 +386,7 @@ function Get-InstallMenuOption {
 function New-InstallMenuOptions {
   return @(
     (New-InstallMenuOption -Key 'build' -Label 'Build AgentFaceService packages' -Selected:(-not $SkipBuild) -Tip 'Install and build the shared task-core package, CLI package, and MCP compatibility package. Requires Node.js and npm on PATH.'),
-    (New-InstallMenuOption -Key 'cliLink' -Label 'Link bh CLI globally' -Selected:(-not $SkipCliLink) -Tip 'Run npm link for the CLI package so bh and blueprinthelper-cli are available as global commands.'),
+    (New-InstallMenuOption -Key 'cliLink' -Label 'Link bh CLI globally' -Selected:(-not $SkipCliLink) -Tip 'Run npm link for the CLI package, then remove npm PowerShell .ps1 shims so bh resolves through the .cmd launcher and is not blocked by ExecutionPolicy.'),
     (New-InstallMenuOption -Key 'codexSupport' -Label 'Codex Desktop plugin support' -Selected:(-not ($SkipCodexMarketplace -and $SkipCodexAgents -and $SkipLifecycleMcp)) -Tip 'Enable Codex Desktop integration. Child items control marketplace registration, subagents, and lifecycle MCP config.'),
     (New-InstallMenuOption -Key 'codexMarketplace' -Label 'Register Codex local marketplace entry' -Selected:(-not $SkipCodexMarketplace) -Tip 'Create/update the local Codex marketplace entry under the user profile so the plugin can be installed by Codex Desktop.' -Indent 1 -Parent 'codexSupport'),
     (New-InstallMenuOption -Key 'codexAgents' -Label 'Install Codex subagents' -Selected:(-not $SkipCodexAgents) -Tip 'Install BlueprintHelper Codex subagent definitions into the user Codex agents directory.' -Indent 1 -Parent 'codexSupport'),
@@ -881,6 +931,7 @@ This file records durable user-facing Agent preferences for BlueprintHelper work
 - Use BlueprintHelper CLI for ordinary UE editor asset reads and writes.
 - Use global lifecycle-only MCP only for opening and closing Unreal Editor.
 - Use normal repository tools for source, scripts, config, tests, and docs.
+- Do not inspect BlueprintHelper plugin package or implementation source for ordinary plugin usage. Use installed skill instructions, AgentGuide, CLI reference, and templates instead. Plugin source reads are allowed only for explicit BlueprintHelper plugin development, installation repair, or debugging tasks.
 - Do not request or store Bridge tokens, auth sessions, raw payloads, or private environment details.
 
 ## Manual Notes
@@ -1016,6 +1067,7 @@ if (-not $SkipBuild) {
 
 if (-not $SkipCliLink) {
   Invoke-Npm -PackageDir (Join-Path $AgentFaceServiceRoot 'cli') -Arguments @('link')
+  Repair-BlueprintHelperCliShims
 }
 
 $UserHome = $env:USERPROFILE
@@ -1083,7 +1135,8 @@ if ($InstallUePluginToEngine) {
 Write-Host ''
 Write-Host 'BlueprintHelper install finished.'
 Write-Host "Source root: $Root"
-Write-Host 'CLI: bh or blueprinthelper-cli'
+Write-Host 'CLI: bh or blueprinthelper-cli (.cmd launcher; installer removes blocking .ps1 shims when npm creates them)'
+Write-Host 'CLI JSON input: prefer --file or pipe JSON to --stdin in PowerShell; avoid inline --json for non-trivial payloads.'
 Write-Host 'Codex plugin: blueprint-helper'
 Write-Host "Claude plugin: $($ClaudePluginResult.status)"
 if ($ClaudePluginResult.source_path) {
