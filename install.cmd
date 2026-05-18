@@ -9,12 +9,19 @@ exit /b !ERRORLEVEL!
 call :SetInstallTips
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1" -Interactive -InstallTipsBase64 "!BH_INSTALL_TIPS_B64!"
 set "BH_INSTALL_EXIT=!ERRORLEVEL!"
-if "!BH_INSTALL_EXIT!"=="0" exit /b 0
+if "!BH_INSTALL_EXIT!"=="0" goto InstallSucceeded
 echo.
 echo BlueprintHelper install failed with exit code !BH_INSTALL_EXIT!.
 echo Review the error above, then press any key to close this window.
 pause >nul
 exit /b !BH_INSTALL_EXIT!
+
+:InstallSucceeded
+echo.
+echo BlueprintHelper install completed successfully.
+echo Press any key to close this window.
+pause >nul
+exit /b 0
 
 :SetInstallTips
 set "BH_INSTALL_TIPS_B64="
