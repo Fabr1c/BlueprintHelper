@@ -42,6 +42,8 @@
 #include "Widgets/Views/STableRow.h"
 #include "Widgets/Views/STreeView.h"
 
+static FString BlueprintHelperReviewFriendlyActionMessage(const FString& Prefix, const FString& Detail);
+
 SBlueprintHelperReviewPanel::~SBlueprintHelperReviewPanel()
 {
 	if (ReviewPanelPresenter.IsValid() && PendingReviewChangedHandle.IsValid())
@@ -813,8 +815,8 @@ FReply SBlueprintHelperReviewPanel::ExecuteAcceptChange(FReviewChangeItem Item)
 	ShowReviewActionNotification(
 		TEXT("accept:") + Item->ChangeId,
 		FString::Printf(
-			TEXT("%s�?s"),
-			Result.bSucceeded ? TEXT("成功，已接受") : TEXT("失败，未接受"),
+			TEXT("%s: %s"),
+			Result.bSucceeded ? TEXT("Accepted") : TEXT("Accept failed"),
 			*BuildReviewActionNotificationLabel(Item)),
 		Result.bSucceeded
 			? EReviewActionNotificationState::Success
@@ -850,7 +852,7 @@ void SBlueprintHelperReviewPanel::QueueRejectChange(FReviewChangeItem Item, bool
 		{
 			ShowReviewActionNotification(
 				TEXT("reject:missing_change_id"),
-				TEXT("失败，无法拒绝：缺少 Review id"),
+				TEXT("婵犮垺鍎肩划鍓ф喆閿曞倹鏅悘鐐靛亾閿熴儲绻涙径瀣閻庢艾妫涚槐鎺戔攽閹惧墎鐛ョ紓鍌氬€搁幖顐︽儍?Review id"),
 				EReviewActionNotificationState::Fail,
 				true,
 				false);
@@ -865,7 +867,7 @@ void SBlueprintHelperReviewPanel::QueueRejectChange(FReviewChangeItem Item, bool
 			ShowReviewActionNotification(
 				TEXT("reject:") + ChangeId,
 				FString::Printf(
-					TEXT("处理中，已在拒绝队列�?s"),
+					TEXT("婵犮垼娉涚€氼噣骞冩繝鍐枖妞ゆ挶鍔庣粈澶屸偓鐟版啞瑜板啫锕㈤鍫濈闁圭儤姊婚崡婊堟⒒閸愵亜鏋庨柛顭戜邯閺?s"),
 					*BuildReviewActionNotificationLabel(Item)),
 				EReviewActionNotificationState::Pending,
 				false,
@@ -889,7 +891,7 @@ void SBlueprintHelperReviewPanel::QueueRejectChange(FReviewChangeItem Item, bool
 		ShowReviewActionNotification(
 			TEXT("reject:") + ChangeId,
 			FString::Printf(
-				TEXT("处理中，正在拒绝�?s"),
+				TEXT("婵犮垼娉涚€氼噣骞冩繝鍐枖妞ゆ挶鍔庣粈澶嬫叏濠垫挾鍒版繝鈧鍫濈闁圭儤姊婚崡婊堟煥?s"),
 				*BuildReviewActionNotificationLabel(Item)),
 			EReviewActionNotificationState::Pending,
 			false,
@@ -918,7 +920,7 @@ EActiveTimerReturnType SBlueprintHelperReviewPanel::TickAsyncRejectPrepare(doubl
 			{
 				ShowReviewActionNotification(
 					TEXT("reject:") + ChangeId,
-					FString::Printf(TEXT("失败，无法拒绝：找不�?Review �?(%s)"), *ChangeId),
+					FString::Printf(TEXT("婵犮垺鍎肩划鍓ф喆閿曞倹鏅悘鐐靛亾閿熴儲绻涙径瀣閻庢艾妫涚槐鎺戔攽閹惧墎鐛ラ梺褰掓涧瑜扮偟绮径鎰?Review 婵?(%s)"), *ChangeId),
 					EReviewActionNotificationState::Fail,
 					true,
 					false);
@@ -980,7 +982,7 @@ void SBlueprintHelperReviewPanel::HandlePreparedRejectReady(
 			ShowReviewActionNotification(
 				TEXT("reject:") + ChangeId,
 				FString::Printf(
-					TEXT("处理中，正在应用拒绝�?s"),
+					TEXT("婵犮垼娉涚€氼噣骞冩繝鍐枖妞ゆ挶鍔庣粈澶嬫叏濠垫挾鍒版繝鈧鍛劅闁哄啫鍊归弳蹇涙煙闁垮绗х紒顔惧厴閺?s"),
 					*BuildReviewActionNotificationLabel(Item)),
 				EReviewActionNotificationState::Pending,
 				false,
@@ -1009,7 +1011,7 @@ void SBlueprintHelperReviewPanel::ExecutePreparedRejectMutation(const FString& C
 		{
 			ShowReviewActionNotification(
 				TEXT("reject:") + ChangeId,
-				FString::Printf(TEXT("失败，无法拒绝：找不�?Review �?(%s)"), *ChangeId),
+				FString::Printf(TEXT("婵犮垺鍎肩划鍓ф喆閿曞倹鏅悘鐐靛亾閿熴儲绻涙径瀣閻庢艾妫涚槐鎺戔攽閹惧墎鐛ラ梺褰掓涧瑜扮偟绮径鎰?Review 婵?(%s)"), *ChangeId),
 				EReviewActionNotificationState::Fail,
 				true,
 				false);
@@ -1035,6 +1037,8 @@ void SBlueprintHelperReviewPanel::ExecutePreparedRejectMutation(const FString& C
 	AddDebugMessage(FString::Printf(
 		TEXT("Reject mutation started id=%s mode=archive_baseline_snapshot"),
 		*ChangeId));
+
+	const FString ActionNotificationLabel = BuildReviewActionNotificationLabel(Item);
 
 	if (Item->bIsAssetLifecycleRoot)
 	{
@@ -1099,10 +1103,9 @@ void SBlueprintHelperReviewPanel::ExecutePreparedRejectMutation(const FString& C
 		{
 			ShowReviewActionNotification(
 				TEXT("reject:") + ChangeId,
-				FString::Printf(
-					TEXT("%s�?s"),
-					CascadeResult.RootResult.bSucceeded ? TEXT("成功，已拒绝") : TEXT("失败，未拒绝"),
-					*ActionNotificationLabel),
+				(CascadeResult.RootResult.bSucceeded
+					? FString::Printf(TEXT("Rejected: %s"), *ActionNotificationLabel)
+					: BlueprintHelperReviewFriendlyActionMessage(TEXT("Reject failed"), CascadeResult.RootResult.Message)),
 				CascadeResult.RootResult.bSucceeded
 					? EReviewActionNotificationState::Success
 					: EReviewActionNotificationState::Fail,
@@ -1172,10 +1175,9 @@ void SBlueprintHelperReviewPanel::ExecutePreparedRejectMutation(const FString& C
 	{
 		ShowReviewActionNotification(
 			TEXT("reject:") + ChangeId,
-			FString::Printf(
-				TEXT("%s�?s"),
-				Result.bSucceeded ? TEXT("成功，已拒绝") : TEXT("失败，未拒绝"),
-				*ActionNotificationLabel),
+			(Result.bSucceeded
+				? FString::Printf(TEXT("Rejected: %s"), *ActionNotificationLabel)
+				: BlueprintHelperReviewFriendlyActionMessage(TEXT("Reject failed"), Result.Message)),
 			Result.bSucceeded
 				? EReviewActionNotificationState::Success
 				: EReviewActionNotificationState::Fail,
@@ -1250,25 +1252,27 @@ FReply SBlueprintHelperReviewPanel::OnAcceptAll()
 	FBlueprintHelperReviewRowHighlightModel::InvalidateAssetStates(AssetPath);
 
 	SelectedChange = ChangeItems.Num() > 0 ? ChangeItems[0] : FReviewChangeItem();
-		RebuildChangeTreeItems();
-		RefreshChangeTreeWidget();
-		LoadReviewAssetFromSelection();
-		RefreshMainWorkspaceAfterReviewStateChanged();
-		LastVisibleChangeRefreshSignature.Reset();
-		RefreshFromReviewStoreIfChanged();
+	RebuildChangeTreeItems();
+	RefreshChangeTreeWidget();
+	LoadReviewAssetFromSelection();
+	RefreshMainWorkspaceAfterReviewStateChanged();
+	LastVisibleChangeRefreshSignature.Reset();
+	RefreshFromReviewStoreIfChanged();
 	AddDebugMessage(FString::Printf(
 		TEXT("AcceptAll asset=\"%s\" remainingVisibleChanges=%d"),
 		*AssetPath,
 		ChangeItems.Num()));
+
+	const FString NotificationText = TargetCount == 0
+		? FString(TEXT("Accept all failed: no acceptable review item."))
+		: FailedCount == 0
+			? FString::Printf(TEXT("Accept all succeeded: %d item(s)."), AcceptedItems.Num())
+			: AcceptedItems.Num() > 0
+				? FString::Printf(TEXT("Accept all partially succeeded: %d accepted, %d failed."), AcceptedItems.Num(), FailedCount)
+				: FString::Printf(TEXT("Accept all failed: %d item(s) failed."), FailedCount);
 	ShowReviewActionNotification(
 		TEXT("accept_all:") + AssetPath,
-		TargetCount == 0
-			? FString(TEXT("全失败：没有可接受的 Review �?))
-			: FailedCount == 0
-				? FString::Printf(TEXT("批量成功：已接受 %d �?), AcceptedItems.Num())
-				: AcceptedItems.Num() > 0
-					? FString::Printf(TEXT("有失败：已接�?%d 项，失败 %d �?), AcceptedItems.Num(), FailedCount)
-					: FString::Printf(TEXT("全失败：接受失败 %d �?), FailedCount),
+		NotificationText,
 		TargetCount > 0 && FailedCount == 0
 			? EReviewActionNotificationState::Success
 			: EReviewActionNotificationState::Fail,
@@ -1276,7 +1280,6 @@ FReply SBlueprintHelperReviewPanel::OnAcceptAll()
 		false);
 	return FReply::Handled();
 }
-
 
 FReply SBlueprintHelperReviewPanel::OnRejectAll()
 {
@@ -1302,7 +1305,7 @@ FReply SBlueprintHelperReviewPanel::OnRejectAll()
 	{
 		ShowReviewActionNotification(
 			BatchKey,
-			TEXT("全失败：没有可拒绝的 Review �?),
+			TEXT("Reject all failed: no rejectable review item."),
 			EReviewActionNotificationState::Fail,
 			true,
 			false);
@@ -1337,7 +1340,7 @@ FReply SBlueprintHelperReviewPanel::OnRejectAll()
 	{
 		ShowReviewActionNotification(
 			BatchKey,
-			FString::Printf(TEXT("全失败：拒绝失败 %d �?), Batch.FailedCount),
+			FString::Printf(TEXT("Reject all failed: %d item(s) failed."), Batch.FailedCount),
 			EReviewActionNotificationState::Fail,
 			true,
 			false);
@@ -1347,14 +1350,13 @@ FReply SBlueprintHelperReviewPanel::OnRejectAll()
 	{
 		ShowReviewActionNotification(
 			BatchKey,
-			FString::Printf(TEXT("处理中：批量拒绝已排�?%d �?), ItemsToQueue.Num()),
+			FString::Printf(TEXT("Reject all queued: %d item(s)."), ItemsToQueue.Num()),
 			EReviewActionNotificationState::Pending,
 			false,
 			true);
 	}
 	return FReply::Handled();
 }
-
 void SBlueprintHelperReviewPanel::ShowReviewActionNotification(
 	const FString& NotificationKey,
 	const FString& StatusText,
@@ -1413,6 +1415,19 @@ void SBlueprintHelperReviewPanel::ShowReviewActionNotification(
 	}
 }
 
+static FString BlueprintHelperReviewFriendlyActionMessage(const FString& Prefix, const FString& Detail)
+{
+	if (Detail.StartsWith(TEXT("struct_field_last_row_cannot_remove:")))
+	{
+		const FString FieldName = Detail.Mid(FString(TEXT("struct_field_last_row_cannot_remove:")).Len());
+		return FString::Printf(TEXT("%s: cannot remove the last struct field (%s). Reject the whole struct asset instead."), *Prefix, *FieldName);
+	}
+	if (Detail.IsEmpty())
+	{
+		return Prefix;
+	}
+	return FString::Printf(TEXT("%s: %s"), *Prefix, *Detail);
+}
 FString SBlueprintHelperReviewPanel::BuildReviewActionNotificationLabel(FReviewChangeItem Item)
 {
 	if (!Item.IsValid())
@@ -1432,12 +1447,14 @@ FString SBlueprintHelperReviewPanel::BuildReviewActionNotificationLabel(FReviewC
 
 void SBlueprintHelperReviewPanel::RecordRejectBatchResult(const FString& ChangeId, bool bSucceeded)
 {
-	FString BatchKey;
-	if (!RejectBatchKeyByChangeId.RemoveAndCopyValue(ChangeId, BatchKey))
+	const FString* BatchKeyPtr = RejectBatchKeyByChangeId.Find(ChangeId);
+	if (!BatchKeyPtr)
 	{
 		return;
 	}
 
+	const FString BatchKey = *BatchKeyPtr;
+	RejectBatchKeyByChangeId.Remove(ChangeId);
 	FReviewActionBatchNotificationState* Batch = RejectBatchNotifications.Find(BatchKey);
 	if (!Batch)
 	{
@@ -1459,7 +1476,7 @@ void SBlueprintHelperReviewPanel::RecordRejectBatchResult(const FString& ChangeI
 		ShowReviewActionNotification(
 			Batch->NotificationKey,
 			FString::Printf(
-				TEXT("处理中：批量拒绝 %d/%d �?),
+				TEXT("Reject all running: %d/%d item(s)."),
 				Batch->FinishedCount,
 				Batch->TotalCount),
 			EReviewActionNotificationState::Pending,
@@ -1469,10 +1486,10 @@ void SBlueprintHelperReviewPanel::RecordRejectBatchResult(const FString& ChangeI
 	}
 
 	const FString FinalText = Batch->FailedCount == 0
-		? FString::Printf(TEXT("批量成功：已拒绝 %d �?), Batch->SuccessCount)
+		? FString::Printf(TEXT("Reject all succeeded: %d item(s)."), Batch->SuccessCount)
 		: Batch->SuccessCount > 0
-			? FString::Printf(TEXT("有失败：已拒�?%d 项，失败 %d �?), Batch->SuccessCount, Batch->FailedCount)
-			: FString::Printf(TEXT("全失败：拒绝失败 %d �?), Batch->FailedCount);
+			? FString::Printf(TEXT("Reject all partially succeeded: %d rejected, %d failed."), Batch->SuccessCount, Batch->FailedCount)
+			: FString::Printf(TEXT("Reject all failed: %d item(s) failed."), Batch->FailedCount);
 	ShowReviewActionNotification(
 		Batch->NotificationKey,
 		FinalText,
@@ -1483,7 +1500,6 @@ void SBlueprintHelperReviewPanel::RecordRejectBatchResult(const FString& ChangeI
 		false);
 	RejectBatchNotifications.Remove(BatchKey);
 }
-
 FText SBlueprintHelperReviewPanel::GetSelectedTitle() const
 {
 	if (!SelectedChange.IsValid())

@@ -563,6 +563,13 @@ bool FBlueprintHelperReviewSnapshotRestoreService::RestoreStructFieldFromSnapsho
 		{
 			if (FieldDescription)
 			{
+				const TArray<FStructVariableDescription>& Descriptions = FStructureEditorUtils::GetVarDesc(Struct);
+				if (Descriptions.Num() <= 1)
+				{
+					OutError = FString::Printf(TEXT("struct_field_last_row_cannot_remove:%s"), *FieldName);
+					return false;
+				}
+
 				const FGuid FieldGuid = FieldDescription->VarGuid;
 				Struct->Modify();
 				if (!FStructureEditorUtils::RemoveVariable(Struct, FieldGuid))
