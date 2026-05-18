@@ -46,3 +46,16 @@
 失败原因：`Saved/BuildPlugin_UE53` 与 `Saved/BuildPlugin_UE56` 下存在打包产物 `BlueprintHelper.Build.cs`，与项目内真实模块规则同名，触发 RulesError。
 
 当前结论：本次修复尚未完成编译验证；需要先清理或隔离 `Saved/BuildPlugin_*` 打包输出目录后重试编译。
+## 验证状态
+
+1. 项目编译通过：`Build.bat TemplateEditor Win64 Development -Project=D:\UEProjects\Template\Template.uproject -WaitMutex -NoHotReload`。
+2. 新增自动化测试：`BlueprintHelper.ObjectFirst.Logic.PreservesInputDefaultsInLogicJson`，1 succeeded / 0 failed。
+3. 相关自动化回归：`BlueprintHelper.ObjectFirst.Logic`，11 succeeded / 0 failed。
+4. 自动化报告：`D:\UEProjects\Template\Saved\Automation\PinDefaults_20260518_002\index.json`。
+5. 自动化报告：`D:\UEProjects\Template\Saved\Automation\PinDefaults_ObjectFirstLogic_20260518_001\index.json`。
+
+## 距离期望的差距
+
+1. 自动化已覆盖 LogicJson 对 `inputs` 和 `input_defaults` 的透传，包含 `bool false` 与 `float 0.0` 样例。
+2. 当前尚未通过真实编辑器资产执行 read_context 覆盖 `Text`、`Object/Class` 默认值从 UE Pin 到 raw_json 的完整端到端链路。
+3. 当前未发现编译或 LogicJson 归一层阻塞。
