@@ -1,0 +1,84 @@
+{
+  "schema": "BlueprintHelper.TaskSpec.v1",
+  "task_type": "edit_blueprint_signature",
+  "feature_name": "ReviewPanel_UI_04_EditBlueprintSignatures",
+  "target": {
+    "asset_path": "/Game/BlueprintHelperCliSmoke/ReviewPanelManual_20260518_001/BP_RP_UI_Actor_20260518_001",
+    "target_type": "blueprint"
+  },
+  "behavior": {
+    "signature_strategy": "signature_edit",
+    "changes": [
+      {
+        "kind": "ensure_function",
+        "function_name": "RPUI_Function_20260518_001",
+        "inputs": [
+          {
+            "name": "InputValue",
+            "pin_type": {
+              "category": "float"
+            }
+          }
+        ],
+        "outputs": [
+          {
+            "name": "ReturnValue",
+            "pin_type": {
+              "category": "bool"
+            }
+          }
+        ],
+        "name_collision_policy": "reuse_if_exists"
+      },
+      {
+        "kind": "ensure_function",
+        "function_name": "RPUI_WriteFunction_20260518_001",
+        "inputs": [
+          {
+            "name": "Message",
+            "pin_type": {
+              "category": "string"
+            }
+          }
+        ],
+        "name_collision_policy": "reuse_if_exists"
+      },
+      {
+        "kind": "ensure_custom_event",
+        "event_name": "RPUI_Event_20260518_001",
+        "graph_name": "EventGraph",
+        "inputs": [
+          {
+            "name": "Message",
+            "pin_type": {
+              "category": "string"
+            }
+          }
+        ],
+        "name_collision_policy": "reuse_if_exists"
+      },
+      {
+        "kind": "ensure_event_dispatcher",
+        "dispatcher_name": "RPUI_Dispatcher_20260518_001",
+        "inputs": [
+          {
+            "name": "Payload",
+            "pin_type": {
+              "category": "string"
+            }
+          }
+        ],
+        "signature_mismatch_policy": "block"
+      }
+    ]
+  },
+  "execution_policy": {
+    "dry_run_mode": "full",
+    "on_missing_capability": "stop_and_report",
+    "review_baseline_dirty_asset_policy": "block"
+  },
+  "validation": {
+    "should_compile": true,
+    "should_save": true
+  }
+}
