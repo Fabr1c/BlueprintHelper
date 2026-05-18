@@ -26,7 +26,7 @@ FString FBlueprintHelperReviewStoreTargetUtils::ExtractReviewNodeIdentifier(cons
 		return Identifier;
 	}
 FBlueprintHelperReviewAtomicTarget FBlueprintHelperReviewStoreTargetUtils::MakeGraphRecordTarget(
-		const FBlueprintHelperReviewTransactionInput& Input,
+		const FBlueprintHelperReviewEvidenceInput& Input,
 		const FString& TargetId,
 		const FString& TargetPrefix)
 	{
@@ -38,7 +38,7 @@ FBlueprintHelperReviewAtomicTarget FBlueprintHelperReviewStoreTargetUtils::MakeG
 		Target.VisualGroupKey = Input.LocationKey;
 		Target.DisplayLabel = Input.DisplayLabel;
 		Target.NodeGuid = TargetId;
-		Target.SourceTransactionIds.Add(Input.TransactionId);
+		Target.SourceEvidenceIds.Add(Input.EvidenceId);
 		return Target;
 	}
 void FBlueprintHelperReviewStoreTargetUtils::AddGraphTargetsFromStringArrayField(
@@ -46,7 +46,7 @@ void FBlueprintHelperReviewStoreTargetUtils::AddGraphTargetsFromStringArrayField
 		const TCHAR* FieldName,
 		const FString& TargetPrefix,
 		bool bExtractNodeName,
-		FBlueprintHelperReviewTransactionInput& Input)
+		FBlueprintHelperReviewEvidenceInput& Input)
 	{
 		const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;
 		if (!Record.IsValid() || !Record->TryGetArrayField(FieldName, Values) || !Values)
@@ -77,13 +77,13 @@ void FBlueprintHelperReviewStoreTargetUtils::AddGraphTargetsFromStringArrayField
 			Input.AtomicTargets.Add(MakeGraphRecordTarget(Input, TargetId, TargetPrefix));
 		}
 	}
-FString FBlueprintHelperReviewStoreTargetUtils::MakeReviewInternalMissingAnchorKey(const FString& TransactionId, int32 Index)
+FString FBlueprintHelperReviewStoreTargetUtils::MakeReviewInternalMissingAnchorKey(const FString& EvidenceId, int32 Index)
 	{
-		return FString::Printf(TEXT("__missing_anchor|%s|%d"), *TransactionId, Index);
+		return FString::Printf(TEXT("__missing_anchor|%s|%d"), *EvidenceId, Index);
 	}
-FString FBlueprintHelperReviewStoreTargetUtils::MakeReviewInternalMissingGroupKey(const FString& TransactionId, int32 Index)
+FString FBlueprintHelperReviewStoreTargetUtils::MakeReviewInternalMissingGroupKey(const FString& EvidenceId, int32 Index)
 	{
-		return FString::Printf(TEXT("__missing_visual_group|%s|%d"), *TransactionId, Index);
+		return FString::Printf(TEXT("__missing_visual_group|%s|%d"), *EvidenceId, Index);
 	}
 FString FBlueprintHelperReviewStoreTargetUtils::MakeReviewAtomicLookupKey(const FBlueprintHelperReviewAtomicTarget& Target, const FString& FallbackKey)
 	{
@@ -115,12 +115,11 @@ void FBlueprintHelperReviewStoreTargetUtils::PreserveFirstBaselineFields(
 		const FBlueprintHelperReviewAtomicTarget& Incoming)
 	{
 		Target.ScopeIdentity = !Existing.ScopeIdentity.IsEmpty() ? Existing.ScopeIdentity : Incoming.ScopeIdentity;
-		Target.FirstTransactionId = !Existing.FirstTransactionId.IsEmpty()
-			? Existing.FirstTransactionId
-			: (!Existing.LatestTransactionId.IsEmpty() ? Existing.LatestTransactionId : Incoming.LatestTransactionId);
+		Target.FirstEvidenceId = !Existing.FirstEvidenceId.IsEmpty()
+			? Existing.FirstEvidenceId
+			: (!Existing.LatestEvidenceId.IsEmpty() ? Existing.LatestEvidenceId : Incoming.LatestEvidenceId);
 		Target.BaselineHash = !Existing.BaselineHash.IsEmpty() ? Existing.BaselineHash : Incoming.BaselineHash;
 		Target.BeforeSnapshotJson = !Existing.BeforeSnapshotJson.IsEmpty() ? Existing.BeforeSnapshotJson : Incoming.BeforeSnapshotJson;
-		Target.RollbackDataRef.Reset();
 	}
 void FBlueprintHelperReviewStoreTargetUtils::PreserveFirstBaselineFields(
 		FBlueprintHelperReviewVisibleChange& Change,
@@ -151,16 +150,16 @@ FString FBlueprintHelperReviewStoreTargetUtils::SanitizeReviewIdSegment(const FS
 		Result.TrimStartAndEndInline();
 		return Result;
 	}
-FString FBlueprintHelperReviewStoreTargetUtils::MakeReviewVisibleChangeId(const FString& TransactionId, const FString& VisualGroupKey)
+FString FBlueprintHelperReviewStoreTargetUtils::MakeReviewVisibleChangeId(const FString& EvidenceId, const FString& VisualGroupKey)
 	{
 		const FString SanitizedGroup = SanitizeReviewIdSegment(VisualGroupKey);
-		if (TransactionId.IsEmpty())
+		if (EvidenceId.IsEmpty())
 		{
 			return SanitizedGroup.IsEmpty() ? TEXT("review_change") : SanitizedGroup;
 		}
 		return SanitizedGroup.IsEmpty()
-			? TransactionId
-			: FString::Printf(TEXT("%s_%s"), *TransactionId, *SanitizedGroup);
+			? EvidenceId
+			: FString::Printf(TEXT("%s_%s"), *EvidenceId, *SanitizedGroup);
 	}
 bool FBlueprintHelperReviewStoreTargetUtils::ShouldAggregateGraphBodyTarget(const FBlueprintHelperReviewAtomicTarget& Target)
 	{
@@ -277,7 +276,8 @@ void FBlueprintHelperReviewStoreTargetUtils::ApplyAssetLifecycleRootMetadata(FBl
 	}
 bool FBlueprintHelperReviewStoreTargetUtils::IsPendingLifecycleLinkCandidate(const FBlueprintHelperReviewVisibleChange& Change)
 	{
-		return Change.Status == EBlueprintHelperReviewChangeStatus::Pending;
+		return Change.Status == EBlueprintHelperReviewChangeStatus::Pending
+			|| Change.Status == EBlueprintHelperReviewChangeStatus::NeedsAction;
 	}
 void FBlueprintHelperReviewStoreTargetUtils::LinkPendingChildrenToLifecycleRoots(TArray<FBlueprintHelperReviewVisibleChange>& Changes)
 	{
@@ -369,13 +369,13 @@ FBlueprintHelperReviewVisibleChange FBlueprintHelperReviewStoreTargetUtils::Make
 		const FString& VisualGroupKey)
 	{
 		FBlueprintHelperReviewVisibleChange Change;
-		Change.ChangeId = MakeReviewVisibleChangeId(Evidence.TransactionId, VisualGroupKey);
+		Change.ChangeId = MakeReviewVisibleChangeId(Evidence.EvidenceId, VisualGroupKey);
 		Change.AssetPath = Target.AssetPath.IsEmpty() ? Evidence.AssetPath : Target.AssetPath;
 		Change.GraphName = Target.GraphName;
 		Change.LocationKey = VisualGroupKey;
-		Change.LatestTransactionId = Evidence.TransactionId;
-		Change.LatestTransactionIds.Add(Evidence.TransactionId);
-		Change.SourceTransactionIds.Add(Evidence.TransactionId);
+		Change.LatestEvidenceId = Evidence.EvidenceId;
+		Change.LatestEvidenceIds.Add(Evidence.EvidenceId);
+		Change.SourceEvidenceIds.Add(Evidence.EvidenceId);
 		Change.ScopeIdentity = Target.ScopeIdentity;
 		Change.ChangeKind = Evidence.ChangeKind;
 		Change.DisplayLabel = Target.DisplayLabel.IsEmpty() ? Evidence.DisplayLabel : Target.DisplayLabel;

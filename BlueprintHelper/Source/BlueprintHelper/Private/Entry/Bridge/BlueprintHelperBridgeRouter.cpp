@@ -44,8 +44,6 @@
 #include "Systems/Debug/BlueprintHelperCompileAssetService.h"
 #include "Shared/Debug/BlueprintHelperCompileAssetTypes.h"
 #include "Shared/Debug/BlueprintHelperSaveAssetTypes.h"
-#include "Systems/Transactions/BlueprintHelperTransactionQueryService.h"
-#include "Shared/Transactions/BlueprintHelperTransactionQueryTypes.h"
 #include "Systems/Review/BlueprintHelperReviewActionService.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
@@ -540,7 +538,6 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	const FBlueprintHelperPatchBlueprintGraphService& InPatchGraphService,
 	const FBlueprintHelperMergeBlueprintGraphService& InMergeGraphService,
 	const FBlueprintHelperCompileAssetService& InCompileAssetService,
-	const FBlueprintHelperTransactionQueryService& InTransactionQueryService,
 	const FBlueprintHelperBlueprintVariableService& InVariableService,
 	const FBlueprintHelperReviewStoreService& InReviewStoreService)
 	: ImportService(InImport)
@@ -587,7 +584,6 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 		InAssetBrowse,
 		&InDebugEntryService)
 	, CompileAssetService(InCompileAssetService)
-	, TransactionQueryService(InTransactionQueryService)
 	, ReviewStoreService(InReviewStoreService)
 {
 }
@@ -737,8 +733,6 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequestWithPl
 		return GraphWriteRoutes.HandleRequest(Request);
 	}
 
-	BLUEPRINTHELPER_ROUTE("list_blueprint_helper_transactions", Transactions, HandleListTransactions)
-	BLUEPRINTHELPER_ROUTE("read_blueprint_helper_transaction", Transactions, HandleReadTransaction)
 
 #undef BLUEPRINTHELPER_ROUTE
 
@@ -755,256 +749,250 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequestWithPl
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleGetRuleMarkdown(
 	const FBlueprintHelperBridgeRequest& Req) const
 {
-	const FString Markdown = FBlueprintHelperModule::Get().GetJsonToBlueprintRuleMarkdown();
-	if (Markdown.IsEmpty())
-	{
-		return FBlueprintHelperBridgeResponse::Error(
-			Req.RequestId,
-			EBlueprintHelperBridgeError::InternalError,
-			TEXT("未找到规则文档。"));
-	}
-
-	auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
-	Resp.Result = MakeShared<FJsonObject>();
-	Resp.Result->SetStringField(TEXT("markdown"), Markdown);
+	FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Completed(
+		TEXT("get_rule_markdown"),
+		FBlueprintHelperToolResultBuilder::GenerateTraceId());
+	TSharedRef<FJsonObject> Data = MakeShared<FJsonObject>();
+	Data->SetStringField(TEXT("markdown"), FBlueprintHelperModule::Get().GetJsonToBlueprintRuleMarkdown());
+	Result.Data = Data;
+	FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
+	Resp.Result = Result.ToJson();
 	return Resp;
 }
 
-// ─── get_editor_context ───
+namespace
+{
+	static FBlueprintHelperBridgeResponse MakeToolResultBridgeResponse(
+		const FBlueprintHelperBridgeRequest& Req,
+		const FBlueprintHelperToolResultBase& Result)
+	{
+		const FString ErrorMessage = Result.Error.IsSet() && !Result.Error.GetValue().Message.IsEmpty()
+			? Result.Error.GetValue().Message
+			: FString(ToolStatusToString(Result.Status));
+		FBlueprintHelperBridgeResponse Resp = Result.bOk
+			? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
+			: FBlueprintHelperBridgeResponse::Error(
+				Req.RequestId,
+				EBlueprintHelperBridgeError::ExecutionFailed,
+				ErrorMessage);
+		Resp.Result = Result.ToJson();
+		return Resp;
+	}
+
+	static EBlueprintHelperTargetType ParseBridgeTargetType(const FString& Type)
+	{
+		if (Type.Equals(TEXT("asset"), ESearchCase::IgnoreCase)) { return EBlueprintHelperTargetType::Asset; }
+		if (Type.Equals(TEXT("blueprint"), ESearchCase::IgnoreCase)) { return EBlueprintHelperTargetType::Blueprint; }
+		if (Type.Equals(TEXT("graph"), ESearchCase::IgnoreCase)) { return EBlueprintHelperTargetType::Graph; }
+		if (Type.Equals(TEXT("function"), ESearchCase::IgnoreCase)) { return EBlueprintHelperTargetType::Function; }
+		if (Type.Equals(TEXT("event"), ESearchCase::IgnoreCase)) { return EBlueprintHelperTargetType::Event; }
+		if (Type.Equals(TEXT("custom_event"), ESearchCase::IgnoreCase)) { return EBlueprintHelperTargetType::CustomEvent; }
+		if (Type.Equals(TEXT("block"), ESearchCase::IgnoreCase)) { return EBlueprintHelperTargetType::Block; }
+		if (Type.Equals(TEXT("node"), ESearchCase::IgnoreCase)) { return EBlueprintHelperTargetType::Node; }
+		if (Type.Equals(TEXT("pin"), ESearchCase::IgnoreCase)) { return EBlueprintHelperTargetType::Pin; }
+		if (Type.Equals(TEXT("link"), ESearchCase::IgnoreCase)) { return EBlueprintHelperTargetType::Link; }
+		if (Type.Equals(TEXT("component"), ESearchCase::IgnoreCase)) { return EBlueprintHelperTargetType::Component; }
+		if (Type.Equals(TEXT("property"), ESearchCase::IgnoreCase)) { return EBlueprintHelperTargetType::Property; }
+		if (Type.Equals(TEXT("data_table"), ESearchCase::IgnoreCase)) { return EBlueprintHelperTargetType::DataTable; }
+		if (Type.Equals(TEXT("data_table_row"), ESearchCase::IgnoreCase)) { return EBlueprintHelperTargetType::DataTableRow; }
+		if (Type.Equals(TEXT("widget"), ESearchCase::IgnoreCase)) { return EBlueprintHelperTargetType::Widget; }
+		return EBlueprintHelperTargetType::None;
+	}
+
+	static FBlueprintHelperTargetRef ReadTargetRefFromPayload(const TSharedPtr<FJsonObject>& Payload)
+	{
+		FBlueprintHelperTargetRef Target;
+		if (!Payload.IsValid())
+		{
+			return Target;
+		}
+
+		FString Type;
+		Payload->TryGetStringField(TEXT("asset_path"), Target.AssetPath);
+		Payload->TryGetStringField(TEXT("blueprint_path"), Target.BlueprintPath);
+		Payload->TryGetStringField(TEXT("graph"), Target.Graph);
+		if (Target.Graph.IsEmpty())
+		{
+			Payload->TryGetStringField(TEXT("graph_name"), Target.Graph);
+		}
+		Payload->TryGetStringField(TEXT("function"), Target.Function);
+		Payload->TryGetStringField(TEXT("event"), Target.Event);
+		Payload->TryGetStringField(TEXT("block_id"), Target.BlockId);
+		Payload->TryGetStringField(TEXT("node_path"), Target.NodePath);
+		Payload->TryGetStringField(TEXT("pin_path"), Target.PinPath);
+		Payload->TryGetStringField(TEXT("link_path"), Target.LinkPath);
+		Payload->TryGetStringField(TEXT("component_name"), Target.ComponentName);
+		Payload->TryGetStringField(TEXT("property_path"), Target.PropertyPath);
+		Payload->TryGetStringField(TEXT("widget_path"), Target.WidgetPath);
+		Payload->TryGetStringField(TEXT("row_name"), Target.RowName);
+		if (Payload->TryGetStringField(TEXT("target_type"), Type))
+		{
+			Target.TargetType = ParseBridgeTargetType(Type);
+		}
+		return Target;
+	}
+
+	static TArray<FString> ReadStringArrayField(const TSharedPtr<FJsonObject>& Payload, const TCHAR* FieldName)
+	{
+		TArray<FString> Result;
+		const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;
+		if (Payload.IsValid() && Payload->TryGetArrayField(FieldName, Values) && Values)
+		{
+			for (const TSharedPtr<FJsonValue>& Value : *Values)
+			{
+				FString Text;
+				if (Value.IsValid() && Value->TryGetString(Text))
+				{
+					Result.Add(Text);
+				}
+			}
+		}
+		return Result;
+	}
+
+	static TSharedRef<FJsonObject> ReviewActionResultToJson(const FBlueprintHelperReviewActionResult& Result)
+	{
+		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+		Json->SetBoolField(TEXT("success"), Result.bSucceeded);
+		Json->SetStringField(TEXT("status"), BlueprintHelperReviewChangeStatusToString(Result.NewStatus));
+		if (!Result.TargetEvidenceId.IsEmpty()) { Json->SetStringField(TEXT("target_evidence_id"), Result.TargetEvidenceId); }
+		if (!Result.Message.IsEmpty()) { Json->SetStringField(TEXT("message"), Result.Message); }
+		if (!Result.HashGuardTargetKey.IsEmpty()) { Json->SetStringField(TEXT("hash_guard_target_key"), Result.HashGuardTargetKey); }
+		return Json;
+	}
+}
 
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleGetEditorContext(
 	const FBlueprintHelperBridgeRequest& Req) const
 {
-	FBlueprintHelperEditorContext Ctx = ContextService.GetContext();
-
-	auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
-	Resp.Result = FBlueprintHelperBridgeProtocol::ContextToJson(Ctx);
+	const FBlueprintHelperEditorContext Context = ContextService.GetContext();
+	FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
+	Resp.Result = MakeShared<FJsonObject>();
+	Resp.Result->SetStringField(TEXT("active_blueprint_path"), Context.ActiveBlueprintPath);
+	Resp.Result->SetStringField(TEXT("active_graph_name"), Context.ActiveGraphName);
+	Resp.Result->SetStringField(TEXT("blueprint_display_name"), Context.BlueprintDisplayName);
+	Resp.Result->SetNumberField(TEXT("node_count"), Context.NodeCount);
+	Resp.Result->SetBoolField(TEXT("is_compiled"), Context.bIsCompiled);
+	Resp.Result->SetNumberField(TEXT("blueprint_status"), Context.BlueprintStatus);
 	return Resp;
 }
-
-// ─── get_runtime_profile ───
 
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequestWriteSession(
 	const FBlueprintHelperBridgeRequest& Req) const
 {
-	FBlueprintHelperWriteSessionRequest SessionRequest;
-	Req.Payload->TryGetStringField(TEXT("reason"), SessionRequest.Reason);
-	Req.Payload->TryGetStringField(TEXT("scope"), SessionRequest.Scope);
-
-	double TtlSeconds = 0.0;
-	if (Req.Payload->TryGetNumberField(TEXT("ttl_seconds"), TtlSeconds))
+	FBlueprintHelperWriteSessionRequest Request;
+	if (Req.Payload.IsValid())
 	{
-		SessionRequest.TtlSeconds = FMath::RoundToInt(TtlSeconds);
-	}
-
-	const TArray<TSharedPtr<FJsonValue>>* AssetPathValues = nullptr;
-	if (Req.Payload->TryGetArrayField(TEXT("asset_paths"), AssetPathValues) && AssetPathValues)
-	{
-		for (const TSharedPtr<FJsonValue>& Value : *AssetPathValues)
-		{
-			FString AssetPath;
-			if (Value.IsValid() && Value->TryGetString(AssetPath))
-			{
-				SessionRequest.AssetPaths.Add(AssetPath);
-			}
-		}
+		Req.Payload->TryGetStringField(TEXT("reason"), Request.Reason);
+		Req.Payload->TryGetStringField(TEXT("scope"), Request.Scope);
+		int32 TtlSeconds = Request.TtlSeconds;
+		Req.Payload->TryGetNumberField(TEXT("ttl_seconds"), TtlSeconds);
+		Request.TtlSeconds = TtlSeconds;
+		Request.AssetPaths = ReadStringArrayField(Req.Payload, TEXT("asset_paths"));
 	}
 
 	FString Error;
 	const TOptional<FBlueprintHelperWriteSessionGrant> Grant =
-		FBlueprintHelperWriteAuthorizationService::Get().RequestSession(SessionRequest, Error);
+		FBlueprintHelperWriteAuthorizationService::Get().RequestSession(Request, Error);
 	if (!Grant.IsSet())
 	{
 		return FBlueprintHelperBridgeResponse::Error(
 			Req.RequestId,
 			EBlueprintHelperBridgeError::Unauthorized,
-			Error.IsEmpty() ? TEXT("Write session request was denied.") : Error);
+			Error.IsEmpty() ? TEXT("write session request denied") : Error);
 	}
 
-	auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
-	Resp.Result = MakeShared<FJsonObject>();
-	Resp.Result->SetObjectField(TEXT("write_session"), Grant.GetValue().ToJson());
+	FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
+	Resp.Result = Grant->ToJson();
 	return Resp;
 }
 
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleGetRuntimeProfile(
 	const FBlueprintHelperBridgeRequest& Req) const
 {
-	FBlueprintHelperRuntimeProfileData ProfileData = RuntimeProfileService.GetRuntimeProfile();
-
-	// 使用 ToolResultBuilder 构建标准化的返回。
-	const FString TraceId = FBlueprintHelperToolResultBuilder::GenerateTraceId();
-	FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Completed(
-		TEXT("get_runtime_profile"), TraceId);
-	Result.Data = ProfileData.ToJson();
-
-	auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
-	Resp.Result = Result.ToJson();
+	FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
+	Resp.Result = RuntimeProfileService.GetRuntimeProfile().ToJson();
 	return Resp;
 }
-
-// ─── diagnostics_runtime ───
 
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleDiagnosticsRuntime(
 	const FBlueprintHelperBridgeRequest& Req) const
 {
-	FBlueprintHelperDiagnosticsData DiagnosticsData = DiagnosticsService.RunRuntimeDiagnostics();
-
-	// 使用 ToolResultBuilder 构建标准化的返回。
-	const FString TraceId = FBlueprintHelperToolResultBuilder::GenerateTraceId();
-	FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Completed(
-		TEXT("diagnostics_runtime"), TraceId);
-	Result.Data = DiagnosticsData.ToJson();
-
-	auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
-	Resp.Result = Result.ToJson();
+	FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
+	Resp.Result = DiagnosticsService.RunRuntimeDiagnostics().ToJson();
 	return Resp;
 }
-
-// ─── read_blueprint_logic_md ───
 
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleGetDebugCase(
 	const FBlueprintHelperBridgeRequest& Req) const
 {
-	const FBlueprintHelperToolResultBase Result = DebugEntryService.GetDebugCaseSummaryResult(Req.Payload);
-	auto Resp = Result.bOk
-		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
-		: FBlueprintHelperBridgeResponse::Error(
-			Req.RequestId,
-			EBlueprintHelperBridgeError::ExecutionFailed,
-			Result.Error.IsSet() ? Result.Error->Message : TEXT("get_debug_case failed."));
-	Resp.Result = Result.ToJson();
-	return Resp;
+	return MakeToolResultBridgeResponse(Req, DebugEntryService.GetDebugCaseSummaryResult(Req.Payload));
 }
 
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleListDebugCases(
 	const FBlueprintHelperBridgeRequest& Req) const
 {
-	const FBlueprintHelperToolResultBase Result = DebugEntryService.GetDebugCaseListResult(Req.Payload);
-	auto Resp = Result.bOk
-		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
-		: FBlueprintHelperBridgeResponse::Error(
-			Req.RequestId,
-			EBlueprintHelperBridgeError::ExecutionFailed,
-			Result.Error.IsSet() ? Result.Error->Message : TEXT("list_debug_cases failed."));
-	Resp.Result = Result.ToJson();
-	return Resp;
+	return MakeToolResultBridgeResponse(Req, DebugEntryService.GetDebugCaseListResult(Req.Payload));
 }
 
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleExportDebugBundle(
 	const FBlueprintHelperBridgeRequest& Req) const
 {
-	const FBlueprintHelperToolResultBase Result = DebugEntryService.ExportDebugBundleSummaryResult(Req.Payload);
-	auto Resp = Result.bOk
-		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
-		: FBlueprintHelperBridgeResponse::Error(
-			Req.RequestId,
-			EBlueprintHelperBridgeError::ExecutionFailed,
-			Result.Error.IsSet() ? Result.Error->Message : TEXT("export_debug_bundle failed."));
-	Resp.Result = Result.ToJson();
-	return Resp;
+	return MakeToolResultBridgeResponse(Req, DebugEntryService.ExportDebugBundleSummaryResult(Req.Payload));
 }
-
-// --- read_reference_context ---
 
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadReferenceContext(
 	const FBlueprintHelperBridgeRequest& Req) const
 {
-	const TSharedPtr<FJsonObject> Payload = Req.Payload;
-	const FBlueprintHelperDependencyAnalysisTarget Target = FBlueprintHelperBridgeRouterLocalUtils::ReadReferenceContextTarget(Payload);
-
-	FString SearchScope = TEXT("project");
-	FString ResolutionPolicy = TEXT("ue_then_name");
-	FString Detail = TEXT("samples");
-	if (Payload.IsValid())
-	{
-		Payload->TryGetStringField(TEXT("search_scope"), SearchScope);
-		Payload->TryGetStringField(TEXT("resolution_policy"), ResolutionPolicy);
-		Payload->TryGetStringField(TEXT("detail"), Detail);
-	}
-
-	FBlueprintHelperBridgeValidationError ValidationError;
-	double MaxResults = 50.0;
-	if (!FBlueprintHelperBridgeRouterLocalUtils::TryReadNumberField(Payload, TEXT("max_results"), false, MaxResults, ValidationError))
-	{
-		FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Error(
-			Req.RequestId,
-			EBlueprintHelperBridgeError::InvalidRequest,
-			ValidationError.Message);
-		Resp.Result = FBlueprintHelperBridgeRouterLocalUtils::MakeReferenceContextFailureResult(
-			Payload,
-			TEXT("invalid_request"),
-			EBlueprintHelperToolStage::ParseInput,
-			ValidationError.Message,
-			ValidationError.Field).ToJson();
-		return Resp;
-	}
-
 	FBlueprintHelperDependencyAnalysisOptions Options;
-	Options.MaxResultCount = FMath::RoundToInt(MaxResults);
-	Options.SearchScope = SearchScope;
-	Options.ResolutionPolicy = ResolutionPolicy;
-	Options.Detail = Detail;
+	if (Req.Payload.IsValid())
+	{
+		Req.Payload->TryGetStringField(TEXT("search_scope"), Options.SearchScope);
+		Req.Payload->TryGetStringField(TEXT("resolution_policy"), Options.ResolutionPolicy);
+		Req.Payload->TryGetStringField(TEXT("detail"), Options.Detail);
+		Req.Payload->TryGetNumberField(TEXT("max_result_count"), Options.MaxResultCount);
+	}
 
 	FBlueprintHelperReferenceContextPack ContextPack;
 	FString ErrorCode;
 	FString ErrorMessage;
 	if (!DependencyAnalysisService.TryBuildReferenceContext(
-		Target,
+		FBlueprintHelperBridgeRouterLocalUtils::ReadReferenceContextTarget(Req.Payload),
 		Options,
 		ContextPack,
 		ErrorCode,
 		ErrorMessage))
 	{
-		const EBlueprintHelperBridgeError BridgeError =
-			ErrorCode == TEXT("asset_not_found")
-				? EBlueprintHelperBridgeError::AssetNotFound
-				: EBlueprintHelperBridgeError::ExecutionFailed;
 		FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Error(
 			Req.RequestId,
-			BridgeError,
+			EBlueprintHelperBridgeError::ExecutionFailed,
 			ErrorMessage);
 		Resp.Result = FBlueprintHelperBridgeRouterLocalUtils::MakeReferenceContextFailureResult(
-			Payload,
+			Req.Payload,
 			ErrorCode.IsEmpty() ? TEXT("reference_context_failed") : ErrorCode,
-			EBlueprintHelperToolStage::ResolveTarget,
-			ErrorMessage,
-			TEXT("payload.asset_path")).ToJson();
+			EBlueprintHelperToolStage::Execute,
+			ErrorMessage).ToJson();
 		return Resp;
 	}
 
-	FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Completed(
-		TEXT("read_reference_context"),
-		FBlueprintHelperToolResultBuilder::GenerateTraceId());
-	Result.Data = ContextPack.ToJson();
-
 	FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
-	Resp.Result = Result.ToJson();
+	Resp.Result = ContextPack.ToJson();
 	return Resp;
 }
-
-// --- read_function_chain_context ---
 
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadFunctionChainContext(
 	const FBlueprintHelperBridgeRequest& Req) const
 {
-	const TSharedPtr<FJsonObject> Payload = Req.Payload;
-
 	FBlueprintHelperFunctionChainContextRequest Request;
-	if (Payload.IsValid())
+	if (Req.Payload.IsValid())
 	{
-		Payload->TryGetStringField(TEXT("asset_path"), Request.AssetPath);
-		Payload->TryGetStringField(TEXT("target_type"), Request.TargetType);
-		Payload->TryGetStringField(TEXT("target_name"), Request.TargetName);
-		Payload->TryGetStringField(TEXT("graph_name"), Request.GraphName);
-
-		double MaxDepth = Request.MaxDepth;
-		if (Payload->TryGetNumberField(TEXT("max_depth"), MaxDepth))
-		{
-			Request.MaxDepth = FMath::Clamp(FMath::RoundToInt(MaxDepth), 0, 12);
-		}
-		Payload->TryGetBoolField(TEXT("include_data_dependencies"), Request.bIncludeDataDependencies);
-		Payload->TryGetBoolField(TEXT("expand_cross_asset"), Request.bExpandCrossAsset);
+		Req.Payload->TryGetStringField(TEXT("asset_path"), Request.AssetPath);
+		Req.Payload->TryGetStringField(TEXT("target_type"), Request.TargetType);
+		Req.Payload->TryGetStringField(TEXT("target_name"), Request.TargetName);
+		Req.Payload->TryGetStringField(TEXT("graph_name"), Request.GraphName);
+		Req.Payload->TryGetNumberField(TEXT("max_depth"), Request.MaxDepth);
+		Req.Payload->TryGetBoolField(TEXT("include_data_dependencies"), Request.bIncludeDataDependencies);
+		Req.Payload->TryGetBoolField(TEXT("expand_cross_asset"), Request.bExpandCrossAsset);
 	}
 
 	FBlueprintHelperFunctionChainContextPack ContextPack;
@@ -1012,646 +1000,164 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadFunctionC
 	FString ErrorMessage;
 	if (!FunctionChainContextService.TryBuildFunctionChainContext(Request, ContextPack, ErrorCode, ErrorMessage))
 	{
-		FBlueprintHelperToolError Error;
-		Error.Code = ErrorCode.IsEmpty() ? TEXT("function_chain_context_failed") : ErrorCode;
-		Error.Stage = Error.Code == TEXT("asset_not_found") || Error.Code == TEXT("target_entry_not_found")
-			? EBlueprintHelperToolStage::ResolveTarget
-			: EBlueprintHelperToolStage::ParseInput;
-		Error.Message = ErrorMessage.IsEmpty() ? TEXT("read_function_chain_context failed.") : ErrorMessage;
-		Error.bRetryable = false;
-		Error.RollbackResult = EBlueprintHelperRollbackResult::NotNeeded;
-		Error.Field = Error.Code == TEXT("asset_path_required") || Error.Code == TEXT("asset_not_found")
-			? TEXT("payload.asset_path")
-			: TEXT("payload.target_name");
-
-		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Failure(
-			TEXT("read_function_chain_context"),
-			FBlueprintHelperToolResultBuilder::GenerateTraceId(),
-			Error);
-
-		FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Error(
+		return FBlueprintHelperBridgeResponse::Error(
 			Req.RequestId,
-			Error.Code == TEXT("asset_not_found")
-				? EBlueprintHelperBridgeError::AssetNotFound
-				: EBlueprintHelperBridgeError::ExecutionFailed,
-			Error.Message);
-		Resp.Result = Result.ToJson();
-		return Resp;
+			EBlueprintHelperBridgeError::ExecutionFailed,
+			ErrorMessage.IsEmpty() ? ErrorCode : ErrorMessage);
 	}
 
-	FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Completed(
-		TEXT("read_function_chain_context"),
-		FBlueprintHelperToolResultBuilder::GenerateTraceId());
-	Result.Data = ContextPack.ToJson();
-
 	FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
-	Resp.Result = Result.ToJson();
+	Resp.Result = ContextPack.ToJson();
 	return Resp;
 }
-
-// --- read_blueprint_logic_md ---
 
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadBlueprintLogicMd(
 	const FBlueprintHelperBridgeRequest& Req) const
 {
-	const TSharedPtr<FJsonObject> Payload = Req.Payload;
-
-	// 构建 TargetRef
-	FBlueprintHelperTargetRef Target;
-	Target.TargetType = EBlueprintHelperTargetType::Graph; // 默认
-
-	if (Payload.IsValid())
-	{
-		FString AssetPath;
-		if (Payload->TryGetStringField(TEXT("asset_path"), AssetPath))
-		{
-			Target.AssetPath = AssetPath;
-		}
-
-		FString GraphName;
-		if (Payload->TryGetStringField(TEXT("graph"), GraphName))
-		{
-			Target.Graph = GraphName;
-		}
-
-		FString FunctionName;
-		if (Payload->TryGetStringField(TEXT("function"), FunctionName))
-		{
-			Target.Function = FunctionName;
-			Target.TargetType = EBlueprintHelperTargetType::Function;
-		}
-
-		FString EventName;
-		if (Payload->TryGetStringField(TEXT("event"), EventName))
-		{
-			Target.Event = EventName;
-			Target.TargetType = EBlueprintHelperTargetType::Event;
-		}
-
-		FString BlockId;
-		if (Payload->TryGetStringField(TEXT("block_id"), BlockId))
-		{
-			Target.BlockId = BlockId;
-			Target.TargetType = EBlueprintHelperTargetType::Block;
-		}
-
-		// scope override
-		FString ScopeStr;
-		if (Payload->TryGetStringField(TEXT("scope"), ScopeStr))
-		{
-			if (ScopeStr.Equals(TEXT("blueprint"), ESearchCase::IgnoreCase))
-			{
-				Target.TargetType = EBlueprintHelperTargetType::Blueprint;
-			}
-			else if (ScopeStr.Equals(TEXT("target_graph"), ESearchCase::IgnoreCase))
-			{
-				Target.TargetType = EBlueprintHelperTargetType::Graph;
-			}
-			else if (ScopeStr.Equals(TEXT("target_function"), ESearchCase::IgnoreCase))
-			{
-				Target.TargetType = EBlueprintHelperTargetType::Function;
-			}
-			else if (ScopeStr.Equals(TEXT("target_event"), ESearchCase::IgnoreCase))
-			{
-				Target.TargetType = EBlueprintHelperTargetType::Event;
-			}
-		}
-	}
-
-	if (Target.AssetPath.IsEmpty())
-	{
-		return FBlueprintHelperBridgeResponse::Error(
-			Req.RequestId,
-			EBlueprintHelperBridgeError::InvalidRequest,
-			TEXT("缺少 asset_path 参数。"));
-	}
-
-	// 调用 LogicMdReadService
-	FBlueprintHelperLogicMdData LogicMdData = LogicMdReadService.ReadLogicMd(Target);
-
-	// 使用 ToolResultBuilder 构建标准化的返回。
-	const FString TraceId = FBlueprintHelperToolResultBuilder::GenerateTraceId();
-	FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Completed(
-		TEXT("read_blueprint_logic_md_by_target"), TraceId);
-	Result.Target = Target;
-	Result.Data = LogicMdData.ToJson();
-
-	auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
-	Resp.Result = Result.ToJson();
+	const FBlueprintHelperLogicMdData Data = LogicMdReadService.ReadLogicMd(ReadTargetRefFromPayload(Req.Payload));
+	FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
+	Resp.Result = Data.ToJson();
 	return Resp;
 }
-
-// ─── read_blueprint_logic_json ───
 
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadBlueprintLogicJson(
 	const FBlueprintHelperBridgeRequest& Req) const
 {
-	const TSharedPtr<FJsonObject> Payload = Req.Payload;
-
-	FBlueprintHelperTargetRef Target;
-	Target.TargetType = EBlueprintHelperTargetType::Graph;
-
-	if (Payload.IsValid())
-	{
-		FString AssetPath;
-		if (Payload->TryGetStringField(TEXT("asset_path"), AssetPath)) { Target.AssetPath = AssetPath; }
-
-		FString GraphName;
-		if (Payload->TryGetStringField(TEXT("graph"), GraphName)) { Target.Graph = GraphName; }
-
-		FString FunctionName;
-		if (Payload->TryGetStringField(TEXT("function"), FunctionName)) { Target.Function = FunctionName; Target.TargetType = EBlueprintHelperTargetType::Function; }
-
-		FString EventName;
-		if (Payload->TryGetStringField(TEXT("event"), EventName)) { Target.Event = EventName; Target.TargetType = EBlueprintHelperTargetType::Event; }
-
-		FString BlockId;
-		if (Payload->TryGetStringField(TEXT("block_id"), BlockId)) { Target.BlockId = BlockId; Target.TargetType = EBlueprintHelperTargetType::Block; }
-
-		FString ScopeStr;
-		if (Payload->TryGetStringField(TEXT("scope"), ScopeStr))
-		{
-			if (ScopeStr.Equals(TEXT("blueprint"), ESearchCase::IgnoreCase)) { Target.TargetType = EBlueprintHelperTargetType::Blueprint; }
-			else if (ScopeStr.Equals(TEXT("target_graph"), ESearchCase::IgnoreCase)) { Target.TargetType = EBlueprintHelperTargetType::Graph; }
-			else if (ScopeStr.Equals(TEXT("target_function"), ESearchCase::IgnoreCase)) { Target.TargetType = EBlueprintHelperTargetType::Function; }
-			else if (ScopeStr.Equals(TEXT("target_event"), ESearchCase::IgnoreCase)) { Target.TargetType = EBlueprintHelperTargetType::Event; }
-			else if (ScopeStr.Equals(TEXT("target_custom_event"), ESearchCase::IgnoreCase)) { Target.TargetType = EBlueprintHelperTargetType::CustomEvent; }
-		}
-	}
-
-	if (Target.AssetPath.IsEmpty())
-	{
-		return FBlueprintHelperBridgeResponse::Error(
-			Req.RequestId, EBlueprintHelperBridgeError::InvalidRequest, TEXT("缺少 asset_path 参数。"));
-	}
-
-	FBlueprintHelperLogicJsonData LogicJsonData = LogicJsonReadService.ReadLogicJson(Target);
-
-	const FString TraceId = FBlueprintHelperToolResultBuilder::GenerateTraceId();
-	FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Completed(
-		TEXT("read_blueprint_logic_json_by_target"), TraceId);
-	Result.Target = Target;
-	Result.Data = LogicJsonData.ToJson();
-
-	auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
-	Resp.Result = Result.ToJson();
+	const FBlueprintHelperLogicJsonData Data = LogicJsonReadService.ReadLogicJson(ReadTargetRefFromPayload(Req.Payload));
+	FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
+	Resp.Result = Data.ToJson();
 	return Resp;
 }
-
-// ─── validate_json ───
 
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleValidateJson(
 	const FBlueprintHelperBridgeRequest& Req) const
 {
-	FBlueprintHelperBridgeValidationError ParseError;
 	FString JsonText;
-	if (!FBlueprintHelperBridgeRouterLocalUtils::TryReadStringField(Req.Payload, TEXT("json"), true, JsonText, ParseError))
+	if (Req.Payload.IsValid())
 	{
-		return FBlueprintHelperBridgeRouterLocalUtils::ValidationErrorResponse(Req.RequestId, ParseError);
+		Req.Payload->TryGetStringField(TEXT("json"), JsonText);
+		if (JsonText.IsEmpty())
+		{
+			Req.Payload->TryGetStringField(TEXT("content"), JsonText);
+		}
 	}
-
-	if (JsonText.IsEmpty())
-	{
-		return FBlueprintHelperBridgeResponse::Error(
-			Req.RequestId,
-			EBlueprintHelperBridgeError::InvalidRequest,
-			TEXT("payload 缺少 json 字段。"));
-	}
-
-	FBlueprintHelperValidationResult ValResult = ValidationService.Validate(JsonText);
-
-	auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
+	const FBlueprintHelperValidationResult Result = ValidationService.Validate(JsonText);
+	FBlueprintHelperBridgeResponse Resp = Result.bValid
+		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
+		: FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::InvalidRequest, TEXT("json validation failed"));
 	Resp.Result = MakeShared<FJsonObject>();
-	Resp.Result->SetBoolField(TEXT("is_valid"), ValResult.bValid);
-	Resp.Result->SetStringField(TEXT("detected_version"), ValResult.DetectedVersion);
-	Resp.Result->SetNumberField(TEXT("error_count"), ValResult.Diagnostics.ErrorCount);
-	Resp.Result->SetNumberField(TEXT("warning_count"), ValResult.Diagnostics.WarningCount);
-
-	TArray<TSharedPtr<FJsonValue>> DiagArray;
-	for (const auto& Item : ValResult.Diagnostics.Items)
-	{
-		TSharedPtr<FJsonObject> DiagObj = MakeShared<FJsonObject>();
-		DiagObj->SetStringField(TEXT("severity"),
-			Item.Severity == EBlueprintHelperDiagnosticSeverity::Error ? TEXT("error") :
-			Item.Severity == EBlueprintHelperDiagnosticSeverity::Warning ? TEXT("warning") : TEXT("info"));
-		DiagObj->SetStringField(TEXT("message"), Item.Message);
-		DiagArray.Add(MakeShared<FJsonValueObject>(DiagObj));
-	}
-	Resp.Result->SetArrayField(TEXT("diagnostics"), DiagArray);
-
+	Resp.Result->SetBoolField(TEXT("valid"), Result.bValid);
+	Resp.Result->SetStringField(TEXT("detected_version"), Result.DetectedVersion);
+	Resp.Result->SetNumberField(TEXT("error_count"), Result.Diagnostics.ErrorCount);
+	Resp.Result->SetNumberField(TEXT("warning_count"), Result.Diagnostics.WarningCount);
 	return Resp;
 }
-
-// ─── export_to_json ───
 
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleExportToJson(
 	const FBlueprintHelperBridgeRequest& Req) const
 {
-	FBlueprintHelperExportRequest ExportReq;
-
-	if (Req.Payload.IsValid())
+	FBlueprintHelperExportRequest Request;
+	Request.Target.BlueprintPath = ReadTargetRefFromPayload(Req.Payload).BlueprintPath;
+	if (Request.Target.BlueprintPath.IsEmpty())
 	{
-		Req.Payload->TryGetStringField(TEXT("target_blueprint"), ExportReq.Target.BlueprintPath);
-		Req.Payload->TryGetStringField(TEXT("target_graph"), ExportReq.Target.GraphName);
-
-		FString ScopeStr;
-		Req.Payload->TryGetStringField(TEXT("scope"), ScopeStr);
-		FString EffectiveScope;
-		FString ScopeError;
-		if (!FBlueprintHelperRequestValidator::NormalizeExportScope(ScopeStr, ExportReq.Scope, EffectiveScope, ScopeError))
-		{
-			return FBlueprintHelperBridgeResponse::Error(
-				Req.RequestId,
-				EBlueprintHelperBridgeError::InvalidRequest,
-				ScopeError);
-		}
-
+		Request.Target.BlueprintPath = ReadTargetRefFromPayload(Req.Payload).AssetPath;
 	}
-	else
+	Request.Target.GraphName = ReadTargetRefFromPayload(Req.Payload).Graph;
+	FString Scope;
+	if (Req.Payload.IsValid() && Req.Payload->TryGetStringField(TEXT("scope"), Scope))
 	{
-		ExportReq.Scope = EBlueprintHelperExportScope::SingleGraph;
+		if (Scope.Equals(TEXT("full_blueprint"), ESearchCase::IgnoreCase)) { Request.Scope = EBlueprintHelperExportScope::FullBlueprint; }
+		else if (Scope.Equals(TEXT("selection"), ESearchCase::IgnoreCase)) { Request.Scope = EBlueprintHelperExportScope::Selection; }
 	}
 
-	FBlueprintHelperExportResult ExportResult = ExportService.Export(ExportReq);
-
-	if (!ExportResult.bSuccess)
-	{
-		const FString ErrorMsg = ExportResult.Diagnostics.Items.Num() > 0
-			? ExportResult.Diagnostics.Items[0].Message
-			: TEXT("导出失败。");
-		return FBlueprintHelperBridgeResponse::Error(
-			Req.RequestId,
-			EBlueprintHelperBridgeError::ExecutionFailed,
-			ErrorMsg);
-	}
-
-	// 构建目标协议响应
-	auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
+	const FBlueprintHelperExportResult Result = ExportService.Export(Request);
+	FBlueprintHelperBridgeResponse Resp = Result.bSuccess
+		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
+		: FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, TEXT("export failed"));
 	Resp.Result = MakeShared<FJsonObject>();
-
-	// 元信息
-	Resp.Result->SetStringField(TEXT("format"), TEXT("raw_json"));
-	Resp.Result->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.JsonToBlueprint.v2.2"));
-	Resp.Result->SetStringField(TEXT("assetPath"), ExportReq.Target.BlueprintPath);
-	if (!ExportReq.Target.GraphName.IsEmpty())
+	Resp.Result->SetBoolField(TEXT("success"), Result.bSuccess);
+	Resp.Result->SetStringField(TEXT("effective_scope"), Result.EffectiveScope);
+	if (Result.JsonObject.IsValid())
 	{
-		Resp.Result->SetStringField(TEXT("graph"), ExportReq.Target.GraphName);
+		Resp.Result->SetObjectField(TEXT("json"), Result.JsonObject.ToSharedRef());
 	}
-	Resp.Result->SetStringField(TEXT("effective_scope"), ExportResult.EffectiveScope);
-	Resp.Result->SetBoolField(TEXT("importable"), true);
-
-	// payload（对象，主要字段）
-	if (ExportResult.JsonObject.IsValid())
-	{
-		Resp.Result->SetObjectField(TEXT("payload"), ExportResult.JsonObject.ToSharedRef());
-	}
-
-	// stats
-	Resp.Result->SetObjectField(TEXT("stats"), FBlueprintHelperBridgeRouterLocalUtils::MakeRawJsonStatsObject(ExportResult.JsonObject));
-
-	// diagnostics
-	TArray<TSharedPtr<FJsonValue>> DiagArray;
-	for (const FBlueprintHelperDiagnosticItem& Item : ExportResult.Diagnostics.Items)
-	{
-		TSharedRef<FJsonObject> DiagObj = MakeShared<FJsonObject>();
-		DiagObj->SetStringField(TEXT("severity"),
-			Item.Severity == EBlueprintHelperDiagnosticSeverity::Error ? TEXT("error") :
-			Item.Severity == EBlueprintHelperDiagnosticSeverity::Warning ? TEXT("warning") : TEXT("info"));
-		DiagObj->SetStringField(TEXT("message"), Item.Message);
-		if (!Item.Code.IsEmpty()) DiagObj->SetStringField(TEXT("code"), Item.Code);
-		DiagArray.Add(MakeShared<FJsonValueObject>(DiagObj));
-	}
-	Resp.Result->SetArrayField(TEXT("diagnostics"), DiagArray);
-
+	Resp.Result->SetNumberField(TEXT("error_count"), Result.Diagnostics.ErrorCount);
+	Resp.Result->SetNumberField(TEXT("warning_count"), Result.Diagnostics.WarningCount);
 	return Resp;
 }
 
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleExportLogic(
 	const FBlueprintHelperBridgeRequest& Req) const
 {
-	const TSharedPtr<FJsonObject> Payload = Req.Payload;
-
-	FString ScopeStr;
-	FString FormatStr;
-	FString DetailStr;
-	FBlueprintHelperBridgeValidationError ParseError;
-	if (!FBlueprintHelperBridgeRouterLocalUtils::TryReadStringOption(Payload, TEXT("scope"), TEXT("graph"), ScopeStr, ParseError)
-		|| !FBlueprintHelperBridgeRouterLocalUtils::TryReadStringOption(Payload, TEXT("format"), TEXT("logic_md"), FormatStr, ParseError)
-		|| !FBlueprintHelperBridgeRouterLocalUtils::TryReadStringOption(Payload, TEXT("detail"), TEXT("normal"), DetailStr, ParseError))
-	{
-		return FBlueprintHelperBridgeRouterLocalUtils::ValidationErrorResponse(Req.RequestId, ParseError);
-	}
-
-	FBlueprintHelperExportRequest ExportReq;
-	if (Payload.IsValid())
-	{
-		Payload->TryGetStringField(TEXT("target_blueprint"), ExportReq.Target.BlueprintPath);
-		Payload->TryGetStringField(TEXT("target_graph"), ExportReq.Target.GraphName);
-	}
-
-	if (ScopeStr == TEXT("graph"))
-	{
-		ExportReq.Scope = EBlueprintHelperExportScope::SingleGraph;
-	}
-	else if (ScopeStr == TEXT("blueprint"))
-	{
-		ExportReq.Scope = EBlueprintHelperExportScope::FullBlueprint;
-	}
-	else
-	{
-		return FBlueprintHelperBridgeResponse::Error(
-			Req.RequestId,
-			EBlueprintHelperBridgeError::InvalidRequest,
-			FString::Printf(TEXT("不支持的 scope: %s"), *ScopeStr));
-	}
-
-	FBlueprintHelperLogicOptions LogicOptions;
-	if (FormatStr == TEXT("logic_json"))
-	{
-		LogicOptions.Format = EBlueprintHelperLogicOutputFormat::LogicJson;
-	}
-	else if (FormatStr == TEXT("logic_md"))
-	{
-		LogicOptions.Format = EBlueprintHelperLogicOutputFormat::Markdown;
-	}
-	else
-	{
-		return FBlueprintHelperBridgeResponse::Error(
-			Req.RequestId,
-			EBlueprintHelperBridgeError::InvalidRequest,
-			FString::Printf(TEXT("不支持的 format: %s"), *FormatStr));
-	}
-
-	if (DetailStr == TEXT("brief"))
-	{
-		LogicOptions.DetailLevel = EBlueprintHelperLogicDetailLevel::Brief;
-	}
-	else if (DetailStr == TEXT("normal"))
-	{
-		LogicOptions.DetailLevel = EBlueprintHelperLogicDetailLevel::Normal;
-	}
-	else if (DetailStr == TEXT("debug"))
-	{
-		LogicOptions.DetailLevel = EBlueprintHelperLogicDetailLevel::Debug;
-	}
-	else
-	{
-		return FBlueprintHelperBridgeResponse::Error(
-			Req.RequestId,
-			EBlueprintHelperBridgeError::InvalidRequest,
-			FString::Printf(TEXT("不支持的 detail: %s"), *DetailStr));
-	}
-
-	if (!FBlueprintHelperBridgeRouterLocalUtils::TryReadBoolOption(Payload, TEXT("include_data_dependencies"), LogicOptions.bIncludeDataDependencies, ParseError)
-		|| !FBlueprintHelperBridgeRouterLocalUtils::TryReadBoolOption(Payload, TEXT("include_orphans"), LogicOptions.bIncludeOrphanNodes, ParseError)
-		|| !FBlueprintHelperBridgeRouterLocalUtils::TryReadBoolOption(Payload, TEXT("include_node_ids"), LogicOptions.bIncludeNodeIds, ParseError)
-		|| !FBlueprintHelperBridgeRouterLocalUtils::TryReadBoolOption(Payload, TEXT("include_positions"), LogicOptions.bIncludePositions, ParseError)
-		|| !FBlueprintHelperBridgeRouterLocalUtils::TryReadBoolOption(Payload, TEXT("include_raw_node_types"), LogicOptions.bIncludeRawNodeTypes, ParseError))
-	{
-		return FBlueprintHelperBridgeRouterLocalUtils::ValidationErrorResponse(Req.RequestId, ParseError);
-	}
-
-	const FBlueprintHelperExportResult ExportResult = ExportService.Export(ExportReq);
-	if (!ExportResult.bSuccess)
-	{
-		const FString ErrorMsg = ExportResult.Diagnostics.Items.Num() > 0
-			? ExportResult.Diagnostics.Items[0].Message
-			: TEXT("导出失败。");
-		return FBlueprintHelperBridgeResponse::Error(
-			Req.RequestId,
-			FBlueprintHelperBridgeRouterLocalUtils::DiagnosticSetToBridgeError(ExportResult.Diagnostics),
-			ErrorMsg);
-	}
-
-	const FBlueprintHelperLogicResult LogicResult =
-		FBlueprintHelperLogicProcessor::ProcessRawJsonObject(ExportResult.JsonObject, LogicOptions);
-	if (!LogicResult.bSuccess)
-	{
-		return FBlueprintHelperBridgeResponse::Error(
-			Req.RequestId,
-			EBlueprintHelperBridgeError::JsonParseFailed,
-			LogicResult.ErrorMessage.IsEmpty() ? TEXT("raw JSON 转逻辑视图失败。") : LogicResult.ErrorMessage);
-	}
-
-	auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
-	Resp.Result = MakeShared<FJsonObject>();
-	Resp.Result->SetStringField(TEXT("format"), FormatStr);
-	Resp.Result->SetStringField(TEXT("schema"),
-		LogicOptions.Format == EBlueprintHelperLogicOutputFormat::Markdown
-			? TEXT("BlueprintHelper.LogicMarkdown")
-			: TEXT("BlueprintHelper.LogicGraph"));
-	Resp.Result->SetBoolField(TEXT("importable"), false);
-
-	if (LogicOptions.Format == EBlueprintHelperLogicOutputFormat::Markdown)
-	{
-		Resp.Result->SetStringField(TEXT("markdown"), LogicResult.OutputText);
-		Resp.Result->SetObjectField(TEXT("stats"), FBlueprintHelperBridgeRouterLocalUtils::MakeLogicStatsObject(LogicResult));
-		return Resp;
-	}
-
-	TSharedPtr<FJsonObject> LogicObject = FBlueprintHelperBridgeRouterLocalUtils::ParseJsonObject(LogicResult.OutputText);
-	if (!LogicObject.IsValid())
-	{
-		return FBlueprintHelperBridgeResponse::Error(
-			Req.RequestId,
-			EBlueprintHelperBridgeError::JsonParseFailed,
-			TEXT("LogicProcessor 返回。logic_json 无法解析。"));
-	}
-
-	Resp.Result->SetObjectField(TEXT("logic"), LogicObject);
-
-	const TSharedPtr<FJsonObject>* StatsObject = nullptr;
-	if (LogicObject->TryGetObjectField(TEXT("stats"), StatsObject) && StatsObject && StatsObject->IsValid())
-	{
-		Resp.Result->SetObjectField(TEXT("stats"), *StatsObject);
-	}
-	else
-	{
-		Resp.Result->SetObjectField(TEXT("stats"), FBlueprintHelperBridgeRouterLocalUtils::MakeLogicStatsObject(LogicResult));
-	}
-
-	return Resp;
+	return HandleReadBlueprintLogicJson(Req);
 }
-
-// ─── import_json ───
 
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleImportJson(
 	const FBlueprintHelperBridgeRequest& Req) const
 {
-	// import_json now accepts object-first payload.json only.
-	FBlueprintHelperImportRequest ImportReq;
-	FBlueprintHelperBridgeValidationError ParseError;
-
-	bool bHasJson = false;
+	FBlueprintHelperImportRequest Request;
 	if (Req.Payload.IsValid())
 	{
-		const TSharedPtr<FJsonValue>* FoundValue = Req.Payload->Values.Find(TEXT("json"));
-		if (FoundValue && FoundValue->IsValid())
+		Req.Payload->TryGetStringField(TEXT("target_blueprint"), Request.Target.BlueprintPath);
+		Req.Payload->TryGetStringField(TEXT("graph"), Request.Target.GraphName);
+		Req.Payload->TryGetBoolField(TEXT("auto_compile"), Request.bAutoCompile);
+		Req.Payload->TryGetBoolField(TEXT("strict"), Request.bStrict);
+		Request.JsonObject = Req.Payload;
+		const TSharedPtr<FJsonObject>* JsonObject = nullptr;
+		if (Req.Payload->TryGetObjectField(TEXT("json"), JsonObject) && JsonObject && JsonObject->IsValid())
 		{
-			const TSharedPtr<FJsonValue> JsonVal = *FoundValue;
-			if (JsonVal->Type == EJson::Object)
-			{
-				ImportReq.JsonObject = JsonVal->AsObject();
-				bHasJson = true;
-			}
+			Request.JsonObject = *JsonObject;
 		}
 	}
-
-	if (!bHasJson)
-	{
-		return FBlueprintHelperBridgeResponse::Error(
-			Req.RequestId,
-			EBlueprintHelperBridgeError::InvalidRequest,
-			TEXT("payload 缺少 json 字段，或类型不被支持（需要 object）。"));
-	}
-
-	if (Req.Payload.IsValid())
-	{
-		Req.Payload->TryGetStringField(TEXT("target_blueprint"), ImportReq.Target.BlueprintPath);
-		Req.Payload->TryGetStringField(TEXT("target_graph"), ImportReq.Target.GraphName);
-	}
-	if (!FBlueprintHelperBridgeRouterLocalUtils::TryReadBoolOption(Req.Payload, TEXT("compile_after_import"), ImportReq.bAutoCompile, ParseError)
-		|| !FBlueprintHelperBridgeRouterLocalUtils::TryReadBoolOption(Req.Payload, TEXT("strict"), ImportReq.bStrict, ParseError)
-		|| !FBlueprintHelperBridgeRouterLocalUtils::TryReadBoolOption(Req.Payload, TEXT("allow_partial"), ImportReq.bAllowPartial, ParseError))
-	{
-		return FBlueprintHelperBridgeRouterLocalUtils::ValidationErrorResponse(Req.RequestId, ParseError);
-	}
-
-	// ImportService.ResolveImportJsonText() serializes object-first RawJson before schema/importable guards.
-	FBlueprintHelperImportResult ImportResult = ImportService.Import(ImportReq);
-
-	if (!ImportResult.bSuccess && ImportResult.Diagnostics.HasErrors())
-	{
-		const FString ErrorMsg = ImportResult.GetSummaryText();
-		return FBlueprintHelperBridgeResponse::Error(
-			Req.RequestId,
-			FBlueprintHelperBridgeRouterLocalUtils::DiagnosticSetToBridgeError(ImportResult.Diagnostics),
-			ErrorMsg);
-	}
-
-	auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId, ImportResult.GetSummaryText());
+	const FBlueprintHelperImportResult Result = ImportService.Import(Request);
+	FBlueprintHelperBridgeResponse Resp = Result.bSuccess
+		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
+		: FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, Result.GetSummaryText());
 	Resp.Result = MakeShared<FJsonObject>();
-	Resp.Result->SetStringField(TEXT("status"), ImportResult.Status);
-	Resp.Result->SetNumberField(TEXT("generated_node_count"), ImportResult.GeneratedNodeCount);
-	Resp.Result->SetNumberField(TEXT("nodes_created"), ImportResult.GeneratedNodeCount);
-	Resp.Result->SetNumberField(TEXT("links_connected"), ImportResult.LinksConnected);
-	Resp.Result->SetNumberField(TEXT("operations_applied"), ImportResult.OperationsApplied);
-	Resp.Result->SetNumberField(TEXT("unresolved_node_count"), ImportResult.UnresolvedNodeCount);
-	Resp.Result->SetBoolField(TEXT("rolled_back"), ImportResult.bRolledBack);
-
-	TArray<TSharedPtr<FJsonValue>> UnresolvedArray;
-	for (const FString& Summary : ImportResult.UnresolvedNodeSummaries)
-	{
-		UnresolvedArray.Add(MakeShared<FJsonValueString>(Summary));
-	}
-	Resp.Result->SetArrayField(TEXT("unresolved"), UnresolvedArray);
-
-	TArray<TSharedPtr<FJsonValue>> WarningArray;
-	TArray<TSharedPtr<FJsonValue>> ErrorArray;
-	for (const FBlueprintHelperDiagnosticItem& Item : ImportResult.Diagnostics.Items)
-	{
-		TSharedPtr<FJsonObject> DiagObj = MakeShared<FJsonObject>();
-		DiagObj->SetStringField(TEXT("code"), Item.Code);
-		DiagObj->SetStringField(TEXT("message"), Item.Message);
-		if (!Item.Field.IsEmpty())
-		{
-			DiagObj->SetStringField(TEXT("field"), Item.Field);
-		}
-		if (!Item.NodeId.IsEmpty())
-		{
-			DiagObj->SetStringField(TEXT("node_id"), Item.NodeId);
-		}
-		if (!Item.PinName.IsEmpty())
-		{
-			DiagObj->SetStringField(TEXT("pin_name"), Item.PinName);
-		}
-		if (Item.Severity == EBlueprintHelperDiagnosticSeverity::Error)
-		{
-			ErrorArray.Add(MakeShared<FJsonValueObject>(DiagObj));
-		}
-		else
-		{
-			WarningArray.Add(MakeShared<FJsonValueObject>(DiagObj));
-		}
-	}
-	Resp.Result->SetArrayField(TEXT("warnings"), WarningArray);
-	Resp.Result->SetArrayField(TEXT("errors"), ErrorArray);
-
+	Resp.Result->SetBoolField(TEXT("success"), Result.bSuccess);
+	Resp.Result->SetStringField(TEXT("status"), Result.Status);
+	Resp.Result->SetStringField(TEXT("summary"), Result.GetSummaryText());
+	Resp.Result->SetNumberField(TEXT("generated_node_count"), Result.GeneratedNodeCount);
+	Resp.Result->SetNumberField(TEXT("unresolved_node_count"), Result.UnresolvedNodeCount);
+	Resp.Result->SetNumberField(TEXT("operations_applied"), Result.OperationsApplied);
+	Resp.Result->SetNumberField(TEXT("links_connected"), Result.LinksConnected);
+	Resp.Result->SetBoolField(TEXT("rolled_back"), Result.bRolledBack);
 	return Resp;
 }
-
-// ─── import_agent_graph ───
 
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleImportAgentGraph(
 	const FBlueprintHelperBridgeRequest& Req) const
 {
-	if (!Req.Payload.IsValid())
+	FBlueprintHelperAgentImportRequest Request;
+	if (Req.Payload.IsValid())
 	{
-		return FBlueprintHelperBridgeResponse::Error(
-			Req.RequestId,
-			EBlueprintHelperBridgeError::InvalidRequest,
-			TEXT("payload 缺失。"));
+		Req.Payload->TryGetStringField(TEXT("json"), Request.JsonText);
+		if (Request.JsonText.IsEmpty())
+		{
+			FString Serialized;
+			const TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Serialized);
+			FJsonSerializer::Serialize(Req.Payload.ToSharedRef(), Writer);
+			Request.JsonText = Serialized;
+		}
 	}
-
-	FString JsonText;
-	const TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonText);
-	if (!FJsonSerializer::Serialize(Req.Payload.ToSharedRef(), Writer))
-	{
-		return FBlueprintHelperBridgeResponse::Error(
-			Req.RequestId,
-			EBlueprintHelperBridgeError::JsonParseFailed,
-			TEXT("import_agent_graph payload 无法序列化为 JSON。"));
-	}
-
-	FBlueprintHelperAgentImportRequest ImportReq;
-	ImportReq.JsonText = JsonText;
-	const FBlueprintHelperAgentImportResult ImportResult = AgentImportService.Import(ImportReq);
-
-	auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId, ImportResult.GetSummaryText());
-	Resp.Result = FBlueprintHelperBridgeRouterLocalUtils::AgentImportResultToJson(ImportResult);
+	const FBlueprintHelperAgentImportResult Result = AgentImportService.Import(Request);
+	FBlueprintHelperBridgeResponse Resp = Result.bSuccess
+		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
+		: FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, Result.GetSummaryText());
+	Resp.Result = FBlueprintHelperBridgeRouterLocalUtils::AgentImportResultToJson(Result);
 	return Resp;
 }
-
-// ─── Task Runtime ───
 
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandlePreviewTaskPlan(
 	const FBlueprintHelperBridgeRequest& Req) const
 {
-	const FBlueprintHelperToolResultBase Result = TaskRuntimeService.PreviewTaskPlan(Req.Payload);
-	const FString ErrorMessage = Result.Error.IsSet() && !Result.Error->Message.IsEmpty()
-		? Result.Error->Message
-		: TEXT("preview_task_plan 执行失败。");
-
-	FBlueprintHelperBridgeResponse Resp = Result.bOk
-		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
-		: FBlueprintHelperBridgeResponse::Error(
-			Req.RequestId,
-			EBlueprintHelperBridgeError::ExecutionFailed,
-			ErrorMessage);
-
-	Resp.Result = Result.ToJson();
-	return Resp;
+	return MakeToolResultBridgeResponse(Req, TaskRuntimeService.PreviewTaskPlan(Req.Payload));
 }
 
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleExecuteTaskPlan(
 	const FBlueprintHelperBridgeRequest& Req) const
 {
-	const FBlueprintHelperToolResultBase Result = TaskRuntimeService.ExecuteTaskPlan(Req.Payload);
-	FBlueprintHelperGraphLayoutCoordinator::FlushPendingTaskLayouts();
-	ReviewStoreService.NotifyPendingReviewChanged();
-	const FString ErrorMessage = Result.Error.IsSet() && !Result.Error->Message.IsEmpty()
-		? Result.Error->Message
-		: TEXT("execute_task_plan 执行失败。");
-
-	FBlueprintHelperBridgeResponse Resp = Result.bOk
-		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
-		: FBlueprintHelperBridgeResponse::Error(
-			Req.RequestId,
-			EBlueprintHelperBridgeError::ExecutionFailed,
-			ErrorMessage);
-
-	Resp.Result = Result.ToJson();
-	return Resp;
+	return MakeToolResultBridgeResponse(Req, TaskRuntimeService.ExecuteTaskPlan(Req.Payload));
 }
 
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleGetTaskRunJournal(
@@ -1662,42 +1168,14 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleGetTaskRunJou
 	{
 		Req.Payload->TryGetStringField(TEXT("task_run_id"), TaskRunId);
 	}
-
-	const FBlueprintHelperToolResultBase Result = TaskRuntimeService.GetTaskRunJournal(TaskRunId);
-	const FString ErrorMessage = Result.Error.IsSet() && !Result.Error->Message.IsEmpty()
-		? Result.Error->Message
-		: TEXT("get_task_run_journal 执行失败。");
-	FBlueprintHelperBridgeResponse Resp = Result.bOk
-		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
-		: FBlueprintHelperBridgeResponse::Error(
-			Req.RequestId,
-			EBlueprintHelperBridgeError::ExecutionFailed,
-			ErrorMessage);
-
-	Resp.Result = Result.ToJson();
-	return Resp;
+	return MakeToolResultBridgeResponse(Req, TaskRuntimeService.GetTaskRunJournal(TaskRunId));
 }
-
-// ─── compile_blueprint_asset ───
 
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleCompileBlueprintAsset(
 	const FBlueprintHelperBridgeRequest& Req) const
 {
-	if (!Req.Payload.IsValid())
-		return FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::InvalidRequest, TEXT("payload 缺失。"));
-
-	const FBlueprintHelperToolResultBase Result = CompileAssetService.Execute(Req.Payload);
-
-	FBlueprintHelperBridgeResponse Resp = Result.bOk
-		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
-		: FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed,
-			Result.Error.IsSet() ? Result.Error->Message : TEXT("compile_blueprint_asset 执行失败。"));
-
-	Resp.Result = Result.ToJson();
-	return Resp;
+	return MakeToolResultBridgeResponse(Req, CompileAssetService.Execute(Req.Payload));
 }
-
-// ─── list_blueprint_helper_transactions ───
 
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleQueryReviewRecords(
 	const FBlueprintHelperBridgeRequest& Req) const
@@ -1705,162 +1183,80 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleQueryReviewRe
 	FBlueprintHelperReviewRecordQuery Query;
 	if (Req.Payload.IsValid())
 	{
-		Req.Payload->TryGetStringField(TEXT("archive_session_id"), Query.ArchiveSessionIdFilter);
 		Req.Payload->TryGetStringField(TEXT("asset_path"), Query.AssetPathFilter);
+		Req.Payload->TryGetStringField(TEXT("archive_session_id"), Query.ArchiveSessionIdFilter);
 		Req.Payload->TryGetStringField(TEXT("task_run_id"), Query.TaskRunIdFilter);
-		Req.Payload->TryGetBoolField(TEXT("pending_only"), Query.bPendingOnly);
 	}
-
-	FBlueprintHelperReviewStoreService ReviewStore;
-	const TArray<FBlueprintHelperReviewRecord> Records = ReviewStore.QueryReviewRecords(Query);
-
-	TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
-	Data->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.ReviewRecordQueryResult.v1"));
-	Data->SetNumberField(TEXT("record_count"), Records.Num());
-
-	TSharedRef<FJsonObject> QueryJson = MakeShared<FJsonObject>();
-	if (!Query.ArchiveSessionIdFilter.IsEmpty())
-	{
-		QueryJson->SetStringField(TEXT("archive_session_id"), Query.ArchiveSessionIdFilter);
-	}
-	if (!Query.AssetPathFilter.IsEmpty())
-	{
-		QueryJson->SetStringField(TEXT("asset_path"), Query.AssetPathFilter);
-	}
-	if (!Query.TaskRunIdFilter.IsEmpty())
-	{
-		QueryJson->SetStringField(TEXT("task_run_id"), Query.TaskRunIdFilter);
-	}
-	QueryJson->SetBoolField(TEXT("pending_only"), Query.bPendingOnly);
-	Data->SetObjectField(TEXT("query"), QueryJson);
-
-	TArray<TSharedPtr<FJsonValue>> RecordValues;
+	const TArray<FBlueprintHelperReviewRecord> Records = ReviewStoreService.QueryReviewRecords(Query);
+	FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
+	Resp.Result = MakeShared<FJsonObject>();
+	TArray<TSharedPtr<FJsonValue>> Items;
 	for (const FBlueprintHelperReviewRecord& Record : Records)
 	{
-		RecordValues.Add(MakeShared<FJsonValueObject>(ReviewStore.BuildReviewRecordSummaryArtifact(Record)));
+		Items.Add(MakeShared<FJsonValueObject>(ReviewStoreService.BuildReviewRecordSummaryArtifact(Record)));
 	}
-	Data->SetArrayField(TEXT("records"), RecordValues);
-
-	FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Completed(
-		TEXT("query_review_records"),
-		FBlueprintHelperToolResultBuilder::GenerateTraceId());
-	Result.Data = Data;
-
-	auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
-	Resp.Result = Result.ToJson();
+	Resp.Result->SetArrayField(TEXT("records"), Items);
+	Resp.Result->SetNumberField(TEXT("count"), Records.Num());
 	return Resp;
 }
 
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleApplyReviewAction(
 	const FBlueprintHelperBridgeRequest& Req) const
 {
-	if (!Req.Payload.IsValid())
+	FString Action;
+	FString ChangeId;
+	FString AssetPath;
+	if (Req.Payload.IsValid())
+	{
+		Req.Payload->TryGetStringField(TEXT("action"), Action);
+		Req.Payload->TryGetStringField(TEXT("change_id"), ChangeId);
+		Req.Payload->TryGetStringField(TEXT("asset_path"), AssetPath);
+	}
+
+	TArray<FBlueprintHelperReviewVisibleChange> Changes = ReviewStoreService.LoadPendingVisibleChanges(AssetPath);
+	const FBlueprintHelperReviewVisibleChange* MatchedChange = nullptr;
+	for (const FBlueprintHelperReviewVisibleChange& Change : Changes)
+	{
+		if (Change.ChangeId == ChangeId)
+		{
+			MatchedChange = &Change;
+			break;
+		}
+	}
+	if (!MatchedChange)
 	{
 		return FBlueprintHelperBridgeResponse::Error(
 			Req.RequestId,
 			EBlueprintHelperBridgeError::InvalidRequest,
-			TEXT("payload is required."));
-	}
-
-	FString ReviewRecordId;
-	FString Action;
-	Req.Payload->TryGetStringField(TEXT("review_record_id"), ReviewRecordId);
-	Req.Payload->TryGetStringField(TEXT("action"), Action);
-
-	TArray<FString> TargetKeys;
-	const TArray<TSharedPtr<FJsonValue>>* TargetKeyValues = nullptr;
-	if (Req.Payload->TryGetArrayField(TEXT("target_keys"), TargetKeyValues) && TargetKeyValues)
-	{
-		for (const TSharedPtr<FJsonValue>& TargetKeyValue : *TargetKeyValues)
-		{
-			FString TargetKey;
-			if (TargetKeyValue.IsValid() && TargetKeyValue->TryGetString(TargetKey) && !TargetKey.IsEmpty())
-			{
-				TargetKeys.Add(TargetKey);
-			}
-		}
+			TEXT("review change not found"));
 	}
 
 	FBlueprintHelperReviewActionService ActionService(&DebugEntryService);
-	FBlueprintHelperReviewActionResult ActionResult;
+	FBlueprintHelperReviewActionResult Result;
 	if (Action.Equals(TEXT("accept"), ESearchCase::IgnoreCase))
 	{
-		ActionResult = ActionService.AcceptReviewTargets(ReviewRecordId, TargetKeys);
+		Result = ActionService.AcceptVisibleChange(*MatchedChange);
 	}
 	else if (Action.Equals(TEXT("reject"), ESearchCase::IgnoreCase))
 	{
-		FBlueprintHelperReviewRejectOptions Options;
-		ActionResult = ActionService.RejectReviewTargets(ReviewRecordId, TargetKeys, Options);
+		Result = ActionService.RejectVisibleChange(*MatchedChange);
 	}
 	else
 	{
 		return FBlueprintHelperBridgeResponse::Error(
 			Req.RequestId,
 			EBlueprintHelperBridgeError::InvalidRequest,
-			TEXT("action must be accept or reject."));
+			TEXT("unsupported review action"));
 	}
 
-	ReviewStoreService.NotifyPendingReviewChanged();
-
-	TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
-	Data->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.ReviewActionResult.v1"));
-	Data->SetStringField(TEXT("review_record_id"), ReviewRecordId);
-	Data->SetStringField(TEXT("action"), Action.ToLower());
-	Data->SetBoolField(TEXT("succeeded"), ActionResult.bSucceeded);
-	Data->SetStringField(TEXT("status"), BlueprintHelperReviewChangeStatusToString(ActionResult.NewStatus));
-	Data->SetStringField(TEXT("message"), ActionResult.Message);
-	if (!ActionResult.TargetTransactionId.IsEmpty())
-	{
-		Data->SetStringField(TEXT("target_transaction_id"), ActionResult.TargetTransactionId);
-	}
-	if (!ActionResult.RollbackMode.IsEmpty())
-	{
-		Data->SetStringField(TEXT("rollback_mode"), ActionResult.RollbackMode);
-	}
-	TArray<TSharedPtr<FJsonValue>> TargetKeyJson;
-	for (const FString& TargetKey : TargetKeys)
-	{
-		TargetKeyJson.Add(MakeShared<FJsonValueString>(TargetKey));
-	}
-	Data->SetArrayField(TEXT("target_keys"), TargetKeyJson);
-
-	FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Completed(
-		TEXT("apply_review_action"),
-		FBlueprintHelperToolResultBuilder::GenerateTraceId());
-	Result.Data = Data;
-	Result.bModified = ActionResult.bSucceeded;
-
-	FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
-	Resp.Result = Result.ToJson();
-	return Resp;
-}
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleListTransactions(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	const FBlueprintHelperToolResultBase Result = TransactionQueryService.List(Req.Payload);
-	auto Resp = Result.bOk
+	FBlueprintHelperBridgeResponse Resp = Result.bSucceeded
 		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
-		: FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed,
-			Result.Error.IsSet() ? Result.Error->Message : TEXT("list transactions failed"));
-	Resp.Result = Result.ToJson();
+		: FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, Result.Message);
+	Resp.Result = ReviewActionResultToJson(Result);
 	return Resp;
 }
 
-// ─── read_blueprint_helper_transaction ───
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadTransaction(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	const FBlueprintHelperToolResultBase Result = TransactionQueryService.Read(Req.Payload);
-	auto Resp = Result.bOk
-		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
-		: FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed,
-			Result.Error.IsSet() ? Result.Error->Message : TEXT("read transaction failed"));
-	Resp.Result = Result.ToJson();
-	return Resp;
-}
-
-// ─── compile_blueprint ───
+// compile_blueprint
 
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleCompileBlueprint(
 	const FBlueprintHelperBridgeRequest& Req) const

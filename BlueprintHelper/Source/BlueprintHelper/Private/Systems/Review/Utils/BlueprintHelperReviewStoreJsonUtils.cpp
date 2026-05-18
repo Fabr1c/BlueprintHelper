@@ -1,4 +1,4 @@
-// BlueprintHelper Review BlueprintHelperReviewStoreJsonUtils implementation.
+﻿// BlueprintHelper Review BlueprintHelperReviewStoreJsonUtils implementation.
 
 #include "Systems/Review/Utils/BlueprintHelperReviewStoreJsonUtils.h"
 
@@ -105,9 +105,9 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewStoreJsonUtils::ReviewAtomicTarget
 		if (!Target.ScopeIdentity.IsEmpty()) Json->SetStringField(TEXT("scope_identity"), Target.ScopeIdentity);
 		if (!Target.VisualGroupKey.IsEmpty()) Json->SetStringField(TEXT("visual_group_key"), Target.VisualGroupKey);
 		if (!Target.DisplayLabel.IsEmpty()) Json->SetStringField(TEXT("display_label"), Target.DisplayLabel);
-		if (!Target.FirstTransactionId.IsEmpty()) Json->SetStringField(TEXT("first_transaction_id"), Target.FirstTransactionId);
-		if (!Target.LatestTransactionId.IsEmpty()) Json->SetStringField(TEXT("latest_transaction_id"), Target.LatestTransactionId);
-		Json->SetArrayField(TEXT("source_transaction_ids"), MakeReviewJsonStringArray(Target.SourceTransactionIds));
+		if (!Target.FirstEvidenceId.IsEmpty()) Json->SetStringField(TEXT("first_evidence_id"), Target.FirstEvidenceId);
+		if (!Target.LatestEvidenceId.IsEmpty()) Json->SetStringField(TEXT("latest_evidence_id"), Target.LatestEvidenceId);
+		Json->SetArrayField(TEXT("source_evidence_ids"), MakeReviewJsonStringArray(Target.SourceEvidenceIds));
 		if (!Target.Ownership.IsEmpty()) Json->SetStringField(TEXT("ownership"), Target.Ownership);
 		if (!Target.NodeGuid.IsEmpty()) Json->SetStringField(TEXT("node_guid"), Target.NodeGuid);
 		if (!Target.PinPath.IsEmpty()) Json->SetStringField(TEXT("pin_path"), Target.PinPath);
@@ -118,7 +118,6 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewStoreJsonUtils::ReviewAtomicTarget
 		if (!Target.BaselineHash.IsEmpty()) Json->SetStringField(TEXT("baseline_hash"), Target.BaselineHash);
 		if (!Target.BeforeSnapshotJson.IsEmpty()) Json->SetStringField(TEXT("before_snapshot_json"), Target.BeforeSnapshotJson);
 		if (!Target.AfterSnapshotJson.IsEmpty()) Json->SetStringField(TEXT("after_snapshot_json"), Target.AfterSnapshotJson);
-		if (!Target.RollbackDataRef.IsEmpty()) Json->SetStringField(TEXT("rollback_data_ref"), Target.RollbackDataRef);
 		if (Target.ExecutionOrder != INDEX_NONE) Json->SetNumberField(TEXT("execution_order"), Target.ExecutionOrder);
 		if (Target.TaskStepIndex != INDEX_NONE) Json->SetNumberField(TEXT("task_step_index"), Target.TaskStepIndex);
 		if (Target.AtomicIndex != INDEX_NONE) Json->SetNumberField(TEXT("atomic_index"), Target.AtomicIndex);
@@ -139,9 +138,9 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewStoreJsonUtils::ReviewVisibleChang
 		if (!Change.GraphName.IsEmpty()) Json->SetStringField(TEXT("graph_name"), Change.GraphName);
 		Json->SetStringField(TEXT("visual_group_key"), Change.LocationKey);
 		if (!Change.ScopeIdentity.IsEmpty()) Json->SetStringField(TEXT("scope_identity"), Change.ScopeIdentity);
-		Json->SetStringField(TEXT("latest_transaction_id"), Change.LatestTransactionId);
-		Json->SetArrayField(TEXT("latest_transaction_ids"), MakeReviewJsonStringArray(Change.LatestTransactionIds));
-		Json->SetArrayField(TEXT("source_transaction_ids"), MakeReviewJsonStringArray(Change.SourceTransactionIds));
+		Json->SetStringField(TEXT("latest_evidence_id"), Change.LatestEvidenceId);
+		Json->SetArrayField(TEXT("latest_evidence_ids"), MakeReviewJsonStringArray(Change.LatestEvidenceIds));
+		Json->SetArrayField(TEXT("source_evidence_ids"), MakeReviewJsonStringArray(Change.SourceEvidenceIds));
 		Json->SetStringField(TEXT("change_kind"), BlueprintHelperReviewChangeKindToString(Change.ChangeKind));
 		Json->SetStringField(TEXT("status"), BlueprintHelperReviewChangeStatusToString(Change.Status));
 		if (!Change.DisplayLabel.IsEmpty()) Json->SetStringField(TEXT("display_label"), Change.DisplayLabel);
@@ -174,7 +173,7 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewStoreJsonUtils::ReviewActionRecord
 		Json->SetArrayField(TEXT("target_keys"), MakeReviewJsonStringArray(Action.TargetKeys));
 		if (!Action.OwnershipPolicy.IsEmpty()) Json->SetStringField(TEXT("ownership_policy"), Action.OwnershipPolicy);
 		if (!Action.CreatedAt.IsEmpty()) Json->SetStringField(TEXT("created_at"), Action.CreatedAt);
-		if (!Action.SourceTransactionId.IsEmpty()) Json->SetStringField(TEXT("source_transaction_id"), Action.SourceTransactionId);
+		if (!Action.SourceEvidenceId.IsEmpty()) Json->SetStringField(TEXT("source_evidence_id"), Action.SourceEvidenceId);
 		if (!Action.Message.IsEmpty()) Json->SetStringField(TEXT("message"), Action.Message);
 		return Json;
 	}
@@ -204,22 +203,22 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewStoreJsonUtils::ReviewRecordToJson
 		Json->SetArrayField(TEXT("review_actions"), Actions);
 
 		TSharedRef<FJsonObject> Summary = MakeShared<FJsonObject>();
-		Summary->SetNumberField(TEXT("transaction_count"), Record.SourceTransactionSummary.TransactionCount);
-		Summary->SetArrayField(TEXT("task_run_ids"), MakeReviewJsonStringArray(Record.SourceTransactionSummary.TaskRunIds));
-		Summary->SetArrayField(TEXT("operation_kinds"), MakeReviewJsonStringArray(Record.SourceTransactionSummary.OperationKinds));
-		Summary->SetArrayField(TEXT("asset_paths"), MakeReviewJsonStringArray(Record.SourceTransactionSummary.AssetPaths));
-		Summary->SetArrayField(TEXT("transaction_ids"), MakeReviewJsonStringArray(Record.SourceTransactionSummary.TransactionIds));
-		if (!Record.SourceTransactionSummary.CreatedAtFirst.IsEmpty())
+		Summary->SetNumberField(TEXT("evidence_count"), Record.SourceReviewSummary.EvidenceCount);
+		Summary->SetArrayField(TEXT("task_run_ids"), MakeReviewJsonStringArray(Record.SourceReviewSummary.TaskRunIds));
+		Summary->SetArrayField(TEXT("operation_kinds"), MakeReviewJsonStringArray(Record.SourceReviewSummary.OperationKinds));
+		Summary->SetArrayField(TEXT("asset_paths"), MakeReviewJsonStringArray(Record.SourceReviewSummary.AssetPaths));
+		Summary->SetArrayField(TEXT("evidence_ids"), MakeReviewJsonStringArray(Record.SourceReviewSummary.EvidenceIds));
+		if (!Record.SourceReviewSummary.CreatedAtFirst.IsEmpty())
 		{
-			Summary->SetStringField(TEXT("created_at_first"), Record.SourceTransactionSummary.CreatedAtFirst);
+			Summary->SetStringField(TEXT("created_at_first"), Record.SourceReviewSummary.CreatedAtFirst);
 		}
-		if (!Record.SourceTransactionSummary.CreatedAtLast.IsEmpty())
+		if (!Record.SourceReviewSummary.CreatedAtLast.IsEmpty())
 		{
-			Summary->SetStringField(TEXT("created_at_last"), Record.SourceTransactionSummary.CreatedAtLast);
+			Summary->SetStringField(TEXT("created_at_last"), Record.SourceReviewSummary.CreatedAtLast);
 		}
 		Summary->SetStringField(TEXT("final_review_status"),
-			BlueprintHelperReviewChangeStatusToString(Record.SourceTransactionSummary.FinalReviewStatus));
-		Json->SetObjectField(TEXT("source_transaction_summary"), Summary);
+			BlueprintHelperReviewChangeStatusToString(Record.SourceReviewSummary.FinalReviewStatus));
+		Json->SetObjectField(TEXT("source_review_summary"), Summary);
 
 		TSharedRef<FJsonObject> Diagnostics = MakeShared<FJsonObject>();
 		Diagnostics->SetArrayField(TEXT("debug_case_ids"), MakeReviewJsonStringArray(Record.DebugCaseIds));
@@ -266,7 +265,7 @@ bool FBlueprintHelperReviewStoreJsonUtils::ReadReviewArchiveSessionFromJson(
 
 		FString Schema;
 		Json->TryGetStringField(TEXT("schema"), Schema);
-		if (Schema != TEXT("BlueprintHelper.ArchiveSession.v1"))
+		if (Schema != TEXT("BlueprintHelper.ArchiveSession.v2"))
 		{
 			return false;
 		}
@@ -299,7 +298,7 @@ bool FBlueprintHelperReviewStoreJsonUtils::ReadReviewRecordFromJson(const TShare
 
 		FString Schema;
 		Json->TryGetStringField(TEXT("schema"), Schema);
-		if (Schema != TEXT("BlueprintHelper.ReviewRecord.v1"))
+		if (Schema != TEXT("BlueprintHelper.ReviewRecord.v2"))
 		{
 			return false;
 		}
@@ -337,9 +336,9 @@ bool FBlueprintHelperReviewStoreJsonUtils::ReadReviewRecordFromJson(const TShare
 				ChangeJson->TryGetStringField(TEXT("graph_name"), Change.GraphName);
 				ChangeJson->TryGetStringField(TEXT("visual_group_key"), Change.LocationKey);
 				ChangeJson->TryGetStringField(TEXT("scope_identity"), Change.ScopeIdentity);
-				ChangeJson->TryGetStringField(TEXT("latest_transaction_id"), Change.LatestTransactionId);
-				ReadReviewStringArray(ChangeJson, TEXT("latest_transaction_ids"), Change.LatestTransactionIds);
-				ReadReviewStringArray(ChangeJson, TEXT("source_transaction_ids"), Change.SourceTransactionIds);
+				ChangeJson->TryGetStringField(TEXT("latest_evidence_id"), Change.LatestEvidenceId);
+				ReadReviewStringArray(ChangeJson, TEXT("latest_evidence_ids"), Change.LatestEvidenceIds);
+				ReadReviewStringArray(ChangeJson, TEXT("source_evidence_ids"), Change.SourceEvidenceIds);
 				FString ChangeStatus;
 				ChangeJson->TryGetStringField(TEXT("status"), ChangeStatus);
 				Change.Status = ParseReviewChangeStatus(ChangeStatus);
@@ -395,9 +394,9 @@ bool FBlueprintHelperReviewStoreJsonUtils::ReadReviewRecordFromJson(const TShare
 						TargetJson->TryGetStringField(TEXT("scope_identity"), Target.ScopeIdentity);
 						TargetJson->TryGetStringField(TEXT("visual_group_key"), Target.VisualGroupKey);
 						TargetJson->TryGetStringField(TEXT("display_label"), Target.DisplayLabel);
-						TargetJson->TryGetStringField(TEXT("first_transaction_id"), Target.FirstTransactionId);
-						TargetJson->TryGetStringField(TEXT("latest_transaction_id"), Target.LatestTransactionId);
-						ReadReviewStringArray(TargetJson, TEXT("source_transaction_ids"), Target.SourceTransactionIds);
+						TargetJson->TryGetStringField(TEXT("first_evidence_id"), Target.FirstEvidenceId);
+						TargetJson->TryGetStringField(TEXT("latest_evidence_id"), Target.LatestEvidenceId);
+						ReadReviewStringArray(TargetJson, TEXT("source_evidence_ids"), Target.SourceEvidenceIds);
 						TargetJson->TryGetStringField(TEXT("ownership"), Target.Ownership);
 						TargetJson->TryGetStringField(TEXT("node_guid"), Target.NodeGuid);
 						TargetJson->TryGetStringField(TEXT("pin_path"), Target.PinPath);
@@ -408,7 +407,6 @@ bool FBlueprintHelperReviewStoreJsonUtils::ReadReviewRecordFromJson(const TShare
 						TargetJson->TryGetStringField(TEXT("baseline_hash"), Target.BaselineHash);
 						TargetJson->TryGetStringField(TEXT("before_snapshot_json"), Target.BeforeSnapshotJson);
 						TargetJson->TryGetStringField(TEXT("after_snapshot_json"), Target.AfterSnapshotJson);
-						TargetJson->TryGetStringField(TEXT("rollback_data_ref"), Target.RollbackDataRef);
 						double TargetOrderValue = 0.0;
 						if (TargetJson->TryGetNumberField(TEXT("execution_order"), TargetOrderValue))
 						{
@@ -461,26 +459,26 @@ bool FBlueprintHelperReviewStoreJsonUtils::ReadReviewRecordFromJson(const TShare
 				ReadReviewStringArray(ActionJson, TEXT("target_keys"), Action.TargetKeys);
 				ActionJson->TryGetStringField(TEXT("ownership_policy"), Action.OwnershipPolicy);
 				ActionJson->TryGetStringField(TEXT("created_at"), Action.CreatedAt);
-				ActionJson->TryGetStringField(TEXT("source_transaction_id"), Action.SourceTransactionId);
+				ActionJson->TryGetStringField(TEXT("source_evidence_id"), Action.SourceEvidenceId);
 				ActionJson->TryGetStringField(TEXT("message"), Action.Message);
 				OutRecord.ReviewActions.Add(Action);
 			}
 		}
 
 		const TSharedPtr<FJsonObject>* Summary = nullptr;
-		if (Json->TryGetObjectField(TEXT("source_transaction_summary"), Summary) && Summary)
+		if (Json->TryGetObjectField(TEXT("source_review_summary"), Summary) && Summary)
 		{
-			OutRecord.SourceTransactionSummary.TransactionCount =
-				static_cast<int32>((*Summary)->GetNumberField(TEXT("transaction_count")));
-			ReadReviewStringArray(*Summary, TEXT("task_run_ids"), OutRecord.SourceTransactionSummary.TaskRunIds);
-			ReadReviewStringArray(*Summary, TEXT("operation_kinds"), OutRecord.SourceTransactionSummary.OperationKinds);
-			ReadReviewStringArray(*Summary, TEXT("asset_paths"), OutRecord.SourceTransactionSummary.AssetPaths);
-			ReadReviewStringArray(*Summary, TEXT("transaction_ids"), OutRecord.SourceTransactionSummary.TransactionIds);
-			(*Summary)->TryGetStringField(TEXT("created_at_first"), OutRecord.SourceTransactionSummary.CreatedAtFirst);
-			(*Summary)->TryGetStringField(TEXT("created_at_last"), OutRecord.SourceTransactionSummary.CreatedAtLast);
+			OutRecord.SourceReviewSummary.EvidenceCount =
+				static_cast<int32>((*Summary)->GetNumberField(TEXT("evidence_count")));
+			ReadReviewStringArray(*Summary, TEXT("task_run_ids"), OutRecord.SourceReviewSummary.TaskRunIds);
+			ReadReviewStringArray(*Summary, TEXT("operation_kinds"), OutRecord.SourceReviewSummary.OperationKinds);
+			ReadReviewStringArray(*Summary, TEXT("asset_paths"), OutRecord.SourceReviewSummary.AssetPaths);
+			ReadReviewStringArray(*Summary, TEXT("evidence_ids"), OutRecord.SourceReviewSummary.EvidenceIds);
+			(*Summary)->TryGetStringField(TEXT("created_at_first"), OutRecord.SourceReviewSummary.CreatedAtFirst);
+			(*Summary)->TryGetStringField(TEXT("created_at_last"), OutRecord.SourceReviewSummary.CreatedAtLast);
 			FString FinalReviewStatus;
 			(*Summary)->TryGetStringField(TEXT("final_review_status"), FinalReviewStatus);
-			OutRecord.SourceTransactionSummary.FinalReviewStatus = ParseReviewChangeStatus(FinalReviewStatus);
+			OutRecord.SourceReviewSummary.FinalReviewStatus = ParseReviewChangeStatus(FinalReviewStatus);
 		}
 
 		const TSharedPtr<FJsonObject>* Diagnostics = nullptr;
@@ -491,3 +489,4 @@ bool FBlueprintHelperReviewStoreJsonUtils::ReadReviewRecordFromJson(const TShare
 
 		return !OutRecord.ReviewRecordId.IsEmpty();
 	}
+

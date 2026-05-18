@@ -17,7 +17,7 @@ class FBlueprintHelperGraphResolver;
  * LogicMD 只读服务。
  * 根据 target 读取蓝图逻辑并以 Agent 友好的 Markdown 格式返回。
  * 多入口 scope 下按 group 分段，并返回 grouped=true。
- * 不负责：导入、导出、写入、Transaction、Review。
+ * 不负责：导入、导出、写入、Editor undo、Review。
  */
 class BLUEPRINTHELPER_API FBlueprintHelperLogicMdReadService
 {

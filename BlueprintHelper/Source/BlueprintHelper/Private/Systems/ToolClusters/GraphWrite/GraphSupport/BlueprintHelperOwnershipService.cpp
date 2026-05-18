@@ -11,7 +11,6 @@ bool FBlueprintHelperOwnershipService::WriteNodeOwnership(
 	UBlueprint* Blueprint,
 	UEdGraphNode* Node,
 	const FString& BlockId,
-	const FString& TransactionId,
 	const FString& FeatureName,
 	FString& OutError) const
 {
@@ -33,7 +32,6 @@ bool FBlueprintHelperOwnershipService::WriteNodeOwnership(
 	// 写入 FMetaData 标记
 	MetaData.SetValue(Node, TEXT("BlueprintHelperOwned"), TEXT("true"));
 	MetaData.SetValue(Node, TEXT("BlueprintHelperBlockId"), *BlockId);
-	MetaData.SetValue(Node, TEXT("BlueprintHelperTransactionId"), *TransactionId);
 	MetaData.SetValue(Node, TEXT("BlueprintHelperFeatureName"), *FeatureName);
 	MetaData.RemoveValue(Node, TEXT("BlueprintHelperTool"));
 
@@ -44,14 +42,13 @@ bool FBlueprintHelperOwnershipService::WriteBlockOwnership(
 	UBlueprint* Blueprint,
 	const TArray<UEdGraphNode*>& Nodes,
 	const FString& BlockId,
-	const FString& TransactionId,
 	const FString& FeatureName,
 	FString& OutError) const
 {
 	for (UEdGraphNode* Node : Nodes)
 	{
 		FString NodeError;
-		if (!WriteNodeOwnership(Blueprint, Node, BlockId, TransactionId, FeatureName, NodeError))
+		if (!WriteNodeOwnership(Blueprint, Node, BlockId, FeatureName, NodeError))
 		{
 			OutError = FString::Printf(TEXT("节点 %s 的 ownership 写入失败：%s"),
 				Node ? *Node->GetName() : TEXT("null"), *NodeError);

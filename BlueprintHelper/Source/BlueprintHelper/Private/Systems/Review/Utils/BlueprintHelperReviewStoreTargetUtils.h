@@ -13,7 +13,7 @@ class FBlueprintHelperReviewStoreTargetUtils
 public:
 	static FString ExtractReviewNodeIdentifier(const FString& RawNodePath);
 	static FBlueprintHelperReviewAtomicTarget MakeGraphRecordTarget(
-				const FBlueprintHelperReviewTransactionInput& Input,
+				const FBlueprintHelperReviewEvidenceInput& Input,
 				const FString& TargetId,
 				const FString& TargetPrefix);
 	static void AddGraphTargetsFromStringArrayField(
@@ -21,9 +21,9 @@ public:
 				const TCHAR* FieldName,
 				const FString& TargetPrefix,
 				bool bExtractNodeName,
-				FBlueprintHelperReviewTransactionInput& Input);
-	static FString MakeReviewInternalMissingAnchorKey(const FString& TransactionId, int32 Index);
-	static FString MakeReviewInternalMissingGroupKey(const FString& TransactionId, int32 Index);
+				FBlueprintHelperReviewEvidenceInput& Input);
+	static FString MakeReviewInternalMissingAnchorKey(const FString& EvidenceId, int32 Index);
+	static FString MakeReviewInternalMissingGroupKey(const FString& EvidenceId, int32 Index);
 	static FString MakeReviewAtomicLookupKey(const FBlueprintHelperReviewAtomicTarget& Target, const FString& FallbackKey);
 	static FString MakeReviewScopeIdentity(const FBlueprintHelperReviewAtomicTarget& Target, const FString& FallbackKey);
 	static bool IsReviewTargetNetNoChange(const FBlueprintHelperReviewAtomicTarget& Target);
@@ -36,7 +36,7 @@ public:
 				const FBlueprintHelperReviewVisibleChange& Existing,
 				const FBlueprintHelperReviewVisibleChange& Incoming);
 	static FString SanitizeReviewIdSegment(const FString& Value);
-	static FString MakeReviewVisibleChangeId(const FString& TransactionId, const FString& VisualGroupKey);
+	static FString MakeReviewVisibleChangeId(const FString& EvidenceId, const FString& VisualGroupKey);
 	static bool ShouldAggregateGraphBodyTarget(const FBlueprintHelperReviewAtomicTarget& Target);
 	static void ApplyGraphBodyAggregation(FBlueprintHelperReviewAtomicTarget& Target);
 	static FString MakeReviewPackageNameFromAssetPath(const FString& AssetPath);

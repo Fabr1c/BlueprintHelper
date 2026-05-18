@@ -90,8 +90,6 @@ static const TPair<const TCHAR*, EBlueprintHelperBridgeRouteCluster> GBlueprintH
 	{TEXT("merge_blueprint_graph"), EBlueprintHelperBridgeRouteCluster::GraphWrite},
 	{TEXT("query_review_records"), EBlueprintHelperBridgeRouteCluster::Review},
 	{TEXT("apply_review_action"), EBlueprintHelperBridgeRouteCluster::Review},
-	{TEXT("list_blueprint_helper_transactions"), EBlueprintHelperBridgeRouteCluster::Transactions},
-	{TEXT("read_blueprint_helper_transaction"), EBlueprintHelperBridgeRouteCluster::Transactions},
 };
 
 static const TPair<EBlueprintHelperBridgeRouteCluster, const TCHAR*> GBlueprintHelperBridgeRouteClusterNames[] = {
@@ -112,7 +110,6 @@ static const TPair<EBlueprintHelperBridgeRouteCluster, const TCHAR*> GBlueprintH
 	{EBlueprintHelperBridgeRouteCluster::ObjectProperty, TEXT("ObjectProperty")},
 	{EBlueprintHelperBridgeRouteCluster::EditorCommand, TEXT("EditorCommand")},
 	{EBlueprintHelperBridgeRouteCluster::Review, TEXT("Review")},
-	{EBlueprintHelperBridgeRouteCluster::Transactions, TEXT("Transactions")},
 	{EBlueprintHelperBridgeRouteCluster::AnimationBlueprint, TEXT("AnimationBlueprint")},
 	{EBlueprintHelperBridgeRouteCluster::Material, TEXT("Material")},
 };

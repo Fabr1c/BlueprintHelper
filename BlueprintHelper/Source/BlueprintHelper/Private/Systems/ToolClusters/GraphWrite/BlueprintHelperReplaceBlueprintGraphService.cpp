@@ -3,7 +3,6 @@
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperReplaceBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperBlockIdService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperOwnershipService.h"
-#include "Systems/Transactions/BlueprintHelperTransactionJournalService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphSnapshotService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
@@ -238,12 +237,10 @@ FBlueprintHelperReplaceBlueprintGraphService::FBlueprintHelperReplaceBlueprintGr
 	const FBlueprintHelperGraphResolver& InResolver,
 	const FBlueprintHelperBlockIdService& InBlockIdService,
 	const FBlueprintHelperOwnershipService& InOwnershipService,
-	const FBlueprintHelperTransactionJournalService& InJournalService,
 	const FBlueprintHelperGraphSnapshotService& InSnapshotService)
 	: Resolver(InResolver)
 	, BlockIdService(InBlockIdService)
 	, OwnershipService(InOwnershipService)
-	, JournalService(InJournalService)
 	, SnapshotService(InSnapshotService)
 {
 }
@@ -574,7 +571,6 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 	const FReplaceRequest& Request) const
 {
 	const FString TraceId = FBlueprintHelperToolResultBuilder::GenerateTraceId();
-	const FString TransactionId = JournalService.GenerateTransactionId();
 
 	// 1. Preflight
 	FReplacePreflightResult PreflightResult = Preflight(Request);
@@ -738,8 +734,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 		{
 			FString OwnershipError;
 			if (!OwnershipService.WriteBlockOwnership(
-				Blueprint, NewNodes, Resolved.OriginalBlockId,
-				TransactionId, TEXT("Replace"), OwnershipError))
+				Blueprint, NewNodes, Resolved.OriginalBlockId, TEXT("Replace"), OwnershipError))
 			{
 				Mutation.Rollback();
 
@@ -752,92 +747,6 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 				return FBlueprintHelperToolResultBuilder::Failure(TEXT("replace_blueprint_graph"), TraceId, Error);
 			}
 		}
-	}
-
-	// 9. 鍐欏叆 Journal
-	FBlueprintHelperAppendJournalRecord JournalRecord;
-	JournalRecord.TransactionId = TransactionId;
-	JournalRecord.Tool = TEXT("ReplaceBlueprintGraph");
-	JournalRecord.Status = TEXT("applied");
-	JournalRecord.TargetAssets.Add(Request.AssetPath);
-	JournalRecord.GraphId = Request.GraphName;
-	JournalRecord.GraphName = Request.GraphName;
-	if (!Resolved.OriginalBlockId.IsEmpty())
-	{
-		JournalRecord.BlockIds.Add(Resolved.OriginalBlockId);
-	}
-	if (!ReviewBlockTargetKey.IsEmpty() && !BeforeBlockSnapshotJson.IsEmpty())
-	{
-		FBlueprintHelperReviewAtomicTarget AfterBlockTarget;
-		AfterBlockTarget.AssetPath = Request.AssetPath;
-		AfterBlockTarget.GraphName = Request.GraphName;
-		AfterBlockTarget.TargetKind = TEXT("graph_block");
-		AfterBlockTarget.TargetKey = ReviewBlockTargetKey;
-		FString AfterBlockSnapshotJson;
-		FString AfterBlockHash;
-		FString SnapshotError;
-		FBlueprintHelperReviewBaselineSnapshotService SemanticSnapshotService;
-		if (SemanticSnapshotService.CaptureTargetSnapshot(
-			AfterBlockTarget,
-			AfterBlockSnapshotJson,
-			AfterBlockHash,
-			SnapshotError))
-		{
-			JournalRecord.BaselineSnapshotsByTargetKey.Add(ReviewBlockTargetKey, BeforeBlockSnapshotJson);
-			JournalRecord.RecordedAfterSnapshotsByTargetKey.Add(ReviewBlockTargetKey, AfterBlockSnapshotJson);
-		}
-	}
-	for (UEdGraphNode* Node : NewNodes)
-	{
-		if (!Node)
-		{
-			continue;
-		}
-		JournalRecord.CreatedNodeAnchors.Add(
-			FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::MakeReviewNodeAnchor(Node));
-		if (Node->NodeGuid.IsValid())
-		{
-			const FString NodeGuid = Node->NodeGuid.ToString(EGuidFormats::Digits);
-			const FString NodeTargetKey = FString::Printf(
-				TEXT("graph:%s:node:%s"),
-				*Request.GraphName,
-				*NodeGuid);
-			FBlueprintHelperReviewAtomicTarget NodeTarget;
-			NodeTarget.AssetPath = Request.AssetPath;
-			NodeTarget.GraphName = Request.GraphName;
-			NodeTarget.TargetKind = TEXT("graph_node");
-			NodeTarget.TargetKey = NodeTargetKey;
-			NodeTarget.NodeGuid = NodeGuid;
-			FString MissingNodeSnapshotJson;
-			FString MissingNodeHash;
-			FBlueprintHelperReviewBaselineSnapshotService::MakeMissingTargetSnapshot(
-				NodeTarget,
-				true,
-				MissingNodeSnapshotJson,
-				MissingNodeHash);
-			FString NodeAfterSnapshotJson;
-			FString NodeAfterHash;
-			FString SnapshotError;
-			FBlueprintHelperReviewBaselineSnapshotService SemanticSnapshotService;
-			if (SemanticSnapshotService.CaptureTargetSnapshot(NodeTarget, NodeAfterSnapshotJson, NodeAfterHash, SnapshotError))
-			{
-				JournalRecord.BaselineSnapshotsByTargetKey.Add(NodeTargetKey, MissingNodeSnapshotJson);
-				JournalRecord.RecordedAfterSnapshotsByTargetKey.Add(NodeTargetKey, NodeAfterSnapshotJson);
-			}
-		}
-	}
-	FString JournalError;
-	if (!JournalService.WriteAppendJournal(JournalRecord, JournalError))
-	{
-		Mutation.Rollback();
-
-		FBlueprintHelperToolError Error;
-		Error.Code = TEXT("journal_write_failed");
-		Error.Stage = EBlueprintHelperToolStage::Execute;
-		Error.Message = JournalError;
-		Error.bRetryable = false;
-		Error.RollbackResult = EBlueprintHelperRollbackResult::RolledBack;
-		return FBlueprintHelperToolResultBuilder::Failure(TEXT("replace_blueprint_graph"), TraceId, Error);
 	}
 
 	// 10. 鏍囪淇敼
@@ -861,8 +770,6 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 	FBlueprintHelperReplaceGraphResultData Data;
 	Data.ReplaceResult.ReplacedRef.GraphId = Resolved.GraphId.IsEmpty() ? Request.GraphName : Resolved.GraphId;
 	Data.ReplaceResult.ReplacedRef.TargetRef = Resolved.TargetRef;
-	Data.WriteRef.TransactionId = TransactionId;
-	Data.WriteRef.bJournalRecorded = true;
 	SuccessResult.Data = Data.ToJson();
 	FBlueprintHelperGraphFragmentDebugData::AttachToData(SuccessResult.Data, PreflightResult.FragmentDebugData);
 

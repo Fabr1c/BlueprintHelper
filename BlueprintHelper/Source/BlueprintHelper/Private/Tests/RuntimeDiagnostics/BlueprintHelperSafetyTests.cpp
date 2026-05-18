@@ -42,12 +42,10 @@
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperPatchBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperMergeBlueprintGraphService.h"
 #include "Systems/Debug/BlueprintHelperCompileAssetService.h"
-#include "Systems/Transactions/BlueprintHelperTransactionQueryService.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
 #include "Systems/ToolClusters/BlueprintVariables/BlueprintHelperBlueprintVariableService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperBlockIdService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperOwnershipService.h"
-#include "Systems/Transactions/BlueprintHelperTransactionJournalService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphSnapshotService.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicJsonPathService.h"
 #include "Shared/Services/BlueprintHelperExportService.h"
@@ -385,19 +383,17 @@ bool FBlueprintHelperBridgeExportEffectiveScopeTest::RunTest(const FString& Para
 	FBlueprintHelperClassSettingsService ClassSettingsService(GraphResolver);
 	FBlueprintHelperBlockIdService BlockIdService;
 	FBlueprintHelperOwnershipService OwnershipService;
-	FBlueprintHelperTransactionJournalService JournalService;
 	FBlueprintHelperAppendBlueprintGraphService AppendGraphService(
-		GraphResolver, BlockIdService, OwnershipService, JournalService);
+		GraphResolver, BlockIdService, OwnershipService);
 	FBlueprintHelperGraphSnapshotService SnapshotService;
 	FBlueprintHelperReplaceBlueprintGraphService ReplaceGraphService(
-		GraphResolver, BlockIdService, OwnershipService, JournalService, SnapshotService);
+		GraphResolver, BlockIdService, OwnershipService, SnapshotService);
 	FBlueprintHelperLogicJsonPathService LogicJsonPathService;
 	FBlueprintHelperPatchBlueprintGraphService PatchGraphService(
-		GraphResolver, LogicJsonPathService, JournalService);
+		GraphResolver, LogicJsonPathService);
 	FBlueprintHelperMergeBlueprintGraphService MergeGraphService(
-		GraphResolver, LogicJsonPathService, JournalService);
+		GraphResolver, LogicJsonPathService);
 	FBlueprintHelperCompileAssetService CompileAssetService(CompileService);
-	FBlueprintHelperTransactionQueryService TransactionQueryService;
 	FBlueprintHelperBlueprintVariableService VariableService(GraphResolver, StructureService);
 	FBlueprintHelperReviewStoreService ReviewStoreService;
 	FBlueprintHelperBridgeRouter Router(
@@ -426,7 +422,6 @@ bool FBlueprintHelperBridgeExportEffectiveScopeTest::RunTest(const FString& Para
 		PatchGraphService,
 		MergeGraphService,
 		CompileAssetService,
-		TransactionQueryService,
 		VariableService,
 		ReviewStoreService);
 

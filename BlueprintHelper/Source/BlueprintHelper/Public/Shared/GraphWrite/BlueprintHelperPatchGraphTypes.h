@@ -127,7 +127,7 @@ enum class EBlueprintHelperPatchErrorCode : uint8
 	UnsupportedPatchType,
 	WritePermissionDisabled,
 	ProfilePolicyViolation,
-	JournalWriteFailed,
+	ReviewEvidenceWriteFailed,
 	RollbackBlocked,
 	RollbackFailed,
 	BridgeDisconnected
@@ -158,7 +158,7 @@ inline const TCHAR* PatchErrorCodeToString(EBlueprintHelperPatchErrorCode Code)
 	case EBlueprintHelperPatchErrorCode::UnsupportedPatchType:        return TEXT("unsupported_patch_type");
 	case EBlueprintHelperPatchErrorCode::WritePermissionDisabled:     return TEXT("write_permission_disabled");
 	case EBlueprintHelperPatchErrorCode::ProfilePolicyViolation:      return TEXT("profile_policy_violation");
-	case EBlueprintHelperPatchErrorCode::JournalWriteFailed:          return TEXT("journal_write_failed");
+	case EBlueprintHelperPatchErrorCode::ReviewEvidenceWriteFailed:          return TEXT("review_evidence_write_failed");
 	case EBlueprintHelperPatchErrorCode::RollbackBlocked:             return TEXT("rollback_blocked");
 	case EBlueprintHelperPatchErrorCode::RollbackFailed:              return TEXT("rollback_failed");
 	case EBlueprintHelperPatchErrorCode::BridgeDisconnected:          return TEXT("bridge_disconnected");

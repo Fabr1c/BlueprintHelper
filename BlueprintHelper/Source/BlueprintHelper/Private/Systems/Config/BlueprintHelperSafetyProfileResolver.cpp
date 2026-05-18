@@ -9,6 +9,7 @@
 #include "Misc/Paths.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
+#include "Systems/Config/BlueprintHelperProjectConfigPaths.h"
 
 namespace
 {
@@ -34,7 +35,7 @@ bool TryReadNestedString(
 
 bool TryReadProjectAgentProfileSafetyProfile(FString& OutProfile)
 {
-	const FString ProfilePath = FPaths::ProjectDir() / TEXT(".blueprinthelper/agent-profile.json");
+	const FString ProfilePath = FBlueprintHelperProjectConfigPaths::GetAgentProfilePath();
 	FString JsonText;
 	if (!FFileHelper::LoadFileToString(JsonText, *ProfilePath))
 	{

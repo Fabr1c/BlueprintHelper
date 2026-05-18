@@ -42,7 +42,6 @@
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperOwnershipService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
 #include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
-#include "Systems/Transactions/BlueprintHelperTransactionJournalService.h"
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
 #include "UObject/SoftObjectPath.h"

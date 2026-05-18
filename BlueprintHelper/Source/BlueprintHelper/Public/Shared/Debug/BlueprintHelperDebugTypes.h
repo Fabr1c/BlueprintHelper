@@ -321,9 +321,9 @@ struct FBlueprintHelperDebugRedactionInfo
 	}
 };
 
-struct FBlueprintHelperDebugTransactionLink
+struct FBlueprintHelperDebugEvidenceLink
 {
-	FString TransactionId;
+	FString EvidenceId;
 	FString Role;
 	FString Source;
 	FString Summary;
@@ -331,19 +331,19 @@ struct FBlueprintHelperDebugTransactionLink
 	TSharedRef<FJsonObject> ToJson() const
 	{
 		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
-		if (!TransactionId.IsEmpty()) Json->SetStringField(TEXT("transaction_id"), FBlueprintHelperDebugJson::RedactString(TransactionId));
+		if (!EvidenceId.IsEmpty()) Json->SetStringField(TEXT("evidence_id"), FBlueprintHelperDebugJson::RedactString(EvidenceId));
 		if (!Role.IsEmpty()) Json->SetStringField(TEXT("role"), FBlueprintHelperDebugJson::RedactString(Role));
 		if (!Source.IsEmpty()) Json->SetStringField(TEXT("source"), FBlueprintHelperDebugJson::RedactString(Source));
 		if (!Summary.IsEmpty()) Json->SetStringField(TEXT("summary"), FBlueprintHelperDebugJson::RedactString(Summary));
 		return Json;
 	}
 
-	static FBlueprintHelperDebugTransactionLink FromJson(const TSharedPtr<FJsonObject>& Json)
+	static FBlueprintHelperDebugEvidenceLink FromJson(const TSharedPtr<FJsonObject>& Json)
 	{
-		FBlueprintHelperDebugTransactionLink Link;
+		FBlueprintHelperDebugEvidenceLink Link;
 		if (Json.IsValid())
 		{
-			Json->TryGetStringField(TEXT("transaction_id"), Link.TransactionId);
+			Json->TryGetStringField(TEXT("evidence_id"), Link.EvidenceId);
 			Json->TryGetStringField(TEXT("role"), Link.Role);
 			Json->TryGetStringField(TEXT("source"), Link.Source);
 			Json->TryGetStringField(TEXT("summary"), Link.Summary);
@@ -367,7 +367,7 @@ struct FBlueprintHelperDebugEvent
 	FString TaskRunId;
 	TArray<FString> AssetPaths;
 	TArray<FString> ReviewRecordIds;
-	TArray<FBlueprintHelperDebugTransactionLink> TransactionLinks;
+	TArray<FBlueprintHelperDebugEvidenceLink> EvidenceLinks;
 	FBlueprintHelperDebugError Error;
 	FBlueprintHelperDebugRedactionInfo Redaction;
 	FString RecommendedNext;
@@ -390,14 +390,14 @@ struct FBlueprintHelperDebugEvent
 		if (!TaskRunId.IsEmpty()) Json->SetStringField(TEXT("task_run_id"), TaskRunId);
 		if (AssetPaths.Num() > 0) Json->SetArrayField(TEXT("asset_paths"), FBlueprintHelperDebugJson::StringArrayToJson(AssetPaths));
 		if (ReviewRecordIds.Num() > 0) Json->SetArrayField(TEXT("review_record_ids"), FBlueprintHelperDebugJson::StringArrayToJson(ReviewRecordIds));
-		if (TransactionLinks.Num() > 0)
+		if (EvidenceLinks.Num() > 0)
 		{
-			TArray<TSharedPtr<FJsonValue>> TransactionValues;
-			for (const FBlueprintHelperDebugTransactionLink& Link : TransactionLinks)
+			TArray<TSharedPtr<FJsonValue>> EvidenceValues;
+			for (const FBlueprintHelperDebugEvidenceLink& Link : EvidenceLinks)
 			{
-				TransactionValues.Add(MakeShared<FJsonValueObject>(Link.ToJson()));
+				EvidenceValues.Add(MakeShared<FJsonValueObject>(Link.ToJson()));
 			}
-			Json->SetArrayField(TEXT("transaction_links"), TransactionValues);
+			Json->SetArrayField(TEXT("evidence_links"), EvidenceValues);
 		}
 		if (!Error.Code.IsEmpty() || !Error.Message.IsEmpty()) Json->SetObjectField(TEXT("error"), Error.ToJson());
 		Json->SetObjectField(TEXT("redaction"), Redaction.ToJson());
@@ -431,14 +431,14 @@ struct FBlueprintHelperDebugEvent
 		Json->TryGetStringField(TEXT("task_run_id"), Event.TaskRunId);
 		FBlueprintHelperDebugJson::ReadStringArray(Json, TEXT("asset_paths"), Event.AssetPaths);
 		FBlueprintHelperDebugJson::ReadStringArray(Json, TEXT("review_record_ids"), Event.ReviewRecordIds);
-		const TArray<TSharedPtr<FJsonValue>>* TransactionValues = nullptr;
-		if (Json->TryGetArrayField(TEXT("transaction_links"), TransactionValues))
+		const TArray<TSharedPtr<FJsonValue>>* EvidenceValues = nullptr;
+		if (Json->TryGetArrayField(TEXT("evidence_links"), EvidenceValues))
 		{
-			for (const TSharedPtr<FJsonValue>& Value : *TransactionValues)
+			for (const TSharedPtr<FJsonValue>& Value : *EvidenceValues)
 			{
 				if (Value.IsValid() && Value->Type == EJson::Object)
 				{
-					Event.TransactionLinks.Add(FBlueprintHelperDebugTransactionLink::FromJson(Value->AsObject()));
+					Event.EvidenceLinks.Add(FBlueprintHelperDebugEvidenceLink::FromJson(Value->AsObject()));
 				}
 			}
 		}
@@ -529,7 +529,7 @@ struct FBlueprintHelperDebugCase
 	FString TaskRunId;
 	TArray<FString> AssetPaths;
 	TArray<FString> ReviewRecordIds;
-	TArray<FBlueprintHelperDebugTransactionLink> TransactionLinks;
+	TArray<FBlueprintHelperDebugEvidenceLink> EvidenceLinks;
 	FBlueprintHelperDebugError Error;
 	FString RecommendedNext;
 	FBlueprintHelperDebugFragmentArtifactRefs FragmentArtifacts;
@@ -551,14 +551,14 @@ struct FBlueprintHelperDebugCase
 		if (!TaskRunId.IsEmpty()) Json->SetStringField(TEXT("task_run_id"), TaskRunId);
 		if (AssetPaths.Num() > 0) Json->SetArrayField(TEXT("asset_paths"), FBlueprintHelperDebugJson::StringArrayToJson(AssetPaths));
 		if (ReviewRecordIds.Num() > 0) Json->SetArrayField(TEXT("review_record_ids"), FBlueprintHelperDebugJson::StringArrayToJson(ReviewRecordIds));
-		if (TransactionLinks.Num() > 0)
+		if (EvidenceLinks.Num() > 0)
 		{
-			TArray<TSharedPtr<FJsonValue>> TransactionValues;
-			for (const FBlueprintHelperDebugTransactionLink& Link : TransactionLinks)
+			TArray<TSharedPtr<FJsonValue>> EvidenceValues;
+			for (const FBlueprintHelperDebugEvidenceLink& Link : EvidenceLinks)
 			{
-				TransactionValues.Add(MakeShared<FJsonValueObject>(Link.ToJson()));
+				EvidenceValues.Add(MakeShared<FJsonValueObject>(Link.ToJson()));
 			}
-			Json->SetArrayField(TEXT("transaction_links"), TransactionValues);
+			Json->SetArrayField(TEXT("evidence_links"), EvidenceValues);
 		}
 		if (!Error.Code.IsEmpty() || !Error.Message.IsEmpty()) Json->SetObjectField(TEXT("error"), Error.ToJson());
 		if (!RecommendedNext.IsEmpty()) Json->SetStringField(TEXT("recommended_next"), RecommendedNext);
@@ -596,14 +596,14 @@ struct FBlueprintHelperDebugCase
 		Json->TryGetStringField(TEXT("task_run_id"), DebugCase.TaskRunId);
 		FBlueprintHelperDebugJson::ReadStringArray(Json, TEXT("asset_paths"), DebugCase.AssetPaths);
 		FBlueprintHelperDebugJson::ReadStringArray(Json, TEXT("review_record_ids"), DebugCase.ReviewRecordIds);
-		const TArray<TSharedPtr<FJsonValue>>* TransactionValues = nullptr;
-		if (Json->TryGetArrayField(TEXT("transaction_links"), TransactionValues))
+		const TArray<TSharedPtr<FJsonValue>>* EvidenceValues = nullptr;
+		if (Json->TryGetArrayField(TEXT("evidence_links"), EvidenceValues))
 		{
-			for (const TSharedPtr<FJsonValue>& Value : *TransactionValues)
+			for (const TSharedPtr<FJsonValue>& Value : *EvidenceValues)
 			{
 				if (Value.IsValid() && Value->Type == EJson::Object)
 				{
-					DebugCase.TransactionLinks.Add(FBlueprintHelperDebugTransactionLink::FromJson(Value->AsObject()));
+					DebugCase.EvidenceLinks.Add(FBlueprintHelperDebugEvidenceLink::FromJson(Value->AsObject()));
 				}
 			}
 		}
@@ -647,7 +647,7 @@ struct FBlueprintHelperDebugCaseSummary
 	FString TaskRunId;
 	TArray<FString> AssetPaths;
 	TArray<FString> ReviewRecordIds;
-	TArray<FBlueprintHelperDebugTransactionLink> TransactionLinks;
+	TArray<FBlueprintHelperDebugEvidenceLink> EvidenceLinks;
 	FBlueprintHelperDebugError Error;
 	FString RecommendedNext;
 	FBlueprintHelperDebugFragmentArtifactRefs FragmentArtifacts;
@@ -669,14 +669,14 @@ struct FBlueprintHelperDebugCaseSummary
 		if (!TaskRunId.IsEmpty()) Json->SetStringField(TEXT("task_run_id"), TaskRunId);
 		if (AssetPaths.Num() > 0) Json->SetArrayField(TEXT("asset_paths"), FBlueprintHelperDebugJson::StringArrayToJson(AssetPaths));
 		if (ReviewRecordIds.Num() > 0) Json->SetArrayField(TEXT("review_record_ids"), FBlueprintHelperDebugJson::StringArrayToJson(ReviewRecordIds));
-		if (TransactionLinks.Num() > 0)
+		if (EvidenceLinks.Num() > 0)
 		{
-			TArray<TSharedPtr<FJsonValue>> TransactionValues;
-			for (const FBlueprintHelperDebugTransactionLink& Link : TransactionLinks)
+			TArray<TSharedPtr<FJsonValue>> EvidenceValues;
+			for (const FBlueprintHelperDebugEvidenceLink& Link : EvidenceLinks)
 			{
-				TransactionValues.Add(MakeShared<FJsonValueObject>(Link.ToJson()));
+				EvidenceValues.Add(MakeShared<FJsonValueObject>(Link.ToJson()));
 			}
-			Json->SetArrayField(TEXT("transaction_links"), TransactionValues);
+			Json->SetArrayField(TEXT("evidence_links"), EvidenceValues);
 		}
 		if (!Error.Code.IsEmpty() || !Error.Message.IsEmpty()) Json->SetObjectField(TEXT("error"), Error.ToJson());
 		if (!RecommendedNext.IsEmpty()) Json->SetStringField(TEXT("recommended_next"), RecommendedNext);

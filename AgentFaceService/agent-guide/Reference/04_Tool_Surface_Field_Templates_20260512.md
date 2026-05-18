@@ -32,6 +32,8 @@ bh task result --id task_xxx --select summary.target_assets,artifacts.full_resul
 
 Use `--max-bytes <n>` as a hard stdout budget. When the budget is exceeded, read `artifacts.full_result` instead of rerunning the command with a broader selection.
 
+`artifacts.full_result` is compact by default. It keeps the CLI-level `BlueprintHelper.CliFullResult.v1` schema but removes nested ToolResult schemas, trace ids, raw `bridge_result`, duplicate TaskSpec `target_assets`, and duplicate nested `task_run_id`. Add `--expert` only when a raw diagnostic `artifacts.debug_result` is needed.
+
 ## 2. Allowed Tool Names
 
 Use `tools/list` as final authority. Normal Agent-facing tools:

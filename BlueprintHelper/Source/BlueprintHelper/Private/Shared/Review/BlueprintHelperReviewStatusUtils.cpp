@@ -113,5 +113,5 @@ void FBlueprintHelperReviewStatusUtils::RefreshReviewRecordStatus(FBlueprintHelp
 		Change.Status = CombineTargetStatuses(Change.AtomicTargets);
 	}
 	Record.Status = CombineChangeStatuses(Record.VisibleChanges);
-	Record.SourceTransactionSummary.FinalReviewStatus = Record.Status;
+	Record.SourceReviewSummary.FinalReviewStatus = Record.Status;
 }

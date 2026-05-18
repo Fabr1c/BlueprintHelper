@@ -9,7 +9,6 @@ struct FBlueprintHelperReviewedDataCleanupPlan
 {
 	TArray<FBlueprintHelperReviewRecord> RecordsToSave;
 	TArray<FString> ReviewRecordIdsToDelete;
-	TArray<FString> TransactionFilePathsToDelete;
 	TArray<FString> SessionFilePathsToDelete;
 	TArray<FString> OldDebugBundlePathsToDelete;
 	TArray<FString> CompletedDebugBundlePathsToDelete;
@@ -24,7 +23,6 @@ struct FBlueprintHelperReviewedDataCleanupResult
 	int32 RecordsSaved = 0;
 	int32 RecordsDeleted = 0;
 	int32 ChangesRemoved = 0;
-	int32 TransactionFilesDeleted = 0;
 	int32 SessionFilesDeleted = 0;
 	int32 OldDebugBundlesDeleted = 0;
 	int32 CompletedDebugBundlesDeleted = 0;

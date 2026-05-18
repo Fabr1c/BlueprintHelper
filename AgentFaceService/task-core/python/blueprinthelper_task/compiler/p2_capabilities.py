@@ -11,7 +11,6 @@ TASK_PLAN_SCHEMA = "BlueprintHelper.TaskPlan.v1"
 
 P2_TASK_TYPES = {
     "edit_object_properties",
-    "manage_blueprinthelper_ownership",
     "edit_blueprint_signature",
 }
 
@@ -24,8 +23,6 @@ def compile_p2_task_spec(task_spec: Dict[str, Any], dry_run: bool) -> Dict[str, 
     task_type = task_spec.get("task_type")
     if task_type == "edit_object_properties":
         task_plan = _compile_object_property_task_plan(task_spec)
-    elif task_type == "manage_blueprinthelper_ownership":
-        task_plan = _compile_graph_cleanup_ownership_task_plan(task_spec)
     elif task_type == "edit_blueprint_signature":
         task_plan = _compile_blueprint_signature_task_plan(task_spec)
     else:
@@ -91,31 +88,6 @@ def _compile_object_property_task_plan(task_spec: Dict[str, Any]) -> Dict[str, A
             {"property_scope": "uobject"},
         ),
     ])
-
-
-def _compile_graph_cleanup_ownership_task_plan(task_spec: Dict[str, Any]) -> Dict[str, Any]:
-    _assert_no_legacy_validation_fields(task_spec)
-    behavior = _required_object(task_spec, "behavior", "behavior")
-    _require_exact_string(
-        behavior,
-        "ownership_strategy",
-        "owned_block_lifecycle",
-        "behavior.ownership_strategy",
-        "unsupported_ownership_strategy",
-    )
-    changes = _required_non_empty_list(behavior, "changes", "behavior.changes")
-    steps = []
-    for index, raw_change in enumerate(changes):
-        path = f"behavior.changes[{index}]"
-        change = _required_object_value(raw_change, path)
-        steps.append(_make_step(
-            index + 1,
-            "graph_cleanup_ownership",
-            _target_asset_path(task_spec),
-            "owned_block_lifecycle",
-            [_compile_graph_cleanup_ownership_op(change, path)],
-        ))
-    return _make_task_plan(task_spec, steps)
 
 
 def _compile_blueprint_signature_task_plan(task_spec: Dict[str, Any]) -> Dict[str, Any]:
@@ -260,55 +232,6 @@ def _remove_signature_name(change: Dict[str, Any], signature_kind: str, path: st
         if dispatcher_name:
             return dispatcher_name
     return _required_string(change, "signature_name", f"{path}.signature_name")
-
-
-def _compile_graph_cleanup_ownership_op(change: Dict[str, Any], path: str) -> Dict[str, Any]:
-    kind = _required_string(change, "kind", f"{path}.kind")
-    op_by_kind = {
-        "cleanup_block": "cleanup_blueprint_helper_block",
-        "cleanup_blueprint_helper_block": "cleanup_blueprint_helper_block",
-        "convert_block_to_user_owned": "convert_blueprint_helper_block_to_user_owned",
-        "convert_blueprint_helper_block_to_user_owned": "convert_blueprint_helper_block_to_user_owned",
-        "rollback_cleanup_transaction": "rollback_cleanup_transaction",
-    }
-    op_name = op_by_kind.get(kind)
-    if not op_name:
-        _raise(
-            "unsupported_ownership_op",
-            f"Unsupported ownership change kind: {kind}",
-            f"{path}.kind",
-            "Use cleanup_block, convert_block_to_user_owned, or rollback_cleanup_transaction.",
-        )
-
-    if op_name == "rollback_cleanup_transaction":
-        return _omit_none({
-            "op": op_name,
-            "transaction_id": _required_string(change, "transaction_id", f"{path}.transaction_id"),
-            "asset_path": change.get("asset_path"),
-            "rollback_scope": change.get("rollback_scope", "cleanup_transaction"),
-            "already_rolled_back_policy": change.get("already_rolled_back_policy"),
-        })
-
-    block_id = _optional_string(change, "block_id")
-    graph_id = _optional_string(change, "graph_id")
-    block_ref = _optional_string(change, "block_ref")
-    if not block_id and not (graph_id and block_ref):
-        _raise(
-            "taskspec_semantic_invalid",
-            "Owned block operation requires block_id or graph_id + block_ref.",
-            path,
-            "Provide block_id or graph_id + block_ref.",
-        )
-
-    return _omit_none({
-        "op": op_name,
-        "graph": change.get("graph_name"),
-        "graph_id": graph_id,
-        "block_ref": block_ref,
-        "block_id": block_id,
-        "missing_policy": change.get("missing_policy"),
-        "already_user_owned_policy": change.get("already_user_owned_policy"),
-    })
 
 
 def _make_task_plan(task_spec: Dict[str, Any], steps: List[Dict[str, Any]]) -> Dict[str, Any]:

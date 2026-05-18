@@ -80,7 +80,7 @@ bh bridge call --command <read_only_bridge_command>
 
 ### 返回形态
 
-CLI 通常向 stdout 输出精简的 `BlueprintHelper.CliResult.v1`。完整 artifact 可能仍保留兼容 envelope 名称 `BlueprintHelper.McpToolResult.v1`。
+CLI 通常向 stdout 输出精简的 `BlueprintHelper.CliResult.v1`。`artifacts.full_result` 使用精简的 `BlueprintHelper.CliFullResult.v1`，不输出 nested ToolResult schema、trace id、raw `bridge_result`、重复 `target_assets` 或重复 nested `task_run_id`。需要 raw Bridge/trace 诊断时使用 `--expert`，并读取 `artifacts.debug_result`。
 
 示例：
 
@@ -203,8 +203,9 @@ Read command 使用根对象 `BlueprintHelper.ReadSpec.v1`：
 | `BlueprintHelper.TaskSpec.v1` | Agent | Semantic task specification / 语义任务描述 |
 | `BlueprintHelper.TaskPlan.v1` | task-core / Python compiler | Compiler-owned execution plan / 编译器生成执行计划 |
 | `BlueprintHelper.TaskRunJournal.v1` | UE Task Runtime | Task execution journal / 执行日志 |
-| `BlueprintHelper.McpToolResult.v1` | Normalized full artifact | Compatibility envelope / 兼容 envelope |
 | `BlueprintHelper.CliResult.v1` | CLI stdout | Compact Agent summary / Agent 精简摘要 |
+| `BlueprintHelper.CliFullResult.v1` | CLI full artifact | Compact full artifact / 精简 full artifact |
+| `BlueprintHelper.CliDebugResult.v1` | CLI expert debug artifact | Raw Bridge and trace diagnostics / expert 诊断 |
 
 ### 写入授权
 
@@ -292,7 +293,7 @@ bh bridge call --command <read_only_bridge_command>
 
 ### Return Shape
 
-The CLI usually prints compact `BlueprintHelper.CliResult.v1` summaries to stdout. The full artifact may still keep the compatibility envelope name `BlueprintHelper.McpToolResult.v1`.
+The CLI usually prints compact `BlueprintHelper.CliResult.v1` summaries to stdout. `artifacts.full_result` uses the compact `BlueprintHelper.CliFullResult.v1` shape and omits nested ToolResult schemas, trace ids, raw `bridge_result`, duplicate `target_assets`, and duplicate nested `task_run_id`. Use `--expert` only when raw Bridge/trace diagnostics are needed, then read `artifacts.debug_result`.
 
 Example:
 
@@ -415,8 +416,9 @@ Rules:
 | `BlueprintHelper.TaskSpec.v1` | Agent | Semantic task specification / 语义任务描述 |
 | `BlueprintHelper.TaskPlan.v1` | task-core / Python compiler | Compiler-owned execution plan / 编译器生成执行计划 |
 | `BlueprintHelper.TaskRunJournal.v1` | UE Task Runtime | Task execution journal / 执行日志 |
-| `BlueprintHelper.McpToolResult.v1` | Normalized full artifact | Compatibility envelope / 兼容 envelope |
 | `BlueprintHelper.CliResult.v1` | CLI stdout | Compact Agent summary / Agent 精简摘要 |
+| `BlueprintHelper.CliFullResult.v1` | CLI full artifact | Compact full artifact |
+| `BlueprintHelper.CliDebugResult.v1` | CLI expert debug artifact | Raw Bridge and trace diagnostics |
 
 ### Write Authorization
 

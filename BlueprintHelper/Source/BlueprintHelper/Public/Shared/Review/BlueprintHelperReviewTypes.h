@@ -1,4 +1,4 @@
-// BlueprintHelper Review UI data types.
+﻿// BlueprintHelper Review UI data types.
 
 #pragma once
 
@@ -187,9 +187,9 @@ struct FBlueprintHelperReviewAtomicTarget
 	FString ScopeIdentity;
 	FString VisualGroupKey;
 	FString DisplayLabel;
-	FString FirstTransactionId;
-	FString LatestTransactionId;
-	TArray<FString> SourceTransactionIds;
+	FString FirstEvidenceId;
+	FString LatestEvidenceId;
+	TArray<FString> SourceEvidenceIds;
 	FString Ownership = TEXT("unknown");
 	FString NodeGuid;
 	FString PinPath;
@@ -200,7 +200,6 @@ struct FBlueprintHelperReviewAtomicTarget
 	FString AfterSnapshotJson;
 	FString RecordedAfterHash;
 	FString BaselineHash;
-	FString RollbackDataRef;
 	EBlueprintHelperReviewChangeStatus Status = EBlueprintHelperReviewChangeStatus::Pending;
 	int32 ExecutionOrder = INDEX_NONE;
 	int32 TaskStepIndex = INDEX_NONE;
@@ -210,9 +209,9 @@ struct FBlueprintHelperReviewAtomicTarget
 	FVector2D GraphSize = FVector2D(360.0f, 180.0f);
 };
 
-struct FBlueprintHelperReviewTransactionInput
+struct FBlueprintHelperReviewEvidenceInput
 {
-	FString TransactionId;
+	FString EvidenceId;
 	FString AssetPath;
 	FString GraphName;
 	FString LocationKey;
@@ -229,9 +228,9 @@ struct FBlueprintHelperReviewVisibleChange
 	FString AssetPath;
 	FString GraphName;
 	FString LocationKey;
-	FString LatestTransactionId;
-	TArray<FString> LatestTransactionIds;
-	TArray<FString> SourceTransactionIds;
+	FString LatestEvidenceId;
+	TArray<FString> LatestEvidenceIds;
+	TArray<FString> SourceEvidenceIds;
 	TArray<FBlueprintHelperReviewAtomicTarget> AtomicTargets;
 	FString ScopeIdentity;
 	EBlueprintHelperReviewChangeKind ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
@@ -254,10 +253,10 @@ struct FBlueprintHelperReviewVisibleChange
 
 struct FBlueprintHelperWriteReviewEvidence
 {
-	FString Schema = TEXT("BlueprintHelper.WriteReviewEvidence.v1");
+	FString Schema = TEXT("BlueprintHelper.WriteReviewEvidence.v2");
 	FString ArchiveSessionId;
 	FString TaskRunId;
-	FString TransactionId;
+	FString EvidenceId;
 	FString CreatedAt;
 	FString AssetPath;
 	FString OperationKind;
@@ -272,7 +271,7 @@ struct FBlueprintHelperWriteReviewEvidence
 
 struct FBlueprintHelperReviewArchiveSession
 {
-	FString Schema = TEXT("BlueprintHelper.ArchiveSession.v1");
+	FString Schema = TEXT("BlueprintHelper.ArchiveSession.v2");
 	FString ArchiveSessionId;
 	FString TaskRunId;
 	TArray<FString> AllowedTargetAssets;
@@ -291,17 +290,17 @@ struct FBlueprintHelperReviewActionRecord
 	TArray<FString> TargetKeys;
 	FString OwnershipPolicy;
 	FString CreatedAt;
-	FString SourceTransactionId;
+	FString SourceEvidenceId;
 	FString Message;
 };
 
-struct FBlueprintHelperReviewSourceTransactionSummary
+struct FBlueprintHelperReviewSourceSummary
 {
-	int32 TransactionCount = 0;
+	int32 EvidenceCount = 0;
 	TArray<FString> TaskRunIds;
 	TArray<FString> OperationKinds;
 	TArray<FString> AssetPaths;
-	TArray<FString> TransactionIds;
+	TArray<FString> EvidenceIds;
 	FString CreatedAtFirst;
 	FString CreatedAtLast;
 	EBlueprintHelperReviewChangeStatus FinalReviewStatus = EBlueprintHelperReviewChangeStatus::Pending;
@@ -309,7 +308,7 @@ struct FBlueprintHelperReviewSourceTransactionSummary
 
 struct FBlueprintHelperReviewRecord
 {
-	FString Schema = TEXT("BlueprintHelper.ReviewRecord.v1");
+	FString Schema = TEXT("BlueprintHelper.ReviewRecord.v2");
 	FString ReviewRecordId;
 	FString ArchiveSessionId;
 	FString AssetPath;
@@ -319,7 +318,7 @@ struct FBlueprintHelperReviewRecord
 	TArray<FBlueprintHelperReviewVisibleChange> VisibleChanges;
 	TArray<FBlueprintHelperReviewActionRecord> ReviewActions;
 	TArray<FString> DebugCaseIds;
-	FBlueprintHelperReviewSourceTransactionSummary SourceTransactionSummary;
+	FBlueprintHelperReviewSourceSummary SourceReviewSummary;
 };
 
 struct FBlueprintHelperReviewRecordQuery
@@ -328,19 +327,6 @@ struct FBlueprintHelperReviewRecordQuery
 	FString AssetPathFilter;
 	FString TaskRunIdFilter;
 	bool bPendingOnly = true;
-};
-
-struct FBlueprintHelperReviewConvertOwnerBlockRequest
-{
-	FString ReviewRecordId;
-	FString Direction;
-	FString BlockTargetKey;
-	FString EntryAnchor;
-	TArray<FString> NodeAnchors;
-	TArray<FString> LinkAnchors;
-	FString DesiredBlockRef;
-	FString ConversionTransactionId;
-	bool bSettingProfileAllowsConversion = false;
 };
 
 BLUEPRINTHELPER_API FString BlueprintHelperReviewNormalizeLocation(
@@ -368,3 +354,4 @@ BLUEPRINTHELPER_API bool BlueprintHelperReviewShouldShowInUMGWidgetTree(const FB
 BLUEPRINTHELPER_API bool BlueprintHelperReviewShouldShowInDataTable(const FBlueprintHelperReviewVisibleChange& Change);
 BLUEPRINTHELPER_API bool BlueprintHelperReviewShouldShowInDataAsset(const FBlueprintHelperReviewVisibleChange& Change);
 BLUEPRINTHELPER_API bool BlueprintHelperReviewShouldShowInMyBlueprint(const FBlueprintHelperReviewVisibleChange& Change);
+

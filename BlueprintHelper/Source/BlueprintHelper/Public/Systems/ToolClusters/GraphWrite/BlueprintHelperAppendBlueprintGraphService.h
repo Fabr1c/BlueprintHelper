@@ -10,7 +10,6 @@
 class FBlueprintHelperGraphResolver;
 class FBlueprintHelperBlockIdService;
 class FBlueprintHelperOwnershipService;
-class FBlueprintHelperTransactionJournalService;
 class UEdGraph;
 class UBlueprint;
 class FJsonObject;
@@ -23,9 +22,7 @@ public:
 	FBlueprintHelperAppendBlueprintGraphService(
 		const FBlueprintHelperGraphResolver& InResolver,
 		const FBlueprintHelperBlockIdService& InBlockIdService,
-		const FBlueprintHelperOwnershipService& InOwnershipService,
-		const FBlueprintHelperTransactionJournalService& InJournalService);
-
+		const FBlueprintHelperOwnershipService& InOwnershipService);
 	/** 执行 Append 操作，返回统一 ToolResultBase。*/
 	FBlueprintHelperToolResultBase Execute(const TSharedPtr<FJsonObject>& Payload) const;
 
@@ -86,5 +83,4 @@ private:
 	const FBlueprintHelperGraphResolver& Resolver;
 	const FBlueprintHelperBlockIdService& BlockIdService;
 	const FBlueprintHelperOwnershipService& OwnershipService;
-	const FBlueprintHelperTransactionJournalService& JournalService;
 };

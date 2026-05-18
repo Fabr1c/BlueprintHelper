@@ -1,4 +1,4 @@
-// BlueprintHelper ReviewPanel debug bundle service.
+﻿// BlueprintHelper ReviewPanel debug bundle service.
 
 #include "UI/Review/BlueprintHelperReviewDebugBundleService.h"
 
@@ -84,14 +84,14 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewDebugBundleService::BuildChangeSum
 	Json->SetStringField(TEXT("graph_name"), Change->GraphName);
 	Json->SetStringField(TEXT("location_key"), Change->LocationKey);
 	Json->SetStringField(TEXT("display_label"), Change->DisplayLabel);
-	Json->SetStringField(TEXT("latest_transaction_id"), Change->LatestTransactionId);
+	Json->SetStringField(TEXT("latest_evidence_id"), Change->LatestEvidenceId);
 	Json->SetStringField(TEXT("change_kind"), BlueprintHelperReviewChangeKindToString(Change->ChangeKind));
 	Json->SetStringField(TEXT("status"), BlueprintHelperReviewChangeStatusToString(Change->Status));
 	Json->SetStringField(TEXT("scope_identity"), Change->ScopeIdentity);
 	Json->SetStringField(TEXT("before_hash"), Change->BeforeHash);
 	Json->SetStringField(TEXT("after_hash"), Change->AfterHash);
 	Json->SetStringField(TEXT("hash_source"), TEXT("semantic_target_snapshot"));
-	Json->SetStringField(TEXT("snapshot_schema"), TEXT("BlueprintHelper.ReviewTargetSnapshot.v1"));
+	Json->SetStringField(TEXT("snapshot_schema"), TEXT("BlueprintHelper.ReviewTargetSnapshot.v2"));
 	Json->SetStringField(TEXT("retention_mode"), TEXT("standard"));
 	Json->SetBoolField(TEXT("has_before_snapshot"), !Change->BeforeSnapshotJson.IsEmpty());
 	Json->SetBoolField(TEXT("has_after_snapshot"), !Change->AfterSnapshotJson.IsEmpty());
@@ -108,12 +108,12 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewDebugBundleService::BuildChangeSum
 		TargetJson->SetStringField(TEXT("property_path"), Target.PropertyPath);
 		TargetJson->SetStringField(TEXT("component_path"), Target.ComponentPath);
 		TargetJson->SetStringField(TEXT("scope_identity"), Target.ScopeIdentity);
-		TargetJson->SetStringField(TEXT("first_transaction_id"), Target.FirstTransactionId);
-		TargetJson->SetStringField(TEXT("latest_transaction_id"), Target.LatestTransactionId);
+		TargetJson->SetStringField(TEXT("first_evidence_id"), Target.FirstEvidenceId);
+		TargetJson->SetStringField(TEXT("latest_evidence_id"), Target.LatestEvidenceId);
 		TargetJson->SetStringField(TEXT("baseline_hash"), Target.BaselineHash);
 		TargetJson->SetStringField(TEXT("recorded_after_hash"), Target.RecordedAfterHash);
 		TargetJson->SetStringField(TEXT("hash_source"), TEXT("semantic_target_snapshot"));
-		TargetJson->SetStringField(TEXT("snapshot_schema"), TEXT("BlueprintHelper.ReviewTargetSnapshot.v1"));
+		TargetJson->SetStringField(TEXT("snapshot_schema"), TEXT("BlueprintHelper.ReviewTargetSnapshot.v2"));
 		TargetJson->SetBoolField(TEXT("has_before_snapshot"), !Target.BeforeSnapshotJson.IsEmpty());
 		TargetJson->SetBoolField(TEXT("has_after_snapshot"), !Target.AfterSnapshotJson.IsEmpty());
 		Targets.Add(MakeShared<FJsonValueObject>(TargetJson));
@@ -191,7 +191,7 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewDebugBundleService::BuildActionHas
 TSharedRef<FJsonObject> FBlueprintHelperReviewDebugBundleService::CreateEmptyBundle(const FString& SessionId)
 {
 	TSharedRef<FJsonObject> Bundle = MakeShared<FJsonObject>();
-	Bundle->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.ReviewPanelDebugBundle.v1"));
+	Bundle->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.ReviewPanelDebugBundle.v2"));
 	Bundle->SetStringField(TEXT("session_id"), SessionId);
 	Bundle->SetStringField(TEXT("created_at"), FDateTime::UtcNow().ToIso8601());
 	Bundle->SetStringField(TEXT("updated_at"), FDateTime::UtcNow().ToIso8601());
@@ -461,3 +461,4 @@ void FBlueprintHelperReviewDebugBundleService::SetError(FString* OutError, const
 		*OutError = Error;
 	}
 }
+

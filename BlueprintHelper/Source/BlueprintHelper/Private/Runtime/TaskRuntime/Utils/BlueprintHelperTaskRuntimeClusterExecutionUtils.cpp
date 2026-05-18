@@ -142,8 +142,8 @@ static void AddTaskRuntimeReviewTarget(
 		Target.VisualGroupKey,
 		Evidence.OperationKind);
 	Target.DisplayLabel = DisplayLabel.IsEmpty() ? TargetName : DisplayLabel;
-	Target.LatestTransactionId = Evidence.TransactionId;
-	Target.SourceTransactionIds.Add(Evidence.TransactionId);
+	Target.LatestEvidenceId = Evidence.EvidenceId;
+	Target.SourceEvidenceIds.Add(Evidence.EvidenceId);
 	Target.AnchorJson = PayloadText;
 	Target.Ownership = TEXT("blueprinthelper_owned");
 	Evidence.AtomicTargets.Add(Target);
@@ -668,7 +668,7 @@ bool FBlueprintHelperTaskRuntimeClusterExecutionUtils::TryBuildTaskRuntimeReview
 	OutEvidence = FBlueprintHelperWriteReviewEvidence();
 	OutEvidence.ArchiveSessionId = ArchiveSessionId;
 	OutEvidence.TaskRunId = TaskRunId;
-	OutEvidence.TransactionId = FString::Printf(TEXT("task_step_%s_%d"), *TaskRunId, StepIndex);
+	OutEvidence.EvidenceId = FString::Printf(TEXT("task_step_%s_%d"), *TaskRunId, StepIndex);
 	OutEvidence.AssetPath = AssetPath;
 	OutEvidence.OperationKind = LoweredStep.AdapterOperation.IsEmpty()
 		? LoweredStep.RuntimeOperation

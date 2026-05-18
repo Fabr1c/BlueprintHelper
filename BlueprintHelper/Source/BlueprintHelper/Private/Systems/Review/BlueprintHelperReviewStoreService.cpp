@@ -1,4 +1,4 @@
-// BlueprintHelper Review Store service implementation.
+﻿// BlueprintHelper Review Store service implementation.
 
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
 
@@ -126,16 +126,16 @@ FString FBlueprintHelperReviewStoreService::MakeReviewRecordId(
 }
 
 TArray<FBlueprintHelperReviewVisibleChange> FBlueprintHelperReviewStoreService::BuildVisibleChanges(
-	const TArray<FBlueprintHelperReviewTransactionInput>& Transactions) const
+	const TArray<FBlueprintHelperReviewEvidenceInput>& EvidenceInputs) const
 {
 	TMap<FString, FBlueprintHelperReviewVisibleChange> AtomicChanges;
 	TArray<FString> AtomicOrder;
 
-	for (const FBlueprintHelperReviewTransactionInput& Input : Transactions)
+	for (const FBlueprintHelperReviewEvidenceInput& Input : EvidenceInputs)
 	{
 		if (Input.ChangeKind == EBlueprintHelperReviewChangeKind::Renamed)
 		{
-			FBlueprintHelperReviewTransactionInput Removed = Input;
+			FBlueprintHelperReviewEvidenceInput Removed = Input;
 			Removed.ChangeKind = EBlueprintHelperReviewChangeKind::Removed;
 			Removed.LocationKey = Input.LocationKey + TEXT(":rename_removed");
 			Removed.AfterSummary = TEXT("");
@@ -146,7 +146,7 @@ TArray<FBlueprintHelperReviewVisibleChange> FBlueprintHelperReviewStoreService::
 			}
 			AddAtomicTargetsForInput(Removed, AtomicChanges, AtomicOrder);
 
-			FBlueprintHelperReviewTransactionInput Added = Input;
+			FBlueprintHelperReviewEvidenceInput Added = Input;
 			Added.ChangeKind = EBlueprintHelperReviewChangeKind::Added;
 			Added.LocationKey = Input.LocationKey + TEXT(":rename_added");
 			Added.BeforeSummary = TEXT("");
@@ -196,7 +196,7 @@ TArray<FBlueprintHelperReviewRecord> FBlueprintHelperReviewStoreService::BuildRe
 			NewRecord.ReviewRecordId = RecordId;
 			NewRecord.ArchiveSessionId = Evidence.ArchiveSessionId;
 			NewRecord.AssetPath = Evidence.AssetPath;
-			NewRecord.SourceTransactionSummary.AssetPaths.AddUnique(Evidence.AssetPath);
+			NewRecord.SourceReviewSummary.AssetPaths.AddUnique(Evidence.AssetPath);
 			RecordsById.Add(RecordId, NewRecord);
 			RecordOrder.Add(RecordId);
 			Record = RecordsById.Find(RecordId);
@@ -210,27 +210,27 @@ TArray<FBlueprintHelperReviewRecord> FBlueprintHelperReviewStoreService::BuildRe
 		if (!Evidence.TaskRunId.IsEmpty())
 		{
 			Record->SourceTaskRunIds.AddUnique(Evidence.TaskRunId);
-			Record->SourceTransactionSummary.TaskRunIds.AddUnique(Evidence.TaskRunId);
+			Record->SourceReviewSummary.TaskRunIds.AddUnique(Evidence.TaskRunId);
 		}
 		if (!Evidence.OperationKind.IsEmpty())
 		{
-			Record->SourceTransactionSummary.OperationKinds.AddUnique(Evidence.OperationKind);
+			Record->SourceReviewSummary.OperationKinds.AddUnique(Evidence.OperationKind);
 		}
-		if (!Evidence.TransactionId.IsEmpty())
+		if (!Evidence.EvidenceId.IsEmpty())
 		{
-			Record->SourceTransactionSummary.TransactionIds.AddUnique(Evidence.TransactionId);
+			Record->SourceReviewSummary.EvidenceIds.AddUnique(Evidence.EvidenceId);
 		}
 		if (!Evidence.CreatedAt.IsEmpty())
 		{
-			if (Record->SourceTransactionSummary.CreatedAtFirst.IsEmpty()
-				|| Evidence.CreatedAt < Record->SourceTransactionSummary.CreatedAtFirst)
+			if (Record->SourceReviewSummary.CreatedAtFirst.IsEmpty()
+				|| Evidence.CreatedAt < Record->SourceReviewSummary.CreatedAtFirst)
 			{
-				Record->SourceTransactionSummary.CreatedAtFirst = Evidence.CreatedAt;
+				Record->SourceReviewSummary.CreatedAtFirst = Evidence.CreatedAt;
 			}
-			if (Record->SourceTransactionSummary.CreatedAtLast.IsEmpty()
-				|| Evidence.CreatedAt > Record->SourceTransactionSummary.CreatedAtLast)
+			if (Record->SourceReviewSummary.CreatedAtLast.IsEmpty()
+				|| Evidence.CreatedAt > Record->SourceReviewSummary.CreatedAtLast)
 			{
-				Record->SourceTransactionSummary.CreatedAtLast = Evidence.CreatedAt;
+				Record->SourceReviewSummary.CreatedAtLast = Evidence.CreatedAt;
 			}
 		}
 		for (const FString& DebugCaseId : Evidence.DebugCaseIds)
@@ -239,8 +239,8 @@ TArray<FBlueprintHelperReviewRecord> FBlueprintHelperReviewStoreService::BuildRe
 		}
 
 		AddEvidenceAtomicTargets(Evidence, *Record);
-		Record->SourceTransactionSummary.TransactionCount =
-			Record->SourceTransactionSummary.TransactionIds.Num();
+		Record->SourceReviewSummary.EvidenceCount =
+			Record->SourceReviewSummary.EvidenceIds.Num();
 	}
 
 	TArray<FBlueprintHelperReviewRecord> Records;
@@ -265,7 +265,7 @@ TArray<FBlueprintHelperReviewRecord> FBlueprintHelperReviewStoreService::BuildRe
 			Record->Status = bNeedsAction
 				? EBlueprintHelperReviewChangeStatus::NeedsAction
 				: (bHasPending ? EBlueprintHelperReviewChangeStatus::Pending : Record->Status);
-			Record->SourceTransactionSummary.FinalReviewStatus = Record->Status;
+			Record->SourceReviewSummary.FinalReviewStatus = Record->Status;
 			Records.Add(*Record);
 		}
 	}
@@ -279,7 +279,7 @@ TArray<FBlueprintHelperReviewRecord> FBlueprintHelperReviewStoreService::BuildRe
 	const FString& AssetPath,
 	const FString& OperationKind,
 	const FString& TaskRunId,
-	const FString& TransactionId,
+	const FString& EvidenceId,
 	const FString& CreatedAt) const
 {
 	if (ArchiveSessionId.IsEmpty() || AssetPath.IsEmpty() || FragmentEvidence.IsEmpty())
@@ -290,7 +290,7 @@ TArray<FBlueprintHelperReviewRecord> FBlueprintHelperReviewStoreService::BuildRe
 	FBlueprintHelperWriteReviewEvidence Evidence;
 	Evidence.ArchiveSessionId = ArchiveSessionId;
 	Evidence.TaskRunId = TaskRunId;
-	Evidence.TransactionId = TransactionId.IsEmpty() ? FragmentEvidence.BundleId : TransactionId;
+	Evidence.EvidenceId = EvidenceId.IsEmpty() ? FragmentEvidence.BundleId : EvidenceId;
 	Evidence.CreatedAt = CreatedAt;
 	Evidence.AssetPath = AssetPath;
 	Evidence.OperationKind = OperationKind.IsEmpty() ? TEXT("graph_fragment") : OperationKind;
@@ -319,10 +319,10 @@ TArray<FBlueprintHelperReviewRecord> FBlueprintHelperReviewStoreService::BuildRe
 			: Scope.ScopeId;
 		Target.VisualGroupKey = TEXT("graph_body|") + GraphName;
 		Target.DisplayLabel = FString::Printf(TEXT("Modified [%s] graph body"), *ScopeLabel);
-		if (!Evidence.TransactionId.IsEmpty())
+		if (!Evidence.EvidenceId.IsEmpty())
 		{
-			Target.LatestTransactionId = Evidence.TransactionId;
-			Target.SourceTransactionIds.AddUnique(Evidence.TransactionId);
+			Target.LatestEvidenceId = Evidence.EvidenceId;
+			Target.SourceEvidenceIds.AddUnique(Evidence.EvidenceId);
 		}
 		Evidence.AtomicTargets.Add(Target);
 	}
@@ -337,10 +337,10 @@ TArray<FBlueprintHelperReviewRecord> FBlueprintHelperReviewStoreService::BuildRe
 		Target.TargetKey = FragmentEvidence.BundleId.IsEmpty() ? TEXT("graph_body") : FragmentEvidence.BundleId;
 		Target.VisualGroupKey = TEXT("graph_body|Graph");
 		Target.DisplayLabel = TEXT("Modified graph body");
-		if (!Evidence.TransactionId.IsEmpty())
+		if (!Evidence.EvidenceId.IsEmpty())
 		{
-			Target.LatestTransactionId = Evidence.TransactionId;
-			Target.SourceTransactionIds.AddUnique(Evidence.TransactionId);
+			Target.LatestEvidenceId = Evidence.EvidenceId;
+			Target.SourceEvidenceIds.AddUnique(Evidence.EvidenceId);
 		}
 		Evidence.AtomicTargets.Add(Target);
 	}
@@ -395,7 +395,7 @@ TArray<FBlueprintHelperReviewRecord> FBlueprintHelperReviewStoreService::QueryRe
 		}
 		if (!Query.TaskRunIdFilter.IsEmpty()
 			&& !Record.SourceTaskRunIds.Contains(Query.TaskRunIdFilter)
-			&& !Record.SourceTransactionSummary.TaskRunIds.Contains(Query.TaskRunIdFilter))
+			&& !Record.SourceReviewSummary.TaskRunIds.Contains(Query.TaskRunIdFilter))
 		{
 			continue;
 		}
@@ -548,7 +548,7 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewStoreService::BuildReviewRecordSum
 	const FBlueprintHelperReviewRecord& Record) const
 {
 	TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
-	Json->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.ReviewSummaryArtifact.v1"));
+	Json->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.ReviewSummaryArtifact.v2"));
 	Json->SetStringField(TEXT("review_record_id"), Record.ReviewRecordId);
 	Json->SetStringField(TEXT("archive_session_id"), Record.ArchiveSessionId);
 	Json->SetStringField(TEXT("asset_path"), Record.AssetPath);
@@ -571,7 +571,7 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewStoreService::BuildReviewRecordSum
 			Baseline->SetStringField(TEXT("snapshot_trust"), ArchiveSession.BaselineSnapshotTrust);
 		}
 		Baseline->SetStringField(TEXT("hash_source"), TEXT("semantic_target_snapshot"));
-		Baseline->SetStringField(TEXT("snapshot_schema"), TEXT("BlueprintHelper.ReviewBaselineSemanticSnapshot.v1"));
+		Baseline->SetStringField(TEXT("snapshot_schema"), TEXT("BlueprintHelper.ReviewBaselineSemanticSnapshot.v2"));
 		Baseline->SetStringField(TEXT("retention_mode"), TEXT("standard"));
 		Baseline->SetArrayField(TEXT("dirty_target_assets"),
 			FBlueprintHelperReviewStoreJsonUtils::MakeReviewJsonStringArray(ArchiveSession.DirtyTargetAssets));
@@ -585,22 +585,22 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewStoreService::BuildReviewRecordSum
 	}
 
 	TSharedRef<FJsonObject> SourceSummary = MakeShared<FJsonObject>();
-	SourceSummary->SetNumberField(TEXT("transaction_count"), Record.SourceTransactionSummary.TransactionCount);
-	SourceSummary->SetArrayField(TEXT("task_run_ids"), FBlueprintHelperReviewStoreJsonUtils::MakeReviewJsonStringArray(Record.SourceTransactionSummary.TaskRunIds));
-	SourceSummary->SetArrayField(TEXT("operation_kinds"), FBlueprintHelperReviewStoreJsonUtils::MakeReviewJsonStringArray(Record.SourceTransactionSummary.OperationKinds));
-	SourceSummary->SetArrayField(TEXT("asset_paths"), FBlueprintHelperReviewStoreJsonUtils::MakeReviewJsonStringArray(Record.SourceTransactionSummary.AssetPaths));
-	SourceSummary->SetArrayField(TEXT("transaction_ids"), FBlueprintHelperReviewStoreJsonUtils::MakeReviewJsonStringArray(Record.SourceTransactionSummary.TransactionIds));
-	if (!Record.SourceTransactionSummary.CreatedAtFirst.IsEmpty())
+	SourceSummary->SetNumberField(TEXT("evidence_count"), Record.SourceReviewSummary.EvidenceCount);
+	SourceSummary->SetArrayField(TEXT("task_run_ids"), FBlueprintHelperReviewStoreJsonUtils::MakeReviewJsonStringArray(Record.SourceReviewSummary.TaskRunIds));
+	SourceSummary->SetArrayField(TEXT("operation_kinds"), FBlueprintHelperReviewStoreJsonUtils::MakeReviewJsonStringArray(Record.SourceReviewSummary.OperationKinds));
+	SourceSummary->SetArrayField(TEXT("asset_paths"), FBlueprintHelperReviewStoreJsonUtils::MakeReviewJsonStringArray(Record.SourceReviewSummary.AssetPaths));
+	SourceSummary->SetArrayField(TEXT("evidence_ids"), FBlueprintHelperReviewStoreJsonUtils::MakeReviewJsonStringArray(Record.SourceReviewSummary.EvidenceIds));
+	if (!Record.SourceReviewSummary.CreatedAtFirst.IsEmpty())
 	{
-		SourceSummary->SetStringField(TEXT("created_at_first"), Record.SourceTransactionSummary.CreatedAtFirst);
+		SourceSummary->SetStringField(TEXT("created_at_first"), Record.SourceReviewSummary.CreatedAtFirst);
 	}
-	if (!Record.SourceTransactionSummary.CreatedAtLast.IsEmpty())
+	if (!Record.SourceReviewSummary.CreatedAtLast.IsEmpty())
 	{
-		SourceSummary->SetStringField(TEXT("created_at_last"), Record.SourceTransactionSummary.CreatedAtLast);
+		SourceSummary->SetStringField(TEXT("created_at_last"), Record.SourceReviewSummary.CreatedAtLast);
 	}
 	SourceSummary->SetStringField(TEXT("final_review_status"),
-		BlueprintHelperReviewChangeStatusToString(Record.SourceTransactionSummary.FinalReviewStatus));
-	Json->SetObjectField(TEXT("source_transaction_summary"), SourceSummary);
+		BlueprintHelperReviewChangeStatusToString(Record.SourceReviewSummary.FinalReviewStatus));
+	Json->SetObjectField(TEXT("source_review_summary"), SourceSummary);
 
 	TArray<TSharedPtr<FJsonValue>> ChangeSummaries;
 	for (const FBlueprintHelperReviewVisibleChange& Change : Record.VisibleChanges)
@@ -858,7 +858,7 @@ bool FBlueprintHelperReviewStoreService::LoadArchiveSession(
 }
 
 void FBlueprintHelperReviewStoreService::AddAtomicTargetsForInput(
-	const FBlueprintHelperReviewTransactionInput& Input,
+	const FBlueprintHelperReviewEvidenceInput& Input,
 	TMap<FString, FBlueprintHelperReviewVisibleChange>& AtomicChanges,
 	TArray<FString>& AtomicOrder) const
 {
@@ -869,7 +869,7 @@ void FBlueprintHelperReviewStoreService::AddAtomicTargetsForInput(
 		Target.GraphName = Target.GraphName.IsEmpty() ? Input.GraphName : Target.GraphName;
 		Target.DisplayLabel = Target.DisplayLabel.IsEmpty() ? Input.DisplayLabel : Target.DisplayLabel;
 		Target.VisualGroupKey = Target.VisualGroupKey.IsEmpty() ? Target.TargetKey : Target.VisualGroupKey;
-		Target.LatestTransactionId = Input.TransactionId;
+		Target.LatestEvidenceId = Input.EvidenceId;
 
 		const FString AtomicKey = FString::Printf(
 			TEXT("%s|%s|%s|%s"),
@@ -888,8 +888,8 @@ void FBlueprintHelperReviewStoreService::AddAtomicTargetsForInput(
 			AtomicChange.DisplayLabel = Target.DisplayLabel.IsEmpty() ? AtomicChange.DisplayLabel : Target.DisplayLabel;
 			AtomicChange.AtomicTargets.Reset();
 			AtomicChange.AtomicTargets.Add(Target);
-			AtomicChange.LatestTransactionIds.Reset();
-			AtomicChange.LatestTransactionIds.Add(Input.TransactionId);
+			AtomicChange.LatestEvidenceIds.Reset();
+			AtomicChange.LatestEvidenceIds.Add(Input.EvidenceId);
 			FBlueprintHelperReviewStoreTargetUtils::ApplyAssetLifecycleRootMetadata(AtomicChange);
 			AtomicChanges.Add(AtomicKey, AtomicChange);
 			AtomicOrder.Add(AtomicKey);
@@ -898,8 +898,8 @@ void FBlueprintHelperReviewStoreService::AddAtomicTargetsForInput(
 
 		FBlueprintHelperReviewVisibleChange& AtomicChange = *Existing;
 		FBlueprintHelperReviewAtomicTarget& ExistingTarget = AtomicChange.AtomicTargets[0];
-		ExistingTarget.LatestTransactionId = Input.TransactionId;
-		ExistingTarget.SourceTransactionIds.Add(Input.TransactionId);
+		ExistingTarget.LatestEvidenceId = Input.EvidenceId;
+		ExistingTarget.SourceEvidenceIds.Add(Input.EvidenceId);
 		ExistingTarget.GraphName = Target.GraphName;
 		ExistingTarget.VisualGroupKey = Target.VisualGroupKey;
 		ExistingTarget.DisplayLabel = Target.DisplayLabel;
@@ -911,16 +911,16 @@ void FBlueprintHelperReviewStoreService::AddAtomicTargetsForInput(
 		ExistingTarget.GraphPosition = Target.GraphPosition;
 		ExistingTarget.GraphSize = Target.GraphSize;
 
-		AtomicChange.LatestTransactionId = Input.TransactionId;
-		AtomicChange.LatestTransactionIds.Reset();
-		AtomicChange.LatestTransactionIds.Add(Input.TransactionId);
-		AtomicChange.SourceTransactionIds.Add(Input.TransactionId);
+		AtomicChange.LatestEvidenceId = Input.EvidenceId;
+		AtomicChange.LatestEvidenceIds.Reset();
+		AtomicChange.LatestEvidenceIds.Add(Input.EvidenceId);
+		AtomicChange.SourceEvidenceIds.Add(Input.EvidenceId);
 		AtomicChange.ChangeKind = Input.ChangeKind;
 		AtomicChange.GraphName = Target.GraphName;
 		AtomicChange.LocationKey = Target.VisualGroupKey;
 		AtomicChange.DisplayLabel = Target.DisplayLabel.IsEmpty() ? AtomicChange.DisplayLabel : Target.DisplayLabel;
 		AtomicChange.AfterSummary = Input.AfterSummary;
-		AtomicChange.ChangeId = Input.TransactionId;
+		AtomicChange.ChangeId = Input.EvidenceId;
 		FBlueprintHelperReviewStoreTargetUtils::ApplyAssetLifecycleRootMetadata(AtomicChange);
 	}
 }
@@ -986,21 +986,21 @@ void FBlueprintHelperReviewStoreService::NotifyPendingReviewChanged() const
 }
 
 FBlueprintHelperReviewVisibleChange FBlueprintHelperReviewStoreService::MakeVisibleChange(
-	const FBlueprintHelperReviewTransactionInput& Input,
+	const FBlueprintHelperReviewEvidenceInput& Input,
 	const FString& ChangeIdSuffix) const
 {
 	FBlueprintHelperReviewVisibleChange Change;
 	Change.AssetPath = Input.AssetPath;
 	Change.GraphName = Input.GraphName;
 	Change.LocationKey = Input.LocationKey;
-	Change.LatestTransactionId = Input.TransactionId;
-	Change.LatestTransactionIds.Add(Input.TransactionId);
-	Change.SourceTransactionIds.Add(Input.TransactionId);
+	Change.LatestEvidenceId = Input.EvidenceId;
+	Change.LatestEvidenceIds.Add(Input.EvidenceId);
+	Change.SourceEvidenceIds.Add(Input.EvidenceId);
 	Change.ChangeKind = Input.ChangeKind;
 	Change.DisplayLabel = Input.DisplayLabel.IsEmpty() ? Input.LocationKey : Input.DisplayLabel;
 	Change.BeforeSummary = Input.BeforeSummary;
 	Change.AfterSummary = Input.AfterSummary;
-	Change.ChangeId = Input.TransactionId;
+	Change.ChangeId = Input.EvidenceId;
 	if (!ChangeIdSuffix.IsEmpty())
 	{
 		Change.ChangeId += TEXT("_") + ChangeIdSuffix;
@@ -1029,15 +1029,15 @@ void FBlueprintHelperReviewStoreService::GroupAtomicVisibleChange(
 	{
 		FBlueprintHelperReviewVisibleChange& Existing = OutChanges[*ExistingIndex];
 		Existing.AtomicTargets.Add(Target);
-		for (const FString& SourceTransactionId : AtomicChange.SourceTransactionIds)
+		for (const FString& SourceEvidenceId : AtomicChange.SourceEvidenceIds)
 		{
-			Existing.SourceTransactionIds.AddUnique(SourceTransactionId);
+			Existing.SourceEvidenceIds.AddUnique(SourceEvidenceId);
 		}
-		for (const FString& LatestTransactionId : AtomicChange.LatestTransactionIds)
+		for (const FString& LatestEvidenceId : AtomicChange.LatestEvidenceIds)
 		{
-			Existing.LatestTransactionIds.AddUnique(LatestTransactionId);
+			Existing.LatestEvidenceIds.AddUnique(LatestEvidenceId);
 		}
-		Existing.LatestTransactionId = AtomicChange.LatestTransactionId;
+		Existing.LatestEvidenceId = AtomicChange.LatestEvidenceId;
 		Existing.ChangeKind = AtomicChange.ChangeKind;
 		Existing.GraphName = AtomicChange.GraphName.IsEmpty() ? Existing.GraphName : AtomicChange.GraphName;
 		Existing.DisplayLabel = AtomicChange.DisplayLabel.IsEmpty() ? Existing.DisplayLabel : AtomicChange.DisplayLabel;
@@ -1061,11 +1061,11 @@ void FBlueprintHelperReviewStoreService::AddEvidenceAtomicTargets(
 	if (Evidence.AtomicTargets.Num() == 0)
 	{
 		FBlueprintHelperReviewVisibleChange Change;
-		Change.ChangeId = Evidence.TransactionId;
+		Change.ChangeId = Evidence.EvidenceId;
 		Change.AssetPath = Evidence.AssetPath;
 		Change.LocationKey = Evidence.OperationKind;
-		Change.LatestTransactionId = Evidence.TransactionId;
-		Change.SourceTransactionIds.Add(Evidence.TransactionId);
+		Change.LatestEvidenceId = Evidence.EvidenceId;
+		Change.SourceEvidenceIds.Add(Evidence.EvidenceId);
 		Change.ChangeKind = Evidence.ChangeKind;
 		Change.Status = EBlueprintHelperReviewChangeStatus::NeedsAction;
 		Change.DisplayLabel = Evidence.DisplayLabel.IsEmpty() ? Evidence.OperationKind : Evidence.DisplayLabel;
@@ -1084,15 +1084,15 @@ void FBlueprintHelperReviewStoreService::AddEvidenceAtomicTargets(
 		{
 			Target.ExecutionOrder = Target.TaskStepIndex * 1000 + Index;
 		}
-		Target.FirstTransactionId = Target.FirstTransactionId.IsEmpty()
-			? Evidence.TransactionId
-			: Target.FirstTransactionId;
+		Target.FirstEvidenceId = Target.FirstEvidenceId.IsEmpty()
+			? Evidence.EvidenceId
+			: Target.FirstEvidenceId;
 		Target.AfterSnapshotJson = Target.AfterSnapshotJson.IsEmpty()
 			? Target.AnchorJson
 			: Target.AfterSnapshotJson;
-		Record.SourceTransactionSummary.AssetPaths.AddUnique(Target.AssetPath);
-		Target.LatestTransactionId = Evidence.TransactionId;
-		Target.SourceTransactionIds.AddUnique(Evidence.TransactionId);
+		Record.SourceReviewSummary.AssetPaths.AddUnique(Target.AssetPath);
+		Target.LatestEvidenceId = Evidence.EvidenceId;
+		Target.SourceEvidenceIds.AddUnique(Evidence.EvidenceId);
 		if (Target.Ownership.IsEmpty())
 		{
 			Target.Ownership = TEXT("unknown");
@@ -1106,7 +1106,7 @@ void FBlueprintHelperReviewStoreService::AddEvidenceAtomicTargets(
 		FBlueprintHelperReviewStoreTargetUtils::ApplyGraphBodyAggregation(Target);
 		Target.ScopeIdentity = FBlueprintHelperReviewStoreTargetUtils::MakeReviewScopeIdentity(
 			Target,
-			FBlueprintHelperReviewStoreTargetUtils::MakeReviewInternalMissingAnchorKey(Evidence.TransactionId, Index));
+			FBlueprintHelperReviewStoreTargetUtils::MakeReviewInternalMissingAnchorKey(Evidence.EvidenceId, Index));
 		NormalizeReviewTargetSemanticSnapshots(Evidence, Target);
 
 		FString NeedsActionReason;
@@ -1116,12 +1116,12 @@ void FBlueprintHelperReviewStoreService::AddEvidenceAtomicTargets(
 		}
 
 		const FString VisualGroupKey = Target.VisualGroupKey.IsEmpty()
-			? FBlueprintHelperReviewStoreTargetUtils::MakeReviewInternalMissingGroupKey(Evidence.TransactionId, Index)
+			? FBlueprintHelperReviewStoreTargetUtils::MakeReviewInternalMissingGroupKey(Evidence.EvidenceId, Index)
 			: Target.VisualGroupKey;
 		const FString ChangeAssetPath = Target.AssetPath.IsEmpty() ? Evidence.AssetPath : Target.AssetPath;
 		const FString AtomicLookupKey = FBlueprintHelperReviewStoreTargetUtils::MakeReviewAtomicLookupKey(
 			Target,
-			FBlueprintHelperReviewStoreTargetUtils::MakeReviewInternalMissingAnchorKey(Evidence.TransactionId, Index));
+			FBlueprintHelperReviewStoreTargetUtils::MakeReviewInternalMissingAnchorKey(Evidence.EvidenceId, Index));
 		const FString AtomicScopeLookupKey = Target.ScopeIdentity.IsEmpty() ? AtomicLookupKey : Target.ScopeIdentity;
 
 		FBlueprintHelperReviewVisibleChange* Change = Record.VisibleChanges.FindByPredicate(
@@ -1167,26 +1167,26 @@ void FBlueprintHelperReviewStoreService::AddEvidenceAtomicTargets(
 		}
 		else
 		{
-			TArray<FString> SourceTransactionIds = ExistingTarget->SourceTransactionIds;
-			for (const FString& SourceTransactionId : Target.SourceTransactionIds)
+			TArray<FString> SourceEvidenceIds = ExistingTarget->SourceEvidenceIds;
+			for (const FString& SourceEvidenceId : Target.SourceEvidenceIds)
 			{
-				SourceTransactionIds.AddUnique(SourceTransactionId);
+				SourceEvidenceIds.AddUnique(SourceEvidenceId);
 			}
 
 			FBlueprintHelperReviewAtomicTarget MergedTarget = Target;
 			FBlueprintHelperReviewStoreTargetUtils::PreserveFirstBaselineFields(MergedTarget, *ExistingTarget, Target);
-			MergedTarget.SourceTransactionIds = SourceTransactionIds;
+			MergedTarget.SourceEvidenceIds = SourceEvidenceIds;
 			*ExistingTarget = MergedTarget;
 		}
 
 		const FString OriginalBeforeSummary = Change->BeforeSummary;
 		const FString OriginalBeforeHash = Change->BeforeHash;
 		const FString OriginalBeforeSnapshotJson = Change->BeforeSnapshotJson;
-		Change->LatestTransactionId = Evidence.TransactionId;
-		Change->LatestTransactionIds.Reset();
-		Change->LatestTransactionIds.Add(Evidence.TransactionId);
-		Change->SourceTransactionIds.AddUnique(Evidence.TransactionId);
-		Change->ChangeId = FBlueprintHelperReviewStoreTargetUtils::MakeReviewVisibleChangeId(Evidence.TransactionId, VisualGroupKey);
+		Change->LatestEvidenceId = Evidence.EvidenceId;
+		Change->LatestEvidenceIds.Reset();
+		Change->LatestEvidenceIds.Add(Evidence.EvidenceId);
+		Change->SourceEvidenceIds.AddUnique(Evidence.EvidenceId);
+		Change->ChangeId = FBlueprintHelperReviewStoreTargetUtils::MakeReviewVisibleChangeId(Evidence.EvidenceId, VisualGroupKey);
 		Change->ScopeIdentity = Change->ScopeIdentity.IsEmpty() ? Target.ScopeIdentity : Change->ScopeIdentity;
 		Change->ChangeKind = Evidence.ChangeKind;
 		Change->BeforeSummary = OriginalBeforeSummary.IsEmpty() ? Evidence.BeforeSummary : OriginalBeforeSummary;
@@ -1210,7 +1210,7 @@ void FBlueprintHelperReviewStoreService::AddEvidenceAtomicTargets(
 }
 
 TArray<FBlueprintHelperReviewAtomicTarget> FBlueprintHelperReviewStoreService::MakeAtomicTargetsForInput(
-	const FBlueprintHelperReviewTransactionInput& Input) const
+	const FBlueprintHelperReviewEvidenceInput& Input) const
 {
 	if (Input.AtomicTargets.Num() > 0)
 	{
@@ -1222,7 +1222,7 @@ TArray<FBlueprintHelperReviewAtomicTarget> FBlueprintHelperReviewStoreService::M
 			Target.TargetKey = Target.TargetKey.IsEmpty() ? Input.LocationKey : Target.TargetKey;
 			Target.VisualGroupKey = Target.VisualGroupKey.IsEmpty() ? Input.LocationKey : Target.VisualGroupKey;
 			Target.DisplayLabel = Target.DisplayLabel.IsEmpty() ? Input.DisplayLabel : Target.DisplayLabel;
-			Target.SourceTransactionIds.Add(Input.TransactionId);
+			Target.SourceEvidenceIds.Add(Input.EvidenceId);
 			Target.Surface = BlueprintHelperReviewNormalizeSurfaceForTarget(
 				Target.Surface,
 				Target.TargetKind,
@@ -1240,7 +1240,7 @@ TArray<FBlueprintHelperReviewAtomicTarget> FBlueprintHelperReviewStoreService::M
 	Target.TargetKey = Input.LocationKey.IsEmpty() ? Input.DisplayLabel : Input.LocationKey;
 	Target.VisualGroupKey = Target.TargetKey;
 	Target.DisplayLabel = Input.DisplayLabel;
-	Target.SourceTransactionIds.Add(Input.TransactionId);
+	Target.SourceEvidenceIds.Add(Input.EvidenceId);
 
 	FBlueprintHelperReviewVisibleChange TempChange;
 	TempChange.LocationKey = Input.LocationKey;
@@ -1279,3 +1279,4 @@ TArray<FBlueprintHelperReviewAtomicTarget> FBlueprintHelperReviewStoreService::M
 	Targets.Add(Target);
 	return Targets;
 }
+

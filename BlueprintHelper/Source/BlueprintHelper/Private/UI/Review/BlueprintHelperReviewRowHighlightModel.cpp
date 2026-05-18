@@ -301,6 +301,59 @@ bool FBlueprintHelperReviewRowHighlightModel::FindRowHighlightEntry(
 	return false;
 }
 
+bool FBlueprintHelperReviewRowHighlightModel::FindActionRowHighlightEntry(
+	const FString& AssetPath,
+	EBlueprintHelperReviewSurface Surface,
+	const FString& SearchText,
+	FRowHighlightEntry& OutEntry)
+{
+	if (FindRowHighlightEntry(AssetPath, Surface, SearchText, OutEntry, false))
+	{
+		return true;
+	}
+
+	const FRowHighlightSurfaceState* State =
+		GetRowHighlightSurfaceStates().Find(BuildRowHighlightStateKey(AssetPath, Surface));
+	if (!State)
+	{
+		return false;
+	}
+
+	bool bFound = false;
+	FString FoundChangeId;
+	for (const TPair<FString, FRowHighlightEntry>& Pair : State->TargetKeyToHighlight)
+	{
+		if (!GeometrySearchTextMatches(Pair.Key, SearchText)
+			&& !GeometrySearchTextMatches(SearchText, Pair.Key))
+		{
+			continue;
+		}
+
+		const FString CandidateChangeId = !Pair.Value.ChangeId.IsEmpty()
+			? Pair.Value.ChangeId
+			: (Pair.Value.Change.IsValid() ? Pair.Value.Change->ChangeId : FString());
+		if (CandidateChangeId.IsEmpty())
+		{
+			continue;
+		}
+
+		if (!bFound)
+		{
+			OutEntry = Pair.Value;
+			FoundChangeId = CandidateChangeId;
+			bFound = true;
+			continue;
+		}
+
+		if (FoundChangeId != CandidateChangeId)
+		{
+			return false;
+		}
+	}
+
+	return bFound;
+}
+
 FReply FBlueprintHelperReviewRowHighlightModel::ExecuteHighlightedRowAction(
 	const FString& AssetPath,
 	EBlueprintHelperReviewSurface Surface,
@@ -315,7 +368,11 @@ FReply FBlueprintHelperReviewRowHighlightModel::ExecuteHighlightedRowAction(
 	}
 
 	FRowHighlightEntry Entry;
-	if (!FindRowHighlightEntry(AssetPath, Surface, SearchText, Entry, false) || !Entry.Change.IsValid())
+	if (!FindActionRowHighlightEntry(AssetPath, Surface, SearchText, Entry))
+	{
+		return FReply::Handled();
+	}
+	if (!Entry.Change.IsValid())
 	{
 		return FReply::Handled();
 	}
@@ -361,7 +418,7 @@ EVisibility FBlueprintHelperReviewRowHighlightModel::ResolveRowActionsVisibility
 	const FString& SearchText)
 {
 	FRowHighlightEntry Entry;
-	return FindRowHighlightEntry(AssetPath, Surface, SearchText, Entry, false) && Entry.bSelected
+	return FindActionRowHighlightEntry(AssetPath, Surface, SearchText, Entry) && Entry.bSelected
 		? EVisibility::Visible
 		: EVisibility::Collapsed;
 }

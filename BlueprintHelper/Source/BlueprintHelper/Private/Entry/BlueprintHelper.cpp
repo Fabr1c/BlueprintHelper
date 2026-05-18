@@ -80,13 +80,11 @@
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperPatchBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperMergeBlueprintGraphService.h"
 #include "Systems/Debug/BlueprintHelperCompileAssetService.h"
-#include "Systems/Transactions/BlueprintHelperTransactionQueryService.h"
 #include "Systems/Review/BlueprintHelperReviewActionService.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
 #include "Systems/ToolClusters/BlueprintVariables/BlueprintHelperBlueprintVariableService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperBlockIdService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperOwnershipService.h"
-#include "Systems/Transactions/BlueprintHelperTransactionJournalService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphSnapshotService.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicJsonPathService.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutCoordinator.h"
@@ -193,26 +191,24 @@ void FBlueprintHelperModule::StartupModule()
 
 	BlockIdService = MakeUnique<FBlueprintHelperBlockIdService>();
 	OwnershipService = MakeUnique<FBlueprintHelperOwnershipService>();
-	JournalService = MakeUnique<FBlueprintHelperTransactionJournalService>();
 	SnapshotService = MakeUnique<FBlueprintHelperGraphSnapshotService>();
 	AppendGraphService = MakeUnique<FBlueprintHelperAppendBlueprintGraphService>(
-		*GraphResolver, *BlockIdService, *OwnershipService, *JournalService);
+		*GraphResolver, *BlockIdService, *OwnershipService);
 	ReplaceGraphService = MakeUnique<FBlueprintHelperReplaceBlueprintGraphService>(
-		*GraphResolver, *BlockIdService, *OwnershipService, *JournalService, *SnapshotService);
+		*GraphResolver, *BlockIdService, *OwnershipService, *SnapshotService);
 	LogicJsonPathService = MakeUnique<FBlueprintHelperLogicJsonPathService>();
 	PatchGraphService = MakeUnique<FBlueprintHelperPatchBlueprintGraphService>(
-		*GraphResolver, *LogicJsonPathService, *JournalService);
+		*GraphResolver, *LogicJsonPathService);
 	MergeGraphService = MakeUnique<FBlueprintHelperMergeBlueprintGraphService>(
-		*GraphResolver, *LogicJsonPathService, *JournalService);
+		*GraphResolver, *LogicJsonPathService);
 	CompileAssetService = MakeUnique<FBlueprintHelperCompileAssetService>(*CompileService, DebugEntryService.Get());
-	TransactionQueryService = MakeUnique<FBlueprintHelperTransactionQueryService>();
 	VariableService = MakeUnique<FBlueprintHelperBlueprintVariableService>(*GraphResolver, *StructureService);
 	ReviewActionService = MakeUnique<FBlueprintHelperReviewActionService>(DebugEntryService.Get());
 
 	// ─── Bridge Layer 初始。───
 	ContextService = MakeUnique<FBlueprintHelperContextService>(*GraphResolver);
 	BridgeRouter = MakeUnique<FBlueprintHelperBridgeRouter>(
-		*ImportService, *AgentImportService, *ExportService, *CompileService, *ValidationService, *ContextService, *AssetBrowseService, *StructureService, *WidgetService, *PropertyReflectionService, *DataTableService, *EditorCommandService, *RuntimeProfileService, *DiagnosticsService, *DebugEntryService, *LogicMdReadService, *LogicJsonReadService, *AssetFactoryService, *ComponentService, *ClassSettingsService, *AppendGraphService, *ReplaceGraphService, *PatchGraphService, *MergeGraphService, *CompileAssetService, *TransactionQueryService, *VariableService, *ReviewStoreService);
+		*ImportService, *AgentImportService, *ExportService, *CompileService, *ValidationService, *ContextService, *AssetBrowseService, *StructureService, *WidgetService, *PropertyReflectionService, *DataTableService, *EditorCommandService, *RuntimeProfileService, *DiagnosticsService, *DebugEntryService, *LogicMdReadService, *LogicJsonReadService, *AssetFactoryService, *ComponentService, *ClassSettingsService, *AppendGraphService, *ReplaceGraphService, *PatchGraphService, *MergeGraphService, *CompileAssetService, *VariableService, *ReviewStoreService);
 	BridgeServer = MakeUnique<FBlueprintHelperBridgeServer>(*BridgeRouter, 54321, DebugEntryService.Get());
 	BridgeServer->Start();
 

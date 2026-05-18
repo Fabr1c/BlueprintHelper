@@ -15,7 +15,7 @@
 
 | ID | 项目 | 当前状态 | 证据 |
 |---|---|---|---|
-| D1 | UMG / DataTable dry-run 未来状态 | Closed | `BlueprintHelper_Smoke_Rerun_UMG_FutureState_Debug_20260517_CN.md` |
+| D1 | UMG / DataTable dry-run 未来状态 | Closed | `../v0.4.3/ArchivedReference/RetiredReviewDebugDocs_20260518/Plan/BlueprintHelper_Smoke_Rerun_UMG_FutureState_Debug_20260517_CN.md` |
 | D1-execute | UMG WidgetTree execute smoke | Closed | `Saved/Automation/UMGWidgetTreeExecute_20260517_003/index.json` |
 | B1-backend | Debug / DebugBundle 后端自动化环 | Closed | `Saved/Automation/DebugRuntimeDiagnostics_20260517_002/index.json` |
 | B1-review | Review reject needs_action / reject_failed -> DebugCase | Closed | `Saved/Automation/ReviewDebugNeedsAction_20260517_001/index.json`, `Saved/Automation/ReviewDebugFailed_20260517_001/index.json` |
@@ -129,7 +129,7 @@
 4. 缺少可恢复 before snapshot 的 snapshot-restore target 会进入 `needs_action`。
 5. 新增 semantic hash / reject guard / DebugBundle 自动化并通过。
 
-2026-05-17 决策：Stage 2/3 采用 semantic target snapshot hash 全量替换旧 graph hash，不保留兼容层；旧 pending Review records 不做自动迁移，遇到旧 hash 应重新生成 Review evidence 或进入 `needs_action`。迁移计划见 `BlueprintHelper_BaselineSemanticHash_Migration_20260517_CN.md`。
+2026-05-17 决策：Stage 2/3 采用 semantic target snapshot hash 全量替换旧 graph hash，不保留兼容层；旧 pending Review records 不做自动迁移，遇到旧 hash 应重新生成 Review evidence 或进入 `needs_action`。迁移计划已归档，见 `../v0.4.3/ArchivedReference/RetiredReviewDebugDocs_20260518/Plan/BlueprintHelper_BaselineSemanticHash_Migration_20260517_CN.md`。
 
 剩余边界：
 

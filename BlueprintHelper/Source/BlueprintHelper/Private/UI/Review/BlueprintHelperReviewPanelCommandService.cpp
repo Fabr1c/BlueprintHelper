@@ -18,7 +18,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewPanelCommandService::Ac
 
 	FBlueprintHelperReviewActionResult Result;
 	Result.bSucceeded = true;
-	Result.TargetTransactionId = Change.LatestTransactionId;
+	Result.TargetEvidenceId = Change.LatestEvidenceId;
 	Result.NewStatus = EBlueprintHelperReviewChangeStatus::Accepted;
 	Result.Message = TEXT("Accepted visible change.");
 	return Result;
@@ -35,7 +35,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewPanelCommandService::Re
 
 	FBlueprintHelperReviewActionResult Result;
 	Result.bSucceeded = false;
-	Result.TargetTransactionId = Change.LatestTransactionId;
+	Result.TargetEvidenceId = Change.LatestEvidenceId;
 	Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
 	Result.RollbackMode = TEXT("archive_baseline");
 	Result.Message = TEXT("Reject requires archive-baseline rollback service.");
@@ -55,7 +55,7 @@ FBlueprintHelperReviewPanelCommandService::RejectLifecycleRootVisibleChange(
 
 	FBlueprintHelperReviewCascadeActionResult Result;
 	Result.RootResult.bSucceeded = false;
-	Result.RootResult.TargetTransactionId = Root.LatestTransactionId;
+	Result.RootResult.TargetEvidenceId = Root.LatestEvidenceId;
 	Result.RootResult.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
 	Result.RootResult.RollbackMode = TEXT("archive_baseline");
 	Result.RootResult.Message = TEXT("Reject requires archive-baseline rollback service.");

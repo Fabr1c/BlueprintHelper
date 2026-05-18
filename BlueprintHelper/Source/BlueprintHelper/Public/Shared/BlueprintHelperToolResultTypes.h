@@ -140,27 +140,7 @@ inline const TCHAR* RiskLevelToString(EBlueprintHelperRiskLevel Level)
 // ─── 事务状态枚举 ───
 
 /** 事务状态。 */
-enum class EBlueprintHelperTransactionStatus : uint8
-{
-	Applied,
-	Failed,
-	RolledBack,
-	NoOp
-};
-
-/** TransactionStatus → MCP snake_case string。 */
-inline const TCHAR* TransactionStatusToString(EBlueprintHelperTransactionStatus Status)
-{
-	switch (Status)
-	{
-	case EBlueprintHelperTransactionStatus::Applied:    return TEXT("applied");
-	case EBlueprintHelperTransactionStatus::Failed:     return TEXT("failed");
-	case EBlueprintHelperTransactionStatus::RolledBack: return TEXT("rolled_back");
-	case EBlueprintHelperTransactionStatus::NoOp:       return TEXT("no_op");
-	default:                                            return TEXT("unknown");
-	}
-}
-
+/**  */
 // ─── 审阅状态枚举 ───
 
 /** Review 状态。 */
@@ -392,7 +372,7 @@ struct FBlueprintHelperSafetySummary
 
 // ─── 7.5 FBlueprintHelperOwnershipSummary ───
 
-/** Ownership 变更摘要。只出现在 transaction.ownership_summary。 */
+/** Ownership 变更摘要。只出现在 review.ownership_summary。 */
 struct FBlueprintHelperOwnershipSummary
 {
 	/** 新增 owned 节点数。 */
@@ -451,54 +431,8 @@ struct FBlueprintHelperOwnershipSummary
 	}
 };
 
-// ─── 7.4 FBlueprintHelperTransactionSummary ───
 
 /** 事务摘要（正式写工具返回）。 */
-struct FBlueprintHelperTransactionSummary
-{
-	/** 事务 ID。 */
-	FString TransactionId;
-
-	/** 事务状态。 */
-	EBlueprintHelperTransactionStatus Status = EBlueprintHelperTransactionStatus::Applied;
-
-	/** 被修改资产列表。 */
-	TArray<FString> AffectedAssets;
-
-	/** 涉及的 block ID 列表。 */
-	TArray<FString> BlockIds;
-
-	/** 是否可回滚。 */
-	bool bRollbackAvailable = false;
-
-	/** Ownership 变更摘要。 */
-	TOptional<FBlueprintHelperOwnershipSummary> OwnershipSummary;
-
-	/** 序列化到 JSON。 */
-	TSharedRef<FJsonObject> ToJson() const
-	{
-		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
-		Json->SetStringField(TEXT("transaction_id"), TransactionId);
-		Json->SetStringField(TEXT("status"), TransactionStatusToString(Status));
-		{
-			TArray<TSharedPtr<FJsonValue>> Arr;
-			for (const FString& Asset : AffectedAssets) { Arr.Add(MakeShared<FJsonValueString>(Asset)); }
-			Json->SetArrayField(TEXT("affected_assets"), Arr);
-		}
-		{
-			TArray<TSharedPtr<FJsonValue>> Arr;
-			for (const FString& Id : BlockIds) { Arr.Add(MakeShared<FJsonValueString>(Id)); }
-			Json->SetArrayField(TEXT("block_ids"), Arr);
-		}
-		Json->SetBoolField(TEXT("rollback_available"), bRollbackAvailable);
-		if (OwnershipSummary.IsSet())
-		{
-			Json->SetObjectField(TEXT("ownership_summary"), OwnershipSummary->ToJson());
-		}
-		return Json;
-	}
-};
-
 // ─── 7.7 FBlueprintHelperValidationMessage ───
 
 /** 单条 Validation 消息。 */
@@ -652,7 +586,7 @@ struct FBlueprintHelperReviewSummary
 /**
  * 内部诊断信息。
  * 暂不映射到 Agent 可见公共返回体。
- * 未来可能进入 Transaction Journal 或 Review Store。
+ * 未来可能进入 Review Evidence 或 Review Store。
  */
 struct FBlueprintHelperInternalDiagnostics
 {
@@ -701,8 +635,6 @@ struct FBlueprintHelperToolResultBase
 	TOptional<FBlueprintHelperSafetySummary> Safety;
 
 	/** 事务摘要。正式写工具设置。读、compile、save 不生成。 */
-	TOptional<FBlueprintHelperTransactionSummary> Transaction;
-
 	/** 各工具簇专属 payload。 */
 	TSharedPtr<FJsonObject> Data;
 
@@ -721,7 +653,7 @@ struct FBlueprintHelperToolResultBase
 	/** 内部诊断（不进入公共 JSON）。 */
 	FBlueprintHelperInternalDiagnostics InternalDiagnostics;
 
-	/** 序列化到 JSON（仅包含 Agent 可见字段：transaction/review/safety 不默认输出）。 */
+	/** 序列化到 JSON（仅包含 Agent 可见字段：review/safety 不默认输出）。 */
 	TSharedRef<FJsonObject> ToJson() const
 	{
 		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
@@ -773,7 +705,7 @@ struct FBlueprintHelperToolResultBase
 /**
  * 工具结果构造器。
  * 统一生成 ok / schema / operation / trace_id / status / modified 等基础字段，
- * 并按工具类型正确填充 target / transaction / safety / data / review / validation / error。
+ * 并按工具类型正确填充 target / safety / data / review / validation / error。
  */
 class BLUEPRINTHELPER_API FBlueprintHelperToolResultBuilder
 {
@@ -801,11 +733,6 @@ public:
 
 	/** 生成唯一 TraceId。 */
 	static FString GenerateTraceId();
-
-	/** 生成唯一 TransactionId。 */
-	static FString GenerateTransactionId(const FString& Prefix = TEXT("tx"));
-
 private:
 	static int32 TraceCounter;
-	static int32 TransactionCounter;
 };

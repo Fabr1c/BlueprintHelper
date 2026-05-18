@@ -20,7 +20,7 @@ struct FBlueprintHelperDebugEntryEventInput
 	FString TaskRunId;
 	TArray<FString> AssetPaths;
 	TArray<FString> ReviewRecordIds;
-	TArray<FBlueprintHelperDebugTransactionLink> TransactionLinks;
+	TArray<FBlueprintHelperDebugEvidenceLink> EvidenceLinks;
 	FBlueprintHelperDebugError Error;
 	FString RecommendedNext;
 	TSharedPtr<FJsonObject> ToolResultSummary;

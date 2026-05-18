@@ -254,6 +254,7 @@ function parseArgs(argv: string[]): ParseResult {
     maxBytes: options.maxBytes,
     fields: options.fields,
     omitFields: options.omitFields,
+    expert: options.expert,
   };
   const [group, action] = positionals;
 

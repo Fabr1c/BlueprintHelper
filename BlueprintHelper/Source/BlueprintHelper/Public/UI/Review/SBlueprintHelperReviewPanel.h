@@ -171,7 +171,7 @@ private:
 	FText GetSelectedBefore() const;
 	FText GetSelectedAfter() const;
 	FText GetSelectedStatus() const;
-	FText GetSelectedTransactionChain() const;
+	FText GetSelectedEvidenceChain() const;
 	FSlateColor GetSelectedDiffColor() const;
 	FSlateColor GetChangeColor(EBlueprintHelperReviewChangeKind Kind) const;
 

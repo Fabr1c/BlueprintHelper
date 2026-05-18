@@ -12,7 +12,7 @@ class UEdGraphNode;
 /**
  * 图表快照服务。
  * 用于在 Replace 操作前捕获目标节点快照，失败时可通过快照恢复。
- * Snapshot 不进入 Agent-facing 结果，只写入 Journal rollback_data。
+ * Snapshot 不进入 Agent-facing 结果，只用于内存级图写入前后快照。
  */
 struct FBlueprintHelperGraphSnapshot
 {

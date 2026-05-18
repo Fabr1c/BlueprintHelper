@@ -20,7 +20,7 @@ public:
 		const FString& AssetPath);
 
 	TArray<FBlueprintHelperReviewVisibleChange> BuildVisibleChanges(
-		const TArray<FBlueprintHelperReviewTransactionInput>& Transactions) const;
+		const TArray<FBlueprintHelperReviewEvidenceInput>& EvidenceInputs) const;
 
 	TArray<FBlueprintHelperReviewRecord> BuildReviewRecordsFromEvidence(
 		const TArray<FBlueprintHelperWriteReviewEvidence>& Evidences) const;
@@ -31,7 +31,7 @@ public:
 		const FString& AssetPath,
 		const FString& OperationKind,
 		const FString& TaskRunId = TEXT(""),
-		const FString& TransactionId = TEXT(""),
+		const FString& EvidenceId = TEXT(""),
 		const FString& CreatedAt = TEXT("")) const;
 
 	TArray<FBlueprintHelperReviewRecord> QueryReviewRecords(
@@ -82,11 +82,11 @@ public:
 
 private:
 	FBlueprintHelperReviewVisibleChange MakeVisibleChange(
-		const FBlueprintHelperReviewTransactionInput& Input,
+		const FBlueprintHelperReviewEvidenceInput& Input,
 		const FString& ChangeIdSuffix = TEXT("")) const;
 
 	void AddAtomicTargetsForInput(
-		const FBlueprintHelperReviewTransactionInput& Input,
+		const FBlueprintHelperReviewEvidenceInput& Input,
 		TMap<FString, FBlueprintHelperReviewVisibleChange>& AtomicChanges,
 		TArray<FString>& AtomicOrder) const;
 
@@ -96,7 +96,7 @@ private:
 		TArray<FBlueprintHelperReviewVisibleChange>& OutChanges) const;
 
 	TArray<FBlueprintHelperReviewAtomicTarget> MakeAtomicTargetsForInput(
-		const FBlueprintHelperReviewTransactionInput& Input) const;
+		const FBlueprintHelperReviewEvidenceInput& Input) const;
 
 	void AddEvidenceAtomicTargets(
 		const FBlueprintHelperWriteReviewEvidence& Evidence,

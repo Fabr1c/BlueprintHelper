@@ -7,10 +7,10 @@
 
 // ─── 枚举 ───
 
-enum class EBlueprintHelperExportScope : uint8 { RuntimeDebug, TransactionDebug, AssetSnapshot };
+enum class EBlueprintHelperExportScope : uint8 { RuntimeDebug, EvidenceDebug, AssetSnapshot };
 inline const TCHAR* ExportScopeToString(EBlueprintHelperExportScope S)
 {
-	switch (S) { case EBlueprintHelperExportScope::RuntimeDebug: return TEXT("runtime_debug"); case EBlueprintHelperExportScope::TransactionDebug: return TEXT("transaction_debug"); case EBlueprintHelperExportScope::AssetSnapshot: return TEXT("asset_snapshot"); default: return TEXT("unknown"); }
+	switch (S) { case EBlueprintHelperExportScope::RuntimeDebug: return TEXT("runtime_debug"); case EBlueprintHelperExportScope::EvidenceDebug: return TEXT("evidence_debug"); case EBlueprintHelperExportScope::AssetSnapshot: return TEXT("asset_snapshot"); default: return TEXT("unknown"); }
 }
 
 enum class EBlueprintHelperSnapshotType : uint8
@@ -35,8 +35,8 @@ inline const TCHAR* SnapshotTypeToString(EBlueprintHelperSnapshotType S)
 enum class EBlueprintHelperDebugExportErrorCode : uint8
 {
 	InvalidRequest, UnsupportedExportScope, UnsupportedSnapshotType,
-	AssetNotFound, TransactionNotFound, DebugBundleExportFailed,
-	TransactionDebugBundleExportFailed, AssetSnapshotExportFailed,
+	AssetNotFound, EvidenceNotFound, DebugBundleExportFailed,
+	EvidenceDebugBundleExportFailed, AssetSnapshotExportFailed,
 	ResourceRefNotFound, ResourceRefExpired, ResourceRefForbidden,
 	SensitiveContentBlocked, InternalError
 };
@@ -48,9 +48,9 @@ inline const TCHAR* DebugExportErrorCodeToString(EBlueprintHelperDebugExportErro
 	case EBlueprintHelperDebugExportErrorCode::UnsupportedExportScope:             return TEXT("unsupported_export_scope");
 	case EBlueprintHelperDebugExportErrorCode::UnsupportedSnapshotType:            return TEXT("unsupported_snapshot_type");
 	case EBlueprintHelperDebugExportErrorCode::AssetNotFound:                      return TEXT("asset_not_found");
-	case EBlueprintHelperDebugExportErrorCode::TransactionNotFound:                return TEXT("transaction_not_found");
+	case EBlueprintHelperDebugExportErrorCode::EvidenceNotFound:                return TEXT("evidence_not_found");
 	case EBlueprintHelperDebugExportErrorCode::DebugBundleExportFailed:            return TEXT("debug_bundle_export_failed");
-	case EBlueprintHelperDebugExportErrorCode::TransactionDebugBundleExportFailed: return TEXT("transaction_debug_bundle_export_failed");
+	case EBlueprintHelperDebugExportErrorCode::EvidenceDebugBundleExportFailed: return TEXT("evidence_debug_bundle_export_failed");
 	case EBlueprintHelperDebugExportErrorCode::AssetSnapshotExportFailed:          return TEXT("asset_snapshot_export_failed");
 	case EBlueprintHelperDebugExportErrorCode::ResourceRefNotFound:                return TEXT("resource_ref_not_found");
 	case EBlueprintHelperDebugExportErrorCode::ResourceRefExpired:                 return TEXT("resource_ref_expired");
@@ -88,9 +88,9 @@ struct FBlueprintHelperExportDebugBundleResultData
 	TSharedRef<FJsonObject> ToJson() const { auto J = MakeShared<FJsonObject>(); J->SetStringField(TEXT("schema"), Schema); J->SetObjectField(TEXT("export_result"), ExportResult.ToJson()); return J; }
 };
 
-struct FBlueprintHelperExportTransactionDebugBundleResultData
+struct FBlueprintHelperExportEvidenceDebugBundleResultData
 {
-	FString Schema = TEXT("ExportTransactionDebugBundle.v1");
+	FString Schema = TEXT("ExportEvidenceDebugBundle.v1");
 	FBlueprintHelperDebugExportResult ExportResult;
 	TSharedRef<FJsonObject> ToJson() const { auto J = MakeShared<FJsonObject>(); J->SetStringField(TEXT("schema"), Schema); J->SetObjectField(TEXT("export_result"), ExportResult.ToJson()); return J; }
 };

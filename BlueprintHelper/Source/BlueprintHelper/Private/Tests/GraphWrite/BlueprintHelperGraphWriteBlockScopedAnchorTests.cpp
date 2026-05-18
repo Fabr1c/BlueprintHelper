@@ -19,7 +19,6 @@
 #include "Misc/AutomationTest.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperMergeBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperPatchBlueprintGraphService.h"
-#include "Systems/Transactions/BlueprintHelperTransactionJournalService.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
@@ -176,12 +175,11 @@ public:
 			FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
 			MetaData.RemoveValue(Node, TEXT("BlueprintHelperOwned"));
 			MetaData.RemoveValue(Node, TEXT("BlueprintHelperBlockId"));
-			MetaData.RemoveValue(Node, TEXT("BlueprintHelperTransactionId"));
 			MetaData.RemoveValue(Node, TEXT("BlueprintHelperFeatureName"));
 			MetaData.RemoveValue(Node, TEXT("BlueprintHelperTool"));
 		}
 
-		Node->NodeComment = FString::Printf(TEXT("[BlueprintHelper]\nblock_id=%s\ntx=legacy_tx"), *BlockId);
+		Node->NodeComment = FString::Printf(TEXT("[BlueprintHelper]\nblock_id=%s"), *BlockId);
 	}
 
 	struct FBlockScopedGraph
@@ -509,8 +507,7 @@ bool FBlueprintHelperGraphWritePatchSetPinDefaultBlockScopedAnchorTest::RunTest(
 
 	FBlueprintHelperGraphResolver Resolver;
 	FBlueprintHelperLogicJsonPathService PathService;
-	FBlueprintHelperTransactionJournalService JournalService;
-	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService, JournalService);
+	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService);
 
 	const FBlueprintHelperToolResultBase Result = PatchService.Execute(FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeSetPinDefaultPayload(Fixture));
 
@@ -537,8 +534,7 @@ bool FBlueprintHelperGraphWritePatchSetNodeCommentBlockScopedAnchorTest::RunTest
 
 	FBlueprintHelperGraphResolver Resolver;
 	FBlueprintHelperLogicJsonPathService PathService;
-	FBlueprintHelperTransactionJournalService JournalService;
-	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService, JournalService);
+	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService);
 
 	TestFalse(TEXT("metadata-owned entry does not need legacy block_id comment"),
 		Fixture.OwnedEntry->NodeComment.Contains(TEXT("block_id=")));
@@ -571,8 +567,7 @@ bool FBlueprintHelperGraphWritePatchResolvesLegacyManagedCommentFallbackTest::Ru
 
 	FBlueprintHelperGraphResolver Resolver;
 	FBlueprintHelperLogicJsonPathService PathService;
-	FBlueprintHelperTransactionJournalService JournalService;
-	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService, JournalService);
+	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService);
 
 	const FBlueprintHelperToolResultBase Result = PatchService.Execute(FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeSetNodeCommentPayload(Fixture));
 
@@ -599,15 +594,14 @@ bool FBlueprintHelperGraphWritePatchIgnoresLegacyCommentWhenMetadataPresentTest:
 	}
 
 	const FString LegacyBlockId = FString::Printf(TEXT("%s_Legacy"), *Fixture.BlockId);
-	const FString StaleLegacyComment = FString::Printf(TEXT("[BlueprintHelper]\nblock_id=%s\ntx=stale_legacy_tx"), *LegacyBlockId);
+	const FString StaleLegacyComment = FString::Printf(TEXT("[BlueprintHelper]\nblock_id=%s"), *LegacyBlockId);
 	Fixture.OwnedEntry->NodeComment = StaleLegacyComment;
 	Fixture.OwnedBranch->NodeComment = StaleLegacyComment;
 	Fixture.BlockId = LegacyBlockId;
 
 	FBlueprintHelperGraphResolver Resolver;
 	FBlueprintHelperLogicJsonPathService PathService;
-	FBlueprintHelperTransactionJournalService JournalService;
-	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService, JournalService);
+	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService);
 
 	const FBlueprintHelperToolResultBase Result = PatchService.Execute(FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeSetNodeCommentPayload(Fixture));
 
@@ -636,8 +630,7 @@ bool FBlueprintHelperGraphWriteMergeInsertFlowBlockScopedAnchorTest::RunTest(con
 
 	FBlueprintHelperGraphResolver Resolver;
 	FBlueprintHelperLogicJsonPathService PathService;
-	FBlueprintHelperTransactionJournalService JournalService;
-	FBlueprintHelperMergeBlueprintGraphService MergeService(Resolver, PathService, JournalService);
+	FBlueprintHelperMergeBlueprintGraphService MergeService(Resolver, PathService);
 
 	const FBlueprintHelperToolResultBase Result = MergeService.Execute(FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeInsertFlowPayload(Fixture));
 
@@ -667,8 +660,7 @@ bool FBlueprintHelperGraphWriteMergeInsertFlowDisplayNameFunctionCallTest::RunTe
 
 	FBlueprintHelperGraphResolver Resolver;
 	FBlueprintHelperLogicJsonPathService PathService;
-	FBlueprintHelperTransactionJournalService JournalService;
-	FBlueprintHelperMergeBlueprintGraphService MergeService(Resolver, PathService, JournalService);
+	FBlueprintHelperMergeBlueprintGraphService MergeService(Resolver, PathService);
 
 	const FBlueprintHelperToolResultBase Result = MergeService.Execute(
 		FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeInsertFlowPayload(Fixture, TEXT("Print String")));
@@ -707,8 +699,7 @@ bool FBlueprintHelperGraphWriteMergeInsertFlowQualifiedFunctionCallTest::RunTest
 
 	FBlueprintHelperGraphResolver Resolver;
 	FBlueprintHelperLogicJsonPathService PathService;
-	FBlueprintHelperTransactionJournalService JournalService;
-	FBlueprintHelperMergeBlueprintGraphService MergeService(Resolver, PathService, JournalService);
+	FBlueprintHelperMergeBlueprintGraphService MergeService(Resolver, PathService);
 
 	const FBlueprintHelperToolResultBase Result = MergeService.Execute(
 		FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeInsertFlowPayload(
@@ -748,8 +739,7 @@ bool FBlueprintHelperGraphWriteMergeMemberPrefixBlocksTest::RunTest(const FStrin
 
 	FBlueprintHelperGraphResolver Resolver;
 	FBlueprintHelperLogicJsonPathService PathService;
-	FBlueprintHelperTransactionJournalService JournalService;
-	FBlueprintHelperMergeBlueprintGraphService MergeService(Resolver, PathService, JournalService);
+	FBlueprintHelperMergeBlueprintGraphService MergeService(Resolver, PathService);
 
 	const FBlueprintHelperToolResultBase Result = MergeService.Execute(
 		FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeInsertFlowPayload(
@@ -805,8 +795,7 @@ bool FBlueprintHelperGraphWriteMergeInsertBetweenBlockScopedAnchorTest::RunTest(
 
 	FBlueprintHelperGraphResolver Resolver;
 	FBlueprintHelperLogicJsonPathService PathService;
-	FBlueprintHelperTransactionJournalService JournalService;
-	FBlueprintHelperMergeBlueprintGraphService MergeService(Resolver, PathService, JournalService);
+	FBlueprintHelperMergeBlueprintGraphService MergeService(Resolver, PathService);
 
 	const FBlueprintHelperToolResultBase Result = MergeService.Execute(FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeInsertBetweenFlowPayload(Fixture));
 
@@ -860,8 +849,7 @@ bool FBlueprintHelperGraphWriteMergeBranchForkOwnedBlockCallTest::RunTest(const 
 
 	FBlueprintHelperGraphResolver Resolver;
 	FBlueprintHelperLogicJsonPathService PathService;
-	FBlueprintHelperTransactionJournalService JournalService;
-	FBlueprintHelperMergeBlueprintGraphService MergeService(Resolver, PathService, JournalService);
+	FBlueprintHelperMergeBlueprintGraphService MergeService(Resolver, PathService);
 
 	const FBlueprintHelperToolResultBase Result = MergeService.Execute(FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeBranchForkOwnedBlockCallPayload(Fixture, InsertedBlockId));
 
@@ -915,8 +903,7 @@ bool FBlueprintHelperGraphWriteMergeBranchForkMissingOwnedBlockPreviewBlocksTest
 
 	FBlueprintHelperGraphResolver Resolver;
 	FBlueprintHelperLogicJsonPathService PathService;
-	FBlueprintHelperTransactionJournalService JournalService;
-	FBlueprintHelperMergeBlueprintGraphService MergeService(Resolver, PathService, JournalService);
+	FBlueprintHelperMergeBlueprintGraphService MergeService(Resolver, PathService);
 
 	const FString MissingBlockId = FString::Printf(TEXT("%s_MissingInsertedBlock0"), *Fixture.Graph->GetName());
 	const FBlueprintHelperToolResultBase Result = MergeService.Execute(
@@ -973,8 +960,7 @@ bool FBlueprintHelperGraphWriteMergeBranchForkUncompiledOwnedBlockCallTest::RunT
 
 	FBlueprintHelperGraphResolver Resolver;
 	FBlueprintHelperLogicJsonPathService PathService;
-	FBlueprintHelperTransactionJournalService JournalService;
-	FBlueprintHelperMergeBlueprintGraphService MergeService(Resolver, PathService, JournalService);
+	FBlueprintHelperMergeBlueprintGraphService MergeService(Resolver, PathService);
 
 	const FBlueprintHelperToolResultBase Result = MergeService.Execute(
 		FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeBranchForkOwnedBlockCallPayload(Fixture, InsertedBlockId, false, true));

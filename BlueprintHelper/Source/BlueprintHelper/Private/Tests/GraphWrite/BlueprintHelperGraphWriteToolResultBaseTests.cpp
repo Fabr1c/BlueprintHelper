@@ -47,7 +47,6 @@
 #include "Systems/Debug/BlueprintHelperCompileService.h"
 #include "Systems/ToolClusters/UMGWidget/BlueprintHelperWidgetService.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.h"
-#include "Systems/Transactions/BlueprintHelperTransactionJournalService.h"
 #include "UI/Review/BlueprintHelperReviewGraphBounds.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
 #include "UObject/MetaData.h"
@@ -471,7 +470,6 @@ public:
 		FAutomationTestBase& Test,
 		UEdGraphNode* Node,
 		const FString& BlockId,
-		const FString& TransactionId,
 		const FString& FeatureName)
 	{
 		Test.TestNotNull(TEXT("owned node exists"), Node);
@@ -492,8 +490,6 @@ public:
 			MetaData.GetValue(Node, TEXT("BlueprintHelperOwned")) == FString(TEXT("true")));
 		Test.TestTrue(TEXT("metadata keeps block id"),
 			MetaData.GetValue(Node, TEXT("BlueprintHelperBlockId")) == BlockId);
-		Test.TestTrue(TEXT("metadata keeps transaction id"),
-			MetaData.GetValue(Node, TEXT("BlueprintHelperTransactionId")) == TransactionId);
 		Test.TestTrue(TEXT("metadata keeps feature name"),
 			MetaData.GetValue(Node, TEXT("BlueprintHelperFeatureName")) == FeatureName);
 		Test.TestTrue(TEXT("metadata omits legacy tool field"),
@@ -652,24 +648,7 @@ public:
 		return false;
 	}
 
-	static bool LoadActiveJournalJson(const FString& TransactionId, TSharedPtr<FJsonObject>& OutJson)
-	{
-		const FString JournalPath = FPaths::ProjectSavedDir()
-			/ TEXT("BlueprintHelper")
-			/ TEXT("Transactions")
-			/ TEXT("Active")
-			/ FString::Printf(TEXT("%s.json"), *TransactionId);
-		FString JournalJson;
-		if (!FFileHelper::LoadFileToString(JournalJson, *JournalPath))
-		{
-			return false;
-		}
-
-		const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JournalJson);
-		return FJsonSerializer::Deserialize(Reader, OutJson) && OutJson.IsValid();
-	}
-
-	static TSharedRef<FJsonObject> MakePatchPreviewPayload(const FString& AssetPath, const FString& GraphName)
+		static TSharedRef<FJsonObject> MakePatchPreviewPayload(const FString& AssetPath, const FString& GraphName)
 	{
 		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
 
@@ -1375,7 +1354,6 @@ public:
 		FBlueprintHelperAgentImportService AgentImportService;
 		FBlueprintHelperBlockIdService BlockIdService;
 		FBlueprintHelperOwnershipService OwnershipService;
-		FBlueprintHelperTransactionJournalService JournalService;
 		FBlueprintHelperAppendBlueprintGraphService AppendGraphService;
 		FBlueprintHelperGraphSnapshotService SnapshotService;
 		FBlueprintHelperReplaceBlueprintGraphService ReplaceGraphService;
@@ -1396,10 +1374,10 @@ public:
 		FGraphWriteRuntimeHarness()
 			: CompileService(Resolver)
 			, AgentImportService(Resolver, CompileService, AssetBrowseService)
-			, AppendGraphService(Resolver, BlockIdService, OwnershipService, JournalService)
-			, ReplaceGraphService(Resolver, BlockIdService, OwnershipService, JournalService, SnapshotService)
-			, PatchGraphService(Resolver, PathService, JournalService)
-			, MergeGraphService(Resolver, PathService, JournalService)
+			, AppendGraphService(Resolver, BlockIdService, OwnershipService)
+			, ReplaceGraphService(Resolver, BlockIdService, OwnershipService, SnapshotService)
+			, PatchGraphService(Resolver, PathService)
+			, MergeGraphService(Resolver, PathService)
 			, StructureService(Resolver)
 			, VariableService(Resolver, StructureService)
 			, ComponentService(Resolver)
@@ -1600,13 +1578,10 @@ bool FBlueprintHelperGraphWriteAppendBlockedDryRunErrorEnvelopeTest::RunTest(con
 	FBlueprintHelperAgentImportService AgentImportService(Resolver, CompileService, AssetBrowseService);
 	FBlueprintHelperBlockIdService BlockIdService;
 	FBlueprintHelperOwnershipService OwnershipService;
-	FBlueprintHelperTransactionJournalService JournalService;
 	FBlueprintHelperAppendBlueprintGraphService AppendService(
 		Resolver,
 		BlockIdService,
-		OwnershipService,
-		JournalService);
-
+		OwnershipService);
 	const FBlueprintHelperToolResultBase Result = AppendService.Execute(
 		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeAppendPreviewPayload(Blueprint->GetPathName(), FunctionGraph->GetName()));
 
@@ -1644,13 +1619,11 @@ bool FBlueprintHelperGraphWriteReplaceBlockedDryRunErrorEnvelopeTest::RunTest(co
 	FBlueprintHelperAgentImportService AgentImportService(Resolver, CompileService, AssetBrowseService);
 	FBlueprintHelperBlockIdService BlockIdService;
 	FBlueprintHelperOwnershipService OwnershipService;
-	FBlueprintHelperTransactionJournalService JournalService;
 	FBlueprintHelperGraphSnapshotService SnapshotService;
 	FBlueprintHelperReplaceBlueprintGraphService ReplaceService(
 		Resolver,
 		BlockIdService,
 		OwnershipService,
-		JournalService,
 		SnapshotService);
 
 	const FBlueprintHelperToolResultBase Result = ReplaceService.Execute(
@@ -1686,8 +1659,7 @@ bool FBlueprintHelperGraphWritePatchBlockedDryRunErrorEnvelopeTest::RunTest(cons
 
 	FBlueprintHelperGraphResolver Resolver;
 	FBlueprintHelperLogicJsonPathService PathService;
-	FBlueprintHelperTransactionJournalService JournalService;
-	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService, JournalService);
+	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService);
 
 	const FBlueprintHelperToolResultBase Result = PatchService.Execute(
 		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakePatchPreviewPayload(Blueprint->GetPathName(), TEXT("MissingGraph")));
@@ -1722,8 +1694,7 @@ bool FBlueprintHelperGraphWriteMergeBlockedDryRunErrorEnvelopeTest::RunTest(cons
 
 	FBlueprintHelperGraphResolver Resolver;
 	FBlueprintHelperLogicJsonPathService PathService;
-	FBlueprintHelperTransactionJournalService JournalService;
-	FBlueprintHelperMergeBlueprintGraphService MergeService(Resolver, PathService, JournalService);
+	FBlueprintHelperMergeBlueprintGraphService MergeService(Resolver, PathService);
 
 	const FBlueprintHelperToolResultBase Result = MergeService.Execute(
 		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeMergePreviewPayload(Blueprint->GetPathName(), TEXT("MissingGraph")));
@@ -1809,13 +1780,11 @@ bool FBlueprintHelperGraphWriteReplaceCustomEventBodyReconnectsEntryExecTest::Ru
 	FBlueprintHelperAgentImportService AgentImportService(Resolver, CompileService, AssetBrowseService);
 	FBlueprintHelperBlockIdService BlockIdService;
 	FBlueprintHelperOwnershipService OwnershipService;
-	FBlueprintHelperTransactionJournalService JournalService;
 	FBlueprintHelperGraphSnapshotService SnapshotService;
 	FBlueprintHelperReplaceBlueprintGraphService ReplaceService(
 		Resolver,
 		BlockIdService,
 		OwnershipService,
-		JournalService,
 		SnapshotService);
 
 	const FBlueprintHelperToolResultBase Result = ReplaceService.Execute(
@@ -1849,161 +1818,6 @@ bool FBlueprintHelperGraphWriteReplaceCustomEventBodyReconnectsEntryExecTest::Ru
 	TestTrue(TEXT("exported graph contains event to replacement PrintString exec link"),
 		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ExportHasExecLinkFromCustomEventToFunction(Graph, TEXT("SmokeCustomEvent"), TEXT("PrintString")));
 
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperGraphWriteReplaceEmitsReviewNodeAnchorsForDiffBoundsTest,
-	"BlueprintHelper.GraphWrite.Replace.EmitsReviewNodeAnchorsForDiffBounds",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FBlueprintHelperGraphWriteReplaceEmitsReviewNodeAnchorsForDiffBoundsTest::RunTest(const FString& Parameters)
-{
-	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("ReplaceReviewNodeAnchors"));
-	TestNotNull(TEXT("test blueprint is created"), Blueprint);
-	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
-	{
-		return false;
-	}
-
-	UEdGraph* Graph = Blueprint->UbergraphPages[0];
-	UK2Node_CustomEvent* EntryNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, TEXT("SmokeCustomEvent"));
-	UK2Node_CallFunction* OldPrintNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWritePrintStringCall(Graph);
-	TestNotNull(TEXT("custom event entry is created"), EntryNode);
-	TestNotNull(TEXT("old PrintString body node is created"), OldPrintNode);
-	TestTrue(TEXT("old custom event body is linked before replace"),
-		EntryNode && OldPrintNode && FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ConnectFirstExecPins(EntryNode, OldPrintNode));
-	if (!EntryNode || !OldPrintNode)
-	{
-		return false;
-	}
-
-	FBlueprintHelperGraphResolver Resolver;
-	FBlueprintHelperAssetBrowseService AssetBrowseService;
-	FBlueprintHelperCompileService CompileService(Resolver);
-	FBlueprintHelperAgentImportService AgentImportService(Resolver, CompileService, AssetBrowseService);
-	FBlueprintHelperBlockIdService BlockIdService;
-	FBlueprintHelperOwnershipService OwnershipService;
-	FBlueprintHelperTransactionJournalService JournalService;
-	FBlueprintHelperGraphSnapshotService SnapshotService;
-	FBlueprintHelperReplaceBlueprintGraphService ReplaceService(
-		Resolver,
-		BlockIdService,
-		OwnershipService,
-		JournalService,
-		SnapshotService);
-
-	const FString ArchiveSessionId = FString::Printf(
-		TEXT("archive_replace_diff_anchor_%s"),
-		*FGuid::NewGuid().ToString(EGuidFormats::Digits));
-	FBlueprintHelperTransactionJournalService::SetRuntimeReviewContext(
-		ArchiveSessionId,
-		TEXT("task_replace_diff_anchor"));
-	const FBlueprintHelperToolResultBase Result = ReplaceService.Execute(
-		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeReplaceExecutePayload(Blueprint->GetPathName(), Graph->GetName()));
-	FBlueprintHelperTransactionJournalService::ClearRuntimeReviewContext();
-
-	TestTrue(TEXT("replace custom event body succeeds"), Result.bOk);
-	TestEqual(TEXT("replace status is applied"), Result.Status, EBlueprintHelperToolStatus::Applied);
-
-	FString TransactionId;
-	const TSharedPtr<FJsonObject>* WriteRef = nullptr;
-	TestTrue(TEXT("replace result exposes write_ref"),
-		Result.Data.IsValid() && Result.Data->TryGetObjectField(TEXT("write_ref"), WriteRef));
-	TestTrue(TEXT("replace result exposes transaction id"),
-		WriteRef && WriteRef->IsValid() && (*WriteRef)->TryGetStringField(TEXT("transaction_id"), TransactionId));
-
-	TSharedPtr<FJsonObject> JournalJson;
-	TestTrue(TEXT("replace journal can be reloaded"),
-		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::LoadActiveJournalJson(TransactionId, JournalJson));
-	const TArray<TSharedPtr<FJsonValue>>* CreatedNodeAnchors = nullptr;
-	TestTrue(TEXT("replace journal emits structured created node anchors"),
-		JournalJson.IsValid() && JournalJson->TryGetArrayField(TEXT("created_node_anchors"), CreatedNodeAnchors) && CreatedNodeAnchors && CreatedNodeAnchors->Num() > 0);
-	if (CreatedNodeAnchors && CreatedNodeAnchors->Num() > 0)
-	{
-		const TSharedPtr<FJsonObject> FirstAnchor = (*CreatedNodeAnchors)[0].IsValid()
-			? (*CreatedNodeAnchors)[0]->AsObject()
-			: nullptr;
-		FString AnchorNodePath;
-		FString AnchorNodeGuid;
-		FString AnchorDisplayLabel;
-		bool bHasGraphBounds = false;
-		const TSharedPtr<FJsonObject>* AnchorPosition = nullptr;
-		const TSharedPtr<FJsonObject>* AnchorSize = nullptr;
-		TestTrue(TEXT("structured anchor records node path"),
-			FirstAnchor.IsValid() && FirstAnchor->TryGetStringField(TEXT("node_path"), AnchorNodePath) && !AnchorNodePath.IsEmpty());
-		TestTrue(TEXT("structured anchor records node guid"),
-			FirstAnchor.IsValid() && FirstAnchor->TryGetStringField(TEXT("node_guid"), AnchorNodeGuid) && !AnchorNodeGuid.IsEmpty());
-		TestTrue(TEXT("structured anchor records display label"),
-			FirstAnchor.IsValid() && FirstAnchor->TryGetStringField(TEXT("display_label"), AnchorDisplayLabel) && !AnchorDisplayLabel.IsEmpty());
-		TestTrue(TEXT("structured anchor records graph position"),
-			FirstAnchor.IsValid() && FirstAnchor->TryGetObjectField(TEXT("graph_position"), AnchorPosition) && AnchorPosition && AnchorPosition->IsValid());
-		TestTrue(TEXT("structured anchor records graph size"),
-			FirstAnchor.IsValid() && FirstAnchor->TryGetObjectField(TEXT("graph_size"), AnchorSize) && AnchorSize && AnchorSize->IsValid());
-		TestTrue(TEXT("structured anchor records graph bounds flag"),
-			FirstAnchor.IsValid() && FirstAnchor->TryGetBoolField(TEXT("has_graph_bounds"), bHasGraphBounds) && bHasGraphBounds);
-	}
-
-	FBlueprintHelperReviewStoreService Store;
-	FBlueprintHelperReviewRecordQuery Query;
-	Query.ArchiveSessionIdFilter = ArchiveSessionId;
-	Query.bPendingOnly = false;
-	const TArray<FBlueprintHelperReviewRecord> Records = Store.QueryReviewRecords(Query);
-	TestEqual(TEXT("replace writes one review record"), Records.Num(), 1);
-	if (Records.Num() != 1 || Records[0].VisibleChanges.Num() == 0)
-	{
-		return false;
-	}
-
-	bool bSawGraphNodeTarget = false;
-	bool bSawGraphNodeTargetWithNodeGuid = false;
-	bool bSawRecordedAnchorPayload = false;
-	bool bSawEmptyGraphBlockTarget = false;
-	bool bBuiltGraphBounds = false;
-	FString BoundsDebug;
-	for (const FBlueprintHelperReviewVisibleChange& Change : Records[0].VisibleChanges)
-	{
-		for (const FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
-		{
-			if (Target.Surface != EBlueprintHelperReviewSurface::Graph)
-			{
-				continue;
-			}
-			bSawGraphNodeTarget |= Target.TargetKind.Equals(TEXT("graph_node"), ESearchCase::IgnoreCase)
-				&& !Target.TargetKey.IsEmpty();
-			bSawGraphNodeTargetWithNodeGuid |= Target.TargetKind.Equals(TEXT("graph_node"), ESearchCase::IgnoreCase)
-				&& !Target.NodeGuid.IsEmpty()
-				&& Target.TargetKey.Contains(Target.NodeGuid);
-			bSawRecordedAnchorPayload |= Target.AnchorJson.Contains(TEXT("has_graph_bounds"))
-				&& Target.AnchorJson.Contains(TEXT("graph_position"))
-				&& Target.AnchorJson.Contains(TEXT("graph_size"));
-			bSawEmptyGraphBlockTarget |= Target.TargetKind.Equals(TEXT("graph_block"), ESearchCase::IgnoreCase)
-				&& Target.TargetKey.EndsWith(TEXT("block:"));
-		}
-
-		FVector2D BoundsPosition = FVector2D::ZeroVector;
-		FVector2D BoundsSize = FVector2D::ZeroVector;
-		bBuiltGraphBounds |= FBlueprintHelperReviewGraphBounds::BuildBoundsForTargets(
-			Change.AtomicTargets,
-			Graph,
-			Graph->GetName(),
-			TSharedPtr<SGraphEditor>(),
-			BoundsPosition,
-			BoundsSize,
-			&BoundsDebug);
-	}
-
-	TestTrue(TEXT("replace review evidence includes a graph_node target"), bSawGraphNodeTarget);
-	TestTrue(TEXT("replace graph_node target carries node guid evidence"), bSawGraphNodeTargetWithNodeGuid);
-	TestTrue(TEXT("replace graph_node target carries recorded bounds anchor payload"), bSawRecordedAnchorPayload);
-	TestFalse(TEXT("replace review evidence does not include an empty graph block target"), bSawEmptyGraphBlockTarget);
-	TestTrue(FString::Printf(TEXT("replace graph_node target can build graph diff bounds: %s"), *BoundsDebug), bBuiltGraphBounds);
-	TestTrue(TEXT("bounds debug reports node guid target count"),
-		BoundsDebug.Contains(TEXT("hasNodeGuidTargets=")));
-	TestTrue(TEXT("bounds debug reports recorded bounds target count"),
-		BoundsDebug.Contains(TEXT("hasRecordedBounds=")));
-	TestTrue(TEXT("bounds debug reports anchor source"),
-		BoundsDebug.Contains(TEXT("anchorSource=")));
 	return true;
 }
 
@@ -2113,169 +1927,6 @@ bool FBlueprintHelperReviewGraphBoundsUsesRecordedAnchorWhenNodeMatchFailsTest::
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperTransactionJournalLegacyGuidCreatedNodePathBecomesNodeGuidTest,
-	"BlueprintHelper.GraphWrite.TransactionJournal.LegacyGuidCreatedNodePathBecomesNodeGuid",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FBlueprintHelperTransactionJournalLegacyGuidCreatedNodePathBecomesNodeGuidTest::RunTest(const FString& Parameters)
-{
-	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("LegacyGuidAnchor"));
-	TestNotNull(TEXT("legacy guid review blueprint is created"), Blueprint);
-	if (!Blueprint)
-	{
-		return false;
-	}
-
-	const FString ArchiveSessionId = FString::Printf(
-		TEXT("archive_legacy_guid_anchor_%s"),
-		*FGuid::NewGuid().ToString(EGuidFormats::Digits));
-	const FString LegacyNodeGuid = FGuid::NewGuid().ToString(EGuidFormats::Digits);
-
-	FBlueprintHelperAppendJournalRecord JournalRecord;
-	JournalRecord.TransactionId = FString::Printf(TEXT("tx_legacy_guid_%s"), *FGuid::NewGuid().ToString(EGuidFormats::Digits));
-	JournalRecord.ArchiveSessionId = ArchiveSessionId;
-	JournalRecord.TaskRunId = TEXT("task_legacy_guid_anchor");
-	JournalRecord.Tool = TEXT("AppendBlueprintGraph");
-	JournalRecord.Status = TEXT("applied");
-	JournalRecord.TargetAssets.Add(Blueprint->GetPathName());
-	JournalRecord.GraphId = TEXT("EventGraph");
-	JournalRecord.GraphName = TEXT("EventGraph");
-	FBlueprintHelperGraphReviewNodeAnchor Anchor;
-	Anchor.NodePath = TEXT("K2Node_CallFunction_0");
-	Anchor.NodeGuid = LegacyNodeGuid;
-	JournalRecord.CreatedNodeAnchors.Add(Anchor);
-
-	FBlueprintHelperTransactionJournalService JournalService;
-	FString JournalError;
-	TestTrue(TEXT("legacy guid journal writes review evidence"),
-		JournalService.WriteAppendJournal(JournalRecord, JournalError));
-
-	FBlueprintHelperReviewStoreService Store;
-	FBlueprintHelperReviewRecordQuery Query;
-	Query.ArchiveSessionIdFilter = ArchiveSessionId;
-	Query.bPendingOnly = false;
-	const TArray<FBlueprintHelperReviewRecord> Records = Store.QueryReviewRecords(Query);
-	TestEqual(TEXT("one legacy guid review record is created"), Records.Num(), 1);
-	if (Records.Num() != 1)
-	{
-		return false;
-	}
-
-	bool bFoundNodeGuidTarget = false;
-	for (const FBlueprintHelperReviewVisibleChange& Change : Records[0].VisibleChanges)
-	{
-		for (const FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
-		{
-			bFoundNodeGuidTarget |= Target.TargetKind.Equals(TEXT("graph_node"), ESearchCase::IgnoreCase)
-				&& Target.NodeGuid == LegacyNodeGuid
-				&& Target.TargetKey.Contains(LegacyNodeGuid);
-		}
-	}
-
-	TestTrue(TEXT("legacy guid-like created node path is promoted to node guid"), bFoundNodeGuidTarget);
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperTransactionJournalStructuredAnchorsCreateBlockRecordedBoundsTest,
-	"BlueprintHelper.GraphWrite.Replace.GraphTargetsCarryRecordedBounds",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FBlueprintHelperTransactionJournalStructuredAnchorsCreateBlockRecordedBoundsTest::RunTest(const FString& Parameters)
-{
-	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("StructuredAnchorBounds"));
-	TestNotNull(TEXT("structured anchor review blueprint is created"), Blueprint);
-	if (!Blueprint)
-	{
-		return false;
-	}
-
-	const FString AssetPath = Blueprint->GetPathName();
-	const FString ArchiveSessionId = FString::Printf(
-		TEXT("archive_structured_anchor_bounds_%s"),
-		*FGuid::NewGuid().ToString(EGuidFormats::Digits));
-
-	FBlueprintHelperGraphReviewNodeAnchor FirstAnchor;
-	FirstAnchor.NodePath = FString::Printf(TEXT("%s:EventGraph.K2Node_First"), *AssetPath);
-	FirstAnchor.NodeGuid = FGuid::NewGuid().ToString(EGuidFormats::Digits);
-	FirstAnchor.DisplayLabel = TEXT("First");
-	FirstAnchor.GraphPosition = FVector2D(100.0f, 40.0f);
-	FirstAnchor.GraphSize = FVector2D(200.0f, 80.0f);
-	FirstAnchor.bHasGraphBounds = true;
-
-	FBlueprintHelperGraphReviewNodeAnchor SecondAnchor;
-	SecondAnchor.NodePath = FString::Printf(TEXT("%s:EventGraph.K2Node_Second"), *AssetPath);
-	SecondAnchor.NodeGuid = FGuid::NewGuid().ToString(EGuidFormats::Digits);
-	SecondAnchor.DisplayLabel = TEXT("Second");
-	SecondAnchor.GraphPosition = FVector2D(500.0f, 120.0f);
-	SecondAnchor.GraphSize = FVector2D(260.0f, 100.0f);
-	SecondAnchor.bHasGraphBounds = true;
-
-	FBlueprintHelperAppendJournalRecord JournalRecord;
-	JournalRecord.TransactionId = FString::Printf(TEXT("tx_structured_bounds_%s"), *FGuid::NewGuid().ToString(EGuidFormats::Digits));
-	JournalRecord.ArchiveSessionId = ArchiveSessionId;
-	JournalRecord.TaskRunId = TEXT("task_structured_anchor_bounds");
-	JournalRecord.Tool = TEXT("ReplaceBlueprintGraph");
-	JournalRecord.Status = TEXT("applied");
-	JournalRecord.TargetAssets.Add(AssetPath);
-	JournalRecord.GraphId = TEXT("EventGraph");
-	JournalRecord.GraphName = TEXT("EventGraph");
-	JournalRecord.BlockIds.Add(TEXT("EventGraph_SmokeBlock"));
-	JournalRecord.CreatedNodeAnchors.Add(FirstAnchor);
-	JournalRecord.CreatedNodeAnchors.Add(SecondAnchor);
-
-	FBlueprintHelperTransactionJournalService JournalService;
-	FString JournalError;
-	TestTrue(TEXT("structured anchor journal writes review evidence"),
-		JournalService.WriteAppendJournal(JournalRecord, JournalError));
-
-	FBlueprintHelperReviewStoreService Store;
-	FBlueprintHelperReviewRecordQuery Query;
-	Query.ArchiveSessionIdFilter = ArchiveSessionId;
-	Query.bPendingOnly = false;
-	const TArray<FBlueprintHelperReviewRecord> Records = Store.QueryReviewRecords(Query);
-	TestEqual(TEXT("one structured anchor review record is created"), Records.Num(), 1);
-	if (Records.Num() != 1)
-	{
-		return false;
-	}
-
-	bool bFoundBlockAnchorPayload = false;
-	bool bBuiltBlockBounds = false;
-	FString BoundsDebug;
-	UEdGraph* EmptyGraph = NewObject<UEdGraph>(GetTransientPackage());
-	for (const FBlueprintHelperReviewVisibleChange& Change : Records[0].VisibleChanges)
-	{
-		for (const FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
-		{
-			if (Target.TargetKind.Equals(TEXT("graph_block"), ESearchCase::IgnoreCase))
-			{
-				bFoundBlockAnchorPayload |= Target.AnchorJson.Contains(TEXT("has_graph_bounds"))
-					&& Target.AnchorJson.Contains(TEXT("graph_position"))
-					&& Target.AnchorJson.Contains(TEXT("graph_size"));
-			}
-		}
-
-		FVector2D Position = FVector2D::ZeroVector;
-		FVector2D Size = FVector2D::ZeroVector;
-		bBuiltBlockBounds |= FBlueprintHelperReviewGraphBounds::BuildBoundsForTargets(
-			Change.AtomicTargets,
-			EmptyGraph,
-			TEXT("EventGraph"),
-			nullptr,
-			Position,
-			Size,
-			&BoundsDebug);
-	}
-
-	TestTrue(TEXT("block target carries aggregate recorded bounds payload"), bFoundBlockAnchorPayload);
-	TestTrue(FString::Printf(TEXT("aggregate recorded bounds build graph diff bounds: %s"), *BoundsDebug), bBuiltBlockBounds);
-	TestTrue(TEXT("aggregate bounds debug reports structured source"),
-		BoundsDebug.Contains(TEXT("anchorSource=structured")));
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperGraphWriteOwnershipWritesMetadataWithoutManagedCommentTest,
 	"BlueprintHelper.GraphWrite.Ownership.WritesMetadataWithoutManagedComment",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -2307,21 +1958,19 @@ bool FBlueprintHelperGraphWriteOwnershipWritesMetadataWithoutManagedCommentTest:
 		Blueprint,
 		EventNode,
 		TEXT("EventGraph_SmokeCustomEvent"),
-		TEXT("tx_test_001"),
 		TEXT("SmokeFeature"),
 		Error);
 
 	TestTrue(TEXT("ownership writes successfully"), bWritten);
 	TestEqual(TEXT("user node comment is preserved"), EventNode->NodeComment, FString(TEXT("Designer note")));
 	TestFalse(TEXT("comment omits block_id"), EventNode->NodeComment.Contains(TEXT("block_id=")));
-	TestFalse(TEXT("comment omits transaction id"), EventNode->NodeComment.Contains(TEXT("tx=")));
+	TestFalse(TEXT("comment omits legacy id"), EventNode->NodeComment.Contains(TEXT("legacy_id=")));
 	TestFalse(TEXT("comment omits tool field"), EventNode->NodeComment.Contains(TEXT("tool=")));
 
 	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AssertNodeHasOwnershipMetadata(
 		*this,
 		EventNode,
 		TEXT("EventGraph_SmokeCustomEvent"),
-		TEXT("tx_test_001"),
 		TEXT("SmokeFeature"));
 
 	return true;
@@ -2347,26 +1996,16 @@ bool FBlueprintHelperGraphWriteAppendOwnershipWritesMetadataWithoutManagedCommen
 	FBlueprintHelperAgentImportService AgentImportService(Resolver, CompileService, AssetBrowseService);
 	FBlueprintHelperBlockIdService BlockIdService;
 	FBlueprintHelperOwnershipService OwnershipService;
-	FBlueprintHelperTransactionJournalService JournalService;
 	FBlueprintHelperAppendBlueprintGraphService AppendService(
 		Resolver,
 		BlockIdService,
-		OwnershipService,
-		JournalService);
-
+		OwnershipService);
 	const FString GraphName = TEXT("BH_AppendOwnershipMetadata");
 	const FBlueprintHelperToolResultBase Result = AppendService.Execute(
 		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeAppendExecutePayload(Blueprint->GetPathName(), GraphName));
 
 	TestTrue(TEXT("append write succeeds"), Result.bOk);
 	TestEqual(TEXT("append write status is applied"), Result.Status, EBlueprintHelperToolStatus::Applied);
-
-	FString TransactionId;
-	const TSharedPtr<FJsonObject>* WriteRef = nullptr;
-	TestTrue(TEXT("append result exposes write_ref"),
-		Result.Data.IsValid() && Result.Data->TryGetObjectField(TEXT("write_ref"), WriteRef));
-	TestTrue(TEXT("append result exposes transaction id"),
-		WriteRef && WriteRef->IsValid() && (*WriteRef)->TryGetStringField(TEXT("transaction_id"), TransactionId));
 	const TSharedPtr<FJsonObject>* AppendResult = nullptr;
 	const TArray<TSharedPtr<FJsonValue>>* BlockRefs = nullptr;
 	FString BlockRef;
@@ -2390,11 +2029,11 @@ bool FBlueprintHelperGraphWriteAppendOwnershipWritesMetadataWithoutManagedCommen
 		BlockRef);
 	for (UEdGraphNode* Node : Graph->Nodes)
 	{
-		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AssertNodeHasOwnershipMetadata(*this, Node, ExpectedBlockId, TransactionId, TEXT("SmokeFeature"));
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AssertNodeHasOwnershipMetadata(*this, Node, ExpectedBlockId, TEXT("SmokeFeature"));
 		TestFalse(TEXT("append-created node comment omits block_id"),
 			Node && Node->NodeComment.Contains(TEXT("block_id=")));
-		TestFalse(TEXT("append-created node comment omits transaction id"),
-			Node && Node->NodeComment.Contains(TEXT("tx=")));
+		TestFalse(TEXT("append-created node comment omits legacy id"),
+			Node && Node->NodeComment.Contains(TEXT("legacy_id=")));
 	}
 
 	return true;
@@ -2430,13 +2069,10 @@ bool FBlueprintHelperGraphWriteAppendReusesSignatureEntryTest::RunTest(const FSt
 	FBlueprintHelperAgentImportService AgentImportService(Resolver, CompileService, AssetBrowseService);
 	FBlueprintHelperBlockIdService BlockIdService;
 	FBlueprintHelperOwnershipService OwnershipService;
-	FBlueprintHelperTransactionJournalService JournalService;
 	FBlueprintHelperAppendBlueprintGraphService AppendService(
 		Resolver,
 		BlockIdService,
-		OwnershipService,
-		JournalService);
-
+		OwnershipService);
 	const FBlueprintHelperToolResultBase Result = AppendService.Execute(
 		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeAppendReuseExistingEntryExecutePayload(Blueprint->GetPathName(), Graph->GetName()));
 

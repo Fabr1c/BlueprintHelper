@@ -28,53 +28,37 @@ bool FBlueprintHelperReviewedDataCleanupServiceUtils::IsOpenReviewStatusText(con
 		|| ParsedStatus == EBlueprintHelperReviewChangeStatus::RejectFailed;
 }
 
-void FBlueprintHelperReviewedDataCleanupServiceUtils::AddReviewTransactionId(
-	TSet<FString>& TransactionIds,
-	const FString& TransactionId)
+void FBlueprintHelperReviewedDataCleanupServiceUtils::AddReviewEvidenceId(
+	TSet<FString>& EvidenceIds,
+	const FString& EvidenceId)
 {
-	if (!TransactionId.IsEmpty())
+	if (!EvidenceId.IsEmpty())
 	{
-		TransactionIds.Add(TransactionId);
+		EvidenceIds.Add(EvidenceId);
 	}
 }
 
-void FBlueprintHelperReviewedDataCleanupServiceUtils::AddRollbackRefTransactionId(
-	TSet<FString>& TransactionIds,
-	const FString& RollbackDataRef)
-{
-	const FString Prefix = TEXT("transaction://");
-	const FString Suffix = TEXT("/rollback_data");
-	if (!RollbackDataRef.StartsWith(Prefix) || !RollbackDataRef.EndsWith(Suffix))
-	{
-		return;
-	}
-	FString TransactionId = RollbackDataRef.Mid(Prefix.Len());
-	TransactionId.LeftChopInline(Suffix.Len());
-	AddReviewTransactionId(TransactionIds, TransactionId);
-}
-
-void FBlueprintHelperReviewedDataCleanupServiceUtils::CollectRetainedTransactionIds(
+void FBlueprintHelperReviewedDataCleanupServiceUtils::CollectRetainedEvidenceIds(
 	const FBlueprintHelperReviewVisibleChange& Change,
-	TSet<FString>& TransactionIds)
+	TSet<FString>& EvidenceIds)
 {
-	AddReviewTransactionId(TransactionIds, Change.LatestTransactionId);
-	for (const FString& TransactionId : Change.LatestTransactionIds)
+	AddReviewEvidenceId(EvidenceIds, Change.LatestEvidenceId);
+	for (const FString& EvidenceId : Change.LatestEvidenceIds)
 	{
-		AddReviewTransactionId(TransactionIds, TransactionId);
+		AddReviewEvidenceId(EvidenceIds, EvidenceId);
 	}
-	for (const FString& TransactionId : Change.SourceTransactionIds)
+	for (const FString& EvidenceId : Change.SourceEvidenceIds)
 	{
-		AddReviewTransactionId(TransactionIds, TransactionId);
+		AddReviewEvidenceId(EvidenceIds, EvidenceId);
 	}
 	for (const FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
 	{
-		AddReviewTransactionId(TransactionIds, Target.FirstTransactionId);
-		AddReviewTransactionId(TransactionIds, Target.LatestTransactionId);
-		for (const FString& TransactionId : Target.SourceTransactionIds)
+		AddReviewEvidenceId(EvidenceIds, Target.FirstEvidenceId);
+		AddReviewEvidenceId(EvidenceIds, Target.LatestEvidenceId);
+		for (const FString& EvidenceId : Target.SourceEvidenceIds)
 		{
-			AddReviewTransactionId(TransactionIds, TransactionId);
+			AddReviewEvidenceId(EvidenceIds, EvidenceId);
 		}
-		AddRollbackRefTransactionId(TransactionIds, Target.RollbackDataRef);
 	}
 }
 
@@ -204,7 +188,7 @@ void FBlueprintHelperReviewedDataCleanupServiceUtils::ScanReviewPanelBundles(
 
 void FBlueprintHelperReviewedDataCleanupServiceUtils::ScanUnreferencedJsonFiles(
 	const FString& Directory,
-	const TSet<FString>& RetainedTransactionIds,
+	const TSet<FString>& RetainedEvidenceIds,
 	TArray<FString>& OutPaths)
 {
 	IFileManager& FileManager = IFileManager::Get();
@@ -218,7 +202,7 @@ void FBlueprintHelperReviewedDataCleanupServiceUtils::ScanUnreferencedJsonFiles(
 	for (const FString& FileName : FileNames)
 	{
 		const FString Id = FPaths::GetBaseFilename(FileName);
-		if (RetainedTransactionIds.Contains(Id))
+		if (RetainedEvidenceIds.Contains(Id))
 		{
 			continue;
 		}

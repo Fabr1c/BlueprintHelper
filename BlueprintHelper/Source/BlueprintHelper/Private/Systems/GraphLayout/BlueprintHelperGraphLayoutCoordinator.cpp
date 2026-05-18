@@ -12,6 +12,7 @@
 #include "Misc/Paths.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "Systems/Config/BlueprintHelperProjectConfigPaths.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutRuleSetJson.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutSnapshotBuilder.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutSolver.h"
@@ -54,10 +55,7 @@ static FString MakeNodeId(const UEdGraphNode* Node)
 
 static FString GetRuleSetConfigPath()
 {
-	return FPaths::Combine(
-		FPaths::ProjectSavedDir(),
-		TEXT("BlueprintHelper"),
-		TEXT("GraphLayoutRules.json"));
+	return FBlueprintHelperProjectConfigPaths::GetGraphLayoutRulesPath();
 }
 
 static BlueprintHelper::GraphLayout::FRuleSet LoadConfiguredRuleSet()
@@ -379,6 +377,13 @@ void FBlueprintHelperGraphLayoutCoordinator::FlushPendingTaskLayouts()
 			StartSnapshotAndSolve(Pending);
 		}
 	}
+}
+
+void FBlueprintHelperGraphLayoutCoordinator::DiscardPendingTaskLayouts()
+{
+	using namespace BlueprintHelperGraphLayoutCoordinatorLocal;
+
+	GPendingLayouts.Reset();
 }
 
 void FBlueprintHelperGraphLayoutCoordinator::Shutdown()

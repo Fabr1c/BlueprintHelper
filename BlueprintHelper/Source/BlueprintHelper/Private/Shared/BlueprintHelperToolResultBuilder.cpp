@@ -4,20 +4,12 @@
 #include "HAL/PlatformTime.h"
 
 int32 FBlueprintHelperToolResultBuilder::TraceCounter = 0;
-int32 FBlueprintHelperToolResultBuilder::TransactionCounter = 0;
 
 FString FBlueprintHelperToolResultBuilder::GenerateTraceId()
 {
 	const FString TimePart = FString::Printf(TEXT("%lld"), static_cast<int64>(FPlatformTime::Seconds()));
 	const FString CounterPart = FString::Printf(TEXT("%04d"), ++TraceCounter);
 	return FString::Printf(TEXT("trace_%s_%s"), *TimePart, *CounterPart);
-}
-
-FString FBlueprintHelperToolResultBuilder::GenerateTransactionId(const FString& Prefix)
-{
-	const FString TimePart = FString::Printf(TEXT("%lld"), static_cast<int64>(FPlatformTime::Seconds()));
-	const FString CounterPart = FString::Printf(TEXT("%04d"), ++TransactionCounter);
-	return FString::Printf(TEXT("%s_%s_%s"), *Prefix, *TimePart, *CounterPart);
 }
 
 FBlueprintHelperToolResultBase FBlueprintHelperToolResultBuilder::Success(

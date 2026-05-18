@@ -383,6 +383,7 @@ bool FBlueprintHelperReviewTargetKindRegistry::SupportsSnapshotRestore(const FSt
 		EBlueprintHelperReviewTargetHandlerKind::DataTableRow,
 		EBlueprintHelperReviewTargetHandlerKind::StructField,
 		EBlueprintHelperReviewTargetHandlerKind::ObjectProperty,
+		EBlueprintHelperReviewTargetHandlerKind::Signature,
 		EBlueprintHelperReviewTargetHandlerKind::UMGWidget,
 		EBlueprintHelperReviewTargetHandlerKind::UMGWidgetProperty
 	};

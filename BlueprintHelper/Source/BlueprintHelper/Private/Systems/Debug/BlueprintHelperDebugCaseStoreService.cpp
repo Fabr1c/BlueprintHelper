@@ -148,15 +148,15 @@ FString FBlueprintHelperDebugCaseStoreService::BuildMarkdownSummary(
 		AppendValue(TEXT("Message"), Summary.Error.Message);
 	}
 
-	if (Summary.TransactionLinks.Num() > 0)
+	if (Summary.EvidenceLinks.Num() > 0)
 	{
 		AppendLine(TEXT(""));
-		AppendLine(TEXT("## Transaction Links"));
-		for (const FBlueprintHelperDebugTransactionLink& Link : Summary.TransactionLinks)
+		AppendLine(TEXT("## Evidence Links"));
+		for (const FBlueprintHelperDebugEvidenceLink& Link : Summary.EvidenceLinks)
 		{
-			const FString TransactionId = Link.TransactionId.IsEmpty() ? TEXT("<empty>") : Link.TransactionId;
+			const FString EvidenceId = Link.EvidenceId.IsEmpty() ? TEXT("<empty>") : Link.EvidenceId;
 			const FString Role = Link.Role.IsEmpty() ? TEXT("unknown") : Link.Role;
-			AppendLine(FString::Printf(TEXT("- `%s` role=`%s`"), *Safe(TransactionId), *Safe(Role)));
+			AppendLine(FString::Printf(TEXT("- `%s` role=`%s`"), *Safe(EvidenceId), *Safe(Role)));
 		}
 	}
 
@@ -201,7 +201,7 @@ bool FBlueprintHelperDebugCaseStoreService::EnsureBundleArtifactDirectories(
 	const TArray<FString> RequiredDirs = {
 		BundleDir / TEXT("artifacts"),
 		BundleDir / TEXT("artifacts") / TEXT("review"),
-		BundleDir / TEXT("artifacts") / TEXT("transactions"),
+		BundleDir / TEXT("artifacts") / TEXT("evidence"),
 		BundleDir / TEXT("artifacts") / TEXT("assets"),
 		BundleDir / TEXT("artifacts") / TEXT("logs")
 	};
@@ -294,26 +294,26 @@ bool FBlueprintHelperDebugCaseStoreService::ExportDebugCaseSummaryArtifact(
 	return true;
 }
 
-bool FBlueprintHelperDebugCaseStoreService::ExportTransactionSummaryArtifacts(
+bool FBlueprintHelperDebugCaseStoreService::ExportEvidenceSummaryArtifacts(
 	const FBlueprintHelperDebugCase& DebugCase,
 	const FString& BundleDir,
 	FBlueprintHelperDebugBundleManifest& Manifest,
 	FString* OutError)
 {
 	int32 LinkIndex = 0;
-	for (const FBlueprintHelperDebugTransactionLink& Link : DebugCase.TransactionLinks)
+	for (const FBlueprintHelperDebugEvidenceLink& Link : DebugCase.EvidenceLinks)
 	{
 		++LinkIndex;
-		const FString RawId = Link.TransactionId.IsEmpty()
-			? FString::Printf(TEXT("transaction_%d"), LinkIndex)
-			: Link.TransactionId;
-		const FString ArtifactRef = TEXT("artifacts/transactions/")
+		const FString RawId = Link.EvidenceId.IsEmpty()
+			? FString::Printf(TEXT("evidence_%d"), LinkIndex)
+			: Link.EvidenceId;
+		const FString ArtifactRef = TEXT("artifacts/evidence/")
 			+ MakeSafeArtifactFileName(RawId)
 			+ TEXT(".summary.json");
-		TSharedRef<FJsonObject> TransactionSummary = MakeShared<FJsonObject>();
-		TransactionSummary->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.DebugTransactionSummary.v1"));
-		TransactionSummary->SetObjectField(TEXT("transaction_link"), Link.ToJson());
-		if (!WriteJsonArtifact(BundleDir, ArtifactRef, TransactionSummary, OutError))
+		TSharedRef<FJsonObject> EvidenceSummary = MakeShared<FJsonObject>();
+		EvidenceSummary->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.DebugEvidenceSummary.v1"));
+		EvidenceSummary->SetObjectField(TEXT("evidence_link"), Link.ToJson());
+		if (!WriteJsonArtifact(BundleDir, ArtifactRef, EvidenceSummary, OutError))
 		{
 			return false;
 		}
@@ -789,7 +789,7 @@ FBlueprintHelperDebugCaseSummary FBlueprintHelperDebugCaseStoreService::BuildSum
 	Summary.TaskRunId = DebugCase.TaskRunId;
 	Summary.AssetPaths = DebugCase.AssetPaths;
 	Summary.ReviewRecordIds = DebugCase.ReviewRecordIds;
-	Summary.TransactionLinks = DebugCase.TransactionLinks;
+	Summary.EvidenceLinks = DebugCase.EvidenceLinks;
 	Summary.Error = DebugCase.Error;
 	Summary.RecommendedNext = DebugCase.RecommendedNext;
 	Summary.FragmentArtifacts = DebugCase.FragmentArtifacts;
@@ -902,7 +902,7 @@ bool FBlueprintHelperDebugCaseStoreService::ExportDebugBundleSummary(
 	{
 		return false;
 	}
-	if (!ExportTransactionSummaryArtifacts(DebugCase, BundleDir, OutManifest, OutError))
+	if (!ExportEvidenceSummaryArtifacts(DebugCase, BundleDir, OutManifest, OutError))
 	{
 		return false;
 	}

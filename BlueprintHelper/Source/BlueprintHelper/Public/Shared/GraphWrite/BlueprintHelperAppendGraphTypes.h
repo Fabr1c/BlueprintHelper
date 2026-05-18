@@ -19,7 +19,7 @@ enum class EBlueprintHelperAppendStage : uint8
 	CreateNodes,
 	ConnectPins,
 	WriteMetadata,
-	WriteJournal,
+	WriteReviewEvidence,
 	Rollback
 };
 
@@ -36,7 +36,7 @@ inline const TCHAR* AppendStageToString(EBlueprintHelperAppendStage Stage)
 	case EBlueprintHelperAppendStage::CreateNodes:   return TEXT("create_nodes");
 	case EBlueprintHelperAppendStage::ConnectPins:   return TEXT("connect_pins");
 	case EBlueprintHelperAppendStage::WriteMetadata: return TEXT("write_metadata");
-	case EBlueprintHelperAppendStage::WriteJournal:  return TEXT("write_journal");
+	case EBlueprintHelperAppendStage::WriteReviewEvidence:  return TEXT("write_review_evidence");
 	case EBlueprintHelperAppendStage::Rollback:      return TEXT("rollback");
 	default:                                         return TEXT("unknown");
 	}
@@ -62,7 +62,7 @@ enum class EBlueprintHelperAppendErrorCode : uint8
 	NodeCreateFailed,
 	LinkCreateFailed,
 	OwnershipWriteFailed,
-	JournalWriteFailed,
+	ReviewEvidenceWriteFailed,
 	RollbackBlocked,
 	RollbackFailed,
 	WritePermissionDisabled,
@@ -90,7 +90,7 @@ inline const TCHAR* AppendErrorCodeToString(EBlueprintHelperAppendErrorCode Code
 	case EBlueprintHelperAppendErrorCode::NodeCreateFailed:              return TEXT("node_create_failed");
 	case EBlueprintHelperAppendErrorCode::LinkCreateFailed:              return TEXT("link_create_failed");
 	case EBlueprintHelperAppendErrorCode::OwnershipWriteFailed:          return TEXT("ownership_write_failed");
-	case EBlueprintHelperAppendErrorCode::JournalWriteFailed:            return TEXT("journal_write_failed");
+	case EBlueprintHelperAppendErrorCode::ReviewEvidenceWriteFailed:            return TEXT("review_evidence_write_failed");
 	case EBlueprintHelperAppendErrorCode::RollbackBlocked:               return TEXT("rollback_blocked");
 	case EBlueprintHelperAppendErrorCode::RollbackFailed:                return TEXT("rollback_failed");
 	case EBlueprintHelperAppendErrorCode::WritePermissionDisabled:       return TEXT("write_permission_disabled");
@@ -144,14 +144,15 @@ struct FBlueprintHelperAppendGraphInfo
 /** 写入引用。 */
 struct FBlueprintHelperWriteRef
 {
-	FString TransactionId;
-	bool bJournalRecorded = false;
+	FString EvidenceId;
 
 	TSharedRef<FJsonObject> ToJson() const
 	{
 		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
-		Json->SetStringField(TEXT("transaction_id"), TransactionId);
-		Json->SetBoolField(TEXT("journal_recorded"), bJournalRecorded);
+		if (!EvidenceId.IsEmpty())
+		{
+			Json->SetStringField(TEXT("evidence_id"), EvidenceId);
+		}
 		return Json;
 	}
 };
@@ -310,9 +311,9 @@ struct FBlueprintHelperAppendDryRunData
 	}
 };
 
-// ─── AppendJournalRecord ───
+// ─── Review Node Anchor ───
 
-/** Transaction Journal 记录。 */
+/** Review Evidence 记录。 */
 struct FBlueprintHelperGraphReviewNodeAnchor
 {
 	FString NodePath;
@@ -340,73 +341,6 @@ struct FBlueprintHelperGraphReviewNodeAnchor
 		Json->SetObjectField(TEXT("graph_size"), SizeJson);
 
 		Json->SetBoolField(TEXT("has_graph_bounds"), bHasGraphBounds);
-		return Json;
-	}
-};
-
-struct FBlueprintHelperAppendJournalRecord
-{
-	FString TransactionId;
-	FString ArchiveSessionId;
-	FString TaskRunId;
-	FString CreatedAt;
-	FString Tool = TEXT("AppendBlueprintGraph");
-	FString Status;
-	TArray<FString> TargetAssets;
-	FString GraphId;
-	FString GraphName;
-	TArray<FString> BlockIds;
-	TArray<FBlueprintHelperGraphReviewNodeAnchor> CreatedNodeAnchors;
-	TArray<FString> CreatedLinkPaths;
-	TMap<FString, FString> BaselineSnapshotsByTargetKey;
-	TMap<FString, FString> RecordedAfterSnapshotsByTargetKey;
-	FString DiffSummary;
-	TArray<FString> Validation;
-
-	TSharedRef<FJsonObject> ToJson() const
-	{
-		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
-		Json->SetStringField(TEXT("transaction_id"), TransactionId);
-		if (!ArchiveSessionId.IsEmpty()) Json->SetStringField(TEXT("archive_session_id"), ArchiveSessionId);
-		if (!TaskRunId.IsEmpty()) Json->SetStringField(TEXT("task_run_id"), TaskRunId);
-		if (!CreatedAt.IsEmpty()) Json->SetStringField(TEXT("created_at"), CreatedAt);
-		Json->SetStringField(TEXT("tool"), Tool);
-		if (!Status.IsEmpty()) Json->SetStringField(TEXT("status"), Status);
-		if (TargetAssets.Num() > 0)
-		{
-			TArray<TSharedPtr<FJsonValue>> Arr;
-			for (const FString& Asset : TargetAssets) { Arr.Add(MakeShared<FJsonValueString>(Asset)); }
-			Json->SetArrayField(TEXT("target_assets"), Arr);
-		}
-		if (!GraphId.IsEmpty()) Json->SetStringField(TEXT("graph"), GraphId);
-		if (BlockIds.Num() > 0)
-		{
-			TArray<TSharedPtr<FJsonValue>> Arr;
-			for (const FString& Id : BlockIds) { Arr.Add(MakeShared<FJsonValueString>(Id)); }
-			Json->SetArrayField(TEXT("blocks"), Arr);
-		}
-		if (CreatedNodeAnchors.Num() > 0)
-		{
-			TArray<TSharedPtr<FJsonValue>> Arr;
-			for (const FBlueprintHelperGraphReviewNodeAnchor& Anchor : CreatedNodeAnchors)
-			{
-				Arr.Add(MakeShared<FJsonValueObject>(Anchor.ToJson()));
-			}
-			Json->SetArrayField(TEXT("created_node_anchors"), Arr);
-		}
-		if (CreatedLinkPaths.Num() > 0)
-		{
-			TArray<TSharedPtr<FJsonValue>> Arr;
-			for (const FString& Link : CreatedLinkPaths) { Arr.Add(MakeShared<FJsonValueString>(Link)); }
-			Json->SetArrayField(TEXT("created_links"), Arr);
-		}
-		if (!DiffSummary.IsEmpty()) Json->SetStringField(TEXT("diff_summary"), DiffSummary);
-		if (Validation.Num() > 0)
-		{
-			TArray<TSharedPtr<FJsonValue>> Arr;
-			for (const FString& V : Validation) { Arr.Add(MakeShared<FJsonValueString>(V)); }
-			Json->SetArrayField(TEXT("validation"), Arr);
-		}
 		return Json;
 	}
 };

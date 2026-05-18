@@ -17,7 +17,7 @@ class FBlueprintHelperGraphResolver;
  * LogicJson 只读服务。
  * 根据 target 读取蓝图逻辑并以结构化 JSON 返回。
  * 多入口 scope 下返回 groups[]，单入口 scope 返回 entry+nodes。
- * 不负责：导入、导出、写入、Transaction、Review。
+ * 不负责：导入、导出、写入、Editor undo、Review。
  */
 class BLUEPRINTHELPER_API FBlueprintHelperLogicJsonReadService
 {

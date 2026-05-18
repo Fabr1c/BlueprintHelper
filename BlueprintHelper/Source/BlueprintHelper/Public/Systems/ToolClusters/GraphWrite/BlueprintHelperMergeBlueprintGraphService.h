@@ -8,7 +8,6 @@
 
 class FBlueprintHelperGraphResolver;
 class FBlueprintHelperLogicJsonPathService;
-class FBlueprintHelperTransactionJournalService;
 class UEdGraph;
 class UBlueprint;
 class UEdGraphNode;
@@ -20,9 +19,7 @@ class BLUEPRINTHELPER_API FBlueprintHelperMergeBlueprintGraphService
 public:
 	FBlueprintHelperMergeBlueprintGraphService(
 		const FBlueprintHelperGraphResolver& InResolver,
-		const FBlueprintHelperLogicJsonPathService& InPathService,
-		const FBlueprintHelperTransactionJournalService& InJournalService);
-
+		const FBlueprintHelperLogicJsonPathService& InPathService);
 	FBlueprintHelperToolResultBase Execute(const TSharedPtr<FJsonObject>& Payload) const;
 
 private:
@@ -80,5 +77,4 @@ private:
 
 	const FBlueprintHelperGraphResolver& Resolver;
 	const FBlueprintHelperLogicJsonPathService& PathService;
-	const FBlueprintHelperTransactionJournalService& JournalService;
 };

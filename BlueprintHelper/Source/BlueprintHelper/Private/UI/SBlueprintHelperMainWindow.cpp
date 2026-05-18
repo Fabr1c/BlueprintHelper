@@ -1,4 +1,4 @@
-﻿// BlueprintHelper main window shell implementation.
+// BlueprintHelper main window shell implementation.
 
 #include "UI/SBlueprintHelperMainWindow.h"
 
@@ -69,7 +69,7 @@ void SBlueprintHelperMainWindow::Construct(const FArguments& InArgs)
 			[
 				SNew(SButton)
 				.Text(FText::FromString(TEXT("Clean Review Data")))
-				.ToolTipText(FText::FromString(TEXT("Clean reviewed Accept/Reject residual Review records and unreferenced Transaction files. Pending review data is preserved.")))
+				.ToolTipText(FText::FromString(TEXT("Clean reviewed Accept/Reject residual Review records. Pending review data is preserved.")))
 				.OnClicked(this, &SBlueprintHelperMainWindow::OnCleanupReviewDataClicked)
 			]
 		]

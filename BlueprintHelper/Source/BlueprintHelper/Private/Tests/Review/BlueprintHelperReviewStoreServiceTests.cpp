@@ -28,7 +28,6 @@
 #include "Systems/Review/Utils/BlueprintHelperReviewRejectService.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
 #include "Shared/GraphWrite/BlueprintHelperAppendGraphTypes.h"
-#include "Systems/Transactions/BlueprintHelperTransactionJournalService.h"
 #include "UI/Review/BlueprintHelperReviewDebugText.h"
 #include "UI/Review/BlueprintHelperReviewAssetContext.h"
 #include "UI/Review/BlueprintHelperReviewAssetPresenters.h"
@@ -61,7 +60,7 @@ public:
 	static FBlueprintHelperReviewAtomicTarget MakeReviewTestTarget(
 		const FString& TargetKey,
 		const FString& VisualGroupKey,
-		const FString& TransactionId,
+		const FString& EvidenceId,
 		const FString& RecordedAfterHash = TEXT("after_hash"))
 	{
 		FBlueprintHelperReviewAtomicTarget Target;
@@ -72,26 +71,25 @@ public:
 		Target.TargetKind = TEXT("graph_node");
 		Target.VisualGroupKey = VisualGroupKey;
 		Target.DisplayLabel = TEXT("Door flow");
-		Target.LatestTransactionId = TransactionId;
-		Target.SourceTransactionIds.Add(TransactionId);
+		Target.LatestEvidenceId = EvidenceId;
+		Target.SourceEvidenceIds.Add(EvidenceId);
 		Target.RecordedAfterHash = RecordedAfterHash;
 		Target.BaselineHash = TEXT("baseline_hash");
-		Target.BeforeSnapshotJson = TEXT("{\"schema\":\"BlueprintHelper.ReviewTargetSnapshot.v1\",\"exists\":true}");
-		Target.RollbackDataRef = TEXT("review://rollback/door_flow");
+		Target.BeforeSnapshotJson = TEXT("{\"schema\":\"BlueprintHelper.ReviewTargetSnapshot.v2\",\"exists\":true}");
 		Target.Ownership = TEXT("blueprinthelper_owned");
 		return Target;
 	}
 
 	static FBlueprintHelperReviewAtomicTarget MakeReviewAssetFactoryTarget(
 		const FString& TargetKey,
-		const FString& TransactionId,
+		const FString& EvidenceId,
 		const FString& AssetPath,
 		const FString& RecordedAfterHash = TEXT("after_asset_factory"))
 	{
 		FBlueprintHelperReviewAtomicTarget Target = MakeReviewTestTarget(
 			TargetKey,
 			TargetKey,
-			TransactionId,
+			EvidenceId,
 			RecordedAfterHash);
 		Target.Surface = EBlueprintHelperReviewSurface::Details;
 		Target.AssetPath = AssetPath;
@@ -104,14 +102,14 @@ public:
 	static FBlueprintHelperWriteReviewEvidence MakeReviewTestEvidence(
 		const FString& ArchiveSessionId,
 		const FString& TaskRunId,
-		const FString& TransactionId,
+		const FString& EvidenceId,
 		const FString& AssetPath,
 		const FBlueprintHelperReviewAtomicTarget& Target)
 	{
 		FBlueprintHelperWriteReviewEvidence Evidence;
 		Evidence.ArchiveSessionId = ArchiveSessionId;
 		Evidence.TaskRunId = TaskRunId;
-		Evidence.TransactionId = TransactionId;
+		Evidence.EvidenceId = EvidenceId;
 		Evidence.AssetPath = AssetPath;
 		Evidence.OperationKind = TEXT("append_blueprint_graph");
 		Evidence.DisplayLabel = TEXT("Door flow");
@@ -129,8 +127,8 @@ public:
 		Change.AssetPath = AssetPath;
 		Change.GraphName = TEXT("EventGraph");
 		Change.LocationKey = TEXT("graph:EventGraph:block:DoorFlow");
-		Change.LatestTransactionId = ChangeId;
-		Change.SourceTransactionIds.Add(ChangeId);
+		Change.LatestEvidenceId = ChangeId;
+		Change.SourceEvidenceIds.Add(ChangeId);
 		Change.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
 		Change.Status = EBlueprintHelperReviewChangeStatus::Pending;
 		Change.DisplayLabel = TEXT("Door flow");
@@ -551,12 +549,11 @@ bool FBlueprintHelperReviewStoreUsesSemanticHashForGraphTargetTest::RunTest(cons
 	Target.TargetKey = FString::Printf(TEXT("graph:%s:node:%s"), *Graph->GetName(), *Node->NodeGuid.ToString(EGuidFormats::Digits));
 	Target.VisualGroupKey = Target.TargetKey;
 	Target.NodeGuid = Node->NodeGuid.ToString(EGuidFormats::Digits);
-	Target.RollbackDataRef = TEXT("transaction://tx_store_semantic/rollback_data");
 
 	FBlueprintHelperWriteReviewEvidence Evidence;
 	Evidence.ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_store_semantic"));
 	Evidence.TaskRunId = TEXT("task_store_semantic");
-	Evidence.TransactionId = TEXT("tx_store_semantic");
+	Evidence.EvidenceId = TEXT("tx_store_semantic");
 	Evidence.AssetPath = Blueprint->GetPathName();
 	Evidence.OperationKind = TEXT("append_blueprint_graph");
 	Evidence.ChangeKind = EBlueprintHelperReviewChangeKind::Added;
@@ -610,7 +607,6 @@ bool FBlueprintHelperReviewRejectGraphTargetUsesSemanticHashGuardTest::RunTest(c
 	Target.TargetKey = FString::Printf(TEXT("graph:%s:node:%s"), *Graph->GetName(), *Node->NodeGuid.ToString(EGuidFormats::Digits));
 	Target.VisualGroupKey = Target.TargetKey;
 	Target.NodeGuid = Node->NodeGuid.ToString(EGuidFormats::Digits);
-	Target.RollbackDataRef = TEXT("transaction://tx_reject_semantic/rollback_data");
 	Target.RecordedAfterHash = TEXT("legacy_graph_hash");
 	Target.BaselineHash = TEXT("legacy_baseline_hash");
 
@@ -618,7 +614,7 @@ bool FBlueprintHelperReviewRejectGraphTargetUsesSemanticHashGuardTest::RunTest(c
 	Change.ChangeId = TEXT("change_reject_semantic");
 	Change.AssetPath = Blueprint->GetPathName();
 	Change.GraphName = Graph->GetName();
-	Change.LatestTransactionId = TEXT("tx_reject_semantic");
+	Change.LatestEvidenceId = TEXT("tx_reject_semantic");
 	Change.AtomicTargets.Add(Target);
 
 	FBlueprintHelperReviewRejectOptions Options;
@@ -653,13 +649,11 @@ bool FBlueprintHelperReviewRejectNeedsActionWithoutRecoverableBeforeSnapshotTest
 	FBlueprintHelperReviewVisibleChange Change;
 	Change.ChangeId = TEXT("change_missing_recoverable");
 	Change.AssetPath = Target.AssetPath;
-	Change.LatestTransactionId = Target.LatestTransactionId;
+	Change.LatestEvidenceId = Target.LatestEvidenceId;
 	Change.AtomicTargets.Add(Target);
 
 	FBlueprintHelperReviewRejectOptions Options;
 	Options.CurrentHashesByTargetKey.Add(Target.TargetKey, Target.RecordedAfterHash);
-	Options.bRollbackExecutorAvailable = true;
-	Options.bRollbackSucceeded = true;
 
 	FBlueprintHelperReviewActionService ActionService;
 	const FBlueprintHelperReviewActionResult Result = ActionService.RejectVisibleChange(Change, Options);
@@ -683,7 +677,7 @@ bool FBlueprintHelperReviewDebugBundleSummarizesSemanticHashSourceTest::RunTest(
 	TSharedPtr<FBlueprintHelperReviewVisibleChange> Change = MakeShared<FBlueprintHelperReviewVisibleChange>();
 	Change->ChangeId = TEXT("change_debug_semantic");
 	Change->AssetPath = TEXT("/Game/BP_DebugSemantic");
-	Change->LatestTransactionId = TEXT("tx_debug_semantic");
+	Change->LatestEvidenceId = TEXT("tx_debug_semantic");
 	Change->BeforeHash = TEXT("crc32_before");
 	Change->AfterHash = TEXT("crc32_after");
 	FBlueprintHelperReviewAtomicTarget Target =
@@ -719,7 +713,7 @@ bool FBlueprintHelperReviewDebugBundleSummarizesSemanticHashSourceTest::RunTest(
 		(*SelectedChangePtr)->TryGetStringField(TEXT("snapshot_schema"), SnapshotSchema));
 	TestEqual(TEXT("snapshot schema is target snapshot"),
 		SnapshotSchema,
-		FString(TEXT("BlueprintHelper.ReviewTargetSnapshot.v1")));
+		FString(TEXT("BlueprintHelper.ReviewTargetSnapshot.v2")));
 
 	FString SerializedEvent;
 	const TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&SerializedEvent);
@@ -768,7 +762,7 @@ bool FBlueprintHelperReviewStoreUsesSemanticHashForSnapshotRestoreTargetTest::Ru
 	FBlueprintHelperWriteReviewEvidence Evidence;
 	Evidence.ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_store_restore"));
 	Evidence.TaskRunId = TEXT("task_store_restore");
-	Evidence.TransactionId = TEXT("tx_store_restore");
+	Evidence.EvidenceId = TEXT("tx_store_restore");
 	Evidence.AssetPath = DataTable->GetPathName();
 	Evidence.OperationKind = TEXT("datatable_update_row");
 	Evidence.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
@@ -824,13 +818,12 @@ bool FBlueprintHelperReviewRejectBlocksWhenSemanticHashChangedTest::RunTest(cons
 	Target.TargetKey = FString::Printf(TEXT("graph:%s:node:%s"), *Graph->GetName(), *Node->NodeGuid.ToString(EGuidFormats::Digits));
 	Target.VisualGroupKey = Target.TargetKey;
 	Target.NodeGuid = Node->NodeGuid.ToString(EGuidFormats::Digits);
-	Target.RollbackDataRef = TEXT("transaction://tx_reject_semantic_mismatch/rollback_data");
 	Target.RecordedAfterHash = TEXT("crc32_00000000");
 
 	FBlueprintHelperReviewVisibleChange Change;
 	Change.ChangeId = TEXT("change_reject_semantic_mismatch");
 	Change.AssetPath = Blueprint->GetPathName();
-	Change.LatestTransactionId = TEXT("tx_reject_semantic_mismatch");
+	Change.LatestEvidenceId = TEXT("tx_reject_semantic_mismatch");
 	Change.AtomicTargets.Add(Target);
 
 	const FBlueprintHelperReviewActionResult Result =
@@ -908,14 +901,13 @@ bool FBlueprintHelperReviewOldLegacyHashRecordNeedsActionTest::RunTest(const FSt
 	Target.TargetKey = FString::Printf(TEXT("graph:%s:node:%s"), *Graph->GetName(), *Node->NodeGuid.ToString(EGuidFormats::Digits));
 	Target.VisualGroupKey = Target.TargetKey;
 	Target.NodeGuid = Node->NodeGuid.ToString(EGuidFormats::Digits);
-	Target.RollbackDataRef = TEXT("transaction://tx_legacy_hash/rollback_data");
 	Target.RecordedAfterHash = TEXT("legacy_graph_v1_hash");
 	Target.BaselineHash = TEXT("legacy_graph_v1_baseline");
 
 	FBlueprintHelperReviewVisibleChange Change;
 	Change.ChangeId = TEXT("change_legacy_hash");
 	Change.AssetPath = Blueprint->GetPathName();
-	Change.LatestTransactionId = TEXT("tx_legacy_hash");
+	Change.LatestEvidenceId = TEXT("tx_legacy_hash");
 	Change.AtomicTargets.Add(Target);
 
 	const FBlueprintHelperReviewActionResult Result =
@@ -2932,8 +2924,8 @@ bool FBlueprintHelperReviewRenameExpansionTest::RunTest(const FString& Parameter
 {
 	FBlueprintHelperReviewStoreService Store;
 
-	FBlueprintHelperReviewTransactionInput Rename;
-	Rename.TransactionId = TEXT("tx_rename");
+	FBlueprintHelperReviewEvidenceInput Rename;
+	Rename.EvidenceId = TEXT("tx_rename");
 	Rename.AssetPath = TEXT("/Game/BP_Door");
 	Rename.LocationKey = TEXT("my_blueprint:function:OpenDoor");
 	Rename.ChangeKind = EBlueprintHelperReviewChangeKind::Renamed;
@@ -2941,7 +2933,7 @@ bool FBlueprintHelperReviewRenameExpansionTest::RunTest(const FString& Parameter
 	Rename.BeforeSummary = TEXT("OpenDoor");
 	Rename.AfterSummary = TEXT("OpenDoorFast");
 
-	TArray<FBlueprintHelperReviewTransactionInput> RenameInputs;
+	TArray<FBlueprintHelperReviewEvidenceInput> RenameInputs;
 	RenameInputs.Add(Rename);
 	const TArray<FBlueprintHelperReviewVisibleChange> Changes = Store.BuildVisibleChanges(RenameInputs);
 
@@ -2959,15 +2951,15 @@ bool FBlueprintHelperReviewRenameExpansionTest::RunTest(const FString& Parameter
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperReviewVisibleChangeCollapseTest,
-	"BlueprintHelper.Review.VisibleChange.CollapsesSupersededTransactions",
+	"BlueprintHelper.Review.VisibleChange.CollapsesSupersededEvidence",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FBlueprintHelperReviewVisibleChangeCollapseTest::RunTest(const FString& Parameters)
 {
 	FBlueprintHelperReviewStoreService Store;
 
-	FBlueprintHelperReviewTransactionInput T1;
-	T1.TransactionId = TEXT("tx_t1");
+	FBlueprintHelperReviewEvidenceInput T1;
+	T1.EvidenceId = TEXT("tx_t1");
 	T1.AssetPath = TEXT("/Game/BP_Door");
 	T1.GraphName = TEXT("EventGraph");
 	T1.LocationKey = TEXT("graph:EventGraph/node:PrintString/input:InString");
@@ -2976,12 +2968,12 @@ bool FBlueprintHelperReviewVisibleChangeCollapseTest::RunTest(const FString& Par
 	T1.BeforeSummary = TEXT("Open");
 	T1.AfterSummary = TEXT("Opening");
 
-	FBlueprintHelperReviewTransactionInput T2 = T1;
-	T2.TransactionId = TEXT("tx_t2");
+	FBlueprintHelperReviewEvidenceInput T2 = T1;
+	T2.EvidenceId = TEXT("tx_t2");
 	T2.BeforeSummary = TEXT("Opening");
 	T2.AfterSummary = TEXT("Door Opened");
 
-	TArray<FBlueprintHelperReviewTransactionInput> CollapseInputs;
+	TArray<FBlueprintHelperReviewEvidenceInput> CollapseInputs;
 	CollapseInputs.Add(T1);
 	CollapseInputs.Add(T2);
 	const TArray<FBlueprintHelperReviewVisibleChange> Changes = Store.BuildVisibleChanges(CollapseInputs);
@@ -2990,14 +2982,14 @@ bool FBlueprintHelperReviewVisibleChangeCollapseTest::RunTest(const FString& Par
 	if (Changes.Num() == 1)
 	{
 		const FBlueprintHelperReviewVisibleChange& Change = Changes[0];
-		TestEqual(TEXT("latest transaction wins"), Change.LatestTransactionId, FString(TEXT("tx_t2")));
+		TestEqual(TEXT("latest evidence wins"), Change.LatestEvidenceId, FString(TEXT("tx_t2")));
 		TestEqual(TEXT("baseline before summary is preserved"), Change.BeforeSummary, FString(TEXT("Open")));
 		TestEqual(TEXT("final after summary is preserved"), Change.AfterSummary, FString(TEXT("Door Opened")));
-		TestEqual(TEXT("source transaction chain kept"), Change.SourceTransactionIds.Num(), 2);
-		if (Change.SourceTransactionIds.Num() == 2)
+		TestEqual(TEXT("source evidence chain kept"), Change.SourceEvidenceIds.Num(), 2);
+		if (Change.SourceEvidenceIds.Num() == 2)
 		{
-			TestEqual(TEXT("first source is T1"), Change.SourceTransactionIds[0], FString(TEXT("tx_t1")));
-			TestEqual(TEXT("second source is T2"), Change.SourceTransactionIds[1], FString(TEXT("tx_t2")));
+			TestEqual(TEXT("first source is T1"), Change.SourceEvidenceIds[0], FString(TEXT("tx_t1")));
+			TestEqual(TEXT("second source is T2"), Change.SourceEvidenceIds[1], FString(TEXT("tx_t2")));
 		}
 	}
 
@@ -3006,7 +2998,7 @@ bool FBlueprintHelperReviewVisibleChangeCollapseTest::RunTest(const FString& Par
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperReviewAtomicIntersectionCollapseTest,
-	"BlueprintHelper.Review.VisibleChange.AtomicIntersectionUsesLatestTransaction",
+	"BlueprintHelper.Review.VisibleChange.AtomicIntersectionUsesLatestEvidence",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FBlueprintHelperReviewAtomicIntersectionCollapseTest::RunTest(const FString& Parameters)
@@ -3023,8 +3015,8 @@ bool FBlueprintHelperReviewAtomicIntersectionCollapseTest::RunTest(const FString
 	FBlueprintHelperReviewAtomicTarget T1Node2 = T1Node1;
 	T1Node2.TargetKey = TEXT("node:N2");
 
-	FBlueprintHelperReviewTransactionInput T1;
-	T1.TransactionId = TEXT("tx_t1");
+	FBlueprintHelperReviewEvidenceInput T1;
+	T1.EvidenceId = TEXT("tx_t1");
 	T1.AssetPath = TEXT("/Game/BP_Door");
 	T1.GraphName = TEXT("EventGraph");
 	T1.LocationKey = TEXT("graph:EventGraph/block:DoorFlow");
@@ -3039,15 +3031,15 @@ bool FBlueprintHelperReviewAtomicIntersectionCollapseTest::RunTest(const FString
 	FBlueprintHelperReviewAtomicTarget T2Node3 = T1Node1;
 	T2Node3.TargetKey = TEXT("node:N3");
 
-	FBlueprintHelperReviewTransactionInput T2 = T1;
-	T2.TransactionId = TEXT("tx_t2");
+	FBlueprintHelperReviewEvidenceInput T2 = T1;
+	T2.EvidenceId = TEXT("tx_t2");
 	T2.BeforeSummary = TEXT("B");
 	T2.AfterSummary = TEXT("C");
 	T2.AtomicTargets.Reset();
 	T2.AtomicTargets.Add(T2Node2);
 	T2.AtomicTargets.Add(T2Node3);
 
-	TArray<FBlueprintHelperReviewTransactionInput> Inputs;
+	TArray<FBlueprintHelperReviewEvidenceInput> Inputs;
 	Inputs.Add(T1);
 	Inputs.Add(T2);
 	const TArray<FBlueprintHelperReviewVisibleChange> Changes = Store.BuildVisibleChanges(Inputs);
@@ -3060,9 +3052,9 @@ bool FBlueprintHelperReviewAtomicIntersectionCollapseTest::RunTest(const FString
 
 	const FBlueprintHelperReviewVisibleChange& Change = Changes[0];
 	TestEqual(TEXT("merged block keeps three atomic targets"), Change.AtomicTargets.Num(), 3);
-	TestTrue(TEXT("leaf records both latest transactions"),
-		Change.LatestTransactionIds.Contains(TEXT("tx_t1"))
-		&& Change.LatestTransactionIds.Contains(TEXT("tx_t2")));
+	TestTrue(TEXT("leaf records both latest evidence ids"),
+		Change.LatestEvidenceIds.Contains(TEXT("tx_t1"))
+		&& Change.LatestEvidenceIds.Contains(TEXT("tx_t2")));
 
 	const FBlueprintHelperReviewAtomicTarget* Node1 = Change.AtomicTargets.FindByPredicate(
 		[](const FBlueprintHelperReviewAtomicTarget& Target)
@@ -3085,9 +3077,9 @@ bool FBlueprintHelperReviewAtomicIntersectionCollapseTest::RunTest(const FString
 	TestNotNull(TEXT("N3 remains visible"), Node3);
 	if (Node1 && Node2 && Node3)
 	{
-		TestEqual(TEXT("N1 belongs to T1"), Node1->LatestTransactionId, FString(TEXT("tx_t1")));
-		TestEqual(TEXT("N2 intersection belongs to T2"), Node2->LatestTransactionId, FString(TEXT("tx_t2")));
-		TestEqual(TEXT("N3 belongs to T2"), Node3->LatestTransactionId, FString(TEXT("tx_t2")));
+		TestEqual(TEXT("N1 belongs to T1"), Node1->LatestEvidenceId, FString(TEXT("tx_t1")));
+		TestEqual(TEXT("N2 intersection belongs to T2"), Node2->LatestEvidenceId, FString(TEXT("tx_t2")));
+		TestEqual(TEXT("N3 belongs to T2"), Node3->LatestEvidenceId, FString(TEXT("tx_t2")));
 	}
 
 	return true;
@@ -3102,8 +3094,8 @@ bool FBlueprintHelperReviewMultiSurfaceTreeModelTest::RunTest(const FString& Par
 {
 	FBlueprintHelperReviewStoreService Store;
 
-	FBlueprintHelperReviewTransactionInput ComponentChange;
-	ComponentChange.TransactionId = TEXT("tx_component");
+	FBlueprintHelperReviewEvidenceInput ComponentChange;
+	ComponentChange.EvidenceId = TEXT("tx_component");
 	ComponentChange.AssetPath = TEXT("/Game/BP_Door");
 	ComponentChange.LocationKey = TEXT("component:DoorMesh");
 	ComponentChange.ChangeKind = EBlueprintHelperReviewChangeKind::Added;
@@ -3115,8 +3107,8 @@ bool FBlueprintHelperReviewMultiSurfaceTreeModelTest::RunTest(const FString& Par
 	ComponentTarget.VisualGroupKey = TEXT("component:DoorMesh");
 	ComponentChange.AtomicTargets.Add(ComponentTarget);
 
-	FBlueprintHelperReviewTransactionInput PropertyChange;
-	PropertyChange.TransactionId = TEXT("tx_property");
+	FBlueprintHelperReviewEvidenceInput PropertyChange;
+	PropertyChange.EvidenceId = TEXT("tx_property");
 	PropertyChange.AssetPath = TEXT("/Game/BP_Door");
 	PropertyChange.LocationKey = TEXT("property:SmokeValue");
 	PropertyChange.ChangeKind = EBlueprintHelperReviewChangeKind::VariableModified;
@@ -3128,7 +3120,7 @@ bool FBlueprintHelperReviewMultiSurfaceTreeModelTest::RunTest(const FString& Par
 	PropertyTarget.VisualGroupKey = TEXT("property:SmokeValue");
 	PropertyChange.AtomicTargets.Add(PropertyTarget);
 
-	TArray<FBlueprintHelperReviewTransactionInput> Inputs;
+	TArray<FBlueprintHelperReviewEvidenceInput> Inputs;
 	Inputs.Add(ComponentChange);
 	Inputs.Add(PropertyChange);
 	const TArray<FBlueprintHelperReviewVisibleChange> Changes = Store.BuildVisibleChanges(Inputs);
@@ -3194,7 +3186,7 @@ bool FBlueprintHelperReviewRecordIdentityAssetFirstGroupingTest::RunTest(const F
 			DoorRecord->ReviewRecordId,
 			FBlueprintHelperReviewStoreService::MakeReviewRecordId(TEXT("archive_1"), TEXT("/Game/BP_Door")));
 		TestEqual(TEXT("source task run is preserved"), DoorRecord->SourceTaskRunIds.Num(), 1);
-		TestEqual(TEXT("source summary counts one transaction"), DoorRecord->SourceTransactionSummary.TransactionCount, 1);
+		TestEqual(TEXT("source summary counts one evidence"), DoorRecord->SourceReviewSummary.EvidenceCount, 1);
 		TestEqual(TEXT("record storage starts active"),
 			DoorRecord->StorageStatus,
 			EBlueprintHelperReviewStorageStatus::Active);
@@ -3204,11 +3196,11 @@ bool FBlueprintHelperReviewRecordIdentityAssetFirstGroupingTest::RunTest(const F
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperReviewRecordSourceTransactionSummaryPersistsCreatedAtBoundsTest,
-	"BlueprintHelper.Review.Record.SourceTransactionSummaryPersistsCreatedAtBounds",
+	FBlueprintHelperReviewRecordSourceReviewSummaryPersistsCreatedAtBoundsTest,
+	"BlueprintHelper.Review.Record.SourceReviewSummaryPersistsCreatedAtBounds",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FBlueprintHelperReviewRecordSourceTransactionSummaryPersistsCreatedAtBoundsTest::RunTest(const FString& Parameters)
+bool FBlueprintHelperReviewRecordSourceReviewSummaryPersistsCreatedAtBoundsTest::RunTest(const FString& Parameters)
 {
 	FBlueprintHelperReviewStoreService Store;
 	const FString ArchiveSessionId =
@@ -3222,15 +3214,15 @@ bool FBlueprintHelperReviewRecordSourceTransactionSummaryPersistsCreatedAtBounds
 	Record.ArchiveSessionId = ArchiveSessionId;
 	Record.AssetPath = TEXT("/Game/BP_Door");
 	Record.SourceTaskRunIds.Add(TEXT("task_review_source_summary"));
-	Record.SourceTransactionSummary.TransactionCount = 2;
-	Record.SourceTransactionSummary.TaskRunIds.Add(TEXT("task_review_source_summary"));
-	Record.SourceTransactionSummary.OperationKinds.Add(TEXT("append_blueprint_graph"));
-	Record.SourceTransactionSummary.OperationKinds.Add(TEXT("replace_blueprint_graph"));
-	Record.SourceTransactionSummary.AssetPaths.Add(TEXT("/Game/BP_Door"));
-	Record.SourceTransactionSummary.TransactionIds.Add(TEXT("tx_review_source_1"));
-	Record.SourceTransactionSummary.TransactionIds.Add(TEXT("tx_review_source_2"));
-	Record.SourceTransactionSummary.CreatedAtFirst = TEXT("2026-05-12T01:02:03Z");
-	Record.SourceTransactionSummary.CreatedAtLast = TEXT("2026-05-12T01:04:05Z");
+	Record.SourceReviewSummary.EvidenceCount = 2;
+	Record.SourceReviewSummary.TaskRunIds.Add(TEXT("task_review_source_summary"));
+	Record.SourceReviewSummary.OperationKinds.Add(TEXT("append_blueprint_graph"));
+	Record.SourceReviewSummary.OperationKinds.Add(TEXT("replace_blueprint_graph"));
+	Record.SourceReviewSummary.AssetPaths.Add(TEXT("/Game/BP_Door"));
+	Record.SourceReviewSummary.EvidenceIds.Add(TEXT("tx_review_source_1"));
+	Record.SourceReviewSummary.EvidenceIds.Add(TEXT("tx_review_source_2"));
+	Record.SourceReviewSummary.CreatedAtFirst = TEXT("2026-05-12T01:02:03Z");
+	Record.SourceReviewSummary.CreatedAtLast = TEXT("2026-05-12T01:04:05Z");
 	Record.VisibleChanges.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestVisibleChange(
 		TEXT("tx_review_source_visible"),
 		Record.AssetPath));
@@ -3245,16 +3237,16 @@ bool FBlueprintHelperReviewRecordSourceTransactionSummaryPersistsCreatedAtBounds
 	TestTrue(TEXT("record with source summary created-at bounds reloads"),
 		Store.LoadReviewRecordById(RecordId, Loaded, LoadError));
 	TestEqual(TEXT("created_at_first round-trips"),
-		Loaded.SourceTransactionSummary.CreatedAtFirst,
+		Loaded.SourceReviewSummary.CreatedAtFirst,
 		FString(TEXT("2026-05-12T01:02:03Z")));
 	TestEqual(TEXT("created_at_last round-trips"),
-		Loaded.SourceTransactionSummary.CreatedAtLast,
+		Loaded.SourceReviewSummary.CreatedAtLast,
 		FString(TEXT("2026-05-12T01:04:05Z")));
 
 	const TSharedRef<FJsonObject> SummaryArtifact = Store.BuildReviewRecordSummaryArtifact(Loaded);
 	const TSharedPtr<FJsonObject>* SourceSummary = nullptr;
-	TestTrue(TEXT("summary artifact exposes source transaction summary"),
-		SummaryArtifact->TryGetObjectField(TEXT("source_transaction_summary"), SourceSummary)
+	TestTrue(TEXT("summary artifact exposes source evidence summary"),
+		SummaryArtifact->TryGetObjectField(TEXT("source_review_summary"), SourceSummary)
 		&& SourceSummary
 		&& SourceSummary->IsValid());
 	if (SourceSummary && SourceSummary->IsValid())
@@ -3265,182 +3257,6 @@ bool FBlueprintHelperReviewRecordSourceTransactionSummaryPersistsCreatedAtBounds
 		TestEqual(TEXT("summary artifact exposes created_at_last"),
 			(*SourceSummary)->GetStringField(TEXT("created_at_last")),
 			FString(TEXT("2026-05-12T01:04:05Z")));
-	}
-
-	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(RecordId);
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperReviewRecordAggregatesTransactionJournalTaskRunAndCreatedAtTest,
-	"BlueprintHelper.Review.Record.AggregatesTransactionJournalTaskRunAndCreatedAt",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FBlueprintHelperReviewRecordAggregatesTransactionJournalTaskRunAndCreatedAtTest::RunTest(const FString& Parameters)
-{
-	const FString ArchiveSessionId =
-		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_tx_journal_review"));
-	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewNamedBlueprint(TEXT("ReviewAggregateTransaction"));
-	TestNotNull(TEXT("aggregate transaction review blueprint is created"), Blueprint);
-	if (!Blueprint)
-	{
-		return false;
-	}
-
-	const FString AssetPath = Blueprint->GetPathName();
-	const FString RecordId = FBlueprintHelperReviewStoreService::MakeReviewRecordId(ArchiveSessionId, AssetPath);
-	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(RecordId);
-
-	FBlueprintHelperAppendJournalRecord FirstRecord;
-	FirstRecord.TransactionId = FString::Printf(TEXT("tx_review_aggregate_1_%s"), *FGuid::NewGuid().ToString(EGuidFormats::Digits));
-	FirstRecord.ArchiveSessionId = ArchiveSessionId;
-	FirstRecord.TaskRunId = TEXT("task_review_aggregate");
-	FirstRecord.Tool = TEXT("AppendBlueprintGraph");
-	FirstRecord.Status = TEXT("applied");
-	FirstRecord.TargetAssets.Add(AssetPath);
-	FirstRecord.GraphId = TEXT("EventGraph");
-	FirstRecord.GraphName = TEXT("EventGraph");
-	FirstRecord.BlockIds.Add(TEXT("EventGraph_DoorFlow"));
-
-	FBlueprintHelperAppendJournalRecord SecondRecord = FirstRecord;
-	SecondRecord.TransactionId = FString::Printf(TEXT("tx_review_aggregate_2_%s"), *FGuid::NewGuid().ToString(EGuidFormats::Digits));
-	SecondRecord.Tool = TEXT("ReplaceBlueprintGraph");
-	SecondRecord.BlockIds.Reset();
-	FBlueprintHelperGraphReviewNodeAnchor SecondAnchor;
-	SecondAnchor.NodePath = TEXT("K2Node_CallFunction_0");
-	SecondAnchor.NodeGuid = FGuid::NewGuid().ToString(EGuidFormats::Digits);
-	SecondRecord.CreatedNodeAnchors.Add(SecondAnchor);
-
-	FBlueprintHelperTransactionJournalService JournalService;
-	FString JournalError;
-	TestTrue(TEXT("first transaction journal writes review record"),
-		JournalService.WriteAppendJournal(FirstRecord, JournalError));
-	TestTrue(TEXT("second transaction journal merges into review record"),
-		JournalService.WriteAppendJournal(SecondRecord, JournalError));
-
-	FBlueprintHelperReviewStoreService Store;
-	FBlueprintHelperReviewRecord Loaded;
-	FString LoadError;
-	TestTrue(TEXT("aggregated review record reloads"),
-		Store.LoadReviewRecordById(RecordId, Loaded, LoadError));
-
-	TestTrue(TEXT("source task run id is preserved"),
-		Loaded.SourceTaskRunIds.Contains(TEXT("task_review_aggregate")));
-	TestEqual(TEXT("source summary counts both transactions"),
-		Loaded.SourceTransactionSummary.TransactionCount,
-		2);
-	TestTrue(TEXT("source summary includes append operation"),
-		Loaded.SourceTransactionSummary.OperationKinds.Contains(TEXT("AppendBlueprintGraph")));
-	TestTrue(TEXT("source summary includes replace operation"),
-		Loaded.SourceTransactionSummary.OperationKinds.Contains(TEXT("ReplaceBlueprintGraph")));
-	TestTrue(TEXT("source summary records created_at_first from journal writes"),
-		!Loaded.SourceTransactionSummary.CreatedAtFirst.IsEmpty());
-	TestTrue(TEXT("source summary records created_at_last from journal writes"),
-		!Loaded.SourceTransactionSummary.CreatedAtLast.IsEmpty());
-
-	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(RecordId);
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperReviewReplaceBlueprintGraphLiveRecordCreatesDiffBlockTest,
-	"BlueprintHelper.Review.Record.ReplaceBlueprintGraphLiveRecordCreatesDiffBlock",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FBlueprintHelperReviewReplaceBlueprintGraphLiveRecordCreatesDiffBlockTest::RunTest(const FString& Parameters)
-{
-	const FString ArchiveSessionId =
-		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_replace_live_record"));
-	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewNamedBlueprint(TEXT("ReplaceLiveRecord"));
-	TestNotNull(TEXT("replace live record test blueprint is created"), Blueprint);
-	if (!Blueprint)
-	{
-		return false;
-	}
-
-	const FString AssetPath = Blueprint->GetPathName();
-	const FString RecordId = FBlueprintHelperReviewStoreService::MakeReviewRecordId(ArchiveSessionId, AssetPath);
-	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(RecordId);
-
-	FBlueprintHelperAppendJournalRecord ReplaceRecord;
-	ReplaceRecord.TransactionId = FString::Printf(
-		TEXT("tx_replace_live_%s"),
-		*FGuid::NewGuid().ToString(EGuidFormats::Digits));
-	ReplaceRecord.ArchiveSessionId = ArchiveSessionId;
-	ReplaceRecord.TaskRunId = TEXT("task_replace_live_record");
-	ReplaceRecord.Tool = TEXT("ReplaceBlueprintGraph");
-	ReplaceRecord.Status = TEXT("applied");
-	ReplaceRecord.TargetAssets.Add(AssetPath);
-	ReplaceRecord.GraphId = TEXT("EventGraph");
-	ReplaceRecord.GraphName = TEXT("EventGraph");
-	ReplaceRecord.BlockIds.Add(TEXT("DoorFlow"));
-
-	FBlueprintHelperGraphReviewNodeAnchor Anchor;
-	Anchor.NodePath = FString::Printf(TEXT("%s:EventGraph.K2Node_CallFunction_0"), *AssetPath);
-	Anchor.NodeGuid = FGuid::NewGuid().ToString(EGuidFormats::Digits);
-	Anchor.DisplayLabel = TEXT("Print String");
-	Anchor.bHasGraphBounds = true;
-	Anchor.GraphPosition = FVector2D(120.0f, 80.0f);
-	Anchor.GraphSize = FVector2D(320.0f, 120.0f);
-	ReplaceRecord.CreatedNodeAnchors.Add(Anchor);
-
-	FBlueprintHelperTransactionJournalService JournalService;
-	FString JournalError;
-	TestTrue(TEXT("replace graph journal writes review record"),
-		JournalService.WriteAppendJournal(ReplaceRecord, JournalError));
-
-	FBlueprintHelperReviewStoreService Store;
-	FBlueprintHelperReviewRecord Loaded;
-	FString LoadError;
-	TestTrue(TEXT("replace graph live review record reloads"),
-		Store.LoadReviewRecordById(RecordId, Loaded, LoadError));
-	TestTrue(TEXT("replace operation is recorded"),
-		Loaded.SourceTransactionSummary.OperationKinds.Contains(TEXT("ReplaceBlueprintGraph")));
-
-	const FBlueprintHelperReviewVisibleChange* DiffBlockChange = Loaded.VisibleChanges.FindByPredicate(
-		[](const FBlueprintHelperReviewVisibleChange& Change)
-		{
-			return Change.LocationKey == TEXT("graph:EventGraph:block:EventGraph_DoorFlow");
-		});
-	TestNotNull(TEXT("replace live record creates graph diff block change"), DiffBlockChange);
-	if (!DiffBlockChange)
-	{
-		FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(RecordId);
-		return false;
-	}
-
-	TestTrue(TEXT("diff block routes to graph presenter"),
-		FBlueprintHelperReviewGraphPresenter::ShouldShowChange(*DiffBlockChange));
-
-	const FBlueprintHelperReviewAtomicTarget* BlockTarget = DiffBlockChange->AtomicTargets.FindByPredicate(
-		[](const FBlueprintHelperReviewAtomicTarget& Target)
-		{
-			return Target.TargetKind == TEXT("graph_block");
-		});
-	TestNotNull(TEXT("diff block change contains graph_block target"), BlockTarget);
-	if (BlockTarget)
-	{
-		TestEqual(TEXT("graph block target key is normalized"),
-			BlockTarget->TargetKey,
-			FString(TEXT("graph:EventGraph:block:EventGraph_DoorFlow")));
-		TestTrue(TEXT("graph block carries aggregate bounds"), BlockTarget->bHasGraphBounds);
-		TestEqual(TEXT("graph block aggregate position x"), BlockTarget->GraphPosition.X, 120.0);
-		TestEqual(TEXT("graph block aggregate size y"), BlockTarget->GraphSize.Y, 120.0);
-	}
-
-	const FBlueprintHelperReviewAtomicTarget* NodeTarget = DiffBlockChange->AtomicTargets.FindByPredicate(
-		[](const FBlueprintHelperReviewAtomicTarget& Target)
-		{
-			return Target.TargetKind == TEXT("graph_node");
-		});
-	TestNotNull(TEXT("diff block change includes structured graph node target"), NodeTarget);
-	if (NodeTarget)
-	{
-		TestEqual(TEXT("node target preserves display label"),
-			NodeTarget->DisplayLabel,
-			FString(TEXT("Print String")));
-		TestTrue(TEXT("node target carries recorded bounds"), NodeTarget->bHasGraphBounds);
-		TestFalse(TEXT("node target stores structured anchor json"), NodeTarget->AnchorJson.IsEmpty());
 	}
 
 	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(RecordId);
@@ -3467,9 +3283,9 @@ bool FBlueprintHelperReviewRecordQueryFiltersByTaskRunIdTest::RunTest(const FStr
 	MatchingRecord.ArchiveSessionId = MatchingArchiveSessionId;
 	MatchingRecord.AssetPath = TEXT("/Game/BP_TaskFilterMatch");
 	MatchingRecord.SourceTaskRunIds.Add(TEXT("task_filter_target"));
-	MatchingRecord.SourceTransactionSummary.TaskRunIds.Add(TEXT("task_filter_target"));
-	MatchingRecord.SourceTransactionSummary.TransactionIds.Add(TEXT("tx_filter_target"));
-	MatchingRecord.SourceTransactionSummary.TransactionCount = 1;
+	MatchingRecord.SourceReviewSummary.TaskRunIds.Add(TEXT("task_filter_target"));
+	MatchingRecord.SourceReviewSummary.EvidenceIds.Add(TEXT("tx_filter_target"));
+	MatchingRecord.SourceReviewSummary.EvidenceCount = 1;
 	FBlueprintHelperReviewVisibleChange MatchingChange;
 	MatchingChange.AssetPath = MatchingRecord.AssetPath;
 	MatchingChange.LocationKey = TEXT("graph:EventGraph:block:TaskFilterMatch");
@@ -3484,9 +3300,9 @@ bool FBlueprintHelperReviewRecordQueryFiltersByTaskRunIdTest::RunTest(const FStr
 	OtherRecord.ArchiveSessionId = OtherArchiveSessionId;
 	OtherRecord.AssetPath = TEXT("/Game/BP_TaskFilterOther");
 	OtherRecord.SourceTaskRunIds.Add(TEXT("task_filter_other"));
-	OtherRecord.SourceTransactionSummary.TaskRunIds.Add(TEXT("task_filter_other"));
-	OtherRecord.SourceTransactionSummary.TransactionIds.Add(TEXT("tx_filter_other"));
-	OtherRecord.SourceTransactionSummary.TransactionCount = 1;
+	OtherRecord.SourceReviewSummary.TaskRunIds.Add(TEXT("task_filter_other"));
+	OtherRecord.SourceReviewSummary.EvidenceIds.Add(TEXT("tx_filter_other"));
+	OtherRecord.SourceReviewSummary.EvidenceCount = 1;
 	FBlueprintHelperReviewVisibleChange OtherChange;
 	OtherChange.AssetPath = OtherRecord.AssetPath;
 	OtherChange.LocationKey = TEXT("graph:EventGraph:block:TaskFilterOther");
@@ -3544,7 +3360,6 @@ bool FBlueprintHelperReviewRecordVisibleChangesKeepTargetAssetPathTest::RunTest(
 	DataTableTarget.DisplayLabel = TEXT("DamageSmall");
 	DataTableTarget.RecordedAfterHash = TEXT("after_hash_dt");
 	DataTableTarget.BaselineHash = TEXT("baseline_hash");
-	DataTableTarget.RollbackDataRef = TEXT("review://rollback/datatable");
 	DataTableTarget.Ownership = TEXT("blueprinthelper_owned");
 
 	FBlueprintHelperReviewAtomicTarget DataAssetTarget = DataTableTarget;
@@ -3555,12 +3370,11 @@ bool FBlueprintHelperReviewRecordVisibleChangesKeepTargetAssetPathTest::RunTest(
 	DataAssetTarget.DisplayLabel = TEXT("SmokeHealth");
 	DataAssetTarget.PropertyPath = TEXT("SmokeHealth");
 	DataAssetTarget.RecordedAfterHash = TEXT("after_hash_da");
-	DataAssetTarget.RollbackDataRef = TEXT("review://rollback/dataasset");
 
 	FBlueprintHelperWriteReviewEvidence Evidence;
 	Evidence.ArchiveSessionId = TEXT("archive_cross_asset_stage5");
 	Evidence.TaskRunId = TEXT("task_cross_asset_stage5");
-	Evidence.TransactionId = TEXT("tx_widget_save_cross_asset");
+	Evidence.EvidenceId = TEXT("tx_widget_save_cross_asset");
 	Evidence.AssetPath = TEXT("/Game/BlueprintHelper/Smoke/WBP_WidgetSmoke");
 	Evidence.OperationKind = TEXT("save_widget_blueprint");
 	Evidence.DisplayLabel = TEXT("Widget save with referenced data changes");
@@ -3571,7 +3385,7 @@ bool FBlueprintHelperReviewRecordVisibleChangesKeepTargetAssetPathTest::RunTest(
 	Evidences.Add(Evidence);
 
 	const TArray<FBlueprintHelperReviewRecord> Records = Store.BuildReviewRecordsFromEvidence(Evidences);
-	TestEqual(TEXT("one widget record still owns the transaction envelope"), Records.Num(), 1);
+	TestEqual(TEXT("one widget record still owns the evidence envelope"), Records.Num(), 1);
 	if (Records.Num() != 1)
 	{
 		return false;
@@ -3662,9 +3476,9 @@ bool FBlueprintHelperReviewRecordLatestWinsWithProducerHashesTest::RunTest(const
 		TEXT("tx_1"),
 		TEXT("after_1"));
 	FBlueprintHelperReviewAtomicTarget T2 = T1;
-	T2.LatestTransactionId = TEXT("tx_2");
-	T2.SourceTransactionIds.Reset();
-	T2.SourceTransactionIds.Add(TEXT("tx_2"));
+	T2.LatestEvidenceId = TEXT("tx_2");
+	T2.SourceEvidenceIds.Reset();
+	T2.SourceEvidenceIds.Add(TEXT("tx_2"));
 	T2.RecordedAfterHash = TEXT("after_2");
 
 	TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
@@ -3679,14 +3493,14 @@ bool FBlueprintHelperReviewRecordLatestWinsWithProducerHashesTest::RunTest(const
 	}
 
 	const FBlueprintHelperReviewAtomicTarget& Target = Records[0].VisibleChanges[0].AtomicTargets[0];
-	TestEqual(TEXT("latest transaction wins for an atomic target"),
-		Target.LatestTransactionId,
+	TestEqual(TEXT("latest evidence wins for an atomic target"),
+		Target.LatestEvidenceId,
 		FString(TEXT("tx_2")));
 	TestEqual(TEXT("latest recorded_after_hash is preserved"),
 		Target.RecordedAfterHash,
 		FString(TEXT("after_2")));
-	TestEqual(TEXT("source transaction chain is retained"),
-		Target.SourceTransactionIds.Num(),
+	TestEqual(TEXT("source evidence chain is retained"),
+		Target.SourceEvidenceIds.Num(),
 		2);
 	return true;
 }
@@ -3703,7 +3517,7 @@ bool FBlueprintHelperReviewRecordNormalizesLegacyDetailsSurfacesFromEvidenceTest
 	struct FLegacySurfaceCase
 	{
 		FString AssetPath;
-		FString TransactionId;
+		FString EvidenceId;
 		FString OperationKind;
 		FString TargetKind;
 		FString TargetKey;
@@ -3749,13 +3563,12 @@ bool FBlueprintHelperReviewRecordNormalizesLegacyDetailsSurfacesFromEvidenceTest
 		Target.DisplayLabel = SurfaceCase.TargetKey;
 		Target.RecordedAfterHash = TEXT("after_hash");
 		Target.BaselineHash = TEXT("baseline_hash");
-		Target.RollbackDataRef = TEXT("review://rollback/legacy_surface");
 		Target.Ownership = TEXT("blueprinthelper_owned");
 
 		FBlueprintHelperWriteReviewEvidence Evidence;
 		Evidence.ArchiveSessionId = TEXT("archive_legacy_surface");
 		Evidence.TaskRunId = TEXT("task_legacy_surface");
-		Evidence.TransactionId = SurfaceCase.TransactionId;
+		Evidence.EvidenceId = SurfaceCase.EvidenceId;
 		Evidence.AssetPath = SurfaceCase.AssetPath;
 		Evidence.OperationKind = SurfaceCase.OperationKind;
 		Evidence.DisplayLabel = SurfaceCase.TargetKey;
@@ -3831,8 +3644,8 @@ bool FBlueprintHelperReviewRecordPreservesIndependentSurfaceStringsTest::RunTest
 		Change.ChangeId = SurfaceCase.ChangeId;
 		Change.AssetPath = SurfaceCase.AssetPath;
 		Change.LocationKey = SurfaceCase.TargetKey;
-		Change.LatestTransactionId = SurfaceCase.ChangeId;
-		Change.SourceTransactionIds.Add(SurfaceCase.ChangeId);
+		Change.LatestEvidenceId = SurfaceCase.ChangeId;
+		Change.SourceEvidenceIds.Add(SurfaceCase.ChangeId);
 		Change.DisplayLabel = SurfaceCase.TargetKey;
 
 		FBlueprintHelperReviewAtomicTarget Target;
@@ -3842,11 +3655,10 @@ bool FBlueprintHelperReviewRecordPreservesIndependentSurfaceStringsTest::RunTest
 		Target.TargetKey = SurfaceCase.TargetKey;
 		Target.VisualGroupKey = SurfaceCase.TargetKey;
 		Target.DisplayLabel = SurfaceCase.TargetKey;
-		Target.LatestTransactionId = SurfaceCase.ChangeId;
-		Target.SourceTransactionIds.Add(SurfaceCase.ChangeId);
+		Target.LatestEvidenceId = SurfaceCase.ChangeId;
+		Target.SourceEvidenceIds.Add(SurfaceCase.ChangeId);
 		Target.RecordedAfterHash = TEXT("after_hash");
 		Target.BaselineHash = TEXT("baseline_hash");
-		Target.RollbackDataRef = TEXT("review://rollback/independent_surface");
 		Target.Ownership = TEXT("blueprinthelper_owned");
 		Change.AtomicTargets.Add(Target);
 		Record.VisibleChanges.Add(Change);
@@ -4113,9 +3925,9 @@ bool FBlueprintHelperReviewPendingChangesLinkUnderLifecycleRootTest::RunTest(con
 	OtherAssetTarget.AssetPath = OtherAssetPath;
 	OtherAssetTarget.TargetKey = TEXT("component:OtherComp");
 	OtherAssetTarget.VisualGroupKey = TEXT("component:OtherComp");
-	OtherAssetTarget.LatestTransactionId = TEXT("tx_lifecycle_other_asset");
-	OtherAssetTarget.SourceTransactionIds.Reset();
-	OtherAssetTarget.SourceTransactionIds.Add(TEXT("tx_lifecycle_other_asset"));
+	OtherAssetTarget.LatestEvidenceId = TEXT("tx_lifecycle_other_asset");
+	OtherAssetTarget.SourceEvidenceIds.Reset();
+	OtherAssetTarget.SourceEvidenceIds.Add(TEXT("tx_lifecycle_other_asset"));
 	FBlueprintHelperWriteReviewEvidence OtherAssetEvidence =
 		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
 			ArchiveSessionId,
@@ -4233,60 +4045,6 @@ bool FBlueprintHelperReviewLegacyVisibleChangeDefaultsToNoLifecycleRootTest::Run
 		Loaded.VisibleChanges[0].bRejectRemovesChildren);
 
 	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(Records[0].ReviewRecordId);
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperReviewJournalBackedEvidenceIncludesHashesTest,
-	"BlueprintHelper.Review.Producer.JournalBackedEvidenceIncludesHashes",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FBlueprintHelperReviewJournalBackedEvidenceIncludesHashesTest::RunTest(const FString& Parameters)
-{
-	const FString ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_journal_evidence"));
-	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewNamedBlueprint(TEXT("JournalEvidence"));
-	TestNotNull(TEXT("journal evidence review blueprint is created"), Blueprint);
-	if (!Blueprint)
-	{
-		return false;
-	}
-
-	const FString AssetPath = Blueprint->GetPathName();
-	FBlueprintHelperAppendJournalRecord JournalRecord;
-	JournalRecord.TransactionId = TEXT("tx_journal_evidence");
-	JournalRecord.ArchiveSessionId = ArchiveSessionId;
-	JournalRecord.TaskRunId = TEXT("task_journal_evidence");
-	JournalRecord.Tool = TEXT("AppendBlueprintGraph");
-	JournalRecord.Status = TEXT("applied");
-	JournalRecord.TargetAssets.Add(AssetPath);
-	JournalRecord.GraphId = TEXT("EventGraph");
-	JournalRecord.GraphName = TEXT("EventGraph");
-	JournalRecord.BlockIds.Add(TEXT("DoorFlow"));
-
-	FBlueprintHelperTransactionJournalService JournalService;
-	FString JournalError;
-	TestTrue(TEXT("journal write succeeds"), JournalService.WriteAppendJournal(JournalRecord, JournalError));
-
-	FBlueprintHelperReviewStoreService Store;
-	FBlueprintHelperReviewRecordQuery Query;
-	Query.ArchiveSessionIdFilter = ArchiveSessionId;
-	Query.bPendingOnly = false;
-	const TArray<FBlueprintHelperReviewRecord> Records = Store.QueryReviewRecords(Query);
-	TestEqual(TEXT("journal write creates one review record"), Records.Num(), 1);
-	if (Records.Num() != 1 || Records[0].VisibleChanges.Num() == 0 || Records[0].VisibleChanges[0].AtomicTargets.Num() == 0)
-	{
-		return false;
-	}
-
-	const FBlueprintHelperReviewAtomicTarget& Target = Records[0].VisibleChanges[0].AtomicTargets[0];
-	TestFalse(TEXT("baseline hash is emitted"), Target.BaselineHash.IsEmpty());
-	TestFalse(TEXT("recorded after hash is emitted"), Target.RecordedAfterHash.IsEmpty());
-	TestFalse(TEXT("rollback data ref is emitted"), Target.RollbackDataRef.IsEmpty());
-	TestEqual(TEXT("journal evidence is complete enough to stay pending"),
-		Target.Status,
-		EBlueprintHelperReviewChangeStatus::Pending);
-	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(
-		FBlueprintHelperReviewStoreService::MakeReviewRecordId(ArchiveSessionId, AssetPath));
 	return true;
 }
 
@@ -4438,8 +4196,8 @@ bool FBlueprintHelperReviewAcceptVisibleChangeTest::RunTest(const FString& Param
 	FBlueprintHelperReviewStoreService Store;
 	FBlueprintHelperReviewActionService ActionService;
 
-	FBlueprintHelperReviewTransactionInput T1;
-	T1.TransactionId = TEXT("tx_t1");
+	FBlueprintHelperReviewEvidenceInput T1;
+	T1.EvidenceId = TEXT("tx_t1");
 	T1.AssetPath = TEXT("/Game/BP_Door");
 	T1.LocationKey = TEXT("function:OpenDoor:signature");
 	T1.ChangeKind = EBlueprintHelperReviewChangeKind::SignatureModified;
@@ -4447,11 +4205,11 @@ bool FBlueprintHelperReviewAcceptVisibleChangeTest::RunTest(const FString& Param
 	T1.BeforeSummary = TEXT("OpenDoor()");
 	T1.AfterSummary = TEXT("OpenDoor(Input)");
 
-	FBlueprintHelperReviewTransactionInput T2 = T1;
-	T2.TransactionId = TEXT("tx_t2");
+	FBlueprintHelperReviewEvidenceInput T2 = T1;
+	T2.EvidenceId = TEXT("tx_t2");
 	T2.AfterSummary = TEXT("OpenDoor(Input, Speed)");
 
-	TArray<FBlueprintHelperReviewTransactionInput> CollapseInputs;
+	TArray<FBlueprintHelperReviewEvidenceInput> CollapseInputs;
 	CollapseInputs.Add(T1);
 	CollapseInputs.Add(T2);
 	const TArray<FBlueprintHelperReviewVisibleChange> Changes = Store.BuildVisibleChanges(CollapseInputs);
@@ -4463,9 +4221,9 @@ bool FBlueprintHelperReviewAcceptVisibleChangeTest::RunTest(const FString& Param
 
 	const FBlueprintHelperReviewActionResult Result = ActionService.AcceptVisibleChange(Changes[0]);
 	TestTrue(TEXT("accept succeeds for final visible change"), Result.bSucceeded);
-	TestEqual(TEXT("accept targets latest transaction"), Result.TargetTransactionId, FString(TEXT("tx_t2")));
+	TestEqual(TEXT("accept targets latest evidence"), Result.TargetEvidenceId, FString(TEXT("tx_t2")));
 	TestEqual(TEXT("accept marks change accepted"), Result.NewStatus, EBlueprintHelperReviewChangeStatus::Accepted);
-	TestTrue(TEXT("superseded transaction data is compaction eligible"), Result.bSupersededDataCompactionEligible);
+	TestTrue(TEXT("superseded evidence data is compaction eligible"), Result.bSupersededDataCompactionEligible);
 	return true;
 }
 
@@ -4484,11 +4242,11 @@ bool FBlueprintHelperReviewMixedLatestAcceptTest::RunTest(const FString& Paramet
 	FBlueprintHelperReviewVisibleChange Change;
 	Change.ChangeId = TEXT("tx_t2");
 	Change.AssetPath = TEXT("/Game/BP_Door");
-	Change.LatestTransactionId = TEXT("tx_t2");
-	Change.LatestTransactionIds.Add(TEXT("tx_t1"));
-	Change.LatestTransactionIds.Add(TEXT("tx_t2"));
-	Change.SourceTransactionIds.Add(TEXT("tx_t1"));
-	Change.SourceTransactionIds.Add(TEXT("tx_t2"));
+	Change.LatestEvidenceId = TEXT("tx_t2");
+	Change.LatestEvidenceIds.Add(TEXT("tx_t1"));
+	Change.LatestEvidenceIds.Add(TEXT("tx_t2"));
+	Change.SourceEvidenceIds.Add(TEXT("tx_t1"));
+	Change.SourceEvidenceIds.Add(TEXT("tx_t2"));
 	Change.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
 
 	FBlueprintHelperReviewActionService ActionService;
@@ -4505,9 +4263,9 @@ bool FBlueprintHelperReviewRejectVisibleChangeTest::RunTest(const FString& Param
 	Change.ChangeId = TEXT("tx_t2");
 	Change.AssetPath = TEXT("/Game/BP_Door");
 	Change.LocationKey = TEXT("graph:EventGraph/node:PrintString/input:InString");
-	Change.LatestTransactionId = TEXT("tx_t2");
-	Change.SourceTransactionIds.Add(TEXT("tx_t1"));
-	Change.SourceTransactionIds.Add(TEXT("tx_t2"));
+	Change.LatestEvidenceId = TEXT("tx_t2");
+	Change.SourceEvidenceIds.Add(TEXT("tx_t1"));
+	Change.SourceEvidenceIds.Add(TEXT("tx_t2"));
 	Change.ChangeKind = EBlueprintHelperReviewChangeKind::VariableModified;
 	Change.BeforeSummary = TEXT("Open");
 	Change.AfterSummary = TEXT("Door Opened");
@@ -4528,7 +4286,7 @@ bool FBlueprintHelperReviewRejectVisibleChangeTest::RunTest(const FString& Param
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperReviewRejectVisibleChangeSuccessTest,
-	"BlueprintHelper.Review.Action.RejectSucceedsWithMatchingHashAndRollbackData",
+	"BlueprintHelper.Review.Action.RejectSucceedsWithMatchingHashAndSnapshotBaseline",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FBlueprintHelperReviewRejectVisibleChangeSuccessTest::RunTest(const FString& Parameters)
@@ -4536,7 +4294,7 @@ bool FBlueprintHelperReviewRejectVisibleChangeSuccessTest::RunTest(const FString
 	FBlueprintHelperReviewVisibleChange Change;
 	Change.ChangeId = TEXT("change_1");
 	Change.AssetPath = TEXT("/Game/BP_Door");
-	Change.LatestTransactionId = TEXT("tx_2");
+	Change.LatestEvidenceId = TEXT("tx_2");
 	Change.Status = EBlueprintHelperReviewChangeStatus::Pending;
 	Change.AtomicTargets.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
 		TEXT("graph_node:N1"),
@@ -4546,8 +4304,6 @@ bool FBlueprintHelperReviewRejectVisibleChangeSuccessTest::RunTest(const FString
 
 	FBlueprintHelperReviewRejectOptions Options;
 	Options.CurrentHashesByTargetKey.Add(TEXT("graph_node:N1"), TEXT("after_2"));
-	Options.bRollbackExecutorAvailable = true;
-	Options.bRollbackSucceeded = true;
 
 	FBlueprintHelperReviewActionService ActionService;
 	const FBlueprintHelperReviewActionResult Result = ActionService.RejectVisibleChange(Change, Options);
@@ -4556,8 +4312,8 @@ bool FBlueprintHelperReviewRejectVisibleChangeSuccessTest::RunTest(const FString
 	TestEqual(TEXT("reject marks change rejected"),
 		Result.NewStatus,
 		EBlueprintHelperReviewChangeStatus::Rejected);
-	TestEqual(TEXT("reject targets latest transaction"),
-		Result.TargetTransactionId,
+	TestEqual(TEXT("reject targets latest evidence"),
+		Result.TargetEvidenceId,
 		FString(TEXT("tx_2")));
 	return true;
 }
@@ -4572,7 +4328,7 @@ bool FBlueprintHelperReviewRejectVisibleChangeToctouMismatchTest::RunTest(const 
 	FBlueprintHelperReviewVisibleChange Change;
 	Change.ChangeId = TEXT("change_1");
 	Change.AssetPath = TEXT("/Game/BP_Door");
-	Change.LatestTransactionId = TEXT("tx_2");
+	Change.LatestEvidenceId = TEXT("tx_2");
 	Change.AtomicTargets.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
 		TEXT("graph_node:N1"),
 		TEXT("graph:EventGraph:block:DoorFlow"),
@@ -4581,8 +4337,6 @@ bool FBlueprintHelperReviewRejectVisibleChangeToctouMismatchTest::RunTest(const 
 
 	FBlueprintHelperReviewRejectOptions Options;
 	Options.CurrentHashesByTargetKey.Add(TEXT("graph_node:N1"), TEXT("user_changed"));
-	Options.bRollbackExecutorAvailable = true;
-	Options.bRollbackSucceeded = true;
 
 	FBlueprintHelperReviewActionService ActionService;
 	const FBlueprintHelperReviewActionResult Result = ActionService.RejectVisibleChange(Change, Options);
@@ -4777,8 +4531,6 @@ bool FBlueprintHelperReviewRejectTargetsPurgesReviewRecordTest::RunTest(const FS
 
 	FBlueprintHelperReviewRejectOptions Options;
 	Options.CurrentHashesByTargetKey.Add(TEXT("graph_node:N1"), TEXT("after_reject"));
-	Options.bRollbackExecutorAvailable = true;
-	Options.bRollbackSucceeded = true;
 
 	FBlueprintHelperReviewActionService ActionService;
 	const FBlueprintHelperReviewActionResult Result = ActionService.RejectReviewTargets(
@@ -4841,8 +4593,6 @@ bool FBlueprintHelperReviewRejectTargetsPurgesLinkedDebugCasesTest::RunTest(cons
 
 	FBlueprintHelperReviewRejectOptions Options;
 	Options.CurrentHashesByTargetKey.Add(TEXT("graph_node:N1"), TEXT("after_reject_debug"));
-	Options.bRollbackExecutorAvailable = true;
-	Options.bRollbackSucceeded = true;
 
 	FBlueprintHelperReviewActionService ActionService;
 	const FBlueprintHelperReviewActionResult Result = ActionService.RejectReviewTargets(
@@ -4930,7 +4680,7 @@ bool FBlueprintHelperReviewRejectLifecycleRootRemovesChildrenTest::RunTest(const
 	const FBlueprintHelperReviewVisibleChange* Child = PendingChanges.FindByPredicate(
 		[](const FBlueprintHelperReviewVisibleChange& Change)
 		{
-			return Change.LatestTransactionId == TEXT("tx_reject_lifecycle_child");
+			return Change.LatestEvidenceId == TEXT("tx_reject_lifecycle_child");
 		});
 	TestNotNull(TEXT("lifecycle child is available for cascade reject"), Child);
 	if (!Child)
@@ -4942,8 +4692,6 @@ bool FBlueprintHelperReviewRejectLifecycleRootRemovesChildrenTest::RunTest(const
 
 	FBlueprintHelperReviewRejectOptions Options;
 	Options.CurrentHashesByTargetKey.Add(TEXT("asset_factory:create_asset"), TEXT("after_root"));
-	Options.bRollbackExecutorAvailable = true;
-	Options.bRollbackSucceeded = true;
 
 	FBlueprintHelperReviewActionService ActionService;
 	const FBlueprintHelperReviewCascadeActionResult Result =
@@ -5140,7 +4888,7 @@ bool FBlueprintHelperReviewRejectLifecycleRootFailureKeepsChildrenTest::RunTest(
 	const FBlueprintHelperReviewVisibleChange* Child = PendingChanges.FindByPredicate(
 		[](const FBlueprintHelperReviewVisibleChange& Change)
 		{
-			return Change.LatestTransactionId == TEXT("tx_reject_lifecycle_failure_child");
+			return Change.LatestEvidenceId == TEXT("tx_reject_lifecycle_failure_child");
 		});
 	TestNotNull(TEXT("lifecycle child is available before failed cascade reject"), Child);
 	if (!Child)
@@ -5152,8 +4900,6 @@ bool FBlueprintHelperReviewRejectLifecycleRootFailureKeepsChildrenTest::RunTest(
 
 	FBlueprintHelperReviewRejectOptions Options;
 	Options.CurrentHashesByTargetKey.Add(TEXT("asset_factory:create_asset"), TEXT("changed_after_root"));
-	Options.bRollbackExecutorAvailable = true;
-	Options.bRollbackSucceeded = true;
 
 	FBlueprintHelperReviewActionService ActionService;
 	const FBlueprintHelperReviewCascadeActionResult Result =
@@ -5251,7 +4997,7 @@ bool FBlueprintHelperReviewAcceptLifecycleRootDoesNotAcceptChildrenTest::RunTest
 	const FBlueprintHelperReviewVisibleChange* Child = PendingChanges.FindByPredicate(
 		[](const FBlueprintHelperReviewVisibleChange& Change)
 		{
-			return Change.LatestTransactionId == TEXT("tx_accept_lifecycle_child");
+			return Change.LatestEvidenceId == TEXT("tx_accept_lifecycle_child");
 		});
 	TestNotNull(TEXT("lifecycle child is available for accept"), Child);
 	if (!Child)
@@ -5330,8 +5076,6 @@ bool FBlueprintHelperReviewRejectNeedsActionCreatesDebugCaseTest::RunTest(const 
 
 	FBlueprintHelperReviewRejectOptions Options;
 	Options.CurrentHashesByTargetKey.Add(TEXT("graph_node:N1"), TEXT("user_changed"));
-	Options.bRollbackExecutorAvailable = true;
-	Options.bRollbackSucceeded = true;
 
 	const FBlueprintHelperReviewActionResult Result = ActionService.RejectReviewTargets(
 		Records[0].ReviewRecordId,
@@ -5363,14 +5107,14 @@ bool FBlueprintHelperReviewRejectNeedsActionCreatesDebugCaseTest::RunTest(const 
 		DebugCase.AssetPaths.Contains(TEXT("/Game/BP_Door")));
 	TestTrue(TEXT("debug case links originating review record id"),
 		DebugCase.ReviewRecordIds.Contains(Loaded.ReviewRecordId));
-	TestEqual(TEXT("debug case links source transaction summary"), DebugCase.TransactionLinks.Num(), 1);
-	if (DebugCase.TransactionLinks.Num() == 1)
+	TestEqual(TEXT("debug case links source evidence summary"), DebugCase.EvidenceLinks.Num(), 1);
+	if (DebugCase.EvidenceLinks.Num() == 1)
 	{
-		TestEqual(TEXT("debug case links source transaction id"),
-			DebugCase.TransactionLinks[0].TransactionId,
+		TestEqual(TEXT("debug case links source evidence id"),
+			DebugCase.EvidenceLinks[0].EvidenceId,
 			FString(TEXT("tx_reject_debug_needs_action")));
-		TestEqual(TEXT("debug case marks transaction link role"),
-			DebugCase.TransactionLinks[0].Role,
+		TestEqual(TEXT("debug case marks evidence link role"),
+			DebugCase.EvidenceLinks[0].Role,
 			FString(TEXT("review_reject_failed")));
 	}
 	TestTrue(TEXT("debug case message carries reject reason"),
@@ -5410,9 +5154,6 @@ bool FBlueprintHelperReviewRejectFailedCreatesDebugCaseTest::RunTest(const FStri
 
 	FBlueprintHelperReviewRejectOptions Options;
 	Options.CurrentHashesByTargetKey.Add(TEXT("graph_node:N1"), TEXT("after_failed"));
-	Options.bRollbackExecutorAvailable = true;
-	Options.bRollbackSucceeded = false;
-	Options.RollbackFailureMessage = TEXT("rollback_backend_failed");
 
 	const FBlueprintHelperReviewActionResult Result = ActionService.RejectReviewTargets(
 		Records[0].ReviewRecordId,
@@ -5445,14 +5186,14 @@ bool FBlueprintHelperReviewRejectFailedCreatesDebugCaseTest::RunTest(const FStri
 		FString(TEXT("reject_review_targets")));
 	TestTrue(TEXT("reject-failed debug case links originating review record id"),
 		DebugCase.ReviewRecordIds.Contains(Loaded.ReviewRecordId));
-	TestEqual(TEXT("reject-failed debug case links source transaction summary"), DebugCase.TransactionLinks.Num(), 1);
-	if (DebugCase.TransactionLinks.Num() == 1)
+	TestEqual(TEXT("reject-failed debug case links source evidence summary"), DebugCase.EvidenceLinks.Num(), 1);
+	if (DebugCase.EvidenceLinks.Num() == 1)
 	{
-		TestEqual(TEXT("reject-failed debug case links source transaction id"),
-			DebugCase.TransactionLinks[0].TransactionId,
+		TestEqual(TEXT("reject-failed debug case links source evidence id"),
+			DebugCase.EvidenceLinks[0].EvidenceId,
 			FString(TEXT("tx_reject_debug_failed")));
-		TestEqual(TEXT("reject-failed debug case marks transaction link role"),
-			DebugCase.TransactionLinks[0].Role,
+		TestEqual(TEXT("reject-failed debug case marks evidence link role"),
+			DebugCase.EvidenceLinks[0].Role,
 			FString(TEXT("review_reject_failed")));
 	}
 	TestTrue(TEXT("debug case message carries rollback failure"),
@@ -5492,8 +5233,6 @@ bool FBlueprintHelperReviewRejectAllPersistsToctouNeedsActionTest::RunTest(const
 
 	FBlueprintHelperReviewRejectOptions Options;
 	Options.CurrentHashesByTargetKey.Add(TEXT("graph_node:N1"), TEXT("user_changed"));
-	Options.bRollbackExecutorAvailable = true;
-	Options.bRollbackSucceeded = true;
 
 	FBlueprintHelperReviewActionService ActionService;
 	const FBlueprintHelperReviewActionResult Result = ActionService.RejectAll(Query, Options);
@@ -5564,8 +5303,6 @@ bool FBlueprintHelperReviewRejectAllIteratesPendingTargetsTest::RunTest(const FS
 	FBlueprintHelperReviewRejectOptions Options;
 	Options.CurrentHashesByTargetKey.Add(TEXT("graph_node:N1"), TEXT("after_first"));
 	Options.CurrentHashesByTargetKey.Add(TEXT("graph_node:N2"), TEXT("after_second"));
-	Options.bRollbackExecutorAvailable = true;
-	Options.bRollbackSucceeded = true;
 
 	FBlueprintHelperReviewActionService ActionService;
 	const FBlueprintHelperReviewActionResult Result = ActionService.RejectAll(Query, Options);
@@ -5582,402 +5319,6 @@ bool FBlueprintHelperReviewRejectAllIteratesPendingTargetsTest::RunTest(const FS
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperReviewConvertOwnerBlockRequiresSettingProfileTest,
-	"BlueprintHelper.Review.Action.ConvertOwnerBlockRequiresSettingProfile",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FBlueprintHelperReviewConvertOwnerBlockRequiresSettingProfileTest::RunTest(const FString& Parameters)
-{
-	FBlueprintHelperReviewStoreService Store;
-	const FString ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_convert_owner_policy"));
-	FBlueprintHelperReviewAtomicTarget Target = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
-		TEXT("graph:EventGraph:block:DoorFlow"),
-		TEXT("graph:EventGraph:block:DoorFlow"),
-		TEXT("tx_convert_policy"));
-	Target.TargetKind = TEXT("graph_block");
-	Target.Ownership = TEXT("blueprinthelper_owned");
-	TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
-	Evidences.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
-		ArchiveSessionId,
-		TEXT("task_convert_policy"),
-		TEXT("tx_convert_policy"),
-		TEXT("/Game/BP_Door"),
-		Target));
-	TArray<FBlueprintHelperReviewRecord> Records = Store.BuildReviewRecordsFromEvidence(Evidences);
-	FString SaveError;
-	TestTrue(TEXT("record saved before convert owner policy gate"), Store.SaveReviewRecords(Records, SaveError));
-
-	FBlueprintHelperReviewConvertOwnerBlockRequest Request;
-	Request.ReviewRecordId = Records[0].ReviewRecordId;
-	Request.Direction = TEXT("bh_to_user");
-	Request.BlockTargetKey = TEXT("graph:EventGraph:block:DoorFlow");
-	Request.EntryAnchor = TEXT("graph:EventGraph:entry:N1");
-	Request.NodeAnchors.Add(TEXT("graph:EventGraph:node:N1"));
-	Request.DesiredBlockRef = TEXT("DoorFlow");
-	Request.ConversionTransactionId = TEXT("tx_convert_policy_denied");
-	Request.bSettingProfileAllowsConversion = false;
-
-	FBlueprintHelperReviewActionService ActionService;
-	const FBlueprintHelperReviewActionResult Result = ActionService.ConvertOwnerBlock(Request);
-	TestFalse(TEXT("convert owner action is blocked by settings"), Result.bSucceeded);
-	TestEqual(TEXT("setting profile gate is reported"),
-		Result.Message,
-		FString(TEXT("convert_owner_block_not_allowed_by_setting_profile")));
-
-	FBlueprintHelperReviewRecord Loaded;
-	FString LoadError;
-	TestTrue(TEXT("policy-gated record reloads"),
-		Store.LoadReviewRecordById(Records[0].ReviewRecordId, Loaded, LoadError));
-	TestEqual(TEXT("conversion policy failure action is recorded"), Loaded.ReviewActions.Num(), 1);
-	if (Loaded.ReviewActions.Num() == 1)
-	{
-		TestEqual(TEXT("policy failure action keeps message"),
-			Loaded.ReviewActions[0].Message,
-			FString(TEXT("convert_owner_block_not_allowed_by_setting_profile")));
-		TestTrue(TEXT("policy gate does not record conversion transaction"),
-			Loaded.ReviewActions[0].SourceTransactionId.IsEmpty());
-	}
-	TestEqual(TEXT("one visible change remains after policy gate"), Loaded.VisibleChanges.Num(), 1);
-	if (Loaded.VisibleChanges.Num() != 1 || Loaded.VisibleChanges[0].AtomicTargets.Num() != 1)
-	{
-		return false;
-	}
-	TestEqual(TEXT("ownership is unchanged after policy gate"),
-		Loaded.VisibleChanges[0].AtomicTargets[0].Ownership,
-		FString(TEXT("blueprinthelper_owned")));
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperReviewConvertOwnerBlockRequiresNodeAnchorsTest,
-	"BlueprintHelper.Review.Action.ConvertOwnerBlockRequiresNodeAnchors",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FBlueprintHelperReviewConvertOwnerBlockRequiresNodeAnchorsTest::RunTest(const FString& Parameters)
-{
-	FBlueprintHelperReviewStoreService Store;
-	const FString ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_convert_owner"));
-	FBlueprintHelperReviewAtomicTarget Target = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
-		TEXT("graph:EventGraph:block:DoorFlow"),
-		TEXT("graph:EventGraph:block:DoorFlow"),
-		TEXT("tx_convert"));
-	Target.TargetKind = TEXT("graph_block");
-	Target.Ownership = TEXT("blueprinthelper_owned");
-	TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
-	Evidences.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
-		ArchiveSessionId,
-		TEXT("task_convert"),
-		TEXT("tx_convert"),
-		TEXT("/Game/BP_Door"),
-		Target));
-	TArray<FBlueprintHelperReviewRecord> Records = Store.BuildReviewRecordsFromEvidence(Evidences);
-	FString SaveError;
-	TestTrue(TEXT("record saved before convert owner"), Store.SaveReviewRecords(Records, SaveError));
-
-	FBlueprintHelperReviewConvertOwnerBlockRequest Request;
-	Request.ReviewRecordId = Records[0].ReviewRecordId;
-	Request.Direction = TEXT("bh_to_user");
-	Request.BlockTargetKey = TEXT("graph:EventGraph:block:DoorFlow");
-	Request.EntryAnchor = TEXT("graph:EventGraph:entry:N1");
-	Request.DesiredBlockRef = TEXT("DoorFlow");
-	Request.ConversionTransactionId = TEXT("tx_convert_owner");
-	Request.bSettingProfileAllowsConversion = true;
-
-	FBlueprintHelperReviewActionService ActionService;
-	const FBlueprintHelperReviewActionResult Result = ActionService.ConvertOwnerBlock(Request);
-	TestFalse(TEXT("convert owner action is blocked"), Result.bSucceeded);
-	TestEqual(TEXT("missing node anchors are reported"),
-		Result.Message,
-		FString(TEXT("missing_convert_owner_block_node_anchors")));
-
-	FBlueprintHelperReviewRecordQuery Query;
-	Query.ArchiveSessionIdFilter = ArchiveSessionId;
-	Query.bPendingOnly = false;
-	const TArray<FBlueprintHelperReviewRecord> LoadedRecords = Store.QueryReviewRecords(Query);
-	TestEqual(TEXT("converted record can be queried"), LoadedRecords.Num(), 1);
-	if (LoadedRecords.Num() != 1)
-	{
-		return false;
-	}
-
-	const FBlueprintHelperReviewRecord& Loaded = LoadedRecords[0];
-	TestEqual(TEXT("conversion failure action is recorded"), Loaded.ReviewActions.Num(), 1);
-	if (Loaded.ReviewActions.Num() == 1)
-	{
-		TestEqual(TEXT("failure action keeps message"),
-			Loaded.ReviewActions[0].Message,
-			FString(TEXT("missing_convert_owner_block_node_anchors")));
-	}
-	TestEqual(TEXT("ownership is unchanged in record"),
-		Loaded.VisibleChanges[0].AtomicTargets[0].Ownership,
-		FString(TEXT("blueprinthelper_owned")));
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperReviewConvertOwnerBlockExecutesBhToUserTest,
-	"BlueprintHelper.Review.Action.ConvertOwnerBlockExecutesBhToUser",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FBlueprintHelperReviewConvertOwnerBlockExecutesBhToUserTest::RunTest(const FString& Parameters)
-{
-	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewConversionTestBlueprint(TEXT("ConvertOwnerBhToUser"));
-	TestNotNull(TEXT("test blueprint created"), Blueprint);
-	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0)
-	{
-		return false;
-	}
-
-	UEdGraph* Graph = Blueprint->UbergraphPages[0];
-	const FString GraphName = Graph ? Graph->GetName() : FString();
-	const FString BlockRef = TEXT("DoorFlow");
-	const FString BlockId = FBlueprintHelperReviewStoreService::NormalizeGraphBlockTargetId(GraphName, BlockRef);
-	UK2Node_CustomEvent* EventNode = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewConversionEventNode(Graph, TEXT("ReviewConvertDoorFlow"));
-	TestNotNull(TEXT("test event node created"), EventNode);
-	if (!Graph || !EventNode)
-	{
-		return false;
-	}
-
-	FBlueprintHelperReviewStoreServiceTestsLocalUtils::MarkReviewNodeAsBlueprintHelperOwned(EventNode, BlockId);
-	TestTrue(TEXT("node starts BlueprintHelper-owned"), FBlueprintHelperReviewStoreServiceTestsLocalUtils::IsReviewNodeBlueprintHelperOwned(EventNode));
-
-	FBlueprintHelperReviewAtomicTarget Target = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
-		FString::Printf(TEXT("graph:%s:block:%s"), *GraphName, *BlockId),
-		FString::Printf(TEXT("graph:%s:block:%s"), *GraphName, *BlockId),
-		TEXT("tx_convert_real"));
-	Target.AssetPath = Blueprint->GetPathName();
-	Target.GraphName = GraphName;
-	Target.TargetKind = TEXT("graph_block");
-	Target.Ownership = TEXT("blueprinthelper_owned");
-
-	FBlueprintHelperReviewStoreService Store;
-	const FString ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_convert_owner_real"));
-	TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
-	Evidences.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
-		ArchiveSessionId,
-		TEXT("task_convert_real"),
-		TEXT("tx_convert_real"),
-		Blueprint->GetPathName(),
-		Target));
-	TArray<FBlueprintHelperReviewRecord> Records = Store.BuildReviewRecordsFromEvidence(Evidences);
-	FString SaveError;
-	TestTrue(TEXT("record saved before real convert owner"), Store.SaveReviewRecords(Records, SaveError));
-
-	FBlueprintHelperReviewConvertOwnerBlockRequest Request;
-	Request.ReviewRecordId = Records[0].ReviewRecordId;
-	Request.Direction = TEXT("bh_to_user");
-	Request.BlockTargetKey = Target.TargetKey;
-	Request.EntryAnchor = FString::Printf(TEXT("graph:%s:entry:%s"), *GraphName, *EventNode->GetName());
-	Request.NodeAnchors.Add(FString::Printf(TEXT("graph:%s:node:%s"), *GraphName, *EventNode->GetName()));
-	Request.DesiredBlockRef = BlockRef;
-	Request.ConversionTransactionId = TEXT("tx_review_convert_owner_real");
-	Request.bSettingProfileAllowsConversion = true;
-
-	FBlueprintHelperReviewActionService ActionService;
-	const FBlueprintHelperReviewActionResult Result = ActionService.ConvertOwnerBlock(Request);
-	TestTrue(TEXT("convert owner action succeeds"), Result.bSucceeded);
-	TestFalse(TEXT("node ownership metadata is removed"), FBlueprintHelperReviewStoreServiceTestsLocalUtils::IsReviewNodeBlueprintHelperOwned(EventNode));
-
-	FBlueprintHelperReviewRecord LoadedRecord;
-	FString LoadError;
-	TestTrue(TEXT("converted review record reloads"), Store.LoadReviewRecordById(Records[0].ReviewRecordId, LoadedRecord, LoadError));
-	if (LoadedRecord.VisibleChanges.Num() == 0 || LoadedRecord.VisibleChanges[0].AtomicTargets.Num() == 0)
-	{
-		AddError(TEXT("converted review record has no visible target"));
-		return false;
-	}
-
-	TestEqual(TEXT("ownership updated in persisted record"),
-		LoadedRecord.VisibleChanges[0].AtomicTargets[0].Ownership,
-		FString(TEXT("user_owned")));
-	TestEqual(TEXT("conversion action recorded"), LoadedRecord.ReviewActions.Num(), 1);
-	if (LoadedRecord.ReviewActions.Num() == 1)
-	{
-		TestEqual(TEXT("conversion transaction linked"),
-			LoadedRecord.ReviewActions[0].SourceTransactionId,
-			FString(TEXT("tx_review_convert_owner_real")));
-	}
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperReviewRejectDefaultDispatcherRemovesSelectedGraphNodeTest,
-	"BlueprintHelper.Review.Rollback.RejectRemovesOnlySelectedGraphNode",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FBlueprintHelperReviewRejectDefaultDispatcherRemovesSelectedGraphNodeTest::RunTest(const FString& Parameters)
-{
-	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewConversionTestBlueprint(TEXT("RejectSelectedGraphNode"));
-	TestNotNull(TEXT("test blueprint created"), Blueprint);
-	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
-	{
-		return false;
-	}
-
-	UEdGraph* Graph = Blueprint->UbergraphPages[0];
-	UK2Node_CustomEvent* SelectedNode = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewConversionEventNode(Graph, TEXT("ReviewRejectSelected"));
-	UK2Node_CustomEvent* UnselectedNode = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewConversionEventNode(Graph, TEXT("ReviewRejectUnselected"));
-	TestNotNull(TEXT("selected rollback node created"), SelectedNode);
-	TestNotNull(TEXT("unselected rollback node created"), UnselectedNode);
-	if (!SelectedNode || !UnselectedNode)
-	{
-		return false;
-	}
-
-	const FString ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_reject_default"));
-	const FString TransactionId = FString::Printf(
-		TEXT("tx_reject_default_%s"),
-		*FGuid::NewGuid().ToString(EGuidFormats::Digits));
-
-	FBlueprintHelperAppendJournalRecord JournalRecord;
-	JournalRecord.TransactionId = TransactionId;
-	JournalRecord.ArchiveSessionId = ArchiveSessionId;
-	JournalRecord.TaskRunId = TEXT("task_reject_default");
-	JournalRecord.Tool = TEXT("AppendBlueprintGraph");
-	JournalRecord.Status = TEXT("applied");
-	JournalRecord.TargetAssets.Add(Blueprint->GetPathName());
-	JournalRecord.GraphId = Graph->GetName();
-	JournalRecord.GraphName = Graph->GetName();
-	FBlueprintHelperGraphReviewNodeAnchor SelectedAnchor;
-	SelectedAnchor.NodePath = SelectedNode->GetName();
-	SelectedAnchor.NodeGuid = SelectedNode->NodeGuid.ToString(EGuidFormats::Digits);
-	JournalRecord.CreatedNodeAnchors.Add(SelectedAnchor);
-	FBlueprintHelperGraphReviewNodeAnchor UnselectedAnchor;
-	UnselectedAnchor.NodePath = UnselectedNode->GetName();
-	UnselectedAnchor.NodeGuid = UnselectedNode->NodeGuid.ToString(EGuidFormats::Digits);
-	JournalRecord.CreatedNodeAnchors.Add(UnselectedAnchor);
-
-	FBlueprintHelperTransactionJournalService JournalService;
-	FString JournalError;
-	TestTrue(TEXT("journal-backed review evidence writes"), JournalService.WriteAppendJournal(JournalRecord, JournalError));
-
-	FBlueprintHelperReviewStoreService Store;
-	FBlueprintHelperReviewRecordQuery Query;
-	Query.ArchiveSessionIdFilter = ArchiveSessionId;
-	Query.bPendingOnly = false;
-	const TArray<FBlueprintHelperReviewRecord> Records = Store.QueryReviewRecords(Query);
-	TestEqual(TEXT("one rollback review record is created"), Records.Num(), 1);
-	if (Records.Num() != 1)
-	{
-		return false;
-	}
-
-	FString SelectedTargetKey;
-	for (const FBlueprintHelperReviewVisibleChange& Change : Records[0].VisibleChanges)
-	{
-		for (const FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
-		{
-			if (Target.TargetKey.Contains(SelectedNode->GetName()))
-			{
-				SelectedTargetKey = Target.TargetKey;
-			}
-		}
-	}
-	TestFalse(TEXT("selected target key resolved"), SelectedTargetKey.IsEmpty());
-	if (SelectedTargetKey.IsEmpty())
-	{
-		return false;
-	}
-
-	FBlueprintHelperReviewActionService ActionService;
-	const FBlueprintHelperReviewActionResult Result = ActionService.RejectReviewTargets(
-		Records[0].ReviewRecordId,
-		{ SelectedTargetKey },
-		FBlueprintHelperReviewRejectOptions());
-
-	TestTrue(TEXT("selected target rollback succeeds"), Result.bSucceeded);
-	TestFalse(TEXT("selected node is removed"), FBlueprintHelperReviewStoreServiceTestsLocalUtils::ReviewGraphContainsNode(Graph, SelectedNode));
-	TestTrue(TEXT("unselected node remains"), FBlueprintHelperReviewStoreServiceTestsLocalUtils::ReviewGraphContainsNode(Graph, UnselectedNode));
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperReviewConvertOwnerBlockExecutesUserToBhTest,
-	"BlueprintHelper.Review.Action.ConvertOwnerBlockExecutesUserToBh",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FBlueprintHelperReviewConvertOwnerBlockExecutesUserToBhTest::RunTest(const FString& Parameters)
-{
-	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewConversionTestBlueprint(TEXT("ConvertOwnerUserToBh"));
-	TestNotNull(TEXT("test blueprint created"), Blueprint);
-	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0)
-	{
-		return false;
-	}
-
-	UEdGraph* Graph = Blueprint->UbergraphPages[0];
-	const FString GraphName = Graph ? Graph->GetName() : FString();
-	const FString BlockRef = TEXT("DoorFlowUserOwned");
-	const FString BlockId = FBlueprintHelperReviewStoreService::NormalizeGraphBlockTargetId(GraphName, BlockRef);
-	UK2Node_CustomEvent* EventNode = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewConversionEventNode(Graph, TEXT("ReviewConvertUserToBh"));
-	TestNotNull(TEXT("test event node created"), EventNode);
-	if (!Graph || !EventNode)
-	{
-		return false;
-	}
-	TestFalse(TEXT("node starts user-owned"), FBlueprintHelperReviewStoreServiceTestsLocalUtils::IsReviewNodeBlueprintHelperOwned(EventNode));
-
-	FBlueprintHelperReviewAtomicTarget Target = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
-		FString::Printf(TEXT("graph:%s:block:%s"), *GraphName, *BlockId),
-		FString::Printf(TEXT("graph:%s:block:%s"), *GraphName, *BlockId),
-		TEXT("tx_convert_user_to_bh"));
-	Target.AssetPath = Blueprint->GetPathName();
-	Target.GraphName = GraphName;
-	Target.TargetKind = TEXT("graph_block");
-	Target.Ownership = TEXT("user_owned");
-
-	FBlueprintHelperReviewStoreService Store;
-	const FString ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_convert_user_to_bh"));
-	TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
-	Evidences.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
-		ArchiveSessionId,
-		TEXT("task_convert_user_to_bh"),
-		TEXT("tx_convert_user_to_bh"),
-		Blueprint->GetPathName(),
-		Target));
-	TArray<FBlueprintHelperReviewRecord> Records = Store.BuildReviewRecordsFromEvidence(Evidences);
-	FString SaveError;
-	TestTrue(TEXT("record saved before user-to-bh convert owner"), Store.SaveReviewRecords(Records, SaveError));
-
-	FBlueprintHelperReviewConvertOwnerBlockRequest Request;
-	Request.ReviewRecordId = Records[0].ReviewRecordId;
-	Request.Direction = TEXT("user_to_bh");
-	Request.BlockTargetKey = Target.TargetKey;
-	Request.EntryAnchor = FString::Printf(TEXT("graph:%s:entry:%s"), *GraphName, *EventNode->GetName());
-	Request.NodeAnchors.Add(FString::Printf(TEXT("graph:%s:node:%s"), *GraphName, *EventNode->GetName()));
-	Request.DesiredBlockRef = BlockRef;
-	Request.ConversionTransactionId = TEXT("tx_review_convert_user_to_bh");
-	Request.bSettingProfileAllowsConversion = true;
-
-	FBlueprintHelperReviewActionService ActionService;
-	const FBlueprintHelperReviewActionResult Result = ActionService.ConvertOwnerBlock(Request);
-	TestTrue(TEXT("user-to-bh convert owner action succeeds"), Result.bSucceeded);
-	TestTrue(TEXT("node ownership metadata is written"), FBlueprintHelperReviewStoreServiceTestsLocalUtils::IsReviewNodeBlueprintHelperOwned(EventNode));
-
-	FBlueprintHelperReviewRecord LoadedRecord;
-	FString LoadError;
-	TestTrue(TEXT("converted review record reloads"), Store.LoadReviewRecordById(Records[0].ReviewRecordId, LoadedRecord, LoadError));
-	if (LoadedRecord.VisibleChanges.Num() == 0 || LoadedRecord.VisibleChanges[0].AtomicTargets.Num() == 0)
-	{
-		AddError(TEXT("converted review record has no visible target"));
-		return false;
-	}
-
-	TestEqual(TEXT("ownership updated in persisted record"),
-		LoadedRecord.VisibleChanges[0].AtomicTargets[0].Ownership,
-		FString(TEXT("blueprinthelper_owned")));
-	TestEqual(TEXT("conversion action recorded"), LoadedRecord.ReviewActions.Num(), 1);
-	if (LoadedRecord.ReviewActions.Num() == 1)
-	{
-		TestEqual(TEXT("conversion transaction linked"),
-			LoadedRecord.ReviewActions[0].SourceTransactionId,
-			FString(TEXT("tx_review_convert_user_to_bh")));
-	}
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperReviewPanelConstructsTest,
 	"BlueprintHelper.Review.UI.PanelConstructsWithSyntheticVisibleChange",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -5989,8 +5330,8 @@ bool FBlueprintHelperReviewPanelConstructsTest::RunTest(const FString& Parameter
 	Change.AssetPath = TEXT("/Game/BP_Door");
 	Change.GraphName = TEXT("EventGraph");
 	Change.LocationKey = TEXT("function:OpenDoor:input:Input");
-	Change.LatestTransactionId = TEXT("tx_visible");
-	Change.SourceTransactionIds.Add(TEXT("tx_visible"));
+	Change.LatestEvidenceId = TEXT("tx_visible");
+	Change.SourceEvidenceIds.Add(TEXT("tx_visible"));
 	Change.ChangeKind = EBlueprintHelperReviewChangeKind::SignatureModified;
 	Change.DisplayLabel = TEXT("OpenDoor Input");
 	Change.BeforeSummary = TEXT("OpenDoor()");
@@ -6018,7 +5359,7 @@ bool FBlueprintHelperReviewTreeNestsChangesUnderLifecycleRootTest::RunTest(const
 	FBlueprintHelperReviewVisibleChange Root;
 	Root.ChangeId = TEXT("tx_tree_root");
 	Root.AssetPath = AssetPath;
-	Root.LatestTransactionId = TEXT("tx_tree_root");
+	Root.LatestEvidenceId = TEXT("tx_tree_root");
 	Root.ChangeKind = EBlueprintHelperReviewChangeKind::Added;
 	Root.DisplayLabel = TEXT("BP_DoorTreeLifecycle asset");
 	Root.bIsAssetLifecycleRoot = true;
@@ -6027,7 +5368,7 @@ bool FBlueprintHelperReviewTreeNestsChangesUnderLifecycleRootTest::RunTest(const
 	FBlueprintHelperReviewVisibleChange Child;
 	Child.ChangeId = TEXT("tx_tree_child");
 	Child.AssetPath = AssetPath;
-	Child.LatestTransactionId = TEXT("tx_tree_child");
+	Child.LatestEvidenceId = TEXT("tx_tree_child");
 	Child.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
 	Child.DisplayLabel = TEXT("SmokeComp");
 	Child.ParentChangeId = Root.ChangeId;
@@ -6035,7 +5376,7 @@ bool FBlueprintHelperReviewTreeNestsChangesUnderLifecycleRootTest::RunTest(const
 	FBlueprintHelperReviewVisibleChange DirectChild;
 	DirectChild.ChangeId = TEXT("tx_tree_direct");
 	DirectChild.AssetPath = AssetPath;
-	DirectChild.LatestTransactionId = TEXT("tx_tree_direct");
+	DirectChild.LatestEvidenceId = TEXT("tx_tree_direct");
 	DirectChild.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
 	DirectChild.DisplayLabel = TEXT("Unparented");
 
@@ -6353,8 +5694,8 @@ bool FBlueprintHelperReviewPanelObjectBlueprintConstructsTest::RunTest(const FSt
 	Change.AssetPath = Blueprint->GetPathName();
 	Change.GraphName = TEXT("EventGraph");
 	Change.LocationKey = TEXT("object:class_settings");
-	Change.LatestTransactionId = TEXT("tx_object_visible");
-	Change.SourceTransactionIds.Add(TEXT("tx_object_visible"));
+	Change.LatestEvidenceId = TEXT("tx_object_visible");
+	Change.SourceEvidenceIds.Add(TEXT("tx_object_visible"));
 	Change.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
 	Change.DisplayLabel = TEXT("Object Blueprint Review");
 	Change.BeforeSummary = TEXT("Before");
@@ -6388,8 +5729,8 @@ bool FBlueprintHelperReviewPanelDataTableConstructsTest::RunTest(const FString& 
 	Change.ChangeId = TEXT("tx_datatable_visible");
 	Change.AssetPath = DataTable->GetPathName();
 	Change.LocationKey = TEXT("asset_factory:data_table");
-	Change.LatestTransactionId = TEXT("tx_datatable_visible");
-	Change.SourceTransactionIds.Add(TEXT("tx_datatable_visible"));
+	Change.LatestEvidenceId = TEXT("tx_datatable_visible");
+	Change.SourceEvidenceIds.Add(TEXT("tx_datatable_visible"));
 	Change.ChangeKind = EBlueprintHelperReviewChangeKind::Added;
 	Change.DisplayLabel = TEXT("DataTable Review");
 	Change.BeforeSummary = TEXT("Missing");
@@ -6437,8 +5778,8 @@ bool FBlueprintHelperReviewPanelDataTableRowConstructsTest::RunTest(const FStrin
 	Change.ChangeId = TEXT("tx_datatable_row_visible");
 	Change.AssetPath = DataTable->GetPathName();
 	Change.LocationKey = TEXT("datatable_row:DamageSmall");
-	Change.LatestTransactionId = TEXT("tx_datatable_row_visible");
-	Change.SourceTransactionIds.Add(TEXT("tx_datatable_row_visible"));
+	Change.LatestEvidenceId = TEXT("tx_datatable_row_visible");
+	Change.SourceEvidenceIds.Add(TEXT("tx_datatable_row_visible"));
 	Change.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
 	Change.DisplayLabel = TEXT("DamageSmall Row");
 	Change.BeforeSummary = TEXT("DamageSmall before");
@@ -6484,8 +5825,8 @@ bool FBlueprintHelperReviewPanelGenericObjectConstructsTest::RunTest(const FStri
 	Change.ChangeId = TEXT("tx_generic_object_visible");
 	Change.AssetPath = Object->GetPathName();
 	Change.LocationKey = TEXT("object_property:DisplayName");
-	Change.LatestTransactionId = TEXT("tx_generic_object_visible");
-	Change.SourceTransactionIds.Add(TEXT("tx_generic_object_visible"));
+	Change.LatestEvidenceId = TEXT("tx_generic_object_visible");
+	Change.SourceEvidenceIds.Add(TEXT("tx_generic_object_visible"));
 	Change.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
 	Change.DisplayLabel = TEXT("Generic Object Review");
 	Change.BeforeSummary = TEXT("Before");
@@ -6534,8 +5875,8 @@ bool FBlueprintHelperReviewPanelDataAssetPropertyConstructsTest::RunTest(const F
 	Change.ChangeId = TEXT("tx_data_asset_property_visible");
 	Change.AssetPath = DataAsset->GetPathName();
 	Change.LocationKey = TEXT("data_asset_property:Config.Health");
-	Change.LatestTransactionId = TEXT("tx_data_asset_property_visible");
-	Change.SourceTransactionIds.Add(TEXT("tx_data_asset_property_visible"));
+	Change.LatestEvidenceId = TEXT("tx_data_asset_property_visible");
+	Change.SourceEvidenceIds.Add(TEXT("tx_data_asset_property_visible"));
 	Change.ChangeKind = EBlueprintHelperReviewChangeKind::VariableModified;
 	Change.DisplayLabel = TEXT("Config.Health");
 	Change.BeforeSummary = TEXT("Health before");
@@ -6582,8 +5923,8 @@ bool FBlueprintHelperReviewPanelWidgetBlueprintConstructsTest::RunTest(const FSt
 	Change.ChangeId = TEXT("tx_widget_blueprint_visible");
 	Change.AssetPath = WidgetBlueprint->GetPathName();
 	Change.LocationKey = TEXT("umg_widget:SmokeText");
-	Change.LatestTransactionId = TEXT("tx_widget_blueprint_visible");
-	Change.SourceTransactionIds.Add(TEXT("tx_widget_blueprint_visible"));
+	Change.LatestEvidenceId = TEXT("tx_widget_blueprint_visible");
+	Change.SourceEvidenceIds.Add(TEXT("tx_widget_blueprint_visible"));
 	Change.ChangeKind = EBlueprintHelperReviewChangeKind::Added;
 	Change.DisplayLabel = TEXT("SmokeText Widget");
 	Change.BeforeSummary = TEXT("Missing");
@@ -6630,7 +5971,7 @@ bool FBlueprintHelperReviewPanelMyBlueprintOnlySignatureDoesNotGraphRouteTest::R
 	Change.AssetPath = Blueprint->GetPathName();
 	Change.GraphName = TEXT("EventGraph");
 	Change.LocationKey = TEXT("function:ApplyDamage:signature");
-	Change.LatestTransactionId = TEXT("tx_signature_only_panel");
+	Change.LatestEvidenceId = TEXT("tx_signature_only_panel");
 	Change.ChangeKind = EBlueprintHelperReviewChangeKind::SignatureModified;
 	Change.DisplayLabel = TEXT("ApplyDamage Signature");
 
@@ -6676,7 +6017,7 @@ bool FBlueprintHelperReviewPanelKeepsTrueGraphVisibleChangeRoutableTest::RunTest
 	Change.AssetPath = Blueprint->GetPathName();
 	Change.GraphName = TEXT("EventGraph");
 	Change.LocationKey = TEXT("graph:EventGraph/node:PrintString");
-	Change.LatestTransactionId = TEXT("tx_1778317276165");
+	Change.LatestEvidenceId = TEXT("tx_1778317276165");
 	Change.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
 	Change.DisplayLabel = TEXT("Print String Node");
 
@@ -7046,3 +6387,4 @@ bool FBlueprintHelperReviewGraphBoundsFullBlockMetadataTest::RunTest(const FStri
 }
 
 #endif
+

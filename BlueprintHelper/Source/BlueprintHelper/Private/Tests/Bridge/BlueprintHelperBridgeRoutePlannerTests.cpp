@@ -36,7 +36,6 @@ bool FBlueprintHelperBridgeRoutePlanner_KnownCommandsMapToClusters::RunTest(cons
 		{TEXT("get_debug_case"), EBlueprintHelperBridgeRouteCluster::Debug},
 		{TEXT("read_function_chain_context"), EBlueprintHelperBridgeRouteCluster::SharedServices},
 		{TEXT("query_review_records"), EBlueprintHelperBridgeRouteCluster::Review},
-		{TEXT("list_blueprint_helper_transactions"), EBlueprintHelperBridgeRouteCluster::Transactions},
 	};
 
 	for (const TPair<FString, EBlueprintHelperBridgeRouteCluster>& Case : Cases)

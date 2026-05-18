@@ -34,30 +34,6 @@ class P2TaskCompilerTests(unittest.TestCase):
         self.assertEqual(steps[0]["write"]["strategy"], "property_edit")
         self.assertEqual(steps[0]["write"]["ops"][0]["op"], "set_object_properties")
 
-    def test_compiles_graph_cleanup_ownership_task_spec(self):
-        result = compile_task_spec(make_base_spec("manage_blueprinthelper_ownership", {
-            "ownership_strategy": "owned_block_lifecycle",
-            "changes": [
-                {
-                    "kind": "cleanup_block",
-                    "graph_id": "DoorLogic",
-                    "block_ref": "OpenDoor0",
-                    "missing_policy": "ignore",
-                },
-                {
-                    "kind": "convert_block_to_user_owned",
-                    "block_id": "DoorLogic_OpenDoor0",
-                    "already_user_owned_policy": "ignore",
-                },
-            ],
-        }), True)
-
-        steps = result["task_plan"]["steps"]
-        self.assertEqual(len(steps), 2)
-        self.assertEqual(steps[0]["capability"], "graph_cleanup_ownership")
-        self.assertEqual(steps[0]["write"]["ops"][0]["op"], "cleanup_blueprint_helper_block")
-        self.assertEqual(steps[1]["write"]["ops"][0]["op"], "convert_blueprint_helper_block_to_user_owned")
-
     def test_compiles_interface_function_and_interface_event_signatures(self):
         result = compile_task_spec(make_base_spec("edit_blueprint_signature", {
             "signature_strategy": "signature_edit",

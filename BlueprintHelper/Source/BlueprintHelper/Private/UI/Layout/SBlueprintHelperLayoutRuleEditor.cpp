@@ -12,6 +12,7 @@
 #include "Serialization/JsonSerializer.h"
 #include "SlateOptMacros.h"
 #include "Styling/CoreStyle.h"
+#include "Systems/Config/BlueprintHelperProjectConfigPaths.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Input/SEditableTextBox.h"
@@ -1463,7 +1464,7 @@ bool SBlueprintHelperLayoutRuleEditor::SaveJsonToDefaultFile(const FString& Json
 
 FString SBlueprintHelperLayoutRuleEditor::GetDefaultJsonFilePath() const
 {
-	return FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("BlueprintHelper"), TEXT("GraphLayoutRules.json"));
+	return FBlueprintHelperProjectConfigPaths::GetGraphLayoutRulesPath();
 }
 
 #undef LOCTEXT_NAMESPACE

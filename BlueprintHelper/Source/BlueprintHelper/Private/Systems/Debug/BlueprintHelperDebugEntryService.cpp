@@ -100,7 +100,7 @@ FBlueprintHelperDebugEntryRecordResult FBlueprintHelperDebugEntryService::Record
 	Event.TaskRunId = Input.TaskRunId;
 	Event.AssetPaths = Input.AssetPaths;
 	Event.ReviewRecordIds = Input.ReviewRecordIds;
-	Event.TransactionLinks = Input.TransactionLinks;
+	Event.EvidenceLinks = Input.EvidenceLinks;
 	Event.Error = Input.Error;
 	Event.RecommendedNext = Input.RecommendedNext;
 	Event.ToolResultSummary = Input.ToolResultSummary;
@@ -121,7 +121,7 @@ FBlueprintHelperDebugEntryRecordResult FBlueprintHelperDebugEntryService::Record
 	DebugCase.TaskRunId = Input.TaskRunId;
 	DebugCase.AssetPaths = Input.AssetPaths;
 	DebugCase.ReviewRecordIds = Input.ReviewRecordIds;
-	DebugCase.TransactionLinks = Input.TransactionLinks;
+	DebugCase.EvidenceLinks = Input.EvidenceLinks;
 	DebugCase.Error = Input.Error;
 	DebugCase.RecommendedNext = Input.RecommendedNext;
 	DebugCase.FragmentArtifacts = ExtractFragmentArtifactsFromToolResultSummary(Input.ToolResultSummary);

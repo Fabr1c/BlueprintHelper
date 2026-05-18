@@ -10,7 +10,6 @@
 class FBlueprintHelperGraphResolver;
 class FBlueprintHelperBlockIdService;
 class FBlueprintHelperOwnershipService;
-class FBlueprintHelperTransactionJournalService;
 class FBlueprintHelperGraphSnapshotService;
 class UEdGraph;
 class UBlueprint;
@@ -25,7 +24,6 @@ public:
 		const FBlueprintHelperGraphResolver& InResolver,
 		const FBlueprintHelperBlockIdService& InBlockIdService,
 		const FBlueprintHelperOwnershipService& InOwnershipService,
-		const FBlueprintHelperTransactionJournalService& InJournalService,
 		const FBlueprintHelperGraphSnapshotService& InSnapshotService);
 
 	/** 执行 Replace 操作。*/
@@ -127,6 +125,5 @@ private:
 	const FBlueprintHelperGraphResolver& Resolver;
 	const FBlueprintHelperBlockIdService& BlockIdService;
 	const FBlueprintHelperOwnershipService& OwnershipService;
-	const FBlueprintHelperTransactionJournalService& JournalService;
 	const FBlueprintHelperGraphSnapshotService& SnapshotService;
 };

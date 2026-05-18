@@ -40,8 +40,8 @@
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperOwnershipService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
+#include "Systems/ToolClusters/BlueprintSignature/Utils/BlueprintHelperSignatureMutationUtils.h"
 #include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
-#include "Systems/Transactions/BlueprintHelperTransactionJournalService.h"
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
 #include "UObject/SoftObjectPath.h"
@@ -949,7 +949,6 @@ static bool BlueprintHelperReviewGraphNodeMatchesStableId(const UEdGraphNode* No
 	{
 		FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
 		return MetaData.GetValue(Node, TEXT("BlueprintHelperBlockId")).Equals(Candidate, ESearchCase::IgnoreCase)
-			|| MetaData.GetValue(Node, TEXT("BlueprintHelperTransactionId")).Equals(Candidate, ESearchCase::IgnoreCase)
 			|| MetaData.GetValue(Node, TEXT("BlueprintHelperFeatureName")).Equals(Candidate, ESearchCase::IgnoreCase);
 	}
 	return false;
@@ -1290,6 +1289,123 @@ bool FBlueprintHelperReviewSnapshotRestoreService::RestoreGraphFromSnapshot(
 		return false;
 	}
 
+bool FBlueprintHelperReviewSnapshotRestoreService::RestoreSignatureFromSnapshot(
+		const FBlueprintHelperReviewAtomicTarget& Target,
+		const TSharedPtr<FJsonObject>& Snapshot,
+		FString& OutError)
+	{
+		UBlueprint* Blueprint = Cast<UBlueprint>(StaticLoadObject(UBlueprint::StaticClass(), nullptr, *Target.AssetPath));
+		if (!Blueprint)
+		{
+			OutError = FString::Printf(TEXT("blueprint_not_found:%s"), *Target.AssetPath);
+			return false;
+		}
+
+		const FString SignatureName = ExtractTargetName(Target);
+		if (SignatureName.IsEmpty())
+		{
+			OutError = TEXT("missing_signature_name");
+			return false;
+		}
+
+		bool bSnapshotExists = false;
+		Snapshot->TryGetBoolField(TEXT("exists"), bSnapshotExists);
+		if (bSnapshotExists)
+		{
+			OutError = FString::Printf(TEXT("signature_snapshot_restore_existing_not_supported:%s"), *SignatureName);
+			return false;
+		}
+
+		const FScopedTransaction Transaction(FText::FromString(TEXT("BlueprintHelper Review Restore Signature")));
+		Blueprint->Modify();
+
+		bool bRemoved = false;
+		FString RemoveError;
+		if (!FBlueprintHelperSignatureMutationUtils::RemoveEventDispatcherSignatureDirect(Blueprint, SignatureName, bRemoved, RemoveError))
+		{
+			OutError = RemoveError.IsEmpty()
+				? FString::Printf(TEXT("signature_dispatcher_remove_failed:%s"), *SignatureName)
+				: RemoveError;
+			return false;
+		}
+		if (bRemoved)
+		{
+			MarkBlueprintReviewRestoreModified(Blueprint);
+			return true;
+		}
+
+		FBlueprintHelperRemoveSignatureRequest RemoveRequest;
+		RemoveRequest.AssetPath = Target.AssetPath;
+		RemoveRequest.SignatureName = SignatureName;
+		RemoveRequest.GraphName = Target.GraphName;
+		RemoveRequest.bRequireReferenceContext = false;
+		const FString SignatureKinds[] =
+		{
+			TEXT("function"),
+			TEXT("override_event"),
+			TEXT("native_event")
+		};
+		for (const FString& SignatureKind : SignatureKinds)
+		{
+			RemoveRequest.SignatureKind = SignatureKind;
+			RemoveError.Reset();
+			bRemoved = false;
+			if (!FBlueprintHelperSignatureMutationUtils::RemoveSignatureDirect(Blueprint, RemoveRequest, bRemoved, RemoveError))
+			{
+				OutError = RemoveError.IsEmpty()
+					? FString::Printf(TEXT("signature_remove_failed:%s:%s"), *SignatureKind, *SignatureName)
+					: RemoveError;
+				return false;
+			}
+			if (bRemoved)
+			{
+				MarkBlueprintReviewRestoreModified(Blueprint);
+				return true;
+			}
+		}
+
+		for (UEdGraph* Graph : Blueprint->MacroGraphs)
+		{
+			if (Graph && Graph->GetFName() == FName(*SignatureName))
+			{
+				FBlueprintEditorUtils::RemoveGraph(Blueprint, Graph, EGraphRemoveFlags::Recompile);
+				MarkBlueprintReviewRestoreModified(Blueprint);
+				return true;
+			}
+		}
+
+		TArray<FString> CustomEventGraphNames;
+		if (!Target.GraphName.IsEmpty())
+		{
+			CustomEventGraphNames.Add(Target.GraphName);
+		}
+		for (UEdGraph* Graph : Blueprint->UbergraphPages)
+		{
+			if (Graph)
+			{
+				CustomEventGraphNames.AddUnique(Graph->GetName());
+			}
+		}
+		RemoveRequest.SignatureKind = TEXT("custom_event");
+		for (const FString& GraphName : CustomEventGraphNames)
+		{
+			RemoveRequest.GraphName = GraphName;
+			RemoveError.Reset();
+			bRemoved = false;
+			if (!FBlueprintHelperSignatureMutationUtils::RemoveSignatureDirect(Blueprint, RemoveRequest, bRemoved, RemoveError))
+			{
+				continue;
+			}
+			if (bRemoved)
+			{
+				MarkBlueprintReviewRestoreModified(Blueprint);
+				return true;
+			}
+		}
+
+		return true;
+	}
+
 bool FBlueprintHelperReviewSnapshotRestoreService::ExecuteSnapshotRestore(
 		const FBlueprintHelperReviewAtomicTarget& Target,
 		FString& OutError)
@@ -1316,6 +1432,7 @@ bool FBlueprintHelperReviewSnapshotRestoreService::ExecuteSnapshotRestore(
 			{ EBlueprintHelperReviewTargetHandlerKind::DataTableRow, [&Target, &Snapshot, &OutError]() { return RestoreDataTableRowFromSnapshot(Target, Snapshot, OutError); } },
 			{ EBlueprintHelperReviewTargetHandlerKind::StructField, [&Target, &Snapshot, &OutError]() { return RestoreStructFieldFromSnapshot(Target, Snapshot, OutError); } },
 			{ EBlueprintHelperReviewTargetHandlerKind::ObjectProperty, [&Target, &Snapshot, &OutError]() { return RestoreObjectPropertyFromSnapshot(Target, Snapshot, OutError); } },
+			{ EBlueprintHelperReviewTargetHandlerKind::Signature, [&Target, &Snapshot, &OutError]() { return RestoreSignatureFromSnapshot(Target, Snapshot, OutError); } },
 			{ EBlueprintHelperReviewTargetHandlerKind::UMGWidget, [&Target, &Snapshot, &OutError]() { return RestoreWidgetFromSnapshot(Target, Snapshot, OutError); } },
 			{ EBlueprintHelperReviewTargetHandlerKind::UMGWidgetProperty, [&Target, &Snapshot, &OutError]() { return RestoreWidgetFromSnapshot(Target, Snapshot, OutError); } }
 		};
@@ -1376,7 +1493,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewSnapshotRestoreService:
 		}
 
 		FBlueprintHelperReviewActionResult Result;
-		Result.TargetTransactionId = Change.LatestTransactionId;
+		Result.TargetEvidenceId = Change.LatestEvidenceId;
 		Result.RollbackMode = TEXT("asset_lifecycle_delete");
 		Result.NewStatus = EBlueprintHelperReviewChangeStatus::Rejected;
 		Result.bSupersededDataCompactionEligible = true;

@@ -3,7 +3,6 @@
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperPatchBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicJsonPathService.h"
-#include "Systems/Transactions/BlueprintHelperTransactionJournalService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperGraphWriteBlockScopedResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
@@ -24,11 +23,9 @@
 
 FBlueprintHelperPatchBlueprintGraphService::FBlueprintHelperPatchBlueprintGraphService(
 	const FBlueprintHelperGraphResolver& InResolver,
-	const FBlueprintHelperLogicJsonPathService& InPathService,
-	const FBlueprintHelperTransactionJournalService& InJournalService)
+	const FBlueprintHelperLogicJsonPathService& InPathService)
 	: Resolver(InResolver)
 	, PathService(InPathService)
-	, JournalService(InJournalService)
 {
 }
 
@@ -312,7 +309,6 @@ FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::Execu
 	const FPatchRequest& Request) const
 {
 	const FString TraceId = FBlueprintHelperToolResultBuilder::GenerateTraceId();
-	const FString TransactionId = JournalService.GenerateTransactionId();
 
 	// 1-2. 解析蓝图和图表
 	FBlueprintHelperGraphTarget Target;
@@ -370,7 +366,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::Execu
 		SnapshotTarget.Surface = EBlueprintHelperReviewSurface::Graph;
 		SnapshotTarget.TargetKey = PatchTargetKey;
 		SnapshotTarget.TargetKind = TEXT("graph_node");
-		SnapshotTarget.VisualGroupKey = FString::Printf(TEXT("graph:%s:transaction:%s"), *Request.GraphName, *TransactionId);
+		SnapshotTarget.VisualGroupKey = PatchTargetKey;
 		SnapshotTarget.DisplayLabel = ResolvedTarget.Node->GetName();
 		SnapshotTarget.NodeGuid = NodeGuid;
 
@@ -409,56 +405,6 @@ FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::Execu
 		return FBlueprintHelperToolResultBuilder::Failure(TEXT("patch_blueprint_graph"), TraceId, Error);
 	}
 
-	// 6. 写 Journal
-	bool bJournalRecorded = false;
-	if (bShouldRecordReview)
-	{
-		FBlueprintHelperAppendJournalRecord JRecord;
-		JRecord.TransactionId = TransactionId;
-		JRecord.Tool = TEXT("PatchBlueprintGraph");
-		JRecord.Status = bChanged ? TEXT("applied") : TEXT("no_op");
-		JRecord.TargetAssets.Add(Request.AssetPath);
-		JRecord.GraphId = Request.GraphName;
-		JRecord.GraphName = Request.GraphName;
-		if (!Request.BlockId.IsEmpty())
-		{
-			JRecord.BlockIds.Add(Request.BlockId);
-		}
-		if (ResolvedTarget.Node)
-		{
-			FBlueprintHelperGraphReviewNodeAnchor Anchor;
-			Anchor.NodePath = ResolvedTarget.Node->GetPathName();
-			Anchor.NodeGuid = ResolvedTarget.Node->NodeGuid.IsValid()
-				? ResolvedTarget.Node->NodeGuid.ToString(EGuidFormats::Digits)
-				: FString();
-			Anchor.DisplayLabel = ResolvedTarget.Node->GetName();
-			Anchor.GraphPosition = FVector2D(ResolvedTarget.Node->NodePosX, ResolvedTarget.Node->NodePosY);
-			Anchor.GraphSize = FVector2D(
-				FMath::Max(ResolvedTarget.Node->NodeWidth, 360),
-				FMath::Max(ResolvedTarget.Node->NodeHeight, 180));
-			Anchor.bHasGraphBounds = true;
-			JRecord.CreatedNodeAnchors.Add(Anchor);
-			if (!PatchTargetKey.IsEmpty() && !PatchBeforeSnapshotJson.IsEmpty())
-			{
-				JRecord.BaselineSnapshotsByTargetKey.Add(PatchTargetKey, PatchBeforeSnapshotJson);
-			}
-		}
-
-		FString JError;
-		if (!JournalService.WriteAppendJournal(JRecord, JError))
-		{
-			Mutation.Rollback();
-			FBlueprintHelperToolError Error;
-			Error.Code = TEXT("journal_write_failed");
-			Error.Stage = EBlueprintHelperToolStage::Execute;
-			Error.Message = JError;
-			Error.bRetryable = false;
-			Error.RollbackResult = EBlueprintHelperRollbackResult::RolledBack;
-			return FBlueprintHelperToolResultBuilder::Failure(TEXT("patch_blueprint_graph"), TraceId, Error);
-		}
-		bJournalRecorded = true;
-	}
-
 	// 7. 标记修改
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(BP);
 	if (BP->GetOutermost()) BP->GetOutermost()->MarkPackageDirty();
@@ -478,8 +424,6 @@ FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::Execu
 	Data.PatchResult.Patch.PatchType = PatchTypeToString(Request.PatchType);
 	Data.PatchResult.Patch.bExpectedOldStateProvided = Request.bExpectedOldStateProvided;
 	Data.PatchResult.Patch.bChanged = bChanged;
-	Data.WriteRef.TransactionId = TransactionId;
-	Data.WriteRef.bJournalRecorded = bJournalRecorded;
 	Success.Data = Data.ToJson();
 	FBlueprintHelperGraphFragmentDebugData::AttachToData(Success.Data, PreflightResult.FragmentDebugData);
 
