@@ -17,6 +17,8 @@ Use this skill when a user asks Codex to work with Unreal Editor assets through 
 
 Do not use BlueprintHelper for normal repository files. Use normal Codex shell and edit tools for C++, TypeScript, Python, JSON, config, docs, tests, build scripts, and source search.
 
+Do not inspect the BlueprintHelper plugin package or implementation source (`CodexPlugin/`, `ClaudePlugin/`, `AgentFaceService/`, or the UE `BlueprintHelper/` source) merely to learn how to use the plugin. That is redundant and forbidden for ordinary plugin usage. Use this skill, the AgentGuide, CLI reference, and templates instead. Read plugin source only when the user explicitly asks for BlueprintHelper plugin development, installation repair, or debugging.
+
 ## Entry Rule
 
 The supported Agent-facing entry for ordinary TaskSpec reads and writes is the BlueprintHelper CLI. The global MCP endpoint is retained only for editor open/close lifecycle in ordinary Agent workflows.
@@ -37,6 +39,10 @@ Preferred CLI shape:
 bh <tool_name> [--file params.json | --json "{...}" | --stdin] [--select field[,field...]] [--format summary|json|full]
 ```
 
+On Windows PowerShell, `bh` should resolve to the `.cmd` launcher installed by `install.ps1`. If an older install resolves to blocked `bh.ps1`, rerun the root installer or call `bh.cmd`.
+
+PowerShell-safe JSON rule: use `--file` for reusable JSON and `--stdin` for generated JSON. Do not pass non-trivial generated payloads as inline `--json $json`, because PowerShell can strip quotes before Node receives the argument.
+
 If `bh` is not on PATH, use the built CLI entry:
 
 ```powershell
@@ -52,6 +58,12 @@ bh task execute --file .\task_spec.json --select status,task_run_id,summary,arti
 ```
 
 For complex JSON, open `AgentFaceService/agent-guide/Templates/INDEX.md`, choose the category semantic index, copy a matching template, and call the CLI with `--file`. If you call the direct tool-name entries `blueprinthelper_preview_task` or `blueprinthelper_execute_task`, use the wrapper templates with root field `task_spec`; if you call grouped `task preview` or `task execute`, use a bare `BlueprintHelper.TaskSpec.v1` file.
+
+Generated JSON example:
+
+```powershell
+$json | bh blueprinthelper_read_context --stdin --format full
+```
 
 ## Mandatory Codex Subagent Workflow
 

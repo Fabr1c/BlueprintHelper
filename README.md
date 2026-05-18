@@ -95,6 +95,8 @@ cd <PLUGIN_ROOT>
 
 安装脚本会构建 AgentFaceService、链接 `bh` CLI、注册 Codex 本地 marketplace、安装 Codex subagents 和全局 MCP allowlist 入口，并在能确认项目和 UE 根目录时写入 `<ProjectDir>/.blueprinthelper/agent-profile.json`。需要 Claude subagents 时追加 `-InstallClaudeAgents`；需要引擎级安装 UE 插件时追加 `-InstallUePluginToEngine`。
 
+安装脚本会在 `npm link` 后移除 npm 生成的 `bh.ps1` / `blueprinthelper-cli.ps1` shim，让 PowerShell 解析到 `.cmd` 启动器，避免 ExecutionPolicy 拦截 `bh`。
+
 4. 启动目标 Unreal Editor 项目；Agent 工作流需要代管启动/关闭时使用全局 MCP allowlist 中的生命周期工具。
 5. 使用 CLI 检查运行状态：
 
@@ -106,6 +108,12 @@ bh blueprint_get_runtime_profile --json "{}" --select status,summary
 
 ```powershell
 node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js blueprint_get_runtime_profile --json "{}" --select status,summary
+```
+
+PowerShell 中复杂 JSON 不要用 inline `--json $json`，优先使用 `--file` 或管道到 `--stdin`：
+
+```powershell
+$json | bh blueprinthelper_read_context --stdin --format full
 ```
 
 ## 参与贡献

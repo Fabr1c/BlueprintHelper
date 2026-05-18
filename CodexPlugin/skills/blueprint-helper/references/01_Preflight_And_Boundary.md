@@ -10,6 +10,8 @@ Source/config/docs edit -> normal repository tools
 Mixed task -> split first; code edits do not use BlueprintHelper tools
 ```
 
+Ordinary plugin usage must not inspect BlueprintHelper plugin package or implementation source (`CodexPlugin/`, `ClaudePlugin/`, `AgentFaceService/`, or UE `BlueprintHelper/`) to learn how to use the plugin. Use installed skill instructions, AgentGuide, CLI reference, and templates instead. Read plugin source only for explicit BlueprintHelper plugin development, installation repair, or debugging tasks.
+
 ## 2. BlueprintHelper Tool Surface Scope
 
 适用:

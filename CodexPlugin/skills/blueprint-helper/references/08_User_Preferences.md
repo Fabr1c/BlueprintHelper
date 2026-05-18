@@ -44,6 +44,7 @@ Agents should read this file before BlueprintHelper planning, status review, imp
 
 - Use BlueprintHelper CLI commands for ordinary UE editor asset reads and writes only: Blueprint graphs, UMG, DataAssets, DataTables, compile/save, diagnostics, and related asset operations. Use global MCP only for editor lifecycle open/close. Deprecated MCP ordinary tools are not ordinary Agent entry points or fallback paths.
 - Use normal repository tools for C++, TypeScript, Python, JSON, config, build scripts, documentation, AGENTS files, and memory files.
+- Do not inspect BlueprintHelper plugin package or implementation source (`CodexPlugin/`, `ClaudePlugin/`, `AgentFaceService/`, or UE `BlueprintHelper/`) for ordinary plugin usage. Use installed skill instructions, AgentGuide, CLI reference, and templates instead. Plugin source reads are allowed only for explicit BlueprintHelper plugin development, installation repair, or debugging tasks.
 - Default C++ edit permission: disabled unless the user explicitly asks for code edits.
 - Default `.uasset` edit permission: allowed only through BlueprintHelper CLI TaskSpec-first flow.
 - Parent Class or reparent changes are unsupported by default; stop and report if a task requires them.

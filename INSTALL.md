@@ -142,7 +142,7 @@ install.cmd
 ### Default Install
 
 - Builds `AgentFaceService/task-core`, `AgentFaceService/cli`, and `AgentFaceService/mcp`.
-- Links the CLI globally so `bh` and `blueprinthelper-cli` are available.
+- Links the CLI globally so `bh` and `blueprinthelper-cli` are available, then removes npm-generated `.ps1` shims when `.cmd` launchers exist so PowerShell ExecutionPolicy does not block `bh`.
 - Registers the Codex Desktop local marketplace entry for `blueprint-helper`.
 - Installs Codex subagents and the lifecycle-only MCP config.
 - Writes `<ProjectDir>/.blueprinthelper/agent-profile.json` when a unique `.uproject` and UE root are available.
@@ -233,3 +233,11 @@ The old Claude `/blueprint-helper:setup` flow has been folded into the root inst
 ```
 
 After installation, use `/blueprint-helper:configure` or the Codex `blueprint-helper-configure` skill only when you want to change safety profile, save policy, or missing-capability policy.
+
+### PowerShell CLI Notes
+
+If an older install still resolves `bh` to `bh.ps1`, rerun `install.ps1` or call `bh.cmd`. For JSON payloads, prefer `--file` or pipe generated JSON to `--stdin`; inline `--json $json` can lose quotes in PowerShell before Node receives it.
+
+```powershell
+$json | bh blueprinthelper_read_context --stdin --format full
+```

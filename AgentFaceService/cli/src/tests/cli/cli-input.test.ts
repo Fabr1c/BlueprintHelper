@@ -44,3 +44,10 @@ test('rejects non-object params', async () => {
     /CLI params must be a JSON object/,
   );
 });
+
+test('malformed inline JSON points PowerShell users to stdin or file input', async () => {
+  await assert.rejects(
+    () => readCliInputObject({ cwd: process.cwd(), json: '{ read_type: blueprint_logic }' }),
+    /PowerShell often strips quotes from inline JSON.*--stdin.*--file/s,
+  );
+});

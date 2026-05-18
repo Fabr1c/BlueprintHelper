@@ -287,6 +287,7 @@ struct FBlueprintHelperLogicNode
 	FString Name;
 	FString Owner;
 	TSharedPtr<FJsonObject> Inputs;
+	TSharedPtr<FJsonObject> InputDefaults;
 	TSharedPtr<FJsonObject> Outputs;
 	TArray<FBlueprintHelperLogicLink> Links;
 
@@ -298,6 +299,7 @@ struct FBlueprintHelperLogicNode
 		Json->SetStringField(TEXT("name"), Name);
 		if (!Owner.IsEmpty()) { Json->SetStringField(TEXT("owner"), Owner); }
 		if (Inputs.IsValid()) { Json->SetObjectField(TEXT("inputs"), Inputs); }
+		if (InputDefaults.IsValid()) { Json->SetObjectField(TEXT("input_defaults"), InputDefaults); }
 		if (Outputs.IsValid()) { Json->SetObjectField(TEXT("outputs"), Outputs); }
 		if (Links.Num() > 0)
 		{

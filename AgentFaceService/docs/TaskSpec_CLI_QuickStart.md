@@ -27,6 +27,8 @@ The primary CLI protocol supports stable BlueprintHelper direct command names:
 bh <tool_name> [--file params.json | --json "{...}" | --stdin] [--select field[,field...]] [--format summary|json|full]
 ```
 
+PowerShell-safe input rule: use `--file` for reusable JSON and `--stdin` for generated JSON. Avoid inline `--json $json` for non-trivial payloads because PowerShell can strip quotes before Node receives the argument.
+
 Examples:
 
 ```powershell
@@ -34,6 +36,12 @@ bh blueprint_get_runtime_profile --json "{}" --select status,summary
 bh blueprinthelper_read_function_chain_context --file .\function_chain.json --select status,artifacts.full_result
 bh blueprinthelper_preview_task --file .\preview_wrapper.json --select status,preview_id,summary,artifacts.full_result
 bh blueprinthelper_execute_task --file .\execute_wrapper.json --select status,task_run_id,summary
+```
+
+Generated JSON example:
+
+```powershell
+$json | bh blueprinthelper_read_context --stdin --format full
 ```
 
 The direct CLI registry is the current non-frozen Agent-facing TaskSpec/read/debug summary surface. Frozen legacy/expert tools are not re-exposed through CLI, even if `--expert` is passed. Use the global MCP allowlist when an Agent owns editor lifecycle; use `bh open_editor` / `bh close_editor`, or the direct `blueprint_open_editor` / `blueprint_close_editor` names, only as compatibility/manual fallback.
@@ -127,7 +135,7 @@ Example projected output:
 
 - Keep writes TaskSpec-first. Any CLI write should start from `BlueprintHelper.TaskSpec.v1`.
 - Use bare TaskSpec files with `task preview` / `task execute`; use `task_spec` wrapper files with `blueprinthelper_preview_task` / `blueprinthelper_execute_task`.
-- Prefer `AgentFaceService/agent-guide/Templates/` copy-and-edit JSON templates over inline PowerShell `--json` for complex inputs.
+- Prefer `AgentFaceService/agent-guide/Templates/` copy-and-edit JSON templates or `--stdin` over inline PowerShell `--json` for complex inputs.
 - Preview before execute.
 - The CLI is the Agent-facing transport layer; it does not replace the Python Task Compiler or UE Task Runtime.
 - The CLI is not a raw Bridge write surface for ordinary asset writes.
