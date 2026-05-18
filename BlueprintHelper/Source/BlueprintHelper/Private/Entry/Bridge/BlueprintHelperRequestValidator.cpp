@@ -923,7 +923,6 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 		};
 		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("list_blueprint_helper_transactions")))
 	{
 		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
 			{TEXT("query_scope"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
@@ -933,10 +932,9 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 		};
 		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("read_blueprint_helper_transaction")))
 	{
 		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("transaction_id"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("evidence_id"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
 			{TEXT("detail_level"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
 		};
 		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);

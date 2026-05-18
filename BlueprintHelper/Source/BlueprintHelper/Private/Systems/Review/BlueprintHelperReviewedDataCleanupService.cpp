@@ -20,7 +20,7 @@ FBlueprintHelperReviewedDataCleanupPlan FBlueprintHelperReviewedDataCleanupServi
 	FBlueprintHelperReviewRecordQuery Query;
 	Query.bPendingOnly = false;
 	TArray<FBlueprintHelperReviewRecord> Records = Store.QueryReviewRecords(Query);
-	TSet<FString> RetainedTransactionIds;
+	TSet<FString> RetainedEvidenceIds;
 	TSet<FString> RetainedArchiveSessionIds;
 
 	Plan.RecordsScanned = Records.Num();
@@ -37,9 +37,9 @@ FBlueprintHelperReviewedDataCleanupPlan FBlueprintHelperReviewedDataCleanupServi
 				continue;
 			}
 			RetainedChanges.Add(Change);
-			FBlueprintHelperReviewedDataCleanupServiceUtils::CollectRetainedTransactionIds(
+			FBlueprintHelperReviewedDataCleanupServiceUtils::CollectRetainedEvidenceIds(
 				Change,
-				RetainedTransactionIds);
+				RetainedEvidenceIds);
 		}
 
 		if (RetainedChanges.Num() > 0)
@@ -57,14 +57,6 @@ FBlueprintHelperReviewedDataCleanupPlan FBlueprintHelperReviewedDataCleanupServi
 	}
 
 	const FString BlueprintHelperSavedRoot = FBlueprintHelperReviewedDataCleanupServiceUtils::GetSavedRoot();
-	FBlueprintHelperReviewedDataCleanupServiceUtils::ScanUnreferencedJsonFiles(
-		BlueprintHelperSavedRoot / TEXT("Transactions") / TEXT("Active"),
-		RetainedTransactionIds,
-		Plan.TransactionFilePathsToDelete);
-	FBlueprintHelperReviewedDataCleanupServiceUtils::ScanUnreferencedJsonFiles(
-		BlueprintHelperSavedRoot / TEXT("Review"),
-		RetainedTransactionIds,
-		Plan.TransactionFilePathsToDelete);
 	FBlueprintHelperReviewedDataCleanupServiceUtils::ScanUnreferencedJsonFiles(
 		BlueprintHelperSavedRoot / TEXT("Review") / TEXT("Sessions"),
 		RetainedArchiveSessionIds,
@@ -111,10 +103,6 @@ FBlueprintHelperReviewedDataCleanupResult FBlueprintHelperReviewedDataCleanupSer
 		}
 	}
 
-	FBlueprintHelperReviewedDataCleanupServiceUtils::DeleteFileList(
-		Plan.TransactionFilePathsToDelete,
-		Result.TransactionFilesDeleted,
-		Result.Failures);
 	FBlueprintHelperReviewedDataCleanupServiceUtils::DeleteFileList(
 		Plan.SessionFilePathsToDelete,
 		Result.SessionFilesDeleted,

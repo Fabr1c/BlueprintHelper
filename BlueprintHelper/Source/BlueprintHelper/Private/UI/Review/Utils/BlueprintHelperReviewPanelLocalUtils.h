@@ -19,8 +19,6 @@ public:
 	static TArray<FString> BuildDetailsObjectCandidates(const FBlueprintHelperReviewVisibleChange& Change);
 	static UActorComponent* GetSCSNodeComponentTemplate(USCS_Node* Node);
 	static FString MakeAssetTreeKey(const FString& AssetPath);
-	static bool ExtractRollbackTransactionId(const FString& RollbackDataRef, FString& OutTransactionId);
-	static FBlueprintHelperReviewPreparedRollbackJournal PrepareRollbackJournal(const FString& TransactionId);
 	static FBlueprintHelperReviewRejectOptions PrepareRejectOptions(
 		const FBlueprintHelperReviewVisibleChange& Change);
 };

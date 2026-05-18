@@ -13,7 +13,6 @@
 #include "Engine/DataTable.h"
 #include "Systems/Review/BlueprintHelperReviewActionService.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
-#include "Systems/Transactions/BlueprintHelperTransactionJournalService.h"
 #include "Shared/BlueprintHelperToolResultTypes.h"
 #include "UserDefinedStructure/UserDefinedStructEditorData.h"
 

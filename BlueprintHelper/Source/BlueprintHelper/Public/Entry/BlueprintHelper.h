@@ -36,11 +36,9 @@ class FBlueprintHelperReplaceBlueprintGraphService;
 class FBlueprintHelperPatchBlueprintGraphService;
 class FBlueprintHelperMergeBlueprintGraphService;
 class FBlueprintHelperCompileAssetService;
-class FBlueprintHelperTransactionQueryService;
 class FBlueprintHelperBlueprintVariableService;
 class FBlueprintHelperBlockIdService;
 class FBlueprintHelperOwnershipService;
-class FBlueprintHelperTransactionJournalService;
 class FBlueprintHelperGraphSnapshotService;
 class FBlueprintHelperLogicJsonPathService;
 class FBlueprintHelperReviewStoreService;
@@ -150,7 +148,6 @@ private:
 	// ─── Graph Write Infrastructure ───
 	TUniquePtr<FBlueprintHelperBlockIdService> BlockIdService;
 	TUniquePtr<FBlueprintHelperOwnershipService> OwnershipService;
-	TUniquePtr<FBlueprintHelperTransactionJournalService> JournalService;
 	TUniquePtr<FBlueprintHelperGraphSnapshotService> SnapshotService;
 	TUniquePtr<FBlueprintHelperAppendBlueprintGraphService> AppendGraphService;
 	TUniquePtr<FBlueprintHelperReplaceBlueprintGraphService> ReplaceGraphService;
@@ -158,7 +155,6 @@ private:
 	TUniquePtr<FBlueprintHelperPatchBlueprintGraphService> PatchGraphService;
 	TUniquePtr<FBlueprintHelperMergeBlueprintGraphService> MergeGraphService;
 	TUniquePtr<FBlueprintHelperCompileAssetService> CompileAssetService;
-	TUniquePtr<FBlueprintHelperTransactionQueryService> TransactionQueryService;
 	TUniquePtr<FBlueprintHelperBlueprintVariableService> VariableService;
 	TUniquePtr<FBlueprintHelperReviewStoreService> ReviewStoreService;
 	TUniquePtr<FBlueprintHelperReviewActionService> ReviewActionService;

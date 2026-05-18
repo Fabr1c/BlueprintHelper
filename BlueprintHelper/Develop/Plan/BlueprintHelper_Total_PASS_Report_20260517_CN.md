@@ -62,7 +62,7 @@ The following are intentionally excluded from this Total PASS result because the
 2. ReviewPanel DebugBundle UI ring: `LoadBundle`, `CaptureFocus`, and actual UI state after reject.
 3. Native panel parity: DetailsView row alignment, WidgetTree/Components/MyBlueprint/GraphPanel exact visual behavior.
 4. Function scope / Local Variables Review.
-5. Baseline semantic snapshot Stage 2/3 adoption by ReviewPanel/Diff/Reject. 2026-05-17 已完成 core path：semantic target snapshot hash 全量替换旧 graph hash，旧 `FBlueprintHelperReviewHashService` 已删除，ReviewStore/Reject/GraphWrite journal/Debug summary 已切换；验证结果见 `BlueprintHelper_BaselineSemanticHash_Migration_20260517_CN.md`。
+5. Baseline semantic snapshot Stage 2/3 adoption by ReviewPanel/Diff/Reject. 2026-05-17 已完成 core path：semantic target snapshot hash 全量替换旧 graph hash，旧 `FBlueprintHelperReviewHashService` 已删除，ReviewStore/Reject/GraphWrite journal/Debug summary 已切换；验证结果已归档，见 `../v0.4.3/ArchivedReference/RetiredReviewDebugDocs_20260518/Plan/BlueprintHelper_BaselineSemanticHash_Migration_20260517_CN.md`。
 
 ## Current Source Changes Covered
 
@@ -92,7 +92,7 @@ Additional ReviewPanel automation was run after the report above:
 | `BlueprintHelper.Review.Action` | PASS: 18 succeeded, 0 failed | `Saved/Automation/ReviewPanel_Action_20260517_001/index.json` |
 | `BlueprintHelper.Review.Record` | PASS: 16 succeeded, 0 failed | `Saved/Automation/ReviewPanel_Record_20260517_002/index.json` |
 
-Detailed notes: `ReviewPanel_Automation_Validation_20260517_CN.md`.
+Detailed notes are archived at `../v0.4.3/ArchivedReference/RetiredReviewDebugDocs_20260518/Plan/ReviewPanel_Automation_Validation_20260517_CN.md`.
 
 This addendum still does not close live ReviewPanel UI smoke. Manual Editor UI validation remains required for real hover/click behavior, GraphPanel visual underlay, and DebugPanel `LoadBundle` / `CaptureFocus`.
 

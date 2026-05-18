@@ -43,10 +43,8 @@
 #include "Serialization/JsonSerializer.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewActionRecordUtils.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewActionTargetUtils.h"
-#include "Systems/Review/Utils/BlueprintHelperReviewGraphRollbackService.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewRejectService.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewSnapshotRestoreService.h"
-#include "Systems/Transactions/BlueprintHelperTransactionJournalService.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
 #include "Shared/Review/BlueprintHelperReviewStatusUtils.h"
 #include "Shared/Review/BlueprintHelperReviewTargetKindRegistry.h"
@@ -84,21 +82,21 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::AcceptVi
 		}
 
 		LastResult.bSucceeded = true;
-		LastResult.TargetTransactionId = Change.LatestTransactionId;
+		LastResult.TargetEvidenceId = Change.LatestEvidenceId;
 		LastResult.NewStatus = EBlueprintHelperReviewChangeStatus::Accepted;
 		LastResult.Message = TEXT("accepted");
 		LastResult.bSupersededDataCompactionEligible =
-			Change.SourceTransactionIds.Num() > FMath::Max(1, Change.LatestTransactionIds.Num());
+			Change.SourceEvidenceIds.Num() > FMath::Max(1, Change.LatestEvidenceIds.Num());
 		return LastResult;
 	}
 
 	FBlueprintHelperReviewActionResult Result;
 	Result.bSucceeded = true;
-	Result.TargetTransactionId = Change.LatestTransactionId;
+	Result.TargetEvidenceId = Change.LatestEvidenceId;
 	Result.NewStatus = EBlueprintHelperReviewChangeStatus::Accepted;
 	Result.Message = TEXT("accepted");
 	Result.bSupersededDataCompactionEligible =
-		Change.SourceTransactionIds.Num() > FMath::Max(1, Change.LatestTransactionIds.Num());
+		Change.SourceEvidenceIds.Num() > FMath::Max(1, Change.LatestEvidenceIds.Num());
 	return Result;
 }
 
@@ -121,7 +119,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectVi
 		}
 
 		LastResult.bSucceeded = true;
-		LastResult.TargetTransactionId = Change.LatestTransactionId;
+		LastResult.TargetEvidenceId = Change.LatestEvidenceId;
 		LastResult.NewStatus = EBlueprintHelperReviewChangeStatus::Rejected;
 		LastResult.Message = TEXT("rejected");
 		LastResult.bSupersededDataCompactionEligible = true;
@@ -130,7 +128,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectVi
 
 	FBlueprintHelperReviewActionResult Result;
 	Result.bSucceeded = false;
-	Result.TargetTransactionId = Change.LatestTransactionId;
+	Result.TargetEvidenceId = Change.LatestEvidenceId;
 	Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
 	Result.RollbackMode = TEXT("archive_baseline");
 	Result.Message = TEXT("Archive-baseline rollback backend is not wired in the first Review UI slice.");
@@ -158,7 +156,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectVi
 			}
 
 			LastResult.bSucceeded = true;
-			LastResult.TargetTransactionId = Change.LatestTransactionId;
+			LastResult.TargetEvidenceId = Change.LatestEvidenceId;
 			LastResult.NewStatus = EBlueprintHelperReviewChangeStatus::Rejected;
 			LastResult.Message = TEXT("rejected");
 			LastResult.bSupersededDataCompactionEligible = true;
@@ -171,7 +169,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectVi
 	}
 
 	FBlueprintHelperReviewActionResult Result;
-	Result.TargetTransactionId = Change.LatestTransactionId;
+	Result.TargetEvidenceId = Change.LatestEvidenceId;
 	Result.RollbackMode = TEXT("archive_baseline");
 
 	if (Change.AtomicTargets.Num() == 0)
@@ -284,7 +282,7 @@ FBlueprintHelperReviewCascadeActionResult FBlueprintHelperReviewActionService::R
 void FBlueprintHelperReviewActionService::RecordRejectDebugCaseBestEffort(
 	FBlueprintHelperReviewRecord& Record,
 	const TArray<FString>& TargetKeys,
-	const FString& SourceTransactionId,
+	const FString& SourceEvidenceId,
 	EBlueprintHelperReviewChangeStatus RejectStatus,
 	const FString& RejectMessage) const
 {
@@ -300,9 +298,9 @@ void FBlueprintHelperReviewActionService::RecordRejectDebugCaseBestEffort(
 	ToolSummary->SetStringField(TEXT("archive_session_id"), Record.ArchiveSessionId);
 	ToolSummary->SetStringField(TEXT("asset_path"), Record.AssetPath);
 	ToolSummary->SetStringField(TEXT("review_status"), BlueprintHelperReviewChangeStatusToString(RejectStatus));
-	if (!SourceTransactionId.IsEmpty())
+	if (!SourceEvidenceId.IsEmpty())
 	{
-		ToolSummary->SetStringField(TEXT("source_transaction_id"), SourceTransactionId);
+		ToolSummary->SetStringField(TEXT("source_evidence_id"), SourceEvidenceId);
 	}
 	if (!RejectMessage.IsEmpty())
 	{
@@ -341,14 +339,14 @@ void FBlueprintHelperReviewActionService::RecordRejectDebugCaseBestEffort(
 	{
 		DebugInput.ReviewRecordIds.Add(Record.ReviewRecordId);
 	}
-	if (!SourceTransactionId.IsEmpty())
+	if (!SourceEvidenceId.IsEmpty())
 	{
-		FBlueprintHelperDebugTransactionLink TransactionLink;
-		TransactionLink.TransactionId = SourceTransactionId;
-		TransactionLink.Role = TEXT("review_reject_failed");
-		TransactionLink.Source = TEXT("review");
-		TransactionLink.Summary = TEXT("source transaction for review reject action");
-		DebugInput.TransactionLinks.Add(TransactionLink);
+		FBlueprintHelperDebugEvidenceLink EvidenceLink;
+		EvidenceLink.EvidenceId = SourceEvidenceId;
+		EvidenceLink.Role = TEXT("review_reject_failed");
+		EvidenceLink.Source = TEXT("review");
+		EvidenceLink.Summary = TEXT("source evidence for review reject action");
+		DebugInput.EvidenceLinks.Add(EvidenceLink);
 	}
 	DebugInput.Error.Code = DebugInput.Source;
 	DebugInput.Error.Message = RejectMessage;
@@ -378,7 +376,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::AcceptRe
 	}
 
 	bool bMatchedAny = false;
-	FString SourceTransactionId;
+	FString SourceEvidenceId;
 	for (FBlueprintHelperReviewVisibleChange& Change : Record.VisibleChanges)
 	{
 		for (FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
@@ -389,7 +387,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::AcceptRe
 			}
 			bMatchedAny = true;
 			Target.Status = EBlueprintHelperReviewChangeStatus::Accepted;
-			SourceTransactionId = Target.LatestTransactionId;
+			SourceEvidenceId = Target.LatestEvidenceId;
 		}
 	}
 
@@ -404,7 +402,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::AcceptRe
 		TEXT("accept"),
 		TargetKeys,
 		TEXT("keep_managed"),
-		SourceTransactionId,
+		SourceEvidenceId,
 		TEXT("accepted")));
 
 	if (!Store.SaveReviewRecord(Record, Error))
@@ -414,7 +412,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::AcceptRe
 	}
 
 	Result.bSucceeded = true;
-	Result.TargetTransactionId = SourceTransactionId;
+	Result.TargetEvidenceId = SourceEvidenceId;
 	Result.NewStatus = Record.Status;
 	Result.Message = TEXT("accepted");
 	Result.bSupersededDataCompactionEligible = true;
@@ -440,7 +438,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectRe
 	bool bAllRejected = true;
 	bool bAllTargetStatusesRejected = true;
 	const bool bUseInjectedOptions = FBlueprintHelperReviewActionRecordUtils::HasInjectedRejectOptions(Options);
-	FString SourceTransactionId;
+	FString SourceEvidenceId;
 	FString LastMessage;
 	EBlueprintHelperReviewChangeStatus LastStatus = EBlueprintHelperReviewChangeStatus::Rejected;
 
@@ -482,7 +480,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectRe
 			const bool bTargetStatusRejected = TargetResult.NewStatus == EBlueprintHelperReviewChangeStatus::Rejected;
 			Target.Status = TargetResult.NewStatus;
 			Change.NeedsActionReason = bTargetStatusRejected ? FString() : TargetResult.Message;
-			SourceTransactionId = Target.LatestTransactionId;
+			SourceEvidenceId = Target.LatestEvidenceId;
 			LastMessage = TargetResult.Message;
 			LastStatus = TargetResult.NewStatus;
 			bAllRejected &= TargetResult.bSucceeded;
@@ -516,7 +514,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectRe
 		}
 
 		Result.bSucceeded = true;
-		Result.TargetTransactionId = SourceTransactionId;
+		Result.TargetEvidenceId = SourceEvidenceId;
 		Result.NewStatus = EBlueprintHelperReviewChangeStatus::Rejected;
 		Result.RollbackMode = TEXT("archive_baseline");
 		Result.Message = LastMessage.IsEmpty() ? TEXT("rejected_purged") : LastMessage;
@@ -529,12 +527,12 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectRe
 		TEXT("reject"),
 		TargetKeys,
 		TEXT("archive_baseline"),
-		SourceTransactionId,
+		SourceEvidenceId,
 		LastMessage));
 	RecordRejectDebugCaseBestEffort(
 		Record,
 		TargetKeys,
-		SourceTransactionId,
+		SourceEvidenceId,
 		bAllTargetStatusesRejected ? EBlueprintHelperReviewChangeStatus::Rejected : LastStatus,
 		LastMessage);
 
@@ -545,7 +543,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectRe
 	}
 
 	Result.bSucceeded = bAllTargetStatusesRejected;
-	Result.TargetTransactionId = SourceTransactionId;
+	Result.TargetEvidenceId = SourceEvidenceId;
 	Result.NewStatus = bAllTargetStatusesRejected ? EBlueprintHelperReviewChangeStatus::Rejected : LastStatus;
 	Result.RollbackMode = TEXT("archive_baseline");
 	Result.Message = LastMessage;
@@ -596,141 +594,3 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectAl
 	return Result;
 }
 
-FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::ConvertOwnerBlock(
-	const FBlueprintHelperReviewConvertOwnerBlockRequest& Request) const
-{
-	FBlueprintHelperReviewActionResult Result;
-	FBlueprintHelperReviewStoreService Store;
-	FBlueprintHelperReviewRecord Record;
-	FString Error;
-	if (!Store.LoadReviewRecordById(Request.ReviewRecordId, Record, Error))
-	{
-		Result.Message = Error;
-		return Result;
-	}
-
-	auto PersistFailure = [&Store, &Record, &Request, &Result](
-		const FString& Message,
-		const FString& SourceTransactionId) -> FBlueprintHelperReviewActionResult
-	{
-		TArray<FString> TargetKeys;
-		if (!Request.BlockTargetKey.IsEmpty())
-		{
-			TargetKeys.Add(Request.BlockTargetKey);
-		}
-		Record.ReviewActions.Add(FBlueprintHelperReviewActionRecordUtils::MakeReviewActionRecord(
-			TEXT("convert_owner_block"),
-			TargetKeys,
-			Request.Direction,
-			SourceTransactionId,
-			Message));
-
-		FString SaveError;
-		if (!Store.SaveReviewRecord(Record, SaveError))
-		{
-			Result.Message = SaveError;
-			return Result;
-		}
-
-		Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
-		Result.Message = Message;
-		return Result;
-	};
-
-	if (!Request.bSettingProfileAllowsConversion)
-	{
-		return PersistFailure(TEXT("convert_owner_block_not_allowed_by_setting_profile"), FString());
-	}
-	if (Request.Direction != TEXT("bh_to_user") && Request.Direction != TEXT("user_to_bh"))
-	{
-		return PersistFailure(TEXT("invalid_convert_owner_block_direction"), FString());
-	}
-	if (Request.BlockTargetKey.IsEmpty() || Request.EntryAnchor.IsEmpty() || Request.DesiredBlockRef.IsEmpty())
-	{
-		return PersistFailure(TEXT("missing_convert_owner_block_anchor"), FString());
-	}
-	if (Request.NodeAnchors.Num() == 0)
-	{
-		return PersistFailure(TEXT("missing_convert_owner_block_node_anchors"), FString());
-	}
-
-	FBlueprintHelperReviewAtomicTarget MatchedTarget;
-	if (!FBlueprintHelperReviewActionTargetUtils::TryFindReviewAtomicTarget(Record, Request.BlockTargetKey, MatchedTarget))
-	{
-		return PersistFailure(TEXT("convert_owner_block_target_not_found"), FString());
-	}
-	if (!FBlueprintHelperReviewTargetKindRegistry::IsGraphBlockTarget(MatchedTarget.TargetKind, MatchedTarget.TargetKey))
-	{
-		return PersistFailure(TEXT("convert_owner_block_requires_graph_block_target"), FString());
-	}
-	if (MatchedTarget.AssetPath.IsEmpty())
-	{
-		MatchedTarget.AssetPath = Record.AssetPath;
-	}
-
-	FBlueprintHelperTransactionJournalService JournalService;
-	const FString ConversionTransactionId = FBlueprintHelperReviewGraphRollbackService::ResolveConversionTransactionId(Request, JournalService);
-	FString ConversionError;
-	const bool bConverted = Request.Direction == TEXT("bh_to_user")
-		? FBlueprintHelperReviewGraphRollbackService::ExecuteBhToUserOwnerBlockConversion(
-			MatchedTarget,
-			Request,
-			ConversionTransactionId,
-			ConversionError)
-		: FBlueprintHelperReviewGraphRollbackService::ExecuteUserToBhOwnerBlockConversion(
-			MatchedTarget,
-			Request,
-			ConversionTransactionId,
-			ConversionError);
-	if (!bConverted)
-	{
-		const FString FailureMessage = ConversionError.IsEmpty()
-			? TEXT("convert_owner_block_failed")
-			: ConversionError;
-		return PersistFailure(FailureMessage, ConversionTransactionId);
-	}
-
-	bool bMatchedAny = false;
-	const FString NewOwnership = Request.Direction == TEXT("bh_to_user")
-		? TEXT("user_owned")
-		: TEXT("blueprinthelper_owned");
-	for (FBlueprintHelperReviewVisibleChange& Change : Record.VisibleChanges)
-	{
-		for (FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
-		{
-			if (Target.TargetKey == Request.BlockTargetKey)
-			{
-				Target.Ownership = NewOwnership;
-				bMatchedAny = true;
-			}
-		}
-	}
-
-	TArray<FString> ConvertedTargetKeys;
-	ConvertedTargetKeys.Add(Request.BlockTargetKey);
-	Record.ReviewActions.Add(FBlueprintHelperReviewActionRecordUtils::MakeReviewActionRecord(
-		TEXT("convert_owner_block"),
-		ConvertedTargetKeys,
-		Request.Direction,
-		ConversionTransactionId,
-		TEXT("converted_owner_block")));
-	Record.SourceTransactionSummary.TransactionIds.AddUnique(ConversionTransactionId);
-	Record.SourceTransactionSummary.OperationKinds.AddUnique(TEXT("convert_owner_block"));
-	if (!Record.AssetPath.IsEmpty())
-	{
-		Record.SourceTransactionSummary.AssetPaths.AddUnique(Record.AssetPath);
-	}
-	Record.SourceTransactionSummary.TransactionCount = Record.SourceTransactionSummary.TransactionIds.Num();
-
-	if (!Store.SaveReviewRecord(Record, Error))
-	{
-		Result.Message = Error;
-		return Result;
-	}
-
-	Result.bSucceeded = true;
-	Result.TargetTransactionId = ConversionTransactionId;
-	Result.NewStatus = Record.Status;
-	Result.Message = TEXT("converted_owner_block");
-	return Result;
-}

@@ -42,7 +42,6 @@ class FBlueprintHelperReplaceBlueprintGraphService;
 class FBlueprintHelperPatchBlueprintGraphService;
 class FBlueprintHelperMergeBlueprintGraphService;
 class FBlueprintHelperCompileAssetService;
-class FBlueprintHelperTransactionQueryService;
 class FBlueprintHelperBlueprintVariableService;
 class FBlueprintHelperReviewStoreService;
 
@@ -79,7 +78,6 @@ public:
 		const FBlueprintHelperPatchBlueprintGraphService& InPatchGraphService,
 		const FBlueprintHelperMergeBlueprintGraphService& InMergeGraphService,
 		const FBlueprintHelperCompileAssetService& InCompileAssetService,
-		const FBlueprintHelperTransactionQueryService& InTransactionQueryService,
 		const FBlueprintHelperBlueprintVariableService& InVariableService,
 		const FBlueprintHelperReviewStoreService& InReviewStoreService);
 
@@ -146,9 +144,6 @@ private:
 	FBlueprintHelperBridgeResponse HandleQueryReviewRecords(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleApplyReviewAction(const FBlueprintHelperBridgeRequest& Req) const;
 
-	// ─── Transaction Query ───
-	FBlueprintHelperBridgeResponse HandleListTransactions(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleReadTransaction(const FBlueprintHelperBridgeRequest& Req) const;
 
 	const FBlueprintHelperImportService& ImportService;
 	const FBlueprintHelperAgentImportService& AgentImportService;
@@ -177,6 +172,5 @@ private:
 	FBlueprintHelperFunctionChainContextService FunctionChainContextService;
 	FBlueprintHelperTaskRuntimeService TaskRuntimeService;
 	const FBlueprintHelperCompileAssetService& CompileAssetService;
-	const FBlueprintHelperTransactionQueryService& TransactionQueryService;
 	const FBlueprintHelperReviewStoreService& ReviewStoreService;
 };

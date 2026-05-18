@@ -119,7 +119,6 @@ FReply FBlueprintHelperMainWindowPresenter::HandleCleanupReviewDataClicked()
 				TEXT("CleanReviewData cleaning... recordsScanned=%d reviewedChangesToRemove=%d filesToDelete=%d"),
 				Plan.RecordsScanned,
 				Plan.ChangesRemoved,
-				Plan.TransactionFilePathsToDelete.Num()
 					+ Plan.SessionFilePathsToDelete.Num()
 					+ Plan.OldDebugBundlePathsToDelete.Num()
 					+ Plan.CompletedDebugBundlePathsToDelete.Num());
@@ -145,11 +144,10 @@ FReply FBlueprintHelperMainWindowPresenter::HandleCleanupReviewDataClicked()
 
 					CleanupPresenter->bCleanupInProgress = false;
 					CleanupPresenter->LastCleanupStatus = FString::Printf(
-						TEXT("CleanReviewData reviewedChangesRemoved=%d recordsSaved=%d recordsDeleted=%d transactionFilesDeleted=%d sessionFilesDeleted=%d oldDebugBundlesDeleted=%d completedDebugBundlesDeleted=%d failures=%d error=\"%s\""),
+						TEXT("CleanReviewData reviewedChangesRemoved=%d recordsSaved=%d recordsDeleted=%d sessionFilesDeleted=%d oldDebugBundlesDeleted=%d completedDebugBundlesDeleted=%d failures=%d error=\"%s\""),
 						Result.ChangesRemoved,
 						Result.RecordsSaved,
 						Result.RecordsDeleted,
-						Result.TransactionFilesDeleted,
 						Result.SessionFilesDeleted,
 						Result.OldDebugBundlesDeleted,
 						Result.CompletedDebugBundlesDeleted,

@@ -235,8 +235,8 @@ bool FBlueprintHelperTaskRuntimeCluster_BuildsProducerOwnedReviewEvidence::RunTe
 	TestEqual(TEXT("task run id is required"),
 		Evidence.TaskRunId,
 		FString(TEXT("task_cluster_evidence")));
-	TestEqual(TEXT("producer transaction id is required"),
-		Evidence.TransactionId,
+	TestEqual(TEXT("producer evidence id is required"),
+		Evidence.EvidenceId,
 		FString(TEXT("task_step_task_cluster_evidence_2")));
 	TestEqual(TEXT("asset path is required"),
 		Evidence.AssetPath,
@@ -255,7 +255,6 @@ bool FBlueprintHelperTaskRuntimeCluster_BuildsProducerOwnedReviewEvidence::RunTe
 	TestFalse(TEXT("visual group key is required"), Target.VisualGroupKey.IsEmpty());
 	TestFalse(TEXT("baseline hash is required"), Target.BaselineHash.IsEmpty());
 	TestFalse(TEXT("recorded-after hash is required"), Target.RecordedAfterHash.IsEmpty());
-	TestFalse(TEXT("rollback data ref is required"), Target.RollbackDataRef.IsEmpty());
 
 	TSharedRef<FJsonObject> AssetPayload = MakeShared<FJsonObject>();
 	AssetPayload->SetStringField(TEXT("asset_path"), TEXT("/Game/Data/DA_Door"));

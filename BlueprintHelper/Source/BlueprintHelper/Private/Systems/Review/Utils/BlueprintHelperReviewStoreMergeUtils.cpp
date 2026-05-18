@@ -98,19 +98,19 @@ void FBlueprintHelperReviewStoreMergeUtils::MergeVisibleChangeLatestWins(
 		FBlueprintHelperReviewVisibleChange& Existing,
 		const FBlueprintHelperReviewVisibleChange& Incoming)
 	{
-		TArray<FString> SourceTransactionIds = Existing.SourceTransactionIds;
-		TArray<FString> LatestTransactionIds = Existing.LatestTransactionIds;
+		TArray<FString> SourceEvidenceIds = Existing.SourceEvidenceIds;
+		TArray<FString> LatestEvidenceIds = Existing.LatestEvidenceIds;
 		TArray<FBlueprintHelperReviewAtomicTarget> AtomicTargets = Existing.AtomicTargets;
 		const FString ScopeIdentity = Existing.ScopeIdentity.IsEmpty() ? Incoming.ScopeIdentity : Existing.ScopeIdentity;
 
-		AddUniqueReviewStrings(SourceTransactionIds, Incoming.SourceTransactionIds);
-		AddUniqueReviewStrings(LatestTransactionIds, Incoming.LatestTransactionIds);
+		AddUniqueReviewStrings(SourceEvidenceIds, Incoming.SourceEvidenceIds);
+		AddUniqueReviewStrings(LatestEvidenceIds, Incoming.LatestEvidenceIds);
 		MergeReviewAtomicTargetsLatestWins(AtomicTargets, Incoming.AtomicTargets);
 
 		Existing = Incoming;
 		Existing.ScopeIdentity = ScopeIdentity;
-		Existing.SourceTransactionIds = SourceTransactionIds;
-		Existing.LatestTransactionIds = LatestTransactionIds;
+		Existing.SourceEvidenceIds = SourceEvidenceIds;
+		Existing.LatestEvidenceIds = LatestEvidenceIds;
 		Existing.AtomicTargets = AtomicTargets;
 		FBlueprintHelperReviewStoreTargetUtils::ApplyAssetLifecycleRootMetadata(Existing);
 	}
@@ -206,26 +206,26 @@ void FBlueprintHelperReviewStoreMergeUtils::MergeReviewRecord(FBlueprintHelperRe
 					continue;
 				}
 
-				TArray<FString> SourceTransactionIds = ExistingTarget->SourceTransactionIds;
-				for (const FString& SourceTransactionId : IncomingTarget.SourceTransactionIds)
+				TArray<FString> SourceEvidenceIds = ExistingTarget->SourceEvidenceIds;
+				for (const FString& SourceEvidenceId : IncomingTarget.SourceEvidenceIds)
 				{
-					SourceTransactionIds.AddUnique(SourceTransactionId);
+					SourceEvidenceIds.AddUnique(SourceEvidenceId);
 				}
 				FBlueprintHelperReviewAtomicTarget MergedTarget = IncomingTarget;
 				FBlueprintHelperReviewStoreTargetUtils::PreserveFirstBaselineFields(MergedTarget, *ExistingTarget, IncomingTarget);
 				*ExistingTarget = MergedTarget;
-				ExistingTarget->SourceTransactionIds = SourceTransactionIds;
+				ExistingTarget->SourceEvidenceIds = SourceEvidenceIds;
 			}
 
-			for (const FString& SourceTransactionId : IncomingChange.SourceTransactionIds)
+			for (const FString& SourceEvidenceId : IncomingChange.SourceEvidenceIds)
 			{
-				ExistingChange->SourceTransactionIds.AddUnique(SourceTransactionId);
+				ExistingChange->SourceEvidenceIds.AddUnique(SourceEvidenceId);
 			}
-			for (const FString& LatestTransactionId : IncomingChange.LatestTransactionIds)
+			for (const FString& LatestEvidenceId : IncomingChange.LatestEvidenceIds)
 			{
-				ExistingChange->LatestTransactionIds.AddUnique(LatestTransactionId);
+				ExistingChange->LatestEvidenceIds.AddUnique(LatestEvidenceId);
 			}
-			ExistingChange->LatestTransactionId = IncomingChange.LatestTransactionId;
+			ExistingChange->LatestEvidenceId = IncomingChange.LatestEvidenceId;
 			ExistingChange->ChangeId = IncomingChange.ChangeId;
 			ExistingChange->ChangeKind = IncomingChange.ChangeKind;
 			ExistingChange->AfterSummary = IncomingChange.AfterSummary;
@@ -244,41 +244,41 @@ void FBlueprintHelperReviewStoreMergeUtils::MergeReviewRecord(FBlueprintHelperRe
 			FBlueprintHelperReviewStoreTargetUtils::ApplyAssetLifecycleRootMetadata(*ExistingChange);
 		}
 
-		for (const FString& TaskRunId : Incoming.SourceTransactionSummary.TaskRunIds)
+		for (const FString& TaskRunId : Incoming.SourceReviewSummary.TaskRunIds)
 		{
-			Existing.SourceTransactionSummary.TaskRunIds.AddUnique(TaskRunId);
+			Existing.SourceReviewSummary.TaskRunIds.AddUnique(TaskRunId);
 		}
-		for (const FString& OperationKind : Incoming.SourceTransactionSummary.OperationKinds)
+		for (const FString& OperationKind : Incoming.SourceReviewSummary.OperationKinds)
 		{
-			Existing.SourceTransactionSummary.OperationKinds.AddUnique(OperationKind);
+			Existing.SourceReviewSummary.OperationKinds.AddUnique(OperationKind);
 		}
-		for (const FString& AssetPath : Incoming.SourceTransactionSummary.AssetPaths)
+		for (const FString& AssetPath : Incoming.SourceReviewSummary.AssetPaths)
 		{
-			Existing.SourceTransactionSummary.AssetPaths.AddUnique(AssetPath);
+			Existing.SourceReviewSummary.AssetPaths.AddUnique(AssetPath);
 		}
-		for (const FString& TransactionId : Incoming.SourceTransactionSummary.TransactionIds)
+		for (const FString& EvidenceId : Incoming.SourceReviewSummary.EvidenceIds)
 		{
-			Existing.SourceTransactionSummary.TransactionIds.AddUnique(TransactionId);
+			Existing.SourceReviewSummary.EvidenceIds.AddUnique(EvidenceId);
 		}
-		if (!Incoming.SourceTransactionSummary.CreatedAtFirst.IsEmpty()
-			&& (Existing.SourceTransactionSummary.CreatedAtFirst.IsEmpty()
-				|| Incoming.SourceTransactionSummary.CreatedAtFirst < Existing.SourceTransactionSummary.CreatedAtFirst))
+		if (!Incoming.SourceReviewSummary.CreatedAtFirst.IsEmpty()
+			&& (Existing.SourceReviewSummary.CreatedAtFirst.IsEmpty()
+				|| Incoming.SourceReviewSummary.CreatedAtFirst < Existing.SourceReviewSummary.CreatedAtFirst))
 		{
-			Existing.SourceTransactionSummary.CreatedAtFirst = Incoming.SourceTransactionSummary.CreatedAtFirst;
+			Existing.SourceReviewSummary.CreatedAtFirst = Incoming.SourceReviewSummary.CreatedAtFirst;
 		}
-		if (!Incoming.SourceTransactionSummary.CreatedAtLast.IsEmpty()
-			&& (Existing.SourceTransactionSummary.CreatedAtLast.IsEmpty()
-				|| Incoming.SourceTransactionSummary.CreatedAtLast > Existing.SourceTransactionSummary.CreatedAtLast))
+		if (!Incoming.SourceReviewSummary.CreatedAtLast.IsEmpty()
+			&& (Existing.SourceReviewSummary.CreatedAtLast.IsEmpty()
+				|| Incoming.SourceReviewSummary.CreatedAtLast > Existing.SourceReviewSummary.CreatedAtLast))
 		{
-			Existing.SourceTransactionSummary.CreatedAtLast = Incoming.SourceTransactionSummary.CreatedAtLast;
+			Existing.SourceReviewSummary.CreatedAtLast = Incoming.SourceReviewSummary.CreatedAtLast;
 		}
-		Existing.SourceTransactionSummary.TransactionCount =
-			Existing.SourceTransactionSummary.TransactionIds.Num();
+		Existing.SourceReviewSummary.EvidenceCount =
+			Existing.SourceReviewSummary.EvidenceIds.Num();
 
 		if (Incoming.Status == EBlueprintHelperReviewChangeStatus::NeedsAction
 			|| Incoming.Status == EBlueprintHelperReviewChangeStatus::RejectFailed)
 		{
 			Existing.Status = Incoming.Status;
 		}
-		Existing.SourceTransactionSummary.FinalReviewStatus = Existing.Status;
+		Existing.SourceReviewSummary.FinalReviewStatus = Existing.Status;
 	}

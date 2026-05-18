@@ -3,7 +3,6 @@
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperAppendBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperBlockIdService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperOwnershipService.h"
-#include "Systems/Transactions/BlueprintHelperTransactionJournalService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
@@ -48,40 +47,7 @@ public:
 		return Names;
 	}
 
-	static FString BuildAppendReviewRollbackDataJson(
-		const TArray<UEdGraphNode*>& CreatedNodes,
-		const TArray<FString>& BlockRefs)
-	{
-		TSharedRef<FJsonObject> RollbackData = MakeShared<FJsonObject>();
-
-		TArray<TSharedPtr<FJsonValue>> NodePaths;
-		TArray<TSharedPtr<FJsonValue>> NodeNames;
-		for (UEdGraphNode* Node : CreatedNodes)
-		{
-			if (!Node)
-			{
-				continue;
-			}
-			NodePaths.Add(MakeShared<FJsonValueString>(FString::Printf(TEXT("/%s"), *Node->GetPathName())));
-			NodeNames.Add(MakeShared<FJsonValueString>(Node->GetName()));
-		}
-		RollbackData->SetArrayField(TEXT("created_node_paths"), NodePaths);
-		RollbackData->SetArrayField(TEXT("created_node_names"), NodeNames);
-
-		TArray<TSharedPtr<FJsonValue>> Blocks;
-		for (const FString& BlockRef : BlockRefs)
-		{
-			Blocks.Add(MakeShared<FJsonValueString>(BlockRef));
-		}
-		RollbackData->SetArrayField(TEXT("block_refs"), Blocks);
-
-		FString JsonText;
-		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonText);
-		FJsonSerializer::Serialize(RollbackData, Writer);
-		return JsonText;
-	}
-
-	static bool LooksLikeGlobalEvent(const FString& Name)
+		static bool LooksLikeGlobalEvent(const FString& Name)
 	{
 		for (const FString& Forbidden : ForbiddenEventNames())
 		{
@@ -163,12 +129,10 @@ public:
 FBlueprintHelperAppendBlueprintGraphService::FBlueprintHelperAppendBlueprintGraphService(
 	const FBlueprintHelperGraphResolver& InResolver,
 	const FBlueprintHelperBlockIdService& InBlockIdService,
-	const FBlueprintHelperOwnershipService& InOwnershipService,
-	const FBlueprintHelperTransactionJournalService& InJournalService)
+	const FBlueprintHelperOwnershipService& InOwnershipService)
 	: Resolver(InResolver)
 	, BlockIdService(InBlockIdService)
 	, OwnershipService(InOwnershipService)
-	, JournalService(InJournalService)
 {
 }
 
@@ -714,7 +678,6 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 	const FAppendRequest& Request) const
 {
 	const FString TraceId = FBlueprintHelperToolResultBuilder::GenerateTraceId();
-	const FString TransactionId = JournalService.GenerateTransactionId();
 
 	// 1. Preflight
 	FAppendPreflightResult PreflightResult = Preflight(Request);
@@ -881,7 +844,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 		// 第一版简化：所有新节点归属到第一个 block
 		FString OwnershipError;
 		if (!OwnershipService.WriteBlockOwnership(
-			Blueprint, CreatedNodes, FullBlockId, TransactionId, Request.FeatureName, OwnershipError))
+			Blueprint, CreatedNodes, FullBlockId, Request.FeatureName, OwnershipError))
 		{
 			// Ownership 写入失败 → 回滚
 			for (UEdGraphNode* Node : CreatedNodes)
@@ -901,45 +864,6 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 			Error.RollbackResult = EBlueprintHelperRollbackResult::RolledBack;
 			return FBlueprintHelperToolResultBuilder::Failure(TEXT("append_blueprint_graph"), TraceId, Error);
 		}
-	}
-
-	// 7. 写入 Journal
-	FBlueprintHelperAppendJournalRecord JournalRecord;
-	JournalRecord.TransactionId = TransactionId;
-	JournalRecord.Status = TEXT("applied");
-	JournalRecord.TargetAssets.Add(Request.AssetPath);
-	JournalRecord.GraphId = Request.GraphName;
-	JournalRecord.GraphName = Request.GraphName;
-	JournalRecord.BlockIds = BlockRefs;
-	for (UEdGraphNode* Node : CreatedNodes)
-	{
-		if (Node)
-		{
-			JournalRecord.CreatedNodeAnchors.Add(
-				FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::MakeReviewNodeAnchor(Node));
-		}
-	}
-
-	FString JournalError;
-	if (!JournalService.WriteAppendJournal(JournalRecord, JournalError))
-	{
-		// Journal 写入失败 → 回滚
-		for (UEdGraphNode* Node : CreatedNodes)
-		{
-			if (Node)
-			{
-				FBlueprintEditorUtils::RemoveNode(Blueprint, Node, true);
-			}
-		}
-		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
-
-		FBlueprintHelperToolError Error;
-		Error.Code = TEXT("journal_write_failed");
-		Error.Stage = EBlueprintHelperToolStage::Execute;
-		Error.Message = JournalError;
-		Error.bRetryable = false;
-		Error.RollbackResult = EBlueprintHelperRollbackResult::RolledBack;
-		return FBlueprintHelperToolResultBuilder::Failure(TEXT("append_blueprint_graph"), TraceId, Error);
 	}
 
 	// 8. 标记修改
@@ -963,8 +887,6 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 	Data.AppendResult.Graph.GraphId = Request.GraphName;
 	Data.AppendResult.Graph.GraphName = Request.GraphName;
 	Data.AppendResult.BlockRefs = BlockRefs;
-	Data.WriteRef.TransactionId = TransactionId;
-	Data.WriteRef.bJournalRecorded = true;
 	SuccessResult.Data = Data.ToJson();
 	FBlueprintHelperGraphFragmentDebugData::AttachToData(SuccessResult.Data, PreflightResult.FragmentDebugData);
 

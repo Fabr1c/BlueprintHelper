@@ -13,7 +13,6 @@
 #include "Engine/DataTable.h"
 #include "Systems/Review/BlueprintHelperReviewActionService.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
-#include "Systems/Transactions/BlueprintHelperTransactionJournalService.h"
 #include "Shared/BlueprintHelperToolResultTypes.h"
 #include "UserDefinedStructure/UserDefinedStructEditorData.h"
 
@@ -24,7 +23,7 @@ public:
 				const FString& Action,
 				const TArray<FString>& TargetKeys,
 				const FString& OwnershipPolicy,
-				const FString& SourceTransactionId,
+				const FString& SourceEvidenceId,
 				const FString& Message);
 	static bool DeleteDebugCasesForReviewRecord(
 				const FString& ReviewRecordId,
@@ -35,8 +34,6 @@ public:
 				const FString& ReviewRecordId,
 				FString& OutError);
 	static bool HasInjectedRejectOptions(const FBlueprintHelperReviewRejectOptions& Options);
-	static TSharedRef<FJsonObject> BuildJournalRecordFromPreparedRollbackJournal(
-				const FBlueprintHelperReviewPreparedRollbackJournal& Prepared);
 	static FBlueprintHelperReviewActionResult MakeRejectFailureResult(
 				const FBlueprintHelperReviewVisibleChange& Change,
 				EBlueprintHelperReviewChangeStatus Status,

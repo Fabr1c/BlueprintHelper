@@ -24,7 +24,6 @@ enum class EBlueprintHelperBridgeRouteCluster : uint8
 	ObjectProperty,
 	EditorCommand,
 	Review,
-	Transactions,
 	AnimationBlueprint,
 	Material
 };

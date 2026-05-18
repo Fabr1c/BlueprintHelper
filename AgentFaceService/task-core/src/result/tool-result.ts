@@ -192,6 +192,7 @@ export interface ToolResultBase {
   status: ToolStatus;
   modified: boolean;
   debug_case_ids?: string[];
+  debug?: Record<string, unknown>;
   target?: ToolResultTarget;
   data?: Record<string, unknown>;
   validation?: ToolResultValidation;

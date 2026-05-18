@@ -592,7 +592,7 @@ failed
 - `VariableInput`、`PureFunction`、`OperatorOrCompare` 默认按每个消费节点 input pin 顺序左侧递归对齐。
 - `Reroute` / `Knot` 已从 Layout 角色中取消；旧配置中的 Reroute 角色会被忽略并在下次保存时从导出 JSON 中消失。
 - 新增 `SBlueprintHelperLayoutRuleEditor` 并接入 BlueprintHelper 主窗口 `Layout` 页，支持 Import / Export / Copy / Paste / Validate / Reset。
-- RuleSet JSON 配置默认落在 `Saved/BlueprintHelper/GraphLayoutRules.json`，未配置时使用内置默认规则。
+- RuleSet JSON 配置默认落在 `<ProjectDir>/.blueprinthelper/GraphLayoutRules.json`，与 `<ProjectDir>/.blueprinthelper/agent-profile.json` 同级；未配置时使用内置默认规则。
 - Layout 不写 ReviewRecord，不写 TaskRun diff，不改变 TaskRun success/failed。
 
 当前限制：
@@ -681,3 +681,12 @@ failed
 - `schema`、`version` 和兼容字段 `target_pin_order_variable_input_alignment` 不暴露为普通用户设置，避免用户误以为这些字段会改变当前 solver 行为。
 - 面板内所有用户提示文案使用中文，避免中英文混杂影响配置理解。
 - UI 仍只做配置映射和展示；JSON 解析、校验、默认值归一化、solver/apply 语义继续留在 GraphLayout 服务层。
+
+## 22. 2026-05-18 Project Config Path Update
+
+本轮路径调整：
+
+- `GraphLayoutRules.json` 不再写入 `Saved/BlueprintHelper`。
+- 新路径固定为 `<ProjectDir>/.blueprinthelper/GraphLayoutRules.json`，与 `agent-profile.json` 同级，作为项目级 BlueprintHelper 配置。
+- 新增共享项目配置路径 helper，运行时 layout coordinator、Layout UI import/export fallback、agent profile 读取都通过同一个 `.blueprinthelper` 目录解析。
+- 该调整只改变配置文件存放位置，不改变 RuleSet schema、导入导出格式、solver 语义或 Review/TaskRun 边界。

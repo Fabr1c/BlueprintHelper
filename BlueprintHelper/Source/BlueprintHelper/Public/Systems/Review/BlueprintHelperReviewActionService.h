@@ -10,7 +10,7 @@ class FBlueprintHelperDebugEntryService;
 struct FBlueprintHelperReviewActionResult
 {
 	bool bSucceeded = false;
-	FString TargetTransactionId;
+	FString TargetEvidenceId;
 	EBlueprintHelperReviewChangeStatus NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
 	FString RollbackMode;
 	FString Message;
@@ -29,25 +29,9 @@ struct FBlueprintHelperReviewCascadeActionResult
 	bool bChildrenRemoved = false;
 };
 
-struct FBlueprintHelperReviewPreparedRollbackJournal
-{
-	FString TransactionId;
-	FString Tool;
-	bool bHasRollbackData = false;
-	FString ExportedText;
-	FString EntryIdentity;
-	FString ReplaceScope;
-	FString OwnerBlockId;
-	FString Error;
-};
-
 struct FBlueprintHelperReviewRejectOptions
 {
 	TMap<FString, FString> CurrentHashesByTargetKey;
-	TMap<FString, FBlueprintHelperReviewPreparedRollbackJournal> PreparedRollbackJournalsByTransactionId;
-	bool bRollbackExecutorAvailable = false;
-	bool bRollbackSucceeded = false;
-	FString RollbackFailureMessage;
 };
 
 class BLUEPRINTHELPER_API FBlueprintHelperReviewActionService
@@ -88,14 +72,11 @@ public:
 		const FBlueprintHelperReviewRecordQuery& Query,
 		const FBlueprintHelperReviewRejectOptions& Options) const;
 
-	FBlueprintHelperReviewActionResult ConvertOwnerBlock(
-		const FBlueprintHelperReviewConvertOwnerBlockRequest& Request) const;
-
 private:
 	void RecordRejectDebugCaseBestEffort(
 		FBlueprintHelperReviewRecord& Record,
 		const TArray<FString>& TargetKeys,
-		const FString& SourceTransactionId,
+		const FString& SourceEvidenceId,
 		EBlueprintHelperReviewChangeStatus RejectStatus,
 		const FString& RejectMessage) const;
 

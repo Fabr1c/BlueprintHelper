@@ -41,7 +41,6 @@
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperOwnershipService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
 #include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
-#include "Systems/Transactions/BlueprintHelperTransactionJournalService.h"
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
 #include "UObject/SoftObjectPath.h"
@@ -54,14 +53,14 @@ FBlueprintHelperReviewActionRecord FBlueprintHelperReviewActionRecordUtils::Make
 		const FString& Action,
 		const TArray<FString>& TargetKeys,
 		const FString& OwnershipPolicy,
-		const FString& SourceTransactionId,
+		const FString& SourceEvidenceId,
 		const FString& Message)
 	{
 		FBlueprintHelperReviewActionRecord ActionRecord;
 		ActionRecord.Action = Action;
 		ActionRecord.TargetKeys = TargetKeys;
 		ActionRecord.OwnershipPolicy = OwnershipPolicy;
-		ActionRecord.SourceTransactionId = SourceTransactionId;
+		ActionRecord.SourceEvidenceId = SourceEvidenceId;
 		ActionRecord.Message = Message;
 		ActionRecord.CreatedAt = FDateTime::UtcNow().ToIso8601();
 		return ActionRecord;
@@ -118,26 +117,7 @@ bool FBlueprintHelperReviewActionRecordUtils::DeleteReviewRecordAndLinkedDebugCa
 	}
 bool FBlueprintHelperReviewActionRecordUtils::HasInjectedRejectOptions(const FBlueprintHelperReviewRejectOptions& Options)
 	{
-		return Options.CurrentHashesByTargetKey.Num() > 0
-			|| Options.bRollbackExecutorAvailable
-			|| Options.bRollbackSucceeded
-			|| !Options.RollbackFailureMessage.IsEmpty();
-	}
-TSharedRef<FJsonObject> FBlueprintHelperReviewActionRecordUtils::BuildJournalRecordFromPreparedRollbackJournal(
-		const FBlueprintHelperReviewPreparedRollbackJournal& Prepared)
-	{
-		TSharedRef<FJsonObject> JournalRecord = MakeShared<FJsonObject>();
-		JournalRecord->SetStringField(TEXT("tool"), Prepared.Tool);
-		if (Prepared.bHasRollbackData)
-		{
-			TSharedRef<FJsonObject> RollbackData = MakeShared<FJsonObject>();
-			RollbackData->SetStringField(TEXT("exported_text"), Prepared.ExportedText);
-			RollbackData->SetStringField(TEXT("entry_identity"), Prepared.EntryIdentity);
-			RollbackData->SetStringField(TEXT("replace_scope"), Prepared.ReplaceScope);
-			RollbackData->SetStringField(TEXT("owner_block_id"), Prepared.OwnerBlockId);
-			JournalRecord->SetObjectField(TEXT("rollback_data"), RollbackData);
-		}
-		return JournalRecord;
+		return Options.CurrentHashesByTargetKey.Num() > 0;
 	}
 FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionRecordUtils::MakeRejectFailureResult(
 		const FBlueprintHelperReviewVisibleChange& Change,
@@ -145,7 +125,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionRecordUtils::Make
 		const FString& Message)
 	{
 		FBlueprintHelperReviewActionResult Result;
-		Result.TargetTransactionId = Change.LatestTransactionId;
+		Result.TargetEvidenceId = Change.LatestEvidenceId;
 		Result.RollbackMode = TEXT("archive_baseline");
 		Result.NewStatus = Status;
 		Result.Message = Message;

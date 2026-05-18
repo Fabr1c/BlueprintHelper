@@ -20,7 +20,6 @@ public:
 		UBlueprint* Blueprint,
 		UEdGraphNode* Node,
 		const FString& BlockId,
-		const FString& TransactionId,
 		const FString& FeatureName,
 		FString& OutError) const;
 
@@ -29,7 +28,6 @@ public:
 		UBlueprint* Blueprint,
 		const TArray<UEdGraphNode*>& Nodes,
 		const FString& BlockId,
-		const FString& TransactionId,
 		const FString& FeatureName,
 		FString& OutError) const;
 };

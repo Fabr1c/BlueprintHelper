@@ -6,7 +6,6 @@ import {
 } from '../compiler/task-compiler.js';
 import type { PythonTaskCompilerResult } from '../compiler/task-python-orchestrator.js';
 import {
-  TASK_EXECUTION_SCHEMA,
   TASK_PREVIEW_SCHEMA,
   type ReadTaskContextInput,
   type TaskIssue,
@@ -126,18 +125,19 @@ export function createTaskSpecRunner(input: {
           'execute_task',
           { target_type: 'blueprint', asset_path: preview.taskPlan.target_assets[0] },
           {
-            schema: TASK_EXECUTION_SCHEMA,
             task_run_id: taskRunId,
             task: {
-              task_run_id: taskRunId,
               feature_name: preview.taskPlan.task_name,
-              target_assets: preview.taskPlan.target_assets,
               applied_steps: preview.taskPlan.steps.length,
               modified_assets: preview.taskPlan.target_assets.length,
             },
-            bridge_result: bridgeResult,
           },
         ) as ToolResultBase;
+        Object.defineProperty(result, 'debug', {
+          value: { bridge_result: bridgeResult },
+          enumerable: false,
+          configurable: true,
+        });
         result.modified = modified;
         return result;
       } catch (err) {

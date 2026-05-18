@@ -56,7 +56,7 @@ private:
 		const FBlueprintHelperDebugCaseSummary& Summary,
 		FBlueprintHelperDebugBundleManifest& Manifest,
 		FString* OutError);
-	static bool ExportTransactionSummaryArtifacts(
+	static bool ExportEvidenceSummaryArtifacts(
 		const FBlueprintHelperDebugCase& DebugCase,
 		const FString& BundleDir,
 		FBlueprintHelperDebugBundleManifest& Manifest,

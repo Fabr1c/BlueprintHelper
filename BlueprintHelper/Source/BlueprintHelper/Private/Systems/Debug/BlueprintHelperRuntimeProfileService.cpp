@@ -179,8 +179,7 @@ TArray<FBlueprintHelperUnavailableCapability> FBlueprintHelperRuntimeProfileServ
 		Unavailable.Add(Item);
 	};
 
-	// transaction / review 。- 尚未实现完整结构
-	AddUnavailable(TEXT("transaction"), TEXT("journal"));
+	// review 。- 尚未实现完整结构
 	AddUnavailable(TEXT("review"), TEXT("store"));
 
 	// 如果写权限被禁用，标记所。graph_write 能力。blocked

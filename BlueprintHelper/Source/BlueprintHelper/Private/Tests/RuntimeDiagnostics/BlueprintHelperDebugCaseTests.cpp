@@ -1,4 +1,4 @@
-#if WITH_DEV_AUTOMATION_TESTS
+﻿#if WITH_DEV_AUTOMATION_TESTS
 
 #include "Misc/AutomationTest.h"
 
@@ -299,12 +299,12 @@ bool FBlueprintHelperDebugEntryBestEffortEventRecordingTest::RunTest(const FStri
 	Input.TaskRunId = TEXT("task_entry");
 	Input.AssetPaths.Add(TEXT("/Game/BP_Door"));
 	Input.ReviewRecordIds.Add(TEXT("review_entry_record"));
-	FBlueprintHelperDebugTransactionLink TransactionLink;
-	TransactionLink.TransactionId = TEXT("tx_debug_entry");
-	TransactionLink.Role = TEXT("task_source");
-	TransactionLink.Source = TEXT("task_runtime");
-	TransactionLink.Summary = TEXT("source transaction summary only");
-	Input.TransactionLinks.Add(TransactionLink);
+	FBlueprintHelperDebugEvidenceLink EvidenceLink;
+	EvidenceLink.EvidenceId = TEXT("tx_debug_entry");
+	EvidenceLink.Role = TEXT("task_source");
+	EvidenceLink.Source = TEXT("task_runtime");
+	EvidenceLink.Summary = TEXT("source evidence summary only");
+	Input.EvidenceLinks.Add(EvidenceLink);
 	Input.Error.Code = TEXT("execute_failed");
 	Input.Error.Message = TEXT("Execute failed.");
 	Input.RecommendedNext = TEXT("inspect_debug_case");
@@ -331,14 +331,14 @@ bool FBlueprintHelperDebugEntryBestEffortEventRecordingTest::RunTest(const FStri
 	TestEqual(TEXT("summary keeps operation"), Summary.Operation, FString(TEXT("execute_task")));
 	TestTrue(TEXT("summary keeps review record ids"),
 		Summary.ReviewRecordIds.Contains(TEXT("review_entry_record")));
-	TestEqual(TEXT("summary keeps transaction link count"), Summary.TransactionLinks.Num(), 1);
-	if (Summary.TransactionLinks.Num() == 1)
+	TestEqual(TEXT("summary keeps evidence link count"), Summary.EvidenceLinks.Num(), 1);
+	if (Summary.EvidenceLinks.Num() == 1)
 	{
-		TestEqual(TEXT("summary keeps transaction id"),
-			Summary.TransactionLinks[0].TransactionId,
+		TestEqual(TEXT("summary keeps evidence id"),
+			Summary.EvidenceLinks[0].EvidenceId,
 			FString(TEXT("tx_debug_entry")));
-		TestEqual(TEXT("summary keeps transaction role"),
-			Summary.TransactionLinks[0].Role,
+		TestEqual(TEXT("summary keeps evidence role"),
+			Summary.EvidenceLinks[0].Role,
 			FString(TEXT("task_source")));
 	}
 
@@ -347,8 +347,8 @@ bool FBlueprintHelperDebugEntryBestEffortEventRecordingTest::RunTest(const FStri
 		SerializedSummary.Contains(TEXT("raw_payload")));
 	TestFalse(TEXT("summary hides local saved paths"),
 		SerializedSummary.Contains(TEXT("Saved/BlueprintHelper/Debug")));
-	TestTrue(TEXT("summary serializes transaction_links"),
-		SerializedSummary.Contains(TEXT("transaction_links")));
+	TestTrue(TEXT("summary serializes evidence_links"),
+		SerializedSummary.Contains(TEXT("evidence_links")));
 
 	TSharedRef<FJsonObject> QueryPayload = MakeShared<FJsonObject>();
 	QueryPayload->SetStringField(TEXT("debug_case_id"), RecordResult.DebugCaseId);
@@ -397,12 +397,12 @@ bool FBlueprintHelperDebugBundleExportsReviewSummaryArtifactTest::RunTest(const 
 	ReviewRecord.Status = EBlueprintHelperReviewChangeStatus::NeedsAction;
 	ReviewRecord.SourceTaskRunIds.Add(TEXT("task_review_summary"));
 	ReviewRecord.DebugCaseIds.Add(DebugCaseId);
-	ReviewRecord.SourceTransactionSummary.TransactionCount = 1;
-	ReviewRecord.SourceTransactionSummary.TaskRunIds.Add(TEXT("task_review_summary"));
-	ReviewRecord.SourceTransactionSummary.OperationKinds.Add(TEXT("graph_write"));
-	ReviewRecord.SourceTransactionSummary.AssetPaths.Add(TEXT("/Game/BP_DebugReview"));
-	ReviewRecord.SourceTransactionSummary.TransactionIds.Add(TEXT("tx_review_summary"));
-	ReviewRecord.SourceTransactionSummary.FinalReviewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
+	ReviewRecord.SourceReviewSummary.EvidenceCount = 1;
+	ReviewRecord.SourceReviewSummary.TaskRunIds.Add(TEXT("task_review_summary"));
+	ReviewRecord.SourceReviewSummary.OperationKinds.Add(TEXT("graph_write"));
+	ReviewRecord.SourceReviewSummary.AssetPaths.Add(TEXT("/Game/BP_DebugReview"));
+	ReviewRecord.SourceReviewSummary.EvidenceIds.Add(TEXT("tx_review_summary"));
+	ReviewRecord.SourceReviewSummary.FinalReviewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
 
 	FBlueprintHelperReviewVisibleChange Change;
 	Change.ChangeId = TEXT("tx_review_summary");
@@ -433,7 +433,7 @@ bool FBlueprintHelperDebugBundleExportsReviewSummaryArtifactTest::RunTest(const 
 		/ TEXT("_Game_BP_DebugReview_semantic");
 	IFileManager::Get().MakeDirectory(*SemanticSnapshotDir, true);
 	TSharedRef<FJsonObject> SemanticSnapshot = MakeShared<FJsonObject>();
-	SemanticSnapshot->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.ReviewBaselineSemanticSnapshot.v1"));
+	SemanticSnapshot->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.ReviewBaselineSemanticSnapshot.v2"));
 	SemanticSnapshot->SetStringField(TEXT("asset_path"), TEXT("/Game/BP_DebugReview"));
 	FString SemanticSnapshotText;
 	TSharedRef<TJsonWriter<>> SemanticSnapshotWriter = TJsonWriterFactory<>::Create(&SemanticSnapshotText);
@@ -497,7 +497,7 @@ bool FBlueprintHelperDebugBundleExportsReviewSummaryArtifactTest::RunTest(const 
 	TestTrue(TEXT("review summary file is readable"),
 		FFileHelper::LoadFileToString(ReviewSummaryText, *ReviewSummaryPath));
 	TestTrue(TEXT("review summary artifact carries schema"),
-		ReviewSummaryText.Contains(TEXT("BlueprintHelper.ReviewSummaryArtifact.v1")));
+		ReviewSummaryText.Contains(TEXT("BlueprintHelper.ReviewSummaryArtifact.v2")));
 	TestTrue(TEXT("review summary artifact carries review record id"),
 		ReviewSummaryText.Contains(ReviewRecordId));
 	TestFalse(TEXT("review summary artifact omits legacy debug export refs"),
@@ -522,7 +522,7 @@ bool FBlueprintHelperDebugBundleExportsReviewSummaryArtifactTest::RunTest(const 
 			TestTrue(TEXT("semantic baseline artifact is readable"),
 				FFileHelper::LoadFileToString(SemanticArtifactText, *SemanticArtifactPath));
 			TestTrue(TEXT("semantic baseline artifact carries schema"),
-				SemanticArtifactText.Contains(TEXT("BlueprintHelper.ReviewBaselineSemanticSnapshot.v1")));
+				SemanticArtifactText.Contains(TEXT("BlueprintHelper.ReviewBaselineSemanticSnapshot.v2")));
 			break;
 		}
 	}
@@ -647,7 +647,7 @@ bool FBlueprintHelperDebugRedactionAndBundleSummaryExportTest::RunTest(const FSt
 	const FString BundleDir = FBlueprintHelperDebugCaseStoreService::GetBundleDirectory(Manifest.BundleId);
 	TestTrue(TEXT("artifacts directory exists"), IFileManager::Get().DirectoryExists(*(BundleDir / TEXT("artifacts"))));
 	TestTrue(TEXT("review artifact directory exists"), IFileManager::Get().DirectoryExists(*(BundleDir / TEXT("artifacts/review"))));
-	TestTrue(TEXT("transaction artifact directory exists"), IFileManager::Get().DirectoryExists(*(BundleDir / TEXT("artifacts/transactions"))));
+	TestTrue(TEXT("evidence artifact directory exists"), IFileManager::Get().DirectoryExists(*(BundleDir / TEXT("artifacts/evidence"))));
 	TestTrue(TEXT("asset artifact directory exists"), IFileManager::Get().DirectoryExists(*(BundleDir / TEXT("artifacts/assets"))));
 	TestTrue(TEXT("log artifact directory exists"), IFileManager::Get().DirectoryExists(*(BundleDir / TEXT("artifacts/logs"))));
 
@@ -703,7 +703,7 @@ bool FBlueprintHelperDebugCleanupResolvedLowSeverityCasesTest::RunTest(const FSt
 
 	FBlueprintHelperDebugCase Rollback = Resolved;
 	Rollback.DebugCaseId = RollbackId;
-	Rollback.Source = TEXT("transaction_rollback_failure");
+	Rollback.Source = TEXT("evidence_rollback_failure");
 	Rollback.Error.Code = TEXT("rollback_failed");
 
 	FBlueprintHelperDebugCaseStoreService Store;
@@ -792,3 +792,4 @@ bool FBlueprintHelperDebugEntryDeveloperUiInternalsTest::RunTest(const FString& 
 }
 
 #endif // WITH_DEV_AUTOMATION_TESTS
+

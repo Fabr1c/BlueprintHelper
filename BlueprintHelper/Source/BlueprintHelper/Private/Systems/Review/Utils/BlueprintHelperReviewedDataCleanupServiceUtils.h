@@ -13,11 +13,10 @@ class FBlueprintHelperReviewedDataCleanupServiceUtils
 public:
 	static bool IsReviewedTerminalStatus(EBlueprintHelperReviewChangeStatus Status);
 	static bool IsOpenReviewStatusText(const FString& Status);
-	static void AddReviewTransactionId(TSet<FString>& TransactionIds, const FString& TransactionId);
-	static void AddRollbackRefTransactionId(TSet<FString>& TransactionIds, const FString& RollbackDataRef);
-	static void CollectRetainedTransactionIds(
+	static void AddReviewEvidenceId(TSet<FString>& EvidenceIds, const FString& EvidenceId);
+	static void CollectRetainedEvidenceIds(
 		const FBlueprintHelperReviewVisibleChange& Change,
-		TSet<FString>& TransactionIds);
+		TSet<FString>& EvidenceIds);
 	static void InspectDebugBundleChangeObject(
 		const TSharedPtr<FJsonObject>& ChangeObject,
 		bool& bHasReviewStatus,
@@ -28,7 +27,7 @@ public:
 	static void ScanReviewPanelBundles(FBlueprintHelperReviewedDataCleanupPlan& Plan);
 	static void ScanUnreferencedJsonFiles(
 		const FString& Directory,
-		const TSet<FString>& RetainedTransactionIds,
+		const TSet<FString>& RetainedEvidenceIds,
 		TArray<FString>& OutPaths);
 	static void DeleteFileList(
 		const TArray<FString>& Paths,

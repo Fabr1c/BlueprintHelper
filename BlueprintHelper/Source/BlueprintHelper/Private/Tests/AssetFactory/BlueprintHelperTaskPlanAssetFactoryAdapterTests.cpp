@@ -36,7 +36,6 @@
 #include "Systems/ToolClusters/UMGWidget/BlueprintHelperWidgetService.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.h"
 #include "Runtime/TaskRuntime/TaskPlanAdapters/AssetFactory/BlueprintHelperAssetFactoryTaskPlanAdapter.h"
-#include "Systems/Transactions/BlueprintHelperTransactionJournalService.h"
 #include "Engine/UserDefinedStruct.h"
 #include "Runtime/Launch/Resources/Version.h"
 #include "UObject/Interface.h"
@@ -68,7 +67,6 @@ public:
 		FBlueprintHelperAgentImportService AgentImportService;
 		FBlueprintHelperBlockIdService BlockIdService;
 		FBlueprintHelperOwnershipService OwnershipService;
-		FBlueprintHelperTransactionJournalService JournalService;
 		FBlueprintHelperGraphSnapshotService SnapshotService;
 		FBlueprintHelperLogicJsonPathService PathService;
 		FBlueprintHelperAppendBlueprintGraphService AppendGraphService;
@@ -89,10 +87,10 @@ public:
 		FAssetFactoryTaskRuntimeTestServices()
 			: CompileService(Resolver)
 			, AgentImportService(Resolver, CompileService, AssetBrowseService)
-			, AppendGraphService(Resolver, BlockIdService, OwnershipService, JournalService)
-			, ReplaceGraphService(Resolver, BlockIdService, OwnershipService, JournalService, SnapshotService)
-			, PatchGraphService(Resolver, PathService, JournalService)
-			, MergeGraphService(Resolver, PathService, JournalService)
+			, AppendGraphService(Resolver, BlockIdService, OwnershipService)
+			, ReplaceGraphService(Resolver, BlockIdService, OwnershipService, SnapshotService)
+			, PatchGraphService(Resolver, PathService)
+			, MergeGraphService(Resolver, PathService)
 			, StructureService(Resolver)
 			, VariableService(Resolver, StructureService)
 			, ComponentService(Resolver)

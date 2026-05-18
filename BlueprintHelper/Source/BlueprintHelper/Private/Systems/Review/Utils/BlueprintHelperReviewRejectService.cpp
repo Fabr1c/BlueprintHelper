@@ -42,7 +42,6 @@
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperOwnershipService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
 #include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
-#include "Systems/Transactions/BlueprintHelperTransactionJournalService.h"
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
 #include "UObject/SoftObjectPath.h"
@@ -52,7 +51,6 @@
 #include "WidgetBlueprint.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewActionRecordUtils.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewActionTargetUtils.h"
-#include "Systems/Review/Utils/BlueprintHelperReviewGraphRollbackService.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewSnapshotRestoreService.h"
 
 namespace
@@ -158,7 +156,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewRejectService::RejectVi
 
 		FBlueprintHelperReviewActionResult Result;
 		Result.bSucceeded = true;
-		Result.TargetTransactionId = Change.LatestTransactionId;
+		Result.TargetEvidenceId = Change.LatestEvidenceId;
 		Result.RollbackMode = TEXT("archive_baseline");
 		Result.NewStatus = EBlueprintHelperReviewChangeStatus::Rejected;
 		Result.Message = TEXT("rejected");

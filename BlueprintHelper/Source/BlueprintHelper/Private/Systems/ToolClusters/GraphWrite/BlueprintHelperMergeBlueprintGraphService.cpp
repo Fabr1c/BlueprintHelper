@@ -3,7 +3,6 @@
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperMergeBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicJsonPathService.h"
-#include "Systems/Transactions/BlueprintHelperTransactionJournalService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 #include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
@@ -33,9 +32,8 @@
 
 FBlueprintHelperMergeBlueprintGraphService::FBlueprintHelperMergeBlueprintGraphService(
 	const FBlueprintHelperGraphResolver& InResolver,
-	const FBlueprintHelperLogicJsonPathService& InPathService,
-	const FBlueprintHelperTransactionJournalService& InJournalService)
-	: Resolver(InResolver), PathService(InPathService), JournalService(InJournalService)
+	const FBlueprintHelperLogicJsonPathService& InPathService)
+	: Resolver(InResolver), PathService(InPathService)
 {
 }
 
@@ -744,8 +742,6 @@ FBlueprintHelperToolResultBase FBlueprintHelperMergeBlueprintGraphService::Execu
 	const FMergeRequest& Request) const
 {
 	const FString TraceId = FBlueprintHelperToolResultBuilder::GenerateTraceId();
-	const FString TxId = JournalService.GenerateTransactionId();
-
 	// 1-2. Resolve BP/Graph
 	FBlueprintHelperGraphTarget Tgt; Tgt.BlueprintPath = Request.AssetPath;
 	FBlueprintHelperDiagnosticSet Diag;
@@ -825,46 +821,6 @@ FBlueprintHelperToolResultBase FBlueprintHelperMergeBlueprintGraphService::Execu
 			 ApplyError, false, EBlueprintHelperRollbackResult::RolledBack});
 	}
 
-	// 7. Journal
-	FBlueprintHelperAppendJournalRecord JRec;
-	JRec.TransactionId = TxId;
-	JRec.Tool = TEXT("MergeBlueprintGraph");
-	JRec.Status = TEXT("applied");
-	JRec.TargetAssets.Add(Request.AssetPath);
-	JRec.GraphId = Request.GraphName;
-	JRec.GraphName = Request.GraphName;
-	auto AddGeneratedNodeAnchor = [&JRec](UEdGraphNode* Node)
-	{
-		if (!Node)
-		{
-			return;
-		}
-
-		FBlueprintHelperGraphReviewNodeAnchor Anchor;
-		Anchor.NodePath = Node->GetPathName();
-		Anchor.NodeGuid = Node->NodeGuid.IsValid()
-			? Node->NodeGuid.ToString(EGuidFormats::Digits)
-			: FString();
-		Anchor.DisplayLabel = Node->GetName();
-		Anchor.GraphPosition = FVector2D(Node->NodePosX, Node->NodePosY);
-		Anchor.GraphSize = FVector2D(
-			FMath::Max(Node->NodeWidth, 360),
-			FMath::Max(Node->NodeHeight, 180));
-		Anchor.bHasGraphBounds = true;
-		JRec.CreatedNodeAnchors.Add(Anchor);
-	};
-	AddGeneratedNodeAnchor(Context.InsertedNode);
-	AddGeneratedNodeAnchor(Context.SequenceNode);
-
-	FString JErr;
-	if (!JournalService.WriteAppendJournal(JRec, JErr))
-	{
-		Mutation.Rollback();
-		return FBlueprintHelperToolResultBuilder::Failure(TEXT("merge_blueprint_graph"), TraceId,
-			{TEXT("journal_write_failed"), EBlueprintHelperToolStage::Execute,
-			 JErr, false, EBlueprintHelperRollbackResult::RolledBack});
-	}
-
 	// 8. Mark + commit
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(BP);
 	if (BP->GetOutermost()) BP->GetOutermost()->MarkPackageDirty();
@@ -887,8 +843,6 @@ FBlueprintHelperToolResultBase FBlueprintHelperMergeBlueprintGraphService::Execu
 		Context.AnchorPin ? *Context.AnchorPin->PinName.ToString() : TEXT("?"));
 	Data.MergeResult.MergedRef.InsertedRef = Context.InsertedRef;
 	if (Context.SequenceNode) Data.MergeResult.MergedRef.SequenceRef = Context.SequenceNode->GetName();
-	Data.WriteRef.TransactionId = TxId;
-	Data.WriteRef.bJournalRecorded = true;
 	Success.Data = Data.ToJson();
 	FBlueprintHelperGraphFragmentDebugData::AttachToData(Success.Data, Pre.FragmentDebugData);
 

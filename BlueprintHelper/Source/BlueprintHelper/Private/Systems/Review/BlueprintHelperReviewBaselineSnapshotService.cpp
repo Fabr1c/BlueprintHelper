@@ -1,4 +1,4 @@
-// BlueprintHelper Review baseline semantic snapshot service.
+﻿// BlueprintHelper Review baseline semantic snapshot service.
 
 #include "Systems/Review/BlueprintHelperReviewBaselineSnapshotService.h"
 
@@ -627,7 +627,7 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildAsse
 	UObject* Asset)
 {
 	TSharedRef<FJsonObject> Snapshot = MakeShared<FJsonObject>();
-	Snapshot->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.ReviewBaselineSemanticSnapshot.v1"));
+	Snapshot->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.ReviewBaselineSemanticSnapshot.v2"));
 	Snapshot->SetStringField(TEXT("asset_path"), AssetPath);
 	Snapshot->SetStringField(TEXT("object_name"), GetNameSafe(Asset));
 	Snapshot->SetStringField(TEXT("object_path"), FBlueprintHelperReviewBaselineSnapshotServiceUtils::GetObjectPathNameSafe(Asset));
@@ -725,7 +725,7 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 {
 	TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
 	const FString TargetName = FBlueprintHelperReviewBaselineSnapshotServiceUtils::ExtractTargetName(Target);
-	Json->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.ReviewTargetSnapshot.v1"));
+	Json->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.ReviewTargetSnapshot.v2"));
 	Json->SetStringField(TEXT("asset_path"), Target.AssetPath);
 	Json->SetStringField(TEXT("target_kind"), Target.TargetKind);
 	Json->SetStringField(TEXT("target_key"), Target.TargetKey);
@@ -1499,3 +1499,4 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildWidg
 	Json->SetArrayField(TEXT("widgets"), Widgets);
 	return Json;
 }
+

@@ -19,6 +19,7 @@
 #include "Systems/ToolClusters/DataTable/BlueprintHelperDataTableService.h"
 #include "Systems/ToolClusters/UMGWidget/BlueprintHelperWidgetService.h"
 #include "Systems/Debug/BlueprintHelperAssetBrowseService.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutCoordinator.h"
 #include "Systems/Review/BlueprintHelperReviewBaselineSnapshotService.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
 #include "Shared/Debug/BlueprintHelperSaveAssetTypes.h"
@@ -47,7 +48,6 @@
 #include "Misc/Paths.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
-#include "Systems/Transactions/BlueprintHelperTransactionJournalService.h"
 #include "UObject/Package.h"
 
 class FBlueprintHelperTaskRuntimeServiceLocalUtils
@@ -90,23 +90,48 @@ public:
 			const FString& TaskRunId)
 			: bActive(bInActive)
 		{
-			if (bActive)
-			{
-				FBlueprintHelperTransactionJournalService::SetRuntimeReviewContext(
-					ArchiveSessionId,
-					TaskRunId);
-			}
+			(void)ArchiveSessionId;
+			(void)TaskRunId;
 		}
 
 		~FScopedBlueprintHelperReviewContext()
 		{
 			if (bActive)
 			{
-				FBlueprintHelperTransactionJournalService::ClearRuntimeReviewContext();
 			}
 		}
 
 		bool bActive = false;
+	};
+
+	struct FScopedBlueprintHelperGraphLayoutTask
+	{
+		explicit FScopedBlueprintHelperGraphLayoutTask(bool bInActive)
+			: bActive(bInActive)
+		{
+		}
+
+		~FScopedBlueprintHelperGraphLayoutTask()
+		{
+			if (bActive && !bCompleted)
+			{
+				FBlueprintHelperGraphLayoutCoordinator::DiscardPendingTaskLayouts();
+			}
+		}
+
+		void FlushAndComplete()
+		{
+			if (!bActive || bCompleted)
+			{
+				return;
+			}
+
+			FBlueprintHelperGraphLayoutCoordinator::FlushPendingTaskLayouts();
+			bCompleted = true;
+		}
+
+		bool bActive = false;
+		bool bCompleted = false;
 	};
 
 	enum class EBlueprintHelperReviewBaselineDirtyAssetPolicy : uint8
@@ -4063,6 +4088,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		}
 	}
 	FBlueprintHelperTaskRuntimeServiceLocalUtils::FScopedBlueprintHelperReviewContext ReviewContext(!bDryRun, ArchiveSessionId, TaskRunId);
+	FBlueprintHelperTaskRuntimeServiceLocalUtils::FScopedBlueprintHelperGraphLayoutTask GraphLayoutTask(!bDryRun);
 
 	TArray<FBlueprintHelperTaskRuntimeStepRecord> StepRecords;
 	TArray<FBlueprintHelperTaskRuntimePostOperationRecord> PostOperationRecords;
@@ -4183,7 +4209,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 			}
 			else if (ErrorCodeLower.Contains(TEXT("rollback")) || Error.RollbackResult == EBlueprintHelperRollbackResult::Failed)
 			{
-				DebugInput.Source = TEXT("transaction_rollback_failure");
+				DebugInput.Source = TEXT("review_snapshot_restore_failure");
 			}
 			DebugInput.Operation = RuntimeOperation;
 			DebugInput.Stage = ToolStageToString(Error.Stage);
@@ -4426,6 +4452,11 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 			bHasFirstExecutionError
 				? FirstExecutionError
 				: FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRuntimeError(TEXT("task_step_failed"), EBlueprintHelperToolStage::Execute, TEXT("TaskPlan step failed.")));
+	}
+
+	if (!bDryRun)
+	{
+		GraphLayoutTask.FlushAndComplete();
 	}
 
 	if (!bDryRun)

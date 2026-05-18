@@ -13,7 +13,6 @@
 #include "Engine/DataTable.h"
 #include "Systems/Review/BlueprintHelperReviewActionService.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
-#include "Systems/Transactions/BlueprintHelperTransactionJournalService.h"
 #include "Shared/BlueprintHelperToolResultTypes.h"
 #include "UserDefinedStructure/UserDefinedStructEditorData.h"
 
@@ -67,6 +66,10 @@ public:
 				const TSharedPtr<FJsonObject>& Snapshot,
 				FString& OutError);
 	static bool RestoreGraphFromSnapshot(
+				const FBlueprintHelperReviewAtomicTarget& Target,
+				const TSharedPtr<FJsonObject>& Snapshot,
+				FString& OutError);
+	static bool RestoreSignatureFromSnapshot(
 				const FBlueprintHelperReviewAtomicTarget& Target,
 				const TSharedPtr<FJsonObject>& Snapshot,
 				FString& OutError);

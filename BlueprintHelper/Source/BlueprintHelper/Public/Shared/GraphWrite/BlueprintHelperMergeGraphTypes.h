@@ -93,7 +93,7 @@ enum class EBlueprintHelperMergeErrorCode : uint8
 	LinkCreateFailed,
 	LinkDisconnectFailed,
 	SchemaRejected,
-	JournalWriteFailed,
+	ReviewEvidenceWriteFailed,
 	RollbackBlocked,
 	RollbackFailed,
 	WritePermissionDisabled,
@@ -126,7 +126,7 @@ inline const TCHAR* MergeErrorCodeToString(EBlueprintHelperMergeErrorCode Code)
 	case EBlueprintHelperMergeErrorCode::LinkCreateFailed:                  return TEXT("link_create_failed");
 	case EBlueprintHelperMergeErrorCode::LinkDisconnectFailed:              return TEXT("link_disconnect_failed");
 	case EBlueprintHelperMergeErrorCode::SchemaRejected:                    return TEXT("schema_rejected");
-	case EBlueprintHelperMergeErrorCode::JournalWriteFailed:                return TEXT("journal_write_failed");
+	case EBlueprintHelperMergeErrorCode::ReviewEvidenceWriteFailed:                return TEXT("review_evidence_write_failed");
 	case EBlueprintHelperMergeErrorCode::RollbackBlocked:                   return TEXT("rollback_blocked");
 	case EBlueprintHelperMergeErrorCode::RollbackFailed:                    return TEXT("rollback_failed");
 	case EBlueprintHelperMergeErrorCode::WritePermissionDisabled:           return TEXT("write_permission_disabled");

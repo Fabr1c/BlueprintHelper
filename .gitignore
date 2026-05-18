@@ -7,8 +7,9 @@ __pycache__/
 *.pyc
 node_modules/
 AgentFaceService/**/node_modules/
-AgentFaceService/**/build/
-AgentFaceService/**/Saved/
-AgentFaceService/**/tests/
+AgentFaceService/**/build/**
+AgentFaceService/**/Saved/**
+AgentFaceService/**/tests/**
+AgentFaceService/task-core/python/tests
 *.7z          
 /Saved/

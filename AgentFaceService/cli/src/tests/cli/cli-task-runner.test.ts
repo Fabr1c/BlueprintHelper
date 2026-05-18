@@ -83,6 +83,7 @@ test('task execute calls the TaskSpec runner and returns executed summary', asyn
         trace_id: 'trace_execute',
         status: 'completed',
         modified: true,
+        target: { target_type: 'blueprint', asset_path: '/Game/BP_Player' },
         data: {
           schema: 'BlueprintHelper.TaskExecution.v1',
           task_run_id: 'task_cli_001',
@@ -91,6 +92,24 @@ test('task execute calls the TaskSpec runner and returns executed summary', asyn
             task_run_id: 'task_cli_001',
             target_assets: ['/Game/BP_Player'],
             applied_steps: 1,
+          },
+          bridge_result: {
+            ok: true,
+            schema: 'BlueprintHelper.ToolResult.v1',
+            operation: 'execute_task_plan',
+            trace_id: 'trace_bridge',
+            status: 'applied',
+            modified: true,
+          },
+        },
+        debug: {
+          bridge_result: {
+            ok: true,
+            schema: 'BlueprintHelper.ToolResult.v1',
+            operation: 'execute_task_plan',
+            trace_id: 'trace_bridge',
+            status: 'applied',
+            modified: true,
           },
         },
       };
@@ -116,11 +135,83 @@ test('task execute calls the TaskSpec runner and returns executed summary', asyn
   assert.equal(output.task_run_id, 'task_cli_001');
   assert.equal('preview_id' in output, false);
   const artifacts = output.artifacts as Record<string, unknown>;
+  assert.equal('debug_result' in artifacts, false);
   const fullResultPath = String(artifacts.full_result);
   const fullResult = JSON.parse(fs.readFileSync(fullResultPath, 'utf8')) as Record<string, unknown>;
+  assert.equal(fullResult.schema, 'BlueprintHelper.CliFullResult.v1');
   const toolResult = fullResult.toolResult as Record<string, unknown>;
+  assert.equal('schema' in toolResult, false);
+  assert.equal('trace_id' in toolResult, false);
   const data = toolResult.data as Record<string, unknown>;
+  const task = data.task as Record<string, unknown>;
   assert.equal('preview_id' in data, false);
+  assert.equal('schema' in data, false);
+  assert.equal('bridge_result' in data, false);
+  assert.equal(data.task_run_id, 'task_cli_001');
+  assert.equal('task_run_id' in task, false);
+  assert.equal('target_assets' in task, false);
+  assert.deepEqual(toolResult.target, { target_type: 'blueprint', asset_path: '/Game/BP_Player' });
+});
+
+test('task execute exposes raw bridge and trace data only through expert debug artifact', async () => {
+  const writes: string[] = [];
+  const artifactDir = makeTempDir();
+  const runner = {
+    previewTask: async () => { throw new Error('not used'); },
+    executeTask: async () => ({
+      ok: true,
+      schema: 'BlueprintHelper.ToolResult.v1',
+      operation: 'execute_task',
+      trace_id: 'trace_execute_debug',
+      status: 'completed',
+      modified: true,
+      target: { target_type: 'blueprint', asset_path: '/Game/BP_Player' },
+      data: {
+        schema: 'BlueprintHelper.TaskExecution.v1',
+        task_run_id: 'task_cli_debug',
+        task: {
+          task_run_id: 'task_cli_debug',
+          target_assets: ['/Game/BP_Player'],
+          applied_steps: 1,
+        },
+      },
+      debug: {
+        bridge_result: {
+          ok: true,
+          schema: 'BlueprintHelper.ToolResult.v1',
+          operation: 'execute_task_plan',
+          trace_id: 'trace_bridge_debug',
+          status: 'applied',
+          modified: true,
+        },
+      },
+    }),
+    getTaskResult: async () => { throw new Error('not used'); },
+    readTaskContext: async () => { throw new Error('not used'); },
+    readReferenceContext: async () => { throw new Error('not used'); },
+  } as TaskSpecRunner;
+
+  const exitCode = await runCli({
+    argv: ['task', 'execute', '--file', 'task-spec.json', '--artifact-dir', artifactDir, '--expert'],
+    cwd: fixturesDir,
+    runner,
+    stdout: (line) => writes.push(line),
+    stderr: () => {},
+  });
+
+  assert.equal(exitCode, 0);
+  const output = JSON.parse(writes.join('')) as Record<string, unknown>;
+  const artifacts = output.artifacts as Record<string, unknown>;
+  assert.equal(typeof artifacts.debug_result, 'string');
+
+  const fullResult = JSON.parse(fs.readFileSync(String(artifacts.full_result), 'utf8')) as Record<string, unknown>;
+  assert.equal(JSON.stringify(fullResult).includes('trace_bridge_debug'), false);
+  assert.equal(JSON.stringify(fullResult).includes('BlueprintHelper.ToolResult.v1'), false);
+
+  const debugResult = JSON.parse(fs.readFileSync(String(artifacts.debug_result), 'utf8')) as Record<string, unknown>;
+  assert.equal(debugResult.schema, 'BlueprintHelper.CliDebugResult.v1');
+  assert.equal((debugResult.tool_result as Record<string, unknown>).trace_id, 'trace_execute_debug');
+  assert.equal((debugResult.bridge_result as Record<string, unknown>).trace_id, 'trace_bridge_debug');
 });
 
 test('task execute can project stdout to selected fields only', async () => {
