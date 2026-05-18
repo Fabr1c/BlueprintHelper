@@ -1,6 +1,6 @@
-# Other Template Semantic Index
+# Root Template Semantic Index
 
-Use other templates for CLI support commands around a BlueprintHelper workflow.
+Use root-level templates for CLI support commands around a BlueprintHelper workflow.
 They do not read asset graph logic and they do not author TaskSpecs.
 
 ## Environment And Guide Discovery
@@ -28,4 +28,3 @@ They do not read asset graph logic and they do not author TaskSpecs.
 | Read one summary-only debug case | `blueprinthelper_get_debug_case_template.json` | `blueprinthelper_get_debug_case` |
 | Export a debug bundle manifest | `blueprinthelper_export_debug_bundle_template.json` | `blueprinthelper_export_debug_bundle` |
 | Query Review record summaries | `blueprinthelper_query_review_records_template.json` | `blueprinthelper_query_review_records` |
-
