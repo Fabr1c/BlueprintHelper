@@ -5,6 +5,7 @@
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
 #include "UI/Review/BlueprintHelperReviewPanelStyle.h"
 #include "UI/Review/BlueprintHelperReviewPanelPresenter.h"
+#include "UI/Review/BlueprintHelperReviewSlateRowGeometryRegistry.h"
 #include "Styling/AppStyle.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
@@ -34,6 +35,10 @@ void SBlueprintHelperReviewPanel::Construct(const FArguments& InArgs)
 		PendingReviewChangedHandle = ReviewPanelPresenter->AddPendingReviewChangedHandler(
 			FSimpleDelegate::CreateSP(this, &SBlueprintHelperReviewPanel::RefreshFromReviewStoreIfChanged));
 	}
+	RowGeometryChangedHandle = FBlueprintHelperReviewSlateRowGeometryRegistry::AddRowsChangedHandler(
+		FBlueprintHelperReviewSlateRowLifecycleChanged::FDelegate::CreateSP(
+			this,
+			&SBlueprintHelperReviewPanel::OnRegisteredRowGeometryChanged));
 	if (ChangeItems.Num() > 0)
 	{
 		SelectedChange = ChangeItems[0];
@@ -321,7 +326,7 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildMainWorkspaceWidget()
 			DataTablePresenterState,
 			FBlueprintHelperReviewGeometryInvalidated::CreateSP(
 				this,
-				&SBlueprintHelperReviewPanel::RefreshSurfaceOverlay));
+				&SBlueprintHelperReviewPanel::OnSurfaceGeometryInvalidated));
 	}
 	if (MainSurface == EBlueprintHelperReviewSurface::DataAsset)
 	{
@@ -331,7 +336,7 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildMainWorkspaceWidget()
 			DataAssetPresenterState,
 			FBlueprintHelperReviewGeometryInvalidated::CreateSP(
 				this,
-				&SBlueprintHelperReviewPanel::RefreshSurfaceOverlay));
+				&SBlueprintHelperReviewPanel::OnSurfaceGeometryInvalidated));
 	}
 
 	return BuildGraphEditorWidget();
@@ -343,6 +348,13 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildGraphEditorWidget()
 	Args.AssetContext = &ReviewAssetContext;
 	Args.ChangeItems = &ChangeItems;
 	Args.SelectedChange = SelectedChange;
+	const bool bSelectedMatchesGraphNavigation =
+		SelectedChange.IsValid()
+		&& !RequestedGraphNavigationChangeId.IsEmpty()
+		&& SelectedChange->ChangeId == RequestedGraphNavigationChangeId;
+	Args.RequestedGraphName = bSelectedMatchesGraphNavigation ? RequestedGraphNavigationGraphName : FString();
+	Args.bAllowGraphNavigationWithoutGraphReview =
+		bSelectedMatchesGraphNavigation && bAllowGraphNavigationWithoutGraphReview;
 	Args.AddDebugMessage = [this](const FString& Message)
 	{
 		AddDebugMessage(Message);

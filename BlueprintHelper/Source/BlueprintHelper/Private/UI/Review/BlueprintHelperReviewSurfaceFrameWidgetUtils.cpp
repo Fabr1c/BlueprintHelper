@@ -9,22 +9,27 @@ TSharedRef<SWidget> FBlueprintHelperReviewSurfaceFrameWidgetUtils::BuildDiffFram
 	bool bShowActions,
 	bool bFillBackground,
 	const FSlateColor& FrameColor,
-	const TFunction<FReply(TSharedPtr<FBlueprintHelperReviewVisibleChange>)>& OnAcceptChange,
-	const TFunction<FReply(TSharedPtr<FBlueprintHelperReviewVisibleChange>)>& OnRejectChange,
+	const TFunction<FReply(const FString&)>& OnAcceptChangeId,
+	const TFunction<FReply(const FString&)>& OnRejectChangeId,
 	bool bSelected)
 {
+	const FString ChangeId = Item.IsValid() ? Item->ChangeId : FString();
 	return SNew(SBlueprintHelperReviewDiffFrame)
 		.FrameColor(FrameColor)
 		.ShowActions(bShowActions && Item.IsValid())
 		.FillBackground(bFillBackground)
 		.Selected(bSelected)
-		.OnAccept(FOnClicked::CreateLambda([Item, OnAcceptChange]()
+		.OnAccept(FOnClicked::CreateLambda([ChangeId, OnAcceptChangeId]()
 		{
-			return OnAcceptChange ? OnAcceptChange(Item) : FReply::Handled();
+			return OnAcceptChangeId && !ChangeId.IsEmpty()
+				? OnAcceptChangeId(ChangeId)
+				: FReply::Handled();
 		}))
-		.OnReject(FOnClicked::CreateLambda([Item, OnRejectChange]()
+		.OnReject(FOnClicked::CreateLambda([ChangeId, OnRejectChangeId]()
 		{
-			return OnRejectChange ? OnRejectChange(Item) : FReply::Handled();
+			return OnRejectChangeId && !ChangeId.IsEmpty()
+				? OnRejectChangeId(ChangeId)
+				: FReply::Handled();
 		}))
 		[
 			Content

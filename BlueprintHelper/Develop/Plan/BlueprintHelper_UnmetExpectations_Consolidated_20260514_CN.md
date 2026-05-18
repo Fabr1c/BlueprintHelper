@@ -165,3 +165,19 @@
 2. P1：补 Function scope / Local Variables Review。
 3. P1：推进 Baseline semantic snapshot Stage 2/3 的产品决策和实现。
 4. P2：历史文档归档、旧 runbook 顶部状态指针刷新。
+
+## 2026-05-18 ReviewPanel 自动/手动测试分账更新
+
+自动化状态：Closed。
+
+1. 已运行 `BlueprintHelper.Review` 总前缀自动化。
+2. 报告：`D:\UEProjects\Template\Saved\Automation\ReviewPanel_All_20260518_001\index.json`。
+3. 结果：120 total，110 succeeded，10 succeeded with warnings，0 failed。
+4. 10 个 warning 为 ObjectPath deprecation warning，不是 ReviewPanel 断言失败。
+
+用户手动状态：UI Pending。
+
+1. 最新手动验收手册：`ReviewPanel_UI_ManualValidation_Runbook_20260518_CN.md`。
+2. A1/A2/A5/A7/A8/A9/B1-UI 仍需真实 Editor UI 验收。
+3. 手动验收重点：Final Changes 选择联动、native row highlight、GraphPanel underlay、DataTable row 操作、DataAsset/ST 只读 row action、asset lifecycle root cascade、DebugPanel LoadBundle/CaptureFocus、Clean Review Data。
+4. 自动化通过不关闭 live UI smoke；只有用户手动记录通过后，才能把对应 UI 项移到 Closed。

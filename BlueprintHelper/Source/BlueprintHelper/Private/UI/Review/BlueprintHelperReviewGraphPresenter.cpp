@@ -40,32 +40,44 @@ TSharedRef<SWidget> FBlueprintHelperReviewGraphPresenter::BuildContent(
 		return BuildReviewPlaceholder(TEXT("No review change selected."));
 	}
 
-	const FBlueprintHelperReviewSurfaceRouteDecision RouteDecision =
-		FBlueprintHelperReviewSurfacePresenterRouter::RouteChangeToSurface(
-			*Args.SelectedChange,
-			EBlueprintHelperReviewSurface::Graph);
-	if (Args.AddDebugMessage)
+	const bool bGraphNavigationRequest =
+		Args.bAllowGraphNavigationWithoutGraphReview && !Args.RequestedGraphName.IsEmpty();
+	if (!bGraphNavigationRequest)
 	{
-		const EBlueprintHelperReviewAssetKind AssetKind = Args.AssetContext
-			? Args.AssetContext->AssetKind
-			: EBlueprintHelperReviewAssetKind::Unknown;
-		Args.AddDebugMessage(FBlueprintHelperReviewSurfacePresenterRouter::BuildRouteDebugSummary(
-			*Args.SelectedChange,
-			EBlueprintHelperReviewSurface::Graph,
-			RouteDecision,
-			BlueprintHelperReviewAssetKindToString(AssetKind)));
-	}
-
-	if (!RouteDecision.bShouldShow)
-	{
+		const FBlueprintHelperReviewSurfaceRouteDecision RouteDecision =
+			FBlueprintHelperReviewSurfacePresenterRouter::RouteChangeToSurface(
+				*Args.SelectedChange,
+				EBlueprintHelperReviewSurface::Graph);
 		if (Args.AddDebugMessage)
 		{
-			Args.AddDebugMessage(FString::Printf(
-				TEXT("GraphEditor hidden change=%s reason=%s"),
-				*Args.SelectedChange->ChangeId,
-				*RouteDecision.Reason));
+			const EBlueprintHelperReviewAssetKind AssetKind = Args.AssetContext
+				? Args.AssetContext->AssetKind
+				: EBlueprintHelperReviewAssetKind::Unknown;
+			Args.AddDebugMessage(FBlueprintHelperReviewSurfacePresenterRouter::BuildRouteDebugSummary(
+				*Args.SelectedChange,
+				EBlueprintHelperReviewSurface::Graph,
+				RouteDecision,
+				BlueprintHelperReviewAssetKindToString(AssetKind)));
 		}
-		return BuildReviewPlaceholder(TEXT("Selected review change has no Graph anchor."));
+
+		if (!RouteDecision.bShouldShow)
+		{
+			if (Args.AddDebugMessage)
+			{
+				Args.AddDebugMessage(FString::Printf(
+					TEXT("GraphEditor hidden change=%s reason=%s"),
+					*Args.SelectedChange->ChangeId,
+					*RouteDecision.Reason));
+			}
+			return BuildReviewPlaceholder(TEXT("Selected review change has no Graph anchor."));
+		}
+	}
+	else if (Args.AddDebugMessage)
+	{
+		Args.AddDebugMessage(FString::Printf(
+			TEXT("GraphEditor navigation request change=%s graph=\"%s\" reason=my_blueprint_navigation"),
+			*Args.SelectedChange->ChangeId,
+			*Args.RequestedGraphName));
 	}
 
 	const UBlueprint* SourceBlueprint = Args.AssetContext ? Args.AssetContext->Blueprint.Get() : nullptr;
@@ -85,14 +97,21 @@ TSharedRef<SWidget> FBlueprintHelperReviewGraphPresenter::BuildContent(
 		return BuildReviewPlaceholder(TEXT("No Blueprint graph loaded for this review asset."));
 	}
 
-	UEdGraph* SourceGraph = Args.AssetContext
-		? ResolveGraphForSelection(*Args.AssetContext, Args.SelectedChange)
-		: nullptr;
-	if (!SourceGraph && !Args.SelectedChange->GraphName.IsEmpty() && Args.AddDebugMessage)
+	UEdGraph* SourceGraph = nullptr;
+	if (Args.AssetContext)
+	{
+		SourceGraph = bGraphNavigationRequest
+			? FBlueprintHelperReviewGraphResolver::ResolveGraphForReviewSelection(SourceBlueprint, Args.RequestedGraphName)
+			: ResolveGraphForSelection(*Args.AssetContext, Args.SelectedChange);
+	}
+	const FString MissingGraphName = bGraphNavigationRequest
+		? Args.RequestedGraphName
+		: Args.SelectedChange->GraphName;
+	if (!SourceGraph && !MissingGraphName.IsEmpty() && Args.AddDebugMessage)
 	{
 		Args.AddDebugMessage(FString::Printf(
 			TEXT("GraphEditor source graph missing selectedGraph=\"%s\" asset=\"%s\"; using empty Review graph."),
-			*Args.SelectedChange->GraphName,
+			*MissingGraphName,
 			*Args.SelectedChange->AssetPath));
 	}
 
@@ -105,6 +124,13 @@ TSharedRef<SWidget> FBlueprintHelperReviewGraphPresenter::BuildContent(
 		{
 			State.PreviewGraph->SetFlags(RF_Transient);
 			State.PreviewGraph->bEditable = false;
+			if (State.PreviewGraph->GetFName() != SourceGraph->GetFName())
+			{
+				State.PreviewGraph->Rename(
+					*SourceGraph->GetName(),
+					nullptr,
+					REN_DontCreateRedirectors | REN_NonTransactional);
+			}
 			AttachPreviewGraphToMatchingBlueprintList(
 				SourceBlueprint,
 				SourceGraph,
@@ -155,10 +181,20 @@ TSharedRef<SWidget> FBlueprintHelperReviewGraphPresenter::BuildContent(
 		Args);
 	Editor->NotifyGraphChanged();
 
-	JumpToSelectedGraphDiffBlock(
-		Args.SelectedChange,
-		State,
-		Args.AddDebugMessage);
+	if (!bGraphNavigationRequest || ShouldShowChange(*Args.SelectedChange))
+	{
+		JumpToSelectedGraphDiffBlock(
+			Args.SelectedChange,
+			State,
+			Args.AddDebugMessage);
+	}
+	else if (Args.AddDebugMessage)
+	{
+		Args.AddDebugMessage(FString::Printf(
+			TEXT("GraphDiff jump skipped change=%s graph=\"%s\" reason=navigation_without_graph_diff"),
+			*Args.SelectedChange->ChangeId,
+			*Args.RequestedGraphName));
+	}
 
 	return Editor;
 }

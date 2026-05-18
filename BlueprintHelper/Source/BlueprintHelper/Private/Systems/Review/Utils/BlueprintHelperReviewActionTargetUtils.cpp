@@ -37,6 +37,7 @@
 #include "Systems/Debug/BlueprintHelperDebugCaseStoreService.h"
 #include "Systems/Debug/BlueprintHelperDebugEntryService.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
+#include "Systems/Review/Utils/BlueprintHelperReviewStoreTargetUtils.h"
 #include "Systems/ToolClusters/CleanupOwnership/BlueprintHelperConvertBlockToUserOwnedService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperOwnershipService.h"
@@ -79,6 +80,23 @@ TArray<FString> FBlueprintHelperReviewActionTargetUtils::CollectTargetKeysFromVi
 			}
 		}
 		return TargetKeys;
+	}
+TArray<FString> FBlueprintHelperReviewActionTargetUtils::CollectScopeIdentitiesFromVisibleChange(const FBlueprintHelperReviewVisibleChange& Change)
+	{
+		TArray<FString> ScopeIdentities;
+		if (!Change.ScopeIdentity.IsEmpty())
+		{
+			ScopeIdentities.AddUnique(Change.ScopeIdentity);
+		}
+		for (const FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
+		{
+			const FString ScopeIdentity = FBlueprintHelperReviewStoreTargetUtils::MakeReviewScopeIdentity(Target, FString());
+			if (!ScopeIdentity.IsEmpty())
+			{
+				ScopeIdentities.AddUnique(ScopeIdentity);
+			}
+		}
+		return ScopeIdentities;
 	}
 FString FBlueprintHelperReviewActionTargetUtils::MakeReviewPackageKey(FString AssetPath)
 	{
@@ -167,6 +185,7 @@ TArray<FPersistedReviewTargetMatch> FBlueprintHelperReviewActionTargetUtils::Res
 		}
 
 		const TArray<FString> RequestedTargetKeys = CollectTargetKeysFromVisibleChange(Change);
+		const TArray<FString> RequestedScopeIdentities = CollectScopeIdentitiesFromVisibleChange(Change);
 		FBlueprintHelperReviewRecordQuery Query;
 		Query.bPendingOnly = false;
 
@@ -205,16 +224,38 @@ TArray<FPersistedReviewTargetMatch> FBlueprintHelperReviewActionTargetUtils::Res
 					continue;
 				}
 
-				const bool bSameChangeIdentity =
-					(!Change.ChangeId.IsEmpty() && Candidate.ChangeId == Change.ChangeId) ||
-					(!Change.LocationKey.IsEmpty() && Candidate.LocationKey == Change.LocationKey) ||
-					(!Change.LatestTransactionId.IsEmpty() && Candidate.LatestTransactionId == Change.LatestTransactionId);
-
-				if (!bSameChangeIdentity)
+				if (RequestedScopeIdentities.Num() == 0)
 				{
 					continue;
 				}
-				MatchedTargetKeys = CandidateTargetKeys;
+
+				const TArray<FString> CandidateScopeIdentities = CollectScopeIdentitiesFromVisibleChange(Candidate);
+				bool bScopeMatched = false;
+				for (const FString& RequestedScopeIdentity : RequestedScopeIdentities)
+				{
+					if (!RequestedScopeIdentity.IsEmpty() && CandidateScopeIdentities.Contains(RequestedScopeIdentity))
+					{
+						bScopeMatched = true;
+						break;
+					}
+				}
+				if (!bScopeMatched)
+				{
+					continue;
+				}
+
+				for (const FBlueprintHelperReviewAtomicTarget& CandidateTarget : Candidate.AtomicTargets)
+				{
+					if (CandidateTarget.Status != EBlueprintHelperReviewChangeStatus::Pending)
+					{
+						continue;
+					}
+					const FString CandidateTargetScopeIdentity = FBlueprintHelperReviewStoreTargetUtils::MakeReviewScopeIdentity(CandidateTarget, Candidate.ScopeIdentity);
+					if (!CandidateTargetScopeIdentity.IsEmpty() && RequestedScopeIdentities.Contains(CandidateTargetScopeIdentity))
+					{
+						MatchedTargetKeys.AddUnique(CandidateTarget.TargetKey);
+					}
+				}
 				if (MatchedTargetKeys.Num() == 0)
 				{
 					continue;

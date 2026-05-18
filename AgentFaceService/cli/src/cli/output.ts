@@ -64,10 +64,11 @@ export function buildCliSummary(input: {
   const issues = arrayOfRecords(data?.['issues']);
   const targetAssets = collectTargetAssets(input.toolResult, data, task, taskPlan);
   const taskType = readString(taskPlan?.task_type) ?? readString(data?.['task_type']) ?? readString(task?.['task_type']);
-  const previewId =
-    readString(extra['previewId']) ??
-    readString(data?.['preview_id']) ??
-    (input.command.kind === 'task.preview' ? readString(input.toolResult.trace_id) : undefined);
+  const previewId = isPreviewCommand(input.command)
+    ? readString(extra['previewId'])
+      ?? readString(data?.['preview_id'])
+      ?? readString(input.toolResult.trace_id)
+    : undefined;
   const taskRunId =
     readString(data?.['task_run_id']) ??
     readString(task?.['task_run_id']) ??
@@ -101,7 +102,7 @@ export function writeCliResult(
   toolResult: ToolResultBase,
   extra: Record<string, unknown> = {},
 ): CliWriteOutcome {
-  const safeToolResult = sanitizeAgentFacingToolResult(toolResult);
+  const safeToolResult = stripExecutePreviewId(command, sanitizeAgentFacingToolResult(toolResult));
   const safeExtra = sanitizeAgentFacingValue(extra);
   const artifactRoot = resolveArtifactRoot({ cwd: runtime.cwd, cliDir: command.artifactDir });
   const runId = inferRunId(command, safeToolResult, safeExtra);
@@ -272,11 +273,15 @@ function inferRunId(
 ): string {
   const data = asRecord(toolResult.data);
   const task = asRecord(data?.['task']);
+  const taskRunId = readString(data?.['task_run_id'])
+    ?? readString(task?.['task_run_id'])
+    ?? command.taskRunId;
+  if (!isPreviewCommand(command)) {
+    return taskRunId ?? `cli_${Date.now()}`;
+  }
   return readString(extra['previewId'])
     ?? readString(data?.['preview_id'])
-    ?? readString(data?.['task_run_id'])
-    ?? readString(task?.['task_run_id'])
-    ?? command.taskRunId
+    ?? taskRunId
     ?? `cli_${Date.now()}`;
 }
 
@@ -339,6 +344,32 @@ function readNumber(value: unknown): number | undefined {
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return isRecord(value) ? value : undefined;
+}
+
+function isPreviewCommand(command: CliCommand): boolean {
+  return command.kind === 'task.preview'
+    || (command.kind === 'tool.invoke' && command.toolName === 'blueprinthelper_preview_task');
+}
+
+function isExecuteCommand(command: CliCommand): boolean {
+  return command.kind === 'task.execute'
+    || (command.kind === 'tool.invoke' && command.toolName === 'blueprinthelper_execute_task');
+}
+
+function stripExecutePreviewId(command: CliCommand, toolResult: ToolResultBase): ToolResultBase {
+  if (!toolResult.ok || !isExecuteCommand(command)) {
+    return toolResult;
+  }
+  const data = asRecord(toolResult.data);
+  if (!data || !Object.hasOwn(data, 'preview_id')) {
+    return toolResult;
+  }
+  const nextData = { ...data };
+  delete nextData['preview_id'];
+  return {
+    ...toolResult,
+    data: nextData,
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -443,3 +443,12 @@ rg -n 'SReadOnlyHierarchyView' 'E:\UE_5.6\Engine\Source\Editor' -g '*.h' -g '*.c
 原因：`Saved/BuildPlugin_*` 是打包插件输出目录，但其中仍包含同名模块规则文件。项目编译时 UBT 会扫描到这些 `.Build.cs`，与真实插件源码下的 `BlueprintHelper.Build.cs` 发生重名冲突。
 
 处理：编译前清理或隔离 `Plugins/BlueprintHelper/Saved/BuildPlugin_*` 打包输出目录，再重新执行项目编译。该错误不是业务 C++ 源码编译错误。
+## 2026-05-18 MCP open_editor agent-profile BOM
+- 现象：MCP open_editor 返回 PROJECT_AGENT_PROFILE_INVALID_JSON，错误包含 Unexpected token '﻿'。
+- 原因：项目 .blueprinthelper/agent-profile.json 带 UTF-8 BOM，MCP JSON parser 不接受 BOM。
+- 处理：将该文件重写为 UTF-8 no BOM 后重试 open_editor。
+
+## 2026-05-18 install 脚本覆盖 AutoRepair profile
+- 现象：preview 通过但 execute 返回 Bridge write failed，runtime diagnostics 显示 write_permission.disabled / write_session_missing。
+- 原因：测试 install 脚本后项目 .blueprinthelper/agent-profile.json 的 active_profile.safety_profile 被覆盖为 Conservative。
+- 处理：将 safety_profile 切回 AutoRepair，并保持 safety.write_approval_required=false、approval_bypass=true；必要时重启 Editor 让 Bridge 重新加载配置。

@@ -498,6 +498,11 @@ bool FBlueprintHelperReviewStoreService::PurgeReviewTargets(
 			TargetKeySet.Add(TargetKey);
 		}
 	}
+	if (TargetKeySet.Num() == 0)
+	{
+		OutError = TEXT("missing_target_keys_for_purge");
+		return false;
+	}
 
 	bool bMatchedAny = false;
 	for (int32 ChangeIndex = Record.VisibleChanges.Num() - 1; ChangeIndex >= 0; --ChangeIndex)
@@ -1014,10 +1019,11 @@ void FBlueprintHelperReviewStoreService::GroupAtomicVisibleChange(
 	}
 
 	const FBlueprintHelperReviewAtomicTarget& Target = AtomicChange.AtomicTargets[0];
+	const FString ScopeIdentity = FBlueprintHelperReviewStoreTargetUtils::MakeReviewScopeIdentity(Target, AtomicChange.LocationKey);
 	const FString GroupKey = FString::Printf(
 		TEXT("%s|%s"),
 		*AtomicChange.AssetPath,
-		*Target.VisualGroupKey);
+		*ScopeIdentity);
 
 	if (const int32* ExistingIndex = GroupToIndex.Find(GroupKey))
 	{
@@ -1078,9 +1084,6 @@ void FBlueprintHelperReviewStoreService::AddEvidenceAtomicTargets(
 		{
 			Target.ExecutionOrder = Target.TaskStepIndex * 1000 + Index;
 		}
-		Target.ScopeIdentity = FBlueprintHelperReviewStoreTargetUtils::MakeReviewScopeIdentity(
-			Target,
-			FBlueprintHelperReviewStoreTargetUtils::MakeReviewInternalMissingAnchorKey(Evidence.TransactionId, Index));
 		Target.FirstTransactionId = Target.FirstTransactionId.IsEmpty()
 			? Evidence.TransactionId
 			: Target.FirstTransactionId;
@@ -1101,6 +1104,9 @@ void FBlueprintHelperReviewStoreService::AddEvidenceAtomicTargets(
 			Target.VisualGroupKey,
 			Evidence.OperationKind);
 		FBlueprintHelperReviewStoreTargetUtils::ApplyGraphBodyAggregation(Target);
+		Target.ScopeIdentity = FBlueprintHelperReviewStoreTargetUtils::MakeReviewScopeIdentity(
+			Target,
+			FBlueprintHelperReviewStoreTargetUtils::MakeReviewInternalMissingAnchorKey(Evidence.TransactionId, Index));
 		NormalizeReviewTargetSemanticSnapshots(Evidence, Target);
 
 		FString NeedsActionReason;
@@ -1116,11 +1122,13 @@ void FBlueprintHelperReviewStoreService::AddEvidenceAtomicTargets(
 		const FString AtomicLookupKey = FBlueprintHelperReviewStoreTargetUtils::MakeReviewAtomicLookupKey(
 			Target,
 			FBlueprintHelperReviewStoreTargetUtils::MakeReviewInternalMissingAnchorKey(Evidence.TransactionId, Index));
+		const FString AtomicScopeLookupKey = Target.ScopeIdentity.IsEmpty() ? AtomicLookupKey : Target.ScopeIdentity;
 
 		FBlueprintHelperReviewVisibleChange* Change = Record.VisibleChanges.FindByPredicate(
-			[&VisualGroupKey, &ChangeAssetPath](const FBlueprintHelperReviewVisibleChange& Candidate)
+			[&AtomicScopeLookupKey, &ChangeAssetPath](const FBlueprintHelperReviewVisibleChange& Candidate)
 			{
-				return Candidate.LocationKey == VisualGroupKey
+				return !AtomicScopeLookupKey.IsEmpty()
+					&& FBlueprintHelperReviewStoreMergeUtils::MakeVisibleChangeScopeIdentity(Candidate) == AtomicScopeLookupKey
 					&& Candidate.AssetPath == ChangeAssetPath;
 			});
 		if (!Change)
@@ -1146,9 +1154,12 @@ void FBlueprintHelperReviewStoreService::AddEvidenceAtomicTargets(
 		}
 
 		FBlueprintHelperReviewAtomicTarget* ExistingTarget = Change->AtomicTargets.FindByPredicate(
-			[&AtomicLookupKey](const FBlueprintHelperReviewAtomicTarget& Candidate)
+			[&AtomicScopeLookupKey](const FBlueprintHelperReviewAtomicTarget& Candidate)
 			{
-				return FBlueprintHelperReviewStoreTargetUtils::MakeReviewAtomicLookupKey(Candidate, FString()) == AtomicLookupKey;
+				const FString CandidateScopeIdentity = Candidate.ScopeIdentity.IsEmpty()
+					? FBlueprintHelperReviewStoreTargetUtils::MakeReviewAtomicLookupKey(Candidate, FString())
+					: Candidate.ScopeIdentity;
+				return !AtomicScopeLookupKey.IsEmpty() && CandidateScopeIdentity == AtomicScopeLookupKey;
 			});
 		if (!ExistingTarget)
 		{

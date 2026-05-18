@@ -44,6 +44,8 @@ struct BLUEPRINTHELPER_API FBlueprintHelperReviewGraphPresenterArgs
 	const FBlueprintHelperReviewAssetContext* AssetContext = nullptr;
 	const TArray<TSharedPtr<FBlueprintHelperReviewVisibleChange>>* ChangeItems = nullptr;
 	TSharedPtr<FBlueprintHelperReviewVisibleChange> SelectedChange;
+	FString RequestedGraphName;
+	bool bAllowGraphNavigationWithoutGraphReview = false;
 	TFunction<void(const FString&)> AddDebugMessage;
 	TFunction<FReply(const FString&)> OnAcceptChangeId;
 	TFunction<FReply(const FString&)> OnRejectChangeId;
@@ -95,8 +97,8 @@ struct BLUEPRINTHELPER_API FBlueprintHelperReviewPanelSurfacePresenterArgs
 	const TArray<TSharedPtr<FBlueprintHelperReviewVisibleChange>>* ChangeItems = nullptr;
 	TSharedPtr<FBlueprintHelperReviewVisibleChange> SelectedChange;
 	TFunction<void(const FString&)> AddDebugMessage;
-	TFunction<FReply(TSharedPtr<FBlueprintHelperReviewVisibleChange>)> OnAcceptChange;
-	TFunction<FReply(TSharedPtr<FBlueprintHelperReviewVisibleChange>)> OnRejectChange;
+	TFunction<FReply(const FString&)> OnAcceptChangeId;
+	TFunction<FReply(const FString&)> OnRejectChangeId;
 	TFunction<FSlateColor(EBlueprintHelperReviewChangeKind)> GetChangeColor;
 	TFunction<FSlateColor()> GetSelectedDiffColor;
 	FBlueprintHelperReviewResolveRowGeometry ResolveRowGeometry;

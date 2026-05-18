@@ -18,7 +18,6 @@ export function nextTaskRunId() {
 
 export function storeTaskResult(input: {
   taskRunId: string;
-  previewId: string;
   taskPlan: TaskPlan;
   status: 'completed' | 'failed';
   bridgeResult?: Record<string, unknown>;
@@ -38,7 +37,6 @@ export function storeTaskResult(input: {
   const journal = {
     schema: TASK_RUN_JOURNAL_SCHEMA,
     task_run_id: input.taskRunId,
-    preview_id: input.previewId,
     task_type: input.taskPlan.task_type,
     feature_name: input.taskPlan.task_name,
     ...(generatedIntent ? { generated_intent: generatedIntent } : {}),

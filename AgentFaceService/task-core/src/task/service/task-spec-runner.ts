@@ -117,7 +117,6 @@ export function createTaskSpecRunner(input: {
         const modified = isBridgeResultModified(bridgeResult);
         storeTaskResult({
           taskRunId,
-          previewId: preview.previewId,
           taskPlan: preview.taskPlan,
           status: 'completed',
           bridgeResult,
@@ -129,7 +128,6 @@ export function createTaskSpecRunner(input: {
           {
             schema: TASK_EXECUTION_SCHEMA,
             task_run_id: taskRunId,
-            preview_id: preview.previewId,
             task: {
               task_run_id: taskRunId,
               feature_name: preview.taskPlan.task_name,

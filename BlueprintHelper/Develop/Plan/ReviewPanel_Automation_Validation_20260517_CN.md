@@ -83,3 +83,32 @@ Automation RunTests BlueprintHelper.Review.UI
 3. 验证 GraphPanel diff block 是 underlay，不遮挡节点交互。
 4. 验证 asset lifecycle root Reject 成功后删除 created asset，并且只在 root 成功后清理 same-asset child reviews。
 5. 验证 DebugPanel `LoadBundle`、`CaptureFocus`、真实 UI 操作后的 bundle 内容。
+
+## 2026-05-18 ReviewPanel 自动化总组回归
+
+执行命令：
+
+```powershell
+& 'E:\UE_5.6\Engine\Binaries\Win64\UnrealEditor-Cmd.exe' 'D:\UEProjects\Template\Template.uproject' -Unattended -NoSplash -NoSound -NullRHI -nop4 -ExecCmds='Automation RunTests BlueprintHelper.Review;Quit' -TestExit='Automation Test Queue Empty' -ReportOutputPath='D:\UEProjects\Template\Saved\Automation\ReviewPanel_All_20260518_001'
+```
+
+结果：
+
+1. `BlueprintHelper.Review` 总前缀自动化通过。
+2. 报告：`D:\UEProjects\Template\Saved\Automation\ReviewPanel_All_20260518_001\index.json`。
+3. 汇总：120 total，110 succeeded，10 succeeded with warnings，0 failed，0 not run。
+4. warning 性质：日志显示为测试夹具 ObjectPath deprecation warning，不是 ReviewPanel 断言失败。
+
+覆盖范围：
+
+1. Review visible change 聚合、去重、surface routing、颜色和 action identity。
+2. ReviewStore / Record / Action / Reject / RejectAll / lifecycle cascade。
+3. Review UI presenter 构造、asset context、DataTable / DataAsset / Structure / WidgetTree readonly presenter。
+4. Graph bounds / block metadata bounds / Graph resolver。
+5. Debug copyable text、summary、semantic hash、needs_action / reject_failed DebugCase 链路。
+
+边界：
+
+1. 自动化通过不等同于 live Editor UI 已验收。
+2. 真实 Slate hover、row 内按钮、GraphPanel underlay 视觉层级、DebugPanel `LoadBundle` / `CaptureFocus` 仍归用户手动测试。
+3. 后续如果用户手动测试发现视觉或交互问题，应新增 DebugBundle 并回写到手动测试记录。

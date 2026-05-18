@@ -11,6 +11,7 @@
 class FBlueprintHelperReviewStoreMergeUtils
 {
 public:
+	static FString MakeVisibleChangeScopeIdentity(const FBlueprintHelperReviewVisibleChange& Change);
 	static FString MakeLoadedVisibleChangeCollapseKey(const FBlueprintHelperReviewVisibleChange& Change);
 	static void AddUniqueReviewStrings(TArray<FString>& Target, const TArray<FString>& Source);
 	static void MergeReviewAtomicTargetsLatestWins(

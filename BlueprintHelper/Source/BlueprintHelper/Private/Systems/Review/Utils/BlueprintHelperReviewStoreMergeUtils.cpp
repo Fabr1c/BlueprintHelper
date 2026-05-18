@@ -17,17 +17,34 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentEvidence.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewStoreTargetUtils.h"
 
+FString FBlueprintHelperReviewStoreMergeUtils::MakeVisibleChangeScopeIdentity(const FBlueprintHelperReviewVisibleChange& Change)
+	{
+		if (!Change.ScopeIdentity.IsEmpty())
+		{
+			return Change.ScopeIdentity;
+		}
+		for (const FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
+		{
+			const FString ScopeIdentity = FBlueprintHelperReviewStoreTargetUtils::MakeReviewScopeIdentity(Target, Change.LocationKey);
+			if (!ScopeIdentity.IsEmpty())
+			{
+				return ScopeIdentity;
+			}
+		}
+		return Change.LocationKey;
+	}
 FString FBlueprintHelperReviewStoreMergeUtils::MakeLoadedVisibleChangeCollapseKey(const FBlueprintHelperReviewVisibleChange& Change)
 	{
 		const FString AssetKey = FBlueprintHelperReviewStoreTargetUtils::MakeReviewAssetLinkKey(Change.AssetPath);
 		const FString RootPrefix = Change.bIsAssetLifecycleRoot ? TEXT("root") : TEXT("change");
-		if (Change.AtomicTargets.Num() > 0)
+		const FString ScopeIdentity = MakeVisibleChangeScopeIdentity(Change);
+		if (!ScopeIdentity.IsEmpty())
 		{
 			return FString::Printf(
 				TEXT("%s|%s|%s"),
 				*RootPrefix,
 				*AssetKey,
-				*FBlueprintHelperReviewStoreTargetUtils::MakeReviewScopeIdentity(Change.AtomicTargets[0], Change.LocationKey));
+				*ScopeIdentity);
 		}
 
 		return FString::Printf(
@@ -35,7 +52,7 @@ FString FBlueprintHelperReviewStoreMergeUtils::MakeLoadedVisibleChangeCollapseKe
 			*RootPrefix,
 			*AssetKey,
 			*Change.GraphName,
-			*Change.LocationKey);
+			*Change.ChangeId);
 	}
 void FBlueprintHelperReviewStoreMergeUtils::AddUniqueReviewStrings(TArray<FString>& Target, const TArray<FString>& Source)
 	{
@@ -53,13 +70,20 @@ void FBlueprintHelperReviewStoreMergeUtils::MergeReviewAtomicTargetsLatestWins(
 	{
 		for (const FBlueprintHelperReviewAtomicTarget& IncomingTarget : IncomingTargets)
 		{
-			const FString IncomingKey = FBlueprintHelperReviewStoreTargetUtils::MakeReviewAtomicLookupKey(IncomingTarget, FString());
+			const FString IncomingKey = IncomingTarget.ScopeIdentity.IsEmpty()
+				? FBlueprintHelperReviewStoreTargetUtils::MakeReviewAtomicLookupKey(IncomingTarget, FString())
+				: IncomingTarget.ScopeIdentity;
 			bool bReplaced = false;
 			for (FBlueprintHelperReviewAtomicTarget& ExistingTarget : ExistingTargets)
 			{
-				if (FBlueprintHelperReviewStoreTargetUtils::MakeReviewAtomicLookupKey(ExistingTarget, FString()) == IncomingKey)
+				const FString ExistingKey = ExistingTarget.ScopeIdentity.IsEmpty()
+					? FBlueprintHelperReviewStoreTargetUtils::MakeReviewAtomicLookupKey(ExistingTarget, FString())
+					: ExistingTarget.ScopeIdentity;
+				if (!IncomingKey.IsEmpty() && ExistingKey == IncomingKey)
 				{
-					ExistingTarget = IncomingTarget;
+					FBlueprintHelperReviewAtomicTarget MergedTarget = IncomingTarget;
+					FBlueprintHelperReviewStoreTargetUtils::PreserveFirstBaselineFields(MergedTarget, ExistingTarget, IncomingTarget);
+					ExistingTarget = MergedTarget;
 					bReplaced = true;
 					break;
 				}
@@ -77,12 +101,14 @@ void FBlueprintHelperReviewStoreMergeUtils::MergeVisibleChangeLatestWins(
 		TArray<FString> SourceTransactionIds = Existing.SourceTransactionIds;
 		TArray<FString> LatestTransactionIds = Existing.LatestTransactionIds;
 		TArray<FBlueprintHelperReviewAtomicTarget> AtomicTargets = Existing.AtomicTargets;
+		const FString ScopeIdentity = Existing.ScopeIdentity.IsEmpty() ? Incoming.ScopeIdentity : Existing.ScopeIdentity;
 
 		AddUniqueReviewStrings(SourceTransactionIds, Incoming.SourceTransactionIds);
 		AddUniqueReviewStrings(LatestTransactionIds, Incoming.LatestTransactionIds);
 		MergeReviewAtomicTargetsLatestWins(AtomicTargets, Incoming.AtomicTargets);
 
 		Existing = Incoming;
+		Existing.ScopeIdentity = ScopeIdentity;
 		Existing.SourceTransactionIds = SourceTransactionIds;
 		Existing.LatestTransactionIds = LatestTransactionIds;
 		Existing.AtomicTargets = AtomicTargets;
@@ -147,7 +173,8 @@ void FBlueprintHelperReviewStoreMergeUtils::MergeReviewRecord(FBlueprintHelperRe
 			FBlueprintHelperReviewVisibleChange* ExistingChange = Existing.VisibleChanges.FindByPredicate(
 				[&IncomingChange](const FBlueprintHelperReviewVisibleChange& Candidate)
 				{
-					return Candidate.LocationKey == IncomingChange.LocationKey;
+					return FBlueprintHelperReviewStoreMergeUtils::MakeLoadedVisibleChangeCollapseKey(Candidate)
+						== FBlueprintHelperReviewStoreMergeUtils::MakeLoadedVisibleChangeCollapseKey(IncomingChange);
 				});
 			if (!ExistingChange)
 			{
@@ -160,12 +187,16 @@ void FBlueprintHelperReviewStoreMergeUtils::MergeReviewRecord(FBlueprintHelperRe
 				FBlueprintHelperReviewAtomicTarget* ExistingTarget = nullptr;
 				if (!IncomingTarget.TargetKey.IsEmpty())
 				{
+					const FString IncomingTargetScopeIdentity = IncomingTarget.ScopeIdentity.IsEmpty()
+						? FBlueprintHelperReviewStoreTargetUtils::MakeReviewAtomicLookupKey(IncomingTarget, FString())
+						: IncomingTarget.ScopeIdentity;
 					ExistingTarget = ExistingChange->AtomicTargets.FindByPredicate(
-						[&IncomingTarget](const FBlueprintHelperReviewAtomicTarget& Candidate)
+						[&IncomingTargetScopeIdentity](const FBlueprintHelperReviewAtomicTarget& Candidate)
 						{
-							return Candidate.TargetKey == IncomingTarget.TargetKey
-								&& Candidate.Surface == IncomingTarget.Surface
-								&& Candidate.GraphName == IncomingTarget.GraphName;
+							const FString CandidateScopeIdentity = Candidate.ScopeIdentity.IsEmpty()
+								? FBlueprintHelperReviewStoreTargetUtils::MakeReviewAtomicLookupKey(Candidate, FString())
+								: Candidate.ScopeIdentity;
+							return !IncomingTargetScopeIdentity.IsEmpty() && CandidateScopeIdentity == IncomingTargetScopeIdentity;
 						});
 				}
 
@@ -180,7 +211,9 @@ void FBlueprintHelperReviewStoreMergeUtils::MergeReviewRecord(FBlueprintHelperRe
 				{
 					SourceTransactionIds.AddUnique(SourceTransactionId);
 				}
-				*ExistingTarget = IncomingTarget;
+				FBlueprintHelperReviewAtomicTarget MergedTarget = IncomingTarget;
+				FBlueprintHelperReviewStoreTargetUtils::PreserveFirstBaselineFields(MergedTarget, *ExistingTarget, IncomingTarget);
+				*ExistingTarget = MergedTarget;
 				ExistingTarget->SourceTransactionIds = SourceTransactionIds;
 			}
 
