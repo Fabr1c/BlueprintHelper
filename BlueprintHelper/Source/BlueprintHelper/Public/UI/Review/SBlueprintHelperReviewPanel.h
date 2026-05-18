@@ -15,6 +15,7 @@ class FBlueprintHelperReviewPanelPresenter;
 class FJsonObject;
 class SEditableTextBox;
 class SKismetInspector;
+class SNotificationItem;
 class SBox;
 class SMultiLineEditableTextBox;
 class UEdGraph;
@@ -55,6 +56,22 @@ public:
 
 private:
 	using FReviewChangeItem = TSharedPtr<FBlueprintHelperReviewVisibleChange>;
+	enum class EReviewActionNotificationState : uint8
+	{
+		Pending,
+		Success,
+		Fail
+	};
+
+	struct FReviewActionBatchNotificationState
+	{
+		FString NotificationKey;
+		int32 TotalCount = 0;
+		int32 FinishedCount = 0;
+		int32 SuccessCount = 0;
+		int32 FailedCount = 0;
+	};
+
 	struct FReviewTreeItem
 	{
 		bool bIsAssetRoot = false;
@@ -109,6 +126,8 @@ private:
 	void RefreshDiffStackWidgets();
 	void RefreshMainWorkspaceAfterReviewStateChanged();
 	void RefreshSurfaceOverlay(EBlueprintHelperReviewSurface Surface);
+	void OnRegisteredRowGeometryChanged(const FString& AssetPath, EBlueprintHelperReviewSurface Surface);
+	void OnSurfaceGeometryInvalidated(EBlueprintHelperReviewSurface Surface);
 	void RebuildChangeTreeItems();
 	void RefreshChangeTreeWidget();
 	static void BuildChangeTreeItemsFromChangeItems(
@@ -128,11 +147,19 @@ private:
 
 	FReply OnAcceptSelected();
 	FReply OnRejectSelected();
-	FReply OnAcceptChange(FReviewChangeItem Item);
-	FReply OnRejectChange(FReviewChangeItem Item);
+	FReply ExecuteAcceptChange(FReviewChangeItem Item);
+	FReply ExecuteRejectChange(FReviewChangeItem Item);
 	FReply OnAcceptAll();
 	FReply OnRejectAll();
-	void QueueRejectChange(FReviewChangeItem Item);
+	void ShowReviewActionNotification(
+		const FString& NotificationKey,
+		const FString& StatusText,
+		EReviewActionNotificationState State,
+		bool bExpire,
+		bool bUseThrobber);
+	static FString BuildReviewActionNotificationLabel(FReviewChangeItem Item);
+	void QueueRejectChange(FReviewChangeItem Item, bool bShowIndividualNotification = true);
+	void RecordRejectBatchResult(const FString& ChangeId, bool bSucceeded);
 	EActiveTimerReturnType TickAsyncRejectPrepare(double InCurrentTime, float InDeltaTime);
 	EActiveTimerReturnType TickAsyncRejectMutation(double InCurrentTime, float InDeltaTime);
 	void HandlePreparedRejectReady(const FString& ChangeId, const FBlueprintHelperReviewRejectOptions& PreparedOptions);
@@ -184,6 +211,7 @@ private:
 	FReviewChangeItem SelectedChange;
 	FString LastVisibleChangeRefreshSignature;
 	FDelegateHandle PendingReviewChangedHandle;
+	FDelegateHandle RowGeometryChangedHandle;
 	TArray<FString> DebugMessages;
 	TSharedPtr<SMultiLineEditableTextBox> DebugMessageTextBox;
 	TSharedPtr<SEditableTextBox> DebugBundlePathTextBox;
@@ -192,6 +220,9 @@ private:
 	TArray<FString> PendingRejectChangeIds;
 	TSet<FString> RejectActionInProgressChangeIds;
 	TMap<FString, FBlueprintHelperReviewRejectOptions> PreparedRejectOptionsByChangeId;
+	TMap<FString, TWeakPtr<SNotificationItem>> ReviewActionNotifications;
+	TMap<FString, FString> RejectBatchKeyByChangeId;
+	TMap<FString, FReviewActionBatchNotificationState> RejectBatchNotifications;
 	FString ActiveRejectChangeId;
 	bool bAsyncRejectPrepareActive = false;
 	bool bAsyncRejectMutationScheduled = false;
@@ -200,6 +231,9 @@ private:
 	int32 DebugFocusTraversalGeometryRetryCount = 0;
 	bool bDebugFocusTraversalAwaitingGeometry = false;
 	bool bDebugFocusTraversalActive = false;
+	FString RequestedGraphNavigationChangeId;
+	FString RequestedGraphNavigationGraphName;
+	bool bAllowGraphNavigationWithoutGraphReview = false;
 	int32 DetailsGeometryRetryCount = 0;
 	bool bDetailsGeometryRetryActive = false;
 	FBlueprintHelperReviewAssetContext ReviewAssetContext;

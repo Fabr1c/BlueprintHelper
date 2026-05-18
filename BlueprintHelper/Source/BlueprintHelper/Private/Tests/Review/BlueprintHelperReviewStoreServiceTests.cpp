@@ -1,4 +1,4 @@
-#if WITH_DEV_AUTOMATION_TESTS
+﻿#if WITH_DEV_AUTOMATION_TESTS
 
 #include "Misc/AutomationTest.h"
 #include "Blueprint/UserWidget.h"
@@ -1226,11 +1226,11 @@ bool FBlueprintHelperReviewPresenterOverlayBuildsDeterministicReviewListTest::Ru
 		{
 			DebugMessages.Add(Message);
 		};
-		Args.OnAcceptChange = [](TSharedPtr<FBlueprintHelperReviewVisibleChange>)
+		Args.OnAcceptChangeId = [](const FString&)
 		{
 			return FReply::Handled();
 		};
-		Args.OnRejectChange = [](TSharedPtr<FBlueprintHelperReviewVisibleChange>)
+		Args.OnRejectChangeId = [](const FString&)
 		{
 			return FReply::Handled();
 		};
@@ -1374,11 +1374,11 @@ bool FBlueprintHelperReviewPresenterOverlayHidesBuiltInPanelFallbackWithoutSlate
 		{
 			DebugMessages.Add(Message);
 		};
-		Args.OnAcceptChange = [](TSharedPtr<FBlueprintHelperReviewVisibleChange>)
+		Args.OnAcceptChangeId = [](const FString&)
 		{
 			return FReply::Handled();
 		};
-		Args.OnRejectChange = [](TSharedPtr<FBlueprintHelperReviewVisibleChange>)
+		Args.OnRejectChangeId = [](const FString&)
 		{
 			return FReply::Handled();
 		};
@@ -1516,11 +1516,11 @@ bool FBlueprintHelperReviewNonGraphPanelsDoNotUseAnchorOverlayTest::RunTest(cons
 		{
 			DebugMessages.Add(Message);
 		};
-		Args.OnAcceptChange = [](TSharedPtr<FBlueprintHelperReviewVisibleChange>)
+		Args.OnAcceptChangeId = [](const FString&)
 		{
 			return FReply::Handled();
 		};
-		Args.OnRejectChange = [](TSharedPtr<FBlueprintHelperReviewVisibleChange>)
+		Args.OnRejectChangeId = [](const FString&)
 		{
 			return FReply::Handled();
 		};
@@ -1782,11 +1782,11 @@ bool FBlueprintHelperReviewPresenterOverlayUsesStableSlateRowGeometryTest::RunTe
 		{
 			DebugMessages.Add(Message);
 		};
-		Args.OnAcceptChange = [](TSharedPtr<FBlueprintHelperReviewVisibleChange>)
+		Args.OnAcceptChangeId = [](const FString&)
 		{
 			return FReply::Handled();
 		};
-		Args.OnRejectChange = [](TSharedPtr<FBlueprintHelperReviewVisibleChange>)
+		Args.OnRejectChangeId = [](const FString&)
 		{
 			return FReply::Handled();
 		};
@@ -2787,11 +2787,11 @@ bool FBlueprintHelperReviewPresenterOverlayShowsOnlyReadySlateRowGeometryTest::R
 	{
 		DebugMessages.Add(Message);
 	};
-	Args.OnAcceptChange = [](TSharedPtr<FBlueprintHelperReviewVisibleChange>)
+	Args.OnAcceptChangeId = [](const FString&)
 	{
 		return FReply::Handled();
 	};
-	Args.OnRejectChange = [](TSharedPtr<FBlueprintHelperReviewVisibleChange>)
+	Args.OnRejectChangeId = [](const FString&)
 	{
 		return FReply::Handled();
 	};

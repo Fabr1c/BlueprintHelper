@@ -28,6 +28,23 @@ void FBlueprintHelperReviewSlateRowGeometryRegistry::RegisterRow(
 	Record.DebugMode = DebugMode ? DebugMode : TEXT("slate_row");
 	Record.RowWidget = RowWidget;
 	Records.Add(Record);
+
+	GetRowsChangedDelegate().Broadcast(AssetPath, Surface);
+}
+
+FDelegateHandle FBlueprintHelperReviewSlateRowGeometryRegistry::AddRowsChangedHandler(
+	const FBlueprintHelperReviewSlateRowLifecycleChanged::FDelegate& Handler)
+{
+	return GetRowsChangedDelegate().Add(Handler);
+}
+
+void FBlueprintHelperReviewSlateRowGeometryRegistry::RemoveRowsChangedHandler(FDelegateHandle& Handle)
+{
+	if (Handle.IsValid())
+	{
+		GetRowsChangedDelegate().Remove(Handle);
+		Handle.Reset();
+	}
 }
 
 bool FBlueprintHelperReviewSlateRowGeometryRegistry::ResolveRowGeometry(
@@ -108,6 +125,13 @@ FBlueprintHelperReviewSlateRowGeometryRegistry::GetRecords()
 {
 	static TArray<FSlateRowGeometryRecord> Records;
 	return Records;
+}
+
+FBlueprintHelperReviewSlateRowLifecycleChanged&
+FBlueprintHelperReviewSlateRowGeometryRegistry::GetRowsChangedDelegate()
+{
+	static FBlueprintHelperReviewSlateRowLifecycleChanged Delegate;
+	return Delegate;
 }
 
 FString FBlueprintHelperReviewSlateRowGeometryRegistry::NormalizeGeometrySearchText(FString Text)

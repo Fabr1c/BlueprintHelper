@@ -31,6 +31,16 @@ public:
 		const FString& AssetPath,
 		const FString& Reason = FString());
 
+	static TSharedRef<FJsonObject> BuildActionHashGuardEvent(
+		const FString& SessionId,
+		const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Change,
+		const FString& AssetPath,
+		const FString& TargetKey,
+		const FString& ExpectedHash,
+		const FString& CurrentHash,
+		const FString& CurrentSnapshotJson,
+		const FString& RecordedAfterSnapshotJson);
+
 	static bool AppendEvent(
 		const FString& BundlePath,
 		const FString& SessionId,

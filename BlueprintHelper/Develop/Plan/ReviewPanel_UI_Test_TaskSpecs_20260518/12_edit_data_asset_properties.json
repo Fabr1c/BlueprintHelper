@@ -1,0 +1,38 @@
+{
+  "schema": "BlueprintHelper.TaskSpec.v1",
+  "task_type": "edit_object_properties",
+  "feature_name": "ReviewPanel_UI_12_EditDataAssetProperties",
+  "target": {
+    "asset_path": "/Game/BlueprintHelperCliSmoke/ReviewPanelManual_20260518_001/DA_RP_UI_Object_20260518_001",
+    "target_type": "asset"
+  },
+  "behavior": {
+    "property_strategy": "property_edit",
+    "changes": [
+      {
+        "kind": "set_object_property",
+        "property_path": "SmokeLabel",
+        "value": "ObjectProperty smoke"
+      },
+      {
+        "kind": "set_object_property",
+        "property_path": "SmokeFloat",
+        "value": "6.5"
+      },
+      {
+        "kind": "set_object_property",
+        "property_path": "bSmokeFlag",
+        "value": "true"
+      }
+    ]
+  },
+  "execution_policy": {
+    "dry_run_mode": "full",
+    "on_missing_capability": "stop_and_report",
+    "review_baseline_dirty_asset_policy": "block"
+  },
+  "validation": {
+    "should_compile": false,
+    "should_save": true
+  }
+}

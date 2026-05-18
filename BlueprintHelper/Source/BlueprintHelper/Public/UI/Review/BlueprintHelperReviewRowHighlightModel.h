@@ -67,8 +67,8 @@ private:
 		FString AssetPath;
 		EBlueprintHelperReviewSurface Surface = EBlueprintHelperReviewSurface::Unknown;
 		TMap<FString, FRowHighlightEntry> TargetKeyToHighlight;
-		TFunction<FReply(TSharedPtr<FBlueprintHelperReviewVisibleChange>)> OnAcceptChange;
-		TFunction<FReply(TSharedPtr<FBlueprintHelperReviewVisibleChange>)> OnRejectChange;
+		TFunction<FReply(const FString&)> OnAcceptChangeId;
+		TFunction<FReply(const FString&)> OnRejectChangeId;
 		TFunction<FSlateColor(EBlueprintHelperReviewChangeKind)> GetChangeColor;
 	};
 

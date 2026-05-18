@@ -160,6 +160,34 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewDebugBundleService::BuildFocusEven
 	return Event;
 }
 
+TSharedRef<FJsonObject> FBlueprintHelperReviewDebugBundleService::BuildActionHashGuardEvent(
+	const FString& SessionId,
+	const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Change,
+	const FString& AssetPath,
+	const FString& TargetKey,
+	const FString& ExpectedHash,
+	const FString& CurrentHash,
+	const FString& CurrentSnapshotJson,
+	const FString& RecordedAfterSnapshotJson)
+{
+	TSharedRef<FJsonObject> Event = BuildLogEvent(
+		SessionId,
+		FString::Printf(
+			TEXT("Reject hash guard target=%s expected=%s current=%s"),
+			*TargetKey,
+			*ExpectedHash,
+			*CurrentHash),
+		Change,
+		AssetPath);
+	Event->SetStringField(TEXT("event_type"), TEXT("review_action_hash_guard"));
+	Event->SetStringField(TEXT("target_key"), TargetKey);
+	Event->SetStringField(TEXT("expected_hash"), ExpectedHash);
+	Event->SetStringField(TEXT("current_hash"), CurrentHash);
+	Event->SetStringField(TEXT("current_snapshot_json"), CurrentSnapshotJson);
+	Event->SetStringField(TEXT("recorded_after_snapshot_json"), RecordedAfterSnapshotJson);
+	return Event;
+}
+
 TSharedRef<FJsonObject> FBlueprintHelperReviewDebugBundleService::CreateEmptyBundle(const FString& SessionId)
 {
 	TSharedRef<FJsonObject> Bundle = MakeShared<FJsonObject>();

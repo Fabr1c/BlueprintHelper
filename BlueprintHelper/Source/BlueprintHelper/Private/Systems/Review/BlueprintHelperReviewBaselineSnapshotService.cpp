@@ -2,6 +2,31 @@
 
 #include "Systems/Review/BlueprintHelperReviewBaselineSnapshotService.h"
 
+#include "EdGraphSchema_K2.h"
+#include "Internationalization/Text.h"
+
+static FString BlueprintHelperReviewMakeStableTextKeyForSnapshot(const FText& Text)
+{
+	if (Text.IsEmptyOrWhitespace() || Text.EqualTo(UEdGraphSchema_K2::VR_DefaultCategory))
+	{
+		return TEXT("ue_default_variable_category");
+	}
+
+	const TOptional<FString> Namespace = FTextInspector::GetNamespace(Text);
+	const TOptional<FString> Key = FTextInspector::GetKey(Text);
+	if (Namespace.IsSet() && Key.IsSet())
+	{
+		return FString::Printf(TEXT("loc:%s:%s"), *Namespace.GetValue(), *Key.GetValue());
+	}
+
+	if (const FString* Source = FTextInspector::GetSourceString(Text))
+	{
+		return *Source;
+	}
+
+	return FTextInspector::GetDisplayString(Text);
+}
+
 #include "Shared/Review/BlueprintHelperReviewTargetKindRegistry.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
 
@@ -745,7 +770,7 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 				Json->SetBoolField(TEXT("exists"), true);
 				Json->SetStringField(TEXT("name"), Variable.VarName.ToString());
 				Json->SetStringField(TEXT("guid"), Variable.VarGuid.ToString(EGuidFormats::Digits));
-				Json->SetStringField(TEXT("category"), Variable.Category.ToString());
+	Json->SetStringField(TEXT("category"), BlueprintHelperReviewMakeStableTextKeyForSnapshot(Variable.Category));
 				Json->SetStringField(TEXT("pin_category"), Variable.VarType.PinCategory.ToString());
 				Json->SetStringField(TEXT("pin_sub_category"), Variable.VarType.PinSubCategory.ToString());
 				Json->SetStringField(TEXT("pin_sub_category_object"), FBlueprintHelperReviewBaselineSnapshotServiceUtils::GetObjectPathNameSafe(Variable.VarType.PinSubCategoryObject.Get()));

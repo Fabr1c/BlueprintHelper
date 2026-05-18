@@ -62,6 +62,37 @@ test('output budget failure still points to full result artifact', () => {
   assert.equal((result.artifacts as Record<string, unknown>).full_result, 'artifacts/preview_001/result.json');
 });
 
+test('execute summary does not expose preview_id even if the tool result contains one', () => {
+  const result = buildCliSummary({
+    command: { kind: 'task.execute', format: 'summary' },
+    toolResult: {
+      ok: true,
+      schema: 'BlueprintHelper.ToolResult.v1',
+      operation: 'execute_task',
+      trace_id: 'trace_execute',
+      status: 'completed',
+      modified: true,
+      data: {
+        schema: 'BlueprintHelper.TaskExecution.v1',
+        task_run_id: 'task_001',
+        preview_id: 'preview_should_not_surface',
+        task: {
+          task_run_id: 'task_001',
+          target_assets: ['/Game/BP_Player'],
+          applied_steps: 1,
+        },
+      },
+    },
+    artifactRefs: {
+      full_result: 'artifacts/task_001/result.json',
+    },
+  });
+
+  assert.equal(result.status, 'executed');
+  assert.equal(result.task_run_id, 'task_001');
+  assert.equal('preview_id' in result, false);
+});
+
 test('field projection keeps only requested top-level and nested fields', () => {
   const result = projectCliFields({
     ok: true,

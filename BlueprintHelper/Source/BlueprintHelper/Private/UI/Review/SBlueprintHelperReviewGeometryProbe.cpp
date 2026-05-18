@@ -34,11 +34,6 @@ void SBlueprintHelperReviewGeometryProbe::Tick(
 	LastAbsolutePosition = AbsolutePosition;
 	LastLocalSize = LocalSize;
 
-	if (FBlueprintHelperReviewRowHighlightModel::IsRowHighlightSurface(Surface))
-	{
-		return;
-	}
-
 	if (bGeometryChanged && OnGeometryInvalidated.IsBound())
 	{
 		OnGeometryInvalidated.Execute(Surface);

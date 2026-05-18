@@ -31,8 +31,8 @@ public:
 		bool bShowActions,
 		bool bFillBackground,
 		const FSlateColor& FrameColor,
-		const TFunction<FReply(TSharedPtr<FBlueprintHelperReviewVisibleChange>)>& OnAcceptChange,
-		const TFunction<FReply(TSharedPtr<FBlueprintHelperReviewVisibleChange>)>& OnRejectChange,
+		const TFunction<FReply(const FString&)>& OnAcceptChangeId,
+		const TFunction<FReply(const FString&)>& OnRejectChangeId,
 		bool bSelected = false);
 
 	static FLinearColor GetDiffFrameBackgroundColor(bool bFillBackground);

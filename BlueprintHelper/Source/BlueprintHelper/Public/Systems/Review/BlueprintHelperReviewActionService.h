@@ -15,6 +15,11 @@ struct FBlueprintHelperReviewActionResult
 	FString RollbackMode;
 	FString Message;
 	bool bSupersededDataCompactionEligible = false;
+	FString HashGuardTargetKey;
+	FString HashGuardExpectedHash;
+	FString HashGuardCurrentHash;
+	FString HashGuardCurrentSnapshotJson;
+	FString HashGuardRecordedAfterSnapshotJson;
 };
 
 struct FBlueprintHelperReviewCascadeActionResult

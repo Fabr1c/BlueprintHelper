@@ -215,6 +215,10 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectVi
 		{
 			Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
 			Result.Message = FString::Printf(TEXT("current_state_changed:%s"), *Target.TargetKey);
+			Result.HashGuardTargetKey = Target.TargetKey;
+			Result.HashGuardExpectedHash = Target.RecordedAfterHash;
+			Result.HashGuardCurrentHash = *CurrentHash;
+			Result.HashGuardRecordedAfterSnapshotJson = Target.AfterSnapshotJson;
 			return Result;
 		}
 		if (FBlueprintHelperReviewSnapshotRestoreService::ShouldUseSnapshotRestore(Target))

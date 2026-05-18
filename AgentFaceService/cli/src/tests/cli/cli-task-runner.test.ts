@@ -114,6 +114,13 @@ test('task execute calls the TaskSpec runner and returns executed summary', asyn
   assert.equal(output.operation, 'task.execute');
   assert.equal(output.status, 'executed');
   assert.equal(output.task_run_id, 'task_cli_001');
+  assert.equal('preview_id' in output, false);
+  const artifacts = output.artifacts as Record<string, unknown>;
+  const fullResultPath = String(artifacts.full_result);
+  const fullResult = JSON.parse(fs.readFileSync(fullResultPath, 'utf8')) as Record<string, unknown>;
+  const toolResult = fullResult.toolResult as Record<string, unknown>;
+  const data = toolResult.data as Record<string, unknown>;
+  assert.equal('preview_id' in data, false);
 });
 
 test('task execute can project stdout to selected fields only', async () => {

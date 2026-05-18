@@ -8,6 +8,7 @@
 #include "IDetailsView.h"
 #include "PropertyEditorDelegates.h"
 #include "PropertyPath.h"
+#include "Framework/Notifications/NotificationManager.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
 #include "SKismetInspector.h"
 #include "UI/Review/BlueprintHelperReviewDebugText.h"
@@ -15,7 +16,9 @@
 #include "UI/Review/BlueprintHelperReviewPanelStyle.h"
 #include "UI/Review/BlueprintHelperReviewPanelPresenter.h"
 #include "UI/Review/BlueprintHelperReviewAssetPresenters.h"
+#include "UI/Review/BlueprintHelperReviewDebugBundleService.h"
 #include "UI/Review/BlueprintHelperReviewRowHighlightModel.h"
+#include "UI/Review/BlueprintHelperReviewSlateRowGeometryRegistry.h"
 #include "UI/Review/BlueprintHelperReviewSurfacePresenter.h"
 #include "UI/Review/Utils/BlueprintHelperReviewPanelAsyncUtils.h"
 #include "UI/Review/Utils/BlueprintHelperReviewPanelLocalUtils.h"
@@ -31,6 +34,7 @@
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SSplitter.h"
+#include "Widgets/Notifications/SNotificationList.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SNullWidget.h"
 #include "Widgets/SOverlay.h"
@@ -44,6 +48,7 @@ SBlueprintHelperReviewPanel::~SBlueprintHelperReviewPanel()
 	{
 		ReviewPanelPresenter->RemovePendingReviewChangedHandler(PendingReviewChangedHandle);
 	}
+	FBlueprintHelperReviewSlateRowGeometryRegistry::RemoveRowsChangedHandler(RowGeometryChangedHandle);
 	FlushAsyncTasks();
 }
 
@@ -70,6 +75,19 @@ void SBlueprintHelperReviewPanel::RefreshVisibleChanges(
 
 void SBlueprintHelperReviewPanel::OnChangeSelectionChanged(FReviewChangeItem Item, ESelectInfo::Type SelectInfo)
 {
+	const bool bKeepGraphNavigationRequest =
+		bAllowGraphNavigationWithoutGraphReview
+		&& Item.IsValid()
+		&& !RequestedGraphNavigationChangeId.IsEmpty()
+		&& Item->ChangeId == RequestedGraphNavigationChangeId;
+
+	if (!bKeepGraphNavigationRequest)
+	{
+		RequestedGraphNavigationChangeId.Reset();
+		RequestedGraphNavigationGraphName.Reset();
+		bAllowGraphNavigationWithoutGraphReview = false;
+	}
+
 	SelectedChange = Item;
 	LoadReviewAssetFromSelection();
 	RefreshMainWorkspaceAfterReviewStateChanged();
@@ -170,6 +188,9 @@ void SBlueprintHelperReviewPanel::OnMyBlueprintGraphNavigationRequested(
 	if (!GraphName.IsEmpty())
 	{
 		Item->GraphName = GraphName;
+		RequestedGraphNavigationChangeId = Item->ChangeId;
+		RequestedGraphNavigationGraphName = GraphName;
+		bAllowGraphNavigationWithoutGraphReview = true;
 	}
 
 	OnChangeSelectionChanged(Item, ESelectInfo::Direct);
@@ -468,12 +489,12 @@ void SBlueprintHelperReviewPanel::SelectNextChangeAfterRemoval(
 
 FReply SBlueprintHelperReviewPanel::OnAcceptChangeId(const FString& ChangeId)
 {
-	return OnAcceptChange(FindChangeItemById(ChangeId));
+	return ExecuteAcceptChange(FindChangeItemById(ChangeId));
 }
 
 FReply SBlueprintHelperReviewPanel::OnRejectChangeId(const FString& ChangeId)
 {
-	return OnRejectChange(FindChangeItemById(ChangeId));
+	return ExecuteRejectChange(FindChangeItemById(ChangeId));
 }
 
 TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildReadonlyComponentsWidget()
@@ -486,7 +507,7 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildReadonlyComponentsWidget()
 			WidgetTreePresenterState,
 			FBlueprintHelperReviewGeometryInvalidated::CreateSP(
 				this,
-				&SBlueprintHelperReviewPanel::RefreshSurfaceOverlay));
+				&SBlueprintHelperReviewPanel::OnSurfaceGeometryInvalidated));
 	}
 
 	return FBlueprintHelperReviewBlueprintComponentsPresenter::BuildContent(
@@ -494,7 +515,7 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildReadonlyComponentsWidget()
 		ComponentsPresenterState,
 		FBlueprintHelperReviewGeometryInvalidated::CreateSP(
 			this,
-			&SBlueprintHelperReviewPanel::RefreshSurfaceOverlay));
+			&SBlueprintHelperReviewPanel::OnSurfaceGeometryInvalidated));
 }
 
 TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildReadonlyMyBlueprintWidget()
@@ -505,7 +526,7 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildReadonlyMyBlueprintWidget(
 		ChangeItems,
 		FBlueprintHelperReviewGeometryInvalidated::CreateSP(
 			this,
-			&SBlueprintHelperReviewPanel::RefreshSurfaceOverlay),
+			&SBlueprintHelperReviewPanel::OnSurfaceGeometryInvalidated),
 		FBlueprintHelperReviewMyBlueprintNavigateToGraph::CreateSP(
 			this,
 			&SBlueprintHelperReviewPanel::OnMyBlueprintGraphNavigationRequested));
@@ -614,13 +635,13 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildPanelDiffFrames(
 	{
 		AddDebugMessage(Message);
 	};
-	Args.OnAcceptChange = [this](FReviewChangeItem Item)
+	Args.OnAcceptChangeId = [this](const FString& ChangeId)
 	{
-		return OnAcceptChange(Item);
+		return OnAcceptChangeId(ChangeId);
 	};
-	Args.OnRejectChange = [this](FReviewChangeItem Item)
+	Args.OnRejectChangeId = [this](const FString& ChangeId)
 	{
-		return OnRejectChange(Item);
+		return OnRejectChangeId(ChangeId);
 	};
 	Args.GetChangeColor = [this](EBlueprintHelperReviewChangeKind Kind)
 	{
@@ -639,7 +660,7 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildPanelDiffFrames(
 	});
 	Args.OnGeometryInvalidated = FBlueprintHelperReviewGeometryInvalidated::CreateSP(
 		this,
-		&SBlueprintHelperReviewPanel::RefreshSurfaceOverlay);
+		&SBlueprintHelperReviewPanel::OnSurfaceGeometryInvalidated);
 
 	if (Surface == EBlueprintHelperReviewSurface::Components
 		&& Predicate == &FBlueprintHelperReviewBlueprintComponentsPresenter::ShouldShowChange)
@@ -731,28 +752,28 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildDiffFrame(
 		bShowActions,
 		true,
 		Item.IsValid() ? GetChangeColor(Item->ChangeKind) : FSlateColor(FLinearColor::Transparent),
-		[this](FReviewChangeItem ChangeItem)
+		[this](const FString& ChangeId)
 		{
-			return OnAcceptChange(ChangeItem);
+			return OnAcceptChangeId(ChangeId);
 		},
-		[this](FReviewChangeItem ChangeItem)
+		[this](const FString& ChangeId)
 		{
-			return OnRejectChange(ChangeItem);
+			return OnRejectChangeId(ChangeId);
 		},
 		Item == SelectedChange);
 }
 
 FReply SBlueprintHelperReviewPanel::OnAcceptSelected()
 {
-	return OnAcceptChange(SelectedChange);
+	return ExecuteAcceptChange(SelectedChange);
 }
 
 FReply SBlueprintHelperReviewPanel::OnRejectSelected()
 {
-	return OnRejectChange(SelectedChange);
+	return ExecuteRejectChange(SelectedChange);
 }
 
-FReply SBlueprintHelperReviewPanel::OnAcceptChange(FReviewChangeItem Item)
+FReply SBlueprintHelperReviewPanel::ExecuteAcceptChange(FReviewChangeItem Item)
 {
 	if (!Item.IsValid())
 	{
@@ -789,10 +810,21 @@ FReply SBlueprintHelperReviewPanel::OnAcceptChange(FReviewChangeItem Item)
 		*Item->ChangeId,
 		Result.bSucceeded ? 1 : 0,
 		*Result.Message));
+	ShowReviewActionNotification(
+		TEXT("accept:") + Item->ChangeId,
+		FString::Printf(
+			TEXT("%s：%s"),
+			Result.bSucceeded ? TEXT("成功，已接受") : TEXT("失败，未接受"),
+			*BuildReviewActionNotificationLabel(Item)),
+		Result.bSucceeded
+			? EReviewActionNotificationState::Success
+			: EReviewActionNotificationState::Fail,
+		true,
+		false);
 	return FReply::Handled();
 }
 
-FReply SBlueprintHelperReviewPanel::OnRejectChange(FReviewChangeItem Item)
+FReply SBlueprintHelperReviewPanel::ExecuteRejectChange(FReviewChangeItem Item)
 {
 	if (!Item.IsValid())
 	{
@@ -803,7 +835,7 @@ FReply SBlueprintHelperReviewPanel::OnRejectChange(FReviewChangeItem Item)
 	return FReply::Handled();
 }
 
-void SBlueprintHelperReviewPanel::QueueRejectChange(FReviewChangeItem Item)
+void SBlueprintHelperReviewPanel::QueueRejectChange(FReviewChangeItem Item, bool bShowIndividualNotification)
 {
 	if (!Item.IsValid())
 	{
@@ -814,11 +846,31 @@ void SBlueprintHelperReviewPanel::QueueRejectChange(FReviewChangeItem Item)
 	if (ChangeId.IsEmpty())
 	{
 		AddDebugMessage(TEXT("Reject queue failed reason=missing_change_id"));
+		if (bShowIndividualNotification)
+		{
+			ShowReviewActionNotification(
+				TEXT("reject:missing_change_id"),
+				TEXT("失败，无法拒绝：缺少 Review id"),
+				EReviewActionNotificationState::Fail,
+				true,
+				false);
+		}
 		return;
 	}
 	if (RejectActionInProgressChangeIds.Contains(ChangeId))
 	{
 		AddDebugMessage(FString::Printf(TEXT("Reject queue skipped id=%s reason=already_pending"), *ChangeId));
+		if (bShowIndividualNotification)
+		{
+			ShowReviewActionNotification(
+				TEXT("reject:") + ChangeId,
+				FString::Printf(
+					TEXT("处理中，已在拒绝队列：%s"),
+					*BuildReviewActionNotificationLabel(Item)),
+				EReviewActionNotificationState::Pending,
+				false,
+				true);
+		}
 		return;
 	}
 
@@ -832,6 +884,17 @@ void SBlueprintHelperReviewPanel::QueueRejectChange(FReviewChangeItem Item)
 	RefreshDiffStackWidgets();
 	UpdateDetailsSelection();
 	AddDebugMessage(FString::Printf(TEXT("Reject queued id=%s"), *ChangeId));
+	if (bShowIndividualNotification)
+	{
+		ShowReviewActionNotification(
+			TEXT("reject:") + ChangeId,
+			FString::Printf(
+				TEXT("处理中，正在拒绝：%s"),
+				*BuildReviewActionNotificationLabel(Item)),
+			EReviewActionNotificationState::Pending,
+			false,
+			true);
+	}
 	RegisterActiveTimer(
 		0.03f,
 		FWidgetActiveTimerDelegate::CreateSP(this, &SBlueprintHelperReviewPanel::TickAsyncRejectPrepare));
@@ -851,6 +914,16 @@ EActiveTimerReturnType SBlueprintHelperReviewPanel::TickAsyncRejectPrepare(doubl
 		FReviewChangeItem Item = FindChangeItemById(ChangeId);
 		if (!Item.IsValid())
 		{
+			if (!RejectBatchKeyByChangeId.Contains(ChangeId))
+			{
+				ShowReviewActionNotification(
+					TEXT("reject:") + ChangeId,
+					FString::Printf(TEXT("失败，无法拒绝：找不到 Review 项 (%s)"), *ChangeId),
+					EReviewActionNotificationState::Fail,
+					true,
+					false);
+			}
+			RecordRejectBatchResult(ChangeId, false);
 			FinishAsyncReject(ChangeId);
 			continue;
 		}
@@ -902,6 +975,17 @@ void SBlueprintHelperReviewPanel::HandlePreparedRejectReady(
 		RebuildChangeTreeItems();
 		RefreshChangeTreeWidget();
 		RefreshDiffStackWidgets();
+		if (!RejectBatchKeyByChangeId.Contains(ChangeId))
+		{
+			ShowReviewActionNotification(
+				TEXT("reject:") + ChangeId,
+				FString::Printf(
+					TEXT("处理中，正在应用拒绝：%s"),
+					*BuildReviewActionNotificationLabel(Item)),
+				EReviewActionNotificationState::Pending,
+				false,
+				true);
+		}
 	}
 	AddDebugMessage(FString::Printf(
 		TEXT("Reject rollback journal prepared id=%s journals=%d"),
@@ -925,6 +1009,16 @@ void SBlueprintHelperReviewPanel::ExecutePreparedRejectMutation(const FString& C
 	FReviewChangeItem Item = FindChangeItemById(ChangeId);
 	if (!Item.IsValid())
 	{
+		if (!RejectBatchKeyByChangeId.Contains(ChangeId))
+		{
+			ShowReviewActionNotification(
+				TEXT("reject:") + ChangeId,
+				FString::Printf(TEXT("失败，无法拒绝：找不到 Review 项 (%s)"), *ChangeId),
+				EReviewActionNotificationState::Fail,
+				true,
+				false);
+		}
+		RecordRejectBatchResult(ChangeId, false);
 		FinishAsyncReject(ChangeId);
 		return;
 	}
@@ -1006,6 +1100,21 @@ void SBlueprintHelperReviewPanel::ExecutePreparedRejectMutation(const FString& C
 			CascadeResult.RemovedChildChangeIds.Num(),
 			BlueprintHelperReviewChangeStatusToString(CascadeResult.RootResult.NewStatus),
 			*CascadeResult.RootResult.Message));
+		if (!RejectBatchKeyByChangeId.Contains(ChangeId))
+		{
+			ShowReviewActionNotification(
+				TEXT("reject:") + ChangeId,
+				FString::Printf(
+					TEXT("%s：%s"),
+					CascadeResult.RootResult.bSucceeded ? TEXT("成功，已拒绝") : TEXT("失败，未拒绝"),
+					*BuildReviewActionNotificationLabel(Item)),
+				CascadeResult.RootResult.bSucceeded
+					? EReviewActionNotificationState::Success
+					: EReviewActionNotificationState::Fail,
+				true,
+				false);
+		}
+		RecordRejectBatchResult(ChangeId, CascadeResult.RootResult.bSucceeded);
 		FinishAsyncReject(ChangeId);
 		return;
 	}
@@ -1047,6 +1156,38 @@ void SBlueprintHelperReviewPanel::ExecutePreparedRejectMutation(const FString& C
 		Result.bSucceeded ? 1 : 0,
 		BlueprintHelperReviewChangeStatusToString(Result.NewStatus),
 		*Result.Message));
+	if (!Result.bSucceeded && !Result.HashGuardTargetKey.IsEmpty())
+	{
+		AddDebugMessage(FString::Printf(
+			TEXT("Reject hash guard target=%s expected=%s current=%s"),
+			*Result.HashGuardTargetKey,
+			*Result.HashGuardExpectedHash,
+			*Result.HashGuardCurrentHash));
+		AppendDebugBundleEvent(FBlueprintHelperReviewDebugBundleService::BuildActionHashGuardEvent(
+			DebugBundleSessionId,
+			SelectedChange,
+			SelectedChange.IsValid() ? SelectedChange->AssetPath : FString(),
+			Result.HashGuardTargetKey,
+			Result.HashGuardExpectedHash,
+			Result.HashGuardCurrentHash,
+			Result.HashGuardCurrentSnapshotJson,
+			Result.HashGuardRecordedAfterSnapshotJson));
+	}
+	if (!RejectBatchKeyByChangeId.Contains(ChangeId))
+	{
+		ShowReviewActionNotification(
+			TEXT("reject:") + ChangeId,
+			FString::Printf(
+				TEXT("%s：%s"),
+				Result.bSucceeded ? TEXT("成功，已拒绝") : TEXT("失败，未拒绝"),
+				*BuildReviewActionNotificationLabel(Item)),
+			Result.bSucceeded
+				? EReviewActionNotificationState::Success
+				: EReviewActionNotificationState::Fail,
+			true,
+			false);
+	}
+	RecordRejectBatchResult(ChangeId, Result.bSucceeded);
 	FinishAsyncReject(ChangeId);
 }
 
@@ -1078,12 +1219,15 @@ FReply SBlueprintHelperReviewPanel::OnAcceptAll()
 	}
 
 	TArray<FReviewChangeItem> AcceptedItems;
+	int32 TargetCount = 0;
+	int32 FailedCount = 0;
 	for (const FReviewChangeItem& Item : ChangeItems)
 	{
 		if (!Item.IsValid() || (!AssetPath.IsEmpty() && Item->AssetPath != AssetPath))
 		{
 			continue;
 		}
+		++TargetCount;
 
 		const FBlueprintHelperReviewPanelPresenterEvent PresenterEvent =
 			ReviewPanelPresenter.IsValid()
@@ -1098,6 +1242,7 @@ FReply SBlueprintHelperReviewPanel::OnAcceptAll()
 		}
 		else
 		{
+			++FailedCount;
 			Item->Status = Result.NewStatus;
 			Item->NeedsActionReason = Result.Message;
 		}
@@ -1120,6 +1265,20 @@ FReply SBlueprintHelperReviewPanel::OnAcceptAll()
 		TEXT("AcceptAll asset=\"%s\" remainingVisibleChanges=%d"),
 		*AssetPath,
 		ChangeItems.Num()));
+	ShowReviewActionNotification(
+		TEXT("accept_all:") + AssetPath,
+		TargetCount == 0
+			? FString(TEXT("全失败：没有可接受的 Review 项"))
+			: FailedCount == 0
+				? FString::Printf(TEXT("批量成功：已接受 %d 项"), AcceptedItems.Num())
+				: AcceptedItems.Num() > 0
+					? FString::Printf(TEXT("有失败：已接受 %d 项，失败 %d 项"), AcceptedItems.Num(), FailedCount)
+					: FString::Printf(TEXT("全失败：接受失败 %d 项"), FailedCount),
+		TargetCount > 0 && FailedCount == 0
+			? EReviewActionNotificationState::Success
+			: EReviewActionNotificationState::Fail,
+		true,
+		false);
 	return FReply::Handled();
 }
 
@@ -1140,15 +1299,194 @@ FReply SBlueprintHelperReviewPanel::OnRejectAll()
 			ItemsToQueue.Add(Item);
 		}
 	}
+	const FString BatchKey = FString::Printf(
+		TEXT("reject_all:%s:%lld"),
+		*AssetPath,
+		FDateTime::UtcNow().GetTicks());
+	if (ItemsToQueue.Num() == 0)
+	{
+		ShowReviewActionNotification(
+			BatchKey,
+			TEXT("全失败：没有可拒绝的 Review 项"),
+			EReviewActionNotificationState::Fail,
+			true,
+			false);
+		AddDebugMessage(FString::Printf(
+			TEXT("RejectAll queued asset=\"%s\" count=0"),
+			*AssetPath));
+		return FReply::Handled();
+	}
+
+	FReviewActionBatchNotificationState& Batch = RejectBatchNotifications.Add(BatchKey);
+	Batch.NotificationKey = BatchKey;
+	Batch.TotalCount = ItemsToQueue.Num();
 	for (const FReviewChangeItem& Item : ItemsToQueue)
 	{
-		QueueRejectChange(Item);
+		const FString ChangeId = Item.IsValid()
+			? (!Item->ChangeId.IsEmpty() ? Item->ChangeId : Item->LatestTransactionId)
+			: FString();
+		if (ChangeId.IsEmpty())
+		{
+			++Batch.FinishedCount;
+			++Batch.FailedCount;
+			continue;
+		}
+		RejectBatchKeyByChangeId.Add(ChangeId, BatchKey);
+		QueueRejectChange(Item, false);
 	}
 	AddDebugMessage(FString::Printf(
 		TEXT("RejectAll queued asset=\"%s\" count=%d"),
 		*AssetPath,
 		ItemsToQueue.Num()));
+	if (Batch.FinishedCount >= Batch.TotalCount)
+	{
+		ShowReviewActionNotification(
+			BatchKey,
+			FString::Printf(TEXT("全失败：拒绝失败 %d 项"), Batch.FailedCount),
+			EReviewActionNotificationState::Fail,
+			true,
+			false);
+		RejectBatchNotifications.Remove(BatchKey);
+	}
+	else
+	{
+		ShowReviewActionNotification(
+			BatchKey,
+			FString::Printf(TEXT("处理中：批量拒绝已排队 %d 项"), ItemsToQueue.Num()),
+			EReviewActionNotificationState::Pending,
+			false,
+			true);
+	}
 	return FReply::Handled();
+}
+
+void SBlueprintHelperReviewPanel::ShowReviewActionNotification(
+	const FString& NotificationKey,
+	const FString& StatusText,
+	EReviewActionNotificationState State,
+	bool bExpire,
+	bool bUseThrobber)
+{
+	const FString EffectiveKey = NotificationKey.IsEmpty() ? TEXT("review_action") : NotificationKey;
+	TSharedPtr<SNotificationItem> Notification;
+	if (TWeakPtr<SNotificationItem>* ExistingNotification = ReviewActionNotifications.Find(EffectiveKey))
+	{
+		Notification = ExistingNotification->Pin();
+	}
+
+	if (!Notification.IsValid())
+	{
+		FNotificationInfo Info(FText::FromString(StatusText));
+		Info.bFireAndForget = false;
+		Info.bUseThrobber = bUseThrobber;
+		Info.bUseSuccessFailIcons = true;
+		Info.FadeOutDuration = 0.5f;
+		Info.ExpireDuration = 3.0f;
+		Notification = FSlateNotificationManager::Get().AddNotification(Info);
+		if (Notification.IsValid())
+		{
+			ReviewActionNotifications.Add(EffectiveKey, Notification);
+		}
+	}
+
+	if (!Notification.IsValid())
+	{
+		return;
+	}
+
+	Notification->SetText(FText::FromString(StatusText));
+	switch (State)
+	{
+	case EReviewActionNotificationState::Pending:
+		Notification->SetCompletionState(SNotificationItem::CS_Pending);
+		break;
+	case EReviewActionNotificationState::Success:
+		Notification->SetCompletionState(SNotificationItem::CS_Success);
+		break;
+	case EReviewActionNotificationState::Fail:
+		Notification->SetCompletionState(SNotificationItem::CS_Fail);
+		break;
+	default:
+		Notification->SetCompletionState(SNotificationItem::CS_None);
+		break;
+	}
+
+	if (bExpire)
+	{
+		Notification->ExpireAndFadeout();
+		ReviewActionNotifications.Remove(EffectiveKey);
+	}
+}
+
+FString SBlueprintHelperReviewPanel::BuildReviewActionNotificationLabel(FReviewChangeItem Item)
+{
+	if (!Item.IsValid())
+	{
+		return TEXT("unknown change");
+	}
+	if (!Item->DisplayLabel.IsEmpty())
+	{
+		return Item->DisplayLabel;
+	}
+	if (!Item->ChangeId.IsEmpty())
+	{
+		return Item->ChangeId;
+	}
+	return Item->LatestTransactionId.IsEmpty() ? TEXT("unknown change") : Item->LatestTransactionId;
+}
+
+void SBlueprintHelperReviewPanel::RecordRejectBatchResult(const FString& ChangeId, bool bSucceeded)
+{
+	FString BatchKey;
+	if (!RejectBatchKeyByChangeId.RemoveAndCopyValue(ChangeId, BatchKey))
+	{
+		return;
+	}
+
+	FReviewActionBatchNotificationState* Batch = RejectBatchNotifications.Find(BatchKey);
+	if (!Batch)
+	{
+		return;
+	}
+
+	++Batch->FinishedCount;
+	if (bSucceeded)
+	{
+		++Batch->SuccessCount;
+	}
+	else
+	{
+		++Batch->FailedCount;
+	}
+
+	if (Batch->FinishedCount < Batch->TotalCount)
+	{
+		ShowReviewActionNotification(
+			Batch->NotificationKey,
+			FString::Printf(
+				TEXT("处理中：批量拒绝 %d/%d 项"),
+				Batch->FinishedCount,
+				Batch->TotalCount),
+			EReviewActionNotificationState::Pending,
+			false,
+			true);
+		return;
+	}
+
+	const FString FinalText = Batch->FailedCount == 0
+		? FString::Printf(TEXT("批量成功：已拒绝 %d 项"), Batch->SuccessCount)
+		: Batch->SuccessCount > 0
+			? FString::Printf(TEXT("有失败：已拒绝 %d 项，失败 %d 项"), Batch->SuccessCount, Batch->FailedCount)
+			: FString::Printf(TEXT("全失败：拒绝失败 %d 项"), Batch->FailedCount);
+	ShowReviewActionNotification(
+		Batch->NotificationKey,
+		FinalText,
+		Batch->FailedCount == 0
+			? EReviewActionNotificationState::Success
+			: EReviewActionNotificationState::Fail,
+		true,
+		false);
+	RejectBatchNotifications.Remove(BatchKey);
 }
 
 FText SBlueprintHelperReviewPanel::GetSelectedTitle() const
@@ -1378,6 +1716,41 @@ void SBlueprintHelperReviewPanel::RefreshSurfaceOverlay(EBlueprintHelperReviewSu
 			return;
 		}
 	}
+}
+
+void SBlueprintHelperReviewPanel::OnRegisteredRowGeometryChanged(
+	const FString& AssetPath,
+	EBlueprintHelperReviewSurface Surface)
+{
+	if (Surface == EBlueprintHelperReviewSurface::Unknown)
+	{
+		return;
+	}
+	if (!ReviewAssetContext.AssetPath.IsEmpty()
+		&& !AssetPath.IsEmpty()
+		&& AssetPath != ReviewAssetContext.AssetPath)
+	{
+		return;
+	}
+
+	AddDebugMessage(FString::Printf(
+		TEXT("ReviewRowLifecycle surface=%s event=row_registered asset=\"%s\" result=refresh"),
+		BlueprintHelperReviewSurfaceToString(Surface),
+		*AssetPath));
+	RefreshSurfaceOverlay(Surface);
+}
+
+void SBlueprintHelperReviewPanel::OnSurfaceGeometryInvalidated(EBlueprintHelperReviewSurface Surface)
+{
+	if (Surface == EBlueprintHelperReviewSurface::Unknown)
+	{
+		return;
+	}
+
+	AddDebugMessage(FString::Printf(
+		TEXT("ReviewRowLifecycle surface=%s event=geometry_changed result=refresh"),
+		BlueprintHelperReviewSurfaceToString(Surface)));
+	RefreshSurfaceOverlay(Surface);
 }
 
 void SBlueprintHelperReviewPanel::LoadReviewAssetFromSelection()

@@ -87,10 +87,16 @@ namespace
 
 		if (!CurrentHash.Equals(Target.RecordedAfterHash, ESearchCase::CaseSensitive))
 		{
-			OutFailureResult = FBlueprintHelperReviewActionRecordUtils::MakeRejectFailureResult(
+			FBlueprintHelperReviewActionResult FailureResult = FBlueprintHelperReviewActionRecordUtils::MakeRejectFailureResult(
 				Change,
 				EBlueprintHelperReviewChangeStatus::NeedsAction,
 				FString::Printf(TEXT("current_state_changed:%s"), *Target.TargetKey));
+			FailureResult.HashGuardTargetKey = Target.TargetKey;
+			FailureResult.HashGuardExpectedHash = Target.RecordedAfterHash;
+			FailureResult.HashGuardCurrentHash = CurrentHash;
+			FailureResult.HashGuardCurrentSnapshotJson = CurrentSnapshotJson;
+			FailureResult.HashGuardRecordedAfterSnapshotJson = Target.AfterSnapshotJson;
+			OutFailureResult = MoveTemp(FailureResult);
 			return false;
 		}
 		return true;

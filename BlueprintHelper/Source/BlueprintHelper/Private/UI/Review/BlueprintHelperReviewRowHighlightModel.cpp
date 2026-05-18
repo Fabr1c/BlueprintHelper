@@ -315,16 +315,24 @@ FReply FBlueprintHelperReviewRowHighlightModel::ExecuteHighlightedRowAction(
 	}
 
 	FRowHighlightEntry Entry;
-	if (!FindRowHighlightEntry(AssetPath, Surface, SearchText, Entry, true) || !Entry.Change.IsValid())
+	if (!FindRowHighlightEntry(AssetPath, Surface, SearchText, Entry, false) || !Entry.Change.IsValid())
+	{
+		return FReply::Handled();
+	}
+
+	const FString ChangeId = !Entry.ChangeId.IsEmpty()
+		? Entry.ChangeId
+		: (Entry.Change.IsValid() ? Entry.Change->ChangeId : FString());
+	if (ChangeId.IsEmpty())
 	{
 		return FReply::Handled();
 	}
 
 	if (bAccept)
 	{
-		return State->OnAcceptChange ? State->OnAcceptChange(Entry.Change) : FReply::Handled();
+		return State->OnAcceptChangeId ? State->OnAcceptChangeId(ChangeId) : FReply::Handled();
 	}
-	return State->OnRejectChange ? State->OnRejectChange(Entry.Change) : FReply::Handled();
+	return State->OnRejectChangeId ? State->OnRejectChangeId(ChangeId) : FReply::Handled();
 }
 
 FSlateColor FBlueprintHelperReviewRowHighlightModel::ResolveRowHighlightColor(
@@ -588,8 +596,8 @@ TSharedRef<SWidget> FBlueprintHelperReviewRowHighlightModel::BuildRowHighlightOv
 	FRowHighlightSurfaceState State;
 	State.AssetPath = CurrentAssetPath;
 	State.Surface = Surface;
-	State.OnAcceptChange = Args.OnAcceptChange;
-	State.OnRejectChange = Args.OnRejectChange;
+	State.OnAcceptChangeId = Args.OnAcceptChangeId;
+	State.OnRejectChangeId = Args.OnRejectChangeId;
 	State.GetChangeColor = Args.GetChangeColor;
 
 	TArray<TSharedPtr<FBlueprintHelperReviewVisibleChange>> HighlightedItems;

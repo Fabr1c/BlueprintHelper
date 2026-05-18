@@ -47,7 +47,6 @@ test('stores GraphWrite IR task results without requiring adapter operation on t
 
   const journal = storeTaskResult({
     taskRunId: 'task_graphwrite_ir_store',
-    previewId: 'preview_graphwrite_ir_store',
     taskPlan,
     status: 'completed',
     bridgeResult: {
@@ -148,7 +147,6 @@ test('generated intent uses the primary TaskSpec capability instead of signature
 
   const journal = storeTaskResult({
     taskRunId: 'task_graphwrite_with_signature_dependency',
-    previewId: 'preview_graphwrite_with_signature_dependency',
     taskPlan,
     status: 'completed',
     bridgeResult: {

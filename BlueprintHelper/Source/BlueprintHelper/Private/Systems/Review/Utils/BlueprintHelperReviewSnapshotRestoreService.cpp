@@ -52,8 +52,18 @@
 #include "WidgetBlueprint.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewActionRecordUtils.h"
 
-bool FBlueprintHelperReviewSnapshotRestoreService::IsAssetFactoryTarget(const FBlueprintHelperReviewAtomicTarget& Target)
+static FText BlueprintHelperReviewCategoryTextFromSnapshot(const FString& Category)
+{
+	if (Category == TEXT("ue_default_variable_category"))
 	{
+		return UEdGraphSchema_K2::VR_DefaultCategory;
+	}
+
+	return FText::FromString(Category);
+}
+
+bool FBlueprintHelperReviewSnapshotRestoreService::IsAssetFactoryTarget(const FBlueprintHelperReviewAtomicTarget& Target)
+{
 		return FBlueprintHelperReviewTargetKindRegistry::IsAssetFactoryTargetKind(Target.TargetKind)
 			|| Target.TargetKey.StartsWith(TEXT("asset_factory:"), ESearchCase::IgnoreCase);
 	}
@@ -229,8 +239,8 @@ bool FBlueprintHelperReviewSnapshotRestoreService::RestoreBlueprintVariableFromS
 			FString Category;
 			if (Snapshot->TryGetStringField(TEXT("category"), Category))
 			{
-				Blueprint->NewVariables[NewVariableIndex].Category = FText::FromString(Category);
-			}
+		Blueprint->NewVariables[NewVariableIndex].Category = BlueprintHelperReviewCategoryTextFromSnapshot(Category);
+	}
 
 			FString GuidString;
 			FGuid ParsedGuid;
