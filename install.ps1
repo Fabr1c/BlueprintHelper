@@ -12,6 +12,7 @@ param(
   [switch]$InstallUePluginToEngine,
   [switch]$RunDiagnostics,
   [switch]$Interactive,
+  [string]$InstallTipsBase64,
   [string]$ProjectFile,
   [string]$EngineRoot,
   [string]$EnginePluginDir,
@@ -19,7 +20,20 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+trap {
+  Write-Host ''
+  Write-Host 'BlueprintHelper install failed.' -ForegroundColor Red
+  if ($_.Exception -and $_.Exception.Message) {
+    Write-Host $_.Exception.Message -ForegroundColor Red
+  } else {
+    Write-Host $_ -ForegroundColor Red
+  }
+  exit 1
+}
+
 $script:ThisCmdlet = $PSCmdlet
+$script:NodeCommand = $null
+$script:NpmCommand = $null
 
 $Root = $PSScriptRoot
 $CodexPluginRoot = Join-Path $Root 'CodexPlugin'
@@ -43,6 +57,44 @@ function Resolve-CommandPath {
   }
 
   throw "$DisplayName was not found on PATH."
+}
+
+function Resolve-NpmCommandPath {
+  $Commands = @(
+    Get-Command 'npm.cmd' -ErrorAction SilentlyContinue
+    Get-Command 'npm.exe' -ErrorAction SilentlyContinue
+    Get-Command 'npm' -All -ErrorAction SilentlyContinue
+  )
+
+  $Executable = $Commands |
+    Where-Object { $_ -and $_.CommandType -eq 'Application' -and $_.Source -and $_.Source -notmatch '\.ps1$' } |
+    Select-Object -First 1
+  if ($Executable) {
+    return $Executable.Source
+  }
+
+  $PowerShellShim = $Commands |
+    Where-Object { $_ -and $_.Source -match '\.ps1$' } |
+    Select-Object -First 1
+  if ($PowerShellShim) {
+    throw "npm resolved only to a PowerShell shim that may be blocked by ExecutionPolicy: $($PowerShellShim.Source). Add npm.cmd to PATH or reinstall Node.js/npm."
+  }
+
+  throw 'npm was not found on PATH.'
+}
+
+function Get-NodeCommand {
+  if (-not $script:NodeCommand) {
+    $script:NodeCommand = Resolve-CommandPath -Names @('node.exe', 'node') -DisplayName 'Node.js'
+  }
+  return $script:NodeCommand
+}
+
+function Get-NpmCommand {
+  if (-not $script:NpmCommand) {
+    $script:NpmCommand = Resolve-NpmCommandPath
+  }
+  return $script:NpmCommand
 }
 
 function Assert-Directory {
@@ -83,7 +135,11 @@ function Invoke-External {
 
   Write-Host "==> $Description"
   if ($script:ThisCmdlet.ShouldProcess($Description, "$FilePath $($Arguments -join ' ')")) {
-    & $FilePath @Arguments
+    try {
+      & $FilePath @Arguments
+    } catch {
+      throw "$Description failed to start. $($_.Exception.Message)"
+    }
     if ($LASTEXITCODE -ne 0) {
       throw "$Description failed with exit code $LASTEXITCODE."
     }
@@ -98,7 +154,25 @@ function Invoke-Npm {
     [string[]]$Arguments
   )
 
-  Invoke-External -Description "npm --prefix $PackageDir $($Arguments -join ' ')" -FilePath $script:NpmCommand -Arguments (@('--prefix', $PackageDir) + $Arguments)
+  Invoke-External -Description "npm --prefix $PackageDir $($Arguments -join ' ')" -FilePath (Get-NpmCommand) -Arguments (@('--prefix', $PackageDir) + $Arguments)
+}
+
+function Write-InstallTips {
+  param([string]$TipsBase64)
+
+  if (-not $TipsBase64) {
+    return
+  }
+
+  try {
+    $TipsBytes = [System.Convert]::FromBase64String($TipsBase64)
+    $TipsText = [System.Text.Encoding]::UTF8.GetString($TipsBytes)
+  } catch {
+    Write-Warning "Unable to decode install tips. $($_.Exception.Message)"
+    return
+  }
+
+  Write-Host $TipsText
 }
 
 function Read-InstallText {
@@ -594,7 +668,7 @@ function Invoke-BlueprintHelperDiagnostics {
   if ($script:ThisCmdlet.ShouldProcess($DiagnosticsCwd, 'Run BlueprintHelper diagnostics')) {
     Push-Location $DiagnosticsCwd
     try {
-      & $script:NodeCommand $CliEntry 'blueprinthelper_diagnostics' '--json' '{}' '--select' 'status,summary'
+      & (Get-NodeCommand) $CliEntry 'blueprinthelper_diagnostics' '--json' '{}' '--select' 'status,summary'
       $ExitCode = $LASTEXITCODE
     } finally {
       Pop-Location
@@ -666,8 +740,7 @@ Assert-File -Path (Join-Path $ClaudePluginRoot '.claude-plugin\plugin.json') -Na
 Assert-File -Path (Join-Path $ClaudePluginRoot '.claude-plugin\marketplace.json') -Name 'Claude plugin marketplace'
 Assert-File -Path (Join-Path $UePluginRoot 'BlueprintHelper.uplugin') -Name 'UE plugin descriptor'
 
-$script:NodeCommand = Resolve-CommandPath -Names @('node') -DisplayName 'Node.js'
-$script:NpmCommand = Resolve-CommandPath -Names @('npm.cmd', 'npm') -DisplayName 'npm'
+Write-InstallTips -TipsBase64 $InstallTipsBase64
 
 if ($Interactive) {
   Invoke-InteractiveInstallWizard
@@ -699,11 +772,11 @@ if (-not $SkipCodexMarketplace) {
 }
 
 if (-not $SkipCodexAgents) {
-  Invoke-External -Description 'Install Codex subagents' -FilePath $script:NodeCommand -Arguments @((Join-Path $CodexPluginRoot 'scripts\install-codex-agents.cjs'))
+  Invoke-External -Description 'Install Codex subagents' -FilePath (Get-NodeCommand) -Arguments @((Join-Path $CodexPluginRoot 'scripts\install-codex-agents.cjs'))
 }
 
 if (-not $SkipLifecycleMcp) {
-  Invoke-External -Description 'Install lifecycle-only MCP config' -FilePath $script:NodeCommand -Arguments @((Join-Path $CodexPluginRoot 'scripts\install-global-mcp.cjs'))
+  Invoke-External -Description 'Install lifecycle-only MCP config' -FilePath (Get-NodeCommand) -Arguments @((Join-Path $CodexPluginRoot 'scripts\install-global-mcp.cjs'))
 }
 
 $ProjectProfileResult = [pscustomobject]@{
@@ -740,7 +813,7 @@ if ($InstallClaudePlugin) {
 }
 
 if ($InstallClaudeAgents -or $InstallClaudePlugin) {
-  Invoke-External -Description 'Install Claude subagents' -FilePath $script:NodeCommand -Arguments @((Join-Path $CodexPluginRoot 'scripts\install-claude-agents.cjs'))
+  Invoke-External -Description 'Install Claude subagents' -FilePath (Get-NodeCommand) -Arguments @((Join-Path $CodexPluginRoot 'scripts\install-claude-agents.cjs'))
   $ClaudeAgentsStatus = if ($WhatIfPreference) { 'whatif' } else { 'installed' }
 }
 
