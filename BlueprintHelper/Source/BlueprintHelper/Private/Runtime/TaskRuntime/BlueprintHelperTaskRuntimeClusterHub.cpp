@@ -17,10 +17,7 @@ FBlueprintHelperTaskRuntimeClusterHub::FBlueprintHelperTaskRuntimeClusterHub(
 	const FBlueprintHelperClassSettingsService& InClassSettingsService,
 	const FBlueprintHelperWidgetService& InWidgetService,
 	const FBlueprintHelperDataTableService& InDataTableService,
-	const FBlueprintHelperPropertyReflectionService& InPropertyReflectionService,
-	const FBlueprintHelperCleanupBlueprintHelperBlockService& InCleanupBlockService,
-	const FBlueprintHelperRollbackCleanupTransactionService& InRollbackCleanupService,
-	const FBlueprintHelperConvertBlockToUserOwnedService& InConvertBlockService)
+	const FBlueprintHelperPropertyReflectionService& InPropertyReflectionService)
 	: GraphWriteCluster(
 		InAppendGraphService,
 		InReplaceGraphService,
@@ -34,10 +31,6 @@ FBlueprintHelperTaskRuntimeClusterHub::FBlueprintHelperTaskRuntimeClusterHub(
 	, UMGWidgetCluster(InWidgetService)
 	, DataTableCluster(InDataTableService)
 	, ObjectPropertyCluster(InPropertyReflectionService)
-	, CleanupOwnershipCluster(
-		InCleanupBlockService,
-		InRollbackCleanupService,
-		InConvertBlockService)
 {
 }
 
@@ -138,13 +131,6 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeClusterHub::ExecuteSte
 		{
 			return ObjectPropertyCluster.ExecuteStep(Step);
 		});
-	ExecuteHandlers.Add(
-		EBlueprintHelperTaskRuntimeCluster::CleanupOwnership,
-		[this](const FBlueprintHelperTaskRuntimeLoweredStep& Step)
-		{
-			return CleanupOwnershipCluster.ExecuteStep(Step);
-		});
-
 	const EBlueprintHelperTaskRuntimeCluster Cluster = ResolveClusterForLoweredStep(LoweredStep);
 	if (const FExecuteStepHandler* ExecuteHandler = ExecuteHandlers.Find(Cluster))
 	{
@@ -198,10 +184,6 @@ bool FBlueprintHelperTaskRuntimeClusterHub::BuildReviewEvidence(
 	EvidenceHandlers.Add(
 		EBlueprintHelperTaskRuntimeCluster::ObjectProperty,
 		&FBlueprintHelperObjectPropertyTaskRuntimeCluster::BuildReviewEvidence);
-	EvidenceHandlers.Add(
-		EBlueprintHelperTaskRuntimeCluster::CleanupOwnership,
-		&FBlueprintHelperCleanupOwnershipTaskRuntimeCluster::BuildReviewEvidence);
-
 	const EBlueprintHelperTaskRuntimeCluster Cluster = ResolveClusterForLoweredStep(LoweredStep);
 	if (const FBuildReviewEvidenceHandler* EvidenceHandler = EvidenceHandlers.Find(Cluster))
 	{

@@ -187,7 +187,7 @@ FBlueprintHelperImportResult FBlueprintHelperImportService::Import(const FBluepr
 	FBlueprintHelperImportResult Result;
 	Result.Status = TEXT("failed");
 
-	// 0. 解析 JsonText（优先 string，否则从 JsonObject 序列化）
+	// 0. Serialize object-first RawJson.
 	const FString EffectiveJsonText = ResolveImportJsonText(Request, Result);
 	if (EffectiveJsonText.IsEmpty() && Result.Diagnostics.HasErrors())
 	{
@@ -331,13 +331,6 @@ FString FBlueprintHelperImportService::ResolveImportJsonText(
 	const FBlueprintHelperImportRequest& Request,
 	FBlueprintHelperImportResult& Result) const
 {
-	// 优先使用已有 JsonText
-	if (!Request.JsonText.IsEmpty())
-	{
-		return Request.JsonText;
-	}
-
-	// 从 JsonObject 序列化
 	if (Request.JsonObject.IsValid())
 	{
 		// Schema 守卫：拒绝 LogicJson / LogicMarkdown

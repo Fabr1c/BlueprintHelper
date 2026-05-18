@@ -47,11 +47,8 @@ export interface EditorConfig {
   taskCompiler?: TaskToolsConfig['taskCompiler'];
 }
 
-/** RawJson input: accepts structured object or legacy JSON string */
-const rawJsonInputSchema = z.union([
-  z.string(),
-  z.record(z.unknown()),
-]).describe('The BlueprintHelper RawJson object (nodes, links, version, schema) or legacy JSON string to import');
+const rawJsonInputSchema = z.record(z.unknown())
+  .describe('The BlueprintHelper RawJson object (nodes, links, version, schema) to import.');
 
 const LEGACY_TOOL_GUIDANCE =
   'Normal Agents should prefer blueprinthelper_read_agent_guide, blueprinthelper_read_context, blueprinthelper_preview_task, and blueprinthelper_execute_task.';
@@ -123,7 +120,6 @@ const responseModeSchema = z.enum([
   'summary_text',
   'structured_json',
   'resource_ref',
-  'legacy_text_json',
 ]).optional();
 
 const debugCaseInputSchema = z.object({
@@ -1475,10 +1471,10 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
           .describe('Blueprint asset path, e.g. /Game/BP/BP_Test.BP_Test. Omit to use the active blueprint.'),
         target_graph: z.string().optional()
           .describe('Graph name to export. Omit to use the active graph.'),
-        scope: z.enum(['graph', 'blueprint', 'selection', 'full_graph', 'full_blueprint']).optional().default('graph')
-          .describe('Export scope: graph, blueprint, or selection. Legacy full_graph/full_blueprint are accepted.'),
+        scope: z.enum(['graph', 'blueprint', 'selection']).optional().default('graph')
+          .describe('Export scope: graph, blueprint, or selection.'),
         response_mode: responseModeSchema
-          .describe('MCP response mode. Default returns a RawJson resource link; legacy_text_json returns inline JSON text.'),
+          .describe('MCP response mode. Default returns a RawJson resource link.'),
       }),
       outputSchema: BlueprintRawJsonExportOutputSchema,
     },
@@ -1502,21 +1498,18 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
           getStringField(normalizedRecord, 'assetPath') ??
           getStringField(normalizedRecord, 'target_blueprint');
         const graph = target_graph ?? getStringField(normalizedRecord, 'graph');
-        const mode = resolveResponseMode(response_mode, assetPath ? 'resource_ref' : 'legacy_text_json');
+        const mode = resolveResponseMode(response_mode, assetPath ? 'resource_ref' : 'structured_json');
 
-        if (mode === 'legacy_text_json' || !assetPath) {
-          const jsonPayload = isRecord(rawJsonPayload) ? rawJsonPayload : rawJsonPayload;
-          const structured: Record<string, unknown> = {
-            format: 'raw_json',
-            schema: 'BlueprintHelper.RawJsonRef.v1',
-            importable: true,
-            json: jsonPayload,
-            ...(assetPath ? { assetPath } : {}),
-            ...(graph ? { graph } : {}),
-          };
+        if (!assetPath) {
           return buildBlueprintToolResult({
-            mode: 'legacy_text_json',
-            structured,
+            mode: 'structured_json',
+            summary: 'RawJson export completed without an asset path.',
+            structured: {
+              format: 'raw_json',
+              schema: 'BlueprintHelper.RawJsonRef.v1',
+              importable: true,
+              json: rawJsonPayload,
+            },
           });
         }
 
@@ -1563,8 +1556,8 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
           .describe('Blueprint asset path, e.g. /Game/BP/BP_Test.BP_Test. Omit to use the active blueprint.'),
         target_graph: z.string().optional()
           .describe('Graph name to inspect. Omit to use the active graph.'),
-        scope: z.enum(['single_graph', 'full_blueprint']).optional().default('single_graph')
-          .describe('Logic read scope: single_graph or full_blueprint'),
+        scope: z.enum(['graph', 'blueprint']).optional().default('graph')
+          .describe('Logic read scope: graph or blueprint'),
         detail: z.enum(['brief', 'normal', 'full', 'debug']).optional().default('normal')
           .describe('Detail level for the logic summary'),
         include_data_dependencies: z.boolean().optional().default(true)
@@ -1588,7 +1581,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
       try {
         const payload: Record<string, unknown> = {
           format: 'logic_md',
-          scope: scope ?? 'single_graph',
+          scope: scope ?? 'graph',
           detail: detail ?? 'normal',
           include_data_dependencies: include_data_dependencies ?? true,
           include_orphans: include_orphans ?? true,
@@ -1626,8 +1619,8 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
           .describe('Blueprint asset path, e.g. /Game/BP/BP_Test.BP_Test. Omit to use the active blueprint.'),
         target_graph: z.string().optional()
           .describe('Graph name to inspect. Omit to use the active graph.'),
-        scope: z.enum(['single_graph', 'full_blueprint']).optional().default('single_graph')
-          .describe('Logic read scope: single_graph or full_blueprint'),
+        scope: z.enum(['graph', 'blueprint']).optional().default('graph')
+          .describe('Logic read scope: graph or blueprint'),
         detail: z.enum(['brief', 'normal', 'full', 'debug']).optional().default('normal')
           .describe('Detail level for the logic JSON'),
         include_data_dependencies: z.boolean().optional().default(true)
@@ -1660,7 +1653,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
       try {
         const payload: Record<string, unknown> = {
           format: 'logic_json',
-          scope: scope ?? 'single_graph',
+          scope: scope ?? 'graph',
           detail: detail ?? 'normal',
           include_data_dependencies: include_data_dependencies ?? true,
           include_orphans: include_orphans ?? true,
@@ -1709,7 +1702,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
   server.registerTool(
     'blueprint_import_json_to_graph',
     {
-      description: legacyWriteExpertDescription('Import JSON into a blueprint graph, creating nodes and connections. Accepts structured RawJson objects or legacy JSON strings. Rejects LogicJson/LogicMD read-only views.'),
+      description: legacyWriteExpertDescription('Import structured RawJson into a blueprint graph, creating nodes and connections. Rejects legacy string JSON and LogicJson/LogicMD read-only views.'),
       inputSchema: z.object({
         json: rawJsonInputSchema,
         target_blueprint: z.string().optional()
@@ -1760,35 +1753,11 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
   );
 
   // 鈹€鈹€鈹€ 8. import_agent_graph 鈹€鈹€鈹€
-  const agentImportNodeSchema = z.object({
-    id: z.string().describe('Local semantic node id'),
-    kind: z.enum([
-      'event',
-      'custom_event',
-      'call',
-      'get',
-      'set',
-      'branch',
-      'sequence',
-      'comment',
-    ]).describe('Semantic node kind supported by AgentImportGraph v1'),
-  }).passthrough();
-
-  const agentImportLinkSchema = z.object({
-    kind: z.enum(['exec', 'data']).describe('Link kind: exec or data'),
-    from: z.string().optional().describe('Shorthand source endpoint, e.g. begin_play.then'),
-    to: z.string().optional().describe('Shorthand target endpoint, e.g. print.execute'),
-    from_node: z.string().optional().describe('Structured source node id'),
-    from_pin: z.string().optional().describe('Structured source pin name'),
-    to_node: z.string().optional().describe('Structured target node id'),
-    to_pin: z.string().optional().describe('Structured target pin name'),
-  }).passthrough();
-
   server.registerTool(
     'blueprint_import_agent_graph',
     {
       description:
-        legacyWriteExpertDescription('Import a legacy semantic BlueprintHelper.AgentImportGraph object. This creates Blueprint nodes from intent-level event/call/get/set/branch/sequence/comment nodes and auto-generates layout. It does not replace blueprint_import_json_to_graph for raw JSON replay.'),
+        legacyWriteExpertDescription('Import a BlueprintHelper.AgentImportGraph logic_spec object. Old semantic nodes/links/declarations/layout payloads are no longer accepted.'),
       inputSchema: z.object({
         schema: z.literal('BlueprintHelper.AgentImportGraph').default('BlueprintHelper.AgentImportGraph'),
         version: z.literal('1.0').default('1.0'),
@@ -1796,20 +1765,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
           .describe('Required Blueprint asset path, e.g. /Game/BP/BP_Player.BP_Player'),
         target_graph: z.string()
           .describe('Required graph name, e.g. EventGraph'),
-        mode: z.literal('append').default('append'),
-        layout: z.enum(['auto', 'append_right']).optional().default('auto'),
-        declarations: z.object({
-          variables: z.array(z.object({
-            name: z.string(),
-            type: z.string().describe('Pin type category, e.g. bool, int, float, string'),
-            default: z.union([z.string(), z.number(), z.boolean()]).optional(),
-            default_value: z.string().optional(),
-            editable: z.boolean().optional(),
-            category: z.string().optional(),
-          }).passthrough()).optional(),
-        }).passthrough().optional(),
-        nodes: z.array(agentImportNodeSchema),
-        links: z.array(agentImportLinkSchema).optional().default([]),
+        logic_spec: z.record(z.unknown()).describe('BlueprintLogicSpec/SemanticIR statement tree.'),
         options: z.object({
           compile: z.boolean().optional().default(true),
           save: z.boolean().optional().default(false),
@@ -1817,8 +1773,8 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
           dry_run: z.boolean().optional().default(false),
           create_missing_variables: z.boolean().optional().default(true),
           reconstruct_existing_nodes: z.boolean().optional().default(false),
-        }).passthrough().optional(),
-      }).passthrough(),
+        }).strict().optional(),
+      }).strict(),
     },
     async (payload) => {
       try {

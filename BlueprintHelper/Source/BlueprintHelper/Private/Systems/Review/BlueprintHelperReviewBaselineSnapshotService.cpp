@@ -39,6 +39,7 @@ static FString BlueprintHelperReviewMakeStableTextKeyForSnapshot(const FText& Te
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraph/EdGraphPin.h"
+#include "EdGraphUtilities.h"
 #include "Engine/Blueprint.h"
 #include "Engine/DataTable.h"
 #include "Engine/SCS_Node.h"
@@ -63,6 +64,59 @@ static FString BlueprintHelperReviewMakeStableTextKeyForSnapshot(const FText& Te
 
 namespace
 {
+	static TSharedPtr<FJsonValue> CloneReviewSnapshotValueForHash(const TSharedPtr<FJsonValue>& Value);
+
+	static TSharedPtr<FJsonObject> CloneReviewSnapshotObjectForHash(const TSharedPtr<FJsonObject>& Source)
+	{
+		TSharedPtr<FJsonObject> Clone = MakeShared<FJsonObject>();
+		if (!Source.IsValid())
+		{
+			return Clone;
+		}
+
+		for (const TPair<FString, TSharedPtr<FJsonValue>>& Field : Source->Values)
+		{
+			if (Field.Key.Equals(TEXT("restore_text"), ESearchCase::IgnoreCase))
+			{
+				continue;
+			}
+			Clone->SetField(Field.Key, CloneReviewSnapshotValueForHash(Field.Value));
+		}
+		return Clone;
+	}
+
+	static TSharedPtr<FJsonValue> CloneReviewSnapshotValueForHash(const TSharedPtr<FJsonValue>& Value)
+	{
+		if (!Value.IsValid())
+		{
+			return MakeShared<FJsonValueNull>();
+		}
+
+		switch (Value->Type)
+		{
+		case EJson::Object:
+			return MakeShared<FJsonValueObject>(CloneReviewSnapshotObjectForHash(Value->AsObject()));
+		case EJson::Array:
+		{
+			TArray<TSharedPtr<FJsonValue>> ClonedArray;
+			const TArray<TSharedPtr<FJsonValue>> SourceArray = Value->AsArray();
+			for (const TSharedPtr<FJsonValue>& Entry : SourceArray)
+			{
+				ClonedArray.Add(CloneReviewSnapshotValueForHash(Entry));
+			}
+			return MakeShared<FJsonValueArray>(ClonedArray);
+		}
+		case EJson::String:
+			return MakeShared<FJsonValueString>(Value->AsString());
+		case EJson::Number:
+			return MakeShared<FJsonValueNumber>(Value->AsNumber());
+		case EJson::Boolean:
+			return MakeShared<FJsonValueBoolean>(Value->AsBool());
+		default:
+			return MakeShared<FJsonValueNull>();
+		}
+	}
+
 	static FString ExtractReviewSnapshotAnchorName(const FString& TargetKey, const FString& Prefix)
 	{
 		const FString Marker = Prefix + TEXT(":");
@@ -125,6 +179,26 @@ namespace
 			TEXT("%s|%s"),
 			*Node->NodeGuid.ToString(EGuidFormats::Digits),
 			*Node->GetName());
+	}
+
+	static FString BuildReviewSnapshotRestoreText(const TArray<const UEdGraphNode*>& Nodes)
+	{
+		TSet<UObject*> NodesToExport;
+		for (const UEdGraphNode* Node : Nodes)
+		{
+			if (Node)
+			{
+				NodesToExport.Add(const_cast<UEdGraphNode*>(Node));
+			}
+		}
+		if (NodesToExport.Num() == 0)
+		{
+			return FString();
+		}
+
+		FString ExportedText;
+		FEdGraphUtilities::ExportNodesToText(NodesToExport, ExportedText);
+		return ExportedText;
 	}
 
 	static void AppendReviewSnapshotGraphs(TArray<const UEdGraph*>& OutGraphs, const TArray<UEdGraph*>& InGraphs)
@@ -451,8 +525,9 @@ FString FBlueprintHelperReviewBaselineSnapshotService::ComputeSemanticSnapshotHa
 FString FBlueprintHelperReviewBaselineSnapshotService::ComputeSemanticSnapshotHash(
 	const TSharedRef<FJsonObject>& Snapshot)
 {
+	const TSharedPtr<FJsonObject> HashSnapshot = CloneReviewSnapshotObjectForHash(Snapshot);
 	const FString CanonicalSnapshot =
-		FBlueprintHelperReviewBaselineSnapshotServiceUtils::SerializeJsonObjectCanonical(Snapshot);
+		FBlueprintHelperReviewBaselineSnapshotServiceUtils::SerializeJsonObjectCanonical(HashSnapshot.ToSharedRef());
 	return FString::Printf(TEXT("crc32_%08x"), FCrc::StrCrc32(*CanonicalSnapshot));
 }
 
@@ -709,6 +784,9 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 
 			Json->SetBoolField(TEXT("exists"), true);
 			Json->SetObjectField(TEXT("node"), BuildNodeSnapshot(Node));
+			TArray<const UEdGraphNode*> RestoreNodes;
+			RestoreNodes.Add(Node);
+			Json->SetStringField(TEXT("restore_text"), BuildReviewSnapshotRestoreText(RestoreNodes));
 			return Json;
 		}
 
@@ -750,6 +828,10 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 			}
 			Json->SetBoolField(TEXT("exists"), BlockNodes.Num() > 0);
 			Json->SetArrayField(TEXT("nodes"), Nodes);
+			if (BlockNodes.Num() > 0)
+			{
+				Json->SetStringField(TEXT("restore_text"), BuildReviewSnapshotRestoreText(BlockNodes));
+			}
 			if (BlockNodes.Num() == 0)
 			{
 				Json->SetStringField(TEXT("resolve_error_code"), TEXT("block_not_found"));

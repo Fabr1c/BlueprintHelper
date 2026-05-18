@@ -8,8 +8,10 @@
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperGraphWriteBlockScopedResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDebugData.h"
+#include "Systems/Review/BlueprintHelperReviewBaselineSnapshotService.h"
 #include "Shared/GraphWrite/BlueprintHelperAppendGraphTypes.h"
 #include "Shared/GraphWrite/BlueprintHelperReplaceGraphTypes.h"
+#include "Shared/Review/BlueprintHelperReviewTypes.h"
 
 #include "Engine/Blueprint.h"
 #include "EdGraph/EdGraph.h"
@@ -350,6 +352,43 @@ FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::Execu
 	}
 
 	// 4. 开始修改
+	const bool bShouldRecordReview = Request.PatchType != EBlueprintHelperPatchType::SetNodePosition
+		&& Request.PatchType != EBlueprintHelperPatchType::SetNodeComment;
+	FString PatchTargetKey;
+	FString PatchBeforeSnapshotJson;
+	if (bShouldRecordReview && ResolvedTarget.Node)
+	{
+		const FString NodeGuid = ResolvedTarget.Node->NodeGuid.IsValid()
+			? ResolvedTarget.Node->NodeGuid.ToString(EGuidFormats::Digits)
+			: FString();
+		const FString NodeId = NodeGuid.IsEmpty() ? ResolvedTarget.Node->GetName() : NodeGuid;
+		PatchTargetKey = FString::Printf(TEXT("graph:%s:node:%s"), *Request.GraphName, *NodeId);
+
+		FBlueprintHelperReviewAtomicTarget SnapshotTarget;
+		SnapshotTarget.AssetPath = Request.AssetPath;
+		SnapshotTarget.GraphName = Request.GraphName;
+		SnapshotTarget.Surface = EBlueprintHelperReviewSurface::Graph;
+		SnapshotTarget.TargetKey = PatchTargetKey;
+		SnapshotTarget.TargetKind = TEXT("graph_node");
+		SnapshotTarget.VisualGroupKey = FString::Printf(TEXT("graph:%s:transaction:%s"), *Request.GraphName, *TransactionId);
+		SnapshotTarget.DisplayLabel = ResolvedTarget.Node->GetName();
+		SnapshotTarget.NodeGuid = NodeGuid;
+
+		FBlueprintHelperReviewBaselineSnapshotService SnapshotService;
+		FString PatchBeforeSnapshotHash;
+		FString PatchBeforeSnapshotError;
+		if (!SnapshotService.CaptureTargetSnapshot(SnapshotTarget, PatchBeforeSnapshotJson, PatchBeforeSnapshotHash, PatchBeforeSnapshotError))
+		{
+			FBlueprintHelperToolError Error;
+			Error.Code = TEXT("review_baseline_snapshot_failed");
+			Error.Stage = EBlueprintHelperToolStage::Preflight;
+			Error.Message = PatchBeforeSnapshotError;
+			Error.bRetryable = false;
+			Error.RollbackResult = EBlueprintHelperRollbackResult::NotNeeded;
+			return FBlueprintHelperToolResultBuilder::Failure(TEXT("patch_blueprint_graph"), TraceId, Error);
+		}
+	}
+
 	FBlueprintHelperScopedAssetMutation Mutation(
 		FText::FromString(TEXT("BlueprintHelper Patch Graph")), BP);
 	Mutation.Modify(Graph);
@@ -371,8 +410,6 @@ FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::Execu
 	}
 
 	// 6. 写 Journal
-	const bool bShouldRecordReview = Request.PatchType != EBlueprintHelperPatchType::SetNodePosition
-		&& Request.PatchType != EBlueprintHelperPatchType::SetNodeComment;
 	bool bJournalRecorded = false;
 	if (bShouldRecordReview)
 	{
@@ -401,6 +438,10 @@ FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::Execu
 				FMath::Max(ResolvedTarget.Node->NodeHeight, 180));
 			Anchor.bHasGraphBounds = true;
 			JRecord.CreatedNodeAnchors.Add(Anchor);
+			if (!PatchTargetKey.IsEmpty() && !PatchBeforeSnapshotJson.IsEmpty())
+			{
+				JRecord.BaselineSnapshotsByTargetKey.Add(PatchTargetKey, PatchBeforeSnapshotJson);
+			}
 		}
 
 		FString JError;

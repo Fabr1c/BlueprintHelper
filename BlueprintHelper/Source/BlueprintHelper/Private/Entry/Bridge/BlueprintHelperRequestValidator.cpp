@@ -132,6 +132,27 @@ public:
 		return true;
 	}
 
+	static bool RejectFields(
+		const TSharedPtr<FJsonObject>& Payload,
+		TArrayView<const TCHAR* const> FieldNames,
+		FBlueprintHelperBridgeValidationError& OutError)
+	{
+		for (const TCHAR* FieldName : FieldNames)
+		{
+			const FString Field(FieldName);
+			if (Payload->HasField(Field))
+			{
+				OutError.Code = TEXT("invalid_request");
+				OutError.Field = TEXT("payload.") + Field;
+				OutError.ExpectedType = TEXT("absent");
+				OutError.ActualType = TEXT("present");
+				OutError.Message = FString::Printf(TEXT("%s is retired and is no longer accepted."), *OutError.Field);
+				return false;
+			}
+		}
+		return true;
+	}
+
 	static bool CommandEquals(const FString& Command, const TCHAR* Expected)
 	{
 		return Command.Equals(Expected, ESearchCase::IgnoreCase);
@@ -170,13 +191,13 @@ bool FBlueprintHelperRequestValidator::NormalizeExportScope(
 	FString& OutError)
 {
 	const FString Scope = InScope.IsEmpty() ? TEXT("graph") : InScope.ToLower();
-	if (Scope == TEXT("graph") || Scope == TEXT("full_graph") || Scope == TEXT("single_graph"))
+	if (Scope == TEXT("graph"))
 	{
 		OutScope = EBlueprintHelperExportScope::SingleGraph;
 		OutEffectiveScope = TEXT("graph");
 		return true;
 	}
-	if (Scope == TEXT("blueprint") || Scope == TEXT("full_blueprint"))
+	if (Scope == TEXT("blueprint"))
 	{
 		OutScope = EBlueprintHelperExportScope::FullBlueprint;
 		OutEffectiveScope = TEXT("blueprint");
@@ -219,11 +240,22 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 
 	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("export_to_json")))
 	{
+		const TCHAR* RetiredFields[] = {TEXT("include_json_text")};
+		if (!FBlueprintHelperRequestValidatorLocalUtils::RejectFields(Payload, RetiredFields, OutError))
+		{
+			return false;
+		}
+
 		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
 			{TEXT("scope"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("include_json_text"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
 		};
-		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
+		const TSet<FString> AllowedScopes = {TEXT("graph"), TEXT("blueprint"), TEXT("selection")};
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError)
+			&& FBlueprintHelperRequestValidatorLocalUtils::ValidateOptionalStringEnum(
+				Payload,
+				TEXT("scope"),
+				AllowedScopes,
+				OutError);
 	}
 	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("export_logic")))
 	{
@@ -237,7 +269,13 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 			{TEXT("include_positions"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
 			{TEXT("include_raw_node_types"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
 		};
-		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
+		const TSet<FString> AllowedScopes = {TEXT("graph"), TEXT("blueprint")};
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError)
+			&& FBlueprintHelperRequestValidatorLocalUtils::ValidateOptionalStringEnum(
+				Payload,
+				TEXT("scope"),
+				AllowedScopes,
+				OutError);
 	}
 	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("validate_json")))
 	{
@@ -257,6 +295,7 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 	{
 		return true;
 	}
+
 	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("export_debug_bundle")))
 	{
 		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
@@ -276,18 +315,17 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 	}
 	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("import_json")))
 	{
-		// json 字段接受 string 或 object（拒绝 array / bool / number）
 		{
 			const TSharedPtr<FJsonValue>* FoundValue = Payload->Values.Find(TEXT("json"));
 			if (!FoundValue)
 			{
-				FBlueprintHelperRequestValidatorLocalUtils::SetValidationError(OutError, TEXT("payload.json"), TEXT("string 或 object"), TEXT("missing"));
+				FBlueprintHelperRequestValidatorLocalUtils::SetValidationError(OutError, TEXT("payload.json"), TEXT("object"), TEXT("missing"));
 				return false;
 			}
 			const auto JsonVal = *FoundValue;
-			if (!JsonVal.IsValid() || (JsonVal->Type != EJson::String && JsonVal->Type != EJson::Object))
+			if (!JsonVal.IsValid() || JsonVal->Type != EJson::Object)
 			{
-				FBlueprintHelperRequestValidatorLocalUtils::SetValidationError(OutError, TEXT("payload.json"), TEXT("string 或 object"), FBlueprintHelperRequestValidatorLocalUtils::ActualJsonTypeToString(JsonVal));
+				FBlueprintHelperRequestValidatorLocalUtils::SetValidationError(OutError, TEXT("payload.json"), TEXT("object"), FBlueprintHelperRequestValidatorLocalUtils::ActualJsonTypeToString(JsonVal));
 				return false;
 			}
 		}
@@ -301,16 +339,24 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 	}
 	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("import_agent_graph")))
 	{
+		const TCHAR* RetiredFields[] = {
+			TEXT("nodes"),
+			TEXT("links"),
+			TEXT("declarations"),
+			TEXT("layout")
+		};
+		if (!FBlueprintHelperRequestValidatorLocalUtils::RejectFields(Payload, RetiredFields, OutError))
+		{
+			return false;
+		}
+
 		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
 			{TEXT("schema"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
 			{TEXT("version"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
 			{TEXT("target_blueprint"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
 			{TEXT("target_graph"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
 			{TEXT("mode"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("layout"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("declarations"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Object, false},
-			{TEXT("nodes"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Array, true},
-			{TEXT("links"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Array, false},
+			{TEXT("logic_spec"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Object, true},
 			{TEXT("options"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Object, false},
 		};
 		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
@@ -851,43 +897,6 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 		};
 		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("cleanup_blueprint_helper_block")))
-	{
-		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("block_id"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("graph"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("block_ref"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("missing_policy"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("dry_run"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
-		};
-		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
-	}
-	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("rollback_cleanup_transaction")))
-	{
-		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("transaction_id"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("rollback_scope"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("already_rolled_back_policy"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("dry_run"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
-		};
-		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
-	}
-	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("convert_blueprint_helper_block_to_user_owned")))
-	{
-		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("ownership_scope"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("graph"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("block_id"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("graph_id"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("block_ref"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("already_user_owned_policy"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("dry_run"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
-		};
-		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
-	}
 	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("compile_blueprint_asset")))
 	{
 		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
@@ -1007,9 +1016,6 @@ TEXT("create_blueprint"),
 	TEXT("replace_blueprint_graph"),
 	TEXT("patch_blueprint_graph"),
 	TEXT("merge_blueprint_graph"),
-	TEXT("cleanup_blueprint_helper_block"),
-	TEXT("rollback_cleanup_transaction"),
-	TEXT("convert_blueprint_helper_block_to_user_owned"),
 	TEXT("add_blueprint_member_variable"),
 	TEXT("add_blueprint_member_variables"),
 	TEXT("set_blueprint_member_variable_properties"),

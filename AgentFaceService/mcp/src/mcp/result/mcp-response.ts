@@ -3,8 +3,7 @@ export type BlueprintViewFormat = 'logic_md' | 'logic_json' | 'raw_json';
 export type McpResponseMode =
   | 'summary_text'
   | 'structured_json'
-  | 'resource_ref'
-  | 'legacy_text_json';
+  | 'resource_ref';
 
 export type BlueprintResourceView =
   | 'logic-md'
@@ -91,17 +90,6 @@ export function normalizeBlueprintPayload(result: unknown): unknown {
 
   const out = { ...normalized };
 
-  // Parse string `json` to object
-  if (typeof out['json'] === 'string') {
-    out['json'] = normalizeBridgeResult(out['json']);
-  }
-
-  // Parse string `json_text` to object (legacy)
-  if (typeof out['json_text'] === 'string') {
-    out['json_text'] = normalizeBridgeResult(out['json_text']);
-  }
-
-  // Parse string `payload` to object (defensive, 防止 C++ 侧异常发送 string 形式的 payload)
   if (typeof out['payload'] === 'string') {
     out['payload'] = normalizeBridgeResult(out['payload']);
   }
@@ -112,12 +100,7 @@ export function normalizeBlueprintPayload(result: unknown): unknown {
 export function buildBlueprintToolResult(options: BuildToolResultOptions): BlueprintToolResult {
   const content: BlueprintToolContent[] = [];
 
-  if (options.mode === 'legacy_text_json' && options.structured) {
-    content.push({
-      type: 'text',
-      text: JSON.stringify(options.structured),
-    });
-  } else if (options.markdown) {
+  if (options.markdown) {
     content.push({
       type: 'text',
       text: options.markdown,
@@ -155,13 +138,7 @@ export function resolveResponseMode(
   requested: McpResponseMode | undefined,
   fallback: McpResponseMode,
 ): McpResponseMode {
-  if (requested) {
-    return requested;
-  }
-
-  return process.env['BPH_MCP_LEGACY_TEXT_JSON'] === '1'
-    ? 'legacy_text_json'
-    : fallback;
+  return requested ?? fallback;
 }
 
 export function makeBlueprintResourceUri(input: {
@@ -231,16 +208,14 @@ export function getRecordField(record: Record<string, unknown> | undefined, fiel
 /**
  * Extract the payload body from a normalized Bridge result, preferring:
  * 1. `payload` (object-first)
- * 2. `json` (compatibility alias)
- * 3. `json_text` (legacy, parsed)
- * 4. The result itself as fallback
+ * 2. `json` (object alias)
+ * 3. The result itself as fallback
  */
 export function getBlueprintPayloadBody(result: unknown): unknown {
   const normalized = normalizeBlueprintPayload(result);
   if (!isRecord(normalized)) return normalized;
   if (normalized['payload'] !== undefined) return normalized['payload'];
   if (normalized['json'] !== undefined) return normalized['json'];
-  if (normalized['json_text'] !== undefined) return normalized['json_text'];
   return normalized;
 }
 

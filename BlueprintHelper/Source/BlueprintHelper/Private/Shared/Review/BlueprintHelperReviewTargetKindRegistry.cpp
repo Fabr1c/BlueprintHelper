@@ -369,6 +369,13 @@ EBlueprintHelperReviewTargetHandlerKind FBlueprintHelperReviewTargetKindRegistry
 
 bool FBlueprintHelperReviewTargetKindRegistry::SupportsSnapshotRestore(const FString& TargetKind)
 {
+	const FString NormalizedTargetKind = BlueprintHelperReviewNormalizeRegistryToken(TargetKind);
+	if (NormalizedTargetKind.Equals(TEXT("graph_node"), ESearchCase::IgnoreCase)
+		|| NormalizedTargetKind.Equals(TEXT("graph_block"), ESearchCase::IgnoreCase))
+	{
+		return true;
+	}
+
 	static const EBlueprintHelperReviewTargetHandlerKind RestorableKinds[] =
 	{
 		EBlueprintHelperReviewTargetHandlerKind::BlueprintVariable,

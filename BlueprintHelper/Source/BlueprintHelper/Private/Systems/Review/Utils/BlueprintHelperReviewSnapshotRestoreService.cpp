@@ -37,7 +37,6 @@
 #include "Systems/Debug/BlueprintHelperDebugCaseStoreService.h"
 #include "Systems/Debug/BlueprintHelperDebugEntryService.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
-#include "Systems/ToolClusters/CleanupOwnership/BlueprintHelperConvertBlockToUserOwnedService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperOwnershipService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
@@ -868,6 +867,429 @@ bool FBlueprintHelperReviewSnapshotRestoreService::RestoreWidgetFromSnapshot(
 
 		return true;
 	}
+
+static FString BlueprintHelperReviewExtractGraphTargetTail(const FString& TargetKey, const FString& Marker)
+{
+	const FString Token = Marker + TEXT(":");
+	const int32 Pos = TargetKey.Find(Token, ESearchCase::CaseSensitive, ESearchDir::FromEnd);
+	if (Pos != INDEX_NONE)
+	{
+		return TargetKey.Mid(Pos + Token.Len());
+	}
+
+	int32 LastColon = INDEX_NONE;
+	if (TargetKey.FindLastChar(TEXT(':'), LastColon))
+	{
+		return TargetKey.Mid(LastColon + 1);
+	}
+	return TargetKey;
+}
+
+static FString BlueprintHelperReviewNormalizeGuidCandidate(const FString& Candidate)
+{
+	FString Trimmed = Candidate;
+	Trimmed.TrimStartAndEndInline();
+	if (Trimmed.IsEmpty())
+	{
+		return FString();
+	}
+
+	FGuid ParsedGuid;
+	if (FGuid::Parse(Trimmed, ParsedGuid))
+	{
+		return ParsedGuid.ToString(EGuidFormats::Digits);
+	}
+
+	FString HexDigits;
+	HexDigits.Reserve(Trimmed.Len());
+	for (const TCHAR Ch : Trimmed)
+	{
+		if (FChar::IsHexDigit(Ch))
+		{
+			HexDigits.AppendChar(Ch);
+		}
+	}
+	return HexDigits.Len() == 32 ? HexDigits : Trimmed;
+}
+
+static FString BlueprintHelperReviewGetGraphNodeBlockId(const UEdGraphNode* Node)
+{
+	if (!Node)
+	{
+		return FString();
+	}
+	if (UPackage* Package = Node->GetOutermost())
+	{
+		FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
+		return MetaData.GetValue(Node, TEXT("BlueprintHelperBlockId"));
+	}
+	return FString();
+}
+
+static bool BlueprintHelperReviewGraphNodeMatchesStableId(const UEdGraphNode* Node, const FString& Candidate)
+{
+	if (!Node || Candidate.IsEmpty())
+	{
+		return false;
+	}
+
+	if (Node->GetName().Equals(Candidate, ESearchCase::IgnoreCase))
+	{
+		return true;
+	}
+
+	const FString NodeGuidDigits = Node->NodeGuid.ToString(EGuidFormats::Digits);
+	const FString CandidateGuidDigits = BlueprintHelperReviewNormalizeGuidCandidate(Candidate);
+	if (!NodeGuidDigits.IsEmpty() && NodeGuidDigits.Equals(CandidateGuidDigits, ESearchCase::IgnoreCase))
+	{
+		return true;
+	}
+
+	if (UPackage* Package = Node->GetOutermost())
+	{
+		FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
+		return MetaData.GetValue(Node, TEXT("BlueprintHelperBlockId")).Equals(Candidate, ESearchCase::IgnoreCase)
+			|| MetaData.GetValue(Node, TEXT("BlueprintHelperTransactionId")).Equals(Candidate, ESearchCase::IgnoreCase)
+			|| MetaData.GetValue(Node, TEXT("BlueprintHelperFeatureName")).Equals(Candidate, ESearchCase::IgnoreCase);
+	}
+	return false;
+}
+
+static UEdGraph* BlueprintHelperReviewFindGraph(UBlueprint* Blueprint, const FString& GraphName)
+{
+	if (!Blueprint)
+	{
+		return nullptr;
+	}
+
+	auto FindIn = [&GraphName](const TArray<UEdGraph*>& Graphs) -> UEdGraph*
+	{
+		for (UEdGraph* Graph : Graphs)
+		{
+			if (Graph && (GraphName.IsEmpty() || Graph->GetName() == GraphName))
+			{
+				return Graph;
+			}
+		}
+		return nullptr;
+	};
+
+	if (UEdGraph* Graph = FindIn(Blueprint->UbergraphPages))
+	{
+		return Graph;
+	}
+	if (UEdGraph* Graph = FindIn(Blueprint->FunctionGraphs))
+	{
+		return Graph;
+	}
+	if (UEdGraph* Graph = FindIn(Blueprint->MacroGraphs))
+	{
+		return Graph;
+	}
+	return nullptr;
+}
+
+static void BlueprintHelperReviewCollectGraphRestoreNodes(
+	UEdGraph* Graph,
+	const FBlueprintHelperReviewAtomicTarget& Target,
+	TArray<UEdGraphNode*>& OutNodes)
+{
+	if (!Graph)
+	{
+		return;
+	}
+
+	if (FBlueprintHelperReviewTargetKindRegistry::IsGraphNodeTarget(Target.TargetKind, Target.TargetKey))
+	{
+		const FString NodeName = Target.NodeGuid.IsEmpty()
+			? BlueprintHelperReviewExtractGraphTargetTail(Target.TargetKey, TEXT("node"))
+			: Target.NodeGuid;
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (BlueprintHelperReviewGraphNodeMatchesStableId(Node, NodeName))
+			{
+				OutNodes.AddUnique(Node);
+				return;
+			}
+		}
+		return;
+	}
+
+	if (FBlueprintHelperReviewTargetKindRegistry::IsGraphBlockTarget(Target.TargetKind, Target.TargetKey))
+	{
+		const FString BlockId = BlueprintHelperReviewExtractGraphTargetTail(Target.TargetKey, TEXT("block"));
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (Node && BlueprintHelperReviewGetGraphNodeBlockId(Node) == BlockId)
+			{
+				OutNodes.AddUnique(Node);
+			}
+		}
+	}
+}
+
+static UEdGraphNode* BlueprintHelperReviewFindNodeBySnapshotGuid(UEdGraph* Graph, const FString& NodeGuid)
+{
+	if (!Graph || NodeGuid.IsEmpty())
+	{
+		return nullptr;
+	}
+
+	const FString NormalizedGuid = BlueprintHelperReviewNormalizeGuidCandidate(NodeGuid);
+	for (UEdGraphNode* Node : Graph->Nodes)
+	{
+		if (Node && Node->NodeGuid.ToString(EGuidFormats::Digits).Equals(NormalizedGuid, ESearchCase::IgnoreCase))
+		{
+			return Node;
+		}
+	}
+	return nullptr;
+}
+
+static UEdGraphPin* BlueprintHelperReviewFindPinByName(UEdGraphNode* Node, const FString& PinName)
+{
+	if (!Node || PinName.IsEmpty())
+	{
+		return nullptr;
+	}
+
+	for (UEdGraphPin* Pin : Node->Pins)
+	{
+		if (Pin && Pin->PinName.ToString().Equals(PinName, ESearchCase::IgnoreCase))
+		{
+			return Pin;
+		}
+	}
+	return nullptr;
+}
+
+static bool BlueprintHelperReviewRestoreNodePinsFromSnapshot(
+	UEdGraph* Graph,
+	UEdGraphNode* Node,
+	const TSharedPtr<FJsonObject>& NodeSnapshot,
+	FString& OutError)
+{
+	if (!Graph || !Node || !NodeSnapshot.IsValid())
+	{
+		OutError = TEXT("graph_node_snapshot_missing");
+		return false;
+	}
+
+	const TArray<TSharedPtr<FJsonValue>>* PinValues = nullptr;
+	if (!NodeSnapshot->TryGetArrayField(TEXT("pins"), PinValues) || !PinValues)
+	{
+		return true;
+	}
+
+	TArray<TPair<UEdGraphPin*, TSharedPtr<FJsonObject>>> PinsToRestore;
+	for (const TSharedPtr<FJsonValue>& PinValue : *PinValues)
+	{
+		const TSharedPtr<FJsonObject> PinSnapshot = PinValue.IsValid() ? PinValue->AsObject() : nullptr;
+		if (!PinSnapshot.IsValid())
+		{
+			continue;
+		}
+
+		FString PinName;
+		PinSnapshot->TryGetStringField(TEXT("name"), PinName);
+		if (UEdGraphPin* Pin = BlueprintHelperReviewFindPinByName(Node, PinName))
+		{
+			PinsToRestore.Add(TPair<UEdGraphPin*, TSharedPtr<FJsonObject>>(Pin, PinSnapshot));
+		}
+	}
+
+	for (const TPair<UEdGraphPin*, TSharedPtr<FJsonObject>>& Entry : PinsToRestore)
+	{
+		UEdGraphPin* Pin = Entry.Key;
+		if (!Pin)
+		{
+			continue;
+		}
+		Pin->Modify();
+		Pin->BreakAllPinLinks(true);
+		FString DefaultValue;
+		if (Entry.Value.IsValid() && Entry.Value->TryGetStringField(TEXT("default_value"), DefaultValue))
+		{
+			Pin->DefaultValue = DefaultValue;
+		}
+	}
+
+	const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
+	if (!Schema)
+	{
+		OutError = TEXT("graph_restore_k2_schema_missing");
+		return false;
+	}
+
+	for (const TPair<UEdGraphPin*, TSharedPtr<FJsonObject>>& Entry : PinsToRestore)
+	{
+		UEdGraphPin* Pin = Entry.Key;
+		const TSharedPtr<FJsonObject>& PinSnapshot = Entry.Value;
+		if (!Pin || !PinSnapshot.IsValid())
+		{
+			continue;
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* LinkedValues = nullptr;
+		if (!PinSnapshot->TryGetArrayField(TEXT("linked_to"), LinkedValues) || !LinkedValues)
+		{
+			continue;
+		}
+
+		for (const TSharedPtr<FJsonValue>& LinkedValue : *LinkedValues)
+		{
+			const FString LinkedRef = LinkedValue.IsValid() ? LinkedValue->AsString() : FString();
+			FString LinkedNodeGuid;
+			FString LinkedPinName;
+			if (!LinkedRef.Split(TEXT(":"), &LinkedNodeGuid, &LinkedPinName) || LinkedNodeGuid.IsEmpty() || LinkedPinName.IsEmpty())
+			{
+				continue;
+			}
+
+			UEdGraphNode* LinkedNode = BlueprintHelperReviewFindNodeBySnapshotGuid(Graph, LinkedNodeGuid);
+			UEdGraphPin* LinkedPin = BlueprintHelperReviewFindPinByName(LinkedNode, LinkedPinName);
+			if (!LinkedPin)
+			{
+				continue;
+			}
+
+			UEdGraphPin* FromPin = Pin->Direction == EGPD_Output ? Pin : LinkedPin;
+			UEdGraphPin* ToPin = Pin->Direction == EGPD_Output ? LinkedPin : Pin;
+			if (!FromPin || !ToPin || FromPin->LinkedTo.Contains(ToPin))
+			{
+				continue;
+			}
+			Schema->TryCreateConnection(FromPin, ToPin);
+		}
+	}
+
+	return true;
+}
+
+static bool BlueprintHelperReviewImportGraphRestoreText(
+	UEdGraph* Graph,
+	const FString& RestoreText,
+	FString& OutError)
+{
+	if (RestoreText.IsEmpty())
+	{
+		OutError = TEXT("graph_snapshot_restore_text_missing");
+		return false;
+	}
+	if (!FEdGraphUtilities::CanImportNodesFromText(Graph, RestoreText))
+	{
+		OutError = TEXT("graph_snapshot_restore_text_not_importable");
+		return false;
+	}
+
+	TSet<UEdGraphNode*> ImportedNodes;
+	FEdGraphUtilities::ImportNodesFromText(Graph, RestoreText, ImportedNodes);
+	if (ImportedNodes.Num() == 0)
+	{
+		OutError = TEXT("graph_snapshot_restore_imported_no_nodes");
+		return false;
+	}
+	return true;
+}
+
+bool FBlueprintHelperReviewSnapshotRestoreService::RestoreGraphFromSnapshot(
+		const FBlueprintHelperReviewAtomicTarget& Target,
+		const TSharedPtr<FJsonObject>& Snapshot,
+		FString& OutError)
+	{
+		UBlueprint* Blueprint = Cast<UBlueprint>(StaticLoadObject(UBlueprint::StaticClass(), nullptr, *Target.AssetPath));
+		if (!Blueprint)
+		{
+			OutError = FString::Printf(TEXT("blueprint_not_found:%s"), *Target.AssetPath);
+			return false;
+		}
+
+		UEdGraph* Graph = BlueprintHelperReviewFindGraph(Blueprint, Target.GraphName);
+		if (!Graph)
+		{
+			OutError = FString::Printf(TEXT("graph_not_found:%s"), *Target.GraphName);
+			return false;
+		}
+
+		bool bSnapshotExists = false;
+		Snapshot->TryGetBoolField(TEXT("exists"), bSnapshotExists);
+		TArray<UEdGraphNode*> NodesToRemove;
+		BlueprintHelperReviewCollectGraphRestoreNodes(Graph, Target, NodesToRemove);
+
+		const FScopedTransaction Transaction(FText::FromString(TEXT("BlueprintHelper Review Restore Graph Snapshot")));
+		Blueprint->Modify();
+		Graph->Modify();
+
+		if (!bSnapshotExists)
+		{
+			for (UEdGraphNode* Node : NodesToRemove)
+			{
+				if (Node)
+				{
+					FBlueprintEditorUtils::RemoveNode(Blueprint, Node, true);
+				}
+			}
+			MarkBlueprintReviewRestoreModified(Blueprint);
+			Graph->NotifyGraphChanged();
+			return true;
+		}
+
+		if (FBlueprintHelperReviewTargetKindRegistry::IsGraphNodeTarget(Target.TargetKind, Target.TargetKey))
+		{
+			const TSharedPtr<FJsonObject>* NodeSnapshot = nullptr;
+			if (!Snapshot->TryGetObjectField(TEXT("node"), NodeSnapshot) || !NodeSnapshot || !NodeSnapshot->IsValid())
+			{
+				OutError = TEXT("graph_node_snapshot_missing");
+				return false;
+			}
+
+			UEdGraphNode* Node = NodesToRemove.Num() > 0 ? NodesToRemove[0] : nullptr;
+			if (Node)
+			{
+				if (!BlueprintHelperReviewRestoreNodePinsFromSnapshot(Graph, Node, *NodeSnapshot, OutError))
+				{
+					return false;
+				}
+			}
+			else
+			{
+				FString RestoreText;
+				Snapshot->TryGetStringField(TEXT("restore_text"), RestoreText);
+				if (!BlueprintHelperReviewImportGraphRestoreText(Graph, RestoreText, OutError))
+				{
+					return false;
+				}
+			}
+
+			MarkBlueprintReviewRestoreModified(Blueprint);
+			Graph->NotifyGraphChanged();
+			return true;
+		}
+
+		if (FBlueprintHelperReviewTargetKindRegistry::IsGraphBlockTarget(Target.TargetKind, Target.TargetKey))
+		{
+			FString RestoreText;
+			Snapshot->TryGetStringField(TEXT("restore_text"), RestoreText);
+			for (UEdGraphNode* Node : NodesToRemove)
+			{
+				if (Node)
+				{
+					FBlueprintEditorUtils::RemoveNode(Blueprint, Node, true);
+				}
+			}
+			if (!BlueprintHelperReviewImportGraphRestoreText(Graph, RestoreText, OutError))
+			{
+				return false;
+			}
+			MarkBlueprintReviewRestoreModified(Blueprint);
+			Graph->NotifyGraphChanged();
+			return true;
+		}
+
+		OutError = FString::Printf(TEXT("graph_snapshot_restore_unsupported_target_kind:%s"), *Target.TargetKind);
+		return false;
+	}
+
 bool FBlueprintHelperReviewSnapshotRestoreService::ExecuteSnapshotRestore(
 		const FBlueprintHelperReviewAtomicTarget& Target,
 		FString& OutError)
@@ -887,6 +1309,8 @@ bool FBlueprintHelperReviewSnapshotRestoreService::ExecuteSnapshotRestore(
 
 		const TArray<FSnapshotRestoreRoute> Routes =
 		{
+			{ EBlueprintHelperReviewTargetHandlerKind::GraphNode, [&Target, &Snapshot, &OutError]() { return RestoreGraphFromSnapshot(Target, Snapshot, OutError); } },
+			{ EBlueprintHelperReviewTargetHandlerKind::GraphBlock, [&Target, &Snapshot, &OutError]() { return RestoreGraphFromSnapshot(Target, Snapshot, OutError); } },
 			{ EBlueprintHelperReviewTargetHandlerKind::BlueprintVariable, [&Target, &Snapshot, &OutError]() { return RestoreBlueprintVariableFromSnapshot(Target, Snapshot, OutError); } },
 			{ EBlueprintHelperReviewTargetHandlerKind::Component, [&Target, &Snapshot, &OutError]() { return RestoreComponentFromSnapshot(Target, Snapshot, OutError); } },
 			{ EBlueprintHelperReviewTargetHandlerKind::DataTableRow, [&Target, &Snapshot, &OutError]() { return RestoreDataTableRowFromSnapshot(Target, Snapshot, OutError); } },

@@ -793,11 +793,6 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 		{
 			continue;
 		}
-		JournalRecord.CreatedNodePaths.Add(FString::Printf(TEXT("/%s"), *Node->GetPathName()));
-		if (Node->NodeGuid.IsValid())
-		{
-			JournalRecord.CreatedNodePaths.Add(Node->NodeGuid.ToString(EGuidFormats::Digits));
-		}
 		JournalRecord.CreatedNodeAnchors.Add(
 			FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::MakeReviewNodeAnchor(Node));
 		if (Node->NodeGuid.IsValid())
@@ -831,8 +826,6 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 			}
 		}
 	}
-	JournalRecord.RollbackData = BeforeSnapshot.ToJsonString();
-
 	FString JournalError;
 	if (!JournalService.WriteAppendJournal(JournalRecord, JournalError))
 	{
@@ -1183,7 +1176,6 @@ FString FBlueprintHelperReplaceBlueprintGraphService::BuildSemanticGraphWritePay
 	Root->SetStringField(TEXT("target_blueprint"), Request.AssetPath);
 	Root->SetStringField(TEXT("target_graph"), Request.GraphName);
 	Root->SetStringField(TEXT("mode"), TEXT("append"));
-	Root->SetStringField(TEXT("layout"), TEXT("auto"));
 
 	TSharedRef<FJsonObject> Options = MakeShared<FJsonObject>();
 	Options->SetBoolField(TEXT("compile"), false);

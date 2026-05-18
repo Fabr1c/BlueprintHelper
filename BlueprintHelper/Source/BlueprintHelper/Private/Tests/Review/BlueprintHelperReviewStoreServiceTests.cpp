@@ -750,7 +750,6 @@ bool FBlueprintHelperReviewStoreUsesSemanticHashForSnapshotRestoreTargetTest::Ru
 	Target.TargetKey = TEXT("datatable_row:DamageSmall");
 	Target.VisualGroupKey = Target.TargetKey;
 	Target.DisplayLabel = TEXT("DamageSmall");
-	Target.RollbackDataRef = TEXT("review://archive/archive_store_restore/rollback/row");
 
 	FBlueprintHelperReviewBaselineSnapshotService SnapshotService;
 	FString BeforeSnapshotJson;
@@ -3302,13 +3301,15 @@ bool FBlueprintHelperReviewRecordAggregatesTransactionJournalTaskRunAndCreatedAt
 	FirstRecord.GraphId = TEXT("EventGraph");
 	FirstRecord.GraphName = TEXT("EventGraph");
 	FirstRecord.BlockIds.Add(TEXT("EventGraph_DoorFlow"));
-	FirstRecord.RollbackData = TEXT("{\"node_guids\":[]}");
 
 	FBlueprintHelperAppendJournalRecord SecondRecord = FirstRecord;
 	SecondRecord.TransactionId = FString::Printf(TEXT("tx_review_aggregate_2_%s"), *FGuid::NewGuid().ToString(EGuidFormats::Digits));
 	SecondRecord.Tool = TEXT("ReplaceBlueprintGraph");
 	SecondRecord.BlockIds.Reset();
-	SecondRecord.CreatedNodePaths.Add(TEXT("K2Node_CallFunction_0"));
+	FBlueprintHelperGraphReviewNodeAnchor SecondAnchor;
+	SecondAnchor.NodePath = TEXT("K2Node_CallFunction_0");
+	SecondAnchor.NodeGuid = FGuid::NewGuid().ToString(EGuidFormats::Digits);
+	SecondRecord.CreatedNodeAnchors.Add(SecondAnchor);
 
 	FBlueprintHelperTransactionJournalService JournalService;
 	FString JournalError;
@@ -3373,7 +3374,6 @@ bool FBlueprintHelperReviewReplaceBlueprintGraphLiveRecordCreatesDiffBlockTest::
 	ReplaceRecord.GraphId = TEXT("EventGraph");
 	ReplaceRecord.GraphName = TEXT("EventGraph");
 	ReplaceRecord.BlockIds.Add(TEXT("DoorFlow"));
-	ReplaceRecord.RollbackData = TEXT("{\"snapshot\":\"before\"}");
 
 	FBlueprintHelperGraphReviewNodeAnchor Anchor;
 	Anchor.NodePath = FString::Printf(TEXT("%s:EventGraph.K2Node_CallFunction_0"), *AssetPath);
@@ -4262,7 +4262,6 @@ bool FBlueprintHelperReviewJournalBackedEvidenceIncludesHashesTest::RunTest(cons
 	JournalRecord.GraphId = TEXT("EventGraph");
 	JournalRecord.GraphName = TEXT("EventGraph");
 	JournalRecord.BlockIds.Add(TEXT("DoorFlow"));
-	JournalRecord.RollbackData = TEXT("{\"node_guids\":[\"N1\"]}");
 
 	FBlueprintHelperTransactionJournalService JournalService;
 	FString JournalError;
@@ -5840,9 +5839,14 @@ bool FBlueprintHelperReviewRejectDefaultDispatcherRemovesSelectedGraphNodeTest::
 	JournalRecord.TargetAssets.Add(Blueprint->GetPathName());
 	JournalRecord.GraphId = Graph->GetName();
 	JournalRecord.GraphName = Graph->GetName();
-	JournalRecord.CreatedNodePaths.Add(SelectedNode->GetName());
-	JournalRecord.CreatedNodePaths.Add(UnselectedNode->GetName());
-	JournalRecord.RollbackData = TEXT("{\"node_guids\":[\"selected\",\"unselected\"]}");
+	FBlueprintHelperGraphReviewNodeAnchor SelectedAnchor;
+	SelectedAnchor.NodePath = SelectedNode->GetName();
+	SelectedAnchor.NodeGuid = SelectedNode->NodeGuid.ToString(EGuidFormats::Digits);
+	JournalRecord.CreatedNodeAnchors.Add(SelectedAnchor);
+	FBlueprintHelperGraphReviewNodeAnchor UnselectedAnchor;
+	UnselectedAnchor.NodePath = UnselectedNode->GetName();
+	UnselectedAnchor.NodeGuid = UnselectedNode->NodeGuid.ToString(EGuidFormats::Digits);
+	JournalRecord.CreatedNodeAnchors.Add(UnselectedAnchor);
 
 	FBlueprintHelperTransactionJournalService JournalService;
 	FString JournalError;

@@ -38,7 +38,6 @@
   - `AssetFactory`
   - `BlueprintVariables`
   - `ClassSettings`
-  - `CleanupOwnership`
   - `Component`
   - `DataTable`
   - `ObjectProperty`

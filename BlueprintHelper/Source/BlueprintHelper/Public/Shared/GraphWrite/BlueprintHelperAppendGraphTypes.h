@@ -356,13 +356,11 @@ struct FBlueprintHelperAppendJournalRecord
 	FString GraphId;
 	FString GraphName;
 	TArray<FString> BlockIds;
-	TArray<FString> CreatedNodePaths;
 	TArray<FBlueprintHelperGraphReviewNodeAnchor> CreatedNodeAnchors;
 	TArray<FString> CreatedLinkPaths;
 	TMap<FString, FString> BaselineSnapshotsByTargetKey;
 	TMap<FString, FString> RecordedAfterSnapshotsByTargetKey;
 	FString DiffSummary;
-	FString RollbackData;
 	TArray<FString> Validation;
 
 	TSharedRef<FJsonObject> ToJson() const
@@ -387,12 +385,6 @@ struct FBlueprintHelperAppendJournalRecord
 			for (const FString& Id : BlockIds) { Arr.Add(MakeShared<FJsonValueString>(Id)); }
 			Json->SetArrayField(TEXT("blocks"), Arr);
 		}
-		if (CreatedNodePaths.Num() > 0)
-		{
-			TArray<TSharedPtr<FJsonValue>> Arr;
-			for (const FString& Node : CreatedNodePaths) { Arr.Add(MakeShared<FJsonValueString>(Node)); }
-			Json->SetArrayField(TEXT("created_nodes"), Arr);
-		}
 		if (CreatedNodeAnchors.Num() > 0)
 		{
 			TArray<TSharedPtr<FJsonValue>> Arr;
@@ -409,7 +401,6 @@ struct FBlueprintHelperAppendJournalRecord
 			Json->SetArrayField(TEXT("created_links"), Arr);
 		}
 		if (!DiffSummary.IsEmpty()) Json->SetStringField(TEXT("diff_summary"), DiffSummary);
-		if (!RollbackData.IsEmpty()) Json->SetStringField(TEXT("rollback_data"), RollbackData);
 		if (Validation.Num() > 0)
 		{
 			TArray<TSharedPtr<FJsonValue>> Arr;

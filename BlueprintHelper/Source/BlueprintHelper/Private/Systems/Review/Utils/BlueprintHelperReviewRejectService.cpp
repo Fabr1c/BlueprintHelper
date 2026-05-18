@@ -38,7 +38,6 @@
 #include "Systems/Debug/BlueprintHelperDebugEntryService.h"
 #include "Systems/Review/BlueprintHelperReviewBaselineSnapshotService.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
-#include "Systems/ToolClusters/CleanupOwnership/BlueprintHelperConvertBlockToUserOwnedService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperOwnershipService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
@@ -58,18 +57,20 @@
 
 namespace
 {
-	static bool ValidateReviewRejectSemanticRecordedAfterHash(
-		const FBlueprintHelperReviewVisibleChange& Change,
+	static void CaptureReviewRejectCurrentStateDiagnostic(
 		const FBlueprintHelperReviewAtomicTarget& Target,
-		FBlueprintHelperReviewActionResult& OutFailureResult)
+		FBlueprintHelperReviewActionResult& InOutDiagnostic)
 	{
+		if (!InOutDiagnostic.HashGuardTargetKey.IsEmpty())
+		{
+			return;
+		}
+
 		if (Target.RecordedAfterHash.IsEmpty())
 		{
-			OutFailureResult = FBlueprintHelperReviewActionRecordUtils::MakeRejectFailureResult(
-				Change,
-				EBlueprintHelperReviewChangeStatus::NeedsAction,
-				TEXT("missing_recorded_after_hash"));
-			return false;
+			InOutDiagnostic.HashGuardTargetKey = Target.TargetKey;
+			InOutDiagnostic.HashGuardExpectedHash = TEXT("<missing_recorded_after_hash>");
+			return;
 		}
 
 		FBlueprintHelperReviewBaselineSnapshotService SnapshotService;
@@ -78,28 +79,21 @@ namespace
 		FString SnapshotError;
 		if (!SnapshotService.CaptureTargetSnapshot(Target, CurrentSnapshotJson, CurrentHash, SnapshotError))
 		{
-			OutFailureResult = FBlueprintHelperReviewActionRecordUtils::MakeRejectFailureResult(
-				Change,
-				EBlueprintHelperReviewChangeStatus::NeedsAction,
-				FString::Printf(TEXT("current_hash_unavailable:%s"), *SnapshotError));
-			return false;
+			InOutDiagnostic.HashGuardTargetKey = Target.TargetKey;
+			InOutDiagnostic.HashGuardExpectedHash = Target.RecordedAfterHash;
+			InOutDiagnostic.HashGuardCurrentHash = FString::Printf(TEXT("<current_hash_unavailable:%s>"), *SnapshotError);
+			InOutDiagnostic.HashGuardRecordedAfterSnapshotJson = Target.AfterSnapshotJson;
+			return;
 		}
 
 		if (!CurrentHash.Equals(Target.RecordedAfterHash, ESearchCase::CaseSensitive))
 		{
-			FBlueprintHelperReviewActionResult FailureResult = FBlueprintHelperReviewActionRecordUtils::MakeRejectFailureResult(
-				Change,
-				EBlueprintHelperReviewChangeStatus::NeedsAction,
-				FString::Printf(TEXT("current_state_changed:%s"), *Target.TargetKey));
-			FailureResult.HashGuardTargetKey = Target.TargetKey;
-			FailureResult.HashGuardExpectedHash = Target.RecordedAfterHash;
-			FailureResult.HashGuardCurrentHash = CurrentHash;
-			FailureResult.HashGuardCurrentSnapshotJson = CurrentSnapshotJson;
-			FailureResult.HashGuardRecordedAfterSnapshotJson = Target.AfterSnapshotJson;
-			OutFailureResult = MoveTemp(FailureResult);
-			return false;
+			InOutDiagnostic.HashGuardTargetKey = Target.TargetKey;
+			InOutDiagnostic.HashGuardExpectedHash = Target.RecordedAfterHash;
+			InOutDiagnostic.HashGuardCurrentHash = CurrentHash;
+			InOutDiagnostic.HashGuardCurrentSnapshotJson = CurrentSnapshotJson;
+			InOutDiagnostic.HashGuardRecordedAfterSnapshotJson = Target.AfterSnapshotJson;
 		}
-		return true;
 	}
 }
 
@@ -115,6 +109,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewRejectService::RejectVi
 				TEXT("missing_atomic_targets"));
 		}
 
+		FBlueprintHelperReviewActionResult CurrentStateDiagnostic;
 		for (const FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
 		{
 			if (FBlueprintHelperReviewSnapshotRestoreService::IsAssetFactoryTarget(Target))
@@ -140,11 +135,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewRejectService::RejectVi
 					EBlueprintHelperReviewChangeStatus::NeedsAction,
 					TEXT("missing_recoverable_snapshot"));
 			}
-			FBlueprintHelperReviewActionResult HashFailureResult;
-			if (!ValidateReviewRejectSemanticRecordedAfterHash(Change, Target, HashFailureResult))
-			{
-				return HashFailureResult;
-			}
+			CaptureReviewRejectCurrentStateDiagnostic(Target, CurrentStateDiagnostic);
 			if (FBlueprintHelperReviewSnapshotRestoreService::ShouldUseSnapshotRestore(Target))
 			{
 				FString SnapshotRestoreError;
@@ -159,44 +150,10 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewRejectService::RejectVi
 				}
 				continue;
 			}
-			if (Target.RollbackDataRef.IsEmpty())
-			{
-				return FBlueprintHelperReviewActionRecordUtils::MakeRejectFailureResult(Change, EBlueprintHelperReviewChangeStatus::NeedsAction, TEXT("missing_rollback_data_ref"));
-			}
-			FString RollbackTransactionId;
-			if (!FBlueprintHelperReviewGraphRollbackService::ExtractRollbackTransactionId(Target.RollbackDataRef, RollbackTransactionId))
-			{
-				return FBlueprintHelperReviewActionRecordUtils::MakeRejectFailureResult(
-					Change,
-					EBlueprintHelperReviewChangeStatus::NeedsAction,
-					FString::Printf(TEXT("rollback_ref_unresolved:%s"), *Target.RollbackDataRef));
-			}
-
-			TSharedPtr<FJsonObject> JournalRecord;
-			FString JournalError;
-			if (Options)
-			{
-				if (const FBlueprintHelperReviewPreparedRollbackJournal* Prepared =
-					Options->PreparedRollbackJournalsByTransactionId.Find(RollbackTransactionId))
-				{
-					if (!Prepared->Error.IsEmpty())
-					{
-						return FBlueprintHelperReviewActionRecordUtils::MakeRejectFailureResult(Change, EBlueprintHelperReviewChangeStatus::NeedsAction, Prepared->Error);
-					}
-					JournalRecord = FBlueprintHelperReviewActionRecordUtils::BuildJournalRecordFromPreparedRollbackJournal(*Prepared);
-				}
-			}
-			if (!JournalRecord.IsValid()
-				&& !FBlueprintHelperReviewGraphRollbackService::LoadJournalRecordForReviewRollback(RollbackTransactionId, JournalRecord, JournalError))
-			{
-				return FBlueprintHelperReviewActionRecordUtils::MakeRejectFailureResult(Change, EBlueprintHelperReviewChangeStatus::NeedsAction, JournalError);
-			}
-
-			FString RollbackError;
-			if (!FBlueprintHelperReviewGraphRollbackService::ExecuteGraphAppendRollback(Target, JournalRecord, RollbackError))
-			{
-				return FBlueprintHelperReviewActionRecordUtils::MakeRejectFailureResult(Change, EBlueprintHelperReviewChangeStatus::RejectFailed, RollbackError);
-			}
+			return FBlueprintHelperReviewActionRecordUtils::MakeRejectFailureResult(
+				Change,
+				EBlueprintHelperReviewChangeStatus::NeedsAction,
+				FString::Printf(TEXT("snapshot_restore_unsupported_target_kind:%s"), *Target.TargetKind));
 		}
 
 		FBlueprintHelperReviewActionResult Result;
@@ -206,6 +163,11 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewRejectService::RejectVi
 		Result.NewStatus = EBlueprintHelperReviewChangeStatus::Rejected;
 		Result.Message = TEXT("rejected");
 		Result.bSupersededDataCompactionEligible = true;
+		Result.HashGuardTargetKey = CurrentStateDiagnostic.HashGuardTargetKey;
+		Result.HashGuardExpectedHash = CurrentStateDiagnostic.HashGuardExpectedHash;
+		Result.HashGuardCurrentHash = CurrentStateDiagnostic.HashGuardCurrentHash;
+		Result.HashGuardCurrentSnapshotJson = CurrentStateDiagnostic.HashGuardCurrentSnapshotJson;
+		Result.HashGuardRecordedAfterSnapshotJson = CurrentStateDiagnostic.HashGuardRecordedAfterSnapshotJson;
 		return Result;
 	}
 FBlueprintHelperReviewCascadeActionResult FBlueprintHelperReviewRejectService::CascadeRejectLifecycleChildrenAfterRootResult(

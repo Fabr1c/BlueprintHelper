@@ -79,9 +79,6 @@
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperReplaceBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperPatchBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperMergeBlueprintGraphService.h"
-#include "Systems/ToolClusters/CleanupOwnership/BlueprintHelperCleanupBlueprintHelperBlockService.h"
-#include "Systems/ToolClusters/CleanupOwnership/BlueprintHelperRollbackCleanupTransactionService.h"
-#include "Systems/ToolClusters/CleanupOwnership/BlueprintHelperConvertBlockToUserOwnedService.h"
 #include "Systems/Debug/BlueprintHelperCompileAssetService.h"
 #include "Systems/Transactions/BlueprintHelperTransactionQueryService.h"
 #include "Systems/Review/BlueprintHelperReviewActionService.h"
@@ -207,12 +204,6 @@ void FBlueprintHelperModule::StartupModule()
 		*GraphResolver, *LogicJsonPathService, *JournalService);
 	MergeGraphService = MakeUnique<FBlueprintHelperMergeBlueprintGraphService>(
 		*GraphResolver, *LogicJsonPathService, *JournalService);
-	CleanupBlockService = MakeUnique<FBlueprintHelperCleanupBlueprintHelperBlockService>(
-		*GraphResolver, *JournalService);
-	RollbackCleanupService = MakeUnique<FBlueprintHelperRollbackCleanupTransactionService>(
-		*GraphResolver, *JournalService, DebugEntryService.Get());
-	ConvertBlockService = MakeUnique<FBlueprintHelperConvertBlockToUserOwnedService>(
-		*GraphResolver, *OwnershipService, *JournalService);
 	CompileAssetService = MakeUnique<FBlueprintHelperCompileAssetService>(*CompileService, DebugEntryService.Get());
 	TransactionQueryService = MakeUnique<FBlueprintHelperTransactionQueryService>();
 	VariableService = MakeUnique<FBlueprintHelperBlueprintVariableService>(*GraphResolver, *StructureService);
@@ -221,7 +212,7 @@ void FBlueprintHelperModule::StartupModule()
 	// ─── Bridge Layer 初始。───
 	ContextService = MakeUnique<FBlueprintHelperContextService>(*GraphResolver);
 	BridgeRouter = MakeUnique<FBlueprintHelperBridgeRouter>(
-		*ImportService, *AgentImportService, *ExportService, *CompileService, *ValidationService, *ContextService, *AssetBrowseService, *StructureService, *WidgetService, *PropertyReflectionService, *DataTableService, *EditorCommandService, *RuntimeProfileService, *DiagnosticsService, *DebugEntryService, *LogicMdReadService, *LogicJsonReadService, *AssetFactoryService, *ComponentService, *ClassSettingsService, *AppendGraphService, *ReplaceGraphService, *PatchGraphService, *MergeGraphService, *CleanupBlockService, *RollbackCleanupService, *ConvertBlockService, *CompileAssetService, *TransactionQueryService, *VariableService, *ReviewStoreService);
+		*ImportService, *AgentImportService, *ExportService, *CompileService, *ValidationService, *ContextService, *AssetBrowseService, *StructureService, *WidgetService, *PropertyReflectionService, *DataTableService, *EditorCommandService, *RuntimeProfileService, *DiagnosticsService, *DebugEntryService, *LogicMdReadService, *LogicJsonReadService, *AssetFactoryService, *ComponentService, *ClassSettingsService, *AppendGraphService, *ReplaceGraphService, *PatchGraphService, *MergeGraphService, *CompileAssetService, *TransactionQueryService, *VariableService, *ReviewStoreService);
 	BridgeServer = MakeUnique<FBlueprintHelperBridgeServer>(*BridgeRouter, 54321, DebugEntryService.Get());
 	BridgeServer->Start();
 

@@ -43,33 +43,14 @@ public:
 		{
 			return EBlueprintHelperReviewChangeKind::Removed;
 		}
-		if (Tool.Contains(TEXT("Append"), ESearchCase::IgnoreCase)
-			|| Tool.Contains(TEXT("Create"), ESearchCase::IgnoreCase)
-			|| Tool.Contains(TEXT("Factory"), ESearchCase::IgnoreCase))
+	if (Tool.Contains(TEXT("Append"), ESearchCase::IgnoreCase)
+		|| Tool.Contains(TEXT("Create"), ESearchCase::IgnoreCase)
+		|| Tool.Contains(TEXT("Factory"), ESearchCase::IgnoreCase)
+		|| Tool.Contains(TEXT("Merge"), ESearchCase::IgnoreCase))
 		{
 			return EBlueprintHelperReviewChangeKind::Added;
 		}
 		return EBlueprintHelperReviewChangeKind::Modified;
-	}
-
-	static bool TryNormalizeGuidString(const FString& Value, FString& OutGuid)
-	{
-		OutGuid.Reset();
-		FString Candidate = Value;
-		Candidate.TrimStartAndEndInline();
-		if (Candidate.IsEmpty())
-		{
-			return false;
-		}
-
-		FGuid ParsedGuid;
-		if (!FGuid::Parse(Candidate, ParsedGuid))
-		{
-			return false;
-		}
-
-		OutGuid = ParsedGuid.ToString(EGuidFormats::Digits);
-		return true;
 	}
 
 	static TSharedRef<FJsonObject> MakeVectorJson(const FVector2D& Value)
@@ -92,14 +73,6 @@ public:
 	{
 		TSharedRef<FJsonObject> Json = Anchor.ToJson();
 		Json->SetStringField(TEXT("anchor_source"), TEXT("structured"));
-		return SerializeJsonObject(Json);
-	}
-
-	static FString MakeLegacyNodeGuidAnchorJson(const FString& NodeGuid)
-	{
-		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
-		Json->SetStringField(TEXT("anchor_source"), TEXT("legacy"));
-		Json->SetStringField(TEXT("node_guid"), NodeGuid);
 		return SerializeJsonObject(Json);
 	}
 
@@ -164,7 +137,6 @@ public:
 		const FString& TargetKind,
 		const FString& VisualGroupKey,
 		const FString& DisplayLabel,
-		const FString& RollbackDataRef,
 		const FString& NodeGuid = FString(),
 		bool bHasGraphBounds = false,
 		FVector2D GraphPosition = FVector2D::ZeroVector,
@@ -183,7 +155,6 @@ public:
 		Target.DisplayLabel = DisplayLabel;
 		Target.LatestTransactionId = Evidence.TransactionId;
 		Target.SourceTransactionIds.Add(Evidence.TransactionId);
-		Target.RollbackDataRef = RollbackDataRef;
 		Target.NodeGuid = NodeGuid;
 		Target.bHasGraphBounds = bHasGraphBounds;
 		Target.GraphPosition = GraphPosition;
@@ -196,8 +167,7 @@ public:
 			Target.BaselineHash =
 				FBlueprintHelperReviewBaselineSnapshotService::ComputeSemanticSnapshotHash(ExplicitBeforeSnapshotJson);
 		}
-		else if (Evidence.ChangeKind == EBlueprintHelperReviewChangeKind::Added
-			&& !FBlueprintHelperReviewTargetKindRegistry::SupportsSnapshotRestore(Target.TargetKind))
+		else if (Evidence.ChangeKind == EBlueprintHelperReviewChangeKind::Added)
 		{
 			FBlueprintHelperReviewBaselineSnapshotService::MakeMissingTargetSnapshot(
 				Target,
@@ -247,10 +217,6 @@ public:
 			? GBlueprintHelperRuntimeReviewTaskRunId
 			: Record.TaskRunId;
 		const FString GraphName = Record.GraphName.IsEmpty() ? Record.GraphId : Record.GraphName;
-		const FString RollbackDataRef = Record.RollbackData.IsEmpty()
-			? FString()
-			: FString::Printf(TEXT("transaction://%s/rollback_data"), *Record.TransactionId);
-
 		for (const FString& AssetPath : Record.TargetAssets)
 		{
 			FBlueprintHelperWriteReviewEvidence Evidence;
@@ -286,7 +252,6 @@ public:
 					TEXT("graph_block"),
 					VisualGroupKey,
 					BlockId,
-					RollbackDataRef,
 					FString(),
 					false,
 					FVector2D::ZeroVector,
@@ -318,65 +283,33 @@ public:
 					*FirstBlockId);
 			}
 
-			if (Record.CreatedNodeAnchors.Num() > 0)
+			for (const FBlueprintHelperGraphReviewNodeAnchor& Anchor : Record.CreatedNodeAnchors)
 			{
-				for (const FBlueprintHelperGraphReviewNodeAnchor& Anchor : Record.CreatedNodeAnchors)
+				const FString NodeId = Anchor.NodeGuid.IsEmpty()
+					? ExtractJournalTargetName(Anchor.NodePath)
+					: Anchor.NodeGuid;
+				if (NodeId.IsEmpty())
 				{
-					const FString NodeId = Anchor.NodeGuid.IsEmpty()
-						? ExtractJournalTargetName(Anchor.NodePath)
-						: Anchor.NodeGuid;
-					if (NodeId.IsEmpty())
-					{
-						continue;
-					}
+					continue;
+				}
 
-					const FString DisplayLabel = Anchor.DisplayLabel.IsEmpty()
-						? ExtractJournalTargetName(Anchor.NodePath)
-						: Anchor.DisplayLabel;
-					AddJournalAtomicTarget(
-						Evidence,
-						GraphName,
-						FString::Printf(TEXT("graph:%s:node:%s"), *GraphName, *NodeId),
-						TEXT("graph_node"),
-						DefaultVisualGroupKey,
-						DisplayLabel.IsEmpty() ? NodeId : DisplayLabel,
-						RollbackDataRef,
-						Anchor.NodeGuid,
-						Anchor.bHasGraphBounds,
-						Anchor.GraphPosition,
-						Anchor.GraphSize,
-						MakeStructuredAnchorJson(Anchor),
-						Record.BaselineSnapshotsByTargetKey.FindRef(FString::Printf(TEXT("graph:%s:node:%s"), *GraphName, *NodeId)),
-						Record.RecordedAfterSnapshotsByTargetKey.FindRef(FString::Printf(TEXT("graph:%s:node:%s"), *GraphName, *NodeId)));
-				}
-			}
-			else
-			{
-				for (const FString& CreatedNodePath : Record.CreatedNodePaths)
-				{
-					FString LegacyNodeGuid;
-					const bool bGuidNodePath = TryNormalizeGuidString(CreatedNodePath, LegacyNodeGuid);
-					const FString NodeName = bGuidNodePath
-						? LegacyNodeGuid
-						: ExtractJournalTargetName(CreatedNodePath);
-					if (NodeName.IsEmpty())
-					{
-						continue;
-					}
-					AddJournalAtomicTarget(
-						Evidence,
-						GraphName,
-						FString::Printf(TEXT("graph:%s:node:%s"), *GraphName, *NodeName),
-						TEXT("graph_node"),
-						DefaultVisualGroupKey,
-						NodeName,
-						RollbackDataRef,
-						bGuidNodePath ? LegacyNodeGuid : FString(),
-						false,
-						FVector2D::ZeroVector,
-						FVector2D(360.0f, 180.0f),
-						bGuidNodePath ? MakeLegacyNodeGuidAnchorJson(LegacyNodeGuid) : FString());
-				}
+				const FString DisplayLabel = Anchor.DisplayLabel.IsEmpty()
+					? ExtractJournalTargetName(Anchor.NodePath)
+					: Anchor.DisplayLabel;
+				AddJournalAtomicTarget(
+					Evidence,
+					GraphName,
+					FString::Printf(TEXT("graph:%s:node:%s"), *GraphName, *NodeId),
+					TEXT("graph_node"),
+					DefaultVisualGroupKey,
+					DisplayLabel.IsEmpty() ? NodeId : DisplayLabel,
+					Anchor.NodeGuid,
+					Anchor.bHasGraphBounds,
+					Anchor.GraphPosition,
+					Anchor.GraphSize,
+					MakeStructuredAnchorJson(Anchor),
+					Record.BaselineSnapshotsByTargetKey.FindRef(FString::Printf(TEXT("graph:%s:node:%s"), *GraphName, *NodeId)),
+					Record.RecordedAfterSnapshotsByTargetKey.FindRef(FString::Printf(TEXT("graph:%s:node:%s"), *GraphName, *NodeId)));
 			}
 
 			for (const FString& CreatedLinkPath : Record.CreatedLinkPaths)
@@ -392,8 +325,7 @@ public:
 					FString::Printf(TEXT("graph:%s:link:%s"), *GraphName, *LinkName),
 					TEXT("graph_link"),
 					DefaultVisualGroupKey,
-					LinkName,
-					RollbackDataRef);
+					LinkName);
 			}
 
 			Evidences.Add(Evidence);

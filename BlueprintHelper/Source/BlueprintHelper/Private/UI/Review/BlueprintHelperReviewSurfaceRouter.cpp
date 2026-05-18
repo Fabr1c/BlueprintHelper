@@ -22,8 +22,8 @@ FBlueprintHelperReviewSurfaceRouteDecision FBlueprintHelperReviewSurfacePresente
 		return Decision;
 	}
 
-	Decision.bShouldShow = BlueprintHelperReviewShouldShowOnSurface(Change, Surface);
-	Decision.Reason = Decision.bShouldShow ? TEXT("legacy_fallback") : TEXT("legacy_no_match");
+	Decision.bShouldShow = false;
+	Decision.Reason = TEXT("missing_explicit_targets");
 	return Decision;
 }
 

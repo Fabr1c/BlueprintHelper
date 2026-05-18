@@ -189,14 +189,6 @@ public:
 			}
 		}
 
-		const FString LegacyPrefix = TEXT("block_id=");
-		const int32 PrefixIndex = Node->NodeComment.Find(LegacyPrefix);
-		if (PrefixIndex != INDEX_NONE)
-		{
-			FString Remainder = Node->NodeComment.RightChop(PrefixIndex + LegacyPrefix.Len());
-			Remainder.Split(TEXT("\n"), &OutBlockId, nullptr);
-			OutBlockId.TrimStartAndEndInline();
-		}
 		return !OutBlockId.IsEmpty();
 	}
 
@@ -841,6 +833,28 @@ FBlueprintHelperToolResultBase FBlueprintHelperMergeBlueprintGraphService::Execu
 	JRec.TargetAssets.Add(Request.AssetPath);
 	JRec.GraphId = Request.GraphName;
 	JRec.GraphName = Request.GraphName;
+	auto AddGeneratedNodeAnchor = [&JRec](UEdGraphNode* Node)
+	{
+		if (!Node)
+		{
+			return;
+		}
+
+		FBlueprintHelperGraphReviewNodeAnchor Anchor;
+		Anchor.NodePath = Node->GetPathName();
+		Anchor.NodeGuid = Node->NodeGuid.IsValid()
+			? Node->NodeGuid.ToString(EGuidFormats::Digits)
+			: FString();
+		Anchor.DisplayLabel = Node->GetName();
+		Anchor.GraphPosition = FVector2D(Node->NodePosX, Node->NodePosY);
+		Anchor.GraphSize = FVector2D(
+			FMath::Max(Node->NodeWidth, 360),
+			FMath::Max(Node->NodeHeight, 180));
+		Anchor.bHasGraphBounds = true;
+		JRec.CreatedNodeAnchors.Add(Anchor);
+	};
+	AddGeneratedNodeAnchor(Context.InsertedNode);
+	AddGeneratedNodeAnchor(Context.SequenceNode);
 
 	FString JErr;
 	if (!JournalService.WriteAppendJournal(JRec, JErr))

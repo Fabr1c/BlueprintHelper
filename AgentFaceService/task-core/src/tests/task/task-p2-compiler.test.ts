@@ -38,34 +38,6 @@ test('compiles edit_object_properties into object_property TaskPlan IR', () => {
   assert.equal(step.write.ops[0].op, 'set_object_properties');
 });
 
-test('compiles manage_blueprinthelper_ownership into graph_cleanup_ownership TaskPlan IR', () => {
-  const taskSpec = TaskSpecSchema.parse(baseTaskSpec('manage_blueprinthelper_ownership', {
-    ownership_strategy: 'owned_block_lifecycle',
-    changes: [
-      {
-        kind: 'cleanup_block',
-        graph_id: 'DoorLogic',
-        block_ref: 'OpenDoor0',
-        missing_policy: 'ignore',
-      },
-      {
-        kind: 'convert_block_to_user_owned',
-        block_id: 'DoorLogic_OpenDoor0',
-        already_user_owned_policy: 'ignore',
-      },
-    ],
-  }));
-
-  const taskPlan = compileTaskSpecToTaskPlan(taskSpec);
-  TaskPlanSchema.parse(taskPlan);
-  const firstStep = taskPlan.steps[0] as Record<string, any>;
-  const secondStep = taskPlan.steps[1] as Record<string, any>;
-  assert.equal(taskPlan.steps.length, 2);
-  assert.equal(firstStep.capability, 'graph_cleanup_ownership');
-  assert.equal(firstStep.write.ops[0].op, 'cleanup_blueprint_helper_block');
-  assert.equal(secondStep.write.ops[0].op, 'convert_blueprint_helper_block_to_user_owned');
-});
-
 test('compiles interface function and interface event signatures into distinct blueprint_signature IR', () => {
   const taskSpec = TaskSpecSchema.parse(baseTaskSpec('edit_blueprint_signature', {
     signature_strategy: 'signature_edit',

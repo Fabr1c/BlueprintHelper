@@ -7,7 +7,6 @@
 #include "Entry/Bridge/Routes/BlueprintHelperAssetFactoryBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperBlueprintVariablesBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperClassSettingsBridgeRoutes.h"
-#include "Entry/Bridge/Routes/BlueprintHelperCleanupOwnershipBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperComponentBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperDataTableBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperGraphWriteBridgeRoutes.h"
@@ -42,9 +41,6 @@ class FBlueprintHelperAppendBlueprintGraphService;
 class FBlueprintHelperReplaceBlueprintGraphService;
 class FBlueprintHelperPatchBlueprintGraphService;
 class FBlueprintHelperMergeBlueprintGraphService;
-class FBlueprintHelperCleanupBlueprintHelperBlockService;
-class FBlueprintHelperRollbackCleanupTransactionService;
-class FBlueprintHelperConvertBlockToUserOwnedService;
 class FBlueprintHelperCompileAssetService;
 class FBlueprintHelperTransactionQueryService;
 class FBlueprintHelperBlueprintVariableService;
@@ -82,9 +78,6 @@ public:
 		const FBlueprintHelperReplaceBlueprintGraphService& InReplaceGraphService,
 		const FBlueprintHelperPatchBlueprintGraphService& InPatchGraphService,
 		const FBlueprintHelperMergeBlueprintGraphService& InMergeGraphService,
-		const FBlueprintHelperCleanupBlueprintHelperBlockService& InCleanupBlockService,
-		const FBlueprintHelperRollbackCleanupTransactionService& InRollbackCleanupService,
-		const FBlueprintHelperConvertBlockToUserOwnedService& InConvertBlockService,
 		const FBlueprintHelperCompileAssetService& InCompileAssetService,
 		const FBlueprintHelperTransactionQueryService& InTransactionQueryService,
 		const FBlueprintHelperBlueprintVariableService& InVariableService,
@@ -178,7 +171,6 @@ private:
 	FBlueprintHelperComponentBridgeRoutes ComponentRoutes;
 	FBlueprintHelperClassSettingsBridgeRoutes ClassSettingsRoutes;
 	FBlueprintHelperGraphWriteBridgeRoutes GraphWriteRoutes;
-	FBlueprintHelperCleanupOwnershipBridgeRoutes CleanupOwnershipRoutes;
 	const FBlueprintHelperBlueprintVariableService& VariableService;
 	FBlueprintHelperBlueprintVariablesBridgeRoutes BlueprintVariablesRoutes;
 	FBlueprintHelperDependencyAnalysisService DependencyAnalysisService;

@@ -22,16 +22,16 @@ describe('normalizeBlueprintPayload (object-first)', () => {
     assert.deepStrictEqual(result['payload'], rawObj);
   });
 
-  it('parses string json to object', () => {
+  it('does not parse retired string json alias', () => {
     const input = { json: JSON.stringify(rawObj) };
     const result = normalizeBlueprintPayload(input) as Record<string, unknown>;
-    assert.ok(typeof result['json'] === 'object');
+    assert.equal(typeof result['json'], 'string');
   });
 
-  it('parses legacy json_text to object', () => {
+  it('does not parse retired json_text field', () => {
     const input = { json_text: JSON.stringify(rawObj) };
     const result = normalizeBlueprintPayload(input) as Record<string, unknown>;
-    assert.ok(typeof result['json_text'] === 'object');
+    assert.equal(typeof result['json_text'], 'string');
   });
 
   it('handles non-record input', () => {
@@ -66,10 +66,10 @@ describe('getBlueprintPayloadBody', () => {
     assert.deepStrictEqual(body, rawObj);
   });
 
-  it('falls back to json_text when no payload or json', () => {
+  it('does not use retired json_text as payload body', () => {
     const input = { json_text: rawObj };
     const body = getBlueprintPayloadBody(input) as Record<string, unknown>;
-    assert.deepStrictEqual(body, rawObj);
+    assert.deepStrictEqual(body, input);
   });
 
   it('returns normalized input when no known fields', () => {

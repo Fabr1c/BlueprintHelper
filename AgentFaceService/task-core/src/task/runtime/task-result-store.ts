@@ -135,7 +135,6 @@ const intentToolShortNames: Record<string, string> = {
   blueprint_class_settings: 'ClassSettings',
   blueprint_signature: 'BlueprintSignature',
   object_property: 'ObjectProperty',
-  graph_cleanup_ownership: 'CleanupOwnership',
   umg_widget: 'UMGWidget',
   data_table: 'DataTable',
 };
@@ -148,7 +147,6 @@ const intentActionByCapability: Record<string, string> = {
   blueprint_class_settings: '?????',
   blueprint_signature: '编辑蓝图签名',
   object_property: '??????',
-  graph_cleanup_ownership: '管理 BlueprintHelper 所有权',
   umg_widget: '编辑 UMG',
   data_table: '编辑 DataTable',
 };
@@ -162,7 +160,6 @@ const intentCapabilityByTaskType: Record<string, string> = {
   edit_umg_widget: 'umg_widget',
   edit_data_table: 'data_table',
   edit_object_properties: 'object_property',
-  manage_blueprinthelper_ownership: 'graph_cleanup_ownership',
 };
 
 const intentCapabilityByOperation: Record<string, string> = {
@@ -177,7 +174,6 @@ const intentCapabilityByOperation: Record<string, string> = {
   blueprint_class_settings_batch: 'blueprint_class_settings',
   blueprint_signature_batch: 'blueprint_signature',
   object_property_batch: 'object_property',
-  graph_cleanup_ownership_batch: 'graph_cleanup_ownership',
   umg_widget_batch: 'umg_widget',
   data_table_batch: 'data_table',
 };

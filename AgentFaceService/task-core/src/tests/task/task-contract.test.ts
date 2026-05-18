@@ -329,7 +329,6 @@ describe('TaskSpec/TaskPlan protocol contract', () => {
       [
         'graph_write',
         'blueprint_signature',
-        'graph_cleanup_ownership',
         'blueprint_variables',
         'asset_factory',
         'blueprint_component',
@@ -363,28 +362,19 @@ describe('TaskSpec/TaskPlan protocol contract', () => {
     ]);
     assert.deepEqual(blueprintSignature.agent_exposure, 'taskplan_internal');
 
-    const cleanupOwnership = TASK_PROTOCOL_CONTRACT_V1.capability_catalog.task_runtime_clusters[2];
-    assert.equal(cleanupOwnership.taskplan_capability, 'graph_cleanup_ownership');
-    assert.deepEqual(cleanupOwnership.runtime_adapter_operations, [
-      'cleanup_blueprint_helper_block',
-      'convert_blueprint_helper_block_to_user_owned',
-      'rollback_cleanup_transaction',
-    ]);
-    assert.deepEqual(cleanupOwnership.agent_exposure, 'taskplan_internal');
-
-    const blueprintVariables = TASK_PROTOCOL_CONTRACT_V1.capability_catalog.task_runtime_clusters[3];
+    const blueprintVariables = TASK_PROTOCOL_CONTRACT_V1.capability_catalog.task_runtime_clusters[2];
     assert.equal(blueprintVariables.taskplan_capability, 'blueprint_variable');
     assert.deepEqual(blueprintVariables.runtime_adapter_operations, [
       'add_blueprint_member_variables',
     ]);
     assert.deepEqual(blueprintVariables.agent_exposure, 'taskspec_only');
 
-    const assetFactory = TASK_PROTOCOL_CONTRACT_V1.capability_catalog.task_runtime_clusters[4];
+    const assetFactory = TASK_PROTOCOL_CONTRACT_V1.capability_catalog.task_runtime_clusters[3];
     assert.equal(assetFactory.taskplan_capability, 'asset_factory');
     assert.deepEqual(assetFactory.runtime_adapter_operations, ['create_asset']);
     assert.deepEqual(assetFactory.agent_exposure, 'taskspec_only');
 
-    const component = TASK_PROTOCOL_CONTRACT_V1.capability_catalog.task_runtime_clusters[5];
+    const component = TASK_PROTOCOL_CONTRACT_V1.capability_catalog.task_runtime_clusters[4];
     assert.equal(component.taskplan_capability, 'blueprint_component');
     assert.deepEqual(component.runtime_adapter_operations, [
       'add_component',
@@ -392,7 +382,7 @@ describe('TaskSpec/TaskPlan protocol contract', () => {
       'remove_component',
     ]);
 
-    const classSettings = TASK_PROTOCOL_CONTRACT_V1.capability_catalog.task_runtime_clusters[6];
+    const classSettings = TASK_PROTOCOL_CONTRACT_V1.capability_catalog.task_runtime_clusters[5];
     assert.equal(classSettings.taskplan_capability, 'blueprint_class_settings');
     assert.deepEqual(classSettings.runtime_adapter_operations, [
       'add_implemented_interfaces',

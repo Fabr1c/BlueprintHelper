@@ -452,3 +452,12 @@ rg -n 'SReadOnlyHierarchyView' 'E:\UE_5.6\Engine\Source\Editor' -g '*.h' -g '*.c
 - 现象：preview 通过但 execute 返回 Bridge write failed，runtime diagnostics 显示 write_permission.disabled / write_session_missing。
 - 原因：测试 install 脚本后项目 .blueprinthelper/agent-profile.json 的 active_profile.safety_profile 被覆盖为 Conservative。
 - 处理：将 safety_profile 切回 AutoRepair，并保持 safety.write_approval_required=false、approval_bypass=true；必要时重启 Editor 让 Bridge 重新加载配置。
+
+
+## PowerShell ExecutionPolicy: npm.ps1 被拦截
+- 现象：在 PowerShell 里运行 
+pm run build 可能报 无法加载文件 ... npm.ps1，因为在此系统上禁止运行脚本。
+- 原因：PowerShell 优先解析 
+pm.ps1，受 ExecutionPolicy 限制。
+- 稳定做法：在 Codex/PowerShell 自动化中使用 
+pm.cmd run build。

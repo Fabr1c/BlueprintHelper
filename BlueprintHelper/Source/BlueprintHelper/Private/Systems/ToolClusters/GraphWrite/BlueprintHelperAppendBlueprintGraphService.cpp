@@ -129,6 +129,33 @@ public:
 		return Nodes;
 	}
 
+	static FBlueprintHelperGraphReviewNodeAnchor MakeReviewNodeAnchor(const UEdGraphNode* Node)
+	{
+		FBlueprintHelperGraphReviewNodeAnchor Anchor;
+		if (!Node)
+		{
+			return Anchor;
+		}
+
+		Anchor.NodePath = Node->GetPathName();
+		Anchor.NodeGuid = Node->NodeGuid.IsValid()
+			? Node->NodeGuid.ToString(EGuidFormats::Digits)
+			: FString();
+		Anchor.DisplayLabel = Node->GetNodeTitle(ENodeTitleType::ListView).ToString();
+		if (Anchor.DisplayLabel.IsEmpty())
+		{
+			Anchor.DisplayLabel = Node->GetName();
+		}
+		Anchor.GraphPosition = FVector2D(
+			static_cast<float>(Node->NodePosX),
+			static_cast<float>(Node->NodePosY));
+		Anchor.GraphSize = FVector2D(
+			Node->NodeWidth > 0 ? static_cast<float>(Node->NodeWidth) : 360.0f,
+			Node->NodeHeight > 0 ? static_cast<float>(Node->NodeHeight) : 180.0f);
+		Anchor.bHasGraphBounds = true;
+		return Anchor;
+	}
+
 };
 
 // ─── 构造 ───
@@ -884,12 +911,12 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 	JournalRecord.GraphId = Request.GraphName;
 	JournalRecord.GraphName = Request.GraphName;
 	JournalRecord.BlockIds = BlockRefs;
-	JournalRecord.RollbackData = FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::BuildAppendReviewRollbackDataJson(CreatedNodes, BlockRefs);
 	for (UEdGraphNode* Node : CreatedNodes)
 	{
 		if (Node)
 		{
-			JournalRecord.CreatedNodePaths.Add(FString::Printf(TEXT("/%s"), *Node->GetPathName()));
+			JournalRecord.CreatedNodeAnchors.Add(
+				FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::MakeReviewNodeAnchor(Node));
 		}
 	}
 
@@ -962,7 +989,6 @@ FString FBlueprintHelperAppendBlueprintGraphService::BuildSemanticGraphWritePayl
 	Root->SetStringField(TEXT("target_blueprint"), Request.AssetPath);
 	Root->SetStringField(TEXT("target_graph"), Request.GraphName);
 	Root->SetStringField(TEXT("mode"), TEXT("append"));
-	Root->SetStringField(TEXT("layout"), TEXT("auto"));
 
 	// options
 	TSharedRef<FJsonObject> Options = MakeShared<FJsonObject>();

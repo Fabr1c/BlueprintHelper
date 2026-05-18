@@ -3,7 +3,6 @@
 #include "Entry/Bridge/Routes/BlueprintHelperAssetFactoryBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperBlueprintVariablesBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperClassSettingsBridgeRoutes.h"
-#include "Entry/Bridge/Routes/BlueprintHelperCleanupOwnershipBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperComponentBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperDataTableBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperGraphWriteBridgeRoutes.h"
@@ -32,7 +31,6 @@ bool FBlueprintHelperBridgeRoutePlanner_KnownCommandsMapToClusters::RunTest(cons
 		{TEXT("get_widget_tree"), EBlueprintHelperBridgeRouteCluster::UMGWidget},
 		{TEXT("get_datatable_rows"), EBlueprintHelperBridgeRouteCluster::DataTable},
 		{TEXT("get_object_properties"), EBlueprintHelperBridgeRouteCluster::ObjectProperty},
-		{TEXT("cleanup_blueprint_helper_block"), EBlueprintHelperBridgeRouteCluster::CleanupOwnership},
 		{TEXT("preview_task_plan"), EBlueprintHelperBridgeRouteCluster::TaskRuntime},
 		{TEXT("diagnostics_runtime"), EBlueprintHelperBridgeRouteCluster::Debug},
 		{TEXT("get_debug_case"), EBlueprintHelperBridgeRouteCluster::Debug},
@@ -107,8 +105,8 @@ bool FBlueprintHelperGraphWriteBridgeRoutes_RecognizesOnlyGraphWriteCommands::Ru
 	}
 
 	TestFalse(
-		TEXT("cleanup route is not a GraphWrite route command"),
-		FBlueprintHelperGraphWriteBridgeRoutes::IsGraphWriteCommand(TEXT("cleanup_blueprint_helper_block")));
+		TEXT("unknown route is not a GraphWrite route command"),
+		FBlueprintHelperGraphWriteBridgeRoutes::IsGraphWriteCommand(TEXT("unknown_command")));
 	TestFalse(
 		TEXT("unknown route is not a GraphWrite route command"),
 		FBlueprintHelperGraphWriteBridgeRoutes::IsGraphWriteCommand(TEXT("unknown_command")));
@@ -189,15 +187,8 @@ bool FBlueprintHelperFinalBatchBridgeRoutes_RecognizeOnlyOwnedCommands::RunTest(
 		TEXT("ObjectProperty route recognizes object property write"),
 		FBlueprintHelperObjectPropertyBridgeRoutes::IsObjectPropertyCommand(TEXT("set_object_property")));
 	TestFalse(
-		TEXT("ObjectProperty route rejects cleanup command"),
-		FBlueprintHelperObjectPropertyBridgeRoutes::IsObjectPropertyCommand(TEXT("cleanup_blueprint_helper_block")));
-
-	TestTrue(
-		TEXT("CleanupOwnership route recognizes rollback"),
-		FBlueprintHelperCleanupOwnershipBridgeRoutes::IsCleanupOwnershipCommand(TEXT("rollback_cleanup_transaction")));
-	TestFalse(
-		TEXT("CleanupOwnership route rejects graph command"),
-		FBlueprintHelperCleanupOwnershipBridgeRoutes::IsCleanupOwnershipCommand(TEXT("append_blueprint_graph")));
+		TEXT("ObjectProperty route rejects graph command"),
+		FBlueprintHelperObjectPropertyBridgeRoutes::IsObjectPropertyCommand(TEXT("append_blueprint_graph")));
 	return true;
 }
 

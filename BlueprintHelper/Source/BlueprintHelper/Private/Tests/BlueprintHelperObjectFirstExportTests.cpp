@@ -82,46 +82,15 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FObjectFirstExport_ExportService_FillsJsonObject::RunTest(const FString& Parameters)
 {
-	// 验证 ExportService 默认填充 JsonObject 而不填充 JsonText
+	// 验证 ExportService 使用 object-first 结果。
 	// 注意：此测试需要编辑器环境，但结构验证可在无有效蓝图时测试失败路径
 	FBlueprintHelperGraphResolver Resolver;
 	FBlueprintHelperExportService Service(Resolver);
 
 	FBlueprintHelperExportRequest Request;
 	Request.Scope = EBlueprintHelperExportScope::SingleGraph;
-	Request.bIncludeJsonText = false;
 
 	FBlueprintHelperExportResult Result = Service.Export(Request);
-
-	// 即使导出失败（无有效蓝图），JsonText 也不应在 bIncludeJsonText=false 时被填充
-	if (!Result.bSuccess)
-	{
-		TestTrue(TEXT("JsonText is empty when bIncludeJsonText=false and bSuccess=false"),
-			Result.JsonText.IsEmpty());
-	}
-
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FObjectFirstExport_ExportService_IncludeJsonText_FillsText,
-	"BlueprintHelper.ObjectFirst.Export.ExportService_IncludeJsonText_FillsText",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
-
-bool FObjectFirstExport_ExportService_IncludeJsonText_FillsText::RunTest(const FString& Parameters)
-{
-	FBlueprintHelperGraphResolver Resolver;
-	FBlueprintHelperExportService Service(Resolver);
-
-	FBlueprintHelperExportRequest Request;
-	Request.Scope = EBlueprintHelperExportScope::SingleGraph;
-	Request.bIncludeJsonText = true;
-
-	FBlueprintHelperExportResult Result = Service.Export(Request);
-
-	// 无论成功与否，bIncludeJsonText 应被正确设置
-	// 在失败场景下 JsonText 可能为空，但行为语义应正确
-	// 本测试验证请求参数被正确传递
 
 	TestTrue(TEXT("Export completed without crash"), true);
 

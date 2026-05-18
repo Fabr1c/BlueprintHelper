@@ -146,7 +146,7 @@ BlueprintHelper Bridge uses object-first responses. Large raw graph payloads sho
 
 - `payload` carries structured object data when available.
 - `json` may carry structured object data for compatibility paths.
-- `json_text` is emitted only when a command explicitly requests legacy text JSON.
+- Retired string-first fields such as `json_text` are no longer emitted or accepted.
 
 ### Response Output Rules
 
@@ -159,4 +159,4 @@ BlueprintHelper Bridge uses object-first responses. Large raw graph payloads sho
 - Deprecated MCP ordinary tools are not fallback paths; do not add or run tests for them.
 - `blueprint_export_to_json` may still return `raw_json_ref` as a resource link in compatibility paths.
 - RawJson resource handling remains for historical fixtures and recovery workflows.
-- `legacy_text_json` exists only for compatibility with older text-only callers.
+- `legacy_text_json` is retired; use structured JSON or resource references.

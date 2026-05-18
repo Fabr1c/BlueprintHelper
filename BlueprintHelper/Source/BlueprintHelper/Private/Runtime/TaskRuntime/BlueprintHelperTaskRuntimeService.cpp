@@ -15,9 +15,6 @@
 #include "Systems/Debug/BlueprintHelperCompileAssetService.h"
 #include "Systems/Debug/BlueprintHelperDebugEntryService.h"
 #include "Systems/ToolClusters/BlueprintComponent/BlueprintHelperComponentService.h"
-#include "Systems/ToolClusters/CleanupOwnership/BlueprintHelperCleanupBlueprintHelperBlockService.h"
-#include "Systems/ToolClusters/CleanupOwnership/BlueprintHelperConvertBlockToUserOwnedService.h"
-#include "Systems/ToolClusters/CleanupOwnership/BlueprintHelperRollbackCleanupTransactionService.h"
 #include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
 #include "Systems/ToolClusters/DataTable/BlueprintHelperDataTableService.h"
 #include "Systems/ToolClusters/UMGWidget/BlueprintHelperWidgetService.h"
@@ -32,7 +29,6 @@
 #include "Runtime/TaskRuntime/TaskPlanAdapters/DataAssetObjectProperty/BlueprintHelperObjectPropertyTaskPlanAdapter.h"
 #include "Runtime/TaskRuntime/TaskPlanAdapters/DataTable/BlueprintHelperDataTableTaskPlanAdapter.h"
 #include "Runtime/TaskRuntime/TaskPlanAdapters/BlueprintSignature/BlueprintHelperSignatureTaskPlanAdapter.h"
-#include "Runtime/TaskRuntime/TaskPlanAdapters/CleanupOwnership/BlueprintHelperCleanupOwnershipTaskPlanAdapter.h"
 #include "Runtime/TaskRuntime/TaskPlanAdapters/UMGWidget/BlueprintHelperWidgetTaskPlanAdapter.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeClusterHub.h"
 #include "Runtime/TaskRuntime/Utils/BlueprintHelperTaskRuntimeClusterExecutionUtils.h"
@@ -3465,33 +3461,6 @@ public:
 			TEXT("Unsupported object_property adapter operation."));
 	}
 
-	static FBlueprintHelperToolResultBase ExecuteCleanupOwnershipTaskPlanStep(
-		const FBlueprintHelperCleanupBlueprintHelperBlockService& CleanupBlockService,
-		const FBlueprintHelperConvertBlockToUserOwnedService& ConvertBlockService,
-		const FBlueprintHelperRollbackCleanupTransactionService& RollbackCleanupService,
-		const FString& AdapterOperation,
-		const TSharedPtr<FJsonObject>& Payload)
-	{
-		if (AdapterOperation == FBlueprintHelperCleanupOwnershipTaskPlanAdapter::AdapterOperationCleanupBlueprintHelperBlock)
-		{
-			return CleanupBlockService.Execute(Payload);
-		}
-		if (AdapterOperation == FBlueprintHelperCleanupOwnershipTaskPlanAdapter::AdapterOperationConvertBlueprintHelperBlockToUserOwned)
-		{
-			return ConvertBlockService.Execute(Payload);
-		}
-		if (AdapterOperation == FBlueprintHelperCleanupOwnershipTaskPlanAdapter::AdapterOperationRollbackCleanupTransaction)
-		{
-			return RollbackCleanupService.Execute(Payload);
-		}
-
-		return MakeFailure(
-			TEXT("graph_cleanup_ownership"),
-			TEXT("unsupported_cleanup_ownership_adapter_operation"),
-			EBlueprintHelperToolStage::ParseInput,
-			TEXT("Unsupported Cleanup/Ownership adapter operation."));
-	}
-
 	static FBlueprintHelperToolResultBase ExecuteSignatureTaskPlanStep(
 		const FBlueprintHelperBlueprintStructureService& Service,
 		const FString& AdapterOperation,
@@ -3661,9 +3630,6 @@ FBlueprintHelperTaskRuntimeService::FBlueprintHelperTaskRuntimeService(
 	const FBlueprintHelperWidgetService& InWidgetService,
 	const FBlueprintHelperDataTableService& InDataTableService,
 	const FBlueprintHelperPropertyReflectionService& InPropertyReflectionService,
-	const FBlueprintHelperCleanupBlueprintHelperBlockService& InCleanupBlockService,
-	const FBlueprintHelperRollbackCleanupTransactionService& InRollbackCleanupService,
-	const FBlueprintHelperConvertBlockToUserOwnedService& InConvertBlockService,
 	const FBlueprintHelperCompileAssetService& InCompileAssetService,
 	const FBlueprintHelperAssetBrowseService& InAssetBrowseService,
 	const FBlueprintHelperDebugEntryService* InDebugEntryService)
@@ -3679,10 +3645,7 @@ FBlueprintHelperTaskRuntimeService::FBlueprintHelperTaskRuntimeService(
 		InClassSettingsService,
 		InWidgetService,
 		InDataTableService,
-		InPropertyReflectionService,
-		InCleanupBlockService,
-		InRollbackCleanupService,
-		InConvertBlockService))
+		InPropertyReflectionService))
 	, CompileAssetService(InCompileAssetService)
 	, AssetBrowseService(InAssetBrowseService)
 	, DebugEntryService(InDebugEntryService)
@@ -3890,16 +3853,6 @@ bool FBlueprintHelperTaskRuntimeService::TryLowerTaskPlanStep(
 	if (Capability == FBlueprintHelperObjectPropertyTaskPlanAdapter::CapabilityObjectProperty)
 	{
 		return FBlueprintHelperObjectPropertyTaskPlanAdapter::TryLowerTaskPlanStep(
-			TaskPlan,
-			StepObject,
-			bDryRun,
-			OutLoweredStep,
-			OutError);
-	}
-
-	if (Capability == FBlueprintHelperCleanupOwnershipTaskPlanAdapter::CapabilityName)
-	{
-		return FBlueprintHelperCleanupOwnershipTaskPlanAdapter::TryLowerTaskPlanStep(
 			TaskPlan,
 			StepObject,
 			bDryRun,
