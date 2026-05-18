@@ -42,4 +42,3 @@ There are two supported TaskSpec command shapes:
 `blueprinthelper_apply_review_action` is intentionally not included in ordinary
 AgentGuide templates. It is a plugin-development/internal Review action, not a
 normal Agent-facing workflow.
-
