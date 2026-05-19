@@ -33,6 +33,7 @@ Examples:
 
 ```powershell
 bh blueprint_get_runtime_profile --json "{}" --select status,summary
+bh blueprinthelper_read_context_capabilities --json "{}" --select status,artifacts.full_result
 bh blueprinthelper_read_function_chain_context --file .\function_chain.json --select status,artifacts.full_result
 bh blueprinthelper_preview_task --file .\preview_wrapper.json --select status,preview_id,summary,artifacts.full_result
 bh blueprinthelper_execute_task --file .\execute_wrapper.json --select status,task_run_id,summary
@@ -45,6 +46,16 @@ $json | bh blueprinthelper_read_context --stdin --format full
 ```
 
 The direct CLI registry is the current non-frozen Agent-facing TaskSpec/read/debug summary surface. Frozen legacy/expert tools are not re-exposed through CLI, even if `--expert` is passed. Use the global MCP allowlist when an Agent owns editor lifecycle; use `bh open_editor` / `bh close_editor`, or the direct `blueprint_open_editor` / `blueprint_close_editor` names, only as compatibility/manual fallback.
+
+## Read Context Capabilities
+
+Use `blueprinthelper_read_context_capabilities` when an Agent needs to discover supported ReadContext read types, asset target types, and formats. This command is local to task-core, does not read UE assets, and does not call Bridge.
+
+```powershell
+'{}' | bh blueprinthelper_read_context_capabilities --stdin --select status,artifacts.full_result
+```
+
+The full artifact payload schema is `ReadContextCapabilities.v1`. `asset_types`, `formats`, and `read_type_ids` are full sets; `read_types[]` lists only unsupported asset types and unsupported formats for each read type.
 
 ## Preview
 

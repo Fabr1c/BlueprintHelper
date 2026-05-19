@@ -32,6 +32,7 @@ blueprinthelper_diagnostics
 blueprinthelper_diagnostics_runtime
 blueprinthelper_request_write_session
 blueprinthelper_read_context
+blueprinthelper_read_context_capabilities
 blueprinthelper_read_task_context
 blueprinthelper_read_reference_context
 blueprinthelper_read_function_chain_context
@@ -50,7 +51,7 @@ Write authorization is running Editor/Bridge based: use `blueprinthelper_request
 
 Ordinary Agents must not request, set, or forward `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session`; raw session data is not part of the Agent contract.
 
-Read-only commands such as `bh blueprinthelper_read_context`, `bh blueprinthelper_read_task_context`, `bh blueprinthelper_read_reference_context`, and `bh blueprinthelper_read_function_chain_context` do not require a write session. If these commands are unavailable, diagnose CLI installation, command registration, package build state, or Bridge connectivity instead of requesting write permission.
+Read-only commands such as `bh blueprinthelper_read_context`, `bh blueprinthelper_read_context_capabilities`, `bh blueprinthelper_read_task_context`, `bh blueprinthelper_read_reference_context`, and `bh blueprinthelper_read_function_chain_context` do not require a write session. If these commands are unavailable, diagnose CLI installation, command registration, package build state, or Bridge connectivity instead of requesting write permission.
 
 CLI output is optimized for Agent use. Use `--omit operation,status` when the default summary is useful but envelope fields are not needed. Use `--select` / `--fields` when only a small whitelist is needed, such as `task_run_id`, `summary.target_assets`, or `artifacts.full_result`. Use `--max-bytes` as a hard budget guard; the full payload remains available through the artifact path.
 

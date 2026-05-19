@@ -46,6 +46,7 @@ Use `tools/list` as final authority. Normal Agent-facing tools:
 | Request write session | `blueprinthelper_request_write_session` |
 | AgentGuide index | `blueprinthelper_read_agent_guide` |
 | ReadSpec context | `blueprinthelper_read_context` |
+| ReadContext capabilities | `blueprinthelper_read_context_capabilities` |
 | Task context | `blueprinthelper_read_task_context` |
 | Reference context | `blueprinthelper_read_reference_context` |
 | Function chain context | `blueprinthelper_read_function_chain_context` |
@@ -71,6 +72,7 @@ Lifecycle companion tools are available through the global MCP allowlist for Age
 | `blueprinthelper_request_write_session` | `{ "reason": "...", "scope": "project", "ttl_seconds": 900 }` or `{ "reason": "...", "scope": "asset_list", "ttl_seconds": 900, "asset_paths": ["/Game/..."] }` |
 | `blueprinthelper_read_agent_guide` | `{}` |
 | `blueprinthelper_read_context` | `BlueprintHelper.ReadSpec.v1` fields at root |
+| `blueprinthelper_read_context_capabilities` | `{}` |
 | `blueprinthelper_read_task_context` | `{ "target": { "asset_path": "..." }, "feature_name": "..." }` |
 | `blueprinthelper_read_reference_context` | Reference fields at root |
 | `blueprinthelper_read_function_chain_context` | Function chain fields at root |
@@ -97,7 +99,7 @@ Lifecycle companion tools are available through the global MCP allowlist for Age
     "block_id": "optional. BlueprintHelper-owned block id when target_type is block."
   },
   "view": {
-    "format": "optional, default logic_md. logic_md, logic_json, summary, or schema.",
+    "format": "optional, default logic_md. logic_md, logic_json, or summary.",
     "max_items": "optional. Positive integer truncation guard.",
     "detail": "optional. brief, normal, full, or debug."
   },
@@ -115,6 +117,16 @@ Lifecycle companion tools are available through the global MCP allowlist for Age
 `view.max_items` is a truncation guard for `logic_json`; when truncation happens, the tool result sets `data.truncated=true` and includes `payload.truncation.nodes_total` plus `payload.truncation.nodes_returned`.
 
 If `blueprinthelper_read_context` is not visible or callable, stop with `tool_unavailable`. Do not read `.vs\BlueprintCache`, Saved exports, or local JSON files as a substitute for missing BlueprintHelper tool availability.
+
+## 4.5 Read Context Capabilities Template
+
+Use this local read-only tool when an Agent needs to know which ReadContext read types, asset target types, and formats are currently supported. It does not read UE assets or call Bridge.
+
+```json
+{}
+```
+
+Returned data schema is `ReadContextCapabilities.v1`. `asset_types`, `formats`, and `read_type_ids` are the full sets. `read_types[]` is a negative capability diff: each row lists only `unsupported_asset_types` and `unsupported_formats` for that read type.
 
 ## 5. Reference Context Template
 

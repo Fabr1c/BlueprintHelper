@@ -41,6 +41,41 @@ test('direct blueprint_get_runtime_profile calls matching Bridge command', async
   assert.equal(JSON.parse(writes.join('')).status, 'completed');
 });
 
+test('direct read context capabilities stays local and returns compact matrix artifact', async () => {
+  const writes: string[] = [];
+  const artifactDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-cli-read-capabilities-'));
+  const exitCode = await runCli({
+    argv: [
+      'blueprinthelper_read_context_capabilities',
+      '--json',
+      '{}',
+      '--artifact-dir',
+      artifactDir,
+      '--select',
+      'status,artifacts.full_result',
+    ],
+    cwd: process.cwd(),
+    bridge: {
+      sendCommand: async () => { throw new Error('read context capabilities must not call Bridge'); },
+    },
+    runner: {} as never,
+    stdout: (line) => writes.push(line),
+    stderr: () => {},
+  });
+
+  assert.equal(exitCode, 0);
+  const output = JSON.parse(writes.join('')) as Record<string, unknown>;
+  assert.equal(output.status, 'completed');
+  const fullResultPath = String((output.artifacts as Record<string, unknown>).full_result);
+  const fullResult = JSON.parse(fs.readFileSync(fullResultPath, 'utf8')) as Record<string, unknown>;
+  const toolResult = fullResult.toolResult as Record<string, unknown>;
+  const data = toolResult.data as Record<string, unknown>;
+  assert.equal(data.schema, 'ReadContextCapabilities.v1');
+  assert.deepEqual(data.formats, ['summary', 'logic_json', 'logic_md']);
+  assert.equal(Array.isArray(data.read_types), true);
+  assert.equal(JSON.stringify(data).includes('bridge_command'), false);
+});
+
 test('direct function chain context read calls matching Bridge command', async () => {
   const writes: string[] = [];
   const calls: Array<{ command: string; payload?: Record<string, unknown> }> = [];

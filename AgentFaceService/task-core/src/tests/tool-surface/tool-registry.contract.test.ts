@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import test from 'node:test';
 import { successRead } from '../../result/tool-result.js';
 import { ReadFunctionChainContextInputSchema } from '../../tool-surface/bridge/function-chain-context-schema.js';
+import { ReadContextInputSchema } from '../../tool-surface/bridge/read-context/read-context-schemas.js';
 import { getBlueprintHelperToolRegistry } from '../../tool-surface/tool-registry.js';
 import type { TaskSpecRunner } from '../../task/service/task-spec-runner.js';
 
@@ -21,6 +22,7 @@ const expectedToolNames = [
   'blueprinthelper_query_review_records',
   'blueprinthelper_apply_review_action',
   'blueprinthelper_read_function_chain_context',
+  'blueprinthelper_read_context_capabilities',
   'blueprinthelper_read_context',
   'blueprint_get_runtime_profile',
   'blueprinthelper_request_write_session',
@@ -286,6 +288,72 @@ test('function chain context input schema accepts compact entry requests and rej
     target_name: 'Input_Fire',
     target_guid: '00000000000000000000000000000000',
   }), /Unrecognized key/);
+});
+
+test('read context capabilities is a compact local discovery tool', async () => {
+  const tool = getBlueprintHelperToolRegistry().find((candidate) => candidate.name === 'blueprinthelper_read_context_capabilities');
+  assert.ok(tool);
+
+  const result = await tool.execute({}, {
+    cwd: process.cwd(),
+    bridge: {
+      async sendCommand() {
+        throw new Error('read context capabilities must not call Bridge');
+      },
+    } as never,
+    taskRunner: {} as TaskSpecRunner,
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.operation, 'read_context_capabilities');
+  assert.equal(result.data?.['schema'], 'ReadContextCapabilities.v1');
+  assert.deepEqual(result.data?.['formats'], ['summary', 'logic_json', 'logic_md']);
+  assert.deepEqual(result.data?.['read_type_ids'], [
+    'asset_context',
+    'blueprint_logic',
+    'graph_context',
+    'component_context',
+    'variable_context',
+    'widget_context',
+    'data_table_context',
+    'data_asset_context',
+    'object_property_context',
+  ]);
+
+  const readTypes = result.data?.['read_types'] as Array<Record<string, unknown>>;
+  const blueprintLogic = readTypes.find((entry) => entry['read_type'] === 'blueprint_logic');
+  assert.ok(blueprintLogic);
+  assert.deepEqual(blueprintLogic['unsupported_formats'], []);
+  assert.deepEqual(blueprintLogic['unsupported_asset_types'], [
+    'asset',
+    'component',
+    'member_variable',
+    'event_dispatcher',
+    'widget',
+    'data_table',
+    'data_table_row',
+    'data_asset',
+    'object_property',
+    'property',
+  ]);
+
+  const assetContext = readTypes.find((entry) => entry['read_type'] === 'asset_context');
+  assert.ok(assetContext);
+  assert.deepEqual(assetContext['unsupported_formats'], ['logic_json', 'logic_md']);
+});
+
+test('read_context rejects capability discovery as a view format', () => {
+  assert.throws(() => ReadContextInputSchema.parse({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'asset_context',
+    target: {
+      asset_path: '/Game/BP_Player',
+      target_type: 'asset',
+    },
+    view: {
+      format: 'schema',
+    },
+  }), /Invalid enum value/);
 });
 
 test('function chain context registry dispatch strips forbidden identity fields from Bridge payload', async () => {

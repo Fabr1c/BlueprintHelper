@@ -45,6 +45,7 @@ blueprinthelper_diagnostics
 blueprinthelper_diagnostics_runtime
 blueprinthelper_read_agent_guide
 blueprinthelper_read_context
+blueprinthelper_read_context_capabilities
 blueprinthelper_read_task_context
 blueprinthelper_read_reference_context
 blueprinthelper_read_function_chain_context
@@ -171,6 +172,14 @@ Read command 使用根对象 `BlueprintHelper.ReadSpec.v1`：
 
 图表大小未知时先用 `summary`，不要直接 whole-graph `logic_md`。需要稳定 owned-block anchors 时使用 `logic_json`。
 
+ReadContext capability discovery uses a separate local command and does not read UE assets:
+
+```powershell
+'{}' | bh blueprinthelper_read_context_capabilities --stdin --select status,artifacts.full_result
+```
+
+The full artifact payload schema is `ReadContextCapabilities.v1`. `asset_types`, `formats`, and `read_type_ids` are full sets; `read_types[]` lists only unsupported asset types and unsupported formats for each read type.
+
 ### Function Chain Context
 
 `blueprinthelper_read_function_chain_context` 用于从入口 function/event/custom event 查找下一层项目自定义 Blueprint 逻辑。它返回 compact index；需要函数体时再使用 `blueprinthelper_read_context`。
@@ -199,6 +208,7 @@ Read command 使用根对象 `BlueprintHelper.ReadSpec.v1`：
 | Schema | Owner | Purpose / 用途 |
 |---|---|---|
 | `BlueprintHelper.ReadSpec.v1` | Agent | Generic read request / 通用读取请求 |
+| `ReadContextCapabilities.v1` | task-core local read service | Compact ReadContext capability matrix |
 | `FunctionChainContext.v1` | Bridge read service | Compact custom logic call-chain index / 调用链索引 |
 | `BlueprintHelper.TaskSpec.v1` | Agent | Semantic task specification / 语义任务描述 |
 | `BlueprintHelper.TaskPlan.v1` | task-core / Python compiler | Compiler-owned execution plan / 编译器生成执行计划 |
@@ -258,6 +268,7 @@ blueprinthelper_diagnostics
 blueprinthelper_diagnostics_runtime
 blueprinthelper_read_agent_guide
 blueprinthelper_read_context
+blueprinthelper_read_context_capabilities
 blueprinthelper_read_task_context
 blueprinthelper_read_reference_context
 blueprinthelper_read_function_chain_context
@@ -384,6 +395,14 @@ Read commands use root object `BlueprintHelper.ReadSpec.v1`:
 
 Use `summary` before whole-graph `logic_md` when graph size is unknown. Use `logic_json` for stable owned-block anchors.
 
+ReadContext capability discovery uses a separate local command and does not read UE assets:
+
+```powershell
+'{}' | bh blueprinthelper_read_context_capabilities --stdin --select status,artifacts.full_result
+```
+
+The full artifact payload schema is `ReadContextCapabilities.v1`. `asset_types`, `formats`, and `read_type_ids` are full sets; `read_types[]` lists only unsupported asset types and unsupported formats for each read type.
+
 ### Function Chain Context
 
 `blueprinthelper_read_function_chain_context` follows an entry function/event/custom event to find the next project-authored Blueprint logic entries. It returns a compact index; use `blueprinthelper_read_context` for full bodies.
@@ -412,6 +431,7 @@ Rules:
 | Schema | Owner | Purpose / 用途 |
 |---|---|---|
 | `BlueprintHelper.ReadSpec.v1` | Agent | Generic read request / 通用读取请求 |
+| `ReadContextCapabilities.v1` | task-core local read service | Compact ReadContext capability matrix |
 | `FunctionChainContext.v1` | Bridge read service | Compact custom logic call-chain index / 调用链索引 |
 | `BlueprintHelper.TaskSpec.v1` | Agent | Semantic task specification / 语义任务描述 |
 | `BlueprintHelper.TaskPlan.v1` | task-core / Python compiler | Compiler-owned execution plan / 编译器生成执行计划 |

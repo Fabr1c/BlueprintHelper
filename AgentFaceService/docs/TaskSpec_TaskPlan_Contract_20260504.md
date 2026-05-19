@@ -118,6 +118,7 @@ Default Agent-facing result layering is fixed as:
 |---|---|---|
 | `blueprinthelper_read_agent_guide` | Markdown text only | none |
 | `blueprinthelper_read_context` | `BlueprintHelper.ToolResult.v1` | `ReadContextPack.v1`, with `payload.schema = LogicMd.v1 / LogicJson.v1 / ...` |
+| `blueprinthelper_read_context_capabilities` | `BlueprintHelper.ToolResult.v1` | `ReadContextCapabilities.v1` |
 | `blueprinthelper_read_reference_context` | `BlueprintHelper.ToolResult.v1` | `ReferenceContextPack.v1` |
 | `blueprinthelper_read_function_chain_context` | `BlueprintHelper.ToolResult.v1` | `FunctionChainContext.v1` |
 | `blueprinthelper_preview_task` | `BlueprintHelper.ToolResult.v1` | `TaskPreviewResult.v1` |
@@ -138,6 +139,8 @@ Agent -> CLI -> ReadSpec -> task-core/Python Read Router -> UE Read Capability C
 
 `blueprinthelper_read_context` is the generic read entry for asset-domain reads. `blueprinthelper_read_task_context` is deprecated until a clearer role is redefined; new read capability should enter through ReadSpec.
 
+`blueprinthelper_read_context_capabilities` is an independent local discovery tool for the ReadContext capability matrix. It does not read assets and does not call Bridge. Its payload uses full-set fields for `asset_types`, `formats`, and `read_type_ids`; `read_types[]` is a negative diff listing only unsupported asset types and unsupported formats for each read type.
+
 `blueprinthelper_read_reference_context` remains an independent Agent-facing read tool. It is a generic reference viewer for asset, variable, function, graph, widget, data table row, and other reference scopes. Its implementation may internally compose multiple reference analyzers, but the Agent sees one reference context envelope.
 
 `blueprinthelper_read_function_chain_context` remains an independent Agent-facing read tool for project-authored Blueprint logic traversal. It starts from one function/event/custom event and returns only compact `custom_logic_refs[]` indexes for follow-up `blueprinthelper_read_context` calls. It must not echo request `entry` / `target` / `query`, expose owner fields, expose `node_ref` / `node_path`, expose GUID fields, or list Engine/trusted plugin/native utility calls beyond summary counts.
@@ -151,7 +154,6 @@ ReadSpec uses common view formats across read domains:
 | `logic_md` | Default low-token human-readable view. |
 | `logic_json` | Structured view for precise analysis, diff, patch, merge, and debug. |
 | `summary` | Very small overview for large assets or discovery. |
-| `schema` | Return field/schema guidance for the selected `read_type` and format without reading asset content. This is a ReadSpec view format, not a JSON Schema dialect commitment. |
 | `raw_json` | Debug/expert full-fidelity view; not a default Agent workflow. |
 
 `logic_md` and `logic_json` are not Blueprint-only formats. Future material, animation blueprint, widget, data table, and data asset reads should use the same formats where practical, so the tool surface does not expand one command per read shape.
@@ -211,7 +213,7 @@ Initial supported `read_type` values:
 
 Future read domains such as material graphs and animation blueprints must enter through new `read_type` values instead of new tools.
 
-`summary` is for low-token discovery and first-pass asset inspection before choosing a more detailed read. `schema` is for field guidance for the selected `read_type` / format without reading the asset body. Neither format performs writes or returns TaskSpec drafts.
+`summary` is for low-token discovery and first-pass asset inspection before choosing a more detailed read. Runtime capability discovery belongs to `blueprinthelper_read_context_capabilities`, not to a ReadSpec view format. Neither path performs writes or returns TaskSpec drafts.
 
 Read result `data.schema` follows the short-name payload rule. `ReadContextPack.v1` does not include a separate `read_id`, and read results do not carry a `diagnostics` array. Payload errors use the outer ToolResult error envelope; read completeness uses `truncated` plus a recommendation to reread a specific block or context slice.
 
