@@ -528,10 +528,12 @@ export const ReadTaskContextInputSchema = z.object({
 
 export const PreviewTaskInputSchema: z.ZodTypeAny = z.object({
   task_spec: TaskSpecSchema,
+  develop: z.boolean().optional().default(false),
 });
 
 export const ExecuteTaskInputSchema: z.ZodTypeAny = z.object({
   task_spec: TaskSpecSchema,
+  develop: z.boolean().optional().default(false),
 });
 
 export const GetTaskResultInputSchema = z.object({

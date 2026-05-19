@@ -29,6 +29,7 @@ export interface CliCommand {
   json?: string;
   params?: Record<string, unknown>;
   stdin?: boolean;
+  develop?: boolean;
   expert?: boolean;
   taskRunId?: string;
   bridgeCommand?: string;

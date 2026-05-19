@@ -8,6 +8,8 @@
 #include "Misc/FileHelper.h"
 #include "Misc/PackageName.h"
 #include "Misc/Paths.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 #include "Shared/Review/BlueprintHelperReviewEnumUtils.h"
 #include "Shared/Review/BlueprintHelperReviewStatusUtils.h"
 #include "Shared/Review/BlueprintHelperReviewTargetKindRegistry.h"
@@ -360,6 +362,48 @@ static FString BlueprintHelperReviewLifecycleKey(
 			*ObjectName);
 	}
 
+static bool BlueprintHelperReviewTryGetSnapshotString(
+	const FString& SnapshotJson,
+	const TCHAR* FieldName,
+	FString& OutValue)
+	{
+		OutValue.Reset();
+		if (SnapshotJson.IsEmpty() || !FieldName)
+		{
+			return false;
+		}
+
+		TSharedPtr<FJsonObject> Snapshot;
+		TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(SnapshotJson);
+		if (!FJsonSerializer::Deserialize(Reader, Snapshot) || !Snapshot.IsValid())
+		{
+			return false;
+		}
+		return Snapshot->TryGetStringField(FieldName, OutValue) && !OutValue.IsEmpty();
+	}
+
+static bool BlueprintHelperReviewTryGetTargetSnapshotString(
+	const FBlueprintHelperReviewAtomicTarget& Target,
+	const TCHAR* FieldName,
+	FString& OutValue)
+	{
+		return BlueprintHelperReviewTryGetSnapshotString(Target.AfterSnapshotJson, FieldName, OutValue)
+			|| BlueprintHelperReviewTryGetSnapshotString(Target.BeforeSnapshotJson, FieldName, OutValue);
+	}
+
+static bool BlueprintHelperReviewChangeHasAssetFactoryRootKey(const FBlueprintHelperReviewVisibleChange& Change)
+	{
+		for (const FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
+		{
+			if (FBlueprintHelperReviewTargetKindRegistry::GetHandlerKind(Target.TargetKind)
+				== EBlueprintHelperReviewTargetHandlerKind::AssetFactory)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
 static void BlueprintHelperReviewCollectLifecycleRootKeys(
 	const FBlueprintHelperReviewVisibleChange& Change,
 	TArray<FString>& OutKeys)
@@ -385,6 +429,48 @@ static void BlueprintHelperReviewCollectLifecycleRootKeys(
 				continue;
 			}
 			if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::UMGWidget)
+			{
+				OutKeys.AddUnique(BlueprintHelperReviewLifecycleKey(
+					Change.AssetPath,
+					TEXT("widget"),
+					BlueprintHelperReviewLifecycleObjectNameFromTarget(Target)));
+			}
+		}
+	}
+
+static void BlueprintHelperReviewCollectLifecycleParentKeys(
+	const FBlueprintHelperReviewVisibleChange& Change,
+	TArray<FString>& OutKeys)
+	{
+		for (const FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
+		{
+			const EBlueprintHelperReviewTargetHandlerKind HandlerKind =
+				FBlueprintHelperReviewTargetKindRegistry::GetHandlerKind(Target.TargetKind);
+			if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::Component)
+			{
+				FString ParentComponentName;
+				if (BlueprintHelperReviewTryGetTargetSnapshotString(Target, TEXT("parent_component"), ParentComponentName))
+				{
+					OutKeys.AddUnique(BlueprintHelperReviewLifecycleKey(
+						Change.AssetPath,
+						TEXT("component"),
+						BlueprintHelperReviewExtractLifecycleName(ParentComponentName)));
+				}
+				continue;
+			}
+			if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::UMGWidget)
+			{
+				FString ParentWidgetName;
+				if (BlueprintHelperReviewTryGetTargetSnapshotString(Target, TEXT("parent_widget"), ParentWidgetName))
+				{
+					OutKeys.AddUnique(BlueprintHelperReviewLifecycleKey(
+						Change.AssetPath,
+						TEXT("widget"),
+						BlueprintHelperReviewExtractLifecycleName(ParentWidgetName)));
+				}
+				continue;
+			}
+			if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::UMGWidgetProperty)
 			{
 				OutKeys.AddUnique(BlueprintHelperReviewLifecycleKey(
 					Change.AssetPath,
@@ -462,22 +548,28 @@ void FBlueprintHelperReviewStoreTargetUtils::LinkPendingChildrenToLifecycleRoots
 				continue;
 			}
 
-			if (Change.bIsAssetLifecycleRoot)
+			Change.ParentChangeId.Reset();
+			if (Change.bIsAssetLifecycleRoot
+				&& BlueprintHelperReviewChangeHasAssetFactoryRootKey(Change))
 			{
-				Change.ParentChangeId.Reset();
 				continue;
 			}
 
 			const int32* RootIndex = nullptr;
 			TArray<FString> ChildKeys;
-			BlueprintHelperReviewCollectLifecycleChildKeys(Change, ChildKeys);
+			BlueprintHelperReviewCollectLifecycleParentKeys(Change, ChildKeys);
+			if (ChildKeys.Num() == 0 && !Change.bIsAssetLifecycleRoot)
+			{
+				BlueprintHelperReviewCollectLifecycleChildKeys(Change, ChildKeys);
+			}
 			for (const FString& ChildKey : ChildKeys)
 			{
 				RootIndex = PendingRootIndexByLifecycleKey.Find(ChildKey);
-				if (RootIndex)
+				if (RootIndex && Changes.IsValidIndex(*RootIndex) && Changes[*RootIndex].ChangeId != Change.ChangeId)
 				{
 					break;
 				}
+				RootIndex = nullptr;
 			}
 
 			if (!RootIndex)

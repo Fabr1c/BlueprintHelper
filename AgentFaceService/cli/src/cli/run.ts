@@ -9,6 +9,10 @@ import {
   type TaskSpecRunner,
 } from '@blueprinthelper/task-core/task/service/task-spec-runner';
 import {
+  measureTaskTiming,
+  startTaskTiming,
+} from '@blueprinthelper/task-core/task/service/task-timing';
+import {
   ReadTaskContextInputSchema,
   TaskSpecSchema,
 } from '@blueprinthelper/task-core/task/schema/task-schemas';
@@ -108,8 +112,11 @@ export async function runCli(runtime: CliRuntime): Promise<number> {
     }
 
     if (command.kind === 'task.preview') {
-      const taskSpec = TaskSpecSchema.parse(readJsonFile(path.resolve(runtime.cwd, required(command.file))));
-      const preview = await getRunner(runtime).previewTask(taskSpec);
+      const timing = startTaskTiming(command.develop === true, 'preview_task');
+      const taskSpec = measureTaskTiming(timing, 'taskspec_file_read_parse', () => (
+        TaskSpecSchema.parse(readJsonFile(path.resolve(runtime.cwd, required(command.file))))
+      ));
+      const preview = await getRunner(runtime).previewTask(taskSpec, timing);
       const outcome = writeCliResult(runtime, command, preview.toolResult, {
         previewId: preview.previewId,
         taskPlan: preview.taskPlan,
@@ -120,8 +127,11 @@ export async function runCli(runtime: CliRuntime): Promise<number> {
     }
 
     if (command.kind === 'task.execute') {
-      const taskSpec = TaskSpecSchema.parse(readJsonFile(path.resolve(runtime.cwd, required(command.file))));
-      const toolResult = await getRunner(runtime).executeTask(taskSpec);
+      const timing = startTaskTiming(command.develop === true, 'execute_task');
+      const taskSpec = measureTaskTiming(timing, 'taskspec_file_read_parse', () => (
+        TaskSpecSchema.parse(readJsonFile(path.resolve(runtime.cwd, required(command.file))))
+      ));
+      const toolResult = await getRunner(runtime).executeTask(taskSpec, timing);
       const outcome = writeCliResult(runtime, command, toolResult);
       return outcome.outputTooLarge ? 3 : toolResult.ok ? 0 : 2;
     }
@@ -190,6 +200,7 @@ function parseArgs(argv: string[]): ParseResult {
     command?: string;
     json?: string;
     stdin?: boolean;
+    develop?: boolean;
     expert?: boolean;
     format?: CliFormat;
     artifactDir?: string;
@@ -210,6 +221,8 @@ function parseArgs(argv: string[]): ParseResult {
       options.json = readOptionValue(argv, ++index, arg);
     } else if (arg === '--stdin') {
       options.stdin = true;
+    } else if (arg === '--develop') {
+      options.develop = true;
     } else if (arg === '--expert') {
       options.expert = true;
     } else if (arg === '--format') {
@@ -254,6 +267,7 @@ function parseArgs(argv: string[]): ParseResult {
     maxBytes: options.maxBytes,
     fields: options.fields,
     omitFields: options.omitFields,
+    develop: options.develop,
     expert: options.expert,
   };
   const [group, action] = positionals;
@@ -504,8 +518,8 @@ function helpText(): string {
     '  blueprinthelper-cli <tool_name> [--file params.json | --json json | --stdin] [--fields path[,path...]] [--omit path[,path...]]',
     '  blueprinthelper-cli open_editor [--file params.json | --json json | --stdin] [--fields path[,path...]] [--omit path[,path...]]',
     '  blueprinthelper-cli close_editor [--file params.json | --json json | --stdin] [--fields path[,path...]] [--omit path[,path...]]',
-    '  blueprinthelper-cli task preview --file <task-spec.json> [--format summary|json|full] [--fields path[,path...]] [--omit path[,path...]]',
-    '  blueprinthelper-cli task execute --file <task-spec.json> [--format summary|json|full] [--fields path[,path...]] [--omit path[,path...]]',
+    '  blueprinthelper-cli task preview --file <task-spec.json> [--develop] [--format summary|json|full] [--fields path[,path...]] [--omit path[,path...]]',
+    '  blueprinthelper-cli task execute --file <task-spec.json> [--develop] [--format summary|json|full] [--fields path[,path...]] [--omit path[,path...]]',
     '  blueprinthelper-cli task result --id <task_run_id> [--fields path[,path...]] [--omit path[,path...]]',
     '  blueprinthelper-cli context read --file <context-request.json> [--fields path[,path...]] [--omit path[,path...]]',
     '  blueprinthelper-cli bridge ping [--fields path[,path...]] [--omit path[,path...]]',

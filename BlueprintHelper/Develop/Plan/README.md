@@ -1,6 +1,6 @@
 # BlueprintHelper Active Plan Index
 
-Date: 2026-05-18
+Date: 2026-05-19
 
 This folder contains active or intentionally retained planning documents. Historical setup docs, old smoke bug reports, v0.3.x/v0.4.1 plan records, superseded AgentGuide migration notes, and Review/Debug v1 or pre-v2 records are archived under `../v0.4.1/` and `../v0.4.3/`.
 
@@ -16,6 +16,7 @@ This folder contains active or intentionally retained planning documents. Histor
 - `BlueprintHelper_FunctionChainContext_ReadTool_PLAN_20260517_CN.md`
 - `BlueprintHelper_CallFunction_UEActionResolver_Design_20260516_CN.md`
 - `BlueprintHelper_CallFunction_LargeScope_TestExecution_20260516_CN.md`
+- `BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN.md`
 
 ## Active Design And Architecture
 

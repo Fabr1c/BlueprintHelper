@@ -5,6 +5,7 @@
 #include "Dom/JsonValue.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
 #include "Shared/BlueprintHelperServiceTypes.h"
+#include "UObject/FieldIterator.h"
 #include "UObject/UnrealType.h"
 
 class FBlueprintHelperPropertyReflectionServiceLocalUtils
@@ -154,6 +155,37 @@ public:
 		return true;
 	}
 
+	static FProperty* FindPropertyByAuthoredPathSegment(UStruct* OwnerStruct, const FString& Segment)
+	{
+		if (!OwnerStruct || Segment.IsEmpty())
+		{
+			return nullptr;
+		}
+
+		if (FProperty* ExactProperty = OwnerStruct->FindPropertyByName(FName(*Segment)))
+		{
+			return ExactProperty;
+		}
+
+		for (TFieldIterator<FProperty> PropertyIt(OwnerStruct, EFieldIteratorFlags::IncludeSuper); PropertyIt; ++PropertyIt)
+		{
+			FProperty* Candidate = *PropertyIt;
+			if (!Candidate)
+			{
+				continue;
+			}
+
+			if (Candidate->GetAuthoredName().Equals(Segment, ESearchCase::CaseSensitive)
+				|| Candidate->GetNameCPP().Equals(Segment, ESearchCase::CaseSensitive)
+				|| Candidate->GetDisplayNameText().ToString().Equals(Segment, ESearchCase::CaseSensitive))
+			{
+				return Candidate;
+			}
+		}
+
+		return nullptr;
+	}
+
 };
 
 UObject* FBlueprintHelperPropertyReflectionService::ResolveAsset(
@@ -214,9 +246,9 @@ bool FBlueprintHelperPropertyReflectionService::ResolvePropertyPath(
 	for (int32 Index = 0; Index < Segments.Num(); ++Index)
 	{
 		const bool bLast = Index == Segments.Num() - 1;
-		FProperty* Property = CurrentStruct
-			? CurrentStruct->FindPropertyByName(FName(*Segments[Index]))
-			: nullptr;
+		FProperty* Property = FBlueprintHelperPropertyReflectionServiceLocalUtils::FindPropertyByAuthoredPathSegment(
+			CurrentStruct,
+			Segments[Index]);
 		if (!Property)
 		{
 			OutErrorCode = TEXT("property_not_found");

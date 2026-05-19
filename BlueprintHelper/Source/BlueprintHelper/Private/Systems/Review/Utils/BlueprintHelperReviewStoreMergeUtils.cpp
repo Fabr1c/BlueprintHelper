@@ -17,6 +17,109 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentEvidence.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewStoreTargetUtils.h"
 
+DEFINE_LOG_CATEGORY_STATIC(LogBlueprintHelperReviewStoreMerge, Log, All);
+
+namespace
+{
+	static FString BlueprintHelperReviewNormalizeCollapseSegment(FString Value)
+	{
+		Value.TrimStartAndEndInline();
+		Value.ToLowerInline();
+		return Value;
+	}
+
+	static bool BlueprintHelperReviewIsActiveVisibleChangeState(const FBlueprintHelperReviewVisibleChange& Change)
+	{
+		return Change.Status == EBlueprintHelperReviewChangeStatus::Pending
+			|| Change.Status == EBlueprintHelperReviewChangeStatus::NeedsAction
+			|| Change.Status == EBlueprintHelperReviewChangeStatus::RejectFailed;
+	}
+
+	static void BlueprintHelperReviewIndexVisibleChangeCollapseKeys(
+		const FBlueprintHelperReviewVisibleChange& Change,
+		int32 Index,
+		TMap<FString, int32>& ExistingIndexByChangeId,
+		TMap<FString, int32>& ExistingIndexByLifecycleRoot,
+		TMap<FString, int32>& ExistingIndexByLegacyKey)
+	{
+		const FString ChangeIdKey = FBlueprintHelperReviewStoreMergeUtils::MakeLoadedVisibleChangeChangeIdCollapseKey(Change);
+		if (!ChangeIdKey.IsEmpty())
+		{
+			ExistingIndexByChangeId.Add(ChangeIdKey, Index);
+		}
+
+		const FString LifecycleRootKey = FBlueprintHelperReviewStoreMergeUtils::MakeLoadedVisibleChangeLifecycleRootCollapseKey(Change);
+		if (!LifecycleRootKey.IsEmpty())
+		{
+			ExistingIndexByLifecycleRoot.Add(LifecycleRootKey, Index);
+		}
+
+		const FString LegacyKey = FBlueprintHelperReviewStoreMergeUtils::MakeLoadedVisibleChangeCollapseKey(Change);
+		if (!LegacyKey.IsEmpty())
+		{
+			ExistingIndexByLegacyKey.Add(LegacyKey, Index);
+		}
+	}
+
+	static bool BlueprintHelperReviewFindCollapseReason(
+		const FBlueprintHelperReviewVisibleChange& Existing,
+		const FBlueprintHelperReviewVisibleChange& Incoming,
+		FString& OutReason)
+	{
+		const FString ExistingChangeIdKey =
+			FBlueprintHelperReviewStoreMergeUtils::MakeLoadedVisibleChangeChangeIdCollapseKey(Existing);
+		const FString IncomingChangeIdKey =
+			FBlueprintHelperReviewStoreMergeUtils::MakeLoadedVisibleChangeChangeIdCollapseKey(Incoming);
+		if (!ExistingChangeIdKey.IsEmpty() && ExistingChangeIdKey == IncomingChangeIdKey)
+		{
+			OutReason = TEXT("change_id");
+			return true;
+		}
+
+		const FString ExistingLifecycleRootKey =
+			FBlueprintHelperReviewStoreMergeUtils::MakeLoadedVisibleChangeLifecycleRootCollapseKey(Existing);
+		const FString IncomingLifecycleRootKey =
+			FBlueprintHelperReviewStoreMergeUtils::MakeLoadedVisibleChangeLifecycleRootCollapseKey(Incoming);
+		if (!ExistingLifecycleRootKey.IsEmpty() && ExistingLifecycleRootKey == IncomingLifecycleRootKey)
+		{
+			OutReason = TEXT("active_lifecycle_root");
+			return true;
+		}
+
+		const FString ExistingLegacyKey =
+			FBlueprintHelperReviewStoreMergeUtils::MakeLoadedVisibleChangeCollapseKey(Existing);
+		const FString IncomingLegacyKey =
+			FBlueprintHelperReviewStoreMergeUtils::MakeLoadedVisibleChangeCollapseKey(Incoming);
+		if (!ExistingLegacyKey.IsEmpty() && ExistingLegacyKey == IncomingLegacyKey)
+		{
+			OutReason = TEXT("scope_identity");
+			return true;
+		}
+
+		OutReason.Reset();
+		return false;
+	}
+
+	static void BlueprintHelperReviewLogFoldedVisibleChange(
+		const TCHAR* Context,
+		const FString& Reason,
+		const FBlueprintHelperReviewVisibleChange& Existing,
+		const FBlueprintHelperReviewVisibleChange& Incoming)
+	{
+		UE_LOG(
+			LogBlueprintHelperReviewStoreMerge,
+			Verbose,
+			TEXT("Folded duplicated visible change context=%s reason=%s existing_change_id=%s incoming_change_id=%s asset=%s existing_kind=%s incoming_kind=%s"),
+			Context ? Context : TEXT("unknown"),
+			*Reason,
+			*Existing.ChangeId,
+			*Incoming.ChangeId,
+			*(Incoming.AssetPath.IsEmpty() ? Existing.AssetPath : Incoming.AssetPath),
+			BlueprintHelperReviewChangeKindToString(Existing.ChangeKind),
+			BlueprintHelperReviewChangeKindToString(Incoming.ChangeKind));
+	}
+}
+
 FString FBlueprintHelperReviewStoreMergeUtils::MakeVisibleChangeScopeIdentity(const FBlueprintHelperReviewVisibleChange& Change)
 	{
 		if (!Change.ScopeIdentity.IsEmpty())
@@ -32,6 +135,53 @@ FString FBlueprintHelperReviewStoreMergeUtils::MakeVisibleChangeScopeIdentity(co
 			}
 		}
 		return Change.LocationKey;
+	}
+FString FBlueprintHelperReviewStoreMergeUtils::MakeLoadedVisibleChangeChangeIdCollapseKey(const FBlueprintHelperReviewVisibleChange& Change)
+	{
+		const FString ChangeId = BlueprintHelperReviewNormalizeCollapseSegment(Change.ChangeId);
+		if (ChangeId.IsEmpty())
+		{
+			return FString();
+		}
+
+		return FString::Printf(TEXT("change_id|%s"), *ChangeId);
+	}
+FString FBlueprintHelperReviewStoreMergeUtils::MakeLoadedVisibleChangeLifecycleRootCollapseKey(const FBlueprintHelperReviewVisibleChange& Change)
+	{
+		if (!Change.bIsAssetLifecycleRoot || !BlueprintHelperReviewIsActiveVisibleChangeState(Change))
+		{
+			return FString();
+		}
+
+		const FString AssetKey = BlueprintHelperReviewNormalizeCollapseSegment(
+			FBlueprintHelperReviewStoreTargetUtils::MakeReviewAssetLinkKey(Change.AssetPath));
+		if (AssetKey.IsEmpty())
+		{
+			return FString();
+		}
+
+		for (const FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
+		{
+			if (!FBlueprintHelperReviewStoreTargetUtils::IsAssetLifecycleRootTarget(Target, Change.ChangeKind))
+			{
+				continue;
+			}
+
+			const FString TargetKind = BlueprintHelperReviewNormalizeCollapseSegment(Target.TargetKind);
+			const FString TargetKey = BlueprintHelperReviewNormalizeCollapseSegment(Target.TargetKey);
+			if (TargetKind.IsEmpty() || TargetKey.IsEmpty())
+			{
+				continue;
+			}
+
+			return FString::Printf(
+				TEXT("lifecycle_root|active|%s|%s|%s"),
+				*AssetKey,
+				*TargetKind,
+				*TargetKey);
+		}
+
+		return FString();
 	}
 FString FBlueprintHelperReviewStoreMergeUtils::MakeLoadedVisibleChangeCollapseKey(const FBlueprintHelperReviewVisibleChange& Change)
 	{
@@ -140,18 +290,55 @@ void FBlueprintHelperReviewStoreMergeUtils::RemoveNetNoChangeVisibleChanges(TArr
 void FBlueprintHelperReviewStoreMergeUtils::CollapseVisibleChangesLatestWins(TArray<FBlueprintHelperReviewVisibleChange>& Changes)
 	{
 		TArray<FBlueprintHelperReviewVisibleChange> Collapsed;
-		TMap<FString, int32> ExistingIndexByKey;
+		TMap<FString, int32> ExistingIndexByChangeId;
+		TMap<FString, int32> ExistingIndexByLifecycleRoot;
+		TMap<FString, int32> ExistingIndexByLegacyKey;
 		for (const FBlueprintHelperReviewVisibleChange& Change : Changes)
 		{
-			const FString CollapseKey = MakeLoadedVisibleChangeCollapseKey(Change);
-			if (int32* ExistingIndex = ExistingIndexByKey.Find(CollapseKey))
+			const FString ChangeIdKey = MakeLoadedVisibleChangeChangeIdCollapseKey(Change);
+			const FString LifecycleRootKey = MakeLoadedVisibleChangeLifecycleRootCollapseKey(Change);
+			const FString LegacyKey = MakeLoadedVisibleChangeCollapseKey(Change);
+
+			int32* ExistingIndex = nullptr;
+			FString FoldReason;
+			if (!ChangeIdKey.IsEmpty())
 			{
+				ExistingIndex = ExistingIndexByChangeId.Find(ChangeIdKey);
+				FoldReason = ExistingIndex ? TEXT("change_id") : FString();
+			}
+			if (!ExistingIndex && !LifecycleRootKey.IsEmpty())
+			{
+				ExistingIndex = ExistingIndexByLifecycleRoot.Find(LifecycleRootKey);
+				FoldReason = ExistingIndex ? TEXT("active_lifecycle_root") : FString();
+			}
+			if (!ExistingIndex && !LegacyKey.IsEmpty())
+			{
+				ExistingIndex = ExistingIndexByLegacyKey.Find(LegacyKey);
+				FoldReason = ExistingIndex ? TEXT("scope_identity") : FString();
+			}
+
+			if (ExistingIndex)
+			{
+				const FBlueprintHelperReviewVisibleChange ExistingBeforeMerge = Collapsed[*ExistingIndex];
+				BlueprintHelperReviewLogFoldedVisibleChange(TEXT("collapse_visible_changes"), FoldReason, ExistingBeforeMerge, Change);
 				MergeVisibleChangeLatestWins(Collapsed[*ExistingIndex], Change);
+				BlueprintHelperReviewIndexVisibleChangeCollapseKeys(
+					Collapsed[*ExistingIndex],
+					*ExistingIndex,
+					ExistingIndexByChangeId,
+					ExistingIndexByLifecycleRoot,
+					ExistingIndexByLegacyKey);
 				continue;
 			}
 
-			ExistingIndexByKey.Add(CollapseKey, Collapsed.Num());
+			const int32 NewIndex = Collapsed.Num();
 			Collapsed.Add(Change);
+			BlueprintHelperReviewIndexVisibleChangeCollapseKeys(
+				Collapsed[NewIndex],
+				NewIndex,
+				ExistingIndexByChangeId,
+				ExistingIndexByLifecycleRoot,
+				ExistingIndexByLegacyKey);
 		}
 
 		Changes = MoveTemp(Collapsed);
@@ -170,11 +357,17 @@ void FBlueprintHelperReviewStoreMergeUtils::MergeReviewRecord(FBlueprintHelperRe
 
 		for (const FBlueprintHelperReviewVisibleChange& IncomingChange : Incoming.VisibleChanges)
 		{
+			FString FoldReason;
 			FBlueprintHelperReviewVisibleChange* ExistingChange = Existing.VisibleChanges.FindByPredicate(
-				[&IncomingChange](const FBlueprintHelperReviewVisibleChange& Candidate)
+				[&IncomingChange, &FoldReason](const FBlueprintHelperReviewVisibleChange& Candidate)
 				{
-					return FBlueprintHelperReviewStoreMergeUtils::MakeLoadedVisibleChangeCollapseKey(Candidate)
-						== FBlueprintHelperReviewStoreMergeUtils::MakeLoadedVisibleChangeCollapseKey(IncomingChange);
+					FString CandidateFoldReason;
+					if (BlueprintHelperReviewFindCollapseReason(Candidate, IncomingChange, CandidateFoldReason))
+					{
+						FoldReason = CandidateFoldReason;
+						return true;
+					}
+					return false;
 				});
 			if (!ExistingChange)
 			{
@@ -182,6 +375,7 @@ void FBlueprintHelperReviewStoreMergeUtils::MergeReviewRecord(FBlueprintHelperRe
 				continue;
 			}
 
+			BlueprintHelperReviewLogFoldedVisibleChange(TEXT("merge_review_record"), FoldReason, *ExistingChange, IncomingChange);
 			for (const FBlueprintHelperReviewAtomicTarget& IncomingTarget : IncomingChange.AtomicTargets)
 			{
 				FBlueprintHelperReviewAtomicTarget* ExistingTarget = nullptr;

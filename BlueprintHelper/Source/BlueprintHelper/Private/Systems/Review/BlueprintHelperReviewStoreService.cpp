@@ -933,10 +933,29 @@ TArray<FBlueprintHelperReviewVisibleChange> FBlueprintHelperReviewStoreService::
 	Query.bPendingOnly = true;
 
 	TArray<FBlueprintHelperReviewVisibleChange> RecordChanges;
-	const TArray<FBlueprintHelperReviewRecord> Records = QueryReviewRecords(Query);
+	TArray<FBlueprintHelperReviewRecord> Records = QueryReviewRecords(Query);
+	Records.Sort([](const FBlueprintHelperReviewRecord& Left, const FBlueprintHelperReviewRecord& Right)
+	{
+		const FString LeftSessionOrder = !Left.SourceReviewSummary.CreatedAtLast.IsEmpty()
+			? Left.SourceReviewSummary.CreatedAtLast
+			: (!Left.SourceReviewSummary.CreatedAtFirst.IsEmpty() ? Left.SourceReviewSummary.CreatedAtFirst : Left.ArchiveSessionId);
+		const FString RightSessionOrder = !Right.SourceReviewSummary.CreatedAtLast.IsEmpty()
+			? Right.SourceReviewSummary.CreatedAtLast
+			: (!Right.SourceReviewSummary.CreatedAtFirst.IsEmpty() ? Right.SourceReviewSummary.CreatedAtFirst : Right.ArchiveSessionId);
+		if (LeftSessionOrder != RightSessionOrder)
+		{
+			return LeftSessionOrder < RightSessionOrder;
+		}
+		return Left.ReviewRecordId < Right.ReviewRecordId;
+	});
 	const bool bSkipMissingAssetRecords = AssetPathFilter.IsEmpty();
 	for (const FBlueprintHelperReviewRecord& Record : Records)
 	{
+		if (Record.StorageStatus != EBlueprintHelperReviewStorageStatus::Active)
+		{
+			continue;
+		}
+
 		if (bSkipMissingAssetRecords
 			&& !FBlueprintHelperReviewStoreTargetUtils::DoesReviewAssetPackageExist(Record.AssetPath))
 		{
