@@ -313,17 +313,20 @@ function makeDataTableTaskSpec(overrides: Record<string, unknown> = {}) {
 
 describePythonOrchestrator('Python task orchestrator adapter', () => {
   it('compiles GraphWrite Append TaskSpec through Python into a TaskPlan and Bridge payload', async () => {
-    const result = await compileGraphWriteAppendWithPython(TaskSpecSchema.parse(makeTaskSpec()), true);
+    const result = await compileGraphWriteAppendWithPython(TaskSpecSchema.parse(makeTaskSpec()), {
+      dryRun: true,
+      diagnostics: true,
+    });
 
     assert.equal(result.schema, 'BlueprintHelper.TaskCompilerResult.v1');
-    assert.equal(result.task_plan.schema, 'BlueprintHelper.TaskPlan.v1');
-    assert.deepEqual(result.task_plan.execution_policy, {
+    assert.equal(result.taskPlan.schema, 'BlueprintHelper.TaskPlan.v1');
+    assert.deepEqual(result.taskPlan.execution_policy, {
       dry_run_mode: 'full',
       should_compile: false,
       should_save: false,
       review_baseline_dirty_asset_policy: 'block',
     });
-    assert.deepEqual(result.bridge_payload, {
+    assert.deepEqual(result.diagnostics?.bridgePayload, {
       target: {
         asset_path: '/Game/BP/BP_Door',
         graph: 'EG_DoorFeature',
@@ -352,6 +355,16 @@ describePythonOrchestrator('Python task orchestrator adapter', () => {
     });
   });
 
+  it('trims ordinary Python compile output to the TaskPlan only', async () => {
+    const result = await compileGraphWriteAppendWithPython(TaskSpecSchema.parse(makeTaskSpec()), true);
+
+    assert.equal(result.schema, 'BlueprintHelper.TaskCompilerResult.v1');
+    assert.equal(result.taskPlan.schema, 'BlueprintHelper.TaskPlan.v1');
+    assert.equal(result.diagnostics?.bridgePayload, undefined);
+    assert.equal(result.diagnostics?.taskPlanSummary, undefined);
+    assert.equal(typeof result.diagnostics?.compilerOutputBytes, 'number');
+  });
+
   it('maps Python semantic errors into TaskSpec compile errors', async () => {
     const spec = TaskSpecSchema.parse(makeTaskSpec({
       behavior: {
@@ -378,14 +391,17 @@ describePythonOrchestrator('Python task orchestrator adapter', () => {
   });
 
   it('compiles Blueprint Variables TaskSpec through Python into structured IR', async () => {
-    const result = await compileTaskSpecWithPython(TaskSpecSchema.parse(makeVariableTaskSpec()), true);
+    const result = await compileTaskSpecWithPython(TaskSpecSchema.parse(makeVariableTaskSpec()), {
+      dryRun: true,
+      diagnostics: true,
+    });
 
     assert.equal(result.schema, 'BlueprintHelper.TaskCompilerResult.v1');
-    assert.equal(result.task_plan.schema, 'BlueprintHelper.TaskPlan.v1');
-    const step = result.task_plan.steps[0];
+    assert.equal(result.taskPlan.schema, 'BlueprintHelper.TaskPlan.v1');
+    const step = result.taskPlan.steps[0];
     assert.ok(step && 'capability' in step);
     assert.equal(step.capability, 'blueprint_variable');
-    assert.deepEqual(result.bridge_payload, {
+    assert.deepEqual(result.diagnostics?.bridgePayload, {
       asset_path: '/Game/BP/BP_Door',
       variables: [
         {
@@ -398,18 +414,21 @@ describePythonOrchestrator('Python task orchestrator adapter', () => {
   });
 
   it('compiles AssetFactory TaskSpec through Python into structured IR', async () => {
-    const result = await compileTaskSpecWithPython(TaskSpecSchema.parse(makeAssetFactoryTaskSpec()), true);
+    const result = await compileTaskSpecWithPython(TaskSpecSchema.parse(makeAssetFactoryTaskSpec()), {
+      dryRun: true,
+      diagnostics: true,
+    });
 
     assert.equal(result.schema, 'BlueprintHelper.TaskCompilerResult.v1');
-    assert.equal(result.task_plan.schema, 'BlueprintHelper.TaskPlan.v1');
-    assert.deepEqual(result.task_plan.execution_policy, {
+    assert.equal(result.taskPlan.schema, 'BlueprintHelper.TaskPlan.v1');
+    assert.deepEqual(result.taskPlan.execution_policy, {
       dry_run_mode: 'full',
       should_compile: false,
       should_save: true,
       review_baseline_dirty_asset_policy: 'block',
     });
 
-    const step = result.task_plan.steps[0];
+    const step = result.taskPlan.steps[0];
     assert.ok(step && 'capability' in step);
     assert.equal(step.capability, 'asset_factory');
     assert.equal(Object.hasOwn(step as Record<string, unknown>, 'operation'), false);
@@ -424,17 +443,20 @@ describePythonOrchestrator('Python task orchestrator adapter', () => {
         },
       ],
     });
-    assert.deepEqual(result.bridge_payload, {
-      task_plan: result.task_plan,
+    assert.deepEqual(result.diagnostics?.bridgePayload, {
+      task_plan: result.taskPlan,
     });
   });
 
   it('compiles Blueprint Components TaskSpec through Python into structured IR', async () => {
-    const result = await compileTaskSpecWithPython(TaskSpecSchema.parse(makeBlueprintComponentTaskSpec()), true);
+    const result = await compileTaskSpecWithPython(TaskSpecSchema.parse(makeBlueprintComponentTaskSpec()), {
+      dryRun: true,
+      diagnostics: true,
+    });
 
     assert.equal(result.schema, 'BlueprintHelper.TaskCompilerResult.v1');
-    assert.equal(result.task_plan.schema, 'BlueprintHelper.TaskPlan.v1');
-    const steps = result.task_plan.steps;
+    assert.equal(result.taskPlan.schema, 'BlueprintHelper.TaskPlan.v1');
+    const steps = result.taskPlan.steps;
     assert.equal(steps.length, 2);
     const componentStepOne = steps[0];
     assert.ok(componentStepOne && 'capability' in componentStepOne);
@@ -472,17 +494,20 @@ describePythonOrchestrator('Python task orchestrator adapter', () => {
       ],
     });
     assert.equal(Object.hasOwn(componentStepTwo as Record<string, unknown>, 'operation'), false);
-    assert.deepEqual(result.bridge_payload, {
-      task_plan: result.task_plan,
+    assert.deepEqual(result.diagnostics?.bridgePayload, {
+      task_plan: result.taskPlan,
     });
   });
 
   it('compiles Blueprint Class Settings TaskSpec through Python into structured IR', async () => {
-    const result = await compileTaskSpecWithPython(TaskSpecSchema.parse(makeBlueprintClassSettingsTaskSpec()), true);
+    const result = await compileTaskSpecWithPython(TaskSpecSchema.parse(makeBlueprintClassSettingsTaskSpec()), {
+      dryRun: true,
+      diagnostics: true,
+    });
 
     assert.equal(result.schema, 'BlueprintHelper.TaskCompilerResult.v1');
-    assert.equal(result.task_plan.schema, 'BlueprintHelper.TaskPlan.v1');
-    const steps = result.task_plan.steps;
+    assert.equal(result.taskPlan.schema, 'BlueprintHelper.TaskPlan.v1');
+    const steps = result.taskPlan.steps;
     assert.equal(steps.length, 2);
     const classSettingsStepOne = steps[0];
     assert.ok(classSettingsStepOne && 'capability' in classSettingsStepOne);
@@ -515,17 +540,20 @@ describePythonOrchestrator('Python task orchestrator adapter', () => {
       ],
     });
     assert.equal(Object.hasOwn(classSettingsStepTwo as Record<string, unknown>, 'operation'), false);
-    assert.deepEqual(result.bridge_payload, {
-      task_plan: result.task_plan,
+    assert.deepEqual(result.diagnostics?.bridgePayload, {
+      task_plan: result.taskPlan,
     });
   });
 
   it('compiles UMG Widget TaskSpec through Python into structured IR', async () => {
-    const result = await compileTaskSpecWithPython(TaskSpecSchema.parse(makeUMGWidgetTaskSpec()), true);
+    const result = await compileTaskSpecWithPython(TaskSpecSchema.parse(makeUMGWidgetTaskSpec()), {
+      dryRun: true,
+      diagnostics: true,
+    });
 
     assert.equal(result.schema, 'BlueprintHelper.TaskCompilerResult.v1');
-    assert.equal(result.task_plan.schema, 'BlueprintHelper.TaskPlan.v1');
-    const steps = result.task_plan.steps;
+    assert.equal(result.taskPlan.schema, 'BlueprintHelper.TaskPlan.v1');
+    const steps = result.taskPlan.steps;
     assert.equal(steps.length, 2);
     const umgStepOne = steps[0];
     assert.ok(umgStepOne && 'capability' in umgStepOne);
@@ -557,17 +585,20 @@ describePythonOrchestrator('Python task orchestrator adapter', () => {
       ],
     });
     assert.equal(Object.hasOwn(umgStepTwo as Record<string, unknown>, 'operation'), false);
-    assert.deepEqual(result.bridge_payload, {
-      task_plan: result.task_plan,
+    assert.deepEqual(result.diagnostics?.bridgePayload, {
+      task_plan: result.taskPlan,
     });
   });
 
   it('compiles DataTable TaskSpec through Python into structured IR', async () => {
-    const result = await compileTaskSpecWithPython(TaskSpecSchema.parse(makeDataTableTaskSpec()), true);
+    const result = await compileTaskSpecWithPython(TaskSpecSchema.parse(makeDataTableTaskSpec()), {
+      dryRun: true,
+      diagnostics: true,
+    });
 
     assert.equal(result.schema, 'BlueprintHelper.TaskCompilerResult.v1');
-    assert.equal(result.task_plan.schema, 'BlueprintHelper.TaskPlan.v1');
-    const steps = result.task_plan.steps;
+    assert.equal(result.taskPlan.schema, 'BlueprintHelper.TaskPlan.v1');
+    const steps = result.taskPlan.steps;
     assert.equal(steps.length, 2);
     const dataTableStepOne = steps[0];
     assert.ok(dataTableStepOne && 'capability' in dataTableStepOne);
@@ -598,8 +629,8 @@ describePythonOrchestrator('Python task orchestrator adapter', () => {
       ],
     });
     assert.equal(Object.hasOwn(dataTableStepTwo as Record<string, unknown>, 'operation'), false);
-    assert.deepEqual(result.bridge_payload, {
-      task_plan: result.task_plan,
+    assert.deepEqual(result.diagnostics?.bridgePayload, {
+      task_plan: result.taskPlan,
     });
   });
 });

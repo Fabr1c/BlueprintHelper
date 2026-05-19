@@ -1,6 +1,5 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { BridgeClient } from '@blueprinthelper/task-core/bridge/bridge-client';
-import { compileTaskSpecWithPython } from '@blueprinthelper/task-core/task/compiler/task-python-orchestrator';
 import {
   createTaskSpecRunner,
   type TaskCompiler,
@@ -22,7 +21,7 @@ export function registerSharedRegistryTools(
 ): Set<string> {
   const taskRunner = createTaskSpecRunner({
     bridge,
-    taskCompiler: config.taskCompiler ?? compileTaskSpecWithPython,
+    taskCompiler: config.taskCompiler,
   });
   const registered = new Set<string>();
 

@@ -108,9 +108,8 @@ test('executeTask propagates modified state from Bridge execution result', async
     bridge,
     taskCompiler: async () => ({
       schema: 'BlueprintHelper.TaskCompilerResult.v1',
-      task_plan: taskPlan,
-      bridge_payload: {},
-      task_plan_summary: {},
+      taskPlan,
+      strategyId: 'canonical_python',
     }),
   });
 
@@ -369,11 +368,14 @@ test('previewTask develop timing records preview token request preparation', asy
   const timing = startTaskTiming(true, 'preview_task');
   const preview = await runner.previewTask({} as TaskSpec, timing);
   const resultTiming = (preview.toolResult.data as Record<string, unknown>).timing as Record<string, unknown>;
-  const stageNames = (resultTiming.stages as Array<Record<string, unknown>>).map((stage) => stage.name);
+  const stages = resultTiming.stages as Array<Record<string, unknown>>;
+  const stageNames = stages.map((stage) => stage.name);
+  const strategyStage = stages.find((stage) => stage.name === 'taskspec_compile.strategy');
 
   assert.equal(preview.toolResult.ok, true);
   assert.equal(stageNames.includes('preview_token.allocate_preview_id'), true);
   assert.equal(stageNames.includes('preview_token.prepare_request'), true);
+  assert.equal(strategyStage?.strategy, 'canonical_python');
 });
 
 function makeSingleStepTaskPlan(taskName: string, dryRunMode: 'none' | 'quick' | 'full' = 'full'): TaskPlan {
@@ -449,9 +451,8 @@ function makeGraphWriteTaskSpec(): TaskSpec {
 function makeCompilerResult(taskPlan: TaskPlan) {
   return {
     schema: 'BlueprintHelper.TaskCompilerResult.v1',
-    task_plan: taskPlan,
-    bridge_payload: {},
-    task_plan_summary: {},
+    taskPlan,
+    strategyId: 'canonical_python',
   } as const;
 }
 

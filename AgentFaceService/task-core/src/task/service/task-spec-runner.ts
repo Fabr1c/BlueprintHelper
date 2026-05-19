@@ -2,9 +2,13 @@ import type { BridgeClient, BridgeResponse } from '../../bridge/bridge-client.js
 import { buildTaskContextPack } from '../context/task-context.js';
 import {
   TaskSpecCompileError,
+  type CompiledTaskPlan,
   summarizeTaskPlan,
 } from '../compiler/task-compiler.js';
-import type { PythonTaskCompilerResult } from '../compiler/task-python-orchestrator.js';
+import {
+  createTaskSpecCompiler,
+  type TaskCompiler,
+} from '../compiler/task-compiler-service.js';
 import {
   TASK_PREVIEW_SCHEMA,
   type ReadTaskContextInput,
@@ -30,6 +34,7 @@ import {
 } from '../runtime/task-result-store.js';
 import {
   TaskTimingTrace,
+  addTaskTimingMarker,
   addNestedTaskTiming,
   attachTaskTiming,
   extractBridgeTiming,
@@ -44,12 +49,11 @@ import {
 } from './task-plan-hash.js';
 
 export type { TaskPreviewToken } from '../schema/task-schemas.js';
+export type { TaskCompiler } from '../compiler/task-compiler-service.js';
 
 export type TaskRunnerBridge = {
   sendCommand(command: string, payload?: Record<string, unknown>): Promise<BridgeResponse>;
 };
-
-export type TaskCompiler = (taskSpec: TaskSpec, dryRun: boolean) => Promise<PythonTaskCompilerResult>;
 
 export interface TaskPreviewOutcome {
   previewId: string;
@@ -74,10 +78,10 @@ export interface TaskSpecRunner {
 
 export function createTaskSpecRunner(input: {
   bridge: TaskRunnerBridge;
-  taskCompiler: TaskCompiler;
+  taskCompiler?: TaskCompiler;
 }): TaskSpecRunner {
   const bridge = input.bridge;
-  const taskCompiler = input.taskCompiler;
+  const taskCompiler = input.taskCompiler ?? createTaskSpecCompiler();
 
   return {
     async readTaskContext(rawInput) {
@@ -225,8 +229,8 @@ async function runPreviewTask(
   taskCompiler: TaskCompiler,
   timing?: TaskTimingTrace,
 ): Promise<TaskPreviewOutcome> {
-  const compiled = await measureTaskTimingAsync(timing, 'taskspec_compile', () => taskCompiler(taskSpec, true));
-  return await runPreviewTaskFromPlan(bridge, taskSpec, compiled.task_plan, timing);
+  const compiled = await compileTaskSpecForRunner(taskSpec, taskCompiler, timing);
+  return await runPreviewTaskFromPlan(bridge, taskSpec, compiled.taskPlan, timing);
 }
 
 async function runPreviewTaskForExecute(
@@ -235,12 +239,37 @@ async function runPreviewTaskForExecute(
   taskCompiler: TaskCompiler,
   timing?: TaskTimingTrace,
 ): Promise<TaskPreviewOutcome> {
-  const compiled = await measureTaskTimingAsync(timing, 'taskspec_compile', () => taskCompiler(taskSpec, true));
-  const taskPlan = compiled.task_plan;
+  const compiled = await compileTaskSpecForRunner(taskSpec, taskCompiler, timing);
+  const taskPlan = compiled.taskPlan;
   if (taskPlan.execution_policy.dry_run_mode === 'none') {
     throw new DryRunModeNoneRequiresPreviewTokenError();
   }
   return await runPreviewTaskFromPlan(bridge, taskSpec, taskPlan, timing);
+}
+
+async function compileTaskSpecForRunner(
+  taskSpec: TaskSpec,
+  taskCompiler: TaskCompiler,
+  timing?: TaskTimingTrace,
+): Promise<CompiledTaskPlan> {
+  const compiled = await measureTaskTimingAsync(timing, 'taskspec_compile', () => taskCompiler(taskSpec, {
+    dryRun: true,
+    diagnostics: hasTaskTiming(timing),
+  }));
+  recordTaskCompileTiming(timing, compiled);
+  return compiled;
+}
+
+function recordTaskCompileTiming(timing: TaskTimingTrace | undefined, compiled: CompiledTaskPlan): void {
+  addTaskTimingMarker(timing, 'taskspec_compile.strategy', {
+    strategy: compiled.strategyId,
+    ...(compiled.diagnostics?.parityStatus ? { parity_status: compiled.diagnostics.parityStatus } : {}),
+    ...(compiled.diagnostics?.parityReason ? { parity_reason: compiled.diagnostics.parityReason } : {}),
+    ...(compiled.diagnostics?.fallbackReason ? { fallback_reason: compiled.diagnostics.fallbackReason } : {}),
+    ...(typeof compiled.diagnostics?.compilerOutputBytes === 'number'
+      ? { output_bytes: compiled.diagnostics.compilerOutputBytes }
+      : {}),
+  });
 }
 
 async function runPreviewTaskFromPlan(

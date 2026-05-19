@@ -3,9 +3,6 @@ import { z } from 'zod';
 import type { BridgeClient } from '@blueprinthelper/task-core/bridge/bridge-client';
 import { TaskSpecCompileError } from '@blueprinthelper/task-core/task/compiler/task-compiler';
 import {
-  compileTaskSpecWithPython,
-} from '@blueprinthelper/task-core/task/compiler/task-python-orchestrator';
-import {
   createTaskSpecRunner,
   type TaskCompiler,
 } from '@blueprinthelper/task-core/task/service/task-spec-runner';
@@ -87,7 +84,7 @@ const ReadReferenceContextInputSchema = z.object({
 export function registerTaskTools(server: McpServer, bridge: BridgeClient, config: TaskToolsConfig): void {
   const runner = createTaskSpecRunner({
     bridge,
-    taskCompiler: config.taskCompiler ?? compileTaskSpecWithPython,
+    taskCompiler: config.taskCompiler,
   });
 
   server.registerTool(

@@ -2,7 +2,6 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { BridgeClient, type BridgeResponse } from '@blueprinthelper/task-core/bridge/bridge-client';
 import { getBlueprintHelperTool } from '@blueprinthelper/task-core/tool-surface/tool-registry';
-import { compileTaskSpecWithPython } from '@blueprinthelper/task-core/task/compiler/task-python-orchestrator';
 import {
   createTaskSpecRunner,
   type TaskRunnerBridge,
@@ -411,7 +410,6 @@ function getRunner(runtime: CliRuntime): TaskSpecRunner {
   const bridge = getBridge(runtime);
   return createTaskSpecRunner({
     bridge,
-    taskCompiler: compileTaskSpecWithPython,
   });
 }
 

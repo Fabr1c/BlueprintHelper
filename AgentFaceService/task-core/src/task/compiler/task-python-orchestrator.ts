@@ -8,13 +8,19 @@ import type {
   TaskSpec,
 } from '../schema/task-schemas.js';
 import { TaskPlanSchema } from '../schema/task-schemas.js';
-import { TaskSpecCompileError } from './task-compiler.js';
+import {
+  TASK_COMPILER_RESULT_SCHEMA,
+  TaskSpecCompileError,
+  createCompiledTaskPlan,
+  type CompiledTaskPlan,
+  type TaskCompileOptions,
+} from './task-compiler.js';
 
 export interface PythonTaskCompilerResult {
-  schema: 'BlueprintHelper.TaskCompilerResult.v1';
+  schema?: typeof TASK_COMPILER_RESULT_SCHEMA;
   task_plan: TaskPlan;
-  bridge_payload: Record<string, unknown>;
-  task_plan_summary: Record<string, unknown>;
+  bridge_payload?: Record<string, unknown>;
+  task_plan_summary?: Record<string, unknown>;
 }
 
 interface PythonCompilerEnvelope {
@@ -27,6 +33,11 @@ interface PythonCompilerEnvelope {
   };
 }
 
+interface PythonCompilerProcessResult {
+  envelope: PythonCompilerEnvelope;
+  stdoutBytes: number;
+}
+
 export class PythonTaskOrchestratorError extends TaskSpecCompileError {
   constructor(code: string, message: string, issues: TaskIssue[]) {
     super(code, message, issues);
@@ -36,19 +47,22 @@ export class PythonTaskOrchestratorError extends TaskSpecCompileError {
 
 export async function compileGraphWriteAppendWithPython(
   taskSpec: TaskSpec,
-  dryRun: boolean,
-): Promise<PythonTaskCompilerResult> {
-  return compileTaskSpecWithPython(taskSpec, dryRun);
+  optionsOrDryRun: TaskCompileOptions | boolean,
+): Promise<CompiledTaskPlan> {
+  return compileTaskSpecWithPython(taskSpec, optionsOrDryRun);
 }
 
 export async function compileTaskSpecWithPython(
   taskSpec: TaskSpec,
-  dryRun: boolean,
-): Promise<PythonTaskCompilerResult> {
-  const envelope = await runPythonTaskCompiler({
+  optionsOrDryRun: TaskCompileOptions | boolean,
+): Promise<CompiledTaskPlan> {
+  const options = normalizeCompileOptions(optionsOrDryRun);
+  const processResult = await runPythonTaskCompiler({
     task_spec: taskSpec,
-    dry_run: dryRun,
+    dry_run: options.dryRun,
+    diagnostic: options.diagnostics === true,
   });
+  const envelope = processResult.envelope;
 
   if (!envelope.ok) {
     const error = envelope.error ?? {};
@@ -67,10 +81,10 @@ export async function compileTaskSpecWithPython(
     );
   }
 
-  return validateCompilerResult(envelope.result);
+  return validateCompilerResult(envelope.result, processResult.stdoutBytes);
 }
 
-async function runPythonTaskCompiler(input: Record<string, unknown>): Promise<PythonCompilerEnvelope> {
+async function runPythonTaskCompiler(input: Record<string, unknown>): Promise<PythonCompilerProcessResult> {
   const pythonExe = process.env['BPH_TASK_PYTHON'] ?? process.env['PYTHON'] ?? 'python';
   const pythonPath = resolvePythonPath();
   const pythonArgs = ['-m', 'blueprinthelper_task', 'compile-task-spec'];
@@ -146,7 +160,10 @@ async function runPythonTaskCompiler(input: Record<string, unknown>): Promise<Py
   }
 
   try {
-    return JSON.parse(stdout) as PythonCompilerEnvelope;
+    return {
+      envelope: JSON.parse(stdout) as PythonCompilerEnvelope,
+      stdoutBytes: Buffer.byteLength(stdout, 'utf8'),
+    };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new PythonTaskOrchestratorError(
@@ -165,7 +182,7 @@ function runPythonTaskCompilerSync(
   env: NodeJS.ProcessEnv,
   timeoutMs: number,
   spawnError: unknown,
-): PythonCompilerEnvelope {
+): PythonCompilerProcessResult {
   const result = spawnSync(pythonExe, pythonArgs, {
     cwd,
     env,
@@ -194,7 +211,11 @@ function runPythonTaskCompilerSync(
   }
 
   try {
-    return JSON.parse(result.stdout.trim()) as PythonCompilerEnvelope;
+    const stdout = result.stdout.trim();
+    return {
+      envelope: JSON.parse(stdout) as PythonCompilerEnvelope,
+      stdoutBytes: Buffer.byteLength(stdout, 'utf8'),
+    };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const launchMessage = spawnError instanceof Error ? ` Initial async spawn failure: ${spawnError.message}` : '';
@@ -206,23 +227,34 @@ function runPythonTaskCompilerSync(
   }
 }
 
-function validateCompilerResult(result: PythonTaskCompilerResult): PythonTaskCompilerResult {
+function validateCompilerResult(result: PythonTaskCompilerResult, stdoutBytes: number): CompiledTaskPlan {
   TaskPlanSchema.parse(result.task_plan);
-  if (result.schema !== 'BlueprintHelper.TaskCompilerResult.v1') {
+  if (result.schema !== undefined && result.schema !== TASK_COMPILER_RESULT_SCHEMA) {
     throw new PythonTaskOrchestratorError(
       'python_task_invalid_schema',
       `Unexpected Python task compiler schema: ${String(result.schema)}`,
       [],
     );
   }
-  if (!isRecord(result.bridge_payload)) {
-    throw new PythonTaskOrchestratorError(
-      'python_task_invalid_bridge_payload',
-      'Python task compiler did not return a Bridge payload.',
-      [],
-    );
+  return createCompiledTaskPlan({
+    taskPlan: result.task_plan,
+    strategyId: 'canonical_python',
+    diagnostics: {
+      compilerOutputBytes: stdoutBytes,
+      ...(isRecord(result.bridge_payload) ? { bridgePayload: result.bridge_payload } : {}),
+      ...(isRecord(result.task_plan_summary) ? { taskPlanSummary: result.task_plan_summary } : {}),
+    },
+  });
+}
+
+function normalizeCompileOptions(optionsOrDryRun: TaskCompileOptions | boolean): TaskCompileOptions {
+  if (typeof optionsOrDryRun === 'boolean') {
+    return {
+      dryRun: optionsOrDryRun,
+      diagnostics: false,
+    };
   }
-  return result;
+  return optionsOrDryRun;
 }
 
 function resolvePythonPath(): string {

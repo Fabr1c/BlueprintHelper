@@ -513,10 +513,17 @@ Editor 手动重启后已返回 UE nested read timing，`ue_bridge_router.route_
 - 如果继续坚持 Python 作为唯一生产 compiler，则替代方案为 long-lived Python worker，避免每次 spawn。
 - v0.5.0 实施前需要明确 compiler policy：TS fast path + parity gate，或 Python worker。
 
+落地状态（2026-05-20）：
+- 已选择 `TS in-process fast path + Python canonical fallback`；本轮不启用 Python worker。
+- `task-core` 新增 compiler registry / policy / service / parity gate，CLI/MCP 生产入口不再直接引用 Python compiler。
+- 已通过 parity gate 的生产 fast path 类型：`create_blueprint_feature`、`edit_blueprint_graph`、`edit_blueprint_variables`、`edit_object_properties`、`edit_blueprint_signature`。
+- `create_asset`、`edit_blueprint_components`、`edit_blueprint_class_settings`、`edit_umg_widget`、`edit_data_table` 继续走 `canonical_python`。
+- `--develop` timing 已记录 `taskspec_compile.strategy`、`parity_status`、`fallback_reason`、`output_bytes`。
+
 验收：
-- 支持类型的编译固定开销从约 43-60ms 降到毫秒级，或 Python worker 去掉每次 spawn 成本。
-- TS/Python 输出必须有契约测试覆盖，禁止出现同一 TaskSpec 生成不同 TaskPlan 的漂移。
-- 生产入口策略要和架构边界测试同步更新。
+- [x] 支持类型的编译固定开销从约 43-60ms 降到毫秒级，或 Python worker 去掉每次 spawn 成本。
+- [x] TS/Python 输出必须有契约测试覆盖，禁止出现同一 TaskSpec 生成不同 TaskPlan 的漂移。
+- [x] 生产入口策略要和架构边界测试同步更新。
 
 ### P1-5：减少 Python compile 无用输出
 
@@ -527,10 +534,15 @@ Editor 手动重启后已返回 UE nested read timing，`ue_bridge_router.route_
 - `bridge_payload`、`task_plan_summary` 改为 debug/diagnostic 模式按需输出。
 - runner 侧继续使用统一 summary 生成方式，避免 Python/TS summary 双源。
 
+落地状态（2026-05-20）：
+- Python compile 子进程普通输出已裁剪为 `task_plan`。
+- diagnostic mode 仍返回 `bridge_payload`、`task_plan_summary` 等诊断数据。
+- runner 改为只消费统一 `CompiledTaskPlan.taskPlan`，不依赖 Python 旧输出字段。
+
 验收：
-- 大 TaskSpec 编译输出体积下降。
-- 现有 CLI/MCP 正常执行不依赖被裁剪字段。
-- debug 模式仍可拿到完整诊断信息。
+- [x] 大 TaskSpec 编译输出体积下降。
+- [x] 现有 CLI/MCP 正常执行不依赖被裁剪字段。
+- [x] debug 模式仍可拿到完整诊断信息。
 
 ### P2-6：Review 快照和记录写入异步化或批处理
 
@@ -621,7 +633,7 @@ v0.5.0 实施前需要补齐分阶段耗时记录：
 
 ## 风险和前置决策
 
-1. TS fast path 与当前“生产入口默认 Python compiler”的既有约束存在策略冲突，必须先决定是引入 TS fast path，还是改为 long-lived Python worker。
+1. 已决策：P1 引入 TS fast path + Python canonical fallback，生产入口通过 task-core compiler service 统一选择；long-lived Python worker 暂不实现。
 2. `dry_run_mode=none` 只能用于可信链路或已有 preview 复用的链路，不能成为默认安全策略。
 3. CallFunction editor-session 级缓存必须有失效条件，否则可能在 Blueprint 或 ActionDatabase 更新后使用旧候选。
 4. Review IO 异步化不得破坏 review reject/apply 的可恢复性。
@@ -801,9 +813,46 @@ P0-3 CallFunction cache 原始 Bridge 校验：
 
 透传后样本 `04b_write_function_body.quick.duplicate_call.json`：`dry_run.strategy=quick`、`dry_run.preview_kind=synthetic`、`cache_hits=1`、`cache_misses=1`、`cache_entries=1`、`resolved_facts=2`、`ue_preview_result.operation=preview_task_plan`。
 
+## P1 TaskSpec Compiler Fast Path 实测
+
+测试时间：2026-05-20
+
+测试样本：`Saved\BlueprintHelper\PerfProbe\P0P23_20260520011234\04b_write_function_body.quick.duplicate_call.json`
+
+产物目录：`Saved\BlueprintHelper\PerfProbe\P1CompilerFastPath_20260520000000`
+
+实施摘要：
+- 默认策略为 `auto`，对已通过 parity gate 的 TaskSpec 类型选择 `ts_fast_path`。
+- Python compiler 保留为 `canonical_python` fallback。
+- Python 子进程普通输出裁剪为 `task_plan`；diagnostic mode 继续保留 `bridge_payload`、`task_plan_summary` 等调试数据。
+- `taskspec_compile.strategy` 已进入 `--develop` timing。
+
+CLI preview 三轮成功样本：
+
+| strategy | run1 | run2 | run3 | avg | parity_status | output_bytes |
+| --- | ---: | ---: | ---: | ---: | --- | ---: |
+| `canonical_python` | 59.221 | 56.255 | 58.626 | 58.034 |  | 3361 |
+| `ts_fast_path` | 0.945 | 1.009 | 1.128 | 1.027 | passed |  |
+
+compile-only 五轮隔离样本：
+
+| strategy | min | avg | max | output_bytes |
+| --- | ---: | ---: | ---: | ---: |
+| `canonical_python` | 42.234 | 44.990 | 48.068 | 3361 |
+| `ts_fast_path` | 0.050 | 0.264 | 1.053 |  |
+| `auto` | 0.031 | 0.042 | 0.053 |  |
+
+真实 execute 校验：
+
+| 样本 | status | strategy | parity_status | taskspec_compile |
+| --- | --- | --- | --- | ---: |
+| `04b_write_function_body.quick.duplicate_call.json` | executed | `ts_fast_path` | passed | 0.872 |
+
+结论：P1 已把受支持 TaskSpec 类型的编译固定成本从 Python 子进程约 `43-60ms` 降到毫秒级，且默认 `auto` 策略在通过 parity gate 的样本上实际选择 `ts_fast_path`。该项不是当前 2-5s 总耗时主瓶颈，但已消除每次 preview/execute 中稳定存在的 Python spawn 固定成本。
+
 ## 当前状态
 
-- 状态：P0-0 develop 诊断计时流程已开始实现；P0-1 32 hex token + Editor 生命周期 preview store 已完成首轮实现和跨 CLI 成功验证；P0-2/P0-3 已在代码路径落地并完成小样本补测。
+- 状态：P0-0 develop 诊断计时流程已开始实现；P0-1 32 hex token + Editor 生命周期 preview store 已完成首轮实现和跨 CLI 成功验证；P0-2/P0-3 已在代码路径落地并完成小样本补测；P1 compiler fast path / 输出裁剪已完成实现和测速。
 - 读工具优化计划已纳入 v0.5.0：R0 先完成 timing 证据，R1/R2 优先做 GameThread 快照、后台格式化和 DTO/formatter 复用。
 - 读工具 R0 已完成一次 Editor 重启后补测：AgentFace read_context 分段和 UE `ue_bridge_router.route_execute` nested timing 均已返回；下一步需要继续拆 `bridge - UE route` gap。
 - 用户关闭 Editor 后已改用 MCP lifecycle 重启并补测 11 个 ReadSpec，包含新增 `11_blueprint_logic_flow.json`；结果显示 `logic_flow_build_payload=1.014ms`，主要瓶颈仍在 Bridge 往返 gap。
@@ -811,6 +860,7 @@ P0-3 CallFunction cache 原始 Bridge 校验：
 - P0-1 已完成首轮实现：token 使用 32 位 hex 短句柄，完整校验和 TaskPlan 保存在 Editor 生命周期内的 preview store；execute 命中 token 后直接复用 store 内 TaskPlan，避免二次 compile 和二次 preview。
 - P0-1 跨 CLI 重测已通过：`01_create_blueprint_actor.json` preview 返回 32 hex token，另一个 CLI execute 带 token 成功；execute timing 不含 `taskspec_compile` 和 `bridge.preview_task_plan`，TaskSpec hash 与目标资产状态变化均会返回 `preview_token_mismatch`。
 - `--develop` preview 已补 UE 原始返回透传：CLI 结果直接包含 `ue_preview_result` 以及 `dry_run`、`call_function_resolution_cache`、`runtime_facts` 诊断字段；普通非 develop 调用仍不返回这些字段。
+- P1 已落地：生产入口通过 task-core compiler service 统一选择策略，已通过 parity gate 的 TaskSpec 类型默认走 `ts_fast_path`；未覆盖类型继续走 `canonical_python`。
 - 阶段计划已迁移到 `Develop/Plan/Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/`，主文档只保留总体结论和索引。
 - 普通路径保持无计时采集、无 `data.timing` 返回；CLI 诊断路径通过 `--develop` 对所有 CLI 工具显式开启，TaskSpec MCP/tool 诊断路径通过 `develop: true` 显式开启。
 - 后续实现必须保持高内聚、低耦合，避免把性能分支堆进单个 service 或 UI 入口。
