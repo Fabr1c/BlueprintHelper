@@ -32,9 +32,14 @@
 #include "Runtime/TaskRuntime/TaskPlanAdapters/BlueprintSignature/BlueprintHelperSignatureTaskPlanAdapter.h"
 #include "Runtime/TaskRuntime/TaskPlanAdapters/UMGWidget/BlueprintHelperWidgetTaskPlanAdapter.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeClusterHub.h"
+#include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeCallFunctionResolutionCache.h"
+#include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeDryRunPolicy.h"
 #include "Runtime/TaskRuntime/Utils/BlueprintHelperTaskRuntimeClusterExecutionUtils.h"
 #include "Runtime/TaskRuntime/Utils/BlueprintHelperTaskRuntimeTimingUtils.h"
 #include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDag.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDagBuilder.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -386,13 +391,16 @@ public:
 		return Link;
 	}
 
-	static TSharedRef<FJsonObject> MakeSyntheticDryRunData()
+	static TSharedRef<FJsonObject> MakeSyntheticDryRunData(
+		const FString& Strategy = TEXT("full"),
+		const FString& ValidatedScope = TEXT("taskplan_lowering_only"))
 	{
 		TSharedRef<FJsonObject> Data = MakeShared<FJsonObject>();
 		TSharedRef<FJsonObject> DryRun = MakeShared<FJsonObject>();
 		DryRun->SetBoolField(TEXT("can_execute"), true);
+		DryRun->SetStringField(TEXT("strategy"), Strategy);
 		DryRun->SetStringField(TEXT("preview_kind"), TEXT("synthetic"));
-		DryRun->SetStringField(TEXT("validated_scope"), TEXT("taskplan_lowering_only"));
+		DryRun->SetStringField(TEXT("validated_scope"), ValidatedScope);
 		DryRun->SetStringField(TEXT("limitation"), TEXT("Adapter service dry-run is not implemented; target asset state and service preflight were not validated."));
 		TArray<TSharedPtr<FJsonValue>> Warnings;
 		Warnings.Add(MakeShared<FJsonValueString>(
@@ -402,6 +410,45 @@ public:
 		DryRun->SetArrayField(TEXT("errors"), {});
 		Data->SetObjectField(TEXT("dry_run"), DryRun);
 		return Data;
+	}
+
+	static void AttachCallFunctionResolutionCacheStats(
+		TSharedPtr<FJsonObject> Data,
+		const FBlueprintHelperTaskRuntimeCallFunctionResolutionCache& ResolutionCache)
+	{
+		if (!Data.IsValid())
+		{
+			return;
+		}
+
+		const FBlueprintHelperTaskRuntimeCallFunctionResolutionCacheStats Stats = ResolutionCache.GetStats();
+		TSharedRef<FJsonObject> StatsJson = MakeShared<FJsonObject>();
+		StatsJson->SetNumberField(TEXT("hits"), Stats.Hits);
+		StatsJson->SetNumberField(TEXT("misses"), Stats.Misses);
+		StatsJson->SetNumberField(TEXT("entries"), Stats.Entries);
+		Data->SetObjectField(TEXT("call_function_resolution_cache"), StatsJson);
+	}
+
+	static void AttachDryRunStrategy(
+		TSharedPtr<FJsonObject> Data,
+		const FBlueprintHelperTaskRuntimeDryRunPolicy& DryRunPolicy)
+	{
+		if (!Data.IsValid())
+		{
+			return;
+		}
+
+		const TSharedPtr<FJsonObject>* DryRunObjectPtr = nullptr;
+		if (Data->TryGetObjectField(TEXT("dry_run"), DryRunObjectPtr) &&
+			DryRunObjectPtr && DryRunObjectPtr->IsValid())
+		{
+			(*DryRunObjectPtr)->SetStringField(TEXT("strategy"), DryRunPolicy.ToDiagnosticString());
+			return;
+		}
+
+		TSharedRef<FJsonObject> DryRunObject = MakeShared<FJsonObject>();
+		DryRunObject->SetStringField(TEXT("strategy"), DryRunPolicy.ToDiagnosticString());
+		Data->SetObjectField(TEXT("dry_run"), DryRunObject);
 	}
 
 	struct FResolvedCallFunctionRuntimeFact
@@ -419,8 +466,16 @@ public:
 	{
 		TSharedPtr<FJsonObject> StatementObject;
 		FString StatementPath;
+		FString SemanticPath;
 		FString NamePath;
 		FString Query;
+		bool bExpression = false;
+	};
+
+	struct FCallFunctionLogicSpecRef
+	{
+		TSharedPtr<FJsonObject> LogicSpec;
+		FString LogicSpecPath;
 	};
 
 	static UBlueprint* ResolveTaskRuntimeBlueprint(const FString& AssetPath)
@@ -470,9 +525,444 @@ public:
 		return Blueprint->UbergraphPages.Num() > 0 ? Blueprint->UbergraphPages[0] : nullptr;
 	}
 
+	static FString SanitizeGraphFragmentIdPart(const FString& Value)
+	{
+		FString Clean = Value.TrimStartAndEnd();
+		if (Clean.IsEmpty())
+		{
+			return TEXT("unnamed");
+		}
+
+		FString Result;
+		Result.Reserve(Clean.Len());
+		for (int32 Index = 0; Index < Clean.Len(); ++Index)
+		{
+			const TCHAR Character = Clean[Index];
+			Result.AppendChar(FChar::IsAlnum(Character) ? Character : TEXT('_'));
+		}
+		return Result.IsEmpty() ? TEXT("unnamed") : Result;
+	}
+
+	static FString GetStatementKindName(EBlueprintHelperGraphStatementKind Kind)
+	{
+		struct FStatementKindRule
+		{
+			EBlueprintHelperGraphStatementKind Kind;
+			const TCHAR* Name;
+		};
+
+		static const FStatementKindRule Rules[] =
+		{
+			{ EBlueprintHelperGraphStatementKind::Call, TEXT("call") },
+			{ EBlueprintHelperGraphStatementKind::Set, TEXT("set") },
+			{ EBlueprintHelperGraphStatementKind::Branch, TEXT("branch") },
+			{ EBlueprintHelperGraphStatementKind::Let, TEXT("let") },
+			{ EBlueprintHelperGraphStatementKind::Return, TEXT("return") },
+		};
+
+		for (const FStatementKindRule& Rule : Rules)
+		{
+			if (Rule.Kind == Kind)
+			{
+				return Rule.Name;
+			}
+		}
+		return TEXT("unknown");
+	}
+
+	static FString GetExpressionKindName(EBlueprintHelperGraphExpressionKind Kind)
+	{
+		struct FExpressionKindRule
+		{
+			EBlueprintHelperGraphExpressionKind Kind;
+			const TCHAR* Name;
+		};
+
+		static const FExpressionKindRule Rules[] =
+		{
+			{ EBlueprintHelperGraphExpressionKind::Literal, TEXT("literal") },
+			{ EBlueprintHelperGraphExpressionKind::Get, TEXT("get") },
+			{ EBlueprintHelperGraphExpressionKind::GetProperty, TEXT("get_property") },
+			{ EBlueprintHelperGraphExpressionKind::Ref, TEXT("ref") },
+			{ EBlueprintHelperGraphExpressionKind::Call, TEXT("call") },
+			{ EBlueprintHelperGraphExpressionKind::Compare, TEXT("compare") },
+			{ EBlueprintHelperGraphExpressionKind::Select, TEXT("select") },
+			{ EBlueprintHelperGraphExpressionKind::MakeStruct, TEXT("make_struct") },
+		};
+
+		for (const FExpressionKindRule& Rule : Rules)
+		{
+			if (Rule.Kind == Kind)
+			{
+				return Rule.Name;
+			}
+		}
+		return TEXT("unknown");
+	}
+
+	static FString GetSemanticStatementId(const FBlueprintHelperGraphStatementIR& Statement)
+	{
+		const FString SourceId = !Statement.StatementId.IsEmpty() ? Statement.StatementId : Statement.Path;
+		if (!SourceId.Contains(TEXT("$")) && !SourceId.Contains(TEXT(".")) && !SourceId.Contains(TEXT("[")) && !SourceId.Contains(TEXT("]")))
+		{
+			return SanitizeGraphFragmentIdPart(SourceId);
+		}
+
+		const FString KindName = GetStatementKindName(Statement.Kind);
+		return SanitizeGraphFragmentIdPart(TEXT("stmt_") + KindName + TEXT("_") + SourceId + TEXT("_") + KindName);
+	}
+
+	static FString GetSemanticExpressionId(const FBlueprintHelperGraphExpressionIR& Expression)
+	{
+		const FString SourceId = !Expression.ExpressionId.IsEmpty() ? Expression.ExpressionId : Expression.Path;
+		if (!SourceId.Contains(TEXT("$")) && !SourceId.Contains(TEXT(".")) && !SourceId.Contains(TEXT("[")) && !SourceId.Contains(TEXT("]")))
+		{
+			return SanitizeGraphFragmentIdPart(SourceId);
+		}
+
+		const FString KindName = GetExpressionKindName(Expression.Kind);
+		return SanitizeGraphFragmentIdPart(TEXT("expr_") + KindName + TEXT("_") + SourceId + TEXT("_") + KindName);
+	}
+
+	static void AddUniqueString(TArray<FString>& Values, const FString& Value)
+	{
+		if (!Value.IsEmpty() && !Values.Contains(Value))
+		{
+			Values.Add(Value);
+		}
+	}
+
+	static FBlueprintHelperCallFunctionPinType MakeCallFunctionPinTypeFromDagRef(
+		const FBlueprintHelperGraphFragmentPinTypeRef& PinType)
+	{
+		FBlueprintHelperCallFunctionPinType Result;
+		Result.Category = PinType.Category;
+		Result.SubCategory = PinType.SubCategory;
+		Result.ObjectPath = PinType.ObjectPath;
+		Result.ContainerType = PinType.ContainerType;
+		Result.bIsReference = PinType.bIsReference;
+		Result.bIsConst = PinType.bIsConst;
+		return Result;
+	}
+
+	static TMap<FString, FBlueprintHelperCallFunctionPinType> CollectSemanticArgumentPinTypesFromDag(
+		const FBlueprintHelperGraphFragmentDag& FragmentDag,
+		const FString& ConsumerFragmentId)
+	{
+		TMap<FString, FBlueprintHelperCallFunctionPinType> Result;
+		for (const FBlueprintHelperGraphFragmentDataEdge& DataEdge : FragmentDag.DataEdges)
+		{
+			if (!DataEdge.To.FragmentId.Equals(ConsumerFragmentId, ESearchCase::CaseSensitive))
+			{
+				continue;
+			}
+
+			const FString ArgumentName = !DataEdge.To.PinName.IsEmpty() ? DataEdge.To.PinName : DataEdge.To.PortId;
+			if (ArgumentName.IsEmpty())
+			{
+				continue;
+			}
+
+			const FBlueprintHelperCallFunctionPinType PinType = MakeCallFunctionPinTypeFromDagRef(DataEdge.From.PinType);
+			if (PinType.IsValid())
+			{
+				Result.Add(ArgumentName, PinType);
+			}
+		}
+		return Result;
+	}
+
+	static void IndexSemanticStatements(
+		const TArray<TSharedPtr<FBlueprintHelperGraphStatementIR>>& Statements,
+		TMap<FString, TSharedPtr<FBlueprintHelperGraphStatementIR>>& OutStatementsByPath)
+	{
+		for (const TSharedPtr<FBlueprintHelperGraphStatementIR>& Statement : Statements)
+		{
+			if (!Statement.IsValid())
+			{
+				continue;
+			}
+
+			OutStatementsByPath.Add(Statement->Path, Statement);
+			IndexSemanticStatements(Statement->ThenStatements, OutStatementsByPath);
+			IndexSemanticStatements(Statement->ElseStatements, OutStatementsByPath);
+		}
+	}
+
+	static void IndexSemanticExpression(
+		const TSharedPtr<FBlueprintHelperGraphExpressionIR>& Expression,
+		TMap<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& OutExpressionsByPath)
+	{
+		if (!Expression.IsValid())
+		{
+			return;
+		}
+
+		OutExpressionsByPath.Add(Expression->Path, Expression);
+		for (const TPair<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& ArgPair : Expression->Args)
+		{
+			IndexSemanticExpression(ArgPair.Value, OutExpressionsByPath);
+		}
+		for (const TSharedPtr<FBlueprintHelperGraphExpressionIR>& Option : Expression->Options)
+		{
+			IndexSemanticExpression(Option, OutExpressionsByPath);
+		}
+		IndexSemanticExpression(Expression->TargetObject, OutExpressionsByPath);
+		IndexSemanticExpression(Expression->Left, OutExpressionsByPath);
+		IndexSemanticExpression(Expression->Right, OutExpressionsByPath);
+	}
+
+	static void IndexSemanticExpressions(
+		const TArray<TSharedPtr<FBlueprintHelperGraphStatementIR>>& Statements,
+		TMap<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& OutExpressionsByPath)
+	{
+		for (const TSharedPtr<FBlueprintHelperGraphStatementIR>& Statement : Statements)
+		{
+			if (!Statement.IsValid())
+			{
+				continue;
+			}
+
+			for (const TPair<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& ArgPair : Statement->Args)
+			{
+				IndexSemanticExpression(ArgPair.Value, OutExpressionsByPath);
+			}
+			IndexSemanticExpression(Statement->Value, OutExpressionsByPath);
+			IndexSemanticExpression(Statement->Condition, OutExpressionsByPath);
+			IndexSemanticExpression(Statement->TargetObject, OutExpressionsByPath);
+			IndexSemanticExpressions(Statement->ThenStatements, OutExpressionsByPath);
+			IndexSemanticExpressions(Statement->ElseStatements, OutExpressionsByPath);
+		}
+	}
+
+	static void ApplySemanticStatementContext(
+		const FCallFunctionStatementRef& CallStatement,
+		const FBlueprintHelperGraphSemanticIR& SemanticIR,
+		const FBlueprintHelperGraphFragmentDag& FragmentDag,
+		FBlueprintHelperCallFunctionResolveRequest& InOutRequest)
+	{
+		TMap<FString, TSharedPtr<FBlueprintHelperGraphStatementIR>> StatementsByPath;
+		IndexSemanticStatements(SemanticIR.Statements, StatementsByPath);
+		const TSharedPtr<FBlueprintHelperGraphStatementIR>* StatementPtr = StatementsByPath.Find(CallStatement.SemanticPath);
+		if (!StatementPtr || !StatementPtr->IsValid())
+		{
+			return;
+		}
+
+		const FBlueprintHelperGraphStatementIR& Statement = *(*StatementPtr);
+		if (Statement.Kind != EBlueprintHelperGraphStatementKind::Call)
+		{
+			return;
+		}
+
+		if (Statement.ResolvedTarget.Kind == EBlueprintHelperGraphTargetKind::ComponentMemberFunction)
+		{
+			InOutRequest.TargetObjectType = Statement.ResolvedTarget.Type;
+		}
+		if (Statement.TargetObject.IsValid())
+		{
+			if (!Statement.TargetObject->Type.IsEmpty())
+			{
+				InOutRequest.TargetObjectType = Statement.TargetObject->Type;
+			}
+		}
+
+		for (const TPair<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& ArgPair : Statement.Args)
+		{
+			AddUniqueString(InOutRequest.ArgumentNames, ArgPair.Key);
+			if (ArgPair.Value.IsValid() && !ArgPair.Value->Type.IsEmpty())
+			{
+				InOutRequest.ArgumentTypes.Add(ArgPair.Key, ArgPair.Value->Type);
+			}
+		}
+
+		const FString StatementId = GetSemanticStatementId(Statement);
+		InOutRequest.ArgumentPinTypes.Append(CollectSemanticArgumentPinTypesFromDag(FragmentDag, StatementId));
+	}
+
+	static void ApplySemanticExpressionContext(
+		const FCallFunctionStatementRef& CallStatement,
+		const FBlueprintHelperGraphSemanticIR& SemanticIR,
+		const FBlueprintHelperGraphFragmentDag& FragmentDag,
+		FBlueprintHelperCallFunctionResolveRequest& InOutRequest)
+	{
+		TMap<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>> ExpressionsByPath;
+		IndexSemanticExpressions(SemanticIR.Statements, ExpressionsByPath);
+		const TSharedPtr<FBlueprintHelperGraphExpressionIR>* ExpressionPtr = ExpressionsByPath.Find(CallStatement.SemanticPath);
+		if (!ExpressionPtr || !ExpressionPtr->IsValid())
+		{
+			return;
+		}
+
+		const FBlueprintHelperGraphExpressionIR& Expression = *(*ExpressionPtr);
+		if (Expression.Kind != EBlueprintHelperGraphExpressionKind::Call)
+		{
+			return;
+		}
+
+		if (Expression.ResolvedTarget.Kind == EBlueprintHelperGraphTargetKind::ComponentMemberFunction)
+		{
+			InOutRequest.TargetObjectType = Expression.ResolvedTarget.Type;
+		}
+		if (Expression.TargetObject.IsValid() && !Expression.TargetObject->Type.IsEmpty())
+		{
+			InOutRequest.TargetObjectType = Expression.TargetObject->Type;
+		}
+
+		for (const TPair<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& ArgPair : Expression.Args)
+		{
+			AddUniqueString(InOutRequest.ArgumentNames, ArgPair.Key);
+			if (ArgPair.Value.IsValid() && !ArgPair.Value->Type.IsEmpty())
+			{
+				InOutRequest.ArgumentTypes.Add(ArgPair.Key, ArgPair.Value->Type);
+			}
+		}
+
+		const FString ExpressionId = GetSemanticExpressionId(Expression);
+		InOutRequest.ArgumentPinTypes.Append(CollectSemanticArgumentPinTypesFromDag(FragmentDag, ExpressionId));
+	}
+
+	static void CollectCallFunctionExpressionValue(
+		const TSharedPtr<FJsonValue>& ExpressionValue,
+		const FString& ExpressionPath,
+		const FString& SemanticExpressionPath,
+		TArray<FCallFunctionStatementRef>& OutStatements)
+	{
+		const TSharedPtr<FJsonObject> ExpressionObject = ExpressionValue.IsValid()
+			? ExpressionValue->AsObject()
+			: nullptr;
+		if (!ExpressionObject.IsValid())
+		{
+			return;
+		}
+
+		FString Kind;
+		ExpressionObject->TryGetStringField(TEXT("kind"), Kind);
+		if (Kind.Equals(TEXT("call"), ESearchCase::IgnoreCase) ||
+			Kind.Equals(TEXT("call_function"), ESearchCase::IgnoreCase))
+		{
+			FString Query;
+			bool bHasTarget = ExpressionObject->TryGetStringField(TEXT("target"), Query) && !Query.TrimStartAndEnd().IsEmpty();
+			if (!bHasTarget)
+			{
+				bHasTarget = false;
+				ExpressionObject->TryGetStringField(TEXT("name"), Query);
+			}
+
+			Query.TrimStartAndEndInline();
+			if (!Query.IsEmpty())
+			{
+				FCallFunctionStatementRef Ref;
+				Ref.StatementObject = ExpressionObject;
+				Ref.StatementPath = ExpressionPath;
+				Ref.SemanticPath = SemanticExpressionPath;
+				Ref.NamePath = ExpressionPath + (bHasTarget ? TEXT(".target") : TEXT(".name"));
+				Ref.Query = Query;
+				Ref.bExpression = true;
+				OutStatements.Add(MoveTemp(Ref));
+			}
+		}
+
+		const TSharedPtr<FJsonObject>* ArgsObjectPtr = nullptr;
+		if (ExpressionObject->TryGetObjectField(TEXT("args"), ArgsObjectPtr) &&
+			ArgsObjectPtr && ArgsObjectPtr->IsValid())
+		{
+			for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : (*ArgsObjectPtr)->Values)
+			{
+				CollectCallFunctionExpressionValue(
+					Pair.Value,
+					ExpressionPath + TEXT(".args.") + Pair.Key,
+					SemanticExpressionPath + TEXT(".args.") + Pair.Key,
+					OutStatements);
+			}
+		}
+
+		const TCHAR* ExpressionFieldNames[] =
+		{
+			TEXT("target_object"),
+			TEXT("value"),
+			TEXT("condition"),
+			TEXT("index"),
+			TEXT("left"),
+			TEXT("right"),
+		};
+		for (const TCHAR* FieldName : ExpressionFieldNames)
+		{
+			if (const TSharedPtr<FJsonValue>* FieldValue = ExpressionObject->Values.Find(FieldName))
+			{
+				CollectCallFunctionExpressionValue(
+					*FieldValue,
+					ExpressionPath + TEXT(".") + FieldName,
+					SemanticExpressionPath + TEXT(".") + FieldName,
+					OutStatements);
+			}
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* OptionValues = nullptr;
+		if (ExpressionObject->TryGetArrayField(TEXT("options"), OptionValues) && OptionValues)
+		{
+			for (int32 OptionIndex = 0; OptionIndex < OptionValues->Num(); ++OptionIndex)
+			{
+				CollectCallFunctionExpressionValue(
+					(*OptionValues)[OptionIndex],
+					FString::Printf(TEXT("%s.options[%d]"), *ExpressionPath, OptionIndex),
+					FString::Printf(TEXT("%s.options[%d]"), *SemanticExpressionPath, OptionIndex),
+					OutStatements);
+			}
+		}
+	}
+
+	static void CollectCallFunctionExpressionMap(
+		const TSharedPtr<FJsonObject>& Object,
+		const FString& FieldName,
+		const FString& ExpressionPath,
+		const FString& SemanticExpressionPath,
+		TArray<FCallFunctionStatementRef>& OutStatements)
+	{
+		const TSharedPtr<FJsonObject>* MapObjectPtr = nullptr;
+		if (!Object.IsValid() ||
+			!Object->TryGetObjectField(FieldName, MapObjectPtr) ||
+			!MapObjectPtr || !MapObjectPtr->IsValid())
+		{
+			return;
+		}
+
+		for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : (*MapObjectPtr)->Values)
+		{
+			CollectCallFunctionExpressionValue(
+				Pair.Value,
+				ExpressionPath + TEXT(".") + FieldName + TEXT(".") + Pair.Key,
+				SemanticExpressionPath + TEXT(".") + FieldName + TEXT(".") + Pair.Key,
+				OutStatements);
+		}
+	}
+
+	static void CollectCallFunctionExpressionField(
+		const TSharedPtr<FJsonObject>& Object,
+		const FString& FieldName,
+		const FString& ExpressionPath,
+		const FString& SemanticExpressionPath,
+		TArray<FCallFunctionStatementRef>& OutStatements)
+	{
+		if (!Object.IsValid())
+		{
+			return;
+		}
+
+		if (const TSharedPtr<FJsonValue>* FieldValue = Object->Values.Find(FieldName))
+		{
+			CollectCallFunctionExpressionValue(
+				*FieldValue,
+				ExpressionPath + TEXT(".") + FieldName,
+				SemanticExpressionPath + TEXT(".") + FieldName,
+				OutStatements);
+		}
+	}
+
 	static void CollectCallFunctionStatements(
 		const TArray<TSharedPtr<FJsonValue>>& StatementValues,
 		const FString& StatementsPath,
+		const FString& SemanticStatementsPath,
 		TArray<FCallFunctionStatementRef>& OutStatements)
 	{
 		for (int32 StatementIndex = 0; StatementIndex < StatementValues.Num(); ++StatementIndex)
@@ -486,6 +976,7 @@ public:
 			}
 
 			const FString StatementPath = FString::Printf(TEXT("%s[%d]"), *StatementsPath, StatementIndex);
+			const FString SemanticPath = FString::Printf(TEXT("%s[%d]"), *SemanticStatementsPath, StatementIndex);
 			FString Kind;
 			StatementObject->TryGetStringField(TEXT("kind"), Kind);
 			if (Kind.Equals(TEXT("call"), ESearchCase::IgnoreCase) ||
@@ -505,22 +996,28 @@ public:
 					FCallFunctionStatementRef Ref;
 					Ref.StatementObject = StatementObject;
 					Ref.StatementPath = StatementPath;
+					Ref.SemanticPath = SemanticPath;
 					Ref.NamePath = StatementPath + (bHasName ? TEXT(".name") : TEXT(".target"));
 					Ref.Query = Query;
 					OutStatements.Add(MoveTemp(Ref));
 				}
 			}
 
+			CollectCallFunctionExpressionMap(StatementObject, TEXT("args"), StatementPath, SemanticPath, OutStatements);
+			CollectCallFunctionExpressionField(StatementObject, TEXT("target_object"), StatementPath, SemanticPath, OutStatements);
+			CollectCallFunctionExpressionField(StatementObject, TEXT("value"), StatementPath, SemanticPath, OutStatements);
+			CollectCallFunctionExpressionField(StatementObject, TEXT("condition"), StatementPath, SemanticPath, OutStatements);
+
 			const TArray<TSharedPtr<FJsonValue>>* ThenStatements = nullptr;
 			if (StatementObject->TryGetArrayField(TEXT("then"), ThenStatements) && ThenStatements)
 			{
-				CollectCallFunctionStatements(*ThenStatements, StatementPath + TEXT(".then"), OutStatements);
+				CollectCallFunctionStatements(*ThenStatements, StatementPath + TEXT(".then"), SemanticPath + TEXT(".then"), OutStatements);
 			}
 
 			const TArray<TSharedPtr<FJsonValue>>* ElseStatements = nullptr;
 			if (StatementObject->TryGetArrayField(TEXT("else"), ElseStatements) && ElseStatements)
 			{
-				CollectCallFunctionStatements(*ElseStatements, StatementPath + TEXT(".else"), OutStatements);
+				CollectCallFunctionStatements(*ElseStatements, StatementPath + TEXT(".else"), SemanticPath + TEXT(".else"), OutStatements);
 			}
 		}
 	}
@@ -653,45 +1150,43 @@ public:
 		Request.Context.GraphKind = Graph && Graph->GetClass() ? Graph->GetClass()->GetName() : FString();
 		Request.Context.ArgumentNames = Request.ArgumentNames;
 		Request.Context.ArgumentTypes = Request.ArgumentTypes;
+		Request.Context.ArgumentPinTypes = Request.ArgumentPinTypes;
 		Request.Context.TargetObjectType = Request.TargetObjectType;
+		Request.Context.TargetObjectPinType = Request.TargetObjectPinType;
+		Request.Context.ExpectedReturnType = Request.ExpectedReturnType;
+		Request.Context.ExpectedReturnPinType = Request.ExpectedReturnPinType;
 	}
 
-	static bool TryResolveTaskRuntimeCallFunctions(
+	static void CollectCallFunctionLogicSpecs(
 		const TSharedPtr<FJsonObject>& StepObject,
-		int32 StepIndex,
-		const FString& StepId,
-		bool bDryRun,
-		TArray<FResolvedCallFunctionRuntimeFact>& OutResolvedFacts,
-		FBlueprintHelperToolError& OutError,
-		TSharedPtr<FJsonObject>& OutBlockedStepData)
+		const TSharedPtr<FJsonObject>& LoweredPayload,
+		TArray<FCallFunctionLogicSpecRef>& OutLogicSpecs)
 	{
+		const TSharedPtr<FJsonObject>* LoweredLogicSpecPtr = nullptr;
+		if (LoweredPayload.IsValid() &&
+			LoweredPayload->TryGetObjectField(TEXT("logic_spec"), LoweredLogicSpecPtr) &&
+			LoweredLogicSpecPtr && LoweredLogicSpecPtr->IsValid())
+		{
+			FCallFunctionLogicSpecRef Ref;
+			Ref.LogicSpec = *LoweredLogicSpecPtr;
+			Ref.LogicSpecPath = TEXT("payload.logic_spec");
+			OutLogicSpecs.Add(MoveTemp(Ref));
+			return;
+		}
+
 		const TSharedPtr<FJsonObject>* WriteObjectPtr = nullptr;
 		if (!StepObject.IsValid() ||
 			!StepObject->TryGetObjectField(TEXT("write"), WriteObjectPtr) ||
 			!WriteObjectPtr || !WriteObjectPtr->IsValid())
 		{
-			return true;
+			return;
 		}
 
 		const TArray<TSharedPtr<FJsonValue>>* OpsArray = nullptr;
 		if (!(*WriteObjectPtr)->TryGetArrayField(TEXT("ops"), OpsArray) || !OpsArray)
 		{
-			return true;
+			return;
 		}
-
-		const TSharedPtr<FJsonObject>* TargetObjectPtr = nullptr;
-		FString AssetPath;
-		FString GraphName;
-		if (StepObject->TryGetObjectField(TEXT("target"), TargetObjectPtr) &&
-			TargetObjectPtr && TargetObjectPtr->IsValid())
-		{
-			(*TargetObjectPtr)->TryGetStringField(TEXT("asset_path"), AssetPath);
-			(*TargetObjectPtr)->TryGetStringField(TEXT("graph"), GraphName);
-		}
-
-		UBlueprint* Blueprint = nullptr;
-		UEdGraph* Graph = nullptr;
-		bool bTriedResolveBlueprint = false;
 
 		for (int32 OpIndex = 0; OpIndex < OpsArray->Num(); ++OpIndex)
 		{
@@ -704,25 +1199,87 @@ public:
 				continue;
 			}
 
-			TSharedPtr<FJsonObject> LogicSpec;
-			FString LogicSpecPath;
 			const TSharedPtr<FJsonObject>* BodyObjectPtr = nullptr;
+			FCallFunctionLogicSpecRef Ref;
 			if (OpObject->TryGetObjectField(TEXT("body"), BodyObjectPtr) &&
 				BodyObjectPtr && BodyObjectPtr->IsValid())
 			{
-				LogicSpec = *BodyObjectPtr;
-				LogicSpecPath = FString::Printf(TEXT("write.ops[%d].body"), OpIndex);
+				Ref.LogicSpec = *BodyObjectPtr;
+				Ref.LogicSpecPath = FString::Printf(TEXT("write.ops[%d].body"), OpIndex);
+				OutLogicSpecs.Add(MoveTemp(Ref));
 			}
 			else if (OpObject->TryGetObjectField(TEXT("logic_spec"), BodyObjectPtr) &&
 				BodyObjectPtr && BodyObjectPtr->IsValid())
 			{
-				LogicSpec = *BodyObjectPtr;
-				LogicSpecPath = FString::Printf(TEXT("write.ops[%d].logic_spec"), OpIndex);
+				Ref.LogicSpec = *BodyObjectPtr;
+				Ref.LogicSpecPath = FString::Printf(TEXT("write.ops[%d].logic_spec"), OpIndex);
+				OutLogicSpecs.Add(MoveTemp(Ref));
 			}
+		}
+	}
 
+	static void ReadCallFunctionResolutionTarget(
+		const TSharedPtr<FJsonObject>& StepObject,
+		const TSharedPtr<FJsonObject>& LoweredPayload,
+		FString& OutAssetPath,
+		FString& OutGraphName)
+	{
+		OutAssetPath.Reset();
+		OutGraphName.Reset();
+
+		const TSharedPtr<FJsonObject>* TargetObjectPtr = nullptr;
+		if (LoweredPayload.IsValid() &&
+			LoweredPayload->TryGetObjectField(TEXT("target"), TargetObjectPtr) &&
+			TargetObjectPtr && TargetObjectPtr->IsValid())
+		{
+			(*TargetObjectPtr)->TryGetStringField(TEXT("asset_path"), OutAssetPath);
+			(*TargetObjectPtr)->TryGetStringField(TEXT("graph"), OutGraphName);
+			if (!OutAssetPath.IsEmpty())
+			{
+				return;
+			}
+		}
+
+		if (StepObject.IsValid() &&
+			StepObject->TryGetObjectField(TEXT("target"), TargetObjectPtr) &&
+			TargetObjectPtr && TargetObjectPtr->IsValid())
+		{
+			(*TargetObjectPtr)->TryGetStringField(TEXT("asset_path"), OutAssetPath);
+			(*TargetObjectPtr)->TryGetStringField(TEXT("graph"), OutGraphName);
+		}
+	}
+
+	static bool TryResolveTaskRuntimeCallFunctions(
+		const TSharedPtr<FJsonObject>& StepObject,
+		const TSharedPtr<FJsonObject>& LoweredPayload,
+		int32 StepIndex,
+		const FString& StepId,
+		bool bDryRun,
+		FBlueprintHelperTaskRuntimeCallFunctionResolutionCache& ResolutionCache,
+		TArray<FResolvedCallFunctionRuntimeFact>& OutResolvedFacts,
+		FBlueprintHelperToolError& OutError,
+		TSharedPtr<FJsonObject>& OutBlockedStepData)
+	{
+		FString AssetPath;
+		FString GraphName;
+		ReadCallFunctionResolutionTarget(StepObject, LoweredPayload, AssetPath, GraphName);
+
+		TArray<FCallFunctionLogicSpecRef> LogicSpecs;
+		CollectCallFunctionLogicSpecs(StepObject, LoweredPayload, LogicSpecs);
+		if (LogicSpecs.IsEmpty())
+		{
+			return true;
+		}
+
+		UBlueprint* Blueprint = nullptr;
+		UEdGraph* Graph = nullptr;
+		bool bTriedResolveBlueprint = false;
+
+		for (const FCallFunctionLogicSpecRef& LogicSpecRef : LogicSpecs)
+		{
 			const TArray<TSharedPtr<FJsonValue>>* StatementValues = nullptr;
-			if (!LogicSpec.IsValid() ||
-				!LogicSpec->TryGetArrayField(TEXT("statements"), StatementValues) ||
+			if (!LogicSpecRef.LogicSpec.IsValid() ||
+				!LogicSpecRef.LogicSpec->TryGetArrayField(TEXT("statements"), StatementValues) ||
 				!StatementValues)
 			{
 				continue;
@@ -731,7 +1288,8 @@ public:
 			TArray<FCallFunctionStatementRef> CallStatements;
 			CollectCallFunctionStatements(
 				*StatementValues,
-				LogicSpecPath + TEXT(".statements"),
+				LogicSpecRef.LogicSpecPath + TEXT(".statements"),
+				TEXT("$.statements"),
 				CallStatements);
 			if (CallStatements.IsEmpty())
 			{
@@ -746,8 +1304,32 @@ public:
 			}
 			if (!Blueprint)
 			{
-				return true;
+				const EBlueprintHelperToolStage Stage = bDryRun
+					? EBlueprintHelperToolStage::DryRun
+					: EBlueprintHelperToolStage::Execute;
+				const FString Code = TEXT("call_function_resolution_context_missing");
+				const FString Message = FString::Printf(
+					TEXT("call_function resolve failed: target Blueprint could not be loaded for asset '%s'."),
+					*AssetPath);
+				OutError = MakeTaskRuntimeError(
+					Code,
+					Stage,
+					Message,
+					FString::Printf(TEXT("task_plan.steps[%d].target.asset_path"), StepIndex));
+				OutBlockedStepData = MakeCallFunctionResolutionBlockedData(
+					Code,
+					Stage,
+					Message,
+					CallStatements[0].Query,
+					CallStatements[0].NamePath,
+					TArray<FBlueprintHelperCallFunctionCandidateInfo>());
+				return false;
 			}
+
+			FBlueprintHelperGraphSemanticIR SemanticIR;
+			FBlueprintHelperGraphSemanticIRBuilder::BuildFromLogicSpec(LogicSpecRef.LogicSpec, Blueprint, SemanticIR);
+			FBlueprintHelperGraphFragmentDag FragmentDag;
+			FBlueprintHelperGraphFragmentDagBuilder::BuildFromSemanticIR(SemanticIR, FragmentDag);
 
 			for (const FCallFunctionStatementRef& CallStatement : CallStatements)
 			{
@@ -774,18 +1356,45 @@ public:
 				{
 					(*ArgsObjectPtr)->Values.GetKeys(ResolveRequest.ArgumentNames);
 				}
+				if (CallStatement.bExpression)
+				{
+					ApplySemanticExpressionContext(CallStatement, SemanticIR, FragmentDag, ResolveRequest);
+				}
+				else
+				{
+					ApplySemanticStatementContext(CallStatement, SemanticIR, FragmentDag, ResolveRequest);
+				}
 				PopulateCallFunctionResolveContext(ResolveRequest, Blueprint, Graph);
 
-				const FBlueprintHelperCallFunctionResolveResult ResolveResult =
-					FBlueprintHelperCallFunctionResolver::Resolve(ResolveRequest);
-				if (!ResolveResult.IsResolved())
+				const FString ResolutionKey =
+					FBlueprintHelperTaskRuntimeCallFunctionResolutionCache::MakeKey(ResolveRequest, AssetPath, GraphName);
+				FBlueprintHelperTaskRuntimeCachedCallFunctionResolution CachedResolution;
+				if (!ResolutionCache.TryGet(ResolutionKey, CachedResolution))
 				{
-					const FString Code = ResolveResult.ErrorCode.IsEmpty()
+					const FBlueprintHelperCallFunctionResolveResult ResolveResult =
+						FBlueprintHelperCallFunctionResolver::Resolve(ResolveRequest);
+					CachedResolution.bResolved = ResolveResult.IsResolved();
+					CachedResolution.ErrorCode = ResolveResult.ErrorCode;
+					CachedResolution.Message = ResolveResult.Message;
+					CachedResolution.CandidateFunctions = ResolveResult.CandidateFunctions;
+					if (ResolveResult.IsResolved())
+					{
+						CachedResolution.StableId = ResolveResult.Selected.StableId;
+						CachedResolution.NativeName = ResolveResult.Selected.NativeFunctionName;
+						CachedResolution.DisplayName = ResolveResult.Selected.DisplayName;
+						CachedResolution.OwnerClassPath = ResolveResult.Selected.OwnerClassPath;
+					}
+					ResolutionCache.Store(ResolutionKey, CachedResolution);
+				}
+
+				if (!CachedResolution.bResolved)
+				{
+					const FString Code = CachedResolution.ErrorCode.IsEmpty()
 						? TEXT("function_call_not_found")
-						: ResolveResult.ErrorCode;
-					const FString Message = ResolveResult.Message.IsEmpty()
+						: CachedResolution.ErrorCode;
+					const FString Message = CachedResolution.Message.IsEmpty()
 						? FString::Printf(TEXT("call_function resolve failed: %s"), *CallStatement.Query)
-						: ResolveResult.Message;
+						: CachedResolution.Message;
 					const EBlueprintHelperToolStage Stage = bDryRun
 						? EBlueprintHelperToolStage::DryRun
 						: EBlueprintHelperToolStage::Execute;
@@ -800,7 +1409,7 @@ public:
 						Message,
 						CallStatement.Query,
 						CallStatement.NamePath,
-						ResolveResult.CandidateFunctions);
+						CachedResolution.CandidateFunctions);
 					return false;
 				}
 
@@ -808,11 +1417,12 @@ public:
 				Fact.StepId = StepId;
 				Fact.StatementPath = CallStatement.StatementPath;
 				Fact.Query = CallStatement.Query;
-				Fact.StableId = ResolveResult.Selected.StableId;
-				Fact.NativeName = ResolveResult.Selected.NativeFunctionName;
-				Fact.DisplayName = ResolveResult.Selected.DisplayName;
-				Fact.OwnerClassPath = ResolveResult.Selected.OwnerClassPath;
+				Fact.StableId = CachedResolution.StableId;
+				Fact.NativeName = CachedResolution.NativeName;
+				Fact.DisplayName = CachedResolution.DisplayName;
+				Fact.OwnerClassPath = CachedResolution.OwnerClassPath;
 				OutResolvedFacts.Add(MoveTemp(Fact));
+				CallStatement.StatementObject->SetStringField(TEXT("resolved_stable_id"), CachedResolution.StableId);
 			}
 		}
 
@@ -4086,6 +4696,26 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 	}
 	FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(TimingTrace, TEXT("parse_task_plan"), ParseStageStart);
 
+	const FBlueprintHelperTaskRuntimeDryRunPolicy DryRunPolicy =
+		FBlueprintHelperTaskRuntimeDryRunPolicy::FromTaskPlan((*TaskPlanPtr).ToSharedRef());
+	if (bDryRun && DryRunPolicy.GetMode() == EBlueprintHelperTaskRuntimeDryRunMode::None)
+	{
+		FBlueprintHelperToolResultBase Result = FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeFailure(
+			RuntimeOperation,
+			TEXT("dry_run_mode_none_requires_preview_token"),
+			EBlueprintHelperToolStage::DryRun,
+			TEXT("execution_policy.dry_run_mode=none is only allowed when AgentFace reuses a validated preview token and skips PreviewTaskPlan."),
+			TEXT("task_plan.execution_policy.dry_run_mode"));
+		if (!Result.Data.IsValid())
+		{
+			Result.Data = MakeShared<FJsonObject>();
+		}
+		FBlueprintHelperTaskRuntimeServiceLocalUtils::AttachDryRunStrategy(Result.Data, DryRunPolicy);
+		AttachTimingToResult(Result);
+		return Result;
+	}
+	const bool bQuickDryRun = bDryRun && DryRunPolicy.ShouldRunQuickPreview();
+
 	const FString TaskRunId = bDryRun
 		? TEXT("")
 		: FString::Printf(TEXT("task_%s"), *FGuid::NewGuid().ToString(EGuidFormats::Digits));
@@ -4159,6 +4789,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 	TArray<FBlueprintHelperTaskRuntimeStepRecord> StepRecords;
 	TArray<FBlueprintHelperTaskRuntimePostOperationRecord> PostOperationRecords;
 	TArray<FBlueprintHelperTaskRuntimeServiceLocalUtils::FResolvedCallFunctionRuntimeFact> ResolvedCallFunctionFacts;
+	FBlueprintHelperTaskRuntimeCallFunctionResolutionCache CallFunctionResolutionCache;
 	FBlueprintHelperValidationSummary BaseValidation;
 	bool bSawStepValidation = false;
 	TMap<FString, FBlueprintHelperTaskRuntimeServiceLocalUtils::EBlueprintHelperTaskJournalStepStatus> StepExecutionStatuses;
@@ -4239,6 +4870,13 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		FBlueprintHelperTaskRuntimeServiceLocalUtils::AttachRuntimeFacts(
 			RuntimeResult.Data,
 			ResolvedCallFunctionFacts);
+		if (bDryRun)
+		{
+			FBlueprintHelperTaskRuntimeServiceLocalUtils::AttachDryRunStrategy(RuntimeResult.Data, DryRunPolicy);
+		}
+		FBlueprintHelperTaskRuntimeServiceLocalUtils::AttachCallFunctionResolutionCacheStats(
+			RuntimeResult.Data,
+			CallFunctionResolutionCache);
 		AttachTimingToResult(RuntimeResult);
 
 		if (!bDryRun && !TaskRunId.IsEmpty() && (StepRecords.Num() > 0 || PostOperationRecords.Num() > 0))
@@ -4377,9 +5015,11 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		const double CallFunctionStageStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
 		if (!FBlueprintHelperTaskRuntimeServiceLocalUtils::TryResolveTaskRuntimeCallFunctions(
 			StepObject,
+			LoweredStep.Payload,
 			StepIndex,
 			LoweredStep.StepId,
 			bDryRun,
+			CallFunctionResolutionCache,
 			StepResolvedCallFunctionFacts,
 			CallFunctionResolutionError,
 			CallFunctionBlockedData))
@@ -4431,12 +5071,33 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 				ReviewBeforeStageStart);
 		}
 
-		const double ExecuteStepStageStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
-		FBlueprintHelperToolResultBase StepResult = ExecuteLoweredStep(LoweredStep);
-		FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(
-			TimingTrace,
-			FString::Printf(TEXT("step.%s.cluster_execute"), *LoweredStep.StepId),
-			ExecuteStepStageStart);
+		FBlueprintHelperToolResultBase StepResult;
+		if (bQuickDryRun)
+		{
+			const double QuickPreviewStageStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
+			const FString StepOperation = LoweredStep.AdapterOperation.IsEmpty()
+				? LoweredStep.RuntimeOperation
+				: LoweredStep.AdapterOperation;
+			StepResult = FBlueprintHelperToolResultBuilder::DryRun(
+				StepOperation.IsEmpty() ? TEXT("task_runtime_quick_preview") : StepOperation,
+				FBlueprintHelperToolResultBuilder::GenerateTraceId());
+			StepResult.Data = FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeSyntheticDryRunData(
+				TEXT("quick"),
+				TEXT("lowering_and_call_function_resolution"));
+			FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(
+				TimingTrace,
+				FString::Printf(TEXT("step.%s.quick_preview_validate"), *LoweredStep.StepId),
+				QuickPreviewStageStart);
+		}
+		else
+		{
+			const double ExecuteStepStageStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
+			StepResult = ExecuteLoweredStep(LoweredStep);
+			FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(
+				TimingTrace,
+				FString::Printf(TEXT("step.%s.cluster_execute"), *LoweredStep.StepId),
+				ExecuteStepStageStart);
+		}
 		if (bDryRun && FBlueprintHelperTaskRuntimeServiceLocalUtils::IsPlannedComponentPropertyDryRun(LoweredStep, StepResult, DryRunPlannedComponentKeys))
 		{
 			StepResult = FBlueprintHelperTaskRuntimeServiceLocalUtils::MakePlannedComponentPropertyDryRunResult(LoweredStep);
@@ -4656,6 +5317,13 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 	FBlueprintHelperTaskRuntimeServiceLocalUtils::AttachRuntimeFacts(
 		RuntimeResult.Data,
 		ResolvedCallFunctionFacts);
+	if (bDryRun)
+	{
+		FBlueprintHelperTaskRuntimeServiceLocalUtils::AttachDryRunStrategy(RuntimeResult.Data, DryRunPolicy);
+	}
+	FBlueprintHelperTaskRuntimeServiceLocalUtils::AttachCallFunctionResolutionCacheStats(
+		RuntimeResult.Data,
+		CallFunctionResolutionCache);
 	AttachTimingToResult(RuntimeResult);
 
 	if (!bDryRun && !TaskRunId.IsEmpty())

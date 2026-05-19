@@ -531,9 +531,18 @@ export const PreviewTaskInputSchema: z.ZodTypeAny = z.object({
   develop: z.boolean().optional().default(false),
 });
 
+export const TaskPreviewTokenSchema = z.object({
+  preview_id: z.string().min(1),
+  task_plan_hash: z.string().min(1),
+  task_spec_hash: z.string().min(1),
+  execution_policy_hash: z.string().min(1),
+  created_at: z.string().min(1),
+}).passthrough();
+
 export const ExecuteTaskInputSchema: z.ZodTypeAny = z.object({
   task_spec: TaskSpecSchema,
   develop: z.boolean().optional().default(false),
+  preview_token: TaskPreviewTokenSchema.optional(),
 });
 
 export const GetTaskResultInputSchema = z.object({
@@ -845,6 +854,7 @@ export const TaskRunJournalSchema = z.object({
 }).passthrough();
 
 export type TaskSpec = z.infer<typeof TaskSpecSchema>;
+export type TaskPreviewToken = z.infer<typeof TaskPreviewTokenSchema>;
 export type BlueprintLogicStatement = z.infer<typeof BlueprintLogicStatementSchema>;
 export type BlueprintLogicSpec = z.infer<typeof BlueprintLogicSpecSchema>;
 export type ReadTaskContextInput = z.infer<typeof ReadTaskContextInputSchema>;

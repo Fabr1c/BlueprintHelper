@@ -427,6 +427,7 @@ struct FParsedNode
 	/** 节点对应的函数名称。 */
 	FString FunctionName;
 
+	FString ResolvedCallFunctionStableId;
 	FString SearchMode;
 	FString AmbiguityPolicy;
 	TArray<FString> CategoryPriority;

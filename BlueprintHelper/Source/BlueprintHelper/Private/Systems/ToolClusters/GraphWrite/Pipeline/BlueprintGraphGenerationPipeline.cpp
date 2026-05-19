@@ -732,6 +732,7 @@ static bool SpawnSemanticStatementFragment(
 		NodeData.NodeType = EParsedBlueprintNodeType::CallFunction;
 		NodeData.SourceType = TEXT("K2Node_CallFunction");
 		NodeData.FunctionName = !Statement->Target.IsEmpty() ? Statement->Target : Statement->Name;
+		NodeData.ResolvedCallFunctionStableId = Statement->ResolvedCallFunctionStableId;
 		NodeData.SearchMode = Statement->SearchMode;
 		NodeData.AmbiguityPolicy = Statement->AmbiguityPolicy;
 		NodeData.CategoryPriority = Statement->CategoryPriority;

@@ -10,6 +10,7 @@ import {
   type ReadTaskContextInput,
   type TaskIssue,
   type TaskPlan,
+  type TaskPreviewToken,
   type TaskSpec,
 } from '../schema/task-schemas.js';
 import {
@@ -36,6 +37,9 @@ import {
   measureTaskTiming,
   measureTaskTimingAsync,
 } from './task-timing.js';
+import { TaskPreviewCache } from './task-preview-cache.js';
+
+export type { TaskPreviewToken } from '../schema/task-schemas.js';
 
 export type TaskRunnerBridge = {
   sendCommand(command: string, payload?: Record<string, unknown>): Promise<BridgeResponse>;
@@ -46,25 +50,32 @@ export type TaskCompiler = (taskSpec: TaskSpec, dryRun: boolean) => Promise<Pyth
 export interface TaskPreviewOutcome {
   previewId: string;
   taskPlan: TaskPlan;
+  previewToken: TaskPreviewToken;
   passed: boolean;
   issues: TaskIssue[];
   toolResult: ToolResultBase;
+}
+
+export interface TaskExecuteOptions {
+  previewToken?: TaskPreviewToken;
 }
 
 export interface TaskSpecRunner {
   readTaskContext(input: Record<string, unknown>): Promise<ToolResultBase>;
   readReferenceContext(input: Record<string, unknown>): Promise<ToolResultBase>;
   previewTask(taskSpec: TaskSpec, timing?: TaskTimingTrace): Promise<TaskPreviewOutcome>;
-  executeTask(taskSpec: TaskSpec, timing?: TaskTimingTrace): Promise<ToolResultBase>;
+  executeTask(taskSpec: TaskSpec, timing?: TaskTimingTrace, options?: TaskExecuteOptions): Promise<ToolResultBase>;
   getTaskResult(taskRunId: string): Promise<ToolResultBase>;
 }
 
 export function createTaskSpecRunner(input: {
   bridge: TaskRunnerBridge;
   taskCompiler: TaskCompiler;
+  previewCache?: TaskPreviewCache;
 }): TaskSpecRunner {
   const bridge = input.bridge;
   const taskCompiler = input.taskCompiler;
+  const previewCache = input.previewCache ?? new TaskPreviewCache();
 
   return {
     async readTaskContext(rawInput) {
@@ -91,14 +102,16 @@ export function createTaskSpecRunner(input: {
     },
 
     async previewTask(taskSpec, timing) {
-      const outcome = await runPreviewTask(bridge, taskSpec, taskCompiler, timing);
+      const outcome = await runPreviewTask(bridge, taskSpec, taskCompiler, previewCache, timing);
       outcome.toolResult = attachTaskTiming(outcome.toolResult, timing);
       return outcome;
     },
 
-    async executeTask(taskSpec, timing) {
+    async executeTask(taskSpec, timing, options) {
       try {
-        const preview = await runPreviewTask(bridge, taskSpec, taskCompiler, timing);
+        const preview = options?.previewToken
+          ? await resolvePreviewTokenTaskPlan(taskSpec, taskCompiler, previewCache, options.previewToken, timing)
+          : await runPreviewTaskForExecute(bridge, taskSpec, taskCompiler, previewCache, timing);
         if (!preview.passed) {
           return attachTaskTiming(taskFailure(
             'execute_task',
@@ -206,11 +219,36 @@ async function runPreviewTask(
   bridge: TaskRunnerBridge,
   taskSpec: TaskSpec,
   taskCompiler: TaskCompiler,
+  previewCache: TaskPreviewCache,
+  timing?: TaskTimingTrace,
+): Promise<TaskPreviewOutcome> {
+  const compiled = await measureTaskTimingAsync(timing, 'taskspec_compile', () => taskCompiler(taskSpec, true));
+  return await runPreviewTaskFromPlan(bridge, taskSpec, compiled.task_plan, previewCache, timing);
+}
+
+async function runPreviewTaskForExecute(
+  bridge: TaskRunnerBridge,
+  taskSpec: TaskSpec,
+  taskCompiler: TaskCompiler,
+  previewCache: TaskPreviewCache,
   timing?: TaskTimingTrace,
 ): Promise<TaskPreviewOutcome> {
   const compiled = await measureTaskTimingAsync(timing, 'taskspec_compile', () => taskCompiler(taskSpec, true));
   const taskPlan = compiled.task_plan;
-  const previewId = nextPreviewId();
+  if (taskPlan.execution_policy.dry_run_mode === 'none') {
+    throw new DryRunModeNoneRequiresPreviewTokenError();
+  }
+  return await runPreviewTaskFromPlan(bridge, taskSpec, taskPlan, previewCache, timing);
+}
+
+async function runPreviewTaskFromPlan(
+  bridge: TaskRunnerBridge,
+  taskSpec: TaskSpec,
+  taskPlan: TaskPlan,
+  previewCache: TaskPreviewCache,
+  timing?: TaskTimingTrace,
+): Promise<TaskPreviewOutcome> {
+  const previewId = measureTaskTiming(timing, 'preview_token.allocate_preview_id', () => nextPreviewId());
   const previewResponse = await measureTaskTimingAsync(timing, 'bridge.preview_task_plan', () => bridge.sendCommand('preview_task_plan', {
     task_plan: taskPlan,
     ...(hasTaskTiming(timing) ? { include_timing: true } : {}),
@@ -232,10 +270,18 @@ async function runPreviewTask(
       failure.issues,
       failure.error,
     );
+    const previewToken = measureTaskTiming(timing, 'preview_token.hash_and_cache_store', () => previewCache.store({
+      previewId,
+      taskSpec,
+      taskPlan,
+      passed: false,
+      issues: failure.issues,
+    }));
     toolResult.target = { target_type: 'blueprint', asset_path: taskPlan.target_assets[0] };
     toolResult.data = {
       schema: TASK_PREVIEW_SCHEMA,
       preview_id: previewId,
+      preview_token: previewToken,
       passed: false,
       blocked: true,
       task_plan: summarizeTaskPlan(taskPlan),
@@ -245,6 +291,7 @@ async function runPreviewTask(
     return {
       previewId,
       taskPlan,
+      previewToken,
       passed: false,
       issues: failure.issues,
       toolResult,
@@ -254,10 +301,18 @@ async function runPreviewTask(
   const dryRun = extractDryRun(previewResponse);
   const passed = dryRun.canExecute;
   const issues = dryRun.issues;
+  const previewToken = measureTaskTiming(timing, 'preview_token.hash_and_cache_store', () => previewCache.store({
+    previewId,
+    taskSpec,
+    taskPlan,
+    passed,
+    issues,
+  }));
 
   return {
     previewId,
     taskPlan,
+    previewToken,
     passed,
     issues,
     toolResult: sanitizeAgentFacingToolResult({
@@ -271,6 +326,7 @@ async function runPreviewTask(
       data: {
         schema: TASK_PREVIEW_SCHEMA,
         preview_id: previewId,
+        preview_token: previewToken,
         passed,
         blocked: !passed,
         task_plan: summarizeTaskPlan(taskPlan),
@@ -278,6 +334,69 @@ async function runPreviewTask(
       },
     }),
   };
+}
+
+async function resolvePreviewTokenTaskPlan(
+  taskSpec: TaskSpec,
+  taskCompiler: TaskCompiler,
+  previewCache: TaskPreviewCache,
+  previewToken: TaskPreviewToken,
+  timing?: TaskTimingTrace,
+): Promise<TaskPreviewOutcome> {
+  const compiled = await measureTaskTimingAsync(timing, 'taskspec_compile', () => taskCompiler(taskSpec, true));
+  const taskPlan = compiled.task_plan;
+  const validation = measureTaskTiming(timing, 'preview_token.validate', () => (
+    previewCache.validate(previewToken, taskSpec, taskPlan)
+  ));
+
+  if (!validation.ok) {
+    throw new PreviewTokenValidationError(validation);
+  }
+
+  const entry = measureTaskTiming(timing, 'preview_token.reuse_task_plan', () => validation.entry);
+  return {
+    previewId: entry.previewId,
+    taskPlan: entry.taskPlan,
+    previewToken: entry.token,
+    passed: entry.passed,
+    issues: entry.issues,
+    toolResult: successRead(
+      'preview_task',
+      { target_type: 'blueprint', asset_path: entry.taskPlan.target_assets[0] },
+      {
+        schema: TASK_PREVIEW_SCHEMA,
+        preview_id: entry.previewId,
+        preview_token: entry.token,
+        passed: entry.passed,
+        blocked: !entry.passed,
+        task_plan: summarizeTaskPlan(entry.taskPlan),
+        issues: entry.issues,
+      },
+    ),
+  };
+}
+
+class PreviewTokenValidationError extends Error {
+  constructor(
+    readonly validation: {
+      code: 'preview_token_missing' | 'preview_token_expired' | 'preview_token_mismatch';
+      message: string;
+      field?: string;
+      expected?: string;
+      actual?: string;
+    },
+  ) {
+    super(validation.message);
+  }
+}
+
+class DryRunModeNoneRequiresPreviewTokenError extends Error {
+  readonly code = 'dry_run_mode_none_requires_preview_token';
+  readonly field = 'execution_policy.dry_run_mode';
+
+  constructor() {
+    super('TaskSpec execution_policy.dry_run_mode=none requires a valid preview_token from a prior preview_task call.');
+  }
 }
 
 function referenceContextToolResult(response: BridgeResponse, assetPath: string): ToolResultBase {
@@ -303,6 +422,44 @@ function referenceContextToolResult(response: BridgeResponse, assetPath: string)
 }
 
 function taskErrorFromUnknown(operation: string, err: unknown): ToolResultBase {
+  if (err instanceof DryRunModeNoneRequiresPreviewTokenError) {
+    return taskFailure(
+      operation,
+      err.code,
+      'semantic_error',
+      err.message,
+      [{
+        code: err.code,
+        path: err.field,
+        message: 'Run preview_task first and pass its preview_token to execute_task, or use dry_run_mode quick/full.',
+      }],
+      {
+        stage: 'preflight',
+        retryable: true,
+        field: err.field,
+      },
+    );
+  }
+  if (err instanceof PreviewTokenValidationError) {
+    return taskFailure(
+      operation,
+      err.validation.code,
+      'semantic_error',
+      err.message,
+      [{
+        code: err.validation.code,
+        path: err.validation.field ?? 'preview_token',
+        message: err.message,
+      }],
+      {
+        stage: 'preflight',
+        retryable: true,
+        ...(err.validation.field ? { field: err.validation.field } : {}),
+        ...(err.validation.expected ? { expected: err.validation.expected } : {}),
+        ...(err.validation.actual ? { actual: err.validation.actual } : {}),
+      },
+    );
+  }
   if (err instanceof TaskSpecCompileError) {
     return taskFailure(operation, err.code, 'semantic_error', err.message, err.issues);
   }

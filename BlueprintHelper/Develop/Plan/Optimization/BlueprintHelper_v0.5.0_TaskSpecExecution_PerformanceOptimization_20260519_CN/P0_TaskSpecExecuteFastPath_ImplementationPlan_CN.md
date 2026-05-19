@@ -186,4 +186,11 @@ node .\AgentFaceService\cli\build\cli\index.js task execute --file "D:\UEProject
 - `none` 不能成为外部直接绕过 preview 的公共能力。
 - CallFunction 重复查询可被 request-level cache 去重。
 - 不改变 Review evidence、DebugBundle、Accept/Reject 状态模型。
+## 执行状态（2026-05-19）
 
+- P0-0 Timing 收口：已保持 CLI 接收处到返回处的通用 timing 链路；本轮补齐 preview token 分配、hash/cache store、validate、reuse 的 develop timing 阶段。普通调用仍不返回 `data.timing`。
+- P0-1 Preview Token 复用：已实现 `TaskPreviewTokenSchema`、稳定 hash、runner 显式 preview cache 依赖、execute token 校验与 TaskPlan 复用；无效 token 在 execute 前结构化失败。
+- P0-2 `dry_run_mode`：已实现 UE dry-run policy；UE preview 收到 `none` 会诊断失败；AgentFace 无 token 的 `none` execute 会在 Bridge 调用前失败；quick preview 只做 lowering 和 CallFunction resolution 验证后返回合成 dry-run 成功。
+- P0-3 CallFunction Resolution Cache：已实现 request-level 纯 DTO cache、hits/misses/entries develop 数据、runtime facts、`resolved_stable_id` 写回 lowered payload 并由 GraphStatementBuilder 优先消费；cache key 已保留 category priority 顺序并纳入 argument/target/return pin type 上下文。
+- 审查修复：已修复直接 TaskSpec 顶层 `preview_token` 被吞掉、`dry_run_mode=none` 无 token 仍触发 UE preview、quick preview Blueprint 缺失仍成功、runtime pre-resolution 语义上下文不足、cache key 折叠 order-sensitive 字段、resolved fact 写回晚于 lowering 等问题。
+- 验证：`task-core build`、`task-core test:node`、`cli build`、`cli test:node`、UE 5.6 `TemplateEditor Win64 Development` 构建均已通过；最终 `git diff --check` 已通过。

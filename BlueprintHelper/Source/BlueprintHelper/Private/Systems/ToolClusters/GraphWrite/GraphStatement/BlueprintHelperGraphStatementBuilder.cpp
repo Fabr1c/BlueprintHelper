@@ -94,6 +94,12 @@ static void ApplyCallPatternDefaults(FParsedNode& NodeData)
 	FBlueprintHelperGraphPatternRegistry::Get().ApplyDefaults(TEXT("call"), NodeData.DefaultValues);
 }
 
+static FString MakeCallFunctionResolveQuery(const FParsedNode& NodeData)
+{
+	const FString StableId = NodeData.ResolvedCallFunctionStableId.TrimStartAndEnd();
+	return StableId.IsEmpty() ? NodeData.FunctionName : StableId;
+}
+
 static void PopulateK2CallContext(
 	FBlueprintHelperCallFunctionResolveRequest& Request,
 	UEdGraph* TargetGraph)
@@ -353,7 +359,7 @@ static bool SpawnExplicitObjectCallFragment(
 	FBlueprintHelperCallFunctionResolveRequest ObjectCallRequest;
 	ObjectCallRequest.Graph = TargetGraph;
 	ObjectCallRequest.Blueprint = FBlueprintEditorUtils::FindBlueprintForGraph(TargetGraph);
-	ObjectCallRequest.Query = FunctionName;
+	ObjectCallRequest.Query = MakeCallFunctionResolveQuery(BoundNodeData);
 	ObjectCallRequest.SearchMode = BoundNodeData.SearchMode;
 	ObjectCallRequest.AmbiguityPolicy = BoundNodeData.AmbiguityPolicy;
 	ObjectCallRequest.CategoryPriority = BoundNodeData.CategoryPriority;
@@ -451,7 +457,7 @@ bool FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment(
 	FBlueprintHelperCallFunctionResolveRequest ResolveRequest;
 	ResolveRequest.Graph = TargetGraph;
 	ResolveRequest.Blueprint = FBlueprintEditorUtils::FindBlueprintForGraph(TargetGraph);
-	ResolveRequest.Query = BoundNodeData.FunctionName;
+	ResolveRequest.Query = MakeCallFunctionResolveQuery(BoundNodeData);
 	ResolveRequest.SearchMode = BoundNodeData.SearchMode;
 	ResolveRequest.AmbiguityPolicy = BoundNodeData.AmbiguityPolicy;
 	ResolveRequest.CategoryPriority = BoundNodeData.CategoryPriority;
@@ -831,6 +837,7 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 		NodeData.NodeType = EParsedBlueprintNodeType::CallFunction;
 		NodeData.SourceType = TEXT("K2Node_CallFunction");
 		NodeData.FunctionName = Expression.Target;
+		NodeData.ResolvedCallFunctionStableId = Expression.ResolvedCallFunctionStableId;
 		NodeData.SearchMode = Expression.SearchMode;
 		NodeData.AmbiguityPolicy = Expression.AmbiguityPolicy;
 		NodeData.CategoryPriority = Expression.CategoryPriority;
