@@ -38,14 +38,31 @@ export const ReadContextInputSchema = z.object({
     block_id: z.string().optional(),
   }),
   view: z.object({
-    format: z.enum(['logic_md', 'logic_json', 'summary']).optional().default('logic_md'),
+    format: z.enum(['logic_md', 'logic_json']).optional(),
     max_items: z.number().int().positive().optional(),
     detail: z.enum(['brief', 'normal', 'full', 'debug']).optional(),
-  }).optional().default({ format: 'logic_md' }),
+  }).optional().default({}),
   context: z.object({
     context_id: z.string().optional(),
     task_run_id: z.string().optional(),
   }).optional(),
+}).superRefine((input, ctx) => {
+  const format = input.view?.format;
+  const isLogicRead = input.read_type === 'blueprint_logic' || input.read_type === 'graph_context';
+  if (!isLogicRead && format) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['view', 'format'],
+      message: 'view.format is only supported for blueprint_logic or graph_context; omit it for this read_type.',
+    });
+  }
+  if (input.read_type === 'graph_context' && format && format !== 'logic_json') {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['view', 'format'],
+      message: 'graph_context only supports logic_json format.',
+    });
+  }
 });
 
 export type ReadContextInput = z.infer<typeof ReadContextInputSchema>;

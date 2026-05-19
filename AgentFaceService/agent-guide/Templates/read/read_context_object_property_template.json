@@ -5,8 +5,5 @@
     "asset_path": "__OBJECT_ASSET_PATH__",
     "target_type": "object_property",
     "target_name": "__PROPERTY_PATH__"
-  },
-  "view": {
-    "format": "summary"
   }
 }

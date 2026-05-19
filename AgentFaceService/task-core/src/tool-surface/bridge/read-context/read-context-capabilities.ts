@@ -25,7 +25,6 @@ const ASSET_TYPES = [
 ] as const;
 
 const FORMATS = [
-  'summary',
   'logic_json',
   'logic_md',
 ] as const;
@@ -34,47 +33,47 @@ const READ_CAPABILITIES = [
   {
     read_type: 'asset_context',
     asset_types: ['asset', 'blueprint', 'data_table', 'data_asset'],
-    formats: ['summary'],
+    formats: [],
   },
   {
     read_type: 'blueprint_logic',
     asset_types: ['blueprint', 'graph', 'function', 'event', 'custom_event', 'block'],
-    formats: ['summary', 'logic_json', 'logic_md'],
+    formats: ['logic_json', 'logic_md'],
   },
   {
     read_type: 'graph_context',
     asset_types: ['blueprint', 'graph', 'function', 'event', 'custom_event', 'block'],
-    formats: ['summary', 'logic_json'],
+    formats: ['logic_json'],
   },
   {
     read_type: 'component_context',
     asset_types: ['blueprint', 'component'],
-    formats: ['summary'],
+    formats: [],
   },
   {
     read_type: 'variable_context',
     asset_types: ['blueprint', 'member_variable', 'event_dispatcher'],
-    formats: ['summary'],
+    formats: [],
   },
   {
     read_type: 'widget_context',
     asset_types: ['blueprint', 'widget'],
-    formats: ['summary'],
+    formats: [],
   },
   {
     read_type: 'data_table_context',
     asset_types: ['data_table', 'data_table_row', 'asset'],
-    formats: ['summary'],
+    formats: [],
   },
   {
     read_type: 'data_asset_context',
     asset_types: ['data_asset', 'asset', 'object_property', 'property'],
-    formats: ['summary'],
+    formats: [],
   },
   {
     read_type: 'object_property_context',
     asset_types: ['asset', 'data_asset', 'object_property', 'property'],
-    formats: ['summary'],
+    formats: [],
   },
 ] as const;
 

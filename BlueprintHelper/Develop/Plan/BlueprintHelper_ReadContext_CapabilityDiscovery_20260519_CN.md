@@ -42,11 +42,13 @@ payload 使用全量集合 + 差集：
 
 ## 兼容处理
 
-按照当前架构规则，不为旧 Agent 保留 `view.format=schema` 兼容路径。`BlueprintHelper.ReadSpec.v1.view.format` 现在只接受：
+按照当前架构规则，不为旧 Agent 保留 `view.format=schema` 或 `view.format=summary` 兼容路径。`BlueprintHelper.ReadSpec.v1.view.format` 现在只接受 logic 读格式：
 
 ```text
-logic_md, logic_json, summary
+logic_md, logic_json
 ```
+
+非 logic 读取通过 `read_type` 表达 compact 视图语义，省略 `view.format`。logic 大小和 anchor 检查统一使用 `logic_json`。
 
 需要能力矩阵时调用 `blueprinthelper_read_context_capabilities`。
 
@@ -55,6 +57,5 @@ logic_md, logic_json, summary
 - task-core registry 包含新工具。
 - 新工具执行时不调用 Bridge。
 - 新 payload 使用 `ReadContextCapabilities.v1`，并返回 `asset_types` / `formats` / `read_type_ids` / negative diff `read_types[]`。
-- `read_context.view.format=schema` 被 schema 拒绝。
+- `read_context.view.format=schema` 和 `view.format=summary` 被 schema 拒绝。
 - CLI / AgentGuide / templates 文档已更新为新工具入口。
-

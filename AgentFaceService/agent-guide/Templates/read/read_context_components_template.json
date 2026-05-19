@@ -4,8 +4,5 @@
   "target": {
     "asset_path": "__BLUEPRINT_ASSET_PATH__",
     "target_type": "blueprint"
-  },
-  "view": {
-    "format": "summary"
   }
 }

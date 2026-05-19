@@ -4,8 +4,5 @@
   "target": {
     "asset_path": "__DATA_TABLE_ASSET_PATH__",
     "target_type": "data_table"
-  },
-  "view": {
-    "format": "summary"
   }
 }

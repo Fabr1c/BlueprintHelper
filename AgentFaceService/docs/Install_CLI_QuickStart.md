@@ -162,7 +162,7 @@ Expected bridge facts:
 
 ## 7. First Safe Asset Read
 
-Read a Blueprint summary:
+Read compact Blueprint asset context:
 
 ```powershell
 bh blueprinthelper_read_context --file .\read_blueprint_summary.json --select status,summary,artifacts.full_result

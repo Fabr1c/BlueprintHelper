@@ -249,21 +249,17 @@ UE compile 失败时，artifact 应包含可读的 compiler results，例如 `da
     "asset_path": "/Game/Asset",
     "target_type": "object_property",
     "property_path": "SomeProperty"
-  },
-  "view": {
-    "format": "summary"
   }
 }
 ```
 
-不要把 `format` 放到顶层；使用 `view.format`。
+不要把 `format` 放到顶层。当前 `view.format` 只用于 logic 读取，非 logic 读取省略该字段。
 
 ### 4.2 ReadSpec 常用组合
 
 | 需求 | `read_type` | `target.target_type` |
 | --- | --- | --- |
 | 资产摘要 | `asset_context` | `asset` |
-| 蓝图逻辑摘要 | `blueprint_logic` | `blueprint` |
 | 图表上下文 | `graph_context` | `graph` |
 | 图表逻辑 JSON | `blueprint_logic` | `graph` |
 | 函数逻辑 | `blueprint_logic` | `function` |

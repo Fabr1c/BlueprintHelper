@@ -6,7 +6,6 @@ export type ReadContextBridgeRequest =
       command: string;
       payload: Record<string, unknown>;
       payloadSchema: string;
-      scope: string;
     }
   | {
       ok: false;
@@ -14,17 +13,16 @@ export type ReadContextBridgeRequest =
       message: string;
     };
 
-export function normalizeReadContextFormat(input: ReadContextInput, requestedFormat: string): string {
-  if (input.read_type === 'blueprint_logic' || input.read_type === 'graph_context') {
-    return requestedFormat;
-  }
-  return 'summary';
-}
+export type ReadContextLogicFormat = 'logic_md' | 'logic_json';
 
-export function isTargetEntryLogicRead(input: ReadContextInput): boolean {
-  const targetType = input.target.target_type;
-  return input.read_type === 'graph_context' ||
-    targetType === 'function' || targetType === 'event' || targetType === 'custom_event';
+export function resolveReadContextLogicFormat(input: ReadContextInput): ReadContextLogicFormat | undefined {
+  if (input.read_type === 'graph_context') {
+    return 'logic_json';
+  }
+  if (input.read_type === 'blueprint_logic') {
+    return input.view?.format ?? 'logic_md';
+  }
+  return undefined;
 }
 
 export function buildBlueprintLogicReadPayload(input: ReadContextInput): Record<string, unknown> {
@@ -73,28 +71,28 @@ export function buildReadContextBridgeRequest(input: ReadContextInput): ReadCont
 
   switch (input.read_type) {
     case 'asset_context':
-      return { ok: true, command: 'get_asset_info', payload, payloadSchema: 'AssetContext.v1', scope: 'asset' };
+      return { ok: true, command: 'get_asset_info', payload, payloadSchema: 'AssetContext.v1' };
     case 'component_context':
-      return { ok: true, command: 'read_components', payload, payloadSchema: 'ComponentContext.v1', scope: 'components' };
+      return { ok: true, command: 'read_components', payload, payloadSchema: 'ComponentContext.v1' };
     case 'variable_context':
       return input.target.target_type === 'event_dispatcher'
-        ? { ok: true, command: 'list_event_dispatchers', payload, payloadSchema: 'EventDispatcherContext.v1', scope: 'event_dispatchers' }
-        : { ok: true, command: 'list_variables', payload, payloadSchema: 'VariableContext.v1', scope: 'variables' };
+        ? { ok: true, command: 'list_event_dispatchers', payload, payloadSchema: 'EventDispatcherContext.v1' }
+        : { ok: true, command: 'list_variables', payload, payloadSchema: 'VariableContext.v1' };
     case 'widget_context':
       if (targetName) {
         payload['widget_name'] = targetName;
-        return { ok: true, command: 'get_widget_properties', payload, payloadSchema: 'WidgetPropertyContext.v1', scope: 'widget' };
+        return { ok: true, command: 'get_widget_properties', payload, payloadSchema: 'WidgetPropertyContext.v1' };
       }
-      return { ok: true, command: 'get_widget_tree', payload, payloadSchema: 'WidgetContext.v1', scope: 'widget_tree' };
+      return { ok: true, command: 'get_widget_tree', payload, payloadSchema: 'WidgetContext.v1' };
     case 'data_table_context':
       if (targetName) {
         payload['row_names'] = [targetName];
       }
-      return { ok: true, command: 'get_datatable_rows', payload, payloadSchema: 'DataTableContext.v1', scope: targetName ? 'data_table_row' : 'data_table' };
+      return { ok: true, command: 'get_datatable_rows', payload, payloadSchema: 'DataTableContext.v1' };
     case 'data_asset_context':
-      return { ok: true, command: 'get_object_properties', payload, payloadSchema: 'DataAssetContext.v1', scope: 'data_asset_properties' };
+      return { ok: true, command: 'get_object_properties', payload, payloadSchema: 'DataAssetContext.v1' };
     case 'object_property_context':
-      return { ok: true, command: 'get_object_properties', payload, payloadSchema: 'ObjectPropertyContext.v1', scope: targetName ? 'object_property' : 'object_properties' };
+      return { ok: true, command: 'get_object_properties', payload, payloadSchema: 'ObjectPropertyContext.v1' };
     default:
       return {
         ok: false,

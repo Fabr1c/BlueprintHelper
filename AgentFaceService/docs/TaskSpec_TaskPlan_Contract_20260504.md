@@ -147,13 +147,12 @@ Agent -> CLI -> ReadSpec -> task-core/Python Read Router -> UE Read Capability C
 
 Editor lifecycle tools should use the `blueprinthelper_*` prefix. `blueprint_undo` and `blueprint_redo` are not part of the default future surface; recovery should move to transaction-level undo/redo or task journal replay instead of global editor undo/redo.
 
-ReadSpec uses common view formats across read domains:
+ReadSpec uses explicit view formats only for logic reads:
 
 | Format | Purpose |
 |---|---|
 | `logic_md` | Default low-token human-readable view. |
 | `logic_json` | Structured view for precise analysis, diff, patch, merge, and debug. |
-| `summary` | Very small overview for large assets or discovery. |
 | `raw_json` | Debug/expert full-fidelity view; not a default Agent workflow. |
 
 `logic_md` and `logic_json` are not Blueprint-only formats. Future material, animation blueprint, widget, data table, and data asset reads should use the same formats where practical, so the tool surface does not expand one command per read shape.
@@ -213,7 +212,7 @@ Initial supported `read_type` values:
 
 Future read domains such as material graphs and animation blueprints must enter through new `read_type` values instead of new tools.
 
-`summary` is for low-token discovery and first-pass asset inspection before choosing a more detailed read. Runtime capability discovery belongs to `blueprinthelper_read_context_capabilities`, not to a ReadSpec view format. Neither path performs writes or returns TaskSpec drafts.
+`view.format=summary` is removed from ReadSpec. Runtime capability discovery belongs to `blueprinthelper_read_context_capabilities`, not to a ReadSpec view format. Non-logic read domains use their `read_type` as the compact view contract and omit `view.format`. Neither path performs writes or returns TaskSpec drafts.
 
 Read result `data.schema` follows the short-name payload rule. `ReadContextPack.v1` does not include a separate `read_id`, and read results do not carry a `diagnostics` array. Payload errors use the outer ToolResult error envelope; read completeness uses `truncated` plus a recommendation to reread a specific block or context slice.
 
@@ -234,11 +233,9 @@ Read result `data.schema` follows the short-name payload rule. `ReadContextPack.
     "schema": "ReadContextPack.v1",
     "read_type": "blueprint_logic",
     "format": "logic_md",
-    "scope": "target",
     "payload": {
       "schema": "LogicMd.v1"
     },
-    "stats": {},
     "truncated": false
   }
 }

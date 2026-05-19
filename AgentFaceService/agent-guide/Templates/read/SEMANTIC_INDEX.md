@@ -16,7 +16,6 @@ not request write permission.
 
 | Intent | Template | Command |
 |---|---|---|
-| Estimate graph size and available entries | `read_context_blueprint_logic_summary_template.json` | `blueprinthelper_read_context` |
 | Read a graph as structured anchors for patches or merges | `read_context_graph_logic_json_template.json` | `blueprinthelper_read_context` |
 | Read graph context without a full logic dump | `read_context_graph_context_template.json` | `blueprinthelper_read_context` |
 | Read a BlueprintHelper-owned block with stable anchors | `read_context_block_logic_json_template.json` | `blueprinthelper_read_context` |
