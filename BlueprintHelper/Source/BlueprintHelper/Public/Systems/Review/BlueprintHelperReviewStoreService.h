@@ -102,5 +102,4 @@ private:
 		const FBlueprintHelperWriteReviewEvidence& Evidence,
 		FBlueprintHelperReviewRecord& Record) const;
 
-	mutable FSimpleMulticastDelegate PendingReviewChangedDelegate;
 };

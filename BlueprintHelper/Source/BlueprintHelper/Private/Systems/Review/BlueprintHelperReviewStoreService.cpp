@@ -2,6 +2,7 @@
 
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
 
+#include "Async/Async.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "HAL/FileManager.h"
@@ -23,6 +24,12 @@
 
 namespace
 {
+	static FSimpleMulticastDelegate& BlueprintHelperReviewPendingReviewChangedDelegate()
+	{
+		static FSimpleMulticastDelegate Delegate;
+		return Delegate;
+	}
+
 	static void NormalizeReviewTargetSemanticSnapshots(
 		const FBlueprintHelperWriteReviewEvidence& Evidence,
 		FBlueprintHelperReviewAtomicTarget& Target)
@@ -988,20 +995,29 @@ TArray<FBlueprintHelperReviewVisibleChange> FBlueprintHelperReviewStoreService::
 
 FDelegateHandle FBlueprintHelperReviewStoreService::AddPendingReviewChangedHandler(const FSimpleDelegate& Handler) const
 {
-	return PendingReviewChangedDelegate.Add(Handler);
+	return BlueprintHelperReviewPendingReviewChangedDelegate().Add(Handler);
 }
 
 void FBlueprintHelperReviewStoreService::RemovePendingReviewChangedHandler(FDelegateHandle Handle) const
 {
 	if (Handle.IsValid())
 	{
-		PendingReviewChangedDelegate.Remove(Handle);
+		BlueprintHelperReviewPendingReviewChangedDelegate().Remove(Handle);
 	}
 }
 
 void FBlueprintHelperReviewStoreService::NotifyPendingReviewChanged() const
 {
-	PendingReviewChangedDelegate.Broadcast();
+	if (IsInGameThread())
+	{
+		BlueprintHelperReviewPendingReviewChangedDelegate().Broadcast();
+		return;
+	}
+
+	AsyncTask(ENamedThreads::GameThread, []()
+	{
+		BlueprintHelperReviewPendingReviewChangedDelegate().Broadcast();
+	});
 }
 
 FBlueprintHelperReviewVisibleChange FBlueprintHelperReviewStoreService::MakeVisibleChange(
