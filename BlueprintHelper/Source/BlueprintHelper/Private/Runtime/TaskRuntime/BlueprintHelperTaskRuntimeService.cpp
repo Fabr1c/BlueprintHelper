@@ -4012,6 +4012,27 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 	bool bDryRun) const
 {
 	const FString RuntimeOperation = bDryRun ? TEXT("preview_task_plan") : TEXT("execute_task_plan");
+	struct FScopedTaskPlanReviewCompletionNotifier
+	{
+		explicit FScopedTaskPlanReviewCompletionNotifier(bool bInEnabled)
+			: bEnabled(bInEnabled)
+		{
+		}
+
+		~FScopedTaskPlanReviewCompletionNotifier()
+		{
+			if (bEnabled)
+			{
+				FBlueprintHelperReviewStoreService ReviewStore;
+				ReviewStore.NotifyPendingReviewChanged();
+			}
+		}
+
+	private:
+		bool bEnabled = false;
+	};
+
+	FScopedTaskPlanReviewCompletionNotifier ReviewCompletionNotifier(!bDryRun);
 	bool bIncludeTiming = false;
 	if (Payload.IsValid())
 	{
