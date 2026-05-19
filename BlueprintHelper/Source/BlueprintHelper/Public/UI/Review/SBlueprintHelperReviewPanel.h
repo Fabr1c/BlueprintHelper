@@ -84,6 +84,7 @@ private:
 	void RefreshVisibleChanges(const TArray<FBlueprintHelperReviewVisibleChange>& SourceChanges);
 	TSharedRef<ITableRow> GenerateChangeTreeRow(FReviewTreeItemPtr Item, const TSharedRef<STableViewBase>& OwnerTable);
 	void GetChangeTreeChildren(FReviewTreeItemPtr Item, TArray<FReviewTreeItemPtr>& OutChildren) const;
+	bool TryResolveGraphNavigationForChange(FReviewChangeItem Item, FString& OutGraphName) const;
 	void OnChangeSelectionChanged(FReviewChangeItem Item, ESelectInfo::Type SelectInfo);
 	void OnChangeTreeSelectionChanged(FReviewTreeItemPtr Item, ESelectInfo::Type SelectInfo);
 	void OnMyBlueprintGraphNavigationRequested(const FString& ChangeId, const FString& GraphName);

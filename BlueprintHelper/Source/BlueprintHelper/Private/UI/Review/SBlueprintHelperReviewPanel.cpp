@@ -41,8 +41,80 @@
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/STableRow.h"
 #include "Widgets/Views/STreeView.h"
+#include "EdGraph/EdGraph.h"
+#include "K2Node_CustomEvent.h"
 
 static FString BlueprintHelperReviewFriendlyActionMessage(const FString& Prefix, const FString& Detail);
+
+static FString BlueprintHelperReviewExtractPrefixedName(const FString& Value, const FString& Prefix)
+{
+	if (Value.StartsWith(Prefix, ESearchCase::IgnoreCase))
+	{
+		return Value.Mid(Prefix.Len());
+	}
+	return FString();
+}
+
+static bool BlueprintHelperReviewGraphExists(const TArray<TObjectPtr<UEdGraph>>& Graphs, const FString& GraphName)
+{
+	if (GraphName.IsEmpty())
+	{
+		return false;
+	}
+	for (UEdGraph* Graph : Graphs)
+	{
+		if (Graph && Graph->GetName().Equals(GraphName, ESearchCase::IgnoreCase))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+static bool BlueprintHelperReviewTryResolveSignatureGraph(
+	UBlueprint* Blueprint,
+	const FString& SignatureName,
+	FString& OutGraphName)
+{
+	if (!Blueprint || SignatureName.IsEmpty())
+	{
+		return false;
+	}
+
+	for (UEdGraph* Graph : Blueprint->FunctionGraphs)
+	{
+		if (Graph && Graph->GetName().Equals(SignatureName, ESearchCase::IgnoreCase))
+		{
+			OutGraphName = Graph->GetName();
+			return true;
+		}
+	}
+	for (UEdGraph* Graph : Blueprint->MacroGraphs)
+	{
+		if (Graph && Graph->GetName().Equals(SignatureName, ESearchCase::IgnoreCase))
+		{
+			OutGraphName = Graph->GetName();
+			return true;
+		}
+	}
+	for (UEdGraph* Graph : Blueprint->UbergraphPages)
+	{
+		if (!Graph)
+		{
+			continue;
+		}
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			const UK2Node_CustomEvent* CustomEvent = Cast<UK2Node_CustomEvent>(Node);
+			if (CustomEvent && CustomEvent->CustomFunctionName.ToString().Equals(SignatureName, ESearchCase::IgnoreCase))
+			{
+				OutGraphName = Graph->GetName();
+				return true;
+			}
+		}
+	}
+	return false;
+}
 
 SBlueprintHelperReviewPanel::~SBlueprintHelperReviewPanel()
 {
@@ -68,11 +140,93 @@ void SBlueprintHelperReviewPanel::RefreshVisibleChanges(
 	const TArray<FBlueprintHelperReviewVisibleChange>& SourceChanges)
 {
 	ChangeItems.Empty();
+	TSet<FString> SeenChangeIds;
 	for (const FBlueprintHelperReviewVisibleChange& Change : SourceChanges)
 	{
+		if (!Change.ChangeId.IsEmpty())
+		{
+			if (SeenChangeIds.Contains(Change.ChangeId))
+			{
+				AddDebugMessage(FString::Printf(
+					TEXT("VisibleChange folded reason=duplicate_change_id change=%s asset=\"%s\""),
+					*Change.ChangeId,
+					*Change.AssetPath));
+				continue;
+			}
+			SeenChangeIds.Add(Change.ChangeId);
+		}
 		ChangeItems.Add(MakeShared<FBlueprintHelperReviewVisibleChange>(Change));
 	}
 	RebuildChangeTreeItems();
+}
+
+bool SBlueprintHelperReviewPanel::TryResolveGraphNavigationForChange(
+	FReviewChangeItem Item,
+	FString& OutGraphName) const
+{
+	OutGraphName.Reset();
+	if (!Item.IsValid() || !ReviewAssetContext.Blueprint.IsValid())
+	{
+		return false;
+	}
+
+	UBlueprint* Blueprint = ReviewAssetContext.Blueprint.Get();
+	TArray<FString> SignatureCandidates;
+	TArray<FString> GraphCandidates;
+	for (const FBlueprintHelperReviewAtomicTarget& Target : Item->AtomicTargets)
+	{
+		if (!Target.TargetKind.Equals(TEXT("signature"), ESearchCase::IgnoreCase))
+		{
+			continue;
+		}
+
+		const FString NameFromTargetKey = BlueprintHelperReviewExtractPrefixedName(Target.TargetKey, TEXT("signature:"));
+		if (!NameFromTargetKey.IsEmpty())
+		{
+			SignatureCandidates.AddUnique(NameFromTargetKey);
+		}
+		if (!Target.DisplayLabel.IsEmpty())
+		{
+			SignatureCandidates.AddUnique(Target.DisplayLabel);
+		}
+		if (!Target.GraphName.IsEmpty())
+		{
+			GraphCandidates.AddUnique(Target.GraphName);
+		}
+	}
+
+	if (SignatureCandidates.Num() == 0)
+	{
+		const FString NameFromChangeKey = BlueprintHelperReviewExtractPrefixedName(Item->LocationKey, TEXT("signature:"));
+		if (!NameFromChangeKey.IsEmpty())
+		{
+			SignatureCandidates.AddUnique(NameFromChangeKey);
+		}
+	}
+	if (SignatureCandidates.Num() == 0 && Item->ChangeKind == EBlueprintHelperReviewChangeKind::Added)
+	{
+		SignatureCandidates.AddUnique(Item->DisplayLabel);
+	}
+
+	for (const FString& SignatureName : SignatureCandidates)
+	{
+		if (BlueprintHelperReviewTryResolveSignatureGraph(Blueprint, SignatureName, OutGraphName))
+		{
+			return true;
+		}
+	}
+
+	for (const FString& GraphName : GraphCandidates)
+	{
+		if (BlueprintHelperReviewGraphExists(Blueprint->FunctionGraphs, GraphName)
+			|| BlueprintHelperReviewGraphExists(Blueprint->MacroGraphs, GraphName)
+			|| BlueprintHelperReviewGraphExists(Blueprint->UbergraphPages, GraphName))
+		{
+			OutGraphName = GraphName;
+			return true;
+		}
+	}
+	return false;
 }
 
 void SBlueprintHelperReviewPanel::OnChangeSelectionChanged(FReviewChangeItem Item, ESelectInfo::Type SelectInfo)
@@ -83,15 +237,27 @@ void SBlueprintHelperReviewPanel::OnChangeSelectionChanged(FReviewChangeItem Ite
 		&& !RequestedGraphNavigationChangeId.IsEmpty()
 		&& Item->ChangeId == RequestedGraphNavigationChangeId;
 
+	SelectedChange = Item;
+	LoadReviewAssetFromSelection();
 	if (!bKeepGraphNavigationRequest)
 	{
 		RequestedGraphNavigationChangeId.Reset();
 		RequestedGraphNavigationGraphName.Reset();
 		bAllowGraphNavigationWithoutGraphReview = false;
-	}
 
-	SelectedChange = Item;
-	LoadReviewAssetFromSelection();
+		FString ResolvedGraphName;
+		if (TryResolveGraphNavigationForChange(Item, ResolvedGraphName))
+		{
+			Item->GraphName = ResolvedGraphName;
+			RequestedGraphNavigationChangeId = Item->ChangeId;
+			RequestedGraphNavigationGraphName = ResolvedGraphName;
+			bAllowGraphNavigationWithoutGraphReview = true;
+			AddDebugMessage(FString::Printf(
+				TEXT("GraphEditor navigation request change=%s graph=\"%s\" reason=selected_signature_navigation"),
+				*Item->ChangeId,
+				*ResolvedGraphName));
+		}
+	}
 	RefreshMainWorkspaceAfterReviewStateChanged();
 	StartFlash();
 	if (Item.IsValid())
@@ -264,14 +430,11 @@ void SBlueprintHelperReviewPanel::BuildChangeTreeItemsFromChangeItems(
 		}
 
 		const FBlueprintHelperReviewVisibleChange& Change = *Leaf->Change;
-		if (!Change.bIsAssetLifecycleRoot)
+		if (!Change.ParentChangeId.IsEmpty())
 		{
 			FReviewTreeItemPtr* ParentRoot = nullptr;
-			if (!Change.ParentChangeId.IsEmpty())
-			{
-				ParentRoot = LifecycleRootItemsByAssetAndChangeId.Find(
-					FString::Printf(TEXT("%s|%s"), *AssetKey, *Change.ParentChangeId));
-			}
+			ParentRoot = LifecycleRootItemsByAssetAndChangeId.Find(
+				FString::Printf(TEXT("%s|%s"), *AssetKey, *Change.ParentChangeId));
 			if (ParentRoot)
 			{
 				if (ParentRoot->IsValid())
@@ -852,7 +1015,7 @@ void SBlueprintHelperReviewPanel::QueueRejectChange(FReviewChangeItem Item, bool
 		{
 			ShowReviewActionNotification(
 				TEXT("reject:missing_change_id"),
-				TEXT("婵犮垺鍎肩划鍓ф喆閿曞倹鏅悘鐐靛亾閿熴儲绻涙径瀣閻庢艾妫涚槐鎺戔攽閹惧墎鐛ョ紓鍌氬€搁幖顐︽儍?Review id"),
+				TEXT("Reject failed: missing Review id."),
 				EReviewActionNotificationState::Fail,
 				true,
 				false);
@@ -867,7 +1030,7 @@ void SBlueprintHelperReviewPanel::QueueRejectChange(FReviewChangeItem Item, bool
 			ShowReviewActionNotification(
 				TEXT("reject:") + ChangeId,
 				FString::Printf(
-					TEXT("婵犮垼娉涚€氼噣骞冩繝鍐枖妞ゆ挶鍔庣粈澶屸偓鐟版啞瑜板啫锕㈤鍫濈闁圭儤姊婚崡婊堟⒒閸愵亜鏋庨柛顭戜邯閺?s"),
+					TEXT("Reject already running: %s"),
 					*BuildReviewActionNotificationLabel(Item)),
 				EReviewActionNotificationState::Pending,
 				false,
@@ -891,7 +1054,7 @@ void SBlueprintHelperReviewPanel::QueueRejectChange(FReviewChangeItem Item, bool
 		ShowReviewActionNotification(
 			TEXT("reject:") + ChangeId,
 			FString::Printf(
-				TEXT("婵犮垼娉涚€氼噣骞冩繝鍐枖妞ゆ挶鍔庣粈澶嬫叏濠垫挾鍒版繝鈧鍫濈闁圭儤姊婚崡婊堟煥?s"),
+				TEXT("Reject queued: %s"),
 				*BuildReviewActionNotificationLabel(Item)),
 			EReviewActionNotificationState::Pending,
 			false,
@@ -920,7 +1083,7 @@ EActiveTimerReturnType SBlueprintHelperReviewPanel::TickAsyncRejectPrepare(doubl
 			{
 				ShowReviewActionNotification(
 					TEXT("reject:") + ChangeId,
-					FString::Printf(TEXT("婵犮垺鍎肩划鍓ф喆閿曞倹鏅悘鐐靛亾閿熴儲绻涙径瀣閻庢艾妫涚槐鎺戔攽閹惧墎鐛ラ梺褰掓涧瑜扮偟绮径鎰?Review 婵?(%s)"), *ChangeId),
+					FString::Printf(TEXT("Reject failed: Review change no longer exists (%s)."), *ChangeId),
 					EReviewActionNotificationState::Fail,
 					true,
 					false);
@@ -982,7 +1145,7 @@ void SBlueprintHelperReviewPanel::HandlePreparedRejectReady(
 			ShowReviewActionNotification(
 				TEXT("reject:") + ChangeId,
 				FString::Printf(
-					TEXT("婵犮垼娉涚€氼噣骞冩繝鍐枖妞ゆ挶鍔庣粈澶嬫叏濠垫挾鍒版繝鈧鍛劅闁哄啫鍊归弳蹇涙煙闁垮绗х紒顔惧厴閺?s"),
+					TEXT("Applying reject: %s"),
 					*BuildReviewActionNotificationLabel(Item)),
 				EReviewActionNotificationState::Pending,
 				false,
@@ -1011,7 +1174,7 @@ void SBlueprintHelperReviewPanel::ExecutePreparedRejectMutation(const FString& C
 		{
 			ShowReviewActionNotification(
 				TEXT("reject:") + ChangeId,
-				FString::Printf(TEXT("婵犮垺鍎肩划鍓ф喆閿曞倹鏅悘鐐靛亾閿熴儲绻涙径瀣閻庢艾妫涚槐鎺戔攽閹惧墎鐛ラ梺褰掓涧瑜扮偟绮径鎰?Review 婵?(%s)"), *ChangeId),
+				FString::Printf(TEXT("Reject failed: Review change no longer exists (%s)."), *ChangeId),
 				EReviewActionNotificationState::Fail,
 				true,
 				false);
