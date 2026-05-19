@@ -87,11 +87,6 @@ FString FBlueprintHelperReviewReadableTextUtils::StripEncodedPackagePrefix(FStri
 
 bool FBlueprintHelperReviewReadableTextUtils::IsAssetFactoryChange(const FBlueprintHelperReviewVisibleChange& Change)
 {
-	if (Change.bIsAssetLifecycleRoot)
-	{
-		return true;
-	}
-
 	return Change.AtomicTargets.ContainsByPredicate(
 		[](const FBlueprintHelperReviewAtomicTarget& Target)
 		{

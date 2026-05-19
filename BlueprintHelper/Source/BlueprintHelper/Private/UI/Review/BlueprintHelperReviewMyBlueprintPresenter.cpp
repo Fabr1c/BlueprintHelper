@@ -294,6 +294,22 @@ TSharedRef<SWidget> FBlueprintHelperReviewMyBlueprintPresenter::BuildContent(
 		return Row;
 	};
 
+	auto MakeReviewSearchText = [](ERowKind Kind, const FString& Name)
+	{
+		if (Kind == ERowKind::Function
+			|| Kind == ERowKind::Macro
+			|| Kind == ERowKind::Event
+			|| Kind == ERowKind::Dispatcher)
+		{
+			return FString::Printf(TEXT("signature:%s"), *Name);
+		}
+		if (Kind == ERowKind::Variable)
+		{
+			return FString::Printf(TEXT("blueprint_variable:%s"), *Name);
+		}
+		return Name;
+	};
+
 	auto AddSection = [&State, &MakeRow](const TCHAR* Label)
 	{
 		TSharedRef<FRowItem> Section = MakeRow(Label, FString(), ERowKind::Section);
@@ -330,7 +346,7 @@ TSharedRef<SWidget> FBlueprintHelperReviewMyBlueprintPresenter::BuildContent(
 			|| Kind == ERowKind::Event;
 	};
 
-	auto AddGraphRows = [&AddChildRow](
+	auto AddGraphRows = [&AddChildRow, &MakeReviewSearchText](
 		const TSharedRef<FRowItem>& Section,
 		const TArray<TObjectPtr<UEdGraph>>& Graphs,
 		ERowKind Kind)
@@ -343,7 +359,7 @@ TSharedRef<SWidget> FBlueprintHelperReviewMyBlueprintPresenter::BuildContent(
 				continue;
 			}
 			const FString GraphName = Graph->GetName();
-			TSharedRef<FRowItem> Row = AddChildRow(Section, GraphName, GraphName, Kind);
+			TSharedRef<FRowItem> Row = AddChildRow(Section, GraphName, MakeReviewSearchText(Kind, GraphName), Kind);
 			Row->NavigateGraphName = GraphName;
 			Rows.Add(Row);
 		}
@@ -372,7 +388,7 @@ TSharedRef<SWidget> FBlueprintHelperReviewMyBlueprintPresenter::BuildContent(
 			const FString EventName = CustomEvent->CustomFunctionName.ToString();
 			if (!EventName.IsEmpty())
 			{
-				TSharedRef<FRowItem> EventRow = MakeRow(EventName, EventName, ERowKind::Event);
+				TSharedRef<FRowItem> EventRow = MakeRow(EventName, MakeReviewSearchText(ERowKind::Event, EventName), ERowKind::Event);
 				EventRow->NavigateGraphName = GraphName;
 				GraphRow->Children.Add(EventRow);
 			}
@@ -396,11 +412,11 @@ TSharedRef<SWidget> FBlueprintHelperReviewMyBlueprintPresenter::BuildContent(
 		const bool bIsDispatcher = Variable.VarType.PinCategory == UEdGraphSchema_K2::PC_MCDelegate;
 		if (bIsDispatcher)
 		{
-			AddVariableChildRow(DispatcherSection, VariableName, VariableName, ERowKind::Dispatcher, Variable.VarType);
+			AddVariableChildRow(DispatcherSection, VariableName, MakeReviewSearchText(ERowKind::Dispatcher, VariableName), ERowKind::Dispatcher, Variable.VarType);
 		}
 		else
 		{
-			AddVariableChildRow(VariableSection, VariableName, VariableName, ERowKind::Variable, Variable.VarType);
+			AddVariableChildRow(VariableSection, VariableName, MakeReviewSearchText(ERowKind::Variable, VariableName), ERowKind::Variable, Variable.VarType);
 		}
 	}
 
