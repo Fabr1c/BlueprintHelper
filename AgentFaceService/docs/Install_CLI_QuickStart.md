@@ -138,6 +138,12 @@ Editor connection verification:
 bh blueprint_get_runtime_profile --json "{}" --select status,summary
 ```
 
+ReadContext capability discovery is local to task-core and does not touch UE assets:
+
+```powershell
+'{}' | bh blueprinthelper_read_context_capabilities --stdin --select status,artifacts.full_result
+```
+
 Expected bridge facts:
 
 ```json

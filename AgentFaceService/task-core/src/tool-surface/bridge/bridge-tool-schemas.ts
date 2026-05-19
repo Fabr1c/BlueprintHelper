@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ReadFunctionChainContextInputSchema } from './function-chain-context-schema.js';
+import { ReadContextCapabilitiesInputSchema } from './read-context/read-context-capabilities.js';
 import { ReadContextInputSchema } from './read-context/read-context-schemas.js';
 
 const DebugCaseInputSchema = z.object({
@@ -32,6 +33,7 @@ const CloseEditorInputSchema = z.object({
 
 export const bridgeToolSchemas: Record<string, z.ZodTypeAny> = {
   blueprinthelper_read_context: ReadContextInputSchema,
+  blueprinthelper_read_context_capabilities: ReadContextCapabilitiesInputSchema,
   blueprinthelper_get_debug_case: DebugCaseInputSchema,
   blueprinthelper_list_debug_cases: DebugCaseListInputSchema,
   blueprinthelper_export_debug_bundle: DebugCaseInputSchema,

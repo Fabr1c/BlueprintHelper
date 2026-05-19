@@ -15,9 +15,6 @@ export type ReadContextBridgeRequest =
     };
 
 export function normalizeReadContextFormat(input: ReadContextInput, requestedFormat: string): string {
-  if (requestedFormat === 'schema') {
-    return 'schema';
-  }
   if (input.read_type === 'blueprint_logic' || input.read_type === 'graph_context') {
     return requestedFormat;
   }
@@ -105,68 +102,4 @@ export function buildReadContextBridgeRequest(input: ReadContextInput): ReadCont
         message: `read_context read_type is not bridge-backed: ${input.read_type}.`,
       };
   }
-}
-
-export function buildReadContextSchemaPayload(): Record<string, unknown> {
-  return {
-    schema: 'ReadContextSchema.v1',
-    read_types: [
-      {
-        read_type: 'asset_context',
-        target_types: ['asset', 'blueprint', 'data_table', 'data_asset'],
-        bridge_command: 'get_asset_info',
-        payload_schema: 'AssetContext.v1',
-      },
-      {
-        read_type: 'blueprint_logic',
-        target_types: ['blueprint', 'graph', 'function', 'event', 'custom_event', 'block'],
-        formats: ['logic_md', 'logic_json', 'summary', 'schema'],
-        bridge_commands: ['read_blueprint_logic_md', 'read_blueprint_logic_json'],
-        payload_schema: 'BlueprintLogicReadSchema.v1',
-      },
-      {
-        read_type: 'graph_context',
-        target_types: ['blueprint', 'graph', 'function', 'event', 'custom_event', 'block'],
-        formats: ['logic_json', 'summary', 'schema'],
-        bridge_command: 'read_blueprint_logic_json',
-        payload_schema: 'GraphContext.v1',
-      },
-      {
-        read_type: 'component_context',
-        target_types: ['blueprint', 'component'],
-        bridge_command: 'read_components',
-        payload_schema: 'ComponentContext.v1',
-      },
-      {
-        read_type: 'variable_context',
-        target_types: ['blueprint', 'member_variable', 'event_dispatcher'],
-        bridge_commands: ['list_variables', 'list_event_dispatchers'],
-        payload_schema: 'VariableContext.v1',
-      },
-      {
-        read_type: 'widget_context',
-        target_types: ['blueprint', 'widget'],
-        bridge_commands: ['get_widget_tree', 'get_widget_properties'],
-        payload_schema: 'WidgetContext.v1',
-      },
-      {
-        read_type: 'data_table_context',
-        target_types: ['data_table', 'data_table_row', 'asset'],
-        bridge_command: 'get_datatable_rows',
-        payload_schema: 'DataTableContext.v1',
-      },
-      {
-        read_type: 'data_asset_context',
-        target_types: ['data_asset', 'asset', 'object_property', 'property'],
-        bridge_command: 'get_object_properties',
-        payload_schema: 'DataAssetContext.v1',
-      },
-      {
-        read_type: 'object_property_context',
-        target_types: ['asset', 'data_asset', 'object_property', 'property'],
-        bridge_command: 'get_object_properties',
-        payload_schema: 'ObjectPropertyContext.v1',
-      },
-    ],
-  };
 }

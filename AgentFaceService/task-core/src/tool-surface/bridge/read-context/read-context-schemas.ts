@@ -38,7 +38,7 @@ export const ReadContextInputSchema = z.object({
     block_id: z.string().optional(),
   }),
   view: z.object({
-    format: z.enum(['logic_md', 'logic_json', 'summary', 'schema']).optional().default('logic_md'),
+    format: z.enum(['logic_md', 'logic_json', 'summary']).optional().default('logic_md'),
     max_items: z.number().int().positive().optional(),
     detail: z.enum(['brief', 'normal', 'full', 'debug']).optional(),
   }).optional().default({ format: 'logic_md' }),

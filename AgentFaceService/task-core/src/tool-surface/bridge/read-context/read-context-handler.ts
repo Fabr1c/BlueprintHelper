@@ -4,7 +4,6 @@ import { extractBridgePayload, isRecord, normalizeBridgeToolResult } from '../br
 import {
   buildBlueprintLogicReadPayload,
   buildReadContextBridgeRequest,
-  buildReadContextSchemaPayload,
   inferBlueprintLogicScope,
   isTargetEntryLogicRead,
   normalizeReadContextFormat,
@@ -20,16 +19,6 @@ export async function executeReadContext(
   const input = ReadContextInputSchema.parse(rawInput);
   const requestedFormat = input.view?.format ?? 'logic_md';
   const format = normalizeReadContextFormat(input, requestedFormat);
-  if (format === 'schema') {
-    return successRead('read_context', buildReadContextTarget(input), {
-      schema: 'ReadContextPack.v1',
-      read_type: input.read_type,
-      format,
-      payload: buildReadContextSchemaPayload(),
-      stats: {},
-      truncated: false,
-    }) as ToolResultBase;
-  }
 
   if (input.read_type !== 'blueprint_logic' && input.read_type !== 'graph_context') {
     return executeBridgeBackedReadContext(input, context, format);

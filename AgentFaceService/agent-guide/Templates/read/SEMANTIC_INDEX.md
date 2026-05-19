@@ -10,7 +10,7 @@ not request write permission.
 |---|---|---|
 | Build a compact task-context pack for a feature request | `blueprinthelper_read_task_context_template.json` | `blueprinthelper_read_task_context` |
 | Get a compact asset summary before deeper reads | `read_context_asset_summary_template.json` | `blueprinthelper_read_context` |
-| Discover supported ReadSpec shape | `read_context_schema_template.json` | `blueprinthelper_read_context` |
+| Discover supported ReadContext capability matrix | `blueprinthelper_read_context_capabilities_template.json` | `blueprinthelper_read_context_capabilities` |
 
 ## Blueprint Logic Reads
 
@@ -50,4 +50,3 @@ not request write permission.
 | Read DataAsset context | `read_context_data_asset_template.json` | `blueprinthelper_read_context` |
 | Read DataTable metadata and rows | `read_context_data_table_template.json` | `blueprinthelper_read_context` |
 | Read one DataTable row | `read_context_data_table_row_template.json` | `blueprinthelper_read_context` |
-

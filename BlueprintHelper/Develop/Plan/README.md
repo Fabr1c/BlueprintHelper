@@ -23,6 +23,7 @@ This folder contains active or intentionally retained planning documents. Histor
 - `BlueprintHelper_ReferenceContext_FiB_Design_20260517_CN.md`
 - `BlueprintHelper_MCP_Developer_Exec_Command_20260517_CN.md`
 - `BlueprintHelper_CLI_Agent_WaitHint_Architecture_20260516_CN.md`
+- `BlueprintHelper_ReadContext_CapabilityDiscovery_20260519_CN.md`
 - `BlueprintHelper_GraphLayout_System_Design_20260516_CN.md`
 - `BlueprintHelper_FourLayerArchitecture_CohesionCoupling_Report_20260516_CN.md`
 - `BlueprintHelper_P0_TaskRuntime_ArchitectureOptimization_20260516_CN.md`
