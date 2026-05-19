@@ -15,6 +15,12 @@ export type ReadContextBridgeRequest =
 
 export type ReadContextLogicFormat = 'logic_flow' | 'logic_md' | 'logic_json';
 
+export type ReadContextLogicBridgeRoute = {
+  format: ReadContextLogicFormat;
+  command: 'read_blueprint_logic_md' | 'read_blueprint_logic_json';
+  payloadSchema: 'LogicFlow.v1' | 'LogicMd.v1' | 'LogicJson.v1';
+};
+
 export function resolveReadContextLogicFormat(input: ReadContextInput): ReadContextLogicFormat | undefined {
   if (input.read_type === 'graph_context') {
     return 'logic_json';
@@ -23,6 +29,14 @@ export function resolveReadContextLogicFormat(input: ReadContextInput): ReadCont
     return input.view?.format ?? 'logic_md';
   }
   return undefined;
+}
+
+export function buildReadContextLogicBridgeRoute(format: ReadContextLogicFormat): ReadContextLogicBridgeRoute {
+  return {
+    format,
+    command: resolveReadContextBridgeCommand(format),
+    payloadSchema: resolveReadContextPayloadSchema(format),
+  };
 }
 
 export function resolveReadContextBridgeCommand(

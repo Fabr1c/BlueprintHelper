@@ -28,20 +28,22 @@ v0.5.0 的读链路计时目标不是把 UE 读操作并发化，而是先把 CL
 2. CLI 进入通用工具分支：`cli.invoke_tool` 包住整个 `read_context` 调用。
 3. `executeReadContext()` 解析输入 schema：`read_context.parse_input`。
 4. 根据 `read_type` / `view.format` 解析目标读格式：`read_context.resolve_format`。
-5. 对非 logic 读构建 bridge request：`read_context.resolve_bridge_request`。
+5. 构建读路由 / bridge request：`read_context.resolve_bridge_request`。logic 读在这里统一得到 `format`、UE command 和 payload schema；非 logic 读得到对应 bridge command 与 payload schema。
 6. 构建 UE bridge payload，并在 develop 模式附加 `include_timing=true`：`read_context.build_bridge_payload`。
 7. 发送 bridge 命令并等待 UE 返回：`read_context.bridge.<command>`。
 8. develop 模式把 UE 回传的 timing 追加到 `data.timing.nested[]`，命名为 `ue.<command>`。
 9. 解析 Bridge payload：`read_context.extract_bridge_payload`。
-10. 移除诊断字段 `timing`，并按 read type 做 payload compact/filter：`read_context.post_process_payload`。
-11. 包装 `ReadContextPack.v1` ToolResult：`read_context.result_wrap`。
-12. CLI 返回前写入最终 `data.timing`：`cli.result_return`。
+10. 移除诊断字段 `timing`：`read_context.strip_bridge_timing`。
+11. 按 read type 做 payload compact/filter：普通 payload 使用 `read_context.post_process_payload`；`LogicFlow.v1` 使用 `read_context.logic_flow_build_payload` 单独记录 structured LogicJson 到 LogicFlow 的转换成本。
+12. 包装 `ReadContextPack.v1` ToolResult：`read_context.result_wrap`。
+13. CLI 返回前写入最终 `data.timing`：`cli.result_return`。
 
 ### read_type 到 UE 命令映射
 
 | read_type | UE bridge command | UE 服务边界 | 主要成本来源 |
 | --- | --- | --- | --- |
 | `asset_context` | `get_asset_info` | AssetBrowse service | AssetRegistry / asset metadata 查询 |
+| `blueprint_logic` + `logic_flow` | `read_blueprint_logic_json` | LogicJsonReadService + AgentFace LogicFlow builder | Blueprint/Graph 快照、结构化 JSON 返回、AgentFace `LogicFlow.v1` 压缩转换 |
 | `blueprint_logic` + `logic_md` | `read_blueprint_logic_md` | LogicMdReadService | Blueprint/Graph 快照、逻辑分组、Markdown 格式化 |
 | `blueprint_logic` + `logic_json` | `read_blueprint_logic_json` | LogicJsonReadService | Blueprint/Graph 快照、逻辑分组、JSON 规整 |
 | `graph_context` | `read_blueprint_logic_json` | LogicJsonReadService | 单图目标解析、Graph 快照、JSON 规整 |
@@ -147,6 +149,29 @@ Editor 手动重启后补测汇总：
 
 补测结论：UE nested timing 已可返回，读工具现在具备与写工具同粒度的阶段表。`02_blueprint_logic_json.json` 的冷样本中 UE route 本身占 1668.266ms，说明 full blueprint logic JSON 的首次读取/构造仍是 R1 的关键样本；但 warm 重复补测中 UE route 约 0.4ms，Bridge round-trip 仍可能出现 1.8-1.9s，说明 `bridge - UE route` 的 gap 还需要继续拆分为 bridge queue、socket transport、UE response serialization、AgentFace JSON parse / receive 等阶段，不能把所有耗时都归因于 UObject 读取。
 
+### MCP 重启后 logic_flow 补测
+
+补测方式：用户关闭 Editor 后，使用 `mcp__blueprint_helper__blueprint_open_editor` 启动 `D:\UEProjects\Template\Template.uproject`，MCP 返回 `EDITOR_BRIDGE_AVAILABLE` 后，通过 CLI 顺序执行 `BP_ThirdPersonCharacter_20260519` 下 11 个 ReadSpec。第一次用 CLI `open_editor` 重启后 Editor 进程在 Bridge 可用后退出，11 个读请求均为 `bridge_unavailable`；本次有效数据以 MCP lifecycle 启动后的结果为准。
+
+补测产物目录：
+`D:\UEProjects\Template\Plugins\BlueprintHelper\.tmp\read_timing_20260519_mcp_reopen_logicflow`
+
+| Spec | total_ms | bridge stage | bridge_ms | strip_timing_ms | post_process_ms | logic_flow_build_ms | nested UE route_ms |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| `01_asset_context.json` | 177.187 | `read_context.bridge.get_asset_info` | 173.760 | 0.025 | 0.096 |  | 0.099 |
+| `02_blueprint_logic_json.json` | 2646.566 | `read_context.bridge.read_blueprint_logic_json` | 2643.227 | 0.022 | 0.101 |  | 809.269 |
+| `03_blueprint_logic_md.json` | 1028.406 | `read_context.bridge.read_blueprint_logic_md` | 1024.825 | 0.021 | 0.470 |  | 0.315 |
+| `04_eventgraph_logic_json.json` | 2130.899 | `read_context.bridge.read_blueprint_logic_json` | 2127.526 | 0.022 | 0.101 |  | 0.363 |
+| `05_eventgraph_logic_md.json` | 1905.216 | `read_context.bridge.read_blueprint_logic_md` | 1901.686 | 0.022 | 0.434 |  | 0.353 |
+| `06_eventgraph_context_json.json` | 1906.068 | `read_context.bridge.read_blueprint_logic_json` | 1902.587 | 0.026 | 0.124 |  | 0.435 |
+| `07_components_context.json` | 1905.417 | `read_context.bridge.read_components` | 1902.098 | 0.022 | 0.063 |  | 0.049 |
+| `08_variables_context.json` | 1904.121 | `read_context.bridge.list_variables` | 1900.989 | 0.024 | 0.065 |  | 0.052 |
+| `09_event_dispatchers_context.json` | 1905.308 | `read_context.bridge.list_event_dispatchers` | 1902.168 | 0.026 | 0.067 |  | 0.018 |
+| `10_object_properties_context.json` | 1906.668 | `read_context.bridge.get_object_properties` | 1903.432 | 0.022 | 0.064 |  | 0.080 |
+| `11_blueprint_logic_flow.json` | 1906.022 | `read_context.bridge.read_blueprint_logic_json` | 1901.729 | 0.027 |  | 1.014 | 0.378 |
+
+logic_flow 补测结论：新增 `read_context.strip_bridge_timing` 能证明 UE timing 诊断字段已在 Agent-facing payload 前被剥离；`read_context.logic_flow_build_payload=1.014ms` 说明当前 LogicFlow 转换成本很低，不是读链路主瓶颈。`11_blueprint_logic_flow.json` 的 UE `route_execute=0.378ms`，但 Bridge 往返约 1901.729ms，仍指向 Bridge transport / Editor 端排队 / JSON response 传输解析 gap，需要后续继续拆分。
+
 ### 读工具测速典型案例
 
 测速命令模板：
@@ -204,6 +229,7 @@ node AgentFaceService/cli/build/cli/index.js blueprinthelper_read_context --file
 | --- | --- |
 | `01_asset_context.json` | 已返回 AgentFace 分段：`read_context.parse_input`、`read_context.resolve_bridge_request`、`read_context.bridge.get_asset_info`、`read_context.extract_bridge_payload`、`read_context.post_process_payload`、`read_context.result_wrap`。 |
 | `02_blueprint_logic_json.json` | 已返回 AgentFace 分段：`read_context.parse_input`、`read_context.resolve_format`、`read_context.build_bridge_payload`、`read_context.bridge.read_blueprint_logic_json`、`read_context.extract_bridge_payload`、`read_context.post_process_payload`、`read_context.result_wrap`。 |
+| `11_blueprint_logic_flow.json` | MCP 重启后已返回 AgentFace 分段：`read_context.resolve_bridge_request`、`read_context.strip_bridge_timing`、`read_context.logic_flow_build_payload`；LogicFlow 构建耗时 1.014ms，UE `route_execute` 0.378ms。 |
 
 Editor 手动重启后已返回 UE nested read timing，`ue_bridge_router.route_execute` 可用于拆分 UE route 成本和 Bridge round-trip gap。
 
@@ -217,9 +243,9 @@ Editor 手动重启后已返回 UE nested read timing，`ue_bridge_router.route_
 
 计划：
 - 保持 CLI `--develop` 作为唯一 CLI 诊断开关，普通调用不启动 timing、不返回 `data.timing`。
-- `read_context` 已记录 AgentFace 编排阶段：parse、format resolve、route resolve、payload build、Bridge round-trip、payload extract、post-process、result wrap。
+- `read_context` 已记录 AgentFace 编排阶段：parse、format resolve、route resolve、payload build、Bridge round-trip、payload extract、strip bridge timing、post-process / logic_flow build、result wrap。
 - UE Bridge read router 使用 `include_timing=true` 返回 `ue_bridge_router.route_execute`，用于拆分 Bridge 往返与 UE route 内部耗时。
-- 已在 Editor 手动重启后重新跑读 Spec，并补齐 `data.timing.nested[].source=ue_bridge_router` 的实测数据。
+- 已在 Editor 手动重启后重新跑读 Spec，并补齐 `data.timing.nested[].source=ue_bridge_router` 的实测数据；新增 `logic_flow` 后已用 MCP lifecycle 重启 Editor 并补测 `11_blueprint_logic_flow.json`。
 
 验收：
 - 所有 read_context develop 结果都包含 AgentFace 分段 timing。
@@ -553,7 +579,7 @@ v0.5.0 实施前需要补齐分阶段耗时记录：
 - compile/save post operation。
 - review record/archive write。
 - UE `PurePrepare` / `MainThreadCommit` / `PostIO` 三层耗时。
-- read_context parse/route/payload/post-process/result wrap。
+- read_context parse/route/payload/strip bridge timing/post-process 或 logic_flow build/result wrap。
 - UE read route `route_execute`。
 - 长读工具 `snapshot_read` / `format_output`。
 - 读 payload size 和输出格式化耗时。
@@ -571,5 +597,6 @@ v0.5.0 实施前需要补齐分阶段耗时记录：
 - 状态：P0-0 develop 诊断计时流程已开始实现，P0-1 之后仍为 v0.5.0 优化计划。
 - 读工具优化计划已纳入 v0.5.0：R0 先完成 timing 证据，R1/R2 优先做 GameThread 快照、后台格式化和 DTO/formatter 复用。
 - 读工具 R0 已完成一次 Editor 重启后补测：AgentFace read_context 分段和 UE `ue_bridge_router.route_execute` nested timing 均已返回；下一步需要继续拆 `bridge - UE route` gap。
+- 用户关闭 Editor 后已改用 MCP lifecycle 重启并补测 11 个 ReadSpec，包含新增 `11_blueprint_logic_flow.json`；结果显示 `logic_flow_build_payload=1.014ms`，主要瓶颈仍在 Bridge 往返 gap。
 - 普通路径保持无计时采集、无 `data.timing` 返回；CLI 诊断路径通过 `--develop` 对所有 CLI 工具显式开启，TaskSpec MCP/tool 诊断路径通过 `develop: true` 显式开启。
 - 后续实现必须保持高内聚、低耦合，避免把性能分支堆进单个 service 或 UI 入口。

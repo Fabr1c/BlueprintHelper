@@ -23,15 +23,37 @@ Implemented:
 5. ReadContext capabilities now advertise formats in compression order: `logic_flow`, `logic_md`, `logic_json`.
 6. Agent-facing docs, CLI reference, read templates, semantic index, and BP_ThirdPersonCharacter ReadSpecs now describe the three-tier read strategy.
 7. `logic_flow` tests verify that raw LogicJson anchors and UE identity fields are not exposed in the compact payload.
+8. Develop timing now records `read_context.resolve_bridge_request`, `read_context.strip_bridge_timing`, and `read_context.logic_flow_build_payload` for `logic_flow`, so JSON-to-LogicFlow conversion is visible separately from Bridge round-trip and generic post-process work.
 
 Verification:
 
 1. `AgentFaceService/task-core`: `node ..\scripts\run-tsc.mjs` passed.
 2. `AgentFaceService/task-core`: `node scripts\run-node-tests.mjs` passed, 120/120.
 3. `AgentFaceService/cli`: `node ..\scripts\run-tsc.mjs` passed.
-4. `AgentFaceService/cli`: `node scripts\run-node-tests.mjs` passed, 38/38.
+4. `AgentFaceService/cli`: `node scripts\run-node-tests.mjs` passed, 39/39.
 5. New JSON templates and ReadSpec parsed successfully.
 6. `git diff --check` passed; only existing CRLF normalization warnings were reported.
+7. MCP lifecycle retest passed after reopening Editor with `mcp__blueprint_helper__blueprint_open_editor`: all 11 `BP_ThirdPersonCharacter_20260519` ReadSpecs completed with `--develop`, including `11_blueprint_logic_flow.json`.
+
+Latest MCP retest artifact:
+
+`D:\UEProjects\Template\Plugins\BlueprintHelper\.tmp\read_timing_20260519_mcp_reopen_logicflow`
+
+Representative `logic_flow` stages from `11_blueprint_logic_flow.json`:
+
+| Stage | duration_ms |
+| --- | ---: |
+| `cli.parse_args` | 0.449 |
+| `read_context.parse_input` | 0.113 |
+| `read_context.resolve_format` | 0.025 |
+| `read_context.resolve_bridge_request` | 0.037 |
+| `read_context.build_bridge_payload` | 0.066 |
+| `read_context.bridge.read_blueprint_logic_json` | 1901.729 |
+| `read_context.extract_bridge_payload` | 0.096 |
+| `read_context.strip_bridge_timing` | 0.027 |
+| `read_context.logic_flow_build_payload` | 1.014 |
+| `read_context.result_wrap` | 0.293 |
+| nested `ue.read_blueprint_logic_json.route_execute` | 0.378 |
 
 UE compile was not run because this implementation only touched TypeScript, Markdown, and JSON template files.
 

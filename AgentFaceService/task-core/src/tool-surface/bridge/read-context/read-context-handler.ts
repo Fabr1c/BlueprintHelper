@@ -8,14 +8,16 @@ import {
 import type { BlueprintHelperToolContext } from '../../types.js';
 import { extractBridgePayload, normalizeBridgeToolResult } from '../bridge-tool-result-utils.js';
 import {
+  buildReadContextLogicBridgeRoute,
   buildBlueprintLogicReadPayload,
   buildReadContextBridgeRequest,
-  resolveReadContextBridgeCommand,
   resolveReadContextLogicFormat,
-  resolveReadContextPayloadSchema,
 } from './read-context-route-builder.js';
 import { buildReadContextTarget } from './read-context-target.js';
-import { postProcessReadContextPayload } from './read-context-payload.js';
+import {
+  postProcessReadContextPayload,
+  resolveReadContextPostProcessStage,
+} from './read-context-payload.js';
 import { ReadContextInputSchema, type ReadContextInput } from './read-context-schemas.js';
 
 export async function executeReadContext(
@@ -35,14 +37,16 @@ export async function executeReadContext(
   }
 
   const bridgeFormat = format ?? 'logic_md';
-  const command = resolveReadContextBridgeCommand(bridgeFormat);
+  const route = measureTaskTiming(timing, 'read_context.resolve_bridge_request', () => (
+    buildReadContextLogicBridgeRoute(bridgeFormat)
+  ));
   const payload = measureTaskTiming(timing, 'read_context.build_bridge_payload', () => (
     withReadTimingPayload(buildBlueprintLogicReadPayload(input), context)
   ));
-  const response = await measureTaskTimingAsync(timing, `read_context.bridge.${command}`, () => (
-    context.bridge.sendCommand(command, payload)
+  const response = await measureTaskTimingAsync(timing, `read_context.bridge.${route.command}`, () => (
+    context.bridge.sendCommand(route.command, payload)
   ));
-  addNestedTaskTiming(timing, `ue.${command}`, extractBridgeTiming(response.result));
+  addNestedTaskTiming(timing, `ue.${route.command}`, extractBridgeTiming(response.result));
   if (!response.success) {
     return normalizeBridgeToolResult('read_context', response);
   }
@@ -59,11 +63,7 @@ export async function executeReadContext(
       rollback_result: 'not_needed',
     });
   }
-  const readPayload = measureTaskTiming(timing, 'read_context.post_process_payload', () => postProcessReadContextPayload(
-    input,
-    resolveReadContextPayloadSchema(bridgeFormat),
-    stripTimingPayload(payloadResult.payload),
-  ));
+  const readPayload = buildReadPayloadWithTiming(input, route.payloadSchema, payloadResult.payload, context);
   return measureTaskTiming(timing, 'read_context.result_wrap', () => successRead('read_context', buildReadContextTarget(input), {
     schema: 'ReadContextPack.v1',
     payload: readPayload,
@@ -120,9 +120,7 @@ async function executeBridgeBackedReadContext(
     }, buildReadContextTarget(input) as never);
   }
 
-  const readPayload = measureTaskTiming(timing, 'read_context.post_process_payload', () => (
-    postProcessReadContextPayload(input, request.payloadSchema, stripTimingPayload(payloadResult.payload))
-  ));
+  const readPayload = buildReadPayloadWithTiming(input, request.payloadSchema, payloadResult.payload, context);
   return measureTaskTiming(timing, 'read_context.result_wrap', () => successRead('read_context', buildReadContextTarget(input), {
     schema: 'ReadContextPack.v1',
     payload: readPayload,
@@ -135,6 +133,21 @@ function withReadTimingPayload(
   context: BlueprintHelperToolContext,
 ): Record<string, unknown> {
   return context.timing ? { ...payload, include_timing: true } : payload;
+}
+
+function buildReadPayloadWithTiming(
+  input: ReadContextInput,
+  payloadSchema: string,
+  payload: Record<string, unknown>,
+  context: BlueprintHelperToolContext,
+): Record<string, unknown> {
+  const timing = context.timing;
+  const strippedPayload = measureTaskTiming(timing, 'read_context.strip_bridge_timing', () => (
+    stripTimingPayload(payload)
+  ));
+  return measureTaskTiming(timing, resolveReadContextPostProcessStage(payloadSchema), () => (
+    postProcessReadContextPayload(input, payloadSchema, strippedPayload)
+  ));
 }
 
 function stripTimingPayload(payload: Record<string, unknown>): Record<string, unknown> {
