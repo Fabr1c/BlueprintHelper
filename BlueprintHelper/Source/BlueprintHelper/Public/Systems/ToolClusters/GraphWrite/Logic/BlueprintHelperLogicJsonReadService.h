@@ -4,7 +4,9 @@
 
 #include "CoreMinimal.h"
 #include "Shared/BlueprintHelperLogicMdTypes.h"
-#include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicGroupBuilder.h"
+#include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicReadRequestSnapshotCache.h"
+#include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicReadSnapshotFormatter.h"
+#include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicReadSnapshotService.h"
 #include "Shared/BlueprintHelperToolResultTypes.h"
 #include "Shared/BlueprintHelperServiceTypes.h"
 
@@ -27,18 +29,23 @@ public:
 	~FBlueprintHelperLogicJsonReadService();
 
 	/** 根据 TargetRef 读取 LogicJson。 */
-	FBlueprintHelperLogicJsonData ReadLogicJson(const FBlueprintHelperTargetRef& Target) const;
+	FBlueprintHelperLogicJsonData ReadLogicJson(
+		const FBlueprintHelperTargetRef& Target,
+		FBlueprintHelperLogicReadRequestSnapshotCache* RequestCache = nullptr) const;
+
+	bool BuildSnapshot(
+		const FBlueprintHelperTargetRef& Target,
+		FBlueprintHelperLogicReadSnapshot& OutSnapshot,
+		FString& OutError,
+		FBlueprintHelperLogicReadRequestSnapshotCache* RequestCache = nullptr) const;
+
+	FBlueprintHelperLogicJsonData FormatSnapshot(
+		const FBlueprintHelperLogicReadSnapshot& Snapshot) const;
 
 private:
-	/** 从 TargetType 推断 LogicScope。 */
-	static EBlueprintHelperLogicScope TargetTypeToScope(EBlueprintHelperTargetType Type);
-
-	/** 解析 scope → 对应 ExportScope。 */
-	static EBlueprintHelperExportScope ScopeToExportScope(EBlueprintHelperLogicScope Scope);
-
-	/** LogicGroupBuilder 实例。 */
-	FBlueprintHelperLogicGroupBuilder GroupBuilder;
 	TUniquePtr<FBlueprintHelperGraphResolver> OwnedGraphResolver;
 	TUniquePtr<FBlueprintHelperExportService> OwnedExportService;
 	const FBlueprintHelperExportService* ExportService = nullptr;
+	TUniquePtr<FBlueprintHelperLogicReadSnapshotService> SnapshotService;
+	TUniquePtr<FBlueprintHelperLogicReadSnapshotFormatter> Formatter;
 };

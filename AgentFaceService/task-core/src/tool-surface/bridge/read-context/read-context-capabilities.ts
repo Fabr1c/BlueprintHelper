@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { successRead, type ToolResultBase } from '../../../result/tool-result.js';
+import { getCachedReadContextCapabilityPayload } from './read-context-capability-cache.js';
 
 export const ReadContextCapabilitiesInputSchema = z.object({}).strict();
 
@@ -96,7 +97,11 @@ export function executeReadContextCapabilities(
   rawInput: Record<string, unknown>,
 ): ToolResultBase {
   ReadContextCapabilitiesInputSchema.parse(rawInput);
-  return successRead('read_context_capabilities', undefined, buildReadContextCapabilitiesPayload());
+  return successRead(
+    'read_context_capabilities',
+    undefined,
+    getCachedReadContextCapabilityPayload(buildReadContextCapabilitiesPayload),
+  );
 }
 
 function difference<T extends string>(

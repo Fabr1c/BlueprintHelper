@@ -46,10 +46,20 @@ export function postProcessReadContextPayload(
   return normalized;
 }
 
-export function resolveReadContextPostProcessStage(payloadSchema: string): string {
-  return payloadSchema === 'LogicFlow.v1'
-    ? 'read_context.logic_flow_build_payload'
-    : 'read_context.post_process_payload';
+export function resolveReadContextPostProcessStage(
+  payloadSchema: string,
+  input?: ReadContextInput,
+): string {
+  if (payloadSchema === 'LogicFlow.v1') {
+    return 'read_context.logic_flow_build_payload';
+  }
+  if (input?.view?.detail === 'brief') {
+    return 'read_context.compact_payload';
+  }
+  if (input?.target?.target_name) {
+    return 'read_context.filter_payload';
+  }
+  return 'read_context.post_process_payload';
 }
 
 function compactLogicContextPayload(payload: Record<string, unknown>): Record<string, unknown> {
