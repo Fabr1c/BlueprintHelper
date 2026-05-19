@@ -214,7 +214,7 @@ Future read domains such as material graphs and animation blueprints must enter 
 
 `view.format=summary` is removed from ReadSpec. Runtime capability discovery belongs to `blueprinthelper_read_context_capabilities`, not to a ReadSpec view format. Non-logic read domains use their `read_type` as the compact view contract and omit `view.format`. Neither path performs writes or returns TaskSpec drafts.
 
-Read result `data.schema` follows the short-name payload rule. `ReadContextPack.v1` does not include a separate `read_id`, and read results do not carry a `diagnostics` array. Payload errors use the outer ToolResult error envelope; read completeness uses `truncated` plus a recommendation to reread a specific block or context slice.
+Read result `payload.schema` is the single result-shape marker for the concrete read payload. `ReadContextPack.v1` does not include a separate `read_id`, does not echo request `read_type` / `view.format` under `data`, and read results do not carry a `diagnostics` array. Payload errors use the outer ToolResult error envelope; read completeness uses `truncated` plus a recommendation to reread a specific block or context slice.
 
 ```json
 {
@@ -231,8 +231,6 @@ Read result `data.schema` follows the short-name payload rule. `ReadContextPack.
   },
   "data": {
     "schema": "ReadContextPack.v1",
-    "read_type": "blueprint_logic",
-    "format": "logic_md",
     "payload": {
       "schema": "LogicMd.v1"
     },
@@ -241,7 +239,9 @@ Read result `data.schema` follows the short-name payload rule. `ReadContextPack.
 }
 ```
 
-`data.schema` and nested payload schemas do not repeat the `BlueprintHelper.` prefix. This matches the existing short-name payload rule used by LogicMD, LogicJson, and other UE operation payloads.
+`data.schema` and nested payload schemas do not repeat the `BlueprintHelper.` prefix. `payload.schema` is kept because it distinguishes `LogicMd.v1`, `LogicJson.v1`, `AssetContext.v1`, and other concrete payload contracts without also echoing `data.read_type` or `data.format`.
+
+For `LogicMd.v1`, `payload.stats` is the only place for node/link/count statistics. `payload.markdown` omits duplicate stats summary lines and keeps the readable graph, entry, execution, dependency, and orphan sections.
 
 ## 5. Supported GraphWrite Slice
 

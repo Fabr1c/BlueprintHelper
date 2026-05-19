@@ -47,8 +47,6 @@ export async function executeReadContext(
   );
   return successRead('read_context', buildReadContextTarget(input), {
     schema: 'ReadContextPack.v1',
-    read_type: input.read_type,
-    format,
     payload,
     truncated: false,
   }) as ToolResultBase;
@@ -95,7 +93,6 @@ async function executeBridgeBackedReadContext(
   const payload = postProcessReadContextPayload(input, request.payloadSchema, payloadResult.payload);
   return successRead('read_context', buildReadContextTarget(input), {
     schema: 'ReadContextPack.v1',
-    read_type: input.read_type,
     payload,
     truncated: false,
   }) as ToolResultBase;

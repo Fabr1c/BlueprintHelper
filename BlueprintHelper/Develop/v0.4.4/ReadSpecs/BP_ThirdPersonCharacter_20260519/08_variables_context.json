@@ -1,12 +1,8 @@
 {
   "schema": "BlueprintHelper.ReadSpec.v1",
-  "read_type": "blueprint_logic",
+  "read_type": "variable_context",
   "target": {
     "asset_path": "/Game/ThirdPerson/Blueprints/BP_ThirdPersonCharacter",
-    "target_type": "blueprint"
-  },
-  "view": {
-    "format": "summary",
-    "detail": "brief"
+    "target_type": "member_variable"
   }
 }
