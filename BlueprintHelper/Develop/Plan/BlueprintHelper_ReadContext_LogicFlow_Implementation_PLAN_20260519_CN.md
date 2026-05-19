@@ -10,6 +10,33 @@
 
 ---
 
+## Execution Result 2026-05-19
+
+Status: completed.
+
+Implemented:
+
+1. `blueprinthelper_read_context` now accepts `view.format=logic_flow` for `blueprint_logic` reads.
+2. `logic_flow` calls the structured `read_blueprint_logic_json` Bridge command and converts the payload into `LogicFlow.v1` in task-core.
+3. `LogicFlow.v1` returns `mode`, `flow`, `stats`, and `warnings`, with `execflow` and `dataflow` modes covered by contract tests.
+4. `graph_context` remains restricted to `logic_json`.
+5. ReadContext capabilities now advertise formats in compression order: `logic_flow`, `logic_md`, `logic_json`.
+6. Agent-facing docs, CLI reference, read templates, semantic index, and BP_ThirdPersonCharacter ReadSpecs now describe the three-tier read strategy.
+7. `logic_flow` tests verify that raw LogicJson anchors and UE identity fields are not exposed in the compact payload.
+
+Verification:
+
+1. `AgentFaceService/task-core`: `node ..\scripts\run-tsc.mjs` passed.
+2. `AgentFaceService/task-core`: `node scripts\run-node-tests.mjs` passed, 120/120.
+3. `AgentFaceService/cli`: `node ..\scripts\run-tsc.mjs` passed.
+4. `AgentFaceService/cli`: `node scripts\run-node-tests.mjs` passed, 38/38.
+5. New JSON templates and ReadSpec parsed successfully.
+6. `git diff --check` passed; only existing CRLF normalization warnings were reported.
+
+UE compile was not run because this implementation only touched TypeScript, Markdown, and JSON template files.
+
+---
+
 ## Repository Rule For This Plan
 
 Agents must not run `git add`, `git commit`, or `git push` in this repository. Each task includes a "manual commit checkpoint" so the final implementer can tell the user which files are ready to stage; it is not an instruction for the agent to execute git commands.

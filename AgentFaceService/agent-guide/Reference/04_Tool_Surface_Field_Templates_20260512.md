@@ -99,7 +99,7 @@ Lifecycle companion tools are available through the global MCP allowlist for Age
     "block_id": "optional. BlueprintHelper-owned block id when target_type is block."
   },
   "view": {
-    "format": "optional for logic reads. logic_md or logic_json. Omit for non-logic read types.",
+    "format": "optional for logic reads. logic_flow, logic_md, or logic_json. Omit for non-logic read types.",
     "max_items": "optional. Positive integer truncation guard.",
     "detail": "optional. brief, normal, full, or debug."
   },
@@ -112,7 +112,9 @@ Lifecycle companion tools are available through the global MCP allowlist for Age
 
 `view.format=summary` is removed from ReadSpec. Non-logic reads use their `read_type` as the compact view contract and should omit `view.format`.
 
-`view.format=logic_md` may be used directly for `target_type=function`, `target_type=event`, or `target_type=custom_event` when `target_name` is known. These target-entry reads are generated from structured target slices and report sliced stats. Do not use whole-graph `logic_md` until `logic_json` shows the graph is small enough.
+`view.format=logic_flow` is recommended for simple `target_type=function`, `target_type=event`, or `target_type=custom_event` reads when the Agent needs fast execution/data flow understanding. It returns `LogicFlow.v1` and must not be used as a patch/merge anchor source.
+
+`view.format=logic_md` may be used directly for `target_type=function`, `target_type=event`, or `target_type=custom_event` when `target_name` is known and the entry is larger or more branched than a compact `logic_flow` read should carry. These target-entry reads are generated from structured target slices and report sliced stats. Do not use whole-graph `logic_md` until `logic_json` shows the graph is small enough.
 
 `view.max_items` is a truncation guard for `logic_json`; when truncation happens, the tool result sets `data.truncated=true` and includes `payload.truncation.nodes_total` plus `payload.truncation.nodes_returned`.
 

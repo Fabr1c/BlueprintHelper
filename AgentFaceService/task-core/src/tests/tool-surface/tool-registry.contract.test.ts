@@ -318,6 +318,253 @@ test('read_context LogicMD payload keeps stats structured and strips duplicate m
   assert.equal(Object.hasOwn(payload, 'format'), false);
 });
 
+test('read_context logic_flow returns execflow from structured logic_json payload', async () => {
+  const tool = getBlueprintHelperToolRegistry().find((candidate) => candidate.name === 'blueprinthelper_read_context');
+  assert.ok(tool);
+
+  const result = await tool.execute({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'blueprint_logic',
+    target: {
+      asset_path: '/Game/BP_Player',
+      target_type: 'event',
+      target_name: 'Secondary Thumbstick',
+    },
+    view: {
+      format: 'logic_flow',
+    },
+  }, {
+    cwd: process.cwd(),
+    bridge: {
+      async sendCommand(command: string) {
+        assert.equal(command, 'read_blueprint_logic_json');
+        return {
+          success: true,
+          request_id: 'read_context_logic_flow_exec',
+          result: {
+            schema: 'LogicJson.v1',
+            logic: {
+              graph: 'EventGraph',
+              entry: { node_ref: 'nodes[0]', name: '事件Secondary Thumbstick' },
+              nodes: [
+                { node_ref: 'nodes[0]', kind: 'event', name: '事件Secondary Thumbstick' },
+                { node_ref: 'nodes[1]', kind: 'function_call', name: 'DoLook' },
+              ],
+              links: [
+                { type: 'exec', from_node: 'nodes[0]', from_pin: 'then', to_node: 'nodes[1]', to_pin: 'execute' },
+                { type: 'data', from_node: 'nodes[0]', from_pin: 'Axis_X', to_node: 'nodes[1]', to_pin: 'Yaw' },
+                { type: 'data', from_node: 'nodes[0]', from_pin: 'Axis_Y', to_node: 'nodes[1]', to_pin: 'Pitch' },
+              ],
+            },
+            stats: {
+              nodes: 2,
+              exec_links: 1,
+              data_links: 2,
+              orphan_nodes: 0,
+            },
+          },
+        };
+      },
+    } as never,
+    taskRunner: {} as TaskSpecRunner,
+  });
+
+  assert.equal(result.ok, true);
+  const payload = (result.data as Record<string, unknown>)['payload'] as Record<string, unknown>;
+  assert.equal(payload['schema'], 'LogicFlow.v1');
+  assert.equal(payload['mode'], 'execflow');
+  assert.equal(payload['flow'], '事件Secondary Thumbstick(Axis_X,Axis_Y) -> DoLook[Yaw=&.Axis_X, Pitch=&.Axis_Y]');
+  assert.deepEqual(payload['stats'], {
+    nodes: 2,
+    exec_links: 1,
+    data_links: 2,
+    orphan_nodes: 0,
+  });
+  assert.deepEqual(payload['warnings'], []);
+});
+
+test('read_context logic_flow returns dataflow when structured logic has no exec links', async () => {
+  const tool = getBlueprintHelperToolRegistry().find((candidate) => candidate.name === 'blueprinthelper_read_context');
+  assert.ok(tool);
+
+  const result = await tool.execute({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'blueprint_logic',
+    target: {
+      asset_path: '/Game/BP_Math',
+      target_type: 'function',
+      target_name: 'ComputeOffset',
+    },
+    view: {
+      format: 'logic_flow',
+    },
+  }, {
+    cwd: process.cwd(),
+    bridge: {
+      async sendCommand(command: string) {
+        assert.equal(command, 'read_blueprint_logic_json');
+        return {
+          success: true,
+          request_id: 'read_context_logic_flow_data',
+          result: {
+            schema: 'LogicJson.v1',
+            logic: {
+              graph: 'ComputeOffset',
+              nodes: [
+                { node_ref: 'nodes[0]', name: 'GetActorLocation' },
+                { node_ref: 'nodes[1]', name: 'GetVelocity' },
+                { node_ref: 'nodes[2]', name: '*' },
+                { node_ref: 'nodes[3]', name: '+' },
+                { node_ref: 'nodes[4]', name: 'ReturnValue' },
+              ],
+              links: [
+                { type: 'data', from_node: 'nodes[1]', from_pin: 'ReturnValue', to_node: 'nodes[2]', to_pin: 'A' },
+                { type: 'data', from_node: 'nodes[2]', from_pin: 'ReturnValue', to_node: 'nodes[3]', to_pin: 'B' },
+                { type: 'data', from_node: 'nodes[0]', from_pin: 'ReturnValue', to_node: 'nodes[3]', to_pin: 'A' },
+                { type: 'data', from_node: 'nodes[3]', from_pin: 'ReturnValue', to_node: 'nodes[4]', to_pin: 'ReturnValue' },
+              ],
+            },
+            stats: {
+              nodes: 5,
+              exec_links: 0,
+              data_links: 4,
+              orphan_nodes: 0,
+            },
+          },
+        };
+      },
+    } as never,
+    taskRunner: {} as TaskSpecRunner,
+  });
+
+  assert.equal(result.ok, true);
+  const payload = (result.data as Record<string, unknown>)['payload'] as Record<string, unknown>;
+  assert.equal(payload['schema'], 'LogicFlow.v1');
+  assert.equal(payload['mode'], 'dataflow');
+  assert.match(String(payload['flow']), /^dataflow:/);
+  assert.match(String(payload['flow']), /\$p0 = GetActorLocation/);
+  assert.match(String(payload['flow']), /ReturnValue = /);
+});
+
+test('read_context logic_flow does not expose raw LogicJson anchors or UE identity fields', async () => {
+  const tool = getBlueprintHelperToolRegistry().find((candidate) => candidate.name === 'blueprinthelper_read_context');
+  assert.ok(tool);
+
+  const result = await tool.execute({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'blueprint_logic',
+    target: {
+      asset_path: '/Game/BP_Door',
+      target_type: 'event',
+      target_name: 'BeginPlay',
+    },
+    view: {
+      format: 'logic_flow',
+    },
+  }, {
+    cwd: process.cwd(),
+    bridge: {
+      async sendCommand() {
+        return {
+          success: true,
+          request_id: 'read_context_logic_flow_no_anchor',
+          result: {
+            schema: 'LogicJson.v1',
+            logic: {
+              asset_path: '/Game/BP_Door',
+              graph: 'EventGraph',
+              nodes: [
+                {
+                  node_ref: 'nodes[0]',
+                  node_guid: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                  name: 'BeginPlay',
+                },
+                {
+                  node_ref: 'nodes[1]',
+                  node_path: '$.graphs.EventGraph.nodes[1]',
+                  name: 'PrintString',
+                },
+              ],
+              links: [
+                {
+                  link_ref: 'links[0]',
+                  type: 'exec',
+                  from_node: 'nodes[0]',
+                  from_pin: 'then',
+                  to_node: 'nodes[1]',
+                  to_pin: 'execute',
+                },
+              ],
+            },
+            stats: { nodes: 2, exec_links: 1, data_links: 0 },
+          },
+        };
+      },
+    } as never,
+    taskRunner: {} as TaskSpecRunner,
+  });
+
+  assert.equal(result.ok, true);
+  assertNoUnsafeAgentFacingKeys(result);
+  const serialized = JSON.stringify(result);
+  assert.doesNotMatch(serialized, /node_path/);
+  assert.doesNotMatch(serialized, /link_ref/);
+  assert.doesNotMatch(serialized, /asset_path.*BP_Door.*logic/);
+  assert.match(serialized, /BeginPlay -> PrintString/);
+});
+
+test('read_context logic_flow keeps multi-exec output pin names', async () => {
+  const tool = getBlueprintHelperToolRegistry().find((candidate) => candidate.name === 'blueprinthelper_read_context');
+  assert.ok(tool);
+
+  const result = await tool.execute({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'blueprint_logic',
+    target: {
+      asset_path: '/Game/BP_Door',
+      target_type: 'event',
+      target_name: 'Interact',
+    },
+    view: {
+      format: 'logic_flow',
+    },
+  }, {
+    cwd: process.cwd(),
+    bridge: {
+      async sendCommand() {
+        return {
+          success: true,
+          request_id: 'read_context_logic_flow_branch',
+          result: {
+            schema: 'LogicJson.v1',
+            logic: {
+              nodes: [
+                { node_ref: 'nodes[0]', kind: 'event', name: 'Interact' },
+                { node_ref: 'nodes[1]', name: 'Branch' },
+                { node_ref: 'nodes[2]', name: 'OpenDoor' },
+                { node_ref: 'nodes[3]', name: 'CloseDoor' },
+              ],
+              links: [
+                { type: 'exec', from_node: 'nodes[0]', from_pin: 'then', to_node: 'nodes[1]', to_pin: 'execute' },
+                { type: 'exec', from_node: 'nodes[1]', from_pin: 'True', to_node: 'nodes[2]', to_pin: 'execute' },
+                { type: 'exec', from_node: 'nodes[1]', from_pin: 'False', to_node: 'nodes[3]', to_pin: 'execute' },
+                { type: 'data', from_node: 'nodes[0]', from_pin: 'bDoorOpen', to_node: 'nodes[1]', to_pin: 'Condition' },
+              ],
+            },
+            stats: { nodes: 4, exec_links: 3, data_links: 1 },
+          },
+        };
+      },
+    } as never,
+    taskRunner: {} as TaskSpecRunner,
+  });
+
+  const payload = (result.data as Record<string, unknown>)['payload'] as Record<string, unknown>;
+  assert.match(String(payload['flow']), /Interact\(bDoorOpen\) -> Branch\[Condition=&\.bDoorOpen\]/);
+  assert.match(String(payload['flow']), /  True -> OpenDoor/);
+  assert.match(String(payload['flow']), /  False -> CloseDoor/);
+});
+
 test('read_context asset summary removes payload path and name but keeps asset class', async () => {
   const tool = getBlueprintHelperToolRegistry().find((candidate) => candidate.name === 'blueprinthelper_read_context');
   assert.ok(tool);
@@ -449,7 +696,7 @@ test('read context capabilities is a compact local discovery tool', async () => 
   assert.equal(result.ok, true);
   assert.equal(result.operation, 'read_context_capabilities');
   assert.equal(result.data?.['schema'], 'ReadContextCapabilities.v1');
-  assert.deepEqual(result.data?.['formats'], ['logic_json', 'logic_md']);
+  assert.deepEqual(result.data?.['formats'], ['logic_flow', 'logic_md', 'logic_json']);
   assert.deepEqual(result.data?.['read_type_ids'], [
     'asset_context',
     'blueprint_logic',
@@ -481,13 +728,26 @@ test('read context capabilities is a compact local discovery tool', async () => 
 
   const assetContext = readTypes.find((entry) => entry['read_type'] === 'asset_context');
   assert.ok(assetContext);
-  assert.deepEqual(assetContext['unsupported_formats'], ['logic_json', 'logic_md']);
+  assert.deepEqual(assetContext['unsupported_formats'], ['logic_flow', 'logic_md', 'logic_json']);
   const graphContext = readTypes.find((entry) => entry['read_type'] === 'graph_context');
   assert.ok(graphContext);
-  assert.deepEqual(graphContext['unsupported_formats'], ['logic_md']);
+  assert.deepEqual(graphContext['unsupported_formats'], ['logic_flow', 'logic_md']);
 });
 
 test('read_context rejects removed and unsupported view formats', () => {
+  assert.doesNotThrow(() => ReadContextInputSchema.parse({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'blueprint_logic',
+    target: {
+      asset_path: '/Game/BP_Player',
+      target_type: 'event',
+      target_name: 'Input_Fire',
+    },
+    view: {
+      format: 'logic_flow',
+    },
+  }));
+
   assert.throws(() => ReadContextInputSchema.parse({
     schema: 'BlueprintHelper.ReadSpec.v1',
     read_type: 'asset_context',
@@ -534,6 +794,19 @@ test('read_context rejects removed and unsupported view formats', () => {
     },
     view: {
       format: 'logic_md',
+    },
+  }), /graph_context only supports logic_json/);
+
+  assert.throws(() => ReadContextInputSchema.parse({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'graph_context',
+    target: {
+      asset_path: '/Game/BP_Player',
+      target_type: 'graph',
+      target_name: 'EventGraph',
+    },
+    view: {
+      format: 'logic_flow',
     },
   }), /graph_context only supports logic_json/);
 });

@@ -1,4 +1,5 @@
 import type { ReadContextInput } from './read-context-schemas.js';
+import { buildLogicFlowPayload } from './read-context-logic-flow.js';
 import { isRecord } from '../bridge-tool-result-utils.js';
 
 export function postProcessReadContextPayload(
@@ -6,6 +7,10 @@ export function postProcessReadContextPayload(
   payloadSchema: string,
   payload: Record<string, unknown>,
 ): Record<string, unknown> {
+  if (payloadSchema === 'LogicFlow.v1') {
+    return buildLogicFlowPayload(payload);
+  }
+
   const normalized: Record<string, unknown> = {
     schema: payload['schema'] ?? payloadSchema,
     ...payload,

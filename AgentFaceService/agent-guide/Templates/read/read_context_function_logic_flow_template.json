@@ -1,0 +1,12 @@
+{
+  "schema": "BlueprintHelper.ReadSpec.v1",
+  "read_type": "blueprint_logic",
+  "target": {
+    "asset_path": "/Game/Path/To/BP_Asset",
+    "target_type": "function",
+    "target_name": "FunctionName"
+  },
+  "view": {
+    "format": "logic_flow"
+  }
+}

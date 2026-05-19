@@ -49,7 +49,7 @@ Ordinary Agents submit `BlueprintHelper.TaskSpec.v1` only. They do not author `B
 | Owner | Writes | Reads |
 |---|---|---|
 | Agent | `BlueprintHelper.TaskSpec.v1`, `BlueprintHelper.ReadSpec.v1` | AgentGuide index, ReadContextPack, TaskContextPack, preview summary, task result |
-| CLI/task-core/Python Read Router | ReadContextPack / LogicMD / LogicJson views | ReadSpec |
+| CLI/task-core/Python Read Router | ReadContextPack / LogicFlow / LogicMD / LogicJson views | ReadSpec |
 | CLI/task-core/Python Task Compiler | `BlueprintHelper.TaskPlan.v1` | TaskSpec |
 | UE Task Runtime | `BlueprintHelper.TaskRunJournal.v1` | TaskPlan |
 | Existing Capability Clusters | Bridge/UE operation result facts | TaskPlan step args |
@@ -117,7 +117,7 @@ Default Agent-facing result layering is fixed as:
 | Tool | Outer shape | `data.schema` / payload |
 |---|---|---|
 | `blueprinthelper_read_agent_guide` | Markdown text only | none |
-| `blueprinthelper_read_context` | `BlueprintHelper.ToolResult.v1` | `ReadContextPack.v1`, with `payload.schema = LogicMd.v1 / LogicJson.v1 / ...` |
+| `blueprinthelper_read_context` | `BlueprintHelper.ToolResult.v1` | `ReadContextPack.v1`, with `payload.schema = LogicFlow.v1 / LogicMd.v1 / LogicJson.v1 / ...` |
 | `blueprinthelper_read_context_capabilities` | `BlueprintHelper.ToolResult.v1` | `ReadContextCapabilities.v1` |
 | `blueprinthelper_read_reference_context` | `BlueprintHelper.ToolResult.v1` | `ReferenceContextPack.v1` |
 | `blueprinthelper_read_function_chain_context` | `BlueprintHelper.ToolResult.v1` | `FunctionChainContext.v1` |
@@ -127,12 +127,12 @@ Default Agent-facing result layering is fixed as:
 
 UE Agent-facing facade commands return `FBlueprintHelperToolResultBase`. task-core task/read tools normalize those results into `BlueprintHelper.ToolResult.v1` for full artifacts. Existing Bridge / UE operation results are internal facts for compiler/runtime/journal use; ordinary Agents should not depend on raw adapter payloads.
 
-Debug data must not expand the default top-level shape. Put compact debug facts under `data.debug` only when directly useful. Large asset context should be read through targeted `logic_md` / `logic_json` slices. Developer diagnostics use summary `DebugCase` ids and local `DebugBundle` exports; default tool responses must not expose bundle artifacts, local paths, raw payloads, source content, or large payload refs.
+Debug data must not expand the default top-level shape. Put compact debug facts under `data.debug` only when directly useful. Large asset context should be read through targeted `logic_flow` / `logic_md` / `logic_json` slices. Developer diagnostics use summary `DebugCase` ids and local `DebugBundle` exports; default tool responses must not expose bundle artifacts, local paths, raw payloads, source content, or large payload refs.
 
 Long-term read entry consolidation is:
 
 ```text
-Agent -> CLI -> ReadSpec -> task-core/Python Read Router -> UE Read Capability Cluster -> ReadContextPack / LogicMD / LogicJson
+Agent -> CLI -> ReadSpec -> task-core/Python Read Router -> UE Read Capability Cluster -> ReadContextPack / LogicFlow / LogicMD / LogicJson
 ```
 
 `blueprinthelper_read_agent_guide` returns the AgentGuide onboarding index document. Agents use that index to discover the currently documented capability surface and then open the specific AgentGuide files for concrete ReadSpec / TaskSpec formats. This is a documentation entry point, not a runtime capability-schema tool.
@@ -151,11 +151,12 @@ ReadSpec uses explicit view formats only for logic reads:
 
 | Format | Purpose |
 |---|---|
-| `logic_md` | Default low-token human-readable view. |
-| `logic_json` | Structured view for precise analysis, diff, patch, merge, and debug. |
+| `logic_flow` | Most compact view. Use for simple function/event/custom event reads when the Agent first needs execution/data flow understanding. Returns `LogicFlow.v1` with `mode=execflow` or `mode=dataflow`. |
+| `logic_md` | Medium compact human-readable view. Use for larger or more branched function/event/custom event reads. |
+| `logic_json` | Structured view for full reads, precise analysis, diff, patch, merge, anchors, and debug. |
 | `raw_json` | Debug/expert full-fidelity view; not a default Agent workflow. |
 
-`logic_md` and `logic_json` are not Blueprint-only formats. Future material, animation blueprint, widget, data table, and data asset reads should use the same formats where practical, so the tool surface does not expand one command per read shape.
+`logic_flow`, `logic_md`, and `logic_json` are not Blueprint-only formats. Future material, animation blueprint, widget, data table, and data asset reads should use the same formats where practical, so the tool surface does not expand one command per read shape.
 
 Initial ReadSpec shape:
 
@@ -166,12 +167,12 @@ Initial ReadSpec shape:
   "target": {
     "asset_path": "_",
     "asset_type": "_",
-    "target_type": "graph",
+    "target_type": "event",
     "target_name": "_",
     "block_id": "_"
   },
   "view": {
-    "format": "logic_md",
+    "format": "logic_flow",
     "max_items": 200
   },
   "context": {
@@ -239,7 +240,9 @@ Read result `payload.schema` is the single result-shape marker for the concrete 
 }
 ```
 
-`data.schema` and nested payload schemas do not repeat the `BlueprintHelper.` prefix. `payload.schema` is kept because it distinguishes `LogicMd.v1`, `LogicJson.v1`, `AssetContext.v1`, and other concrete payload contracts without also echoing `data.read_type` or `data.format`.
+`data.schema` and nested payload schemas do not repeat the `BlueprintHelper.` prefix. `payload.schema` is kept because it distinguishes `LogicFlow.v1`, `LogicMd.v1`, `LogicJson.v1`, `AssetContext.v1`, and other concrete payload contracts without also echoing `data.read_type` or `data.format`.
+
+For `LogicFlow.v1`, `payload.mode` is `execflow` or `dataflow`. `payload.flow` is the compact text body, `payload.stats` is the only place for node/link/count statistics, and `payload.warnings` records compression risk such as unknown links or ambiguous macro boundaries. `LogicFlow.v1` is a read-to-understand view only; write anchors still require `logic_json`.
 
 For `LogicMd.v1`, `payload.stats` is the only place for node/link/count statistics. `payload.markdown` omits duplicate stats summary lines and keeps the readable graph, entry, execution, dependency, and orphan sections.
 
@@ -1001,13 +1004,13 @@ P2 first slice, 2026-05-06:
 | Cluster | Purpose | v0.3.6 source documents | Agent exposure |
 |---|---|---|---|
 | Runtime Profile | Safety/profile facts used before TaskSpec and execution | `BlueprintHelper_RuntimeProfile_UE_CPP_Implementation_Plan_20260503.md` | Agent read |
-| Logic Read | LogicMD / LogicJson by asset, graph, function, event, custom event, or block target | `BlueprintHelper_LogicRead_Grouped_UE_FieldMapping_20260502.md` | Agent read |
+| Logic Read | LogicFlow / LogicMD / LogicJson by asset, graph, function, event, custom event, or block target | `BlueprintHelper_LogicRead_Grouped_UE_FieldMapping_20260502.md` | Agent read |
 | Diagnostics / Discovery | Asset discovery, editor navigation, debug export, internal dependency analysis, project context, setup state | `BlueprintHelper_Diagnostics_UE_CPP_Implementation_Plan_20260503.md`, `BlueprintHelper_AssetDiscovery_EditorNavigation_UE_CPP_Implementation_Plan_20260503.md`, `BlueprintHelper_InternalDependencyAnalysis_UE_ImplementationPlan_20260503.md`, `BlueprintHelper_ProjectContext_SetupState_UE_CPP_Implementation_Plan_20260503.md` | Agent read or debug |
 | Transaction Journal | Task result, transaction query, rollback audit | `BlueprintHelper_TransactionJournalQuery_UE_CPP_Implementation_Plan_20260503.md` | Task result or debug |
 | Editor Lifecycle | Risk commands for launching or closing editor | `BlueprintHelper_EditorLifecycle_RiskCommand_UE_CPP_Implementation_Plan_20260503.md` | Debug or risk command |
 | Common Envelope | Shared result shape and error normalization | `BlueprintHelper_ToolResultBase_CommonEnvelope_UE_CPP_Implementation_Plan_20260503.md` | Protocol internal |
 
-LogicMD keeps the v0.3.6 grouped logic information shape. It is a read-only human-readable logic view and must not carry TaskSpec drafts. LogicJson remains a read-only structured logic view and must not carry `taskspec_hints`.
+LogicFlow is the most compact read-only execution/data flow view for simple entries and must not carry TaskSpec drafts or write anchors. LogicMD keeps the v0.3.6 grouped logic information shape. It is a read-only human-readable logic view and must not carry TaskSpec drafts. LogicJson remains a read-only structured logic view and must not carry `taskspec_hints`.
 
 Decision, 2026-05-06: LogicJson read refs map to write anchors only through the grouped LogicJson / block-scoped contract described in section 5.1. Raw `node_ref` values such as `nodes[0]` are local read-view indexes and are not TaskSpec-compatible write anchors by themselves.
 

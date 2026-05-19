@@ -160,7 +160,7 @@ node AgentFaceService/cli/build/cli/index.js blueprinthelper_read_context --file
 - `tool_result.data.timing.total_ms`：CLI develop 总耗时。
 - `read_context.bridge.<command>`：AgentFace 到 UE Bridge 往返耗时。
 - `read_context.extract_bridge_payload`、`read_context.post_process_payload`、`read_context.result_wrap`：AgentFace 侧 payload 处理成本。
-- `data.timing.nested[].source=ue_bridge_router` 的 `route_execute`：UE route 内部执行耗时。当前需要 Editor 重载新 DLL 后补测。
+- `data.timing.nested[].source=ue_bridge_router` 的 `route_execute`：UE route 内部执行耗时；已在 Editor 手动重启后补测返回。
 - payload 规模：后续 R5 需要补 `payload_size_bytes`，用于区分输出体积导致的序列化/格式化成本。
 
 测速方式：
@@ -205,7 +205,7 @@ node AgentFaceService/cli/build/cli/index.js blueprinthelper_read_context --file
 | `01_asset_context.json` | 已返回 AgentFace 分段：`read_context.parse_input`、`read_context.resolve_bridge_request`、`read_context.bridge.get_asset_info`、`read_context.extract_bridge_payload`、`read_context.post_process_payload`、`read_context.result_wrap`。 |
 | `02_blueprint_logic_json.json` | 已返回 AgentFace 分段：`read_context.parse_input`、`read_context.resolve_format`、`read_context.build_bridge_payload`、`read_context.bridge.read_blueprint_logic_json`、`read_context.extract_bridge_payload`、`read_context.post_process_payload`、`read_context.result_wrap`。 |
 
-当前已启动 Editor 未返回 UE nested read timing，判断为运行中 Editor 仍使用重编译前已加载的插件模块；需要 Editor 重载/重启后重新跑 read Spec，以验证 `ue_bridge_router.route_execute` nested timing。
+Editor 手动重启后已返回 UE nested read timing，`ue_bridge_router.route_execute` 可用于拆分 UE route 成本和 Bridge round-trip gap。
 
 ## 读工具优化计划
 
@@ -219,12 +219,12 @@ node AgentFaceService/cli/build/cli/index.js blueprinthelper_read_context --file
 - 保持 CLI `--develop` 作为唯一 CLI 诊断开关，普通调用不启动 timing、不返回 `data.timing`。
 - `read_context` 已记录 AgentFace 编排阶段：parse、format resolve、route resolve、payload build、Bridge round-trip、payload extract、post-process、result wrap。
 - UE Bridge read router 使用 `include_timing=true` 返回 `ue_bridge_router.route_execute`，用于拆分 Bridge 往返与 UE route 内部耗时。
-- Editor 重载/重启后重新跑读 Spec，补齐 `data.timing.nested[].source=ue_bridge_router` 的实测数据。
+- 已在 Editor 手动重启后重新跑读 Spec，并补齐 `data.timing.nested[].source=ue_bridge_router` 的实测数据。
 
 验收：
 - 所有 read_context develop 结果都包含 AgentFace 分段 timing。
 - 当前 ReadSpecs 至少覆盖 `asset_context`、`blueprint_logic`、`graph_context`、`component_context`、`variable_context`、`event_dispatchers_context`、`object_properties_context`。
-- UE nested timing 在重载新 DLL 后能显示 `route_execute`。
+- UE nested timing 已能显示 `route_execute`。
 
 ### R1：GameThread 快照，后台格式化
 
@@ -570,5 +570,6 @@ v0.5.0 实施前需要补齐分阶段耗时记录：
 
 - 状态：P0-0 develop 诊断计时流程已开始实现，P0-1 之后仍为 v0.5.0 优化计划。
 - 读工具优化计划已纳入 v0.5.0：R0 先完成 timing 证据，R1/R2 优先做 GameThread 快照、后台格式化和 DTO/formatter 复用。
+- 读工具 R0 已完成一次 Editor 重启后补测：AgentFace read_context 分段和 UE `ue_bridge_router.route_execute` nested timing 均已返回；下一步需要继续拆 `bridge - UE route` gap。
 - 普通路径保持无计时采集、无 `data.timing` 返回；CLI 诊断路径通过 `--develop` 对所有 CLI 工具显式开启，TaskSpec MCP/tool 诊断路径通过 `develop: true` 显式开启。
 - 后续实现必须保持高内聚、低耦合，避免把性能分支堆进单个 service 或 UI 入口。

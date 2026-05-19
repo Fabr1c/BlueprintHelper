@@ -1,0 +1,12 @@
+{
+  "schema": "BlueprintHelper.ReadSpec.v1",
+  "read_type": "blueprint_logic",
+  "target": {
+    "asset_path": "/Game/Path/To/BP_Asset",
+    "target_type": "event",
+    "target_name": "EventName"
+  },
+  "view": {
+    "format": "logic_flow"
+  }
+}
