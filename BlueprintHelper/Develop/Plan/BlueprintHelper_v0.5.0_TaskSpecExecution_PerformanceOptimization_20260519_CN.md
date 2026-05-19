@@ -969,6 +969,84 @@ compile-only 五轮隔离样本：
 - 同样本速度对比只使用 `04b_write_function_body.json` 的基线与 P0 token execute 数据。
 - P0-1 跨 CLI 数据单独成图，只证明 32 hex token + Editor 生命周期 preview store 已消除 execute 阶段的 `taskspec_compile` 和 `bridge.preview_task_plan`。
 
+### v0.5.0 总览对比折线图
+
+口径说明：
+- 写链路端到端图只比较写 Spec 集合的 `avg / p50 / max`，用于观察 P0 preview token 链路对总等待的影响。
+- P1 图只比较 TaskSpec compiler 本身，不代表完整 execute 总耗时。
+- P2 图只展示 UE execute 内部拆分后的阶段占比，不与 P0/P1 端到端图混画。
+- 读链路 R0-R5 图只比较 11 个 ReadSpec 的 `median_wall / bridge_send_receive / ue_route`，用于证明当前瓶颈已经转移到 Bridge/CLI gap。
+
+写链路端到端总耗时：
+
+| 线条 | 含义 | 数据点顺序 | 数值 |
+| --- | --- | --- | --- |
+| 线条 1 | 优化前写链路成功样本 | avg / p50 / max | 2172.994 / 2209.757 / 3246.974 |
+| 线条 2 | P0 同进程 preview token 成功样本 | avg / p50 / max | 682.007 / 517.478 / 1725.355 |
+
+```mermaid
+xychart
+    title "写链路端到端总耗时对比（ms）"
+    x-axis ["avg", "p50", "max"]
+    y-axis "duration_ms" 0 --> 3500
+    line [2172.994, 2209.757, 3246.974]
+    line [682.007, 517.478, 1725.355]
+```
+
+TaskSpec compiler fast path：
+
+| 线条 | 含义 | 数据点顺序 | 数值 |
+| --- | --- | --- | --- |
+| 线条 1 | `canonical_python` compile-only | min / avg / max | 42.234 / 44.990 / 48.068 |
+| 线条 2 | `ts_fast_path` compile-only | min / avg / max | 0.050 / 0.264 / 1.053 |
+| 线条 3 | `auto` compile-only | min / avg / max | 0.031 / 0.042 / 0.053 |
+
+```mermaid
+xychart
+    title "P1 TaskSpec compiler 策略耗时对比（ms）"
+    x-axis ["min", "avg", "max"]
+    y-axis "duration_ms" 0 --> 50
+    line [42.234, 44.990, 48.068]
+    line [0.050, 0.264, 1.053]
+    line [0.031, 0.042, 0.053]
+```
+
+P2 UE execute 阶段拆分：
+
+| 线条 | 含义 | 数据点顺序 | 数值 |
+| --- | --- | --- | --- |
+| 线条 1 | `01_create_blueprint_actor.json` | pure_prepare / main_thread_commit / post_io / compile / save | 0.026 / 297.096 / 1.672 / 231.899 / 60.276 |
+| 线条 2 | `04_edit_blueprint_signatures.json` | pure_prepare / main_thread_commit / post_io / compile / save | 0.034 / 273.102 / 2.271 / 152.938 / 97.317 |
+| 线条 3 | `04b_write_function_body.json` | pure_prepare / main_thread_commit / post_io / compile / save | 0.017 / 777.225 / 0.451 / 156.410 / 62.954 |
+
+```mermaid
+xychart
+    title "P2 UE execute 阶段拆分对比（ms）"
+    x-axis ["pure_prepare", "main_thread_commit", "post_io", "compile", "save"]
+    y-axis "duration_ms" 0 --> 800
+    line [0.026, 297.096, 1.672, 231.899, 60.276]
+    line [0.034, 273.102, 2.271, 152.938, 97.317]
+    line [0.017, 777.225, 0.451, 156.410, 62.954]
+```
+
+读链路 R0-R5 阶段对比：
+
+| 线条 | 含义 | 数据点顺序 |
+| --- | --- | --- |
+| 线条 1 | `median_wall_ms` | 01-11 ReadSpec |
+| 线条 2 | `slowest_bridge_ms` | 01-11 ReadSpec |
+| 线条 3 | `slowest_ue_ms` | 01-11 ReadSpec |
+
+```mermaid
+xychart
+    title "R0-R5 读链路 wall / bridge / UE route 对比（ms）"
+    x-axis ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11"]
+    y-axis "duration_ms" 0 --> 2100
+    line [1996.511, 1994.332, 1997.072, 1997.176, 1997.291, 1997.269, 1996.882, 1998.409, 1998.450, 1996.921, 1997.659]
+    line [1903.994, 1894.589, 1900.322, 1899.983, 1895.692, 1898.036, 1899.797, 1896.734, 1896.113, 1900.529, 1898.527]
+    line [0.073, 0.401, 0.353, 0.435, 0.377, 0.378, 0.037, 0.037, 0.013, 0.079, 0.429]
+```
+
 ### 同样本阶段优化折线图
 
 样本：`04b_write_function_body.json`
