@@ -42,17 +42,43 @@ export function postProcessReadContextPayload(
 }
 
 function compactLogicContextPayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const compactedPayload = compactLogicMdMarkdown(payload);
   const logic = payload['logic'];
   if (!isRecord(logic) || !Object.hasOwn(logic, 'asset_path')) {
-    return payload;
+    return compactedPayload;
   }
 
   const compactedLogic = { ...logic };
   delete compactedLogic['asset_path'];
   return {
-    ...payload,
+    ...compactedPayload,
     logic: compactedLogic,
   };
+}
+
+function compactLogicMdMarkdown(payload: Record<string, unknown>): Record<string, unknown> {
+  if (payload['schema'] !== 'LogicMd.v1' || typeof payload['markdown'] !== 'string') {
+    return payload;
+  }
+
+  const markdown = stripLogicMdStatsLines(payload['markdown']);
+  if (markdown === payload['markdown']) {
+    return payload;
+  }
+  return {
+    ...payload,
+    markdown,
+  };
+}
+
+function stripLogicMdStatsLines(markdown: string): string {
+  const lines = markdown.split(/\r?\n/);
+  const stripped = lines.filter((line) => !isLogicMdStatsLine(line));
+  return stripped.join('\n').replace(/\n{3,}/g, '\n\n');
+}
+
+function isLogicMdStatsLine(line: string): boolean {
+  return /^Nodes:\s*\d+\s*\|\s*Exec Links:\s*\d+\s*\|\s*Data Links:\s*\d+(?:\s*\|\s*Entry Points:\s*\d+)?\s*\|\s*Orphans:\s*\d+\s*$/i.test(line.trim());
 }
 
 function compactAssetContextPayload(payload: Record<string, unknown>): Record<string, unknown> {

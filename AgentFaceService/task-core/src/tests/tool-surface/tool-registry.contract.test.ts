@@ -238,6 +238,8 @@ test('read_context registry output strips GUID fields from Bridge logic_json pay
   const data = result.data as Record<string, unknown>;
   const payload = data['payload'] as Record<string, unknown>;
   const logic = payload['logic'] as Record<string, unknown>;
+  assert.equal(Object.hasOwn(data, 'read_type'), false);
+  assert.equal(Object.hasOwn(data, 'format'), false);
   assert.equal(Object.hasOwn(data, 'scope'), false);
   assert.equal(Object.hasOwn(data, 'stats'), false);
   assert.equal(payload['schema'], 'LogicJson.v1');
@@ -245,6 +247,75 @@ test('read_context registry output strips GUID fields from Bridge logic_json pay
   assert.deepEqual(payload['stats'], { nodes: 1, exec_links: 0 });
   assert.equal(Object.hasOwn(payload, 'format'), false);
   assert.equal(Object.hasOwn(logic, 'asset_path'), false);
+});
+
+test('read_context LogicMD payload keeps stats structured and strips duplicate markdown stats lines', async () => {
+  const tool = getBlueprintHelperToolRegistry().find((candidate) => candidate.name === 'blueprinthelper_read_context');
+  assert.ok(tool);
+
+  const result = await tool.execute({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'blueprint_logic',
+    target: {
+      asset_path: '/Game/BP_Door',
+      target_type: 'graph',
+      target_name: 'EventGraph',
+    },
+    view: {
+      format: 'logic_md',
+    },
+  }, {
+    cwd: process.cwd(),
+    bridge: {
+      async sendCommand(command: string) {
+        assert.equal(command, 'read_blueprint_logic_md');
+        return {
+          success: true,
+          request_id: 'read_context_logic_md_compact',
+          result: {
+            schema: 'LogicMd.v1',
+            format: 'logic_md',
+            markdown: [
+              '# Logic Graph',
+              '',
+              'Nodes: 3 | Exec Links: 1 | Data Links: 2 | Entry Points: 1 | Orphans: 0',
+              '',
+              '## Graph: EventGraph',
+              'Nodes: 3 | Exec Links: 1 | Data Links: 2 | Entry Points: 1 | Orphans: 0',
+              '',
+              '### Entry Points',
+              '- nodes[0] BeginPlay',
+            ].join('\n'),
+            stats: {
+              nodes: 3,
+              exec_links: 1,
+              data_links: 2,
+              orphan_nodes: 0,
+              events: 1,
+            },
+          },
+        };
+      },
+    } as never,
+    taskRunner: {} as TaskSpecRunner,
+  });
+
+  assert.equal(result.ok, true);
+  const data = result.data as Record<string, unknown>;
+  const payload = data['payload'] as Record<string, unknown>;
+  const markdown = String(payload['markdown'] ?? '');
+  assert.equal(payload['schema'], 'LogicMd.v1');
+  assert.deepEqual(payload['stats'], {
+    nodes: 3,
+    exec_links: 1,
+    data_links: 2,
+    orphan_nodes: 0,
+    events: 1,
+  });
+  assert.doesNotMatch(markdown, /^Nodes: 3 \| Exec Links: 1/m);
+  assert.match(markdown, /## Graph: EventGraph/);
+  assert.match(markdown, /### Entry Points/);
+  assert.equal(Object.hasOwn(payload, 'format'), false);
 });
 
 test('read_context asset summary removes payload path and name but keeps asset class', async () => {
@@ -289,6 +360,7 @@ test('read_context asset summary removes payload path and name but keeps asset c
   });
   const data = result.data as Record<string, unknown>;
   const payload = data['payload'] as Record<string, unknown>;
+  assert.equal(Object.hasOwn(data, 'read_type'), false);
   assert.equal(Object.hasOwn(data, 'format'), false);
   assert.equal(payload['schema'], 'AssetContext.v1');
   assert.equal(payload['class'], 'Blueprint');
