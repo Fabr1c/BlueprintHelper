@@ -4,6 +4,7 @@ import {
 } from '@blueprinthelper/task-core/result/tool-result';
 import type { BridgeClient } from '@blueprinthelper/task-core/bridge/bridge-client';
 import type { TaskSpecRunner } from '@blueprinthelper/task-core/task/service/task-spec-runner';
+import type { TaskTimingTrace } from '@blueprinthelper/task-core/task/service/task-timing';
 import type { LocalProcessResult } from '@blueprinthelper/task-core/tool-surface/types';
 import {
   getBlueprintHelperTool,
@@ -16,6 +17,7 @@ export async function invokeCliTool(input: {
   cwd: string;
   bridge: BridgeClient;
   taskRunner: TaskSpecRunner;
+  timing?: TaskTimingTrace;
   readStdin?: () => Promise<string> | string;
   runLocalProcess?: (command: string, args: string[], options?: {
     timeoutMs?: number;
@@ -58,6 +60,7 @@ export async function invokeCliTool(input: {
     cwd: input.cwd,
     bridge: input.bridge,
     taskRunner: input.taskRunner,
+    timing: input.timing,
     runLocalProcess: input.runLocalProcess,
     sleep: input.sleep,
   });

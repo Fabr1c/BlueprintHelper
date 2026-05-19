@@ -11,7 +11,7 @@ import {
 import type { BlueprintHelperToolContext } from '../types.js';
 
 export async function previewTask(input: Record<string, unknown>, context: BlueprintHelperToolContext) {
-  const timing = startTaskTiming(input['develop'] === true, 'preview_task');
+  const timing = context.timing ?? startTaskTiming(input['develop'] === true, 'preview_task');
   const taskSpec = measureTaskTiming(timing, 'taskspec_parse', () => (
     'task_spec' in input
       ? PreviewTaskInputSchema.parse(input).task_spec
@@ -21,7 +21,7 @@ export async function previewTask(input: Record<string, unknown>, context: Bluep
 }
 
 export async function executeTask(input: Record<string, unknown>, context: BlueprintHelperToolContext) {
-  const timing = startTaskTiming(input['develop'] === true, 'execute_task');
+  const timing = context.timing ?? startTaskTiming(input['develop'] === true, 'execute_task');
   const taskSpec = measureTaskTiming(timing, 'taskspec_parse', () => (
     'task_spec' in input
       ? ExecuteTaskInputSchema.parse(input).task_spec
