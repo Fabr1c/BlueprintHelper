@@ -12,6 +12,8 @@ import type {
 } from '../schema/task-schemas.js';
 import { TASK_PLAN_SCHEMA } from '../schema/task-schemas.js';
 
+export const TASK_COMPILER_RESULT_SCHEMA = 'BlueprintHelper.TaskCompilerResult.v1';
+
 export class TaskSpecCompileError extends Error {
   readonly code: string;
   readonly issues: TaskIssue[];
@@ -22,6 +24,49 @@ export class TaskSpecCompileError extends Error {
     this.code = code;
     this.issues = issues;
   }
+}
+
+export type TaskCompilerStrategyId = 'canonical_python' | 'ts_fast_path' | 'python_worker';
+
+export interface TaskCompileOptions {
+  dryRun: boolean;
+  diagnostics?: boolean;
+}
+
+export interface TaskCompileDiagnostics {
+  bridgePayload?: Record<string, unknown>;
+  taskPlanSummary?: Record<string, unknown>;
+  compilerOutputBytes?: number;
+  fallbackReason?: string;
+  parityStatus?: string;
+  parityReason?: string;
+  [key: string]: unknown;
+}
+
+export interface CompiledTaskPlan {
+  schema: typeof TASK_COMPILER_RESULT_SCHEMA;
+  taskPlan: TaskPlan;
+  strategyId: TaskCompilerStrategyId | string;
+  diagnostics?: TaskCompileDiagnostics;
+}
+
+export interface TaskCompilerStrategy {
+  readonly id: TaskCompilerStrategyId;
+  canCompile(taskSpec: TaskSpec, options?: TaskCompileOptions): boolean;
+  compile(taskSpec: TaskSpec, options: TaskCompileOptions): Promise<CompiledTaskPlan>;
+}
+
+export function createCompiledTaskPlan(input: {
+  taskPlan: TaskPlan;
+  strategyId: TaskCompilerStrategyId | string;
+  diagnostics?: TaskCompileDiagnostics;
+}): CompiledTaskPlan {
+  return {
+    schema: TASK_COMPILER_RESULT_SCHEMA,
+    taskPlan: input.taskPlan,
+    strategyId: input.strategyId,
+    ...(input.diagnostics ? { diagnostics: input.diagnostics } : {}),
+  };
 }
 
 type TaskPlanStep = TaskPlan['steps'][number];

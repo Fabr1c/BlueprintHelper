@@ -67,27 +67,27 @@ test('Bridge route planner declares every command once in the route registry tab
   assert.deepEqual([...new Set(duplicates)].sort(), []);
 });
 
-test('CLI and MCP production task paths use Python compiler instead of TS fallback compiler', () => {
+test('CLI and MCP production task paths depend on the task compiler service boundary', () => {
   const productionFiles = [
     ...collectFiles(path.resolve(AGENT_FACE_ROOT, 'cli', 'src'), ['.ts']),
     ...collectFiles(path.resolve(AGENT_FACE_ROOT, 'mcp', 'src', 'mcp'), ['.ts']),
   ];
-  const directTsCompilerUsers = productionFiles
-    .filter((filePath) => fs.readFileSync(filePath, 'utf8').includes('compileTaskSpecToTaskPlan'))
+  const directCompilerUsers = productionFiles
+    .filter((filePath) => /compileTaskSpecToTaskPlan|compileTaskSpecWithPython/u.test(fs.readFileSync(filePath, 'utf8')))
     .map(toRepoRelativePath);
 
-  assert.deepEqual(directTsCompilerUsers, []);
+  assert.deepEqual(directCompilerUsers, []);
   assert.match(
     fs.readFileSync(path.resolve(AGENT_FACE_ROOT, 'cli', 'src', 'cli', 'run.ts'), 'utf8'),
-    /compileTaskSpecWithPython/u,
+    /createTaskSpecRunner/u,
   );
   assert.match(
     fs.readFileSync(path.resolve(AGENT_FACE_ROOT, 'mcp', 'src', 'mcp', 'tools', 'task-tools.ts'), 'utf8'),
-    /compileTaskSpecWithPython/u,
+    /createTaskSpecRunner/u,
   );
   assert.match(
     fs.readFileSync(path.resolve(AGENT_FACE_ROOT, 'mcp', 'src', 'mcp', 'tools', 'shared-registry-adapter.ts'), 'utf8'),
-    /compileTaskSpecWithPython/u,
+    /createTaskSpecRunner/u,
   );
 });
 

@@ -5,6 +5,7 @@ export interface TaskTimingStage {
   name: string;
   started_at_ms: number;
   duration_ms: number;
+  [key: string]: unknown;
 }
 
 export interface TaskTimingTraceSnapshot {
@@ -53,6 +54,16 @@ export class TaskTimingTrace {
     } finally {
       this.addStage(name, startedAt, performance.now());
     }
+  }
+
+  addMarker(name: string, fields: Record<string, unknown> = {}): void {
+    const now = performance.now();
+    this.stages.push({
+      name,
+      started_at_ms: roundMs(now - this.startedAt),
+      duration_ms: 0,
+      ...fields,
+    });
   }
 
   addNested(name: string, timing: unknown): void {
@@ -121,6 +132,14 @@ export function addNestedTaskTiming(
   value: unknown,
 ): void {
   timing?.addNested(name, value);
+}
+
+export function addTaskTimingMarker(
+  timing: TaskTimingTrace | undefined,
+  name: string,
+  fields: Record<string, unknown> = {},
+): void {
+  timing?.addMarker(name, fields);
 }
 
 export function attachTaskTiming(

@@ -50,6 +50,8 @@ def main(argv: List[str] | None = None) -> int:
             request["task_spec"],
             bool(request.get("dry_run", True)),
         )
+        if not bool(request.get("diagnostic", False)):
+            result = _trim_compiler_result(result)
         _write_json({"ok": True, "result": result})
         return 0
     except TaskSpecCompileError as exc:
@@ -70,3 +72,9 @@ def main(argv: List[str] | None = None) -> int:
 def _write_json(value: Dict[str, Any]) -> None:
     sys.stdout.write(json.dumps(value, ensure_ascii=False, separators=(",", ":")))
     sys.stdout.write("\n")
+
+
+def _trim_compiler_result(value: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "task_plan": value["task_plan"],
+    }
