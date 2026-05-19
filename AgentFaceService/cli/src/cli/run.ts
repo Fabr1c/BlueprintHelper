@@ -9,8 +9,11 @@ import {
   type TaskSpecRunner,
 } from '@blueprinthelper/task-core/task/service/task-spec-runner';
 import {
+  attachTaskTiming,
   measureTaskTiming,
+  measureTaskTimingAsync,
   startTaskTiming,
+  type TaskTimingTrace,
 } from '@blueprinthelper/task-core/task/service/task-timing';
 import {
   ReadTaskContextInputSchema,
@@ -78,9 +81,10 @@ const READ_ONLY_BRIDGE_COMMANDS = new Set([
 ]);
 
 export async function runCli(runtime: CliRuntime): Promise<number> {
+  const cliTiming = startTaskTiming(runtime.argv.includes('--develop'), 'cli_command', 'agentface_cli');
   let parsed: ParseResult;
   try {
-    parsed = parseArgs(runtime.argv);
+    parsed = measureTaskTiming(cliTiming, 'cli.parse_args', () => parseArgs(runtime.argv));
   } catch (err) {
     runtime.stderr(`${err instanceof Error ? err.message : String(err)}\n`);
     return 64;
@@ -95,29 +99,30 @@ export async function runCli(runtime: CliRuntime): Promise<number> {
   }
 
   const command = parsed.command;
+  const timing = command.develop === true ? cliTiming : undefined;
 
   try {
     if (command.kind === 'tool.invoke') {
-      const toolResult = await invokeCliTool({
+      const toolResult = await measureTaskTimingAsync(timing, 'cli.invoke_tool', () => invokeCliTool({
         command,
         cwd: runtime.cwd,
         bridge: getBridge(runtime) as BridgeClient,
         taskRunner: getRunner(runtime),
+        timing,
         readStdin: runtime.readStdin ?? readProcessStdin,
         runLocalProcess: runtime.runLocalProcess,
         sleep: runtime.sleep,
-      });
-      const outcome = writeCliResult(runtime, command, toolResult);
+      }));
+      const outcome = writeTimedCliResult(runtime, command, toolResult, timing);
       return outcome.outputTooLarge ? 3 : toolResult.ok ? 0 : 2;
     }
 
     if (command.kind === 'task.preview') {
-      const timing = startTaskTiming(command.develop === true, 'preview_task');
       const taskSpec = measureTaskTiming(timing, 'taskspec_file_read_parse', () => (
         TaskSpecSchema.parse(readJsonFile(path.resolve(runtime.cwd, required(command.file))))
       ));
       const preview = await getRunner(runtime).previewTask(taskSpec, timing);
-      const outcome = writeCliResult(runtime, command, preview.toolResult, {
+      const outcome = writeTimedCliResult(runtime, command, preview.toolResult, timing, {
         previewId: preview.previewId,
         taskPlan: preview.taskPlan,
         passed: preview.passed,
@@ -127,35 +132,36 @@ export async function runCli(runtime: CliRuntime): Promise<number> {
     }
 
     if (command.kind === 'task.execute') {
-      const timing = startTaskTiming(command.develop === true, 'execute_task');
       const taskSpec = measureTaskTiming(timing, 'taskspec_file_read_parse', () => (
         TaskSpecSchema.parse(readJsonFile(path.resolve(runtime.cwd, required(command.file))))
       ));
       const toolResult = await getRunner(runtime).executeTask(taskSpec, timing);
-      const outcome = writeCliResult(runtime, command, toolResult);
+      const outcome = writeTimedCliResult(runtime, command, toolResult, timing);
       return outcome.outputTooLarge ? 3 : toolResult.ok ? 0 : 2;
     }
 
     if (command.kind === 'task.result') {
-      const toolResult = await getRunner(runtime).getTaskResult(required(command.taskRunId));
-      const outcome = writeCliResult(runtime, command, toolResult);
+      const toolResult = await measureTaskTimingAsync(timing, 'cli.get_task_result', () => getRunner(runtime).getTaskResult(required(command.taskRunId)));
+      const outcome = writeTimedCliResult(runtime, command, toolResult, timing);
       return outcome.outputTooLarge ? 3 : toolResult.ok ? 0 : 2;
     }
 
     if (command.kind === 'context.read') {
-      const input = ReadTaskContextInputSchema.parse(readJsonFile(path.resolve(runtime.cwd, required(command.file))));
-      const toolResult = await getRunner(runtime).readTaskContext(input);
-      const outcome = writeCliResult(runtime, command, toolResult);
+      const input = measureTaskTiming(timing, 'context_file_read_parse', () => (
+        ReadTaskContextInputSchema.parse(readJsonFile(path.resolve(runtime.cwd, required(command.file))))
+      ));
+      const toolResult = await measureTaskTimingAsync(timing, 'cli.read_task_context', () => getRunner(runtime).readTaskContext(input));
+      const outcome = writeTimedCliResult(runtime, command, toolResult, timing);
       return outcome.outputTooLarge ? 3 : toolResult.ok ? 0 : 2;
     }
 
     if (command.kind === 'bridge.ping') {
       const bridge = getBridge(runtime);
-      const response = await bridge.sendCommand('ping', {});
+      const response = await measureTaskTimingAsync(timing, 'bridge.ping', () => bridge.sendCommand('ping', {}));
       const toolResult = response.success
         ? successRead('bridge_ping', { target_type: 'asset' }, normalizeBridgeData(response))
         : bridgeFailureResult('bridge_ping', response);
-      const outcome = writeCliResult(runtime, command, toolResult);
+      const outcome = writeTimedCliResult(runtime, command, toolResult, timing);
       return outcome.outputTooLarge ? 3 : toolResult.ok ? 0 : 2;
     }
 
@@ -165,11 +171,11 @@ export async function runCli(runtime: CliRuntime): Promise<number> {
         runtime.stderr(`Bridge command is not allowed through CLI: ${bridgeCommand}\n`);
         return 64;
       }
-      const response = await getBridge(runtime).sendCommand(bridgeCommand, {});
+      const response = await measureTaskTimingAsync(timing, 'bridge.call', () => getBridge(runtime).sendCommand(bridgeCommand, {}));
       const toolResult = response.success
         ? normalizeToolResult(response, `bridge.${bridgeCommand}`)
         : bridgeFailureResult(`bridge.${bridgeCommand}`, response);
-      const outcome = writeCliResult(runtime, command, toolResult);
+      const outcome = writeTimedCliResult(runtime, command, toolResult, timing);
       return outcome.outputTooLarge ? 3 : toolResult.ok ? 0 : 2;
     }
   } catch (err) {
@@ -186,6 +192,29 @@ export async function runCli(runtime: CliRuntime): Promise<number> {
 
   runtime.stderr(`Unsupported BlueprintHelper CLI command: ${runtime.argv.join(' ')}\n`);
   return 64;
+}
+
+function writeTimedCliResult(
+  runtime: CliRuntime,
+  command: CliCommand,
+  toolResult: ToolResultBase,
+  timing: TaskTimingTrace | undefined,
+  extra: Record<string, unknown> = {},
+) {
+  const timedResult = attachCliTiming(toolResult, timing);
+  return writeCliResult(runtime, command, timedResult, extra);
+}
+
+function attachCliTiming(
+  toolResult: ToolResultBase,
+  timing: TaskTimingTrace | undefined,
+): ToolResultBase {
+  if (!timing) {
+    return toolResult;
+  }
+
+  measureTaskTiming(timing, 'cli.result_return', () => undefined);
+  return attachTaskTiming(toolResult, timing);
 }
 
 function parseArgs(argv: string[]): ParseResult {
@@ -526,6 +555,7 @@ function helpText(): string {
     '  blueprinthelper-cli bridge call --command <read_only_command> [--fields path[,path...]] [--omit path[,path...]]',
     '',
     'Notes:',
+    '  --develop enables data.timing for any CLI command result.',
     '  Long UE Bridge waits emit progress hints to stderr. Stdout remains final JSON.',
     '  In PowerShell, prefer --file or --stdin for generated JSON; inline --json may lose quotes.',
   ].join('\n');

@@ -1,6 +1,7 @@
 import type { BridgeClient } from '../bridge/bridge-client.js';
 import type { ToolResultBase } from '../result/tool-result.js';
 import type { TaskSpecRunner } from '../task/service/task-spec-runner.js';
+import type { TaskTimingTrace } from '../task/service/task-timing.js';
 import type { z } from 'zod';
 
 export type ToolAudience = 'default' | 'compat' | 'expert';
@@ -16,6 +17,7 @@ export interface BlueprintHelperToolContext {
   cwd: string;
   bridge: BridgeClient;
   taskRunner: TaskSpecRunner;
+  timing?: TaskTimingTrace;
   ueEngineDir?: string;
   runLocalProcess?: (command: string, args: string[], options?: {
     timeoutMs?: number;

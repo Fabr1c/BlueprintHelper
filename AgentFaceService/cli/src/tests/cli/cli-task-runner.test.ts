@@ -332,6 +332,33 @@ test('select is an alias for fields', async () => {
   assert.deepEqual(JSON.parse(writes.join('')), { status: 'bridge_available' });
 });
 
+test('develop timing applies to direct CLI tool invocation', async () => {
+  const writes: string[] = [];
+  const exitCode = await runCli({
+    argv: ['blueprinthelper_read_context_capabilities', '--json', '{}', '--develop', '--format', 'json'],
+    cwd: fixturesDir,
+    bridge: {
+      sendCommand: async () => { throw new Error('not used'); },
+    },
+    runner: {
+      previewTask: async () => { throw new Error('not used'); },
+      executeTask: async () => { throw new Error('not used'); },
+      getTaskResult: async () => { throw new Error('not used'); },
+      readTaskContext: async () => { throw new Error('not used'); },
+      readReferenceContext: async () => { throw new Error('not used'); },
+    } as TaskSpecRunner,
+    stdout: (line) => writes.push(line),
+    stderr: () => {},
+  });
+
+  assert.equal(exitCode, 0);
+  const output = JSON.parse(writes.join('')) as Record<string, any>;
+  const timing = output.tool_result.data.timing as Record<string, any>;
+  assert.equal(timing.source, 'agentface_cli');
+  assert.equal(timing.operation, 'cli_command');
+  assert.ok((timing.stages as Array<Record<string, unknown>>).some((stage) => stage.name === 'cli.invoke_tool'));
+});
+
 test('omit removes selected fields from compact output', async () => {
   const writes: string[] = [];
   const bridge = {
@@ -602,6 +629,43 @@ test('context read uses TaskSpec runner readTaskContext', async () => {
   const output = JSON.parse(writes.join('')) as Record<string, unknown>;
   assert.equal(output.operation, 'context.read');
   assert.equal(output.status, 'completed');
+});
+
+test('develop timing applies to context read command', async () => {
+  const writes: string[] = [];
+  const runner = {
+    previewTask: async () => { throw new Error('not used'); },
+    executeTask: async () => { throw new Error('not used'); },
+    getTaskResult: async () => { throw new Error('not used'); },
+    readTaskContext: async () => ({
+      ok: true,
+      schema: 'BlueprintHelper.ToolResult.v1',
+      operation: 'read_task_context',
+      trace_id: 'trace_context_develop',
+      status: 'completed',
+      modified: false,
+      data: {
+        schema: 'BlueprintHelper.TaskContextPack.v1',
+        target: { asset_path: '/Game/BP_Player' },
+      },
+    }),
+    readReferenceContext: async () => { throw new Error('not used'); },
+  } as TaskSpecRunner;
+
+  const exitCode = await runCli({
+    argv: ['context', 'read', '--file', 'context-request.json', '--develop', '--format', 'json'],
+    cwd: fixturesDir,
+    runner,
+    stdout: (line) => writes.push(line),
+    stderr: () => {},
+  });
+
+  assert.equal(exitCode, 0);
+  const output = JSON.parse(writes.join('')) as Record<string, any>;
+  const timing = output.tool_result.data.timing as Record<string, any>;
+  assert.equal(timing.source, 'agentface_cli');
+  assert.ok((timing.stages as Array<Record<string, unknown>>).some((stage) => stage.name === 'context_file_read_parse'));
+  assert.ok((timing.stages as Array<Record<string, unknown>>).some((stage) => stage.name === 'cli.read_task_context'));
 });
 
 test('context read artifact escapes localized node names as ascii-safe JSON', async () => {

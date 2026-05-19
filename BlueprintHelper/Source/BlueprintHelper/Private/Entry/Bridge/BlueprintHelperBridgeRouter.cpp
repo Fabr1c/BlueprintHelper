@@ -50,6 +50,7 @@
 #include "Systems/ToolClusters/BlueprintVariables/BlueprintHelperBlueprintVariableService.h"
 #include "Shared/BlueprintVariables/BlueprintHelperBlueprintVariableTypes.h"
 #include "Shared/BlueprintHelperToolResultTypes.h"
+#include "Shared/Utils/BlueprintHelperToolTimingUtils.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Serialization/JsonReader.h"
@@ -59,6 +60,70 @@
 class FBlueprintHelperBridgeRouterLocalUtils
 {
 public:
+	template <typename TCallable>
+	static FBlueprintHelperBridgeResponse ExecuteRouteWithTiming(
+		const FBlueprintHelperBridgeRequest& Request,
+		TCallable Callable)
+	{
+		FBlueprintHelperToolTimingUtils::FTimingTrace TimingTrace =
+			FBlueprintHelperToolTimingUtils::StartTrace(
+				Request.Command,
+				ShouldIncludeBridgeTiming(Request.Command, Request.Payload),
+				TEXT("ue_bridge_router"));
+		const double RouteStageStart = FBlueprintHelperToolTimingUtils::StartStage(TimingTrace);
+		FBlueprintHelperBridgeResponse Response = Callable();
+		FBlueprintHelperToolTimingUtils::FinishStage(TimingTrace, TEXT("route_execute"), RouteStageStart);
+		FBlueprintHelperToolTimingUtils::AttachTimingToBridgeResult(Response.Result, TimingTrace);
+		return Response;
+	}
+
+	static bool ShouldIncludeBridgeTiming(
+		const FString& Command,
+		const TSharedPtr<FJsonObject>& Payload)
+	{
+		bool bIncludeTiming = false;
+		if (!Payload.IsValid() || !Payload->TryGetBoolField(TEXT("include_timing"), bIncludeTiming) || !bIncludeTiming)
+		{
+			return false;
+		}
+
+		return IsReadTimingCommand(Command);
+	}
+
+	static bool IsReadTimingCommand(const FString& Command)
+	{
+		static const TSet<FString> ReadTimingCommands = {
+			TEXT("get_editor_context"),
+			TEXT("get_runtime_profile"),
+			TEXT("diagnostics_runtime"),
+			TEXT("get_debug_case"),
+			TEXT("list_debug_cases"),
+			TEXT("export_debug_bundle"),
+			TEXT("read_reference_context"),
+			TEXT("read_function_chain_context"),
+			TEXT("read_blueprint_logic_md"),
+			TEXT("read_blueprint_logic_json"),
+			TEXT("export_to_json"),
+			TEXT("export_logic"),
+			TEXT("get_asset_info"),
+			TEXT("list_assets"),
+			TEXT("search_assets"),
+			TEXT("list_graphs"),
+			TEXT("list_variables"),
+			TEXT("list_event_dispatchers"),
+			TEXT("read_blueprint_member_variables"),
+			TEXT("read_blueprint_member_defaults"),
+			TEXT("read_blueprint_local_variables"),
+			TEXT("get_widget_tree"),
+			TEXT("get_widget_properties"),
+			TEXT("get_datatable_rows"),
+			TEXT("get_object_properties"),
+			TEXT("read_components"),
+			TEXT("read_class_settings")
+		};
+		return ReadTimingCommands.Contains(Command);
+	}
+
 	static TSharedRef<FJsonObject> MakeLogicStatsObject(const FBlueprintHelperLogicResult& Result)
 	{
 		TSharedRef<FJsonObject> StatsObject = MakeShared<FJsonObject>();
@@ -630,7 +695,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequestWithPl
 #define BLUEPRINTHELPER_ROUTE(CommandText, ClusterValue, Handler) \
 	if (RoutePlan.Cluster == EBlueprintHelperBridgeRouteCluster::ClusterValue && Request.Command == TEXT(CommandText)) \
 	{ \
-		return Handler(Request); \
+		return FBlueprintHelperBridgeRouterLocalUtils::ExecuteRouteWithTiming(Request, [&]() { return Handler(Request); }); \
 	}
 
 	BLUEPRINTHELPER_ROUTE("get_rule_markdown", Core, HandleGetRuleMarkdown)
@@ -676,25 +741,25 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequestWithPl
 	if (RoutePlan.Cluster == EBlueprintHelperBridgeRouteCluster::BlueprintVariables &&
 		FBlueprintHelperBlueprintVariablesBridgeRoutes::IsBlueprintVariablesCommand(Request.Command))
 	{
-		return BlueprintVariablesRoutes.HandleRequest(Request);
+		return FBlueprintHelperBridgeRouterLocalUtils::ExecuteRouteWithTiming(Request, [&]() { return BlueprintVariablesRoutes.HandleRequest(Request); });
 	}
 
 	if (RoutePlan.Cluster == EBlueprintHelperBridgeRouteCluster::UMGWidget &&
 		FBlueprintHelperUMGWidgetBridgeRoutes::IsUMGWidgetCommand(Request.Command))
 	{
-		return UMGWidgetRoutes.HandleRequest(Request);
+		return FBlueprintHelperBridgeRouterLocalUtils::ExecuteRouteWithTiming(Request, [&]() { return UMGWidgetRoutes.HandleRequest(Request); });
 	}
 
 	if (RoutePlan.Cluster == EBlueprintHelperBridgeRouteCluster::DataTable &&
 		FBlueprintHelperDataTableBridgeRoutes::IsDataTableCommand(Request.Command))
 	{
-		return DataTableRoutes.HandleRequest(Request);
+		return FBlueprintHelperBridgeRouterLocalUtils::ExecuteRouteWithTiming(Request, [&]() { return DataTableRoutes.HandleRequest(Request); });
 	}
 
 	if (RoutePlan.Cluster == EBlueprintHelperBridgeRouteCluster::ObjectProperty &&
 		FBlueprintHelperObjectPropertyBridgeRoutes::IsObjectPropertyCommand(Request.Command))
 	{
-		return ObjectPropertyRoutes.HandleRequest(Request);
+		return FBlueprintHelperBridgeRouterLocalUtils::ExecuteRouteWithTiming(Request, [&]() { return ObjectPropertyRoutes.HandleRequest(Request); });
 	}
 
 	BLUEPRINTHELPER_ROUTE("undo", EditorCommand, HandleUndo)
@@ -708,19 +773,19 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequestWithPl
 	if (RoutePlan.Cluster == EBlueprintHelperBridgeRouteCluster::AssetFactory &&
 		FBlueprintHelperAssetFactoryBridgeRoutes::IsAssetFactoryCommand(Request.Command))
 	{
-		return AssetFactoryRoutes.HandleRequest(Request);
+		return FBlueprintHelperBridgeRouterLocalUtils::ExecuteRouteWithTiming(Request, [&]() { return AssetFactoryRoutes.HandleRequest(Request); });
 	}
 
 	if (RoutePlan.Cluster == EBlueprintHelperBridgeRouteCluster::Component &&
 		FBlueprintHelperComponentBridgeRoutes::IsComponentCommand(Request.Command))
 	{
-		return ComponentRoutes.HandleRequest(Request);
+		return FBlueprintHelperBridgeRouterLocalUtils::ExecuteRouteWithTiming(Request, [&]() { return ComponentRoutes.HandleRequest(Request); });
 	}
 
 	if (RoutePlan.Cluster == EBlueprintHelperBridgeRouteCluster::ClassSettings &&
 		FBlueprintHelperClassSettingsBridgeRoutes::IsClassSettingsCommand(Request.Command))
 	{
-		return ClassSettingsRoutes.HandleRequest(Request);
+		return FBlueprintHelperBridgeRouterLocalUtils::ExecuteRouteWithTiming(Request, [&]() { return ClassSettingsRoutes.HandleRequest(Request); });
 	}
 
 	BLUEPRINTHELPER_ROUTE("preview_task_plan", TaskRuntime, HandlePreviewTaskPlan)
@@ -730,7 +795,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequestWithPl
 	if (RoutePlan.Cluster == EBlueprintHelperBridgeRouteCluster::GraphWrite &&
 		FBlueprintHelperGraphWriteBridgeRoutes::IsGraphWriteCommand(Request.Command))
 	{
-		return GraphWriteRoutes.HandleRequest(Request);
+		return FBlueprintHelperBridgeRouterLocalUtils::ExecuteRouteWithTiming(Request, [&]() { return GraphWriteRoutes.HandleRequest(Request); });
 	}
 
 
