@@ -948,11 +948,12 @@ compile-only 五轮隔离样本：
 
 ## 当前状态
 
-- 状态：P0-0 develop 诊断计时流程已开始实现；P0-1 32 hex token + Editor 生命周期 preview store 已完成首轮实现和跨 CLI 成功验证；P0-2/P0-3 已在代码路径落地并完成小样本补测；P1 compiler fast path / 输出裁剪已完成实现和测速；P2 TaskRuntime Review IO / 三层执行模型已完成实现和测速。
+- 状态：P0-0 develop 诊断计时流程已开始实现；P0-1 32 hex token + Editor 生命周期 preview store 已完成首轮实现和跨 CLI 成功验证；P0-2/P0-3 已在代码路径落地并完成小样本补测；P1 compiler fast path / 输出裁剪已完成实现和测速；P2 TaskRuntime Review IO / 三层执行模型已完成实现和测速；Bridge 短连接响应后立即 close 已落地并完成读写同案例复测。
 - 读工具 R0-R5 已落地首轮实现：read_context payload bytes、UE route 子阶段 timing、Logic Snapshot DTO、pure formatter、request-local cache、pure-data cache policy 和 benchmark script 均已接入。
-- 读工具 R0-R5 已完成 11 个 ReadSpec 的 `warmup=1`、`iterations=5` 成功测速，55/55 成功；Logic JSON 代表样本 `snapshot_read=0.231ms`、`format_output=0.125ms`，下一步瓶颈仍是 `bridge_send_receive` 约 1.9s 的 Bridge/CLI gap。
-- 用户关闭 Editor 后已改用 MCP lifecycle 重启并补测 11 个 ReadSpec，包含新增 `11_blueprint_logic_flow.json`；结果显示 `logic_flow_build_payload=1.014ms`，主要瓶颈仍在 Bridge 往返 gap。
+- 读工具 R0-R5 已完成 11 个 ReadSpec 的 `warmup=1`、`iterations=5` 成功测速，55/55 成功；Bridge close 修复后同样本 median wall 范围为 328.634-330.013ms，`slowest bridge` 范围为 222.467-233.793ms，UE route 仍为 0.016-0.454ms。
+- 用户关闭 Editor 后已改用 MCP lifecycle 重启并补测 11 个 ReadSpec，包含新增 `11_blueprint_logic_flow.json`；Bridge close 修复后 1.9s idle penalty 已消除，剩余主要是 CLI 启动、Bridge/UE 调度相位和实际 UE execute。
 - 已补测 P0 `preview -> execute(preview_token)` 同进程链路：17 个预装写 Spec 中 16 个 execute 成功，preview+execute 成功样本 avg 682.007ms、p50 517.478ms、max 1725.355ms；execute 阶段已出现 `preview_token.validate` 和 `preview_token.reuse_task_plan`。
+- 已补测 Bridge close 后的同一批预装写 Spec：17 个 Spec 中 16 个 preview+execute 成功，1 个因 Review baseline 策略 `preview_blocked`；成功样本 preview wall avg/p50/max 为 237.456/201.299/592.753ms，execute wall avg/p50/max 为 445.826/401.481/896.005ms，preview+execute workflow avg/p50/max 为 683.281/588.036/1488.758ms。
 - P0-1 已完成首轮实现：token 使用 32 位 hex 短句柄，完整校验和 TaskPlan 保存在 Editor 生命周期内的 preview store；execute 命中 token 后直接复用 store 内 TaskPlan，避免二次 compile 和二次 preview。
 - P0-1 跨 CLI 重测已通过：`01_create_blueprint_actor.json` preview 返回 32 hex token，另一个 CLI execute 带 token 成功；execute timing 不含 `taskspec_compile` 和 `bridge.preview_task_plan`，TaskSpec hash 与目标资产状态变化均会返回 `preview_token_mismatch`。
 - `--develop` preview 已补 UE 原始返回透传：CLI 结果直接包含 `ue_preview_result` 以及 `dry_run`、`call_function_resolution_cache`、`runtime_facts` 诊断字段；普通非 develop 调用仍不返回这些字段。
@@ -962,20 +963,116 @@ compile-only 五轮隔离样本：
 - 普通路径保持无计时采集、无 `data.timing` 返回；CLI 诊断路径通过 `--develop` 对所有 CLI 工具显式开启，TaskSpec MCP/tool 诊断路径通过 `develop: true` 显式开启。
 - 后续实现必须保持高内聚、低耦合，避免把性能分支堆进单个 service 或 UI 入口。
 
+## Bridge/CLI gap 初步定位
+
+测试时间：2026-05-20。该轮只测量，不改代码。
+
+定位目标：确认 R0-R5 后读链路剩余的约 1.9s `bridge_send_receive` 是否来自本地 TCP 通信、CLI 启动、UE route 执行，还是 Bridge 连接生命周期。
+
+关键代码观察：
+- `read_context.bridge_send_receive` 包住的是 `context.bridge.sendCommand()`，包含 TCP ensureConnected、写请求、等待 Bridge 响应。
+- CLI 每次独立进程会创建新的 `BridgeClient` 和新的 TCP 连接。
+- UE `FBlueprintHelperBridgeServer::Run()` 当前一次只 `Accept` 一个 client，并同步进入 `HandleClient()`。
+- `HandleClient()` 在没有 pending data 后不会立刻返回 `Accept`，而是等待 `IdleTimeoutSeconds = 2.0` 后才关闭当前连接。
+
+分层测速：
+
+| 场景 | 样本 | wall_ms | CLI internal / bridge_ms | UE route_ms | 结论 |
+| --- | --- | ---: | ---: | ---: | --- |
+| `node -e` 空启动 | 5 次 | 13.994-18.396 |  |  | Node 进程启动不是 1.9s 主因。 |
+| CLI `--help` | 5 次 | 95.319-96.611 |  |  | CLI 模块加载和基础启动约 95-100ms。 |
+| 连续独立 CLI `bridge ping` | 第 1 次 | 103.548 | 3.297 |  | 首次连接快。 |
+| 连续独立 CLI `bridge ping` | 第 2-5 次 | 1918.564-2003.336 | 1820.625-1905.732 |  | 连续新连接稳定被约 1.9s 等待卡住。 |
+| 同 Node 进程同 socket `ping` | 8 次 | 10.141-20.294 |  |  | 本地 TCP 往返本身是 10ms 级。 |
+| 连续独立 CLI `read_context` | 5 次 | 1992.208-2119.218 | bridge 1891.322-2010.713 | 0.385-0.458 | 读工具 1.9s 与 UE route 无关。 |
+| 同 Node 进程同 socket `read_blueprint_logic_json` | 5 次 | 150.835-333.353 |  | 0.370-0.450 | 复用连接后消除 1.9s，但非 ping 命令仍受 GameThread 调度相位影响。 |
+| 每次独立 CLI 前等待 2.2s 后 `bridge ping` | 4 次 | 109.210-149.439 | 6.965-48.118 |  | 等上一个 client idle close 后，新连接恢复快。 |
+| 每次独立 CLI 前等待 2.2s 后 `read_context` | 3 次 | 131.106-384.296 | bridge 16.898-283.100 | 0.383-0.405 | 1.9s 消失，只剩 CLI 启动和 GameThread 调度相位。 |
+
+结论：
+- 本地 TCP 通信延迟可以忽略，不是 1.9s gap 的主因。
+- CLI 进程启动和模块加载约 100ms，也不是 1.9s 主因。
+- UE route 在 warm 状态下约 0.4ms，不是读链路端到端慢的主因。
+- 当前最大 gap 来自 Bridge server 的连接生命周期：单 client 同步处理 + 2 秒 idle timeout 阻塞下一次 `Accept`。连续 CLI 调用每次都是新连接，因此会被前一个连接的 idle timeout 放大到约 1.9s。
+- 复用同一个 BridgeClient/socket 后，`ping` 降到 10-20ms；这证明优化方向应优先处理 Bridge 连接复用或 server 多连接/非阻塞 accept，而不是继续优化读 DTO/formatter。
+
+已执行修复：2026-05-20 将 Bridge 短连接恢复为“一次请求、一次响应、立即 close”。`IdleTimeoutSeconds = 2.0` 只保留给“连接后不发请求”的 client，不再阻塞响应后的下一次 `Accept`。该改动不改变协议，不重启 Bridge server，只释放当前 TCP client connection。
+
+修复后分层测速：
+
+| 场景 | 样本 | wall_ms | CLI internal / bridge_ms | UE route_ms | 结论 |
+| --- | --- | ---: | ---: | ---: | --- |
+| 连续独立 CLI `bridge ping` | 5 次 | 100.429-151.322 | 4.251-52.764 |  | 1.9s idle penalty 消失；剩余主要是 CLI 启动和少量 accept/dispatch。 |
+| 连续独立 CLI `read_context` warm 样本 | 4 次 | 164.239-496.478 | bridge 56.237-385.041 | 0.345-0.429 | 读工具连续调用不再被上一个 CLI connection 的 idle timeout 卡住。 |
+| 11 个 ReadSpec 完整测速 | 55/55 成功 | median 328.634-330.013 | slowest bridge 222.467-233.793 | 0.016-0.454 | 读链路端到端从约 2s 级降到约 0.33s 级。 |
+
+读链路修复前后对比：
+
+| 指标 | 修复前 R0-R5 | 修复后 Bridge close | 变化 |
+| --- | ---: | ---: | ---: |
+| 11 个 ReadSpec median wall 范围 | 1994.332-1998.450ms | 328.634-330.013ms | 约减少 83.5% |
+| `02_blueprint_logic_json.json` median wall | 1994.332ms | 329.737ms | 约 6.05x |
+| `02_blueprint_logic_json.json` slowest bridge | 1894.589ms | 233.020ms | 约 8.13x |
+| `02_blueprint_logic_json.json` UE route | 0.401ms | 0.454ms | 同量级，非瓶颈 |
+
+后续优化方向：
+1. 短期已完成：响应后立即关闭短连接，恢复普通 CLI 的低等待路径。
+2. 中期如需长连接能力，再把 Bridge server 演进为 acceptor + session manager；但不应为了普通短 CLI 再引入 idle 阻塞。
+3. 如果引入长生命周期 AgentFace daemon / CLI session，则可以复用单个 BridgeClient/socket，进一步绕开 CLI 启动和连接成本；这属于新的运行形态，需要单独设计生命周期和故障恢复。
+4. 非 ping 命令仍有 0-333ms 级 GameThread 调度相位等待；该项独立于 2s idle penalty，后续可通过 Bridge/UE timing 继续细分 queue wait、GameThread dispatch wait、route execute。
+
+## 读写同案例最终复测
+
+测试时间：2026-05-20。Editor 通过 MCP 启动；读写工具均走 CLI `--develop --format json`；该轮只记录成功工具调用的性能数据，工具性失败不写入结果。写链路的 `05_append_graph_review_body.json` 为 Review baseline 策略阻塞，属于样本状态，不纳入成功耗时统计。
+
+读链路输入：`BlueprintHelper/Develop/v0.4.4/ReadSpecs/BP_ThirdPersonCharacter_20260519`
+
+读链路产物：`.tmp/read_timing/read_timing_20260520_032953`
+
+| 指标 | 数值 |
+| --- | ---: |
+| ReadSpec 数量 | 11 |
+| 成功运行 | 55/55 |
+| median wall min / p50 / max | 328.634 / 329.371 / 330.013ms |
+| max wall min / p50 / max | 331.584 / 333.953 / 335.004ms |
+| slowest bridge min / p50 / max | 222.467 / 232.003 / 233.793ms |
+| slowest UE route min / p50 / max | 0.016 / 0.366 / 0.454ms |
+
+写链路输入：`BlueprintHelper/Develop/v0.4.3/ArchivedReference/RetiredReviewDebugDocs_20260518/PlanArtifacts/ReviewPanel_UI_Test_TaskSpecs_20260518`
+
+写链路产物：`.tmp/write_timing_20260520_033512`
+
+| 指标 | 数值 |
+| --- | ---: |
+| WriteSpec 数量 | 17 |
+| preview+execute 成功 | 16 |
+| preview_blocked | 1 |
+| preview wall min / p50 / avg / max | 138.300 / 201.299 / 237.456 / 592.753ms |
+| execute wall min / p50 / avg / max | 229.363 / 401.481 / 445.826 / 896.005ms |
+| preview+execute workflow min / p50 / avg / max | 400.520 / 588.036 / 683.281 / 1488.758ms |
+| preview bridge min / p50 / avg / max | 13.249 / 40.458 / 87.010 / 473.803ms |
+| execute bridge min / p50 / avg / max | 111.556 / 285.624 / 324.104 / 757.545ms |
+| preview UE min / p50 / avg / max | 0.076 / 0.312 / 28.081 / 445.443ms |
+| execute UE min / p50 / avg / max | 79.900 / 250.625 / 287.522 / 744.193ms |
+
+最慢成功写样本仍为 `04b_write_function_body.json`：preview wall 592.753ms，execute wall 896.005ms，preview+execute workflow 1488.758ms。定档判断必须区分口径：如果“百 ms 内”指单次 CLI tool invocation 达到百毫秒级，则读工具和写工具成功样本已经进入 0.33-0.90s 范围；如果严格要求每个完整 preview+execute 工作流低于 1s，`04b` 和 `06` 仍未达标；如果严格要求低于 100ms，则当前 CLI 启动成本本身已经超过门槛，不能定档。
+
 ## 速度阶段优化图
 
 说明：
 - P0 与 P0-1 的实测样本、运行方式不同，不能画成同一张“连续阶段优化”图。
 - 同样本速度对比只使用 `04b_write_function_body.json` 的基线与 P0 token execute 数据。
 - P0-1 跨 CLI 数据单独成图，只证明 32 hex token + Editor 生命周期 preview store 已消除 execute 阶段的 `taskspec_compile` 和 `bridge.preview_task_plan`。
+- Bridge close 后的读写同案例图使用 2026-05-20 最终复测数据，只统计成功运行；`05_append_graph_review_body.json` 因 Review baseline 策略阻塞，从写链路成功曲线中排除。
 
 ### v0.5.0 总览对比折线图
 
 口径说明：
-- 写链路端到端图只比较写 Spec 集合的 `avg / p50 / max`，用于观察 P0 preview token 链路对总等待的影响。
+- 写链路端到端图比较优化前、P0 同进程 preview token、Bridge close 后同案例跨 CLI 复测的 `avg / p50 / max`。
+- 写链路逐 Spec 图比较 Bridge close 后成功样本的 preview wall、execute wall、preview+execute workflow wall。
 - P1 图只比较 TaskSpec compiler 本身，不代表完整 execute 总耗时。
 - P2 图只展示 UE execute 内部拆分后的阶段占比，不与 P0/P1 端到端图混画。
-- 读链路 R0-R5 图只比较 11 个 ReadSpec 的 `median_wall / bridge_send_receive / ue_route`，用于证明当前瓶颈已经转移到 Bridge/CLI gap。
+- 读链路图比较 11 个 ReadSpec 修复前后 `median_wall`，并保留修复后 `slowest_bridge / slowest_ue`，用于证明 1.9s idle penalty 已消除。
 
 写链路端到端总耗时：
 
@@ -983,6 +1080,7 @@ compile-only 五轮隔离样本：
 | --- | --- | --- | --- |
 | 线条 1 | 优化前写链路成功样本 | avg / p50 / max | 2172.994 / 2209.757 / 3246.974 |
 | 线条 2 | P0 同进程 preview token 成功样本 | avg / p50 / max | 682.007 / 517.478 / 1725.355 |
+| 线条 3 | Bridge close 后同案例跨 CLI 成功样本 | avg / p50 / max | 683.281 / 588.036 / 1488.758 |
 
 ```mermaid
 xychart
@@ -991,6 +1089,25 @@ xychart
     y-axis "duration_ms" 0 --> 3500
     line [2172.994, 2209.757, 3246.974]
     line [682.007, 517.478, 1725.355]
+    line [683.281, 588.036, 1488.758]
+```
+
+写链路同案例逐 Spec：
+
+| 线条 | 含义 | 数据点顺序 |
+| --- | --- | --- |
+| 线条 1 | preview wall | 01 / 02 / 03 / 04 / 04b / 06 / 07 / 08 / 09 / 10 / 11 / 12 / 13 / 14a / 14b / 14c |
+| 线条 2 | execute wall | 01 / 02 / 03 / 04 / 04b / 06 / 07 / 08 / 09 / 10 / 11 / 12 / 13 / 14a / 14b / 14c |
+| 线条 3 | preview+execute workflow wall | 01 / 02 / 03 / 04 / 04b / 06 / 07 / 08 / 09 / 10 / 11 / 12 / 13 / 14a / 14b / 14c |
+
+```mermaid
+xychart
+    title "Bridge close 后写链路同案例耗时（ms）"
+    x-axis ["01", "02", "03", "04", "04b", "06", "07", "08", "09", "10", "11", "12", "13", "14a", "14b", "14c"]
+    y-axis "duration_ms" 0 --> 1600
+    line [477.510, 208.020, 138.300, 150.780, 592.753, 198.811, 200.791, 201.564, 204.744, 245.268, 192.104, 152.410, 203.023, 234.240, 201.034, 197.939]
+    line [689.046, 459.051, 433.829, 439.257, 896.005, 732.623, 258.482, 260.310, 379.676, 378.059, 229.363, 248.110, 541.438, 415.372, 385.001, 387.590]
+    line [1166.556, 667.071, 572.129, 590.037, 1488.758, 931.434, 459.273, 461.874, 584.420, 623.327, 421.467, 400.520, 744.461, 649.612, 586.035, 585.529]
 ```
 
 TaskSpec compiler fast path：
@@ -1029,22 +1146,24 @@ xychart
     line [0.017, 777.225, 0.451, 156.410, 62.954]
 ```
 
-读链路 R0-R5 阶段对比：
+读链路 Bridge close 前后阶段对比：
 
 | 线条 | 含义 | 数据点顺序 |
 | --- | --- | --- |
-| 线条 1 | `median_wall_ms` | 01-11 ReadSpec |
-| 线条 2 | `slowest_bridge_ms` | 01-11 ReadSpec |
-| 线条 3 | `slowest_ue_ms` | 01-11 ReadSpec |
+| 线条 1 | 修复前 `median_wall_ms` | 01-11 ReadSpec |
+| 线条 2 | 修复后 `median_wall_ms` | 01-11 ReadSpec |
+| 线条 3 | 修复后 `slowest_bridge_ms` | 01-11 ReadSpec |
+| 线条 4 | 修复后 `slowest_ue_ms` | 01-11 ReadSpec |
 
 ```mermaid
 xychart
-    title "R0-R5 读链路 wall / bridge / UE route 对比（ms）"
+    title "读链路 Bridge close 前后对比（ms）"
     x-axis ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11"]
     y-axis "duration_ms" 0 --> 2100
     line [1996.511, 1994.332, 1997.072, 1997.176, 1997.291, 1997.269, 1996.882, 1998.409, 1998.450, 1996.921, 1997.659]
-    line [1903.994, 1894.589, 1900.322, 1899.983, 1895.692, 1898.036, 1899.797, 1896.734, 1896.113, 1900.529, 1898.527]
-    line [0.073, 0.401, 0.353, 0.435, 0.377, 0.378, 0.037, 0.037, 0.013, 0.079, 0.429]
+    line [329.275, 329.737, 329.322, 329.180, 329.531, 328.634, 329.793, 329.371, 329.346, 329.725, 330.013]
+    line [231.401, 233.020, 233.522, 231.465, 228.584, 222.467, 233.793, 233.725, 232.003, 233.474, 226.354]
+    line [0.096, 0.454, 0.366, 0.402, 0.371, 0.395, 0.041, 0.045, 0.016, 0.079, 0.403]
 ```
 
 ### 同样本阶段优化折线图
