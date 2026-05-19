@@ -1,4 +1,4 @@
-// BlueprintHelper Review row highlight model.
+﻿// BlueprintHelper Review row highlight model.
 
 #pragma once
 
@@ -9,12 +9,22 @@
 class SCanvas;
 struct FBlueprintHelperReviewPanelSurfacePresenterArgs;
 
+DECLARE_MULTICAST_DELEGATE_ThreeParams(
+	FBlueprintHelperReviewRowHighlightStateChanged,
+	const FString&,
+	EBlueprintHelperReviewSurface,
+	uint64);
+
 /**
- * 行高亮模型，提供行高亮相关的静态工具方法。
+ * 琛岄珮浜ā鍨嬶紝鎻愪緵琛岄珮浜浉鍏崇殑闈欐€佸伐鍏锋柟娉曘€?
  */
 class BLUEPRINTHELPER_API FBlueprintHelperReviewRowHighlightModel
 {
 public:
+	static FDelegateHandle AddStateChangedHandler(
+		FBlueprintHelperReviewRowHighlightStateChanged::FDelegate InDelegate);
+	static void RemoveStateChangedHandler(FDelegateHandle InHandle);
+
 	static bool IsRowHighlightSurface(EBlueprintHelperReviewSurface Surface);
 
 	static FLinearColor GetRowHighlightFillColor(const FLinearColor& ChangeColor);
@@ -29,6 +39,13 @@ public:
 		const FBlueprintHelperReviewPanelSurfacePresenterArgs& Args,
 		EBlueprintHelperReviewSurface Surface,
 		bool (*Predicate)(const FBlueprintHelperReviewVisibleChange&));
+
+	static void RebuildSurfaceState(
+		const FBlueprintHelperReviewPanelSurfacePresenterArgs& Args,
+		EBlueprintHelperReviewSurface Surface,
+		bool (*Predicate)(const FBlueprintHelperReviewVisibleChange&),
+		const FString& PreferredAssetPath = FString(),
+		bool bEmitGeometryDiagnostics = false);
 
 	static void InvalidateSurfaceState(
 		const FString& AssetPath,
@@ -46,34 +63,45 @@ public:
 		EBlueprintHelperReviewSurface Surface,
 		const FString& SearchText);
 
-	static FReply AcceptHighlightedRow(
+	static bool TryGetRowActionBinding(
 		const FString& AssetPath,
 		EBlueprintHelperReviewSurface Surface,
-		const FString& SearchText);
+		const FString& SearchText,
+		FBlueprintHelperReviewRowBinding& OutBinding);
 
-	static FReply RejectHighlightedRow(
+	static FReply DispatchRowAction(
 		const FString& AssetPath,
 		EBlueprintHelperReviewSurface Surface,
-		const FString& SearchText);
+		const FString& SearchText,
+		EBlueprintHelperReviewActionIntentKind Action,
+		const FString& SourceWidget);
 
 private:
 	struct FRowHighlightEntry : public FBlueprintHelperReviewRowHighlight
 	{
 		TSharedPtr<FBlueprintHelperReviewVisibleChange> Change;
+		FBlueprintHelperReviewRowBinding Binding;
 	};
 
 	struct FRowHighlightSurfaceState
 	{
 		FString AssetPath;
 		EBlueprintHelperReviewSurface Surface = EBlueprintHelperReviewSurface::Unknown;
+		uint64 Revision = 0;
 		TMap<FString, FRowHighlightEntry> TargetKeyToHighlight;
-		TFunction<FReply(const FString&)> OnAcceptChangeId;
-		TFunction<FReply(const FString&)> OnRejectChangeId;
+		TFunction<FReply(const FBlueprintHelperReviewActionIntent&)> OnReviewActionIntent;
 		TFunction<FSlateColor(EBlueprintHelperReviewChangeKind)> GetChangeColor;
 	};
 
 	static TMap<FString, FRowHighlightSurfaceState>& GetRowHighlightSurfaceStates();
 	static TSet<FString>& GetEmittedRowHighlightDebugKeys();
+	static FBlueprintHelperReviewRowHighlightStateChanged& GetStateChangedDelegate();
+	static uint64& GetStateRevisionCounter();
+	static uint64 NextStateRevision();
+	static void BroadcastStateChanged(
+		const FString& AssetPath,
+		EBlueprintHelperReviewSurface Surface,
+		uint64 Revision);
 	static FString NormalizeGeometrySearchText(FString Text);
 	static void AddGeometrySearchTerms(const FString& RawText, TArray<FString>& OutTerms);
 	static bool GeometrySearchTextMatches(const FString& RowSearchText, const FString& TargetText);
@@ -82,6 +110,7 @@ private:
 		const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Left,
 		const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Right);
 	static FString BuildRowHighlightStateKey(const FString& AssetPath, EBlueprintHelperReviewSurface Surface);
+	static void AddStateAssetPath(const FString& AssetPath, TArray<FString>& OutAssetPaths);
 	static FString ExtractReadableTail(FString Text);
 	static void AddRowHighlightKey(const FString& Key, TArray<FString>& OutKeys);
 	static FString GetReviewListTargetText(
@@ -97,16 +126,11 @@ private:
 		const FString& SearchText,
 		FRowHighlightEntry& OutEntry,
 		bool bAllowFuzzyMatch);
-	static bool FindActionRowHighlightEntry(
+	static bool FindExactRowHighlightEntry(
 		const FString& AssetPath,
 		EBlueprintHelperReviewSurface Surface,
 		const FString& SearchText,
 		FRowHighlightEntry& OutEntry);
-	static FReply ExecuteHighlightedRowAction(
-		const FString& AssetPath,
-		EBlueprintHelperReviewSurface Surface,
-		const FString& SearchText,
-		bool bAccept);
 	static FSlateColor ResolveRowHighlightColor(
 		const FString& AssetPath,
 		EBlueprintHelperReviewSurface Surface,
@@ -136,3 +160,4 @@ private:
 		const FString& Result,
 		const FString& Reason);
 };
+

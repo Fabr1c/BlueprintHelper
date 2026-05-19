@@ -1,4 +1,4 @@
-// BlueprintHelper Review presenter widget utility helpers.
+﻿// BlueprintHelper Review presenter widget utility helpers.
 
 #include "UI/Review/BlueprintHelperReviewPresenterWidgetUtils.h"
 
@@ -249,10 +249,7 @@ TSharedRef<SWidget> FBlueprintHelperReviewPresenterWidgetUtils::BuildRowActions(
 			.Text(FText::FromString(TEXT("Accept")))
 			.OnClicked_Lambda([AssetPath, Surface, SearchText]()
 			{
-				return FBlueprintHelperReviewRowHighlightModel::AcceptHighlightedRow(
-					AssetPath,
-					Surface,
-					SearchText);
+				return FBlueprintHelperReviewRowHighlightModel::DispatchRowAction(AssetPath, Surface, SearchText, EBlueprintHelperReviewActionIntentKind::Accept, TEXT("row_action"));
 			})
 		]
 		+ SHorizontalBox::Slot()
@@ -262,10 +259,7 @@ TSharedRef<SWidget> FBlueprintHelperReviewPresenterWidgetUtils::BuildRowActions(
 			.Text(FText::FromString(TEXT("Reject")))
 			.OnClicked_Lambda([AssetPath, Surface, SearchText]()
 			{
-				return FBlueprintHelperReviewRowHighlightModel::RejectHighlightedRow(
-					AssetPath,
-					Surface,
-					SearchText);
+				return FBlueprintHelperReviewRowHighlightModel::DispatchRowAction(AssetPath, Surface, SearchText, EBlueprintHelperReviewActionIntentKind::Reject, TEXT("row_action"));
 			})
 		];
 }
@@ -575,10 +569,7 @@ TSharedRef<ITableRow> FBlueprintHelperReviewPresenterWidgetUtils::GenerateWidget
 						.Text(FText::FromString(TEXT("Accept")))
 						.OnClicked_Lambda([AssetPath, ProbeTargetKey]()
 						{
-							return FBlueprintHelperReviewRowHighlightModel::AcceptHighlightedRow(
-								AssetPath,
-								EBlueprintHelperReviewSurface::UMGWidgetTree,
-								ProbeTargetKey);
+							return FBlueprintHelperReviewRowHighlightModel::DispatchRowAction(AssetPath, EBlueprintHelperReviewSurface::UMGWidgetTree, ProbeTargetKey, EBlueprintHelperReviewActionIntentKind::Accept, TEXT("row_action"));
 						})
 					]
 					+ SHorizontalBox::Slot()
@@ -588,10 +579,7 @@ TSharedRef<ITableRow> FBlueprintHelperReviewPresenterWidgetUtils::GenerateWidget
 						.Text(FText::FromString(TEXT("Reject")))
 						.OnClicked_Lambda([AssetPath, ProbeTargetKey]()
 						{
-							return FBlueprintHelperReviewRowHighlightModel::RejectHighlightedRow(
-								AssetPath,
-								EBlueprintHelperReviewSurface::UMGWidgetTree,
-								ProbeTargetKey);
+							return FBlueprintHelperReviewRowHighlightModel::DispatchRowAction(AssetPath, EBlueprintHelperReviewSurface::UMGWidgetTree, ProbeTargetKey, EBlueprintHelperReviewActionIntentKind::Reject, TEXT("row_action"));
 						})
 					]
 				]
@@ -605,6 +593,10 @@ TSharedRef<ITableRow> FBlueprintHelperReviewPresenterWidgetUtils::GenerateWidget
 			RowContent
 		];
 
+	if (Item.IsValid())
+	{
+		Item->RowWidget = RowContent;
+	}
 	RegisterWidgetTreeRowAliases(AssetPath, Item, RowContent);
 	return RowWidget;
 }
@@ -866,4 +858,5 @@ TSharedRef<ITableRow> FBlueprintHelperReviewPresenterWidgetUtils::GenerateDataAs
 
 	return RowWidget;
 }
+
 

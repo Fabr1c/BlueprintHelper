@@ -65,6 +65,10 @@ public:
 	void RemovePendingReviewChangedHandler(FDelegateHandle& InHandle) const;
 	FBlueprintHelperReviewPanelPresenterEvent HandleVisualEvent(
 		const FBlueprintHelperReviewPanelVisualEvent& Event) const;
+	FBlueprintHelperReviewPanelPresenterEvent HandleActionIntent(
+		const FBlueprintHelperReviewActionIntent& Intent,
+		const TArray<FBlueprintHelperReviewVisibleChange>& PendingChanges,
+		const FBlueprintHelperReviewRejectOptions& RejectOptions = FBlueprintHelperReviewRejectOptions()) const;
 
 private:
 	FBlueprintHelperReviewPanelPresenterEvent HandleAcceptVisibleChange(

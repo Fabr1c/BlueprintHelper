@@ -1,6 +1,7 @@
 // BlueprintHelper Review surface frame widget utilities.
 
 #include "UI/Review/BlueprintHelperReviewSurfaceFrameWidgetUtils.h"
+#include "UI/Review/BlueprintHelperReviewPanelStateService.h"
 #include "UI/Review/SBlueprintHelperReviewDiffFrame.h"
 
 TSharedRef<SWidget> FBlueprintHelperReviewSurfaceFrameWidgetUtils::BuildDiffFrameWidget(
@@ -9,26 +10,34 @@ TSharedRef<SWidget> FBlueprintHelperReviewSurfaceFrameWidgetUtils::BuildDiffFram
 	bool bShowActions,
 	bool bFillBackground,
 	const FSlateColor& FrameColor,
-	const TFunction<FReply(const FString&)>& OnAcceptChangeId,
-	const TFunction<FReply(const FString&)>& OnRejectChangeId,
+	const TFunction<FReply(const FBlueprintHelperReviewActionIntent&)>& OnReviewActionIntent,
 	bool bSelected)
 {
-	const FString ChangeId = Item.IsValid() ? Item->ChangeId : FString();
 	return SNew(SBlueprintHelperReviewDiffFrame)
 		.FrameColor(FrameColor)
 		.ShowActions(bShowActions && Item.IsValid())
 		.FillBackground(bFillBackground)
 		.Selected(bSelected)
-		.OnAccept(FOnClicked::CreateLambda([ChangeId, OnAcceptChangeId]()
+		.OnAccept(FOnClicked::CreateLambda([Item, OnReviewActionIntent]()
 		{
-			return OnAcceptChangeId && !ChangeId.IsEmpty()
-				? OnAcceptChangeId(ChangeId)
+			return OnReviewActionIntent && Item.IsValid()
+				? OnReviewActionIntent(FBlueprintHelperReviewActionIntent::Accept(
+					FBlueprintHelperReviewPanelStateService::MakeChangeBinding(
+						*Item,
+						EBlueprintHelperReviewSurface::Unknown,
+						Item->LocationKey),
+					TEXT("diff_frame")))
 				: FReply::Handled();
 		}))
-		.OnReject(FOnClicked::CreateLambda([ChangeId, OnRejectChangeId]()
+		.OnReject(FOnClicked::CreateLambda([Item, OnReviewActionIntent]()
 		{
-			return OnRejectChangeId && !ChangeId.IsEmpty()
-				? OnRejectChangeId(ChangeId)
+			return OnReviewActionIntent && Item.IsValid()
+				? OnReviewActionIntent(FBlueprintHelperReviewActionIntent::Reject(
+					FBlueprintHelperReviewPanelStateService::MakeChangeBinding(
+						*Item,
+						EBlueprintHelperReviewSurface::Unknown,
+						Item->LocationKey),
+					TEXT("diff_frame")))
 				: FReply::Handled();
 		}))
 		[

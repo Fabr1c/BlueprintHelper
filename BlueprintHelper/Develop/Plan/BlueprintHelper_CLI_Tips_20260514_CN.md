@@ -461,3 +461,8 @@ pm run build 可能报 无法加载文件 ... npm.ps1，因为在此系统上禁
 pm.ps1，受 ExecutionPolicy 限制。
 - 稳定做法：在 Codex/PowerShell 自动化中使用 
 pm.cmd run build。
+
+## 2026-05-19 PowerShell rg regex quoting
+- Symptom: `rg` with a complex regex containing quotes/backslashes reports PowerShell parser errors such as `TerminatorExpectedAtEndOfString`, or ripgrep receives the path as part of the regex.
+- Cause: PowerShell quote parsing and regex escaping can interact badly when the pattern includes both `TEXT(\"...\")` style fragments and a Windows path argument.
+- Stable workaround: use `rg -F` fixed-string searches for C++ snippets, split complex alternation into multiple `rg -F` commands, or put the regex in a variable before invoking `rg`.

@@ -16,8 +16,7 @@ public:
 		bool bShowActions,
 		bool bFillBackground,
 		const FSlateColor& FrameColor,
-		const TFunction<FReply(const FString&)>& OnAcceptChangeId,
-		const TFunction<FReply(const FString&)>& OnRejectChangeId,
+		const TFunction<FReply(const FBlueprintHelperReviewActionIntent&)>& OnReviewActionIntent,
 		bool bSelected);
 
 	static FLinearColor GetReviewFrameBackgroundColor(bool bFillBackground);

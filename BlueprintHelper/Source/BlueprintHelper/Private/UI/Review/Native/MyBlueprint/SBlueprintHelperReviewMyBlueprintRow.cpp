@@ -1,4 +1,4 @@
-// BlueprintHelper Review native My Blueprint row.
+﻿// BlueprintHelper Review native My Blueprint row.
 
 #include "UI/Review/Native/MyBlueprint/SBlueprintHelperReviewMyBlueprintRow.h"
 
@@ -248,10 +248,7 @@ FReply SBlueprintHelperReviewMyBlueprintRow::OnAcceptClicked() const
 {
 	if (Item.IsValid())
 	{
-		return FBlueprintHelperReviewRowHighlightModel::AcceptHighlightedRow(
-			AssetPath,
-			EBlueprintHelperReviewSurface::MyBlueprint,
-			Item->SearchText);
+		return FBlueprintHelperReviewRowHighlightModel::DispatchRowAction(AssetPath, EBlueprintHelperReviewSurface::MyBlueprint, Item->SearchText, EBlueprintHelperReviewActionIntentKind::Accept, TEXT("row_action"));
 	}
 	return FReply::Handled();
 }
@@ -260,10 +257,8 @@ FReply SBlueprintHelperReviewMyBlueprintRow::OnRejectClicked() const
 {
 	if (Item.IsValid())
 	{
-		return FBlueprintHelperReviewRowHighlightModel::RejectHighlightedRow(
-			AssetPath,
-			EBlueprintHelperReviewSurface::MyBlueprint,
-			Item->SearchText);
+		return FBlueprintHelperReviewRowHighlightModel::DispatchRowAction(AssetPath, EBlueprintHelperReviewSurface::MyBlueprint, Item->SearchText, EBlueprintHelperReviewActionIntentKind::Reject, TEXT("row_action"));
 	}
 	return FReply::Handled();
 }
+

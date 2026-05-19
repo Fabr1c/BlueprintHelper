@@ -1,4 +1,4 @@
-// BlueprintHelper fake Review panel implementation.
+﻿// BlueprintHelper fake Review panel implementation.
 
 #include "UI/Review/SBlueprintHelperReviewPanel.h"
 
@@ -15,11 +15,13 @@
 #include "UI/Review/BlueprintHelperReviewPanelGeometryUtils.h"
 #include "UI/Review/BlueprintHelperReviewPanelStyle.h"
 #include "UI/Review/BlueprintHelperReviewPanelPresenter.h"
+#include "UI/Review/BlueprintHelperReviewPanelStateService.h"
 #include "UI/Review/BlueprintHelperReviewAssetPresenters.h"
 #include "UI/Review/BlueprintHelperReviewDebugBundleService.h"
 #include "UI/Review/BlueprintHelperReviewRowHighlightModel.h"
 #include "UI/Review/BlueprintHelperReviewSlateRowGeometryRegistry.h"
 #include "UI/Review/BlueprintHelperReviewSurfacePresenter.h"
+#include "UI/Review/Native/Components/SBlueprintHelperReviewComponentsPanel.h"
 #include "UI/Review/Utils/BlueprintHelperReviewPanelAsyncUtils.h"
 #include "UI/Review/Utils/BlueprintHelperReviewPanelLocalUtils.h"
 #include "Components/ActorComponent.h"
@@ -39,12 +41,75 @@
 #include "Widgets/SNullWidget.h"
 #include "Widgets/SOverlay.h"
 #include "Widgets/Text/STextBlock.h"
+#include "Widgets/Views/SListView.h"
 #include "Widgets/Views/STableRow.h"
 #include "Widgets/Views/STreeView.h"
 #include "EdGraph/EdGraph.h"
 #include "K2Node_CustomEvent.h"
 
 static FString BlueprintHelperReviewFriendlyActionMessage(const FString& Prefix, const FString& Detail);
+
+static void BlueprintHelperReviewInvalidateRowWidget(const TWeakPtr<SWidget>& RowWidget)
+{
+	if (TSharedPtr<SWidget> Widget = RowWidget.Pin())
+	{
+		Widget->Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
+	}
+}
+
+static void BlueprintHelperReviewInvalidateComponentRows(
+	const TArray<TSharedPtr<FBlueprintHelperReviewComponentRowItem>>& Items)
+{
+	for (const TSharedPtr<FBlueprintHelperReviewComponentRowItem>& Item : Items)
+	{
+		if (!Item.IsValid())
+		{
+			continue;
+		}
+		BlueprintHelperReviewInvalidateRowWidget(Item->RowWidget);
+		BlueprintHelperReviewInvalidateComponentRows(Item->Children);
+	}
+}
+
+static void BlueprintHelperReviewInvalidateMyBlueprintRows(
+	const TArray<TSharedPtr<FBlueprintHelperReviewMyBlueprintPresenter::FRowItem>>& Items)
+{
+	for (const TSharedPtr<FBlueprintHelperReviewMyBlueprintPresenter::FRowItem>& Item : Items)
+	{
+		if (!Item.IsValid())
+		{
+			continue;
+		}
+		BlueprintHelperReviewInvalidateRowWidget(Item->RowWidget);
+		BlueprintHelperReviewInvalidateMyBlueprintRows(Item->Children);
+	}
+}
+
+static void BlueprintHelperReviewInvalidateWidgetTreeRows(
+	const TArray<TSharedPtr<FBlueprintHelperReviewWidgetTreeRowItem>>& Items)
+{
+	for (const TSharedPtr<FBlueprintHelperReviewWidgetTreeRowItem>& Item : Items)
+	{
+		if (!Item.IsValid())
+		{
+			continue;
+		}
+		BlueprintHelperReviewInvalidateRowWidget(Item->RowWidget);
+		BlueprintHelperReviewInvalidateWidgetTreeRows(Item->Children);
+	}
+}
+
+static void BlueprintHelperReviewInvalidateDataAssetRows(
+	const TArray<TSharedPtr<FBlueprintHelperReviewDataAssetRowItem>>& Items)
+{
+	for (const TSharedPtr<FBlueprintHelperReviewDataAssetRowItem>& Item : Items)
+	{
+		if (Item.IsValid())
+		{
+			BlueprintHelperReviewInvalidateRowWidget(Item->RowWidget);
+		}
+	}
+}
 
 static FString BlueprintHelperReviewExtractPrefixedName(const FString& Value, const FString& Prefix)
 {
@@ -123,6 +188,7 @@ SBlueprintHelperReviewPanel::~SBlueprintHelperReviewPanel()
 		ReviewPanelPresenter->RemovePendingReviewChangedHandler(PendingReviewChangedHandle);
 	}
 	FBlueprintHelperReviewSlateRowGeometryRegistry::RemoveRowsChangedHandler(RowGeometryChangedHandle);
+	FBlueprintHelperReviewRowHighlightModel::RemoveStateChangedHandler(RowHighlightStateChangedHandle);
 	FlushAsyncTasks();
 }
 
@@ -157,7 +223,9 @@ void SBlueprintHelperReviewPanel::RefreshVisibleChanges(
 		}
 		ChangeItems.Add(MakeShared<FBlueprintHelperReviewVisibleChange>(Change));
 	}
+	RebuildReviewPanelStatePreservingTransient();
 	RebuildChangeTreeItems();
+	SyncReviewRowHighlightStates();
 }
 
 bool SBlueprintHelperReviewPanel::TryResolveGraphNavigationForChange(
@@ -259,6 +327,9 @@ void SBlueprintHelperReviewPanel::OnChangeSelectionChanged(FReviewChangeItem Ite
 		}
 	}
 	RefreshMainWorkspaceAfterReviewStateChanged();
+	RebuildReviewPanelStatePreservingTransient();
+	SyncReviewRowHighlightStates(Item.IsValid() ? Item->AssetPath : FString());
+	Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
 	StartFlash();
 	if (Item.IsValid())
 	{
@@ -601,13 +672,27 @@ FString SBlueprintHelperReviewPanel::BuildVisibleChangeRefreshSignature(
 	for (const FBlueprintHelperReviewVisibleChange& Change : Changes)
 	{
 		Parts.Add(FString::Printf(
-			TEXT("%s|%s|%s|%s|%s|%s"),
+			TEXT("%s|%s|%s|%s|%s|%s|%s|%s|root=%d"),
 			*Change.ChangeId,
 			BlueprintHelperReviewChangeStatusToString(Change.Status),
+			BlueprintHelperReviewChangeKindToString(Change.ChangeKind),
 			*Change.AssetPath,
 			*Change.ParentChangeId,
 			*Change.LocationKey,
-			*Change.LatestEvidenceId));
+			*Change.LatestEvidenceId,
+			*Change.DisplayLabel,
+			Change.bIsAssetLifecycleRoot ? 1 : 0));
+		for (const FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
+		{
+			Parts.Add(FString::Printf(
+				TEXT("target|%s|%s|%s|%s|%s|%s"),
+				BlueprintHelperReviewSurfaceToString(Target.Surface),
+				*Target.TargetKind,
+				*Target.TargetKey,
+				*Target.PropertyPath,
+				*Target.ComponentPath,
+				*Target.DisplayLabel));
+		}
 	}
 	return FString::Join(Parts, TEXT("\n"));
 }
@@ -652,14 +737,16 @@ void SBlueprintHelperReviewPanel::SelectNextChangeAfterRemoval(
 	SelectedChange = ChangeItems[NextIndex];
 }
 
-FReply SBlueprintHelperReviewPanel::OnAcceptChangeId(const FString& ChangeId)
+FReply SBlueprintHelperReviewPanel::OnReviewActionIntent(const FBlueprintHelperReviewActionIntent& Intent)
 {
-	return ExecuteAcceptChange(FindChangeItemById(ChangeId));
-}
-
-FReply SBlueprintHelperReviewPanel::OnRejectChangeId(const FString& ChangeId)
-{
-	return ExecuteRejectChange(FindChangeItemById(ChangeId));
+	const FReviewChangeItem Item = FindChangeItemById(Intent.Binding.ChangeId);
+	if (!Item.IsValid())
+	{
+		return FReply::Handled();
+	}
+	return Intent.Action == EBlueprintHelperReviewActionIntentKind::Accept
+		? ExecuteAcceptChange(Item)
+		: ExecuteRejectChange(Item);
 }
 
 TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildReadonlyComponentsWidget()
@@ -800,13 +887,9 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildPanelDiffFrames(
 	{
 		AddDebugMessage(Message);
 	};
-	Args.OnAcceptChangeId = [this](const FString& ChangeId)
+	Args.OnReviewActionIntent = [this](const FBlueprintHelperReviewActionIntent& Intent)
 	{
-		return OnAcceptChangeId(ChangeId);
-	};
-	Args.OnRejectChangeId = [this](const FString& ChangeId)
-	{
-		return OnRejectChangeId(ChangeId);
+		return OnReviewActionIntent(Intent);
 	};
 	Args.GetChangeColor = [this](EBlueprintHelperReviewChangeKind Kind)
 	{
@@ -917,13 +1000,9 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildDiffFrame(
 		bShowActions,
 		true,
 		Item.IsValid() ? GetChangeColor(Item->ChangeKind) : FSlateColor(FLinearColor::Transparent),
-		[this](const FString& ChangeId)
+		[this](const FBlueprintHelperReviewActionIntent& Intent)
 		{
-			return OnAcceptChangeId(ChangeId);
-		},
-		[this](const FString& ChangeId)
-		{
-			return OnRejectChangeId(ChangeId);
+			return OnReviewActionIntent(Intent);
 		},
 		Item == SelectedChange);
 }
@@ -946,28 +1025,36 @@ FReply SBlueprintHelperReviewPanel::ExecuteAcceptChange(FReviewChangeItem Item)
 	}
 
 	SelectedChange = Item;
+	FBlueprintHelperReviewPanelStateService::ClearPresenterErrorState(ReviewPanelState, Item->ChangeId);
 
+	const FBlueprintHelperReviewActionIntent Intent = FBlueprintHelperReviewActionIntent::Accept(
+		FBlueprintHelperReviewPanelStateService::MakeChangeBinding(
+			*Item,
+			EBlueprintHelperReviewSurface::Unknown,
+			Item->LocationKey),
+		TEXT("review_panel"));
 	const FBlueprintHelperReviewPanelPresenterEvent PresenterEvent =
 		ReviewPanelPresenter.IsValid()
-			? ReviewPanelPresenter->HandleVisualEvent(
-				FBlueprintHelperReviewPanelVisualEvent::AcceptVisibleChange(*Item))
+			? ReviewPanelPresenter->HandleActionIntent(
+				Intent,
+				BuildPendingChangeSnapshot())
 			: FBlueprintHelperReviewPanelPresenterEvent::FromActionResult(
 				FBlueprintHelperReviewActionResult());
 	const FBlueprintHelperReviewActionResult& Result = PresenterEvent.ActionResult;
 
 	if (Result.bSucceeded)
 	{
-		const FString PreferredAssetPath = Item->AssetPath;
-		const int32 RemovedIndex = ChangeItems.IndexOfByKey(Item);
-		ChangeItems.Remove(Item);
-		SelectNextChangeAfterRemoval(PreferredAssetPath, RemovedIndex);
-		FBlueprintHelperReviewRowHighlightModel::InvalidateAssetStates(PreferredAssetPath);
-		RebuildChangeTreeItems();
-		RefreshChangeTreeWidget();
-		LoadReviewAssetFromSelection();
-		RefreshMainWorkspaceAfterReviewStateChanged();
-		LastVisibleChangeRefreshSignature.Reset();
-		RefreshFromReviewStoreIfChanged();
+		AddDebugMessage(FString::Printf(
+			TEXT("Accept change id=%s result=waiting_for_store_refresh"),
+			*Item->ChangeId));
+	}
+	else
+	{
+		FBlueprintHelperReviewPanelStateService::SetPresenterErrorState(
+			ReviewPanelState,
+			Item->ChangeId,
+			Result.NewStatus,
+			Result.Message);
 	}
 
 	AddDebugMessage(FString::Printf(
@@ -1022,7 +1109,7 @@ void SBlueprintHelperReviewPanel::QueueRejectChange(FReviewChangeItem Item, bool
 		}
 		return;
 	}
-	if (RejectActionInProgressChangeIds.Contains(ChangeId))
+	if (FBlueprintHelperReviewPanelStateService::IsTransientActionInProgress(ReviewPanelState, ChangeId))
 	{
 		AddDebugMessage(FString::Printf(TEXT("Reject queue skipped id=%s reason=already_pending"), *ChangeId));
 		if (bShowIndividualNotification)
@@ -1039,15 +1126,16 @@ void SBlueprintHelperReviewPanel::QueueRejectChange(FReviewChangeItem Item, bool
 		return;
 	}
 
-	RejectActionInProgressChangeIds.Add(ChangeId);
+	FBlueprintHelperReviewPanelStateService::SetTransientActionState(
+		ReviewPanelState,
+		ChangeId,
+		EBlueprintHelperReviewActionIntentKind::Reject,
+		EBlueprintHelperReviewChangeStatus::NeedsAction,
+		TEXT("reject_queued"));
+	FBlueprintHelperReviewPanelStateService::ClearPresenterErrorState(ReviewPanelState, ChangeId);
 	PendingRejectChangeIds.Add(ChangeId);
 	SelectedChange = Item;
-	Item->Status = EBlueprintHelperReviewChangeStatus::NeedsAction;
-	Item->NeedsActionReason = TEXT("reject_queued");
-	RebuildChangeTreeItems();
-	RefreshChangeTreeWidget();
-	RefreshDiffStackWidgets();
-	UpdateDetailsSelection();
+	RefreshReviewUiAfterStateChanged(TEXT("reject_queued"), Item->AssetPath);
 	AddDebugMessage(FString::Printf(TEXT("Reject queued id=%s"), *ChangeId));
 	if (bShowIndividualNotification)
 	{
@@ -1060,16 +1148,14 @@ void SBlueprintHelperReviewPanel::QueueRejectChange(FReviewChangeItem Item, bool
 			false,
 			true);
 	}
-	RegisterActiveTimer(
-		0.03f,
-		FWidgetActiveTimerDelegate::CreateSP(this, &SBlueprintHelperReviewPanel::TickAsyncRejectPrepare));
+	StartNextRejectPrepare();
 }
 
-EActiveTimerReturnType SBlueprintHelperReviewPanel::TickAsyncRejectPrepare(double InCurrentTime, float InDeltaTime)
+void SBlueprintHelperReviewPanel::StartNextRejectPrepare()
 {
-	if (bAsyncRejectPrepareActive || bAsyncRejectMutationScheduled)
+	if (bAsyncRejectPrepareActive)
 	{
-		return EActiveTimerReturnType::Stop;
+		return;
 	}
 
 	while (PendingRejectChangeIds.Num() > 0)
@@ -1095,11 +1181,13 @@ EActiveTimerReturnType SBlueprintHelperReviewPanel::TickAsyncRejectPrepare(doubl
 
 		ActiveRejectChangeId = ChangeId;
 		bAsyncRejectPrepareActive = true;
-		Item->Status = EBlueprintHelperReviewChangeStatus::NeedsAction;
-		Item->NeedsActionReason = TEXT("reject_preparing_rollback_journal");
-		RebuildChangeTreeItems();
-		RefreshChangeTreeWidget();
-		RefreshDiffStackWidgets();
+		FBlueprintHelperReviewPanelStateService::SetTransientActionState(
+			ReviewPanelState,
+			ChangeId,
+			EBlueprintHelperReviewActionIntentKind::Reject,
+			EBlueprintHelperReviewChangeStatus::NeedsAction,
+			TEXT("reject_preparing_rollback_journal"));
+		RefreshReviewUiAfterStateChanged(TEXT("reject_preparing"), Item->AssetPath);
 
 		const FBlueprintHelperReviewVisibleChange ChangeSnapshot = *Item;
 		TWeakPtr<SBlueprintHelperReviewPanel> WeakPanel =
@@ -1121,10 +1209,8 @@ EActiveTimerReturnType SBlueprintHelperReviewPanel::TickAsyncRejectPrepare(doubl
 			});
 		});
 		FBlueprintHelperReviewPanelAsyncUtils::TrackTask(MoveTemp(PrepareTask));
-		return EActiveTimerReturnType::Stop;
+		return;
 	}
-
-	return EActiveTimerReturnType::Stop;
 }
 
 void SBlueprintHelperReviewPanel::HandlePreparedRejectReady(
@@ -1135,11 +1221,13 @@ void SBlueprintHelperReviewPanel::HandlePreparedRejectReady(
 	PreparedRejectOptionsByChangeId.Add(ChangeId, PreparedOptions);
 	if (FReviewChangeItem Item = FindChangeItemById(ChangeId))
 	{
-		Item->Status = EBlueprintHelperReviewChangeStatus::NeedsAction;
-		Item->NeedsActionReason = TEXT("reject_mutation_scheduled");
-		RebuildChangeTreeItems();
-		RefreshChangeTreeWidget();
-		RefreshDiffStackWidgets();
+		FBlueprintHelperReviewPanelStateService::SetTransientActionState(
+			ReviewPanelState,
+			ChangeId,
+			EBlueprintHelperReviewActionIntentKind::Reject,
+			EBlueprintHelperReviewChangeStatus::NeedsAction,
+			TEXT("reject_mutation_scheduled"));
+		RefreshReviewUiAfterStateChanged(TEXT("reject_mutation_scheduled"), Item->AssetPath);
 		if (!RejectBatchKeyByChangeId.Contains(ChangeId))
 		{
 			ShowReviewActionNotification(
@@ -1152,17 +1240,7 @@ void SBlueprintHelperReviewPanel::HandlePreparedRejectReady(
 				true);
 		}
 	}
-	bAsyncRejectMutationScheduled = true;
-	RegisterActiveTimer(
-		0.03f,
-		FWidgetActiveTimerDelegate::CreateSP(this, &SBlueprintHelperReviewPanel::TickAsyncRejectMutation));
-}
-
-EActiveTimerReturnType SBlueprintHelperReviewPanel::TickAsyncRejectMutation(double InCurrentTime, float InDeltaTime)
-{
-	bAsyncRejectMutationScheduled = false;
-	ExecutePreparedRejectMutation(ActiveRejectChangeId);
-	return EActiveTimerReturnType::Stop;
+	ExecutePreparedRejectMutation(ChangeId);
 }
 
 void SBlueprintHelperReviewPanel::ExecutePreparedRejectMutation(const FString& ChangeId)
@@ -1192,11 +1270,13 @@ void SBlueprintHelperReviewPanel::ExecutePreparedRejectMutation(const FString& C
 	}
 
 	SelectedChange = Item;
-	Item->Status = EBlueprintHelperReviewChangeStatus::NeedsAction;
-	Item->NeedsActionReason = TEXT("reject_mutating_single_frame");
-	RebuildChangeTreeItems();
-	RefreshChangeTreeWidget();
-	RefreshDiffStackWidgets();
+	FBlueprintHelperReviewPanelStateService::SetTransientActionState(
+		ReviewPanelState,
+		ChangeId,
+		EBlueprintHelperReviewActionIntentKind::Reject,
+		EBlueprintHelperReviewChangeStatus::NeedsAction,
+		TEXT("reject_mutating_single_frame"));
+	RefreshReviewUiAfterStateChanged(TEXT("reject_mutating"), Item->AssetPath);
 	AddDebugMessage(FString::Printf(
 		TEXT("Reject mutation started id=%s mode=archive_baseline_snapshot"),
 		*ChangeId));
@@ -1205,15 +1285,18 @@ void SBlueprintHelperReviewPanel::ExecutePreparedRejectMutation(const FString& C
 
 	if (Item->bIsAssetLifecycleRoot)
 	{
+		const FBlueprintHelperReviewActionIntent Intent = FBlueprintHelperReviewActionIntent::Reject(
+			FBlueprintHelperReviewPanelStateService::MakeChangeBinding(
+				*Item,
+				EBlueprintHelperReviewSurface::Unknown,
+				Item->LocationKey),
+			TEXT("review_panel"));
 		const FBlueprintHelperReviewPanelPresenterEvent PresenterEvent =
 			ReviewPanelPresenter.IsValid()
-				? ReviewPanelPresenter->HandleVisualEvent(
-					FBlueprintHelperReviewPanelVisualEvent::RejectLifecycleRootVisibleChange(
-						*Item,
-						FBlueprintHelperReviewPanelDataSnapshot::FromSelection(
-							BuildPendingChangeSnapshot(),
-							*Item),
-						Options))
+				? ReviewPanelPresenter->HandleActionIntent(
+					Intent,
+					BuildPendingChangeSnapshot(),
+					Options)
 				: FBlueprintHelperReviewPanelPresenterEvent::FromCascadeActionResult(
 					FBlueprintHelperReviewCascadeActionResult());
 		const FBlueprintHelperReviewCascadeActionResult& CascadeResult =
@@ -1221,40 +1304,23 @@ void SBlueprintHelperReviewPanel::ExecutePreparedRejectMutation(const FString& C
 
 		if (CascadeResult.RootResult.bSucceeded)
 		{
-			const FString PreferredAssetPath = Item->AssetPath;
-			const int32 RemovedIndex = ChangeItems.IndexOfByKey(Item);
-			TSet<FString> RemovedChangeIds;
-			if (!Item->ChangeId.IsEmpty())
-			{
-				RemovedChangeIds.Add(Item->ChangeId);
-			}
-			for (const FString& RemovedChildChangeId : CascadeResult.RemovedChildChangeIds)
-			{
-				RemovedChangeIds.Add(RemovedChildChangeId);
-			}
-
-			ChangeItems.RemoveAll([&RemovedChangeIds, &Item](const FReviewChangeItem& Candidate)
-			{
-				return Candidate == Item
-					|| (Candidate.IsValid()
-						&& !Candidate->ChangeId.IsEmpty()
-						&& RemovedChangeIds.Contains(Candidate->ChangeId));
-			});
-			SelectNextChangeAfterRemoval(PreferredAssetPath, RemovedIndex);
-			FBlueprintHelperReviewRowHighlightModel::InvalidateAssetStates(PreferredAssetPath);
+			AddDebugMessage(FString::Printf(
+				TEXT("Reject lifecycle root id=%s result=waiting_for_store_refresh"),
+				*Item->ChangeId));
 		}
 		else
 		{
-			Item->Status = CascadeResult.RootResult.NewStatus;
-			Item->NeedsActionReason = CascadeResult.RootResult.Message;
+			FBlueprintHelperReviewPanelStateService::SetPresenterErrorState(
+				ReviewPanelState,
+				Item->ChangeId,
+				CascadeResult.RootResult.NewStatus,
+				CascadeResult.RootResult.Message);
 		}
 
-		RebuildChangeTreeItems();
-		RefreshChangeTreeWidget();
-		LoadReviewAssetFromSelection();
-		RefreshMainWorkspaceAfterReviewStateChanged();
-		LastVisibleChangeRefreshSignature.Reset();
-		RefreshFromReviewStoreIfChanged();
+		if (!CascadeResult.RootResult.bSucceeded)
+		{
+			RefreshReviewUiAfterStateChanged(TEXT("reject_lifecycle_root_failed"), Item->AssetPath);
+		}
 		AddDebugMessage(FString::Printf(
 			TEXT("Reject lifecycle root id=%s success=%d removedChildren=%d status=%s message=\"%s\""),
 			*Item->ChangeId,
@@ -1280,36 +1346,40 @@ void SBlueprintHelperReviewPanel::ExecutePreparedRejectMutation(const FString& C
 		return;
 	}
 
+	const FBlueprintHelperReviewActionIntent Intent = FBlueprintHelperReviewActionIntent::Reject(
+		FBlueprintHelperReviewPanelStateService::MakeChangeBinding(
+			*Item,
+			EBlueprintHelperReviewSurface::Unknown,
+			Item->LocationKey),
+		TEXT("review_panel"));
 	const FBlueprintHelperReviewPanelPresenterEvent PresenterEvent =
 		ReviewPanelPresenter.IsValid()
-			? ReviewPanelPresenter->HandleVisualEvent(
-				FBlueprintHelperReviewPanelVisualEvent::RejectVisibleChange(*Item, Options))
+			? ReviewPanelPresenter->HandleActionIntent(
+				Intent,
+				BuildPendingChangeSnapshot(),
+				Options)
 			: FBlueprintHelperReviewPanelPresenterEvent::FromActionResult(
 				FBlueprintHelperReviewActionResult());
 	const FBlueprintHelperReviewActionResult& Result = PresenterEvent.ActionResult;
 
 	if (Result.bSucceeded)
 	{
-		const FString PreferredAssetPath = Item->AssetPath;
-		const int32 RemovedIndex = ChangeItems.IndexOfByKey(Item);
-		ChangeItems.RemoveAll([&Item](const FReviewChangeItem& Candidate)
-		{
-			return Candidate == Item;
-		});
-		SelectNextChangeAfterRemoval(PreferredAssetPath, RemovedIndex);
-		FBlueprintHelperReviewRowHighlightModel::InvalidateAssetStates(PreferredAssetPath);
+		AddDebugMessage(FString::Printf(
+			TEXT("Reject change id=%s result=waiting_for_store_refresh"),
+			*Item->ChangeId));
 	}
 	else
 	{
-		Item->Status = Result.NewStatus;
-		Item->NeedsActionReason = Result.Message;
+		FBlueprintHelperReviewPanelStateService::SetPresenterErrorState(
+			ReviewPanelState,
+			Item->ChangeId,
+			Result.NewStatus,
+			Result.Message);
 	}
-	RebuildChangeTreeItems();
-	RefreshChangeTreeWidget();
-	LoadReviewAssetFromSelection();
-	RefreshMainWorkspaceAfterReviewStateChanged();
-	LastVisibleChangeRefreshSignature.Reset();
-	RefreshFromReviewStoreIfChanged();
+	if (!Result.bSucceeded)
+	{
+		RefreshReviewUiAfterStateChanged(TEXT("reject_change_failed"), Item->AssetPath);
+	}
 
 	AddDebugMessage(FString::Printf(
 		TEXT("Reject change id=%s success=%d status=%s message=\"%s\""),
@@ -1353,19 +1423,16 @@ void SBlueprintHelperReviewPanel::ExecutePreparedRejectMutation(const FString& C
 
 void SBlueprintHelperReviewPanel::FinishAsyncReject(const FString& ChangeId)
 {
-	RejectActionInProgressChangeIds.Remove(ChangeId);
+	FBlueprintHelperReviewPanelStateService::ClearTransientActionState(ReviewPanelState, ChangeId);
 	PreparedRejectOptionsByChangeId.Remove(ChangeId);
 	if (ActiveRejectChangeId == ChangeId)
 	{
 		ActiveRejectChangeId.Reset();
 	}
 	bAsyncRejectPrepareActive = false;
-	bAsyncRejectMutationScheduled = false;
 	if (PendingRejectChangeIds.Num() > 0)
 	{
-		RegisterActiveTimer(
-			0.03f,
-			FWidgetActiveTimerDelegate::CreateSP(this, &SBlueprintHelperReviewPanel::TickAsyncRejectPrepare));
+		StartNextRejectPrepare();
 	}
 }
 
@@ -1379,9 +1446,10 @@ FReply SBlueprintHelperReviewPanel::OnAcceptAll()
 	}
 
 	TArray<FReviewChangeItem> AcceptedItems;
+	const TArray<FReviewChangeItem> ItemsSnapshot = ChangeItems;
 	int32 TargetCount = 0;
 	int32 FailedCount = 0;
-	for (const FReviewChangeItem& Item : ChangeItems)
+	for (const FReviewChangeItem& Item : ItemsSnapshot)
 	{
 		if (!Item.IsValid() || (!AssetPath.IsEmpty() && Item->AssetPath != AssetPath))
 		{
@@ -1389,10 +1457,17 @@ FReply SBlueprintHelperReviewPanel::OnAcceptAll()
 		}
 		++TargetCount;
 
+		const FBlueprintHelperReviewActionIntent Intent = FBlueprintHelperReviewActionIntent::Accept(
+			FBlueprintHelperReviewPanelStateService::MakeChangeBinding(
+				*Item,
+				EBlueprintHelperReviewSurface::Unknown,
+				Item->LocationKey),
+			TEXT("review_panel_accept_all"));
 		const FBlueprintHelperReviewPanelPresenterEvent PresenterEvent =
 			ReviewPanelPresenter.IsValid()
-				? ReviewPanelPresenter->HandleVisualEvent(
-					FBlueprintHelperReviewPanelVisualEvent::AcceptVisibleChange(*Item))
+				? ReviewPanelPresenter->HandleActionIntent(
+					Intent,
+					BuildPendingChangeSnapshot())
 				: FBlueprintHelperReviewPanelPresenterEvent::FromActionResult(
 					FBlueprintHelperReviewActionResult());
 		const FBlueprintHelperReviewActionResult& Result = PresenterEvent.ActionResult;
@@ -1403,28 +1478,19 @@ FReply SBlueprintHelperReviewPanel::OnAcceptAll()
 		else
 		{
 			++FailedCount;
-			Item->Status = Result.NewStatus;
-			Item->NeedsActionReason = Result.Message;
+			FBlueprintHelperReviewPanelStateService::SetPresenterErrorState(
+				ReviewPanelState,
+				Item->ChangeId,
+				Result.NewStatus,
+				Result.Message);
 		}
 	}
 
-	ChangeItems.RemoveAll([&AcceptedItems](const FReviewChangeItem& Item)
-	{
-		return Item.IsValid() && AcceptedItems.Contains(Item);
-	});
-	FBlueprintHelperReviewRowHighlightModel::InvalidateAssetStates(AssetPath);
-
-	SelectedChange = ChangeItems.Num() > 0 ? ChangeItems[0] : FReviewChangeItem();
-	RebuildChangeTreeItems();
-	RefreshChangeTreeWidget();
-	LoadReviewAssetFromSelection();
-	RefreshMainWorkspaceAfterReviewStateChanged();
-	LastVisibleChangeRefreshSignature.Reset();
-	RefreshFromReviewStoreIfChanged();
 	AddDebugMessage(FString::Printf(
-		TEXT("AcceptAll asset=\"%s\" remainingVisibleChanges=%d"),
+		TEXT("AcceptAll asset=\"%s\" accepted=%d failed=%d result=waiting_for_store_refresh"),
 		*AssetPath,
-		ChangeItems.Num()));
+		AcceptedItems.Num(),
+		FailedCount));
 
 	const FString NotificationText = TargetCount == 0
 		? FString(TEXT("Accept all failed: no acceptable review item."))
@@ -1608,6 +1674,48 @@ FString SBlueprintHelperReviewPanel::BuildReviewActionNotificationLabel(FReviewC
 	return Item->LatestEvidenceId.IsEmpty() ? TEXT("unknown change") : Item->LatestEvidenceId;
 }
 
+EBlueprintHelperReviewChangeStatus SBlueprintHelperReviewPanel::GetEffectiveChangeStatus(FReviewChangeItem Item) const
+{
+	if (!Item.IsValid())
+	{
+		return EBlueprintHelperReviewChangeStatus::Pending;
+	}
+
+	const FString ChangeId = !Item->ChangeId.IsEmpty() ? Item->ChangeId : Item->LatestEvidenceId;
+	if (const FBlueprintHelperReviewTransientActionState* TransientState =
+		ReviewPanelState.TransientActionStatesByChangeId.Find(ChangeId))
+	{
+		return TransientState->Status;
+	}
+	if (const FBlueprintHelperReviewPresenterErrorState* ErrorState =
+		ReviewPanelState.PresenterErrorStatesByChangeId.Find(ChangeId))
+	{
+		return ErrorState->Status;
+	}
+	return Item->Status;
+}
+
+FString SBlueprintHelperReviewPanel::GetEffectiveNeedsActionReason(FReviewChangeItem Item) const
+{
+	if (!Item.IsValid())
+	{
+		return FString();
+	}
+
+	const FString ChangeId = !Item->ChangeId.IsEmpty() ? Item->ChangeId : Item->LatestEvidenceId;
+	if (const FBlueprintHelperReviewTransientActionState* TransientState =
+		ReviewPanelState.TransientActionStatesByChangeId.Find(ChangeId))
+	{
+		return TransientState->Message;
+	}
+	if (const FBlueprintHelperReviewPresenterErrorState* ErrorState =
+		ReviewPanelState.PresenterErrorStatesByChangeId.Find(ChangeId))
+	{
+		return ErrorState->Message;
+	}
+	return Item->NeedsActionReason;
+}
+
 void SBlueprintHelperReviewPanel::RecordRejectBatchResult(const FString& ChangeId, bool bSucceeded)
 {
 	const FString* BatchKeyPtr = RejectBatchKeyByChangeId.Find(ChangeId);
@@ -1689,7 +1797,9 @@ FText SBlueprintHelperReviewPanel::GetSelectedAfter() const
 FText SBlueprintHelperReviewPanel::GetSelectedStatus() const
 {
 	return SelectedChange.IsValid()
-		? FText::Format(FText::FromString(TEXT("Status: {0}")), FBlueprintHelperReviewPanelStyle::StatusToText(SelectedChange->Status))
+		? FText::Format(
+			FText::FromString(TEXT("Status: {0}")),
+			FBlueprintHelperReviewPanelStyle::StatusToText(GetEffectiveChangeStatus(SelectedChange)))
 		: FText::GetEmpty();
 }
 
@@ -1704,7 +1814,7 @@ FText SBlueprintHelperReviewPanel::GetSelectedEvidenceChain() const
 		TEXT("Latest: %s\nSources: %s\nNeeds action: %s"),
 		*SelectedChange->LatestEvidenceId,
 		*FString::Join(SelectedChange->SourceEvidenceIds, TEXT(", ")),
-		*SelectedChange->NeedsActionReason));
+		*GetEffectiveNeedsActionReason(SelectedChange)));
 }
 
 FSlateColor SBlueprintHelperReviewPanel::GetSelectedDiffColor() const
@@ -1769,42 +1879,37 @@ void SBlueprintHelperReviewPanel::RefreshFromReviewStoreIfChanged()
 	}
 
 	const FString PreviousSelectedChangeId = SelectedChange.IsValid() ? SelectedChange->ChangeId : FString();
+	const FString PreviousSelectedAssetPath = SelectedChange.IsValid() ? SelectedChange->AssetPath : FString();
+	int32 PreviousSelectedIndex = INDEX_NONE;
+	for (int32 Index = 0; Index < ChangeItems.Num(); ++Index)
+	{
+		if (ChangeItems[Index].IsValid() && ChangeItems[Index]->ChangeId == PreviousSelectedChangeId)
+		{
+			PreviousSelectedIndex = Index;
+			break;
+		}
+	}
+
 	RefreshVisibleChanges(LatestChanges);
 	LastVisibleChangeRefreshSignature = LatestSignature;
 	SelectedChange = FindChangeItemById(PreviousSelectedChangeId);
-	if (!SelectedChange.IsValid() && ChangeItems.Num() > 0)
+	if (!SelectedChange.IsValid())
 	{
-		SelectedChange = ChangeItems[0];
+		SelectNextChangeAfterRemoval(
+			PreviousSelectedAssetPath,
+			PreviousSelectedIndex == INDEX_NONE ? 0 : PreviousSelectedIndex);
 	}
 
-	RebuildChangeTreeItems();
-	RefreshChangeTreeWidget();
-	LoadReviewAssetFromSelection();
-	RefreshMainWorkspaceAfterReviewStateChanged();
+	RefreshReviewUiAfterStateChanged(TEXT("store_refresh"), SelectedChange.IsValid() ? SelectedChange->AssetPath : FString());
 	AddDebugMessage(TEXT("Review store refreshed dynamically."));
 }
 
 void SBlueprintHelperReviewPanel::RefreshDiffStackWidgets()
 {
-	if (ComponentsDiffStackBox.IsValid())
+	if (SurfaceViewCoordinator.RefreshAllOverlays())
 	{
-		ComponentsDiffStackBox->SetContent(BuildStructurePanelDiffFrames());
+		Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
 	}
-	if (MainWorkspaceDiffStackBox.IsValid())
-	{
-		MainWorkspaceDiffStackBox->SetContent(BuildMainWorkspaceDiffFrames());
-	}
-	if (MyBlueprintDiffStackBox.IsValid())
-	{
-		MyBlueprintDiffStackBox->SetContent(BuildPanelDiffFrames(
-			&FBlueprintHelperReviewMyBlueprintPresenter::ShouldShowChange,
-			EBlueprintHelperReviewSurface::MyBlueprint));
-	}
-	if (DetailsDiffStackBox.IsValid())
-	{
-		DetailsDiffStackBox->SetContent(BuildDetailsPanelDiffFrames());
-	}
-	Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
 }
 
 void SBlueprintHelperReviewPanel::RefreshMainWorkspaceAfterReviewStateChanged()
@@ -1825,77 +1930,282 @@ void SBlueprintHelperReviewPanel::RefreshMainWorkspaceAfterReviewStateChanged()
 	UpdateDetailsSelection();
 }
 
-void SBlueprintHelperReviewPanel::RefreshSurfaceOverlay(EBlueprintHelperReviewSurface Surface)
+void SBlueprintHelperReviewPanel::RefreshReviewUiAfterStateChanged(
+	const FString& Reason,
+	const FString& PreferredAssetPath)
 {
-	using FSurfaceRefreshHandler = TFunction<void()>;
-	const TArray<TPair<EBlueprintHelperReviewSurface, FSurfaceRefreshHandler>> RefreshHandlers =
+	RebuildReviewPanelStatePreservingTransient();
+	RebuildChangeTreeItems();
+	RefreshChangeTreeWidget();
+	LoadReviewAssetFromSelection();
+	RefreshMainWorkspaceAfterReviewStateChanged();
+	SyncReviewRowHighlightStates(PreferredAssetPath);
+	Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
+	AddDebugMessage(FString::Printf(
+		TEXT("ReviewUiRefresh reason=%s preferredAsset=\"%s\" selected=\"%s\" pending=%d"),
+		*Reason,
+		*PreferredAssetPath,
+		SelectedChange.IsValid() ? *SelectedChange->ChangeId : TEXT(""),
+		ChangeItems.Num()));
+}
+
+void SBlueprintHelperReviewPanel::RebuildReviewPanelStatePreservingTransient()
+{
+	TMap<FString, FBlueprintHelperReviewTransientActionState> TransientStates =
+		MoveTemp(ReviewPanelState.TransientActionStatesByChangeId);
+	TMap<FString, FBlueprintHelperReviewPresenterErrorState> ErrorStates =
+		MoveTemp(ReviewPanelState.PresenterErrorStatesByChangeId);
+	ReviewPanelState = FBlueprintHelperReviewPanelStateService::BuildPanelState(ChangeItems, SelectedChange);
+	ReviewPanelState.TransientActionStatesByChangeId = MoveTemp(TransientStates);
+	ReviewPanelState.PresenterErrorStatesByChangeId = MoveTemp(ErrorStates);
+}
+
+void SBlueprintHelperReviewPanel::SyncReviewRowHighlightStates(const FString& PreferredAssetPath)
+{
+	FBlueprintHelperReviewPanelSurfacePresenterArgs Args;
+	Args.AssetContext = &ReviewAssetContext;
+	Args.ChangeItems = &ChangeItems;
+	Args.SelectedChange = SelectedChange;
+	Args.AddDebugMessage = [this](const FString& Message)
 	{
-		TPair<EBlueprintHelperReviewSurface, FSurfaceRefreshHandler>(
-			EBlueprintHelperReviewSurface::Components,
-			[this]()
-			{
-				if (ComponentsDiffStackBox.IsValid())
-				{
-					ComponentsDiffStackBox->SetContent(BuildStructurePanelDiffFrames());
-				}
-			}),
-		TPair<EBlueprintHelperReviewSurface, FSurfaceRefreshHandler>(
-			EBlueprintHelperReviewSurface::UMGWidgetTree,
-			[this]()
-			{
-				if (ComponentsDiffStackBox.IsValid())
-				{
-					ComponentsDiffStackBox->SetContent(BuildStructurePanelDiffFrames());
-				}
-			}),
-		TPair<EBlueprintHelperReviewSurface, FSurfaceRefreshHandler>(
-			EBlueprintHelperReviewSurface::MyBlueprint,
-			[this]()
-			{
-				if (MyBlueprintDiffStackBox.IsValid())
-				{
-					MyBlueprintDiffStackBox->SetContent(BuildPanelDiffFrames(
-						&FBlueprintHelperReviewMyBlueprintPresenter::ShouldShowChange,
-						EBlueprintHelperReviewSurface::MyBlueprint));
-				}
-			}),
-		TPair<EBlueprintHelperReviewSurface, FSurfaceRefreshHandler>(
-			EBlueprintHelperReviewSurface::Details,
-			[this]()
-			{
-				if (DetailsDiffStackBox.IsValid())
-				{
-					DetailsDiffStackBox->SetContent(BuildDetailsPanelDiffFrames());
-				}
-			}),
-		TPair<EBlueprintHelperReviewSurface, FSurfaceRefreshHandler>(
-			EBlueprintHelperReviewSurface::DataTable,
-			[this]()
-			{
-				if (MainWorkspaceDiffStackBox.IsValid())
-				{
-					MainWorkspaceDiffStackBox->SetContent(BuildMainWorkspaceDiffFrames());
-				}
-			}),
-		TPair<EBlueprintHelperReviewSurface, FSurfaceRefreshHandler>(
-			EBlueprintHelperReviewSurface::DataAsset,
-			[this]()
-			{
-				if (MainWorkspaceDiffStackBox.IsValid())
-				{
-					MainWorkspaceDiffStackBox->SetContent(BuildMainWorkspaceDiffFrames());
-				}
-			})
+		AddDebugMessage(Message);
+	};
+	Args.OnReviewActionIntent = [this](const FBlueprintHelperReviewActionIntent& Intent)
+	{
+		return OnReviewActionIntent(Intent);
+	};
+	Args.GetChangeColor = [this](EBlueprintHelperReviewChangeKind Kind)
+	{
+		return GetChangeColor(Kind);
+	};
+	Args.GetSelectedDiffColor = [this]()
+	{
+		return GetSelectedDiffColor();
+	};
+	Args.ResolveRowGeometry.BindLambda([this](
+		const FBlueprintHelperReviewVisibleChange& Change,
+		EBlueprintHelperReviewSurface RoutedSurface,
+		FBlueprintHelperReviewSurfaceGeometryAnchor& OutAnchor)
+	{
+		return ResolveReviewRowGeometry(Change, RoutedSurface, OutAnchor);
+	});
+	Args.OnGeometryInvalidated = FBlueprintHelperReviewGeometryInvalidated::CreateSP(
+		this,
+		&SBlueprintHelperReviewPanel::OnSurfaceGeometryInvalidated);
+
+	FBlueprintHelperReviewRowHighlightModel::RebuildSurfaceState(
+		Args,
+		EBlueprintHelperReviewSurface::Components,
+		&FBlueprintHelperReviewBlueprintComponentsPresenter::ShouldShowChange,
+		PreferredAssetPath);
+	FBlueprintHelperReviewRowHighlightModel::RebuildSurfaceState(
+		Args,
+		EBlueprintHelperReviewSurface::UMGWidgetTree,
+		&FBlueprintHelperReviewUMGWidgetTreePresenter::ShouldShowChange,
+		PreferredAssetPath);
+	FBlueprintHelperReviewRowHighlightModel::RebuildSurfaceState(
+		Args,
+		EBlueprintHelperReviewSurface::MyBlueprint,
+		&FBlueprintHelperReviewMyBlueprintPresenter::ShouldShowChange,
+		PreferredAssetPath);
+	FBlueprintHelperReviewRowHighlightModel::RebuildSurfaceState(
+		Args,
+		EBlueprintHelperReviewSurface::Details,
+		&FBlueprintHelperReviewObjectDetailsPresenter::ShouldShowChange,
+		PreferredAssetPath);
+	FBlueprintHelperReviewRowHighlightModel::RebuildSurfaceState(
+		Args,
+		EBlueprintHelperReviewSurface::DataTable,
+		&FBlueprintHelperReviewDataTablePresenter::ShouldShowChange,
+		PreferredAssetPath);
+	FBlueprintHelperReviewRowHighlightModel::RebuildSurfaceState(
+		Args,
+		EBlueprintHelperReviewSurface::DataAsset,
+		&FBlueprintHelperReviewDataAssetPresenter::ShouldShowChange,
+		PreferredAssetPath);
+}
+
+void SBlueprintHelperReviewPanel::ConfigureSurfaceViewCoordinator()
+{
+	SurfaceViewCoordinator.Reset();
+
+	const TFunction<bool()> StructureOverlayRefresh = [this]()
+	{
+		if (!ComponentsDiffStackBox.IsValid())
+		{
+			return false;
+		}
+		ComponentsDiffStackBox->SetContent(BuildStructurePanelDiffFrames());
+		return true;
 	};
 
-	for (const TPair<EBlueprintHelperReviewSurface, FSurfaceRefreshHandler>& Handler : RefreshHandlers)
+	TSharedRef<FBlueprintHelperReviewSurfaceView> ComponentsView =
+		MakeShared<FBlueprintHelperReviewSurfaceView>(EBlueprintHelperReviewSurface::Components);
+	ComponentsView->SetOverlayRefresh(StructureOverlayRefresh);
+	ComponentsView->SetRowsRefresh([this]()
 	{
-		if (Handler.Key == Surface)
+		bool bHandled = false;
+		if (ComponentsPresenterState.ComponentsPanel.IsValid())
 		{
-			Handler.Value();
-			Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
-			return;
+			BlueprintHelperReviewInvalidateComponentRows(ComponentsPresenterState.ComponentsPanel->GetRootItems());
+			ComponentsPresenterState.ComponentsPanel->RequestRowsRefresh();
+			bHandled = true;
 		}
+		if (ComponentsContentBox.IsValid())
+		{
+			ComponentsContentBox->Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
+			bHandled = true;
+		}
+		return bHandled;
+	});
+	SurfaceViewCoordinator.RegisterSurface(ComponentsView);
+
+	TSharedRef<FBlueprintHelperReviewSurfaceView> WidgetTreeView =
+		MakeShared<FBlueprintHelperReviewSurfaceView>(EBlueprintHelperReviewSurface::UMGWidgetTree);
+	WidgetTreeView->SetOverlayRefresh(StructureOverlayRefresh);
+	WidgetTreeView->SetRowsRefresh([this]()
+	{
+		bool bHandled = false;
+		BlueprintHelperReviewInvalidateWidgetTreeRows(WidgetTreePresenterState.RootItems);
+		if (WidgetTreePresenterState.TreeView.IsValid())
+		{
+			WidgetTreePresenterState.TreeView->RequestTreeRefresh();
+			bHandled = true;
+		}
+		if (ComponentsContentBox.IsValid())
+		{
+			ComponentsContentBox->Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
+			bHandled = true;
+		}
+		return bHandled;
+	});
+	SurfaceViewCoordinator.RegisterSurface(WidgetTreeView);
+
+	TSharedRef<FBlueprintHelperReviewSurfaceView> MyBlueprintView =
+		MakeShared<FBlueprintHelperReviewSurfaceView>(EBlueprintHelperReviewSurface::MyBlueprint);
+	MyBlueprintView->SetOverlayRefresh([this]()
+	{
+		if (!MyBlueprintDiffStackBox.IsValid())
+		{
+			return false;
+		}
+		MyBlueprintDiffStackBox->SetContent(BuildPanelDiffFrames(
+			&FBlueprintHelperReviewMyBlueprintPresenter::ShouldShowChange,
+			EBlueprintHelperReviewSurface::MyBlueprint));
+		return true;
+	});
+	MyBlueprintView->SetRowsRefresh([this]()
+	{
+		bool bHandled = false;
+		BlueprintHelperReviewInvalidateMyBlueprintRows(MyBlueprintPresenterState.RootItems);
+		if (MyBlueprintPresenterState.TreeView.IsValid())
+		{
+			MyBlueprintPresenterState.TreeView->RequestTreeRefresh();
+			bHandled = true;
+		}
+		if (MyBlueprintContentBox.IsValid())
+		{
+			MyBlueprintContentBox->Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
+			bHandled = true;
+		}
+		return bHandled;
+	});
+	SurfaceViewCoordinator.RegisterSurface(MyBlueprintView);
+
+	TSharedRef<FBlueprintHelperReviewSurfaceView> DetailsView =
+		MakeShared<FBlueprintHelperReviewSurfaceView>(EBlueprintHelperReviewSurface::Details);
+	DetailsView->SetOverlayRefresh([this]()
+	{
+		if (!DetailsDiffStackBox.IsValid())
+		{
+			return false;
+		}
+		DetailsDiffStackBox->SetContent(BuildDetailsPanelDiffFrames());
+		return true;
+	});
+	DetailsView->SetRowsRefresh([this]()
+	{
+		bool bHandled = false;
+		if (KismetInspector.IsValid())
+		{
+			if (TSharedPtr<IDetailsView> PropertyView = KismetInspector->GetPropertyView())
+			{
+				PropertyView->ForceRefresh();
+				bHandled = true;
+			}
+		}
+		if (DetailsContentBox.IsValid())
+		{
+			DetailsContentBox->Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
+			bHandled = true;
+		}
+		return bHandled;
+	});
+	SurfaceViewCoordinator.RegisterSurface(DetailsView);
+
+	const TFunction<bool()> MainWorkspaceOverlayRefresh = [this]()
+	{
+		if (!MainWorkspaceDiffStackBox.IsValid())
+		{
+			return false;
+		}
+		MainWorkspaceDiffStackBox->SetContent(BuildMainWorkspaceDiffFrames());
+		return true;
+	};
+
+	TSharedRef<FBlueprintHelperReviewSurfaceView> DataTableView =
+		MakeShared<FBlueprintHelperReviewSurfaceView>(EBlueprintHelperReviewSurface::DataTable);
+	DataTableView->SetOverlayRefresh(MainWorkspaceOverlayRefresh);
+	DataTableView->SetRowsRefresh([this]()
+	{
+		bool bHandled = false;
+		BlueprintHelperReviewInvalidateDataAssetRows(DataTablePresenterState.SelectedRowFields);
+		if (DataTablePresenterState.ListView.IsValid())
+		{
+			DataTablePresenterState.ListView->RequestListRefresh();
+			bHandled = true;
+		}
+		if (DataTablePresenterState.SelectedRowFieldListView.IsValid())
+		{
+			DataTablePresenterState.SelectedRowFieldListView->RequestListRefresh();
+			bHandled = true;
+		}
+		if (GraphEditorBox.IsValid())
+		{
+			GraphEditorBox->Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
+			bHandled = true;
+		}
+		return bHandled;
+	});
+	SurfaceViewCoordinator.RegisterSurface(DataTableView);
+
+	TSharedRef<FBlueprintHelperReviewSurfaceView> DataAssetView =
+		MakeShared<FBlueprintHelperReviewSurfaceView>(EBlueprintHelperReviewSurface::DataAsset);
+	DataAssetView->SetOverlayRefresh(MainWorkspaceOverlayRefresh);
+	DataAssetView->SetRowsRefresh([this]()
+	{
+		bool bHandled = false;
+		BlueprintHelperReviewInvalidateDataAssetRows(DataAssetPresenterState.Rows);
+		if (DataAssetPresenterState.ListView.IsValid())
+		{
+			DataAssetPresenterState.ListView->RequestListRefresh();
+			bHandled = true;
+		}
+		if (GraphEditorBox.IsValid())
+		{
+			GraphEditorBox->Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
+			bHandled = true;
+		}
+		return bHandled;
+	});
+	SurfaceViewCoordinator.RegisterSurface(DataAssetView);
+}
+
+void SBlueprintHelperReviewPanel::RefreshSurfaceOverlay(EBlueprintHelperReviewSurface Surface)
+{
+	if (SurfaceViewCoordinator.RefreshOverlay(Surface))
+	{
+		Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
 	}
 }
 
@@ -1919,6 +2229,7 @@ void SBlueprintHelperReviewPanel::OnRegisteredRowGeometryChanged(
 		BlueprintHelperReviewSurfaceToString(Surface),
 		*AssetPath));
 	RefreshSurfaceOverlay(Surface);
+	ProcessDebugFocusTraversalGeometryEvent();
 }
 
 void SBlueprintHelperReviewPanel::OnSurfaceGeometryInvalidated(EBlueprintHelperReviewSurface Surface)
@@ -1932,6 +2243,37 @@ void SBlueprintHelperReviewPanel::OnSurfaceGeometryInvalidated(EBlueprintHelperR
 		TEXT("ReviewRowLifecycle surface=%s event=geometry_changed result=refresh"),
 		BlueprintHelperReviewSurfaceToString(Surface)));
 	RefreshSurfaceOverlay(Surface);
+	ProcessDebugFocusTraversalGeometryEvent();
+}
+
+void SBlueprintHelperReviewPanel::OnRowHighlightStateChanged(
+	const FString& AssetPath,
+	EBlueprintHelperReviewSurface Surface,
+	uint64 Revision)
+{
+	if (Surface == EBlueprintHelperReviewSurface::Unknown)
+	{
+		return;
+	}
+	if (!ReviewAssetContext.AssetPath.IsEmpty()
+		&& !AssetPath.IsEmpty()
+		&& AssetPath != ReviewAssetContext.AssetPath)
+	{
+		return;
+	}
+	(void)Revision;
+
+	const bool bHandled = SurfaceViewCoordinator.RefreshRows(Surface);
+	if (bHandled)
+	{
+		Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
+		AddDebugMessage(FString::Printf(
+			TEXT("ReviewRowHighlightState surface=%s asset=\"%s\" revision=%llu result=refresh_rows"),
+			BlueprintHelperReviewSurfaceToString(Surface),
+			*AssetPath,
+			Revision));
+	}
+	ProcessDebugFocusTraversalGeometryEvent();
 }
 
 void SBlueprintHelperReviewPanel::LoadReviewAssetFromSelection()
@@ -2022,26 +2364,6 @@ void SBlueprintHelperReviewPanel::OnDetailsDisplayedPropertiesChanged()
 {
 	AddDebugMessage(TEXT("ReviewFrameGeometry surface=details event=displayed_properties_changed result=refresh"));
 	RefreshSurfaceOverlay(EBlueprintHelperReviewSurface::Details);
-	DetailsGeometryRetryCount = 0;
-	if (!bDetailsGeometryRetryActive)
-	{
-		bDetailsGeometryRetryActive = true;
-		RegisterActiveTimer(
-			0.05f,
-			FWidgetActiveTimerDelegate::CreateSP(this, &SBlueprintHelperReviewPanel::TickDetailsGeometryRetry));
-	}
-}
-
-EActiveTimerReturnType SBlueprintHelperReviewPanel::TickDetailsGeometryRetry(double InCurrentTime, float InDeltaTime)
-{
-	if (++DetailsGeometryRetryCount > 6)
-	{
-		bDetailsGeometryRetryActive = false;
-		return EActiveTimerReturnType::Stop;
-	}
-
-	RefreshSurfaceOverlay(EBlueprintHelperReviewSurface::Details);
-	return EActiveTimerReturnType::Continue;
 }
 
 EBlueprintHelperReviewSurface SBlueprintHelperReviewPanel::ResolveDetailsSurfaceFromSelectedChange() const
@@ -2376,3 +2698,7 @@ UEdGraph* SBlueprintHelperReviewPanel::ResolveGraphForSelectedChange() const
 		ReviewAssetContext,
 		SelectedChange);
 }
+
+
+
+

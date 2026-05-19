@@ -1,10 +1,11 @@
-// BlueprintHelper fake Review panel implementation.
+﻿// BlueprintHelper fake Review panel implementation.
 
 #include "UI/Review/SBlueprintHelperReviewPanel.h"
 
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
 #include "UI/Review/BlueprintHelperReviewPanelStyle.h"
 #include "UI/Review/BlueprintHelperReviewPanelPresenter.h"
+#include "UI/Review/BlueprintHelperReviewRowHighlightModel.h"
 #include "UI/Review/BlueprintHelperReviewSlateRowGeometryRegistry.h"
 #include "Styling/AppStyle.h"
 #include "Widgets/Input/SButton.h"
@@ -39,11 +40,16 @@ void SBlueprintHelperReviewPanel::Construct(const FArguments& InArgs)
 		FBlueprintHelperReviewSlateRowLifecycleChanged::FDelegate::CreateSP(
 			this,
 			&SBlueprintHelperReviewPanel::OnRegisteredRowGeometryChanged));
+	RowHighlightStateChangedHandle = FBlueprintHelperReviewRowHighlightModel::AddStateChangedHandler(
+		FBlueprintHelperReviewRowHighlightStateChanged::FDelegate::CreateSP(
+			this,
+			&SBlueprintHelperReviewPanel::OnRowHighlightStateChanged));
 	if (ChangeItems.Num() > 0)
 	{
 		SelectedChange = ChangeItems[0];
 	}
 	LoadReviewAssetFromSelection();
+	ConfigureSurfaceViewCoordinator();
 
 	ChildSlot
 	[
@@ -112,6 +118,7 @@ void SBlueprintHelperReviewPanel::Construct(const FArguments& InArgs)
 
 	RefreshChangeTreeWidget();
 	UpdateDetailsSelection();
+	SyncReviewRowHighlightStates(SelectedChange.IsValid() ? SelectedChange->AssetPath : FString());
 	RefreshDiffStackWidgets();
 }
 
@@ -359,13 +366,9 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildGraphEditorWidget()
 	{
 		AddDebugMessage(Message);
 	};
-	Args.OnAcceptChangeId = [this](const FString& ChangeId)
+	Args.OnReviewActionIntent = [this](const FBlueprintHelperReviewActionIntent& Intent)
 	{
-		return OnAcceptChangeId(ChangeId);
-	};
-	Args.OnRejectChangeId = [this](const FString& ChangeId)
-	{
-		return OnRejectChangeId(ChangeId);
+		return OnReviewActionIntent(Intent);
 	};
 	Args.GetChangeColor = [this](EBlueprintHelperReviewChangeKind Kind)
 	{
@@ -426,3 +429,7 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildAssetChangeButtonBar()
 			]
 		];
 }
+
+
+
+

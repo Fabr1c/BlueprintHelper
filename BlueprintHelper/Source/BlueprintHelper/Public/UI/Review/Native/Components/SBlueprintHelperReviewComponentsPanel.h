@@ -38,6 +38,11 @@ public:
 	TSharedPtr<FBlueprintHelperReviewComponentRowItem> FindRowByCandidates(const TArray<FString>& Candidates) const;
 	TSharedPtr<SWidget> GetRowWidgetForItem(const TSharedPtr<FBlueprintHelperReviewComponentRowItem>& Item) const;
 	void RequestScrollIntoView(const TSharedPtr<FBlueprintHelperReviewComponentRowItem>& Item) const;
+	void RequestRowsRefresh() const;
+	const TArray<TSharedPtr<FBlueprintHelperReviewComponentRowItem>>& GetRootItems() const
+	{
+		return RootItems;
+	}
 
 private:
 	void RebuildItems(UBlueprint* Blueprint);

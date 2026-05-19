@@ -2,6 +2,7 @@
 
 #include "UI/Review/BlueprintHelperReviewGraphPresenter.h"
 
+#include "UI/Review/BlueprintHelperReviewPanelStateService.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraphSchema_K2.h"
@@ -430,13 +431,27 @@ void FBlueprintHelperReviewGraphPresenter::AddGraphDiffBlocks(
 			Item->DisplayLabel,
 			Args.GetChangeColor ? Args.GetChangeColor(Item->ChangeKind).GetSpecifiedColor() : FLinearColor::Transparent,
 			IsSameChange(Item, Args.SelectedChange),
-			[OnAcceptChangeId = Args.OnAcceptChangeId](const FString& ChangeId)
+			[Item, OnReviewActionIntent = Args.OnReviewActionIntent](const FString& ChangeId)
 			{
-				return OnAcceptChangeId ? OnAcceptChangeId(ChangeId) : FReply::Handled();
+				return OnReviewActionIntent && Item.IsValid() && !ChangeId.IsEmpty()
+					? OnReviewActionIntent(FBlueprintHelperReviewActionIntent::Accept(
+						FBlueprintHelperReviewPanelStateService::MakeChangeBinding(
+							*Item,
+							EBlueprintHelperReviewSurface::Graph,
+							Item->LocationKey),
+						TEXT("graph_diff_block")))
+					: FReply::Handled();
 			},
-			[OnRejectChangeId = Args.OnRejectChangeId](const FString& ChangeId)
+			[Item, OnReviewActionIntent = Args.OnReviewActionIntent](const FString& ChangeId)
 			{
-				return OnRejectChangeId ? OnRejectChangeId(ChangeId) : FReply::Handled();
+				return OnReviewActionIntent && Item.IsValid() && !ChangeId.IsEmpty()
+					? OnReviewActionIntent(FBlueprintHelperReviewActionIntent::Reject(
+						FBlueprintHelperReviewPanelStateService::MakeChangeBinding(
+							*Item,
+							EBlueprintHelperReviewSurface::Graph,
+							Item->LocationKey),
+						TEXT("graph_diff_block")))
+					: FReply::Handled();
 			});
 		PreviewGraphToEdit->AddNode(DiffNode, false, false);
 		if (Args.AddDebugMessage)

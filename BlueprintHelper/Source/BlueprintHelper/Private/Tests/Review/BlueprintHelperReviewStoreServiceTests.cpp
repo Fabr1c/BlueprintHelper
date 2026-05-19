@@ -1217,11 +1217,7 @@ bool FBlueprintHelperReviewPresenterOverlayBuildsDeterministicReviewListTest::Ru
 		{
 			DebugMessages.Add(Message);
 		};
-		Args.OnAcceptChangeId = [](const FString&)
-		{
-			return FReply::Handled();
-		};
-		Args.OnRejectChangeId = [](const FString&)
+		Args.OnReviewActionIntent = [](const FBlueprintHelperReviewActionIntent&)
 		{
 			return FReply::Handled();
 		};
@@ -1365,11 +1361,7 @@ bool FBlueprintHelperReviewPresenterOverlayHidesBuiltInPanelFallbackWithoutSlate
 		{
 			DebugMessages.Add(Message);
 		};
-		Args.OnAcceptChangeId = [](const FString&)
-		{
-			return FReply::Handled();
-		};
-		Args.OnRejectChangeId = [](const FString&)
+		Args.OnReviewActionIntent = [](const FBlueprintHelperReviewActionIntent&)
 		{
 			return FReply::Handled();
 		};
@@ -1507,11 +1499,7 @@ bool FBlueprintHelperReviewNonGraphPanelsDoNotUseAnchorOverlayTest::RunTest(cons
 		{
 			DebugMessages.Add(Message);
 		};
-		Args.OnAcceptChangeId = [](const FString&)
-		{
-			return FReply::Handled();
-		};
-		Args.OnRejectChangeId = [](const FString&)
+		Args.OnReviewActionIntent = [](const FBlueprintHelperReviewActionIntent&)
 		{
 			return FReply::Handled();
 		};
@@ -1773,11 +1761,7 @@ bool FBlueprintHelperReviewPresenterOverlayUsesStableSlateRowGeometryTest::RunTe
 		{
 			DebugMessages.Add(Message);
 		};
-		Args.OnAcceptChangeId = [](const FString&)
-		{
-			return FReply::Handled();
-		};
-		Args.OnRejectChangeId = [](const FString&)
+		Args.OnReviewActionIntent = [](const FBlueprintHelperReviewActionIntent&)
 		{
 			return FReply::Handled();
 		};
@@ -2778,11 +2762,7 @@ bool FBlueprintHelperReviewPresenterOverlayShowsOnlyReadySlateRowGeometryTest::R
 	{
 		DebugMessages.Add(Message);
 	};
-	Args.OnAcceptChangeId = [](const FString&)
-	{
-		return FReply::Handled();
-	};
-	Args.OnRejectChangeId = [](const FString&)
+	Args.OnReviewActionIntent = [](const FBlueprintHelperReviewActionIntent&)
 	{
 		return FReply::Handled();
 	};

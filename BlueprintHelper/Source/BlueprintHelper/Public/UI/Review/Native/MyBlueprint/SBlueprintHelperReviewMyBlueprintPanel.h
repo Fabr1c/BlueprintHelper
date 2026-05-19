@@ -23,6 +23,7 @@ public:
 	{
 		return TreeView;
 	}
+	void RequestRowsRefresh() const;
 
 private:
 	TSharedRef<ITableRow> OnGenerateRow(

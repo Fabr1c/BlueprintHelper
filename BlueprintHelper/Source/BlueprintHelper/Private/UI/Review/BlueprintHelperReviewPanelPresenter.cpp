@@ -62,7 +62,7 @@ FBlueprintHelperReviewPanelPresenter::FBlueprintHelperReviewPanelPresenter(
 	const FBlueprintHelperReviewStoreService* InReviewStoreService,
 	const FBlueprintHelperReviewActionService* InReviewActionService)
 	: ReviewStoreService(InReviewStoreService)
-	, CommandService(InReviewActionService)
+	, CommandService(InReviewActionService, InReviewStoreService)
 {
 }
 
@@ -115,6 +115,18 @@ FBlueprintHelperReviewPanelPresenterEvent FBlueprintHelperReviewPanelPresenter::
 	Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
 	Result.Message = TEXT("Unhandled ReviewPanel visual event.");
 	return FBlueprintHelperReviewPanelPresenterEvent::FromActionResult(Result);
+}
+
+FBlueprintHelperReviewPanelPresenterEvent FBlueprintHelperReviewPanelPresenter::HandleActionIntent(
+	const FBlueprintHelperReviewActionIntent& Intent,
+	const TArray<FBlueprintHelperReviewVisibleChange>& PendingChanges,
+	const FBlueprintHelperReviewRejectOptions& RejectOptions) const
+{
+	const FBlueprintHelperReviewCommandResult CommandResult =
+		CommandService.ExecuteActionIntent(Intent, PendingChanges, RejectOptions);
+	return CommandResult.bCascade
+		? FBlueprintHelperReviewPanelPresenterEvent::FromCascadeActionResult(CommandResult.CascadeActionResult)
+		: FBlueprintHelperReviewPanelPresenterEvent::FromActionResult(CommandResult.ActionResult);
 }
 
 FBlueprintHelperReviewPanelPresenterEvent
