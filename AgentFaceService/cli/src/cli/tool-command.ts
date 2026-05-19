@@ -45,13 +45,14 @@ export async function invokeCliTool(input: {
     });
   }
 
-  const params = input.command.params ?? await readCliInputObject({
+  const rawParams = input.command.params ?? await readCliInputObject({
     cwd: input.cwd,
     file: input.command.file,
     json: input.command.json,
     stdin: input.command.stdin,
     readStdin: input.readStdin,
   });
+  const params = applyDevelopFlag(toolName, rawParams, input.command.develop === true);
   const parsed = tool.inputSchema.parse(params) as Record<string, unknown>;
   return await tool.execute(parsed, {
     cwd: input.cwd,
@@ -60,4 +61,24 @@ export async function invokeCliTool(input: {
     runLocalProcess: input.runLocalProcess,
     sleep: input.sleep,
   });
+}
+
+function applyDevelopFlag(toolName: string, params: unknown, develop: boolean): unknown {
+  if (!develop || !isTaskSpecExecutionTool(toolName) || !isRecord(params)) {
+    return params;
+  }
+
+  if ('task_spec' in params) {
+    return { ...params, develop: true };
+  }
+
+  return { task_spec: params, develop: true };
+}
+
+function isTaskSpecExecutionTool(toolName: string): boolean {
+  return toolName === 'blueprinthelper_preview_task' || toolName === 'blueprinthelper_execute_task';
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }

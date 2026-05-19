@@ -27,6 +27,15 @@ import {
   storeTaskRunJournal,
   storeTaskResult,
 } from '../runtime/task-result-store.js';
+import {
+  TaskTimingTrace,
+  addNestedTaskTiming,
+  attachTaskTiming,
+  extractBridgeTiming,
+  hasTaskTiming,
+  measureTaskTiming,
+  measureTaskTimingAsync,
+} from './task-timing.js';
 
 export type TaskRunnerBridge = {
   sendCommand(command: string, payload?: Record<string, unknown>): Promise<BridgeResponse>;
@@ -45,8 +54,8 @@ export interface TaskPreviewOutcome {
 export interface TaskSpecRunner {
   readTaskContext(input: Record<string, unknown>): Promise<ToolResultBase>;
   readReferenceContext(input: Record<string, unknown>): Promise<ToolResultBase>;
-  previewTask(taskSpec: TaskSpec): Promise<TaskPreviewOutcome>;
-  executeTask(taskSpec: TaskSpec): Promise<ToolResultBase>;
+  previewTask(taskSpec: TaskSpec, timing?: TaskTimingTrace): Promise<TaskPreviewOutcome>;
+  executeTask(taskSpec: TaskSpec, timing?: TaskTimingTrace): Promise<ToolResultBase>;
   getTaskResult(taskRunId: string): Promise<ToolResultBase>;
 }
 
@@ -81,67 +90,74 @@ export function createTaskSpecRunner(input: {
       }
     },
 
-    previewTask(taskSpec) {
-      return previewTask(bridge, taskSpec, taskCompiler);
+    async previewTask(taskSpec, timing) {
+      const outcome = await runPreviewTask(bridge, taskSpec, taskCompiler, timing);
+      outcome.toolResult = attachTaskTiming(outcome.toolResult, timing);
+      return outcome;
     },
 
-    async executeTask(taskSpec) {
+    async executeTask(taskSpec, timing) {
       try {
-        const preview = await previewTask(bridge, taskSpec, taskCompiler);
+        const preview = await runPreviewTask(bridge, taskSpec, taskCompiler, timing);
         if (!preview.passed) {
-          return taskFailure(
+          return attachTaskTiming(taskFailure(
             'execute_task',
             'task_preview_blocked',
             'preview_error',
             'Task preview was blocked; execute_task did not write assets.',
             preview.issues,
-          );
+          ), timing);
         }
 
-        const writeResponse = await bridge.sendCommand('execute_task_plan', {
+        const writeResponse = await measureTaskTimingAsync(timing, 'bridge.execute_task_plan', () => bridge.sendCommand('execute_task_plan', {
           task_plan: preview.taskPlan,
-        });
+          ...(hasTaskTiming(timing) ? { include_timing: true } : {}),
+        }));
+        addNestedTaskTiming(timing, 'ue.execute_task_plan', extractBridgeTiming(writeResponse.result));
         if (!writeResponse.success) {
-          return taskFailureFromBridgeResponse(
+          return attachTaskTiming(taskFailureFromBridgeResponse(
             'execute_task',
             writeResponse,
             'bridge_error',
             'Bridge write failed.',
             'bridge.execute_task_plan',
-          );
+          ), timing);
         }
 
-        const taskRunId = extractUeTaskRunId(writeResponse) ?? nextTaskRunId();
-        const bridgeResult = asRecord(writeResponse.result);
-        const modified = isBridgeResultModified(bridgeResult);
-        storeTaskResult({
-          taskRunId,
-          taskPlan: preview.taskPlan,
-          status: 'completed',
-          bridgeResult,
-        });
+        const result = measureTaskTiming(timing, 'result_wrap', () => {
+          const taskRunId = extractUeTaskRunId(writeResponse) ?? nextTaskRunId();
+          const bridgeResult = asRecord(writeResponse.result);
+          const modified = isBridgeResultModified(bridgeResult);
+          storeTaskResult({
+            taskRunId,
+            taskPlan: preview.taskPlan,
+            status: 'completed',
+            bridgeResult,
+          });
 
-        const result = successRead(
-          'execute_task',
-          { target_type: 'blueprint', asset_path: preview.taskPlan.target_assets[0] },
-          {
-            task_run_id: taskRunId,
-            task: {
-              feature_name: preview.taskPlan.task_name,
-              applied_steps: preview.taskPlan.steps.length,
-              modified_assets: preview.taskPlan.target_assets.length,
+          const toolResult = successRead(
+            'execute_task',
+            { target_type: 'blueprint', asset_path: preview.taskPlan.target_assets[0] },
+            {
+              task_run_id: taskRunId,
+              task: {
+                feature_name: preview.taskPlan.task_name,
+                applied_steps: preview.taskPlan.steps.length,
+                modified_assets: preview.taskPlan.target_assets.length,
+              },
             },
-          },
-        ) as ToolResultBase;
-        Object.defineProperty(result, 'debug', {
-          value: { bridge_result: bridgeResult },
-          enumerable: false,
-          configurable: true,
+          ) as ToolResultBase;
+          Object.defineProperty(toolResult, 'debug', {
+            value: { bridge_result: bridgeResult },
+            enumerable: false,
+            configurable: true,
+          });
+          toolResult.modified = modified;
+          return toolResult;
         });
-        result.modified = modified;
-        return result;
+        return attachTaskTiming(result, timing);
       } catch (err) {
-        return taskErrorFromUnknown('execute_task', err);
+        return attachTaskTiming(taskErrorFromUnknown('execute_task', err), timing);
       }
     },
 
@@ -186,17 +202,20 @@ async function getBridgeTaskRunJournal(
   }
 }
 
-async function previewTask(
+async function runPreviewTask(
   bridge: TaskRunnerBridge,
   taskSpec: TaskSpec,
   taskCompiler: TaskCompiler,
+  timing?: TaskTimingTrace,
 ): Promise<TaskPreviewOutcome> {
-  const compiled = await taskCompiler(taskSpec, true);
+  const compiled = await measureTaskTimingAsync(timing, 'taskspec_compile', () => taskCompiler(taskSpec, true));
   const taskPlan = compiled.task_plan;
   const previewId = nextPreviewId();
-  const previewResponse = await bridge.sendCommand('preview_task_plan', {
+  const previewResponse = await measureTaskTimingAsync(timing, 'bridge.preview_task_plan', () => bridge.sendCommand('preview_task_plan', {
     task_plan: taskPlan,
-  });
+    ...(hasTaskTiming(timing) ? { include_timing: true } : {}),
+  }));
+  addNestedTaskTiming(timing, 'ue.preview_task_plan', extractBridgeTiming(previewResponse.result));
 
   if (!previewResponse.success) {
     const failure = bridgeFailureFromResponse(

@@ -9,6 +9,7 @@ import {
   createTaskSpecRunner,
   type TaskCompiler,
 } from '@blueprinthelper/task-core/task/service/task-spec-runner';
+import { startTaskTiming } from '@blueprinthelper/task-core/task/service/task-timing';
 import {
   ExecuteTaskInputSchema,
   GetTaskResultInputSchema,
@@ -117,9 +118,10 @@ export function registerTaskTools(server: McpServer, bridge: BridgeClient, confi
       description: 'Validate BlueprintHelper.TaskSpec.v1, compile a TaskPlan, and dry-run supported TaskSpec-first slices including composite Blueprint features.',
       inputSchema: PreviewTaskInputSchema,
     },
-    async ({ task_spec }) => {
+    async ({ task_spec, develop }) => {
       try {
-        const preview = await runner.previewTask(task_spec);
+        const timing = startTaskTiming(develop === true, 'preview_task');
+        const preview = await runner.previewTask(task_spec, timing);
         return toMcpResult(preview.toolResult);
       } catch (err) {
         return toMcpResult(taskErrorFromUnknown('preview_task', err));
@@ -133,9 +135,10 @@ export function registerTaskTools(server: McpServer, bridge: BridgeClient, confi
       description: 'Preview and execute supported BlueprintHelper TaskSpec-first slices including composite Blueprint features.',
       inputSchema: ExecuteTaskInputSchema,
     },
-    async ({ task_spec }) => {
+    async ({ task_spec, develop }) => {
       try {
-        return toMcpResult(await runner.executeTask(task_spec));
+        const timing = startTaskTiming(develop === true, 'execute_task');
+        return toMcpResult(await runner.executeTask(task_spec, timing));
       } catch (err) {
         return toMcpResult(taskErrorFromUnknown('execute_task', err));
       }

@@ -183,40 +183,51 @@ FBlueprintHelperReviewCascadeActionResult FBlueprintHelperReviewRejectService::C
 
 		TSet<FString> ChildChangeIds;
 		TSet<FString> ChildReviewRecordIdsToDelete;
+		TSet<FString> CascadeRootChangeIds;
+		CascadeRootChangeIds.Add(Root.ChangeId);
 		const bool bRootIsAssetFactory = Root.AtomicTargets.ContainsByPredicate(
 			[](const FBlueprintHelperReviewAtomicTarget& Target)
 			{
 				return FBlueprintHelperReviewTargetKindRegistry::IsAssetFactoryTargetKind(Target.TargetKind);
 			});
-		for (const FBlueprintHelperReviewVisibleChange& PendingChange : PendingChanges)
+		bool bAddedChildThisPass = true;
+		while (bAddedChildThisPass)
 		{
-			const bool bActionable =
-				PendingChange.Status == EBlueprintHelperReviewChangeStatus::Pending
-				|| PendingChange.Status == EBlueprintHelperReviewChangeStatus::NeedsAction;
-			const bool bLinkedChild =
-				!bRootIsAssetFactory
-				&& PendingChange.ParentChangeId == Root.ChangeId;
-			const bool bAssetLifecycleChild =
-				bRootIsAssetFactory
-				&& PendingChange.AssetPath == Root.AssetPath
-				&& PendingChange.ChangeId != Root.ChangeId;
-			if (!bActionable
-				|| PendingChange.ChangeId.IsEmpty()
-				|| (!bLinkedChild && !bAssetLifecycleChild))
+			bAddedChildThisPass = false;
+			for (const FBlueprintHelperReviewVisibleChange& PendingChange : PendingChanges)
 			{
-				continue;
-			}
+				const bool bActionable =
+					PendingChange.Status == EBlueprintHelperReviewChangeStatus::Pending
+					|| PendingChange.Status == EBlueprintHelperReviewChangeStatus::NeedsAction;
+				const bool bLinkedChild =
+					!bRootIsAssetFactory
+					&& CascadeRootChangeIds.Contains(PendingChange.ParentChangeId);
+				const bool bAssetLifecycleChild =
+					bRootIsAssetFactory
+					&& PendingChange.AssetPath == Root.AssetPath
+					&& PendingChange.ChangeId != Root.ChangeId;
+				if (!bActionable
+					|| PendingChange.ChangeId.IsEmpty()
+					|| ChildChangeIds.Contains(PendingChange.ChangeId)
+					|| (!bLinkedChild && !bAssetLifecycleChild))
+				{
+					continue;
+				}
 
-			ChildChangeIds.Add(PendingChange.ChangeId);
-			FString ChildReviewRecordId;
-			TArray<FString> ChildTargetKeys;
-			if (FBlueprintHelperReviewActionTargetUtils::TryResolvePersistedReviewChange(
-				PendingChange,
-				ChildReviewRecordId,
-				ChildTargetKeys)
-				&& !ChildReviewRecordId.IsEmpty())
-			{
-				ChildReviewRecordIdsToDelete.Add(ChildReviewRecordId);
+				ChildChangeIds.Add(PendingChange.ChangeId);
+				CascadeRootChangeIds.Add(PendingChange.ChangeId);
+				bAddedChildThisPass = true;
+
+				FString ChildReviewRecordId;
+				TArray<FString> ChildTargetKeys;
+				if (FBlueprintHelperReviewActionTargetUtils::TryResolvePersistedReviewChange(
+					PendingChange,
+					ChildReviewRecordId,
+					ChildTargetKeys)
+					&& !ChildReviewRecordId.IsEmpty())
+				{
+					ChildReviewRecordIdsToDelete.Add(ChildReviewRecordId);
+				}
 			}
 		}
 
