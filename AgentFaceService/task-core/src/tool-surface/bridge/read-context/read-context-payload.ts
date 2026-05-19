@@ -46,6 +46,12 @@ export function postProcessReadContextPayload(
   return normalized;
 }
 
+export function resolveReadContextPostProcessStage(payloadSchema: string): string {
+  return payloadSchema === 'LogicFlow.v1'
+    ? 'read_context.logic_flow_build_payload'
+    : 'read_context.post_process_payload';
+}
+
 function compactLogicContextPayload(payload: Record<string, unknown>): Record<string, unknown> {
   const compactedPayload = compactLogicMdMarkdown(payload);
   const logic = payload['logic'];

@@ -359,6 +359,111 @@ test('develop timing applies to direct CLI tool invocation', async () => {
   assert.ok((timing.stages as Array<Record<string, unknown>>).some((stage) => stage.name === 'cli.invoke_tool'));
 });
 
+test('develop timing records read_context logic_flow stages and UE nested timing', async () => {
+  const writes: string[] = [];
+  const calls: Array<{ command: string; payload: Record<string, unknown> }> = [];
+  const exitCode = await runCli({
+    argv: ['blueprinthelper_read_context', '--json', JSON.stringify({
+      schema: 'BlueprintHelper.ReadSpec.v1',
+      read_type: 'blueprint_logic',
+      target: {
+        asset_path: '/Game/BP_Player',
+        target_type: 'event',
+        target_name: 'BeginPlay',
+      },
+      view: {
+        format: 'logic_flow',
+      },
+    }), '--develop', '--format', 'json'],
+    cwd: fixturesDir,
+    bridge: {
+      sendCommand: async (command: string, payload: Record<string, unknown>): Promise<BridgeResponse> => {
+        calls.push({ command, payload });
+        return {
+          request_id: 'read_context_logic_flow_timing',
+          success: true,
+          result: {
+            data: {
+              schema: 'LogicJson.v1',
+              logic: {
+                nodes: [
+                  { node_ref: 'nodes[0]', kind: 'event', name: 'BeginPlay' },
+                  { node_ref: 'nodes[1]', name: 'InitGame' },
+                ],
+                links: [
+                  { type: 'exec', from_node: 'nodes[0]', from_pin: 'then', to_node: 'nodes[1]', to_pin: 'execute' },
+                ],
+              },
+              stats: {
+                nodes: 2,
+                exec_links: 1,
+                data_links: 0,
+              },
+              timing: {
+                schema: 'BlueprintHelper.TimingTrace.v1',
+                source: 'ue_bridge_router',
+                operation: 'read_blueprint_logic_json',
+                timing_id: 'ue_timing_001',
+                total_ms: 4.2,
+                stages: [
+                  { name: 'route_execute', started_at_ms: 0, duration_ms: 4.2 },
+                ],
+              },
+            },
+          },
+        };
+      },
+    },
+    runner: {
+      previewTask: async () => { throw new Error('not used'); },
+      executeTask: async () => { throw new Error('not used'); },
+      getTaskResult: async () => { throw new Error('not used'); },
+      readTaskContext: async () => { throw new Error('not used'); },
+      readReferenceContext: async () => { throw new Error('not used'); },
+    } as TaskSpecRunner,
+    stdout: (line) => writes.push(line),
+    stderr: () => {},
+  });
+
+  assert.equal(exitCode, 0);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].command, 'read_blueprint_logic_json');
+  assert.equal(calls[0].payload['include_timing'], true);
+
+  const output = JSON.parse(writes.join('')) as Record<string, any>;
+  const toolResult = output.tool_result as Record<string, any>;
+  const payload = toolResult.data.payload as Record<string, unknown>;
+  assert.equal(payload['schema'], 'LogicFlow.v1');
+  assert.equal(payload['mode'], 'execflow');
+  assert.equal(Object.hasOwn(payload, 'timing'), false);
+
+  const timing = toolResult.data.timing as Record<string, any>;
+  const stageNames = (timing.stages as Array<Record<string, unknown>>).map((stage) => stage.name);
+  for (const expected of [
+    'cli.parse_args',
+    'cli.invoke_tool',
+    'read_context.parse_input',
+    'read_context.resolve_format',
+    'read_context.resolve_bridge_request',
+    'read_context.build_bridge_payload',
+    'read_context.bridge.read_blueprint_logic_json',
+    'read_context.extract_bridge_payload',
+    'read_context.strip_bridge_timing',
+    'read_context.logic_flow_build_payload',
+    'read_context.result_wrap',
+    'cli.result_return',
+  ]) {
+    assert.ok(stageNames.includes(expected), expected);
+  }
+
+  const nested = timing.nested as Array<Record<string, unknown>>;
+  assert.ok(nested.some((entry) => (
+    entry['name'] === 'ue.read_blueprint_logic_json'
+    && entry['source'] === 'ue_bridge_router'
+    && entry['operation'] === 'read_blueprint_logic_json'
+  )));
+});
+
 test('omit removes selected fields from compact output', async () => {
   const writes: string[] = [];
   const bridge = {
