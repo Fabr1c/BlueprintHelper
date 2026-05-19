@@ -7,6 +7,8 @@
 #include "HAL/PlatformTime.h"
 #include "Misc/Guid.h"
 
+static thread_local FBlueprintHelperToolTimingUtils::FTimingTrace* GBlueprintHelperCurrentToolTimingTrace = nullptr;
+
 FBlueprintHelperToolTimingUtils::FTimingTrace FBlueprintHelperToolTimingUtils::StartTrace(
 	const FString& Operation,
 	bool bEnabled,
@@ -51,6 +53,24 @@ void FBlueprintHelperToolTimingUtils::FinishStage(
 	Trace.Stages.Add(MoveTemp(Stage));
 }
 
+void FBlueprintHelperToolTimingUtils::AddCounter(
+	FTimingTrace& Trace,
+	const FString& Name,
+	int64 Value)
+{
+	if (!Trace.bEnabled)
+	{
+		return;
+	}
+
+	FTimingStage Stage;
+	Stage.Name = Name;
+	Stage.StartedAtMs = RoundMilliseconds(ToMilliseconds(FPlatformTime::Seconds() - Trace.StartedAtSeconds));
+	Stage.DurationMs = 0.0;
+	Stage.Value = static_cast<double>(Value);
+	Trace.Stages.Add(MoveTemp(Stage));
+}
+
 TSharedRef<FJsonObject> FBlueprintHelperToolTimingUtils::ToJson(
 	const FTimingTrace& Trace)
 {
@@ -70,6 +90,10 @@ TSharedRef<FJsonObject> FBlueprintHelperToolTimingUtils::ToJson(
 		StageJson->SetStringField(TEXT("name"), Stage.Name);
 		StageJson->SetNumberField(TEXT("started_at_ms"), Stage.StartedAtMs);
 		StageJson->SetNumberField(TEXT("duration_ms"), Stage.DurationMs);
+		if (Stage.Value.IsSet())
+		{
+			StageJson->SetNumberField(TEXT("value"), Stage.Value.GetValue());
+		}
 		StageValues.Add(MakeShared<FJsonValueObject>(StageJson));
 	}
 	Json->SetArrayField(TEXT("stages"), StageValues);
@@ -117,6 +141,16 @@ void FBlueprintHelperToolTimingUtils::AttachTimingToBridgeResult(
 	}
 
 	AttachTiming(Result, Trace);
+}
+
+FBlueprintHelperToolTimingUtils::FTimingTrace* FBlueprintHelperToolTimingUtils::GetCurrentTrace()
+{
+	return GBlueprintHelperCurrentToolTimingTrace;
+}
+
+void FBlueprintHelperToolTimingUtils::SetCurrentTrace(FTimingTrace* Trace)
+{
+	GBlueprintHelperCurrentToolTimingTrace = Trace;
 }
 
 double FBlueprintHelperToolTimingUtils::RoundMilliseconds(double Value)

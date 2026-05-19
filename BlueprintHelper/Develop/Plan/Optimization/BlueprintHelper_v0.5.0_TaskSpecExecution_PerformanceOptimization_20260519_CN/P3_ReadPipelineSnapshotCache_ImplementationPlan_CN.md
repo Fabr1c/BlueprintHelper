@@ -8,6 +8,8 @@ P3 承接当前 v0.5.0 文档中的 R1-R5。它不是把 UE 读操作并发化�
 
 读链路必须坚持：UObject / Blueprint / UEdGraph / UWidgetTree / FProperty 只在 GameThread 读取，后台线程只能处理已经脱离 UE 对象生命周期的 Snapshot DTO。
 
+更细的 R0-R5 执行 checklist、目标文件结构、验收命令和回归门槛见：`R0_R5_ReadPipeline_ExecutablePlan_CN.md`。P3 文档保留阶段背景和架构收口，R0-R5 文档作为实际执行入口。
+
 ## 范围
 
 - GameThread Snapshot DTO。
@@ -24,6 +26,24 @@ P3 承接当前 v0.5.0 文档中的 R1-R5。它不是把 UE 读操作并发化�
 - AgentFace `read_context` 只做 route、Bridge payload、compact/filter 和 result wrap。
 - DebugBundle、Review evidence、UI overlay 如需读模型，应复用 Snapshot/DTO，不重新解释 Blueprint 状态。
 - 长期资产内容缓存不进 v0.5.0，除非先有明确失效策略。
+
+## DTO formatter migration template
+
+后续 component、WidgetTree、object property 等读工具迁移时复用同一模板：
+
+1. 新建 `SnapshotTypes`：只保存字符串、数字、数组、map、JSON value，不保存 `UObject*` / `UBlueprint*` / `UEdGraph*` / `UWidgetTree*` / `FProperty*`。
+2. 新建 `SnapshotService`：唯一职责是在 GameThread 读取 UE 对象并拷贝 DTO；不做 Markdown、compact、filter、UI 解释。
+3. 新建 `SnapshotFormatter`：只消费 DTO，可在后台或纯函数路径运行；通过 registry / handler map 扩展格式，不在 route 中写格式特判。
+4. route 只负责 parse request、调用 snapshot、调用 formatter、wrap response、记录 timing。
+5. request-local cache 只能由 route 创建和销毁；asset 内容 snapshot 不跨 CLI 请求、不跨 editor lifecycle。
+6. AgentFace 只做 schema parse、Bridge request、UE timing extract、payload size marker、compact/filter/logic_flow 后处理。
+
+当前已落地的模板实例：
+
+- `FBlueprintHelperLogicReadSnapshotService`
+- `FBlueprintHelperLogicReadSnapshotFormatter`
+- `FBlueprintHelperLogicReadRequestSnapshotCache`
+- `FBlueprintHelperReadCachePolicy`
 
 ## 文件结构
 
@@ -147,4 +167,3 @@ node .\AgentFaceService\cli\build\cli\index.js read context --spec "D:\UEProject
 - 不把用户可编辑资产内容放进长期缓存。
 - 不让后台线程直接访问 UE 反射对象。
 - 不在 CLI 或 UI 入口写 read type 特判。
-

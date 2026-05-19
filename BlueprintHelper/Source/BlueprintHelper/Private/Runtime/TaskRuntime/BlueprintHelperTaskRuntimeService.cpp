@@ -33,7 +33,11 @@
 #include "Runtime/TaskRuntime/TaskPlanAdapters/UMGWidget/BlueprintHelperWidgetTaskPlanAdapter.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeClusterHub.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeCallFunctionResolutionCache.h"
+#include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeCommitService.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeDryRunPolicy.h"
+#include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimePostIoService.h"
+#include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimePrepareService.h"
+#include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeReviewIoBatch.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskPreviewStore.h"
 #include "Runtime/TaskRuntime/Utils/BlueprintHelperTaskRuntimeClusterExecutionUtils.h"
 #include "Runtime/TaskRuntime/Utils/BlueprintHelperTaskRuntimeTimingUtils.h"
@@ -159,6 +163,12 @@ public:
 		TArray<FBlueprintHelperTaskRuntimePostOperationRecord> PreArchiveSaveOperations;
 	};
 
+	struct FBlueprintHelperReviewTargetSnapshotCacheValue
+	{
+		FString SnapshotJson;
+		FString SnapshotHash;
+	};
+
 	static FString MakeTaskRuntimeReviewRefSegment(const FString& RawValue)
 	{
 		FString Segment;
@@ -222,11 +232,36 @@ public:
 
 	static void PopulateTaskRuntimeReviewTargetSnapshots(
 		FBlueprintHelperWriteReviewEvidence& Evidence,
-		bool bBeforeSnapshot)
+		bool bBeforeSnapshot,
+		TMap<FString, FBlueprintHelperReviewTargetSnapshotCacheValue>* SnapshotCache = nullptr)
 	{
 		FBlueprintHelperReviewBaselineSnapshotService SnapshotService;
 		for (FBlueprintHelperReviewAtomicTarget& Target : Evidence.AtomicTargets)
 		{
+			const FString CacheKey = FString::Printf(
+				TEXT("%s|%s|%s|%s"),
+				*Target.AssetPath,
+				*Target.GraphName,
+				*Target.TargetKind,
+				*Target.TargetKey);
+			if (SnapshotCache)
+			{
+				if (const FBlueprintHelperReviewTargetSnapshotCacheValue* CachedSnapshot = SnapshotCache->Find(CacheKey))
+				{
+					if (bBeforeSnapshot)
+					{
+						Target.BeforeSnapshotJson = CachedSnapshot->SnapshotJson;
+						Target.BaselineHash = CachedSnapshot->SnapshotHash;
+					}
+					else
+					{
+						Target.AfterSnapshotJson = CachedSnapshot->SnapshotJson;
+						Target.RecordedAfterHash = CachedSnapshot->SnapshotHash;
+					}
+					continue;
+				}
+			}
+
 			FString SnapshotJson;
 			FString SnapshotHash;
 			FString SnapshotError;
@@ -244,6 +279,14 @@ public:
 			{
 				Target.AfterSnapshotJson = SnapshotJson;
 				Target.RecordedAfterHash = SnapshotHash;
+			}
+
+			if (SnapshotCache)
+			{
+				FBlueprintHelperReviewTargetSnapshotCacheValue CacheValue;
+				CacheValue.SnapshotJson = SnapshotJson;
+				CacheValue.SnapshotHash = SnapshotHash;
+				SnapshotCache->Add(CacheKey, CacheValue);
 			}
 		}
 	}
@@ -4827,27 +4870,11 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 	bool bDryRun) const
 {
 	const FString RuntimeOperation = bDryRun ? TEXT("preview_task_plan") : TEXT("execute_task_plan");
-	struct FScopedTaskPlanReviewCompletionNotifier
+	FBlueprintHelperTaskRuntimeReviewIoBatch PostIoBatch;
+	if (!bDryRun)
 	{
-		explicit FScopedTaskPlanReviewCompletionNotifier(bool bInEnabled)
-			: bEnabled(bInEnabled)
-		{
-		}
-
-		~FScopedTaskPlanReviewCompletionNotifier()
-		{
-			if (bEnabled)
-			{
-				FBlueprintHelperReviewStoreService ReviewStore;
-				ReviewStore.NotifyPendingReviewChanged();
-			}
-		}
-
-	private:
-		bool bEnabled = false;
-	};
-
-	FScopedTaskPlanReviewCompletionNotifier ReviewCompletionNotifier(!bDryRun);
+		PostIoBatch.EnablePendingReviewNotification();
+	}
 	bool bIncludeTiming = false;
 	if (Payload.IsValid())
 	{
@@ -4869,64 +4896,39 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		FBlueprintHelperTaskRuntimeTimingUtils::AttachTiming(Result.Data, TimingTrace);
 	};
 
-	const double ParseStageStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
-	if (!Payload.IsValid())
+	FBlueprintHelperTaskRuntimePreparedTaskRun PreparedRun;
+	FBlueprintHelperToolError PrepareError;
+	const double PurePrepareStageStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
+	const FBlueprintHelperTaskRuntimePrepareService PrepareService;
+	if (!PrepareService.Prepare(Payload, bDryRun, PreparedRun, PrepareError))
 	{
-		FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(TimingTrace, TEXT("parse_task_plan"), ParseStageStart);
-		FBlueprintHelperToolResultBase Result = FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeFailure(RuntimeOperation, TEXT("invalid_taskplan_payload"),
-			EBlueprintHelperToolStage::ParseInput, TEXT("payload is required."), TEXT("payload"));
-		AttachTimingToResult(Result);
-		return Result;
-	}
-
-	const TSharedPtr<FJsonObject>* TaskPlanPtr = nullptr;
-	if (!Payload->TryGetObjectField(TEXT("task_plan"), TaskPlanPtr) || !TaskPlanPtr || !TaskPlanPtr->IsValid())
-	{
-		FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(TimingTrace, TEXT("parse_task_plan"), ParseStageStart);
-		FBlueprintHelperToolResultBase Result = FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeFailure(RuntimeOperation, TEXT("missing_task_plan"),
-			EBlueprintHelperToolStage::ParseInput, TEXT("payload.task_plan is required."), TEXT("payload.task_plan"));
-		AttachTimingToResult(Result);
-		return Result;
-	}
-
-	const TArray<TSharedPtr<FJsonValue>>* StepsArray = nullptr;
-	if (!(*TaskPlanPtr)->TryGetArrayField(TEXT("steps"), StepsArray) || !StepsArray || StepsArray->Num() == 0)
-	{
-		FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(TimingTrace, TEXT("parse_task_plan"), ParseStageStart);
-		FBlueprintHelperToolResultBase Result = FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeFailure(RuntimeOperation, TEXT("unsupported_taskplan_step_count"),
-			EBlueprintHelperToolStage::ParseInput, TEXT("Task Runtime requires at least one TaskPlan step."),
-			TEXT("task_plan.steps"));
-		AttachTimingToResult(Result);
-		return Result;
-	}
-	FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(TimingTrace, TEXT("parse_task_plan"), ParseStageStart);
-
-	const FBlueprintHelperTaskRuntimeDryRunPolicy DryRunPolicy =
-		FBlueprintHelperTaskRuntimeDryRunPolicy::FromTaskPlan((*TaskPlanPtr).ToSharedRef());
-	if (bDryRun && DryRunPolicy.GetMode() == EBlueprintHelperTaskRuntimeDryRunMode::None)
-	{
-		FBlueprintHelperToolResultBase Result = FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeFailure(
+		FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(TimingTrace, TEXT("pure_prepare"), PurePrepareStageStart);
+		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Failure(
 			RuntimeOperation,
-			TEXT("dry_run_mode_none_requires_preview_token"),
-			EBlueprintHelperToolStage::DryRun,
-			TEXT("execution_policy.dry_run_mode=none is only allowed when AgentFace reuses a validated preview token and skips PreviewTaskPlan."),
-			TEXT("task_plan.execution_policy.dry_run_mode"));
-		if (!Result.Data.IsValid())
+			FBlueprintHelperToolResultBuilder::GenerateTraceId(),
+			PrepareError);
+		if (bDryRun &&
+			PrepareError.Code == TEXT("dry_run_mode_none_requires_preview_token") &&
+			PreparedRun.TaskPlan.IsValid())
 		{
-			Result.Data = MakeShared<FJsonObject>();
+			if (!Result.Data.IsValid())
+			{
+				Result.Data = MakeShared<FJsonObject>();
+			}
+			FBlueprintHelperTaskRuntimeServiceLocalUtils::AttachDryRunStrategy(
+				Result.Data,
+				PreparedRun.DryRunPolicy);
 		}
-		FBlueprintHelperTaskRuntimeServiceLocalUtils::AttachDryRunStrategy(Result.Data, DryRunPolicy);
 		AttachTimingToResult(Result);
 		return Result;
 	}
-	const bool bQuickDryRun = bDryRun && DryRunPolicy.ShouldRunQuickPreview();
+	FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(TimingTrace, TEXT("pure_prepare"), PurePrepareStageStart);
 
-	const FString TaskRunId = bDryRun
-		? TEXT("")
-		: FString::Printf(TEXT("task_%s"), *FGuid::NewGuid().ToString(EGuidFormats::Digits));
-	const FString ArchiveSessionId = bDryRun
-		? TEXT("")
-		: FString::Printf(TEXT("archive_%s"), *FGuid::NewGuid().ToString(EGuidFormats::Digits));
+	const TSharedPtr<FJsonObject>* TaskPlanPtr = &PreparedRun.TaskPlan;
+	const FBlueprintHelperTaskRuntimeDryRunPolicy& DryRunPolicy = PreparedRun.DryRunPolicy;
+	const bool bQuickDryRun = PreparedRun.bQuickDryRun;
+	const FString& TaskRunId = PreparedRun.TaskRunId;
+	const FString& ArchiveSessionId = PreparedRun.ArchiveSessionId;
 
 	FBlueprintHelperTaskRuntimeServiceLocalUtils::FBlueprintHelperReviewBaselinePolicyEvaluation BaselinePolicy;
 	FBlueprintHelperToolError BaselinePolicyError;
@@ -4970,23 +4972,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		BaselinePolicy.Warnings = ArchiveSession.BaselineWarnings;
 		ArchiveSession.CreatedAt = FDateTime::UtcNow().ToIso8601();
 		FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(TimingTrace, TEXT("review_baseline_capture"), BaselineCaptureStageStart);
-
-		const double ArchiveSessionWriteStageStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
-		FBlueprintHelperReviewStoreService ReviewStore;
-		FString ArchiveSessionError;
-		if (!ReviewStore.SaveArchiveSession(ArchiveSession, ArchiveSessionError))
-		{
-			FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(TimingTrace, TEXT("review_archive_session_write"), ArchiveSessionWriteStageStart);
-			FBlueprintHelperToolResultBase Result = FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeFailure(
-				RuntimeOperation,
-				TEXT("review_archive_session_write_failed"),
-				EBlueprintHelperToolStage::Execute,
-				ArchiveSessionError,
-				TEXT("review.archive_session"));
-			AttachTimingToResult(Result);
-			return Result;
-		}
-		FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(TimingTrace, TEXT("review_archive_session_write"), ArchiveSessionWriteStageStart);
+		PostIoBatch.SetArchiveSession(ArchiveSession);
 	}
 	FBlueprintHelperTaskRuntimeServiceLocalUtils::FScopedBlueprintHelperReviewContext ReviewContext(!bDryRun, ArchiveSessionId, TaskRunId);
 	FBlueprintHelperTaskRuntimeServiceLocalUtils::FScopedBlueprintHelperGraphLayoutTask GraphLayoutTask(!bDryRun);
@@ -5001,17 +4987,46 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 	TSet<FString> DryRunPlannedComponentKeys;
 	TSet<FString> DryRunPlannedWidgetKeys;
 	TSet<FString> DryRunPlannedDataTableRowKeys;
+	TMap<FString, FBlueprintHelperTaskRuntimeServiceLocalUtils::FBlueprintHelperReviewTargetSnapshotCacheValue> ReviewBeforeSnapshotCache;
 	bool bSawExecutionFailure = false;
 	bool bHasFirstExecutionError = false;
 	FBlueprintHelperToolError FirstExecutionError;
+	double MainThreadCommitStageStart = 0.0;
+	bool bMainThreadCommitStageOpen = false;
 
-	auto NormalizeErrorField = [](FBlueprintHelperToolError& Error, int32 StepIndex)
+	auto FinishMainThreadCommitStage = [&]()
 	{
-		if (StepIndex != 0 && Error.Field.Contains(TEXT("task_plan.steps[0]")))
+		if (!bMainThreadCommitStageOpen)
 		{
-			Error.Field = Error.Field.Replace(
-				TEXT("task_plan.steps[0]"),
-				*FString::Printf(TEXT("task_plan.steps[%d]"), StepIndex));
+			return;
+		}
+
+		FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(
+			TimingTrace,
+			TEXT("main_thread_commit"),
+			MainThreadCommitStageStart);
+		bMainThreadCommitStageOpen = false;
+	};
+
+	auto FlushPostIo = [&](FBlueprintHelperToolResultBase& RuntimeResult)
+	{
+		const double PostIoStageStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
+		const FBlueprintHelperTaskRuntimePostIoService PostIoService;
+		FBlueprintHelperTaskRuntimePostIoFlushResult PostIoResult = PostIoService.Flush(
+			PostIoBatch.GetBatch(),
+			TaskRunJournals,
+			DebugEntryService,
+			&RuntimeResult,
+			&TimingTrace);
+		FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(TimingTrace, TEXT("post_io"), PostIoStageStart);
+
+		if (PostIoBatch.HasWork())
+		{
+			if (!RuntimeResult.Data.IsValid())
+			{
+				RuntimeResult.Data = MakeShared<FJsonObject>();
+			}
+			RuntimeResult.Data->SetObjectField(TEXT("post_io"), PostIoResult.ToJson());
 		}
 	};
 
@@ -5082,7 +5097,6 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		FBlueprintHelperTaskRuntimeServiceLocalUtils::AttachCallFunctionResolutionCacheStats(
 			RuntimeResult.Data,
 			CallFunctionResolutionCache);
-		AttachTimingToResult(RuntimeResult);
 
 		if (!bDryRun && !TaskRunId.IsEmpty() && (StepRecords.Num() > 0 || PostOperationRecords.Num() > 0))
 		{
@@ -5097,7 +5111,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 				Journal,
 				ResolvedCallFunctionFacts);
 			FBlueprintHelperTaskRuntimeTimingUtils::AttachTiming(Journal, TimingTrace);
-			TaskRunJournals.Add(TaskRunId, Journal);
+			PostIoBatch.SetTaskRunJournal(TaskRunId, Journal);
 		}
 
 		if (DebugEntryService)
@@ -5130,43 +5144,36 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 			DebugInput.Error.Code = Error.Code;
 			DebugInput.Error.Message = Error.Message;
 			DebugInput.RecommendedNext = TEXT("get_debug_case");
-			if (RuntimeResult.bOk)
-			{
-				DebugEntryService->RecordEventBestEffort(DebugInput);
-			}
-			else
-			{
-				DebugEntryService->AttachDebugCaseToFailureBestEffort(RuntimeResult, DebugInput);
-			}
+			PostIoBatch.SetDebugEvent(DebugInput, !RuntimeResult.bOk);
 		}
 
+		FinishMainThreadCommitStage();
+		FlushPostIo(RuntimeResult);
+		AttachTimingToResult(RuntimeResult);
 		return RuntimeResult;
 	};
 
+	const FBlueprintHelperTaskRuntimeCommitService CommitService(
+		*ClusterHub,
+		CompileAssetService,
+		AssetBrowseService);
+
 	auto ExecuteLoweredStep = [&](const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep) -> FBlueprintHelperToolResultBase
 	{
-		return ClusterHub->ExecuteStep(LoweredStep, bDryRun);
+		return CommitService.ExecuteStep(LoweredStep, bDryRun);
 	};
 
-	for (int32 StepIndex = 0; StepIndex < StepsArray->Num(); ++StepIndex)
-	{
-		const TSharedPtr<FJsonObject> StepObject =
-			(*StepsArray)[StepIndex].IsValid()
-				? (*StepsArray)[StepIndex]->AsObject()
-				: nullptr;
-		if (!StepObject.IsValid())
-		{
-			return BuildFailureResult(FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRuntimeError(
-				TEXT("invalid_taskplan_step"),
-				EBlueprintHelperToolStage::ParseInput,
-				TEXT("TaskPlan step must be an object."),
-				FString::Printf(TEXT("task_plan.steps[%d]"), StepIndex)));
-		}
+	MainThreadCommitStageStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
+	bMainThreadCommitStageOpen = true;
 
-		const FString PlannedStepId = FBlueprintHelperTaskRuntimeServiceLocalUtils::GetTaskPlanStepId(StepObject, StepIndex);
+	for (const FBlueprintHelperTaskRuntimePreparedStep& PreparedStep : PreparedRun.Steps)
+	{
+		const int32 StepIndex = PreparedStep.StepIndex;
+		const TSharedPtr<FJsonObject> StepObject = PreparedStep.StepObject;
+		const FString& PlannedStepId = PreparedStep.StepId;
 		if (!bDryRun)
 		{
-			const TArray<FString> DependsOn = FBlueprintHelperTaskRuntimeServiceLocalUtils::ReadStepDependsOn(StepObject);
+			const TArray<FString>& DependsOn = PreparedStep.DependsOn;
 			bool bBlockedByDependency = false;
 			for (const FString& DependsOnStepId : DependsOn)
 			{
@@ -5188,23 +5195,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 			}
 		}
 
-		FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
-		FBlueprintHelperToolError LoweringError;
-		const double LoweringStageStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
-		if (!ClusterHub->TryLowerStep(*TaskPlanPtr, StepObject, bDryRun, LoweredStep, LoweringError))
-		{
-			FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(
-				TimingTrace,
-				FString::Printf(TEXT("step.%s.lowering"), *PlannedStepId),
-				LoweringStageStart);
-			NormalizeErrorField(LoweringError, StepIndex);
-			return BuildFailureResult(LoweringError);
-		}
-		FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(
-			TimingTrace,
-			FString::Printf(TEXT("step.%s.lowering"), *LoweredStep.StepId),
-			LoweringStageStart);
-
+		FBlueprintHelperTaskRuntimeLoweredStep LoweredStep = PreparedStep.LoweredStep;
 		if (!LoweredStep.Payload.IsValid())
 		{
 			return BuildFailureResult(FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRuntimeError(
@@ -5268,7 +5259,8 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 			{
 				FBlueprintHelperTaskRuntimeServiceLocalUtils::PopulateTaskRuntimeReviewTargetSnapshots(
 					PreStepReviewEvidence,
-					true);
+					true,
+					&ReviewBeforeSnapshotCache);
 			}
 			FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(
 				TimingTrace,
@@ -5332,26 +5324,11 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 				FBlueprintHelperTaskRuntimeServiceLocalUtils::PopulateTaskRuntimeReviewTargetSnapshots(
 					RuntimeEvidence,
 					false);
-				FBlueprintHelperReviewStoreService ReviewStore;
-				TArray<FBlueprintHelperWriteReviewEvidence> RuntimeEvidences;
-				RuntimeEvidences.Add(RuntimeEvidence);
-				const TArray<FBlueprintHelperReviewRecord> RuntimeReviewRecords =
-					ReviewStore.BuildReviewRecordsFromEvidence(RuntimeEvidences);
-				FString ReviewRecordError;
-				if (!ReviewStore.SaveReviewRecords(RuntimeReviewRecords, ReviewRecordError))
-				{
-					StepResult.bOk = false;
-					StepResult.Error = FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRuntimeError(
-						TEXT("review_record_write_failed"),
-						EBlueprintHelperToolStage::Execute,
-						ReviewRecordError,
-						FString::Printf(TEXT("task_plan.steps[%d].review"), StepIndex));
-					StepRecords.Last().Result = StepResult;
-				}
+				PostIoBatch.AddReviewEvidence(RuntimeEvidence);
 			}
 			FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(
 				TimingTrace,
-				FString::Printf(TEXT("step.%s.review_after_record_write"), *LoweredStep.StepId),
+				FString::Printf(TEXT("step.%s.review_after_snapshot"), *LoweredStep.StepId),
 				ReviewAfterStageStart);
 		}
 		StepExecutionStatuses.Add(
@@ -5424,7 +5401,8 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 	if (!bDryRun)
 	{
 		const double GraphLayoutStageStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
-		GraphLayoutTask.FlushAndComplete();
+		CommitService.FlushGraphLayout();
+		GraphLayoutTask.bCompleted = true;
 		FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(TimingTrace, TEXT("graph_layout_flush"), GraphLayoutStageStart);
 	}
 
@@ -5451,13 +5429,11 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 				const double CompileStageStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
 				for (const FString& AssetPath : TargetAssets)
 				{
-					TSharedRef<FJsonObject> CompilePayload = MakeShared<FJsonObject>();
-					CompilePayload->SetStringField(TEXT("asset_path"), AssetPath);
-					FBlueprintHelperToolResultBase CompileResult = CompileAssetService.Execute(CompilePayload);
+					FBlueprintHelperToolResultBase CompileResult = CommitService.CompileAsset(AssetPath);
 					PostOperationRecords.Add({TEXT("compile_blueprint_asset"), CompileResult});
 					if (!CompileResult.bOk)
 					{
-						FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(TimingTrace, TEXT("post_operation.compile"), CompileStageStart);
+						FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(TimingTrace, TEXT("main_thread_commit.compile"), CompileStageStart);
 						FBlueprintHelperToolResultBase FailureResult = BuildFailureResult(
 							CompileResult.Error.IsSet()
 								? *CompileResult.Error
@@ -5470,7 +5446,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 						return FailureResult;
 					}
 				}
-				FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(TimingTrace, TEXT("post_operation.compile"), CompileStageStart);
+				FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(TimingTrace, TEXT("main_thread_commit.compile"), CompileStageStart);
 			}
 
 			if (bHasSavePolicy && bShouldSave)
@@ -5478,22 +5454,23 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 				const double SaveStageStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
 				for (const FString& AssetPath : TargetAssets)
 				{
-					FBlueprintHelperToolResultBase SaveResult = FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeSaveAssetToolResult(AssetBrowseService, AssetPath);
+					FBlueprintHelperToolResultBase SaveResult = CommitService.SaveAsset(AssetPath);
 					PostOperationRecords.Add({TEXT("save_asset"), SaveResult});
 					if (!SaveResult.bOk)
 					{
-						FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(TimingTrace, TEXT("post_operation.save"), SaveStageStart);
+						FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(TimingTrace, TEXT("main_thread_commit.save"), SaveStageStart);
 						return BuildFailureResult(
 							SaveResult.Error.IsSet()
 								? *SaveResult.Error
 								: FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRuntimeError(TEXT("task_save_failed"), EBlueprintHelperToolStage::Execute, TEXT("TaskPlan save post operation failed.")));
 					}
 				}
-				FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(TimingTrace, TEXT("post_operation.save"), SaveStageStart);
+				FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(TimingTrace, TEXT("main_thread_commit.save"), SaveStageStart);
 			}
 		}
 	}
 
+	FinishMainThreadCommitStage();
 	const double ResultWrapStageStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
 	FBlueprintHelperToolResultBase RuntimeResult = bDryRun
 		? FBlueprintHelperToolResultBuilder::DryRun(RuntimeOperation, FBlueprintHelperToolResultBuilder::GenerateTraceId())
@@ -5529,7 +5506,6 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 	FBlueprintHelperTaskRuntimeServiceLocalUtils::AttachCallFunctionResolutionCacheStats(
 		RuntimeResult.Data,
 		CallFunctionResolutionCache);
-	AttachTimingToResult(RuntimeResult);
 
 	if (!bDryRun && !TaskRunId.IsEmpty())
 	{
@@ -5544,9 +5520,11 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 			Journal,
 			ResolvedCallFunctionFacts);
 		FBlueprintHelperTaskRuntimeTimingUtils::AttachTiming(Journal, TimingTrace);
-		TaskRunJournals.Add(TaskRunId, Journal);
+		PostIoBatch.SetTaskRunJournal(TaskRunId, Journal);
 	}
 	FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(TimingTrace, TEXT("result_wrap"), ResultWrapStageStart);
+
+	FlushPostIo(RuntimeResult);
 	AttachTimingToResult(RuntimeResult);
 
 	return RuntimeResult;

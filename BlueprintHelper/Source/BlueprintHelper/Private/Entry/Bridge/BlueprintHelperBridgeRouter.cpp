@@ -71,7 +71,11 @@ public:
 				ShouldIncludeBridgeTiming(Request.Command, Request.Payload),
 				TEXT("ue_bridge_router"));
 		const double RouteStageStart = FBlueprintHelperToolTimingUtils::StartStage(TimingTrace);
+		FBlueprintHelperToolTimingUtils::FTimingTrace* PreviousTrace =
+			FBlueprintHelperToolTimingUtils::GetCurrentTrace();
+		FBlueprintHelperToolTimingUtils::SetCurrentTrace(&TimingTrace);
 		FBlueprintHelperBridgeResponse Response = Callable();
+		FBlueprintHelperToolTimingUtils::SetCurrentTrace(PreviousTrace);
 		FBlueprintHelperToolTimingUtils::FinishStage(TimingTrace, TEXT("route_execute"), RouteStageStart);
 		FBlueprintHelperToolTimingUtils::AttachTimingToBridgeResult(Response.Result, TimingTrace);
 		return Response;
@@ -122,6 +126,33 @@ public:
 			TEXT("read_class_settings")
 		};
 		return ReadTimingCommands.Contains(Command);
+	}
+
+	static double StartRouteStage(FBlueprintHelperToolTimingUtils::FTimingTrace* TimingTrace)
+	{
+		return TimingTrace ? FBlueprintHelperToolTimingUtils::StartStage(*TimingTrace) : 0.0;
+	}
+
+	static void FinishRouteStage(
+		FBlueprintHelperToolTimingUtils::FTimingTrace* TimingTrace,
+		const FString& Name,
+		double StartedAtSeconds)
+	{
+		if (TimingTrace)
+		{
+			FBlueprintHelperToolTimingUtils::FinishStage(*TimingTrace, Name, StartedAtSeconds);
+		}
+	}
+
+	static void AddRouteCounter(
+		FBlueprintHelperToolTimingUtils::FTimingTrace* TimingTrace,
+		const FString& Name,
+		int64 Value)
+	{
+		if (TimingTrace)
+		{
+			FBlueprintHelperToolTimingUtils::AddCounter(*TimingTrace, Name, Value);
+		}
 	}
 
 	static TSharedRef<FJsonObject> MakeLogicStatsObject(const FBlueprintHelperLogicResult& Result)
@@ -1079,18 +1110,112 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadFunctionC
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadBlueprintLogicMd(
 	const FBlueprintHelperBridgeRequest& Req) const
 {
-	const FBlueprintHelperLogicMdData Data = LogicMdReadService.ReadLogicMd(ReadTargetRefFromPayload(Req.Payload));
+	FBlueprintHelperToolTimingUtils::FTimingTrace* TimingTrace =
+		FBlueprintHelperToolTimingUtils::GetCurrentTrace();
+
+	const double ParseStageStart = FBlueprintHelperBridgeRouterLocalUtils::StartRouteStage(TimingTrace);
+	const FBlueprintHelperTargetRef Target = ReadTargetRefFromPayload(Req.Payload);
+	FBlueprintHelperBridgeRouterLocalUtils::FinishRouteStage(
+		TimingTrace,
+		TEXT("ue.route.read_request_parse"),
+		ParseStageStart);
+
+	FBlueprintHelperLogicReadRequestSnapshotCache RequestCache;
+	FBlueprintHelperLogicReadSnapshot Snapshot;
+	FString SnapshotError;
+	const double SnapshotStageStart = FBlueprintHelperBridgeRouterLocalUtils::StartRouteStage(TimingTrace);
+	const bool bSnapshotOk = LogicMdReadService.BuildSnapshot(Target, Snapshot, SnapshotError, &RequestCache);
+	FBlueprintHelperBridgeRouterLocalUtils::FinishRouteStage(
+		TimingTrace,
+		TEXT("ue.route.snapshot_read"),
+		SnapshotStageStart);
+	FBlueprintHelperBridgeRouterLocalUtils::AddRouteCounter(
+		TimingTrace,
+		TEXT("ue.read_snapshot_cache_hit"),
+		RequestCache.GetHitCount());
+	FBlueprintHelperBridgeRouterLocalUtils::AddRouteCounter(
+		TimingTrace,
+		TEXT("ue.read_snapshot_cache_miss"),
+		RequestCache.GetMissCount());
+
+	const double FormatStageStart = FBlueprintHelperBridgeRouterLocalUtils::StartRouteStage(TimingTrace);
+	FBlueprintHelperLogicMdData Data;
+	if (bSnapshotOk)
+	{
+		Data = LogicMdReadService.FormatSnapshot(Snapshot);
+	}
+	else
+	{
+		Data.Scope = FBlueprintHelperLogicReadSnapshotService::TargetTypeToScope(Target.TargetType);
+		Data.Markdown = TEXT("(导出失败)");
+		Data.bImportable = false;
+	}
+	FBlueprintHelperBridgeRouterLocalUtils::FinishRouteStage(
+		TimingTrace,
+		TEXT("ue.route.format_output"),
+		FormatStageStart);
+
+	const double ResponseStageStart = FBlueprintHelperBridgeRouterLocalUtils::StartRouteStage(TimingTrace);
 	FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
 	Resp.Result = Data.ToJson();
+	FBlueprintHelperBridgeRouterLocalUtils::FinishRouteStage(
+		TimingTrace,
+		TEXT("ue.route.response_wrap"),
+		ResponseStageStart);
 	return Resp;
 }
 
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadBlueprintLogicJson(
 	const FBlueprintHelperBridgeRequest& Req) const
 {
-	const FBlueprintHelperLogicJsonData Data = LogicJsonReadService.ReadLogicJson(ReadTargetRefFromPayload(Req.Payload));
+	FBlueprintHelperToolTimingUtils::FTimingTrace* TimingTrace =
+		FBlueprintHelperToolTimingUtils::GetCurrentTrace();
+
+	const double ParseStageStart = FBlueprintHelperBridgeRouterLocalUtils::StartRouteStage(TimingTrace);
+	const FBlueprintHelperTargetRef Target = ReadTargetRefFromPayload(Req.Payload);
+	FBlueprintHelperBridgeRouterLocalUtils::FinishRouteStage(
+		TimingTrace,
+		TEXT("ue.route.read_request_parse"),
+		ParseStageStart);
+
+	FBlueprintHelperLogicReadRequestSnapshotCache RequestCache;
+	FBlueprintHelperLogicReadSnapshot Snapshot;
+	FString SnapshotError;
+	const double SnapshotStageStart = FBlueprintHelperBridgeRouterLocalUtils::StartRouteStage(TimingTrace);
+	const bool bSnapshotOk = LogicJsonReadService.BuildSnapshot(Target, Snapshot, SnapshotError, &RequestCache);
+	FBlueprintHelperBridgeRouterLocalUtils::FinishRouteStage(
+		TimingTrace,
+		TEXT("ue.route.snapshot_read"),
+		SnapshotStageStart);
+	FBlueprintHelperBridgeRouterLocalUtils::AddRouteCounter(
+		TimingTrace,
+		TEXT("ue.read_snapshot_cache_hit"),
+		RequestCache.GetHitCount());
+	FBlueprintHelperBridgeRouterLocalUtils::AddRouteCounter(
+		TimingTrace,
+		TEXT("ue.read_snapshot_cache_miss"),
+		RequestCache.GetMissCount());
+
+	const double FormatStageStart = FBlueprintHelperBridgeRouterLocalUtils::StartRouteStage(TimingTrace);
+	FBlueprintHelperLogicJsonData Data = bSnapshotOk
+		? LogicJsonReadService.FormatSnapshot(Snapshot)
+		: FBlueprintHelperLogicJsonData();
+	if (!bSnapshotOk)
+	{
+		Data.Scope = FBlueprintHelperLogicReadSnapshotService::TargetTypeToScope(Target.TargetType);
+	}
+	FBlueprintHelperBridgeRouterLocalUtils::FinishRouteStage(
+		TimingTrace,
+		TEXT("ue.route.format_output"),
+		FormatStageStart);
+
+	const double ResponseStageStart = FBlueprintHelperBridgeRouterLocalUtils::StartRouteStage(TimingTrace);
 	FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
 	Resp.Result = Data.ToJson();
+	FBlueprintHelperBridgeRouterLocalUtils::FinishRouteStage(
+		TimingTrace,
+		TEXT("ue.route.response_wrap"),
+		ResponseStageStart);
 	return Resp;
 }
 

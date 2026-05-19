@@ -104,25 +104,25 @@ P2 处理真实 execute 阶段的 Review IO、TaskRunJournal、DebugEntry、arch
 
 ### P2-6 Review IO
 
-- [ ] 测试：同一 TaskPlan 内相同 review target 只捕获一次等价 snapshot。
-- [ ] 测试：Review record batch 保持 parent/child 顺序和 `ParentChangeId` 语义。
-- [ ] 测试：PostIO 写入失败返回诊断，不伪装成 mutation 失败。
-- [ ] 测试：Reject 仍以 evidence before snapshot 为回滚目标。
-- [ ] 实现 `FBlueprintHelperTaskRuntimeReviewIoBatch`。
-- [ ] 为 baseline snapshot、semantic snapshot、record merge/write 增加 timing。
-- [ ] 可延迟的 archive/journal/debug entry 写入进入 PostIO batch。
+- [x] 测试：同一 TaskPlan 内相同 review target 只捕获一次等价 snapshot。
+- [x] 测试：Review record batch 保持 parent/child 顺序和 `ParentChangeId` 语义。
+- [x] 测试：PostIO 写入失败返回诊断，不伪装成 mutation 失败。
+- [x] 测试：Reject 仍以 evidence before snapshot 为回滚目标。
+- [x] 实现 `FBlueprintHelperTaskRuntimeReviewIoBatch`。
+- [x] 为 baseline snapshot、semantic snapshot、record merge/write 增加 timing。
+- [x] 可延迟的 archive/journal/debug entry 写入进入 PostIO batch。
 
 ### P2-7 三层拆分
 
-- [ ] 测试：`PurePrepare` 不需要 UObject 上下文即可运行。
-- [ ] 测试：`PurePrepare` 输出 `PreparedTaskRun`，保持 step dependency。
-- [ ] 测试：`MainThreadCommit` 是唯一调用 UE object access helper 的层。
-- [ ] 测试：`PostIO` 只消费 `CommitResult` 和纯 DTO batch。
-- [ ] 拆出 prepare service。
-- [ ] 拆出 commit service。
-- [ ] 拆出 post IO service。
-- [ ] `BlueprintHelperTaskRuntimeService.cpp` 只保留层间 orchestration 和错误聚合。
-- [ ] timing 至少区分 `pure_prepare`、`main_thread_commit`、`post_io`。
+- [x] 测试：`PurePrepare` 不需要 UObject 上下文即可运行。
+- [x] 测试：`PurePrepare` 输出 `PreparedTaskRun`，保持 step dependency。
+- [x] 测试：`MainThreadCommit` 是唯一调用 UE object access helper 的层。
+- [x] 测试：`PostIO` 只消费 `CommitResult` 和纯 DTO batch。
+- [x] 拆出 prepare service。
+- [x] 拆出 commit service。
+- [x] 拆出 post IO service。
+- [x] `BlueprintHelperTaskRuntimeService.cpp` 只保留层间 orchestration 和错误聚合。
+- [x] timing 至少区分 `pure_prepare`、`main_thread_commit`、`post_io`。
 
 ## 验收命令
 
@@ -154,3 +154,65 @@ git diff --check
 - 不新增旧字段兼容，不保留 Review v1 fallback。
 - 不把跨层共享状态塞进单个巨型 utils/service。
 
+## 实施记录
+
+实施时间：2026-05-20。
+
+新增边界：
+
+- `FBlueprintHelperTaskRuntimePrepareService`：负责 `PurePrepare`，只读取 payload / TaskPlan JSON、规范化 target assets / step id / dependency，并完成 adapter lowering，输出 `FBlueprintHelperTaskRuntimePreparedTaskRun`。
+- `FBlueprintHelperTaskRuntimeCommitService`：负责 `MainThreadCommit` 中的 cluster execution、graph layout flush、compile/save 等会触碰 UE Editor 状态的动作。
+- `FBlueprintHelperTaskRuntimeReviewIoBatch`：负责收集 archive session、Review evidence、TaskRunJournal、DebugEntry、pending review notification。
+- `FBlueprintHelperTaskRuntimePostIoService`：负责 `PostIO` flush；Review record/archive/journal/debug 写入失败进入 `data.post_io.diagnostics`，不再把已经成功的 mutation 伪装成 step mutation 失败。
+- `FBlueprintHelperTaskRuntimePostIoBatch`、`FBlueprintHelperTaskRuntimePreparedStep`、`FBlueprintHelperTaskRuntimePreparedTaskRun`、`FBlueprintHelperTaskRuntimeCommitResult`：三层之间只传 DTO。
+
+关键语义：
+
+- baseline archive snapshot 和 semantic snapshot 仍在 mutation 前完成，未延后到 PostIO。
+- target before snapshot 增加 TaskRun 内缓存：同一 TaskPlan 内同一 review target 的 before snapshot 只捕获一次并复用；after snapshot 不做跨 step 缓存，避免多次 mutation 后复用旧 after 状态。
+- Review record 从 step loop 内即时写入改为 PostIO batch 一次性 `BuildReviewRecordsFromEvidence` + `SaveReviewRecords`。
+- `TaskRunJournal` 和 DebugEntry 写入改由 PostIO batch 收口。
+- UE nested timing 新增/稳定返回：`pure_prepare`、`main_thread_commit`、`post_io`、`post_io.archive_session_write`、`post_io.review_record_write`、`main_thread_commit.compile`、`main_thread_commit.save`。
+
+新增测试文件：
+
+- `BlueprintHelper/Source/BlueprintHelper/Private/Tests/TaskRuntime/BlueprintHelperTaskRuntimePrepareServiceTests.cpp`
+- `BlueprintHelper/Source/BlueprintHelper/Private/Tests/TaskRuntime/BlueprintHelperTaskRuntimePostIoBatchTests.cpp`
+
+## 验证结果
+
+编译：
+
+```powershell
+E:\UE_5.6\Engine\Build\BatchFiles\Build.bat TemplateEditor Win64 Development -Project=D:\UEProjects\Template\Template.uproject -WaitMutex -FromMsBuild
+```
+
+结果：Succeeded。
+
+静态检查：
+
+```powershell
+git diff --check
+```
+
+结果：通过；仅有 Git 行尾提示。
+
+真实 CLI execute 测试：
+
+- Editor lifecycle：使用 MCP `blueprint_open_editor` 启动，MCP `blueprint_close_editor` 关闭。
+- Spec 产物目录：`D:\UEProjects\Template\Plugins\BlueprintHelper\Saved\BlueprintHelper\PerfProbe\P2TaskRuntimeReviewIO_20260520020946`
+- 测试资产：`/Game/BlueprintHelperCliSmoke/P2RuntimeReviewIO_20260520020946/BP_P2_RuntimeReviewIO_20260520020946`
+
+| 样本 | status | cli_total_ms | ue_execute_total_ms | pure_prepare_ms | main_thread_commit_ms | post_io_ms | review_snapshot_ms | review_record_write_ms | archive_session_write_ms | compile_ms | save_ms |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `01_create_blueprint_actor.json` | executed | 425.581 | 299.783 | 0.026 | 297.096 | 1.672 | 1.698 | 1.323 | 0.344 | 231.899 | 60.276 |
+| `04_edit_blueprint_signatures.json` | executed | 1849.219 | 277.390 | 0.034 | 273.102 | 2.271 | 2.074 | 1.701 | 0.563 | 152.938 | 97.317 |
+| `04b_write_function_body.json` | executed | 2854.826 | 779.309 | 0.017 | 777.225 | 0.451 | 1.522 |  | 0.446 | 156.410 | 62.954 |
+
+说明：`04b_write_function_body.json` 的 graph write 样本不产生 runtime fallback Review record，因此没有 `post_io.review_record_write`；`01` 和 `04` 已覆盖 PostIO Review record batch write。
+
+## 完成结论
+
+- P2-6 已完成：Review IO 写入已从 step mutation loop 中拆到 PostIO batch，写入失败以 PostIO 诊断返回，不改变 mutation 结果语义。
+- P2-7 已完成：`RunTaskPlan` 已形成 `PurePrepare -> MainThreadCommit -> ResultWrap -> PostIO` 的结构化链路，并通过 UE nested timing 暴露三层耗时。
+- v0.5.0 不并发 UObject 写入；当前拆分只建立可并发/批处理的边界。

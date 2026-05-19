@@ -1,5 +1,6 @@
 import { failureResult, normalizeToolResult, successRead, type ToolResultBase } from '../../../result/tool-result.js';
 import {
+  addTaskTimingMarker,
   addNestedTaskTiming,
   extractBridgeTiming,
   measureTaskTiming,
@@ -18,6 +19,7 @@ import {
   postProcessReadContextPayload,
   resolveReadContextPostProcessStage,
 } from './read-context-payload.js';
+import { buildPayloadSizeMetric } from './read-context-payload-metrics.js';
 import { ReadContextInputSchema, type ReadContextInput } from './read-context-schemas.js';
 
 export async function executeReadContext(
@@ -43,15 +45,16 @@ export async function executeReadContext(
   const payload = measureTaskTiming(timing, 'read_context.build_bridge_payload', () => (
     withReadTimingPayload(buildBlueprintLogicReadPayload(input), context)
   ));
-  const response = await measureTaskTimingAsync(timing, `read_context.bridge.${route.command}`, () => (
+  const response = await measureTaskTimingAsync(timing, 'read_context.bridge_send_receive', () => (
     context.bridge.sendCommand(route.command, payload)
   ));
+  addReadPayloadSizeMarker(timing, 'read_context.bridge_payload_bytes', response.result);
   addNestedTaskTiming(timing, `ue.${route.command}`, extractBridgeTiming(response.result));
   if (!response.success) {
     return normalizeBridgeToolResult('read_context', response);
   }
 
-  const payloadResult = measureTaskTiming(timing, 'read_context.extract_bridge_payload', () => (
+  const payloadResult = measureTaskTiming(timing, 'read_context.bridge_payload_extract', () => (
     extractBridgePayload(response.result)
   ));
   if (!payloadResult.ok) {
@@ -92,9 +95,10 @@ async function executeBridgeBackedReadContext(
   const payload = measureTaskTiming(timing, 'read_context.build_bridge_payload', () => (
     withReadTimingPayload(request.payload, context)
   ));
-  const response = await measureTaskTimingAsync(timing, `read_context.bridge.${request.command}`, () => (
+  const response = await measureTaskTimingAsync(timing, 'read_context.bridge_send_receive', () => (
     context.bridge.sendCommand(request.command, payload)
   ));
+  addReadPayloadSizeMarker(timing, 'read_context.bridge_payload_bytes', response.result);
   addNestedTaskTiming(timing, `ue.${request.command}`, extractBridgeTiming(response.result));
   if (!response.success) {
     return normalizeToolResult(response, 'read_context', {
@@ -107,7 +111,7 @@ async function executeBridgeBackedReadContext(
     });
   }
 
-  const payloadResult = measureTaskTiming(timing, 'read_context.extract_bridge_payload', () => (
+  const payloadResult = measureTaskTiming(timing, 'read_context.bridge_payload_extract', () => (
     extractBridgePayload(response.result)
   ));
   if (!payloadResult.ok) {
@@ -142,12 +146,15 @@ function buildReadPayloadWithTiming(
   context: BlueprintHelperToolContext,
 ): Record<string, unknown> {
   const timing = context.timing;
-  const strippedPayload = measureTaskTiming(timing, 'read_context.strip_bridge_timing', () => (
+  addReadPayloadSizeMarker(timing, 'read_context.ue_raw_payload_bytes', payload);
+  const strippedPayload = measureTaskTiming(timing, 'read_context.ue_timing_extract', () => (
     stripTimingPayload(payload)
   ));
-  return measureTaskTiming(timing, resolveReadContextPostProcessStage(payloadSchema), () => (
+  const readPayload = measureTaskTiming(timing, resolveReadContextPostProcessStage(payloadSchema, input), () => (
     postProcessReadContextPayload(input, payloadSchema, strippedPayload)
   ));
+  addReadPayloadSizeMarker(timing, 'read_context.post_processed_payload_bytes', readPayload);
+  return readPayload;
 }
 
 function stripTimingPayload(payload: Record<string, unknown>): Record<string, unknown> {
@@ -158,4 +165,13 @@ function stripTimingPayload(payload: Record<string, unknown>): Record<string, un
   const stripped = { ...payload };
   delete stripped['timing'];
   return stripped;
+}
+
+function addReadPayloadSizeMarker(
+  timing: BlueprintHelperToolContext['timing'],
+  name: string,
+  value: unknown,
+): void {
+  const metric = buildPayloadSizeMetric(name, value);
+  addTaskTimingMarker(timing, metric.name, { bytes: metric.bytes });
 }
