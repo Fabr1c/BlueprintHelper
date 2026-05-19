@@ -90,6 +90,114 @@ UE Bridge Router 统一消费 payload `include_timing=true`，只对读命令启
 
 读链路本次样本：count=10，avg=1880.532ms，min=1668.343ms，max=1997.325ms，p50=1904.062ms。旧样本只包含 CLI 总阶段；v0.5.0 继续测试时需要使用新的 read_context 分段计时和 UE nested timing 判断耗时集中在 AgentFace、Bridge round-trip、还是 UE route 执行。
 
+旧基线代表性最慢成功样本 `02_blueprint_logic_json.json`：
+
+| 阶段 | duration_ms |
+| --- | ---: |
+| `cli.parse_args` | 0.496 |
+| `cli.invoke_tool` | 1996.630 |
+| `cli.result_return` | 0.005 |
+| nested `ue.read_blueprint_logic_json` total | 未返回 |
+
+样本说明：该样本是当前 10 个读 Spec 中 `data.timing.total_ms` 最大的成功样本，payload schema 为 `LogicJson.v1`，覆盖 full blueprint logic JSON 读取。旧样本只能证明耗时集中在 `cli.invoke_tool` 包住的读工具调用内，不能继续拆分 AgentFace route、Bridge round-trip、UE route 和 payload 后处理。
+
+Editor 手动重启后补测汇总：
+
+| Spec | total_ms | bridge stage | bridge_ms | nested UE route_ms | bridge - UE route_ms |
+| --- | ---: | --- | ---: | ---: | ---: |
+| `01_asset_context.json` | 372.479 | `read_context.bridge.get_asset_info` | 369.189 | 0.118 | 369.071 |
+| `02_blueprint_logic_json.json` | 3505.372 | `read_context.bridge.read_blueprint_logic_json` | 3502.000 | 1668.266 | 1833.734 |
+| `03_blueprint_logic_md.json` | 176.984 | `read_context.bridge.read_blueprint_logic_md` | 173.049 | 0.434 | 172.615 |
+| `04_eventgraph_logic_json.json` | 1746.621 | `read_context.bridge.read_blueprint_logic_json` | 1743.153 | 0.364 | 1742.789 |
+| `05_eventgraph_logic_md.json` | 1904.624 | `read_context.bridge.read_blueprint_logic_md` | 1901.101 | 0.352 | 1900.749 |
+| `06_eventgraph_context_json.json` | 1912.135 | `read_context.bridge.read_blueprint_logic_json` | 1908.662 | 0.399 | 1908.263 |
+| `07_components_context.json` | 2230.550 | `read_context.bridge.read_components` | 2227.493 | 0.073 | 2227.420 |
+| `08_variables_context.json` | 1904.157 | `read_context.bridge.list_variables` | 1901.067 | 0.075 | 1900.992 |
+| `09_event_dispatchers_context.json` | 1906.002 | `read_context.bridge.list_event_dispatchers` | 1902.855 | 0.035 | 1902.820 |
+| `10_object_properties_context.json` | 1904.690 | `read_context.bridge.get_object_properties` | 1901.494 | 0.098 | 1901.396 |
+
+补测产物目录：
+
+`D:\UEProjects\Template\Plugins\BlueprintHelper\.tmp\read_timing_20260519_manual_editor`
+
+补测后的代表性最慢成功样本 `02_blueprint_logic_json.json`：
+
+| 阶段 | duration_ms |
+| --- | ---: |
+| `cli.parse_args` | 0.443 |
+| `read_context.parse_input` | 0.115 |
+| `read_context.resolve_format` | 0.026 |
+| `read_context.build_bridge_payload` | 0.070 |
+| `read_context.bridge.read_blueprint_logic_json` | 3502.000 |
+| `read_context.extract_bridge_payload` | 0.085 |
+| `read_context.post_process_payload` | 0.147 |
+| `read_context.result_wrap` | 0.457 |
+| `cli.invoke_tool` | 3504.743 |
+| `cli.result_return` | 0.005 |
+| nested `ue.read_blueprint_logic_json` total | 1668.266 |
+| nested `ue.read_blueprint_logic_json.route_execute` | 1668.263 |
+
+同一代表性样本 warm 状态重复补测：
+
+| Run | total_ms | bridge_ms | nested UE route_ms | bridge - UE route_ms |
+| ---: | ---: | ---: | ---: | ---: |
+| 1 | 287.988 | 284.686 | 0.396 | 284.290 |
+| 2 | 1833.524 | 1830.181 | 0.403 | 1829.778 |
+| 3 | 1902.445 | 1899.152 | 0.416 | 1898.736 |
+
+补测结论：UE nested timing 已可返回，读工具现在具备与写工具同粒度的阶段表。`02_blueprint_logic_json.json` 的冷样本中 UE route 本身占 1668.266ms，说明 full blueprint logic JSON 的首次读取/构造仍是 R1 的关键样本；但 warm 重复补测中 UE route 约 0.4ms，Bridge round-trip 仍可能出现 1.8-1.9s，说明 `bridge - UE route` 的 gap 还需要继续拆分为 bridge queue、socket transport、UE response serialization、AgentFace JSON parse / receive 等阶段，不能把所有耗时都归因于 UObject 读取。
+
+### 读工具测速典型案例
+
+测速命令模板：
+
+```powershell
+node AgentFaceService/cli/build/cli/index.js blueprinthelper_read_context --file "<ReadSpec.json>" --develop --format full --omit tool_result.data.payload
+```
+
+每个典型案例至少记录：
+
+- `tool_result.data.timing.total_ms`：CLI develop 总耗时。
+- `read_context.bridge.<command>`：AgentFace 到 UE Bridge 往返耗时。
+- `read_context.extract_bridge_payload`、`read_context.post_process_payload`、`read_context.result_wrap`：AgentFace 侧 payload 处理成本。
+- `data.timing.nested[].source=ue_bridge_router` 的 `route_execute`：UE route 内部执行耗时。当前需要 Editor 重载新 DLL 后补测。
+- payload 规模：后续 R5 需要补 `payload_size_bytes`，用于区分输出体积导致的序列化/格式化成本。
+
+测速方式：
+
+1. Editor 启动并加载当前编译后的 BlueprintHelper 插件。
+2. 对每个 Spec 先跑 1 次 warm-up，不计入基线。
+3. 正式记录至少 3 次，保存每次 `result.json` artifact。
+4. 对每个案例统计 min / avg / p50 / max；长读案例额外记录 payload size。
+5. 若 `read_context.bridge.<command>` 接近 total，优先怀疑 UE route、Bridge 传输或序列化；若 `post_process_payload` 或 `result_wrap` 异常增大，优先看 AgentFace compact/filter 和输出包装；若 UE `route_execute` 明显小于 Bridge 往返，则优先看 Bridge transport、JSON 序列化或 Editor 端排队。
+
+当前已覆盖的典型案例：
+
+| 案例 | Spec | read_type / command | 覆盖目的 | 重点观察 |
+| --- | --- | --- | --- | --- |
+| 轻量资产元信息读 | `01_asset_context.json` | `asset_context` / `get_asset_info` | 建立最轻 read_context 基线，覆盖 AssetRegistry / asset metadata 查询。 | 如果该案例也很慢，优先排查 Bridge 往返、Editor 排队或 AssetRegistry 初次加载，而不是 Blueprint 解析。 |
+| 全 Blueprint logic JSON | `02_blueprint_logic_json.json` | `blueprint_logic` / `read_blueprint_logic_json` | 覆盖 full blueprint 逻辑快照、Graph 遍历、逻辑分组、JSON DTO 输出。 | R1 的核心样本；后续应拆出 `snapshot_read` 与 `format_output`，判断 GameThread 读取和 JSON 格式化比例。 |
+| 全 Blueprint logic Markdown | `03_blueprint_logic_md.json` | `blueprint_logic` / `read_blueprint_logic_md` | 覆盖 full blueprint 逻辑快照复用潜力和 Markdown formatter 成本。 | 与 `02` 对比；若 UE 快照成本接近但 MD 更慢，优先优化 Markdown formatter；若两者都慢，优先优化 snapshot/Graph 遍历。 |
+| 单 EventGraph logic JSON | `04_eventgraph_logic_json.json` | `blueprint_logic` / `read_blueprint_logic_json` | 覆盖单图目标解析和局部 Graph JSON 输出。 | 与 `02` 对比；若单图与全 Blueprint 接近，说明固定开销或 route 内部未有效缩小读取范围。 |
+| 单 EventGraph logic Markdown | `05_eventgraph_logic_md.json` | `blueprint_logic` / `read_blueprint_logic_md` | 覆盖单图 Markdown 输出成本。 | 与 `04` 对比 formatter 成本；与 `03` 对比 scope 缩小是否有效。 |
+| graph_context JSON | `06_eventgraph_context_json.json` | `graph_context` / `read_blueprint_logic_json` | 覆盖 AgentFace `graph_context` 路由和 target_type 推导。 | 应与 `04` 接近；若差异大，排查 AgentFace route builder 或 UE target ref 解析。 |
+| Components context | `07_components_context.json` | `component_context` / `read_components` | 覆盖 Blueprint SCS / component template 读取和 component DTO 构造。 | 如果 UE `route_execute` 高，R1 应拆 `ComponentSnapshot`；如果 post-process 高，检查 component array filter。 |
+| Variables context | `08_variables_context.json` | `variable_context` / `list_variables` | 覆盖 MyBlueprint 成员变量读取、pin type/default/category 输出。 | 观察 UE 反射/变量列表读取成本；后续可作为 Variable formatter 复用边界样本。 |
+| Event Dispatchers context | `09_event_dispatchers_context.json` | `variable_context:event_dispatcher` / `list_event_dispatchers` | 覆盖 dispatcher 签名读取。 | 与 `08` 对比，判断 BlueprintStructure 读签名和变量读取成本差异。 |
+| Object properties context | `10_object_properties_context.json` | `object_property_context` / `get_object_properties` | 覆盖 UObject / UProperty 反射读取。 | 这是禁止后台直接读 UE 反射对象的典型案例；R1 只能把反射结果快照成 DTO 后再后台格式化。 |
+
+需要补齐的典型案例：
+
+| 缺口案例 | read_type / command | 补齐原因 | 计划 Spec |
+| --- | --- | --- | --- |
+| WidgetTree 全树读取 | `widget_context` / `get_widget_tree` | 覆盖 UWidgetTree 遍历、层级 DTO、slot 信息输出，是 UI 资产读链路的代表。 | 新增 `ReadSpecs/<WidgetBlueprint>/01_widget_tree_context.json`。 |
+| Widget 单节点属性读取 | `widget_context` / `get_widget_properties` | 覆盖 UWidget 属性反射和 target_name filter。 | 新增 `ReadSpecs/<WidgetBlueprint>/02_widget_properties_context.json`。 |
+| DataTable 行读取 | `data_table_context` / `get_datatable_rows` | 覆盖 UDataTable row 序列化和字段展开。 | 新增 `ReadSpecs/<DataTable>/01_datatable_rows_context.json`。 |
+| DataAsset 属性读取 | `data_asset_context` / `get_object_properties` | 覆盖 DataAsset UObject 属性反射，与普通 object_property_context 区分。 | 新增 `ReadSpecs/<DataAsset>/01_data_asset_properties_context.json`。 |
+| Function / CustomEvent 局部读取 | `blueprint_logic` target function/event | 覆盖 target function/event scope 是否能真正缩小 Graph 读取范围。 | 新增 `ReadSpecs/BP_ThirdPersonCharacter/function_logic_json.json`、`custom_event_logic_json.json`。 |
+
+这些典型案例用于 R0/R1/R2 的验收：R0 证明 timing 可定位瓶颈；R1 判断哪些读工具适合先拆 GameThread 快照与后台格式化；R2 判断哪些输出需要抽 DTO/formatter 复用边界。
+
 实现后抽样验证：
 
 | Spec | 验证结果 |
@@ -287,6 +395,24 @@ UE Bridge Router 统一消费 payload `include_timing=true`，只对读命令启
 - nested UE timing 能继续细分 TaskRuntime 内部阶段。
 - 计时字段只作为诊断数据，不改变 TaskPlan、Review evidence、资产写入语义。
 
+### R0-R5：读工具优化计划
+
+目标：把读工具优化纳入 v0.5.0，但保持“GameThread 读取 UE 对象、后台只处理纯 DTO”的架构边界。
+
+计划：
+- R0 补齐 read_context 和 UE read route timing，先区分 AgentFace、Bridge round-trip、UE route 执行成本。
+- R1 优先落地 GameThread 快照与后台格式化，面向 `blueprint_logic_md/json` 等长读输出。
+- R2 抽出可复用 DTO / formatter 边界，避免 read command、DebugBundle、Review evidence、UI overlay 各自解释同一类读模型。
+- R3 仅在同一次请求内复用同资产快照，不把泛化 batch read 作为 v0.5.0 主线。
+- R4 只缓存非 UE 核心对象状态的纯数据，不缓存用户可编辑 Blueprint / WidgetTree / Property 内容。
+- R5 使用统一 timing 指标做读工具回归判断。
+
+验收：
+- read_context develop timing 和 UE nested route timing 可稳定复现。
+- 后台 formatter 不触碰 UObject / UEdGraph / UWidgetTree / FProperty。
+- 优化前后同一 ReadSpec 输出结构保持兼容。
+- 普通读工具调用不返回 `data.timing`。
+
 ### P0-1：execute 支持 preview 复用或跳过二次 preview
 
 目标：避免同一个 TaskSpec 在 execute 前重复做完整 UE dry-run。
@@ -401,13 +527,16 @@ UE Bridge Router 统一消费 payload `include_timing=true`，只对读命令启
 ## 优先级排序
 
 1. P0-0 TaskSpec 到返回结果的端到端计时流程。
-2. P0-1 preview 复用或跳过二次 preview。
-3. P0-2 `dry_run_mode` 策略落地。
-4. P0-3 CallFunction resolution 缓存和结果传递。
-5. P1-4 TaskSpec 编译 fast path 或 Python worker。
-6. P1-5 Python compile 输出裁剪。
-7. P2-6 Review IO 批处理和异步化。
-8. P2-7 UE TaskRuntime 三层执行模型。
+2. R0 读工具端到端计时补齐和 UE read route timing 验证。
+3. P0-1 preview 复用或跳过二次 preview。
+4. P0-2 `dry_run_mode` 策略落地。
+5. P0-3 CallFunction resolution 缓存和结果传递。
+6. P1-4 TaskSpec 编译 fast path 或 Python worker。
+7. P1-5 Python compile 输出裁剪。
+8. R1/R2 读工具 GameThread 快照、后台格式化和 DTO/formatter 复用。
+9. P2-6 Review IO 批处理和异步化。
+10. P2-7 UE TaskRuntime 三层执行模型。
+11. R3/R4 读工具同请求快照复用和纯数据缓存，需以 timing 证据触发。
 
 ## 度量要求
 
@@ -424,6 +553,10 @@ v0.5.0 实施前需要补齐分阶段耗时记录：
 - compile/save post operation。
 - review record/archive write。
 - UE `PurePrepare` / `MainThreadCommit` / `PostIO` 三层耗时。
+- read_context parse/route/payload/post-process/result wrap。
+- UE read route `route_execute`。
+- 长读工具 `snapshot_read` / `format_output`。
+- 读 payload size 和输出格式化耗时。
 
 ## 风险和前置决策
 
@@ -436,5 +569,6 @@ v0.5.0 实施前需要补齐分阶段耗时记录：
 ## 当前状态
 
 - 状态：P0-0 develop 诊断计时流程已开始实现，P0-1 之后仍为 v0.5.0 优化计划。
+- 读工具优化计划已纳入 v0.5.0：R0 先完成 timing 证据，R1/R2 优先做 GameThread 快照、后台格式化和 DTO/formatter 复用。
 - 普通路径保持无计时采集、无 `data.timing` 返回；CLI 诊断路径通过 `--develop` 对所有 CLI 工具显式开启，TaskSpec MCP/tool 诊断路径通过 `develop: true` 显式开启。
 - 后续实现必须保持高内聚、低耦合，避免把性能分支堆进单个 service 或 UI 入口。
