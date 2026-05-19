@@ -161,16 +161,16 @@ Read command 使用根对象 `BlueprintHelper.ReadSpec.v1`：
   "read_type": "blueprint_logic",
   "target": {
     "asset_path": "/Game/Blueprints/BP_Door",
-    "target_type": "graph",
-    "target_name": "EventGraph"
+    "target_type": "event",
+    "target_name": "BeginPlay"
   },
   "view": {
-    "format": "logic_json"
+    "format": "logic_flow"
   }
 }
 ```
 
-图表大小未知时先用 `logic_json`，不要直接 whole-graph `logic_md`。需要稳定 owned-block anchors 时也使用 `logic_json`。ReadSpec 不再支持 `view.format=summary`；非 logic 读取直接省略 `view.format`。
+简单 function/event/custom event 读取优先使用 `logic_flow`。入口较大或分支较多时使用 `logic_md`。图表大小未知、读取全图、需要稳定 owned-block anchors、patch/merge/debug 时使用 `logic_json`。`logic_flow` 和 `logic_md` 都不是写入锚点来源。ReadSpec 不再支持 `view.format=summary`；非 logic 读取直接省略 `view.format`。
 
 ReadContext capability discovery uses a separate local command and does not read UE assets:
 
@@ -384,16 +384,16 @@ Read commands use root object `BlueprintHelper.ReadSpec.v1`:
   "read_type": "blueprint_logic",
   "target": {
     "asset_path": "/Game/Blueprints/BP_Door",
-    "target_type": "graph",
-    "target_name": "EventGraph"
+    "target_type": "event",
+    "target_name": "BeginPlay"
   },
   "view": {
-    "format": "logic_json"
+    "format": "logic_flow"
   }
 }
 ```
 
-Use `logic_json` before whole-graph `logic_md` when graph size is unknown. Use `logic_json` for stable owned-block anchors. ReadSpec no longer supports `view.format=summary`; non-logic reads omit `view.format`.
+Use `logic_flow` for simple function/event/custom event reads. Use `logic_md` for larger or more branched entry reads. Use `logic_json` before whole-graph reads, when graph size is unknown, or whenever stable anchors are needed for patch/merge/debug. `logic_flow` and `logic_md` are not anchor sources. ReadSpec no longer supports `view.format=summary`; non-logic reads omit `view.format`.
 
 ReadContext capability discovery uses a separate local command and does not read UE assets:
 

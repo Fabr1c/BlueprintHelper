@@ -10,7 +10,9 @@ import { extractBridgePayload, normalizeBridgeToolResult } from '../bridge-tool-
 import {
   buildBlueprintLogicReadPayload,
   buildReadContextBridgeRequest,
+  resolveReadContextBridgeCommand,
   resolveReadContextLogicFormat,
+  resolveReadContextPayloadSchema,
 } from './read-context-route-builder.js';
 import { buildReadContextTarget } from './read-context-target.js';
 import { postProcessReadContextPayload } from './read-context-payload.js';
@@ -33,7 +35,7 @@ export async function executeReadContext(
   }
 
   const bridgeFormat = format ?? 'logic_md';
-  const command = bridgeFormat === 'logic_json' ? 'read_blueprint_logic_json' : 'read_blueprint_logic_md';
+  const command = resolveReadContextBridgeCommand(bridgeFormat);
   const payload = measureTaskTiming(timing, 'read_context.build_bridge_payload', () => (
     withReadTimingPayload(buildBlueprintLogicReadPayload(input), context)
   ));
@@ -59,7 +61,7 @@ export async function executeReadContext(
   }
   const readPayload = measureTaskTiming(timing, 'read_context.post_process_payload', () => postProcessReadContextPayload(
     input,
-    bridgeFormat === 'logic_json' ? 'LogicJson.v1' : 'LogicMd.v1',
+    resolveReadContextPayloadSchema(bridgeFormat),
     stripTimingPayload(payloadResult.payload),
   ));
   return measureTaskTiming(timing, 'read_context.result_wrap', () => successRead('read_context', buildReadContextTarget(input), {

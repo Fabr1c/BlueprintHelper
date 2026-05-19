@@ -19,6 +19,9 @@ not request write permission.
 | Read a graph as structured anchors for patches or merges | `read_context_graph_logic_json_template.json` | `blueprinthelper_read_context` |
 | Read graph context without a full logic dump | `read_context_graph_context_template.json` | `blueprinthelper_read_context` |
 | Read a BlueprintHelper-owned block with stable anchors | `read_context_block_logic_json_template.json` | `blueprinthelper_read_context` |
+| Read one simple function body as LogicFlow | `read_context_function_logic_flow_template.json` | `blueprinthelper_read_context` |
+| Read one simple event body as LogicFlow | `read_context_event_logic_flow_template.json` | `blueprinthelper_read_context` |
+| Read one simple custom event body as LogicFlow | `read_context_custom_event_logic_flow_template.json` | `blueprinthelper_read_context` |
 | Read one function body as LogicMD | `read_context_function_logic_md_template.json` | `blueprinthelper_read_context` |
 | Read one event body as LogicMD | `read_context_event_logic_md_template.json` | `blueprinthelper_read_context` |
 | Read one custom event body as LogicMD | `read_context_custom_event_logic_md_template.json` | `blueprinthelper_read_context` |

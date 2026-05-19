@@ -13,7 +13,7 @@ export type ReadContextBridgeRequest =
       message: string;
     };
 
-export type ReadContextLogicFormat = 'logic_md' | 'logic_json';
+export type ReadContextLogicFormat = 'logic_flow' | 'logic_md' | 'logic_json';
 
 export function resolveReadContextLogicFormat(input: ReadContextInput): ReadContextLogicFormat | undefined {
   if (input.read_type === 'graph_context') {
@@ -23,6 +23,22 @@ export function resolveReadContextLogicFormat(input: ReadContextInput): ReadCont
     return input.view?.format ?? 'logic_md';
   }
   return undefined;
+}
+
+export function resolveReadContextBridgeCommand(
+  format: ReadContextLogicFormat,
+): 'read_blueprint_logic_md' | 'read_blueprint_logic_json' {
+  return format === 'logic_md'
+    ? 'read_blueprint_logic_md'
+    : 'read_blueprint_logic_json';
+}
+
+export function resolveReadContextPayloadSchema(
+  format: ReadContextLogicFormat,
+): 'LogicFlow.v1' | 'LogicMd.v1' | 'LogicJson.v1' {
+  if (format === 'logic_flow') return 'LogicFlow.v1';
+  if (format === 'logic_json') return 'LogicJson.v1';
+  return 'LogicMd.v1';
 }
 
 export function buildBlueprintLogicReadPayload(input: ReadContextInput): Record<string, unknown> {

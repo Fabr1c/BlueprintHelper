@@ -25,8 +25,9 @@ const ASSET_TYPES = [
 ] as const;
 
 const FORMATS = [
-  'logic_json',
+  'logic_flow',
   'logic_md',
+  'logic_json',
 ] as const;
 
 const READ_CAPABILITIES = [
@@ -38,7 +39,7 @@ const READ_CAPABILITIES = [
   {
     read_type: 'blueprint_logic',
     asset_types: ['blueprint', 'graph', 'function', 'event', 'custom_event', 'block'],
-    formats: ['logic_json', 'logic_md'],
+    formats: ['logic_flow', 'logic_md', 'logic_json'],
   },
   {
     read_type: 'graph_context',

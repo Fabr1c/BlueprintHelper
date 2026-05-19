@@ -12,7 +12,7 @@
 node .\AgentFaceService\cli\build\cli\index.js blueprinthelper_read_context --file .\read.json --fields status,summary,artifacts.full_result
 ```
 
-图表大小未知时先用 `logic_json`，不要直接读取 whole-graph `logic_md`。ReadSpec 不再支持 `view.format=summary`；非 logic 模板直接省略 `view.format`。需要稳定 `block_id`、`node_ref`、`pin_ref` 或 `link_ref` anchor 以编写 patch/merge TaskSpec 时，也使用 `logic_json`。
+简单 function/event/custom event 读取先用 `logic_flow`。入口较大或分支较多时使用 `logic_md`。图表大小未知、读取全图、需要稳定 `block_id`、`node_ref`、`pin_ref` 或 `link_ref` anchor 以编写 patch/merge TaskSpec 时，使用 `logic_json`。ReadSpec 不再支持 `view.format=summary`；非 logic 模板直接省略 `view.format`。
 
 ## English
 
@@ -26,4 +26,4 @@ Typical command:
 node .\AgentFaceService\cli\build\cli\index.js blueprinthelper_read_context --file .\read.json --fields status,summary,artifacts.full_result
 ```
 
-Use `logic_json` before whole-graph `logic_md` when graph size is unknown. ReadSpec no longer supports `view.format=summary`; non-logic templates omit `view.format`. Use `logic_json` when you need stable `block_id`, `node_ref`, `pin_ref`, or `link_ref` anchors for patch or merge TaskSpecs.
+Use `logic_flow` first for simple function/event/custom event reads. Use `logic_md` when the entry is larger or has enough branches that a separated Entry / Execution / Data view is easier to scan. Use `logic_json` for full graph reads, unknown size, block anchors, patch/merge, or debug. ReadSpec no longer supports `view.format=summary`; non-logic templates omit `view.format`.
