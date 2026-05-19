@@ -13,3 +13,4 @@ AgentFaceService/**/tests/**
 AgentFaceService/task-core/python/tests
 *.7z          
 /Saved/
+.tmp/

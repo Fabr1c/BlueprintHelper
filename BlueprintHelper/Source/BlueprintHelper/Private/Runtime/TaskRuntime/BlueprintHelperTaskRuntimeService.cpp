@@ -34,6 +34,7 @@
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeClusterHub.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeCallFunctionResolutionCache.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeDryRunPolicy.h"
+#include "Runtime/TaskRuntime/BlueprintHelperTaskPreviewStore.h"
 #include "Runtime/TaskRuntime/Utils/BlueprintHelperTaskRuntimeClusterExecutionUtils.h"
 #include "Runtime/TaskRuntime/Utils/BlueprintHelperTaskRuntimeTimingUtils.h"
 #include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
@@ -449,6 +450,78 @@ public:
 		TSharedRef<FJsonObject> DryRunObject = MakeShared<FJsonObject>();
 		DryRunObject->SetStringField(TEXT("strategy"), DryRunPolicy.ToDiagnosticString());
 		Data->SetObjectField(TEXT("dry_run"), DryRunObject);
+	}
+
+	static bool IsPreviewResultExecutable(const FBlueprintHelperToolResultBase& Result)
+	{
+		if (!Result.bOk)
+		{
+			return false;
+		}
+
+		const TSharedPtr<FJsonObject>* DryRunObjectPtr = nullptr;
+		if (Result.Data.IsValid() &&
+			Result.Data->TryGetObjectField(TEXT("dry_run"), DryRunObjectPtr) &&
+			DryRunObjectPtr && DryRunObjectPtr->IsValid())
+		{
+			bool bCanExecute = true;
+			if ((*DryRunObjectPtr)->TryGetBoolField(TEXT("can_execute"), bCanExecute))
+			{
+				return bCanExecute;
+			}
+
+			FString DryRunResult;
+			if ((*DryRunObjectPtr)->TryGetStringField(TEXT("result"), DryRunResult) &&
+				DryRunResult == TEXT("blocked"))
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	static FString NormalizePackageNameFromAssetPath(const FString& AssetPath)
+	{
+		FString PackageName = AssetPath;
+		int32 DotIndex = INDEX_NONE;
+		if (PackageName.FindChar(TEXT('.'), DotIndex))
+		{
+			PackageName.LeftInline(DotIndex);
+		}
+		return PackageName;
+	}
+
+	static FString BuildTargetAssetStateHash(const TSharedPtr<FJsonObject>& TaskPlan)
+	{
+		TArray<FString> TargetAssets = ReadTargetAssets(TaskPlan);
+		TargetAssets.Sort();
+
+		TArray<FString> Parts;
+		for (const FString& TargetAsset : TargetAssets)
+		{
+			const FString PackageName = NormalizePackageNameFromAssetPath(TargetAsset);
+			const FString PackageFilename =
+				FPackageName::LongPackageNameToFilename(PackageName, FPackageName::GetAssetPackageExtension());
+			const bool bFileExists = IFileManager::Get().FileExists(*PackageFilename);
+			const FDateTime FileTimestamp = bFileExists
+				? IFileManager::Get().GetTimeStamp(*PackageFilename)
+				: FDateTime();
+			UPackage* Package = FindPackage(nullptr, *PackageName);
+			const bool bLoaded = Package != nullptr;
+			const bool bDirty = Package ? Package->IsDirty() : false;
+
+			Parts.Add(FString::Printf(
+				TEXT("%s|package=%s|file=%d|timestamp=%s|loaded=%d|dirty=%d"),
+				*TargetAsset,
+				*PackageName,
+				bFileExists ? 1 : 0,
+				*FileTimestamp.ToIso8601(),
+				bLoaded ? 1 : 0,
+				bDirty ? 1 : 0));
+		}
+
+		return FString::Join(Parts, TEXT("\n"));
 	}
 
 	struct FResolvedCallFunctionRuntimeFact
@@ -4282,6 +4355,7 @@ FBlueprintHelperTaskRuntimeService::FBlueprintHelperTaskRuntimeService(
 		InWidgetService,
 		InDataTableService,
 		InPropertyReflectionService))
+	, PreviewStore(MakeUnique<FBlueprintHelperTaskPreviewStore>())
 	, CompileAssetService(InCompileAssetService)
 	, AssetBrowseService(InAssetBrowseService)
 	, DebugEntryService(InDebugEntryService)
@@ -4587,12 +4661,18 @@ TSharedRef<FJsonObject> FBlueprintHelperTaskRuntimeService::BuildTaskRunJournalF
 FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::PreviewTaskPlan(
 	const TSharedPtr<FJsonObject>& Payload) const
 {
-	return RunTaskPlan(Payload, true);
+	FBlueprintHelperToolResultBase Result = RunTaskPlan(Payload, true);
+	AttachPreviewToken(Payload, Result);
+	return Result;
 }
 
 FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::ExecuteTaskPlan(
 	const TSharedPtr<FJsonObject>& Payload) const
 {
+	if (Payload.IsValid() && Payload->HasTypedField<EJson::String>(TEXT("preview_token")))
+	{
+		return ExecutePreviewTokenTaskPlan(Payload);
+	}
 	return RunTaskPlan(Payload, false);
 }
 
@@ -4615,6 +4695,131 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::GetTaskRunJou
 		FBlueprintHelperToolResultBuilder::GenerateTraceId());
 	Result.Data = *FoundJournal;
 	return Result;
+}
+
+void FBlueprintHelperTaskRuntimeService::AttachPreviewToken(
+	const TSharedPtr<FJsonObject>& Payload,
+	FBlueprintHelperToolResultBase& Result) const
+{
+	if (!Payload.IsValid() || !PreviewStore.IsValid())
+	{
+		return;
+	}
+
+	const TSharedPtr<FJsonObject>* TaskPlanPtr = nullptr;
+	const TSharedPtr<FJsonObject>* TokenRequestPtr = nullptr;
+	if (!Payload->TryGetObjectField(TEXT("task_plan"), TaskPlanPtr) ||
+		!TaskPlanPtr || !TaskPlanPtr->IsValid() ||
+		!Payload->TryGetObjectField(TEXT("preview_token_request"), TokenRequestPtr) ||
+		!TokenRequestPtr || !TokenRequestPtr->IsValid())
+	{
+		return;
+	}
+
+	FString TaskSpecHash;
+	FString TaskPlanHash;
+	FString ExecutionPolicyHash;
+	if (!(*TokenRequestPtr)->TryGetStringField(TEXT("task_spec_hash"), TaskSpecHash) ||
+		!(*TokenRequestPtr)->TryGetStringField(TEXT("task_plan_hash"), TaskPlanHash) ||
+		!(*TokenRequestPtr)->TryGetStringField(TEXT("execution_policy_hash"), ExecutionPolicyHash))
+	{
+		return;
+	}
+
+	FBlueprintHelperTaskPreviewStoreCreateRequest StoreRequest;
+	StoreRequest.TaskPlan = *TaskPlanPtr;
+	StoreRequest.TaskSpecHash = TaskSpecHash;
+	StoreRequest.TaskPlanHash = TaskPlanHash;
+	StoreRequest.ExecutionPolicyHash = ExecutionPolicyHash;
+	StoreRequest.AssetStateHash = FBlueprintHelperTaskRuntimeServiceLocalUtils::BuildTargetAssetStateHash(*TaskPlanPtr);
+	StoreRequest.bPassed = FBlueprintHelperTaskRuntimeServiceLocalUtils::IsPreviewResultExecutable(Result);
+
+	const FString Token = PreviewStore->Store(StoreRequest);
+	if (!Result.Data.IsValid())
+	{
+		Result.Data = MakeShared<FJsonObject>();
+	}
+	Result.Data->SetStringField(TEXT("preview_token"), Token);
+}
+
+FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::ExecutePreviewTokenTaskPlan(
+	const TSharedPtr<FJsonObject>& Payload) const
+{
+	if (!Payload.IsValid() || !PreviewStore.IsValid())
+	{
+		return FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeFailure(
+			TEXT("execute_task_plan"),
+			TEXT("invalid_preview_token_payload"),
+			EBlueprintHelperToolStage::ParseInput,
+			TEXT("payload with preview_token is required."),
+			TEXT("payload"));
+	}
+
+	FString PreviewToken;
+	FString TaskSpecHash;
+	if (!Payload->TryGetStringField(TEXT("preview_token"), PreviewToken) ||
+		!Payload->TryGetStringField(TEXT("task_spec_hash"), TaskSpecHash))
+	{
+		return FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeFailure(
+			TEXT("execute_task_plan"),
+			TEXT("invalid_preview_token_payload"),
+			EBlueprintHelperToolStage::ParseInput,
+			TEXT("payload.preview_token and payload.task_spec_hash are required for token execute."),
+			TEXT("payload.preview_token"));
+	}
+
+	const FBlueprintHelperTaskPreviewStoreResolveResult ResolveResult =
+		PreviewStore->Resolve(PreviewToken, TaskSpecHash);
+	if (!ResolveResult.bOk)
+	{
+		return FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeFailure(
+			TEXT("execute_task_plan"),
+			ResolveResult.ErrorCode,
+			EBlueprintHelperToolStage::Preflight,
+			ResolveResult.ErrorMessage,
+			ResolveResult.ErrorField);
+	}
+
+	if (!ResolveResult.bPassed)
+	{
+		return FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeFailure(
+			TEXT("execute_task_plan"),
+			TEXT("task_preview_blocked"),
+			EBlueprintHelperToolStage::DryRun,
+			TEXT("Stored preview was blocked; execute_task_plan did not write assets."),
+			TEXT("preview_token"));
+	}
+
+	if (!ResolveResult.TaskPlan.IsValid())
+	{
+		return FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeFailure(
+			TEXT("execute_task_plan"),
+			TEXT("preview_token_task_plan_missing"),
+			EBlueprintHelperToolStage::Preflight,
+			TEXT("Stored preview token did not contain a valid TaskPlan."),
+			TEXT("preview_token"));
+	}
+
+	const FString CurrentAssetStateHash =
+		FBlueprintHelperTaskRuntimeServiceLocalUtils::BuildTargetAssetStateHash(ResolveResult.TaskPlan);
+	if (CurrentAssetStateHash != ResolveResult.AssetStateHash)
+	{
+		return FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeFailure(
+			TEXT("execute_task_plan"),
+			TEXT("preview_token_mismatch"),
+			EBlueprintHelperToolStage::Preflight,
+			TEXT("Target asset state changed after preview; run preview_task again."),
+			TEXT("preview_token.asset_state"));
+	}
+
+	TSharedRef<FJsonObject> ResolvedPayload = MakeShared<FJsonObject>();
+	ResolvedPayload->SetObjectField(TEXT("task_plan"), ResolveResult.TaskPlan.ToSharedRef());
+	bool bIncludeTiming = false;
+	if (Payload->TryGetBoolField(TEXT("include_timing"), bIncludeTiming))
+	{
+		ResolvedPayload->SetBoolField(TEXT("include_timing"), bIncludeTiming);
+	}
+	return RunTaskPlan(ResolvedPayload, false);
 }
 
 FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(

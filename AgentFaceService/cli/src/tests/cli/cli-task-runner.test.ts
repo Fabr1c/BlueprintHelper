@@ -19,13 +19,7 @@ test('task preview reads TaskSpec file and prints compact summary JSON', async (
   const runner = {
     previewTask: async () => ({
       previewId: 'preview_cli_001',
-      previewToken: {
-        preview_id: 'preview_cli_001',
-        task_plan_hash: 'task_plan_hash_cli_001',
-        task_spec_hash: 'task_spec_hash_cli_001',
-        execution_policy_hash: 'execution_policy_hash_cli_001',
-        created_at: '2026-05-19T00:00:00.000Z',
-      },
+      previewToken: '0123456789abcdef0123456789abcdef',
       taskPlan: {
         schema: 'BlueprintHelper.TaskPlan.v1',
         task_name: 'CLI Preview',
@@ -270,13 +264,7 @@ test('direct CLI tool name dispatches blueprinthelper_preview_task through TaskS
     readReferenceContext: async () => { throw new Error('not used'); },
     previewTask: async () => ({
       previewId: 'preview_direct_001',
-      previewToken: {
-        preview_id: 'preview_direct_001',
-        task_plan_hash: 'task_plan_hash_direct_001',
-        task_spec_hash: 'task_spec_hash_direct_001',
-        execution_policy_hash: 'execution_policy_hash_direct_001',
-        created_at: '2026-05-19T00:00:00.000Z',
-      },
+      previewToken: 'abcdef0123456789abcdef0123456789',
       taskPlan: {
         schema: 'BlueprintHelper.TaskPlan.v1',
         task_name: 'Direct Preview',

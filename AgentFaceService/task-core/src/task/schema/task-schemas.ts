@@ -531,13 +531,9 @@ export const PreviewTaskInputSchema: z.ZodTypeAny = z.object({
   develop: z.boolean().optional().default(false),
 });
 
-export const TaskPreviewTokenSchema = z.object({
-  preview_id: z.string().min(1),
-  task_plan_hash: z.string().min(1),
-  task_spec_hash: z.string().min(1),
-  execution_policy_hash: z.string().min(1),
-  created_at: z.string().min(1),
-}).passthrough();
+export const TaskPreviewTokenSchema = z.string().regex(/^[0-9a-fA-F]{32}$/, {
+  message: 'preview_token must be a 32-character hex string.',
+});
 
 export const ExecuteTaskInputSchema: z.ZodTypeAny = z.object({
   task_spec: TaskSpecSchema,
