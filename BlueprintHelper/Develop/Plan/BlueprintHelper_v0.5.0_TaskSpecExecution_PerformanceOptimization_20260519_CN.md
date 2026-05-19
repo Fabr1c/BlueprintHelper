@@ -14,8 +14,8 @@
 2. 默认 `TaskSpec -> TaskPlan` 编译器为 Python 子进程，每次编译通过 stdin/stdout 传输 JSON。
 3. UE 侧 preview 和 execute 都进入 `RunTaskPlan`，preview 不是纯 schema 校验。
 4. GraphWrite dry-run 会运行语义构建、预览图生成和回滚，成本接近一次真实图写入前半段。
-5. `dry_run_mode` 字段已经存在于 schema，但 runtime 当前没有使用该字段降低 preview 成本。
-6. CallFunction 在 runtime 预解析和 GraphStatementBuilder 生成节点阶段存在重复解析风险，preview 与 execute 又会重复一次。
+5. 原始问题：`dry_run_mode` 字段已经存在于 schema，但 runtime 未消费该字段降低 preview 成本；P0-2 后已落地 `full|quick|none` policy。
+6. 原始问题：CallFunction 在 runtime 预解析和 GraphStatementBuilder 生成节点阶段存在重复解析风险，preview 与 execute 又会重复一次；P0-3 后已落地 request-level resolution cache。
 7. Review baseline snapshot、semantic snapshot、review record merge/write 属于真实 execute 侧成本，可能放大任务启动和收口耗时。
 
 ## 读链路详细化
@@ -444,15 +444,18 @@ Editor 手动重启后已返回 UE nested read timing，`ue_bridge_router.route_
 目标：避免同一个 TaskSpec 在 execute 前重复做完整 UE dry-run。
 
 计划：
-- preview 返回可复用的 `preview_id`、`task_plan_hash` 或等价 token。
-- execute 接受 preview token，在 TaskSpec hash、目标资产状态、执行策略未变化时复用已编译 TaskPlan。
+- preview 返回 32 位 hex 字符串 token。该 token 只作为 Editor session preview store 的短句柄，不承载完整校验数据。
+- Editor 生命周期内保存 preview store，value 包含已编译 TaskPlan、preview result、TaskSpec hash、TaskPlan hash、execution policy hash、目标资产 revision / dirty generation、createdAt。
+- execute 接受 32 位 hex token，在 Editor session、TaskSpec hash、TaskPlan hash、执行策略、目标资产状态未变化时直接复用 store 内 TaskPlan，不再重新编译 TaskSpec，也不再调用 `bridge.preview_task_plan`。
+- token 生成使用 128-bit 随机数并编码为 32 hex 字符；store 插入时检测碰撞，碰撞则重新生成。完整 hash 仍保存在 store 中并在 execute 前校验，短 token 不替代安全校验。
 - 对没有 preview token 的调用保留现有安全路径，避免破坏当前 CLI/MCP 调用。
 - 复用失败时返回明确诊断，不静默降级为错误执行。
 
 验收：
 - 已 preview 的任务进入 execute 时，不再重复调用同一次完整 `RunTaskPlan(true)`。
+- 已 preview 的任务进入 execute 时，不再重复执行 `TaskSpec -> TaskPlan` compile。
 - 未 preview 的任务仍保持现有行为。
-- 复用路径有 TaskSpec hash、目标资产 dirty/hash、execution policy 的一致性校验。
+- 复用路径有 Editor session、TaskSpec hash、TaskPlan hash、目标资产 revision / dirty generation、execution policy 的一致性校验。
 
 ### P0-2：让 `dry_run_mode=quick|none` 真正生效
 
@@ -624,12 +627,235 @@ v0.5.0 实施前需要补齐分阶段耗时记录：
 4. Review IO 异步化不得破坏 review reject/apply 的可恢复性。
 5. UE 三层拆分必须保持 baseline snapshot 在 mutation 前完成，不能为了异步化改变 Review 证据语义。
 
+## P0 preview -> execute(preview_token) 同进程重测
+
+重测时间：2026-05-20。该轮用同一进程内的 TaskSpec runner 顺序执行 `previewTask()` 与 `executeTask(previewToken)`，验证 preview-token 复用链路。
+
+测试方式：
+- 为避免复用旧资产，脚本把预装写 Spec 复制到 `.tmp`，并把根路径替换为 `/Game/BlueprintHelperCliSmoke/P0PreviewExecuteInProcess_20260519161058`。
+- 每个 Spec 先执行 preview；preview passed 后立即在同一 runner 中用完整 `previewToken` 执行 execute。
+- 产物目录：`D:\UEProjects\Template\Plugins\BlueprintHelper\.tmp\p0_speed_preview_execute_inprocess_20260519161058`
+
+结果摘要：
+
+| 指标 | 数值 |
+| --- | ---: |
+| Spec 总数 | 17 |
+| preview_passed | 16 |
+| preview_blocked | 1 |
+| execute 成功 | 16 |
+| execute 跳过 | 1 |
+| execute 失败 | 0 |
+| preview avg / p50 / max | 187.957 / 166.662 / 587.542ms |
+| execute avg / p50 / max | 488.613 / 389.072 / 1388.796ms |
+| preview+execute avg / p50 / max | 682.007 / 517.478 / 1725.355ms |
+
+| Spec | preview | preview_ms | preview_bridge | execute | execute_ms | execute_compile | token_validate | token_reuse | execute_bridge | nested UE execute |
+| --- | --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `01_create_blueprint_actor.json` | passed | 166.662 | 112.427 | executed | 1388.796 | 43.918 | 0.210 | 0.011 | 1343.731 | 1056.128 |
+| `02_edit_blueprint_components.json` | passed | 231.745 | 184.725 | executed | 156.496 | 44.051 | 0.114 | 0.000 | 112.111 | 96.613 |
+| `03_edit_blueprint_variables.json` | passed | 55.758 | 6.297 | executed | 554.458 | 49.687 | 0.091 | 0.000 | 504.436 | 237.523 |
+| `04_edit_blueprint_signatures.json` | passed | 96.279 | 46.917 | executed | 179.522 | 46.392 | 0.105 | 0.000 | 132.716 | 109.025 |
+| `04b_write_function_body.json` | passed | 587.542 | 538.682 | executed | 1137.813 | 48.551 | 0.158 | 0.001 | 1088.866 | 793.508 |
+| `05_append_graph_review_body.json` | blocked | 100.952 | 51.108 | skipped |  |  |  |  |  |  |
+| `06_create_structure_row.json` | passed | 264.777 | 213.977 | executed | 838.898 | 44.410 | 0.062 | 0.000 | 794.203 | 506.365 |
+| `07_create_data_table.json` | passed | 54.984 | 7.610 | executed | 389.072 | 46.665 | 0.068 | 0.000 | 342.158 | 96.542 |
+| `08_edit_data_table_rows.json` | passed | 237.269 | 191.872 | executed | 112.753 | 43.915 | 0.087 | 0.000 | 68.576 | 25.390 |
+| `09_create_data_asset_class.json` | passed | 219.632 | 174.126 | executed | 610.841 | 44.253 | 0.081 | 0.001 | 566.311 | 278.337 |
+| `10_edit_data_asset_class_variables.json` | passed | 251.403 | 205.599 | executed | 121.797 | 44.925 | 0.091 | 0.001 | 76.575 | 66.902 |
+| `11_create_data_asset_instance.json` | passed | 144.465 | 96.732 | executed | 516.648 | 43.800 | 0.062 | 0.000 | 472.605 | 312.681 |
+| `12_edit_data_asset_properties.json` | passed | 74.470 | 28.834 | executed | 397.845 | 45.164 | 0.065 | 0.000 | 352.454 | 119.344 |
+| `13_create_widget_blueprint.json` | passed | 214.305 | 168.170 | executed | 303.173 | 44.141 | 0.059 | 0.000 | 258.831 | 229.049 |
+| `14a_edit_widget_tree_root.json` | passed | 258.477 | 211.645 | executed | 378.062 | 44.996 | 0.072 | 0.000 | 332.832 | 260.157 |
+| `14b_edit_widget_tree_child.json` | passed | 73.364 | 27.739 | executed | 168.327 | 43.867 | 0.065 | 0.000 | 124.250 | 78.792 |
+| `14c_edit_widget_tree_property.json` | passed | 163.178 | 116.593 | executed | 563.307 | 45.505 | 0.074 | 0.000 | 517.589 | 230.670 |
+
+代表性最慢成功链路 `04b_write_function_body.json`：
+
+| 阶段 | duration_ms |
+| --- | ---: |
+| preview total | 587.542 |
+| preview `taskspec_compile` | 47.893 |
+| preview `bridge.preview_task_plan` | 538.682 |
+| preview nested `ue.preview_task_plan` total | 435.555 |
+| execute total | 1137.813 |
+| execute `taskspec_compile` | 48.551 |
+| execute `preview_token.validate` | 0.158 |
+| execute `preview_token.reuse_task_plan` | 0.001 |
+| execute `bridge.execute_task_plan` | 1088.866 |
+| execute nested `ue.execute_task_plan` total | 793.508 |
+| preview + execute total | 1725.355 |
+
+## P0-1 32 hex token 跨 CLI 重测
+
+重测时间：2026-05-20。Editor 生命周期使用 MCP `blueprint_open_editor` 启动；TaskSpec preview / execute 仍通过 CLI 工具面执行。
+
+测试样本：
+- `BlueprintHelper/Develop/v0.4.3/ArchivedReference/RetiredReviewDebugDocs_20260518/PlanArtifacts/ReviewPanel_UI_Test_TaskSpecs_20260518/01_create_blueprint_actor.json`
+
+测试方式：
+- CLI 进程 A 执行 `task preview --develop`，返回 32 hex `preview_token=2fc5391d4aaea4f274322bb67c008af1`。
+- CLI 进程 B 执行 `task execute --preview-token 2fc5391d4aaea4f274322bb67c008af1 --develop`。
+- preview 产物：`D:\UEProjects\Template\Plugins\BlueprintHelper\Saved\BlueprintHelper\Cli\preview_1779209104314_0001\result.json`
+- execute 产物：`D:\UEProjects\Template\Plugins\BlueprintHelper\Saved\BlueprintHelper\Cli\task_E4DE90B54B78EB31433F87BB5B5E3481\result.json`
+
+结果摘要：
+
+| 指标 | 数值 |
+| --- | ---: |
+| preview status | preview_passed |
+| execute status | executed |
+| token 格式 | 32 hex |
+| preview total | 225.533ms |
+| execute total | 2151.839ms |
+| execute nested `ue.execute_task_plan` total | 329.102ms |
+| execute `taskspec_compile` | 无 |
+| execute `bridge.preview_task_plan` | 无 |
+
+preview 阶段：
+
+| 阶段 | duration_ms |
+| --- | ---: |
+| `cli.parse_args` | 0.191 |
+| `taskspec_file_read_parse` | 2.020 |
+| `taskspec_compile` | 49.090 |
+| `preview_token.allocate_preview_id` | 0.025 |
+| `preview_token.prepare_request` | 0.482 |
+| `bridge.preview_task_plan` | 172.496 |
+| `cli.result_return` | 0.006 |
+| nested `ue.preview_task_plan` total | 2.598 |
+
+execute 阶段：
+
+| 阶段 | duration_ms |
+| --- | ---: |
+| `cli.parse_args` | 0.192 |
+| `taskspec_file_read_parse` | 1.952 |
+| `preview_token.validate` | 0.567 |
+| `bridge.execute_task_plan` | 2148.015 |
+| `result_wrap` | 0.485 |
+| `cli.result_return` | 0.005 |
+| nested `ue.execute_task_plan` total | 329.102 |
+| nested `post_operation.compile` | 213.510 |
+| nested `post_operation.save` | 111.934 |
+
+补充校验：
+- 同 token 改用 `02_edit_blueprint_components.json` 执行，返回 `preview_token_mismatch`，field=`task_spec_hash`。
+- 同 token 在成功 execute 后再次执行同一 Spec，返回 `preview_token_mismatch`，field=`preview_token.asset_state`。
+
+结论：P0-1 的 32 hex token + Editor 生命周期 preview store 已能跨 CLI 进程复用 TaskPlan。token execute 阶段不再触发 AgentFace `taskspec_compile`，也不再调用 `bridge.preview_task_plan`；TaskSpec hash 和目标资产状态快照均会阻止旧 token 复用。当前该样本 execute 总耗时主要落在 `bridge.execute_task_plan` 的整体等待，其中 UE nested 主要是 compile/save 后置操作。
+
+## P0-2 / P0-3 小样本补测
+
+测试时间：2026-05-20
+
+测试目录：`D:\UEProjects\Template\Plugins\BlueprintHelper\Saved\BlueprintHelper\PerfProbe\P0P23_20260520011234`
+
+测试链路：
+- 使用 MCP 启动 Editor，CLI 执行 `01_create_blueprint_actor.json` 和 `04_edit_blueprint_signatures.json` 作为前置资产。
+- 对同一 `04b_write_function_body.json` 派生 `full` / `quick` preview 样本，比较 UE nested timing。
+- 对重复 `PrintString` 的 quick preview 样本直连 Bridge，确认 CallFunction request-level cache hit/miss。
+- 对 `dry_run_mode=none` 且无 preview token 的 execute 做防绕过校验。
+
+前置执行：
+
+| 样本 | 结果 | total_ms |
+| --- | --- | ---: |
+| `01_create_blueprint_actor.json` | executed | 1599.951 |
+| `04_edit_blueprint_signatures.json` | executed | 1082.636 |
+
+P0-2 full / quick preview 对比：
+
+| 样本 | mode | cli_total_ms | bridge.preview_task_plan | nested ue.preview_task_plan total | call_function_resolution | cluster_execute | quick_preview_validate |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `04b_write_function_body` | full | 637.881 | 585.860 | 445.429 | 434.029 | 11.325 | 0 |
+| `04b_write_function_body` | quick | 1797.013 | 1744.535 | 289.841 | 289.777 | 0 | 0.009 |
+| `04b_write_function_body` | quick round2 | 447.435 | 395.960 | 289.306 | 289.241 | 0 | 0.009 |
+| `04b_write_function_body` | full round2 | 1791.927 | 1740.923 | 300.885 | 289.184 | 11.646 | 0 |
+| `04b_write_function_body` | quick round3 | 1886.394 | 1836.185 | 288.970 | 288.901 | 0 | 0.009 |
+| `04b_write_function_body` | full round3 | 1908.624 | 1857.598 | 298.324 | 287.653 | 10.615 | 0 |
+
+结论：P0-2 已在 UE TaskRuntime 主路径生效。`quick` preview 稳定跳过 `cluster_execute`，改走 `quick_preview_validate`；本样本的真实收益主要体现在 UE nested 从旧基线 `456.449ms` 降到约 `289ms`。同轮 warmed full/quick 的差距只有约 `10-12ms`，因为当前样本主要耗时已转移到 `call_function_resolution`。
+
+P0-3 CallFunction cache 原始 Bridge 校验：
+
+| 样本 | dry_run_strategy | preview_kind | ue_total_ms | call_function_resolution | cache_hits | cache_misses | cache_entries | resolved_facts |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 单个 `PrintString` | quick | synthetic | 294.300 | 294.235 | 0 | 1 | 1 | 1 |
+| 重复 `PrintString` | quick | synthetic | 289.791 | 289.723 | 1 | 1 | 1 | 2 |
+
+结论：P0-3 已在 request-level 起效。同一 TaskPlan 内重复的 `PrintString` 查询第二次命中 cache，`entries=1`，并返回两个 resolved facts，stable id 为 `/Script/Engine.KismetSystemLibrary:PrintString`。
+
+`dry_run_mode=none` 防绕过校验：
+
+| 场景 | 结果 |
+| --- | --- |
+| 无 preview token 执行 `dry_run_mode=none` | CLI preflight 失败，`error_code=dry_run_mode_none_requires_preview_token`，未进入 UE preview/execute 写入 |
+
+`--develop` UE 原始返回透传补测：
+
+| 场景 | 结果 |
+| --- | --- |
+| `task preview --develop --format json` | 已透传 `data.ue_preview_result`、`data.dry_run`、`data.call_function_resolution_cache`、`data.runtime_facts` |
+| `task preview --format json` | 不返回 `timing`、`ue_preview_result`、`dry_run`、`call_function_resolution_cache`、`runtime_facts` |
+
+透传后样本 `04b_write_function_body.quick.duplicate_call.json`：`dry_run.strategy=quick`、`dry_run.preview_kind=synthetic`、`cache_hits=1`、`cache_misses=1`、`cache_entries=1`、`resolved_facts=2`、`ue_preview_result.operation=preview_task_plan`。
+
 ## 当前状态
 
-- 状态：P0-0 develop 诊断计时流程已开始实现，P0-1 之后仍为 v0.5.0 优化计划。
+- 状态：P0-0 develop 诊断计时流程已开始实现；P0-1 32 hex token + Editor 生命周期 preview store 已完成首轮实现和跨 CLI 成功验证；P0-2/P0-3 已在代码路径落地并完成小样本补测。
 - 读工具优化计划已纳入 v0.5.0：R0 先完成 timing 证据，R1/R2 优先做 GameThread 快照、后台格式化和 DTO/formatter 复用。
 - 读工具 R0 已完成一次 Editor 重启后补测：AgentFace read_context 分段和 UE `ue_bridge_router.route_execute` nested timing 均已返回；下一步需要继续拆 `bridge - UE route` gap。
 - 用户关闭 Editor 后已改用 MCP lifecycle 重启并补测 11 个 ReadSpec，包含新增 `11_blueprint_logic_flow.json`；结果显示 `logic_flow_build_payload=1.014ms`，主要瓶颈仍在 Bridge 往返 gap。
+- 已补测 P0 `preview -> execute(preview_token)` 同进程链路：17 个预装写 Spec 中 16 个 execute 成功，preview+execute 成功样本 avg 682.007ms、p50 517.478ms、max 1725.355ms；execute 阶段已出现 `preview_token.validate` 和 `preview_token.reuse_task_plan`。
+- P0-1 已完成首轮实现：token 使用 32 位 hex 短句柄，完整校验和 TaskPlan 保存在 Editor 生命周期内的 preview store；execute 命中 token 后直接复用 store 内 TaskPlan，避免二次 compile 和二次 preview。
+- P0-1 跨 CLI 重测已通过：`01_create_blueprint_actor.json` preview 返回 32 hex token，另一个 CLI execute 带 token 成功；execute timing 不含 `taskspec_compile` 和 `bridge.preview_task_plan`，TaskSpec hash 与目标资产状态变化均会返回 `preview_token_mismatch`。
+- `--develop` preview 已补 UE 原始返回透传：CLI 结果直接包含 `ue_preview_result` 以及 `dry_run`、`call_function_resolution_cache`、`runtime_facts` 诊断字段；普通非 develop 调用仍不返回这些字段。
 - 阶段计划已迁移到 `Develop/Plan/Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/`，主文档只保留总体结论和索引。
 - 普通路径保持无计时采集、无 `data.timing` 返回；CLI 诊断路径通过 `--develop` 对所有 CLI 工具显式开启，TaskSpec MCP/tool 诊断路径通过 `develop: true` 显式开启。
 - 后续实现必须保持高内聚、低耦合，避免把性能分支堆进单个 service 或 UI 入口。
+
+## 速度阶段优化图
+
+说明：
+- P0 与 P0-1 的实测样本、运行方式不同，不能画成同一张“连续阶段优化”图。
+- 同样本速度对比只使用 `04b_write_function_body.json` 的基线与 P0 token execute 数据。
+- P0-1 跨 CLI 数据单独成图，只证明 32 hex token + Editor 生命周期 preview store 已消除 execute 阶段的 `taskspec_compile` 和 `bridge.preview_task_plan`。
+
+### 同样本阶段优化折线图
+
+样本：`04b_write_function_body.json`
+
+线条说明（按图中折线声明顺序）：
+
+| 线条 | 含义 | 数据点顺序 | 数值 |
+| --- | --- | --- | --- |
+| 线条 1 | P0 优化前 execute 基线 | compile / preview bridge / execute bridge / execute total | 48.703 / 2063.882 / 1129.964 / 3246.974 |
+| 线条 2 | P0 同进程 preview token execute | compile / preview bridge / execute bridge / execute total | 48.551 / 0 / 1088.866 / 1137.813 |
+
+```mermaid
+xychart
+    title "04b 同样本 execute 阶段耗时对照（ms）"
+    x-axis ["taskspec_compile", "bridge.preview_task_plan", "bridge.execute_task_plan", "execute_total"]
+    y-axis "duration_ms" 0 --> 3500
+    line [48.703, 2063.882, 1129.964, 3246.974]
+    line [48.551, 0, 1088.866, 1137.813]
+```
+
+### P0-1 跨 CLI token 链路阶段图
+
+样本：`01_create_blueprint_actor.json`
+
+线条说明：
+
+| 线条 | 含义 | 数据点顺序 | 数值 |
+| --- | --- | --- | --- |
+| 线条 1 | P0-1 跨 CLI 32 hex token execute | compile / preview bridge / execute bridge / execute total | 0 / 0 / 2148.015 / 2151.839 |
+
+```mermaid
+xychart
+    title "P0-1 跨 CLI token execute 阶段耗时（ms）"
+    x-axis ["taskspec_compile", "bridge.preview_task_plan", "bridge.execute_task_plan", "execute_total"]
+    y-axis "duration_ms" 0 --> 2500
+    line [0, 0, 2148.015, 2151.839]
+```

@@ -892,13 +892,7 @@ test('preview task registry handler calls TaskSpecRunner.previewTask', async () 
           execution_policy: { dry_run_mode: 'full', should_compile: true, should_save: false, review_baseline_dirty_asset_policy: 'block' },
           steps: [],
         },
-        previewToken: {
-          preview_id: 'preview_registry_001',
-          task_plan_hash: 'task_plan_hash_registry',
-          task_spec_hash: 'task_spec_hash_registry',
-          execution_policy_hash: 'execution_policy_hash_registry',
-          created_at: '2026-05-19T00:00:00.000Z',
-        },
+        previewToken: '0123456789abcdef0123456789abcdef',
         passed: true,
         issues: [],
         toolResult: {
@@ -952,13 +946,7 @@ test('preview task registry handler calls TaskSpecRunner.previewTask', async () 
 test('execute task registry handler passes preview token to TaskSpecRunner', async () => {
   const tool = getBlueprintHelperToolRegistry().find((candidate) => candidate.name === 'blueprinthelper_execute_task');
   assert.ok(tool);
-  const previewToken = {
-    preview_id: 'preview_registry_execute_001',
-    task_plan_hash: 'task_plan_hash_registry_execute',
-    task_spec_hash: 'task_spec_hash_registry_execute',
-    execution_policy_hash: 'execution_policy_hash_registry_execute',
-    created_at: '2026-05-19T00:00:00.000Z',
-  };
+  const previewToken = '0123456789abcdef0123456789abcdef';
   let receivedPreviewToken: unknown;
   const runner = {
     previewTask: async () => { throw new Error('not used'); },
@@ -1013,13 +1001,7 @@ test('execute task registry handler passes preview token to TaskSpecRunner', asy
 test('execute task registry handler rejects direct TaskSpec preview token', async () => {
   const tool = getBlueprintHelperToolRegistry().find((candidate) => candidate.name === 'blueprinthelper_execute_task');
   assert.ok(tool);
-  const previewToken = {
-    preview_id: 'preview_registry_execute_direct_001',
-    task_plan_hash: 'task_plan_hash_registry_execute_direct',
-    task_spec_hash: 'task_spec_hash_registry_execute_direct',
-    execution_policy_hash: 'execution_policy_hash_registry_execute_direct',
-    created_at: '2026-05-19T00:00:00.000Z',
-  };
+  const previewToken = 'abcdef0123456789abcdef0123456789';
   const runner = {
     previewTask: async () => { throw new Error('not used'); },
     readTaskContext: async () => { throw new Error('not used'); },

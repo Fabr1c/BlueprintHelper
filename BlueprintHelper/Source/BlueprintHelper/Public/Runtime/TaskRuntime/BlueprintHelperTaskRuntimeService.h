@@ -21,6 +21,7 @@ class FBlueprintHelperCompileAssetService;
 class FBlueprintHelperAssetBrowseService;
 class FBlueprintHelperDebugEntryService;
 class FBlueprintHelperTaskRuntimeClusterHub;
+class FBlueprintHelperTaskPreviewStore;
 /**
  * Executes BlueprintHelper.TaskPlan.v1 steps through existing capability services.
  * The first runtime cluster supports graph write TaskPlan steps backed by existing services.
@@ -88,11 +89,19 @@ public:
 		const TArray<FBlueprintHelperTaskRuntimePostOperationRecord>& PostOperationRecords);
 
 private:
+	void AttachPreviewToken(
+		const TSharedPtr<FJsonObject>& Payload,
+		FBlueprintHelperToolResultBase& Result) const;
+
+	FBlueprintHelperToolResultBase ExecutePreviewTokenTaskPlan(
+		const TSharedPtr<FJsonObject>& Payload) const;
+
 	FBlueprintHelperToolResultBase RunTaskPlan(
 		const TSharedPtr<FJsonObject>& Payload,
 		bool bDryRun) const;
 
 	TUniquePtr<FBlueprintHelperTaskRuntimeClusterHub> ClusterHub;
+	TUniquePtr<FBlueprintHelperTaskPreviewStore> PreviewStore;
 	const FBlueprintHelperCompileAssetService& CompileAssetService;
 	const FBlueprintHelperAssetBrowseService& AssetBrowseService;
 	const FBlueprintHelperDebugEntryService* DebugEntryService = nullptr;

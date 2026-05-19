@@ -31,6 +31,7 @@ export interface CliCommand {
   stdin?: boolean;
   develop?: boolean;
   expert?: boolean;
+  previewToken?: string;
   taskRunId?: string;
   bridgeCommand?: string;
   artifactDir?: string;
@@ -72,6 +73,10 @@ export function buildCliSummary(input: {
       ?? readString(data?.['preview_id'])
       ?? readString(input.toolResult.trace_id)
     : undefined;
+  const previewToken = isPreviewCommand(input.command)
+    ? readString(extra['previewToken'])
+      ?? readString(data?.['preview_token'])
+    : undefined;
   const taskRunId =
     readString(data?.['task_run_id']) ??
     readString(task?.['task_run_id']) ??
@@ -85,6 +90,7 @@ export function buildCliSummary(input: {
     status: mapStatus(input.command, input.toolResult, data),
     task_run_id: taskRunId,
     preview_id: previewId,
+    preview_token: previewToken,
     summary: omitUndefined({
       target_assets: targetAssets.length > 0 ? targetAssets : undefined,
       task_type: taskType,

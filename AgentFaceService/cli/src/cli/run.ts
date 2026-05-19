@@ -124,6 +124,7 @@ export async function runCli(runtime: CliRuntime): Promise<number> {
       const preview = await getRunner(runtime).previewTask(taskSpec, timing);
       const outcome = writeTimedCliResult(runtime, command, preview.toolResult, timing, {
         previewId: preview.previewId,
+        previewToken: preview.previewToken,
         taskPlan: preview.taskPlan,
         passed: preview.passed,
         issues: preview.issues,
@@ -135,7 +136,7 @@ export async function runCli(runtime: CliRuntime): Promise<number> {
       const taskSpec = measureTaskTiming(timing, 'taskspec_file_read_parse', () => (
         TaskSpecSchema.parse(readJsonFile(path.resolve(runtime.cwd, required(command.file))))
       ));
-      const toolResult = await getRunner(runtime).executeTask(taskSpec, timing);
+      const toolResult = await getRunner(runtime).executeTask(taskSpec, timing, { previewToken: command.previewToken });
       const outcome = writeTimedCliResult(runtime, command, toolResult, timing);
       return outcome.outputTooLarge ? 3 : toolResult.ok ? 0 : 2;
     }
@@ -231,6 +232,7 @@ function parseArgs(argv: string[]): ParseResult {
     stdin?: boolean;
     develop?: boolean;
     expert?: boolean;
+    previewToken?: string;
     format?: CliFormat;
     artifactDir?: string;
     maxBytes?: number;
@@ -254,6 +256,8 @@ function parseArgs(argv: string[]): ParseResult {
       options.develop = true;
     } else if (arg === '--expert') {
       options.expert = true;
+    } else if (arg === '--preview-token') {
+      options.previewToken = readOptionValue(argv, ++index, arg);
     } else if (arg === '--format') {
       const format = readOptionValue(argv, ++index, arg);
       if (!['summary', 'json', 'full'].includes(format)) {
@@ -350,7 +354,7 @@ function parseArgs(argv: string[]): ParseResult {
     return { ok: true, command: { ...base, kind: 'task.preview', file: options.file } };
   }
   if (group === 'task' && action === 'execute' && options.file) {
-    return { ok: true, command: { ...base, kind: 'task.execute', file: options.file } };
+    return { ok: true, command: { ...base, kind: 'task.execute', file: options.file, previewToken: options.previewToken } };
   }
   if (group === 'task' && action === 'result' && options.id) {
     return { ok: true, command: { ...base, kind: 'task.result', taskRunId: options.id } };
@@ -548,7 +552,7 @@ function helpText(): string {
     '  blueprinthelper-cli open_editor [--file params.json | --json json | --stdin] [--fields path[,path...]] [--omit path[,path...]]',
     '  blueprinthelper-cli close_editor [--file params.json | --json json | --stdin] [--fields path[,path...]] [--omit path[,path...]]',
     '  blueprinthelper-cli task preview --file <task-spec.json> [--develop] [--format summary|json|full] [--fields path[,path...]] [--omit path[,path...]]',
-    '  blueprinthelper-cli task execute --file <task-spec.json> [--develop] [--format summary|json|full] [--fields path[,path...]] [--omit path[,path...]]',
+    '  blueprinthelper-cli task execute --file <task-spec.json> [--preview-token <32-hex>] [--develop] [--format summary|json|full] [--fields path[,path...]] [--omit path[,path...]]',
     '  blueprinthelper-cli task result --id <task_run_id> [--fields path[,path...]] [--omit path[,path...]]',
     '  blueprinthelper-cli context read --file <context-request.json> [--fields path[,path...]] [--omit path[,path...]]',
     '  blueprinthelper-cli bridge ping [--fields path[,path...]] [--omit path[,path...]]',
