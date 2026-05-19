@@ -892,6 +892,13 @@ test('preview task registry handler calls TaskSpecRunner.previewTask', async () 
           execution_policy: { dry_run_mode: 'full', should_compile: true, should_save: false, review_baseline_dirty_asset_policy: 'block' },
           steps: [],
         },
+        previewToken: {
+          preview_id: 'preview_registry_001',
+          task_plan_hash: 'task_plan_hash_registry',
+          task_spec_hash: 'task_spec_hash_registry',
+          execution_policy_hash: 'execution_policy_hash_registry',
+          created_at: '2026-05-19T00:00:00.000Z',
+        },
         passed: true,
         issues: [],
         toolResult: {
@@ -940,6 +947,116 @@ test('preview task registry handler calls TaskSpecRunner.previewTask', async () 
 
   assert.equal(called, true);
   assert.equal(result.operation, 'preview_task');
+});
+
+test('execute task registry handler passes preview token to TaskSpecRunner', async () => {
+  const tool = getBlueprintHelperToolRegistry().find((candidate) => candidate.name === 'blueprinthelper_execute_task');
+  assert.ok(tool);
+  const previewToken = {
+    preview_id: 'preview_registry_execute_001',
+    task_plan_hash: 'task_plan_hash_registry_execute',
+    task_spec_hash: 'task_spec_hash_registry_execute',
+    execution_policy_hash: 'execution_policy_hash_registry_execute',
+    created_at: '2026-05-19T00:00:00.000Z',
+  };
+  let receivedPreviewToken: unknown;
+  const runner = {
+    previewTask: async () => { throw new Error('not used'); },
+    readTaskContext: async () => { throw new Error('not used'); },
+    readReferenceContext: async () => { throw new Error('not used'); },
+    executeTask: async (_taskSpec: unknown, _timing: unknown, options?: { previewToken?: unknown }) => {
+      receivedPreviewToken = options?.previewToken;
+      return {
+        ok: true,
+        schema: 'BlueprintHelper.ToolResult.v1',
+        operation: 'execute_task',
+        trace_id: 'trace_registry_execute',
+        status: 'completed',
+        modified: false,
+      };
+    },
+    getTaskResult: async () => { throw new Error('not used'); },
+  } as unknown as TaskSpecRunner;
+
+  await tool.execute({
+    task_spec: {
+      schema: 'BlueprintHelper.TaskSpec.v1',
+      context_id: 'ctx_registry_execute',
+      task_type: 'edit_blueprint_graph',
+      feature_name: 'RegistryExecute',
+      target: { asset_path: '/Game/BP_Player', target_type: 'blueprint' },
+      scope_policy: { graph_name: 'EventGraph', allow_modify_user_nodes: false },
+      behavior: {
+        graph_strategy: 'append_new_owned_graph',
+        entries: [{
+          entry_type: 'custom_event',
+          name: 'RegistryExecute',
+          body: { schema: 'BlueprintLogicSpec.v1', statements: [] },
+        }],
+      },
+      execution_policy: {
+        dry_run_mode: 'full',
+        on_missing_capability: 'stop_and_report',
+      },
+      validation: { should_compile: true, should_save: false },
+    },
+    preview_token: previewToken,
+  }, {
+    cwd: process.cwd(),
+    bridge: {} as never,
+    taskRunner: runner,
+  });
+
+  assert.deepEqual(receivedPreviewToken, previewToken);
+});
+
+test('execute task registry handler rejects direct TaskSpec preview token', async () => {
+  const tool = getBlueprintHelperToolRegistry().find((candidate) => candidate.name === 'blueprinthelper_execute_task');
+  assert.ok(tool);
+  const previewToken = {
+    preview_id: 'preview_registry_execute_direct_001',
+    task_plan_hash: 'task_plan_hash_registry_execute_direct',
+    task_spec_hash: 'task_spec_hash_registry_execute_direct',
+    execution_policy_hash: 'execution_policy_hash_registry_execute_direct',
+    created_at: '2026-05-19T00:00:00.000Z',
+  };
+  const runner = {
+    previewTask: async () => { throw new Error('not used'); },
+    readTaskContext: async () => { throw new Error('not used'); },
+    readReferenceContext: async () => { throw new Error('not used'); },
+    executeTask: async () => { throw new Error('direct TaskSpec preview_token should be rejected before runner'); },
+    getTaskResult: async () => { throw new Error('not used'); },
+  } as unknown as TaskSpecRunner;
+
+  const result = await tool.execute({
+    schema: 'BlueprintHelper.TaskSpec.v1',
+    context_id: 'ctx_registry_execute_direct',
+    task_type: 'edit_blueprint_graph',
+    feature_name: 'RegistryExecuteDirect',
+    target: { asset_path: '/Game/BP_Player', target_type: 'blueprint' },
+    scope_policy: { graph_name: 'EventGraph', allow_modify_user_nodes: false },
+    behavior: {
+      graph_strategy: 'append_new_owned_graph',
+      entries: [{
+        entry_type: 'custom_event',
+        name: 'RegistryExecuteDirect',
+        body: { schema: 'BlueprintLogicSpec.v1', statements: [] },
+      }],
+    },
+    execution_policy: {
+      dry_run_mode: 'full',
+      on_missing_capability: 'stop_and_report',
+    },
+    validation: { should_compile: true, should_save: false },
+    preview_token: previewToken,
+  }, {
+    cwd: process.cwd(),
+    bridge: {} as never,
+    taskRunner: runner,
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error?.code, 'preview_token_requires_task_spec_wrapper');
 });
 
 function assertNoUnsafeAgentFacingKeys(value: unknown): void {

@@ -104,6 +104,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphExpressionIR
 	FString Type;
 	FString Operator;
 	FString LiteralValue;
+	FString ResolvedCallFunctionStableId;
 	FString SearchMode;
 	FString AmbiguityPolicy;
 	TArray<FString> CategoryPriority;
@@ -124,6 +125,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphStatementIR
 	FString Target;
 	FString Name;
 	FString ResultSymbolName;
+	FString ResolvedCallFunctionStableId;
 	FString SearchMode;
 	FString AmbiguityPolicy;
 	TArray<FString> CategoryPriority;

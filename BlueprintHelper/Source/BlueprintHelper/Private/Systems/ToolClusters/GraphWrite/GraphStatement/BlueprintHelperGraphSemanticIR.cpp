@@ -364,6 +364,7 @@ TSharedPtr<FBlueprintHelperGraphStatementIR> FBlueprintHelperGraphSemanticIRBuil
 
 	StatementObject->TryGetStringField(TEXT("target"), Statement->Target);
 	StatementObject->TryGetStringField(TEXT("name"), Statement->Name);
+	StatementObject->TryGetStringField(TEXT("resolved_stable_id"), Statement->ResolvedCallFunctionStableId);
 	StatementObject->TryGetStringField(TEXT("search_mode"), Statement->SearchMode);
 	StatementObject->TryGetStringField(TEXT("ambiguity"), Statement->AmbiguityPolicy);
 	StatementObject->TryGetStringField(TEXT("ambiguity_policy"), Statement->AmbiguityPolicy);
@@ -439,6 +440,7 @@ TSharedPtr<FBlueprintHelperGraphExpressionIR> FBlueprintHelperGraphSemanticIRBui
 
 	ExpressionObject->TryGetStringField(TEXT("target"), Expression->Target);
 	ExpressionObject->TryGetStringField(TEXT("name"), Expression->Name);
+	ExpressionObject->TryGetStringField(TEXT("resolved_stable_id"), Expression->ResolvedCallFunctionStableId);
 	ExpressionObject->TryGetStringField(TEXT("search_mode"), Expression->SearchMode);
 	ExpressionObject->TryGetStringField(TEXT("ambiguity"), Expression->AmbiguityPolicy);
 	ExpressionObject->TryGetStringField(TEXT("ambiguity_policy"), Expression->AmbiguityPolicy);
