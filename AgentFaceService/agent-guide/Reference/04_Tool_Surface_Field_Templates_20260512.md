@@ -99,7 +99,7 @@ Lifecycle companion tools are available through the global MCP allowlist for Age
     "block_id": "optional. BlueprintHelper-owned block id when target_type is block."
   },
   "view": {
-    "format": "optional, default logic_md. logic_md, logic_json, or summary.",
+    "format": "optional for logic reads. logic_md or logic_json. Omit for non-logic read types.",
     "max_items": "optional. Positive integer truncation guard.",
     "detail": "optional. brief, normal, full, or debug."
   },
@@ -110,9 +110,9 @@ Lifecycle companion tools are available through the global MCP allowlist for Age
 }
 ```
 
-`view.format=summary` returns compact `LogicSummary.v1` metadata only. It uses structured logic data internally and must not expose full LogicMD markdown, raw `logic.nodes`, local cache paths, or saved export file content. Use it to estimate target presence and graph size before any detailed read.
+`view.format=summary` is removed from ReadSpec. Non-logic reads use their `read_type` as the compact view contract and should omit `view.format`.
 
-`view.format=logic_md` may be used directly for `target_type=function`, `target_type=event`, or `target_type=custom_event` when `target_name` is known. These target-entry reads are generated from structured target slices and report sliced stats. Do not use whole-graph `logic_md` until summary or `logic_json` shows the graph is small enough.
+`view.format=logic_md` may be used directly for `target_type=function`, `target_type=event`, or `target_type=custom_event` when `target_name` is known. These target-entry reads are generated from structured target slices and report sliced stats. Do not use whole-graph `logic_md` until `logic_json` shows the graph is small enough.
 
 `view.max_items` is a truncation guard for `logic_json`; when truncation happens, the tool result sets `data.truncated=true` and includes `payload.truncation.nodes_total` plus `payload.truncation.nodes_returned`.
 

@@ -10,6 +10,11 @@ export function postProcessReadContextPayload(
     schema: payload['schema'] ?? payloadSchema,
     ...payload,
   };
+  delete normalized['format'];
+
+  if (input.read_type === 'blueprint_logic' || input.read_type === 'graph_context') {
+    return compactLogicContextPayload(normalized);
+  }
   if (input.read_type === 'asset_context') {
     return compactAssetContextPayload(normalized);
   }
@@ -36,41 +41,25 @@ export function postProcessReadContextPayload(
   return normalized;
 }
 
+function compactLogicContextPayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const logic = payload['logic'];
+  if (!isRecord(logic) || !Object.hasOwn(logic, 'asset_path')) {
+    return payload;
+  }
+
+  const compactedLogic = { ...logic };
+  delete compactedLogic['asset_path'];
+  return {
+    ...payload,
+    logic: compactedLogic,
+  };
+}
+
 function compactAssetContextPayload(payload: Record<string, unknown>): Record<string, unknown> {
   const compacted = { ...payload };
   delete compacted['path'];
   delete compacted['name'];
   return compacted;
-}
-
-export function deriveReadContextStats(input: ReadContextInput, payload: Record<string, unknown>): Record<string, unknown> {
-  if (isRecord(payload['stats'])) {
-    return payload['stats'];
-  }
-  switch (input.read_type) {
-    case 'component_context':
-      return { components: countArray(payload['components']) };
-    case 'variable_context':
-      return {
-        variables: countArray(payload['variables'] ?? payload['member_variables']),
-        event_dispatchers: countArray(payload['event_dispatchers']),
-      };
-    case 'widget_context':
-      return {
-        widgets: countArray(payload['widgets']),
-        properties: countArray(payload['properties']),
-      };
-    case 'data_table_context':
-      return {
-        rows: typeof payload['row_count'] === 'number' ? payload['row_count'] : countArray(payload['rows']),
-        columns: countArray(payload['columns']),
-      };
-    case 'data_asset_context':
-    case 'object_property_context':
-      return { properties: typeof payload['count'] === 'number' ? payload['count'] : countArray(payload['properties']) };
-    default:
-      return {};
-  }
 }
 
 function filterNamedArrayPayload(
@@ -98,8 +87,4 @@ function filterNamedArrayPayload(
     [arrayKey]: filtered,
     count: filtered.length,
   };
-}
-
-function countArray(value: unknown): number {
-  return Array.isArray(value) ? value.length : 0;
 }

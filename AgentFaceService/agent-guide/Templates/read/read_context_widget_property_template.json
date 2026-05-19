@@ -5,8 +5,5 @@
     "asset_path": "__WIDGET_BLUEPRINT_ASSET_PATH__",
     "target_type": "widget",
     "target_name": "__WIDGET_NAME__"
-  },
-  "view": {
-    "format": "summary"
   }
 }

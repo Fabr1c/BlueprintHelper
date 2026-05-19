@@ -1,15 +1,13 @@
 import { failureResult, normalizeToolResult, successRead, type ToolResultBase } from '../../../result/tool-result.js';
 import type { BlueprintHelperToolContext } from '../../types.js';
-import { extractBridgePayload, isRecord, normalizeBridgeToolResult } from '../bridge-tool-result-utils.js';
+import { extractBridgePayload, normalizeBridgeToolResult } from '../bridge-tool-result-utils.js';
 import {
   buildBlueprintLogicReadPayload,
   buildReadContextBridgeRequest,
-  inferBlueprintLogicScope,
-  isTargetEntryLogicRead,
-  normalizeReadContextFormat,
+  resolveReadContextLogicFormat,
 } from './read-context-route-builder.js';
 import { buildReadContextTarget } from './read-context-target.js';
-import { deriveReadContextStats, postProcessReadContextPayload } from './read-context-payload.js';
+import { postProcessReadContextPayload } from './read-context-payload.js';
 import { ReadContextInputSchema, type ReadContextInput } from './read-context-schemas.js';
 
 export async function executeReadContext(
@@ -17,16 +15,13 @@ export async function executeReadContext(
   context: BlueprintHelperToolContext,
 ): Promise<ToolResultBase> {
   const input = ReadContextInputSchema.parse(rawInput);
-  const requestedFormat = input.view?.format ?? 'logic_md';
-  const format = normalizeReadContextFormat(input, requestedFormat);
+  const format = resolveReadContextLogicFormat(input);
 
   if (input.read_type !== 'blueprint_logic' && input.read_type !== 'graph_context') {
-    return executeBridgeBackedReadContext(input, context, format);
+    return executeBridgeBackedReadContext(input, context);
   }
 
-  const bridgeFormat = format === 'logic_json' || format === 'summary' || isTargetEntryLogicRead(input)
-    ? 'logic_json'
-    : 'logic_md';
+  const bridgeFormat = format ?? 'logic_md';
   const response = await context.bridge.sendCommand(
     bridgeFormat === 'logic_json' ? 'read_blueprint_logic_json' : 'read_blueprint_logic_md',
     buildBlueprintLogicReadPayload(input),
@@ -45,14 +40,16 @@ export async function executeReadContext(
       rollback_result: 'not_needed',
     });
   }
-  const payload = payloadResult.payload;
+  const payload = postProcessReadContextPayload(
+    input,
+    bridgeFormat === 'logic_json' ? 'LogicJson.v1' : 'LogicMd.v1',
+    payloadResult.payload,
+  );
   return successRead('read_context', buildReadContextTarget(input), {
     schema: 'ReadContextPack.v1',
     read_type: input.read_type,
     format,
-    scope: payload['scope'] ?? inferBlueprintLogicScope(input),
     payload,
-    stats: isRecord(payload['stats']) ? payload['stats'] : {},
     truncated: false,
   }) as ToolResultBase;
 }
@@ -60,7 +57,6 @@ export async function executeReadContext(
 async function executeBridgeBackedReadContext(
   input: ReadContextInput,
   context: BlueprintHelperToolContext,
-  format: string,
 ): Promise<ToolResultBase> {
   const request = buildReadContextBridgeRequest(input);
   if (!request.ok) {
@@ -100,10 +96,7 @@ async function executeBridgeBackedReadContext(
   return successRead('read_context', buildReadContextTarget(input), {
     schema: 'ReadContextPack.v1',
     read_type: input.read_type,
-    format,
-    scope: request.scope,
     payload,
-    stats: deriveReadContextStats(input, payload),
     truncated: false,
   }) as ToolResultBase;
 }

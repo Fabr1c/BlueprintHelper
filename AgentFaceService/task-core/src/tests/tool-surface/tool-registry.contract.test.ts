@@ -204,17 +204,27 @@ test('read_context registry output strips GUID fields from Bridge logic_json pay
           success: true,
           request_id: 'read_context_redaction',
           result: {
-            schema: 'BlueprintHelper.LogicGraph',
-            nodes: [{
-              id: 'Node_0',
-              node_guid: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-              ref: 'BeginPlay',
-              node_ref: 'nodes[0]',
-            }],
-            links: [{
-              link_ref: 'links[0]',
-              target_key: 'graph:EventGraph:node:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-            }],
+            schema: 'LogicJson.v1',
+            format: 'logic_json',
+            scope: 'target_graph',
+            logic: {
+              asset_path: '/Game/BP_Door',
+              graph: 'EventGraph',
+              nodes: [{
+                id: 'Node_0',
+                node_guid: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                ref: 'BeginPlay',
+                node_ref: 'nodes[0]',
+              }],
+              links: [{
+                link_ref: 'links[0]',
+                target_key: 'graph:EventGraph:node:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+              }],
+            },
+            stats: {
+              nodes: 1,
+              exec_links: 0,
+            },
           },
         };
       },
@@ -225,6 +235,16 @@ test('read_context registry output strips GUID fields from Bridge logic_json pay
   assert.equal(result.ok, true);
   assertNoUnsafeAgentFacingKeys(result);
   assert.match(JSON.stringify(result), /nodes\[0\]/);
+  const data = result.data as Record<string, unknown>;
+  const payload = data['payload'] as Record<string, unknown>;
+  const logic = payload['logic'] as Record<string, unknown>;
+  assert.equal(Object.hasOwn(data, 'scope'), false);
+  assert.equal(Object.hasOwn(data, 'stats'), false);
+  assert.equal(payload['schema'], 'LogicJson.v1');
+  assert.equal(payload['scope'], 'target_graph');
+  assert.deepEqual(payload['stats'], { nodes: 1, exec_links: 0 });
+  assert.equal(Object.hasOwn(payload, 'format'), false);
+  assert.equal(Object.hasOwn(logic, 'asset_path'), false);
 });
 
 test('read_context asset summary removes payload path and name but keeps asset class', async () => {
@@ -237,9 +257,6 @@ test('read_context asset summary removes payload path and name but keeps asset c
     target: {
       asset_path: '/Game/ThirdPerson/Blueprints/BP_ThirdPersonCharacter',
       target_type: 'blueprint',
-    },
-    view: {
-      format: 'summary',
     },
   }, {
     cwd: process.cwd(),
@@ -272,6 +289,7 @@ test('read_context asset summary removes payload path and name but keeps asset c
   });
   const data = result.data as Record<string, unknown>;
   const payload = data['payload'] as Record<string, unknown>;
+  assert.equal(Object.hasOwn(data, 'format'), false);
   assert.equal(payload['schema'], 'AssetContext.v1');
   assert.equal(payload['class'], 'Blueprint');
   assert.equal(payload['parent_class'], "TemplateCharacter'");
@@ -359,7 +377,7 @@ test('read context capabilities is a compact local discovery tool', async () => 
   assert.equal(result.ok, true);
   assert.equal(result.operation, 'read_context_capabilities');
   assert.equal(result.data?.['schema'], 'ReadContextCapabilities.v1');
-  assert.deepEqual(result.data?.['formats'], ['summary', 'logic_json', 'logic_md']);
+  assert.deepEqual(result.data?.['formats'], ['logic_json', 'logic_md']);
   assert.deepEqual(result.data?.['read_type_ids'], [
     'asset_context',
     'blueprint_logic',
@@ -392,9 +410,12 @@ test('read context capabilities is a compact local discovery tool', async () => 
   const assetContext = readTypes.find((entry) => entry['read_type'] === 'asset_context');
   assert.ok(assetContext);
   assert.deepEqual(assetContext['unsupported_formats'], ['logic_json', 'logic_md']);
+  const graphContext = readTypes.find((entry) => entry['read_type'] === 'graph_context');
+  assert.ok(graphContext);
+  assert.deepEqual(graphContext['unsupported_formats'], ['logic_md']);
 });
 
-test('read_context rejects capability discovery as a view format', () => {
+test('read_context rejects removed and unsupported view formats', () => {
   assert.throws(() => ReadContextInputSchema.parse({
     schema: 'BlueprintHelper.ReadSpec.v1',
     read_type: 'asset_context',
@@ -406,6 +427,43 @@ test('read_context rejects capability discovery as a view format', () => {
       format: 'schema',
     },
   }), /Invalid enum value/);
+
+  assert.throws(() => ReadContextInputSchema.parse({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'blueprint_logic',
+    target: {
+      asset_path: '/Game/BP_Player',
+      target_type: 'blueprint',
+    },
+    view: {
+      format: 'summary',
+    },
+  }), /Invalid enum value/);
+
+  assert.throws(() => ReadContextInputSchema.parse({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'asset_context',
+    target: {
+      asset_path: '/Game/BP_Player',
+      target_type: 'asset',
+    },
+    view: {
+      format: 'logic_json',
+    },
+  }), /view\.format is only supported/);
+
+  assert.throws(() => ReadContextInputSchema.parse({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'graph_context',
+    target: {
+      asset_path: '/Game/BP_Player',
+      target_type: 'graph',
+      target_name: 'EventGraph',
+    },
+    view: {
+      format: 'logic_md',
+    },
+  }), /graph_context only supports logic_json/);
 });
 
 test('function chain context registry dispatch strips forbidden identity fields from Bridge payload', async () => {

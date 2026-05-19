@@ -4,8 +4,5 @@
   "target": {
     "asset_path": "__ASSET_PATH__",
     "target_type": "asset"
-  },
-  "view": {
-    "format": "summary"
   }
 }

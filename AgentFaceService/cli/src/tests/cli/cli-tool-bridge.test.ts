@@ -71,7 +71,7 @@ test('direct read context capabilities stays local and returns compact matrix ar
   const toolResult = fullResult.toolResult as Record<string, unknown>;
   const data = toolResult.data as Record<string, unknown>;
   assert.equal(data.schema, 'ReadContextCapabilities.v1');
-  assert.deepEqual(data.formats, ['summary', 'logic_json', 'logic_md']);
+  assert.deepEqual(data.formats, ['logic_json', 'logic_md']);
   assert.equal(Array.isArray(data.read_types), true);
   assert.equal(JSON.stringify(data).includes('bridge_command'), false);
 });
