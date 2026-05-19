@@ -58,6 +58,16 @@ void SBlueprintHelperReviewMyBlueprintPanel::OnGetChildren(
 	}
 }
 
+void SBlueprintHelperReviewMyBlueprintPanel::RequestRowsRefresh() const
+{
+	if (!TreeView.IsValid())
+	{
+		return;
+	}
+
+	TreeView->RequestTreeRefresh();
+}
+
 void SBlueprintHelperReviewMyBlueprintPanel::ExpandItemRecursive(
 	TSharedPtr<FBlueprintHelperReviewMyBlueprintPresenter::FRowItem> Item) const
 {

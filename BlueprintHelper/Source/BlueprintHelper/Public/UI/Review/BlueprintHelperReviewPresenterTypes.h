@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Input/Reply.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
+#include "UI/Review/BlueprintHelperReviewPanelData.h"
 #include "UObject/StrongObjectPtr.h"
 
 class SGraphEditor;
@@ -47,8 +48,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperReviewGraphPresenterArgs
 	FString RequestedGraphName;
 	bool bAllowGraphNavigationWithoutGraphReview = false;
 	TFunction<void(const FString&)> AddDebugMessage;
-	TFunction<FReply(const FString&)> OnAcceptChangeId;
-	TFunction<FReply(const FString&)> OnRejectChangeId;
+	TFunction<FReply(const FBlueprintHelperReviewActionIntent&)> OnReviewActionIntent;
 	TFunction<FSlateColor(EBlueprintHelperReviewChangeKind)> GetChangeColor;
 };
 
@@ -97,8 +97,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperReviewPanelSurfacePresenterArgs
 	const TArray<TSharedPtr<FBlueprintHelperReviewVisibleChange>>* ChangeItems = nullptr;
 	TSharedPtr<FBlueprintHelperReviewVisibleChange> SelectedChange;
 	TFunction<void(const FString&)> AddDebugMessage;
-	TFunction<FReply(const FString&)> OnAcceptChangeId;
-	TFunction<FReply(const FString&)> OnRejectChangeId;
+	TFunction<FReply(const FBlueprintHelperReviewActionIntent&)> OnReviewActionIntent;
 	TFunction<FSlateColor(EBlueprintHelperReviewChangeKind)> GetChangeColor;
 	TFunction<FSlateColor()> GetSelectedDiffColor;
 	FBlueprintHelperReviewResolveRowGeometry ResolveRowGeometry;

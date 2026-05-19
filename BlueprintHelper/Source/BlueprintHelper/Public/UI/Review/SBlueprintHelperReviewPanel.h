@@ -7,6 +7,8 @@
 #include "Systems/Review/BlueprintHelperReviewActionService.h"
 #include "UI/Review/BlueprintHelperReviewAssetContext.h"
 #include "UI/Review/BlueprintHelperReviewAssetPresenters.h"
+#include "UI/Review/BlueprintHelperReviewPanelData.h"
+#include "UI/Review/BlueprintHelperReviewSurfaceViewCoordinator.h"
 #include "UI/Review/BlueprintHelperReviewSurfacePresenter.h"
 #include "Widgets/SCompoundWidget.h"
 
@@ -97,7 +99,8 @@ private:
 	FReply OnCopyDebugBundlePath() const;
 	FReply OnLoadDebugBundle();
 	FReply OnCaptureFocusDebugBundle();
-	EActiveTimerReturnType TickDebugFocusTraversal(double InCurrentTime, float InDeltaTime);
+	void AdvanceDebugFocusTraversal();
+	void ProcessDebugFocusTraversalGeometryEvent();
 	bool IsDebugFocusTraversalChangeReady(FReviewChangeItem Item, FString& OutReason);
 	void EnsureDebugBundleSession();
 	void AppendDebugBundleEvent(const TSharedRef<FJsonObject>& Event);
@@ -124,8 +127,16 @@ private:
 	TSharedRef<SWidget> BuildDetailsPanelDiffFrames();
 	TSharedRef<SWidget> BuildDiffRow(FReviewChangeItem Item, bool bShowActions);
 	TSharedRef<SWidget> BuildDiffFrame(FReviewChangeItem Item, const TSharedRef<SWidget>& Content, bool bShowActions);
+	void ConfigureSurfaceViewCoordinator();
 	void RefreshDiffStackWidgets();
 	void RefreshMainWorkspaceAfterReviewStateChanged();
+	void RefreshReviewUiAfterStateChanged(const FString& Reason, const FString& PreferredAssetPath = FString());
+	void RebuildReviewPanelStatePreservingTransient();
+	void SyncReviewRowHighlightStates(const FString& PreferredAssetPath = FString());
+	void OnRowHighlightStateChanged(
+		const FString& AssetPath,
+		EBlueprintHelperReviewSurface Surface,
+		uint64 Revision);
 	void RefreshSurfaceOverlay(EBlueprintHelperReviewSurface Surface);
 	void OnRegisteredRowGeometryChanged(const FString& AssetPath, EBlueprintHelperReviewSurface Surface);
 	void OnSurfaceGeometryInvalidated(EBlueprintHelperReviewSurface Surface);
@@ -143,8 +154,9 @@ private:
 	TArray<FBlueprintHelperReviewVisibleChange> BuildPendingChangeSnapshot() const;
 	static FString BuildVisibleChangeRefreshSignature(const TArray<FBlueprintHelperReviewVisibleChange>& Changes);
 	void SelectNextChangeAfterRemoval(const FString& PreferredAssetPath, int32 RemovedIndex);
-	FReply OnAcceptChangeId(const FString& ChangeId);
-	FReply OnRejectChangeId(const FString& ChangeId);
+	FReply OnReviewActionIntent(const FBlueprintHelperReviewActionIntent& Intent);
+	EBlueprintHelperReviewChangeStatus GetEffectiveChangeStatus(FReviewChangeItem Item) const;
+	FString GetEffectiveNeedsActionReason(FReviewChangeItem Item) const;
 
 	FReply OnAcceptSelected();
 	FReply OnRejectSelected();
@@ -161,12 +173,10 @@ private:
 	static FString BuildReviewActionNotificationLabel(FReviewChangeItem Item);
 	void QueueRejectChange(FReviewChangeItem Item, bool bShowIndividualNotification = true);
 	void RecordRejectBatchResult(const FString& ChangeId, bool bSucceeded);
-	EActiveTimerReturnType TickAsyncRejectPrepare(double InCurrentTime, float InDeltaTime);
-	EActiveTimerReturnType TickAsyncRejectMutation(double InCurrentTime, float InDeltaTime);
+	void StartNextRejectPrepare();
 	void HandlePreparedRejectReady(const FString& ChangeId, const FBlueprintHelperReviewRejectOptions& PreparedOptions);
 	void ExecutePreparedRejectMutation(const FString& ChangeId);
 	void FinishAsyncReject(const FString& ChangeId);
-	EActiveTimerReturnType TickDetailsGeometryRetry(double InCurrentTime, float InDeltaTime);
 
 	FText GetSelectedTitle() const;
 	FText GetSelectedBefore() const;
@@ -198,6 +208,7 @@ private:
 	TSharedPtr<FBlueprintHelperReviewPanelPresenter> ReviewPanelPresenter;
 
 	TArray<FReviewChangeItem> ChangeItems;
+	FBlueprintHelperReviewPanelState ReviewPanelState;
 	TArray<FReviewTreeItemPtr> ChangeTreeRootItems;
 	TSharedPtr<STreeView<FReviewTreeItemPtr>> ChangeTreeView;
 	TSharedPtr<SBox> GraphEditorBox;
@@ -213,31 +224,28 @@ private:
 	FString LastVisibleChangeRefreshSignature;
 	FDelegateHandle PendingReviewChangedHandle;
 	FDelegateHandle RowGeometryChangedHandle;
+	FDelegateHandle RowHighlightStateChangedHandle;
 	TArray<FString> DebugMessages;
 	TSharedPtr<SMultiLineEditableTextBox> DebugMessageTextBox;
 	TSharedPtr<SEditableTextBox> DebugBundlePathTextBox;
 	FString DebugBundleSessionId;
 	FString DebugBundlePath;
 	TArray<FString> PendingRejectChangeIds;
-	TSet<FString> RejectActionInProgressChangeIds;
 	TMap<FString, FBlueprintHelperReviewRejectOptions> PreparedRejectOptionsByChangeId;
 	TMap<FString, TWeakPtr<SNotificationItem>> ReviewActionNotifications;
 	TMap<FString, FString> RejectBatchKeyByChangeId;
 	TMap<FString, FReviewActionBatchNotificationState> RejectBatchNotifications;
 	FString ActiveRejectChangeId;
 	bool bAsyncRejectPrepareActive = false;
-	bool bAsyncRejectMutationScheduled = false;
 	TArray<FReviewChangeItem> DebugFocusTraversalItems;
 	int32 DebugFocusTraversalIndex = 0;
-	int32 DebugFocusTraversalGeometryRetryCount = 0;
 	bool bDebugFocusTraversalAwaitingGeometry = false;
 	bool bDebugFocusTraversalActive = false;
 	FString RequestedGraphNavigationChangeId;
 	FString RequestedGraphNavigationGraphName;
 	bool bAllowGraphNavigationWithoutGraphReview = false;
-	int32 DetailsGeometryRetryCount = 0;
-	bool bDetailsGeometryRetryActive = false;
 	FBlueprintHelperReviewAssetContext ReviewAssetContext;
+	FBlueprintHelperReviewSurfaceViewCoordinator SurfaceViewCoordinator;
 	EBlueprintHelperReviewSurface DetailsSurface = EBlueprintHelperReviewSurface::Unknown;
 	FBlueprintHelperReviewGraphPresenterState GraphPresenterState;
 	FBlueprintHelperReviewBlueprintComponentsPresenter::FState ComponentsPresenterState;

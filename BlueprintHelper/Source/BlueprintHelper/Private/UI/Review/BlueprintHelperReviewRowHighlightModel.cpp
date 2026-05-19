@@ -1,7 +1,8 @@
-// BlueprintHelper Review row highlight model.
+﻿// BlueprintHelper Review row highlight model.
 
 #include "UI/Review/BlueprintHelperReviewRowHighlightModel.h"
 #include "UI/Review/BlueprintHelperReviewAssetContext.h"
+#include "UI/Review/BlueprintHelperReviewPanelStateService.h"
 #include "UI/Review/BlueprintHelperReviewSurfaceRouter.h"
 
 #include "Brushes/SlateRoundedBoxBrush.h"
@@ -31,6 +32,52 @@ TSet<FString>& FBlueprintHelperReviewRowHighlightModel::GetEmittedRowHighlightDe
 {
 	static TSet<FString> Keys;
 	return Keys;
+}
+
+FBlueprintHelperReviewRowHighlightStateChanged&
+FBlueprintHelperReviewRowHighlightModel::GetStateChangedDelegate()
+{
+	static FBlueprintHelperReviewRowHighlightStateChanged Delegate;
+	return Delegate;
+}
+
+uint64& FBlueprintHelperReviewRowHighlightModel::GetStateRevisionCounter()
+{
+	static uint64 Revision = 0;
+	return Revision;
+}
+
+uint64 FBlueprintHelperReviewRowHighlightModel::NextStateRevision()
+{
+	uint64& Revision = GetStateRevisionCounter();
+	++Revision;
+	return Revision;
+}
+
+FDelegateHandle FBlueprintHelperReviewRowHighlightModel::AddStateChangedHandler(
+	FBlueprintHelperReviewRowHighlightStateChanged::FDelegate InDelegate)
+{
+	return GetStateChangedDelegate().Add(MoveTemp(InDelegate));
+}
+
+void FBlueprintHelperReviewRowHighlightModel::RemoveStateChangedHandler(FDelegateHandle InHandle)
+{
+	if (InHandle.IsValid())
+	{
+		GetStateChangedDelegate().Remove(InHandle);
+	}
+}
+
+void FBlueprintHelperReviewRowHighlightModel::BroadcastStateChanged(
+	const FString& AssetPath,
+	EBlueprintHelperReviewSurface Surface,
+	uint64 Revision)
+{
+	if (!IsRowHighlightSurface(Surface))
+	{
+		return;
+	}
+	GetStateChangedDelegate().Broadcast(AssetPath, Surface, Revision);
 }
 
 FString FBlueprintHelperReviewRowHighlightModel::NormalizeGeometrySearchText(FString Text)
@@ -150,6 +197,18 @@ FString FBlueprintHelperReviewRowHighlightModel::BuildRowHighlightStateKey(
 	EBlueprintHelperReviewSurface Surface)
 {
 	return FString::Printf(TEXT("%s|%s"), *AssetPath, BlueprintHelperReviewSurfaceToString(Surface));
+}
+
+void FBlueprintHelperReviewRowHighlightModel::AddStateAssetPath(
+	const FString& AssetPath,
+	TArray<FString>& OutAssetPaths)
+{
+	FString TrimmedAssetPath = AssetPath;
+	TrimmedAssetPath.TrimStartAndEndInline();
+	if (!TrimmedAssetPath.IsEmpty())
+	{
+		OutAssetPaths.AddUnique(TrimmedAssetPath);
+	}
 }
 
 FString FBlueprintHelperReviewRowHighlightModel::ExtractReadableTail(FString Text)
@@ -301,7 +360,7 @@ bool FBlueprintHelperReviewRowHighlightModel::FindRowHighlightEntry(
 	return false;
 }
 
-bool FBlueprintHelperReviewRowHighlightModel::FindActionRowHighlightEntry(
+bool FBlueprintHelperReviewRowHighlightModel::FindExactRowHighlightEntry(
 	const FString& AssetPath,
 	EBlueprintHelperReviewSurface Surface,
 	const FString& SearchText,
@@ -312,84 +371,62 @@ bool FBlueprintHelperReviewRowHighlightModel::FindActionRowHighlightEntry(
 		return true;
 	}
 
-	const FRowHighlightSurfaceState* State =
-		GetRowHighlightSurfaceStates().Find(BuildRowHighlightStateKey(AssetPath, Surface));
-	if (!State)
+	TArray<FString> LookupTokens;
+	SearchText.ParseIntoArrayWS(LookupTokens);
+	for (const FString& LookupToken : LookupTokens)
 	{
-		return false;
-	}
-
-	bool bFound = false;
-	FString FoundChangeId;
-	for (const TPair<FString, FRowHighlightEntry>& Pair : State->TargetKeyToHighlight)
-	{
-		if (!GeometrySearchTextMatches(Pair.Key, SearchText)
-			&& !GeometrySearchTextMatches(SearchText, Pair.Key))
+		if (LookupToken.IsEmpty() || LookupToken == SearchText)
 		{
 			continue;
 		}
-
-		const FString CandidateChangeId = !Pair.Value.ChangeId.IsEmpty()
-			? Pair.Value.ChangeId
-			: (Pair.Value.Change.IsValid() ? Pair.Value.Change->ChangeId : FString());
-		if (CandidateChangeId.IsEmpty())
+		if (FindRowHighlightEntry(AssetPath, Surface, LookupToken, OutEntry, false))
 		{
-			continue;
-		}
-
-		if (!bFound)
-		{
-			OutEntry = Pair.Value;
-			FoundChangeId = CandidateChangeId;
-			bFound = true;
-			continue;
-		}
-
-		if (FoundChangeId != CandidateChangeId)
-		{
-			return false;
+			return true;
 		}
 	}
 
-	return bFound;
+	return false;
 }
 
-FReply FBlueprintHelperReviewRowHighlightModel::ExecuteHighlightedRowAction(
+bool FBlueprintHelperReviewRowHighlightModel::TryGetRowActionBinding(
 	const FString& AssetPath,
 	EBlueprintHelperReviewSurface Surface,
 	const FString& SearchText,
-	bool bAccept)
+	FBlueprintHelperReviewRowBinding& OutBinding)
+{
+	FRowHighlightEntry Entry;
+	if (!FindExactRowHighlightEntry(AssetPath, Surface, SearchText, Entry))
+	{
+		return false;
+	}
+	OutBinding = Entry.Binding;
+	return OutBinding.IsValid();
+}
+
+FReply FBlueprintHelperReviewRowHighlightModel::DispatchRowAction(
+	const FString& AssetPath,
+	EBlueprintHelperReviewSurface Surface,
+	const FString& SearchText,
+	EBlueprintHelperReviewActionIntentKind Action,
+	const FString& SourceWidget)
 {
 	const FRowHighlightSurfaceState* State =
 		GetRowHighlightSurfaceStates().Find(BuildRowHighlightStateKey(AssetPath, Surface));
-	if (!State)
+	if (!State || !State->OnReviewActionIntent)
 	{
 		return FReply::Handled();
 	}
 
-	FRowHighlightEntry Entry;
-	if (!FindActionRowHighlightEntry(AssetPath, Surface, SearchText, Entry))
-	{
-		return FReply::Handled();
-	}
-	if (!Entry.Change.IsValid())
+	FBlueprintHelperReviewRowBinding Binding;
+	if (!TryGetRowActionBinding(AssetPath, Surface, SearchText, Binding))
 	{
 		return FReply::Handled();
 	}
 
-	const FString ChangeId = !Entry.ChangeId.IsEmpty()
-		? Entry.ChangeId
-		: (Entry.Change.IsValid() ? Entry.Change->ChangeId : FString());
-	if (ChangeId.IsEmpty())
-	{
-		return FReply::Handled();
-	}
-
-	if (bAccept)
-	{
-		return State->OnAcceptChangeId ? State->OnAcceptChangeId(ChangeId) : FReply::Handled();
-	}
-	return State->OnRejectChangeId ? State->OnRejectChangeId(ChangeId) : FReply::Handled();
+	const FBlueprintHelperReviewActionIntent Intent = Action == EBlueprintHelperReviewActionIntentKind::Accept
+		? FBlueprintHelperReviewActionIntent::Accept(Binding, SourceWidget)
+		: FBlueprintHelperReviewActionIntent::Reject(Binding, SourceWidget);
+	return State->OnReviewActionIntent(Intent);
 }
 
 FSlateColor FBlueprintHelperReviewRowHighlightModel::ResolveRowHighlightColor(
@@ -398,7 +435,7 @@ FSlateColor FBlueprintHelperReviewRowHighlightModel::ResolveRowHighlightColor(
 	const FString& SearchText)
 {
 	FRowHighlightEntry Entry;
-	if (!FindRowHighlightEntry(AssetPath, Surface, SearchText, Entry, true))
+	if (!FindExactRowHighlightEntry(AssetPath, Surface, SearchText, Entry))
 	{
 		return FSlateColor(FLinearColor::Transparent);
 	}
@@ -418,7 +455,7 @@ EVisibility FBlueprintHelperReviewRowHighlightModel::ResolveRowActionsVisibility
 	const FString& SearchText)
 {
 	FRowHighlightEntry Entry;
-	return FindActionRowHighlightEntry(AssetPath, Surface, SearchText, Entry) && Entry.bSelected
+	return FindExactRowHighlightEntry(AssetPath, Surface, SearchText, Entry) && Entry.bSelected
 		? EVisibility::Visible
 		: EVisibility::Collapsed;
 }
@@ -461,10 +498,12 @@ TSharedRef<SWidget> FBlueprintHelperReviewRowHighlightModel::BuildComponentRowAc
 				.Text(FText::FromString(TEXT("Accept")))
 				.OnClicked_Lambda([AssetPath, Surface, SearchText]()
 				{
-					return FBlueprintHelperReviewRowHighlightModel::AcceptHighlightedRow(
+					return FBlueprintHelperReviewRowHighlightModel::DispatchRowAction(
 						AssetPath,
 						Surface,
-						SearchText);
+						SearchText,
+						EBlueprintHelperReviewActionIntentKind::Accept,
+						TEXT("row_highlight_overlay"));
 				})
 			]
 			+ SHorizontalBox::Slot()
@@ -474,10 +513,12 @@ TSharedRef<SWidget> FBlueprintHelperReviewRowHighlightModel::BuildComponentRowAc
 				.Text(FText::FromString(TEXT("Reject")))
 				.OnClicked_Lambda([AssetPath, Surface, SearchText]()
 				{
-					return FBlueprintHelperReviewRowHighlightModel::RejectHighlightedRow(
+					return FBlueprintHelperReviewRowHighlightModel::DispatchRowAction(
 						AssetPath,
 						Surface,
-						SearchText);
+						SearchText,
+						EBlueprintHelperReviewActionIntentKind::Reject,
+						TEXT("row_highlight_overlay"));
 				})
 			]
 		];
@@ -565,7 +606,10 @@ void FBlueprintHelperReviewRowHighlightModel::InvalidateSurfaceState(
 	{
 		return;
 	}
-	GetRowHighlightSurfaceStates().Remove(BuildRowHighlightStateKey(AssetPath, Surface));
+	if (GetRowHighlightSurfaceStates().Remove(BuildRowHighlightStateKey(AssetPath, Surface)) > 0)
+	{
+		BroadcastStateChanged(AssetPath, Surface, NextStateRevision());
+	}
 }
 
 void FBlueprintHelperReviewRowHighlightModel::InvalidateAssetStates(const FString& AssetPath)
@@ -575,17 +619,22 @@ void FBlueprintHelperReviewRowHighlightModel::InvalidateAssetStates(const FStrin
 		return;
 	}
 
-	TArray<FString> KeysToRemove;
+	TArray<TPair<FString, EBlueprintHelperReviewSurface>> StatesToRemove;
 	for (const TPair<FString, FRowHighlightSurfaceState>& Pair : GetRowHighlightSurfaceStates())
 	{
 		if (Pair.Value.AssetPath == AssetPath || Pair.Key.StartsWith(AssetPath + TEXT("|")))
 		{
-			KeysToRemove.Add(Pair.Key);
+			StatesToRemove.Add(TPair<FString, EBlueprintHelperReviewSurface>(
+				Pair.Value.AssetPath,
+				Pair.Value.Surface));
 		}
 	}
-	for (const FString& Key : KeysToRemove)
+	for (const TPair<FString, EBlueprintHelperReviewSurface>& StateToRemove : StatesToRemove)
 	{
-		GetRowHighlightSurfaceStates().Remove(Key);
+		if (GetRowHighlightSurfaceStates().Remove(BuildRowHighlightStateKey(StateToRemove.Key, StateToRemove.Value)) > 0)
+		{
+			BroadcastStateChanged(StateToRemove.Key, StateToRemove.Value, NextStateRevision());
+		}
 	}
 }
 
@@ -636,152 +685,183 @@ TMap<FString, FBlueprintHelperReviewRowHighlight> FBlueprintHelperReviewRowHighl
 	return TargetKeyToHighlight;
 }
 
+void FBlueprintHelperReviewRowHighlightModel::RebuildSurfaceState(
+	const FBlueprintHelperReviewPanelSurfacePresenterArgs& Args,
+	EBlueprintHelperReviewSurface Surface,
+	bool (*Predicate)(const FBlueprintHelperReviewVisibleChange&),
+	const FString& PreferredAssetPath,
+	bool bEmitGeometryDiagnostics)
+{
+	if (!IsRowHighlightSurface(Surface) || !Args.ChangeItems)
+	{
+		return;
+	}
+
+	const FString ContextAssetPath = Args.AssetContext ? Args.AssetContext->AssetPath : FString();
+	const FString SelectedAssetPath = Args.SelectedChange.IsValid() ? Args.SelectedChange->AssetPath : FString();
+	TArray<FString> AssetPaths;
+	AddStateAssetPath(PreferredAssetPath, AssetPaths);
+	AddStateAssetPath(ContextAssetPath, AssetPaths);
+	AddStateAssetPath(SelectedAssetPath, AssetPaths);
+	for (const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Item : *Args.ChangeItems)
+	{
+		if (Item.IsValid())
+		{
+			AddStateAssetPath(Item->AssetPath, AssetPaths);
+		}
+	}
+
+	TSet<FString> DesiredStateKeys;
+	for (const FString& AssetPath : AssetPaths)
+	{
+		const FString StateKey = BuildRowHighlightStateKey(AssetPath, Surface);
+		DesiredStateKeys.Add(StateKey);
+
+		FRowHighlightSurfaceState State;
+		State.AssetPath = AssetPath;
+		State.Surface = Surface;
+		State.Revision = NextStateRevision();
+		State.OnReviewActionIntent = Args.OnReviewActionIntent;
+		State.GetChangeColor = Args.GetChangeColor;
+
+		TArray<TSharedPtr<FBlueprintHelperReviewVisibleChange>> HighlightedItems;
+		TMap<FString, FString> PrimaryTargetByChangeId;
+		for (const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Item : *Args.ChangeItems)
+		{
+			if (!Item.IsValid() || Item->AssetPath != AssetPath)
+			{
+				continue;
+			}
+
+			const FBlueprintHelperReviewSurfaceRouteDecision RouteDecision =
+				FBlueprintHelperReviewSurfacePresenterRouter::RouteChangeToSurface(*Item, Surface);
+			const EBlueprintHelperReviewAssetKind AssetKind = Args.AssetContext
+				? Args.AssetContext->AssetKind
+				: EBlueprintHelperReviewAssetKind::Unknown;
+			if (bEmitGeometryDiagnostics && Args.AddDebugMessage)
+			{
+				EmitDedupedRowHighlightDebug(
+					Args.AddDebugMessage,
+					FBlueprintHelperReviewSurfacePresenterRouter::BuildRouteDebugSummary(
+						*Item,
+						Surface,
+						RouteDecision,
+						BlueprintHelperReviewAssetKindToString(AssetKind)),
+					Surface,
+					Item->ChangeId,
+					RouteDecision.bShouldShow ? TEXT("shown") : TEXT("hidden"),
+					RouteDecision.Reason);
+			}
+			if (!RouteDecision.bShouldShow || !Predicate(*Item))
+			{
+				continue;
+			}
+
+			TArray<FString> Keys;
+			CollectRowHighlightKeys(*Item, Surface, Keys);
+			if (Keys.Num() == 0)
+			{
+				continue;
+			}
+
+			FString PrimaryTarget = GetReviewListTargetText(Item, Surface);
+			if (PrimaryTarget.IsEmpty())
+			{
+				PrimaryTarget = Keys[0];
+			}
+			PrimaryTargetByChangeId.Add(Item->ChangeId, PrimaryTarget);
+
+			for (const FString& Key : Keys)
+			{
+				FRowHighlightEntry Entry;
+				Entry.ChangeId = Item->ChangeId;
+				Entry.TargetKey = Key;
+				Entry.ChangeKind = Item->ChangeKind;
+				Entry.bSelected = IsSameChange(Item, Args.SelectedChange);
+				Entry.Change = Item;
+				Entry.Binding = FBlueprintHelperReviewPanelStateService::MakeChangeBinding(*Item, Surface, Key);
+				State.TargetKeyToHighlight.Add(Key, Entry);
+			}
+			HighlightedItems.Add(Item);
+		}
+
+		GetRowHighlightSurfaceStates().Add(StateKey, State);
+		BroadcastStateChanged(AssetPath, Surface, State.Revision);
+
+		const bool bShouldEmitGeometryDiagnostics =
+			bEmitGeometryDiagnostics
+			&& (AssetPath == ContextAssetPath
+				|| AssetPath == SelectedAssetPath
+				|| AssetPath == PreferredAssetPath);
+		if (!bShouldEmitGeometryDiagnostics)
+		{
+			continue;
+		}
+
+		for (const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Item : HighlightedItems)
+		{
+			FBlueprintHelperReviewSurfaceGeometryAnchor Anchor;
+			const bool bResolved = Args.ResolveRowGeometry.IsBound()
+				&& Args.ResolveRowGeometry.Execute(*Item, Surface, Anchor)
+				&& Anchor.bIsValid;
+			const FString TargetText = PrimaryTargetByChangeId.FindRef(Item->ChangeId);
+
+			if (bResolved)
+			{
+				EmitDedupedRowHighlightDebug(
+					Args.AddDebugMessage,
+					FString::Printf(
+						TEXT("ReviewRowHighlight change=%s surface=%s target=\"%s\" result=shown mode=row_background"),
+						*Item->ChangeId,
+						SurfaceDebugName(Surface),
+						*TargetText),
+					Surface,
+					Item->ChangeId,
+					TEXT("shown"),
+					TEXT("row_background"));
+				continue;
+			}
+
+			const FString Reason = Anchor.Reason.IsEmpty() ? TEXT("row_not_visible") : Anchor.Reason;
+			EmitDedupedRowHighlightDebug(
+				Args.AddDebugMessage,
+				FString::Printf(
+					TEXT("ReviewRowHighlight change=%s surface=%s target=\"%s\" result=pending reason=%s"),
+					*Item->ChangeId,
+					SurfaceDebugName(Surface),
+					*TargetText,
+					*Reason),
+				Surface,
+				Item->ChangeId,
+				TEXT("pending"),
+				Reason);
+		}
+	}
+
+	TArray<TPair<FString, EBlueprintHelperReviewSurface>> StaleStates;
+	for (const TPair<FString, FRowHighlightSurfaceState>& Pair : GetRowHighlightSurfaceStates())
+	{
+		if (Pair.Value.Surface == Surface && !DesiredStateKeys.Contains(Pair.Key))
+		{
+			StaleStates.Add(TPair<FString, EBlueprintHelperReviewSurface>(
+				Pair.Value.AssetPath,
+				Pair.Value.Surface));
+		}
+	}
+	for (const TPair<FString, EBlueprintHelperReviewSurface>& StaleState : StaleStates)
+	{
+		if (GetRowHighlightSurfaceStates().Remove(BuildRowHighlightStateKey(StaleState.Key, StaleState.Value)) > 0)
+		{
+			BroadcastStateChanged(StaleState.Key, StaleState.Value, NextStateRevision());
+		}
+	}
+}
+
 TSharedRef<SWidget> FBlueprintHelperReviewRowHighlightModel::BuildRowHighlightOverlay(
 	const FBlueprintHelperReviewPanelSurfacePresenterArgs& Args,
 	EBlueprintHelperReviewSurface Surface,
 	bool (*Predicate)(const FBlueprintHelperReviewVisibleChange&))
 {
-	if (!IsRowHighlightSurface(Surface) || !Args.ChangeItems)
-	{
-		return SNullWidget::NullWidget;
-	}
-
-	const FString ContextAssetPath = Args.AssetContext ? Args.AssetContext->AssetPath : FString();
-	const FString SelectedAssetPath = Args.SelectedChange.IsValid() ? Args.SelectedChange->AssetPath : FString();
-	const FString CurrentAssetPath = ContextAssetPath.IsEmpty() ? SelectedAssetPath : ContextAssetPath;
-	const FString FilterAssetPath = SelectedAssetPath.IsEmpty() ? CurrentAssetPath : SelectedAssetPath;
-	FRowHighlightSurfaceState State;
-	State.AssetPath = CurrentAssetPath;
-	State.Surface = Surface;
-	State.OnAcceptChangeId = Args.OnAcceptChangeId;
-	State.OnRejectChangeId = Args.OnRejectChangeId;
-	State.GetChangeColor = Args.GetChangeColor;
-
-	TArray<TSharedPtr<FBlueprintHelperReviewVisibleChange>> HighlightedItems;
-	TMap<FString, FString> PrimaryTargetByChangeId;
-
-	for (const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Item : *Args.ChangeItems)
-	{
-		if (!Item.IsValid())
-		{
-			continue;
-		}
-		if ((!CurrentAssetPath.IsEmpty() || !FilterAssetPath.IsEmpty())
-			&& Item->AssetPath != CurrentAssetPath
-			&& Item->AssetPath != FilterAssetPath)
-		{
-			continue;
-		}
-
-		const FBlueprintHelperReviewSurfaceRouteDecision RouteDecision =
-			FBlueprintHelperReviewSurfacePresenterRouter::RouteChangeToSurface(*Item, Surface);
-		if (Args.AddDebugMessage)
-		{
-			const EBlueprintHelperReviewAssetKind AssetKind = Args.AssetContext
-				? Args.AssetContext->AssetKind
-				: EBlueprintHelperReviewAssetKind::Unknown;
-			EmitDedupedRowHighlightDebug(
-				Args.AddDebugMessage,
-				FBlueprintHelperReviewSurfacePresenterRouter::BuildRouteDebugSummary(
-					*Item,
-					Surface,
-					RouteDecision,
-					BlueprintHelperReviewAssetKindToString(AssetKind)),
-				Surface,
-				Item->ChangeId,
-				RouteDecision.bShouldShow ? TEXT("shown") : TEXT("hidden"),
-				RouteDecision.Reason);
-		}
-		if (!RouteDecision.bShouldShow || !Predicate(*Item))
-		{
-			continue;
-		}
-
-		TArray<FString> Keys;
-		CollectRowHighlightKeys(*Item, Surface, Keys);
-		if (Keys.Num() == 0)
-		{
-			continue;
-		}
-
-		FString PrimaryTarget = GetReviewListTargetText(Item, Surface);
-		if (PrimaryTarget.IsEmpty())
-		{
-			PrimaryTarget = Keys[0];
-		}
-		PrimaryTargetByChangeId.Add(Item->ChangeId, PrimaryTarget);
-
-		for (const FString& Key : Keys)
-		{
-			FRowHighlightEntry Entry;
-			Entry.ChangeId = Item->ChangeId;
-			Entry.TargetKey = Key;
-			Entry.ChangeKind = Item->ChangeKind;
-			Entry.bSelected = IsSameChange(Item, Args.SelectedChange);
-			Entry.Change = Item;
-			State.TargetKeyToHighlight.Add(Key, Entry);
-		}
-		HighlightedItems.Add(Item);
-	}
-
-	GetRowHighlightSurfaceStates().Add(
-		BuildRowHighlightStateKey(CurrentAssetPath, Surface),
-		State);
-	if (!FilterAssetPath.IsEmpty() && FilterAssetPath != CurrentAssetPath)
-	{
-		GetRowHighlightSurfaceStates().Add(
-			BuildRowHighlightStateKey(FilterAssetPath, Surface),
-			State);
-	}
-	for (const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Item : HighlightedItems)
-	{
-		if (Item.IsValid() && !Item->AssetPath.IsEmpty() && Item->AssetPath != CurrentAssetPath)
-		{
-			GetRowHighlightSurfaceStates().Add(
-				BuildRowHighlightStateKey(Item->AssetPath, Surface),
-				State);
-		}
-	}
-
-	for (const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Item : HighlightedItems)
-	{
-		FBlueprintHelperReviewSurfaceGeometryAnchor Anchor;
-		const bool bResolved = Args.ResolveRowGeometry.IsBound()
-			&& Args.ResolveRowGeometry.Execute(*Item, Surface, Anchor)
-			&& Anchor.bIsValid;
-		const FString TargetText = PrimaryTargetByChangeId.FindRef(Item->ChangeId);
-
-		if (bResolved)
-		{
-			EmitDedupedRowHighlightDebug(
-				Args.AddDebugMessage,
-				FString::Printf(
-					TEXT("ReviewRowHighlight change=%s surface=%s target=\"%s\" result=shown mode=row_background"),
-					*Item->ChangeId,
-					SurfaceDebugName(Surface),
-					*TargetText),
-				Surface,
-				Item->ChangeId,
-				TEXT("shown"),
-				TEXT("row_background"));
-			continue;
-		}
-
-		const FString Reason = Anchor.Reason.IsEmpty() ? TEXT("row_not_visible") : Anchor.Reason;
-		EmitDedupedRowHighlightDebug(
-			Args.AddDebugMessage,
-			FString::Printf(
-				TEXT("ReviewRowHighlight change=%s surface=%s target=\"%s\" result=pending reason=%s"),
-				*Item->ChangeId,
-				SurfaceDebugName(Surface),
-				*TargetText,
-				*Reason),
-			Surface,
-			Item->ChangeId,
-			TEXT("pending"),
-			Reason);
-	}
-
 	return SNullWidget::NullWidget;
 }
 
@@ -807,26 +887,4 @@ EVisibility FBlueprintHelperReviewRowHighlightModel::GetRowActionsVisibility(
 		SearchText);
 }
 
-FReply FBlueprintHelperReviewRowHighlightModel::AcceptHighlightedRow(
-	const FString& AssetPath,
-	EBlueprintHelperReviewSurface Surface,
-	const FString& SearchText)
-{
-	return ExecuteHighlightedRowAction(
-		AssetPath,
-		Surface,
-		SearchText,
-		true);
-}
 
-FReply FBlueprintHelperReviewRowHighlightModel::RejectHighlightedRow(
-	const FString& AssetPath,
-	EBlueprintHelperReviewSurface Surface,
-	const FString& SearchText)
-{
-	return ExecuteHighlightedRowAction(
-		AssetPath,
-		Surface,
-		SearchText,
-		false);
-}

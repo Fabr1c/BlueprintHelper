@@ -175,8 +175,7 @@ TSharedRef<SWidget> FBlueprintHelperReviewSurfaceFrameBuilder::BuildReviewListOv
 				false,
 				true,
 				FrameColor,
-				Args.OnAcceptChangeId,
-				Args.OnRejectChangeId,
+				Args.OnReviewActionIntent,
 				bSelected)
 		];
 		++StableFrameCount;
@@ -212,8 +211,7 @@ TSharedRef<SWidget> FBlueprintHelperReviewSurfaceFrameBuilder::BuildDiffFrame(
 	bool bShowActions,
 	bool bFillBackground,
 	const FSlateColor& FrameColor,
-	const TFunction<FReply(const FString&)>& OnAcceptChangeId,
-	const TFunction<FReply(const FString&)>& OnRejectChangeId,
+	const TFunction<FReply(const FBlueprintHelperReviewActionIntent&)>& OnReviewActionIntent,
 	bool bSelected)
 {
 	return FBlueprintHelperReviewSurfaceFrameWidgetUtils::BuildDiffFrameWidget(
@@ -222,7 +220,6 @@ TSharedRef<SWidget> FBlueprintHelperReviewSurfaceFrameBuilder::BuildDiffFrame(
 		bShowActions,
 		bFillBackground,
 		FrameColor,
-		OnAcceptChangeId,
-		OnRejectChangeId,
+		OnReviewActionIntent,
 		bSelected);
 }

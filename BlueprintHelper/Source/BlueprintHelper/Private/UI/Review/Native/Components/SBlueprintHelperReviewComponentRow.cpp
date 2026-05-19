@@ -1,4 +1,4 @@
-// BlueprintHelper Review native Components row.
+﻿// BlueprintHelper Review native Components row.
 
 #include "UI/Review/Native/Components/SBlueprintHelperReviewComponentRow.h"
 
@@ -197,10 +197,7 @@ FReply SBlueprintHelperReviewComponentRow::OnAcceptClicked() const
 {
 	if (Item.IsValid())
 	{
-		return FBlueprintHelperReviewRowHighlightModel::AcceptHighlightedRow(
-			AssetPath,
-			EBlueprintHelperReviewSurface::Components,
-			Item->ComponentName);
+		return FBlueprintHelperReviewRowHighlightModel::DispatchRowAction(AssetPath, EBlueprintHelperReviewSurface::Components, Item->ComponentName, EBlueprintHelperReviewActionIntentKind::Accept, TEXT("row_action"));
 	}
 	return FReply::Handled();
 }
@@ -209,10 +206,8 @@ FReply SBlueprintHelperReviewComponentRow::OnRejectClicked() const
 {
 	if (Item.IsValid())
 	{
-		return FBlueprintHelperReviewRowHighlightModel::RejectHighlightedRow(
-			AssetPath,
-			EBlueprintHelperReviewSurface::Components,
-			Item->ComponentName);
+		return FBlueprintHelperReviewRowHighlightModel::DispatchRowAction(AssetPath, EBlueprintHelperReviewSurface::Components, Item->ComponentName, EBlueprintHelperReviewActionIntentKind::Reject, TEXT("row_action"));
 	}
 	return FReply::Handled();
 }
+

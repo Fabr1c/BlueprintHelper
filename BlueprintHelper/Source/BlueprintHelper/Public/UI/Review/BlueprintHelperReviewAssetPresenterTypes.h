@@ -24,6 +24,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperReviewWidgetTreeRowItem
 	FString WidgetClass;
 	int32 Depth = 0;
 	TArray<TSharedPtr<FBlueprintHelperReviewWidgetTreeRowItem>> Children;
+	TWeakPtr<SWidget> RowWidget;
 };
 
 struct BLUEPRINTHELPER_API FBlueprintHelperReviewWidgetTreePresenterState

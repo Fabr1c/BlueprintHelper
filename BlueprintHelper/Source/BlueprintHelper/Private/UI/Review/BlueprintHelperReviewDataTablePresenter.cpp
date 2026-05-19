@@ -1,4 +1,4 @@
-// BlueprintHelper Review DataTable presenter.
+﻿// BlueprintHelper Review DataTable presenter.
 
 #include "UI/Review/BlueprintHelperReviewDataTablePresenter.h"
 
@@ -177,10 +177,7 @@ private:
 				.Text(FText::FromString(TEXT("Accept")))
 				.OnClicked_Lambda([AssetPath = AssetPath, SearchText]()
 				{
-					return FBlueprintHelperReviewRowHighlightModel::AcceptHighlightedRow(
-						AssetPath,
-						EBlueprintHelperReviewSurface::DataTable,
-						SearchText);
+					return FBlueprintHelperReviewRowHighlightModel::DispatchRowAction(AssetPath, EBlueprintHelperReviewSurface::DataTable, SearchText, EBlueprintHelperReviewActionIntentKind::Accept, TEXT("row_action"));
 				})
 			]
 			+ SHorizontalBox::Slot()
@@ -190,10 +187,7 @@ private:
 				.Text(FText::FromString(TEXT("Reject")))
 				.OnClicked_Lambda([AssetPath = AssetPath, SearchText]()
 				{
-					return FBlueprintHelperReviewRowHighlightModel::RejectHighlightedRow(
-						AssetPath,
-						EBlueprintHelperReviewSurface::DataTable,
-						SearchText);
+					return FBlueprintHelperReviewRowHighlightModel::DispatchRowAction(AssetPath, EBlueprintHelperReviewSurface::DataTable, SearchText, EBlueprintHelperReviewActionIntentKind::Reject, TEXT("row_action"));
 				})
 			];
 	}
@@ -418,3 +412,4 @@ TSharedRef<SWidget> FBlueprintHelperReviewDataTablePresenter::BuildOverlay(
 		EBlueprintHelperReviewSurface::DataTable,
 		&FBlueprintHelperReviewDataTablePresenter::ShouldShowChange);
 }
+

@@ -164,6 +164,16 @@ void SBlueprintHelperReviewComponentsPanel::RequestScrollIntoView(
 	}
 }
 
+void SBlueprintHelperReviewComponentsPanel::RequestRowsRefresh() const
+{
+	if (!TreeView.IsValid())
+	{
+		return;
+	}
+
+	TreeView->RequestTreeRefresh();
+}
+
 TSharedPtr<FBlueprintHelperReviewComponentRowItem> SBlueprintHelperReviewComponentsPanel::FindRowByCandidatesRecursive(
 	const TArray<TSharedPtr<FBlueprintHelperReviewComponentRowItem>>& Items,
 	const TArray<FString>& Candidates) const

@@ -1,0 +1,13 @@
+{
+  "schema": "BlueprintHelper.ReadSpec.v1",
+  "read_type": "blueprint_logic",
+  "target": {
+    "asset_path": "/Game/ThirdPerson/Blueprints/BP_ThirdPersonCharacter",
+    "target_type": "blueprint"
+  },
+  "view": {
+    "format": "logic_json",
+    "max_items": 500,
+    "detail": "normal"
+  }
+}

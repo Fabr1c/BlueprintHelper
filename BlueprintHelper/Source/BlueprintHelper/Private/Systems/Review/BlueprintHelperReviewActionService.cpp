@@ -91,12 +91,9 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::AcceptVi
 	}
 
 	FBlueprintHelperReviewActionResult Result;
-	Result.bSucceeded = true;
 	Result.TargetEvidenceId = Change.LatestEvidenceId;
-	Result.NewStatus = EBlueprintHelperReviewChangeStatus::Accepted;
-	Result.Message = TEXT("accepted");
-	Result.bSupersededDataCompactionEligible =
-		Change.SourceEvidenceIds.Num() > FMath::Max(1, Change.LatestEvidenceIds.Num());
+	Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
+	Result.Message = TEXT("persisted_review_targets_not_found");
 	return Result;
 }
 
