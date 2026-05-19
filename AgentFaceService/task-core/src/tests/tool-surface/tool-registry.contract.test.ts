@@ -227,6 +227,58 @@ test('read_context registry output strips GUID fields from Bridge logic_json pay
   assert.match(JSON.stringify(result), /nodes\[0\]/);
 });
 
+test('read_context asset summary removes payload path and name but keeps asset class', async () => {
+  const tool = getBlueprintHelperToolRegistry().find((candidate) => candidate.name === 'blueprinthelper_read_context');
+  assert.ok(tool);
+
+  const result = await tool.execute({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'asset_context',
+    target: {
+      asset_path: '/Game/ThirdPerson/Blueprints/BP_ThirdPersonCharacter',
+      target_type: 'blueprint',
+    },
+    view: {
+      format: 'summary',
+    },
+  }, {
+    cwd: process.cwd(),
+    bridge: {
+      async sendCommand(command: string, payload?: Record<string, unknown>) {
+        assert.equal(command, 'get_asset_info');
+        assert.deepEqual(payload, {
+          asset_path: '/Game/ThirdPerson/Blueprints/BP_ThirdPersonCharacter',
+        });
+        return {
+          success: true,
+          request_id: 'read_asset_context_compact',
+          result: {
+            schema: 'AssetContext.v1',
+            path: '/Game/ThirdPerson/Blueprints/BP_ThirdPersonCharacter.BP_ThirdPersonCharacter',
+            name: 'BP_ThirdPersonCharacter',
+            class: 'Blueprint',
+            parent_class: "TemplateCharacter'",
+          },
+        };
+      },
+    } as never,
+    taskRunner: {} as TaskSpecRunner,
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.target, {
+    asset_path: '/Game/ThirdPerson/Blueprints/BP_ThirdPersonCharacter',
+    target_type: 'blueprint',
+  });
+  const data = result.data as Record<string, unknown>;
+  const payload = data['payload'] as Record<string, unknown>;
+  assert.equal(payload['schema'], 'AssetContext.v1');
+  assert.equal(payload['class'], 'Blueprint');
+  assert.equal(payload['parent_class'], "TemplateCharacter'");
+  assert.equal(Object.hasOwn(payload, 'path'), false);
+  assert.equal(Object.hasOwn(payload, 'name'), false);
+});
+
 test('apply_review_action is expert-only and sanitized when invoked through the registry', async () => {
   const tool = getBlueprintHelperToolRegistry().find((candidate) => candidate.name === 'blueprinthelper_apply_review_action');
   assert.ok(tool);

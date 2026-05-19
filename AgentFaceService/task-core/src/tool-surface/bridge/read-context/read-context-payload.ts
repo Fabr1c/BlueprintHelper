@@ -10,6 +10,10 @@ export function postProcessReadContextPayload(
     schema: payload['schema'] ?? payloadSchema,
     ...payload,
   };
+  if (input.read_type === 'asset_context') {
+    return compactAssetContextPayload(normalized);
+  }
+
   const targetName = input.target.target_name;
   if (!targetName) {
     return normalized;
@@ -30,6 +34,13 @@ export function postProcessReadContextPayload(
     return filterNamedArrayPayload(normalized, 'properties', targetName, ['name', 'property_name']);
   }
   return normalized;
+}
+
+function compactAssetContextPayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const compacted = { ...payload };
+  delete compacted['path'];
+  delete compacted['name'];
+  return compacted;
 }
 
 export function deriveReadContextStats(input: ReadContextInput, payload: Record<string, unknown>): Record<string, unknown> {

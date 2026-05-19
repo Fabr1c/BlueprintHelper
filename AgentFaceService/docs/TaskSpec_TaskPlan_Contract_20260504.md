@@ -202,7 +202,7 @@ Initial supported `read_type` values:
 
 | `read_type` | Purpose |
 |---|---|
-| `asset_context` | Asset identity, class, parent class, path, and capability summary. |
+| `asset_context` | Asset identity from the ToolResult target plus asset class, parent class, and capability summary. The payload does not repeat target path or asset name. |
 | `blueprint_logic` | Blueprint logic by blueprint, graph, function, event, custom event, or block target. |
 | `component_context` | Blueprint SCS component tree and component property summaries. |
 | `variable_context` | Member variables, local variables, defaults, categories, and type summaries. |
