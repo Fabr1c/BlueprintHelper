@@ -485,6 +485,21 @@ Editor 手动重启后已返回 UE nested read timing，`ue_bridge_router.route_
 - preview 生成节点阶段不再重复解析 runtime 已解析的调用。
 - execute 复用 preview 时可复用已确认的 resolution 结果，或显式校验后重用。
 
+## 阶段计划文档索引
+
+详细实施计划已迁移到独立优化目录：
+
+`BlueprintHelper/Develop/Plan/Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/`
+
+| 阶段 | 文档 | 覆盖范围 |
+| --- | --- | --- |
+| P0 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P0_TaskSpecExecuteFastPath_ImplementationPlan_CN.md` | 端到端 timing、preview token 复用、`dry_run_mode`、CallFunction resolution cache |
+| P1 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P1_TaskSpecCompilerFastPath_ImplementationPlan_CN.md` | TaskSpec compiler fast path / Python worker、compile 输出裁剪、parity gate |
+| P2 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P2_TaskRuntimeReviewIO_ImplementationPlan_CN.md` | Review IO 批处理、TaskRuntime `PurePrepare -> MainThreadCommit -> PostIO` 三层拆分 |
+| P3 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P3_ReadPipelineSnapshotCache_ImplementationPlan_CN.md` | 读链路 GameThread 快照、后台格式化、request-local snapshot 复用、纯数据缓存、Bridge gap 细分 |
+
+说明：主文档继续保留背景、测速记录、优化项摘要、优先级排序、度量要求和当前状态；阶段文档负责执行 checklist、文件结构、测试命令和验收标准。
+
 ### P1-4：TaskSpec 编译优先走 in-process fast path
 
 目标：减少 Python 子进程启动和 JSON 往返的固定开销。
@@ -550,6 +565,23 @@ Editor 手动重启后已返回 UE nested read timing，`ue_bridge_router.route_
 - Review record 写入从逐 step 即时写入改为可批处理的 PostIO 批次，且不破坏 reject/apply review action 的可恢复性。
 - 分阶段耗时至少能区分 pure prepare、main-thread commit、post IO。
 
+### P3-8：读链路快照、缓存与 Bridge gap 收口
+
+目标：承接 R1-R5，把读链路优化从零散 read command 调整为 GameThread snapshot、纯 DTO formatter、request-local snapshot cache 和 Bridge gap 细分的通用架构。
+
+计划：
+- GameThread 只负责读取 UObject / Blueprint / UEdGraph / UWidgetTree / FProperty 并构造 Snapshot DTO。
+- 后台 formatter 只消费 Snapshot DTO，不持有 UE 对象指针。
+- 同一次请求内允许复用同资产同 target 的 Snapshot DTO。
+- 长期缓存只允许保存 capability matrix、CLI schema metadata、纯 runtime profile 等非 UE 核心对象状态。
+- 继续拆 `bridge - UE route` gap，至少区分 Bridge queue、transport、response serialization、AgentFace receive/parse。
+
+验收：
+- `blueprint_logic_json/md` 至少能显示 `snapshot_read` 与 `format_output` 占比。
+- request-local snapshot cache 不跨用户编辑状态泄漏。
+- 普通读工具不返回 develop timing。
+- 优化前后同一 ReadSpec 输出 schema 兼容。
+
 ## 优先级排序
 
 1. P0-0 TaskSpec 到返回结果的端到端计时流程。
@@ -562,7 +594,7 @@ Editor 手动重启后已返回 UE nested read timing，`ue_bridge_router.route_
 8. R1/R2 读工具 GameThread 快照、后台格式化和 DTO/formatter 复用。
 9. P2-6 Review IO 批处理和异步化。
 10. P2-7 UE TaskRuntime 三层执行模型。
-11. R3/R4 读工具同请求快照复用和纯数据缓存，需以 timing 证据触发。
+11. P3-8 读工具同请求快照复用、纯数据缓存和 Bridge gap 收口，需以 timing 证据触发。
 
 ## 度量要求
 
@@ -598,5 +630,6 @@ v0.5.0 实施前需要补齐分阶段耗时记录：
 - 读工具优化计划已纳入 v0.5.0：R0 先完成 timing 证据，R1/R2 优先做 GameThread 快照、后台格式化和 DTO/formatter 复用。
 - 读工具 R0 已完成一次 Editor 重启后补测：AgentFace read_context 分段和 UE `ue_bridge_router.route_execute` nested timing 均已返回；下一步需要继续拆 `bridge - UE route` gap。
 - 用户关闭 Editor 后已改用 MCP lifecycle 重启并补测 11 个 ReadSpec，包含新增 `11_blueprint_logic_flow.json`；结果显示 `logic_flow_build_payload=1.014ms`，主要瓶颈仍在 Bridge 往返 gap。
+- 阶段计划已迁移到 `Develop/Plan/Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/`，主文档只保留总体结论和索引。
 - 普通路径保持无计时采集、无 `data.timing` 返回；CLI 诊断路径通过 `--develop` 对所有 CLI 工具显式开启，TaskSpec MCP/tool 诊断路径通过 `develop: true` 显式开启。
 - 后续实现必须保持高内聚、低耦合，避免把性能分支堆进单个 service 或 UI 入口。
