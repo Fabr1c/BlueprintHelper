@@ -1533,3 +1533,138 @@ xychart
     y-axis "duration_ms" 0 --> 2500
     line [0, 0, 2148.015, 2151.839]
 ```
+
+## 2026-05-20 最终全面读写复测
+
+详细报告：`BlueprintHelper/Develop/v0.5.0/BlueprintHelper_v0.5.0_Final_ReadWrite_PerformanceReport_20260520_CN.md`
+
+### 测试口径
+
+- 读链路：`BlueprintHelper/Develop/v0.4.4/ReadSpecs/BP_ThirdPersonCharacter_20260519`，11 个 Spec，每个 1 次 warmup + 5 次正式样本，55/55 成功。
+- 写链路：`BlueprintHelper/Develop/v0.4.3/ArchivedReference/RetiredReviewDebugDocs_20260518/PlanArtifacts/ReviewPanel_UI_Test_TaskSpecs_20260518`，复制到独立根路径 `/Game/BlueprintHelperCliSmoke/FinalPerf_20260520105745` 后执行 preview -> execute。
+- 写链路统计只纳入完整 preview -> execute 成功样本：16/17。`05_append_graph_review_body.json` 被 `review_baseline_dirty_target_assets` 语义拦截，未纳入耗时均值。
+- 原始产物：
+  - 读：`D:\UEProjects\Template\Plugins\BlueprintHelper\.tmp\final_perf_20260520\read\read_timing_20260520_185631`
+  - 写：`D:\UEProjects\Template\Plugins\BlueprintHelper\.tmp\final_perf_20260520\write\write_timing_20260520105745`
+
+### 图表颜色说明
+
+| 颜色 | 含义 |
+| --- | --- |
+| 蓝色 `#2563EB` | 优化前基线 |
+| 绿色 `#16A34A` | 2026-05-20 最终复测 |
+| 橙色 `#F97316` | 相对优化前基线的提升百分比 |
+| 紫色 `#7C3AED` | 写链路 preview wall time |
+| 青色 `#0891B2` | 写链路 execute wall time |
+| 红色 `#DC2626` | 写链路 preview + execute workflow wall time |
+| 灰色 `#6B7280` | 读链路最终复测最大样本，用于展示长尾 |
+
+### 与优化前基线对比
+
+| 场景 | 优化前基线 ms | 最终复测 ms | 提升 |
+| --- | ---: | ---: | ---: |
+| 写链路 workflow avg | 2172.994 | 1472.806 | 32.222% |
+| 写链路 workflow p50 | 2209.757 | 1505.115 | 31.888% |
+| 写链路 workflow max | 3246.974 | 1790.832 | 44.846% |
+| 读链路 11 Spec median wall avg | 1997.088 | 144.029 | 92.788% |
+
+![v0.5.0 最终读写总耗时对比](FinalPerformanceCharts_20260520/final_overview_duration_bars_20260520.svg)
+
+![v0.5.0 最终提升百分比](FinalPerformanceCharts_20260520/final_improvement_percent_bars_20260520.svg)
+
+### 写链路逐 Spec 结果
+
+| 指标 | preview wall ms | execute wall ms | workflow wall ms |
+| --- | ---: | ---: | ---: |
+| min | 129.577 | 609.324 | 1140.402 |
+| p50 | 349.854 | 1154.474 | 1505.115 |
+| avg | 332.034 | 1140.773 | 1472.806 |
+| max | 593.449 | 1524.325 | 1790.832 |
+
+![写链路逐 Spec 最终复测条形图](FinalPerformanceCharts_20260520/final_write_spec_bars_20260520.svg)
+
+### 读链路逐 Spec 结果
+
+| 指标 | 数值 |
+| --- | ---: |
+| sample_count | 55 |
+| success | 55 |
+| failure | 0 |
+| 11 Spec median wall avg | 144.029ms |
+| 11 Spec median wall p50 | 129.117ms |
+| 11 Spec median wall max | 293.101ms |
+| avg p95 | 219.621ms |
+| max sample | 1065.008ms |
+
+![读链路逐 Spec 基线与最终复测条形图](FinalPerformanceCharts_20260520/final_read_spec_bars_20260520.svg)
+
+## 2026-05-20 专项优化最终复测
+
+详细报告：`BlueprintHelper/Develop/v0.5.0/BlueprintHelper_v0.5.0_Final_ReadWrite_PerformanceReport_20260520_CN.md`
+
+测试根路径：`/Game/BlueprintHelperCliSmoke/FinalSpecialized_20260520111651`。原始产物：`D:\UEProjects\Template\Plugins\BlueprintHelper\.tmp\final_perf_specialized_20260520\specialized_20260520111651`。
+
+### 专项图表颜色说明
+
+| 颜色 | 含义 |
+| --- | --- |
+| 蓝色 `#2563EB` | 优化前基线或无缓存基线 |
+| 绿色 `#16A34A` | 本次最终专项复测的优化后结果或 cache hit |
+| 橙色 `#F97316` | 相对基线的提升百分比 |
+| 紫色 `#7C3AED` | UE route / UE stage duration |
+| 青色 `#0891B2` | CLI total / wall duration |
+| 红色 `#DC2626` | cache miss 或仍需执行的必要成本 |
+| 灰色 `#6B7280` | 中性对照项，例如 forced TS 或接近 0 的 skipped/neutral 成本 |
+
+![专项优化提升百分比](FinalPerformanceCharts_20260520/final_specialized_improvement_percent_bars_20260520.svg)
+
+### P1 TaskSpec Compiler Fast Path
+
+| Case | 优化前/对照 ms | 本次最终 ms | 提升 |
+| --- | ---: | ---: | ---: |
+| 总文档 compile-only baseline -> auto strategy avg | 44.990 | 0.941 | 97.909% |
+| 本次 forced canonical_python avg -> forced ts_fast_path avg | 51.994 | 0.958 | 98.157% |
+
+![P1 TaskSpec compiler fast path](FinalPerformanceCharts_20260520/final_specialized_p1_compile_bars_20260520.svg)
+
+### P0/P4 Preview 与缓存专项
+
+| Case | 含义 | CLI total ms | UE route ms | 命中证据 |
+| --- | --- | ---: | ---: | --- |
+| P0 duplicate CallFunction quick | 同一 TaskPlan 内重复 `PrintString` 查询 | 327.596 | 305.394 | request-level CallFunction cache `hits=1, misses=1` |
+| P4 no cache baseline | 首次成功 preview，无 P4 cache 可用 | 477.165 | 454.932 | partial `0/1`，CallFunction fact `0/1`，GraphWrite plan `0/1` |
+| P4 partial hit | 40s 内相同 preview 重跑 | 34.292 | 12.783 | partial preview `hits=1, misses=0`，复用 `step_001` |
+| P4 CallFunction fact hit | 只改 literal，step cache miss | 55.326 | 32.878 | CallFunction fact `hits=1, misses=0` |
+| P4 plan hit after TTL | 等待 45s，partial TTL 过期 | 56.172 | 32.911 | GraphWrite plan `hits=1, misses=0`，CallFunction fact `hits=1` |
+| P4 fail -> fixed | 失败 preview 后修正 | 361.638 | 341.627 | partial preview `hits=1, misses=1`，通过项复用 `step_001` |
+
+![P4 preview cache duration](FinalPerformanceCharts_20260520/final_specialized_p4_cache_duration_bars_20260520.svg)
+
+![cache hit miss evidence](FinalPerformanceCharts_20260520/final_specialized_cache_hit_miss_bars_20260520.svg)
+
+### P5 GraphWrite Cluster Execute
+
+| Metric | 优化前基线 ms | 本次最终 ms | 提升 |
+| --- | ---: | ---: | ---: |
+| `step.step_001.cluster_execute` | 275.529 | 33.771 | 87.742% |
+| `spawn_nodes_ms` | 250.717 | 0.459 | 99.817% |
+
+本次 `graph_write_execution_stats`：`requested_node_count=2`，`spawned_node_count=1`，`connect_links_ms=0.000`，`record_layout_ms=0.003`。
+
+![P5 GraphWrite execute cost](FinalPerformanceCharts_20260520/final_specialized_p5_graphwrite_bars_20260520.svg)
+
+### P6 Compile/Save PostOperationPlanner
+
+| Case | 优化前 ms | 本次最终 ms | 状态 |
+| --- | ---: | ---: | --- |
+| `04b_write_function_body` compile | 156.410 | 116.290 | compile executed |
+| `04b_write_function_body` save | 62.954 | 0.020 | save skipped: `package_not_loaded_or_clean` |
+| `07_create_data_table` save | 81.615 | 88.321 | necessary save executed |
+| `14c_edit_widget_tree_property` compile | 230.670 | 145.242 | compile executed |
+| `14c_edit_widget_tree_property` save | 0.018 | 0.030 | save skipped: `package_not_loaded_or_clean` |
+
+`07_create_data_table` 的 save 本次略高于优化前参考值，因为 DataTable 是非 Blueprint 资产且仍需要真实 save；这不是 P6 的目标跳过项。P6 的确定性收益主要体现在 clean package save skipped record，以及 compile/save 决策移出 TaskRuntime 主流程后的 per-asset 可诊断性。
+
+![P6 compile save post operation cost](FinalPerformanceCharts_20260520/final_specialized_p6_post_operation_bars_20260520.svg)
+
+结论：读链路 median 已从约 2s 降到 144.029ms 平均值，但 `02_blueprint_logic_json.json` 仍出现一次 1065.008ms 长尾，主要耗时在 `bridge_send_receive_ms=962.643` 而非 UE route。写链路完整 workflow 仍是秒级，当前大头在 execute 阶段的 UE 工作、post_io、compile/save 或资产创建相关成本；若以“所有工具延迟都降低到百毫秒内”作为 v0.5.0 定档标准，写链路仍未完全达成。
