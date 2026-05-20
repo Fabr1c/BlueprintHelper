@@ -573,7 +573,8 @@ Editor 手动重启后已返回 UE nested read timing，`ue_bridge_router.route_
 | P1 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P1_TaskSpecCompilerFastPath_ImplementationPlan_CN.md` | TaskSpec compiler fast path / Python worker、compile 输出裁剪、parity gate | 已完成首轮实现和测速 |
 | P2 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P2_TaskRuntimeReviewIO_ImplementationPlan_CN.md` | Review IO 批处理、TaskRuntime `PurePrepare -> MainThreadCommit -> PostIO` 三层拆分 | 已完成首轮实现和测速 |
 | P3 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P3_ReadPipelineSnapshotCache_ImplementationPlan_CN.md` | 读链路 GameThread 快照、DTO formatter、request-local snapshot 复用、纯数据缓存、Bridge gap 细分 | 已完成 v0.5.0 范围，`logic_flow` 复用 `logic_json` 快照链路 |
-| P4-P6 后续 | 待讨论确认后拆独立执行计划 | CallFunction resolution 复用/索引化、GraphWrite cluster execute 降成本、compile/save 条件化或批处理 | 未实施，后续版本讨论 |
+| P4 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P4_PreviewPartialReuseAndFineGrainedCache_ImplementationPlan_CN.md` | 失败 preview 短窗口部分复用、CallFunction resolved facts TTL cache、GraphWrite 纯数据 plan cache、缓存配置外置 | 已完成首轮实现和测速 |
+| P5-P6 后续 | 待讨论确认后拆独立执行计划 | GraphWrite cluster execute 降成本、compile/save 条件化或批处理 | 未实施，后续版本讨论 |
 | R0-R5 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/R0_R5_ReadPipeline_ExecutablePlan_CN.md` | 读链路可执行 checklist、目标文件结构、分阶段验收、benchmark 和回归门槛 | 已完成并作为 P3 执行证据 |
 
 说明：主文档继续保留背景、测速记录、优化项摘要、优先级排序、度量要求和当前状态；阶段文档负责执行 checklist、文件结构、测试命令和验收标准。
@@ -681,22 +682,105 @@ Editor 手动重启后已返回 UE nested read timing，`ue_bridge_router.route_
 - [x] 优化前后同一 ReadSpec 输出 schema 兼容。
 - [x] 新增 `logic_flow` 已适配现实链路：复用 `read_blueprint_logic_json`，AgentFace 侧生成 `LogicFlow.v1`，并记录 `read_context.logic_flow_build_payload`。
 
-### P4-9：CallFunction resolution 复用与索引化
+### P4-9：失败 preview 部分复用与细粒度缓存
 
-目标：降低最慢写样本中 `call_function_resolution` 的重复解析和候选全集扫描成本。当前 `04b_write_function_body.json` 的 preview+execute 中，CallFunction resolution 合计约 726ms，是最主要的真实 UE 侧瓶颈。
+目标：降低 Agent 修正同一 TaskSpec 后重复 preview 的成本，同时继续压低最慢写样本中的 `call_function_resolution` 和 GraphWrite 纯数据 plan 构建成本。当前 `04b_write_function_body.json` 的 preview+execute 中，CallFunction resolution 合计约 726ms，是最主要的真实 UE 侧瓶颈。
+
+阶段计划文档：
+
+`Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P4_PreviewPartialReuseAndFineGrainedCache_ImplementationPlan_CN.md`
 
 计划：
-- preview 阶段把每个 call_function statement 的 `statement_path -> stable_id / owner / native_name / context_hash` 写入 preview store。
-- execute 命中 preview token 时优先复用 preview store 内的 resolved facts，只做 stable id、owner/function 可用性和 asset state 的轻量校验。
-- 新增 Editor 生命周期级 `CallFunctionIndexService`，按 `stable_id`、`owner + native_name`、display token、compact name 建多路索引。
-- 对 `ResolveClassByTypeName` / `ResolveStructByTypeName` 建 normalized token cache，避免每次 `TObjectIterator` 全扫。
-- 失效策略必须保守：Blueprint compile、BlueprintActionDatabase 变化、target Blueprint class 变化时使相关索引失效或重建。
+- 新增 `FBlueprintHelperTaskRuntimeCacheConfig`，把 TTL、容量、字节预算、prune interval 等硬编码配置集中到独立配置边界；调用点不得散落数字常量。
+- 新增 partial preview cache：失败 preview 后在短窗口内缓存已通过 step / group 的纯 DTO 结果，Agent 40s 内重传修正版时只重新 preview 失败项和依赖受影响项。
+- partial preview cache 只服务 preview，不生成可 execute 的 passed token；只有全量 preview 通过后，现有 preview store 才能继续生成 execute token。
+- CallFunction resolved facts 缓存从 request-level 扩展到受 TTL / 容量 / asset-state 校验约束的 Editor 生命周期级 stable facts cache。
+- GraphWrite 只缓存不触碰 UObject 的纯数据 plan，例如 statement lowering、pin alias map、link intent、layout intent；真实 `UK2Node` / `UEdGraphPin` 指针不进入缓存。
+- preview token、partial preview cache、CallFunction facts cache、GraphWrite plan cache 共用 cache key / digest / diagnostics 工具类，避免各 service 自己拼 key。
+
+缓存默认值独立项（P4-0）：
+- `PartialPreviewTtl=40s`、`PartialPreviewMaxGroups=64`、`PartialPreviewMaxStepEntries=512`、`PartialPreviewMaxBytes=8MiB`。
+- `CallFunctionFactTtl=180s`、`CallFunctionFactMaxEntries=2048`、`CallFunctionFactMaxBytes=8MiB`。
+- `GraphWritePlanTtl=90s`、`GraphWritePlanMaxEntries=256`、`GraphWritePlanMaxBytes=16MiB`。
+- `PruneOnAccessMinInterval=1s`。
+
+落地状态（2026-05-20）：
+- 已新增 `FBlueprintHelperTaskRuntimeCacheConfig`、稳定 JSON hash/key utils、cache diagnostics、partial preview cache、CallFunction TTL facts cache、GraphWrite 纯数据 plan cache。
+- `FBlueprintHelperTaskRuntimeService` 持有 Editor 生命周期缓存；每次请求重置 request stats，但不清空有效 cache entry。
+- partial preview cache 只在 `bDryRun=true` 路径 lookup/store；execute 路径仍只接受当前成功 preview token 或正常 dry-run 策略。
+- CallFunction cache 命中时仍校验 asset state、resolver version、stable id、owner class 和 `UFunction` 可用性；失效则回退正常 resolver。
+- `cache_diagnostics` 只在 `--develop` / `include_timing=true` 返回；普通 Agent-facing preview 输出不泄漏诊断。
 
 验收：
-- execute 命中 preview token 后不再完整跑 `FBlueprintHelperCallFunctionResolver::Resolve`。
-- `04b_write_function_body.json` 的 execute `call_function_resolution` 从约 291ms 降到轻量校验级别。
-- 首次 preview 的 resolver 耗时能被拆成 index lookup、candidate filtering、score/sort 三段。
-- 索引服务是可复用 service，不把特定 query 的特殊分支写入 TaskRuntime 或 GraphWrite 局部逻辑。
+- [x] 失败 preview 的重传能命中已通过项 cache，且任何 step payload、依赖闭包、target asset state、execution policy 变化都会触发重新 preview。
+- [x] blocked preview token 仍不可 execute，不因为 partial cache 放宽安全语义。
+- [x] execute 命中 preview token 后不再完整跑 `FBlueprintHelperCallFunctionResolver::Resolve`，只做 stable id / owner / function / asset state 轻量校验。
+- [x] GraphWrite plan cache 只保存纯 DTO；MainThreadCommit 仍是唯一触碰 UObject / Blueprint / UEdGraph 的层。
+- [x] 所有缓存配置从 `FBlueprintHelperTaskRuntimeCacheConfig` 读取，并有架构测试防止缓存 TTL / 容量硬编码重新散落。
+
+P4 benchmark（2026-05-20，Editor 通过 MCP 启动，CLI `task preview --develop`）：
+
+| 样本 | 结果 | wall_ms | nested UE preview total | cache evidence | 关键阶段 |
+| --- | --- | ---: | ---: | --- | --- |
+| `p4_multi_step_retry_fail.json` | blocked | 487.808 | 283.831 | partial miss 2, call miss 1 | missing call resolution 283.043ms |
+| `p4_multi_step_retry_fixed.json` | passed | 707.985 | 545.374 | partial hit 1, reused `step_001`; call miss 1; graph plan miss 1 | fixed step call resolution 276.399ms, cluster execute 268.534ms |
+| `p4_multi_step_retry_fixed.json` immediate rerun | passed | 107.978 | 0.421 | partial hit 1, reused `step_002` | UE route work fell to sub-ms after reusable step hit |
+| `p4_single_graph_retry_fail.json` | blocked | 517.565 | 288.741 | partial miss 1, call miss 1 | missing call resolution 287.738ms |
+| `p4_single_graph_retry_fixed.json` | passed | 507.421 | 304.757 | partial miss 1, call miss 1, graph plan miss 1 | PrintString resolution 291.850ms, cluster execute 12.241ms |
+| `p4_single_graph_retry_fixed.json` immediate rerun | passed | 79.461 | 0.536 | partial hit 1, reused `step_001` | preview step skipped through partial cache |
+| `p4_single_graph_retry_fixed_value2.json` | passed | 86.530 | 17.198 | partial miss 1, call fact hit 1, graph plan miss 1 | CallFunction resolution fell to 6.523ms |
+| `p4_single_graph_retry_fixed_value2.json` after 45s | passed | 298.879 | 16.955 | partial miss 1, call fact hit 1, graph plan hit 1 | partial TTL expired; 180s CallFunction facts and 90s GraphWrite plan still hit |
+
+P4 优化结果对比图：
+
+图例说明：
+
+| 标签 | 样本含义 |
+| --- | --- |
+| `baseline` | `p4_single_graph_retry_fixed.json` 首次成功 preview，无可用 P4 cache |
+| `partial hit` | 同一 `p4_single_graph_retry_fixed.json` 40s 内重跑，命中 partial preview cache |
+| `call hit` | `p4_single_graph_retry_fixed_value2.json` 修改 literal 后重跑，partial miss 但 CallFunction facts hit |
+| `plan hit` | `p4_single_graph_retry_fixed_value2.json` 45s 后重跑，partial TTL 过期但 CallFunction facts 和 GraphWrite plan hit |
+
+```mermaid
+xychart
+    title "P4 single GraphWrite preview UE route duration (ms)"
+    x-axis ["baseline", "partial hit", "call hit", "plan hit"]
+    y-axis "duration_ms" 0 --> 320
+    bar [304.757, 0.536, 17.198, 16.955]
+```
+
+```mermaid
+xychart
+    title "P4 single GraphWrite preview wall duration (ms)"
+    x-axis ["baseline", "partial hit", "call hit", "plan hit"]
+    y-axis "duration_ms" 0 --> 520
+    bar [507.421, 79.461, 86.530, 298.879]
+```
+
+| 指标 | baseline | 优化后 | 提升百分比 |
+| --- | ---: | ---: | ---: |
+| UE preview total: partial preview hit | 304.757ms | 0.536ms | 99.82% |
+| UE preview total: CallFunction facts hit | 304.757ms | 17.198ms | 94.36% |
+| UE preview total: GraphWrite plan hit after partial TTL expired | 304.757ms | 16.955ms | 94.44% |
+| CLI wall: partial preview hit | 507.421ms | 79.461ms | 84.34% |
+| CLI wall: CallFunction facts hit | 507.421ms | 86.530ms | 82.95% |
+| CLI wall: GraphWrite plan hit after partial TTL expired | 507.421ms | 298.879ms | 41.10% |
+| CallFunction resolution | 291.850ms | 6.523ms | 97.76% |
+
+```mermaid
+xychart
+    title "P4 optimization improvement percent"
+    x-axis ["UE partial", "UE call", "UE plan", "wall partial", "wall call", "wall plan", "call resolve"]
+    y-axis "improvement_percent" 0 --> 100
+    bar [99.82, 94.36, 94.44, 84.34, 82.95, 41.10, 97.76]
+```
+
+结论：
+- P4 对 Agent “短时间修正同一 preview”收益明确：exact rerun 的 UE preview 从约 304.757ms 降到 0.536ms；多步修正可以跳过已通过 step。
+- CallFunction facts cache 对“同一函数、payload literal 改动”的收益明确：PrintString resolution 从约 291.850ms 降到 6.523ms。
+- GraphWrite plan cache 已按纯 DTO 命中，但它不跳过真实 `cluster_execute`，因此主要收益是减少纯 plan 重建，不改变 UObject 写入安全边界。
+- wall time 仍可能被 Bridge / GameThread enqueue wait 主导；例如 after-45s 样本 UE route 只有 16.955ms，但 wall 为 298.879ms。
 
 ### P5-10：GraphWrite cluster execute 降成本
 
@@ -747,7 +831,7 @@ Editor 手动重启后已返回 UE nested read timing，`ue_bridge_router.route_
 9. P2-6 Review IO 批处理和异步化。
 10. P2-7 UE TaskRuntime 三层执行模型。
 11. P3-8 读工具同请求快照复用、纯数据缓存和 Bridge gap 收口，已完成 v0.5.0 范围；后续只按 timing 证据迁移 Component / Widget / ObjectProperty 等非 Logic 读工具。
-12. P4-9 CallFunction resolution preview facts 复用和 Editor 生命周期索引化。
+12. P4-9 失败 preview 部分复用、CallFunction resolved facts TTL cache、GraphWrite 纯数据 plan cache 和缓存配置外置。
 13. P5-10 GraphWrite `GraphMutationPlan` / `GraphWriteContext` 降低 cluster execute 成本。
 14. P6-11 compile/save `PostOperationPlanner` 条件化、去重和批处理。
 
@@ -778,7 +862,8 @@ v0.5.0 实施前需要补齐分阶段耗时记录：
 3. CallFunction editor-session 级缓存必须有失效条件，否则可能在 Blueprint 或 ActionDatabase 更新后使用旧候选。
 4. Review IO 异步化不得破坏 review reject/apply 的可恢复性。
 5. UE 三层拆分必须保持 baseline snapshot 在 mutation 前完成，不能为了异步化改变 Review 证据语义。
-6. P4-P6 后续优化只能复用统一 service / DTO / planner 边界，不能在单个最慢样本或单个 node handler 中写特判。
+6. P4-P6 后续优化只能复用统一 service / DTO / planner / cache config 边界，不能在单个最慢样本或单个 node handler 中写特判。
+7. P4 缓存默认值必须集中在 `FBlueprintHelperTaskRuntimeCacheConfig`，避免 TTL、容量、字节预算和 prune 策略以硬编码形式散落在各 service。
 
 ## P0 preview -> execute(preview_token) 同进程重测
 
@@ -1028,6 +1113,7 @@ compile-only 五轮隔离样本：
 - P2 已落地：UE TaskRuntime 现在返回 `pure_prepare`、`main_thread_commit`、`post_io` nested timing；Review record/archive/journal/debug 写入通过 PostIO batch 收口。
 - Bridge send/receive 拆分已落地：CLI 侧返回 connect/write/client_parse，UE Bridge nested 返回 receive、GameThread enqueue wait、route execute、response serialize；response socket write 因发生在同一 response body 序列化之后，不伪造同帧 timing。
 - 阶段计划已迁移到 `Develop/Plan/Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/`，主文档只保留总体结论和索引。
+- P4 已完成首轮实现和测速：partial preview cache 支持失败 preview 后 40s 内复用已通过 step；CallFunction resolved facts cache 和 GraphWrite 纯数据 plan cache 已接入 TTL、容量、字节预算、asset-state 校验和 `--develop` cache diagnostics；普通输出不泄漏诊断。
 - 普通路径保持无计时采集、无 `data.timing` 返回；CLI 诊断路径通过 `--develop` 对所有 CLI 工具显式开启，TaskSpec MCP/tool 诊断路径通过 `develop: true` 显式开启。
 - 后续实现必须保持高内聚、低耦合，避免把性能分支堆进单个 service 或 UI 入口。
 

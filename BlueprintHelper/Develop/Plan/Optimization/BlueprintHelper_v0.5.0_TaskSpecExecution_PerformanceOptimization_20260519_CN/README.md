@@ -12,6 +12,7 @@
 | P1 | `P1_TaskSpecCompilerFastPath_ImplementationPlan_CN.md` | TaskSpec compiler fast path / Python worker、compile 输出裁剪、parity gate | 已完成首轮实现和测速 |
 | P2 | `P2_TaskRuntimeReviewIO_ImplementationPlan_CN.md` | Review IO 批处理、TaskRuntime `PurePrepare -> MainThreadCommit -> PostIO` 三层拆分 | 已完成首轮实现和测速 |
 | P3 | `P3_ReadPipelineSnapshotCache_ImplementationPlan_CN.md` | 读链路 GameThread 快照、DTO formatter、request-local snapshot 复用、纯数据缓存、Bridge gap 细分 | 已完成 v0.5.0 范围，执行证据见 `R0_R5_ReadPipeline_ExecutablePlan_CN.md` |
+| P4 | `P4_PreviewPartialReuseAndFineGrainedCache_ImplementationPlan_CN.md` | 失败 preview 短窗口部分复用、CallFunction resolved facts TTL cache、GraphWrite 纯数据 plan cache、缓存配置外置 | 已完成首轮实现和测速 |
 
 ## 执行顺序
 
@@ -19,6 +20,7 @@
 2. P1 只在 P0 timing 能证明 compiler 仍有收益时推进；如果 P0 后主要耗时仍在 Bridge / UE，则 P1 可只做输出裁剪和 parity gate。
 3. P2 在 P0 后推进，用 TaskRuntime 三层边界承接 Review IO 优化，不把异步和 IO 分支堆回 `RunTaskPlan`。
 4. P3 已按读链路 timing 证据完成 v0.5.0 范围：Logic JSON / MD 迁移到 GameThread snapshot + DTO formatter，`logic_flow` 复用 `read_blueprint_logic_json` 后在 AgentFace 压缩生成，未做后台线程直接读 UObject。
+5. P4 先落缓存配置边界，再实现 partial preview cache；CallFunction / GraphWrite 细粒度缓存必须保存纯 DTO / stable facts，并受 TTL、容量、字节预算和 asset-state 校验约束。
 
 ## 通用约束
 
