@@ -122,12 +122,13 @@ $json | bh blueprinthelper_read_context --stdin --format full
 
 更新流程会先把当前插件目录备份到同级目录，例如 `BlueprintHelper.backup-v0.4.4-20260518-153000`，再下载 Release zip 并完整替换当前目录。更新或后续安装刷新失败时，会尝试从备份目录回滚当前插件目录。
 
-更新成功后会重新构建 AgentFaceService、重新链接 `bh` CLI，并刷新 Codex marketplace、Codex subagents 和全局 MCP allowlist。用户偏好文件和项目 `.blueprinthelper/agent-profile.json` 不会被更新器覆盖。Engine 级 UE 插件副本只会在显式传入 `-InstallUePluginToEngine` 时更新。
+更新成功后会重新构建 AgentFaceService、重新链接 `bh` CLI，并通过官方入口刷新 Codex marketplace、Codex 插件安装、Codex subagents 和全局 MCP allowlist。如果检测到已安装的 Claude sideAgents，或显式传入 `-InstallClaudePlugin`，更新器也会通过 Claude 官方入口刷新 Claude 插件并同步 Claude sideAgents。用户偏好文件和项目 `.blueprinthelper/agent-profile.json` 不会被更新器覆盖。Engine 级 UE 插件副本只会在显式传入 `-InstallUePluginToEngine` 时更新。
 
 ```powershell
 .\update.ps1
 .\update.ps1 -CheckOnly
 .\update.ps1 -Force
+.\update.ps1 -Force -InstallClaudePlugin
 .\update.ps1 -Force -InstallUePluginToEngine -EngineRoot E:\UE_5.6
 ```
 
@@ -135,7 +136,7 @@ Double-click `update.cmd` to check the latest GitHub Release and update only aft
 
 Before replacing files, the updater backs up the current plugin directory next to it, for example `BlueprintHelper.backup-v0.4.4-20260518-153000`. It then downloads the Release zip and mirrors it into the current plugin directory. If the replacement or post-update refresh fails, it attempts to roll the plugin directory back from that backup.
 
-After a successful update, the updater rebuilds AgentFaceService, relinks the `bh` CLI, and refreshes the Codex marketplace, Codex subagents, and global MCP allowlist. User preference files and project `.blueprinthelper/agent-profile.json` are not overwritten. Engine-level UE plugin copies are updated only when `-InstallUePluginToEngine` is explicitly passed.
+After a successful update, the updater rebuilds AgentFaceService, relinks the `bh` CLI, and refreshes the Codex marketplace, Codex plugin install, Codex subagents, and global MCP allowlist through the official entries. If existing Claude sideAgents are detected, or `-InstallClaudePlugin` is passed explicitly, the updater also refreshes the Claude plugin through the official Claude entry and syncs Claude sideAgents. User preference files and project `.blueprinthelper/agent-profile.json` are not overwritten. Engine-level UE plugin copies are updated only when `-InstallUePluginToEngine` is explicitly passed.
 
 ## 参与贡献
 
