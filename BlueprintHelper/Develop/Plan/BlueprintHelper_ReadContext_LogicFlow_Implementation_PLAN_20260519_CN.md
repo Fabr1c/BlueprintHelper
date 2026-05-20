@@ -14,6 +14,8 @@
 
 Status: completed.
 
+2026-05-20 sync: logic_flow is now the default `view.format` for `read_type=blueprint_logic`. The detailed task checklist below is retained as the original execution plan body; current status is tracked by this summary section and the current TODO ledger.
+
 Implemented:
 
 1. `blueprinthelper_read_context` now accepts `view.format=logic_flow` for `blueprint_logic` reads.
@@ -236,7 +238,7 @@ export function resolveReadContextLogicFormat(input: ReadContextInput): ReadCont
     return 'logic_json';
   }
   if (input.read_type === 'blueprint_logic') {
-    return input.view?.format ?? 'logic_md';
+    return input.view?.format ?? 'logic_flow';
   }
   return undefined;
 }
@@ -347,9 +349,9 @@ test('read_context logic_flow returns execflow from structured logic_json payloa
             schema: 'LogicJson.v1',
             logic: {
               graph: 'EventGraph',
-              entry: { node_ref: 'nodes[0]', name: '事件Secondary Thumbstick' },
+              entry: { node_ref: 'nodes[0]', name: '浜嬩欢Secondary Thumbstick' },
               nodes: [
-                { node_ref: 'nodes[0]', name: '事件Secondary Thumbstick' },
+                { node_ref: 'nodes[0]', name: '浜嬩欢Secondary Thumbstick' },
                 { node_ref: 'nodes[1]', name: 'DoLook' },
               ],
               links: [
@@ -375,7 +377,7 @@ test('read_context logic_flow returns execflow from structured logic_json payloa
   const payload = (result.data as Record<string, unknown>)['payload'] as Record<string, unknown>;
   assert.equal(payload['schema'], 'LogicFlow.v1');
   assert.equal(payload['mode'], 'execflow');
-  assert.equal(payload['flow'], '事件Secondary Thumbstick(Axis_X,Axis_Y) -> DoLook[Yaw=&.Axis_X, Pitch=&.Axis_Y]');
+  assert.equal(payload['flow'], '浜嬩欢Secondary Thumbstick(Axis_X,Axis_Y) -> DoLook[Yaw=&.Axis_X, Pitch=&.Axis_Y]');
   assert.deepEqual(payload['stats'], {
     nodes: 2,
     exec_links: 1,
@@ -759,7 +761,7 @@ import {
 Replace the command/schema selection block:
 
 ```ts
-const bridgeFormat = format ?? 'logic_md';
+const bridgeFormat = format ?? 'logic_flow';
 const command = resolveReadContextBridgeCommand(bridgeFormat);
 ```
 
@@ -1294,13 +1296,11 @@ git add AgentFaceService/task-core/src/tool-surface/bridge/read-context/read-con
 Suggested commit message:
 
 ```text
-新增内容：
-1. 增加 ReadContext logic_flow 压缩读格式
-2. 增加 LogicFlow 文档模板和 BP_ThirdPersonCharacter 示例 ReadSpec
+鏂板鍐呭锛?1. 澧炲姞 ReadContext logic_flow 鍘嬬缉璇绘牸寮?2. 澧炲姞 LogicFlow 鏂囨。妯℃澘鍜?BP_ThirdPersonCharacter 绀轰緥 ReadSpec
 
-变更需求：
-1. 将 ReadContext 逻辑读取格式调整为 logic_flow / logic_md / logic_json 三档
-2. 保持 logic_flow 只读理解用途，写入锚点继续使用 logic_json
+鍙樻洿闇€姹傦細
+1. 灏?ReadContext 閫昏緫璇诲彇鏍煎紡璋冩暣涓?logic_flow / logic_md / logic_json 涓夋。
+2. 淇濇寔 logic_flow 鍙鐞嗚В鐢ㄩ€旓紝鍐欏叆閿氱偣缁х画浣跨敤 logic_json
 ```
 
 ## Self-Review
@@ -1324,3 +1324,4 @@ Type consistency:
 2. `resolveReadContextBridgeCommand()` returns only existing bridge commands.
 3. `resolveReadContextPayloadSchema()` returns `LogicFlow.v1`, `LogicMd.v1`, or `LogicJson.v1`.
 4. `buildLogicFlowPayload()` returns the payload shape documented in `BlueprintHelper_ReadContext_LogicFlow_Rules_20260519_CN.md`.
+

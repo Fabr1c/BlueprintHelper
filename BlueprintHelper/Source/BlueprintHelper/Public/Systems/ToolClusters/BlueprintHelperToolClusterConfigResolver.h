@@ -73,7 +73,6 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphWriteToolClusterPolicy
 
 struct BLUEPRINTHELPER_API FBlueprintHelperReadContextToolClusterPolicy
 {
-	FString DefaultScope = TEXT("project");
 	int32 MaxOutputRows = 0;
 	int32 MaxOutputBytes = 0;
 };

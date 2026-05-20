@@ -1013,6 +1013,11 @@ bool FBlueprintHelperRequestValidator::IsHighRiskCommand(const FString& Command)
 
 bool FBlueprintHelperRequestValidator::IsHighRiskCommandEnabled()
 {
+	if (FBlueprintHelperSafetyProfileResolver::IsAutoRepair())
+	{
+		return true;
+	}
+
 	const FString Value = FPlatformMisc::GetEnvironmentVariable(TEXT("BLUEPRINTHELPER_ENABLE_HIGH_RISK_COMMANDS")).ToLower();
 	return Value == TEXT("1") || Value == TEXT("true") || Value == TEXT("yes");
 }

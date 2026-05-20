@@ -25,7 +25,6 @@ static bool IsRuntimeConsumedSetting(const FString& DotPath)
 		TEXT("tool_clusters.signature.reference_context_search_scope"),
 		TEXT("tool_clusters.signature.reference_context_resolution_policy"),
 		TEXT("tool_clusters.signature.reference_context_detail"),
-		TEXT("tool_clusters.read_context.default_scope"),
 		TEXT("tool_clusters.read_context.max_output_rows"),
 		TEXT("tool_clusters.read_context.max_output_bytes"),
 		TEXT("tool_clusters.component.default_attach_rule"),

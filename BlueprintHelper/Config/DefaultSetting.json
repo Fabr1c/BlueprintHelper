@@ -232,7 +232,6 @@
       "layout": "auto"
     },
     "read_context": {
-      "default_scope": "project",
       "max_output_rows": 0,
       "max_output_bytes": 0
     }

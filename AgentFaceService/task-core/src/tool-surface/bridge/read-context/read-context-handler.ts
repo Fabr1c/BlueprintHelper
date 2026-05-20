@@ -39,7 +39,7 @@ export async function executeReadContext(
     return executeBridgeBackedReadContext(input, context);
   }
 
-  const bridgeFormat = format ?? 'logic_md';
+  const bridgeFormat = format ?? 'logic_flow';
   const route = measureTaskTiming(timing, 'read_context.resolve_bridge_request', () => (
     buildReadContextLogicBridgeRoute(bridgeFormat)
   ));
