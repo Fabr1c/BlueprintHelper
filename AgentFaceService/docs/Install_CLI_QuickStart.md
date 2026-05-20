@@ -85,10 +85,11 @@ Project `.uproject` paths should not be stored globally. Agents discover the tar
 
 ## 4. Start Unreal Editor
 
-Either start Unreal Editor normally with the project, or use the global MCP allowlist command after the project agent profile has `environment.ue_engine_dir`. CLI lifecycle aliases are compatibility/manual fallbacks:
+Either start Unreal Editor normally with the project, or use the global MCP lifecycle tools after the project agent profile has `environment.ue_engine_dir`. Compatibility for `blueprint_open_editor` / `blueprint_close_editor` also uses the global MCP lifecycle tools, not CLI lifecycle aliases:
 
-```powershell
-bh open_editor --select status,summary,artifacts.full_result
+```text
+mcp__blueprint_helper__blueprint_open_editor
+mcp__blueprint_helper__blueprint_close_editor
 ```
 
 Do not use plugin-local MCP or deprecated MCP ordinary tools as proof of Agent lifecycle or asset-workflow behavior. The normal Agent-owned lifecycle path is the global MCP allowlist server.
@@ -103,7 +104,7 @@ If the port is not open, wait for the editor to finish loading, confirm the plug
 
 ## 5. Run The CLI
 
-The CLI is the supported Agent entry for ordinary TaskSpec writes, reads, diagnostics, debug summaries, write-session requests, and result queries. MCP is restricted to editor open/close lifecycle in ordinary Agent workflows; CLI lifecycle aliases exist for compatibility/manual fallback. Deprecated MCP ordinary tools are not fallback paths.
+The CLI is the supported Agent entry for ordinary TaskSpec writes, reads, diagnostics, debug summaries, write-session requests, and result queries. MCP is restricted to editor open/close lifecycle in ordinary Agent workflows; lifecycle compatibility uses the global MCP lifecycle tools rather than CLI aliases. Deprecated MCP ordinary tools are not fallback paths.
 
 Examples:
 
