@@ -112,7 +112,7 @@ FString FBlueprintHelperDiagnosticsService::GetPluginVersion()
 	{
 		return Plugin->GetDescriptor().VersionName;
 	}
-	return TEXT("0.5.0-dev");
+	return TEXT("0.5.4");
 }
 
 FString FBlueprintHelperDiagnosticsService::GetSafetyProfileStr()

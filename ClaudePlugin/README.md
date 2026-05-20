@@ -1,4 +1,4 @@
-﻿# BlueprintHelper
+# BlueprintHelper
 
 BlueprintHelper is an Unreal Engine editor plugin with a CLI-first TaskSpec transport and a global MCP allowlist companion. It lets an agent inspect and modify Unreal Editor assets through a local Bridge: Blueprint graphs, UMG widgets, DataAssets, DataTables, asset browser operations, compile/save/open commands, PIE commands, and related diagnostics.
 
@@ -33,10 +33,10 @@ Current source metadata:
 
 | Component | Current value |
 |---|---|
-| Unreal plugin `BlueprintHelper.uplugin` | `VersionName` 0.5.3 |
-| CLI `AgentFaceService/cli/package.json` | 0.5.3 |
-| Shared task core `AgentFaceService/task-core/package.json` | 0.5.3 |
-| Global MCP allowlist package `AgentFaceService/mcp/package.json` | 0.5.3 |
+| Unreal plugin `BlueprintHelper.uplugin` | `VersionName` 0.5.4 |
+| CLI `AgentFaceService/cli/package.json` | 0.5.4 |
+| Shared task core `AgentFaceService/task-core/package.json` | 0.5.4 |
+| Global MCP allowlist package `AgentFaceService/mcp/package.json` | 0.5.4 |
 | Documentation batch | 2026-05-17 implementation sync: CLI ordinary tools + MCP allowlist |
 | Intended UE version | UE 5.3 or newer |
 

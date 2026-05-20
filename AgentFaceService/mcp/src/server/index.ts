@@ -25,7 +25,7 @@ async function main() {
 
   const server = new McpServer({
     name: 'blueprint-helper',
-    version: '0.5.3',
+    version: '0.5.4',
   });
 
   // 濞夈劌鍞藉銉ュ徔娑撳氦绁┃?
