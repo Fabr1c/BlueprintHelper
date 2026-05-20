@@ -7,7 +7,6 @@
 - `Install_CLI_QuickStart.md`: 安装与首次配置。
 - `TaskSpec_CLI_QuickStart.md`: TaskSpec-first CLI 工作流。
 - `CLI_Tools_API_Reference.md`: CLI 工具面和边界。
-- `CLI_Tools_API_Reference.md`: Agent-facing CLI command shapes.
 
 ## English
 
@@ -16,4 +15,3 @@ This is the canonical shared documentation location for `AgentFaceService`. It d
 - `Install_CLI_QuickStart.md`: installation and first-run setup.
 - `TaskSpec_CLI_QuickStart.md`: TaskSpec-first CLI workflow.
 - `CLI_Tools_API_Reference.md`: CLI tool surface and boundaries.
-- `CLI_Tools_API_Reference.md`: Agent-facing CLI command shapes.

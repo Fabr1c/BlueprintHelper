@@ -4,7 +4,7 @@ Document version / 文档版本: `2026-05-17`
 
 ## 中文
 
-本参考与当前实现对齐：CLI 是普通 Agent 执行 TaskSpec、ReadSpec、diagnostics、debug summary、write-session 和 result query 的支持入口。MCP 限制为 `blueprint_open_editor` 和 `blueprint_close_editor` lifecycle 入口；CLI lifecycle alias 只作为兼容/手动 fallback。
+本参考与当前实现对齐：CLI 是普通 Agent 执行 TaskSpec、ReadSpec、diagnostics、debug summary、write-session 和 result query 的支持入口。`blueprint_open_editor` 和 `blueprint_close_editor` lifecycle 入口统一使用全局 MCP 工具；不要通过 CLI lifecycle alias 做兼容路径。
 
 ### 架构
 
@@ -18,7 +18,7 @@ Agent -> CLI command -> task-core -> Python Task Compiler / Read Router -> Bridg
 
 - 支持的 TaskSpec/read/debug summary 能力应通过 `bh <tool_name>` 可达。
 - Agent-owned Editor lifecycle 应使用全局 MCP allowlist。
-- CLI lifecycle alias `bh open_editor` / `bh close_editor` 和 direct `blueprint_open_editor` / `blueprint_close_editor` 是兼容/手动 fallback，不是普通资产工作流工具。
+- `blueprint_open_editor` / `blueprint_close_editor` 是全局 MCP lifecycle 入口，不是 CLI direct tool；不要调用 `bh open_editor` / `bh close_editor` 作为兼容路径。
 - CLI 写入必须经过 TaskSpec validation、preview 和 UE Task Runtime。
 - Raw Bridge write command 不是公开 Agent surface。
 - 废弃 MCP 普通工具不是 fallback，也不是普通 Agent 可选入口。
@@ -59,11 +59,11 @@ blueprinthelper_export_debug_bundle
 blueprinthelper_query_review_records
 ```
 
-Lifecycle compatibility commands:
+Global MCP lifecycle commands:
 
 ```text
-blueprint_open_editor
-blueprint_close_editor
+mcp__blueprint_helper__blueprint_open_editor
+mcp__blueprint_helper__blueprint_close_editor
 ```
 
 分组 CLI commands:
@@ -231,7 +231,7 @@ Legacy/internal/debug/expert commands 可能仍存在于内部 transport 后面�
 
 ## English
 
-This reference matches the current implementation: the CLI is the supported entry for ordinary Agent TaskSpec, ReadSpec, diagnostics, debug-summary, write-session, and result-query work. MCP is restricted to the `blueprint_open_editor` and `blueprint_close_editor` lifecycle entries; CLI lifecycle aliases are compatibility/manual fallback only.
+This reference matches the current implementation: the CLI is the supported entry for ordinary Agent TaskSpec, ReadSpec, diagnostics, debug-summary, write-session, and result-query work. The `blueprint_open_editor` and `blueprint_close_editor` lifecycle entries are global MCP lifecycle tools; do not use CLI lifecycle aliases as compatibility paths.
 
 ### Architecture
 
@@ -245,7 +245,7 @@ Ordinary Agents author `BlueprintHelper.TaskSpec.v1` only. They do not submit `T
 
 - Every supported CLI-facing TaskSpec/read/debug summary capability should be reachable through `bh <tool_name>`.
 - Agent-owned Editor lifecycle should use the global MCP allowlist.
-- CLI lifecycle aliases `bh open_editor` / `bh close_editor` and direct `blueprint_open_editor` / `blueprint_close_editor` are compatibility/manual fallback entries, not ordinary asset workflow tools.
+- `blueprint_open_editor` / `blueprint_close_editor` are global MCP lifecycle entries, not CLI direct tools; do not call `bh open_editor` / `bh close_editor` as compatibility paths.
 - CLI write commands must pass through TaskSpec validation, preview, and UE Task Runtime.
 - Raw Bridge write commands are not part of the public Agent surface.
 - Deprecated MCP ordinary tools are not fallback entries. Do not use, test, or restore them.
@@ -282,11 +282,11 @@ blueprinthelper_export_debug_bundle
 blueprinthelper_query_review_records
 ```
 
-Lifecycle compatibility commands:
+Global MCP lifecycle commands:
 
 ```text
-blueprint_open_editor
-blueprint_close_editor
+mcp__blueprint_helper__blueprint_open_editor
+mcp__blueprint_helper__blueprint_close_editor
 ```
 
 Grouped CLI commands:

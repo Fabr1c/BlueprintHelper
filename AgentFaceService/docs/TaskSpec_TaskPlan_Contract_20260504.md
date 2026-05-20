@@ -87,9 +87,9 @@ blueprinthelper_read_function_chain_context
 blueprinthelper_preview_task
 blueprinthelper_execute_task
 blueprinthelper_get_task_result
-blueprinthelper_open_editor
-blueprinthelper_close_editor
 ```
+
+Editor lifecycle is not a CLI TaskSpec/ReadSpec surface. Agent-owned open/close uses the global MCP lifecycle tools `mcp__blueprint_helper__blueprint_open_editor` and `mcp__blueprint_helper__blueprint_close_editor`; compatibility for `blueprint_open_editor` / `blueprint_close_editor` must resolve to those MCP tools rather than CLI lifecycle aliases.
 
 Task tools take a wrapped TaskSpec parameter. Do not pass the TaskSpec fields directly as the CLI direct-tool root arguments:
 
