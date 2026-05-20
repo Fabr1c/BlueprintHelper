@@ -315,7 +315,7 @@ function Invoke-SequentialInstallWizard {
   $script:SkipCliLink = -not (Read-InstallYesNo -Prompt 'Link the bh CLI globally' -DefaultYes:(-not $SkipCliLink))
 
   if (Read-InstallYesNo -Prompt 'Install Codex Desktop plugin support' -DefaultYes:(-not ($SkipCodexMarketplace -and $SkipCodexAgents -and $SkipLifecycleMcp))) {
-    $script:SkipCodexMarketplace = -not (Read-InstallYesNo -Prompt '  Register Codex local marketplace entry' -DefaultYes:(-not $SkipCodexMarketplace))
+    $script:SkipCodexMarketplace = -not (Read-InstallYesNo -Prompt '  Install Codex plugin through official entry' -DefaultYes:(-not $SkipCodexMarketplace))
     $script:SkipCodexAgents = -not (Read-InstallYesNo -Prompt '  Install Codex subagents' -DefaultYes:(-not $SkipCodexAgents))
     $script:SkipLifecycleMcp = -not (Read-InstallYesNo -Prompt '  Install global lifecycle-only MCP config' -DefaultYes:(-not $SkipLifecycleMcp))
   } else {
@@ -387,11 +387,11 @@ function New-InstallMenuOptions {
   return @(
     (New-InstallMenuOption -Key 'build' -Label 'Build AgentFaceService packages' -Selected:(-not $SkipBuild) -Tip 'Install and build the shared task-core package, CLI package, and MCP compatibility package. Requires Node.js and npm on PATH.'),
     (New-InstallMenuOption -Key 'cliLink' -Label 'Link bh CLI globally' -Selected:(-not $SkipCliLink) -Tip 'Run npm link for the CLI package, then remove npm PowerShell .ps1 shims so bh resolves through the .cmd launcher and is not blocked by ExecutionPolicy.'),
-    (New-InstallMenuOption -Key 'codexSupport' -Label 'Codex Desktop plugin support' -Selected:(-not ($SkipCodexMarketplace -and $SkipCodexAgents -and $SkipLifecycleMcp)) -Tip 'Enable Codex Desktop integration. Child items control marketplace registration, subagents, and lifecycle MCP config.'),
-    (New-InstallMenuOption -Key 'codexMarketplace' -Label 'Register Codex local marketplace entry' -Selected:(-not $SkipCodexMarketplace) -Tip 'Create/update the local Codex marketplace entry under the user profile so the plugin can be installed by Codex Desktop.' -Indent 1 -Parent 'codexSupport'),
+    (New-InstallMenuOption -Key 'codexSupport' -Label 'Codex Desktop plugin support' -Selected:(-not ($SkipCodexMarketplace -and $SkipCodexAgents -and $SkipLifecycleMcp)) -Tip 'Enable Codex Desktop integration. Child items control official plugin installation, subagents, and lifecycle MCP config.'),
+    (New-InstallMenuOption -Key 'codexMarketplace' -Label 'Install Codex plugin via official entry' -Selected:(-not $SkipCodexMarketplace) -Tip 'Register the repository local marketplace with the official Codex plugin installer, then install blueprint-helper from that marketplace.' -Indent 1 -Parent 'codexSupport'),
     (New-InstallMenuOption -Key 'codexAgents' -Label 'Install Codex subagents' -Selected:(-not $SkipCodexAgents) -Tip 'Install BlueprintHelper Codex subagent definitions into the user Codex agents directory.' -Indent 1 -Parent 'codexSupport'),
     (New-InstallMenuOption -Key 'lifecycleMcp' -Label 'Install lifecycle MCP config' -Selected:(-not $SkipLifecycleMcp) -Tip 'Install the global lifecycle-only MCP config used for opening and closing Unreal Editor from Codex.' -Indent 1 -Parent 'codexSupport'),
-    (New-InstallMenuOption -Key 'claudePlugin' -Label 'Claude Code plugin support' -Selected:$InstallClaudePlugin -Tip 'Prepare Claude Code plugin installation information and print the marketplace/install commands.'),
+    (New-InstallMenuOption -Key 'claudePlugin' -Label 'Claude Code plugin support' -Selected:$InstallClaudePlugin -Tip 'Register the Claude plugin marketplace through the official Claude plugin installer, then install blueprint-helper from that marketplace when a callable Claude CLI is available.'),
     (New-InstallMenuOption -Key 'claudeAgents' -Label 'Install Claude sideAgent definitions' -Selected:($InstallClaudeAgents -or $InstallClaudePlugin) -Tip 'Install Claude sideAgent definitions. This can be selected with or without the Claude plugin support item.'),
     (New-InstallMenuOption -Key 'projectProfile' -Label 'Write project agent-profile.json' -Selected:(-not $SkipProjectProfile) -Tip 'Create or update .blueprinthelper/agent-profile.json for the detected Unreal project. Path prompts appear after menu confirmation.'),
     (New-InstallMenuOption -Key 'defaultPreferences' -Label 'Create default user preference files' -Selected:(-not $SkipDefaultPreferences) -Tip 'Create missing Claude/Codex BlueprintHelper user preference files without overwriting existing preference files.'),
@@ -590,76 +590,92 @@ function Invoke-InteractiveInstallWizard {
   }
 }
 
-function Ensure-CodexHomeMarketplace {
-  param(
-    [Parameter(Mandatory = $true)]
-    [string]$HomeDir
-  )
+function Get-CodexPluginInstallInfo {
+  $MarketplacePath = Join-Path $Root '.agents\plugins\marketplace.json'
+  $ManifestPath = Join-Path $CodexPluginRoot '.codex-plugin\plugin.json'
 
-  $HomePluginsDir = Join-Path $HomeDir 'plugins'
-  $LinkPath = Join-Path $HomePluginsDir 'blueprint-helper'
-  $MarketplaceDir = Join-Path $HomeDir '.agents\plugins'
-  $MarketplacePath = Join-Path $MarketplaceDir 'marketplace.json'
+  Assert-File -Path $MarketplacePath -Name 'Codex plugin marketplace'
+  Assert-File -Path $ManifestPath -Name 'Codex plugin manifest'
 
-  if ($script:ThisCmdlet.ShouldProcess($HomePluginsDir, 'Create local plugin directory')) {
-    New-Item -ItemType Directory -Force -Path $HomePluginsDir | Out-Null
+  $Marketplace = Get-Content -Raw -LiteralPath $MarketplacePath | ConvertFrom-Json
+  $Manifest = Get-Content -Raw -LiteralPath $ManifestPath | ConvertFrom-Json
+
+  if (-not $Marketplace.name) {
+    throw "Codex marketplace is missing name: $MarketplacePath"
+  }
+  if (-not $Manifest.name) {
+    throw "Codex plugin manifest is missing name: $ManifestPath"
   }
 
-  if (Test-Path -LiteralPath $LinkPath) {
-    $Existing = Get-Item -LiteralPath $LinkPath -Force
-    $ExistingTarget = @($Existing.Target)[0]
-    $ResolvedExistingTarget = if ($ExistingTarget) { [System.IO.Path]::GetFullPath($ExistingTarget) } else { $null }
-    $ResolvedTarget = [System.IO.Path]::GetFullPath($CodexPluginRoot)
+  $Entry = @($Marketplace.plugins | Where-Object { $_.name -eq $Manifest.name } | Select-Object -First 1)
+  if (-not $Entry) {
+    throw "Codex marketplace does not include plugin '$($Manifest.name)': $MarketplacePath"
+  }
 
-    if ($ResolvedExistingTarget -and ($ResolvedExistingTarget -ieq $ResolvedTarget)) {
-      Write-Host "==> Codex home plugin link already points to $CodexPluginRoot"
-    } elseif ($Force) {
-      if ($script:ThisCmdlet.ShouldProcess($LinkPath, 'Replace existing Codex home plugin entry')) {
-        Remove-Item -LiteralPath $LinkPath -Recurse -Force
-        New-Item -ItemType Junction -Path $LinkPath -Target $CodexPluginRoot | Out-Null
+  return [pscustomobject]@{
+    marketplace_path = $MarketplacePath
+    marketplace_source = $Root
+    marketplace_name = [string]$Marketplace.name
+    plugin_name = [string]$Manifest.name
+    install_spec = "$($Manifest.name)@$($Marketplace.name)"
+  }
+}
+
+function Get-CodexOfficialPluginCommands {
+  $Commands = @()
+  foreach ($Name in @('droid', 'codex')) {
+    $Command = Get-Command $Name -ErrorAction SilentlyContinue
+    if ($Command -and $Command.Source) {
+      $Commands += [pscustomobject]@{
+        name = $Name
+        path = $Command.Source
       }
-    } else {
-      throw "Codex home plugin path already exists and points elsewhere: $LinkPath. Re-run with -Force to replace it."
     }
-  } elseif ($script:ThisCmdlet.ShouldProcess($LinkPath, "Create junction to $CodexPluginRoot")) {
-    New-Item -ItemType Junction -Path $LinkPath -Target $CodexPluginRoot | Out-Null
   }
 
-  if ($script:ThisCmdlet.ShouldProcess($MarketplaceDir, 'Create Codex marketplace directory')) {
-    New-Item -ItemType Directory -Force -Path $MarketplaceDir | Out-Null
-  }
+  return $Commands
+}
 
-  if (Test-Path -LiteralPath $MarketplacePath) {
-    $Marketplace = Get-Content -Raw -LiteralPath $MarketplacePath | ConvertFrom-Json
-  } else {
-    $Marketplace = [pscustomobject]@{
-      name = 'local'
-      interface = [pscustomobject]@{
-        displayName = 'Local Plugins'
+function Install-CodexPluginViaOfficialEntry {
+  $Info = Get-CodexPluginInstallInfo
+  $MarketplaceArgs = @('plugin', 'marketplace', 'add', $Info.marketplace_source)
+  $InstallArgs = @('plugin', 'install', $Info.install_spec)
+  $Failures = @()
+
+  Write-Host "==> Codex marketplace source: $($Info.marketplace_source)"
+  Write-Host "==> Codex plugin install spec: $($Info.install_spec)"
+
+  foreach ($Command in (Get-CodexOfficialPluginCommands)) {
+    try {
+      Invoke-External -Description "Codex official marketplace install ($($Command.name))" -FilePath $Command.path -Arguments $MarketplaceArgs
+      Invoke-External -Description "Codex official plugin install ($($Command.name))" -FilePath $Command.path -Arguments $InstallArgs
+
+      return [pscustomobject]@{
+        status = if ($WhatIfPreference) { 'whatif' } else { 'installed_via_official_entry' }
+        command = $Command.name
+        marketplace_command = "$($Command.name) $($MarketplaceArgs -join ' ')"
+        install_command = "$($Command.name) $($InstallArgs -join ' ')"
+        install_spec = $Info.install_spec
+        marketplace_source = $Info.marketplace_source
       }
-      plugins = @()
+    } catch {
+      $Failures += "$($Command.name): $($_.Exception.Message)"
+      Write-Warning "Codex official plugin command failed through '$($Command.name)'. $($_.Exception.Message)"
     }
   }
 
-  $Entry = [pscustomobject]@{
-    name = 'blueprint-helper'
-    source = [pscustomobject]@{
-      source = 'local'
-      path = './plugins/blueprint-helper'
-    }
-    policy = [pscustomobject]@{
-      installation = 'AVAILABLE'
-      authentication = 'ON_INSTALL'
-    }
-    category = 'Coding'
-  }
+  Write-Warning 'No callable Codex official plugin installer was available. The repository marketplace is ready; install from the Codex Plugins UI or run the commands below with the official Codex plugin CLI.'
+  Write-Host "    plugin marketplace add $($Info.marketplace_source)"
+  Write-Host "    plugin install $($Info.install_spec)"
 
-  $Plugins = @($Marketplace.plugins | Where-Object { $_.name -ne 'blueprint-helper' })
-  $Plugins += $Entry
-  $Marketplace.plugins = $Plugins
-
-  if ($script:ThisCmdlet.ShouldProcess($MarketplacePath, 'Update Codex home marketplace')) {
-    $Marketplace | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $MarketplacePath -Encoding utf8
+  return [pscustomobject]@{
+    status = 'manual_official_install_required'
+    command = $null
+    marketplace_command = "plugin marketplace add $($Info.marketplace_source)"
+    install_command = "plugin install $($Info.install_spec)"
+    install_spec = $Info.install_spec
+    marketplace_source = $Info.marketplace_source
+    failures = $Failures
   }
 }
 
@@ -670,20 +686,87 @@ function Get-ClaudePluginInstallInfo {
   Assert-File -Path $ManifestPath -Name 'Claude plugin manifest'
   Assert-File -Path $MarketplacePath -Name 'Claude plugin marketplace'
 
-  $SourcePath = './ClaudePlugin'
-  $MarketplaceCommand = "/plugin marketplace add $SourcePath"
-  $InstallCommand = '/plugin install blueprint-helper@blueprint-helper-dev'
+  $Marketplace = Get-Content -Raw -LiteralPath $MarketplacePath | ConvertFrom-Json
+  $Manifest = Get-Content -Raw -LiteralPath $ManifestPath | ConvertFrom-Json
 
-  Write-Host "==> Claude plugin source: $SourcePath"
-  Write-Host '    Start Claude Code from this repository root, then run:'
-  Write-Host "    $MarketplaceCommand"
-  Write-Host "    $InstallCommand"
+  if (-not $Marketplace.name) {
+    throw "Claude marketplace is missing name: $MarketplacePath"
+  }
+  if (-not $Manifest.name) {
+    throw "Claude plugin manifest is missing name: $ManifestPath"
+  }
+
+  $Entry = @($Marketplace.plugins | Where-Object { $_.name -eq $Manifest.name } | Select-Object -First 1)
+  if (-not $Entry) {
+    throw "Claude marketplace does not include plugin '$($Manifest.name)': $MarketplacePath"
+  }
 
   return [pscustomobject]@{
-    status = 'ready_for_claude_code'
-    source_path = $SourcePath
-    marketplace_command = $MarketplaceCommand
-    install_command = $InstallCommand
+    marketplace_path = $MarketplacePath
+    marketplace_source = $ClaudePluginRoot
+    marketplace_name = [string]$Marketplace.name
+    plugin_name = [string]$Manifest.name
+    install_spec = "$($Manifest.name)@$($Marketplace.name)"
+  }
+}
+
+function Get-ClaudeOfficialPluginCommands {
+  $Commands = @()
+  foreach ($Name in @('claude', 'claude-code')) {
+    $Command = Get-Command $Name -ErrorAction SilentlyContinue
+    if ($Command -and $Command.Source) {
+      $Commands += [pscustomobject]@{
+        name = $Name
+        path = $Command.Source
+      }
+    }
+  }
+
+  return $Commands
+}
+
+function Install-ClaudePluginViaOfficialEntry {
+  $Info = Get-ClaudePluginInstallInfo
+  $MarketplaceArgs = @('plugin', 'marketplace', 'add', $Info.marketplace_source)
+  $InstallArgs = @('plugin', 'install', $Info.install_spec)
+  $Failures = @()
+
+  Write-Host "==> Claude marketplace source: $($Info.marketplace_source)"
+  Write-Host "==> Claude plugin install spec: $($Info.install_spec)"
+
+  foreach ($Command in (Get-ClaudeOfficialPluginCommands)) {
+    try {
+      Invoke-External -Description "Claude official marketplace install ($($Command.name))" -FilePath $Command.path -Arguments $MarketplaceArgs
+      Invoke-External -Description "Claude official plugin install ($($Command.name))" -FilePath $Command.path -Arguments $InstallArgs
+
+      return [pscustomobject]@{
+        status = if ($WhatIfPreference) { 'whatif' } else { 'installed_via_official_entry' }
+        command = $Command.name
+        source_path = $Info.marketplace_source
+        marketplace_command = "$($Command.name) $($MarketplaceArgs -join ' ')"
+        install_command = "$($Command.name) $($InstallArgs -join ' ')"
+        install_spec = $Info.install_spec
+        marketplace_source = $Info.marketplace_source
+      }
+    } catch {
+      $Failures += "$($Command.name): $($_.Exception.Message)"
+      Write-Warning "Claude official plugin command failed through '$($Command.name)'. $($_.Exception.Message)"
+    }
+  }
+
+  Write-Warning 'No callable Claude official plugin installer was available. The local Claude marketplace is ready; install from Claude Code with the official /plugin commands below.'
+  Write-Host "    /plugin marketplace add $($Info.marketplace_source)"
+  Write-Host "    /plugin install $($Info.install_spec)"
+
+  return [pscustomobject]@{
+    status = 'manual_official_install_required'
+    command = $null
+    source_path = $Info.marketplace_source
+    marketplace_command = "/plugin marketplace add $($Info.marketplace_source)"
+    install_command = "/plugin install $($Info.install_spec)"
+    install_spec = $Info.install_spec
+    marketplace_source = $Info.marketplace_source
+    failures = $Failures
   }
 }
 
@@ -1078,8 +1161,17 @@ if (-not $UserHome) {
   throw 'Unable to resolve user home directory.'
 }
 
+$CodexPluginResult = [pscustomobject]@{
+  status = 'skipped'
+  command = $null
+  marketplace_command = $null
+  install_command = $null
+  install_spec = $null
+  marketplace_source = $null
+}
+
 if (-not $SkipCodexMarketplace) {
-  Ensure-CodexHomeMarketplace -HomeDir $UserHome
+  $CodexPluginResult = Install-CodexPluginViaOfficialEntry
 }
 
 if (-not $SkipCodexAgents) {
@@ -1120,7 +1212,7 @@ if ($RunDiagnostics) {
 }
 
 if ($InstallClaudePlugin) {
-  $ClaudePluginResult = Get-ClaudePluginInstallInfo
+  $ClaudePluginResult = Install-ClaudePluginViaOfficialEntry
 }
 
 if ($InstallClaudeAgents -or $InstallClaudePlugin) {
@@ -1137,10 +1229,29 @@ Write-Host 'BlueprintHelper install finished.'
 Write-Host "Source root: $Root"
 Write-Host 'CLI: bh or blueprinthelper-cli (.cmd launcher; installer removes blocking .ps1 shims when npm creates them)'
 Write-Host 'CLI JSON input: prefer --file or pipe JSON to --stdin in PowerShell; avoid inline --json for non-trivial payloads.'
-Write-Host 'Codex plugin: blueprint-helper'
+Write-Host "Codex plugin: $($CodexPluginResult.status)"
+if ($CodexPluginResult.install_spec) {
+  Write-Host "Codex plugin install spec: $($CodexPluginResult.install_spec)"
+}
+if ($CodexPluginResult.marketplace_source) {
+  Write-Host "Codex marketplace source: $($CodexPluginResult.marketplace_source)"
+}
+if ($CodexPluginResult.command) {
+  Write-Host "Codex installer command: $($CodexPluginResult.command)"
+} elseif ($CodexPluginResult.install_command) {
+  Write-Host "Codex marketplace command: $($CodexPluginResult.marketplace_command)"
+  Write-Host "Codex install command: $($CodexPluginResult.install_command)"
+}
 Write-Host "Claude plugin: $($ClaudePluginResult.status)"
 if ($ClaudePluginResult.source_path) {
   Write-Host "Claude plugin source: $($ClaudePluginResult.source_path)"
+}
+if ($ClaudePluginResult.install_spec) {
+  Write-Host "Claude plugin install spec: $($ClaudePluginResult.install_spec)"
+}
+if ($ClaudePluginResult.command) {
+  Write-Host "Claude installer command: $($ClaudePluginResult.command)"
+} elseif ($ClaudePluginResult.install_command) {
   Write-Host "Claude marketplace command: $($ClaudePluginResult.marketplace_command)"
   Write-Host "Claude install command: $($ClaudePluginResult.install_command)"
 }

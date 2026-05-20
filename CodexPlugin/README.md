@@ -10,6 +10,13 @@ For normal user setup, run the repository-root installer:
 
 See `INSTALL.md` at the repository root for Codex Desktop, CLI, lifecycle MCP, and UE engine-install options.
 
+The root installer uses the official Codex plugin install entry for this local marketplace:
+
+```text
+plugin marketplace add <BLUEPRINTHELPER_ROOT>
+plugin install blueprint-helper@blueprint-helper-local
+```
+
 ## Contents
 
 - `.codex-plugin/plugin.json` is the Codex plugin manifest.
