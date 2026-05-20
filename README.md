@@ -2,7 +2,7 @@
 
 BlueprintHelper 是一个面向 Unreal Engine 编辑器资产的辅助插件，核心目标是让 AI Agent 能够通过本地 CLI 和 Unreal Editor Bridge 安全地读取、预览和修改蓝图相关资产。
 
-当前版本：`v0.4.4`
+当前版本：`v0.5.3`
 
 ## 插件用途
 
@@ -86,14 +86,14 @@ blueprint_get_runtime_profile
 
 1. 将仓库放入 Unreal 项目的插件目录，例如 `YourProject/Plugins/BlueprintHelper`。
 2. 在 Unreal Editor 中启用 BlueprintHelper，并按需重新编译项目。
-3. 在仓库根目录运行一键安装脚本：
+3. 在仓库根目录运行一键安装入口：
 
-```powershell
+```cmd
 cd <PLUGIN_ROOT>
-.\install.ps1 -ProjectFile <Project.uproject> -EngineRoot <UE root>
+.\install.cmd -ProjectFile <Project.uproject> -EngineRoot <UE root>
 ```
 
-安装脚本会构建 AgentFaceService、链接 `bh` CLI、通过 Codex 官方插件入口注册本地 marketplace 并安装 `blueprint-helper@blueprint-helper-local`、安装 Codex subagents 和全局 MCP allowlist 入口，并在能确认项目和 UE 根目录时写入 `<ProjectDir>/.blueprinthelper/agent-profile.json`。需要 Claude 插件支持时追加 `-InstallClaudePlugin`，脚本会优先走 Claude 官方插件入口；只需要 Claude sideAgents 时追加 `-InstallClaudeAgents`；需要引擎级安装 UE 插件时追加 `-InstallUePluginToEngine`。
+`install.cmd` 会调用底层 PowerShell 安装脚本并规避普通用户直接运行 `.ps1` 时常见的 ExecutionPolicy 问题。安装器会构建 AgentFaceService、链接 `bh` CLI、通过 Codex 官方插件入口注册本地 marketplace 并安装 `blueprint-helper@blueprint-helper-local`、安装 Codex subagents 和全局 MCP allowlist 入口，并在能确认项目和 UE 根目录时写入 `<ProjectDir>/.blueprinthelper/agent-profile.json`。需要 Claude 插件支持时追加 `-InstallClaudePlugin`；只需要 Claude sideAgents 时追加 `-InstallClaudeAgents`；需要引擎级安装 UE 插件时追加 `-InstallUePluginToEngine`。
 
 安装脚本会在 `npm link` 后移除 npm 生成的 `bh.ps1` / `blueprinthelper-cli.ps1` shim，让 PowerShell 解析到 `.cmd` 启动器，避免 ExecutionPolicy 拦截 `bh`。
 
@@ -118,23 +118,23 @@ $json | bh blueprinthelper_read_context --stdin --format full
 
 ## 更新 / Update
 
-双击 `update.cmd` 可以检查 GitHub 最新 Release，并在发现远端版本更新时提示确认后更新。更新器以 GitHub Release tag 为准，例如 `v0.4.4`、`v0.4.5`。
+双击 `upgrade.cmd` 可以检查 GitHub 最新 Release，并在发现远端版本更新时提示确认后更新。更新器以 GitHub Release tag 为准，例如 `v0.5.2`、`v0.5.3`。`update.cmd` 仍保留为旧入口兼容，普通用户文档统一推荐 `upgrade.cmd`。
 
-更新流程会先把当前插件目录备份到同级目录，例如 `BlueprintHelper.backup-v0.4.4-20260518-153000`，再下载 Release zip 并完整替换当前目录。更新或后续安装刷新失败时，会尝试从备份目录回滚当前插件目录。
+更新流程会先把当前插件目录备份到同级目录，例如 `BlueprintHelper.backup-v0.5.2-20260520-153000`，再下载 Release zip 并完整替换当前目录。更新或后续安装刷新失败时，会尝试从备份目录回滚当前插件目录。
 
 更新成功后会重新构建 AgentFaceService、重新链接 `bh` CLI，并通过官方入口刷新 Codex marketplace、Codex 插件安装、Codex subagents 和全局 MCP allowlist。如果检测到已安装的 Claude sideAgents，或显式传入 `-InstallClaudePlugin`，更新器也会通过 Claude 官方入口刷新 Claude 插件并同步 Claude sideAgents。用户偏好文件和项目 `.blueprinthelper/agent-profile.json` 不会被更新器覆盖。Engine 级 UE 插件副本只会在显式传入 `-InstallUePluginToEngine` 时更新。
 
 ```powershell
-.\update.ps1
-.\update.ps1 -CheckOnly
-.\update.ps1 -Force
-.\update.ps1 -Force -InstallClaudePlugin
-.\update.ps1 -Force -InstallUePluginToEngine -EngineRoot E:\UE_5.6
+.\upgrade.cmd
+.\upgrade.cmd -CheckOnly
+.\upgrade.cmd -Force
+.\upgrade.cmd -Force -InstallClaudePlugin
+.\upgrade.cmd -Force -InstallUePluginToEngine -EngineRoot E:\UE_5.6
 ```
 
-Double-click `update.cmd` to check the latest GitHub Release and update only after confirmation. The updater compares versions by GitHub Release tags such as `v0.4.4` and `v0.4.5`.
+Double-click `upgrade.cmd` to check the latest GitHub Release and update only after confirmation. The updater compares versions by GitHub Release tags such as `v0.5.2` and `v0.5.3`. `update.cmd` remains available as a compatibility entry, but user-facing docs should prefer `upgrade.cmd`.
 
-Before replacing files, the updater backs up the current plugin directory next to it, for example `BlueprintHelper.backup-v0.4.4-20260518-153000`. It then downloads the Release zip and mirrors it into the current plugin directory. If the replacement or post-update refresh fails, it attempts to roll the plugin directory back from that backup.
+Before replacing files, the updater backs up the current plugin directory next to it, for example `BlueprintHelper.backup-v0.5.2-20260520-153000`. It then downloads the Release zip and mirrors it into the current plugin directory. If the replacement or post-update refresh fails, it attempts to roll the plugin directory back from that backup.
 
 After a successful update, the updater rebuilds AgentFaceService, relinks the `bh` CLI, and refreshes the Codex marketplace, Codex plugin install, Codex subagents, and global MCP allowlist through the official entries. If existing Claude sideAgents are detected, or `-InstallClaudePlugin` is passed explicitly, the updater also refreshes the Claude plugin through the official Claude entry and syncs Claude sideAgents. User preference files and project `.blueprinthelper/agent-profile.json` are not overwritten. Engine-level UE plugin copies are updated only when `-InstallUePluginToEngine` is explicitly passed.
 
@@ -146,7 +146,7 @@ BlueprintHelper 当前优先接收来自真实 Unreal Editor 项目使用过程�
 
 ## 版本同步
 
-`v0.4.4` 同步到以下层级：
+`v0.5.3` 同步到以下层级：
 
 - Unreal 插件：`BlueprintHelper/BlueprintHelper.uplugin`
 - CLI：`AgentFaceService/cli/package.json`

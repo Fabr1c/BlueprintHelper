@@ -39,7 +39,7 @@ Preferred CLI shape:
 bh <tool_name> [--file params.json | --json "{...}" | --stdin] [--select field[,field...]] [--format summary|json|full]
 ```
 
-On Windows PowerShell, `bh` should resolve to the `.cmd` launcher installed by `install.ps1`. If an older install resolves to blocked `bh.ps1`, rerun the root installer or call `bh.cmd`.
+On Windows PowerShell, `bh` should resolve to the `.cmd` launcher installed by the root installer. If an older install resolves to blocked `bh.ps1`, rerun `install.cmd` or call `bh.cmd`.
 
 PowerShell-safe JSON rule: use `--file` for reusable JSON and `--stdin` for generated JSON. Do not pass non-trivial generated payloads as inline `--json $json`, because PowerShell can strip quotes before Node receives the argument.
 

@@ -4,8 +4,8 @@ This is a Codex-compatible package for BlueprintHelper.
 
 For normal user setup, run the repository-root installer:
 
-```powershell
-.\install.ps1
+```cmd
+.\install.cmd
 ```
 
 See `INSTALL.md` at the repository root for Codex Desktop, CLI, lifecycle MCP, and UE engine-install options.
