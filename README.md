@@ -93,7 +93,7 @@ cd <PLUGIN_ROOT>
 .\install.ps1 -ProjectFile <Project.uproject> -EngineRoot <UE root>
 ```
 
-安装脚本会构建 AgentFaceService、链接 `bh` CLI、注册 Codex 本地 marketplace、安装 Codex subagents 和全局 MCP allowlist 入口，并在能确认项目和 UE 根目录时写入 `<ProjectDir>/.blueprinthelper/agent-profile.json`。需要 Claude subagents 时追加 `-InstallClaudeAgents`；需要引擎级安装 UE 插件时追加 `-InstallUePluginToEngine`。
+安装脚本会构建 AgentFaceService、链接 `bh` CLI、通过 Codex 官方插件入口注册本地 marketplace 并安装 `blueprint-helper@blueprint-helper-local`、安装 Codex subagents 和全局 MCP allowlist 入口，并在能确认项目和 UE 根目录时写入 `<ProjectDir>/.blueprinthelper/agent-profile.json`。需要 Claude 插件支持时追加 `-InstallClaudePlugin`，脚本会优先走 Claude 官方插件入口；只需要 Claude sideAgents 时追加 `-InstallClaudeAgents`；需要引擎级安装 UE 插件时追加 `-InstallUePluginToEngine`。
 
 安装脚本会在 `npm link` 后移除 npm 生成的 `bh.ps1` / `blueprinthelper-cli.ps1` shim，让 PowerShell 解析到 `.cmd` 启动器，避免 ExecutionPolicy 拦截 `bh`。
 

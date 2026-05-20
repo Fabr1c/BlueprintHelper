@@ -76,14 +76,16 @@ Run the repository-root installer first:
 .\install.ps1 -ProjectFile <Project.uproject> -EngineRoot <UE root>
 ```
 
-Add `-InstallClaudeAgents` when you also want the Claude subagent definitions copied into the user profile.
+Add `-InstallClaudePlugin` when you want the installer to register the Claude marketplace through the official Claude plugin entry and install `blueprint-helper@blueprint-helper-dev`. This also copies the Claude subagent definitions into the user profile.
 
-Then add the marketplace source and install the Claude plugin:
+If no callable Claude plugin CLI is available, the installer prints the official commands to run inside Claude Code:
 
 ```text
-/plugin marketplace add <your-git-remote-or-local-path>
+/plugin marketplace add <BlueprintHelper repository root>\ClaudePlugin
 /plugin install blueprint-helper@blueprint-helper-dev
 ```
+
+Use `-InstallClaudeAgents` only when you want to copy the Claude subagent definitions without installing the Claude plugin.
 
 `/blueprint-helper:setup` is retained only as a compatibility pointer to `install.ps1`; it no longer owns first-run setup.
 
