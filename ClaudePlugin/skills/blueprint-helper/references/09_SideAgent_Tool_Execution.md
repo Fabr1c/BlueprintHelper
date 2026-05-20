@@ -70,7 +70,7 @@ blueprinthelper_export_debug_bundle
 blueprinthelper_query_review_records
 ```
 
-`blueprint_open_editor` / `blueprint_close_editor` belong to the global MCP editor lifecycle boundary. Use them only when the Main Agent explicitly needs to start or close the target Editor; CLI lifecycle helpers are compatibility/manual fallback and ordinary reads and writes still use the CLI TaskSpec/ReadSpec tool chain.
+`blueprint_open_editor` / `blueprint_close_editor` belong to the global MCP editor lifecycle boundary. Use them only when the Main Agent explicitly needs to start or close the target Editor. Compatibility also uses the global MCP lifecycle tools; do not route lifecycle through CLI helpers. Ordinary reads and writes still use the CLI TaskSpec/ReadSpec tool chain.
 
 `blueprinthelper_apply_review_action` 只用于插件开发/内部验证，不属于普通 Agent 或 SideAgent 工具链。
 

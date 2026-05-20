@@ -192,11 +192,11 @@ blueprinthelper_query_review_records
 
 `blueprinthelper_apply_review_action` is plugin-development/internal and is not part of ordinary Codex Agent workflows.
 
-MCP lifecycle companion commands:
+Global MCP lifecycle tool ids:
 
 ```text
-blueprint_open_editor
-blueprint_close_editor
+mcp__blueprint_helper__blueprint_open_editor
+mcp__blueprint_helper__blueprint_close_editor
 ```
 
 Frozen legacy, expert, and low-level direct commands are not the normal Agent workflow. If a capability is missing from the supported CLI surface, stop and report the gap unless the request falls inside the explicit MCP lifecycle boundary above.

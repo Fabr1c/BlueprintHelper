@@ -57,7 +57,7 @@ CLI output is optimized for Agent use. Use `--omit operation,status` when the de
 
 Template-first authoring is available at `AgentFaceService/agent-guide/Templates/README.md`. Prefer copying a matching JSON template, editing placeholders, and calling the CLI with `--file` instead of authoring large JSON directly in shell command strings.
 
-`blueprint_open_editor` / `blueprint_close_editor` 仅用于用户明确需要启动或关闭目标 Unreal Editor 的 lifecycle preflight；Agent 工作流优先调用全局 MCP 生命周期工具。
+`blueprint_open_editor` / `blueprint_close_editor` 指全局 MCP lifecycle 工具，不是 CLI direct tool。用户明确需要启动或关闭目标 Unreal Editor 时，统一调用 `mcp__blueprint_helper__blueprint_open_editor` / `mcp__blueprint_helper__blueprint_close_editor`；不要通过 CLI lifecycle alias 做兼容路径。
 
 阅读顺序:
 
@@ -65,11 +65,13 @@ Template-first authoring is available at `AgentFaceService/agent-guide/Templates
 2. `AgentFaceService/agent-guide/Reference/02_TaskSpec_First_Tool_Selection.md`
 3. `AgentFaceService/agent-guide/Reference/03_Runtime_Profile_And_Diagnostics.md`
 4. `AgentFaceService/agent-guide/Reference/04_Tool_Surface_Field_Templates_20260512.md`
-5. `AgentFaceService/agent-guide/Templates/README.md`
-6. `AgentFaceService/agent-guide/Workflows/04_TaskSpec_Edit_Blueprint_Workflow.md`
-7. `AgentFaceService/agent-guide/Workflows/05_Edit_Blueprint_Workflow.md`
-8. `AgentFaceService/agent-guide/Workflows/06_UMG_Data_Workflows.md`
-9. `AgentFaceService/agent-guide/Workflows/07_Safety_Validation_And_Recovery.md`
+5. `AgentFaceService/agent-guide/Reference/05_UE_Blueprint_Write_Architecture_Rules.md`
+6. `AgentFaceService/agent-guide/Reference/06_UE_Blueprint_Write_CodingStyle.md`
+7. `AgentFaceService/agent-guide/Templates/README.md`
+8. `AgentFaceService/agent-guide/Workflows/04_TaskSpec_Edit_Blueprint_Workflow.md`
+9. `AgentFaceService/agent-guide/Workflows/05_Edit_Blueprint_Workflow.md`
+10. `AgentFaceService/agent-guide/Workflows/06_UMG_Data_Workflows.md`
+11. `AgentFaceService/agent-guide/Workflows/07_Safety_Validation_And_Recovery.md`
 
 规则:
 

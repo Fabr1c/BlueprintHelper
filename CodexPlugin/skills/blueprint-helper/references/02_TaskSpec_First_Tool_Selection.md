@@ -25,7 +25,7 @@ blueprinthelper_diagnostics
 blueprinthelper_diagnostics_runtime
 ```
 
-`blueprint_open_editor` / `blueprint_close_editor` 只用于显式启动或关闭目标 Editor 的 lifecycle preflight。普通 Agent 工作流使用 CLI；废弃 MCP 普通工具不作为 fallback。
+`blueprint_open_editor` / `blueprint_close_editor` 只表示全局 MCP lifecycle 工具，用于显式启动或关闭目标 Editor。普通资产读写、TaskSpec preview/execute、diagnostics 和 result query 使用 CLI；Editor lifecycle 兼容路径也统一使用全局 MCP，不使用 CLI lifecycle alias。废弃 MCP 普通工具不作为 fallback。
 
 `blueprinthelper_request_write_session` is the ordinary interactive write authorization path. Use it after preview and before execute only when write permission is disabled and the user approves the Editor-side prompt.
 The Editor prompt is intentionally a simple accept/reject dialog. If the user rejects it, stop and report. Approval applies to the running Editor/Bridge for the approved scope and lifetime, so SideAgents can execute BlueprintHelper tools after approval without receiving secret session data. Do not request or pass `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session`.
