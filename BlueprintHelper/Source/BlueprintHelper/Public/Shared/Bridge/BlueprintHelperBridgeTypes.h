@@ -54,6 +54,7 @@ struct FBlueprintHelperBridgeResponse
 	EBlueprintHelperBridgeError ErrorCode = EBlueprintHelperBridgeError::None;
 	FString Message;
 	TSharedPtr<FJsonObject> Result;
+	TSharedPtr<FJsonObject> TransportTiming;
 
 	static FBlueprintHelperBridgeResponse Success(const FString& InRequestId, const FString& InMessage = TEXT(""))
 	{

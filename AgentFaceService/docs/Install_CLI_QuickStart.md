@@ -32,7 +32,7 @@ cd <PLUGIN_ROOT>
 .\install.ps1 -ProjectFile <Project.uproject> -EngineRoot <UE root>
 ```
 
-The installer builds the Agent runtime, links `bh`, registers the Codex desktop plugin marketplace, installs Codex subagents and the MCP allowlist entry, writes the project agent profile when project and UE root are known, and creates default user preference files only when they are missing.
+The installer builds the Agent runtime, links `bh`, registers the repository local marketplace through the official Codex plugin install entry, installs `blueprint-helper@blueprint-helper-local`, installs Codex subagents and the MCP allowlist entry, writes the project agent profile when project and UE root are known, and creates default user preference files only when they are missing.
 
 Place the plugin at:
 

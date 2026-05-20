@@ -6,6 +6,8 @@
  */
 
 import * as net from 'node:net';
+import { performance } from 'node:perf_hooks';
+import type { TaskTimingTrace } from '../task/service/task-timing.js';
 
 export interface BridgeRequest {
   request_id: string;
@@ -34,6 +36,7 @@ export interface BridgeResponse extends Partial<BridgeSafetyResultFields> {
   error_code?: string;
   message?: string;
   result?: BridgeResult;
+  transport_timing?: Record<string, unknown>;
 }
 
 export interface BridgeClientOptions {
@@ -41,6 +44,11 @@ export interface BridgeClientOptions {
   port?: number;
   connectTimeoutMs?: number;
   requestTimeoutMs?: number;
+}
+
+export interface BridgeSendCommandOptions {
+  timing?: TaskTimingTrace;
+  timingPrefix?: string;
 }
 
 const DEFAULT_OPTIONS: Required<BridgeClientOptions> = {
@@ -56,6 +64,8 @@ type PendingBridgeResponse = {
   resolve: (response: BridgeResponse) => void;
   reject: (err: Error) => void;
   timer: ReturnType<typeof setTimeout>;
+  timing?: TaskTimingTrace;
+  timingPrefix?: string;
 };
 
 /**
@@ -82,6 +92,7 @@ export class BridgeClient {
   async sendCommand(
     command: string,
     payload: Record<string, unknown> = {},
+    options: BridgeSendCommandOptions = {},
   ): Promise<BridgeResponse> {
     const requestId = this.nextRequestId();
     const request: BridgeRequest = {
@@ -90,7 +101,10 @@ export class BridgeClient {
       payload,
       ...(this.writeSessionId ? { auth_session: this.writeSessionId } : {}),
     };
-    return this.sendRaw(request);
+    return this.sendRaw(request, {
+      ...options,
+      timingPrefix: options.timingPrefix ?? `bridge.${command}.transport`,
+    });
   }
 
   setWriteSessionId(sessionId: string): void {
@@ -105,8 +119,14 @@ export class BridgeClient {
     this.resetSocket(new Error('Bridge connection closed'));
   }
 
-  private async sendRaw(request: BridgeRequest): Promise<BridgeResponse> {
-    const socket = await this.ensureConnected();
+  private async sendRaw(
+    request: BridgeRequest,
+    options: BridgeSendCommandOptions = {},
+  ): Promise<BridgeResponse> {
+    const timingPrefix = options.timingPrefix ?? `bridge.${request.command}.transport`;
+    const socket = options.timing
+      ? await options.timing.measureAsync(`${timingPrefix}.connect`, () => this.ensureConnected())
+      : await this.ensureConnected();
 
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -116,7 +136,13 @@ export class BridgeClient {
         this.resetSocket(err);
       }, this.opts.requestTimeoutMs);
 
-      this.pending.set(request.request_id, { resolve, reject, timer });
+      this.pending.set(request.request_id, {
+        resolve,
+        reject,
+        timer,
+        timing: options.timing,
+        timingPrefix,
+      });
 
       const failWrite = (err: Error) => {
         const pending = this.pending.get(request.request_id);
@@ -128,11 +154,19 @@ export class BridgeClient {
       };
 
       try {
-        socket.write(this.encodeRequest(request), (err?: Error | null) => {
-          if (err) {
-            failWrite(new Error(`Bridge connection error: ${err.message}`));
-          }
-        });
+        const frame = this.encodeRequest(request);
+        const writeFrame = () => {
+          socket.write(frame, (err?: Error | null) => {
+            if (err) {
+              failWrite(new Error(`Bridge connection error: ${err.message}`));
+            }
+          });
+        };
+        if (options.timing) {
+          options.timing.measure(`${timingPrefix}.write`, writeFrame);
+        } else {
+          writeFrame();
+        }
       } catch (err) {
         failWrite(err instanceof Error ? err : new Error(String(err)));
       }
@@ -244,6 +278,7 @@ export class BridgeClient {
       const bodyStr = this.recvBuf.subarray(4, 4 + bodyLen).toString('utf-8');
       this.recvBuf = this.recvBuf.subarray(4 + bodyLen);
 
+      const parseStartedAt = performance.now();
       let resp: BridgeResponse;
       try {
         resp = JSON.parse(bodyStr) as BridgeResponse;
@@ -251,10 +286,19 @@ export class BridgeClient {
         this.resetSocket(new Error(`Failed to parse Bridge response: ${bodyStr.slice(0, 200)}`));
         return;
       }
+      const parseFinishedAt = performance.now();
 
       const pending = this.pending.get(resp.request_id);
       if (!pending) {
         continue;
+      }
+
+      if (pending.timing && pending.timingPrefix) {
+        pending.timing.recordMeasuredStage(
+          `${pending.timingPrefix}.client_parse`,
+          parseStartedAt,
+          parseFinishedAt,
+        );
       }
 
       clearTimeout(pending.timer);

@@ -62,6 +62,10 @@ FString FBlueprintHelperBridgeProtocol::SerializeResponse(const FBlueprintHelper
 	{
 		Root->SetObjectField(TEXT("result"), Response.Result.ToSharedRef());
 	}
+	if (Response.TransportTiming.IsValid())
+	{
+		Root->SetObjectField(TEXT("transport_timing"), Response.TransportTiming.ToSharedRef());
+	}
 
 	FString OutputString;
 	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutputString);

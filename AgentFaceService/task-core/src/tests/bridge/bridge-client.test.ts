@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import * as net from 'node:net';
 import test from 'node:test';
 import { BridgeClient } from '../../bridge/bridge-client.js';
+import { TaskTimingTrace } from '../../task/service/task-timing.js';
 
 type ParsedBridgeRequest = {
   request_id?: string;
@@ -215,6 +216,33 @@ test('BridgeClient reconnects after the Bridge half-closes an idle persistent co
     assert.equal(second.success, true);
     assert.deepEqual(server.commands(), ['first', 'second']);
     assert.equal(server.connectionCount(), 2);
+  } finally {
+    client.close();
+    await server.close();
+  }
+});
+
+test('BridgeClient records transport timing stages when a timing trace is supplied', async () => {
+  const server = await startTestBridgeServer();
+  const client = new BridgeClient({
+    host: '127.0.0.1',
+    port: server.port,
+    connectTimeoutMs: 1000,
+    requestTimeoutMs: 1000,
+  });
+  const timing = TaskTimingTrace.start('bridge_client_transport_test', 'agentface_test');
+
+  try {
+    const response = await client.sendCommand('timed_command', {}, {
+      timing,
+      timingPrefix: 'read_context.bridge_transport',
+    });
+
+    assert.equal(response.success, true);
+    const stageNames = timing.snapshot().stages.map((stage) => stage.name);
+    assert.ok(stageNames.includes('read_context.bridge_transport.connect'));
+    assert.ok(stageNames.includes('read_context.bridge_transport.write'));
+    assert.ok(stageNames.includes('read_context.bridge_transport.client_parse'));
   } finally {
     client.close();
     await server.close();

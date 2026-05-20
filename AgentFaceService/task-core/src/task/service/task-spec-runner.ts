@@ -1,4 +1,4 @@
-import type { BridgeClient, BridgeResponse } from '../../bridge/bridge-client.js';
+import type { BridgeClient, BridgeResponse, BridgeSendCommandOptions } from '../../bridge/bridge-client.js';
 import { buildTaskContextPack } from '../context/task-context.js';
 import {
   TaskSpecCompileError,
@@ -38,6 +38,7 @@ import {
   addNestedTaskTiming,
   attachTaskTiming,
   extractBridgeTiming,
+  extractBridgeTransportTiming,
   hasTaskTiming,
   measureTaskTiming,
   measureTaskTimingAsync,
@@ -52,7 +53,11 @@ export type { TaskPreviewToken } from '../schema/task-schemas.js';
 export type { TaskCompiler } from '../compiler/task-compiler-service.js';
 
 export type TaskRunnerBridge = {
-  sendCommand(command: string, payload?: Record<string, unknown>): Promise<BridgeResponse>;
+  sendCommand(
+    command: string,
+    payload?: Record<string, unknown>,
+    options?: BridgeSendCommandOptions,
+  ): Promise<BridgeResponse>;
 };
 
 export interface TaskPreviewOutcome {
@@ -133,7 +138,11 @@ export function createTaskSpecRunner(input: {
         const writeResponse = await measureTaskTimingAsync(timing, 'bridge.execute_task_plan', () => bridge.sendCommand('execute_task_plan', {
           task_plan: preview.taskPlan,
           ...(hasTaskTiming(timing) ? { include_timing: true } : {}),
+        }, {
+          timing,
+          timingPrefix: 'bridge.execute_task_plan.transport',
         }));
+        addNestedTaskTiming(timing, 'bridge.execute_task_plan', extractBridgeTransportTiming(writeResponse));
         addNestedTaskTiming(timing, 'ue.execute_task_plan', extractBridgeTiming(writeResponse.result));
         if (!writeResponse.success) {
           return attachTaskTiming(taskFailureFromBridgeResponse(
@@ -288,7 +297,11 @@ async function runPreviewTaskFromPlan(
     task_plan: taskPlan,
     preview_token_request: previewTokenRequest,
     ...(hasTaskTiming(timing) ? { include_timing: true } : {}),
+  }, {
+    timing,
+    timingPrefix: 'bridge.preview_task_plan.transport',
   }));
+  addNestedTaskTiming(timing, 'bridge.preview_task_plan', extractBridgeTransportTiming(previewResponse));
   addNestedTaskTiming(timing, 'ue.preview_task_plan', extractBridgeTiming(previewResponse.result));
 
   if (!previewResponse.success) {
@@ -411,7 +424,11 @@ async function executeTaskWithPreviewToken(
     preview_token: previewToken,
     task_spec_hash: taskSpecHash,
     ...(hasTaskTiming(timing) ? { include_timing: true } : {}),
+  }, {
+    timing,
+    timingPrefix: 'bridge.execute_task_plan.transport',
   }));
+  addNestedTaskTiming(timing, 'bridge.execute_task_plan', extractBridgeTransportTiming(writeResponse));
   addNestedTaskTiming(timing, 'ue.execute_task_plan', extractBridgeTiming(writeResponse.result));
 
   if (!writeResponse.success) {

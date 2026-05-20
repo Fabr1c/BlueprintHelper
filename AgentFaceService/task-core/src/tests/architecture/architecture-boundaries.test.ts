@@ -67,6 +67,19 @@ test('Bridge route planner declares every command once in the route registry tab
   assert.deepEqual([...new Set(duplicates)].sort(), []);
 });
 
+test('Bridge server accepts clients through socket readiness wait instead of fixed polling', () => {
+  const bridgeServer = fs.readFileSync(
+    path.resolve(UE_SOURCE_ROOT, 'Private', 'Entry', 'Bridge', 'BlueprintHelperBridgeServer.cpp'),
+    'utf8',
+  );
+
+  assert.match(bridgeServer, /ListenerSocket->WaitForPendingConnection\(/u);
+  assert.doesNotMatch(
+    bridgeServer,
+    /HasPendingConnection[\s\S]*?FPlatformProcess::Sleep\(0\.05f\)/u,
+  );
+});
+
 test('CLI and MCP production task paths depend on the task compiler service boundary', () => {
   const productionFiles = [
     ...collectFiles(path.resolve(AGENT_FACE_ROOT, 'cli', 'src'), ['.ts']),
