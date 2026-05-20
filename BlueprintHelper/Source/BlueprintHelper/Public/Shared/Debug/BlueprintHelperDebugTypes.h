@@ -6,6 +6,7 @@
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Misc/Paths.h"
+#include "Systems/Debug/BlueprintHelperDebugExportPolicyResolver.h"
 
 enum class EBlueprintHelperDebugSeverity : uint8
 {
@@ -710,6 +711,8 @@ struct FBlueprintHelperDebugBundleManifest
 	TArray<FString> ReviewSummaryRefs;
 	TArray<FBlueprintHelperDebugSkippedArtifact> SkippedArtifacts;
 	FBlueprintHelperDebugFragmentArtifactRefs FragmentArtifacts;
+	FString ExportProfile;
+	bool bContainsFullSettings = false;
 
 	TSharedRef<FJsonObject> ToJson() const
 	{
@@ -776,12 +779,15 @@ struct FBlueprintHelperDebugBundleManifest
 		ArtifactSummary->SetBoolField(TEXT("contains_legacy_debug_export_refs"), false);
 		ArtifactSummary->SetBoolField(TEXT("contains_local_absolute_paths"), false);
 		Json->SetObjectField(TEXT("artifact_summary"), ArtifactSummary);
+		const FBlueprintHelperDebugExportPolicy ExportPolicy = FBlueprintHelperDebugExportPolicyResolver::Load();
+		const FString PrivacyProfile = ExportProfile.IsEmpty() ? ExportPolicy.ExportProfile : ExportProfile;
+		const bool bPrivacyContainsFullSettings = bContainsFullSettings || ExportPolicy.bContainsFullSettings;
 		TSharedRef<FJsonObject> Privacy = MakeShared<FJsonObject>();
-		Privacy->SetStringField(TEXT("profile"), TEXT("standard"));
+		Privacy->SetStringField(TEXT("profile"), PrivacyProfile);
 		Privacy->SetBoolField(TEXT("summary_only"), true);
 		Privacy->SetBoolField(TEXT("redacted"), true);
 		Privacy->SetBoolField(TEXT("contains_tokens"), false);
-		Privacy->SetBoolField(TEXT("contains_full_settings"), false);
+		Privacy->SetBoolField(TEXT("contains_full_settings"), bPrivacyContainsFullSettings);
 		Privacy->SetBoolField(TEXT("contains_local_absolute_paths"), false);
 		Privacy->SetBoolField(TEXT("contains_full_asset_raw_json"), false);
 		Privacy->SetBoolField(TEXT("contains_source_files"), false);
@@ -789,7 +795,10 @@ struct FBlueprintHelperDebugBundleManifest
 		TArray<TSharedPtr<FJsonValue>> Redactions;
 		Redactions.Add(MakeShared<FJsonValueString>(TEXT("tokens")));
 		Redactions.Add(MakeShared<FJsonValueString>(TEXT("env_values")));
-		Redactions.Add(MakeShared<FJsonValueString>(TEXT("settings_full")));
+		if (!bPrivacyContainsFullSettings)
+		{
+			Redactions.Add(MakeShared<FJsonValueString>(TEXT("settings_full")));
+		}
 		Redactions.Add(MakeShared<FJsonValueString>(TEXT("local_absolute_paths")));
 		Redactions.Add(MakeShared<FJsonValueString>(TEXT("full_raw_json")));
 		Redactions.Add(MakeShared<FJsonValueString>(TEXT("source_content")));

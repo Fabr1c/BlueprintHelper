@@ -11,6 +11,7 @@
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphNodeUtility.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphWriteContext.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintMultiGraphGenerationPipeline.h"
+#include "Systems/ToolClusters/BlueprintHelperToolClusterConfigResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphComposer.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDag.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDagBuilder.h"
@@ -55,7 +56,8 @@ static double GraphWriteElapsedMs(double StartSeconds)
 static bool ShouldReconstructExistingNodes(const TSharedPtr<FJsonObject>& Object)
 {
 	const TSharedPtr<FJsonObject>* OptionsObject = nullptr;
-	bool bReconstructExistingNodes = false;
+	bool bReconstructExistingNodes =
+		FBlueprintHelperToolClusterConfigResolver::LoadGraphWritePolicy().bReconstructExistingNodes;
 	if (Object.IsValid()
 		&& Object->TryGetObjectField(TEXT("options"), OptionsObject)
 		&& OptionsObject

@@ -11,6 +11,47 @@
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SOverlay.h"
 
+namespace
+{
+struct FBlueprintHelperReviewDiffBlockNodeActionStyle
+{
+	float ActionPadding = 5.0f;
+	FMargin ActionSpacing = FMargin(0.0f, 0.0f, 6.0f, 0.0f);
+	FMargin ActionAnchorPadding = FMargin(0.0f, 0.0f, 10.0f, 10.0f);
+};
+
+TMap<const UBlueprintHelperReviewDiffBlockNode*, FBlueprintHelperReviewDiffBlockNodeActionStyle> GBlueprintHelperReviewDiffBlockNodeActionStyles;
+
+FBlueprintHelperReviewDiffBlockNodeActionStyle BlueprintHelperReviewGetDiffBlockNodeActionStyle(
+	const UBlueprintHelperReviewDiffBlockNode* Node)
+{
+	if (const FBlueprintHelperReviewDiffBlockNodeActionStyle* Style =
+		GBlueprintHelperReviewDiffBlockNodeActionStyles.Find(Node))
+	{
+		return *Style;
+	}
+	return FBlueprintHelperReviewDiffBlockNodeActionStyle();
+}
+}
+
+void BlueprintHelperReviewApplyDiffBlockNodeActionStyle(
+	UBlueprintHelperReviewDiffBlockNode* Node,
+	const float InActionPadding,
+	const FMargin& InActionSpacing,
+	const FMargin& InActionAnchorPadding)
+{
+	if (!Node)
+	{
+		return;
+	}
+
+	FBlueprintHelperReviewDiffBlockNodeActionStyle& Style =
+		GBlueprintHelperReviewDiffBlockNodeActionStyles.FindOrAdd(Node);
+	Style.ActionPadding = FMath::Max(0.0f, InActionPadding);
+	Style.ActionSpacing = InActionSpacing;
+	Style.ActionAnchorPadding = InActionAnchorPadding;
+}
+
 class SBlueprintHelperReviewDiffBlockGraphNode : public SGraphNode
 {
 public:
@@ -35,6 +76,8 @@ public:
 		UBlueprintHelperReviewDiffBlockNode* Node = DiffNode.Get();
 		const float Width = Node ? FMath::Max(80.0f, static_cast<float>(Node->NodeWidth)) : 80.0f;
 		const float Height = Node ? FMath::Max(40.0f, static_cast<float>(Node->NodeHeight)) : 40.0f;
+		const FBlueprintHelperReviewDiffBlockNodeActionStyle ActionStyle =
+			BlueprintHelperReviewGetDiffBlockNodeActionStyle(Node);
 
 		GetOrAddSlot(ENodeZone::Center)
 		.HAlign(HAlign_Fill)
@@ -54,17 +97,17 @@ public:
 				+ SOverlay::Slot()
 				.HAlign(HAlign_Right)
 				.VAlign(VAlign_Bottom)
-				.Padding(0.0f, 0.0f, 10.0f, 10.0f)
+				.Padding(ActionStyle.ActionAnchorPadding)
 				[
 					SNew(SBorder)
 					.BorderImage(&ActionBrush)
-					.Padding(5.0f)
+					.Padding(ActionStyle.ActionPadding)
 					.Visibility(this, &SBlueprintHelperReviewDiffBlockGraphNode::GetActionVisibility)
 					[
 						SNew(SHorizontalBox)
 						+ SHorizontalBox::Slot()
 						.AutoWidth()
-						.Padding(0.0f, 0.0f, 6.0f, 0.0f)
+						.Padding(ActionStyle.ActionSpacing)
 						[
 							SNew(SButton)
 							.Text(FText::FromString(TEXT("Accept")))

@@ -21,6 +21,7 @@
 #include "Systems/Debug/BlueprintHelperAssetBrowseService.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutCoordinator.h"
 #include "Systems/Review/BlueprintHelperReviewBaselineSnapshotService.h"
+#include "Systems/Review/BlueprintHelperReviewConfigResolver.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
 #include "Shared/Debug/BlueprintHelperSaveAssetTypes.h"
 #include "Runtime/TaskRuntime/TaskPlanAdapters/AssetFactory/BlueprintHelperAssetFactoryTaskPlanAdapter.h"
@@ -38,6 +39,7 @@
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeCacheKeyUtils.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeCommitService.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeDryRunPolicy.h"
+#include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeSettingsResolver.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskPartialPreviewCache.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimePostIoService.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimePrepareService.h"
@@ -202,10 +204,7 @@ public:
 			return SnapshotRefs;
 		}
 
-		const FString SnapshotDir = FPaths::ProjectSavedDir()
-			/ TEXT("BlueprintHelper")
-			/ TEXT("Review")
-			/ TEXT("Snapshots")
+		const FString SnapshotDir = FBlueprintHelperReviewConfigResolver::Load().Artifact.SnapshotRoot
 			/ ArchiveSessionId;
 		IFileManager::Get().MakeDirectory(*SnapshotDir, true);
 
@@ -403,7 +402,7 @@ public:
 
 		if (Value->Type == EJson::Object)
 		{
-			const TSharedPtr<FJsonObject> ObjectValue = Value->AsObject();
+			const TSharedPtr<FJsonObject> ObjectValue = AsJsonObjectIfObject(Value);
 			FString Kind;
 			if (ObjectValue.IsValid() &&
 				ObjectValue->TryGetStringField(TEXT("kind"), Kind) &&
@@ -415,6 +414,15 @@ public:
 		}
 
 		return Value;
+	}
+
+	static TSharedPtr<FJsonObject> AsJsonObjectIfObject(const TSharedPtr<FJsonValue>& Value)
+	{
+		if (!Value.IsValid() || Value->Type != EJson::Object)
+		{
+			return nullptr;
+		}
+		return Value->AsObject();
 	}
 
 	static void CopyLiteralArgsToInputs(
@@ -992,9 +1000,7 @@ public:
 		const FString& SemanticExpressionPath,
 		TArray<FCallFunctionStatementRef>& OutStatements)
 	{
-		const TSharedPtr<FJsonObject> ExpressionObject = ExpressionValue.IsValid()
-			? ExpressionValue->AsObject()
-			: nullptr;
+		const TSharedPtr<FJsonObject> ExpressionObject = AsJsonObjectIfObject(ExpressionValue);
 		if (!ExpressionObject.IsValid())
 		{
 			return;
@@ -1131,9 +1137,7 @@ public:
 	{
 		for (int32 StatementIndex = 0; StatementIndex < StatementValues.Num(); ++StatementIndex)
 		{
-			const TSharedPtr<FJsonObject> StatementObject = StatementValues[StatementIndex].IsValid()
-				? StatementValues[StatementIndex]->AsObject()
-				: nullptr;
+			const TSharedPtr<FJsonObject> StatementObject = AsJsonObjectIfObject(StatementValues[StatementIndex]);
 			if (!StatementObject.IsValid())
 			{
 				continue;
@@ -1379,6 +1383,47 @@ public:
 		const TSharedPtr<FJsonObject>& LoweredPayload,
 		TArray<FCallFunctionLogicSpecRef>& OutLogicSpecs)
 	{
+		const TSharedPtr<FJsonObject>* WriteObjectPtr = nullptr;
+		if (StepObject.IsValid() &&
+			StepObject->TryGetObjectField(TEXT("write"), WriteObjectPtr) &&
+			WriteObjectPtr && WriteObjectPtr->IsValid())
+		{
+			const TArray<TSharedPtr<FJsonValue>>* OpsArray = nullptr;
+			if ((*WriteObjectPtr)->TryGetArrayField(TEXT("ops"), OpsArray) && OpsArray)
+			{
+				for (int32 OpIndex = 0; OpIndex < OpsArray->Num(); ++OpIndex)
+				{
+					const TSharedPtr<FJsonObject> OpObject = AsJsonObjectIfObject((*OpsArray)[OpIndex]);
+					if (!OpObject.IsValid())
+					{
+						continue;
+					}
+
+					const TSharedPtr<FJsonObject>* BodyObjectPtr = nullptr;
+					FCallFunctionLogicSpecRef Ref;
+					if (OpObject->TryGetObjectField(TEXT("body"), BodyObjectPtr) &&
+						BodyObjectPtr && BodyObjectPtr->IsValid())
+					{
+						Ref.LogicSpec = *BodyObjectPtr;
+						Ref.LogicSpecPath = FString::Printf(TEXT("write.ops[%d].body"), OpIndex);
+						OutLogicSpecs.Add(MoveTemp(Ref));
+					}
+					else if (OpObject->TryGetObjectField(TEXT("logic_spec"), BodyObjectPtr) &&
+						BodyObjectPtr && BodyObjectPtr->IsValid())
+					{
+						Ref.LogicSpec = *BodyObjectPtr;
+						Ref.LogicSpecPath = FString::Printf(TEXT("write.ops[%d].logic_spec"), OpIndex);
+						OutLogicSpecs.Add(MoveTemp(Ref));
+					}
+				}
+			}
+		}
+
+		if (!OutLogicSpecs.IsEmpty())
+		{
+			return;
+		}
+
 		const TSharedPtr<FJsonObject>* LoweredLogicSpecPtr = nullptr;
 		if (LoweredPayload.IsValid() &&
 			LoweredPayload->TryGetObjectField(TEXT("logic_spec"), LoweredLogicSpecPtr) &&
@@ -1388,50 +1433,6 @@ public:
 			Ref.LogicSpec = *LoweredLogicSpecPtr;
 			Ref.LogicSpecPath = TEXT("payload.logic_spec");
 			OutLogicSpecs.Add(MoveTemp(Ref));
-			return;
-		}
-
-		const TSharedPtr<FJsonObject>* WriteObjectPtr = nullptr;
-		if (!StepObject.IsValid() ||
-			!StepObject->TryGetObjectField(TEXT("write"), WriteObjectPtr) ||
-			!WriteObjectPtr || !WriteObjectPtr->IsValid())
-		{
-			return;
-		}
-
-		const TArray<TSharedPtr<FJsonValue>>* OpsArray = nullptr;
-		if (!(*WriteObjectPtr)->TryGetArrayField(TEXT("ops"), OpsArray) || !OpsArray)
-		{
-			return;
-		}
-
-		for (int32 OpIndex = 0; OpIndex < OpsArray->Num(); ++OpIndex)
-		{
-			const TSharedPtr<FJsonObject> OpObject =
-				(*OpsArray)[OpIndex].IsValid()
-					? (*OpsArray)[OpIndex]->AsObject()
-					: nullptr;
-			if (!OpObject.IsValid())
-			{
-				continue;
-			}
-
-			const TSharedPtr<FJsonObject>* BodyObjectPtr = nullptr;
-			FCallFunctionLogicSpecRef Ref;
-			if (OpObject->TryGetObjectField(TEXT("body"), BodyObjectPtr) &&
-				BodyObjectPtr && BodyObjectPtr->IsValid())
-			{
-				Ref.LogicSpec = *BodyObjectPtr;
-				Ref.LogicSpecPath = FString::Printf(TEXT("write.ops[%d].body"), OpIndex);
-				OutLogicSpecs.Add(MoveTemp(Ref));
-			}
-			else if (OpObject->TryGetObjectField(TEXT("logic_spec"), BodyObjectPtr) &&
-				BodyObjectPtr && BodyObjectPtr->IsValid())
-			{
-				Ref.LogicSpec = *BodyObjectPtr;
-				Ref.LogicSpecPath = FString::Printf(TEXT("write.ops[%d].logic_spec"), OpIndex);
-				OutLogicSpecs.Add(MoveTemp(Ref));
-			}
 		}
 	}
 
@@ -1837,10 +1838,7 @@ public:
 			return false;
 		}
 
-		const TSharedPtr<FJsonObject> OpObject =
-			(*OpsArray)[0].IsValid()
-				? (*OpsArray)[0]->AsObject()
-				: nullptr;
+		const TSharedPtr<FJsonObject> OpObject = AsJsonObjectIfObject((*OpsArray)[0]);
 		TSharedPtr<FJsonObject> LogicSpec;
 		if (!TryBuildGraphWriteEnsureEntryLogicSpec(OpObject, 0, LogicSpec, OutError))
 		{
@@ -1932,6 +1930,13 @@ public:
 
 	static bool HasExecutionPolicyValidationFields(const TSharedPtr<FJsonObject>& TaskPlan)
 	{
+		const FBlueprintHelperTaskRuntimeExecutionPolicySettings SettingsPolicy =
+			FBlueprintHelperTaskRuntimeSettingsResolver::LoadExecutionPolicy();
+		if (SettingsPolicy.bShouldCompile || SettingsPolicy.bShouldSave)
+		{
+			return true;
+		}
+
 		const TSharedPtr<FJsonObject>* ExecutionPolicyPtr = nullptr;
 		if (!TaskPlan.IsValid() ||
 			!TaskPlan->TryGetObjectField(TEXT("execution_policy"), ExecutionPolicyPtr) ||
@@ -2527,10 +2532,7 @@ public:
 			return false;
 		}
 
-		const TSharedPtr<FJsonObject> FirstOpObject =
-			(*OpsArray)[0].IsValid()
-				? (*OpsArray)[0]->AsObject()
-				: nullptr;
+		const TSharedPtr<FJsonObject> FirstOpObject = AsJsonObjectIfObject((*OpsArray)[0]);
 		FString OpName;
 		if (!FirstOpObject.IsValid() ||
 			!FirstOpObject->TryGetStringField(TEXT("op"), OpName) ||
@@ -3034,10 +3036,7 @@ public:
 		{
 			for (int32 StepIndex = 0; StepIndex < PlannedSteps->Num(); ++StepIndex)
 			{
-				const TSharedPtr<FJsonObject> PlannedStep =
-					(*PlannedSteps)[StepIndex].IsValid()
-						? (*PlannedSteps)[StepIndex]->AsObject()
-						: nullptr;
+				const TSharedPtr<FJsonObject> PlannedStep = AsJsonObjectIfObject((*PlannedSteps)[StepIndex]);
 				const FString StepId = GetTaskPlanStepId(PlannedStep, StepIndex);
 				const TArray<FString> DependsOn = ReadStepDependsOn(PlannedStep);
 
@@ -3597,7 +3596,7 @@ public:
 
 		for (const TSharedPtr<FJsonValue>& Value : *Values)
 		{
-			const TSharedPtr<FJsonObject> FieldObject = Value.IsValid() ? Value->AsObject() : nullptr;
+			const TSharedPtr<FJsonObject> FieldObject = AsJsonObjectIfObject(Value);
 			if (!FieldObject.IsValid())
 			{
 				continue;
@@ -3787,7 +3786,7 @@ public:
 
 		for (const TSharedPtr<FJsonValue>& Value : *Values)
 		{
-			const TSharedPtr<FJsonObject> Object = Value.IsValid() ? Value->AsObject() : nullptr;
+			const TSharedPtr<FJsonObject> Object = AsJsonObjectIfObject(Value);
 			if (!Object.IsValid())
 			{
 				continue;
@@ -3820,7 +3819,7 @@ public:
 		{
 			for (const TSharedPtr<FJsonValue>& ItemValue : *SettingsArray)
 			{
-				const TSharedPtr<FJsonObject> ItemObject = ItemValue.IsValid() ? ItemValue->AsObject() : nullptr;
+				const TSharedPtr<FJsonObject> ItemObject = AsJsonObjectIfObject(ItemValue);
 				if (!ItemObject.IsValid())
 				{
 					continue;
@@ -3895,10 +3894,7 @@ public:
 		int32 NoOpCount = 0;
 		for (int32 OpIndex = 0; OpIndex < Ops->Num(); ++OpIndex)
 		{
-			const TSharedPtr<FJsonObject> OpObject =
-				(*Ops)[OpIndex].IsValid()
-					? (*Ops)[OpIndex]->AsObject()
-					: nullptr;
+			const TSharedPtr<FJsonObject> OpObject = AsJsonObjectIfObject((*Ops)[OpIndex]);
 			if (!OpObject.IsValid())
 			{
 				return MakeFailure(
@@ -4281,9 +4277,7 @@ public:
 		{
 			for (const TSharedPtr<FJsonValue>& SettingValue : *SettingsArray)
 			{
-				const TSharedPtr<FJsonObject> SettingObject = SettingValue.IsValid()
-					? SettingValue->AsObject()
-					: nullptr;
+				const TSharedPtr<FJsonObject> SettingObject = AsJsonObjectIfObject(SettingValue);
 				if (!SettingObject.IsValid())
 				{
 					OutError = TEXT("object_property settings entries must be objects.");
@@ -4571,25 +4565,10 @@ FBlueprintHelperValidationSummary FBlueprintHelperTaskRuntimeService::BuildRunti
 {
 	FBlueprintHelperValidationSummary RuntimeValidation = BaseValidation;
 
-	const TSharedPtr<FJsonObject>* ExecutionPolicyPtr = nullptr;
-	if (!TaskPlan.IsValid() ||
-		!TaskPlan->TryGetObjectField(TEXT("execution_policy"), ExecutionPolicyPtr) ||
-		!ExecutionPolicyPtr || !ExecutionPolicyPtr->IsValid())
-	{
-		return RuntimeValidation;
-	}
-
-	bool bShouldCompile = false;
-	if ((*ExecutionPolicyPtr)->TryGetBoolField(TEXT("should_compile"), bShouldCompile))
-	{
-		RuntimeValidation.bShouldCompile = bShouldCompile;
-	}
-
-	bool bShouldSave = false;
-	if ((*ExecutionPolicyPtr)->TryGetBoolField(TEXT("should_save"), bShouldSave))
-	{
-		RuntimeValidation.bShouldSave = bShouldSave;
-	}
+	const FBlueprintHelperTaskRuntimeExecutionPolicySettings ExecutionPolicy =
+		FBlueprintHelperTaskRuntimeSettingsResolver::ResolveExecutionPolicy(TaskPlan);
+	RuntimeValidation.bShouldCompile = ExecutionPolicy.bShouldCompile;
+	RuntimeValidation.bShouldSave = ExecutionPolicy.bShouldSave;
 
 	return RuntimeValidation;
 }
@@ -5105,14 +5084,10 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 
 	auto BuildExecutionPolicyHash = [&]() -> FString
 	{
-		const TSharedPtr<FJsonObject>* ExecutionPolicyPtr = nullptr;
-		if (TaskPlanPtr && TaskPlanPtr->IsValid() &&
-			(*TaskPlanPtr)->TryGetObjectField(TEXT("execution_policy"), ExecutionPolicyPtr) &&
-			ExecutionPolicyPtr && ExecutionPolicyPtr->IsValid())
-		{
-			return FBlueprintHelperTaskRuntimeCacheKeyUtils::HashStableJson(*ExecutionPolicyPtr);
-		}
-		return FBlueprintHelperTaskRuntimeCacheKeyUtils::HashString(TEXT("execution_policy:none"));
+		const FBlueprintHelperTaskRuntimeExecutionPolicySettings ExecutionPolicy =
+			FBlueprintHelperTaskRuntimeSettingsResolver::ResolveExecutionPolicy(*TaskPlanPtr);
+		return FBlueprintHelperTaskRuntimeCacheKeyUtils::HashStableJson(
+			FBlueprintHelperTaskRuntimeSettingsResolver::MakeExecutionPolicyJson(ExecutionPolicy));
 	};
 
 	auto BuildTaskSpecGroupHash = [&]() -> FString
@@ -5223,6 +5198,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 	{
 		const double BaselineCaptureStageStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
 		FBlueprintHelperReviewArchiveSession ArchiveSession;
+		ArchiveSession.Schema = FBlueprintHelperReviewConfigResolver::Load().MakeArchiveSessionSchema();
 		ArchiveSession.ArchiveSessionId = ArchiveSessionId;
 		ArchiveSession.TaskRunId = TaskRunId;
 		ArchiveSession.AllowedTargetAssets = FBlueprintHelperTaskRuntimeServiceLocalUtils::ReadTargetAssets(*TaskPlanPtr);

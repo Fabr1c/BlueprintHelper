@@ -4,6 +4,7 @@
 
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "Systems/ToolClusters/BlueprintHelperToolClusterConfigResolver.h"
 
 const TCHAR* FBlueprintHelperComponentTaskPlanAdapter::CapabilityBlueprintComponent = TEXT("blueprint_component");
 const TCHAR* FBlueprintHelperComponentTaskPlanAdapter::StrategyComponentTree = TEXT("component_tree");
@@ -385,6 +386,21 @@ public:
 			return false;
 		}
 
+		const FBlueprintHelperComponentToolClusterPolicy Policy =
+			FBlueprintHelperToolClusterConfigResolver::LoadComponentPolicy();
+		if (OpObject.IsValid() && !OpObject->HasField(TEXT("attach_rule")) && !Policy.DefaultAttachRule.IsEmpty())
+		{
+			Payload->SetStringField(TEXT("attach_rule"), Policy.DefaultAttachRule);
+		}
+		if (OpObject.IsValid() && !OpObject->HasField(TEXT("name_collision_policy")) && !Policy.DefaultNameCollisionPolicy.IsEmpty())
+		{
+			Payload->SetStringField(TEXT("name_collision_policy"), Policy.DefaultNameCollisionPolicy);
+		}
+		if (OpObject.IsValid() && !OpObject->HasField(TEXT("property_mode")) && !Policy.DefaultPropertyMode.IsEmpty())
+		{
+			Payload->SetStringField(TEXT("property_mode"), Policy.DefaultPropertyMode);
+		}
+
 		if (!ComponentTryCopyOptionalString(OpObject, TEXT("parent_component"), ComponentBuildOpFieldPath(TEXT("parent_component")), Payload, OutError) ||
 			!ComponentTryCopyOptionalString(OpObject, TEXT("socket_name"), ComponentBuildOpFieldPath(TEXT("socket_name")), Payload, OutError) ||
 			!ComponentTryCopyOptionalString(OpObject, TEXT("attach_rule"), ComponentBuildOpFieldPath(TEXT("attach_rule")), Payload, OutError) ||
@@ -449,6 +465,20 @@ public:
 		return true;
 	}
 
+	static bool ComponentResolveDryRun(const TSharedPtr<FJsonObject>& OpObject, bool bTaskPlanDryRun)
+	{
+		bool bDryRun = FBlueprintHelperToolClusterConfigResolver::LoadComponentPolicy().bDryRun;
+		if (bTaskPlanDryRun)
+		{
+			bDryRun = true;
+		}
+		if (OpObject.IsValid() && OpObject->HasField(TEXT("dry_run")))
+		{
+			OpObject->TryGetBoolField(TEXT("dry_run"), bDryRun);
+		}
+		return bDryRun;
+	}
+
 };
 
 bool FBlueprintHelperComponentTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(
@@ -475,10 +505,12 @@ bool FBlueprintHelperComponentTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(
 
 	TSharedPtr<FJsonObject> Payload;
 	FString AdapterOperation;
+	const bool bEffectiveDryRun =
+		FBlueprintHelperComponentTaskPlanAdapterLocalUtils::ComponentResolveDryRun(OpObject, bDryRun);
 	if (OpName == OpAddComponent)
 	{
 		AdapterOperation = AdapterOperationAddComponent;
-		if (!FBlueprintHelperComponentTaskPlanAdapterLocalUtils::ComponentTryBuildAddPayload(AssetPath, OpObject, bDryRun, Payload, OutError))
+		if (!FBlueprintHelperComponentTaskPlanAdapterLocalUtils::ComponentTryBuildAddPayload(AssetPath, OpObject, bEffectiveDryRun, Payload, OutError))
 		{
 			return false;
 		}
@@ -486,7 +518,7 @@ bool FBlueprintHelperComponentTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(
 	else if (OpName == OpSetComponentProperties)
 	{
 		AdapterOperation = AdapterOperationSetComponentProperties;
-		if (!FBlueprintHelperComponentTaskPlanAdapterLocalUtils::ComponentTryBuildSetPropertiesPayload(AssetPath, OpObject, bDryRun, Payload, OutError))
+		if (!FBlueprintHelperComponentTaskPlanAdapterLocalUtils::ComponentTryBuildSetPropertiesPayload(AssetPath, OpObject, bEffectiveDryRun, Payload, OutError))
 		{
 			return false;
 		}
@@ -494,7 +526,7 @@ bool FBlueprintHelperComponentTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(
 	else if (OpName == OpRemoveComponent)
 	{
 		AdapterOperation = AdapterOperationRemoveComponent;
-		if (!FBlueprintHelperComponentTaskPlanAdapterLocalUtils::ComponentTryBuildRemovePayload(AssetPath, OpObject, bDryRun, Payload, OutError))
+		if (!FBlueprintHelperComponentTaskPlanAdapterLocalUtils::ComponentTryBuildRemovePayload(AssetPath, OpObject, bEffectiveDryRun, Payload, OutError))
 		{
 			return false;
 		}

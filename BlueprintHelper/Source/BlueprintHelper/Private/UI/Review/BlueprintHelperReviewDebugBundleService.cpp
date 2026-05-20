@@ -13,23 +13,29 @@
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
+#include "Systems/Review/BlueprintHelperReviewConfigResolver.h"
 #include "UI/Review/Utils/BlueprintHelperReviewDebugBundleUtils.h"
 
 FString FBlueprintHelperReviewDebugBundleService::GetDebugRootDir()
 {
-	return FPaths::ProjectSavedDir() / TEXT("BlueprintHelper") / TEXT("Debug");
+	return FBlueprintHelperReviewConfigResolver::Load().DebugBundle.RootDir;
 }
 
 FString FBlueprintHelperReviewDebugBundleService::GetReviewPanelBundleDir()
 {
-	return GetDebugRootDir() / TEXT("ReviewPanelBundles");
+	return FBlueprintHelperReviewConfigResolver::Load().DebugBundle.GetBundleDir();
 }
 
 FString FBlueprintHelperReviewDebugBundleService::MakeDefaultBundlePath()
 {
-	return GetReviewPanelBundleDir() / FString::Printf(
-		TEXT("review_panel_%s.json"),
-		*FDateTime::UtcNow().ToString(TEXT("%Y%m%d_%H%M%S")));
+	const FBlueprintHelperReviewDebugBundleConfig BundleConfig =
+		FBlueprintHelperReviewConfigResolver::Load().DebugBundle;
+	FString Filename = FDateTime::UtcNow().ToString(*BundleConfig.FilenamePattern);
+	if (!Filename.EndsWith(TEXT(".json"), ESearchCase::IgnoreCase))
+	{
+		Filename += TEXT(".json");
+	}
+	return GetReviewPanelBundleDir() / Filename;
 }
 
 FString FBlueprintHelperReviewDebugBundleService::NormalizeBundlePath(const FString& InPath)
@@ -53,7 +59,13 @@ FString FBlueprintHelperReviewDebugBundleService::NormalizeBundlePath(const FStr
 bool FBlueprintHelperReviewDebugBundleService::IsPathInsideDebugRoot(const FString& Path)
 {
 	FString NormalizedPath = NormalizeBundlePath(Path);
-	FString NormalizedRoot = GetDebugRootDir();
+	const FBlueprintHelperReviewDebugBundleConfig BundleConfig =
+		FBlueprintHelperReviewConfigResolver::Load().DebugBundle;
+	if (!BundleConfig.bEnforceRootPath)
+	{
+		return true;
+	}
+	FString NormalizedRoot = BundleConfig.RootDir;
 	FPaths::NormalizeDirectoryName(NormalizedRoot);
 	FPaths::CollapseRelativeDirectories(NormalizedRoot);
 
@@ -89,9 +101,11 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewDebugBundleService::BuildChangeSum
 	Json->SetStringField(TEXT("status"), BlueprintHelperReviewChangeStatusToString(Change->Status));
 	Json->SetStringField(TEXT("before_hash"), Change->BeforeHash);
 	Json->SetStringField(TEXT("after_hash"), Change->AfterHash);
-	Json->SetStringField(TEXT("hash_source"), TEXT("semantic_target_snapshot"));
-	Json->SetStringField(TEXT("snapshot_schema"), TEXT("BlueprintHelper.ReviewTargetSnapshot.v2"));
-	Json->SetStringField(TEXT("retention_mode"), TEXT("standard"));
+	const FBlueprintHelperReviewDebugBundleConfig BundleConfig =
+		FBlueprintHelperReviewConfigResolver::Load().DebugBundle;
+	Json->SetStringField(TEXT("hash_source"), BundleConfig.HashSource);
+	Json->SetStringField(TEXT("snapshot_schema"), BundleConfig.SchemaSnapshot);
+	Json->SetStringField(TEXT("retention_mode"), BundleConfig.Retention);
 	Json->SetBoolField(TEXT("has_before_snapshot"), !Change->BeforeSnapshotJson.IsEmpty());
 	Json->SetBoolField(TEXT("has_after_snapshot"), !Change->AfterSnapshotJson.IsEmpty());
 	Json->SetNumberField(TEXT("atomic_target_count"), Change->AtomicTargets.Num());
@@ -110,8 +124,8 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewDebugBundleService::BuildChangeSum
 		TargetJson->SetStringField(TEXT("latest_evidence_id"), Target.LatestEvidenceId);
 		TargetJson->SetStringField(TEXT("baseline_hash"), Target.BaselineHash);
 		TargetJson->SetStringField(TEXT("recorded_after_hash"), Target.RecordedAfterHash);
-		TargetJson->SetStringField(TEXT("hash_source"), TEXT("semantic_target_snapshot"));
-		TargetJson->SetStringField(TEXT("snapshot_schema"), TEXT("BlueprintHelper.ReviewTargetSnapshot.v2"));
+		TargetJson->SetStringField(TEXT("hash_source"), BundleConfig.HashSource);
+		TargetJson->SetStringField(TEXT("snapshot_schema"), BundleConfig.SchemaSnapshot);
 		TargetJson->SetBoolField(TEXT("has_before_snapshot"), !Target.BeforeSnapshotJson.IsEmpty());
 		TargetJson->SetBoolField(TEXT("has_after_snapshot"), !Target.AfterSnapshotJson.IsEmpty());
 		Targets.Add(MakeShared<FJsonValueObject>(TargetJson));
@@ -189,7 +203,7 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewDebugBundleService::BuildActionHas
 TSharedRef<FJsonObject> FBlueprintHelperReviewDebugBundleService::CreateEmptyBundle(const FString& SessionId)
 {
 	TSharedRef<FJsonObject> Bundle = MakeShared<FJsonObject>();
-	Bundle->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.ReviewPanelDebugBundle.v2"));
+	Bundle->SetStringField(TEXT("schema"), FBlueprintHelperReviewConfigResolver::Load().DebugBundle.SchemaReviewPanel);
 	Bundle->SetStringField(TEXT("session_id"), SessionId);
 	Bundle->SetStringField(TEXT("created_at"), FDateTime::UtcNow().ToIso8601());
 	Bundle->SetStringField(TEXT("updated_at"), FDateTime::UtcNow().ToIso8601());

@@ -15,9 +15,16 @@
 #include "UI/Review/BlueprintHelperReviewGraphBounds.h"
 #include "UI/Review/BlueprintHelperReviewGraphResolver.h"
 #include "UI/Review/BlueprintHelperReviewSurfaceRouter.h"
+#include "UI/Review/Utils/BlueprintHelperReviewGraphBoundsUtils.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Text/STextBlock.h"
 #include "UObject/UObjectGlobals.h"
+
+void BlueprintHelperReviewApplyDiffBlockNodeActionStyle(
+	UBlueprintHelperReviewDiffBlockNode* Node,
+	float InActionPadding,
+	const FMargin& InActionSpacing,
+	const FMargin& InActionAnchorPadding);
 
 bool FBlueprintHelperReviewGraphPresenter::ShouldShowChange(const FBlueprintHelperReviewVisibleChange& Change)
 {
@@ -357,6 +364,7 @@ void FBlueprintHelperReviewGraphPresenter::AddGraphDiffBlocks(
 	const FString CurrentAssetPath = Args.SelectedChange.IsValid() ? Args.SelectedChange->AssetPath : FString();
 	const FString GraphName = SourceGraph ? SourceGraph->GetName() : (Args.SelectedChange.IsValid() ? Args.SelectedChange->GraphName : FString());
 	const UEdGraph* BoundsGraph = SourceGraph ? SourceGraph : PreviewGraphToEdit;
+	FBlueprintHelperReviewGraphBoundsUtils::SetDefaultBoundsPadding(Args.ReviewPanelSettings.SurfaceGeometryPadding);
 	if (!Args.ChangeItems)
 	{
 		return;
@@ -368,7 +376,9 @@ void FBlueprintHelperReviewGraphPresenter::AddGraphDiffBlocks(
 		{
 			continue;
 		}
-		if (!CurrentAssetPath.IsEmpty() && Item->AssetPath != CurrentAssetPath)
+		if (Args.ReviewPanelSettings.bOverlayFilterCurrentAssetOnly
+			&& !CurrentAssetPath.IsEmpty()
+			&& Item->AssetPath != CurrentAssetPath)
 		{
 			continue;
 		}
@@ -453,6 +463,15 @@ void FBlueprintHelperReviewGraphPresenter::AddGraphDiffBlocks(
 						TEXT("graph_diff_block")))
 					: FReply::Handled();
 			});
+		BlueprintHelperReviewApplyDiffBlockNodeActionStyle(
+			DiffNode,
+			Args.ReviewPanelSettings.DiffActionPadding,
+			Args.ReviewPanelSettings.DiffActionSpacing,
+			FMargin(
+				0.0f,
+				0.0f,
+				Args.ReviewPanelSettings.SurfaceGeometryPadding.X,
+				Args.ReviewPanelSettings.SurfaceGeometryPadding.Y));
 		PreviewGraphToEdit->AddNode(DiffNode, false, false);
 		if (Args.AddDebugMessage)
 		{

@@ -13,6 +13,7 @@
 #include "SlateOptMacros.h"
 #include "Styling/CoreStyle.h"
 #include "Systems/Config/BlueprintHelperProjectConfigPaths.h"
+#include "UI/BlueprintHelperUiSettingsResolver.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Input/SEditableTextBox.h"
@@ -269,12 +270,14 @@ public:
 	SLATE_BEGIN_ARGS(SBlueprintHelperLayoutRuleCanvas)
 	{
 	}
-		SLATE_EVENT(FBlueprintHelperLayoutRuleCanvasChanged, OnRuleSetChanged)
+				SLATE_ARGUMENT(FBlueprintHelperLayoutRuleEditorSettings, LayoutRuleEditorSettings)
+SLATE_EVENT(FBlueprintHelperLayoutRuleCanvasChanged, OnRuleSetChanged)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs)
 	{
-		RuleSetChangedDelegate = InArgs._OnRuleSetChanged;
+				LayoutRuleEditorSettings = InArgs._LayoutRuleEditorSettings;
+RuleSetChangedDelegate = InArgs._OnRuleSetChanged;
 		SetRuleSetJson(BlueprintHelperLayoutRuleEditorLocal::GetFallbackDefaultJson());
 	}
 
@@ -296,7 +299,7 @@ public:
 
 	virtual FVector2D ComputeDesiredSize(float) const override
 	{
-		return BlueprintHelperLayoutRuleEditorLocal::CanvasDesiredSize;
+		return LayoutRuleEditorSettings.CanvasDesiredSize;
 	}
 
 	virtual int32 OnPaint(
@@ -350,20 +353,20 @@ public:
 		const FSlateFontInfo LabelFont = FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), 10);
 		for (const BlueprintHelperLayoutRuleEditorLocal::FCanvasRoleNode& Node : BuildRoleNodes())
 		{
-			const FVector2D TopLeft = Node.Center - BlueprintHelperLayoutRuleEditorLocal::CanvasNodeSize * 0.5f;
+			const FVector2D TopLeft = Node.Center - LayoutRuleEditorSettings.NodeSize * 0.5f;
 			const bool bDragged = DraggedRole.IsSet() && DraggedRole.GetValue() == Node.Role;
 			const FLinearColor RoleColor = BlueprintHelperLayoutRuleEditorLocal::GetRoleColor(Node.Role);
 			FSlateDrawElement::MakeBox(
 				OutDrawElements,
 				LayerId + 2,
-				AllottedGeometry.ToPaintGeometry(BlueprintHelperLayoutRuleEditorLocal::CanvasNodeSize, FSlateLayoutTransform(TopLeft)),
+				AllottedGeometry.ToPaintGeometry(LayoutRuleEditorSettings.NodeSize, FSlateLayoutTransform(TopLeft)),
 				WhiteBrush,
 				ESlateDrawEffect::None,
 				bDragged ? RoleColor * 1.25f : RoleColor);
 			FSlateDrawElement::MakeText(
 				OutDrawElements,
 				LayerId + 3,
-				AllottedGeometry.ToPaintGeometry(BlueprintHelperLayoutRuleEditorLocal::CanvasNodeSize - FVector2D(12.0f, 0.0f), FSlateLayoutTransform(TopLeft + FVector2D(8.0f, 13.0f))),
+				AllottedGeometry.ToPaintGeometry(LayoutRuleEditorSettings.NodeSize - FVector2D(12.0f, 0.0f), FSlateLayoutTransform(TopLeft + FVector2D(8.0f, 13.0f))),
 				Node.Label,
 				LabelFont,
 				ESlateDrawEffect::None,
@@ -447,6 +450,8 @@ public:
 	}
 
 private:
+	FBlueprintHelperLayoutRuleEditorSettings LayoutRuleEditorSettings;
+
 	TArray<BlueprintHelperLayoutRuleEditorLocal::FCanvasRoleNode> BuildRoleNodes() const
 	{
 		using namespace BlueprintHelper::GraphLayout;
@@ -466,7 +471,7 @@ private:
 	void BuildCanvasFromRuleSet()
 	{
 		using namespace BlueprintHelper::GraphLayout;
-		const float Scale = BlueprintHelperLayoutRuleEditorLocal::CanvasRuleScale;
+		const float Scale = LayoutRuleEditorSettings.CanvasRuleScale;
 		const FVector2D EventCenter(92.0f, 126.0f);
 		const FVector2D ExecCenter = EventCenter + FVector2D(RuleSet.ExecColumnSpacing * Scale, 0.0f);
 		const FVector2D BranchCenter = ExecCenter + FVector2D(RuleSet.ExecColumnSpacing * Scale, RuleSet.BranchRowSpacing * Scale);
@@ -502,8 +507,8 @@ private:
 			{
 				continue;
 			}
-			const FVector2D TopLeft = Node.Center - BlueprintHelperLayoutRuleEditorLocal::CanvasNodeSize * 0.5f;
-			const FVector2D BottomRight = TopLeft + BlueprintHelperLayoutRuleEditorLocal::CanvasNodeSize;
+			const FVector2D TopLeft = Node.Center - LayoutRuleEditorSettings.NodeSize * 0.5f;
+			const FVector2D BottomRight = TopLeft + LayoutRuleEditorSettings.NodeSize;
 			if (LocalPos.X >= TopLeft.X && LocalPos.X <= BottomRight.X &&
 				LocalPos.Y >= TopLeft.Y && LocalPos.Y <= BottomRight.Y)
 			{
@@ -545,7 +550,7 @@ private:
 	void ExportCanvasToRuleSet()
 	{
 		using namespace BlueprintHelper::GraphLayout;
-		const float Scale = BlueprintHelperLayoutRuleEditorLocal::CanvasRuleScale;
+		const float Scale = LayoutRuleEditorSettings.CanvasRuleScale;
 		const FVector2D EventCenter = RoleCenters.FindRef(ENodeRole::EventEntry);
 		const FVector2D ExecCenter = RoleCenters.FindRef(ENodeRole::ExecNode);
 		const FVector2D BranchCenter = RoleCenters.FindRef(ENodeRole::BranchControl);
@@ -615,7 +620,21 @@ BEGIN_SLATE_FUNCTION_BUILD_OPTIMIZATION
 
 void SBlueprintHelperLayoutRuleEditor::Construct(const FArguments& InArgs)
 {
-	RuleSetJson = InArgs._InitialRuleSetJson;
+		LayoutRuleEditorSettings = FBlueprintHelperUiSettingsResolver::LoadLayoutRuleEditorSettings();
+	SettingsRuleId = LayoutRuleEditorSettings.DefaultRuleId;
+	SettingsDisplayName = LayoutRuleEditorSettings.DefaultRuleDisplayName;
+	SettingsExecColumnSpacing = LayoutRuleEditorSettings.ExecColumnSpacing;
+	SettingsExecRowSpacing = LayoutRuleEditorSettings.ExecRowSpacing;
+	SettingsBranchRowSpacing = LayoutRuleEditorSettings.BranchRowSpacing;
+	SettingsPureInputOffsetX = LayoutRuleEditorSettings.PureInputOffsetX;
+	SettingsVariableInputOffsetX = LayoutRuleEditorSettings.VariableInputOffsetX;
+	SettingsInputPinRowSpacing = LayoutRuleEditorSettings.InputPinRowSpacing;
+	SettingsMaxMillisecondsPerFrame = LayoutRuleEditorSettings.MaxMillisecondsPerFrame;
+	SettingsMaxNodesPerFrame = LayoutRuleEditorSettings.MaxNodesPerFrame;
+	bSettingsMoveGeneratedNodes = LayoutRuleEditorSettings.bMoveGeneratedNodes;
+	bSettingsMoveExistingNodes = LayoutRuleEditorSettings.bMoveExistingNodes;
+	bSettingsMarkDirtyAfterApply = LayoutRuleEditorSettings.bMarkDirtyAfterApply;
+	bSettingsSaveAfterApply = LayoutRuleEditorSettings.bSaveAfterApply;RuleSetJson = InArgs._InitialRuleSetJson;
 	DefaultRuleSetJson = InArgs._DefaultRuleSetJson;
 	ImportJsonDelegate = InArgs._OnImportJson;
 	ExportJsonDelegate = InArgs._OnExportJson;
@@ -652,6 +671,7 @@ void SBlueprintHelperLayoutRuleEditor::Construct(const FArguments& InArgs)
 			.Padding(1.0f)
 			[
 				SAssignNew(RuleCanvas, SBlueprintHelperLayoutRuleCanvas)
+				.LayoutRuleEditorSettings(LayoutRuleEditorSettings)
 				.OnRuleSetChanged(FBlueprintHelperLayoutRuleCanvasChanged::CreateSP(this, &SBlueprintHelperLayoutRuleEditor::HandleCanvasRuleSetChanged))
 			]
 		]

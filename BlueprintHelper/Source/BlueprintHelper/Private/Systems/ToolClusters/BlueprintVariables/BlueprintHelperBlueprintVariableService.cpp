@@ -4,6 +4,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/BlueprintVariables/OperationHandlers/BlueprintLocalVariableMutationHandler.h"
 #include "Systems/ToolClusters/BlueprintVariables/OperationHandlers/BlueprintMemberVariableMutationHandler.h"
+#include "Systems/ToolClusters/BlueprintHelperToolClusterConfigResolver.h"
 #include "Shared/Services/BlueprintHelperBlueprintStructureService.h"
 #include "Shared/BlueprintHelperServiceTypes.h"
 
@@ -88,8 +89,8 @@ static TSharedRef<FJsonObject> MakeBlueprintLocalVariableTarget(
 
 static bool TryReadDryRun(const TSharedPtr<FJsonObject>& Payload)
 {
-	bool bDryRun = false;
-	if (Payload.IsValid())
+	bool bDryRun = FBlueprintHelperToolClusterConfigResolver::LoadBlueprintVariablesPolicy().bDryRun;
+	if (Payload.IsValid() && Payload->HasField(TEXT("dry_run")))
 	{
 		Payload->TryGetBoolField(TEXT("dry_run"), bDryRun);
 	}
@@ -429,7 +430,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::ReadMem
 		TEXT("read_blueprint_member_variables"), TraceId);
 
 	TSharedRef<FJsonObject> TgtJson = MakeShared<FJsonObject>();
-	TgtJson->SetStringField(TEXT("asset_path"), AssetPath.IsEmpty() ? TEXT("focused") : AssetPath);
+	const FBlueprintHelperBlueprintVariablesToolClusterPolicy Policy =
+		FBlueprintHelperToolClusterConfigResolver::LoadBlueprintVariablesPolicy();
+	TgtJson->SetStringField(TEXT("asset_path"), AssetPath.IsEmpty() ? Policy.AssetPathFallback : AssetPath);
 	TgtJson->SetStringField(TEXT("read_scope"), TEXT("member_variables"));
 	Result.CustomTargetJson = TgtJson;
 
@@ -933,7 +936,8 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::ReadMem
 		TEXT("read_blueprint_member_defaults"), TraceId);
 	TSharedRef<FJsonObject> TgtJson = MakeShared<FJsonObject>();
 	TgtJson->SetStringField(TEXT("asset_path"), AssetPath);
-	TgtJson->SetStringField(TEXT("read_scope"), TEXT("member_defaults"));
+	TgtJson->SetStringField(TEXT("read_scope"),
+		FBlueprintHelperToolClusterConfigResolver::LoadBlueprintVariablesPolicy().ReadMemberDefaultsScope);
 	Result.CustomTargetJson = TgtJson;
 
 	FBlueprintHelperReadMemberDefaultsResultData Data;

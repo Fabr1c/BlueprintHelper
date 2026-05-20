@@ -5,6 +5,8 @@
 #include "Entry/BlueprintHelper.h"
 #include "Styling/AppStyle.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
+#include "UI/BlueprintHelperUiSettings.h"
+#include "UI/BlueprintHelperUiSettingsResolver.h"
 #include "UI/TaskSpecWorkbench/BlueprintHelperTaskSpecWorkbenchPresenter.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SCheckBox.h"
@@ -18,9 +20,29 @@
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/STableRow.h"
 
+
+namespace BlueprintHelperTaskSpecWorkbenchLocal
+{
+	TMap<const SBlueprintHelperTaskSpecWorkbench*, FBlueprintHelperTaskSpecWorkbenchSettings> GSettingsByWidget;
+
+	const FBlueprintHelperTaskSpecWorkbenchSettings& GetSettings(const SBlueprintHelperTaskSpecWorkbench* Widget)
+	{
+		if (const FBlueprintHelperTaskSpecWorkbenchSettings* Settings = GSettingsByWidget.Find(Widget))
+		{
+			return *Settings;
+		}
+
+		static const FBlueprintHelperTaskSpecWorkbenchSettings DefaultSettings;
+		return DefaultSettings;
+	}
+}
 void SBlueprintHelperTaskSpecWorkbench::Construct(const FArguments& InArgs)
 {
 	GraphResolver = InArgs._GraphResolver;
+	BlueprintHelperTaskSpecWorkbenchLocal::GSettingsByWidget.Add(
+		this,
+		FBlueprintHelperUiSettingsResolver::LoadTaskSpecWorkbenchSettings());
+	const FBlueprintHelperTaskSpecWorkbenchSettings& WorkbenchSettings = BlueprintHelperTaskSpecWorkbenchLocal::GetSettings(this);
 	Presenter = MakeShared<FBlueprintHelperTaskSpecWorkbenchPresenter>([this]()
 	{
 		return GetCurrentTargetGraph();
@@ -32,12 +54,12 @@ void SBlueprintHelperTaskSpecWorkbench::Construct(const FArguments& InArgs)
 		SNew(SVerticalBox)
 		+ SVerticalBox::Slot()
 		.AutoHeight()
-		.Padding(8.0f)
+		.Padding(WorkbenchSettings.TopPadding)
 		[
 			SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot()
 			.AutoWidth()
-			.Padding(0.0f, 0.0f, 8.0f, 0.0f)
+			.Padding(WorkbenchSettings.ButtonSpacing)
 			[
 				SNew(SButton)
 				.Text(FText::FromString(TEXT("Export logicmd")))
@@ -46,7 +68,7 @@ void SBlueprintHelperTaskSpecWorkbench::Construct(const FArguments& InArgs)
 			]
 			+ SHorizontalBox::Slot()
 			.AutoWidth()
-			.Padding(0.0f, 0.0f, 8.0f, 0.0f)
+			.Padding(WorkbenchSettings.ButtonSpacing)
 			[
 				SNew(SButton)
 				.Text(FText::FromString(TEXT("Export logicjson")))
@@ -73,7 +95,7 @@ void SBlueprintHelperTaskSpecWorkbench::Construct(const FArguments& InArgs)
 			SNew(SSplitter)
 			.Orientation(Orient_Horizontal)
 			+ SSplitter::Slot()
-			.Value(0.30f)
+			.Value(WorkbenchSettings.MainSplitRatio.X)
 			[
 				SNew(SVerticalBox)
 				+ SVerticalBox::Slot()
@@ -93,11 +115,11 @@ void SBlueprintHelperTaskSpecWorkbench::Construct(const FArguments& InArgs)
 				]
 			]
 			+ SSplitter::Slot()
-			.Value(0.70f)
+			.Value(WorkbenchSettings.MainSplitRatio.Y)
 			[
 				SNew(SVerticalBox)
 				+ SVerticalBox::Slot()
-				.FillHeight(0.58f)
+				.FillHeight(WorkbenchSettings.LeftSplitRatio.X)
 				.Padding(0.0f, 0.0f, 0.0f, 8.0f)
 				[
 					SAssignNew(MainTextBox, SMultiLineEditableTextBox)
@@ -105,11 +127,11 @@ void SBlueprintHelperTaskSpecWorkbench::Construct(const FArguments& InArgs)
 					.OnTextChanged(this, &SBlueprintHelperTaskSpecWorkbench::OnInputTextChanged)
 				]
 				+ SVerticalBox::Slot()
-				.FillHeight(0.42f)
+				.FillHeight(WorkbenchSettings.LeftSplitRatio.Y)
 				[
 					SAssignNew(PreviewContainer, SBorder)
 					.BorderImage(FAppStyle::GetBrush(TEXT("ToolPanel.GroupBorder")))
-					.Padding(8.0f)
+					.Padding(WorkbenchSettings.PreviewContainerPadding)
 					[
 						BuildPreviewContent()
 					]
@@ -320,7 +342,8 @@ void SBlueprintHelperTaskSpecWorkbench::OnCandidateCheckStateChanged(
 
 TSharedRef<SWidget> SBlueprintHelperTaskSpecWorkbench::BuildPreviewContent() const
 {
-	TSharedRef<SVerticalBox> NonGraphBox = SNew(SVerticalBox);
+		const FBlueprintHelperTaskSpecWorkbenchSettings& WorkbenchSettings = BlueprintHelperTaskSpecWorkbenchLocal::GetSettings(this);
+TSharedRef<SVerticalBox> NonGraphBox = SNew(SVerticalBox);
 	TSharedRef<SGridPanel> GraphGrid = SNew(SGridPanel);
 	int32 NonGraphCount = 0;
 	int32 GraphCount = 0;
@@ -391,23 +414,24 @@ TSharedRef<SWidget> SBlueprintHelperTaskSpecWorkbench::BuildPreviewContent() con
 TSharedRef<SWidget> SBlueprintHelperTaskSpecWorkbench::BuildPreviewBlockWidget(
 	const FBlueprintHelperTaskSpecPreviewBlock& Block) const
 {
-	FLinearColor BlockColor(0.10f, 0.22f, 0.48f, 1.0f);
+	const FBlueprintHelperTaskSpecWorkbenchSettings& WorkbenchSettings = BlueprintHelperTaskSpecWorkbenchLocal::GetSettings(this);
+	FLinearColor BlockColor = WorkbenchSettings.DefaultBlockColor;
 	if (Block.Kind == EBlueprintHelperTaskSpecPreviewBlockKind::GraphLogic)
 	{
-		BlockColor = FLinearColor(0.06f, 0.34f, 0.14f, 1.0f);
+		BlockColor = WorkbenchSettings.GraphLogicBlockColor;
 	}
 	else if (Block.Kind == EBlueprintHelperTaskSpecPreviewBlockKind::Diagnostic)
 	{
-		BlockColor = FLinearColor(0.28f, 0.28f, 0.28f, 1.0f);
+		BlockColor = WorkbenchSettings.DiagnosticBlockColor;
 	}
 	if (Block.bSelected)
 	{
-		BlockColor = FLinearColor(0.58f, 0.46f, 0.08f, 1.0f);
+		BlockColor = WorkbenchSettings.SelectedBlockColor;
 	}
 
 	return SNew(SBox)
-	.WidthOverride(220.0f)
-	.MinDesiredHeight(72.0f)
+	.WidthOverride(WorkbenchSettings.PreviewWidth)
+	.MinDesiredHeight(WorkbenchSettings.PreviewMinHeight)
 	[
 		SNew(SBorder)
 		.BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))

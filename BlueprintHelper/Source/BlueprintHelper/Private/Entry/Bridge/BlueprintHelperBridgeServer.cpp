@@ -14,13 +14,32 @@
 
 DEFINE_LOG_CATEGORY(LogBlueprintHelperBridge);
 
+namespace
+{
+	static FBlueprintHelperBridgeRuntimeConfig BlueprintHelperBridgeConfigWithPort(int32 InPort)
+	{
+		FBlueprintHelperBridgeRuntimeConfig Config = FBlueprintHelperBridgeRuntimeConfigResolver::Load();
+		Config.Port = InPort;
+		return Config;
+	}
+}
+
+FBlueprintHelperBridgeServer::FBlueprintHelperBridgeServer(
+	FBlueprintHelperBridgeRouter& InRouter,
+	const FBlueprintHelperBridgeRuntimeConfig& InConfig,
+	const FBlueprintHelperDebugEntryService* InDebugEntryService)
+	: Router(InRouter)
+	, DebugEntryService(InDebugEntryService)
+	, Config(InConfig)
+	, Port(InConfig.Port)
+{
+}
+
 FBlueprintHelperBridgeServer::FBlueprintHelperBridgeServer(
 	FBlueprintHelperBridgeRouter& InRouter,
 	int32 InPort,
 	const FBlueprintHelperDebugEntryService* InDebugEntryService)
-	: Router(InRouter)
-	, DebugEntryService(InDebugEntryService)
-	, Port(InPort)
+	: FBlueprintHelperBridgeServer(InRouter, BlueprintHelperBridgeConfigWithPort(InPort), InDebugEntryService)
 {
 }
 
@@ -49,9 +68,9 @@ bool FBlueprintHelperBridgeServer::Start()
 		.AsReusable()
 		.BoundToAddress(FIPv4Address(127, 0, 0, 1))
 		.BoundToPort(Port)
-		.Listening(8)
-		.WithSendBufferSize(256 * 1024)
-		.WithReceiveBufferSize(256 * 1024)
+		.Listening(Config.MaxPendingConnections)
+		.WithSendBufferSize(Config.SocketBufferBytes)
+		.WithReceiveBufferSize(Config.SocketBufferBytes)
 		.Build();
 
 	if (!ListenerSocket)
@@ -94,7 +113,7 @@ void FBlueprintHelperBridgeServer::Shutdown()
 
 uint32 FBlueprintHelperBridgeServer::Run()
 {
-	const FTimespan AcceptWaitTime = FTimespan::FromMilliseconds(250);
+	const FTimespan AcceptWaitTime = FTimespan::FromMilliseconds(Config.AcceptWaitMs);
 
 	while (!bStopping)
 	{
@@ -133,7 +152,7 @@ void FBlueprintHelperBridgeServer::Stop()
 
 void FBlueprintHelperBridgeServer::HandleClient(FSocket* ClientSocket)
 {
-	constexpr double IdleTimeoutSeconds = 2.0;
+	const double IdleTimeoutSeconds = FMath::Max(0.01, Config.IdleTimeoutSeconds);
 	double LastActivityTime = FPlatformTime::Seconds();
 
 	while (!bStopping)
@@ -328,7 +347,8 @@ bool FBlueprintHelperBridgeServer::ReadMessage(FSocket* Socket, FString& OutJson
 		static_cast<uint32>(LengthBytes[3]);
 
 	// 閻庣懓顦崣蹇涙⒔閹邦剙鐓戦柨娑欑濞撹埖寰?16MB
-	if (BodyLength == 0 || BodyLength > 16 * 1024 * 1024)
+	const uint32 MaxFrameBytes = static_cast<uint32>(FMath::Max(1, Config.MaxFrameBytes));
+	if (BodyLength == 0 || BodyLength > MaxFrameBytes)
 	{
 		UE_LOG(LogBlueprintHelperBridge, Warning, TEXT("婵炴垵鐗婃导鍛存⒐閸喖顔婄€殿喖鍊搁悥? %u"), BodyLength);
 		RecordBridgeFailureBestEffort(

@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "HAL/Runnable.h"
+#include "Entry/Bridge/BlueprintHelperBridgeRuntimeConfigResolver.h"
 
 class FBlueprintHelperBridgeRouter;
 class FBlueprintHelperDebugEntryService;
@@ -21,6 +22,10 @@ DECLARE_LOG_CATEGORY_EXTERN(LogBlueprintHelperBridge, Log, All);
 class BLUEPRINTHELPER_API FBlueprintHelperBridgeServer : public FRunnable
 {
 public:
+	FBlueprintHelperBridgeServer(
+		FBlueprintHelperBridgeRouter& InRouter,
+		const FBlueprintHelperBridgeRuntimeConfig& InConfig,
+		const FBlueprintHelperDebugEntryService* InDebugEntryService = nullptr);
 	FBlueprintHelperBridgeServer(
 		FBlueprintHelperBridgeRouter& InRouter,
 		int32 InPort = 54321,
@@ -62,6 +67,7 @@ private:
 
 	FBlueprintHelperBridgeRouter& Router;
 	const FBlueprintHelperDebugEntryService* DebugEntryService = nullptr;
+	FBlueprintHelperBridgeRuntimeConfig Config;
 	int32 Port;
 	FSocket* ListenerSocket = nullptr;
 	TUniquePtr<FRunnableThread> Thread;

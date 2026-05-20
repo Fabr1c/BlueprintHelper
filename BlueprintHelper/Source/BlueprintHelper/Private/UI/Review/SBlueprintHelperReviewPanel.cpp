@@ -357,7 +357,7 @@ TSharedRef<ITableRow> SBlueprintHelperReviewPanel::GenerateChangeTreeRow(
 		[
 			SNew(SBorder)
 			.BorderImage(FAppStyle::GetBrush(TEXT("Brushes.Panel")))
-			.Padding(7.0f, 5.0f)
+			.Padding(ReviewPanelSettings.RootRowPadding)
 			[
 				SNew(STextBlock)
 				.Text(FText::FromString(Item->AssetPath.IsEmpty() ? TEXT("(unknown asset)") : Item->AssetPath))
@@ -854,7 +854,9 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildScopedDiffStack(
 			continue;
 		}
 		const FString ItemAssetKey = FBlueprintHelperReviewPanelLocalUtils::MakeAssetTreeKey(Item->AssetPath);
-		if (!CurrentAssetKey.IsEmpty() && ItemAssetKey != CurrentAssetKey)
+		if (ReviewPanelSettings.bOverlayFilterCurrentAssetOnly
+			&& !CurrentAssetKey.IsEmpty()
+			&& ItemAssetKey != CurrentAssetKey)
 		{
 			continue;
 		}
@@ -909,6 +911,7 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildPanelDiffFrames(
 	Args.OnGeometryInvalidated = FBlueprintHelperReviewGeometryInvalidated::CreateSP(
 		this,
 		&SBlueprintHelperReviewPanel::OnSurfaceGeometryInvalidated);
+	Args.ReviewPanelSettings = ReviewPanelSettings;
 
 	if (Surface == EBlueprintHelperReviewSurface::Components
 		&& Predicate == &FBlueprintHelperReviewBlueprintComponentsPresenter::ShouldShowChange)
@@ -962,7 +965,7 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildDiffRow(FReviewChangeItem 
 		: TEXT("");
 
 	TSharedRef<SWidget> Content = SNew(SButton)
-		.ContentPadding(6.0f)
+		.ContentPadding(ReviewPanelSettings.RowContentPadding)
 		.OnClicked_Lambda([this, Item]()
 		{
 			OnChangeSelectionChanged(Item, ESelectInfo::OnMouseClick);
@@ -1004,6 +1007,7 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildDiffFrame(
 		{
 			return OnReviewActionIntent(Intent);
 		},
+		ReviewPanelSettings,
 		Item == SelectedChange);
 }
 
@@ -1852,7 +1856,7 @@ FSlateColor SBlueprintHelperReviewPanel::GetChangeColor(EBlueprintHelperReviewCh
 
 EActiveTimerReturnType SBlueprintHelperReviewPanel::TickFlash(double InCurrentTime, float InDeltaTime)
 {
-	FlashAlpha = FMath::Max(0.0f, FlashAlpha - InDeltaTime * 1.8f);
+	FlashAlpha = FMath::Max(0.0f, FlashAlpha - InDeltaTime * ReviewPanelSettings.FlashTickDecay);
 	Invalidate(EInvalidateWidgetReason::Paint);
 	return FlashAlpha > 0.0f ? EActiveTimerReturnType::Continue : EActiveTimerReturnType::Stop;
 }
@@ -1992,6 +1996,7 @@ void SBlueprintHelperReviewPanel::SyncReviewRowHighlightStates(const FString& Pr
 	Args.OnGeometryInvalidated = FBlueprintHelperReviewGeometryInvalidated::CreateSP(
 		this,
 		&SBlueprintHelperReviewPanel::OnSurfaceGeometryInvalidated);
+	Args.ReviewPanelSettings = ReviewPanelSettings;
 
 	FBlueprintHelperReviewRowHighlightModel::RebuildSurfaceState(
 		Args,
@@ -2390,7 +2395,10 @@ EBlueprintHelperReviewSurface SBlueprintHelperReviewPanel::ResolveDetailsSurface
 	const FString CurrentAssetPath = SelectedChange.IsValid() ? SelectedChange->AssetPath : FString();
 	for (const FReviewChangeItem& Item : ChangeItems)
 	{
-		if (!CurrentAssetPath.IsEmpty() && Item.IsValid() && Item->AssetPath != CurrentAssetPath)
+		if (ReviewPanelSettings.bOverlayFilterCurrentAssetOnly
+			&& !CurrentAssetPath.IsEmpty()
+			&& Item.IsValid()
+			&& Item->AssetPath != CurrentAssetPath)
 		{
 			continue;
 		}

@@ -4,6 +4,39 @@
 #include "UI/Review/BlueprintHelperReviewPanelStateService.h"
 #include "UI/Review/SBlueprintHelperReviewDiffFrame.h"
 
+namespace
+{
+float GBlueprintHelperReviewFrameOuterPadding = 3.0f;
+float GBlueprintHelperReviewFrameActionPadding = 5.0f;
+FMargin GBlueprintHelperReviewFrameActionSpacing = FMargin(0.0f, 0.0f, 6.0f, 0.0f);
+float GBlueprintHelperReviewFrameFillAlpha = 0.60f;
+float GBlueprintHelperReviewFrameSelectedFillAlpha = 0.74f;
+}
+
+void BlueprintHelperReviewSetSurfaceFrameWidgetStyle(
+	const float FrameOuterPadding,
+	const float ActionPadding,
+	const FMargin& ActionSpacing,
+	const float FillAlpha,
+	const float SelectedFillAlpha)
+{
+	GBlueprintHelperReviewFrameOuterPadding = FMath::Max(0.0f, FrameOuterPadding);
+	GBlueprintHelperReviewFrameActionPadding = FMath::Max(0.0f, ActionPadding);
+	GBlueprintHelperReviewFrameActionSpacing = ActionSpacing;
+	GBlueprintHelperReviewFrameFillAlpha = FMath::Clamp(FillAlpha, 0.0f, 1.0f);
+	GBlueprintHelperReviewFrameSelectedFillAlpha = FMath::Clamp(SelectedFillAlpha, 0.0f, 1.0f);
+}
+
+void BlueprintHelperReviewSetSurfaceFrameOverlayAlpha(const float FillAlpha, const float SelectedFillAlpha)
+{
+	BlueprintHelperReviewSetSurfaceFrameWidgetStyle(
+		GBlueprintHelperReviewFrameOuterPadding,
+		GBlueprintHelperReviewFrameActionPadding,
+		GBlueprintHelperReviewFrameActionSpacing,
+		FillAlpha,
+		SelectedFillAlpha);
+}
+
 TSharedRef<SWidget> FBlueprintHelperReviewSurfaceFrameWidgetUtils::BuildDiffFrameWidget(
 	const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Item,
 	const TSharedRef<SWidget>& Content,
@@ -18,6 +51,11 @@ TSharedRef<SWidget> FBlueprintHelperReviewSurfaceFrameWidgetUtils::BuildDiffFram
 		.ShowActions(bShowActions && Item.IsValid())
 		.FillBackground(bFillBackground)
 		.Selected(bSelected)
+		.FrameOuterPadding(GBlueprintHelperReviewFrameOuterPadding)
+		.ActionPadding(GBlueprintHelperReviewFrameActionPadding)
+		.ActionSpacing(GBlueprintHelperReviewFrameActionSpacing)
+		.SurfaceOverlayFillAlpha(GBlueprintHelperReviewFrameFillAlpha)
+		.SurfaceOverlaySelectedFillAlpha(GBlueprintHelperReviewFrameSelectedFillAlpha)
 		.OnAccept(FOnClicked::CreateLambda([Item, OnReviewActionIntent]()
 		{
 			return OnReviewActionIntent && Item.IsValid()
@@ -55,9 +93,6 @@ FLinearColor FBlueprintHelperReviewSurfaceFrameWidgetUtils::GetReviewFrameFillCo
 	bool bFillBackground,
 	bool bSelected)
 {
-	constexpr float ReviewFrameBackgroundOpacity = 0.60f;
-	constexpr float ReviewFrameSelectedBackgroundOpacity = 0.74f;
-
 	if (!bFillBackground)
 	{
 		return FLinearColor::Transparent;
@@ -68,12 +103,11 @@ FLinearColor FBlueprintHelperReviewSurfaceFrameWidgetUtils::GetReviewFrameFillCo
 	{
 		FillColor = GetReviewFrameInnerBg();
 	}
-	FillColor.A = bSelected ? ReviewFrameSelectedBackgroundOpacity : ReviewFrameBackgroundOpacity;
+	FillColor.A = bSelected ? GBlueprintHelperReviewFrameSelectedFillAlpha : GBlueprintHelperReviewFrameFillAlpha;
 	return FillColor;
 }
 
 FLinearColor FBlueprintHelperReviewSurfaceFrameWidgetUtils::GetReviewFrameInnerBg()
 {
-	constexpr float ReviewFrameBackgroundOpacity = 0.60f;
-	return FLinearColor(0.06f, 0.06f, 0.06f, ReviewFrameBackgroundOpacity);
+	return FLinearColor(0.06f, 0.06f, 0.06f, GBlueprintHelperReviewFrameFillAlpha);
 }

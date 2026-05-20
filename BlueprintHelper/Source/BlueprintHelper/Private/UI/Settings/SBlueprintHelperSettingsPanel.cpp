@@ -3,15 +3,20 @@
 #include "UI/Settings/SBlueprintHelperSettingsPanel.h"
 
 #include "UI/Settings/BlueprintHelperSettingsPresenter.h"
+#include "UI/Settings/SBlueprintHelperSettingRow.h"
 #include "Widgets/Input/SButton.h"
-#include "Widgets/Input/SMultiLineEditableTextBox.h"
 #include "Widgets/Layout/SBorder.h"
+#include "Widgets/Layout/SExpandableArea.h"
 #include "Widgets/Layout/SScrollBox.h"
+#include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
+
+#define LOCTEXT_NAMESPACE "BlueprintHelperSettingsPanel"
 
 void SBlueprintHelperSettingsPanel::Construct(const FArguments& InArgs)
 {
 	Presenter = MakeShared<FBlueprintHelperSettingsPresenter>();
+	Presenter->OnRowsChanged().AddSP(this, &SBlueprintHelperSettingsPanel::RefreshRows);
 	Presenter->Reload();
 
 	ChildSlot
@@ -30,14 +35,16 @@ void SBlueprintHelperSettingsPanel::Construct(const FArguments& InArgs)
 				.Padding(0.0f, 0.0f, 8.0f, 0.0f)
 				[
 					SNew(SButton)
-					.Text(FText::FromString(TEXT("Reload")))
+					.Text(LOCTEXT("ReloadButton", "重新载入"))
+					.ToolTipText(LOCTEXT("ReloadButtonHint", "重新读取默认设置、项目设置和用户覆盖设置。"))
 					.OnClicked(this, &SBlueprintHelperSettingsPanel::OnReloadClicked)
 				]
 				+ SHorizontalBox::Slot()
 				.AutoWidth()
 				[
 					SNew(SButton)
-					.Text(FText::FromString(TEXT("Create Project setting.json")))
+					.Text(LOCTEXT("CreateProjectSettingButton", "创建项目 setting.json"))
+					.ToolTipText(LOCTEXT("CreateProjectSettingHint", "如果项目设置文件不存在，则从默认设置创建一份。"))
 					.OnClicked(this, &SBlueprintHelperSettingsPanel::OnEnsureProjectSettingClicked)
 				]
 			]
@@ -71,13 +78,17 @@ void SBlueprintHelperSettingsPanel::Construct(const FArguments& InArgs)
 			+ SVerticalBox::Slot()
 			.FillHeight(1.0f)
 			[
-				SAssignNew(SettingJsonTextBox, SMultiLineEditableTextBox)
-				.IsReadOnly(true)
+				SNew(SScrollBox)
+				+ SScrollBox::Slot()
+				[
+					SAssignNew(CategoriesBox, SVerticalBox)
+				]
 			]
 		]
 	];
 
 	RefreshView();
+	RefreshRows();
 }
 
 FReply SBlueprintHelperSettingsPanel::OnReloadClicked()
@@ -86,6 +97,7 @@ FReply SBlueprintHelperSettingsPanel::OnReloadClicked()
 	{
 		Presenter->Reload();
 		RefreshView();
+		RefreshRows();
 	}
 	return FReply::Handled();
 }
@@ -96,6 +108,7 @@ FReply SBlueprintHelperSettingsPanel::OnEnsureProjectSettingClicked()
 	{
 		Presenter->EnsureProjectSetting();
 		RefreshView();
+		RefreshRows();
 	}
 	return FReply::Handled();
 }
@@ -136,8 +149,93 @@ void SBlueprintHelperSettingsPanel::RefreshView()
 		EffectiveSourceTextBlock->SetText(FText::FromString(
 			FString::Printf(TEXT("Effective source: %s"), *View.EffectiveSourcePath)));
 	}
-	if (SettingJsonTextBox.IsValid())
-	{
-		SettingJsonTextBox->SetText(FText::FromString(View.EffectiveJson));
-	}
 }
+
+void SBlueprintHelperSettingsPanel::RefreshRows()
+{
+	if (!CategoriesBox.IsValid() || !Presenter.IsValid())
+	{
+		return;
+	}
+
+	CategoriesBox->ClearChildren();
+
+	const TArray<FBlueprintHelperSettingRowViewModel>& Rows = Presenter->GetRows();
+	FText CurrentCategory;
+	TArray<FBlueprintHelperSettingRowViewModel> CurrentRows;
+	auto FlushCategory = [this, &CurrentCategory, &CurrentRows]()
+	{
+		if (CurrentRows.Num() == 0)
+		{
+			return;
+		}
+
+		CategoriesBox->AddSlot()
+		.AutoHeight()
+		.Padding(0.0f, 0.0f, 0.0f, 8.0f)
+		[
+			BuildCategorySection(CurrentCategory, CurrentRows)
+		];
+		CurrentRows.Reset();
+	};
+
+	for (const FBlueprintHelperSettingRowViewModel& Row : Rows)
+	{
+		if (CurrentRows.Num() > 0 && !CurrentCategory.EqualTo(Row.CategoryLabel))
+		{
+			FlushCategory();
+		}
+		CurrentCategory = Row.CategoryLabel;
+		CurrentRows.Add(Row);
+	}
+	FlushCategory();
+}
+
+TSharedRef<SWidget> SBlueprintHelperSettingsPanel::BuildCategorySection(const FText& CategoryLabel, const TArray<FBlueprintHelperSettingRowViewModel>& Rows)
+{
+	TSharedRef<SVerticalBox> RowBox = SNew(SVerticalBox);
+	for (const FBlueprintHelperSettingRowViewModel& Row : Rows)
+	{
+		RowBox->AddSlot()
+		.AutoHeight()
+		.Padding(0.0f, 0.0f, 0.0f, 4.0f)
+		[
+			SNew(SBlueprintHelperSettingRow)
+			.Row(Row)
+			.OnValueCommitted_Lambda([this](const FBlueprintHelperSettingEditEvent& Event)
+			{
+				if (Presenter.IsValid())
+				{
+					Presenter->HandleSettingValueCommitted(Event);
+					RefreshView();
+				}
+			})
+			.OnResetRequested_Lambda([this](const FString& DotPath)
+			{
+				if (Presenter.IsValid())
+				{
+					Presenter->HandleSettingResetRequested(DotPath);
+					RefreshView();
+				}
+			})
+		];
+	}
+
+	return SNew(SExpandableArea)
+		.InitiallyCollapsed(false)
+		.HeaderContent()
+		[
+			SNew(STextBlock)
+			.Text(CategoryLabel)
+		]
+		.BodyContent()
+		[
+			SNew(SBorder)
+			.Padding(6.0f)
+			[
+				RowBox
+			]
+		];
+}
+
+#undef LOCTEXT_NAMESPACE

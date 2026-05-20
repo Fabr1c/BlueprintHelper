@@ -691,6 +691,15 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 				TEXT("present"));
 			return false;
 		}
+		if (Payload->HasField(TEXT("max_result_count")))
+		{
+			FBlueprintHelperRequestValidatorLocalUtils::SetValidationError(
+				OutError,
+				TEXT("payload.max_result_count"),
+				TEXT("unsupported; use max_results"),
+				TEXT("present"));
+			return false;
+		}
 
 		const TSet<FString> TargetTypes = {
 			TEXT("asset"),

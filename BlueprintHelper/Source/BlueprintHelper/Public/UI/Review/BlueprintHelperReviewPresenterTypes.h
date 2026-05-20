@@ -6,6 +6,7 @@
 #include "Input/Reply.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
 #include "UI/Review/BlueprintHelperReviewPanelData.h"
+#include "UI/Review/BlueprintHelperReviewPanelSettings.h"
 #include "UObject/StrongObjectPtr.h"
 
 class SGraphEditor;
@@ -50,6 +51,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperReviewGraphPresenterArgs
 	TFunction<void(const FString&)> AddDebugMessage;
 	TFunction<FReply(const FBlueprintHelperReviewActionIntent&)> OnReviewActionIntent;
 	TFunction<FSlateColor(EBlueprintHelperReviewChangeKind)> GetChangeColor;
+	FBlueprintHelperReviewPanelSettings ReviewPanelSettings;
 };
 
 /**
@@ -102,4 +104,5 @@ struct BLUEPRINTHELPER_API FBlueprintHelperReviewPanelSurfacePresenterArgs
 	TFunction<FSlateColor()> GetSelectedDiffColor;
 	FBlueprintHelperReviewResolveRowGeometry ResolveRowGeometry;
 	FBlueprintHelperReviewGeometryInvalidated OnGeometryInvalidated;
+	FBlueprintHelperReviewPanelSettings ReviewPanelSettings;
 };

@@ -1,7 +1,6 @@
 // BlueprintHelper Review diff frame widget.
 
 #include "UI/Review/SBlueprintHelperReviewDiffFrame.h"
-#include "UI/Review/BlueprintHelperReviewSurfaceFrameWidgetUtils.h"
 
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
@@ -15,6 +14,11 @@ void SBlueprintHelperReviewDiffFrame::Construct(const FArguments& InArgs)
 	ShowActions = InArgs._ShowActions;
 	bFillBackground = InArgs._FillBackground;
 	bSelected = InArgs._Selected;
+	FrameOuterPadding = FMath::Max(0.0f, InArgs._FrameOuterPadding);
+	ActionPadding = FMath::Max(0.0f, InArgs._ActionPadding);
+	ActionSpacing = InArgs._ActionSpacing;
+	SurfaceOverlayFillAlpha = FMath::Clamp(InArgs._SurfaceOverlayFillAlpha, 0.0f, 1.0f);
+	SurfaceOverlaySelectedFillAlpha = FMath::Clamp(InArgs._SurfaceOverlaySelectedFillAlpha, 0.0f, 1.0f);
 	OnAccept = InArgs._OnAccept;
 	OnReject = InArgs._OnReject;
 
@@ -25,7 +29,7 @@ void SBlueprintHelperReviewDiffFrame::Construct(const FArguments& InArgs)
 		[
 			SNew(SBorder)
 			.BorderImage(this, &SBlueprintHelperReviewDiffFrame::GetFrameBrush)
-			.Padding(3.0f)
+			.Padding(FrameOuterPadding)
 			[
 				SNew(SBorder)
 				.BorderImage(this, &SBlueprintHelperReviewDiffFrame::GetInnerBrush)
@@ -42,13 +46,13 @@ void SBlueprintHelperReviewDiffFrame::Construct(const FArguments& InArgs)
 		[
 			SNew(SBorder)
 			.BorderImage(&ActionsBrush)
-			.Padding(5.0f)
+			.Padding(ActionPadding)
 			.Visibility(this, &SBlueprintHelperReviewDiffFrame::GetActionsVisibility)
 			[
 				SNew(SHorizontalBox)
 				+ SHorizontalBox::Slot()
 				.AutoWidth()
-				.Padding(0.0f, 0.0f, 6.0f, 0.0f)
+				.Padding(ActionSpacing)
 				[
 					SNew(SButton)
 					.Text(FText::FromString(TEXT("Accept")))
@@ -84,10 +88,7 @@ const FSlateBrush* SBlueprintHelperReviewDiffFrame::GetFrameBrush() const
 const FSlateBrush* SBlueprintHelperReviewDiffFrame::GetInnerBrush() const
 {
 	InnerBrush = FSlateRoundedBoxBrush(
-		FBlueprintHelperReviewSurfaceFrameWidgetUtils::GetReviewFrameFillColor(
-			GetFrameColor().GetSpecifiedColor(),
-			bFillBackground,
-			bSelected),
+		GetFillColor(),
 		5.0f);
 	return &InnerBrush;
 }
@@ -97,4 +98,20 @@ EVisibility SBlueprintHelperReviewDiffFrame::GetActionsVisibility() const
 	return ShowActions.Get(false) && IsHovered()
 		? EVisibility::Visible
 		: EVisibility::Collapsed;
+}
+
+FLinearColor SBlueprintHelperReviewDiffFrame::GetFillColor() const
+{
+	if (!bFillBackground)
+	{
+		return FLinearColor::Transparent;
+	}
+
+	FLinearColor FillColor = GetFrameColor().GetSpecifiedColor();
+	if (FillColor == FLinearColor::Transparent)
+	{
+		FillColor = FLinearColor(0.06f, 0.06f, 0.06f, SurfaceOverlayFillAlpha);
+	}
+	FillColor.A = bSelected ? SurfaceOverlaySelectedFillAlpha : SurfaceOverlayFillAlpha;
+	return FillColor;
 }

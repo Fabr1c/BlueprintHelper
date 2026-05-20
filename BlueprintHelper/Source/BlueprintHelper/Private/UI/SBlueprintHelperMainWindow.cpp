@@ -4,6 +4,7 @@
 
 #include "Framework/Notifications/NotificationManager.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutCoordinator.h"
+#include "UI/BlueprintHelperUiSettingsResolver.h"
 #include "UI/BlueprintHelperMainWindowPresenter.h"
 #include "UI/Utils/BlueprintHelperMainWindowCleanupAsyncUtils.h"
 #include "UI/Layout/SBlueprintHelperLayoutRuleEditor.h"
@@ -23,7 +24,10 @@ void SBlueprintHelperMainWindow::Construct(const FArguments& InArgs)
 	GraphResolver = InArgs._GraphResolver;
 	ReviewStoreService = InArgs._ReviewStoreService;
 	ReviewActionService = InArgs._ReviewActionService;
-	MainWindowPresenter = MakeShared<FBlueprintHelperMainWindowPresenter>(ReviewStoreService);
+		MainWindowSettings = FBlueprintHelperUiSettingsResolver::LoadMainWindowSettings();
+	NotificationSettings = FBlueprintHelperUiSettingsResolver::LoadNotificationSettings();
+	ActivePageIndex = ResolveDefaultTabIndex();
+MainWindowPresenter = MakeShared<FBlueprintHelperMainWindowPresenter>(ReviewStoreService);
 	MainWindowPresenter->SetEventSink([this](const FBlueprintHelperMainWindowPresenterEvent& Event)
 	{
 		HandleMainWindowPresenterEvent(Event);
@@ -34,12 +38,12 @@ void SBlueprintHelperMainWindow::Construct(const FArguments& InArgs)
 		SNew(SVerticalBox)
 		+ SVerticalBox::Slot()
 		.AutoHeight()
-		.Padding(6.0f)
+		.Padding(MainWindowSettings.TabBarPadding)
 		[
 			SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot()
 			.AutoWidth()
-			.Padding(0.0f, 0.0f, 6.0f, 0.0f)
+			.Padding(MainWindowSettings.TabButtonSpacing)
 			[
 				SNew(SButton)
 				.ButtonColorAndOpacity(this, &SBlueprintHelperMainWindow::GetToolsTabColor)
@@ -48,7 +52,7 @@ void SBlueprintHelperMainWindow::Construct(const FArguments& InArgs)
 			]
 			+ SHorizontalBox::Slot()
 			.AutoWidth()
-			.Padding(0.0f, 0.0f, 6.0f, 0.0f)
+			.Padding(MainWindowSettings.TabButtonSpacing)
 			[
 				SNew(SButton)
 				.ButtonColorAndOpacity(this, &SBlueprintHelperMainWindow::GetReviewTabColor)
@@ -57,7 +61,7 @@ void SBlueprintHelperMainWindow::Construct(const FArguments& InArgs)
 			]
 			+ SHorizontalBox::Slot()
 			.AutoWidth()
-			.Padding(0.0f, 0.0f, 6.0f, 0.0f)
+			.Padding(MainWindowSettings.TabButtonSpacing)
 			[
 				SNew(SButton)
 				.ButtonColorAndOpacity(this, &SBlueprintHelperMainWindow::GetLayoutTabColor)
@@ -66,7 +70,7 @@ void SBlueprintHelperMainWindow::Construct(const FArguments& InArgs)
 			]
 			+ SHorizontalBox::Slot()
 			.AutoWidth()
-			.Padding(0.0f, 0.0f, 6.0f, 0.0f)
+			.Padding(MainWindowSettings.TabButtonSpacing)
 			[
 				SNew(SButton)
 				.ButtonColorAndOpacity(this, &SBlueprintHelperMainWindow::GetSettingsTabColor)
@@ -75,10 +79,10 @@ void SBlueprintHelperMainWindow::Construct(const FArguments& InArgs)
 			]
 			+ SHorizontalBox::Slot()
 			.AutoWidth()
-			.Padding(10.0f, 0.0f, 0.0f, 0.0f)
+			.Padding(FMargin(MainWindowSettings.CleanupButtonMarginLeft, 0.0f, 0.0f, 0.0f))
 			[
 				SNew(SButton)
-				.Text(FText::FromString(TEXT("Clean Review Data")))
+				.Text(MainWindowSettings.CleanupButtonLabel)
 				.ToolTipText(FText::FromString(TEXT("Clean reviewed Accept/Reject residual Review records. Pending review data is preserved.")))
 				.OnClicked(this, &SBlueprintHelperMainWindow::OnCleanupReviewDataClicked)
 			]
@@ -204,11 +208,11 @@ void SBlueprintHelperMainWindow::HandleMainWindowPresenterEvent(
 void SBlueprintHelperMainWindow::ShowCleanupNotification(const FString& StatusText)
 {
 	FNotificationInfo Info(FText::FromString(StatusText));
-	Info.bFireAndForget = false;
-	Info.bUseThrobber = true;
-	Info.bUseSuccessFailIcons = false;
-	Info.FadeOutDuration = 0.5f;
-	Info.ExpireDuration = 4.0f;
+	Info.bFireAndForget = NotificationSettings.bCleanupFireAndForget;
+	Info.bUseThrobber = NotificationSettings.bCleanupUseThrobber;
+	Info.bUseSuccessFailIcons = NotificationSettings.bCleanupUseSuccessFailIcons;
+	Info.FadeOutDuration = NotificationSettings.CleanupFadeOutSeconds;
+	Info.ExpireDuration = NotificationSettings.CleanupExpireSeconds;
 
 	CleanupNotification = FSlateNotificationManager::Get().AddNotification(Info);
 	if (TSharedPtr<SNotificationItem> Notification = CleanupNotification.Pin())
@@ -244,30 +248,46 @@ void SBlueprintHelperMainWindow::UpdateCleanupNotification(
 	}
 }
 
+int32 SBlueprintHelperMainWindow::ResolveDefaultTabIndex() const
+{
+	if (MainWindowSettings.DefaultTab.Equals(TEXT("review"), ESearchCase::IgnoreCase))
+	{
+		return 1;
+	}
+	if (MainWindowSettings.DefaultTab.Equals(TEXT("layout"), ESearchCase::IgnoreCase))
+	{
+		return 2;
+	}
+	if (MainWindowSettings.DefaultTab.Equals(TEXT("settings"), ESearchCase::IgnoreCase))
+	{
+		return 3;
+	}
+	return 0;
+}
+
+FSlateColor SBlueprintHelperMainWindow::GetTabColor(int32 PageIndex) const
+{
+	return FSlateColor(ActivePageIndex == PageIndex
+		? MainWindowSettings.ActiveTabColor
+		: MainWindowSettings.InactiveTabColor);
+}
+
 FSlateColor SBlueprintHelperMainWindow::GetToolsTabColor() const
 {
-	return FSlateColor(ActivePageIndex == 0
-		? FLinearColor(0.18f, 0.34f, 0.62f, 1.0f)
-		: FLinearColor(0.08f, 0.08f, 0.08f, 1.0f));
+	return GetTabColor(0);
 }
 
 FSlateColor SBlueprintHelperMainWindow::GetReviewTabColor() const
 {
-	return FSlateColor(ActivePageIndex == 1
-		? FLinearColor(0.18f, 0.34f, 0.62f, 1.0f)
-		: FLinearColor(0.08f, 0.08f, 0.08f, 1.0f));
+	return GetTabColor(1);
 }
 
 FSlateColor SBlueprintHelperMainWindow::GetLayoutTabColor() const
 {
-	return FSlateColor(ActivePageIndex == 2
-		? FLinearColor(0.18f, 0.34f, 0.62f, 1.0f)
-		: FLinearColor(0.08f, 0.08f, 0.08f, 1.0f));
+	return GetTabColor(2);
 }
 
 FSlateColor SBlueprintHelperMainWindow::GetSettingsTabColor() const
 {
-	return FSlateColor(ActivePageIndex == 3
-		? FLinearColor(0.18f, 0.34f, 0.62f, 1.0f)
-		: FLinearColor(0.08f, 0.08f, 0.08f, 1.0f));
+	return GetTabColor(3);
 }

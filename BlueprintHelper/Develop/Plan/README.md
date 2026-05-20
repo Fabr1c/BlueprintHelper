@@ -27,6 +27,7 @@ This folder contains only active or living planning documents. Completed v0.4.4-
 
 ## Active Design And Architecture
 
+- `BlueprintHelper_Development_Rules_20260520_CN.md`
 - `BlueprintHelper_ReadContext_LogicFlow_Rules_20260519_CN.md`
 
 ## Living Tips

@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "UI/BlueprintHelperUiSettings.h"
 #include "Widgets/SCompoundWidget.h"
 
 class FBlueprintHelperGraphResolver;
@@ -45,6 +46,8 @@ private:
 	void HandleMainWindowPresenterEvent(const FBlueprintHelperMainWindowPresenterEvent& Event);
 	void ShowCleanupNotification(const FString& StatusText);
 	void UpdateCleanupNotification(const FString& StatusText, bool bSucceeded, bool bExpire);
+	int32 ResolveDefaultTabIndex() const;
+	FSlateColor GetTabColor(int32 PageIndex) const;
 	FSlateColor GetToolsTabColor() const;
 	FSlateColor GetReviewTabColor() const;
 	FSlateColor GetLayoutTabColor() const;
@@ -56,6 +59,8 @@ private:
 	const FBlueprintHelperReviewActionService* ReviewActionService = nullptr;
 	TSharedPtr<FBlueprintHelperMainWindowPresenter> MainWindowPresenter;
 	TSharedPtr<SWidgetSwitcher> PageSwitcher;
+	FBlueprintHelperMainWindowSettings MainWindowSettings;
+	FBlueprintHelperNotificationSettings NotificationSettings;
 	TWeakPtr<SNotificationItem> CleanupNotification;
 	int32 ActivePageIndex = 0;
 };

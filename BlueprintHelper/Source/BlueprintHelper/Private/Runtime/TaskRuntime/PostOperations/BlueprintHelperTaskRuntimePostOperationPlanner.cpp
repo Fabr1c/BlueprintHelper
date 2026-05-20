@@ -1,4 +1,5 @@
 #include "Runtime/TaskRuntime/PostOperations/BlueprintHelperTaskRuntimePostOperationPlanner.h"
+#include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeSettingsResolver.h"
 
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -48,16 +49,10 @@ FBlueprintHelperTaskRuntimePostOperationPlan FBlueprintHelperTaskRuntimePostOper
 		return Plan;
 	}
 
-	const bool bHasCompilePolicy = FBlueprintHelperTaskRuntimePostOperationPlannerLocalUtils::TryReadExecutionPolicyBool(
-		TaskPlan,
-		TEXT("should_compile"),
-		Plan.bRequestedCompile);
-	const bool bHasSavePolicy = FBlueprintHelperTaskRuntimePostOperationPlannerLocalUtils::TryReadExecutionPolicyBool(
-		TaskPlan,
-		TEXT("should_save"),
-		Plan.bRequestedSave);
-	Plan.bRequestedCompile = bHasCompilePolicy && Plan.bRequestedCompile;
-	Plan.bRequestedSave = bHasSavePolicy && Plan.bRequestedSave;
+	const FBlueprintHelperTaskRuntimeExecutionPolicySettings ExecutionPolicy =
+		FBlueprintHelperTaskRuntimeSettingsResolver::ResolveExecutionPolicy(TaskPlan);
+	Plan.bRequestedCompile = ExecutionPolicy.bShouldCompile;
+	Plan.bRequestedSave = ExecutionPolicy.bShouldSave;
 
 	if (!Plan.bRequestedCompile && !Plan.bRequestedSave)
 	{

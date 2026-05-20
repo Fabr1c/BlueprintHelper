@@ -16,6 +16,7 @@
 #include "Shared/Review/BlueprintHelperReviewStatusUtils.h"
 #include "Shared/Review/BlueprintHelperReviewTargetKindRegistry.h"
 #include "Systems/Review/BlueprintHelperReviewBaselineSnapshotService.h"
+#include "Systems/Review/BlueprintHelperReviewConfigResolver.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewStoreJsonUtils.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewStoreMergeUtils.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewStorePathUtils.h"
@@ -188,9 +189,14 @@ TArray<FBlueprintHelperReviewRecord> FBlueprintHelperReviewStoreService::BuildRe
 	TMap<FString, FBlueprintHelperReviewRecord> RecordsById;
 	TArray<FString> RecordOrder;
 
+	const FBlueprintHelperReviewConfig ReviewConfig = FBlueprintHelperReviewConfigResolver::Load();
 	for (const FBlueprintHelperWriteReviewEvidence& Evidence : Evidences)
 	{
 		if (Evidence.ArchiveSessionId.IsEmpty() || Evidence.AssetPath.IsEmpty())
+		{
+			continue;
+		}
+		if (ReviewConfig.bEvidenceRequired && Evidence.EvidenceId.IsEmpty())
 		{
 			continue;
 		}
@@ -200,6 +206,7 @@ TArray<FBlueprintHelperReviewRecord> FBlueprintHelperReviewStoreService::BuildRe
 		if (!Record)
 		{
 			FBlueprintHelperReviewRecord NewRecord;
+			NewRecord.Schema = ReviewConfig.MakeReviewRecordSchema();
 			NewRecord.ReviewRecordId = RecordId;
 			NewRecord.ArchiveSessionId = Evidence.ArchiveSessionId;
 			NewRecord.AssetPath = Evidence.AssetPath;
@@ -359,10 +366,7 @@ TArray<FBlueprintHelperReviewRecord> FBlueprintHelperReviewStoreService::QueryRe
 	const FBlueprintHelperReviewRecordQuery& Query) const
 {
 	TArray<FBlueprintHelperReviewRecord> Records;
-	const FString RecordsDir = FPaths::ProjectSavedDir()
-		/ TEXT("BlueprintHelper")
-		/ TEXT("Review")
-		/ TEXT("Records");
+	const FString RecordsDir = FBlueprintHelperReviewConfigResolver::Load().GetReviewRecordsDir();
 
 	TArray<FString> Files;
 	IFileManager::Get().FindFiles(Files, *(RecordsDir / TEXT("*.json")), true, false);
@@ -430,10 +434,7 @@ bool FBlueprintHelperReviewStoreService::LoadReviewRecordById(
 		return false;
 	}
 
-	const FString Path = FPaths::ProjectSavedDir()
-		/ TEXT("BlueprintHelper")
-		/ TEXT("Review")
-		/ TEXT("Records")
+	const FString Path = FBlueprintHelperReviewConfigResolver::Load().GetReviewRecordsDir()
 		/ FString::Printf(TEXT("%s.json"), *ReviewRecordId);
 
 	FString Content;
@@ -464,7 +465,8 @@ bool FBlueprintHelperReviewStoreService::DeleteReviewRecord(
 		return false;
 	}
 
-	const FString Path = FBlueprintHelperReviewStorePathUtils::GetRecordPath(ReviewRecordId);
+	const FString Path = FBlueprintHelperReviewConfigResolver::Load().GetReviewRecordsDir()
+		/ FString::Printf(TEXT("%s.json"), *ReviewRecordId);
 	if (!IFileManager::Get().FileExists(*Path))
 	{
 		OutError.Reset();
@@ -684,10 +686,7 @@ bool FBlueprintHelperReviewStoreService::SaveReviewRecord(
 		return false;
 	}
 
-	const FString RecordsDir = FPaths::ProjectSavedDir()
-		/ TEXT("BlueprintHelper")
-		/ TEXT("Review")
-		/ TEXT("Records");
+	const FString RecordsDir = FBlueprintHelperReviewConfigResolver::Load().GetReviewRecordsDir();
 	if (!IFileManager::Get().DirectoryExists(*RecordsDir))
 	{
 		IFileManager::Get().MakeDirectory(*RecordsDir, true);
