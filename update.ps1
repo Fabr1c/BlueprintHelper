@@ -6,6 +6,7 @@ param(
   [switch]$SkipPostInstall,
   [switch]$SkipBuild,
   [switch]$RunDiagnostics,
+  [switch]$InstallClaudePlugin,
   [switch]$InstallClaudeAgents,
   [switch]$InstallUePluginToEngine,
   [string]$EngineRoot,
@@ -297,6 +298,10 @@ function Test-ClaudeAgentsInstalled {
   return (Test-Path -LiteralPath (Join-Path $HomeDir '.claude\agents\blueprint-explorer.md'))
 }
 
+function Test-ClaudePluginShouldRefresh {
+  return ($InstallClaudePlugin -or (Test-ClaudeAgentsInstalled))
+}
+
 function Invoke-PostInstallRefresh {
   $InstallScript = Join-Path $Root 'install.ps1'
   if (-not (Test-Path -LiteralPath $InstallScript)) {
@@ -314,7 +319,9 @@ function Invoke-PostInstallRefresh {
   if ($RunDiagnostics) {
     $Args += '-RunDiagnostics'
   }
-  if ($InstallClaudeAgents -or (Test-ClaudeAgentsInstalled)) {
+  if (Test-ClaudePluginShouldRefresh) {
+    $Args += '-InstallClaudePlugin'
+  } elseif ($InstallClaudeAgents) {
     $Args += '-InstallClaudeAgents'
   }
   if ($InstallUePluginToEngine) {
