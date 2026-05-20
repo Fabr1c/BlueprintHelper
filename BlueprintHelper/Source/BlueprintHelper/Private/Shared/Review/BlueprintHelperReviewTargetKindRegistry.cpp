@@ -103,49 +103,6 @@ static EBlueprintHelperReviewSurface BlueprintHelperReviewResolveSurfaceByAlias(
 	return EBlueprintHelperReviewSurface::Unknown;
 }
 
-static bool BlueprintHelperReviewLegacyTextMatchesSurface(
-	const FString& NormalizedLocation,
-	EBlueprintHelperReviewSurface Surface)
-{
-	static const FBlueprintHelperReviewSurfaceAliasRule Rules[] =
-	{
-		{ TEXT("graph:"), EBlueprintHelperReviewSurface::Graph },
-		{ TEXT("node:"), EBlueprintHelperReviewSurface::Graph },
-		{ TEXT("pin:"), EBlueprintHelperReviewSurface::Graph },
-		{ TEXT("component"), EBlueprintHelperReviewSurface::Components },
-		{ TEXT("my_blueprint"), EBlueprintHelperReviewSurface::MyBlueprint },
-		{ TEXT("function"), EBlueprintHelperReviewSurface::MyBlueprint },
-		{ TEXT("macro"), EBlueprintHelperReviewSurface::MyBlueprint },
-		{ TEXT("variable"), EBlueprintHelperReviewSurface::MyBlueprint },
-		{ TEXT("dispatcher"), EBlueprintHelperReviewSurface::MyBlueprint },
-		{ TEXT("delegate"), EBlueprintHelperReviewSurface::MyBlueprint },
-		{ TEXT("property"), EBlueprintHelperReviewSurface::Details },
-		{ TEXT("variable"), EBlueprintHelperReviewSurface::Details },
-		{ TEXT("signature"), EBlueprintHelperReviewSurface::Details },
-		{ TEXT("dispatcher"), EBlueprintHelperReviewSurface::Details },
-		{ TEXT("umg_widget"), EBlueprintHelperReviewSurface::UMGWidgetTree },
-		{ TEXT("widget_tree"), EBlueprintHelperReviewSurface::UMGWidgetTree },
-		{ TEXT("widgetblueprint"), EBlueprintHelperReviewSurface::UMGWidgetTree },
-		{ TEXT("widget_blueprint"), EBlueprintHelperReviewSurface::UMGWidgetTree },
-		{ TEXT("datatable"), EBlueprintHelperReviewSurface::DataTable },
-		{ TEXT("data_table"), EBlueprintHelperReviewSurface::DataTable },
-		{ TEXT("data_asset"), EBlueprintHelperReviewSurface::DataAsset },
-		{ TEXT("dataasset"), EBlueprintHelperReviewSurface::DataAsset },
-		{ TEXT("structure"), EBlueprintHelperReviewSurface::DataAsset },
-		{ TEXT("struct_field"), EBlueprintHelperReviewSurface::DataAsset },
-		{ TEXT("object_property"), EBlueprintHelperReviewSurface::DataAsset }
-	};
-
-	for (const FBlueprintHelperReviewSurfaceAliasRule& Rule : Rules)
-	{
-		if (Rule.Surface == Surface && BlueprintHelperReviewTextContainsToken(NormalizedLocation, Rule.Token))
-		{
-			return true;
-		}
-	}
-	return false;
-}
-
 EBlueprintHelperReviewSurface FBlueprintHelperReviewTargetKindRegistry::NormalizeSurfaceForTarget(
 	EBlueprintHelperReviewSurface ExplicitSurface,
 	const FString& TargetKind,
@@ -399,33 +356,6 @@ bool FBlueprintHelperReviewTargetKindRegistry::SupportsSnapshotRestore(const FSt
 	return false;
 }
 
-bool FBlueprintHelperReviewTargetKindRegistry::LegacyLocationMatchesSurface(
-	const FString& NormalizedLocation,
-	const FString& GraphName,
-	EBlueprintHelperReviewChangeKind ChangeKind,
-	EBlueprintHelperReviewSurface Surface)
-{
-	if (Surface == EBlueprintHelperReviewSurface::Graph && !GraphName.IsEmpty())
-	{
-		return true;
-	}
-
-	if (Surface == EBlueprintHelperReviewSurface::Details
-		&& (ChangeKind == EBlueprintHelperReviewChangeKind::VariableModified
-			|| ChangeKind == EBlueprintHelperReviewChangeKind::SignatureModified))
-	{
-		return true;
-	}
-
-	if (Surface == EBlueprintHelperReviewSurface::MyBlueprint
-		&& BlueprintHelperReviewLegacyTextMatchesSurface(NormalizedLocation, EBlueprintHelperReviewSurface::Components))
-	{
-		return false;
-	}
-
-	return BlueprintHelperReviewLegacyTextMatchesSurface(NormalizedLocation, Surface);
-}
-
 const FBlueprintHelperReviewTargetKindDefinition* FBlueprintHelperReviewTargetKindRegistry::FindDefinition(
 	const FString& TargetKind)
 {
@@ -516,11 +446,7 @@ bool BlueprintHelperReviewShouldShowOnSurface(
 			: BlueprintHelperReviewCountSurfaceTargets(Change, Surface) > 0;
 	}
 
-	return FBlueprintHelperReviewTargetKindRegistry::LegacyLocationMatchesSurface(
-		BlueprintHelperReviewNormalizeLocation(Change),
-		Change.GraphName,
-		Change.ChangeKind,
-		Surface);
+	return false;
 }
 
 bool BlueprintHelperReviewShouldShowInComponents(const FBlueprintHelperReviewVisibleChange& Change)

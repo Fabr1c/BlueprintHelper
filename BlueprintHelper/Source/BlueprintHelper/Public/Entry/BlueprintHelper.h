@@ -11,7 +11,6 @@ class FBlueprintHelperGraphResolver;
 class FBlueprintHelperValidationService;
 class FBlueprintHelperExportService;
 class FBlueprintHelperImportService;
-class FBlueprintHelperAgentImportService;
 class FBlueprintHelperCompileService;
 class FBlueprintHelperContextService;
 class FBlueprintHelperBridgeRouter;
@@ -80,7 +79,6 @@ public:
 	const FBlueprintHelperValidationService& GetValidationService() const { return *ValidationService; }
 	const FBlueprintHelperExportService& GetExportService() const { return *ExportService; }
 	const FBlueprintHelperImportService& GetImportService() const { return *ImportService; }
-	const FBlueprintHelperAgentImportService& GetAgentImportService() const { return *AgentImportService; }
 	const FBlueprintHelperCompileService& GetCompileService() const { return *CompileService; }
 	const FBlueprintHelperAssetBrowseService& GetAssetBrowseService() const { return *AssetBrowseService; }
 	const FBlueprintHelperBlueprintStructureService& GetStructureService() const { return *StructureService; }
@@ -113,7 +111,6 @@ private:
 	TUniquePtr<FBlueprintHelperValidationService> ValidationService;
 	TUniquePtr<FBlueprintHelperExportService> ExportService;
 	TUniquePtr<FBlueprintHelperImportService> ImportService;
-	TUniquePtr<FBlueprintHelperAgentImportService> AgentImportService;
 	TUniquePtr<FBlueprintHelperCompileService> CompileService;
 	TUniquePtr<FBlueprintHelperAssetBrowseService> AssetBrowseService;
 	TUniquePtr<FBlueprintHelperBlueprintStructureService> StructureService;

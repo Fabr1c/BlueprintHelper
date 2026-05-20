@@ -40,7 +40,6 @@ enum class EParsedBlueprintNodeType : uint8
 	SpawnActorFromClass,
 	FormatText,
 	GetArrayItem,
-	Timeline,
 	// v2.3 — 全覆盖收尾
 	Knot,
 	Comment,
@@ -267,30 +266,6 @@ struct FParsedFormatTextReference
 };
 
 /**
- * v2.2 — Timeline 节点引用描述。
- */
-struct FParsedTimelineReference
-{
-	/** Timeline 名称。 */
-	FString TimelineName;
-
-	/** 是否自动播放。 */
-	bool bAutoPlay = false;
-
-	/** 是否循环。 */
-	bool bLoop = false;
-
-	/** 浮点轨道名称列表。 */
-	TArray<FString> FloatTracks;
-
-	/** 向量轨道名称列表。 */
-	TArray<FString> VectorTracks;
-
-	/** 事件轨道名称列表。 */
-	TArray<FString> EventTracks;
-};
-
-/**
  * v2.3 — Literal 节点引用描述（对象引用常量）。
  */
 struct FParsedLiteralReference
@@ -475,9 +450,6 @@ struct FParsedNode
 
 	/** v2.2 — FormatText 节点引用数据。 */
 	FParsedFormatTextReference FormatTextReference;
-
-	/** v2.2 — Timeline 节点引用数据。 */
-	FParsedTimelineReference TimelineReference;
 
 	/** v2.3 — Literal 节点引用数据。 */
 	FParsedLiteralReference LiteralReference;

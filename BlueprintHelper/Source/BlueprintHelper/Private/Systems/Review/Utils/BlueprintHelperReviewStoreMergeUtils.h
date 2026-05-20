@@ -14,7 +14,6 @@ public:
 	static FString MakeVisibleChangeScopeIdentity(const FBlueprintHelperReviewVisibleChange& Change);
 	static FString MakeLoadedVisibleChangeChangeIdCollapseKey(const FBlueprintHelperReviewVisibleChange& Change);
 	static FString MakeLoadedVisibleChangeLifecycleRootCollapseKey(const FBlueprintHelperReviewVisibleChange& Change);
-	static FString MakeLoadedVisibleChangeCollapseKey(const FBlueprintHelperReviewVisibleChange& Change);
 	static void AddUniqueReviewStrings(TArray<FString>& Target, const TArray<FString>& Source);
 	static void MergeReviewAtomicTargetsLatestWins(
 				TArray<FBlueprintHelperReviewAtomicTarget>& ExistingTargets,

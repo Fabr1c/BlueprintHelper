@@ -150,7 +150,6 @@ public:
 			|| TryReadNestedStringField(NodeObject, TEXT("delegate"), TEXT("property_name"), Label)
 			|| TryReadNestedStringField(NodeObject, TEXT("delegate"), TEXT("function_name"), Label)
 			|| TryReadNestedStringField(NodeObject, TEXT("component_event"), TEXT("delegate_property"), Label)
-			|| TryReadNestedStringField(NodeObject, TEXT("timeline"), TEXT("name"), Label)
 			|| TryReadNestedStringField(NodeObject, TEXT("comment"), TEXT("text"), Label))
 		{
 			return Label;

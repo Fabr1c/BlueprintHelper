@@ -1,12 +1,10 @@
 #include "Entry/Bridge/BlueprintHelperBridgeRoutePlanner.h"
-#include "Entry/Bridge/Routes/BlueprintHelperAnimationBlueprintBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperAssetFactoryBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperBlueprintVariablesBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperClassSettingsBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperComponentBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperDataTableBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperGraphWriteBridgeRoutes.h"
-#include "Entry/Bridge/Routes/BlueprintHelperMaterialBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperObjectPropertyBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperUMGWidgetBridgeRoutes.h"
 
@@ -192,32 +190,26 @@ bool FBlueprintHelperFinalBatchBridgeRoutes_RecognizeOnlyOwnedCommands::RunTest(
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperReservedBridgeRoutes_DoNotClaimCommands,
-	"BlueprintHelper.Router.Cluster.ReservedRoutesDoNotClaimCommands",
+	FBlueprintHelperRetiredEmptyClustersAreUnknownTest,
+	"BlueprintHelper.Bridge.RoutePlanner.RetiredEmptyClustersAreUnknown",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
-bool FBlueprintHelperReservedBridgeRoutes_DoNotClaimCommands::RunTest(const FString& Parameters)
+bool FBlueprintHelperRetiredEmptyClustersAreUnknownTest::RunTest(const FString& Parameters)
 {
-	TestEqual(
-		TEXT("AnimationBlueprint cluster name is reserved"),
-		FString(FBlueprintHelperBridgeRoutePlanner::GetClusterName(EBlueprintHelperBridgeRouteCluster::AnimationBlueprint)),
-		FString(TEXT("AnimationBlueprint")));
-	TestEqual(
-		TEXT("Material cluster name is reserved"),
-		FString(FBlueprintHelperBridgeRoutePlanner::GetClusterName(EBlueprintHelperBridgeRouteCluster::Material)),
-		FString(TEXT("Material")));
-	TestFalse(
-		TEXT("AnimationBlueprint placeholder does not claim graph command"),
-		FBlueprintHelperAnimationBlueprintBridgeRoutes::IsAnimationBlueprintCommand(TEXT("append_blueprint_graph")));
-	TestFalse(
-		TEXT("AnimationBlueprint placeholder does not claim material-like command"),
-		FBlueprintHelperAnimationBlueprintBridgeRoutes::IsAnimationBlueprintCommand(TEXT("create_material_graph")));
-	TestFalse(
-		TEXT("Material placeholder does not claim asset command"),
-		FBlueprintHelperMaterialBridgeRoutes::IsMaterialCommand(TEXT("create_asset")));
-	TestFalse(
-		TEXT("Material placeholder does not claim animation-like command"),
-		FBlueprintHelperMaterialBridgeRoutes::IsMaterialCommand(TEXT("edit_animation_blueprint")));
+	const FBlueprintHelperBridgeRoutePlan AnimationPlan =
+		FBlueprintHelperBridgeRoutePlanner::BuildPlan(TEXT("animation_blueprint"));
+	TestFalse(TEXT("animation_blueprint route is not known"), AnimationPlan.bKnownCommand);
+	TestEqual(TEXT("animation_blueprint cluster is Unknown"),
+		AnimationPlan.Cluster,
+		EBlueprintHelperBridgeRouteCluster::Unknown);
+
+	const FBlueprintHelperBridgeRoutePlan MaterialPlan =
+		FBlueprintHelperBridgeRoutePlanner::BuildPlan(TEXT("material"));
+	TestFalse(TEXT("material route is not known"), MaterialPlan.bKnownCommand);
+	TestEqual(TEXT("material cluster is Unknown"),
+		MaterialPlan.Cluster,
+		EBlueprintHelperBridgeRouteCluster::Unknown);
+
 	return true;
 }
 

@@ -30,7 +30,6 @@
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/SpawnActorNodeHandler.h"
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/FormatTextNodeHandler.h"
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/GetArrayItemNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/TimelineNodeHandler.h"
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/KnotNodeHandler.h"
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/LiteralNodeHandler.h"
 #include "Systems/ToolClusters/GraphWrite/NodeHandlers/EnumNameNodeHandler.h"
@@ -57,7 +56,6 @@
 #include "Systems/Debug/BlueprintHelperValidationService.h"
 #include "Shared/Services/BlueprintHelperExportService.h"
 #include "Shared/Services/BlueprintHelperImportService.h"
-#include "Shared/Services/BlueprintHelperAgentImportService.h"
 #include "Systems/Debug/BlueprintHelperCompileService.h"
 #include "Systems/Debug/BlueprintHelperContextService.h"
 #include "Systems/Debug/BlueprintHelperAssetBrowseService.h"
@@ -138,7 +136,6 @@ void FBlueprintHelperModule::StartupModule()
 	Registry.Register(MakeShared<FSpawnActorNodeHandler>());
 	Registry.Register(MakeShared<FFormatTextNodeHandler>());
 	Registry.Register(MakeShared<FGetArrayItemNodeHandler>());
-	Registry.Register(MakeShared<FTimelineNodeHandler>());
 	// v2.3 。全覆盖收。
 	Registry.Register(MakeShared<FKnotNodeHandler>());
 	Registry.Register(MakeShared<FLiteralNodeHandler>());
@@ -169,7 +166,6 @@ void FBlueprintHelperModule::StartupModule()
 	ImportService    = MakeUnique<FBlueprintHelperImportService>(*GraphResolver, *ValidationService);
 	ImportService->SetCompileService(CompileService.Get());
 	AssetBrowseService = MakeUnique<FBlueprintHelperAssetBrowseService>();
-	AgentImportService = MakeUnique<FBlueprintHelperAgentImportService>(*GraphResolver, *CompileService, *AssetBrowseService);
 	StructureService = MakeUnique<FBlueprintHelperBlueprintStructureService>(*GraphResolver);
 	WidgetService  = MakeUnique<FBlueprintHelperWidgetService>();
 	PropertyReflectionService = MakeUnique<FBlueprintHelperPropertyReflectionService>();
@@ -208,7 +204,7 @@ void FBlueprintHelperModule::StartupModule()
 	// ─── Bridge Layer 初始。───
 	ContextService = MakeUnique<FBlueprintHelperContextService>(*GraphResolver);
 	BridgeRouter = MakeUnique<FBlueprintHelperBridgeRouter>(
-		*ImportService, *AgentImportService, *ExportService, *CompileService, *ValidationService, *ContextService, *AssetBrowseService, *StructureService, *WidgetService, *PropertyReflectionService, *DataTableService, *EditorCommandService, *RuntimeProfileService, *DiagnosticsService, *DebugEntryService, *LogicMdReadService, *LogicJsonReadService, *AssetFactoryService, *ComponentService, *ClassSettingsService, *AppendGraphService, *ReplaceGraphService, *PatchGraphService, *MergeGraphService, *CompileAssetService, *VariableService, *ReviewStoreService);
+		*ExportService, *CompileService, *ValidationService, *ContextService, *AssetBrowseService, *StructureService, *WidgetService, *PropertyReflectionService, *DataTableService, *EditorCommandService, *RuntimeProfileService, *DiagnosticsService, *DebugEntryService, *LogicMdReadService, *LogicJsonReadService, *AssetFactoryService, *ComponentService, *ClassSettingsService, *AppendGraphService, *ReplaceGraphService, *PatchGraphService, *MergeGraphService, *CompileAssetService, *VariableService, *ReviewStoreService);
 	BridgeServer = MakeUnique<FBlueprintHelperBridgeServer>(*BridgeRouter, 54321, DebugEntryService.Get());
 	BridgeServer->Start();
 
@@ -252,7 +248,6 @@ void FBlueprintHelperModule::ShutdownModule()
 	PropertyReflectionService.Reset();
 	StructureService.Reset();
 	WidgetService.Reset();
-	AgentImportService.Reset();
 	AssetBrowseService.Reset();
 	ImportService.Reset();
 	CompileService.Reset();

@@ -206,7 +206,6 @@ enum class EBlueprintHelperLogicNodeKind : uint8
 	Macro,
 	DelegateBind,
 	DelegateCall,
-	Timeline,
 	Unknown
 };
 
@@ -228,7 +227,6 @@ inline const TCHAR* LogicNodeKindToString(EBlueprintHelperLogicNodeKind Kind)
 	case EBlueprintHelperLogicNodeKind::Macro:        return TEXT("macro");
 	case EBlueprintHelperLogicNodeKind::DelegateBind: return TEXT("delegate_bind");
 	case EBlueprintHelperLogicNodeKind::DelegateCall: return TEXT("delegate_call");
-	case EBlueprintHelperLogicNodeKind::Timeline:     return TEXT("timeline");
 	case EBlueprintHelperLogicNodeKind::Unknown:      return TEXT("unknown");
 	default:                                          return TEXT("unknown");
 	}

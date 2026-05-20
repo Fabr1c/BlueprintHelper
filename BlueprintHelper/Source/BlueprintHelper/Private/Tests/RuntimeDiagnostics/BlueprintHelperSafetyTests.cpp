@@ -14,13 +14,15 @@
 #include "Engine/Blueprint.h"
 #include "Engine/DataTable.h"
 #include "GameFramework/Actor.h"
+#include "HAL/FileManager.h"
 #include "HAL/PlatformMisc.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Misc/AutomationTest.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
-#include "Shared/Services/BlueprintHelperAgentImportService.h"
 #include "Systems/Debug/BlueprintHelperAssetBrowseService.h"
 #include "Shared/Services/BlueprintHelperBlueprintStructureService.h"
 #include "Systems/Debug/BlueprintHelperCompileService.h"
@@ -288,6 +290,61 @@ static bool HasDiagnosticCode(const FBlueprintHelperDiagnosticSet& Diagnostics, 
 };
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperRetiredCleanupOwnershipCommandsStayRemovedTest,
+	"BlueprintHelper.RuntimeDiagnostics.Runtime.RetiredCleanupOwnershipCommandsStayRemoved",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperRetiredCleanupOwnershipCommandsStayRemovedTest::RunTest(const FString& Parameters)
+{
+	const FString SourceRoot = FPaths::ConvertRelativePathToFull(
+		FPaths::Combine(
+			FPaths::ProjectPluginsDir(),
+			TEXT("BlueprintHelper/BlueprintHelper/Source/BlueprintHelper")));
+
+	TArray<FString> SourceFiles;
+	IFileManager::Get().FindFilesRecursive(SourceFiles, *SourceRoot, TEXT("*.cpp"), true, false);
+	IFileManager::Get().FindFilesRecursive(SourceFiles, *SourceRoot, TEXT("*.h"), true, false);
+
+	const FString AllowedTestFileName = TEXT("BlueprintHelperSafetyTests.cpp");
+	const FString SearchNeedles[] =
+	{
+		TEXT("rollback_cleanup_transaction"),
+		TEXT("cleanup_blueprint_helper_block"),
+		TEXT("convert_blueprint_helper_block_to_user_owned")
+	};
+
+	bool bFoundResidue = false;
+	for (const FString& File : SourceFiles)
+	{
+		if (FPaths::GetCleanFilename(File) == AllowedTestFileName)
+		{
+			continue;
+		}
+
+		FString Text;
+		if (!FFileHelper::LoadFileToString(Text, *File))
+		{
+			continue;
+		}
+
+		for (const FString& Needle : SearchNeedles)
+		{
+			if (Text.Contains(Needle))
+			{
+				AddError(FString::Printf(
+					TEXT("Retired CleanupOwnership command '%s' is still present in source file '%s'."),
+					*Needle,
+					*File));
+				bFoundResidue = true;
+			}
+		}
+	}
+
+	TestFalse(TEXT("retired CleanupOwnership command strings only remain in this regression test"), bFoundResidue);
+	return !bFoundResidue;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperRuntimeProfileGraphWriteMergeAvailableTest,
 	"BlueprintHelper.RuntimeDiagnostics.RuntimeProfile.GraphWriteMergeAvailable",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -360,10 +417,8 @@ bool FBlueprintHelperBridgeExportEffectiveScopeTest::RunTest(const FString& Para
 
 	FBlueprintHelperGraphResolver Resolver;
 	FBlueprintHelperValidationService Validator;
-	FBlueprintHelperImportService ImportService(Resolver, Validator);
 	FBlueprintHelperCompileService CompileService(Resolver);
 	FBlueprintHelperAssetBrowseService AssetBrowseService;
-	FBlueprintHelperAgentImportService AgentImportService(Resolver, CompileService, AssetBrowseService);
 	FBlueprintHelperExportService ExportService(Resolver);
 	FBlueprintHelperContextService ContextService(Resolver);
 	FBlueprintHelperBlueprintStructureService StructureService(Resolver);
@@ -397,8 +452,6 @@ bool FBlueprintHelperBridgeExportEffectiveScopeTest::RunTest(const FString& Para
 	FBlueprintHelperBlueprintVariableService VariableService(GraphResolver, StructureService);
 	FBlueprintHelperReviewStoreService ReviewStoreService;
 	FBlueprintHelperBridgeRouter Router(
-		ImportService,
-		AgentImportService,
 		ExportService,
 		CompileService,
 		Validator,
@@ -664,7 +717,7 @@ bool FBlueprintHelperRequestValidatorPayloadTest::RunTest(const FString& Paramet
 
 	FBlueprintHelperBridgeValidationError Error;
 	TestFalse(TEXT("null target_graph is rejected before command execution"),
-		FBlueprintHelperRequestValidator::ValidatePayloadForCommand(TEXT("import_json"), Payload, Error));
+		FBlueprintHelperRequestValidator::ValidatePayloadForCommand(TEXT("export_to_json"), Payload, Error));
 	TestEqual(TEXT("error identifies the invalid field"), Error.Field, FString(TEXT("payload.target_graph")));
 	TestEqual(TEXT("error identifies expected type"), Error.ExpectedType, FString(TEXT("string")));
 
@@ -682,7 +735,7 @@ bool FBlueprintHelperRequestValidatorRequiresWriteSessionTest::RunTest(const FSt
 	AuthService.ResetForTesting();
 
 	FBlueprintHelperBridgeRequest WriteRequest;
-	WriteRequest.Command = TEXT("import_json");
+	WriteRequest.Command = TEXT("save_asset");
 	WriteRequest.Payload = MakeShared<FJsonObject>();
 	WriteRequest.Payload->SetStringField(TEXT("asset_path"), TEXT("/Game/Tests/BP_Door.BP_Door"));
 

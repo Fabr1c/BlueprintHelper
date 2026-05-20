@@ -222,14 +222,6 @@ bool FBlueprintHelperReviewGraphBoundsUtils::TryReadAnchorJson(
 		OutRecordedBounds.bHasGraphBounds = true;
 		OutRecordedBounds.GraphPosition = GraphPosition;
 		OutRecordedBounds.GraphSize = GraphSize;
-		if (OutRecordedBounds.AnchorSource.IsEmpty())
-		{
-			OutRecordedBounds.AnchorSource = TEXT("structured");
-		}
-	}
-	else if (OutRecordedBounds.AnchorSource.IsEmpty())
-	{
-		OutRecordedBounds.AnchorSource = TEXT("legacy");
 	}
 
 	return true;
@@ -244,7 +236,6 @@ FBlueprintHelperReviewGraphBoundsUtils::FRecordedGraphBounds FBlueprintHelperRev
 		RecordedBounds.bHasGraphBounds = true;
 		RecordedBounds.GraphPosition = Target.GraphPosition;
 		RecordedBounds.GraphSize = Target.GraphSize;
-		RecordedBounds.AnchorSource = TEXT("legacy");
 	}
 
 	FRecordedGraphBounds AnchorBounds;
@@ -268,17 +259,9 @@ FBlueprintHelperReviewGraphBoundsUtils::FRecordedGraphBounds FBlueprintHelperRev
 FString FBlueprintHelperReviewGraphBoundsUtils::BuildAnchorSourceSummary(
 	const FBoundsDebugCounters& DebugCounters)
 {
-	if (DebugCounters.StructuredAnchorSourceCount > 0 && DebugCounters.LegacyAnchorSourceCount > 0)
-	{
-		return TEXT("mixed");
-	}
 	if (DebugCounters.StructuredAnchorSourceCount > 0)
 	{
 		return TEXT("structured");
-	}
-	if (DebugCounters.LegacyAnchorSourceCount > 0)
-	{
-		return TEXT("legacy");
 	}
 	return TEXT("none");
 }

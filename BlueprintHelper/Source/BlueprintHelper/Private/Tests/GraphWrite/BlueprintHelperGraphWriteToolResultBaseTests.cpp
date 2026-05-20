@@ -1,4 +1,4 @@
-#if WITH_DEV_AUTOMATION_TESTS
+﻿#if WITH_DEV_AUTOMATION_TESTS
 
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -29,7 +29,6 @@
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicJsonPathService.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/Paths.h"
-#include "Shared/Services/BlueprintHelperAgentImportService.h"
 #include "Systems/ToolClusters/AssetFactory/BlueprintHelperAssetFactoryService.h"
 #include "Systems/ToolClusters/BlueprintClassSettings/BlueprintHelperClassSettingsService.h"
 #include "Systems/ToolClusters/BlueprintComponent/BlueprintHelperComponentService.h"
@@ -1351,7 +1350,6 @@ public:
 		FBlueprintHelperGraphResolver Resolver;
 		FBlueprintHelperCompileService CompileService;
 		FBlueprintHelperAssetBrowseService AssetBrowseService;
-		FBlueprintHelperAgentImportService AgentImportService;
 		FBlueprintHelperBlockIdService BlockIdService;
 		FBlueprintHelperOwnershipService OwnershipService;
 		FBlueprintHelperAppendBlueprintGraphService AppendGraphService;
@@ -1373,7 +1371,6 @@ public:
 
 		FGraphWriteRuntimeHarness()
 			: CompileService(Resolver)
-			, AgentImportService(Resolver, CompileService, AssetBrowseService)
 			, AppendGraphService(Resolver, BlockIdService, OwnershipService)
 			, ReplaceGraphService(Resolver, BlockIdService, OwnershipService, SnapshotService)
 			, PatchGraphService(Resolver, PathService)
@@ -1573,9 +1570,6 @@ bool FBlueprintHelperGraphWriteAppendBlockedDryRunErrorEnvelopeTest::RunTest(con
 	const bool bDirtyBefore = Blueprint->GetOutermost()->IsDirty();
 
 	FBlueprintHelperGraphResolver Resolver;
-	FBlueprintHelperAssetBrowseService AssetBrowseService;
-	FBlueprintHelperCompileService CompileService(Resolver);
-	FBlueprintHelperAgentImportService AgentImportService(Resolver, CompileService, AssetBrowseService);
 	FBlueprintHelperBlockIdService BlockIdService;
 	FBlueprintHelperOwnershipService OwnershipService;
 	FBlueprintHelperAppendBlueprintGraphService AppendService(
@@ -1614,9 +1608,6 @@ bool FBlueprintHelperGraphWriteReplaceBlockedDryRunErrorEnvelopeTest::RunTest(co
 	const bool bDirtyBefore = Blueprint->GetOutermost()->IsDirty();
 
 	FBlueprintHelperGraphResolver Resolver;
-	FBlueprintHelperAssetBrowseService AssetBrowseService;
-	FBlueprintHelperCompileService CompileService(Resolver);
-	FBlueprintHelperAgentImportService AgentImportService(Resolver, CompileService, AssetBrowseService);
 	FBlueprintHelperBlockIdService BlockIdService;
 	FBlueprintHelperOwnershipService OwnershipService;
 	FBlueprintHelperGraphSnapshotService SnapshotService;
@@ -1775,9 +1766,6 @@ bool FBlueprintHelperGraphWriteReplaceCustomEventBodyReconnectsEntryExecTest::Ru
 	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(OldPrintNode, BlockId);
 
 	FBlueprintHelperGraphResolver Resolver;
-	FBlueprintHelperAssetBrowseService AssetBrowseService;
-	FBlueprintHelperCompileService CompileService(Resolver);
-	FBlueprintHelperAgentImportService AgentImportService(Resolver, CompileService, AssetBrowseService);
 	FBlueprintHelperBlockIdService BlockIdService;
 	FBlueprintHelperOwnershipService OwnershipService;
 	FBlueprintHelperGraphSnapshotService SnapshotService;
@@ -1991,9 +1979,6 @@ bool FBlueprintHelperGraphWriteAppendOwnershipWritesMetadataWithoutManagedCommen
 	}
 
 	FBlueprintHelperGraphResolver Resolver;
-	FBlueprintHelperAssetBrowseService AssetBrowseService;
-	FBlueprintHelperCompileService CompileService(Resolver);
-	FBlueprintHelperAgentImportService AgentImportService(Resolver, CompileService, AssetBrowseService);
 	FBlueprintHelperBlockIdService BlockIdService;
 	FBlueprintHelperOwnershipService OwnershipService;
 	FBlueprintHelperAppendBlueprintGraphService AppendService(
@@ -2064,9 +2049,6 @@ bool FBlueprintHelperGraphWriteAppendReusesSignatureEntryTest::RunTest(const FSt
 	const int32 EventCountBefore = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::CountCustomEventsByName(Graph, TEXT("SmokeCustomEvent"));
 
 	FBlueprintHelperGraphResolver Resolver;
-	FBlueprintHelperAssetBrowseService AssetBrowseService;
-	FBlueprintHelperCompileService CompileService(Resolver);
-	FBlueprintHelperAgentImportService AgentImportService(Resolver, CompileService, AssetBrowseService);
 	FBlueprintHelperBlockIdService BlockIdService;
 	FBlueprintHelperOwnershipService OwnershipService;
 	FBlueprintHelperAppendBlueprintGraphService AppendService(

@@ -102,7 +102,6 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewStoreJsonUtils::ReviewAtomicTarget
 		if (!Target.GraphName.IsEmpty()) Json->SetStringField(TEXT("graph_name"), Target.GraphName);
 		Json->SetStringField(TEXT("target_key"), Target.TargetKey);
 		if (!Target.TargetKind.IsEmpty()) Json->SetStringField(TEXT("target_kind"), Target.TargetKind);
-		if (!Target.ScopeIdentity.IsEmpty()) Json->SetStringField(TEXT("scope_identity"), Target.ScopeIdentity);
 		if (!Target.VisualGroupKey.IsEmpty()) Json->SetStringField(TEXT("visual_group_key"), Target.VisualGroupKey);
 		if (!Target.DisplayLabel.IsEmpty()) Json->SetStringField(TEXT("display_label"), Target.DisplayLabel);
 		if (!Target.FirstEvidenceId.IsEmpty()) Json->SetStringField(TEXT("first_evidence_id"), Target.FirstEvidenceId);
@@ -137,7 +136,6 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewStoreJsonUtils::ReviewVisibleChang
 		Json->SetStringField(TEXT("asset_path"), Change.AssetPath);
 		if (!Change.GraphName.IsEmpty()) Json->SetStringField(TEXT("graph_name"), Change.GraphName);
 		Json->SetStringField(TEXT("visual_group_key"), Change.LocationKey);
-		if (!Change.ScopeIdentity.IsEmpty()) Json->SetStringField(TEXT("scope_identity"), Change.ScopeIdentity);
 		Json->SetStringField(TEXT("latest_evidence_id"), Change.LatestEvidenceId);
 		Json->SetArrayField(TEXT("latest_evidence_ids"), MakeReviewJsonStringArray(Change.LatestEvidenceIds));
 		Json->SetArrayField(TEXT("source_evidence_ids"), MakeReviewJsonStringArray(Change.SourceEvidenceIds));
@@ -335,7 +333,6 @@ bool FBlueprintHelperReviewStoreJsonUtils::ReadReviewRecordFromJson(const TShare
 				ChangeJson->TryGetStringField(TEXT("asset_path"), Change.AssetPath);
 				ChangeJson->TryGetStringField(TEXT("graph_name"), Change.GraphName);
 				ChangeJson->TryGetStringField(TEXT("visual_group_key"), Change.LocationKey);
-				ChangeJson->TryGetStringField(TEXT("scope_identity"), Change.ScopeIdentity);
 				ChangeJson->TryGetStringField(TEXT("latest_evidence_id"), Change.LatestEvidenceId);
 				ReadReviewStringArray(ChangeJson, TEXT("latest_evidence_ids"), Change.LatestEvidenceIds);
 				ReadReviewStringArray(ChangeJson, TEXT("source_evidence_ids"), Change.SourceEvidenceIds);
@@ -391,7 +388,6 @@ bool FBlueprintHelperReviewStoreJsonUtils::ReadReviewRecordFromJson(const TShare
 						TargetJson->TryGetStringField(TEXT("graph_name"), Target.GraphName);
 						TargetJson->TryGetStringField(TEXT("target_key"), Target.TargetKey);
 						TargetJson->TryGetStringField(TEXT("target_kind"), Target.TargetKind);
-						TargetJson->TryGetStringField(TEXT("scope_identity"), Target.ScopeIdentity);
 						TargetJson->TryGetStringField(TEXT("visual_group_key"), Target.VisualGroupKey);
 						TargetJson->TryGetStringField(TEXT("display_label"), Target.DisplayLabel);
 						TargetJson->TryGetStringField(TEXT("first_evidence_id"), Target.FirstEvidenceId);

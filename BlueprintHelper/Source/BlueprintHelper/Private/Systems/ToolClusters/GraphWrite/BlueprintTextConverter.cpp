@@ -32,7 +32,6 @@
 #include "K2Node_SpawnActorFromClass.h"
 #include "K2Node_FormatText.h"
 #include "K2Node_GetArrayItem.h"
-#include "K2Node_Timeline.h"
 #include "K2Node_Knot.h"
 #include "K2Node_Literal.h"
 #include "K2Node_GetEnumeratorName.h"
@@ -833,7 +832,6 @@ FString FBlueprintToTextConverter::IdentifyNodeType(UEdGraphNode* Node)
 	if (Cast<UK2Node_SpawnActorFromClass>(Node)) return TEXT("K2Node_SpawnActorFromClass");
 	if (Cast<UK2Node_FormatText>(Node)) return TEXT("K2Node_FormatText");
 	if (Cast<UK2Node_GetArrayItem>(Node)) return TEXT("K2Node_GetArrayItem");
-	if (Cast<UK2Node_Timeline>(Node)) return TEXT("K2Node_Timeline");
 	if (Cast<UK2Node_Knot>(Node)) return TEXT("K2Node_Knot");
 	if (Cast<UK2Node_Literal>(Node)) return TEXT("K2Node_Literal");
 	if (Cast<UK2Node_GetEnumeratorNameAsString>(Node)) return TEXT("K2Node_GetEnumeratorNameAsString");

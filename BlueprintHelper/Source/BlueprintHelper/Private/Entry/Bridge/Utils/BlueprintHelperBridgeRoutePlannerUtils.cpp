@@ -18,8 +18,6 @@ static const TPair<const TCHAR*, EBlueprintHelperBridgeRouteCluster> GBlueprintH
 	{TEXT("validate_json"), EBlueprintHelperBridgeRouteCluster::SharedServices},
 	{TEXT("export_to_json"), EBlueprintHelperBridgeRouteCluster::SharedServices},
 	{TEXT("export_logic"), EBlueprintHelperBridgeRouteCluster::SharedServices},
-	{TEXT("import_json"), EBlueprintHelperBridgeRouteCluster::SharedServices},
-	{TEXT("import_agent_graph"), EBlueprintHelperBridgeRouteCluster::SharedServices},
 	{TEXT("open_asset"), EBlueprintHelperBridgeRouteCluster::AssetBrowser},
 	{TEXT("list_assets"), EBlueprintHelperBridgeRouteCluster::AssetBrowser},
 	{TEXT("search_assets"), EBlueprintHelperBridgeRouteCluster::AssetBrowser},
@@ -110,8 +108,6 @@ static const TPair<EBlueprintHelperBridgeRouteCluster, const TCHAR*> GBlueprintH
 	{EBlueprintHelperBridgeRouteCluster::ObjectProperty, TEXT("ObjectProperty")},
 	{EBlueprintHelperBridgeRouteCluster::EditorCommand, TEXT("EditorCommand")},
 	{EBlueprintHelperBridgeRouteCluster::Review, TEXT("Review")},
-	{EBlueprintHelperBridgeRouteCluster::AnimationBlueprint, TEXT("AnimationBlueprint")},
-	{EBlueprintHelperBridgeRouteCluster::Material, TEXT("Material")},
 };
 
 FBlueprintHelperBridgeRoutePlan FBlueprintHelperBridgeRoutePlannerUtils::MakePlan(

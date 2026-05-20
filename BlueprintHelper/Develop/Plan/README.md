@@ -18,6 +18,7 @@ This folder contains only active or living planning documents. Completed v0.4.4-
 - `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P2_TaskRuntimeReviewIO_ImplementationPlan_CN.md`
 - `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P3_ReadPipelineSnapshotCache_ImplementationPlan_CN.md`
 - `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P4_PreviewPartialReuseAndFineGrainedCache_ImplementationPlan_CN.md`
+- `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P5_GraphWriteClusterExecute_ImplementationPlan_CN.md`
 - `BlueprintHelper_ReviewPanelV2_ArchitecturePlan_20260519_CN.md`
 - `BlueprintHelper_ReadContext_PinDefaults_Fix_20260518_CN.md`
 - `BlueprintHelper_ReadContext_LogicFlow_Rules_20260519_CN.md`

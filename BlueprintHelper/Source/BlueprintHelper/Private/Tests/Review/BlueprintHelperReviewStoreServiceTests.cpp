@@ -26,6 +26,7 @@
 #include "Systems/Review/BlueprintHelperReviewBaselineSnapshotService.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewRejectService.h"
+#include "Systems/Review/Utils/BlueprintHelperReviewStoreMergeUtils.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
 #include "Shared/GraphWrite/BlueprintHelperAppendGraphTypes.h"
 #include "UI/Review/BlueprintHelperReviewDebugText.h"
@@ -952,23 +953,32 @@ bool FBlueprintHelperReviewSurfaceClassificationTest::RunTest(const FString& Par
 {
 	FBlueprintHelperReviewVisibleChange ComponentChange;
 	ComponentChange.LocationKey = TEXT("component:FakeDiffComponent");
-	TestTrue(TEXT("component changes render in Components"),
+	TestFalse(TEXT("untargeted component text does not route without explicit targets"),
 		BlueprintHelperReviewShouldShowInComponents(ComponentChange));
-	TestFalse(TEXT("component changes do not render as My Blueprint entries"),
+	TestFalse(TEXT("untargeted component text does not route as My Blueprint"),
 		BlueprintHelperReviewShouldShowInMyBlueprint(ComponentChange));
+	FBlueprintHelperReviewAtomicTarget ComponentTarget;
+	ComponentTarget.Surface = EBlueprintHelperReviewSurface::Components;
+	ComponentTarget.TargetKind = TEXT("component");
+	ComponentTarget.TargetKey = TEXT("component:FakeDiffComponent");
+	ComponentChange.AtomicTargets.Add(ComponentTarget);
+	TestTrue(TEXT("explicit component target renders in Components"),
+		BlueprintHelperReviewShouldShowInComponents(ComponentChange));
 
 	FBlueprintHelperReviewVisibleChange GraphChange;
 	GraphChange.GraphName = TEXT("FakeDiffGraph");
 	GraphChange.LocationKey = TEXT("graph:FakeDiffGraph/node:PrintString");
-	TestTrue(TEXT("graph changes render in the graph page"),
+	TestFalse(TEXT("untargeted graph text does not route without explicit targets"),
 		BlueprintHelperReviewShouldShowInGraph(GraphChange));
-	TestFalse(TEXT("graph changes do not cover My Blueprint"),
+	TestFalse(TEXT("untargeted graph text does not route to My Blueprint"),
 		BlueprintHelperReviewShouldShowInMyBlueprint(GraphChange));
 
 	FBlueprintHelperReviewAtomicTarget GraphTarget;
 	GraphTarget.Surface = EBlueprintHelperReviewSurface::Graph;
 	GraphTarget.TargetKey = TEXT("node:PrintString");
 	GraphChange.AtomicTargets.Add(GraphTarget);
+	TestTrue(TEXT("explicit graph atom renders in the graph page"),
+		BlueprintHelperReviewShouldShowInGraph(GraphChange));
 	TestFalse(TEXT("explicit graph atoms stay out of My Blueprint"),
 		BlueprintHelperReviewShouldShowInMyBlueprint(GraphChange));
 
@@ -981,10 +991,46 @@ bool FBlueprintHelperReviewSurfaceClassificationTest::RunTest(const FString& Par
 	FBlueprintHelperReviewVisibleChange SignatureChange;
 	SignatureChange.LocationKey = TEXT("function:FakeDiffFunction:signature");
 	SignatureChange.ChangeKind = EBlueprintHelperReviewChangeKind::SignatureModified;
-	TestTrue(TEXT("signature changes render in My Blueprint"),
+	TestFalse(TEXT("untargeted signature text does not route to My Blueprint"),
 		BlueprintHelperReviewShouldShowInMyBlueprint(SignatureChange));
-	TestTrue(TEXT("signature changes render in Details"),
+	TestFalse(TEXT("untargeted signature text does not route to Details"),
 		BlueprintHelperReviewShouldShowInDetails(SignatureChange));
+	FBlueprintHelperReviewAtomicTarget SignatureTarget;
+	SignatureTarget.Surface = EBlueprintHelperReviewSurface::MyBlueprint;
+	SignatureTarget.TargetKind = TEXT("signature");
+	SignatureTarget.TargetKey = TEXT("signature:FakeDiffFunction");
+	SignatureChange.AtomicTargets.Add(SignatureTarget);
+	TestTrue(TEXT("explicit signature target renders in My Blueprint"),
+		BlueprintHelperReviewShouldShowInMyBlueprint(SignatureChange));
+	TestTrue(TEXT("explicit signature target renders in Details"),
+		BlueprintHelperReviewShouldShowInDetails(SignatureChange));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewV2RequiresExplicitSurfaceTargetsTest,
+	"BlueprintHelper.Review.V2.RequiresExplicitSurfaceTargets",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewV2RequiresExplicitSurfaceTargetsTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewVisibleChange Change;
+	Change.ChangeId = TEXT("change_without_targets");
+	Change.DisplayLabel = TEXT("component DoorFrame");
+	Change.LocationKey = TEXT("component DoorFrame");
+	Change.ChangeKind = EBlueprintHelperReviewChangeKind::Added;
+	Change.GraphName.Reset();
+	Change.AtomicTargets.Reset();
+
+	TestFalse(TEXT("Components surface requires explicit target"),
+		BlueprintHelperReviewShouldShowInComponents(Change));
+	TestFalse(TEXT("MyBlueprint surface requires explicit target"),
+		BlueprintHelperReviewShouldShowInMyBlueprint(Change));
+	TestFalse(TEXT("Graph surface requires explicit target"),
+		BlueprintHelperReviewShouldShowInGraph(Change));
+	TestFalse(TEXT("Details surface requires explicit target"),
+		BlueprintHelperReviewShouldShowInDetails(Change));
 
 	return true;
 }
@@ -2972,6 +3018,55 @@ bool FBlueprintHelperReviewVisibleChangeCollapseTest::RunTest(const FString& Par
 			TestEqual(TEXT("second source is T2"), Change.SourceEvidenceIds[1], FString(TEXT("tx_t2")));
 		}
 	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewV2DoesNotCollapseDifferentChangeIdsByScopeIdentityTest,
+	"BlueprintHelper.Review.V2.DoesNotCollapseDifferentChangeIdsByScopeIdentity",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewV2DoesNotCollapseDifferentChangeIdsByScopeIdentityTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewVisibleChange First;
+	First.ChangeId = TEXT("change_a");
+	First.AssetPath = TEXT("/Game/BP_Door");
+	First.GraphName = TEXT("EventGraph");
+	First.LocationKey = TEXT("graph:EventGraph/node:DoorFlow");
+	First.LatestEvidenceId = TEXT("tx_a");
+	First.SourceEvidenceIds.Add(TEXT("tx_a"));
+	First.ScopeIdentity = TEXT("graph|EventGraph|node:DoorFlow");
+	First.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
+	First.Status = EBlueprintHelperReviewChangeStatus::Pending;
+	First.DisplayLabel = TEXT("Door flow A");
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.Surface = EBlueprintHelperReviewSurface::Graph;
+	Target.GraphName = TEXT("EventGraph");
+	Target.TargetKind = TEXT("graph_node");
+	Target.TargetKey = TEXT("node:DoorFlow");
+	Target.ScopeIdentity = First.ScopeIdentity;
+	First.AtomicTargets.Add(Target);
+
+	FBlueprintHelperReviewVisibleChange Second = First;
+	Second.ChangeId = TEXT("change_b");
+	Second.LatestEvidenceId = TEXT("tx_b");
+	Second.SourceEvidenceIds.Reset();
+	Second.SourceEvidenceIds.Add(TEXT("tx_b"));
+	Second.DisplayLabel = TEXT("Door flow B");
+
+	TArray<FBlueprintHelperReviewVisibleChange> LoadedChanges;
+	LoadedChanges.Add(First);
+	LoadedChanges.Add(Second);
+	FBlueprintHelperReviewStoreMergeUtils::CollapseVisibleChangesLatestWins(LoadedChanges);
+	TestEqual(TEXT("loaded pending changes keep distinct ChangeIds"), LoadedChanges.Num(), 2);
+
+	FBlueprintHelperReviewRecord ExistingRecord;
+	ExistingRecord.VisibleChanges.Add(First);
+	FBlueprintHelperReviewRecord IncomingRecord;
+	IncomingRecord.VisibleChanges.Add(Second);
+	FBlueprintHelperReviewStoreMergeUtils::MergeReviewRecord(ExistingRecord, IncomingRecord);
+	TestEqual(TEXT("record merge keeps distinct ChangeIds"), ExistingRecord.VisibleChanges.Num(), 2);
 
 	return true;
 }
@@ -6128,6 +6223,8 @@ bool FBlueprintHelperReviewGraphBoundsRequireRealAnchorTest::RunTest(const FStri
 			&RecordedDebugSummary));
 	TestTrue(TEXT("recorded graph bounds debug reports record source"),
 		RecordedDebugSummary.Contains(TEXT("recordBounds=1")));
+	TestTrue(TEXT("recorded graph bounds without structured anchor reports no anchor source"),
+		RecordedDebugSummary.Contains(TEXT("anchorSource=none")));
 	TestTrue(TEXT("recorded graph bounds keep padding"),
 		FMath::IsNearlyEqual(static_cast<float>(Position.X), 100.0f, 0.01f));
 	TestTrue(TEXT("recorded graph bounds keep padded size"),

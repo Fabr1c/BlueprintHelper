@@ -13,6 +13,7 @@
 | P2 | `P2_TaskRuntimeReviewIO_ImplementationPlan_CN.md` | Review IO 批处理、TaskRuntime `PurePrepare -> MainThreadCommit -> PostIO` 三层拆分 | 已完成首轮实现和测速 |
 | P3 | `P3_ReadPipelineSnapshotCache_ImplementationPlan_CN.md` | 读链路 GameThread 快照、DTO formatter、request-local snapshot 复用、纯数据缓存、Bridge gap 细分 | 已完成 v0.5.0 范围，执行证据见 `R0_R5_ReadPipeline_ExecutablePlan_CN.md` |
 | P4 | `P4_PreviewPartialReuseAndFineGrainedCache_ImplementationPlan_CN.md` | 失败 preview 短窗口部分复用、CallFunction resolved facts TTL cache、GraphWrite 纯数据 plan cache、缓存配置外置 | 已完成首轮实现和测速 |
+| P5 | `P5_GraphWriteClusterExecute_ImplementationPlan_CN.md` | GraphWrite `cluster_execute` 降成本、GraphMutationPlan、GraphWriteContext、pin lookup 缓存、执行 stats | 计划已写，待执行 |
 
 ## 执行顺序
 
@@ -21,6 +22,7 @@
 3. P2 在 P0 后推进，用 TaskRuntime 三层边界承接 Review IO 优化，不把异步和 IO 分支堆回 `RunTaskPlan`。
 4. P3 已按读链路 timing 证据完成 v0.5.0 范围：Logic JSON / MD 迁移到 GameThread snapshot + DTO formatter，`logic_flow` 复用 `read_blueprint_logic_json` 后在 AgentFace 压缩生成，未做后台线程直接读 UObject。
 5. P4 先落缓存配置边界，再实现 partial preview cache；CallFunction / GraphWrite 细粒度缓存必须保存纯 DTO / stable facts，并受 TTL、容量、字节预算和 asset-state 校验约束。
+6. P5 先补 GraphWrite `cluster_execute` 内部 stats，再引入 `GraphWriteContext` 和 `GraphMutationPlan`；执行时只让 request-local context 持有 UE 指针，纯 DTO plan 不触碰 UObject。
 
 ## 通用约束
 

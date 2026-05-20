@@ -2,6 +2,7 @@
 
 #include "K2Node_CustomEvent.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphNodeFactory.h"
 #include "EdGraphSchema_K2.h"
 
 bool FCustomEventNodeHandler::CanHandle(EParsedBlueprintNodeType NodeType) const
@@ -37,14 +38,14 @@ UK2Node* FCustomEventNodeHandler::Spawn(UEdGraph* TargetGraph, const FParsedNode
 		ConvertedParams.Add(TPair<FString, FEdGraphPinType>(Param.Name, PinType));
 	}
 
-	UK2Node_CustomEvent* EventNode = NewObject<UK2Node_CustomEvent>(TargetGraph);
-	TargetGraph->AddNode(EventNode, true, false);
-	EventNode->CreateNewGuid();
-	EventNode->PostPlacedNewNode();
-	EventNode->CustomFunctionName = FName(*EventName);
-	EventNode->NodePosX = static_cast<int32>(NodeData.X);
-	EventNode->NodePosY = static_cast<int32>(NodeData.Y);
-	EventNode->AllocateDefaultPins();
+	UK2Node_CustomEvent* EventNode =
+		FBlueprintHelperGraphNodeFactory::SpawnK2Node<UK2Node_CustomEvent>(
+			TargetGraph,
+			FVector2D(NodeData.X, NodeData.Y),
+			[&EventName](UK2Node_CustomEvent* Node)
+			{
+				Node->CustomFunctionName = FName(*EventName);
+			});
 
 	for (const TPair<FString, FEdGraphPinType>& Param : ConvertedParams)
 	{

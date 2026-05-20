@@ -7,6 +7,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDebugData.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphWriteSemanticPayload.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphGenerationPipeline.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutCoordinator.h"
 #include "Shared/BlueprintHelperToolResultTypes.h"
@@ -900,37 +901,18 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 	return SuccessResult;
 }
 
-// ─── AgentImport 兼容 payload 构建 ───
+// GraphWrite SemanticIR payload
 
 FString FBlueprintHelperAppendBlueprintGraphService::BuildSemanticGraphWritePayload(
 	const FAppendRequest& Request) const
 {
-	TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
-	Root->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.AgentImportGraph"));
-	Root->SetStringField(TEXT("version"), TEXT("1.0"));
-	Root->SetStringField(TEXT("target_blueprint"), Request.AssetPath);
-	Root->SetStringField(TEXT("target_graph"), Request.GraphName);
-	Root->SetStringField(TEXT("mode"), TEXT("append"));
-
-	// options
-	TSharedRef<FJsonObject> Options = MakeShared<FJsonObject>();
-	Options->SetBoolField(TEXT("compile"), false);
-	Options->SetBoolField(TEXT("save"), false);
-	Options->SetBoolField(TEXT("strict"), true);
-	Options->SetBoolField(TEXT("dry_run"), false);
-	Options->SetBoolField(TEXT("create_missing_variables"), false);
-	Options->SetBoolField(TEXT("reconstruct_existing_nodes"), Request.bReuseExistingEntries);
-	Root->SetObjectField(TEXT("options"), Options);
-
-	if (Request.LogicSpec.IsValid())
-	{
-		Root->SetObjectField(TEXT("logic_spec"), Request.LogicSpec);
-	}
-
-	FString JsonText;
-	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonText);
-	FJsonSerializer::Serialize(Root, Writer);
-	return JsonText;
+	FBlueprintHelperGraphWriteSemanticPayload Payload;
+	Payload.TargetAssetPath = Request.AssetPath;
+	Payload.TargetGraph = Request.GraphName;
+	Payload.Mode = TEXT("append");
+	Payload.bReconstructExistingNodes = Request.bReuseExistingEntries;
+	Payload.LogicSpec = Request.LogicSpec;
+	return Payload.ToJsonString();
 }
 
 // ─── Helpers ───

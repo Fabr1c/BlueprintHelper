@@ -118,8 +118,7 @@ FNodeClassification FClassifier::ClassifyNode(const FNodeSnapshot& Node, const F
 		return Result;
 	}
 
-	if (ContainsIgnoreCase(Node.ClassPath, TEXT("Timeline")) ||
-		ContainsIgnoreCase(Node.ClassPath, TEXT("Async")) ||
+	if (ContainsIgnoreCase(Node.ClassPath, TEXT("Async")) ||
 		ContainsIgnoreCase(Node.Title, TEXT("delay")))
 	{
 		Result.Role = ENodeRole::AsyncNode;

@@ -21,7 +21,6 @@
 #include "Systems/ToolClusters/AssetFactory/BlueprintHelperAssetFactoryService.h"
 #include "Systems/ToolClusters/BlueprintClassSettings/BlueprintHelperClassSettingsService.h"
 #include "Systems/ToolClusters/BlueprintComponent/BlueprintHelperComponentService.h"
-#include "Shared/Services/BlueprintHelperAgentImportService.h"
 #include "Shared/Services/BlueprintHelperBlueprintStructureService.h"
 #include "Systems/ToolClusters/BlueprintVariables/BlueprintHelperBlueprintVariableService.h"
 #include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
@@ -64,7 +63,6 @@ public:
 		FBlueprintHelperGraphResolver Resolver;
 		FBlueprintHelperCompileService CompileService;
 		FBlueprintHelperAssetBrowseService AssetBrowseService;
-		FBlueprintHelperAgentImportService AgentImportService;
 		FBlueprintHelperBlockIdService BlockIdService;
 		FBlueprintHelperOwnershipService OwnershipService;
 		FBlueprintHelperGraphSnapshotService SnapshotService;
@@ -86,7 +84,6 @@ public:
 
 		FAssetFactoryTaskRuntimeTestServices()
 			: CompileService(Resolver)
-			, AgentImportService(Resolver, CompileService, AssetBrowseService)
 			, AppendGraphService(Resolver, BlockIdService, OwnershipService)
 			, ReplaceGraphService(Resolver, BlockIdService, OwnershipService, SnapshotService)
 			, PatchGraphService(Resolver, PathService)
