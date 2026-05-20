@@ -87,7 +87,6 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewDebugBundleService::BuildChangeSum
 	Json->SetStringField(TEXT("latest_evidence_id"), Change->LatestEvidenceId);
 	Json->SetStringField(TEXT("change_kind"), BlueprintHelperReviewChangeKindToString(Change->ChangeKind));
 	Json->SetStringField(TEXT("status"), BlueprintHelperReviewChangeStatusToString(Change->Status));
-	Json->SetStringField(TEXT("scope_identity"), Change->ScopeIdentity);
 	Json->SetStringField(TEXT("before_hash"), Change->BeforeHash);
 	Json->SetStringField(TEXT("after_hash"), Change->AfterHash);
 	Json->SetStringField(TEXT("hash_source"), TEXT("semantic_target_snapshot"));
@@ -107,7 +106,6 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewDebugBundleService::BuildChangeSum
 		TargetJson->SetStringField(TEXT("display_label"), Target.DisplayLabel);
 		TargetJson->SetStringField(TEXT("property_path"), Target.PropertyPath);
 		TargetJson->SetStringField(TEXT("component_path"), Target.ComponentPath);
-		TargetJson->SetStringField(TEXT("scope_identity"), Target.ScopeIdentity);
 		TargetJson->SetStringField(TEXT("first_evidence_id"), Target.FirstEvidenceId);
 		TargetJson->SetStringField(TEXT("latest_evidence_id"), Target.LatestEvidenceId);
 		TargetJson->SetStringField(TEXT("baseline_hash"), Target.BaselineHash);

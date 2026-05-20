@@ -38,8 +38,6 @@ private:
 		bool bReuseExistingEntries = false;
 		bool bAllowExistingGraph = false;
 		TSharedPtr<FJsonObject> LogicSpec;
-		TArray<TSharedPtr<FJsonValue>> Nodes;
-		TArray<TSharedPtr<FJsonValue>> Links;
 	};
 
 	struct FAppendPreflightResult

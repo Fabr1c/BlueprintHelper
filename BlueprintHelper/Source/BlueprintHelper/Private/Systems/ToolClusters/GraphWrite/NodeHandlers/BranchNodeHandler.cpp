@@ -2,6 +2,7 @@
 
 #include "K2Node_IfThenElse.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphNodeFactory.h"
 
 bool FBranchNodeHandler::CanHandle(EParsedBlueprintNodeType NodeType) const
 {
@@ -16,13 +17,10 @@ UK2Node* FBranchNodeHandler::Spawn(UEdGraph* TargetGraph, const FParsedNode& Nod
 		return nullptr;
 	}
 
-	UK2Node_IfThenElse* BranchNode = NewObject<UK2Node_IfThenElse>(TargetGraph);
-	TargetGraph->AddNode(BranchNode, true, false);
-	BranchNode->CreateNewGuid();
-	BranchNode->PostPlacedNewNode();
-	BranchNode->NodePosX = static_cast<int32>(NodeData.X);
-	BranchNode->NodePosY = static_cast<int32>(NodeData.Y);
-	BranchNode->AllocateDefaultPins();
+	UK2Node_IfThenElse* BranchNode =
+		FBlueprintHelperGraphNodeFactory::SpawnK2Node<UK2Node_IfThenElse>(
+			TargetGraph,
+			FVector2D(NodeData.X, NodeData.Y));
 	FBlueprintGraphWriteFacade::ApplyDefaultValues(BranchNode, NodeData.DefaultValues);
 	return BranchNode;
 }

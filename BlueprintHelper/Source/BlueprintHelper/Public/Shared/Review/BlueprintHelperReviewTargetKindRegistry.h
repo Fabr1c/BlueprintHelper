@@ -55,11 +55,5 @@ public:
 	static EBlueprintHelperReviewTargetHandlerKind GetHandlerKind(const FString& TargetKind);
 	static bool SupportsSnapshotRestore(const FString& TargetKind);
 
-	static bool LegacyLocationMatchesSurface(
-		const FString& NormalizedLocation,
-		const FString& GraphName,
-		EBlueprintHelperReviewChangeKind ChangeKind,
-		EBlueprintHelperReviewSurface Surface);
-
 	static const FBlueprintHelperReviewTargetKindDefinition* FindDefinition(const FString& TargetKind);
 };

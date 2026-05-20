@@ -19,7 +19,6 @@ public:
 	static FParsedCastReference ResolveCastReference(const TSharedPtr<FJsonObject>& NodeObject);
 	static FParsedSpawnReference ResolveSpawnReference(const TSharedPtr<FJsonObject>& NodeObject);
 	static FParsedFormatTextReference ResolveFormatTextReference(const TSharedPtr<FJsonObject>& NodeObject);
-	static FParsedTimelineReference ResolveTimelineReference(const TSharedPtr<FJsonObject>& NodeObject);
 	static FParsedLiteralReference ResolveLiteralReference(const TSharedPtr<FJsonObject>& NodeObject);
 	static FParsedComponentBoundEventReference ResolveComponentBoundEventReference(const TSharedPtr<FJsonObject>& NodeObject);
 	static FParsedCommentReference ResolveCommentReference(const TSharedPtr<FJsonObject>& NodeObject);

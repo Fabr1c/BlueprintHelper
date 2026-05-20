@@ -39,7 +39,6 @@ public:
 		int32 NodeGuidTargetCount = 0;
 		int32 RecordedBoundsTargetCount = 0;
 		int32 StructuredAnchorSourceCount = 0;
-		int32 LegacyAnchorSourceCount = 0;
 		TArray<FString> MatchedNodeSummaries;
 	};
 

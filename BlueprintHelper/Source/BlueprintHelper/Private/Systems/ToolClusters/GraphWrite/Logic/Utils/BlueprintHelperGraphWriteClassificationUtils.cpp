@@ -94,7 +94,6 @@ FString FBlueprintHelperGraphWriteClassificationUtils::ClassifyLogicNode(
 		{ TEXT("broadcast"), { TEXT("calldelegate"), TEXT("broadcast") }, {} },
 		{ TEXT("bind_delegate"), { TEXT("adddelegate"), TEXT("assigndelegate"), TEXT("createdelegate"), TEXT("binddelegate") }, {} },
 		{ TEXT("unbind_delegate"), { TEXT("removedelegate"), TEXT("cleardelegate"), TEXT("unbinddelegate") }, {} },
-		{ TEXT("timeline"), { TEXT("timeline") }, { TEXT("timeline") } },
 		{ TEXT("cast"), { TEXT("dynamiccast"), TEXT("cast") }, { TEXT("cast") } },
 		{ TEXT("reroute"), { TEXT("knot"), TEXT("reroute") }, {} },
 		{ TEXT("event"), { TEXT("customevent"), TEXT("componentboundevent"), TEXT("enhancedinputaction"), TEXT("k2nodeevent"), TEXT("event") }, { TEXT("event"), TEXT("component_event"), TEXT("input_action_path") } },
@@ -214,8 +213,7 @@ EBlueprintHelperLogicNodeKind FBlueprintHelperGraphWriteClassificationUtils::Ide
 		{ EBlueprintHelperLogicNodeKind::VariableGet, { TEXT("K2Node_VariableGet") }, {} },
 		{ EBlueprintHelperLogicNodeKind::VariableSet, { TEXT("K2Node_VariableSet") }, {} },
 		{ EBlueprintHelperLogicNodeKind::Macro, { TEXT("K2Node_MacroInstance") }, {} },
-		{ EBlueprintHelperLogicNodeKind::DelegateBind, { TEXT("K2Node_CreateDelegate") }, {} },
-		{ EBlueprintHelperLogicNodeKind::Timeline, { TEXT("Timeline") }, {} }
+		{ EBlueprintHelperLogicNodeKind::DelegateBind, { TEXT("K2Node_CreateDelegate") }, {} }
 	};
 
 	for (const FBlueprintHelperGraphWriteKindRule& Rule : Rules)

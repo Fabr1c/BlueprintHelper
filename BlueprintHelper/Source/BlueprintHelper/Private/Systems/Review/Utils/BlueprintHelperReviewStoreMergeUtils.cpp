@@ -39,8 +39,7 @@ namespace
 		const FBlueprintHelperReviewVisibleChange& Change,
 		int32 Index,
 		TMap<FString, int32>& ExistingIndexByChangeId,
-		TMap<FString, int32>& ExistingIndexByLifecycleRoot,
-		TMap<FString, int32>& ExistingIndexByLegacyKey)
+		TMap<FString, int32>& ExistingIndexByLifecycleRoot)
 	{
 		const FString ChangeIdKey = FBlueprintHelperReviewStoreMergeUtils::MakeLoadedVisibleChangeChangeIdCollapseKey(Change);
 		if (!ChangeIdKey.IsEmpty())
@@ -54,11 +53,6 @@ namespace
 			ExistingIndexByLifecycleRoot.Add(LifecycleRootKey, Index);
 		}
 
-		const FString LegacyKey = FBlueprintHelperReviewStoreMergeUtils::MakeLoadedVisibleChangeCollapseKey(Change);
-		if (!LegacyKey.IsEmpty())
-		{
-			ExistingIndexByLegacyKey.Add(LegacyKey, Index);
-		}
 	}
 
 	static bool BlueprintHelperReviewFindCollapseReason(
@@ -83,16 +77,6 @@ namespace
 		if (!ExistingLifecycleRootKey.IsEmpty() && ExistingLifecycleRootKey == IncomingLifecycleRootKey)
 		{
 			OutReason = TEXT("active_lifecycle_root");
-			return true;
-		}
-
-		const FString ExistingLegacyKey =
-			FBlueprintHelperReviewStoreMergeUtils::MakeLoadedVisibleChangeCollapseKey(Existing);
-		const FString IncomingLegacyKey =
-			FBlueprintHelperReviewStoreMergeUtils::MakeLoadedVisibleChangeCollapseKey(Incoming);
-		if (!ExistingLegacyKey.IsEmpty() && ExistingLegacyKey == IncomingLegacyKey)
-		{
-			OutReason = TEXT("scope_identity");
 			return true;
 		}
 
@@ -183,27 +167,6 @@ FString FBlueprintHelperReviewStoreMergeUtils::MakeLoadedVisibleChangeLifecycleR
 
 		return FString();
 	}
-FString FBlueprintHelperReviewStoreMergeUtils::MakeLoadedVisibleChangeCollapseKey(const FBlueprintHelperReviewVisibleChange& Change)
-	{
-		const FString AssetKey = FBlueprintHelperReviewStoreTargetUtils::MakeReviewAssetLinkKey(Change.AssetPath);
-		const FString RootPrefix = Change.bIsAssetLifecycleRoot ? TEXT("root") : TEXT("change");
-		const FString ScopeIdentity = MakeVisibleChangeScopeIdentity(Change);
-		if (!ScopeIdentity.IsEmpty())
-		{
-			return FString::Printf(
-				TEXT("%s|%s|%s"),
-				*RootPrefix,
-				*AssetKey,
-				*ScopeIdentity);
-		}
-
-		return FString::Printf(
-			TEXT("%s|%s|%s|%s"),
-			*RootPrefix,
-			*AssetKey,
-			*Change.GraphName,
-			*Change.ChangeId);
-	}
 void FBlueprintHelperReviewStoreMergeUtils::AddUniqueReviewStrings(TArray<FString>& Target, const TArray<FString>& Source)
 	{
 		for (const FString& Value : Source)
@@ -292,12 +255,10 @@ void FBlueprintHelperReviewStoreMergeUtils::CollapseVisibleChangesLatestWins(TAr
 		TArray<FBlueprintHelperReviewVisibleChange> Collapsed;
 		TMap<FString, int32> ExistingIndexByChangeId;
 		TMap<FString, int32> ExistingIndexByLifecycleRoot;
-		TMap<FString, int32> ExistingIndexByLegacyKey;
 		for (const FBlueprintHelperReviewVisibleChange& Change : Changes)
 		{
 			const FString ChangeIdKey = MakeLoadedVisibleChangeChangeIdCollapseKey(Change);
 			const FString LifecycleRootKey = MakeLoadedVisibleChangeLifecycleRootCollapseKey(Change);
-			const FString LegacyKey = MakeLoadedVisibleChangeCollapseKey(Change);
 
 			int32* ExistingIndex = nullptr;
 			FString FoldReason;
@@ -311,12 +272,6 @@ void FBlueprintHelperReviewStoreMergeUtils::CollapseVisibleChangesLatestWins(TAr
 				ExistingIndex = ExistingIndexByLifecycleRoot.Find(LifecycleRootKey);
 				FoldReason = ExistingIndex ? TEXT("active_lifecycle_root") : FString();
 			}
-			if (!ExistingIndex && !LegacyKey.IsEmpty())
-			{
-				ExistingIndex = ExistingIndexByLegacyKey.Find(LegacyKey);
-				FoldReason = ExistingIndex ? TEXT("scope_identity") : FString();
-			}
-
 			if (ExistingIndex)
 			{
 				const FBlueprintHelperReviewVisibleChange ExistingBeforeMerge = Collapsed[*ExistingIndex];
@@ -326,8 +281,7 @@ void FBlueprintHelperReviewStoreMergeUtils::CollapseVisibleChangesLatestWins(TAr
 					Collapsed[*ExistingIndex],
 					*ExistingIndex,
 					ExistingIndexByChangeId,
-					ExistingIndexByLifecycleRoot,
-					ExistingIndexByLegacyKey);
+					ExistingIndexByLifecycleRoot);
 				continue;
 			}
 
@@ -337,8 +291,7 @@ void FBlueprintHelperReviewStoreMergeUtils::CollapseVisibleChangesLatestWins(TAr
 				Collapsed[NewIndex],
 				NewIndex,
 				ExistingIndexByChangeId,
-				ExistingIndexByLifecycleRoot,
-				ExistingIndexByLegacyKey);
+				ExistingIndexByLifecycleRoot);
 		}
 
 		Changes = MoveTemp(Collapsed);

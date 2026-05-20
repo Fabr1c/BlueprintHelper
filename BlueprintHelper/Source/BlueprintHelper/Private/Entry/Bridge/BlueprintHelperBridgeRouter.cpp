@@ -5,8 +5,6 @@
 #include "Entry/Bridge/BlueprintHelperRequestValidator.h"
 #include "Entry/BlueprintHelper.h"
 #include "Systems/Authorization/BlueprintHelperWriteAuthorizationService.h"
-#include "Shared/Services/BlueprintHelperImportService.h"
-#include "Shared/Services/BlueprintHelperAgentImportService.h"
 #include "Shared/Services/BlueprintHelperExportService.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicProcessor.h"
 #include "Systems/Debug/BlueprintHelperCompileService.h"
@@ -413,105 +411,6 @@ public:
 		return EBlueprintHelperBridgeError::ExecutionFailed;
 	}
 
-	static TSharedPtr<FJsonObject> ParseJsonObject(const FString& JsonText)
-	{
-		TSharedPtr<FJsonObject> JsonObject;
-		const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonText);
-		if (!FJsonSerializer::Deserialize(Reader, JsonObject) || !JsonObject.IsValid())
-		{
-			return nullptr;
-		}
-		return JsonObject;
-	}
-
-	static FString AgentImportSeverityToString(EBlueprintHelperAgentImportDiagnosticSeverity Severity)
-	{
-		switch (Severity)
-		{
-		case EBlueprintHelperAgentImportDiagnosticSeverity::Error:
-			return TEXT("error");
-		case EBlueprintHelperAgentImportDiagnosticSeverity::Warning:
-			return TEXT("warning");
-		default:
-			return TEXT("info");
-		}
-	}
-
-	static TSharedRef<FJsonObject> AgentImportResultToJson(const FBlueprintHelperAgentImportResult& Result)
-	{
-		TSharedRef<FJsonObject> Object = MakeShared<FJsonObject>();
-		Object->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.AgentImportResult"));
-		Object->SetBoolField(TEXT("success"), Result.bSuccess);
-		Object->SetStringField(TEXT("status"), Result.Status);
-		Object->SetStringField(TEXT("error_code"), Result.ErrorCode);
-		Object->SetStringField(TEXT("message"), Result.GetSummaryText());
-		Object->SetNumberField(TEXT("created_nodes"), Result.CreatedNodeCount);
-		Object->SetNumberField(TEXT("created_links"), Result.CreatedLinkCount);
-		Object->SetNumberField(TEXT("created_variables"), Result.CreatedVariableCount);
-		Object->SetNumberField(TEXT("warning_count"), Result.WarningCount);
-		Object->SetNumberField(TEXT("error_count"), Result.ErrorCount);
-		Object->SetBoolField(TEXT("rolled_back"), Result.bRolledBack);
-		Object->SetNumberField(TEXT("rollback_count"), Result.RollbackCount);
-		Object->SetBoolField(TEXT("compiled"), Result.bCompiled);
-		Object->SetBoolField(TEXT("saved"), Result.bSaved);
-		Object->SetBoolField(TEXT("dry_run"), Result.bDryRun);
-
-		TArray<TSharedPtr<FJsonValue>> WarningArray;
-		for (const FString& Warning : Result.Warnings)
-		{
-			WarningArray.Add(MakeShared<FJsonValueString>(Warning));
-		}
-		Object->SetArrayField(TEXT("warnings"), WarningArray);
-
-		TArray<TSharedPtr<FJsonValue>> DiagnosticArray;
-		for (const FBlueprintHelperAgentImportDiagnostic& Diagnostic : Result.Diagnostics)
-		{
-			TSharedPtr<FJsonObject> DiagnosticObject = MakeShared<FJsonObject>();
-			DiagnosticObject->SetStringField(TEXT("severity"), AgentImportSeverityToString(Diagnostic.Severity));
-			DiagnosticObject->SetStringField(TEXT("code"), Diagnostic.Code);
-			DiagnosticObject->SetStringField(TEXT("path"), Diagnostic.Path);
-			DiagnosticObject->SetStringField(TEXT("message"), Diagnostic.Message);
-			DiagnosticObject->SetStringField(TEXT("suggestion"), Diagnostic.Suggestion);
-			DiagnosticArray.Add(MakeShared<FJsonValueObject>(DiagnosticObject));
-		}
-		Object->SetArrayField(TEXT("diagnostics"), DiagnosticArray);
-
-		return Object;
-	}
-
-	static TSharedRef<FJsonObject> MakeRawJsonStatsObject(const TSharedPtr<FJsonObject>& RawJsonObject)
-	{
-		TSharedRef<FJsonObject> Stats = MakeShared<FJsonObject>();
-		if (!RawJsonObject.IsValid())
-		{
-			Stats->SetNumberField(TEXT("nodes"), 0);
-			Stats->SetNumberField(TEXT("links"), 0);
-			return Stats;
-		}
-
-		const TArray<TSharedPtr<FJsonValue>>* NodesArray = nullptr;
-		if (RawJsonObject->TryGetArrayField(TEXT("nodes"), NodesArray) && NodesArray)
-		{
-			Stats->SetNumberField(TEXT("nodes"), NodesArray->Num());
-		}
-		else
-		{
-			Stats->SetNumberField(TEXT("nodes"), 0);
-		}
-
-		const TArray<TSharedPtr<FJsonValue>>* LinksArray = nullptr;
-		if (RawJsonObject->TryGetArrayField(TEXT("links"), LinksArray) && LinksArray)
-		{
-			Stats->SetNumberField(TEXT("links"), LinksArray->Num());
-		}
-		else
-		{
-			Stats->SetNumberField(TEXT("links"), 0);
-		}
-
-		return Stats;
-	}
-
 	// ─── reference context helpers ───
 	static FBlueprintHelperToolError MakeReferenceContextError(
 		const FString& Code,
@@ -609,8 +508,6 @@ public:
 };
 
 FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
-	const FBlueprintHelperImportService& InImport,
-	const FBlueprintHelperAgentImportService& InAgentImport,
 	const FBlueprintHelperExportService& InExport,
 	const FBlueprintHelperCompileService& InCompile,
 	const FBlueprintHelperValidationService& InValidation,
@@ -636,9 +533,7 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	const FBlueprintHelperCompileAssetService& InCompileAssetService,
 	const FBlueprintHelperBlueprintVariableService& InVariableService,
 	const FBlueprintHelperReviewStoreService& InReviewStoreService)
-	: ImportService(InImport)
-	, AgentImportService(InAgentImport)
-	, ExportService(InExport)
+	: ExportService(InExport)
 	, CompileService(InCompile)
 	, ValidationService(InValidation)
 	, ContextService(InContext)
@@ -750,8 +645,6 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequestWithPl
 	BLUEPRINTHELPER_ROUTE("validate_json", SharedServices, HandleValidateJson)
 	BLUEPRINTHELPER_ROUTE("export_to_json", SharedServices, HandleExportToJson)
 	BLUEPRINTHELPER_ROUTE("export_logic", SharedServices, HandleExportLogic)
-	BLUEPRINTHELPER_ROUTE("import_json", SharedServices, HandleImportJson)
-	BLUEPRINTHELPER_ROUTE("import_agent_graph", SharedServices, HandleImportAgentGraph)
 
 	BLUEPRINTHELPER_ROUTE("open_asset", AssetBrowser, HandleOpenAsset)
 	BLUEPRINTHELPER_ROUTE("list_assets", AssetBrowser, HandleListAssets)
@@ -1280,62 +1173,6 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleExportLogic(
 	const FBlueprintHelperBridgeRequest& Req) const
 {
 	return HandleReadBlueprintLogicJson(Req);
-}
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleImportJson(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	FBlueprintHelperImportRequest Request;
-	if (Req.Payload.IsValid())
-	{
-		Req.Payload->TryGetStringField(TEXT("target_blueprint"), Request.Target.BlueprintPath);
-		Req.Payload->TryGetStringField(TEXT("graph"), Request.Target.GraphName);
-		Req.Payload->TryGetBoolField(TEXT("auto_compile"), Request.bAutoCompile);
-		Req.Payload->TryGetBoolField(TEXT("strict"), Request.bStrict);
-		Request.JsonObject = Req.Payload;
-		const TSharedPtr<FJsonObject>* JsonObject = nullptr;
-		if (Req.Payload->TryGetObjectField(TEXT("json"), JsonObject) && JsonObject && JsonObject->IsValid())
-		{
-			Request.JsonObject = *JsonObject;
-		}
-	}
-	const FBlueprintHelperImportResult Result = ImportService.Import(Request);
-	FBlueprintHelperBridgeResponse Resp = Result.bSuccess
-		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
-		: FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, Result.GetSummaryText());
-	Resp.Result = MakeShared<FJsonObject>();
-	Resp.Result->SetBoolField(TEXT("success"), Result.bSuccess);
-	Resp.Result->SetStringField(TEXT("status"), Result.Status);
-	Resp.Result->SetStringField(TEXT("summary"), Result.GetSummaryText());
-	Resp.Result->SetNumberField(TEXT("generated_node_count"), Result.GeneratedNodeCount);
-	Resp.Result->SetNumberField(TEXT("unresolved_node_count"), Result.UnresolvedNodeCount);
-	Resp.Result->SetNumberField(TEXT("operations_applied"), Result.OperationsApplied);
-	Resp.Result->SetNumberField(TEXT("links_connected"), Result.LinksConnected);
-	Resp.Result->SetBoolField(TEXT("rolled_back"), Result.bRolledBack);
-	return Resp;
-}
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleImportAgentGraph(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	FBlueprintHelperAgentImportRequest Request;
-	if (Req.Payload.IsValid())
-	{
-		Req.Payload->TryGetStringField(TEXT("json"), Request.JsonText);
-		if (Request.JsonText.IsEmpty())
-		{
-			FString Serialized;
-			const TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Serialized);
-			FJsonSerializer::Serialize(Req.Payload.ToSharedRef(), Writer);
-			Request.JsonText = Serialized;
-		}
-	}
-	const FBlueprintHelperAgentImportResult Result = AgentImportService.Import(Request);
-	FBlueprintHelperBridgeResponse Resp = Result.bSuccess
-		? FBlueprintHelperBridgeResponse::Success(Req.RequestId)
-		: FBlueprintHelperBridgeResponse::Error(Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, Result.GetSummaryText());
-	Resp.Result = FBlueprintHelperBridgeRouterLocalUtils::AgentImportResultToJson(Result);
-	return Resp;
 }
 
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandlePreviewTaskPlan(

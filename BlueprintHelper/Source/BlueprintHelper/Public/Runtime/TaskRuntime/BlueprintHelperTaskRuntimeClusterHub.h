@@ -39,9 +39,7 @@ enum class EBlueprintHelperTaskRuntimeCluster : uint8
 	Signature,
 	UMGWidget,
 	DataTable,
-	ObjectProperty,
-	AnimationBlueprint,
-	Material
+	ObjectProperty
 };
 
 class BLUEPRINTHELPER_API FBlueprintHelperTaskRuntimeClusterHub

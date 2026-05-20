@@ -1,12 +1,10 @@
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeClusterHub.h"
-#include "Runtime/TaskRuntime/Clusters/AnimationBlueprint/BlueprintHelperAnimationBlueprintTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/AssetFactory/BlueprintHelperAssetFactoryTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/BlueprintVariables/BlueprintHelperBlueprintVariablesTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/ClassSettings/BlueprintHelperClassSettingsTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/Component/BlueprintHelperComponentTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/DataTable/BlueprintHelperDataTableTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/GraphWrite/BlueprintHelperGraphWriteTaskRuntimeCluster.h"
-#include "Runtime/TaskRuntime/Clusters/Material/BlueprintHelperMaterialTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/ObjectProperty/BlueprintHelperObjectPropertyTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/Signature/BlueprintHelperSignatureTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/UMGWidget/BlueprintHelperUMGWidgetTaskRuntimeCluster.h"
@@ -174,34 +172,36 @@ bool FBlueprintHelperFinalBatchTaskRuntimeClusters_RecognizeOnlyOwnedSteps::RunT
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperReservedTaskRuntimeClusters_DoNotClaimSteps,
-	"BlueprintHelper.TaskRuntime.Cluster.ReservedClustersDoNotClaimSteps",
+	FBlueprintHelperRetiredEmptyTaskRuntimeClustersAreUnknown,
+	"BlueprintHelper.TaskRuntime.Cluster.RetiredEmptyClustersAreUnknown",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
-bool FBlueprintHelperReservedTaskRuntimeClusters_DoNotClaimSteps::RunTest(const FString& Parameters)
+bool FBlueprintHelperRetiredEmptyTaskRuntimeClustersAreUnknown::RunTest(const FString& Parameters)
 {
-	TestTrue(
-		TEXT("AnimationBlueprint enum is reserved"),
-		EBlueprintHelperTaskRuntimeCluster::AnimationBlueprint != EBlueprintHelperTaskRuntimeCluster::Unknown);
-	TestTrue(
-		TEXT("Material enum is reserved"),
-		EBlueprintHelperTaskRuntimeCluster::Material != EBlueprintHelperTaskRuntimeCluster::Unknown);
-	TestFalse(
-		TEXT("AnimationBlueprint placeholder rejects current animation capability name"),
-		FBlueprintHelperAnimationBlueprintTaskRuntimeCluster::CanExecuteStep(
-			FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT("animation_blueprint"), TEXT(""))));
-	TestFalse(
-		TEXT("AnimationBlueprint placeholder rejects graph write"),
-		FBlueprintHelperAnimationBlueprintTaskRuntimeCluster::CanExecuteStep(
-			FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT("graph_write"), TEXT(""))));
-	TestFalse(
-		TEXT("Material placeholder rejects current material capability name"),
-		FBlueprintHelperMaterialTaskRuntimeCluster::CanExecuteStep(
-			FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT("material"), TEXT(""))));
-	TestFalse(
-		TEXT("Material placeholder rejects asset factory"),
-		FBlueprintHelperMaterialTaskRuntimeCluster::CanExecuteStep(
-			FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT("asset_factory"), TEXT(""))));
+	const FBlueprintHelperTaskRuntimeLoweredStep AnimationCapability =
+		FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT("animation_blueprint"), TEXT(""));
+	TestEqual(TEXT("animation_blueprint capability resolves Unknown"),
+		FBlueprintHelperTaskRuntimeClusterHub::ResolveClusterForLoweredStep(AnimationCapability),
+		EBlueprintHelperTaskRuntimeCluster::Unknown);
+
+	const FBlueprintHelperTaskRuntimeLoweredStep AnimationOperation =
+		FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT(""), TEXT("animation_blueprint"));
+	TestEqual(TEXT("animation_blueprint operation resolves Unknown"),
+		FBlueprintHelperTaskRuntimeClusterHub::ResolveClusterForLoweredStep(AnimationOperation),
+		EBlueprintHelperTaskRuntimeCluster::Unknown);
+
+	const FBlueprintHelperTaskRuntimeLoweredStep MaterialCapability =
+		FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT("material"), TEXT(""));
+	TestEqual(TEXT("material capability resolves Unknown"),
+		FBlueprintHelperTaskRuntimeClusterHub::ResolveClusterForLoweredStep(MaterialCapability),
+		EBlueprintHelperTaskRuntimeCluster::Unknown);
+
+	const FBlueprintHelperTaskRuntimeLoweredStep MaterialOperation =
+		FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT(""), TEXT("material"));
+	TestEqual(TEXT("material operation resolves Unknown"),
+		FBlueprintHelperTaskRuntimeClusterHub::ResolveClusterForLoweredStep(MaterialOperation),
+		EBlueprintHelperTaskRuntimeCluster::Unknown);
+
 	return true;
 }
 

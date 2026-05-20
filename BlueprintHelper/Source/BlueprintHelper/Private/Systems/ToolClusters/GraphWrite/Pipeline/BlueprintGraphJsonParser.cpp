@@ -203,12 +203,6 @@ EParsedBlueprintNodeType FBlueprintGraphJsonParser::ResolveNodeType(const TShare
 		return EParsedBlueprintNodeType::GetArrayItem;
 	}
 
-	if (NormalizedNodeType.Equals(TEXT("K2Node_Timeline"), ESearchCase::IgnoreCase)
-		|| NormalizedNodeType.Equals(TEXT("Timeline"), ESearchCase::IgnoreCase))
-	{
-		return EParsedBlueprintNodeType::Timeline;
-	}
-
 	// v2.3 — Knot 族（别名: "Reroute"）
 	if (NormalizedNodeType.Equals(TEXT("K2Node_Knot"), ESearchCase::IgnoreCase)
 		|| NormalizedNodeType.Equals(TEXT("Knot"), ESearchCase::IgnoreCase)
@@ -710,52 +704,6 @@ FParsedFormatTextReference FBlueprintGraphJsonParser::ResolveFormatTextReference
 	if (Result.FormatString.IsEmpty())
 	{
 		NodeObject->TryGetStringField(TEXT("format_string"), Result.FormatString);
-	}
-
-	return Result;
-}
-
-FParsedTimelineReference FBlueprintGraphJsonParser::ResolveTimelineReference(const TSharedPtr<FJsonObject>& NodeObject)
-{
-	FParsedTimelineReference Result;
-	if (!NodeObject.IsValid())
-	{
-		return Result;
-	}
-
-	const TSharedPtr<FJsonObject>* TLObject = nullptr;
-	if (NodeObject->TryGetObjectField(TEXT("timeline"), TLObject) && TLObject && TLObject->IsValid())
-	{
-		(*TLObject)->TryGetStringField(TEXT("name"), Result.TimelineName);
-		(*TLObject)->TryGetBoolField(TEXT("auto_play"), Result.bAutoPlay);
-		(*TLObject)->TryGetBoolField(TEXT("loop"), Result.bLoop);
-
-		const TArray<TSharedPtr<FJsonValue>>* FloatArray = nullptr;
-		if ((*TLObject)->TryGetArrayField(TEXT("float_tracks"), FloatArray) && FloatArray)
-		{
-			for (const TSharedPtr<FJsonValue>& V : *FloatArray)
-			{
-				Result.FloatTracks.Add(V->AsString());
-			}
-		}
-
-		const TArray<TSharedPtr<FJsonValue>>* VectorArray = nullptr;
-		if ((*TLObject)->TryGetArrayField(TEXT("vector_tracks"), VectorArray) && VectorArray)
-		{
-			for (const TSharedPtr<FJsonValue>& V : *VectorArray)
-			{
-				Result.VectorTracks.Add(V->AsString());
-			}
-		}
-
-		const TArray<TSharedPtr<FJsonValue>>* EventArray = nullptr;
-		if ((*TLObject)->TryGetArrayField(TEXT("event_tracks"), EventArray) && EventArray)
-		{
-			for (const TSharedPtr<FJsonValue>& V : *EventArray)
-			{
-				Result.EventTracks.Add(V->AsString());
-			}
-		}
 	}
 
 	return Result;

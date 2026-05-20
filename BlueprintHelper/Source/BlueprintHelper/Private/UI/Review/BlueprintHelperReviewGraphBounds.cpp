@@ -85,10 +85,6 @@ bool FBlueprintHelperReviewGraphBounds::BuildBoundsForTargets(
 		{
 			++DebugCounters.StructuredAnchorSourceCount;
 		}
-		else if (RecordedBounds.AnchorSource.Equals(TEXT("legacy"), ESearchCase::IgnoreCase))
-		{
-			++DebugCounters.LegacyAnchorSourceCount;
-		}
 
 		bool bMatchedNode = false;
 		TArray<TArray<FString>> CandidatePasses;

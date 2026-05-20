@@ -313,54 +313,6 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 		};
 		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("import_json")))
-	{
-		{
-			const TSharedPtr<FJsonValue>* FoundValue = Payload->Values.Find(TEXT("json"));
-			if (!FoundValue)
-			{
-				FBlueprintHelperRequestValidatorLocalUtils::SetValidationError(OutError, TEXT("payload.json"), TEXT("object"), TEXT("missing"));
-				return false;
-			}
-			const auto JsonVal = *FoundValue;
-			if (!JsonVal.IsValid() || JsonVal->Type != EJson::Object)
-			{
-				FBlueprintHelperRequestValidatorLocalUtils::SetValidationError(OutError, TEXT("payload.json"), TEXT("object"), FBlueprintHelperRequestValidatorLocalUtils::ActualJsonTypeToString(JsonVal));
-				return false;
-			}
-		}
-
-		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("compile_after_import"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
-			{TEXT("strict"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
-			{TEXT("allow_partial"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
-		};
-		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
-	}
-	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("import_agent_graph")))
-	{
-		const TCHAR* RetiredFields[] = {
-			TEXT("nodes"),
-			TEXT("links"),
-			TEXT("declarations"),
-			TEXT("layout")
-		};
-		if (!FBlueprintHelperRequestValidatorLocalUtils::RejectFields(Payload, RetiredFields, OutError))
-		{
-			return false;
-		}
-
-		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("schema"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("version"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("target_blueprint"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("target_graph"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("mode"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("logic_spec"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Object, true},
-			{TEXT("options"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Object, false},
-		};
-		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
-	}
 	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("compile_blueprint")))
 	{
 		return true;
@@ -992,8 +944,6 @@ bool FBlueprintHelperRequestValidator::ValidateAuthorization(
 bool FBlueprintHelperRequestValidator::IsWriteCommand(const FString& Command)
 {
 	static const TSet<FString> WriteCommands = {
-		TEXT("import_json"),
-		TEXT("import_agent_graph"),
 		TEXT("compile_blueprint"),
 		TEXT("save_asset"),
 		TEXT("add_variable"),

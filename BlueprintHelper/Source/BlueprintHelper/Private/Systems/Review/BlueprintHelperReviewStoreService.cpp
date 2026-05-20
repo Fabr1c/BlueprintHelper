@@ -622,7 +622,6 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewStoreService::BuildReviewRecordSum
 		if (!Change.LocationKey.IsEmpty())
 		{
 			ChangeJson->SetStringField(TEXT("visual_group_key"), Change.LocationKey);
-		if (!Change.ScopeIdentity.IsEmpty()) ChangeJson->SetStringField(TEXT("scope_identity"), Change.ScopeIdentity);
 		}
 		ChangeJson->SetStringField(TEXT("change_kind"), BlueprintHelperReviewChangeKindToString(Change.ChangeKind));
 		ChangeJson->SetStringField(TEXT("status"), BlueprintHelperReviewChangeStatusToString(Change.Status));

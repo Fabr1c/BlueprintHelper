@@ -43,8 +43,6 @@ private:
 		FString EntryName;
 		FString NodePath;
 
-		TArray<TSharedPtr<FJsonValue>> Nodes;
-		TArray<TSharedPtr<FJsonValue>> Links;
 		TSharedPtr<FJsonObject> LogicSpec;
 		bool bDryRun = false;
 		bool bStrict = true;
@@ -109,7 +107,7 @@ private:
 	bool ResolveReplaceTarget(const FReplaceRequest& Request, UBlueprint* Blueprint, FResolvedReplaceTarget& OutTarget, FString& OutError) const;
 	bool ResolveBlockImplementation(UEdGraph* Graph, const FReplaceRequest& Request, FResolvedReplaceTarget& OutTarget, FString& OutError) const;
 
-	// ─── 构建 AgentImport 兼容 payload ───
+	// GraphWrite SemanticIR payload
 
 	FString BuildSemanticGraphWritePayload(const FReplaceRequest& Request) const;
 

@@ -57,7 +57,6 @@ FRuleSet::FRuleSet()
 		RoleRules.Add(Rule);
 	}
 	RoleRules.Add(MakeClassRoleRule(TEXT("AsyncNode"), ENodeRole::AsyncNode, TEXT("cyan"), 80, {
-		TEXT("K2Node_Timeline"),
 		TEXT("Async"),
 		TEXT("Latent"),
 		TEXT("Delay")
@@ -70,7 +69,6 @@ FRuleSet::FRuleSet()
 		Rule.Priority = 79;
 		Rule.MatchTitleContains.Append({
 			TEXT("Delay"),
-			TEXT("Timeline"),
 			TEXT("Async")
 		});
 		RoleRules.Add(Rule);

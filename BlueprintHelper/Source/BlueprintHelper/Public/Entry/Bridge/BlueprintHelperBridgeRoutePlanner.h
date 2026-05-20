@@ -23,9 +23,7 @@ enum class EBlueprintHelperBridgeRouteCluster : uint8
 	DataTable,
 	ObjectProperty,
 	EditorCommand,
-	Review,
-	AnimationBlueprint,
-	Material
+	Review
 };
 
 struct BLUEPRINTHELPER_API FBlueprintHelperBridgeRoutePlan

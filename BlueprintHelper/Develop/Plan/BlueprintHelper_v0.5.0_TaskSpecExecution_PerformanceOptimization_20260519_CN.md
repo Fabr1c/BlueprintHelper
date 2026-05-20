@@ -574,7 +574,8 @@ Editor 手动重启后已返回 UE nested read timing，`ue_bridge_router.route_
 | P2 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P2_TaskRuntimeReviewIO_ImplementationPlan_CN.md` | Review IO 批处理、TaskRuntime `PurePrepare -> MainThreadCommit -> PostIO` 三层拆分 | 已完成首轮实现和测速 |
 | P3 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P3_ReadPipelineSnapshotCache_ImplementationPlan_CN.md` | 读链路 GameThread 快照、DTO formatter、request-local snapshot 复用、纯数据缓存、Bridge gap 细分 | 已完成 v0.5.0 范围，`logic_flow` 复用 `logic_json` 快照链路 |
 | P4 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P4_PreviewPartialReuseAndFineGrainedCache_ImplementationPlan_CN.md` | 失败 preview 短窗口部分复用、CallFunction resolved facts TTL cache、GraphWrite 纯数据 plan cache、缓存配置外置 | 已完成首轮实现和测速 |
-| P5-P6 后续 | 待讨论确认后拆独立执行计划 | GraphWrite cluster execute 降成本、compile/save 条件化或批处理 | 未实施，后续版本讨论 |
+| P5 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P5_GraphWriteClusterExecute_ImplementationPlan_CN.md` | GraphWrite `cluster_execute` 降成本、GraphMutationPlan、GraphWriteContext、pin lookup 缓存、执行 stats | 计划已写，待执行 |
+| P6 后续 | 待讨论确认后拆独立执行计划 | compile/save 条件化或批处理 | 未实施，后续版本讨论 |
 | R0-R5 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/R0_R5_ReadPipeline_ExecutablePlan_CN.md` | 读链路可执行 checklist、目标文件结构、分阶段验收、benchmark 和回归门槛 | 已完成并作为 P3 执行证据 |
 
 说明：主文档继续保留背景、测速记录、优化项摘要、优先级排序、度量要求和当前状态；阶段文档负责执行 checklist、文件结构、测试命令和验收标准。
@@ -785,6 +786,10 @@ xychart
 ### P5-10：GraphWrite cluster execute 降成本
 
 目标：降低真实写图阶段的 node spawn、pin lookup、linking 和 layout 记录成本。当前 `04b_write_function_body.json` execute 的 `cluster_execute` 约 275ms，是第二大真实 UE 侧瓶颈。
+
+阶段计划文档：
+
+`Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P5_GraphWriteClusterExecute_ImplementationPlan_CN.md`
 
 计划：
 - 在 `PurePrepare` 或 GraphWrite service 边界生成纯数据 `GraphMutationPlan`，包含 node spawn plan、pin default plan、link plan、layout plan。
@@ -1114,6 +1119,7 @@ compile-only 五轮隔离样本：
 - Bridge send/receive 拆分已落地：CLI 侧返回 connect/write/client_parse，UE Bridge nested 返回 receive、GameThread enqueue wait、route execute、response serialize；response socket write 因发生在同一 response body 序列化之后，不伪造同帧 timing。
 - 阶段计划已迁移到 `Develop/Plan/Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/`，主文档只保留总体结论和索引。
 - P4 已完成首轮实现和测速：partial preview cache 支持失败 preview 后 40s 内复用已通过 step；CallFunction resolved facts cache 和 GraphWrite 纯数据 plan cache 已接入 TTL、容量、字节预算、asset-state 校验和 `--develop` cache diagnostics；普通输出不泄漏诊断。
+- P5 GraphWrite `cluster_execute` 降成本计划已写入独立阶段文档，当前状态为待执行；计划先补 execution stats，再落 `GraphWriteContext`、`GraphMutationPlan` 和 context-backed pin lookup。
 - 普通路径保持无计时采集、无 `data.timing` 返回；CLI 诊断路径通过 `--develop` 对所有 CLI 工具显式开启，TaskSpec MCP/tool 诊断路径通过 `develop: true` 显式开启。
 - 后续实现必须保持高内聚、低耦合，避免把性能分支堆进单个 service 或 UI 入口。
 
