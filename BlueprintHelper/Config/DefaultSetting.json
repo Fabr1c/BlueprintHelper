@@ -1,0 +1,195 @@
+{
+  "schema": "BlueprintHelper.Setting.v1",
+  "version": "0.5.0",
+  "active_profile": "default",
+  "profiles": {
+    "default": {
+      "safety_profile": "standard",
+      "description": "v0.5.0 performance baseline"
+    }
+  },
+  "ui": {
+    "main_window": {
+      "default_tab": "tools",
+      "tab_bar_padding": 6.0,
+      "tab_button_spacing": [0.0, 0.0, 6.0, 0.0],
+      "active_tab_color": [0.18, 0.34, 0.62, 1.0],
+      "inactive_tab_color": [0.08, 0.08, 0.08, 1.0],
+      "cleanup_button_label": "Clean Review Data",
+      "cleanup_button_margin_left": 10.0
+    },
+    "notifications": {
+      "cleanup_use_throbber": true,
+      "cleanup_use_success_fail_icons": false,
+      "cleanup_fire_and_forget": false,
+      "cleanup_fade_out_seconds": 0.5,
+      "cleanup_expire_seconds": 4.0
+    },
+    "layout_rule_editor": {
+      "canvas_desired_size": [760.0, 320.0],
+      "node_size": [128.0, 44.0],
+      "canvas_rule_scale": 0.45,
+      "default_rule_id": "default_readable_exec_with_left_data",
+      "default_rule_display_name": "Default Readable Exec With Left Data",
+      "exec_column_spacing": 360.0,
+      "exec_row_spacing": 220.0,
+      "branch_row_spacing": 260.0,
+      "pure_input_offset_x": 300.0,
+      "variable_input_offset_x": 260.0,
+      "input_pin_row_spacing": 44.0,
+      "max_ms_per_frame": 2.0,
+      "max_nodes_per_frame": 24,
+      "move_generated_nodes": true,
+      "move_existing_nodes": false,
+      "mark_dirty_after_apply": true,
+      "save_after_apply": false,
+      "side_splitter_ratio": [0.30, 0.70]
+    },
+    "task_spec_workbench": {
+      "top_padding": 8.0,
+      "button_spacing": [0.0, 0.0, 8.0, 0.0],
+      "main_split_ratio": [0.30, 0.70],
+      "left_split_ratio": [0.58, 0.42],
+      "preview_width": 220.0,
+      "preview_min_height": 72.0,
+      "preview_container_padding": 8.0,
+      "block_colors": {
+        "default": [0.10, 0.22, 0.48, 1.0],
+        "graph_logic": [0.06, 0.34, 0.14, 1.0],
+        "diagnostic": [0.28, 0.28, 0.28, 1.0],
+        "selected": [0.58, 0.46, 0.08, 1.0]
+      }
+    },
+    "review_panel": {
+      "main_split_ratio": [0.14, 0.86],
+      "component_blueprint_split": [0.42, 0.58],
+      "main_graph_ratio": [0.62, 0.20],
+      "right_bottom_ratio": [0.76, 0.24],
+      "root_row_padding": [7.0, 5.0],
+      "row_content_padding": 6.0,
+      "diff_frame_outer_padding": 3.0,
+      "diff_action_padding": 5.0,
+      "diff_action_spacing": [0.0, 0.0, 6.0, 0.0],
+      "surface_overlay_fill_alpha": 0.60,
+      "surface_overlay_selected_fill_alpha": 0.74,
+      "surface_geometry_padding": [10.0, 10.0],
+      "flash_tick_decay": 1.8,
+      "debug_max_messages": 200,
+      "overlay_filter_current_asset_only": true
+    }
+  },
+  "runtime": {
+    "bridge": {
+      "port": 54321,
+      "max_pending_connections": 8,
+      "accept_wait_ms": 250,
+      "idle_timeout_seconds": 2.0,
+      "max_frame_bytes": 16777216,
+      "socket_buffer_bytes": 262144
+    },
+    "task_runtime": {
+      "cache": {
+        "partial_preview": {
+          "ttl_seconds": 40,
+          "max_groups": 64,
+          "max_step_entries": 512,
+          "max_bytes": 8388608
+        },
+        "call_function_fact": {
+          "ttl_seconds": 180,
+          "max_entries": 2048,
+          "max_bytes": 8388608
+        },
+        "graph_write_plan": {
+          "ttl_seconds": 90,
+          "max_entries": 256,
+          "max_bytes": 16777216
+        },
+        "prune_on_access_min_interval_seconds": 1
+      },
+      "execution_policy": {
+        "should_compile": false,
+        "should_save": false,
+        "dry_run_mode": "full"
+      }
+    }
+  },
+  "review": {
+    "version": "v2",
+    "evidence_required": true,
+    "artifact": {
+      "snapshot_root": "Saved/BlueprintHelper/Review/Snapshots"
+    },
+    "debug_bundle": {
+      "root_dir": "Saved/BlueprintHelper/Debug",
+      "sub_dir": "ReviewPanelBundles",
+      "filename_pattern": "review_panel_%Y%m%d_%H%M%S.json",
+      "schema_review_panel": "BlueprintHelper.ReviewPanelDebugBundle.v2",
+      "schema_snapshot": "BlueprintHelper.ReviewTargetSnapshot.v2",
+      "hash_source": "semantic_target_snapshot",
+      "retention": "standard",
+      "enforce_root_path": true
+    }
+  },
+  "tool_clusters": {
+    "asset_factory": {
+      "default_parent_class": "",
+      "default_value_type": "",
+      "default_collision_policy": "fail_if_exists",
+      "dry_run": false
+    },
+    "component": {
+      "default_attach_rule": "keep_relative",
+      "default_name_collision_policy": "fail_if_exists",
+      "default_property_mode": "batch",
+      "dry_run": false
+    },
+    "class_settings": {
+      "dry_run": false,
+      "validation_should_compile": false,
+      "validation_should_save": false
+    },
+    "blueprint_variables": {
+      "dry_run": false,
+      "read_member_defaults_scope": "member_variables",
+      "asset_path_fallback": "focused"
+    },
+    "object_property": {
+      "dry_run": false
+    },
+    "data_table": {
+      "dry_run": false,
+      "write_requires_row_struct": true
+    },
+    "umg_widget": {
+      "dry_run": false,
+      "asset_path_required": true
+    },
+    "signature": {
+      "reference_context_search_scope": "project",
+      "reference_context_resolution_policy": "ue_then_name",
+      "reference_context_detail": "summary",
+      "reference_context_max_results": 50
+    },
+    "graph_write": {
+      "strict": true,
+      "create_missing_variables": false,
+      "reconstruct_existing_nodes": false,
+      "compile": false,
+      "save": false,
+      "layout": "auto"
+    },
+    "read_context": {
+      "default_scope": "project",
+      "max_output_rows": 0,
+      "max_output_bytes": 0
+    }
+  },
+  "debug": {
+    "export_profile": "standard",
+    "contains_full_settings": false
+  },
+  "graph_layout": {
+    "rules_source": "GraphLayoutRules.json"
+  }
+}

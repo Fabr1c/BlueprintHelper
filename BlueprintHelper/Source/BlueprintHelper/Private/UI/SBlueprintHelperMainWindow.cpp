@@ -14,6 +14,7 @@
 #include "Widgets/Layout/SWidgetSwitcher.h"
 #include "Widgets/Notifications/SNotificationList.h"
 #include "UI/Review/SBlueprintHelperReviewPanel.h"
+#include "UI/Settings/SBlueprintHelperSettingsPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
 void SBlueprintHelperMainWindow::Construct(const FArguments& InArgs)
@@ -65,6 +66,15 @@ void SBlueprintHelperMainWindow::Construct(const FArguments& InArgs)
 			]
 			+ SHorizontalBox::Slot()
 			.AutoWidth()
+			.Padding(0.0f, 0.0f, 6.0f, 0.0f)
+			[
+				SNew(SButton)
+				.ButtonColorAndOpacity(this, &SBlueprintHelperMainWindow::GetSettingsTabColor)
+				.Text(FText::FromString(TEXT("Setting")))
+				.OnClicked(this, &SBlueprintHelperMainWindow::ShowSettingsPage)
+			]
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
 			.Padding(10.0f, 0.0f, 0.0f, 0.0f)
 			[
 				SNew(SButton)
@@ -97,6 +107,10 @@ void SBlueprintHelperMainWindow::Construct(const FArguments& InArgs)
 				.OnImportJson(FBlueprintHelperLayoutRuleEditorImportJson::CreateStatic(&FBlueprintHelperGraphLayoutCoordinator::LoadConfiguredRuleSetJson))
 				.OnExportJson(FBlueprintHelperLayoutRuleEditorExportJson::CreateStatic(&FBlueprintHelperGraphLayoutCoordinator::SaveConfiguredRuleSetJson))
 				.OnValidateJson(FBlueprintHelperLayoutRuleEditorValidateJson::CreateStatic(&FBlueprintHelperGraphLayoutCoordinator::ValidateRuleSetJson))
+			]
+			+ SWidgetSwitcher::Slot()
+			[
+				SNew(SBlueprintHelperSettingsPanel)
 			]
 		]
 	];
@@ -135,6 +149,16 @@ FReply SBlueprintHelperMainWindow::ShowReviewPage()
 FReply SBlueprintHelperMainWindow::ShowLayoutPage()
 {
 	ActivePageIndex = 2;
+	if (PageSwitcher.IsValid())
+	{
+		PageSwitcher->SetActiveWidgetIndex(ActivePageIndex);
+	}
+	return FReply::Handled();
+}
+
+FReply SBlueprintHelperMainWindow::ShowSettingsPage()
+{
+	ActivePageIndex = 3;
 	if (PageSwitcher.IsValid())
 	{
 		PageSwitcher->SetActiveWidgetIndex(ActivePageIndex);
@@ -237,6 +261,13 @@ FSlateColor SBlueprintHelperMainWindow::GetReviewTabColor() const
 FSlateColor SBlueprintHelperMainWindow::GetLayoutTabColor() const
 {
 	return FSlateColor(ActivePageIndex == 2
+		? FLinearColor(0.18f, 0.34f, 0.62f, 1.0f)
+		: FLinearColor(0.08f, 0.08f, 0.08f, 1.0f));
+}
+
+FSlateColor SBlueprintHelperMainWindow::GetSettingsTabColor() const
+{
+	return FSlateColor(ActivePageIndex == 3
 		? FLinearColor(0.18f, 0.34f, 0.62f, 1.0f)
 		: FLinearColor(0.08f, 0.08f, 0.08f, 1.0f));
 }

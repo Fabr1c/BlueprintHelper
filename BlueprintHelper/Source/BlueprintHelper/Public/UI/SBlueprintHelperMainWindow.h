@@ -40,6 +40,7 @@ private:
 	FReply ShowToolsPage();
 	FReply ShowReviewPage();
 	FReply ShowLayoutPage();
+	FReply ShowSettingsPage();
 	FReply OnCleanupReviewDataClicked();
 	void HandleMainWindowPresenterEvent(const FBlueprintHelperMainWindowPresenterEvent& Event);
 	void ShowCleanupNotification(const FString& StatusText);
@@ -47,6 +48,7 @@ private:
 	FSlateColor GetToolsTabColor() const;
 	FSlateColor GetReviewTabColor() const;
 	FSlateColor GetLayoutTabColor() const;
+	FSlateColor GetSettingsTabColor() const;
 
 	const FBlueprintHelperImportService* ImportService = nullptr;
 	const FBlueprintHelperGraphResolver* GraphResolver = nullptr;
