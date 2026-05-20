@@ -48,6 +48,7 @@ private:
 		bool bStrict = true;
 		// DEPRECATED_LAYOUT: preserve_layout is legacy GraphWrite behavior. GraphLayout owns final placement.
 		bool bPreserveLayout = false;
+		bool bIncludeTiming = false;
 	};
 
 	struct FReplacePreflightResult

@@ -9,6 +9,7 @@
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphLocalVariableService.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphNodeSpawner.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphNodeUtility.h"
+#include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphWriteContext.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintMultiGraphGenerationPipeline.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphComposer.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDag.h"
@@ -30,6 +31,7 @@
 #include "K2Node_VariableSet.h"
 #include "K2Node_FunctionEntry.h"
 #include "K2Node_FunctionResult.h"
+#include "HAL/PlatformTime.h"
 #include "ScopedTransaction.h"
 #include "Serialization/JsonTypes.h"
 #include "Serialization/JsonReader.h"
@@ -43,6 +45,11 @@ namespace
 static bool TryReadStringField(const TSharedPtr<FJsonObject>& Object, const TCHAR* FieldName, FString& OutValue)
 {
 	return Object.IsValid() && Object->TryGetStringField(FieldName, OutValue) && !OutValue.IsEmpty();
+}
+
+static double GraphWriteElapsedMs(double StartSeconds)
+{
+	return (FPlatformTime::Seconds() - StartSeconds) * 1000.0;
 }
 
 static bool ShouldReconstructExistingNodes(const TSharedPtr<FJsonObject>& Object)
@@ -1042,7 +1049,13 @@ static FBlueprintGenerateResult GenerateSemanticGraphFromJsonObject(
 	int32 GeneratedNodeCount = 0;
 	int32 CreatedConnectionCount = 0;
 	TArray<UEdGraphPin*> InitialExits;
+	FBlueprintGraphWriteContext GraphWriteContext;
+	const double BuildContextStart = FPlatformTime::Seconds();
+	GraphWriteContext.Initialize(TargetGraph);
+	Result.ExecutionStats.BuildContextMs = GraphWriteElapsedMs(BuildContextStart);
+	Result.ExecutionStats.RequestedNodeCount = FragmentDag.Fragments.Num();
 
+	const double SpawnNodesStart = FPlatformTime::Seconds();
 	const TSharedPtr<FJsonObject>* EntryObject = nullptr;
 	if ((*LogicSpecObject)->TryGetObjectField(TEXT("entry"), EntryObject) && EntryObject && EntryObject->IsValid())
 	{
@@ -1095,19 +1108,35 @@ static FBlueprintGenerateResult GenerateSemanticGraphFromJsonObject(
 		ConnectionDiagnostics,
 		GeneratedNodeCount,
 		CreatedConnectionCount);
+	Result.ExecutionStats.SpawnNodesMs = GraphWriteElapsedMs(SpawnNodesStart);
+
+	const double ContextIndexStart = FPlatformTime::Seconds();
+	for (const FBlueprintHelperNodeFragment& Fragment : GeneratedFragments)
+	{
+		if (Fragment.PrimaryNode)
+		{
+			GraphWriteContext.RegisterNode(Fragment.FragmentId, Fragment.PrimaryNode, true);
+		}
+	}
+	Result.ExecutionStats.BuildContextMs += GraphWriteElapsedMs(ContextIndexStart);
 
 	const TArray<FBlueprintHelperGraphFragmentDataEdge> DataEdges = FilterSemanticDataEdges(FragmentDag, GeneratedFragmentIds);
+	const double ConnectLinksStart = FPlatformTime::Seconds();
 	CreatedConnectionCount += FBlueprintGraphLinker::ConnectFragmentDataEdges(
 		TargetGraph,
 		GeneratedFragments,
 		DataEdges,
 		ConnectionDiagnostics);
+	Result.ExecutionStats.ConnectLinksMs = GraphWriteElapsedMs(ConnectLinksStart);
 
 	FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
 
 	Result.GeneratedNodeCount = GeneratedNodeCount;
 	Result.RequestedConnectionCount = DataEdges.Num();
 	Result.CreatedConnectionCount = CreatedConnectionCount;
+	Result.ExecutionStats.SpawnedNodeCount = GeneratedNodeCount;
+	Result.ExecutionStats.RequestedLinkCount = DataEdges.Num();
+	Result.ExecutionStats.CreatedLinkCount = CreatedConnectionCount;
 	Result.ConnectionDiagnostics = ConnectionDiagnostics;
 	Result.UnresolvedNodeCount = OutUnresolvedNodes.Num();
 	Result.bSucceed = Result.UnresolvedNodeCount == 0 && GeneratedNodeCount > 0;

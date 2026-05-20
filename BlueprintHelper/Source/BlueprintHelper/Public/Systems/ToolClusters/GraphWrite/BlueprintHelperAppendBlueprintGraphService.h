@@ -37,6 +37,7 @@ private:
 		bool bDryRun = false;
 		bool bReuseExistingEntries = false;
 		bool bAllowExistingGraph = false;
+		bool bIncludeTiming = false;
 		TSharedPtr<FJsonObject> LogicSpec;
 	};
 

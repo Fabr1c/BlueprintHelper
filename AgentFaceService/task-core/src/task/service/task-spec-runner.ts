@@ -175,6 +175,7 @@ export function createTaskSpecRunner(input: {
                 applied_steps: preview.taskPlan.steps.length,
                 modified_assets: preview.taskPlan.target_assets.length,
               },
+              ...extractDevelopExecuteDiagnostics(writeResponse, timing),
             },
           ) as ToolResultBase;
           Object.defineProperty(toolResult, 'debug', {
@@ -393,10 +394,35 @@ function extractDevelopPreviewDiagnostics(
     ue_preview_result: result,
   };
 
-  for (const key of ['dry_run', 'call_function_resolution_cache', 'runtime_facts', 'cache_diagnostics']) {
+  for (const key of ['dry_run', 'call_function_resolution_cache', 'runtime_facts', 'cache_diagnostics', 'graph_write_execution_stats']) {
     if (data && Object.hasOwn(data, key)) {
       diagnostics[key] = data[key];
     }
+  }
+
+  return diagnostics;
+}
+
+function extractDevelopExecuteDiagnostics(
+  resp: BridgeResponse,
+  timing?: TaskTimingTrace,
+): Record<string, unknown> {
+  if (!hasTaskTiming(timing)) {
+    return {};
+  }
+
+  const result = asRecord(resp.result);
+  const data = asRecord(result?.['data']);
+  if (!result) {
+    return {};
+  }
+
+  const diagnostics: Record<string, unknown> = {
+    ue_execute_result: result,
+  };
+
+  if (data && Object.hasOwn(data, 'graph_write_execution_stats')) {
+    diagnostics['graph_write_execution_stats'] = data['graph_write_execution_stats'];
   }
 
   return diagnostics;
@@ -461,6 +487,7 @@ async function executeTaskWithPreviewToken(
           modified_assets: targetAssets.length,
           target_assets: targetAssets,
         },
+        ...extractDevelopExecuteDiagnostics(writeResponse, timing),
       },
     ) as ToolResultBase;
     Object.defineProperty(toolResult, 'debug', {

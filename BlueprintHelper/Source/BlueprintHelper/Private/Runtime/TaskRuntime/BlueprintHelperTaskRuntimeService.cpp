@@ -478,6 +478,46 @@ public:
 		Data->SetObjectField(TEXT("call_function_resolution_cache"), StatsJson);
 	}
 
+	static void AttachGraphWriteExecutionStatsFromSteps(
+		TSharedPtr<FJsonObject> Data,
+		const TArray<FBlueprintHelperTaskRuntimeStepRecord>& StepRecords)
+	{
+		if (!Data.IsValid())
+		{
+			return;
+		}
+
+		TArray<TSharedPtr<FJsonValue>> StepStatsValues;
+		for (const FBlueprintHelperTaskRuntimeStepRecord& StepRecord : StepRecords)
+		{
+			const TSharedPtr<FJsonObject>* StepStats = nullptr;
+			if (!StepRecord.Result.Data.IsValid() ||
+				!StepRecord.Result.Data->TryGetObjectField(TEXT("graph_write_execution_stats"), StepStats) ||
+				!StepStats || !StepStats->IsValid())
+			{
+				continue;
+			}
+
+			TSharedRef<FJsonObject> StepStatsObject = MakeShared<FJsonObject>();
+			CopyObjectFields(*StepStats, StepStatsObject);
+			StepStatsObject->SetStringField(TEXT("step_id"), StepRecord.Step.StepId);
+			if (!StepRecord.Step.AdapterOperation.IsEmpty())
+			{
+				StepStatsObject->SetStringField(TEXT("adapter_operation"), StepRecord.Step.AdapterOperation);
+			}
+			StepStatsValues.Add(MakeShared<FJsonValueObject>(StepStatsObject));
+		}
+
+		if (StepStatsValues.Num() == 0)
+		{
+			return;
+		}
+
+		TSharedRef<FJsonObject> AggregatedStats = MakeShared<FJsonObject>();
+		AggregatedStats->SetArrayField(TEXT("steps"), MoveTemp(StepStatsValues));
+		Data->SetObjectField(TEXT("graph_write_execution_stats"), AggregatedStats);
+	}
+
 	static void AttachDryRunStrategy(
 		TSharedPtr<FJsonObject> Data,
 		const FBlueprintHelperTaskRuntimeDryRunPolicy& DryRunPolicy)
@@ -5504,6 +5544,10 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 				TEXT("Task Runtime lowering did not produce a payload."),
 				FString::Printf(TEXT("task_plan.steps[%d]"), StepIndex)));
 		}
+		if (TimingTrace.bEnabled)
+		{
+			LoweredStep.Payload->SetBoolField(TEXT("include_timing"), true);
+		}
 
 		const FBlueprintHelperPartialPreviewCacheKey PartialCacheKey = BuildPartialPreviewCacheKey(PreparedStep);
 		if (bDryRun && PartialPreviewCache.IsValid())
@@ -5886,6 +5930,12 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		RuntimeResult.Data,
 		*CallFunctionResolutionCache);
 	AttachCacheDiagnostics(RuntimeResult);
+	if (TimingTrace.bEnabled)
+	{
+		FBlueprintHelperTaskRuntimeServiceLocalUtils::AttachGraphWriteExecutionStatsFromSteps(
+			RuntimeResult.Data,
+			StepRecords);
+	}
 
 	if (!bDryRun && !TaskRunId.IsEmpty())
 	{

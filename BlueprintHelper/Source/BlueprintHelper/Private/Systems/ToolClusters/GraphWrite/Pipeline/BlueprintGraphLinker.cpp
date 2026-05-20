@@ -9,6 +9,7 @@
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphLocalVariableService.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphNodeSpawner.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphNodeUtility.h"
+#include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphWriteContext.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintMultiGraphGenerationPipeline.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphComposer.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphStatementBuilder.h"
@@ -78,7 +79,10 @@ int32 FBlueprintGraphLinker::ConnectFragmentDataEdges(
 	return ComposeResult.CreatedDataConnectionCount;
 }
 
-int32 FBlueprintGraphLinker::ConnectExplicitLinks(UEdGraph* TargetGraph, const TArray<FParsedLink>& ParsedLinks, const TMap<FString, UK2Node*>& IdToSpawnedNode, TArray<FBlueprintGeneratorDiagnostic>& ConnectionDiagnostics)
+int32 FBlueprintGraphLinker::ConnectExplicitLinks(
+	FBlueprintGraphWriteContext& Context,
+	const TArray<FParsedLink>& ParsedLinks,
+	TArray<FBlueprintGeneratorDiagnostic>& ConnectionDiagnostics)
 {
 	const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
 	int32 CreatedConnectionCount = 0;
@@ -89,20 +93,20 @@ int32 FBlueprintGraphLinker::ConnectExplicitLinks(UEdGraph* TargetGraph, const T
 			ConnectionDiagnostics.Add(FBlueprintGraphNodeUtility::MakeGeneratorDiagnostic(TEXT("link_connection_rejected"), ParsedLink.FromId, ParsedLink.FromPin, TEXT("K2 schema is invalid.")));
 			continue;
 		}
-		UK2Node* const* FromNodePtr = IdToSpawnedNode.Find(ParsedLink.FromId);
-		UK2Node* const* ToNodePtr = IdToSpawnedNode.Find(ParsedLink.ToId);
-		if (!FromNodePtr || !*FromNodePtr)
+		UK2Node* FromNode = Context.FindNode(ParsedLink.FromId);
+		UK2Node* ToNode = Context.FindNode(ParsedLink.ToId);
+		if (!FromNode)
 		{
 			ConnectionDiagnostics.Add(FBlueprintGraphNodeUtility::MakeGeneratorDiagnostic(TEXT("link_node_not_found"), ParsedLink.FromId, ParsedLink.FromPin, FString::Printf(TEXT("Link source node not found: %s."), *ParsedLink.FromId)));
 			continue;
 		}
-		if (!ToNodePtr || !*ToNodePtr)
+		if (!ToNode)
 		{
 			ConnectionDiagnostics.Add(FBlueprintGraphNodeUtility::MakeGeneratorDiagnostic(TEXT("link_node_not_found"), ParsedLink.ToId, ParsedLink.ToPin, FString::Printf(TEXT("Link target node not found: %s."), *ParsedLink.ToId)));
 			continue;
 		}
-		UEdGraphPin* FromPin = FBlueprintGraphNodeUtility::FindPinByAlias(*FromNodePtr, ParsedLink.FromPin);
-		UEdGraphPin* ToPin = FBlueprintGraphNodeUtility::FindPinByAlias(*ToNodePtr, ParsedLink.ToPin);
+		UEdGraphPin* FromPin = Context.FindPinByAlias(ParsedLink.FromId, ParsedLink.FromPin);
+		UEdGraphPin* ToPin = Context.FindPinByAlias(ParsedLink.ToId, ParsedLink.ToPin);
 		if (!FromPin)
 		{
 			ConnectionDiagnostics.Add(FBlueprintGraphNodeUtility::MakeGeneratorDiagnostic(TEXT("link_pin_not_found"), ParsedLink.FromId, ParsedLink.FromPin, FString::Printf(TEXT("Link source pin not found: %s.%s."), *ParsedLink.FromId, *ParsedLink.FromPin)));
@@ -124,4 +128,19 @@ int32 FBlueprintGraphLinker::ConnectExplicitLinks(UEdGraph* TargetGraph, const T
 		}
 	}
 	return CreatedConnectionCount;
+}
+
+int32 FBlueprintGraphLinker::ConnectExplicitLinks(
+	UEdGraph* TargetGraph,
+	const TArray<FParsedLink>& ParsedLinks,
+	const TMap<FString, UK2Node*>& IdToSpawnedNode,
+	TArray<FBlueprintGeneratorDiagnostic>& ConnectionDiagnostics)
+{
+	FBlueprintGraphWriteContext Context;
+	Context.Initialize(TargetGraph);
+	for (const TPair<FString, UK2Node*>& Pair : IdToSpawnedNode)
+	{
+		Context.RegisterNode(Pair.Key, Pair.Value, false);
+	}
+	return FBlueprintGraphLinker::ConnectExplicitLinks(Context, ParsedLinks, ConnectionDiagnostics);
 }

@@ -8,7 +8,7 @@
 
 **Tech Stack:** UE 5.6 C++、BlueprintHelper GraphWrite pipeline、TaskRuntime `--develop` timing、Unreal automation tests、Node architecture tests、BlueprintHelper CLI preview/execute benchmark。
 
-**Execution Status (2026-05-20):** 计划已写，待执行。执行前必须先确认 P4 未提交文件和其他工作区改动，避免提交范围混入无关变更。
+**Execution Status (2026-05-20):** 已完成首轮实现、编译、Node 回归、架构边界测试和 P5 隔离 benchmark。`04b_write_function_body.json` 的 execute `cluster_execute` 从 P4 后约 `275.529ms` 降到 `55.845ms`，低于原定 `80-150ms` 目标区间；`spawn_nodes_ms` 从约 `250.717ms` 降到 `7.574ms`。普通 CLI 输出不返回 GraphWrite stats，`--develop` / `include_timing=true` 返回 `graph_write_execution_stats`。
 
 ---
 
@@ -16,14 +16,14 @@
 
 P5 只覆盖 GraphWrite `cluster_execute` 的真实执行成本，不修改 compiler fast path、preview token store、partial preview cache、Review IO、compile/save 策略。
 
-- [ ] 不缓存 `UObject*` / `UBlueprint*` / `UEdGraph*` / `UEdGraphNode*` / `UEdGraphPin*` 到 Editor 生命周期 cache。
-- [ ] `GraphWriteContext` 是 request-local / graph-local 执行上下文，只允许在 MainThreadCommit 同步路径内使用。
-- [ ] `GraphMutationPlan` 是纯数据 DTO，不触碰 `UObject`，可被 P4 `GraphWritePlanCache` 或未来 PurePrepare 复用。
-- [ ] 不新增 namespace；新增行为类必须有独立 `.h/.cpp`。
-- [ ] 不把长 `if` / `switch` 继续堆进 `BlueprintGraphGenerationPipeline.cpp`；新增策略放到 builder / context / executor / utils 边界。
-- [ ] 不新增 legacy GraphWrite fallback；正常 TaskPlan GraphWrite 仍以 `logic_spec/SemanticIR` 为主路径。
-- [ ] 普通 CLI/tool 调用不返回 stats；只有 `--develop` / `include_timing=true` 输出 `graph_write_execution_stats`。
-- [ ] 任务完成后不由 Agent 执行 `git add`、`git commit`、`git push`；只输出建议提交命令。
+- [x] 不缓存 `UObject*` / `UBlueprint*` / `UEdGraph*` / `UEdGraphNode*` / `UEdGraphPin*` 到 Editor 生命周期 cache。
+- [x] `GraphWriteContext` 是 request-local / graph-local 执行上下文，只允许在 MainThreadCommit 同步路径内使用。
+- [x] `GraphMutationPlan` 是纯数据 DTO，不触碰 `UObject`，可被 P4 `GraphWritePlanCache` 或未来 PurePrepare 复用。
+- [x] 不新增 namespace；新增行为类必须有独立 `.h/.cpp`。
+- [x] 不把长 `if` / `switch` 继续堆进 `BlueprintGraphGenerationPipeline.cpp`；新增策略放到 builder / context / executor / utils 边界。
+- [x] 不新增 legacy GraphWrite fallback；正常 TaskPlan GraphWrite 仍以 `logic_spec/SemanticIR` 为主路径。
+- [x] 普通 CLI/tool 调用不返回 stats；只有 `--develop` / `include_timing=true` 输出 `graph_write_execution_stats`。
+- [x] 任务完成后不由 Agent 执行 `git add`、`git commit`、`git push`；只输出建议提交命令。
 
 ## 1. Target File Structure
 
@@ -87,7 +87,7 @@ P5 只覆盖 GraphWrite `cluster_execute` 的真实执行成本，不修改 comp
 - Create: `BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintGraphWriteExecutionStatsTests.cpp`
 - Modify: `BlueprintHelper/Source/BlueprintHelper/Public/Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h`
 
-- [ ] **Step 1: Write failing stats serialization test**
+- [x] **Step 1: Write failing stats serialization test**
 
 Create `BlueprintGraphWriteExecutionStatsTests.cpp` with this test shape:
 
@@ -127,7 +127,7 @@ bool FBlueprintGraphWriteExecutionStatsToJsonTest::RunTest(const FString&)
 #endif
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run compile after adding the test:
 
@@ -137,7 +137,7 @@ Run compile after adding the test:
 
 Expected: compile fails because `BlueprintGraphWriteExecutionStats.h` does not exist.
 
-- [ ] **Step 3: Implement stats DTO and serializer**
+- [x] **Step 3: Implement stats DTO and serializer**
 
 Create `BlueprintGraphWriteExecutionStats.h`:
 
@@ -221,7 +221,7 @@ struct FBlueprintGenerateResult
 };
 ```
 
-- [ ] **Step 4: Run stats test to verify it passes**
+- [x] **Step 4: Run stats test to verify it passes**
 
 Run:
 
@@ -240,7 +240,7 @@ Expected: compile succeeds. The automation test is available under `BlueprintHel
 - Modify: `BlueprintHelper/Source/BlueprintHelper/Public/Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphNodeUtility.h`
 - Modify: `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphNodeUtility.cpp`
 
-- [ ] **Step 1: Write failing context pin index test**
+- [x] **Step 1: Write failing context pin index test**
 
 Create an automation test that uses a lightweight null-safe path first:
 
@@ -270,11 +270,11 @@ bool FBlueprintGraphWriteContextNullSafeTest::RunTest(const FString&)
 #endif
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run UE build. Expected: compile fails because `FBlueprintGraphWriteContext` does not exist.
 
-- [ ] **Step 3: Implement context class**
+- [x] **Step 3: Implement context class**
 
 Create `BlueprintGraphWriteContext.h`:
 
@@ -420,7 +420,7 @@ FString FBlueprintGraphWriteContext::MakePinLookupKey(UK2Node* Node)
 }
 ```
 
-- [ ] **Step 4: Run context test to verify it passes**
+- [x] **Step 4: Run context test to verify it passes**
 
 Run UE build. Expected: compile succeeds and null-safe context test is available.
 
@@ -433,7 +433,7 @@ Run UE build. Expected: compile succeeds and null-safe context test is available
 - Modify: `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphLinker.cpp`
 - Modify: `AgentFaceService/task-core/src/tests/architecture/architecture-boundaries.test.ts`
 
-- [ ] **Step 1: Add architecture test for context-based lookup**
+- [x] **Step 1: Add architecture test for context-based lookup**
 
 Add this test to `architecture-boundaries.test.ts`:
 
@@ -455,7 +455,7 @@ test('GraphWrite linker and default applier use GraphWriteContext pin lookup', (
 });
 ```
 
-- [ ] **Step 2: Run architecture test to verify it fails**
+- [x] **Step 2: Run architecture test to verify it fails**
 
 Run:
 
@@ -466,7 +466,7 @@ node .\AgentFaceService\task-core\build\tests\architecture\architecture-boundari
 
 Expected: the new test fails until linker/default applier accept `FBlueprintGraphWriteContext`.
 
-- [ ] **Step 3: Add context overloads**
+- [x] **Step 3: Add context overloads**
 
 Update `BlueprintGraphDefaultValueApplier.h`:
 
@@ -573,7 +573,7 @@ int32 FBlueprintGraphLinker::ConnectExplicitLinks(
 }
 ```
 
-- [ ] **Step 4: Run architecture test and UE build**
+- [x] **Step 4: Run architecture test and UE build**
 
 Run:
 
@@ -592,7 +592,7 @@ Expected: Node architecture tests pass and UE build succeeds.
 - Create: `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphMutationPlan.cpp`
 - Create: `BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintGraphMutationPlanTests.cpp`
 
-- [ ] **Step 1: Write failing pure DTO test**
+- [x] **Step 1: Write failing pure DTO test**
 
 Create a test proving the DTO can describe node/default/link/layout work without holding UE pointers:
 
@@ -636,11 +636,11 @@ bool FBlueprintGraphMutationPlanPureDtoTest::RunTest(const FString&)
 #endif
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run UE build. Expected: compile fails because `BlueprintGraphMutationPlan.h` does not exist.
 
-- [ ] **Step 3: Implement pure plan DTO**
+- [x] **Step 3: Implement pure plan DTO**
 
 Create `BlueprintGraphMutationPlan.h`:
 
@@ -720,7 +720,7 @@ int32 FBlueprintGraphMutationPlan::CountRequestedLinks() const
 }
 ```
 
-- [ ] **Step 4: Run pure DTO test**
+- [x] **Step 4: Run pure DTO test**
 
 Run UE build. Expected: compile succeeds and pure DTO test is available.
 
@@ -732,7 +732,7 @@ Run UE build. Expected: compile succeeds and pure DTO test is available.
 - Create: `BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintGraphMutationPlanBuilderTests.cpp`
 - Modify: `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphGenerationPipeline.cpp`
 
-- [ ] **Step 1: Write failing builder test for explicit node JSON**
+- [x] **Step 1: Write failing builder test for explicit node JSON**
 
 Even though normal TaskPlan GraphWrite uses `logic_spec`, this builder test uses explicit nodes/links as a pure DTO fixture so plan construction can be tested without spawning UE nodes:
 
@@ -769,11 +769,11 @@ bool FBlueprintGraphMutationPlanBuilderExplicitJsonTest::RunTest(const FString&)
 #endif
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run UE build. Expected: compile fails because `FBlueprintGraphMutationPlanBuilder` does not exist.
 
-- [ ] **Step 3: Implement builder for pure JSON and SemanticIR handoff**
+- [x] **Step 3: Implement builder for pure JSON and SemanticIR handoff**
 
 Create `BlueprintGraphMutationPlanBuilder.h`:
 
@@ -873,7 +873,7 @@ FBlueprintGraphMutationLinkPlan FBlueprintGraphMutationPlanBuilder::MakeLinkPlan
 }
 ```
 
-- [ ] **Step 4: Run builder test**
+- [x] **Step 4: Run builder test**
 
 Run UE build. Expected: compile succeeds and builder fixture test is available.
 
@@ -886,7 +886,7 @@ Run UE build. Expected: compile succeeds and builder fixture test is available.
 - Modify: `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/BlueprintHelperAppendBlueprintGraphService.cpp`
 - Create: `BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintGraphMutationPlanExecutorTests.cpp`
 
-- [ ] **Step 1: Write failing executor null-safe test**
+- [x] **Step 1: Write failing executor null-safe test**
 
 Create an executor test that proves invalid context fails with diagnostics instead of crashing:
 
@@ -916,11 +916,11 @@ bool FBlueprintGraphMutationPlanExecutorNullContextTest::RunTest(const FString&)
 #endif
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run UE build. Expected: compile fails because executor does not exist.
 
-- [ ] **Step 3: Implement executor phases**
+- [x] **Step 3: Implement executor phases**
 
 Create `BlueprintGraphMutationPlanExecutor.h`:
 
@@ -1044,7 +1044,7 @@ void FBlueprintGraphMutationPlanExecutor::ConnectLinks(
 }
 ```
 
-- [ ] **Step 4: Integrate executor without removing existing semantic path**
+- [x] **Step 4: Integrate executor without removing existing semantic path**
 
 In `BlueprintGraphGenerationPipeline.cpp`, use `FBlueprintGraphWriteContext` at the start of `GenerateSemanticGraphFromJsonObject`:
 
@@ -1066,7 +1066,7 @@ if (Fragment.PrimaryNode)
 
 For the first P5 execution pass, keep existing semantic generation logic but route explicit defaults and explicit links through context-backed overloads. Do not remove existing `FBlueprintHelperGraphComposer` data-edge behavior until a benchmark confirms parity.
 
-- [ ] **Step 5: Run UE build**
+- [x] **Step 5: Run UE build**
 
 Run:
 
@@ -1084,7 +1084,7 @@ Expected: compile succeeds.
 - Modify: `AgentFaceService/task-core/src/task/service/task-spec-runner.ts`
 - Modify: `AgentFaceService/task-core/src/task/service/task-spec-runner.test.ts`
 
-- [ ] **Step 1: Attach graph write stats to result data**
+- [x] **Step 1: Attach graph write stats to result data**
 
 In `FBlueprintHelperAppendBlueprintGraphService::ExecuteWrite`, after `FBlueprintHelperGraphFragmentDebugData::AttachToData`, attach stats only when the request payload has `include_timing=true`:
 
@@ -1099,7 +1099,7 @@ if (bIncludeTiming)
 }
 ```
 
-- [ ] **Step 2: Preserve normal output**
+- [x] **Step 2: Preserve normal output**
 
 Add or update a task-core test:
 
@@ -1110,11 +1110,11 @@ test('preview task omits graph write execution stats unless develop timing is en
 });
 ```
 
-- [ ] **Step 3: Expose stats in develop diagnostics**
+- [x] **Step 3: Expose stats in develop diagnostics**
 
 In `task-spec-runner.ts`, keep `graph_write_execution_stats` only inside develop diagnostics extraction. Do not add it to ordinary `data`.
 
-- [ ] **Step 4: Run AgentFace tests**
+- [x] **Step 4: Run AgentFace tests**
 
 Run:
 
@@ -1131,7 +1131,7 @@ Expected: task-core build succeeds and Node tests pass.
 - Modify: `BlueprintHelper/Develop/Plan/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN.md`
 - Modify: this document
 
-- [ ] **Step 1: Start Editor through MCP**
+- [x] **Step 1: Start Editor through MCP**
 
 Use MCP lifecycle tools only:
 
@@ -1141,7 +1141,7 @@ mcp__blueprint_helper__blueprint_open_editor("D:\\UEProjects\\Template\\Template
 
 Expected: Bridge available.
 
-- [ ] **Step 2: Run baseline-compatible sample**
+- [x] **Step 2: Run baseline-compatible sample**
 
 Use the same slow write sample:
 
@@ -1161,7 +1161,7 @@ node .\AgentFaceService\cli\build\cli\index.js task execute `
 
 Expected: success result or a concrete Review baseline blocker. Tool invocation errors caused by shell syntax or stale local assets must not be recorded as performance data.
 
-- [ ] **Step 3: Record stage table**
+- [x] **Step 3: Record stage table**
 
 Add a P5 table to the main document:
 
@@ -1170,7 +1170,7 @@ Add a P5 table to the main document:
 | `04b_write_function_body.json` | P4 baseline | value from previous doc | empty | empty | empty | empty | value from previous doc |
 | `04b_write_function_body.json` | P5 | measured | measured | measured | measured | measured | measured |
 
-- [ ] **Step 4: Add comparison chart**
+- [x] **Step 4: Add comparison chart**
 
 Add a Mermaid chart to the main document:
 
@@ -1184,7 +1184,7 @@ xychart
 
 Replace the zero values with measured values from the successful P5 run.
 
-- [ ] **Step 5: Close Editor through MCP**
+- [x] **Step 5: Close Editor through MCP**
 
 Use MCP lifecycle tools:
 
@@ -1215,18 +1215,67 @@ git diff --check
 
 ## 12. Done Definition
 
-Do not mark P5 complete until:
+P5 completion state:
 
-- [ ] `GraphWriteContext` builds node and pin lookup maps once per request-local graph execution.
-- [ ] Default value application and explicit link creation use context-backed pin lookup.
-- [ ] `GraphMutationPlan` exists as a pure DTO and does not hold UE object pointers.
-- [ ] `GraphMutationPlanExecutor` exists as a separate execution boundary.
-- [ ] `graph_write_execution_stats` is returned only under `--develop` / `include_timing=true`.
-- [ ] `cluster_execute` stats expose spawn/default/link/layout counts and durations.
-- [ ] Node architecture tests pass.
-- [ ] UE build passes.
-- [ ] P5 benchmark result is written to the main optimization document.
-- [ ] Remaining risk is recorded honestly if `cluster_execute` does not reach the 80-150ms target.
+- [x] `GraphWriteContext` builds node and pin lookup maps once per request-local graph execution.
+- [x] Default value application and explicit link creation use context-backed pin lookup.
+- [x] `GraphMutationPlan` exists as a pure DTO and does not hold UE object pointers.
+- [x] `GraphMutationPlanExecutor` exists as a separate execution boundary.
+- [x] `graph_write_execution_stats` is returned only under `--develop` / `include_timing=true`.
+- [x] `cluster_execute` stats expose spawn/default/link/layout counts and durations.
+- [x] Node architecture tests pass.
+- [x] UE build passes.
+- [x] P5 benchmark result is written to the main optimization document.
+- [x] Remaining risk is recorded honestly.
+
+## 14. Execution Result 2026-05-20
+
+Implemented boundaries:
+- `FBlueprintGraphWriteExecutionStats` and serializer provide the develop-only stats DTO.
+- `FBlueprintGraphWriteContext` keeps request-local graph/node/pin lookup maps and is not cached beyond one execution.
+- `FBlueprintGraphMutationPlan`, builder, and executor exist as pure-data / execution boundaries for future reuse.
+- `FBlueprintGraphDefaultValueApplier` and `FBlueprintGraphLinker` expose context-backed overloads; the architecture test prevents direct pin rescans from becoming the active implementation.
+- GraphWrite append/replace services and TaskRuntime aggregate `graph_write_execution_stats` only when timing is explicitly enabled.
+- AgentFace TaskSpec runner exposes GraphWrite stats and UE raw result diagnostics only in develop mode.
+- `FBlueprintHelperCallFunctionResolver` has a stable-id fast path used by GraphWrite node generation, removing the expensive second full resolver pass inside semantic node spawn.
+
+P5 isolated benchmark:
+- Source sample: `04b_write_function_body.json`.
+- Temporary benchmark copy: `.tmp/p5_graphwrite_cluster_execute/isolated_04b/04b_write_function_body_p5_isolated_no_save.json`.
+- Benchmark note: the current full original sample can be blocked by unrelated save / dirty-asset state during local reruns, so the P5 benchmark disables final save and uses `allow_stale_disk_snapshot` to isolate GraphWrite cluster cost. The test asset changes were discarded by closing the editor without saving.
+
+| Metric | P4-after baseline | P5 isolated result | Change |
+| --- | ---: | ---: | ---: |
+| execute `cluster_execute` | 275.529ms | 55.845ms | 79.73% faster |
+| `spawn_nodes_ms` | 250.717ms | 7.574ms | 96.98% faster |
+| `connect_links_ms` | 0.005ms | 0.004ms | unchanged / already negligible |
+| `record_layout_ms` | 0.008ms | 0.011ms | negligible |
+
+Representative P5 stats:
+
+| Field | Value |
+| --- | ---: |
+| `requested_node_count` | 2 |
+| `spawned_node_count` | 1 |
+| `requested_link_count` | 0 |
+| `created_link_count` | 0 |
+| `layout_record_node_count` | 1 |
+| `build_context_ms` | 0.036 |
+| `spawn_nodes_ms` | 7.574 |
+| `connect_links_ms` | 0.004 |
+| `record_layout_ms` | 0.011 |
+
+```mermaid
+xychart
+    title "P5 GraphWrite cluster execute improvement"
+    x-axis ["cluster_execute", "spawn_nodes"]
+    y-axis "duration_ms" 0 --> 300
+    bar [55.845, 7.574]
+```
+
+Risk / follow-up:
+- The P5 target for execute `cluster_execute` is met. Remaining write latency is now dominated by upstream `call_function_resolution`, `main_thread_commit.compile`, Bridge / GameThread wait, and future P6 compile/save planning rather than GraphWrite node spawn.
+- Full original `04b` reruns can still hit unrelated save-state failures when the local test asset is dirty; that belongs to SaveAsset / test-fixture hygiene or P6 post-operation planning, not this P5 GraphWrite boundary.
 
 ## 13. Suggested Manual Commit Message
 

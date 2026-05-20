@@ -574,8 +574,8 @@ Editor 手动重启后已返回 UE nested read timing，`ue_bridge_router.route_
 | P2 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P2_TaskRuntimeReviewIO_ImplementationPlan_CN.md` | Review IO 批处理、TaskRuntime `PurePrepare -> MainThreadCommit -> PostIO` 三层拆分 | 已完成首轮实现和测速 |
 | P3 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P3_ReadPipelineSnapshotCache_ImplementationPlan_CN.md` | 读链路 GameThread 快照、DTO formatter、request-local snapshot 复用、纯数据缓存、Bridge gap 细分 | 已完成 v0.5.0 范围，`logic_flow` 复用 `logic_json` 快照链路 |
 | P4 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P4_PreviewPartialReuseAndFineGrainedCache_ImplementationPlan_CN.md` | 失败 preview 短窗口部分复用、CallFunction resolved facts TTL cache、GraphWrite 纯数据 plan cache、缓存配置外置 | 已完成首轮实现和测速 |
-| P5 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P5_GraphWriteClusterExecute_ImplementationPlan_CN.md` | GraphWrite `cluster_execute` 降成本、GraphMutationPlan、GraphWriteContext、pin lookup 缓存、执行 stats | 计划已写，待执行 |
-| P6 后续 | 待讨论确认后拆独立执行计划 | compile/save 条件化或批处理 | 未实施，后续版本讨论 |
+| P5 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P5_GraphWriteClusterExecute_ImplementationPlan_CN.md` | GraphWrite `cluster_execute` 降成本、GraphMutationPlan、GraphWriteContext、pin lookup 缓存、执行 stats | 已完成首轮实现和 P5 隔离测速 |
+| P6 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P6_CompileSavePostOperationPlanner_ImplementationPlan_CN.md` | compile/save `PostOperationPlanner`、target asset 去重、clean save skip、per-asset diagnostics | 计划已写，待执行 |
 | R0-R5 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/R0_R5_ReadPipeline_ExecutablePlan_CN.md` | 读链路可执行 checklist、目标文件结构、分阶段验收、benchmark 和回归门槛 | 已完成并作为 P3 执行证据 |
 
 说明：主文档继续保留背景、测速记录、优化项摘要、优先级排序、度量要求和当前状态；阶段文档负责执行 checklist、文件结构、测试命令和验收标准。
@@ -805,9 +805,77 @@ xychart
 - `04b_write_function_body.json` 的 execute `cluster_execute` 从约 275ms 降到 80-150ms 目标区间。
 - `GraphMutationPlan` 和 `GraphWriteContext` 是独立 DTO/service 边界，不和 UI、CLI 或单个 node handler 绑定。
 
+落地状态（2026-05-20）：
+- 已新增 `FBlueprintGraphWriteExecutionStats`、`FBlueprintGraphWriteContext`、`FBlueprintGraphMutationPlan`、`FBlueprintGraphMutationPlanBuilder`、`FBlueprintGraphMutationPlanExecutor`。
+- default value / link 处理改为通过 request-local `GraphWriteContext` 查询 node/pin，架构测试禁止重新回到 `FBlueprintGraphNodeUtility::FindPinByAlias` 的直接扫描路径。
+- `graph_write_execution_stats` 只在 `--develop` / `include_timing=true` 返回；普通 CLI/tool 输出不携带该诊断。
+- GraphWrite semantic node generation 增加 stable-id fast path，避免已解析 call_function 在 node spawn 阶段再次走完整候选 universe。
+
+P5 隔离 benchmark（2026-05-20，Editor 通过 MCP 启动，CLI `task preview -> task execute --preview-token --develop`）：
+
+说明：当前本地原始 `04b_write_function_body.json` 直接重跑时可能被旧测试资产 dirty/save 状态阻塞。该失败属于 SaveAsset / fixture hygiene / P6 post-operation 范围，不记录为 P5 性能结果。P5 使用同一 `04b` 语义的临时 Spec：`.tmp/p5_graphwrite_cluster_execute/isolated_04b/04b_write_function_body_p5_isolated_no_save.json`，将 `review_baseline_dirty_asset_policy` 改为 `allow_stale_disk_snapshot` 并关闭 final save，只隔离 GraphWrite cluster 成本；测试后通过 MCP 关闭编辑器且不保存。
+
+| 阶段 | P4 后参考值 | P5 结果 | 提升 |
+| --- | ---: | ---: | ---: |
+| execute `cluster_execute` | 275.529ms | 55.845ms | 79.73% |
+| `spawn_nodes_ms` | 250.717ms | 7.574ms | 96.98% |
+| `connect_links_ms` | 0.005ms | 0.004ms | 已接近 0 |
+| `record_layout_ms` | 0.008ms | 0.011ms | 已接近 0 |
+
+P5 execute 代表性阶段：
+
+| 阶段 | duration_ms |
+| --- | ---: |
+| cli total | 838.137 |
+| `bridge.execute_task_plan` | 832.033 |
+| nested `ue.execute_task_plan` total | 776.040 |
+| `step.step_001.call_function_resolution` | 463.993 |
+| `step.step_001.cluster_execute` | 55.845 |
+| `main_thread_commit.compile` | 252.198 |
+
+P5 `graph_write_execution_stats`：
+
+| 字段 | 数值 |
+| --- | ---: |
+| `requested_node_count` | 2 |
+| `spawned_node_count` | 1 |
+| `requested_link_count` | 0 |
+| `created_link_count` | 0 |
+| `layout_record_node_count` | 1 |
+| `build_context_ms` | 0.036 |
+| `spawn_nodes_ms` | 7.574 |
+| `connect_links_ms` | 0.004 |
+| `record_layout_ms` | 0.011 |
+
+P5 对比图：
+
+```mermaid
+xychart
+    title "P5 GraphWrite execute cost before and after"
+    x-axis ["cluster_execute", "spawn_nodes"]
+    y-axis "duration_ms" 0 --> 300
+    bar [275.529, 250.717]
+    bar [55.845, 7.574]
+```
+
+图例说明：
+
+| 系列 | 含义 | 数值 |
+| --- | --- | --- |
+| bar 1 | P4 后参考值 | 275.529 / 250.717 |
+| bar 2 | P5 隔离测速结果 | 55.845 / 7.574 |
+
+结论：P5 的 `cluster_execute` 目标已达成并低于 80-150ms 目标区间。剩余最慢阶段转移到 `call_function_resolution`、`main_thread_commit.compile`、Bridge / GameThread wait，以及后续 P6 的 compile/save 条件化或批处理。
+
 ### P6-11：compile/save 条件化或批处理
 
 目标：降低 post operation 的固定成本，并避免无效 compile/save。当前 `04b_write_function_body.json` execute 的 compile/save 合计约 176ms，不是最大头，但属于稳定成本。
+
+阶段计划文档：
+
+`Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P6_CompileSavePostOperationPlanner_ImplementationPlan_CN.md`
+
+落地状态（2026-05-20）：计划已写，待执行。
 
 计划：
 - 新增 `PostOperationPlanner`，从 TaskPlan、StepResult validation 和 mutation type 聚合 target asset 的 compile/save 需求。
@@ -1119,7 +1187,7 @@ compile-only 五轮隔离样本：
 - Bridge send/receive 拆分已落地：CLI 侧返回 connect/write/client_parse，UE Bridge nested 返回 receive、GameThread enqueue wait、route execute、response serialize；response socket write 因发生在同一 response body 序列化之后，不伪造同帧 timing。
 - 阶段计划已迁移到 `Develop/Plan/Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/`，主文档只保留总体结论和索引。
 - P4 已完成首轮实现和测速：partial preview cache 支持失败 preview 后 40s 内复用已通过 step；CallFunction resolved facts cache 和 GraphWrite 纯数据 plan cache 已接入 TTL、容量、字节预算、asset-state 校验和 `--develop` cache diagnostics；普通输出不泄漏诊断。
-- P5 GraphWrite `cluster_execute` 降成本计划已写入独立阶段文档，当前状态为待执行；计划先补 execution stats，再落 `GraphWriteContext`、`GraphMutationPlan` 和 context-backed pin lookup。
+- P5 GraphWrite `cluster_execute` 降成本已完成首轮实现和隔离测速：execution stats、`GraphWriteContext`、`GraphMutationPlan`、context-backed pin lookup 均已落地；`04b` execute `cluster_execute` 从约 275.529ms 降到 55.845ms。
 - 普通路径保持无计时采集、无 `data.timing` 返回；CLI 诊断路径通过 `--develop` 对所有 CLI 工具显式开启，TaskSpec MCP/tool 诊断路径通过 `develop: true` 显式开启。
 - 后续实现必须保持高内聚、低耦合，避免把性能分支堆进单个 service 或 UI 入口。
 

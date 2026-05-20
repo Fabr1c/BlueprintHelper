@@ -9,6 +9,7 @@
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphLocalVariableService.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphNodeSpawner.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphNodeUtility.h"
+#include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphWriteContext.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintMultiGraphGenerationPipeline.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphComposer.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphStatementBuilder.h"
@@ -123,27 +124,14 @@ bool FBlueprintGraphDefaultValueApplier::ApplyPinDefaultValue(
 }
 
 TArray<FBlueprintGeneratorDiagnostic> FBlueprintGraphDefaultValueApplier::ApplyDefaultValues(
-	UK2Node* TargetNode,
-	const TMap<FString, FString>& DefaultValues,
-	const FString& NodeId)
+	FBlueprintGraphWriteContext& Context,
+	const FString& NodeId,
+	const TMap<FString, FString>& DefaultValues)
 {
 	TArray<FBlueprintGeneratorDiagnostic> Diagnostics;
-	if (!TargetNode)
+	for (const TPair<FString, FString>& Pair : DefaultValues)
 	{
-		for (const auto& Pair : DefaultValues)
-		{
-			Diagnostics.Add(FBlueprintGraphNodeUtility::MakeGeneratorDiagnostic(
-				TEXT("default_pin_not_found"),
-				NodeId,
-				Pair.Key,
-				FString::Printf(TEXT("默认值 '%s' 无法应用：目标节点无效。"), *Pair.Key)));
-		}
-		return Diagnostics;
-	}
-
-	for (const auto& Pair : DefaultValues)
-	{
-		UEdGraphPin* Pin = FBlueprintGraphNodeUtility::FindPinByAlias(TargetNode, Pair.Key);
+		UEdGraphPin* Pin = Context.FindPinByAlias(NodeId, Pair.Key);
 		if (!Pin)
 		{
 			Diagnostics.Add(FBlueprintGraphNodeUtility::MakeGeneratorDiagnostic(
@@ -168,4 +156,32 @@ TArray<FBlueprintGeneratorDiagnostic> FBlueprintGraphDefaultValueApplier::ApplyD
 		}
 	}
 	return Diagnostics;
+}
+
+TArray<FBlueprintGeneratorDiagnostic> FBlueprintGraphDefaultValueApplier::ApplyDefaultValues(
+	UK2Node* TargetNode,
+	const TMap<FString, FString>& DefaultValues,
+	const FString& NodeId)
+{
+	TArray<FBlueprintGeneratorDiagnostic> Diagnostics;
+	if (!TargetNode)
+	{
+		for (const auto& Pair : DefaultValues)
+		{
+			Diagnostics.Add(FBlueprintGraphNodeUtility::MakeGeneratorDiagnostic(
+				TEXT("default_pin_not_found"),
+				NodeId,
+				Pair.Key,
+				FString::Printf(TEXT("默认值 '%s' 无法应用：目标节点无效。"), *Pair.Key)));
+		}
+		return Diagnostics;
+	}
+
+	FBlueprintGraphWriteContext Context;
+	Context.Initialize(TargetNode->GetGraph());
+	Context.RegisterNode(NodeId.IsEmpty() ? TEXT("__node__") : NodeId, TargetNode, false);
+	return FBlueprintGraphDefaultValueApplier::ApplyDefaultValues(
+		Context,
+		NodeId.IsEmpty() ? TEXT("__node__") : NodeId,
+		DefaultValues);
 }

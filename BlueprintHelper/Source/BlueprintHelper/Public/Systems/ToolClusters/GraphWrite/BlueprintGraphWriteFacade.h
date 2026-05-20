@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
+#include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphWriteExecutionStats.h"
 
 class UEdGraph;
 class UBlueprint;
@@ -583,6 +584,8 @@ struct FBlueprintGenerateResult
 
 	/** 用于状态栏展示的结果文本。 */
 	FString Message;
+
+	FBlueprintGraphWriteExecutionStats ExecutionStats;
 };
 
 /**

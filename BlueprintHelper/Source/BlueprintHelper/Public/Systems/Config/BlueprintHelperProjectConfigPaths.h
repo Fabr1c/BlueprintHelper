@@ -8,4 +8,6 @@ public:
 	static FString GetProjectConfigDir();
 	static FString GetAgentProfilePath();
 	static FString GetGraphLayoutRulesPath();
+	static FString GetProjectSettingPath();
+	static FString GetUserSettingOverridePath();
 };
