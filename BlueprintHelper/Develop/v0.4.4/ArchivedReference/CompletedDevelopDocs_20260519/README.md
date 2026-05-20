@@ -11,7 +11,7 @@ Review/Debug v2 and v0.5.0 planning are now the active lines. This archive holds
 - `Develop/Plan/BlueprintHelper_ReadContext_PinDefaults_Fix_20260518_CN.md`
 - `Develop/Plan/BlueprintHelper_ReadContext_LogicFlow_Rules_20260519_CN.md`
 - `Develop/Plan/BlueprintHelper_ReadContext_LogicFlow_Implementation_PLAN_20260519_CN.md`
-- `Develop/Plan/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN.md`
+- `Develop/v0.5.4/ArchivedReference/CompletedDevelopDocs_20260520/Plan/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN.md`
 - `Develop/Plan/BlueprintHelper_CLI_Tips_20260514_CN.md`
 
 ## Archived Plan Docs
