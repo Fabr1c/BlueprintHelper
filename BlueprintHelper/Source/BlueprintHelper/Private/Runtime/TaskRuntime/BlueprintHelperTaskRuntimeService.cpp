@@ -32,9 +32,13 @@
 #include "Runtime/TaskRuntime/TaskPlanAdapters/BlueprintSignature/BlueprintHelperSignatureTaskPlanAdapter.h"
 #include "Runtime/TaskRuntime/TaskPlanAdapters/UMGWidget/BlueprintHelperWidgetTaskPlanAdapter.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeClusterHub.h"
+#include "Runtime/TaskRuntime/BlueprintHelperGraphWritePlanCache.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeCallFunctionResolutionCache.h"
+#include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeCacheDiagnostics.h"
+#include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeCacheKeyUtils.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeCommitService.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeDryRunPolicy.h"
+#include "Runtime/TaskRuntime/BlueprintHelperTaskPartialPreviewCache.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimePostIoService.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimePrepareService.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeReviewIoBatch.h"
@@ -59,6 +63,7 @@
 #include "Misc/Paths.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "UObject/Class.h"
 #include "UObject/Package.h"
 
 class FBlueprintHelperTaskRuntimeServiceLocalUtils
@@ -1179,6 +1184,41 @@ public:
 		Data->SetObjectField(TEXT("runtime_facts"), RuntimeFacts);
 	}
 
+	static void AttachRuntimeFactJsonValues(
+		TSharedPtr<FJsonObject> Data,
+		const TArray<TSharedPtr<FJsonValue>>& FactValues)
+	{
+		if (!Data.IsValid() || FactValues.Num() == 0)
+		{
+			return;
+		}
+
+		const TSharedPtr<FJsonObject>* RuntimeFactsPtr = nullptr;
+		TSharedPtr<FJsonObject> RuntimeFacts;
+		if (Data->TryGetObjectField(TEXT("runtime_facts"), RuntimeFactsPtr) &&
+			RuntimeFactsPtr && RuntimeFactsPtr->IsValid())
+		{
+			RuntimeFacts = *RuntimeFactsPtr;
+		}
+		else
+		{
+			RuntimeFacts = MakeShared<FJsonObject>();
+			Data->SetObjectField(TEXT("runtime_facts"), RuntimeFacts.ToSharedRef());
+		}
+
+		TArray<TSharedPtr<FJsonValue>> Values;
+		const TArray<TSharedPtr<FJsonValue>>* ExistingValues = nullptr;
+		if (RuntimeFacts->TryGetArrayField(TEXT("resolved_call_functions"), ExistingValues) && ExistingValues)
+		{
+			Values = *ExistingValues;
+		}
+		for (const TSharedPtr<FJsonValue>& FactValue : FactValues)
+		{
+			Values.Add(FBlueprintHelperTaskRuntimeCacheKeyUtils::CloneJsonValue(FactValue));
+		}
+		RuntimeFacts->SetArrayField(TEXT("resolved_call_functions"), Values);
+	}
+
 	static TSharedRef<FJsonObject> MakeCompactCallFunctionCandidateJson(
 		const FBlueprintHelperCallFunctionCandidateInfo& Candidate)
 	{
@@ -1271,6 +1311,24 @@ public:
 		Request.Context.TargetObjectPinType = Request.TargetObjectPinType;
 		Request.Context.ExpectedReturnType = Request.ExpectedReturnType;
 		Request.Context.ExpectedReturnPinType = Request.ExpectedReturnPinType;
+	}
+
+	static bool IsCachedCallFunctionResolutionStillAvailable(
+		const FBlueprintHelperTaskRuntimeCachedCallFunctionResolution& CachedResolution)
+	{
+		if (CachedResolution.StableId.IsEmpty() ||
+			CachedResolution.NativeName.IsEmpty() ||
+			CachedResolution.OwnerClassPath.IsEmpty())
+		{
+			return false;
+		}
+
+		UClass* OwnerClass = FindObject<UClass>(nullptr, *CachedResolution.OwnerClassPath);
+		if (!OwnerClass)
+		{
+			OwnerClass = LoadObject<UClass>(nullptr, *CachedResolution.OwnerClassPath);
+		}
+		return OwnerClass && OwnerClass->FindFunctionByName(*CachedResolution.NativeName) != nullptr;
 	}
 
 	static void CollectCallFunctionLogicSpecs(
@@ -1371,6 +1429,7 @@ public:
 		int32 StepIndex,
 		const FString& StepId,
 		bool bDryRun,
+		const FString& AssetStateHash,
 		FBlueprintHelperTaskRuntimeCallFunctionResolutionCache& ResolutionCache,
 		TArray<FResolvedCallFunctionRuntimeFact>& OutResolvedFacts,
 		FBlueprintHelperToolError& OutError,
@@ -1485,7 +1544,12 @@ public:
 				const FString ResolutionKey =
 					FBlueprintHelperTaskRuntimeCallFunctionResolutionCache::MakeKey(ResolveRequest, AssetPath, GraphName);
 				FBlueprintHelperTaskRuntimeCachedCallFunctionResolution CachedResolution;
-				if (!ResolutionCache.TryGet(ResolutionKey, CachedResolution))
+				const bool bCacheHit = ResolutionCache.TryGet(
+					ResolutionKey,
+					AssetStateHash,
+					FDateTime::UtcNow(),
+					CachedResolution);
+				if (!bCacheHit || !IsCachedCallFunctionResolutionStillAvailable(CachedResolution))
 				{
 					const FBlueprintHelperCallFunctionResolveResult ResolveResult =
 						FBlueprintHelperCallFunctionResolver::Resolve(ResolveRequest);
@@ -1493,6 +1557,9 @@ public:
 					CachedResolution.ErrorCode = ResolveResult.ErrorCode;
 					CachedResolution.Message = ResolveResult.Message;
 					CachedResolution.CandidateFunctions = ResolveResult.CandidateFunctions;
+					CachedResolution.AssetStateHash = AssetStateHash;
+					CachedResolution.ResolverVersion =
+						FBlueprintHelperTaskRuntimeCallFunctionResolutionCache::CurrentResolverVersion();
 					if (ResolveResult.IsResolved())
 					{
 						CachedResolution.StableId = ResolveResult.Selected.StableId;
@@ -1500,7 +1567,7 @@ public:
 						CachedResolution.DisplayName = ResolveResult.Selected.DisplayName;
 						CachedResolution.OwnerClassPath = ResolveResult.Selected.OwnerClassPath;
 					}
-					ResolutionCache.Store(ResolutionKey, CachedResolution);
+					ResolutionCache.Store(ResolutionKey, CachedResolution, FDateTime::UtcNow());
 				}
 
 				if (!CachedResolution.bResolved)
@@ -4399,6 +4466,9 @@ FBlueprintHelperTaskRuntimeService::FBlueprintHelperTaskRuntimeService(
 		InDataTableService,
 		InPropertyReflectionService))
 	, PreviewStore(MakeUnique<FBlueprintHelperTaskPreviewStore>())
+	, PartialPreviewCache(MakeUnique<FBlueprintHelperTaskPartialPreviewCache>())
+	, CallFunctionResolutionCache(MakeUnique<FBlueprintHelperTaskRuntimeCallFunctionResolutionCache>())
+	, GraphWritePlanCache(MakeUnique<FBlueprintHelperGraphWritePlanCache>())
 	, CompileAssetService(InCompileAssetService)
 	, AssetBrowseService(InAssetBrowseService)
 	, DebugEntryService(InDebugEntryService)
@@ -4929,6 +4999,117 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 	const bool bQuickDryRun = PreparedRun.bQuickDryRun;
 	const FString& TaskRunId = PreparedRun.TaskRunId;
 	const FString& ArchiveSessionId = PreparedRun.ArchiveSessionId;
+	const FBlueprintHelperTaskRuntimeCacheConfig CacheConfig = FBlueprintHelperTaskRuntimeCacheConfig::Default();
+	if (PartialPreviewCache.IsValid())
+	{
+		PartialPreviewCache->ResetRequestStats();
+	}
+	if (CallFunctionResolutionCache.IsValid())
+	{
+		CallFunctionResolutionCache->ResetRequestStats();
+	}
+	if (GraphWritePlanCache.IsValid())
+	{
+		GraphWritePlanCache->ResetRequestStats();
+	}
+	const FString TargetAssetStateHash =
+		FBlueprintHelperTaskRuntimeServiceLocalUtils::BuildTargetAssetStateHash(*TaskPlanPtr);
+
+	auto BuildExecutionPolicyHash = [&]() -> FString
+	{
+		const TSharedPtr<FJsonObject>* ExecutionPolicyPtr = nullptr;
+		if (TaskPlanPtr && TaskPlanPtr->IsValid() &&
+			(*TaskPlanPtr)->TryGetObjectField(TEXT("execution_policy"), ExecutionPolicyPtr) &&
+			ExecutionPolicyPtr && ExecutionPolicyPtr->IsValid())
+		{
+			return FBlueprintHelperTaskRuntimeCacheKeyUtils::HashStableJson(*ExecutionPolicyPtr);
+		}
+		return FBlueprintHelperTaskRuntimeCacheKeyUtils::HashString(TEXT("execution_policy:none"));
+	};
+
+	auto BuildTaskSpecGroupHash = [&]() -> FString
+	{
+		TSharedRef<FJsonObject> GroupObject = MakeShared<FJsonObject>();
+		TArray<FString> TargetAssets =
+			FBlueprintHelperTaskRuntimeServiceLocalUtils::ReadTargetAssets(*TaskPlanPtr);
+		TargetAssets.Sort();
+		TArray<TSharedPtr<FJsonValue>> TargetAssetValues;
+		for (const FString& TargetAsset : TargetAssets)
+		{
+			TargetAssetValues.Add(MakeShared<FJsonValueString>(TargetAsset));
+		}
+		GroupObject->SetArrayField(TEXT("target_assets"), TargetAssetValues);
+		FString TaskName;
+		(*TaskPlanPtr)->TryGetStringField(TEXT("task_name"), TaskName);
+		GroupObject->SetStringField(TEXT("task_name"), TaskName);
+		const TSharedPtr<FJsonObject>* ExecutionPolicyPtr = nullptr;
+		if ((*TaskPlanPtr)->TryGetObjectField(TEXT("execution_policy"), ExecutionPolicyPtr) &&
+			ExecutionPolicyPtr && ExecutionPolicyPtr->IsValid())
+		{
+			TSharedPtr<FJsonObject> ClonedExecutionPolicy =
+				FBlueprintHelperTaskRuntimeCacheKeyUtils::CloneJsonObject(*ExecutionPolicyPtr);
+			if (ClonedExecutionPolicy.IsValid())
+			{
+				GroupObject->SetObjectField(TEXT("execution_policy"), ClonedExecutionPolicy.ToSharedRef());
+			}
+		}
+		return FBlueprintHelperTaskRuntimeCacheKeyUtils::HashStableJson(GroupObject);
+	};
+
+	const FString ExecutionPolicyHash = BuildExecutionPolicyHash();
+	const FString TaskSpecGroupHash = BuildTaskSpecGroupHash();
+	TMap<FString, FString> StepPayloadHashes;
+	TMap<FString, TArray<FString>> StepDependencyIds;
+	for (const FBlueprintHelperTaskRuntimePreparedStep& PreparedStep : PreparedRun.Steps)
+	{
+		StepPayloadHashes.Add(
+			PreparedStep.StepId,
+			FBlueprintHelperTaskRuntimeCacheKeyUtils::HashStableJson(PreparedStep.LoweredStep.Payload));
+		StepDependencyIds.Add(PreparedStep.StepId, PreparedStep.DependsOn);
+	}
+
+	TFunction<void(const FString&, TSet<FString>&)> CollectDependencyClosure =
+		[&](const FString& StepId, TSet<FString>& InOutClosure)
+	{
+		const TArray<FString>* Dependencies = StepDependencyIds.Find(StepId);
+		if (!Dependencies)
+		{
+			return;
+		}
+		for (const FString& DependencyId : *Dependencies)
+		{
+			if (InOutClosure.Contains(DependencyId))
+			{
+				continue;
+			}
+			InOutClosure.Add(DependencyId);
+			CollectDependencyClosure(DependencyId, InOutClosure);
+		}
+	};
+
+	auto BuildDependencyClosureHash = [&](const FBlueprintHelperTaskRuntimePreparedStep& PreparedStep) -> FString
+	{
+		TSet<FString> Closure;
+		CollectDependencyClosure(PreparedStep.StepId, Closure);
+		TArray<FString> ClosureIds = Closure.Array();
+		ClosureIds.Sort();
+
+		TArray<TSharedPtr<FJsonValue>> Values;
+		for (const FString& DependencyId : ClosureIds)
+		{
+			TSharedRef<FJsonObject> Dependency = MakeShared<FJsonObject>();
+			Dependency->SetStringField(TEXT("step_id"), DependencyId);
+			if (const FString* PayloadHash = StepPayloadHashes.Find(DependencyId))
+			{
+				Dependency->SetStringField(TEXT("payload_hash"), *PayloadHash);
+			}
+			Values.Add(MakeShared<FJsonValueObject>(Dependency));
+		}
+
+		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+		Json->SetArrayField(TEXT("dependency_closure"), Values);
+		return FBlueprintHelperTaskRuntimeCacheKeyUtils::HashStableJson(Json);
+	};
 
 	FBlueprintHelperTaskRuntimeServiceLocalUtils::FBlueprintHelperReviewBaselinePolicyEvaluation BaselinePolicy;
 	FBlueprintHelperToolError BaselinePolicyError;
@@ -4980,7 +5161,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 	TArray<FBlueprintHelperTaskRuntimeStepRecord> StepRecords;
 	TArray<FBlueprintHelperTaskRuntimePostOperationRecord> PostOperationRecords;
 	TArray<FBlueprintHelperTaskRuntimeServiceLocalUtils::FResolvedCallFunctionRuntimeFact> ResolvedCallFunctionFacts;
-	FBlueprintHelperTaskRuntimeCallFunctionResolutionCache CallFunctionResolutionCache;
+	TArray<TSharedPtr<FJsonValue>> CachedRuntimeFactValues;
 	FBlueprintHelperValidationSummary BaseValidation;
 	bool bSawStepValidation = false;
 	TMap<FString, FBlueprintHelperTaskRuntimeServiceLocalUtils::EBlueprintHelperTaskJournalStepStatus> StepExecutionStatuses;
@@ -5028,6 +5209,57 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 			}
 			RuntimeResult.Data->SetObjectField(TEXT("post_io"), PostIoResult.ToJson());
 		}
+	};
+
+	auto BuildCacheDiagnostics = [&]() -> FBlueprintHelperTaskRuntimeCacheDiagnostics
+	{
+		FBlueprintHelperTaskRuntimeCacheDiagnostics Diagnostics;
+		Diagnostics.PartialPreviewTtlSeconds = CacheConfig.PartialPreviewTtl.GetTotalSeconds();
+		Diagnostics.CallFunctionFactTtlSeconds = CacheConfig.CallFunctionFactTtl.GetTotalSeconds();
+		Diagnostics.GraphWritePlanTtlSeconds = CacheConfig.GraphWritePlanTtl.GetTotalSeconds();
+		if (PartialPreviewCache.IsValid())
+		{
+			const FBlueprintHelperPartialPreviewCacheStats Stats = PartialPreviewCache->GetStats();
+			Diagnostics.PartialPreviewHits = Stats.Hits;
+			Diagnostics.PartialPreviewMisses = Stats.Misses;
+			Diagnostics.PartialPreviewReusedSteps = Stats.ReusedSteps;
+			Diagnostics.PrunedExpiredEntries += Stats.PrunedExpiredEntries;
+			Diagnostics.PrunedCapacityEntries += Stats.PrunedCapacityEntries;
+			Diagnostics.CurrentBytes += Stats.CurrentBytes;
+		}
+		if (CallFunctionResolutionCache.IsValid())
+		{
+			const FBlueprintHelperTaskRuntimeCallFunctionResolutionCacheStats Stats =
+				CallFunctionResolutionCache->GetStats();
+			Diagnostics.CallFunctionFactHits = Stats.Hits;
+			Diagnostics.CallFunctionFactMisses = Stats.Misses;
+			Diagnostics.PrunedExpiredEntries += Stats.PrunedExpiredEntries;
+			Diagnostics.PrunedCapacityEntries += Stats.PrunedCapacityEntries;
+			Diagnostics.CurrentBytes += Stats.CurrentBytes;
+		}
+		if (GraphWritePlanCache.IsValid())
+		{
+			const FBlueprintHelperGraphWritePlanCacheStats Stats = GraphWritePlanCache->GetStats();
+			Diagnostics.GraphWritePlanHits = Stats.Hits;
+			Diagnostics.GraphWritePlanMisses = Stats.Misses;
+			Diagnostics.PrunedExpiredEntries += Stats.PrunedExpiredEntries;
+			Diagnostics.PrunedCapacityEntries += Stats.PrunedCapacityEntries;
+			Diagnostics.CurrentBytes += Stats.CurrentBytes;
+		}
+		return Diagnostics;
+	};
+
+	auto AttachCacheDiagnostics = [&](FBlueprintHelperToolResultBase& RuntimeResult)
+	{
+		if (!TimingTrace.bEnabled)
+		{
+			return;
+		}
+		if (!RuntimeResult.Data.IsValid())
+		{
+			RuntimeResult.Data = MakeShared<FJsonObject>();
+		}
+		RuntimeResult.Data->SetObjectField(TEXT("cache_diagnostics"), BuildCacheDiagnostics().ToJson());
 	};
 
 	auto BuildFailureResult = [&](const FBlueprintHelperToolError& Error) -> FBlueprintHelperToolResultBase
@@ -5096,7 +5328,11 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		}
 		FBlueprintHelperTaskRuntimeServiceLocalUtils::AttachCallFunctionResolutionCacheStats(
 			RuntimeResult.Data,
-			CallFunctionResolutionCache);
+			*CallFunctionResolutionCache);
+		FBlueprintHelperTaskRuntimeServiceLocalUtils::AttachRuntimeFactJsonValues(
+			RuntimeResult.Data,
+			CachedRuntimeFactValues);
+		AttachCacheDiagnostics(RuntimeResult);
 
 		if (!bDryRun && !TaskRunId.IsEmpty() && (StepRecords.Num() > 0 || PostOperationRecords.Num() > 0))
 		{
@@ -5163,6 +5399,70 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		return CommitService.ExecuteStep(LoweredStep, bDryRun);
 	};
 
+	auto TrackDryRunPlannedState = [&](const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep, const FBlueprintHelperToolResultBase& StepResult)
+	{
+		if (!bDryRun || !StepResult.bOk)
+		{
+			return;
+		}
+
+		if (LoweredStep.AdapterOperation == FBlueprintHelperComponentTaskPlanAdapter::AdapterOperationAddComponent)
+		{
+			FString PlannedAssetPath;
+			FString PlannedComponentName;
+			if (FBlueprintHelperTaskRuntimeServiceLocalUtils::TryReadComponentPayloadIdentity(
+				LoweredStep,
+				PlannedAssetPath,
+				PlannedComponentName))
+			{
+				DryRunPlannedComponentKeys.Add(
+					FBlueprintHelperTaskRuntimeServiceLocalUtils::MakePlannedComponentKey(PlannedAssetPath, PlannedComponentName));
+			}
+			return;
+		}
+
+		if (LoweredStep.AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::AddWidget)
+		{
+			FString PlannedAssetPath;
+			FString PlannedWidgetName;
+			if (FBlueprintHelperTaskRuntimeServiceLocalUtils::TryReadWidgetPayloadIdentity(
+				LoweredStep,
+				PlannedAssetPath,
+				PlannedWidgetName))
+			{
+				DryRunPlannedWidgetKeys.Add(
+					FBlueprintHelperTaskRuntimeServiceLocalUtils::MakePlannedWidgetKey(PlannedAssetPath, PlannedWidgetName));
+			}
+			return;
+		}
+
+		if (LoweredStep.AdapterOperation == FBlueprintHelperDataTableTaskPlanAdapter::AdapterOperationAddRow)
+		{
+			FString PlannedAssetPath;
+			FString PlannedRowName;
+			if (FBlueprintHelperTaskRuntimeServiceLocalUtils::TryReadDataTablePayloadIdentity(
+				LoweredStep,
+				PlannedAssetPath,
+				PlannedRowName))
+			{
+				DryRunPlannedDataTableRowKeys.Add(
+					FBlueprintHelperTaskRuntimeServiceLocalUtils::MakePlannedDataTableRowKey(PlannedAssetPath, PlannedRowName));
+			}
+		}
+	};
+
+	auto BuildPartialPreviewCacheKey = [&](const FBlueprintHelperTaskRuntimePreparedStep& PreparedStep)
+	{
+		FBlueprintHelperPartialPreviewCacheKey Key;
+		Key.TaskSpecGroupHash = TaskSpecGroupHash;
+		Key.StepId = PreparedStep.StepId;
+		Key.StepPayloadHash = StepPayloadHashes.FindRef(PreparedStep.StepId);
+		Key.DependencyClosureHash = BuildDependencyClosureHash(PreparedStep);
+		Key.ExecutionPolicyHash = ExecutionPolicyHash;
+		Key.AssetStateHash = TargetAssetStateHash;
+		return Key;
+	};
+
 	MainThreadCommitStageStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
 	bMainThreadCommitStageOpen = true;
 
@@ -5205,6 +5505,39 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 				FString::Printf(TEXT("task_plan.steps[%d]"), StepIndex)));
 		}
 
+		const FBlueprintHelperPartialPreviewCacheKey PartialCacheKey = BuildPartialPreviewCacheKey(PreparedStep);
+		if (bDryRun && PartialPreviewCache.IsValid())
+		{
+			const double PartialPreviewCacheLookupStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
+			FBlueprintHelperPartialPreviewCacheEntry CachedPartialPreview;
+			const bool bPartialPreviewCacheHit = PartialPreviewCache->TryGet(
+				PartialCacheKey,
+				FDateTime::UtcNow(),
+				CachedPartialPreview);
+			FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(
+				TimingTrace,
+				FString::Printf(TEXT("step.%s.partial_preview_cache_lookup"), *LoweredStep.StepId),
+				PartialPreviewCacheLookupStart);
+			if (bPartialPreviewCacheHit && CachedPartialPreview.bPassed)
+			{
+				StepRecords.Add({LoweredStep, CachedPartialPreview.Result});
+				CachedRuntimeFactValues.Append(CachedPartialPreview.RuntimeFactValues);
+				StepExecutionStatuses.Add(
+					LoweredStep.StepId,
+					FBlueprintHelperTaskRuntimeServiceLocalUtils::EBlueprintHelperTaskJournalStepStatus::Completed);
+				TrackDryRunPlannedState(LoweredStep, CachedPartialPreview.Result);
+				if (CachedPartialPreview.Result.Validation.IsSet())
+				{
+					BaseValidation.bShouldCompile =
+						BaseValidation.bShouldCompile || CachedPartialPreview.Result.Validation->bShouldCompile;
+					BaseValidation.bShouldSave =
+						BaseValidation.bShouldSave || CachedPartialPreview.Result.Validation->bShouldSave;
+					bSawStepValidation = true;
+				}
+				continue;
+			}
+		}
+
 		TArray<FBlueprintHelperTaskRuntimeServiceLocalUtils::FResolvedCallFunctionRuntimeFact> StepResolvedCallFunctionFacts;
 		FBlueprintHelperToolError CallFunctionResolutionError;
 		TSharedPtr<FJsonObject> CallFunctionBlockedData;
@@ -5215,7 +5548,8 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 			StepIndex,
 			LoweredStep.StepId,
 			bDryRun,
-			CallFunctionResolutionCache,
+			TargetAssetStateHash,
+			*CallFunctionResolutionCache,
 			StepResolvedCallFunctionFacts,
 			CallFunctionResolutionError,
 			CallFunctionBlockedData))
@@ -5243,6 +5577,64 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 			FString::Printf(TEXT("step.%s.call_function_resolution"), *LoweredStep.StepId),
 			CallFunctionStageStart);
 		ResolvedCallFunctionFacts.Append(StepResolvedCallFunctionFacts);
+
+		if (GraphWritePlanCache.IsValid() && LoweredStep.Capability == TEXT("graph_write"))
+		{
+			FString GraphWriteAssetPath;
+			FString GraphWriteGraphName;
+			FBlueprintHelperTaskRuntimeServiceLocalUtils::ReadCallFunctionResolutionTarget(
+				StepObject,
+				LoweredStep.Payload,
+				GraphWriteAssetPath,
+				GraphWriteGraphName);
+			FBlueprintHelperGraphWritePlanCacheKey GraphWriteCacheKey;
+			GraphWriteCacheKey.PayloadHash =
+				FBlueprintHelperTaskRuntimeCacheKeyUtils::HashStableJson(LoweredStep.Payload);
+			GraphWriteCacheKey.GraphSchemaHash =
+				FBlueprintHelperTaskRuntimeCacheKeyUtils::HashString(GraphWriteAssetPath + TEXT("|") + GraphWriteGraphName);
+			GraphWriteCacheKey.AssetStateHash = TargetAssetStateHash;
+
+			const double GraphWriteCacheLookupStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
+			FBlueprintHelperGraphWritePlanCacheEntry GraphWriteCachedPlan;
+			const bool bGraphWritePlanCacheHit = GraphWritePlanCache->TryGet(
+				GraphWriteCacheKey,
+				FDateTime::UtcNow(),
+				GraphWriteCachedPlan);
+			FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(
+				TimingTrace,
+				FString::Printf(TEXT("step.%s.graph_write_plan_cache_lookup"), *LoweredStep.StepId),
+				GraphWriteCacheLookupStart);
+
+			if (!bGraphWritePlanCacheHit)
+			{
+				TArray<FString> StableIds;
+				for (const FBlueprintHelperTaskRuntimeServiceLocalUtils::FResolvedCallFunctionRuntimeFact& Fact : StepResolvedCallFunctionFacts)
+				{
+					if (!Fact.StableId.IsEmpty())
+					{
+						StableIds.Add(Fact.StableId);
+					}
+				}
+
+				const double GraphWritePlanPrepareStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
+				const FBlueprintHelperGraphWritePlanCacheEntry GraphWritePlan =
+					FBlueprintHelperGraphWritePlanCache::MakeEntryFromPayload(
+						GraphWriteGraphName,
+						LoweredStep.Payload,
+						StableIds);
+				FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(
+					TimingTrace,
+					FString::Printf(TEXT("step.%s.graph_write_plan_prepare"), *LoweredStep.StepId),
+					GraphWritePlanPrepareStart);
+
+				const double GraphWriteCacheStoreStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
+				GraphWritePlanCache->Store(GraphWriteCacheKey, GraphWritePlan, FDateTime::UtcNow());
+				FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(
+					TimingTrace,
+					FString::Printf(TEXT("step.%s.graph_write_plan_cache_store"), *LoweredStep.StepId),
+					GraphWriteCacheStoreStart);
+			}
+		}
 
 		FBlueprintHelperWriteReviewEvidence PreStepReviewEvidence;
 		bool bHasPreStepReviewEvidence = false;
@@ -5308,6 +5700,22 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 			StepResult = FBlueprintHelperTaskRuntimeServiceLocalUtils::MakePlannedDataTableRowUpdateDryRunResult(LoweredStep);
 		}
 		StepRecords.Add({LoweredStep, StepResult});
+		if (bDryRun && StepResult.bOk && PartialPreviewCache.IsValid())
+		{
+			FBlueprintHelperPartialPreviewCacheEntry PartialEntry;
+			PartialEntry.StepId = LoweredStep.StepId;
+			PartialEntry.bPassed = true;
+			PartialEntry.Result = StepResult;
+			PartialEntry.RuntimeFactValues =
+				FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeResolvedCallFunctionFactArray(
+					StepResolvedCallFunctionFacts);
+			const double PartialPreviewCacheStoreStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
+			PartialPreviewCache->Store(PartialCacheKey, PartialEntry, FDateTime::UtcNow());
+			FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(
+				TimingTrace,
+				FString::Printf(TEXT("step.%s.partial_preview_cache_store"), *LoweredStep.StepId),
+				PartialPreviewCacheStoreStart);
+		}
 		if (!bDryRun && StepResult.bOk)
 		{
 			const double ReviewAfterStageStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
@@ -5336,39 +5744,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 			StepResult.bOk
 				? FBlueprintHelperTaskRuntimeServiceLocalUtils::EBlueprintHelperTaskJournalStepStatus::Completed
 				: FBlueprintHelperTaskRuntimeServiceLocalUtils::EBlueprintHelperTaskJournalStepStatus::Failed);
-		if (bDryRun &&
-			StepResult.bOk &&
-			LoweredStep.AdapterOperation == FBlueprintHelperComponentTaskPlanAdapter::AdapterOperationAddComponent)
-		{
-			FString PlannedAssetPath;
-			FString PlannedComponentName;
-			if (FBlueprintHelperTaskRuntimeServiceLocalUtils::TryReadComponentPayloadIdentity(LoweredStep, PlannedAssetPath, PlannedComponentName))
-			{
-				DryRunPlannedComponentKeys.Add(FBlueprintHelperTaskRuntimeServiceLocalUtils::MakePlannedComponentKey(PlannedAssetPath, PlannedComponentName));
-			}
-		}
-		if (bDryRun &&
-			StepResult.bOk &&
-			LoweredStep.AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::AddWidget)
-		{
-			FString PlannedAssetPath;
-			FString PlannedWidgetName;
-			if (FBlueprintHelperTaskRuntimeServiceLocalUtils::TryReadWidgetPayloadIdentity(LoweredStep, PlannedAssetPath, PlannedWidgetName))
-			{
-				DryRunPlannedWidgetKeys.Add(FBlueprintHelperTaskRuntimeServiceLocalUtils::MakePlannedWidgetKey(PlannedAssetPath, PlannedWidgetName));
-			}
-		}
-		if (bDryRun &&
-			StepResult.bOk &&
-			LoweredStep.AdapterOperation == FBlueprintHelperDataTableTaskPlanAdapter::AdapterOperationAddRow)
-		{
-			FString PlannedAssetPath;
-			FString PlannedRowName;
-			if (FBlueprintHelperTaskRuntimeServiceLocalUtils::TryReadDataTablePayloadIdentity(LoweredStep, PlannedAssetPath, PlannedRowName))
-			{
-				DryRunPlannedDataTableRowKeys.Add(FBlueprintHelperTaskRuntimeServiceLocalUtils::MakePlannedDataTableRowKey(PlannedAssetPath, PlannedRowName));
-			}
-		}
+		TrackDryRunPlannedState(LoweredStep, StepResult);
 
 		if (StepResult.Validation.IsSet())
 		{
@@ -5499,13 +5875,17 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 	FBlueprintHelperTaskRuntimeServiceLocalUtils::AttachRuntimeFacts(
 		RuntimeResult.Data,
 		ResolvedCallFunctionFacts);
+	FBlueprintHelperTaskRuntimeServiceLocalUtils::AttachRuntimeFactJsonValues(
+		RuntimeResult.Data,
+		CachedRuntimeFactValues);
 	if (bDryRun)
 	{
 		FBlueprintHelperTaskRuntimeServiceLocalUtils::AttachDryRunStrategy(RuntimeResult.Data, DryRunPolicy);
 	}
 	FBlueprintHelperTaskRuntimeServiceLocalUtils::AttachCallFunctionResolutionCacheStats(
 		RuntimeResult.Data,
-		CallFunctionResolutionCache);
+		*CallFunctionResolutionCache);
+	AttachCacheDiagnostics(RuntimeResult);
 
 	if (!bDryRun && !TaskRunId.IsEmpty())
 	{

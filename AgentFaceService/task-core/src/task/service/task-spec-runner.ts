@@ -393,7 +393,7 @@ function extractDevelopPreviewDiagnostics(
     ue_preview_result: result,
   };
 
-  for (const key of ['dry_run', 'call_function_resolution_cache', 'runtime_facts']) {
+  for (const key of ['dry_run', 'call_function_resolution_cache', 'runtime_facts', 'cache_diagnostics']) {
     if (data && Object.hasOwn(data, key)) {
       diagnostics[key] = data[key];
     }

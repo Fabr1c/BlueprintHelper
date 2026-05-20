@@ -22,6 +22,9 @@ class FBlueprintHelperAssetBrowseService;
 class FBlueprintHelperDebugEntryService;
 class FBlueprintHelperTaskRuntimeClusterHub;
 class FBlueprintHelperTaskPreviewStore;
+class FBlueprintHelperTaskPartialPreviewCache;
+class FBlueprintHelperTaskRuntimeCallFunctionResolutionCache;
+class FBlueprintHelperGraphWritePlanCache;
 /**
  * Executes BlueprintHelper.TaskPlan.v1 steps through existing capability services.
  * The first runtime cluster supports graph write TaskPlan steps backed by existing services.
@@ -102,6 +105,9 @@ private:
 
 	TUniquePtr<FBlueprintHelperTaskRuntimeClusterHub> ClusterHub;
 	TUniquePtr<FBlueprintHelperTaskPreviewStore> PreviewStore;
+	TUniquePtr<FBlueprintHelperTaskPartialPreviewCache> PartialPreviewCache;
+	TUniquePtr<FBlueprintHelperTaskRuntimeCallFunctionResolutionCache> CallFunctionResolutionCache;
+	TUniquePtr<FBlueprintHelperGraphWritePlanCache> GraphWritePlanCache;
 	const FBlueprintHelperCompileAssetService& CompileAssetService;
 	const FBlueprintHelperAssetBrowseService& AssetBrowseService;
 	const FBlueprintHelperDebugEntryService* DebugEntryService = nullptr;

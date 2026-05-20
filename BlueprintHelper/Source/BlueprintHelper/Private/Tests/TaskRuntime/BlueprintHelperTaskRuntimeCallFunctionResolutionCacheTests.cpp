@@ -89,4 +89,33 @@ bool FBlueprintHelperTaskRuntimeCallFunctionResolutionCache_KeyIncludesContext::
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTaskRuntimeCallFunctionResolutionCache_TtlAndAssetState,
+	"BlueprintHelper.TaskRuntime.CallFunctionResolutionCache.TtlAndAssetState",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperTaskRuntimeCallFunctionResolutionCache_TtlAndAssetState::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperTaskRuntimeCallFunctionResolutionCache Cache(FBlueprintHelperTaskRuntimeCacheConfig::Default());
+	const FString Key = TEXT("call_key");
+	const FDateTime Now = FDateTime::UtcNow();
+
+	FBlueprintHelperTaskRuntimeCachedCallFunctionResolution Stored;
+	Stored.bResolved = true;
+	Stored.StableId = TEXT("/Script/Engine.KismetSystemLibrary:PrintString");
+	Stored.NativeName = TEXT("PrintString");
+	Stored.DisplayName = TEXT("Print String");
+	Stored.OwnerClassPath = TEXT("/Script/Engine.KismetSystemLibrary");
+	Stored.AssetStateHash = TEXT("asset_v1");
+	Cache.Store(Key, Stored, Now);
+
+	FBlueprintHelperTaskRuntimeCachedCallFunctionResolution Found;
+	TestTrue(TEXT("hit before ttl"), Cache.TryGet(Key, TEXT("asset_v1"), Now, Found));
+	TestFalse(TEXT("asset hash mismatch misses"), Cache.TryGet(Key, TEXT("asset_v2"), Now, Found));
+	TestFalse(
+		TEXT("expired entry misses"),
+		Cache.TryGet(Key, TEXT("asset_v1"), Now + FTimespan::FromSeconds(181.0), Found));
+	return true;
+}
+
 #endif

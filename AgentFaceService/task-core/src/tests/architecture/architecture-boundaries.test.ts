@@ -80,6 +80,22 @@ test('Bridge server accepts clients through socket readiness wait instead of fix
   );
 });
 
+test('TaskRuntime cache TTL and capacity defaults live in the cache config boundary', () => {
+  const cacheFiles = [
+    'Private/Runtime/TaskRuntime/BlueprintHelperTaskPartialPreviewCache.cpp',
+    'Private/Runtime/TaskRuntime/BlueprintHelperTaskRuntimeCallFunctionResolutionCache.cpp',
+    'Private/Runtime/TaskRuntime/BlueprintHelperGraphWritePlanCache.cpp',
+  ]
+    .map((relative) => path.resolve(UE_SOURCE_ROOT, relative))
+    .filter((filePath) => fs.existsSync(filePath))
+    .map((filePath) => fs.readFileSync(filePath, 'utf8'));
+
+  for (const source of cacheFiles) {
+    assert.doesNotMatch(source, /FromSeconds\((40|90|180)/u);
+    assert.doesNotMatch(source, /Max(Entries|Bytes|Groups)\s*=\s*(64|256|512|2048|8388608|16777216)/u);
+  }
+});
+
 test('CLI and MCP production task paths depend on the task compiler service boundary', () => {
   const productionFiles = [
     ...collectFiles(path.resolve(AGENT_FACE_ROOT, 'cli', 'src'), ['.ts']),
