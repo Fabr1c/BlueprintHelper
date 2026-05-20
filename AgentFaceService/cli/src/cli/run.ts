@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { BridgeClient, type BridgeResponse } from '@blueprinthelper/task-core/bridge/bridge-client';
+import { BridgeClient, type BridgeResponse, type BridgeSendCommandOptions } from '@blueprinthelper/task-core/bridge/bridge-client';
 import { getBlueprintHelperTool } from '@blueprinthelper/task-core/tool-surface/tool-registry';
 import {
   createTaskSpecRunner,
@@ -436,8 +436,8 @@ function createWaitHintBridge(baseBridge: TaskRunnerBridge, runtime: CliRuntime)
   const optionalBridge = baseBridge as TaskRunnerBridge & Partial<CliBridge>;
   let bridge: CliBridge;
   bridge = {
-    sendCommand(command, payload) {
-      return runWithWaitHints(runtime, command, () => baseBridge.sendCommand(command, payload));
+    sendCommand(command, payload, options?: BridgeSendCommandOptions) {
+      return runWithWaitHints(runtime, command, () => baseBridge.sendCommand(command, payload, options));
     },
     ping() {
       if (typeof optionalBridge.ping === 'function') {

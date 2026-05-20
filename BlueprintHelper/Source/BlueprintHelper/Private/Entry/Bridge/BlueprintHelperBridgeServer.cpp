@@ -3,6 +3,7 @@
 #include "Entry/Bridge/BlueprintHelperBridgeServer.h"
 #include "Entry/Bridge/BlueprintHelperBridgeRouter.h"
 #include "Entry/Bridge/BlueprintHelperBridgeProtocol.h"
+#include "Entry/Bridge/Utils/BlueprintHelperBridgeTransportTimingUtils.h"
 #include "Systems/Debug/BlueprintHelperDebugEntryService.h"
 #include "Async/Async.h"
 #include "Dom/JsonObject.h"
@@ -93,12 +94,17 @@ void FBlueprintHelperBridgeServer::Shutdown()
 
 uint32 FBlueprintHelperBridgeServer::Run()
 {
+	const FTimespan AcceptWaitTime = FTimespan::FromMilliseconds(250);
+
 	while (!bStopping)
 	{
 		bool bHasPendingConnection = false;
-		if (!ListenerSocket->HasPendingConnection(bHasPendingConnection) || !bHasPendingConnection)
+		if (!ListenerSocket->WaitForPendingConnection(bHasPendingConnection, AcceptWaitTime))
 		{
-			FPlatformProcess::Sleep(0.05f);
+			continue;
+		}
+		if (!bHasPendingConnection)
+		{
 			continue;
 		}
 
@@ -153,6 +159,7 @@ void FBlueprintHelperBridgeServer::HandleClient(FSocket* ClientSocket)
 
 		LastActivityTime = FPlatformTime::Seconds();
 
+		const double ReceiveStageStart = FPlatformTime::Seconds();
 		FString RequestJson;
 		if (!ReadMessage(ClientSocket, RequestJson))
 		{
@@ -163,6 +170,7 @@ void FBlueprintHelperBridgeServer::HandleClient(FSocket* ClientSocket)
 				TEXT("Bridge request frame could not be read."));
 			break;
 		}
+		const double ReceiveStageEnd = FPlatformTime::Seconds();
 
 		UE_LOG(LogBlueprintHelperBridge, Verbose, TEXT("闁衡偓鐠哄搫鐓傞悹鍥敱閻? %s"), *RequestJson.Left(200));
 
@@ -172,6 +180,13 @@ void FBlueprintHelperBridgeServer::HandleClient(FSocket* ClientSocket)
 		const FBlueprintHelperBridgeRoutePlan RoutePlan = Req.IsSet()
 			? FBlueprintHelperBridgeRoutePlanner::BuildPlan(Req.GetValue().Command)
 			: FBlueprintHelperBridgeRoutePlan();
+		FBlueprintHelperBridgeTransportTimingUtils::FTimingTrace TransportTiming =
+			FBlueprintHelperBridgeTransportTimingUtils::StartTrace(Req, ReceiveStageStart);
+		FBlueprintHelperBridgeTransportTimingUtils::AddStage(
+			TransportTiming,
+			TEXT("bridge.receive"),
+			ReceiveStageStart,
+			ReceiveStageEnd);
 
 		FString ResponseJson;
 		if (Req.IsSet() && Req.GetValue().Command == TEXT("ping"))
@@ -180,16 +195,29 @@ void FBlueprintHelperBridgeServer::HandleClient(FSocket* ClientSocket)
 			Resp.Result = MakeShared<FJsonObject>();
 			Resp.Result->SetStringField(TEXT("schema"), TEXT("BridgePing.v1"));
 			Resp.Result->SetBoolField(TEXT("reachable"), true);
-			ResponseJson = FBlueprintHelperBridgeProtocol::SerializeResponse(Resp);
+			ResponseJson = FBlueprintHelperBridgeTransportTimingUtils::SerializeResponseWithTiming(Resp, TransportTiming);
 		}
 		else
 		{
 			TPromise<FString> Promise;
 			TFuture<FString> Future = Promise.GetFuture();
 
-			AsyncTask(ENamedThreads::GameThread, [this, Req, RoutePlan, &Promise]()
+			const double GameThreadEnqueueStageStart =
+				FBlueprintHelperBridgeTransportTimingUtils::StartStage(TransportTiming);
+			AsyncTask(
+				ENamedThreads::GameThread,
+				[this, Req, RoutePlan, &Promise, &TransportTiming, GameThreadEnqueueStageStart]()
 			{
+				const double GameThreadStart = FPlatformTime::Seconds();
+				FBlueprintHelperBridgeTransportTimingUtils::AddStage(
+					TransportTiming,
+					TEXT("bridge.game_thread_enqueue_wait"),
+					GameThreadEnqueueStageStart,
+					GameThreadStart);
+
 				FBlueprintHelperBridgeResponse Resp;
+				const double RouteStageStart =
+					FBlueprintHelperBridgeTransportTimingUtils::StartStage(TransportTiming);
 				if (Req.IsSet())
 				{
 					Resp = Router.HandleRequestWithPlan(Req.GetValue(), RoutePlan);
@@ -213,7 +241,14 @@ void FBlueprintHelperBridgeServer::HandleClient(FSocket* ClientSocket)
 						TEXT("Bridge request JSON parse failed."));
 				}
 
-				Promise.SetValue(FBlueprintHelperBridgeProtocol::SerializeResponse(Resp));
+				FBlueprintHelperBridgeTransportTimingUtils::AddStage(
+					TransportTiming,
+					TEXT("bridge.route_execute"),
+					RouteStageStart,
+					FPlatformTime::Seconds());
+				Promise.SetValue(FBlueprintHelperBridgeTransportTimingUtils::SerializeResponseWithTiming(
+					Resp,
+					TransportTiming));
 			});
 
 			ResponseJson = Future.Get();
@@ -231,7 +266,6 @@ void FBlueprintHelperBridgeServer::HandleClient(FSocket* ClientSocket)
 				Req.IsSet() ? Req.GetValue().RequestId : FString());
 			break;
 		}
-
 		// CLI clients are short-lived: one request, one response, then reconnect.
 		// Closing here keeps the accept loop available instead of waiting for the
 		// idle timeout and delaying the next CLI process by up to two seconds.

@@ -66,6 +66,10 @@ export class TaskTimingTrace {
     });
   }
 
+  recordMeasuredStage(name: string, startedAt: number, finishedAt: number): void {
+    this.addStage(name, startedAt, finishedAt);
+  }
+
   addNested(name: string, timing: unknown): void {
     if (!timing || typeof timing !== 'object' || Array.isArray(timing)) {
       return;
@@ -163,6 +167,11 @@ export function extractBridgeTiming(value: unknown): Record<string, unknown> | u
   const data = asRecord(result?.['data']);
   const timing = asRecord(data?.['timing']) ?? asRecord(result?.['timing']);
   return timing;
+}
+
+export function extractBridgeTransportTiming(value: unknown): Record<string, unknown> | undefined {
+  const response = asRecord(value);
+  return asRecord(response?.['transport_timing']);
 }
 
 function roundMs(value: number): number {

@@ -184,9 +184,9 @@ node AgentFaceService/cli/build/cli/index.js blueprinthelper_read_context --file
 
 - `tool_result.data.timing.total_ms`：CLI develop 总耗时。
 - `read_context.bridge.<command>`：AgentFace 到 UE Bridge 往返耗时。
-- `read_context.extract_bridge_payload`、`read_context.post_process_payload`、`read_context.result_wrap`：AgentFace 侧 payload 处理成本。
+- `read_context.bridge_payload_extract`、`read_context.post_process_payload` / `read_context.logic_flow_build_payload`、`read_context.result_wrap`：AgentFace 侧 payload 处理成本。
 - `data.timing.nested[].source=ue_bridge_router` 的 `route_execute`：UE route 内部执行耗时；已在 Editor 手动重启后补测返回。
-- payload 规模：后续 R5 需要补 `payload_size_bytes`，用于区分输出体积导致的序列化/格式化成本。
+- payload 规模：已记录 `read_context.bridge_payload_bytes`、`read_context.ue_raw_payload_bytes`、`read_context.post_processed_payload_bytes`，用于区分输出体积导致的序列化/格式化成本。
 
 测速方式：
 
@@ -319,7 +319,7 @@ Editor 手动重启后已返回 UE nested read timing，`ue_bridge_router.route_
 
 计划：
 - 基线指标使用 `data.timing.total_ms`、`read_context.bridge.<command>`、nested `ue_bridge_router.route_execute`。
-- 长读工具额外记录 `snapshot_read`、`format_output`、`payload_size_bytes`。
+- 长读工具额外记录 `snapshot_read`、`format_output`、`read_context.bridge_payload_bytes`、`read_context.ue_raw_payload_bytes`、`read_context.post_processed_payload_bytes`。
 - 读优化完成后重跑同一组 ReadSpecs，并与写链路对照组分开统计。
 
 验收：
@@ -567,13 +567,14 @@ Editor 手动重启后已返回 UE nested read timing，`ue_bridge_router.route_
 
 `BlueprintHelper/Develop/Plan/Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/`
 
-| 阶段 | 文档 | 覆盖范围 |
-| --- | --- | --- |
-| P0 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P0_TaskSpecExecuteFastPath_ImplementationPlan_CN.md` | 端到端 timing、preview token 复用、`dry_run_mode`、CallFunction resolution cache |
-| P1 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P1_TaskSpecCompilerFastPath_ImplementationPlan_CN.md` | TaskSpec compiler fast path / Python worker、compile 输出裁剪、parity gate |
-| P2 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P2_TaskRuntimeReviewIO_ImplementationPlan_CN.md` | Review IO 批处理、TaskRuntime `PurePrepare -> MainThreadCommit -> PostIO` 三层拆分 |
-| P3 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P3_ReadPipelineSnapshotCache_ImplementationPlan_CN.md` | 读链路 GameThread 快照、后台格式化、request-local snapshot 复用、纯数据缓存、Bridge gap 细分 |
-| R0-R5 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/R0_R5_ReadPipeline_ExecutablePlan_CN.md` | 读链路可执行 checklist、目标文件结构、分阶段验收、benchmark 和回归门槛 |
+| 阶段 | 文档 | 覆盖范围 | 当前状态 |
+| --- | --- | --- | --- |
+| P0 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P0_TaskSpecExecuteFastPath_ImplementationPlan_CN.md` | 端到端 timing、preview token 复用、`dry_run_mode`、CallFunction resolution cache | 已完成首轮实现和测速 |
+| P1 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P1_TaskSpecCompilerFastPath_ImplementationPlan_CN.md` | TaskSpec compiler fast path / Python worker、compile 输出裁剪、parity gate | 已完成首轮实现和测速 |
+| P2 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P2_TaskRuntimeReviewIO_ImplementationPlan_CN.md` | Review IO 批处理、TaskRuntime `PurePrepare -> MainThreadCommit -> PostIO` 三层拆分 | 已完成首轮实现和测速 |
+| P3 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P3_ReadPipelineSnapshotCache_ImplementationPlan_CN.md` | 读链路 GameThread 快照、DTO formatter、request-local snapshot 复用、纯数据缓存、Bridge gap 细分 | 已完成 v0.5.0 范围，`logic_flow` 复用 `logic_json` 快照链路 |
+| P4-P6 后续 | 待讨论确认后拆独立执行计划 | CallFunction resolution 复用/索引化、GraphWrite cluster execute 降成本、compile/save 条件化或批处理 | 未实施，后续版本讨论 |
+| R0-R5 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/R0_R5_ReadPipeline_ExecutablePlan_CN.md` | 读链路可执行 checklist、目标文件结构、分阶段验收、benchmark 和回归门槛 | 已完成并作为 P3 执行证据 |
 
 说明：主文档继续保留背景、测速记录、优化项摘要、优先级排序、度量要求和当前状态；阶段文档负责执行 checklist、文件结构、测试命令和验收标准。
 
@@ -665,11 +666,73 @@ Editor 手动重启后已返回 UE nested read timing，`ue_bridge_router.route_
 - 长期缓存只允许保存 capability matrix、CLI schema metadata、纯 runtime profile 等非 UE 核心对象状态。
 - 继续拆 `bridge - UE route` gap，至少区分 Bridge queue、transport、response serialization、AgentFace receive/parse。
 
+落地状态（2026-05-20）：
+- `blueprint_logic_json` / `blueprint_logic_md` 已迁移为 `BuildSnapshot -> FormatSnapshot`，UE route 返回 `snapshot_read`、`format_output`、`response_wrap` 子阶段。
+- `logic_flow` 没有新增 UE 专用 route；现实实现是复用 `read_blueprint_logic_json` 的 Snapshot DTO / LogicJson 结构化输出，再由 AgentFace `buildLogicFlowPayload()` 压缩为 `LogicFlow.v1`。
+- request-local snapshot cache 已接入 `read_blueprint_logic_json` / `read_blueprint_logic_md` route，仅在单次 Bridge request 生命周期内存在，不跨 CLI 请求和 Editor 生命周期缓存资产内容。
+- 长期缓存只落在 AgentFace read capability pure-data cache 与 C++ cache policy 边界，不缓存 Blueprint 图、WidgetTree、DataTable rows、DataAsset properties 等用户可编辑资产内容。
+- Bridge gap 已拆出 CLI connect/write/client_parse、UE Bridge receive、GameThread enqueue wait、route execute、response serialize；response socket write 不写入同帧 response timing，避免伪造数据。
+- R0-R5 执行证据见阶段执行文档 `R0_R5_ReadPipeline_ExecutablePlan_CN.md`。
+
 验收：
-- `blueprint_logic_json/md` 至少能显示 `snapshot_read` 与 `format_output` 占比。
-- request-local snapshot cache 不跨用户编辑状态泄漏。
-- 普通读工具不返回 develop timing。
-- 优化前后同一 ReadSpec 输出 schema 兼容。
+- [x] `blueprint_logic_json/md` 至少能显示 `snapshot_read` 与 `format_output` 占比。
+- [x] request-local snapshot cache 不跨用户编辑状态泄漏。
+- [x] 普通读工具不返回 develop timing。
+- [x] 优化前后同一 ReadSpec 输出 schema 兼容。
+- [x] 新增 `logic_flow` 已适配现实链路：复用 `read_blueprint_logic_json`，AgentFace 侧生成 `LogicFlow.v1`，并记录 `read_context.logic_flow_build_payload`。
+
+### P4-9：CallFunction resolution 复用与索引化
+
+目标：降低最慢写样本中 `call_function_resolution` 的重复解析和候选全集扫描成本。当前 `04b_write_function_body.json` 的 preview+execute 中，CallFunction resolution 合计约 726ms，是最主要的真实 UE 侧瓶颈。
+
+计划：
+- preview 阶段把每个 call_function statement 的 `statement_path -> stable_id / owner / native_name / context_hash` 写入 preview store。
+- execute 命中 preview token 时优先复用 preview store 内的 resolved facts，只做 stable id、owner/function 可用性和 asset state 的轻量校验。
+- 新增 Editor 生命周期级 `CallFunctionIndexService`，按 `stable_id`、`owner + native_name`、display token、compact name 建多路索引。
+- 对 `ResolveClassByTypeName` / `ResolveStructByTypeName` 建 normalized token cache，避免每次 `TObjectIterator` 全扫。
+- 失效策略必须保守：Blueprint compile、BlueprintActionDatabase 变化、target Blueprint class 变化时使相关索引失效或重建。
+
+验收：
+- execute 命中 preview token 后不再完整跑 `FBlueprintHelperCallFunctionResolver::Resolve`。
+- `04b_write_function_body.json` 的 execute `call_function_resolution` 从约 291ms 降到轻量校验级别。
+- 首次 preview 的 resolver 耗时能被拆成 index lookup、candidate filtering、score/sort 三段。
+- 索引服务是可复用 service，不把特定 query 的特殊分支写入 TaskRuntime 或 GraphWrite 局部逻辑。
+
+### P5-10：GraphWrite cluster execute 降成本
+
+目标：降低真实写图阶段的 node spawn、pin lookup、linking 和 layout 记录成本。当前 `04b_write_function_body.json` execute 的 `cluster_execute` 约 275ms，是第二大真实 UE 侧瓶颈。
+
+计划：
+- 在 `PurePrepare` 或 GraphWrite service 边界生成纯数据 `GraphMutationPlan`，包含 node spawn plan、pin default plan、link plan、layout plan。
+- `MainThreadCommit` 只消费 `GraphMutationPlan`，最小化触碰 `UEdGraph` 的操作。
+- 复用 P4 的 resolved function facts，GraphWrite pipeline 不再对同一 call_function 做二次 resolver。
+- 每个 graph 建 `GraphWriteContext`，缓存 schema、existing node map、created node map、node id -> UK2Node、normalized pin alias map。
+- pin lookup 从“每条 link 扫描 pins”改为“每个 node 建一次 pin map 后 O(1) 查询”。
+- 继续保持 graph layout flush 在 TaskRuntime 后段统一执行，禁止每个 step / 每个 node 单独 flush。
+
+验收：
+- `cluster_execute` timing 能进一步拆分出 node spawn、apply defaults、linking、layout record。
+- 同一 graph 的 schema、node、pin 查找不重复扫描。
+- `04b_write_function_body.json` 的 execute `cluster_execute` 从约 275ms 降到 80-150ms 目标区间。
+- `GraphMutationPlan` 和 `GraphWriteContext` 是独立 DTO/service 边界，不和 UI、CLI 或单个 node handler 绑定。
+
+### P6-11：compile/save 条件化或批处理
+
+目标：降低 post operation 的固定成本，并避免无效 compile/save。当前 `04b_write_function_body.json` execute 的 compile/save 合计约 176ms，不是最大头，但属于稳定成本。
+
+计划：
+- 新增 `PostOperationPlanner`，从 TaskPlan、StepResult validation 和 mutation type 聚合 target asset 的 compile/save 需求。
+- 对 target assets 去重，同一 TaskRun 内同一资产最多 compile/save 一次。
+- 按 mutation type 判断是否必须 compile；graph body、signature、component 等需要 compile，纯 metadata 或非 Blueprint 资产不强制 compile。
+- save 前检查 package dirty，未 dirty 不执行保存。
+- 多资产 save 可批处理，但必须保留逐资产失败结果和诊断。
+- 默认 execute 仍保持 immediate compile/save；如引入 deferred 模式，必须由显式 `post_operation_mode=deferred` 开启，不能改变默认成功语义。
+
+验收：
+- compile/save timing 能按 asset 展开，显示 skipped / executed / failed。
+- 不需要 compile/save 的任务 post operation 成本降为 0 或接近 0。
+- 需要 compile/save 的任务不会重复执行同一资产操作。
+- deferred 模式若实现，必须返回明确 pending post operation 状态，不能把未完成的 compile/save 伪装为已完成。
 
 ## 优先级排序
 
@@ -683,7 +746,10 @@ Editor 手动重启后已返回 UE nested read timing，`ue_bridge_router.route_
 8. R1/R2 读工具 GameThread 快照、后台格式化和 DTO/formatter 复用。
 9. P2-6 Review IO 批处理和异步化。
 10. P2-7 UE TaskRuntime 三层执行模型。
-11. P3-8 读工具同请求快照复用、纯数据缓存和 Bridge gap 收口，需以 timing 证据触发。
+11. P3-8 读工具同请求快照复用、纯数据缓存和 Bridge gap 收口，已完成 v0.5.0 范围；后续只按 timing 证据迁移 Component / Widget / ObjectProperty 等非 Logic 读工具。
+12. P4-9 CallFunction resolution preview facts 复用和 Editor 生命周期索引化。
+13. P5-10 GraphWrite `GraphMutationPlan` / `GraphWriteContext` 降低 cluster execute 成本。
+14. P6-11 compile/save `PostOperationPlanner` 条件化、去重和批处理。
 
 ## 度量要求
 
@@ -712,6 +778,7 @@ v0.5.0 实施前需要补齐分阶段耗时记录：
 3. CallFunction editor-session 级缓存必须有失效条件，否则可能在 Blueprint 或 ActionDatabase 更新后使用旧候选。
 4. Review IO 异步化不得破坏 review reject/apply 的可恢复性。
 5. UE 三层拆分必须保持 baseline snapshot 在 mutation 前完成，不能为了异步化改变 Review 证据语义。
+6. P4-P6 后续优化只能复用统一 service / DTO / planner 边界，不能在单个最慢样本或单个 node handler 中写特判。
 
 ## P0 preview -> execute(preview_token) 同进程重测
 
@@ -948,8 +1015,8 @@ compile-only 五轮隔离样本：
 
 ## 当前状态
 
-- 状态：P0-0 develop 诊断计时流程已开始实现；P0-1 32 hex token + Editor 生命周期 preview store 已完成首轮实现和跨 CLI 成功验证；P0-2/P0-3 已在代码路径落地并完成小样本补测；P1 compiler fast path / 输出裁剪已完成实现和测速；P2 TaskRuntime Review IO / 三层执行模型已完成实现和测速；Bridge 短连接响应后立即 close 已落地并完成读写同案例复测。
-- 读工具 R0-R5 已落地首轮实现：read_context payload bytes、UE route 子阶段 timing、Logic Snapshot DTO、pure formatter、request-local cache、pure-data cache policy 和 benchmark script 均已接入。
+- 状态：P0-0 develop 诊断计时流程已完成首轮实现；P0-1 32 hex token + Editor 生命周期 preview store 已完成首轮实现和跨 CLI 成功验证；P0-2/P0-3 已在代码路径落地并完成小样本补测；P1 compiler fast path / 输出裁剪已完成实现和测速；P2 TaskRuntime Review IO / 三层执行模型已完成实现和测速；Bridge 短连接响应后立即 close 已落地并完成读写同案例复测。
+- 读工具 P3-8 / R0-R5 已落地 v0.5.0 范围：read_context payload bytes、UE route 子阶段 timing、Logic Snapshot DTO、pure formatter、request-local cache、pure-data cache policy 和 benchmark script 均已接入；`logic_flow` 通过 `read_blueprint_logic_json` 复用同一 Snapshot DTO 链路。
 - 读工具 R0-R5 已完成 11 个 ReadSpec 的 `warmup=1`、`iterations=5` 成功测速，55/55 成功；Bridge close 修复后同样本 median wall 范围为 328.634-330.013ms，`slowest bridge` 范围为 222.467-233.793ms，UE route 仍为 0.016-0.454ms。
 - 用户关闭 Editor 后已改用 MCP lifecycle 重启并补测 11 个 ReadSpec，包含新增 `11_blueprint_logic_flow.json`；Bridge close 修复后 1.9s idle penalty 已消除，剩余主要是 CLI 启动、Bridge/UE 调度相位和实际 UE execute。
 - 已补测 P0 `preview -> execute(preview_token)` 同进程链路：17 个预装写 Spec 中 16 个 execute 成功，preview+execute 成功样本 avg 682.007ms、p50 517.478ms、max 1725.355ms；execute 阶段已出现 `preview_token.validate` 和 `preview_token.reuse_task_plan`。
@@ -959,6 +1026,7 @@ compile-only 五轮隔离样本：
 - `--develop` preview 已补 UE 原始返回透传：CLI 结果直接包含 `ue_preview_result` 以及 `dry_run`、`call_function_resolution_cache`、`runtime_facts` 诊断字段；普通非 develop 调用仍不返回这些字段。
 - P1 已落地：生产入口通过 task-core compiler service 统一选择策略，已通过 parity gate 的 TaskSpec 类型默认走 `ts_fast_path`；未覆盖类型继续走 `canonical_python`。
 - P2 已落地：UE TaskRuntime 现在返回 `pure_prepare`、`main_thread_commit`、`post_io` nested timing；Review record/archive/journal/debug 写入通过 PostIO batch 收口。
+- Bridge send/receive 拆分已落地：CLI 侧返回 connect/write/client_parse，UE Bridge nested 返回 receive、GameThread enqueue wait、route execute、response serialize；response socket write 因发生在同一 response body 序列化之后，不伪造同帧 timing。
 - 阶段计划已迁移到 `Develop/Plan/Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/`，主文档只保留总体结论和索引。
 - 普通路径保持无计时采集、无 `data.timing` 返回；CLI 诊断路径通过 `--develop` 对所有 CLI 工具显式开启，TaskSpec MCP/tool 诊断路径通过 `develop: true` 显式开启。
 - 后续实现必须保持高内聚、低耦合，避免把性能分支堆进单个 service 或 UI 入口。
@@ -1021,6 +1089,46 @@ compile-only 五轮隔离样本：
 3. 如果引入长生命周期 AgentFace daemon / CLI session，则可以复用单个 BridgeClient/socket，进一步绕开 CLI 启动和连接成本；这属于新的运行形态，需要单独设计生命周期和故障恢复。
 4. 非 ping 命令仍有 0-333ms 级 GameThread 调度相位等待；该项独立于 2s idle penalty，后续可通过 Bridge/UE timing 继续细分 queue wait、GameThread dispatch wait、route execute。
 
+### Bridge send/receive 阶段拆分验证
+
+测试时间：2026-05-20。该轮用于验证 `bridge_send_receive` 拆分字段是否能通过 `--develop` 返回，不作为最终速度对比样本；Editor 重新启动后的首次 `02_blueprint_logic_json.json` 存在 cold snapshot 成本。
+
+测试命令：`node .\AgentFaceService\cli\build\cli\index.js blueprinthelper_read_context --file BlueprintHelper\Develop\v0.4.4\ReadSpecs\BP_ThirdPersonCharacter_20260519\02_blueprint_logic_json.json --develop --format full`
+
+测试产物：`.tmp/bridge_timing_split/read_logic_json_develop.json`
+
+| 阶段 | duration_ms | 说明 |
+| --- | ---: | --- |
+| `read_context.bridge_transport.connect` | 1.982 | CLI/AgentFace 建立 TCP 连接。 |
+| `read_context.bridge_transport.write` | 0.363 | CLI/AgentFace 写入请求 frame。 |
+| `bridge.read_blueprint_logic_json.bridge.receive` | 0.015 | UE Bridge 读取请求 frame。 |
+| `bridge.read_blueprint_logic_json.bridge.game_thread_enqueue_wait` | 183.015 | Bridge IO 线程投递到 GameThread 后的等待。 |
+| `bridge.read_blueprint_logic_json.bridge.route_execute` | 1590.351 | Router 执行命令；该 cold 样本中 UE nested `snapshot_read=1589.933ms`。 |
+| `bridge.read_blueprint_logic_json.bridge.response_serialize` | 0.125 | UE Bridge 序列化 response，不含后续 socket 写出。 |
+| `read_context.bridge_transport.client_parse` | 0.041 | CLI/AgentFace 解析 response JSON。 |
+
+结论：
+- `read_context.bridge_send_receive` 已可拆出 CLI connect/write/client_parse，以及 UE Bridge receive、GameThread enqueue wait、route execute、response serialize。
+- `transport_timing` 作为 Bridge response 顶层字段返回，AgentFace 将其挂到 `data.timing.nested[].name = bridge.<command>`，不污染普通非 `--develop` 返回。
+- Server 端 response socket write 的真实耗时发生在 response JSON 序列化之后，无法精确写回同一个 response body。当前不返回伪造的 `socket_write` 数值，避免把 0ms 或近似值误判为真实阶段；如后续必须观测该项，应走 out-of-band debug event、trailer frame 或下一次请求携带上一帧 write timing。
+
+### Bridge accept 事件式等待验证
+
+测试时间：2026-05-20。该轮只验证 `Accept` 等待策略，将 UE Bridge server 的 50ms 固定 polling 改为 `WaitForPendingConnection` socket readiness 等待；为了避免影响用户全局性能，本轮不修改 Editor 全局 throttle、GameThread 调度或后台 CPU 策略。
+
+测试产物：`.tmp/bridge_accept_wait_fix/summary.json`
+
+对比基准来自上一轮 direct BridgeClient probe：`ping` 30 次 p50 `send_receive=37.189ms`、`ue_bridge_total=0.038ms`、`residual_wait=37.149ms`；`read_blueprint_logic_json` 30 次 p50 `send_receive=321.255ms`、`ue_bridge_total=282.568ms`、`residual_wait=38.951ms`。
+
+修复后 direct BridgeClient probe：
+
+| 场景 | 样本 | send_receive p50 | UE bridge total p50 | residual wait p50 | 结论 |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `ping` | 30 | 11.138ms | 0.040ms | 11.105ms | accept 侧固定 polling 残余等待由约 37ms 降到约 11ms。 |
+| `read_blueprint_logic_json` warm | 30 | 14.084ms | 2.822ms | 11.214ms | read 的 transport 残余等待同步下降；剩余耗时主要来自 UE route / GameThread 相位长尾，不属于本次 accept 改动。 |
+
+结论：`WaitForPendingConnection` 已移除 50ms polling 带来的固定等待相位，短连接 accept 残余等待降低约 70%。当前没有继续实现全局 CPU throttle / Editor 调度优化，避免为用户全局性能引入副作用。
+
 ## 读写同案例最终复测
 
 测试时间：2026-05-20。Editor 通过 MCP 启动；读写工具均走 CLI `--develop --format json`；该轮只记录成功工具调用的性能数据，工具性失败不写入结果。写链路的 `05_append_graph_review_body.json` 为 Review baseline 策略阻塞，属于样本状态，不纳入成功耗时统计。
@@ -1073,6 +1181,25 @@ compile-only 五轮隔离样本：
 - P1 图只比较 TaskSpec compiler 本身，不代表完整 execute 总耗时。
 - P2 图只展示 UE execute 内部拆分后的阶段占比，不与 P0/P1 端到端图混画。
 - 读链路图比较 11 个 ReadSpec 修复前后 `median_wall`，并保留修复后 `slowest_bridge / slowest_ue`，用于证明 1.9s idle penalty 已消除。
+
+优化前基准提升百分比：
+
+公式：`提升百分比 = (优化前耗时 - 完全优化后耗时) / 优化前耗时 * 100%`。
+
+| 指标 | 优化前 | 完全优化后 | 提升百分比 |
+| --- | ---: | ---: | ---: |
+| 写链路 preview+execute workflow avg | 2172.994ms | 683.281ms | 68.56% |
+| 写链路 preview+execute workflow p50 | 2209.757ms | 588.036ms | 73.39% |
+| 写链路 preview+execute workflow max | 3246.974ms | 1488.758ms | 54.15% |
+| 读链路 11 ReadSpec median wall 平均 | 1997.088ms | 329.448ms | 83.50% |
+
+```mermaid
+xychart
+    title "v0.5.0 完全优化后性能提升百分比（优化前为基准）"
+    x-axis ["write avg", "write p50", "write max", "read avg"]
+    y-axis "improvement_percent" 0 --> 100
+    bar [68.56, 73.39, 54.15, 83.50]
+```
 
 写链路端到端总耗时：
 

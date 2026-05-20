@@ -3,6 +3,7 @@ import {
   addTaskTimingMarker,
   addNestedTaskTiming,
   extractBridgeTiming,
+  extractBridgeTransportTiming,
   measureTaskTiming,
   measureTaskTimingAsync,
 } from '../../../task/service/task-timing.js';
@@ -46,9 +47,13 @@ export async function executeReadContext(
     withReadTimingPayload(buildBlueprintLogicReadPayload(input), context)
   ));
   const response = await measureTaskTimingAsync(timing, 'read_context.bridge_send_receive', () => (
-    context.bridge.sendCommand(route.command, payload)
+    context.bridge.sendCommand(route.command, payload, {
+      timing,
+      timingPrefix: 'read_context.bridge_transport',
+    })
   ));
   addReadPayloadSizeMarker(timing, 'read_context.bridge_payload_bytes', response.result);
+  addNestedTaskTiming(timing, `bridge.${route.command}`, extractBridgeTransportTiming(response));
   addNestedTaskTiming(timing, `ue.${route.command}`, extractBridgeTiming(response.result));
   if (!response.success) {
     return normalizeBridgeToolResult('read_context', response);
@@ -96,9 +101,13 @@ async function executeBridgeBackedReadContext(
     withReadTimingPayload(request.payload, context)
   ));
   const response = await measureTaskTimingAsync(timing, 'read_context.bridge_send_receive', () => (
-    context.bridge.sendCommand(request.command, payload)
+    context.bridge.sendCommand(request.command, payload, {
+      timing,
+      timingPrefix: 'read_context.bridge_transport',
+    })
   ));
   addReadPayloadSizeMarker(timing, 'read_context.bridge_payload_bytes', response.result);
+  addNestedTaskTiming(timing, `bridge.${request.command}`, extractBridgeTransportTiming(response));
   addNestedTaskTiming(timing, `ue.${request.command}`, extractBridgeTiming(response.result));
   if (!response.success) {
     return normalizeToolResult(response, 'read_context', {

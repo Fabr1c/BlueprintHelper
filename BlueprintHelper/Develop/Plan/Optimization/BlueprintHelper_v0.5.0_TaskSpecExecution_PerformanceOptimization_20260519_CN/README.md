@@ -8,17 +8,17 @@
 
 | 阶段 | 文档 | 覆盖范围 | 状态 |
 | --- | --- | --- | --- |
-| P0 | `P0_TaskSpecExecuteFastPath_ImplementationPlan_CN.md` | 端到端 timing、preview token 复用、`dry_run_mode`、CallFunction resolution cache | 计划已写 |
-| P1 | `P1_TaskSpecCompilerFastPath_ImplementationPlan_CN.md` | TaskSpec compiler fast path / Python worker、compile 输出裁剪、parity gate | 计划已写 |
-| P2 | `P2_TaskRuntimeReviewIO_ImplementationPlan_CN.md` | Review IO 批处理、TaskRuntime `PurePrepare -> MainThreadCommit -> PostIO` 三层拆分 | 计划已写 |
-| P3 | `P3_ReadPipelineSnapshotCache_ImplementationPlan_CN.md` | 读链路 GameThread 快照、后台格式化、request-local snapshot 复用、纯数据缓存、Bridge gap 细分 | 计划已写 |
+| P0 | `P0_TaskSpecExecuteFastPath_ImplementationPlan_CN.md` | 端到端 timing、preview token 复用、`dry_run_mode`、CallFunction resolution cache | 已完成首轮实现和测速 |
+| P1 | `P1_TaskSpecCompilerFastPath_ImplementationPlan_CN.md` | TaskSpec compiler fast path / Python worker、compile 输出裁剪、parity gate | 已完成首轮实现和测速 |
+| P2 | `P2_TaskRuntimeReviewIO_ImplementationPlan_CN.md` | Review IO 批处理、TaskRuntime `PurePrepare -> MainThreadCommit -> PostIO` 三层拆分 | 已完成首轮实现和测速 |
+| P3 | `P3_ReadPipelineSnapshotCache_ImplementationPlan_CN.md` | 读链路 GameThread 快照、DTO formatter、request-local snapshot 复用、纯数据缓存、Bridge gap 细分 | 已完成 v0.5.0 范围，执行证据见 `R0_R5_ReadPipeline_ExecutablePlan_CN.md` |
 
 ## 执行顺序
 
 1. 先执行 P0，保证 fast path 的行为边界、计时证据和 preview 复用正确。
 2. P1 只在 P0 timing 能证明 compiler 仍有收益时推进；如果 P0 后主要耗时仍在 Bridge / UE，则 P1 可只做输出裁剪和 parity gate。
 3. P2 在 P0 后推进，用 TaskRuntime 三层边界承接 Review IO 优化，不把异步和 IO 分支堆回 `RunTaskPlan`。
-4. P3 以读链路 timing 证据触发，优先处理 `bridge - UE route` gap 和 GameThread 快照/后台格式化，不做后台线程直接读 UObject。
+4. P3 已按读链路 timing 证据完成 v0.5.0 范围：Logic JSON / MD 迁移到 GameThread snapshot + DTO formatter，`logic_flow` 复用 `read_blueprint_logic_json` 后在 AgentFace 压缩生成，未做后台线程直接读 UObject。
 
 ## 通用约束
 
@@ -28,4 +28,3 @@
 - UI 不参与本性能链路的状态协调。
 - Review v2 是唯一 Review 架构基线；不新增 legacy fallback。
 - 普通 CLI/tool 调用不启动 timing、不返回 `data.timing`；只有 `--develop` 或 `develop: true` 返回诊断。
-
