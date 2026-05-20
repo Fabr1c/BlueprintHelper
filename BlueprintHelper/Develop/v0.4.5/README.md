@@ -4,7 +4,7 @@ Date: 2026-05-19
 
 Status: historical stable release note for the v0.4.5 capability surface.
 
-Superseded: current repository metadata is `v0.5.3` as of 2026-05-20. Use the repository root `README.md` for current version/install/upgrade entry points.
+Superseded: current repository metadata is `v0.5.4` as of 2026-05-20. Use the repository root `README.md` for current version/install/upgrade entry points.
 
 ## Release Positioning
 
@@ -137,7 +137,7 @@ Before packaging this release as v0.4.5 stable, update plugin metadata:
   - `VersionName`: `0.4.5`
   - `IsBetaVersion`: `false`
 
-This checklist is retained as historical v0.4.5 packaging context. Current repository metadata has since been bumped to `Version: 503`, `VersionName: 0.5.3`, and `IsBetaVersion: false`; do not use this file as the current packaging checklist.
+This checklist is retained as historical v0.4.5 packaging context. Current repository metadata has since been bumped to `Version: 504`, `VersionName: 0.5.4`, and `IsBetaVersion: false`; do not use this file as the current packaging checklist.
 
 ## Source Documents
 

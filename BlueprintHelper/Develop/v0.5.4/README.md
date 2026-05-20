@@ -1,4 +1,4 @@
-# BlueprintHelper v0.5.3 Release Sync
+# BlueprintHelper v0.5.4 Release Sync
 
 Date: 2026-05-20
 
@@ -6,18 +6,18 @@ Status: current repository metadata and Agent-facing entry point sync.
 
 ## Version Surfaces
 
-The current plugin version is `v0.5.3`.
+The current plugin version is `v0.5.4`.
 
 | Surface | Current value |
 | --- | --- |
-| Unreal plugin descriptor | `Version: 503`, `VersionName: 0.5.3`, `IsBetaVersion: false` |
-| `AgentFaceService/cli` package | `0.5.3` |
-| `AgentFaceService/task-core` package | `0.5.3` |
-| `AgentFaceService/mcp` package | `0.5.3` |
-| MCP server metadata | `0.5.3` |
-| Codex plugin manifest | `0.5.3` |
-| Claude plugin manifest | `0.5.3` |
-| Default settings version | `0.5.3` |
+| Unreal plugin descriptor | `Version: 504`, `VersionName: 0.5.4`, `IsBetaVersion: false` |
+| `AgentFaceService/cli` package | `0.5.4` |
+| `AgentFaceService/task-core` package | `0.5.4` |
+| `AgentFaceService/mcp` package | `0.5.4` |
+| MCP server metadata | `0.5.4` |
+| Codex plugin manifest | `0.5.4` |
+| Claude plugin manifest | `0.5.4` |
+| Default settings version | `0.5.4` |
 
 ## User Entry Points
 
@@ -39,7 +39,7 @@ Recommended upgrade entry:
 
 ## Capability Baseline
 
-v0.5.3 keeps the v0.4.5 stable Agent-facing surface and includes the v0.5.0 performance implementation line.
+v0.5.4 keeps the v0.4.5 stable Agent-facing surface and includes the v0.5.0 performance implementation line.
 
 - CLI-first ordinary asset work through TaskSpec, ReadContext, diagnostics, write sessions, task result queries, and debug bundle reads.
 - Template-first AgentGuide workflow for reducing TaskSpec and tool payload field errors.

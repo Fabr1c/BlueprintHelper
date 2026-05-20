@@ -15,7 +15,7 @@
 namespace
 {
 constexpr const TCHAR* BlueprintHelperSettingSchema = TEXT("BlueprintHelper.Setting.v1");
-constexpr const TCHAR* BlueprintHelperSettingVersion = TEXT("0.5.0");
+constexpr const TCHAR* BlueprintHelperSettingVersion = TEXT("0.5.4");
 
 struct FBlueprintHelperSettingPathSegment
 {
