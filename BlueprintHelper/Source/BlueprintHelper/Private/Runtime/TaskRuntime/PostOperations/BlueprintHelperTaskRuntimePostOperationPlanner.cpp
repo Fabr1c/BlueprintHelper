@@ -3,6 +3,7 @@
 
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 
 class FBlueprintHelperTaskRuntimePostOperationPlannerLocalUtils
 {
@@ -96,7 +97,7 @@ FString FBlueprintHelperTaskRuntimePostOperationPlanner::NormalizeAssetPath(cons
 	const int32 DotIndex = Normalized.Find(TEXT("."), ESearchCase::CaseSensitive, ESearchDir::FromEnd);
 	if (DotIndex != INDEX_NONE && (LastSlashIndex == INDEX_NONE || DotIndex > LastSlashIndex))
 	{
-		Normalized.LeftInline(DotIndex, EAllowShrinking::No);
+		FBlueprintHelperVersionCompat::LeftInlineNoShrink(Normalized, DotIndex);
 	}
 	return Normalized;
 }

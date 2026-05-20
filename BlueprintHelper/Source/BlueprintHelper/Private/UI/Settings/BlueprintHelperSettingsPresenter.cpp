@@ -21,6 +21,10 @@ static bool IsRuntimeConsumedSetting(const FString& DotPath)
 		TEXT("review.debug_bundle.retention"),
 		TEXT("debug.export_profile"),
 		TEXT("debug.contains_full_settings"),
+		TEXT("profiles.default.safety_profile"),
+		TEXT("safety.preview_required"),
+		TEXT("safety.write_approval_required"),
+		TEXT("safety.approval_bypass"),
 		TEXT("tool_clusters.signature.reference_context_max_results"),
 		TEXT("tool_clusters.signature.reference_context_search_scope"),
 		TEXT("tool_clusters.signature.reference_context_resolution_policy"),
@@ -302,6 +306,7 @@ void FBlueprintHelperSettingsPresenter::ReloadRows()
 	const FText DebugExportCategory = LOCTEXT("SettingsCategoryDebugExport", "调试导出");
 	const FText ToolOutputCategory = LOCTEXT("SettingsCategoryToolOutput", "工具输出");
 	const FText DeveloperToolClusterCategory = LOCTEXT("SettingsCategoryDeveloperToolCluster", "Developer ToolCluster");
+	const FText SafetyCategory = LOCTEXT("SettingsCategorySafety", "Safety");
 	const FText DeveloperUiCategory = LOCTEXT("SettingsCategoryDeveloperUi", "Developer UI");
 	const FText DeveloperGraphLayoutCategory = LOCTEXT("SettingsCategoryDeveloperGraphLayout", "Developer GraphLayout");
 
@@ -379,6 +384,36 @@ void FBlueprintHelperSettingsPresenter::ReloadRows()
 		DebugExportCategory,
 		LOCTEXT("DebugContainsFullSettingsLabel", "导出完整设置"),
 		LOCTEXT("DebugContainsFullSettingsHint", "控制 DebugBundle 是否包含完整设置快照。")));
+	Rows.Add(MakeChoiceRow(
+		TEXT("profiles.default.safety_profile"),
+		SafetyCategory,
+		LOCTEXT("SafetyProfileLabel", "安全等级"),
+		LOCTEXT("SafetyProfileHint", "BlueprintHelper 写入授权使用的运行时安全等级。AutoRepair 可跳过写请求弹窗。"),
+		{
+			{ TEXT("ReadOnly"), LOCTEXT("SafetyProfileReadOnly", "只读") },
+			{ TEXT("Conservative"), LOCTEXT("SafetyProfileConservative", "保守") },
+			{ TEXT("Standard"), LOCTEXT("SafetyProfileStandard", "标准") },
+			{ TEXT("AutoRepair"), LOCTEXT("SafetyProfileAutoRepair", "自动修复") }
+		},
+		true));
+	Rows.Add(MakeBooleanRow(
+		TEXT("safety.preview_required"),
+		SafetyCategory,
+		LOCTEXT("SafetyPreviewRequiredLabel", "需要 Preview"),
+		LOCTEXT("SafetyPreviewRequiredHint", "开启后，写入执行前必须先通过 Preview。"),
+		true));
+	Rows.Add(MakeBooleanRow(
+		TEXT("safety.write_approval_required"),
+		SafetyCategory,
+		LOCTEXT("SafetyWriteApprovalRequiredLabel", "需要写入批准"),
+		LOCTEXT("SafetyWriteApprovalRequiredHint", "开启后，写入执行前需要弹窗批准。"),
+		true));
+	Rows.Add(MakeBooleanRow(
+		TEXT("safety.approval_bypass"),
+		SafetyCategory,
+		LOCTEXT("SafetyApprovalBypassLabel", "跳过批准弹窗"),
+		LOCTEXT("SafetyApprovalBypassHint", "允许受信任的 AutoRepair 流程跳过写请求弹窗。"),
+		true));
 	Rows.Add(MakeIntegerRow(
 		TEXT("tool_clusters.signature.reference_context_max_results"),
 		ToolOutputCategory,

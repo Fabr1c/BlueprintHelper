@@ -959,7 +959,6 @@ function Ensure-ProjectAgentProfile {
   }
 
   $ActiveProfile = Ensure-JsonObjectProperty -Object $Profile -Name 'active_profile'
-  Set-JsonProperty -Object $ActiveProfile -Name 'safety_profile' -Value 'Conservative'
   Set-JsonProperty -Object $ActiveProfile -Name 'missing_capability_policy' -Value 'stop_and_report'
   Set-JsonProperty -Object $ActiveProfile -Name 'auto_save_policy' -Value 'never_auto_save'
 

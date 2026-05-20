@@ -937,7 +937,7 @@ bool FBlueprintHelperRequestValidator::ValidateAuthorization(
 		return true;
 	}
 
-	if (IsWriteCommand(Request.Command) && FBlueprintHelperSafetyProfileResolver::IsAutoRepair())
+	if (IsWriteCommand(Request.Command) && FBlueprintHelperSafetyProfileResolver::IsApprovalBypassEnabled())
 	{
 		return true;
 	}
@@ -1013,7 +1013,7 @@ bool FBlueprintHelperRequestValidator::IsHighRiskCommand(const FString& Command)
 
 bool FBlueprintHelperRequestValidator::IsHighRiskCommandEnabled()
 {
-	if (FBlueprintHelperSafetyProfileResolver::IsAutoRepair())
+	if (FBlueprintHelperSafetyProfileResolver::IsApprovalBypassEnabled())
 	{
 		return true;
 	}

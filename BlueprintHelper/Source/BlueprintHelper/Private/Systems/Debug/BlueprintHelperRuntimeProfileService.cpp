@@ -76,7 +76,7 @@ FBlueprintHelperWritePermissionState FBlueprintHelperRuntimeProfileService::Buil
 		return State;
 	}
 
-	if (ResolvedProfile == EBlueprintHelperSafetyProfile::AutoRepair)
+	if (FBlueprintHelperSafetyProfileResolver::IsApprovalBypassEnabled())
 	{
 		State.bEnabled = true;
 		State.Reason = EBlueprintHelperWritePermissionReason::Ok;
@@ -108,8 +108,7 @@ FBlueprintHelperWritePermissionState FBlueprintHelperRuntimeProfileService::Buil
 FBlueprintHelperRiskCommandState FBlueprintHelperRuntimeProfileService::BuildRiskCommandState()
 {
 	FBlueprintHelperRiskCommandState State;
-	const EBlueprintHelperSafetyProfile ResolvedProfile = BuildActiveProfileState().SafetyProfile;
-	if (ResolvedProfile == EBlueprintHelperSafetyProfile::AutoRepair)
+	if (FBlueprintHelperSafetyProfileResolver::IsApprovalBypassEnabled())
 	{
 		State.bEnabled = true;
 		State.Reason = EBlueprintHelperRiskCommandReason::Ok;
@@ -148,34 +147,6 @@ FBlueprintHelperActiveProfileState FBlueprintHelperRuntimeProfileService::BuildA
 	State.SafetyProfile = EBlueprintHelperSafetyProfile::Conservative;
 	State.MissingCapabilityPolicy = EBlueprintHelperMissingCapabilityPolicy::StopAndReport;
 	State.SafetyProfile = FBlueprintHelperSafetyProfileResolver::ResolveSafetyProfile();
-	return State;
-
-	// 尝试从插件配置中读取
-	const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("BlueprintHelper"));
-	if (Plugin.IsValid())
-	{
-		const FString ConfigPath = Plugin->GetBaseDir() / TEXT("Config/FilterPlugin.ini");
-		if (FPaths::FileExists(ConfigPath))
-		{
-			FString ProfileStr;
-			if (GConfig->GetString(TEXT("BlueprintHelper"), TEXT("SafetyProfile"), ProfileStr, ConfigPath))
-			{
-				if (ProfileStr.Equals(TEXT("readonly"), ESearchCase::IgnoreCase))
-				{
-					State.SafetyProfile = EBlueprintHelperSafetyProfile::ReadOnly;
-				}
-				else if (ProfileStr.Equals(TEXT("standard"), ESearchCase::IgnoreCase))
-				{
-					State.SafetyProfile = EBlueprintHelperSafetyProfile::Standard;
-				}
-				else if (ProfileStr.Equals(TEXT("autorepair"), ESearchCase::IgnoreCase))
-				{
-					State.SafetyProfile = EBlueprintHelperSafetyProfile::AutoRepair;
-				}
-			}
-		}
-	}
-
 	return State;
 }
 

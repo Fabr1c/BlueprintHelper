@@ -13,11 +13,7 @@
 #include "Widgets/SWindow.h"
 
 #if PLATFORM_WINDOWS
-#include "Windows/AllowWindowsPlatformTypes.h"
-#include "Windows/PreWindowsApi.h"
-#include <Windows.h>
-#include "Windows/PostWindowsApi.h"
-#include "Windows/HideWindowsPlatformTypes.h"
+#include "Windows/WindowsHWrapper.h"
 #endif
 
 namespace
@@ -236,7 +232,7 @@ TOptional<FBlueprintHelperWriteSessionGrant> FBlueprintHelperWriteAuthorizationS
 	const FBlueprintHelperWriteSessionRequest& Request,
 	FString& OutError)
 {
-	if (FBlueprintHelperSafetyProfileResolver::IsAutoRepair())
+	if (FBlueprintHelperSafetyProfileResolver::IsApprovalBypassEnabled())
 	{
 		return CreateGrant(Request);
 	}

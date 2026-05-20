@@ -15,3 +15,4 @@ This is the canonical shared documentation location for `AgentFaceService`. It d
 - `Install_CLI_QuickStart.md`: installation and first-run setup.
 - `TaskSpec_CLI_QuickStart.md`: TaskSpec-first CLI workflow.
 - `CLI_Tools_API_Reference.md`: CLI tool surface and boundaries.
+- `TaskSpec_UE_Editor_Capability_Matrix_20260521_CN.md`: current UE Editor operations available through AgentFace-authored `BlueprintHelper.TaskSpec.v1`.

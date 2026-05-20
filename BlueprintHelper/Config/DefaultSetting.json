@@ -33,6 +33,7 @@
       "runtime.bridge",
       "runtime.task_runtime.cache",
       "runtime.task_runtime.execution_policy",
+      "safety",
       "review.version",
       "review.evidence_required",
       "review.artifact",
@@ -59,6 +60,11 @@
       "safety_profile": "standard",
       "description": "v0.5.4 performance baseline"
     }
+  },
+  "safety": {
+    "preview_required": true,
+    "write_approval_required": true,
+    "approval_bypass": false
   },
   "ui": {
     "main_window": {

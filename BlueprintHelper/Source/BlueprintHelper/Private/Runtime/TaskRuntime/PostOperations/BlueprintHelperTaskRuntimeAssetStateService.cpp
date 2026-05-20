@@ -2,6 +2,7 @@
 
 #include "Engine/Blueprint.h"
 #include "Misc/PackageName.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "UObject/Package.h"
 #include "UObject/UObjectGlobals.h"
 
@@ -13,7 +14,7 @@ FString FBlueprintHelperTaskRuntimeAssetStateService::NormalizePackageName(const
 	const int32 DotIndex = PackageName.Find(TEXT("."), ESearchCase::CaseSensitive, ESearchDir::FromEnd);
 	if (DotIndex != INDEX_NONE && (LastSlashIndex == INDEX_NONE || DotIndex > LastSlashIndex))
 	{
-		PackageName.LeftInline(DotIndex, EAllowShrinking::No);
+		FBlueprintHelperVersionCompat::LeftInlineNoShrink(PackageName, DotIndex);
 	}
 	return PackageName;
 }

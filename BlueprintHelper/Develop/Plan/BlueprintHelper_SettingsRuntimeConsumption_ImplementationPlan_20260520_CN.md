@@ -42,8 +42,8 @@
 
 | agent-profile 字段 | 是否适合合并到 setting | 结论 |
 | --- | --- | --- |
-| `active_profile.safety_profile` | 是，但需要迁移 resolver | 可与 `setting.profiles.*.safety_profile` 统一；本轮先保持 agent-profile 作为 AutoRepair 来源，并已让 AutoRepair 影响 high-risk command 判定。 |
-| `safety.preview_required` / `write_approval_required` / `approval_bypass` | 是 | 属于 UE runtime 授权策略，后续可进入 `setting.runtime` 或 `setting.safety` 域。 |
+| `active_profile.safety_profile` | 已迁移 | 不再写入 agent-profile；运行时读取 `setting.active_profile` 指向的 `setting.profiles.<name>.safety_profile`。 |
+| `safety.preview_required` / `write_approval_required` / `approval_bypass` | 已迁移 | 不再写入 agent-profile；运行时读取 `setting.safety.*`，`approval_bypass=true` 或 `write_approval_required=false` 会跳过写请求弹窗和 high-risk env gate。 |
 | `active_profile.auto_save_policy` | 部分适合 | 如果影响 TaskRuntime save 默认值，可映射到 `runtime.task_runtime.execution_policy.should_save`；如果只是 Agent 行为偏好，则保留在 agent-profile / UserPreferences。 |
 | `active_profile.missing_capability_policy` / `agent.fallback_when_task_tools_unavailable` | 不建议 | 这是 Agent 决策策略，不是 UE runtime 配置。 |
 | `agent.agent_entry_mode` | 不建议 | 属于 Agent-facing workflow 入口策略。 |

@@ -2,70 +2,14 @@
 
 #include "Systems/Config/BlueprintHelperSafetyProfileResolver.h"
 
-#include "Dom/JsonObject.h"
-#include "Interfaces/IPluginManager.h"
-#include "Misc/ConfigCacheIni.h"
-#include "Misc/FileHelper.h"
-#include "Misc/Paths.h"
-#include "Serialization/JsonReader.h"
-#include "Serialization/JsonSerializer.h"
-#include "Systems/Config/BlueprintHelperProjectConfigPaths.h"
+#include "Systems/Config/BlueprintHelperRuntimeSettingResolver.h"
 
 namespace
 {
-bool TryReadNestedString(
-	const TSharedPtr<FJsonObject>& Root,
-	const FString& ObjectField,
-	const FString& StringField,
-	FString& OutValue)
+FString BuildActiveProfileSafetyPath(const FString& ActiveProfile)
 {
-	if (!Root.IsValid())
-	{
-		return false;
-	}
-
-	const TSharedPtr<FJsonObject>* Nested = nullptr;
-	if (!Root->TryGetObjectField(ObjectField, Nested) || !Nested || !Nested->IsValid())
-	{
-		return false;
-	}
-
-	return (*Nested)->TryGetStringField(StringField, OutValue) && !OutValue.IsEmpty();
-}
-
-bool TryReadProjectAgentProfileSafetyProfile(FString& OutProfile)
-{
-	const FString ProfilePath = FBlueprintHelperProjectConfigPaths::GetAgentProfilePath();
-	FString JsonText;
-	if (!FFileHelper::LoadFileToString(JsonText, *ProfilePath))
-	{
-		return false;
-	}
-
-	TSharedPtr<FJsonObject> Root;
-	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonText);
-	if (!FJsonSerializer::Deserialize(Reader, Root) || !Root.IsValid())
-	{
-		return false;
-	}
-
-	return TryReadNestedString(Root, TEXT("active_profile"), TEXT("safety_profile"), OutProfile)
-		|| TryReadNestedString(Root, TEXT("safety"), TEXT("safety_profile"), OutProfile);
-}
-
-bool TryReadPluginConfigSafetyProfile(FString& OutProfile)
-{
-	const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("BlueprintHelper"));
-	if (!Plugin.IsValid())
-	{
-		return false;
-	}
-
-	const FString ConfigPath = Plugin->GetBaseDir() / TEXT("Config/FilterPlugin.ini");
-	return FPaths::FileExists(ConfigPath)
-		&& GConfig
-		&& GConfig->GetString(TEXT("BlueprintHelper"), TEXT("SafetyProfile"), OutProfile, ConfigPath)
-		&& !OutProfile.IsEmpty();
+	const FString SanitizedProfile = ActiveProfile.IsEmpty() ? FString(TEXT("default")) : ActiveProfile;
+	return FString::Printf(TEXT("profiles.%s.safety_profile"), *SanitizedProfile);
 }
 
 EBlueprintHelperSafetyProfile ParseSafetyProfile(const FString& Profile)
@@ -90,18 +34,44 @@ EBlueprintHelperSafetyProfile ParseSafetyProfile(const FString& Profile)
 
 EBlueprintHelperSafetyProfile FBlueprintHelperSafetyProfileResolver::ResolveSafetyProfile()
 {
-	FString Profile;
-	if (TryReadProjectAgentProfileSafetyProfile(Profile) || TryReadPluginConfigSafetyProfile(Profile))
-	{
-		return ParseSafetyProfile(Profile);
-	}
-
-	return EBlueprintHelperSafetyProfile::Conservative;
+	const FString ActiveProfile = FBlueprintHelperRuntimeSettingResolver::GetString(TEXT("active_profile"), TEXT("default"));
+	const FString SafetyProfile = FBlueprintHelperRuntimeSettingResolver::GetString(
+		BuildActiveProfileSafetyPath(ActiveProfile),
+		TEXT("standard"));
+	return ParseSafetyProfile(SafetyProfile);
 }
 
 FString FBlueprintHelperSafetyProfileResolver::ResolveSafetyProfileString()
 {
 	return SafetyProfileToString(ResolveSafetyProfile());
+}
+
+bool FBlueprintHelperSafetyProfileResolver::IsPreviewRequired()
+{
+	return FBlueprintHelperRuntimeSettingResolver::GetBool(TEXT("safety.preview_required"), true);
+}
+
+bool FBlueprintHelperSafetyProfileResolver::IsWriteApprovalRequired()
+{
+	const bool bDefaultWriteApprovalRequired = ResolveSafetyProfile() != EBlueprintHelperSafetyProfile::AutoRepair;
+	return FBlueprintHelperRuntimeSettingResolver::GetBool(
+		TEXT("safety.write_approval_required"),
+		bDefaultWriteApprovalRequired);
+}
+
+bool FBlueprintHelperSafetyProfileResolver::IsApprovalBypassEnabled()
+{
+	const EBlueprintHelperSafetyProfile Profile = ResolveSafetyProfile();
+	if (Profile == EBlueprintHelperSafetyProfile::ReadOnly)
+	{
+		return false;
+	}
+
+	const bool bDefaultApprovalBypass = Profile == EBlueprintHelperSafetyProfile::AutoRepair;
+	const bool bApprovalBypass = FBlueprintHelperRuntimeSettingResolver::GetBool(
+		TEXT("safety.approval_bypass"),
+		bDefaultApprovalBypass);
+	return bApprovalBypass || !IsWriteApprovalRequired();
 }
 
 bool FBlueprintHelperSafetyProfileResolver::IsAutoRepair()
