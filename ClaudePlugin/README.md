@@ -157,7 +157,7 @@ BlueprintHelper Bridge uses object-first responses. Large raw graph payloads sho
 
 ### MCP Lifecycle / Compatibility Behavior
 
-- `blueprint_open_editor` and `blueprint_close_editor` are global MCP lifecycle companion commands for Agent-owned editor lifecycle. CLI lifecycle aliases are compatibility/manual fallback only.
+- `blueprint_open_editor` and `blueprint_close_editor` are global MCP lifecycle companion commands for Agent-owned editor lifecycle. Compatibility also uses the global MCP lifecycle tools, not CLI lifecycle aliases.
 - Deprecated MCP ordinary tools are not fallback paths; do not add or run tests for them.
 - `blueprint_export_to_json` may still return `raw_json_ref` as a resource link in compatibility paths.
 - RawJson resource handling remains for historical fixtures and recovery workflows.
