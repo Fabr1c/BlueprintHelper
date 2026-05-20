@@ -79,7 +79,10 @@ FBlueprintHelperDiagnosticsData FBlueprintHelperDiagnosticsService::RunRuntimeDi
 	// Risk Command
 	// 默认禁用，需。BLUEPRINTHELPER_ENABLE_HIGH_RISK_COMMANDS=1
 	const FString RiskEnv = FPlatformMisc::GetEnvironmentVariable(TEXT("BLUEPRINTHELPER_ENABLE_HIGH_RISK_COMMANDS")).ToLower();
-	const bool bRiskEnabled = RiskEnv == TEXT("1") || RiskEnv == TEXT("true") || RiskEnv == TEXT("yes");
+	const bool bRiskEnabled = SafetyProfile == EBlueprintHelperSafetyProfile::AutoRepair
+		|| RiskEnv == TEXT("1")
+		|| RiskEnv == TEXT("true")
+		|| RiskEnv == TEXT("yes");
 
 	if (bRiskEnabled)
 	{

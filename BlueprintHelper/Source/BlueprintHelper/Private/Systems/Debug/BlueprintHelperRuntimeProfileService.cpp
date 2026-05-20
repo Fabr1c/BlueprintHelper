@@ -7,6 +7,7 @@
 #include "Systems/Config/BlueprintHelperSafetyProfileResolver.h"
 #include "Interfaces/IPluginManager.h"
 #include "Misc/ConfigCacheIni.h"
+#include "HAL/PlatformMisc.h"
 #include "HAL/PlatformProcess.h"
 
 FBlueprintHelperRuntimeProfileService::FBlueprintHelperRuntimeProfileService(TFunction<bool()> InBridgeRunningProvider)
@@ -107,6 +108,21 @@ FBlueprintHelperWritePermissionState FBlueprintHelperRuntimeProfileService::Buil
 FBlueprintHelperRiskCommandState FBlueprintHelperRuntimeProfileService::BuildRiskCommandState()
 {
 	FBlueprintHelperRiskCommandState State;
+	const EBlueprintHelperSafetyProfile ResolvedProfile = BuildActiveProfileState().SafetyProfile;
+	if (ResolvedProfile == EBlueprintHelperSafetyProfile::AutoRepair)
+	{
+		State.bEnabled = true;
+		State.Reason = EBlueprintHelperRiskCommandReason::Ok;
+		return State;
+	}
+
+	const FString RiskEnv = FPlatformMisc::GetEnvironmentVariable(TEXT("BLUEPRINTHELPER_ENABLE_HIGH_RISK_COMMANDS")).ToLower();
+	if (RiskEnv == TEXT("1") || RiskEnv == TEXT("true") || RiskEnv == TEXT("yes"))
+	{
+		State.bEnabled = true;
+		State.Reason = EBlueprintHelperRiskCommandReason::Ok;
+		return State;
+	}
 
 	if (!FBlueprintHelperWriteAuthorizationService::Get().HasActiveSession())
 	{

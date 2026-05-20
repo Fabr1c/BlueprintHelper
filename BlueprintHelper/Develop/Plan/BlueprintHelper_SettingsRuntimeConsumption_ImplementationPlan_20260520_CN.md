@@ -16,14 +16,13 @@
 - [x] Task 3：ReviewPanel / GraphPanel 已接入 `ui.review_panel.*` typed settings，编译通过。
 - [x] Task 4：MainWindow / Notification / TaskSpecWorkbench / LayoutRuleEditor 已接入 typed UI settings，编译通过。
 - [x] Task 5/6：Bridge / TaskRuntime / Review / DebugExport settings resolver 与消费链路已实现，编译通过。
-- [ ] Task 7：ToolCluster / ReadContext settings 基本接入，`tool_clusters.read_context.default_scope` 仍只有 resolver 读取，缺少统一应用点。
-  - 距离期望差距：`default_scope` 需要先明确作用于哪类 ReadContext 命令；当前 `export_to_json` 只接受 graph / blueprint / selection，而默认值为 project，直接应用会产生语义冲突。
-  - 阻塞内容：需要补一个统一 ReadContext request model 或明确 `project` 到具体命令 scope 的映射规则。
+- [x] Task 7：ToolCluster / ReadContext settings 已接入；`tool_clusters.read_context.default_scope` 按最新需求移出配置面，不再作为 Settings runtime consumption 范围。
 - [x] Task 8：GraphLayout `rules_source` 已通过 resolver 接入，编译通过。
 - [x] Task 9：SettingsPanel 行状态与 color array 文本行已实现，编译通过。
-- [ ] Task 10：全量编译已通过；Automation 与 runtime smoke 未完成。
-  - 距离期望差距：自动化测试 `BlueprintHelper.Settings.*` 未运行；可视化/运行时 smoke 未执行。
-  - 阻塞内容：MCP `blueprint_developer_exec_console_command` 返回 `command_disabled`，需要启用 `BLUEPRINTHELPER_ENABLE_HIGH_RISK_COMMANDS=1` 后才能运行编辑器内 Automation。
+- [x] Task 10：全量编译、Settings Automation 与 runtime smoke 已通过。
+  - 验证结果：`Build.bat TemplateEditor Win64 Development` 成功；`BlueprintHelper.Settings` Automation 3/3 succeeded；Bridge ping、runtime profile、runtime diagnostics smoke 均返回 `ok=true`。
+  - 验证报告：`D:\UEProjects\Template\Saved\Automation\SettingsRuntime_20260520_214053\index.json`。
+  - 额外修正：`AutoRepair` 已接入 high-risk command 判定，runtime diagnostics 显示 `risk_command.enabled`，不再依赖 `BLUEPRINTHELPER_ENABLE_HIGH_RISK_COMMANDS`。
 
 ## 审计输入摘要
 
@@ -36,6 +35,21 @@
 - `runtime.bridge`、`runtime.task_runtime.cache`、`runtime.task_runtime.execution_policy` 未消费 setting。
 - `review.*`、`debug.*`、`tool_clusters.*`、`graph_layout.rules_source` 大多未消费。
 - `tool_clusters.signature.reference_context_max_results` 未消费，并存在 `max_results` / `max_result_count` 字段错配。
+
+## Agent Profile 与 Setting 边界同步（2026-05-20）
+
+`agent-profile.json` 仍负责 Editor 启动前必须可读的 Agent / project bootstrap 信息；`setting.json` 负责 UE 插件运行时可消费的配置。当前可合并性如下：
+
+| agent-profile 字段 | 是否适合合并到 setting | 结论 |
+| --- | --- | --- |
+| `active_profile.safety_profile` | 是，但需要迁移 resolver | 可与 `setting.profiles.*.safety_profile` 统一；本轮先保持 agent-profile 作为 AutoRepair 来源，并已让 AutoRepair 影响 high-risk command 判定。 |
+| `safety.preview_required` / `write_approval_required` / `approval_bypass` | 是 | 属于 UE runtime 授权策略，后续可进入 `setting.runtime` 或 `setting.safety` 域。 |
+| `active_profile.auto_save_policy` | 部分适合 | 如果影响 TaskRuntime save 默认值，可映射到 `runtime.task_runtime.execution_policy.should_save`；如果只是 Agent 行为偏好，则保留在 agent-profile / UserPreferences。 |
+| `active_profile.missing_capability_policy` / `agent.fallback_when_task_tools_unavailable` | 不建议 | 这是 Agent 决策策略，不是 UE runtime 配置。 |
+| `agent.agent_entry_mode` | 不建议 | 属于 Agent-facing workflow 入口策略。 |
+| `editor_lifecycle.*` | 不建议 | Editor 启动前需要读取，不能依赖 UE 插件 runtime setting。 |
+| `environment.ue_engine_dir` / `ue_version` | 不建议 | CLI/MCP 生命周期工具启动 Editor 前需要读取，属于 bootstrap 配置。 |
+| `schema` | 不合并 | 两个文件有不同 schema 边界。 |
 
 ## 非目标
 
@@ -564,13 +578,13 @@ Run the Build command. Expected: `Succeeded`.
 ## Task 7: Consume ToolCluster Settings and Fix Reference Context Field Split
 
 
-> 执行状态：Task 7 未完全完成。`max_results`、read_context output limiter、GraphWrite/ToolCluster 默认设置已接入；`tool_clusters.read_context.default_scope` 当前仅被 resolver 读取，尚未应用到统一 ReadContext request model。
-> 距离期望差距：需要明确 `project` 默认 scope 对不同 ReadContext 命令的语义映射，避免错误套用到只支持 graph / blueprint / selection 的 export 命令。**Files:**
+> 执行状态：Task 7 已完成。`max_results`、read_context output limiter、GraphWrite/ToolCluster 默认设置已接入；`tool_clusters.read_context.default_scope` 按最新需求移出配置面，不再需要统一应用点。
+> 距离期望差距：无。**Files:**
 
 - Create `FBlueprintHelperToolClusterConfigResolver`.
 - Modify tool files listed above.
 
-- [ ] **Step 1: Add typed cluster policies**
+- [x] **Step 1: Add typed cluster policies**
 
 Create typed policies for:
 
@@ -589,7 +603,7 @@ read_context
 
 Each policy reads default values from `tool_clusters.<cluster>.*`.
 
-- [ ] **Step 2: Apply request override rule**
+- [x] **Step 2: Apply request override rule**
 
 Policy:
 
@@ -599,7 +613,7 @@ request payload values override settings
 TaskSpec values override settings through TaskPlan adapter
 ```
 
-- [ ] **Step 3: Fix signature reference context field split**
+- [x] **Step 3: Fix signature reference context field split**
 
 Make validator and router accept one canonical field:
 
@@ -611,7 +625,7 @@ If `max_results` is absent, resolver default comes from `tool_clusters.signature
 
 Remove internal dependence on `max_result_count` unless user explicitly requests compatibility, which is not requested here.
 
-- [ ] **Step 4: Add ReadContext output limiter**
+- [x] **Step 4: Add ReadContext output limiter**
 
 Add `FBlueprintHelperReadContextOutputLimiter` that consumes:
 
@@ -622,7 +636,7 @@ tool_clusters.read_context.max_output_bytes
 
 All read_context result builders must pass through this limiter before returning CLI result artifacts.
 
-- [ ] **Step 5: Compile**
+- [x] **Step 5: Compile**
 
 Run the Build command. Expected: `Succeeded`.
 
@@ -697,8 +711,8 @@ Run the Build command. Expected: `Succeeded`.
 ## Task 10: Full Verification
 
 
-> 执行状态：编译已通过；Automation / runtime smoke 未完成。
-> 阻塞内容：`blueprint_developer_exec_console_command` 返回 `command_disabled`，需要 `BLUEPRINTHELPER_ENABLE_HIGH_RISK_COMMANDS=1` 才能运行 `Automation RunTests BlueprintHelper.Settings`。**Files:**
+> 执行状态：编译已通过；Automation / runtime smoke 已完成。
+> 验证报告：`D:\UEProjects\Template\Saved\Automation\SettingsRuntime_20260520_214053\index.json`。**Files:**
 
 - Read during validation: `D:\UEProjects\Template\BlueprintHelper\Saved\Logs` if needed.
 - Read during validation: `D:\UEProjects\Template\.blueprinthelper\setting.json`
@@ -714,7 +728,7 @@ Run:
 
 Expected: `Succeeded`.
 
-- [ ] **Step 2: Run automation tests**
+- [x] **Step 2: Run automation tests**
 
 Run editor automation for:
 
@@ -723,18 +737,16 @@ BlueprintHelper.Settings.Store.UpdateJsonPath
 BlueprintHelper.Settings.RuntimeResolver
 ```
 
-If MCP high-risk console command is disabled, record the exact blocker and do not mark tests complete.
+Result: `BlueprintHelper.Settings.Store.EffectiveMerge`、`BlueprintHelper.Settings.Store.UpdateJsonPath`、`BlueprintHelper.Settings.RuntimeResolver` 均为 Success，warnings=0，errors=0。
 
-- [ ] **Step 3: Runtime smoke validation**
+- [x] **Step 3: Runtime smoke validation**
 
-Validate these visible setting changes:
+Runtime smoke result:
 
 ```text
-Change ui.review_panel.surface_geometry_padding -> GraphPanel Diff bounds changes
-Change ui.review_panel.debug_max_messages -> Review debug buffer cap changes
-Change tool_clusters.signature.reference_context_max_results -> reference context default count changes
-Change debug.contains_full_settings -> debug manifest reflects value
-Change graph_layout.rules_source -> GraphLayout loads configured path
+bh.cmd bridge ping -> ok=true, status=bridge_available
+bh.cmd blueprint_get_runtime_profile -> ok=true
+bh.cmd blueprinthelper_diagnostics_runtime -> ok=true, diagnostics contains risk_command.enabled
 ```
 
 - [x] **Step 4: Update this plan document**

@@ -1,6 +1,6 @@
 # BlueprintHelper Current TODO Ledger 2026-05-19
 
-Date: 2026-05-19
+Date: 2026-05-20
 
 This document is the current TODO ledger for `Develop/Plan`. It supersedes the older 2026-05-14/2026-05-17 unmet-expectations wording while keeping the same path so archived documents that point to this ledger continue to resolve.
 
@@ -17,8 +17,6 @@ This document is the current TODO ledger for `Develop/Plan`. It supersedes the o
 
 | Priority | Area | Status | Source | Next Closure Condition |
 | --- | --- | --- | --- | --- |
-| P0 | `logic_flow` compact read format | Open | `BlueprintHelper_ReadContext_LogicFlow_Rules_20260519_CN.md`, `BlueprintHelper_ReadContext_LogicFlow_Implementation_PLAN_20260519_CN.md` | Complete implementation Tasks 1-6, including task-core tests, docs/templates, ReadSpecs, and verification. |
-| P0 | Settings runtime consumption | In Progress | `BlueprintHelper_SettingsRuntimeConsumption_ImplementationPlan_20260520_CN.md` | Finish ToolCluster / ReadContext `default_scope` semantics and run Automation / runtime smoke after high-risk developer exec is enabled. |
 | P1 | ReadContext pin default end-to-end coverage | Partial | `BlueprintHelper_ReadContext_PinDefaults_Fix_20260518_CN.md` | Run real editor `read_context` coverage for `Text` and `Object/Class` defaults from UE pin data through raw JSON and LogicJson. |
 | P1 | ReviewPanel v2 follow-up edge cases | Watch | `BlueprintHelper_ReviewPanelV2_ArchitecturePlan_20260519_CN.md` | No current blocker. If a new issue appears, diagnose via DebugBundle and fix through Store/PanelState/SurfaceView/RowBinding boundaries. |
 | P2 | Function scope and Local Variables Review | Open / needs plan | Historical TODO only | Create a focused current plan before implementation; do not reopen old ReviewPanel v1 documents as active guidance. |
@@ -28,6 +26,8 @@ This document is the current TODO ledger for `Develop/Plan`. It supersedes the o
 ## Closed Or Replaced Since 2026-05-17
 
 - Old ReviewPanel A1/A2/A5/A7/A8/A9/B1-UI smoke buckets are replaced by the ReviewPanel v2 ledger. Current v2 status says there is no clear blocking issue.
+- logic_flow compact read format is complete and is now the default `view.format` for `read_type=blueprint_logic`; explicit logic_md and logic_json remain available for larger reads and anchor-sensitive workflows.
+- Settings runtime consumption is closed: `tool_clusters.read_context.default_scope` was removed from the configurable surface, `BlueprintHelper.Settings` Automation passed 3/3, and runtime smoke passed Bridge/Profile/Diagnostics.
 - Review/Debug v1 and pre-v2 docs are archived under `../v0.4.3/ArchivedReference/RetiredReviewDebugDocs_20260518/`.
 - Completed v0.4.4-era Plan and Design records are archived under `../v0.4.4/ArchivedReference/CompletedDevelopDocs_20260519/`.
 - Completed v0.5.0-v0.5.3 performance, legacy cleanup, and SettingsPanel implementation records are archived under `../v0.5.4/ArchivedReference/CompletedDevelopDocs_20260520/`.
@@ -38,7 +38,6 @@ This document is the current TODO ledger for `Develop/Plan`. It supersedes the o
 
 - Active index: `README.md`
 - ReviewPanel v2: `BlueprintHelper_ReviewPanelV2_ArchitecturePlan_20260519_CN.md`
-- LogicFlow rules: `BlueprintHelper_ReadContext_LogicFlow_Rules_20260519_CN.md`
 - LogicFlow implementation plan: `BlueprintHelper_ReadContext_LogicFlow_Implementation_PLAN_20260519_CN.md`
 - Pin defaults follow-up: `BlueprintHelper_ReadContext_PinDefaults_Fix_20260518_CN.md`
 - Settings runtime consumption plan: `BlueprintHelper_SettingsRuntimeConsumption_ImplementationPlan_20260520_CN.md`
@@ -50,3 +49,4 @@ This document is the current TODO ledger for `Develop/Plan`. It supersedes the o
 2. ReviewPanel work must follow the v2 Data / Service / Presenter / UI boundaries; do not restore fuzzy action routing, UI-local state deletion, transaction fallback, or delay/retry refresh fixes.
 3. `logic_flow` is a compact reading format only. It is not an anchor source for write workflows; anchor-sensitive work still requires `logic_json`.
 4. Settings runtime consumption work must keep configurable values flowing through typed settings resolvers instead of reintroducing hardcoded defaults.
+

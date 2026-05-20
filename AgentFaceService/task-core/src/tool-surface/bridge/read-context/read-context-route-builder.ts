@@ -26,7 +26,7 @@ export function resolveReadContextLogicFormat(input: ReadContextInput): ReadCont
     return 'logic_json';
   }
   if (input.read_type === 'blueprint_logic') {
-    return input.view?.format ?? 'logic_md';
+    return input.view?.format ?? 'logic_flow';
   }
   return undefined;
 }

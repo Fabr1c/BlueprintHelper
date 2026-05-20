@@ -8,20 +8,15 @@ This folder contains only active or living planning documents. Completed v0.5.0-
 
 - `BlueprintHelper_UnmetExpectations_Consolidated_20260514_CN.md`
 - `BlueprintHelper_ReviewPanelV2_ArchitecturePlan_20260519_CN.md`
-- `BlueprintHelper_SettingsRuntimeConsumption_ImplementationPlan_20260520_CN.md`
 
 ## Active Implementation Plans
 
-- `BlueprintHelper_SettingsRuntimeConsumption_ImplementationPlan_20260520_CN.md`
 - `BlueprintHelper_ReviewPanelV2_ArchitecturePlan_20260519_CN.md`
 - `BlueprintHelper_ReadContext_PinDefaults_Fix_20260518_CN.md`
-- `BlueprintHelper_ReadContext_LogicFlow_Rules_20260519_CN.md`
-- `BlueprintHelper_ReadContext_LogicFlow_Implementation_PLAN_20260519_CN.md`
 
 ## Active Design And Architecture
 
 - `BlueprintHelper_Development_Rules_20260520_CN.md`
-- `BlueprintHelper_ReadContext_LogicFlow_Rules_20260519_CN.md`
 
 ## Living Tips
 

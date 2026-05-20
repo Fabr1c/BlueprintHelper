@@ -61,4 +61,4 @@ v0.5.4 keeps the v0.4.5 stable Agent-facing surface and includes the v0.5.0 perf
 
 - `Develop/v0.4.5/README.md` is now a historical release note, not the current packaging checklist.
 - `ArchivedReference/CompletedDevelopDocs_20260520/` archives the completed v0.5.0-v0.5.3 document line based on git history: TaskSpec/read performance P0-P6/R0-R5, legacy implementation residue cleanup, and SettingsPanel implementation plans.
-- `Develop/Plan/BlueprintHelper_SettingsRuntimeConsumption_ImplementationPlan_20260520_CN.md` remains active because ToolCluster / ReadContext `default_scope` semantics and Automation/runtime smoke still have documented gaps.
+- `Develop/Plan/BlueprintHelper_SettingsRuntimeConsumption_ImplementationPlan_20260520_CN.md` is closed in this follow-up: `default_scope` was removed from the Settings surface, Settings Automation passed, and runtime smoke passed.

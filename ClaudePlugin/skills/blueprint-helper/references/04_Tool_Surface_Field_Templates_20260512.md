@@ -1,4 +1,4 @@
-﻿# 04 - Tool Surface Field Templates 20260512
+# 04 - Tool Surface Field Templates 20260512
 
 This page documents only the normal Agent-facing tool surface and TaskSpec fields. Compatibility-only transports or wrappers may still exist, but their direct argument shapes are intentionally not documented here.
 
@@ -95,7 +95,7 @@ Lifecycle companion tools are available only through the global MCP allowlist fo
     "block_id": "optional. BlueprintHelper-owned block id when target_type is block."
   },
   "view": {
-    "format": "optional, default logic_md. logic_md, logic_json, summary, or schema.",
+    "format": "optional for logic reads; defaults to logic_flow for blueprint_logic. logic_flow, logic_md, or logic_json. Omit for non-logic read types.",
     "max_items": "optional. Positive integer truncation guard.",
     "detail": "optional. brief, normal, full, or debug."
   },
@@ -106,9 +106,9 @@ Lifecycle companion tools are available only through the global MCP allowlist fo
 }
 ```
 
-`view.format=summary` returns compact `LogicSummary.v1` metadata only. It uses structured logic data internally and must not expose full LogicMD markdown, raw `logic.nodes`, local cache paths, or saved export file content. Use it to estimate target presence and graph size before any detailed read.
+`view.format=logic_flow` is the default for `read_type=blueprint_logic` and is recommended for simple `target_type=function`, `target_type=event`, or `target_type=custom_event` reads when the Agent needs fast execution/data flow understanding. It returns `LogicFlow.v1` and must not be used as a patch/merge anchor source.
 
-`view.format=logic_md` may be used directly for `target_type=function`, `target_type=event`, or `target_type=custom_event` when `target_name` is known. These target-entry reads are generated from structured target slices and report sliced stats. Do not use whole-graph `logic_md` until summary or `logic_json` shows the graph is small enough.
+`view.format=logic_md` may be used directly for `target_type=function`, `target_type=event`, or `target_type=custom_event` when `target_name` is known and the entry is larger or more branched than a compact `logic_flow` read should carry. These target-entry reads are generated from structured target slices and report sliced stats. Do not use whole-graph `logic_md` until `logic_json` shows the graph is small enough.
 
 `view.max_items` is a truncation guard for `logic_json`; when truncation happens, the tool result sets `data.truncated=true` and includes `payload.truncation.nodes_total` plus `payload.truncation.nodes_returned`.
 
@@ -461,3 +461,4 @@ Append-owned graph writes may use explicit component/member calls. The object pr
   "task_run_id": "required. Exact task_run_id returned by blueprinthelper_execute_task."
 }
 ```
+

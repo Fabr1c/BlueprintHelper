@@ -93,7 +93,6 @@ FBlueprintHelperGraphWriteToolClusterPolicy FBlueprintHelperToolClusterConfigRes
 FBlueprintHelperReadContextToolClusterPolicy FBlueprintHelperToolClusterConfigResolver::LoadReadContextPolicy()
 {
 	FBlueprintHelperReadContextToolClusterPolicy Policy;
-	Policy.DefaultScope = FBlueprintHelperRuntimeSettingResolver::GetString(TEXT("tool_clusters.read_context.default_scope"), Policy.DefaultScope);
 	Policy.MaxOutputRows = FBlueprintHelperRuntimeSettingResolver::GetInt(TEXT("tool_clusters.read_context.max_output_rows"), Policy.MaxOutputRows);
 	Policy.MaxOutputBytes = FBlueprintHelperRuntimeSettingResolver::GetInt(TEXT("tool_clusters.read_context.max_output_bytes"), Policy.MaxOutputBytes);
 	return Policy;
