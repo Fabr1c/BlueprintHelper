@@ -91,7 +91,7 @@ Agents should read this file before BlueprintHelper planning, status review, imp
 
 ## Preference Collection Forms
 
-The root `install.ps1` script creates this file only when it is missing. The `blueprint-helper-configure` skill should update this file and the active safety profile after installation.
+The root installer creates this file only when it is missing. The `blueprint-helper-configure` skill should update this file and the active safety profile after installation.
 
 The `blueprint-helper-configure` skill should use Codex plan/question UI when available. If native UI is unavailable, present the compact configure plan block from `CodexPlugin/skills/blueprint-helper-configure/SKILL.md`.
 

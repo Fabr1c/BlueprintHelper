@@ -33,10 +33,10 @@ Current source metadata:
 
 | Component | Current value |
 |---|---|
-| Unreal plugin `BlueprintHelper.uplugin` | `VersionName` 0.4.4 |
-| CLI `AgentFaceService/cli/package.json` | 0.4.4 |
-| Shared task core `AgentFaceService/task-core/package.json` | 0.4.4 |
-| Global MCP allowlist package `AgentFaceService/mcp/package.json` | 0.4.4 |
+| Unreal plugin `BlueprintHelper.uplugin` | `VersionName` 0.5.3 |
+| CLI `AgentFaceService/cli/package.json` | 0.5.3 |
+| Shared task core `AgentFaceService/task-core/package.json` | 0.5.3 |
+| Global MCP allowlist package `AgentFaceService/mcp/package.json` | 0.5.3 |
 | Documentation batch | 2026-05-17 implementation sync: CLI ordinary tools + MCP allowlist |
 | Intended UE version | UE 5.3 or newer |
 
@@ -72,8 +72,8 @@ For repository work, use normal shell and editor tools. For editor assets, use C
 
 Run the repository-root installer first:
 
-```powershell
-.\install.ps1 -ProjectFile <Project.uproject> -EngineRoot <UE root>
+```cmd
+.\install.cmd -ProjectFile <Project.uproject> -EngineRoot <UE root>
 ```
 
 Add `-InstallClaudePlugin` when you want the installer to register the Claude marketplace through the official Claude plugin entry and install `blueprint-helper@blueprint-helper-dev`. This also copies the Claude subagent definitions into the user profile.
@@ -87,7 +87,7 @@ If no callable Claude plugin CLI is available, the installer prints the official
 
 Use `-InstallClaudeAgents` only when you want to copy the Claude subagent definitions without installing the Claude plugin.
 
-`/blueprint-helper:setup` is retained only as a compatibility pointer to `install.ps1`; it no longer owns first-run setup.
+`/blueprint-helper:setup` is retained only as a compatibility pointer to the repository-root `install.cmd`; it no longer owns first-run setup.
 
 Detailed manual setup lives in [Docs/Install_CLI_QuickStart.md](../AgentFaceService/docs/Install_CLI_QuickStart.md). CLI command syntax lives in [Docs/TaskSpec_CLI_QuickStart.md](../AgentFaceService/docs/TaskSpec_CLI_QuickStart.md). Copy-and-edit JSON templates live in [AgentFaceService/agent-guide/Templates](../AgentFaceService/agent-guide/Templates/README.md).
 
@@ -110,7 +110,7 @@ Claude Code discovers plugin commands from the plugin root `commands/` directory
 
 | Command | Purpose |
 |---|---|
-| `/blueprint-helper:setup` | Deprecated compatibility pointer to the root `install.ps1` |
+| `/blueprint-helper:setup` | Deprecated compatibility pointer to the root `install.cmd` |
 | `/blueprint-helper:configure` | Update user preferences and active safety profile after installation |
 
 ## User Documentation

@@ -27,9 +27,9 @@ Project file: discovered from the workspace when possible; pass explicit `projec
 
 For normal first-run setup, use the repository-root installer:
 
-```powershell
+```cmd
 cd <PLUGIN_ROOT>
-.\install.ps1 -ProjectFile <Project.uproject> -EngineRoot <UE root>
+.\install.cmd -ProjectFile <Project.uproject> -EngineRoot <UE root>
 ```
 
 The installer builds the Agent runtime, links `bh`, registers the repository local marketplace through the official Codex plugin install entry, installs `blueprint-helper@blueprint-helper-local`, installs Codex subagents and the MCP allowlist entry, writes the project agent profile when project and UE root are known, and creates default user preference files only when they are missing.
@@ -48,12 +48,12 @@ If you use an Unreal `BuildPlugin` package, keep the sibling `AgentFaceService` 
 
 Use the root installer for setup and rebuilds. Do not duplicate per-package Node build commands in Agent-facing docs.
 
-```powershell
-.\install.ps1 -ProjectFile <Project.uproject> -EngineRoot <UE root>
-.\install.ps1 -ProjectFile <Project.uproject> -EngineRoot <UE root> -RunDiagnostics
+```cmd
+.\install.cmd -ProjectFile <Project.uproject> -EngineRoot <UE root>
+.\install.cmd -ProjectFile <Project.uproject> -EngineRoot <UE root> -RunDiagnostics
 ```
 
-Windows users can also run `install.cmd`; it opens the interactive installer when launched without arguments and passes arguments through to `install.ps1` when supplied.
+`install.cmd` opens the interactive installer when launched without arguments and passes arguments through to the underlying PowerShell installer when supplied. Prefer this entry in Agent-facing docs so users do not need to run `.ps1` directly.
 
 After `npm link`, the installer removes npm-generated `bh.ps1` / `blueprinthelper-cli.ps1` shims when matching `.cmd` launchers exist. This avoids PowerShell ExecutionPolicy blocking `bh`. If an older install still resolves `bh` to a `.ps1` file, rerun the root installer or call `bh.cmd`.
 
@@ -129,8 +129,8 @@ When a UE-bound command waits on the Bridge, the CLI emits keep-alive hints to `
 
 Repository verification:
 
-```powershell
-.\install.ps1 -ProjectFile <Project.uproject> -EngineRoot <UE root> -RunDiagnostics
+```cmd
+.\install.cmd -ProjectFile <Project.uproject> -EngineRoot <UE root> -RunDiagnostics
 ```
 
 Editor connection verification:

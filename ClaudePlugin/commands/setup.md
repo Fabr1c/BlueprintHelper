@@ -17,7 +17,7 @@ allowed-tools: Read
 install.cmd
 ```
 
-或阅读仓库根目录的 `INSTALL.md` 后使用 `install.ps1`。
+或阅读仓库根目录的 `INSTALL.md` 后使用 `install.cmd`。
 
 此命令不得重新实现安装流程，不得打印独立的 marketplace/install 命令，不得请求 MCP tool 权限，也不得写入 project profile 或 preference 文件。
 
@@ -35,7 +35,7 @@ Run the installer from the BlueprintHelper repository root and choose the needed
 install.cmd
 ```
 
-Or read the repository-root `INSTALL.md` and use `install.ps1`.
+Or read the repository-root `INSTALL.md` and use `install.cmd`.
 
 This command must not recreate install logic, print standalone marketplace/install commands, request MCP tool permissions, or write project profile or preference files.
 

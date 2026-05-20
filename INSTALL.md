@@ -5,13 +5,13 @@
 从仓库根目录运行安装脚本：
 
 ```powershell
-.\install.ps1
+.\install.cmd
 ```
 
 交互式安装：
 
 ```powershell
-.\install.ps1 -Interactive
+.\install.cmd -Interactive
 ```
 
 Windows 用户也可以运行：
@@ -20,7 +20,7 @@ Windows 用户也可以运行：
 install.cmd
 ```
 
-`install.cmd` 无参数时进入交互式安装；有参数时会透传给 `install.ps1`。
+`install.cmd` 无参数时进入交互式安装；有参数时会透传给底层 PowerShell 安装器。
 
 ### 默认安装内容
 
@@ -34,14 +34,14 @@ install.cmd
 ### 常用选项
 
 ```powershell
-.\install.ps1 -SkipCliLink
-.\install.ps1 -SkipBuild
-.\install.ps1 -Interactive
-.\install.ps1 -InstallClaudePlugin
-.\install.ps1 -InstallClaudeAgents
-.\install.ps1 -ProjectFile D:\UEProjects\Template\Template.uproject -EngineRoot E:\UE_5.6
-.\install.ps1 -RunDiagnostics
-.\install.ps1 -InstallUePluginToEngine -EngineRoot E:\UE_5.6
+.\install.cmd -SkipCliLink
+.\install.cmd -SkipBuild
+.\install.cmd -Interactive
+.\install.cmd -InstallClaudePlugin
+.\install.cmd -InstallClaudeAgents
+.\install.cmd -ProjectFile D:\UEProjects\Template\Template.uproject -EngineRoot E:\UE_5.6
+.\install.cmd -RunDiagnostics
+.\install.cmd -InstallUePluginToEngine -EngineRoot E:\UE_5.6
 ```
 
 `-EngineRoot` 接受 `E:\UE_5.6` 或 `E:\UE_5.6\Engine`。项目 agent profile 会保存 BlueprintHelper lifecycle 工具期望的 UE root 形式。
@@ -69,7 +69,7 @@ blueprint-helper@blueprint-helper-local
 Claude Code 插件支持是可选项：
 
 ```powershell
-.\install.ps1 -InstallClaudePlugin
+.\install.cmd -InstallClaudePlugin
 ```
 
 该选项会验证本地 `ClaudePlugin` 包，并通过 Claude 官方插件入口安装 `blueprint-helper@blueprint-helper-dev`，同时安装 Claude sideAgent 定义。如果当前机器没有可调用的 Claude 官方插件 CLI，脚本会打印可在 Claude Code 中执行的官方命令：
@@ -82,7 +82,7 @@ Claude Code 插件支持是可选项：
 如果只想复制 sideAgent 定义，不想验证 Claude 插件源，使用：
 
 ```powershell
-.\install.ps1 -InstallClaudeAgents
+.\install.cmd -InstallClaudeAgents
 ```
 
 ### Unreal Engine 插件
@@ -98,7 +98,7 @@ UE 侧插件是包含 `BlueprintHelper.uplugin` 的 `BlueprintHelper/` 文件夹
 也支持引擎级安装：
 
 ```powershell
-.\install.ps1 -InstallUePluginToEngine -EngineRoot E:\UE_5.6\Engine
+.\install.cmd -InstallUePluginToEngine -EngineRoot E:\UE_5.6\Engine
 ```
 
 它会复制到：
@@ -114,7 +114,7 @@ Agent 工作流不依赖 UE 插件是项目级还是引擎级安装。Codex 和 
 旧的 Claude `/blueprint-helper:setup` 已合并进根安装脚本：
 
 ```powershell
-.\install.ps1 -ProjectFile <Project.uproject> -EngineRoot <UE root>
+.\install.cmd -ProjectFile <Project.uproject> -EngineRoot <UE root>
 ```
 
 安装后如果需要修改安全 profile、保存策略或缺失能力策略，再使用 `/blueprint-helper:configure` 或 Codex 的 `blueprint-helper-configure` skill。
@@ -124,13 +124,13 @@ Agent 工作流不依赖 UE 插件是项目级还是引擎级安装。Codex 和 
 Run the installer from the repository root:
 
 ```powershell
-.\install.ps1
+.\install.cmd
 ```
 
 Interactive install:
 
 ```powershell
-.\install.ps1 -Interactive
+.\install.cmd -Interactive
 ```
 
 Windows users can also run:
@@ -139,7 +139,7 @@ Windows users can also run:
 install.cmd
 ```
 
-`install.cmd` opens the interactive installer when launched without arguments. When arguments are supplied, it passes them through to `install.ps1`.
+`install.cmd` opens the interactive installer when launched without arguments. When arguments are supplied, it passes them through to the underlying PowerShell installer.
 
 ### Default Install
 
@@ -153,14 +153,14 @@ install.cmd
 ### Useful Options
 
 ```powershell
-.\install.ps1 -SkipCliLink
-.\install.ps1 -SkipBuild
-.\install.ps1 -Interactive
-.\install.ps1 -InstallClaudePlugin
-.\install.ps1 -InstallClaudeAgents
-.\install.ps1 -ProjectFile D:\UEProjects\Template\Template.uproject -EngineRoot E:\UE_5.6
-.\install.ps1 -RunDiagnostics
-.\install.ps1 -InstallUePluginToEngine -EngineRoot E:\UE_5.6
+.\install.cmd -SkipCliLink
+.\install.cmd -SkipBuild
+.\install.cmd -Interactive
+.\install.cmd -InstallClaudePlugin
+.\install.cmd -InstallClaudeAgents
+.\install.cmd -ProjectFile D:\UEProjects\Template\Template.uproject -EngineRoot E:\UE_5.6
+.\install.cmd -RunDiagnostics
+.\install.cmd -InstallUePluginToEngine -EngineRoot E:\UE_5.6
 ```
 
 `-EngineRoot` accepts either `E:\UE_5.6` or `E:\UE_5.6\Engine`. The project agent profile stores the UE root form expected by BlueprintHelper lifecycle tools.
@@ -191,7 +191,7 @@ plugin install blueprint-helper@blueprint-helper-local
 Claude Code plugin support is optional:
 
 ```powershell
-.\install.ps1 -InstallClaudePlugin
+.\install.cmd -InstallClaudePlugin
 ```
 
 This validates the local `ClaudePlugin` package, installs `blueprint-helper@blueprint-helper-dev` through the official Claude plugin entry when a callable Claude plugin CLI is available, and installs the Claude sideAgent definitions. If no callable Claude plugin CLI is available, the installer prints the official commands to run in Claude Code:
@@ -204,7 +204,7 @@ This validates the local `ClaudePlugin` package, installs `blueprint-helper@blue
 If you only want to copy the sideAgent definitions without validating the Claude plugin source, use:
 
 ```powershell
-.\install.ps1 -InstallClaudeAgents
+.\install.cmd -InstallClaudeAgents
 ```
 
 ### Unreal Engine Plugin
@@ -220,7 +220,7 @@ Recommended project install:
 Engine install is also supported:
 
 ```powershell
-.\install.ps1 -InstallUePluginToEngine -EngineRoot E:\UE_5.6\Engine
+.\install.cmd -InstallUePluginToEngine -EngineRoot E:\UE_5.6\Engine
 ```
 
 That copies the plugin to:
@@ -236,14 +236,14 @@ The Agent workflow is not tied to whether the UE plugin is project-installed or 
 The old Claude `/blueprint-helper:setup` flow has been folded into the root installer:
 
 ```powershell
-.\install.ps1 -ProjectFile <Project.uproject> -EngineRoot <UE root>
+.\install.cmd -ProjectFile <Project.uproject> -EngineRoot <UE root>
 ```
 
 After installation, use `/blueprint-helper:configure` or the Codex `blueprint-helper-configure` skill only when you want to change safety profile, save policy, or missing-capability policy.
 
 ### PowerShell CLI Notes
 
-If an older install still resolves `bh` to `bh.ps1`, rerun `install.ps1` or call `bh.cmd`. For JSON payloads, prefer `--file` or pipe generated JSON to `--stdin`; inline `--json $json` can lose quotes in PowerShell before Node receives it.
+If an older install still resolves `bh` to `bh.ps1`, rerun `install.cmd` or call `bh.cmd`. For JSON payloads, prefer `--file` or pipe generated JSON to `--stdin`; inline `--json $json` can lose quotes in PowerShell before Node receives it.
 
 ```powershell
 $json | bh blueprinthelper_read_context --stdin --format full
