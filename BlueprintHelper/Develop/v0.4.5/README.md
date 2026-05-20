@@ -144,7 +144,7 @@ This checklist is retained as historical v0.4.5 packaging context. Current repos
 - `BlueprintHelper/Develop/Plan/BlueprintHelper_ReadContext_LogicFlow_Implementation_PLAN_20260519_CN.md`
 - `BlueprintHelper/Develop/Plan/BlueprintHelper_ReviewPanelV2_ArchitecturePlan_20260519_CN.md`
 - `BlueprintHelper/Develop/Plan/BlueprintHelper_UnmetExpectations_Consolidated_20260514_CN.md`
-- `BlueprintHelper/Develop/Plan/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN.md`
+- `BlueprintHelper/Develop/v0.5.4/ArchivedReference/CompletedDevelopDocs_20260520/Plan/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN.md`
 - `AgentFaceService/docs/CLI_Tools_API_Reference.md`
 - `AgentFaceService/docs/TaskSpec_CLI_QuickStart.md`
 - `AgentFaceService/agent-guide/Templates/`

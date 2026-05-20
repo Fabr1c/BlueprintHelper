@@ -37,6 +37,15 @@ Recommended upgrade entry:
 
 `install.ps1` and `update.ps1` remain implementation scripts behind the `.cmd` wrappers. User-facing docs should recommend `install.cmd` and `upgrade.cmd`.
 
+## Agent Rule Archive
+
+The root `AGENT.md` entry and the development rules document are archived in this version folder so the v0.5.4 agent-facing workflow can be traced after later rule updates.
+
+| Archived file | Source |
+| --- | --- |
+| `AGENT.md` | repository root `AGENT.md` |
+| `BlueprintHelper_Development_Rules_20260520_CN.md` | `Develop/Plan/BlueprintHelper_Development_Rules_20260520_CN.md` |
+
 ## Capability Baseline
 
 v0.5.4 keeps the v0.4.5 stable Agent-facing surface and includes the v0.5.0 performance implementation line.
@@ -51,4 +60,5 @@ v0.5.4 keeps the v0.4.5 stable Agent-facing surface and includes the v0.5.0 perf
 ## Historical Notes
 
 - `Develop/v0.4.5/README.md` is now a historical release note, not the current packaging checklist.
-- `Develop/Plan/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN.md` and its `Optimization/` children remain the detailed implementation record for the v0.5.0 performance line.
+- `ArchivedReference/CompletedDevelopDocs_20260520/` archives the completed v0.5.0-v0.5.3 document line based on git history: TaskSpec/read performance P0-P6/R0-R5, legacy implementation residue cleanup, and SettingsPanel implementation plans.
+- `Develop/Plan/BlueprintHelper_SettingsRuntimeConsumption_ImplementationPlan_20260520_CN.md` remains active because ToolCluster / ReadContext `default_scope` semantics and Automation/runtime smoke still have documented gaps.
