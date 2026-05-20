@@ -14,7 +14,7 @@ Agents should read this file before BlueprintHelper planning, status review, imp
 
 ## SetupProfile Separation
 
-- SetupProfile stores executable machine policy: paths, safety profile, fallback policy, save policy, and compact boundary summaries.
+- SetupProfile stores executable machine bootstrap policy: paths, fallback policy, save policy, editor lifecycle, and compact boundary summaries. Runtime safety profile and approval bypass settings live in project `setting.json`.
 - This file stores collaboration, workflow, documentation, Debug, review, and preference-collection behavior.
 - Do not write tokens, Bridge auth, raw payloads, local DebugBundle contents, or private environment details into this file.
 - Do not copy this full file into `CLAUDE.md`, `AGENTS.md`, or project marker text. Markers should only point to this path.
@@ -23,7 +23,7 @@ Agents should read this file before BlueprintHelper planning, status review, imp
 
 ### Safety And Task Flow
 
-- Default safety profile: `Conservative`.
+- Default safety profile is read from project `setting.json`.
 - Default transport: `cli_task_spec_first`.
 - Preview is the write gate. Do not execute writes when preview is blocked.
 - Missing capability default: `stop_and_report`.
@@ -31,7 +31,7 @@ Agents should read this file before BlueprintHelper planning, status review, imp
 - If `write_permission` is disabled, request a write session after preview and before execute; a user rejection is a stop-and-report condition.
 - Do not ask for or inject `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session` for ordinary interactive writes; approved write permission is held by the running Editor/Bridge and can be used by scoped BlueprintHelper operations within the approved session.
 - Editor lifecycle commands must use the global MCP server tools `mcp__blueprint_helper__blueprint_open_editor` and `mcp__blueprint_helper__blueprint_close_editor`; do not validate lifecycle through plugin-local MCP or one-shot shell MCP clients.
-- `AutoRepair` safety profile bypasses the write request popup and defaults write permission to enabled while keeping preview, Journal, and Review evidence.
+- `AutoRepair` safety profile in `setting.json` bypasses the write request popup and defaults write permission to enabled while keeping preview, Journal, and Review evidence.
 
 ### Save And Validation
 
@@ -91,7 +91,7 @@ Agents should read this file before BlueprintHelper planning, status review, imp
 
 ## Preference Collection Forms
 
-The root installer creates this file only when it is missing. The `blueprint-helper-configure` skill should update this file and the active safety profile after installation.
+The root installer creates this file only when it is missing. The `blueprint-helper-configure` skill should update this file and project bootstrap preferences after installation; it must not write runtime safety fields into `agent-profile.json`.
 
 The `blueprint-helper-configure` skill should use Codex plan/question UI when available. If native UI is unavailable, present the compact configure plan block from `CodexPlugin/skills/blueprint-helper-configure/SKILL.md`.
 

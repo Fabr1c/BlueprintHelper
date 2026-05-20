@@ -1,0 +1,342 @@
+# AgentFace TaskSpec UE 编辑器操作能力矩阵
+
+日期：2026-05-21
+
+## 范围
+
+本文只记录 AgentFace 通过编写 `BlueprintHelper.TaskSpec.v1` 并执行 preview / execute 能触达的 UE Editor 写入能力。
+
+典型路径：
+
+```text
+AgentFace 编写 TaskSpec
+-> task-core / Python compiler
+-> BlueprintHelper.TaskPlan.v1
+-> Bridge preview_task_plan / execute_task_plan
+-> UE TaskRuntime
+-> Runtime cluster adapter
+-> UE 编辑器资产变更
+```
+
+不计入本文范围：
+
+- direct Bridge 命令。
+- editor lifecycle 命令，例如 open / close editor。
+- read context / diagnostics / runtime profile / review query / debug bundle 等只读或辅助工具。
+- Agent 直接编写 TaskPlan 或 raw bridge payload。
+
+`preview` 负责校验和 dry-run；`execute` 在获得写权限后执行编辑器侧变更。`validation.should_compile` 和 `validation.should_save` 可以触发编译 / 保存，但它们是执行流水线副作用，不是独立 TaskSpec 编辑能力。
+
+## 总览矩阵
+
+| TaskSpec `task_type` | AgentFace 语义 | 可触达 UE 编辑器操作 | TaskPlan capability / adapter |
+|---|---|---|---|
+| `create_asset` | 确保资产存在 | 创建 Blueprint Class / Actor、Widget Blueprint、UserDefinedStruct、DataTable、DataAsset；运行时 AssetFactory 也识别 Blueprint Interface、InputAction、InputMappingContext 等 `asset_type` | `asset_factory` / `create_asset` |
+| `edit_blueprint_components` | 编辑 Blueprint 组件树 | 添加或复用组件、配置组件属性、移除组件 | `blueprint_component` / `add_component`, `set_component_properties`, `remove_component` |
+| `edit_blueprint_class_settings` | 编辑 Blueprint 类级设置 | 添加实现接口、移除实现接口、设置 class default properties | `blueprint_class_settings` / `add_implemented_interfaces`, `remove_implemented_interfaces`, `set_class_default_properties` |
+| `edit_blueprint_signature` | 编辑 Blueprint callable 签名 | 确保函数、接口函数、自定义事件、接口事件、事件分发器、override/native event；带引用上下文保护地移除签名 | `blueprint_signature` / `ensure_function`, `ensure_custom_event`, `ensure_event_dispatcher`, `ensure_override_event`, `remove_signature` |
+| `edit_blueprint_variables` | 编辑 Blueprint 变量 | 成员变量增删改、成员默认值设置、函数 local variable 增删改 | `blueprint_variable` / `add_blueprint_member_variables`, `blueprint_variable_batch` |
+| `edit_blueprint_graph` | 编辑 Blueprint graph body | append 新 owned custom-event graph、replace owned function/event/custom-event/block body、patch owned node comment/position/pin default、按 anchor merge 插入 flow | `graph_write` / `append_blueprint_graph`, `replace_blueprint_graph`, `patch_blueprint_graph`, `merge_blueprint_graph` |
+| `edit_umg_widget` | 编辑 Widget Blueprint tree / property | 添加 widget、设置 widget property、移除 widget | `umg_widget` / `add_widget`, `set_widget_property`, `remove_widget` |
+| `edit_data_table` | 编辑 DataTable 行 | 添加行、更新行、删除行 | `data_table` / `add_datatable_row`, `update_datatable_row`, `delete_datatable_row` |
+| `edit_object_properties` | 编辑 UObject / 资产反射属性 | 按 `property_path` 设置单个或多个 reflected property | `object_property` / `set_object_property`, `set_object_properties` |
+| `create_blueprint_feature` | 组合式 Blueprint feature authoring | 在一个语义 TaskSpec 中组合组件、变量、class settings、signature、graph body 和接口实现 | emits `blueprint_component`, `blueprint_variable`, `blueprint_class_settings`, `blueprint_signature`, `graph_write` |
+
+## 详细能力
+
+### `create_asset`
+
+AgentFace 可表达：
+
+- `behavior.asset_strategy = "ensure_asset"`
+- `behavior.asset.asset_type`
+- `behavior.asset.parent_class`
+- `behavior.asset.fields[]`
+- `behavior.asset.row_struct`
+- `behavior.asset.data_asset_class`
+- `behavior.asset.value_type`
+- `behavior.asset.collision` / `collision_policy`
+
+可触达编辑器操作：
+
+- 创建 Content Browser 资产 package。
+- 创建 Blueprint class / Actor 派生 Blueprint。
+- 创建 Widget Blueprint。
+- 创建 UserDefinedStruct，并写入支持的字段定义。
+- 创建 DataTable，要求提供 `row_struct`。
+- 创建 DataAsset，要求提供 `data_asset_class`。
+- 创建 Enhanced Input 相关资产时，运行时 AssetFactory 支持 InputAction / InputMappingContext。
+
+约束：
+
+- `data_table` 必须提供 `row_struct`。
+- `data_asset` 必须提供 `data_asset_class`。
+- 编译 / 保存由 validation 字段控制。
+
+### `edit_blueprint_components`
+
+AgentFace change kinds：
+
+- `ensure_component_present`
+- `configure_component`
+- `remove_component`
+
+可触达编辑器操作：
+
+- 向 Blueprint 组件层级添加组件。
+- 复用已有同名组件。
+- 设置组件 reflected properties。
+- 移除命名组件。
+- 支持 parent component、socket、attach rule、name collision policy 等语义字段。
+
+### `edit_blueprint_class_settings`
+
+AgentFace 可表达：
+
+- `behavior.interfaces.ensure_present[]`
+- `behavior.interfaces.ensure_absent[]`
+- `behavior.class_defaults[]`
+
+可触达编辑器操作：
+
+- 添加 Blueprint implemented interfaces。
+- 移除 Blueprint implemented interfaces。
+- 设置 Blueprint class default properties。
+
+明确不支持：
+
+- 通过 TaskSpec reparent / 修改 `parent_class`。
+
+### `edit_blueprint_signature`
+
+AgentFace change kinds：
+
+- `ensure_function`
+- `ensure_interface_function`
+- `ensure_custom_event`
+- `ensure_interface_event`
+- `ensure_event_dispatcher`
+- `ensure_override_event`
+- `remove_signature`
+
+可触达编辑器操作：
+
+- 创建或复用 Blueprint function。
+- 创建或复用 graph 中的 custom event。
+- 创建或校验 event dispatcher。
+- 按 `execute_policy` 创建 override/native event。
+- 通过 reference-context guard 移除 function / event / dispatcher 签名。
+
+约束：
+
+- `remove_signature` 默认走引用上下文保护路径。
+- 存在引用、签名不匹配或迁移不安全时，preview 可以阻塞 execute。
+- Signature 没有单独的 direct Bridge 命令；AgentFace 通过 TaskSpec -> TaskPlan adapter -> TaskRuntime cluster 触达。
+
+### `edit_blueprint_variables`
+
+AgentFace strategies：
+
+- `member_variables`
+- `member_defaults`
+- `local_variables`
+
+AgentFace semantic operations：
+
+- `ensure_member_variable`
+- `set_member_variable_properties`
+- `remove_member_variable`
+- `set_member_default`
+- `ensure_local_variable`
+- `set_local_variable_properties`
+- `remove_local_variable`
+
+可触达编辑器操作：
+
+- 添加 Blueprint member variables。
+- 更新 member variable metadata / type / property。
+- 移除 member variables。
+- 设置 member defaults。
+- 在指定 function 的 entry graph 上添加、更新、移除 local variables。
+
+### `edit_blueprint_graph`
+
+AgentFace graph strategies：
+
+- `append_new_owned_graph`
+- `replace_owned_graph`
+- `patch_owned_graph`
+- `merge_owned_graph`
+
+AgentFace body statement kinds：
+
+- `call`
+- `set`
+- `branch`
+- `let`
+- `return`
+
+当前 compiler / runtime 路径支持的表达式形态包括：
+
+- literal value
+- ref / symbol get
+- property get
+- nested call
+- compare
+- select
+- make-struct style expression
+
+Graph body semantic operation 边界：
+
+- 下列语义簇只属于 `BlueprintLogicSpec` / Graph body 写入，不直接代表资产级、签名级、组件树、WidgetTree、DataTable 或 UObject 属性编辑能力。
+
+```text
+数据流：
+get
+set
+get_property
+set_property
+op
+construct
+deconstruct
+select
+
+执行流：
+control
+
+普通调用：
+call
+
+实例 / 类型 / 绑定 / 调度：
+create
+convert
+bind
+schedule
+```
+
+- `create` 只表达 Graph body 内的运行时实例创建语义，例如 SpawnActor、CreateWidget runtime node、ConstructObject 等；不创建 Content Browser 资产、不创建 Blueprint 组件、不创建 WidgetTree 设计时节点、不创建 function/event/macro/dispatcher 签名。
+- `set_property` 只表达 Graph body 内对对象表达式或结构体表达式的属性写入节点；不替代 `edit_object_properties`、`edit_blueprint_components`、`edit_umg_widget`、`edit_blueprint_class_settings` 等资产级或模板级属性写入。
+- `bind` 只表达 Graph body 内把已有 delegate / event source 绑定到已有或已由 Signature 工具簇确保的 handler；不创建 event dispatcher、custom event、function、component bound event 签名。
+- `schedule` 只表达需要生命周期状态、多节点编排、回调 handler、timer handle 或 latent callback 的 Graph body 调度语义；单个 UFunction 能稳定表达的场景继续走 `call`。
+- `control` 是执行流统一语义，后续应替代 `branch` / `return` 等顶级 statement kind；当前文档中旧字段仅描述现状，不作为新 AgentFace canonical 目标。
+
+可触达编辑器操作：
+
+- append BlueprintHelper-owned custom-event graph body。
+- replace BlueprintHelper-owned function / event / custom-event / block body。
+- patch owned node comment、node position、pin default。
+- 使用 `append_after`、`insert_between`、`branch_fork` 等稳定 anchor 策略插入 flow。
+
+约束：
+
+- 普通 Agent 写入应保持在 BlueprintHelper-owned graph scope 内。
+- patch / merge 需要来自 `read_context` / `logic_json` 的稳定 owned-block anchor。
+- compiler 内部仍可能 normalize legacy `call_function` / `set_member_variable`，但 AgentFace canonical TaskSpec 应使用 `call` / `set`。
+- Signature lifecycle 归 `edit_blueprint_signature`；GraphWrite / SemanticIR 只能消费已解析 scope，不负责创建 function / event / macro / dispatcher 签名。
+- Asset lifecycle 归 `create_asset`；Graph body 的 `create` 不允许创建或确保 Content Browser 资产。
+- Component / WidgetTree lifecycle 分别归 `edit_blueprint_components` / `edit_umg_widget`；Graph body 的 `create` / `set_property` 不允许绕过这些工具簇修改模板或设计时树。
+
+### `edit_umg_widget`
+
+AgentFace change kinds：
+
+- `create_widget`
+- `update_widget_property`
+- `delete_widget`
+
+可触达编辑器操作：
+
+- 向 Widget Blueprint tree 添加 widget。
+- 设置 widget property。
+- 移除 widget。
+
+明确不支持：
+
+- `move_widget` 存在于更底层的 bridge / service surface，但当前 TaskSpec compiler 会显式拒绝它，因此不算 AgentFace 写 TaskSpec 可用能力。
+
+### `edit_data_table`
+
+AgentFace row actions：
+
+- `add`
+- `update`
+- `delete`
+
+可触达编辑器操作：
+
+- 添加 DataTable row。
+- 更新 DataTable row fields。
+- 删除 DataTable row。
+
+### `edit_object_properties`
+
+AgentFace 可表达：
+
+- `behavior.property_strategy = "property_edit"`
+- `behavior.changes[].property_path`
+- `behavior.changes[].value`
+
+可触达编辑器操作：
+
+- 设置 UObject / DataAsset / asset-backed target 的 reflected property。
+- 单属性变更 lower 到 `set_object_property`。
+- 多属性变更 lower 到 `set_object_properties`。
+
+### `create_blueprint_feature`
+
+AgentFace 可组合：
+
+- `components[]`
+- `variables[]`
+- `class_settings.implemented_interfaces[]`
+- `class_settings.class_defaults`
+- `behavior` graph body
+- `integration.interface`
+
+可触达编辑器操作：
+
+- 在一个 TaskSpec 中生成多步 TaskPlan。
+- 添加 / 配置组件。
+- 添加 member variables 和 defaults。
+- 添加 implemented interface。
+- 确保 interface function signature。
+- 写入 interface implementation function body 或普通 graph body。
+
+明确不支持：
+
+- composite 内创建新资产；需要拆成独立 `create_asset` TaskSpec。
+- 非 interface integration，例如 input binding，目前会被 compiler 拒绝。
+
+## 执行流水线副作用
+
+TaskSpec execute 可能产生：
+
+- TaskRunJournal。
+- Review evidence / Review records。
+- preview 或 execute 诊断失败时的 debug case id。
+- 按 validation 策略触发的 Blueprint compile / asset save。
+
+这些是执行流水线结果，不是 AgentFace 可单独写出的 TaskSpec 编辑器操作。
+
+## 不属于 TaskSpec 写入能力的现有工具
+
+| 能力 | 排除原因 |
+|---|---|
+| `blueprint_open_editor`, `blueprint_close_editor` | editor lifecycle surface，不是 TaskSpec 写入能力。 |
+| `blueprinthelper_read_context`, `blueprinthelper_read_reference_context`, `blueprinthelper_read_function_chain_context` | TaskSpec authoring 前的读链路工具。 |
+| `blueprinthelper_diagnostics`, `blueprinthelper_diagnostics_runtime`, `get_runtime_profile` | 诊断 / profiling 工具，不表达编辑器写入。 |
+| `blueprinthelper_query_review_records`, `blueprinthelper_get_debug_case`, `blueprinthelper_export_debug_bundle` | Review / debug 查询工具，不表达编辑器写入。 |
+| `open_asset`, `list_assets`, `save_asset`, `undo`, `redo`, `play_in_editor`, `exec_console_command` | direct Bridge / editor command surface，不是 AgentFace 写 TaskSpec 的普通路径。 |
+| direct GraphWrite / Component / Widget / DataTable bridge calls | AgentFace 应写 semantic TaskSpec，由 compiler 和 TaskRuntime adapter 转换，不应手写 raw bridge payload。 |
+
+## 源码依据
+
+- `AgentFaceService/task-core/src/task/schema/task-schemas.ts`
+- `AgentFaceService/task-core/src/task/compiler/task-compiler.ts`
+- `AgentFaceService/task-core/python/blueprinthelper_task/compiler/p1_capabilities.py`
+- `AgentFaceService/task-core/python/blueprinthelper_task/compiler/p2_capabilities.py`
+- `AgentFaceService/agent-guide/Templates/write/SEMANTIC_INDEX.md`
+- `BlueprintHelper/Source/BlueprintHelper/Public/Runtime/TaskRuntime/TaskPlanAdapters/*`
+- `BlueprintHelper/Source/BlueprintHelper/Public/Runtime/TaskRuntime/Clusters/*`
+- `BlueprintHelper/Source/BlueprintHelper/Private/Runtime/TaskRuntime/BlueprintHelperTaskRuntimeClusterHub.cpp`
+- `BlueprintHelper/Source/BlueprintHelper/Private/Entry/Bridge/Utils/BlueprintHelperBridgeRoutePlannerUtils.cpp`

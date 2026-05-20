@@ -1,6 +1,6 @@
 ---
 name: blueprint-helper-configure
-description: Use for BlueprintHelper Codex setup/configuration, plan-mode configuration questions, safety profiles ReadOnly/Conservative/Standard/AutoRepair, .blueprinthelper/agent-profile.json, UserPreferences, missing capability policy, save policy, and editor lifecycle policy.
+description: Use for BlueprintHelper Codex setup/configuration, plan-mode configuration questions, .blueprinthelper/agent-profile.json, UserPreferences, missing capability policy, save policy, and editor lifecycle policy. Safety profiles are configured through .blueprinthelper/setting.json, not agent-profile.
 ---
 
 # BlueprintHelper Configure for Codex
@@ -13,6 +13,7 @@ Configure these files when requested:
 
 - `CodexPlugin/skills/blueprint-helper/references/08_User_Preferences.md`
 - `<ProjectDir>/.blueprinthelper/agent-profile.json` when the user provides or confirms a project profile path
+- `<ProjectDir>/.blueprinthelper/setting.json` only when the user explicitly asks to change runtime safety/profile settings
 
 Do not edit ClaudePlugin files from this skill unless the user explicitly asks for ClaudePlugin compatibility.
 
@@ -20,7 +21,7 @@ Do not configure Codex subagent workflow or a subagent model map here. The manda
 
 ## Current Safety Reality
 
-The runtime currently supports four safety profile names:
+The runtime currently supports four safety profile names through `setting.json`:
 
 1. `ReadOnly`
 2. `Conservative`
@@ -33,11 +34,12 @@ Important: the fourth profile, `AutoRepair`, bypasses the write approval popup a
 
 1. Read the current UserPreferences file if present.
 2. Read the project `.blueprinthelper/agent-profile.json` if the user provided a path or if a single obvious project profile exists.
-3. Build a single plan-mode decision sheet for every missing configuration decision.
-4. Present options as IDs with recommended defaults and consequences.
-5. Stop after the decision sheet. Do not write files in the same turn that first asks for choices.
-6. After the user selects options, show `BlueprintHelper Configure Apply Preview`.
-7. Write only after the user explicitly confirms the apply preview.
+3. Do not write `active_profile.safety_profile`, `safety.preview_required`, `safety.write_approval_required`, or `safety.approval_bypass` to `agent-profile.json`; those are runtime settings in `setting.json`.
+4. Build a single plan-mode decision sheet for every missing configuration decision.
+5. Present options as IDs with recommended defaults and consequences.
+6. Stop after the decision sheet. Do not write files in the same turn that first asks for choices.
+7. After the user selects options, show `BlueprintHelper Configure Apply Preview`.
+8. Write only after the user explicitly confirms the apply preview.
 
 ## Plan-Mode Question Output
 
@@ -54,16 +56,6 @@ Files:
   SetupProfile: <path or not selected>
 
 Decisions:
-  [S] Safety profile
-      A) Conservative  [recommended]
-         Preview required, no auto-save, write session approval required.
-      B) ReadOnly
-         No real UE asset writes.
-      C) Standard
-         Preview required, save only when requested or explicitly configured.
-      D) AutoRepair
-         BlueprintHelper-owned repair is allowed; write approval popup is bypassed by default.
-
   [M] Missing capability policy
       A) stop_and_report  [recommended]
       B) ask_user
@@ -84,11 +76,11 @@ Decisions:
       B) Minimal evidence, no DebugBundle unless explicitly requested
 
 Suggested selection:
-  S=A M=A V=A B=A R=A
+  M=A V=A B=A R=A
 
 Reply with one of:
   apply recommended
-  S=A M=A V=A B=A R=A
+  M=A V=A B=A R=A
   custom: <your requested policy changes>
 ```
 
@@ -104,7 +96,6 @@ BlueprintHelper Configure Apply Preview
 Status: waiting_for_apply_confirmation
 
 Selected options:
-  S=<value>
   M=<value>
   V=<value>
   B=<value>
@@ -115,11 +106,10 @@ Files to update:
   SetupProfile: <path or not updated>
 
 Planned changes:
-  Safety: <old> -> <new>
   missing_capability_policy: <old> -> <new>
   auto_save_policy: <old> -> <new>
   editor_lifecycle: global_lifecycle_only_mcp
-  approval_bypass: true only for AutoRepair
+  safety_profile: not written by configure; use setting.json
 
 Confirm with:
   apply
@@ -137,7 +127,6 @@ When writing `<ProjectDir>/.blueprinthelper/agent-profile.json`, preserve unknow
 ```json
 {
   "active_profile": {
-    "safety_profile": "Conservative",
     "missing_capability_policy": "stop_and_report",
     "auto_save_policy": "never_auto_save"
   },
@@ -153,12 +142,17 @@ When writing `<ProjectDir>/.blueprinthelper/agent-profile.json`, preserve unknow
 }
 ```
 
-For `AutoRepair`, write:
+Do not write these fields to `agent-profile.json`: `active_profile.safety_profile`, `safety.preview_required`, `safety.write_approval_required`, or `safety.approval_bypass`.
+
+Runtime safety belongs in `<ProjectDir>/.blueprinthelper/setting.json`:
 
 ```json
 {
-  "active_profile": {
-    "safety_profile": "AutoRepair"
+  "active_profile": "default",
+  "profiles": {
+    "default": {
+      "safety_profile": "AutoRepair"
+    }
   },
   "safety": {
     "preview_required": true,
@@ -177,7 +171,7 @@ Update the active preference sections with these facts:
 - Only the Main Agent may call `mcp__blueprint_helper__blueprint_open_editor` and `mcp__blueprint_helper__blueprint_close_editor`.
 - Ordinary reads/writes must use the CLI.
 - Ordinary plugin usage must not read BlueprintHelper plugin package or implementation source; use installed skill instructions, AgentGuide, CLI reference, and templates. Plugin source reads are allowed only for explicit plugin development, installation repair, or debugging.
-- Fourth safety profile `AutoRepair` skips the write approval popup and defaults write permission to enabled.
+- Fourth safety profile `AutoRepair` skips the write approval popup and defaults write permission to enabled when set in `setting.json`.
 - Missing capability default is `stop_and_report`.
 - Do not request or pass Bridge tokens or raw auth session values.
 

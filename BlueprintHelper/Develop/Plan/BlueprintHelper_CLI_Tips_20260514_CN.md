@@ -446,8 +446,8 @@ rg -n 'SReadOnlyHierarchyView' 'E:\UE_5.6\Engine\Source\Editor' -g '*.h' -g '*.c
 
 ## 2026-05-18 install 脚本覆盖 AutoRepair profile
 - 现象：preview 通过但 execute 返回 Bridge write failed，runtime diagnostics 显示 write_permission.disabled / write_session_missing。
-- 原因：测试 install 脚本后项目 .blueprinthelper/agent-profile.json 的 active_profile.safety_profile 被覆盖为 Conservative。
-- 处理：将 safety_profile 切回 AutoRepair，并保持 safety.write_approval_required=false、approval_bypass=true；必要时重启 Editor 让 Bridge 重新加载配置。
+- 原因：旧 install/configure 链路会把 runtime safety 写到项目 `.blueprinthelper/agent-profile.json`，导致 AutoRepair 被覆盖。
+- 处理：从 2026-05-20 起，runtime safety 权威来源迁移到项目 `.blueprinthelper/setting.json`。将 `setting.active_profile` 指向的 `profiles.<name>.safety_profile` 设置为 `AutoRepair`，并保持 `setting.safety.write_approval_required=false`、`setting.safety.approval_bypass=true`；`agent-profile.json` 不再写这些字段。
 
 
 ## PowerShell ExecutionPolicy: npm.ps1 被拦截

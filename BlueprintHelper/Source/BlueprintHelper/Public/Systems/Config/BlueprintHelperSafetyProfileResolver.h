@@ -10,5 +10,8 @@ class BLUEPRINTHELPER_API FBlueprintHelperSafetyProfileResolver
 public:
 	static EBlueprintHelperSafetyProfile ResolveSafetyProfile();
 	static FString ResolveSafetyProfileString();
+	static bool IsPreviewRequired();
+	static bool IsWriteApprovalRequired();
+	static bool IsApprovalBypassEnabled();
 	static bool IsAutoRepair();
 };

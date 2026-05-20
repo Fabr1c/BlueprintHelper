@@ -1,4 +1,4 @@
-#include "Runtime/TaskRuntime/TaskPlanAdapters/BlueprintVariables/Utils/BlueprintHelperBlueprintVariableTaskPlanAdapterUtils.h"
+#include "Runtime/TaskRuntime/Utils/BlueprintHelperBlueprintVariableTaskPlanAdapterUtils.h"
 
 #include "Runtime/TaskRuntime/TaskPlanAdapters/BlueprintVariables/BlueprintHelperBlueprintVariableTaskPlanAdapter.h"
 

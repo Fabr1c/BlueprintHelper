@@ -62,7 +62,7 @@ FBlueprintHelperDiagnosticsData FBlueprintHelperDiagnosticsService::RunRuntimeDi
 		Report.AddWarning(TEXT("write_permission.disabled"),
 			TEXT("reason: safety_profile_read_only"));
 	}
-	else if (SafetyProfile == EBlueprintHelperSafetyProfile::AutoRepair)
+	else if (FBlueprintHelperSafetyProfileResolver::IsApprovalBypassEnabled())
 	{
 		Report.AddInfo(TEXT("write_permission.enabled"));
 	}
@@ -79,7 +79,7 @@ FBlueprintHelperDiagnosticsData FBlueprintHelperDiagnosticsService::RunRuntimeDi
 	// Risk Command
 	// 默认禁用，需。BLUEPRINTHELPER_ENABLE_HIGH_RISK_COMMANDS=1
 	const FString RiskEnv = FPlatformMisc::GetEnvironmentVariable(TEXT("BLUEPRINTHELPER_ENABLE_HIGH_RISK_COMMANDS")).ToLower();
-	const bool bRiskEnabled = SafetyProfile == EBlueprintHelperSafetyProfile::AutoRepair
+	const bool bRiskEnabled = FBlueprintHelperSafetyProfileResolver::IsApprovalBypassEnabled()
 		|| RiskEnv == TEXT("1")
 		|| RiskEnv == TEXT("true")
 		|| RiskEnv == TEXT("yes");
