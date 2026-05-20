@@ -16,3 +16,13 @@ FString FBlueprintHelperProjectConfigPaths::GetGraphLayoutRulesPath()
 {
 	return FPaths::Combine(GetProjectConfigDir(), TEXT("GraphLayoutRules.json"));
 }
+
+FString FBlueprintHelperProjectConfigPaths::GetProjectSettingPath()
+{
+	return FPaths::Combine(GetProjectConfigDir(), TEXT("setting.json"));
+}
+
+FString FBlueprintHelperProjectConfigPaths::GetUserSettingOverridePath()
+{
+	return FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("BlueprintHelper"), TEXT("setting.user.json"));
+}

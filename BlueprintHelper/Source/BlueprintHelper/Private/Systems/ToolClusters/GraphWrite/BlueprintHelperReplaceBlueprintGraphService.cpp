@@ -11,6 +11,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDebugData.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphWriteSemanticPayload.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphGenerationPipeline.h"
+#include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphWriteExecutionStats.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutCoordinator.h"
 #include "Shared/GraphWrite/BlueprintHelperAppendGraphTypes.h"
 #include "Shared/GraphWrite/BlueprintHelperReplaceGraphTypes.h"
@@ -21,6 +22,7 @@
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraphSchema_K2.h"
+#include "HAL/PlatformTime.h"
 #include "K2Node_CustomEvent.h"
 #include "K2Node_Event.h"
 #include "K2Node_FunctionEntry.h"
@@ -230,6 +232,20 @@ public:
 		return Anchor;
 	}
 
+	static void AttachGraphWriteExecutionStats(
+		TSharedPtr<FJsonObject> Data,
+		const FBlueprintGraphWriteExecutionStats& Stats)
+	{
+		if (!Data.IsValid())
+		{
+			return;
+		}
+
+		Data->SetObjectField(
+			TEXT("graph_write_execution_stats"),
+			FBlueprintGraphWriteExecutionStatsSerializer::ToJson(Stats));
+	}
+
 };
 
 // 鈹€鈹€鈹€ 鏋勯€?鈹€鈹€鈹€
@@ -310,7 +326,9 @@ FBlueprintHelperReplaceBlueprintGraphService::ParseRequest(const TSharedPtr<FJso
 		(*OptionsObject)->TryGetBoolField(TEXT("dry_run"), Request.bDryRun);
 		(*OptionsObject)->TryGetBoolField(TEXT("strict"), Request.bStrict);
 		(*OptionsObject)->TryGetBoolField(TEXT("preserve_layout"), Request.bPreserveLayout);
+		(*OptionsObject)->TryGetBoolField(TEXT("include_timing"), Request.bIncludeTiming);
 	}
+	Payload->TryGetBoolField(TEXT("include_timing"), Request.bIncludeTiming);
 
 	return Request;
 }
@@ -680,6 +698,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 	TArray<TSharedPtr<FUnresolvedNodeItem>> UnresolvedNodes;
 	const FBlueprintGenerateResult GenerateResult =
 		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(Resolved.Graph, GraphWritePayload, UnresolvedNodes);
+	FBlueprintGraphWriteExecutionStats ExecutionStats = GenerateResult.ExecutionStats;
 
 	if (!GenerateResult.bSucceed)
 	{
@@ -779,7 +798,16 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 	Validation.bShouldSave = true;
 	SuccessResult.Validation = Validation;
 
+	const double LayoutStart = FPlatformTime::Seconds();
 	FBlueprintHelperGraphLayoutCoordinator::RecordGeneratedNodes(Resolved.Graph, NewNodes);
+	ExecutionStats.RecordLayoutMs = (FPlatformTime::Seconds() - LayoutStart) * 1000.0;
+	ExecutionStats.LayoutRecordNodeCount = NewNodes.Num();
+	if (Request.bIncludeTiming)
+	{
+		FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::AttachGraphWriteExecutionStats(
+			SuccessResult.Data,
+			ExecutionStats);
+	}
 
 	return SuccessResult;
 }

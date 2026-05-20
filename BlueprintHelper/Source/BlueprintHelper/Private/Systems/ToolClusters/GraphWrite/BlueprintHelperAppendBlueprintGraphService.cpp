@@ -9,6 +9,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDebugData.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphWriteSemanticPayload.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphGenerationPipeline.h"
+#include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphWriteExecutionStats.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutCoordinator.h"
 #include "Shared/BlueprintHelperToolResultTypes.h"
 
@@ -16,6 +17,7 @@
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraphSchema_K2.h"
+#include "HAL/PlatformTime.h"
 #include "K2Node_CustomEvent.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Dom/JsonObject.h"
@@ -123,6 +125,20 @@ public:
 		return Anchor;
 	}
 
+	static void AttachGraphWriteExecutionStats(
+		TSharedPtr<FJsonObject> Data,
+		const FBlueprintGraphWriteExecutionStats& Stats)
+	{
+		if (!Data.IsValid())
+		{
+			return;
+		}
+
+		Data->SetObjectField(
+			TEXT("graph_write_execution_stats"),
+			FBlueprintGraphWriteExecutionStatsSerializer::ToJson(Stats));
+	}
+
 };
 
 // ─── 构造 ───
@@ -175,6 +191,7 @@ FBlueprintHelperAppendBlueprintGraphService::ParseRequest(const TSharedPtr<FJson
 	Payload->TryGetBoolField(TEXT("dry_run"), Request.bDryRun);
 	Payload->TryGetBoolField(TEXT("reuse_existing_entries"), Request.bReuseExistingEntries);
 	Payload->TryGetBoolField(TEXT("allow_existing_graph"), Request.bAllowExistingGraph);
+	Payload->TryGetBoolField(TEXT("include_timing"), Request.bIncludeTiming);
 
 	const TSharedPtr<FJsonObject>* LogicSpecObject = nullptr;
 	if (Payload->TryGetObjectField(TEXT("logic_spec"), LogicSpecObject) && LogicSpecObject && LogicSpecObject->IsValid())
@@ -588,6 +605,12 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 					DryRunData.DryRun.Result = EBlueprintHelperDryRunResult::Passed;
 					DryRunData.DryRun.bCanExecute = true;
 					Result.Data = DryRunData.ToJson();
+					if (Request.bIncludeTiming)
+					{
+						FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::AttachGraphWriteExecutionStats(
+							Result.Data,
+							GenerateResult.ExecutionStats);
+					}
 				}
 				else
 				{
@@ -635,6 +658,12 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 						TEXT("append_blueprint_graph"), TraceId, Error);
 					Result.Target = TargetRef;
 					Result.Data = DryRunData.ToJson();
+					if (Request.bIncludeTiming)
+					{
+						FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::AttachGraphWriteExecutionStats(
+							Result.Data,
+							GenerateResult.ExecutionStats);
+					}
 				}
 			}
 		}
@@ -761,6 +790,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 	TArray<TSharedPtr<FUnresolvedNodeItem>> UnresolvedNodes;
 	const FBlueprintGenerateResult GenerateResult =
 		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(TargetGraph, GraphWritePayload, UnresolvedNodes);
+	FBlueprintGraphWriteExecutionStats ExecutionStats = GenerateResult.ExecutionStats;
 	const bool bImportSuccess = GenerateResult.bSucceed;
 	FString ImportErrorCode = GenerateResult.bSucceed ? TEXT("") : TEXT("semantic_graph_write_failed");
 	FString ImportMessage = GenerateResult.Message;
@@ -896,7 +926,16 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 	Validation.bShouldSave = true;
 	SuccessResult.Validation = Validation;
 
+	const double LayoutStart = FPlatformTime::Seconds();
 	FBlueprintHelperGraphLayoutCoordinator::RecordGeneratedNodes(TargetGraph, CreatedNodes);
+	ExecutionStats.RecordLayoutMs = (FPlatformTime::Seconds() - LayoutStart) * 1000.0;
+	ExecutionStats.LayoutRecordNodeCount = CreatedNodes.Num();
+	if (Request.bIncludeTiming)
+	{
+		FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::AttachGraphWriteExecutionStats(
+			SuccessResult.Data,
+			ExecutionStats);
+	}
 
 	return SuccessResult;
 }

@@ -96,6 +96,22 @@ test('TaskRuntime cache TTL and capacity defaults live in the cache config bound
   }
 });
 
+test('GraphWrite linker and default applier use GraphWriteContext pin lookup', () => {
+  const linker = fs.readFileSync(
+    path.resolve(UE_SOURCE_ROOT, 'Private', 'Systems', 'ToolClusters', 'GraphWrite', 'Pipeline', 'BlueprintGraphLinker.cpp'),
+    'utf8',
+  );
+  const defaultApplier = fs.readFileSync(
+    path.resolve(UE_SOURCE_ROOT, 'Private', 'Systems', 'ToolClusters', 'GraphWrite', 'Pipeline', 'BlueprintGraphDefaultValueApplier.cpp'),
+    'utf8',
+  );
+
+  assert.match(linker, /FBlueprintGraphWriteContext/u);
+  assert.match(defaultApplier, /FBlueprintGraphWriteContext/u);
+  assert.doesNotMatch(linker, /FBlueprintGraphNodeUtility::FindPinByAlias/u);
+  assert.doesNotMatch(defaultApplier, /FBlueprintGraphNodeUtility::FindPinByAlias/u);
+});
+
 test('CLI and MCP production task paths depend on the task compiler service boundary', () => {
   const productionFiles = [
     ...collectFiles(path.resolve(AGENT_FACE_ROOT, 'cli', 'src'), ['.ts']),

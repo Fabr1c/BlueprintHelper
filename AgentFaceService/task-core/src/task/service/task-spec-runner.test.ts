@@ -32,6 +32,14 @@ const previewBridgeResponse: BridgeResponse = {
       cache_diagnostics: {
         partial_preview_hits: 1,
       },
+      graph_write_execution_stats: {
+        steps: [
+          {
+            step_id: 'step_001',
+            spawned_node_count: 3,
+          },
+        ],
+      },
     },
   },
 };
@@ -57,6 +65,7 @@ test('preview task omits cache diagnostics unless develop timing is enabled', as
   const result = await runner.previewTask(graphWriteAppendTaskSpecFixture);
 
   assert.equal(JSON.stringify(result.toolResult).includes('cache_diagnostics'), false);
+  assert.equal(JSON.stringify(result.toolResult).includes('graph_write_execution_stats'), false);
 });
 
 test('preview task includes cache diagnostics when develop timing is enabled', async () => {
@@ -66,5 +75,13 @@ test('preview task includes cache diagnostics when develop timing is enabled', a
 
   assert.deepEqual(result.toolResult.data?.['cache_diagnostics'], {
     partial_preview_hits: 1,
+  });
+  assert.deepEqual(result.toolResult.data?.['graph_write_execution_stats'], {
+    steps: [
+      {
+        step_id: 'step_001',
+        spawned_node_count: 3,
+      },
+    ],
   });
 });
