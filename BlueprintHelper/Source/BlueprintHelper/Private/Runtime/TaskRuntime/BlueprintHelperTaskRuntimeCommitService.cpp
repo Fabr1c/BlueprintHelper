@@ -72,6 +72,29 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeCommitService::SaveAss
 	return Result;
 }
 
+FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeCommitService::MakeSkippedPostOperationResult(
+	const FString& Operation,
+	const FString& AssetPath,
+	const FString& Reason) const
+{
+	FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Completed(
+		Operation,
+		FBlueprintHelperToolResultBuilder::GenerateTraceId());
+	Result.Status = EBlueprintHelperToolStatus::Skipped;
+	Result.bModified = false;
+
+	TSharedRef<FJsonObject> Target = MakeShared<FJsonObject>();
+	Target->SetStringField(TEXT("asset_path"), AssetPath);
+	Result.CustomTargetJson = Target;
+
+	TSharedRef<FJsonObject> Data = MakeShared<FJsonObject>();
+	Data->SetBoolField(TEXT("skipped"), true);
+	Data->SetStringField(TEXT("skip_reason"), Reason);
+	Data->SetStringField(TEXT("asset_path"), AssetPath);
+	Result.Data = Data;
+	return Result;
+}
+
 void FBlueprintHelperTaskRuntimeCommitService::FlushGraphLayout() const
 {
 	FBlueprintHelperGraphLayoutCoordinator::FlushPendingTaskLayouts();

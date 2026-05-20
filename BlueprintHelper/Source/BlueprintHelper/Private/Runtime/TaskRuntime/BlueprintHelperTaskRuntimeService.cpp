@@ -43,6 +43,9 @@
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimePrepareService.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeReviewIoBatch.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskPreviewStore.h"
+#include "Runtime/TaskRuntime/PostOperations/BlueprintHelperTaskRuntimePostOperationExecutor.h"
+#include "Runtime/TaskRuntime/PostOperations/BlueprintHelperTaskRuntimePostOperationPlanner.h"
+#include "Runtime/TaskRuntime/PostOperations/BlueprintHelperTaskRuntimePostOperationTypes.h"
 #include "Runtime/TaskRuntime/Utils/BlueprintHelperTaskRuntimeClusterExecutionUtils.h"
 #include "Runtime/TaskRuntime/Utils/BlueprintHelperTaskRuntimeTimingUtils.h"
 #include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
@@ -2611,8 +2614,53 @@ public:
 		TSharedRef<FJsonObject> PostJson = MakeShared<FJsonObject>();
 		PostJson->SetStringField(TEXT("operation"), PostOperation.Operation);
 		PostJson->SetStringField(TEXT("status"), ToolStatusToString(PostOperation.Result.Status));
+		if (!PostOperation.AssetPath.IsEmpty())
+		{
+			PostJson->SetStringField(TEXT("asset_path"), PostOperation.AssetPath);
+		}
+		if (!PostOperation.Status.IsEmpty())
+		{
+			PostJson->SetStringField(TEXT("post_status"), PostOperation.Status);
+		}
+		if (!PostOperation.Reason.IsEmpty())
+		{
+			PostJson->SetStringField(TEXT("reason"), PostOperation.Reason);
+		}
+		PostJson->SetNumberField(TEXT("duration_ms"), PostOperation.DurationMs);
 		PostJson->SetObjectField(TEXT("result"), PostOperation.Result.ToJson());
 		return PostJson;
+	}
+
+	static FBlueprintHelperTaskRuntimePostOperationRecord MakeRuntimePostOperationRecord(
+		const FBlueprintHelperTaskRuntimePostOperationRecordEx& Record)
+	{
+		FBlueprintHelperTaskRuntimePostOperationRecord RuntimeRecord;
+		RuntimeRecord.Operation = Record.Operation;
+		RuntimeRecord.Result = Record.Result;
+		RuntimeRecord.AssetPath = Record.AssetPath;
+		RuntimeRecord.Status = FBlueprintHelperTaskRuntimePostOperationJson::StatusToString(Record.Status);
+		RuntimeRecord.Reason = Record.Reason;
+		RuntimeRecord.DurationMs = Record.DurationMs;
+		return RuntimeRecord;
+	}
+
+	static FBlueprintHelperTaskRuntimePostOperationPlan FilterPostOperationPlanByKind(
+		const FBlueprintHelperTaskRuntimePostOperationPlan& Plan,
+		EBlueprintHelperTaskRuntimePostOperationKind Kind)
+	{
+		FBlueprintHelperTaskRuntimePostOperationPlan FilteredPlan;
+		FilteredPlan.bRequestedCompile = Kind == EBlueprintHelperTaskRuntimePostOperationKind::Compile && Plan.bRequestedCompile;
+		FilteredPlan.bRequestedSave = Kind == EBlueprintHelperTaskRuntimePostOperationKind::Save && Plan.bRequestedSave;
+		FilteredPlan.bHasTargetAssets = Plan.bHasTargetAssets;
+		FilteredPlan.MissingTargetAssetsReason = Plan.MissingTargetAssetsReason;
+		for (const FBlueprintHelperTaskRuntimePostOperationPlanItem& Item : Plan.Items)
+		{
+			if (Item.Kind == Kind)
+			{
+				FilteredPlan.Items.Add(Item);
+			}
+		}
+		return FilteredPlan;
 	}
 
 	static bool HasFailedStep(
@@ -5828,65 +5876,89 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 
 	if (!bDryRun)
 	{
-		bool bShouldCompile = false;
-		bool bShouldSave = false;
-		const bool bHasCompilePolicy = FBlueprintHelperTaskRuntimeServiceLocalUtils::TryReadExecutionPolicyBool(*TaskPlanPtr, TEXT("should_compile"), bShouldCompile);
-		const bool bHasSavePolicy = FBlueprintHelperTaskRuntimeServiceLocalUtils::TryReadExecutionPolicyBool(*TaskPlanPtr, TEXT("should_save"), bShouldSave);
-		if ((bHasCompilePolicy && bShouldCompile) || (bHasSavePolicy && bShouldSave))
+		const double PostOperationPlanStageStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
+		const FBlueprintHelperTaskRuntimePostOperationPlan PostOperationPlan =
+			FBlueprintHelperTaskRuntimePostOperationPlanner::BuildPlan(*TaskPlanPtr, bDryRun);
+		FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(
+			TimingTrace,
+			TEXT("main_thread_commit.post_operation_plan"),
+			PostOperationPlanStageStart);
+
+		if (!PostOperationPlan.bHasTargetAssets)
 		{
-			const TArray<FString> TargetAssets = FBlueprintHelperTaskRuntimeServiceLocalUtils::ReadTargetAssets(*TaskPlanPtr);
-			if (TargetAssets.Num() == 0)
-			{
-				return BuildFailureResult(FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRuntimeError(
-					TEXT("missing_target_assets_for_post_operation"),
-					EBlueprintHelperToolStage::ParseInput,
-					TEXT("TaskPlan execution_policy compile/save requires target_assets."),
-					TEXT("task_plan.target_assets")));
-			}
+			return BuildFailureResult(FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRuntimeError(
+				TEXT("missing_target_assets_for_post_operation"),
+				EBlueprintHelperToolStage::ParseInput,
+				TEXT("TaskPlan execution_policy compile/save requires target_assets."),
+				TEXT("task_plan.target_assets")));
+		}
 
-			if (bHasCompilePolicy && bShouldCompile)
+		FBlueprintHelperTaskRuntimePostOperationExecutor PostOperationExecutor;
+		auto AppendPostOperationExecutionRecords = [&](const FBlueprintHelperTaskRuntimePostOperationExecutionResult& ExecutionResult)
+		{
+			for (const FBlueprintHelperTaskRuntimePostOperationRecordEx& Record : ExecutionResult.Records)
 			{
-				const double CompileStageStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
-				for (const FString& AssetPath : TargetAssets)
-				{
-					FBlueprintHelperToolResultBase CompileResult = CommitService.CompileAsset(AssetPath);
-					PostOperationRecords.Add({TEXT("compile_blueprint_asset"), CompileResult});
-					if (!CompileResult.bOk)
-					{
-						FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(TimingTrace, TEXT("main_thread_commit.compile"), CompileStageStart);
-						FBlueprintHelperToolResultBase FailureResult = BuildFailureResult(
-							CompileResult.Error.IsSet()
-								? *CompileResult.Error
-								: FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRuntimeError(TEXT("task_compile_failed"), EBlueprintHelperToolStage::Execute, TEXT("TaskPlan compile post operation failed.")));
-						if (!FailureResult.Data.IsValid())
-						{
-							FailureResult.Data = MakeShared<FJsonObject>();
-						}
-						FailureResult.Data->SetObjectField(TEXT("post_operation_failure"), CompileResult.ToJson());
-						return FailureResult;
-					}
-				}
-				FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(TimingTrace, TEXT("main_thread_commit.compile"), CompileStageStart);
+				PostOperationRecords.Add(FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeRuntimePostOperationRecord(Record));
 			}
+		};
 
-			if (bHasSavePolicy && bShouldSave)
+		auto ExecutePostOperationStage =
+			[&](EBlueprintHelperTaskRuntimePostOperationKind Kind, const FString& TimingName)
 			{
-				const double SaveStageStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
-				for (const FString& AssetPath : TargetAssets)
+				const FBlueprintHelperTaskRuntimePostOperationPlan StagePlan =
+					FBlueprintHelperTaskRuntimeServiceLocalUtils::FilterPostOperationPlanByKind(PostOperationPlan, Kind);
+				FBlueprintHelperTaskRuntimePostOperationExecutionResult StageResult;
+				if (StagePlan.Items.Num() == 0)
 				{
-					FBlueprintHelperToolResultBase SaveResult = CommitService.SaveAsset(AssetPath);
-					PostOperationRecords.Add({TEXT("save_asset"), SaveResult});
-					if (!SaveResult.bOk)
-					{
-						FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(TimingTrace, TEXT("main_thread_commit.save"), SaveStageStart);
-						return BuildFailureResult(
-							SaveResult.Error.IsSet()
-								? *SaveResult.Error
-								: FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRuntimeError(TEXT("task_save_failed"), EBlueprintHelperToolStage::Execute, TEXT("TaskPlan save post operation failed.")));
-					}
+					return StageResult;
 				}
-				FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(TimingTrace, TEXT("main_thread_commit.save"), SaveStageStart);
-			}
+
+				const double StageStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
+				StageResult = PostOperationExecutor.Execute(StagePlan, &CommitService);
+				FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(TimingTrace, TimingName, StageStart);
+				AppendPostOperationExecutionRecords(StageResult);
+				return StageResult;
+			};
+
+		auto BuildPostOperationFailureResult =
+			[&](const FBlueprintHelperTaskRuntimePostOperationExecutionResult& ExecutionResult)
+			{
+				FBlueprintHelperToolResultBase FailureResult = BuildFailureResult(
+					ExecutionResult.FirstError.IsSet()
+						? *ExecutionResult.FirstError
+						: FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRuntimeError(
+							TEXT("task_post_operation_failed"),
+							EBlueprintHelperToolStage::Execute,
+							TEXT("TaskPlan post operation failed.")));
+				if (!FailureResult.Data.IsValid())
+				{
+					FailureResult.Data = MakeShared<FJsonObject>();
+				}
+				if (ExecutionResult.Records.Num() > 0)
+				{
+					FailureResult.Data->SetObjectField(
+						TEXT("post_operation_failure"),
+						FBlueprintHelperTaskRuntimePostOperationJson::RecordToJson(ExecutionResult.Records.Last()));
+				}
+				return FailureResult;
+			};
+
+		const FBlueprintHelperTaskRuntimePostOperationExecutionResult CompilePostOperationResult =
+			ExecutePostOperationStage(
+				EBlueprintHelperTaskRuntimePostOperationKind::Compile,
+				TEXT("main_thread_commit.compile"));
+		if (!CompilePostOperationResult.bOk)
+		{
+			return BuildPostOperationFailureResult(CompilePostOperationResult);
+		}
+
+		const FBlueprintHelperTaskRuntimePostOperationExecutionResult SavePostOperationResult =
+			ExecutePostOperationStage(
+				EBlueprintHelperTaskRuntimePostOperationKind::Save,
+				TEXT("main_thread_commit.save"));
+		if (!SavePostOperationResult.bOk)
+		{
+			return BuildPostOperationFailureResult(SavePostOperationResult);
 		}
 	}
 

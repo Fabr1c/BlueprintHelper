@@ -27,5 +27,8 @@ struct BLUEPRINTHELPER_API FBlueprintHelperTaskRuntimePostOperationRecord
 {
 	FString Operation;
 	FBlueprintHelperToolResultBase Result;
+	FString AssetPath;
+	FString Status;
+	FString Reason;
+	double DurationMs = 0.0;
 };
-

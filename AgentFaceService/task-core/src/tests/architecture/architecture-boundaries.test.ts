@@ -96,6 +96,28 @@ test('TaskRuntime cache TTL and capacity defaults live in the cache config bound
   }
 });
 
+test('TaskRuntime post operations use planner and executor boundaries', () => {
+  const servicePath = path.resolve(
+    UE_SOURCE_ROOT,
+    'Private',
+    'Runtime',
+    'TaskRuntime',
+    'BlueprintHelperTaskRuntimeService.cpp',
+  );
+  const source = fs.readFileSync(servicePath, 'utf8');
+
+  assert.match(source, /FBlueprintHelperTaskRuntimePostOperationPlanner::BuildPlan/u);
+  assert.match(source, /FBlueprintHelperTaskRuntimePostOperationExecutor/u);
+  assert.doesNotMatch(
+    source,
+    /for\s*\(\s*const\s+FString&\s+AssetPath\s*:\s*TargetAssets\s*\)\s*\{\s*FBlueprintHelperToolResultBase\s+CompileResult/su,
+  );
+  assert.doesNotMatch(
+    source,
+    /for\s*\(\s*const\s+FString&\s+AssetPath\s*:\s*TargetAssets\s*\)\s*\{\s*FBlueprintHelperToolResultBase\s+SaveResult/su,
+  );
+});
+
 test('GraphWrite linker and default applier use GraphWriteContext pin lookup', () => {
   const linker = fs.readFileSync(
     path.resolve(UE_SOURCE_ROOT, 'Private', 'Systems', 'ToolClusters', 'GraphWrite', 'Pipeline', 'BlueprintGraphLinker.cpp'),

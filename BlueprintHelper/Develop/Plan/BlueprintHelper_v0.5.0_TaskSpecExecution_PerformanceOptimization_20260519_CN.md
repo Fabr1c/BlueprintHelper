@@ -575,7 +575,7 @@ Editor 手动重启后已返回 UE nested read timing，`ue_bridge_router.route_
 | P3 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P3_ReadPipelineSnapshotCache_ImplementationPlan_CN.md` | 读链路 GameThread 快照、DTO formatter、request-local snapshot 复用、纯数据缓存、Bridge gap 细分 | 已完成 v0.5.0 范围，`logic_flow` 复用 `logic_json` 快照链路 |
 | P4 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P4_PreviewPartialReuseAndFineGrainedCache_ImplementationPlan_CN.md` | 失败 preview 短窗口部分复用、CallFunction resolved facts TTL cache、GraphWrite 纯数据 plan cache、缓存配置外置 | 已完成首轮实现和测速 |
 | P5 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P5_GraphWriteClusterExecute_ImplementationPlan_CN.md` | GraphWrite `cluster_execute` 降成本、GraphMutationPlan、GraphWriteContext、pin lookup 缓存、执行 stats | 已完成首轮实现和 P5 隔离测速 |
-| P6 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P6_CompileSavePostOperationPlanner_ImplementationPlan_CN.md` | compile/save `PostOperationPlanner`、target asset 去重、clean save skip、per-asset diagnostics | 计划已写，待执行 |
+| P6 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P6_CompileSavePostOperationPlanner_ImplementationPlan_CN.md` | compile/save `PostOperationPlanner`、target asset 去重、clean save skip、per-asset diagnostics | 已完成实现、验证和代表性测速 |
 | R0-R5 | `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/R0_R5_ReadPipeline_ExecutablePlan_CN.md` | 读链路可执行 checklist、目标文件结构、分阶段验收、benchmark 和回归门槛 | 已完成并作为 P3 执行证据 |
 
 说明：主文档继续保留背景、测速记录、优化项摘要、优先级排序、度量要求和当前状态；阶段文档负责执行 checklist、文件结构、测试命令和验收标准。
@@ -875,7 +875,7 @@ xychart
 
 `Optimization/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN/P6_CompileSavePostOperationPlanner_ImplementationPlan_CN.md`
 
-落地状态（2026-05-20）：计划已写，待执行。
+落地状态（2026-05-20）：已完成实现、编译、Node 回归、架构边界测试和代表性 CLI benchmark。
 
 计划：
 - 新增 `PostOperationPlanner`，从 TaskPlan、StepResult validation 和 mutation type 聚合 target asset 的 compile/save 需求。
@@ -890,6 +890,49 @@ xychart
 - 不需要 compile/save 的任务 post operation 成本降为 0 或接近 0。
 - 需要 compile/save 的任务不会重复执行同一资产操作。
 - deferred 模式若实现，必须返回明确 pending post operation 状态，不能把未完成的 compile/save 伪装为已完成。
+
+P6 benchmark（2026-05-20，Editor 通过 MCP 启动，CLI `task preview -> task execute --preview-token --develop`）：
+
+| Sample | cli total | bridge.execute_task_plan | nested ue.execute_task_plan | post_operation_plan | compile | save | post ops |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `04b_write_function_body.json` | 596.270ms | 591.847ms | 298.434ms | 0.004ms | 150.474ms | 0.016ms | compile executed; save skipped `package_not_loaded_or_clean` |
+| `07_create_data_table.json` | 342.219ms | 338.107ms | 107.965ms | 0.003ms | - | 81.609ms | save executed |
+| `14c_edit_widget_tree_property.json` | 393.783ms | 389.463ms | 164.192ms | 0.003ms | 158.040ms | 0.018ms | compile executed; save skipped `package_not_loaded_or_clean` |
+
+P6 post operation 记录示例：
+
+| Sample | operation | asset | post_status | reason | duration_ms |
+| --- | --- | --- | --- | --- | ---: |
+| `04b_write_function_body.json` | `compile_blueprint_asset` | `/Game/BlueprintHelperCliSmoke/ReviewPanelManual_20260518_001/BP_RP_UI_Actor_20260518_001` | executed |  | 150.473 |
+| `04b_write_function_body.json` | `save_asset` | `/Game/BlueprintHelperCliSmoke/ReviewPanelManual_20260518_001/BP_RP_UI_Actor_20260518_001` | skipped | `package_not_loaded_or_clean` | 0.015 |
+| `07_create_data_table.json` | `save_asset` | `/Game/BlueprintHelperCliSmoke/ReviewPanelManual_20260518_001/DT_RP_UI_Table_20260518_001` | executed |  | 81.607 |
+| `14c_edit_widget_tree_property.json` | `compile_blueprint_asset` | `/Game/BlueprintHelperCliSmoke/ReviewPanelManual_20260518_001/WBP_RP_UI_Widget_20260518_001` | executed |  | 158.037 |
+| `14c_edit_widget_tree_property.json` | `save_asset` | `/Game/BlueprintHelperCliSmoke/ReviewPanelManual_20260518_001/WBP_RP_UI_Widget_20260518_001` | skipped | `package_not_loaded_or_clean` | 0.016 |
+
+P6 对比结论：
+
+| Sample | compile before | compile after | save before | save after | skipped saves | conclusion |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| `04b_write_function_body.json` | 156.410ms | 150.474ms | 62.954ms | 0.016ms | 1 | clean save 固定成本消除，compile 成本保持即时语义 |
+| `07_create_data_table.json` | - | - | 81.615ms | 81.609ms | 0 | 非 Blueprint 资产不会规划 compile，只执行必要 save |
+| `14c_edit_widget_tree_property.json` | 230.670ms | 158.040ms | 0.018ms | 0.018ms | 1 | UMG compile 保持执行，clean save 维持近 0 |
+
+```mermaid
+xychart
+    title "P6 compile/save post operation cost (ms)"
+    x-axis ["04b compile", "04b save", "07 save", "14c compile", "14c save"]
+    y-axis "duration_ms" 0 --> 240
+    bar [156.410, 62.954, 81.615, 230.670, 0.018]
+    bar [150.474, 0.016, 81.609, 158.040, 0.018]
+```
+
+图例说明：
+| 系列 | 含义 |
+| --- | --- |
+| bar 1 | P6 前参考值，来自 v0.5.0 前序测速或同类阶段基准 |
+| bar 2 | P6 实测值 |
+
+结论：P6 已把 compile/save 决策移出 `TaskRuntimeService` 内联循环，`PostOperationPlan` 是纯 DTO，MainThread executor 负责 package dirty / Blueprint type / compile / save。clean package save 在 04b 和 14c 降为约 0.016-0.018ms 的 skipped record；非 Blueprint 的 `07_create_data_table.json` 不规划 compile。当前剩余大头仍是必须即时执行的 compile、Bridge/GameThread wait，以及样本本身的 mutation 成本。
 
 ## 优先级排序
 

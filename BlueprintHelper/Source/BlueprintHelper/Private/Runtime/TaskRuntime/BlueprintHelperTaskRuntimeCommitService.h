@@ -24,6 +24,10 @@ public:
 
 	FBlueprintHelperToolResultBase CompileAsset(const FString& AssetPath) const;
 	FBlueprintHelperToolResultBase SaveAsset(const FString& AssetPath) const;
+	FBlueprintHelperToolResultBase MakeSkippedPostOperationResult(
+		const FString& Operation,
+		const FString& AssetPath,
+		const FString& Reason) const;
 	void FlushGraphLayout() const;
 
 private:
