@@ -35,7 +35,7 @@ When a CLI command waits on UE Bridge work, it may emit `waiting for UE Bridge r
 
 For complex JSON input, copy a template from `AgentFaceService/agent-guide/Templates/`, edit the copy, then call the CLI with `--file`; for generated JSON, pipe it to `--stdin`. Do not pass non-trivial generated payloads as inline PowerShell `--json $json`, because PowerShell can strip quotes before Node receives the argument. Direct tool-name TaskSpec calls use wrapper templates with root field `task_spec`; grouped `task preview` / `task execute` calls use bare `BlueprintHelper.TaskSpec.v1` files.
 
-On Windows PowerShell, `bh` should resolve to the `.cmd` launcher installed by `install.ps1`. If an older install resolves to blocked `bh.ps1`, rerun the root installer or call `bh.cmd`.
+On Windows PowerShell, `bh` should resolve to the `.cmd` launcher installed by the root installer. If an older install resolves to blocked `bh.ps1`, rerun `install.cmd` or call `bh.cmd`.
 
 ## Main Agent Flow
 

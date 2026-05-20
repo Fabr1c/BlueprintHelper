@@ -4,6 +4,9 @@
 
 #include "CoreMinimal.h"
 
+class FJsonObject;
+class FJsonValue;
+
 struct FBlueprintHelperSettingView
 {
 	FString Schema;
@@ -25,6 +28,10 @@ class BLUEPRINTHELPER_API FBlueprintHelperSettingStore
 public:
 	static FBlueprintHelperSettingView Load();
 	static bool EnsureProjectSetting(FString& OutPath, FString& OutError);
+	static bool LoadEffectiveSettingObject(TSharedPtr<FJsonObject>& OutObject, FString& OutError);
+	static bool LoadEffectiveSettingJson(FString& OutJson, FString& OutError);
+	static bool TryGetEffectiveJsonValue(const FString& DotPath, TSharedPtr<FJsonValue>& OutValue, FString& OutError);
+	static bool TryGetProjectJsonValue(const FString& DotPath, TSharedPtr<FJsonValue>& OutValue, FString& OutError);
 	static bool UpdateProjectSettingValue(const FString& DotPath, const FString& NewValue, FString& OutError);
 	static bool ResetProjectSettingValue(const FString& DotPath, FString& OutError);
 	static bool GetSettingValue(const FString& DotPath, FString& OutCurrentValue, FString& OutDefaultValue, bool& bOutHasProjectOverride, FString& OutError);

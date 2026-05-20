@@ -7,6 +7,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
 #include "Systems/Review/BlueprintHelperReviewBaselineSnapshotService.h"
+#include "Systems/ToolClusters/BlueprintHelperToolClusterConfigResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDebugData.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphWriteSemanticPayload.h"
@@ -283,6 +284,10 @@ FBlueprintHelperReplaceBlueprintGraphService::FReplaceRequest
 FBlueprintHelperReplaceBlueprintGraphService::ParseRequest(const TSharedPtr<FJsonObject>& Payload) const
 {
 	FReplaceRequest Request;
+	const FBlueprintHelperGraphWriteToolClusterPolicy Policy =
+		FBlueprintHelperToolClusterConfigResolver::LoadGraphWritePolicy();
+	Request.bDryRun = Policy.bDryRun;
+	Request.bStrict = Policy.bStrict;
 
 	if (!Payload.IsValid())
 	{
@@ -794,8 +799,10 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 	FBlueprintHelperGraphFragmentDebugData::AttachToData(SuccessResult.Data, PreflightResult.FragmentDebugData);
 
 	FBlueprintHelperValidationSummary Validation;
-	Validation.bShouldCompile = true;
-	Validation.bShouldSave = true;
+	const FBlueprintHelperGraphWriteToolClusterPolicy Policy =
+		FBlueprintHelperToolClusterConfigResolver::LoadGraphWritePolicy();
+	Validation.bShouldCompile = Policy.bCompile;
+	Validation.bShouldSave = Policy.bSave;
 	SuccessResult.Validation = Validation;
 
 	const double LayoutStart = FPlatformTime::Seconds();
@@ -1106,11 +1113,18 @@ bool FBlueprintHelperReplaceBlueprintGraphService::ReconnectPreservedEntryToNewB
 FString FBlueprintHelperReplaceBlueprintGraphService::BuildSemanticGraphWritePayload(
 	const FReplaceRequest& Request) const
 {
+	const FBlueprintHelperGraphWriteToolClusterPolicy Policy =
+		FBlueprintHelperToolClusterConfigResolver::LoadGraphWritePolicy();
 	FBlueprintHelperGraphWriteSemanticPayload Payload;
 	Payload.TargetAssetPath = Request.AssetPath;
 	Payload.TargetGraph = Request.GraphName;
 	Payload.Mode = TEXT("replace");
-	Payload.bReconstructExistingNodes = false;
+	Payload.bCompile = Policy.bCompile;
+	Payload.bSave = Policy.bSave;
+	Payload.bStrict = Request.bStrict;
+	Payload.bDryRun = Request.bDryRun;
+	Payload.bCreateMissingVariables = Policy.bCreateMissingVariables;
+	Payload.bReconstructExistingNodes = Policy.bReconstructExistingNodes;
 	Payload.LogicSpec = Request.LogicSpec;
 	return Payload.ToJsonString();
 }

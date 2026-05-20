@@ -55,6 +55,7 @@ static FString BlueprintHelperReviewMakeStableTextKeyForSnapshot(const FText& Te
 #include "Serialization/JsonWriter.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
+#include "Systems/Review/BlueprintHelperReviewConfigResolver.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewBaselineSnapshotServiceUtils.h"
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
@@ -554,10 +555,7 @@ FString FBlueprintHelperReviewBaselineSnapshotService::MakeSnapshotDirectory(
 	const FString& SnapshotKey)
 {
 	return FPaths::Combine(
-		FPaths::ProjectSavedDir(),
-		TEXT("BlueprintHelper"),
-		TEXT("Review"),
-		TEXT("Snapshots"),
+		FBlueprintHelperReviewConfigResolver::Load().Artifact.SnapshotRoot,
 		ArchiveSessionId,
 		SnapshotKey);
 }
@@ -627,7 +625,7 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildAsse
 	UObject* Asset)
 {
 	TSharedRef<FJsonObject> Snapshot = MakeShared<FJsonObject>();
-	Snapshot->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.ReviewBaselineSemanticSnapshot.v2"));
+	Snapshot->SetStringField(TEXT("schema"), FBlueprintHelperReviewConfigResolver::Load().MakeBaselineSemanticSnapshotSchema());
 	Snapshot->SetStringField(TEXT("asset_path"), AssetPath);
 	Snapshot->SetStringField(TEXT("object_name"), GetNameSafe(Asset));
 	Snapshot->SetStringField(TEXT("object_path"), FBlueprintHelperReviewBaselineSnapshotServiceUtils::GetObjectPathNameSafe(Asset));
@@ -725,7 +723,7 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 {
 	TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
 	const FString TargetName = FBlueprintHelperReviewBaselineSnapshotServiceUtils::ExtractTargetName(Target);
-	Json->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.ReviewTargetSnapshot.v2"));
+	Json->SetStringField(TEXT("schema"), FBlueprintHelperReviewConfigResolver::Load().DebugBundle.SchemaSnapshot);
 	Json->SetStringField(TEXT("asset_path"), Target.AssetPath);
 	Json->SetStringField(TEXT("target_kind"), Target.TargetKind);
 	Json->SetStringField(TEXT("target_key"), Target.TargetKey);

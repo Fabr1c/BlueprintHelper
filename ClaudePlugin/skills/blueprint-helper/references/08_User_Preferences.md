@@ -89,7 +89,7 @@ Agents should read this file before BlueprintHelper planning, status review, imp
 
 ## Preference Collection Forms
 
-The root `install.ps1` script creates this file only when it is missing. The configure command should update this file and the active safety profile after installation.
+The root installer creates this file only when it is missing. The configure command should update this file and the active safety profile after installation.
 
 The configure command should call `AskUserQuestion` to render native interactive forms. Do not print the form schema as plain Markdown unless `AskUserQuestion` is unavailable in the current Claude environment.
 

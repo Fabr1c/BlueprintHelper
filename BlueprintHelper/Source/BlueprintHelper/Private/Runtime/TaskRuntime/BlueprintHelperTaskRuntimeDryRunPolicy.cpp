@@ -1,6 +1,7 @@
 // BlueprintHelper TaskRuntime dry-run policy implementation.
 
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeDryRunPolicy.h"
+#include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeSettingsResolver.h"
 
 #include "Dom/JsonObject.h"
 
@@ -10,7 +11,7 @@ FBlueprintHelperTaskRuntimeDryRunPolicy FBlueprintHelperTaskRuntimeDryRunPolicy:
 	FBlueprintHelperTaskRuntimeDryRunPolicy Policy;
 
 	const TSharedPtr<FJsonObject>* ExecutionPolicyPtr = nullptr;
-	FString RawMode = TEXT("full");
+	FString RawMode = FBlueprintHelperTaskRuntimeSettingsResolver::LoadExecutionPolicy().DryRunMode;
 	if (TaskPlanObject->TryGetObjectField(TEXT("execution_policy"), ExecutionPolicyPtr) &&
 		ExecutionPolicyPtr && ExecutionPolicyPtr->IsValid())
 	{
@@ -63,4 +64,3 @@ FString FBlueprintHelperTaskRuntimeDryRunPolicy::ToDiagnosticString() const
 {
 	return DiagnosticString;
 }
-

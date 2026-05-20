@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "UI/BlueprintHelperUiSettings.h"
 #include "Widgets/SCompoundWidget.h"
 
 class SMultiLineEditableTextBox;
@@ -90,6 +91,7 @@ private:
 	bool bSettingsMarkDirtyAfterApply = true;
 	bool bSettingsSaveAfterApply = false;
 
+	FBlueprintHelperLayoutRuleEditorSettings LayoutRuleEditorSettings;
 	FBlueprintHelperLayoutRuleEditorImportJson ImportJsonDelegate;
 	FBlueprintHelperLayoutRuleEditorExportJson ExportJsonDelegate;
 	FBlueprintHelperLayoutRuleEditorValidateJson ValidateJsonDelegate;

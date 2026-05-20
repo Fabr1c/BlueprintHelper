@@ -2,10 +2,22 @@
 
 #include "UI/Review/BlueprintHelperReviewSurfaceFrameGeometryUtils.h"
 
+namespace
+{
+FVector2D GBlueprintHelperReviewSurfaceFrameGeometryPadding(10.0f, 10.0f);
+}
+
+void BlueprintHelperReviewSetSurfaceFrameGeometryPadding(const FVector2D& Padding)
+{
+	GBlueprintHelperReviewSurfaceFrameGeometryPadding = FVector2D(
+		FMath::Max(0.0f, Padding.X),
+		FMath::Max(0.0f, Padding.Y));
+}
+
 void FBlueprintHelperReviewSurfaceFrameGeometryUtils::ApplyRowGeometryPadding(
 	FBlueprintHelperReviewSurfaceGeometryAnchor& Anchor)
 {
-	const FVector2D Padding(10.0f, 10.0f);
+	const FVector2D Padding = GBlueprintHelperReviewSurfaceFrameGeometryPadding;
 	FVector2D PaddedPosition = Anchor.Position - Padding;
 	FVector2D PaddedSize = Anchor.Size + Padding * 2.0f;
 

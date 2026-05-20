@@ -63,9 +63,17 @@ public:
 		const TSharedPtr<SGraphEditor>& GraphEditor,
 		FBox2D& InOutBounds,
 		bool& bInOutHasBounds);
+	static void SetDefaultBoundsPadding(const FVector2D& Padding);
+	static FVector2D GetDefaultBoundsPadding();
 	static bool BuildPaddedBounds(
 		const FBox2D& Bounds,
 		bool bHasBounds,
+		FVector2D& OutPosition,
+		FVector2D& OutSize);
+	static bool BuildPaddedBounds(
+		const FBox2D& Bounds,
+		bool bHasBounds,
+		const FVector2D& Padding,
 		FVector2D& OutPosition,
 		FVector2D& OutSize);
 

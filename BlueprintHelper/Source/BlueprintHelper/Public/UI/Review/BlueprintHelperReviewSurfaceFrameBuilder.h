@@ -32,6 +32,7 @@ public:
 		bool bFillBackground,
 		const FSlateColor& FrameColor,
 		const TFunction<FReply(const FBlueprintHelperReviewActionIntent&)>& OnReviewActionIntent,
+		const FBlueprintHelperReviewPanelSettings& ReviewPanelSettings,
 		bool bSelected = false);
 
 	static FLinearColor GetDiffFrameBackgroundColor(bool bFillBackground);

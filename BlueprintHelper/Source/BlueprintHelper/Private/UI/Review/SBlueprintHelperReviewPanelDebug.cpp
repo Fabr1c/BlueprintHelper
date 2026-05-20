@@ -60,15 +60,13 @@ void SBlueprintHelperReviewPanel::AppendDebugBundleEvent(const TSharedRef<FJsonO
 
 void SBlueprintHelperReviewPanel::AddDebugMessage(const FString& Message)
 {
-	static constexpr int32 MaxDebugMessages = 200;
-
 	DebugMessages.Insert(FString::Printf(
 		TEXT("[%s] %s"),
 		*FDateTime::Now().ToString(TEXT("%H:%M:%S")),
 		*Message), 0);
-	if (DebugMessages.Num() > MaxDebugMessages)
+	if (DebugMessages.Num() > ReviewPanelSettings.DebugMaxMessages)
 	{
-		DebugMessages.SetNum(MaxDebugMessages);
+		DebugMessages.SetNum(ReviewPanelSettings.DebugMaxMessages);
 	}
 
 	if (DebugMessageTextBox.IsValid())
@@ -173,7 +171,9 @@ FReply SBlueprintHelperReviewPanel::OnCaptureFocusDebugBundle()
 		{
 			continue;
 		}
-		if (!CurrentAssetPath.IsEmpty() && Item->AssetPath != CurrentAssetPath)
+		if (ReviewPanelSettings.bOverlayFilterCurrentAssetOnly
+			&& !CurrentAssetPath.IsEmpty()
+			&& Item->AssetPath != CurrentAssetPath)
 		{
 			continue;
 		}

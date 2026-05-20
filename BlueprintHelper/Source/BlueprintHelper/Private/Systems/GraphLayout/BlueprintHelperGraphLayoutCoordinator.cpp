@@ -13,6 +13,7 @@
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 #include "Systems/Config/BlueprintHelperProjectConfigPaths.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutRuleSourceResolver.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutRuleSetJson.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutSnapshotBuilder.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutSolver.h"
@@ -55,7 +56,7 @@ static FString MakeNodeId(const UEdGraphNode* Node)
 
 static FString GetRuleSetConfigPath()
 {
-	return FBlueprintHelperProjectConfigPaths::GetGraphLayoutRulesPath();
+	return FBlueprintHelperGraphLayoutRuleSourceResolver::ResolveRuleSourcePath();
 }
 
 static BlueprintHelper::GraphLayout::FRuleSet LoadConfiguredRuleSet()

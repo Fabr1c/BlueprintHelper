@@ -10,6 +10,19 @@
 
 ---
 
+## Execution Status - 2026-05-20
+
+- [x] Store / Presenter / Row / Panel 四层实现已落地。
+- [x] `SettingStore` 已支持 dot-path 项目设置写入、重置、默认值读取和纯 JSON 文本更新测试入口。
+- [x] `SettingsPresenter` 已生成中文用户行模型，并统一处理校验、写回、重置和事件广播。
+- [x] `SBlueprintHelperSettingRow` 已实现中文标签、值编辑控件、OverlapHint、重置按钮和行级错误显示。
+- [x] `SBlueprintHelperSettingsPanel` 已改为分类行布局，只负责展示和事件转发，不再以 raw JSON 作为主界面。
+- [x] 已补充 `BlueprintHelper.Settings.Store.UpdateJsonPath` 自动化测试代码。
+- [x] 已执行 UE 目标编译；构建输出为 `Result: Succeeded`。
+- [ ] 尚未执行自动化测试用例。距离期望差距：MCP `exec_console_command` 当前被高风险命令开关禁用，返回 `command_disabled`；未启用 `BLUEPRINTHELPER_ENABLE_HIGH_RISK_COMMANDS=1`，因此没有绕过安全策略执行测试。
+- [x] 已启动编辑器并确认 BlueprintHelper Bridge 可用。
+- [ ] 尚未完成编辑器内 Settings 页目视验证。距离期望差距：当前工具可启动编辑器和验证 Bridge，但无法直接读取 Slate UI 的视觉结果；需要在编辑器中打开 BlueprintHelper Settings 页确认中文行、OverlapHint、写回和重置交互。
+
 ## Scope
 
 本计划只实现 Settings 页的友好行、OverlapHint、本地化、事件驱动写回和最小可验证测试。

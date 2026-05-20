@@ -11,6 +11,13 @@
 #include "Shared/BlueprintHelperVersionCompat.h"
 #include "UObject/MetaData.h"
 
+namespace
+{
+FVector2D GBlueprintHelperReviewGraphBoundsPadding(
+	FBlueprintHelperReviewGraphBoundsUtils::CommentStylePadding,
+	FBlueprintHelperReviewGraphBoundsUtils::CommentStylePadding);
+}
+
 void FBlueprintHelperReviewGraphBoundsUtils::AddUniqueTrimmed(TArray<FString>& OutValues, FString Value)
 {
 	Value.TrimStartAndEndInline();
@@ -349,12 +356,38 @@ bool FBlueprintHelperReviewGraphBoundsUtils::BuildPaddedBounds(
 	FVector2D& OutPosition,
 	FVector2D& OutSize)
 {
+	return BuildPaddedBounds(
+		Bounds,
+		bHasBounds,
+		GetDefaultBoundsPadding(),
+		OutPosition,
+		OutSize);
+}
+
+void FBlueprintHelperReviewGraphBoundsUtils::SetDefaultBoundsPadding(const FVector2D& Padding)
+{
+	GBlueprintHelperReviewGraphBoundsPadding = FVector2D(
+		FMath::Max(0.0f, Padding.X),
+		FMath::Max(0.0f, Padding.Y));
+}
+
+FVector2D FBlueprintHelperReviewGraphBoundsUtils::GetDefaultBoundsPadding()
+{
+	return GBlueprintHelperReviewGraphBoundsPadding;
+}
+
+bool FBlueprintHelperReviewGraphBoundsUtils::BuildPaddedBounds(
+	const FBox2D& Bounds,
+	const bool bHasBounds,
+	const FVector2D& Padding,
+	FVector2D& OutPosition,
+	FVector2D& OutSize)
+{
 	if (!bHasBounds)
 	{
 		return false;
 	}
 
-	const FVector2D Padding(CommentStylePadding, CommentStylePadding);
 	OutPosition = Bounds.Min - Padding;
 	OutSize = (Bounds.Max - Bounds.Min) + Padding * 2.0f;
 	OutSize.X = FMath::Max(80.0f, OutSize.X);

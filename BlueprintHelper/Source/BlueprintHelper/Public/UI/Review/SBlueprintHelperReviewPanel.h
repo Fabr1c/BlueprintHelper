@@ -8,6 +8,7 @@
 #include "UI/Review/BlueprintHelperReviewAssetContext.h"
 #include "UI/Review/BlueprintHelperReviewAssetPresenters.h"
 #include "UI/Review/BlueprintHelperReviewPanelData.h"
+#include "UI/Review/BlueprintHelperReviewPanelSettings.h"
 #include "UI/Review/BlueprintHelperReviewSurfaceViewCoordinator.h"
 #include "UI/Review/BlueprintHelperReviewSurfacePresenter.h"
 #include "Widgets/SCompoundWidget.h"
@@ -246,6 +247,7 @@ private:
 	bool bAllowGraphNavigationWithoutGraphReview = false;
 	FBlueprintHelperReviewAssetContext ReviewAssetContext;
 	FBlueprintHelperReviewSurfaceViewCoordinator SurfaceViewCoordinator;
+	FBlueprintHelperReviewPanelSettings ReviewPanelSettings;
 	EBlueprintHelperReviewSurface DetailsSurface = EBlueprintHelperReviewSurface::Unknown;
 	FBlueprintHelperReviewGraphPresenterState GraphPresenterState;
 	FBlueprintHelperReviewBlueprintComponentsPresenter::FState ComponentsPresenterState;

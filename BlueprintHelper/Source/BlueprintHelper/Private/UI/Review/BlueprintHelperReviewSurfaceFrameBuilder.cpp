@@ -7,9 +7,69 @@
 #include "UI/Review/BlueprintHelperReviewSurfaceFrameGeometryUtils.h"
 #include "UI/Review/BlueprintHelperReviewSurfaceFrameWidgetUtils.h"
 #include "UI/Review/BlueprintHelperReviewSurfaceRouter.h"
+#include "UI/Review/BlueprintHelperReviewPanelStateService.h"
+#include "UI/Review/SBlueprintHelperReviewDiffFrame.h"
 
 #include "Widgets/SCanvas.h"
 #include "Widgets/SNullWidget.h"
+
+void BlueprintHelperReviewSetSurfaceFrameGeometryPadding(const FVector2D& Padding);
+void BlueprintHelperReviewSetSurfaceFrameWidgetStyle(
+	float FrameOuterPadding,
+	float ActionPadding,
+	const FMargin& ActionSpacing,
+	float FillAlpha,
+	float SelectedFillAlpha);
+
+namespace
+{
+static TSharedRef<SWidget> BlueprintHelperReviewBuildDiffFrameWidget(
+	const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Item,
+	const TSharedRef<SWidget>& Content,
+	bool bShowActions,
+	bool bFillBackground,
+	const FSlateColor& FrameColor,
+	const TFunction<FReply(const FBlueprintHelperReviewActionIntent&)>& OnReviewActionIntent,
+	const FBlueprintHelperReviewPanelSettings& ReviewPanelSettings,
+	bool bSelected)
+{
+	return SNew(SBlueprintHelperReviewDiffFrame)
+		.FrameColor(FrameColor)
+		.ShowActions(bShowActions && Item.IsValid())
+		.FillBackground(bFillBackground)
+		.Selected(bSelected)
+		.FrameOuterPadding(ReviewPanelSettings.DiffFrameOuterPadding)
+		.ActionPadding(ReviewPanelSettings.DiffActionPadding)
+		.ActionSpacing(ReviewPanelSettings.DiffActionSpacing)
+		.SurfaceOverlayFillAlpha(ReviewPanelSettings.SurfaceOverlayFillAlpha)
+		.SurfaceOverlaySelectedFillAlpha(ReviewPanelSettings.SurfaceOverlaySelectedFillAlpha)
+		.OnAccept(FOnClicked::CreateLambda([Item, OnReviewActionIntent]()
+		{
+			return OnReviewActionIntent && Item.IsValid()
+				? OnReviewActionIntent(FBlueprintHelperReviewActionIntent::Accept(
+					FBlueprintHelperReviewPanelStateService::MakeChangeBinding(
+						*Item,
+						EBlueprintHelperReviewSurface::Unknown,
+						Item->LocationKey),
+					TEXT("diff_frame")))
+				: FReply::Handled();
+		}))
+		.OnReject(FOnClicked::CreateLambda([Item, OnReviewActionIntent]()
+		{
+			return OnReviewActionIntent && Item.IsValid()
+				? OnReviewActionIntent(FBlueprintHelperReviewActionIntent::Reject(
+					FBlueprintHelperReviewPanelStateService::MakeChangeBinding(
+						*Item,
+						EBlueprintHelperReviewSurface::Unknown,
+						Item->LocationKey),
+					TEXT("diff_frame")))
+				: FReply::Handled();
+		}))
+		[
+			Content
+		];
+}
+}
 
 FString FBlueprintHelperReviewSurfaceFrameBuilder::GetReviewTargetText(
 	const FBlueprintHelperReviewVisibleChange& Change,
@@ -48,6 +108,13 @@ TSharedRef<SWidget> FBlueprintHelperReviewSurfaceFrameBuilder::BuildReviewListOv
 		? Args.SelectedChange->AssetPath
 		: FString();
 	TArray<FReviewPanelVisibleFrame> VisibleFrames;
+	BlueprintHelperReviewSetSurfaceFrameGeometryPadding(Args.ReviewPanelSettings.SurfaceGeometryPadding);
+	BlueprintHelperReviewSetSurfaceFrameWidgetStyle(
+		Args.ReviewPanelSettings.DiffFrameOuterPadding,
+		Args.ReviewPanelSettings.DiffActionPadding,
+		Args.ReviewPanelSettings.DiffActionSpacing,
+		Args.ReviewPanelSettings.SurfaceOverlayFillAlpha,
+		Args.ReviewPanelSettings.SurfaceOverlaySelectedFillAlpha);
 
 	for (const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Item : *Args.ChangeItems)
 	{
@@ -55,7 +122,9 @@ TSharedRef<SWidget> FBlueprintHelperReviewSurfaceFrameBuilder::BuildReviewListOv
 		{
 			continue;
 		}
-		if (!CurrentAssetPath.IsEmpty() && Item->AssetPath != CurrentAssetPath)
+		if (Args.ReviewPanelSettings.bOverlayFilterCurrentAssetOnly
+			&& !CurrentAssetPath.IsEmpty()
+			&& Item->AssetPath != CurrentAssetPath)
 		{
 			continue;
 		}
@@ -169,13 +238,14 @@ TSharedRef<SWidget> FBlueprintHelperReviewSurfaceFrameBuilder::BuildReviewListOv
 		.Position(Frame.GeometryAnchor.Position)
 		.Size(Frame.GeometryAnchor.Size)
 		[
-			FBlueprintHelperReviewSurfaceFrameWidgetUtils::BuildDiffFrameWidget(
+			BlueprintHelperReviewBuildDiffFrameWidget(
 				Frame.Item,
 				SNullWidget::NullWidget,
 				false,
 				true,
 				FrameColor,
 				Args.OnReviewActionIntent,
+				Args.ReviewPanelSettings,
 				bSelected)
 		];
 		++StableFrameCount;
@@ -210,16 +280,24 @@ TSharedRef<SWidget> FBlueprintHelperReviewSurfaceFrameBuilder::BuildDiffFrame(
 	const TSharedRef<SWidget>& Content,
 	bool bShowActions,
 	bool bFillBackground,
-	const FSlateColor& FrameColor,
-	const TFunction<FReply(const FBlueprintHelperReviewActionIntent&)>& OnReviewActionIntent,
-	bool bSelected)
+		const FSlateColor& FrameColor,
+		const TFunction<FReply(const FBlueprintHelperReviewActionIntent&)>& OnReviewActionIntent,
+		const FBlueprintHelperReviewPanelSettings& ReviewPanelSettings,
+		bool bSelected)
 {
-	return FBlueprintHelperReviewSurfaceFrameWidgetUtils::BuildDiffFrameWidget(
+	BlueprintHelperReviewSetSurfaceFrameWidgetStyle(
+		ReviewPanelSettings.DiffFrameOuterPadding,
+		ReviewPanelSettings.DiffActionPadding,
+		ReviewPanelSettings.DiffActionSpacing,
+		ReviewPanelSettings.SurfaceOverlayFillAlpha,
+		ReviewPanelSettings.SurfaceOverlaySelectedFillAlpha);
+	return BlueprintHelperReviewBuildDiffFrameWidget(
 		Item,
 		Content,
 		bShowActions,
 		bFillBackground,
 		FrameColor,
 		OnReviewActionIntent,
+		ReviewPanelSettings,
 		bSelected);
 }

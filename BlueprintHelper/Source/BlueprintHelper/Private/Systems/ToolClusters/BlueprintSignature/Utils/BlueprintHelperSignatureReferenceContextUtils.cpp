@@ -9,6 +9,7 @@
 #include "Misc/PackageName.h"
 #include "Modules/ModuleManager.h"
 #include "Shared/Safety/BlueprintHelperDependencyAnalysisService.h"
+#include "Systems/ToolClusters/BlueprintHelperToolClusterConfigResolver.h"
 
 FString FBlueprintHelperSignatureReferenceContextUtils::ReferenceContextTargetTypeForSignatureKind(
 	const FString& SignatureKind)
@@ -34,6 +35,8 @@ TSharedRef<FJsonObject> FBlueprintHelperSignatureReferenceContextUtils::MakeRefe
 	const FString& TargetName,
 	const FString& GraphName)
 {
+	const FBlueprintHelperSignatureToolClusterPolicy Policy =
+		FBlueprintHelperToolClusterConfigResolver::LoadSignaturePolicy();
 	TSharedRef<FJsonObject> ReferenceContextRequest = MakeShared<FJsonObject>();
 	ReferenceContextRequest->SetStringField(TEXT("asset_path"), AssetPath);
 	ReferenceContextRequest->SetStringField(TEXT("target_type"), TargetType);
@@ -42,10 +45,10 @@ TSharedRef<FJsonObject> FBlueprintHelperSignatureReferenceContextUtils::MakeRefe
 	{
 		ReferenceContextRequest->SetStringField(TEXT("graph_name"), GraphName);
 	}
-	ReferenceContextRequest->SetStringField(TEXT("search_scope"), TEXT("project"));
-	ReferenceContextRequest->SetStringField(TEXT("resolution_policy"), TEXT("ue_then_name"));
-	ReferenceContextRequest->SetStringField(TEXT("detail"), TEXT("summary"));
-	ReferenceContextRequest->SetNumberField(TEXT("max_results"), 50);
+	ReferenceContextRequest->SetStringField(TEXT("search_scope"), Policy.ReferenceContextSearchScope);
+	ReferenceContextRequest->SetStringField(TEXT("resolution_policy"), Policy.ReferenceContextResolutionPolicy);
+	ReferenceContextRequest->SetStringField(TEXT("detail"), Policy.ReferenceContextDetail);
+	ReferenceContextRequest->SetNumberField(TEXT("max_results"), Policy.ReferenceContextMaxResults);
 	return ReferenceContextRequest;
 }
 
@@ -53,6 +56,8 @@ void FBlueprintHelperSignatureReferenceContextUtils::AttachRemoveSignatureRefere
 	const TSharedPtr<FJsonObject>& Data,
 	const FBlueprintHelperRemoveSignatureRequest& Request)
 {
+	const FBlueprintHelperSignatureToolClusterPolicy Policy =
+		FBlueprintHelperToolClusterConfigResolver::LoadSignaturePolicy();
 	const TSharedPtr<FJsonObject>* InnerResult = nullptr;
 	if (!Data.IsValid() ||
 		!Data->TryGetObjectField(TEXT("remove_signature_result"), InnerResult) ||
@@ -70,10 +75,10 @@ void FBlueprintHelperSignatureReferenceContextUtils::AttachRemoveSignatureRefere
 	{
 		ReferenceContextRequest->SetStringField(TEXT("graph_name"), Request.GraphName);
 	}
-	ReferenceContextRequest->SetStringField(TEXT("search_scope"), TEXT("project"));
+	ReferenceContextRequest->SetStringField(TEXT("search_scope"), Policy.ReferenceContextSearchScope);
 	ReferenceContextRequest->SetStringField(TEXT("resolution_policy"), TEXT("ue_only"));
 	ReferenceContextRequest->SetStringField(TEXT("detail"), TEXT("samples"));
-	ReferenceContextRequest->SetNumberField(TEXT("max_results"), 50);
+	ReferenceContextRequest->SetNumberField(TEXT("max_results"), Policy.ReferenceContextMaxResults);
 	(*InnerResult)->SetObjectField(TEXT("reference_context_request"), ReferenceContextRequest);
 }
 
@@ -115,11 +120,13 @@ bool FBlueprintHelperSignatureReferenceContextUtils::TryBuildSignatureReferenceC
 	Target.TargetName = TargetName;
 	Target.GraphName = GraphName;
 
+	const FBlueprintHelperSignatureToolClusterPolicy Policy =
+		FBlueprintHelperToolClusterConfigResolver::LoadSignaturePolicy();
 	FBlueprintHelperDependencyAnalysisOptions Options;
-	Options.SearchScope = IsRegisteredAssetPath(AssetPath) ? TEXT("project") : TEXT("asset");
-	Options.ResolutionPolicy = TEXT("ue_then_name");
-	Options.Detail = TEXT("summary");
-	Options.MaxResultCount = 50;
+	Options.SearchScope = IsRegisteredAssetPath(AssetPath) ? Policy.ReferenceContextSearchScope : TEXT("asset");
+	Options.ResolutionPolicy = Policy.ReferenceContextResolutionPolicy;
+	Options.Detail = Policy.ReferenceContextDetail;
+	Options.MaxResultCount = Policy.ReferenceContextMaxResults;
 
 	FString ErrorCode;
 	FString ErrorMessage;

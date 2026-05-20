@@ -6,6 +6,8 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "Systems/Debug/BlueprintHelperDebugExportPolicyResolver.h"
+#include "Systems/Review/BlueprintHelperReviewConfigResolver.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
 
 void FBlueprintHelperDebugCaseStoreService::SetError(FString* OutError, const FString& Error)
@@ -18,7 +20,7 @@ void FBlueprintHelperDebugCaseStoreService::SetError(FString* OutError, const FS
 
 FString FBlueprintHelperDebugCaseStoreService::GetDebugRootDir()
 {
-	return FPaths::ProjectSavedDir() / TEXT("BlueprintHelper") / TEXT("Debug");
+	return FBlueprintHelperReviewConfigResolver::Load().DebugBundle.RootDir;
 }
 
 FString FBlueprintHelperDebugCaseStoreService::GetCaseDirectory()
@@ -184,10 +186,14 @@ FString FBlueprintHelperDebugCaseStoreService::BuildMarkdownSummary(
 	}
 
 	AppendLine(TEXT(""));
+	const FBlueprintHelperDebugExportPolicy ExportPolicy = FBlueprintHelperDebugExportPolicyResolver::Load();
+	const FString PrivacyProfile = Manifest.ExportProfile.IsEmpty() ? ExportPolicy.ExportProfile : Manifest.ExportProfile;
+	const bool bContainsFullSettings = Manifest.bContainsFullSettings || ExportPolicy.bContainsFullSettings;
 	AppendLine(TEXT("## Privacy"));
-	AppendLine(TEXT("- Profile: `standard`"));
+	AppendLine(FString::Printf(TEXT("- Profile: `%s`"), *PrivacyProfile));
 	AppendLine(TEXT("- Redacted: `true`"));
 	AppendLine(TEXT("- Contains tokens: `false`"));
+	AppendLine(FString::Printf(TEXT("- Contains full settings: `%s`"), bContainsFullSettings ? TEXT("true") : TEXT("false")));
 	AppendLine(TEXT("- Contains local absolute paths: `false`"));
 	AppendLine(TEXT("- Contains full raw asset json: `false`"));
 	AppendLine(TEXT("- Contains source files: `false`"));
@@ -877,6 +883,9 @@ bool FBlueprintHelperDebugCaseStoreService::ExportDebugBundleSummary(
 	OutManifest.BundleId = TEXT("bundle_") + DebugCaseId + TEXT("_") + FGuid::NewGuid().ToString(EGuidFormats::Digits);
 	OutManifest.DebugCaseId = DebugCaseId;
 	OutManifest.CreatedAt = FDateTime::UtcNow().ToIso8601();
+	const FBlueprintHelperDebugExportPolicy ExportPolicy = FBlueprintHelperDebugExportPolicyResolver::Load();
+	OutManifest.ExportProfile = ExportPolicy.ExportProfile;
+	OutManifest.bContainsFullSettings = ExportPolicy.bContainsFullSettings;
 	OutManifest.SummaryRef = TEXT("summary.md");
 	OutManifest.Contents.Add(TEXT("manifest.json"));
 	OutManifest.Contents.Add(OutManifest.SummaryRef);

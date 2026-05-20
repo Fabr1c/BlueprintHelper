@@ -3,6 +3,7 @@
 #include "UI/Review/SBlueprintHelperReviewPanel.h"
 
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
+#include "UI/Review/BlueprintHelperReviewPanelSettingsResolver.h"
 #include "UI/Review/BlueprintHelperReviewPanelStyle.h"
 #include "UI/Review/BlueprintHelperReviewPanelPresenter.h"
 #include "UI/Review/BlueprintHelperReviewRowHighlightModel.h"
@@ -20,9 +21,21 @@
 
 void SBlueprintHelperReviewPanel::Construct(const FArguments& InArgs)
 {
+	ReviewPanelSettings = FBlueprintHelperReviewPanelSettingsResolver::Load();
+
 	ReviewPanelPresenter = MakeShared<FBlueprintHelperReviewPanelPresenter>(
 		InArgs._ReviewStoreService,
 		InArgs._ReviewActionService);
+
+	const auto RatioAt = [](const TArray<float>& Values, const int32 Index, const float DefaultValue)
+	{
+		return Values.IsValidIndex(Index) ? Values[Index] : DefaultValue;
+	};
+	const float MainGraphSideRatio = FMath::Max(
+		0.0f,
+		1.0f
+		- RatioAt(ReviewPanelSettings.MainGraphRatio, 0, 0.62f)
+		- RatioAt(ReviewPanelSettings.MainGraphRatio, 1, 0.20f));
 
 	TArray<FBlueprintHelperReviewVisibleChange> InitialChanges = InArgs._InitialChanges;
 	if (InitialChanges.Num() == 0 && ReviewPanelPresenter.IsValid())
@@ -64,48 +77,48 @@ void SBlueprintHelperReviewPanel::Construct(const FArguments& InArgs)
 				SNew(SSplitter)
 				.Orientation(Orient_Horizontal)
 				+ SSplitter::Slot()
-				.Value(0.14f)
+				.Value(RatioAt(ReviewPanelSettings.MainSplitRatio, 0, 0.14f))
 				[
 					BuildFinalChangeSidebar()
 				]
 				+ SSplitter::Slot()
-				.Value(0.86f)
+				.Value(RatioAt(ReviewPanelSettings.MainSplitRatio, 1, 0.86f))
 				[
 					SNew(SSplitter)
 					.Orientation(Orient_Horizontal)
 					+ SSplitter::Slot()
-					.Value(0.18f)
+					.Value(MainGraphSideRatio)
 					[
 						SNew(SVerticalBox)
 						+ SVerticalBox::Slot()
-						.FillHeight(0.42f)
+						.FillHeight(RatioAt(ReviewPanelSettings.ComponentBlueprintSplit, 0, 0.42f))
 						.Padding(4.0f)
 						[
 							BuildComponentsPanel()
 						]
 						+ SVerticalBox::Slot()
-						.FillHeight(0.58f)
+						.FillHeight(RatioAt(ReviewPanelSettings.ComponentBlueprintSplit, 1, 0.58f))
 						.Padding(4.0f)
 						[
 							BuildMyBlueprintPanel()
 						]
 					]
 					+ SSplitter::Slot()
-					.Value(0.62f)
+					.Value(RatioAt(ReviewPanelSettings.MainGraphRatio, 0, 0.62f))
 					[
 						BuildGraphPanel()
 					]
 					+ SSplitter::Slot()
-					.Value(0.20f)
+					.Value(RatioAt(ReviewPanelSettings.MainGraphRatio, 1, 0.20f))
 					[
 						SNew(SVerticalBox)
 						+ SVerticalBox::Slot()
-						.FillHeight(0.76f)
+						.FillHeight(RatioAt(ReviewPanelSettings.RightBottomRatio, 0, 0.76f))
 						[
 							BuildDetailsPanel()
 						]
 						+ SVerticalBox::Slot()
-						.FillHeight(0.24f)
+						.FillHeight(RatioAt(ReviewPanelSettings.RightBottomRatio, 1, 0.24f))
 						.Padding(0.0f, 4.0f, 0.0f, 0.0f)
 						[
 							BuildDebugPanel()
@@ -374,6 +387,7 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildGraphEditorWidget()
 	{
 		return GetChangeColor(Kind);
 	};
+	Args.ReviewPanelSettings = ReviewPanelSettings;
 
 	return FBlueprintHelperReviewGraphPresenter::BuildContent(Args, GraphPresenterState);
 }

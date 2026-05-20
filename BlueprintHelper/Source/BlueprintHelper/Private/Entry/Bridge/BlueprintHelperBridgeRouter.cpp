@@ -18,6 +18,7 @@
 #include "Systems/Debug/BlueprintHelperDiagnosticsService.h"
 #include "Shared/Debug/BlueprintHelperDiagnosticsTypes.h"
 #include "Systems/Debug/BlueprintHelperDebugEntryService.h"
+#include "Systems/ToolClusters/BlueprintHelperToolClusterConfigResolver.h"
 #include "Shared/BlueprintHelperDependencyAnalysisTypes.h"
 #include "Shared/FunctionChain/BlueprintHelperFunctionChainContextTypes.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicMdReadService.h"
@@ -76,6 +77,8 @@ public:
 		FBlueprintHelperToolTimingUtils::SetCurrentTrace(PreviousTrace);
 		FBlueprintHelperToolTimingUtils::FinishStage(TimingTrace, TEXT("route_execute"), RouteStageStart);
 		FBlueprintHelperToolTimingUtils::AttachTimingToBridgeResult(Response.Result, TimingTrace);
+		ApplyGraphWriteValidationPolicy(Request.Command, Request.Payload, Response.Result);
+		FBlueprintHelperReadContextOutputLimiter::ApplyToBridgeResult(Request.Command, Response.Result);
 		return Response;
 	}
 
@@ -505,6 +508,187 @@ public:
 		return Result;
 	}
 
+	static void SetStringDefaultIfMissing(
+		const TSharedPtr<FJsonObject>& Payload,
+		const TCHAR* FieldName,
+		const FString& Value)
+	{
+		if (Payload.IsValid() && !Value.IsEmpty() && !Payload->HasField(FieldName))
+		{
+			Payload->SetStringField(FieldName, Value);
+		}
+	}
+
+	static void SetBoolDefaultIfMissing(
+		const TSharedPtr<FJsonObject>& Payload,
+		const TCHAR* FieldName,
+		bool bValue)
+	{
+		if (Payload.IsValid() && !Payload->HasField(FieldName))
+		{
+			Payload->SetBoolField(FieldName, bValue);
+		}
+	}
+
+	static TSharedPtr<FJsonObject> GetOrCreateOptionsObject(const TSharedPtr<FJsonObject>& Payload)
+	{
+		if (!Payload.IsValid())
+		{
+			return nullptr;
+		}
+
+		const TSharedPtr<FJsonObject>* OptionsObject = nullptr;
+		if (Payload->TryGetObjectField(TEXT("options"), OptionsObject) && OptionsObject && OptionsObject->IsValid())
+		{
+			return *OptionsObject;
+		}
+
+		TSharedRef<FJsonObject> NewOptions = MakeShared<FJsonObject>();
+		Payload->SetObjectField(TEXT("options"), NewOptions);
+		return NewOptions;
+	}
+
+	static void ApplyToolClusterSettingDefaults(
+		EBlueprintHelperBridgeRouteCluster Cluster,
+		const TSharedPtr<FJsonObject>& Payload)
+	{
+		if (!Payload.IsValid())
+		{
+			return;
+		}
+
+		switch (Cluster)
+		{
+		case EBlueprintHelperBridgeRouteCluster::AssetFactory:
+		{
+			const FBlueprintHelperAssetFactoryToolClusterPolicy Policy =
+				FBlueprintHelperToolClusterConfigResolver::LoadAssetFactoryPolicy();
+			SetStringDefaultIfMissing(Payload, TEXT("parent_class"), Policy.DefaultParentClass);
+			SetStringDefaultIfMissing(Payload, TEXT("value_type"), Policy.DefaultValueType);
+			SetStringDefaultIfMissing(Payload, TEXT("collision_policy"), Policy.DefaultCollisionPolicy);
+			SetBoolDefaultIfMissing(Payload, TEXT("dry_run"), Policy.bDryRun);
+			break;
+		}
+		case EBlueprintHelperBridgeRouteCluster::Component:
+		{
+			const FBlueprintHelperComponentToolClusterPolicy Policy =
+				FBlueprintHelperToolClusterConfigResolver::LoadComponentPolicy();
+			SetStringDefaultIfMissing(Payload, TEXT("attach_rule"), Policy.DefaultAttachRule);
+			SetStringDefaultIfMissing(Payload, TEXT("name_collision_policy"), Policy.DefaultNameCollisionPolicy);
+			SetStringDefaultIfMissing(Payload, TEXT("property_mode"), Policy.DefaultPropertyMode);
+			SetBoolDefaultIfMissing(Payload, TEXT("dry_run"), Policy.bDryRun);
+			break;
+		}
+		case EBlueprintHelperBridgeRouteCluster::ClassSettings:
+		{
+			const FBlueprintHelperClassSettingsToolClusterPolicy Policy =
+				FBlueprintHelperToolClusterConfigResolver::LoadClassSettingsPolicy();
+			SetBoolDefaultIfMissing(Payload, TEXT("dry_run"), Policy.bDryRun);
+			SetBoolDefaultIfMissing(Payload, TEXT("validation_should_compile"), Policy.bValidationShouldCompile);
+			SetBoolDefaultIfMissing(Payload, TEXT("validation_should_save"), Policy.bValidationShouldSave);
+			break;
+		}
+		case EBlueprintHelperBridgeRouteCluster::BlueprintVariables:
+		{
+			const FBlueprintHelperBlueprintVariablesToolClusterPolicy Policy =
+				FBlueprintHelperToolClusterConfigResolver::LoadBlueprintVariablesPolicy();
+			SetBoolDefaultIfMissing(Payload, TEXT("dry_run"), Policy.bDryRun);
+			break;
+		}
+		case EBlueprintHelperBridgeRouteCluster::ObjectProperty:
+		{
+			const FBlueprintHelperObjectPropertyToolClusterPolicy Policy =
+				FBlueprintHelperToolClusterConfigResolver::LoadObjectPropertyPolicy();
+			SetBoolDefaultIfMissing(Payload, TEXT("dry_run"), Policy.bDryRun);
+			break;
+		}
+		case EBlueprintHelperBridgeRouteCluster::DataTable:
+		{
+			const FBlueprintHelperDataTableToolClusterPolicy Policy =
+				FBlueprintHelperToolClusterConfigResolver::LoadDataTablePolicy();
+			SetBoolDefaultIfMissing(Payload, TEXT("dry_run"), Policy.bDryRun);
+			SetBoolDefaultIfMissing(Payload, TEXT("write_requires_row_struct"), Policy.bWriteRequiresRowStruct);
+			break;
+		}
+		case EBlueprintHelperBridgeRouteCluster::UMGWidget:
+		{
+			const FBlueprintHelperUmgWidgetToolClusterPolicy Policy =
+				FBlueprintHelperToolClusterConfigResolver::LoadUmgWidgetPolicy();
+			SetBoolDefaultIfMissing(Payload, TEXT("dry_run"), Policy.bDryRun);
+			SetBoolDefaultIfMissing(Payload, TEXT("asset_path_required"), Policy.bAssetPathRequired);
+			break;
+		}
+		case EBlueprintHelperBridgeRouteCluster::GraphWrite:
+		{
+			const FBlueprintHelperGraphWriteToolClusterPolicy Policy =
+				FBlueprintHelperToolClusterConfigResolver::LoadGraphWritePolicy();
+			SetBoolDefaultIfMissing(Payload, TEXT("dry_run"), Policy.bDryRun);
+			TSharedPtr<FJsonObject> Options = GetOrCreateOptionsObject(Payload);
+			SetBoolDefaultIfMissing(Options, TEXT("dry_run"), Policy.bDryRun);
+			SetBoolDefaultIfMissing(Options, TEXT("strict"), Policy.bStrict);
+			SetBoolDefaultIfMissing(Options, TEXT("create_missing_variables"), Policy.bCreateMissingVariables);
+			SetBoolDefaultIfMissing(Options, TEXT("reconstruct_existing_nodes"), Policy.bReconstructExistingNodes);
+			SetBoolDefaultIfMissing(Options, TEXT("compile"), Policy.bCompile);
+			SetBoolDefaultIfMissing(Options, TEXT("save"), Policy.bSave);
+			SetStringDefaultIfMissing(Options, TEXT("layout"), Policy.Layout);
+			break;
+		}
+		default:
+			break;
+		}
+	}
+
+	static bool ReadGraphWriteBoolOption(
+		const TSharedPtr<FJsonObject>& Payload,
+		const TCHAR* FieldName,
+		bool bDefaultValue)
+	{
+		bool bValue = bDefaultValue;
+		const TSharedPtr<FJsonObject>* OptionsObject = nullptr;
+		if (Payload.IsValid() &&
+			Payload->TryGetObjectField(TEXT("options"), OptionsObject) &&
+			OptionsObject &&
+			OptionsObject->IsValid() &&
+			(*OptionsObject)->HasField(FieldName))
+		{
+			(*OptionsObject)->TryGetBoolField(FieldName, bValue);
+		}
+		return bValue;
+	}
+
+	static void ApplyGraphWriteValidationPolicy(
+		const FString& Command,
+		const TSharedPtr<FJsonObject>& Payload,
+		const TSharedPtr<FJsonObject>& ResultJson)
+	{
+		if (!ResultJson.IsValid() || !FBlueprintHelperGraphWriteBridgeRoutes::IsGraphWriteCommand(Command))
+		{
+			return;
+		}
+
+		const FBlueprintHelperGraphWriteToolClusterPolicy Policy =
+			FBlueprintHelperToolClusterConfigResolver::LoadGraphWritePolicy();
+		const bool bShouldCompile = ReadGraphWriteBoolOption(Payload, TEXT("compile"), Policy.bCompile);
+		const bool bShouldSave = ReadGraphWriteBoolOption(Payload, TEXT("save"), Policy.bSave);
+
+		TSharedPtr<FJsonObject> ValidationObject;
+		const TSharedPtr<FJsonObject>* ExistingValidationObject = nullptr;
+		if (ResultJson->TryGetObjectField(TEXT("validation"), ExistingValidationObject) &&
+			ExistingValidationObject &&
+			ExistingValidationObject->IsValid())
+		{
+			ValidationObject = *ExistingValidationObject;
+		}
+		else
+		{
+			ValidationObject = MakeShared<FJsonObject>();
+			ResultJson->SetObjectField(TEXT("validation"), ValidationObject.ToSharedRef());
+		}
+
+		ValidationObject->SetBoolField(TEXT("should_compile"), bShouldCompile);
+		ValidationObject->SetBoolField(TEXT("should_save"), bShouldSave);
+	}
+
 };
 
 FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
@@ -617,6 +801,8 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequestWithPl
 			EBlueprintHelperBridgeError::UnknownCommand,
 			FString::Printf(TEXT("鏈煡鍛戒护: %s"), *Request.Command));
 	}
+
+	FBlueprintHelperBridgeRouterLocalUtils::ApplyToolClusterSettingDefaults(RoutePlan.Cluster, Request.Payload);
 
 #define BLUEPRINTHELPER_ROUTE(CommandText, ClusterValue, Handler) \
 	if (RoutePlan.Cluster == EBlueprintHelperBridgeRouteCluster::ClusterValue && Request.Command == TEXT(CommandText)) \
@@ -765,6 +951,7 @@ namespace
 				EBlueprintHelperBridgeError::ExecutionFailed,
 				ErrorMessage);
 		Resp.Result = Result.ToJson();
+		FBlueprintHelperReadContextOutputLimiter::ApplyToBridgeResult(Req.Command, Resp.Result);
 		return Resp;
 	}
 
@@ -934,12 +1121,18 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadReference
 	const FBlueprintHelperBridgeRequest& Req) const
 {
 	FBlueprintHelperDependencyAnalysisOptions Options;
+	const FBlueprintHelperSignatureToolClusterPolicy SignaturePolicy =
+		FBlueprintHelperToolClusterConfigResolver::LoadSignaturePolicy();
+	Options.SearchScope = SignaturePolicy.ReferenceContextSearchScope;
+	Options.ResolutionPolicy = SignaturePolicy.ReferenceContextResolutionPolicy;
+	Options.Detail = SignaturePolicy.ReferenceContextDetail;
+	Options.MaxResultCount = SignaturePolicy.ReferenceContextMaxResults;
 	if (Req.Payload.IsValid())
 	{
 		Req.Payload->TryGetStringField(TEXT("search_scope"), Options.SearchScope);
 		Req.Payload->TryGetStringField(TEXT("resolution_policy"), Options.ResolutionPolicy);
 		Req.Payload->TryGetStringField(TEXT("detail"), Options.Detail);
-		Req.Payload->TryGetNumberField(TEXT("max_result_count"), Options.MaxResultCount);
+		Req.Payload->TryGetNumberField(TEXT("max_results"), Options.MaxResultCount);
 	}
 
 	FBlueprintHelperReferenceContextPack ContextPack;
@@ -966,6 +1159,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadReference
 
 	FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
 	Resp.Result = ContextPack.ToJson();
+	FBlueprintHelperReadContextOutputLimiter::ApplyToBridgeResult(Req.Command, Resp.Result);
 	return Resp;
 }
 
@@ -997,6 +1191,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadFunctionC
 
 	FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
 	Resp.Result = ContextPack.ToJson();
+	FBlueprintHelperReadContextOutputLimiter::ApplyToBridgeResult(Req.Command, Resp.Result);
 	return Resp;
 }
 
