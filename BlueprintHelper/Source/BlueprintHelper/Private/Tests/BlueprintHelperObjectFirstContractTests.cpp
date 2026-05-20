@@ -749,8 +749,22 @@ bool FBlueprintHelperContractTaskRuntimeRecordsCompileSavePostOperationsTest::Ru
 		TEXT("trace_save"));
 
 	TArray<FBlueprintHelperTaskRuntimePostOperationRecord> PostOperations;
-	PostOperations.Add({TEXT("compile_blueprint_asset"), CompileResult});
-	PostOperations.Add({TEXT("save_asset"), SaveResult});
+	FBlueprintHelperTaskRuntimePostOperationRecord CompilePostOperation;
+	CompilePostOperation.Operation = TEXT("compile_blueprint_asset");
+	CompilePostOperation.Result = CompileResult;
+	CompilePostOperation.AssetPath = TEXT("/Game/Blueprints/BP_StoneGate");
+	CompilePostOperation.Status = TEXT("executed");
+	CompilePostOperation.DurationMs = 1.25;
+	PostOperations.Add(CompilePostOperation);
+
+	FBlueprintHelperTaskRuntimePostOperationRecord SavePostOperation;
+	SavePostOperation.Operation = TEXT("save_asset");
+	SavePostOperation.Result = SaveResult;
+	SavePostOperation.AssetPath = TEXT("/Game/Blueprints/BP_StoneGate");
+	SavePostOperation.Status = TEXT("skipped");
+	SavePostOperation.Reason = TEXT("package_not_loaded_or_clean");
+	SavePostOperation.DurationMs = 0.25;
+	PostOperations.Add(SavePostOperation);
 
 	const TSharedRef<FJsonObject> RuntimeData = FBlueprintHelperTaskRuntimeService::BuildRuntimeDataForSteps(
 		TaskPlan,
@@ -779,6 +793,10 @@ bool FBlueprintHelperContractTaskRuntimeRecordsCompileSavePostOperationsTest::Ru
 	TestTrue(TEXT("save post op exposes operation"), RuntimeSave->TryGetStringField(TEXT("operation"), SaveOperation));
 	TestEqual(TEXT("first post op is compile"), CompileOperation, FString(TEXT("compile_blueprint_asset")));
 	TestEqual(TEXT("second post op is save"), SaveOperation, FString(TEXT("save_asset")));
+	TestTrue(TEXT("compile post op has asset path"), RuntimeCompile->HasField(TEXT("asset_path")));
+	TestTrue(TEXT("compile post op has post status"), RuntimeCompile->HasField(TEXT("post_status")));
+	TestTrue(TEXT("save post op has asset path"), RuntimeSave->HasField(TEXT("asset_path")));
+	TestTrue(TEXT("save post op has reason field"), RuntimeSave->HasField(TEXT("reason")));
 
 	return true;
 }
