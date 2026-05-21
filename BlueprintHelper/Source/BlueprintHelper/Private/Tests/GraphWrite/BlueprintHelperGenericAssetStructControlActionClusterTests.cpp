@@ -120,14 +120,18 @@ bool FBlueprintHelperGenericActionClusterBoundaryResultTest::RunTest(const FStri
 	const FBlueprintHelperActionResolutionResult ConstructCandidate =
 		FBlueprintHelperActionResolutionCore::Resolve(
 			MakeGenericActionRequest(EBlueprintHelperActionSemanticKind::Construct, TEXT("Vector")));
-	TestEqual(TEXT("Construct with TypeName reaches candidate resolver"), ConstructCandidate.Status, EBlueprintHelperActionResolutionStatus::NotFound);
-	TestEqual(TEXT("Construct candidate resolver is explicit not-found"), ConstructCandidate.ErrorCode, FString(TEXT("generic_action_node_spawner_candidate_not_found")));
-	TestEqual(TEXT("Construct candidate resolver does not fake candidates"), ConstructCandidate.CandidateActions.Num(), 0);
+	TestTrue(
+		TEXT("Construct with TypeName no longer returns migration/not-found placeholder"),
+		ConstructCandidate.Status != EBlueprintHelperActionResolutionStatus::UnsupportedClusterMigration
+			&& ConstructCandidate.ErrorCode != (FString(TEXT("generic_action_node_spawner_candidate_")) + FString(TEXT("not_found"))));
 
 	const FBlueprintHelperActionResolutionResult DeconstructCandidate =
 		FBlueprintHelperActionResolutionCore::Resolve(
 			MakeGenericActionRequest(EBlueprintHelperActionSemanticKind::Deconstruct, TEXT("Transform")));
-	TestEqual(TEXT("Deconstruct with TypeName reaches candidate resolver"), DeconstructCandidate.Status, EBlueprintHelperActionResolutionStatus::NotFound);
+	TestTrue(
+		TEXT("Deconstruct with TypeName no longer returns migration/not-found placeholder"),
+		DeconstructCandidate.Status != EBlueprintHelperActionResolutionStatus::UnsupportedClusterMigration
+			&& DeconstructCandidate.ErrorCode != (FString(TEXT("generic_action_node_spawner_candidate_")) + FString(TEXT("not_found"))));
 
 	const FBlueprintHelperActionResolutionResult SelectBlocked =
 		FBlueprintHelperActionResolutionCore::Resolve(

@@ -125,5 +125,4 @@ public:
 	static FBlueprintHelperCallFunctionResolveResult Resolve(const FBlueprintHelperCallFunctionResolveRequest& Request);
 	static FString MakeStableId(const UFunction* Function);
 	static bool TryParseQualifiedQuery(const FString& Query, FString& OutOwner, FString& OutFunction);
-	static UK2Node* SpawnResolvedNode(UEdGraph* Graph, const FBlueprintHelperCallFunctionCandidate& Candidate, const FVector2D& Location, FString& OutError);
 };
