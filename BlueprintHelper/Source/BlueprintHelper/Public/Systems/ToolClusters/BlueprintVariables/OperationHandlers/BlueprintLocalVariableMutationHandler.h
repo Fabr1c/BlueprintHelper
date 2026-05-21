@@ -3,7 +3,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Systems/ToolClusters/GraphWrite/OperationHandlers/BlueprintOperationHandler.h"
 #include "Shared/BlueprintVariables/BlueprintHelperBlueprintVariableTypes.h"
 
 class FJsonObject;
@@ -47,11 +46,11 @@ struct FBlueprintHelperLocalVariableMutationCounts
 	int32 ReferenceCount = 0;
 };
 
-class FBlueprintHelperLocalVariableMutationHandler : public IBlueprintOperationHandler
+class FBlueprintHelperLocalVariableMutationHandler
 {
 public:
-	virtual bool CanHandle(const FString& OpName) const override;
-	virtual bool Execute(UBlueprint* Blueprint, const TSharedPtr<FJsonObject>& OpPayload, FString& OutError) override;
+	bool CanHandle(const FString& OpName) const;
+	bool Execute(UBlueprint* Blueprint, const TSharedPtr<FJsonObject>& OpPayload, FString& OutError);
 
 	static bool TryReadFunctionName(const TSharedPtr<FJsonObject>& Payload, FString& OutFunctionName);
 	static bool TryReadVariableName(const TSharedPtr<FJsonObject>& Payload, FString& OutVariableName);

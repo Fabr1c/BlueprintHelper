@@ -17,8 +17,6 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDagBuilder.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphStatementBuilder.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/BlueprintNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/OperationHandlers/BlueprintOperationHandler.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Engine/Blueprint.h"
 #include "EdGraph/EdGraph.h"
@@ -409,20 +407,20 @@ static FString GetSemanticExpressionId(const FBlueprintHelperGraphExpressionIR& 
 	case EBlueprintHelperGraphExpressionKind::GetProperty:
 		KindName = TEXT("get_property");
 		break;
-	case EBlueprintHelperGraphExpressionKind::Ref:
-		KindName = TEXT("ref");
-		break;
 	case EBlueprintHelperGraphExpressionKind::Call:
 		KindName = TEXT("call");
 		break;
-	case EBlueprintHelperGraphExpressionKind::Compare:
-		KindName = TEXT("compare");
+	case EBlueprintHelperGraphExpressionKind::Op:
+		KindName = TEXT("op");
+		break;
+	case EBlueprintHelperGraphExpressionKind::Construct:
+		KindName = TEXT("construct");
+		break;
+	case EBlueprintHelperGraphExpressionKind::Deconstruct:
+		KindName = TEXT("deconstruct");
 		break;
 	case EBlueprintHelperGraphExpressionKind::Select:
 		KindName = TEXT("select");
-		break;
-	case EBlueprintHelperGraphExpressionKind::MakeStruct:
-		KindName = TEXT("make_struct");
 		break;
 	default:
 		break;
@@ -547,7 +545,8 @@ static void BuildSemanticExpressionFragments(
 	BuildSemanticExpressionFragments(TargetGraph, Expression->Right, GeneratedFragments, GeneratedFragmentIds, OutUnresolvedNodes, GeneratedNodeCount);
 
 	if (Expression->Kind == EBlueprintHelperGraphExpressionKind::Literal
-		|| Expression->Kind == EBlueprintHelperGraphExpressionKind::Ref)
+		|| (Expression->Kind == EBlueprintHelperGraphExpressionKind::Get
+			&& Expression->ResolvedTarget.Kind == EBlueprintHelperGraphTargetKind::Temporary))
 	{
 		return;
 	}
@@ -795,21 +794,8 @@ static bool SpawnSemanticStatementFragment(
 			NodeData.DefaultValues.Add(TEXT("Condition"), Statement->Condition->LiteralValue);
 		}
 
-		IBlueprintNodeHandler* Handler = FBlueprintNodeHandlerRegistry::Get().FindHandler(NodeData.NodeType);
-		UK2Node* SpawnedNode = Handler ? Handler->Spawn(TargetGraph, NodeData, OutError) : nullptr;
-		if (!SpawnedNode)
-		{
-			if (OutError.IsEmpty())
-			{
-				OutError = TEXT("Branch node handler is not available.");
-			}
-			return false;
-		}
-
-		OutFragment = BuildDataOnlyFragment(StatementId, SpawnedNode);
-		OutFragment.SourceStatementId = StatementId;
-		OutFragment.ReviewTargets.Add(StatementId);
-		return true;
+		OutError = TEXT("Semantic branch statement requires a SemanticIR-backed builder; legacy parsed-node graph spawning has been removed.");
+		return false;
 	}
 
 	OutError = FString::Printf(TEXT("Semantic statement kind is not node-backed: %s."), *Statement->PatternName);
@@ -1079,11 +1065,6 @@ static FBlueprintGenerateResult GenerateSemanticGraphFromJsonObject(
 		UK2Node* EntryNode = ShouldReconstructExistingNodes(JsonObject)
 			? FindExistingCustomEventNode(TargetGraph, EntryName)
 			: nullptr;
-		if (!EntryNode)
-		{
-			IBlueprintNodeHandler* EntryHandler = FBlueprintNodeHandlerRegistry::Get().FindHandler(EntryNodeData.NodeType);
-			EntryNode = EntryHandler ? EntryHandler->Spawn(TargetGraph, EntryNodeData, EntryError) : nullptr;
-		}
 		if (EntryNode)
 		{
 			FBlueprintHelperNodeFragment EntryFragment = BuildDataOnlyFragment(EntryId, EntryNode);
@@ -1095,7 +1076,7 @@ static FBlueprintGenerateResult GenerateSemanticGraphFromJsonObject(
 		}
 		else
 		{
-			AddSemanticUnresolved(OutUnresolvedNodes, EntryId, EntryError.IsEmpty() ? TEXT("Semantic entry node creation failed.") : EntryError);
+			AddSemanticUnresolved(OutUnresolvedNodes, EntryId, TEXT("Semantic entry creation requires a Signature dependency or SemanticIR entry fact; legacy parsed-node entry spawning has been removed."));
 		}
 	}
 
@@ -1198,13 +1179,6 @@ FBlueprintGenerateResult FBlueprintGraphGenerationPipeline::GenerateBlueprintFro
 	const TArray<TSharedPtr<FJsonValue>>* BlueprintOpsArray = nullptr;
 	if (JsonObject->TryGetArrayField(TEXT("blueprint_operations"), BlueprintOpsArray) && BlueprintOpsArray && BlueprintOpsArray->Num() > 0)
 	{
-		UBlueprint* Blueprint = FBlueprintEditorUtils::FindBlueprintForGraph(TargetGraph);
-		if (!Blueprint)
-		{
-			Result.Message = TEXT("Unable to resolve Blueprint for blueprint_operations.");
-			return Result;
-		}
-
 		for (const TSharedPtr<FJsonValue>& OpValue : *BlueprintOpsArray)
 		{
 			const TSharedPtr<FJsonObject> OpObject = OpValue->AsObject();
@@ -1220,27 +1194,11 @@ FBlueprintGenerateResult FBlueprintGraphGenerationPipeline::GenerateBlueprintFro
 				continue;
 			}
 
-			IBlueprintOperationHandler* OpHandler = FBlueprintOperationHandlerRegistry::Get().FindHandler(OpName);
-			if (!OpHandler)
-			{
-				TSharedPtr<FUnresolvedNodeItem> UnresolvedItem = MakeShared<FUnresolvedNodeItem>();
-				UnresolvedItem->DisplayText = FString::Printf(TEXT("BlueprintOp: %s"), *OpName);
-				UnresolvedItem->Reason = FString::Printf(TEXT("Unknown Blueprint operation: %s"), *OpName);
-				OutUnresolvedNodes.Add(UnresolvedItem);
-				continue;
-			}
-
-			FString OpError;
-			if (!OpHandler->Execute(Blueprint, OpObject, OpError))
-			{
-				TSharedPtr<FUnresolvedNodeItem> UnresolvedItem = MakeShared<FUnresolvedNodeItem>();
-				UnresolvedItem->DisplayText = FString::Printf(TEXT("BlueprintOp: %s"), *OpName);
-				UnresolvedItem->Reason = OpError;
-				OutUnresolvedNodes.Add(UnresolvedItem);
-			}
+			TSharedPtr<FUnresolvedNodeItem> UnresolvedItem = MakeShared<FUnresolvedNodeItem>();
+			UnresolvedItem->DisplayText = FString::Printf(TEXT("BlueprintOp: %s"), *OpName);
+			UnresolvedItem->Reason = FString::Printf(TEXT("Blueprint operation '%s' is unsupported because the legacy GraphWrite operation path has been removed."), *OpName);
+			OutUnresolvedNodes.Add(UnresolvedItem);
 		}
-
-		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
 	}
 
 	const TSharedPtr<FJsonObject>* LogicSpecObject = nullptr;

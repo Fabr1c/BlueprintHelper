@@ -755,11 +755,11 @@ public:
 			{ EBlueprintHelperGraphExpressionKind::Literal, TEXT("literal") },
 			{ EBlueprintHelperGraphExpressionKind::Get, TEXT("get") },
 			{ EBlueprintHelperGraphExpressionKind::GetProperty, TEXT("get_property") },
-			{ EBlueprintHelperGraphExpressionKind::Ref, TEXT("ref") },
 			{ EBlueprintHelperGraphExpressionKind::Call, TEXT("call") },
-			{ EBlueprintHelperGraphExpressionKind::Compare, TEXT("compare") },
+			{ EBlueprintHelperGraphExpressionKind::Op, TEXT("op") },
+			{ EBlueprintHelperGraphExpressionKind::Construct, TEXT("construct") },
+			{ EBlueprintHelperGraphExpressionKind::Deconstruct, TEXT("deconstruct") },
 			{ EBlueprintHelperGraphExpressionKind::Select, TEXT("select") },
-			{ EBlueprintHelperGraphExpressionKind::MakeStruct, TEXT("make_struct") },
 		};
 
 		for (const FExpressionKindRule& Rule : Rules)
@@ -1008,16 +1008,10 @@ public:
 
 		FString Kind;
 		ExpressionObject->TryGetStringField(TEXT("kind"), Kind);
-		if (Kind.Equals(TEXT("call"), ESearchCase::IgnoreCase) ||
-			Kind.Equals(TEXT("call_function"), ESearchCase::IgnoreCase))
+		if (Kind.Equals(TEXT("call"), ESearchCase::IgnoreCase))
 		{
 			FString Query;
-			bool bHasTarget = ExpressionObject->TryGetStringField(TEXT("target"), Query) && !Query.TrimStartAndEnd().IsEmpty();
-			if (!bHasTarget)
-			{
-				bHasTarget = false;
-				ExpressionObject->TryGetStringField(TEXT("name"), Query);
-			}
+			ExpressionObject->TryGetStringField(TEXT("target"), Query);
 
 			Query.TrimStartAndEndInline();
 			if (!Query.IsEmpty())
@@ -1026,7 +1020,7 @@ public:
 				Ref.StatementObject = ExpressionObject;
 				Ref.StatementPath = ExpressionPath;
 				Ref.SemanticPath = SemanticExpressionPath;
-				Ref.NamePath = ExpressionPath + (bHasTarget ? TEXT(".target") : TEXT(".name"));
+				Ref.NamePath = ExpressionPath + TEXT(".target");
 				Ref.Query = Query;
 				Ref.bExpression = true;
 				OutStatements.Add(MoveTemp(Ref));
@@ -1147,16 +1141,10 @@ public:
 			const FString SemanticPath = FString::Printf(TEXT("%s[%d]"), *SemanticStatementsPath, StatementIndex);
 			FString Kind;
 			StatementObject->TryGetStringField(TEXT("kind"), Kind);
-			if (Kind.Equals(TEXT("call"), ESearchCase::IgnoreCase) ||
-				Kind.Equals(TEXT("call_function"), ESearchCase::IgnoreCase))
+			if (Kind.Equals(TEXT("call"), ESearchCase::IgnoreCase))
 			{
 				FString Query;
-				bool bHasName = StatementObject->TryGetStringField(TEXT("name"), Query) && !Query.TrimStartAndEnd().IsEmpty();
-				if (!bHasName)
-				{
-					bHasName = false;
-					StatementObject->TryGetStringField(TEXT("target"), Query);
-				}
+				StatementObject->TryGetStringField(TEXT("target"), Query);
 
 				Query.TrimStartAndEndInline();
 				if (!Query.IsEmpty())
@@ -1165,7 +1153,7 @@ public:
 					Ref.StatementObject = StatementObject;
 					Ref.StatementPath = StatementPath;
 					Ref.SemanticPath = SemanticPath;
-					Ref.NamePath = StatementPath + (bHasName ? TEXT(".name") : TEXT(".target"));
+					Ref.NamePath = StatementPath + TEXT(".target");
 					Ref.Query = Query;
 					OutStatements.Add(MoveTemp(Ref));
 				}

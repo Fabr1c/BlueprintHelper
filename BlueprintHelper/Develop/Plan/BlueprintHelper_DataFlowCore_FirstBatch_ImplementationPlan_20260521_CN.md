@@ -4,7 +4,7 @@
 
 **Goal:** Implement the first batch Graph body data-flow AgentFace semantics and remove the old NodeHandler creation path so GraphWrite only creates UE nodes through SemanticIR -> FragmentDAG -> NodeFragment builder / mutator.
 
-**Architecture:** AgentFace emits compact semantic `BlueprintLogicSpec` fields; TS/Python compilers preserve canonical data-flow kinds and reject old field shapes. UE GraphWrite parses the same semantic model into SemanticIR, resolves types and symbols, builds a FragmentDAG, and mutates UE graphs only through focused fragment builders and the graph mutator. Legacy `NodeHandlers`, direct parsed-node spawning fallback, `call_function/name`, `set_member_variable/name`, `compare`, `make_struct`, and `ref` are removed from the public/canonical path.
+**Architecture:** AgentFace emits compact semantic `BlueprintLogicSpec` fields; TS/Python compilers preserve canonical data-flow kinds and do not keep old Graph body aliases. UE GraphWrite parses the same semantic model into SemanticIR, resolves types and symbols, builds a FragmentDAG, and mutates UE graphs only through focused fragment builders and the graph mutator. Legacy `NodeHandlers`, direct parsed-node spawning fallback, Graph body `call_function/name`, Graph body `set_member_variable/name`, `compare`, `make_struct`, and `ref` are removed from the public/canonical path. Old node fallback is not allowed and is not deprecated compatibility; unsupported old shapes must error instead of being normalized or rerouted.
 
 **Tech Stack:** TypeScript task-core compiler, Python canonical compiler, Unreal Engine 5.6 C++ plugin, Blueprint Graph K2 APIs, BlueprintHelper TaskRuntime, Automation tests.
 
@@ -24,7 +24,102 @@ Hard boundaries:
 - `construct/deconstruct` use two-stage resolver rules when fields are missing.
 - AgentFace does not expose UE node names such as `MakeVector`, `BreakStruct`, `KismetMathLibrary.Greater`, or `UK2Node_*`.
 - GraphWrite does not create signatures, assets, components, WidgetTree nodes, DataTable rows, or class settings.
-- Old NodeHandler fallback must be removed rather than kept as a compatibility path.
+- Old NodeHandler fallback is not allowed and must be removed rather than kept as deprecated compatibility or a hidden fallback path.
+
+## Spawner-Oriented AgentFace Intent vs UE Action Layer
+
+Current architecture baseline:
+
+```text
+AgentFace compact intent
+-> Semantic Resolver / typed resolver
+-> SpawnerClusterResolver
+-> BlueprintActionResolutionCore
+-> selected UBlueprintNodeSpawner or derived spawner
+-> cluster-specific NodeFragment adapter
+-> FragmentDAG
+-> Composer / Linker
+-> UE Mutator
+```
+
+AgentFace kinds such as `call`, `get`, `set`, `op`, `construct`, `deconstruct`, `select`, `event`, `bind`, `create`, and `schedule` are compact semantic intents. They do not define lower-level implementation clusters. Lower-level clusters are defined by UE NodeSpawner families:
+
+```text
+FunctionActionCluster
+FieldVariableActionCluster
+EventDelegateActionCluster
+GenericAssetStructControlActionCluster
+```
+
+Cluster ownership:
+
+| Cluster | UE spawner family | AgentFace intents routed here |
+|---|---|---|
+| `FunctionActionCluster` | `UBlueprintFunctionNodeSpawner`, type-promotion operator spawners | `call`, `op`, function-shaped `convert`, function-shaped `schedule` |
+| `FieldVariableActionCluster` | `UBlueprintFieldNodeSpawner`, `UBlueprintVariableNodeSpawner`, `UBlueprintComponentNodeSpawner` | `get`, `set`, simple `get_property`, simple `set_property`, `component_ref` |
+| `EventDelegateActionCluster` | `UBlueprintEventNodeSpawner`, `UBlueprintBoundEventNodeSpawner`, `UAnimNotifyEventNodeSpawner`, `UBlueprintDelegateNodeSpawner`, `UBlueprintBoundNodeSpawner` | `event`, `component_bound_event`, `bind`, `unbind`, `assign`, `delegate_call` |
+| `GenericAssetStructControlActionCluster` | generic `UBlueprintNodeSpawner`, `UBlueprintAssetNodeSpawner`, struct / enum / generic registrar delegates | `construct`, `deconstruct`, `select`, `control`, `create`, `asset_action` |
+
+Hard internal reuse rule:
+
+```text
+if UE editor context menu can represent the node/action:
+  semantic resolver builds constraints
+  SpawnerClusterResolver selects a spawner-oriented cluster
+  BlueprintActionResolutionCore builds candidates from ActionDatabase / BlueprintActionFilter
+  selected UBlueprintNodeSpawner creates the node
+else:
+  a dedicated FragmentBuilder is allowed only with documented ActionDatabase-unrepresentable reason
+```
+
+Forbidden API simplification:
+
+```text
+get/set/op/construct/deconstruct/select/event/bind/create/schedule
+-> expose UE function names, node class names, or spawner internals to AgentFace
+```
+
+This keeps AgentFace fields compact while making lower-level GraphWrite responsibilities match UE NodeSpawner families instead of overlapping natural-language semantic groups.
+## Spawner-Oriented Cluster Baseline
+
+本计划中的 `get` / `set` / `get_property` / `set_property` / `op` / `construct` / `deconstruct` / `select` 是 AgentFace 语义 intent，不再定义底层工具簇边界。
+
+底层能力必须按 UE `NodeSpawner` 家族组织：
+
+```text
+AgentFace semantic intent
+-> SpawnerClusterResolver
+-> BlueprintActionResolutionCore
+-> UBlueprintNodeSpawner candidate
+-> NodeFragment adapter
+-> FragmentDAG
+-> Composer / Linker / Mutator
+```
+
+`call` 不是统一 action resolution 的所有者；`call` 只是 `FunctionActionCluster` 的一个 consumer。`get` / `set` / `op` / `construct` 等 intent 不能通过 `call` 的局部实现兜底，而应复用同一套 `BlueprintActionResolutionCore`。
+
+首批 DataFlowCore 映射如下：
+
+| AgentFace kind | Spawner-Oriented Cluster | 说明 |
+|---|---|---|
+| `call` | `FunctionActionCluster` | 普通 callable/action，作为共享 resolver 的 consumer |
+| `op` | `FunctionActionCluster` | operator 通过 typed operands 约束 function/type-promotion spawner |
+| `get` | `FieldVariableActionCluster` | 变量、字段、组件引用读取 |
+| `set` | `FieldVariableActionCluster` | 变量、字段写入 |
+| `get_property` | `FieldVariableActionCluster` | 简单 property path；复杂 path 可组合 struct/generic fragment |
+| `set_property` | `FieldVariableActionCluster` | 简单 property write；复杂 path 可组合 struct/generic fragment |
+| `construct` | `GenericAssetStructControlActionCluster` | Make Struct / container / generic construct action |
+| `deconstruct` | `GenericAssetStructControlActionCluster` | Break Struct / container / generic deconstruct action |
+| `select` | `GenericAssetStructControlActionCluster` | Select 类 generic data-flow action |
+
+`event`、`component_bound_event`、`bind`、`create`、`convert`、`schedule`、`control` 不属于本批完整实现范围，但它们同样必须进入 Spawner-Oriented Cluster，而不是新增自然语义工具簇或旧 handler fallback。
+
+禁止路径：
+
+1. 不允许恢复 `NodeHandler` / parsed-node fallback。
+2. 不允许以 `FindFunctionByName()` 作为 action resolution 兜底。
+3. 不允许因为某个 `kind` 已经存在局部实现，就绕开 `SpawnerClusterResolver`。
+4. 不允许保留旧 AgentFace aliases 作为隐藏兼容路径；旧字段应直接报错或在 schema 层移除。
 
 ## P0 Architecture Correction Before First-Batch Implementation
 
@@ -94,15 +189,23 @@ let
 
 `call` remains available because expressions need nested calls and statement calls. `control` is intentionally not implemented in this first batch; `branch` and `return` must not be expanded during this plan except where existing smoke tests need to be rewritten or marked outside this batch.
 
-Canonical migrations:
+Old-shape rejection reference, not compiler migration:
 
-| Old shape | New shape |
+| Rejected old shape | Required canonical authoring shape |
 |---|---|
 | `kind="call_function"` + `name` | `kind="call"` + `target` |
-| `kind="set_member_variable"` + `name` | `kind="set"` + `target` |
+| Graph body `kind="set_member_variable"` + `name` | `kind="set"` + `target` |
 | `kind="ref"` | `kind="get"` |
 | `kind="compare"` + `left/right/operator` | `kind="op"` + `operator/args` |
 | `kind="make_struct"` + `type/args` | `kind="construct"` + `type/fields` |
+
+These rows are authoring guidance only. The compiler, SemanticIR parser, and UE path must not normalize, alias, deprecate, or otherwise tolerate these old shapes; they should fail through unsupported-kind diagnostics.
+
+Important distinction:
+
+- `set_member_variable` in this table only means the old Graph body statement shape.
+- Current `blueprint_variable` tool-cluster operations remain valid, including `set_member_variable_properties`, `set_member_default`, and local variable operations.
+- Do not remove current Blueprint Variable capability while removing the old Graph body alias.
 
 ## File Map
 
@@ -136,9 +239,9 @@ Canonical migrations:
   - Update first-slice contract to canonical data-flow kinds.
   - Remove `legacy_statement_kinds`.
 - Modify `AgentFaceService/task-core/src/task/compiler/task-compiler.ts`
-  - Remove normalization of old statement kinds.
+  - Remove old statement aliases and their normalization branches.
   - Add canonical expression validation and lowering for `op`, `construct`, `deconstruct`, `set_property`.
-  - Reject old shapes with precise error codes.
+  - Let noncanonical / unknown Graph body kinds fail through the normal unsupported-kind path; do not add deprecation compatibility branches.
 - Modify `AgentFaceService/task-core/src/task/fixtures/task-protocol.fixtures.ts`
   - Replace fixtures using `call_function`, `set_member_variable`, `compare`, `make_struct`, and `ref`.
 - Modify `AgentFaceService/task-core/src/task/service/task-spec-runner.test.ts`
@@ -227,6 +330,32 @@ Canonical migrations:
 - Modify `BlueprintHelper/Develop/Plan/BlueprintHelper_RemoveLegacyCallFunctionName_ImplementationPlan_20260520_CN.md`
   - Mark superseded by this broader first-batch plan if all old call_function cleanup tasks are absorbed here.
 
+## Slice C Documentation Sync Status (2026-05-21)
+
+This Slice C pass updates documentation after code slices A/B without reading or verifying the current implementation. Only documentation facts completed by this pass are marked complete; implementation and validation items remain pending until backed by code/test/editor evidence.
+
+Canonical Graph body statement/expression path:
+
+```text
+AgentFace schema/docs
+-> TS/Python compiler
+-> SemanticIR parser
+-> Resolver
+-> Pattern Registry
+-> NodeFragment Builder
+-> FragmentDAG
+-> Composer/Linker
+-> UE Mutator
+-> Review/Debug
+-> ReadContext/LogicFlow
+```
+
+- [x] Documentation records that old NodeHandler / parsed-node fallback is not allowed and is not deprecated compatibility.
+- [x] Documentation records that old Graph body shapes `call_function`, Graph body `set_member_variable`, `ref`, `compare`, and `make_struct` must error as unsupported kinds rather than being normalized.
+- [x] Documentation records the canonical multi-stage path from AgentFace schema/docs through ReadContext/LogicFlow.
+- [ ] Code slice A/B implementation status was not verified during this documentation-only pass.
+- [ ] TS/Python compiler tests, UE tests, editor preview/execute smoke, compile, and LogicFlow/readback evidence are pending gaps in this document until actual results are recorded.
+- [ ] Task checkboxes below intentionally remain unchecked unless supported by known implementation/test evidence.
 ## Task 1: TypeScript Contract Canonicalization
 
 **Files:**
@@ -247,23 +376,18 @@ legacy_statement_kinds: [],
 
 Remove any text that says the compiler normalizes `call_function` or `set_member_variable`.
 
-- [ ] **Step 2: Add old-shape rejection**
+- [ ] **Step 2: Remove old-shape handling instead of adding deprecation logic**
 
-In `validateSupportedStatements`, reject:
+Do not add a special deprecated-kind detector or compatibility fallback.
 
-```ts
-const forbiddenKinds = new Set(['call_function', 'set_member_variable', 'branch', 'return']);
-```
-
-Use error code `unsupported_graph_write_statement_kind`.
-
-For expression validation, reject:
+The compiler should keep only canonical allowlists. Any noncanonical kind should naturally fail through the existing unsupported-kind path.
 
 ```ts
-const forbiddenExpressionKinds = new Set(['ref', 'compare', 'make_struct']);
+const supportedStatementKinds = new Set(['call', 'set', 'set_property', 'let']);
+const supportedExpressionKinds = new Set(['literal', 'get', 'get_property', 'call', 'op', 'construct', 'deconstruct', 'select']);
 ```
 
-Use error code `unsupported_graph_write_expression_kind`.
+If the input still contains `call_function`, Graph body `set_member_variable`, `ref`, `compare`, or `make_struct`, it should be treated exactly like any unknown unsupported kind. Do not write replacement / deprecation normalization.
 
 - [ ] **Step 3: Remove old statement normalization**
 
@@ -354,6 +478,8 @@ expectCompileRejects({ kind: 'compare', operator: '>', left: 1, right: 0 }, 'uns
 expectCompileRejects({ kind: 'call_function', name: 'PrintString' }, 'unsupported_graph_write_statement_kind');
 ```
 
+The rejection is not a compatibility/deprecation feature; it is the normal unsupported-kind failure after the old implementation is deleted.
+
 - [ ] **Step 7: Run TypeScript tests**
 
 Run from `AgentFaceService/task-core`:
@@ -391,18 +517,16 @@ with:
 {"kind": "call", "target": implementation["call"]}
 ```
 
-- [ ] **Step 2: Add canonical graph body validation**
+- [ ] **Step 2: Keep only canonical graph body validation**
 
 Add validation sets:
 
 ```py
 SUPPORTED_STATEMENT_KINDS = {"call", "set", "set_property", "let"}
 SUPPORTED_EXPRESSION_KINDS = {"literal", "get", "get_property", "call", "op", "construct", "deconstruct", "select"}
-FORBIDDEN_STATEMENT_KINDS = {"call_function", "set_member_variable", "branch", "return"}
-FORBIDDEN_EXPRESSION_KINDS = {"ref", "compare", "make_struct"}
 ```
 
-Use the same error codes as TypeScript.
+Do not add forbidden/deprecated sets. Unknown kinds should fail as unsupported kinds through the same normal path as TypeScript.
 
 - [ ] **Step 3: Keep non-Graph clusters isolated**
 
@@ -527,15 +651,15 @@ needs_deconstruct_fields
 
 These diagnostics must be preview blockers and must not mutate assets.
 
-- [ ] **Step 5: Reject old aliases in UE parser**
+- [ ] **Step 5: Remove alias parser branches in UE parser**
 
-Reject old kinds with diagnostic code:
+Delete parser branches for old aliases. If a removed kind reaches the UE parser, it should fail through the normal unsupported semantic kind diagnostic:
 
 ```text
 unsupported_graph_write_semantic_kind
 ```
 
-The diagnostic message must name the canonical replacement.
+The diagnostic message should report the unsupported kind. It should not preserve a compatibility or deprecation mapping.
 
 ## Task 4: FragmentDAG and Builder Support
 
@@ -778,7 +902,7 @@ only after all call sites have moved to GraphStatementBuilder / GraphNodeFactory
 Run:
 
 ```powershell
-rg -n "NodeHandler|FBlueprintNodeHandlerRegistry|OperationHandler|call_function|set_member_variable|make_struct|kind\\s*[:=]\\s*['\\\"]ref['\\\"]|kind\\s*[:=]\\s*['\\\"]compare['\\\"]" BlueprintHelper/Source AgentFaceService/task-core AgentFaceService/docs BlueprintHelper/Develop/Plan
+rg -n "NodeHandler|FBlueprintNodeHandlerRegistry|OperationHandler|call_function|kind\\s*[:=]\\s*['\\\"]set_member_variable['\\\"]|make_struct|kind\\s*[:=]\\s*['\\\"]ref['\\\"]|kind\\s*[:=]\\s*['\\\"]compare['\\\"]" BlueprintHelper/Source AgentFaceService/task-core AgentFaceService/docs BlueprintHelper/Develop/Plan
 ```
 
 Expected result:
@@ -786,6 +910,7 @@ Expected result:
 ```text
 Only historical plan documents mention these strings.
 No source, schema, compiler, fixture, or active guide reference remains.
+Current Blueprint Variable operations such as set_member_variable_properties and set_member_default may remain.
 ```
 
 ## Task 7: Tests
@@ -809,7 +934,7 @@ Cover:
 { "kind": "select", "condition": true, "then": 1, "else": 0 }
 ```
 
-- [ ] **Step 2: Add old-shape rejection tests**
+- [ ] **Step 2: Add unsupported noncanonical-kind tests**
 
 Cover:
 
@@ -820,6 +945,8 @@ Cover:
 { "kind": "make_struct", "type": "Vector", "args": { "X": 1 } }
 { "kind": "ref", "name": "TempValue" }
 ```
+
+These tests should assert generic unsupported-kind errors. They must not assert a deprecation warning, compatibility rewrite, or replacement suggestion.
 
 - [ ] **Step 3: Add construct/deconstruct query tests**
 
@@ -1035,7 +1162,7 @@ Use the user’s required format:
 1. 移除旧 NodeHandler / OperationHandler 回退路径，避免新旧 GraphWrite 创建路径污染
 
 变更需求：
-1. 将 compare/make_struct/ref/call_function/set_member_variable 收敛到 canonical 语义
+1. 移除 Graph body 旧字段 call_function/set_member_variable/ref/compare/make_struct 的实现路径
 ```
 
 - [ ] **Step 2: Provide manual git commands only**
@@ -1060,3 +1187,13 @@ git commit -m "<message>"
 - [x] Plan includes tests and editor-side smoke.
 - [x] Plan includes documentation sync with honest gap reporting.
 - [x] Plan avoids keeping legacy fallback as a hidden compatibility path.
+
+## 2026-05-21 Implementation Status Update
+
+- [x] AgentFace `task-core` source and generated `build` output no longer expose `legacy_statement_kinds`, `call_function` Graph body statement support, or `make_struct` expression support in schema/compiler paths.
+- [x] UE GraphWrite old `NodeHandler` registry source files were removed, and parsed-node mutation plans now report unsupported instead of routing through the removed registry.
+- [x] UE SemanticIR expression kinds were narrowed to canonical data-flow expression kinds; `ref`, `compare`, and `make_struct` enum paths were removed from SemanticIR / FragmentDAG / GraphStatementBuilder / runtime naming.
+- [x] UE Blueprint structure service no longer depends on the old GraphWrite `OperationHandler` registry for variable, graph, and dispatcher structure operations.
+- [x] `npm.cmd run build` passed in `AgentFaceService/task-core`.
+- [ ] UE compile is not complete. `Build.bat TemplateEditor Win64 Development -Project=D:\UEProjects\Template\Template.uproject -WaitMutex` was blocked before C++ compilation by stale package artifacts under `Plugins\BlueprintHelper\Saved\B53`, `Saved\B54`, `Saved\B55`, `Saved\B56`, `Saved\B57`, and `Saved\BuildPlugin_*`, which duplicate `BlueprintHelper.Build.cs` and trigger UBT `CS0101/CS0111` RulesError. Gap: clean or isolate those Saved build-package directories, then rerun compile.
+- [ ] Editor-side preview/execute smoke is not complete because UE compile is blocked before C++ validation.

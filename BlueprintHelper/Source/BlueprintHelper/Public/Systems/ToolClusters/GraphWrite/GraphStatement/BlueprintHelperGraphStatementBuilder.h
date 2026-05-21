@@ -64,6 +64,12 @@ public:
 		FBlueprintHelperNodeFragment& OutFragment,
 		FString& OutError);
 
+	static bool BuildSetPropertyFragment(
+		UEdGraph* TargetGraph,
+		const FParsedNode& NodeData,
+		FBlueprintHelperNodeFragment& OutFragment,
+		FString& OutError);
+
 	static bool BuildSequenceFragment(
 		UEdGraph* TargetGraph,
 		const FString& FragmentId,

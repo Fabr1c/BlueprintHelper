@@ -68,9 +68,8 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       'merge_owned_graph',
     ],
     entry_types: ['custom_event'],
-    statement_kinds: ['call', 'set', 'branch', 'let', 'return'],
-    expression_kinds: ['literal', 'get', 'get_property', 'ref', 'call', 'compare', 'select', 'make_struct'],
-    legacy_statement_kinds: ['call_function', 'set_member_variable'],
+    statement_kinds: ['call', 'set', 'set_property', 'let'],
+    expression_kinds: ['literal', 'get', 'get_property', 'call', 'op', 'construct', 'deconstruct', 'select'],
     task_plan_capability: 'graph_write',
     task_plan_dependency_capabilities: ['blueprint_signature'],
     runtime_lowering_adapters: [

@@ -5,17 +5,19 @@
 #include "EdGraph/EdGraphSchema.h"
 #include "EdGraphSchema_K2.h"
 #include "Engine/Blueprint.h"
+#include "K2Node_BreakStruct.h"
 #include "K2Node_CallFunction.h"
+#include "K2Node_ExecutionSequence.h"
+#include "K2Node_MakeStruct.h"
+#include "K2Node_Select.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
+#include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperStructConstructionResolver.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphNodeFactory.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphPatternRegistry.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphComposerUtils.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphStatementTypeUtils.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/PromotableOperatorNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/SelectNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/SequenceNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/StructOperationNodeHandler.h"
 
 static void PopulateCallFragmentPins(UK2Node* CallNode, FBlueprintHelperNodeFragment& OutFragment)
 {
@@ -92,6 +94,14 @@ static void ApplyCallPatternBindings(FParsedNode& NodeData)
 static void ApplyCallPatternDefaults(FParsedNode& NodeData)
 {
 	FBlueprintHelperGraphPatternRegistry::Get().ApplyDefaults(TEXT("call"), NodeData.DefaultValues);
+}
+
+static void ApplyGenericPatternBindings(const FString& PatternName, FParsedNode& NodeData)
+{
+	FBlueprintHelperGraphPatternRegistry& Registry = FBlueprintHelperGraphPatternRegistry::Get();
+	Registry.ApplyPinAliases(PatternName, NodeData.DefaultValues);
+	Registry.ApplyPinAliases(PatternName, NodeData.ArgumentTypes);
+	Registry.ApplyDefaults(PatternName, NodeData.DefaultValues);
 }
 
 static FString MakeCallFunctionResolveQuery(const FParsedNode& NodeData)
@@ -552,6 +562,22 @@ bool FBlueprintHelperGraphStatementBuilder::BuildVariableSetFragment(
 	return true;
 }
 
+bool FBlueprintHelperGraphStatementBuilder::BuildSetPropertyFragment(
+	UEdGraph* TargetGraph,
+	const FParsedNode& NodeData,
+	FBlueprintHelperNodeFragment& OutFragment,
+	FString& OutError)
+{
+	if (NodeData.VariableReference.VariableName.TrimStartAndEnd().IsEmpty())
+	{
+		OutFragment = FBlueprintHelperNodeFragment();
+		OutError = TEXT("set_property fragment build failed: graph-body property target is empty.");
+		return false;
+	}
+
+	return BuildVariableSetFragment(TargetGraph, NodeData, OutFragment, OutError);
+}
+
 bool FBlueprintHelperGraphStatementBuilder::BuildSequenceFragment(
 	UEdGraph* TargetGraph,
 	const FString& FragmentId,
@@ -565,10 +591,12 @@ bool FBlueprintHelperGraphStatementBuilder::BuildSequenceFragment(
 	NodeData.NodeType = EParsedBlueprintNodeType::Sequence;
 	NodeData.SourceType = TEXT("K2Node_ExecutionSequence");
 
-	FSequenceNodeHandler Handler;
-	UK2Node* SpawnedNode = Handler.Spawn(TargetGraph, NodeData, OutError);
+	UK2Node* SpawnedNode = FBlueprintHelperGraphNodeFactory::SpawnK2Node<UK2Node_ExecutionSequence>(
+		TargetGraph,
+		FVector2D::ZeroVector);
 	if (!SpawnedNode)
 	{
+		OutError = TEXT("sequence fragment build failed: could not spawn K2Node_ExecutionSequence.");
 		return false;
 	}
 
@@ -718,8 +746,11 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 				BreakNodeData.Y = 0.0f;
 				BreakNodeData.StructReference.StructPath = StructType->GetPathName();
 
-				FStructOperationNodeHandler Handler;
-				UK2Node* BreakNode = Handler.Spawn(TargetGraph, BreakNodeData, OutError);
+				UK2Node* BreakNode = FBlueprintHelperStructConstructionResolver::SpawnBreakStructNode(
+					TargetGraph,
+					BreakNodeData,
+					StructType,
+					OutError);
 				if (!BreakNode)
 				{
 					return false;
@@ -873,23 +904,33 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 			return false;
 		}
 		OutFragment.SourceStatementId = Expression.ExpressionId;
+		if (Expression.TargetObject.IsValid())
+		{
+			UEdGraphPin* TargetPin = FindCallTargetPin(OutFragment.PrimaryNode);
+			if (TargetPin)
+			{
+				OutFragment.DataInputs.Add(TEXT("target"), FBlueprintHelperFragmentPinRef{ NodeData.Id, TEXT("target"), Expression.TargetObject->Type, TargetPin });
+				OutFragment.PinBindings.Add(TEXT("target"), FBlueprintHelperFragmentPinRef{ NodeData.Id, TEXT("target"), Expression.TargetObject->Type, TargetPin });
+			}
+		}
 		OutFragment.ReviewTargets.Add(Expression.ExpressionId);
 		return true;
 	}
 
-	if (Expression.Kind == EBlueprintHelperGraphExpressionKind::Compare)
+	if (Expression.Kind == EBlueprintHelperGraphExpressionKind::Op)
 	{
 		if (Expression.Operator.TrimStartAndEnd().IsEmpty())
 		{
-			OutError = TEXT("compare expression fragment build failed: operator is empty.");
+			OutError = TEXT("op expression fragment build failed: operator is empty.");
 			return false;
 		}
 
 		FParsedNode NodeData;
 		NodeData.Id = FBlueprintHelperGraphStatementTypeUtils::MakeExpressionFragmentId(Expression);
-		NodeData.NodeType = EParsedBlueprintNodeType::PromotableOperator;
-		NodeData.SourceType = TEXT("K2Node_PromotableOperator");
-		NodeData.FunctionName = FBlueprintHelperGraphStatementTypeUtils::ResolveCompareOperatorFunctionName(Expression);
+		NodeData.NodeType = EParsedBlueprintNodeType::CallFunction;
+		NodeData.SourceType = TEXT("K2Node_CallFunction");
+		NodeData.FunctionName = FBlueprintHelperGraphStatementTypeUtils::ResolveOperatorFunctionName(Expression);
+		NodeData.ExpectedReturnType = Expression.Type;
 		if (Expression.Left.IsValid() && Expression.Left->Kind == EBlueprintHelperGraphExpressionKind::Literal)
 		{
 			NodeData.DefaultValues.Add(TEXT("A"), Expression.Left->LiteralValue);
@@ -906,27 +947,40 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 		{
 			NodeData.ArgumentTypes.Add(TEXT("B"), Expression.Right->Type);
 		}
+		for (const TPair<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& ArgPair : Expression.Args)
+		{
+			if (!ArgPair.Value.IsValid())
+			{
+				continue;
+			}
+			const FString PinName = ArgPair.Key.Equals(TEXT("left"), ESearchCase::IgnoreCase)
+				? FString(TEXT("A"))
+				: (ArgPair.Key.Equals(TEXT("right"), ESearchCase::IgnoreCase) ? FString(TEXT("B")) : ArgPair.Key);
+			if (ArgPair.Value->Kind == EBlueprintHelperGraphExpressionKind::Literal)
+			{
+				NodeData.DefaultValues.Add(PinName, ArgPair.Value->LiteralValue);
+			}
+			if (!ArgPair.Value->Type.TrimStartAndEnd().IsEmpty())
+			{
+				NodeData.ArgumentTypes.Add(PinName, ArgPair.Value->Type);
+			}
+		}
 
-		FPromotableOperatorNodeHandler Handler;
-		UK2Node* SpawnedNode = Handler.Spawn(TargetGraph, NodeData, OutError);
-		if (!SpawnedNode)
+		ApplyGenericPatternBindings(TEXT("op"), NodeData);
+		if (!BuildCallFunctionFragment(TargetGraph, NodeData, OutFragment, OutError, OutCandidateFunctions))
 		{
 			return false;
 		}
 
-		UEdGraphPin* LeftPin = FBlueprintGraphWriteFacade::FindPinByAlias(SpawnedNode, TEXT("A"));
-		UEdGraphPin* RightPin = FBlueprintGraphWriteFacade::FindPinByAlias(SpawnedNode, TEXT("B"));
-		UEdGraphPin* OutputPin = FindFirstDataOutputPin(SpawnedNode);
-		OutFragment.FragmentId = NodeData.Id;
 		OutFragment.SourceStatementId = Expression.ExpressionId;
-		OutFragment.PrimaryNode = SpawnedNode;
-		OutFragment.Nodes.Add(SpawnedNode);
-		OutFragment.DataInputs.Add(TEXT("left"), FBlueprintHelperFragmentPinRef{ NodeData.Id, TEXT("A"), Expression.Left.IsValid() ? Expression.Left->Type : FString(), LeftPin });
-		OutFragment.DataInputs.Add(TEXT("right"), FBlueprintHelperFragmentPinRef{ NodeData.Id, TEXT("B"), Expression.Right.IsValid() ? Expression.Right->Type : FString(), RightPin });
-		OutFragment.DataOutputs.Add(TEXT("result"), FBlueprintHelperFragmentPinRef{ NodeData.Id, TEXT("result"), TEXT("bool"), OutputPin });
-		OutFragment.PinBindings.Add(TEXT("A"), FBlueprintHelperFragmentPinRef{ NodeData.Id, TEXT("A"), Expression.Left.IsValid() ? Expression.Left->Type : FString(), LeftPin });
-		OutFragment.PinBindings.Add(TEXT("B"), FBlueprintHelperFragmentPinRef{ NodeData.Id, TEXT("B"), Expression.Right.IsValid() ? Expression.Right->Type : FString(), RightPin });
-		OutFragment.PinBindings.Add(TEXT("result"), FBlueprintHelperFragmentPinRef{ NodeData.Id, TEXT("result"), TEXT("bool"), OutputPin });
+		if (UEdGraphPin* LeftPin = FBlueprintGraphWriteFacade::FindPinByAlias(OutFragment.PrimaryNode, TEXT("A")))
+		{
+			OutFragment.DataInputs.Add(TEXT("left"), FBlueprintHelperFragmentPinRef{ NodeData.Id, TEXT("A"), Expression.Left.IsValid() ? Expression.Left->Type : FString(), LeftPin });
+		}
+		if (UEdGraphPin* RightPin = FBlueprintGraphWriteFacade::FindPinByAlias(OutFragment.PrimaryNode, TEXT("B")))
+		{
+			OutFragment.DataInputs.Add(TEXT("right"), FBlueprintHelperFragmentPinRef{ NodeData.Id, TEXT("B"), Expression.Right.IsValid() ? Expression.Right->Type : FString(), RightPin });
+		}
 		OutFragment.ReviewTargets.Add(Expression.ExpressionId);
 		return true;
 	}
@@ -958,12 +1012,25 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 			}
 		}
 
-		FSelectNodeHandler Handler;
-		UK2Node* SpawnedNode = Handler.Spawn(TargetGraph, NodeData, OutError);
+		ApplyGenericPatternBindings(TEXT("select"), NodeData);
+		UK2Node_Select* SelectNode = FBlueprintHelperGraphNodeFactory::SpawnK2Node<UK2Node_Select>(
+			TargetGraph,
+			FVector2D(NodeData.X, NodeData.Y));
+		UK2Node* SpawnedNode = SelectNode;
 		if (!SpawnedNode)
 		{
+			OutError = TEXT("select expression fragment build failed: could not spawn K2Node_Select.");
 			return false;
 		}
+		TArray<UEdGraphPin*> OptionPins;
+		SelectNode->GetOptionPins(OptionPins);
+		while (OptionPins.Num() < NodeData.SelectReference.NumOptions && SelectNode->CanAddPin())
+		{
+			SelectNode->AddInputPin();
+			OptionPins.Reset();
+			SelectNode->GetOptionPins(OptionPins);
+		}
+		FBlueprintGraphWriteFacade::ApplyDefaultValues(SpawnedNode, NodeData.DefaultValues, NodeData.Id);
 
 		OutFragment.FragmentId = NodeData.Id;
 		OutFragment.SourceStatementId = Expression.ExpressionId;
@@ -979,7 +1046,19 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 			const TSharedPtr<FBlueprintHelperGraphExpressionIR>& Option = Expression.Options[OptionIndex];
 			UEdGraphPin* OptionPin = FBlueprintGraphWriteFacade::FindPinByAlias(SpawnedNode, OptionPinName);
 			OutFragment.DataInputs.Add(OptionPinName, FBlueprintHelperFragmentPinRef{ NodeData.Id, OptionPinName, Option.IsValid() ? Option->Type : FString(), OptionPin });
+			OutFragment.DataInputs.Add(FString::Printf(TEXT("option_%d"), OptionIndex), FBlueprintHelperFragmentPinRef{ NodeData.Id, OptionPinName, Option.IsValid() ? Option->Type : FString(), OptionPin });
 			OutFragment.PinBindings.Add(OptionPinName, FBlueprintHelperFragmentPinRef{ NodeData.Id, OptionPinName, Option.IsValid() ? Option->Type : FString(), OptionPin });
+			OutFragment.PinBindings.Add(FString::Printf(TEXT("option_%d"), OptionIndex), FBlueprintHelperFragmentPinRef{ NodeData.Id, OptionPinName, Option.IsValid() ? Option->Type : FString(), OptionPin });
+			if (OptionIndex == 0)
+			{
+				OutFragment.DataInputs.Add(TEXT("then"), FBlueprintHelperFragmentPinRef{ NodeData.Id, OptionPinName, Option.IsValid() ? Option->Type : FString(), OptionPin });
+				OutFragment.PinBindings.Add(TEXT("then"), FBlueprintHelperFragmentPinRef{ NodeData.Id, OptionPinName, Option.IsValid() ? Option->Type : FString(), OptionPin });
+			}
+			else if (OptionIndex == 1)
+			{
+				OutFragment.DataInputs.Add(TEXT("else"), FBlueprintHelperFragmentPinRef{ NodeData.Id, OptionPinName, Option.IsValid() ? Option->Type : FString(), OptionPin });
+				OutFragment.PinBindings.Add(TEXT("else"), FBlueprintHelperFragmentPinRef{ NodeData.Id, OptionPinName, Option.IsValid() ? Option->Type : FString(), OptionPin });
+			}
 		}
 
 		UEdGraphPin* OutputPin = FindFirstDataOutputPin(SpawnedNode);
@@ -989,11 +1068,16 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 		return true;
 	}
 
-	if (Expression.Kind == EBlueprintHelperGraphExpressionKind::MakeStruct)
+	if (Expression.Kind == EBlueprintHelperGraphExpressionKind::Construct)
 	{
 		if (Expression.Type.TrimStartAndEnd().IsEmpty())
 		{
-			OutError = TEXT("make_struct expression fragment build failed: type is empty.");
+			OutError = TEXT("construct expression fragment build failed: type is empty.");
+			return false;
+		}
+		if (Expression.Fields.Num() == 0 && Expression.Args.Num() == 0)
+		{
+			OutError = TEXT("construct expression fragment build failed: fields are empty.");
 			return false;
 		}
 
@@ -1004,7 +1088,12 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 		NodeData.StructReference.StructPath = Expression.Type;
 		NodeData.ExpectedReturnType = Expression.Type;
 
-		for (const TPair<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& ArgPair : Expression.Args)
+		TMap<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>> FieldExpressions = Expression.Fields;
+		if (FieldExpressions.Num() == 0)
+		{
+			FieldExpressions = Expression.Args;
+		}
+		for (const TPair<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& ArgPair : FieldExpressions)
 		{
 			if (ArgPair.Value.IsValid() && ArgPair.Value->Kind == EBlueprintHelperGraphExpressionKind::Literal)
 			{
@@ -1016,8 +1105,19 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 			}
 		}
 
-		FStructOperationNodeHandler Handler;
-		UK2Node* SpawnedNode = Handler.Spawn(TargetGraph, NodeData, OutError);
+		ApplyGenericPatternBindings(TEXT("construct"), NodeData);
+		UScriptStruct* TargetStruct = FBlueprintHelperStructConstructionResolver::ResolveStructType(Expression.Type);
+		if (!TargetStruct)
+		{
+			OutError = FString::Printf(TEXT("construct expression fragment build failed: struct type was not found: %s."), *Expression.Type);
+			return false;
+		}
+
+		UK2Node* SpawnedNode = FBlueprintHelperStructConstructionResolver::SpawnMakeStructNode(
+			TargetGraph,
+			NodeData,
+			TargetStruct,
+			OutError);
 		if (!SpawnedNode)
 		{
 			return false;
@@ -1028,7 +1128,7 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 		OutFragment.SourceStatementId = Expression.ExpressionId;
 		OutFragment.PrimaryNode = SpawnedNode;
 		OutFragment.Nodes.Add(SpawnedNode);
-		for (const TPair<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& ArgPair : Expression.Args)
+		for (const TPair<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& ArgPair : FieldExpressions)
 		{
 			if (ArgPair.Value.IsValid() && ArgPair.Value->Kind != EBlueprintHelperGraphExpressionKind::Literal)
 			{
@@ -1039,6 +1139,109 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 		}
 		OutFragment.DataOutputs.Add(TEXT("value"), FBlueprintHelperFragmentPinRef{ NodeData.Id, TEXT("value"), Expression.Type, OutputPin });
 		OutFragment.PinBindings.Add(TEXT("value"), FBlueprintHelperFragmentPinRef{ NodeData.Id, TEXT("value"), Expression.Type, OutputPin });
+		OutFragment.ReviewTargets.Add(Expression.ExpressionId);
+		return true;
+	}
+
+	if (Expression.Kind == EBlueprintHelperGraphExpressionKind::Deconstruct)
+	{
+		TArray<FString> FieldNames = Expression.FieldNames;
+		if (FieldNames.Num() == 0)
+		{
+			Expression.Fields.GetKeys(FieldNames);
+			FieldNames.Sort();
+		}
+		if (FieldNames.Num() == 0)
+		{
+			OutError = TEXT("deconstruct expression fragment build failed: fields are empty.");
+			return false;
+		}
+
+		FString StructTypeName = Expression.Type;
+		if (StructTypeName.IsEmpty() && Expression.Value.IsValid())
+		{
+			StructTypeName = Expression.Value->Type;
+		}
+		if (StructTypeName.IsEmpty() && Expression.TargetObject.IsValid())
+		{
+			StructTypeName = Expression.TargetObject->Type;
+		}
+
+		UScriptStruct* TargetStruct = FBlueprintHelperStructConstructionResolver::ResolveStructType(StructTypeName);
+		if (!TargetStruct)
+		{
+			OutError = FString::Printf(TEXT("deconstruct expression fragment build failed: struct type was not found: %s."), *StructTypeName);
+			return false;
+		}
+
+		FParsedNode NodeData;
+		NodeData.Id = FBlueprintHelperGraphStatementTypeUtils::MakeExpressionFragmentId(Expression);
+		NodeData.NodeType = EParsedBlueprintNodeType::BreakStruct;
+		NodeData.SourceType = TEXT("K2Node_BreakStruct");
+		NodeData.StructReference.StructPath = TargetStruct->GetPathName();
+		NodeData.ExpectedReturnType = TargetStruct->GetPathName();
+
+		UK2Node* BreakNode = FBlueprintHelperStructConstructionResolver::SpawnBreakStructNode(
+			TargetGraph,
+			NodeData,
+			TargetStruct,
+			OutError);
+		if (!BreakNode)
+		{
+			return false;
+		}
+
+		TArray<UEdGraphNode*> Nodes;
+		TArray<FBlueprintHelperFragmentLink> InternalLinks;
+		Nodes.Add(BreakNode);
+		UEdGraphPin* StructInputPin = FindFirstDataInputPin(BreakNode);
+
+		if (!Expression.Target.TrimStartAndEnd().IsEmpty() && !Expression.Value.IsValid() && !Expression.TargetObject.IsValid())
+		{
+			const FString VariableName = !Expression.ResolvedTarget.Member.IsEmpty()
+				? Expression.ResolvedTarget.Member
+				: Expression.Target;
+			FParsedNode GetterData;
+			GetterData.Id = NodeData.Id + TEXT("_source");
+			GetterData.NodeType = EParsedBlueprintNodeType::VariableGet;
+			GetterData.SourceType = TEXT("K2Node_VariableGet");
+			GetterData.X = -300.0f;
+			GetterData.Y = 0.0f;
+			GetterData.VariableReference.ScopeType = TEXT("member");
+			GetterData.VariableReference.VariableName = VariableName;
+			GetterData.VariableReference.bSelfContext = true;
+
+			UK2Node* GetterNode = FBlueprintGraphWriteFacade::SpawnVariableGetNode(TargetGraph, GetterData, OutError);
+			if (!GetterNode)
+			{
+				return false;
+			}
+			UEdGraphPin* GetterOutputPin = FindFirstDataOutputPin(GetterNode);
+			if (!TryConnectDataPins(TargetGraph, GetterOutputPin, StructInputPin, TEXT("deconstruct source"), OutError))
+			{
+				return false;
+			}
+			Nodes.Add(GetterNode);
+			InternalLinks.Add(FBlueprintHelperFragmentLink{
+				FBlueprintHelperFragmentPinRef{ GetterData.Id, VariableName, StructTypeName, GetterOutputPin },
+				FBlueprintHelperFragmentPinRef{ NodeData.Id, StructInputPin ? StructInputPin->PinName.ToString() : FString(), StructTypeName, StructInputPin }
+			});
+		}
+
+		OutFragment.FragmentId = NodeData.Id;
+		OutFragment.SourceStatementId = Expression.ExpressionId;
+		OutFragment.PrimaryNode = BreakNode;
+		OutFragment.Nodes = MoveTemp(Nodes);
+		OutFragment.InternalLinks = MoveTemp(InternalLinks);
+		OutFragment.DataInputs.Add(TEXT("value"), FBlueprintHelperFragmentPinRef{ NodeData.Id, TEXT("value"), StructTypeName, StructInputPin });
+		OutFragment.PinBindings.Add(TEXT("value"), FBlueprintHelperFragmentPinRef{ NodeData.Id, TEXT("value"), StructTypeName, StructInputPin });
+
+		for (const FString& FieldName : FieldNames)
+		{
+			UEdGraphPin* FieldPin = FBlueprintGraphWriteFacade::FindPinByAlias(BreakNode, FieldName);
+			OutFragment.DataOutputs.Add(FieldName, FBlueprintHelperFragmentPinRef{ NodeData.Id, FieldName, FString(), FieldPin });
+			OutFragment.PinBindings.Add(FieldName, FBlueprintHelperFragmentPinRef{ NodeData.Id, FieldName, FString(), FieldPin });
+		}
 		OutFragment.ReviewTargets.Add(Expression.ExpressionId);
 		return true;
 	}

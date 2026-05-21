@@ -135,41 +135,29 @@ static void ReadStringArrayField(
 
 static bool IsCallStatementKind(const FString& Kind)
 {
-	return Kind.Equals(TEXT("call"), ESearchCase::IgnoreCase)
-		|| Kind.Equals(TEXT("call_function"), ESearchCase::IgnoreCase);
+	return Kind.Equals(TEXT("call"), ESearchCase::IgnoreCase);
 }
 
 static bool IsGraphStatementKind(const FString& Kind)
 {
 	return IsCallStatementKind(Kind)
 		|| Kind.Equals(TEXT("set"), ESearchCase::IgnoreCase)
-		|| Kind.Equals(TEXT("set_member_variable"), ESearchCase::IgnoreCase)
+		|| Kind.Equals(TEXT("set_property"), ESearchCase::IgnoreCase)
 		|| Kind.Equals(TEXT("branch"), ESearchCase::IgnoreCase)
 		|| Kind.Equals(TEXT("let"), ESearchCase::IgnoreCase)
 		|| Kind.Equals(TEXT("return"), ESearchCase::IgnoreCase)
-		|| Kind.Equals(TEXT("compare"), ESearchCase::IgnoreCase)
+		|| Kind.Equals(TEXT("op"), ESearchCase::IgnoreCase)
+		|| Kind.Equals(TEXT("construct"), ESearchCase::IgnoreCase)
+		|| Kind.Equals(TEXT("deconstruct"), ESearchCase::IgnoreCase)
 		|| Kind.Equals(TEXT("select"), ESearchCase::IgnoreCase)
 		|| Kind.Equals(TEXT("get"), ESearchCase::IgnoreCase)
-		|| Kind.Equals(TEXT("get_property"), ESearchCase::IgnoreCase)
-		|| Kind.Equals(TEXT("ref"), ESearchCase::IgnoreCase);
+		|| Kind.Equals(TEXT("get_property"), ESearchCase::IgnoreCase);
 }
 
 static FString ResolveCallQuery(const TSharedPtr<FJsonObject>& Object, const FString& Kind)
 {
 	FString Query;
-	if (Kind.Equals(TEXT("call"), ESearchCase::IgnoreCase))
-	{
-		Object->TryGetStringField(TEXT("target"), Query);
-	}
-	else
-	{
-		Object->TryGetStringField(TEXT("name"), Query);
-	}
-
-	if (Query.IsEmpty())
-	{
-		Object->TryGetStringField(TEXT("function"), Query);
-	}
+	Object->TryGetStringField(TEXT("target"), Query);
 	return Query.TrimStartAndEnd();
 }
 

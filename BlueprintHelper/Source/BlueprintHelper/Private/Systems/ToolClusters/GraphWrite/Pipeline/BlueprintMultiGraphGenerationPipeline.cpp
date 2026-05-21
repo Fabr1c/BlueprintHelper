@@ -12,8 +12,6 @@
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintMultiGraphGenerationPipeline.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphComposer.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphStatementBuilder.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/BlueprintNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/OperationHandlers/BlueprintOperationHandler.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Engine/Blueprint.h"
 #include "EdGraph/EdGraph.h"
@@ -67,42 +65,31 @@ FBlueprintGenerateResult FBlueprintMultiGraphGenerationPipeline::GenerateMultiGr
 	const TArray<TSharedPtr<FJsonValue>>* BlueprintOpsArray = nullptr;
 	if (JsonObject->TryGetArrayField(TEXT("blueprint_operations"), BlueprintOpsArray) && BlueprintOpsArray && BlueprintOpsArray->Num() > 0)
 	{
-		for (const TSharedPtr<FJsonValue>& OpValue : *BlueprintOpsArray)
+		for (int32 OpIndex = 0; OpIndex < BlueprintOpsArray->Num(); ++OpIndex)
 		{
-			const TSharedPtr<FJsonObject> OpObject = OpValue->AsObject();
-			if (!OpObject.IsValid())
+			const TSharedPtr<FJsonObject> OpObject = (*BlueprintOpsArray)[OpIndex].IsValid()
+				? (*BlueprintOpsArray)[OpIndex]->AsObject()
+				: nullptr;
+			FString OpName;
+			if (OpObject.IsValid())
 			{
-				continue;
+				OpObject->TryGetStringField(TEXT("op"), OpName);
 			}
 
-			FString OpName;
-			OpObject->TryGetStringField(TEXT("op"), OpName);
 			if (OpName.IsEmpty())
 			{
-				continue;
+				OpName = FString::Printf(TEXT("<invalid:%d>"), OpIndex);
 			}
 
-			IBlueprintOperationHandler* OpHandler = FBlueprintOperationHandlerRegistry::Get().FindHandler(OpName);
-			if (!OpHandler)
-			{
-				TSharedPtr<FUnresolvedNodeItem> UnresolvedItem = MakeShared<FUnresolvedNodeItem>();
-				UnresolvedItem->DisplayText = FString::Printf(TEXT("BlueprintOp: %s"), *OpName);
-				UnresolvedItem->Reason = FString::Printf(TEXT("未识别的蓝图级操作：%s"), *OpName);
-				OutUnresolvedNodes.Add(UnresolvedItem);
-				continue;
-			}
-
-			FString OpError;
-			if (!OpHandler->Execute(Blueprint, OpObject, OpError))
-			{
-				TSharedPtr<FUnresolvedNodeItem> UnresolvedItem = MakeShared<FUnresolvedNodeItem>();
-				UnresolvedItem->DisplayText = FString::Printf(TEXT("BlueprintOp: %s"), *OpName);
-				UnresolvedItem->Reason = OpError;
-				OutUnresolvedNodes.Add(UnresolvedItem);
-			}
+			TSharedPtr<FUnresolvedNodeItem> UnresolvedItem = MakeShared<FUnresolvedNodeItem>();
+			UnresolvedItem->DisplayText = FString::Printf(TEXT("BlueprintOp: %s"), *OpName);
+			UnresolvedItem->Reason = TEXT("GraphWrite only accepts logic_spec/SemanticIR. blueprint_operations is disabled.");
+			OutUnresolvedNodes.Add(UnresolvedItem);
 		}
 
-		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+		Result.UnresolvedNodeCount = OutUnresolvedNodes.Num();
+		Result.Message = TEXT("GraphWrite only accepts logic_spec/SemanticIR. blueprint_operations is disabled.");
+		return Result;
 	}
 
 	// === 多图模式（graphs 数组） ===
@@ -136,7 +123,7 @@ FBlueprintGenerateResult FBlueprintMultiGraphGenerationPipeline::GenerateMultiGr
 			{
 				TSharedPtr<FUnresolvedNodeItem> UnresolvedItem = MakeShared<FUnresolvedNodeItem>();
 				UnresolvedItem->DisplayText = FString::Printf(TEXT("Graph: %s"), *GraphName);
-				UnresolvedItem->Reason = FString::Printf(TEXT("未找到名为 '%s' 的图表，请先通过 blueprint_operations 创建。"), *GraphName);
+				UnresolvedItem->Reason = FString::Printf(TEXT("Target graph '%s' was not found. Create it through Blueprint structure services before GraphWrite."), *GraphName);
 				OutUnresolvedNodes.Add(UnresolvedItem);
 				continue;
 			}

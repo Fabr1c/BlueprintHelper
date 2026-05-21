@@ -1,6 +1,5 @@
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphMutationPlanExecutor.h"
 
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/BlueprintNodeHandler.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphDefaultValueApplier.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphLinker.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphNodeUtility.h"
@@ -42,20 +41,11 @@ void FBlueprintGraphMutationPlanExecutor::SpawnNodes(
 	Result.ExecutionStats.RequestedNodeCount = Plan.CountRequestedNodes();
 	for (const FBlueprintGraphMutationNodePlan& NodePlan : Plan.Nodes)
 	{
-		FString Error;
-		IBlueprintNodeHandler* Handler = FBlueprintNodeHandlerRegistry::Get().FindHandler(NodePlan.NodeType);
-		UK2Node* Node = Handler ? Handler->Spawn(Context.GetGraph(), NodePlan.ParsedNode, Error) : nullptr;
-		if (!Node)
-		{
-			Result.ConnectionDiagnostics.Add(FBlueprintGraphNodeUtility::MakeGeneratorDiagnostic(
-				TEXT("node_spawn_failed"),
-				NodePlan.NodeId,
-				TEXT(""),
-				Error.IsEmpty() ? TEXT("No node handler produced a node.") : Error));
-			continue;
-		}
-		Context.RegisterNode(NodePlan.NodeId, Node, true);
-		++Result.ExecutionStats.SpawnedNodeCount;
+		Result.ConnectionDiagnostics.Add(FBlueprintGraphNodeUtility::MakeGeneratorDiagnostic(
+			TEXT("parsed_node_plan_unsupported"),
+			NodePlan.NodeId,
+			TEXT(""),
+			TEXT("Parsed-node mutation plans are no longer supported. Use SemanticIR -> FragmentDAG -> NodeFragment builders.")));
 	}
 }
 

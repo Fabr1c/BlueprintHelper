@@ -2,10 +2,11 @@
 
 #pragma once
 
-#include "Systems/ToolClusters/GraphWrite/OperationHandlers/BlueprintOperationHandler.h"
+#include "CoreMinimal.h"
 
 class FJsonObject;
 class FJsonValue;
+class UBlueprint;
 
 struct FBlueprintHelperMemberDefaultMutation
 {
@@ -26,11 +27,11 @@ struct FBlueprintHelperVariableMutationCounts
 	int32 NoOpCount = 0;
 };
 
-class FBlueprintHelperMemberVariableMutationHandler : public IBlueprintOperationHandler
+class FBlueprintHelperMemberVariableMutationHandler
 {
 public:
-	virtual bool CanHandle(const FString& OpName) const override;
-	virtual bool Execute(UBlueprint* Blueprint, const TSharedPtr<FJsonObject>& OpPayload, FString& OutError) override;
+	bool CanHandle(const FString& OpName) const;
+	bool Execute(UBlueprint* Blueprint, const TSharedPtr<FJsonObject>& OpPayload, FString& OutError);
 
 	static bool TryReadVariableName(const TSharedPtr<FJsonObject>& Payload, FString& OutVariableName);
 	static bool TryReadDefaultValue(const TSharedPtr<FJsonObject>& Payload, FString& OutDefaultValue);

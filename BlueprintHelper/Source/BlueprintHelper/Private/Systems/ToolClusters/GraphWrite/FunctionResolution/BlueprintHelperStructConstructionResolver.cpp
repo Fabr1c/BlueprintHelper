@@ -3,10 +3,14 @@
 #include "EdGraph/EdGraph.h"
 #include "EdGraphSchema_K2.h"
 #include "Engine/Blueprint.h"
+#include "K2Node_BreakStruct.h"
+#include "K2Node_MakeStruct.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 #include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphNodeFactory.h"
 #include "UObject/UnrealType.h"
+#include "UObject/UObjectIterator.h"
 
 namespace
 {
@@ -186,6 +190,89 @@ static void AddUniqueQuery(TArray<FString>& Queries, const FString& Query)
 }
 }
 
+UScriptStruct* FBlueprintHelperStructConstructionResolver::ResolveStructType(const FString& TypeName)
+{
+	const FString Query = TypeName.TrimStartAndEnd();
+	if (Query.IsEmpty())
+	{
+		return nullptr;
+	}
+
+	if (UScriptStruct* DirectStruct = FindObject<UScriptStruct>(nullptr, *Query))
+	{
+		return DirectStruct;
+	}
+	if (UScriptStruct* LoadedStruct = LoadObject<UScriptStruct>(nullptr, *Query))
+	{
+		return LoadedStruct;
+	}
+
+	FString NormalizedQuery = Query;
+	NormalizedQuery.TrimStartAndEndInline();
+	NormalizedQuery.ToLowerInline();
+	NormalizedQuery.ReplaceInline(TEXT(" "), TEXT(""));
+	if (NormalizedQuery.StartsWith(TEXT("struct ")))
+	{
+		NormalizedQuery.RightChopInline(7);
+	}
+	if (NormalizedQuery.StartsWith(TEXT("f")))
+	{
+		NormalizedQuery.RightChopInline(1);
+	}
+
+	for (TObjectIterator<UScriptStruct> It; It; ++It)
+	{
+		UScriptStruct* Candidate = *It;
+		if (!Candidate)
+		{
+			continue;
+		}
+
+		FString CandidateName = Candidate->GetName();
+		CandidateName.ToLowerInline();
+		FString CandidateCppName = Candidate->GetPrefixCPP() + Candidate->GetName();
+		CandidateCppName.ToLowerInline();
+		FString CandidatePath = Candidate->GetPathName();
+		CandidatePath.ToLowerInline();
+		if (CandidateName == NormalizedQuery
+			|| CandidateCppName == NormalizedQuery
+			|| CandidatePath == NormalizedQuery
+			|| CandidatePath.EndsWith(TEXT(".") + NormalizedQuery))
+		{
+			return Candidate;
+		}
+	}
+
+	return nullptr;
+}
+
+void FBlueprintHelperStructConstructionResolver::CollectStructFieldTypes(
+	const UScriptStruct* TargetStruct,
+	TMap<FString, FString>& OutFieldTypes)
+{
+	OutFieldTypes.Reset();
+	if (!TargetStruct)
+	{
+		return;
+	}
+
+	for (TFieldIterator<FProperty> It(TargetStruct); It; ++It)
+	{
+		const FProperty* Property = *It;
+		if (!Property)
+		{
+			continue;
+		}
+
+		OutFieldTypes.Add(Property->GetName(), SemanticTypeFromProperty(Property));
+		const FString DisplayName = Property->GetDisplayNameText().ToString();
+		if (!DisplayName.IsEmpty() && !OutFieldTypes.Contains(DisplayName))
+		{
+			OutFieldTypes.Add(DisplayName, SemanticTypeFromProperty(Property));
+		}
+	}
+}
+
 UK2Node* FBlueprintHelperStructConstructionResolver::SpawnMakeStructNode(
 	UEdGraph* TargetGraph,
 	const FParsedNode& NodeData,
@@ -209,11 +296,68 @@ UK2Node* FBlueprintHelperStructConstructionResolver::SpawnMakeStructNode(
 		return SearchNode;
 	}
 
+	FString SearchError = OutError;
+	if (UK2Node* DirectNode = SpawnDirectMakeStructNode(TargetGraph, NodeData, TargetStruct, OutError))
+	{
+		return DirectNode;
+	}
+
 	if (!NativeError.IsEmpty())
 	{
-		OutError = FString::Printf(TEXT("%s; %s"), *NativeError, *OutError);
+		OutError = FString::Printf(TEXT("%s; %s; %s"), *NativeError, *SearchError, *OutError);
 	}
 	return nullptr;
+}
+
+UK2Node* FBlueprintHelperStructConstructionResolver::SpawnBreakStructNode(
+	UEdGraph* TargetGraph,
+	const FParsedNode& NodeData,
+	UScriptStruct* TargetStruct,
+	FString& OutError)
+{
+	if (!TargetGraph || !TargetStruct)
+	{
+		OutError = TEXT("struct deconstruction resolve failed: graph or struct is invalid.");
+		return nullptr;
+	}
+
+	UK2Node_BreakStruct* Node = FBlueprintHelperGraphNodeFactory::SpawnK2Node<UK2Node_BreakStruct>(
+		TargetGraph,
+		FVector2D(NodeData.X, NodeData.Y),
+		[TargetStruct](UK2Node_BreakStruct* BreakNode)
+		{
+			BreakNode->StructType = TargetStruct;
+		});
+	if (!Node)
+	{
+		OutError = FString::Printf(TEXT("struct deconstruction spawn failed: %s."), *TargetStruct->GetPathName());
+		return nullptr;
+	}
+
+	return Node;
+}
+
+UK2Node* FBlueprintHelperStructConstructionResolver::SpawnDirectMakeStructNode(
+	UEdGraph* TargetGraph,
+	const FParsedNode& NodeData,
+	UScriptStruct* TargetStruct,
+	FString& OutError)
+{
+	UK2Node_MakeStruct* Node = FBlueprintHelperGraphNodeFactory::SpawnK2Node<UK2Node_MakeStruct>(
+		TargetGraph,
+		FVector2D(NodeData.X, NodeData.Y),
+		[TargetStruct](UK2Node_MakeStruct* MakeNode)
+		{
+			MakeNode->StructType = TargetStruct;
+		});
+	if (!Node)
+	{
+		OutError = FString::Printf(TEXT("struct construction direct make spawn failed: %s."), *TargetStruct->GetPathName());
+		return nullptr;
+	}
+
+	FBlueprintGraphWriteFacade::ApplyDefaultValues(Node, NodeData.DefaultValues, NodeData.Id);
+	return Node;
 }
 
 UK2Node* FBlueprintHelperStructConstructionResolver::SpawnNativeMakeFunctionNode(

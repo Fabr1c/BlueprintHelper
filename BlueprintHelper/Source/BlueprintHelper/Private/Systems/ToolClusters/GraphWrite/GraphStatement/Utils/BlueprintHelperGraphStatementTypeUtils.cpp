@@ -45,11 +45,11 @@ FString FBlueprintHelperGraphStatementTypeUtils::ResolveExpressionKindName(
 		{ EBlueprintHelperGraphExpressionKind::Literal, TEXT("literal") },
 		{ EBlueprintHelperGraphExpressionKind::Get, TEXT("get") },
 		{ EBlueprintHelperGraphExpressionKind::GetProperty, TEXT("get_property") },
-		{ EBlueprintHelperGraphExpressionKind::Ref, TEXT("ref") },
 		{ EBlueprintHelperGraphExpressionKind::Call, TEXT("call") },
-		{ EBlueprintHelperGraphExpressionKind::Compare, TEXT("compare") },
+		{ EBlueprintHelperGraphExpressionKind::Op, TEXT("op") },
+		{ EBlueprintHelperGraphExpressionKind::Construct, TEXT("construct") },
+		{ EBlueprintHelperGraphExpressionKind::Deconstruct, TEXT("deconstruct") },
 		{ EBlueprintHelperGraphExpressionKind::Select, TEXT("select") },
-		{ EBlueprintHelperGraphExpressionKind::MakeStruct, TEXT("make_struct") },
 	};
 
 	for (const FExpressionKindRule& Rule : Rules)
@@ -62,7 +62,7 @@ FString FBlueprintHelperGraphStatementTypeUtils::ResolveExpressionKindName(
 	return TEXT("unknown");
 }
 
-FString FBlueprintHelperGraphStatementTypeUtils::NormalizeCompareOperatorToken(const FString& Operator)
+FString FBlueprintHelperGraphStatementTypeUtils::NormalizeOperatorToken(const FString& Operator)
 {
 	return Operator.TrimStartAndEnd().ToLower();
 }
@@ -81,17 +81,21 @@ bool FBlueprintHelperGraphStatementTypeUtils::TokenMatches(
 	return false;
 }
 
-FString FBlueprintHelperGraphStatementTypeUtils::ResolveCompareOperatorBaseName(const FString& Operator)
+FString FBlueprintHelperGraphStatementTypeUtils::ResolveOperatorBaseName(const FString& Operator)
 {
-	struct FCompareOperatorRule
+	struct FOperatorRule
 	{
 		const TCHAR* BaseName;
 		TArray<const TCHAR*> Tokens;
 	};
 
-	const FString Token = NormalizeCompareOperatorToken(Operator);
-	static const FCompareOperatorRule Rules[] =
+	const FString Token = NormalizeOperatorToken(Operator);
+	static const FOperatorRule Rules[] =
 	{
+		{ TEXT("Add"), { TEXT("+"), TEXT("add"), TEXT("plus") } },
+		{ TEXT("Subtract"), { TEXT("-"), TEXT("subtract"), TEXT("minus") } },
+		{ TEXT("Multiply"), { TEXT("*"), TEXT("multiply"), TEXT("times") } },
+		{ TEXT("Divide"), { TEXT("/"), TEXT("divide") } },
 		{ TEXT("Greater"), { TEXT(">"), TEXT("gt"), TEXT("greater") } },
 		{ TEXT("GreaterEqual"), { TEXT(">="), TEXT("gte"), TEXT("greater_equal"), TEXT("greaterequal") } },
 		{ TEXT("Less"), { TEXT("<"), TEXT("lt"), TEXT("less") } },
@@ -102,7 +106,7 @@ FString FBlueprintHelperGraphStatementTypeUtils::ResolveCompareOperatorBaseName(
 		{ TEXT("BooleanOR"), { TEXT("||"), TEXT("or"), TEXT("boolean_or"), TEXT("booleanor") } },
 	};
 
-	for (const FCompareOperatorRule& Rule : Rules)
+	for (const FOperatorRule& Rule : Rules)
 	{
 		if (TokenMatches(Token, Rule.Tokens))
 		{
@@ -112,7 +116,7 @@ FString FBlueprintHelperGraphStatementTypeUtils::ResolveCompareOperatorBaseName(
 	return Operator.TrimStartAndEnd();
 }
 
-FString FBlueprintHelperGraphStatementTypeUtils::NormalizeCompareTypeToken(const FString& Type)
+FString FBlueprintHelperGraphStatementTypeUtils::NormalizeOperatorTypeToken(const FString& Type)
 {
 	FString Token = Type;
 	Token.TrimStartAndEndInline();
@@ -137,17 +141,17 @@ bool FBlueprintHelperGraphStatementTypeUtils::TypeTokenMatches(
 	return false;
 }
 
-void FBlueprintHelperGraphStatementTypeUtils::AddCompareTypeSuffixesForToken(
+void FBlueprintHelperGraphStatementTypeUtils::AddOperatorTypeSuffixesForToken(
 	const FString& TypeToken,
 	TArray<FString>& Suffixes)
 {
-	struct FCompareTypeRule
+	struct FOperatorTypeRule
 	{
 		TArray<const TCHAR*> TypeTokens;
 		TArray<const TCHAR*> Suffixes;
 	};
 
-	static const FCompareTypeRule Rules[] =
+	static const FOperatorTypeRule Rules[] =
 	{
 		{ { TEXT("bool") }, { TEXT("BoolBool") } },
 		{ { TEXT("int64"), TEXT("long") }, { TEXT("Int64Int64") } },
@@ -164,7 +168,7 @@ void FBlueprintHelperGraphStatementTypeUtils::AddCompareTypeSuffixesForToken(
 		{ { TEXT("object"), TEXT("actor"), TEXT("component") }, { TEXT("ObjectObject") } },
 	};
 
-	for (const FCompareTypeRule& Rule : Rules)
+	for (const FOperatorTypeRule& Rule : Rules)
 	{
 		if (TypeTokenMatches(TypeToken, Rule.TypeTokens))
 		{
@@ -176,21 +180,30 @@ void FBlueprintHelperGraphStatementTypeUtils::AddCompareTypeSuffixesForToken(
 	}
 }
 
-TArray<FString> FBlueprintHelperGraphStatementTypeUtils::BuildCompareTypeSuffixCandidates(
+TArray<FString> FBlueprintHelperGraphStatementTypeUtils::BuildOperatorTypeSuffixCandidates(
 	const FBlueprintHelperGraphExpressionIR& Expression)
 {
 	TArray<FString> Suffixes;
 	if (Expression.Left.IsValid())
 	{
-		AddCompareTypeSuffixesForToken(
-			NormalizeCompareTypeToken(Expression.Left->Type),
+		AddOperatorTypeSuffixesForToken(
+			NormalizeOperatorTypeToken(Expression.Left->Type),
 			Suffixes);
 	}
 	if (Expression.Right.IsValid())
 	{
-		AddCompareTypeSuffixesForToken(
-			NormalizeCompareTypeToken(Expression.Right->Type),
+		AddOperatorTypeSuffixesForToken(
+			NormalizeOperatorTypeToken(Expression.Right->Type),
 			Suffixes);
+	}
+	for (const TPair<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& ArgPair : Expression.Args)
+	{
+		if (ArgPair.Value.IsValid())
+		{
+			AddOperatorTypeSuffixesForToken(
+				NormalizeOperatorTypeToken(ArgPair.Value->Type),
+				Suffixes);
+		}
 	}
 
 	static const TCHAR* FallbackSuffixes[] =
@@ -232,7 +245,7 @@ FString FBlueprintHelperGraphStatementTypeUtils::MakeExpressionFragmentId(
 		TEXT("expr_") + Suffix + TEXT("_") + SourceId + TEXT("_") + Suffix);
 }
 
-FString FBlueprintHelperGraphStatementTypeUtils::ResolveCompareOperatorFunctionName(
+FString FBlueprintHelperGraphStatementTypeUtils::ResolveOperatorFunctionName(
 	const FBlueprintHelperGraphExpressionIR& Expression)
 {
 	const FString RawOperator = Expression.Operator.TrimStartAndEnd();
@@ -246,7 +259,7 @@ FString FBlueprintHelperGraphStatementTypeUtils::ResolveCompareOperatorFunctionN
 		return RawOperator;
 	}
 
-	const FString BaseName = ResolveCompareOperatorBaseName(RawOperator);
+	const FString BaseName = ResolveOperatorBaseName(RawOperator);
 	if (BaseName.IsEmpty())
 	{
 		return RawOperator;
@@ -259,7 +272,7 @@ FString FBlueprintHelperGraphStatementTypeUtils::ResolveCompareOperatorFunctionN
 	}
 
 	TArray<FString> Candidates;
-	for (const FString& Suffix : BuildCompareTypeSuffixCandidates(Expression))
+	for (const FString& Suffix : BuildOperatorTypeSuffixCandidates(Expression))
 	{
 		AddUniqueString(Candidates, BaseName + TEXT("_") + Suffix);
 	}
