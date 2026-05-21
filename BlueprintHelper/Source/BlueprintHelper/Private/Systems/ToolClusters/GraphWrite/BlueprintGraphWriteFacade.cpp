@@ -53,22 +53,6 @@ TArray<TSharedPtr<FEngineFunctionItem>> FBlueprintGraphWriteFacade::GetAllBluepr
 	return FBlueprintGraphNodeUtility::GetAllBlueprintFunctions();
 }
 
-UK2Node* FBlueprintGraphWriteFacade::SpawnVariableGetNode(
-	UEdGraph* TargetGraph,
-	const FParsedNode& NodeData,
-	FString& OutErrorMessage)
-{
-	return FBlueprintGraphNodeSpawner::SpawnVariableGetNode(TargetGraph, NodeData, OutErrorMessage);
-}
-
-UK2Node* FBlueprintGraphWriteFacade::SpawnVariableSetNode(
-	UEdGraph* TargetGraph,
-	const FParsedNode& NodeData,
-	FString& OutErrorMessage)
-{
-	return FBlueprintGraphNodeSpawner::SpawnVariableSetNode(TargetGraph, NodeData, OutErrorMessage);
-}
-
 UK2Node* FBlueprintGraphWriteFacade::SpawnMacroNode(
 	UEdGraph* TargetGraph,
 	const FParsedNode& NodeData,

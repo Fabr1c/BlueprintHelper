@@ -6,7 +6,5 @@
 class BLUEPRINTHELPER_API FBlueprintGraphNodeSpawner
 {
 public:
-	static UK2Node* SpawnVariableGetNode(UEdGraph* TargetGraph, const FParsedNode& NodeData, FString& OutErrorMessage);
-	static UK2Node* SpawnVariableSetNode(UEdGraph* TargetGraph, const FParsedNode& NodeData, FString& OutErrorMessage);
 	static UK2Node* SpawnMacroNode(UEdGraph* TargetGraph, const FParsedNode& NodeData, FString& OutErrorMessage);
 };

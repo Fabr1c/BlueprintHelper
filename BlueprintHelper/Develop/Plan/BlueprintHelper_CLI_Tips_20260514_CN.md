@@ -462,3 +462,13 @@ pm.cmd run build。
 - Symptom: `rg` with a complex regex containing quotes/backslashes reports PowerShell parser errors such as `TerminatorExpectedAtEndOfString`, or ripgrep receives the path as part of the regex.
 - Cause: PowerShell quote parsing and regex escaping can interact badly when the pattern includes both `TEXT(\"...\")` style fragments and a Windows path argument.
 - Stable workaround: use `rg -F` fixed-string searches for C++ snippets, split complex alternation into multiple `rg -F` commands, or put the regex in a variable before invoking `rg`.
+
+## 2026-05-21: PowerShell 写 TaskSpec 必须使用 UTF-8 no BOM
+
+现象：使用 Windows PowerShell `Set-Content -Encoding UTF8` 写出的 TaskSpec 可能带 BOM，`bh.cmd task preview/execute --file` 会返回 `Unexpected token '﻿' ... is not valid JSON`。
+
+处理：生成临时 TaskSpec 时使用 .NET 写入 UTF-8 no BOM：
+
+```powershell
+[System.IO.File]::WriteAllText($Path, $Json, (New-Object System.Text.UTF8Encoding($false)))
+```
