@@ -44,6 +44,7 @@ struct FBlueprintHelperBridgeRequest
 	FString RequestId;
 	FString Command;
 	FString AuthSession;
+	bool bCloseAfterResponse = false;
 	TSharedPtr<FJsonObject> Payload;
 };
 

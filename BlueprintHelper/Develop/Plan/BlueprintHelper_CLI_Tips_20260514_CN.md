@@ -472,3 +472,15 @@ pm.cmd run build。
 ```powershell
 [System.IO.File]::WriteAllText($Path, $Json, (New-Object System.Text.UTF8Encoding($false)))
 ```
+
+## 2026-05-21: PowerShell ExecutionPolicy 拦截 npm.ps1
+
+现象：在 PowerShell 里运行 `npm run build` 可能报 `无法加载文件 ... npm.ps1，因为在此系统上禁止运行脚本`。
+
+原因：PowerShell 优先解析 `npm.ps1` shim，受本机 ExecutionPolicy 限制；这不是 BlueprintHelper 插件代码失败。
+
+稳定做法：Codex/PowerShell 自动化中使用 `npm.cmd`：
+
+```powershell
+npm.cmd run build
+```

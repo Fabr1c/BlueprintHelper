@@ -13,6 +13,7 @@ export interface BridgeRequest {
   request_id: string;
   command: string;
   auth_session?: string;
+  close_after_response?: boolean;
   payload: Record<string, unknown>;
 }
 
@@ -115,8 +116,8 @@ export class BridgeClient {
     this.writeSessionId = undefined;
   }
 
-  close(): void {
-    this.resetSocket(new Error('Bridge connection closed'));
+  close(): Promise<void> {
+    return this.closeSocket(new Error('Bridge connection closed'), true);
   }
 
   private async sendRaw(
@@ -315,12 +316,21 @@ export class BridgeClient {
   }
 
   private resetSocket(err: Error): void {
+    void this.closeSocket(err, false);
+  }
+
+  private closeSocket(err: Error, graceful: boolean): Promise<void> {
     const socket = this.socket;
     this.socket = undefined;
     this.recvBuf = Buffer.alloc(0);
 
+    let closePromise = Promise.resolve();
     if (socket && !socket.destroyed) {
-      socket.destroy();
+      if (graceful && this.pending.size === 0 && this.isSocketUsable(socket)) {
+        closePromise = this.requestServerCloseAndEnd(socket);
+      } else {
+        socket.destroy();
+      }
     }
 
     for (const pending of this.pending.values()) {
@@ -328,6 +338,54 @@ export class BridgeClient {
       pending.reject(err);
     }
     this.pending.clear();
+    return closePromise;
+  }
+
+  private requestServerCloseAndEnd(socket: net.Socket): Promise<void> {
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timer);
+        socket.off('close', finish);
+        resolve();
+      };
+
+      const timer = setTimeout(() => {
+        if (!socket.destroyed) {
+          socket.destroy();
+        }
+        finish();
+      }, 500);
+
+      socket.once('close', finish);
+
+      try {
+        const request: BridgeRequest = {
+          request_id: this.nextRequestId(),
+          command: 'client_disconnect',
+          close_after_response: true,
+          payload: {},
+        };
+        const frame = this.encodeRequest(request);
+        socket.write(frame, (err?: Error | null) => {
+          if (err) {
+            socket.destroy();
+            finish();
+            return;
+          }
+          if (!socket.destroyed) {
+            socket.end();
+          }
+        });
+      } catch {
+        socket.destroy();
+        finish();
+      }
+    });
   }
 
   async ping(): Promise<boolean> {

@@ -1668,3 +1668,52 @@ xychart
 ![P6 compile save post operation cost](FinalPerformanceCharts_20260520/final_specialized_p6_post_operation_bars_20260520.svg)
 
 结论：读链路 median 已从约 2s 降到 144.029ms 平均值，但 `02_blueprint_logic_json.json` 仍出现一次 1065.008ms 长尾，主要耗时在 `bridge_send_receive_ms=962.643` 而非 UE route。写链路完整 workflow 仍是秒级，当前大头在 execute 阶段的 UE 工作、post_io、compile/save 或资产创建相关成本；若以“所有工具延迟都降低到百毫秒内”作为 v0.5.0 定档标准，写链路仍未完全达成。
+
+### 2026-05-21 后续计划：CLI daemon + lightweight bh.exe/shim
+
+当前结论：Bridge raw socket 已达到 10ms 级，`runCli()` 内部处理也在 10ms 级；普通 `bh.cmd` 的 100ms+ 端到端延迟主要来自 `cmd -> node.exe -> ESM/task-core/zod/schema/tool registry` 冷启动。继续优化 Bridge 不能消除这部分成本。
+
+目标运行形态：
+
+```text
+lightweight bh.exe / shim
+-> local IPC / named pipe
+-> persistent bh daemon (Node, preloaded task-core/schema/tool registry)
+-> persistent BridgeClient
+-> UE Bridge
+```
+
+计划要求：
+
+1. `bh daemon` 第一次启动允许承担 Node/ESM/task-core 冷启动成本；后续命令必须复用常驻 daemon，不再重复冷启动。
+2. 普通 `bh task execute`、`bh task preview`、`bh bridge ping`、`bh context read` 等入口应由轻量 `bh.exe`/shim 路由到 daemon，而不是要求用户改用新的长命令。
+3. daemon 不存在或版本不匹配时，轻量 shim 可自动拉起 daemon 并重试一次；拉起失败时回退到清晰错误，不静默走旧慢路径。
+4. daemon 需保持现有 CLI 输出协议、字段裁切、artifact 写入和错误码语义；实现不得绕过 TaskSpec/TaskRuntime/Bridge 权限边界。
+5. 验收分两层：daemon 内部处理与 Bridge 往返保持 10ms 级；普通 `bh bridge ping` 经轻量 shim 端到端目标为 10ms 级或记录明确系统级阻塞。
+6. 该项当前只进入计划/TODO，不标记为 v0.5.0 已完成项；实现前需要单独设计 daemon 生命周期、IPC 协议、版本握手、日志、异常恢复和安装/link 策略。
+
+## 2026-05-21 后续优化计划：CLI Daemon + 轻量 bh.exe/shim
+
+状态：Open / needs design。当前只记录计划，不代表已实现。
+
+背景：2026-05-21 分层测速确认 Bridge raw socket 和 `runCli()` 内部 `bridge ping` 已是 10ms 级；`bh.cmd` 端到端 100ms+ 主要来自 `cmd -> node -> ESM -> task-core/zod/schema/tool registry` 冷启动。
+
+目标：普通 `bh task execute`、`bh bridge ping` 等命令由轻量 `bh.exe` 或等价 shim 通过本地 IPC 路由到常驻 daemon；daemon 复用预加载的 task-core/schema/tool registry 和 BridgeClient，绕开每条命令的 Node 冷启动。
+
+架构边界：
+
+1. `bh.exe/shim` 只做 argv/stdin/stdout/stderr/exit-code 转发，不承载 TaskSpec 编译、Bridge 业务或 UE 业务逻辑。
+2. daemon 承载现有 CLI parser、TaskSpec runner、tool surface、BridgeClient，并保持当前 `BlueprintHelper.CliResult.v1` 输出兼容。
+3. daemon 未启动时，shim 可以自动启动 daemon 并重试一次；启动成本只由首次命令承担。
+4. daemon 故障、版本不匹配、setting 变化、插件更新时必须有明确重启/失效策略。
+5. 普通命令语义保持 `bh task execute --file ...` 形式，路由变化对 AgentFace/用户透明。
+6. 该优化必须走统一 shim -> daemon action pipeline，不允许为单个命令写冷启动特判。
+
+验收指标：
+
+1. daemon warm 状态下，轻量命令 `bh bridge ping` 端到端达到 10ms 级，或记录 Windows 平台下的不可再压缩下限。
+2. `bh task execute` warm 状态下不再包含每命令 Node/ESM/task-core 冷启动成本。
+3. daemon unavailable / stale / crash 场景返回清晰 ToolResult，或自动重启后成功。
+4. 全局 `bh` 安装/link 后，普通命令默认路由到 daemon，保留可诊断的 fallback / bypass 开关用于排障。
+
+距离期望差距：尚未写独立设计文档和实现计划；尚未实现 daemon IPC、轻量 shim、daemon 生命周期、安装/link 策略和覆盖测试。
