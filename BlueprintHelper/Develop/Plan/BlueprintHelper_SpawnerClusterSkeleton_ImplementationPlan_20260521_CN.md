@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 先修正 GraphStatement Framework 的统一骨架，使 GraphWrite 主入口符合 `AgentFace semantic intent -> SpawnerClusterResolver -> BlueprintActionResolutionCore -> UBlueprintNodeSpawner -> NodeFragment` 的最新架构。
+**Goal:** 先修正 GraphStatement Framework 的统一骨架，使 GraphWrite 主入口符合 `AgentFace semantic intent -> Semantic Resolver -> SpawnerClusterKind + SemanticConstraints -> BlueprintActionResolutionCore -> SpawnerClusterResolver -> UBlueprintNodeSpawner -> NodeFragment` 的最新架构。
 
 **Architecture:** 本计划只建立统一骨架和主入口，不一次性迁移全部节点创建逻辑。现有 `call` 能力先作为 `FunctionActionCluster` 内部 provider 被包裹；`get/set/get_property/set_property/op/construct/deconstruct/select` 先进入 cluster 路由和诊断模型，后续再逐步迁移到真正的 NodeSpawner family provider。
 
@@ -21,6 +21,16 @@
 
 距离期望差距：当前完成的是统一骨架和旧路径切断；距离完整期望还差各 cluster 的真实 ActionDatabase / BlueprintActionFilter provider、NodeFragment adapter、FragmentDAG emission 和端到端覆盖测试。
 
+
+## 0.1 ActionResolution 一级分发修正（2026-05-21）
+
+- [x] `EBlueprintHelperActionSemanticKind` 已从 ActionResolution 一级请求类型中移除。
+- [x] `FBlueprintHelperActionResolutionRequest` 现在以 `ClusterKind` 作为唯一一级分发键。
+- [x] `call/get/set/get_property/set_property/op/construct/deconstruct/select/control` 已进入 `FBlueprintHelperActionSemanticConstraints`。
+- [x] `ActionResolutionCore` / `SpawnerClusterResolver` 只按 `SpawnerClusterKind` 分发到 UE NodeSpawner family cluster。
+- [x] `GraphStatementBuilder` 负责把 AgentFace semantic kind 映射为 `SpawnerClusterKind + SemanticConstraints`。
+
+距离期望差距：当前仍只完成骨架和请求模型修正；FieldVariable / GenericAssetStructControl 等 cluster 的真实 NodeSpawner provider 与 NodeFragment adapter 仍未迁移完成。
 ## 0. 执行边界
 
 本计划修复的是“统一骨架”，不是完整功能迁移。
@@ -72,7 +82,7 @@
 新增统一请求类型：
 
 ```cpp
-enum class EBlueprintHelperActionIntent : uint8
+enum class EBlueprintHelperActionSemanticKind : uint8
 {
 	Call,
 	Get,
@@ -118,7 +128,8 @@ enum class EBlueprintHelperActionResolutionStatus : uint8
 ```cpp
 struct FBlueprintHelperActionResolutionRequest
 {
-	EBlueprintHelperActionIntent Intent = EBlueprintHelperActionIntent::Unknown;
+	EBlueprintHelperSpawnerClusterKind ClusterKind = EBlueprintHelperSpawnerClusterKind::Unknown;
+`tFBlueprintHelperActionSemanticConstraints Semantic;
 	UEdGraph* TargetGraph = nullptr;
 	FString Query;
 	FString StableId;
@@ -173,7 +184,7 @@ struct FBlueprintHelperActionResolutionResult
 class UBlueprintNodeSpawner;
 class UEdGraph;
 
-enum class EBlueprintHelperActionIntent : uint8
+enum class EBlueprintHelperActionSemanticKind : uint8
 {
 	Call,
 	Get,
@@ -215,7 +226,8 @@ enum class EBlueprintHelperActionResolutionStatus : uint8
 
 struct FBlueprintHelperActionResolutionRequest
 {
-	EBlueprintHelperActionIntent Intent = EBlueprintHelperActionIntent::Unknown;
+	EBlueprintHelperSpawnerClusterKind ClusterKind = EBlueprintHelperSpawnerClusterKind::Unknown;
+`tFBlueprintHelperActionSemanticConstraints Semantic;
 	UEdGraph* TargetGraph = nullptr;
 	FString Query;
 	FString StableId;
@@ -248,7 +260,7 @@ class BLUEPRINTHELPER_API FBlueprintHelperActionResolutionCore
 {
 public:
 	static FBlueprintHelperActionResolutionResult Resolve(const FBlueprintHelperActionResolutionRequest& Request);
-	static FString IntentToString(EBlueprintHelperActionIntent Intent);
+	static FString SemanticKindToString(EBlueprintHelperActionSemanticKind Kind);
 	static FString ClusterKindToString(EBlueprintHelperSpawnerClusterKind ClusterKind);
 };
 ```
@@ -273,26 +285,26 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperActionResolutionCore::Res
 	return FBlueprintHelperSpawnerClusterResolver::Resolve(Request);
 }
 
-FString FBlueprintHelperActionResolutionCore::IntentToString(EBlueprintHelperActionIntent Intent)
+FString FBlueprintHelperActionResolutionCore::SemanticKindToString(EBlueprintHelperActionSemanticKind Kind)
 {
-	switch (Intent)
+	switch (Kind)
 	{
-	case EBlueprintHelperActionIntent::Call: return TEXT("call");
-	case EBlueprintHelperActionIntent::Get: return TEXT("get");
-	case EBlueprintHelperActionIntent::Set: return TEXT("set");
-	case EBlueprintHelperActionIntent::GetProperty: return TEXT("get_property");
-	case EBlueprintHelperActionIntent::SetProperty: return TEXT("set_property");
-	case EBlueprintHelperActionIntent::Op: return TEXT("op");
-	case EBlueprintHelperActionIntent::Construct: return TEXT("construct");
-	case EBlueprintHelperActionIntent::Deconstruct: return TEXT("deconstruct");
-	case EBlueprintHelperActionIntent::Select: return TEXT("select");
-	case EBlueprintHelperActionIntent::Event: return TEXT("event");
-	case EBlueprintHelperActionIntent::ComponentBoundEvent: return TEXT("component_bound_event");
-	case EBlueprintHelperActionIntent::Bind: return TEXT("bind");
-	case EBlueprintHelperActionIntent::Control: return TEXT("control");
-	case EBlueprintHelperActionIntent::Create: return TEXT("create");
-	case EBlueprintHelperActionIntent::Convert: return TEXT("convert");
-	case EBlueprintHelperActionIntent::Schedule: return TEXT("schedule");
+	case EBlueprintHelperActionSemanticKind::Call: return TEXT("call");
+	case EBlueprintHelperActionSemanticKind::Get: return TEXT("get");
+	case EBlueprintHelperActionSemanticKind::Set: return TEXT("set");
+	case EBlueprintHelperActionSemanticKind::GetProperty: return TEXT("get_property");
+	case EBlueprintHelperActionSemanticKind::SetProperty: return TEXT("set_property");
+	case EBlueprintHelperActionSemanticKind::Op: return TEXT("op");
+	case EBlueprintHelperActionSemanticKind::Construct: return TEXT("construct");
+	case EBlueprintHelperActionSemanticKind::Deconstruct: return TEXT("deconstruct");
+	case EBlueprintHelperActionSemanticKind::Select: return TEXT("select");
+	case EBlueprintHelperActionSemanticKind::Event: return TEXT("event");
+	case EBlueprintHelperActionSemanticKind::ComponentBoundEvent: return TEXT("component_bound_event");
+	case EBlueprintHelperActionSemanticKind::Bind: return TEXT("bind");
+	case EBlueprintHelperActionSemanticKind::Control: return TEXT("control");
+	case EBlueprintHelperActionSemanticKind::Create: return TEXT("create");
+	case EBlueprintHelperActionSemanticKind::Convert: return TEXT("convert");
+	case EBlueprintHelperActionSemanticKind::Schedule: return TEXT("schedule");
 	default: return TEXT("unknown");
 	}
 }
@@ -352,7 +364,7 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperFunctionActionCluster::Re
 	FBlueprintHelperActionResolutionResult Result;
 	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::FunctionAction;
 
-	if (Request.Intent == EBlueprintHelperActionIntent::Call)
+	if (Request.Semantic.Kind == EBlueprintHelperActionSemanticKind::Call)
 	{
 		FBlueprintHelperCallFunctionResolveRequest CallRequest;
 		CallRequest.TargetGraph = Request.TargetGraph;
@@ -387,7 +399,7 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperFunctionActionCluster::Re
 		return Result;
 	}
 
-	if (Request.Intent == EBlueprintHelperActionIntent::Op)
+	if (Request.Semantic.Kind == EBlueprintHelperActionSemanticKind::Op)
 	{
 		Result.Status = EBlueprintHelperActionResolutionStatus::UnsupportedClusterMigration;
 		Result.Message = TEXT("op_resolution_pending_function_action_cluster_provider");
@@ -427,12 +439,12 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperFieldVariableActionCluste
 	FBlueprintHelperActionResolutionResult Result;
 	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::FieldVariableAction;
 
-	switch (Request.Intent)
+	switch (Request.Semantic.Kind)
 	{
-	case EBlueprintHelperActionIntent::Get:
-	case EBlueprintHelperActionIntent::Set:
-	case EBlueprintHelperActionIntent::GetProperty:
-	case EBlueprintHelperActionIntent::SetProperty:
+	case EBlueprintHelperActionSemanticKind::Get:
+	case EBlueprintHelperActionSemanticKind::Set:
+	case EBlueprintHelperActionSemanticKind::GetProperty:
+	case EBlueprintHelperActionSemanticKind::SetProperty:
 		Result.Status = EBlueprintHelperActionResolutionStatus::UnsupportedClusterMigration;
 		Result.Message = TEXT("field_variable_action_cluster_provider_pending");
 		return Result;
@@ -454,11 +466,11 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperEventDelegateActionCluste
 	FBlueprintHelperActionResolutionResult Result;
 	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::EventDelegateAction;
 
-	switch (Request.Intent)
+	switch (Request.Semantic.Kind)
 	{
-	case EBlueprintHelperActionIntent::Event:
-	case EBlueprintHelperActionIntent::ComponentBoundEvent:
-	case EBlueprintHelperActionIntent::Bind:
+	case EBlueprintHelperActionSemanticKind::Event:
+	case EBlueprintHelperActionSemanticKind::ComponentBoundEvent:
+	case EBlueprintHelperActionSemanticKind::Bind:
 		Result.Status = EBlueprintHelperActionResolutionStatus::UnsupportedClusterMigration;
 		Result.Message = TEXT("event_delegate_action_cluster_provider_pending");
 		return Result;
@@ -480,15 +492,15 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperGenericAssetStructControl
 	FBlueprintHelperActionResolutionResult Result;
 	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction;
 
-	switch (Request.Intent)
+	switch (Request.Semantic.Kind)
 	{
-	case EBlueprintHelperActionIntent::Construct:
-	case EBlueprintHelperActionIntent::Deconstruct:
-	case EBlueprintHelperActionIntent::Select:
-	case EBlueprintHelperActionIntent::Control:
-	case EBlueprintHelperActionIntent::Create:
-	case EBlueprintHelperActionIntent::Convert:
-	case EBlueprintHelperActionIntent::Schedule:
+	case EBlueprintHelperActionSemanticKind::Construct:
+	case EBlueprintHelperActionSemanticKind::Deconstruct:
+	case EBlueprintHelperActionSemanticKind::Select:
+	case EBlueprintHelperActionSemanticKind::Control:
+	case EBlueprintHelperActionSemanticKind::Create:
+	case EBlueprintHelperActionSemanticKind::Convert:
+	case EBlueprintHelperActionSemanticKind::Schedule:
 		Result.Status = EBlueprintHelperActionResolutionStatus::UnsupportedClusterMigration;
 		Result.Message = TEXT("generic_asset_struct_control_action_cluster_provider_pending");
 		return Result;
@@ -518,7 +530,7 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperGenericAssetStructControl
 class BLUEPRINTHELPER_API FBlueprintHelperSpawnerClusterResolver
 {
 public:
-	static EBlueprintHelperSpawnerClusterKind SelectCluster(EBlueprintHelperActionIntent Intent);
+	static EBlueprintHelperSpawnerClusterKind Resolve(Request.ClusterKind);
 	static FBlueprintHelperActionResolutionResult Resolve(const FBlueprintHelperActionResolutionRequest& Request);
 };
 ```
@@ -533,29 +545,29 @@ public:
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Clusters/BlueprintHelperFunctionActionCluster.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Clusters/BlueprintHelperGenericAssetStructControlActionCluster.h"
 
-EBlueprintHelperSpawnerClusterKind FBlueprintHelperSpawnerClusterResolver::SelectCluster(EBlueprintHelperActionIntent Intent)
+EBlueprintHelperSpawnerClusterKind FBlueprintHelperSpawnerClusterResolver::Resolve(Request.ClusterKind)
 {
-	switch (Intent)
+	switch (Kind)
 	{
-	case EBlueprintHelperActionIntent::Call:
-	case EBlueprintHelperActionIntent::Op:
+	case EBlueprintHelperActionSemanticKind::Call:
+	case EBlueprintHelperActionSemanticKind::Op:
 		return EBlueprintHelperSpawnerClusterKind::FunctionAction;
-	case EBlueprintHelperActionIntent::Get:
-	case EBlueprintHelperActionIntent::Set:
-	case EBlueprintHelperActionIntent::GetProperty:
-	case EBlueprintHelperActionIntent::SetProperty:
+	case EBlueprintHelperActionSemanticKind::Get:
+	case EBlueprintHelperActionSemanticKind::Set:
+	case EBlueprintHelperActionSemanticKind::GetProperty:
+	case EBlueprintHelperActionSemanticKind::SetProperty:
 		return EBlueprintHelperSpawnerClusterKind::FieldVariableAction;
-	case EBlueprintHelperActionIntent::Event:
-	case EBlueprintHelperActionIntent::ComponentBoundEvent:
-	case EBlueprintHelperActionIntent::Bind:
+	case EBlueprintHelperActionSemanticKind::Event:
+	case EBlueprintHelperActionSemanticKind::ComponentBoundEvent:
+	case EBlueprintHelperActionSemanticKind::Bind:
 		return EBlueprintHelperSpawnerClusterKind::EventDelegateAction;
-	case EBlueprintHelperActionIntent::Construct:
-	case EBlueprintHelperActionIntent::Deconstruct:
-	case EBlueprintHelperActionIntent::Select:
-	case EBlueprintHelperActionIntent::Control:
-	case EBlueprintHelperActionIntent::Create:
-	case EBlueprintHelperActionIntent::Convert:
-	case EBlueprintHelperActionIntent::Schedule:
+	case EBlueprintHelperActionSemanticKind::Construct:
+	case EBlueprintHelperActionSemanticKind::Deconstruct:
+	case EBlueprintHelperActionSemanticKind::Select:
+	case EBlueprintHelperActionSemanticKind::Control:
+	case EBlueprintHelperActionSemanticKind::Create:
+	case EBlueprintHelperActionSemanticKind::Convert:
+	case EBlueprintHelperActionSemanticKind::Schedule:
 		return EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction;
 	default:
 		return EBlueprintHelperSpawnerClusterKind::Unknown;
@@ -564,7 +576,7 @@ EBlueprintHelperSpawnerClusterKind FBlueprintHelperSpawnerClusterResolver::Selec
 
 FBlueprintHelperActionResolutionResult FBlueprintHelperSpawnerClusterResolver::Resolve(const FBlueprintHelperActionResolutionRequest& Request)
 {
-	const EBlueprintHelperSpawnerClusterKind ClusterKind = SelectCluster(Request.Intent);
+	const EBlueprintHelperSpawnerClusterKind ClusterKind = Request.ClusterKind;
 	switch (ClusterKind)
 	{
 	case EBlueprintHelperSpawnerClusterKind::FunctionAction:
@@ -606,7 +618,8 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperSpawnerClusterResolver::R
 
 ```cpp
 FBlueprintHelperActionResolutionRequest ActionRequest;
-ActionRequest.Intent = EBlueprintHelperActionIntent::Call;
+ActionRequest.ClusterKind = EBlueprintHelperSpawnerClusterKind::FunctionAction;
+ActionRequest.Semantic.Kind = EBlueprintHelperActionSemanticKind::Call;
 ActionRequest.TargetGraph = TargetGraph;
 ActionRequest.Query = NodeData.FunctionName;
 ActionRequest.DefaultValues = NodeData.DefaultValues;
@@ -668,9 +681,11 @@ UK2Node* SpawnedNode = FBlueprintHelperCallFunctionResolver::SpawnResolvedNode(
 
 ```cpp
 FBlueprintHelperActionResolutionRequest ActionRequest;
-ActionRequest.Intent = EBlueprintHelperActionIntent::Construct;
+ActionRequest.ClusterKind = EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction;
+ActionRequest.ClusterKind = EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction;
+ActionRequest.Semantic.Kind = EBlueprintHelperActionSemanticKind::Construct;
 ActionRequest.TargetGraph = TargetGraph;
-ActionRequest.TypeName = Expression.Type;
+ActionRequest.Semantic.TypeName = Expression.Type;
 
 const FBlueprintHelperActionResolutionResult ActionResult =
 	FBlueprintHelperActionResolutionCore::Resolve(ActionRequest);
@@ -683,22 +698,28 @@ const FBlueprintHelperActionResolutionResult ActionResult =
 `set` 映射：
 
 ```cpp
-ActionRequest.Intent = EBlueprintHelperActionIntent::Set;
-ActionRequest.TargetPath = NodeData.VariableReference.VariableName;
+ActionRequest.ClusterKind = EBlueprintHelperSpawnerClusterKind::FieldVariableAction;
+ActionRequest.ClusterKind = EBlueprintHelperSpawnerClusterKind::FieldVariableAction;
+ActionRequest.Semantic.Kind = EBlueprintHelperActionSemanticKind::Set;
+ActionRequest.Semantic.TargetPath = NodeData.VariableReference.VariableName;
 ```
 
 `get` 映射：
 
 ```cpp
-ActionRequest.Intent = EBlueprintHelperActionIntent::Get;
-ActionRequest.TargetPath = NodeData.VariableReference.VariableName;
+ActionRequest.ClusterKind = EBlueprintHelperSpawnerClusterKind::FieldVariableAction;
+ActionRequest.ClusterKind = EBlueprintHelperSpawnerClusterKind::FieldVariableAction;
+ActionRequest.Semantic.Kind = EBlueprintHelperActionSemanticKind::Get;
+ActionRequest.Semantic.TargetPath = NodeData.VariableReference.VariableName;
 ```
 
 `set_property` 映射：
 
 ```cpp
-ActionRequest.Intent = EBlueprintHelperActionIntent::SetProperty;
-ActionRequest.PropertyPath = NodeData.PropertyPath;
+ActionRequest.ClusterKind = EBlueprintHelperSpawnerClusterKind::FieldVariableAction;
+ActionRequest.ClusterKind = EBlueprintHelperSpawnerClusterKind::FieldVariableAction;
+ActionRequest.Semantic.Kind = EBlueprintHelperActionSemanticKind::SetProperty;
+ActionRequest.Semantic.PropertyPath = NodeData.PropertyPath;
 ```
 
 这一步只建立主入口可见性，不改变节点创建结果。
@@ -751,14 +772,14 @@ FBlueprintHelperActionResolutionResult FBlueprintGraphWriteFacade::ResolveAction
 
 当前阶段目标是先使 GraphWrite 主入口符合：
 
-`AgentFace semantic intent -> SpawnerClusterResolver -> BlueprintActionResolutionCore -> Cluster -> NodeSpawner candidate`
+`AgentFace semantic intent -> Semantic Resolver -> SpawnerClusterKind + SemanticConstraints -> BlueprintActionResolutionCore -> SpawnerClusterResolver -> Cluster -> NodeSpawner candidate`
 
 本阶段完成后：
 
 1. `call` 通过 `FunctionActionCluster` 包裹现有 resolver。
 2. `get/set/get_property/set_property` 进入 `FieldVariableActionCluster` 路由，但具体变量节点创建仍处于后续迁移阶段。
 3. `op` 进入 `FunctionActionCluster` 路由，但 typed operator provider 仍处于后续迁移阶段。
-4. `construct/deconstruct/select` 进入 `GenericAssetStructControlActionCluster` 路由，但专项 builder 暂时保留为过渡实现。
+4. `construct/deconstruct/select` 进入 `GenericAssetStructControlActionCluster` 路由，但未迁移 provider 时返回 UnsupportedClusterMigration，不保留专项 builder 过渡实现。
 5. 不恢复旧 `NodeHandler` / `OperationHandler`。
 ```
 
@@ -819,7 +840,7 @@ Compile succeeded
 
 1. 编译通过。
 2. `call` 主路径从 `GraphStatementBuilder` 进入 `BlueprintActionResolutionCore`。
-3. `SpawnerClusterResolver` 能识别首批 DataFlowCore kind。
+3. `SpawnerClusterResolver` 只按 `SpawnerClusterKind` 分发；首批 DataFlowCore kind 由 `SemanticConstraints` 承载。
 4. 四个 cluster 类都存在，且每个类职责单一。
 5. 非 `call` kind 不再被误描述为“已经完成最新架构”，而是能返回明确迁移状态。
 6. 未恢复旧 `NodeHandler` / `OperationHandler` / parsed-node fallback。
@@ -832,7 +853,7 @@ Compile succeeded
 1. 不绕回旧 fallback。
 2. 在 cluster provider 中返回 `UnsupportedClusterMigration`。
 3. 在 DebugBundle / preview diagnostics 中返回可行动错误。
-4. 在进度文档记录“该 intent 需要专用 provider 或 UE ActionDatabase 适配器”。
+4. 在进度文档记录“该 semantic kind 需要专用 provider 或 UE ActionDatabase 适配器”。
 
 ## 14. 提交规则
 

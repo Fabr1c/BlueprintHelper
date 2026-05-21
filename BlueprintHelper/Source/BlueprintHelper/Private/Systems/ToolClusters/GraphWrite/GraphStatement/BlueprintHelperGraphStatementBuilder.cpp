@@ -112,42 +112,73 @@ static void AppendCandidateActionGroup(
 	OutCandidateFunctions->Add(MoveTemp(Group));
 }
 
-static EBlueprintHelperActionIntent ResolveActionIntentForExpressionKind(EBlueprintHelperGraphExpressionKind Kind)
+static EBlueprintHelperActionSemanticKind ResolveActionSemanticKindForExpressionKind(EBlueprintHelperGraphExpressionKind Kind)
 {
 	switch (Kind)
 	{
 	case EBlueprintHelperGraphExpressionKind::Get:
-		return EBlueprintHelperActionIntent::Get;
+		return EBlueprintHelperActionSemanticKind::Get;
 	case EBlueprintHelperGraphExpressionKind::GetProperty:
-		return EBlueprintHelperActionIntent::GetProperty;
+		return EBlueprintHelperActionSemanticKind::GetProperty;
 	case EBlueprintHelperGraphExpressionKind::Op:
-		return EBlueprintHelperActionIntent::Op;
+		return EBlueprintHelperActionSemanticKind::Op;
 	case EBlueprintHelperGraphExpressionKind::Construct:
-		return EBlueprintHelperActionIntent::Construct;
+		return EBlueprintHelperActionSemanticKind::Construct;
 	case EBlueprintHelperGraphExpressionKind::Deconstruct:
-		return EBlueprintHelperActionIntent::Deconstruct;
+		return EBlueprintHelperActionSemanticKind::Deconstruct;
 	case EBlueprintHelperGraphExpressionKind::Select:
-		return EBlueprintHelperActionIntent::Select;
+		return EBlueprintHelperActionSemanticKind::Select;
 	default:
-		return EBlueprintHelperActionIntent::Unknown;
+		return EBlueprintHelperActionSemanticKind::Unknown;
+	}
+}
+
+static EBlueprintHelperSpawnerClusterKind ResolveSpawnerClusterForSemanticKind(EBlueprintHelperActionSemanticKind Kind)
+{
+	switch (Kind)
+	{
+	case EBlueprintHelperActionSemanticKind::Call:
+	case EBlueprintHelperActionSemanticKind::Op:
+		return EBlueprintHelperSpawnerClusterKind::FunctionAction;
+	case EBlueprintHelperActionSemanticKind::Get:
+	case EBlueprintHelperActionSemanticKind::Set:
+	case EBlueprintHelperActionSemanticKind::GetProperty:
+	case EBlueprintHelperActionSemanticKind::SetProperty:
+		return EBlueprintHelperSpawnerClusterKind::FieldVariableAction;
+	case EBlueprintHelperActionSemanticKind::Event:
+	case EBlueprintHelperActionSemanticKind::ComponentBoundEvent:
+	case EBlueprintHelperActionSemanticKind::Bind:
+		return EBlueprintHelperSpawnerClusterKind::EventDelegateAction;
+	case EBlueprintHelperActionSemanticKind::Construct:
+	case EBlueprintHelperActionSemanticKind::Deconstruct:
+	case EBlueprintHelperActionSemanticKind::Select:
+	case EBlueprintHelperActionSemanticKind::Control:
+	case EBlueprintHelperActionSemanticKind::Create:
+	case EBlueprintHelperActionSemanticKind::Convert:
+	case EBlueprintHelperActionSemanticKind::Schedule:
+		return EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction;
+	default:
+		return EBlueprintHelperSpawnerClusterKind::Unknown;
 	}
 }
 
 static bool RequireResolvedActionProvider(
 	UEdGraph* TargetGraph,
-	EBlueprintHelperActionIntent Intent,
+	EBlueprintHelperSpawnerClusterKind ClusterKind,
+	EBlueprintHelperActionSemanticKind SemanticKind,
 	const FString& Query,
 	const FString& TargetPath,
 	const FString& TypeName,
 	FString& OutError)
 {
 	FBlueprintHelperActionResolutionRequest ActionRequest;
-	ActionRequest.Intent = Intent;
+	ActionRequest.ClusterKind = ClusterKind;
 	ActionRequest.TargetGraph = TargetGraph;
 	ActionRequest.Blueprint = FBlueprintEditorUtils::FindBlueprintForGraph(TargetGraph);
-	ActionRequest.Query = Query;
-	ActionRequest.TargetPath = TargetPath;
-	ActionRequest.TypeName = TypeName;
+	ActionRequest.Semantic.Kind = SemanticKind;
+	ActionRequest.Semantic.Query = Query;
+	ActionRequest.Semantic.TargetPath = TargetPath;
+	ActionRequest.Semantic.TypeName = TypeName;
 
 	const FBlueprintHelperActionResolutionResult ActionResult =
 		FBlueprintGraphWriteFacade::ResolveActionForGraph(ActionRequest);
@@ -158,8 +189,8 @@ static bool RequireResolvedActionProvider(
 
 	OutError = ActionResult.Message.IsEmpty()
 		? FString::Printf(
-			TEXT("action provider unavailable: intent=%s cluster=%s"),
-			*FBlueprintHelperActionResolutionCore::IntentToString(Intent),
+			TEXT("action provider unavailable: semantic=%s cluster=%s"),
+			*FBlueprintHelperActionResolutionCore::SemanticKindToString(SemanticKind),
 			*FBlueprintHelperActionResolutionCore::ClusterKindToString(ActionResult.ClusterKind))
 		: ActionResult.Message;
 	return false;
@@ -178,22 +209,23 @@ bool FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment(
 	const FString ExplicitTargetObjectName = BoundNodeData.TargetObjectName.TrimStartAndEnd();
 
 	FBlueprintHelperActionResolutionRequest ActionRequest;
-	ActionRequest.Intent = EBlueprintHelperActionIntent::Call;
+	ActionRequest.ClusterKind = EBlueprintHelperSpawnerClusterKind::FunctionAction;
 	ActionRequest.TargetGraph = TargetGraph;
 	ActionRequest.Blueprint = FBlueprintEditorUtils::FindBlueprintForGraph(TargetGraph);
-	ActionRequest.Query = MakeCallFunctionResolveQuery(BoundNodeData);
-	ActionRequest.TargetPath = ExplicitTargetObjectName;
-	ActionRequest.SearchMode = BoundNodeData.SearchMode;
-	ActionRequest.AmbiguityPolicy = BoundNodeData.AmbiguityPolicy;
-	ActionRequest.CategoryPriority = BoundNodeData.CategoryPriority;
-	ActionRequest.ArgumentTypes = BoundNodeData.ArgumentTypes;
-	ActionRequest.ArgumentPinTypes = BoundNodeData.ArgumentPinTypes;
-	ActionRequest.TargetObjectType = BoundNodeData.TargetObjectType;
-	ActionRequest.TargetObjectPinType = BoundNodeData.TargetObjectPinType;
-	ActionRequest.ExpectedReturnType = BoundNodeData.ExpectedReturnType;
-	ActionRequest.ExpectedReturnPinType = BoundNodeData.ExpectedReturnPinType;
-	BoundNodeData.DefaultValues.GetKeys(ActionRequest.ArgumentNames);
-	ActionRequest.DefaultValues = BoundNodeData.DefaultValues;
+	ActionRequest.Semantic.Kind = EBlueprintHelperActionSemanticKind::Call;
+	ActionRequest.Semantic.Query = MakeCallFunctionResolveQuery(BoundNodeData);
+	ActionRequest.Semantic.TargetPath = ExplicitTargetObjectName;
+	ActionRequest.Semantic.SearchMode = BoundNodeData.SearchMode;
+	ActionRequest.Semantic.AmbiguityPolicy = BoundNodeData.AmbiguityPolicy;
+	ActionRequest.Semantic.CategoryPriority = BoundNodeData.CategoryPriority;
+	ActionRequest.Semantic.ArgumentTypes = BoundNodeData.ArgumentTypes;
+	ActionRequest.Semantic.ArgumentPinTypes = BoundNodeData.ArgumentPinTypes;
+	ActionRequest.Semantic.TargetObjectType = BoundNodeData.TargetObjectType;
+	ActionRequest.Semantic.TargetObjectPinType = BoundNodeData.TargetObjectPinType;
+	ActionRequest.Semantic.ExpectedReturnType = BoundNodeData.ExpectedReturnType;
+	ActionRequest.Semantic.ExpectedReturnPinType = BoundNodeData.ExpectedReturnPinType;
+	BoundNodeData.DefaultValues.GetKeys(ActionRequest.Semantic.ArgumentNames);
+	ActionRequest.Semantic.DefaultValues = BoundNodeData.DefaultValues;
 	const FBlueprintHelperActionResolutionResult ActionResult =
 		FBlueprintGraphWriteFacade::ResolveActionForGraph(ActionRequest);
 
@@ -240,7 +272,8 @@ bool FBlueprintHelperGraphStatementBuilder::BuildVariableSetFragment(
 
 	if (!RequireResolvedActionProvider(
 		TargetGraph,
-		EBlueprintHelperActionIntent::Set,
+		EBlueprintHelperSpawnerClusterKind::FieldVariableAction,
+		EBlueprintHelperActionSemanticKind::Set,
 		NodeData.VariableReference.VariableName,
 		NodeData.VariableReference.VariableName,
 		NodeData.ExpectedReturnType,
@@ -268,7 +301,8 @@ bool FBlueprintHelperGraphStatementBuilder::BuildSetPropertyFragment(
 
 	if (!RequireResolvedActionProvider(
 		TargetGraph,
-		EBlueprintHelperActionIntent::SetProperty,
+		EBlueprintHelperSpawnerClusterKind::FieldVariableAction,
+		EBlueprintHelperActionSemanticKind::SetProperty,
 		NodeData.VariableReference.VariableName,
 		NodeData.VariableReference.VariableName,
 		NodeData.ExpectedReturnType,
@@ -290,7 +324,8 @@ bool FBlueprintHelperGraphStatementBuilder::BuildSequenceFragment(
 	OutFragment = FBlueprintHelperNodeFragment();
 	if (!RequireResolvedActionProvider(
 		TargetGraph,
-		EBlueprintHelperActionIntent::Control,
+		EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction,
+		EBlueprintHelperActionSemanticKind::Control,
 		TEXT("sequence"),
 		FragmentId,
 		FString(),
@@ -357,8 +392,8 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 		return true;
 	}
 
-	const EBlueprintHelperActionIntent Intent = ResolveActionIntentForExpressionKind(Expression.Kind);
-	if (Intent != EBlueprintHelperActionIntent::Unknown)
+	const EBlueprintHelperActionSemanticKind SemanticKind = ResolveActionSemanticKindForExpressionKind(Expression.Kind);
+	if (SemanticKind != EBlueprintHelperActionSemanticKind::Unknown)
 	{
 		const FString Query = Expression.Kind == EBlueprintHelperGraphExpressionKind::Op
 			? Expression.Operator
@@ -367,7 +402,7 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 			? Expression.ResolvedTarget.PropertyPath
 			: Expression.Target;
 		const FString TypeName = Expression.Type;
-		if (!RequireResolvedActionProvider(TargetGraph, Intent, Query, TargetPath, TypeName, OutError))
+		if (!RequireResolvedActionProvider(TargetGraph, ResolveSpawnerClusterForSemanticKind(SemanticKind), SemanticKind, Query, TargetPath, TypeName, OutError))
 		{
 			return false;
 		}

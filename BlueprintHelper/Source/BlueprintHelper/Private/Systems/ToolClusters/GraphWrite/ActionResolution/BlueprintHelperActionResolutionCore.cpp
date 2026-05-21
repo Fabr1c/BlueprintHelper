@@ -9,35 +9,47 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperActionResolutionCore::Res
 	{
 		FBlueprintHelperActionResolutionResult Result;
 		Result.Status = EBlueprintHelperActionResolutionStatus::InvalidRequest;
-		Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::Unknown;
+		Result.ClusterKind = Request.ClusterKind;
 		Result.ErrorCode = TEXT("action_resolution_invalid_request");
 		Result.Message = TEXT("action_resolution_invalid_request:missing_target_graph");
+		return Result;
+	}
+
+	if (Request.ClusterKind == EBlueprintHelperSpawnerClusterKind::Unknown)
+	{
+		FBlueprintHelperActionResolutionResult Result;
+		Result.Status = EBlueprintHelperActionResolutionStatus::InvalidRequest;
+		Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::Unknown;
+		Result.ErrorCode = TEXT("action_resolution_invalid_cluster");
+		Result.Message = FString::Printf(
+			TEXT("action_resolution_invalid_cluster: semantic=%s"),
+			*SemanticKindToString(Request.Semantic.Kind));
 		return Result;
 	}
 
 	return FBlueprintHelperSpawnerClusterResolver::Resolve(Request);
 }
 
-FString FBlueprintHelperActionResolutionCore::IntentToString(EBlueprintHelperActionIntent Intent)
+FString FBlueprintHelperActionResolutionCore::SemanticKindToString(EBlueprintHelperActionSemanticKind Kind)
 {
-	switch (Intent)
+	switch (Kind)
 	{
-	case EBlueprintHelperActionIntent::Call: return TEXT("call");
-	case EBlueprintHelperActionIntent::Get: return TEXT("get");
-	case EBlueprintHelperActionIntent::Set: return TEXT("set");
-	case EBlueprintHelperActionIntent::GetProperty: return TEXT("get_property");
-	case EBlueprintHelperActionIntent::SetProperty: return TEXT("set_property");
-	case EBlueprintHelperActionIntent::Op: return TEXT("op");
-	case EBlueprintHelperActionIntent::Construct: return TEXT("construct");
-	case EBlueprintHelperActionIntent::Deconstruct: return TEXT("deconstruct");
-	case EBlueprintHelperActionIntent::Select: return TEXT("select");
-	case EBlueprintHelperActionIntent::Event: return TEXT("event");
-	case EBlueprintHelperActionIntent::ComponentBoundEvent: return TEXT("component_bound_event");
-	case EBlueprintHelperActionIntent::Bind: return TEXT("bind");
-	case EBlueprintHelperActionIntent::Control: return TEXT("control");
-	case EBlueprintHelperActionIntent::Create: return TEXT("create");
-	case EBlueprintHelperActionIntent::Convert: return TEXT("convert");
-	case EBlueprintHelperActionIntent::Schedule: return TEXT("schedule");
+	case EBlueprintHelperActionSemanticKind::Call: return TEXT("call");
+	case EBlueprintHelperActionSemanticKind::Get: return TEXT("get");
+	case EBlueprintHelperActionSemanticKind::Set: return TEXT("set");
+	case EBlueprintHelperActionSemanticKind::GetProperty: return TEXT("get_property");
+	case EBlueprintHelperActionSemanticKind::SetProperty: return TEXT("set_property");
+	case EBlueprintHelperActionSemanticKind::Op: return TEXT("op");
+	case EBlueprintHelperActionSemanticKind::Construct: return TEXT("construct");
+	case EBlueprintHelperActionSemanticKind::Deconstruct: return TEXT("deconstruct");
+	case EBlueprintHelperActionSemanticKind::Select: return TEXT("select");
+	case EBlueprintHelperActionSemanticKind::Event: return TEXT("event");
+	case EBlueprintHelperActionSemanticKind::ComponentBoundEvent: return TEXT("component_bound_event");
+	case EBlueprintHelperActionSemanticKind::Bind: return TEXT("bind");
+	case EBlueprintHelperActionSemanticKind::Control: return TEXT("control");
+	case EBlueprintHelperActionSemanticKind::Create: return TEXT("create");
+	case EBlueprintHelperActionSemanticKind::Convert: return TEXT("convert");
+	case EBlueprintHelperActionSemanticKind::Schedule: return TEXT("schedule");
 	default: return TEXT("unknown");
 	}
 }
