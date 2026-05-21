@@ -12,12 +12,14 @@
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphWriteContext.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintMultiGraphGenerationPipeline.h"
 #include "Systems/ToolClusters/BlueprintHelperToolClusterConfigResolver.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionNodeSpawnerAdapter.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperControlFragmentBuilder.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphComposer.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDag.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDagBuilder.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphStatementBuilder.h"
+#include "BlueprintNodeSpawner.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Engine/Blueprint.h"
 #include "EdGraph/EdGraph.h"
@@ -124,19 +126,47 @@ static UK2Node_CustomEvent* CreateDryRunSignatureDependencyCustomEventNode(UEdGr
 		return nullptr;
 	}
 
-	UK2Node_CustomEvent* EventNode = NewObject<UK2Node_CustomEvent>(Graph);
+	UBlueprintNodeSpawner* EventSpawner = UBlueprintNodeSpawner::Create(UK2Node_CustomEvent::StaticClass());
+	FBlueprintHelperActionNodeSpawnOptions SpawnOptions;
+	SpawnOptions.NodeId = EventName;
+	SpawnOptions.bReconstructAfterSpawn = false;
+	SpawnOptions.NodeConfigurationHook = [&EventName](UK2Node& SpawnedNode, const FBlueprintHelperActionNodeSpawnContext& Context, FString& OutError)
+	{
+		UK2Node_CustomEvent* EventNode = Cast<UK2Node_CustomEvent>(&SpawnedNode);
+		if (!EventNode)
+		{
+			OutError = TEXT("dry-run signature dependency failed: spawned node is not UK2Node_CustomEvent.");
+			return false;
+		}
+
+		EventNode->CustomFunctionName = FName(*EventName);
+		if (EventNode->Pins.Num() == 0)
+		{
+			EventNode->AllocateDefaultPins();
+		}
+		if (Context.TargetGraph && Context.TargetGraph->GetSchema())
+		{
+			Context.TargetGraph->GetSchema()->ReconstructNode(*EventNode);
+		}
+		return true;
+	};
+
+	FString SpawnError;
+	UK2Node* SpawnedNode = FBlueprintHelperActionNodeSpawnerAdapter::InvokeNodeSpawner(
+		Graph,
+		EventSpawner,
+		TEXT("dry_run_custom_event_node_spawner"),
+		FVector2D::ZeroVector,
+		SpawnOptions,
+		SpawnError);
+	UK2Node_CustomEvent* EventNode = Cast<UK2Node_CustomEvent>(SpawnedNode);
 	if (!EventNode)
 	{
 		return nullptr;
 	}
 
-	Graph->AddNode(EventNode, true, false);
-	EventNode->CreateNewGuid();
-	EventNode->PostPlacedNewNode();
-	EventNode->CustomFunctionName = FName(*EventName);
 	EventNode->NodePosX = 0;
 	EventNode->NodePosY = 0;
-	EventNode->AllocateDefaultPins();
 	return EventNode;
 }
 
@@ -1285,7 +1315,7 @@ FBlueprintGenerateResult FBlueprintGraphGenerationPipeline::GenerateBlueprintFro
 	return Result;
 }
 
-FBlueprintGenerateResult FBlueprintGraphGenerationPipeline::GenerateNodesAndLinksForGraph(
+FBlueprintGenerateResult FBlueprintGraphGenerationPipeline::GenerateSemanticGraphForGraph(
 	UEdGraph* TargetGraph, const TSharedPtr<FJsonObject>& GraphJsonObject,
 	TArray<TSharedPtr<FUnresolvedNodeItem>>& OutUnresolvedNodes)
 {

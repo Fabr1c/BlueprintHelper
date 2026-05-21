@@ -62,7 +62,6 @@ bool FBlueprintHelperOperatorActionDispatchTest::RunTest(const FString& Paramete
 	FBlueprintActionDatabase::Get().RefreshAll();
 
 	const FBlueprintHelperActionResolutionResult Result = FBlueprintHelperActionResolutionCore::Resolve(Request);
-	TestNotEqual(TEXT("Op is no longer UnsupportedClusterMigration"), Result.Status, EBlueprintHelperActionResolutionStatus::UnsupportedClusterMigration);
 	TestNotEqual(
 		TEXT("Op no longer reports the old migration marker"),
 		Result.ErrorCode,

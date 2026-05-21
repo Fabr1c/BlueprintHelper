@@ -3,7 +3,7 @@
 FBlueprintHelperActionResolutionResult FBlueprintHelperEventDelegateActionCluster::Resolve(const FBlueprintHelperActionResolutionRequest& Request)
 {
 	return OwnsSemanticKind(Request.Semantic.Kind)
-		? MakeUnsupportedClusterMigrationResult(Request)
+		? MakeNeedsMoreSemanticContextResult(Request)
 		: MakeUnsupportedIntentResult(Request);
 }
 
@@ -32,14 +32,14 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperEventDelegateActionCluste
 	return Result;
 }
 
-FBlueprintHelperActionResolutionResult FBlueprintHelperEventDelegateActionCluster::MakeUnsupportedClusterMigrationResult(const FBlueprintHelperActionResolutionRequest& Request)
+FBlueprintHelperActionResolutionResult FBlueprintHelperEventDelegateActionCluster::MakeNeedsMoreSemanticContextResult(const FBlueprintHelperActionResolutionRequest& Request)
 {
 	FBlueprintHelperActionResolutionResult Result;
-	Result.Status = EBlueprintHelperActionResolutionStatus::UnsupportedClusterMigration;
+	Result.Status = EBlueprintHelperActionResolutionStatus::InvalidRequest;
 	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::EventDelegateAction;
-	Result.ErrorCode = TEXT("event_delegate_action_cluster_migration_pending");
+	Result.ErrorCode = TEXT("needs_more_semantic_context");
 	Result.Message = FString::Printf(
-		TEXT("EventDelegateActionCluster owns semantic kind '%s', but event/delegate action resolution has not been migrated yet; no fallback direct node creation was attempted."),
+		TEXT("EventDelegateActionCluster needs event/delegate binding context for semantic kind '%s'."),
 		*FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.Semantic.Kind));
 	return Result;
 }

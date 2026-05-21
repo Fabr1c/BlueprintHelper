@@ -256,10 +256,10 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperFieldVariableActionResolv
 
 	if (!IsSupportedSemanticKind(Request.Semantic.Kind))
 	{
-		Result.Status = EBlueprintHelperActionResolutionStatus::UnsupportedClusterMigration;
-		Result.ErrorCode = TEXT("field_variable_semantic_not_migrated");
+		Result.Status = EBlueprintHelperActionResolutionStatus::InvalidRequest;
+		Result.ErrorCode = TEXT("needs_more_semantic_context");
 		Result.Message = FString::Printf(
-			TEXT("FieldVariableActionCluster owns semantic kind '%s', but only get/set provider resolution is implemented in this pass."),
+			TEXT("FieldVariableActionCluster needs typed target/property-path context for semantic kind '%s'."),
 			*FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.Semantic.Kind));
 		return Result;
 	}

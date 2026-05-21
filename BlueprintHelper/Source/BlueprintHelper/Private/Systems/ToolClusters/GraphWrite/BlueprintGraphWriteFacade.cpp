@@ -8,11 +8,6 @@
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphNodeUtility.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintMultiGraphGenerationPipeline.h"
 
-UFunction* FBlueprintGraphWriteFacade::FindFunctionByName(const FString& FuncName)
-{
-	return FBlueprintGraphNodeUtility::FindFunctionByName(FuncName);
-}
-
 FBlueprintHelperCallFunctionResolveResult FBlueprintGraphWriteFacade::ResolveFunctionForGraph(
 	UEdGraph* TargetGraph,
 	const FString& FunctionQuery,

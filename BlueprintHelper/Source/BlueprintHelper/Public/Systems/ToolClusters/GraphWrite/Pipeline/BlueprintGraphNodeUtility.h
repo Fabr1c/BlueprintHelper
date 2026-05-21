@@ -139,7 +139,6 @@ public:
 
 	static UEdGraph* ResolveMacroGraph(const FParsedMacroReference& MacroReference, FString& OutErrorMessage);
 	static UEdGraphPin* FindPinByAlias(UK2Node* TargetNode, const FString& RequestedPinName);
-	static UFunction* FindFunctionByName(const FString& FuncName);
 	static FBlueprintHelperCallFunctionResolveResult ResolveFunctionForGraph( UEdGraph* TargetGraph, const FString& FunctionQuery, const TMap<FString, FString>& DefaultValues);
 	static TArray<TSharedPtr<FEngineFunctionItem>> GetAllBlueprintFunctions();
 };

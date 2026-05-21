@@ -122,16 +122,14 @@ bool FBlueprintHelperGenericActionClusterBoundaryResultTest::RunTest(const FStri
 			MakeGenericActionRequest(EBlueprintHelperActionSemanticKind::Construct, TEXT("Vector")));
 	TestTrue(
 		TEXT("Construct with TypeName no longer returns migration/not-found placeholder"),
-		ConstructCandidate.Status != EBlueprintHelperActionResolutionStatus::UnsupportedClusterMigration
-			&& ConstructCandidate.ErrorCode != (FString(TEXT("generic_action_node_spawner_candidate_")) + FString(TEXT("not_found"))));
+		ConstructCandidate.ErrorCode != (FString(TEXT("generic_action_node_spawner_candidate_")) + FString(TEXT("not_found"))));
 
 	const FBlueprintHelperActionResolutionResult DeconstructCandidate =
 		FBlueprintHelperActionResolutionCore::Resolve(
 			MakeGenericActionRequest(EBlueprintHelperActionSemanticKind::Deconstruct, TEXT("Transform")));
 	TestTrue(
 		TEXT("Deconstruct with TypeName no longer returns migration/not-found placeholder"),
-		DeconstructCandidate.Status != EBlueprintHelperActionResolutionStatus::UnsupportedClusterMigration
-			&& DeconstructCandidate.ErrorCode != (FString(TEXT("generic_action_node_spawner_candidate_")) + FString(TEXT("not_found"))));
+		DeconstructCandidate.ErrorCode != (FString(TEXT("generic_action_node_spawner_candidate_")) + FString(TEXT("not_found"))));
 
 	const FBlueprintHelperActionResolutionResult SelectBlocked =
 		FBlueprintHelperActionResolutionCore::Resolve(
@@ -148,14 +146,6 @@ bool FBlueprintHelperGenericActionClusterBoundaryResultTest::RunTest(const FStri
 	TestEqual(TEXT("Control blocked by dedicated builder seam"), ControlBlocked.ErrorCode, FString(TEXT("dedicated_fragment_builder_required")));
 	TestTrue(TEXT("Control blocked reason names ActionDatabase limit"), ControlBlocked.Message.Contains(TEXT("ActionDatabase")));
 	TestTrue(TEXT("Control blocked reason names builder"), ControlBlocked.Message.Contains(TEXT("ControlFragmentBuilder")));
-
-	TestTrue(
-		TEXT("Generic cluster no longer returns migration-pending for P3 semantics"),
-		ConstructNeedsContext.Status != EBlueprintHelperActionResolutionStatus::UnsupportedClusterMigration
-			&& ConstructCandidate.Status != EBlueprintHelperActionResolutionStatus::UnsupportedClusterMigration
-			&& DeconstructCandidate.Status != EBlueprintHelperActionResolutionStatus::UnsupportedClusterMigration
-			&& SelectBlocked.Status != EBlueprintHelperActionResolutionStatus::UnsupportedClusterMigration
-			&& ControlBlocked.Status != EBlueprintHelperActionResolutionStatus::UnsupportedClusterMigration);
 
 	return true;
 }

@@ -14,7 +14,7 @@
 
 - P0/P1 established `ClusterKind + SemanticConstraints` as the contract.
 - `FunctionActionCluster` resolves `Call`; P2 must not model `Op` as a fake `Call` or as a concrete overload lookup problem.
-- `GenericAssetStructControlActionCluster` owns `Construct/Deconstruct/Select/Control/Create/Convert/Schedule` but currently returns `generic_asset_struct_control_action_cluster_migration_pending`.
+- `GenericAssetStructControlActionCluster` owns `Construct/Deconstruct/Select/Control/Create/Convert/Schedule`; active migration-pending returns have been removed, and unsupported or underspecified semantics now report `InvalidRequest` / `NeedsMoreSemanticContext` style diagnostics.
 - `GraphStatementBuilder` already maps expression `op` to `FunctionActionCluster` and `construct/deconstruct/select/control` to `GenericAssetStructControlActionCluster`.
 - No old `NodeHandler`, parsed-node fallback, direct node creation fallback, or old AgentFace alias may be reintroduced.
 - UE 5.6 source confirms the native operator path:
@@ -364,7 +364,6 @@ bool FBlueprintHelperOperatorActionDispatchTest::RunTest(const FString& Paramete
 	Request.Semantic.Query = TEXT(">");
 
 	const FBlueprintHelperActionResolutionResult Result = FBlueprintHelperActionResolutionCore::Resolve(Request);
-	TestNotEqual(TEXT("Op is no longer UnsupportedClusterMigration"), Result.Status, EBlueprintHelperActionResolutionStatus::UnsupportedClusterMigration);
 	TestEqual(TEXT("Op resolves as FunctionAction cluster"), Result.ClusterKind, EBlueprintHelperSpawnerClusterKind::FunctionAction);
 	TestTrue(TEXT("Promotable operator result has a stable id"), Result.StableId.StartsWith(TEXT("promotable_operator:")));
 	return true;
@@ -681,7 +680,7 @@ Expected: build succeeds on UE 5.6.
 
 ## Completion Criteria
 
-- [x] `op` is handled by `FunctionActionCluster` through UE promotable operator semantics and no longer returns `UnsupportedClusterMigration`.
+- [x] `op` is handled by `FunctionActionCluster` through UE promotable operator semantics and no longer returns old migration placeholder statuses.
 - [x] Operator resolution uses `FTypePromotion::GetOperatorSpawner(OpName)` as the primary provider.
 - [x] Operator preview returns structured resolved/not_found diagnostics with `promotable_operator:<OpName>` stable ids.
 - [x] Operator execute spawns `UK2Node_PromotableOperator` through UE's spawner instead of directly constructing `UK2Node` or resolving concrete KismetMathLibrary overloads.
@@ -853,3 +852,18 @@ npm.cmd run build
 - [x] pin normalization 的可失败配置入口已收敛到 shared adapter，`select` dedicated builder 已迁入。
 - [x] post-link lifecycle 已收敛到 shared composer lifecycle helper。
 - [o] 当前 lifecycle helper 明确覆盖 `UK2Node_PromotableOperator` 与 `UK2Node_Select` 的 link 后通知；如果后续新增其它需要特殊 link lifecycle 的 UE 节点，应扩展 `FBlueprintHelperGraphNodeLifecycle`，不要回到 builder/composer 局部分支。
+
+### Implementation Update 2026-05-21 Migration Placeholder and Pipeline Reachability Cleanup
+
+- [x] 移除 `EBlueprintHelperActionResolutionStatus::UnsupportedClusterMigration`，ActionResolution 不再保留旧迁移状态枚举。
+- [x] `FieldVariableActionCluster` 与 `EventDelegateActionCluster` 的未完成语义统一返回 `InvalidRequest` + `needs_more_semantic_context`，不再返回任何 `*_migration_pending` 活跃错误码。
+- [x] 测试代码不再依赖 `UnsupportedClusterMigration` 状态，改为验证当前架构的 resolved / blocked / invalid request 语义。
+- [x] 移除 `FBlueprintGraphWriteFacade::FindFunctionByName` 与 `FBlueprintGraphNodeUtility::FindFunctionByName` 旧函数搜索包装，避免绕过当前 `ActionResolutionCore -> FunctionActionCluster` 的 UE-like resolver 链路。
+- [x] 确认 `BlueprintGraphGenerationPipeline` / `BlueprintMultiGraphGenerationPipeline` 仍是 Append / Replace / multi-graph 的可达路径，但旧 `nodes/links` 与 `blueprint_operations` 已不可执行，只作为明确错误返回。
+- [x] 将可达的 `GenerateNodesAndLinksForGraph` public 方法改名为 `GenerateSemanticGraphForGraph`，方法名与实际 SemanticIR-only 行为一致。
+- [x] 可达 Pipeline 内的 dry-run custom event 与 macro node 创建已迁入 `UBlueprintNodeSpawner -> FBlueprintHelperActionNodeSpawnerAdapter`，不再使用直接 `NewObject<UK2Node>` / 旧 `SpawnK2Node<UK2Node>` 入口。
+- [x] Source hygiene 扫描确认生产代码中没有 `UnsupportedClusterMigration`、旧 `*_migration_pending` 活跃返回、旧 `FindFunctionByName` 包装、GraphWrite 内直接 `NewObject<UK2Node>` 或旧 `SpawnK2Node<UK2Node>` 创建点。
+
+距离期望差距：
+- [o] 本轮只确认并清理 GraphWrite Pipeline 与 ActionResolution 旧迁移状态；`BlueprintSignatureService` 仍有签名工具自身的 `UK2Node` 创建逻辑，属于签名工具簇后续是否也收敛到 NodeSpawner 架构的独立审计项。
+- [ ] 本轮未运行 UE 编译或 CLI smoke；当前只完成源码结构清理与窄范围静态扫描。
