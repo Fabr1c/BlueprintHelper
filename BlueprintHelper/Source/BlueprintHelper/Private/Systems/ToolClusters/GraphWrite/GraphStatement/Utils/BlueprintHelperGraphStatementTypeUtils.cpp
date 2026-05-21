@@ -254,36 +254,10 @@ FString FBlueprintHelperGraphStatementTypeUtils::ResolveOperatorFunctionName(
 		return FString();
 	}
 
-	if (FBlueprintGraphWriteFacade::FindFunctionByName(RawOperator))
-	{
-		return RawOperator;
-	}
-
 	const FString BaseName = ResolveOperatorBaseName(RawOperator);
 	if (BaseName.IsEmpty())
 	{
 		return RawOperator;
-	}
-
-	if (BaseName.Equals(TEXT("BooleanAND"), ESearchCase::IgnoreCase)
-		|| BaseName.Equals(TEXT("BooleanOR"), ESearchCase::IgnoreCase))
-	{
-		return BaseName;
-	}
-
-	TArray<FString> Candidates;
-	for (const FString& Suffix : BuildOperatorTypeSuffixCandidates(Expression))
-	{
-		AddUniqueString(Candidates, BaseName + TEXT("_") + Suffix);
-	}
-	AddUniqueString(Candidates, BaseName);
-
-	for (const FString& Candidate : Candidates)
-	{
-		if (FBlueprintGraphWriteFacade::FindFunctionByName(Candidate))
-		{
-			return Candidate;
-		}
 	}
 
 	return BaseName;

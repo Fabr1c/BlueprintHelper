@@ -10,6 +10,17 @@
 
 ---
 
+## 当前执行状态（2026-05-21）
+
+- [x] `call` 已作为 `FunctionActionCluster` consumer 接入统一 action resolution 骨架。
+- [x] `get/set/get_property/set_property/op/construct/deconstruct/select` 已不再走旧 GraphStatementBuilder direct spawn fallback。
+- [x] 未迁移 provider 的 kind 统一返回 `UnsupportedClusterMigration`，用于阻止旧路径污染。
+- [ ] `FieldVariableActionCluster` 尚未实现 `UBlueprintFieldNodeSpawner` / `UBlueprintVariableNodeSpawner` 真实候选解析。
+- [ ] `GenericAssetStructControlActionCluster` 尚未实现 struct / select / control 的真实候选解析和 fragment adapter。
+- [ ] TS/Python schema 与编译链尚未在本轮补齐到所有 first-batch kind 的最终执行形态。
+
+距离期望差距：first-batch 当前不是完整可写能力，只完成了骨架强制路由和旧 fallback 切断。下一阶段必须补真实 provider 与 fragment adapter，不能把 `UnsupportedClusterMigration` 当完成状态。
+
 ## Source Requirements
 
 Primary requirements are recorded in:

@@ -1,5 +1,6 @@
 #include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphDefaultValueApplier.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphGenerationPipeline.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphLocalVariableService.h"
@@ -18,6 +19,12 @@ FBlueprintHelperCallFunctionResolveResult FBlueprintGraphWriteFacade::ResolveFun
 	const TMap<FString, FString>& DefaultValues)
 {
 	return FBlueprintGraphNodeUtility::ResolveFunctionForGraph(TargetGraph, FunctionQuery, DefaultValues);
+}
+
+FBlueprintHelperActionResolutionResult FBlueprintGraphWriteFacade::ResolveActionForGraph(
+	const FBlueprintHelperActionResolutionRequest& Request)
+{
+	return FBlueprintHelperActionResolutionCore::Resolve(Request);
 }
 
 FBlueprintGenerateResult FBlueprintGraphWriteFacade::GenerateBlueprintFromJson(
