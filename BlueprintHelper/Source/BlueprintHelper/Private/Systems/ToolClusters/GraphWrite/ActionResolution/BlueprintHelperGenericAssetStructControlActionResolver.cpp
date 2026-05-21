@@ -1,6 +1,7 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericAssetStructControlActionResolver.h"
 
 #include "BlueprintFieldNodeSpawner.h"
+#include "BlueprintFunctionNodeSpawner.h"
 #include "EdGraph/EdGraph.h"
 #include "Engine/Blueprint.h"
 #include "K2Node_BreakStruct.h"
@@ -344,6 +345,142 @@ static bool TryResolveFunctionActionSpawner(
 	return false;
 }
 
+static FString GetNativeFunctionLookupName(const FString& NativePath)
+{
+	FString Trimmed = NativePath.TrimStartAndEnd();
+	int32 SeparatorIndex = INDEX_NONE;
+	if (Trimmed.FindLastChar(TEXT(':'), SeparatorIndex)
+		|| Trimmed.FindLastChar(TEXT('.'), SeparatorIndex))
+	{
+		if (SeparatorIndex >= 0 && SeparatorIndex < Trimmed.Len() - 1)
+		{
+			return Trimmed.Mid(SeparatorIndex + 1);
+		}
+	}
+	return Trimmed;
+}
+
+static FString GetNativeFunctionOwnerLookupName(const FString& NativePath)
+{
+	FString Trimmed = NativePath.TrimStartAndEnd();
+	int32 SeparatorIndex = INDEX_NONE;
+	if (Trimmed.FindLastChar(TEXT(':'), SeparatorIndex)
+		|| Trimmed.FindLastChar(TEXT('.'), SeparatorIndex))
+	{
+		if (SeparatorIndex > 0)
+		{
+			return Trimmed.Left(SeparatorIndex);
+		}
+	}
+	return FString();
+}
+
+static bool FunctionOwnerMatches(const UFunction* Function, const FString& OwnerLookup)
+{
+	if (!Function || OwnerLookup.IsEmpty())
+	{
+		return true;
+	}
+
+	const UClass* OwnerClass = Function->GetOwnerClass();
+	if (!OwnerClass)
+	{
+		return false;
+	}
+
+	const FString OwnerName = OwnerClass->GetName();
+	const FString OwnerPath = OwnerClass->GetPathName();
+	return OwnerLookup.EndsWith(OwnerName)
+		|| OwnerPath.EndsWith(OwnerLookup)
+		|| OwnerPath.Contains(OwnerLookup);
+}
+
+static UFunction* FindNativeStructFunction(const FString& NativePath)
+{
+	const FString FunctionName = GetNativeFunctionLookupName(NativePath);
+	if (FunctionName.IsEmpty())
+	{
+		return nullptr;
+	}
+
+	const FString OwnerLookup = GetNativeFunctionOwnerLookupName(NativePath);
+	for (TObjectIterator<UFunction> It; It; ++It)
+	{
+		UFunction* Function = *It;
+		if (Function
+			&& Function->GetName().Equals(FunctionName, ESearchCase::IgnoreCase)
+			&& FunctionOwnerMatches(Function, OwnerLookup))
+		{
+			return Function;
+		}
+	}
+	return nullptr;
+}
+
+static FBlueprintHelperCallFunctionCandidateInfo MakeNativeStructFunctionCandidateInfo(
+	const UFunction* Function,
+	const bool bConstruct,
+	const UScriptStruct* TargetStruct)
+{
+	FBlueprintHelperCallFunctionCandidateInfo Candidate;
+	Candidate.StableId = FString::Printf(
+		TEXT("%s:%s"),
+		Function && Function->GetOwnerClass() ? *Function->GetOwnerClass()->GetPathName() : TEXT("<owner>"),
+		Function ? *Function->GetName() : TEXT("<function>"));
+	Candidate.DisplayName = Function ? Function->GetName() : FString();
+	Candidate.OwnerClassPath = Function && Function->GetOwnerClass() ? Function->GetOwnerClass()->GetPathName() : FString();
+	Candidate.NativeFunctionName = Function ? Function->GetName() : FString();
+	Candidate.Category = TEXT("Struct");
+	Candidate.NodeClassPath = UBlueprintFunctionNodeSpawner::StaticClass()->GetPathName();
+	Candidate.MatchReason = bConstruct ? TEXT("native_make_function_spawner") : TEXT("native_break_function_spawner");
+	Candidate.ReturnType = bConstruct && TargetStruct ? TargetStruct->GetPathName() : FString();
+	Candidate.Score = 100;
+	Candidate.bGraphCompatible = true;
+	Candidate.bFromActionDatabase = false;
+	Candidate.bBlueprintCallable = true;
+	Candidate.bBlueprintPure = Function ? Function->HasAnyFunctionFlags(FUNC_BlueprintPure) : true;
+	return Candidate;
+}
+
+static bool TryResolveNativeStructFunctionSpawner(
+	const FString& NativeFunctionPath,
+	const FBlueprintHelperActionResolutionRequest& Request,
+	UScriptStruct* TargetStruct,
+	const bool bConstruct,
+	TArray<FBlueprintHelperCallFunctionCandidateInfo>& CandidateActions,
+	FBlueprintHelperActionResolutionResult& OutResult)
+{
+	UFunction* NativeFunction = FindNativeStructFunction(NativeFunctionPath);
+	if (!NativeFunction)
+	{
+		return false;
+	}
+
+	UBlueprintFunctionNodeSpawner* NativeSpawner = UBlueprintFunctionNodeSpawner::Create(NativeFunction);
+	if (!NativeSpawner)
+	{
+		return false;
+	}
+
+	FBlueprintHelperCallFunctionCandidateInfo Candidate =
+		MakeNativeStructFunctionCandidateInfo(NativeFunction, bConstruct, TargetStruct);
+	AddUniqueCandidateInfo(CandidateActions, Candidate);
+
+	OutResult = FBlueprintHelperActionResolutionResult();
+	OutResult.Status = EBlueprintHelperActionResolutionStatus::Resolved;
+	OutResult.ClusterKind = EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction;
+	OutResult.SelectedStableId = Candidate.StableId;
+	OutResult.SelectedSpawner = NativeSpawner;
+	OutResult.SelectedFunction = NativeFunction;
+	OutResult.CandidateActions = CandidateActions;
+	OutResult.Message = FString::Printf(
+		TEXT("Resolved %s for struct '%s' via native function spawner '%s'."),
+		bConstruct ? TEXT("construct") : TEXT("deconstruct"),
+		TargetStruct ? *TargetStruct->GetPathName() : TEXT("<null>"),
+		*Candidate.StableId);
+	return true;
+}
+
 static void SetStructTypeOnNode(UEdGraphNode* NewNode, FFieldVariant /*StructField*/, TWeakObjectPtr<UScriptStruct> StructPtr)
 {
 	if (UK2Node_StructOperation* StructNode = Cast<UK2Node_StructOperation>(NewNode))
@@ -479,10 +616,11 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperGenericAssetStructControl
 	FBlueprintHelperActionResolutionResult FunctionResolvedResult;
 
 	const FString NativeFunctionPath = TargetStruct->GetMetaData(bConstruct ? TEXT("HasNativeMake") : TEXT("HasNativeBreak"));
+	const FString NormalizedNativeFunctionPath = NormalizeNativeFunctionPath(NativeFunctionPath);
 	if (TryResolveFunctionActionSpawner(
 		Request,
 		TargetStruct,
-		NormalizeNativeFunctionPath(NativeFunctionPath),
+		NormalizedNativeFunctionPath,
 		TEXT("exact"),
 		bConstruct,
 		bConstruct ? TEXT("native_make") : TEXT("native_break"),
@@ -491,6 +629,16 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperGenericAssetStructControl
 		FunctionResolvedResult))
 	{
 		FunctionResolvedResult.CandidateActions = CandidateActions;
+		return FunctionResolvedResult;
+	}
+	if (TryResolveNativeStructFunctionSpawner(
+		NormalizedNativeFunctionPath,
+		Request,
+		TargetStruct,
+		bConstruct,
+		CandidateActions,
+		FunctionResolvedResult))
+	{
 		return FunctionResolvedResult;
 	}
 

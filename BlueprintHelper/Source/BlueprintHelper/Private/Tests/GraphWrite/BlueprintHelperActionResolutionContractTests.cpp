@@ -45,6 +45,81 @@ static bool ScanActionResolutionSourceForForbiddenToken(
 	}
 	return bClean;
 }
+
+static FString BuildGraphWritePrivateSourcePath(const TCHAR* Area, const TCHAR* FileName)
+{
+	return FPaths::Combine(
+		FPaths::ProjectPluginsDir(),
+		TEXT("BlueprintHelper"),
+		TEXT("BlueprintHelper"),
+		TEXT("Source"),
+		TEXT("BlueprintHelper"),
+		TEXT("Private"),
+		TEXT("Systems"),
+		TEXT("ToolClusters"),
+		TEXT("GraphWrite"),
+		Area,
+		FileName);
+}
+
+static bool IsAllowedActionContextPipelineImplementationFile(const FString& RelativePath)
+{
+	const TArray<FString> AllowedRelativePaths = {
+		TEXT("Context/BlueprintHelperActionContextDemandCollector.cpp"),
+		TEXT("Context/BlueprintHelperActionContextSnapshotBuilder.cpp"),
+		TEXT("Context/BlueprintHelperActionContextInferenceService.cpp"),
+		TEXT("Context/BlueprintHelperActionContextBundleProjector.cpp"),
+		TEXT("Context/BlueprintHelperActionContextRevisionGuard.cpp"),
+		TEXT("Context/BlueprintHelperActionContextScope.cpp"),
+		TEXT("Context/BlueprintHelperActionContextBuildService.cpp")
+	};
+
+	return AllowedRelativePaths.Contains(RelativePath);
+}
+
+static FString MakeNormalizedRelativeSourcePath(const FString& SourceRoot, const FString& File)
+{
+	FString RelativePath = File;
+	FPaths::MakePathRelativeTo(RelativePath, *SourceRoot);
+	RelativePath.ReplaceInline(TEXT("\\"), TEXT("/"));
+	return RelativePath;
+}
+
+static bool ScanActionResolutionClusterFilesForForbiddenPipelineToken(
+	FAutomationTestBase& Test,
+	const FString& SourceRoot,
+	const FString& Token)
+{
+	TArray<FString> Files;
+	IFileManager::Get().FindFilesRecursive(Files, *SourceRoot, TEXT("*.h"), true, false);
+	IFileManager::Get().FindFilesRecursive(Files, *SourceRoot, TEXT("*.cpp"), true, false);
+
+	bool bClean = true;
+	for (const FString& File : Files)
+	{
+		const FString RelativePath = MakeNormalizedRelativeSourcePath(SourceRoot, File);
+		if (IsAllowedActionContextPipelineImplementationFile(RelativePath))
+		{
+			continue;
+		}
+
+		FString Text;
+		if (!FFileHelper::LoadFileToString(Text, *File))
+		{
+			continue;
+		}
+
+		if (Text.Contains(Token))
+		{
+			Test.AddError(FString::Printf(
+				TEXT("ActionResolution clusters must consume request context, not rebuild the context pipeline; forbidden token '%s' found in %s"),
+				*Token,
+				*File));
+			bClean = false;
+		}
+	}
+	return bClean;
+}
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -97,6 +172,90 @@ bool FBlueprintHelperActionResolutionNoLegacyIntentTokensTest::RunTest(const FSt
 
 	TestTrue(TEXT("ActionResolution source has no legacy top-level intent or direct variable spawn tokens"), bClean);
 	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionResolutionGraphStatementProjectionContractTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.Contract.GraphStatementUsesActionContextProjection",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionResolutionGraphStatementProjectionContractTest::RunTest(const FString& Parameters)
+{
+	const FString GraphStatementBuilderPath = BuildGraphWritePrivateSourcePath(
+		TEXT("GraphStatement"),
+		TEXT("BlueprintHelperGraphStatementBuilder.cpp"));
+
+	FString Text;
+	if (!FFileHelper::LoadFileToString(Text, *GraphStatementBuilderPath))
+	{
+		AddError(FString::Printf(TEXT("GraphStatementBuilder source could not be read: %s"), *GraphStatementBuilderPath));
+		return false;
+	}
+
+	const TArray<FString> ForbiddenTokens = {
+		BuildForbiddenActionResolutionToken(TEXT("ActionRequest."), TEXT("ClusterKind =")),
+		BuildForbiddenActionResolutionToken(TEXT("ActionRequest."), TEXT("Semantic ="))
+	};
+
+	bool bClean = true;
+	for (const FString& Token : ForbiddenTokens)
+	{
+		if (Text.Contains(Token))
+		{
+			AddError(FString::Printf(
+				TEXT("GraphStatementBuilder must project ActionResolutionRequest from ActionContextBundle; forbidden token '%s' found in %s"),
+				*Token,
+				*GraphStatementBuilderPath));
+			bClean = false;
+		}
+	}
+
+	TestTrue(TEXT("GraphStatementBuilder projects ActionResolutionRequest from ActionContextBundle"), bClean);
+	return bClean;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionResolutionClustersConsumeProjectedContextContractTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.Contract.ClustersConsumeProjectedContext",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionResolutionClustersConsumeProjectedContextContractTest::RunTest(const FString& Parameters)
+{
+	const FString ActionResolutionPrivateRoot = FPaths::Combine(
+		FPaths::ProjectPluginsDir(),
+		TEXT("BlueprintHelper"),
+		TEXT("BlueprintHelper"),
+		TEXT("Source"),
+		TEXT("BlueprintHelper"),
+		TEXT("Private"),
+		TEXT("Systems"),
+		TEXT("ToolClusters"),
+		TEXT("GraphWrite"),
+		TEXT("ActionResolution"));
+
+	if (!IFileManager::Get().DirectoryExists(*ActionResolutionPrivateRoot))
+	{
+		AddError(FString::Printf(TEXT("ActionResolution private source root is missing: %s"), *ActionResolutionPrivateRoot));
+		return false;
+	}
+
+	const TArray<FString> ForbiddenTokens = {
+		TEXT("CollectFromStatements("),
+		TEXT("BuildSnapshot("),
+		TEXT("Infer("),
+		TEXT("TryBuildRequest("),
+		BuildForbiddenActionResolutionToken(TEXT("ActionRequest."), TEXT("Semantic =")),
+		BuildForbiddenActionResolutionToken(TEXT("ActionRequest."), TEXT("ClusterKind ="))
+	};
+
+	bool bClean = true;
+	for (const FString& Token : ForbiddenTokens)
+	{
+		bClean &= ScanActionResolutionClusterFilesForForbiddenPipelineToken(*this, ActionResolutionPrivateRoot, Token);
+	}
+
+	TestTrue(TEXT("ActionResolution clusters consume projected context without rebuilding the pipeline"), bClean);
+	return bClean;
 }
 
 #endif

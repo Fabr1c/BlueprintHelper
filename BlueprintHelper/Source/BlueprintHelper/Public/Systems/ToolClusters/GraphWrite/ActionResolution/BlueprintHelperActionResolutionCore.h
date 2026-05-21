@@ -83,7 +83,7 @@ struct FBlueprintHelperActionResolutionRequest
 	UEdGraph* TargetGraph = nullptr;
 	FBlueprintHelperActionSemanticConstraints Semantic;
 	bool bAllowFuzzyUnique = true;
-	int32 MaxCandidates = 8;
+	int32 MaxCandidates = 0;
 };
 
 struct FBlueprintHelperActionResolutionResult

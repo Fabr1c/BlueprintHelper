@@ -13,6 +13,9 @@
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintMultiGraphGenerationPipeline.h"
 #include "Systems/ToolClusters/BlueprintHelperToolClusterConfigResolver.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionNodeSpawnerAdapter.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextBuildService.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextDemandCollector.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextScope.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperControlFragmentBuilder.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphComposer.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDag.h"
@@ -473,6 +476,15 @@ static FString GetSemanticStatementId(const FBlueprintHelperGraphStatementIR& St
 	return SanitizeGraphFragmentIdPart(TEXT("stmt_") + KindName + TEXT("_") + SourceId + TEXT("_") + KindName);
 }
 
+static FString GetSemanticStatementContextId(const FBlueprintHelperGraphStatementIR& Statement)
+{
+	if (!Statement.StatementId.IsEmpty())
+	{
+		return Statement.StatementId;
+	}
+	return FString::Printf(TEXT("statement:%s"), *Statement.Path);
+}
+
 static FString GetSemanticExpressionId(const FBlueprintHelperGraphExpressionIR& Expression)
 {
 	const FString SourceId = !Expression.ExpressionId.IsEmpty() ? Expression.ExpressionId : Expression.Path;
@@ -589,6 +601,7 @@ static void AddSemanticFragment(
 
 static void BuildSemanticExpressionFragments(
 	UEdGraph* TargetGraph,
+	const FBlueprintHelperActionContextScope* ActionContextScope,
 	const TSharedPtr<FBlueprintHelperGraphExpressionIR>& Expression,
 	TArray<FBlueprintHelperNodeFragment>& GeneratedFragments,
 	TSet<FString>& GeneratedFragmentIds,
@@ -597,6 +610,7 @@ static void BuildSemanticExpressionFragments(
 
 static void BuildSemanticExpressionMapFragments(
 	UEdGraph* TargetGraph,
+	const FBlueprintHelperActionContextScope* ActionContextScope,
 	const TMap<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& Expressions,
 	TArray<FBlueprintHelperNodeFragment>& GeneratedFragments,
 	TSet<FString>& GeneratedFragmentIds,
@@ -605,12 +619,13 @@ static void BuildSemanticExpressionMapFragments(
 {
 	for (const TPair<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& Pair : Expressions)
 	{
-		BuildSemanticExpressionFragments(TargetGraph, Pair.Value, GeneratedFragments, GeneratedFragmentIds, OutUnresolvedNodes, GeneratedNodeCount);
+		BuildSemanticExpressionFragments(TargetGraph, ActionContextScope, Pair.Value, GeneratedFragments, GeneratedFragmentIds, OutUnresolvedNodes, GeneratedNodeCount);
 	}
 }
 
 static void BuildSemanticExpressionFragments(
 	UEdGraph* TargetGraph,
+	const FBlueprintHelperActionContextScope* ActionContextScope,
 	const TSharedPtr<FBlueprintHelperGraphExpressionIR>& Expression,
 	TArray<FBlueprintHelperNodeFragment>& GeneratedFragments,
 	TSet<FString>& GeneratedFragmentIds,
@@ -622,13 +637,13 @@ static void BuildSemanticExpressionFragments(
 		return;
 	}
 
-	BuildSemanticExpressionMapFragments(TargetGraph, Expression->Args, GeneratedFragments, GeneratedFragmentIds, OutUnresolvedNodes, GeneratedNodeCount);
+	BuildSemanticExpressionMapFragments(TargetGraph, ActionContextScope, Expression->Args, GeneratedFragments, GeneratedFragmentIds, OutUnresolvedNodes, GeneratedNodeCount);
 	for (const TSharedPtr<FBlueprintHelperGraphExpressionIR>& Option : Expression->Options)
 	{
-		BuildSemanticExpressionFragments(TargetGraph, Option, GeneratedFragments, GeneratedFragmentIds, OutUnresolvedNodes, GeneratedNodeCount);
+		BuildSemanticExpressionFragments(TargetGraph, ActionContextScope, Option, GeneratedFragments, GeneratedFragmentIds, OutUnresolvedNodes, GeneratedNodeCount);
 	}
-	BuildSemanticExpressionFragments(TargetGraph, Expression->Left, GeneratedFragments, GeneratedFragmentIds, OutUnresolvedNodes, GeneratedNodeCount);
-	BuildSemanticExpressionFragments(TargetGraph, Expression->Right, GeneratedFragments, GeneratedFragmentIds, OutUnresolvedNodes, GeneratedNodeCount);
+	BuildSemanticExpressionFragments(TargetGraph, ActionContextScope, Expression->Left, GeneratedFragments, GeneratedFragmentIds, OutUnresolvedNodes, GeneratedNodeCount);
+	BuildSemanticExpressionFragments(TargetGraph, ActionContextScope, Expression->Right, GeneratedFragments, GeneratedFragmentIds, OutUnresolvedNodes, GeneratedNodeCount);
 
 	if (Expression->Kind == EBlueprintHelperGraphExpressionKind::Literal
 		|| (Expression->Kind == EBlueprintHelperGraphExpressionKind::Get
@@ -646,7 +661,7 @@ static void BuildSemanticExpressionFragments(
 	FBlueprintHelperNodeFragment Fragment;
 	FString Error;
 	TArray<FBlueprintHelperCandidateFunctionGroup> CandidateFunctions;
-	if (!FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(TargetGraph, *Expression, Fragment, Error, &CandidateFunctions))
+	if (!FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(TargetGraph, *Expression, Fragment, Error, &CandidateFunctions, ActionContextScope))
 	{
 		AddSemanticUnresolved(
 			OutUnresolvedNodes,
@@ -806,6 +821,7 @@ static TMap<FString, FBlueprintHelperCallFunctionPinType> CollectSemanticArgumen
 
 static bool SpawnSemanticStatementFragment(
 	UEdGraph* TargetGraph,
+	const FBlueprintHelperActionContextScope* ActionContextScope,
 	const TSharedPtr<FBlueprintHelperGraphStatementIR>& Statement,
 	FBlueprintHelperNodeFragment& OutFragment,
 	FString& OutError,
@@ -821,8 +837,10 @@ static bool SpawnSemanticStatementFragment(
 	const FString StatementId = GetSemanticStatementId(*Statement);
 	if (Statement->Kind == EBlueprintHelperGraphStatementKind::Call)
 	{
+		const FString StatementContextId = GetSemanticStatementContextId(*Statement);
 		FParsedNode NodeData;
 		NodeData.Id = StatementId;
+		NodeData.ActionContextStatementId = StatementContextId;
 		NodeData.NodeType = EParsedBlueprintNodeType::CallFunction;
 		NodeData.SourceType = TEXT("K2Node_CallFunction");
 		NodeData.FunctionName = !Statement->Target.IsEmpty() ? Statement->Target : Statement->Name;
@@ -846,16 +864,18 @@ static bool SpawnSemanticStatementFragment(
 		{
 			NodeData.ArgumentPinTypes.Append(*SemanticArgumentPinTypes);
 		}
-		return FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment(TargetGraph, NodeData, OutFragment, OutError, OutCandidateFunctions);
+		return FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment(TargetGraph, NodeData, OutFragment, OutError, OutCandidateFunctions, ActionContextScope);
 	}
 
 	if (Statement->Kind == EBlueprintHelperGraphStatementKind::Set)
 	{
+		const FString StatementContextId = GetSemanticStatementContextId(*Statement);
 		const FString VariableName = !Statement->ResolvedTarget.Member.IsEmpty()
 			? Statement->ResolvedTarget.Member
 			: Statement->Target;
 		FParsedNode NodeData;
 		NodeData.Id = StatementId;
+		NodeData.ActionContextStatementId = StatementContextId;
 		NodeData.NodeType = EParsedBlueprintNodeType::VariableSet;
 		NodeData.SourceType = TEXT("K2Node_VariableSet");
 		NodeData.VariableReference.ScopeType = TEXT("member");
@@ -866,7 +886,7 @@ static bool SpawnSemanticStatementFragment(
 			NodeData.DefaultValues.Add(VariableName, Statement->Value->LiteralValue);
 			NodeData.DefaultValues.Add(TEXT("value"), Statement->Value->LiteralValue);
 		}
-		return FBlueprintHelperGraphStatementBuilder::BuildVariableSetFragment(TargetGraph, NodeData, OutFragment, OutError);
+		return FBlueprintHelperGraphStatementBuilder::BuildVariableSetFragment(TargetGraph, NodeData, OutFragment, OutError, ActionContextScope);
 	}
 
 	if (Statement->Kind == EBlueprintHelperGraphStatementKind::Branch)
@@ -893,6 +913,7 @@ static bool SpawnSemanticStatementFragment(
 
 static FSemanticStatementExecFlow BuildSemanticStatementArray(
 	UEdGraph* TargetGraph,
+	const FBlueprintHelperActionContextScope* ActionContextScope,
 	const FBlueprintHelperGraphFragmentDag& FragmentDag,
 	const TArray<TSharedPtr<FBlueprintHelperGraphStatementIR>>& Statements,
 	TArray<UEdGraphPin*> IncomingExits,
@@ -905,6 +926,7 @@ static FSemanticStatementExecFlow BuildSemanticStatementArray(
 
 static FSemanticStatementExecFlow BuildSemanticStatement(
 	UEdGraph* TargetGraph,
+	const FBlueprintHelperActionContextScope* ActionContextScope,
 	const FBlueprintHelperGraphFragmentDag& FragmentDag,
 	const TSharedPtr<FBlueprintHelperGraphStatementIR>& Statement,
 	TArray<FBlueprintHelperNodeFragment>& GeneratedFragments,
@@ -920,9 +942,9 @@ static FSemanticStatementExecFlow BuildSemanticStatement(
 		return Flow;
 	}
 
-	BuildSemanticExpressionMapFragments(TargetGraph, Statement->Args, GeneratedFragments, GeneratedFragmentIds, OutUnresolvedNodes, GeneratedNodeCount);
-	BuildSemanticExpressionFragments(TargetGraph, Statement->Value, GeneratedFragments, GeneratedFragmentIds, OutUnresolvedNodes, GeneratedNodeCount);
-	BuildSemanticExpressionFragments(TargetGraph, Statement->Condition, GeneratedFragments, GeneratedFragmentIds, OutUnresolvedNodes, GeneratedNodeCount);
+	BuildSemanticExpressionMapFragments(TargetGraph, ActionContextScope, Statement->Args, GeneratedFragments, GeneratedFragmentIds, OutUnresolvedNodes, GeneratedNodeCount);
+	BuildSemanticExpressionFragments(TargetGraph, ActionContextScope, Statement->Value, GeneratedFragments, GeneratedFragmentIds, OutUnresolvedNodes, GeneratedNodeCount);
+	BuildSemanticExpressionFragments(TargetGraph, ActionContextScope, Statement->Condition, GeneratedFragments, GeneratedFragmentIds, OutUnresolvedNodes, GeneratedNodeCount);
 
 	if (Statement->Kind == EBlueprintHelperGraphStatementKind::Let)
 	{
@@ -937,7 +959,7 @@ static FSemanticStatementExecFlow BuildSemanticStatement(
 		Statement->Kind == EBlueprintHelperGraphStatementKind::Call
 			? CollectSemanticArgumentPinTypes(FragmentDag, GeneratedFragments, StatementId)
 			: TMap<FString, FBlueprintHelperCallFunctionPinType>();
-	if (!SpawnSemanticStatementFragment(TargetGraph, Statement, StatementFragment, Error, &CandidateFunctions, &SemanticArgumentPinTypes))
+	if (!SpawnSemanticStatementFragment(TargetGraph, ActionContextScope, Statement, StatementFragment, Error, &CandidateFunctions, &SemanticArgumentPinTypes))
 	{
 		AddSemanticUnresolved(
 			OutUnresolvedNodes,
@@ -970,6 +992,7 @@ static FSemanticStatementExecFlow BuildSemanticStatement(
 
 		FSemanticStatementExecFlow ThenFlow = BuildSemanticStatementArray(
 			TargetGraph,
+			ActionContextScope,
 			FragmentDag,
 			Statement->ThenStatements,
 			ThenIncoming,
@@ -981,6 +1004,7 @@ static FSemanticStatementExecFlow BuildSemanticStatement(
 			CreatedConnectionCount);
 		FSemanticStatementExecFlow ElseFlow = BuildSemanticStatementArray(
 			TargetGraph,
+			ActionContextScope,
 			FragmentDag,
 			Statement->ElseStatements,
 			ElseIncoming,
@@ -1005,6 +1029,7 @@ static FSemanticStatementExecFlow BuildSemanticStatement(
 
 static FSemanticStatementExecFlow BuildSemanticStatementArray(
 	UEdGraph* TargetGraph,
+	const FBlueprintHelperActionContextScope* ActionContextScope,
 	const FBlueprintHelperGraphFragmentDag& FragmentDag,
 	const TArray<TSharedPtr<FBlueprintHelperGraphStatementIR>>& Statements,
 	TArray<UEdGraphPin*> IncomingExits,
@@ -1022,6 +1047,7 @@ static FSemanticStatementExecFlow BuildSemanticStatementArray(
 	{
 		FSemanticStatementExecFlow CurrentFlow = BuildSemanticStatement(
 			TargetGraph,
+			ActionContextScope,
 			FragmentDag,
 			Statement,
 			GeneratedFragments,
@@ -1077,13 +1103,13 @@ static FBlueprintGenerateResult GenerateSemanticGraphFromJsonObject(
 	TArray<TSharedPtr<FUnresolvedNodeItem>>& OutUnresolvedNodes)
 {
 	FBlueprintGenerateResult Result;
-	Result.Message = TEXT("生成失败。");
+	Result.Message = TEXT("Generation failed.");
 	OutUnresolvedNodes.Empty();
 
 	const TSharedPtr<FJsonObject>* LogicSpecObject = nullptr;
 	if (!JsonObject.IsValid() || !JsonObject->TryGetObjectField(TEXT("logic_spec"), LogicSpecObject) || !LogicSpecObject)
 	{
-		Result.Message = TEXT("GraphWrite 现在只接受 logic_spec/SemanticIR；nodes/links 旧节点创建路径已禁用。");
+		Result.Message = TEXT("GraphWrite only accepts logic_spec/SemanticIR; legacy nodes/links creation is disabled.");
 		return Result;
 	}
 
@@ -1096,7 +1122,7 @@ static FBlueprintGenerateResult GenerateSemanticGraphFromJsonObject(
 			AddSemanticUnresolved(OutUnresolvedNodes, Diagnostic.Path, Diagnostic.Message);
 		}
 		Result.UnresolvedNodeCount = OutUnresolvedNodes.Num();
-		Result.Message = TEXT("SemanticIR 解析或语义校验失败。");
+		Result.Message = TEXT("SemanticIR parse or semantic validation failed.");
 		return Result;
 	}
 
@@ -1108,10 +1134,40 @@ static FBlueprintGenerateResult GenerateSemanticGraphFromJsonObject(
 			AddSemanticUnresolved(OutUnresolvedNodes, Diagnostic.Path, Diagnostic.Message);
 		}
 		Result.UnresolvedNodeCount = OutUnresolvedNodes.Num();
-		Result.Message = TEXT("SemanticIR 到 FragmentDag 构建失败。");
+		Result.Message = TEXT("SemanticIR to FragmentDag build failed.");
 		return Result;
 	}
 
+	TArray<FBlueprintHelperActionContextDemand> ActionContextDemands =
+		FBlueprintHelperActionContextDemandCollector::CollectFromSemanticIR(SemanticIR);
+	FBlueprintHelperActionContextScope ActionContextScope;
+	const FBlueprintHelperActionContextRevisionToken ActionContextRevision =
+		FBlueprintHelperActionContextScope::MakeRevision(
+			Blueprint,
+			TargetGraph,
+			FString::Printf(TEXT("semantic_graph:%s"), TargetGraph ? *TargetGraph->GetPathName() : TEXT("")),
+			FString::Printf(
+				TEXT("schema=%s;statements=%d;demands=%d"),
+				*SemanticIR.Schema,
+				SemanticIR.Statements.Num(),
+				ActionContextDemands.Num()));
+	FString ActionContextError;
+	if (!FBlueprintHelperActionContextBuildService::BuildSync(
+		Blueprint,
+		TargetGraph,
+		ActionContextDemands,
+		ActionContextRevision,
+		ActionContextScope,
+		ActionContextError))
+	{
+		AddSemanticUnresolved(
+			OutUnresolvedNodes,
+			TEXT("action_context"),
+			ActionContextError.IsEmpty() ? TEXT("ActionContext scope build failed.") : ActionContextError);
+		Result.UnresolvedNodeCount = OutUnresolvedNodes.Num();
+		Result.Message = TEXT("ActionContext build failed.");
+		return Result;
+	}
 	const FScopedTransaction Transaction(FText::FromString(TEXT("Generate Blueprint from SemanticIR")));
 	TargetGraph->Modify();
 
@@ -1186,6 +1242,7 @@ static FBlueprintGenerateResult GenerateSemanticGraphFromJsonObject(
 
 	BuildSemanticStatementArray(
 		TargetGraph,
+		&ActionContextScope,
 		FragmentDag,
 		SemanticIR.Statements,
 		InitialExits,
@@ -1228,8 +1285,8 @@ static FBlueprintGenerateResult GenerateSemanticGraphFromJsonObject(
 	Result.UnresolvedNodeCount = OutUnresolvedNodes.Num();
 	Result.bSucceed = Result.UnresolvedNodeCount == 0 && GeneratedNodeCount > 0;
 	Result.Message = Result.bSucceed
-		? FString::Printf(TEXT("SemanticIR 生成完成：成功 %d 个节点，建立 %d 条连线。"), GeneratedNodeCount, CreatedConnectionCount)
-		: FString::Printf(TEXT("SemanticIR 生成完成但存在 %d 个未处理项。"), Result.UnresolvedNodeCount);
+		? FString::Printf(TEXT("SemanticIR generation completed: spawned %d nodes, linked %d pins."), GeneratedNodeCount, CreatedConnectionCount)
+		: FString::Printf(TEXT("SemanticIR generation completed with %d unresolved items."), Result.UnresolvedNodeCount);
 	return Result;
 }
 }
@@ -1345,7 +1402,7 @@ UEdGraph* FBlueprintGraphGenerationPipeline::FindGraphByName(UBlueprint* Bluepri
 		return nullptr;
 	}
 
-	// EventGraph：搜索 UbergraphPages
+	// EventGraph锛氭悳绱?UbergraphPages
 	if (GraphName.Equals(TEXT("EventGraph"), ESearchCase::IgnoreCase))
 	{
 		for (UEdGraph* Graph : Blueprint->UbergraphPages)
@@ -1358,7 +1415,7 @@ UEdGraph* FBlueprintGraphGenerationPipeline::FindGraphByName(UBlueprint* Bluepri
 		return nullptr;
 	}
 
-	// 也在 UbergraphPages 中按精确名称搜索
+	// 涔熷湪 UbergraphPages 涓寜绮剧‘鍚嶇О鎼滅储
 	for (UEdGraph* Graph : Blueprint->UbergraphPages)
 	{
 		if (Graph && Graph->GetFName() == FName(*GraphName))
@@ -1367,7 +1424,7 @@ UEdGraph* FBlueprintGraphGenerationPipeline::FindGraphByName(UBlueprint* Bluepri
 		}
 	}
 
-	// 函数图
+	// 鍑芥暟鍥?
 	for (UEdGraph* Graph : Blueprint->FunctionGraphs)
 	{
 		if (Graph && Graph->GetFName() == FName(*GraphName))
@@ -1376,7 +1433,7 @@ UEdGraph* FBlueprintGraphGenerationPipeline::FindGraphByName(UBlueprint* Bluepri
 		}
 	}
 
-	// 宏图
+	// 瀹忓浘
 	for (UEdGraph* Graph : Blueprint->MacroGraphs)
 	{
 		if (Graph && Graph->GetFName() == FName(*GraphName))
@@ -1385,7 +1442,7 @@ UEdGraph* FBlueprintGraphGenerationPipeline::FindGraphByName(UBlueprint* Bluepri
 		}
 	}
 
-	// 委托签名图
+	// 濮旀墭绛惧悕鍥?
 	for (UEdGraph* Graph : Blueprint->DelegateSignatureGraphs)
 	{
 		if (Graph && Graph->GetFName() == FName(*GraphName))

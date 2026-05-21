@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.h"
@@ -12,7 +12,7 @@ class UK2Node;
 class UK2Node_CallFunction;
 
 /**
- * 可解析蓝图节点类型。
+ * 鍙В鏋愯摑鍥捐妭鐐圭被鍨嬨€?
  */
 enum class EParsedBlueprintNodeType : uint8
 {
@@ -36,20 +36,20 @@ enum class EParsedBlueprintNodeType : uint8
 	MakeSet,
 	MakeStruct,
 	BreakStruct,
-	// v2.2 — 高级节点
+	// v2.2 鈥?楂樼骇鑺傜偣
 	Self,
 	DynamicCast,
 	SpawnActorFromClass,
 	FormatText,
 	GetArrayItem,
-	// v2.3 — 全覆盖收尾
+	// v2.3 鈥?鍏ㄨ鐩栨敹灏?
 	Knot,
 	Comment,
 	Literal,
 	GetEnumeratorName,
 	GetEnumeratorNameAsString,
 	ComponentBoundEvent,
-	// v2.9 — Enhanced Input / 数学运算 / 流程控制
+	// v2.9 鈥?Enhanced Input / 鏁板杩愮畻 / 娴佺▼鎺у埗
 	EnhancedInputAction,
 	PromotableOperator,
 	CommutativeAssociativeBinaryOperator,
@@ -61,35 +61,35 @@ enum class EParsedBlueprintNodeType : uint8
 };
 
 /**
- * 轻量引脚类型描述，用于本地变量声明与变量节点重建。
+ * 杞婚噺寮曡剼绫诲瀷鎻忚堪锛岀敤浜庢湰鍦板彉閲忓０鏄庝笌鍙橀噺鑺傜偣閲嶅缓銆?
  */
 struct FParsedPinType
 {
-	/** 引脚主分类。 */
+	/** 寮曡剼涓诲垎绫汇€?*/
 	FString Category;
 
-	/** 引脚子分类。 */
+	/** 寮曡剼瀛愬垎绫汇€?*/
 	FString SubCategory;
 
-	/** 子分类对象路径。 */
+	/** 瀛愬垎绫诲璞¤矾寰勩€?*/
 	FString SubCategoryObjectPath;
 
-	/** 容器类型。 */
+	/** 瀹瑰櫒绫诲瀷銆?*/
 	FString ContainerType;
 
-	/** 是否为引用。 */
+	/** 鏄惁涓哄紩鐢ㄣ€?*/
 	bool bIsReference = false;
 
-	/** 是否为常量。 */
+	/** 鏄惁涓哄父閲忋€?*/
 	bool bIsConst = false;
 
-	/** 是否有效。 */
+	/** 鏄惁鏈夋晥銆?*/
 	bool IsValid() const
 	{
 		return !Category.IsEmpty();
 	}
 
-	/** 是否与另一描述一致。 */
+	/** 鏄惁涓庡彟涓€鎻忚堪涓€鑷淬€?*/
 	bool Equals(const FParsedPinType& Other) const
 	{
 		return Category == Other.Category
@@ -100,7 +100,7 @@ struct FParsedPinType
 			&& bIsConst == Other.bIsConst;
 	}
 
-	/** 生成调试字符串。 */
+	/** 鐢熸垚璋冭瘯瀛楃涓层€?*/
 	FString ToDebugString() const
 	{
 		return FString::Printf(TEXT("Category=%s, SubCategory=%s, Object=%s, Container=%s, Ref=%s, Const=%s"),
@@ -114,41 +114,41 @@ struct FParsedPinType
 };
 
 /**
- * 变量引用描述，支持成员变量与本地变量。
+ * 鍙橀噺寮曠敤鎻忚堪锛屾敮鎸佹垚鍛樺彉閲忎笌鏈湴鍙橀噺銆?
  */
 struct FParsedVariableReference
 {
-	/** 变量作用域类型：member/local。 */
+	/** 鍙橀噺浣滅敤鍩熺被鍨嬶細member/local銆?*/
 	FString ScopeType;
 
-	/** 变量名称。 */
+	/** 鍙橀噺鍚嶇О銆?*/
 	FString VariableName;
 
-	/** 变量所属类路径，成员变量时可使用。 */
+	/** 鍙橀噺鎵€灞炵被璺緞锛屾垚鍛樺彉閲忔椂鍙娇鐢ㄣ€?*/
 	FString OwnerClassPath;
 
-	/** 作用域图名，本地变量时可作为提示。 */
+	/** 浣滅敤鍩熷浘鍚嶏紝鏈湴鍙橀噺鏃跺彲浣滀负鎻愮ず銆?*/
 	FString ScopeGraphName;
 
-	/** 是否视为 Self 上下文成员变量。 */
+	/** 鏄惁瑙嗕负 Self 涓婁笅鏂囨垚鍛樺彉閲忋€?*/
 	bool bSelfContext = true;
 
-	/** 若变量不存在，是否尝试自动创建。 */
+	/** 鑻ュ彉閲忎笉瀛樺湪锛屾槸鍚﹀皾璇曡嚜鍔ㄥ垱寤恒€?*/
 	bool bEnsureExists = false;
 
-	/** 变量引脚类型。 */
+	/** 鍙橀噺寮曡剼绫诲瀷銆?*/
 	FParsedPinType PinType;
 
-	/** 变量默认值。 */
+	/** 鍙橀噺榛樿鍊笺€?*/
 	FString DefaultValue;
 
-	/** 是否为本地变量。 */
+	/** 鏄惁涓烘湰鍦板彉閲忋€?*/
 	bool IsLocalVariable() const
 	{
 		return ScopeType.Equals(TEXT("local"), ESearchCase::IgnoreCase);
 	}
 
-	/** 是否为成员变量。 */
+	/** 鏄惁涓烘垚鍛樺彉閲忋€?*/
 	bool IsMemberVariable() const
 	{
 		return ScopeType.IsEmpty() || ScopeType.Equals(TEXT("member"), ESearchCase::IgnoreCase);
@@ -156,260 +156,261 @@ struct FParsedVariableReference
 };
 
 /**
- * 宏节点引用描述。
+ * 瀹忚妭鐐瑰紩鐢ㄦ弿杩般€?
  */
 struct FParsedMacroReference
 {
-	/** 宏库来源：standard/asset_path。 */
+	/** 瀹忓簱鏉ユ簮锛歴tandard/asset_path銆?*/
 	FString LibraryType;
 
-	/** 宏名称。 */
+	/** 瀹忓悕绉般€?*/
 	FString MacroName;
 
-	/** 宏蓝图资产路径。 */
+	/** 瀹忚摑鍥捐祫浜ц矾寰勩€?*/
 	FString MacroAssetPath;
 };
 
 /**
- * 自定义事件/引擎事件参数描述。
+ * 鑷畾涔変簨浠?寮曟搸浜嬩欢鍙傛暟鎻忚堪銆?
  */
 struct FParsedEventParam
 {
-	/** 参数名称。 */
+	/** 鍙傛暟鍚嶇О銆?*/
 	FString Name;
 
-	/** 参数引脚类型。 */
+	/** 鍙傛暟寮曡剼绫诲瀷銆?*/
 	FParsedPinType PinType;
 };
 
 /**
- * 事件节点引用描述。
+ * 浜嬩欢鑺傜偣寮曠敤鎻忚堪銆?
  */
 struct FParsedEventReference
 {
-	/** 事件名称（CustomEvent 用 event_name，Event 用引擎事件名如 ReceiveBeginPlay）。 */
+	/** 浜嬩欢鍚嶇О锛圕ustomEvent 鐢?event_name锛孍vent 鐢ㄥ紩鎿庝簨浠跺悕濡?ReceiveBeginPlay锛夈€?*/
 	FString EventName;
 
-	/** 自定义事件参数列表。 */
+	/** 鑷畾涔変簨浠跺弬鏁板垪琛ㄣ€?*/
 	TArray<FParsedEventParam> Params;
 };
 
 /**
- * 委托节点引用描述。
+ * 濮旀墭鑺傜偣寮曠敤鎻忚堪銆?
  */
 struct FParsedDelegateReference
 {
-	/** 事件分发器属性名称。 */
+	/** 浜嬩欢鍒嗗彂鍣ㄥ睘鎬у悕绉般€?*/
 	FString DelegatePropertyName;
 
-	/** 绑定的函数名称（用于 CreateDelegate / AssignDelegate）。 */
+	/** 缁戝畾鐨勫嚱鏁板悕绉帮紙鐢ㄤ簬 CreateDelegate / AssignDelegate锛夈€?*/
 	FString FunctionName;
 
 	FString SearchMode;
 	FString AmbiguityPolicy;
 	TArray<FString> CategoryPriority;
+	FString ActionContextStatementId;
 };
 
 /**
- * 容器构造节点引用描述（MakeArray / MakeSet / MakeMap）。
+ * 瀹瑰櫒鏋勯€犺妭鐐瑰紩鐢ㄦ弿杩帮紙MakeArray / MakeSet / MakeMap锛夈€?
  */
 struct FParsedContainerReference
 {
-	/** MakeArray / MakeSet：元素数量。 */
+	/** MakeArray / MakeSet锛氬厓绱犳暟閲忋€?*/
 	int32 NumInputs = 0;
 
-	/** MakeMap：键值对数量。 */
+	/** MakeMap锛氶敭鍊煎鏁伴噺銆?*/
 	int32 NumPairs = 0;
 
-	/** MakeArray / MakeSet 的元素类型。 */
+	/** MakeArray / MakeSet 鐨勫厓绱犵被鍨嬨€?*/
 	FParsedPinType ElementType;
 
-	/** MakeMap 的键类型。 */
+	/** MakeMap 鐨勯敭绫诲瀷銆?*/
 	FParsedPinType KeyType;
 
-	/** MakeMap 的值类型。 */
+	/** MakeMap 鐨勫€肩被鍨嬨€?*/
 	FParsedPinType ValueType;
 };
 
 /**
- * 结构体操作节点引用描述（MakeStruct / BreakStruct）。
+ * 缁撴瀯浣撴搷浣滆妭鐐瑰紩鐢ㄦ弿杩帮紙MakeStruct / BreakStruct锛夈€?
  */
 struct FParsedStructReference
 {
-	/** 结构体路径，例如 "/Script/CoreUObject.Vector"。 */
+	/** 缁撴瀯浣撹矾寰勶紝渚嬪 "/Script/CoreUObject.Vector"銆?*/
 	FString StructPath;
 };
 
 /**
- * v2.2 — Cast 节点引用描述。
+ * v2.2 鈥?Cast 鑺傜偣寮曠敤鎻忚堪銆?
  */
 struct FParsedCastReference
 {
-	/** 目标类路径，例如 "/Script/Engine.Character"。 */
+	/** 鐩爣绫昏矾寰勶紝渚嬪 "/Script/Engine.Character"銆?*/
 	FString TargetClassPath;
 };
 
 /**
- * v2.2 — SpawnActor 节点引用描述。
+ * v2.2 鈥?SpawnActor 鑺傜偣寮曠敤鎻忚堪銆?
  */
 struct FParsedSpawnReference
 {
-	/** 要生成的 Actor 类路径。 */
+	/** 瑕佺敓鎴愮殑 Actor 绫昏矾寰勩€?*/
 	FString ClassPath;
 };
 
 /**
- * v2.2 — FormatText 节点引用描述。
+ * v2.2 鈥?FormatText 鑺傜偣寮曠敤鎻忚堪銆?
  */
 struct FParsedFormatTextReference
 {
-	/** 格式化字符串，例如 "{Name} has {Count} items"。 */
+	/** 鏍煎紡鍖栧瓧绗︿覆锛屼緥濡?"{Name} has {Count} items"銆?*/
 	FString FormatString;
 };
 
 /**
- * v2.3 — Literal 节点引用描述（对象引用常量）。
- */
+ * v2.3 鈥?Literal 鑺傜偣寮曠敤鎻忚堪锛堝璞″紩鐢ㄥ父閲忥級銆? */
 struct FParsedLiteralReference
 {
-	/** 对象引用路径，例如 "/Script/Engine.Actor:DefaultSubobjectName"。 */
+	/** 瀵硅薄寮曠敤璺緞锛屼緥濡?"/Script/Engine.Actor:DefaultSubobjectName"銆?*/
 	FString ObjectPath;
 };
 
 /**
- * v2.3 — ComponentBoundEvent 节点引用描述。
+ * v2.3 鈥?ComponentBoundEvent 鑺傜偣寮曠敤鎻忚堪銆?
  */
 struct FParsedComponentBoundEventReference
 {
-	/** 委托属性名称。 */
+	/** 濮旀墭灞炴€у悕绉般€?*/
 	FString DelegatePropertyName;
 
-	/** 委托所属类路径。 */
+	/** 濮旀墭鎵€灞炵被璺緞銆?*/
 	FString DelegateOwnerClassPath;
 
-	/** 组件属性名称。 */
+	/** 缁勪欢灞炴€у悕绉般€?*/
 	FString ComponentPropertyName;
 };
 
 /**
- * v2.3 — Comment 节点引用描述。
+ * v2.3 鈥?Comment 鑺傜偣寮曠敤鎻忚堪銆?
  */
 struct FParsedCommentReference
 {
-	/** 注释文本。 */
+	/** 娉ㄩ噴鏂囨湰銆?*/
 	FString CommentText;
 
-	/** 注释框宽度。 */
+	/** 娉ㄩ噴妗嗗搴︺€?*/
 	float Width = 400.0f;
 
-	/** 注释框高度。 */
+	/** 娉ㄩ噴妗嗛珮搴︺€?*/
 	float Height = 100.0f;
 
-	/** 注释框颜色（R,G,B,A 格式字符串）。 */
+	/** 娉ㄩ噴妗嗛鑹诧紙R,G,B,A 鏍煎紡瀛楃涓诧級銆?*/
 	FString CommentColor;
 
-	/** 字体大小。 */
+	/** 瀛椾綋澶у皬銆?*/
 	int32 FontSize = 18;
 };
 
 /**
- * v2.9 — Enhanced Input Action 节点引用描述。
+ * v2.9 鈥?Enhanced Input Action 鑺傜偣寮曠敤鎻忚堪銆?
  */
 struct FParsedEnhancedInputActionReference
 {
-	/** 输入动作资产路径，例如 "/Game/Input/IA_Jump"。 */
+	/** 杈撳叆鍔ㄤ綔璧勪骇璺緞锛屼緥濡?"/Game/Input/IA_Jump"銆?*/
 	FString InputActionPath;
 };
 
 /**
- * v2.9 — Switch 节点引用描述。
+ * v2.9 鈥?Switch 鑺傜偣寮曠敤鎻忚堪銆?
  */
 struct FParsedSwitchReference
 {
-	/** Switch 分支的 case 值列表。 */
+	/** Switch 鍒嗘敮鐨?case 鍊煎垪琛ㄣ€?*/
 	TArray<FString> CaseValues;
 
-	/** 是否包含 Default 引脚，默认 true。 */
+	/** 鏄惁鍖呭惈 Default 寮曡剼锛岄粯璁?true銆?*/
 	bool bHasDefaultPin = true;
 
-	/** SwitchEnum 的枚举路径。 */
+	/** SwitchEnum 鐨勬灇涓捐矾寰勩€?*/
 	FString EnumPath;
 
-	/** SwitchInteger 的起始索引。 */
+	/** SwitchInteger 鐨勮捣濮嬬储寮曘€?*/
 	int32 StartIndex = 0;
 };
 
 /**
- * v2.9 — Select 节点引用描述。
+ * v2.9 鈥?Select 鑺傜偣寮曠敤鎻忚堪銆?
  */
 struct FParsedSelectReference
 {
-	/** 选项数量。 */
+	/** 閫夐」鏁伴噺銆?*/
 	int32 NumOptions = 2;
 
-	/** 绑定的枚举路径（可选，如果基于枚举选择）。 */
+	/** 缁戝畾鐨勬灇涓捐矾寰勶紙鍙€夛紝濡傛灉鍩轰簬鏋氫妇閫夋嫨锛夈€?*/
 	FString EnumPath;
 };
 
 /**
- * 本地变量声明描述。
+ * 鏈湴鍙橀噺澹版槑鎻忚堪銆?
  */
 struct FParsedLocalVariableDeclaration
 {
-	/** 本地变量名称。 */
+	/** 鏈湴鍙橀噺鍚嶇О銆?*/
 	FString Name;
 
-	/** 本地变量类型。 */
+	/** 鏈湴鍙橀噺绫诲瀷銆?*/
 	FParsedPinType PinType;
 
-	/** 默认值。 */
+	/** 榛樿鍊笺€?*/
 	FString DefaultValue;
 
-	/** 是否在缺失时自动创建。 */
+	/** 鏄惁鍦ㄧ己澶辨椂鑷姩鍒涘缓銆?*/
 	bool bEnsureExists = true;
 };
 
 /**
- * 蓝图连线解析数据，描述两个节点之间的引脚连接关系。
+ * 钃濆浘杩炵嚎瑙ｆ瀽鏁版嵁锛屾弿杩颁袱涓妭鐐逛箣闂寸殑寮曡剼杩炴帴鍏崇郴銆?
  */
 struct FParsedLink
 {
-	/** 起始节点 ID。 */
+	/** 璧峰鑺傜偣 ID銆?*/
 	FString FromId;
 
-	/** 起始引脚名称。 */
+	/** 璧峰寮曡剼鍚嶇О銆?*/
 	FString FromPin;
 
-	/** 目标节点 ID。 */
+	/** 鐩爣鑺傜偣 ID銆?*/
 	FString ToId;
 
-	/** 目标引脚名称。 */
+	/** 鐩爣寮曡剼鍚嶇О銆?*/
 	FString ToPin;
 };
 
 /**
- * 蓝图节点解析数据，描述待生成的函数节点和默认值。
+ * 钃濆浘鑺傜偣瑙ｆ瀽鏁版嵁锛屾弿杩板緟鐢熸垚鐨勫嚱鏁拌妭鐐瑰拰榛樿鍊笺€?
  */
 struct FParsedNode
 {
-	/** 节点唯一标识。 */
+	/** 鑺傜偣鍞竴鏍囪瘑銆?*/
 	FString Id;
 
-	/** 节点类型。 */
+	/** 鑺傜偣绫诲瀷銆?*/
 	EParsedBlueprintNodeType NodeType = EParsedBlueprintNodeType::Unknown;
 
-	/** 原始类型字符串。 */
+	/** 鍘熷绫诲瀷瀛楃涓层€?*/
 	FString SourceType;
 
-	/** 节点对应的函数名称。 */
+	/** 鑺傜偣瀵瑰簲鐨勫嚱鏁板悕绉般€?*/
 	FString FunctionName;
 
 	FString ResolvedCallFunctionStableId;
 	FString SearchMode;
 	FString AmbiguityPolicy;
 	TArray<FString> CategoryPriority;
+	FString ActionContextStatementId;
 
-	/** 节点 X 坐标。 */
+	/** 鑺傜偣 X 鍧愭爣銆?*/
 	TMap<FString, FString> ArgumentTypes;
 	TMap<FString, FBlueprintHelperCallFunctionPinType> ArgumentPinTypes;
 	FString TargetObjectName;
@@ -420,60 +421,60 @@ struct FParsedNode
 
 	float X = 0.0f;
 
-	/** 节点 Y 坐标。 */
+	/** 鑺傜偣 Y 鍧愭爣銆?*/
 	float Y = 0.0f;
 
-	/** 引脚默认值集合，Key 为引脚名。 */
+	/** 寮曡剼榛樿鍊奸泦鍚堬紝Key 涓哄紩鑴氬悕銆?*/
 	TMap<FString, FString> DefaultValues;
 
-	/** 变量节点引用数据。 */
+	/** 鍙橀噺鑺傜偣寮曠敤鏁版嵁銆?*/
 	FParsedVariableReference VariableReference;
 
-	/** 宏节点引用数据。 */
+	/** 瀹忚妭鐐瑰紩鐢ㄦ暟鎹€?*/
 	FParsedMacroReference MacroReference;
 
-	/** 事件节点引用数据。 */
+	/** 浜嬩欢鑺傜偣寮曠敤鏁版嵁銆?*/
 	FParsedEventReference EventReference;
 
-	/** 委托节点引用数据。 */
+	/** 濮旀墭鑺傜偣寮曠敤鏁版嵁銆?*/
 	FParsedDelegateReference DelegateReference;
 
-	/** 容器构造节点引用数据。 */
+	/** 瀹瑰櫒鏋勯€犺妭鐐瑰紩鐢ㄦ暟鎹€?*/
 	FParsedContainerReference ContainerReference;
 
-	/** 结构体操作节点引用数据。 */
+	/** 缁撴瀯浣撴搷浣滆妭鐐瑰紩鐢ㄦ暟鎹€?*/
 	FParsedStructReference StructReference;
 
-	/** v2.2 — Cast 节点引用数据。 */
+	/** v2.2 鈥?Cast 鑺傜偣寮曠敤鏁版嵁銆?*/
 	FParsedCastReference CastReference;
 
-	/** v2.2 — SpawnActor 节点引用数据。 */
+	/** v2.2 鈥?SpawnActor 鑺傜偣寮曠敤鏁版嵁銆?*/
 	FParsedSpawnReference SpawnReference;
 
-	/** v2.2 — FormatText 节点引用数据。 */
+	/** v2.2 鈥?FormatText 鑺傜偣寮曠敤鏁版嵁銆?*/
 	FParsedFormatTextReference FormatTextReference;
 
-	/** v2.3 — Literal 节点引用数据。 */
+	/** v2.3 鈥?Literal 鑺傜偣寮曠敤鏁版嵁銆?*/
 	FParsedLiteralReference LiteralReference;
 
-	/** v2.3 — ComponentBoundEvent 节点引用数据。 */
+	/** v2.3 鈥?ComponentBoundEvent 鑺傜偣寮曠敤鏁版嵁銆?*/
 	FParsedComponentBoundEventReference ComponentBoundEventReference;
 
-	/** v2.3 — Comment 节点引用数据。 */
+	/** v2.3 鈥?Comment 鑺傜偣寮曠敤鏁版嵁銆?*/
 	FParsedCommentReference CommentReference;
 
-	/** v2.9 — Enhanced Input Action 节点引用数据。 */
+	/** v2.9 鈥?Enhanced Input Action 鑺傜偣寮曠敤鏁版嵁銆?*/
 	FParsedEnhancedInputActionReference EnhancedInputActionReference;
 
-	/** v2.9 — Switch 节点引用数据。 */
+	/** v2.9 鈥?Switch 鑺傜偣寮曠敤鏁版嵁銆?*/
 	FParsedSwitchReference SwitchReference;
 
-	/** v2.9 — Select 节点引用数据。 */
+	/** v2.9 鈥?Select 鑺傜偣寮曠敤鏁版嵁銆?*/
 	FParsedSelectReference SelectReference;
 };
 
 /**
- * 未匹配节点数据，供 Slate 左侧列表展示与手动映射使用。
+ * 鏈尮閰嶈妭鐐规暟鎹紝渚?Slate 宸︿晶鍒楄〃灞曠ず涓庢墜鍔ㄦ槧灏勪娇鐢ㄣ€?
  */
 struct FBlueprintHelperCandidateFunctionGroup
 {
@@ -483,35 +484,35 @@ struct FBlueprintHelperCandidateFunctionGroup
 
 struct FUnresolvedNodeItem
 {
-	/** 原始节点数据。 */
+	/** 鍘熷鑺傜偣鏁版嵁銆?*/
 	FParsedNode NodeData;
 
-	/** 列表显示文本。 */
+	/** 鍒楄〃鏄剧ず鏂囨湰銆?*/
 	FString DisplayText;
 
-	/** 未解析原因。 */
+	/** 鏈В鏋愬師鍥犮€?*/
 	FString Reason;
 	TArray<FBlueprintHelperCandidateFunctionGroup> CandidateFunctions;
 };
 
 /**
- * JSON 生成阶段的结构化诊断。
+ * JSON 鐢熸垚闃舵鐨勭粨鏋勫寲璇婃柇銆?
  */
 struct FBlueprintGeneratorDiagnostic
 {
-	/** severity: info / warning / error。 */
+	/** severity: info / warning / error銆?*/
 	FString Severity;
 
-	/** 稳定错误码，供服务层和 MCP 客户端识别。 */
+	/** 绋冲畾閿欒鐮侊紝渚涙湇鍔″眰鍜?MCP 瀹㈡埛绔瘑鍒€?*/
 	FString Code;
 
-	/** JSON 节点 ID。 */
+	/** JSON 鑺傜偣 ID銆?*/
 	FString NodeId;
 
-	/** 相关引脚名称。 */
+	/** 鐩稿叧寮曡剼鍚嶇О銆?*/
 	FString PinName;
 
-	/** 面向人的诊断信息。 */
+	/** 闈㈠悜浜虹殑璇婃柇淇℃伅銆?*/
 	FString Message;
 
 	bool IsError() const
@@ -521,76 +522,77 @@ struct FBlueprintGeneratorDiagnostic
 };
 
 /**
- * 引擎函数列表数据，供右侧搜索与映射选择使用。
+ * 寮曟搸鍑芥暟鍒楄〃鏁版嵁锛屼緵鍙充晶鎼滅储涓庢槧灏勯€夋嫨浣跨敤銆?
  */
 struct FEngineFunctionItem
 {
-	/** 真实函数指针。 */
+	/** 鐪熷疄鍑芥暟鎸囬拡銆?*/
 	UFunction* FunctionPtr = nullptr;
 
-	/** 显示函数名称。 */
+	/** 鏄剧ず鍑芥暟鍚嶇О銆?*/
 	FString FunctionName;
 
 	FString SearchMode;
 	FString AmbiguityPolicy;
 	TArray<FString> CategoryPriority;
+	FString ActionContextStatementId;
 
-	/** 原生函数名称。 */
+	/** 鍘熺敓鍑芥暟鍚嶇О銆?*/
 	FString NativeFunctionName;
 
-	/** 蓝图分类。 */
+	/** 钃濆浘鍒嗙被銆?*/
 	FString Category;
 };
 
 /**
- * 蓝图 JSON 生成结果，供 UI 展示解析与生成状态。
+ * 钃濆浘 JSON 鐢熸垚缁撴灉锛屼緵 UI 灞曠ず瑙ｆ瀽涓庣敓鎴愮姸鎬併€?
  */
 struct FBlueprintGenerateResult
 {
-	/** 本次 JSON 解析与生成链路是否成功执行。 */
+	/** 鏈 JSON 瑙ｆ瀽涓庣敓鎴愰摼璺槸鍚︽垚鍔熸墽琛屻€?*/
 	bool bSucceed = false;
 
-	/** 成功生成的节点数量。 */
+	/** 鎴愬姛鐢熸垚鐨勮妭鐐规暟閲忋€?*/
 	int32 GeneratedNodeCount = 0;
 
-	/** 请求应用的默认值数量。 */
+	/** 璇锋眰搴旂敤鐨勯粯璁ゅ€兼暟閲忋€?*/
 	int32 RequestedDefaultValueCount = 0;
 
-	/** 成功应用的默认值数量。 */
+	/** 鎴愬姛搴旂敤鐨勯粯璁ゅ€兼暟閲忋€?*/
 	int32 AppliedDefaultValueCount = 0;
 
-	/** 默认值应用诊断。 */
+	/** 榛樿鍊煎簲鐢ㄨ瘖鏂€?*/
 	TArray<FBlueprintGeneratorDiagnostic> DefaultValueDiagnostics;
 
-	/** 请求解析的 pin_type 数量。 */
+	/** 璇锋眰瑙ｆ瀽鐨?pin_type 鏁伴噺銆?*/
 	int32 RequestedPinTypeCount = 0;
 
-	/** 成功解析的 pin_type 数量。 */
+	/** 鎴愬姛瑙ｆ瀽鐨?pin_type 鏁伴噺銆?*/
 	int32 ResolvedPinTypeCount = 0;
 
-	/** pin_type 解析诊断。 */
+	/** pin_type 瑙ｆ瀽璇婃柇銆?*/
 	TArray<FBlueprintGeneratorDiagnostic> PinTypeDiagnostics;
 
-	/** 请求建立的连线数量。 */
+	/** 璇锋眰寤虹珛鐨勮繛绾挎暟閲忋€?*/
 	int32 RequestedConnectionCount = 0;
 
-	/** 成功建立的连线数量。 */
+	/** 鎴愬姛寤虹珛鐨勮繛绾挎暟閲忋€?*/
 	int32 CreatedConnectionCount = 0;
 
-	/** 连线创建诊断。 */
+	/** 杩炵嚎鍒涘缓璇婃柇銆?*/
 	TArray<FBlueprintGeneratorDiagnostic> ConnectionDiagnostics;
 
-	/** 未匹配节点数量。 */
+	/** 鏈尮閰嶈妭鐐规暟閲忋€?*/
 	int32 UnresolvedNodeCount = 0;
 
-	/** 用于状态栏展示的结果文本。 */
+	/** 鐢ㄤ簬鐘舵€佹爮灞曠ず鐨勭粨鏋滄枃鏈€?*/
 	FString Message;
 
 	FBlueprintGraphWriteExecutionStats ExecutionStats;
 };
 
 /**
- * 文本转蓝图生成器，负责解析 JSON 并在图表中生成函数节点。
+ * 鏂囨湰杞摑鍥剧敓鎴愬櫒锛岃礋璐ｈВ鏋?JSON 骞跺湪鍥捐〃涓敓鎴愬嚱鏁拌妭鐐广€?
  */
 class BLUEPRINTHELPER_API FBlueprintGraphWriteFacade
 {

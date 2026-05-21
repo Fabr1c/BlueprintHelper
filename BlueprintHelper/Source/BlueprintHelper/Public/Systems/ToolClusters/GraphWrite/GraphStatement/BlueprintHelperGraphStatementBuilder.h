@@ -7,6 +7,7 @@ class UEdGraph;
 class UEdGraphNode;
 class UEdGraphPin;
 class UK2Node;
+class FBlueprintHelperActionContextScope;
 struct FBlueprintHelperGraphExpressionIR;
 
 struct BLUEPRINTHELPER_API FBlueprintHelperFragmentPinRef
@@ -56,19 +57,22 @@ public:
 		const FParsedNode& NodeData,
 		FBlueprintHelperNodeFragment& OutFragment,
 		FString& OutError,
-		TArray<FBlueprintHelperCandidateFunctionGroup>* OutCandidateFunctions = nullptr);
+		TArray<FBlueprintHelperCandidateFunctionGroup>* OutCandidateFunctions = nullptr,
+		const FBlueprintHelperActionContextScope* ActionContextScope = nullptr);
 
 	static bool BuildVariableSetFragment(
 		UEdGraph* TargetGraph,
 		const FParsedNode& NodeData,
 		FBlueprintHelperNodeFragment& OutFragment,
-		FString& OutError);
+		FString& OutError,
+		const FBlueprintHelperActionContextScope* ActionContextScope = nullptr);
 
 	static bool BuildSetPropertyFragment(
 		UEdGraph* TargetGraph,
 		const FParsedNode& NodeData,
 		FBlueprintHelperNodeFragment& OutFragment,
-		FString& OutError);
+		FString& OutError,
+		const FBlueprintHelperActionContextScope* ActionContextScope = nullptr);
 
 	static bool BuildSequenceFragment(
 		UEdGraph* TargetGraph,
@@ -81,5 +85,6 @@ public:
 		const FBlueprintHelperGraphExpressionIR& Expression,
 		FBlueprintHelperNodeFragment& OutFragment,
 		FString& OutError,
-		TArray<FBlueprintHelperCandidateFunctionGroup>* OutCandidateFunctions = nullptr);
+		TArray<FBlueprintHelperCandidateFunctionGroup>* OutCandidateFunctions = nullptr,
+		const FBlueprintHelperActionContextScope* ActionContextScope = nullptr);
 };
