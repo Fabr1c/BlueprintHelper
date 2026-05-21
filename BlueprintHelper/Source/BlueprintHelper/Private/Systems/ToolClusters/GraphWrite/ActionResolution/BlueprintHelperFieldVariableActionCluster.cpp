@@ -1,10 +1,22 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperFieldVariableActionCluster.h"
 
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperFieldVariableActionResolver.h"
+
 FBlueprintHelperActionResolutionResult FBlueprintHelperFieldVariableActionCluster::Resolve(const FBlueprintHelperActionResolutionRequest& Request)
 {
-	return OwnsSemanticKind(Request.Semantic.Kind)
-		? MakeUnsupportedClusterMigrationResult(Request)
-		: MakeUnsupportedIntentResult(Request);
+	if (!OwnsSemanticKind(Request.Semantic.Kind))
+	{
+		return MakeUnsupportedIntentResult(Request);
+	}
+
+	if (Request.Semantic.Kind == EBlueprintHelperActionSemanticKind::GetProperty
+		|| Request.Semantic.Kind == EBlueprintHelperActionSemanticKind::SetProperty)
+	{
+		return MakeUnsupportedClusterMigrationResult(Request);
+	}
+
+	const FBlueprintHelperFieldVariableActionResolver Resolver;
+	return Resolver.Resolve(Request);
 }
 
 bool FBlueprintHelperFieldVariableActionCluster::OwnsSemanticKind(EBlueprintHelperActionSemanticKind Kind)

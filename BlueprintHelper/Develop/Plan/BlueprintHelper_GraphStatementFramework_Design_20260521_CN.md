@@ -6,8 +6,8 @@
 - AgentFace 的 `call/get/set/get_property/set_property/op/construct/deconstruct/select/control` 等语义不再作为 ActionResolution 一级请求类型存在。
 - 这些语义只能进入 `FBlueprintHelperActionSemanticConstraints`，作为所选 UE NodeSpawner family cluster 内部的解析约束。
 - `SpawnerClusterResolver` 只按 `Request.ClusterKind` 分发，不允许根据 semantic kind 再做一级簇选择。
-- GraphStatement / Semantic Resolver 负责把 AgentFace semantic intent 映射为：`SpawnerClusterKind + SemanticConstraints`。
-- 新增能力时必须先判断 UE NodeSpawner family 边界，再扩展对应 cluster；不得重新引入 `ActionIntent -> cluster` 的一级分发模型。
+- GraphStatement / Semantic Resolver 负责把 AgentFace semantic statement 映射为：`SpawnerClusterKind + SemanticConstraints`。
+- 新增能力时必须先判断 UE NodeSpawner family 边界，再扩展对应 cluster；不得重新引入 旧语义到簇的一级分发模型。
 
 日期：2026-05-21
 适用范围：AgentFace Graph body / BlueprintLogicSpec / SemanticIR / FragmentDAG / UE GraphWrite
@@ -20,12 +20,14 @@ GraphStatement Framework 的目标不是让 AgentFace 直接描述 UE 节点，�
 
 ```text
 AgentFace TaskSpec
--> BlueprintLogicSpec / Graph body canonical semantic intent
+-> BlueprintLogicSpec / Graph body canonical semantic statement
 -> TS / Python compiler
 -> UE SemanticIR parser
 -> Semantic Resolver / typed resolver
--> SpawnerClusterResolver
+-> Semantic Resolver
+-> FBlueprintHelperActionResolutionRequest { ClusterKind, SemanticConstraints, GraphContext, TypedPins }
 -> BlueprintActionResolutionCore
+-> SpawnerClusterResolver.SelectCluster(ClusterKind)
 -> selected UBlueprintNodeSpawner or derived spawner
 -> NodeFragment adapter
 -> FragmentDAG
@@ -38,12 +40,14 @@ AgentFace TaskSpec
 
 后续 Graph body 能力按 UE NodeSpawner 家族组织簇，而不是按自然语言语义组织底层职责。
 
-AgentFace `kind` 仍然是语义 intent，用于压缩字段；底层簇由 `SpawnerClusterResolver` 根据 intent、target、type、graph context、pin context、metadata constraints 选择。
+AgentFace `kind` 只作为语义输入字段，用于压缩 AgentFace；Semantic Resolver 负责结合 target、type、graph context、pin context、metadata constraints 生成 `SpawnerClusterKind + SemanticConstraints`，`SpawnerClusterResolver` 只按 `SpawnerClusterKind` 分发。
 
 ```text
-AgentFace semantic intent
--> SpawnerClusterResolver
+AgentFace semantic statement
+-> Semantic Resolver
+-> FBlueprintHelperActionResolutionRequest { ClusterKind, SemanticConstraints, GraphContext, TypedPins }
 -> BlueprintActionResolutionCore
+-> SpawnerClusterResolver.SelectCluster(ClusterKind)
 -> UBlueprintNodeSpawner candidate
 -> semantic-specific NodeFragment adapter
 ```
@@ -89,7 +93,7 @@ UBlueprintTypePromotion operator spawner
 function/action registrar delegates
 ```
 
-覆盖 intent：
+覆盖 SemanticConstraints：
 
 ```text
 call
@@ -116,7 +120,7 @@ UBlueprintVariableNodeSpawner
 UBlueprintComponentNodeSpawner
 ```
 
-覆盖 intent：
+覆盖 SemanticConstraints：
 
 ```text
 get
@@ -147,7 +151,7 @@ UBlueprintDelegateNodeSpawner
 UBlueprintBoundNodeSpawner
 ```
 
-覆盖 intent：
+覆盖 SemanticConstraints：
 
 ```text
 event
@@ -178,7 +182,7 @@ UBlueprintAssetNodeSpawner
 struct / enum / generic registrar delegates
 ```
 
-覆盖 intent：
+覆盖 SemanticConstraints：
 
 ```text
 construct
@@ -200,11 +204,11 @@ container_action
 - 资产驱动 node action。
 - UE ActionDatabase 无法细分到专用 spawner 家族的 generic K2Node action。
 
-## 5. AgentFace intent 与簇的关系
+## 5. AgentFace SemanticConstraints 与簇的关系
 
 AgentFace `kind` 不再定义底层簇边界，只作为 intent 输入。
 
-| AgentFace intent | 默认簇 | 说明 |
+| SemanticConstraints.Kind | 默认簇 | 说明 |
 |---|---|---|
 | `call` | FunctionActionCluster | Agent 明确请求 callable/action |
 | `op` | FunctionActionCluster | operator 通过 typed constraints 选择 function/type-promotion spawner |
@@ -260,5 +264,5 @@ legacy AgentFace aliases: call_function, set_member_variable, ref, compare, make
 1. AgentFace 不暴露 UE node class、Kismet 函数后缀、owner class、wildcard pin 等低层细节。
 2. UE 侧通过 TaskSpec 上下文尽量复用右键菜单级 action/node 选择能力。
 3. 底层职责按 NodeSpawner 家族划分，避免按自然语义重复实现解析逻辑。
-4. 不同 AgentFace intent 可以共享同一个 SpawnerCluster，但不会强迫 AgentFace 暴露 spawner 细节。
+4. 不同 AgentFace 语义可以共享同一个 SpawnerCluster，但不会强迫 AgentFace 暴露 spawner 细节。
 5. 新增能力不引入旧 fallback，不恢复旧 handler，不增加局部硬编码路径。

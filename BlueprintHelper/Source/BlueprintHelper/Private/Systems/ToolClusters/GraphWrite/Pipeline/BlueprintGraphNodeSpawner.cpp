@@ -20,8 +20,6 @@
 #include "EdGraphSchema_K2.h"
 #include "K2Node_CallFunction.h"
 #include "K2Node_MacroInstance.h"
-#include "K2Node_VariableGet.h"
-#include "K2Node_VariableSet.h"
 #include "K2Node_FunctionEntry.h"
 #include "K2Node_FunctionResult.h"
 #include "ScopedTransaction.h"
@@ -31,82 +29,6 @@
 #include "UObject/SoftObjectPath.h"
 #include "UObject/UObjectIterator.h"
 #include "EdGraphNode_Comment.h"
-
-UK2Node* FBlueprintGraphNodeSpawner::SpawnVariableGetNode(UEdGraph* TargetGraph, const FParsedNode& NodeData, FString& OutErrorMessage)
-{
-	OutErrorMessage.Reset();
-	if (!TargetGraph)
-	{
-		OutErrorMessage = TEXT("变量读取节点生成失败：目标图表无效。");
-		return nullptr;
-	}
-
-	if (NodeData.VariableReference.VariableName.IsEmpty())
-	{
-		OutErrorMessage = TEXT("变量读取节点生成失败：变量名为空。");
-		return nullptr;
-	}
-
-	const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
-	if (!Schema)
-	{
-		OutErrorMessage = TEXT("变量读取节点生成失败：K2 Schema 无效。");
-		return nullptr;
-	}
-
-	UStruct* VariableSource = FBlueprintGraphLocalVariableService::ResolveVariableSource(TargetGraph, NodeData.VariableReference, OutErrorMessage);
-	if (!OutErrorMessage.IsEmpty())
-	{
-		return nullptr;
-	}
-
-	if (UK2Node_VariableGet* VariableNode = Schema->SpawnVariableGetNode(FVector2D(NodeData.X, NodeData.Y), TargetGraph, *NodeData.VariableReference.VariableName, VariableSource))
-	{
-		FBlueprintGraphDefaultValueApplier::ApplyDefaultValues(VariableNode, NodeData.DefaultValues);
-		return VariableNode;
-	}
-
-	OutErrorMessage = FString::Printf(TEXT("无法生成变量读取节点：%s"), *NodeData.VariableReference.VariableName);
-	return nullptr;
-}
-
-UK2Node* FBlueprintGraphNodeSpawner::SpawnVariableSetNode(UEdGraph* TargetGraph, const FParsedNode& NodeData, FString& OutErrorMessage)
-{
-	OutErrorMessage.Reset();
-	if (!TargetGraph)
-	{
-		OutErrorMessage = TEXT("变量写入节点生成失败：目标图表无效。");
-		return nullptr;
-	}
-
-	if (NodeData.VariableReference.VariableName.IsEmpty())
-	{
-		OutErrorMessage = TEXT("变量写入节点生成失败：变量名为空。");
-		return nullptr;
-	}
-
-	const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
-	if (!Schema)
-	{
-		OutErrorMessage = TEXT("变量写入节点生成失败：K2 Schema 无效。");
-		return nullptr;
-	}
-
-	UStruct* VariableSource = FBlueprintGraphLocalVariableService::ResolveVariableSource(TargetGraph, NodeData.VariableReference, OutErrorMessage);
-	if (!OutErrorMessage.IsEmpty())
-	{
-		return nullptr;
-	}
-
-	if (UK2Node_VariableSet* VariableNode = Schema->SpawnVariableSetNode(FVector2D(NodeData.X, NodeData.Y), TargetGraph, *NodeData.VariableReference.VariableName, VariableSource))
-	{
-		FBlueprintGraphDefaultValueApplier::ApplyDefaultValues(VariableNode, NodeData.DefaultValues);
-		return VariableNode;
-	}
-
-	OutErrorMessage = FString::Printf(TEXT("无法生成变量写入节点：%s"), *NodeData.VariableReference.VariableName);
-	return nullptr;
-}
 
 UK2Node* FBlueprintGraphNodeSpawner::SpawnMacroNode(UEdGraph* TargetGraph, const FParsedNode& NodeData, FString& OutErrorMessage)
 {
