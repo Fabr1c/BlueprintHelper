@@ -12,6 +12,7 @@
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphWriteContext.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintMultiGraphGenerationPipeline.h"
 #include "Systems/ToolClusters/BlueprintHelperToolClusterConfigResolver.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperControlFragmentBuilder.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphComposer.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDag.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDagBuilder.h"
@@ -840,17 +841,20 @@ static bool SpawnSemanticStatementFragment(
 
 	if (Statement->Kind == EBlueprintHelperGraphStatementKind::Branch)
 	{
-		FParsedNode NodeData;
-		NodeData.Id = StatementId;
-		NodeData.NodeType = EParsedBlueprintNodeType::Branch;
-		NodeData.SourceType = TEXT("K2Node_IfThenElse");
-		if (Statement->Condition.IsValid() && Statement->Condition->Kind == EBlueprintHelperGraphExpressionKind::Literal)
-		{
-			NodeData.DefaultValues.Add(TEXT("Condition"), Statement->Condition->LiteralValue);
-		}
+		return FBlueprintHelperControlFragmentBuilder::BuildBranch(
+			TargetGraph,
+			*Statement,
+			OutFragment,
+			OutError);
+	}
 
-		OutError = TEXT("Semantic branch statement requires a SemanticIR-backed builder; legacy parsed-node graph spawning has been removed.");
-		return false;
+	if (Statement->Kind == EBlueprintHelperGraphStatementKind::Return)
+	{
+		return FBlueprintHelperControlFragmentBuilder::BuildReturn(
+			TargetGraph,
+			*Statement,
+			OutFragment,
+			OutError);
 	}
 
 	OutError = FString::Printf(TEXT("Semantic statement kind is not node-backed: %s."), *Statement->PatternName);
@@ -895,11 +899,6 @@ static FSemanticStatementExecFlow BuildSemanticStatement(
 		Flow.bPreservePreviousExits = true;
 		return Flow;
 	}
-	if (Statement->Kind == EBlueprintHelperGraphStatementKind::Return)
-	{
-		return Flow;
-	}
-
 	FBlueprintHelperNodeFragment StatementFragment;
 	FString Error;
 	TArray<FBlueprintHelperCandidateFunctionGroup> CandidateFunctions;

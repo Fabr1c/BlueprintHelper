@@ -13,6 +13,7 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionNodeSpawnerAdapter.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.h"
 #include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperControlFragmentBuilder.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphPatternRegistry.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperSelectFragmentBuilder.h"
@@ -609,24 +610,21 @@ static bool BuildConstructExpressionFragment(
 		return false;
 	}
 
+	const FString ExpressionId = FBlueprintHelperGraphStatementTypeUtils::MakeExpressionFragmentId(Expression);
+	TMap<FString, FString> DefaultValues;
+	CollectStructExpressionDefaultValues(Expression, DefaultValues);
+	FBlueprintHelperActionNodeSpawnOptions SpawnOptions;
+	SpawnOptions.NodeId = ExpressionId;
+	SpawnOptions.DefaultValues = MoveTemp(DefaultValues);
 	UK2Node* SpawnedNode = FBlueprintHelperActionNodeSpawnerAdapter::InvokeSelectedSpawner(
 		TargetGraph,
 		ActionResult,
 		FVector2D::ZeroVector,
+		SpawnOptions,
 		OutError);
 	if (!SpawnedNode)
 	{
 		return false;
-	}
-
-	TMap<FString, FString> DefaultValues;
-	CollectStructExpressionDefaultValues(Expression, DefaultValues);
-	if (DefaultValues.Num() > 0)
-	{
-		FBlueprintGraphWriteFacade::ApplyDefaultValues(
-			SpawnedNode,
-			DefaultValues,
-			FBlueprintHelperGraphStatementTypeUtils::MakeExpressionFragmentId(Expression));
 	}
 
 	PopulateStructExpressionFragment(Expression, SpawnedNode, TEXT("construct"), OutFragment);
@@ -661,24 +659,21 @@ static bool BuildDeconstructExpressionFragment(
 		return false;
 	}
 
+	const FString ExpressionId = FBlueprintHelperGraphStatementTypeUtils::MakeExpressionFragmentId(Expression);
+	TMap<FString, FString> DefaultValues;
+	CollectStructExpressionDefaultValues(Expression, DefaultValues);
+	FBlueprintHelperActionNodeSpawnOptions SpawnOptions;
+	SpawnOptions.NodeId = ExpressionId;
+	SpawnOptions.DefaultValues = MoveTemp(DefaultValues);
 	UK2Node* SpawnedNode = FBlueprintHelperActionNodeSpawnerAdapter::InvokeSelectedSpawner(
 		TargetGraph,
 		ActionResult,
 		FVector2D::ZeroVector,
+		SpawnOptions,
 		OutError);
 	if (!SpawnedNode)
 	{
 		return false;
-	}
-
-	TMap<FString, FString> DefaultValues;
-	CollectStructExpressionDefaultValues(Expression, DefaultValues);
-	if (DefaultValues.Num() > 0)
-	{
-		FBlueprintGraphWriteFacade::ApplyDefaultValues(
-			SpawnedNode,
-			DefaultValues,
-			FBlueprintHelperGraphStatementTypeUtils::MakeExpressionFragmentId(Expression));
 	}
 
 	PopulateStructExpressionFragment(Expression, SpawnedNode, TEXT("deconstruct"), OutFragment);
@@ -729,18 +724,20 @@ bool FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment(
 
 	ApplyCallPatternDefaults(BoundNodeData);
 
+	FBlueprintHelperActionNodeSpawnOptions SpawnOptions;
+	SpawnOptions.NodeId = BoundNodeData.Id;
+	SpawnOptions.DefaultValues = BoundNodeData.DefaultValues;
 	UK2Node* SpawnedNode = FBlueprintHelperActionNodeSpawnerAdapter::InvokeSelectedSpawner(
 		TargetGraph,
 		ActionResult,
 		FVector2D(BoundNodeData.X, BoundNodeData.Y),
+		SpawnOptions,
 		OutError);
 
 	if (!SpawnedNode)
 	{
 		return false;
 	}
-
-	FBlueprintGraphWriteFacade::ApplyDefaultValues(SpawnedNode, BoundNodeData.DefaultValues, BoundNodeData.Id);
 
 	OutFragment.FragmentId = BoundNodeData.Id;
 	OutFragment.SourceStatementId = BoundNodeData.Id;
@@ -773,17 +770,19 @@ bool FBlueprintHelperGraphStatementBuilder::BuildVariableSetFragment(
 		return false;
 	}
 
+	FBlueprintHelperActionNodeSpawnOptions SpawnOptions;
+	SpawnOptions.NodeId = NodeData.Id;
+	SpawnOptions.DefaultValues = NodeData.DefaultValues;
 	UK2Node* SpawnedNode = FBlueprintHelperActionNodeSpawnerAdapter::InvokeSelectedSpawner(
 		TargetGraph,
 		ActionResult,
 		FVector2D(NodeData.X, NodeData.Y),
+		SpawnOptions,
 		OutError);
 	if (!SpawnedNode)
 	{
 		return false;
 	}
-
-	FBlueprintGraphWriteFacade::ApplyDefaultValues(SpawnedNode, NodeData.DefaultValues, NodeData.Id);
 
 	OutFragment.FragmentId = NodeData.Id;
 	OutFragment.SourceStatementId = NodeData.Id;
@@ -829,21 +828,11 @@ bool FBlueprintHelperGraphStatementBuilder::BuildSequenceFragment(
 	FBlueprintHelperNodeFragment& OutFragment,
 	FString& OutError)
 {
-	OutFragment = FBlueprintHelperNodeFragment();
-	if (!RequireResolvedActionProvider(
+	return FBlueprintHelperControlFragmentBuilder::BuildSequence(
 		TargetGraph,
-		EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction,
-		EBlueprintHelperActionSemanticKind::Control,
-		TEXT("sequence"),
 		FragmentId,
-		FString(),
-		OutError))
-	{
-		return false;
-	}
-
-	OutError = TEXT("sequence fragment provider resolved, but FragmentDAG emission has not migrated to the spawner cluster path.");
-	return false;
+		OutFragment,
+		OutError);
 }
 
 bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
@@ -977,23 +966,26 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 			return false;
 		}
 
+		const FString ExpressionId = FBlueprintHelperGraphStatementTypeUtils::MakeExpressionFragmentId(Expression);
+		FBlueprintHelperActionNodeSpawnOptions SpawnOptions;
+		SpawnOptions.NodeId = ExpressionId;
+		SpawnOptions.PinNormalizationHook = [&Expression](UK2Node& SpawnedNode, const FBlueprintHelperActionNodeSpawnContext&)
+		{
+			ApplyPromotableOperatorLiteralTypes(&SpawnedNode, Expression);
+		};
+		SpawnOptions.DefaultValueProvider = [&Expression](UK2Node& SpawnedNode, const FBlueprintHelperActionNodeSpawnContext&, TMap<FString, FString>& InOutDefaults)
+		{
+			CollectLiteralDefaultsForActionProviderExpression(&SpawnedNode, Expression, InOutDefaults);
+		};
 		UK2Node* SpawnedNode = FBlueprintHelperActionNodeSpawnerAdapter::InvokeSelectedSpawner(
 			TargetGraph,
 			ActionResult,
 			FVector2D::ZeroVector,
+			SpawnOptions,
 			OutError);
 		if (!SpawnedNode)
 		{
 			return false;
-		}
-
-		const FString ExpressionId = FBlueprintHelperGraphStatementTypeUtils::MakeExpressionFragmentId(Expression);
-		ApplyPromotableOperatorLiteralTypes(SpawnedNode, Expression);
-		TMap<FString, FString> LiteralDefaults;
-		CollectLiteralDefaultsForActionProviderExpression(SpawnedNode, Expression, LiteralDefaults);
-		if (LiteralDefaults.Num() > 0)
-		{
-			FBlueprintGraphWriteFacade::ApplyDefaultValues(SpawnedNode, LiteralDefaults, ExpressionId);
 		}
 
 		OutFragment.FragmentId = ExpressionId;
