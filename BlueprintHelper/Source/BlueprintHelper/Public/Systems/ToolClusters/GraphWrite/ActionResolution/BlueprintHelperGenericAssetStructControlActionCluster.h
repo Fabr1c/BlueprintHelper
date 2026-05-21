@@ -9,7 +9,7 @@ public:
 	static FBlueprintHelperActionResolutionResult Resolve(const FBlueprintHelperActionResolutionRequest& Request);
 
 private:
-	static bool OwnsIntent(EBlueprintHelperActionIntent Intent);
+	static bool OwnsSemanticKind(EBlueprintHelperActionSemanticKind Kind);
 	static FBlueprintHelperActionResolutionResult MakeUnsupportedIntentResult(const FBlueprintHelperActionResolutionRequest& Request);
 	static FBlueprintHelperActionResolutionResult MakeUnsupportedClusterMigrationResult(const FBlueprintHelperActionResolutionRequest& Request);
 };

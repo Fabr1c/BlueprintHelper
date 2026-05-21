@@ -8,9 +8,23 @@ class UBlueprintNodeSpawner;
 class UEdGraph;
 
 /**
- * AgentFace semantic intent. This is not a low-level node class selection.
+ * UE NodeSpawner-family-oriented cluster boundary. This is the first-level
+ * ActionResolution request type.
  */
-enum class EBlueprintHelperActionIntent : uint8
+enum class EBlueprintHelperSpawnerClusterKind : uint8
+{
+	FunctionAction,
+	FieldVariableAction,
+	EventDelegateAction,
+	GenericAssetStructControlAction,
+	Unknown
+};
+
+/**
+ * AgentFace semantic operation kind. This is a constraint consumed inside the
+ * selected spawner cluster, not a first-level ActionResolution request type.
+ */
+enum class EBlueprintHelperActionSemanticKind : uint8
 {
 	Call,
 	Get,
@@ -31,18 +45,6 @@ enum class EBlueprintHelperActionIntent : uint8
 	Unknown
 };
 
-/**
- * UE NodeSpawner-family-oriented cluster boundary.
- */
-enum class EBlueprintHelperSpawnerClusterKind : uint8
-{
-	FunctionAction,
-	FieldVariableAction,
-	EventDelegateAction,
-	GenericAssetStructControlAction,
-	Unknown
-};
-
 enum class EBlueprintHelperActionResolutionStatus : uint8
 {
 	Resolved,
@@ -54,11 +56,9 @@ enum class EBlueprintHelperActionResolutionStatus : uint8
 	InvalidRequest
 };
 
-struct FBlueprintHelperActionResolutionRequest
+struct FBlueprintHelperActionSemanticConstraints
 {
-	EBlueprintHelperActionIntent Intent = EBlueprintHelperActionIntent::Unknown;
-	UBlueprint* Blueprint = nullptr;
-	UEdGraph* TargetGraph = nullptr;
+	EBlueprintHelperActionSemanticKind Kind = EBlueprintHelperActionSemanticKind::Unknown;
 	FString Query;
 	FString StableId;
 	FString TargetPath;
@@ -75,6 +75,14 @@ struct FBlueprintHelperActionResolutionRequest
 	FBlueprintHelperCallFunctionPinType TargetObjectPinType;
 	FString ExpectedReturnType;
 	FBlueprintHelperCallFunctionPinType ExpectedReturnPinType;
+};
+
+struct FBlueprintHelperActionResolutionRequest
+{
+	EBlueprintHelperSpawnerClusterKind ClusterKind = EBlueprintHelperSpawnerClusterKind::Unknown;
+	UBlueprint* Blueprint = nullptr;
+	UEdGraph* TargetGraph = nullptr;
+	FBlueprintHelperActionSemanticConstraints Semantic;
 	bool bAllowFuzzyUnique = true;
 	int32 MaxCandidates = 8;
 };
@@ -101,6 +109,6 @@ class BLUEPRINTHELPER_API FBlueprintHelperActionResolutionCore
 {
 public:
 	static FBlueprintHelperActionResolutionResult Resolve(const FBlueprintHelperActionResolutionRequest& Request);
-	static FString IntentToString(EBlueprintHelperActionIntent Intent);
+	static FString SemanticKindToString(EBlueprintHelperActionSemanticKind Kind);
 	static FString ClusterKindToString(EBlueprintHelperSpawnerClusterKind ClusterKind);
 };

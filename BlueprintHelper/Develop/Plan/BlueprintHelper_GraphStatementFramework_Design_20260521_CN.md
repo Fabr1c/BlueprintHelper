@@ -1,5 +1,14 @@
 # BlueprintHelper GraphStatement Framework 总设计文档
 
+## ActionResolution 一级分发规则（2026-05-21 更新）
+
+- `ActionResolutionCore` 的一级请求类型必须是 `EBlueprintHelperSpawnerClusterKind`。
+- AgentFace 的 `call/get/set/get_property/set_property/op/construct/deconstruct/select/control` 等语义不再作为 ActionResolution 一级请求类型存在。
+- 这些语义只能进入 `FBlueprintHelperActionSemanticConstraints`，作为所选 UE NodeSpawner family cluster 内部的解析约束。
+- `SpawnerClusterResolver` 只按 `Request.ClusterKind` 分发，不允许根据 semantic kind 再做一级簇选择。
+- GraphStatement / Semantic Resolver 负责把 AgentFace semantic intent 映射为：`SpawnerClusterKind + SemanticConstraints`。
+- 新增能力时必须先判断 UE NodeSpawner family 边界，再扩展对应 cluster；不得重新引入 `ActionIntent -> cluster` 的一级分发模型。
+
 日期：2026-05-21
 适用范围：AgentFace Graph body / BlueprintLogicSpec / SemanticIR / FragmentDAG / UE GraphWrite
 

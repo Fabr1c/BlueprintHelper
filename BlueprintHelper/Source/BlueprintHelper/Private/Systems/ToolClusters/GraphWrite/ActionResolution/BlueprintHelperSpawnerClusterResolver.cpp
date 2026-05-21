@@ -5,39 +5,10 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperFunctionActionCluster.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericAssetStructControlActionCluster.h"
 
-EBlueprintHelperSpawnerClusterKind FBlueprintHelperSpawnerClusterResolver::SelectCluster(EBlueprintHelperActionIntent Intent)
-{
-	switch (Intent)
-	{
-	case EBlueprintHelperActionIntent::Call:
-	case EBlueprintHelperActionIntent::Op:
-		return EBlueprintHelperSpawnerClusterKind::FunctionAction;
-	case EBlueprintHelperActionIntent::Get:
-	case EBlueprintHelperActionIntent::Set:
-	case EBlueprintHelperActionIntent::GetProperty:
-	case EBlueprintHelperActionIntent::SetProperty:
-		return EBlueprintHelperSpawnerClusterKind::FieldVariableAction;
-	case EBlueprintHelperActionIntent::Event:
-	case EBlueprintHelperActionIntent::ComponentBoundEvent:
-	case EBlueprintHelperActionIntent::Bind:
-		return EBlueprintHelperSpawnerClusterKind::EventDelegateAction;
-	case EBlueprintHelperActionIntent::Construct:
-	case EBlueprintHelperActionIntent::Deconstruct:
-	case EBlueprintHelperActionIntent::Select:
-	case EBlueprintHelperActionIntent::Control:
-	case EBlueprintHelperActionIntent::Create:
-	case EBlueprintHelperActionIntent::Convert:
-	case EBlueprintHelperActionIntent::Schedule:
-		return EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction;
-	default:
-		return EBlueprintHelperSpawnerClusterKind::Unknown;
-	}
-}
-
 FBlueprintHelperActionResolutionResult FBlueprintHelperSpawnerClusterResolver::Resolve(
 	const FBlueprintHelperActionResolutionRequest& Request)
 {
-	switch (SelectCluster(Request.Intent))
+	switch (Request.ClusterKind)
 	{
 	case EBlueprintHelperSpawnerClusterKind::FunctionAction:
 		return FBlueprintHelperFunctionActionCluster::Resolve(Request);
@@ -51,10 +22,11 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperSpawnerClusterResolver::R
 		FBlueprintHelperActionResolutionResult Result;
 		Result.Status = EBlueprintHelperActionResolutionStatus::UnsupportedIntent;
 		Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::Unknown;
-		Result.ErrorCode = TEXT("unsupported_action_intent");
+		Result.ErrorCode = TEXT("unsupported_spawner_cluster");
 		Result.Message = FString::Printf(
-			TEXT("ActionResolution does not have a spawner cluster for intent '%s'."),
-			*FBlueprintHelperActionResolutionCore::IntentToString(Request.Intent));
+			TEXT("ActionResolution does not have a resolver for cluster '%s' with semantic '%s'."),
+			*FBlueprintHelperActionResolutionCore::ClusterKindToString(Request.ClusterKind),
+			*FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.Semantic.Kind));
 		return Result;
 	}
 }

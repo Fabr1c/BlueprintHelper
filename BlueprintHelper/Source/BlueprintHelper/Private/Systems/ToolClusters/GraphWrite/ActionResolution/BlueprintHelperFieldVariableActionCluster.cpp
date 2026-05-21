@@ -2,19 +2,19 @@
 
 FBlueprintHelperActionResolutionResult FBlueprintHelperFieldVariableActionCluster::Resolve(const FBlueprintHelperActionResolutionRequest& Request)
 {
-	return OwnsIntent(Request.Intent)
+	return OwnsSemanticKind(Request.Semantic.Kind)
 		? MakeUnsupportedClusterMigrationResult(Request)
 		: MakeUnsupportedIntentResult(Request);
 }
 
-bool FBlueprintHelperFieldVariableActionCluster::OwnsIntent(EBlueprintHelperActionIntent Intent)
+bool FBlueprintHelperFieldVariableActionCluster::OwnsSemanticKind(EBlueprintHelperActionSemanticKind Kind)
 {
-	switch (Intent)
+	switch (Kind)
 	{
-	case EBlueprintHelperActionIntent::Get:
-	case EBlueprintHelperActionIntent::Set:
-	case EBlueprintHelperActionIntent::GetProperty:
-	case EBlueprintHelperActionIntent::SetProperty:
+	case EBlueprintHelperActionSemanticKind::Get:
+	case EBlueprintHelperActionSemanticKind::Set:
+	case EBlueprintHelperActionSemanticKind::GetProperty:
+	case EBlueprintHelperActionSemanticKind::SetProperty:
 		return true;
 	default:
 		return false;
@@ -26,10 +26,10 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperFieldVariableActionCluste
 	FBlueprintHelperActionResolutionResult Result;
 	Result.Status = EBlueprintHelperActionResolutionStatus::UnsupportedIntent;
 	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::FieldVariableAction;
-	Result.ErrorCode = TEXT("unsupported_field_variable_cluster_intent");
+	Result.ErrorCode = TEXT("unsupported_field_variable_cluster_semantic");
 	Result.Message = FString::Printf(
-		TEXT("FieldVariableActionCluster does not own intent '%s'."),
-		*FBlueprintHelperActionResolutionCore::IntentToString(Request.Intent));
+		TEXT("FieldVariableActionCluster does not own semantic kind '%s'."),
+		*FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.Semantic.Kind));
 	return Result;
 }
 
@@ -40,7 +40,7 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperFieldVariableActionCluste
 	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::FieldVariableAction;
 	Result.ErrorCode = TEXT("field_variable_action_cluster_migration_pending");
 	Result.Message = FString::Printf(
-		TEXT("FieldVariableActionCluster owns intent '%s', but field/variable action resolution has not been migrated yet; no fallback direct node creation was attempted."),
-		*FBlueprintHelperActionResolutionCore::IntentToString(Request.Intent));
+		TEXT("FieldVariableActionCluster owns semantic kind '%s', but field/variable action resolution has not been migrated yet; no fallback direct node creation was attempted."),
+		*FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.Semantic.Kind));
 	return Result;
 }

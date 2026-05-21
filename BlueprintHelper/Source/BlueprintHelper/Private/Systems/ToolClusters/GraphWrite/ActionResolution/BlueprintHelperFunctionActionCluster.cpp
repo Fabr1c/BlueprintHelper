@@ -22,6 +22,7 @@ static EBlueprintHelperActionResolutionStatus MapFunctionResolveStatus(EBlueprin
 
 static void PopulateCallContext(FBlueprintHelperCallFunctionResolveRequest& CallRequest, const FBlueprintHelperActionResolutionRequest& Request)
 {
+	const FBlueprintHelperActionSemanticConstraints& Semantic = Request.Semantic;
 	CallRequest.Context.Blueprint = Request.Blueprint;
 	CallRequest.Context.Graph = Request.TargetGraph;
 	CallRequest.Context.Schema = Request.TargetGraph ? Request.TargetGraph->GetSchema() : nullptr;
@@ -29,23 +30,24 @@ static void PopulateCallContext(FBlueprintHelperCallFunctionResolveRequest& Call
 		? (Request.Blueprint->GeneratedClass ? Request.Blueprint->GeneratedClass.Get() : Request.Blueprint->SkeletonGeneratedClass.Get())
 		: nullptr;
 	CallRequest.Context.GraphKind = Request.TargetGraph && Request.TargetGraph->GetClass() ? Request.TargetGraph->GetClass()->GetName() : FString();
-	CallRequest.Context.ArgumentNames = Request.ArgumentNames;
-	CallRequest.Context.ArgumentTypes = Request.ArgumentTypes;
-	CallRequest.Context.ArgumentPinTypes = Request.ArgumentPinTypes;
-	CallRequest.Context.TargetObjectType = Request.TargetObjectType;
-	CallRequest.Context.TargetObjectPinType = Request.TargetObjectPinType;
-	CallRequest.Context.ExpectedReturnType = Request.ExpectedReturnType;
-	CallRequest.Context.ExpectedReturnPinType = Request.ExpectedReturnPinType;
+	CallRequest.Context.ArgumentNames = Semantic.ArgumentNames;
+	CallRequest.Context.ArgumentTypes = Semantic.ArgumentTypes;
+	CallRequest.Context.ArgumentPinTypes = Semantic.ArgumentPinTypes;
+	CallRequest.Context.TargetObjectType = Semantic.TargetObjectType;
+	CallRequest.Context.TargetObjectPinType = Semantic.TargetObjectPinType;
+	CallRequest.Context.ExpectedReturnType = Semantic.ExpectedReturnType;
+	CallRequest.Context.ExpectedReturnPinType = Semantic.ExpectedReturnPinType;
 }
 
 FBlueprintHelperActionResolutionResult FBlueprintHelperFunctionActionCluster::Resolve(const FBlueprintHelperActionResolutionRequest& Request)
 {
-	if (Request.Intent == EBlueprintHelperActionIntent::Op)
+	const FBlueprintHelperActionSemanticConstraints& Semantic = Request.Semantic;
+	if (Semantic.Kind == EBlueprintHelperActionSemanticKind::Op)
 	{
 		return MakeUnsupportedClusterMigrationResult(Request);
 	}
 
-	if (Request.Intent != EBlueprintHelperActionIntent::Call)
+	if (Semantic.Kind != EBlueprintHelperActionSemanticKind::Call)
 	{
 		return MakeUnsupportedIntentResult(Request);
 	}
@@ -53,17 +55,17 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperFunctionActionCluster::Re
 	FBlueprintHelperCallFunctionResolveRequest CallRequest;
 	CallRequest.Blueprint = Request.Blueprint;
 	CallRequest.Graph = Request.TargetGraph;
-	CallRequest.Query = Request.Query;
-	CallRequest.SearchMode = Request.SearchMode;
-	CallRequest.AmbiguityPolicy = Request.AmbiguityPolicy;
-	CallRequest.CategoryPriority = Request.CategoryPriority;
-	CallRequest.ArgumentNames = Request.ArgumentNames;
-	CallRequest.ArgumentTypes = Request.ArgumentTypes;
-	CallRequest.ArgumentPinTypes = Request.ArgumentPinTypes;
-	CallRequest.TargetObjectType = Request.TargetObjectType;
-	CallRequest.TargetObjectPinType = Request.TargetObjectPinType;
-	CallRequest.ExpectedReturnType = Request.ExpectedReturnType;
-	CallRequest.ExpectedReturnPinType = Request.ExpectedReturnPinType;
+	CallRequest.Query = Semantic.Query;
+	CallRequest.SearchMode = Semantic.SearchMode;
+	CallRequest.AmbiguityPolicy = Semantic.AmbiguityPolicy;
+	CallRequest.CategoryPriority = Semantic.CategoryPriority;
+	CallRequest.ArgumentNames = Semantic.ArgumentNames;
+	CallRequest.ArgumentTypes = Semantic.ArgumentTypes;
+	CallRequest.ArgumentPinTypes = Semantic.ArgumentPinTypes;
+	CallRequest.TargetObjectType = Semantic.TargetObjectType;
+	CallRequest.TargetObjectPinType = Semantic.TargetObjectPinType;
+	CallRequest.ExpectedReturnType = Semantic.ExpectedReturnType;
+	CallRequest.ExpectedReturnPinType = Semantic.ExpectedReturnPinType;
 	CallRequest.bAllowFuzzyUnique = Request.bAllowFuzzyUnique;
 	CallRequest.MaxCandidates = Request.MaxCandidates;
 	PopulateCallContext(CallRequest, Request);
@@ -89,10 +91,10 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperFunctionActionCluster::Ma
 	FBlueprintHelperActionResolutionResult Result;
 	Result.Status = EBlueprintHelperActionResolutionStatus::UnsupportedIntent;
 	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::FunctionAction;
-	Result.ErrorCode = TEXT("unsupported_function_cluster_intent");
+	Result.ErrorCode = TEXT("unsupported_function_cluster_semantic");
 	Result.Message = FString::Printf(
-		TEXT("FunctionActionCluster does not own intent '%s'."),
-		*FBlueprintHelperActionResolutionCore::IntentToString(Request.Intent));
+		TEXT("FunctionActionCluster does not own semantic kind '%s'."),
+		*FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.Semantic.Kind));
 	return Result;
 }
 
@@ -104,7 +106,7 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperFunctionActionCluster::Ma
 	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::FunctionAction;
 	Result.ErrorCode = TEXT("operator_action_cluster_migration_pending");
 	Result.Message = FString::Printf(
-		TEXT("FunctionActionCluster owns intent '%s', but operator action resolution has not been migrated yet; no fallback direct node creation was attempted."),
-		*FBlueprintHelperActionResolutionCore::IntentToString(Request.Intent));
+		TEXT("FunctionActionCluster owns semantic kind '%s', but operator action resolution has not been migrated yet; no fallback direct node creation was attempted."),
+		*FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.Semantic.Kind));
 	return Result;
 }
