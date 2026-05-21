@@ -1,21 +1,38 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.h"
 
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionSettingsResolver.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperSpawnerClusterResolver.h"
 
 FBlueprintHelperActionResolutionResult FBlueprintHelperActionResolutionCore::Resolve(
 	const FBlueprintHelperActionResolutionRequest& Request)
 {
-	if (!Request.TargetGraph)
+	FBlueprintHelperActionResolutionRequest EffectiveRequest = Request;
+	const FBlueprintHelperActionResolutionSettings Settings =
+		FBlueprintHelperActionResolutionSettingsResolver::Load();
+	if (EffectiveRequest.MaxCandidates <= 0)
+	{
+		EffectiveRequest.MaxCandidates = Settings.CandidateCount;
+	}
+	if (EffectiveRequest.Semantic.SearchMode.IsEmpty())
+	{
+		EffectiveRequest.Semantic.SearchMode = Settings.DefaultSearchMode;
+	}
+	if (EffectiveRequest.Semantic.AmbiguityPolicy.IsEmpty())
+	{
+		EffectiveRequest.Semantic.AmbiguityPolicy = Settings.DefaultAmbiguityPolicy;
+	}
+
+	if (!EffectiveRequest.TargetGraph)
 	{
 		FBlueprintHelperActionResolutionResult Result;
 		Result.Status = EBlueprintHelperActionResolutionStatus::InvalidRequest;
-		Result.ClusterKind = Request.ClusterKind;
+		Result.ClusterKind = EffectiveRequest.ClusterKind;
 		Result.ErrorCode = TEXT("action_resolution_invalid_request");
 		Result.Message = TEXT("action_resolution_invalid_request:missing_target_graph");
 		return Result;
 	}
 
-	if (Request.ClusterKind == EBlueprintHelperSpawnerClusterKind::Unknown)
+	if (EffectiveRequest.ClusterKind == EBlueprintHelperSpawnerClusterKind::Unknown)
 	{
 		FBlueprintHelperActionResolutionResult Result;
 		Result.Status = EBlueprintHelperActionResolutionStatus::InvalidRequest;
@@ -23,11 +40,11 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperActionResolutionCore::Res
 		Result.ErrorCode = TEXT("action_resolution_invalid_cluster");
 		Result.Message = FString::Printf(
 			TEXT("action_resolution_invalid_cluster: semantic=%s"),
-			*SemanticKindToString(Request.Semantic.Kind));
+			*SemanticKindToString(EffectiveRequest.Semantic.Kind));
 		return Result;
 	}
 
-	return FBlueprintHelperSpawnerClusterResolver::Resolve(Request);
+	return FBlueprintHelperSpawnerClusterResolver::Resolve(EffectiveRequest);
 }
 
 FString FBlueprintHelperActionResolutionCore::SemanticKindToString(EBlueprintHelperActionSemanticKind Kind)

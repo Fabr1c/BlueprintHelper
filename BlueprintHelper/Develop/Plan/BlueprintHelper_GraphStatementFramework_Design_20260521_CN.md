@@ -322,3 +322,51 @@ GenericAssetStructControlActionCluster
 - AgentFace 字段保持精简，复杂上下文由 BlueprintHelper 从 TaskSpec、Blueprint、Graph、Schema、typed pins、target/binding object 中推断。
 - Preview 必须返回精简但可行动的候选 evidence，避免为了精确选择而膨胀 TaskSpec 字段。
 - 迁移过程中应优先清理仍可达的自研 fallback 主路径，再逐簇补齐 UE action context。
+
+## 10. ActionContext Pipeline（2026-05-22 补充）
+
+`ActionResolutionRequest` 不再作为上下文收集入口，而是作为 `ResolvedActionContextBundle` 投影出的执行请求。GraphStatement / SemanticIR 负责表达语义需求，ActionContext Pipeline 负责统一收集、快照、推断、去重、版本校验与投影，ActionResolutionCore 只消费已投影的 request。
+
+主链路：
+
+```text
+TaskSpec / SemanticIR
+-> ContextDemandCollector
+-> GameThread SnapshotBuilder
+-> Worker-safe InferenceService
+-> ResolvedActionContextBundle
+-> BundleProjector
+-> ActionResolutionCore
+```
+
+硬性规则：
+
+1. Worker 线程不得访问 `UObject*`、`UBlueprint*`、`UEdGraph*`、`UEdGraphPin*`、`FindObject`、`LoadObject` 或 `Graph->GetSchema()` 等 UE 对象/API。
+2. UE 对象读取集中在 `SnapshotBuilder`，并输出纯 DTO；worker 只消费不可变 DTO、statement tree、data edge 和 symbol table。
+3. `InferenceService` 负责 statement/dataflow/symbol 推断、上下文合并与去重，不得重新读取 UE runtime。
+4. `BundleProjector` 是 `ResolvedActionContextBundle -> FBlueprintHelperActionResolutionRequest` 的唯一投影边界；GraphStatementBuilder 不应再直接拼 `ActionRequest.ClusterKind` 或 `ActionRequest.Semantic`。
+5. cluster resolver 只能消费 `ActionResolutionRequest`，不允许反向扫描 TaskSpec、重建 ContextDemand、重跑 SnapshotBuilder 或私自调用 BundleProjector。
+6. preview 和 execute 必须消费同一套 pipeline；DebugBundle / Review evidence / UI overlay / AcceptReject 状态也应引用同一套 Review/Action 数据模型解释。
+
+### 10.1 Setting 与硬编码约束
+
+ActionContext Pipeline 发现的策略、阈值、候选数量、搜索模式、歧义策略、fallback 开关、padding 或调优默认值，都必须拆分到统一 settings runtime consumption 边界。除 UE API 常量、schema 固定规则、枚举语义强绑定值外，不允许继续散落在 resolver、builder、cluster、UI 或测试辅助逻辑中。
+
+禁止示例：
+
+```text
+Context.Semantic.SearchMode = TEXT("settings_default")
+Context.Semantic.AmbiguityPolicy = TEXT("settings_default")
+MaxCandidates = 20
+```
+
+期望形式：
+
+```text
+ActionContextDemand / Snapshot DTO
+-> settings service resolves runtime defaults
+-> InferenceService consumes resolved policy values
+-> BundleProjector projects already resolved SemanticConstraints
+```
+
+测试层只负责约束边界：当检测到 ActionContext 源码内出现硬编码策略默认值时，应失败并提示该值必须迁移到统一 settings service / runtime consumption 边界。
