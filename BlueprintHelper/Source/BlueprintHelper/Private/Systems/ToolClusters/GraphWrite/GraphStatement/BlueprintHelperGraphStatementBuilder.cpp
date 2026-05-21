@@ -1,10 +1,14 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphStatementBuilder.h"
 
+#include "BlueprintNodeBinder.h"
+#include "BlueprintNodeSpawner.h"
 #include "EdGraph/EdGraph.h"
+#include "EdGraph/EdGraphNode.h"
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraph/EdGraphSchema.h"
 #include "EdGraphSchema_K2.h"
 #include "Engine/Blueprint.h"
+#include "K2Node.h"
 #include "K2Node_CallFunction.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.h"
@@ -169,6 +173,7 @@ static bool RequireResolvedActionProvider(
 	const FString& Query,
 	const FString& TargetPath,
 	const FString& TypeName,
+	FBlueprintHelperActionResolutionResult* OutResult,
 	FString& OutError)
 {
 	FBlueprintHelperActionResolutionRequest ActionRequest;
@@ -184,6 +189,10 @@ static bool RequireResolvedActionProvider(
 		FBlueprintGraphWriteFacade::ResolveActionForGraph(ActionRequest);
 	if (ActionResult.IsResolved())
 	{
+		if (OutResult)
+		{
+			*OutResult = ActionResult;
+		}
 		return true;
 	}
 
@@ -194,6 +203,124 @@ static bool RequireResolvedActionProvider(
 			*FBlueprintHelperActionResolutionCore::ClusterKindToString(ActionResult.ClusterKind))
 		: ActionResult.Message;
 	return false;
+}
+
+static bool RequireResolvedActionProvider(
+	UEdGraph* TargetGraph,
+	EBlueprintHelperSpawnerClusterKind ClusterKind,
+	EBlueprintHelperActionSemanticKind SemanticKind,
+	const FString& Query,
+	const FString& TargetPath,
+	const FString& TypeName,
+	FString& OutError)
+{
+	return RequireResolvedActionProvider(
+		TargetGraph,
+		ClusterKind,
+		SemanticKind,
+		Query,
+		TargetPath,
+		TypeName,
+		nullptr,
+		OutError);
+}
+
+static UK2Node* SpawnResolvedActionProviderNode(
+	UEdGraph* TargetGraph,
+	const FBlueprintHelperActionResolutionResult& ActionResult,
+	const FVector2D& Location,
+	FString& OutError)
+{
+	UBlueprintNodeSpawner* NodeSpawner = ActionResult.SelectedSpawner.Get();
+	if (!TargetGraph)
+	{
+		OutError = TEXT("action provider spawn failed: target graph is invalid.");
+		return nullptr;
+	}
+	if (!NodeSpawner)
+	{
+		OutError = FString::Printf(
+			TEXT("action provider spawn failed: resolved spawner is no longer valid: %s."),
+			*ActionResult.SelectedStableId);
+		return nullptr;
+	}
+
+	IBlueprintNodeBinder::FBindingSet Bindings;
+	UEdGraphNode* SpawnedNode = NodeSpawner->Invoke(TargetGraph, Bindings, Location);
+	UK2Node* K2Node = Cast<UK2Node>(SpawnedNode);
+	if (!K2Node)
+	{
+		OutError = FString::Printf(
+			TEXT("action provider spawn failed: spawner did not create a K2 node: %s."),
+			*ActionResult.SelectedStableId);
+		return nullptr;
+	}
+
+	K2Node->NodePosX = static_cast<int32>(Location.X);
+	K2Node->NodePosY = static_cast<int32>(Location.Y);
+	if (TargetGraph->GetSchema())
+	{
+		TargetGraph->GetSchema()->ReconstructNode(*K2Node);
+	}
+	return K2Node;
+}
+
+static void PopulateActionProviderFragmentPins(UK2Node* Node, FBlueprintHelperNodeFragment& OutFragment)
+{
+	OutFragment.ExecEntryPin = FBlueprintGraphWriteFacade::FindPinByAlias(Node, TEXT("execute"));
+	OutFragment.ExecExitPin = FBlueprintGraphWriteFacade::FindPinByAlias(Node, TEXT("then"));
+	if (OutFragment.ExecEntryPin)
+	{
+		OutFragment.PinBindings.Add(TEXT("execute"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("execute"), TEXT("exec"), OutFragment.ExecEntryPin });
+	}
+	if (OutFragment.ExecExitPin)
+	{
+		OutFragment.PinBindings.Add(TEXT("then"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("then"), TEXT("exec"), OutFragment.ExecExitPin });
+	}
+	if (!Node)
+	{
+		return;
+	}
+
+	for (UEdGraphPin* Pin : Node->Pins)
+	{
+		if (!Pin || Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+		{
+			continue;
+		}
+
+		const FString PinName = Pin->PinName.ToString();
+		FBlueprintHelperFragmentPinRef PinRef{ TEXT("primary"), PinName, Pin->PinType.PinCategory.ToString(), Pin };
+		OutFragment.PinBindings.Add(PinName, PinRef);
+		if (Pin->Direction == EGPD_Input)
+		{
+			OutFragment.DataInputs.Add(PinName, PinRef);
+			if (!PinName.Equals(TEXT("self"), ESearchCase::IgnoreCase) && !OutFragment.DataInputs.Contains(TEXT("value")))
+			{
+				OutFragment.DataInputs.Add(TEXT("value"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("value"), Pin->PinType.PinCategory.ToString(), Pin });
+				OutFragment.PinBindings.Add(TEXT("value"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("value"), Pin->PinType.PinCategory.ToString(), Pin });
+			}
+		}
+		else if (Pin->Direction == EGPD_Output)
+		{
+			OutFragment.DataOutputs.Add(PinName, PinRef);
+			if (!OutFragment.DataOutputs.Contains(TEXT("value")))
+			{
+				OutFragment.DataOutputs.Add(TEXT("value"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("value"), Pin->PinType.PinCategory.ToString(), Pin });
+				OutFragment.PinBindings.Add(TEXT("value"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("value"), Pin->PinType.PinCategory.ToString(), Pin });
+			}
+			if (!OutFragment.DataOutputs.Contains(TEXT("result")))
+			{
+				OutFragment.DataOutputs.Add(TEXT("result"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("result"), Pin->PinType.PinCategory.ToString(), Pin });
+				OutFragment.PinBindings.Add(TEXT("result"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("result"), Pin->PinType.PinCategory.ToString(), Pin });
+			}
+			if (!OutFragment.DataOutputs.Contains(TEXT("return")))
+			{
+				OutFragment.DataOutputs.Add(TEXT("return"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("return"), Pin->PinType.PinCategory.ToString(), Pin });
+				OutFragment.PinBindings.Add(TEXT("return"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("return"), Pin->PinType.PinCategory.ToString(), Pin });
+			}
+		}
+	}
 }
 bool FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment(
 	UEdGraph* TargetGraph,
@@ -270,6 +397,7 @@ bool FBlueprintHelperGraphStatementBuilder::BuildVariableSetFragment(
 {
 	OutFragment = FBlueprintHelperNodeFragment();
 
+	FBlueprintHelperActionResolutionResult ActionResult;
 	if (!RequireResolvedActionProvider(
 		TargetGraph,
 		EBlueprintHelperSpawnerClusterKind::FieldVariableAction,
@@ -277,13 +405,31 @@ bool FBlueprintHelperGraphStatementBuilder::BuildVariableSetFragment(
 		NodeData.VariableReference.VariableName,
 		NodeData.VariableReference.VariableName,
 		NodeData.ExpectedReturnType,
+		&ActionResult,
 		OutError))
 	{
 		return false;
 	}
 
-	OutError = TEXT("set fragment provider resolved, but FragmentDAG emission has not migrated to the spawner cluster path.");
-	return false;
+	UK2Node* SpawnedNode = SpawnResolvedActionProviderNode(
+		TargetGraph,
+		ActionResult,
+		FVector2D(NodeData.X, NodeData.Y),
+		OutError);
+	if (!SpawnedNode)
+	{
+		return false;
+	}
+
+	FBlueprintGraphWriteFacade::ApplyDefaultValues(SpawnedNode, NodeData.DefaultValues, NodeData.Id);
+
+	OutFragment.FragmentId = NodeData.Id;
+	OutFragment.SourceStatementId = NodeData.Id;
+	OutFragment.PrimaryNode = SpawnedNode;
+	OutFragment.Nodes.Add(SpawnedNode);
+	PopulateActionProviderFragmentPins(SpawnedNode, OutFragment);
+	PopulateCommonFragmentMetadata(NodeData, OutFragment);
+	return true;
 }
 
 bool FBlueprintHelperGraphStatementBuilder::BuildSetPropertyFragment(
@@ -393,6 +539,44 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 	}
 
 	const EBlueprintHelperActionSemanticKind SemanticKind = ResolveActionSemanticKindForExpressionKind(Expression.Kind);
+	if (Expression.Kind == EBlueprintHelperGraphExpressionKind::Get)
+	{
+		const FString VariableName = !Expression.ResolvedTarget.Member.IsEmpty()
+			? Expression.ResolvedTarget.Member
+			: Expression.Target;
+		FBlueprintHelperActionResolutionResult ActionResult;
+		if (!RequireResolvedActionProvider(
+			TargetGraph,
+			EBlueprintHelperSpawnerClusterKind::FieldVariableAction,
+			EBlueprintHelperActionSemanticKind::Get,
+			VariableName,
+			VariableName,
+			Expression.Type,
+			&ActionResult,
+			OutError))
+		{
+			return false;
+		}
+
+		UK2Node* SpawnedNode = SpawnResolvedActionProviderNode(
+			TargetGraph,
+			ActionResult,
+			FVector2D::ZeroVector,
+			OutError);
+		if (!SpawnedNode)
+		{
+			return false;
+		}
+
+		const FString ExpressionId = FBlueprintHelperGraphStatementTypeUtils::MakeExpressionFragmentId(Expression);
+		OutFragment.FragmentId = ExpressionId;
+		OutFragment.SourceStatementId = Expression.ExpressionId;
+		OutFragment.PrimaryNode = SpawnedNode;
+		OutFragment.Nodes.Add(SpawnedNode);
+		PopulateActionProviderFragmentPins(SpawnedNode, OutFragment);
+		return true;
+	}
+
 	if (SemanticKind != EBlueprintHelperActionSemanticKind::Unknown)
 	{
 		const FString Query = Expression.Kind == EBlueprintHelperGraphExpressionKind::Op

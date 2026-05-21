@@ -615,6 +615,57 @@ public:
 		return nullptr;
 	}
 
+	static UEdGraph* CreateCustomEventUbergraphPage(
+		UBlueprint* Blueprint,
+		const FString& GraphName,
+		FString& OutError)
+	{
+		if (!Blueprint)
+		{
+			OutError = TEXT("Target Blueprint is invalid.");
+			return nullptr;
+		}
+
+		const FName TargetGraphName(*GraphName);
+		for (UEdGraph* Graph : Blueprint->UbergraphPages)
+		{
+			if (Graph && Graph->GetFName() == TargetGraphName)
+			{
+				return Graph;
+			}
+		}
+		for (UEdGraph* Graph : Blueprint->FunctionGraphs)
+		{
+			if (Graph && Graph->GetFName() == TargetGraphName)
+			{
+				OutError = FString::Printf(TEXT("Target graph name conflicts with an existing function graph: %s."), *GraphName);
+				return nullptr;
+			}
+		}
+		for (UEdGraph* Graph : Blueprint->MacroGraphs)
+		{
+			if (Graph && Graph->GetFName() == TargetGraphName)
+			{
+				OutError = FString::Printf(TEXT("Target graph name conflicts with an existing macro graph: %s."), *GraphName);
+				return nullptr;
+			}
+		}
+
+		UEdGraph* NewGraph = FBlueprintEditorUtils::CreateNewGraph(
+			Blueprint,
+			TargetGraphName,
+			UEdGraph::StaticClass(),
+			UEdGraphSchema_K2::StaticClass());
+		if (!NewGraph)
+		{
+			OutError = FString::Printf(TEXT("Failed to create custom event graph: %s."), *GraphName);
+			return nullptr;
+		}
+
+		FBlueprintEditorUtils::AddUbergraphPage(Blueprint, NewGraph);
+		return NewGraph;
+	}
+
 	static bool TryResolveCustomEventTarget(
 		const FBlueprintHelperEnsureCustomEventSignatureRequest& Request,
 		FBlueprintHelperResolvedCustomEventTarget& OutTarget,
@@ -1078,7 +1129,8 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureCustomEve
 		if (ValidationCode == TEXT("target_graph_not_found"))
 		{
 			UEdGraph* ExistingEventGraph = nullptr;
-			if (UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *Request.AssetPath))
+			UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *Request.AssetPath);
+			if (Blueprint)
 			{
 				if (FBlueprintHelperSignatureServiceLocalUtils::FindCustomEventInBlueprint(Blueprint, Request.EventName, ExistingEventGraph))
 				{
@@ -1092,22 +1144,97 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureCustomEve
 						TEXT("event_name"));
 				}
 			}
-
-			FBlueprintHelperToolResultBase Result = Request.bDryRun
-				? FBlueprintHelperToolResultBuilder::DryRun(
+			else
+			{
+				return FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
 					TEXT("ensure_custom_event"),
-					FBlueprintHelperToolResultBuilder::GenerateTraceId())
-				: FBlueprintHelperToolResultBuilder::NoOp(
+					TEXT("target_blueprint_not_found"),
+					EBlueprintHelperToolStage::ResolveTarget,
+					FString::Printf(TEXT("Blueprint asset not found: %s."), *Request.AssetPath),
+					TEXT("asset_path"));
+			}
+
+			if (Request.bDryRun)
+			{
+				FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::DryRun(
 					TEXT("ensure_custom_event"),
 					FBlueprintHelperToolResultBuilder::GenerateTraceId());
+				FBlueprintHelperSignatureServiceLocalUtils::SetCustomEventTarget(Result, Request.AssetPath, Request.GraphName, Request.EventName);
+				Result.Data = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureResultData(false, TEXT("custom_event_result"), true);
+				FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("custom_event_result"), TEXT("exists"), false);
+				FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("custom_event_result"), TEXT("signature_matches"), true);
+				FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultNumber(Result.Data, TEXT("custom_event_result"), TEXT("added_inputs"), 0);
+				FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("custom_event_result"), TEXT("interface_path"), Request.InterfacePath);
+				FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("custom_event_result"), TEXT("interface_entry_kind"), Request.InterfaceEntryKind);
+				Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);
+				return Result;
+			}
+
+			TArray<FBlueprintHelperSignatureServiceLocalUtils::FBlueprintHelperSignaturePinSpec> RequestedPins;
+			FString PinMessage;
+			FString PinField;
+			if (!FBlueprintHelperSignatureServiceLocalUtils::TryBuildSignaturePinSpecs(Request.Inputs, RequestedPins, PinMessage, PinField))
+			{
+				return FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
+					TEXT("ensure_custom_event"),
+					TEXT("invalid_signature_payload"),
+					EBlueprintHelperToolStage::ParseInput,
+					PinMessage,
+					PinField);
+			}
+
+			FBlueprintHelperScopedAssetMutation Mutation(
+				FText::FromString(TEXT("BlueprintHelper Ensure Custom Event Signature")),
+				Blueprint);
+			FString CreateGraphError;
+			UEdGraph* NewGraph = FBlueprintHelperSignatureServiceLocalUtils::CreateCustomEventUbergraphPage(
+				Blueprint,
+				Request.GraphName,
+				CreateGraphError);
+			if (!NewGraph)
+			{
+				Mutation.Rollback();
+				return FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
+					TEXT("ensure_custom_event"),
+					TEXT("custom_event_graph_create_failed"),
+					EBlueprintHelperToolStage::Execute,
+					CreateGraphError.IsEmpty() ? TEXT("Failed to create target custom event graph.") : CreateGraphError,
+					TEXT("graph_name"));
+			}
+			Mutation.Modify(NewGraph);
+
+			FString CreateEventError;
+			UK2Node_CustomEvent* EventNode = FBlueprintHelperSignatureServiceLocalUtils::CreateCustomEventNode(
+				NewGraph,
+				Request.EventName,
+				RequestedPins,
+				CreateEventError);
+			if (!EventNode)
+			{
+				Mutation.Rollback();
+				return FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
+					TEXT("ensure_custom_event"),
+					TEXT("custom_event_create_failed"),
+					EBlueprintHelperToolStage::Execute,
+					CreateEventError.IsEmpty() ? TEXT("Failed to create custom event signature.") : CreateEventError,
+					TEXT("event_name"));
+			}
+
+			NewGraph->NotifyGraphChanged();
+			FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+			Mutation.Commit();
+
+			FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Applied(
+				TEXT("ensure_custom_event"),
+				FBlueprintHelperToolResultBuilder::GenerateTraceId());
 			FBlueprintHelperSignatureServiceLocalUtils::SetCustomEventTarget(Result, Request.AssetPath, Request.GraphName, Request.EventName);
 			Result.Data = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureResultData(false, TEXT("custom_event_result"), true);
-			FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("custom_event_result"), TEXT("exists"), false);
+			FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("custom_event_result"), TEXT("exists"), true);
 			FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("custom_event_result"), TEXT("signature_matches"), true);
-			FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultNumber(Result.Data, TEXT("custom_event_result"), TEXT("added_inputs"), 0);
+			FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultNumber(Result.Data, TEXT("custom_event_result"), TEXT("added_inputs"), RequestedPins.Num());
 			FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("custom_event_result"), TEXT("interface_path"), Request.InterfacePath);
 			FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("custom_event_result"), TEXT("interface_entry_kind"), Request.InterfaceEntryKind);
-			Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);
+			Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(true, true);
 			return Result;
 		}
 

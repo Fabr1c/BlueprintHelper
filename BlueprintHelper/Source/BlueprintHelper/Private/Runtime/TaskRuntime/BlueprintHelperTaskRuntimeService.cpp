@@ -1683,6 +1683,7 @@ public:
 	static bool TryBuildGraphWriteEnsureEntryLogicSpec(
 		const TSharedPtr<FJsonObject>& OpObject,
 		int32 OpIndex,
+		bool bHasSignatureDependency,
 		TSharedPtr<FJsonObject>& OutLogicSpec,
 		FBlueprintHelperToolError& OutError)
 	{
@@ -1736,6 +1737,11 @@ public:
 		EntryObject->SetStringField(TEXT("kind"), TEXT("custom_event"));
 		EntryObject->SetStringField(TEXT("name"), EntryName);
 		EntryObject->SetStringField(TEXT("id"), EntryId);
+		if (bHasSignatureDependency)
+		{
+			EntryObject->SetBoolField(TEXT("signature_dependency"), true);
+			EntryObject->SetStringField(TEXT("source"), TEXT("signature_dependency"));
+		}
 
 		TSharedRef<FJsonObject> LogicSpec = MakeShared<FJsonObject>();
 		const TSharedPtr<FJsonObject>* LogicSpecObjectPtr = nullptr;
@@ -1828,7 +1834,8 @@ public:
 
 		const TSharedPtr<FJsonObject> OpObject = AsJsonObjectIfObject((*OpsArray)[0]);
 		TSharedPtr<FJsonObject> LogicSpec;
-		if (!TryBuildGraphWriteEnsureEntryLogicSpec(OpObject, 0, LogicSpec, OutError))
+		const bool bHasSignatureDependency = ReadStepDependsOn(StepObject).Num() > 0;
+		if (!TryBuildGraphWriteEnsureEntryLogicSpec(OpObject, 0, bHasSignatureDependency, LogicSpec, OutError))
 		{
 			return false;
 		}

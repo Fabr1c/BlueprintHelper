@@ -10,16 +10,17 @@
 
 ---
 
-## 当前执行状态（2026-05-21）
+## 褰撳墠鎵ц鐘舵€侊紙2026-05-21锛?
+- [x] `FieldVariableActionCluster` 已实现成员变量 `UBlueprintVariableNodeSpawner` get/set 候选解析，并接入 NodeFragment emission；`get_property/set_property` 仍未完成。
+璺濈鏈熸湜宸窛锛歠irst-batch 褰撳墠涓嶆槸瀹屾暣鍙啓鑳藉姏锛屽彧瀹屾垚浜嗛鏋跺己鍒惰矾鐢卞拰鏃?fallback 鍒囨柇銆備笅涓€闃舵蹇呴』琛ョ湡瀹?provider 涓?fragment adapter锛屼笉鑳芥妸 `UnsupportedClusterMigration` 褰撳畬鎴愮姸鎬併€?
 
-- [x] `call` 已作为 `FunctionActionCluster` consumer 接入统一 action resolution 骨架。
-- [x] `get/set/get_property/set_property/op/construct/deconstruct/select` 已不再走旧 GraphStatementBuilder direct spawn fallback。
-- [x] 未迁移 provider 的 kind 统一返回 `UnsupportedClusterMigration`，用于阻止旧路径污染。
-- [ ] `FieldVariableActionCluster` 尚未实现 `UBlueprintFieldNodeSpawner` / `UBlueprintVariableNodeSpawner` 真实候选解析。
-- [ ] `GenericAssetStructControlActionCluster` 尚未实现 struct / select / control 的真实候选解析和 fragment adapter。
-- [ ] TS/Python schema 与编译链尚未在本轮补齐到所有 first-batch kind 的最终执行形态。
+## 2026-05-21 Runtime Smoke 同步
 
-距离期望差距：first-batch 当前不是完整可写能力，只完成了骨架强制路由和旧 fallback 切断。下一阶段必须补真实 provider 与 fragment adapter，不能把 `UnsupportedClusterMigration` 当完成状态。
+- [x] `FieldVariableActionCluster` 已实现成员变量 `get/set` 的 `UBlueprintVariableNodeSpawner` 候选解析。
+- [x] `FieldVariableAction` `get/set` 已接入 NodeFragment emission，并通过真实 Blueprint create / variable / graph execute / logic_json read-back smoke。
+- [x] 修复成员变量 `VarContext` 误传导致的 local variable scope 问题；成员变量 spawner 对齐 UE ActionDatabase，不传目标图作为 local context。
+
+距离期望差距：first-batch 仍未完成 `get_property/set_property/op/construct/deconstruct/select` 的完整 provider + adapter 覆盖；本次只关闭 FieldVariable `get/set` 真实运行面。
 
 ## Source Requirements
 
@@ -67,7 +68,7 @@ Cluster ownership:
 | Cluster | UE spawner family | AgentFace intents routed here |
 |---|---|---|
 | `FunctionActionCluster` | `UBlueprintFunctionNodeSpawner`, type-promotion operator spawners | `call`, `op`, function-shaped `convert`, function-shaped `schedule` |
-| `FieldVariableActionCluster` | `UBlueprintFieldNodeSpawner`, `UBlueprintVariableNodeSpawner`, `UBlueprintComponentNodeSpawner` | `get`, `set`, simple `get_property`, simple `set_property`, `component_ref` |
+- [x] `FieldVariableActionCluster` 已实现成员变量 `UBlueprintVariableNodeSpawner` get/set 候选解析，并接入 NodeFragment emission；`get_property/set_property` 仍未完成。
 | `EventDelegateActionCluster` | `UBlueprintEventNodeSpawner`, `UBlueprintBoundEventNodeSpawner`, `UAnimNotifyEventNodeSpawner`, `UBlueprintDelegateNodeSpawner`, `UBlueprintBoundNodeSpawner` | `event`, `component_bound_event`, `bind`, `unbind`, `assign`, `delegate_call` |
 | `GenericAssetStructControlActionCluster` | generic `UBlueprintNodeSpawner`, `UBlueprintAssetNodeSpawner`, struct / enum / generic registrar delegates | `construct`, `deconstruct`, `select`, `control`, `create`, `asset_action` |
 
@@ -93,10 +94,8 @@ get/set/op/construct/deconstruct/select/event/bind/create/schedule
 This keeps AgentFace fields compact while making lower-level GraphWrite responsibilities match UE NodeSpawner families instead of overlapping natural-language semantic groups.
 ## Spawner-Oriented Cluster Baseline
 
-本计划中的 `get` / `set` / `get_property` / `set_property` / `op` / `construct` / `deconstruct` / `select` 是 AgentFace 语义 intent，不再定义底层工具簇边界。
-
-底层能力必须按 UE `NodeSpawner` 家族组织：
-
+鏈鍒掍腑鐨?`get` / `set` / `get_property` / `set_property` / `op` / `construct` / `deconstruct` / `select` 鏄?AgentFace 璇箟 intent锛屼笉鍐嶅畾涔夊簳灞傚伐鍏风皣杈圭晫銆?
+搴曞眰鑳藉姏蹇呴』鎸?UE `NodeSpawner` 瀹舵棌缁勭粐锛?
 ```text
 AgentFace semantic intent
 -> SpawnerClusterResolver
@@ -107,73 +106,48 @@ AgentFace semantic intent
 -> Composer / Linker / Mutator
 ```
 
-`call` 不是统一 action resolution 的所有者；`call` 只是 `FunctionActionCluster` 的一个 consumer。`get` / `set` / `op` / `construct` 等 intent 不能通过 `call` 的局部实现兜底，而应复用同一套 `BlueprintActionResolutionCore`。
-
-首批 DataFlowCore 映射如下：
-
-| AgentFace kind | Spawner-Oriented Cluster | 说明 |
+`call` 涓嶆槸缁熶竴 action resolution 鐨勬墍鏈夎€咃紱`call` 鍙槸 `FunctionActionCluster` 鐨勪竴涓?consumer銆俙get` / `set` / `op` / `construct` 绛?intent 涓嶈兘閫氳繃 `call` 鐨勫眬閮ㄥ疄鐜板厹搴曪紝鑰屽簲澶嶇敤鍚屼竴濂?`BlueprintActionResolutionCore`銆?
+棣栨壒 DataFlowCore 鏄犲皠濡備笅锛?
+| AgentFace kind | Spawner-Oriented Cluster | 璇存槑 |
 |---|---|---|
-| `call` | `FunctionActionCluster` | 普通 callable/action，作为共享 resolver 的 consumer |
-| `op` | `FunctionActionCluster` | operator 通过 typed operands 约束 function/type-promotion spawner |
-| `get` | `FieldVariableActionCluster` | 变量、字段、组件引用读取 |
-| `set` | `FieldVariableActionCluster` | 变量、字段写入 |
-| `get_property` | `FieldVariableActionCluster` | 简单 property path；复杂 path 可组合 struct/generic fragment |
-| `set_property` | `FieldVariableActionCluster` | 简单 property write；复杂 path 可组合 struct/generic fragment |
+| `call` | `FunctionActionCluster` | 鏅€?callable/action锛屼綔涓哄叡浜?resolver 鐨?consumer |
+| `op` | `FunctionActionCluster` | operator 閫氳繃 typed operands 绾︽潫 function/type-promotion spawner |
+| `get` | `FieldVariableActionCluster` | 鍙橀噺銆佸瓧娈点€佺粍浠跺紩鐢ㄨ鍙?|
+| `set` | `FieldVariableActionCluster` | 鍙橀噺銆佸瓧娈靛啓鍏?|
+| `get_property` | `FieldVariableActionCluster` | 绠€鍗?property path锛涘鏉?path 鍙粍鍚?struct/generic fragment |
+| `set_property` | `FieldVariableActionCluster` | 绠€鍗?property write锛涘鏉?path 鍙粍鍚?struct/generic fragment |
 | `construct` | `GenericAssetStructControlActionCluster` | Make Struct / container / generic construct action |
 | `deconstruct` | `GenericAssetStructControlActionCluster` | Break Struct / container / generic deconstruct action |
-| `select` | `GenericAssetStructControlActionCluster` | Select 类 generic data-flow action |
+| `select` | `GenericAssetStructControlActionCluster` | Select 绫?generic data-flow action |
 
-`event`、`component_bound_event`、`bind`、`create`、`convert`、`schedule`、`control` 不属于本批完整实现范围，但它们同样必须进入 Spawner-Oriented Cluster，而不是新增自然语义工具簇或旧 handler fallback。
-
-禁止路径：
-
-1. 不允许恢复 `NodeHandler` / parsed-node fallback。
-2. 不允许以 `FindFunctionByName()` 作为 action resolution 兜底。
-3. 不允许因为某个 `kind` 已经存在局部实现，就绕开 `SpawnerClusterResolver`。
-4. 不允许保留旧 AgentFace aliases 作为隐藏兼容路径；旧字段应直接报错或在 schema 层移除。
-
+`event`銆乣component_bound_event`銆乣bind`銆乣create`銆乣convert`銆乣schedule`銆乣control` 涓嶅睘浜庢湰鎵瑰畬鏁村疄鐜拌寖鍥达紝浣嗗畠浠悓鏍峰繀椤昏繘鍏?Spawner-Oriented Cluster锛岃€屼笉鏄柊澧炶嚜鐒惰涔夊伐鍏风皣鎴栨棫 handler fallback銆?
+绂佹璺緞锛?
+1. 涓嶅厑璁告仮澶?`NodeHandler` / parsed-node fallback銆?2. 涓嶅厑璁镐互 `FindFunctionByName()` 浣滀负 action resolution 鍏滃簳銆?3. 涓嶅厑璁稿洜涓烘煇涓?`kind` 宸茬粡瀛樺湪灞€閮ㄥ疄鐜帮紝灏辩粫寮€ `SpawnerClusterResolver`銆?4. 涓嶅厑璁镐繚鐣欐棫 AgentFace aliases 浣滀负闅愯棌鍏煎璺緞锛涙棫瀛楁搴旂洿鎺ユ姤閿欐垨鍦?schema 灞傜Щ闄ゃ€?
 ## P0 Architecture Correction Before First-Batch Implementation
 
-第一批数据流实现前必须先做 P0 架构纠偏。原因是当前代码仍存在旧 GraphWrite parsed-node / NodeHandler 兜底路径。如果不先断开，后续新增 `get/set_property/op/construct/deconstruct/select` 会继续出现“语义字段已经设计，但 UE 节点创建仍绕回旧 NodeHandler”的污染。
+绗竴鎵规暟鎹祦瀹炵幇鍓嶅繀椤诲厛鍋?P0 鏋舵瀯绾犲亸銆傚師鍥犳槸褰撳墠浠ｇ爜浠嶅瓨鍦ㄦ棫 GraphWrite parsed-node / NodeHandler 鍏滃簳璺緞銆傚鏋滀笉鍏堟柇寮€锛屽悗缁柊澧?`get/set_property/op/construct/deconstruct/select` 浼氱户缁嚭鐜扳€滆涔夊瓧娈靛凡缁忚璁★紝浣?UE 鑺傜偣鍒涘缓浠嶇粫鍥炴棫 NodeHandler鈥濈殑姹℃煋銆?
+P0 鐩爣锛?
+1. 瀹屽叏鏂紑鎵€鏈夋棫瀹炵幇鍏滃簳銆?2. 鐩存帴绉婚櫎鏃?handler / old node creation path锛屼笉淇濈暀鍙皟鐢?deprecated fallback銆?3. 灏嗘棫瀹炵幇鏂紑鍚庣己澶辩殑閾捐矾琛ラ綈鍒版枃妗ｅ畾涔夌殑澶氱皣鏋舵瀯锛欰gentFace / BlueprintLogicSpec / SemanticIR / Resolver / Pattern Registry / NodeFragment / Composer-Linker / Mutator銆?4. 閫氳繃 NodeFragment 閲嶈矾鐢卞埌鏂板疄鐜扮皣锛岃€屼笉鏄妸鏃?NodeHandler 鍖呬竴灞傜户缁皟鐢ㄣ€?5. 瑙ｆ瀽灞傚繀椤绘敞鍏ュ埌鏂扮绾匡細浠讳綍鏂板鑳藉姏閮藉厛杩涘叆 SemanticIR parser / resolver锛屽啀杩涘叆 FragmentDAG銆?
+鏃у疄鐜板鐞嗗師鍒欙細
 
-P0 目标：
-
-1. 完全断开所有旧实现兜底。
-2. 直接移除旧 handler / old node creation path，不保留可调用 deprecated fallback。
-3. 将旧实现断开后缺失的链路补齐到文档定义的多簇架构：AgentFace / BlueprintLogicSpec / SemanticIR / Resolver / Pattern Registry / NodeFragment / Composer-Linker / Mutator。
-4. 通过 NodeFragment 重路由到新实现簇，而不是把旧 NodeHandler 包一层继续调用。
-5. 解析层必须注入到新管线：任何新增能力都先进入 SemanticIR parser / resolver，再进入 FragmentDAG。
-
-旧实现处理原则：
-
-- `NodeHandlers` / `OperationHandlers` 在 P0 中直接删除源码文件和 build 引用。
-- 不允许保留 deprecated handler、hidden fallback、wrapper fallback 或旧 registry 查询。
-- 如果发现某个当前能力只存在于旧 handler 中，不能恢复 fallback；必须按新架构补一个 Pattern / FragmentBuilder / Mutator 路径。
-
-新增能力标准接入步骤：
-
+- `NodeHandlers` / `OperationHandlers` 鍦?P0 涓洿鎺ュ垹闄ゆ簮鐮佹枃浠跺拰 build 寮曠敤銆?- 涓嶅厑璁镐繚鐣?deprecated handler銆乭idden fallback銆亀rapper fallback 鎴栨棫 registry 鏌ヨ銆?- 濡傛灉鍙戠幇鏌愪釜褰撳墠鑳藉姏鍙瓨鍦ㄤ簬鏃?handler 涓紝涓嶈兘鎭㈠ fallback锛涘繀椤绘寜鏂版灦鏋勮ˉ涓€涓?Pattern / FragmentBuilder / Mutator 璺緞銆?
+鏂板鑳藉姏鏍囧噯鎺ュ叆姝ラ锛?
 ```text
-1. AgentFace schema / docs 定义 canonical semantic shape
-2. TS/Python compiler 只保留 canonical shape，不做旧字段 normalization
-3. SemanticIR parser 解析 kind 和字段
-4. Semantic Resolver 解析 scope / symbol / target / type / candidates
-5. Pattern Registry 根据 semantic kind + typed context 选择 builder
-6. NodeFragment Builder 生成 fragment
-7. FragmentDAG Builder 建 data / exec edge
-8. Graph Composer / Linker 消费 edge 并连 pin
-9. UE Graph Mutator 创建 / 修改 UK2Node
-10. Review evidence / DebugBundle 消费同一份 semantic + fragment evidence
-11. ReadContext / LogicFlow 输出同一套 canonical semantic 信息
+1. AgentFace schema / docs 瀹氫箟 canonical semantic shape
+2. TS/Python compiler 鍙繚鐣?canonical shape锛屼笉鍋氭棫瀛楁 normalization
+3. SemanticIR parser 瑙ｆ瀽 kind 鍜屽瓧娈?4. Semantic Resolver 瑙ｆ瀽 scope / symbol / target / type / candidates
+5. Pattern Registry 鏍规嵁 semantic kind + typed context 閫夋嫨 builder
+6. NodeFragment Builder 鐢熸垚 fragment
+7. FragmentDAG Builder 寤?data / exec edge
+8. Graph Composer / Linker 娑堣垂 edge 骞惰繛 pin
+9. UE Graph Mutator 鍒涘缓 / 淇敼 UK2Node
+10. Review evidence / DebugBundle 娑堣垂鍚屼竴浠?semantic + fragment evidence
+11. ReadContext / LogicFlow 杈撳嚭鍚屼竴濂?canonical semantic 淇℃伅
 ```
 
-不允许：
+涓嶅厑璁革細
 
-- 新增 AgentFace 字段后直接在 compiler 中生成 UE 节点名。
-- 新增能力时把旧 NodeHandler 包装成 Pattern。
-- 以 `if kind == X then NewObject<UK2Node_X>` 的方式绕过 Pattern Registry / NodeFragment。
-- 在解析层接受旧字段作为 alias。
-- 为通过测试保留 hidden fallback。
-
+- 鏂板 AgentFace 瀛楁鍚庣洿鎺ュ湪 compiler 涓敓鎴?UE 鑺傜偣鍚嶃€?- 鏂板鑳藉姏鏃舵妸鏃?NodeHandler 鍖呰鎴?Pattern銆?- 浠?`if kind == X then NewObject<UK2Node_X>` 鐨勬柟寮忕粫杩?Pattern Registry / NodeFragment銆?- 鍦ㄨВ鏋愬眰鎺ュ彈鏃у瓧娈典綔涓?alias銆?- 涓洪€氳繃娴嬭瘯淇濈暀 hidden fallback銆?
 ## Canonical First-Batch Surface
 
 Graph body data-flow expression kinds:
@@ -505,7 +479,7 @@ Expected result:
 PASS
 ```
 
-If the repository test runner uses a different script, run the package’s listed test script from `package.json` and record the exact command in `BlueprintHelper_DataFlowCore_AgentFaceFields_20260520_CN.md`.
+If the repository test runner uses a different script, run the package鈥檚 listed test script from `package.json` and record the exact command in `BlueprintHelper_DataFlowCore_AgentFaceFields_20260520_CN.md`.
 
 ## Task 2: Python Compiler Parity
 
@@ -563,7 +537,7 @@ Expected result:
 passed
 ```
 
-If no pytest suite exists, run the repository’s Python compiler smoke script and record the exact command in the data-flow fields document.
+If no pytest suite exists, run the repository鈥檚 Python compiler smoke script and record the exact command in the data-flow fields document.
 
 ## Task 3: SemanticIR Model for Canonical Data Flow
 
@@ -1024,7 +998,7 @@ Mark first-batch Graph body data-flow as implemented only after TS, Python, UE t
 If any feature remains partial, record the exact gap:
 
 ```text
-距离期望差距：...
+璺濈鏈熸湜宸窛锛?..
 ```
 
 - [ ] **Step 2: Update data-flow field document**
@@ -1032,16 +1006,13 @@ If any feature remains partial, record the exact gap:
 Add a section:
 
 ```markdown
-## 实现状态
-```
+## 瀹炵幇鐘舵€?```
 
 Use:
 
 ```text
-[x] 已完成
-[o] 部分完成
-[ ] 未完成
-```
+[x] 宸插畬鎴?[o] 閮ㄥ垎瀹屾垚
+[ ] 鏈畬鎴?```
 
 Do not mark construct/deconstruct two-stage query complete until preview returns candidate field lists without writing assets.
 
@@ -1050,10 +1021,8 @@ Do not mark construct/deconstruct two-stage query complete until preview returns
 In `BlueprintHelper_RemoveLegacyCallFunctionName_ImplementationPlan_20260520_CN.md`, add:
 
 ```markdown
-## 状态
-
-本计划已并入 `BlueprintHelper_DataFlowCore_FirstBatch_ImplementationPlan_20260521_CN.md`。
-```
+## 鐘舵€?
+鏈鍒掑凡骞跺叆 `BlueprintHelper_DataFlowCore_FirstBatch_ImplementationPlan_20260521_CN.md`銆?```
 
 Only do this after the broader cleanup truly covers the old `call_function/name` fields.
 
@@ -1065,7 +1034,7 @@ Only do this after the broader cleanup truly covers the old `call_function/name`
 
 - [ ] **Step 1: Compile plugin**
 
-Run the project’s standard UE build command for BlueprintHelper.
+Run the project鈥檚 standard UE build command for BlueprintHelper.
 
 Expected result:
 
@@ -1162,19 +1131,14 @@ Expected result:
 
 - [ ] **Step 1: Prepare manual commit message**
 
-Use the user’s required format:
+Use the user鈥檚 required format:
 
 ```text
-新增内容：
-1. 实现第一批 Graph body 数据流语义字段
-2. 增加 construct/deconstruct 两阶段字段发现
+鏂板鍐呭锛?1. 瀹炵幇绗竴鎵?Graph body 鏁版嵁娴佽涔夊瓧娈?2. 澧炲姞 construct/deconstruct 涓ら樁娈靛瓧娈靛彂鐜?
+淇鍐呭锛?1. 绉婚櫎鏃?NodeHandler / OperationHandler 鍥為€€璺緞锛岄伩鍏嶆柊鏃?GraphWrite 鍒涘缓璺緞姹℃煋
 
-修复内容：
-1. 移除旧 NodeHandler / OperationHandler 回退路径，避免新旧 GraphWrite 创建路径污染
-
-变更需求：
-1. 移除 Graph body 旧字段 call_function/set_member_variable/ref/compare/make_struct 的实现路径
-```
+鍙樻洿闇€姹傦細
+1. 绉婚櫎 Graph body 鏃у瓧娈?call_function/set_member_variable/ref/compare/make_struct 鐨勫疄鐜拌矾寰?```
 
 - [ ] **Step 2: Provide manual git commands only**
 

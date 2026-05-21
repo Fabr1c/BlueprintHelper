@@ -949,6 +949,7 @@ FString FBlueprintHelperAppendBlueprintGraphService::BuildSemanticGraphWritePayl
 	Payload.TargetAssetPath = Request.AssetPath;
 	Payload.TargetGraph = Request.GraphName;
 	Payload.Mode = TEXT("append");
+	Payload.bDryRun = Request.bDryRun;
 	Payload.bReconstructExistingNodes = Request.bReuseExistingEntries;
 	Payload.LogicSpec = Request.LogicSpec;
 	return Payload.ToJsonString();
