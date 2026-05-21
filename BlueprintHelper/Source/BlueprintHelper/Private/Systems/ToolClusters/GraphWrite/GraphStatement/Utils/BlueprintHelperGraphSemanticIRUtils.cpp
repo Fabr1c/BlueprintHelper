@@ -77,6 +77,7 @@ EBlueprintHelperGraphStatementKind FBlueprintHelperGraphSemanticIRUtils::ParseSt
 {
 	if (Kind.Equals(TEXT("call"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Call;
 	if (Kind.Equals(TEXT("set"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Set;
+	if (Kind.Equals(TEXT("set_property"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::SetProperty;
 	if (Kind.Equals(TEXT("branch"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Branch;
 	if (Kind.Equals(TEXT("let"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Let;
 	if (Kind.Equals(TEXT("return"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Return;
@@ -87,11 +88,11 @@ EBlueprintHelperGraphExpressionKind FBlueprintHelperGraphSemanticIRUtils::ParseE
 	if (Kind.Equals(TEXT("literal"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphExpressionKind::Literal;
 	if (Kind.Equals(TEXT("get"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphExpressionKind::Get;
 	if (Kind.Equals(TEXT("get_property"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphExpressionKind::GetProperty;
-	if (Kind.Equals(TEXT("ref"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphExpressionKind::Ref;
 	if (Kind.Equals(TEXT("call"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphExpressionKind::Call;
-	if (Kind.Equals(TEXT("compare"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphExpressionKind::Compare;
+	if (Kind.Equals(TEXT("op"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphExpressionKind::Op;
+	if (Kind.Equals(TEXT("construct"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphExpressionKind::Construct;
+	if (Kind.Equals(TEXT("deconstruct"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphExpressionKind::Deconstruct;
 	if (Kind.Equals(TEXT("select"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphExpressionKind::Select;
-	if (Kind.Equals(TEXT("make_struct"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphExpressionKind::MakeStruct;
 	return EBlueprintHelperGraphExpressionKind::Unknown;
 }
 void FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(
@@ -236,6 +237,8 @@ FString FBlueprintHelperGraphSemanticIRUtils::StatementPatternName(EBlueprintHel
 		return TEXT("call");
 	case EBlueprintHelperGraphStatementKind::Set:
 		return TEXT("set");
+	case EBlueprintHelperGraphStatementKind::SetProperty:
+		return TEXT("set_property");
 	case EBlueprintHelperGraphStatementKind::Branch:
 		return TEXT("branch");
 	case EBlueprintHelperGraphStatementKind::Let:
@@ -256,16 +259,16 @@ FString FBlueprintHelperGraphSemanticIRUtils::ExpressionPatternName(EBlueprintHe
 		return TEXT("get");
 	case EBlueprintHelperGraphExpressionKind::GetProperty:
 		return TEXT("get_property");
-	case EBlueprintHelperGraphExpressionKind::Ref:
-		return TEXT("ref");
 	case EBlueprintHelperGraphExpressionKind::Call:
 		return TEXT("call");
-	case EBlueprintHelperGraphExpressionKind::Compare:
-		return TEXT("compare");
+	case EBlueprintHelperGraphExpressionKind::Op:
+		return TEXT("op");
+	case EBlueprintHelperGraphExpressionKind::Construct:
+		return TEXT("construct");
+	case EBlueprintHelperGraphExpressionKind::Deconstruct:
+		return TEXT("deconstruct");
 	case EBlueprintHelperGraphExpressionKind::Select:
 		return TEXT("select");
-	case EBlueprintHelperGraphExpressionKind::MakeStruct:
-		return TEXT("make_struct");
 	default:
 		return TEXT("unknown");
 	}
@@ -286,14 +289,6 @@ FBlueprintHelperGraphResolvedTarget FBlueprintHelperGraphSemanticIRUtils::Resolv
 	FString Owner;
 	FString Remainder;
 	const bool bHasOwner = Target.Raw.Split(TEXT("."), &Owner, &Remainder, ESearchCase::CaseSensitive, ESearchDir::FromStart);
-
-	if (ExpressionKind == EBlueprintHelperGraphExpressionKind::Ref)
-	{
-		Target.Kind = EBlueprintHelperGraphTargetKind::Temporary;
-		Target.Member = Target.Raw;
-		Target.bVerifiedByContext = true;
-		return Target;
-	}
 
 	if (StatementKind == EBlueprintHelperGraphStatementKind::Call
 		|| ExpressionKind == EBlueprintHelperGraphExpressionKind::Call)
@@ -329,6 +324,7 @@ FBlueprintHelperGraphResolvedTarget FBlueprintHelperGraphSemanticIRUtils::Resolv
 	}
 
 	if (ExpressionKind == EBlueprintHelperGraphExpressionKind::GetProperty
+		|| StatementKind == EBlueprintHelperGraphStatementKind::SetProperty
 		|| (bHasOwner && (Context.IsComponent(Owner) || Context.IsVariable(Owner)))
 		|| (StatementKind == EBlueprintHelperGraphStatementKind::Set && bHasOwner)
 		|| (ExpressionKind == EBlueprintHelperGraphExpressionKind::Get && bHasOwner))

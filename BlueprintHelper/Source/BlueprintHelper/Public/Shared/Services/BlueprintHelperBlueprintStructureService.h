@@ -108,19 +108,19 @@ public:
 	/** 列出蓝图中所有事件分发器。 */
 	FBlueprintHelperListDispatchersResult ListEventDispatchers(const FBlueprintHelperGraphTarget& Target) const;
 
-	/** 添加成员变量（委托给 OperationHandler）。 */
+	/** 添加成员变量（委托给 service implementation）。 */
 	bool AddVariable(const FBlueprintHelperGraphTarget& Target, const TSharedPtr<class FJsonObject>& Params, FString& OutError) const;
 
-	/** 删除成员变量（委托给 OperationHandler）。 */
+	/** 删除成员变量（委托给 service implementation）。 */
 	bool RemoveVariable(const FBlueprintHelperGraphTarget& Target, const FString& VarName, FString& OutError) const;
 
-	/** 添加函数图表（委托给 OperationHandler）。 */
+	/** 添加函数图表（委托给 service implementation）。 */
 	bool AddGraph(const FBlueprintHelperGraphTarget& Target, const TSharedPtr<class FJsonObject>& Params, FString& OutError) const;
 
-	/** 删除图表（委托给 OperationHandler）。 */
+	/** 删除图表（委托给 service implementation）。 */
 	bool RemoveGraph(const FBlueprintHelperGraphTarget& Target, const FString& GraphName, FString& OutError) const;
 
-	/** 添加事件分发器（委托给 OperationHandler）。 */
+	/** 添加事件分发器（委托给 service implementation）。 */
 	bool AddEventDispatcher(const FBlueprintHelperGraphTarget& Target, const TSharedPtr<class FJsonObject>& Params, FString& OutError) const;
 
 	/** 删除指定图表中的节点。 */

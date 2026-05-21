@@ -23,8 +23,8 @@ export const graphWriteAppendTaskSpecFixture = {
           schema: 'BlueprintLogicSpec.v1',
           statements: [
             {
-              kind: 'call_function',
-              name: 'SetActorEnableCollision',
+              kind: 'call',
+              target: 'SetActorEnableCollision',
               args: {
                 bNewActorEnableCollision: {
                   kind: 'literal',
@@ -34,8 +34,8 @@ export const graphWriteAppendTaskSpecFixture = {
               },
             },
             {
-              kind: 'set_member_variable',
-              name: 'bGateUnlocked',
+              kind: 'set',
+              target: 'bGateUnlocked',
               value: {
                 kind: 'literal',
                 value_type: 'bool',
@@ -43,8 +43,8 @@ export const graphWriteAppendTaskSpecFixture = {
               },
             },
             {
-              kind: 'call_function',
-              name: 'PrintString',
+              kind: 'call',
+              target: 'PrintString',
               args: {
                 InString: {
                   kind: 'literal',
@@ -122,8 +122,8 @@ export const graphWriteAppendExpectedTaskPlanFixture = {
               schema: 'BlueprintLogicSpec.v1',
               statements: [
                 {
-                  kind: 'call_function',
-                  name: 'SetActorEnableCollision',
+                  kind: 'call',
+                  target: 'SetActorEnableCollision',
                   args: {
                     bNewActorEnableCollision: {
                       kind: 'literal',
@@ -133,8 +133,8 @@ export const graphWriteAppendExpectedTaskPlanFixture = {
                   },
                 },
                 {
-                  kind: 'set_member_variable',
-                  name: 'bGateUnlocked',
+                  kind: 'set',
+                  target: 'bGateUnlocked',
                   value: {
                     kind: 'literal',
                     value_type: 'bool',
@@ -142,8 +142,8 @@ export const graphWriteAppendExpectedTaskPlanFixture = {
                   },
                 },
                 {
-                  kind: 'call_function',
-                  name: 'PrintString',
+                  kind: 'call',
+                  target: 'PrintString',
                   args: {
                     InString: {
                       kind: 'literal',
@@ -198,8 +198,8 @@ export const graphWriteReplaceTaskSpecFixture = {
         schema: 'BlueprintLogicSpec.v1',
         statements: [
           {
-            kind: 'call_function',
-            name: 'PrintString',
+            kind: 'call',
+            target: 'PrintString',
             args: {
               InString: {
                 kind: 'literal',
@@ -717,8 +717,8 @@ export const graphWriteStructuredIrTaskPlanFixture = {
               schema: 'BlueprintLogicSpec.v1',
               statements: [
                 {
-                  kind: 'call_function',
-                  name: 'PrintString',
+                  kind: 'call',
+                  target: 'PrintString',
                   args: {
                     InString: {
                       kind: 'literal',

@@ -10,13 +10,30 @@ struct FParsedNode;
 class BLUEPRINTHELPER_API FBlueprintHelperStructConstructionResolver
 {
 public:
+	static UScriptStruct* ResolveStructType(const FString& TypeName);
+	static void CollectStructFieldTypes(
+		const UScriptStruct* TargetStruct,
+		TMap<FString, FString>& OutFieldTypes);
+
 	static UK2Node* SpawnMakeStructNode(
 		UEdGraph* TargetGraph,
 		const FParsedNode& NodeData,
 		UScriptStruct* TargetStruct,
 		FString& OutError);
 
+	static UK2Node* SpawnBreakStructNode(
+		UEdGraph* TargetGraph,
+		const FParsedNode& NodeData,
+		UScriptStruct* TargetStruct,
+		FString& OutError);
+
 private:
+	static UK2Node* SpawnDirectMakeStructNode(
+		UEdGraph* TargetGraph,
+		const FParsedNode& NodeData,
+		UScriptStruct* TargetStruct,
+		FString& OutError);
+
 	static UK2Node* SpawnNativeMakeFunctionNode(
 		UEdGraph* TargetGraph,
 		const FParsedNode& NodeData,

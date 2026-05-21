@@ -594,8 +594,8 @@ def _composite_interface_implementation_body(
         return {
             "statements": [
                 {
-                    "kind": "call_function",
-                    "name": implementation["call"],
+                    "kind": "call",
+                    "target": implementation["call"],
                     "args": implementation.get("args"),
                 },
             ],
@@ -1443,23 +1443,82 @@ def _compile_merge_graph_write_ops(behavior: Dict[str, Any]) -> List[Dict[str, A
     return ops
 
 
+SUPPORTED_GRAPH_BODY_STATEMENT_KINDS = {"call", "set", "set_property", "let"}
+SUPPORTED_GRAPH_BODY_EXPRESSION_KINDS = {
+    "literal",
+    "get",
+    "get_property",
+    "call",
+    "op",
+    "construct",
+    "deconstruct",
+    "select",
+}
+
+
 def _validate_supported_statements(statements: List[Dict[str, Any]], path: str) -> None:
     for statement_index, statement in enumerate(statements):
-        if statement.get("kind") not in {"call", "set", "branch", "let", "return", "call_function", "set_member_variable"}:
+        kind = statement.get("kind")
+        statement_path = f"{path}[{statement_index}]"
+        if kind not in SUPPORTED_GRAPH_BODY_STATEMENT_KINDS:
             raise TaskSpecCompileError(
                 "unsupported_statement_kind",
-                "Only call and set statements are supported in this GraphWrite slice.",
+                "Unsupported GraphWrite statement kind.",
                 [{
                     "code": "unsupported_statement_kind",
-                    "path": f"{path}[{statement_index}].kind",
-                    "message": "Use call, set, branch, let, or return, or split this work into a later GraphWrite capability.",
+                    "path": f"{statement_path}.kind",
+                    "message": "Use call, set, set_property, or let, or split this work into a later GraphWrite capability.",
                 }],
             )
-        if statement.get("kind") == "branch":
-            then_statements = statement.get("then") if isinstance(statement.get("then"), list) else []
-            else_statements = statement.get("else") if isinstance(statement.get("else"), list) else []
-            _validate_supported_statements(then_statements, f"{path}[{statement_index}].then")
-            _validate_supported_statements(else_statements, f"{path}[{statement_index}].else")
+        if kind == "call":
+            _validate_expression_map(statement.get("args"), f"{statement_path}.args")
+        elif kind in {"let", "set", "set_property"}:
+            _validate_supported_expression(statement.get("value"), f"{statement_path}.value")
+
+
+def _validate_expression_map(value: Any, path: str) -> None:
+    if not isinstance(value, dict):
+        return
+    for key, expression in value.items():
+        _validate_supported_expression(expression, f"{path}.{key}")
+
+
+def _validate_expression_list(value: Any, path: str) -> None:
+    if not isinstance(value, list):
+        return
+    for index, expression in enumerate(value):
+        _validate_supported_expression(expression, f"{path}[{index}]")
+
+
+def _validate_supported_expression(expression: Any, path: str) -> None:
+    if not isinstance(expression, dict):
+        return
+    kind = expression.get("kind") if isinstance(expression.get("kind"), str) else "literal"
+    if kind not in SUPPORTED_GRAPH_BODY_EXPRESSION_KINDS:
+        raise TaskSpecCompileError(
+            "unsupported_expression_kind",
+            "Unsupported GraphWrite expression kind.",
+            [{
+                "code": "unsupported_expression_kind",
+                "path": f"{path}.kind",
+                "message": "Use literal, get, get_property, call, op, construct, deconstruct, or select.",
+            }],
+        )
+    if kind in {"call", "op", "construct", "deconstruct"}:
+        _validate_expression_map(expression.get("args"), f"{path}.args")
+    if kind == "op":
+        if "left" in expression:
+            _validate_supported_expression(expression.get("left"), f"{path}.left")
+        if "right" in expression:
+            _validate_supported_expression(expression.get("right"), f"{path}.right")
+    if kind == "deconstruct":
+        if "source" in expression:
+            _validate_supported_expression(expression.get("source"), f"{path}.source")
+        if "value" in expression:
+            _validate_supported_expression(expression.get("value"), f"{path}.value")
+    if kind == "select":
+        _validate_supported_expression(expression.get("condition"), f"{path}.condition")
+        _validate_expression_list(expression.get("options"), f"{path}.options")
 
 
 def _compile_logic_body_to_import_payload(
@@ -1493,10 +1552,7 @@ def _clone_logic_expression_with_compiled_ids(expression: Any, node_id: str) -> 
     out = dict(expression)
     out["id"] = node_id
 
-    if kind == "compare":
-        out["left"] = _clone_logic_expression_with_compiled_ids(expression.get("left"), f"{node_id}_left")
-        out["right"] = _clone_logic_expression_with_compiled_ids(expression.get("right"), f"{node_id}_right")
-    elif kind == "select":
+    if kind == "select":
         out["condition"] = _clone_logic_expression_with_compiled_ids(expression.get("condition"), f"{node_id}_index")
         options = expression.get("options")
         if isinstance(options, list):
@@ -1504,11 +1560,31 @@ def _clone_logic_expression_with_compiled_ids(expression: Any, node_id: str) -> 
                 _clone_logic_expression_with_compiled_ids(option, f"{node_id}_option_{index}")
                 for index, option in enumerate(options)
             ]
-    elif kind == "make_struct" and isinstance(expression.get("args"), dict):
+    elif kind == "op":
+        if "left" in expression:
+            out["left"] = _clone_logic_expression_with_compiled_ids(expression.get("left"), f"{node_id}_left")
+        if "right" in expression:
+            out["right"] = _clone_logic_expression_with_compiled_ids(expression.get("right"), f"{node_id}_right")
+        if isinstance(expression.get("args"), dict):
+            out["args"] = {
+                arg_name: _clone_logic_expression_with_compiled_ids(arg_value, f"{node_id}_{_to_id_segment(str(arg_name))}")
+                for arg_name, arg_value in expression["args"].items()
+            }
+    elif kind == "construct" and isinstance(expression.get("args"), dict):
         out["args"] = {
             arg_name: _clone_logic_expression_with_compiled_ids(arg_value, f"{node_id}_{_to_id_segment(str(arg_name))}")
             for arg_name, arg_value in expression["args"].items()
         }
+    elif kind == "deconstruct":
+        if "source" in expression:
+            out["source"] = _clone_logic_expression_with_compiled_ids(expression.get("source"), f"{node_id}_source")
+        if "value" in expression:
+            out["value"] = _clone_logic_expression_with_compiled_ids(expression.get("value"), f"{node_id}_value")
+        if isinstance(expression.get("args"), dict):
+            out["args"] = {
+                arg_name: _clone_logic_expression_with_compiled_ids(arg_value, f"{node_id}_{_to_id_segment(str(arg_name))}")
+                for arg_name, arg_value in expression["args"].items()
+            }
     elif isinstance(expression.get("args"), dict):
         out["args"] = {
             arg_name: _clone_logic_expression_with_compiled_ids(arg_value, f"{node_id}_{_to_id_segment(str(arg_name))}")
@@ -1522,28 +1598,10 @@ def _clone_logic_statement_with_compiled_ids(statement: Dict[str, Any], statemen
     out = dict(statement)
     out["id"] = statement_id
     kind = statement.get("kind")
-    if kind == "call_function":
-        out["kind"] = "call"
-        if "target" not in out:
-            out["target"] = statement.get("name")
-        out.pop("name", None)
-        kind = "call"
-    elif kind == "set_member_variable":
-        out["kind"] = "set"
-        if "target" not in out:
-            out["target"] = statement.get("name")
-        out.pop("name", None)
-        kind = "set"
 
-    if kind == "branch":
-        out["condition"] = _clone_logic_expression_with_compiled_ids(statement.get("condition"), f"{statement_id}_condition")
-        then_statements = statement.get("then") if isinstance(statement.get("then"), list) else []
-        else_statements = statement.get("else") if isinstance(statement.get("else"), list) else []
-        out["then"] = _clone_logic_statement_sequence_with_compiled_ids(then_statements, f"{statement_id}_then")
-        out["else"] = _clone_logic_statement_sequence_with_compiled_ids(else_statements, f"{statement_id}_else")
-    elif kind == "let":
+    if kind == "let":
         out["value"] = _clone_logic_expression_with_compiled_ids(statement.get("value"), f"{statement_id}_value")
-    elif kind == "set":
+    elif kind in {"set", "set_property"}:
         out["value"] = _clone_logic_expression_with_compiled_ids(statement.get("value"), f"{statement_id}_value")
     elif kind == "call" and isinstance(statement.get("args"), dict):
         out["args"] = {
@@ -1587,9 +1645,8 @@ def _compile_statement_sequence(statements: List[Dict[str, Any]], id_prefix: str
 
 
 def _compile_statement_flow(statement: Dict[str, Any], node_id: str, path: str, context: Dict[str, Any]) -> Dict[str, Any]:
-    if statement.get("kind") == "branch":
-        return _compile_branch_statement_flow(statement, node_id, path, context)
-    if statement.get("kind") == "let":
+    kind = statement.get("kind")
+    if kind == "let":
         name = _required_string(statement, "name", f"{path}.name")
         value_flow = _compile_value_expression(statement.get("value"), f"{node_id}_value", f"{path}.value", context)
         context["symbols"][name.lower()] = {
@@ -1597,12 +1654,10 @@ def _compile_statement_flow(statement: Dict[str, Any], node_id: str, path: str, 
             "default_value": value_flow.get("default_value"),
         }
         return {"nodes": value_flow["nodes"], "links": value_flow["links"], "exits": [], "preserve_previous_exits": True}
-    if statement.get("kind") == "return":
-        return {"nodes": [], "links": [], "exits": []}
     node = _compile_statement_node(statement, node_id, path)
     nodes: List[Dict[str, Any]] = [node]
     links: List[Dict[str, Any]] = []
-    if statement.get("kind") in {"call", "call_function"}:
+    if kind == "call":
         input_values: Dict[str, Any] = {}
         args = statement.get("args")
         if isinstance(args, dict):
@@ -1615,13 +1670,13 @@ def _compile_statement_flow(statement: Dict[str, Any], node_id: str, path: str, 
                 else:
                     input_values[arg_name] = arg_flow.get("default_value")
         node["inputs"] = input_values
-    if statement.get("kind") in {"set", "set_member_variable"}:
-        variable_name = _required_string(statement, "target" if statement.get("kind") == "set" else "name", f"{path}.{'target' if statement.get('kind') == 'set' else 'name'}")
+    if kind in {"set", "set_property"}:
+        value_pin_name = _required_string(statement, "target", f"{path}.target") if kind == "set" else "value"
         value_flow = _compile_value_expression(statement.get("value"), f"{node_id}_value", f"{path}.value", context)
         nodes.extend(value_flow["nodes"])
         links.extend(value_flow["links"])
         if value_flow.get("output"):
-            links.append({"kind": "data", "from": value_flow["output"], "to": f"{node_id}.{variable_name}"})
+            links.append({"kind": "data", "from": value_flow["output"], "to": f"{node_id}.{value_pin_name}"})
             node.pop("value", None)
         else:
             node["value"] = _value_expr_to_string(value_flow.get("default_value"))
@@ -1681,34 +1736,31 @@ def _compile_value_expression(expression: Any, node_id: str, path: str, context:
     if kind == "literal":
         return {"nodes": [], "links": [], "default_value": _literal_value(expression)}
 
-    if kind == "ref":
-        symbol_name = expression.get("name") or expression.get("target")
-        if not isinstance(symbol_name, str) or not symbol_name.strip():
-            raise TaskSpecCompileError(
-                "invalid_ref_expression",
-                "ref expression requires name or target.",
-                [{"code": "invalid_ref_expression", "path": path, "message": "Provide ref.name or ref.target."}],
-            )
-        symbol = context.get("symbols", {}).get(symbol_name.lower())
-        if not symbol:
-            raise TaskSpecCompileError(
-                "ref_symbol_not_found",
-                f"Temporary symbol not found: {symbol_name}.",
-                [{"code": "ref_symbol_not_found", "path": path, "message": f'Define let.name="{symbol_name}" before this ref.'}],
-            )
-        return {"nodes": [], "links": [], "output": symbol.get("output"), "default_value": symbol.get("default_value")}
+    if kind not in SUPPORTED_GRAPH_BODY_EXPRESSION_KINDS:
+        raise TaskSpecCompileError(
+            "unsupported_expression_kind",
+            f"Unsupported expression kind: {kind}",
+            [{
+                "code": "unsupported_expression_kind",
+                "path": f"{path}.kind",
+                "message": "Use literal, get, get_property, call, op, construct, deconstruct, or select.",
+            }],
+        )
 
     if kind in {"get", "get_property"}:
-        target = expression.get("target") or expression.get("name") or expression.get("var")
-        if not isinstance(target, str) or not target.strip():
-            raise TaskSpecCompileError(
-                "invalid_get_expression",
-                "get expression requires target, name, or var.",
-                [{"code": "invalid_get_expression", "path": path, "message": "Provide get.target, get.name, or get.var."}],
-            )
+        target = _required_string(expression, "target", f"{path}.target")
+        if kind == "get":
+            symbol = context.get("symbols", {}).get(target.lower())
+            if symbol:
+                return {"nodes": [], "links": [], "output": symbol.get("output"), "default_value": symbol.get("default_value")}
         output_pin = "value" if kind == "get_property" else target
+        node = {"id": node_id, "kind": kind, "var": target, "target": target}
+        if kind == "get_property":
+            property_path = _required_graph_body_property_path(expression, path)
+            node["property_path"] = property_path
+            node["property"] = property_path
         return {
-            "nodes": [{"id": node_id, "kind": kind, "var": target, "target": target}],
+            "nodes": [node],
             "links": [],
             "output": f"{node_id}.{output_pin}",
         }
@@ -1718,32 +1770,100 @@ def _compile_value_expression(expression: Any, node_id: str, path: str, context:
     node: Dict[str, Any] = {"id": node_id, "kind": kind, "inputs": {}}
     if kind == "call":
         node["function"] = _required_string(expression, "target", f"{path}.target")
-    if kind == "compare":
-        if isinstance(expression.get("op"), str):
-            node["function"] = expression["op"]
-        _compile_expression_input(expression.get("left"), "A", f"{node_id}_left", f"{path}.left", node, nodes, links, context)
-        _compile_expression_input(expression.get("right"), "B", f"{node_id}_right", f"{path}.right", node, nodes, links, context)
+    if kind == "op":
+        node["function"] = _required_string(expression, "op", f"{path}.op")
+        if "left" in expression:
+            _compile_expression_input(expression.get("left"), "A", f"{node_id}_left", f"{path}.left", node, nodes, links, context)
+        if "right" in expression:
+            _compile_expression_input(expression.get("right"), "B", f"{node_id}_right", f"{path}.right", node, nodes, links, context)
+        args = expression.get("args")
+        if isinstance(args, dict):
+            for arg_name, arg_value in args.items():
+                _compile_expression_input(arg_value, str(arg_name), f"{node_id}_{_to_id_segment(str(arg_name))}", f"{path}.args.{arg_name}", node, nodes, links, context)
     elif kind == "select":
         options = expression.get("options")
         if isinstance(options, list):
             for index, option in enumerate(options):
                 _compile_expression_input(option, f"Option{index}", f"{node_id}_option_{index}", f"{path}.options[{index}]", node, nodes, links, context)
         _compile_expression_input(expression.get("condition"), "Index", f"{node_id}_index", f"{path}.condition", node, nodes, links, context)
-    elif kind == "make_struct":
-        if isinstance(expression.get("type"), str):
-            node["type"] = expression["type"]
-            node["struct_path"] = expression["type"]
+    elif kind == "construct":
+        struct_type = _required_construct_type(expression, path)
+        node["type"] = struct_type
+        node["struct_path"] = struct_type
         args = expression.get("args")
         if isinstance(args, dict):
             for arg_name, arg_value in args.items():
                 _compile_expression_input(arg_value, str(arg_name), f"{node_id}_{_to_id_segment(str(arg_name))}", f"{path}.args.{arg_name}", node, nodes, links, context)
+    elif kind == "deconstruct":
+        struct_type = _optional_graph_body_type(expression)
+        if struct_type:
+            node["type"] = struct_type
+            node["struct_path"] = struct_type
+        property_path = _optional_graph_body_property_path(expression)
+        if property_path:
+            node["property_path"] = property_path
+            node["property"] = property_path
+        if "source" in expression:
+            _compile_expression_input(expression.get("source"), "Input", f"{node_id}_source", f"{path}.source", node, nodes, links, context)
+        elif "value" in expression:
+            _compile_expression_input(expression.get("value"), "Input", f"{node_id}_value", f"{path}.value", node, nodes, links, context)
     elif isinstance(expression.get("args"), dict):
         for arg_name, arg_value in expression["args"].items():
             _compile_expression_input(arg_value, str(arg_name), f"{node_id}_{_to_id_segment(str(arg_name))}", f"{path}.args.{arg_name}", node, nodes, links, context)
     nodes.insert(0, node)
 
-    output_pin = "value" if kind in {"make_struct", "select"} else "ReturnValue"
+    output_pin = "value" if kind in {"construct", "deconstruct", "select"} else "ReturnValue"
     return {"nodes": nodes, "links": links, "output": f"{node_id}.{output_pin}"}
+
+
+def _optional_graph_body_property_path(record: Dict[str, Any]) -> Optional[str]:
+    property_path = record.get("property_path")
+    if isinstance(property_path, str) and property_path.strip():
+        return property_path
+    property_name = record.get("property")
+    if isinstance(property_name, str) and property_name.strip():
+        return property_name
+    return None
+
+
+def _required_graph_body_property_path(record: Dict[str, Any], path: str) -> str:
+    property_path = _optional_graph_body_property_path(record)
+    if property_path:
+        return property_path
+    raise TaskSpecCompileError(
+        "taskspec_semantic_invalid",
+        f"{path}.property_path must be a non-empty string.",
+        [{
+            "code": "missing_property_path",
+            "path": f"{path}.property_path",
+            "message": "Provide property_path for graph-body property access.",
+        }],
+    )
+
+
+def _optional_graph_body_type(record: Dict[str, Any]) -> Optional[str]:
+    type_name = record.get("type")
+    if isinstance(type_name, str) and type_name.strip():
+        return type_name
+    struct_path = record.get("struct_path")
+    if isinstance(struct_path, str) and struct_path.strip():
+        return struct_path
+    return None
+
+
+def _required_construct_type(record: Dict[str, Any], path: str) -> str:
+    struct_type = _optional_graph_body_type(record)
+    if struct_type:
+        return struct_type
+    raise TaskSpecCompileError(
+        "taskspec_semantic_invalid",
+        f"{path}.type must be a non-empty string.",
+        [{
+            "code": "missing_construct_type",
+            "path": f"{path}.type",
+            "message": "Provide type for construct expressions.",
+        }],
+    )
 
 
 def _compile_expression_input(
@@ -2370,19 +2490,30 @@ def _required_non_empty_list(record: Dict[str, Any], field: str, path: str) -> L
 
 def _compile_statement_node(statement: Dict[str, Any], node_id: str, path: str) -> Dict[str, Any]:
     kind = statement.get("kind")
-    if kind in {"call", "call_function"}:
+    if kind == "call":
         return {
             "id": node_id,
             "kind": "call",
-            "function": _required_string(statement, "target" if kind == "call" else "name", f"{path}.{'target' if kind == 'call' else 'name'}"),
+            "function": _required_string(statement, "target", f"{path}.target"),
             "inputs": _compile_args(statement.get("args")),
         }
 
-    if kind in {"set", "set_member_variable"}:
+    if kind == "set":
         return {
             "id": node_id,
             "kind": "set",
-            "var": _required_string(statement, "target" if kind == "set" else "name", f"{path}.{'target' if kind == 'set' else 'name'}"),
+            "var": _required_string(statement, "target", f"{path}.target"),
+            "value": _value_expr_to_string(statement.get("value")),
+        }
+
+    if kind == "set_property":
+        property_path = _required_graph_body_property_path(statement, path)
+        return {
+            "id": node_id,
+            "kind": "set_property",
+            "target": _required_string(statement, "target", f"{path}.target"),
+            "property_path": property_path,
+            "property": property_path,
             "value": _value_expr_to_string(statement.get("value")),
         }
 

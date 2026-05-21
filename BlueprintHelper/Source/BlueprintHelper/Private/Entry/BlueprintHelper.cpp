@@ -8,46 +8,6 @@
 #include "Interfaces/IPluginManager.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/BlueprintNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/BranchNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/CallFunctionNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/MacroInstanceNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/SequenceNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/VariableGetNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/VariableSetNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/CustomEventNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/EventNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/CallDelegateNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/AddDelegateNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/RemoveDelegateNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/ClearDelegateNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/AssignDelegateNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/CreateDelegateNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/MakeContainerNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/StructOperationNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/SelfNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/DynamicCastNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/SpawnActorNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/FormatTextNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/GetArrayItemNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/KnotNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/LiteralNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/EnumNameNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/ComponentBoundEventNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/EnhancedInputActionNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/PromotableOperatorNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/CommutativeAssociativeBinaryOperatorNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/SwitchNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/NodeHandlers/SelectNodeHandler.h"
-#include "Systems/ToolClusters/GraphWrite/OperationHandlers/BlueprintOperationHandler.h"
-#include "Systems/ToolClusters/BlueprintVariables/OperationHandlers/AddMemberVariableHandler.h"
-#include "Systems/ToolClusters/GraphWrite/OperationHandlers/AddFunctionGraphHandler.h"
-#include "Systems/ToolClusters/GraphWrite/OperationHandlers/AddEventDispatcherHandler.h"
-#include "Systems/ToolClusters/GraphWrite/OperationHandlers/AddMacroGraphHandler.h"
-#include "Systems/ToolClusters/BlueprintVariables/OperationHandlers/BlueprintLocalVariableMutationHandler.h"
-#include "Systems/ToolClusters/BlueprintVariables/OperationHandlers/BlueprintMemberVariableMutationHandler.h"
-#include "Systems/ToolClusters/GraphWrite/OperationHandlers/RemoveGraphHandler.h"
-#include "Systems/ToolClusters/BlueprintVariables/OperationHandlers/RemoveMemberVariableHandler.h"
 #include "UI/SHelperMainWidget.h"
 #include "UI/SBlueprintHelperMainWindow.h"
 #include "UI/Review/BlueprintHelperReviewDebugBundleService.h"
@@ -115,49 +75,6 @@ void FBlueprintHelperModule::StartupModule()
 	UE_LOG(LogBlueprintHelperEditor, Log, TEXT("BlueprintHelper StartupModule begin."));
 	FBlueprintHelperGraphLayoutCoordinator::Startup();
 
-	FBlueprintNodeHandlerRegistry& Registry = FBlueprintNodeHandlerRegistry::Get();
-	Registry.Register(MakeShared<FCallFunctionNodeHandler>());
-	Registry.Register(MakeShared<FVariableGetNodeHandler>());
-	Registry.Register(MakeShared<FVariableSetNodeHandler>());
-	Registry.Register(MakeShared<FMacroInstanceNodeHandler>());
-	Registry.Register(MakeShared<FBranchNodeHandler>());
-	Registry.Register(MakeShared<FSequenceNodeHandler>());
-	Registry.Register(MakeShared<FCustomEventNodeHandler>());
-	Registry.Register(MakeShared<FEventNodeHandler>());
-	Registry.Register(MakeShared<FCallDelegateNodeHandler>());
-	Registry.Register(MakeShared<FAddDelegateNodeHandler>());
-	Registry.Register(MakeShared<FRemoveDelegateNodeHandler>());
-	Registry.Register(MakeShared<FClearDelegateNodeHandler>());
-	Registry.Register(MakeShared<FAssignDelegateNodeHandler>());
-	Registry.Register(MakeShared<FCreateDelegateNodeHandler>());
-	Registry.Register(MakeShared<FMakeContainerNodeHandler>());
-	Registry.Register(MakeShared<FStructOperationNodeHandler>());
-	Registry.Register(MakeShared<FSelfNodeHandler>());
-	Registry.Register(MakeShared<FDynamicCastNodeHandler>());
-	Registry.Register(MakeShared<FSpawnActorNodeHandler>());
-	Registry.Register(MakeShared<FFormatTextNodeHandler>());
-	Registry.Register(MakeShared<FGetArrayItemNodeHandler>());
-	// v2.3 。全覆盖收。
-	Registry.Register(MakeShared<FKnotNodeHandler>());
-	Registry.Register(MakeShared<FLiteralNodeHandler>());
-	Registry.Register(MakeShared<FEnumNameNodeHandler>());
-	Registry.Register(MakeShared<FComponentBoundEventNodeHandler>());
-	// v2.9 。Enhanced Input / 数学运算 / 流程控制
-	Registry.Register(MakeShared<FEnhancedInputActionNodeHandler>());
-	Registry.Register(MakeShared<FPromotableOperatorNodeHandler>());
-	Registry.Register(MakeShared<FCommutativeAssociativeBinaryOperatorNodeHandler>());
-	Registry.Register(MakeShared<FSwitchNodeHandler>());
-	Registry.Register(MakeShared<FSelectNodeHandler>());
-
-	FBlueprintOperationHandlerRegistry& OpRegistry = FBlueprintOperationHandlerRegistry::Get();
-	OpRegistry.Register(MakeShared<FAddMemberVariableHandler>());
-	OpRegistry.Register(MakeShared<FAddFunctionGraphHandler>());
-	OpRegistry.Register(MakeShared<FAddEventDispatcherHandler>());
-	OpRegistry.Register(MakeShared<FAddMacroGraphHandler>());
-	OpRegistry.Register(MakeShared<FRemoveGraphHandler>());
-	OpRegistry.Register(MakeShared<FRemoveMemberVariableHandler>());
-	OpRegistry.Register(MakeShared<FBlueprintHelperMemberVariableMutationHandler>());
-	OpRegistry.Register(MakeShared<FBlueprintHelperLocalVariableMutationHandler>());
 
 	// ─── Service Layer 初始。───
 	GraphResolver    = MakeUnique<FBlueprintHelperGraphResolver>();
@@ -257,8 +174,6 @@ void FBlueprintHelperModule::ShutdownModule()
 	ValidationService.Reset();
 	GraphResolver.Reset();
 
-	FBlueprintNodeHandlerRegistry::Get().Reset();
-	FBlueprintOperationHandlerRegistry::Get().Reset();
 
 	if (UToolMenus::TryGet())
 	{

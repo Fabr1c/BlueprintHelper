@@ -12,6 +12,7 @@ enum class EBlueprintHelperGraphStatementKind : uint8
 	Unknown,
 	Call,
 	Set,
+	SetProperty,
 	Branch,
 	Let,
 	Return
@@ -23,11 +24,11 @@ enum class EBlueprintHelperGraphExpressionKind : uint8
 	Literal,
 	Get,
 	GetProperty,
-	Ref,
 	Call,
-	Compare,
-	Select,
-	MakeStruct
+	Op,
+	Construct,
+	Deconstruct,
+	Select
 };
 
 enum class EBlueprintHelperGraphTargetKind : uint8
@@ -101,6 +102,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphExpressionIR
 	FString PatternName;
 	FString Target;
 	FString Name;
+	FString Property;
 	FString Type;
 	FString Operator;
 	FString LiteralValue;
@@ -110,7 +112,13 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphExpressionIR
 	TArray<FString> CategoryPriority;
 	FBlueprintHelperGraphResolvedTarget ResolvedTarget;
 	TSharedPtr<FBlueprintHelperGraphExpressionIR> TargetObject;
+	TSharedPtr<FBlueprintHelperGraphExpressionIR> Value;
+	TSharedPtr<FBlueprintHelperGraphExpressionIR> Condition;
+	TSharedPtr<FBlueprintHelperGraphExpressionIR> ThenValue;
+	TSharedPtr<FBlueprintHelperGraphExpressionIR> ElseValue;
 	TMap<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>> Args;
+	TMap<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>> Fields;
+	TArray<FString> FieldNames;
 	TArray<TSharedPtr<FBlueprintHelperGraphExpressionIR>> Options;
 	TSharedPtr<FBlueprintHelperGraphExpressionIR> Left;
 	TSharedPtr<FBlueprintHelperGraphExpressionIR> Right;
@@ -124,6 +132,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphStatementIR
 	FString PatternName;
 	FString Target;
 	FString Name;
+	FString Property;
 	FString ResultSymbolName;
 	FString ResolvedCallFunctionStableId;
 	FString SearchMode;

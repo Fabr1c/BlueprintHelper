@@ -178,13 +178,14 @@ AgentFace body statement kinds：
 
 当前 compiler / runtime 路径支持的表达式形态包括：
 
-- literal value
-- ref / symbol get
-- property get
-- nested call
-- compare
+- literal
+- get / symbol read
+- get_property
+- call
+- op
+- construct
+- deconstruct
 - select
-- make-struct style expression
 
 Graph body semantic operation 边界：
 
@@ -231,7 +232,7 @@ schedule
 
 - 普通 Agent 写入应保持在 BlueprintHelper-owned graph scope 内。
 - patch / merge 需要来自 `read_context` / `logic_json` 的稳定 owned-block anchor。
-- compiler 内部仍可能 normalize legacy `call_function` / `set_member_variable`，但 AgentFace canonical TaskSpec 应使用 `call` / `set`。
+- compiler 不允许 normalize legacy `call_function` / `set_member_variable` / `ref` / `compare` / `make_struct`；这些旧 Graph body shapes 必须按 unsupported kind 报错，不是 deprecated compatibility，也不允许 hidden fallback。
 - Signature lifecycle 归 `edit_blueprint_signature`；GraphWrite / SemanticIR 只能消费已解析 scope，不负责创建 function / event / macro / dispatcher 签名。
 - Asset lifecycle 归 `create_asset`；Graph body 的 `create` 不允许创建或确保 Content Browser 资产。
 - Component / WidgetTree lifecycle 分别归 `edit_blueprint_components` / `edit_umg_widget`；Graph body 的 `create` / `set_property` 不允许绕过这些工具簇修改模板或设计时树。
@@ -340,3 +341,26 @@ TaskSpec execute 可能产生：
 - `BlueprintHelper/Source/BlueprintHelper/Public/Runtime/TaskRuntime/Clusters/*`
 - `BlueprintHelper/Source/BlueprintHelper/Private/Runtime/TaskRuntime/BlueprintHelperTaskRuntimeClusterHub.cpp`
 - `BlueprintHelper/Source/BlueprintHelper/Private/Entry/Bridge/Utils/BlueprintHelperBridgeRoutePlannerUtils.cpp`
+## DataFlowCore Slice C 文档同步状态（2026-05-21）
+
+Canonical Graph body statement/expression path:
+
+```text
+AgentFace schema/docs
+-> TS/Python compiler
+-> SemanticIR parser
+-> Resolver
+-> Pattern Registry
+-> NodeFragment Builder
+-> FragmentDAG
+-> Composer/Linker
+-> UE Mutator
+-> Review/Debug
+-> ReadContext/LogicFlow
+```
+
+- [x] 文档已记录：old NodeHandler / parsed-node fallback 不允许保留，也不是 deprecated compatibility。
+- [x] 文档已记录：legacy Graph body shapes `call_function` / `set_member_variable` / `ref` / `compare` / `make_struct` 必须作为 unsupported kind 报错，不允许 compiler normalization、alias、deprecated mapping 或 hidden fallback。
+- [x] 文档已记录：Graph body statement/expression canonical path 从 AgentFace schema/docs 经 TS/Python compiler、SemanticIR parser、Resolver、Pattern Registry、NodeFragment Builder、FragmentDAG、Composer/Linker、UE Mutator，到 Review/Debug 与 ReadContext/LogicFlow。
+- [ ] 未完成/待验证：本次 Slice C 未验证 TS/Python compiler、UE SemanticIR/Resolver/FragmentDAG/Mutator、Review/Debug、ReadContext/LogicFlow 的当前代码状态。
+- [ ] 未完成/待验证：UE compile、TS tests、Python tests、editor preview/execute smoke、construct/deconstruct field-list preview、LogicFlow/readback 尚未在本次文档同步中运行或记录证据。

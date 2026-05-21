@@ -446,15 +446,189 @@ HitNormal = HitResult.ImpactNormal
 后续实现应按以下链路接入：
 
 ```text
-AgentFace TaskSpec
--> BlueprintLogicSpec
--> SemanticIR
--> Semantic Resolver
+AgentFace schema/docs
+-> TS/Python compiler
+-> SemanticIR parser
+-> Resolver
 -> Pattern Registry
 -> NodeFragment Builder
--> Fragment DAG
--> Graph Composer / Linker
--> UE Graph Mutator
+-> FragmentDAG
+-> Composer/Linker
+-> UE Mutator
+-> Review/Debug
+-> ReadContext/LogicFlow
 ```
 
 不要在 AgentFace schema 或 compiler 中引入 UE 节点名，也不要为了单个 UE 节点直接扩展 AgentFace 字段。
+
+## 新增 Graph body 能力标准接入流程
+
+新增 Graph body 能力时必须按以下流程接入：
+
+1. AgentFace schema / docs 定义 canonical semantic shape。
+2. TS / Python compiler 只保留 canonical shape，不做旧字段 normalization。
+3. SemanticIR parser 解析 `kind` 和字段。
+4. Semantic Resolver 解析 scope、symbol、target、type、candidate。
+5. Pattern Registry 根据 semantic kind 和 typed context 选择 builder。
+6. NodeFragment Builder 生成 fragment。
+7. FragmentDAG Builder 建立 data / exec edge。
+8. Graph Composer / Linker 消费 edge 并连接 pin。
+9. UE Graph Mutator 创建或修改 `UK2Node`。
+10. Review evidence / DebugBundle 消费同一份 semantic + fragment evidence。
+11. ReadContext / LogicFlow 输出同一套 canonical semantic 信息。
+
+不允许：
+
+1. 新增 AgentFace 字段后直接在 compiler 中生成 UE 节点名。
+2. 新增能力时包装旧 `NodeHandler` 作为 Pattern。
+3. 使用 `if kind == X then NewObject<UK2Node_X>` 绕过 Pattern Registry / NodeFragment。
+4. 在解析层接受旧字段作为 alias。
+5. 为通过测试保留 hidden fallback。
+## Canonical Graph body statement/expression path
+
+```text
+AgentFace schema/docs
+-> TS/Python compiler
+-> SemanticIR parser
+-> Resolver
+-> Pattern Registry
+-> NodeFragment Builder
+-> FragmentDAG
+-> Composer/Linker
+-> UE Mutator
+-> Review/Debug
+-> ReadContext/LogicFlow
+```
+
+旧 NodeHandler / parsed-node fallback 不允许保留，也不是 deprecated compatibility。旧 Graph body shapes `call_function` / `set_member_variable` / `ref` / `compare` / `make_struct` 必须报 unsupported kind，不允许 compiler normalization、alias、deprecated mapping 或 hidden fallback。
+
+## 实现状态（Slice C 文档同步，2026-05-21）
+
+本节只同步文档，不重新读取或验证代码实现；因此除文档同步本身外，不把代码切片 A/B 标记为完成。
+
+[x] 已完成：文档明确旧 NodeHandler / parsed-node fallback 不允许保留，也不是 deprecated compatibility。
+[x] 已完成：文档明确 Graph body statement/expression canonical 路径为 AgentFace schema/docs -> TS/Python compiler -> SemanticIR parser -> Resolver -> Pattern Registry -> NodeFragment Builder -> FragmentDAG -> Composer/Linker -> UE Mutator -> Review/Debug -> ReadContext/LogicFlow。
+[x] 已完成：文档明确旧 Graph body shapes `call_function` / `set_member_variable` / `ref` / `compare` / `make_struct` 必须作为 unsupported kind 报错，不允许 compiler normalization、alias、deprecated mapping 或 hidden fallback。
+[ ] 未完成/待验证：TS compiler canonical allowlist、old-shape rejection tests、fixture cleanup 的当前代码状态未在本次文档同步中验证。
+[ ] 未完成/待验证：Python compiler parity 与 interface integration 是否只生成 `call` / `target` 未在本次文档同步中验证。
+[ ] 未完成/待验证：UE SemanticIR parser、Resolver、Pattern Registry、NodeFragment Builder、FragmentDAG、Composer/Linker、Mutator 是否已完整接入 first-batch kinds 未在本次文档同步中验证。
+[ ] 未完成/待验证：construct/deconstruct 两阶段 preview 是否返回 candidate field lists 且不写资产未在本次文档同步中验证。
+[ ] 未完成/待验证：Review/Debug evidence 与 ReadContext/LogicFlow 是否消费同一 canonical semantic/fragment evidence 未在本次文档同步中验证。
+[ ] 未完成/待验证：UE compile、TS tests、Python tests、editor preview/execute smoke 和 readback 未在本次文档同步中运行。
+
+## Spawner-Oriented AgentFace Intent / call 分层范式
+
+`call` 是 AgentFace 的 compact intent 之一，不是所有 UE action 的底层簇。底层簇按 UE `NodeSpawner` 家族划分，而不是按自然语言语义划分。
+
+统一链路：
+
+```text
+AgentFace compact intent
+-> Semantic Resolver / typed resolver
+-> SpawnerClusterResolver
+-> BlueprintActionResolutionCore
+-> selected UBlueprintNodeSpawner or derived spawner
+-> cluster-specific NodeFragment adapter
+```
+
+底层四簇：
+
+```text
+FunctionActionCluster
+FieldVariableActionCluster
+EventDelegateActionCluster
+GenericAssetStructControlActionCluster
+```
+
+AgentFace intent 到底层簇的路由：
+
+| AgentFace intent | 底层簇 | 说明 |
+|---|---|---|
+| `call` | FunctionActionCluster | Agent 明确请求 callable/action |
+| `op` | FunctionActionCluster | operator intent 转 typed function/action query |
+| `get` | FieldVariableActionCluster | 读变量、局部变量、参数、组件引用、临时值 |
+| `set` | FieldVariableActionCluster | 写变量、局部变量、输出变量 |
+| `get_property` | FieldVariableActionCluster；必要时转 GenericAssetStructControlActionCluster | 简单字段访问在 Field 簇；struct path 组合用 Generic/Struct 能力 |
+| `set_property` | FieldVariableActionCluster；必要时转 GenericAssetStructControlActionCluster | 同上 |
+| `construct` | GenericAssetStructControlActionCluster | value/struct/container 构造；不覆盖 object lifecycle create |
+| `deconstruct` | GenericAssetStructControlActionCluster | struct/value 拆解和字段发现 |
+| `select` | GenericAssetStructControlActionCluster | 数据流值选择 |
+| `control` | GenericAssetStructControlActionCluster | exec flow control |
+| `event` | EventDelegateActionCluster | event entry / custom event |
+| `component_bound_event` | EventDelegateActionCluster | component-bound event |
+| `bind` | EventDelegateActionCluster | delegate binding |
+| `create` | GenericAssetStructControlActionCluster | Actor/Object/Widget 等实例创建 |
+| `convert` | FunctionActionCluster 或 GenericAssetStructControlActionCluster | function/type-promotion cast 优先 Function；generic cast action 走 Generic |
+| `schedule` | FunctionActionCluster 或 GenericAssetStructControlActionCluster | function/timer/latent 优先 Function；generic async action 走 Generic |
+
+禁止把以下 UE 细节推回 AgentFace：
+
+```text
+Greater_IntInt
+EqualEqual_ObjectObject
+MakeVector
+BreakVector
+KismetMathLibrary.*
+UK2Node_*
+UBlueprintNodeSpawner class names
+```
+
+判定标准：
+
+- AgentFace 顶层字段保持 compact semantic intent。
+- 底层职责按 NodeSpawner 家族归属，不按自然语义归属。
+- 如果 UE 右键菜单能表达该 node/action，必须优先走 `BlueprintActionResolutionCore + UBlueprintNodeSpawner`。
+- 如果 UE ActionDatabase 无法表达，或该 intent 是多节点语义组合，才允许专用 FragmentBuilder，并必须记录原因。
+
+## Spawner-Oriented Cluster 口径
+
+本文件中的 DataFlowCore 字段只定义 AgentFace 语义 intent，不定义 UE 底层工具簇边界。
+
+当前统一口径：
+
+```text
+AgentFace kind
+-> SpawnerClusterResolver
+-> BlueprintActionResolutionCore
+-> selected UBlueprintNodeSpawner or derived spawner
+-> NodeFragment adapter
+-> FragmentDAG
+-> Composer / Linker / Mutator
+```
+
+因此，`call` 不再被视为 UE action resolution 的总入口；`call` 只是 `FunctionActionCluster` 的一个 intent。`get` / `set` / `op` / `construct` / `deconstruct` / `select` 等 intent 必须复用同一套 action resolution 基础设施，而不是复用 `call` 的局部 handler。
+
+首批字段到 Spawner-Oriented Cluster 的映射：
+
+| AgentFace kind | 默认 Spawner-Oriented Cluster | 说明 |
+|---|---|---|
+| `call` | `FunctionActionCluster` | 普通 callable/action |
+| `op` | `FunctionActionCluster` | operator 通过 typed operands 约束 function/type-promotion spawner |
+| `get` | `FieldVariableActionCluster` | symbol / variable / field / component ref 读取 |
+| `set` | `FieldVariableActionCluster` | symbol / variable / field 写入 |
+| `get_property` | `FieldVariableActionCluster` | property path 读取；复杂 path 可组合 struct/generic fragment |
+| `set_property` | `FieldVariableActionCluster` | property path 写入；复杂 path 可组合 struct/generic fragment |
+| `construct` | `GenericAssetStructControlActionCluster` | Make Struct / container / generic construct action |
+| `deconstruct` | `GenericAssetStructControlActionCluster` | Break Struct / generic deconstruct action |
+| `select` | `GenericAssetStructControlActionCluster` | Select 类 generic data-flow action |
+
+后续/相邻 intent 的口径：
+
+| AgentFace kind | 默认 Spawner-Oriented Cluster |
+|---|---|
+| `event` | `EventDelegateActionCluster` |
+| `component_bound_event` | `EventDelegateActionCluster` |
+| `bind` / `unbind` / `assign` | `EventDelegateActionCluster` |
+| `control` | `GenericAssetStructControlActionCluster` |
+| `create` | `GenericAssetStructControlActionCluster` |
+| `convert` | `FunctionActionCluster` 或 `GenericAssetStructControlActionCluster`，由 resolver 根据 type/action 判断 |
+| `schedule` | `FunctionActionCluster` 或 `GenericAssetStructControlActionCluster`，由 resolver 根据 timer/latent/async action 判断 |
+
+已废弃表述：
+
+1. `optional UE action or function resolver reuse`。
+2. “数据流 / 执行流 / 普通调用 / 实例类型绑定调度”作为底层四簇。
+3. `call_function` 作为 action resolution 的特殊长期边界。
+4. `FindFunctionByName()` 或旧 node fallback 作为解析兜底。
+
+正确表述：凡是 UE 右键菜单可以表达的 node/action 选择，必须通过 `BlueprintActionResolutionCore + UBlueprintNodeSpawner` 或派生 spawner 解析；AgentFace 字段只提供 semantic intent 和最小必要约束。
