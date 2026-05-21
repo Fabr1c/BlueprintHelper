@@ -12,7 +12,7 @@ private:
 	static FBlueprintHelperActionResolutionResult MakeNeedsContextResult(
 		const FBlueprintHelperActionResolutionRequest& Request,
 		const FString& Message);
-	static FBlueprintHelperActionResolutionResult MakeNotFoundResult(
+	static FBlueprintHelperActionResolutionResult MakeStructTypeNotFoundResult(
 		const FBlueprintHelperActionResolutionRequest& Request,
 		const FString& Message);
 	static FBlueprintHelperActionResolutionResult MakeUnsupportedIntentResult(
