@@ -484,3 +484,18 @@ pm.cmd run build。
 ```powershell
 npm.cmd run build
 ```
+
+## 2026-05-21: Windows PowerShell 5.1 does not support `utf8NoBOM`
+
+Symptom: writing smoke TaskSpec JSON with `Set-Content -Encoding utf8NoBOM` fails in older Windows PowerShell because that encoding name is not supported.
+
+Cause: `utf8NoBOM` is a PowerShell 7+ encoding label. Windows PowerShell 5.1 supports `UTF8`, but it can emit BOM depending on command/version behavior, which is risky for strict JSON inputs.
+
+Stable workaround: use .NET UTF-8 encoding without BOM when generating CLI `--file` JSON:
+
+```powershell
+$Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText($Path, $Json, $Utf8NoBom)
+```
+
+This is a local shell/runtime compatibility issue, not a BlueprintHelper plugin bug.

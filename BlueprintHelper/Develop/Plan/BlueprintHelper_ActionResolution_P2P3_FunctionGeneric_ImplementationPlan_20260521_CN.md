@@ -801,3 +801,37 @@ bh.cmd task execute --file D:\UEProjects\Template\Saved\BlueprintHelper\CodexSmo
 距离期望差距：
 - [ ] `control` 专用 FragmentBuilder 仍未实现，不属于本轮 `construct/deconstruct/call/get/set` 收敛范围。
 - [o] `FBlueprintHelperActionNodeSpawnerAdapter` 已成为统一 Invoke 入口；默认值、pin normalization、post-link lifecycle 的完全 adapter 化仍是后续架构清理项。
+### CLI Runtime Smoke Update 2026-05-21 Control Branch Compiler Sync
+
+- [x] AgentFace TypeScript compiler now allows `branch` and routes it through the existing branch statement flow instead of rejecting it at the statement whitelist.
+- [x] AgentFace Python compiler now allows `branch` and routes it through the existing branch statement flow instead of rejecting it at the statement whitelist.
+- [x] Task contract statement kind list now includes `branch`.
+- [x] CLI preview passed for the control/branch smoke TaskSpec:
+
+```powershell
+bh.cmd task preview --file D:\UEProjects\Template\Saved\BlueprintHelper\CodexSmoke\ActionResolutionControl_20260521_214755\graph_20260521_214755.json --select status,summary,error_code,message,artifacts.full_result
+```
+
+- [x] CLI execute passed for the same control/branch smoke TaskSpec:
+
+```powershell
+bh.cmd task execute --file D:\UEProjects\Template\Saved\BlueprintHelper\CodexSmoke\ActionResolutionControl_20260521_214755\graph_20260521_214755.json --select status,summary,error_code,message,artifacts.full_result
+```
+
+距离期望差距：
+- [o] `branch` 已完成 AgentFace compiler -> C++ SemanticIR -> control FragmentBuilder -> CLI preview/execute 闭环。
+- [ ] `return` builder 已存在于 C++ control builder，但本轮没有单独 TaskSpec smoke 覆盖。
+- [o] shared spawner adapter 已作为统一 Invoke 入口；post-spawn defaults、pin normalization、post-link lifecycle 的完全 adapter 化仍是后续架构清理项。
+### Build Validation Update 2026-05-21 Control Branch Compiler Sync
+
+- [x] AgentFace task-core build passed:
+
+```powershell
+npm.cmd run build
+```
+
+- [x] UE 5.6 project build passed:
+
+```powershell
+& 'E:\UE_5.6\Engine\Build\BatchFiles\Build.bat' TemplateEditor Win64 Development -Project='D:\UEProjects\Template\Template.uproject' -WaitMutex -NoHotReload
+```

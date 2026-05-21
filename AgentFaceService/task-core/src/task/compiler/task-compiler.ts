@@ -1333,7 +1333,7 @@ function compileMergeGraphWriteOps(behavior: Record<string, unknown>): GraphWrit
   });
 }
 
-const SUPPORTED_GRAPH_BODY_STATEMENT_KINDS = new Set(['call', 'set', 'set_property', 'let']);
+const SUPPORTED_GRAPH_BODY_STATEMENT_KINDS = new Set(['call', 'set', 'set_property', 'let', 'branch']);
 const SUPPORTED_GRAPH_BODY_EXPRESSION_KINDS = new Set([
   'literal',
   'get',
@@ -1355,7 +1355,7 @@ function validateSupportedStatements(statements: BlueprintLogicStatement[], path
         {
           code: 'unsupported_statement_kind',
           path: `${statementPath}.kind`,
-          message: 'Use call, set, set_property, or let, or split this work into a later GraphWrite capability.',
+          message: 'Use call, set, set_property, let, or branch.',
         },
       ]);
     }
@@ -1363,6 +1363,10 @@ function validateSupportedStatements(statements: BlueprintLogicStatement[], path
       validateExpressionMap(statementRecord.args, `${statementPath}.args`);
     } else if (kind === 'let' || kind === 'set' || kind === 'set_property') {
       validateSupportedExpression(statementRecord.value, `${statementPath}.value`);
+    } else if (kind === 'branch') {
+      validateSupportedExpression(statementRecord.condition, `${statementPath}.condition`);
+      validateSupportedStatements(Array.isArray(statementRecord.then) ? statementRecord.then as BlueprintLogicStatement[] : [], `${statementPath}.then`);
+      validateSupportedStatements(Array.isArray(statementRecord['else']) ? statementRecord['else'] as BlueprintLogicStatement[] : [], `${statementPath}.else`);
     }
   });
 }
@@ -1574,6 +1578,9 @@ function compileStatementSequence(
 function compileStatementFlow(statement: BlueprintLogicStatement, nodeId: string, path: string, context: CompileFlowContext): CompiledStatementFlow {
   const statementRecord = statement as Record<string, unknown>;
   const kind = typeof statementRecord.kind === 'string' ? statementRecord.kind : '';
+  if (kind === 'branch') {
+    return compileBranchStatementFlow(statement, nodeId, path, context);
+  }
   if (kind === 'let') {
     const name = getRequiredString(statementRecord, 'name', `${path}.name`);
     const valueFlow = compileValueExpression(statementRecord['value'], `${nodeId}_value`, `${path}.value`, context);

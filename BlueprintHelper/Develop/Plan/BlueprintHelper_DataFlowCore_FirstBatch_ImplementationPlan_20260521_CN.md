@@ -354,7 +354,7 @@ AgentFace schema/docs
 In `TASK_PROTOCOL_CONTRACT_V1.supported_first_slice`, set:
 
 ```ts
-statement_kinds: ['call', 'set', 'set_property', 'let'],
+statement_kinds: ['call', 'set', 'set_property', 'let', 'branch'],
 expression_kinds: ['literal', 'get', 'get_property', 'call', 'op', 'construct', 'deconstruct', 'select'],
 legacy_statement_kinds: [],
 ```
