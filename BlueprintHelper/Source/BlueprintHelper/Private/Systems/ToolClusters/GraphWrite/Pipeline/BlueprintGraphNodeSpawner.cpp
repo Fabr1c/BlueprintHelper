@@ -1,7 +1,7 @@
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphNodeSpawner.h"
 
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionNodeSpawnerAdapter.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
-#include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphDefaultValueApplier.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphExistingNodeMapper.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphGenerationPipeline.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphJsonParser.h"
@@ -12,6 +12,7 @@
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintMultiGraphGenerationPipeline.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphComposer.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphStatementBuilder.h"
+#include "BlueprintNodeSpawner.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Engine/Blueprint.h"
 #include "EdGraph/EdGraph.h"
@@ -51,16 +52,39 @@ UK2Node* FBlueprintGraphNodeSpawner::SpawnMacroNode(UEdGraph* TargetGraph, const
 		return nullptr;
 	}
 
-	UK2Node_MacroInstance* MacroNode = NewObject<UK2Node_MacroInstance>(TargetGraph);
-	TargetGraph->AddNode(MacroNode, true, false);
-	MacroNode->CreateNewGuid();
-	MacroNode->SetMacroGraph(MacroGraph);
-	MacroNode->PostPlacedNewNode();
-	MacroNode->NodePosX = static_cast<int32>(NodeData.X);
-	MacroNode->NodePosY = static_cast<int32>(NodeData.Y);
-	MacroNode->AllocateDefaultPins();
-	TargetGraph->GetSchema()->ReconstructNode(*MacroNode);
-	FBlueprintGraphDefaultValueApplier::ApplyDefaultValues(MacroNode, NodeData.DefaultValues, NodeData.Id);
-	return MacroNode;
+	UBlueprintNodeSpawner* MacroSpawner = UBlueprintNodeSpawner::Create(UK2Node_MacroInstance::StaticClass());
+	FBlueprintHelperActionNodeSpawnOptions SpawnOptions;
+	SpawnOptions.NodeId = NodeData.Id;
+	SpawnOptions.DefaultValues = NodeData.DefaultValues;
+	SpawnOptions.bReconstructAfterSpawn = false;
+	SpawnOptions.NodeConfigurationHook = [MacroGraph](UK2Node& SpawnedNode, const FBlueprintHelperActionNodeSpawnContext& Context, FString& HookError)
+	{
+		UK2Node_MacroInstance* MacroNode = Cast<UK2Node_MacroInstance>(&SpawnedNode);
+		if (!MacroNode)
+		{
+			HookError = TEXT("macro node generation failed: spawned node is not UK2Node_MacroInstance.");
+			return false;
+		}
+
+		MacroNode->SetMacroGraph(MacroGraph);
+		if (MacroNode->Pins.Num() == 0)
+		{
+			MacroNode->AllocateDefaultPins();
+		}
+		if (Context.TargetGraph && Context.TargetGraph->GetSchema())
+		{
+			Context.TargetGraph->GetSchema()->ReconstructNode(*MacroNode);
+		}
+		return true;
+	};
+
+	UK2Node* SpawnedNode = FBlueprintHelperActionNodeSpawnerAdapter::InvokeNodeSpawner(
+		TargetGraph,
+		MacroSpawner,
+		TEXT("macro_instance_node_spawner"),
+		FVector2D(NodeData.X, NodeData.Y),
+		SpawnOptions,
+		OutErrorMessage);
+	return Cast<UK2Node_MacroInstance>(SpawnedNode);
 }
 

@@ -191,47 +191,6 @@ UEdGraphPin* FBlueprintGraphNodeUtility::FindPinByAlias(UK2Node* TargetNode, con
 	return nullptr;
 }
 
-UFunction* FBlueprintGraphNodeUtility::FindFunctionByName(const FString& FuncName)
-{
-	// Legacy fallback for older internal node handlers. TaskSpec call_function should use
-	// ResolveFunctionForGraph so graph compatibility and ambiguity checks run before spawning.
-	if (FuncName.IsEmpty())
-	{
-		return nullptr;
-	}
-
-	for (TObjectIterator<UClass> ClassIt; ClassIt; ++ClassIt)
-	{
-		UClass* Class = *ClassIt;
-		if (!Class || Class->HasAnyClassFlags(CLASS_Deprecated | CLASS_NewerVersionExists))
-		{
-			continue;
-		}
-
-		if (UFunction* DirectFunction = Class->FindFunctionByName(FName(*FuncName)))
-		{
-			return DirectFunction;
-		}
-
-		for (TFieldIterator<UFunction> FuncIt(Class, EFieldIteratorFlags::IncludeSuper); FuncIt; ++FuncIt)
-		{
-			UFunction* Function = *FuncIt;
-			if (!Function || !Function->HasAnyFunctionFlags(FUNC_BlueprintCallable | FUNC_BlueprintPure))
-			{
-				continue;
-			}
-
-			const FString NativeName = Function->GetName();
-			const FString DisplayName = Function->HasMetaData(TEXT("DisplayName")) ? Function->GetMetaData(TEXT("DisplayName")) : NativeName;
-			if (NativeName.Equals(FuncName, ESearchCase::IgnoreCase) || DisplayName.Equals(FuncName, ESearchCase::IgnoreCase))
-			{
-				return Function;
-			}
-		}
-	}
-	return nullptr;
-}
-
 FBlueprintHelperCallFunctionResolveResult FBlueprintGraphNodeUtility::ResolveFunctionForGraph(
 	UEdGraph* TargetGraph,
 	const FString& FunctionQuery,

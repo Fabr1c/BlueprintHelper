@@ -11,5 +11,5 @@ public:
 private:
 	static bool OwnsSemanticKind(EBlueprintHelperActionSemanticKind Kind);
 	static FBlueprintHelperActionResolutionResult MakeUnsupportedIntentResult(const FBlueprintHelperActionResolutionRequest& Request);
-	static FBlueprintHelperActionResolutionResult MakeUnsupportedClusterMigrationResult(const FBlueprintHelperActionResolutionRequest& Request);
+	static FBlueprintHelperActionResolutionResult MakeNeedsMoreSemanticContextResult(const FBlueprintHelperActionResolutionRequest& Request);
 };

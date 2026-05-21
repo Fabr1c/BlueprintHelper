@@ -50,7 +50,6 @@ enum class EBlueprintHelperActionResolutionStatus : uint8
 	Resolved,
 	Ambiguous,
 	UnsupportedIntent,
-	UnsupportedClusterMigration,
 	NotFound,
 	Blocked,
 	InvalidRequest

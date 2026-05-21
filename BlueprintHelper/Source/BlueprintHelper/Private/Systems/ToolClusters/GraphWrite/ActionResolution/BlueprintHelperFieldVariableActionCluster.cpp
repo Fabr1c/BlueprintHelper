@@ -12,7 +12,7 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperFieldVariableActionCluste
 	if (Request.Semantic.Kind == EBlueprintHelperActionSemanticKind::GetProperty
 		|| Request.Semantic.Kind == EBlueprintHelperActionSemanticKind::SetProperty)
 	{
-		return MakeUnsupportedClusterMigrationResult(Request);
+		return MakeNeedsMoreSemanticContextResult(Request);
 	}
 
 	const FBlueprintHelperFieldVariableActionResolver Resolver;
@@ -45,14 +45,14 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperFieldVariableActionCluste
 	return Result;
 }
 
-FBlueprintHelperActionResolutionResult FBlueprintHelperFieldVariableActionCluster::MakeUnsupportedClusterMigrationResult(const FBlueprintHelperActionResolutionRequest& Request)
+FBlueprintHelperActionResolutionResult FBlueprintHelperFieldVariableActionCluster::MakeNeedsMoreSemanticContextResult(const FBlueprintHelperActionResolutionRequest& Request)
 {
 	FBlueprintHelperActionResolutionResult Result;
-	Result.Status = EBlueprintHelperActionResolutionStatus::UnsupportedClusterMigration;
+	Result.Status = EBlueprintHelperActionResolutionStatus::InvalidRequest;
 	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::FieldVariableAction;
-	Result.ErrorCode = TEXT("field_variable_action_cluster_migration_pending");
+	Result.ErrorCode = TEXT("needs_more_semantic_context");
 	Result.Message = FString::Printf(
-		TEXT("FieldVariableActionCluster owns semantic kind '%s', but field/variable action resolution has not been migrated yet; no fallback direct node creation was attempted."),
+		TEXT("FieldVariableActionCluster needs typed target/property-path context for semantic kind '%s'."),
 		*FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.Semantic.Kind));
 	return Result;
 }

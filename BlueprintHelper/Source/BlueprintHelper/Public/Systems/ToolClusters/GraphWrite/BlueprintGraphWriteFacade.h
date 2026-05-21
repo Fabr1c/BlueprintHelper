@@ -595,7 +595,6 @@ struct FBlueprintGenerateResult
 class BLUEPRINTHELPER_API FBlueprintGraphWriteFacade
 {
 public:
-	static UFunction* FindFunctionByName(const FString& FuncName);
 	static FBlueprintHelperCallFunctionResolveResult ResolveFunctionForGraph(UEdGraph* TargetGraph, const FString& FunctionQuery, const TMap<FString, FString>& DefaultValues);
 	static FBlueprintHelperActionResolutionResult ResolveActionForGraph(const FBlueprintHelperActionResolutionRequest& Request);
 	static FBlueprintGenerateResult GenerateBlueprintFromJson(UEdGraph* TargetGraph, const FString& JsonString, TArray<TSharedPtr<FUnresolvedNodeItem>>& OutUnresolvedNodes);

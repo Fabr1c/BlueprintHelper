@@ -128,7 +128,7 @@ FBlueprintGenerateResult FBlueprintMultiGraphGenerationPipeline::GenerateMultiGr
 				continue;
 			}
 
-			FBlueprintGenerateResult GraphResult = FBlueprintGraphGenerationPipeline::GenerateNodesAndLinksForGraph(TargetGraph, GraphObject, OutUnresolvedNodes);
+			FBlueprintGenerateResult GraphResult = FBlueprintGraphGenerationPipeline::GenerateSemanticGraphForGraph(TargetGraph, GraphObject, OutUnresolvedNodes);
 			TotalGenerated += GraphResult.GeneratedNodeCount;
 			TotalRequestedDefaultValues += GraphResult.RequestedDefaultValueCount;
 			TotalAppliedDefaultValues += GraphResult.AppliedDefaultValueCount;
