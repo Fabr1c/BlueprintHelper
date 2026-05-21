@@ -11,7 +11,6 @@ import {
   ExecuteTaskInputSchema,
   GetTaskResultInputSchema,
   PreviewTaskInputSchema,
-  ReadTaskContextInputSchema,
   type TaskIssue,
 } from '@blueprinthelper/task-core/task/schema/task-schemas';
 import {
@@ -86,17 +85,6 @@ export function registerTaskTools(server: McpServer, bridge: BridgeClient, confi
     bridge,
     taskCompiler: config.taskCompiler,
   });
-
-  server.registerTool(
-    'blueprinthelper_read_task_context',
-    {
-      description: 'Read a compact BlueprintHelper.TaskContextPack.v1 for building a TaskSpec.',
-      inputSchema: ReadTaskContextInputSchema,
-    },
-    async (input) => {
-      return toMcpResult(await runner.readTaskContext(input));
-    },
-  );
 
   server.registerTool(
     'blueprinthelper_read_reference_context',

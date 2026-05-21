@@ -975,6 +975,54 @@ namespace
 		return EBlueprintHelperTargetType::None;
 	}
 
+	static EBlueprintHelperTargetType ParseLogicScopeTargetType(const FString& Scope)
+	{
+		if (Scope.Equals(TEXT("blueprint"), ESearchCase::IgnoreCase)) { return EBlueprintHelperTargetType::Blueprint; }
+		if (Scope.Equals(TEXT("target_graph"), ESearchCase::IgnoreCase)) { return EBlueprintHelperTargetType::Graph; }
+		if (Scope.Equals(TEXT("target_function"), ESearchCase::IgnoreCase)) { return EBlueprintHelperTargetType::Function; }
+		if (Scope.Equals(TEXT("target_event"), ESearchCase::IgnoreCase)) { return EBlueprintHelperTargetType::Event; }
+		if (Scope.Equals(TEXT("target_custom_event"), ESearchCase::IgnoreCase)) { return EBlueprintHelperTargetType::CustomEvent; }
+		if (Scope.Equals(TEXT("target_block"), ESearchCase::IgnoreCase)) { return EBlueprintHelperTargetType::Block; }
+		return EBlueprintHelperTargetType::None;
+	}
+
+	static EBlueprintHelperTargetType InferTargetTypeFromReadFields(const FBlueprintHelperTargetRef& Target)
+	{
+		if (!Target.Function.IsEmpty()) { return EBlueprintHelperTargetType::Function; }
+		if (!Target.Event.IsEmpty()) { return EBlueprintHelperTargetType::Event; }
+		if (!Target.BlockId.IsEmpty()) { return EBlueprintHelperTargetType::Block; }
+		if (!Target.Graph.IsEmpty()) { return EBlueprintHelperTargetType::Graph; }
+		if (!Target.AssetPath.IsEmpty() || !Target.BlueprintPath.IsEmpty()) { return EBlueprintHelperTargetType::Blueprint; }
+		return EBlueprintHelperTargetType::None;
+	}
+
+	static void ApplyTargetNameToTypedField(FBlueprintHelperTargetRef& Target, const FString& TargetName)
+	{
+		if (TargetName.IsEmpty())
+		{
+			return;
+		}
+
+		switch (Target.TargetType)
+		{
+		case EBlueprintHelperTargetType::Function:
+			if (Target.Function.IsEmpty()) { Target.Function = TargetName; }
+			break;
+		case EBlueprintHelperTargetType::Event:
+		case EBlueprintHelperTargetType::CustomEvent:
+			if (Target.Event.IsEmpty()) { Target.Event = TargetName; }
+			break;
+		case EBlueprintHelperTargetType::Graph:
+			if (Target.Graph.IsEmpty()) { Target.Graph = TargetName; }
+			break;
+		case EBlueprintHelperTargetType::Block:
+			if (Target.BlockId.IsEmpty()) { Target.BlockId = TargetName; }
+			break;
+		default:
+			break;
+		}
+	}
+
 	static FBlueprintHelperTargetRef ReadTargetRefFromPayload(const TSharedPtr<FJsonObject>& Payload)
 	{
 		FBlueprintHelperTargetRef Target;
@@ -1001,10 +1049,21 @@ namespace
 		Payload->TryGetStringField(TEXT("property_path"), Target.PropertyPath);
 		Payload->TryGetStringField(TEXT("widget_path"), Target.WidgetPath);
 		Payload->TryGetStringField(TEXT("row_name"), Target.RowName);
+		FString TargetName;
+		Payload->TryGetStringField(TEXT("target_name"), TargetName);
 		if (Payload->TryGetStringField(TEXT("target_type"), Type))
 		{
 			Target.TargetType = ParseBridgeTargetType(Type);
 		}
+		if (Target.TargetType == EBlueprintHelperTargetType::None && Payload->TryGetStringField(TEXT("scope"), Type))
+		{
+			Target.TargetType = ParseLogicScopeTargetType(Type);
+		}
+		if (Target.TargetType == EBlueprintHelperTargetType::None)
+		{
+			Target.TargetType = InferTargetTypeFromReadFields(Target);
+		}
+		ApplyTargetNameToTypedField(Target, TargetName);
 		return Target;
 	}
 

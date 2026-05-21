@@ -63,6 +63,8 @@ export function buildBlueprintLogicReadPayload(input: ReadContextInput): Record<
   const targetType = input.read_type === 'graph_context' && targetName && input.target.target_type !== 'block'
     ? 'graph'
     : input.target.target_type;
+  payload['target_type'] = targetType;
+  if (targetName) payload['target_name'] = targetName;
   switch (targetType) {
     case 'graph':
       if (targetName) payload['graph'] = targetName;

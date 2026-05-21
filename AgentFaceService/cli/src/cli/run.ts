@@ -15,7 +15,6 @@ import {
   type TaskTimingTrace,
 } from '@blueprinthelper/task-core/task/service/task-timing';
 import {
-  ReadTaskContextInputSchema,
   TaskSpecSchema,
 } from '@blueprinthelper/task-core/task/schema/task-schemas';
 import {
@@ -147,10 +146,16 @@ export async function runCli(runtime: CliRuntime): Promise<number> {
     }
 
     if (command.kind === 'context.read') {
-      const input = measureTaskTiming(timing, 'context_file_read_parse', () => (
-        ReadTaskContextInputSchema.parse(readJsonFile(path.resolve(runtime.cwd, required(command.file))))
-      ));
-      const toolResult = await measureTaskTimingAsync(timing, 'cli.read_task_context', () => getRunner(runtime).readTaskContext(input));
+      const toolResult = await measureTaskTimingAsync(timing, 'cli.read_context', () => invokeCliTool({
+        command,
+        cwd: runtime.cwd,
+        bridge: getBridge(runtime) as BridgeClient,
+        taskRunner: getRunner(runtime),
+        timing,
+        readStdin: runtime.readStdin ?? readProcessStdin,
+        runLocalProcess: runtime.runLocalProcess,
+        sleep: runtime.sleep,
+      }));
       const outcome = writeTimedCliResult(runtime, command, toolResult, timing);
       return outcome.outputTooLarge ? 3 : toolResult.ok ? 0 : 2;
     }
@@ -367,7 +372,7 @@ function parseArgs(argv: string[]): ParseResult {
     return { ok: true, command: { ...base, kind: 'bridge.call', bridgeCommand: options.command } };
   }
   if (group === 'context' && action === 'read' && options.file) {
-    return { ok: true, command: { ...base, kind: 'context.read', file: options.file } };
+    return { ok: true, command: { ...base, kind: 'context.read', toolName: 'blueprinthelper_read_context', file: options.file } };
   }
 
   return { ok: false, message: `Unsupported BlueprintHelper CLI command: ${argv.join(' ')}` };

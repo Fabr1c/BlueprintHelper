@@ -1,6 +1,6 @@
 import type { BlueprintHelperToolContext } from '../types.js';
 import { executeTask, getTaskResult, previewTask } from './task-execution-handlers.js';
-import { readReferenceContext, readTaskContext } from './task-context-handlers.js';
+import { readReferenceContext } from './task-context-handlers.js';
 import type { TaskToolName } from './task-tool-schemas.js';
 
 export async function executeTaskTool(
@@ -9,8 +9,6 @@ export async function executeTaskTool(
   context: BlueprintHelperToolContext,
 ) {
   switch (name) {
-    case 'blueprinthelper_read_task_context':
-      return readTaskContext(input, context);
     case 'blueprinthelper_read_reference_context':
       return readReferenceContext(input, context);
     case 'blueprinthelper_preview_task':

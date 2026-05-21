@@ -110,7 +110,7 @@ Examples:
 
 ```powershell
 bh blueprint_get_runtime_profile --json "{}" --select status,summary
-bh blueprinthelper_read_task_context --file .\context-params.json --select status,summary,artifacts.full_result
+bh blueprinthelper_read_context --file .\read-spec.json --select status,summary,artifacts.full_result
 bh task preview --file .\task_spec.json --select status,preview_id,summary,artifacts.full_result
 bh task execute --file .\task_spec.json --select status,task_run_id,summary
 ```
@@ -205,7 +205,7 @@ For ordinary Agent editor-asset mutations, use the TaskSpec-first flow:
 
 - Confirm the Bridge is reachable.
 - Run `bh blueprint_get_runtime_profile --json "{}" --select status,summary`.
-- Run `bh blueprinthelper_read_task_context --file .\context-params.json --select status,summary,artifacts.full_result`.
+- Run `bh blueprinthelper_read_context --file .\read-spec.json --select status,summary,artifacts.full_result`.
 - Produce `BlueprintHelper.TaskSpec.v1` with exact `asset_path`, target graph when relevant, allowed scope, resource references, failure policy, `validation.should_compile`, and `validation.should_save`.
 - Do not submit TaskPlan directly; it is produced by the Python Task Compiler.
 - Run `bh task preview --file .\task_spec.json --select status,preview_id,summary,artifacts.full_result` and stop on blocked / failed preview.

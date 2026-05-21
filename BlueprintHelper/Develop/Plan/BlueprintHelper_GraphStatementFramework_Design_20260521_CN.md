@@ -266,3 +266,59 @@ legacy AgentFace aliases: call_function, set_member_variable, ref, compare, make
 3. 底层职责按 NodeSpawner 家族划分，避免按自然语义重复实现解析逻辑。
 4. 不同 AgentFace 语义可以共享同一个 SpawnerCluster，但不会强迫 AgentFace 暴露 spawner 细节。
 5. 新增能力不引入旧 fallback，不恢复旧 handler，不增加局部硬编码路径。
+## 9.5 方案 C：UE Action 路径优先的硬性架构口径（2026-05-22）
+
+当前 GraphStatement Framework 选择方案 C 作为后续四大工具簇的统一收敛方向：BlueprintHelper 不完整复刻 UE 右键菜单 UI，也不继续以自研解析 + 临时 NodeSpawner 混合路径作为主线；主路径应尽可能复用 UE 右键菜单背后的 ActionDatabase / ActionFilter / NodeSpawner 体系。
+
+目标链路：
+
+```text
+TaskSpec compact semantic
+-> SemanticResolver 构造 UE-equivalent context
+-> ActionDatabase candidates
+-> ActionFilter / BlueprintHelper semantic ranking
+-> NodeSpawner evidence
+-> shared Invoke adapter
+-> FragmentDAG / Composer lifecycle
+```
+
+`ActionMenuItem` 不作为 Agent 可操作对象引入，因为它绑定 Slate/UI 菜单选择流程；但它承载的候选 evidence、binding、UI spec/search text、spawner payload 价值需要由 BlueprintHelper 的 `ResolvedSpawnerEvidence` 等价承接。
+
+硬性规则：
+
+1. 凡是 UE ActionDatabase / NodeSpawner 能表达的节点创建，BlueprintHelper 不允许直接决定 `UK2Node_*` 类型并创建节点。
+2. BlueprintHelper 只负责构造上下文、语义约束、候选排序、preview diagnostics 和可重建的 spawner evidence。
+3. 只有 UE NodeSpawner 无法表达，或 semantic operation 本质是多节点 DAG 编排时，才允许进入专用 FragmentBuilder。
+4. ActionResolution layer 只负责解析并返回 spawner evidence，不负责创建节点、连线、应用默认值或触发 post-link lifecycle。
+5. Fragment / Composer layer 只消费 spawner evidence，并通过 shared adapter 调用 `UBlueprintNodeSpawner::Invoke`。
+6. Preview 是该架构的基线流程：低 token TaskSpec 先获得错误诊断、歧义候选或最小 success，再由 Agent 决定补充语义或执行。
+7. `call` 不是所有 graph action 的总入口；`call/get/set/op/construct/control/event/bind/create` 等都是 compact semantic intent，必须映射到对应 NodeSpawner-family cluster 后在簇内解析。
+8. `FindFunctionByName`、手扫 `UFunction` / `FProperty`、直接 `NewObject<UK2Node_*>()` 不得作为主路径；若作为 evidence 重建或 ActionDatabase 不可表达的窄例外，必须在对应 resolver/builder 中写明原因。
+
+四大簇在该口径下的主路径：
+
+```text
+FunctionActionCluster
+-> UBlueprintFunctionNodeSpawner / type-promotion operator spawner
+-> call / op / convert_function / schedule_function / latent_or_async_function
+
+FieldVariableActionCluster
+-> UBlueprintFieldNodeSpawner / UBlueprintVariableNodeSpawner / UBlueprintComponentNodeSpawner
+-> get / set / get_property / set_property / component_ref / field_access
+
+EventDelegateActionCluster
+-> UBlueprintEventNodeSpawner / UBlueprintBoundEventNodeSpawner / UAnimNotifyEventNodeSpawner / UBlueprintDelegateNodeSpawner / UBlueprintBoundNodeSpawner
+-> event / component_bound_event / anim_notify_event / bind / unbind / assign / delegate_call / delegate_clear
+
+GenericAssetStructControlActionCluster
+-> UBlueprintNodeSpawner / UBlueprintFieldNodeSpawner / UBlueprintAssetNodeSpawner / struct-enum-generic registrar delegates
+-> construct / deconstruct / select / single-node control / create / asset_action / container_action
+-> multi-node control DAG and UE-unrepresentable semantic operations use dedicated FragmentBuilder
+```
+
+该方案的预期取舍：
+
+- 正确率优先复用 UE 行为，理论上比自研路径更接近编辑器右键菜单。
+- AgentFace 字段保持精简，复杂上下文由 BlueprintHelper 从 TaskSpec、Blueprint、Graph、Schema、typed pins、target/binding object 中推断。
+- Preview 必须返回精简但可行动的候选 evidence，避免为了精确选择而膨胀 TaskSpec 字段。
+- 迁移过程中应优先清理仍可达的自研 fallback 主路径，再逐簇补齐 UE action context。

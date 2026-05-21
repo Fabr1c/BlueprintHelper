@@ -867,3 +867,20 @@ npm.cmd run build
 距离期望差距：
 - [o] 本轮只确认并清理 GraphWrite Pipeline 与 ActionResolution 旧迁移状态；`BlueprintSignatureService` 仍有签名工具自身的 `UK2Node` 创建逻辑，属于签名工具簇后续是否也收敛到 NodeSpawner 架构的独立审计项。
 - [ ] 本轮未运行 UE 编译或 CLI smoke；当前只完成源码结构清理与窄范围静态扫描。
+
+### Implementation Update 2026-05-21 Return Smoke and Control Gap Recheck
+
+- [x] AgentFace TypeScript compiler now accepts `return` in `BlueprintLogicSpec.v2` statement validation.
+- [x] AgentFace Python compiler now accepts `return` in the matching graph-write statement validation path.
+- [x] Task contract statement kind list now includes `return`.
+- [x] UE 5.6 build passed after migration cleanup and `return` compiler sync.
+- [x] Existing full-line smoke (`call/get/set/op/construct/deconstruct/select`) preview and execute passed after the Pipeline rename / migration cleanup.
+- [x] Existing branch/control smoke preview and execute passed after the Pipeline rename / migration cleanup.
+- [x] Added return smoke TaskSpecs under `D:\UEProjects\Template\Saved\BlueprintHelper\CodexSmoke\ActionResolutionReturn_20260521_235200`.
+- [x] Return smoke signature preview and execute passed for `AR_Return_20260521_235200`.
+- [x] Return smoke function-body preview and execute passed with a `return` statement writing a literal float return value.
+
+距离期望差距：
+- [x] `return` builder 已完成 AgentFace compiler -> C++ SemanticIR -> ControlFragmentBuilder -> CLI preview/execute 闭环。
+- [x] 本轮迁移清理 / Pipeline 改名已通过 UE 编译与 CLI smoke 回归。
+- [o] `control` 当前真实覆盖范围是 `branch` 与 `return`。`sequence` 只存在内部 helper，尚未作为 AgentFace/C++ statement kind 可达；`switch` / `loop` 尚未进入 schema、SemanticIR 或 FragmentBuilder。不能标记为完整控制流簇完成。

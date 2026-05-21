@@ -431,6 +431,9 @@ test('develop timing records read_context logic_flow stages and UE nested timing
   assert.equal(calls.length, 1);
   assert.equal(calls[0].command, 'read_blueprint_logic_json');
   assert.equal(calls[0].payload['include_timing'], true);
+  assert.equal(calls[0].payload['target_type'], 'event');
+  assert.equal(calls[0].payload['target_name'], 'BeginPlay');
+  assert.equal(calls[0].payload['scope'], 'target_event');
 
   const output = JSON.parse(writes.join('')) as Record<string, any>;
   const toolResult = output.tool_result as Record<string, any>;
@@ -703,24 +706,14 @@ test('missing option values exit 64 without throwing', async () => {
   assert.match(stderr.join(''), /Missing value for --file/);
 });
 
-test('context read uses TaskSpec runner readTaskContext', async () => {
+test('context read uses ReadContext Bridge route', async () => {
   const writes: string[] = [];
+  const calls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
   const runner = {
     previewTask: async () => { throw new Error('not used'); },
     executeTask: async () => { throw new Error('not used'); },
     getTaskResult: async () => { throw new Error('not used'); },
-    readTaskContext: async () => ({
-      ok: true,
-      schema: 'BlueprintHelper.ToolResult.v1',
-      operation: 'read_task_context',
-      trace_id: 'trace_context',
-      status: 'completed',
-      modified: false,
-      data: {
-        schema: 'BlueprintHelper.TaskContextPack.v1',
-        target: { asset_path: '/Game/BP_Player' },
-      },
-    }),
+    readTaskContext: async () => { throw new Error('not used'); },
     readReferenceContext: async () => { throw new Error('not used'); },
   } as TaskSpecRunner;
 
@@ -728,11 +721,28 @@ test('context read uses TaskSpec runner readTaskContext', async () => {
     argv: ['context', 'read', '--file', 'context-request.json'],
     cwd: fixturesDir,
     runner,
+    bridge: {
+      sendCommand: async (command: string, payload?: Record<string, unknown>): Promise<BridgeResponse> => {
+        calls.push({ command, payload });
+        return {
+          request_id: 'context_read_alias',
+          success: true,
+          result: {
+            schema: 'LogicJson.v1',
+            scope: 'target_graph',
+            logic: { graph: 'EventGraph', nodes: [] },
+            stats: { nodes: 0, exec_links: 0, data_links: 0, orphan_nodes: 0 },
+          },
+        };
+      },
+    },
     stdout: (line) => writes.push(line),
     stderr: () => {},
   });
 
   assert.equal(exitCode, 0);
+  assert.equal(calls[0].command, 'read_blueprint_logic_json');
+  assert.equal(calls[0].payload?.['target_type'], 'graph');
   const output = JSON.parse(writes.join('')) as Record<string, unknown>;
   assert.equal(output.operation, 'context.read');
   assert.equal(output.status, 'completed');
@@ -740,22 +750,23 @@ test('context read uses TaskSpec runner readTaskContext', async () => {
 
 test('develop timing applies to context read command', async () => {
   const writes: string[] = [];
+  const bridge = {
+    sendCommand: async (): Promise<BridgeResponse> => ({
+      request_id: 'context_read_develop',
+      success: true,
+      result: {
+        schema: 'LogicJson.v1',
+        scope: 'target_graph',
+        logic: { graph: 'EventGraph', nodes: [] },
+        stats: { nodes: 0, exec_links: 0, data_links: 0, orphan_nodes: 0 },
+      },
+    }),
+  };
   const runner = {
     previewTask: async () => { throw new Error('not used'); },
     executeTask: async () => { throw new Error('not used'); },
     getTaskResult: async () => { throw new Error('not used'); },
-    readTaskContext: async () => ({
-      ok: true,
-      schema: 'BlueprintHelper.ToolResult.v1',
-      operation: 'read_task_context',
-      trace_id: 'trace_context_develop',
-      status: 'completed',
-      modified: false,
-      data: {
-        schema: 'BlueprintHelper.TaskContextPack.v1',
-        target: { asset_path: '/Game/BP_Player' },
-      },
-    }),
+    readTaskContext: async () => { throw new Error('not used'); },
     readReferenceContext: async () => { throw new Error('not used'); },
   } as TaskSpecRunner;
 
@@ -763,6 +774,7 @@ test('develop timing applies to context read command', async () => {
     argv: ['context', 'read', '--file', 'context-request.json', '--develop', '--format', 'json'],
     cwd: fixturesDir,
     runner,
+    bridge,
     stdout: (line) => writes.push(line),
     stderr: () => {},
   });
@@ -771,8 +783,8 @@ test('develop timing applies to context read command', async () => {
   const output = JSON.parse(writes.join('')) as Record<string, any>;
   const timing = output.tool_result.data.timing as Record<string, any>;
   assert.equal(timing.source, 'agentface_cli');
-  assert.ok((timing.stages as Array<Record<string, unknown>>).some((stage) => stage.name === 'context_file_read_parse'));
-  assert.ok((timing.stages as Array<Record<string, unknown>>).some((stage) => stage.name === 'cli.read_task_context'));
+  assert.ok((timing.stages as Array<Record<string, unknown>>).some((stage) => stage.name === 'cli.read_context'));
+  assert.ok((timing.stages as Array<Record<string, unknown>>).some((stage) => stage.name === 'read_context.parse_input'));
 });
 
 test('context read artifact escapes localized node names as ascii-safe JSON', async () => {
@@ -782,24 +794,7 @@ test('context read artifact escapes localized node names as ascii-safe JSON', as
     previewTask: async () => { throw new Error('not used'); },
     executeTask: async () => { throw new Error('not used'); },
     getTaskResult: async () => { throw new Error('not used'); },
-    readTaskContext: async () => ({
-      ok: true,
-      schema: 'BlueprintHelper.ToolResult.v1',
-      operation: 'read_task_context',
-      trace_id: 'trace_context_localized',
-      status: 'completed',
-      modified: false,
-      data: {
-        schema: 'BlueprintHelper.TaskContextPack.v1',
-        target: { asset_path: '/Game/BP_Player' },
-        payload: {
-          nodes: [
-            { kind: 'call_function', name: '打印字符串' },
-            { kind: 'branch', name: '分支' },
-          ],
-        },
-      },
-    }),
+    readTaskContext: async () => { throw new Error('not used'); },
     readReferenceContext: async () => { throw new Error('not used'); },
   } as TaskSpecRunner;
 
@@ -807,6 +802,24 @@ test('context read artifact escapes localized node names as ascii-safe JSON', as
     argv: ['context', 'read', '--file', 'context-request.json', '--artifact-dir', artifactDir],
     cwd: fixturesDir,
     runner,
+    bridge: {
+      sendCommand: async (): Promise<BridgeResponse> => ({
+        request_id: 'context_read_localized',
+        success: true,
+        result: {
+          schema: 'LogicJson.v1',
+          scope: 'target_graph',
+          logic: {
+            graph: 'EventGraph',
+            nodes: [
+              { kind: 'call_function', name: '打印字符串' },
+              { kind: 'branch', name: '分支' },
+            ],
+          },
+          stats: { nodes: 2, exec_links: 0, data_links: 0, orphan_nodes: 0 },
+        },
+      }),
+    },
     stdout: (line) => writes.push(line),
     stderr: () => {},
   });

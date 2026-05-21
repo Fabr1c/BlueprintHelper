@@ -36,7 +36,6 @@ blueprinthelper_diagnostics_runtime
 blueprinthelper_read_agent_guide
 blueprinthelper_read_context
 blueprinthelper_read_context_capabilities
-blueprinthelper_read_task_context
 blueprinthelper_read_reference_context
 blueprinthelper_read_function_chain_context
 blueprinthelper_preview_task
@@ -93,7 +92,7 @@ UE Bridge 闀跨瓑寰呬細鍚?`stderr` 杈撳嚭 keep-alive 鎻愮ず锛沗std
 TaskSpec-first 鍐欏叆寰幆锛?
 ```text
 bh blueprint_get_runtime_profile
--> bh blueprinthelper_read_task_context or bh blueprinthelper_read_context
+-> bh blueprinthelper_read_context
 -> author BlueprintHelper.TaskSpec.v1
 -> bh blueprinthelper_preview_task
 -> bh blueprinthelper_request_write_session when write_permission is disabled
@@ -231,7 +230,6 @@ blueprinthelper_diagnostics_runtime
 blueprinthelper_read_agent_guide
 blueprinthelper_read_context
 blueprinthelper_read_context_capabilities
-blueprinthelper_read_task_context
 blueprinthelper_read_reference_context
 blueprinthelper_read_function_chain_context
 blueprinthelper_preview_task
@@ -295,7 +293,7 @@ TaskSpec-first write loop:
 
 ```text
 bh blueprint_get_runtime_profile
--> bh blueprinthelper_read_task_context or bh blueprinthelper_read_context
+-> bh blueprinthelper_read_context
 -> author BlueprintHelper.TaskSpec.v1
 -> bh blueprinthelper_preview_task
 -> bh blueprinthelper_request_write_session when write_permission is disabled

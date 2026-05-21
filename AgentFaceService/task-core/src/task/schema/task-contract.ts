@@ -1,5 +1,4 @@
 import {
-  TASK_CONTEXT_PACK_SCHEMA,
   TASK_PLAN_SCHEMA,
   TASK_RUN_JOURNAL_SCHEMA,
   TASK_SPEC_SCHEMA,
@@ -11,12 +10,10 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
   schema: TASK_PROTOCOL_CONTRACT_VERSION,
   task_spec_schema: TASK_SPEC_SCHEMA,
   task_plan_schema: TASK_PLAN_SCHEMA,
-  context_pack_schema: TASK_CONTEXT_PACK_SCHEMA,
   task_run_journal_schema: TASK_RUN_JOURNAL_SCHEMA,
   agent_facing_tools: [
     'blueprinthelper_get_runtime_profile',
     'blueprinthelper_diagnostics',
-    'blueprinthelper_read_task_context',
     'blueprinthelper_preview_task',
     'blueprinthelper_execute_task',
     'blueprinthelper_get_task_result',
@@ -68,7 +65,7 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       'merge_owned_graph',
     ],
     entry_types: ['custom_event'],
-  statement_kinds: ['call', 'set', 'set_property', 'let', 'branch'],
+  statement_kinds: ['call', 'set', 'set_property', 'let', 'branch', 'return'],
     expression_kinds: ['literal', 'get', 'get_property', 'call', 'op', 'construct', 'deconstruct', 'select'],
     task_plan_capability: 'graph_write',
     task_plan_dependency_capabilities: ['blueprint_signature'],
@@ -520,7 +517,6 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
   capability_catalog: {
     source_root: 'Resources/v0.3.6/DoneImplementaion',
     agent_default_surface: [
-      'blueprinthelper_read_task_context',
       'blueprinthelper_preview_task',
       'blueprinthelper_execute_task',
       'blueprinthelper_get_task_result',
