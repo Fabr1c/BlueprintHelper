@@ -3,9 +3,9 @@
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraphSchema_K2.h"
+#include "BlueprintNodeSpawner.h"
 #include "K2Node_Select.h"
-#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
-#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphNodeFactory.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionNodeSpawnerAdapter.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphStatementTypeUtils.h"
 
@@ -180,22 +180,21 @@ static bool EnsureOptionPinCount(
 	return true;
 }
 
-static void ApplyLiteralDefaults(
+static void CollectLiteralDefaults(
 	UK2Node_Select* SelectNode,
 	const FBlueprintHelperGraphExpressionIR& Expression,
-	const FString& FragmentId)
+	TMap<FString, FString>& InOutDefaults)
 {
 	if (!SelectNode)
 	{
 		return;
 	}
 
-	TMap<FString, FString> Defaults;
 	FString Literal;
 	if (TryGetExpressionLiteral(Expression.Condition, Literal))
 	{
-		Defaults.Add(TEXT("Index"), Literal);
-		Defaults.Add(TEXT("condition"), Literal);
+		InOutDefaults.Add(TEXT("Index"), Literal);
+		InOutDefaults.Add(TEXT("condition"), Literal);
 	}
 
 	TArray<UEdGraphPin*> OptionPins;
@@ -204,13 +203,13 @@ static void ApplyLiteralDefaults(
 	{
 		if (OptionPins.IsValidIndex(0) && TryGetExpressionLiteral(Expression.ElseValue, Literal))
 		{
-			Defaults.Add(OptionPins[0]->PinName.ToString(), Literal);
-			Defaults.Add(TEXT("else"), Literal);
+			InOutDefaults.Add(OptionPins[0]->PinName.ToString(), Literal);
+			InOutDefaults.Add(TEXT("else"), Literal);
 		}
 		if (OptionPins.IsValidIndex(1) && TryGetExpressionLiteral(Expression.ThenValue, Literal))
 		{
-			Defaults.Add(OptionPins[1]->PinName.ToString(), Literal);
-			Defaults.Add(TEXT("then"), Literal);
+			InOutDefaults.Add(OptionPins[1]->PinName.ToString(), Literal);
+			InOutDefaults.Add(TEXT("then"), Literal);
 		}
 	}
 	else
@@ -219,15 +218,10 @@ static void ApplyLiteralDefaults(
 		{
 			if (TryGetExpressionLiteral(Expression.Options[OptionIndex], Literal))
 			{
-				Defaults.Add(OptionPins[OptionIndex]->PinName.ToString(), Literal);
-				Defaults.Add(FString::Printf(TEXT("option_%d"), OptionIndex), Literal);
+				InOutDefaults.Add(OptionPins[OptionIndex]->PinName.ToString(), Literal);
+				InOutDefaults.Add(FString::Printf(TEXT("option_%d"), OptionIndex), Literal);
 			}
 		}
-	}
-
-	if (Defaults.Num() > 0)
-	{
-		FBlueprintGraphWriteFacade::ApplyDefaultValues(SelectNode, Defaults, FragmentId);
 	}
 }
 
@@ -313,24 +307,45 @@ bool FBlueprintHelperSelectFragmentBuilder::Build(
 		return false;
 	}
 
-	UK2Node_Select* SelectNode = FBlueprintHelperGraphNodeFactory::SpawnK2Node<UK2Node_Select>(
+	const FString ExpressionId = FBlueprintHelperGraphStatementTypeUtils::MakeExpressionFragmentId(Expression);
+	UBlueprintNodeSpawner* SelectSpawner = UBlueprintNodeSpawner::Create(UK2Node_Select::StaticClass());
+	FBlueprintHelperActionNodeSpawnOptions SpawnOptions;
+	SpawnOptions.NodeId = ExpressionId;
+	SpawnOptions.NodeConfigurationHook = [&Expression](UK2Node& SpawnedNode, const FBlueprintHelperActionNodeSpawnContext&, FString& HookError)
+	{
+		UK2Node_Select* SelectNode = Cast<UK2Node_Select>(&SpawnedNode);
+		if (!SelectNode)
+		{
+			HookError = TEXT("select fragment build failed: spawned node is not UK2Node_Select.");
+			return false;
+		}
+
+		ApplyIndexPinType(SelectNode, Expression);
+		if (!EnsureOptionPinCount(SelectNode, GetDesiredOptionCount(Expression), HookError))
+		{
+			return false;
+		}
+		ApplyResultPinType(SelectNode, Expression);
+		return true;
+	};
+	SpawnOptions.DefaultValueProvider = [&Expression](UK2Node& SpawnedNode, const FBlueprintHelperActionNodeSpawnContext&, TMap<FString, FString>& InOutDefaults)
+	{
+		CollectLiteralDefaults(Cast<UK2Node_Select>(&SpawnedNode), Expression, InOutDefaults);
+	};
+
+	UK2Node* SpawnedNode = FBlueprintHelperActionNodeSpawnerAdapter::InvokeNodeSpawner(
 		TargetGraph,
-		FVector2D::ZeroVector);
+		SelectSpawner,
+		TEXT("dedicated_select_node_spawner"),
+		FVector2D::ZeroVector,
+		SpawnOptions,
+		OutError);
+	UK2Node_Select* SelectNode = Cast<UK2Node_Select>(SpawnedNode);
 	if (!SelectNode)
 	{
 		OutError = TEXT("select fragment build failed: UK2Node_Select spawn failed.");
 		return false;
 	}
-
-	ApplyIndexPinType(SelectNode, Expression);
-	if (!EnsureOptionPinCount(SelectNode, GetDesiredOptionCount(Expression), OutError))
-	{
-		return false;
-	}
-	ApplyResultPinType(SelectNode, Expression);
-
-	const FString ExpressionId = FBlueprintHelperGraphStatementTypeUtils::MakeExpressionFragmentId(Expression);
-	ApplyLiteralDefaults(SelectNode, Expression, ExpressionId);
 
 	OutFragment.FragmentId = ExpressionId;
 	OutFragment.SourceStatementId = Expression.ExpressionId;

@@ -4,35 +4,7 @@
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraph/EdGraphSchema.h"
-#include "K2Node_PromotableOperator.h"
-#include "K2Node_Select.h"
-
-namespace
-{
-static void NotifyPinConnectionLifecycleChanged(UEdGraphPin* Pin)
-{
-	if (!Pin)
-	{
-		return;
-	}
-
-	if (UK2Node_PromotableOperator* OpNode = Cast<UK2Node_PromotableOperator>(Pin->GetOwningNode()))
-	{
-		OpNode->NotifyPinConnectionListChanged(Pin);
-	}
-	if (UK2Node_Select* SelectNode = Cast<UK2Node_Select>(Pin->GetOwningNode()))
-	{
-		SelectNode->NotifyPinConnectionListChanged(Pin);
-		SelectNode->NodeConnectionListChanged();
-	}
-}
-
-static void NotifySchemaDataConnectionLifecycleChanged(UEdGraphPin* FromPin, UEdGraphPin* ToPin)
-{
-	NotifyPinConnectionLifecycleChanged(FromPin);
-	NotifyPinConnectionLifecycleChanged(ToPin);
-}
-}
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphNodeLifecycle.h"
 
 UEdGraphPin* FBlueprintHelperGraphComposerUtils::FindPinRefInMap(
 	const TMap<FString, FBlueprintHelperFragmentPinRef>& PinMap,
@@ -203,7 +175,7 @@ bool FBlueprintHelperGraphComposerUtils::TryCreateSchemaDataConnection(
 	{
 		if (Schema->CreateAutomaticConversionNodeAndConnections(FromPin, ToPin))
 		{
-			NotifySchemaDataConnectionLifecycleChanged(FromPin, ToPin);
+			FBlueprintHelperGraphNodeLifecycle::NotifyDataConnectionChanged(FromPin, ToPin);
 			return true;
 		}
 	}
@@ -211,7 +183,7 @@ bool FBlueprintHelperGraphComposerUtils::TryCreateSchemaDataConnection(
 	{
 		if (Schema->CreatePromotedConnection(FromPin, ToPin) || Schema->TryCreateConnection(FromPin, ToPin))
 		{
-			NotifySchemaDataConnectionLifecycleChanged(FromPin, ToPin);
+			FBlueprintHelperGraphNodeLifecycle::NotifyDataConnectionChanged(FromPin, ToPin);
 			return true;
 		}
 	}
@@ -219,7 +191,7 @@ bool FBlueprintHelperGraphComposerUtils::TryCreateSchemaDataConnection(
 	{
 		if (Schema->TryCreateConnection(FromPin, ToPin))
 		{
-			NotifySchemaDataConnectionLifecycleChanged(FromPin, ToPin);
+			FBlueprintHelperGraphNodeLifecycle::NotifyDataConnectionChanged(FromPin, ToPin);
 			return true;
 		}
 	}
@@ -274,6 +246,6 @@ bool FBlueprintHelperGraphComposerUtils::TryForceCompatibleDataConnection(
 	{
 		ToNode->NodeConnectionListChanged();
 	}
-	NotifySchemaDataConnectionLifecycleChanged(FromPin, ToPin);
+	FBlueprintHelperGraphNodeLifecycle::NotifyDataConnectionChanged(FromPin, ToPin);
 	return true;
 }

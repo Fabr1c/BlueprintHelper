@@ -1443,7 +1443,7 @@ def _compile_merge_graph_write_ops(behavior: Dict[str, Any]) -> List[Dict[str, A
     return ops
 
 
-SUPPORTED_GRAPH_BODY_STATEMENT_KINDS = {"call", "set", "set_property", "let"}
+SUPPORTED_GRAPH_BODY_STATEMENT_KINDS = {"call", "set", "set_property", "let", "branch"}
 SUPPORTED_GRAPH_BODY_EXPRESSION_KINDS = {
     "literal",
     "get",
@@ -1467,13 +1467,17 @@ def _validate_supported_statements(statements: List[Dict[str, Any]], path: str) 
                 [{
                     "code": "unsupported_statement_kind",
                     "path": f"{statement_path}.kind",
-                    "message": "Use call, set, set_property, or let, or split this work into a later GraphWrite capability.",
+                    "message": "Use call, set, set_property, let, or branch.",
                 }],
             )
         if kind == "call":
             _validate_expression_map(statement.get("args"), f"{statement_path}.args")
         elif kind in {"let", "set", "set_property"}:
             _validate_supported_expression(statement.get("value"), f"{statement_path}.value")
+        elif kind == "branch":
+            _validate_supported_expression(statement.get("condition"), f"{statement_path}.condition")
+            _validate_supported_statements(statement.get("then") if isinstance(statement.get("then"), list) else [], f"{statement_path}.then")
+            _validate_supported_statements(statement.get("else") if isinstance(statement.get("else"), list) else [], f"{statement_path}.else")
 
 
 def _validate_expression_map(value: Any, path: str) -> None:
@@ -1646,6 +1650,8 @@ def _compile_statement_sequence(statements: List[Dict[str, Any]], id_prefix: str
 
 def _compile_statement_flow(statement: Dict[str, Any], node_id: str, path: str, context: Dict[str, Any]) -> Dict[str, Any]:
     kind = statement.get("kind")
+    if kind == "branch":
+        return _compile_branch_statement_flow(statement, node_id, path, context)
     if kind == "let":
         name = _required_string(statement, "name", f"{path}.name")
         value_flow = _compile_value_expression(statement.get("value"), f"{node_id}_value", f"{path}.value", context)

@@ -835,3 +835,21 @@ npm.cmd run build
 ```powershell
 & 'E:\UE_5.6\Engine\Build\BatchFiles\Build.bat' TemplateEditor Win64 Development -Project='D:\UEProjects\Template\Template.uproject' -WaitMutex -NoHotReload
 ```
+### Implementation Update 2026-05-21 Shared Adapter / Composer Lifecycle
+
+- [x] 新增 `FBlueprintHelperGraphNodeLifecycle`，把 data edge link 后的节点生命周期通知从 `GraphComposerUtils` 局部函数收敛为共享 lifecycle 边界。
+- [x] `GraphComposerUtils` 的 schema connection / promoted connection / conversion node connection / force-compatible connection 均统一调用 `FBlueprintHelperGraphNodeLifecycle::NotifyDataConnectionChanged`。
+- [x] `FBlueprintHelperActionNodeSpawnerAdapter` 新增 direct `UBlueprintNodeSpawner` overload，使 dedicated FragmentBuilder 也可以复用同一套 spawn 后生命周期。
+- [x] `FBlueprintHelperActionNodeSpawnerAdapter` 新增可失败 `NodeConfigurationHook`，用于将 dedicated builder 的 pin normalization / pin count setup 收敛到 adapter 生命周期内。
+- [x] `FBlueprintHelperSelectFragmentBuilder` 不再直接 `SpawnK2Node<UK2Node_Select>`，改为 `UBlueprintNodeSpawner::Create(UK2Node_Select::StaticClass()) -> ActionNodeSpawnerAdapter::InvokeNodeSpawner`。
+- [x] `select` literal defaults 不再直接调用 `FBlueprintGraphWriteFacade::ApplyDefaultValues`，改为通过 adapter `DefaultValueProvider` 进入统一 default application。
+- [x] 源码卫生检查通过：不存在 `NotifySchemaDataConnectionLifecycleChanged`、`NotifyPinConnectionLifecycleChanged`、`FBlueprintGraphWriteFacade::ApplyDefaultValues(SelectNode)`、`BlueprintHelperGraphNodeFactory::SpawnK2Node<UK2Node_Select>`、`ApplyLiteralDefaults(` 残留。
+- [x] UE 5.6 build passed after lifecycle convergence.
+- [x] CLI control/branch preview and execute passed after lifecycle convergence.
+- [x] CLI full-line `call/get/set/op/construct/deconstruct/select` preview and execute passed after lifecycle convergence.
+
+距离期望差距：
+- [x] post-spawn defaults 已收敛到 shared adapter 路径，`select` dedicated builder 已迁入。
+- [x] pin normalization 的可失败配置入口已收敛到 shared adapter，`select` dedicated builder 已迁入。
+- [x] post-link lifecycle 已收敛到 shared composer lifecycle helper。
+- [o] 当前 lifecycle helper 明确覆盖 `UK2Node_PromotableOperator` 与 `UK2Node_Select` 的 link 后通知；如果后续新增其它需要特殊 link lifecycle 的 UE 节点，应扩展 `FBlueprintHelperGraphNodeLifecycle`，不要回到 builder/composer 局部分支。
