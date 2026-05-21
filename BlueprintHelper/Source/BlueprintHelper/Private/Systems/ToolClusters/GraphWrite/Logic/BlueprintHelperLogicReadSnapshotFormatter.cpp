@@ -284,6 +284,8 @@ FBlueprintHelperLogicJsonData FBlueprintHelperLogicReadSnapshotFormatter::BuildL
 			Snapshot.Target.Graph,
 			Snapshot.TargetEntryName,
 			Snapshot.Scope);
+		FBlueprintHelperLogicReadSnapshotFormatterLocalUtils::FillStatsFromPayload(Data.Logic, Data.Stats);
+		return Data;
 	}
 	else
 	{

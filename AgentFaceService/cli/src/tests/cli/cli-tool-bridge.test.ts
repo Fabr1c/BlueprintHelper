@@ -41,6 +41,7 @@ test('direct blueprint_get_runtime_profile calls matching Bridge command', async
   assert.equal(JSON.parse(writes.join('')).status, 'completed');
 });
 
+
 test('direct read context capabilities stays local and returns compact matrix artifact', async () => {
   const writes: string[] = [];
   const artifactDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-cli-read-capabilities-'));

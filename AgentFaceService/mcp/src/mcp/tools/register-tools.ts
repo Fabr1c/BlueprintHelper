@@ -739,7 +739,6 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     ueEngineDir: config.ueEngineDir,
     taskCompiler: config.taskCompiler,
     toolNames: new Set([
-      'blueprinthelper_read_task_context',
       'blueprinthelper_read_reference_context',
       'blueprinthelper_preview_task',
       'blueprinthelper_execute_task',

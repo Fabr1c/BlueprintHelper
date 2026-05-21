@@ -47,7 +47,6 @@ Use `tools/list` as final authority. Normal Agent-facing tools:
 | AgentGuide index | `blueprinthelper_read_agent_guide` |
 | ReadSpec context | `blueprinthelper_read_context` |
 | ReadContext capabilities | `blueprinthelper_read_context_capabilities` |
-| Task context | `blueprinthelper_read_task_context` |
 | Reference context | `blueprinthelper_read_reference_context` |
 | Function chain context | `blueprinthelper_read_function_chain_context` |
 | Preview TaskSpec | `blueprinthelper_preview_task` |
@@ -73,7 +72,6 @@ Lifecycle companion tools are available only through the global MCP allowlist fo
 | `blueprinthelper_read_agent_guide` | `{}` |
 | `blueprinthelper_read_context` | `BlueprintHelper.ReadSpec.v1` fields at root |
 | `blueprinthelper_read_context_capabilities` | `{}` |
-| `blueprinthelper_read_task_context` | `{ "target": { "asset_path": "..." }, "feature_name": "..." }` |
 | `blueprinthelper_read_reference_context` | Reference fields at root |
 | `blueprinthelper_read_function_chain_context` | Function chain fields at root |
 | `blueprinthelper_preview_task` | `{ "task_spec": { ...BlueprintHelper.TaskSpec.v1... } }` |

@@ -1333,7 +1333,7 @@ function compileMergeGraphWriteOps(behavior: Record<string, unknown>): GraphWrit
   });
 }
 
-const SUPPORTED_GRAPH_BODY_STATEMENT_KINDS = new Set(['call', 'set', 'set_property', 'let', 'branch']);
+const SUPPORTED_GRAPH_BODY_STATEMENT_KINDS = new Set(['call', 'set', 'set_property', 'let', 'branch', 'return']);
 const SUPPORTED_GRAPH_BODY_EXPRESSION_KINDS = new Set([
   'literal',
   'get',
@@ -1355,7 +1355,7 @@ function validateSupportedStatements(statements: BlueprintLogicStatement[], path
         {
           code: 'unsupported_statement_kind',
           path: `${statementPath}.kind`,
-          message: 'Use call, set, set_property, let, or branch.',
+          message: 'Use call, set, set_property, let, branch, or return.',
         },
       ]);
     }
@@ -1367,6 +1367,10 @@ function validateSupportedStatements(statements: BlueprintLogicStatement[], path
       validateSupportedExpression(statementRecord.condition, `${statementPath}.condition`);
       validateSupportedStatements(Array.isArray(statementRecord.then) ? statementRecord.then as BlueprintLogicStatement[] : [], `${statementPath}.then`);
       validateSupportedStatements(Array.isArray(statementRecord['else']) ? statementRecord['else'] as BlueprintLogicStatement[] : [], `${statementPath}.else`);
+    } else if (kind === 'return') {
+      if (Object.hasOwn(statementRecord, 'value')) {
+        validateSupportedExpression(statementRecord.value, `${statementPath}.value`);
+      }
     }
   });
 }
@@ -2519,6 +2523,14 @@ function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string
       target,
       property_path: propertyPath,
       property: propertyPath,
+      value: valueExprToString(statementRecord['value']),
+    } as AgentImportNode;
+  }
+
+  if (kind === 'return') {
+    return {
+      id: nodeId,
+      kind: 'return',
       value: valueExprToString(statementRecord['value']),
     } as AgentImportNode;
   }

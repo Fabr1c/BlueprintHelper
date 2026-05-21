@@ -1443,7 +1443,7 @@ def _compile_merge_graph_write_ops(behavior: Dict[str, Any]) -> List[Dict[str, A
     return ops
 
 
-SUPPORTED_GRAPH_BODY_STATEMENT_KINDS = {"call", "set", "set_property", "let", "branch"}
+SUPPORTED_GRAPH_BODY_STATEMENT_KINDS = {"call", "set", "set_property", "let", "branch", "return"}
 SUPPORTED_GRAPH_BODY_EXPRESSION_KINDS = {
     "literal",
     "get",
@@ -1467,7 +1467,7 @@ def _validate_supported_statements(statements: List[Dict[str, Any]], path: str) 
                 [{
                     "code": "unsupported_statement_kind",
                     "path": f"{statement_path}.kind",
-                    "message": "Use call, set, set_property, let, or branch.",
+                    "message": "Use call, set, set_property, let, branch, or return.",
                 }],
             )
         if kind == "call":
@@ -1478,6 +1478,8 @@ def _validate_supported_statements(statements: List[Dict[str, Any]], path: str) 
             _validate_supported_expression(statement.get("condition"), f"{statement_path}.condition")
             _validate_supported_statements(statement.get("then") if isinstance(statement.get("then"), list) else [], f"{statement_path}.then")
             _validate_supported_statements(statement.get("else") if isinstance(statement.get("else"), list) else [], f"{statement_path}.else")
+        elif kind == "return" and "value" in statement:
+            _validate_supported_expression(statement.get("value"), f"{statement_path}.value")
 
 
 def _validate_expression_map(value: Any, path: str) -> None:
@@ -2520,6 +2522,13 @@ def _compile_statement_node(statement: Dict[str, Any], node_id: str, path: str) 
             "target": _required_string(statement, "target", f"{path}.target"),
             "property_path": property_path,
             "property": property_path,
+            "value": _value_expr_to_string(statement.get("value")),
+        }
+
+    if kind == "return":
+        return {
+            "id": node_id,
+            "kind": "return",
             "value": _value_expr_to_string(statement.get("value")),
         }
 

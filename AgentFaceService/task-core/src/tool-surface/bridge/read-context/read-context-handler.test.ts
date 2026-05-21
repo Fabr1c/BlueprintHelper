@@ -35,10 +35,14 @@ const bridgeResponse: BridgeResponse = {
   },
 };
 
+const bridgeCalls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
 const context: BlueprintHelperToolContext = {
   cwd: process.cwd(),
   bridge: {
-    sendCommand: async () => bridgeResponse,
+    sendCommand: async (command: string, payload?: Record<string, unknown>) => {
+      bridgeCalls.push({ command, payload });
+      return bridgeResponse;
+    },
   } as never,
   taskRunner: {} as never,
   timing,
@@ -49,7 +53,8 @@ const result = await executeReadContext({
   read_type: 'blueprint_logic',
   target: {
     asset_path: '/Game/BP_Test',
-    target_type: 'blueprint',
+    target_type: 'function',
+    target_name: 'ComputeValue',
   },
   view: {
     format: 'logic_json',
@@ -57,6 +62,11 @@ const result = await executeReadContext({
 }, context);
 
 assert.equal(result.ok, true);
+assert.equal(bridgeCalls[0]?.command, 'read_blueprint_logic_json');
+assert.equal(bridgeCalls[0]?.payload?.['target_type'], 'function');
+assert.equal(bridgeCalls[0]?.payload?.['target_name'], 'ComputeValue');
+assert.equal(bridgeCalls[0]?.payload?.['function'], 'ComputeValue');
+assert.equal(bridgeCalls[0]?.payload?.['scope'], 'target_function');
 
 const snapshot = timing.snapshot();
 const stageNames = snapshot.stages.map((stage) => stage.name);

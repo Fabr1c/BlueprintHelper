@@ -8,7 +8,6 @@ not request write permission.
 
 | Intent | Template | Command |
 |---|---|---|
-| Build a compact task-context pack for a feature request | `blueprinthelper_read_task_context_template.json` | `blueprinthelper_read_task_context` |
 | Get a compact asset summary before deeper reads | `read_context_asset_summary_template.json` | `blueprinthelper_read_context` |
 | Discover supported ReadContext capability matrix | `blueprinthelper_read_context_capabilities_template.json` | `blueprinthelper_read_context_capabilities` |
 

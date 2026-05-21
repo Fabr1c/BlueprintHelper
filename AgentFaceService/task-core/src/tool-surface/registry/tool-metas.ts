@@ -9,7 +9,6 @@ export type ToolMeta = {
 };
 
 export const toolMetas: ToolMeta[] = [
-  { name: 'blueprinthelper_read_task_context', description: 'Read a compact TaskContextPack.', audience: 'default', risk: 'low' },
   { name: 'blueprinthelper_read_reference_context', description: 'Read compact ReferenceContextPack.v1 impact context.', audience: 'default', risk: 'low' },
   { name: 'blueprinthelper_preview_task', description: 'Validate and preview a BlueprintHelper.TaskSpec.v1.', audience: 'default', risk: 'low' },
   { name: 'blueprinthelper_execute_task', description: 'Execute a BlueprintHelper.TaskSpec.v1 after preview.', audience: 'default', risk: 'high' },

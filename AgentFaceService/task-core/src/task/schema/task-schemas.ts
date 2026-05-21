@@ -1,6 +1,5 @@
 import { z } from 'zod';
 
-export const TASK_CONTEXT_PACK_SCHEMA = 'BlueprintHelper.TaskContextPack.v1';
 export const TASK_SPEC_SCHEMA = 'BlueprintHelper.TaskSpec.v1';
 export const TASK_PLAN_SCHEMA = 'BlueprintHelper.TaskPlan.v1';
 export const TASK_PREVIEW_SCHEMA = 'BlueprintHelper.TaskPreview.v1';
@@ -511,21 +510,6 @@ export const TaskSpecSchema: z.ZodTypeAny = z.union([
   }
 });
 
-export const ReadTaskContextInputSchema = z.object({
-  target: z.object({
-    asset_path: z.string().min(1),
-  }).passthrough(),
-  feature_name: z.string().optional(),
-}).passthrough().superRefine((value, ctx) => {
-  if (Object.hasOwn(value, 'intent')) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['intent'],
-      message: 'read_task_context no longer accepts Agent-authored intent.',
-    });
-  }
-});
-
 export const PreviewTaskInputSchema: z.ZodTypeAny = z.object({
   task_spec: TaskSpecSchema,
   develop: z.boolean().optional().default(false),
@@ -550,29 +534,6 @@ export const TaskIssueSchema = z.object({
   path: z.string(),
   message: z.string().min(1),
   suggested_patch: z.record(z.unknown()).optional(),
-}).passthrough();
-
-export const TaskContextPackSchema = z.object({
-  schema: z.literal(TASK_CONTEXT_PACK_SCHEMA),
-  context_id: z.string().min(1),
-  feature_name: z.string().optional(),
-  runtime: z.object({
-    bridge_reachable: z.boolean(),
-    profile: z.unknown(),
-  }).passthrough(),
-  target: z.object({
-    asset_path: z.string().min(1),
-    exists: z.boolean(),
-    asset_info: z.unknown().optional(),
-  }).passthrough(),
-  blueprint_summary: z.object({
-    graphs: z.array(z.unknown()),
-  }).passthrough(),
-  recommended_constraints: z.object({
-    prefer_new_graph: z.boolean(),
-    allow_modify_user_nodes: z.boolean(),
-    graph_strategy: z.literal('append_new_owned_graph'),
-  }).passthrough(),
 }).passthrough();
 
 export const AgentImportNodeSchema = z.object({
@@ -853,7 +814,6 @@ export type TaskSpec = z.infer<typeof TaskSpecSchema>;
 export type TaskPreviewToken = z.infer<typeof TaskPreviewTokenSchema>;
 export type BlueprintLogicStatement = z.infer<typeof BlueprintLogicStatementSchema>;
 export type BlueprintLogicSpec = z.infer<typeof BlueprintLogicSpecSchema>;
-export type ReadTaskContextInput = z.infer<typeof ReadTaskContextInputSchema>;
 export type TaskIssue = z.infer<typeof TaskIssueSchema>;
 export type AgentImportNode = z.infer<typeof AgentImportNodeSchema>;
 export type AgentImportLink = z.infer<typeof AgentImportLinkSchema>;

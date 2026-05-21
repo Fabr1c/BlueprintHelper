@@ -1,5 +1,4 @@
 import type { BridgeClient, BridgeResponse, BridgeSendCommandOptions } from '../../bridge/bridge-client.js';
-import { buildTaskContextPack } from '../context/task-context.js';
 import {
   TaskSpecCompileError,
   type CompiledTaskPlan,
@@ -11,7 +10,6 @@ import {
 } from '../compiler/task-compiler-service.js';
 import {
   TASK_PREVIEW_SCHEMA,
-  type ReadTaskContextInput,
   type TaskIssue,
   type TaskPlan,
   type TaskPreviewToken,
@@ -74,7 +72,6 @@ export interface TaskExecuteOptions {
 }
 
 export interface TaskSpecRunner {
-  readTaskContext(input: Record<string, unknown>): Promise<ToolResultBase>;
   readReferenceContext(input: Record<string, unknown>): Promise<ToolResultBase>;
   previewTask(taskSpec: TaskSpec, timing?: TaskTimingTrace): Promise<TaskPreviewOutcome>;
   executeTask(taskSpec: TaskSpec, timing?: TaskTimingTrace, options?: TaskExecuteOptions): Promise<ToolResultBase>;
@@ -89,20 +86,6 @@ export function createTaskSpecRunner(input: {
   const taskCompiler = input.taskCompiler ?? createTaskSpecCompiler();
 
   return {
-    async readTaskContext(rawInput) {
-      const taskInput = rawInput as ReadTaskContextInput;
-      try {
-        const contextPack = await buildTaskContextPack(bridge as unknown as BridgeClient, taskInput);
-        return successRead(
-          'read_task_context',
-          { target_type: 'blueprint', asset_path: taskInput.target.asset_path },
-          contextPack,
-        );
-      } catch (err) {
-        return taskFailure('read_task_context', 'task_context_read_failed', 'context_error', err);
-      }
-    },
-
     async readReferenceContext(rawInput) {
       try {
         const response = await bridge.sendCommand('read_reference_context', rawInput);

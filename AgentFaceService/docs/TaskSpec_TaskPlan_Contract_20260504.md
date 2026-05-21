@@ -31,7 +31,6 @@ Ordinary Agents submit `BlueprintHelper.TaskSpec.v1` only. They do not author `B
 | Data | Schema |
 |---|---|
 | Normalized tool result envelope | `BlueprintHelper.ToolResult.v1` |
-| Task context | `BlueprintHelper.TaskContextPack.v1` |
 | Read input | `BlueprintHelper.ReadSpec.v1` |
 | Read context payload | `ReadContextPack.v1` |
 | Reference context payload | `ReferenceContextPack.v1` |
@@ -48,7 +47,7 @@ Ordinary Agents submit `BlueprintHelper.TaskSpec.v1` only. They do not author `B
 
 | Owner | Writes | Reads |
 |---|---|---|
-| Agent | `BlueprintHelper.TaskSpec.v1`, `BlueprintHelper.ReadSpec.v1` | AgentGuide index, ReadContextPack, TaskContextPack, preview summary, task result |
+| Agent | `BlueprintHelper.TaskSpec.v1`, `BlueprintHelper.ReadSpec.v1` | AgentGuide index, ReadContextPack, preview summary, task result |
 | CLI/task-core/Python Read Router | ReadContextPack / LogicFlow / LogicMD / LogicJson views | ReadSpec |
 | CLI/task-core/Python Task Compiler | `BlueprintHelper.TaskPlan.v1` | TaskSpec |
 | UE Task Runtime | `BlueprintHelper.TaskRunJournal.v1` | TaskPlan |
@@ -137,7 +136,7 @@ Agent -> CLI -> ReadSpec -> task-core/Python Read Router -> UE Read Capability C
 
 `blueprinthelper_read_agent_guide` returns the AgentGuide onboarding index document. Agents use that index to discover the currently documented capability surface and then open the specific AgentGuide files for concrete ReadSpec / TaskSpec formats. This is a documentation entry point, not a runtime capability-schema tool.
 
-`blueprinthelper_read_context` is the generic read entry for asset-domain reads. `blueprinthelper_read_task_context` is deprecated until a clearer role is redefined; new read capability should enter through ReadSpec.
+`blueprinthelper_read_context` is the generic and only asset-domain ReadSpec entry. Task-authoring summary reads must be expressed through ReadSpec slices, runtime/profile diagnostics, or task result queries instead of a separate task-context path.
 
 `blueprinthelper_read_context_capabilities` is an independent local discovery tool for the ReadContext capability matrix. It does not read assets and does not call Bridge. Its payload uses full-set fields for `asset_types`, `formats`, and `read_type_ids`; `read_types[]` is a negative diff listing only unsupported asset types and unsupported formats for each read type.
 
