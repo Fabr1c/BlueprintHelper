@@ -4,6 +4,29 @@
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraph/EdGraphSchema.h"
+#include "K2Node_PromotableOperator.h"
+
+namespace
+{
+static void NotifyPromotableOperatorPinChanged(UEdGraphPin* Pin)
+{
+	if (!Pin)
+	{
+		return;
+	}
+
+	if (UK2Node_PromotableOperator* OpNode = Cast<UK2Node_PromotableOperator>(Pin->GetOwningNode()))
+	{
+		OpNode->NotifyPinConnectionListChanged(Pin);
+	}
+}
+
+static void NotifyPromotableOperatorConnectionChanged(UEdGraphPin* FromPin, UEdGraphPin* ToPin)
+{
+	NotifyPromotableOperatorPinChanged(FromPin);
+	NotifyPromotableOperatorPinChanged(ToPin);
+}
+}
 
 UEdGraphPin* FBlueprintHelperGraphComposerUtils::FindPinRefInMap(
 	const TMap<FString, FBlueprintHelperFragmentPinRef>& PinMap,
@@ -174,6 +197,7 @@ bool FBlueprintHelperGraphComposerUtils::TryCreateSchemaDataConnection(
 	{
 		if (Schema->CreateAutomaticConversionNodeAndConnections(FromPin, ToPin))
 		{
+			NotifyPromotableOperatorConnectionChanged(FromPin, ToPin);
 			return true;
 		}
 	}
@@ -181,6 +205,7 @@ bool FBlueprintHelperGraphComposerUtils::TryCreateSchemaDataConnection(
 	{
 		if (Schema->CreatePromotedConnection(FromPin, ToPin) || Schema->TryCreateConnection(FromPin, ToPin))
 		{
+			NotifyPromotableOperatorConnectionChanged(FromPin, ToPin);
 			return true;
 		}
 	}
@@ -188,6 +213,7 @@ bool FBlueprintHelperGraphComposerUtils::TryCreateSchemaDataConnection(
 	{
 		if (Schema->TryCreateConnection(FromPin, ToPin))
 		{
+			NotifyPromotableOperatorConnectionChanged(FromPin, ToPin);
 			return true;
 		}
 	}
@@ -242,5 +268,6 @@ bool FBlueprintHelperGraphComposerUtils::TryForceCompatibleDataConnection(
 	{
 		ToNode->NodeConnectionListChanged();
 	}
+	NotifyPromotableOperatorConnectionChanged(FromPin, ToPin);
 	return true;
 }

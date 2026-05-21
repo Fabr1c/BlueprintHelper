@@ -2,6 +2,7 @@
 
 #include "EdGraph/EdGraph.h"
 #include "Engine/Blueprint.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperOperatorActionResolver.h"
 #include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
 
 static EBlueprintHelperActionResolutionStatus MapFunctionResolveStatus(EBlueprintHelperCallFunctionResolveStatus Status)
@@ -44,7 +45,7 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperFunctionActionCluster::Re
 	const FBlueprintHelperActionSemanticConstraints& Semantic = Request.Semantic;
 	if (Semantic.Kind == EBlueprintHelperActionSemanticKind::Op)
 	{
-		return MakeUnsupportedClusterMigrationResult(Request);
+		return FBlueprintHelperOperatorActionResolver::Resolve(Request);
 	}
 
 	if (Semantic.Kind != EBlueprintHelperActionSemanticKind::Call)
@@ -94,19 +95,6 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperFunctionActionCluster::Ma
 	Result.ErrorCode = TEXT("unsupported_function_cluster_semantic");
 	Result.Message = FString::Printf(
 		TEXT("FunctionActionCluster does not own semantic kind '%s'."),
-		*FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.Semantic.Kind));
-	return Result;
-}
-
-FBlueprintHelperActionResolutionResult FBlueprintHelperFunctionActionCluster::MakeUnsupportedClusterMigrationResult(
-	const FBlueprintHelperActionResolutionRequest& Request)
-{
-	FBlueprintHelperActionResolutionResult Result;
-	Result.Status = EBlueprintHelperActionResolutionStatus::UnsupportedClusterMigration;
-	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::FunctionAction;
-	Result.ErrorCode = TEXT("operator_action_cluster_migration_pending");
-	Result.Message = FString::Printf(
-		TEXT("FunctionActionCluster owns semantic kind '%s', but operator action resolution has not been migrated yet; no fallback direct node creation was attempted."),
 		*FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.Semantic.Kind));
 	return Result;
 }

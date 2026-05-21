@@ -59,7 +59,7 @@ type CliBridge = TaskRunnerBridge & {
   ping(): Promise<boolean>;
   setWriteSessionId(sessionId: string): void;
   clearWriteSessionId(): void;
-  close(): void;
+  close(): void | Promise<void>;
 };
 
 const DEFAULT_CLI_BRIDGE_REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
@@ -188,6 +188,8 @@ export async function runCli(runtime: CliRuntime): Promise<number> {
       omitFields: command.omitFields,
     }))}\n`);
     return status === 'bridge_unavailable' ? 2 : 1;
+  } finally {
+    await closeCliOwnedBridge(runtime);
   }
 
   runtime.stderr(`Unsupported BlueprintHelper CLI command: ${runtime.argv.join(' ')}\n`);
@@ -432,6 +434,20 @@ function getBridge(runtime: CliRuntime): CliBridge {
   return bridge;
 }
 
+async function closeCliOwnedBridge(runtime: CliRuntime): Promise<void> {
+  if (runtime.bridge) {
+    return;
+  }
+
+  const bridge = runtimeBridgeCache.get(runtime);
+  if (!bridge) {
+    return;
+  }
+
+  runtimeBridgeCache.delete(runtime);
+  await bridge.close();
+}
+
 function createWaitHintBridge(baseBridge: TaskRunnerBridge, runtime: CliRuntime): CliBridge {
   const optionalBridge = baseBridge as TaskRunnerBridge & Partial<CliBridge>;
   let bridge: CliBridge;
@@ -452,7 +468,7 @@ function createWaitHintBridge(baseBridge: TaskRunnerBridge, runtime: CliRuntime)
       optionalBridge.clearWriteSessionId?.();
     },
     close() {
-      optionalBridge.close?.();
+      return optionalBridge.close?.();
     },
   };
   return bridge;

@@ -10,5 +10,4 @@ public:
 
 private:
 	static FBlueprintHelperActionResolutionResult MakeUnsupportedIntentResult(const FBlueprintHelperActionResolutionRequest& Request);
-	static FBlueprintHelperActionResolutionResult MakeUnsupportedClusterMigrationResult(const FBlueprintHelperActionResolutionRequest& Request);
 };

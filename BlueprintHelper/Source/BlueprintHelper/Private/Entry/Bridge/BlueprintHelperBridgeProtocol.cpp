@@ -22,6 +22,7 @@ TOptional<FBlueprintHelperBridgeRequest> FBlueprintHelperBridgeProtocol::ParseRe
 		return {};
 	}
 	Root->TryGetStringField(TEXT("auth_session"), Req.AuthSession);
+	Root->TryGetBoolField(TEXT("close_after_response"), Req.bCloseAfterResponse);
 
 	if (Root->HasField(TEXT("payload")))
 	{

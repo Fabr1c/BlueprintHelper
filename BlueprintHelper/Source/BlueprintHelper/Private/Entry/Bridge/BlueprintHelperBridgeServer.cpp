@@ -216,6 +216,14 @@ void FBlueprintHelperBridgeServer::HandleClient(FSocket* ClientSocket)
 			Resp.Result->SetBoolField(TEXT("reachable"), true);
 			ResponseJson = FBlueprintHelperBridgeTransportTimingUtils::SerializeResponseWithTiming(Resp, TransportTiming);
 		}
+		else if (Req.IsSet() && Req.GetValue().Command == TEXT("client_disconnect"))
+		{
+			FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Success(Req.GetValue().RequestId);
+			Resp.Result = MakeShared<FJsonObject>();
+			Resp.Result->SetStringField(TEXT("schema"), TEXT("BridgeClientDisconnect.v1"));
+			Resp.Result->SetBoolField(TEXT("closing"), true);
+			ResponseJson = FBlueprintHelperBridgeTransportTimingUtils::SerializeResponseWithTiming(Resp, TransportTiming);
+		}
 		else
 		{
 			TPromise<FString> Promise;
@@ -283,6 +291,10 @@ void FBlueprintHelperBridgeServer::HandleClient(FSocket* ClientSocket)
 				TEXT("transport_write_failed"),
 				TEXT("Bridge response frame could not be written."),
 				Req.IsSet() ? Req.GetValue().RequestId : FString());
+			break;
+		}
+		if (Req.IsSet() && Req.GetValue().bCloseAfterResponse)
+		{
 			break;
 		}
 		LastActivityTime = FPlatformTime::Seconds();
