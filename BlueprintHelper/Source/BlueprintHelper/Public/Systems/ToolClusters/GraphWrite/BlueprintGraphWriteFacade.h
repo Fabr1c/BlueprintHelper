@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.h"
 #include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphWriteExecutionStats.h"
 
@@ -596,6 +597,7 @@ class BLUEPRINTHELPER_API FBlueprintGraphWriteFacade
 public:
 	static UFunction* FindFunctionByName(const FString& FuncName);
 	static FBlueprintHelperCallFunctionResolveResult ResolveFunctionForGraph(UEdGraph* TargetGraph, const FString& FunctionQuery, const TMap<FString, FString>& DefaultValues);
+	static FBlueprintHelperActionResolutionResult ResolveActionForGraph(const FBlueprintHelperActionResolutionRequest& Request);
 	static FBlueprintGenerateResult GenerateBlueprintFromJson(UEdGraph* TargetGraph, const FString& JsonString, TArray<TSharedPtr<FUnresolvedNodeItem>>& OutUnresolvedNodes);
 	static FBlueprintGenerateResult GenerateMultiGraphFromJson(UBlueprint* Blueprint, const FString& JsonString, TArray<TSharedPtr<FUnresolvedNodeItem>>& OutUnresolvedNodes);
 	static UEdGraph* FindGraphByName(UBlueprint* Blueprint, const FString& GraphName);

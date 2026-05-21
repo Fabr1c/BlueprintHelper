@@ -10,6 +10,17 @@
 
 ---
 
+## 0. 执行状态（2026-05-21）
+
+- [x] 已新增 `ActionResolutionCore`、`SpawnerClusterResolver` 和四个 Spawner family cluster 骨架。
+- [x] `call` 主路径已改为 `GraphStatementBuilder -> GraphWriteFacade -> ActionResolutionCore -> FunctionActionCluster -> CallFunctionResolver`。
+- [x] `get/set/get_property/set_property/op/construct/deconstruct/select/control` 已进入 cluster 路由；未迁移的 provider 统一返回 `UnsupportedClusterMigration`。
+- [x] 已切断 GraphStatementBuilder 内 first-batch data-flow 的旧直接节点创建路径，不再尝试旧 fallback。
+- [ ] Field / Variable / Property / Struct / Select / Control 的真实 `UBlueprintNodeSpawner` provider 尚未迁移完成。
+- [ ] 非 call 的 NodeFragment adapter 尚未完成，因此当前只能给出明确诊断，不能虚标为可写入成功。
+
+距离期望差距：当前完成的是统一骨架和旧路径切断；距离完整期望还差各 cluster 的真实 ActionDatabase / BlueprintActionFilter provider、NodeFragment adapter、FragmentDAG emission 和端到端覆盖测试。
+
 ## 0. 执行边界
 
 本计划修复的是“统一骨架”，不是完整功能迁移。
@@ -665,7 +676,7 @@ const FBlueprintHelperActionResolutionResult ActionResult =
 	FBlueprintHelperActionResolutionCore::Resolve(ActionRequest);
 ```
 
-当 `ActionResult.Status == UnsupportedClusterMigration` 时继续当前专项 builder。该行为必须只存在于本骨架阶段，并在文档中标记为“过渡路径”，不是 fallback。
+当 `ActionResult.Status == UnsupportedClusterMigration` 时必须直接返回诊断错误，不允许继续当前专项 builder，也不允许保留任何旧 fallback 或过渡执行路径。
 
 - [ ] **Step 2: 在 `BuildVariableSetFragment` 与 `get_property/set_property` 路径添加同样的 cluster-aware 诊断**
 
