@@ -23,6 +23,16 @@
   - UE tests spawn promotable operators first, then call `UEdGraphSchema_K2::TryCreateConnection()` and `UK2Node_PromotableOperator::NotifyPinConnectionListChanged()` to propagate pin types.
 - Any current implementation that keeps adding concrete aliases such as `Greater_DoubleDouble` as the primary `op` strategy is a direction error and must be removed or demoted to a narrow explicit concrete-function fallback only when promotable operators cannot represent the requested semantic.
 
+### Current Architecture Gap: UE NodeSpawner Convergence
+
+以下差异是当前实现距离“所有可由 UE NodeSpawner 表达的节点统一走同一生成路径”的真实缺口。`Schema Menu Builder` 不纳入目标，因为 Agent 侧无法使用编辑器菜单 UI 上下文；BlueprintHelper 自身的 preview、candidate、缓存等 AgentFace 工作流也不作为缺口记录。
+
+- `call` 解析已进入 `ActionResolutionCore -> FunctionActionCluster`，但节点创建仍经过 `FBlueprintHelperCallFunctionResolver::SpawnResolvedNode` 的专用路径。期望：所有可由 UE NodeSpawner 表达的 `call` 最终统一走 `ActionResolutionCore -> SpawnerCluster -> SelectedSpawner->Invoke()`。
+- `get/set` 已进入 `FieldVariableActionCluster`，但仍需确认运行面没有保留变量节点直接创建 shortcut。期望：语义约束可以由 BlueprintHelper 构造，但 spawn 层只能消费 cluster 返回的 `SelectedSpawner` 并统一 `Invoke`。
+- `op` 已使用 UE `FTypePromotion::GetOperatorSpawner()`，但 literal 类型提示、默认值应用、连接后的 promotion 通知仍是 `op` 附近的专用适配。期望：这些 post-spawn / post-link 生命周期处理沉到通用 spawner adapter / composer lifecycle 边界，避免后续每个节点类别各自实现。
+- `construct/deconstruct` 已有底层 struct resolver 能创建 `MakeStruct/BreakStruct` 或 native make function，但还没有按当前架构明确区分“可由 NodeSpawner 表达”与“需要专用 FragmentBuilder”。期望：优先复用 UE spawner/action provider；UE ActionDatabase 无法表达时才进入专用 builder。
+- `select/control` 仍处于专用 builder seam 阶段。期望：`select` 使用 UE 公开节点 API 完成 wildcard option pin 生命周期，`control` 使用专用控制流 FragmentBuilder 组合 exec DAG；两者都不能伪装成 `call`，也不能恢复旧 fallback。
+
 ---
 
 ## File Responsibility Map
@@ -677,8 +687,11 @@ Expected: build succeeds on UE 5.6.
 - [x] Operator execute spawns `UK2Node_PromotableOperator` through UE's spawner instead of directly constructing `UK2Node` or resolving concrete KismetMathLibrary overloads.
 - [x] Typed data edges drive operator promotion through Schema linking and `NotifyPinConnectionListChanged`.
 - [ ] Generic cluster has a tested provider boundary for `construct/deconstruct/select/control`.
-- [ ] `construct/deconstruct` attempt NodeSpawner/ActionDatabase resolution when enough type context exists.
+- [ ] `construct/deconstruct` attempt NodeSpawner/ActionDatabase resolution when enough type context exists, and only use dedicated builder when UE provider cannot express the semantic.
 - [x] `select/control` have dedicated FragmentBuilder seams when ActionDatabase cannot express the semantic.
+- [ ] `call` spawn layer is unified onto the same `SelectedSpawner->Invoke()` adapter used by other NodeSpawner-expressible actions.
+- [ ] `get/set` spawn layer has no direct variable-node shortcut and only consumes `FieldVariableActionCluster` selected spawners.
+- [ ] shared spawner adapter / composer lifecycle owns post-spawn defaults, pin normalization, and post-link promotion notifications instead of each semantic kind owning one-off handling.
 - [x] No old fallback, old AgentFace alias, direct `UK2Node` shortcut, concrete operator alias-growth strategy, or blanket migration marker remains.
 - [x] UE 5.6 build succeeds.
 - [x] Progress/design documents honestly record any remaining runtime gap.
@@ -719,12 +732,28 @@ bh.cmd task execute --file D:\UEProjects\Template\Saved\BlueprintHelper\CodexSmo
 - [x] P3 `select` boundary remains explicit and expected: preview blocks with `Required builder: SelectFragmentBuilder`.
 
 距离期望差距：
+- [x] `construct/deconstruct` 的真实 preview/execute smoke 已覆盖：`construct Vector` 写入 `SetActorLocation`，`deconstruct Vector.X` 写入 `SmokeFloat`。
+- [o] `select/control` 专用 builder seam 已有边界诊断；`select` 已进入真实 builder 实现，`control` 仍需要单独阶段推进。
+- [ ] `call` 仍存在专用 spawn 分支，尚未完全统一到 `SelectedSpawner->Invoke()`。
+- [ ] `get/set` 仍需完成源码审计和运行验证，确认没有变量节点直接创建 shortcut。
+- [ ] `op` 的 literal 默认值、pin 类型提示和 promotion 通知需要继续收敛到共享 spawner adapter / composer lifecycle，而不是停留在 `op` 专用处理。
 
-- [ ] `construct/deconstruct` 的真实 NodeSpawner/ActionDatabase preview smoke 本轮未重新覆盖；保留为后续 P3 验证项。
-- [ ] `select/control` 专用 builder seam 已有边界诊断，但真实 builder 完整实现仍需要单独阶段推进。
+## Execution Update 2026-05-21 P3 Continued
+
+- [x] 新增 `FBlueprintHelperSelectFragmentBuilder`，`select` 表达式不再通过 GenericActionCluster 的 dedicated-builder 阻塞结果进入执行路径。
+- [x] `select` builder 使用 UE `UK2Node_Select` 公开 API：`AddInputPin()`、`ChangePinType()`、`GetOptionPins()`、`GetIndexPin()`、`GetReturnValuePin()`。
+- [x] `select then/else` 的 DAG 映射修正为 `else -> Option 0(false)`、`then -> Option 1(true)`，避免 parser 同时写入 `Args` 与 `Options` 后被重复连接到错误 option pin。
+- [x] `construct/deconstruct` 表达式进入现有 `FBlueprintHelperStructConstructionResolver` 主路径，按 `TypeName` 解析 `UScriptStruct` 并生成 `MakeStruct/BreakStruct` fragment。
+- [x] `GraphComposerUtils` 的 post-link lifecycle 通知从 `UK2Node_PromotableOperator` 专用扩展为 operator/select 共用连接生命周期通知。
+- [x] `deconstruct Vector` 修正为 native break/search break function 优先，避免 UE 编译器拒绝泛型 `Break Vector`。
+- [x] CLI smoke 通过：`select` preview/execute 已通过；`construct Vector` + `deconstruct Vector.X` preview/execute 已通过。
+
+距离期望差距：
+- [ ] `control` 专用 FragmentBuilder 尚未实现。
+- [ ] `construct/deconstruct` 当前已能运行，但仍使用现有 struct resolver 直接创建或解析 struct 节点；后续还需继续评估哪些 struct action 可由 UE NodeSpawner/ActionDatabase 表达，并把可表达部分收敛到统一 `SelectedSpawner->Invoke()` adapter。
+- [ ] `call/get/set` spawn layer 收敛、shared spawner adapter、post-spawn defaults/pin normalization 仍未完成。
 
 ---
-
 ## Execution Notes
 
 - Use UTF-8 no BOM for generated TaskSpec files:
@@ -735,3 +764,40 @@ bh.cmd task execute --file D:\UEProjects\Template\Saved\BlueprintHelper\CodexSmo
 
 - Do not use `Set-Content -Encoding UTF8` for CLI TaskSpec smoke files in Windows PowerShell because it can write a BOM and break strict JSON parsing.
 - Do not run `git add`, `git commit`, or `git push` automatically. At the end, output suggested commit message and manual commands only.
+
+## Execution Update 2026-05-21 ActionResolutionCore Full-Line Convergence
+
+- [x] `FunctionActionCluster` 在 resolved function 缺少 `NodeSpawner` 时补齐 `UBlueprintFunctionNodeSpawner::Create(Function)`，保证 `call` 结果可由统一 adapter Invoke。
+- [x] `GenericAssetStructControlActionResolver` 移除 `construct/deconstruct` NotFound 占位逻辑，改为解析 `Semantic.TypeName` 并返回可 Invoke 的 `SelectedSpawner`。
+- [x] `GraphStatementBuilder` 的 `call/get/set/construct/deconstruct` 均改为消费 `ActionResolutionResult.SelectedSpawner`。
+- [x] 新增 `FBlueprintHelperActionNodeSpawnerAdapter` 作为统一 `SelectedSpawner->Invoke()` 入口。
+- [x] 移除旧 `FBlueprintHelperStructConstructionResolver` 文件和 `FBlueprintHelperCallFunctionResolver::SpawnResolvedNode` API。
+
+距离期望差距：
+- [ ] `control` 专用 FragmentBuilder 尚未实现，本轮未覆盖。
+- [x] `construct/deconstruct` 已收敛到 `ActionResolutionCore -> GenericAssetStructControlActionCluster -> SelectedSpawner->Invoke()`；native/search make/break function 通过 FunctionActionCluster 取得 spawner，direct MakeStruct/BreakStruct 通过 `UBlueprintFieldNodeSpawner` 设置 StructType。
+- [x] `call/get/set` 主生成层已收敛为消费 `ActionResolutionResult.SelectedSpawner`，不再调用 `CallFunctionResolver::SpawnResolvedNode` 或变量节点直接创建 shortcut。
+- [o] shared spawner adapter 已抽出 `FBlueprintHelperActionNodeSpawnerAdapter` 作为统一 Invoke 入口；post-spawn defaults、pin normalization、post-link lifecycle 还未完全迁移到该 adapter。
+### Validation Update 2026-05-21
+
+- [x] Source hygiene passed: no source matches for `BlueprintHelperStructConstructionResolver`, `SpawnResolvedNode(`, `generic_action_node_spawner_candidate_not_found`, `SpawnVariableGetNode`, or `SpawnVariableSetNode`.
+- [x] UE 5.6 build passed:
+
+```powershell
+& 'E:\UE_5.6\Engine\Build\BatchFiles\Build.bat' TemplateEditor Win64 Development -Project='D:\UEProjects\Template\Template.uproject' -WaitMutex -NoHotReload
+```
+
+距离期望差距：
+- [ ] Editor-side CLI smoke for the new full-line convergence was not run in this pass.
+### CLI Runtime Smoke Update 2026-05-21
+
+- [x] Global MCP `blueprint_open_editor` succeeded and Bridge became available.
+- [x] Created fresh smoke Blueprint asset: `/Game/BlueprintHelperCliSmoke/ActionResolutionFullLine_20260521_210521/BP_AR_FullLine_20260521_210521`.
+- [x] Variable task executed with 0 errors: `SmokeFloat` and `bResult`.
+- [x] Graph preview passed with 0 errors for `call/get/set/op/construct/deconstruct` combined TaskSpec.
+- [x] Graph execute passed with 0 errors for the same combined TaskSpec.
+- [x] Global MCP `blueprint_close_editor` succeeded with `save_all=true`.
+
+距离期望差距：
+- [ ] `control` 专用 FragmentBuilder 仍未实现，不属于本轮 `construct/deconstruct/call/get/set` 收敛范围。
+- [o] `FBlueprintHelperActionNodeSpawnerAdapter` 已成为统一 Invoke 入口；默认值、pin normalization、post-link lifecycle 的完全 adapter 化仍是后续架构清理项。
