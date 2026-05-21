@@ -66,6 +66,38 @@ static bool ShouldReconstructExistingNodes(const TSharedPtr<FJsonObject>& Object
 	return bReconstructExistingNodes;
 }
 
+static bool IsDryRunPayload(const TSharedPtr<FJsonObject>& Object)
+{
+	const TSharedPtr<FJsonObject>* OptionsObject = nullptr;
+	bool bDryRun = false;
+	if (Object.IsValid()
+		&& Object->TryGetObjectField(TEXT("options"), OptionsObject)
+		&& OptionsObject
+		&& OptionsObject->IsValid())
+	{
+		(*OptionsObject)->TryGetBoolField(TEXT("dry_run"), bDryRun);
+	}
+	return bDryRun;
+}
+
+static bool HasSignatureDependencyEntryFact(const TSharedPtr<FJsonObject>& EntryObject)
+{
+	if (!EntryObject.IsValid())
+	{
+		return false;
+	}
+
+	bool bSignatureDependency = false;
+	if (EntryObject->TryGetBoolField(TEXT("signature_dependency"), bSignatureDependency) && bSignatureDependency)
+	{
+		return true;
+	}
+
+	FString Source;
+	return EntryObject->TryGetStringField(TEXT("source"), Source)
+		&& Source.Equals(TEXT("signature_dependency"), ESearchCase::IgnoreCase);
+}
+
 static UK2Node_CustomEvent* FindExistingCustomEventNode(UEdGraph* Graph, const FString& EventName)
 {
 	if (!Graph || EventName.IsEmpty())
@@ -82,6 +114,29 @@ static UK2Node_CustomEvent* FindExistingCustomEventNode(UEdGraph* Graph, const F
 		}
 	}
 	return nullptr;
+}
+
+static UK2Node_CustomEvent* CreateDryRunSignatureDependencyCustomEventNode(UEdGraph* Graph, const FString& EventName)
+{
+	if (!Graph || EventName.IsEmpty())
+	{
+		return nullptr;
+	}
+
+	UK2Node_CustomEvent* EventNode = NewObject<UK2Node_CustomEvent>(Graph);
+	if (!EventNode)
+	{
+		return nullptr;
+	}
+
+	Graph->AddNode(EventNode, true, false);
+	EventNode->CreateNewGuid();
+	EventNode->PostPlacedNewNode();
+	EventNode->CustomFunctionName = FName(*EventName);
+	EventNode->NodePosX = 0;
+	EventNode->NodePosY = 0;
+	EventNode->AllocateDefaultPins();
+	return EventNode;
 }
 
 static void ReadFragmentEndpointRef(
@@ -1076,7 +1131,27 @@ static FBlueprintGenerateResult GenerateSemanticGraphFromJsonObject(
 		}
 		else
 		{
-			AddSemanticUnresolved(OutUnresolvedNodes, EntryId, TEXT("Semantic entry creation requires a Signature dependency or SemanticIR entry fact; legacy parsed-node entry spawning has been removed."));
+			if (IsDryRunPayload(JsonObject) && HasSignatureDependencyEntryFact(*EntryObject))
+			{
+				EntryNode = CreateDryRunSignatureDependencyCustomEventNode(TargetGraph, EntryName);
+				if (EntryNode)
+				{
+					FBlueprintHelperNodeFragment EntryFragment = BuildDataOnlyFragment(EntryId, EntryNode);
+					AddSemanticFragment(EntryFragment, GeneratedFragments, GeneratedFragmentIds, GeneratedNodeCount);
+					if (EntryFragment.ExecExitPin)
+					{
+						InitialExits.Add(EntryFragment.ExecExitPin);
+					}
+				}
+				else
+				{
+					AddSemanticUnresolved(OutUnresolvedNodes, EntryId, TEXT("Semantic entry dry-run fact could not create a temporary CustomEvent entry."));
+				}
+			}
+			else
+			{
+				AddSemanticUnresolved(OutUnresolvedNodes, EntryId, TEXT("Semantic entry creation requires a Signature dependency or SemanticIR entry fact; legacy parsed-node entry spawning has been removed."));
+			}
 		}
 	}
 

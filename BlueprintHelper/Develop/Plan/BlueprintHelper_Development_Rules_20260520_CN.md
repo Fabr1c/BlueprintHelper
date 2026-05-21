@@ -21,6 +21,7 @@ Status: active cross-module development rules.
 7. Review 系统以 Review v2 为唯一架构基线；旧 Transaction / Review v1 / legacy anchor / fallback 兼容路径不应继续保留或新增。
 8. DebugBundle / Review evidence / UI overlay / AcceptReject 状态必须消费同一套 Review 数据模型，不能各自维护互相冲突的解释。
 9. 所有 C++ 类默认独立 `.h/.cpp` 文件；结构体、纯数据类、枚举可以例外。
+10. C++实现不允许使用namespace，创建util工具类来代替。
 
 ## 配置与 Setting 规则
 

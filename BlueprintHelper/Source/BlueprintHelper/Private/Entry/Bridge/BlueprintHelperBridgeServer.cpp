@@ -285,10 +285,7 @@ void FBlueprintHelperBridgeServer::HandleClient(FSocket* ClientSocket)
 				Req.IsSet() ? Req.GetValue().RequestId : FString());
 			break;
 		}
-		// CLI clients are short-lived: one request, one response, then reconnect.
-		// Closing here keeps the accept loop available instead of waiting for the
-		// idle timeout and delaying the next CLI process by up to two seconds.
-		break;
+		LastActivityTime = FPlatformTime::Seconds();
 	}
 }
 

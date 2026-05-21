@@ -307,9 +307,7 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperFieldVariableActionResolv
 
 		UBlueprintVariableNodeSpawner* Spawner = UBlueprintVariableNodeSpawner::CreateFromMemberOrParam(
 			NodeClass,
-			Property,
-			Request.TargetGraph,
-			OwnerClass);
+			Property);
 		if (!Spawner)
 		{
 			continue;
