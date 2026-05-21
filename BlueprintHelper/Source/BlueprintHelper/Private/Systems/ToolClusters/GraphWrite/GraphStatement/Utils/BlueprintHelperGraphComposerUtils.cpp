@@ -5,10 +5,11 @@
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraph/EdGraphSchema.h"
 #include "K2Node_PromotableOperator.h"
+#include "K2Node_Select.h"
 
 namespace
 {
-static void NotifyPromotableOperatorPinChanged(UEdGraphPin* Pin)
+static void NotifyPinConnectionLifecycleChanged(UEdGraphPin* Pin)
 {
 	if (!Pin)
 	{
@@ -19,12 +20,17 @@ static void NotifyPromotableOperatorPinChanged(UEdGraphPin* Pin)
 	{
 		OpNode->NotifyPinConnectionListChanged(Pin);
 	}
+	if (UK2Node_Select* SelectNode = Cast<UK2Node_Select>(Pin->GetOwningNode()))
+	{
+		SelectNode->NotifyPinConnectionListChanged(Pin);
+		SelectNode->NodeConnectionListChanged();
+	}
 }
 
-static void NotifyPromotableOperatorConnectionChanged(UEdGraphPin* FromPin, UEdGraphPin* ToPin)
+static void NotifySchemaDataConnectionLifecycleChanged(UEdGraphPin* FromPin, UEdGraphPin* ToPin)
 {
-	NotifyPromotableOperatorPinChanged(FromPin);
-	NotifyPromotableOperatorPinChanged(ToPin);
+	NotifyPinConnectionLifecycleChanged(FromPin);
+	NotifyPinConnectionLifecycleChanged(ToPin);
 }
 }
 
@@ -197,7 +203,7 @@ bool FBlueprintHelperGraphComposerUtils::TryCreateSchemaDataConnection(
 	{
 		if (Schema->CreateAutomaticConversionNodeAndConnections(FromPin, ToPin))
 		{
-			NotifyPromotableOperatorConnectionChanged(FromPin, ToPin);
+			NotifySchemaDataConnectionLifecycleChanged(FromPin, ToPin);
 			return true;
 		}
 	}
@@ -205,7 +211,7 @@ bool FBlueprintHelperGraphComposerUtils::TryCreateSchemaDataConnection(
 	{
 		if (Schema->CreatePromotedConnection(FromPin, ToPin) || Schema->TryCreateConnection(FromPin, ToPin))
 		{
-			NotifyPromotableOperatorConnectionChanged(FromPin, ToPin);
+			NotifySchemaDataConnectionLifecycleChanged(FromPin, ToPin);
 			return true;
 		}
 	}
@@ -213,7 +219,7 @@ bool FBlueprintHelperGraphComposerUtils::TryCreateSchemaDataConnection(
 	{
 		if (Schema->TryCreateConnection(FromPin, ToPin))
 		{
-			NotifyPromotableOperatorConnectionChanged(FromPin, ToPin);
+			NotifySchemaDataConnectionLifecycleChanged(FromPin, ToPin);
 			return true;
 		}
 	}
@@ -268,6 +274,6 @@ bool FBlueprintHelperGraphComposerUtils::TryForceCompatibleDataConnection(
 	{
 		ToNode->NodeConnectionListChanged();
 	}
-	NotifyPromotableOperatorConnectionChanged(FromPin, ToPin);
+	NotifySchemaDataConnectionLifecycleChanged(FromPin, ToPin);
 	return true;
 }

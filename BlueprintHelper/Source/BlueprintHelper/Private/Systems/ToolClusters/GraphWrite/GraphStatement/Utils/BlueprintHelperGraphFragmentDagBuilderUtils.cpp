@@ -636,16 +636,75 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagDataProducer FB
 			SymbolScopes);
 
 	case EBlueprintHelperGraphExpressionKind::Select:
-		return BuildPlaceholderExpression(
-			Expression,
-			TEXT("expr_select"),
-			TEXT("select"),
-			TEXT("result"),
-			Expression->Type,
-			FString(),
-			FString(),
-			State,
-			SymbolScopes);
+	{
+		FBlueprintHelperGraphFragmentRef& Fragment = AddExpressionFragment(*Expression, TEXT("expr_select"), TEXT("select"), State);
+		const FString FragmentId = Fragment.FragmentId;
+		if (Expression->Condition.IsValid())
+		{
+			ConnectExpressionToInput(
+				Expression->Condition,
+				Expression->Condition->Path,
+				TEXT("condition"),
+				Expression->Condition->Type,
+				FragmentId,
+				State,
+				SymbolScopes);
+		}
+		else if (const TSharedPtr<FBlueprintHelperGraphExpressionIR>* ConditionExpression = Expression->Args.Find(TEXT("condition")))
+		{
+			ConnectExpressionToInput(
+				*ConditionExpression,
+				(*ConditionExpression).IsValid() ? (*ConditionExpression)->Path : Expression->Path + TEXT(".condition"),
+				TEXT("condition"),
+				(*ConditionExpression).IsValid() ? (*ConditionExpression)->Type : FString(),
+				FragmentId,
+				State,
+				SymbolScopes);
+		}
+
+		if (Expression->ThenValue.IsValid() || Expression->ElseValue.IsValid())
+		{
+			if (Expression->ElseValue.IsValid())
+			{
+				ConnectExpressionToInput(
+					Expression->ElseValue,
+					Expression->ElseValue->Path,
+					TEXT("else"),
+					Expression->ElseValue->Type,
+					FragmentId,
+					State,
+					SymbolScopes);
+			}
+			if (Expression->ThenValue.IsValid())
+			{
+				ConnectExpressionToInput(
+					Expression->ThenValue,
+					Expression->ThenValue->Path,
+					TEXT("then"),
+					Expression->ThenValue->Type,
+					FragmentId,
+					State,
+					SymbolScopes);
+			}
+		}
+		else
+		{
+			for (int32 OptionIndex = 0; OptionIndex < Expression->Options.Num(); ++OptionIndex)
+			{
+				const TSharedPtr<FBlueprintHelperGraphExpressionIR>& Option = Expression->Options[OptionIndex];
+				ConnectExpressionToInput(
+					Option,
+					Option.IsValid() ? Option->Path : FString::Printf(TEXT("%s.options[%d]"), *Expression->Path, OptionIndex),
+					FString::Printf(TEXT("option_%d"), OptionIndex),
+					Option.IsValid() ? Option->Type : FString(),
+					FragmentId,
+					State,
+					SymbolScopes);
+			}
+		}
+
+		return MakeExpressionProducerFromId(*Expression, FragmentId, TEXT("result"), Expression->Type);
+	}
 
 	case EBlueprintHelperGraphExpressionKind::Construct:
 		return BuildPlaceholderExpression(

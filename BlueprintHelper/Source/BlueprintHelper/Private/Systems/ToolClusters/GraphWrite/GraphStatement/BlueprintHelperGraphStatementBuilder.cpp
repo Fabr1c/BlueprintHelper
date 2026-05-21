@@ -1,7 +1,5 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphStatementBuilder.h"
 
-#include "BlueprintNodeBinder.h"
-#include "BlueprintNodeSpawner.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraph/EdGraphPin.h"
@@ -12,10 +10,12 @@
 #include "K2Node_CallFunction.h"
 #include "K2Node_PromotableOperator.h"
 #include "Kismet2/BlueprintEditorUtils.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionNodeSpawnerAdapter.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.h"
 #include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphPatternRegistry.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperSelectFragmentBuilder.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphStatementTypeUtils.h"
 
 static void PopulateCallFragmentPins(UK2Node* CallNode, FBlueprintHelperNodeFragment& OutFragment)
@@ -224,46 +224,6 @@ static bool RequireResolvedActionProvider(
 		TypeName,
 		nullptr,
 		OutError);
-}
-
-static UK2Node* SpawnResolvedActionProviderNode(
-	UEdGraph* TargetGraph,
-	const FBlueprintHelperActionResolutionResult& ActionResult,
-	const FVector2D& Location,
-	FString& OutError)
-{
-	UBlueprintNodeSpawner* NodeSpawner = ActionResult.SelectedSpawner.Get();
-	if (!TargetGraph)
-	{
-		OutError = TEXT("action provider spawn failed: target graph is invalid.");
-		return nullptr;
-	}
-	if (!NodeSpawner)
-	{
-		OutError = FString::Printf(
-			TEXT("action provider spawn failed: resolved spawner is no longer valid: %s."),
-			*ActionResult.SelectedStableId);
-		return nullptr;
-	}
-
-	IBlueprintNodeBinder::FBindingSet Bindings;
-	UEdGraphNode* SpawnedNode = NodeSpawner->Invoke(TargetGraph, Bindings, Location);
-	UK2Node* K2Node = Cast<UK2Node>(SpawnedNode);
-	if (!K2Node)
-	{
-		OutError = FString::Printf(
-			TEXT("action provider spawn failed: spawner did not create a K2 node: %s."),
-			*ActionResult.SelectedStableId);
-		return nullptr;
-	}
-
-	K2Node->NodePosX = static_cast<int32>(Location.X);
-	K2Node->NodePosY = static_cast<int32>(Location.Y);
-	if (TargetGraph->GetSchema())
-	{
-		TargetGraph->GetSchema()->ReconstructNode(*K2Node);
-	}
-	return K2Node;
 }
 
 static void PopulateActionProviderFragmentPins(UK2Node* Node, FBlueprintHelperNodeFragment& OutFragment)
@@ -559,6 +519,171 @@ static bool ResolveActionProviderForExpression(
 		: OutResult.Message;
 	return false;
 }
+
+static FString ResolveStructExpressionTypeName(const FBlueprintHelperGraphExpressionIR& Expression)
+{
+	if (!Expression.Type.TrimStartAndEnd().IsEmpty())
+	{
+		return Expression.Type.TrimStartAndEnd();
+	}
+	if (!Expression.Target.TrimStartAndEnd().IsEmpty())
+	{
+		return Expression.Target.TrimStartAndEnd();
+	}
+	if (!Expression.Name.TrimStartAndEnd().IsEmpty())
+	{
+		return Expression.Name.TrimStartAndEnd();
+	}
+	if (Expression.Value.IsValid() && !Expression.Value->Type.TrimStartAndEnd().IsEmpty())
+	{
+		return Expression.Value->Type.TrimStartAndEnd();
+	}
+	if (Expression.TargetObject.IsValid() && !Expression.TargetObject->Type.TrimStartAndEnd().IsEmpty())
+	{
+		return Expression.TargetObject->Type.TrimStartAndEnd();
+	}
+	return FString();
+}
+
+static void CollectStructExpressionDefaultValues(
+	const FBlueprintHelperGraphExpressionIR& Expression,
+	TMap<FString, FString>& OutDefaultValues)
+{
+	OutDefaultValues.Reset();
+	for (const TPair<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& FieldPair : Expression.Fields)
+	{
+		if (!FieldPair.Value.IsValid())
+		{
+			continue;
+		}
+
+		if (FieldPair.Value->Kind == EBlueprintHelperGraphExpressionKind::Literal)
+		{
+			OutDefaultValues.Add(FieldPair.Key, FieldPair.Value->LiteralValue);
+		}
+	}
+}
+
+static void PopulateStructExpressionFragment(
+	const FBlueprintHelperGraphExpressionIR& Expression,
+	UK2Node* SpawnedNode,
+	const FString& SemanticKind,
+	FBlueprintHelperNodeFragment& OutFragment)
+{
+	const FString ExpressionId = FBlueprintHelperGraphStatementTypeUtils::MakeExpressionFragmentId(Expression);
+	OutFragment.FragmentId = ExpressionId;
+	OutFragment.SourceStatementId = Expression.ExpressionId;
+	OutFragment.PrimaryNode = SpawnedNode;
+	OutFragment.Nodes.Add(SpawnedNode);
+	PopulateActionProviderFragmentPins(SpawnedNode, OutFragment);
+	OutFragment.OwnershipTags.Add(TEXT("expression_id"), Expression.ExpressionId);
+	OutFragment.OwnershipTags.Add(TEXT("semantic_kind"), SemanticKind);
+	OutFragment.ReviewTargets.Add(Expression.ExpressionId);
+}
+
+static bool BuildConstructExpressionFragment(
+	UEdGraph* TargetGraph,
+	const FBlueprintHelperGraphExpressionIR& Expression,
+	FBlueprintHelperNodeFragment& OutFragment,
+	FString& OutError)
+{
+	OutFragment = FBlueprintHelperNodeFragment();
+	const FString TypeName = ResolveStructExpressionTypeName(Expression);
+	if (TypeName.IsEmpty())
+	{
+		OutError = TEXT("construct fragment build failed: struct type is required.");
+		return false;
+	}
+
+	FBlueprintHelperActionResolutionResult ActionResult;
+	if (!ResolveActionProviderForExpression(
+		TargetGraph,
+		Expression,
+		EBlueprintHelperActionSemanticKind::Construct,
+		TypeName,
+		TypeName,
+		TypeName,
+		ActionResult,
+		OutError))
+	{
+		return false;
+	}
+
+	UK2Node* SpawnedNode = FBlueprintHelperActionNodeSpawnerAdapter::InvokeSelectedSpawner(
+		TargetGraph,
+		ActionResult,
+		FVector2D::ZeroVector,
+		OutError);
+	if (!SpawnedNode)
+	{
+		return false;
+	}
+
+	TMap<FString, FString> DefaultValues;
+	CollectStructExpressionDefaultValues(Expression, DefaultValues);
+	if (DefaultValues.Num() > 0)
+	{
+		FBlueprintGraphWriteFacade::ApplyDefaultValues(
+			SpawnedNode,
+			DefaultValues,
+			FBlueprintHelperGraphStatementTypeUtils::MakeExpressionFragmentId(Expression));
+	}
+
+	PopulateStructExpressionFragment(Expression, SpawnedNode, TEXT("construct"), OutFragment);
+	return true;
+}
+
+static bool BuildDeconstructExpressionFragment(
+	UEdGraph* TargetGraph,
+	const FBlueprintHelperGraphExpressionIR& Expression,
+	FBlueprintHelperNodeFragment& OutFragment,
+	FString& OutError)
+{
+	OutFragment = FBlueprintHelperNodeFragment();
+	const FString TypeName = ResolveStructExpressionTypeName(Expression);
+	if (TypeName.IsEmpty())
+	{
+		OutError = TEXT("deconstruct fragment build failed: struct type is required.");
+		return false;
+	}
+
+	FBlueprintHelperActionResolutionResult ActionResult;
+	if (!ResolveActionProviderForExpression(
+		TargetGraph,
+		Expression,
+		EBlueprintHelperActionSemanticKind::Deconstruct,
+		TypeName,
+		TypeName,
+		TypeName,
+		ActionResult,
+		OutError))
+	{
+		return false;
+	}
+
+	UK2Node* SpawnedNode = FBlueprintHelperActionNodeSpawnerAdapter::InvokeSelectedSpawner(
+		TargetGraph,
+		ActionResult,
+		FVector2D::ZeroVector,
+		OutError);
+	if (!SpawnedNode)
+	{
+		return false;
+	}
+
+	TMap<FString, FString> DefaultValues;
+	CollectStructExpressionDefaultValues(Expression, DefaultValues);
+	if (DefaultValues.Num() > 0)
+	{
+		FBlueprintGraphWriteFacade::ApplyDefaultValues(
+			SpawnedNode,
+			DefaultValues,
+			FBlueprintHelperGraphStatementTypeUtils::MakeExpressionFragmentId(Expression));
+	}
+
+	PopulateStructExpressionFragment(Expression, SpawnedNode, TEXT("deconstruct"), OutFragment);
+	return true;
+}
 bool FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment(
 	UEdGraph* TargetGraph,
 	const FParsedNode& NodeData,
@@ -604,9 +729,9 @@ bool FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment(
 
 	ApplyCallPatternDefaults(BoundNodeData);
 
-	UK2Node* SpawnedNode = FBlueprintHelperCallFunctionResolver::SpawnResolvedNode(
+	UK2Node* SpawnedNode = FBlueprintHelperActionNodeSpawnerAdapter::InvokeSelectedSpawner(
 		TargetGraph,
-		ActionResult.FunctionCandidate,
+		ActionResult,
 		FVector2D(BoundNodeData.X, BoundNodeData.Y),
 		OutError);
 
@@ -648,7 +773,7 @@ bool FBlueprintHelperGraphStatementBuilder::BuildVariableSetFragment(
 		return false;
 	}
 
-	UK2Node* SpawnedNode = SpawnResolvedActionProviderNode(
+	UK2Node* SpawnedNode = FBlueprintHelperActionNodeSpawnerAdapter::InvokeSelectedSpawner(
 		TargetGraph,
 		ActionResult,
 		FVector2D(NodeData.X, NodeData.Y),
@@ -775,6 +900,21 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 		return true;
 	}
 
+	if (Expression.Kind == EBlueprintHelperGraphExpressionKind::Construct)
+	{
+		return BuildConstructExpressionFragment(TargetGraph, Expression, OutFragment, OutError);
+	}
+
+	if (Expression.Kind == EBlueprintHelperGraphExpressionKind::Deconstruct)
+	{
+		return BuildDeconstructExpressionFragment(TargetGraph, Expression, OutFragment, OutError);
+	}
+
+	if (Expression.Kind == EBlueprintHelperGraphExpressionKind::Select)
+	{
+		return FBlueprintHelperSelectFragmentBuilder::Build(TargetGraph, Expression, OutFragment, OutError);
+	}
+
 	const EBlueprintHelperActionSemanticKind SemanticKind = ResolveActionSemanticKindForExpressionKind(Expression.Kind);
 	if (Expression.Kind == EBlueprintHelperGraphExpressionKind::Get)
 	{
@@ -795,7 +935,7 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 			return false;
 		}
 
-		UK2Node* SpawnedNode = SpawnResolvedActionProviderNode(
+		UK2Node* SpawnedNode = FBlueprintHelperActionNodeSpawnerAdapter::InvokeSelectedSpawner(
 			TargetGraph,
 			ActionResult,
 			FVector2D::ZeroVector,
@@ -837,7 +977,7 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 			return false;
 		}
 
-		UK2Node* SpawnedNode = SpawnResolvedActionProviderNode(
+		UK2Node* SpawnedNode = FBlueprintHelperActionNodeSpawnerAdapter::InvokeSelectedSpawner(
 			TargetGraph,
 			ActionResult,
 			FVector2D::ZeroVector,
