@@ -1,10 +1,8 @@
 import assert from 'node:assert/strict';
 import test, { describe, it } from 'node:test';
 import {
-  TASK_CONTEXT_PACK_SCHEMA,
   TASK_ERROR_SCHEMA,
   TASK_RUN_JOURNAL_SCHEMA,
-  TaskContextPackSchema,
   TaskErrorSchema,
   TaskPlanSchema,
   TaskRunJournalSchema,
@@ -40,8 +38,8 @@ function makeTaskSpec(overrides: Record<string, unknown> = {}) {
             schema: 'BlueprintLogicSpec.v1',
             statements: [
               {
-                kind: 'call_function',
-                name: 'PrintString',
+                kind: 'call',
+                target: 'PrintString',
                 args: {
                   InString: {
                     kind: 'literal',
@@ -178,8 +176,8 @@ function makeCompositePhysicsDoorTaskSpec(overrides: Record<string, unknown> = {
             schema: 'BlueprintLogicSpec.v1',
             statements: [
               {
-                kind: 'set_member_variable',
-                name: 'bDoorOpen',
+                kind: 'set',
+                target: 'bDoorOpen',
                 value: {
                   kind: 'literal',
                   value_type: 'bool',
@@ -187,8 +185,8 @@ function makeCompositePhysicsDoorTaskSpec(overrides: Record<string, unknown> = {
                 },
               },
               {
-                kind: 'call_function',
-                name: 'DoorMesh.AddAngularImpulseInDegrees',
+                kind: 'call',
+                target: 'DoorMesh.AddAngularImpulseInDegrees',
                 args: {
                   VelChange: {
                     kind: 'literal',
@@ -261,27 +259,6 @@ describe('TaskSpec schema validation', () => {
     const plan = compileTaskSpecToTaskPlan(TaskSpecSchema.parse(makeTaskSpec()));
 
     assert.doesNotThrow(() => TaskPlanSchema.parse(plan));
-    assert.doesNotThrow(() => TaskContextPackSchema.parse({
-      schema: TASK_CONTEXT_PACK_SCHEMA,
-      context_id: 'ctx_test',
-      runtime: {
-        bridge_reachable: true,
-        profile: {},
-      },
-      target: {
-        asset_path: '/Game/BP/BP_Door',
-        exists: true,
-        asset_info: {},
-      },
-      blueprint_summary: {
-        graphs: [],
-      },
-      recommended_constraints: {
-        prefer_new_graph: true,
-        allow_modify_user_nodes: false,
-        graph_strategy: 'append_new_owned_graph',
-      },
-    }));
     assert.doesNotThrow(() => TaskErrorSchema.parse({
       schema: TASK_ERROR_SCHEMA,
       code: 'unsupported_graph_strategy',
@@ -639,8 +616,8 @@ describe('TaskSpec GraphWrite Append compiler', () => {
             schema: 'BlueprintLogicSpec.v1',
             statements: [
               {
-                kind: 'call_function',
-                name: 'PrintString',
+                kind: 'call',
+                target: 'PrintString',
                 args: {
                   InString: {
                     kind: 'literal',
@@ -1020,8 +997,8 @@ describe('TaskSpec GraphWrite Append compiler', () => {
             schema: 'BlueprintLogicSpec.v1',
             statements: [
               {
-                kind: 'call_function',
-                name: 'PrintString',
+                kind: 'call',
+                target: 'PrintString',
               },
             ],
           },
@@ -1060,7 +1037,7 @@ describe('TaskSpec GraphWrite Append compiler', () => {
     );
   });
 
-  it('compiles call_function statements into structured graph_write IR and lowers to append bridge payload', () => {
+  it('compiles canonical call statements into structured graph_write IR and lowers to append bridge payload', () => {
     const plan = compileTaskSpecToTaskPlan(TaskSpecSchema.parse(makeTaskSpec()));
     const payload = taskPlanToAppendBridgePayload(plan, true);
     const signatureStep = plan.steps[0] as Record<string, any>;
@@ -1092,13 +1069,15 @@ describe('TaskSpec GraphWrite Append compiler', () => {
             entry_type: 'custom_event',
             name: 'ToggleDoor',
             body: {
-              schema: 'BlueprintLogicSpec.v1',
+              schema: 'BlueprintLogicSpec.v2',
               statements: [
                 {
-                  kind: 'call_function',
-                  name: 'PrintString',
+                  id: 'ToggleDoor_stmt_1',
+                  kind: 'call',
+                  target: 'PrintString',
                   args: {
                     InString: {
+                      id: 'ToggleDoor_stmt_1_arg_InString',
                       kind: 'literal',
                       value_type: 'string',
                       value: 'hello',
@@ -1189,7 +1168,7 @@ describe('TaskSpec GraphWrite Append compiler', () => {
     assert.equal((payload.logic_spec.statements[1] as Record<string, unknown>).target, 'DoorPanel.AddAngularImpulseInDegrees');
   });
 
-  it('compiles AgentFace P1 let/ref/branch/make_struct expressions into nodes and data links', () => {
+  it('compiles AgentFace P1 let/get/control/construct expressions into semantic graph statements', () => {
     const spec = makeTaskSpec({
       behavior: {
         graph_strategy: 'append_new_owned_graph',
@@ -1204,19 +1183,20 @@ describe('TaskSpec GraphWrite Append compiler', () => {
                   kind: 'let',
                   name: 'payload',
                   value: {
-                    kind: 'make_struct',
+                    kind: 'construct',
                     type: '/Script/BlueprintHelper.AgentFaceDamagePayload',
                     args: {
                       Amount: { kind: 'literal', value_type: 'int', value: 12 },
                       Instigator: { kind: 'get', target: 'PlayerState' },
-                      ImpactLocation: { kind: 'get_property', target: 'HitResult.Location' },
+                      ImpactLocation: { kind: 'get_property', target: 'HitResult', property_path: 'Location' },
                     },
                   },
                 },
                 {
-                  kind: 'branch',
+                  kind: 'control',
+                  control: 'branch',
                   condition: {
-                    kind: 'compare',
+                    kind: 'op',
                     op: '>',
                     left: {
                       kind: 'call',
@@ -1231,13 +1211,13 @@ describe('TaskSpec GraphWrite Append compiler', () => {
                     {
                       kind: 'set',
                       target: 'LastPayload',
-                      value: { kind: 'ref', name: 'payload' },
+                      value: { kind: 'get', target: 'payload' },
                     },
                     {
                       kind: 'call',
                       target: 'ApplyPayload',
                       args: {
-                        Payload: { kind: 'ref', name: 'payload' },
+                        Payload: { kind: 'get', target: 'payload' },
                         Mode: {
                           kind: 'select',
                           condition: { kind: 'get', target: 'bDoorOpen' },
@@ -1250,7 +1230,7 @@ describe('TaskSpec GraphWrite Append compiler', () => {
                     },
                   ],
                   else: [
-                    { kind: 'return' },
+                    { kind: 'control', control: 'return' },
                   ],
                 },
               ],
@@ -1268,12 +1248,62 @@ describe('TaskSpec GraphWrite Append compiler', () => {
     assert.match(serializedLogicSpec, /OpenDoor_stmt_1_value/);
     assert.match(serializedLogicSpec, /OpenDoor_stmt_2_condition/);
     assert.match(serializedLogicSpec, /OpenDoor_stmt_2_then_2_arg_Mode/);
-    assert.match(serializedLogicSpec, /make_struct/);
-    assert.match(serializedLogicSpec, /compare/);
+    assert.match(serializedLogicSpec, /construct/);
+    assert.match(serializedLogicSpec, /op/);
+    assert.match(serializedLogicSpec, /branch/);
+    assert.match(serializedLogicSpec, /return/);
     assert.match(serializedLogicSpec, /select/);
   });
 
-  it('preserves owner-qualified call_function names for UE-side resolution', () => {
+  it('lowers canonical control sequence statements to internal sequence graph statements', () => {
+    const spec = makeTaskSpec({
+      behavior: {
+        graph_strategy: 'append_new_owned_graph',
+        entries: [
+          {
+            entry_type: 'custom_event',
+            name: 'SequenceSmoke',
+            body: {
+              schema: 'BlueprintLogicSpec.v2',
+              statements: [
+                {
+                  kind: 'control',
+                  control: 'sequence',
+                },
+                {
+                  kind: 'call',
+                  target: 'PrintString',
+                  args: {
+                    InString: { kind: 'literal', value_type: 'string', value: 'first' },
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    const plan = compileTaskSpecToTaskPlan(TaskSpecSchema.parse(spec));
+    const payload = taskPlanToAppendBridgePayload(plan, true);
+
+    assert.equal((payload.logic_spec.statements[0] as Record<string, unknown>).kind, 'sequence');
+    assert.deepEqual((payload.logic_spec.statements[1] as Record<string, unknown>), {
+      id: 'SequenceSmoke_stmt_2',
+      kind: 'call',
+      target: 'PrintString',
+      args: {
+        InString: {
+          id: 'SequenceSmoke_stmt_2_arg_InString',
+          kind: 'literal',
+          value_type: 'string',
+          value: 'first',
+        },
+      },
+    });
+  });
+
+  it('preserves owner-qualified call targets for UE-side resolution', () => {
     const spec = makeTaskSpec({
       behavior: {
         graph_strategy: 'append_new_owned_graph',
@@ -1285,8 +1315,8 @@ describe('TaskSpec GraphWrite Append compiler', () => {
               schema: 'BlueprintLogicSpec.v1',
               statements: [
                 {
-                  kind: 'call_function',
-                  name: '/Script/Engine.KismetSystemLibrary:PrintString',
+                  kind: 'call',
+                  target: '/Script/Engine.KismetSystemLibrary:PrintString',
                   args: {
                     InString: {
                       kind: 'literal',
@@ -1320,7 +1350,7 @@ describe('TaskSpec GraphWrite Append compiler', () => {
     });
   });
 
-  it('preserves display-name call_function names for UE-side resolution', () => {
+  it('preserves display-name call targets for UE-side resolution', () => {
     const spec = makeTaskSpec({
       behavior: {
         graph_strategy: 'append_new_owned_graph',
@@ -1332,8 +1362,8 @@ describe('TaskSpec GraphWrite Append compiler', () => {
               schema: 'BlueprintLogicSpec.v1',
               statements: [
                 {
-                  kind: 'call_function',
-                  name: 'Print String',
+                  kind: 'call',
+                  target: 'Print String',
                   args: {
                     InString: {
                       kind: 'literal',
@@ -1367,7 +1397,7 @@ describe('TaskSpec GraphWrite Append compiler', () => {
     });
   });
 
-  it('preserves explicit member-prefix call_function names for UE-side resolution', () => {
+  it('preserves explicit member-prefix call targets for UE-side resolution', () => {
     const spec = makeTaskSpec({
       behavior: {
         graph_strategy: 'append_new_owned_graph',
@@ -1379,8 +1409,8 @@ describe('TaskSpec GraphWrite Append compiler', () => {
               schema: 'BlueprintLogicSpec.v1',
               statements: [
                 {
-                  kind: 'call_function',
-                  name: 'DoorMesh.AddAngularImpulseInDegrees',
+                  kind: 'call',
+                  target: 'DoorMesh.AddAngularImpulseInDegrees',
                   args: {},
                 },
               ],
@@ -1399,6 +1429,39 @@ describe('TaskSpec GraphWrite Append compiler', () => {
       target: 'DoorMesh.AddAngularImpulseInDegrees',
       args: {},
     });
+  });
+
+  it('rejects legacy call_function statements on the AgentFace graph body surface', () => {
+    const spec = makeTaskSpec({
+      behavior: {
+        graph_strategy: 'append_new_owned_graph',
+        entries: [
+          {
+            entry_type: 'custom_event',
+            name: 'ToggleDoor',
+            body: {
+              schema: 'BlueprintLogicSpec.v1',
+              statements: [
+                {
+                  kind: 'call_function',
+                  name: 'PrintString',
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    assert.throws(
+      () => compileTaskSpecToTaskPlan(TaskSpecSchema.parse(spec)),
+      (error: unknown) => {
+        assert.ok(error instanceof TaskSpecCompileError);
+        assert.equal(error.code, 'unsupported_statement_kind');
+        assert.equal(error.issues[0]?.path, 'behavior.entries[0].body.statements[0].kind');
+        return true;
+      },
+    );
   });
 
   it('rejects GraphWrite user-node mutation until a non-owned anchor contract exists', () => {
@@ -1437,8 +1500,8 @@ describe('TaskSpec GraphWrite Append compiler', () => {
               schema: 'BlueprintLogicSpec.v1',
               statements: [
                 {
-                  kind: 'call_function',
-                  name: 'PrintString',
+                  kind: 'call',
+                  target: 'PrintString',
                   args: {
                     InString: {
                       kind: 'literal',
@@ -1457,8 +1520,8 @@ describe('TaskSpec GraphWrite Append compiler', () => {
               schema: 'BlueprintLogicSpec.v1',
               statements: [
                 {
-                  kind: 'set_member_variable',
-                  name: 'bDoorOpen',
+                  kind: 'set',
+                  target: 'bDoorOpen',
                   value: {
                     kind: 'literal',
                     value_type: 'bool',
@@ -1497,7 +1560,7 @@ describe('TaskSpec GraphWrite Append compiler', () => {
     ]);
   });
 
-  it('compiles set_member_variable statements into append_blueprint_graph payload', () => {
+  it('compiles set statements into append bridge payload', () => {
     const spec = makeTaskSpec({
       behavior: {
         graph_strategy: 'append_new_owned_graph',
@@ -1509,8 +1572,8 @@ describe('TaskSpec GraphWrite Append compiler', () => {
               schema: 'BlueprintLogicSpec.v1',
               statements: [
                 {
-                  kind: 'set_member_variable',
-                  name: 'bDoorOpen',
+                  kind: 'set',
+                  target: 'bDoorOpen',
                   value: {
                     kind: 'literal',
                     value_type: 'bool',

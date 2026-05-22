@@ -243,8 +243,8 @@ describe('P1 TaskSpec schema validation', () => {
               schema: 'BlueprintLogicSpec.v1',
               statements: [
                 {
-                  kind: 'set_member_variable',
-                  name: 'bDoorOpen',
+                  kind: 'set',
+                  target: 'bDoorOpen',
                   value: {
                     kind: 'literal',
                     value_type: 'bool',

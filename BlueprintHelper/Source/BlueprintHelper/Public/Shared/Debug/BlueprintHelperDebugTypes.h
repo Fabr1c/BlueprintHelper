@@ -6,7 +6,7 @@
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Misc/Paths.h"
-#include "Systems/Debug/BlueprintHelperDebugExportPolicyResolver.h"
+#include "Shared/Debug/BlueprintHelperDebugExportPolicyResolver.h"
 
 enum class EBlueprintHelperDebugSeverity : uint8
 {

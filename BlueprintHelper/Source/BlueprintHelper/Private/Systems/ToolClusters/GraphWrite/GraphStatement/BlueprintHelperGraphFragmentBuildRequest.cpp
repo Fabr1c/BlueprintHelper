@@ -1,0 +1,57 @@
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentBuildRequest.h"
+
+FBlueprintHelperGraphFragmentBuildRequest FBlueprintHelperGraphFragmentBuildRequest::FromStatement(
+	const FBlueprintHelperGraphStatementIR& Statement)
+{
+	FBlueprintHelperGraphFragmentBuildRequest Request;
+	Request.Statement = Statement;
+	Request.FragmentId = !Statement.StatementId.IsEmpty() ? Statement.StatementId : Statement.Path;
+	Request.SourceStatementId = Request.FragmentId;
+	Request.ActionContextStatementId = Request.FragmentId;
+	Request.Query = !Statement.Target.IsEmpty() ? Statement.Target : Statement.Name;
+	Request.Target = Statement.Target;
+	Request.PropertyPath = Statement.Property;
+	Request.TypeName = Statement.Value.IsValid() ? Statement.Value->Type : Statement.ResolvedTarget.Type;
+	Request.SearchMode = Statement.SearchMode;
+	Request.AmbiguityPolicy = Statement.AmbiguityPolicy;
+	Request.CategoryPriority = Statement.CategoryPriority;
+	Request.ResolvedStableId = Statement.ResolvedCallFunctionStableId;
+	if (Statement.ResolvedTarget.Kind == EBlueprintHelperGraphTargetKind::ComponentMemberFunction)
+	{
+		Request.TargetObjectType = Statement.ResolvedTarget.Type;
+	}
+	if (Statement.TargetObject.IsValid())
+	{
+		Request.Target = !Statement.TargetObject->ResolvedTarget.Member.IsEmpty()
+			? Statement.TargetObject->ResolvedTarget.Member
+			: (!Statement.TargetObject->Target.IsEmpty() ? Statement.TargetObject->Target : Statement.TargetObject->Name);
+		Request.TargetObjectType = Statement.TargetObject->Type;
+	}
+	return Request;
+}
+
+FBlueprintHelperGraphFragmentBuildRequest FBlueprintHelperGraphFragmentBuildRequest::FromExpression(
+	const FBlueprintHelperGraphExpressionIR& Expression)
+{
+	FBlueprintHelperGraphFragmentBuildRequest Request;
+	Request.Expression = Expression;
+	Request.bIsExpression = true;
+	Request.FragmentId = Expression.ExpressionId;
+	Request.SourceStatementId = Expression.ExpressionId;
+	Request.ActionContextStatementId = Expression.ExpressionId;
+	Request.Query = Expression.Target;
+	Request.Target = Expression.Target;
+	Request.PropertyPath = Expression.ResolvedTarget.PropertyPath;
+	Request.TypeName = Expression.Type;
+	Request.ExpectedReturnType = Expression.Type;
+	Request.SearchMode = Expression.SearchMode;
+	Request.AmbiguityPolicy = Expression.AmbiguityPolicy;
+	Request.CategoryPriority = Expression.CategoryPriority;
+	if (Expression.TargetObject.IsValid())
+	{
+		Request.Target = Expression.TargetObject->Target;
+		Request.TargetObjectType = Expression.TargetObject->Type;
+	}
+	return Request;
+}
+

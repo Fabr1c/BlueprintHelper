@@ -39,12 +39,12 @@ profile
 
 函数调用语句中的 `args` 只表示函数参数:
 
-`call_function.name` may be a native function name, a Blueprint display name, an owner-qualified native name, or an explicit component/member call for append-owned graph writes. Preview resolves it against the target Blueprint graph. If preview reports ambiguity, change `name` to an owner-qualified native name such as `/Script/Engine.KismetSystemLibrary:PrintString` and preview again.
+`call.target` may be a native function name, a Blueprint display name, an owner-qualified native name, or an explicit component/member call for append-owned graph writes. Preview resolves it against the target Blueprint graph. If preview reports ambiguity, change `target` to an owner-qualified native name such as `/Script/Engine.KismetSystemLibrary:PrintString` and preview again. Legacy `call_function.name` is unsupported.
 
 ```json
 {
-  "kind": "call_function",
-  "name": "PrintString",
+  "kind": "call",
+  "target": "PrintString",
   "args": {
     "InString": {
       "kind": "literal",
@@ -59,8 +59,8 @@ Append-owned graph writes may use explicit component/member calls. The object pr
 
 ```json
 {
-  "kind": "call_function",
-  "name": "DoorMesh.AddAngularImpulseInDegrees",
+  "kind": "call",
+  "target": "DoorMesh.AddAngularImpulseInDegrees",
   "args": {}
 }
 ```

@@ -125,8 +125,9 @@ FBlueprintHelperPatchBlueprintGraphService::Preflight(
 		Result.bPassed = false;
 		Result.BlockedBy.Add(TEXT("unsupported_patch_type"));
 		Result.Conflicts.Add({TEXT("unsupported_patch_type"),
-			FString::Printf(TEXT("patch_type '%s' is not supported."),
-		OutError = FString::Printf(TEXT("Unsupported patch_type: %s"), PatchTypeToString(Request.PatchType));
+			FString::Printf(TEXT("patch_type '%s' is not supported."), PatchTypeToString(Request.PatchType)),
+			TEXT("patch_type"),
+			TEXT("preflight")});
 		return Result;
 	}
 
@@ -423,7 +424,6 @@ FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::Execu
 
 	FBlueprintHelperPatchGraphResultData Data;
 	Data.PatchResult.PatchedRef = ResolvedTarget.PatchedRef;
-		OutError = FString::Printf(TEXT("Unsupported patch_type: %s"), PatchTypeToString(Request.PatchType));
 	Data.PatchResult.Patch.bExpectedOldStateProvided = Request.bExpectedOldStateProvided;
 	Data.PatchResult.Patch.bChanged = bChanged;
 	Success.Data = Data.ToJson();

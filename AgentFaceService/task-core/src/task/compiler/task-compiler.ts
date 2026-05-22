@@ -1178,11 +1178,12 @@ function compileAppendGraphWriteOps(behavior: Record<string, unknown>): GraphWri
 
     const body = getRequiredLogicBody(entry, 'body', `behavior.entries[${entryIndex}].body`);
     validateSupportedStatements(body.statements, `behavior.entries[${entryIndex}].body.statements`);
+    const entryName = getRequiredString(entry, 'name', `behavior.entries[${entryIndex}].name`);
     return {
       op: 'ensure_entry',
       entry_type: entryType,
-      name: getRequiredString(entry, 'name', `behavior.entries[${entryIndex}].name`),
-      body: entry['body'],
+      name: entryName,
+      body: compileLogicBodyToSemanticLogicSpec(body, entryName),
     };
   });
 }
@@ -1333,7 +1334,8 @@ function compileMergeGraphWriteOps(behavior: Record<string, unknown>): GraphWrit
   });
 }
 
-const SUPPORTED_GRAPH_BODY_STATEMENT_KINDS = new Set(['call', 'set', 'set_property', 'let', 'branch', 'return']);
+const SUPPORTED_GRAPH_BODY_STATEMENT_KINDS = new Set(['call', 'set', 'set_property', 'let', 'control']);
+const SUPPORTED_GRAPH_BODY_CONTROL_KINDS = new Set(['branch', 'sequence', 'return']);
 const SUPPORTED_GRAPH_BODY_EXPRESSION_KINDS = new Set([
   'literal',
   'get',
@@ -1355,7 +1357,7 @@ function validateSupportedStatements(statements: BlueprintLogicStatement[], path
         {
           code: 'unsupported_statement_kind',
           path: `${statementPath}.kind`,
-          message: 'Use call, set, set_property, let, branch, or return.',
+          message: 'Use call, set, set_property, let, or control.',
         },
       ]);
     }
@@ -1363,16 +1365,42 @@ function validateSupportedStatements(statements: BlueprintLogicStatement[], path
       validateExpressionMap(statementRecord.args, `${statementPath}.args`);
     } else if (kind === 'let' || kind === 'set' || kind === 'set_property') {
       validateSupportedExpression(statementRecord.value, `${statementPath}.value`);
-    } else if (kind === 'branch') {
-      validateSupportedExpression(statementRecord.condition, `${statementPath}.condition`);
-      validateSupportedStatements(Array.isArray(statementRecord.then) ? statementRecord.then as BlueprintLogicStatement[] : [], `${statementPath}.then`);
-      validateSupportedStatements(Array.isArray(statementRecord['else']) ? statementRecord['else'] as BlueprintLogicStatement[] : [], `${statementPath}.else`);
-    } else if (kind === 'return') {
-      if (Object.hasOwn(statementRecord, 'value')) {
+    } else if (kind === 'control') {
+      const controlKind = getControlStatementKind(statementRecord, statementPath);
+      if (controlKind === 'branch') {
+        validateSupportedExpression(statementRecord.condition, `${statementPath}.condition`);
+        validateSupportedStatements(Array.isArray(statementRecord.then) ? statementRecord.then as BlueprintLogicStatement[] : [], `${statementPath}.then`);
+        validateSupportedStatements(Array.isArray(statementRecord['else']) ? statementRecord['else'] as BlueprintLogicStatement[] : [], `${statementPath}.else`);
+      } else if (controlKind === 'sequence') {
+        if (Array.isArray(statementRecord.statements) && statementRecord.statements.length > 0) {
+          throw new TaskSpecCompileError('unsupported_control_shape', 'Unsupported GraphWrite control shape.', [
+            {
+              code: 'unsupported_control_shape',
+              path: `${statementPath}.statements`,
+              message: 'Sequence control is an execution-flow node; place following statements after it.',
+            },
+          ]);
+        }
+      } else if (Object.hasOwn(statementRecord, 'value')) {
         validateSupportedExpression(statementRecord.value, `${statementPath}.value`);
       }
     }
   });
+}
+
+function getControlStatementKind(statementRecord: Record<string, unknown>, path: string): string {
+  const controlKind = typeof statementRecord.control === 'string' ? statementRecord.control : '';
+  if (SUPPORTED_GRAPH_BODY_CONTROL_KINDS.has(controlKind)) {
+    return controlKind;
+  }
+
+  throw new TaskSpecCompileError('unsupported_control_kind', 'Unsupported GraphWrite control kind.', [
+    {
+      code: 'unsupported_control_kind',
+      path: `${path}.control`,
+      message: 'Use branch, sequence, or return.',
+    },
+  ]);
 }
 
 function validateExpressionMap(value: unknown, path: string): void {
@@ -1536,6 +1564,25 @@ function cloneLogicStatementWithCompiledIds(statement: BlueprintLogicStatement, 
         cloneLogicExpressionWithCompiledIds(argValue, `${statementId}_arg_${toIdSegment(argName)}`),
       ]),
     );
+  } else if (kind === 'control') {
+    const statementRecord = statement as Record<string, unknown>;
+    const controlKind = typeof statementRecord.control === 'string' ? statementRecord.control : '';
+    out.kind = controlKind;
+    delete out.control;
+
+    if (controlKind === 'branch') {
+      out.condition = cloneLogicExpressionWithCompiledIds(statementRecord.condition, `${statementId}_condition`);
+      if (Array.isArray(statementRecord.then)) {
+        out.then = cloneLogicStatementSequenceWithCompiledIds(statementRecord.then as BlueprintLogicStatement[], `${statementId}_then`);
+      }
+      if (Array.isArray(statementRecord['else'])) {
+        out.else = cloneLogicStatementSequenceWithCompiledIds(statementRecord['else'] as BlueprintLogicStatement[], `${statementId}_else`);
+      }
+    } else if (controlKind === 'sequence') {
+      delete out.statements;
+    } else if (controlKind === 'return' && Object.hasOwn(statementRecord, 'value')) {
+      out.value = cloneLogicExpressionWithCompiledIds(statementRecord.value, `${statementId}_value`);
+    }
   }
 
   return out as BlueprintLogicStatement;
@@ -1582,8 +1629,24 @@ function compileStatementSequence(
 function compileStatementFlow(statement: BlueprintLogicStatement, nodeId: string, path: string, context: CompileFlowContext): CompiledStatementFlow {
   const statementRecord = statement as Record<string, unknown>;
   const kind = typeof statementRecord.kind === 'string' ? statementRecord.kind : '';
+  if (kind === 'control') {
+    const controlKind = getControlStatementKind(statementRecord, path);
+    if (controlKind === 'branch') {
+      return compileBranchStatementFlow({ ...statementRecord, kind: 'branch' } as BlueprintLogicStatement, nodeId, path, context);
+    }
+    if (controlKind === 'return') {
+      return compileReturnStatementFlow(statementRecord, nodeId, path, context);
+    }
+    return compileSequenceControlStatementFlow(statementRecord, nodeId, path, context);
+  }
   if (kind === 'branch') {
     return compileBranchStatementFlow(statement, nodeId, path, context);
+  }
+  if (kind === 'return') {
+    return compileReturnStatementFlow(statementRecord, nodeId, path, context);
+  }
+  if (kind === 'sequence') {
+    return compileSequenceControlStatementFlow(statementRecord, nodeId, path, context);
   }
   if (kind === 'let') {
     const name = getRequiredString(statementRecord, 'name', `${path}.name`);
@@ -1638,6 +1701,49 @@ function compileStatementFlow(statement: BlueprintLogicStatement, nodeId: string
     links,
     entry: `${nodeId}.execute`,
     exits: [`${nodeId}.then`],
+  };
+}
+
+function compileReturnStatementFlow(statementRecord: Record<string, unknown>, nodeId: string, path: string, context: CompileFlowContext): CompiledStatementFlow {
+  const node: AgentImportNode = { id: nodeId, kind: 'return' } as AgentImportNode;
+  const nodes: AgentImportNode[] = [node];
+  const links: AgentImportLink[] = [];
+  if (Object.hasOwn(statementRecord, 'value')) {
+    const valueFlow = compileValueExpression(statementRecord.value, `${nodeId}_value`, `${path}.value`, context);
+    nodes.push(...valueFlow.nodes);
+    links.push(...valueFlow.links);
+    if (valueFlow.output) {
+      links.push({ kind: 'data', from: valueFlow.output, to: `${nodeId}.value` });
+    } else {
+      node.value = valueExprToString(valueFlow.defaultValue);
+    }
+  }
+  return {
+    nodes,
+    links,
+    entry: `${nodeId}.execute`,
+    exits: [],
+  };
+}
+
+function compileSequenceControlStatementFlow(statementRecord: Record<string, unknown>, nodeId: string, path: string, context: CompileFlowContext): CompiledStatementFlow {
+  const sequenceNode: AgentImportNode = { id: nodeId, kind: 'sequence' } as AgentImportNode;
+  const nodes: AgentImportNode[] = [sequenceNode];
+  const links: AgentImportLink[] = [];
+  const nestedStatements = Array.isArray(statementRecord.statements)
+    ? statementRecord.statements as BlueprintLogicStatement[]
+    : [];
+  const nestedFlow = compileStatementSequence(nestedStatements, `${nodeId}_sequence`, `${path}.statements`, makeCompileFlowContext(context));
+  nodes.push(...nestedFlow.nodes);
+  links.push(...nestedFlow.links);
+  if (nestedFlow.entry) {
+    links.push({ kind: 'exec', from: `${nodeId}.then`, to: nestedFlow.entry });
+  }
+  return {
+    nodes,
+    links,
+    entry: `${nodeId}.execute`,
+    exits: nestedFlow.entry ? nestedFlow.exits : [`${nodeId}.then`],
   };
 }
 
@@ -2523,14 +2629,6 @@ function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string
       target,
       property_path: propertyPath,
       property: propertyPath,
-      value: valueExprToString(statementRecord['value']),
-    } as AgentImportNode;
-  }
-
-  if (kind === 'return') {
-    return {
-      id: nodeId,
-      kind: 'return',
       value: valueExprToString(statementRecord['value']),
     } as AgentImportNode;
   }

@@ -119,13 +119,15 @@ export const graphWriteAppendExpectedTaskPlanFixture = {
             entry_type: 'custom_event',
             name: 'InitializeStoneGate',
             body: {
-              schema: 'BlueprintLogicSpec.v1',
+              schema: 'BlueprintLogicSpec.v2',
               statements: [
                 {
+                  id: 'InitializeStoneGate_stmt_1',
                   kind: 'call',
                   target: 'SetActorEnableCollision',
                   args: {
                     bNewActorEnableCollision: {
+                      id: 'InitializeStoneGate_stmt_1_arg_bNewActorEnableCollision',
                       kind: 'literal',
                       value_type: 'bool',
                       value: true,
@@ -133,24 +135,29 @@ export const graphWriteAppendExpectedTaskPlanFixture = {
                   },
                 },
                 {
+                  id: 'InitializeStoneGate_stmt_2',
                   kind: 'set',
                   target: 'bGateUnlocked',
                   value: {
+                    id: 'InitializeStoneGate_stmt_2_value',
                     kind: 'literal',
                     value_type: 'bool',
                     value: false,
                   },
                 },
                 {
+                  id: 'InitializeStoneGate_stmt_3',
                   kind: 'call',
                   target: 'PrintString',
                   args: {
                     InString: {
+                      id: 'InitializeStoneGate_stmt_3_arg_InString',
                       kind: 'literal',
                       value_type: 'string',
                       value: 'Stone gate initialized',
                     },
                     Duration: {
+                      id: 'InitializeStoneGate_stmt_3_arg_Duration',
                       kind: 'literal',
                       value_type: 'float',
                       value: 2,

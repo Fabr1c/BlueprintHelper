@@ -156,21 +156,6 @@ struct FParsedVariableReference
 };
 
 /**
- * 瀹忚妭鐐瑰紩鐢ㄦ弿杩般€?
- */
-struct FParsedMacroReference
-{
-	/** 瀹忓簱鏉ユ簮锛歴tandard/asset_path銆?*/
-	FString LibraryType;
-
-	/** 瀹忓悕绉般€?*/
-	FString MacroName;
-
-	/** 瀹忚摑鍥捐祫浜ц矾寰勩€?*/
-	FString MacroAssetPath;
-};
-
-/**
  * 鑷畾涔変簨浠?寮曟搸浜嬩欢鍙傛暟鎻忚堪銆?
  */
 struct FParsedEventParam
@@ -367,110 +352,6 @@ struct FParsedLocalVariableDeclaration
 
 	/** 鏄惁鍦ㄧ己澶辨椂鑷姩鍒涘缓銆?*/
 	bool bEnsureExists = true;
-};
-
-/**
- * 钃濆浘杩炵嚎瑙ｆ瀽鏁版嵁锛屾弿杩颁袱涓妭鐐逛箣闂寸殑寮曡剼杩炴帴鍏崇郴銆?
- */
-struct FParsedLink
-{
-	/** 璧峰鑺傜偣 ID銆?*/
-	FString FromId;
-
-	/** 璧峰寮曡剼鍚嶇О銆?*/
-	FString FromPin;
-
-	/** 鐩爣鑺傜偣 ID銆?*/
-	FString ToId;
-
-	/** 鐩爣寮曡剼鍚嶇О銆?*/
-	FString ToPin;
-};
-
-/**
- * 钃濆浘鑺傜偣瑙ｆ瀽鏁版嵁锛屾弿杩板緟鐢熸垚鐨勫嚱鏁拌妭鐐瑰拰榛樿鍊笺€?
- */
-struct FParsedNode
-{
-	/** 鑺傜偣鍞竴鏍囪瘑銆?*/
-	FString Id;
-
-	/** 鑺傜偣绫诲瀷銆?*/
-	EParsedBlueprintNodeType NodeType = EParsedBlueprintNodeType::Unknown;
-
-	/** 鍘熷绫诲瀷瀛楃涓层€?*/
-	FString SourceType;
-
-	/** 鑺傜偣瀵瑰簲鐨勫嚱鏁板悕绉般€?*/
-	FString FunctionName;
-
-	FString ResolvedCallFunctionStableId;
-	FString SearchMode;
-	FString AmbiguityPolicy;
-	TArray<FString> CategoryPriority;
-	FString ActionContextStatementId;
-
-	/** 鑺傜偣 X 鍧愭爣銆?*/
-	TMap<FString, FString> ArgumentTypes;
-	TMap<FString, FBlueprintHelperCallFunctionPinType> ArgumentPinTypes;
-	FString TargetObjectName;
-	FString TargetObjectType;
-	FBlueprintHelperCallFunctionPinType TargetObjectPinType;
-	FString ExpectedReturnType;
-	FBlueprintHelperCallFunctionPinType ExpectedReturnPinType;
-
-	float X = 0.0f;
-
-	/** 鑺傜偣 Y 鍧愭爣銆?*/
-	float Y = 0.0f;
-
-	/** 寮曡剼榛樿鍊奸泦鍚堬紝Key 涓哄紩鑴氬悕銆?*/
-	TMap<FString, FString> DefaultValues;
-
-	/** 鍙橀噺鑺傜偣寮曠敤鏁版嵁銆?*/
-	FParsedVariableReference VariableReference;
-
-	/** 瀹忚妭鐐瑰紩鐢ㄦ暟鎹€?*/
-	FParsedMacroReference MacroReference;
-
-	/** 浜嬩欢鑺傜偣寮曠敤鏁版嵁銆?*/
-	FParsedEventReference EventReference;
-
-	/** 濮旀墭鑺傜偣寮曠敤鏁版嵁銆?*/
-	FParsedDelegateReference DelegateReference;
-
-	/** 瀹瑰櫒鏋勯€犺妭鐐瑰紩鐢ㄦ暟鎹€?*/
-	FParsedContainerReference ContainerReference;
-
-	/** 缁撴瀯浣撴搷浣滆妭鐐瑰紩鐢ㄦ暟鎹€?*/
-	FParsedStructReference StructReference;
-
-	/** v2.2 鈥?Cast 鑺傜偣寮曠敤鏁版嵁銆?*/
-	FParsedCastReference CastReference;
-
-	/** v2.2 鈥?SpawnActor 鑺傜偣寮曠敤鏁版嵁銆?*/
-	FParsedSpawnReference SpawnReference;
-
-	/** v2.2 鈥?FormatText 鑺傜偣寮曠敤鏁版嵁銆?*/
-	FParsedFormatTextReference FormatTextReference;
-
-	/** v2.3 鈥?Literal 鑺傜偣寮曠敤鏁版嵁銆?*/
-	FParsedLiteralReference LiteralReference;
-
-	/** v2.3 鈥?ComponentBoundEvent 鑺傜偣寮曠敤鏁版嵁銆?*/
-	FParsedComponentBoundEventReference ComponentBoundEventReference;
-
-	/** v2.3 鈥?Comment 鑺傜偣寮曠敤鏁版嵁銆?*/
-	FParsedCommentReference CommentReference;
-
-	/** v2.9 鈥?Enhanced Input Action 鑺傜偣寮曠敤鏁版嵁銆?*/
-	FParsedEnhancedInputActionReference EnhancedInputActionReference;
-
-	/** v2.9 鈥?Switch 鑺傜偣寮曠敤鏁版嵁銆?*/
-	FParsedSwitchReference SwitchReference;
-
-	/** v2.9 鈥?Select 鑺傜偣寮曠敤鏁版嵁銆?*/
-	FParsedSelectReference SelectReference;
 };
 
 /**

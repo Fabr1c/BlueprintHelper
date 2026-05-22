@@ -1291,11 +1291,12 @@ def _compile_append_graph_write_ops(behavior: Dict[str, Any]) -> List[Dict[str, 
 
         body = _required_logic_body(entry_value, "body", f"behavior.entries[{entry_index}].body")
         _validate_supported_statements(body["statements"], f"behavior.entries[{entry_index}].body.statements")
+        entry_name = _required_string(entry_value, "name", f"behavior.entries[{entry_index}].name")
         ops.append({
             "op": "ensure_entry",
             "entry_type": entry_type,
-            "name": _required_string(entry_value, "name", f"behavior.entries[{entry_index}].name"),
-            "body": entry_value["body"],
+            "name": entry_name,
+            "body": _compile_logic_body_to_semantic_logic_spec(body, entry_name),
         })
     return ops
 
@@ -1443,7 +1444,8 @@ def _compile_merge_graph_write_ops(behavior: Dict[str, Any]) -> List[Dict[str, A
     return ops
 
 
-SUPPORTED_GRAPH_BODY_STATEMENT_KINDS = {"call", "set", "set_property", "let", "branch", "return"}
+SUPPORTED_GRAPH_BODY_STATEMENT_KINDS = {"call", "set", "set_property", "let", "control"}
+SUPPORTED_GRAPH_BODY_CONTROL_KINDS = {"branch", "sequence", "return"}
 SUPPORTED_GRAPH_BODY_EXPRESSION_KINDS = {
     "literal",
     "get",
@@ -1467,19 +1469,47 @@ def _validate_supported_statements(statements: List[Dict[str, Any]], path: str) 
                 [{
                     "code": "unsupported_statement_kind",
                     "path": f"{statement_path}.kind",
-                    "message": "Use call, set, set_property, let, branch, or return.",
+                    "message": "Use call, set, set_property, let, or control.",
                 }],
             )
         if kind == "call":
             _validate_expression_map(statement.get("args"), f"{statement_path}.args")
         elif kind in {"let", "set", "set_property"}:
             _validate_supported_expression(statement.get("value"), f"{statement_path}.value")
-        elif kind == "branch":
-            _validate_supported_expression(statement.get("condition"), f"{statement_path}.condition")
-            _validate_supported_statements(statement.get("then") if isinstance(statement.get("then"), list) else [], f"{statement_path}.then")
-            _validate_supported_statements(statement.get("else") if isinstance(statement.get("else"), list) else [], f"{statement_path}.else")
-        elif kind == "return" and "value" in statement:
-            _validate_supported_expression(statement.get("value"), f"{statement_path}.value")
+        elif kind == "control":
+            control_kind = _control_statement_kind(statement, statement_path)
+            if control_kind == "branch":
+                _validate_supported_expression(statement.get("condition"), f"{statement_path}.condition")
+                _validate_supported_statements(statement.get("then") if isinstance(statement.get("then"), list) else [], f"{statement_path}.then")
+                _validate_supported_statements(statement.get("else") if isinstance(statement.get("else"), list) else [], f"{statement_path}.else")
+            elif control_kind == "sequence":
+                if isinstance(statement.get("statements"), list) and statement["statements"]:
+                    raise TaskSpecCompileError(
+                        "unsupported_control_shape",
+                        "Unsupported GraphWrite control shape.",
+                        [{
+                            "code": "unsupported_control_shape",
+                            "path": f"{statement_path}.statements",
+                            "message": "Sequence control is an execution-flow node; place following statements after it.",
+                        }],
+                    )
+            elif "value" in statement:
+                _validate_supported_expression(statement.get("value"), f"{statement_path}.value")
+
+
+def _control_statement_kind(statement: Dict[str, Any], path: str) -> str:
+    control_kind = statement.get("control")
+    if isinstance(control_kind, str) and control_kind in SUPPORTED_GRAPH_BODY_CONTROL_KINDS:
+        return control_kind
+    raise TaskSpecCompileError(
+        "unsupported_control_kind",
+        "Unsupported GraphWrite control kind.",
+        [{
+            "code": "unsupported_control_kind",
+            "path": f"{path}.control",
+            "message": "Use branch, sequence, or return.",
+        }],
+    )
 
 
 def _validate_expression_map(value: Any, path: str) -> None:
@@ -1614,6 +1644,20 @@ def _clone_logic_statement_with_compiled_ids(statement: Dict[str, Any], statemen
             arg_name: _clone_logic_expression_with_compiled_ids(arg_value, f"{statement_id}_arg_{_to_id_segment(str(arg_name))}")
             for arg_name, arg_value in statement["args"].items()
         }
+    elif kind == "control":
+        control_kind = statement.get("control") if isinstance(statement.get("control"), str) else ""
+        out["kind"] = control_kind
+        out.pop("control", None)
+        if control_kind == "branch":
+            out["condition"] = _clone_logic_expression_with_compiled_ids(statement.get("condition"), f"{statement_id}_condition")
+            if isinstance(statement.get("then"), list):
+                out["then"] = _clone_logic_statement_sequence_with_compiled_ids(statement["then"], f"{statement_id}_then")
+            if isinstance(statement.get("else"), list):
+                out["else"] = _clone_logic_statement_sequence_with_compiled_ids(statement["else"], f"{statement_id}_else")
+        elif control_kind == "sequence":
+            out.pop("statements", None)
+        elif control_kind == "return" and "value" in statement:
+            out["value"] = _clone_logic_expression_with_compiled_ids(statement.get("value"), f"{statement_id}_value")
 
     return out
 
@@ -1652,8 +1696,21 @@ def _compile_statement_sequence(statements: List[Dict[str, Any]], id_prefix: str
 
 def _compile_statement_flow(statement: Dict[str, Any], node_id: str, path: str, context: Dict[str, Any]) -> Dict[str, Any]:
     kind = statement.get("kind")
+    if kind == "control":
+        control_kind = _control_statement_kind(statement, path)
+        if control_kind == "branch":
+            branch_statement = dict(statement)
+            branch_statement["kind"] = "branch"
+            return _compile_branch_statement_flow(branch_statement, node_id, path, context)
+        if control_kind == "return":
+            return _compile_return_statement_flow(statement, node_id, path, context)
+        return _compile_sequence_control_statement_flow(statement, node_id, path, context)
     if kind == "branch":
         return _compile_branch_statement_flow(statement, node_id, path, context)
+    if kind == "return":
+        return _compile_return_statement_flow(statement, node_id, path, context)
+    if kind == "sequence":
+        return _compile_sequence_control_statement_flow(statement, node_id, path, context)
     if kind == "let":
         name = _required_string(statement, "name", f"{path}.name")
         value_flow = _compile_value_expression(statement.get("value"), f"{node_id}_value", f"{path}.value", context)
@@ -1693,6 +1750,39 @@ def _compile_statement_flow(statement: Dict[str, Any], node_id: str, path: str, 
         "links": links,
         "entry": f"{node_id}.execute",
         "exits": [f"{node_id}.then"],
+    }
+
+
+def _compile_return_statement_flow(statement: Dict[str, Any], node_id: str, path: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    node: Dict[str, Any] = {"id": node_id, "kind": "return"}
+    nodes: List[Dict[str, Any]] = [node]
+    links: List[Dict[str, Any]] = []
+    if "value" in statement:
+        value_flow = _compile_value_expression(statement.get("value"), f"{node_id}_value", f"{path}.value", context)
+        nodes.extend(value_flow["nodes"])
+        links.extend(value_flow["links"])
+        if value_flow.get("output"):
+            links.append({"kind": "data", "from": value_flow["output"], "to": f"{node_id}.value"})
+        else:
+            node["value"] = _value_expr_to_string(value_flow.get("default_value"))
+    return {"nodes": nodes, "links": links, "entry": f"{node_id}.execute", "exits": []}
+
+
+def _compile_sequence_control_statement_flow(statement: Dict[str, Any], node_id: str, path: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    sequence_node: Dict[str, Any] = {"id": node_id, "kind": "sequence"}
+    nodes: List[Dict[str, Any]] = [sequence_node]
+    links: List[Dict[str, Any]] = []
+    nested_statements = statement.get("statements") if isinstance(statement.get("statements"), list) else []
+    nested_flow = _compile_statement_sequence(nested_statements, f"{node_id}_sequence", f"{path}.statements", _make_compile_flow_context(context))
+    nodes.extend(nested_flow["nodes"])
+    links.extend(nested_flow["links"])
+    if nested_flow.get("entry"):
+        links.append({"kind": "exec", "from": f"{node_id}.then", "to": nested_flow["entry"]})
+    return {
+        "nodes": nodes,
+        "links": links,
+        "entry": f"{node_id}.execute",
+        "exits": nested_flow["exits"] if nested_flow.get("entry") else [f"{node_id}.then"],
     }
 
 
@@ -2522,13 +2612,6 @@ def _compile_statement_node(statement: Dict[str, Any], node_id: str, path: str) 
             "target": _required_string(statement, "target", f"{path}.target"),
             "property_path": property_path,
             "property": property_path,
-            "value": _value_expr_to_string(statement.get("value")),
-        }
-
-    if kind == "return":
-        return {
-            "id": node_id,
-            "kind": "return",
             "value": _value_expr_to_string(statement.get("value")),
         }
 

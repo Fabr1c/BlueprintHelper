@@ -191,8 +191,8 @@ test('compiles custom_event_definition into signature then graph body steps', ()
           schema: 'BlueprintLogicSpec.v1',
           statements: [
             {
-              kind: 'call_function',
-              name: 'PrintString',
+              kind: 'call',
+              target: 'PrintString',
               args: {
                 InString: { kind: 'literal', value_type: 'string', value: 'interact' },
               },
