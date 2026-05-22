@@ -60,7 +60,11 @@ struct FBlueprintHelperActionContextDemand
 	FBlueprintHelperCallFunctionPinType TargetObjectPinType;
 	FString ExpectedReturnType;
 	FBlueprintHelperCallFunctionPinType ExpectedReturnPinType;
+	FString ComponentPath;
 	FString BindingObjectPath;
+	FString DelegateName;
+	FString DelegateSignature;
+	FString TargetGraphName;
 	TArray<FString> SelectedObjectPaths;
 	TArray<FString> ArgumentNames;
 	TArray<FString> SourceSymbolIds;

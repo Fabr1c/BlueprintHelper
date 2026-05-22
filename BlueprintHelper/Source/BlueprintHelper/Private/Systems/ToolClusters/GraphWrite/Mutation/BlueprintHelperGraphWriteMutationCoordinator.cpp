@@ -1,12 +1,13 @@
 #include "Systems/ToolClusters/GraphWrite/Mutation/BlueprintHelperGraphWriteMutationCoordinator.h"
 
-#include "BlueprintNodeSpawner.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraphSchema_K2.h"
 #include "K2Node.h"
 #include "K2Node_ExecutionSequence.h"
+#include "Kismet2/BlueprintEditorUtils.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionNodeSpawnerAdapter.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperSingletonControlFlowEvidenceProvider.h"
 
 namespace
 {
@@ -107,26 +108,55 @@ static bool TryBreakLink(UEdGraphPin* FromPin, UEdGraphPin* ToPin, FString& OutE
 
 static UK2Node_ExecutionSequence* SpawnSequenceNode(UEdGraph* TargetGraph, const FString& IntentId, FString& OutError)
 {
-	UBlueprintNodeSpawner* NodeSpawner = UBlueprintNodeSpawner::Create(UK2Node_ExecutionSequence::StaticClass());
-	if (!NodeSpawner)
+	FBlueprintHelperActionResolutionRequest Request;
+	Request.ClusterKind = EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction;
+	Request.Blueprint = FBlueprintEditorUtils::FindBlueprintForGraph(TargetGraph);
+	Request.TargetGraph = TargetGraph;
+	Request.StatementId = IntentId.IsEmpty() ? TEXT("merge_sequence") : IntentId;
+	Request.ProjectedContextHash = TEXT("mutation_branch_fork_sequence_projected_context");
+	Request.SemanticConstraintsHash = TEXT("mutation_branch_fork_sequence_semantic_constraints");
+	Request.Semantic.Kind = EBlueprintHelperActionSemanticKind::Control;
+	Request.Semantic.Query = TEXT("sequence");
+	Request.Semantic.TargetPath = Request.StatementId;
+	Request.MaxCandidates = 1;
+
+	if (!Request.Blueprint || !Request.TargetGraph)
 	{
-		OutError = TEXT("sequence_node_create_failed: node spawner unavailable");
+		OutError = TEXT("missing_required_evidence: mutation branch-fork sequence requires target graph and Blueprint context.");
+		return nullptr;
+	}
+
+	FBlueprintHelperSingletonControlFlowEvidence Evidence;
+	if (!FBlueprintHelperSingletonControlFlowEvidenceProvider::TryResolve(Request, Evidence))
+	{
+		OutError = TEXT("missing_required_evidence: singleton control-flow provider could not resolve sequence evidence for mutation branch-fork.");
+		return nullptr;
+	}
+
+	const FBlueprintHelperActionResolutionResult ActionResult =
+		FBlueprintHelperSingletonControlFlowEvidenceProvider::MakeResolvedResult(Request, Evidence);
+	if (!ActionResult.IsResolved())
+	{
+		OutError = ActionResult.Message.IsEmpty()
+			? TEXT("spawn_or_link_failure: singleton control-flow sequence provider did not resolve.")
+			: FString::Printf(TEXT("spawn_or_link_failure: %s"), *ActionResult.Message);
 		return nullptr;
 	}
 
 	FBlueprintHelperActionNodeSpawnOptions Options;
 	Options.NodeId = IntentId.IsEmpty() ? TEXT("merge_sequence") : IntentId;
-	UK2Node* SpawnedNode = FBlueprintHelperActionNodeSpawnerAdapter::InvokeNodeSpawner(
+	UK2Node* SpawnedNode = FBlueprintHelperActionNodeSpawnerAdapter::InvokeSelectedSpawner(
 		TargetGraph,
-		NodeSpawner,
-		TEXT("generic_control_node:sequence"),
+		ActionResult,
 		FVector2D::ZeroVector,
 		Options,
 		OutError);
 	UK2Node_ExecutionSequence* SequenceNode = Cast<UK2Node_ExecutionSequence>(SpawnedNode);
 	if (!SequenceNode)
 	{
-		OutError = TEXT("sequence_node_create_failed");
+		OutError = OutError.IsEmpty()
+			? TEXT("spawn_or_link_failure: sequence_node_create_failed")
+			: FString::Printf(TEXT("spawn_or_link_failure: %s"), *OutError);
 		return nullptr;
 	}
 	return SequenceNode;
@@ -406,4 +436,3 @@ FBlueprintGenerateResult FBlueprintHelperGraphWriteMutationCoordinator::ExecuteI
 		: TEXT("GraphWrite mutation coordinator completed with no changes.");
 	return Result;
 }
-

@@ -2,18 +2,14 @@
 
 #include "BlueprintFieldNodeSpawner.h"
 #include "BlueprintFunctionNodeSpawner.h"
-#include "BlueprintNodeSpawner.h"
 #include "EdGraph/EdGraph.h"
 #include "Engine/Blueprint.h"
 #include "K2Node_BreakStruct.h"
-#include "K2Node_ExecutionSequence.h"
-#include "K2Node_FunctionResult.h"
-#include "K2Node_IfThenElse.h"
 #include "K2Node_MakeStruct.h"
-#include "K2Node_Select.h"
 #include "K2Node_StructOperation.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionClusterContextView.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperSingletonControlFlowEvidenceProvider.h"
 #include "UObject/UnrealType.h"
 
 namespace
@@ -587,92 +583,23 @@ static FBlueprintHelperActionResolutionResult MakeDirectStructSpawnerResult(
 	return Result;
 }
 
-static FBlueprintHelperActionResolutionResult MakeGenericNodeSpawnerResult(
-	const FBlueprintHelperActionResolutionRequest& Request,
-	UClass* NodeClass,
-	const FString& StableId,
-	const FString& DisplayName,
-	const FString& MatchReason)
-{
-	FBlueprintHelperActionResolutionResult Result;
-	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction;
-	Result.SelectedStableId = StableId;
-	Result.SelectedSpawner = NodeClass ? UBlueprintNodeSpawner::Create(NodeClass) : nullptr;
-
-	FBlueprintHelperCallFunctionCandidateInfo Candidate;
-	Candidate.StableId = StableId;
-	Candidate.DisplayName = DisplayName;
-	Candidate.Category = TEXT("Generic");
-	Candidate.NodeClassPath = NodeClass ? NodeClass->GetPathName() : FString();
-	Candidate.MatchReason = MatchReason;
-	Candidate.Score = 100;
-	Candidate.bGraphCompatible = true;
-	Candidate.bFromActionDatabase = false;
-	Candidate.bBlueprintCallable = true;
-	Candidate.bBlueprintPure = true;
-	Result.CandidateActions.Add(Candidate);
-
-	if (!Result.SelectedSpawner.IsValid())
-	{
-		Result.Status = EBlueprintHelperActionResolutionStatus::Blocked;
-		Result.ErrorCode = TEXT("generic_node_spawner_unavailable");
-		Result.Message = FString::Printf(TEXT("Generic node spawner unavailable for '%s'."), *StableId);
-		return Result;
-	}
-
-	Result.Status = EBlueprintHelperActionResolutionStatus::Resolved;
-	Result.Message = FString::Printf(TEXT("Resolved generic node spawner '%s'."), *StableId);
-	return Result;
-}
-
-static FBlueprintHelperActionResolutionResult ResolveSelectNodeSpawner(
+static FBlueprintHelperActionResolutionResult ResolveSingletonControlFlowNodeSpawner(
 	const FBlueprintHelperActionResolutionRequest& Request)
 {
-	return MakeGenericNodeSpawnerResult(
-		Request,
-		UK2Node_Select::StaticClass(),
-		TEXT("generic_select_node:/Script/BlueprintGraph.K2Node_Select"),
-		TEXT("Select"),
-		TEXT("generic_select_node_spawner"));
-}
-
-static FBlueprintHelperActionResolutionResult ResolveControlNodeSpawner(
-	const FBlueprintHelperActionResolutionRequest& Request)
-{
-	const FString Query = Request.Semantic.Query.TrimStartAndEnd().ToLower();
-	if (Query == TEXT("branch"))
+	FBlueprintHelperSingletonControlFlowEvidence Evidence;
+	if (FBlueprintHelperSingletonControlFlowEvidenceProvider::TryResolve(Request, Evidence))
 	{
-		return MakeGenericNodeSpawnerResult(
-			Request,
-			UK2Node_IfThenElse::StaticClass(),
-			TEXT("generic_control_node:branch"),
-			TEXT("Branch"),
-			TEXT("generic_control_node_spawner"));
-	}
-	if (Query == TEXT("return"))
-	{
-		return MakeGenericNodeSpawnerResult(
-			Request,
-			UK2Node_FunctionResult::StaticClass(),
-			TEXT("generic_control_node:return"),
-			TEXT("Return"),
-			TEXT("generic_control_node_spawner"));
-	}
-	if (Query == TEXT("sequence"))
-	{
-		return MakeGenericNodeSpawnerResult(
-			Request,
-			UK2Node_ExecutionSequence::StaticClass(),
-			TEXT("generic_control_node:sequence"),
-			TEXT("Sequence"),
-			TEXT("generic_control_node_spawner"));
+		return FBlueprintHelperSingletonControlFlowEvidenceProvider::MakeResolvedResult(Request, Evidence);
 	}
 
 	FBlueprintHelperActionResolutionResult Result;
 	Result.Status = EBlueprintHelperActionResolutionStatus::UnsupportedIntent;
 	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction;
-	Result.ErrorCode = TEXT("unsupported_generic_control_semantic");
-	Result.Message = FString::Printf(TEXT("Unsupported control semantic query '%s'."), *Request.Semantic.Query);
+	Result.ErrorCode = TEXT("unsupported_singleton_control_flow_semantic");
+	Result.Message = FString::Printf(
+		TEXT("Unsupported singleton control-flow semantic '%s' with query '%s'."),
+		*FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.Semantic.Kind),
+		*Request.Semantic.Query);
 	return Result;
 }
 }
@@ -690,12 +617,12 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperGenericAssetStructControl
 
 	if (Context.GetSemantic().Kind == EBlueprintHelperActionSemanticKind::Select)
 	{
-		return ResolveSelectNodeSpawner(Request);
+		return ResolveSingletonControlFlowNodeSpawner(Request);
 	}
 
 	if (Context.GetSemantic().Kind == EBlueprintHelperActionSemanticKind::Control)
 	{
-		return ResolveControlNodeSpawner(Request);
+		return ResolveSingletonControlFlowNodeSpawner(Request);
 	}
 
 	const FString TypeName = Context.GetSemantic().TypeName.TrimStartAndEnd();
@@ -780,7 +707,7 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperGenericAssetStructControl
 	FBlueprintHelperActionResolutionResult Result;
 	Result.Status = EBlueprintHelperActionResolutionStatus::InvalidRequest;
 	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction;
-	Result.ErrorCode = TEXT("needs_more_semantic_context");
+	Result.ErrorCode = TEXT("missing_required_evidence");
 	Result.Message = Message;
 	return Result;
 }
@@ -792,7 +719,7 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperGenericAssetStructControl
 	FBlueprintHelperActionResolutionResult Result;
 	Result.Status = EBlueprintHelperActionResolutionStatus::NotFound;
 	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction;
-	Result.ErrorCode = TEXT("generic_action_struct_type_not_found");
+	Result.ErrorCode = TEXT("not_found");
 	Result.Message = Message;
 	return Result;
 }

@@ -62,19 +62,12 @@ static FString BuildGraphWritePrivateSourcePath(const TCHAR* Area, const TCHAR* 
 		FileName);
 }
 
-static bool IsAllowedActionContextPipelineImplementationFile(const FString& RelativePath)
+static bool IsAllowedActionContextPipelineImplementationFile(const FString& SourcePath)
 {
-	const TArray<FString> AllowedRelativePaths = {
-		TEXT("Context/BlueprintHelperActionContextDemandCollector.cpp"),
-		TEXT("Context/BlueprintHelperActionContextSnapshotBuilder.cpp"),
-		TEXT("Context/BlueprintHelperActionContextInferenceService.cpp"),
-		TEXT("Context/BlueprintHelperActionContextBundleProjector.cpp"),
-		TEXT("Context/BlueprintHelperActionContextRevisionGuard.cpp"),
-		TEXT("Context/BlueprintHelperActionContextScope.cpp"),
-		TEXT("Context/BlueprintHelperActionContextBuildService.cpp")
-	};
-
-	return AllowedRelativePaths.Contains(RelativePath);
+	FString Normalized = FPaths::ConvertRelativePathToFull(SourcePath);
+	Normalized.ReplaceInline(TEXT("\\"), TEXT("/"));
+	return Normalized.Contains(TEXT("/GraphWrite/ActionResolution/Context/"))
+		|| Normalized.Contains(TEXT("/Context/BlueprintHelperActionContext"));
 }
 
 static FString MakeNormalizedRelativeSourcePath(const FString& SourceRoot, const FString& File)
@@ -97,8 +90,7 @@ static bool ScanActionResolutionClusterFilesForForbiddenPipelineToken(
 	bool bClean = true;
 	for (const FString& File : Files)
 	{
-		const FString RelativePath = MakeNormalizedRelativeSourcePath(SourceRoot, File);
-		if (IsAllowedActionContextPipelineImplementationFile(RelativePath))
+		if (IsAllowedActionContextPipelineImplementationFile(File))
 		{
 			continue;
 		}

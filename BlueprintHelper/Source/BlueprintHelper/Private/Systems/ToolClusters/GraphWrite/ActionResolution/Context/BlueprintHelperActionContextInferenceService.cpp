@@ -77,6 +77,18 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 	{
 		Context.Evidence.Add(TEXT("binding_object_path"), Demand.BindingObjectPath);
 	}
+	if (!Demand.ComponentPath.IsEmpty())
+	{
+		Context.Evidence.Add(TEXT("component_path"), Demand.ComponentPath);
+	}
+	if (!Demand.DelegateName.IsEmpty())
+	{
+		Context.Evidence.Add(TEXT("delegate_name"), Demand.DelegateName);
+	}
+	if (!Demand.DelegateSignature.IsEmpty())
+	{
+		Context.Evidence.Add(TEXT("delegate_signature"), Demand.DelegateSignature);
+	}
 	if (!Demand.TargetObjectType.IsEmpty())
 	{
 		Context.Evidence.Add(TEXT("target_object_type"), Demand.TargetObjectType);
@@ -103,6 +115,11 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 	if (!Snapshot.Graph.GraphName.IsEmpty())
 	{
 		Context.Evidence.Add(TEXT("graph_name"), Snapshot.Graph.GraphName);
+		Context.Evidence.Add(TEXT("target_graph"), Snapshot.Graph.GraphName);
+	}
+	if (!Demand.TargetGraphName.IsEmpty())
+	{
+		Context.Evidence.Add(TEXT("target_graph"), Demand.TargetGraphName);
 	}
 
 	if (!Demand.SourcePath.IsEmpty())

@@ -31,7 +31,7 @@ FBlueprintHelperGenericActionProviderBoundary FBlueprintHelperGenericActionProvi
 	case EBlueprintHelperActionSemanticKind::Select:
 		Boundary.Mode = EBlueprintHelperGenericActionProviderMode::NodeSpawnerCandidate;
 		Boundary.RequiredBuilder = TEXT("SelectFragmentBuilder");
-		Boundary.Reason = TEXT("select resolves a generic UE node spawner; SelectFragmentBuilder only performs post-spawn pin normalization.");
+		Boundary.Reason = TEXT("select resolves through the singleton control-flow evidence provider; SelectFragmentBuilder only performs post-spawn pin normalization.");
 		return Boundary;
 
 	case EBlueprintHelperActionSemanticKind::Control:
@@ -41,7 +41,7 @@ FBlueprintHelperGenericActionProviderBoundary FBlueprintHelperGenericActionProvi
 		Boundary.RequiredBuilder = TEXT("ControlFragmentBuilder");
 		Boundary.Reason = Request.Semantic.Query.TrimStartAndEnd().IsEmpty()
 			? TEXT("control requires Semantic.Query such as branch, return, or sequence.")
-			: TEXT("control resolves a generic UE node spawner; ControlFragmentBuilder only performs flow composition and pin binding.");
+			: TEXT("control resolves through the singleton control-flow evidence provider; ControlFragmentBuilder only performs flow composition and pin binding.");
 		return Boundary;
 
 	default:

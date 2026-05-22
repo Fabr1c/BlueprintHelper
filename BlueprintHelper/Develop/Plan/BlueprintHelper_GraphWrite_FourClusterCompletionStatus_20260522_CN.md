@@ -19,10 +19,10 @@
 
 | 工具簇 | 当前完成状态 | TaskSpec 稳定上下文覆盖率 | 已完成范围 | 剩余 gap | 下一步收敛 |
 |---|---|---:|---|---|---|
-| `FunctionActionCluster` | 部分完成 | 约 70%-75% | `call` 已经经由 `CallFunctionResolver` 消费 ActionDatabase / ActionFilter / NodeSpawner 候选；`op` 已经通过 `OperatorActionResolver` 映射 UE promotable operator spawner，并有候选、歧义、缺失等基础测试。 | `CallFunctionResolverUtils` 仍保留 `TFieldIterator<UFunction>` 补充扫描路径，需要明确只能作为补充候选而不能绕过 ActionDatabase 主证据；construct/deconstruct、统一 spawn adapter、post-spawn defaults 等仍在 P2/P3 计划中未完全闭环。 | 锁定 `call` 主链路为 ActionDatabase 候选优先；补测试证明 `TFieldIterator` 不能单独形成 selected success evidence；把函数类 spawner 调用统一收敛到共享 adapter/lifecycle。 |
-| `FieldVariableActionCluster` | 部分完成 | 约 45%-55% | `get` / `set` 已经通过 `FieldVariableActionResolver` 和 `UBlueprintVariableNodeSpawner::CreateFromMemberOrParam` 形成基础 spawner evidence；簇入口已经转发到 resolver，并有基础成功、歧义、缺失测试。 | `get_property` / `set_property` 仍未按 property path、pin evidence、field metadata 建立独立闭环；field 名称仍可从 `Semantic.TargetPath` / `Query` 回退推导，缺少“投影上下文缺失即失败”的硬约束；P2/P3 计划中仍有“get/set spawn layer 不走直接变量节点捷径”的未完成项。 | 把 `field_name`、`property_path`、owner、pin/type evidence 设为 resolver 的显式输入契约；补 `get_property` / `set_property` 正向和缺失 evidence 测试；收敛变量 spawner 到共享 adapter。 |
-| `EventDelegateActionCluster` | 部分完成 | 约 20%-30% | `event` 自定义事件语义已有成功路径，可提取事件名并用 `UBlueprintEventNodeSpawner::Create` 返回 resolved spawner；能力边界只认领 `Event`，合约测试固定该簇当前不误承诺 `ComponentBoundEvent` / `Bind`。 | `component_bound_event`、`bind`、`unbind`、`assign`、`delegate_call`、`delegate_clear` 等委托/绑定语义尚无成功闭环；缺少 binding object、component、delegate signature 等 projected evidence；失败诊断还未细分为可执行的 `needs_more_semantic_context`。 | 先投影 component/delegate/signature/binding object evidence；缺失时返回细分诊断；evidence 完整后再接入 `UBlueprintBoundEventNodeSpawner` / `UBlueprintDelegateNodeSpawner` 并补正向与失败测试。 |
-| `GenericAssetStructControlActionCluster` | 部分完成 | 约 45%-55% | `construct` / `deconstruct` / `select` / `control` 已有 provider boundary 和 resolver 入口；select/branch/return/sequence 等唯一控制流可以 direct spawn，符合“唯一控制流不必完整走通用 ActionDatabase 查询链路”的取舍。 | `create` / `convert` / `schedule` 等被簇枚举认领但 provider boundary 仍默认 unsupported；construct/deconstruct 仍需要把 struct/action payload、wildcard promotion、post-link evidence 统一；sequence 等 direct spawn 还应保持一级分发规则 + 次级语义映射路径，而不是散落在 mutation helper。 | 把唯一控制流 direct spawn 抽成显式 singleton/control-flow evidence provider；保留一级分发到簇、簇内二级语义映射；把 broad create/convert/schedule 继续走完整 context -> provider/resolver -> spawner/evidence 链路。 |
+| `FunctionActionCluster` | 部分完成 | 约 70%-75% | `call` 在 P6 能力行中已有 selected stable id、selected spawner、call node readback；`op` 有独立 resolver 入口；P6 regression 中的 operator/call resolver stress 与 generator 路径已通过。 | 函数类 spawner 调用仍需继续统一收敛到共享 adapter/lifecycle，且四簇整体仍有残余 architecture gaps。 | 继续把函数类 spawner 调用收敛到共享 adapter/lifecycle，并保持 call query 以 target/stable id 为主的 evidence contract。 |
+| `FieldVariableActionCluster` | 部分完成 | 约 45%-55% | P6 readback 覆盖 variable get/set by field evidence；基础 get/set resolver/spawner evidence 可用。 | `get_property` / `set_property` 仍未完全按 property path、pin evidence、field metadata 建立独立闭环；field 名称回退推导仍需收敛。 | 把 `field_name`、`property_path`、owner、pin/type evidence 设为 resolver 的显式输入契约；补 property 正向和缺失 evidence 测试；收敛变量 spawner 到共享 adapter。 |
+| `EventDelegateActionCluster` | 部分完成 | 约 20%-30% | P6 readback 覆盖 custom event by event name；P5/P6 明确 component-bound event / delegate bind complete evidence 当前返回 `unsupported_intent`，不产生 fake selected spawner；declared-capability contract 已同步当前 P5 语义。 | Gap 5 仍开放；component-bound/bind 尚无安全 UE spawner-family 正向路径。 | 先解决安全 UE spawner-family 路径；只有 complete projected evidence + `SelectedSpawner != null` 正向测试存在后才可标记完成。 |
+| `GenericAssetStructControlActionCluster` | 部分完成 | 约 45%-55% | P6 readback 覆盖 select/control singleton stable id、struct make/break by struct type；P4 provider boundary 证据可用。 | Gap 3/4 仍要求 singleton direct spawn 只发生在统一 evidence provider / cluster 二级语义映射边界；direct spawn 不能散落在 mutation helper。 | 保留一级分发到簇、簇内二级语义映射；将 remaining singleton mutation 产物解释为统一 provider evidence；继续让 broad create/convert/schedule 走完整 context -> provider/resolver -> spawner/evidence。 |
 
 ## 3. 分类汇总
 
@@ -55,4 +55,12 @@
 2. `branch`、`sequence`、`select` 等唯一控制流可以 direct spawn，但仍必须保留统一的一级分发规则和簇内次级语义映射路径。
 3. direct spawn 也应有明确 evidence provider / adapter 边界，不能重新变成 mutation helper 或 builder 内的散落硬编码。
 
-本次是静态代码与文档审计，未重新运行 UE 编译、编辑器 smoke 或 BlueprintHelper CLI 执行链路。
+P6 已重新运行能力行、`BlueprintHelper.GraphWrite` 全量 regression 与 BuildPlugin，三者均通过；四簇仍全部保持“部分完成”，原因是残余 architecture gaps 仍未全部收敛，尤其是 Gap 5 的 delegate/bind 正向 spawner-family 路径。
+
+## 6. P6 同步记录
+
+| 验证 | 结果 | 影响 |
+|---|---|---|
+| `BlueprintHelper.GraphWrite.Capability80` | PASS: 5 succeeded, 0 failed | P6 能力行、readback、DebugBundle 分类和最终指标可作为 80% 能力记录。 |
+| `BlueprintHelper.GraphWrite` | PASS: 116 tests successful (`107` succeeded + `9` succeeded with warnings), 0 failed, 0 not run | P6 regression blocker closed in `Saved/Automation/GraphWrite80_P6_GraphWrite_Regression_002/index.json`; four clusters still stay `部分完成` because residual architecture gaps, especially Gap 5, remain open. |
+| UE 5.6 BuildPlugin | PASS | 当前代码可打包；`Saved/BlueprintHelperBuildTest_GraphWrite80_P6_002` 已通过，P6 regression 不再阻塞 DONE。 |

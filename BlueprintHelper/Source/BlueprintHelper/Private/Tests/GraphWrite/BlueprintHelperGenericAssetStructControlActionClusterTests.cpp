@@ -2,23 +2,117 @@
 
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericActionProviderBoundary.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperSingletonControlFlowEvidenceProvider.h"
 
+#include "EdGraph/EdGraph.h"
+#include "Engine/Blueprint.h"
+#include "Engine/BlueprintGeneratedClass.h"
+#include "GameFramework/Actor.h"
 #include "HAL/FileManager.h"
+#include "Kismet2/KismetEditorUtilities.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "UObject/Package.h"
 
 namespace
 {
+static FString MakeGenericActionTestObjectName(const FString& Prefix)
+{
+	return FString::Printf(TEXT("%s_%s"), *Prefix, *FGuid::NewGuid().ToString(EGuidFormats::Digits));
+}
+
+static UBlueprint* MakeGenericActionTestBlueprint()
+{
+	UPackage* Package = CreatePackage(*FString::Printf(
+		TEXT("/Game/BlueprintHelperGenericAction/%s"),
+		*MakeGenericActionTestObjectName(TEXT("Pkg"))));
+	Package->SetDirtyFlag(false);
+
+	UBlueprint* Blueprint = FKismetEditorUtilities::CreateBlueprint(
+		AActor::StaticClass(),
+		Package,
+		*MakeGenericActionTestObjectName(TEXT("BP_GenericAction")),
+		BPTYPE_Normal,
+		UBlueprint::StaticClass(),
+		UBlueprintGeneratedClass::StaticClass(),
+		TEXT("BlueprintHelperGenericActionTests"));
+	Package->SetDirtyFlag(false);
+	return Blueprint;
+}
+
+static UEdGraph* GetGenericActionTestGraph(UBlueprint* Blueprint)
+{
+	return Blueprint && Blueprint->UbergraphPages.Num() > 0 ? Blueprint->UbergraphPages[0] : nullptr;
+}
+
 static FBlueprintHelperActionResolutionRequest MakeGenericActionRequest(
+	UBlueprint* Blueprint,
+	UEdGraph* Graph,
 	const EBlueprintHelperActionSemanticKind SemanticKind,
+	const FString& Query = FString(),
 	const FString& TypeName = FString())
 {
 	FBlueprintHelperActionResolutionRequest Request;
 	Request.ClusterKind = EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction;
+	Request.Blueprint = Blueprint;
+	Request.TargetGraph = Graph;
+	Request.StatementId = MakeGenericActionTestObjectName(TEXT("Stmt"));
+	Request.ProjectedContextHash = TEXT("generic_action_projected_context");
+	Request.SemanticConstraintsHash = TEXT("generic_action_semantic_constraints");
 	Request.Semantic.Kind = SemanticKind;
+	Request.Semantic.Query = Query;
+	Request.Semantic.TargetPath = Query;
 	Request.Semantic.TypeName = TypeName;
+	Request.MaxCandidates = 8;
 	return Request;
+}
+
+static bool HasCandidateNodeClassPath(
+	const FBlueprintHelperActionResolutionResult& Result,
+	const FString& ExpectedNodeClassPathPart)
+{
+	for (const FBlueprintHelperCallFunctionCandidateInfo& Candidate : Result.CandidateActions)
+	{
+		if (Candidate.NodeClassPath.Contains(ExpectedNodeClassPathPart))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+static bool HasStructCandidateEvidence(
+	const FBlueprintHelperActionResolutionResult& Result,
+	const FString& ExpectedStructIdentity)
+{
+	for (const FBlueprintHelperCallFunctionCandidateInfo& Candidate : Result.CandidateActions)
+	{
+		if (Candidate.Category.Equals(TEXT("Struct"), ESearchCase::IgnoreCase)
+			&& (Candidate.StableId.Contains(ExpectedStructIdentity)
+				|| Candidate.DisplayName.Contains(ExpectedStructIdentity)
+				|| Candidate.ReturnType.Contains(ExpectedStructIdentity)
+				|| Candidate.MatchReason.Contains(TEXT("struct"))))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+static bool AssertResolvedSingletonControlFlowResult(
+	FAutomationTestBase& Test,
+	const FBlueprintHelperActionResolutionResult& Result,
+	const FString& ExpectedStableIdPart,
+	const FString& ExpectedNodeClassPathPart)
+{
+	bool bPassed = true;
+	bPassed &= Test.TestEqual(TEXT("singleton result status"), Result.Status, EBlueprintHelperActionResolutionStatus::Resolved);
+	bPassed &= Test.TestTrue(TEXT("singleton stable id names provider identity"), Result.SelectedStableId.Contains(TEXT("singleton_control_flow")));
+	bPassed &= Test.TestTrue(TEXT("singleton stable id names expected control identity"), Result.SelectedStableId.Contains(ExpectedStableIdPart));
+	bPassed &= Test.TestNotNull(TEXT("singleton selected spawner"), Result.SelectedSpawner.Get());
+	bPassed &= Test.TestTrue(TEXT("singleton candidate action records node class path"), HasCandidateNodeClassPath(Result, ExpectedNodeClassPathPart));
+	return bPassed;
 }
 
 static bool ScanGenericActionResolutionSourceForForbiddenToken(
@@ -34,6 +128,10 @@ static bool ScanGenericActionResolutionSourceForForbiddenToken(
 	for (const FString& File : Files)
 	{
 		if (File.EndsWith(TEXT("BlueprintHelperGenericAssetStructControlActionClusterTests.cpp")))
+		{
+			continue;
+		}
+		if (File.EndsWith(TEXT("BlueprintHelperSingletonControlFlowEvidenceProvider.cpp")))
 		{
 			continue;
 		}
@@ -61,44 +159,55 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperGenericActionProviderBoundaryMatrixTest::RunTest(const FString& Parameters)
 {
+	UBlueprint* Blueprint = MakeGenericActionTestBlueprint();
+	UEdGraph* Graph = GetGenericActionTestGraph(Blueprint);
+	TestNotNull(TEXT("blueprint"), Blueprint);
+	TestNotNull(TEXT("graph"), Graph);
+
 	const FBlueprintHelperGenericActionProviderBoundary ConstructNeedsContext =
 		FBlueprintHelperGenericActionProviderBoundaryService::Classify(
-			MakeGenericActionRequest(EBlueprintHelperActionSemanticKind::Construct));
+			MakeGenericActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Construct));
 	TestEqual(TEXT("Construct without type needs context"), ConstructNeedsContext.Mode, EBlueprintHelperGenericActionProviderMode::NeedsMoreSemanticContext);
 	TestEqual(TEXT("Construct builder seam"), ConstructNeedsContext.RequiredBuilder, FString(TEXT("ConstructFragmentBuilder")));
 
 	const FBlueprintHelperGenericActionProviderBoundary ConstructCandidate =
 		FBlueprintHelperGenericActionProviderBoundaryService::Classify(
-			MakeGenericActionRequest(EBlueprintHelperActionSemanticKind::Construct, TEXT("Vector")));
+			MakeGenericActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Construct, FString(), TEXT("Vector")));
 	TestEqual(TEXT("Construct with type can query NodeSpawner"), ConstructCandidate.Mode, EBlueprintHelperGenericActionProviderMode::NodeSpawnerCandidate);
 
 	const FBlueprintHelperGenericActionProviderBoundary DeconstructNeedsContext =
 		FBlueprintHelperGenericActionProviderBoundaryService::Classify(
-			MakeGenericActionRequest(EBlueprintHelperActionSemanticKind::Deconstruct));
+			MakeGenericActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Deconstruct));
 	TestEqual(TEXT("Deconstruct without type needs context"), DeconstructNeedsContext.Mode, EBlueprintHelperGenericActionProviderMode::NeedsMoreSemanticContext);
 
 	const FBlueprintHelperGenericActionProviderBoundary DeconstructCandidate =
 		FBlueprintHelperGenericActionProviderBoundaryService::Classify(
-			MakeGenericActionRequest(EBlueprintHelperActionSemanticKind::Deconstruct, TEXT("Transform")));
+			MakeGenericActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Deconstruct, FString(), TEXT("Transform")));
 	TestEqual(TEXT("Deconstruct with type can query NodeSpawner"), DeconstructCandidate.Mode, EBlueprintHelperGenericActionProviderMode::NodeSpawnerCandidate);
 
 	const FBlueprintHelperGenericActionProviderBoundary SelectBoundary =
 		FBlueprintHelperGenericActionProviderBoundaryService::Classify(
-			MakeGenericActionRequest(EBlueprintHelperActionSemanticKind::Select));
-	TestEqual(TEXT("Select requires dedicated builder"), SelectBoundary.Mode, EBlueprintHelperGenericActionProviderMode::DedicatedFragmentBuilderRequired);
+			MakeGenericActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Select));
+	TestEqual(TEXT("Select resolves through singleton provider"), SelectBoundary.Mode, EBlueprintHelperGenericActionProviderMode::NodeSpawnerCandidate);
 	TestEqual(TEXT("Select builder seam"), SelectBoundary.RequiredBuilder, FString(TEXT("SelectFragmentBuilder")));
-	TestTrue(TEXT("Select reason names ActionDatabase limit"), SelectBoundary.Reason.Contains(TEXT("ActionDatabase")));
+	TestTrue(TEXT("Select reason names singleton provider"), SelectBoundary.Reason.Contains(TEXT("singleton")));
+
+	const FBlueprintHelperGenericActionProviderBoundary ControlNeedsContext =
+		FBlueprintHelperGenericActionProviderBoundaryService::Classify(
+			MakeGenericActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Control));
+	TestEqual(TEXT("Control without query needs context"), ControlNeedsContext.Mode, EBlueprintHelperGenericActionProviderMode::NeedsMoreSemanticContext);
+	TestEqual(TEXT("Control builder seam"), ControlNeedsContext.RequiredBuilder, FString(TEXT("ControlFragmentBuilder")));
 
 	const FBlueprintHelperGenericActionProviderBoundary ControlBoundary =
 		FBlueprintHelperGenericActionProviderBoundaryService::Classify(
-			MakeGenericActionRequest(EBlueprintHelperActionSemanticKind::Control));
-	TestEqual(TEXT("Control requires dedicated builder"), ControlBoundary.Mode, EBlueprintHelperGenericActionProviderMode::DedicatedFragmentBuilderRequired);
-	TestEqual(TEXT("Control builder seam"), ControlBoundary.RequiredBuilder, FString(TEXT("ControlFragmentBuilder")));
-	TestTrue(TEXT("Control reason names ActionDatabase limit"), ControlBoundary.Reason.Contains(TEXT("ActionDatabase")));
+			MakeGenericActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Control, TEXT("branch")));
+	TestEqual(TEXT("Control with singleton query resolves through provider"), ControlBoundary.Mode, EBlueprintHelperGenericActionProviderMode::NodeSpawnerCandidate);
+	TestEqual(TEXT("Control builder seam with query"), ControlBoundary.RequiredBuilder, FString(TEXT("ControlFragmentBuilder")));
+	TestTrue(TEXT("Control reason names singleton provider"), ControlBoundary.Reason.Contains(TEXT("singleton")));
 
 	const FBlueprintHelperGenericActionProviderBoundary UnsupportedBoundary =
 		FBlueprintHelperGenericActionProviderBoundaryService::Classify(
-			MakeGenericActionRequest(EBlueprintHelperActionSemanticKind::Call));
+			MakeGenericActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Call, TEXT("SetActorLocation")));
 	TestEqual(TEXT("Call is outside generic provider boundary"), UnsupportedBoundary.Mode, EBlueprintHelperGenericActionProviderMode::Unsupported);
 
 	return true;
@@ -111,41 +220,221 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperGenericActionClusterBoundaryResultTest::RunTest(const FString& Parameters)
 {
+	UBlueprint* Blueprint = MakeGenericActionTestBlueprint();
+	UEdGraph* Graph = GetGenericActionTestGraph(Blueprint);
+	TestNotNull(TEXT("blueprint"), Blueprint);
+	TestNotNull(TEXT("graph"), Graph);
+
 	const FBlueprintHelperActionResolutionResult ConstructNeedsContext =
 		FBlueprintHelperActionResolutionCore::Resolve(
-			MakeGenericActionRequest(EBlueprintHelperActionSemanticKind::Construct));
+			MakeGenericActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Construct));
 	TestEqual(TEXT("Construct without TypeName is invalid request"), ConstructNeedsContext.Status, EBlueprintHelperActionResolutionStatus::InvalidRequest);
-	TestEqual(TEXT("Construct without TypeName needs context"), ConstructNeedsContext.ErrorCode, FString(TEXT("needs_more_semantic_context")));
+	TestEqual(TEXT("Construct without TypeName reports missing required evidence"), ConstructNeedsContext.ErrorCode, FString(TEXT("missing_required_evidence")));
 
 	const FBlueprintHelperActionResolutionResult ConstructCandidate =
 		FBlueprintHelperActionResolutionCore::Resolve(
-			MakeGenericActionRequest(EBlueprintHelperActionSemanticKind::Construct, TEXT("Vector")));
+			MakeGenericActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Construct, FString(), TEXT("Vector")));
 	TestTrue(
 		TEXT("Construct with TypeName no longer returns migration/not-found placeholder"),
 		ConstructCandidate.ErrorCode != (FString(TEXT("generic_action_node_spawner_candidate_")) + FString(TEXT("not_found"))));
 
 	const FBlueprintHelperActionResolutionResult DeconstructCandidate =
 		FBlueprintHelperActionResolutionCore::Resolve(
-			MakeGenericActionRequest(EBlueprintHelperActionSemanticKind::Deconstruct, TEXT("Transform")));
+			MakeGenericActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Deconstruct, FString(), TEXT("Transform")));
 	TestTrue(
 		TEXT("Deconstruct with TypeName no longer returns migration/not-found placeholder"),
 		DeconstructCandidate.ErrorCode != (FString(TEXT("generic_action_node_spawner_candidate_")) + FString(TEXT("not_found"))));
 
-	const FBlueprintHelperActionResolutionResult SelectBlocked =
+	const FBlueprintHelperActionResolutionResult SelectResolved =
 		FBlueprintHelperActionResolutionCore::Resolve(
-			MakeGenericActionRequest(EBlueprintHelperActionSemanticKind::Select));
-	TestEqual(TEXT("Select is blocked until dedicated builder"), SelectBlocked.Status, EBlueprintHelperActionResolutionStatus::Blocked);
-	TestEqual(TEXT("Select blocked by dedicated builder seam"), SelectBlocked.ErrorCode, FString(TEXT("dedicated_fragment_builder_required")));
-	TestTrue(TEXT("Select blocked reason names ActionDatabase limit"), SelectBlocked.Message.Contains(TEXT("ActionDatabase")));
-	TestTrue(TEXT("Select blocked reason names builder"), SelectBlocked.Message.Contains(TEXT("SelectFragmentBuilder")));
+			MakeGenericActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Select));
+	AssertResolvedSingletonControlFlowResult(
+		*this,
+		SelectResolved,
+		TEXT("select"),
+		TEXT("K2Node_Select"));
 
-	const FBlueprintHelperActionResolutionResult ControlBlocked =
+	const FBlueprintHelperActionResolutionResult ControlNeedsContext =
 		FBlueprintHelperActionResolutionCore::Resolve(
-			MakeGenericActionRequest(EBlueprintHelperActionSemanticKind::Control));
-	TestEqual(TEXT("Control is blocked until dedicated builder"), ControlBlocked.Status, EBlueprintHelperActionResolutionStatus::Blocked);
-	TestEqual(TEXT("Control blocked by dedicated builder seam"), ControlBlocked.ErrorCode, FString(TEXT("dedicated_fragment_builder_required")));
-	TestTrue(TEXT("Control blocked reason names ActionDatabase limit"), ControlBlocked.Message.Contains(TEXT("ActionDatabase")));
-	TestTrue(TEXT("Control blocked reason names builder"), ControlBlocked.Message.Contains(TEXT("ControlFragmentBuilder")));
+			MakeGenericActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Control));
+	TestEqual(TEXT("Control without query needs context"), ControlNeedsContext.Status, EBlueprintHelperActionResolutionStatus::InvalidRequest);
+	TestEqual(TEXT("Control without query reports context error"), ControlNeedsContext.ErrorCode, FString(TEXT("needs_more_semantic_context")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGenericActionStructMakeBreakEvidenceTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.Generic.P5.StructMakeBreakEvidence",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGenericActionStructMakeBreakEvidenceTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeGenericActionTestBlueprint();
+	UEdGraph* Graph = GetGenericActionTestGraph(Blueprint);
+	TestNotNull(TEXT("blueprint"), Blueprint);
+	TestNotNull(TEXT("graph"), Graph);
+
+	const FBlueprintHelperActionResolutionResult ConstructVector =
+		FBlueprintHelperActionResolutionCore::Resolve(
+			MakeGenericActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Construct, FString(), TEXT("Vector")));
+	TestEqual(TEXT("construct vector status"), ConstructVector.Status, EBlueprintHelperActionResolutionStatus::Resolved);
+	TestNotNull(TEXT("construct vector selected spawner"), ConstructVector.SelectedSpawner.Get());
+	TestTrue(TEXT("construct vector selected stable id includes struct identity"), ConstructVector.SelectedStableId.Contains(TEXT("Vector")));
+	TestTrue(TEXT("construct vector candidate records struct evidence"), HasStructCandidateEvidence(ConstructVector, TEXT("Vector")));
+
+	const FBlueprintHelperActionResolutionResult DeconstructRotator =
+		FBlueprintHelperActionResolutionCore::Resolve(
+			MakeGenericActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Deconstruct, FString(), TEXT("Rotator")));
+	TestEqual(TEXT("deconstruct rotator status"), DeconstructRotator.Status, EBlueprintHelperActionResolutionStatus::Resolved);
+	TestNotNull(TEXT("deconstruct rotator selected spawner"), DeconstructRotator.SelectedSpawner.Get());
+	TestTrue(TEXT("deconstruct rotator selected stable id includes struct identity"), DeconstructRotator.SelectedStableId.Contains(TEXT("Rotator")));
+	TestTrue(TEXT("deconstruct rotator candidate records struct evidence"), HasStructCandidateEvidence(DeconstructRotator, TEXT("Rotator")));
+
+	const FBlueprintHelperActionResolutionResult ConstructMissingType =
+		FBlueprintHelperActionResolutionCore::Resolve(
+			MakeGenericActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Construct));
+	TestEqual(TEXT("construct missing target type status"), ConstructMissingType.Status, EBlueprintHelperActionResolutionStatus::InvalidRequest);
+	TestEqual(TEXT("construct missing target type error"), ConstructMissingType.ErrorCode, FString(TEXT("missing_required_evidence")));
+
+	const FBlueprintHelperActionResolutionResult DeconstructUnsupportedStruct =
+		FBlueprintHelperActionResolutionCore::Resolve(
+			MakeGenericActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Deconstruct, FString(), TEXT("DefinitelyMissingP5Struct")));
+	TestEqual(TEXT("deconstruct unsupported struct status"), DeconstructUnsupportedStruct.Status, EBlueprintHelperActionResolutionStatus::NotFound);
+	TestEqual(TEXT("deconstruct unsupported struct error"), DeconstructUnsupportedStruct.ErrorCode, FString(TEXT("not_found")));
+	TestNull(TEXT("deconstruct unsupported struct has no spawner"), DeconstructUnsupportedStruct.SelectedSpawner.Get());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGenericActionRejectsUnsupportedWideSurfaceWithoutStructFallbackTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.Generic.P5.NoFallbackSuccessForCreateConvertSchedule",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGenericActionRejectsUnsupportedWideSurfaceWithoutStructFallbackTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeGenericActionTestBlueprint();
+	UEdGraph* Graph = GetGenericActionTestGraph(Blueprint);
+	TestNotNull(TEXT("blueprint"), Blueprint);
+	TestNotNull(TEXT("graph"), Graph);
+
+	const EBlueprintHelperActionSemanticKind UnsupportedKinds[] = {
+		EBlueprintHelperActionSemanticKind::Create,
+		EBlueprintHelperActionSemanticKind::Convert,
+		EBlueprintHelperActionSemanticKind::Schedule
+	};
+
+	for (const EBlueprintHelperActionSemanticKind Kind : UnsupportedKinds)
+	{
+		const FBlueprintHelperActionResolutionResult Result =
+			FBlueprintHelperActionResolutionCore::Resolve(
+				MakeGenericActionRequest(Blueprint, Graph, Kind, TEXT("Vector"), TEXT("Vector")));
+		TestTrue(
+			FString::Printf(TEXT("%s is not resolved through struct fallback"), *FBlueprintHelperActionResolutionCore::SemanticKindToString(Kind)),
+			Result.Status == EBlueprintHelperActionResolutionStatus::UnsupportedIntent
+			|| Result.Status == EBlueprintHelperActionResolutionStatus::InvalidRequest);
+		TestFalse(
+			FString::Printf(TEXT("%s has no selected spawner"), *FBlueprintHelperActionResolutionCore::SemanticKindToString(Kind)),
+			Result.SelectedSpawner.IsValid());
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperSingletonControlFlowProviderPositiveTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.Generic.SingletonControlFlowProviderPositive",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperSingletonControlFlowProviderPositiveTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeGenericActionTestBlueprint();
+	UEdGraph* Graph = GetGenericActionTestGraph(Blueprint);
+	TestNotNull(TEXT("blueprint"), Blueprint);
+	TestNotNull(TEXT("graph"), Graph);
+
+	const struct FCase
+	{
+		EBlueprintHelperActionSemanticKind SemanticKind;
+		FString Query;
+		EBlueprintHelperSingletonControlFlowKind ExpectedKind;
+		FString ExpectedStableIdPart;
+		FString ExpectedNodeClassPathPart;
+	} Cases[] = {
+		{EBlueprintHelperActionSemanticKind::Control, TEXT("branch"), EBlueprintHelperSingletonControlFlowKind::Branch, TEXT("branch"), TEXT("K2Node_IfThenElse")},
+		{EBlueprintHelperActionSemanticKind::Control, TEXT("sequence"), EBlueprintHelperSingletonControlFlowKind::Sequence, TEXT("sequence"), TEXT("K2Node_ExecutionSequence")},
+		{EBlueprintHelperActionSemanticKind::Select, FString(), EBlueprintHelperSingletonControlFlowKind::Select, TEXT("select"), TEXT("K2Node_Select")},
+		{EBlueprintHelperActionSemanticKind::Control, TEXT("return"), EBlueprintHelperSingletonControlFlowKind::Return, TEXT("return"), TEXT("K2Node_FunctionResult")}
+	};
+
+	for (const FCase& Case : Cases)
+	{
+		const FBlueprintHelperActionResolutionRequest Request =
+			MakeGenericActionRequest(Blueprint, Graph, Case.SemanticKind, Case.Query);
+
+		FBlueprintHelperSingletonControlFlowEvidence Evidence;
+		TestTrue(FString::Printf(TEXT("provider resolves %s"), *Case.ExpectedStableIdPart),
+			FBlueprintHelperSingletonControlFlowEvidenceProvider::TryResolve(Request, Evidence));
+		TestEqual(FString::Printf(TEXT("%s singleton kind"), *Case.ExpectedStableIdPart), Evidence.SingletonKind, Case.ExpectedKind);
+		TestNotNull(FString::Printf(TEXT("%s node class"), *Case.ExpectedStableIdPart), Evidence.NodeClass.Get());
+		TestTrue(FString::Printf(TEXT("%s evidence stable id"), *Case.ExpectedStableIdPart), Evidence.StableId.Contains(TEXT("singleton_control_flow")));
+		TestTrue(FString::Printf(TEXT("%s evidence node class path"), *Case.ExpectedStableIdPart), Evidence.NodeClass->GetPathName().Contains(Case.ExpectedNodeClassPathPart));
+
+		const FBlueprintHelperActionResolutionResult ProviderResult =
+			FBlueprintHelperSingletonControlFlowEvidenceProvider::MakeResolvedResult(Request, Evidence);
+		AssertResolvedSingletonControlFlowResult(
+			*this,
+			ProviderResult,
+			Case.ExpectedStableIdPart,
+			Case.ExpectedNodeClassPathPart);
+
+		const FBlueprintHelperActionResolutionResult CoreResult =
+			FBlueprintHelperActionResolutionCore::Resolve(Request);
+		AssertResolvedSingletonControlFlowResult(
+			*this,
+			CoreResult,
+			Case.ExpectedStableIdPart,
+			Case.ExpectedNodeClassPathPart);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperSingletonControlFlowProviderRejectsWideSurfaceTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.Generic.SingletonControlFlowProviderRejectsWideSurface",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperSingletonControlFlowProviderRejectsWideSurfaceTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeGenericActionTestBlueprint();
+	UEdGraph* Graph = GetGenericActionTestGraph(Blueprint);
+	TestNotNull(TEXT("blueprint"), Blueprint);
+	TestNotNull(TEXT("graph"), Graph);
+
+	const EBlueprintHelperActionSemanticKind RejectedKinds[] = {
+		EBlueprintHelperActionSemanticKind::Call,
+		EBlueprintHelperActionSemanticKind::Get,
+		EBlueprintHelperActionSemanticKind::Set,
+		EBlueprintHelperActionSemanticKind::Bind,
+		EBlueprintHelperActionSemanticKind::Create,
+		EBlueprintHelperActionSemanticKind::Convert,
+		EBlueprintHelperActionSemanticKind::Schedule
+	};
+
+	for (const EBlueprintHelperActionSemanticKind RejectedKind : RejectedKinds)
+	{
+		const FBlueprintHelperActionResolutionRequest Request =
+			MakeGenericActionRequest(Blueprint, Graph, RejectedKind, TEXT("branch"));
+		FBlueprintHelperSingletonControlFlowEvidence Evidence;
+		TestFalse(
+			FString::Printf(TEXT("provider rejects %s"), *FBlueprintHelperActionResolutionCore::SemanticKindToString(RejectedKind)),
+			FBlueprintHelperSingletonControlFlowEvidenceProvider::TryResolve(Request, Evidence));
+		TestNull(
+			FString::Printf(TEXT("%s rejection has no node class"), *FBlueprintHelperActionResolutionCore::SemanticKindToString(RejectedKind)),
+			Evidence.NodeClass.Get());
+	}
 
 	return true;
 }
@@ -186,7 +475,9 @@ bool FBlueprintHelperGenericActionResolutionSourceHygieneTest::RunTest(const FSt
 	const TArray<FString> ForbiddenTokens = {
 		FString(TEXT("generic_asset_struct_control_action_cluster_")) + FString(TEXT("migration_pending")),
 		FString(TEXT("NewObject<")) + FString(TEXT("UK2Node")),
-		FString(TEXT("Node")) + FString(TEXT("Handler"))
+		FString(TEXT("Node")) + FString(TEXT("Handler")),
+		TEXT("UBlueprintNodeSpawner::Create(NodeClass)"),
+		TEXT("UBlueprintNodeSpawner::Create(UK2Node_Select::StaticClass())")
 	};
 
 	bool bClean = true;
