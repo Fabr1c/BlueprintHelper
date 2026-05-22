@@ -1,7 +1,8 @@
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentBuildRequest.h"
 
 class UEdGraph;
 class UEdGraphNode;
@@ -54,7 +55,7 @@ class BLUEPRINTHELPER_API FBlueprintHelperGraphStatementBuilder
 public:
 	static bool BuildCallFunctionFragment(
 		UEdGraph* TargetGraph,
-		const FParsedNode& NodeData,
+		const FBlueprintHelperGraphFragmentBuildRequest& Request,
 		FBlueprintHelperNodeFragment& OutFragment,
 		FString& OutError,
 		TArray<FBlueprintHelperCandidateFunctionGroup>* OutCandidateFunctions = nullptr,
@@ -62,14 +63,14 @@ public:
 
 	static bool BuildVariableSetFragment(
 		UEdGraph* TargetGraph,
-		const FParsedNode& NodeData,
+		const FBlueprintHelperGraphFragmentBuildRequest& Request,
 		FBlueprintHelperNodeFragment& OutFragment,
 		FString& OutError,
 		const FBlueprintHelperActionContextScope* ActionContextScope = nullptr);
 
 	static bool BuildSetPropertyFragment(
 		UEdGraph* TargetGraph,
-		const FParsedNode& NodeData,
+		const FBlueprintHelperGraphFragmentBuildRequest& Request,
 		FBlueprintHelperNodeFragment& OutFragment,
 		FString& OutError,
 		const FBlueprintHelperActionContextScope* ActionContextScope = nullptr);

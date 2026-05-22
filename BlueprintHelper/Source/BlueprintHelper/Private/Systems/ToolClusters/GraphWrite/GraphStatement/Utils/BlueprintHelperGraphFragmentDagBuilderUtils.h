@@ -147,6 +147,14 @@ public:
 			const FBlueprintHelperGraphFragmentRef& Fragment,
 			const FString& OutputName,
 			const FString& FallbackType);
+	static FBlueprintHelperDagDataProducer BuildResolvableExpressionFragment(
+			const TSharedPtr<FBlueprintHelperGraphExpressionIR>& Expression,
+			const FString& Kind,
+			const FString& Suffix,
+			const FString& OutputName,
+			const FString& OutputType,
+			FBlueprintHelperDagBuildState& State,
+			TArray<TMap<FString, FBlueprintHelperDagDataProducer>>& SymbolScopes);
 	static FBlueprintHelperDagDataProducer BuildPlaceholderExpression(
 			const TSharedPtr<FBlueprintHelperGraphExpressionIR>& Expression,
 			const FString& Kind,

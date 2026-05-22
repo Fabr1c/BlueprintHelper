@@ -1,4 +1,4 @@
-// BlueprintHelper Service Layer 。MergeBlueprintGraph 核心服务实现
+// BlueprintHelper Service Layer - MergeBlueprintGraph implementation
 
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperMergeBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
@@ -8,7 +8,9 @@
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperGraphWriteBlockScopedResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
-#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphStatementBuilder.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionNodeSpawnerAdapter.h"
+#include "Systems/ToolClusters/GraphWrite/Mutation/BlueprintHelperGraphWriteMutationCoordinator.h"
+#include "Systems/ToolClusters/GraphWrite/Mutation/BlueprintHelperGraphWriteMutationIntent.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDebugData.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutCoordinator.h"
 #include "Shared/GraphWrite/BlueprintHelperAppendGraphTypes.h"
@@ -19,6 +21,7 @@
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraphSchema_K2.h"
 #include "K2Node_CallFunction.h"
+#include "BlueprintFunctionNodeSpawner.h"
 #include "K2Node_CustomEvent.h"
 #include "K2Node_ExecutionSequence.h"
 #include "Kismet2/BlueprintEditorUtils.h"
@@ -37,7 +40,7 @@ FBlueprintHelperMergeBlueprintGraphService::FBlueprintHelperMergeBlueprintGraphS
 {
 }
 
-// ─── 公共入口 ───
+// 鈹€鈹€鈹€ 鍏叡鍏ュ彛 鈹€鈹€鈹€
 
 class FBlueprintHelperMergeBlueprintGraphServiceLocalUtils
 {
@@ -114,44 +117,51 @@ public:
 			: FString::Printf(TEXT("%s: %s"), *ResolveCode, *ResolveMessage);
 	}
 
-	static UK2Node_CallFunction* CreateMergeCallFunctionNode(
-		UEdGraph* Graph,
-		const FBlueprintHelperCallFunctionCandidate& Candidate)
+	static UK2Node* CreateMergeCallableNode(
+	UEdGraph* Graph,
+	const FBlueprintHelperCallFunctionCandidate& Candidate)
+{
+	if (!Graph || !Candidate.Function.IsValid())
 	{
-		if (!Graph || !Candidate.Function.IsValid())
-		{
-			return nullptr;
-		}
-
-		FParsedNode NodeData;
-		NodeData.Id = Candidate.Function->GetName();
-		NodeData.FunctionName = Candidate.Function->GetName();
-
-		FBlueprintHelperNodeFragment Fragment;
-		FString Error;
-		return FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment(Graph, NodeData, Fragment, Error)
-			? Cast<UK2Node_CallFunction>(Fragment.PrimaryNode)
-			: nullptr;
+		return nullptr;
 	}
 
-	static UK2Node_CallFunction* CreateMergeCallFunctionNode(UEdGraph* Graph, UFunction* Function)
+	UBlueprintNodeSpawner* NodeSpawner = Candidate.NodeSpawner.Get();
+	if (!NodeSpawner)
 	{
-		if (!Graph || !Function)
-		{
-			return nullptr;
-		}
-
-		FParsedNode NodeData;
-		NodeData.Id = Function->GetName();
-		NodeData.FunctionName = Function->GetName();
-		FBlueprintHelperNodeFragment Fragment;
-		FString Error;
-		return FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment(Graph, NodeData, Fragment, Error)
-			? Cast<UK2Node_CallFunction>(Fragment.PrimaryNode)
-			: nullptr;
+		NodeSpawner = UBlueprintFunctionNodeSpawner::Create(Candidate.Function.Get());
+	}
+	if (!NodeSpawner)
+	{
+		return nullptr;
 	}
 
-	static void MarkMergeNodeAsBlueprintHelperOwned(UEdGraphNode* Node, const FString& BlockId)
+	FBlueprintHelperActionNodeSpawnOptions Options;
+	Options.NodeId = Candidate.StableId.IsEmpty() ? Candidate.Function->GetName() : Candidate.StableId;
+	FString Error;
+	return FBlueprintHelperActionNodeSpawnerAdapter::InvokeNodeSpawner(
+		Graph,
+		NodeSpawner,
+		Candidate.StableId.IsEmpty() ? FBlueprintHelperCallFunctionResolver::MakeStableId(Candidate.Function.Get()) : Candidate.StableId,
+		FVector2D::ZeroVector,
+		Options,
+		Error);
+}
+
+static UK2Node* CreateMergeCallableNode(UEdGraph* Graph, UFunction* Function)
+{
+	if (!Graph || !Function)
+	{
+		return nullptr;
+	}
+
+	FBlueprintHelperCallFunctionCandidate Candidate;
+	Candidate.Function = Function;
+	Candidate.StableId = FBlueprintHelperCallFunctionResolver::MakeStableId(Function);
+	Candidate.NodeSpawner = UBlueprintFunctionNodeSpawner::Create(Function);
+	return CreateMergeCallableNode(Graph, Candidate);
+}
+static void MarkMergeNodeAsBlueprintHelperOwned(UEdGraphNode* Node, const FString& BlockId)
 	{
 		if (!Node || BlockId.IsEmpty())
 		{
@@ -349,7 +359,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperMergeBlueprintGraphService::Execu
 	return ExecuteWrite(Request);
 }
 
-// ─── 解析 ───
+// 鈹€鈹€鈹€ 瑙ｆ瀽 鈹€鈹€鈹€
 
 FBlueprintHelperMergeBlueprintGraphService::FMergeRequest
 FBlueprintHelperMergeBlueprintGraphService::ParseRequest(const TSharedPtr<FJsonObject>& Payload) const
@@ -402,7 +412,7 @@ FBlueprintHelperMergeBlueprintGraphService::ParseRequest(const TSharedPtr<FJsonO
 	return Req;
 }
 
-// ─── Preflight ───
+// 鈹€鈹€鈹€ Preflight 鈹€鈹€鈹€
 
 FBlueprintHelperMergeBlueprintGraphService::FMergePreflightResult
 FBlueprintHelperMergeBlueprintGraphService::Preflight(
@@ -424,7 +434,7 @@ FBlueprintHelperMergeBlueprintGraphService::Preflight(
 		Result.bPassed = false;
 		Result.BlockedBy.Add(TEXT("unsupported_merge_scope"));
 		Result.Conflicts.Add({TEXT("unsupported_merge_scope"),
-			FString::Printf(TEXT("merge_scope '%s' 在第一版中暂不支持。"), MergeScopeToString(Request.MergeScope)),
+			FString::Printf(TEXT("merge_scope '%s' is not supported."), MergeScopeToString(Request.MergeScope)),
 			TEXT("target.merge_scope"), TEXT("payload")});
 		return Result;
 	}
@@ -454,7 +464,7 @@ FBlueprintHelperMergeBlueprintGraphService::Preflight(
 			Result.bPassed = false;
 			Result.BlockedBy.Add(TEXT("sequence_order_required"));
 			Result.Conflicts.Add({TEXT("sequence_order_required"),
-				TEXT("branch_fork 需要显式指定 sequence_order。"), TEXT("sequence_order"), TEXT("payload")});
+				TEXT("branch_fork requires explicit sequence_order."), TEXT("sequence_order"), TEXT("payload")});
 			return Result;
 		}
 		bool bHasOrig = false, bHasInserted = false;
@@ -470,8 +480,7 @@ FBlueprintHelperMergeBlueprintGraphService::Preflight(
 		if (!Result.bPassed)
 		{
 			Result.Errors.Add({TEXT("sequence_order_invalid"),
-				TEXT("branch_fork sequence_order must match inserted_logic and the available original_successor."),
-				TEXT("sequence_order"), TEXT("payload")});
+				TEXT("branch_fork requires explicit sequence_order."), TEXT("sequence_order"), TEXT("payload")});
 			return Result;
 		}
 	}
@@ -532,7 +541,7 @@ FBlueprintHelperMergeBlueprintGraphService::Preflight(
 	return Result;
 }
 
-// ─── Anchor 解析 ───
+// 鈹€鈹€鈹€ Anchor 瑙ｆ瀽 鈹€鈹€鈹€
 
 bool FBlueprintHelperMergeBlueprintGraphService::PreflightLogicSpec(
 	const FMergeRequest& Request,
@@ -563,7 +572,7 @@ bool FBlueprintHelperMergeBlueprintGraphService::PreflightLogicSpec(
 bool FBlueprintHelperMergeBlueprintGraphService::ResolveAnchor(
 	const FMergeRequest& Request, FMergeContext& Context, FString& OutError) const
 {
-	// 定位 node
+	// Resolve anchor node.
 	FBlueprintHelperGraphWriteAnchorRef Anchor;
 	Anchor.BlockId = Request.AnchorBlockId;
 	Anchor.GroupEntryNodePath = Request.AnchorGroupEntryNodePath;
@@ -579,7 +588,7 @@ bool FBlueprintHelperMergeBlueprintGraphService::ResolveAnchor(
 		return false;
 	}
 
-	// 定位 pin
+	// Resolve anchor pin.
 	FBlueprintHelperPatchResolveError PinErr;
 	if (!FBlueprintHelperGraphWriteBlockScopedResolver::ResolvePin(PathService, Context.Graph, Context.AnchorNode, Anchor, Context.AnchorPin, PinErr))
 	{
@@ -587,24 +596,24 @@ bool FBlueprintHelperMergeBlueprintGraphService::ResolveAnchor(
 		return false;
 	}
 
-	// 必须。Exec output
+	// 蹇呴』銆侲xec output
 	if (!Context.AnchorPin)
 	{
-		OutError = TEXT("anchor_pin_not_found：目。Pin 不存在。");
+		OutError = TEXT("anchor_pin_not_found: target pin does not exist.");
 		return false;
 	}
 	if (Context.AnchorPin->Direction != EGPD_Output)
 	{
-		OutError = TEXT("anchor_pin_not_exec：Anchor Pin 必须是输出 Pin。");
+		OutError = TEXT("anchor_pin_not_exec: anchor pin must be an exec output pin.");
 		return false;
 	}
 	if (Context.AnchorPin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec)
 	{
-		OutError = TEXT("anchor_pin_not_exec：Anchor Pin 必须。Exec 类型。");
+		OutError = TEXT("anchor_pin_not_exec: anchor pin must be an exec output pin.");
 		return false;
 	}
 
-	// 收集后继
+	// 鏀堕泦鍚庣户
 	for (UEdGraphPin* Linked : Context.AnchorPin->LinkedTo)
 	{
 		if (Linked && Linked->Direction == EGPD_Input)
@@ -614,7 +623,7 @@ bool FBlueprintHelperMergeBlueprintGraphService::ResolveAnchor(
 	return true;
 }
 
-// ─── Successor 校验 ───
+// 鈹€鈹€鈹€ Successor 鏍￠獙 鈹€鈹€鈹€
 
 bool FBlueprintHelperMergeBlueprintGraphService::CheckSuccessorCount(
 	const FMergeRequest& Request, const FMergeContext& Context, FMergePreflightResult& OutResult) const
@@ -627,7 +636,7 @@ bool FBlueprintHelperMergeBlueprintGraphService::CheckSuccessorCount(
 			OutResult.bPassed = false;
 			OutResult.BlockedBy.Add(TEXT("anchor_exec_pin_already_connected"));
 			OutResult.Conflicts.Add({TEXT("anchor_exec_pin_already_connected"),
-				TEXT("append_after 要求 Anchor Pin 没有后继。"), TEXT("anchor"), TEXT("payload")});
+				TEXT("append_after requires anchor pin to have no successor."), TEXT("anchor"), TEXT("payload")});
 		}
 		break;
 	case EBlueprintHelperInsertStrategy::InsertBetween:
@@ -636,14 +645,14 @@ bool FBlueprintHelperMergeBlueprintGraphService::CheckSuccessorCount(
 			OutResult.bPassed = false;
 			OutResult.BlockedBy.Add(TEXT("original_successor_not_found"));
 			OutResult.Conflicts.Add({TEXT("original_successor_not_found"),
-				TEXT("insert_between 要求 Anchor Pin 有且仅有一个后继。"), TEXT("anchor"), TEXT("payload")});
+				TEXT("insert_between requires anchor pin to have exactly one successor."), TEXT("anchor"), TEXT("payload")});
 		}
 		else if (Context.Successors.Num() > 1)
 		{
 			OutResult.bPassed = false;
 			OutResult.BlockedBy.Add(TEXT("anchor_exec_pin_has_multiple_successors"));
 			OutResult.Conflicts.Add({TEXT("anchor_exec_pin_has_multiple_successors"),
-				TEXT("insert_between 要求 Anchor Pin 只有单一后继。"), TEXT("anchor"), TEXT("payload")});
+				TEXT("insert_between requires anchor pin to have exactly one successor."), TEXT("anchor"), TEXT("payload")});
 		}
 		break;
 	case EBlueprintHelperInsertStrategy::BranchFork:
@@ -652,21 +661,21 @@ bool FBlueprintHelperMergeBlueprintGraphService::CheckSuccessorCount(
 			OutResult.bPassed = false;
 			OutResult.BlockedBy.Add(TEXT("anchor_exec_pin_has_multiple_successors"));
 			OutResult.Conflicts.Add({TEXT("anchor_exec_pin_has_multiple_successors"),
-				TEXT("branch_fork 要求 Anchor Pin 不超出一个后继。"), TEXT("anchor"), TEXT("payload")});
+				TEXT("branch_fork requires anchor pin to have at most one successor."), TEXT("anchor"), TEXT("payload")});
 		}
 		break;
 	}
 	return OutResult.bPassed;
 }
 
-// ─── DryRun ───
+// 鈹€鈹€鈹€ DryRun 鈹€鈹€鈹€
 
 FBlueprintHelperToolResultBase FBlueprintHelperMergeBlueprintGraphService::ExecuteDryRun(
 	const FMergeRequest& Request) const
 {
 	const FString TraceId = FBlueprintHelperToolResultBuilder::GenerateTraceId();
 
-	// 解析蓝图/图表
+	// 瑙ｆ瀽钃濆浘/鍥捐〃
 	FBlueprintHelperGraphTarget Tgt; Tgt.BlueprintPath = Request.AssetPath;
 	FBlueprintHelperDiagnosticSet Diag;
 	UBlueprint* BP = Resolver.ResolveBlueprint(Tgt, Diag);
@@ -736,7 +745,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperMergeBlueprintGraphService::Execu
 	return Result;
 }
 
-// ─── 正式写入 ───
+// 鈹€鈹€鈹€ 姝ｅ紡鍐欏叆 鈹€鈹€鈹€
 
 FBlueprintHelperToolResultBase FBlueprintHelperMergeBlueprintGraphService::ExecuteWrite(
 	const FMergeRequest& Request) const
@@ -747,14 +756,14 @@ FBlueprintHelperToolResultBase FBlueprintHelperMergeBlueprintGraphService::Execu
 	FBlueprintHelperDiagnosticSet Diag;
 	UBlueprint* BP = Resolver.ResolveBlueprint(Tgt, Diag);
 	if (!BP) return FBlueprintHelperToolResultBuilder::Failure(TEXT("merge_blueprint_graph"), TraceId,
-		{TEXT("target_blueprint_not_found"), EBlueprintHelperToolStage::ResolveTarget, TEXT("蓝图未找到。"), false, EBlueprintHelperRollbackResult::NotNeeded});
+		{TEXT("target_blueprint_not_found"), EBlueprintHelperToolStage::ResolveTarget, TEXT("target blueprint not found."), false, EBlueprintHelperRollbackResult::NotNeeded});
 
 	UEdGraph* Graph = nullptr;
 	for (UEdGraph* P : BP->UbergraphPages) if (P && P->GetName() == Request.GraphName) { Graph = P; break; }
 	if (!Graph) for (UEdGraph* F : BP->FunctionGraphs) if (F && F->GetName() == Request.GraphName) { Graph = F; break; }
 	if (!Graph) return FBlueprintHelperToolResultBuilder::Failure(TEXT("merge_blueprint_graph"), TraceId,
 		{TEXT("target_graph_not_found"), EBlueprintHelperToolStage::ResolveTarget,
-		 FString::Printf(TEXT("图表 %s 未找到。"), *Request.GraphName), false, EBlueprintHelperRollbackResult::NotNeeded});
+		 FString::Printf(TEXT("graph %s not found."), *Request.GraphName), false, EBlueprintHelperRollbackResult::NotNeeded});
 
 	// 3. Context
 	FMergeContext Context;
@@ -804,9 +813,14 @@ FBlueprintHelperToolResultBase FBlueprintHelperMergeBlueprintGraphService::Execu
 	bool bSucceeded = false;
 	switch (Request.InsertStrategy)
 	{
-	case EBlueprintHelperInsertStrategy::AppendAfter:   bSucceeded = ApplyAppendAfter(BP, Graph, Request, Context, ApplyError); break;
-	case EBlueprintHelperInsertStrategy::InsertBetween: bSucceeded = ApplyInsertBetween(BP, Graph, Request, Context, ApplyError); break;
-	case EBlueprintHelperInsertStrategy::BranchFork:    bSucceeded = ApplyBranchFork(BP, Graph, Request, Context, ApplyError); break;
+	case EBlueprintHelperInsertStrategy::AppendAfter:
+	case EBlueprintHelperInsertStrategy::InsertBetween:
+	case EBlueprintHelperInsertStrategy::BranchFork:
+		bSucceeded = ApplyMergeIntent(BP, Graph, Request, Context, ApplyError);
+		break;
+	default:
+		ApplyError = TEXT("unsupported_insert_strategy");
+		break;
 	}
 
 	if (!bSucceeded)
@@ -865,7 +879,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperMergeBlueprintGraphService::Execu
 	return Success;
 }
 
-// ─── Inserted Logic 解析 ───
+// 鈹€鈹€鈹€ Inserted Logic 瑙ｆ瀽 鈹€鈹€鈹€
 
 bool FBlueprintHelperMergeBlueprintGraphService::ResolveInsertedLogic(
 	const FMergeRequest& Request, FMergeContext& Context, FString& OutErrorCode, FString& OutError) const
@@ -898,7 +912,7 @@ bool FBlueprintHelperMergeBlueprintGraphService::ResolveInsertedLogic(
 				return false;
 			}
 
-			UK2Node_CallFunction* CallNode = FBlueprintHelperMergeBlueprintGraphServiceLocalUtils::CreateMergeCallFunctionNode(Context.Graph, InsertedCheck.Function);
+			UK2Node* CallNode = FBlueprintHelperMergeBlueprintGraphServiceLocalUtils::CreateMergeCallableNode(Context.Graph, InsertedCheck.Function);
 			if (!CallNode)
 			{
 				OutErrorCode = TEXT("inserted_logic_not_callable");
@@ -915,7 +929,7 @@ bool FBlueprintHelperMergeBlueprintGraphService::ResolveInsertedLogic(
 	}
 	case EBlueprintHelperMergeScope::CustomEventCall:
 	{
-		if (Request.InsertedCustomEventName.IsEmpty()) { OutError = TEXT("inserted_logic_not_found: 缺少 custom_event 名。"); return false; }
+		if (Request.InsertedCustomEventName.IsEmpty()) { OutError = TEXT("inserted_logic_not_found: missing custom_event name."); return false; }
 		Context.InsertedRef = Request.InsertedCustomEventName;
 
 		FString ResolveCode;
@@ -938,7 +952,7 @@ bool FBlueprintHelperMergeBlueprintGraphService::ResolveInsertedLogic(
 			return false;
 		}
 
-		UK2Node_CallFunction* CallNode = FBlueprintHelperMergeBlueprintGraphServiceLocalUtils::CreateMergeCallFunctionNode(Context.Graph, ResolveCandidate);
+		UK2Node* CallNode = FBlueprintHelperMergeBlueprintGraphServiceLocalUtils::CreateMergeCallableNode(Context.Graph, ResolveCandidate);
 		if (!CallNode)
 		{
 			OutError = FString::Printf(TEXT("inserted_logic_not_found: unable to create custom_event call '%s'."), *Request.InsertedCustomEventName);
@@ -952,7 +966,7 @@ bool FBlueprintHelperMergeBlueprintGraphService::ResolveInsertedLogic(
 
 	case EBlueprintHelperMergeScope::FunctionCall:
 	{
-		if (Request.InsertedFunctionName.IsEmpty()) { OutError = TEXT("inserted_logic_not_found: 缺少 function 名。"); return false; }
+		if (Request.InsertedFunctionName.IsEmpty()) { OutError = TEXT("inserted_logic_not_found: missing function name."); return false; }
 		Context.InsertedRef = Request.InsertedFunctionName;
 
 		FString ResolveCode;
@@ -975,7 +989,7 @@ bool FBlueprintHelperMergeBlueprintGraphService::ResolveInsertedLogic(
 			return false;
 		}
 
-		UK2Node_CallFunction* CallNode = FBlueprintHelperMergeBlueprintGraphServiceLocalUtils::CreateMergeCallFunctionNode(Context.Graph, ResolveCandidate);
+		UK2Node* CallNode = FBlueprintHelperMergeBlueprintGraphServiceLocalUtils::CreateMergeCallableNode(Context.Graph, ResolveCandidate);
 		if (!CallNode)
 		{
 			OutError = FString::Printf(TEXT("inserted_logic_not_found: unable to create function call '%s'."), *Request.InsertedFunctionName);
@@ -993,262 +1007,52 @@ bool FBlueprintHelperMergeBlueprintGraphService::ResolveInsertedLogic(
 	}
 }
 
-// ─── append_after ───
+// 鈹€鈹€鈹€ append_after 鈹€鈹€鈹€
 
-bool FBlueprintHelperMergeBlueprintGraphService::ApplyAppendAfter(
-	UBlueprint* BP, UEdGraph* Graph, const FMergeRequest& Request, FMergeContext& Context, FString& OutError) const
+bool FBlueprintHelperMergeBlueprintGraphService::ApplyMergeIntent(
+	UBlueprint* BP,
+	UEdGraph* Graph,
+	const FMergeRequest& Request,
+	FMergeContext& Context,
+	FString& OutError) const
 {
-	// 确保。inserted node
 	if (!Context.InsertedNode)
 	{
-		// 。owned_block_call / custom_event_call 创建简单的占位节点
-		// 第一版简化：仅支。function_call (已有 node) 和已存在。inserted node
-		if (Request.MergeScope == EBlueprintHelperMergeScope::FunctionCall && Context.InsertedNode)
-		{
-			// already created in ResolveInsertedLogic
-		}
-		else
-		{
-			OutError = TEXT("inserted_logic_not_found: 。merge_scope 的节点创建尚未实现。");
-			return false;
-		}
-	}
-
-	// 查找 inserted node 。exec input
-	UEdGraphPin* InsertedExecIn = nullptr;
-	for (UEdGraphPin* Pin : Context.InsertedNode->Pins)
-	{
-		if (Pin && Pin->Direction == EGPD_Input && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
-		{
-			InsertedExecIn = Pin;
-			break;
-		}
-	}
-	if (!InsertedExecIn) { OutError = TEXT("inserted_logic_has_no_exec_pins"); return false; }
-
-	const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
-
-	FPinConnectionResponse Resp = Schema->CanCreateConnection(Context.AnchorPin, InsertedExecIn);
-	if (Resp.Response == CONNECT_RESPONSE_DISALLOW)
-	{
-		OutError = FString::Printf(TEXT("pin_type_mismatch: %s"), *Resp.Message.ToString());
+		OutError = TEXT("inserted_logic_not_found");
 		return false;
 	}
 
-	Context.AnchorPin->Modify();
-	InsertedExecIn->Modify();
-	if (!Schema->TryCreateConnection(Context.AnchorPin, InsertedExecIn))
+	FBlueprintHelperGraphWriteMutationIntent Intent;
+	Intent.IntentId = Request.AnchorBlockId.IsEmpty() ? TEXT("merge_intent") : Request.AnchorBlockId;
+	Intent.Source.Pin = Context.AnchorPin;
+	Intent.InsertedNode = Context.InsertedNode;
+	Intent.OriginalSuccessorPin = Context.OriginalSuccessorPin;
+	Intent.SequenceOrder = Request.SequenceOrder;
+	Intent.OutSequenceNode = &Context.SequenceNode;
+
+	switch (Request.InsertStrategy)
 	{
-		OutError = TEXT("link_create_failed");
+	case EBlueprintHelperInsertStrategy::AppendAfter:
+		Intent.Kind = EBlueprintHelperGraphWriteMutationIntentKind::AppendSemanticBody;
+		break;
+	case EBlueprintHelperInsertStrategy::InsertBetween:
+		Intent.Kind = EBlueprintHelperGraphWriteMutationIntentKind::InsertSemanticBodyBetweenPins;
+		break;
+	case EBlueprintHelperInsertStrategy::BranchFork:
+		Intent.Kind = EBlueprintHelperGraphWriteMutationIntentKind::BranchForkSemanticBody;
+		break;
+	default:
+		OutError = TEXT("unsupported_merge_strategy");
 		return false;
 	}
 
-	Graph->NotifyGraphChanged();
-	return true;
-}
-
-// ─── insert_between ───
-
-bool FBlueprintHelperMergeBlueprintGraphService::ApplyInsertBetween(
-	UBlueprint* BP, UEdGraph* Graph, const FMergeRequest& Request, FMergeContext& Context, FString& OutError) const
-{
-	UEdGraphPin* OrigSucc = Context.OriginalSuccessorPin;
-	if (!OrigSucc) { OutError = TEXT("original_successor_not_found"); return false; }
-
-	// Ensure inserted node
-	if (!Context.InsertedNode)
+	TArray<FString> Unresolved;
+	const FBlueprintGenerateResult Result =
+		FBlueprintHelperGraphWriteMutationCoordinator::ExecuteIntents(Graph, {Intent}, Unresolved);
+	if (!Result.bSucceed)
 	{
-		if (Request.MergeScope == EBlueprintHelperMergeScope::FunctionCall && Context.InsertedNode)
-		{
-			// already created
-		}
-		else
-		{
-			OutError = TEXT("inserted_logic_not_found");
-			return false;
-		}
-	}
-
-	UEdGraphPin* InsExecIn = nullptr;
-	UEdGraphPin* InsExecOut = nullptr;
-	for (UEdGraphPin* Pin : Context.InsertedNode->Pins)
-	{
-		if (Pin && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
-		{
-			if (Pin->Direction == EGPD_Input && !InsExecIn) InsExecIn = Pin;
-			if (Pin->Direction == EGPD_Output && !InsExecOut) InsExecOut = Pin;
-		}
-	}
-	if (!InsExecIn || !InsExecOut) { OutError = TEXT("inserted_logic_has_no_exec_pins"); return false; }
-
-	const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
-
-	// Check both connections
-	if (Schema->CanCreateConnection(Context.AnchorPin, InsExecIn).Response == CONNECT_RESPONSE_DISALLOW)
-	{
-		OutError = TEXT("pin_type_mismatch: anchor -> inserted");
+		OutError = Unresolved.Num() > 0 ? Unresolved[0] : Result.Message;
 		return false;
 	}
-	if (Schema->CanCreateConnection(InsExecOut, OrigSucc).Response == CONNECT_RESPONSE_DISALLOW)
-	{
-		OutError = TEXT("pin_type_mismatch: inserted -> original_successor");
-		return false;
-	}
-
-	// Break old link
-	Context.AnchorPin->Modify();
-	OrigSucc->Modify();
-	Context.AnchorPin->BreakLinkTo(OrigSucc);
-
-	// Create new links
-	if (!Schema->TryCreateConnection(Context.AnchorPin, InsExecIn))
-	{
-		// Restore old link
-		Schema->TryCreateConnection(Context.AnchorPin, OrigSucc);
-		OutError = TEXT("link_create_failed: anchor -> inserted");
-		return false;
-	}
-	if (!Schema->TryCreateConnection(InsExecOut, OrigSucc))
-	{
-		// Restore
-		Context.AnchorPin->BreakLinkTo(InsExecIn);
-		Schema->TryCreateConnection(Context.AnchorPin, OrigSucc);
-		OutError = TEXT("link_create_failed: inserted -> original_successor");
-		return false;
-	}
-
-	Graph->NotifyGraphChanged();
-	return true;
-}
-
-// ─── branch_fork ───
-
-bool FBlueprintHelperMergeBlueprintGraphService::ApplyBranchFork(
-	UBlueprint* BP, UEdGraph* Graph, const FMergeRequest& Request, FMergeContext& Context, FString& OutError) const
-{
-	// Ensure inserted node
-	if (!Context.InsertedNode)
-	{
-		if (Request.MergeScope == EBlueprintHelperMergeScope::FunctionCall && Context.InsertedNode)
-		{
-			// already created
-		}
-		else
-		{
-			OutError = TEXT("inserted_logic_not_found");
-			return false;
-		}
-	}
-
-	// Create Sequence node through the graph statement builder so GraphWrite node creation remains inside the SemanticIR fragment path.
-	FBlueprintHelperNodeFragment SequenceFragment;
-	FString SequenceError;
-	if (!FBlueprintHelperGraphStatementBuilder::BuildSequenceFragment(
-		Graph,
-		Request.AnchorBlockId + TEXT("_merge_sequence"),
-		SequenceFragment,
-		SequenceError))
-	{
-		OutError = SequenceError.IsEmpty() ? TEXT("sequence_node_create_failed") : SequenceError;
-		return false;
-	}
-
-	UK2Node_ExecutionSequence* SeqNode = Cast<UK2Node_ExecutionSequence>(SequenceFragment.PrimaryNode);
-	if (!SeqNode)
-	{
-		OutError = TEXT("sequence_node_create_failed");
-		return false;
-	}
-	FBlueprintHelperMergeBlueprintGraphServiceLocalUtils::MarkMergeNodeAsBlueprintHelperOwned(SeqNode, Request.AnchorBlockId);
-	Context.SequenceNode = SeqNode;
-
-	// Find Sequence Exec In
-	UEdGraphPin* SeqExecIn = nullptr;
-	for (UEdGraphPin* Pin : SeqNode->Pins)
-	{
-		if (Pin && Pin->Direction == EGPD_Input && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
-		{ SeqExecIn = Pin; break; }
-	}
-	if (!SeqExecIn) { OutError = TEXT("Sequence 节点。Exec 输入。"); return false; }
-
-	// Collect Sequence Then pins
-	TArray<UEdGraphPin*> SeqThenPins;
-	auto CollectSequenceThenPins = [&SeqNode, &SeqThenPins]()
-	{
-		SeqThenPins.Reset();
-		for (UEdGraphPin* Pin : SeqNode->Pins)
-		{
-			if (Pin && Pin->Direction == EGPD_Output && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
-			{
-				SeqThenPins.Add(Pin);
-			}
-		}
-	};
-	CollectSequenceThenPins();
-	while (SeqThenPins.Num() < 2)
-	{
-		SeqNode->AddInputPin();
-		CollectSequenceThenPins();
-	}
-	if (SeqThenPins.Num() < 2) { OutError = TEXT("Sequence 节点需要至。2 。Then 输出。"); return false; }
-
-	const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
-
-	// Find inserted exec in
-	UEdGraphPin* InsExecIn = nullptr;
-	for (UEdGraphPin* Pin : Context.InsertedNode->Pins)
-	{
-		if (Pin && Pin->Direction == EGPD_Input && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
-		{ InsExecIn = Pin; break; }
-	}
-	if (!InsExecIn) { OutError = TEXT("inserted_logic_has_no_exec_pins"); return false; }
-
-	UEdGraphPin* OrigSucc = Context.OriginalSuccessorPin;
-
-	// Break original
-	Context.AnchorPin->Modify();
-	if (OrigSucc) { OrigSucc->Modify(); Context.AnchorPin->BreakLinkTo(OrigSucc); }
-
-	// Connect anchor -> sequence
-	if (!Schema->TryCreateConnection(Context.AnchorPin, SeqExecIn))
-	{
-		if (OrigSucc) Schema->TryCreateConnection(Context.AnchorPin, OrigSucc);
-		OutError = TEXT("link_create_failed: anchor -> sequence");
-		return false;
-	}
-
-	// Apply sequence_order
-	bool bOrigFirst = Request.SequenceOrder.Num() > 0 && Request.SequenceOrder[0] == TEXT("original_successor");
-	UEdGraphPin* Then0 = SeqThenPins[0];
-	UEdGraphPin* Then1 = SeqThenPins[1];
-
-	if (bOrigFirst)
-	{
-		if (OrigSucc && !Schema->TryCreateConnection(Then0, OrigSucc))
-		{
-			OutError = TEXT("link_create_failed: sequence.Then0 -> original_successor");
-			return false;
-		}
-		if (!Schema->TryCreateConnection(Then1, InsExecIn))
-		{
-			OutError = TEXT("link_create_failed: sequence.Then1 -> inserted");
-			return false;
-		}
-	}
-	else
-	{
-		if (!Schema->TryCreateConnection(Then0, InsExecIn))
-		{
-			OutError = TEXT("link_create_failed: sequence.Then0 -> inserted");
-			return false;
-		}
-		if (OrigSucc && !Schema->TryCreateConnection(Then1, OrigSucc))
-		{
-			OutError = TEXT("link_create_failed: sequence.Then1 -> original_successor");
-			return false;
-		}
-	}
-
-	Graph->NotifyGraphChanged();
 	return true;
 }

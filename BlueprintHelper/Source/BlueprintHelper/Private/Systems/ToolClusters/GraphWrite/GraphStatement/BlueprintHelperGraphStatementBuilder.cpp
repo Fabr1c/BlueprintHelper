@@ -1,4 +1,4 @@
-#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphStatementBuilder.h"
+﻿#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphStatementBuilder.h"
 
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
@@ -63,45 +63,45 @@ static void PopulateCallFragmentPins(UK2Node* CallNode, FBlueprintHelperNodeFrag
 	}
 }
 
-static void PopulateCommonFragmentMetadata(const FParsedNode& NodeData, FBlueprintHelperNodeFragment& OutFragment)
+static void PopulateCommonFragmentMetadata(const FBlueprintHelperGraphFragmentBuildRequest& Request, FBlueprintHelperNodeFragment& OutFragment)
 {
-	OutFragment.OwnershipTags.Add(TEXT("statement_id"), NodeData.Id);
-	OutFragment.ReviewTargets.Add(NodeData.Id);
+	OutFragment.OwnershipTags.Add(TEXT("statement_id"), Request.FragmentId);
+	OutFragment.ReviewTargets.Add(Request.FragmentId);
 	// DEPRECATED_LAYOUT: these x/y hints are legacy spawn metadata only.
 	// Final node positions must come from the UE-side GraphLayout system.
-	OutFragment.LayoutHints.Add(TEXT("x"), LexToString(NodeData.X));
-	OutFragment.LayoutHints.Add(TEXT("y"), LexToString(NodeData.Y));
+	OutFragment.LayoutHints.Add(TEXT("x"), LexToString(Request.Location.X));
+	OutFragment.LayoutHints.Add(TEXT("y"), LexToString(Request.Location.Y));
 }
 
-static void ApplyCallPatternBindings(FParsedNode& NodeData)
+static void ApplyCallPatternBindings(FBlueprintHelperGraphFragmentBuildRequest& Request)
 {
 	FBlueprintHelperGraphPatternRegistry& Registry = FBlueprintHelperGraphPatternRegistry::Get();
 
 	FString ObjectName;
 	FString FunctionName;
-	if (FBlueprintHelperCallFunctionResolver::TryParseQualifiedQuery(NodeData.FunctionName, ObjectName, FunctionName))
+	if (FBlueprintHelperCallFunctionResolver::TryParseQualifiedQuery(Request.Query, ObjectName, FunctionName))
 	{
 		FunctionName = Registry.ResolveAlias(TEXT("call"), FunctionName);
-		NodeData.FunctionName = ObjectName + TEXT(".") + FunctionName;
+		Request.Query = ObjectName + TEXT(".") + FunctionName;
 	}
 	else
 	{
-		NodeData.FunctionName = Registry.ResolveAlias(TEXT("call"), NodeData.FunctionName);
+		Request.Query = Registry.ResolveAlias(TEXT("call"), Request.Query);
 	}
 
-	Registry.ApplyPinAliases(TEXT("call"), NodeData.DefaultValues);
-	Registry.ApplyPinAliases(TEXT("call"), NodeData.ArgumentTypes);
+	Registry.ApplyPinAliases(TEXT("call"), Request.DefaultValues);
+	Registry.ApplyPinAliases(TEXT("call"), Request.ArgumentTypes);
 }
 
-static void ApplyCallPatternDefaults(FParsedNode& NodeData)
+static void ApplyCallPatternDefaults(FBlueprintHelperGraphFragmentBuildRequest& Request)
 {
-	FBlueprintHelperGraphPatternRegistry::Get().ApplyDefaults(TEXT("call"), NodeData.DefaultValues);
+	FBlueprintHelperGraphPatternRegistry::Get().ApplyDefaults(TEXT("call"), Request.DefaultValues);
 }
 
-static FString MakeCallFunctionResolveQuery(const FParsedNode& NodeData)
+static FString MakeCallFunctionResolveQuery(const FBlueprintHelperGraphFragmentBuildRequest& Request)
 {
-	const FString StableId = NodeData.ResolvedCallFunctionStableId.TrimStartAndEnd();
-	return StableId.IsEmpty() ? NodeData.FunctionName : StableId;
+	const FString StableId = Request.ResolvedStableId.TrimStartAndEnd();
+	return StableId.IsEmpty() ? Request.Query : StableId;
 }
 
 static void AppendCandidateActionGroup(
@@ -247,22 +247,22 @@ static bool TryBuildProjectedActionRequestFromContext(
 }
 
 static void ApplyCallActionRequestOverrides(
-	const FParsedNode& BoundNodeData,
+	const FBlueprintHelperGraphFragmentBuildRequest& BoundRequest,
 	const FString& ExplicitTargetObjectName,
 	const TArray<FString>& ArgumentNames,
 	FBlueprintHelperActionResolutionRequest& InOutRequest)
 {
-	InOutRequest.Semantic.SearchMode = BoundNodeData.SearchMode;
-	InOutRequest.Semantic.AmbiguityPolicy = BoundNodeData.AmbiguityPolicy;
-	InOutRequest.Semantic.CategoryPriority = BoundNodeData.CategoryPriority;
-	InOutRequest.Semantic.ArgumentTypes = BoundNodeData.ArgumentTypes;
-	InOutRequest.Semantic.ArgumentPinTypes = BoundNodeData.ArgumentPinTypes;
-	InOutRequest.Semantic.TargetObjectType = BoundNodeData.TargetObjectType;
-	InOutRequest.Semantic.TargetObjectPinType = BoundNodeData.TargetObjectPinType;
-	InOutRequest.Semantic.ExpectedReturnType = BoundNodeData.ExpectedReturnType;
-	InOutRequest.Semantic.ExpectedReturnPinType = BoundNodeData.ExpectedReturnPinType;
+	InOutRequest.Semantic.SearchMode = BoundRequest.SearchMode;
+	InOutRequest.Semantic.AmbiguityPolicy = BoundRequest.AmbiguityPolicy;
+	InOutRequest.Semantic.CategoryPriority = BoundRequest.CategoryPriority;
+	InOutRequest.Semantic.ArgumentTypes = BoundRequest.ArgumentTypes;
+	InOutRequest.Semantic.ArgumentPinTypes = BoundRequest.ArgumentPinTypes;
+	InOutRequest.Semantic.TargetObjectType = BoundRequest.TargetObjectType;
+	InOutRequest.Semantic.TargetObjectPinType = BoundRequest.TargetObjectPinType;
+	InOutRequest.Semantic.ExpectedReturnType = BoundRequest.ExpectedReturnType;
+	InOutRequest.Semantic.ExpectedReturnPinType = BoundRequest.ExpectedReturnPinType;
 	InOutRequest.Semantic.ArgumentNames = ArgumentNames;
-	InOutRequest.Semantic.DefaultValues = BoundNodeData.DefaultValues;
+	InOutRequest.Semantic.DefaultValues = BoundRequest.DefaultValues;
 	if (!ExplicitTargetObjectName.IsEmpty())
 	{
 		InOutRequest.Semantic.TargetPath = ExplicitTargetObjectName;
@@ -868,60 +868,60 @@ static bool BuildDeconstructExpressionFragment(
 }
 bool FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment(
 	UEdGraph* TargetGraph,
-	const FParsedNode& NodeData,
+	const FBlueprintHelperGraphFragmentBuildRequest& Request,
 	FBlueprintHelperNodeFragment& OutFragment,
 	FString& OutError,
 	TArray<FBlueprintHelperCandidateFunctionGroup>* OutCandidateFunctions,
 	const FBlueprintHelperActionContextScope* ActionContextScope)
 {
 	OutFragment = FBlueprintHelperNodeFragment();
-	FParsedNode BoundNodeData = NodeData;
-	ApplyCallPatternBindings(BoundNodeData);
+	FBlueprintHelperGraphFragmentBuildRequest BoundRequest = Request;
+	ApplyCallPatternBindings(BoundRequest);
 
-	const FString ExplicitTargetObjectName = BoundNodeData.TargetObjectName.TrimStartAndEnd();
+	const FString ExplicitTargetObjectName = BoundRequest.Target.TrimStartAndEnd();
 
 	FBlueprintHelperActionResolutionRequest ActionRequest;
 	TArray<FString> ArgumentNames;
-	BoundNodeData.DefaultValues.GetKeys(ArgumentNames);
+	BoundRequest.DefaultValues.GetKeys(ArgumentNames);
 	if (!TryBuildProjectedActionRequestFromContext(
 		TargetGraph,
 		ActionContextScope,
-		BoundNodeData.ActionContextStatementId.IsEmpty()
-			? BoundNodeData.Id
-			: BoundNodeData.ActionContextStatementId,
+		BoundRequest.ActionContextStatementId.IsEmpty()
+			? BoundRequest.FragmentId
+			: BoundRequest.ActionContextStatementId,
 		EBlueprintHelperSpawnerClusterKind::FunctionAction,
 		EBlueprintHelperActionSemanticKind::Call,
-		MakeCallFunctionResolveQuery(BoundNodeData),
+		MakeCallFunctionResolveQuery(BoundRequest),
 		ExplicitTargetObjectName,
-		BoundNodeData.ExpectedReturnType,
+		BoundRequest.ExpectedReturnType,
 		ArgumentNames,
 		ActionRequest,
 		OutError))
 	{
 		return false;
 	}
-	ApplyCallActionRequestOverrides(BoundNodeData, ExplicitTargetObjectName, ArgumentNames, ActionRequest);
+	ApplyCallActionRequestOverrides(BoundRequest, ExplicitTargetObjectName, ArgumentNames, ActionRequest);
 	const FBlueprintHelperActionResolutionResult ActionResult =
 		FBlueprintGraphWriteFacade::ResolveActionForGraph(ActionRequest);
 
 	if (!ActionResult.IsResolved())
 	{
-		AppendCandidateActionGroup(BoundNodeData.FunctionName, ActionResult, OutCandidateFunctions);
+		AppendCandidateActionGroup(BoundRequest.Query, ActionResult, OutCandidateFunctions);
 		OutError = ActionResult.Message.IsEmpty()
-			? FString::Printf(TEXT("call_function resolve failed: %s"), *BoundNodeData.FunctionName)
+			? FString::Printf(TEXT("call_function resolve failed: %s"), *BoundRequest.Query)
 			: ActionResult.Message;
 		return false;
 	}
 
-	ApplyCallPatternDefaults(BoundNodeData);
+	ApplyCallPatternDefaults(BoundRequest);
 
 	FBlueprintHelperActionNodeSpawnOptions SpawnOptions;
-	SpawnOptions.NodeId = BoundNodeData.Id;
-	SpawnOptions.DefaultValues = BoundNodeData.DefaultValues;
+	SpawnOptions.NodeId = BoundRequest.FragmentId;
+	SpawnOptions.DefaultValues = BoundRequest.DefaultValues;
 	UK2Node* SpawnedNode = FBlueprintHelperActionNodeSpawnerAdapter::InvokeSelectedSpawner(
 		TargetGraph,
 		ActionResult,
-		FVector2D(BoundNodeData.X, BoundNodeData.Y),
+		FVector2D(BoundRequest.Location.X, BoundRequest.Location.Y),
 		SpawnOptions,
 		OutError);
 
@@ -930,18 +930,18 @@ bool FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment(
 		return false;
 	}
 
-	OutFragment.FragmentId = BoundNodeData.Id;
-	OutFragment.SourceStatementId = BoundNodeData.Id;
+	OutFragment.FragmentId = BoundRequest.FragmentId;
+	OutFragment.SourceStatementId = BoundRequest.FragmentId;
 	OutFragment.PrimaryNode = SpawnedNode;
 	OutFragment.Nodes.Add(SpawnedNode);
 	PopulateCallFragmentPins(SpawnedNode, OutFragment);
-	PopulateCommonFragmentMetadata(BoundNodeData, OutFragment);
+	PopulateCommonFragmentMetadata(BoundRequest, OutFragment);
 	return true;
 }
 
 bool FBlueprintHelperGraphStatementBuilder::BuildVariableSetFragment(
 	UEdGraph* TargetGraph,
-	const FParsedNode& NodeData,
+	const FBlueprintHelperGraphFragmentBuildRequest& Request,
 	FBlueprintHelperNodeFragment& OutFragment,
 	FString& OutError,
 	const FBlueprintHelperActionContextScope* ActionContextScope)
@@ -952,14 +952,14 @@ bool FBlueprintHelperGraphStatementBuilder::BuildVariableSetFragment(
 	if (!RequireResolvedActionProvider(
 		TargetGraph,
 		ActionContextScope,
-		NodeData.ActionContextStatementId.IsEmpty()
-			? NodeData.Id
-			: NodeData.ActionContextStatementId,
+		Request.ActionContextStatementId.IsEmpty()
+			? Request.FragmentId
+			: Request.ActionContextStatementId,
 		EBlueprintHelperSpawnerClusterKind::FieldVariableAction,
 		EBlueprintHelperActionSemanticKind::Set,
-		NodeData.VariableReference.VariableName,
-		NodeData.VariableReference.VariableName,
-		NodeData.ExpectedReturnType,
+		Request.Target,
+		Request.Target,
+		Request.ExpectedReturnType,
 		&ActionResult,
 		OutError))
 	{
@@ -967,12 +967,12 @@ bool FBlueprintHelperGraphStatementBuilder::BuildVariableSetFragment(
 	}
 
 	FBlueprintHelperActionNodeSpawnOptions SpawnOptions;
-	SpawnOptions.NodeId = NodeData.Id;
-	SpawnOptions.DefaultValues = NodeData.DefaultValues;
+	SpawnOptions.NodeId = Request.FragmentId;
+	SpawnOptions.DefaultValues = Request.DefaultValues;
 	UK2Node* SpawnedNode = FBlueprintHelperActionNodeSpawnerAdapter::InvokeSelectedSpawner(
 		TargetGraph,
 		ActionResult,
-		FVector2D(NodeData.X, NodeData.Y),
+		FVector2D(Request.Location.X, Request.Location.Y),
 		SpawnOptions,
 		OutError);
 	if (!SpawnedNode)
@@ -980,24 +980,24 @@ bool FBlueprintHelperGraphStatementBuilder::BuildVariableSetFragment(
 		return false;
 	}
 
-	OutFragment.FragmentId = NodeData.Id;
-	OutFragment.SourceStatementId = NodeData.Id;
+	OutFragment.FragmentId = Request.FragmentId;
+	OutFragment.SourceStatementId = Request.FragmentId;
 	OutFragment.PrimaryNode = SpawnedNode;
 	OutFragment.Nodes.Add(SpawnedNode);
 	PopulateActionProviderFragmentPins(SpawnedNode, OutFragment);
-	PopulateCommonFragmentMetadata(NodeData, OutFragment);
+	PopulateCommonFragmentMetadata(Request, OutFragment);
 	return true;
 }
 
 bool FBlueprintHelperGraphStatementBuilder::BuildSetPropertyFragment(
 	UEdGraph* TargetGraph,
-	const FParsedNode& NodeData,
+	const FBlueprintHelperGraphFragmentBuildRequest& Request,
 	FBlueprintHelperNodeFragment& OutFragment,
 	FString& OutError,
 	const FBlueprintHelperActionContextScope* ActionContextScope)
 {
 	OutFragment = FBlueprintHelperNodeFragment();
-	if (NodeData.VariableReference.VariableName.TrimStartAndEnd().IsEmpty())
+	if (Request.Target.TrimStartAndEnd().IsEmpty())
 	{
 		OutError = TEXT("set_property fragment build failed: graph-body property target is empty.");
 		return false;
@@ -1007,14 +1007,14 @@ bool FBlueprintHelperGraphStatementBuilder::BuildSetPropertyFragment(
 	if (!RequireResolvedActionProvider(
 		TargetGraph,
 		ActionContextScope,
-		NodeData.ActionContextStatementId.IsEmpty()
-			? NodeData.Id
-			: NodeData.ActionContextStatementId,
+		Request.ActionContextStatementId.IsEmpty()
+			? Request.FragmentId
+			: Request.ActionContextStatementId,
 		EBlueprintHelperSpawnerClusterKind::FieldVariableAction,
 		EBlueprintHelperActionSemanticKind::SetProperty,
-		NodeData.VariableReference.VariableName,
-		NodeData.VariableReference.VariableName,
-		NodeData.ExpectedReturnType,
+		Request.Target,
+		Request.Target,
+		Request.ExpectedReturnType,
 		&ActionResult,
 		OutError))
 	{
@@ -1022,12 +1022,12 @@ bool FBlueprintHelperGraphStatementBuilder::BuildSetPropertyFragment(
 	}
 
 	FBlueprintHelperActionNodeSpawnOptions SpawnOptions;
-	SpawnOptions.NodeId = NodeData.Id;
-	SpawnOptions.DefaultValues = NodeData.DefaultValues;
+	SpawnOptions.NodeId = Request.FragmentId;
+	SpawnOptions.DefaultValues = Request.DefaultValues;
 	UK2Node* SpawnedNode = FBlueprintHelperActionNodeSpawnerAdapter::InvokeSelectedSpawner(
 		TargetGraph,
 		ActionResult,
-		FVector2D(NodeData.X, NodeData.Y),
+		FVector2D(Request.Location.X, Request.Location.Y),
 		SpawnOptions,
 		OutError);
 	if (!SpawnedNode)
@@ -1035,12 +1035,12 @@ bool FBlueprintHelperGraphStatementBuilder::BuildSetPropertyFragment(
 		return false;
 	}
 
-	OutFragment.FragmentId = NodeData.Id;
-	OutFragment.SourceStatementId = NodeData.Id;
+	OutFragment.FragmentId = Request.FragmentId;
+	OutFragment.SourceStatementId = Request.FragmentId;
 	OutFragment.PrimaryNode = SpawnedNode;
 	OutFragment.Nodes.Add(SpawnedNode);
 	PopulateActionProviderFragmentPins(SpawnedNode, OutFragment);
-	PopulateCommonFragmentMetadata(NodeData, OutFragment);
+	PopulateCommonFragmentMetadata(Request, OutFragment);
 	return true;
 }
 
@@ -1076,19 +1076,17 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 
 	if (Expression.Kind == EBlueprintHelperGraphExpressionKind::Call)
 	{
-		FParsedNode NodeData;
-		NodeData.Id = FBlueprintHelperGraphStatementTypeUtils::MakeExpressionFragmentId(Expression);
-		NodeData.ActionContextStatementId = MakeExpressionActionContextStatementId(Expression);
-		NodeData.NodeType = EParsedBlueprintNodeType::CallFunction;
-		NodeData.SourceType = TEXT("K2Node_CallFunction");
-		NodeData.FunctionName = Expression.Target;
-		NodeData.SearchMode = Expression.SearchMode;
-		NodeData.AmbiguityPolicy = Expression.AmbiguityPolicy;
-		NodeData.CategoryPriority = Expression.CategoryPriority;
-		NodeData.ExpectedReturnType = Expression.Type;
+		FBlueprintHelperGraphFragmentBuildRequest Request;
+		Request.FragmentId = FBlueprintHelperGraphStatementTypeUtils::MakeExpressionFragmentId(Expression);
+		Request.ActionContextStatementId = MakeExpressionActionContextStatementId(Expression);
+		Request.Query = Expression.Target;
+		Request.SearchMode = Expression.SearchMode;
+		Request.AmbiguityPolicy = Expression.AmbiguityPolicy;
+		Request.CategoryPriority = Expression.CategoryPriority;
+		Request.ExpectedReturnType = Expression.Type;
 		if (Expression.TargetObject.IsValid())
 		{
-			NodeData.TargetObjectName = Expression.TargetObject->Target;
+			Request.Target = Expression.TargetObject->Target;
 		}
 		for (const TPair<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& ArgPair : Expression.Args)
 		{
@@ -1098,14 +1096,14 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 			}
 			if (ArgPair.Value->Kind == EBlueprintHelperGraphExpressionKind::Literal)
 			{
-				NodeData.DefaultValues.Add(ArgPair.Key, ArgPair.Value->LiteralValue);
+				Request.DefaultValues.Add(ArgPair.Key, ArgPair.Value->LiteralValue);
 			}
 			if (!ArgPair.Value->Type.TrimStartAndEnd().IsEmpty())
 			{
-				NodeData.ArgumentTypes.Add(ArgPair.Key, ArgPair.Value->Type);
+				Request.ArgumentTypes.Add(ArgPair.Key, ArgPair.Value->Type);
 			}
 		}
-		if (!BuildCallFunctionFragment(TargetGraph, NodeData, OutFragment, OutError, OutCandidateFunctions, ActionContextScope))
+		if (!BuildCallFunctionFragment(TargetGraph, Request, OutFragment, OutError, OutCandidateFunctions, ActionContextScope))
 		{
 			return false;
 		}
@@ -1125,7 +1123,21 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 
 	if (Expression.Kind == EBlueprintHelperGraphExpressionKind::Select)
 	{
-		return FBlueprintHelperSelectFragmentBuilder::Build(TargetGraph, Expression, OutFragment, OutError);
+		FBlueprintHelperActionResolutionResult ActionResult;
+		if (!ResolveActionProviderForExpression(
+			TargetGraph,
+			ActionContextScope,
+			Expression,
+			EBlueprintHelperActionSemanticKind::Select,
+			TEXT("select"),
+			Expression.Target,
+			Expression.Type,
+			ActionResult,
+			OutError))
+		{
+			return false;
+		}
+		return FBlueprintHelperSelectFragmentBuilder::Build(TargetGraph, Expression, ActionResult, OutFragment, OutError);
 	}
 
 	const EBlueprintHelperActionSemanticKind SemanticKind = ResolveActionSemanticKindForExpressionKind(Expression.Kind);

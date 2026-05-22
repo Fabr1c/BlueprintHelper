@@ -1,11 +1,11 @@
-#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperSelectFragmentBuilder.h"
+﻿#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperSelectFragmentBuilder.h"
 
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraphSchema_K2.h"
-#include "BlueprintNodeSpawner.h"
 #include "K2Node_Select.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionNodeSpawnerAdapter.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphStatementTypeUtils.h"
 
@@ -296,6 +296,7 @@ static void PopulateSelectPins(
 bool FBlueprintHelperSelectFragmentBuilder::Build(
 	UEdGraph* TargetGraph,
 	const FBlueprintHelperGraphExpressionIR& Expression,
+	const FBlueprintHelperActionResolutionResult& ActionResult,
 	FBlueprintHelperNodeFragment& OutFragment,
 	FString& OutError)
 {
@@ -308,7 +309,11 @@ bool FBlueprintHelperSelectFragmentBuilder::Build(
 	}
 
 	const FString ExpressionId = FBlueprintHelperGraphStatementTypeUtils::MakeExpressionFragmentId(Expression);
-	UBlueprintNodeSpawner* SelectSpawner = UBlueprintNodeSpawner::Create(UK2Node_Select::StaticClass());
+	if (!ActionResult.IsResolved())
+	{
+		OutError = ActionResult.Message.IsEmpty() ? TEXT("select fragment build failed: action provider did not resolve.") : ActionResult.Message;
+		return false;
+	}
 	FBlueprintHelperActionNodeSpawnOptions SpawnOptions;
 	SpawnOptions.NodeId = ExpressionId;
 	SpawnOptions.NodeConfigurationHook = [&Expression](UK2Node& SpawnedNode, const FBlueprintHelperActionNodeSpawnContext&, FString& HookError)
@@ -333,10 +338,9 @@ bool FBlueprintHelperSelectFragmentBuilder::Build(
 		CollectLiteralDefaults(Cast<UK2Node_Select>(&SpawnedNode), Expression, InOutDefaults);
 	};
 
-	UK2Node* SpawnedNode = FBlueprintHelperActionNodeSpawnerAdapter::InvokeNodeSpawner(
+	UK2Node* SpawnedNode = FBlueprintHelperActionNodeSpawnerAdapter::InvokeSelectedSpawner(
 		TargetGraph,
-		SelectSpawner,
-		TEXT("dedicated_select_node_spawner"),
+		ActionResult,
 		FVector2D::ZeroVector,
 		SpawnOptions,
 		OutError);

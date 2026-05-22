@@ -40,6 +40,8 @@ static FString StatementKindName(const EBlueprintHelperGraphStatementKind Kind)
 	{
 	case EBlueprintHelperGraphStatementKind::Branch:
 		return TEXT("branch");
+	case EBlueprintHelperGraphStatementKind::Sequence:
+		return TEXT("sequence");
 	case EBlueprintHelperGraphStatementKind::Return:
 		return TEXT("return");
 	default:
@@ -157,22 +159,18 @@ static void CollectExecOutputPins(UK2Node* Node, TArray<UEdGraphPin*>& OutPins)
 	}
 }
 
-static bool RequireDedicatedControlBuilderBoundary(
+static bool ResolveControlActionProvider(
 	UEdGraph* TargetGraph,
 	const FBlueprintHelperActionContextScope* ActionContextScope,
 	const FString& StatementContextId,
 	const FString& ControlKind,
 	const FString& FragmentId,
+	FBlueprintHelperActionResolutionResult& OutResult,
 	FString& OutError)
 {
 	if (!TargetGraph)
 	{
 		OutError = TEXT("control fragment build failed: target graph is invalid.");
-		return false;
-	}
-	if (!ActionContextScope)
-	{
-		OutError = TEXT("control fragment build failed: action context scope is required.");
 		return false;
 	}
 	if (StatementContextId.TrimStartAndEnd().IsEmpty())
@@ -182,14 +180,27 @@ static bool RequireDedicatedControlBuilderBoundary(
 	}
 
 	FBlueprintHelperActionResolutionRequest ActionRequest;
-	if (!ActionContextScope->TryBuildRequest(
-		StatementContextId,
-		FBlueprintEditorUtils::FindBlueprintForGraph(TargetGraph),
-		TargetGraph,
-		ActionRequest,
-		OutError))
+	if (ActionContextScope)
 	{
-		return false;
+		if (!ActionContextScope->TryBuildRequest(
+			StatementContextId,
+			FBlueprintEditorUtils::FindBlueprintForGraph(TargetGraph),
+			TargetGraph,
+			ActionRequest,
+			OutError))
+		{
+			return false;
+		}
+	}
+	else
+	{
+		ActionRequest.ClusterKind = EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction;
+		ActionRequest.Blueprint = FBlueprintEditorUtils::FindBlueprintForGraph(TargetGraph);
+		ActionRequest.TargetGraph = TargetGraph;
+		ActionRequest.StatementId = StatementContextId;
+		ActionRequest.ProjectedContextHash = TEXT("manual_control_context:") + FragmentId;
+		ActionRequest.SemanticConstraintsHash = TEXT("manual_control_semantic:") + ControlKind;
+		ActionRequest.Semantic.Kind = EBlueprintHelperActionSemanticKind::Control;
 	}
 	if (ActionRequest.Semantic.Query.IsEmpty())
 	{
@@ -202,15 +213,15 @@ static bool RequireDedicatedControlBuilderBoundary(
 
 	const FBlueprintHelperActionResolutionResult ActionResult =
 		FBlueprintGraphWriteFacade::ResolveActionForGraph(ActionRequest);
-	if (ActionResult.Status == EBlueprintHelperActionResolutionStatus::Blocked
-		&& ActionResult.ErrorCode.Equals(TEXT("dedicated_fragment_builder_required"), ESearchCase::IgnoreCase))
+	if (ActionResult.IsResolved())
 	{
+		OutResult = ActionResult;
 		return true;
 	}
 
 	OutError = ActionResult.Message.IsEmpty()
 		? FString::Printf(
-			TEXT("control fragment build failed: ActionResolution did not expose the dedicated ControlFragmentBuilder boundary for '%s'."),
+			TEXT("control fragment build failed: ActionResolution did not resolve Generic control spawner for '%s'."),
 			*ControlKind)
 		: ActionResult.Message;
 	return false;
@@ -218,32 +229,11 @@ static bool RequireDedicatedControlBuilderBoundary(
 
 static UK2Node* SpawnControlNodeThroughSpawner(
 	UEdGraph* TargetGraph,
-	UClass* NodeClass,
-	const FString& StableId,
+	const FBlueprintHelperActionResolutionResult& ActionResult,
 	const FVector2D& Location,
 	const FBlueprintHelperActionNodeSpawnOptions& SpawnOptions,
 	FString& OutError)
 {
-	if (!NodeClass)
-	{
-		OutError = TEXT("control fragment build failed: control node class is invalid.");
-		return nullptr;
-	}
-
-	UBlueprintNodeSpawner* NodeSpawner = UBlueprintNodeSpawner::Create(NodeClass);
-	if (!NodeSpawner)
-	{
-		OutError = FString::Printf(
-			TEXT("control fragment build failed: UE node spawner was unavailable for '%s'."),
-			*NodeClass->GetName());
-		return nullptr;
-	}
-
-	FBlueprintHelperActionResolutionResult ActionResult;
-	ActionResult.Status = EBlueprintHelperActionResolutionStatus::Resolved;
-	ActionResult.ClusterKind = EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction;
-	ActionResult.SelectedStableId = StableId;
-	ActionResult.SelectedSpawner = NodeSpawner;
 	return FBlueprintHelperActionNodeSpawnerAdapter::InvokeSelectedSpawner(
 		TargetGraph,
 		ActionResult,
@@ -255,6 +245,7 @@ static UK2Node* SpawnControlNodeThroughSpawner(
 template <typename TNode>
 static TNode* SpawnTypedControlNode(
 	UEdGraph* TargetGraph,
+	const FBlueprintHelperActionResolutionResult& ActionResult,
 	const FString& ControlKind,
 	const FString& FragmentId,
 	const FBlueprintHelperActionNodeSpawnOptions& SpawnOptions,
@@ -262,8 +253,7 @@ static TNode* SpawnTypedControlNode(
 {
 	UK2Node* SpawnedNode = SpawnControlNodeThroughSpawner(
 		TargetGraph,
-		TNode::StaticClass(),
-		TEXT("control:") + ControlKind + TEXT(":") + FragmentId,
+		ActionResult,
 		FVector2D::ZeroVector,
 		SpawnOptions,
 		OutError);
@@ -281,13 +271,14 @@ static TNode* SpawnTypedControlNode(
 template <typename TNode>
 static TNode* SpawnTypedControlNode(
 	UEdGraph* TargetGraph,
+	const FBlueprintHelperActionResolutionResult& ActionResult,
 	const FString& ControlKind,
 	const FString& FragmentId,
 	FString& OutError)
 {
 	FBlueprintHelperActionNodeSpawnOptions SpawnOptions;
 	SpawnOptions.NodeId = FragmentId;
-	return SpawnTypedControlNode<TNode>(TargetGraph, ControlKind, FragmentId, SpawnOptions, OutError);
+	return SpawnTypedControlNode<TNode>(TargetGraph, ActionResult, ControlKind, FragmentId, SpawnOptions, OutError);
 }
 
 static void PopulateCommonControlMetadata(
@@ -484,13 +475,15 @@ bool FBlueprintHelperControlFragmentBuilder::BuildSequence(
 	OutError.Reset();
 
 	const FString CleanFragmentId = SanitizeFragmentIdPart(FragmentId);
-	if (!RequireDedicatedControlBuilderBoundary(TargetGraph, nullptr, CleanFragmentId, TEXT("sequence"), CleanFragmentId, OutError))
+	FBlueprintHelperActionResolutionResult ActionResult;
+	if (!ResolveControlActionProvider(TargetGraph, nullptr, CleanFragmentId, TEXT("sequence"), CleanFragmentId, ActionResult, OutError))
 	{
 		return false;
 	}
 
 	UK2Node_ExecutionSequence* SequenceNode = SpawnTypedControlNode<UK2Node_ExecutionSequence>(
 		TargetGraph,
+		ActionResult,
 		TEXT("sequence"),
 		CleanFragmentId,
 		OutError);
@@ -528,7 +521,8 @@ bool FBlueprintHelperControlFragmentBuilder::BuildBranch(
 
 	const FString FragmentId = ResolveStatementFragmentId(Statement);
 	const FString StatementContextId = !Statement.StatementId.IsEmpty() ? Statement.StatementId : Statement.Path;
-	if (!RequireDedicatedControlBuilderBoundary(TargetGraph, ActionContextScope, StatementContextId, TEXT("branch"), FragmentId, OutError))
+	FBlueprintHelperActionResolutionResult ActionResult;
+	if (!ResolveControlActionProvider(TargetGraph, ActionContextScope, StatementContextId, TEXT("branch"), FragmentId, ActionResult, OutError))
 	{
 		return false;
 	}
@@ -540,6 +534,7 @@ bool FBlueprintHelperControlFragmentBuilder::BuildBranch(
 	SpawnOptions.DefaultValues = MoveTemp(DefaultValues);
 	UK2Node_IfThenElse* BranchNode = SpawnTypedControlNode<UK2Node_IfThenElse>(
 		TargetGraph,
+		ActionResult,
 		TEXT("branch"),
 		FragmentId,
 		SpawnOptions,
@@ -572,7 +567,8 @@ bool FBlueprintHelperControlFragmentBuilder::BuildReturn(
 
 	const FString FragmentId = ResolveStatementFragmentId(Statement);
 	const FString StatementContextId = !Statement.StatementId.IsEmpty() ? Statement.StatementId : Statement.Path;
-	if (!RequireDedicatedControlBuilderBoundary(TargetGraph, ActionContextScope, StatementContextId, TEXT("return"), FragmentId, OutError))
+	FBlueprintHelperActionResolutionResult ActionResult;
+	if (!ResolveControlActionProvider(TargetGraph, ActionContextScope, StatementContextId, TEXT("return"), FragmentId, ActionResult, OutError))
 	{
 		return false;
 	}
@@ -588,6 +584,7 @@ bool FBlueprintHelperControlFragmentBuilder::BuildReturn(
 	};
 	UK2Node_FunctionResult* ReturnNode = SpawnTypedControlNode<UK2Node_FunctionResult>(
 		TargetGraph,
+		ActionResult,
 		TEXT("return"),
 		FragmentId,
 		SpawnOptions,
@@ -613,6 +610,8 @@ bool FBlueprintHelperControlFragmentBuilder::BuildStatement(
 	{
 	case EBlueprintHelperGraphStatementKind::Branch:
 		return BuildBranch(TargetGraph, ActionContextScope, Statement, OutFragment, OutError);
+	case EBlueprintHelperGraphStatementKind::Sequence:
+		return BuildSequence(TargetGraph, ResolveStatementFragmentId(Statement), OutFragment, OutError);
 	case EBlueprintHelperGraphStatementKind::Return:
 		return BuildReturn(TargetGraph, ActionContextScope, Statement, OutFragment, OutError);
 	default:

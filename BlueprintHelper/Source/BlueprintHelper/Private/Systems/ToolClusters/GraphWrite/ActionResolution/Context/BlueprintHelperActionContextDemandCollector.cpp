@@ -423,6 +423,7 @@ EBlueprintHelperActionSemanticKind FBlueprintHelperActionContextDemandCollector:
 	case EBlueprintHelperGraphStatementKind::SetProperty:
 		return EBlueprintHelperActionSemanticKind::SetProperty;
 	case EBlueprintHelperGraphStatementKind::Branch:
+	case EBlueprintHelperGraphStatementKind::Sequence:
 	case EBlueprintHelperGraphStatementKind::Return:
 		return EBlueprintHelperActionSemanticKind::Control;
 	case EBlueprintHelperGraphStatementKind::Let:

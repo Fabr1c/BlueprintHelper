@@ -155,6 +155,88 @@
 
 期望：更新 docs/schema，只保留旧格式 unsupported 的说明。
 
+## Code Review 补充：快速接入旧路径/架构偏离确认
+
+### 15. AgentFace 仍公开 `branch/sequence/return` 顶层 statement kind
+
+位置：`AgentFaceService/task-core/src/task/schema/task-contract.ts`、`AgentFaceService/task-core/src/task/compiler/task-compiler.ts`、`AgentFaceService/task-core/python/blueprinthelper_task/compiler/graph_write_append.py`
+
+证据：`statement_kinds` 与 compiler 校验仍把 `branch`、`sequence`、`return` 作为顶层 statement kind；Python 编译链与 TS 编译链对 `sequence` 的支持口径不一致。
+
+偏差：最新架构要求执行流统一为 `control` semantic intent，`branch/sequence/return` 只能作为 `SemanticConstraints` 内的控制流细分，不应作为公开主入口继续扩展。
+
+期望：AgentFace schema / TS compiler / Python compiler 统一迁移到 `kind: "control"` + control constraint；移除 `sequence` 这类快速接入式顶层 kind，旧字段不再做兼容兜底。
+
+### 16. AgentFace 文档仍残留 `call_function` 兼容口径
+
+位置：`AgentFaceService/agent-guide/Workflows/05_Edit_Blueprint_Workflow.md`、`AgentFaceService/agent-guide/Reference/04_Tool_Surface_Field_Templates_20260512.md`
+
+证据：文档仍出现 `kind: "call_function"` / `call_function.name` 示例或 “legacy-compatible remains accepted” 口径；实际编译器已将 `call_function` 视为 unsupported。
+
+偏差：文档继续引导 Agent 生成旧 node shape，和“旧实现不兼容、不保留 fallback”的当前架构冲突。
+
+期望：删除旧示例与兼容描述，只保留 `kind: "call"` + target / semantic constraints 的当前写法。
+
+### 17. Control flow 仍用专用 builder 快路径承接 Branch/Return/Sequence
+
+位置：`BlueprintHelperControlFragmentBuilder.cpp`
+
+证据：`BuildBranch`、`BuildReturn`、`BuildSequence` 仍是独立入口；`BuildSequence` 甚至直接以空 `ActionContextScope` 调 `ResolveControlActionProvider`。
+
+偏差：控制流应该由 GenericAssetStructControlActionCluster 消费 projected context 并返回 spawner evidence；专用 builder 只能作为多节点 DAG 编排边界，不能代替簇内 resolver。
+
+期望：`control` 统一进入 Generic cluster；单节点 Branch/Return/Sequence 先解析 UE spawner evidence，再由 shared adapter invoke；多节点 control DAG 才进入专用 builder，并写明不可由 UE NodeSpawner 单独表达的原因。
+
+### 18. GraphStatementBuilder 仍局部重建 ActionContext
+
+位置：`BlueprintHelperGraphStatementBuilder.cpp`
+
+证据：`BuildSingleActionContextDemand`、`TryBuildProjectedActionRequestFromContext` 在 builder 内部构造 `ActionContextDemand`，当外部 scope 不存在时会本地 `FBlueprintHelperActionContextScope::Build`。
+
+偏差：设计文档要求 `ActionContextPipeline` 是上下文构建唯一入口，`BundleProjector` 是 `ResolvedActionContextBundle -> ActionResolutionRequest` 的唯一投影边界；Builder 不应私自重建 context。
+
+期望：Builder 只消费已投影的 request/evidence；缺少 context 时返回明确诊断，不能在 builder 内重新 snapshot / inference / project。
+
+### 19. Select 虽使用 shared adapter，但仍有较多 UK2Node_Select 本地 pin 适配
+
+位置：`BlueprintHelperSelectFragmentBuilder.cpp`
+
+证据：`ApplyIndexPinType`、`ApplyResultPinType`、literal defaults collection 等逻辑直接操作 `UK2Node_Select`。
+
+偏差：Select 属于 Generic cluster 的 semantic constraints；如果这些 pin normalization / post-spawn defaults 属于通用 lifecycle，应收敛到 shared adapter / composer lifecycle，而不是沉积在 Select 专用 builder。
+
+期望：保留必要的 Select 专用语义，但把通用 post-spawn defaults、pin normalization、post-link lifecycle 下沉到 shared adapter / composer lifecycle；Select builder 只保留 UE 无法泛化的最小差异。
+
+### 20. FunctionAction 与 GenericAction 仍有全局反射扫描
+
+位置：`BlueprintHelperCallFunctionResolverUtils.cpp`、`BlueprintHelperGenericAssetStructControlActionResolver.cpp`
+
+证据：`BuildCandidateUniverse`、`ResolveClassByTypeName`、`ResolveStructByTypeName`、`ResolveStructType`、`ResolveNativeStructFunction` 仍使用 `TObjectIterator<UClass/UScriptStruct/UFunction>` 或大范围扫描。
+
+偏差：这会绕过 projected context 对候选域的约束，属于旧式“扫描补全”路径；设计要求先由 TaskSpec / Blueprint / Graph / typed pin / target context 收缩候选，再进入 UE ActionDatabase / ActionFilter / NodeSpawner。
+
+期望：全局扫描只能作为显式诊断/低置信模式或移除；主路径必须从 projected context 构建候选域并返回可重建 spawner evidence。
+
+### 21. EventDelegateActionCluster 声明能力与成功路径不一致
+
+位置：`BlueprintHelperEventDelegateActionCluster.cpp`
+
+证据：`OwnsSemanticKind` 声明 `ComponentBoundEvent`、`Bind`，但 `Resolve` 对这些语义仅返回 `needs_more_semantic_context`，没有 `UBlueprintBoundEventNodeSpawner` / `UBlueprintDelegateNodeSpawner` 成功路径。
+
+偏差：簇对外声明覆盖能力但内部未闭环，容易让上游认为该语义已完成；这是半通道接入而非完整架构实现。
+
+期望：补齐 component/delegate/signature evidence 后再声明成功路径；未完成前文档和测试都应明确标为 gap，而不是能力完成。
+
+### 22. FragmentDAG placeholder 仍可能污染主路径
+
+位置：`BlueprintHelperGraphFragmentDagBuilderUtils.cpp`
+
+证据：`call/op/construct/deconstruct` 等可解析表达式仍可能先构造 placeholder；unknown statement 也会生成 placeholder fragment 后继续下游。
+
+偏差：placeholder 只应代表真正不可解析或 UE ActionDatabase 不可表达的例外；主流语义生成 placeholder 会弱化 preview/execute 证据一致性。
+
+期望：可解析表达式必须形成真实 fragment/evidence；不可解析时 fail-fast 并输出明确 diagnostics，不继续以 placeholder 伪装成功。
+
 ## 总体判断
 
 - ActionResolutionCore / 四簇一级分发：基本符合新架构。

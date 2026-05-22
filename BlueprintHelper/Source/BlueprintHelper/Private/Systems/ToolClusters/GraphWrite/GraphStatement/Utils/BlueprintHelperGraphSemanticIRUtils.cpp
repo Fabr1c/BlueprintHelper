@@ -79,6 +79,7 @@ EBlueprintHelperGraphStatementKind FBlueprintHelperGraphSemanticIRUtils::ParseSt
 	if (Kind.Equals(TEXT("set"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Set;
 	if (Kind.Equals(TEXT("set_property"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::SetProperty;
 	if (Kind.Equals(TEXT("branch"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Branch;
+	if (Kind.Equals(TEXT("sequence"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Sequence;
 	if (Kind.Equals(TEXT("let"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Let;
 	if (Kind.Equals(TEXT("return"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Return;
 	return EBlueprintHelperGraphStatementKind::Unknown;
@@ -241,6 +242,8 @@ FString FBlueprintHelperGraphSemanticIRUtils::StatementPatternName(EBlueprintHel
 		return TEXT("set_property");
 	case EBlueprintHelperGraphStatementKind::Branch:
 		return TEXT("branch");
+	case EBlueprintHelperGraphStatementKind::Sequence:
+		return TEXT("sequence");
 	case EBlueprintHelperGraphStatementKind::Let:
 		return TEXT("let");
 	case EBlueprintHelperGraphStatementKind::Return:

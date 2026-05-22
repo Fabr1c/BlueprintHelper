@@ -20,7 +20,6 @@
 #include "Kismet/KismetTextLibrary.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "UObject/FieldIterator.h"
-#include "UObject/UObjectIterator.h"
 #include "UObject/UnrealType.h"
 
 namespace
@@ -189,54 +188,58 @@ FString FBlueprintHelperCallFunctionResolverUtils::NormalizeTypeToken(const FStr
 
 UClass* FBlueprintHelperCallFunctionResolverUtils::ResolveClassByTypeName(const FString& TypeName)
 {
-	const FString Query = NormalizeTypeToken(TypeName);
-	if (Query.IsEmpty())
+	const FString Trimmed = TypeName.TrimStartAndEnd();
+	if (Trimmed.IsEmpty())
 	{
 		return nullptr;
 	}
-
-	for (TObjectIterator<UClass> ClassIt; ClassIt; ++ClassIt)
+	if (UClass* DirectClass = FindObject<UClass>(nullptr, *Trimmed))
 	{
-		UClass* Class = *ClassIt;
-		if (!Class)
-		{
-			continue;
-		}
-
-		const FString ClassName = NormalizeTypeToken(Class->GetName());
-		const FString ClassCppName = NormalizeTypeToken(Class->GetPrefixCPP() + Class->GetName());
-		const FString ClassPath = NormalizeTypeToken(Class->GetPathName());
-		if (ClassName == Query || ClassCppName == Query || ClassPath == Query || ClassPath.EndsWith(TEXT(".") + Query))
-		{
-			return Class;
-		}
+		return DirectClass;
+	}
+	if (UClass* LoadedClass = LoadObject<UClass>(nullptr, *Trimmed))
+	{
+		return LoadedClass;
 	}
 	return nullptr;
 }
 
 UScriptStruct* FBlueprintHelperCallFunctionResolverUtils::ResolveStructByTypeName(const FString& TypeName)
 {
-	const FString Query = NormalizeTypeToken(TypeName);
-	if (Query.IsEmpty())
+	const FString Trimmed = TypeName.TrimStartAndEnd();
+	if (Trimmed.IsEmpty())
 	{
 		return nullptr;
 	}
-
-	for (TObjectIterator<UScriptStruct> StructIt; StructIt; ++StructIt)
+	if (UScriptStruct* DirectStruct = FindObject<UScriptStruct>(nullptr, *Trimmed))
 	{
-		UScriptStruct* Struct = *StructIt;
-		if (!Struct)
-		{
-			continue;
-		}
+		return DirectStruct;
+	}
+	if (UScriptStruct* LoadedStruct = LoadObject<UScriptStruct>(nullptr, *Trimmed))
+	{
+		return LoadedStruct;
+	}
 
-		const FString StructName = NormalizeTypeToken(Struct->GetName());
-		const FString StructCppName = NormalizeTypeToken(Struct->GetPrefixCPP() + Struct->GetName());
-		const FString StructPath = NormalizeTypeToken(Struct->GetPathName());
-		if (StructName == Query || StructCppName == Query || StructPath == Query || StructPath.EndsWith(TEXT(".") + Query))
-		{
-			return Struct;
-		}
+	const FString Query = NormalizeTypeToken(Trimmed);
+	if (Query == TEXT("vector"))
+	{
+		return TBaseStructure<FVector>::Get();
+	}
+	if (Query == TEXT("vector2d"))
+	{
+		return TBaseStructure<FVector2D>::Get();
+	}
+	if (Query == TEXT("rotator"))
+	{
+		return TBaseStructure<FRotator>::Get();
+	}
+	if (Query == TEXT("transform"))
+	{
+		return TBaseStructure<FTransform>::Get();
+	}
+	if (Query == TEXT("linearcolor") || Query == TEXT("color"))
+	{
+		return TBaseStructure<FLinearColor>::Get();
 	}
 	return nullptr;
 }
@@ -978,39 +981,6 @@ TArray<FBlueprintHelperCallFunctionCandidate> FBlueprintHelperCallFunctionResolv
 			AddCandidateForFunction(*FuncIt, Request, CandidateMap);
 		}
 	};
-
-	auto AddBlueprintFunctionLibraryFunctions = [&AddClassFunctions]()
-	{
-		UClass* SeedLibraries[] =
-		{
-			UKismetSystemLibrary::StaticClass(),
-			UKismetMathLibrary::StaticClass(),
-			UKismetStringLibrary::StaticClass(),
-			UKismetTextLibrary::StaticClass(),
-			UKismetArrayLibrary::StaticClass(),
-			UGameplayStatics::StaticClass()
-		};
-
-		for (UClass* Class : SeedLibraries)
-		{
-			AddClassFunctions(Class);
-		}
-
-		for (TObjectIterator<UClass> ClassIt; ClassIt; ++ClassIt)
-		{
-			UClass* Class = *ClassIt;
-			if (!Class
-				|| Class->HasAnyClassFlags(CLASS_Deprecated | CLASS_NewerVersionExists)
-				|| !Class->IsChildOf(UBlueprintFunctionLibrary::StaticClass()))
-			{
-				continue;
-			}
-
-			AddClassFunctions(Class);
-		}
-	};
-
-	AddBlueprintFunctionLibraryFunctions();
 
 	if (RequestedTargetClass)
 	{
