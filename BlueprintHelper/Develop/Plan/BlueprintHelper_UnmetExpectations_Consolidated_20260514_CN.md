@@ -21,6 +21,7 @@ This document is the current TODO ledger for `Develop/Plan`. It supersedes the o
 | P1 | ReviewPanel v2 follow-up edge cases | Watch | `BlueprintHelper_ReviewPanelV2_ArchitecturePlan_20260519_CN.md` | No current blocker. If a new issue appears, diagnose via DebugBundle and fix through Store/PanelState/SurfaceView/RowBinding boundaries. |
 | P1 | CLI daemon + lightweight bh.exe/shim cold-start elimination | Open / needs plan | `../v0.5.0/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN.md` | Create a focused design/implementation plan for `bh.exe/shim -> daemon -> Bridge`, then validate ordinary `bh task execute` and `bh bridge ping` route through daemon without per-command Node cold start; target end-to-end warm latency is 10ms-level for lightweight commands. |
 | P1 | CLI daemon + lightweight `bh.exe`/shim cold-start elimination | Open / needs plan | `../v0.5.0/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN.md` | Create a focused design/implementation plan for `bh daemon` plus lightweight `bh.exe`/shim routing ordinary `bh task execute` and `bh bridge ping` through the daemon; validate post-daemon command latency without Node cold start and preserve CLI fallback behavior. |
+| P2 | ActionResolution evidence cache generalization | Future | `../v0.5.0/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN.md` | Promote the existing CallFunction-style preview-to-execute resolved evidence reuse to all Spawner-Oriented clusters. Longer-term cross-TaskSpec/background indexing is explicitly deferred until runtime performance requires Rider-style non-blocking cache indexes and memory cost is accepted. |
 | P2 | Function scope and Local Variables Review | Open / needs plan | Historical TODO only | Create a focused current plan before implementation; do not reopen old ReviewPanel v1 documents as active guidance. |
 | P2 | Baseline semantic snapshot retention / compaction | Future | Archived migration record under `../v0.4.3/ArchivedReference/RetiredReviewDebugDocs_20260518/` | Decide retention/compaction policy separately. Core semantic target snapshot path is already complete. |
 | P2 | Historical document pointer cleanup | Partial | `../v0.4.4/ArchivedReference/CompletedDevelopDocs_20260519/` | Most completed docs are archived. Refresh only if a live document still points to a moved file as if it were active. |
@@ -45,6 +46,7 @@ This document is the current TODO ledger for `Develop/Plan`. It supersedes the o
 - Settings runtime consumption plan: `BlueprintHelper_SettingsRuntimeConsumption_ImplementationPlan_20260520_CN.md`
 - CLI operational tips: `BlueprintHelper_CLI_Tips_20260514_CN.md`
 - v0.5.0 performance follow-up: `../v0.5.0/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN.md`
+- ActionResolution evidence cache follow-up: `../v0.5.0/BlueprintHelper_v0.5.0_TaskSpecExecution_PerformanceOptimization_20260519_CN.md`
 
 ## Operating Notes
 

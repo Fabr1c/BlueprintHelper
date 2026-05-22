@@ -297,6 +297,9 @@ bool FBlueprintHelperActionContextBundleProjectionSourceContractTest::RunTest(co
 			TEXT("OutRequest.ClusterKind"),
 			TEXT("OutRequest.Blueprint"),
 			TEXT("OutRequest.TargetGraph"),
+			TEXT("OutRequest.StatementId"),
+			TEXT("OutRequest.ProjectedContextHash"),
+			TEXT("OutRequest.SemanticConstraintsHash"),
 			TEXT("OutRequest.Semantic")
 		});
 

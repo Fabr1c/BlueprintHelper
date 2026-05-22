@@ -370,3 +370,27 @@ ActionContextDemand / Snapshot DTO
 ```
 
 测试层只负责约束边界：当检测到 ActionContext 源码内出现硬编码策略默认值时，应失败并提示该值必须迁移到统一 settings service / runtime consumption 边界。
+
+## 10.2 Four Spawner Cluster Context Consumption Rule (2026-05-22)
+
+Four Spawner-Oriented clusters must consume ActionContext only through the projected `FBlueprintHelperActionResolutionRequest` and `FBlueprintHelperActionClusterContextView` emitted by ActionContextPipeline.
+
+Allowed in clusters:
+- Read `Semantic`, `StatementId`, `ProjectedContextHash`, `SemanticConstraintsHash`, and `ContextEvidence`.
+- Query UE ActionDatabase / BlueprintActionFilter / NodeSpawner-family APIs using the projected graph and semantic context.
+- Return resolved spawner evidence, ambiguity diagnostics, or explicit missing-context diagnostics.
+
+Forbidden in clusters:
+- Build `ActionContextDemand`, `Snapshot`, `Inference`, `ResolvedActionContextBundle`, or `ActionContextScope`.
+- Re-read TaskSpec or rebuild target/type inference locally.
+- Resolve a successful action without a valid UE `UBlueprintNodeSpawner` or documented dedicated FragmentBuilder boundary.
+- Silently rerun preview during execute.
+
+Execute path rule:
+- Execute does not re-preview. If preview-time context or future evidence is stale, missing, or unresolvable, execute must return explicit diagnostics and stop.
+- Missing context must be reported as `InvalidRequest` / needs-more-semantic-context style diagnostics, never repaired inside a cluster.
+
+Implementation note 2026-05-22:
+- `call` stable-id fast path using direct `FindFunctionByName` was removed because it could return a `UFunction` without valid `NodeSpawner` evidence.
+- `FieldVariableActionResolver` now consumes projected `field_name` evidence for candidate selection and only uses UE property lookup to rebuild the `UBlueprintVariableNodeSpawner`.
+- Branch/return control boundary checks now consume the existing `ActionContextScope` projection instead of constructing identity-free local requests.

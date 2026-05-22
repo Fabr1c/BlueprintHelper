@@ -17,66 +17,6 @@
 #include "UObject/UnrealType.h"
 #include "UObject/UObjectIterator.h"
 
-static bool TryResolveStableIdFast(
-	const FBlueprintHelperCallFunctionResolveRequest& Request,
-	const FString& Query,
-	FBlueprintHelperCallFunctionResolveResult& OutResult)
-{
-	FString OwnerClassPath;
-	FString FunctionName;
-	if (!FBlueprintHelperCallFunctionResolver::TryParseQualifiedQuery(Query, OwnerClassPath, FunctionName) ||
-		!OwnerClassPath.StartsWith(TEXT("/")))
-	{
-		return false;
-	}
-
-	UClass* OwnerClass = FindObject<UClass>(nullptr, *OwnerClassPath);
-	if (!OwnerClass)
-	{
-		OwnerClass = LoadObject<UClass>(nullptr, *OwnerClassPath);
-	}
-	if (!OwnerClass)
-	{
-		OwnerClass = FBlueprintHelperCallFunctionResolverUtils::ResolveClassByTypeName(OwnerClassPath);
-	}
-	if (!OwnerClass)
-	{
-		return false;
-	}
-
-	UFunction* Function = OwnerClass->FindFunctionByName(FName(*FunctionName));
-	if (!Function)
-	{
-		return false;
-	}
-
-	TMap<FString, FBlueprintHelperCallFunctionCandidate> CandidateMap;
-	FBlueprintHelperCallFunctionResolverUtils::AddCandidateForFunction(Function, Request, CandidateMap);
-	FBlueprintHelperCallFunctionCandidate* Candidate = CandidateMap.Find(Query);
-	if (!Candidate)
-	{
-		return false;
-	}
-
-	Candidate->Score = 1000;
-	Candidate->MatchReason = TEXT("stable_id_exact");
-	Candidate->MismatchReason =
-		FBlueprintHelperCallFunctionResolverUtils::DescribeCandidateMismatch(*Candidate, Request);
-	if (!Candidate->bGraphCompatible ||
-		!FBlueprintHelperCallFunctionResolverUtils::PassesMetadataFilters(*Candidate, Request))
-	{
-		return false;
-	}
-
-	TArray<FBlueprintHelperCallFunctionCandidate> Candidates;
-	Candidates.Add(*Candidate);
-	FBlueprintHelperCallFunctionResolverUtils::SetTopCandidates(OutResult, Candidates, Request.MaxCandidates);
-	OutResult.Status = EBlueprintHelperCallFunctionResolveStatus::Resolved;
-	OutResult.Selected = *Candidate;
-	OutResult.Message = FString::Printf(TEXT("call_function resolved stable id '%s'."), *Query);
-	return true;
-}
-
 FBlueprintHelperCallFunctionResolveResult FBlueprintHelperCallFunctionResolver::Resolve(
 	const FBlueprintHelperCallFunctionResolveRequest& Request)
 {
@@ -97,11 +37,6 @@ FBlueprintHelperCallFunctionResolveResult FBlueprintHelperCallFunctionResolver::
 		|| Request.AmbiguityPolicy.Equals(TEXT("best"), ESearchCase::IgnoreCase);
 	const FBlueprintHelperK2CallContext EffectiveContext =
 		FBlueprintHelperCallFunctionResolverUtils::BuildEffectiveContext(Request);
-
-	if (bQualifiedQuery && TryResolveStableIdFast(Request, Query, Result))
-	{
-		return Result;
-	}
 
 	TArray<FBlueprintHelperCallFunctionCandidate> Candidates = FBlueprintHelperCallFunctionResolverUtils::BuildCandidateUniverse(Request);
 	if (bQualifiedQuery && !FBlueprintHelperCallFunctionResolverUtils::HasOwnerCandidate(Candidates, QualifiedOwner))
@@ -201,7 +136,7 @@ FBlueprintHelperCallFunctionResolveResult FBlueprintHelperCallFunctionResolver::
 
 		Candidate.Score = Score;
 		Candidate.MatchReason = MatchReason;
-		if (Candidate.bGraphCompatible)
+		if (Candidate.bGraphCompatible && Candidate.NodeSpawner.IsValid())
 		{
 			ScoredCandidates.Add(Candidate);
 		}

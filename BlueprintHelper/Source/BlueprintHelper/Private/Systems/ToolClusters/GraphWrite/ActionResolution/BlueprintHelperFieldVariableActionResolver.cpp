@@ -8,6 +8,7 @@
 #include "K2Node_VariableGet.h"
 #include "K2Node_VariableSet.h"
 #include "Kismet2/BlueprintEditorUtils.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionClusterContextView.h"
 #include "UObject/UnrealType.h"
 
 namespace
@@ -249,12 +250,13 @@ bool FBlueprintHelperFieldVariableActionResolver::IsWritableSemanticKind(EBluepr
 }
 
 FBlueprintHelperActionResolutionResult FBlueprintHelperFieldVariableActionResolver::Resolve(
-	const FBlueprintHelperActionResolutionRequest& Request) const
+	const FBlueprintHelperActionResolutionRequest& Request,
+	const FBlueprintHelperActionClusterContextView& Context) const
 {
 	FBlueprintHelperActionResolutionResult Result;
 	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::FieldVariableAction;
 
-	if (!IsSupportedSemanticKind(Request.Semantic.Kind))
+	if (!IsSupportedSemanticKind(Context.GetSemantic().Kind))
 	{
 		Result.Status = EBlueprintHelperActionResolutionStatus::InvalidRequest;
 		Result.ErrorCode = TEXT("needs_more_semantic_context");
@@ -285,82 +287,83 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperFieldVariableActionResolv
 		? UK2Node_VariableSet::StaticClass()
 		: UK2Node_VariableGet::StaticClass();
 
-	TArray<FBlueprintHelperVariableActionCandidate> Candidates;
-	for (const FBPVariableDescription& Variable : Request.Blueprint->NewVariables)
+	const TMap<FString, FString>& Evidence = Context.GetEvidence();
+	FString FieldName = Evidence.FindRef(TEXT("field_name"));
+	if (FieldName.IsEmpty())
 	{
-		if (Variable.VarType.PinCategory == UEdGraphSchema_K2::PC_MCDelegate)
-		{
-			continue;
-		}
-
-		const int32 Score = ScoreVariableCandidate(Request, Variable);
-		if (Score == INDEX_NONE)
-		{
-			continue;
-		}
-
-		const FProperty* Property = FindVariableProperty(Request.Blueprint, Variable.VarName);
-		if (!Property)
-		{
-			continue;
-		}
-
-		UBlueprintVariableNodeSpawner* Spawner = UBlueprintVariableNodeSpawner::CreateFromMemberOrParam(
-			NodeClass,
-			Property);
-		if (!Spawner)
-		{
-			continue;
-		}
-
-		FBlueprintHelperVariableActionCandidate Candidate;
-		Candidate.Info = BuildCandidateInfo(Request, Variable, OwnerClass, NodeClass.Get(), Score);
-		Candidate.Spawner = Spawner;
-		Candidates.Add(MoveTemp(Candidate));
+		FieldName = !Request.Semantic.TargetPath.IsEmpty()
+			? Request.Semantic.TargetPath
+			: Request.Semantic.Query;
 	}
 
-	SortFieldVariableCandidates(Candidates);
-
-	const int32 CandidateLimit = FMath::Max(1, Request.MaxCandidates);
-	for (int32 Index = 0; Index < Candidates.Num() && Index < CandidateLimit; ++Index)
+	if (FieldName.TrimStartAndEnd().IsEmpty())
 	{
-		Result.CandidateActions.Add(Candidates[Index].Info);
+		Result.Status = EBlueprintHelperActionResolutionStatus::InvalidRequest;
+		Result.ErrorCode = TEXT("field_target_missing");
+		Result.Message = TEXT("Field variable action requires projected field_name evidence or semantic target.");
+		return Result;
 	}
 
-	if (Candidates.Num() == 0)
+	const FProperty* Property = FindVariableProperty(Request.Blueprint, FName(*FieldName));
+	if (!Property)
 	{
 		Result.Status = EBlueprintHelperActionResolutionStatus::NotFound;
-		Result.ErrorCode = TEXT("field_variable_action_not_found");
+		Result.ErrorCode = TEXT("field_action_unresolvable");
 		Result.Message = FString::Printf(
-			TEXT("Field variable action not found: semantic=%s query=%s target=%s."),
+			TEXT("Field variable action not found from projected context: semantic=%s field=%s query=%s target=%s."),
 			*FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.Semantic.Kind),
+			*FieldName,
 			*Request.Semantic.Query,
 			*Request.Semantic.TargetPath);
 		return Result;
 	}
 
-	const bool bHasUniqueTopCandidate =
-		Candidates.Num() == 1 || Candidates[0].Info.Score > Candidates[1].Info.Score;
-	if (!bHasUniqueTopCandidate)
+	UBlueprintVariableNodeSpawner* Spawner = UBlueprintVariableNodeSpawner::CreateFromMemberOrParam(
+		NodeClass,
+		Property);
+	if (!Spawner)
 	{
-		Result.Status = EBlueprintHelperActionResolutionStatus::Ambiguous;
-		Result.ErrorCode = TEXT("field_variable_action_ambiguous");
+		Result.Status = EBlueprintHelperActionResolutionStatus::NotFound;
+		Result.ErrorCode = TEXT("field_action_unresolvable");
 		Result.Message = FString::Printf(
-			TEXT("Field variable action is ambiguous: semantic=%s query=%s candidates=%d."),
+			TEXT("Field variable node spawner unavailable: semantic=%s field=%s."),
 			*FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.Semantic.Kind),
-			*Request.Semantic.Query,
-			Candidates.Num());
+			*FieldName);
 		return Result;
 	}
 
+	FBlueprintHelperCallFunctionCandidateInfo CandidateInfo;
+	CandidateInfo.StableId = FString::Printf(
+		TEXT("field_variable:%s:%s:%s"),
+		Request.Blueprint ? *Request.Blueprint->GetPathName() : TEXT("unknown_blueprint"),
+		*FieldName,
+		*FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.Semantic.Kind));
+	CandidateInfo.DisplayName = FieldName;
+	CandidateInfo.OwnerClassPath = !Evidence.FindRef(TEXT("field_owner_class")).IsEmpty()
+		? Evidence.FindRef(TEXT("field_owner_class"))
+		: (OwnerClass ? OwnerClass->GetPathName() : FString());
+	CandidateInfo.NativeFunctionName = FieldName;
+	CandidateInfo.Category = TEXT("field_variable");
+	CandidateInfo.NodeClassPath = NodeClass.Get() ? NodeClass->GetPathName() : FString();
+	CandidateInfo.MatchReason = FString::Printf(
+		TEXT("projected_context_evidence semantic=%s field=%s"),
+		*FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.Semantic.Kind),
+		*FieldName);
+	CandidateInfo.ReturnType = !Evidence.FindRef(TEXT("field_pin_category")).IsEmpty()
+		? Evidence.FindRef(TEXT("field_pin_category"))
+		: Property->GetCPPType();
+	CandidateInfo.TargetObjectPin = TEXT("self");
+	CandidateInfo.Score = 100;
+	CandidateInfo.bGraphCompatible = true;
+
 	Result.Status = EBlueprintHelperActionResolutionStatus::Resolved;
-	Result.SelectedStableId = Candidates[0].Info.StableId;
-	Result.SelectedSpawner = Candidates[0].Spawner;
+	Result.SelectedStableId = CandidateInfo.StableId;
+	Result.SelectedSpawner = Spawner;
 	Result.CandidateActions.Reset();
-	Result.CandidateActions.Add(Candidates[0].Info);
+	Result.CandidateActions.Add(CandidateInfo);
 	Result.Message = FString::Printf(
 		TEXT("Field variable action resolved: semantic=%s variable=%s."),
 		*FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.Semantic.Kind),
-		*Candidates[0].Info.DisplayName);
+		*FieldName);
 	return Result;
 }

@@ -10,6 +10,7 @@
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionNodeSpawnerAdapter.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextScope.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 
@@ -158,6 +159,8 @@ static void CollectExecOutputPins(UK2Node* Node, TArray<UEdGraphPin*>& OutPins)
 
 static bool RequireDedicatedControlBuilderBoundary(
 	UEdGraph* TargetGraph,
+	const FBlueprintHelperActionContextScope* ActionContextScope,
+	const FString& StatementContextId,
 	const FString& ControlKind,
 	const FString& FragmentId,
 	FString& OutError)
@@ -167,14 +170,35 @@ static bool RequireDedicatedControlBuilderBoundary(
 		OutError = TEXT("control fragment build failed: target graph is invalid.");
 		return false;
 	}
+	if (!ActionContextScope)
+	{
+		OutError = TEXT("control fragment build failed: action context scope is required.");
+		return false;
+	}
+	if (StatementContextId.TrimStartAndEnd().IsEmpty())
+	{
+		OutError = TEXT("control fragment build failed: statement context id is required.");
+		return false;
+	}
 
 	FBlueprintHelperActionResolutionRequest ActionRequest;
-	ActionRequest.ClusterKind = EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction;
-	ActionRequest.TargetGraph = TargetGraph;
-	ActionRequest.Blueprint = FBlueprintEditorUtils::FindBlueprintForGraph(TargetGraph);
-	ActionRequest.Semantic.Kind = EBlueprintHelperActionSemanticKind::Control;
-	ActionRequest.Semantic.Query = ControlKind;
-	ActionRequest.Semantic.TargetPath = FragmentId;
+	if (!ActionContextScope->TryBuildRequest(
+		StatementContextId,
+		FBlueprintEditorUtils::FindBlueprintForGraph(TargetGraph),
+		TargetGraph,
+		ActionRequest,
+		OutError))
+	{
+		return false;
+	}
+	if (ActionRequest.Semantic.Query.IsEmpty())
+	{
+		ActionRequest.Semantic.Query = ControlKind;
+	}
+	if (ActionRequest.Semantic.TargetPath.IsEmpty())
+	{
+		ActionRequest.Semantic.TargetPath = FragmentId;
+	}
 
 	const FBlueprintHelperActionResolutionResult ActionResult =
 		FBlueprintGraphWriteFacade::ResolveActionForGraph(ActionRequest);
@@ -460,7 +484,7 @@ bool FBlueprintHelperControlFragmentBuilder::BuildSequence(
 	OutError.Reset();
 
 	const FString CleanFragmentId = SanitizeFragmentIdPart(FragmentId);
-	if (!RequireDedicatedControlBuilderBoundary(TargetGraph, TEXT("sequence"), CleanFragmentId, OutError))
+	if (!RequireDedicatedControlBuilderBoundary(TargetGraph, nullptr, CleanFragmentId, TEXT("sequence"), CleanFragmentId, OutError))
 	{
 		return false;
 	}
@@ -488,6 +512,7 @@ bool FBlueprintHelperControlFragmentBuilder::BuildSequence(
 
 bool FBlueprintHelperControlFragmentBuilder::BuildBranch(
 	UEdGraph* TargetGraph,
+	const FBlueprintHelperActionContextScope* ActionContextScope,
 	const FBlueprintHelperGraphStatementIR& Statement,
 	FBlueprintHelperNodeFragment& OutFragment,
 	FString& OutError)
@@ -502,7 +527,8 @@ bool FBlueprintHelperControlFragmentBuilder::BuildBranch(
 	}
 
 	const FString FragmentId = ResolveStatementFragmentId(Statement);
-	if (!RequireDedicatedControlBuilderBoundary(TargetGraph, TEXT("branch"), FragmentId, OutError))
+	const FString StatementContextId = !Statement.StatementId.IsEmpty() ? Statement.StatementId : Statement.Path;
+	if (!RequireDedicatedControlBuilderBoundary(TargetGraph, ActionContextScope, StatementContextId, TEXT("branch"), FragmentId, OutError))
 	{
 		return false;
 	}
@@ -530,6 +556,7 @@ bool FBlueprintHelperControlFragmentBuilder::BuildBranch(
 
 bool FBlueprintHelperControlFragmentBuilder::BuildReturn(
 	UEdGraph* TargetGraph,
+	const FBlueprintHelperActionContextScope* ActionContextScope,
 	const FBlueprintHelperGraphStatementIR& Statement,
 	FBlueprintHelperNodeFragment& OutFragment,
 	FString& OutError)
@@ -544,7 +571,8 @@ bool FBlueprintHelperControlFragmentBuilder::BuildReturn(
 	}
 
 	const FString FragmentId = ResolveStatementFragmentId(Statement);
-	if (!RequireDedicatedControlBuilderBoundary(TargetGraph, TEXT("return"), FragmentId, OutError))
+	const FString StatementContextId = !Statement.StatementId.IsEmpty() ? Statement.StatementId : Statement.Path;
+	if (!RequireDedicatedControlBuilderBoundary(TargetGraph, ActionContextScope, StatementContextId, TEXT("return"), FragmentId, OutError))
 	{
 		return false;
 	}
@@ -576,6 +604,7 @@ bool FBlueprintHelperControlFragmentBuilder::BuildReturn(
 
 bool FBlueprintHelperControlFragmentBuilder::BuildStatement(
 	UEdGraph* TargetGraph,
+	const FBlueprintHelperActionContextScope* ActionContextScope,
 	const FBlueprintHelperGraphStatementIR& Statement,
 	FBlueprintHelperNodeFragment& OutFragment,
 	FString& OutError)
@@ -583,9 +612,9 @@ bool FBlueprintHelperControlFragmentBuilder::BuildStatement(
 	switch (Statement.Kind)
 	{
 	case EBlueprintHelperGraphStatementKind::Branch:
-		return BuildBranch(TargetGraph, Statement, OutFragment, OutError);
+		return BuildBranch(TargetGraph, ActionContextScope, Statement, OutFragment, OutError);
 	case EBlueprintHelperGraphStatementKind::Return:
-		return BuildReturn(TargetGraph, Statement, OutFragment, OutError);
+		return BuildReturn(TargetGraph, ActionContextScope, Statement, OutFragment, OutError);
 	default:
 		OutFragment = FBlueprintHelperNodeFragment();
 		OutError = FString::Printf(

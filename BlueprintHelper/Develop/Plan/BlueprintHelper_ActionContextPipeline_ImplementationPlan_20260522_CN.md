@@ -1237,12 +1237,33 @@ Notes:
 - [x] Expanded `ContextDemand` / `ResolvedActionContext` coverage for defaults, argument type hints, pin type hints, expected return hints, target object hints, and binding object evidence.
 - [x] Fixed graph-scope demand normalization: field-variable semantics now use field target/property as query; op uses operator token; construct/deconstruct use TypeName.
 - [x] Full-line preview smoke for `call/get/set/op/construct/deconstruct/select` passed after graph-scope demand normalization.
-- [o] Execute smoke reached real Blueprint compile and exposed an existing `deconstruct Vector` native break selection gap. A generic native `UFunction -> UBlueprintFunctionNodeSpawner` path was added for `HasNativeMake/HasNativeBreak` metadata, avoiding a Vector-only hardcoded branch.
+- [x] Execute smoke reached real Blueprint compile and exposed an existing `deconstruct Vector` native break selection gap. A generic native `UFunction -> UBlueprintFunctionNodeSpawner` path was added for `HasNativeMake/HasNativeBreak` metadata, avoiding a Vector-only hardcoded branch.
+- [x] After recompilation, the saved full-line graphwrite TaskSpec passed `preview` and `execute` against the running editor.
+
+Validation evidence:
+
+```json
+{
+  "preview": {
+    "status": "preview_passed",
+    "warnings": 0,
+    "errors": 0,
+    "modified": false
+  },
+  "execute": {
+    "status": "executed",
+    "warnings": 0,
+    "errors": 0,
+    "modified": true
+  },
+  "task_spec": "D:\\UEProjects\\Template\\Saved\\BlueprintHelper\\CodexSmoke\\ActionContextPipeline_20260522_025331\\full_graph_20260522_025331.json",
+  "preview_result": "D:\\UEProjects\\Template\\Saved\\BlueprintHelper\\Cli\\preview_1779390661344_0001\\result.json",
+  "execute_result": "D:\\UEProjects\\Template\\Saved\\BlueprintHelper\\Cli\\task_B2EAD85344B2BAE367EF60BD961DD1F2\\result.json"
+}
+```
 
 距离期望差距：
-- [ ] Final UE build/link after the native function spawner fix is blocked because the editor process still holds `UnrealEditor-BlueprintHelper.dll`.
-- [ ] `bh close_editor` returned `completed`, but `UnrealEditor.exe` stayed alive and continued locking the DLL. `Stop-Process` failed with `Access is denied`, so this session cannot complete the required final compile/restart/execute loop.
-- [ ] After the editor process is released, rerun UE build, restart editor, and rerun the saved full-line smoke: `D:\UEProjects\Template\Saved\BlueprintHelper\CodexSmoke\ActionContextPipeline_20260522_025331\full_graph_20260522_025331.json`.
+- [x] 当前已无 ActionContextPipeline 计划内阻塞项。后续工作应转入下一簇能力或更细粒度覆盖测试，不再作为本计划未完成项记录。
 
 阻塞内容：
-- Editor lifecycle blocker: `UnrealEditor.exe` PID 16504 remains alive after close requests and prevents relinking `BlueprintHelper\Binaries\Win64\UnrealEditor-BlueprintHelper.dll`.
+- 无

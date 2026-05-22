@@ -1,22 +1,25 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperFieldVariableActionCluster.h"
 
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionClusterContextView.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperFieldVariableActionResolver.h"
 
-FBlueprintHelperActionResolutionResult FBlueprintHelperFieldVariableActionCluster::Resolve(const FBlueprintHelperActionResolutionRequest& Request)
+FBlueprintHelperActionResolutionResult FBlueprintHelperFieldVariableActionCluster::Resolve(
+	const FBlueprintHelperActionResolutionRequest& Request,
+	const FBlueprintHelperActionClusterContextView& Context)
 {
-	if (!OwnsSemanticKind(Request.Semantic.Kind))
+	if (!OwnsSemanticKind(Context.GetSemantic().Kind))
 	{
 		return MakeUnsupportedIntentResult(Request);
 	}
 
-	if (Request.Semantic.Kind == EBlueprintHelperActionSemanticKind::GetProperty
-		|| Request.Semantic.Kind == EBlueprintHelperActionSemanticKind::SetProperty)
+	if (Context.GetSemantic().Kind == EBlueprintHelperActionSemanticKind::GetProperty
+		|| Context.GetSemantic().Kind == EBlueprintHelperActionSemanticKind::SetProperty)
 	{
 		return MakeNeedsMoreSemanticContextResult(Request);
 	}
 
 	const FBlueprintHelperFieldVariableActionResolver Resolver;
-	return Resolver.Resolve(Request);
+	return Resolver.Resolve(Request, Context);
 }
 
 bool FBlueprintHelperFieldVariableActionCluster::OwnsSemanticKind(EBlueprintHelperActionSemanticKind Kind)

@@ -6,23 +6,24 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericAssetStructControlActionCluster.h"
 
 FBlueprintHelperActionResolutionResult FBlueprintHelperSpawnerClusterResolver::Resolve(
-	const FBlueprintHelperActionResolutionRequest& Request)
+	const FBlueprintHelperActionResolutionRequest& Request,
+	const FBlueprintHelperActionClusterContextView& Context)
 {
 	switch (Request.ClusterKind)
 	{
 	case EBlueprintHelperSpawnerClusterKind::FunctionAction:
-		return FBlueprintHelperFunctionActionCluster::Resolve(Request);
+		return FBlueprintHelperFunctionActionCluster::Resolve(Request, Context);
 	case EBlueprintHelperSpawnerClusterKind::FieldVariableAction:
-		return FBlueprintHelperFieldVariableActionCluster::Resolve(Request);
+		return FBlueprintHelperFieldVariableActionCluster::Resolve(Request, Context);
 	case EBlueprintHelperSpawnerClusterKind::EventDelegateAction:
-		return FBlueprintHelperEventDelegateActionCluster::Resolve(Request);
+		return FBlueprintHelperEventDelegateActionCluster::Resolve(Request, Context);
 	case EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction:
-		return FBlueprintHelperGenericAssetStructControlActionCluster::Resolve(Request);
+		return FBlueprintHelperGenericAssetStructControlActionCluster::Resolve(Request, Context);
 	default:
 		FBlueprintHelperActionResolutionResult Result;
-		Result.Status = EBlueprintHelperActionResolutionStatus::UnsupportedIntent;
+		Result.Status = EBlueprintHelperActionResolutionStatus::InvalidRequest;
 		Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::Unknown;
-		Result.ErrorCode = TEXT("unsupported_spawner_cluster");
+		Result.ErrorCode = TEXT("unknown_spawner_cluster");
 		Result.Message = FString::Printf(
 			TEXT("ActionResolution does not have a resolver for cluster '%s' with semantic '%s'."),
 			*FBlueprintHelperActionResolutionCore::ClusterKindToString(Request.ClusterKind),

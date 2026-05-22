@@ -1,8 +1,12 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperEventDelegateActionCluster.h"
 
-FBlueprintHelperActionResolutionResult FBlueprintHelperEventDelegateActionCluster::Resolve(const FBlueprintHelperActionResolutionRequest& Request)
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionClusterContextView.h"
+
+FBlueprintHelperActionResolutionResult FBlueprintHelperEventDelegateActionCluster::Resolve(
+	const FBlueprintHelperActionResolutionRequest& Request,
+	const FBlueprintHelperActionClusterContextView& Context)
 {
-	return OwnsSemanticKind(Request.Semantic.Kind)
+	return OwnsSemanticKind(Context.GetSemantic().Kind)
 		? MakeNeedsMoreSemanticContextResult(Request)
 		: MakeUnsupportedIntentResult(Request);
 }
