@@ -13,6 +13,37 @@ static FString MakePromotableOperatorStableId(FName OpName)
 	return FString::Printf(TEXT("promotable_operator:%s"), *OpName.ToString());
 }
 
+static FString GetOperatorTokenFromContext(const FBlueprintHelperActionClusterContextView& Context)
+{
+	const FString SemanticQuery = Context.GetSemantic().Query.TrimStartAndEnd();
+	if (!SemanticQuery.IsEmpty())
+	{
+		return SemanticQuery;
+	}
+
+	static const TCHAR* EvidenceKeys[] =
+	{
+		TEXT("operator_token"),
+		TEXT("operator"),
+		TEXT("op"),
+		TEXT("op_name")
+	};
+
+	for (const TCHAR* EvidenceKey : EvidenceKeys)
+	{
+		if (const FString* EvidenceValue = Context.GetRequest().ContextEvidence.Find(EvidenceKey))
+		{
+			const FString Trimmed = EvidenceValue->TrimStartAndEnd();
+			if (!Trimmed.IsEmpty())
+			{
+				return Trimmed;
+			}
+		}
+	}
+
+	return FString();
+}
+
 static FBlueprintHelperCallFunctionCandidateInfo MakePromotableOperatorCandidateInfo(
 	FName OpName,
 	UBlueprintFunctionNodeSpawner* Spawner)
@@ -47,11 +78,17 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperOperatorActionResolver::R
 	}
 
 	FName OpName = NAME_None;
-	if (!TryMapOperatorTokenToPromotionName(Context.GetSemantic().Query, OpName))
+	const FString OperatorToken = GetOperatorTokenFromContext(Context);
+	if (OperatorToken.IsEmpty())
+	{
+		return MakeInvalidRequestResult(TEXT("operator_context_missing: Semantic.Query or ContextEvidence.operator_token is required."));
+	}
+
+	if (!TryMapOperatorTokenToPromotionName(OperatorToken, OpName))
 	{
 		return MakeInvalidRequestResult(FString::Printf(
 			TEXT("Unsupported operator token '%s'. Supported tokens map to UE type promotion operator names."),
-			*Context.GetSemantic().Query));
+			*OperatorToken));
 	}
 
 	UBlueprintFunctionNodeSpawner* Spawner = FindPromotableOperatorSpawner(OpName);
@@ -62,7 +99,7 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperOperatorActionResolver::R
 			*OpName.ToString()));
 	}
 
-	return MakePromotableOperatorResult(Request, OpName, Spawner);
+	return MakePromotableOperatorResult(Request, OperatorToken, OpName, Spawner);
 }
 
 bool FBlueprintHelperOperatorActionResolver::TryMapOperatorTokenToPromotionName(
@@ -141,6 +178,7 @@ UBlueprintFunctionNodeSpawner* FBlueprintHelperOperatorActionResolver::FindPromo
 
 FBlueprintHelperActionResolutionResult FBlueprintHelperOperatorActionResolver::MakePromotableOperatorResult(
 	const FBlueprintHelperActionResolutionRequest& Request,
+	const FString& OperatorToken,
 	FName OpName,
 	UBlueprintFunctionNodeSpawner* Spawner)
 {
@@ -148,9 +186,9 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperOperatorActionResolver::M
 	Result.Status = EBlueprintHelperActionResolutionStatus::Resolved;
 	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::FunctionAction;
 	Result.Message = FString::Printf(
-		TEXT("Resolved UE promotable operator '%s' for token '%s'."),
+		TEXT("Resolved UE promotable operator '%s' for token '%s' using FunctionActionCluster type-promotion evidence."),
 		*OpName.ToString(),
-		*Request.Semantic.Query.TrimStartAndEnd());
+		*OperatorToken.TrimStartAndEnd());
 	Result.SelectedStableId = MakePromotableOperatorStableId(OpName);
 	Result.SelectedSpawner = Spawner;
 	Result.CandidateActions.Add(MakePromotableOperatorCandidateInfo(OpName, Spawner));

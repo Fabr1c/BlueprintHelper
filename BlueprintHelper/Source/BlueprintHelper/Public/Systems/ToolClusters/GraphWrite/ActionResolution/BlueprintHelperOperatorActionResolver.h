@@ -18,6 +18,7 @@ private:
 	static UBlueprintFunctionNodeSpawner* FindPromotableOperatorSpawner(FName OpName);
 	static FBlueprintHelperActionResolutionResult MakePromotableOperatorResult(
 		const FBlueprintHelperActionResolutionRequest& Request,
+		const FString& OperatorToken,
 		FName OpName,
 		UBlueprintFunctionNodeSpawner* Spawner);
 	static FBlueprintHelperActionResolutionResult MakeInvalidRequestResult(const FString& Message);

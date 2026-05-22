@@ -669,3 +669,29 @@ Suggested commit message shape:
 1. 四个 Spawner-Oriented Cluster 改为消费稳定 projected context
 2. execute 阶段保持唯一路径，不提供重新 preview 分支
 ```
+
+---
+
+## Progress Update 2026-05-22 - set_property/op/generic/event boundary pass
+
+- [x] `set_property` graph-body FragmentDAG emission now resolves through `FieldVariableActionCluster` and invokes the selected UE `NodeSpawner` through `FBlueprintHelperActionNodeSpawnerAdapter`.
+- [x] `FieldVariableActionCluster` now allows `get_property` / `set_property` to enter the same field-variable resolver path as `get` / `set`; simple property access uses `Target` / `PropertyPath` to shrink the field search scope instead of creating a separate ad-hoc handler.
+- [x] `op` now consumes operator intent from `Semantic.Query` first, then projected `ContextEvidence.operator_token/operator/op/op_name`; missing operator context returns explicit `operator_context_missing`.
+- [x] `op` remains a UE type-promotion path through `FTypePromotion::GetOperatorSpawner`; it is not represented as a pseudo `call`.
+- [x] Generic construct/deconstruct direct MakeStruct/BreakStruct creation is now labeled as a dedicated `GenericAssetStructControl` boundary in candidate evidence and result messages.
+- [x] `EventDelegateActionCluster` now resolves custom `event` semantics through `UBlueprintEventNodeSpawner` when an event name is projected.
+- [x] `EventDelegateActionCluster` now returns specific diagnostics for missing `component_bound_event` and `bind` projected evidence instead of the previous generic `needs_more_semantic_context`.
+- [x] Compile passed with `Build.bat TemplateEditor Win64 Development`.
+- [x] Full graphwrite preview passed for `D:/UEProjects/Template/Saved/BlueprintHelper/CodexSmoke/ActionContextPipeline_20260522_025331/full_graph_20260522_025331.json`.
+- [x] Full graphwrite execute passed for the same TaskSpec.
+
+距离期望差距：
+
+- [ ] `set_property` is migrated for simple graph-body field/property writes. Complex object-path or struct-member writes still need a composed DAG path once the schema carries enough typed target/member evidence.
+- [ ] `EventDelegateActionCluster` still does not fully resolve `component_bound_event` or `bind`; the ActionContextPipeline must first project component name/class, delegate owner/property, and signature evidence.
+- [ ] Generic direct MakeStruct/BreakStruct remains a deliberate dedicated boundary because UE ActionDatabase cannot always express the operation through FunctionAction. It is now explicitly marked, but should stay narrow and covered by tests.
+- [ ] The full graphwrite smoke covers the current P0-P3 graphwrite path, but not the missing component-bound/bind delegate evidence path.
+
+阻塞内容：
+
+- `component_bound_event` / `bind` completion is blocked on projected delegate/component evidence fields, not on `EventDelegateActionCluster` dispatch itself.

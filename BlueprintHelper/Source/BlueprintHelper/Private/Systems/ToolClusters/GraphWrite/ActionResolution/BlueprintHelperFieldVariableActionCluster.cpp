@@ -12,12 +12,6 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperFieldVariableActionCluste
 		return MakeUnsupportedIntentResult(Request);
 	}
 
-	if (Context.GetSemantic().Kind == EBlueprintHelperActionSemanticKind::GetProperty
-		|| Context.GetSemantic().Kind == EBlueprintHelperActionSemanticKind::SetProperty)
-	{
-		return MakeNeedsMoreSemanticContextResult(Request);
-	}
-
 	const FBlueprintHelperFieldVariableActionResolver Resolver;
 	return Resolver.Resolve(Request, Context);
 }
