@@ -1,9 +1,9 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
+#include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphParsedTypes.h"
 
-class BLUEPRINTHELPER_API FBlueprintGraphJsonParser
+class FBlueprintGraphJsonParser
 {
 public:
 	static EParsedBlueprintNodeType ResolveNodeType(const TSharedPtr<FJsonObject>& NodeObject);

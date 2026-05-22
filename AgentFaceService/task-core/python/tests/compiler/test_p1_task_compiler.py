@@ -100,8 +100,8 @@ def make_composite_physics_door_spec(**overrides):
                         "schema": "BlueprintLogicSpec.v1",
                         "statements": [
                             {
-                                "kind": "set_member_variable",
-                                "name": "bDoorOpen",
+                                "kind": "set",
+                                "target": "bDoorOpen",
                                 "value": {
                                     "kind": "literal",
                                     "value_type": "bool",
@@ -109,8 +109,8 @@ def make_composite_physics_door_spec(**overrides):
                                 },
                             },
                             {
-                                "kind": "call_function",
-                                "name": "DoorMesh.AddAngularImpulseInDegrees",
+                                "kind": "call",
+                                "target": "DoorMesh.AddAngularImpulseInDegrees",
                                 "args": {
                                     "VelChange": {
                                         "kind": "literal",

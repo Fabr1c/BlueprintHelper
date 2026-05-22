@@ -33,8 +33,8 @@ def make_task_spec(**overrides):
                         "schema": "BlueprintLogicSpec.v1",
                         "statements": [
                             {
-                                "kind": "call_function",
-                                "name": "PrintString",
+                                "kind": "call",
+                                "target": "PrintString",
                                 "args": {
                                     "InString": {
                                         "kind": "literal",
@@ -297,13 +297,15 @@ class GraphWriteAppendCompilerTests(unittest.TestCase):
                             "entry_type": "custom_event",
                             "name": "ToggleDoor",
                             "body": {
-                                "schema": "BlueprintLogicSpec.v1",
+                                "schema": "BlueprintLogicSpec.v2",
                                 "statements": [
                                     {
-                                        "kind": "call_function",
-                                        "name": "PrintString",
+                                        "id": "ToggleDoor_stmt_1",
+                                        "kind": "call",
+                                        "target": "PrintString",
                                         "args": {
                                             "InString": {
+                                                "id": "ToggleDoor_stmt_1_arg_InString",
                                                 "kind": "literal",
                                                 "value_type": "string",
                                                 "value": "hello",
@@ -361,8 +363,8 @@ class GraphWriteAppendCompilerTests(unittest.TestCase):
                         "schema": "BlueprintLogicSpec.v1",
                         "statements": [
                             {
-                                "kind": "call_function",
-                                "name": "PrintString",
+                                "kind": "call",
+                                "target": "PrintString",
                                 "args": {
                                     "InString": {
                                         "kind": "literal",
@@ -381,8 +383,8 @@ class GraphWriteAppendCompilerTests(unittest.TestCase):
                         "schema": "BlueprintLogicSpec.v1",
                         "statements": [
                             {
-                                "kind": "set_member_variable",
-                                "name": "bDoorOpen",
+                                "kind": "set",
+                                "target": "bDoorOpen",
                                 "value": {
                                     "kind": "literal",
                                     "value_type": "bool",
@@ -471,8 +473,8 @@ class GraphWriteAppendCompilerTests(unittest.TestCase):
                     "schema": "BlueprintLogicSpec.v1",
                     "statements": [
                         {
-                            "kind": "call_function",
-                            "name": "PrintString",
+                            "kind": "call",
+                            "target": "PrintString",
                             "args": {
                                 "InString": {
                                     "kind": "literal",

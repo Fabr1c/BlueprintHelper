@@ -60,8 +60,8 @@ function makeTaskSpec(overrides: Record<string, unknown> = {}) {
             schema: 'BlueprintLogicSpec.v1',
             statements: [
               {
-                kind: 'call_function',
-                name: 'PrintString',
+                kind: 'call',
+                target: 'PrintString',
                 args: {
                   InString: {
                     kind: 'literal',

@@ -228,11 +228,11 @@ void SHelperMainWidget::OnUnresolvedSelectionChanged(TSharedPtr<FUnresolvedNodeI
 
 	if (FunctionSearchBox.IsValid())
 	{
-		FunctionSearchBox->SetText(FText::FromString(Item->NodeData.FunctionName));
+		FunctionSearchBox->SetText(FText::FromString(Item->DisplayText));
 	}
 
-	OnSearchTextChanged(FText::FromString(Item->NodeData.FunctionName));
-	SetStatusMessage(FString::Printf(TEXT("已选择未匹配节点：%s"), *Item->NodeData.FunctionName));
+	OnSearchTextChanged(FText::FromString(Item->DisplayText));
+	SetStatusMessage(FString::Printf(TEXT("已选择未匹配节点：%s"), *Item->DisplayText));
 }
 
 FReply SHelperMainWidget::OnParseClipboardClicked()

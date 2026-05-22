@@ -254,7 +254,7 @@ FBlueprintHelperImportResult FBlueprintHelperImportService::Import(const FBluepr
 		if (Item.IsValid())
 		{
 			Result.UnresolvedNodeSummaries.Add(
-				FString::Printf(TEXT("%s: %s"), *Item->NodeData.FunctionName, *Item->Reason));
+				FString::Printf(TEXT("%s: %s"), *Item->DisplayText, *Item->Reason));
 		}
 	}
 

@@ -177,8 +177,8 @@ class P2TaskCompilerTests(unittest.TestCase):
                 "body": {
                     "schema": "BlueprintLogicSpec.v1",
                     "statements": [{
-                        "kind": "call_function",
-                        "name": "PrintString",
+                        "kind": "call",
+                        "target": "PrintString",
                         "args": {
                             "InString": {
                                 "kind": "literal",

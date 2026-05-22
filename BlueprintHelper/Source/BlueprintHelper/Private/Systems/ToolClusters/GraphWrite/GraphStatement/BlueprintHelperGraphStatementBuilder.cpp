@@ -215,35 +215,10 @@ static bool TryBuildProjectedActionRequestFromContext(
 			OutError);
 	}
 
-	FBlueprintHelperActionContextScope LocalScope;
-	const FBlueprintHelperActionContextRevisionToken Revision =
-		FBlueprintHelperActionContextScope::MakeRevision(
-			Blueprint,
-			TargetGraph,
-			ContextDemand.StatementId,
-			FString::Printf(
-				TEXT("%s:%s"),
-				TargetGraph ? *TargetGraph->GetPathName() : TEXT(""),
-				*ContextDemand.StatementId));
-	FString BuildError;
-	if (!FBlueprintHelperActionContextScope::Build(
-		Blueprint,
-		TargetGraph,
-		ContextDemands,
-		Revision,
-		LocalScope,
-		BuildError))
-	{
-		OutError = BuildError;
-		return false;
-	}
-
-	return LocalScope.TryBuildRequest(
-		ContextDemand.StatementId,
-		Blueprint,
-		TargetGraph,
-		OutRequest,
-		OutError);
+	OutError = FString::Printf(
+		TEXT("action_context_scope_required: %s"),
+		*ContextDemand.StatementId);
+	return false;
 }
 
 static void ApplyCallActionRequestOverrides(

@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
-  TASK_CONTEXT_PACK_SCHEMA,
   TASK_PLAN_SCHEMA,
   TASK_RUN_JOURNAL_SCHEMA,
   TASK_SPEC_SCHEMA,
@@ -21,13 +20,11 @@ describe('TaskSpec/TaskPlan protocol contract', () => {
     assert.equal(TASK_PROTOCOL_CONTRACT_V1.schema, TASK_PROTOCOL_CONTRACT_VERSION);
     assert.equal(TASK_PROTOCOL_CONTRACT_V1.task_spec_schema, TASK_SPEC_SCHEMA);
     assert.equal(TASK_PROTOCOL_CONTRACT_V1.task_plan_schema, TASK_PLAN_SCHEMA);
-    assert.equal(TASK_PROTOCOL_CONTRACT_V1.context_pack_schema, TASK_CONTEXT_PACK_SCHEMA);
     assert.equal(TASK_PROTOCOL_CONTRACT_V1.task_run_journal_schema, TASK_RUN_JOURNAL_SCHEMA);
 
     assert.deepEqual(TASK_PROTOCOL_CONTRACT_V1.agent_facing_tools, [
       'blueprinthelper_get_runtime_profile',
       'blueprinthelper_diagnostics',
-      'blueprinthelper_read_task_context',
       'blueprinthelper_preview_task',
       'blueprinthelper_execute_task',
       'blueprinthelper_get_task_result',
@@ -87,17 +84,16 @@ describe('TaskSpec/TaskPlan protocol contract', () => {
         'merge_owned_graph',
       ],
       entry_types: ['custom_event'],
-      statement_kinds: ['call', 'set', 'branch', 'let', 'return'],
-      legacy_statement_kinds: ['call_function', 'set_member_variable'],
+      statement_kinds: ['call', 'set', 'set_property', 'let', 'control'],
       expression_kinds: [
         'literal',
         'get',
         'get_property',
-        'ref',
         'call',
-        'compare',
+        'op',
+        'construct',
+        'deconstruct',
         'select',
-        'make_struct',
       ],
       task_plan_capability: 'graph_write',
       task_plan_dependency_capabilities: ['blueprint_signature'],
@@ -318,7 +314,6 @@ describe('TaskSpec/TaskPlan protocol contract', () => {
   it('maps TaskPlan capabilities to v0.3.6 DoneImplementation sources', () => {
     assert.deepEqual(TASK_PROTOCOL_CONTRACT_V1.capability_catalog.source_root, 'Resources/v0.3.6/DoneImplementaion');
     assert.deepEqual(TASK_PROTOCOL_CONTRACT_V1.capability_catalog.agent_default_surface, [
-      'blueprinthelper_read_task_context',
       'blueprinthelper_preview_task',
       'blueprinthelper_execute_task',
       'blueprinthelper_get_task_result',

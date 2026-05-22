@@ -10,7 +10,6 @@ import { getBlueprintHelperToolRegistry } from '../../tool-surface/tool-registry
 import type { TaskSpecRunner } from '../../task/service/task-spec-runner.js';
 
 const expectedToolNames = [
-  'blueprinthelper_read_task_context',
   'blueprinthelper_read_reference_context',
   'blueprinthelper_preview_task',
   'blueprinthelper_execute_task',

@@ -428,7 +428,7 @@ After a successful `branch_fork` execute, read back LogicJson or LogicMd and ver
 
 ## 15. Function Call Body Statement
 
-Prefer the short GraphStatement form `kind="call"` + `target`. The legacy-compatible `kind="call_function"` + `name` remains accepted by the compiler. The target/name may be a native function name, a Blueprint display name, an owner-qualified native name, or an explicit component/member call for append-owned graph writes. Preview resolves the function against the target Blueprint graph. If the target is ambiguous, use an owner-qualified native name and preview again.
+Use the GraphStatement form `kind="call"` + `target`. Legacy `kind="call_function"` + `name` is unsupported. The target may be a native function name, a Blueprint display name, an owner-qualified native name, or an explicit component/member call for append-owned graph writes. Preview resolves the function against the target Blueprint graph. If the target is ambiguous, use an owner-qualified native name and preview again.
 
 ```json
 {

@@ -52,16 +52,17 @@ AgentFace semantic statement
 -> semantic-specific NodeFragment adapter
 ```
 
-凡是 UE 编辑器右键菜单可以表达的 node/action 选择，GraphWrite 必须优先经过 `BlueprintActionResolutionCore`，并最终选择 `UBlueprintNodeSpawner` 或其派生 spawner。
+凡是候选空间较宽、正确率依赖上下文的 node/action 选择，GraphWrite 必须优先经过 `BlueprintActionResolutionCore`，并通过 projected ActionContext、ActionDatabase / ActionFilter / NodeSpawner evidence 完成解析。
 
-不允许新增能力绕开该链路，直接使用全局函数名查找、硬编码函数名、硬编码 `UK2Node_*`，或恢复旧 `NodeHandler` / parsed-node fallback。
+不允许新增能力绕开 `SpawnerClusterKind -> cluster -> semantic constraint` 链路，直接使用全局函数名查找、硬编码函数名、在 builder / pipeline / coordinator 中硬编码 `UK2Node_*`，或恢复旧 `NodeHandler` / parsed-node fallback。
 
-允许直接专用 FragmentBuilder 的情况只有两类：
+允许不经过 ActionDatabase 搜索链路的情况只有三类，但仍必须处在已选 cluster 的二级语义映射边界内：
 
-1. UE ActionDatabase / NodeSpawner 无法表达该 semantic operation。
-2. 该 semantic operation 本质是多个 UE node 的组合，需要一个语义级 builder 编排多个 NodeFragment。
+1. canonical singleton semantic，例如 `branch`、`sequence`、`return` 这类没有宽候选空间的唯一控制流节点。
+2. UE ActionDatabase / NodeSpawner 无法表达该 semantic operation。
+3. 该 semantic operation 本质是多个 UE node 的组合，需要一个语义级 builder 编排多个 NodeFragment。
 
-出现上述例外时，必须在 resolver / builder 边界写清楚原因，且仍要复用统一 typed target、typed pin、candidate reporting、Review/Debug evidence 模型。
+出现上述例外时，必须在 resolver / builder / singleton evidence 边界写清楚原因，且仍要复用统一 typed target、typed pin、candidate reporting、Review/Debug evidence 模型。
 
 ## 3. UE 5.6 NodeSpawner 清单
 
@@ -253,7 +254,7 @@ FBlueprintNodeHandlerRegistry
 FBlueprintOperationHandlerRegistry
 parsed-node mutation fallback
 FindFunctionByName global existence check
-manual kind -> NewObject<UK2Node_X> shortcut, unless documented as ActionDatabase-unrepresentable
+manual kind -> NewObject<UK2Node_X> shortcut outside the selected cluster, unless it is a documented canonical singleton evidence boundary or ActionDatabase-unrepresentable boundary
 legacy AgentFace aliases: call_function, set_member_variable, ref, compare, make_struct
 ```
 
@@ -275,7 +276,7 @@ legacy AgentFace aliases: call_function, set_member_variable, ref, compare, make
 ```text
 TaskSpec compact semantic
 -> SemanticResolver 构造 UE-equivalent context
--> ActionDatabase candidates
+-> ActionDatabase candidates (wide-surface semantic only; canonical singleton semantic uses cluster-internal singleton evidence)
 -> ActionFilter / BlueprintHelper semantic ranking
 -> NodeSpawner evidence
 -> shared Invoke adapter
@@ -284,11 +285,13 @@ TaskSpec compact semantic
 
 `ActionMenuItem` 不作为 Agent 可操作对象引入，因为它绑定 Slate/UI 菜单选择流程；但它承载的候选 evidence、binding、UI spec/search text、spawner payload 价值需要由 BlueprintHelper 的 `ResolvedSpawnerEvidence` 等价承接。
 
+以下硬性规则中的 ActionDatabase / ActionFilter 优先策略适用于 wide-surface semantic。canonical singleton semantic 仍必须经过 `SpawnerClusterKind -> cluster -> semantic constraint` 路径，但可以在已选 cluster 内通过 direct spawn 产生统一 spawner evidence。
+
 硬性规则：
 
-1. 凡是 UE ActionDatabase / NodeSpawner 能表达的节点创建，BlueprintHelper 不允许直接决定 `UK2Node_*` 类型并创建节点。
+1. 凡是 wide-surface semantic 的节点创建，BlueprintHelper 不允许直接决定 `UK2Node_*` 类型并创建节点；canonical singleton semantic 只能在已选 cluster 的 singleton evidence boundary 内 direct spawn。
 2. BlueprintHelper 只负责构造上下文、语义约束、候选排序、preview diagnostics 和可重建的 spawner evidence。
-3. 只有 UE NodeSpawner 无法表达，或 semantic operation 本质是多节点 DAG 编排时，才允许进入专用 FragmentBuilder。
+3. 只有 canonical singleton semantic、UE NodeSpawner 无法表达，或 semantic operation 本质是多节点 DAG 编排时，才允许离开 ActionDatabase 搜索链路；其中 singleton direct spawn 仍必须留在已选 cluster 的 evidence boundary 内。
 4. ActionResolution layer 只负责解析并返回 spawner evidence，不负责创建节点、连线、应用默认值或触发 post-link lifecycle。
 5. Fragment / Composer layer 只消费 spawner evidence，并通过 shared adapter 调用 `UBlueprintNodeSpawner::Invoke`。
 6. Preview 是该架构的基线流程：低 token TaskSpec 先获得错误诊断、歧义候选或最小 success，再由 Agent 决定补充语义或执行。
@@ -377,7 +380,7 @@ Four Spawner-Oriented clusters must consume ActionContext only through the proje
 
 Allowed in clusters:
 - Read `Semantic`, `StatementId`, `ProjectedContextHash`, `SemanticConstraintsHash`, and `ContextEvidence`.
-- Query UE ActionDatabase / BlueprintActionFilter / NodeSpawner-family APIs using the projected graph and semantic context.
+- Query UE ActionDatabase / BlueprintActionFilter / NodeSpawner-family APIs using the projected graph and semantic context for wide-surface semantics; for canonical singleton semantics, resolve direct singleton spawner evidence inside the selected cluster.
 - Return resolved spawner evidence, ambiguity diagnostics, or explicit missing-context diagnostics.
 
 Forbidden in clusters:
@@ -402,3 +405,43 @@ Implementation note 2026-05-22:
 - `op` belongs to `FunctionActionCluster`, but its semantic is operator constraints. It resolves to UE type-promotion operator spawners from `FTypePromotion::GetOperatorSpawner`, not to pseudo call-function lookup.
 - Generic construct/deconstruct may use a dedicated `UBlueprintFieldNodeSpawner` MakeStruct/BreakStruct boundary only when UE FunctionAction/native make-break lookup cannot express the struct operation. This boundary must be explicit in candidate evidence and must remain generic, not Vector-only or type-specific.
 - `EventDelegateActionCluster` follows the same projected-context rule. Custom events can resolve through `UBlueprintEventNodeSpawner`; component-bound events and delegate bind nodes require projected component/delegate/signature evidence before they can invoke their UE spawner families.
+
+## 2026-05-22 Canonical Singleton Direct Spawn Rule
+
+Direct spawn is allowed only as a secondary semantic mapping inside the selected spawner-oriented cluster. It must not introduce a new first-level dispatch path.
+
+The first-level rule remains unchanged:
+
+```text
+SemanticIR
+-> ActionContextDemandCollector
+-> ActionContextScope / BundleProjector
+-> FBlueprintHelperActionResolutionRequest
+   - ClusterKind = GenericAssetStructControlAction
+   - Semantic.Kind = Control / Select / Construct / ...
+   - Semantic.Query or constraints = branch / sequence / return / ...
+-> SpawnerClusterResolver dispatches only by ClusterKind
+-> GenericAssetStructControlActionCluster
+-> secondary semantic mapping
+-> resolved spawner evidence
+-> shared adapter invoke
+```
+
+Wide-surface semantics must use the full search/resolution chain because they have large candidate spaces and require context for correctness and generality. Examples include `call`, `op`, field/property access, delegate actions, and broad create/construct operations.
+
+Canonical singleton semantics may use direct `UBlueprintNodeSpawner::Create(UK2Node_*)` after first-level cluster dispatch because their semantic space is unique and not a candidate search problem. Current singleton candidates include:
+
+- `control=branch`
+- `control=sequence`
+- `control=return`
+- `select`, if the selected UE node remains a single canonical Select node for the requested semantic
+
+Direct spawn requirements:
+
+- It must live behind the owning cluster or a shared singleton evidence provider used by that cluster.
+- It must return the same `ActionResolutionResult` / spawner evidence shape as search-based resolution.
+- Evidence must include semantic kind, singleton kind, node class path, stable id, and reason.
+- It must not be used as a fallback when a wide-surface search fails.
+- Builders, pipelines, and mutation coordinators must not directly create singleton `UK2Node_*` nodes; they must consume resolved evidence or call the shared singleton boundary.
+
+Therefore, direct spawn is a valid implementation strategy for canonical singleton nodes, but only inside the existing `SpawnerClusterKind -> cluster -> semantic constraint` architecture. It does not weaken the rule that wide-surface GraphWrite actions require projected ActionContext and ActionDatabase/ActionFilter-based candidate resolution.
