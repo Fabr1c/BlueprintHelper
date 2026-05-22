@@ -12,6 +12,13 @@ class BLUEPRINTHELPER_API FBlueprintHelperControlFragmentBuilder
 public:
 	static bool BuildSequence(
 		UEdGraph* TargetGraph,
+		const FBlueprintHelperActionContextScope* ActionContextScope,
+		const FString& FragmentId,
+		FBlueprintHelperNodeFragment& OutFragment,
+		FString& OutError);
+
+	static bool BuildSequence(
+		UEdGraph* TargetGraph,
 		const FString& FragmentId,
 		FBlueprintHelperNodeFragment& OutFragment,
 		FString& OutError);

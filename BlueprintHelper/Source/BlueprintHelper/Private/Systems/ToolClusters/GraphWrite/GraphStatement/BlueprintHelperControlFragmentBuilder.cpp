@@ -1,6 +1,5 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperControlFragmentBuilder.h"
 
-#include "BlueprintNodeSpawner.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraphSchema_K2.h"
@@ -180,28 +179,25 @@ static bool ResolveControlActionProvider(
 	}
 
 	FBlueprintHelperActionResolutionRequest ActionRequest;
-	if (ActionContextScope)
+	if (!ActionContextScope)
 	{
-		if (!ActionContextScope->TryBuildRequest(
-			StatementContextId,
-			FBlueprintEditorUtils::FindBlueprintForGraph(TargetGraph),
-			TargetGraph,
-			ActionRequest,
-			OutError))
-		{
-			return false;
-		}
+		OutError = FString::Printf(
+			TEXT("missing_required_evidence: action_context_scope_required for control '%s' statement '%s'."),
+			*ControlKind,
+			*StatementContextId);
+		return false;
 	}
-	else
+
+	if (!ActionContextScope->TryBuildRequest(
+		StatementContextId,
+		FBlueprintEditorUtils::FindBlueprintForGraph(TargetGraph),
+		TargetGraph,
+		ActionRequest,
+		OutError))
 	{
-		ActionRequest.ClusterKind = EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction;
-		ActionRequest.Blueprint = FBlueprintEditorUtils::FindBlueprintForGraph(TargetGraph);
-		ActionRequest.TargetGraph = TargetGraph;
-		ActionRequest.StatementId = StatementContextId;
-		ActionRequest.ProjectedContextHash = TEXT("manual_control_context:") + FragmentId;
-		ActionRequest.SemanticConstraintsHash = TEXT("manual_control_semantic:") + ControlKind;
-		ActionRequest.Semantic.Kind = EBlueprintHelperActionSemanticKind::Control;
+		return false;
 	}
+
 	if (ActionRequest.Semantic.Query.IsEmpty())
 	{
 		ActionRequest.Semantic.Query = ControlKind;
@@ -467,6 +463,7 @@ static void CollectReturnLiteralDefault(
 
 bool FBlueprintHelperControlFragmentBuilder::BuildSequence(
 	UEdGraph* TargetGraph,
+	const FBlueprintHelperActionContextScope* ActionContextScope,
 	const FString& FragmentId,
 	FBlueprintHelperNodeFragment& OutFragment,
 	FString& OutError)
@@ -476,7 +473,7 @@ bool FBlueprintHelperControlFragmentBuilder::BuildSequence(
 
 	const FString CleanFragmentId = SanitizeFragmentIdPart(FragmentId);
 	FBlueprintHelperActionResolutionResult ActionResult;
-	if (!ResolveControlActionProvider(TargetGraph, nullptr, CleanFragmentId, TEXT("sequence"), CleanFragmentId, ActionResult, OutError))
+	if (!ResolveControlActionProvider(TargetGraph, ActionContextScope, CleanFragmentId, TEXT("sequence"), CleanFragmentId, ActionResult, OutError))
 	{
 		return false;
 	}
@@ -501,6 +498,15 @@ bool FBlueprintHelperControlFragmentBuilder::BuildSequence(
 	PopulateCommonControlMetadata(CleanFragmentId, CleanFragmentId, TEXT("sequence"), SequenceNode, OutFragment);
 	PopulateSequencePins(SequenceNode, OutputPins, OutFragment);
 	return true;
+}
+
+bool FBlueprintHelperControlFragmentBuilder::BuildSequence(
+	UEdGraph* TargetGraph,
+	const FString& FragmentId,
+	FBlueprintHelperNodeFragment& OutFragment,
+	FString& OutError)
+{
+	return BuildSequence(TargetGraph, nullptr, FragmentId, OutFragment, OutError);
 }
 
 bool FBlueprintHelperControlFragmentBuilder::BuildBranch(
@@ -611,7 +617,7 @@ bool FBlueprintHelperControlFragmentBuilder::BuildStatement(
 	case EBlueprintHelperGraphStatementKind::Branch:
 		return BuildBranch(TargetGraph, ActionContextScope, Statement, OutFragment, OutError);
 	case EBlueprintHelperGraphStatementKind::Sequence:
-		return BuildSequence(TargetGraph, ResolveStatementFragmentId(Statement), OutFragment, OutError);
+		return BuildSequence(TargetGraph, ActionContextScope, ResolveStatementFragmentId(Statement), OutFragment, OutError);
 	case EBlueprintHelperGraphStatementKind::Return:
 		return BuildReturn(TargetGraph, ActionContextScope, Statement, OutFragment, OutError);
 	default:

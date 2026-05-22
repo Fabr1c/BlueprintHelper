@@ -13,6 +13,7 @@
 #include "Engine/SCS_Node.h"
 #include "Engine/SimpleConstructionScript.h"
 #include "GameFramework/Actor.h"
+#include "K2Node_BreakStruct.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperBlockIdService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphSnapshotService.h"
@@ -21,6 +22,11 @@
 #include "K2Node_CustomEvent.h"
 #include "K2Node_ExecutionSequence.h"
 #include "K2Node_IfThenElse.h"
+#include "K2Node_MakeStruct.h"
+#include "K2Node_Select.h"
+#include "K2Node_Variable.h"
+#include "K2Node_VariableGet.h"
+#include "K2Node_VariableSet.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
@@ -56,6 +62,7 @@
 #include "UObject/Package.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonWriter.h"
 #include "WidgetBlueprint.h"
 
 class FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils
@@ -141,7 +148,7 @@ public:
 	{
 		TSharedRef<FJsonObject> Statement = MakeShared<FJsonObject>();
 		Statement->SetStringField(TEXT("kind"), TEXT("call"));
-		Statement->SetStringField(TEXT("name"), FunctionName);
+		Statement->SetStringField(TEXT("target"), FunctionName);
 		return Statement;
 	}
 
@@ -196,7 +203,9 @@ public:
 		Target->SetStringField(TEXT("graph"), GraphName);
 		Payload->SetObjectField(TEXT("target"), Target);
 		Payload->SetBoolField(TEXT("dry_run"), true);
-		Payload->SetObjectField(TEXT("logic_spec"), MakeEntryOnlyLogicSpec(TEXT("SmokeCustomEvent")));
+		Payload->SetObjectField(
+			TEXT("logic_spec"),
+			MakeCallLogicSpec(FString(), TEXT("PrintString"), TEXT("append body")));
 		return Payload;
 	}
 
@@ -310,6 +319,100 @@ public:
 		BranchNode->PostPlacedNewNode();
 		BranchNode->AllocateDefaultPins();
 		return BranchNode;
+	}
+
+	static UK2Node_ExecutionSequence* AddGraphWriteSequenceNode(UEdGraph* Graph)
+	{
+		if (!Graph)
+		{
+			return nullptr;
+		}
+
+		UK2Node_ExecutionSequence* SequenceNode = NewObject<UK2Node_ExecutionSequence>(Graph);
+		Graph->AddNode(SequenceNode, true, false);
+		SequenceNode->CreateNewGuid();
+		SequenceNode->PostPlacedNewNode();
+		SequenceNode->AllocateDefaultPins();
+		return SequenceNode;
+	}
+
+	static UK2Node_Select* AddGraphWriteSelectNode(UEdGraph* Graph)
+	{
+		if (!Graph)
+		{
+			return nullptr;
+		}
+
+		UK2Node_Select* SelectNode = NewObject<UK2Node_Select>(Graph);
+		Graph->AddNode(SelectNode, true, false);
+		SelectNode->CreateNewGuid();
+		SelectNode->PostPlacedNewNode();
+		SelectNode->AllocateDefaultPins();
+		return SelectNode;
+	}
+
+	static UK2Node_VariableGet* AddGraphWriteVariableGetNode(UEdGraph* Graph, const FName VariableName)
+	{
+		if (!Graph)
+		{
+			return nullptr;
+		}
+
+		UK2Node_VariableGet* VariableNode = NewObject<UK2Node_VariableGet>(Graph);
+		Graph->AddNode(VariableNode, true, false);
+		VariableNode->CreateNewGuid();
+		VariableNode->VariableReference.SetSelfMember(VariableName);
+		VariableNode->PostPlacedNewNode();
+		VariableNode->AllocateDefaultPins();
+		return VariableNode;
+	}
+
+	static UK2Node_VariableSet* AddGraphWriteVariableSetNode(UEdGraph* Graph, const FName VariableName)
+	{
+		if (!Graph)
+		{
+			return nullptr;
+		}
+
+		UK2Node_VariableSet* VariableNode = NewObject<UK2Node_VariableSet>(Graph);
+		Graph->AddNode(VariableNode, true, false);
+		VariableNode->CreateNewGuid();
+		VariableNode->VariableReference.SetSelfMember(VariableName);
+		VariableNode->PostPlacedNewNode();
+		VariableNode->AllocateDefaultPins();
+		return VariableNode;
+	}
+
+	static UK2Node_MakeStruct* AddGraphWriteMakeStructNode(UEdGraph* Graph, UScriptStruct* StructType)
+	{
+		if (!Graph || !StructType)
+		{
+			return nullptr;
+		}
+
+		UK2Node_MakeStruct* StructNode = NewObject<UK2Node_MakeStruct>(Graph);
+		Graph->AddNode(StructNode, true, false);
+		StructNode->CreateNewGuid();
+		StructNode->StructType = StructType;
+		StructNode->PostPlacedNewNode();
+		StructNode->AllocateDefaultPins();
+		return StructNode;
+	}
+
+	static UK2Node_BreakStruct* AddGraphWriteBreakStructNode(UEdGraph* Graph, UScriptStruct* StructType)
+	{
+		if (!Graph || !StructType)
+		{
+			return nullptr;
+		}
+
+		UK2Node_BreakStruct* StructNode = NewObject<UK2Node_BreakStruct>(Graph);
+		Graph->AddNode(StructNode, true, false);
+		StructNode->CreateNewGuid();
+		StructNode->StructType = StructType;
+		StructNode->PostPlacedNewNode();
+		StructNode->AllocateDefaultPins();
+		return StructNode;
 	}
 
 	static UEdGraphPin* FindFirstExecPin(UEdGraphNode* Node, EEdGraphPinDirection Direction)
@@ -1322,11 +1425,14 @@ public:
 		const FString& FunctionName)
 	{
 		TSharedRef<FJsonObject> Op = MakeShared<FJsonObject>();
-		Op->SetStringField(TEXT("op"), TEXT("ensure_entry"));
-		Op->SetStringField(TEXT("entry_type"), TEXT("custom_event"));
-		Op->SetStringField(TEXT("name"), EventName);
+		Op->SetStringField(TEXT("op"), TEXT("replace_body"));
+		Op->SetStringField(TEXT("replace_scope"), TEXT("custom_event_body"));
+
+		TSharedRef<FJsonObject> Selector = MakeShared<FJsonObject>();
+		Selector->SetStringField(TEXT("entry_name"), EventName);
+		Op->SetObjectField(TEXT("selector"), Selector);
 		Op->SetObjectField(
-			TEXT("body"),
+			TEXT("logic_spec"),
 			MakeCallLogicSpec(FString(), FunctionName, TEXT("runtime call_function")));
 		return Op;
 	}
@@ -1336,11 +1442,14 @@ public:
 		const FString& FunctionName)
 	{
 		TSharedRef<FJsonObject> Op = MakeShared<FJsonObject>();
-		Op->SetStringField(TEXT("op"), TEXT("ensure_entry"));
-		Op->SetStringField(TEXT("entry_type"), TEXT("custom_event"));
-		Op->SetStringField(TEXT("name"), EventName);
+		Op->SetStringField(TEXT("op"), TEXT("replace_body"));
+		Op->SetStringField(TEXT("replace_scope"), TEXT("custom_event_body"));
+
+		TSharedRef<FJsonObject> Selector = MakeShared<FJsonObject>();
+		Selector->SetStringField(TEXT("entry_name"), EventName);
+		Op->SetObjectField(TEXT("selector"), Selector);
 		Op->SetObjectField(
-			TEXT("body"),
+			TEXT("logic_spec"),
 			MakeCallNameLogicSpec(FString(), FunctionName));
 		return Op;
 	}
@@ -1439,6 +1548,13 @@ public:
 		bool bCanExecute = !bExpectedCanExecute;
 		Test.TestTrue(TEXT("dry_run.can_execute is present"),
 			DryRun && DryRun->IsValid() && (*DryRun)->TryGetBoolField(TEXT("can_execute"), bCanExecute));
+		if (bCanExecute != bExpectedCanExecute && DryRun && DryRun->IsValid())
+		{
+			FString DryRunJson;
+			const TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&DryRunJson);
+			FJsonSerializer::Serialize((*DryRun).ToSharedRef(), Writer);
+			Test.AddInfo(FString::Printf(TEXT("dry_run mismatch payload: %s"), *DryRunJson));
+		}
 		Test.TestEqual(TEXT("dry_run.can_execute matches child preflight"), bCanExecute, bExpectedCanExecute);
 	}
 
@@ -1548,6 +1664,164 @@ public:
 		return OutFact.IsValid();
 	}
 
+	struct FGraphWriteReadbackEvidence
+	{
+		bool bHasResolverEvidence = false;
+		bool bHasSpawnEvidence = false;
+		FString SelectedStableId;
+		FString SelectedSpawnerClass;
+		FString FunctionReference;
+		FString FieldName;
+		FString SingletonStableId;
+		FString EventName;
+		FString StructTypeName;
+	};
+
+	static bool HasResolverAndSpawnEvidence(const FGraphWriteReadbackEvidence& Evidence)
+	{
+		return Evidence.bHasResolverEvidence && Evidence.bHasSpawnEvidence;
+	}
+
+	static FString MakeCallFunctionStableId(const UK2Node_CallFunction* CallNode)
+	{
+		const UFunction* Function = CallNode ? CallNode->GetTargetFunction() : nullptr;
+		const UClass* OwnerClass = Function ? Function->GetOwnerClass() : nullptr;
+		return Function && OwnerClass
+			? FString::Printf(TEXT("%s:%s"), *OwnerClass->GetPathName(), *Function->GetName())
+			: FString();
+	}
+
+	static bool ReadbackFindsFunctionCallByEvidence(
+		UEdGraph* Graph,
+		const FGraphWriteReadbackEvidence& Evidence)
+	{
+		if (!Graph || !HasResolverAndSpawnEvidence(Evidence))
+		{
+			return false;
+		}
+
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			const UK2Node_CallFunction* CallNode = Cast<UK2Node_CallFunction>(Node);
+			if (!CallNode)
+			{
+				continue;
+			}
+
+			const FString StableId = MakeCallFunctionStableId(CallNode);
+			const FString FunctionName = CallNode->GetFunctionName().ToString();
+			if ((!Evidence.SelectedStableId.IsEmpty() && StableId.Equals(Evidence.SelectedStableId, ESearchCase::IgnoreCase)) ||
+				(!Evidence.FunctionReference.IsEmpty() && FunctionName.Equals(Evidence.FunctionReference, ESearchCase::IgnoreCase)))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	static bool ReadbackFindsVariableNodeByEvidence(
+		UEdGraph* Graph,
+		const FGraphWriteReadbackEvidence& Evidence,
+		const bool bExpectSet)
+	{
+		if (!Graph || !HasResolverAndSpawnEvidence(Evidence) || Evidence.FieldName.IsEmpty())
+		{
+			return false;
+		}
+
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			const UK2Node_Variable* VariableNode = Cast<UK2Node_Variable>(Node);
+			if (!VariableNode)
+			{
+				continue;
+			}
+			if (bExpectSet != Node->IsA<UK2Node_VariableSet>())
+			{
+				continue;
+			}
+			if (VariableNode->VariableReference.GetMemberName().ToString().Equals(Evidence.FieldName, ESearchCase::IgnoreCase))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	static bool ReadbackFindsSingletonControlByEvidence(
+		UEdGraph* Graph,
+		const FGraphWriteReadbackEvidence& Evidence)
+	{
+		if (!Graph || !HasResolverAndSpawnEvidence(Evidence) || Evidence.SingletonStableId.IsEmpty())
+		{
+			return false;
+		}
+
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (!Node)
+			{
+				continue;
+			}
+			if (Evidence.SingletonStableId.Contains(TEXT("branch")) && Node->IsA<UK2Node_IfThenElse>())
+			{
+				return true;
+			}
+			if (Evidence.SingletonStableId.Contains(TEXT("sequence")) && Node->IsA<UK2Node_ExecutionSequence>())
+			{
+				return true;
+			}
+			if (Evidence.SingletonStableId.Contains(TEXT("select")) && Node->IsA<UK2Node_Select>())
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	static bool ReadbackFindsCustomEventByEvidence(
+		UEdGraph* Graph,
+		const FGraphWriteReadbackEvidence& Evidence)
+	{
+		return Graph &&
+			HasResolverAndSpawnEvidence(Evidence) &&
+			!Evidence.EventName.IsEmpty() &&
+			CountCustomEventsByName(Graph, Evidence.EventName) > 0;
+	}
+
+	static bool ReadbackFindsStructNodeByEvidence(
+		UEdGraph* Graph,
+		const FGraphWriteReadbackEvidence& Evidence,
+		const bool bExpectMake)
+	{
+		if (!Graph || !HasResolverAndSpawnEvidence(Evidence) || Evidence.StructTypeName.IsEmpty())
+		{
+			return false;
+		}
+
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			const UScriptStruct* StructType = nullptr;
+			if (bExpectMake)
+			{
+				const UK2Node_MakeStruct* MakeStructNode = Cast<UK2Node_MakeStruct>(Node);
+				StructType = MakeStructNode ? MakeStructNode->StructType.Get() : nullptr;
+			}
+			else
+			{
+				const UK2Node_BreakStruct* BreakStructNode = Cast<UK2Node_BreakStruct>(Node);
+				StructType = BreakStructNode ? BreakStructNode->StructType.Get() : nullptr;
+			}
+
+			if (StructType &&
+				(StructType->GetName().Equals(Evidence.StructTypeName, ESearchCase::IgnoreCase) ||
+				 StructType->GetPathName().Equals(Evidence.StructTypeName, ESearchCase::IgnoreCase)))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
 };
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -1973,9 +2247,25 @@ bool FBlueprintHelperGraphWriteAppendOwnershipWritesMetadataWithoutManagedCommen
 {
 	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("AppendOwnershipMetadata"));
 	TestNotNull(TEXT("test blueprint is created"), Blueprint);
-	if (!Blueprint)
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
 	{
 		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* EntryNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, TEXT("SmokeCustomEvent"));
+	TestNotNull(TEXT("signature-created custom event exists"), EntryNode);
+	if (!EntryNode)
+	{
+		return false;
+	}
+	TSet<UEdGraphNode*> NodeSnapshot;
+	for (UEdGraphNode* Node : Graph->Nodes)
+	{
+		if (Node)
+		{
+			NodeSnapshot.Add(Node);
+		}
 	}
 
 	FBlueprintHelperGraphResolver Resolver;
@@ -1985,9 +2275,9 @@ bool FBlueprintHelperGraphWriteAppendOwnershipWritesMetadataWithoutManagedCommen
 		Resolver,
 		BlockIdService,
 		OwnershipService);
-	const FString GraphName = TEXT("BH_AppendOwnershipMetadata");
+	const FString GraphName = Graph->GetName();
 	const FBlueprintHelperToolResultBase Result = AppendService.Execute(
-		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeAppendExecutePayload(Blueprint->GetPathName(), GraphName));
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeAppendReuseExistingEntryExecutePayload(Blueprint->GetPathName(), GraphName));
 
 	TestTrue(TEXT("append write succeeds"), Result.bOk);
 	TestEqual(TEXT("append write status is applied"), Result.Status, EBlueprintHelperToolStatus::Applied);
@@ -2001,10 +2291,9 @@ bool FBlueprintHelperGraphWriteAppendOwnershipWritesMetadataWithoutManagedCommen
 	TestTrue(TEXT("append result exposes first block ref"),
 		BlockRefs && BlockRefs->Num() > 0 && (*BlockRefs)[0].IsValid() && (*BlockRefs)[0]->TryGetString(BlockRef));
 
-	UEdGraph* Graph = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindUbergraphPageByName(Blueprint, GraphName);
 	TestNotNull(TEXT("append graph exists"), Graph);
-	TestTrue(TEXT("append graph has created nodes"), Graph && Graph->Nodes.Num() > 0);
-	if (!Graph || Graph->Nodes.Num() == 0)
+	TestTrue(TEXT("append graph has created nodes"), Graph && Graph->Nodes.Num() > NodeSnapshot.Num());
+	if (!Graph || Graph->Nodes.Num() <= NodeSnapshot.Num())
 	{
 		return false;
 	}
@@ -2012,7 +2301,17 @@ bool FBlueprintHelperGraphWriteAppendOwnershipWritesMetadataWithoutManagedCommen
 	const FString ExpectedBlockId = BlockIdService.MakeFullBlockId(
 		GraphName,
 		BlockRef);
+	TArray<UEdGraphNode*> OwnedNodes;
+	OwnedNodes.Add(EntryNode);
 	for (UEdGraphNode* Node : Graph->Nodes)
+	{
+		if (Node && !NodeSnapshot.Contains(Node))
+		{
+			OwnedNodes.AddUnique(Node);
+		}
+	}
+	TestTrue(TEXT("append-created ownership target nodes are present"), OwnedNodes.Num() > 1);
+	for (UEdGraphNode* Node : OwnedNodes)
 	{
 		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AssertNodeHasOwnershipMetadata(*this, Node, ExpectedBlockId, TEXT("SmokeFeature"));
 		TestFalse(TEXT("append-created node comment omits block_id"),
@@ -2308,6 +2607,8 @@ bool FBlueprintHelperGraphWriteTaskRuntimeCallFunctionDisplayNameReadBackTest::R
 
 	UEdGraph* Graph = Blueprint->UbergraphPages[0];
 	const FString EventName = TEXT("RuntimeDisplayNameCall");
+	TestNotNull(TEXT("fixture custom event exists"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, EventName));
 	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness Harness;
 	const TSharedRef<FJsonObject> TaskPlanPayload = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTaskPlanPayload(
 		Blueprint->GetPathName(),
@@ -2318,7 +2619,7 @@ bool FBlueprintHelperGraphWriteTaskRuntimeCallFunctionDisplayNameReadBackTest::R
 	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AssertRuntimePreviewReachedGraphWriteService(
 		*this,
 		Preview,
-		TEXT("append_blueprint_graph"),
+		TEXT("replace_blueprint_graph"),
 		true);
 
 	const FBlueprintHelperToolResultBase ExecuteResult = Harness.RuntimeService.ExecuteTaskPlan(TaskPlanPayload);
@@ -2348,6 +2649,8 @@ bool FBlueprintHelperGraphWriteTaskRuntimeCallFunctionQualifiedNameReadBackTest:
 
 	UEdGraph* Graph = Blueprint->UbergraphPages[0];
 	const FString EventName = TEXT("RuntimeQualifiedNameCall");
+	TestNotNull(TEXT("fixture custom event exists"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, EventName));
 	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness Harness;
 	const TSharedRef<FJsonObject> TaskPlanPayload = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTaskPlanPayload(
 		Blueprint->GetPathName(),
@@ -2360,7 +2663,7 @@ bool FBlueprintHelperGraphWriteTaskRuntimeCallFunctionQualifiedNameReadBackTest:
 	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AssertRuntimePreviewReachedGraphWriteService(
 		*this,
 		Preview,
-		TEXT("append_blueprint_graph"),
+		TEXT("replace_blueprint_graph"),
 		true);
 
 	const FBlueprintHelperToolResultBase ExecuteResult = Harness.RuntimeService.ExecuteTaskPlan(TaskPlanPayload);
@@ -2390,6 +2693,8 @@ bool FBlueprintHelperGraphWriteCallFunctionResolverPreviewBlocksAmbiguousFunctio
 
 	UEdGraph* Graph = Blueprint->UbergraphPages[0];
 	const FString EventName = TEXT("RuntimeAmbiguousCall");
+	TestNotNull(TEXT("fixture custom event exists"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, EventName));
 	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness Harness;
 	const FBlueprintHelperToolResultBase Preview = Harness.RuntimeService.PreviewTaskPlan(
 		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTaskPlanPayload(
@@ -2426,10 +2731,10 @@ bool FBlueprintHelperGraphWriteCallFunctionResolverPreviewBlocksAmbiguousFunctio
 		ErrorObject->TryGetStringField(TEXT("path"), Path);
 		TestEqual(TEXT("error code"), Code, FString(TEXT("ambiguous_function_call")));
 		TestEqual(TEXT("error stage"), Stage, FString(TEXT("dry_run")));
-		TestEqual(TEXT("error path"), Path, FString(TEXT("write.ops[0].body.statements[0].name")));
+		TestEqual(TEXT("error path"), Path, FString(TEXT("write.ops[0].logic_spec.statements[0].target")));
 	}
 
-	TestEqual(TEXT("blocked preview does not create the event"), FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::CountCustomEventsByName(Graph, EventName), 0);
+	TestEqual(TEXT("blocked preview does not create an additional event"), FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::CountCustomEventsByName(Graph, EventName), 1);
 	return true;
 }
 
@@ -2448,13 +2753,16 @@ bool FBlueprintHelperGraphWriteCallFunctionResolverPreviewReportsCandidateSummar
 	}
 
 	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	const FString EventName = TEXT("RuntimeCandidateSummaryCall");
+	TestNotNull(TEXT("fixture custom event exists"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, EventName));
 	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness Harness;
 	const FBlueprintHelperToolResultBase Preview = Harness.RuntimeService.PreviewTaskPlan(
 		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTaskPlanPayload(
 			Blueprint->GetPathName(),
 			Graph->GetName(),
 			FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeEnsureEntryCallFunctionNameOp(
-				TEXT("RuntimeCandidateSummaryCall"),
+				EventName,
 				TEXT("Set"))));
 
 	TSharedPtr<FJsonObject> ErrorObject;
@@ -2538,6 +2846,8 @@ bool FBlueprintHelperGraphWriteCallFunctionResolverExecuteRevalidatesStableIdTes
 
 	UEdGraph* Graph = Blueprint->UbergraphPages[0];
 	const FString EventName = TEXT("RuntimeStableIdCall");
+	TestNotNull(TEXT("fixture custom event exists"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, EventName));
 	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness Harness;
 	const TSharedRef<FJsonObject> TaskPlanPayload = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTaskPlanPayload(
 		Blueprint->GetPathName(),
@@ -2548,7 +2858,7 @@ bool FBlueprintHelperGraphWriteCallFunctionResolverExecuteRevalidatesStableIdTes
 	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AssertRuntimePreviewReachedGraphWriteService(
 		*this,
 		Preview,
-		TEXT("append_blueprint_graph"),
+		TEXT("replace_blueprint_graph"),
 		true);
 
 	TSharedPtr<FJsonObject> PreviewFact;
@@ -2601,6 +2911,153 @@ bool FBlueprintHelperGraphWriteCallFunctionResolverExecuteRevalidatesStableIdTes
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteTaskRuntimeP6EvidenceBackedReadbackCoverageTest,
+	"BlueprintHelper.GraphWrite.TaskRuntime.P6.EvidenceBackedReadbackCoverage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteTaskRuntimeP6EvidenceBackedReadbackCoverageTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("RuntimeP6ReadbackCoverage"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	const FString EventName = TEXT("RuntimeP6ReadbackEvent");
+	TestNotNull(TEXT("fixture custom event exists"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, EventName));
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness Harness;
+	const TSharedRef<FJsonObject> TaskPlanPayload = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTaskPlanPayload(
+		Blueprint->GetPathName(),
+		Graph->GetName(),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeEnsureEntryCallFunctionOp(EventName, TEXT("Print String")));
+
+	const FBlueprintHelperToolResultBase Preview = Harness.RuntimeService.PreviewTaskPlan(TaskPlanPayload);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AssertRuntimePreviewReachedGraphWriteService(
+		*this,
+		Preview,
+		TEXT("replace_blueprint_graph"),
+		true);
+
+	TSharedPtr<FJsonObject> PreviewFact;
+	TestTrue(TEXT("preview records resolver evidence before readback"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::GetFirstResolvedCallFunctionFact(Preview.Data, PreviewFact));
+	FString StableId;
+	if (PreviewFact.IsValid())
+	{
+		PreviewFact->TryGetStringField(TEXT("stable_id"), StableId);
+	}
+	TestEqual(TEXT("selected stable id is PrintString"),
+		StableId,
+		FString(TEXT("/Script/Engine.KismetSystemLibrary:PrintString")));
+
+	const FBlueprintHelperToolResultBase ExecuteResult = Harness.RuntimeService.ExecuteTaskPlan(TaskPlanPayload);
+	TestTrue(TEXT("execute creates graph before readback"), ExecuteResult.bOk);
+	if (!ExecuteResult.bOk)
+	{
+		return false;
+	}
+
+	const FName VariableName(TEXT("bP6GateOpen"));
+	FEdGraphPinType BoolPinType(
+		UEdGraphSchema_K2::PC_Boolean,
+		NAME_None,
+		nullptr,
+		EPinContainerType::None,
+		false,
+		FEdGraphTerminalType());
+	FBlueprintEditorUtils::AddMemberVariable(Blueprint, VariableName, BoolPinType);
+	UK2Node_VariableGet* VariableGet = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteVariableGetNode(Graph, VariableName);
+	UK2Node_VariableSet* VariableSet = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteVariableSetNode(Graph, VariableName);
+	UK2Node_IfThenElse* BranchNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteBranchNode(Graph);
+	UK2Node_ExecutionSequence* SequenceNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteSequenceNode(Graph);
+	UK2Node_Select* SelectNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteSelectNode(Graph);
+	UK2Node_MakeStruct* MakeVectorNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteMakeStructNode(Graph, TBaseStructure<FVector>::Get());
+	UK2Node_BreakStruct* BreakRotatorNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteBreakStructNode(Graph, TBaseStructure<FRotator>::Get());
+	TestNotNull(TEXT("variable get fixture exists"), VariableGet);
+	TestNotNull(TEXT("variable set fixture exists"), VariableSet);
+	TestNotNull(TEXT("branch fixture exists"), BranchNode);
+	TestNotNull(TEXT("sequence fixture exists"), SequenceNode);
+	TestNotNull(TEXT("select fixture exists"), SelectNode);
+	TestNotNull(TEXT("make vector fixture exists"), MakeVectorNode);
+	TestNotNull(TEXT("break rotator fixture exists"), BreakRotatorNode);
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteReadbackEvidence FunctionStableIdEvidence;
+	FunctionStableIdEvidence.bHasResolverEvidence = true;
+	FunctionStableIdEvidence.bHasSpawnEvidence = true;
+	FunctionStableIdEvidence.SelectedStableId = StableId;
+	FunctionStableIdEvidence.SelectedSpawnerClass = TEXT("UBlueprintFunctionNodeSpawner");
+	TestTrue(TEXT("readback locates function call by selected stable id"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ReadbackFindsFunctionCallByEvidence(Graph, FunctionStableIdEvidence));
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteReadbackEvidence FunctionRefEvidence = FunctionStableIdEvidence;
+	FunctionRefEvidence.SelectedStableId.Reset();
+	FunctionRefEvidence.FunctionReference = TEXT("PrintString");
+	TestTrue(TEXT("readback locates function call by function reference"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ReadbackFindsFunctionCallByEvidence(Graph, FunctionRefEvidence));
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteReadbackEvidence FieldEvidence;
+	FieldEvidence.bHasResolverEvidence = true;
+	FieldEvidence.bHasSpawnEvidence = true;
+	FieldEvidence.SelectedStableId = TEXT("field:self:bP6GateOpen");
+	FieldEvidence.SelectedSpawnerClass = TEXT("UBlueprintVariableNodeSpawner");
+	FieldEvidence.FieldName = VariableName.ToString();
+	TestTrue(TEXT("readback locates variable get by field evidence"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ReadbackFindsVariableNodeByEvidence(Graph, FieldEvidence, false));
+	TestTrue(TEXT("readback locates variable set by field evidence"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ReadbackFindsVariableNodeByEvidence(Graph, FieldEvidence, true));
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteReadbackEvidence SingletonEvidence;
+	SingletonEvidence.bHasResolverEvidence = true;
+	SingletonEvidence.bHasSpawnEvidence = true;
+	SingletonEvidence.SelectedSpawnerClass = TEXT("UBlueprintNodeSpawner");
+	SingletonEvidence.SingletonStableId = TEXT("singleton_control_flow:branch");
+	TestTrue(TEXT("readback locates branch by singleton stable id"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ReadbackFindsSingletonControlByEvidence(Graph, SingletonEvidence));
+	SingletonEvidence.SingletonStableId = TEXT("singleton_control_flow:sequence");
+	TestTrue(TEXT("readback locates sequence by singleton stable id"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ReadbackFindsSingletonControlByEvidence(Graph, SingletonEvidence));
+	SingletonEvidence.SingletonStableId = TEXT("singleton_control_flow:select");
+	TestTrue(TEXT("readback locates select by singleton stable id"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ReadbackFindsSingletonControlByEvidence(Graph, SingletonEvidence));
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteReadbackEvidence EventEvidence;
+	EventEvidence.bHasResolverEvidence = true;
+	EventEvidence.bHasSpawnEvidence = true;
+	EventEvidence.SelectedStableId = FString::Printf(TEXT("event:%s"), *EventName);
+	EventEvidence.SelectedSpawnerClass = TEXT("UBlueprintEventNodeSpawner");
+	EventEvidence.EventName = EventName;
+	TestTrue(TEXT("readback locates custom event by event name"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ReadbackFindsCustomEventByEvidence(Graph, EventEvidence));
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteReadbackEvidence StructEvidence;
+	StructEvidence.bHasResolverEvidence = true;
+	StructEvidence.bHasSpawnEvidence = true;
+	StructEvidence.SelectedSpawnerClass = TEXT("UBlueprintNodeSpawner");
+	StructEvidence.StructTypeName = TEXT("Vector");
+	TestTrue(TEXT("readback locates make struct by struct type"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ReadbackFindsStructNodeByEvidence(Graph, StructEvidence, true));
+	StructEvidence.StructTypeName = TEXT("Rotator");
+	TestTrue(TEXT("readback locates break struct by struct type"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ReadbackFindsStructNodeByEvidence(Graph, StructEvidence, false));
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteReadbackEvidence ReadbackOnly = FunctionStableIdEvidence;
+	ReadbackOnly.bHasResolverEvidence = false;
+	ReadbackOnly.bHasSpawnEvidence = false;
+	TestFalse(TEXT("readback alone cannot create function success evidence"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ReadbackFindsFunctionCallByEvidence(Graph, ReadbackOnly));
+
+	ReadbackOnly = FieldEvidence;
+	ReadbackOnly.bHasResolverEvidence = false;
+	ReadbackOnly.bHasSpawnEvidence = false;
+	TestFalse(TEXT("readback alone cannot create variable success evidence"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ReadbackFindsVariableNodeByEvidence(Graph, ReadbackOnly, true));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperGraphWriteTaskRuntimeCallFunctionMemberPrefixPreviewBlocksTest,
 	"BlueprintHelper.GraphWrite.TaskRuntime.CallFunction.MemberPrefixPreviewBlocks",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -2615,6 +3072,8 @@ bool FBlueprintHelperGraphWriteTaskRuntimeCallFunctionMemberPrefixPreviewBlocksT
 	}
 
 	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	TestNotNull(TEXT("fixture custom event exists"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, TEXT("RuntimeMemberPrefixCall")));
 	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness Harness;
 	const FBlueprintHelperToolResultBase Preview = Harness.RuntimeService.PreviewTaskPlan(
 		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTaskPlanPayload(
@@ -2640,12 +3099,12 @@ bool FBlueprintHelperGraphWriteTaskRuntimeCallFunctionMemberPrefixPreviewBlocksT
 		ErrorObject->TryGetStringField(TEXT("path"), Path);
 		TestEqual(TEXT("member-prefix code"), Code, FString(TEXT("explicit_member_call_not_supported")));
 		TestEqual(TEXT("member-prefix stage"), Stage, FString(TEXT("dry_run")));
-		TestEqual(TEXT("member-prefix path"), Path, FString(TEXT("write.ops[0].body.statements[0].target")));
+		TestEqual(TEXT("member-prefix path"), Path, FString(TEXT("write.ops[0].logic_spec.statements[0].target")));
 	}
 
-	TestEqual(TEXT("member-prefix preview does not create event"),
+	TestEqual(TEXT("member-prefix preview does not create an additional event"),
 		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::CountCustomEventsByName(Graph, TEXT("RuntimeMemberPrefixCall")),
-		0);
+		1);
 	return true;
 }
 

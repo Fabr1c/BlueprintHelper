@@ -72,6 +72,62 @@ static FString DescribePinType(const FEdGraphPinType& PinType)
 	return Result;
 }
 
+static bool IsPropertySemanticKind(EBlueprintHelperActionSemanticKind Kind)
+{
+	return Kind == EBlueprintHelperActionSemanticKind::GetProperty
+		|| Kind == EBlueprintHelperActionSemanticKind::SetProperty;
+}
+
+static FString GetEvidenceValue(const TMap<FString, FString>& Evidence, const TCHAR* Key)
+{
+	if (const FString* Value = Evidence.Find(Key))
+	{
+		return Value->TrimStartAndEnd();
+	}
+	return FString();
+}
+
+static FString GetPropertyPathLeaf(const FString& PropertyPath)
+{
+	const FString Trimmed = PropertyPath.TrimStartAndEnd();
+	int32 DotIndex = INDEX_NONE;
+	if (Trimmed.FindLastChar(TEXT('.'), DotIndex) && DotIndex >= 0 && DotIndex < Trimmed.Len() - 1)
+	{
+		return Trimmed.Mid(DotIndex + 1).TrimStartAndEnd();
+	}
+	return Trimmed;
+}
+
+static FString GetExplicitOwnerEvidence(
+	const FBlueprintHelperActionResolutionRequest& Request,
+	const TMap<FString, FString>& Evidence)
+{
+	FString OwnerEvidence = GetEvidenceValue(Evidence, TEXT("field_owner_class"));
+	if (OwnerEvidence.IsEmpty())
+	{
+		OwnerEvidence = GetEvidenceValue(Evidence, TEXT("property_owner"));
+	}
+	if (OwnerEvidence.IsEmpty())
+	{
+		OwnerEvidence = GetEvidenceValue(Evidence, TEXT("target_object_type"));
+	}
+	if (OwnerEvidence.IsEmpty())
+	{
+		OwnerEvidence = Request.Semantic.TargetObjectType.TrimStartAndEnd();
+	}
+	return OwnerEvidence;
+}
+
+static FBlueprintHelperActionResolutionResult MakeFieldMissingEvidenceResult(const FString& Message)
+{
+	FBlueprintHelperActionResolutionResult Result;
+	Result.Status = EBlueprintHelperActionResolutionStatus::InvalidRequest;
+	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::FieldVariableAction;
+	Result.ErrorCode = TEXT("missing_required_evidence");
+	Result.Message = Message;
+	return Result;
+}
+
 static bool TypeMatches(const FString& ExpectedType, const FBlueprintHelperCallFunctionPinType& ExpectedPinType, const FEdGraphPinType& CandidateType)
 {
 	if (!ExpectedType.TrimStartAndEnd().IsEmpty())
@@ -236,6 +292,50 @@ static void SortFieldVariableCandidates(TArray<FBlueprintHelperVariableActionCan
 		return Left.Info.DisplayName < Right.Info.DisplayName;
 	});
 }
+
+static TArray<FBlueprintHelperVariableActionCandidate> BuildProjectedFieldCandidates(
+	const FBlueprintHelperActionResolutionRequest& Request,
+	const UClass* OwnerClass,
+	const UClass* NodeClass)
+{
+	TArray<FBlueprintHelperVariableActionCandidate> Candidates;
+	if (!Request.Blueprint)
+	{
+		return Candidates;
+	}
+
+	for (const FBPVariableDescription& Variable : Request.Blueprint->NewVariables)
+	{
+		const int32 Score = ScoreVariableCandidate(Request, Variable);
+		if (Score == INDEX_NONE)
+		{
+			continue;
+		}
+
+		FBlueprintHelperVariableActionCandidate Candidate;
+		Candidate.Info = BuildCandidateInfo(Request, Variable, OwnerClass, NodeClass, Score);
+		Candidates.Add(MoveTemp(Candidate));
+	}
+
+	SortFieldVariableCandidates(Candidates);
+	return Candidates;
+}
+
+static void SetFieldCandidateDiagnostics(
+	FBlueprintHelperActionResolutionResult& Result,
+	const TArray<FBlueprintHelperVariableActionCandidate>& Candidates,
+	const int32 MaxCandidates)
+{
+	const int32 Limit = FMath::Max(1, MaxCandidates);
+	for (const FBlueprintHelperVariableActionCandidate& Candidate : Candidates)
+	{
+		if (Result.CandidateActions.Num() >= Limit)
+		{
+			break;
+		}
+		Result.CandidateActions.Add(Candidate.Info);
+	}
+}
 }
 
 bool FBlueprintHelperFieldVariableActionResolver::IsSupportedSemanticKind(EBlueprintHelperActionSemanticKind Kind)
@@ -291,20 +391,69 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperFieldVariableActionResolv
 		: UK2Node_VariableGet::StaticClass();
 
 	const TMap<FString, FString>& Evidence = Context.GetEvidence();
-	FString FieldName = Evidence.FindRef(TEXT("field_name"));
-	if (FieldName.IsEmpty())
+	const FString OwnerEvidence = GetExplicitOwnerEvidence(Request, Evidence);
+	const bool bPropertySemantic = IsPropertySemanticKind(Request.Semantic.Kind);
+	const FString PropertyPath = !Request.Semantic.PropertyPath.TrimStartAndEnd().IsEmpty()
+		? Request.Semantic.PropertyPath.TrimStartAndEnd()
+		: GetEvidenceValue(Evidence, TEXT("property_path"));
+
+	if (OwnerEvidence.IsEmpty())
 	{
-		FieldName = !Request.Semantic.TargetPath.IsEmpty()
-			? Request.Semantic.TargetPath
-			: Request.Semantic.Query;
+		return MakeFieldMissingEvidenceResult(FString::Printf(
+			TEXT("Field variable action requires explicit owner evidence: semantic=%s query=%s target=%s property_path=%s."),
+			*FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.Semantic.Kind),
+			*Request.Semantic.Query,
+			*Request.Semantic.TargetPath,
+			*Request.Semantic.PropertyPath));
+	}
+
+	if (bPropertySemantic && PropertyPath.IsEmpty())
+	{
+		return MakeFieldMissingEvidenceResult(FString::Printf(
+			TEXT("Property field action requires explicit property_path evidence: semantic=%s owner=%s query=%s."),
+			*FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.Semantic.Kind),
+			*OwnerEvidence,
+			*Request.Semantic.Query));
+	}
+
+	FString FieldName = GetEvidenceValue(Evidence, TEXT("field_name"));
+	if (FieldName.IsEmpty() && bPropertySemantic)
+	{
+		FieldName = GetPropertyPathLeaf(PropertyPath);
+	}
+
+	if (FieldName.IsEmpty() && !Request.Semantic.TargetPath.TrimStartAndEnd().IsEmpty())
+	{
+		FBlueprintHelperActionResolutionRequest CandidateRequest = Request;
+		CandidateRequest.Semantic.Query = Request.Semantic.TargetPath.TrimStartAndEnd();
+		const TArray<FBlueprintHelperVariableActionCandidate> Candidates =
+			BuildProjectedFieldCandidates(CandidateRequest, OwnerClass, NodeClass.Get());
+		if (Candidates.Num() == 1)
+		{
+			FieldName = Candidates[0].Info.DisplayName;
+		}
+		else if (Candidates.Num() > 1)
+		{
+			Result.Status = EBlueprintHelperActionResolutionStatus::Ambiguous;
+			Result.ErrorCode = TEXT("ambiguous_candidates");
+			Result.Message = FString::Printf(
+				TEXT("Field variable action is ambiguous without projected field_name evidence: semantic=%s owner=%s query=%s."),
+				*FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.Semantic.Kind),
+				*OwnerEvidence,
+				*Request.Semantic.Query);
+			SetFieldCandidateDiagnostics(Result, Candidates, Request.MaxCandidates);
+			return Result;
+		}
 	}
 
 	if (FieldName.TrimStartAndEnd().IsEmpty())
 	{
-		Result.Status = EBlueprintHelperActionResolutionStatus::InvalidRequest;
-		Result.ErrorCode = TEXT("field_target_missing");
-		Result.Message = TEXT("Field variable action requires projected field_name evidence or semantic target.");
-		return Result;
+		return MakeFieldMissingEvidenceResult(FString::Printf(
+			TEXT("Field variable action requires projected field_name evidence: semantic=%s owner=%s query=%s target=%s."),
+			*FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.Semantic.Kind),
+			*OwnerEvidence,
+			*Request.Semantic.Query,
+			*Request.Semantic.TargetPath));
 	}
 
 	const FProperty* Property = FindVariableProperty(Request.Blueprint, FName(*FieldName));
@@ -342,9 +491,7 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperFieldVariableActionResolv
 		*FieldName,
 		*FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.Semantic.Kind));
 	CandidateInfo.DisplayName = FieldName;
-	CandidateInfo.OwnerClassPath = !Evidence.FindRef(TEXT("field_owner_class")).IsEmpty()
-		? Evidence.FindRef(TEXT("field_owner_class"))
-		: (OwnerClass ? OwnerClass->GetPathName() : FString());
+	CandidateInfo.OwnerClassPath = OwnerEvidence;
 	CandidateInfo.NativeFunctionName = FieldName;
 	CandidateInfo.Category = TEXT("field_variable");
 	CandidateInfo.NodeClassPath = NodeClass.Get() ? NodeClass->GetPathName() : FString();

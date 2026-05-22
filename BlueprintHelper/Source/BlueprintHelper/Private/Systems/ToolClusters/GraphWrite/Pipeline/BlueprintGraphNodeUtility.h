@@ -81,48 +81,6 @@ public:
 			|| ErrorMessage.Contains(TEXT("sub category"));
 	}
 
-	static FString FindDiagnosticPinName(const FParsedNode& NodeData, const FString& ErrorMessage)
-	{
-		for (const FParsedEventParam& Param : NodeData.EventReference.Params)
-		{
-			if (!Param.Name.IsEmpty() && ErrorMessage.Contains(Param.Name))
-			{
-				return Param.Name;
-			}
-		}
-
-		return TEXT("");
-	}
-
-	static int32 CountRequestedPinTypes(const FParsedNode& NodeData)
-	{
-		int32 Count = 0;
-		if (NodeData.VariableReference.PinType.IsValid())
-		{
-			++Count;
-		}
-		if (NodeData.ContainerReference.ElementType.IsValid())
-		{
-			++Count;
-		}
-		if (NodeData.ContainerReference.KeyType.IsValid())
-		{
-			++Count;
-		}
-		if (NodeData.ContainerReference.ValueType.IsValid())
-		{
-			++Count;
-		}
-		for (const FParsedEventParam& Param : NodeData.EventReference.Params)
-		{
-			if (Param.PinType.IsValid())
-			{
-				++Count;
-			}
-		}
-		return Count;
-	}
-
 	static UEdGraph* ResolveMacroGraph(const FParsedMacroReference& MacroReference, FString& OutErrorMessage);
 	static UEdGraphPin* FindPinByAlias(UK2Node* TargetNode, const FString& RequestedPinName);
 	static FBlueprintHelperCallFunctionResolveResult ResolveFunctionForGraph(UEdGraph* TargetGraph, const FString& FunctionQuery, const TMap<FString, FString>& DefaultValues);

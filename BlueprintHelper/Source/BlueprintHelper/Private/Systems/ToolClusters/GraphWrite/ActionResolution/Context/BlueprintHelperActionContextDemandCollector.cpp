@@ -12,6 +12,50 @@ static FString FirstNonEmpty(const FString& First, const FString& Second, const 
 	return FirstNonEmpty(FirstNonEmpty(First, Second), Third);
 }
 
+static FString FirstNonEmpty(const FString& First, const FString& Second, const FString& Third, const FString& Fourth)
+{
+	return FirstNonEmpty(FirstNonEmpty(First, Second, Third), Fourth);
+}
+
+static FString BuildStatementQuery(const FBlueprintHelperGraphStatementIR& Statement, const EBlueprintHelperActionSemanticKind SemanticKind)
+{
+	if (SemanticKind == EBlueprintHelperActionSemanticKind::Call)
+	{
+		return FirstNonEmpty(
+			Statement.ResolvedCallFunctionStableId,
+			Statement.Target,
+			Statement.Name,
+			Statement.PatternName);
+	}
+
+	return FirstNonEmpty(
+		Statement.ResolvedCallFunctionStableId,
+		Statement.Name,
+		Statement.PatternName);
+}
+
+static FString BuildExpressionQuery(const FBlueprintHelperGraphExpressionIR& Expression, const EBlueprintHelperActionSemanticKind SemanticKind)
+{
+	if (SemanticKind == EBlueprintHelperActionSemanticKind::Op)
+	{
+		return Expression.Operator;
+	}
+
+	if (SemanticKind == EBlueprintHelperActionSemanticKind::Call)
+	{
+		return FirstNonEmpty(
+			Expression.ResolvedCallFunctionStableId,
+			Expression.Target,
+			Expression.Name,
+			Expression.PatternName);
+	}
+
+	return FirstNonEmpty(
+		Expression.ResolvedCallFunctionStableId,
+		Expression.Name,
+		Expression.PatternName);
+}
+
 static FString DemandIdFromPath(const FString& Prefix, const FString& Path)
 {
 	return FString::Printf(TEXT("%s:%s"), *Prefix, *Path);
@@ -63,6 +107,70 @@ static void CopyNamedExpressionContext(
 	if (Expression->Kind == EBlueprintHelperGraphExpressionKind::Literal)
 	{
 		InOutDemand.DefaultValues.Add(Name, Expression->LiteralValue);
+	}
+}
+
+static FString ResolveComponentPathFromTarget(const FBlueprintHelperGraphResolvedTarget& Target)
+{
+	if (Target.Kind == EBlueprintHelperGraphTargetKind::Component)
+	{
+		return Target.Raw.TrimStartAndEnd();
+	}
+	if (Target.Kind == EBlueprintHelperGraphTargetKind::ComponentMemberFunction)
+	{
+		return !Target.Owner.TrimStartAndEnd().IsEmpty()
+			? Target.Owner.TrimStartAndEnd()
+			: Target.Raw.TrimStartAndEnd();
+	}
+	return FString();
+}
+
+static bool IsEventDelegateSemantic(const EBlueprintHelperActionSemanticKind SemanticKind)
+{
+	return SemanticKind == EBlueprintHelperActionSemanticKind::Event
+		|| SemanticKind == EBlueprintHelperActionSemanticKind::ComponentBoundEvent
+		|| SemanticKind == EBlueprintHelperActionSemanticKind::Bind;
+}
+
+static void ApplyEventDelegateStatementEvidence(
+	const FBlueprintHelperGraphStatementIR& Statement,
+	FBlueprintHelperActionContextDemand& InOutDemand)
+{
+	if (!IsEventDelegateSemantic(InOutDemand.SemanticKind))
+	{
+		return;
+	}
+
+	if (InOutDemand.ComponentPath.IsEmpty())
+	{
+		InOutDemand.ComponentPath = ResolveComponentPathFromTarget(Statement.ResolvedTarget);
+	}
+	if (InOutDemand.DelegateName.IsEmpty())
+	{
+		InOutDemand.DelegateName = FirstNonEmpty(Statement.Property, Statement.Name, Statement.ResolvedTarget.Member);
+	}
+}
+
+static void ApplyEventDelegateExpressionEvidence(
+	const FBlueprintHelperGraphExpressionIR& Expression,
+	FBlueprintHelperActionContextDemand& InOutDemand)
+{
+	if (!IsEventDelegateSemantic(InOutDemand.SemanticKind))
+	{
+		return;
+	}
+
+	if (InOutDemand.ComponentPath.IsEmpty())
+	{
+		InOutDemand.ComponentPath = ResolveComponentPathFromTarget(Expression.ResolvedTarget);
+	}
+	if (InOutDemand.DelegateName.IsEmpty())
+	{
+		InOutDemand.DelegateName = FirstNonEmpty(Expression.Property, Expression.Name, Expression.ResolvedTarget.Member);
+	}
+	if (InOutDemand.DelegateSignature.IsEmpty() && !Expression.Type.TrimStartAndEnd().IsEmpty())
+	{
+		InOutDemand.DelegateSignature = Expression.Type.TrimStartAndEnd();
 	}
 }
 }
@@ -125,10 +233,7 @@ void FBlueprintHelperActionContextDemandCollector::AppendDemandForStatement(
 		StableId,
 		Statement.Path,
 		SemanticKind,
-		BlueprintHelperActionContextDemandCollector::FirstNonEmpty(
-			Statement.ResolvedCallFunctionStableId,
-			Statement.Name,
-			Statement.PatternName),
+		BlueprintHelperActionContextDemandCollector::BuildStatementQuery(Statement, SemanticKind),
 		BlueprintHelperActionContextDemandCollector::FirstNonEmpty(
 			Statement.ResolvedTarget.Raw,
 			Statement.Target,
@@ -153,6 +258,7 @@ void FBlueprintHelperActionContextDemandCollector::AppendDemandForStatement(
 			? Statement.TargetObject->ResolvedTarget.Raw
 			: Statement.TargetObject->Target;
 	}
+	BlueprintHelperActionContextDemandCollector::ApplyEventDelegateStatementEvidence(Statement, Demand);
 
 	if (Demand.SemanticKind != EBlueprintHelperActionSemanticKind::Unknown)
 	{
@@ -197,12 +303,7 @@ void FBlueprintHelperActionContextDemandCollector::AppendDemandForExpression(
 		StableId,
 		Expression.Path,
 		SemanticKind,
-		SemanticKind == EBlueprintHelperActionSemanticKind::Op
-			? Expression.Operator
-			: BlueprintHelperActionContextDemandCollector::FirstNonEmpty(
-				Expression.ResolvedCallFunctionStableId,
-				Expression.Name,
-				Expression.PatternName),
+		BlueprintHelperActionContextDemandCollector::BuildExpressionQuery(Expression, SemanticKind),
 		BlueprintHelperActionContextDemandCollector::FirstNonEmpty(
 			Expression.ResolvedTarget.Raw,
 			Expression.Target,
@@ -230,6 +331,7 @@ void FBlueprintHelperActionContextDemandCollector::AppendDemandForExpression(
 			? Expression.TargetObject->ResolvedTarget.Raw
 			: Expression.TargetObject->Target;
 	}
+	BlueprintHelperActionContextDemandCollector::ApplyEventDelegateExpressionEvidence(Expression, Demand);
 
 	if (Demand.SemanticKind != EBlueprintHelperActionSemanticKind::Unknown)
 	{

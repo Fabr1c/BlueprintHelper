@@ -3,16 +3,51 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.h"
 
 #include "BlueprintActionDatabase.h"
+#include "EdGraph/EdGraph.h"
+#include "Engine/Blueprint.h"
+#include "Engine/BlueprintGeneratedClass.h"
+#include "GameFramework/Actor.h"
 #include "HAL/FileManager.h"
+#include "Kismet2/KismetEditorUtilities.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "UObject/Package.h"
 
 namespace
 {
 static FString BuildOperatorActionForbiddenToken(const TCHAR* Left, const TCHAR* Right)
 {
 	return FString(Left) + FString(Right);
+}
+
+static FString MakeOperatorActionTestObjectName(const FString& Prefix)
+{
+	return FString::Printf(TEXT("%s_%s"), *Prefix, *FGuid::NewGuid().ToString(EGuidFormats::Digits));
+}
+
+static UBlueprint* MakeOperatorActionTestBlueprint()
+{
+	UPackage* Package = CreatePackage(*FString::Printf(
+		TEXT("/Game/BlueprintHelperOperatorAction/%s"),
+		*MakeOperatorActionTestObjectName(TEXT("Pkg"))));
+	Package->SetDirtyFlag(false);
+
+	UBlueprint* Blueprint = FKismetEditorUtilities::CreateBlueprint(
+		AActor::StaticClass(),
+		Package,
+		*MakeOperatorActionTestObjectName(TEXT("BP_OperatorAction")),
+		BPTYPE_Normal,
+		UBlueprint::StaticClass(),
+		UBlueprintGeneratedClass::StaticClass(),
+		TEXT("BlueprintHelperOperatorActionResolverTests"));
+	Package->SetDirtyFlag(false);
+	return Blueprint;
+}
+
+static UEdGraph* GetOperatorActionTestGraph(UBlueprint* Blueprint)
+{
+	return Blueprint && Blueprint->UbergraphPages.Num() > 0 ? Blueprint->UbergraphPages[0] : nullptr;
 }
 
 static bool ScanBlueprintHelperSourceForOperatorForbiddenToken(
@@ -55,8 +90,22 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperOperatorActionDispatchTest::RunTest(const FString& Parameters)
 {
+	UBlueprint* Blueprint = MakeOperatorActionTestBlueprint();
+	UEdGraph* Graph = GetOperatorActionTestGraph(Blueprint);
+	TestNotNull(TEXT("blueprint"), Blueprint);
+	TestNotNull(TEXT("graph"), Graph);
+	if (!Blueprint || !Graph)
+	{
+		return false;
+	}
+
 	FBlueprintHelperActionResolutionRequest Request;
 	Request.ClusterKind = EBlueprintHelperSpawnerClusterKind::FunctionAction;
+	Request.Blueprint = Blueprint;
+	Request.TargetGraph = Graph;
+	Request.StatementId = MakeOperatorActionTestObjectName(TEXT("Stmt"));
+	Request.ProjectedContextHash = TEXT("operator_projected_context");
+	Request.SemanticConstraintsHash = TEXT("operator_semantic_constraints");
 	Request.Semantic.Kind = EBlueprintHelperActionSemanticKind::Op;
 	Request.Semantic.Query = TEXT(">");
 	FBlueprintActionDatabase::Get().RefreshAll();

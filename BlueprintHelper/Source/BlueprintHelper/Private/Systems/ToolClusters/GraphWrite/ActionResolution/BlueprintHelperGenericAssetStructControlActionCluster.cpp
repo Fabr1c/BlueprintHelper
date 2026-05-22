@@ -13,7 +13,11 @@ static FBlueprintHelperActionResolutionResult MakeNeedsMoreSemanticContextResult
 	FBlueprintHelperActionResolutionResult Result;
 	Result.Status = EBlueprintHelperActionResolutionStatus::InvalidRequest;
 	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction;
-	Result.ErrorCode = TEXT("needs_more_semantic_context");
+	Result.ErrorCode =
+		(Request.Semantic.Kind == EBlueprintHelperActionSemanticKind::Construct
+			|| Request.Semantic.Kind == EBlueprintHelperActionSemanticKind::Deconstruct)
+		? TEXT("missing_required_evidence")
+		: TEXT("needs_more_semantic_context");
 	Result.Message = Boundary.Reason;
 	return Result;
 }

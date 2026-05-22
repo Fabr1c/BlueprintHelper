@@ -43,6 +43,44 @@ static FString GetCustomEventName(const FBlueprintHelperActionClusterContextView
 	});
 }
 
+static FString GetDelegateName(const FBlueprintHelperActionClusterContextView& Context)
+{
+	const FBlueprintHelperActionResolutionRequest& Request = Context.GetRequest();
+	return GetFirstNonEmptyText({
+		GetEvidenceValue(Request, TEXT("delegate_name")),
+		Context.GetSemantic().Query,
+		Context.GetSemantic().TargetPath,
+		Context.GetSemantic().PropertyPath,
+		Context.GetSemantic().StableId
+	});
+}
+
+static FString GetComponentPath(const FBlueprintHelperActionResolutionRequest& Request)
+{
+	return GetFirstNonEmptyText({
+		GetEvidenceValue(Request, TEXT("component_path")),
+		GetEvidenceValue(Request, TEXT("component_object_path"))
+	});
+}
+
+static FString GetBindingObjectPath(const FBlueprintHelperActionResolutionRequest& Request)
+{
+	return GetFirstNonEmptyText({
+		GetEvidenceValue(Request, TEXT("binding_object_path")),
+		GetEvidenceValue(Request, TEXT("binding_object")),
+		GetEvidenceValue(Request, TEXT("target_object_path"))
+	});
+}
+
+static FString GetDelegateSignature(const FBlueprintHelperActionResolutionRequest& Request)
+{
+	return GetFirstNonEmptyText({
+		GetEvidenceValue(Request, TEXT("delegate_signature")),
+		GetEvidenceValue(Request, TEXT("signature_name")),
+		GetEvidenceValue(Request, TEXT("delegate_type"))
+	});
+}
+
 static FString MakeCustomEventStableId(const FString& EventName)
 {
 	return FString::Printf(TEXT("custom_event:%s"), *EventName);
@@ -83,13 +121,42 @@ static FBlueprintHelperActionResolutionResult MakeResolvedCustomEventResult(
 	return Result;
 }
 
-static FBlueprintHelperActionResolutionResult MakeEventDelegateNeedsContextResult(
+static FBlueprintHelperActionResolutionResult MakeMissingEvidenceResult(
+	const FBlueprintHelperActionResolutionRequest& Request,
+	const FString& MissingDetail,
+	const FString& Message)
+{
+	FBlueprintHelperActionResolutionResult Result;
+	Result.Status = EBlueprintHelperActionResolutionStatus::InvalidRequest;
+	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::EventDelegateAction;
+	Result.ErrorCode = TEXT("missing_required_evidence");
+	Result.Message = FString::Printf(TEXT("%s: %s"), *MissingDetail, *Message);
+	return Result;
+}
+
+static FBlueprintHelperActionResolutionResult MakeUnsupportedCompleteDelegateSpawnerResult(
+	const FBlueprintHelperActionResolutionRequest& Request,
+	const FString& SemanticName,
+	const FString& DelegateName)
+{
+	FBlueprintHelperActionResolutionResult Result;
+	Result.Status = EBlueprintHelperActionResolutionStatus::UnsupportedIntent;
+	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::EventDelegateAction;
+	Result.ErrorCode = TEXT("unsupported_intent");
+	Result.Message = FString::Printf(
+		TEXT("%s delegate spawner boundary is not complete for delegate '%s': missing safe UE spawner-family routing for projected component/binding object plus delegate signature evidence."),
+		*SemanticName,
+		*DelegateName);
+	return Result;
+}
+
+static FBlueprintHelperActionResolutionResult MakeEventDelegateBlockedResult(
 	const FBlueprintHelperActionResolutionRequest& Request,
 	const FString& ErrorCode,
 	const FString& Message)
 {
 	FBlueprintHelperActionResolutionResult Result;
-	Result.Status = EBlueprintHelperActionResolutionStatus::InvalidRequest;
+	Result.Status = EBlueprintHelperActionResolutionStatus::Blocked;
 	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::EventDelegateAction;
 	Result.ErrorCode = ErrorCode;
 	Result.Message = Message;
@@ -111,7 +178,7 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperEventDelegateActionCluste
 		const FString EventName = GetCustomEventName(Context);
 		if (EventName.IsEmpty())
 		{
-			return MakeEventDelegateNeedsContextResult(
+			return MakeMissingEvidenceResult(
 				Request,
 				TEXT("event_name_missing"),
 				TEXT("EventDelegateActionCluster requires Semantic.Query, Semantic.TargetPath, or ContextEvidence.event_name for event semantics."));
@@ -122,13 +189,79 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperEventDelegateActionCluste
 			FName(*EventName));
 		if (!Spawner)
 		{
-			return MakeEventDelegateNeedsContextResult(
+			return MakeEventDelegateBlockedResult(
 				Request,
 				TEXT("event_node_spawner_unavailable"),
 				FString::Printf(TEXT("Could not create UBlueprintEventNodeSpawner for custom event '%s'."), *EventName));
 		}
 
 		return MakeResolvedCustomEventResult(Request, EventName, Spawner);
+	}
+
+	if (Context.GetSemantic().Kind == EBlueprintHelperActionSemanticKind::ComponentBoundEvent)
+	{
+		const FString ComponentPath = GetComponentPath(Request);
+		const FString DelegateName = GetDelegateName(Context);
+		const FString DelegateSignature = GetDelegateSignature(Request);
+		if (ComponentPath.IsEmpty())
+		{
+			return MakeMissingEvidenceResult(
+				Request,
+				TEXT("component_missing"),
+				TEXT("Component-bound event resolution requires ContextEvidence.component_path."));
+		}
+		if (DelegateName.IsEmpty())
+		{
+			return MakeMissingEvidenceResult(
+				Request,
+				TEXT("delegate_name_missing"),
+				TEXT("Component-bound event resolution requires ContextEvidence.delegate_name or semantic delegate query."));
+		}
+		if (DelegateSignature.IsEmpty())
+		{
+			return MakeMissingEvidenceResult(
+				Request,
+				TEXT("delegate_signature_missing"),
+				TEXT("Component-bound event resolution requires ContextEvidence.delegate_signature."));
+		}
+
+		return MakeUnsupportedCompleteDelegateSpawnerResult(
+			Request,
+			TEXT("component_bound_event"),
+			DelegateName);
+	}
+
+	if (Context.GetSemantic().Kind == EBlueprintHelperActionSemanticKind::Bind)
+	{
+		const FString BindingObjectPath = GetBindingObjectPath(Request);
+		const FString DelegateName = GetDelegateName(Context);
+		const FString DelegateSignature = GetDelegateSignature(Request);
+		if (BindingObjectPath.IsEmpty())
+		{
+			return MakeMissingEvidenceResult(
+				Request,
+				TEXT("binding_object_missing"),
+				TEXT("Delegate bind resolution requires ContextEvidence.binding_object_path."));
+		}
+		if (DelegateName.IsEmpty())
+		{
+			return MakeMissingEvidenceResult(
+				Request,
+				TEXT("delegate_name_missing"),
+				TEXT("Delegate bind resolution requires ContextEvidence.delegate_name or semantic delegate query."));
+		}
+		if (DelegateSignature.IsEmpty())
+		{
+			return MakeMissingEvidenceResult(
+				Request,
+				TEXT("delegate_signature_missing"),
+				TEXT("Delegate bind resolution requires ContextEvidence.delegate_signature."));
+		}
+
+		return MakeUnsupportedCompleteDelegateSpawnerResult(
+			Request,
+			TEXT("bind"),
+			DelegateName);
 	}
 
 	return MakeUnsupportedIntentResult(Request);
@@ -139,6 +272,8 @@ bool FBlueprintHelperEventDelegateActionCluster::OwnsSemanticKind(EBlueprintHelp
 	switch (Kind)
 	{
 	case EBlueprintHelperActionSemanticKind::Event:
+	case EBlueprintHelperActionSemanticKind::ComponentBoundEvent:
+	case EBlueprintHelperActionSemanticKind::Bind:
 		return true;
 	default:
 		return false;

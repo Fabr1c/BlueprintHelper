@@ -18,25 +18,44 @@ TaskSpec GraphBody
 -> UE Mutator
 ```
 
+## Legacy 删除门禁
+
+后续 GraphWrite 80% 能力推进采用 legacy 严格模式：只要代码路径保留旧语义、旧 fallback、旧模型、旧 transaction/review 解释，默认视为 legacy，不能复用进新主链路。
+
+判定为旧路径后默认直接删除。若暂时不能删除，必须在本 gap 文档中保留一条明确记录，包含：
+
+1. 旧路径文件与入口。
+2. 当前仍不能删除的具体原因。
+3. 它为什么不能进入新主链路。
+4. 删除前置条件。
+
+### P1 Legacy deletion gate evidence - 2026-05-22
+
+| Legacy path | Why it cannot be deleted in P1 | Why it cannot enter the new mainline | Deletion prerequisite |
+|---|---|---|---|
+| `BlueprintGraphJsonParser.h/.cpp` | `BlueprintGraphMutationPlanBuilder.cpp`, `BlueprintGraphGenerationPipeline.cpp`, `BlueprintGraphDefaultValueApplier.cpp`, `BlueprintGraphExistingNodeMapper.cpp`, `BlueprintGraphLocalVariableService.cpp`, `BlueprintGraphLinker.cpp`, `BlueprintGraphNodeUtility.cpp`, and `BlueprintMultiGraphGenerationPipeline.cpp` still include or depend on parser/parsed DTO types. | It preserves JSON parsed-node DTO parsing, including `make_struct` / `compare` legacy tokens; P1 kept it isolated because removing it would require replacing the private mutation-plan/parser contract. | Migrate remaining private parser consumers to SemanticIR/action-context request builders, then delete parser functions and parsed DTO references. |
+| `BlueprintGraphLinker.h/.cpp` | `BlueprintGraphGenerationPipeline.cpp` still uses `ConnectFragmentDataEdges` for the SemanticIR FragmentDAG mainline, while parsed-link overloads are still referenced by `BlueprintGraphMutationPlanExecutor.cpp`. | The file mixes the new FragmentDAG data-edge linker with legacy `FParsedLink` explicit-link overloads; only `ConnectFragmentDataEdges` is mainline-safe. | Split/rename the FragmentDAG linker boundary, migrate executor parsed-link paths to fail-fast without linker overloads, then delete legacy overloads. |
+| `FParsedNode` / `FParsedLink` private DTOs | `BlueprintGraphMutationPlan.h`, `BlueprintGraphMutationPlanBuilder.h/.cpp`, `BlueprintGraphMutationPlanExecutor.cpp`, `BlueprintGraphJsonParser.cpp`, and `BlueprintGraphLinker.h/.cpp` still compile-use the parsed DTOs. | Parsed DTOs represent the legacy graph-json pipeline, not `TaskSpec GraphBody -> SemanticIR -> ActionContextPipeline`. P1 keeps execution fail-fast via `parsed_node_plan_unsupported`. | Remove parsed-node mutation-plan builder/executor entry points or replace them with SemanticIR request models. |
+| `BlueprintGraphNodeSpawner.h/.cpp` | Deleted in P1 after stale include cleanup; no remaining `BlueprintGraphNodeSpawner` or `SpawnMacroNode` source reference. | N/A. | Closed for P1. |
+| `BlueprintHelperGenericAssetStructControlActionResolver.cpp` direct `make_struct` tokens | Kept because direct struct spawning is P4/P5 scope and already lives under GenericAssetStructControlAction resolver evidence, not the removed manual control fallback. | It must not become a fallback for wide-surface semantics without ActionContext/Generic cluster evidence. | P4/P5 should document or reshape the direct struct boundary and remove/rename `make_struct` search-gate tokens if the boundary is accepted. |
+| `call_function.name` diagnostic strings | Kept in `BlueprintHelperCallFunctionResolver.cpp` and `BlueprintHelperMergeBlueprintGraphService.cpp` as failure/diagnostic messages only. | These strings do not create success without resolver evidence. | Rename diagnostics only if future gates require zero string matches. |
+
 ## Open Gaps
 
-### Gap 1. ControlFragmentBuilder still has manual ActionRequest fallback
+### P6 Verification Blockers - 2026-05-22
 
-状态：未关闭
+Status update after regression fix: `BlueprintHelper.GraphWrite` now passes in `Saved/Automation/GraphWrite80_P6_GraphWrite_Regression_002/index.json` with 116 tests successful (`107` succeeded + `9` succeeded with warnings), 0 failed, and 0 not run. The blocker table below is retained as closed history for `_001`; it no longer blocks P6 closure.
 
-证据：
-- `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperControlFragmentBuilder.cpp`
-- `ResolveControlActionProvider` 在缺少 `ActionContextScope` 时仍手工填充 `FBlueprintHelperActionResolutionRequest`。
-- 该 fallback 写入 `manual_control_context:` 和 `manual_control_semantic:`，绕过了完整的 ActionContext projection。
+P6 能力行本身已经闭环：`BlueprintHelper.GraphWrite.Capability80` 在 `Saved/Automation/GraphWrite80_P6_Full_002/index.json` 中为 5 succeeded / 0 failed；最终指标为 Capability coverage 5/5、GraphWrite correctness 17/18、Call correctness 8/8、Silent wrong graph 0。
 
-为什么仍是 gap：
-- 设计口径要求缺少 projected context 时 fail-fast，而不是在 builder 内修补一个身份不完整的 request。
-- 这与 `ActionContextPipeline -> BundleProjector -> ActionResolutionCore` 的单一路径不一致。
+`Saved/Automation/GraphWrite80_P6_GraphWrite_Regression_001/index.json` 曾记录 91 succeeded / 14 failed / 9 succeeded with warnings；这些条目已在 `_002` 中关闭。下表保留为 closed history，并继续说明不能用删除测试、伪造 evidence 或声明 unsupported 语义成功的方式关闭此类问题。
 
-关闭条件：
-- `ControlFragmentBuilder` 缺少 `ActionContextScope` 时返回明确错误，例如 `action_context_scope_required`。
-- 移除 `manual_control_context` / `manual_control_semantic` fallback。
-- 增加契约测试，禁止 control builder 手工拼 `ActionRequest.ClusterKind`、`ActionRequest.Semantic.Kind` 或 manual context hash。
+| Blocker | Exact file / entry | Why it blocks 80% capability/correctness closure | Why not completed/deleted in P6 | Next required plan |
+|---|---|---|---|---|
+| CLOSED: ActionResolution projected-context contract failure | Test: `BlueprintHelper.GraphWrite.ActionResolution.Contract.ClustersConsumeProjectedContext`; source entries reported under `Private/Systems/ToolClusters/GraphWrite/ActionResolution/Context/*.cpp` | Closed in `GraphWrite80_P6_GraphWrite_Regression_002`; cluster scan now exempts the reusable Context implementation boundary. | No longer a P6 blocker. | Keep future cluster files from rebuilding the Context pipeline directly. |
+| CLOSED: FunctionAction operator and resolver stress failures | Tests: `BlueprintHelper.GraphWrite.ActionResolution.FunctionAction.OperatorDispatch`; `BlueprintHelper.GraphWrite.CallFunctionResolver.Stress.*`; `BlueprintHelper.GraphWrite.CallFunctionResolver.GeneratorDisplayNameSpawnsPrintString`; `BlueprintHelper.GraphWrite.CallFunctionResolver.GeneratorQualifiedNameSpawnsPrintString` | Closed in `GraphWrite80_P6_GraphWrite_Regression_002`; operator dispatch uses real UE spawner evidence, call query projection uses `target`, and supplemental-only Blueprint-authored tests now forbid success without spawner/action evidence. | No longer a P6 blocker. | Gap 5 remains separate for delegate/bind positive spawner support. |
+| CLOSED: Direct append / replace service regression | Tests: `BlueprintHelper.GraphWrite.Append.OwnershipWritesMetadataWithoutManagedComment`; `BlueprintHelper.GraphWrite.Append.ReusesSignatureEntry`; `BlueprintHelper.GraphWrite.Replace.CustomEventBodyReconnectsEntryExec`; file: `BlueprintHelperGraphWriteToolResultBaseTests.cpp` | Closed in `GraphWrite80_P6_GraphWrite_Regression_002`; direct service payloads now follow valid current SemanticIR contracts and ownership metadata is asserted through signature-entry reuse where block refs are required. | No longer a P6 blocker. | Keep direct service tests aligned with supported SemanticIR entry/body contracts. |
+| CLOSED AS P6 BLOCKER: EventDelegate declared capability contract mismatch | Test: `BlueprintHelper.GraphWrite.LegacyMainline.EventDelegateDeclaredCapabilityMatchesSuccessPath`; source: `Private/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperEventDelegateActionCluster.cpp` | Closed in `GraphWrite80_P6_GraphWrite_Regression_002`; contract now matches P5 semantics and guards against fake delegate success. | Gap 5 remains open because component-bound/bind still return `unsupported_intent` when complete evidence is present. | Create a delegate/bind spawner-family plan before claiming positive component-bound/bind support. |
 
 ### Gap 2. GraphStatementBuilder still owns local demand and cluster projection logic
 
@@ -94,6 +113,24 @@ TaskSpec GraphBody
 - candidate/debug/review evidence 能解释该 sequence node 是 mutation 编排产物，同时其 spawner strategy 来自统一 singleton boundary。
 - 增加契约测试，避免 mutation coordinator 新增裸 `UK2Node_*` direct create path。
 
+### Gap 5. EventDelegate component-bound / bind complete spawner boundary is unresolved
+
+Status: open after P5.
+
+Evidence:
+- `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperEventDelegateActionCluster.cpp`
+- `ComponentBoundEvent` and `Bind` are now owned only far enough to return precise missing-evidence diagnostics.
+- When component/binding object, delegate name, and delegate signature evidence are complete, the cluster returns `unsupported_intent` instead of constructing a spawner.
+
+Why this remains a gap:
+- P5 confirmed custom events through `UBlueprintEventNodeSpawner`, but did not establish a safe UE spawner-family route for `UK2Node_ComponentBoundEvent`, bind/assign delegate nodes, and their required component/delegate signature fields.
+- Claiming success without a positive `SelectedSpawner != null` automation test would overstate delegate support and risk a hardcoded or legacy fallback path.
+
+Close conditions:
+- Resolve the correct UE spawner family and required evidence model for component-bound events and delegate bind/assign.
+- Add positive automation with complete projected evidence, `SelectedSpawner != null`, stable id/candidate evidence, and no fallback success.
+- Keep missing-evidence diagnostics (`component_missing`, `binding_object_missing`, `delegate_signature_missing`) passing.
+
 ## Removed From Gap List
 
 以下项目在本轮复核中不再作为未关闭 gap 保留：
@@ -108,6 +145,10 @@ TaskSpec GraphBody
 - EventDelegate cluster 不再声明尚无成功路径闭环的 `ComponentBoundEvent` / `Bind` 为已支持能力。
 - parsed-node mutation plan 已隔离到 private legacy pipeline，执行入口对 parsed-node node plan fail-fast 为 `parsed_node_plan_unsupported`。
 
+
+- **Gap 1 (closed in P1):** `ControlFragmentBuilder` manual control/manual semantic fallback has been removed from `BlueprintHelperControlFragmentBuilder.cpp`.
+- When `ActionContextScope` is missing it now returns `action_context_scope_required` and does not synthesize `manual_control_context` / `manual_control_semantic`.
+- Control request path now uses `ActionRequest.ClusterKind` and `ActionRequest.Semantic.Kind` with bundle/projector/evidence flow.
 ## Last Verification Scope
 
 本次同步基于静态复核和子代理只读审计结果，不等同于重新完成 UE 编译或 Editor Bridge smoke。

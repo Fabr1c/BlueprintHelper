@@ -167,6 +167,7 @@ UBlueprintFunctionNodeSpawner* FBlueprintHelperOperatorActionResolver::FindPromo
 		return nullptr;
 	}
 
+	FTypePromotion::Get();
 	if (UBlueprintFunctionNodeSpawner* Spawner = FTypePromotion::GetOperatorSpawner(OpName))
 	{
 		return Spawner;

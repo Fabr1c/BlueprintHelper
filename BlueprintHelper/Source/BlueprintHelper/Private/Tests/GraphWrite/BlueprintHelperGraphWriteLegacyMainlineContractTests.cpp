@@ -10,12 +10,174 @@ namespace BlueprintHelperGraphWriteLegacyMainlineContractTests
 {
 static FString SourceRoot()
 {
-	return FPaths::Combine(
+	return FPaths::ConvertRelativePathToFull(FPaths::Combine(
 		FPaths::ProjectPluginsDir(),
 		TEXT("BlueprintHelper"),
 		TEXT("BlueprintHelper"),
 		TEXT("Source"),
-		TEXT("BlueprintHelper"));
+		TEXT("BlueprintHelper")));
+}
+
+static const TCHAR* ForbiddenControlFallbackTokens[] = {
+	TEXT("manual_control_context"),
+	TEXT("manual_control_semantic"),
+	TEXT("RequireDedicatedControlBuilderBoundary")
+};
+
+static const TCHAR* ForbiddenParsedNodeMainlineTokens[] = {
+	TEXT("const FParsedNode& NodeData"),
+	TEXT("FParsedNode NodeData"),
+	TEXT("FParsedNode BoundNodeData"),
+	TEXT("parsed_node_plan_unsupported")
+};
+
+static const TCHAR* ForbiddenWideSurfaceFallbackTokens[] = {
+	TEXT("CreateMergeCallFunctionNode"),
+	TEXT("call_function.name"),
+	TEXT("set_member_variable"),
+	TEXT("make_struct"),
+	TEXT("compare"),
+	TEXT("ref")
+};
+
+static const TCHAR* ForbiddenSingletonControlDirectSpawnTokens[] = {
+	TEXT("SpawnK2Node<"),
+	TEXT("NewObject<UK2Node"),
+	TEXT("UBlueprintNodeSpawner::Create(UK2Node_Select::StaticClass())"),
+	TEXT("UBlueprintNodeSpawner::Create(NodeClass)"),
+	TEXT("UK2Node_ExecutionSequence::StaticClass()"),
+	TEXT("UK2Node_IfThenElse::StaticClass()")
+};
+
+static TArray<FString> ActiveGraphWriteSourceRoots()
+{
+	return {
+		FPaths::Combine(SourceRoot(), TEXT("Private/Systems/ToolClusters/GraphWrite")),
+		FPaths::Combine(SourceRoot(), TEXT("Public/Systems/ToolClusters/GraphWrite"))
+	};
+}
+
+static bool IsSourceFilePath(const FString& FilePath)
+{
+	return FilePath.EndsWith(TEXT(".h"), ESearchCase::IgnoreCase)
+		|| FilePath.EndsWith(TEXT(".cpp"), ESearchCase::IgnoreCase);
+}
+
+class FGraphWriteSourceFileVisitor final : public IPlatformFile::FDirectoryVisitor
+{
+public:
+	explicit FGraphWriteSourceFileVisitor(TArray<FString>& InOutFiles)
+		: OutFiles(InOutFiles)
+	{
+	}
+
+	virtual bool Visit(const TCHAR* FilenameOrDirectory, bool bIsDirectory) override
+	{
+		if (!bIsDirectory && IsSourceFilePath(FilenameOrDirectory))
+		{
+			OutFiles.Add(FilenameOrDirectory);
+		}
+		return true;
+	}
+
+private:
+	TArray<FString>& OutFiles;
+};
+
+static bool IsAllowedDiagnosticOnlyMatch(const FString& RelativePath, const FString& Token)
+{
+	if (Token == TEXT("parsed_node_plan_unsupported"))
+	{
+		return RelativePath.EndsWith(TEXT("Private/Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphMutationPlanExecutor.cpp"));
+	}
+	if (Token == TEXT("call_function.name"))
+	{
+		return RelativePath.EndsWith(TEXT("Private/Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.cpp"))
+			|| RelativePath.EndsWith(TEXT("Private/Systems/ToolClusters/GraphWrite/BlueprintHelperMergeBlueprintGraphService.cpp"));
+	}
+	if (Token == TEXT("make_struct"))
+	{
+		return RelativePath.EndsWith(TEXT("Private/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericAssetStructControlActionResolver.cpp"))
+			|| RelativePath.EndsWith(TEXT("Private/Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphJsonParser.cpp"));
+	}
+	if (Token == TEXT("compare"))
+	{
+		return RelativePath.EndsWith(TEXT("Private/Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphJsonParser.cpp"));
+	}
+	if (Token == TEXT("ref"))
+	{
+		return RelativePath.EndsWith(TEXT("Private/Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicProcessor.cpp"))
+			|| RelativePath.EndsWith(TEXT("Private/Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextBundleProjector.cpp"))
+			|| RelativePath.EndsWith(TEXT("Private/Systems/ToolClusters/GraphWrite/FunctionResolution/Utils/BlueprintHelperCallFunctionResolverUtils.cpp"));
+	}
+	return false;
+}
+
+static bool ContainsForbiddenToken(const FString& Source, const FString& Token)
+{
+	if (Token == TEXT("ref") || Token == TEXT("compare"))
+	{
+		return Source.Contains(FString::Printf(TEXT("TEXT(\"%s\")"), *Token))
+			|| Source.Contains(FString::Printf(TEXT("\"%s\""), *Token))
+			|| Source.Contains(FString::Printf(TEXT("'%s'"), *Token));
+	}
+	return Source.Contains(Token);
+}
+
+template <int32 TokenCount>
+static bool AssertActiveGraphWriteSourceHasNoTokens(
+	FAutomationTestBase& Test,
+	const TCHAR* GroupName,
+	const TCHAR* const (&ForbiddenTokens)[TokenCount])
+{
+	bool bClean = true;
+	TArray<FString> SourceFiles;
+	FGraphWriteSourceFileVisitor Visitor(SourceFiles);
+	for (const FString& Root : ActiveGraphWriteSourceRoots())
+	{
+		IFileManager::Get().IterateDirectoryRecursively(*Root, Visitor);
+	}
+
+	int32 ScannedFileCount = 0;
+	for (const FString& FilePath : SourceFiles)
+	{
+		if (!IsSourceFilePath(FilePath))
+		{
+			continue;
+		}
+
+		FString Source;
+		if (!FFileHelper::LoadFileToString(Source, *FilePath))
+		{
+			Test.AddError(FString::Printf(TEXT("Active GraphWrite source file could not be read: %s"), *FilePath));
+			bClean = false;
+			continue;
+		}
+
+		FString RelativePath = FilePath;
+		FPaths::MakePathRelativeTo(RelativePath, *SourceRoot());
+		RelativePath.ReplaceInline(TEXT("\\"), TEXT("/"));
+		++ScannedFileCount;
+		for (const TCHAR* TokenText : ForbiddenTokens)
+		{
+			const FString Token(TokenText);
+			if (ContainsForbiddenToken(Source, Token) && !IsAllowedDiagnosticOnlyMatch(RelativePath, Token))
+			{
+				Test.AddError(FString::Printf(
+					TEXT("%s contains forbidden %s token: %s"),
+					*RelativePath,
+					GroupName,
+					*Token));
+				bClean = false;
+			}
+		}
+	}
+	if (ScannedFileCount == 0)
+	{
+		Test.AddError(TEXT("Active GraphWrite source scan did not find any source files."));
+		bClean = false;
+	}
+	return bClean;
 }
 
 static bool LoadSource(FAutomationTestBase& Test, const FString& RelativePath, FString& OutText)
@@ -85,6 +247,49 @@ static bool AssertMissingOrNoTokens(
 	}
 	return bClean;
 }
+
+template <int32 TokenCount>
+static bool AssertNoSingletonControlDirectSpawnTokens(
+	FAutomationTestBase& Test,
+	const FString& RelativePath,
+	const TCHAR* const (&ForbiddenTokens)[TokenCount])
+{
+	FString Source;
+	if (!LoadSource(Test, RelativePath, Source))
+	{
+		return false;
+	}
+
+	bool bClean = true;
+	for (const TCHAR* TokenText : ForbiddenTokens)
+	{
+		const FString Token(TokenText);
+		if (Source.Contains(Token))
+		{
+			Test.AddError(FString::Printf(
+				TEXT("%s must route singleton control direct spawn through BlueprintHelperSingletonControlFlowEvidenceProvider.cpp; forbidden token: %s"),
+				*RelativePath,
+				*Token));
+			bClean = false;
+		}
+	}
+	return bClean;
+}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActiveGraphWriteSourceLegacyTokenGateContractTest,
+	"BlueprintHelper.GraphWrite.LegacyMainline.ActiveGraphWriteSourceLegacyTokenGate",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActiveGraphWriteSourceLegacyTokenGateContractTest::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphWriteLegacyMainlineContractTests;
+	bool bClean = true;
+	bClean &= AssertActiveGraphWriteSourceHasNoTokens(*this, TEXT("control fallback"), ForbiddenControlFallbackTokens);
+	bClean &= AssertActiveGraphWriteSourceHasNoTokens(*this, TEXT("parsed-node mainline"), ForbiddenParsedNodeMainlineTokens);
+	bClean &= AssertActiveGraphWriteSourceHasNoTokens(*this, TEXT("wide-surface fallback"), ForbiddenWideSurfaceFallbackTokens);
+	return bClean;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -143,8 +348,54 @@ bool FBlueprintHelperSelectControlUseGenericClusterContractTest::RunTest(const F
 		{
 			TEXT("UBlueprintNodeSpawner::Create(NodeClass)"),
 			TEXT("ActionResult.Status = EBlueprintHelperActionResolutionStatus::Resolved"),
+			TEXT("manual_control_context"),
+			TEXT("manual_control_semantic"),
 			TEXT("RequireDedicatedControlBuilderBoundary")
-		});
+	});
+	return bClean;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperSingletonControlDirectSpawnProviderBoundaryContractTest,
+	"BlueprintHelper.GraphWrite.LegacyMainline.SingletonControlDirectSpawnProviderBoundary",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperSingletonControlDirectSpawnProviderBoundaryContractTest::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphWriteLegacyMainlineContractTests;
+	bool bClean = true;
+	bClean &= AssertNoSingletonControlDirectSpawnTokens(
+		*this,
+		TEXT("Private/Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperControlFragmentBuilder.cpp"),
+		ForbiddenSingletonControlDirectSpawnTokens);
+	bClean &= AssertNoSingletonControlDirectSpawnTokens(
+		*this,
+		TEXT("Private/Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperSelectFragmentBuilder.cpp"),
+		ForbiddenSingletonControlDirectSpawnTokens);
+	bClean &= AssertNoSingletonControlDirectSpawnTokens(
+		*this,
+		TEXT("Private/Systems/ToolClusters/GraphWrite/Mutation/BlueprintHelperGraphWriteMutationCoordinator.cpp"),
+		ForbiddenSingletonControlDirectSpawnTokens);
+	bClean &= AssertNoSingletonControlDirectSpawnTokens(
+		*this,
+		TEXT("Private/Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphComposer.cpp"),
+		ForbiddenSingletonControlDirectSpawnTokens);
+
+	FString ProviderSource;
+	if (LoadSource(
+		*this,
+		TEXT("Private/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperSingletonControlFlowEvidenceProvider.cpp"),
+		ProviderSource))
+	{
+		TestTrue(
+			TEXT("provider owns singleton control direct spawn"),
+			ProviderSource.Contains(TEXT("UBlueprintNodeSpawner::Create(NodeClass)")));
+	}
+	else
+	{
+		bClean = false;
+	}
+
 	return bClean;
 }
 
@@ -242,13 +493,40 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FBlueprintHelperEventDelegateDeclaredCapabilityContractTest::RunTest(const FString& Parameters)
 {
 	using namespace BlueprintHelperGraphWriteLegacyMainlineContractTests;
-	return AssertNoTokens(
-		*this,
-		TEXT("Private/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperEventDelegateActionCluster.cpp"),
+	const FString RelativePath = TEXT("Private/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperEventDelegateActionCluster.cpp");
+	FString Source;
+	if (!LoadSource(*this, RelativePath, Source))
+	{
+		return false;
+	}
+
+	bool bClean = true;
+	const TArray<FString> RequiredTokens = {
+		TEXT("EBlueprintHelperActionSemanticKind::ComponentBoundEvent"),
+		TEXT("EBlueprintHelperActionSemanticKind::Bind"),
+		TEXT("missing_required_evidence"),
+		TEXT("unsupported_intent"),
+		TEXT("missing safe UE spawner-family routing")
+	};
+	for (const FString& Token : RequiredTokens)
+	{
+		if (!Source.Contains(Token))
 		{
-			TEXT("EBlueprintHelperActionSemanticKind::ComponentBoundEvent"),
-			TEXT("EBlueprintHelperActionSemanticKind::Bind")
+			AddError(FString::Printf(TEXT("%s must declare current P5 event/delegate boundary token: %s"), *RelativePath, *Token));
+			bClean = false;
+		}
+	}
+
+	bClean &= AssertNoTokens(
+		*this,
+		RelativePath,
+		{
+			TEXT("legacy_fallback"),
+			TEXT("fake_delegate_success"),
+			TEXT("fake component-bound delegate success")
 		});
+	TestTrue(TEXT("EventDelegateActionCluster owns P5 semantics without fake delegate success"), bClean);
+	return bClean;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(

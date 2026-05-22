@@ -1,6 +1,8 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "CoreMinimal.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextDemandCollector.h"
+
 #include "HAL/FileManager.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/FileHelper.h"
@@ -139,7 +141,11 @@ bool FBlueprintHelperActionContextDtoSourceContractTest::RunTest(const FString& 
 		TEXT("TSet<EBlueprintHelperActionContextDemandKind> RequiredKinds"),
 		TEXT("TMap<FString, FString> DefaultValues"),
 		TEXT("ArgumentPinTypes"),
+		TEXT("ComponentPath"),
 		TEXT("BindingObjectPath"),
+		TEXT("DelegateName"),
+		TEXT("DelegateSignature"),
+		TEXT("TargetGraphName"),
 		TEXT("struct FBlueprintHelperActionContextSnapshot"),
 		TEXT("struct FBlueprintHelperResolvedActionContextBundle"),
 		TEXT("FindByStatementId")
@@ -148,6 +154,142 @@ bool FBlueprintHelperActionContextDtoSourceContractTest::RunTest(const FString& 
 	const bool bComplete = RequireTokens(*this, SourceText, FilePath, RequiredTokens);
 	TestTrue(TEXT("ActionContext DTO source contract is complete"), bComplete);
 	return bComplete;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionContextEventDelegateEvidenceSourceContractTest,
+	"BlueprintHelper.GraphWrite.ActionContext.P5.EventDelegateEvidenceProjectionSourceContract",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionContextEventDelegateEvidenceSourceContractTest::RunTest(const FString& Parameters)
+{
+	const FString DemandCollectorPath = BuildActionContextPrivatePath(TEXT("BlueprintHelperActionContextDemandCollector.cpp"));
+	const FString InferenceServicePath = BuildActionContextPrivatePath(TEXT("BlueprintHelperActionContextInferenceService.cpp"));
+
+	FString DemandCollectorText;
+	FString InferenceServiceText;
+	if (!LoadRequiredSourceFile(*this, DemandCollectorPath, DemandCollectorText)
+		|| !LoadRequiredSourceFile(*this, InferenceServicePath, InferenceServiceText))
+	{
+		return false;
+	}
+
+	bool bComplete = true;
+	bComplete &= RequireTokens(
+		*this,
+		DemandCollectorText,
+		DemandCollectorPath,
+		{
+			TEXT("ComponentBoundEvent"),
+			TEXT("Bind"),
+			TEXT("ComponentPath"),
+			TEXT("BindingObjectPath"),
+			TEXT("DelegateName"),
+			TEXT("DelegateSignature")
+		});
+	bComplete &= RequireTokens(
+		*this,
+		InferenceServiceText,
+		InferenceServicePath,
+		{
+			TEXT("component_path"),
+			TEXT("binding_object_path"),
+			TEXT("delegate_name"),
+			TEXT("delegate_signature"),
+			TEXT("target_graph")
+		});
+
+	TestTrue(TEXT("ActionContext projects event/delegate evidence without defaults"), bComplete);
+	return bComplete;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionContextCallDemandPrefersTargetTest,
+	"BlueprintHelper.GraphWrite.ActionContext.CallDemandPrefersTarget",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionContextCallDemandPrefersTargetTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FBlueprintHelperGraphStatementIR> Statement = MakeShared<FBlueprintHelperGraphStatementIR>();
+	Statement->StatementId = TEXT("stmt_call");
+	Statement->Path = TEXT("$.statements[0]");
+	Statement->Kind = EBlueprintHelperGraphStatementKind::Call;
+	Statement->Name = TEXT("call");
+	Statement->Target = TEXT("PrintString");
+	Statement->PatternName = TEXT("call_function");
+
+	TArray<TSharedPtr<FBlueprintHelperGraphStatementIR>> Statements;
+	Statements.Add(Statement);
+	const TArray<FBlueprintHelperActionContextDemand> Demands =
+		FBlueprintHelperActionContextDemandCollector::CollectFromStatements(Statements);
+
+	TestEqual(TEXT("call statement demand count"), Demands.Num(), 1);
+	if (Demands.Num() == 0)
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("call statement query prefers target over literal kind/name"), Demands[0].Query, FString(TEXT("PrintString")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionContextCallExpressionDemandPrefersTargetTest,
+	"BlueprintHelper.GraphWrite.ActionContext.CallExpressionDemandPrefersTarget",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionContextCallExpressionDemandPrefersTargetTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FBlueprintHelperGraphExpressionIR> CallExpression = MakeShared<FBlueprintHelperGraphExpressionIR>();
+	CallExpression->ExpressionId = TEXT("expr_call");
+	CallExpression->Path = TEXT("$.statements[0].value");
+	CallExpression->Kind = EBlueprintHelperGraphExpressionKind::Call;
+	CallExpression->Name = TEXT("call");
+	CallExpression->Target = TEXT("PrintString");
+	CallExpression->PatternName = TEXT("call_function");
+
+	TSharedPtr<FBlueprintHelperGraphExpressionIR> OpExpression = MakeShared<FBlueprintHelperGraphExpressionIR>();
+	OpExpression->ExpressionId = TEXT("expr_op");
+	OpExpression->Path = TEXT("$.statements[0].condition");
+	OpExpression->Kind = EBlueprintHelperGraphExpressionKind::Op;
+	OpExpression->Name = TEXT("call");
+	OpExpression->Target = TEXT("Greater");
+	OpExpression->PatternName = TEXT("operator");
+	OpExpression->Operator = TEXT(">");
+
+	TSharedPtr<FBlueprintHelperGraphStatementIR> Statement = MakeShared<FBlueprintHelperGraphStatementIR>();
+	Statement->StatementId = TEXT("stmt_set");
+	Statement->Path = TEXT("$.statements[0]");
+	Statement->Kind = EBlueprintHelperGraphStatementKind::Set;
+	Statement->Target = TEXT("Result");
+	Statement->Value = CallExpression;
+	Statement->Condition = OpExpression;
+
+	TArray<TSharedPtr<FBlueprintHelperGraphStatementIR>> Statements;
+	Statements.Add(Statement);
+	const TArray<FBlueprintHelperActionContextDemand> Demands =
+		FBlueprintHelperActionContextDemandCollector::CollectFromStatements(Statements);
+
+	const FBlueprintHelperActionContextDemand* CallDemand = Demands.FindByPredicate([](const FBlueprintHelperActionContextDemand& Demand)
+	{
+		return Demand.SemanticKind == EBlueprintHelperActionSemanticKind::Call;
+	});
+	const FBlueprintHelperActionContextDemand* OpDemand = Demands.FindByPredicate([](const FBlueprintHelperActionContextDemand& Demand)
+	{
+		return Demand.SemanticKind == EBlueprintHelperActionSemanticKind::Op;
+	});
+
+	TestNotNull(TEXT("call expression demand exists"), CallDemand);
+	TestNotNull(TEXT("operator expression demand exists"), OpDemand);
+	if (CallDemand)
+	{
+		TestEqual(TEXT("call expression query prefers target over literal kind/name"), CallDemand->Query, FString(TEXT("PrintString")));
+	}
+	if (OpDemand)
+	{
+		TestEqual(TEXT("operator expression keeps operator token query"), OpDemand->Query, FString(TEXT(">")));
+	}
+	return CallDemand != nullptr && OpDemand != nullptr;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
