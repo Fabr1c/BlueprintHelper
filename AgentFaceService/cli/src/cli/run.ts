@@ -23,6 +23,7 @@ import {
   type CliCommand,
   type CliFormat,
 } from './output.js';
+import { buildHelpText } from './help.js';
 import { invokeCliTool } from './tool-command.js';
 import {
   TOOL_RESULT_SCHEMA,
@@ -51,7 +52,7 @@ export interface CliRuntime {
 
 type ParseResult =
   | { ok: true; command: CliCommand }
-  | { ok: true; help: true }
+  | { ok: true; help: true; helpTarget: string[] }
   | { ok: false; message: string };
 
 type CliBridge = TaskRunnerBridge & {
@@ -92,7 +93,7 @@ export async function runCli(runtime: CliRuntime): Promise<number> {
     return 64;
   }
   if ('help' in parsed) {
-    runtime.stdout(`${helpText()}\n`);
+    runtime.stdout(`${buildHelpText(parsed.helpTarget)}\n`);
     return 0;
   }
 
@@ -226,7 +227,7 @@ function attachCliTiming(
 
 function parseArgs(argv: string[]): ParseResult {
   if (argv.length === 0 || argv.includes('--help') || argv.includes('-h')) {
-    return { ok: true, help: true };
+    return { ok: true, help: true, helpTarget: parseHelpTarget(argv) };
   }
 
   const positionals: string[] = [];
@@ -420,6 +421,39 @@ function getRunner(runtime: CliRuntime): TaskSpecRunner {
   });
 }
 
+function parseHelpTarget(argv: string[]): string[] {
+  const optionsWithValues = new Set([
+    '--artifact-dir',
+    '--command',
+    '--exclude',
+    '--fields',
+    '--file',
+    '--format',
+    '--id',
+    '--json',
+    '--max-bytes',
+    '--omit',
+    '--preview-token',
+    '--select',
+  ]);
+  const target: string[] = [];
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === '--help' || arg === '-h') {
+      continue;
+    }
+    if (optionsWithValues.has(arg)) {
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith('--')) {
+      continue;
+    }
+    target.push(arg);
+  }
+  return target;
+}
+
 function getBridge(runtime: CliRuntime): CliBridge {
   const cached = runtimeBridgeCache.get(runtime);
   if (cached) {
@@ -560,26 +594,4 @@ function isBridgeUnavailable(err: unknown): boolean {
     return false;
   }
   return /Bridge connection|ECONNREFUSED|timed out|closed|ended/i.test(err.message);
-}
-
-function helpText(): string {
-  return [
-    'BlueprintHelper CLI',
-    '',
-    'Usage:',
-    '  blueprinthelper-cli <tool_name> [--file params.json | --json json | --stdin] [--fields path[,path...]] [--omit path[,path...]]',
-    '  blueprinthelper-cli open_editor [--file params.json | --json json | --stdin] [--fields path[,path...]] [--omit path[,path...]]',
-    '  blueprinthelper-cli close_editor [--file params.json | --json json | --stdin] [--fields path[,path...]] [--omit path[,path...]]',
-    '  blueprinthelper-cli task preview --file <task-spec.json> [--develop] [--format summary|json|full] [--fields path[,path...]] [--omit path[,path...]]',
-    '  blueprinthelper-cli task execute --file <task-spec.json> [--preview-token <32-hex>] [--develop] [--format summary|json|full] [--fields path[,path...]] [--omit path[,path...]]',
-    '  blueprinthelper-cli task result --id <task_run_id> [--fields path[,path...]] [--omit path[,path...]]',
-    '  blueprinthelper-cli context read --file <context-request.json> [--fields path[,path...]] [--omit path[,path...]]',
-    '  blueprinthelper-cli bridge ping [--fields path[,path...]] [--omit path[,path...]]',
-    '  blueprinthelper-cli bridge call --command <read_only_command> [--fields path[,path...]] [--omit path[,path...]]',
-    '',
-    'Notes:',
-    '  --develop enables data.timing for any CLI command result.',
-    '  Long UE Bridge waits emit progress hints to stderr. Stdout remains final JSON.',
-    '  In PowerShell, prefer --file or --stdin for generated JSON; inline --json may lose quotes.',
-  ].join('\n');
 }
