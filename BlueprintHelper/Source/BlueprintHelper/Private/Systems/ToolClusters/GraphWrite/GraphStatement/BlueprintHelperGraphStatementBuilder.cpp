@@ -1003,6 +1003,7 @@ bool FBlueprintHelperGraphStatementBuilder::BuildSetPropertyFragment(
 		return false;
 	}
 
+	FBlueprintHelperActionResolutionResult ActionResult;
 	if (!RequireResolvedActionProvider(
 		TargetGraph,
 		ActionContextScope,
@@ -1014,13 +1015,33 @@ bool FBlueprintHelperGraphStatementBuilder::BuildSetPropertyFragment(
 		NodeData.VariableReference.VariableName,
 		NodeData.VariableReference.VariableName,
 		NodeData.ExpectedReturnType,
+		&ActionResult,
 		OutError))
 	{
 		return false;
 	}
 
-	OutError = TEXT("set_property fragment provider resolved, but FragmentDAG emission has not migrated to the spawner cluster path.");
-	return false;
+	FBlueprintHelperActionNodeSpawnOptions SpawnOptions;
+	SpawnOptions.NodeId = NodeData.Id;
+	SpawnOptions.DefaultValues = NodeData.DefaultValues;
+	UK2Node* SpawnedNode = FBlueprintHelperActionNodeSpawnerAdapter::InvokeSelectedSpawner(
+		TargetGraph,
+		ActionResult,
+		FVector2D(NodeData.X, NodeData.Y),
+		SpawnOptions,
+		OutError);
+	if (!SpawnedNode)
+	{
+		return false;
+	}
+
+	OutFragment.FragmentId = NodeData.Id;
+	OutFragment.SourceStatementId = NodeData.Id;
+	OutFragment.PrimaryNode = SpawnedNode;
+	OutFragment.Nodes.Add(SpawnedNode);
+	PopulateActionProviderFragmentPins(SpawnedNode, OutFragment);
+	PopulateCommonFragmentMetadata(NodeData, OutFragment);
+	return true;
 }
 
 bool FBlueprintHelperGraphStatementBuilder::BuildSequenceFragment(

@@ -241,12 +241,15 @@ static void SortFieldVariableCandidates(TArray<FBlueprintHelperVariableActionCan
 bool FBlueprintHelperFieldVariableActionResolver::IsSupportedSemanticKind(EBlueprintHelperActionSemanticKind Kind)
 {
 	return Kind == EBlueprintHelperActionSemanticKind::Get
-		|| Kind == EBlueprintHelperActionSemanticKind::Set;
+		|| Kind == EBlueprintHelperActionSemanticKind::Set
+		|| Kind == EBlueprintHelperActionSemanticKind::GetProperty
+		|| Kind == EBlueprintHelperActionSemanticKind::SetProperty;
 }
 
 bool FBlueprintHelperFieldVariableActionResolver::IsWritableSemanticKind(EBlueprintHelperActionSemanticKind Kind)
 {
-	return Kind == EBlueprintHelperActionSemanticKind::Set;
+	return Kind == EBlueprintHelperActionSemanticKind::Set
+		|| Kind == EBlueprintHelperActionSemanticKind::SetProperty;
 }
 
 FBlueprintHelperActionResolutionResult FBlueprintHelperFieldVariableActionResolver::Resolve(

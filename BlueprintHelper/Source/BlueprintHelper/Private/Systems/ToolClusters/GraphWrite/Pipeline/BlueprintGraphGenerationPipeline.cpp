@@ -889,6 +889,28 @@ static bool SpawnSemanticStatementFragment(
 		return FBlueprintHelperGraphStatementBuilder::BuildVariableSetFragment(TargetGraph, NodeData, OutFragment, OutError, ActionContextScope);
 	}
 
+	if (Statement->Kind == EBlueprintHelperGraphStatementKind::SetProperty)
+	{
+		const FString StatementContextId = GetSemanticStatementContextId(*Statement);
+		const FString PropertyTarget = !Statement->ResolvedTarget.Member.IsEmpty()
+			? Statement->ResolvedTarget.Member
+			: (!Statement->Property.IsEmpty() ? Statement->Property : Statement->Target);
+		FParsedNode NodeData;
+		NodeData.Id = StatementId;
+		NodeData.ActionContextStatementId = StatementContextId;
+		NodeData.NodeType = EParsedBlueprintNodeType::VariableSet;
+		NodeData.SourceType = TEXT("K2Node_VariableSet");
+		NodeData.VariableReference.ScopeType = TEXT("member");
+		NodeData.VariableReference.VariableName = PropertyTarget;
+		NodeData.VariableReference.bSelfContext = true;
+		if (Statement->Value.IsValid() && Statement->Value->Kind == EBlueprintHelperGraphExpressionKind::Literal)
+		{
+			NodeData.DefaultValues.Add(PropertyTarget, Statement->Value->LiteralValue);
+			NodeData.DefaultValues.Add(TEXT("value"), Statement->Value->LiteralValue);
+		}
+		return FBlueprintHelperGraphStatementBuilder::BuildSetPropertyFragment(TargetGraph, NodeData, OutFragment, OutError, ActionContextScope);
+	}
+
 	if (Statement->Kind == EBlueprintHelperGraphStatementKind::Branch)
 	{
 		return FBlueprintHelperControlFragmentBuilder::BuildBranch(

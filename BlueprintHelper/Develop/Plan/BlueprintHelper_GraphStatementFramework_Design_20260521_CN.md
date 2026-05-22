@@ -394,3 +394,11 @@ Implementation note 2026-05-22:
 - `call` stable-id fast path using direct `FindFunctionByName` was removed because it could return a `UFunction` without valid `NodeSpawner` evidence.
 - `FieldVariableActionResolver` now consumes projected `field_name` evidence for candidate selection and only uses UE property lookup to rebuild the `UBlueprintVariableNodeSpawner`.
 - Branch/return control boundary checks now consume the existing `ActionContextScope` projection instead of constructing identity-free local requests.
+
+## 2026-05-22 Context Consumption Clarification
+
+- `get_property` / `set_property` belong to `FieldVariableActionCluster`; they should use the projected target/property evidence to shrink the field-variable search scope, not create a separate graph-local node path.
+- `set_property` FragmentDAG emission must invoke the selected UE `NodeSpawner` through the shared ActionResolution adapter. It must not fall back to parsed-node local spawning.
+- `op` belongs to `FunctionActionCluster`, but its semantic is operator constraints. It resolves to UE type-promotion operator spawners from `FTypePromotion::GetOperatorSpawner`, not to pseudo call-function lookup.
+- Generic construct/deconstruct may use a dedicated `UBlueprintFieldNodeSpawner` MakeStruct/BreakStruct boundary only when UE FunctionAction/native make-break lookup cannot express the struct operation. This boundary must be explicit in candidate evidence and must remain generic, not Vector-only or type-specific.
+- `EventDelegateActionCluster` follows the same projected-context rule. Custom events can resolve through `UBlueprintEventNodeSpawner`; component-bound events and delegate bind nodes require projected component/delegate/signature evidence before they can invoke their UE spawner families.

@@ -530,7 +530,9 @@ static FBlueprintHelperCallFunctionCandidateInfo MakeDirectStructCandidateInfo(
 		TargetStruct ? *TargetStruct->GetDisplayNameText().ToString() : TEXT("<null>"));
 	Candidate.Category = TEXT("Struct");
 	Candidate.NodeClassPath = NodeClass ? NodeClass->GetPathName() : FString();
-	Candidate.MatchReason = bConstruct ? TEXT("direct_make_struct_field_spawner") : TEXT("direct_break_struct_field_spawner");
+	Candidate.MatchReason = bConstruct
+		? TEXT("generic_boundary_make_struct_field_spawner")
+		: TEXT("generic_boundary_break_struct_field_spawner");
 	Candidate.ReturnType = bConstruct && TargetStruct ? TargetStruct->GetPathName() : FString();
 	Candidate.Score = 100;
 	Candidate.bGraphCompatible = true;
@@ -573,7 +575,7 @@ static FBlueprintHelperActionResolutionResult MakeDirectStructSpawnerResult(
 
 	Result.Status = EBlueprintHelperActionResolutionStatus::Resolved;
 	Result.Message = FString::Printf(
-		TEXT("Resolved %s for struct '%s' to direct %s UBlueprintFieldNodeSpawner after FunctionAction attempts were not applicable%s%s"),
+		TEXT("Resolved %s for struct '%s' through the GenericAssetStructControl dedicated %s UBlueprintFieldNodeSpawner boundary after UE FunctionAction attempts were not applicable%s%s"),
 		bConstruct ? TEXT("construct") : TEXT("deconstruct"),
 		TargetStruct ? *TargetStruct->GetPathName() : TEXT("<null>"),
 		bConstruct ? TEXT("MakeStruct") : TEXT("BreakStruct"),
