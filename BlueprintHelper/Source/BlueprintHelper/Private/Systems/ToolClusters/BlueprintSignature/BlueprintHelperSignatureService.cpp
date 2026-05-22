@@ -7,6 +7,7 @@
 #include "EdGraph/EdGraph.h"
 #include "EdGraphSchema_K2.h"
 #include "Engine/Blueprint.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutCoordinator.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
@@ -821,6 +822,18 @@ public:
 		return EventNode;
 	}
 
+	static void RecordGeneratedCustomEventForLayout(UEdGraph* Graph, UK2Node_CustomEvent* EventNode)
+	{
+		if (!Graph || !EventNode)
+		{
+			return;
+		}
+
+		TArray<UEdGraphNode*> GeneratedNodes;
+		GeneratedNodes.Add(EventNode);
+		FBlueprintHelperGraphLayoutCoordinator::RecordGeneratedNodes(Graph, GeneratedNodes);
+	}
+
 	static FName ResolveNativeOrOverrideEventName(const FString& InEventName)
 	{
 		const FString Lower = InEventName.ToLower();
@@ -1223,6 +1236,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureCustomEve
 			NewGraph->NotifyGraphChanged();
 			FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
 			Mutation.Commit();
+			FBlueprintHelperSignatureServiceLocalUtils::RecordGeneratedCustomEventForLayout(NewGraph, EventNode);
 
 			FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Applied(
 				TEXT("ensure_custom_event"),
@@ -1311,6 +1325,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureCustomEve
 	Mutation.Modify(Target.Graph);
 
 	UK2Node_CustomEvent* EventNode = Target.ExistingEvent;
+	bool bCreatedEventNode = false;
 	FString Error;
 	if (EventNode)
 	{
@@ -1329,6 +1344,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureCustomEve
 	else
 	{
 		EventNode = FBlueprintHelperSignatureServiceLocalUtils::CreateCustomEventNode(Target.Graph, Request.EventName, Target.RequestedPins, Error);
+		bCreatedEventNode = EventNode != nullptr;
 		if (!EventNode)
 		{
 			Mutation.Rollback();
@@ -1350,6 +1366,10 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureCustomEve
 		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Target.Blueprint);
 	}
 	Mutation.Commit();
+	if (bCreatedEventNode)
+	{
+		FBlueprintHelperSignatureServiceLocalUtils::RecordGeneratedCustomEventForLayout(Target.Graph, EventNode);
+	}
 
 	FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Applied(
 		TEXT("ensure_custom_event"),
