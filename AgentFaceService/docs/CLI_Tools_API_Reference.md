@@ -26,6 +26,16 @@ PowerShell-safe input rule: `--file` and `--stdin` are the stable JSON input pat
 $json | bh blueprinthelper_read_context --stdin --format full
 ```
 
+每个 CLI 工具都有独立 help：
+
+```powershell
+bh blueprinthelper_read_context --help
+bh blueprinthelper_preview_task --help
+bh task preview --help
+```
+
+工具 help 会列出输入形状、模板索引和常用模板路径。Agent 应先复制 `AgentFaceService/agent-guide/Templates/` 下的匹配模板，再替换占位符并用 `--file` 或 `--stdin` 传入。
+
 ### 鏀寔鍛戒护闈?
 榛樿 Agent-facing commands:
 
@@ -218,6 +228,16 @@ bh <tool_name> [--file params.json | --json "{...}" | --stdin] [--select field[,
 ```
 
 PowerShell-safe input rule: prefer `--file` or `--stdin`; inline `--json $json` can arrive at Node with quotes stripped.
+
+Each CLI tool has dedicated help:
+
+```powershell
+bh blueprinthelper_read_context --help
+bh blueprinthelper_preview_task --help
+bh task preview --help
+```
+
+Tool help lists the expected input shape, template semantic index, and common template paths. Agents should copy a matching template from `AgentFaceService/agent-guide/Templates/`, replace placeholders, then pass the result with `--file` or `--stdin`.
 
 ### Supported Command Surface
 

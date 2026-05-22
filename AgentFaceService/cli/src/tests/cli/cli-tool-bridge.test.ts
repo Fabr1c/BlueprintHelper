@@ -6,6 +6,103 @@ import test from 'node:test';
 import { runCli } from '../../cli/run.js';
 import type { BridgeResponse } from '@blueprinthelper/task-core/bridge/bridge-client';
 
+test('global help points Agents to template indexes and per-tool help', async () => {
+  const writes: string[] = [];
+  const exitCode = await runCli({
+    argv: ['--help'],
+    cwd: process.cwd(),
+    bridge: {} as never,
+    runner: {} as never,
+    stdout: (line) => writes.push(line),
+    stderr: () => {},
+  });
+
+  const output = writes.join('');
+  assert.equal(exitCode, 0);
+  assert.match(output, /bh <tool_name> --help/);
+  assert.match(output, /AgentFaceService\/agent-guide\/Templates\/INDEX\.md/);
+  assert.match(output, /AgentFaceService\/agent-guide\/Templates\/read\/SEMANTIC_INDEX\.md/);
+  assert.match(output, /AgentFaceService\/agent-guide\/Templates\/write\/SEMANTIC_INDEX\.md/);
+  assert.match(output, /Copy a matching template, replace placeholders, then pass it with --file/);
+});
+
+test('tool help is specific and includes ReadContext template navigation', async () => {
+  const writes: string[] = [];
+  const exitCode = await runCli({
+    argv: ['blueprinthelper_read_context', '--help'],
+    cwd: process.cwd(),
+    bridge: {} as never,
+    runner: {} as never,
+    stdout: (line) => writes.push(line),
+    stderr: () => {},
+  });
+
+  const output = writes.join('');
+  assert.equal(exitCode, 0);
+  assert.match(output, /BlueprintHelper CLI help: blueprinthelper_read_context/);
+  assert.match(output, /Root JSON: bare BlueprintHelper\.ReadSpec\.v1/);
+  assert.match(output, /read_context_asset_summary_template\.json/);
+  assert.match(output, /read_context_function_logic_flow_template\.json/);
+  assert.match(output, /read\/SEMANTIC_INDEX\.md/);
+  assert.doesNotMatch(output, /Default tool names:/);
+});
+
+test('tool help is specific for preview wrapper and bare TaskSpec templates', async () => {
+  const writes: string[] = [];
+  const exitCode = await runCli({
+    argv: ['blueprinthelper_preview_task', '--help'],
+    cwd: process.cwd(),
+    bridge: {} as never,
+    runner: {} as never,
+    stdout: (line) => writes.push(line),
+    stderr: () => {},
+  });
+
+  const output = writes.join('');
+  assert.equal(exitCode, 0);
+  assert.match(output, /BlueprintHelper CLI help: blueprinthelper_preview_task/);
+  assert.match(output, /blueprinthelper_preview_task_wrapper_template\.json/);
+  assert.match(output, /task_preview_bare_taskspec_template\.json/);
+  assert.match(output, /Direct tool input: \{ "task_spec"/);
+  assert.match(output, /Grouped command input: bare BlueprintHelper\.TaskSpec\.v1 file/);
+});
+
+test('grouped command help includes the matching template path', async () => {
+  const writes: string[] = [];
+  const exitCode = await runCli({
+    argv: ['task', 'preview', '--help'],
+    cwd: process.cwd(),
+    bridge: {} as never,
+    runner: {} as never,
+    stdout: (line) => writes.push(line),
+    stderr: () => {},
+  });
+
+  const output = writes.join('');
+  assert.equal(exitCode, 0);
+  assert.match(output, /BlueprintHelper CLI help: task preview/);
+  assert.match(output, /task_preview_bare_taskspec_template\.json/);
+  assert.match(output, /Input file root: bare BlueprintHelper\.TaskSpec\.v1/);
+});
+
+test('lifecycle help directs Agents to global MCP instead of CLI aliases', async () => {
+  const writes: string[] = [];
+  const exitCode = await runCli({
+    argv: ['open_editor', '--help'],
+    cwd: process.cwd(),
+    bridge: {} as never,
+    runner: {} as never,
+    stdout: (line) => writes.push(line),
+    stderr: () => {},
+  });
+
+  const output = writes.join('');
+  assert.equal(exitCode, 0);
+  assert.match(output, /BlueprintHelper CLI help: blueprint_open_editor/);
+  assert.match(output, /mcp__blueprint_helper__blueprint_open_editor/);
+  assert.match(output, /Do not use CLI lifecycle aliases as Agent compatibility paths/);
+});
+
 test('direct blueprint_get_runtime_profile calls matching Bridge command', async () => {
   const writes: string[] = [];
   const calls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
