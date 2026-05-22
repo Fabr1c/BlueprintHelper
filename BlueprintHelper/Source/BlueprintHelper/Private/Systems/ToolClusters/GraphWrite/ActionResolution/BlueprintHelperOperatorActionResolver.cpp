@@ -4,6 +4,7 @@
 #include "BlueprintFunctionNodeSpawner.h"
 #include "BlueprintTypePromotion.h"
 #include "K2Node_PromotableOperator.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionClusterContextView.h"
 
 namespace
 {
@@ -32,9 +33,10 @@ static FBlueprintHelperCallFunctionCandidateInfo MakePromotableOperatorCandidate
 }
 
 FBlueprintHelperActionResolutionResult FBlueprintHelperOperatorActionResolver::Resolve(
-	const FBlueprintHelperActionResolutionRequest& Request)
+	const FBlueprintHelperActionResolutionRequest& Request,
+	const FBlueprintHelperActionClusterContextView& Context)
 {
-	if (Request.Semantic.Kind != EBlueprintHelperActionSemanticKind::Op)
+	if (Context.GetSemantic().Kind != EBlueprintHelperActionSemanticKind::Op)
 	{
 		FBlueprintHelperActionResolutionResult Result;
 		Result.Status = EBlueprintHelperActionResolutionStatus::UnsupportedIntent;
@@ -45,11 +47,11 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperOperatorActionResolver::R
 	}
 
 	FName OpName = NAME_None;
-	if (!TryMapOperatorTokenToPromotionName(Request.Semantic.Query, OpName))
+	if (!TryMapOperatorTokenToPromotionName(Context.GetSemantic().Query, OpName))
 	{
 		return MakeInvalidRequestResult(FString::Printf(
 			TEXT("Unsupported operator token '%s'. Supported tokens map to UE type promotion operator names."),
-			*Request.Semantic.Query));
+			*Context.GetSemantic().Query));
 	}
 
 	UBlueprintFunctionNodeSpawner* Spawner = FindPromotableOperatorSpawner(OpName);

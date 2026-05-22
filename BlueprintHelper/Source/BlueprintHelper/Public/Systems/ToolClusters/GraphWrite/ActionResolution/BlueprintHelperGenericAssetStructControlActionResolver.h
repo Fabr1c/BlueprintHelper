@@ -3,10 +3,14 @@
 #include "CoreMinimal.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.h"
 
+class FBlueprintHelperActionClusterContextView;
+
 class BLUEPRINTHELPER_API FBlueprintHelperGenericAssetStructControlActionResolver
 {
 public:
-	static FBlueprintHelperActionResolutionResult ResolveNodeSpawnerCandidate(const FBlueprintHelperActionResolutionRequest& Request);
+	static FBlueprintHelperActionResolutionResult ResolveNodeSpawnerCandidate(
+		const FBlueprintHelperActionResolutionRequest& Request,
+		const FBlueprintHelperActionClusterContextView& Context);
 
 private:
 	static FBlueprintHelperActionResolutionResult MakeNeedsContextResult(

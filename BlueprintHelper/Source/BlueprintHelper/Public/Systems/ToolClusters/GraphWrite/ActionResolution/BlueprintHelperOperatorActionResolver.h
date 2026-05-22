@@ -3,12 +3,15 @@
 #include "CoreMinimal.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.h"
 
+class FBlueprintHelperActionClusterContextView;
 class UBlueprintFunctionNodeSpawner;
 
 class BLUEPRINTHELPER_API FBlueprintHelperOperatorActionResolver
 {
 public:
-	static FBlueprintHelperActionResolutionResult Resolve(const FBlueprintHelperActionResolutionRequest& Request);
+	static FBlueprintHelperActionResolutionResult Resolve(
+		const FBlueprintHelperActionResolutionRequest& Request,
+		const FBlueprintHelperActionClusterContextView& Context);
 
 private:
 	static bool TryMapOperatorTokenToPromotionName(const FString& Token, FName& OutOpName);

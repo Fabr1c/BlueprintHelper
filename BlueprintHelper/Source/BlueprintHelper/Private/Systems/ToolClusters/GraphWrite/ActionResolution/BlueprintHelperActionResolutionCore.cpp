@@ -1,5 +1,6 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.h"
 
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionClusterContextView.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionSettingsResolver.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperSpawnerClusterResolver.h"
 
@@ -22,13 +23,36 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperActionResolutionCore::Res
 		EffectiveRequest.Semantic.AmbiguityPolicy = Settings.DefaultAmbiguityPolicy;
 	}
 
-	if (!EffectiveRequest.TargetGraph)
+	const FBlueprintHelperActionClusterContextView Context(EffectiveRequest);
+	FString ContextErrorCode;
+	FString ContextMessage;
+	if (!Context.HasGraphContext())
 	{
 		FBlueprintHelperActionResolutionResult Result;
 		Result.Status = EBlueprintHelperActionResolutionStatus::InvalidRequest;
 		Result.ClusterKind = EffectiveRequest.ClusterKind;
-		Result.ErrorCode = TEXT("action_resolution_invalid_request");
-		Result.Message = TEXT("action_resolution_invalid_request:missing_target_graph");
+		Result.ErrorCode = TEXT("action_context_graph_missing");
+		Result.Message = TEXT("Projected action context is missing Blueprint or target graph.");
+		return Result;
+	}
+
+	if (!Context.HasSemanticKind())
+	{
+		FBlueprintHelperActionResolutionResult Result;
+		Result.Status = EBlueprintHelperActionResolutionStatus::InvalidRequest;
+		Result.ClusterKind = EffectiveRequest.ClusterKind;
+		Result.ErrorCode = TEXT("semantic_kind_missing");
+		Result.Message = TEXT("Projected action context is missing semantic kind.");
+		return Result;
+	}
+
+	if (!Context.HasStableIdentity())
+	{
+		FBlueprintHelperActionResolutionResult Result;
+		Result.Status = EBlueprintHelperActionResolutionStatus::InvalidRequest;
+		Result.ClusterKind = EffectiveRequest.ClusterKind;
+		Result.ErrorCode = TEXT("action_context_identity_missing");
+		Result.Message = TEXT("Projected action context is missing statement/context identity.");
 		return Result;
 	}
 
@@ -44,7 +68,17 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperActionResolutionCore::Res
 		return Result;
 	}
 
-	return FBlueprintHelperSpawnerClusterResolver::Resolve(EffectiveRequest);
+	if (!Context.IsCompleteForCluster(EffectiveRequest.ClusterKind, ContextErrorCode, ContextMessage))
+	{
+		FBlueprintHelperActionResolutionResult Result;
+		Result.Status = EBlueprintHelperActionResolutionStatus::InvalidRequest;
+		Result.ClusterKind = EffectiveRequest.ClusterKind;
+		Result.ErrorCode = ContextErrorCode;
+		Result.Message = ContextMessage;
+		return Result;
+	}
+
+	return FBlueprintHelperSpawnerClusterResolver::Resolve(EffectiveRequest, Context);
 }
 
 FString FBlueprintHelperActionResolutionCore::SemanticKindToString(EBlueprintHelperActionSemanticKind Kind)

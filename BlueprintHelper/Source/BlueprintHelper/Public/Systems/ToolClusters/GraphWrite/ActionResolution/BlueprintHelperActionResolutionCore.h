@@ -81,6 +81,10 @@ struct FBlueprintHelperActionResolutionRequest
 	EBlueprintHelperSpawnerClusterKind ClusterKind = EBlueprintHelperSpawnerClusterKind::Unknown;
 	UBlueprint* Blueprint = nullptr;
 	UEdGraph* TargetGraph = nullptr;
+	FString StatementId;
+	FString ProjectedContextHash;
+	FString SemanticConstraintsHash;
+	TMap<FString, FString> ContextEvidence;
 	FBlueprintHelperActionSemanticConstraints Semantic;
 	bool bAllowFuzzyUnique = true;
 	int32 MaxCandidates = 0;

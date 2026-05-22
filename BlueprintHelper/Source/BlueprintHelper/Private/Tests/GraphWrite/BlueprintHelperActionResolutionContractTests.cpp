@@ -244,6 +244,10 @@ bool FBlueprintHelperActionResolutionClustersConsumeProjectedContextContractTest
 		TEXT("BuildSnapshot("),
 		TEXT("Infer("),
 		TEXT("TryBuildRequest("),
+		TEXT("UnsupportedClusterMigration"),
+		TEXT("migration_pending"),
+		TEXT("unsupported_cluster_migration"),
+		TEXT("legacy_fallback"),
 		BuildForbiddenActionResolutionToken(TEXT("ActionRequest."), TEXT("Semantic =")),
 		BuildForbiddenActionResolutionToken(TEXT("ActionRequest."), TEXT("ClusterKind ="))
 	};

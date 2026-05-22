@@ -1,5 +1,6 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericAssetStructControlActionCluster.h"
 
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionClusterContextView.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericActionProviderBoundary.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericAssetStructControlActionResolver.h"
 
@@ -48,9 +49,11 @@ static FBlueprintHelperActionResolutionResult MakeUnsupportedProviderBoundaryRes
 }
 }
 
-FBlueprintHelperActionResolutionResult FBlueprintHelperGenericAssetStructControlActionCluster::Resolve(const FBlueprintHelperActionResolutionRequest& Request)
+FBlueprintHelperActionResolutionResult FBlueprintHelperGenericAssetStructControlActionCluster::Resolve(
+	const FBlueprintHelperActionResolutionRequest& Request,
+	const FBlueprintHelperActionClusterContextView& Context)
 {
-	if (!OwnsSemanticKind(Request.Semantic.Kind))
+	if (!OwnsSemanticKind(Context.GetSemantic().Kind))
 	{
 		return MakeUnsupportedIntentResult(Request);
 	}
@@ -60,7 +63,7 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperGenericAssetStructControl
 	switch (Boundary.Mode)
 	{
 	case EBlueprintHelperGenericActionProviderMode::NodeSpawnerCandidate:
-		return FBlueprintHelperGenericAssetStructControlActionResolver::ResolveNodeSpawnerCandidate(Request);
+		return FBlueprintHelperGenericAssetStructControlActionResolver::ResolveNodeSpawnerCandidate(Request, Context);
 	case EBlueprintHelperGenericActionProviderMode::DedicatedFragmentBuilderRequired:
 		return MakeDedicatedFragmentBuilderRequiredResult(Request, Boundary);
 	case EBlueprintHelperGenericActionProviderMode::NeedsMoreSemanticContext:

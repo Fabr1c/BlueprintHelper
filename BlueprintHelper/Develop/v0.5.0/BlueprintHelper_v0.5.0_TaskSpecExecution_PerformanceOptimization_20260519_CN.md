@@ -1717,3 +1717,52 @@ lightweight bh.exe / shim
 4. 全局 `bh` 安装/link 后，普通命令默认路由到 daemon，保留可诊断的 fallback / bypass 开关用于排障。
 
 距离期望差距：尚未写独立设计文档和实现计划；尚未实现 daemon IPC、轻量 shim、daemon 生命周期、安装/link 策略和覆盖测试。
+
+---
+
+## ActionResolution evidence cache follow-up
+
+Date: 2026-05-22
+
+### Scope
+
+This follow-up extends the previous CallFunction preview/execute optimization from a single function-call path to all current Spawner-Oriented clusters:
+
+- FunctionActionCluster
+- FieldVariableActionCluster
+- EventDelegateActionCluster
+- GenericAssetStructControlActionCluster
+
+### P1: preview-to-execute evidence reuse
+
+Use preview-time action resolution evidence as the execute-time reconstruction input for the same TaskSpec. This is not a spawned-node cache. It stores stable, reconstructable evidence such as selected spawner family, stable action identity, semantic constraints hash, context hash, candidate list summary, and ambiguity state.
+
+Expected behavior:
+
+1. Preview resolves action candidates through ActionContextPipeline and ActionResolutionCore.
+2. Preview records selected evidence and candidate diagnostics.
+3. Execute receives or reloads that evidence for the same TaskSpec.
+4. Execute validates TaskSpec hash, semantic constraints hash, context hash, settings revision, and action reconstructability.
+5. If valid, execute reconstructs the UE NodeSpawner selection from evidence instead of repeating free-form semantic guessing.
+6. If stale or unresolvable, execute returns an explicit stale/unresolvable diagnostic instead of silently falling back to another node.
+
+This is the near-term optimization target because it improves preview/execute consistency and reduces repeated resolver work without introducing long-lived asset-state caches.
+
+### P2: cross-TaskSpec background index cache
+
+Cross-CLI-process or cross-TaskSpec cache reuse is deferred. It can become valuable when tool latency must be compressed aggressively, but it should be designed as a Rider-style non-blocking background index rather than a correctness dependency.
+
+Expected future properties:
+
+1. The index is advisory and accelerates candidate lookup only; it is never the source of truth for mutation.
+2. It stores stable DTO/index data, not UObject pointers, UBlueprintNodeSpawner pointers, UEdGraph pointers, UEdGraphPin pointers, or spawned UK2Node instances.
+3. It runs in the background and must not block the main preview/execute path.
+4. It must have explicit memory budget, invalidation policy, asset/settings/action-database revision keys, and cleanup behavior.
+5. It is postponed until measurements prove resolver/index latency is a dominant bottleneck and the memory cost is acceptable.
+
+### Non-goals
+
+- Do not cache spawned nodes.
+- Do not cache UObject pointers or live UE editor objects across CLI processes.
+- Do not use stale cache entries as fallback behavior.
+- Do not introduce per-cluster private cache semantics that diverge from ActionContextPipeline.

@@ -8,6 +8,7 @@
 #include "K2Node_MakeStruct.h"
 #include "K2Node_StructOperation.h"
 #include "Kismet2/BlueprintEditorUtils.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionClusterContextView.h"
 #include "UObject/UObjectIterator.h"
 #include "UObject/UnrealType.h"
 
@@ -395,7 +396,7 @@ static bool FunctionOwnerMatches(const UFunction* Function, const FString& Owner
 		|| OwnerPath.Contains(OwnerLookup);
 }
 
-static UFunction* FindNativeStructFunction(const FString& NativePath)
+static UFunction* ResolveNativeStructFunction(const FString& NativePath)
 {
 	const FString FunctionName = GetNativeFunctionLookupName(NativePath);
 	if (FunctionName.IsEmpty())
@@ -450,7 +451,7 @@ static bool TryResolveNativeStructFunctionSpawner(
 	TArray<FBlueprintHelperCallFunctionCandidateInfo>& CandidateActions,
 	FBlueprintHelperActionResolutionResult& OutResult)
 {
-	UFunction* NativeFunction = FindNativeStructFunction(NativeFunctionPath);
+	UFunction* NativeFunction = ResolveNativeStructFunction(NativeFunctionPath);
 	if (!NativeFunction)
 	{
 		return false;
@@ -585,16 +586,17 @@ static FBlueprintHelperActionResolutionResult MakeDirectStructSpawnerResult(
 }
 
 FBlueprintHelperActionResolutionResult FBlueprintHelperGenericAssetStructControlActionResolver::ResolveNodeSpawnerCandidate(
-	const FBlueprintHelperActionResolutionRequest& Request)
+	const FBlueprintHelperActionResolutionRequest& Request,
+	const FBlueprintHelperActionClusterContextView& Context)
 {
-	if (!IsNodeSpawnerCandidateSemantic(Request.Semantic.Kind))
+	if (!IsNodeSpawnerCandidateSemantic(Context.GetSemantic().Kind))
 	{
 		return MakeUnsupportedIntentResult(
 			Request,
 			TEXT("Generic NodeSpawner candidate resolver only accepts construct/deconstruct semantics."));
 	}
 
-	const FString TypeName = Request.Semantic.TypeName.TrimStartAndEnd();
+	const FString TypeName = Context.GetSemantic().TypeName.TrimStartAndEnd();
 	if (TypeName.IsEmpty())
 	{
 		return MakeNeedsContextResult(

@@ -893,6 +893,7 @@ static bool SpawnSemanticStatementFragment(
 	{
 		return FBlueprintHelperControlFragmentBuilder::BuildBranch(
 			TargetGraph,
+			ActionContextScope,
 			*Statement,
 			OutFragment,
 			OutError);
@@ -902,6 +903,7 @@ static bool SpawnSemanticStatementFragment(
 	{
 		return FBlueprintHelperControlFragmentBuilder::BuildReturn(
 			TargetGraph,
+			ActionContextScope,
 			*Statement,
 			OutFragment,
 			OutError);

@@ -1,8 +1,8 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperFunctionActionCluster.h"
 
-#include "BlueprintFunctionNodeSpawner.h"
 #include "EdGraph/EdGraph.h"
 #include "Engine/Blueprint.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionClusterContextView.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperOperatorActionResolver.h"
 #include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
 
@@ -41,12 +41,14 @@ static void PopulateCallContext(FBlueprintHelperCallFunctionResolveRequest& Call
 	CallRequest.Context.ExpectedReturnPinType = Semantic.ExpectedReturnPinType;
 }
 
-FBlueprintHelperActionResolutionResult FBlueprintHelperFunctionActionCluster::Resolve(const FBlueprintHelperActionResolutionRequest& Request)
+FBlueprintHelperActionResolutionResult FBlueprintHelperFunctionActionCluster::Resolve(
+	const FBlueprintHelperActionResolutionRequest& Request,
+	const FBlueprintHelperActionClusterContextView& Context)
 {
-	const FBlueprintHelperActionSemanticConstraints& Semantic = Request.Semantic;
+	const FBlueprintHelperActionSemanticConstraints& Semantic = Context.GetSemantic();
 	if (Semantic.Kind == EBlueprintHelperActionSemanticKind::Op)
 	{
-		return FBlueprintHelperOperatorActionResolver::Resolve(Request);
+		return FBlueprintHelperOperatorActionResolver::Resolve(Request, Context);
 	}
 
 	if (Semantic.Kind != EBlueprintHelperActionSemanticKind::Call)
@@ -84,28 +86,6 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperFunctionActionCluster::Re
 	Result.SelectedFunction = CallResult.Selected.Function;
 	Result.CandidateActions = CallResult.CandidateFunctions;
 	Result.FunctionCandidate = CallResult.Selected;
-
-	if (Result.Status == EBlueprintHelperActionResolutionStatus::Resolved && !Result.SelectedSpawner.IsValid())
-	{
-		UFunction* SelectedFunction = Result.SelectedFunction.Get();
-		if (SelectedFunction)
-		{
-			if (UBlueprintFunctionNodeSpawner* FunctionSpawner = UBlueprintFunctionNodeSpawner::Create(SelectedFunction))
-			{
-				Result.SelectedSpawner = FunctionSpawner;
-				Result.FunctionCandidate.NodeSpawner = FunctionSpawner;
-			}
-		}
-
-		if (!Result.SelectedSpawner.IsValid())
-		{
-			Result.Status = EBlueprintHelperActionResolutionStatus::Blocked;
-			Result.ErrorCode = TEXT("resolved_function_missing_node_spawner");
-			Result.Message = FString::Printf(
-				TEXT("call_function resolved '%s' but no BlueprintFunctionNodeSpawner could be provided."),
-				Result.SelectedStableId.IsEmpty() ? *Semantic.Query : *Result.SelectedStableId);
-		}
-	}
 
 	return Result;
 }
