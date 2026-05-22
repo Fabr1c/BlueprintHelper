@@ -1,4 +1,4 @@
-#include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphGenerationPipeline.h"
+﻿#include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphGenerationPipeline.h"
 
 #include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphDefaultValueApplier.h"
@@ -20,6 +20,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphComposer.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDag.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDagBuilder.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentBuilderRegistry.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphStatementBuilder.h"
 #include "BlueprintNodeSpawner.h"
@@ -463,6 +464,9 @@ static FString GetSemanticStatementId(const FBlueprintHelperGraphStatementIR& St
 	case EBlueprintHelperGraphStatementKind::Branch:
 		KindName = TEXT("branch");
 		break;
+	case EBlueprintHelperGraphStatementKind::Sequence:
+		KindName = TEXT("sequence");
+		break;
 	case EBlueprintHelperGraphStatementKind::Let:
 		KindName = TEXT("let");
 		break;
@@ -661,7 +665,7 @@ static void BuildSemanticExpressionFragments(
 	FBlueprintHelperNodeFragment Fragment;
 	FString Error;
 	TArray<FBlueprintHelperCandidateFunctionGroup> CandidateFunctions;
-	if (!FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(TargetGraph, *Expression, Fragment, Error, &CandidateFunctions, ActionContextScope))
+	if (!FBlueprintHelperGraphFragmentBuilderRegistry::TryBuildExpression(TargetGraph, ActionContextScope, *Expression, Fragment, Error, &CandidateFunctions))
 	{
 		AddSemanticUnresolved(
 			OutUnresolvedNodes,
@@ -834,107 +838,15 @@ static bool SpawnSemanticStatementFragment(
 		return false;
 	}
 
-	const FString StatementId = GetSemanticStatementId(*Statement);
-	if (Statement->Kind == EBlueprintHelperGraphStatementKind::Call)
-	{
-		const FString StatementContextId = GetSemanticStatementContextId(*Statement);
-		FParsedNode NodeData;
-		NodeData.Id = StatementId;
-		NodeData.ActionContextStatementId = StatementContextId;
-		NodeData.NodeType = EParsedBlueprintNodeType::CallFunction;
-		NodeData.SourceType = TEXT("K2Node_CallFunction");
-		NodeData.FunctionName = !Statement->Target.IsEmpty() ? Statement->Target : Statement->Name;
-		NodeData.ResolvedCallFunctionStableId = Statement->ResolvedCallFunctionStableId;
-		NodeData.SearchMode = Statement->SearchMode;
-		NodeData.AmbiguityPolicy = Statement->AmbiguityPolicy;
-		NodeData.CategoryPriority = Statement->CategoryPriority;
-		if (Statement->ResolvedTarget.Kind == EBlueprintHelperGraphTargetKind::ComponentMemberFunction)
-		{
-			NodeData.TargetObjectType = Statement->ResolvedTarget.Type;
-		}
-		if (Statement->TargetObject.IsValid())
-		{
-			NodeData.TargetObjectName = !Statement->TargetObject->ResolvedTarget.Member.IsEmpty()
-				? Statement->TargetObject->ResolvedTarget.Member
-				: (!Statement->TargetObject->Target.IsEmpty() ? Statement->TargetObject->Target : Statement->TargetObject->Name);
-			NodeData.TargetObjectType = Statement->TargetObject->Type;
-		}
-		FillCallArgsAsDefaultsAndTypes(Statement->Args, NodeData.DefaultValues, NodeData.ArgumentTypes);
-		if (SemanticArgumentPinTypes)
-		{
-			NodeData.ArgumentPinTypes.Append(*SemanticArgumentPinTypes);
-		}
-		return FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment(TargetGraph, NodeData, OutFragment, OutError, OutCandidateFunctions, ActionContextScope);
-	}
-
-	if (Statement->Kind == EBlueprintHelperGraphStatementKind::Set)
-	{
-		const FString StatementContextId = GetSemanticStatementContextId(*Statement);
-		const FString VariableName = !Statement->ResolvedTarget.Member.IsEmpty()
-			? Statement->ResolvedTarget.Member
-			: Statement->Target;
-		FParsedNode NodeData;
-		NodeData.Id = StatementId;
-		NodeData.ActionContextStatementId = StatementContextId;
-		NodeData.NodeType = EParsedBlueprintNodeType::VariableSet;
-		NodeData.SourceType = TEXT("K2Node_VariableSet");
-		NodeData.VariableReference.ScopeType = TEXT("member");
-		NodeData.VariableReference.VariableName = VariableName;
-		NodeData.VariableReference.bSelfContext = true;
-		if (Statement->Value.IsValid() && Statement->Value->Kind == EBlueprintHelperGraphExpressionKind::Literal)
-		{
-			NodeData.DefaultValues.Add(VariableName, Statement->Value->LiteralValue);
-			NodeData.DefaultValues.Add(TEXT("value"), Statement->Value->LiteralValue);
-		}
-		return FBlueprintHelperGraphStatementBuilder::BuildVariableSetFragment(TargetGraph, NodeData, OutFragment, OutError, ActionContextScope);
-	}
-
-	if (Statement->Kind == EBlueprintHelperGraphStatementKind::SetProperty)
-	{
-		const FString StatementContextId = GetSemanticStatementContextId(*Statement);
-		const FString PropertyTarget = !Statement->ResolvedTarget.Member.IsEmpty()
-			? Statement->ResolvedTarget.Member
-			: (!Statement->Property.IsEmpty() ? Statement->Property : Statement->Target);
-		FParsedNode NodeData;
-		NodeData.Id = StatementId;
-		NodeData.ActionContextStatementId = StatementContextId;
-		NodeData.NodeType = EParsedBlueprintNodeType::VariableSet;
-		NodeData.SourceType = TEXT("K2Node_VariableSet");
-		NodeData.VariableReference.ScopeType = TEXT("member");
-		NodeData.VariableReference.VariableName = PropertyTarget;
-		NodeData.VariableReference.bSelfContext = true;
-		if (Statement->Value.IsValid() && Statement->Value->Kind == EBlueprintHelperGraphExpressionKind::Literal)
-		{
-			NodeData.DefaultValues.Add(PropertyTarget, Statement->Value->LiteralValue);
-			NodeData.DefaultValues.Add(TEXT("value"), Statement->Value->LiteralValue);
-		}
-		return FBlueprintHelperGraphStatementBuilder::BuildSetPropertyFragment(TargetGraph, NodeData, OutFragment, OutError, ActionContextScope);
-	}
-
-	if (Statement->Kind == EBlueprintHelperGraphStatementKind::Branch)
-	{
-		return FBlueprintHelperControlFragmentBuilder::BuildBranch(
-			TargetGraph,
-			ActionContextScope,
-			*Statement,
-			OutFragment,
-			OutError);
-	}
-
-	if (Statement->Kind == EBlueprintHelperGraphStatementKind::Return)
-	{
-		return FBlueprintHelperControlFragmentBuilder::BuildReturn(
-			TargetGraph,
-			ActionContextScope,
-			*Statement,
-			OutFragment,
-			OutError);
-	}
-
-	OutError = FString::Printf(TEXT("Semantic statement kind is not node-backed: %s."), *Statement->PatternName);
-	return false;
+	return FBlueprintHelperGraphFragmentBuilderRegistry::TryBuildStatement(
+		TargetGraph,
+		ActionContextScope,
+		*Statement,
+		OutFragment,
+		OutError,
+		OutCandidateFunctions,
+		SemanticArgumentPinTypes);
 }
-
 static FSemanticStatementExecFlow BuildSemanticStatementArray(
 	UEdGraph* TargetGraph,
 	const FBlueprintHelperActionContextScope* ActionContextScope,
@@ -1426,7 +1338,7 @@ UEdGraph* FBlueprintGraphGenerationPipeline::FindGraphByName(UBlueprint* Bluepri
 		return nullptr;
 	}
 
-	// EventGraph锛氭悳绱?UbergraphPages
+	// EventGraph閿涙碍鎮崇槐?UbergraphPages
 	if (GraphName.Equals(TEXT("EventGraph"), ESearchCase::IgnoreCase))
 	{
 		for (UEdGraph* Graph : Blueprint->UbergraphPages)
@@ -1439,7 +1351,7 @@ UEdGraph* FBlueprintGraphGenerationPipeline::FindGraphByName(UBlueprint* Bluepri
 		return nullptr;
 	}
 
-	// 涔熷湪 UbergraphPages 涓寜绮剧‘鍚嶇О鎼滅储
+	// 娑旂喎婀?UbergraphPages 娑擃厽瀵滅划鍓р€橀崥宥囆為幖婊呭偍
 	for (UEdGraph* Graph : Blueprint->UbergraphPages)
 	{
 		if (Graph && Graph->GetFName() == FName(*GraphName))
@@ -1448,7 +1360,7 @@ UEdGraph* FBlueprintGraphGenerationPipeline::FindGraphByName(UBlueprint* Bluepri
 		}
 	}
 
-	// 鍑芥暟鍥?
+	// 閸戣姤鏆熼崶?
 	for (UEdGraph* Graph : Blueprint->FunctionGraphs)
 	{
 		if (Graph && Graph->GetFName() == FName(*GraphName))
@@ -1457,7 +1369,7 @@ UEdGraph* FBlueprintGraphGenerationPipeline::FindGraphByName(UBlueprint* Bluepri
 		}
 	}
 
-	// 瀹忓浘
+	// 鐎瑰繐娴?
 	for (UEdGraph* Graph : Blueprint->MacroGraphs)
 	{
 		if (Graph && Graph->GetFName() == FName(*GraphName))
@@ -1466,7 +1378,7 @@ UEdGraph* FBlueprintGraphGenerationPipeline::FindGraphByName(UBlueprint* Bluepri
 		}
 	}
 
-	// 濮旀墭绛惧悕鍥?
+	// 婵梹澧粵鎯ф倳閸?
 	for (UEdGraph* Graph : Blueprint->DelegateSignatureGraphs)
 	{
 		if (Graph && Graph->GetFName() == FName(*GraphName))

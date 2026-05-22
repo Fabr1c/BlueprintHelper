@@ -2,14 +2,18 @@
 
 #include "BlueprintFieldNodeSpawner.h"
 #include "BlueprintFunctionNodeSpawner.h"
+#include "BlueprintNodeSpawner.h"
 #include "EdGraph/EdGraph.h"
 #include "Engine/Blueprint.h"
 #include "K2Node_BreakStruct.h"
+#include "K2Node_ExecutionSequence.h"
+#include "K2Node_FunctionResult.h"
+#include "K2Node_IfThenElse.h"
 #include "K2Node_MakeStruct.h"
+#include "K2Node_Select.h"
 #include "K2Node_StructOperation.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionClusterContextView.h"
-#include "UObject/UObjectIterator.h"
 #include "UObject/UnrealType.h"
 
 namespace
@@ -17,7 +21,9 @@ namespace
 static bool IsNodeSpawnerCandidateSemantic(const EBlueprintHelperActionSemanticKind Kind)
 {
 	return Kind == EBlueprintHelperActionSemanticKind::Construct
-		|| Kind == EBlueprintHelperActionSemanticKind::Deconstruct;
+		|| Kind == EBlueprintHelperActionSemanticKind::Deconstruct
+		|| Kind == EBlueprintHelperActionSemanticKind::Select
+		|| Kind == EBlueprintHelperActionSemanticKind::Control;
 }
 
 static bool IsConstructSemantic(const FBlueprintHelperActionResolutionRequest& Request)
@@ -57,6 +63,32 @@ static FString NormalizeStructLookupText(const FString& TypeName)
 	return Normalized;
 }
 
+static UScriptStruct* ResolveKnownStructAlias(const FString& TypeName)
+{
+	const FString Normalized = NormalizeStructLookupText(TypeName);
+	if (Normalized == TEXT("vector"))
+	{
+		return TBaseStructure<FVector>::Get();
+	}
+	if (Normalized == TEXT("vector2d"))
+	{
+		return TBaseStructure<FVector2D>::Get();
+	}
+	if (Normalized == TEXT("rotator"))
+	{
+		return TBaseStructure<FRotator>::Get();
+	}
+	if (Normalized == TEXT("transform"))
+	{
+		return TBaseStructure<FTransform>::Get();
+	}
+	if (Normalized == TEXT("linearcolor") || Normalized == TEXT("color"))
+	{
+		return TBaseStructure<FLinearColor>::Get();
+	}
+	return nullptr;
+}
+
 static UScriptStruct* ResolveStructType(const FString& TypeName)
 {
 	const FString Query = TypeName.TrimStartAndEnd();
@@ -73,37 +105,9 @@ static UScriptStruct* ResolveStructType(const FString& TypeName)
 	{
 		return LoadedStruct;
 	}
-
-	const FString NormalizedQuery = NormalizeStructLookupText(Query);
-	if (NormalizedQuery.IsEmpty())
+	if (UScriptStruct* KnownAlias = ResolveKnownStructAlias(Query))
 	{
-		return nullptr;
-	}
-
-	for (TObjectIterator<UScriptStruct> It; It; ++It)
-	{
-		UScriptStruct* Candidate = *It;
-		if (!Candidate)
-		{
-			continue;
-		}
-
-		FString CandidateName = Candidate->GetName();
-		CandidateName.ToLowerInline();
-
-		FString CandidateCppName = Candidate->GetPrefixCPP() + Candidate->GetName();
-		CandidateCppName.ToLowerInline();
-
-		FString CandidatePath = Candidate->GetPathName();
-		CandidatePath.ToLowerInline();
-
-		if (CandidateName == NormalizedQuery
-			|| CandidateCppName == NormalizedQuery
-			|| CandidatePath == NormalizedQuery
-			|| CandidatePath.EndsWith(TEXT(".") + NormalizedQuery))
-		{
-			return Candidate;
-		}
+		return KnownAlias;
 	}
 
 	return nullptr;
@@ -398,22 +402,19 @@ static bool FunctionOwnerMatches(const UFunction* Function, const FString& Owner
 
 static UFunction* ResolveNativeStructFunction(const FString& NativePath)
 {
-	const FString FunctionName = GetNativeFunctionLookupName(NativePath);
-	if (FunctionName.IsEmpty())
+	const FString Trimmed = NativePath.TrimStartAndEnd();
+	if (Trimmed.IsEmpty())
 	{
 		return nullptr;
 	}
-
-	const FString OwnerLookup = GetNativeFunctionOwnerLookupName(NativePath);
-	for (TObjectIterator<UFunction> It; It; ++It)
+	if (UFunction* DirectFunction = FindObject<UFunction>(nullptr, *Trimmed))
 	{
-		UFunction* Function = *It;
-		if (Function
-			&& Function->GetName().Equals(FunctionName, ESearchCase::IgnoreCase)
-			&& FunctionOwnerMatches(Function, OwnerLookup))
-		{
-			return Function;
-		}
+		return DirectFunction;
+	}
+	const FString DotPath = Trimmed.Replace(TEXT(":"), TEXT("."));
+	if (DotPath != Trimmed)
+	{
+		return FindObject<UFunction>(nullptr, *DotPath);
 	}
 	return nullptr;
 }
@@ -585,6 +586,95 @@ static FBlueprintHelperActionResolutionResult MakeDirectStructSpawnerResult(
 	Result.SelectedSpawner = DirectSpawner;
 	return Result;
 }
+
+static FBlueprintHelperActionResolutionResult MakeGenericNodeSpawnerResult(
+	const FBlueprintHelperActionResolutionRequest& Request,
+	UClass* NodeClass,
+	const FString& StableId,
+	const FString& DisplayName,
+	const FString& MatchReason)
+{
+	FBlueprintHelperActionResolutionResult Result;
+	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction;
+	Result.SelectedStableId = StableId;
+	Result.SelectedSpawner = NodeClass ? UBlueprintNodeSpawner::Create(NodeClass) : nullptr;
+
+	FBlueprintHelperCallFunctionCandidateInfo Candidate;
+	Candidate.StableId = StableId;
+	Candidate.DisplayName = DisplayName;
+	Candidate.Category = TEXT("Generic");
+	Candidate.NodeClassPath = NodeClass ? NodeClass->GetPathName() : FString();
+	Candidate.MatchReason = MatchReason;
+	Candidate.Score = 100;
+	Candidate.bGraphCompatible = true;
+	Candidate.bFromActionDatabase = false;
+	Candidate.bBlueprintCallable = true;
+	Candidate.bBlueprintPure = true;
+	Result.CandidateActions.Add(Candidate);
+
+	if (!Result.SelectedSpawner.IsValid())
+	{
+		Result.Status = EBlueprintHelperActionResolutionStatus::Blocked;
+		Result.ErrorCode = TEXT("generic_node_spawner_unavailable");
+		Result.Message = FString::Printf(TEXT("Generic node spawner unavailable for '%s'."), *StableId);
+		return Result;
+	}
+
+	Result.Status = EBlueprintHelperActionResolutionStatus::Resolved;
+	Result.Message = FString::Printf(TEXT("Resolved generic node spawner '%s'."), *StableId);
+	return Result;
+}
+
+static FBlueprintHelperActionResolutionResult ResolveSelectNodeSpawner(
+	const FBlueprintHelperActionResolutionRequest& Request)
+{
+	return MakeGenericNodeSpawnerResult(
+		Request,
+		UK2Node_Select::StaticClass(),
+		TEXT("generic_select_node:/Script/BlueprintGraph.K2Node_Select"),
+		TEXT("Select"),
+		TEXT("generic_select_node_spawner"));
+}
+
+static FBlueprintHelperActionResolutionResult ResolveControlNodeSpawner(
+	const FBlueprintHelperActionResolutionRequest& Request)
+{
+	const FString Query = Request.Semantic.Query.TrimStartAndEnd().ToLower();
+	if (Query == TEXT("branch"))
+	{
+		return MakeGenericNodeSpawnerResult(
+			Request,
+			UK2Node_IfThenElse::StaticClass(),
+			TEXT("generic_control_node:branch"),
+			TEXT("Branch"),
+			TEXT("generic_control_node_spawner"));
+	}
+	if (Query == TEXT("return"))
+	{
+		return MakeGenericNodeSpawnerResult(
+			Request,
+			UK2Node_FunctionResult::StaticClass(),
+			TEXT("generic_control_node:return"),
+			TEXT("Return"),
+			TEXT("generic_control_node_spawner"));
+	}
+	if (Query == TEXT("sequence"))
+	{
+		return MakeGenericNodeSpawnerResult(
+			Request,
+			UK2Node_ExecutionSequence::StaticClass(),
+			TEXT("generic_control_node:sequence"),
+			TEXT("Sequence"),
+			TEXT("generic_control_node_spawner"));
+	}
+
+	FBlueprintHelperActionResolutionResult Result;
+	Result.Status = EBlueprintHelperActionResolutionStatus::UnsupportedIntent;
+	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction;
+	Result.ErrorCode = TEXT("unsupported_generic_control_semantic");
+	Result.Message = FString::Printf(TEXT("Unsupported control semantic query '%s'."), *Request.Semantic.Query);
+	return Result;
+}
 }
 
 FBlueprintHelperActionResolutionResult FBlueprintHelperGenericAssetStructControlActionResolver::ResolveNodeSpawnerCandidate(
@@ -595,7 +685,17 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperGenericAssetStructControl
 	{
 		return MakeUnsupportedIntentResult(
 			Request,
-			TEXT("Generic NodeSpawner candidate resolver only accepts construct/deconstruct semantics."));
+			TEXT("Generic NodeSpawner candidate resolver only accepts construct/deconstruct/select/control semantics."));
+	}
+
+	if (Context.GetSemantic().Kind == EBlueprintHelperActionSemanticKind::Select)
+	{
+		return ResolveSelectNodeSpawner(Request);
+	}
+
+	if (Context.GetSemantic().Kind == EBlueprintHelperActionSemanticKind::Control)
+	{
+		return ResolveControlNodeSpawner(Request);
 	}
 
 	const FString TypeName = Context.GetSemantic().TypeName.TrimStartAndEnd();

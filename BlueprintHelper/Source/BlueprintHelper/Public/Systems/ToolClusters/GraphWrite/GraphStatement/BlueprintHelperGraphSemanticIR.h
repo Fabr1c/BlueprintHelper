@@ -14,6 +14,7 @@ enum class EBlueprintHelperGraphStatementKind : uint8
 	Set,
 	SetProperty,
 	Branch,
+	Sequence,
 	Let,
 	Return
 };

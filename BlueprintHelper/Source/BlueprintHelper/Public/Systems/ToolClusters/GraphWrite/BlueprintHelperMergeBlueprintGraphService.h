@@ -1,4 +1,4 @@
-// BlueprintHelper Service Layer 。MergeBlueprintGraph 核心服务
+// BlueprintHelper Service Layer - MergeBlueprintGraph service
 
 #pragma once
 
@@ -71,9 +71,8 @@ private:
 	bool ResolveAnchor(const FMergeRequest& Request, FMergeContext& Context, FString& OutError) const;
 	bool ResolveInsertedLogic(const FMergeRequest& Request, FMergeContext& Context, FString& OutErrorCode, FString& OutError) const;
 	bool CheckSuccessorCount(const FMergeRequest& Request, const FMergeContext& Context, FMergePreflightResult& OutResult) const;
-	bool ApplyAppendAfter(UBlueprint* BP, UEdGraph* Graph, const FMergeRequest& Request, FMergeContext& Context, FString& OutError) const;
-	bool ApplyInsertBetween(UBlueprint* BP, UEdGraph* Graph, const FMergeRequest& Request, FMergeContext& Context, FString& OutError) const;
-	bool ApplyBranchFork(UBlueprint* BP, UEdGraph* Graph, const FMergeRequest& Request, FMergeContext& Context, FString& OutError) const;
+
+bool ApplyMergeIntent(UBlueprint* BP, UEdGraph* Graph, const FMergeRequest& Request, FMergeContext& Context, FString& OutError) const;
 
 	const FBlueprintHelperGraphResolver& Resolver;
 	const FBlueprintHelperLogicJsonPathService& PathService;

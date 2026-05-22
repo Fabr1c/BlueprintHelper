@@ -1,4 +1,4 @@
-// BlueprintHelper Service Layer — PatchBlueprintGraph 核心服务实现
+// BlueprintHelper Service Layer - PatchBlueprintGraph implementation
 
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperPatchBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
@@ -7,6 +7,8 @@
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperGraphWriteBlockScopedResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDebugData.h"
+#include "Systems/ToolClusters/GraphWrite/Mutation/BlueprintHelperGraphWriteMutationCoordinator.h"
+#include "Systems/ToolClusters/GraphWrite/Mutation/BlueprintHelperGraphWriteMutationIntent.h"
 #include "Systems/Review/BlueprintHelperReviewBaselineSnapshotService.h"
 #include "Shared/GraphWrite/BlueprintHelperAppendGraphTypes.h"
 #include "Shared/GraphWrite/BlueprintHelperReplaceGraphTypes.h"
@@ -29,7 +31,7 @@ FBlueprintHelperPatchBlueprintGraphService::FBlueprintHelperPatchBlueprintGraphS
 {
 }
 
-// ─── 公共入口 ───
+// 鈹€鈹€鈹€ 鍏叡鍏ュ彛 鈹€鈹€鈹€
 
 FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::Execute(
 	const TSharedPtr<FJsonObject>& Payload) const
@@ -44,7 +46,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::Execu
 	return ExecuteWrite(Request);
 }
 
-// ─── 解析 ───
+// 鈹€鈹€鈹€ 瑙ｆ瀽 鈹€鈹€鈹€
 
 FBlueprintHelperPatchBlueprintGraphService::FPatchRequest
 FBlueprintHelperPatchBlueprintGraphService::ParseRequest(const TSharedPtr<FJsonObject>& Payload) const
@@ -104,7 +106,7 @@ FBlueprintHelperPatchBlueprintGraphService::ParseRequest(const TSharedPtr<FJsonO
 	return Req;
 }
 
-// ─── Preflight ───
+// 鈹€鈹€鈹€ Preflight 鈹€鈹€鈹€
 
 FBlueprintHelperPatchBlueprintGraphService::FPatchPreflightResult
 FBlueprintHelperPatchBlueprintGraphService::Preflight(
@@ -123,12 +125,12 @@ FBlueprintHelperPatchBlueprintGraphService::Preflight(
 		Result.bPassed = false;
 		Result.BlockedBy.Add(TEXT("unsupported_patch_type"));
 		Result.Conflicts.Add({TEXT("unsupported_patch_type"),
-			FString::Printf(TEXT("patch_type '%s' 在第一版中暂不支持。"),
-				PatchTypeToString(Request.PatchType)), TEXT("patch_type"), TEXT("payload")});
+			FString::Printf(TEXT("patch_type '%s' is not supported."),
+		OutError = FString::Printf(TEXT("Unsupported patch_type: %s"), PatchTypeToString(Request.PatchType));
 		return Result;
 	}
 
-	// 定位 node
+	// Resolve target node.
 	FBlueprintHelperGraphWriteAnchorRef Anchor;
 	Anchor.BlockId = Request.BlockId;
 	Anchor.GroupEntryNodePath = Request.GroupEntryNodePath;
@@ -153,7 +155,7 @@ FBlueprintHelperPatchBlueprintGraphService::Preflight(
 	OutTarget.PatchedRef.NodeRef = Request.NodeRef;
 	if (!Request.NodePath.IsEmpty()) { OutTarget.PatchedRef.NodePath = Request.NodePath; }
 
-	// 定位 pin（如需）
+	// Resolve target pin when required.
 	if (Request.PatchType == EBlueprintHelperPatchType::SetPinDefault ||
 		Request.PatchType == EBlueprintHelperPatchType::ConnectPins ||
 		Request.PatchType == EBlueprintHelperPatchType::DisconnectLink ||
@@ -173,7 +175,7 @@ FBlueprintHelperPatchBlueprintGraphService::Preflight(
 		if (!Request.PinPath.IsEmpty()) { OutTarget.PatchedRef.PinPath = Request.PinPath; }
 	}
 
-	// 定位 link（如需）
+	// Resolve target link when required.
 	if (Request.PatchType == EBlueprintHelperPatchType::DisconnectLink ||
 		Request.PatchType == EBlueprintHelperPatchType::ReplaceLink)
 	{
@@ -189,7 +191,7 @@ FBlueprintHelperPatchBlueprintGraphService::Preflight(
 		if (!Request.LinkPath.IsEmpty()) { OutTarget.PatchedRef.LinkPath = Request.LinkPath; }
 	}
 
-	// expected_old_state 校验
+	// expected_old_state 鏍￠獙
 	if (Request.bExpectedOldStateProvided && !Request.ExpectedOldValue.IsEmpty())
 	{
 		FString CurrentValue;
@@ -204,7 +206,7 @@ FBlueprintHelperPatchBlueprintGraphService::Preflight(
 			Result.bPassed = false;
 			Result.BlockedBy.Add(TEXT("expected_old_state_mismatch"));
 			Result.Conflicts.Add({TEXT("expected_old_state_mismatch"),
-				FString::Printf(TEXT("expected_old_value '%s' 与当前值 '%s' 不匹配。"),
+				FString::Printf(TEXT("expected_old_value '%s' does not match current value '%s'."),
 					*Request.ExpectedOldValue, *CurrentValue), TEXT("expected_old_state.value"), TEXT("payload")});
 		}
 	}
@@ -212,14 +214,14 @@ FBlueprintHelperPatchBlueprintGraphService::Preflight(
 	return Result;
 }
 
-// ─── DryRun ───
+// 鈹€鈹€鈹€ DryRun 鈹€鈹€鈹€
 
 FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::ExecuteDryRun(
 	const FPatchRequest& Request) const
 {
 	const FString TraceId = FBlueprintHelperToolResultBuilder::GenerateTraceId();
 
-	// 解析
+	// 瑙ｆ瀽
 	FBlueprintHelperGraphTarget Target;
 	Target.BlueprintPath = Request.AssetPath;
 	FBlueprintHelperDiagnosticSet Diag;
@@ -303,14 +305,14 @@ FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::Execu
 	return Result;
 }
 
-// ─── 正式写入 ───
+// 鈹€鈹€鈹€ 姝ｅ紡鍐欏叆 鈹€鈹€鈹€
 
 FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::ExecuteWrite(
 	const FPatchRequest& Request) const
 {
 	const FString TraceId = FBlueprintHelperToolResultBuilder::GenerateTraceId();
 
-	// 1-2. 解析蓝图和图表
+	// 1-2. 瑙ｆ瀽钃濆浘鍜屽浘琛?
 	FBlueprintHelperGraphTarget Target;
 	Target.BlueprintPath = Request.AssetPath;
 	FBlueprintHelperDiagnosticSet Diag;
@@ -318,7 +320,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::Execu
 	if (!BP)
 		return FBlueprintHelperToolResultBuilder::Failure(TEXT("patch_blueprint_graph"), TraceId,
 			{TEXT("target_blueprint_not_found"), EBlueprintHelperToolStage::ResolveTarget,
-			 TEXT("蓝图未找到。"), false, EBlueprintHelperRollbackResult::NotNeeded});
+			 TEXT("target blueprint not found."), false, EBlueprintHelperRollbackResult::NotNeeded});
 
 	UEdGraph* Graph = nullptr;
 	for (UEdGraph* Page : BP->UbergraphPages)
@@ -329,7 +331,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::Execu
 	if (!Graph)
 		return FBlueprintHelperToolResultBuilder::Failure(TEXT("patch_blueprint_graph"), TraceId,
 			{TEXT("target_graph_not_found"), EBlueprintHelperToolStage::ResolveTarget,
-			 FString::Printf(TEXT("图表 %s 未找到。"), *Request.GraphName), false, EBlueprintHelperRollbackResult::NotNeeded});
+			 FString::Printf(TEXT("graph %s not found."), *Request.GraphName), false, EBlueprintHelperRollbackResult::NotNeeded});
 
 	// 3. Preflight
 	FBlueprintHelperResolvedPatchTarget ResolvedTarget;
@@ -339,7 +341,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::Execu
 		FBlueprintHelperToolError Error;
 		Error.Code = PreflightResult.BlockedBy.Num() > 0 ? PreflightResult.BlockedBy[0] : TEXT("preflight_failed");
 		Error.Stage = EBlueprintHelperToolStage::Preflight;
-		Error.Message = PreflightResult.Conflicts.Num() > 0 ? PreflightResult.Conflicts[0].Message : TEXT("Preflight 未通过。");
+		Error.Message = PreflightResult.Conflicts.Num() > 0 ? PreflightResult.Conflicts[0].Message : TEXT("Preflight failed.");
 		Error.bRetryable = false;
 		Error.RollbackResult = EBlueprintHelperRollbackResult::NotNeeded;
 		FBlueprintHelperToolResultBase FailResult = FBlueprintHelperToolResultBuilder::Failure(TEXT("patch_blueprint_graph"), TraceId, Error);
@@ -347,7 +349,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::Execu
 		return FailResult;
 	}
 
-	// 4. 开始修改
+	// 4. 寮€濮嬩慨鏀?
 	const bool bShouldRecordReview = Request.PatchType != EBlueprintHelperPatchType::SetNodePosition
 		&& Request.PatchType != EBlueprintHelperPatchType::SetNodeComment;
 	FString PatchTargetKey;
@@ -405,12 +407,12 @@ FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::Execu
 		return FBlueprintHelperToolResultBuilder::Failure(TEXT("patch_blueprint_graph"), TraceId, Error);
 	}
 
-	// 7. 标记修改
+	// 7. 鏍囪淇敼
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(BP);
 	if (BP->GetOutermost()) BP->GetOutermost()->MarkPackageDirty();
 	Mutation.Commit();
 
-	// 8. 成功结果
+	// 8. 鎴愬姛缁撴灉
 	FBlueprintHelperToolResultBase Success = FBlueprintHelperToolResultBuilder::Applied(
 		TEXT("patch_blueprint_graph"), TraceId);
 
@@ -421,7 +423,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::Execu
 
 	FBlueprintHelperPatchGraphResultData Data;
 	Data.PatchResult.PatchedRef = ResolvedTarget.PatchedRef;
-	Data.PatchResult.Patch.PatchType = PatchTypeToString(Request.PatchType);
+		OutError = FString::Printf(TEXT("Unsupported patch_type: %s"), PatchTypeToString(Request.PatchType));
 	Data.PatchResult.Patch.bExpectedOldStateProvided = Request.bExpectedOldStateProvided;
 	Data.PatchResult.Patch.bChanged = bChanged;
 	Success.Data = Data.ToJson();
@@ -441,7 +443,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::Execu
 	return Success;
 }
 
-// ─── ApplyPatch 分发 ───
+// 鈹€鈹€鈹€ ApplyPatch 鍒嗗彂 鈹€鈹€鈹€
 
 bool FBlueprintHelperPatchBlueprintGraphService::PreflightLogicSpec(
 	const FPatchRequest& Request,
@@ -481,7 +483,12 @@ bool FBlueprintHelperPatchBlueprintGraphService::ApplyPatch(
 		FString NewVal;
 		if (Request.PatchPayload.IsValid())
 			Request.PatchPayload->TryGetStringField(TEXT("value"), NewVal);
-		return ApplySetPinDefault(Graph, Target.Pin, NewVal, bOutChanged, OutError);
+				FBlueprintHelperGraphWriteMutationIntent Intent;
+		Intent.Kind = EBlueprintHelperGraphWriteMutationIntentKind::SetPinDefault;
+		Intent.IntentId = TEXT("patch_set_pin_default");
+		Intent.Target.Pin = Target.Pin;
+		Intent.DefaultValue = NewVal;
+		return ExecuteMutationIntent(Graph, Intent, bOutChanged, OutError);
 	}
 	case EBlueprintHelperPatchType::SetNodeComment:
 	{
@@ -494,92 +501,102 @@ bool FBlueprintHelperPatchBlueprintGraphService::ApplyPatch(
 		return ApplySetNodePosition(Target.Node, Request.PatchPayload, bOutChanged, OutError);
 	case EBlueprintHelperPatchType::ConnectPins:
 	{
-		// 目标 Pin 从 patched_ref.pin_ref 解析
+		// 鐩爣 Pin 浠?patched_ref.pin_ref 瑙ｆ瀽
 		if (!Target.Pin)
 		{
-			OutError = TEXT("connect_pins 需要目标 pin_ref。");
+			OutError = TEXT("connect_pins requires target pin_ref.");
 			return false;
 		}
-		// 源 Pin 从 patch payload
+		// Resolve source pin from patch payload.
 		UEdGraphPin* FromPin = nullptr;
 		FString FromNodeRef, FromPinRef;
 		if (Request.PatchPayload.IsValid())
 		{
-			Request.PatchPayload->TryGetStringField(TEXT("from_node"), FromNodeRef);
-			Request.PatchPayload->TryGetStringField(TEXT("from_pin"), FromPinRef);
+			OutError = FString::Printf(TEXT("Unable to resolve source node: %s"), *FromNodeRef);
+			OutError = FString::Printf(TEXT("Unable to resolve source pin: %s"), *FromPinRef);
 		}
 		FBlueprintHelperPatchResolveError Ignored;
 		UEdGraphNode* FromNode = nullptr;
 		if (!PathService.ResolveNode(Graph, FromNodeRef, FString(), FromNode, Ignored))
 		{
-			OutError = FString::Printf(TEXT("无法定位源节点: %s"), *FromNodeRef);
+			OutError = FString::Printf(TEXT("Unable to resolve source node: %s"), *FromNodeRef);
 			return false;
 		}
 		if (!PathService.ResolvePin(Graph, FromNode, FromPinRef, FString(), FromPin, Ignored))
 		{
-			OutError = FString::Printf(TEXT("无法定位源 Pin: %s"), *FromPinRef);
+			OutError = FString::Printf(TEXT("Unable to resolve source pin: %s"), *FromPinRef);
 			return false;
 		}
-		return ApplyConnectPins(Graph, FromPin, Target.Pin, bOutChanged, OutError);
+				FBlueprintHelperGraphWriteMutationIntent Intent;
+		Intent.Kind = EBlueprintHelperGraphWriteMutationIntentKind::ConnectPins;
+		Intent.IntentId = TEXT("patch_connect_pins");
+		Intent.Source.Pin = FromPin;
+		Intent.Target.Pin = Target.Pin;
+		return ExecuteMutationIntent(Graph, Intent, bOutChanged, OutError);
 	}
 	case EBlueprintHelperPatchType::DisconnectLink:
 	{
 		if (!Target.Link.SourcePin || !Target.Link.TargetPin)
 		{
-			OutError = TEXT("disconnect_link 需要指定来源和目标 Pin。");
+			OutError = TEXT("disconnect_link requires source and target pins.");
 			return false;
 		}
-		return ApplyDisconnectLink(Target.Link.SourcePin, Target.Link.TargetPin, bOutChanged, OutError);
+				FBlueprintHelperGraphWriteMutationIntent Intent;
+		Intent.Kind = EBlueprintHelperGraphWriteMutationIntentKind::DisconnectPins;
+		Intent.IntentId = TEXT("patch_disconnect_link");
+		Intent.Source.Pin = Target.Link.SourcePin;
+		Intent.Target.Pin = Target.Link.TargetPin;
+		return ExecuteMutationIntent(Graph, Intent, bOutChanged, OutError);
 	}
 	case EBlueprintHelperPatchType::ReplaceLink:
 	{
 		if (!Target.Link.SourcePin)
 		{
-			OutError = TEXT("replace_link 需要指定旧连接。");
+			OutError = TEXT("replace_link requires an existing link.");
 			return false;
 		}
-		// 新目标 Pin
+		// New target pin.
 		UEdGraphPin* NewToPin = Target.Pin;
 		if (!NewToPin)
 		{
-			OutError = TEXT("replace_link 需要指定新目标 Pin。");
+			OutError = TEXT("replace_link requires a new target pin.");
 			return false;
 		}
-		return ApplyReplaceLink(Graph, Target.Link, NewToPin, bOutChanged, OutError);
+				FBlueprintHelperGraphWriteMutationIntent Intent;
+		Intent.Kind = EBlueprintHelperGraphWriteMutationIntentKind::ReplacePinConnection;
+		Intent.IntentId = TEXT("patch_replace_link");
+		Intent.Source.Pin = Target.Link.SourcePin;
+		Intent.Target.Pin = Target.Link.TargetPin;
+		Intent.ReplacementTarget.Pin = NewToPin;
+		return ExecuteMutationIntent(Graph, Intent, bOutChanged, OutError);
 	}
 	default:
-		OutError = FString::Printf(TEXT("不支持的 patch_type: %s"), PatchTypeToString(Request.PatchType));
+		OutError = FString::Printf(TEXT("Unsupported patch_type: %s"), PatchTypeToString(Request.PatchType));
 		return false;
 	}
 }
 
-// ─── set_pin_default ───
+// 鈹€鈹€鈹€ set_pin_default 鈹€鈹€鈹€
 
-bool FBlueprintHelperPatchBlueprintGraphService::ApplySetPinDefault(
-	UEdGraph* Graph, UEdGraphPin* Pin, const FString& NewValue, bool& bOutChanged, FString& OutError) const
+bool FBlueprintHelperPatchBlueprintGraphService::ExecuteMutationIntent(
+	UEdGraph* Graph,
+	const FBlueprintHelperGraphWriteMutationIntent& Intent,
+	bool& bOutChanged,
+	FString& OutError) const
 {
-	if (!Pin)
+	TArray<FString> Unresolved;
+	const FBlueprintGenerateResult Result =
+		FBlueprintHelperGraphWriteMutationCoordinator::ExecuteIntents(Graph, {Intent}, Unresolved);
+	bOutChanged = Result.AppliedDefaultValueCount > 0
+		|| Result.CreatedConnectionCount > 0
+		|| Result.GeneratedNodeCount > 0;
+	if (!Result.bSucceed)
 	{
-		OutError = TEXT("target_pin_not_found");
+		OutError = Unresolved.Num() > 0 ? Unresolved[0] : Result.Message;
 		return false;
 	}
-
-	const FString OldValue = Pin->DefaultValue;
-	if (OldValue == NewValue)
-	{
-		bOutChanged = false;
-		return true;
-	}
-
-	Pin->Modify();
-	Pin->DefaultValue = NewValue;
-	bOutChanged = true;
-	Graph->NotifyGraphChanged();
 	return true;
 }
-
-// ─── set_node_comment ───
-
 bool FBlueprintHelperPatchBlueprintGraphService::ApplySetNodeComment(
 	UEdGraphNode* Node, const FString& NewComment, bool& bOutChanged, FString& OutError) const
 {
@@ -601,7 +618,7 @@ bool FBlueprintHelperPatchBlueprintGraphService::ApplySetNodeComment(
 	return true;
 }
 
-// ─── set_node_position ───
+// 鈹€鈹€鈹€ set_node_position 鈹€鈹€鈹€
 
 bool FBlueprintHelperPatchBlueprintGraphService::ApplySetNodePosition(
 	UEdGraphNode* Node, const TSharedPtr<FJsonObject>& Payload, bool& bOutChanged, FString& OutError) const
@@ -621,7 +638,7 @@ bool FBlueprintHelperPatchBlueprintGraphService::ApplySetNodePosition(
 
 	if (!bHasX && !bHasY)
 	{
-		OutError = TEXT("缺少 x/y 位置参数。");
+		OutError = TEXT("missing x/y position payload.");
 		return false;
 	}
 
@@ -642,111 +659,4 @@ bool FBlueprintHelperPatchBlueprintGraphService::ApplySetNodePosition(
 	return true;
 }
 
-// ─── connect_pins ───
-
-bool FBlueprintHelperPatchBlueprintGraphService::ApplyConnectPins(
-	UEdGraph* Graph, UEdGraphPin* FromPin, UEdGraphPin* ToPin, bool& bOutChanged, FString& OutError) const
-{
-	if (!FromPin || !ToPin)
-	{
-		OutError = TEXT("pin_not_found");
-		return false;
-	}
-
-	// 已连接的跳过
-	if (FromPin->LinkedTo.Contains(ToPin))
-	{
-		bOutChanged = false;
-		return true;
-	}
-
-	const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
-	const FPinConnectionResponse Response = Schema->CanCreateConnection(FromPin, ToPin);
-	if (Response.Response == CONNECT_RESPONSE_DISALLOW)
-	{
-		OutError = FString::Printf(TEXT("pin_type_mismatch: %s"), *Response.Message.ToString());
-		return false;
-	}
-
-	// Exec Pin 已有后继时不允许多连
-	if (FromPin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec && FromPin->LinkedTo.Num() > 0)
-	{
-		OutError = TEXT("exec_flow_requires_merge: Exec Pin 已有后继，不允许自动重排。请使用 Merge 工具。");
-		return false;
-	}
-
-	FromPin->Modify();
-	ToPin->Modify();
-	bOutChanged = Schema->TryCreateConnection(FromPin, ToPin);
-	if (!bOutChanged)
-	{
-		OutError = TEXT("link_create_failed");
-		return false;
-	}
-
-	Graph->NotifyGraphChanged();
-	return true;
-}
-
-// ─── disconnect_link ───
-
-bool FBlueprintHelperPatchBlueprintGraphService::ApplyDisconnectLink(
-	UEdGraphPin* FromPin, UEdGraphPin* ToPin, bool& bOutChanged, FString& OutError) const
-{
-	if (!FromPin || !ToPin)
-	{
-		OutError = TEXT("pin_not_found");
-		return false;
-	}
-
-	if (!FromPin->LinkedTo.Contains(ToPin))
-	{
-		bOutChanged = false;
-		return true;
-	}
-
-	FromPin->Modify();
-	ToPin->Modify();
-	FromPin->BreakLinkTo(ToPin);
-	bOutChanged = true;
-	return true;
-}
-
-// ─── replace_link ───
-
-bool FBlueprintHelperPatchBlueprintGraphService::ApplyReplaceLink(
-	UEdGraph* Graph, const FBlueprintHelperResolvedLink& OldLink,
-	UEdGraphPin* NewToPin, bool& bOutChanged, FString& OutError) const
-{
-	if (!OldLink.SourcePin || !OldLink.TargetPin || !NewToPin)
-	{
-		OutError = TEXT("pin_not_found");
-		return false;
-	}
-
-	const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
-	const FPinConnectionResponse Response = Schema->CanCreateConnection(OldLink.SourcePin, NewToPin);
-	if (Response.Response == CONNECT_RESPONSE_DISALLOW)
-	{
-		OutError = FString::Printf(TEXT("pin_type_mismatch: %s"), *Response.Message.ToString());
-		return false;
-	}
-
-	OldLink.SourcePin->Modify();
-	OldLink.TargetPin->Modify();
-	NewToPin->Modify();
-
-	OldLink.SourcePin->BreakLinkTo(OldLink.TargetPin);
-	bool bCreated = Schema->TryCreateConnection(OldLink.SourcePin, NewToPin);
-	if (!bCreated)
-	{
-		// 尝试恢复旧连接
-		Schema->TryCreateConnection(OldLink.SourcePin, OldLink.TargetPin);
-		OutError = TEXT("link_create_failed: 新连接失败，已恢复旧连接。");
-		return false;
-	}
-
-	bOutChanged = true;
-	Graph->NotifyGraphChanged();
-	return true;
-}
+// 鈹€鈹€鈹€ connect_pins 鈹€鈹€鈹€

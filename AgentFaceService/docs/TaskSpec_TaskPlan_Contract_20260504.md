@@ -266,7 +266,7 @@ GraphWrite is Agent-facing only through semantic `TaskSpec.behavior.graph_strate
 behavior.entries[]:
   - entry_type = custom_event
   - body = BlueprintLogicSpec.v1
-  - body.statements[].kind in at least call_function, set_member_variable
+Graph body uses compact semantic kinds such as `call`, `get`, `set`, `get_property`, `set_property`, `op`, `construct`, `deconstruct`, `select`, and `control`. Legacy graph body shapes such as `call_function`, `set_member_variable`, `ref`, `compare`, and `make_struct` are unsupported and must fail preview with an explicit unsupported kind diagnostic.
 ```
 
 `replace_owned_graph` uses one `behavior.replace` object:
@@ -360,16 +360,16 @@ Agents must not:
 - merge these three strategies into `behavior.entries`.
 - model them as generic ops.
 - place Bridge/runtime payload fields (for example `append_blueprint_graph` args) directly in TaskSpec.
-- use `params` or plain argument values for `call_function`; use `args` with structured literal values instead.
+Function call statement arguments use `args` with structured literal values. Legacy `params` and legacy `call_function` shapes are unsupported.
 
 Function call statement arguments use this shape:
 
-`call_function.name` may be a native function name, a Blueprint display name, an owner-qualified native name, or an explicit component/member call for append-owned graph writes. Preview resolves the function portion against the target Blueprint graph. If the name is ambiguous, change `name` to an owner-qualified native name and preview again. Explicit component/member calls remain strategy-limited; merge-owned graph writes still require a separate target-wiring path before this syntax can be enabled there.
+`call.name` may be a native function name, a Blueprint display name, an owner-qualified native name, or an explicit component/member call for append-owned graph writes. Preview resolves the function portion against the target Blueprint graph. If the name is ambiguous, change `name` to an owner-qualified native name and preview again. Explicit component/member calls remain strategy-limited; merge-owned graph writes still require a separate target-wiring path before this syntax can be enabled there.
 
 ```json
 {
-  "kind": "call_function",
-  "name": "PrintString",
+  "kind": "call",
+  "target": "PrintString",
   "args": {
     "InString": {
       "kind": "literal",
@@ -384,8 +384,8 @@ Blocked first-slice example:
 
 ```json
 {
-  "kind": "call_function",
-  "name": "DoorMesh.AddAngularImpulseInDegrees",
+  "kind": "call",
+  "target": "DoorMesh.AddAngularImpulseInDegrees",
   "args": {}
 }
 ```
@@ -587,8 +587,8 @@ When `behavior` is present, Agent must also provide `scope_policy.graph_name`. T
           "schema": "BlueprintLogicSpec.v1",
           "statements": [
             {
-              "kind": "call_function",
-              "name": "PrintString",
+              "kind": "call",
+              "target": "PrintString",
               "args": {
                 "InString": {
                   "kind": "literal",
@@ -670,7 +670,7 @@ Composite physical door core example:
   ],
   "variables": [
     {
-      "name": "bDoorOpen",
+      "target": "bDoorOpen",
       "type": "bool",
       "default": false,
       "category": "Door"
@@ -697,8 +697,8 @@ Composite physical door core example:
           "schema": "BlueprintLogicSpec.v1",
           "statements": [
             {
-              "kind": "set_member_variable",
-              "name": "bDoorOpen",
+              "kind": "set",
+              "target": "bDoorOpen",
               "value": {
                 "kind": "literal",
                 "value_type": "bool",
@@ -706,8 +706,8 @@ Composite physical door core example:
               }
             },
             {
-              "kind": "call_function",
-              "name": "DoorMesh.AddAngularImpulseInDegrees",
+              "kind": "call",
+              "target": "DoorMesh.AddAngularImpulseInDegrees",
               "args": {
                 "VelChange": {
                   "kind": "literal",

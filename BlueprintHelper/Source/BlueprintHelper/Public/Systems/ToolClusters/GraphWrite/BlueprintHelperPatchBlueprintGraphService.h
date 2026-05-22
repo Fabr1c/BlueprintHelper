@@ -1,4 +1,4 @@
-// BlueprintHelper Service Layer 。PatchBlueprintGraph 核心服务
+// BlueprintHelper Service Layer - PatchBlueprintGraph service
 
 #pragma once
 
@@ -69,13 +69,11 @@ private:
 		const FPatchRequest& Request, const FBlueprintHelperResolvedPatchTarget& Target,
 		bool& bOutChanged, FString& OutError) const;
 
-	// 。patch_type 实现
-	bool ApplySetPinDefault(UEdGraph* Graph, UEdGraphPin* Pin, const FString& NewValue, bool& bOutChanged, FString& OutError) const;
+	// 銆俻atch_type 瀹炵幇
 	bool ApplySetNodeComment(UEdGraphNode* Node, const FString& NewComment, bool& bOutChanged, FString& OutError) const;
 	bool ApplySetNodePosition(UEdGraphNode* Node, const TSharedPtr<FJsonObject>& Payload, bool& bOutChanged, FString& OutError) const;
-	bool ApplyConnectPins(UEdGraph* Graph, UEdGraphPin* FromPin, UEdGraphPin* ToPin, bool& bOutChanged, FString& OutError) const;
-	bool ApplyDisconnectLink(UEdGraphPin* FromPin, UEdGraphPin* ToPin, bool& bOutChanged, FString& OutError) const;
-	bool ApplyReplaceLink(UEdGraph* Graph, const FBlueprintHelperResolvedLink& OldLink, UEdGraphPin* NewToPin, bool& bOutChanged, FString& OutError) const;
+
+bool ExecuteMutationIntent(UEdGraph* Graph, const struct FBlueprintHelperGraphWriteMutationIntent& Intent, bool& bOutChanged, FString& OutError) const;
 
 	const FBlueprintHelperGraphResolver& Resolver;
 	const FBlueprintHelperLogicJsonPathService& PathService;

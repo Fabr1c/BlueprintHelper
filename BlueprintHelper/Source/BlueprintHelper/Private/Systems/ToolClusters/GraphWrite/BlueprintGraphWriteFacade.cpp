@@ -4,7 +4,6 @@
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphDefaultValueApplier.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphGenerationPipeline.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphLocalVariableService.h"
-#include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphNodeSpawner.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphNodeUtility.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintMultiGraphGenerationPipeline.h"
 
@@ -46,14 +45,6 @@ UEdGraph* FBlueprintGraphWriteFacade::FindGraphByName(UBlueprint* Blueprint, con
 TArray<TSharedPtr<FEngineFunctionItem>> FBlueprintGraphWriteFacade::GetAllBlueprintFunctions()
 {
 	return FBlueprintGraphNodeUtility::GetAllBlueprintFunctions();
-}
-
-UK2Node* FBlueprintGraphWriteFacade::SpawnMacroNode(
-	UEdGraph* TargetGraph,
-	const FParsedNode& NodeData,
-	FString& OutErrorMessage)
-{
-	return FBlueprintGraphNodeSpawner::SpawnMacroNode(TargetGraph, NodeData, OutErrorMessage);
 }
 
 TArray<FBlueprintGeneratorDiagnostic> FBlueprintGraphWriteFacade::ApplyDefaultValues(

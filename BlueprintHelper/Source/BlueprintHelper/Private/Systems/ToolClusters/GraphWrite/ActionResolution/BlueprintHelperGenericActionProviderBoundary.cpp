@@ -29,15 +29,19 @@ FBlueprintHelperGenericActionProviderBoundary FBlueprintHelperGenericActionProvi
 		return Boundary;
 
 	case EBlueprintHelperActionSemanticKind::Select:
-		Boundary.Mode = EBlueprintHelperGenericActionProviderMode::DedicatedFragmentBuilderRequired;
+		Boundary.Mode = EBlueprintHelperGenericActionProviderMode::NodeSpawnerCandidate;
 		Boundary.RequiredBuilder = TEXT("SelectFragmentBuilder");
-		Boundary.Reason = TEXT("select requires wildcard option pin materialization and type propagation that ActionDatabase does not fully express.");
+		Boundary.Reason = TEXT("select resolves a generic UE node spawner; SelectFragmentBuilder only performs post-spawn pin normalization.");
 		return Boundary;
 
 	case EBlueprintHelperActionSemanticKind::Control:
-		Boundary.Mode = EBlueprintHelperGenericActionProviderMode::DedicatedFragmentBuilderRequired;
+		Boundary.Mode = Request.Semantic.Query.TrimStartAndEnd().IsEmpty()
+			? EBlueprintHelperGenericActionProviderMode::NeedsMoreSemanticContext
+			: EBlueprintHelperGenericActionProviderMode::NodeSpawnerCandidate;
 		Boundary.RequiredBuilder = TEXT("ControlFragmentBuilder");
-		Boundary.Reason = TEXT("control statements compose execution pins and nested statement DAGs, not a single ActionDatabase menu action.");
+		Boundary.Reason = Request.Semantic.Query.TrimStartAndEnd().IsEmpty()
+			? TEXT("control requires Semantic.Query such as branch, return, or sequence.")
+			: TEXT("control resolves a generic UE node spawner; ControlFragmentBuilder only performs flow composition and pin binding.");
 		return Boundary;
 
 	default:

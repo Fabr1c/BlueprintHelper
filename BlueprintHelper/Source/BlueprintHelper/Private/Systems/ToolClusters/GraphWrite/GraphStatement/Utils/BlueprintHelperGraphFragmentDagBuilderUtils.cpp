@@ -43,6 +43,8 @@ FString FBlueprintHelperGraphFragmentDagBuilderUtils::StatementKindName(const EB
 		return TEXT("set_property");
 	case EBlueprintHelperGraphStatementKind::Branch:
 		return TEXT("branch");
+	case EBlueprintHelperGraphStatementKind::Sequence:
+		return TEXT("sequence");
 	case EBlueprintHelperGraphStatementKind::Let:
 		return TEXT("let");
 	case EBlueprintHelperGraphStatementKind::Return:
@@ -542,6 +544,82 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagDataProducer FB
 
 	return MakeExpressionProducerFromId(*Expression, FragmentId, OutputName, OutputType);
 }
+
+FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagDataProducer FBlueprintHelperGraphFragmentDagBuilderUtils::BuildResolvableExpressionFragment(
+	const TSharedPtr<FBlueprintHelperGraphExpressionIR>& Expression,
+	const FString& Kind,
+	const FString& Suffix,
+	const FString& OutputName,
+	const FString& OutputType,
+	FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagBuildState& State,
+	TArray<TMap<FString, FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagDataProducer>>& SymbolScopes)
+{
+	FBlueprintHelperGraphFragmentRef& Fragment = AddExpressionFragment(*Expression, Kind, Suffix, State);
+	const FString FragmentId = Fragment.FragmentId;
+
+	if (Expression->Left.IsValid())
+	{
+		ConnectExpressionToInput(
+			Expression->Left,
+			Expression->Left->Path,
+			TEXT("left"),
+			Expression->Left->Type,
+			FragmentId,
+			State,
+			SymbolScopes);
+	}
+	if (Expression->Right.IsValid())
+	{
+		ConnectExpressionToInput(
+			Expression->Right,
+			Expression->Right->Path,
+			TEXT("right"),
+			Expression->Right->Type,
+			FragmentId,
+			State,
+			SymbolScopes);
+	}
+	if (Expression->Value.IsValid())
+	{
+		ConnectExpressionToInput(
+			Expression->Value,
+			Expression->Value->Path,
+			TEXT("value"),
+			Expression->Value->Type,
+			FragmentId,
+			State,
+			SymbolScopes);
+	}
+	if (Expression->TargetObject.IsValid())
+	{
+		ConnectExpressionToInput(
+			Expression->TargetObject,
+			Expression->TargetObject->Path,
+			TEXT("target"),
+			Expression->TargetObject->Type,
+			FragmentId,
+			State,
+			SymbolScopes);
+	}
+
+	ConnectExpressionMapToInputs(Expression->Args, Expression->Path + TEXT(".args"), FragmentId, State, SymbolScopes);
+	ConnectExpressionMapToInputs(Expression->Fields, Expression->Path + TEXT(".fields"), FragmentId, State, SymbolScopes);
+
+	for (int32 OptionIndex = 0; OptionIndex < Expression->Options.Num(); ++OptionIndex)
+	{
+		const TSharedPtr<FBlueprintHelperGraphExpressionIR>& Option = Expression->Options[OptionIndex];
+		ConnectExpressionToInput(
+			Option,
+			Option.IsValid() ? Option->Path : FString::Printf(TEXT("%s.options[%d]"), *Expression->Path, OptionIndex),
+			FString::Printf(TEXT("option_%d"), OptionIndex),
+			Option.IsValid() ? Option->Type : FString(),
+			FragmentId,
+			State,
+			SymbolScopes);
+	}
+
+	return MakeExpressionProducerFromId(*Expression, FragmentId, OutputName, OutputType);
+}
 FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagDataProducer FBlueprintHelperGraphFragmentDagBuilderUtils::BuildExpression(
 	const TSharedPtr<FBlueprintHelperGraphExpressionIR>& Expression,
 	const FString& FallbackPath,
@@ -612,26 +690,22 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagDataProducer FB
 	}
 
 	case EBlueprintHelperGraphExpressionKind::Call:
-		return BuildPlaceholderExpression(
+		return BuildResolvableExpressionFragment(
 			Expression,
-			TEXT("expr_call"),
+			TEXT("function_action"),
 			TEXT("call"),
 			TEXT("return"),
 			Expression->Type,
-			FString(),
-			FString(),
 			State,
 			SymbolScopes);
 
 	case EBlueprintHelperGraphExpressionKind::Op:
-		return BuildPlaceholderExpression(
+		return BuildResolvableExpressionFragment(
 			Expression,
-			TEXT("expr_op"),
+			TEXT("function_action"),
 			TEXT("op"),
 			TEXT("result"),
 			!Expression->Type.IsEmpty() ? Expression->Type : TEXT("bool"),
-			FString(),
-			FString(),
 			State,
 			SymbolScopes);
 
@@ -707,26 +781,22 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagDataProducer FB
 	}
 
 	case EBlueprintHelperGraphExpressionKind::Construct:
-		return BuildPlaceholderExpression(
+		return BuildResolvableExpressionFragment(
 			Expression,
-			TEXT("expr_construct"),
+			TEXT("generic_action"),
 			TEXT("construct"),
 			TEXT("value"),
 			Expression->Type,
-			FString(),
-			FString(),
 			State,
 			SymbolScopes);
 
 	case EBlueprintHelperGraphExpressionKind::Deconstruct:
-		return BuildPlaceholderExpression(
+		return BuildResolvableExpressionFragment(
 			Expression,
-			TEXT("expr_deconstruct"),
+			TEXT("generic_action"),
 			TEXT("deconstruct"),
 			Expression->FieldNames.Num() > 0 ? Expression->FieldNames[0] : TEXT("value"),
 			Expression->Type,
-			FString(),
-			FString(),
 			State,
 			SymbolScopes);
 
@@ -1013,6 +1083,9 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagExecFlow FBluep
 
 	case EBlueprintHelperGraphStatementKind::Branch:
 		return BuildBranchStatement(Statement, State, SymbolScopes);
+
+	case EBlueprintHelperGraphStatementKind::Sequence:
+		return BuildSimpleStatement(Statement, TEXT("statement_sequence"), TEXT("sequence"), State, SymbolScopes);
 
 	case EBlueprintHelperGraphStatementKind::Unknown:
 	default:

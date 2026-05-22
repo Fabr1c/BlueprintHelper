@@ -131,18 +131,7 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperEventDelegateActionCluste
 		return MakeResolvedCustomEventResult(Request, EventName, Spawner);
 	}
 
-	if (Context.GetSemantic().Kind == EBlueprintHelperActionSemanticKind::ComponentBoundEvent)
-	{
-		return MakeEventDelegateNeedsContextResult(
-			Request,
-			TEXT("component_bound_event_context_missing"),
-			TEXT("Component-bound event resolution requires projected component name/class and delegate property evidence before invoking UBlueprintBoundEventNodeSpawner."));
-	}
-
-	return MakeEventDelegateNeedsContextResult(
-		Request,
-		TEXT("delegate_binding_context_missing"),
-		TEXT("Delegate bind resolution requires projected delegate owner/property/signature evidence before invoking UBlueprintDelegateNodeSpawner."));
+	return MakeUnsupportedIntentResult(Request);
 }
 
 bool FBlueprintHelperEventDelegateActionCluster::OwnsSemanticKind(EBlueprintHelperActionSemanticKind Kind)
@@ -150,8 +139,6 @@ bool FBlueprintHelperEventDelegateActionCluster::OwnsSemanticKind(EBlueprintHelp
 	switch (Kind)
 	{
 	case EBlueprintHelperActionSemanticKind::Event:
-	case EBlueprintHelperActionSemanticKind::ComponentBoundEvent:
-	case EBlueprintHelperActionSemanticKind::Bind:
 		return true;
 	default:
 		return false;

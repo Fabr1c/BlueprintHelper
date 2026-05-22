@@ -16,6 +16,25 @@ FBlueprintGenerateResult FBlueprintGraphMutationPlanExecutor::Execute(
 		return Result;
 	}
 
+	if (Plan.CountRequestedNodes() > 0 || Plan.CountRequestedLinks() > 0 || Plan.Layouts.Num() > 0)
+	{
+		Result.ExecutionStats.RequestedNodeCount = Plan.CountRequestedNodes();
+		Result.ExecutionStats.RequestedDefaultValueCount = Plan.CountRequestedDefaultValues();
+		Result.ExecutionStats.RequestedLinkCount = Plan.CountRequestedLinks();
+		Result.GeneratedNodeCount = 0;
+		Result.RequestedDefaultValueCount = Result.ExecutionStats.RequestedDefaultValueCount;
+		Result.AppliedDefaultValueCount = 0;
+		Result.RequestedConnectionCount = Result.ExecutionStats.RequestedLinkCount;
+		Result.CreatedConnectionCount = 0;
+		Result.ConnectionDiagnostics.Add(FBlueprintGraphNodeUtility::MakeGeneratorDiagnostic(
+			TEXT("parsed_node_plan_unsupported"),
+			TEXT("mutation_plan"),
+			TEXT(""),
+			TEXT("Parsed-node mutation plans are no longer executable. Use SemanticIR -> FragmentDAG -> NodeFragment builders.")));
+		Result.Message = TEXT("Parsed-node mutation plan execution is unsupported.");
+		return Result;
+	}
+
 	SpawnNodes(Context, Plan, Result);
 	ApplyDefaults(Context, Plan, Result);
 	ConnectLinks(Context, Plan, Result);
