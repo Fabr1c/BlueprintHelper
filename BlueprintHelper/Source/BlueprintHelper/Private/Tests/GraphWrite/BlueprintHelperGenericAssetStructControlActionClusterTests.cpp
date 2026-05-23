@@ -396,7 +396,180 @@ bool FBlueprintHelperSingletonControlFlowProviderPositiveTest::RunTest(const FSt
 			CoreResult,
 			Case.ExpectedStableIdPart,
 			Case.ExpectedNodeClassPathPart);
+
+		FBlueprintHelperActionResolutionRequest CanonicalRequest;
+		TestTrue(FString::Printf(TEXT("%s provider builds canonical request"), *Case.ExpectedStableIdPart),
+			FBlueprintHelperSingletonControlFlowEvidenceProvider::TryBuildCanonicalRequest(
+				Case.ExpectedKind,
+				Blueprint,
+				Graph,
+				TEXT("singleton_boundary_positive"),
+				TEXT("test_provider_positive"),
+				CanonicalRequest));
+		TestEqual(FString::Printf(TEXT("%s canonical request first-level cluster"), *Case.ExpectedStableIdPart),
+			CanonicalRequest.ClusterKind,
+			EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction);
+		TestEqual(FString::Printf(TEXT("%s canonical request target graph"), *Case.ExpectedStableIdPart),
+			CanonicalRequest.TargetGraph,
+			Graph);
+		if (Case.ExpectedKind == EBlueprintHelperSingletonControlFlowKind::Select)
+		{
+			TestEqual(TEXT("select canonical semantic kind"),
+				CanonicalRequest.Semantic.Kind,
+				EBlueprintHelperActionSemanticKind::Select);
+		}
+		else
+		{
+			TestEqual(TEXT("control canonical semantic kind"),
+				CanonicalRequest.Semantic.Kind,
+				EBlueprintHelperActionSemanticKind::Control);
+			TestTrue(TEXT("control canonical query is provider-owned"),
+				!CanonicalRequest.Semantic.Query.IsEmpty());
+		}
+
+		const FBlueprintHelperActionResolutionResult CanonicalResult =
+			FBlueprintHelperSingletonControlFlowEvidenceProvider::ResolveCanonical(
+				Case.ExpectedKind,
+				Blueprint,
+				Graph,
+				TEXT("singleton_boundary_positive"),
+				TEXT("test_provider_positive"));
+		AssertResolvedSingletonControlFlowResult(
+			*this,
+			CanonicalResult,
+			Case.ExpectedStableIdPart,
+			Case.ExpectedNodeClassPathPart);
 	}
+
+	FBlueprintHelperActionResolutionRequest InvalidRequest;
+	TestFalse(TEXT("canonical request rejects missing Blueprint"),
+		FBlueprintHelperSingletonControlFlowEvidenceProvider::TryBuildCanonicalRequest(
+			EBlueprintHelperSingletonControlFlowKind::Sequence,
+			nullptr,
+			Graph,
+			TEXT("singleton_boundary_invalid"),
+			TEXT("test_provider_invalid"),
+			InvalidRequest));
+	TestFalse(TEXT("canonical request rejects missing target graph"),
+		FBlueprintHelperSingletonControlFlowEvidenceProvider::TryBuildCanonicalRequest(
+			EBlueprintHelperSingletonControlFlowKind::Sequence,
+			Blueprint,
+			nullptr,
+			TEXT("singleton_boundary_invalid"),
+			TEXT("test_provider_invalid"),
+			InvalidRequest));
+	TestFalse(TEXT("canonical request rejects unknown singleton kind"),
+		FBlueprintHelperSingletonControlFlowEvidenceProvider::TryBuildCanonicalRequest(
+			EBlueprintHelperSingletonControlFlowKind::Unknown,
+			Blueprint,
+			Graph,
+			TEXT("singleton_boundary_invalid"),
+			TEXT("test_provider_invalid"),
+			InvalidRequest));
+
+	const FBlueprintHelperActionResolutionResult MissingBlueprintCanonicalResult =
+		FBlueprintHelperSingletonControlFlowEvidenceProvider::ResolveCanonical(
+			EBlueprintHelperSingletonControlFlowKind::Sequence,
+			nullptr,
+			Graph,
+			TEXT("singleton_boundary_invalid"),
+			TEXT("test_provider_invalid"));
+	TestEqual(TEXT("missing Blueprint canonical resolve status"),
+		MissingBlueprintCanonicalResult.Status,
+		EBlueprintHelperActionResolutionStatus::InvalidRequest);
+	TestEqual(TEXT("missing Blueprint canonical resolve error"),
+		MissingBlueprintCanonicalResult.ErrorCode,
+		FString(TEXT("missing_required_evidence")));
+
+	const FBlueprintHelperActionResolutionResult MissingGraphCanonicalResult =
+		FBlueprintHelperSingletonControlFlowEvidenceProvider::ResolveCanonical(
+			EBlueprintHelperSingletonControlFlowKind::Sequence,
+			Blueprint,
+			nullptr,
+			TEXT("singleton_boundary_invalid"),
+			TEXT("test_provider_invalid"));
+	TestEqual(TEXT("missing graph canonical resolve status"),
+		MissingGraphCanonicalResult.Status,
+		EBlueprintHelperActionResolutionStatus::InvalidRequest);
+	TestEqual(TEXT("missing graph canonical resolve error"),
+		MissingGraphCanonicalResult.ErrorCode,
+		FString(TEXT("missing_required_evidence")));
+
+	const FBlueprintHelperActionResolutionResult UnknownKindCanonicalResult =
+		FBlueprintHelperSingletonControlFlowEvidenceProvider::ResolveCanonical(
+			EBlueprintHelperSingletonControlFlowKind::Unknown,
+			Blueprint,
+			Graph,
+			TEXT("singleton_boundary_invalid"),
+			TEXT("test_provider_invalid"));
+	TestEqual(TEXT("unknown kind canonical resolve status"),
+		UnknownKindCanonicalResult.Status,
+		EBlueprintHelperActionResolutionStatus::InvalidRequest);
+	TestEqual(TEXT("unknown kind canonical resolve error"),
+		UnknownKindCanonicalResult.ErrorCode,
+		FString(TEXT("missing_required_evidence")));
+
+	FBlueprintHelperActionResolutionRequest ReasonARequest;
+	FBlueprintHelperActionResolutionRequest ReasonBRequest;
+	TestTrue(TEXT("canonical hash request reason A"),
+		FBlueprintHelperSingletonControlFlowEvidenceProvider::TryBuildCanonicalRequest(
+			EBlueprintHelperSingletonControlFlowKind::Sequence,
+			Blueprint,
+			Graph,
+			TEXT("singleton_hash_identity"),
+			TEXT("reason_a"),
+			ReasonARequest));
+	TestTrue(TEXT("canonical hash request reason B"),
+		FBlueprintHelperSingletonControlFlowEvidenceProvider::TryBuildCanonicalRequest(
+			EBlueprintHelperSingletonControlFlowKind::Sequence,
+			Blueprint,
+			Graph,
+			TEXT("singleton_hash_identity"),
+			TEXT("reason_b"),
+			ReasonBRequest));
+	TestEqual(TEXT("canonical projected context hash ignores diagnostic reason"),
+		ReasonARequest.ProjectedContextHash,
+		ReasonBRequest.ProjectedContextHash);
+	TestEqual(TEXT("canonical semantic constraints hash ignores diagnostic reason"),
+		ReasonARequest.SemanticConstraintsHash,
+		ReasonBRequest.SemanticConstraintsHash);
+
+	FBlueprintHelperActionResolutionRequest StatementChangedRequest;
+	TestTrue(TEXT("canonical hash request statement changed"),
+		FBlueprintHelperSingletonControlFlowEvidenceProvider::TryBuildCanonicalRequest(
+			EBlueprintHelperSingletonControlFlowKind::Sequence,
+			Blueprint,
+			Graph,
+			TEXT("singleton_hash_identity_changed"),
+			TEXT("reason_a"),
+			StatementChangedRequest));
+	TestNotEqual(TEXT("canonical projected context hash uses statement id"),
+		ReasonARequest.ProjectedContextHash,
+		StatementChangedRequest.ProjectedContextHash);
+	TestNotEqual(TEXT("canonical semantic constraints hash uses statement id"),
+		ReasonARequest.SemanticConstraintsHash,
+		StatementChangedRequest.SemanticConstraintsHash);
+
+	UBlueprint* OtherBlueprint = MakeGenericActionTestBlueprint();
+	UEdGraph* OtherGraph = GetGenericActionTestGraph(OtherBlueprint);
+	TestNotNull(TEXT("other blueprint"), OtherBlueprint);
+	TestNotNull(TEXT("other graph"), OtherGraph);
+
+	FBlueprintHelperActionResolutionRequest GraphChangedRequest;
+	TestTrue(TEXT("canonical hash request graph changed"),
+		FBlueprintHelperSingletonControlFlowEvidenceProvider::TryBuildCanonicalRequest(
+			EBlueprintHelperSingletonControlFlowKind::Sequence,
+			OtherBlueprint,
+			OtherGraph,
+			TEXT("singleton_hash_identity"),
+			TEXT("reason_a"),
+			GraphChangedRequest));
+	TestNotEqual(TEXT("canonical projected context hash uses graph context"),
+		ReasonARequest.ProjectedContextHash,
+		GraphChangedRequest.ProjectedContextHash);
+	TestNotEqual(TEXT("canonical semantic constraints hash uses graph context"),
+		ReasonARequest.SemanticConstraintsHash,
+		GraphChangedRequest.SemanticConstraintsHash);
 
 	return true;
 }

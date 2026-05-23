@@ -3,7 +3,10 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Input/Reply.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
+#include "Styling/SlateColor.h"
+#include "Templates/Function.h"
 #include "UI/Review/BlueprintHelperReviewPresenterTypes.h"
 
 struct FBlueprintHelperReviewPanelSurfacePresenterArgs;

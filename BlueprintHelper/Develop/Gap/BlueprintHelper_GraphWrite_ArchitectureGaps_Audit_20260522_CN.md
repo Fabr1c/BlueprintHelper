@@ -77,41 +77,41 @@ P6 能力行本身已经闭环：`BlueprintHelper.GraphWrite.Capability80` 在 `
 
 ### Gap 3. Canonical singleton direct spawn boundary is not explicit enough
 
-状态：未关闭
+状态：已关闭（仅限 canonical singleton direct spawn boundary）
 
-证据：
-- `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericAssetStructControlActionResolver.cpp`
-- `MakeGenericNodeSpawnerResult` 通过 `UBlueprintNodeSpawner::Create(NodeClass)` 创建 spawner。
-- `ResolveSelectNodeSpawner` 和 `ResolveControlNodeSpawner` 直接传入 `UK2Node_Select::StaticClass()`、`UK2Node_IfThenElse::StaticClass()`、`UK2Node_FunctionResult::StaticClass()`、`UK2Node_ExecutionSequence::StaticClass()`。
+Closure scope - 2026-05-23:
+- CLOSED only for canonical singleton direct spawn boundary behind `FBlueprintHelperSingletonControlFlowEvidenceProvider`.
+- `FBlueprintHelperSingletonControlFlowEvidenceProvider::TryBuildCanonicalRequest` owns singleton kind -> semantic kind/query mapping.
+- `FBlueprintHelperSingletonControlFlowEvidenceProvider::ResolveCanonical` owns `ActionResolutionResult`, stable id, candidate evidence, and `SelectedSpawner` creation.
+- `GenericAssetStructControlActionResolver` continues to call the provider for `Select` / `Control`.
+- Wide-surface semantics still cannot use singleton direct spawn as fallback; broad create/convert/schedule semantics remain outside this closure.
 
-为什么仍是 gap：
-- direct spawn 本身不是问题。`branch`、`sequence`、`return` 这类 canonical singleton control node 没有宽候选空间，不需要像 `call` / `op` / property / delegate 这类 wide-surface semantic 一样完整依赖 ActionDatabase 搜索链路。
-- 当前问题是 direct spawn boundary 没有被文档化为 GenericAssetStructControlActionCluster 内部的二级语义映射策略，容易被误解为绕过一级分发。
-- direct spawn 不能改变 `SpawnerClusterKind` 一级分发规则，也不能成为 wide-surface semantic 的搜索失败 fallback。
+Closure evidence:
+- Task 1 API green: `D:\UEProjects\Template\Saved\Automation\GraphWrite_SingletonBoundary_API_GREEN_002\index.json`, 1 succeeded, 0 failed, 0 warnings.
 
-关闭条件：
-- 明确 `branch`、`sequence`、`return`、以及确认唯一的 `select` 属于 canonical singleton semantic。
-- direct spawn 只能发生在 `SpawnerClusterResolver` 按 `GenericAssetStructControlAction` 完成一级分发之后，作为 cluster 内部的二级 semantic mapping。
-- direct spawn 必须返回统一 `ActionResolutionResult` / spawner evidence，包含 semantic kind、singleton kind、node class path、stable id、reason。
-- 契约测试覆盖：builder / pipeline / mutation coordinator 不能直接发起 singleton direct spawn；wide-surface semantic 不能把 direct spawn 当 fallback。
+当前结论：
+- `branch`、`sequence`、`return`、以及确认唯一的 `select` 属于 canonical singleton semantic。
+- direct spawn 只发生在 `FBlueprintHelperSingletonControlFlowEvidenceProvider` 的 canonical secondary semantic mapping 内。
+- 该闭环不改变 `SpawnerClusterKind` 一级分发规则，也不关闭 Generic broad create/convert/schedule 语义缺口。
+- Gap 2 和 Gap 5 仍按各自章节保持开放，除非后续文档另行记录。
 
 ### Gap 4. MutationCoordinator bypasses singleton evidence boundary for sequence node
 
-状态：未关闭
+状态：已关闭
 
-证据：
-- `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/Mutation/BlueprintHelperGraphWriteMutationCoordinator.cpp`
-- `SpawnSequenceNode` 直接调用 `UBlueprintNodeSpawner::Create(UK2Node_ExecutionSequence::StaticClass())`。
-- `ApplyBranchForkSemanticBody` 使用该 helper 创建 merge sequence node。
+Closure evidence - 2026-05-23:
+- `BlueprintHelperGraphWriteMutationCoordinator.cpp` no longer constructs singleton semantic request/query/hash details.
+- Mutation code requests `EBlueprintHelperSingletonControlFlowKind::Sequence` via `FBlueprintHelperSingletonControlFlowEvidenceProvider::ResolveCanonical`.
+- Mutation still uses `FBlueprintHelperActionNodeSpawnerAdapter::InvokeSelectedSpawner`.
+- `BlueprintHelper.GraphWrite.TaskRuntime.Merge.BranchForkOwnedBlockCallReadBack` confirms the branch-fork sequence exists and is explainable by singleton provider evidence.
+- Task 2 contract green: `D:\UEProjects\Template\Saved\Automation\GraphWrite_SingletonBoundary_MutationContract_GREEN_001\index.json`, 1 succeeded, 0 failed.
+- Task 3 runtime green: `D:\UEProjects\Template\Saved\Automation\GraphWrite_SingletonBoundary_BranchForkRuntime_GREEN_001\index.json`, 0 failed, succeededWithWarnings=1 due existing asset load warnings.
 
-为什么仍是 gap：
-- `sequence` 是 canonical singleton control node，可以 direct spawn；问题不在 direct spawn 这个策略，而在 MutationCoordinator 自己拥有了该策略。
-- MutationCoordinator 应只负责 mutation orchestration，不能绕过 `GenericAssetStructControlActionCluster -> singleton semantic mapping -> ActionResolutionResult/evidence -> shared adapter` 的统一边界。
-
-关闭条件：
-- branch fork 所需 sequence node 创建必须复用 Generic cluster 的 singleton evidence，或调用一个明确的 singleton spawner evidence provider。
+当前结论：
+- `sequence` 仍是 canonical singleton control node，direct spawn 策略合法，但策略所有权不再位于 MutationCoordinator。
+- branch fork 所需 sequence node 创建复用 singleton provider evidence，并通过 shared spawner adapter 实际生成节点。
 - candidate/debug/review evidence 能解释该 sequence node 是 mutation 编排产物，同时其 spawner strategy 来自统一 singleton boundary。
-- 增加契约测试，避免 mutation coordinator 新增裸 `UK2Node_*` direct create path。
+- Gap 4 已关闭；不代表 Generic broad create/convert/schedule 语义完成。
 
 ### Gap 5. EventDelegate component-bound / bind complete spawner boundary is unresolved
 

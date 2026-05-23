@@ -1,7 +1,9 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperSingletonControlFlowEvidenceProvider.h"
 
 #include "BlueprintNodeSpawner.h"
+#include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
+#include "Engine/Blueprint.h"
 #include "K2Node_ExecutionSequence.h"
 #include "K2Node_FunctionResult.h"
 #include "K2Node_IfThenElse.h"
@@ -53,6 +55,70 @@ static const TCHAR* SingletonKindToDisplayName(const EBlueprintHelperSingletonCo
 	}
 }
 
+static FString SingletonKindToQuery(const EBlueprintHelperSingletonControlFlowKind Kind)
+{
+	switch (Kind)
+	{
+	case EBlueprintHelperSingletonControlFlowKind::Branch:
+		return TEXT("branch");
+	case EBlueprintHelperSingletonControlFlowKind::Sequence:
+		return TEXT("sequence");
+	case EBlueprintHelperSingletonControlFlowKind::Return:
+		return TEXT("return");
+	case EBlueprintHelperSingletonControlFlowKind::Select:
+		return FString();
+	default:
+		return FString();
+	}
+}
+
+static EBlueprintHelperActionSemanticKind SingletonKindToSemanticKind(const EBlueprintHelperSingletonControlFlowKind Kind)
+{
+	return Kind == EBlueprintHelperSingletonControlFlowKind::Select
+		? EBlueprintHelperActionSemanticKind::Select
+		: EBlueprintHelperActionSemanticKind::Control;
+}
+
+static FString StableHashString(const FString& Stable)
+{
+	return LexToString(GetTypeHash(Stable));
+}
+
+static void AppendObjectIdentity(FString& Stable, const TCHAR* Label, const UObject* Object)
+{
+	Stable += Label;
+	Stable += TEXT("_path=");
+	Stable += Object ? Object->GetPathName() : FString();
+	Stable += TEXT("|");
+	Stable += Label;
+	Stable += TEXT("_name=");
+	Stable += Object ? Object->GetName() : FString();
+}
+
+static FString BuildSingletonCanonicalStableFields(
+	const EBlueprintHelperSingletonControlFlowKind Kind,
+	const EBlueprintHelperActionSemanticKind SemanticKind,
+	UBlueprint* Blueprint,
+	UEdGraph* TargetGraph,
+	const FString& StatementId,
+	const FString& Query)
+{
+	FString Stable;
+	Stable += TEXT("singleton_control_flow|kind=");
+	Stable += SingletonKindToStableName(Kind);
+	Stable += TEXT("|semantic=");
+	Stable += FBlueprintHelperActionResolutionCore::SemanticKindToString(SemanticKind);
+	Stable += TEXT("|query=");
+	Stable += Query;
+	Stable += TEXT("|");
+	AppendObjectIdentity(Stable, TEXT("blueprint"), Blueprint);
+	Stable += TEXT("|");
+	AppendObjectIdentity(Stable, TEXT("target_graph"), TargetGraph);
+	Stable += TEXT("|statement=");
+	Stable += StatementId;
+	return Stable;
+}
+
 static bool MakeEvidence(
 	const EBlueprintHelperSingletonControlFlowKind Kind,
 	TSubclassOf<UEdGraphNode> NodeClass,
@@ -78,6 +144,78 @@ static bool MakeEvidence(
 		*NodeClassPath);
 	return true;
 }
+}
+
+bool FBlueprintHelperSingletonControlFlowEvidenceProvider::TryBuildCanonicalRequest(
+	const EBlueprintHelperSingletonControlFlowKind Kind,
+	UBlueprint* Blueprint,
+	UEdGraph* TargetGraph,
+	const FString& StatementId,
+	const FString& Reason,
+	FBlueprintHelperActionResolutionRequest& OutRequest)
+{
+	OutRequest = FBlueprintHelperActionResolutionRequest();
+	if (!Blueprint || !TargetGraph || Kind == EBlueprintHelperSingletonControlFlowKind::Unknown)
+	{
+		return false;
+	}
+
+	const FString Query = SingletonKindToQuery(Kind);
+	const EBlueprintHelperActionSemanticKind SemanticKind = SingletonKindToSemanticKind(Kind);
+	OutRequest.ClusterKind = EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction;
+	OutRequest.Blueprint = Blueprint;
+	OutRequest.TargetGraph = TargetGraph;
+	OutRequest.StatementId = StatementId.IsEmpty()
+		? FString::Printf(TEXT("singleton_%s"), SingletonKindToStableName(Kind))
+		: StatementId;
+	const FString StableFields = BuildSingletonCanonicalStableFields(
+		Kind,
+		SemanticKind,
+		Blueprint,
+		TargetGraph,
+		OutRequest.StatementId,
+		Query);
+	OutRequest.ProjectedContextHash = StableHashString(FString(TEXT("projected|")) + StableFields);
+	OutRequest.SemanticConstraintsHash = StableHashString(FString(TEXT("constraints|")) + StableFields);
+	OutRequest.Semantic.Kind = SemanticKind;
+	OutRequest.Semantic.Query = Query;
+	OutRequest.Semantic.TargetPath = OutRequest.StatementId;
+	OutRequest.MaxCandidates = 1;
+	return true;
+}
+
+FBlueprintHelperActionResolutionResult FBlueprintHelperSingletonControlFlowEvidenceProvider::ResolveCanonical(
+	const EBlueprintHelperSingletonControlFlowKind Kind,
+	UBlueprint* Blueprint,
+	UEdGraph* TargetGraph,
+	const FString& StatementId,
+	const FString& Reason)
+{
+	FBlueprintHelperActionResolutionRequest Request;
+	if (!TryBuildCanonicalRequest(Kind, Blueprint, TargetGraph, StatementId, Reason, Request))
+	{
+		FBlueprintHelperActionResolutionResult Result;
+		Result.Status = EBlueprintHelperActionResolutionStatus::InvalidRequest;
+		Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction;
+		Result.ErrorCode = TEXT("missing_required_evidence");
+		Result.Message = TEXT("Singleton control-flow canonical request requires Blueprint, target graph, and known singleton kind.");
+		return Result;
+	}
+
+	FBlueprintHelperSingletonControlFlowEvidence Evidence;
+	if (!TryResolve(Request, Evidence))
+	{
+		FBlueprintHelperActionResolutionResult Result;
+		Result.Status = EBlueprintHelperActionResolutionStatus::UnsupportedIntent;
+		Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction;
+		Result.ErrorCode = TEXT("unsupported_singleton_control_flow_semantic");
+		Result.Message = FString::Printf(
+			TEXT("Singleton control-flow provider could not resolve canonical kind '%s'."),
+			SingletonKindToStableName(Kind));
+		return Result;
+	}
+
+	return MakeResolvedResult(Request, Evidence);
 }
 
 bool FBlueprintHelperSingletonControlFlowEvidenceProvider::TryResolve(

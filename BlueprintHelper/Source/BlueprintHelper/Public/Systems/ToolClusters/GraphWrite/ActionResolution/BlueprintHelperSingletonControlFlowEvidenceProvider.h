@@ -25,6 +25,21 @@ struct FBlueprintHelperSingletonControlFlowEvidence
 class BLUEPRINTHELPER_API FBlueprintHelperSingletonControlFlowEvidenceProvider
 {
 public:
+	static bool TryBuildCanonicalRequest(
+		EBlueprintHelperSingletonControlFlowKind Kind,
+		UBlueprint* Blueprint,
+		UEdGraph* TargetGraph,
+		const FString& StatementId,
+		const FString& Reason,
+		FBlueprintHelperActionResolutionRequest& OutRequest);
+
+	static FBlueprintHelperActionResolutionResult ResolveCanonical(
+		EBlueprintHelperSingletonControlFlowKind Kind,
+		UBlueprint* Blueprint,
+		UEdGraph* TargetGraph,
+		const FString& StatementId,
+		const FString& Reason);
+
 	static bool TryResolve(
 		const FBlueprintHelperActionResolutionRequest& Request,
 		FBlueprintHelperSingletonControlFlowEvidence& OutEvidence);

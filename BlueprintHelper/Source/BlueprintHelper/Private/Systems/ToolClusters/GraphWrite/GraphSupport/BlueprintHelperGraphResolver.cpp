@@ -3,6 +3,8 @@
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "BlueprintEditor.h"
 #include "Editor.h"
+#include "EdGraph/EdGraph.h"
+#include "Engine/Blueprint.h"
 #include "Subsystems/AssetEditorSubsystem.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 

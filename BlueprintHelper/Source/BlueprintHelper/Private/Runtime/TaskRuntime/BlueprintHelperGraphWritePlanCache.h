@@ -5,6 +5,8 @@
 #include "CoreMinimal.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeCacheConfig.h"
 
+class FJsonObject;
+
 struct FBlueprintHelperGraphWritePlanCacheKey
 {
 	FString CacheSchemaVersion = TEXT("BlueprintHelper.GraphWritePlanCache.v1");

@@ -2588,6 +2588,14 @@ bool FBlueprintHelperGraphWriteTaskRuntimeMergeBranchForkOwnedBlockCallReadBackT
 		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::IsExecReachable(AnchorEntry, InsertedCall));
 	TestTrue(TEXT("original successor is reachable from anchor"),
 		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::IsExecReachable(AnchorEntry, OriginalSuccessor));
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteReadbackEvidence SequenceEvidence;
+	SequenceEvidence.bHasResolverEvidence = true;
+	SequenceEvidence.bHasSpawnEvidence = true;
+	SequenceEvidence.SingletonStableId = TEXT("singleton_control_flow:sequence");
+	TestTrue(TEXT("readback locates branch_fork sequence by singleton provider evidence"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ReadbackFindsSingletonControlByEvidence(Graph, SequenceEvidence));
+
 	return true;
 }
 

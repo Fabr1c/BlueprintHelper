@@ -3,6 +3,9 @@
 #include "CoreMinimal.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphParsedTypes.h"
 
+class FJsonObject;
+class FJsonValue;
+
 class FBlueprintGraphJsonParser
 {
 public:
