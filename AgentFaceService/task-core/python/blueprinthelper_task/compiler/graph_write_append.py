@@ -1449,10 +1449,10 @@ DELEGATE_STATEMENT_KIND_ALIASES = {
     "delegate.bind": "bind",
     "delegate.assign": "assign",
     "delegate.unbind": "unbind",
-    "delegate.unbind_all": "delegate_clear",
-    "delegate.call": "delegate_call",
+    "delegate.unbind_all": "clear",
+    "delegate.call": "call",
 }
-INTERNAL_EVENT_DELEGATE_STATEMENT_KINDS = set(DELEGATE_STATEMENT_KIND_ALIASES.values())
+DELEGATE_STATEMENT_OPERATION_KINDS = {"bind", "assign", "unbind", "clear", "call"}
 SUPPORTED_GRAPH_BODY_STATEMENT_KINDS = {
     "call",
     "set",
@@ -1476,6 +1476,25 @@ SUPPORTED_GRAPH_BODY_EXPRESSION_KINDS = {
 
 def _normalized_delegate_statement_kind(kind: str) -> str:
     return DELEGATE_STATEMENT_KIND_ALIASES.get(kind, kind)
+
+
+def _delegate_statement_operation(statement: Dict[str, Any]) -> Optional[str]:
+    kind = statement.get("kind")
+    if not isinstance(kind, str):
+        return None
+    if kind == "delegate":
+        operation = statement.get("delegate_operation")
+        if isinstance(operation, str) and operation in DELEGATE_STATEMENT_OPERATION_KINDS:
+            return operation
+        return None
+
+    if kind not in DELEGATE_STATEMENT_KIND_ALIASES or kind == "component_bound_event":
+        return None
+
+    normalized_kind = _normalized_delegate_statement_kind(kind)
+    if normalized_kind in DELEGATE_STATEMENT_OPERATION_KINDS:
+        return normalized_kind
+    return None
 
 
 def _validate_supported_statements(statements: List[Dict[str, Any]], path: str) -> None:
@@ -1522,17 +1541,17 @@ def _validate_supported_statements(statements: List[Dict[str, Any]], path: str) 
 def _validate_delegate_statement_shape(statement: Dict[str, Any], path: str) -> None:
     kind = _required_string(statement, "kind", f"{path}.kind")
     normalized_kind = _normalized_delegate_statement_kind(kind)
-    if normalized_kind == "component_bound_event":
-        _required_string(statement, "component", f"{path}.component")
-        _required_string(statement, "delegate", f"{path}.delegate")
-        _required_string(statement, "handler", f"{path}.handler")
-        return
     if normalized_kind in {"bind", "assign", "unbind"}:
         _required_string(statement, "target", f"{path}.target")
         _required_string(statement, "delegate", f"{path}.delegate")
         _required_string(statement, "handler", f"{path}.handler")
         return
-    if normalized_kind == "delegate_clear":
+    if normalized_kind == "component_bound_event":
+        _required_string(statement, "component", f"{path}.component")
+        _required_string(statement, "delegate", f"{path}.delegate")
+        _required_string(statement, "handler", f"{path}.handler")
+        return
+    if normalized_kind == "clear":
         _required_string(statement, "target", f"{path}.target")
         _required_string(statement, "delegate", f"{path}.delegate")
         if "handler" in statement:
@@ -1540,13 +1559,13 @@ def _validate_delegate_statement_shape(statement: Dict[str, Any], path: str) -> 
                 "taskspec_semantic_invalid",
                 "delegate.unbind_all must not include handler.",
                 [{
-                    "code": "unexpected_delegate_handler",
+                    "code": "delegate_clear_handler_forbidden",
                     "path": f"{path}.handler",
-                    "message": "Remove handler; delegate.unbind_all clears all handlers for the delegate.",
+                    "message": "delegate.unbind_all must not include handler; clear() removes all handlers for the delegate.",
                 }],
             )
         return
-    if normalized_kind == "delegate_call":
+    if normalized_kind == "call":
         _required_string(statement, "target", f"{path}.target")
         _required_string(statement, "delegate", f"{path}.delegate")
         _validate_expression_map(statement.get("args"), f"{path}.args")
@@ -1689,14 +1708,18 @@ def _clone_logic_statement_with_compiled_ids(statement: Dict[str, Any], statemen
     out = dict(statement)
     out["id"] = statement_id
     kind = statement.get("kind")
-    normalized_kind = _normalized_delegate_statement_kind(kind) if isinstance(kind, str) else kind
-    if normalized_kind in INTERNAL_EVENT_DELEGATE_STATEMENT_KINDS:
-        out["kind"] = normalized_kind
-        if normalized_kind == "unbind":
+    if kind == "component_bound_event":
+        out["kind"] = "component_bound_event"
+        return out
+    delegate_operation = _delegate_statement_operation(statement)
+    if delegate_operation is not None:
+        out["kind"] = "delegate"
+        out["delegate_operation"] = delegate_operation
+        if delegate_operation == "unbind":
             out["unbind_mode"] = "single"
-        elif normalized_kind == "delegate_clear":
+        elif delegate_operation == "clear":
             out["unbind_mode"] = "all"
-        if normalized_kind == "delegate_call" and isinstance(statement.get("args"), dict):
+        elif delegate_operation == "call" and isinstance(statement.get("args"), dict):
             out["args"] = {
                 arg_name: _clone_logic_expression_with_compiled_ids(arg_value, f"{statement_id}_arg_{_to_id_segment(str(arg_name))}")
                 for arg_name, arg_value in statement["args"].items()
@@ -1764,6 +1787,7 @@ def _compile_statement_sequence(statements: List[Dict[str, Any]], id_prefix: str
 
 def _compile_statement_flow(statement: Dict[str, Any], node_id: str, path: str, context: Dict[str, Any]) -> Dict[str, Any]:
     kind = statement.get("kind")
+    delegate_operation = _delegate_statement_operation(statement)
     if kind == "control":
         control_kind = _control_statement_kind(statement, path)
         if control_kind == "branch":
@@ -1790,7 +1814,7 @@ def _compile_statement_flow(statement: Dict[str, Any], node_id: str, path: str, 
     node = _compile_statement_node(statement, node_id, path)
     nodes: List[Dict[str, Any]] = [node]
     links: List[Dict[str, Any]] = []
-    if kind == "call":
+    if kind == "call" or delegate_operation == "call":
         input_values: Dict[str, Any] = {}
         args = statement.get("args")
         if isinstance(args, dict):
@@ -1802,7 +1826,10 @@ def _compile_statement_flow(statement: Dict[str, Any], node_id: str, path: str, 
                     links.append({"kind": "data", "from": arg_flow["output"], "to": f"{node_id}.{arg_name}"})
                 else:
                     input_values[arg_name] = arg_flow.get("default_value")
-        node["inputs"] = input_values
+        if kind == "call":
+            node["inputs"] = input_values
+        else:
+            node["args"] = input_values
     if kind in {"set", "set_property"}:
         value_pin_name = _required_string(statement, "target", f"{path}.target") if kind == "set" else "value"
         value_flow = _compile_value_expression(statement.get("value"), f"{node_id}_value", f"{path}.value", context)
@@ -2656,16 +2683,22 @@ def _required_non_empty_list(record: Dict[str, Any], field: str, path: str) -> L
 
 def _compile_statement_node(statement: Dict[str, Any], node_id: str, path: str) -> Dict[str, Any]:
     kind = statement.get("kind")
-    normalized_kind = _normalized_delegate_statement_kind(kind) if isinstance(kind, str) else kind
-    if normalized_kind in INTERNAL_EVENT_DELEGATE_STATEMENT_KINDS:
+    if kind == "component_bound_event":
         node = dict(statement)
         node["id"] = node_id
-        node["kind"] = normalized_kind
-        if normalized_kind == "unbind":
+        node["kind"] = "component_bound_event"
+        return node
+    delegate_operation = _delegate_statement_operation(statement)
+    if delegate_operation is not None:
+        node = dict(statement)
+        node["id"] = node_id
+        node["kind"] = "delegate"
+        node["delegate_operation"] = delegate_operation
+        if delegate_operation == "unbind":
             node["unbind_mode"] = "single"
-        elif normalized_kind == "delegate_clear":
+        elif delegate_operation == "clear":
             node["unbind_mode"] = "all"
-        if normalized_kind == "delegate_call" and isinstance(statement.get("args"), dict):
+        if delegate_operation == "call" and isinstance(statement.get("args"), dict):
             node["args"] = _compile_args(statement.get("args"))
         return node
 

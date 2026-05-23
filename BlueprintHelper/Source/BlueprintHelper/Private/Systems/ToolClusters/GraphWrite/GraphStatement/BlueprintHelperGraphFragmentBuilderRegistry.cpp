@@ -2,6 +2,7 @@
 
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextScope.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperControlFragmentBuilder.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperEventDelegateFragmentBuilder.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentBuildRequest.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 
@@ -132,6 +133,17 @@ bool FBlueprintHelperGraphFragmentBuilderRegistry::TryBuildStatement(
 		|| Statement.Kind == EBlueprintHelperGraphStatementKind::Return)
 	{
 		return FBlueprintHelperControlFragmentBuilder::BuildStatement(
+			TargetGraph,
+			ActionContextScope,
+			Statement,
+			OutFragment,
+			OutError);
+	}
+
+	if (Statement.Kind == EBlueprintHelperGraphStatementKind::ComponentBoundEvent
+		|| Statement.Kind == EBlueprintHelperGraphStatementKind::Delegate)
+	{
+		return FBlueprintHelperEventDelegateFragmentBuilder::BuildStatement(
 			TargetGraph,
 			ActionContextScope,
 			Statement,

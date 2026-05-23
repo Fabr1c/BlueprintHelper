@@ -63,7 +63,10 @@ struct FBlueprintHelperActionContextDemand
 	FString ComponentPath;
 	FString BindingObjectPath;
 	FString DelegateName;
+	FString DelegateOperation;
 	FString DelegateSignature;
+	FString HandlerName;
+	FString UnbindMode;
 	FString TargetGraphName;
 	TArray<FString> SelectedObjectPaths;
 	TArray<FString> ArgumentNames;
@@ -87,12 +90,17 @@ struct FBlueprintHelperActionContextFieldSnapshot
 {
 	FString Name;
 	FString OwnerClassPath;
+	FString FieldPath;
 	FString PinCategory;
 	FString PinSubCategory;
 	FString PinSubCategoryObjectPath;
 	bool bReadable = true;
 	bool bWritable = true;
 	bool bComponent = false;
+	bool bMulticastDelegate = false;
+	bool bBlueprintAssignable = false;
+	bool bBlueprintCallable = false;
+	FString DelegateSignatureFunctionPath;
 };
 
 struct FBlueprintHelperActionContextSnapshot

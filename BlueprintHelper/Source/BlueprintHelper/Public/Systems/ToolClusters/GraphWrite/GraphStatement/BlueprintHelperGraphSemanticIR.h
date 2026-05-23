@@ -16,7 +16,9 @@ enum class EBlueprintHelperGraphStatementKind : uint8
 	Branch,
 	Sequence,
 	Let,
-	Return
+	Return,
+	ComponentBoundEvent,
+	Delegate
 };
 
 enum class EBlueprintHelperGraphExpressionKind : uint8
@@ -134,6 +136,11 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphStatementIR
 	FString Target;
 	FString Name;
 	FString Property;
+	FString ComponentName;
+	FString DelegateName;
+	FString DelegateOperation;
+	FString HandlerName;
+	FString UnbindMode;
 	FString ResultSymbolName;
 	FString ResolvedCallFunctionStableId;
 	FString SearchMode;

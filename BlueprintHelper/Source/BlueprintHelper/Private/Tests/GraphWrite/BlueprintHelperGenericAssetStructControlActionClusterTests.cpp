@@ -590,7 +590,7 @@ bool FBlueprintHelperSingletonControlFlowProviderRejectsWideSurfaceTest::RunTest
 		EBlueprintHelperActionSemanticKind::Call,
 		EBlueprintHelperActionSemanticKind::Get,
 		EBlueprintHelperActionSemanticKind::Set,
-		EBlueprintHelperActionSemanticKind::Bind,
+		EBlueprintHelperActionSemanticKind::Delegate,
 		EBlueprintHelperActionSemanticKind::Create,
 		EBlueprintHelperActionSemanticKind::Convert,
 		EBlueprintHelperActionSemanticKind::Schedule
@@ -598,8 +598,12 @@ bool FBlueprintHelperSingletonControlFlowProviderRejectsWideSurfaceTest::RunTest
 
 	for (const EBlueprintHelperActionSemanticKind RejectedKind : RejectedKinds)
 	{
-		const FBlueprintHelperActionResolutionRequest Request =
+		FBlueprintHelperActionResolutionRequest Request =
 			MakeGenericActionRequest(Blueprint, Graph, RejectedKind, TEXT("branch"));
+		if (RejectedKind == EBlueprintHelperActionSemanticKind::Delegate)
+		{
+			Request.ContextEvidence.Add(TEXT("delegate_operation"), TEXT("bind"));
+		}
 		FBlueprintHelperSingletonControlFlowEvidence Evidence;
 		TestFalse(
 			FString::Printf(TEXT("provider rejects %s"), *FBlueprintHelperActionResolutionCore::SemanticKindToString(RejectedKind)),

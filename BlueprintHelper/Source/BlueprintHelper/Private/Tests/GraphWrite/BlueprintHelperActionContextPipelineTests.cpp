@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextDemandCollector.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextInferenceService.h"
 
 #include "HAL/FileManager.h"
 #include "Misc/AutomationTest.h"
@@ -181,10 +182,11 @@ bool FBlueprintHelperActionContextEventDelegateEvidenceSourceContractTest::RunTe
 		DemandCollectorPath,
 		{
 			TEXT("ComponentBoundEvent"),
-			TEXT("Bind"),
+			TEXT("Delegate"),
 			TEXT("ComponentPath"),
 			TEXT("BindingObjectPath"),
 			TEXT("DelegateName"),
+			TEXT("DelegateOperation"),
 			TEXT("DelegateSignature")
 		});
 	bComplete &= RequireTokens(
@@ -195,12 +197,90 @@ bool FBlueprintHelperActionContextEventDelegateEvidenceSourceContractTest::RunTe
 			TEXT("component_path"),
 			TEXT("binding_object_path"),
 			TEXT("delegate_name"),
+			TEXT("delegate_operation"),
 			TEXT("delegate_signature"),
 			TEXT("target_graph")
 		});
 
 	TestTrue(TEXT("ActionContext projects event/delegate evidence without defaults"), bComplete);
 	return bComplete;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionContextDelegateProjectionTest,
+	"BlueprintHelper.GraphWrite.ActionContext.EventDelegate.DelegateProjectsEvidence",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionContextDelegateProjectionTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperActionContextDemand Demand;
+	Demand.StatementId = TEXT("stmt_delegate_bind");
+	Demand.SourcePath = TEXT("$.statements[0]");
+	Demand.ClusterKind = EBlueprintHelperSpawnerClusterKind::EventDelegateAction;
+	Demand.SemanticKind = EBlueprintHelperActionSemanticKind::Delegate;
+	Demand.Query = TEXT("OnDoorStateChanged");
+	Demand.TargetPath = TEXT("self");
+	Demand.BindingObjectPath = TEXT("self");
+	Demand.DelegateName = TEXT("OnDoorStateChanged");
+	Demand.DelegateOperation = TEXT("bind");
+	Demand.DelegateSignature = TEXT("FDoorStateChangedSignature");
+	Demand.HandlerName = TEXT("HandleDoorStateChanged");
+	Demand.ArgumentNames = { TEXT("NewState") };
+
+	FBlueprintHelperActionContextSnapshot Snapshot;
+	Snapshot.Graph.GraphName = TEXT("EventGraph");
+	Snapshot.Graph.BlueprintClassPath = TEXT("/Game/Test/BP_Door.BP_Door_C");
+
+	const FBlueprintHelperResolvedActionContext Context =
+		FBlueprintHelperActionContextInferenceService::BuildContextForTest(Snapshot, Demand);
+
+	TestEqual(TEXT("cluster"), Context.ClusterKind, EBlueprintHelperSpawnerClusterKind::EventDelegateAction);
+	TestEqual(TEXT("semantic"), Context.Semantic.Kind, EBlueprintHelperActionSemanticKind::Delegate);
+	TestEqual(TEXT("delegate_name"), Context.Evidence.FindRef(TEXT("delegate_name")), FString(TEXT("OnDoorStateChanged")));
+	TestEqual(TEXT("delegate_operation"), Context.Evidence.FindRef(TEXT("delegate_operation")), FString(TEXT("bind")));
+	TestEqual(TEXT("binding object"), Context.Evidence.FindRef(TEXT("binding_object_path")), FString(TEXT("self")));
+	TestEqual(TEXT("handler"), Context.Evidence.FindRef(TEXT("handler_name")), FString(TEXT("HandleDoorStateChanged")));
+	TestEqual(TEXT("handler scope"), Context.Evidence.FindRef(TEXT("handler_scope_class_path")), FString(TEXT("/Game/Test/BP_Door.BP_Door_C")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionContextDelegateStatementDemandTest,
+	"BlueprintHelper.GraphWrite.ActionContext.EventDelegate.StatementDemand",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionContextDelegateStatementDemandTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FBlueprintHelperGraphStatementIR> Statement = MakeShared<FBlueprintHelperGraphStatementIR>();
+	Statement->StatementId = TEXT("stmt_delegate_unbind");
+	Statement->Path = TEXT("$.statements[0]");
+	Statement->Kind = EBlueprintHelperGraphStatementKind::Delegate;
+	Statement->Target = TEXT("self");
+	Statement->DelegateName = TEXT("OnDoorStateChanged");
+	Statement->DelegateOperation = TEXT("unbind");
+	Statement->HandlerName = TEXT("HandleDoorStateChanged");
+	Statement->UnbindMode = TEXT("single");
+
+	TArray<TSharedPtr<FBlueprintHelperGraphStatementIR>> Statements;
+	Statements.Add(Statement);
+	const TArray<FBlueprintHelperActionContextDemand> Demands =
+		FBlueprintHelperActionContextDemandCollector::CollectFromStatements(Statements);
+
+	TestEqual(TEXT("delegate statement demand count"), Demands.Num(), 1);
+	if (Demands.Num() == 0)
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("semantic"), Demands[0].SemanticKind, EBlueprintHelperActionSemanticKind::Delegate);
+	TestEqual(TEXT("cluster"), Demands[0].ClusterKind, EBlueprintHelperSpawnerClusterKind::EventDelegateAction);
+	TestEqual(TEXT("binding object"), Demands[0].BindingObjectPath, FString(TEXT("self")));
+	TestEqual(TEXT("delegate name"), Demands[0].DelegateName, FString(TEXT("OnDoorStateChanged")));
+	TestEqual(TEXT("delegate operation"), Demands[0].DelegateOperation, FString(TEXT("unbind")));
+	TestEqual(TEXT("delegate operation default"), Demands[0].DefaultValues.FindRef(TEXT("delegate_operation")), FString(TEXT("unbind")));
+	TestEqual(TEXT("handler"), Demands[0].HandlerName, FString(TEXT("HandleDoorStateChanged")));
+	TestEqual(TEXT("unbind mode"), Demands[0].UnbindMode, FString(TEXT("single")));
+	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(

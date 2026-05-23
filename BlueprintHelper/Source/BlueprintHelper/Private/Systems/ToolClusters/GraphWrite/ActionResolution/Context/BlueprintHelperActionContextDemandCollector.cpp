@@ -17,6 +17,13 @@ static FString FirstNonEmpty(const FString& First, const FString& Second, const 
 	return FirstNonEmpty(FirstNonEmpty(First, Second, Third), Fourth);
 }
 
+static FString FirstNonEmpty(const FString& First, const FString& Second, const FString& Third, const FString& Fourth, const FString& Fifth)
+{
+	return FirstNonEmpty(FirstNonEmpty(First, Second, Third, Fourth), Fifth);
+}
+
+static bool IsEventDelegateSemantic(const EBlueprintHelperActionSemanticKind SemanticKind);
+
 static FString BuildStatementQuery(const FBlueprintHelperGraphStatementIR& Statement, const EBlueprintHelperActionSemanticKind SemanticKind)
 {
 	if (SemanticKind == EBlueprintHelperActionSemanticKind::Call)
@@ -25,6 +32,16 @@ static FString BuildStatementQuery(const FBlueprintHelperGraphStatementIR& State
 			Statement.ResolvedCallFunctionStableId,
 			Statement.Target,
 			Statement.Name,
+			Statement.PatternName);
+	}
+
+	if (IsEventDelegateSemantic(SemanticKind))
+	{
+		return FirstNonEmpty(
+			Statement.DelegateName,
+			Statement.Property,
+			Statement.Name,
+			Statement.ResolvedTarget.Member,
 			Statement.PatternName);
 	}
 
@@ -127,9 +144,8 @@ static FString ResolveComponentPathFromTarget(const FBlueprintHelperGraphResolve
 
 static bool IsEventDelegateSemantic(const EBlueprintHelperActionSemanticKind SemanticKind)
 {
-	return SemanticKind == EBlueprintHelperActionSemanticKind::Event
-		|| SemanticKind == EBlueprintHelperActionSemanticKind::ComponentBoundEvent
-		|| SemanticKind == EBlueprintHelperActionSemanticKind::Bind;
+	return SemanticKind == EBlueprintHelperActionSemanticKind::ComponentBoundEvent
+		|| SemanticKind == EBlueprintHelperActionSemanticKind::Delegate;
 }
 
 static void ApplyEventDelegateStatementEvidence(
@@ -143,11 +159,46 @@ static void ApplyEventDelegateStatementEvidence(
 
 	if (InOutDemand.ComponentPath.IsEmpty())
 	{
-		InOutDemand.ComponentPath = ResolveComponentPathFromTarget(Statement.ResolvedTarget);
+		InOutDemand.ComponentPath = FirstNonEmpty(
+			Statement.ComponentName,
+			ResolveComponentPathFromTarget(Statement.ResolvedTarget));
 	}
 	if (InOutDemand.DelegateName.IsEmpty())
 	{
-		InOutDemand.DelegateName = FirstNonEmpty(Statement.Property, Statement.Name, Statement.ResolvedTarget.Member);
+		InOutDemand.DelegateName = FirstNonEmpty(
+			Statement.DelegateName,
+			Statement.Property,
+			Statement.Name,
+			Statement.ResolvedTarget.Member);
+	}
+	if (InOutDemand.DelegateOperation.IsEmpty())
+	{
+		InOutDemand.DelegateOperation = Statement.DelegateOperation.TrimStartAndEnd();
+	}
+	if (InOutDemand.BindingObjectPath.IsEmpty()
+		&& InOutDemand.SemanticKind != EBlueprintHelperActionSemanticKind::ComponentBoundEvent)
+	{
+		InOutDemand.BindingObjectPath = FirstNonEmpty(Statement.Target, Statement.ResolvedTarget.Raw);
+	}
+	if (InOutDemand.HandlerName.IsEmpty())
+	{
+		InOutDemand.HandlerName = Statement.HandlerName.TrimStartAndEnd();
+	}
+	if (InOutDemand.UnbindMode.IsEmpty())
+	{
+		InOutDemand.UnbindMode = Statement.UnbindMode.TrimStartAndEnd();
+	}
+	if (!InOutDemand.HandlerName.IsEmpty())
+	{
+		InOutDemand.DefaultValues.Add(TEXT("handler_name"), InOutDemand.HandlerName);
+	}
+	if (!InOutDemand.DelegateOperation.IsEmpty())
+	{
+		InOutDemand.DefaultValues.Add(TEXT("delegate_operation"), InOutDemand.DelegateOperation);
+	}
+	if (!InOutDemand.UnbindMode.IsEmpty())
+	{
+		InOutDemand.DefaultValues.Add(TEXT("unbind_mode"), InOutDemand.UnbindMode);
 	}
 }
 
@@ -516,9 +567,8 @@ void FBlueprintHelperActionContextDemandCollector::ApplyDemandKinds(FBlueprintHe
 		Demand.RequiredKinds.Add(EBlueprintHelperActionContextDemandKind::Target);
 		break;
 
-	case EBlueprintHelperActionSemanticKind::Event:
 	case EBlueprintHelperActionSemanticKind::ComponentBoundEvent:
-	case EBlueprintHelperActionSemanticKind::Bind:
+	case EBlueprintHelperActionSemanticKind::Delegate:
 		Demand.ClusterKind = EBlueprintHelperSpawnerClusterKind::EventDelegateAction;
 		Demand.RequiredKinds.Add(EBlueprintHelperActionContextDemandKind::Binding);
 		Demand.RequiredKinds.Add(EBlueprintHelperActionContextDemandKind::Target);
@@ -557,6 +607,10 @@ EBlueprintHelperActionSemanticKind FBlueprintHelperActionContextDemandCollector:
 		return EBlueprintHelperActionSemanticKind::Control;
 	case EBlueprintHelperGraphStatementKind::Let:
 		return EBlueprintHelperActionSemanticKind::Set;
+	case EBlueprintHelperGraphStatementKind::ComponentBoundEvent:
+		return EBlueprintHelperActionSemanticKind::ComponentBoundEvent;
+	case EBlueprintHelperGraphStatementKind::Delegate:
+		return EBlueprintHelperActionSemanticKind::Delegate;
 	default:
 		return EBlueprintHelperActionSemanticKind::Unknown;
 	}

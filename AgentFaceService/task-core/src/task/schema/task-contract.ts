@@ -170,6 +170,7 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
     },
     event_delegate_use_site_boundary: {
       note: 'GraphWrite delegate statements are use-site only. Handler declarations and signatures must already exist or be emitted by a blueprint_signature dependency before the GraphWrite body step.',
+      internal_shape: 'delegate.*, including delegate.unbind_all -> delegate_operation="clear", compile to kind="delegate" + delegate_operation; component_bound_event compiles to kind="component_bound_event" with no delegate_operation.',
       agent_facing_statement_kinds: [
         'component_bound_event',
         'delegate.bind',

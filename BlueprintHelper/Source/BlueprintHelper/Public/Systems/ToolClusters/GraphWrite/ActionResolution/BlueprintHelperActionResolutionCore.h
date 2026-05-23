@@ -37,7 +37,7 @@ enum class EBlueprintHelperActionSemanticKind : uint8
 	Select,
 	Event,
 	ComponentBoundEvent,
-	Bind,
+	Delegate,
 	Control,
 	Create,
 	Convert,

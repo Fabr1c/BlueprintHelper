@@ -62,6 +62,29 @@ static TSharedPtr<FBlueprintHelperGraphExpressionIR> FindFirstExpression(
 	}
 	return nullptr;
 }
+
+static FString NormalizeDelegateOperation(const FString& Operation)
+{
+	return Operation.TrimStartAndEnd().ToLower();
+}
+
+static bool IsSupportedDelegateOperation(const FString& Operation)
+{
+	const FString Normalized = NormalizeDelegateOperation(Operation);
+	return Normalized == TEXT("bind")
+		|| Normalized == TEXT("assign")
+		|| Normalized == TEXT("unbind")
+		|| Normalized == TEXT("call")
+		|| Normalized == TEXT("clear");
+}
+
+static bool DelegateOperationRequiresHandler(const FString& Operation)
+{
+	const FString Normalized = NormalizeDelegateOperation(Operation);
+	return Normalized == TEXT("bind")
+		|| Normalized == TEXT("assign")
+		|| Normalized == TEXT("unbind");
+}
 }
 bool FBlueprintHelperGraphResolvedTarget::IsResolved() const
 {
@@ -416,6 +439,38 @@ TSharedPtr<FBlueprintHelperGraphStatementIR> FBlueprintHelperGraphSemanticIRBuil
 	StatementObject->TryGetStringField(TEXT("target"), Statement->Target);
 	StatementObject->TryGetStringField(TEXT("name"), Statement->Name);
 	StatementObject->TryGetStringField(TEXT("property"), Statement->Property);
+	StatementObject->TryGetStringField(TEXT("component"), Statement->ComponentName);
+	StatementObject->TryGetStringField(TEXT("delegate"), Statement->DelegateName);
+	StatementObject->TryGetStringField(TEXT("delegate_operation"), Statement->DelegateOperation);
+	StatementObject->TryGetStringField(TEXT("handler"), Statement->HandlerName);
+	StatementObject->TryGetStringField(TEXT("unbind_mode"), Statement->UnbindMode);
+	if (Statement->Kind == EBlueprintHelperGraphStatementKind::ComponentBoundEvent)
+	{
+		if (Statement->Target.TrimStartAndEnd().IsEmpty())
+		{
+			Statement->Target = Statement->ComponentName;
+		}
+		if (Statement->Property.TrimStartAndEnd().IsEmpty())
+		{
+			Statement->Property = Statement->DelegateName;
+		}
+		if (Statement->Name.TrimStartAndEnd().IsEmpty())
+		{
+			Statement->Name = Statement->DelegateName;
+		}
+	}
+	else if (Statement->Kind == EBlueprintHelperGraphStatementKind::Delegate)
+	{
+		if (Statement->Property.TrimStartAndEnd().IsEmpty())
+		{
+			Statement->Property = Statement->DelegateName;
+		}
+		if (Statement->Name.TrimStartAndEnd().IsEmpty())
+		{
+			Statement->Name = Statement->DelegateName;
+		}
+		Statement->DelegateOperation = NormalizeDelegateOperation(Statement->DelegateOperation);
+	}
 	StatementObject->TryGetStringField(TEXT("resolved_stable_id"), Statement->ResolvedCallFunctionStableId);
 	StatementObject->TryGetStringField(TEXT("search_mode"), Statement->SearchMode);
 	StatementObject->TryGetStringField(TEXT("ambiguity"), Statement->AmbiguityPolicy);
@@ -733,6 +788,68 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveStatement(
 	case EBlueprintHelperGraphStatementKind::Return:
 	case EBlueprintHelperGraphStatementKind::Unknown:
 	default:
+		break;
+
+	case EBlueprintHelperGraphStatementKind::ComponentBoundEvent:
+		if (Statement->Target.TrimStartAndEnd().IsEmpty())
+		{
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("component_bound_event_component_missing"), Statement->Path + TEXT(".component"), TEXT("component_bound_event statement requires component."));
+		}
+		if (Statement->Property.TrimStartAndEnd().IsEmpty())
+		{
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("component_bound_event_delegate_missing"), Statement->Path + TEXT(".delegate"), TEXT("component_bound_event statement requires delegate."));
+		}
+		if (Statement->HandlerName.TrimStartAndEnd().IsEmpty())
+		{
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("component_bound_event_handler_missing"), Statement->Path + TEXT(".handler"), TEXT("component_bound_event statement requires handler evidence."));
+		}
+		Statement->ResolvedTarget = FBlueprintHelperGraphSemanticIRUtils::ResolveTargetString(Statement->Target, Statement->Kind, EBlueprintHelperGraphExpressionKind::Unknown, Context);
+		FBlueprintHelperGraphSemanticIRUtils::AddUnverifiedTargetDiagnostic(OutIR, Context, Statement->ResolvedTarget, Statement->Path + TEXT(".component"));
+		break;
+
+	case EBlueprintHelperGraphStatementKind::Delegate:
+		if (Statement->Target.TrimStartAndEnd().IsEmpty())
+		{
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("delegate_target_missing"), Statement->Path + TEXT(".target"), TEXT("delegate statement requires target."));
+		}
+		if (Statement->Property.TrimStartAndEnd().IsEmpty())
+		{
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("delegate_name_missing"), Statement->Path + TEXT(".delegate"), TEXT("delegate statement requires delegate."));
+		}
+		if (Statement->DelegateOperation.TrimStartAndEnd().IsEmpty())
+		{
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("delegate_operation_missing"), Statement->Path + TEXT(".delegate_operation"), TEXT("delegate statement requires delegate_operation."));
+		}
+		else if (!IsSupportedDelegateOperation(Statement->DelegateOperation))
+		{
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(
+				OutIR,
+				TEXT("delegate_operation_unsupported"),
+				Statement->Path + TEXT(".delegate_operation"),
+				FString::Printf(TEXT("Unsupported delegate_operation: %s."), *Statement->DelegateOperation));
+		}
+		if (DelegateOperationRequiresHandler(Statement->DelegateOperation)
+			&& Statement->HandlerName.TrimStartAndEnd().IsEmpty())
+		{
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("delegate_handler_missing"), Statement->Path + TEXT(".handler"), TEXT("delegate bind/assign/unbind statement requires handler evidence."));
+		}
+		if (NormalizeDelegateOperation(Statement->DelegateOperation) == TEXT("unbind")
+			&& !Statement->UnbindMode.Equals(TEXT("single"), ESearchCase::IgnoreCase))
+		{
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("delegate_unbind_mode_single_missing"), Statement->Path + TEXT(".unbind_mode"), TEXT("delegate unbind statement requires unbind_mode=single."));
+		}
+		if (NormalizeDelegateOperation(Statement->DelegateOperation) == TEXT("clear"))
+		{
+			if (!Statement->UnbindMode.Equals(TEXT("all"), ESearchCase::IgnoreCase))
+			{
+				FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("delegate_clear_unbind_mode_all_missing"), Statement->Path + TEXT(".unbind_mode"), TEXT("delegate clear statement requires unbind_mode=all."));
+			}
+			if (!Statement->HandlerName.TrimStartAndEnd().IsEmpty())
+			{
+				FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("delegate_clear_handler_forbidden"), Statement->Path + TEXT(".handler"), TEXT("delegate clear statement must not include handler evidence."));
+			}
+		}
+		Statement->ResolvedTarget = FBlueprintHelperGraphSemanticIRUtils::ResolveTargetString(Statement->Target, Statement->Kind, EBlueprintHelperGraphExpressionKind::Unknown, Context);
 		break;
 	}
 

@@ -180,26 +180,26 @@ static TArray<FBlueprintHelperGraphWriteCapabilityCaseResult> MakeP6CapabilityRo
 		TEXT("EventDrivenConfigApplier"),
 		TEXT("GraphWrite"),
 		TEXT("Component-bound event and delegate bind projected evidence"),
-		EBlueprintHelperGraphWriteCapabilityErrorKind::UnsupportedIntent,
+		EBlueprintHelperGraphWriteCapabilityErrorKind::None,
 		false,
-		false,
-		TEXT("Complete component/delegate/signature projected evidence returns unsupported_intent with no SelectedSpawner, preserving P5 Gap 5."),
-		TEXT("Saved/Automation/GraphWrite80_P5_EventDelegate_002/index.json"),
-		TEXT("Gap 5 remains open: component-bound event / delegate bind spawner family unresolved."),
-		TEXT("component_bound_event|bind"),
-		TEXT("EventDelegateActionCluster"),
-		TEXT("unsupported_intent"),
-		TEXT(""),
-		TEXT(""),
-		0,
-		{TEXT("component_bound_event_spawner_family"), TEXT("delegate_bind_spawner_family")},
-		TEXT(""),
-		TEXT("readback=no delegate/bind node; no fake positive; missing route recorded as unsupported_intent"),
 		true,
-		false,
-		false,
-		1,
-		0,
+		TEXT("Complete component/delegate/signature/handler projected evidence resolves and spawns component-bound event plus delegate bind/assign/unbind/call/clear use-site nodes; GraphWrite/EventDelegate does not call Signature ensure_* behavior."),
+		TEXT("Saved/Automation/GraphWrite_Gap5_EventDelegateResolver_GREEN_002/index.json; Saved/Automation/GraphWrite_Gap5_EventDelegateFragment_GREEN_002/index.json"),
+		TEXT("Gap 5 first-stage EventDelegate use-site positive spawner support is closed."),
+		TEXT("component_bound_event|delegate"),
+		TEXT("EventDelegateActionCluster"),
+		TEXT("resolved"),
+		TEXT("component_bound_event:OnComponentBeginOverlap:CollisionComponent|delegate:bind/assign/unbind/call/clear:OnComponentBeginOverlap"),
+		TEXT("UBlueprintBoundEventNodeSpawner|UBlueprintDelegateNodeSpawner|manual_assign_factory"),
+		6,
+		{},
+		TEXT("K2Node_ComponentBoundEvent|K2Node_AddDelegate|K2Node_AssignDelegate|K2Node_RemoveDelegate|K2Node_CallDelegate|K2Node_ClearDelegate|K2Node_CreateDelegate"),
+		TEXT("component=CollisionComponent; delegate=OnComponentBeginOverlap; operations=bind,assign,unbind,call,clear; CreateDelegate only for bind/assign/unbind; assign creates no CustomEvent"),
+		true,
+		true,
+		true,
+		6,
+		6,
 		0,
 		0));
 
@@ -233,18 +233,18 @@ bool FBlueprintHelperGraphWriteCapabilityMetricsSummaryTest::RunTest(const FStri
 	const FBlueprintHelperGraphWriteCapabilitySummary Summary = FBlueprintHelperGraphWriteCapabilityMetrics::Summarize(Results);
 	TestEqual(TEXT("Capability items planned"), Summary.CapabilityItemsPlanned, 5);
 	TestEqual(TEXT("Capability items covered or precisely diagnosed"), Summary.CapabilityItemsCovered, 5);
-	TestEqual(TEXT("GraphWrite scenario checks run"), Summary.GraphWriteCasesRun, 18);
-	TestEqual(TEXT("GraphWrite scenario checks correct"), Summary.GraphWriteCasesCorrect, 17);
+	TestEqual(TEXT("GraphWrite scenario checks run"), Summary.GraphWriteCasesRun, 23);
+	TestEqual(TEXT("GraphWrite scenario checks correct"), Summary.GraphWriteCasesCorrect, 23);
 	TestEqual(TEXT("Call samples run"), Summary.CallSamplesRun, 8);
 	TestEqual(TEXT("Call samples correct"), Summary.CallSamplesCorrect, 8);
 	TestEqual(TEXT("Silent wrong graphs"), Summary.SilentWrongGraphCount, 0);
 	TestTrue(TEXT("Capability coverage is computed from rows"), FMath::IsNearlyEqual(Summary.CapabilityCoverageRate(), 1.0));
-	TestTrue(TEXT("GraphWrite correctness is computed from row checks"), FMath::IsNearlyEqual(Summary.GraphWriteCorrectRate(), 17.0 / 18.0));
+	TestTrue(TEXT("GraphWrite correctness is computed from row checks"), FMath::IsNearlyEqual(Summary.GraphWriteCorrectRate(), 1.0));
 	TestTrue(TEXT("Call correctness is computed from row samples"), FMath::IsNearlyEqual(Summary.CallCorrectRate(), 1.0));
 	TestTrue(TEXT("Markdown row records semantic kind"), FBlueprintHelperGraphWriteCapabilityMetrics::ToMarkdownRow(Results[1]).Contains(TEXT("call|set_property|control")));
 	TestTrue(TEXT("Markdown row records selected stable id"), FBlueprintHelperGraphWriteCapabilityMetrics::ToMarkdownRow(Results[2]).Contains(TEXT("singleton_control_flow:select")));
 	TestTrue(TEXT("Markdown row records readback summary"), FBlueprintHelperGraphWriteCapabilityMetrics::ToMarkdownRow(Results[3]).Contains(TEXT("struct_make=Vector")));
-	TestTrue(TEXT("P5 delegate row remains unsupported intent"), FBlueprintHelperGraphWriteCapabilityMetrics::ToMarkdownRow(Results[4]).Contains(TEXT("unsupported_intent")));
+	TestTrue(TEXT("P5 delegate row records delegate operation success"), FBlueprintHelperGraphWriteCapabilityMetrics::ToMarkdownRow(Results[4]).Contains(TEXT("delegate:bind/assign/unbind/call/clear")));
 	return true;
 }
 
@@ -260,7 +260,7 @@ bool FBlueprintHelperGraphWriteCapabilityScenarioRegistrationTest::RunTest(const
 	Results.Add({TEXT("PhysicalDoor_InteractableOnly"), TEXT("GraphWrite"), TEXT("Physical door internal logic readback"), EBlueprintHelperGraphWriteCapabilityErrorKind::NotRun, false, false, TEXT("registered"), TEXT(""), TEXT("")});
 	Results.Add({TEXT("TimedAccessGate_StateMachine"), TEXT("GraphWrite"), TEXT("Function / Field / Control readback"), EBlueprintHelperGraphWriteCapabilityErrorKind::NotRun, false, false, TEXT("registered"), TEXT(""), TEXT("")});
 	Results.Add({TEXT("EventDrivenConfigApplier"), TEXT("GraphWrite"), TEXT("Struct make/break and custom event readback"), EBlueprintHelperGraphWriteCapabilityErrorKind::NotRun, false, false, TEXT("registered"), TEXT(""), TEXT("")});
-	Results.Add({TEXT("EventDrivenConfigApplier"), TEXT("GraphWrite"), TEXT("Component-bound event / delegate bind diagnostic"), EBlueprintHelperGraphWriteCapabilityErrorKind::NotRun, false, false, TEXT("registered"), TEXT(""), TEXT("")});
+	Results.Add({TEXT("EventDrivenConfigApplier"), TEXT("GraphWrite"), TEXT("Component-bound event / delegate use-site readback"), EBlueprintHelperGraphWriteCapabilityErrorKind::NotRun, false, false, TEXT("registered"), TEXT(""), TEXT("")});
 
 	TestEqual(TEXT("scenario count"), Results.Num(), 5);
 	for (const FBlueprintHelperGraphWriteCapabilityCaseResult& Result : Results)
@@ -301,9 +301,11 @@ bool FBlueprintHelperGraphWriteCapabilityP6ReadbackEvidenceTest::RunTest(const F
 	TestTrue(TEXT("TimedAccessGate excludes direct mutation spawn evidence"), Results[2].PinDefaultLinkReadbackSummary.Contains(TEXT("no builder/composer/mutation direct spawn evidence")));
 	TestTrue(TEXT("EventDrivenConfigApplier custom event readback records event"), Results[3].PinDefaultLinkReadbackSummary.Contains(TEXT("event=ApplyConfig")));
 	TestTrue(TEXT("EventDrivenConfigApplier struct readback records make/break"), Results[3].PinDefaultLinkReadbackSummary.Contains(TEXT("struct_make=Vector")));
-	TestEqual(TEXT("delegate row stays unsupported"), Results[4].ErrorKind, EBlueprintHelperGraphWriteCapabilityErrorKind::UnsupportedIntent);
-	TestTrue(TEXT("delegate row has no fake selected stable id"), Results[4].SelectedStableId.IsEmpty());
-	TestFalse(TEXT("delegate row has no fake selected spawner"), Results[4].bHasSpawnEvidence);
+	TestEqual(TEXT("delegate row is positive"), Results[4].ErrorKind, EBlueprintHelperGraphWriteCapabilityErrorKind::None);
+	TestTrue(TEXT("delegate row records assign custom event guard"), Results[4].PinDefaultLinkReadbackSummary.Contains(TEXT("assign creates no CustomEvent")));
+	TestTrue(TEXT("delegate row records create delegate scope"), Results[4].PinDefaultLinkReadbackSummary.Contains(TEXT("CreateDelegate only for bind/assign/unbind")));
+	TestTrue(TEXT("delegate row records spawned node classes"), Results[4].SpawnedNodeClass.Contains(TEXT("K2Node_AssignDelegate")));
+	TestTrue(TEXT("delegate row records manual assign factory"), Results[4].SelectedSpawnerClass.Contains(TEXT("manual_assign_factory")));
 	return true;
 }
 
