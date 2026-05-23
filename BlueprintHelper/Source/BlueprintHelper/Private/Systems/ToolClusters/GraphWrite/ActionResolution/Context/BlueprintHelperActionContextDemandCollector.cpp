@@ -22,10 +22,32 @@ static FString FirstNonEmpty(const FString& First, const FString& Second, const 
 	return FirstNonEmpty(FirstNonEmpty(First, Second, Third, Fourth), Fifth);
 }
 
+static FString FirstNonEmpty(
+	const FString& First,
+	const FString& Second,
+	const FString& Third,
+	const FString& Fourth,
+	const FString& Fifth,
+	const FString& Sixth)
+{
+	return FirstNonEmpty(FirstNonEmpty(First, Second, Third, Fourth, Fifth), Sixth);
+}
+
 static bool IsEventDelegateSemantic(const EBlueprintHelperActionSemanticKind SemanticKind);
 
 static FString BuildStatementQuery(const FBlueprintHelperGraphStatementIR& Statement, const EBlueprintHelperActionSemanticKind SemanticKind)
 {
+	if (SemanticKind == EBlueprintHelperActionSemanticKind::Field)
+	{
+		return FirstNonEmpty(
+			Statement.ResolvedTarget.Raw,
+			Statement.Property,
+			Statement.Target,
+			Statement.Name,
+			Statement.ResolvedTarget.Member,
+			Statement.PatternName);
+	}
+
 	if (SemanticKind == EBlueprintHelperActionSemanticKind::Call)
 	{
 		return FirstNonEmpty(
@@ -53,6 +75,17 @@ static FString BuildStatementQuery(const FBlueprintHelperGraphStatementIR& State
 
 static FString BuildExpressionQuery(const FBlueprintHelperGraphExpressionIR& Expression, const EBlueprintHelperActionSemanticKind SemanticKind)
 {
+	if (SemanticKind == EBlueprintHelperActionSemanticKind::Field)
+	{
+		return FirstNonEmpty(
+			Expression.ResolvedTarget.Raw,
+			Expression.Property,
+			Expression.Target,
+			Expression.Name,
+			Expression.ResolvedTarget.Member,
+			Expression.PatternName);
+	}
+
 	if (SemanticKind == EBlueprintHelperActionSemanticKind::Op)
 	{
 		return Expression.Operator;
@@ -265,7 +298,9 @@ FBlueprintHelperActionContextDemand FBlueprintHelperActionContextDemandCollector
 	const FString& SearchMode,
 	const FString& AmbiguityPolicy,
 	const TArray<FString>& CategoryPriority,
-	const TArray<FString>& ArgumentNames)
+	const TArray<FString>& ArgumentNames,
+	const FString& FieldOperation,
+	const FString& FieldScope)
 {
 	return BuildDemand(
 		StableId,
@@ -278,7 +313,9 @@ FBlueprintHelperActionContextDemand FBlueprintHelperActionContextDemandCollector
 		SearchMode,
 		AmbiguityPolicy,
 		CategoryPriority,
-		ArgumentNames);
+		ArgumentNames,
+		FieldOperation,
+		FieldScope);
 }
 
 void FBlueprintHelperActionContextDemandCollector::CollectFromStatementArray(
@@ -303,6 +340,12 @@ void FBlueprintHelperActionContextDemandCollector::AppendDemandForStatement(
 	TArray<FBlueprintHelperActionContextDemand>& OutDemands)
 {
 	const EBlueprintHelperActionSemanticKind SemanticKind = ToActionSemanticKind(Statement.Kind);
+	const FString FieldOperation = Statement.Kind == EBlueprintHelperGraphStatementKind::Field
+		? Statement.FieldOperation
+		: (Statement.Kind == EBlueprintHelperGraphStatementKind::Let ? TEXT("set") : FString());
+	const FString FieldScope = Statement.Kind == EBlueprintHelperGraphStatementKind::Field
+		? Statement.FieldScope
+		: (Statement.Kind == EBlueprintHelperGraphStatementKind::Let ? TEXT("variable") : FString());
 	const FString StableId = Statement.StatementId.IsEmpty()
 		? BlueprintHelperActionContextDemandCollector::DemandIdFromPath(TEXT("statement"), Statement.Path)
 		: Statement.StatementId;
@@ -323,7 +366,9 @@ void FBlueprintHelperActionContextDemandCollector::AppendDemandForStatement(
 		Statement.SearchMode,
 		Statement.AmbiguityPolicy,
 		Statement.CategoryPriority,
-		BlueprintHelperActionContextDemandCollector::SortedArgumentNames(Statement.Args));
+		BlueprintHelperActionContextDemandCollector::SortedArgumentNames(Statement.Args),
+		FieldOperation,
+		FieldScope);
 	BlueprintHelperActionContextDemandCollector::CopyExpressionMapContext(Statement.Args, Demand);
 	if (Statement.Value.IsValid() && Demand.ExpectedReturnType.IsEmpty())
 	{
@@ -373,6 +418,12 @@ void FBlueprintHelperActionContextDemandCollector::AppendDemandForExpression(
 	TArray<FBlueprintHelperActionContextDemand>& OutDemands)
 {
 	const EBlueprintHelperActionSemanticKind SemanticKind = ToActionSemanticKind(Expression.Kind);
+	const FString FieldOperation = Expression.Kind == EBlueprintHelperGraphExpressionKind::Field
+		? Expression.FieldOperation
+		: FString();
+	const FString FieldScope = Expression.Kind == EBlueprintHelperGraphExpressionKind::Field
+		? Expression.FieldScope
+		: FString();
 	const FString StableId = Expression.ExpressionId.IsEmpty()
 		? BlueprintHelperActionContextDemandCollector::DemandIdFromPath(TEXT("expression"), Expression.Path)
 		: Expression.ExpressionId;
@@ -395,7 +446,9 @@ void FBlueprintHelperActionContextDemandCollector::AppendDemandForExpression(
 		Expression.SearchMode,
 		Expression.AmbiguityPolicy,
 		Expression.CategoryPriority,
-		BlueprintHelperActionContextDemandCollector::SortedArgumentNames(Expression.Args));
+		BlueprintHelperActionContextDemandCollector::SortedArgumentNames(Expression.Args),
+		FieldOperation,
+		FieldScope);
 	BlueprintHelperActionContextDemandCollector::CopyExpressionMapContext(Expression.Args, Demand);
 	BlueprintHelperActionContextDemandCollector::CopyNamedExpressionContext(TEXT("left"), Expression.Left, Demand);
 	BlueprintHelperActionContextDemandCollector::CopyNamedExpressionContext(TEXT("right"), Expression.Right, Demand);
@@ -491,7 +544,9 @@ FBlueprintHelperActionContextDemand FBlueprintHelperActionContextDemandCollector
 	const FString& SearchMode,
 	const FString& AmbiguityPolicy,
 	const TArray<FString>& CategoryPriority,
-	const TArray<FString>& ArgumentNames)
+	const TArray<FString>& ArgumentNames,
+	const FString& FieldOperation,
+	const FString& FieldScope)
 {
 	FBlueprintHelperActionContextDemand Demand;
 	Demand.StatementId = StableId;
@@ -501,6 +556,8 @@ FBlueprintHelperActionContextDemand FBlueprintHelperActionContextDemandCollector
 	Demand.TargetPath = TargetPath;
 	Demand.PropertyPath = PropertyPath;
 	Demand.TypeName = TypeName;
+	Demand.FieldOperation = FieldOperation.TrimStartAndEnd().ToLower();
+	Demand.FieldScope = FieldScope.TrimStartAndEnd().ToLower();
 	Demand.ExpectedReturnType = TypeName;
 	Demand.SearchMode = SearchMode;
 	Demand.AmbiguityPolicy = AmbiguityPolicy;
@@ -509,6 +566,14 @@ FBlueprintHelperActionContextDemand FBlueprintHelperActionContextDemandCollector
 	ApplyDemandKinds(Demand);
 	if (Demand.ClusterKind == EBlueprintHelperSpawnerClusterKind::FieldVariableAction)
 	{
+		if (!Demand.FieldOperation.IsEmpty())
+		{
+			Demand.DefaultValues.Add(TEXT("field_operation"), Demand.FieldOperation);
+		}
+		if (!Demand.FieldScope.IsEmpty())
+		{
+			Demand.DefaultValues.Add(TEXT("field_scope"), Demand.FieldScope);
+		}
 		const FString FieldQuery = !Demand.PropertyPath.IsEmpty()
 			? Demand.PropertyPath
 			: Demand.TargetPath;
@@ -558,10 +623,7 @@ void FBlueprintHelperActionContextDemandCollector::ApplyDemandKinds(FBlueprintHe
 		Demand.RequiredKinds.Add(EBlueprintHelperActionContextDemandKind::Target);
 		break;
 
-	case EBlueprintHelperActionSemanticKind::Get:
-	case EBlueprintHelperActionSemanticKind::Set:
-	case EBlueprintHelperActionSemanticKind::GetProperty:
-	case EBlueprintHelperActionSemanticKind::SetProperty:
+	case EBlueprintHelperActionSemanticKind::Field:
 		Demand.ClusterKind = EBlueprintHelperSpawnerClusterKind::FieldVariableAction;
 		Demand.RequiredKinds.Add(EBlueprintHelperActionContextDemandKind::TypedPins);
 		Demand.RequiredKinds.Add(EBlueprintHelperActionContextDemandKind::Target);
@@ -597,16 +659,14 @@ EBlueprintHelperActionSemanticKind FBlueprintHelperActionContextDemandCollector:
 	{
 	case EBlueprintHelperGraphStatementKind::Call:
 		return EBlueprintHelperActionSemanticKind::Call;
-	case EBlueprintHelperGraphStatementKind::Set:
-		return EBlueprintHelperActionSemanticKind::Set;
-	case EBlueprintHelperGraphStatementKind::SetProperty:
-		return EBlueprintHelperActionSemanticKind::SetProperty;
+	case EBlueprintHelperGraphStatementKind::Field:
+		return EBlueprintHelperActionSemanticKind::Field;
 	case EBlueprintHelperGraphStatementKind::Branch:
 	case EBlueprintHelperGraphStatementKind::Sequence:
 	case EBlueprintHelperGraphStatementKind::Return:
 		return EBlueprintHelperActionSemanticKind::Control;
 	case EBlueprintHelperGraphStatementKind::Let:
-		return EBlueprintHelperActionSemanticKind::Set;
+		return EBlueprintHelperActionSemanticKind::Field;
 	case EBlueprintHelperGraphStatementKind::ComponentBoundEvent:
 		return EBlueprintHelperActionSemanticKind::ComponentBoundEvent;
 	case EBlueprintHelperGraphStatementKind::Delegate:
@@ -621,10 +681,8 @@ EBlueprintHelperActionSemanticKind FBlueprintHelperActionContextDemandCollector:
 {
 	switch (Kind)
 	{
-	case EBlueprintHelperGraphExpressionKind::Get:
-		return EBlueprintHelperActionSemanticKind::Get;
-	case EBlueprintHelperGraphExpressionKind::GetProperty:
-		return EBlueprintHelperActionSemanticKind::GetProperty;
+	case EBlueprintHelperGraphExpressionKind::Field:
+		return EBlueprintHelperActionSemanticKind::Field;
 	case EBlueprintHelperGraphExpressionKind::Call:
 		return EBlueprintHelperActionSemanticKind::Call;
 	case EBlueprintHelperGraphExpressionKind::Op:

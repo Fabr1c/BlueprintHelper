@@ -11,6 +11,8 @@ FBlueprintHelperGraphFragmentBuildRequest FBlueprintHelperGraphFragmentBuildRequ
 	Request.Query = !Statement.Target.IsEmpty() ? Statement.Target : Statement.Name;
 	Request.Target = Statement.Target;
 	Request.PropertyPath = Statement.Property;
+	Request.FieldOperation = Statement.FieldOperation;
+	Request.FieldScope = Statement.FieldScope;
 	Request.TypeName = Statement.Value.IsValid() ? Statement.Value->Type : Statement.ResolvedTarget.Type;
 	Request.SearchMode = Statement.SearchMode;
 	Request.AmbiguityPolicy = Statement.AmbiguityPolicy;
@@ -42,6 +44,8 @@ FBlueprintHelperGraphFragmentBuildRequest FBlueprintHelperGraphFragmentBuildRequ
 	Request.Query = Expression.Target;
 	Request.Target = Expression.Target;
 	Request.PropertyPath = Expression.ResolvedTarget.PropertyPath;
+	Request.FieldOperation = Expression.FieldOperation;
+	Request.FieldScope = Expression.FieldScope;
 	Request.TypeName = Expression.Type;
 	Request.ExpectedReturnType = Expression.Type;
 	Request.SearchMode = Expression.SearchMode;

@@ -72,6 +72,54 @@ describe('GraphWrite TaskPlan contract metadata', () => {
     ]);
   });
 
+  it('pins EventDelegate public schema and internal lowering boundary', () => {
+    const firstSlice = TASK_PROTOCOL_CONTRACT_V1.supported_first_slice;
+    const boundary = TASK_PROTOCOL_CONTRACT_V1.graph_write_taskspec_contract.event_delegate_use_site_boundary;
+
+    assert.deepEqual(boundary.agent_facing_statement_kinds, [
+      'component_bound_event',
+      'delegate.bind',
+      'delegate.assign',
+      'delegate.unbind',
+      'delegate.unbind_all',
+      'delegate.call',
+    ]);
+    assert.deepEqual(boundary.compiler_internal_statement_kinds, [
+      'component_bound_event',
+      'delegate',
+    ]);
+    assert.deepEqual(boundary.delegate_operations, [
+      'bind',
+      'assign',
+      'unbind',
+      'clear',
+      'call',
+    ]);
+    assert.deepEqual(boundary.public_to_internal_lowering, {
+      component_bound_event: { kind: 'component_bound_event' },
+      'delegate.bind': { kind: 'delegate', delegate_operation: 'bind' },
+      'delegate.assign': { kind: 'delegate', delegate_operation: 'assign' },
+      'delegate.unbind': { kind: 'delegate', delegate_operation: 'unbind', unbind_mode: 'single' },
+      'delegate.unbind_all': { kind: 'delegate', delegate_operation: 'clear', unbind_mode: 'all' },
+      'delegate.call': { kind: 'delegate', delegate_operation: 'call' },
+    });
+    assert.deepEqual(boundary.forbidden_internal_top_level_statement_kinds, [
+      'bind',
+      'assign',
+      'unbind',
+      'unbind_all',
+      'delegate.bind',
+      'delegate.assign',
+      'delegate.unbind',
+      'delegate.unbind_all',
+      'delegate.call',
+      'delegate_call',
+      'delegate_clear',
+    ]);
+    assert.equal(firstSlice.statement_kinds.includes('delegate.bind'), true);
+    assert.equal((firstSlice.statement_kinds as readonly string[]).includes('delegate'), false);
+  });
+
   it('publishes GraphWrite TaskPlan as structured IR, not low-level operation list', () => {
     const irContract = TASK_PROTOCOL_CONTRACT_V1.graph_write_taskplan_ir_contract;
 

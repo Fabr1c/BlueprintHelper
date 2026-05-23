@@ -82,7 +82,9 @@ bool FBlueprintHelperGraphFragmentBuilderRegistry::TryBuildStatement(
 			ActionContextScope);
 	}
 
-	if (Statement.Kind == EBlueprintHelperGraphStatementKind::Set)
+	if (Statement.Kind == EBlueprintHelperGraphStatementKind::Field
+		&& Statement.FieldOperation.Equals(TEXT("set"), ESearchCase::IgnoreCase)
+		&& Statement.FieldScope.Equals(TEXT("variable"), ESearchCase::IgnoreCase))
 	{
 		const FString VariableName = !Statement.ResolvedTarget.Member.IsEmpty()
 			? Statement.ResolvedTarget.Member
@@ -105,7 +107,9 @@ bool FBlueprintHelperGraphFragmentBuilderRegistry::TryBuildStatement(
 			ActionContextScope);
 	}
 
-	if (Statement.Kind == EBlueprintHelperGraphStatementKind::SetProperty)
+	if (Statement.Kind == EBlueprintHelperGraphStatementKind::Field
+		&& Statement.FieldOperation.Equals(TEXT("set"), ESearchCase::IgnoreCase)
+		&& Statement.FieldScope.Equals(TEXT("property_path"), ESearchCase::IgnoreCase))
 	{
 		const FString PropertyTarget = !Statement.ResolvedTarget.Member.IsEmpty()
 			? Statement.ResolvedTarget.Member

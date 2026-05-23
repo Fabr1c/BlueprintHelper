@@ -27,6 +27,11 @@ static FString NormalizeFieldVariableToken(const FString& Value)
 	return Normalized;
 }
 
+static FString NormalizeFieldBoundaryToken(const FString& Value)
+{
+	return Value.TrimStartAndEnd().ToLower();
+}
+
 static FString DescribePinType(const FEdGraphPinType& PinType)
 {
 	if (PinType.PinCategory == UEdGraphSchema_K2::PC_Boolean)
@@ -72,10 +77,9 @@ static FString DescribePinType(const FEdGraphPinType& PinType)
 	return Result;
 }
 
-static bool IsPropertySemanticKind(EBlueprintHelperActionSemanticKind Kind)
+static bool IsPropertyFieldScope(const FString& FieldScope)
 {
-	return Kind == EBlueprintHelperActionSemanticKind::GetProperty
-		|| Kind == EBlueprintHelperActionSemanticKind::SetProperty;
+	return NormalizeFieldBoundaryToken(FieldScope) == TEXT("property_path");
 }
 
 static FString GetEvidenceValue(const TMap<FString, FString>& Evidence, const TCHAR* Key)
@@ -244,13 +248,15 @@ static int32 ScoreVariableCandidate(
 static FString MakeVariableStableId(
 	const UBlueprint* Blueprint,
 	const FBPVariableDescription& Variable,
-	EBlueprintHelperActionSemanticKind SemanticKind)
+	const FString& FieldOperation,
+	const FString& FieldScope)
 {
 	return FString::Printf(
-		TEXT("field_variable:%s:%s:%s"),
+		TEXT("field_variable:%s:%s:field:%s:%s"),
 		Blueprint ? *Blueprint->GetPathName() : TEXT("unknown_blueprint"),
 		*Variable.VarName.ToString(),
-		*FBlueprintHelperActionResolutionCore::SemanticKindToString(SemanticKind));
+		*NormalizeFieldBoundaryToken(FieldOperation),
+		*NormalizeFieldBoundaryToken(FieldScope));
 }
 
 static FBlueprintHelperCallFunctionCandidateInfo BuildCandidateInfo(
@@ -261,15 +267,21 @@ static FBlueprintHelperCallFunctionCandidateInfo BuildCandidateInfo(
 	const int32 Score)
 {
 	FBlueprintHelperCallFunctionCandidateInfo Info;
-	Info.StableId = MakeVariableStableId(Request.Blueprint, Variable, Request.Semantic.Kind);
+	Info.StableId = MakeVariableStableId(
+		Request.Blueprint,
+		Variable,
+		Request.Semantic.FieldOperation,
+		Request.Semantic.FieldScope);
 	Info.DisplayName = Variable.VarName.ToString();
 	Info.OwnerClassPath = OwnerClass ? OwnerClass->GetPathName() : FString();
 	Info.NativeFunctionName = Variable.VarName.ToString();
 	Info.Category = TEXT("field_variable");
 	Info.NodeClassPath = NodeClass ? NodeClass->GetPathName() : FString();
 	Info.MatchReason = FString::Printf(
-		TEXT("semantic=%s,score=%d,type=%s"),
+		TEXT("semantic=%s,field_operation=%s,field_scope=%s,score=%d,type=%s"),
 		*FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.Semantic.Kind),
+		*Request.Semantic.FieldOperation,
+		*Request.Semantic.FieldScope,
 		Score,
 		*DescribePinType(Variable.VarType));
 	Info.ReturnType = DescribePinType(Variable.VarType);
@@ -338,18 +350,18 @@ static void SetFieldCandidateDiagnostics(
 }
 }
 
-bool FBlueprintHelperFieldVariableActionResolver::IsSupportedSemanticKind(EBlueprintHelperActionSemanticKind Kind)
+bool FBlueprintHelperFieldVariableActionResolver::IsSupportedSemanticKind(const FBlueprintHelperActionSemanticConstraints& Semantic)
 {
-	return Kind == EBlueprintHelperActionSemanticKind::Get
-		|| Kind == EBlueprintHelperActionSemanticKind::Set
-		|| Kind == EBlueprintHelperActionSemanticKind::GetProperty
-		|| Kind == EBlueprintHelperActionSemanticKind::SetProperty;
+	const FString FieldOperation = NormalizeFieldBoundaryToken(Semantic.FieldOperation);
+	const FString FieldScope = NormalizeFieldBoundaryToken(Semantic.FieldScope);
+	return Semantic.Kind == EBlueprintHelperActionSemanticKind::Field
+		&& (FieldOperation == TEXT("get") || FieldOperation == TEXT("set"))
+		&& (FieldScope == TEXT("variable") || FieldScope == TEXT("property_path"));
 }
 
-bool FBlueprintHelperFieldVariableActionResolver::IsWritableSemanticKind(EBlueprintHelperActionSemanticKind Kind)
+bool FBlueprintHelperFieldVariableActionResolver::IsWritableFieldOperation(const FString& FieldOperation)
 {
-	return Kind == EBlueprintHelperActionSemanticKind::Set
-		|| Kind == EBlueprintHelperActionSemanticKind::SetProperty;
+	return NormalizeFieldBoundaryToken(FieldOperation) == TEXT("set");
 }
 
 FBlueprintHelperActionResolutionResult FBlueprintHelperFieldVariableActionResolver::Resolve(
@@ -359,13 +371,15 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperFieldVariableActionResolv
 	FBlueprintHelperActionResolutionResult Result;
 	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::FieldVariableAction;
 
-	if (!IsSupportedSemanticKind(Context.GetSemantic().Kind))
+	if (!IsSupportedSemanticKind(Context.GetSemantic()))
 	{
 		Result.Status = EBlueprintHelperActionResolutionStatus::InvalidRequest;
 		Result.ErrorCode = TEXT("needs_more_semantic_context");
 		Result.Message = FString::Printf(
-			TEXT("FieldVariableActionCluster needs typed target/property-path context for semantic kind '%s'."),
-			*FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.Semantic.Kind));
+			TEXT("FieldVariableActionCluster needs field semantic context: semantic=%s field_operation=%s field_scope=%s."),
+			*FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.Semantic.Kind),
+			*Request.Semantic.FieldOperation,
+			*Request.Semantic.FieldScope);
 		return Result;
 	}
 
@@ -386,13 +400,13 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperFieldVariableActionResolv
 	}
 
 	UClass* OwnerClass = ResolveOwnerClass(Request.Blueprint);
-	TSubclassOf<UK2Node_Variable> NodeClass = IsWritableSemanticKind(Request.Semantic.Kind)
+	TSubclassOf<UK2Node_Variable> NodeClass = IsWritableFieldOperation(Request.Semantic.FieldOperation)
 		? UK2Node_VariableSet::StaticClass()
 		: UK2Node_VariableGet::StaticClass();
 
 	const TMap<FString, FString>& Evidence = Context.GetEvidence();
 	const FString OwnerEvidence = GetExplicitOwnerEvidence(Request, Evidence);
-	const bool bPropertySemantic = IsPropertySemanticKind(Request.Semantic.Kind);
+	const bool bPropertySemantic = IsPropertyFieldScope(Request.Semantic.FieldScope);
 	const FString PropertyPath = !Request.Semantic.PropertyPath.TrimStartAndEnd().IsEmpty()
 		? Request.Semantic.PropertyPath.TrimStartAndEnd()
 		: GetEvidenceValue(Evidence, TEXT("property_path"));
@@ -400,8 +414,10 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperFieldVariableActionResolv
 	if (OwnerEvidence.IsEmpty())
 	{
 		return MakeFieldMissingEvidenceResult(FString::Printf(
-			TEXT("Field variable action requires explicit owner evidence: semantic=%s query=%s target=%s property_path=%s."),
+			TEXT("Field variable action requires explicit owner evidence: semantic=%s field_operation=%s field_scope=%s query=%s target=%s property_path=%s."),
 			*FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.Semantic.Kind),
+			*Request.Semantic.FieldOperation,
+			*Request.Semantic.FieldScope,
 			*Request.Semantic.Query,
 			*Request.Semantic.TargetPath,
 			*Request.Semantic.PropertyPath));
@@ -410,8 +426,10 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperFieldVariableActionResolv
 	if (bPropertySemantic && PropertyPath.IsEmpty())
 	{
 		return MakeFieldMissingEvidenceResult(FString::Printf(
-			TEXT("Property field action requires explicit property_path evidence: semantic=%s owner=%s query=%s."),
+			TEXT("Property field action requires explicit property_path evidence: semantic=%s field_operation=%s field_scope=%s owner=%s query=%s."),
 			*FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.Semantic.Kind),
+			*Request.Semantic.FieldOperation,
+			*Request.Semantic.FieldScope,
 			*OwnerEvidence,
 			*Request.Semantic.Query));
 	}
@@ -437,8 +455,10 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperFieldVariableActionResolv
 			Result.Status = EBlueprintHelperActionResolutionStatus::Ambiguous;
 			Result.ErrorCode = TEXT("ambiguous_candidates");
 			Result.Message = FString::Printf(
-				TEXT("Field variable action is ambiguous without projected field_name evidence: semantic=%s owner=%s query=%s."),
+				TEXT("Field variable action is ambiguous without projected field_name evidence: semantic=%s field_operation=%s field_scope=%s owner=%s query=%s."),
 				*FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.Semantic.Kind),
+				*Request.Semantic.FieldOperation,
+				*Request.Semantic.FieldScope,
 				*OwnerEvidence,
 				*Request.Semantic.Query);
 			SetFieldCandidateDiagnostics(Result, Candidates, Request.MaxCandidates);
@@ -449,8 +469,10 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperFieldVariableActionResolv
 	if (FieldName.TrimStartAndEnd().IsEmpty())
 	{
 		return MakeFieldMissingEvidenceResult(FString::Printf(
-			TEXT("Field variable action requires projected field_name evidence: semantic=%s owner=%s query=%s target=%s."),
+			TEXT("Field variable action requires projected field_name evidence: semantic=%s field_operation=%s field_scope=%s owner=%s query=%s target=%s."),
 			*FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.Semantic.Kind),
+			*Request.Semantic.FieldOperation,
+			*Request.Semantic.FieldScope,
 			*OwnerEvidence,
 			*Request.Semantic.Query,
 			*Request.Semantic.TargetPath));
@@ -462,8 +484,10 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperFieldVariableActionResolv
 		Result.Status = EBlueprintHelperActionResolutionStatus::NotFound;
 		Result.ErrorCode = TEXT("field_action_unresolvable");
 		Result.Message = FString::Printf(
-			TEXT("Field variable action not found from projected context: semantic=%s field=%s query=%s target=%s."),
+			TEXT("Field variable action not found from projected context: semantic=%s field_operation=%s field_scope=%s field=%s query=%s target=%s."),
 			*FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.Semantic.Kind),
+			*Request.Semantic.FieldOperation,
+			*Request.Semantic.FieldScope,
 			*FieldName,
 			*Request.Semantic.Query,
 			*Request.Semantic.TargetPath);
@@ -478,26 +502,31 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperFieldVariableActionResolv
 		Result.Status = EBlueprintHelperActionResolutionStatus::NotFound;
 		Result.ErrorCode = TEXT("field_action_unresolvable");
 		Result.Message = FString::Printf(
-			TEXT("Field variable node spawner unavailable: semantic=%s field=%s."),
+			TEXT("Field variable node spawner unavailable: semantic=%s field_operation=%s field_scope=%s field=%s."),
 			*FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.Semantic.Kind),
+			*Request.Semantic.FieldOperation,
+			*Request.Semantic.FieldScope,
 			*FieldName);
 		return Result;
 	}
 
 	FBlueprintHelperCallFunctionCandidateInfo CandidateInfo;
 	CandidateInfo.StableId = FString::Printf(
-		TEXT("field_variable:%s:%s:%s"),
+		TEXT("field_variable:%s:%s:field:%s:%s"),
 		Request.Blueprint ? *Request.Blueprint->GetPathName() : TEXT("unknown_blueprint"),
 		*FieldName,
-		*FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.Semantic.Kind));
+		*NormalizeFieldBoundaryToken(Request.Semantic.FieldOperation),
+		*NormalizeFieldBoundaryToken(Request.Semantic.FieldScope));
 	CandidateInfo.DisplayName = FieldName;
 	CandidateInfo.OwnerClassPath = OwnerEvidence;
 	CandidateInfo.NativeFunctionName = FieldName;
 	CandidateInfo.Category = TEXT("field_variable");
 	CandidateInfo.NodeClassPath = NodeClass.Get() ? NodeClass->GetPathName() : FString();
 	CandidateInfo.MatchReason = FString::Printf(
-		TEXT("projected_context_evidence semantic=%s field=%s"),
+		TEXT("projected_context_evidence semantic=%s field_operation=%s field_scope=%s field=%s"),
 		*FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.Semantic.Kind),
+		*Request.Semantic.FieldOperation,
+		*Request.Semantic.FieldScope,
 		*FieldName);
 	CandidateInfo.ReturnType = !Evidence.FindRef(TEXT("field_pin_category")).IsEmpty()
 		? Evidence.FindRef(TEXT("field_pin_category"))
@@ -512,8 +541,10 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperFieldVariableActionResolv
 	Result.CandidateActions.Reset();
 	Result.CandidateActions.Add(CandidateInfo);
 	Result.Message = FString::Printf(
-		TEXT("Field variable action resolved: semantic=%s variable=%s."),
+		TEXT("Field variable action resolved: semantic=%s field_operation=%s field_scope=%s variable=%s."),
 		*FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.Semantic.Kind),
+		*Request.Semantic.FieldOperation,
+		*Request.Semantic.FieldScope,
 		*FieldName);
 	return Result;
 }

@@ -22,6 +22,25 @@
   3. C++ SemanticIR parser tests and parser guard.
   4. Verification and doc sync.
 
+## Execution Update - 2026-05-23
+
+Status: complete.
+
+Implementation evidence:
+- TypeScript contract metadata now exposes `agent_facing_statement_kinds`, `compiler_internal_statement_kinds`, `delegate_operations`, `public_to_internal_lowering`, and `forbidden_internal_top_level_statement_kinds`.
+- Python compiler keeps public delegate aliases separate from `INTERNAL_DELEGATE_STATEMENT_KIND` and rejects Agent-authored `kind="delegate"` in public TaskSpec with a deterministic diagnostic.
+- C++ SemanticIR parser tests prove dotted public delegate kinds are rejected as `statement_kind_unsupported`, while canonical `kind="delegate" + delegate_operation` is accepted.
+- Source contract now checks Python lowering constants and C++ parser boundary tokens.
+
+Verification evidence:
+- AgentFace `npm.cmd run build`: passed.
+- AgentFace `npm.cmd run test:node`: 154 pass, 0 fail.
+- AgentFace `python -m unittest discover -s python/tests -t python`: 64 tests OK.
+- UE 5.6 `Build.bat TemplateEditor Win64 Development`: `Result: Succeeded`.
+- `BlueprintHelper.GraphWrite.GraphSemanticIR.DelegateBoundary`: 2 succeeded, 0 failed, 0 notRun, report `Saved/Automation/GraphWrite_DelegateBoundary_SemanticIR_FINAL_001/index.json`.
+- `BlueprintHelper.GraphWrite.ActionResolution.Contract`: 6 succeeded, 0 failed, 0 notRun, report `Saved/Automation/GraphWrite_DelegateBoundary_SourceContract_FINAL_001/index.json`.
+- Source text guards found no production output assignment to top-level `bind/assign/unbind/unbind_all/delegate_call/delegate_clear`, and no dotted delegate public kinds in C++ SemanticIR parser sources.
+
 ## Boundary Invariants
 
 Agent-facing public GraphBody may include:
@@ -82,7 +101,7 @@ delegate_clear
 - Modify: `AgentFaceService/task-core/src/tests/task/task-contract-graphwrite.test.ts`
 - Modify if whole-contract fixture fails: `AgentFaceService/task-core/src/tests/task/task-contract.test.ts`
 
-- [ ] **Step 1: Add failing TypeScript contract test**
+- [x] **Step 1: Add failing TypeScript contract test**
 
 Add this test inside `describe('GraphWrite TaskPlan contract metadata', ...)` in `task-contract-graphwrite.test.ts`:
 
@@ -136,14 +155,14 @@ Add this test inside `describe('GraphWrite TaskPlan contract metadata', ...)` in
   });
 ```
 
-- [ ] **Step 2: Run the TypeScript contract test and verify it fails**
+- [x] **Step 2: Run the TypeScript contract test and verify it fails**
 
 Run:
 
 ```powershell
 cd D:\UEProjects\Template\Plugins\BlueprintHelper\AgentFaceService\task-core
 npm.cmd run build
-node --test dist/tests/task/task-contract-graphwrite.test.js
+node --test build/tests/task/task-contract-graphwrite.test.js
 ```
 
 Expected before implementation:
@@ -153,7 +172,7 @@ fail
 compiler_internal_statement_kinds is undefined
 ```
 
-- [ ] **Step 3: Update `task-contract.ts` metadata**
+- [x] **Step 3: Update `task-contract.ts` metadata**
 
 In `TASK_PROTOCOL_CONTRACT_V1.graph_write_taskspec_contract.event_delegate_use_site_boundary`, replace the current object with:
 
@@ -205,19 +224,19 @@ In `TASK_PROTOCOL_CONTRACT_V1.graph_write_taskspec_contract.event_delegate_use_s
     },
 ```
 
-- [ ] **Step 4: Update whole-contract expectation if needed**
+- [x] **Step 4: Update whole-contract expectation if needed**
 
 If `task-contract.test.ts` fails because it pins the full `graph_write_taskspec_contract`, add the same `event_delegate_use_site_boundary` fields to its expected object. Do not change unrelated contract sections.
 
-- [ ] **Step 5: Re-run TypeScript contract tests**
+- [x] **Step 5: Re-run TypeScript contract tests**
 
 Run:
 
 ```powershell
 cd D:\UEProjects\Template\Plugins\BlueprintHelper\AgentFaceService\task-core
 npm.cmd run build
-node --test dist/tests/task/task-contract-graphwrite.test.js
-node --test dist/tests/task/task-contract.test.js
+node --test build/tests/task/task-contract-graphwrite.test.js
+node --test build/tests/task/task-contract.test.js
 ```
 
 Expected:
@@ -232,7 +251,7 @@ fail 0
 **Files:**
 - Modify: `AgentFaceService/task-core/python/tests/test_graph_write_delegate_statements.py`
 
-- [ ] **Step 1: Add failing tests for public-to-internal lowering**
+- [x] **Step 1: Add failing tests for public-to-internal lowering**
 
 Append these tests to `GraphWriteDelegateStatementCompilerTests`:
 
@@ -300,13 +319,13 @@ Append these tests to `GraphWriteDelegateStatementCompilerTests`:
         self.assertIn("delegate.bind", str(ctx.exception))
 ```
 
-- [ ] **Step 2: Run the focused Python test and verify the new rejection test fails**
+- [x] **Step 2: Run the focused Python test and verify the new rejection test fails**
 
 Run:
 
 ```powershell
 cd D:\UEProjects\Template\Plugins\BlueprintHelper\AgentFaceService\task-core
-python -m unittest python.tests.test_graph_write_delegate_statements.GraphWriteDelegateStatementCompilerTests
+python -m unittest discover -s python/tests -t python -p test_graph_write_delegate_statements.py
 ```
 
 Expected before compiler hardening:
@@ -323,7 +342,7 @@ If the test already passes because `kind="delegate"` is currently rejected by `S
 - Modify: `AgentFaceService/task-core/python/blueprinthelper_task/compiler/graph_write_append.py`
 - Test: `AgentFaceService/task-core/python/tests/test_graph_write_delegate_statements.py`
 
-- [ ] **Step 1: Split public aliases from internal canonical constants**
+- [x] **Step 1: Split public aliases from internal canonical constants**
 
 Replace the delegate constants with:
 
@@ -357,7 +376,7 @@ SUPPORTED_GRAPH_BODY_STATEMENT_KINDS = {
 }
 ```
 
-- [ ] **Step 2: Update helper names without changing lowering behavior**
+- [x] **Step 2: Update helper names without changing lowering behavior**
 
 Use this helper body:
 
@@ -388,7 +407,7 @@ def _delegate_statement_operation(statement: Dict[str, Any]) -> Optional[str]:
     return None
 ```
 
-- [ ] **Step 3: Add deterministic public-schema rejection for internal delegate kinds**
+- [x] **Step 3: Add deterministic public-schema rejection for internal delegate kinds**
 
 At the start of `_validate_supported_statements`, before the generic unsupported-kind branch, add:
 
@@ -412,13 +431,13 @@ Then update this branch:
             _validate_delegate_statement_shape(statement, statement_path)
 ```
 
-- [ ] **Step 4: Verify Python lowering contract**
+- [x] **Step 4: Verify Python lowering contract**
 
 Run:
 
 ```powershell
 cd D:\UEProjects\Template\Plugins\BlueprintHelper\AgentFaceService\task-core
-python -m unittest python.tests.test_graph_write_delegate_statements.GraphWriteDelegateStatementCompilerTests
+python -m unittest discover -s python/tests -t python -p test_graph_write_delegate_statements.py
 python -m unittest discover -s python/tests -t python
 ```
 
@@ -434,7 +453,7 @@ OK
 - Modify: `BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintHelperGraphSemanticIRRuntimeFactTests.cpp`
 - Modify only if tests fail: `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphSemanticIRUtils.cpp`
 
-- [ ] **Step 1: Add C++ parser tests**
+- [x] **Step 1: Add C++ parser tests**
 
 Add helpers to `BlueprintHelperGraphSemanticIRRuntimeFactTests.cpp` inside the local utils class:
 
@@ -543,7 +562,7 @@ bool FBlueprintHelperGraphSemanticIRDelegateBoundary_AcceptsCanonicalInternalDel
 }
 ```
 
-- [ ] **Step 2: Run the C++ parser tests**
+- [x] **Step 2: Run the C++ parser tests**
 
 Run:
 
@@ -558,7 +577,7 @@ If current parser already rejects dotted public kinds, failed = 0.
 If it accepts any dotted public kind, failed > 0 and Step 3 is required.
 ```
 
-- [ ] **Step 3: Harden C++ parser only if Step 2 fails**
+- [x] **Step 3: Confirm C++ parser hardening was already present**
 
 In `FBlueprintHelperGraphSemanticIRUtils::ParseStatementKind`, keep only this EventDelegate parser surface:
 
@@ -582,7 +601,7 @@ delegate_call
 delegate_clear
 ```
 
-- [ ] **Step 4: Re-run C++ parser tests**
+- [x] **Step 4: Re-run C++ parser tests**
 
 Run:
 
@@ -602,7 +621,7 @@ notRun = 0
 **Files:**
 - Modify: `BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintHelperActionResolutionContractTests.cpp`
 
-- [ ] **Step 1: Extend source contract to include Python and C++ parser boundary**
+- [x] **Step 1: Extend source contract to include Python and C++ parser boundary**
 
 Add a new automation test or extend the existing EventDelegate boundary contract to scan:
 
@@ -640,7 +659,7 @@ delegate_call
 delegate_clear
 ```
 
-- [ ] **Step 2: Run source contract**
+- [x] **Step 2: Run source contract**
 
 Run:
 
@@ -661,7 +680,7 @@ notRun = 0
 - Modify if wording mismatch exists: `BlueprintHelper/Develop/Design/BlueprintHelper_GraphStatementFramework_Design_20260521_CN.md`
 - Modify if wording mismatch exists: `BlueprintHelper/Develop/Plan/BlueprintHelper_GraphWrite_Gap5_EventDelegateUseSite_ImplementationPlan_20260523_CN.md`
 
-- [ ] **Step 1: Run full AgentFace verification**
+- [x] **Step 1: Run full AgentFace verification**
 
 Run:
 
@@ -680,7 +699,7 @@ Node fail = 0
 Python OK
 ```
 
-- [ ] **Step 2: Run UE compile and GraphWrite boundary regression**
+- [x] **Step 2: Run UE compile and GraphWrite boundary regression**
 
 Run:
 
@@ -698,7 +717,7 @@ DelegateBoundary failed = 0, notRun = 0
 ActionResolution.Contract failed = 0, notRun = 0
 ```
 
-- [ ] **Step 3: Run source text guards**
+- [x] **Step 3: Run source text guards**
 
 Run:
 
@@ -715,7 +734,7 @@ C++ GraphStatement parser source does not accept dotted delegate public kinds.
 Test files may contain forbidden strings as negative fixtures.
 ```
 
-- [ ] **Step 4: Sync docs only if they conflict**
+- [x] **Step 4: Sync docs only if they conflict**
 
 If the design or Gap5 plan docs still imply C++ parser accepts `delegate.bind` directly, replace that wording with:
 
@@ -725,7 +744,7 @@ The Python compiler lowers these public convenience kinds into internal `kind:"d
 C++ SemanticIR consumes only the internal `delegate` shape and rejects dotted delegate public kinds as `statement_kind_unsupported`.
 ```
 
-- [ ] **Step 5: Final cleanliness check**
+- [x] **Step 5: Final cleanliness check**
 
 Run:
 

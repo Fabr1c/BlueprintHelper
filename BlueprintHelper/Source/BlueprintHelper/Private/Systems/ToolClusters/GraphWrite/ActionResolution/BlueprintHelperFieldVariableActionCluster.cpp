@@ -18,16 +18,7 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperFieldVariableActionCluste
 
 bool FBlueprintHelperFieldVariableActionCluster::OwnsSemanticKind(EBlueprintHelperActionSemanticKind Kind)
 {
-	switch (Kind)
-	{
-	case EBlueprintHelperActionSemanticKind::Get:
-	case EBlueprintHelperActionSemanticKind::Set:
-	case EBlueprintHelperActionSemanticKind::GetProperty:
-	case EBlueprintHelperActionSemanticKind::SetProperty:
-		return true;
-	default:
-		return false;
-	}
+	return Kind == EBlueprintHelperActionSemanticKind::Field;
 }
 
 FBlueprintHelperActionResolutionResult FBlueprintHelperFieldVariableActionCluster::MakeUnsupportedIntentResult(const FBlueprintHelperActionResolutionRequest& Request)

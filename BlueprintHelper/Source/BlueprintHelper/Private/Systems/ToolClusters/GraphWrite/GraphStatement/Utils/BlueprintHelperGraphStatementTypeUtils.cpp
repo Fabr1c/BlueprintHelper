@@ -43,8 +43,7 @@ FString FBlueprintHelperGraphStatementTypeUtils::ResolveExpressionKindName(
 	static const FExpressionKindRule Rules[] =
 	{
 		{ EBlueprintHelperGraphExpressionKind::Literal, TEXT("literal") },
-		{ EBlueprintHelperGraphExpressionKind::Get, TEXT("get") },
-		{ EBlueprintHelperGraphExpressionKind::GetProperty, TEXT("get_property") },
+		{ EBlueprintHelperGraphExpressionKind::Field, TEXT("field") },
 		{ EBlueprintHelperGraphExpressionKind::Call, TEXT("call") },
 		{ EBlueprintHelperGraphExpressionKind::Op, TEXT("op") },
 		{ EBlueprintHelperGraphExpressionKind::Construct, TEXT("construct") },

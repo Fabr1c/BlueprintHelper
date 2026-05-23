@@ -340,7 +340,9 @@ bool FBlueprintHelperActionContextCallExpressionDemandPrefersTargetTest::RunTest
 	TSharedPtr<FBlueprintHelperGraphStatementIR> Statement = MakeShared<FBlueprintHelperGraphStatementIR>();
 	Statement->StatementId = TEXT("stmt_set");
 	Statement->Path = TEXT("$.statements[0]");
-	Statement->Kind = EBlueprintHelperGraphStatementKind::Set;
+	Statement->Kind = EBlueprintHelperGraphStatementKind::Field;
+	Statement->FieldOperation = TEXT("set");
+	Statement->FieldScope = TEXT("variable");
 	Statement->Target = TEXT("Result");
 	Statement->Value = CallExpression;
 	Statement->Condition = OpExpression;
@@ -390,18 +392,22 @@ bool FBlueprintHelperActionContextSingleDemandSetPropertyMapsToFieldVariableTest
 		FBlueprintHelperActionContextDemandCollector::BuildSingleDemand(
 			TEXT("stmt_set_property"),
 			TEXT("$.statements[0]"),
-			EBlueprintHelperActionSemanticKind::SetProperty,
-			TEXT("set_property"),
+			EBlueprintHelperActionSemanticKind::Field,
+			TEXT("field"),
 			TEXT("DoorMesh"),
 			TEXT("DoorMesh.RelativeRotation"),
 			TEXT("Rotator"),
 			TEXT("contextual"),
 			TEXT("fail_on_ambiguity"),
 			CategoryPriority,
-			ArgumentNames);
+			ArgumentNames,
+			TEXT("set"),
+			TEXT("property_path"));
 
 	TestEqual(TEXT("SetProperty cluster kind"), Demand.ClusterKind, EBlueprintHelperSpawnerClusterKind::FieldVariableAction);
-	TestEqual(TEXT("SetProperty semantic kind"), Demand.SemanticKind, EBlueprintHelperActionSemanticKind::SetProperty);
+	TestEqual(TEXT("SetProperty semantic kind"), Demand.SemanticKind, EBlueprintHelperActionSemanticKind::Field);
+	TestEqual(TEXT("SetProperty field operation"), Demand.FieldOperation, FString(TEXT("set")));
+	TestEqual(TEXT("SetProperty field scope"), Demand.FieldScope, FString(TEXT("property_path")));
 	TestEqual(TEXT("SetProperty query"), Demand.Query, FString(TEXT("DoorMesh.RelativeRotation")));
 	TestTrue(TEXT("SetProperty requires typed pins"), Demand.RequiredKinds.Contains(EBlueprintHelperActionContextDemandKind::TypedPins));
 	TestTrue(TEXT("SetProperty requires target"), Demand.RequiredKinds.Contains(EBlueprintHelperActionContextDemandKind::Target));

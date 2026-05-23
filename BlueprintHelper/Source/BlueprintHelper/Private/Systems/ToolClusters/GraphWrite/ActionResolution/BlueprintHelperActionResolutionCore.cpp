@@ -86,10 +86,7 @@ FString FBlueprintHelperActionResolutionCore::SemanticKindToString(EBlueprintHel
 	switch (Kind)
 	{
 	case EBlueprintHelperActionSemanticKind::Call: return TEXT("call");
-	case EBlueprintHelperActionSemanticKind::Get: return TEXT("get");
-	case EBlueprintHelperActionSemanticKind::Set: return TEXT("set");
-	case EBlueprintHelperActionSemanticKind::GetProperty: return TEXT("get_property");
-	case EBlueprintHelperActionSemanticKind::SetProperty: return TEXT("set_property");
+	case EBlueprintHelperActionSemanticKind::Field: return TEXT("field");
 	case EBlueprintHelperActionSemanticKind::Op: return TEXT("op");
 	case EBlueprintHelperActionSemanticKind::Construct: return TEXT("construct");
 	case EBlueprintHelperActionSemanticKind::Deconstruct: return TEXT("deconstruct");

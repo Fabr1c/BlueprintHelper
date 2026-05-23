@@ -588,8 +588,7 @@ bool FBlueprintHelperSingletonControlFlowProviderRejectsWideSurfaceTest::RunTest
 
 	const EBlueprintHelperActionSemanticKind RejectedKinds[] = {
 		EBlueprintHelperActionSemanticKind::Call,
-		EBlueprintHelperActionSemanticKind::Get,
-		EBlueprintHelperActionSemanticKind::Set,
+		EBlueprintHelperActionSemanticKind::Field,
 		EBlueprintHelperActionSemanticKind::Delegate,
 		EBlueprintHelperActionSemanticKind::Create,
 		EBlueprintHelperActionSemanticKind::Convert,
