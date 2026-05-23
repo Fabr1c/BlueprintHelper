@@ -203,6 +203,33 @@ TArray<FBlueprintHelperActionContextDemand> FBlueprintHelperActionContextDemandC
 	return Demands;
 }
 
+FBlueprintHelperActionContextDemand FBlueprintHelperActionContextDemandCollector::BuildSingleDemand(
+	const FString& StableId,
+	const FString& SourcePath,
+	EBlueprintHelperActionSemanticKind SemanticKind,
+	const FString& Query,
+	const FString& TargetPath,
+	const FString& PropertyPath,
+	const FString& TypeName,
+	const FString& SearchMode,
+	const FString& AmbiguityPolicy,
+	const TArray<FString>& CategoryPriority,
+	const TArray<FString>& ArgumentNames)
+{
+	return BuildDemand(
+		StableId,
+		SourcePath,
+		SemanticKind,
+		Query,
+		TargetPath,
+		PropertyPath,
+		TypeName,
+		SearchMode,
+		AmbiguityPolicy,
+		CategoryPriority,
+		ArgumentNames);
+}
+
 void FBlueprintHelperActionContextDemandCollector::CollectFromStatementArray(
 	const TArray<TSharedPtr<FBlueprintHelperGraphStatementIR>>& Statements,
 	TArray<FBlueprintHelperActionContextDemand>& OutDemands)

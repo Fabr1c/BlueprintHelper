@@ -1444,7 +1444,23 @@ def _compile_merge_graph_write_ops(behavior: Dict[str, Any]) -> List[Dict[str, A
     return ops
 
 
-SUPPORTED_GRAPH_BODY_STATEMENT_KINDS = {"call", "set", "set_property", "let", "control"}
+DELEGATE_STATEMENT_KIND_ALIASES = {
+    "component_bound_event": "component_bound_event",
+    "delegate.bind": "bind",
+    "delegate.assign": "assign",
+    "delegate.unbind": "unbind",
+    "delegate.unbind_all": "delegate_clear",
+    "delegate.call": "delegate_call",
+}
+INTERNAL_EVENT_DELEGATE_STATEMENT_KINDS = set(DELEGATE_STATEMENT_KIND_ALIASES.values())
+SUPPORTED_GRAPH_BODY_STATEMENT_KINDS = {
+    "call",
+    "set",
+    "set_property",
+    "let",
+    "control",
+    *DELEGATE_STATEMENT_KIND_ALIASES.keys(),
+}
 SUPPORTED_GRAPH_BODY_CONTROL_KINDS = {"branch", "sequence", "return"}
 SUPPORTED_GRAPH_BODY_EXPRESSION_KINDS = {
     "literal",
@@ -1458,6 +1474,10 @@ SUPPORTED_GRAPH_BODY_EXPRESSION_KINDS = {
 }
 
 
+def _normalized_delegate_statement_kind(kind: str) -> str:
+    return DELEGATE_STATEMENT_KIND_ALIASES.get(kind, kind)
+
+
 def _validate_supported_statements(statements: List[Dict[str, Any]], path: str) -> None:
     for statement_index, statement in enumerate(statements):
         kind = statement.get("kind")
@@ -1469,10 +1489,12 @@ def _validate_supported_statements(statements: List[Dict[str, Any]], path: str) 
                 [{
                     "code": "unsupported_statement_kind",
                     "path": f"{statement_path}.kind",
-                    "message": "Use call, set, set_property, let, or control.",
+                    "message": "Use call, set, set_property, let, control, or a supported delegate statement kind.",
                 }],
             )
-        if kind == "call":
+        if kind in DELEGATE_STATEMENT_KIND_ALIASES:
+            _validate_delegate_statement_shape(statement, statement_path)
+        elif kind == "call":
             _validate_expression_map(statement.get("args"), f"{statement_path}.args")
         elif kind in {"let", "set", "set_property"}:
             _validate_supported_expression(statement.get("value"), f"{statement_path}.value")
@@ -1495,6 +1517,39 @@ def _validate_supported_statements(statements: List[Dict[str, Any]], path: str) 
                     )
             elif "value" in statement:
                 _validate_supported_expression(statement.get("value"), f"{statement_path}.value")
+
+
+def _validate_delegate_statement_shape(statement: Dict[str, Any], path: str) -> None:
+    kind = _required_string(statement, "kind", f"{path}.kind")
+    normalized_kind = _normalized_delegate_statement_kind(kind)
+    if normalized_kind == "component_bound_event":
+        _required_string(statement, "component", f"{path}.component")
+        _required_string(statement, "delegate", f"{path}.delegate")
+        _required_string(statement, "handler", f"{path}.handler")
+        return
+    if normalized_kind in {"bind", "assign", "unbind"}:
+        _required_string(statement, "target", f"{path}.target")
+        _required_string(statement, "delegate", f"{path}.delegate")
+        _required_string(statement, "handler", f"{path}.handler")
+        return
+    if normalized_kind == "delegate_clear":
+        _required_string(statement, "target", f"{path}.target")
+        _required_string(statement, "delegate", f"{path}.delegate")
+        if "handler" in statement:
+            raise TaskSpecCompileError(
+                "taskspec_semantic_invalid",
+                "delegate.unbind_all must not include handler.",
+                [{
+                    "code": "unexpected_delegate_handler",
+                    "path": f"{path}.handler",
+                    "message": "Remove handler; delegate.unbind_all clears all handlers for the delegate.",
+                }],
+            )
+        return
+    if normalized_kind == "delegate_call":
+        _required_string(statement, "target", f"{path}.target")
+        _required_string(statement, "delegate", f"{path}.delegate")
+        _validate_expression_map(statement.get("args"), f"{path}.args")
 
 
 def _control_statement_kind(statement: Dict[str, Any], path: str) -> str:
@@ -1634,6 +1689,19 @@ def _clone_logic_statement_with_compiled_ids(statement: Dict[str, Any], statemen
     out = dict(statement)
     out["id"] = statement_id
     kind = statement.get("kind")
+    normalized_kind = _normalized_delegate_statement_kind(kind) if isinstance(kind, str) else kind
+    if normalized_kind in INTERNAL_EVENT_DELEGATE_STATEMENT_KINDS:
+        out["kind"] = normalized_kind
+        if normalized_kind == "unbind":
+            out["unbind_mode"] = "single"
+        elif normalized_kind == "delegate_clear":
+            out["unbind_mode"] = "all"
+        if normalized_kind == "delegate_call" and isinstance(statement.get("args"), dict):
+            out["args"] = {
+                arg_name: _clone_logic_expression_with_compiled_ids(arg_value, f"{statement_id}_arg_{_to_id_segment(str(arg_name))}")
+                for arg_name, arg_value in statement["args"].items()
+            }
+        return out
 
     if kind == "let":
         out["value"] = _clone_logic_expression_with_compiled_ids(statement.get("value"), f"{statement_id}_value")
@@ -2588,6 +2656,19 @@ def _required_non_empty_list(record: Dict[str, Any], field: str, path: str) -> L
 
 def _compile_statement_node(statement: Dict[str, Any], node_id: str, path: str) -> Dict[str, Any]:
     kind = statement.get("kind")
+    normalized_kind = _normalized_delegate_statement_kind(kind) if isinstance(kind, str) else kind
+    if normalized_kind in INTERNAL_EVENT_DELEGATE_STATEMENT_KINDS:
+        node = dict(statement)
+        node["id"] = node_id
+        node["kind"] = normalized_kind
+        if normalized_kind == "unbind":
+            node["unbind_mode"] = "single"
+        elif normalized_kind == "delegate_clear":
+            node["unbind_mode"] = "all"
+        if normalized_kind == "delegate_call" and isinstance(statement.get("args"), dict):
+            node["args"] = _compile_args(statement.get("args"))
+        return node
+
     if kind == "call":
         return {
             "id": node_id,

@@ -186,7 +186,12 @@ bool FBlueprintHelperActionResolutionGraphStatementProjectionContractTest::RunTe
 
 	const TArray<FString> ForbiddenTokens = {
 		BuildForbiddenActionResolutionToken(TEXT("ActionRequest."), TEXT("ClusterKind =")),
-		BuildForbiddenActionResolutionToken(TEXT("ActionRequest."), TEXT("Semantic ="))
+		BuildForbiddenActionResolutionToken(TEXT("ActionRequest."), TEXT("Semantic =")),
+		TEXT("BuildSingleActionContextDemand("),
+		TEXT("ResolveSpawnerClusterForSemanticKind("),
+		TEXT("Demand.ClusterKind ="),
+		TEXT("Demand.SemanticKind ="),
+		TEXT("ContextDemands.Add(BuildSingleActionContextDemand(")
 	};
 
 	bool bClean = true;
@@ -195,7 +200,7 @@ bool FBlueprintHelperActionResolutionGraphStatementProjectionContractTest::RunTe
 		if (Text.Contains(Token))
 		{
 			AddError(FString::Printf(
-				TEXT("GraphStatementBuilder must project ActionResolutionRequest from ActionContextBundle; forbidden token '%s' found in %s"),
+				TEXT("GraphStatementBuilder must not own local ActionContext demand construction or semantic-to-cluster projection; forbidden token '%s' found in %s"),
 				*Token,
 				*GraphStatementBuilderPath));
 			bClean = false;

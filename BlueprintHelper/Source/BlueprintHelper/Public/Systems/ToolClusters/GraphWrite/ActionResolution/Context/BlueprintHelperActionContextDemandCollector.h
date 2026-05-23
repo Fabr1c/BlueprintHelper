@@ -13,6 +13,19 @@ public:
 	static TArray<FBlueprintHelperActionContextDemand> CollectFromStatements(
 		const TArray<TSharedPtr<FBlueprintHelperGraphStatementIR>>& Statements);
 
+	static FBlueprintHelperActionContextDemand BuildSingleDemand(
+		const FString& StableId,
+		const FString& SourcePath,
+		EBlueprintHelperActionSemanticKind SemanticKind,
+		const FString& Query,
+		const FString& TargetPath,
+		const FString& PropertyPath,
+		const FString& TypeName,
+		const FString& SearchMode,
+		const FString& AmbiguityPolicy,
+		const TArray<FString>& CategoryPriority,
+		const TArray<FString>& ArgumentNames);
+
 private:
 	static void CollectFromStatementArray(
 		const TArray<TSharedPtr<FBlueprintHelperGraphStatementIR>>& Statements,

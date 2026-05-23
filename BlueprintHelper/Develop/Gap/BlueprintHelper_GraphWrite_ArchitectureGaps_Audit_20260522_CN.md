@@ -53,27 +53,33 @@ P6 能力行本身已经闭环：`BlueprintHelper.GraphWrite.Capability80` 在 `
 | Blocker | Exact file / entry | Why it blocks 80% capability/correctness closure | Why not completed/deleted in P6 | Next required plan |
 |---|---|---|---|---|
 | CLOSED: ActionResolution projected-context contract failure | Test: `BlueprintHelper.GraphWrite.ActionResolution.Contract.ClustersConsumeProjectedContext`; source entries reported under `Private/Systems/ToolClusters/GraphWrite/ActionResolution/Context/*.cpp` | Closed in `GraphWrite80_P6_GraphWrite_Regression_002`; cluster scan now exempts the reusable Context implementation boundary. | No longer a P6 blocker. | Keep future cluster files from rebuilding the Context pipeline directly. |
-| CLOSED: FunctionAction operator and resolver stress failures | Tests: `BlueprintHelper.GraphWrite.ActionResolution.FunctionAction.OperatorDispatch`; `BlueprintHelper.GraphWrite.CallFunctionResolver.Stress.*`; `BlueprintHelper.GraphWrite.CallFunctionResolver.GeneratorDisplayNameSpawnsPrintString`; `BlueprintHelper.GraphWrite.CallFunctionResolver.GeneratorQualifiedNameSpawnsPrintString` | Closed in `GraphWrite80_P6_GraphWrite_Regression_002`; operator dispatch uses real UE spawner evidence, call query projection uses `target`, and supplemental-only Blueprint-authored tests now forbid success without spawner/action evidence. | No longer a P6 blocker. | Gap 5 remains separate for delegate/bind positive spawner support. |
+| CLOSED: FunctionAction operator and resolver stress failures | Tests: `BlueprintHelper.GraphWrite.ActionResolution.FunctionAction.OperatorDispatch`; `BlueprintHelper.GraphWrite.CallFunctionResolver.Stress.*`; `BlueprintHelper.GraphWrite.CallFunctionResolver.GeneratorDisplayNameSpawnsPrintString`; `BlueprintHelper.GraphWrite.CallFunctionResolver.GeneratorQualifiedNameSpawnsPrintString` | Closed in `GraphWrite80_P6_GraphWrite_Regression_002`; operator dispatch uses real UE spawner evidence, call query projection uses `target`, and supplemental-only Blueprint-authored tests now forbid success without spawner/action evidence. | No longer a P6 blocker. | Gap 5 remains separate for EventDelegate use-site positive spawner support. |
 | CLOSED: Direct append / replace service regression | Tests: `BlueprintHelper.GraphWrite.Append.OwnershipWritesMetadataWithoutManagedComment`; `BlueprintHelper.GraphWrite.Append.ReusesSignatureEntry`; `BlueprintHelper.GraphWrite.Replace.CustomEventBodyReconnectsEntryExec`; file: `BlueprintHelperGraphWriteToolResultBaseTests.cpp` | Closed in `GraphWrite80_P6_GraphWrite_Regression_002`; direct service payloads now follow valid current SemanticIR contracts and ownership metadata is asserted through signature-entry reuse where block refs are required. | No longer a P6 blocker. | Keep direct service tests aligned with supported SemanticIR entry/body contracts. |
-| CLOSED AS P6 BLOCKER: EventDelegate declared capability contract mismatch | Test: `BlueprintHelper.GraphWrite.LegacyMainline.EventDelegateDeclaredCapabilityMatchesSuccessPath`; source: `Private/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperEventDelegateActionCluster.cpp` | Closed in `GraphWrite80_P6_GraphWrite_Regression_002`; contract now matches P5 semantics and guards against fake delegate success. | Gap 5 remains open because component-bound/bind still return `unsupported_intent` when complete evidence is present. | Create a delegate/bind spawner-family plan before claiming positive component-bound/bind support. |
+| CLOSED AS P6 BLOCKER: EventDelegate declared capability contract mismatch | Test: `BlueprintHelper.GraphWrite.LegacyMainline.EventDelegateDeclaredCapabilityMatchesSuccessPath`; source: `Private/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperEventDelegateActionCluster.cpp` | Closed in `GraphWrite80_P6_GraphWrite_Regression_002`; contract now matches P5 semantics and guards against fake delegate success. | Gap 5 remains open because EventDelegate use-site semantics still return `unsupported_intent` when complete evidence is present. | Create a delegate/component-bound spawner-family plan before claiming positive EventDelegate use-site support. |
 
 ### Gap 2. GraphStatementBuilder still owns local demand and cluster projection logic
 
-状态：未关闭
+状态：已关闭（仅限 GraphStatementBuilder 本地 demand / semantic-cluster projection 职责收敛）
 
-证据：
-- `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphStatementBuilder.cpp`
-- 文件内仍存在 `BuildSingleActionContextDemand`。
-- 文件内仍存在 `ResolveSpawnerClusterForSemanticKind`，维护 semantic kind 到 cluster kind 的本地映射。
+Closure scope - 2026-05-23:
+- `BlueprintHelperGraphStatementBuilder.cpp` no longer defines `BuildSingleActionContextDemand`.
+- `BlueprintHelperGraphStatementBuilder.cpp` no longer defines or calls `ResolveSpawnerClusterForSemanticKind`.
+- Single-demand construction is owned by `FBlueprintHelperActionContextDemandCollector::BuildSingleDemand`.
+- Semantic kind -> cluster kind mapping remains inside `FBlueprintHelperActionContextDemandCollector::ApplyDemandKinds`.
+- GraphStatementBuilder still consumes `FBlueprintHelperActionContextScope::TryBuildRequest`; request projection remains owned by ActionContext bundle projection.
 
-为什么仍是 gap：
-- 设计口径要求 GraphStatement / SemanticIR 表达语义需求，ActionContext Pipeline 统一收集 demand、snapshot、inference、projection。
-- 当前实现已停止在 builder 内本地 `Build` scope，但 builder 仍保留局部 demand/projection 兜底逻辑，边界还没有完全收敛到 `ContextDemandCollector` / `BundleProjector`。
+Closure evidence:
+- `D:\UEProjects\Template\Saved\Automation\GraphWrite_Gap2_SourceContract_GREEN_001\index.json`, 1 succeeded, 0 failed, 0 warnings.
+- `D:\UEProjects\Template\Saved\Automation\GraphWrite_Gap2_SingleDemand_GREEN_002\index.json`, 2 succeeded, 0 failed, 0 warnings.
+- `D:\UEProjects\Template\Saved\Automation\GraphWrite_Gap2_ActionContext_GREEN_001\index.json`, 11 succeeded, 0 failed, 0 warnings.
+- `D:\UEProjects\Template\Saved\Automation\GraphWrite_Gap2_Regression_001\index.json`, 108 succeeded, 10 succeeded with warnings, 0 failed, 0 not run.
+- UE 5.6 `Build.bat TemplateEditor Win64 Development`, `Result: Succeeded`.
+- `git diff --check`, exit code 0.
 
-关闭条件：
-- GraphStatementBuilder 不再构造本地 `FBlueprintHelperActionContextDemand`。
-- semantic kind 到 cluster kind 的映射只保留在统一 collector/projector/resolver 边界。
-- 契约测试覆盖 GraphStatementBuilder 不得出现 `BuildSingleActionContextDemand`、`ResolveSpawnerClusterForSemanticKind` 或直接拼接 request semantic/cluster 的路径。
+当前结论：
+- Gap 2 已关闭；GraphStatementBuilder 不再拥有本地 action-context demand 构造或 semantic kind 到 cluster kind 的局部投影职责。
+- 该闭环不改变四簇语义能力状态，也不关闭 Gap 5 的 EventDelegate use-site positive spawner-family 缺口。
+- 宽范围 `create/convert/schedule` 语义仍按各自簇后续计划继续收敛，不属于 Gap 2 closure scope。
 
 ### Gap 3. Canonical singleton direct spawn boundary is not explicit enough
 
@@ -93,7 +99,7 @@ Closure evidence:
 - `branch`、`sequence`、`return`、以及确认唯一的 `select` 属于 canonical singleton semantic。
 - direct spawn 只发生在 `FBlueprintHelperSingletonControlFlowEvidenceProvider` 的 canonical secondary semantic mapping 内。
 - 该闭环不改变 `SpawnerClusterKind` 一级分发规则，也不关闭 Generic broad create/convert/schedule 语义缺口。
-- Gap 2 和 Gap 5 仍按各自章节保持开放，除非后续文档另行记录。
+- Gap 2 已按本地 demand/projection 职责收敛关闭；Gap 5 仍按自身章节保持开放，除非后续文档另行记录。
 
 ### Gap 4. MutationCoordinator bypasses singleton evidence boundary for sequence node
 
@@ -113,23 +119,42 @@ Closure evidence - 2026-05-23:
 - candidate/debug/review evidence 能解释该 sequence node 是 mutation 编排产物，同时其 spawner strategy 来自统一 singleton boundary。
 - Gap 4 已关闭；不代表 Generic broad create/convert/schedule 语义完成。
 
-### Gap 5. EventDelegate component-bound / bind complete spawner boundary is unresolved
+### Gap 5. EventDelegate use-site complete spawner boundary is unresolved
 
 Status: open after P5.
 
 Evidence:
 - `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperEventDelegateActionCluster.cpp`
-- `ComponentBoundEvent` and `Bind` are now owned only far enough to return precise missing-evidence diagnostics.
-- When component/binding object, delegate name, and delegate signature evidence are complete, the cluster returns `unsupported_intent` instead of constructing a spawner.
+- `component_bound_event`, `bind`, `assign`, `unbind`, `delegate_call`, and `delegate_clear` are now owned only far enough to return precise missing-evidence diagnostics or remain unsupported.
+- When component/binding object, delegate name, handler reference, and delegate signature evidence are complete, the cluster still does not construct the required positive spawner path for the full EventDelegate use-site group.
 
 Why this remains a gap:
-- P5 confirmed custom events through `UBlueprintEventNodeSpawner`, but did not establish a safe UE spawner-family route for `UK2Node_ComponentBoundEvent`, bind/assign delegate nodes, and their required component/delegate signature fields.
-- Claiming success without a positive `SelectedSpawner != null` automation test would overstate delegate support and risk a hardcoded or legacy fallback path.
+- P5 confirmed custom events through `UBlueprintEventNodeSpawner`, but did not establish a safe UE spawner-family route for `UK2Node_ComponentBoundEvent`, delegate bind/assign/unbind/call/clear nodes, and their required component/delegate/handler signature fields.
+- Claiming success without positive `SelectedSpawner != null` automation tests would overstate delegate support and risk a hardcoded or legacy fallback path.
+
+Ownership boundary:
+- Signature owns declaration and signature mutation: `ensure_function`, `ensure_custom_event`, `ensure_event_dispatcher`, `ensure_override_event`, signature pins, mismatch policy, migration, and removal.
+- GraphWrite/EventDelegate owns use-site graph writing only: existing component-bound event placement, delegate bind/assign/unbind/call/clear node placement, delegate reference nodes such as `Create Event`, graph links, and body content.
+- If a handler implementation already exists, GraphWrite may reference it through the projected evidence.
+- If a handler implementation does not exist, it must be created by an explicit Signature dependency step before GraphWrite runs; GraphWrite must not create or modify handler declarations/signatures.
+- `delegate.unbind` and `delegate.unbind_all` must stay explicit in AgentFace/TaskSpec lowering. Missing callback evidence must not silently downgrade to `unbind_all`.
+
+Minimum evidence model:
+- Common: target Blueprint, target graph scope, placement scope, delegate source identity, delegate/member name or stable member identity, delegate kind, and delegate signature pins.
+- `component_bound_event`: component identity, component delegate name/member identity, and delegate signature.
+- `bind` / `assign`: delegate target identity, delegate signature, and existing handler implementation reference or a prior Signature dependency output.
+- `unbind`: delegate target identity, delegate signature, and explicit handler reference.
+- `unbind_all`: delegate target identity plus explicit `unbind_all` intent; no implicit fallback from `unbind`.
+- `delegate_call`: delegate target identity, delegate signature, and argument binding/default policy.
+- `delegate_clear`: delegate target/member identity and signature evidence for consistent validation.
+- Candidate count above threshold is only one symptom of missing evidence. The actual requirement is that projected evidence makes the target unique, the signature verifiable, and the generated graph action deterministic.
 
 Close conditions:
-- Resolve the correct UE spawner family and required evidence model for component-bound events and delegate bind/assign.
-- Add positive automation with complete projected evidence, `SelectedSpawner != null`, stable id/candidate evidence, and no fallback success.
-- Keep missing-evidence diagnostics (`component_missing`, `binding_object_missing`, `delegate_signature_missing`) passing.
+- Resolve the correct UE spawner families and required projected evidence model for `component_bound_event`, `bind`, `assign`, `unbind`, `delegate_call`, and `delegate_clear`.
+- Add positive automation with complete projected evidence, `SelectedSpawner != null`, stable id/candidate evidence, correct node family, and no fallback success for each first-stage semantic.
+- Add execution/asset validation that the correct nodes, member references, delegate pins, and graph links are produced without Signature ownership mutation.
+- Keep missing-evidence diagnostics (`component_missing`, `binding_object_missing`, `delegate_signature_missing`, `handler_missing`, and explicit `unbind_all` intent checks) passing.
+- Add a boundary test proving GraphWrite/EventDelegate does not call or duplicate any `ensure_*` Signature behavior.
 
 ## Removed From Gap List
 
@@ -142,7 +167,7 @@ Close conditions:
 - Agent guide、Codex reference、Claude reference 已同步为 `kind:"call"` + `target`，`call_function.name` 仅作为 unsupported legacy 说明保留。
 - 指定 ActionResolution / FunctionResolution / GraphStatement 范围未再发现 `TObjectIterator<UClass>`、`TObjectIterator<UScriptStruct>`、`TObjectIterator<UFunction>`。
 - resolvable expression 路径未再发现 `expr_call`、`expr_op`、`expr_construct`、`expr_deconstruct` placeholder token。
-- EventDelegate cluster 不再声明尚无成功路径闭环的 `ComponentBoundEvent` / `Bind` 为已支持能力。
+- EventDelegate cluster 不再声明尚无成功路径闭环的 component-bound / delegate use-site 语义为已支持能力。
 - parsed-node mutation plan 已隔离到 private legacy pipeline，执行入口对 parsed-node node plan fail-fast 为 `parsed_node_plan_unsupported`。
 
 
