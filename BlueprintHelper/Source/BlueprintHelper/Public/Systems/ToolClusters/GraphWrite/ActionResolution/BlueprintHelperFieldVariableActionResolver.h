@@ -13,6 +13,6 @@ public:
 		const FBlueprintHelperActionClusterContextView& Context) const;
 
 private:
-	static bool IsSupportedSemanticKind(EBlueprintHelperActionSemanticKind Kind);
-	static bool IsWritableSemanticKind(EBlueprintHelperActionSemanticKind Kind);
+	static bool IsSupportedSemanticKind(const FBlueprintHelperActionSemanticConstraints& Semantic);
+	static bool IsWritableFieldOperation(const FString& FieldOperation);
 };

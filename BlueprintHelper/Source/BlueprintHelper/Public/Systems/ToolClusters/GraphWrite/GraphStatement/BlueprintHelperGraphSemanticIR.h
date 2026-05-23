@@ -11,8 +11,7 @@ enum class EBlueprintHelperGraphStatementKind : uint8
 {
 	Unknown,
 	Call,
-	Set,
-	SetProperty,
+	Field,
 	Branch,
 	Sequence,
 	Let,
@@ -25,8 +24,7 @@ enum class EBlueprintHelperGraphExpressionKind : uint8
 {
 	Unknown,
 	Literal,
-	Get,
-	GetProperty,
+	Field,
 	Call,
 	Op,
 	Construct,
@@ -106,6 +104,8 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphExpressionIR
 	FString Target;
 	FString Name;
 	FString Property;
+	FString FieldOperation;
+	FString FieldScope;
 	FString Type;
 	FString Operator;
 	FString LiteralValue;
@@ -136,6 +136,8 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphStatementIR
 	FString Target;
 	FString Name;
 	FString Property;
+	FString FieldOperation;
+	FString FieldScope;
 	FString ComponentName;
 	FString DelegateName;
 	FString DelegateOperation;

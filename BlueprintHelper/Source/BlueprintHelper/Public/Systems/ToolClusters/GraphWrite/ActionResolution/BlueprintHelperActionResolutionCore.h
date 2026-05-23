@@ -27,10 +27,7 @@ enum class EBlueprintHelperSpawnerClusterKind : uint8
 enum class EBlueprintHelperActionSemanticKind : uint8
 {
 	Call,
-	Get,
-	Set,
-	GetProperty,
-	SetProperty,
+	Field,
 	Op,
 	Construct,
 	Deconstruct,
@@ -62,6 +59,8 @@ struct FBlueprintHelperActionSemanticConstraints
 	FString StableId;
 	FString TargetPath;
 	FString PropertyPath;
+	FString FieldOperation;
+	FString FieldScope;
 	FString TypeName;
 	FString SearchMode;
 	FString AmbiguityPolicy;

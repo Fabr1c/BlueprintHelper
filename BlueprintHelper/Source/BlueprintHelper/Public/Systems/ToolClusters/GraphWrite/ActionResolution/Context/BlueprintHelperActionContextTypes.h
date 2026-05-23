@@ -49,6 +49,8 @@ struct FBlueprintHelperActionContextDemand
 	FString Query;
 	FString TargetPath;
 	FString PropertyPath;
+	FString FieldOperation;
+	FString FieldScope;
 	FString TypeName;
 	FString SearchMode;
 	FString AmbiguityPolicy;

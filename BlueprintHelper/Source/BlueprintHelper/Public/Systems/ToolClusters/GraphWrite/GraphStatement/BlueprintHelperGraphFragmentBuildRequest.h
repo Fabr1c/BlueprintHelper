@@ -12,6 +12,8 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphFragmentBuildRequest
 	FString Query;
 	FString Target;
 	FString PropertyPath;
+	FString FieldOperation;
+	FString FieldScope;
 	FString TypeName;
 	FString ExpectedReturnType;
 	FVector2D Location = FVector2D::ZeroVector;
@@ -32,4 +34,3 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphFragmentBuildRequest
 	static FBlueprintHelperGraphFragmentBuildRequest FromStatement(const FBlueprintHelperGraphStatementIR& Statement);
 	static FBlueprintHelperGraphFragmentBuildRequest FromExpression(const FBlueprintHelperGraphExpressionIR& Expression);
 };
-

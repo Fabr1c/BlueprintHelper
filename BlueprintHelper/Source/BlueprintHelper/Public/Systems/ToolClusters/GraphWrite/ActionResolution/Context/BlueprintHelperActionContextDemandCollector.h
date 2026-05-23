@@ -24,7 +24,9 @@ public:
 		const FString& SearchMode,
 		const FString& AmbiguityPolicy,
 		const TArray<FString>& CategoryPriority,
-		const TArray<FString>& ArgumentNames);
+		const TArray<FString>& ArgumentNames,
+		const FString& FieldOperation = FString(),
+		const FString& FieldScope = FString());
 
 private:
 	static void CollectFromStatementArray(
@@ -51,7 +53,9 @@ private:
 		const FString& SearchMode,
 		const FString& AmbiguityPolicy,
 		const TArray<FString>& CategoryPriority,
-		const TArray<FString>& ArgumentNames);
+		const TArray<FString>& ArgumentNames,
+		const FString& FieldOperation,
+		const FString& FieldScope);
 
 	static void ApplyDemandKinds(FBlueprintHelperActionContextDemand& Demand);
 	static EBlueprintHelperActionSemanticKind ToActionSemanticKind(EBlueprintHelperGraphStatementKind Kind);
