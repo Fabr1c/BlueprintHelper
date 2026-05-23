@@ -249,6 +249,31 @@ function Read-InstallText {
   return $Value.Trim()
 }
 
+function Normalize-InstallPathInput {
+  param([string]$PathText)
+
+  if ([string]::IsNullOrWhiteSpace($PathText)) {
+    return $null
+  }
+
+  $CleanPath = $PathText.Trim()
+  while (
+    $CleanPath.Length -ge 2 -and
+    (
+      ($CleanPath.StartsWith('"') -and $CleanPath.EndsWith('"')) -or
+      ($CleanPath.StartsWith("'") -and $CleanPath.EndsWith("'"))
+    )
+  ) {
+    $CleanPath = $CleanPath.Substring(1, $CleanPath.Length - 2).Trim()
+  }
+
+  if ([string]::IsNullOrWhiteSpace($CleanPath)) {
+    return $null
+  }
+
+  return $CleanPath
+}
+
 function Read-InstallYesNo {
   param(
     [Parameter(Mandatory = $true)]
@@ -275,12 +300,12 @@ function Read-InstallPathDetails {
   if (-not $script:SkipProjectProfile) {
     $ProjectFileInput = Read-InstallText -Prompt '  Project .uproject path, blank to auto-detect' -DefaultValue $ProjectFile
     if ($ProjectFileInput) {
-      $script:ProjectFile = $ProjectFileInput
+      $script:ProjectFile = Normalize-InstallPathInput -PathText $ProjectFileInput
     }
 
     $EngineRootInput = Read-InstallText -Prompt '  UE root, for example E:\UE_5.6 or E:\UE_5.6\Engine' -DefaultValue $EngineRoot
     if ($EngineRootInput) {
-      $script:EngineRoot = $EngineRootInput
+      $script:EngineRoot = Normalize-InstallPathInput -PathText $EngineRootInput
     }
   }
 
@@ -288,13 +313,13 @@ function Read-InstallPathDetails {
     if (-not $script:EnginePluginDir) {
       $EnginePluginDirInput = Read-InstallText -Prompt '  Engine plugin target directory, blank to derive from UE root' -DefaultValue $EnginePluginDir
       if ($EnginePluginDirInput) {
-        $script:EnginePluginDir = $EnginePluginDirInput
+        $script:EnginePluginDir = Normalize-InstallPathInput -PathText $EnginePluginDirInput
       }
     }
     if (-not $script:EngineRoot -and -not $script:EnginePluginDir) {
       $EngineRootInput = Read-InstallText -Prompt '  UE root required for engine plugin install' -DefaultValue $EngineRoot
       if ($EngineRootInput) {
-        $script:EngineRoot = $EngineRootInput
+        $script:EngineRoot = Normalize-InstallPathInput -PathText $EngineRootInput
       }
     }
     if (-not $script:EngineRoot -and -not $script:EnginePluginDir) {
@@ -818,11 +843,12 @@ function Ensure-JsonObjectProperty {
 function Resolve-UeRootForProfile {
   param([string]$RawEngineRoot)
 
-  if (-not $RawEngineRoot) {
+  $CleanEngineRoot = Normalize-InstallPathInput -PathText $RawEngineRoot
+  if (-not $CleanEngineRoot) {
     return $null
   }
 
-  $Resolved = [System.IO.Path]::GetFullPath($RawEngineRoot)
+  $Resolved = [System.IO.Path]::GetFullPath($CleanEngineRoot)
   $Name = Split-Path -Leaf $Resolved
   if ($Name -ieq 'Engine') {
     return Split-Path -Parent $Resolved
@@ -833,11 +859,12 @@ function Resolve-UeRootForProfile {
 function Resolve-UeEngineDirectory {
   param([string]$RawEngineRoot)
 
-  if (-not $RawEngineRoot) {
+  $CleanEngineRoot = Normalize-InstallPathInput -PathText $RawEngineRoot
+  if (-not $CleanEngineRoot) {
     return $null
   }
 
-  $Resolved = [System.IO.Path]::GetFullPath($RawEngineRoot)
+  $Resolved = [System.IO.Path]::GetFullPath($CleanEngineRoot)
   $Name = Split-Path -Leaf $Resolved
   if ($Name -ieq 'Engine') {
     return $Resolved
@@ -847,8 +874,9 @@ function Resolve-UeEngineDirectory {
 }
 
 function Resolve-ProjectFile {
-  if ($ProjectFile) {
-    $ResolvedProjectFile = [System.IO.Path]::GetFullPath($ProjectFile)
+  $CleanProjectFile = Normalize-InstallPathInput -PathText $ProjectFile
+  if ($CleanProjectFile) {
+    $ResolvedProjectFile = [System.IO.Path]::GetFullPath($CleanProjectFile)
     if (-not (Test-Path -LiteralPath $ResolvedProjectFile -PathType Leaf)) {
       throw "Project file does not exist: $ResolvedProjectFile"
     }
@@ -892,7 +920,7 @@ function Get-ExistingProfileEngineRoot {
     if ($Environment) {
       $Existing = Get-JsonProperty -Object $Environment -Name 'ue_engine_dir'
       if ($Existing) {
-        return [string]$Existing
+        return Normalize-InstallPathInput -PathText ([string]$Existing)
       }
     }
   } catch {
@@ -1086,7 +1114,8 @@ function Install-UePluginToEngine {
     $EnginePluginDir = Join-Path $EngineDir 'Plugins\Marketplace\BlueprintHelper'
   }
 
-  $ResolvedTarget = [System.IO.Path]::GetFullPath($EnginePluginDir)
+  $CleanEnginePluginDir = Normalize-InstallPathInput -PathText $EnginePluginDir
+  $ResolvedTarget = [System.IO.Path]::GetFullPath($CleanEnginePluginDir)
   $ResolvedSource = [System.IO.Path]::GetFullPath($UePluginRoot)
 
   if ($ResolvedSource -ieq $ResolvedTarget) {
