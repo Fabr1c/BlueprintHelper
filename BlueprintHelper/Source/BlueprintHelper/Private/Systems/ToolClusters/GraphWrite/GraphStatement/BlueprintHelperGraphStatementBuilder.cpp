@@ -12,6 +12,7 @@
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionNodeSpawnerAdapter.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextDemandCollector.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextScope.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextTypes.h"
 #include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
@@ -122,7 +123,6 @@ static void AppendCandidateActionGroup(
 
 static FString MakeActionContextStatementId(
 	const FString& PreferredStatementId,
-	const EBlueprintHelperSpawnerClusterKind ClusterKind,
 	const EBlueprintHelperActionSemanticKind SemanticKind,
 	const FString& Query,
 	const FString& TargetPath,
@@ -135,8 +135,7 @@ static FString MakeActionContextStatementId(
 	}
 
 	return FString::Printf(
-		TEXT("%s:%s:%s:%s:%s"),
-		*FBlueprintHelperActionResolutionCore::ClusterKindToString(ClusterKind),
+		TEXT("%s:%s:%s:%s"),
 		*FBlueprintHelperActionResolutionCore::SemanticKindToString(SemanticKind),
 		*Query,
 		*TargetPath,
@@ -152,41 +151,18 @@ static FString MakeExpressionActionContextStatementId(const FBlueprintHelperGrap
 	return FString::Printf(TEXT("expression:%s"), *Expression.Path);
 }
 
-static FBlueprintHelperActionContextDemand BuildSingleActionContextDemand(
-	const FString& StatementId,
-	const EBlueprintHelperSpawnerClusterKind ClusterKind,
-	const EBlueprintHelperActionSemanticKind SemanticKind,
-	const FString& Query,
-	const FString& TargetPath,
-	const FString& TypeName,
-	const TArray<FString>& ArgumentNames)
-{
-	FBlueprintHelperActionContextDemand Demand;
-	Demand.StatementId = MakeActionContextStatementId(
-		StatementId,
-		ClusterKind,
-		SemanticKind,
-		Query,
-		TargetPath,
-		TypeName);
-	Demand.ClusterKind = ClusterKind;
-	Demand.SemanticKind = SemanticKind;
-	Demand.Query = Query;
-	Demand.TargetPath = TargetPath;
-	Demand.TypeName = TypeName;
-	Demand.ArgumentNames = ArgumentNames;
-	return Demand;
-}
-
 static bool TryBuildProjectedActionRequestFromContext(
 	UEdGraph* TargetGraph,
 	const FBlueprintHelperActionContextScope* ActionContextScope,
 	const FString& StatementId,
-	const EBlueprintHelperSpawnerClusterKind ClusterKind,
 	const EBlueprintHelperActionSemanticKind SemanticKind,
 	const FString& Query,
 	const FString& TargetPath,
+	const FString& PropertyPath,
 	const FString& TypeName,
+	const FString& SearchMode,
+	const FString& AmbiguityPolicy,
+	const TArray<FString>& CategoryPriority,
 	const TArray<FString>& ArgumentNames,
 	FBlueprintHelperActionResolutionRequest& OutRequest,
 	FString& OutError)
@@ -194,17 +170,25 @@ static bool TryBuildProjectedActionRequestFromContext(
 	OutRequest = FBlueprintHelperActionResolutionRequest();
 
 	UBlueprint* Blueprint = FBlueprintEditorUtils::FindBlueprintForGraph(TargetGraph);
-	TArray<FBlueprintHelperActionContextDemand> ContextDemands;
-	ContextDemands.Add(BuildSingleActionContextDemand(
-		StatementId,
-		ClusterKind,
-		SemanticKind,
-		Query,
-		TargetPath,
-		TypeName,
-		ArgumentNames));
+	const FBlueprintHelperActionContextDemand ContextDemand =
+		FBlueprintHelperActionContextDemandCollector::BuildSingleDemand(
+			MakeActionContextStatementId(
+				StatementId,
+				SemanticKind,
+				Query,
+				TargetPath,
+				TypeName),
+			FString(),
+			SemanticKind,
+			Query,
+			TargetPath,
+			PropertyPath,
+			TypeName,
+			SearchMode,
+			AmbiguityPolicy,
+			CategoryPriority,
+			ArgumentNames);
 
-	const FBlueprintHelperActionContextDemand& ContextDemand = ContextDemands[0];
 	if (ActionContextScope)
 	{
 		return ActionContextScope->TryBuildRequest(
@@ -272,44 +256,18 @@ static EBlueprintHelperActionSemanticKind ResolveActionSemanticKindForExpression
 	}
 }
 
-static EBlueprintHelperSpawnerClusterKind ResolveSpawnerClusterForSemanticKind(EBlueprintHelperActionSemanticKind Kind)
-{
-	switch (Kind)
-	{
-	case EBlueprintHelperActionSemanticKind::Call:
-	case EBlueprintHelperActionSemanticKind::Op:
-		return EBlueprintHelperSpawnerClusterKind::FunctionAction;
-	case EBlueprintHelperActionSemanticKind::Get:
-	case EBlueprintHelperActionSemanticKind::Set:
-	case EBlueprintHelperActionSemanticKind::GetProperty:
-	case EBlueprintHelperActionSemanticKind::SetProperty:
-		return EBlueprintHelperSpawnerClusterKind::FieldVariableAction;
-	case EBlueprintHelperActionSemanticKind::Event:
-	case EBlueprintHelperActionSemanticKind::ComponentBoundEvent:
-	case EBlueprintHelperActionSemanticKind::Bind:
-		return EBlueprintHelperSpawnerClusterKind::EventDelegateAction;
-	case EBlueprintHelperActionSemanticKind::Construct:
-	case EBlueprintHelperActionSemanticKind::Deconstruct:
-	case EBlueprintHelperActionSemanticKind::Select:
-	case EBlueprintHelperActionSemanticKind::Control:
-	case EBlueprintHelperActionSemanticKind::Create:
-	case EBlueprintHelperActionSemanticKind::Convert:
-	case EBlueprintHelperActionSemanticKind::Schedule:
-		return EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction;
-	default:
-		return EBlueprintHelperSpawnerClusterKind::Unknown;
-	}
-}
-
 static bool RequireResolvedActionProvider(
 	UEdGraph* TargetGraph,
 	const FBlueprintHelperActionContextScope* ActionContextScope,
 	const FString& StatementId,
-	EBlueprintHelperSpawnerClusterKind ClusterKind,
 	EBlueprintHelperActionSemanticKind SemanticKind,
 	const FString& Query,
 	const FString& TargetPath,
+	const FString& PropertyPath,
 	const FString& TypeName,
+	const FString& SearchMode,
+	const FString& AmbiguityPolicy,
+	const TArray<FString>& CategoryPriority,
 	FBlueprintHelperActionResolutionResult* OutResult,
 	FString& OutError)
 {
@@ -319,11 +277,14 @@ static bool RequireResolvedActionProvider(
 		TargetGraph,
 		ActionContextScope,
 		StatementId,
-		ClusterKind,
 		SemanticKind,
 		Query,
 		TargetPath,
+		PropertyPath,
 		TypeName,
+		SearchMode,
+		AmbiguityPolicy,
+		CategoryPriority,
 		ArgumentNames,
 		ActionRequest,
 		OutError))
@@ -355,22 +316,28 @@ static bool RequireResolvedActionProvider(
 	UEdGraph* TargetGraph,
 	const FBlueprintHelperActionContextScope* ActionContextScope,
 	const FString& StatementId,
-	EBlueprintHelperSpawnerClusterKind ClusterKind,
 	EBlueprintHelperActionSemanticKind SemanticKind,
 	const FString& Query,
 	const FString& TargetPath,
+	const FString& PropertyPath,
 	const FString& TypeName,
+	const FString& SearchMode,
+	const FString& AmbiguityPolicy,
+	const TArray<FString>& CategoryPriority,
 	FString& OutError)
 {
 	return RequireResolvedActionProvider(
 		TargetGraph,
 		ActionContextScope,
 		StatementId,
-		ClusterKind,
 		SemanticKind,
 		Query,
 		TargetPath,
+		PropertyPath,
 		TypeName,
+		SearchMode,
+		AmbiguityPolicy,
+		CategoryPriority,
 		nullptr,
 		OutError);
 }
@@ -641,6 +608,7 @@ static bool ResolveActionProviderForExpression(
 	const EBlueprintHelperActionSemanticKind SemanticKind,
 	const FString& Query,
 	const FString& TargetPath,
+	const FString& PropertyPath,
 	const FString& TypeName,
 	FBlueprintHelperActionResolutionResult& OutResult,
 	FString& OutError)
@@ -651,11 +619,14 @@ static bool ResolveActionProviderForExpression(
 		TargetGraph,
 		ActionContextScope,
 		MakeExpressionActionContextStatementId(Expression),
-		ResolveSpawnerClusterForSemanticKind(SemanticKind),
 		SemanticKind,
 		Query,
 		TargetPath,
+		PropertyPath,
 		TypeName,
+		Expression.SearchMode,
+		Expression.AmbiguityPolicy,
+		Expression.CategoryPriority,
 		ArgumentNames,
 		ActionRequest,
 		OutError))
@@ -763,6 +734,7 @@ static bool BuildConstructExpressionFragment(
 		EBlueprintHelperActionSemanticKind::Construct,
 		TypeName,
 		TypeName,
+		FString(),
 		TypeName,
 		ActionResult,
 		OutError))
@@ -814,6 +786,7 @@ static bool BuildDeconstructExpressionFragment(
 		EBlueprintHelperActionSemanticKind::Deconstruct,
 		TypeName,
 		TypeName,
+		FString(),
 		TypeName,
 		ActionResult,
 		OutError))
@@ -864,11 +837,14 @@ bool FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment(
 		BoundRequest.ActionContextStatementId.IsEmpty()
 			? BoundRequest.FragmentId
 			: BoundRequest.ActionContextStatementId,
-		EBlueprintHelperSpawnerClusterKind::FunctionAction,
 		EBlueprintHelperActionSemanticKind::Call,
 		MakeCallFunctionResolveQuery(BoundRequest),
 		ExplicitTargetObjectName,
+		BoundRequest.PropertyPath,
 		BoundRequest.ExpectedReturnType,
+		BoundRequest.SearchMode,
+		BoundRequest.AmbiguityPolicy,
+		BoundRequest.CategoryPriority,
 		ArgumentNames,
 		ActionRequest,
 		OutError))
@@ -930,11 +906,14 @@ bool FBlueprintHelperGraphStatementBuilder::BuildVariableSetFragment(
 		Request.ActionContextStatementId.IsEmpty()
 			? Request.FragmentId
 			: Request.ActionContextStatementId,
-		EBlueprintHelperSpawnerClusterKind::FieldVariableAction,
 		EBlueprintHelperActionSemanticKind::Set,
 		Request.Target,
 		Request.Target,
+		Request.PropertyPath,
 		Request.ExpectedReturnType,
+		Request.SearchMode,
+		Request.AmbiguityPolicy,
+		Request.CategoryPriority,
 		&ActionResult,
 		OutError))
 	{
@@ -985,11 +964,14 @@ bool FBlueprintHelperGraphStatementBuilder::BuildSetPropertyFragment(
 		Request.ActionContextStatementId.IsEmpty()
 			? Request.FragmentId
 			: Request.ActionContextStatementId,
-		EBlueprintHelperSpawnerClusterKind::FieldVariableAction,
 		EBlueprintHelperActionSemanticKind::SetProperty,
 		Request.Target,
 		Request.Target,
+		Request.PropertyPath,
 		Request.ExpectedReturnType,
+		Request.SearchMode,
+		Request.AmbiguityPolicy,
+		Request.CategoryPriority,
 		&ActionResult,
 		OutError))
 	{
@@ -1106,6 +1088,7 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 			EBlueprintHelperActionSemanticKind::Select,
 			TEXT("select"),
 			Expression.Target,
+			FString(),
 			Expression.Type,
 			ActionResult,
 			OutError))
@@ -1126,11 +1109,14 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 			TargetGraph,
 			ActionContextScope,
 			MakeExpressionActionContextStatementId(Expression),
-			EBlueprintHelperSpawnerClusterKind::FieldVariableAction,
 			EBlueprintHelperActionSemanticKind::Get,
 			VariableName,
 			VariableName,
+			Expression.ResolvedTarget.PropertyPath,
 			Expression.Type,
+			Expression.SearchMode,
+			Expression.AmbiguityPolicy,
+			Expression.CategoryPriority,
 			&ActionResult,
 			OutError))
 		{
@@ -1173,6 +1159,7 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 			SemanticKind,
 			Query,
 			TargetPath,
+			Expression.ResolvedTarget.PropertyPath,
 			TypeName,
 			ActionResult,
 			OutError))

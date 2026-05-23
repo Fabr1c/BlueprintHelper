@@ -75,7 +75,7 @@ AgentFace semantic statement
 | `UBlueprintEventNodeSpawner` | 事件节点 spawner | 普通事件、自定义事件、函数事件入口 |
 | `UBlueprintBoundEventNodeSpawner` | 绑定事件 spawner | delegate/component bound event |
 | `UAnimNotifyEventNodeSpawner` | 动画通知事件 spawner | Animation Notify 事件 |
-| `UBlueprintDelegateNodeSpawner` | delegate 节点 spawner | multicast delegate bind/assign/call/remove/clear |
+| `UBlueprintDelegateNodeSpawner` | delegate 节点 spawner | multicast delegate bind/assign/unbind/call/clear |
 | `UBlueprintComponentNodeSpawner` | 组件节点 spawner | component reference / component action |
 | `UBlueprintAssetNodeSpawner` | 资产节点 spawner | asset-backed node creation |
 | `UBlueprintBoundNodeSpawner` | 绑定对象上下文 spawner | bound generic node action |
@@ -170,7 +170,7 @@ delegate_clear
 - 事件入口。
 - 组件绑定事件。
 - 动画通知事件。
-- delegate bind/assign/call/remove/clear。
+- delegate bind/assign/unbind/call/clear。
 - 绑定对象上下文 action。
 
 ### 4.4 GenericAssetStructControlActionCluster
@@ -220,6 +220,10 @@ AgentFace `kind` 不再定义底层簇边界，只作为 intent 输入。
 | `event` | EventDelegateActionCluster | 事件入口 |
 | `component_bound_event` | EventDelegateActionCluster | 组件绑定事件 |
 | `bind` | EventDelegateActionCluster | delegate 绑定 |
+| `assign` | EventDelegateActionCluster | delegate assign / create-event use-site |
+| `unbind` | EventDelegateActionCluster | delegate 解除指定 handler 绑定 |
+| `delegate_call` | EventDelegateActionCluster | delegate 调用 |
+| `delegate_clear` | EventDelegateActionCluster | delegate clear / clear-all use-site |
 | `construct` | GenericAssetStructControlActionCluster | value/struct/container 构造 |
 | `deconstruct` | GenericAssetStructControlActionCluster | value/struct/container 拆解 |
 | `select` | GenericAssetStructControlActionCluster | 数据流选择 |
@@ -404,7 +408,43 @@ Implementation note 2026-05-22:
 - `set_property` FragmentDAG emission must invoke the selected UE `NodeSpawner` through the shared ActionResolution adapter. It must not fall back to parsed-node local spawning.
 - `op` belongs to `FunctionActionCluster`, but its semantic is operator constraints. It resolves to UE type-promotion operator spawners from `FTypePromotion::GetOperatorSpawner`, not to pseudo call-function lookup.
 - Generic construct/deconstruct may use a dedicated `UBlueprintFieldNodeSpawner` MakeStruct/BreakStruct boundary only when UE FunctionAction/native make-break lookup cannot express the struct operation. This boundary must be explicit in candidate evidence and must remain generic, not Vector-only or type-specific.
-- `EventDelegateActionCluster` follows the same projected-context rule. Custom events can resolve through `UBlueprintEventNodeSpawner`; component-bound events and delegate bind nodes require projected component/delegate/signature evidence before they can invoke their UE spawner families.
+- `EventDelegateActionCluster` follows the same projected-context rule. Custom events can resolve through `UBlueprintEventNodeSpawner` only as graph-node/body placement after Signature ownership is respected; component-bound events and delegate bind/assign/unbind/call/clear nodes require projected component/delegate/handler/signature evidence before they can invoke their UE spawner families.
+
+## 2026-05-23 EventDelegate / Signature Ownership Boundary
+
+Signature owns declaration and signature mutation:
+
+- `ensure_function`
+- `ensure_custom_event`
+- `ensure_event_dispatcher`
+- `ensure_override_event`
+- signature pins, mismatch policy, migration, and removal
+
+GraphWrite/EventDelegate owns existing-declaration use-site graph writing:
+
+- `component_bound_event`
+- `bind`
+- `assign`
+- `unbind`
+- `delegate_call`
+- `delegate_clear`
+- delegate reference nodes such as `Create Event`
+- graph links and body content around those use sites
+
+GraphWrite/EventDelegate must consume projected `ActionContext` / `ActionDataBase` evidence. It must not scan assets inside the resolver to repair missing context, and it must not create or modify handler/function/custom-event/dispatcher signatures.
+
+Handler boundary:
+
+- If the handler implementation already exists, GraphWrite may reference it through projected evidence.
+- If the handler implementation does not exist, a prior Signature dependency step must create it before GraphWrite runs.
+- The `Bind Event to ...` / `Assign ...` node and the `Create Event` delegate-reference node are GraphWrite use-site nodes.
+- The function or event selected by `Create Event` remains Signature-owned declaration/signature state.
+
+AgentFace / lowering boundary:
+
+- `delegate.unbind` and `delegate.unbind_all` must stay explicit.
+- Missing callback evidence for `delegate.unbind` must not silently downgrade to `delegate.unbind_all`.
+- Positive EventDelegate support requires complete projected evidence, `SelectedSpawner != null`, stable candidate evidence, correct node family, execution/asset validation, and missing-evidence diagnostics that still fail deterministically when evidence is absent.
 
 ## 2026-05-22 Canonical Singleton Direct Spawn Rule
 

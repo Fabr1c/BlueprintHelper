@@ -293,6 +293,78 @@ bool FBlueprintHelperActionContextCallExpressionDemandPrefersTargetTest::RunTest
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionContextSingleDemandSetPropertyMapsToFieldVariableTest,
+	"BlueprintHelper.GraphWrite.ActionContext.SingleDemand.SetPropertyMapsToFieldVariable",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionContextSingleDemandSetPropertyMapsToFieldVariableTest::RunTest(const FString& Parameters)
+{
+	TArray<FString> CategoryPriority;
+	CategoryPriority.Add(TEXT("field_variable"));
+
+	TArray<FString> ArgumentNames;
+	ArgumentNames.Add(TEXT("target"));
+	ArgumentNames.Add(TEXT("value"));
+
+	const FBlueprintHelperActionContextDemand Demand =
+		FBlueprintHelperActionContextDemandCollector::BuildSingleDemand(
+			TEXT("stmt_set_property"),
+			TEXT("$.statements[0]"),
+			EBlueprintHelperActionSemanticKind::SetProperty,
+			TEXT("set_property"),
+			TEXT("DoorMesh"),
+			TEXT("DoorMesh.RelativeRotation"),
+			TEXT("Rotator"),
+			TEXT("contextual"),
+			TEXT("fail_on_ambiguity"),
+			CategoryPriority,
+			ArgumentNames);
+
+	TestEqual(TEXT("SetProperty cluster kind"), Demand.ClusterKind, EBlueprintHelperSpawnerClusterKind::FieldVariableAction);
+	TestEqual(TEXT("SetProperty semantic kind"), Demand.SemanticKind, EBlueprintHelperActionSemanticKind::SetProperty);
+	TestEqual(TEXT("SetProperty query"), Demand.Query, FString(TEXT("DoorMesh.RelativeRotation")));
+	TestTrue(TEXT("SetProperty requires typed pins"), Demand.RequiredKinds.Contains(EBlueprintHelperActionContextDemandKind::TypedPins));
+	TestTrue(TEXT("SetProperty requires target"), Demand.RequiredKinds.Contains(EBlueprintHelperActionContextDemandKind::Target));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionContextSingleDemandSelectMapsToGenericClusterTest,
+	"BlueprintHelper.GraphWrite.ActionContext.SingleDemand.SelectMapsToGenericCluster",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionContextSingleDemandSelectMapsToGenericClusterTest::RunTest(const FString& Parameters)
+{
+	TArray<FString> CategoryPriority;
+	CategoryPriority.Add(TEXT("generic_asset_struct_control"));
+
+	TArray<FString> ArgumentNames;
+	ArgumentNames.Add(TEXT("condition"));
+	ArgumentNames.Add(TEXT("a"));
+	ArgumentNames.Add(TEXT("b"));
+
+	const FBlueprintHelperActionContextDemand Demand =
+		FBlueprintHelperActionContextDemandCollector::BuildSingleDemand(
+			TEXT("expr_select"),
+			TEXT("$.statements[0].value"),
+			EBlueprintHelperActionSemanticKind::Select,
+			TEXT("select"),
+			TEXT(""),
+			TEXT(""),
+			TEXT("bool"),
+			TEXT("contextual"),
+			TEXT("fail_on_ambiguity"),
+			CategoryPriority,
+			ArgumentNames);
+
+	TestEqual(TEXT("Select cluster kind"), Demand.ClusterKind, EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction);
+	TestEqual(TEXT("Select semantic kind"), Demand.SemanticKind, EBlueprintHelperActionSemanticKind::Select);
+	TestEqual(TEXT("Select query"), Demand.Query, FString(TEXT("select")));
+	TestTrue(TEXT("Select requires typed pins"), Demand.RequiredKinds.Contains(EBlueprintHelperActionContextDemandKind::TypedPins));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperActionContextScopeSourceContractTest,
 	"BlueprintHelper.GraphWrite.ActionContext.Scope.SourceContract",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

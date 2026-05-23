@@ -19,10 +19,10 @@
 
 | 工具簇 | 当前完成状态 | TaskSpec 稳定上下文覆盖率 | 已完成范围 | 剩余 gap | 下一步收敛 |
 |---|---|---:|---|---|---|
-| `FunctionActionCluster` | 部分完成 | 约 70%-75% | `call` 在 P6 能力行中已有 selected stable id、selected spawner、call node readback；`op` 有独立 resolver 入口；P6 regression 中的 operator/call resolver stress 与 generator 路径已通过。 | 函数类 spawner 调用仍需继续统一收敛到共享 adapter/lifecycle，且四簇整体仍有残余 architecture gaps。 | 继续把函数类 spawner 调用收敛到共享 adapter/lifecycle，并保持 call query 以 target/stable id 为主的 evidence contract。 |
+| `FunctionActionCluster` | 部分完成 | 约 70%-75% | `call` 在 P6 能力行中已有 selected stable id、selected spawner、call node readback；`op` 有独立 resolver 入口；P6 regression 中的 operator/call resolver stress 与 generator 路径已通过。 | 函数类 spawner 调用仍需继续统一收敛到共享 adapter/lifecycle；Gap 2/3/4 已按文档范围关闭，但四簇整体仍保留 Gap 5 与若干语义收敛缺口。 | 继续把函数类 spawner 调用收敛到共享 adapter/lifecycle，并保持 call query 以 target/stable id 为主的 evidence contract。 |
 | `FieldVariableActionCluster` | 部分完成 | 约 45%-55% | P6 readback 覆盖 variable get/set by field evidence；基础 get/set resolver/spawner evidence 可用。 | `get_property` / `set_property` 仍未完全按 property path、pin evidence、field metadata 建立独立闭环；field 名称回退推导仍需收敛。 | 把 `field_name`、`property_path`、owner、pin/type evidence 设为 resolver 的显式输入契约；补 property 正向和缺失 evidence 测试；收敛变量 spawner 到共享 adapter。 |
 | `EventDelegateActionCluster` | 部分完成 | 约 20%-30% | P6 readback 覆盖 custom event by event name；P5/P6 明确 component-bound event / delegate bind complete evidence 当前返回 `unsupported_intent`，不产生 fake selected spawner；declared-capability contract 已同步当前 P5 语义。 | Gap 5 仍开放；component-bound/bind 尚无安全 UE spawner-family 正向路径。 | 先解决安全 UE spawner-family 路径；只有 complete projected evidence + `SelectedSpawner != null` 正向测试存在后才可标记完成。 |
-| `GenericAssetStructControlActionCluster` | 部分完成 | 约 45%-55% | P6 readback 覆盖 select/control singleton stable id、struct make/break by struct type；P4 provider boundary 证据可用。 | Gap 3/4 closed: canonical singleton direct spawn is fixed behind `FBlueprintHelperSingletonControlFlowEvidenceProvider` as Generic cluster internal secondary semantic mapping; mutation branch-fork sequence creation reuses provider evidence and shared spawner adapter. Broad create/convert/schedule semantics remain open. | 保留一级分发到簇、簇内二级语义映射；继续让 broad create/convert/schedule 走完整 context -> provider/resolver -> spawner/evidence。 |
+| `GenericAssetStructControlActionCluster` | 部分完成 | 约 45%-55% | P6 readback 覆盖 select/control singleton stable id、struct make/break by struct type；P4 provider boundary 证据可用。 | Gap 2/3/4 closed for their documented scopes: GraphStatementBuilder demand/projection is owned by ActionContext, canonical singleton direct spawn is fixed behind `FBlueprintHelperSingletonControlFlowEvidenceProvider`, and mutation branch-fork sequence creation reuses provider evidence plus shared spawner adapter. Broad create/convert/schedule semantics remain open. | 保留一级分发到簇、簇内二级语义映射；继续让 broad create/convert/schedule 走完整 context -> provider/resolver -> spawner/evidence。 |
 
 ## 3. 分类汇总
 
@@ -55,7 +55,7 @@
 2. `branch`、`sequence`、`select` 等唯一控制流可以 direct spawn，但仍必须保留统一的一级分发规则和簇内次级语义映射路径。
 3. direct spawn 也应有明确 evidence provider / adapter 边界，不能重新变成 mutation helper 或 builder 内的散落硬编码。
 
-P6 已重新运行能力行、`BlueprintHelper.GraphWrite` 全量 regression 与 BuildPlugin，三者均通过；四簇仍全部保持“部分完成”，原因是残余 architecture gaps 仍未全部收敛，尤其是 Gap 5 的 delegate/bind 正向 spawner-family 路径。
+P6 已重新运行能力行、`BlueprintHelper.GraphWrite` 全量 regression 与 BuildPlugin，三者均通过；Gap 2/3/4 已按各自文档范围关闭。四簇仍全部保持“部分完成”，原因是 Gap 5 的 EventDelegate use-site 正向 spawner-family 路径仍开放，且 broad `create/convert/schedule` 等语义仍需继续完整走 context / resolver / evidence 链路。
 
 ## 6. P6 同步记录
 
