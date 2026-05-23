@@ -499,3 +499,9 @@ $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 ```
 
 This is a local shell/runtime compatibility issue, not a BlueprintHelper plugin bug.
+## 2026-05-24 CLI / PowerShell JSON Tips
+
+1. PowerShell `Set-Content -Encoding utf8` 在部分环境会写入 UTF-8 BOM，`bh task preview --file` 会按严格 JSON 解析并报 `Unexpected token '﻿'`。生成 TaskSpec 文件时优先使用 `[System.IO.File]::WriteAllText($Path, $Json, [System.Text.UTF8Encoding]::new($false))` 写 UTF-8 no BOM。
+2. `append_new_owned_graph` 中 `scope_policy.graph_name` 不要和 `entries[].name` 同名。UE 会生成同名图表/事件并导致 execute 编译失败：`名为 ... 的图表已存在`。
+3. PowerShell 字符串插值中 `$LASTEXITCODE: $Test` 会把冒号解析进变量名，应写成 `${LASTEXITCODE}: $Test`。
+4. PowerShell 单引号字符串不会展开 `` `n`` / `` `r`` 转义；用替换脚本改 JSON 时容易写出字面 `` `n`` 导致 JSON 非法。复杂 TaskSpec 更推荐直接重写完整 no-BOM JSON 文件。

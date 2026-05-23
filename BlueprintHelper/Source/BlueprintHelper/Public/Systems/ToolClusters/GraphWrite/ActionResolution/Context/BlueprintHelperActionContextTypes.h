@@ -45,6 +45,8 @@ struct FBlueprintHelperActionContextDemand
 	FString SourcePath;
 	EBlueprintHelperSpawnerClusterKind ClusterKind = EBlueprintHelperSpawnerClusterKind::Unknown;
 	EBlueprintHelperActionSemanticKind SemanticKind = EBlueprintHelperActionSemanticKind::Unknown;
+	EBlueprintHelperActionSemanticFamily SemanticFamily = EBlueprintHelperActionSemanticFamily::Unknown;
+	EBlueprintHelperTypeOperation TypeOperation = EBlueprintHelperTypeOperation::None;
 	TSet<EBlueprintHelperActionContextDemandKind> RequiredKinds;
 	FString Query;
 	FString TargetPath;
@@ -52,6 +54,8 @@ struct FBlueprintHelperActionContextDemand
 	FString FieldOperation;
 	FString FieldScope;
 	FString TypeName;
+	FString StructPath;
+	FString TypeStructureId;
 	FString SearchMode;
 	FString AmbiguityPolicy;
 	TArray<FString> CategoryPriority;
@@ -158,6 +162,25 @@ struct FBlueprintHelperResolvedActionContextBundle
 			if (Existing->Semantic.Kind == EBlueprintHelperActionSemanticKind::Unknown)
 			{
 				Existing->Semantic = MoveTemp(Context.Semantic);
+			}
+			else
+			{
+				if (Existing->Semantic.SemanticFamily == EBlueprintHelperActionSemanticFamily::Unknown)
+				{
+					Existing->Semantic.SemanticFamily = Context.Semantic.SemanticFamily;
+				}
+				if (Existing->Semantic.TypeOperation == EBlueprintHelperTypeOperation::None)
+				{
+					Existing->Semantic.TypeOperation = Context.Semantic.TypeOperation;
+				}
+				if (Existing->Semantic.StructPath.IsEmpty())
+				{
+					Existing->Semantic.StructPath = MoveTemp(Context.Semantic.StructPath);
+				}
+				if (Existing->Semantic.TypeStructureId.IsEmpty())
+				{
+					Existing->Semantic.TypeStructureId = MoveTemp(Context.Semantic.TypeStructureId);
+				}
 			}
 
 			if (Existing->GraphName.IsEmpty())

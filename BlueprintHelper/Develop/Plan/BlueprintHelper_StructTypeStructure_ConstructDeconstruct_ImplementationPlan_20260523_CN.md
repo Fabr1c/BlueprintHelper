@@ -14,21 +14,21 @@
 
 ### In scope
 
-- [ ] 将 `construct` / `deconstruct` 规范为 `SemanticFamily=Struct|TypeStructure`。
-- [ ] 使用 `TypeOperation=Construct|Deconstruct` 作为 resolver 和 evidence 的唯一操作语义。
-- [ ] 让 `construct/deconstruct` 继续通过 `SpawnerClusterKind=GenericAssetStructControlAction` 分发。
-- [ ] 在 ActionContextPipeline 中收集和投影 struct/type evidence。
-- [ ] 提供清晰的 UE spawner evidence，包括 `struct_path`、`type_structure_id`、`type_operation`、`spawner_class`、`node_class`、`stable_id`、`match_reason`。
-- [ ] 抽离 Struct/TypeStructure resolver，避免 `GenericAssetStructControlActionResolver` 继续膨胀。
-- [ ] 将成功路径收敛到 UE action / NodeSpawner evidence；只有 UE evidence 无法表达的结构化场景才允许进入显式、通用的 dedicated FragmentBuilder boundary。
+- [x] 将 `construct` / `deconstruct` 规范为 `SemanticFamily=Struct|TypeStructure`。
+- [x] 使用 `TypeOperation=Construct|Deconstruct` 作为 resolver 和 evidence 的唯一操作语义。
+- [x] 让 `construct/deconstruct` 继续通过 `SpawnerClusterKind=GenericAssetStructControlAction` 分发。
+- [x] 在 ActionContextPipeline 中收集和投影 struct/type evidence。
+- [x] 提供清晰的 UE spawner evidence，包括 `struct_path`、`type_structure_id`、`type_operation`、`spawner_class`、`node_class`、`stable_id`、`match_reason`。
+- [x] 抽离 Struct/TypeStructure resolver，避免 `GenericAssetStructControlActionResolver` 继续膨胀。
+- [x] 将成功路径收敛到 UE action / NodeSpawner evidence；只有 UE evidence 无法表达的结构化场景才允许进入显式、通用的 dedicated FragmentBuilder boundary。
 
 ### Out of scope
 
-- [ ] 不处理 broad `create`、`asset_action`、`spawn_actor`、`create_widget`、`construct_object`。
-- [ ] 不处理 `convert`、`schedule`、`latent_or_async`。
-- [ ] 不恢复旧 AgentFace alias，例如 `make_struct` / `break_struct`。
-- [ ] 不引入 NodeHandler fallback、ParsedNode fallback、旧 Graph JSON fallback。
-- [ ] 不允许通过全局宽扫描直接选中成功；宽扫描只能作为显式诊断或候选解释，不能成为默认成功路径。
+- [x] 不处理 broad `create`、`asset_action`、`spawn_actor`、`create_widget`、`construct_object`。
+- [x] 不处理 `convert`、`schedule`、`latent_or_async`。
+- [x] 不恢复旧 AgentFace alias，例如 `make_struct` / `break_struct`。
+- [x] 不引入 NodeHandler fallback、ParsedNode fallback、旧 Graph JSON fallback。
+- [x] 不允许通过全局宽扫描直接选中成功；宽扫描只能作为显式诊断或候选解释，不能成为默认成功路径。
 
 ---
 
@@ -58,10 +58,10 @@ struct FBlueprintHelperActionSemanticConstraints
 
 ### Rejection rules
 
-- [ ] 如果 `construct/deconstruct` 被解析成 `FunctionActionCluster`，必须失败测试。
-- [ ] 如果 `construct/deconstruct` 被解析成 `create` 或 `create_operation`，必须失败测试。
-- [ ] 如果 resolver 只能依靠旧 `make_struct` / `break_struct` 字符串 token 才能成功，必须失败测试。
-- [ ] 如果缺少 struct/type evidence，返回 `NeedsMoreSemanticContext`，不能 silently fallback。
+- [x] 如果 `construct/deconstruct` 被解析成 `FunctionActionCluster`，必须失败测试。
+- [x] 如果 `construct/deconstruct` 被解析成 `create` 或 `create_operation`，必须失败测试。
+- [x] 如果 resolver 只能依靠旧 `make_struct` / `break_struct` 字符串 token 才能成功，必须失败测试。
+- [x] 如果缺少 struct/type evidence，返回 `NeedsMoreSemanticContext`，不能 silently fallback。
 
 ---
 
@@ -69,39 +69,39 @@ struct FBlueprintHelperActionSemanticConstraints
 
 ### Action context and DTO
 
-- [ ] `BlueprintHelper/Source/BlueprintHelper/Public/Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextTypes.h`
-- [ ] `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextDemandCollector.cpp`
-- [ ] `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextInferenceService.cpp`
-- [ ] `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextBundleProjector.cpp`
+- [x] `BlueprintHelper/Source/BlueprintHelper/Public/Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextTypes.h`
+- [x] `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextDemandCollector.cpp`
+- [x] `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextInferenceService.cpp`
+- [x] `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextBundleProjector.cpp`
 
 ### Action resolution
 
-- [ ] `BlueprintHelper/Source/BlueprintHelper/Public/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.h`
-- [ ] `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.cpp`
-- [ ] `BlueprintHelper/Source/BlueprintHelper/Public/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericAssetStructControlActionResolver.h`
-- [ ] `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericAssetStructControlActionResolver.cpp`
+- [x] `BlueprintHelper/Source/BlueprintHelper/Public/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.h`
+- [x] `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.cpp`
+- [x] `BlueprintHelper/Source/BlueprintHelper/Public/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericAssetStructControlActionResolver.h`
+- [x] `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericAssetStructControlActionResolver.cpp`
 
 ### New resolver extraction
 
-- [ ] `BlueprintHelper/Source/BlueprintHelper/Public/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperStructTypeStructureActionResolver.h`
-- [ ] `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperStructTypeStructureActionResolver.cpp`
+- [x] `BlueprintHelper/Source/BlueprintHelper/Public/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperStructTypeStructureActionResolver.h`
+- [x] `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperStructTypeStructureActionResolver.cpp`
 
 ### Fragment and composer lifecycle
 
-- [ ] `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphStatementBuilder.cpp`
-- [ ] `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphSemanticIRUtils.cpp`
-- [ ] `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGraphNodeSpawnAdapter.cpp`
+- [x] `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphStatementBuilder.cpp`
+- [x] `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphSemanticIRUtils.cpp`
+- [x] `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGraphNodeSpawnAdapter.cpp`
 
 ### Tests
 
-- [ ] `BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintHelperGenericAssetStructControlActionClusterTests.cpp`
-- [ ] `BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintHelperFourClusterContextConsumptionTests.cpp`
+- [x] `BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintHelperGenericAssetStructControlActionClusterTests.cpp`
+- [x] `BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintHelperFourClusterContextConsumptionTests.cpp`
 
 ### Docs
 
-- [ ] `BlueprintHelper/Develop/Design/BlueprintHelper_GraphStatementFramework_Design_20260521_CN.md`
-- [ ] `BlueprintHelper/Develop/Gap/BlueprintHelper_GraphWrite_ArchitectureGaps_Audit_20260522_CN.md`
-- [ ] `AgentFaceService/docs/TaskSpec_UE_Editor_Capability_Matrix_20260521_CN.md`
+- [x] `BlueprintHelper/Develop/Design/BlueprintHelper_GraphStatementFramework_Design_20260521_CN.md`
+- [x] `BlueprintHelper/Develop/Gap/BlueprintHelper_GraphWrite_ArchitectureGaps_Audit_20260522_CN.md`
+- [x] `AgentFaceService/docs/TaskSpec_UE_Editor_Capability_Matrix_20260521_CN.md`
 
 ---
 
@@ -109,13 +109,13 @@ struct FBlueprintHelperActionSemanticConstraints
 
 ### Step 1: Add taxonomy tests first
 
-- [ ] Add a test case for `construct FVector`.
-- [ ] Add a test case for `deconstruct FVector`.
-- [ ] Assert both requests resolve to `SpawnerClusterKind=GenericAssetStructControlAction`.
-- [ ] Assert `SemanticFamily=Struct` or `TypeStructure`.
-- [ ] Assert `TypeOperation=Construct` or `Deconstruct`.
-- [ ] Assert no selected evidence contains `create_operation`.
-- [ ] Assert no selected evidence requires legacy `make_struct` / `break_struct` AgentFace tokens.
+- [x] Add a test case for `construct FVector`.
+- [x] Add a test case for `deconstruct FVector`.
+- [x] Assert both requests resolve to `SpawnerClusterKind=GenericAssetStructControlAction`.
+- [x] Assert `SemanticFamily=Struct` or `TypeStructure`.
+- [x] Assert `TypeOperation=Construct` or `Deconstruct`.
+- [x] Assert no selected evidence contains `create_operation`.
+- [x] Assert no selected evidence requires legacy `make_struct` / `break_struct` AgentFace tokens.
 
 Expected failure before implementation:
 
@@ -125,11 +125,11 @@ construct/deconstruct taxonomy does not expose canonical SemanticFamily + TypeOp
 
 ### Step 2: Extend semantic DTO and string conversion
 
-- [ ] Add `EBlueprintHelperActionSemanticFamily`.
-- [ ] Add `EBlueprintHelperTypeOperation`.
-- [ ] Add string conversion helpers for logs, debug bundle, CLI preview, and test assertions.
-- [ ] Add `SemanticFamily` and `TypeOperation` to `FBlueprintHelperActionSemanticConstraints`.
-- [ ] Add struct evidence fields to the selected evidence DTO.
+- [x] Add `EBlueprintHelperActionSemanticFamily`.
+- [x] Add `EBlueprintHelperTypeOperation`.
+- [x] Add string conversion helpers for logs, debug bundle, CLI preview, and test assertions.
+- [x] Add `SemanticFamily` and `TypeOperation` to `FBlueprintHelperActionSemanticConstraints`.
+- [x] Add struct evidence fields to the selected evidence DTO.
 
 Required evidence fields:
 
@@ -146,11 +146,11 @@ bool bRequiresDedicatedFragmentBuilder = false;
 
 ### Step 3: Canonical lowering from AgentFace kind
 
-- [ ] Map compact `construct` to `SemanticFamily=Struct|TypeStructure` and `TypeOperation=Construct`.
-- [ ] Map compact `deconstruct` to `SemanticFamily=Struct|TypeStructure` and `TypeOperation=Deconstruct`.
-- [ ] Preserve compact kind only as source syntax metadata when needed for diagnostics.
-- [ ] Ensure `ActionResolutionCore` still dispatches only by `ClusterKind`.
-- [ ] Remove any code path where `Construct` or `Deconstruct` is treated as a first-level ActionResolution request type.
+- [x] Map compact `construct` to `SemanticFamily=Struct|TypeStructure` and `TypeOperation=Construct`.
+- [x] Map compact `deconstruct` to `SemanticFamily=Struct|TypeStructure` and `TypeOperation=Deconstruct`.
+- [x] Preserve compact kind only as source syntax metadata when needed for diagnostics.
+- [x] Ensure `ActionResolutionCore` still dispatches only by `ClusterKind`.
+- [x] Remove any code path where `Construct` or `Deconstruct` is treated as a first-level ActionResolution request type.
 
 Acceptance check:
 
@@ -160,11 +160,11 @@ ActionResolutionCore does not switch on construct/deconstruct as top-level reque
 
 ### Step 4: Build struct/type demand in ActionContextPipeline
 
-- [ ] Demand collector identifies `construct/deconstruct` statements and requests struct/type evidence.
-- [ ] Inference service fills `RequestedStructPath` when TaskSpec gives explicit type.
+- [x] Demand collector identifies `construct/deconstruct` statements and requests struct/type evidence.
+- [x] Inference service fills `RequestedStructPath` when TaskSpec gives explicit type.
 - [ ] Inference service derives type from linked typed pins when input/output links are already available.
-- [ ] Bundle projector emits one canonical request per construct/deconstruct action.
-- [ ] Missing type returns a structured `NeedsMoreSemanticContext` response with concise candidate hints.
+- [x] Bundle projector emits one canonical request per construct/deconstruct action.
+- [x] Missing type returns a structured `NeedsMoreSemanticContext` response with concise candidate hints.
 
 Missing context response shape:
 
@@ -178,11 +178,11 @@ Missing context response shape:
 
 ### Step 5: Extract Struct/TypeStructure resolver
 
-- [ ] Create `FBlueprintHelperStructTypeStructureActionResolver`.
-- [ ] Move construct/deconstruct-specific logic out of `FBlueprintHelperGenericAssetStructControlActionResolver`.
-- [ ] Let `GenericAssetStructControlActionCluster` delegate only when `SemanticFamily=Struct|TypeStructure`.
-- [ ] Keep `select/control` in their existing Generic cluster path.
-- [ ] Do not merge with broad `create`.
+- [x] Create `FBlueprintHelperStructTypeStructureActionResolver`.
+- [x] Move construct/deconstruct-specific logic out of `FBlueprintHelperGenericAssetStructControlActionResolver`.
+- [x] Let `GenericAssetStructControlActionCluster` delegate only when `SemanticFamily=Struct|TypeStructure`.
+- [x] Keep `select/control` in their existing Generic cluster path.
+- [x] Do not merge with broad `create`.
 
 Resolver responsibility:
 
@@ -193,11 +193,11 @@ Output: selected UE spawner evidence, ambiguous candidate list, or NeedsMoreSema
 
 ### Step 6: Resolver selection order
 
-- [ ] First, try UE ActionDatabase / ActionFilter evidence where it can express native make/break or function-backed struct operations.
-- [ ] Second, try `UBlueprintFieldNodeSpawner` style MakeStruct / BreakStruct evidence for known `UScriptStruct`.
-- [ ] Third, use a dedicated FragmentBuilder boundary only for generic struct operations that UE action evidence cannot represent.
-- [ ] Mark dedicated boundary explicitly with `bRequiresDedicatedFragmentBuilder=true`.
-- [ ] Reject success if selected evidence came from unrelated broad `create`.
+- [x] First, try UE ActionDatabase / ActionFilter evidence where it can express native make/break or function-backed struct operations.
+- [x] Second, try `UBlueprintFieldNodeSpawner` style MakeStruct / BreakStruct evidence for known `UScriptStruct`.
+- [x] Third, use a dedicated FragmentBuilder boundary only for generic struct operations that UE action evidence cannot represent.
+- [x] Mark dedicated boundary explicitly with `bRequiresDedicatedFragmentBuilder=true`.
+- [x] Reject success if selected evidence came from unrelated broad `create`.
 
 Selection rules:
 
@@ -211,11 +211,11 @@ Wide global scan never auto-wins.
 
 ### Step 7: Shared adapter and lifecycle consumption
 
-- [ ] Make `BlueprintHelperGraphNodeSpawnAdapter` consume selected Struct/TypeStructure evidence.
-- [ ] Route post-spawn defaults through shared adapter lifecycle.
-- [ ] Route pin normalization through shared adapter lifecycle.
-- [ ] Route post-link reconstruct through shared composer lifecycle.
-- [ ] Ensure `GraphStatementBuilder` no longer branches on `make_struct` / `break_struct` style tokens for success.
+- [x] Make `BlueprintHelperGraphNodeSpawnAdapter` consume selected Struct/TypeStructure evidence.
+- [x] Route post-spawn defaults through shared adapter lifecycle.
+- [x] Route pin normalization through shared adapter lifecycle.
+- [x] Route post-link reconstruct through shared composer lifecycle.
+- [x] Ensure `GraphStatementBuilder` no longer branches on `make_struct` / `break_struct` style tokens for success.
 
 Acceptance check:
 
@@ -225,10 +225,10 @@ construct/deconstruct nodes are created from selected evidence, not from local s
 
 ### Step 8: CLI preview response
 
-- [ ] Preview success returns minimal success when evidence is unique.
+- [x] Preview success returns minimal success when evidence is unique.
 - [ ] Preview ambiguity returns concise candidate list.
-- [ ] Preview missing type returns `NeedsMoreSemanticContext`.
-- [ ] Preview must include evidence path in `full_result`, not in the compact default response.
+- [x] Preview missing type returns `NeedsMoreSemanticContext`.
+- [x] Preview must include evidence path in `full_result`, not in the compact default response.
 
 Candidate response example:
 
@@ -247,11 +247,11 @@ Candidate response example:
 
 ### Step 9: Remove active legacy surface
 
-- [ ] Remove active success paths that search by `make_struct`.
-- [ ] Remove active success paths that search by `break_struct`.
-- [ ] Remove active success paths that interpret `construct` as broad `create`.
-- [ ] Keep diagnostic strings only if they are clearly marked as unsupported or deprecated and cannot be selected as success.
-- [ ] Update gap doc if any legacy code cannot be removed in this pass.
+- [x] Remove active success paths that search by `make_struct`.
+- [x] Remove active success paths that search by `break_struct`.
+- [x] Remove active success paths that interpret `construct` as broad `create`.
+- [x] Keep diagnostic strings only if they are clearly marked as unsupported or deprecated and cannot be selected as success.
+- [x] Update gap doc if any legacy code cannot be removed in this pass.
 
 Static scan commands:
 
@@ -262,12 +262,12 @@ rg -n "TObjectIterator<UScriptStruct|TObjectIterator<UFunction>" BlueprintHelper
 
 ### Step 10: Runtime smoke specs
 
-- [ ] Add or update one TaskSpec for `construct FVector`.
-- [ ] Add or update one TaskSpec for `deconstruct FVector`.
-- [ ] Add one missing-type preview spec that must return `NeedsMoreSemanticContext`.
-- [ ] Run preview before execute.
-- [ ] Execute only after preview succeeds.
-- [ ] Compile the generated Blueprint after execute.
+- [x] Add or update one TaskSpec for `construct FVector`.
+- [x] Add or update one TaskSpec for `deconstruct FVector`.
+- [x] Add one missing-type preview spec that must return `NeedsMoreSemanticContext`.
+- [x] Run preview before execute.
+- [x] Execute only after preview succeeds.
+- [x] Compile the generated Blueprint after execute.
 
 Required commands:
 
@@ -284,31 +284,49 @@ Compile command:
 
 ### Step 11: Documentation sync
 
-- [ ] Update `BlueprintHelper_GraphStatementFramework_Design_20260521_CN.md` with the canonical `Struct/TypeStructure + type_operation` rule.
-- [ ] Update `BlueprintHelper_GraphWrite_ArchitectureGaps_Audit_20260522_CN.md` to close the construct/deconstruct taxonomy gap or list exact remaining gap.
-- [ ] Update AgentFace capability matrix so `construct/deconstruct` are not described as broad `create`.
-- [ ] Mark this implementation plan checkboxes only after the corresponding code or doc change is actually complete.
+- [x] Update `BlueprintHelper_GraphStatementFramework_Design_20260521_CN.md` with the canonical `Struct/TypeStructure + type_operation` rule.
+- [x] Update `BlueprintHelper_GraphWrite_ArchitectureGaps_Audit_20260522_CN.md` to close the construct/deconstruct taxonomy gap or list exact remaining gap.
+- [x] Update AgentFace capability matrix so `construct/deconstruct` are not described as broad `create`.
+- [x] Mark this implementation plan checkboxes only after the corresponding code or doc change is actually complete.
 
 ---
 
 ## 5. Acceptance criteria
 
-- [ ] `construct/deconstruct` are not first-level ActionResolution request kinds.
-- [ ] `construct/deconstruct` resolve through `GenericAssetStructControlActionCluster`.
-- [ ] Canonical evidence exposes `SemanticFamily=Struct|TypeStructure`.
-- [ ] Canonical evidence exposes `TypeOperation=Construct|Deconstruct`.
-- [ ] Broad `create` is untouched and remains out of scope.
-- [ ] Missing struct/type context returns `NeedsMoreSemanticContext`.
+- [x] `construct/deconstruct` are not first-level ActionResolution request kinds.
+- [x] `construct/deconstruct` resolve through `GenericAssetStructControlActionCluster`.
+- [x] Canonical evidence exposes `SemanticFamily=Struct|TypeStructure`.
+- [x] Canonical evidence exposes `TypeOperation=Construct|Deconstruct`.
+- [x] Broad `create` is untouched and remains out of scope.
+- [x] Missing struct/type context returns `NeedsMoreSemanticContext`.
 - [ ] Ambiguous struct/type context returns candidates.
-- [ ] Successful node creation consumes UE spawner evidence or an explicitly marked dedicated struct builder boundary.
-- [ ] No old NodeHandler, ParsedNode, direct string token, or broad create fallback is used for successful construct/deconstruct creation.
-- [ ] Runtime smoke preview passes.
-- [ ] Runtime smoke execute passes.
-- [ ] Generated Blueprint compiles.
-- [ ] Design and gap docs are synchronized.
+- [x] Successful node creation consumes UE spawner evidence or an explicitly marked dedicated struct builder boundary.
+- [x] No old NodeHandler, ParsedNode, direct string token, or broad create fallback is used for successful construct/deconstruct creation.
+- [x] Runtime smoke preview passes.
+- [x] Runtime smoke execute passes.
+- [x] Generated Blueprint compiles.
+- [x] Design and gap docs are synchronized.
 
 ---
 
 ## 6. Blocker policy
 
 If implementation discovers that UE 5.6 cannot expose MakeStruct/BreakStruct through stable NodeSpawner evidence for a required struct operation, do not route through old fallback. Record the blocker in `BlueprintHelper/Develop/Gap/BlueprintHelper_GraphWrite_ArchitectureGaps_Audit_20260522_CN.md` and implement a dedicated, generic `Struct/TypeStructure` FragmentBuilder boundary with explicit evidence.
+
+## 2026-05-24 执行记录
+
+- [x] UBT 编译通过：`Build.bat TemplateEditor Win64 Development D:\UEProjects\Template\Template.uproject -WaitMutex`。
+- [x] 自动化通过：`BlueprintHelper.GraphWrite.ActionResolution.Generic.P5.StructMakeBreakEvidence`。
+- [x] 自动化通过：`BlueprintHelper.GraphWrite.ActionContext.SingleDemand.ConstructMapsToStructTypeOperation`。
+- [x] 自动化通过：`BlueprintHelper.GraphWrite.ActionContext.DTO.SourceContract`。
+- [x] 自动化通过：`BlueprintHelper.GraphWrite.LegacyMainline.ActiveGraphWriteSourceLegacyTokenGate`。
+- [x] CLI smoke 通过：创建 `/Game/BlueprintHelperCliSmoke/StructTypeStructure_20260524/BP_STS_ConstructDeconstruct_20260524_002`，task_run_id=`task_26284C3F4488611AA1F396BB513D3D12`。
+- [x] CLI smoke 通过：`construct Vector` preview/execute/compile，task_run_id=`task_56400BE64B1DFBD69A2D4084F25CDA3C`。
+- [x] CLI smoke 通过：`deconstruct Vector` preview/execute/compile，task_run_id=`task_6FD2084745099E2E9743B9BC2C8031D5`。
+- [x] CLI missing-type preview 返回 `needs_more_semantic_context`，preview_id=`preview_1779556782697_0001`。
+- [x] 源码 token gate：`rg -n "make_struct|break_struct|create_operation" BlueprintHelper\Source\BlueprintHelper\Private\Systems\ToolClusters\GraphWrite BlueprintHelper\Source\BlueprintHelper\Public\Systems\ToolClusters\GraphWrite` 无命中。
+
+### 距离完整期望的差距
+
+- [ ] `Inference service derives type from linked typed pins when input/output links are already available.` 本次未单独构造 linked typed pin 推断用例；当前验证覆盖显式 `type=Vector` 和 missing-type 阻断。
+- [ ] `Preview ambiguity returns concise candidate list.` 本次未构造多候选歧义用例；当前验证覆盖唯一成功和缺上下文阻断。

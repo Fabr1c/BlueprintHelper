@@ -1,5 +1,7 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextInferenceService.h"
 
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.h"
+
 namespace BlueprintHelperActionContextInference
 {
 static bool MatchesToken(const FString& Value, const FString& Token)
@@ -106,6 +108,8 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 	Context.GraphName = Snapshot.Graph.GraphName;
 	Context.SourceThread = EBlueprintHelperActionContextSourceThread::WorkerInference;
 	Context.Semantic.Kind = Demand.SemanticKind;
+	Context.Semantic.SemanticFamily = Demand.SemanticFamily;
+	Context.Semantic.TypeOperation = Demand.TypeOperation;
 	Context.Semantic.Query = Demand.Query;
 	Context.Semantic.StableId = Demand.StatementId;
 	Context.Semantic.TargetPath = Demand.TargetPath;
@@ -113,6 +117,8 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 	Context.Semantic.FieldOperation = Demand.FieldOperation;
 	Context.Semantic.FieldScope = Demand.FieldScope;
 	Context.Semantic.TypeName = Demand.TypeName;
+	Context.Semantic.StructPath = Demand.StructPath;
+	Context.Semantic.TypeStructureId = Demand.TypeStructureId;
 	Context.Semantic.SearchMode = Demand.SearchMode;
 	Context.Semantic.AmbiguityPolicy = Demand.AmbiguityPolicy;
 	Context.Semantic.CategoryPriority = Demand.CategoryPriority;
@@ -132,6 +138,26 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 			Context.Semantic.ExpectedReturnType = Demand.TypeName;
 		}
 		Context.Evidence.Add(TEXT("demand_type_name"), Demand.TypeName);
+	}
+	if (Demand.SemanticFamily != EBlueprintHelperActionSemanticFamily::Unknown)
+	{
+		Context.Evidence.Add(
+			TEXT("semantic_family"),
+			FBlueprintHelperActionResolutionCore::SemanticFamilyToString(Demand.SemanticFamily));
+	}
+	if (Demand.TypeOperation != EBlueprintHelperTypeOperation::None)
+	{
+		Context.Evidence.Add(
+			TEXT("type_operation"),
+			FBlueprintHelperActionResolutionCore::TypeOperationToString(Demand.TypeOperation));
+	}
+	if (!Demand.StructPath.IsEmpty())
+	{
+		Context.Evidence.Add(TEXT("struct_path"), Demand.StructPath);
+	}
+	if (!Demand.TypeStructureId.IsEmpty())
+	{
+		Context.Evidence.Add(TEXT("type_structure_id"), Demand.TypeStructureId);
 	}
 
 	if (!Demand.BindingObjectPath.IsEmpty())

@@ -3,6 +3,7 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionClusterContextView.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericActionProviderBoundary.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericAssetStructControlActionResolver.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperStructTypeStructureActionResolver.h"
 
 namespace
 {
@@ -51,6 +52,15 @@ static FBlueprintHelperActionResolutionResult MakeUnsupportedProviderBoundaryRes
 		*FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.Semantic.Kind));
 	return Result;
 }
+
+static bool IsStructTypeStructureOperation(const FBlueprintHelperActionSemanticConstraints& Semantic)
+{
+	const bool bStructFamily = Semantic.SemanticFamily == EBlueprintHelperActionSemanticFamily::Struct
+		|| Semantic.SemanticFamily == EBlueprintHelperActionSemanticFamily::TypeStructure;
+	const bool bTypeOperation = Semantic.TypeOperation == EBlueprintHelperTypeOperation::Construct
+		|| Semantic.TypeOperation == EBlueprintHelperTypeOperation::Deconstruct;
+	return bStructFamily && bTypeOperation;
+}
 }
 
 FBlueprintHelperActionResolutionResult FBlueprintHelperGenericAssetStructControlActionCluster::Resolve(
@@ -60,6 +70,11 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperGenericAssetStructControl
 	if (!OwnsSemanticKind(Context.GetSemantic().Kind))
 	{
 		return MakeUnsupportedIntentResult(Request);
+	}
+
+	if (IsStructTypeStructureOperation(Context.GetSemantic()))
+	{
+		return FBlueprintHelperStructTypeStructureActionResolver::Resolve(Request, Context);
 	}
 
 	const FBlueprintHelperGenericActionProviderBoundary Boundary =

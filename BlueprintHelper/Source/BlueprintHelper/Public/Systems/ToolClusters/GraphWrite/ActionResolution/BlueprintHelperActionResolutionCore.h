@@ -20,6 +20,29 @@ enum class EBlueprintHelperSpawnerClusterKind : uint8
 	Unknown
 };
 
+enum class EBlueprintHelperActionSemanticFamily : uint8
+{
+	Callable,
+	Field,
+	Operator,
+	Struct,
+	TypeStructure,
+	Event,
+	Delegate,
+	Control,
+	Create,
+	Convert,
+	Schedule,
+	Unknown
+};
+
+enum class EBlueprintHelperTypeOperation : uint8
+{
+	None,
+	Construct,
+	Deconstruct
+};
+
 /**
  * AgentFace semantic operation kind. This is a constraint consumed inside the
  * selected spawner cluster, not a first-level ActionResolution request type.
@@ -55,6 +78,8 @@ enum class EBlueprintHelperActionResolutionStatus : uint8
 struct FBlueprintHelperActionSemanticConstraints
 {
 	EBlueprintHelperActionSemanticKind Kind = EBlueprintHelperActionSemanticKind::Unknown;
+	EBlueprintHelperActionSemanticFamily SemanticFamily = EBlueprintHelperActionSemanticFamily::Unknown;
+	EBlueprintHelperTypeOperation TypeOperation = EBlueprintHelperTypeOperation::None;
 	FString Query;
 	FString StableId;
 	FString TargetPath;
@@ -62,6 +87,8 @@ struct FBlueprintHelperActionSemanticConstraints
 	FString FieldOperation;
 	FString FieldScope;
 	FString TypeName;
+	FString StructPath;
+	FString TypeStructureId;
 	FString SearchMode;
 	FString AmbiguityPolicy;
 	TArray<FString> CategoryPriority;
@@ -100,6 +127,13 @@ struct FBlueprintHelperActionResolutionResult
 	TWeakObjectPtr<UFunction> SelectedFunction;
 	TArray<FBlueprintHelperCallFunctionCandidateInfo> CandidateActions;
 	FBlueprintHelperCallFunctionCandidate FunctionCandidate;
+	FString StructPath;
+	FString TypeStructureId;
+	FString TypeOperation;
+	FString SpawnerClass;
+	FString NodeClass;
+	FString MatchReason;
+	bool bRequiresDedicatedFragmentBuilder = false;
 
 	bool IsResolved() const
 	{
@@ -112,5 +146,7 @@ class BLUEPRINTHELPER_API FBlueprintHelperActionResolutionCore
 public:
 	static FBlueprintHelperActionResolutionResult Resolve(const FBlueprintHelperActionResolutionRequest& Request);
 	static FString SemanticKindToString(EBlueprintHelperActionSemanticKind Kind);
+	static FString SemanticFamilyToString(EBlueprintHelperActionSemanticFamily Family);
+	static FString TypeOperationToString(EBlueprintHelperTypeOperation Operation);
 	static FString ClusterKindToString(EBlueprintHelperSpawnerClusterKind ClusterKind);
 };

@@ -517,3 +517,12 @@ Recommended convergence order after Gap5:
 | `schedule` | `AsyncFlow` or `Callable` | `schedule_operation=timer/latent/async` | Lifecycle/latent behavior may justify its own first-stage semantic. |
 
 This taxonomy does not change the top-level `SpawnerClusterKind` dispatch rule. Clusters remain the first dispatch boundary; semantic families and second-stage operations are constraints consumed inside the selected cluster.
+
+## 2026-05-24 Struct / TypeStructure 收敛规则同步
+
+- `construct` / `deconstruct` 仍从 AgentFace compact semantic 进入，但在 ActionResolution 中不再作为一级请求类型。
+- ActionResolution 一级只按 `SpawnerClusterKind=GenericAssetStructControlAction` 分发；`construct/deconstruct` 必须成为 `FBlueprintHelperActionSemanticConstraints` 内的 `SemanticFamily=Struct|TypeStructure` 与 `TypeOperation=Construct|Deconstruct`。
+- Generic cluster 只负责分发；`Struct/TypeStructure` 具体解析由 `FBlueprintHelperStructTypeStructureActionResolver` 承担。
+- 成功 evidence 必须暴露 `struct_path`、`type_structure_id`、`type_operation`、`spawner_class`、`node_class`、`stable_id`、`match_reason`。
+- broad `create`、`create_operation`、旧 `make_struct/break_struct` AgentFace token 不属于本路径，不能作为成功兜底。
+- UE `UBlueprintFieldNodeSpawner` MakeStruct/BreakStruct boundary 允许作为显式、通用的 Struct/TypeStructure NodeSpawner evidence；它不是旧 `make_struct/break_struct` AgentFace alias。

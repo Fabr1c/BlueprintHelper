@@ -363,4 +363,12 @@ AgentFace schema/docs
 - [x] 文档已记录：legacy Graph body shapes `call_function` / `set_member_variable` / `ref` / `compare` / `make_struct` 必须作为 unsupported kind 报错，不允许 compiler normalization、alias、deprecated mapping 或 hidden fallback。
 - [x] 文档已记录：Graph body statement/expression canonical path 从 AgentFace schema/docs 经 TS/Python compiler、SemanticIR parser、Resolver、Pattern Registry、NodeFragment Builder、FragmentDAG、Composer/Linker、UE Mutator，到 Review/Debug 与 ReadContext/LogicFlow。
 - [ ] 未完成/待验证：本次 Slice C 未验证 TS/Python compiler、UE SemanticIR/Resolver/FragmentDAG/Mutator、Review/Debug、ReadContext/LogicFlow 的当前代码状态。
-- [ ] 未完成/待验证：UE compile、TS tests、Python tests、editor preview/execute smoke、construct/deconstruct field-list preview、LogicFlow/readback 尚未在本次文档同步中运行或记录证据。
+- [o] 部分完成：UE compile、editor preview/execute smoke、construct/deconstruct Vector smoke 已记录；TS/Python tests、field-list/candidate preview、LogicFlow/readback 仍未在本次同步中验证。
+
+## 2026-05-24 Struct / TypeStructure 能力同步
+
+- `construct` / `deconstruct` 不归入 broad `create`。
+- 当前 canonical lowering：`SpawnerClusterKind=GenericAssetStructControlAction` + `SemanticFamily=Struct|TypeStructure` + `TypeOperation=Construct|Deconstruct`。
+- 已验证：`construct Vector` 和 `deconstruct Vector` 可通过 TaskSpec GraphWrite preview/execute，并且生成蓝图编译通过。
+- 已验证：缺少 construct type 时 preview 阻断，错误码为 `needs_more_semantic_context`，不写资产。
+- 未验证：候选字段发现列表、歧义候选列表、TS/Python 单元测试、LogicFlow/readback。

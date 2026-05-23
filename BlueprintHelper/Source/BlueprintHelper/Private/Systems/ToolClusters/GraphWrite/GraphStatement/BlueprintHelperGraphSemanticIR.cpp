@@ -1054,7 +1054,7 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveExpression(
 	case EBlueprintHelperGraphExpressionKind::Construct:
 		if (Expression->Type.TrimStartAndEnd().IsEmpty())
 		{
-			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("needs_construct_type"), Expression->Path + TEXT(".type"), TEXT("construct expression requires type."));
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("needs_more_semantic_context"), Expression->Path + TEXT(".type"), TEXT("construct expression requires type."));
 		}
 		if (Expression->Fields.Num() == 0 && Expression->FieldNames.Num() == 0)
 		{
@@ -1065,7 +1065,7 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveExpression(
 	case EBlueprintHelperGraphExpressionKind::Deconstruct:
 		if (Expression->FieldNames.Num() == 0 && Expression->Fields.Num() == 0)
 		{
-			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("needs_deconstruct_fields"), Expression->Path + TEXT(".fields"), TEXT("deconstruct expression requires fields."));
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("needs_more_semantic_context"), Expression->Path + TEXT(".fields"), TEXT("deconstruct expression requires fields."));
 		}
 		if (!Expression->Value.IsValid() && !Expression->TargetObject.IsValid() && Expression->Target.TrimStartAndEnd().IsEmpty())
 		{
