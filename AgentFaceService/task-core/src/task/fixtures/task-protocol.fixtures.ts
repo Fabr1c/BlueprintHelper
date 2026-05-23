@@ -136,7 +136,9 @@ export const graphWriteAppendExpectedTaskPlanFixture = {
                 },
                 {
                   id: 'InitializeStoneGate_stmt_2',
-                  kind: 'set',
+                  kind: 'field',
+                  field_operation: 'set',
+                  field_scope: 'variable',
                   target: 'bGateUnlocked',
                   value: {
                     id: 'InitializeStoneGate_stmt_2_value',
@@ -527,8 +529,11 @@ export const graphWriteAppendLoweringAdapterTaskPlanFixture = {
           },
           {
             id: 'InitializeStoneGate_stmt_2',
-            kind: 'set',
+            kind: 'field',
+            field_operation: 'set',
+            field_scope: 'variable',
             var: 'bGateUnlocked',
+            target: 'bGateUnlocked',
             value: 'false',
           },
           {

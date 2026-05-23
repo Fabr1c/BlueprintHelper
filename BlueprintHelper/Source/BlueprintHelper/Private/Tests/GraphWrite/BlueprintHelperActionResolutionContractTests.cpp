@@ -150,10 +150,14 @@ bool FBlueprintHelperActionResolutionClusterKindContractTest::RunTest(const FStr
 {
 	FBlueprintHelperActionResolutionRequest Request;
 	Request.ClusterKind = EBlueprintHelperSpawnerClusterKind::FieldVariableAction;
-	Request.Semantic.Kind = EBlueprintHelperActionSemanticKind::Get;
+	Request.Semantic.Kind = EBlueprintHelperActionSemanticKind::Field;
+	Request.Semantic.FieldOperation = TEXT("get");
+	Request.Semantic.FieldScope = TEXT("variable");
 
 	TestEqual(TEXT("ClusterKind is top-level dispatch key"), Request.ClusterKind, EBlueprintHelperSpawnerClusterKind::FieldVariableAction);
-	TestEqual(TEXT("Semantic kind is constraint only"), Request.Semantic.Kind, EBlueprintHelperActionSemanticKind::Get);
+	TestEqual(TEXT("Semantic kind is constraint only"), Request.Semantic.Kind, EBlueprintHelperActionSemanticKind::Field);
+	TestEqual(TEXT("Field operation is second-level constraint"), Request.Semantic.FieldOperation, FString(TEXT("get")));
+	TestEqual(TEXT("Field scope is second-level constraint"), Request.Semantic.FieldScope, FString(TEXT("variable")));
 	return true;
 }
 
@@ -337,6 +341,94 @@ bool FBlueprintHelperActionResolutionEventDelegateUseSiteBoundaryContractTest::R
 	}
 
 	TestTrue(TEXT("EventDelegate GraphWrite boundary stays use-site only"), bClean);
+	return bClean;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteDelegatePublicInternalBoundaryContractTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.Contract.DelegatePublicInternalBoundary",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteDelegatePublicInternalBoundaryContractTest::RunTest(const FString& Parameters)
+{
+	const FString PythonCompilerPath = FPaths::Combine(
+		FPaths::ProjectPluginsDir(),
+		TEXT("BlueprintHelper"),
+		TEXT("AgentFaceService"),
+		TEXT("task-core"),
+		TEXT("python"),
+		TEXT("blueprinthelper_task"),
+		TEXT("compiler"),
+		TEXT("graph_write_append.py"));
+	const FString GraphSemanticIRSourcePath = BuildGraphWritePrivateSourcePath(
+		TEXT("GraphStatement"),
+		TEXT("BlueprintHelperGraphSemanticIR.cpp"));
+	const FString GraphSemanticIRUtilsSourcePath = BuildGraphWritePrivateSourcePath(
+		TEXT("GraphStatement/Utils"),
+		TEXT("BlueprintHelperGraphSemanticIRUtils.cpp"));
+
+	FString PythonCompilerSource;
+	FString GraphSemanticIRSource;
+	FString GraphSemanticIRUtilsSource;
+	bool bClean = true;
+	if (!FFileHelper::LoadFileToString(PythonCompilerSource, *PythonCompilerPath))
+	{
+		AddError(FString::Printf(TEXT("Python GraphWrite compiler source could not be read: %s"), *PythonCompilerPath));
+		bClean = false;
+	}
+	if (!FFileHelper::LoadFileToString(GraphSemanticIRSource, *GraphSemanticIRSourcePath))
+	{
+		AddError(FString::Printf(TEXT("GraphSemanticIR source could not be read: %s"), *GraphSemanticIRSourcePath));
+		bClean = false;
+	}
+	if (!FFileHelper::LoadFileToString(GraphSemanticIRUtilsSource, *GraphSemanticIRUtilsSourcePath))
+	{
+		AddError(FString::Printf(TEXT("GraphSemanticIRUtils source could not be read: %s"), *GraphSemanticIRUtilsSourcePath));
+		bClean = false;
+	}
+
+	if (!bClean)
+	{
+		return false;
+	}
+
+	const TArray<FString> RequiredPythonTokens = {
+		TEXT("PUBLIC_DELEGATE_STATEMENT_KIND_ALIASES"),
+		TEXT("INTERNAL_DELEGATE_STATEMENT_KIND"),
+		TEXT("FORBIDDEN_AGENT_DELEGATE_INTERNAL_KINDS"),
+		TEXT("delegate_operation")
+	};
+	for (const FString& Token : RequiredPythonTokens)
+	{
+		bClean &= TestTrue(*FString::Printf(TEXT("Python compiler declares delegate boundary token %s"), *Token), PythonCompilerSource.Contains(Token));
+	}
+
+	bClean &= TestTrue(TEXT("C++ parser accepts canonical component_bound_event"), GraphSemanticIRUtilsSource.Contains(TEXT("TEXT(\"component_bound_event\")")));
+	bClean &= TestTrue(TEXT("C++ parser accepts canonical delegate"), GraphSemanticIRUtilsSource.Contains(TEXT("TEXT(\"delegate\")")));
+	bClean &= TestTrue(TEXT("C++ parser reports unsupported statement kinds"), GraphSemanticIRSource.Contains(TEXT("statement_kind_unsupported")));
+
+	const TArray<FString> ForbiddenCppParserTokens = {
+		TEXT("delegate.bind"),
+		TEXT("delegate.assign"),
+		TEXT("delegate.unbind"),
+		TEXT("delegate.unbind_all"),
+		TEXT("delegate.call"),
+		TEXT("delegate_call"),
+		TEXT("delegate_clear")
+	};
+	for (const FString& Token : ForbiddenCppParserTokens)
+	{
+		if (GraphSemanticIRUtilsSource.Contains(Token))
+		{
+			AddError(FString::Printf(
+				TEXT("C++ GraphSemanticIR parser must consume only canonical internal delegate shape; forbidden public/top-level token '%s' found in %s"),
+				*Token,
+				*GraphSemanticIRUtilsSourcePath));
+			bClean = false;
+		}
+	}
+
+	TestTrue(TEXT("Delegate public schema/internal lowering boundary is source-guarded"), bClean);
 	return bClean;
 }
 

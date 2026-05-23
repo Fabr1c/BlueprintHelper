@@ -1334,10 +1334,11 @@ function compileMergeGraphWriteOps(behavior: Record<string, unknown>): GraphWrit
   });
 }
 
-const SUPPORTED_GRAPH_BODY_STATEMENT_KINDS = new Set(['call', 'set', 'set_property', 'let', 'control']);
+const SUPPORTED_GRAPH_BODY_STATEMENT_KINDS = new Set(['call', 'field', 'set', 'set_property', 'let', 'control']);
 const SUPPORTED_GRAPH_BODY_CONTROL_KINDS = new Set(['branch', 'sequence', 'return']);
 const SUPPORTED_GRAPH_BODY_EXPRESSION_KINDS = new Set([
   'literal',
+  'field',
   'get',
   'get_property',
   'call',
@@ -1346,6 +1347,44 @@ const SUPPORTED_GRAPH_BODY_EXPRESSION_KINDS = new Set([
   'deconstruct',
   'select',
 ]);
+const FIELD_STATEMENT_KIND_MAP = new Map([
+  ['set', { operation: 'set', scope: 'variable' }],
+  ['set_property', { operation: 'set', scope: 'property_path' }],
+]);
+const FIELD_EXPRESSION_KIND_MAP = new Map([
+  ['get', { operation: 'get', scope: 'variable' }],
+  ['get_property', { operation: 'get', scope: 'property_path' }],
+]);
+
+function applyFieldTaxonomy(record: Record<string, unknown>, operation: string, scope: string): void {
+  record.kind = 'field';
+  record.field_operation = operation;
+  record.field_scope = scope;
+}
+
+function fieldOperationScope(record: Record<string, unknown>, path: string): { operation: string; scope: string } {
+  const operation = getRequiredString(record, 'field_operation', `${path}.field_operation`).trim().toLowerCase();
+  const scope = getRequiredString(record, 'field_scope', `${path}.field_scope`).trim().toLowerCase();
+  if (operation !== 'get' && operation !== 'set') {
+    throw new TaskSpecCompileError('unsupported_field_operation', `Unsupported field_operation: ${operation}`, [
+      {
+        code: 'unsupported_field_operation',
+        path: `${path}.field_operation`,
+        message: 'Use get or set.',
+      },
+    ]);
+  }
+  if (scope !== 'variable' && scope !== 'property_path') {
+    throw new TaskSpecCompileError('unsupported_field_scope', `Unsupported field_scope: ${scope}`, [
+      {
+        code: 'unsupported_field_scope',
+        path: `${path}.field_scope`,
+        message: 'Use variable or property_path.',
+      },
+    ]);
+  }
+  return { operation, scope };
+}
 
 function validateSupportedStatements(statements: BlueprintLogicStatement[], path: string): void {
   statements.forEach((statement, statementIndex) => {
@@ -1357,12 +1396,24 @@ function validateSupportedStatements(statements: BlueprintLogicStatement[], path
         {
           code: 'unsupported_statement_kind',
           path: `${statementPath}.kind`,
-          message: 'Use call, set, set_property, let, or control.',
+          message: 'Use call, field, set, set_property, let, or control.',
         },
       ]);
     }
     if (kind === 'call') {
       validateExpressionMap(statementRecord.args, `${statementPath}.args`);
+    } else if (kind === 'field') {
+      const { operation } = fieldOperationScope(statementRecord, statementPath);
+      if (operation !== 'set') {
+        throw new TaskSpecCompileError('unsupported_field_operation', 'Field statements require field_operation=set.', [
+          {
+            code: 'unsupported_field_operation',
+            path: `${statementPath}.field_operation`,
+            message: 'Field statements require field_operation=set.',
+          },
+        ]);
+      }
+      validateSupportedExpression(statementRecord.value, `${statementPath}.value`);
     } else if (kind === 'let' || kind === 'set' || kind === 'set_property') {
       validateSupportedExpression(statementRecord.value, `${statementPath}.value`);
     } else if (kind === 'control') {
@@ -1423,9 +1474,21 @@ function validateSupportedExpression(expression: unknown, path: string): void {
       {
         code: 'unsupported_expression_kind',
         path: `${path}.kind`,
-        message: 'Use literal, get, get_property, call, op, construct, deconstruct, or select.',
+        message: 'Use literal, field, get, get_property, call, op, construct, deconstruct, or select.',
       },
     ]);
+  }
+  if (kind === 'field') {
+    const { operation } = fieldOperationScope(expression, path);
+    if (operation !== 'get') {
+      throw new TaskSpecCompileError('unsupported_field_operation', 'Field expressions require field_operation=get.', [
+        {
+          code: 'unsupported_field_operation',
+          path: `${path}.field_operation`,
+          message: 'Field expressions require field_operation=get.',
+        },
+      ]);
+    }
   }
   if (kind === 'call' || kind === 'op' || kind === 'construct' || kind === 'deconstruct') {
     validateExpressionMap(expression.args, `${path}.args`);
@@ -1494,7 +1557,23 @@ function cloneLogicExpressionWithCompiledIds(expression: unknown, nodeId: string
   const kind = typeof expression.kind === 'string' ? expression.kind : 'literal';
   const out: Record<string, unknown> = { ...expression, id: nodeId };
 
-  if (kind === 'select') {
+  const fieldExpression = FIELD_EXPRESSION_KIND_MAP.get(kind);
+  if (fieldExpression) {
+    applyFieldTaxonomy(out, fieldExpression.operation, fieldExpression.scope);
+    if (kind === 'get_property') {
+      const propertyPath = requiredGraphBodyPropertyPath(expression, `${nodeId}.property_path`);
+      out.property_path = propertyPath;
+      out.property = propertyPath;
+    }
+  } else if (kind === 'field') {
+    const { operation, scope } = fieldOperationScope(expression, nodeId);
+    applyFieldTaxonomy(out, operation, scope);
+    if (scope === 'property_path') {
+      const propertyPath = requiredGraphBodyPropertyPath(expression, `${nodeId}.property_path`);
+      out.property_path = propertyPath;
+      out.property = propertyPath;
+    }
+  } else if (kind === 'select') {
     out.condition = cloneLogicExpressionWithCompiledIds(expression.condition, `${nodeId}_index`);
     if (Array.isArray(expression.options)) {
       out.options = expression.options.map((option, index) => cloneLogicExpressionWithCompiledIds(option, `${nodeId}_option_${index}`));
@@ -1549,15 +1628,36 @@ function cloneLogicExpressionWithCompiledIds(expression: unknown, nodeId: string
 }
 
 function cloneLogicStatementWithCompiledIds(statement: BlueprintLogicStatement, statementId: string): BlueprintLogicStatement {
-  const out: Record<string, unknown> = { ...(statement as Record<string, unknown>), id: statementId };
-  const kind = typeof (statement as Record<string, unknown>).kind === 'string'
-    ? (statement as Record<string, unknown>).kind
+  const statementRecord = statement as Record<string, unknown>;
+  const out: Record<string, unknown> = { ...statementRecord, id: statementId };
+  const kind = typeof statementRecord.kind === 'string'
+    ? statementRecord.kind
     : '';
 
-  if (kind === 'let' || kind === 'set' || kind === 'set_property') {
-    out.value = cloneLogicExpressionWithCompiledIds((statement as Record<string, unknown>).value, `${statementId}_value`);
-  } else if (kind === 'call' && isRecord((statement as Record<string, unknown>).args)) {
-    const args = (statement as Record<string, unknown>).args as Record<string, unknown>;
+  const fieldStatement = FIELD_STATEMENT_KIND_MAP.get(kind);
+  if (fieldStatement) {
+    applyFieldTaxonomy(out, fieldStatement.operation, fieldStatement.scope);
+    if (kind === 'set_property') {
+      const propertyPath = requiredGraphBodyPropertyPath(statementRecord, `${statementId}.property_path`);
+      out.property_path = propertyPath;
+      out.property = propertyPath;
+    }
+    out.value = cloneLogicExpressionWithCompiledIds(statementRecord.value, `${statementId}_value`);
+  } else if (kind === 'field') {
+    const { operation, scope } = fieldOperationScope(statementRecord, statementId);
+    applyFieldTaxonomy(out, operation, scope);
+    if (scope === 'property_path') {
+      const propertyPath = requiredGraphBodyPropertyPath(statementRecord, `${statementId}.property_path`);
+      out.property_path = propertyPath;
+      out.property = propertyPath;
+    }
+    if (Object.hasOwn(statementRecord, 'value')) {
+      out.value = cloneLogicExpressionWithCompiledIds(statementRecord.value, `${statementId}_value`);
+    }
+  } else if (kind === 'let') {
+    out.value = cloneLogicExpressionWithCompiledIds(statementRecord.value, `${statementId}_value`);
+  } else if (kind === 'call' && isRecord(statementRecord.args)) {
+    const args = statementRecord.args as Record<string, unknown>;
     out.args = Object.fromEntries(
       Object.entries(args).map(([argName, argValue]) => [
         argName,
@@ -1565,7 +1665,6 @@ function cloneLogicStatementWithCompiledIds(statement: BlueprintLogicStatement, 
       ]),
     );
   } else if (kind === 'control') {
-    const statementRecord = statement as Record<string, unknown>;
     const controlKind = typeof statementRecord.control === 'string' ? statementRecord.control : '';
     out.kind = controlKind;
     delete out.control;
@@ -1682,10 +1781,25 @@ function compileStatementFlow(statement: BlueprintLogicStatement, nodeId: string
     }
     node.inputs = inputValues;
   }
-  if (kind === 'set' || kind === 'set_property') {
-    const valuePinName = kind === 'set'
+  if (kind === 'set' || kind === 'set_property' || kind === 'field') {
+    let valuePinName = kind === 'set'
       ? getRequiredString(statementRecord, 'target', `${path}.target`)
       : 'value';
+    if (kind === 'field') {
+      const { operation, scope } = fieldOperationScope(statementRecord, path);
+      if (operation !== 'set') {
+        throw new TaskSpecCompileError('unsupported_field_operation', 'Field statements require field_operation=set.', [
+          {
+            code: 'unsupported_field_operation',
+            path: `${path}.field_operation`,
+            message: 'Field statements require field_operation=set.',
+          },
+        ]);
+      }
+      valuePinName = scope === 'variable'
+        ? getRequiredString(statementRecord, 'target', `${path}.target`)
+        : 'value';
+    }
     const valueFlow = compileValueExpression(statementRecord['value'], `${nodeId}_value`, `${path}.value`, context);
     nodes.push(...valueFlow.nodes);
     links.push(...valueFlow.links);
@@ -1825,22 +1939,35 @@ function compileValueExpression(expression: unknown, nodeId: string, path: strin
       {
         code: 'unsupported_expression_kind',
         path: `${path}.kind`,
-        message: 'Use literal, get, get_property, call, op, construct, deconstruct, or select.',
+        message: 'Use literal, field, get, get_property, call, op, construct, deconstruct, or select.',
       },
     ]);
   }
 
-  if (kind === 'get' || kind === 'get_property') {
+  if (kind === 'get' || kind === 'get_property' || kind === 'field') {
     const target = getRequiredString(expression, 'target', `${path}.target`);
-    if (kind === 'get') {
+    const fieldExpression = kind === 'field'
+      ? fieldOperationScope(expression, path)
+      : FIELD_EXPRESSION_KIND_MAP.get(kind);
+    if (!fieldExpression || fieldExpression.operation !== 'get') {
+      throw new TaskSpecCompileError('unsupported_field_operation', 'Field expressions require field_operation=get.', [
+        {
+          code: 'unsupported_field_operation',
+          path: `${path}.field_operation`,
+          message: 'Field expressions require field_operation=get.',
+        },
+      ]);
+    }
+    if (fieldExpression.scope === 'variable') {
       const symbol = context.symbols.get(target.toLowerCase());
       if (symbol) {
         return { nodes: [], links: [], output: symbol.output, defaultValue: symbol.defaultValue };
       }
     }
-    const outputPin = kind === 'get_property' ? 'value' : target;
-    const node = { id: nodeId, kind, var: target, target } as AgentImportNode;
-    if (kind === 'get_property') {
+    const outputPin = fieldExpression.scope === 'property_path' ? 'value' : target;
+    const node = { id: nodeId, kind: 'field', var: target, target } as AgentImportNode;
+    applyFieldTaxonomy(node as Record<string, unknown>, fieldExpression.operation, fieldExpression.scope);
+    if (fieldExpression.scope === 'property_path') {
       const propertyPath = requiredGraphBodyPropertyPath(expression, path);
       (node as Record<string, unknown>).property_path = propertyPath;
       (node as Record<string, unknown>).property = propertyPath;
@@ -2612,25 +2739,64 @@ function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string
 
   if (kind === 'set') {
     const variableName = getRequiredString(statementRecord, 'target', `${path}.target`);
-    return {
+    const node = {
       id: nodeId,
-      kind: 'set',
+      kind: 'field',
       var: variableName,
+      target: variableName,
       value: valueExprToString(statement['value']),
-    };
+    } as AgentImportNode;
+    const fieldStatement = FIELD_STATEMENT_KIND_MAP.get(kind);
+    if (fieldStatement) {
+      applyFieldTaxonomy(node as Record<string, unknown>, fieldStatement.operation, fieldStatement.scope);
+    }
+    return node;
   }
 
   if (kind === 'set_property') {
     const target = getRequiredString(statementRecord, 'target', `${path}.target`);
     const propertyPath = requiredGraphBodyPropertyPath(statementRecord, path);
-    return {
+    const node = {
       id: nodeId,
-      kind: 'set_property',
+      kind: 'field',
       target,
       property_path: propertyPath,
       property: propertyPath,
       value: valueExprToString(statementRecord['value']),
     } as AgentImportNode;
+    const fieldStatement = FIELD_STATEMENT_KIND_MAP.get(kind);
+    if (fieldStatement) {
+      applyFieldTaxonomy(node as Record<string, unknown>, fieldStatement.operation, fieldStatement.scope);
+    }
+    return node;
+  }
+
+  if (kind === 'field') {
+    const { operation, scope } = fieldOperationScope(statementRecord, path);
+    if (operation !== 'set') {
+      throw new TaskSpecCompileError('unsupported_field_operation', 'Field statements require field_operation=set.', [
+        {
+          code: 'unsupported_field_operation',
+          path: `${path}.field_operation`,
+          message: 'Field statements require field_operation=set.',
+        },
+      ]);
+    }
+    const target = getRequiredString(statementRecord, 'target', `${path}.target`);
+    const node = {
+      id: nodeId,
+      kind: 'field',
+      var: target,
+      target,
+      value: valueExprToString(statementRecord['value']),
+    } as AgentImportNode;
+    if (scope === 'property_path') {
+      const propertyPath = requiredGraphBodyPropertyPath(statementRecord, path);
+      (node as Record<string, unknown>).property_path = propertyPath;
+      (node as Record<string, unknown>).property = propertyPath;
+    }
+    applyFieldTaxonomy(node as Record<string, unknown>, operation, scope);
+    return node;
   }
 
   throw new TaskSpecCompileError('unsupported_statement_kind', `Unsupported statement kind: ${kind}`, [

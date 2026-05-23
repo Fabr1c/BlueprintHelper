@@ -110,6 +110,8 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 	Context.Semantic.StableId = Demand.StatementId;
 	Context.Semantic.TargetPath = Demand.TargetPath;
 	Context.Semantic.PropertyPath = Demand.PropertyPath;
+	Context.Semantic.FieldOperation = Demand.FieldOperation;
+	Context.Semantic.FieldScope = Demand.FieldScope;
 	Context.Semantic.TypeName = Demand.TypeName;
 	Context.Semantic.SearchMode = Demand.SearchMode;
 	Context.Semantic.AmbiguityPolicy = Demand.AmbiguityPolicy;
@@ -147,6 +149,14 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 	if (!Demand.DelegateOperation.IsEmpty())
 	{
 		Context.Evidence.Add(TEXT("delegate_operation"), Demand.DelegateOperation);
+	}
+	if (!Demand.FieldOperation.IsEmpty())
+	{
+		Context.Evidence.Add(TEXT("field_operation"), Demand.FieldOperation);
+	}
+	if (!Demand.FieldScope.IsEmpty())
+	{
+		Context.Evidence.Add(TEXT("field_scope"), Demand.FieldScope);
 	}
 	if (!Demand.DelegateSignature.IsEmpty())
 	{

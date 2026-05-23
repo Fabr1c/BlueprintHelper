@@ -126,7 +126,9 @@ static FString MakeActionContextStatementId(
 	const EBlueprintHelperActionSemanticKind SemanticKind,
 	const FString& Query,
 	const FString& TargetPath,
-	const FString& TypeName)
+	const FString& TypeName,
+	const FString& FieldOperation = FString(),
+	const FString& FieldScope = FString())
 {
 	const FString TrimmedStatementId = PreferredStatementId.TrimStartAndEnd();
 	if (!TrimmedStatementId.IsEmpty())
@@ -135,8 +137,10 @@ static FString MakeActionContextStatementId(
 	}
 
 	return FString::Printf(
-		TEXT("%s:%s:%s:%s"),
+		TEXT("%s:%s:%s:%s:%s:%s"),
 		*FBlueprintHelperActionResolutionCore::SemanticKindToString(SemanticKind),
+		*FieldOperation,
+		*FieldScope,
 		*Query,
 		*TargetPath,
 		*TypeName);
@@ -165,7 +169,9 @@ static bool TryBuildProjectedActionRequestFromContext(
 	const TArray<FString>& CategoryPriority,
 	const TArray<FString>& ArgumentNames,
 	FBlueprintHelperActionResolutionRequest& OutRequest,
-	FString& OutError)
+	FString& OutError,
+	const FString& FieldOperation = FString(),
+	const FString& FieldScope = FString())
 {
 	OutRequest = FBlueprintHelperActionResolutionRequest();
 
@@ -177,7 +183,9 @@ static bool TryBuildProjectedActionRequestFromContext(
 				SemanticKind,
 				Query,
 				TargetPath,
-				TypeName),
+				TypeName,
+				FieldOperation,
+				FieldScope),
 			FString(),
 			SemanticKind,
 			Query,
@@ -187,7 +195,9 @@ static bool TryBuildProjectedActionRequestFromContext(
 			SearchMode,
 			AmbiguityPolicy,
 			CategoryPriority,
-			ArgumentNames);
+			ArgumentNames,
+			FieldOperation,
+			FieldScope);
 
 	if (ActionContextScope)
 	{
@@ -239,10 +249,8 @@ static EBlueprintHelperActionSemanticKind ResolveActionSemanticKindForExpression
 {
 	switch (Kind)
 	{
-	case EBlueprintHelperGraphExpressionKind::Get:
-		return EBlueprintHelperActionSemanticKind::Get;
-	case EBlueprintHelperGraphExpressionKind::GetProperty:
-		return EBlueprintHelperActionSemanticKind::GetProperty;
+	case EBlueprintHelperGraphExpressionKind::Field:
+		return EBlueprintHelperActionSemanticKind::Field;
 	case EBlueprintHelperGraphExpressionKind::Op:
 		return EBlueprintHelperActionSemanticKind::Op;
 	case EBlueprintHelperGraphExpressionKind::Construct:
@@ -269,7 +277,9 @@ static bool RequireResolvedActionProvider(
 	const FString& AmbiguityPolicy,
 	const TArray<FString>& CategoryPriority,
 	FBlueprintHelperActionResolutionResult* OutResult,
-	FString& OutError)
+	FString& OutError,
+	const FString& FieldOperation = FString(),
+	const FString& FieldScope = FString())
 {
 	FBlueprintHelperActionResolutionRequest ActionRequest;
 	const TArray<FString> ArgumentNames;
@@ -287,7 +297,9 @@ static bool RequireResolvedActionProvider(
 		CategoryPriority,
 		ArgumentNames,
 		ActionRequest,
-		OutError))
+		OutError,
+		FieldOperation,
+		FieldScope))
 	{
 		return false;
 	}
@@ -324,7 +336,9 @@ static bool RequireResolvedActionProvider(
 	const FString& SearchMode,
 	const FString& AmbiguityPolicy,
 	const TArray<FString>& CategoryPriority,
-	FString& OutError)
+	FString& OutError,
+	const FString& FieldOperation = FString(),
+	const FString& FieldScope = FString())
 {
 	return RequireResolvedActionProvider(
 		TargetGraph,
@@ -339,7 +353,9 @@ static bool RequireResolvedActionProvider(
 		AmbiguityPolicy,
 		CategoryPriority,
 		nullptr,
-		OutError);
+		OutError,
+		FieldOperation,
+		FieldScope);
 }
 
 static void PopulateActionProviderFragmentPins(UK2Node* Node, FBlueprintHelperNodeFragment& OutFragment)
@@ -611,7 +627,9 @@ static bool ResolveActionProviderForExpression(
 	const FString& PropertyPath,
 	const FString& TypeName,
 	FBlueprintHelperActionResolutionResult& OutResult,
-	FString& OutError)
+	FString& OutError,
+	const FString& FieldOperation = FString(),
+	const FString& FieldScope = FString())
 {
 	FBlueprintHelperActionResolutionRequest ActionRequest;
 	const TArray<FString> ArgumentNames;
@@ -629,7 +647,9 @@ static bool ResolveActionProviderForExpression(
 		Expression.CategoryPriority,
 		ArgumentNames,
 		ActionRequest,
-		OutError))
+		OutError,
+		FieldOperation,
+		FieldScope))
 	{
 		return false;
 	}
@@ -906,7 +926,7 @@ bool FBlueprintHelperGraphStatementBuilder::BuildVariableSetFragment(
 		Request.ActionContextStatementId.IsEmpty()
 			? Request.FragmentId
 			: Request.ActionContextStatementId,
-		EBlueprintHelperActionSemanticKind::Set,
+		EBlueprintHelperActionSemanticKind::Field,
 		Request.Target,
 		Request.Target,
 		Request.PropertyPath,
@@ -915,7 +935,9 @@ bool FBlueprintHelperGraphStatementBuilder::BuildVariableSetFragment(
 		Request.AmbiguityPolicy,
 		Request.CategoryPriority,
 		&ActionResult,
-		OutError))
+		OutError,
+		TEXT("set"),
+		TEXT("variable")))
 	{
 		return false;
 	}
@@ -964,7 +986,7 @@ bool FBlueprintHelperGraphStatementBuilder::BuildSetPropertyFragment(
 		Request.ActionContextStatementId.IsEmpty()
 			? Request.FragmentId
 			: Request.ActionContextStatementId,
-		EBlueprintHelperActionSemanticKind::SetProperty,
+		EBlueprintHelperActionSemanticKind::Field,
 		Request.Target,
 		Request.Target,
 		Request.PropertyPath,
@@ -973,7 +995,9 @@ bool FBlueprintHelperGraphStatementBuilder::BuildSetPropertyFragment(
 		Request.AmbiguityPolicy,
 		Request.CategoryPriority,
 		&ActionResult,
-		OutError))
+		OutError,
+		TEXT("set"),
+		TEXT("property_path")))
 	{
 		return false;
 	}
@@ -1099,26 +1123,36 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 	}
 
 	const EBlueprintHelperActionSemanticKind SemanticKind = ResolveActionSemanticKindForExpressionKind(Expression.Kind);
-	if (Expression.Kind == EBlueprintHelperGraphExpressionKind::Get)
+	if (Expression.Kind == EBlueprintHelperGraphExpressionKind::Field)
 	{
-		const FString VariableName = !Expression.ResolvedTarget.Member.IsEmpty()
+		const FString FieldScope = Expression.FieldScope.IsEmpty() ? TEXT("variable") : Expression.FieldScope;
+		const bool bPropertyPathField = FieldScope.Equals(TEXT("property_path"), ESearchCase::IgnoreCase);
+		const FString FieldName = !Expression.ResolvedTarget.Member.IsEmpty()
 			? Expression.ResolvedTarget.Member
-			: Expression.Target;
+			: (!Expression.Property.IsEmpty() ? Expression.Property : Expression.Target);
+		const FString TargetPath = bPropertyPathField && !Expression.ResolvedTarget.Raw.IsEmpty()
+			? Expression.ResolvedTarget.Raw
+			: FieldName;
+		const FString PropertyPath = bPropertyPathField
+			? (!Expression.ResolvedTarget.PropertyPath.IsEmpty() ? Expression.ResolvedTarget.PropertyPath : Expression.Property)
+			: Expression.ResolvedTarget.PropertyPath;
 		FBlueprintHelperActionResolutionResult ActionResult;
 		if (!RequireResolvedActionProvider(
 			TargetGraph,
 			ActionContextScope,
 			MakeExpressionActionContextStatementId(Expression),
-			EBlueprintHelperActionSemanticKind::Get,
-			VariableName,
-			VariableName,
-			Expression.ResolvedTarget.PropertyPath,
+			EBlueprintHelperActionSemanticKind::Field,
+			FieldName,
+			TargetPath,
+			PropertyPath,
 			Expression.Type,
 			Expression.SearchMode,
 			Expression.AmbiguityPolicy,
 			Expression.CategoryPriority,
 			&ActionResult,
-			OutError))
+			OutError,
+			TEXT("get"),
+			FieldScope))
 		{
 			return false;
 		}

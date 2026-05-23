@@ -48,6 +48,42 @@ public:
 		LogicSpec->SetArrayField(TEXT("statements"), Statements);
 		return LogicSpec;
 	}
+
+	static TSharedRef<FJsonObject> MakeLogicSpecWithRawStatementKind(
+		const FString& Kind,
+		const FString& DelegateOperation = FString())
+	{
+		TSharedRef<FJsonObject> LogicSpec = MakeShared<FJsonObject>();
+		LogicSpec->SetStringField(TEXT("schema"), TEXT("BlueprintLogicSpec.v1"));
+
+		TSharedRef<FJsonObject> Statement = MakeShared<FJsonObject>();
+		Statement->SetStringField(TEXT("id"), TEXT("stmt_delegate_boundary"));
+		Statement->SetStringField(TEXT("kind"), Kind);
+		Statement->SetStringField(TEXT("target"), TEXT("DoorSensor"));
+		Statement->SetStringField(TEXT("delegate"), TEXT("OnDoorOpened"));
+		Statement->SetStringField(TEXT("handler"), TEXT("HandleDoorOpened"));
+		if (!DelegateOperation.IsEmpty())
+		{
+			Statement->SetStringField(TEXT("delegate_operation"), DelegateOperation);
+		}
+
+		TArray<TSharedPtr<FJsonValue>> Statements;
+		Statements.Add(MakeShared<FJsonValueObject>(Statement));
+		LogicSpec->SetArrayField(TEXT("statements"), Statements);
+		return LogicSpec;
+	}
+
+	static bool HasDiagnosticCode(const FBlueprintHelperGraphSemanticIR& IR, const FString& Code)
+	{
+		for (const FBlueprintHelperGraphSemanticDiagnostic& Diagnostic : IR.Diagnostics)
+		{
+			if (Diagnostic.Code == Code)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
 };
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -96,6 +132,65 @@ bool FBlueprintHelperGraphSemanticIRRuntimeFact_ParsesExpressionResolvedStableId
 			TestEqual(TEXT("expression resolved stable id is preserved"), (*Expression)->ResolvedCallFunctionStableId, StableId);
 		}
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphSemanticIRDelegateBoundary_RejectsDottedPublicKinds,
+	"BlueprintHelper.GraphWrite.GraphSemanticIR.DelegateBoundary.RejectsDottedPublicKinds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphSemanticIRDelegateBoundary_RejectsDottedPublicKinds::RunTest(const FString& Parameters)
+{
+	const TArray<FString> PublicOnlyKinds = {
+		TEXT("delegate.bind"),
+		TEXT("delegate.assign"),
+		TEXT("delegate.unbind"),
+		TEXT("delegate.unbind_all"),
+		TEXT("delegate.call")
+	};
+
+	bool bPassed = true;
+	for (const FString& Kind : PublicOnlyKinds)
+	{
+		FBlueprintHelperGraphSemanticIR IR;
+		FBlueprintHelperGraphSemanticIRBuilder::BuildFromLogicSpec(
+			FBlueprintHelperGraphSemanticIRRuntimeFactTestsLocalUtils::MakeLogicSpecWithRawStatementKind(Kind),
+			IR);
+
+		bPassed &= TestTrue(*FString::Printf(TEXT("%s produces unsupported kind diagnostic"), *Kind),
+			FBlueprintHelperGraphSemanticIRRuntimeFactTestsLocalUtils::HasDiagnosticCode(IR, TEXT("statement_kind_unsupported")));
+		if (IR.Statements.Num() > 0 && IR.Statements[0].IsValid())
+		{
+			bPassed &= TestEqual(*FString::Printf(TEXT("%s remains unknown internally"), *Kind),
+				IR.Statements[0]->Kind,
+				EBlueprintHelperGraphStatementKind::Unknown);
+		}
+	}
+	return bPassed;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphSemanticIRDelegateBoundary_AcceptsCanonicalInternalDelegate,
+	"BlueprintHelper.GraphWrite.GraphSemanticIR.DelegateBoundary.AcceptsCanonicalInternalDelegate",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphSemanticIRDelegateBoundary_AcceptsCanonicalInternalDelegate::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperGraphSemanticIR IR;
+	const bool bBuilt = FBlueprintHelperGraphSemanticIRBuilder::BuildFromLogicSpec(
+		FBlueprintHelperGraphSemanticIRRuntimeFactTestsLocalUtils::MakeLogicSpecWithRawStatementKind(TEXT("delegate"), TEXT("bind")),
+		IR);
+
+	TestTrue(TEXT("canonical delegate logic spec builds"), bBuilt);
+	TestEqual(TEXT("statement count"), IR.Statements.Num(), 1);
+	if (IR.Statements.Num() == 1 && IR.Statements[0].IsValid())
+	{
+		TestEqual(TEXT("canonical statement kind"), IR.Statements[0]->Kind, EBlueprintHelperGraphStatementKind::Delegate);
+		TestEqual(TEXT("canonical delegate operation"), IR.Statements[0]->DelegateOperation, FString(TEXT("bind")));
+	}
+	TestFalse(TEXT("no unsupported kind diagnostic"),
+		FBlueprintHelperGraphSemanticIRRuntimeFactTestsLocalUtils::HasDiagnosticCode(IR, TEXT("statement_kind_unsupported")));
 	return true;
 }
 

@@ -85,6 +85,28 @@ static bool DelegateOperationRequiresHandler(const FString& Operation)
 		|| Normalized == TEXT("assign")
 		|| Normalized == TEXT("unbind");
 }
+
+static FString NormalizeFieldToken(const FString& Token)
+{
+	return Token.TrimStartAndEnd().ToLower();
+}
+
+static bool IsSupportedFieldOperation(const FString& Operation)
+{
+	const FString Normalized = NormalizeFieldToken(Operation);
+	return Normalized == TEXT("get") || Normalized == TEXT("set");
+}
+
+static bool IsSupportedFieldScope(const FString& Scope)
+{
+	const FString Normalized = NormalizeFieldToken(Scope);
+	return Normalized == TEXT("variable") || Normalized == TEXT("property_path");
+}
+
+static bool IsPropertyFieldScope(const FString& Scope)
+{
+	return NormalizeFieldToken(Scope) == TEXT("property_path");
+}
 }
 bool FBlueprintHelperGraphResolvedTarget::IsResolved() const
 {
@@ -439,6 +461,14 @@ TSharedPtr<FBlueprintHelperGraphStatementIR> FBlueprintHelperGraphSemanticIRBuil
 	StatementObject->TryGetStringField(TEXT("target"), Statement->Target);
 	StatementObject->TryGetStringField(TEXT("name"), Statement->Name);
 	StatementObject->TryGetStringField(TEXT("property"), Statement->Property);
+	if (Statement->Property.IsEmpty())
+	{
+		StatementObject->TryGetStringField(TEXT("property_path"), Statement->Property);
+	}
+	StatementObject->TryGetStringField(TEXT("field_operation"), Statement->FieldOperation);
+	StatementObject->TryGetStringField(TEXT("field_scope"), Statement->FieldScope);
+	Statement->FieldOperation = NormalizeFieldToken(Statement->FieldOperation);
+	Statement->FieldScope = NormalizeFieldToken(Statement->FieldScope);
 	StatementObject->TryGetStringField(TEXT("component"), Statement->ComponentName);
 	StatementObject->TryGetStringField(TEXT("delegate"), Statement->DelegateName);
 	StatementObject->TryGetStringField(TEXT("delegate_operation"), Statement->DelegateOperation);
@@ -548,6 +578,14 @@ TSharedPtr<FBlueprintHelperGraphExpressionIR> FBlueprintHelperGraphSemanticIRBui
 	ExpressionObject->TryGetStringField(TEXT("target"), Expression->Target);
 	ExpressionObject->TryGetStringField(TEXT("name"), Expression->Name);
 	ExpressionObject->TryGetStringField(TEXT("property"), Expression->Property);
+	if (Expression->Property.IsEmpty())
+	{
+		ExpressionObject->TryGetStringField(TEXT("property_path"), Expression->Property);
+	}
+	ExpressionObject->TryGetStringField(TEXT("field_operation"), Expression->FieldOperation);
+	ExpressionObject->TryGetStringField(TEXT("field_scope"), Expression->FieldScope);
+	Expression->FieldOperation = NormalizeFieldToken(Expression->FieldOperation);
+	Expression->FieldScope = NormalizeFieldToken(Expression->FieldScope);
 	ExpressionObject->TryGetStringField(TEXT("resolved_stable_id"), Expression->ResolvedCallFunctionStableId);
 	ExpressionObject->TryGetStringField(TEXT("search_mode"), Expression->SearchMode);
 	ExpressionObject->TryGetStringField(TEXT("ambiguity"), Expression->AmbiguityPolicy);
@@ -727,41 +765,46 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveStatement(
 		FBlueprintHelperGraphSemanticIRUtils::AddUnverifiedTargetDiagnostic(OutIR, Context, Statement->ResolvedTarget, Statement->Path + TEXT(".target"));
 		break;
 
-	case EBlueprintHelperGraphStatementKind::Set:
+	case EBlueprintHelperGraphStatementKind::Field:
 		if (Statement->Target.TrimStartAndEnd().IsEmpty())
 		{
-			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("statement_target_missing"), Statement->Path + TEXT(".target"), TEXT("set statement requires target."));
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("statement_target_missing"), Statement->Path + TEXT(".target"), TEXT("field statement requires target."));
 		}
 		if (!Statement->Value.IsValid())
 		{
-			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("set_value_missing"), Statement->Path + TEXT(".value"), TEXT("set statement requires value."));
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("field_value_missing"), Statement->Path + TEXT(".value"), TEXT("field set statement requires value."));
 		}
-		Statement->ResolvedTarget = FBlueprintHelperGraphSemanticIRUtils::ResolveTargetString(Statement->Target, Statement->Kind, EBlueprintHelperGraphExpressionKind::Unknown, Context);
-		FBlueprintHelperGraphSemanticIRUtils::AddUnverifiedTargetDiagnostic(OutIR, Context, Statement->ResolvedTarget, Statement->Path + TEXT(".target"));
-		break;
-
-	case EBlueprintHelperGraphStatementKind::SetProperty:
-		if (Statement->Target.TrimStartAndEnd().IsEmpty())
+		if (!IsSupportedFieldOperation(Statement->FieldOperation))
 		{
-			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("statement_target_missing"), Statement->Path + TEXT(".target"), TEXT("set_property statement requires target."));
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(
+				OutIR,
+				TEXT("field_operation_unsupported"),
+				Statement->Path + TEXT(".field_operation"),
+				FString::Printf(TEXT("Unsupported field_operation: %s."), *Statement->FieldOperation));
 		}
-		if (Statement->Property.TrimStartAndEnd().IsEmpty())
+		else if (Statement->FieldOperation != TEXT("set"))
 		{
-			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("statement_property_missing"), Statement->Path + TEXT(".property"), TEXT("set_property statement requires property."));
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("field_statement_operation_unsupported"), Statement->Path + TEXT(".field_operation"), TEXT("Field statements currently support field_operation=set."));
 		}
-		if (!Statement->Value.IsValid())
+		if (!IsSupportedFieldScope(Statement->FieldScope))
 		{
-			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("set_property_value_missing"), Statement->Path + TEXT(".value"), TEXT("set_property statement requires value."));
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(
+				OutIR,
+				TEXT("field_scope_unsupported"),
+				Statement->Path + TEXT(".field_scope"),
+				FString::Printf(TEXT("Unsupported field_scope: %s."), *Statement->FieldScope));
+		}
+		if (IsPropertyFieldScope(Statement->FieldScope)
+			&& Statement->Property.TrimStartAndEnd().IsEmpty()
+			&& !Statement->Target.Contains(TEXT(".")))
+		{
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("field_property_missing"), Statement->Path + TEXT(".property_path"), TEXT("field property_path statement requires property_path when target is not Owner.PropertyPath."));
 		}
 		{
-			const FString ResolvedPropertyTarget = Statement->Property.TrimStartAndEnd().IsEmpty()
-				? Statement->Target
-				: Statement->Target + TEXT(".") + Statement->Property;
-			Statement->ResolvedTarget = FBlueprintHelperGraphSemanticIRUtils::ResolveTargetString(
-				ResolvedPropertyTarget,
-				Statement->Kind,
-				EBlueprintHelperGraphExpressionKind::Unknown,
-				Context);
+			const FString ResolvedFieldTarget = IsPropertyFieldScope(Statement->FieldScope) && !Statement->Property.TrimStartAndEnd().IsEmpty()
+				? Statement->Target + TEXT(".") + Statement->Property
+				: Statement->Target;
+			Statement->ResolvedTarget = FBlueprintHelperGraphSemanticIRUtils::ResolveTargetString(ResolvedFieldTarget, Statement->Kind, EBlueprintHelperGraphExpressionKind::Unknown, Context);
 		}
 		FBlueprintHelperGraphSemanticIRUtils::AddUnverifiedTargetDiagnostic(OutIR, Context, Statement->ResolvedTarget, Statement->Path + TEXT(".target"));
 		break;
@@ -906,19 +949,46 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveExpression(
 
 	switch (Expression->Kind)
 	{
-	case EBlueprintHelperGraphExpressionKind::Get:
+	case EBlueprintHelperGraphExpressionKind::Field:
 		if (Expression->Target.TrimStartAndEnd().IsEmpty() && !Expression->Name.TrimStartAndEnd().IsEmpty())
 		{
 			Expression->Target = Expression->Name;
 		}
 		if (Expression->Target.TrimStartAndEnd().IsEmpty())
 		{
-			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("expression_target_missing"), Expression->Path + TEXT(".target"), TEXT("get expression requires target or name."));
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("expression_target_missing"), Expression->Path + TEXT(".target"), TEXT("field expression requires target or name."));
 			break;
+		}
+		if (!IsSupportedFieldOperation(Expression->FieldOperation))
+		{
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(
+				OutIR,
+				TEXT("field_operation_unsupported"),
+				Expression->Path + TEXT(".field_operation"),
+				FString::Printf(TEXT("Unsupported field_operation: %s."), *Expression->FieldOperation));
+		}
+		else if (Expression->FieldOperation != TEXT("get"))
+		{
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("field_expression_operation_unsupported"), Expression->Path + TEXT(".field_operation"), TEXT("Field expressions currently support field_operation=get."));
+		}
+		if (!IsSupportedFieldScope(Expression->FieldScope))
+		{
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(
+				OutIR,
+				TEXT("field_scope_unsupported"),
+				Expression->Path + TEXT(".field_scope"),
+				FString::Printf(TEXT("Unsupported field_scope: %s."), *Expression->FieldScope));
+		}
+		if (IsPropertyFieldScope(Expression->FieldScope)
+			&& Expression->Property.TrimStartAndEnd().IsEmpty()
+			&& !Expression->Target.Contains(TEXT(".")))
+		{
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("expression_property_missing"), Expression->Path + TEXT(".property_path"), TEXT("field property_path expression requires property_path when target is not Owner.PropertyPath."));
 		}
 		{
 			FBlueprintHelperGraphSymbol Symbol;
-			if (FBlueprintHelperGraphSemanticIRUtils::FindSymbolInScopes(Expression->Target, ScopeStack, Symbol))
+			if (!IsPropertyFieldScope(Expression->FieldScope)
+				&& FBlueprintHelperGraphSemanticIRUtils::FindSymbolInScopes(Expression->Target, ScopeStack, Symbol))
 			{
 				Expression->ResolvedTarget = FBlueprintHelperGraphResolvedTarget();
 				Expression->ResolvedTarget.Kind = EBlueprintHelperGraphTargetKind::Temporary;
@@ -933,7 +1003,12 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveExpression(
 				break;
 			}
 		}
-		Expression->ResolvedTarget = FBlueprintHelperGraphSemanticIRUtils::ResolveTargetString(Expression->Target, EBlueprintHelperGraphStatementKind::Unknown, Expression->Kind, Context);
+		{
+			const FString ResolvedFieldTarget = IsPropertyFieldScope(Expression->FieldScope) && !Expression->Property.TrimStartAndEnd().IsEmpty()
+				? Expression->Target + TEXT(".") + Expression->Property
+				: Expression->Target;
+			Expression->ResolvedTarget = FBlueprintHelperGraphSemanticIRUtils::ResolveTargetString(ResolvedFieldTarget, EBlueprintHelperGraphStatementKind::Unknown, Expression->Kind, Context);
+		}
 		FBlueprintHelperGraphSemanticIRUtils::AddUnverifiedTargetDiagnostic(OutIR, Context, Expression->ResolvedTarget, Expression->Path + TEXT(".target"));
 		if (Expression->Type.IsEmpty())
 		{
@@ -941,31 +1016,13 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveExpression(
 		}
 		break;
 
-	case EBlueprintHelperGraphExpressionKind::GetProperty:
 	case EBlueprintHelperGraphExpressionKind::Call:
 		if (Expression->Target.TrimStartAndEnd().IsEmpty())
 		{
 			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("expression_target_missing"), Expression->Path + TEXT(".target"), FString::Printf(TEXT("%s expression requires target."), *Expression->PatternName));
 		}
-		if (Expression->Kind == EBlueprintHelperGraphExpressionKind::GetProperty
-			&& Expression->Property.TrimStartAndEnd().IsEmpty()
-			&& !Expression->Target.Contains(TEXT(".")))
-		{
-			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("expression_property_missing"), Expression->Path + TEXT(".property"), TEXT("get_property expression requires property when target is not Owner.PropertyPath."));
-		}
-		{
-			const FString ResolvedExpressionTarget =
-				Expression->Kind == EBlueprintHelperGraphExpressionKind::GetProperty
-				&& !Expression->Property.TrimStartAndEnd().IsEmpty()
-					? Expression->Target + TEXT(".") + Expression->Property
-					: Expression->Target;
-			Expression->ResolvedTarget = FBlueprintHelperGraphSemanticIRUtils::ResolveTargetString(ResolvedExpressionTarget, EBlueprintHelperGraphStatementKind::Unknown, Expression->Kind, Context);
-		}
+		Expression->ResolvedTarget = FBlueprintHelperGraphSemanticIRUtils::ResolveTargetString(Expression->Target, EBlueprintHelperGraphStatementKind::Unknown, Expression->Kind, Context);
 		FBlueprintHelperGraphSemanticIRUtils::AddUnverifiedTargetDiagnostic(OutIR, Context, Expression->ResolvedTarget, Expression->Path + TEXT(".target"));
-		if (Expression->Kind != EBlueprintHelperGraphExpressionKind::Call && Expression->Type.IsEmpty())
-		{
-			Expression->Type = Expression->ResolvedTarget.Type;
-		}
 		break;
 
 	case EBlueprintHelperGraphExpressionKind::Op:

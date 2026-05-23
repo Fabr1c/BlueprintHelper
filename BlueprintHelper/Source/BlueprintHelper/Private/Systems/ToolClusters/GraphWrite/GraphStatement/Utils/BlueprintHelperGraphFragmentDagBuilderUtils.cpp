@@ -37,10 +37,8 @@ FString FBlueprintHelperGraphFragmentDagBuilderUtils::StatementKindName(const EB
 	{
 	case EBlueprintHelperGraphStatementKind::Call:
 		return TEXT("call");
-	case EBlueprintHelperGraphStatementKind::Set:
-		return TEXT("set");
-	case EBlueprintHelperGraphStatementKind::SetProperty:
-		return TEXT("set_property");
+	case EBlueprintHelperGraphStatementKind::Field:
+		return TEXT("field");
 	case EBlueprintHelperGraphStatementKind::Branch:
 		return TEXT("branch");
 	case EBlueprintHelperGraphStatementKind::Sequence:
@@ -59,10 +57,8 @@ FString FBlueprintHelperGraphFragmentDagBuilderUtils::ExpressionKindName(const E
 	{
 	case EBlueprintHelperGraphExpressionKind::Literal:
 		return TEXT("literal");
-	case EBlueprintHelperGraphExpressionKind::Get:
-		return TEXT("get");
-	case EBlueprintHelperGraphExpressionKind::GetProperty:
-		return TEXT("get_property");
+	case EBlueprintHelperGraphExpressionKind::Field:
+		return TEXT("field");
 	case EBlueprintHelperGraphExpressionKind::Call:
 		return TEXT("call");
 	case EBlueprintHelperGraphExpressionKind::Op:
@@ -414,6 +410,8 @@ FBlueprintHelperGraphFragmentRef& FBlueprintHelperGraphFragmentDagBuilderUtils::
 	AddMetadata(Fragment, TEXT("target"), Expression.Target);
 	AddMetadata(Fragment, TEXT("name"), Expression.Name);
 	AddMetadata(Fragment, TEXT("property"), Expression.Property);
+	AddMetadata(Fragment, TEXT("field_operation"), Expression.FieldOperation);
+	AddMetadata(Fragment, TEXT("field_scope"), Expression.FieldScope);
 	AddMetadata(Fragment, TEXT("type"), Expression.Type);
 	AddMetadata(Fragment, TEXT("operator"), Expression.Operator);
 	AddMetadata(Fragment, TEXT("literal"), Expression.LiteralValue);
@@ -645,7 +643,7 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagDataProducer FB
 		return MakeExpressionProducer(*Expression, Fragment, TEXT("value"), Expression->Type);
 	}
 
-	case EBlueprintHelperGraphExpressionKind::Get:
+	case EBlueprintHelperGraphExpressionKind::Field:
 	{
 		if (Expression->ResolvedTarget.Kind == EBlueprintHelperGraphTargetKind::Temporary)
 		{
@@ -663,18 +661,17 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagDataProducer FB
 				State,
 				TEXT("get_symbol_unresolved"),
 				Expression->Path,
-				FString::Printf(TEXT("No symbol producer found for get expression: %s."), *SymbolName),
+				FString::Printf(TEXT("No symbol producer found for field get expression: %s."), *SymbolName),
 				EBlueprintHelperGraphFragmentDiagnosticSeverity::Error);
 			return MakeExpressionProducerFromId(*Expression, FragmentId, TEXT("value"), Expression->Type);
 		}
 
-		FBlueprintHelperGraphFragmentRef& Fragment = AddExpressionFragment(*Expression, TEXT("expr_get"), TEXT("get"), State);
-		return MakeExpressionProducer(*Expression, Fragment, TEXT("value"), Expression->Type);
-	}
-
-	case EBlueprintHelperGraphExpressionKind::GetProperty:
-	{
-		FBlueprintHelperGraphFragmentRef& Fragment = AddExpressionFragment(*Expression, TEXT("expr_get_property"), TEXT("get_property"), State);
+		const bool bPropertyPathField = Expression->FieldScope.Equals(TEXT("property_path"), ESearchCase::IgnoreCase);
+		FBlueprintHelperGraphFragmentRef& Fragment = AddExpressionFragment(
+			*Expression,
+			bPropertyPathField ? TEXT("expr_get_property") : TEXT("expr_get"),
+			bPropertyPathField ? TEXT("get_property") : TEXT("get"),
+			State);
 		if (Expression->TargetObject.IsValid())
 		{
 			ConnectExpressionToInput(
@@ -835,6 +832,8 @@ FBlueprintHelperGraphFragmentRef& FBlueprintHelperGraphFragmentDagBuilderUtils::
 	AddMetadata(Fragment, TEXT("target"), Statement.Target);
 	AddMetadata(Fragment, TEXT("name"), Statement.Name);
 	AddMetadata(Fragment, TEXT("property"), Statement.Property);
+	AddMetadata(Fragment, TEXT("field_operation"), Statement.FieldOperation);
+	AddMetadata(Fragment, TEXT("field_scope"), Statement.FieldScope);
 	AddMetadata(Fragment, TEXT("result_symbol"), Statement.ResultSymbolName);
 	AddMetadata(Fragment, TEXT("search_mode"), Statement.SearchMode);
 	AddMetadata(Fragment, TEXT("ambiguity"), Statement.AmbiguityPolicy);
@@ -1069,11 +1068,13 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagExecFlow FBluep
 	case EBlueprintHelperGraphStatementKind::Call:
 		return BuildSimpleStatement(Statement, TEXT("statement_call"), TEXT("call"), State, SymbolScopes);
 
-	case EBlueprintHelperGraphStatementKind::Set:
-		return BuildSimpleStatement(Statement, TEXT("statement_set"), TEXT("set"), State, SymbolScopes);
-
-	case EBlueprintHelperGraphStatementKind::SetProperty:
-		return BuildSimpleStatement(Statement, TEXT("statement_set_property"), TEXT("set_property"), State, SymbolScopes);
+	case EBlueprintHelperGraphStatementKind::Field:
+		return BuildSimpleStatement(
+			Statement,
+			Statement->FieldScope.Equals(TEXT("property_path"), ESearchCase::IgnoreCase) ? TEXT("statement_set_property") : TEXT("statement_set"),
+			Statement->FieldScope.Equals(TEXT("property_path"), ESearchCase::IgnoreCase) ? TEXT("set_property") : TEXT("set"),
+			State,
+			SymbolScopes);
 
 	case EBlueprintHelperGraphStatementKind::Return:
 		return BuildSimpleStatement(Statement, TEXT("statement_return"), TEXT("return"), State, SymbolScopes);

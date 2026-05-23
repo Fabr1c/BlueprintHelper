@@ -67,7 +67,8 @@ static bool AddFieldVariableActionTestVariable(UBlueprint* Blueprint, const FStr
 static FBlueprintHelperActionResolutionRequest MakeFieldVariableActionRequest(
 	UBlueprint* Blueprint,
 	UEdGraph* Graph,
-	const EBlueprintHelperActionSemanticKind Semantic,
+	const FString& FieldOperation,
+	const FString& FieldScope,
 	const FString& Query)
 {
 	FBlueprintHelperActionResolutionRequest Request;
@@ -77,7 +78,9 @@ static FBlueprintHelperActionResolutionRequest MakeFieldVariableActionRequest(
 	Request.StatementId = MakeFieldVariableActionTestObjectName(TEXT("Stmt"));
 	Request.ProjectedContextHash = TEXT("field_variable_projected_context");
 	Request.SemanticConstraintsHash = TEXT("field_variable_semantic_constraints");
-	Request.Semantic.Kind = Semantic;
+	Request.Semantic.Kind = EBlueprintHelperActionSemanticKind::Field;
+	Request.Semantic.FieldOperation = FieldOperation;
+	Request.Semantic.FieldScope = FieldScope;
 	Request.Semantic.Query = Query;
 	Request.Semantic.TargetPath = Query;
 	Request.MaxCandidates = 8;
@@ -123,7 +126,8 @@ bool FBlueprintHelperFieldVariableActionClusterResolvesGetTest::RunTest(const FS
 	FBlueprintHelperActionResolutionRequest Request = MakeFieldVariableActionRequest(
 		Blueprint,
 		GetFieldVariableActionTestGraph(Blueprint),
-		EBlueprintHelperActionSemanticKind::Get,
+		TEXT("get"),
+		TEXT("variable"),
 		TEXT("SmokeFloat"));
 	AddProjectedFieldEvidence(Request, TEXT("SmokeFloat"));
 	Request.Semantic.ExpectedReturnType = TEXT("float");
@@ -134,7 +138,7 @@ bool FBlueprintHelperFieldVariableActionClusterResolvesGetTest::RunTest(const FS
 	if (Result.CandidateActions.Num() > 0)
 	{
 		TestEqual(TEXT("display name"), Result.CandidateActions[0].DisplayName, FString(TEXT("SmokeFloat")));
-		TestTrue(TEXT("stable id contains get"), Result.CandidateActions[0].StableId.Contains(TEXT(":get")));
+		TestTrue(TEXT("stable id contains field get"), Result.CandidateActions[0].StableId.Contains(TEXT(":field:get:variable")));
 		TestTrue(TEXT("node class is get"), Result.CandidateActions[0].NodeClassPath.Contains(TEXT("K2Node_VariableGet")));
 	}
 	return true;
@@ -157,7 +161,8 @@ bool FBlueprintHelperFieldVariableActionClusterResolvesSetTest::RunTest(const FS
 	FBlueprintHelperActionResolutionRequest Request = MakeFieldVariableActionRequest(
 		Blueprint,
 		GetFieldVariableActionTestGraph(Blueprint),
-		EBlueprintHelperActionSemanticKind::Set,
+		TEXT("set"),
+		TEXT("variable"),
 		TEXT("bSmokeFlag"));
 	AddProjectedFieldEvidence(Request, TEXT("bSmokeFlag"));
 
@@ -167,7 +172,7 @@ bool FBlueprintHelperFieldVariableActionClusterResolvesSetTest::RunTest(const FS
 	TestEqual(TEXT("one candidate"), Result.CandidateActions.Num(), 1);
 	if (Result.CandidateActions.Num() > 0)
 	{
-		TestTrue(TEXT("stable id contains set"), Result.CandidateActions[0].StableId.Contains(TEXT(":set")));
+		TestTrue(TEXT("stable id contains field set"), Result.CandidateActions[0].StableId.Contains(TEXT(":field:set:variable")));
 		TestTrue(TEXT("node class is set"), Result.CandidateActions[0].NodeClassPath.Contains(TEXT("K2Node_VariableSet")));
 	}
 	return true;
@@ -186,7 +191,8 @@ bool FBlueprintHelperFieldVariableActionClusterNotFoundTest::RunTest(const FStri
 	FBlueprintHelperActionResolutionRequest Request = MakeFieldVariableActionRequest(
 		Blueprint,
 		GetFieldVariableActionTestGraph(Blueprint),
-		EBlueprintHelperActionSemanticKind::Get,
+		TEXT("get"),
+		TEXT("variable"),
 		TEXT("MissingVariable"));
 	AddProjectedFieldEvidence(Request, TEXT("MissingVariable"));
 
@@ -218,7 +224,8 @@ bool FBlueprintHelperFieldVariableActionClusterAmbiguousTest::RunTest(const FStr
 	FBlueprintHelperActionResolutionRequest Request = MakeFieldVariableActionRequest(
 		Blueprint,
 		GetFieldVariableActionTestGraph(Blueprint),
-		EBlueprintHelperActionSemanticKind::Get,
+		TEXT("get"),
+		TEXT("variable"),
 		TEXT("Smoke"));
 	Request.ContextEvidence.Add(TEXT("field_owner_class"), Request.Blueprint && Request.Blueprint->GeneratedClass
 		? Request.Blueprint->GeneratedClass->GetPathName()
@@ -258,7 +265,8 @@ bool FBlueprintHelperFieldVariableActionClusterResolvesDoorOpenAngleWithEvidence
 	FBlueprintHelperActionResolutionRequest Request = MakeFieldVariableActionRequest(
 		Blueprint,
 		GetFieldVariableActionTestGraph(Blueprint),
-		EBlueprintHelperActionSemanticKind::Get,
+		TEXT("get"),
+		TEXT("variable"),
 		TEXT("DoorOpenAngle"));
 	AddProjectedFieldEvidence(Request, TEXT("DoorOpenAngle"));
 	Request.Semantic.ExpectedReturnType = TEXT("float");
@@ -287,14 +295,15 @@ bool FBlueprintHelperFieldVariableActionClusterResolvesBIsClosedWithEvidenceTest
 	FBlueprintHelperActionResolutionRequest Request = MakeFieldVariableActionRequest(
 		Blueprint,
 		GetFieldVariableActionTestGraph(Blueprint),
-		EBlueprintHelperActionSemanticKind::Set,
+		TEXT("set"),
+		TEXT("variable"),
 		TEXT("bIsClosed"));
 	AddProjectedFieldEvidence(Request, TEXT("bIsClosed"));
 
 	const FBlueprintHelperActionResolutionResult Result = FBlueprintHelperActionResolutionCore::Resolve(Request);
 	TestEqual(TEXT("status"), Result.Status, EBlueprintHelperActionResolutionStatus::Resolved);
 	TestTrue(TEXT("selected spawner"), Result.SelectedSpawner.IsValid());
-	TestTrue(TEXT("stable id contains set"), Result.SelectedStableId.Contains(TEXT(":set")));
+	TestTrue(TEXT("stable id contains field set"), Result.SelectedStableId.Contains(TEXT(":field:set:variable")));
 	return true;
 }
 
@@ -315,7 +324,8 @@ bool FBlueprintHelperFieldVariableActionClusterResolvesDoorMeshRelativeRotationP
 	FBlueprintHelperActionResolutionRequest Request = MakeFieldVariableActionRequest(
 		Blueprint,
 		GetFieldVariableActionTestGraph(Blueprint),
-		EBlueprintHelperActionSemanticKind::GetProperty,
+		TEXT("get"),
+		TEXT("property_path"),
 		TEXT("DoorMesh.RelativeRotation"));
 	AddProjectedPropertyEvidence(
 		Request,
@@ -326,7 +336,7 @@ bool FBlueprintHelperFieldVariableActionClusterResolvesDoorMeshRelativeRotationP
 	const FBlueprintHelperActionResolutionResult Result = FBlueprintHelperActionResolutionCore::Resolve(Request);
 	TestEqual(TEXT("status"), Result.Status, EBlueprintHelperActionResolutionStatus::Resolved);
 	TestTrue(TEXT("selected spawner"), Result.SelectedSpawner.IsValid());
-	TestTrue(TEXT("stable id contains get_property"), Result.SelectedStableId.Contains(TEXT(":get_property")));
+	TestTrue(TEXT("stable id contains field get property_path"), Result.SelectedStableId.Contains(TEXT(":field:get:property_path")));
 	return true;
 }
 
@@ -347,7 +357,8 @@ bool FBlueprintHelperFieldVariableActionClusterResolvesDoorMeshSimulatePhysicsPr
 	FBlueprintHelperActionResolutionRequest Request = MakeFieldVariableActionRequest(
 		Blueprint,
 		GetFieldVariableActionTestGraph(Blueprint),
-		EBlueprintHelperActionSemanticKind::SetProperty,
+		TEXT("set"),
+		TEXT("property_path"),
 		TEXT("DoorMesh.SimulatePhysics"));
 	AddProjectedPropertyEvidence(
 		Request,
@@ -358,7 +369,7 @@ bool FBlueprintHelperFieldVariableActionClusterResolvesDoorMeshSimulatePhysicsPr
 	const FBlueprintHelperActionResolutionResult Result = FBlueprintHelperActionResolutionCore::Resolve(Request);
 	TestEqual(TEXT("status"), Result.Status, EBlueprintHelperActionResolutionStatus::Resolved);
 	TestTrue(TEXT("selected spawner"), Result.SelectedSpawner.IsValid());
-	TestTrue(TEXT("stable id contains set_property"), Result.SelectedStableId.Contains(TEXT(":set_property")));
+	TestTrue(TEXT("stable id contains field set property_path"), Result.SelectedStableId.Contains(TEXT(":field:set:property_path")));
 	return true;
 }
 
@@ -379,7 +390,8 @@ bool FBlueprintHelperFieldVariableActionClusterRejectsGetPropertyWithoutOwnerEvi
 	FBlueprintHelperActionResolutionRequest Request = MakeFieldVariableActionRequest(
 		Blueprint,
 		GetFieldVariableActionTestGraph(Blueprint),
-		EBlueprintHelperActionSemanticKind::GetProperty,
+		TEXT("get"),
+		TEXT("property_path"),
 		TEXT("DoorMesh.RelativeRotation"));
 	Request.Semantic.PropertyPath = TEXT("DoorMesh.RelativeRotation");
 	Request.ContextEvidence.Add(TEXT("field_name"), TEXT("RelativeRotation"));
@@ -408,7 +420,8 @@ bool FBlueprintHelperFieldVariableActionClusterRejectsSetPropertyWithoutProperty
 	FBlueprintHelperActionResolutionRequest Request = MakeFieldVariableActionRequest(
 		Blueprint,
 		GetFieldVariableActionTestGraph(Blueprint),
-		EBlueprintHelperActionSemanticKind::SetProperty,
+		TEXT("set"),
+		TEXT("property_path"),
 		TEXT("DoorMesh.SimulatePhysics"));
 	Request.ContextEvidence.Add(TEXT("field_name"), TEXT("SimulatePhysics"));
 	Request.ContextEvidence.Add(TEXT("field_owner_class"), TEXT("DoorMesh"));
@@ -440,7 +453,8 @@ bool FBlueprintHelperFieldVariableActionClusterRejectsBroadQueryWithoutProjected
 	FBlueprintHelperActionResolutionRequest Request = MakeFieldVariableActionRequest(
 		Blueprint,
 		GetFieldVariableActionTestGraph(Blueprint),
-		EBlueprintHelperActionSemanticKind::Get,
+		TEXT("get"),
+		TEXT("variable"),
 		TEXT("Is"));
 	Request.bAllowFuzzyUnique = true;
 

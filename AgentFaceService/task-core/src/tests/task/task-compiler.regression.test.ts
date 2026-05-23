@@ -1163,7 +1163,9 @@ describe('TaskSpec GraphWrite Append compiler', () => {
       'OpenDoor_stmt_1',
       'OpenDoor_stmt_2',
     ]);
-    assert.equal((payload.logic_spec.statements[0] as Record<string, unknown>).kind, 'set');
+    assert.equal((payload.logic_spec.statements[0] as Record<string, unknown>).kind, 'field');
+    assert.equal((payload.logic_spec.statements[0] as Record<string, unknown>).field_operation, 'set');
+    assert.equal((payload.logic_spec.statements[0] as Record<string, unknown>).field_scope, 'variable');
     assert.equal((payload.logic_spec.statements[1] as Record<string, unknown>).kind, 'call');
     assert.equal((payload.logic_spec.statements[1] as Record<string, unknown>).target, 'DoorPanel.AddAngularImpulseInDegrees');
   });
@@ -1593,7 +1595,9 @@ describe('TaskSpec GraphWrite Append compiler', () => {
     assert.equal((payload as unknown as Record<string, unknown>).nodes, undefined);
     assert.deepEqual(payload.logic_spec.entry, { kind: 'custom_event', name: 'OpenDoor', id: 'OpenDoor_entry' });
     assert.deepEqual(payload.logic_spec.statements.map((statement) => (statement as Record<string, unknown>).id), ['OpenDoor_stmt_1']);
-    assert.equal((payload.logic_spec.statements[0] as Record<string, unknown>).kind, 'set');
+    assert.equal((payload.logic_spec.statements[0] as Record<string, unknown>).kind, 'field');
+    assert.equal((payload.logic_spec.statements[0] as Record<string, unknown>).field_operation, 'set');
+    assert.equal((payload.logic_spec.statements[0] as Record<string, unknown>).field_scope, 'variable');
     assert.equal(payload.dry_run, false);
   });
 });

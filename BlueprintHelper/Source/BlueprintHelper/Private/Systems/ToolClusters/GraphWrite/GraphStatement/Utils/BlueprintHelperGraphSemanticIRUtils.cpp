@@ -76,8 +76,7 @@ FString FBlueprintHelperGraphSemanticIRUtils::JsonValueToSemanticType(const TSha
 EBlueprintHelperGraphStatementKind FBlueprintHelperGraphSemanticIRUtils::ParseStatementKind(const FString& Kind)
 {
 	if (Kind.Equals(TEXT("call"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Call;
-	if (Kind.Equals(TEXT("set"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Set;
-	if (Kind.Equals(TEXT("set_property"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::SetProperty;
+	if (Kind.Equals(TEXT("field"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Field;
 	if (Kind.Equals(TEXT("branch"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Branch;
 	if (Kind.Equals(TEXT("sequence"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Sequence;
 	if (Kind.Equals(TEXT("let"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Let;
@@ -89,8 +88,7 @@ EBlueprintHelperGraphStatementKind FBlueprintHelperGraphSemanticIRUtils::ParseSt
 EBlueprintHelperGraphExpressionKind FBlueprintHelperGraphSemanticIRUtils::ParseExpressionKind(const FString& Kind)
 {
 	if (Kind.Equals(TEXT("literal"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphExpressionKind::Literal;
-	if (Kind.Equals(TEXT("get"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphExpressionKind::Get;
-	if (Kind.Equals(TEXT("get_property"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphExpressionKind::GetProperty;
+	if (Kind.Equals(TEXT("field"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphExpressionKind::Field;
 	if (Kind.Equals(TEXT("call"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphExpressionKind::Call;
 	if (Kind.Equals(TEXT("op"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphExpressionKind::Op;
 	if (Kind.Equals(TEXT("construct"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphExpressionKind::Construct;
@@ -238,10 +236,8 @@ FString FBlueprintHelperGraphSemanticIRUtils::StatementPatternName(EBlueprintHel
 	{
 	case EBlueprintHelperGraphStatementKind::Call:
 		return TEXT("call");
-	case EBlueprintHelperGraphStatementKind::Set:
-		return TEXT("set");
-	case EBlueprintHelperGraphStatementKind::SetProperty:
-		return TEXT("set_property");
+	case EBlueprintHelperGraphStatementKind::Field:
+		return TEXT("field");
 	case EBlueprintHelperGraphStatementKind::Branch:
 		return TEXT("branch");
 	case EBlueprintHelperGraphStatementKind::Sequence:
@@ -264,10 +260,8 @@ FString FBlueprintHelperGraphSemanticIRUtils::ExpressionPatternName(EBlueprintHe
 	{
 	case EBlueprintHelperGraphExpressionKind::Literal:
 		return TEXT("literal");
-	case EBlueprintHelperGraphExpressionKind::Get:
-		return TEXT("get");
-	case EBlueprintHelperGraphExpressionKind::GetProperty:
-		return TEXT("get_property");
+	case EBlueprintHelperGraphExpressionKind::Field:
+		return TEXT("field");
 	case EBlueprintHelperGraphExpressionKind::Call:
 		return TEXT("call");
 	case EBlueprintHelperGraphExpressionKind::Op:
@@ -332,11 +326,11 @@ FBlueprintHelperGraphResolvedTarget FBlueprintHelperGraphSemanticIRUtils::Resolv
 		return Target;
 	}
 
-	if (ExpressionKind == EBlueprintHelperGraphExpressionKind::GetProperty
-		|| StatementKind == EBlueprintHelperGraphStatementKind::SetProperty
-		|| (bHasOwner && (Context.IsComponent(Owner) || Context.IsVariable(Owner)))
-		|| (StatementKind == EBlueprintHelperGraphStatementKind::Set && bHasOwner)
-		|| (ExpressionKind == EBlueprintHelperGraphExpressionKind::Get && bHasOwner))
+	if (bHasOwner
+		&& (ExpressionKind == EBlueprintHelperGraphExpressionKind::Field
+			|| StatementKind == EBlueprintHelperGraphStatementKind::Field
+			|| Context.IsComponent(Owner)
+			|| Context.IsVariable(Owner)))
 	{
 		Target.Kind = EBlueprintHelperGraphTargetKind::PropertyPath;
 		Target.Owner = Owner;

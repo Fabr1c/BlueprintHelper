@@ -1444,7 +1444,7 @@ def _compile_merge_graph_write_ops(behavior: Dict[str, Any]) -> List[Dict[str, A
     return ops
 
 
-DELEGATE_STATEMENT_KIND_ALIASES = {
+PUBLIC_DELEGATE_STATEMENT_KIND_ALIASES = {
     "component_bound_event": "component_bound_event",
     "delegate.bind": "bind",
     "delegate.assign": "assign",
@@ -1452,18 +1452,30 @@ DELEGATE_STATEMENT_KIND_ALIASES = {
     "delegate.unbind_all": "clear",
     "delegate.call": "call",
 }
+INTERNAL_DELEGATE_STATEMENT_KIND = "delegate"
 DELEGATE_STATEMENT_OPERATION_KINDS = {"bind", "assign", "unbind", "clear", "call"}
+FORBIDDEN_AGENT_DELEGATE_INTERNAL_KINDS = {
+    "delegate",
+    "bind",
+    "assign",
+    "unbind",
+    "unbind_all",
+    "delegate_call",
+    "delegate_clear",
+}
 SUPPORTED_GRAPH_BODY_STATEMENT_KINDS = {
     "call",
+    "field",
     "set",
     "set_property",
     "let",
     "control",
-    *DELEGATE_STATEMENT_KIND_ALIASES.keys(),
+    *PUBLIC_DELEGATE_STATEMENT_KIND_ALIASES.keys(),
 }
 SUPPORTED_GRAPH_BODY_CONTROL_KINDS = {"branch", "sequence", "return"}
 SUPPORTED_GRAPH_BODY_EXPRESSION_KINDS = {
     "literal",
+    "field",
     "get",
     "get_property",
     "call",
@@ -1473,22 +1485,63 @@ SUPPORTED_GRAPH_BODY_EXPRESSION_KINDS = {
     "select",
 }
 
+FIELD_STATEMENT_KIND_MAP = {
+    "set": ("set", "variable"),
+    "set_property": ("set", "property_path"),
+}
+FIELD_EXPRESSION_KIND_MAP = {
+    "get": ("get", "variable"),
+    "get_property": ("get", "property_path"),
+}
+
+
+def _apply_field_taxonomy(out: Dict[str, Any], operation: str, scope: str) -> None:
+    out["kind"] = "field"
+    out["field_operation"] = operation
+    out["field_scope"] = scope
+
+
+def _field_operation_scope(record: Dict[str, Any], path: str) -> tuple[str, str]:
+    operation = _required_string(record, "field_operation", f"{path}.field_operation").strip().lower()
+    scope = _required_string(record, "field_scope", f"{path}.field_scope").strip().lower()
+    if operation not in {"get", "set"}:
+        raise TaskSpecCompileError(
+            "unsupported_field_operation",
+            f"Unsupported field_operation: {operation}",
+            [{
+                "code": "unsupported_field_operation",
+                "path": f"{path}.field_operation",
+                "message": "Use get or set.",
+            }],
+        )
+    if scope not in {"variable", "property_path"}:
+        raise TaskSpecCompileError(
+            "unsupported_field_scope",
+            f"Unsupported field_scope: {scope}",
+            [{
+                "code": "unsupported_field_scope",
+                "path": f"{path}.field_scope",
+                "message": "Use variable or property_path.",
+            }],
+        )
+    return operation, scope
+
 
 def _normalized_delegate_statement_kind(kind: str) -> str:
-    return DELEGATE_STATEMENT_KIND_ALIASES.get(kind, kind)
+    return PUBLIC_DELEGATE_STATEMENT_KIND_ALIASES.get(kind, kind)
 
 
 def _delegate_statement_operation(statement: Dict[str, Any]) -> Optional[str]:
     kind = statement.get("kind")
     if not isinstance(kind, str):
         return None
-    if kind == "delegate":
+    if kind == INTERNAL_DELEGATE_STATEMENT_KIND:
         operation = statement.get("delegate_operation")
         if isinstance(operation, str) and operation in DELEGATE_STATEMENT_OPERATION_KINDS:
             return operation
         return None
 
-    if kind not in DELEGATE_STATEMENT_KIND_ALIASES or kind == "component_bound_event":
+    if kind not in PUBLIC_DELEGATE_STATEMENT_KIND_ALIASES or kind == "component_bound_event":
         return None
 
     normalized_kind = _normalized_delegate_statement_kind(kind)
@@ -1501,6 +1554,16 @@ def _validate_supported_statements(statements: List[Dict[str, Any]], path: str) 
     for statement_index, statement in enumerate(statements):
         kind = statement.get("kind")
         statement_path = f"{path}[{statement_index}]"
+        if kind in FORBIDDEN_AGENT_DELEGATE_INTERNAL_KINDS:
+            raise TaskSpecCompileError(
+                "unsupported_statement_kind",
+                "Use component_bound_event or delegate.bind/delegate.assign/delegate.unbind/delegate.unbind_all/delegate.call in Agent-facing TaskSpec. The compiler owns kind=delegate + delegate_operation lowering.",
+                [{
+                    "code": "unsupported_statement_kind",
+                    "path": f"{statement_path}.kind",
+                    "message": "Use component_bound_event or delegate.bind/delegate.assign/delegate.unbind/delegate.unbind_all/delegate.call in Agent-facing TaskSpec. The compiler owns kind=delegate + delegate_operation lowering.",
+                }],
+            )
         if kind not in SUPPORTED_GRAPH_BODY_STATEMENT_KINDS:
             raise TaskSpecCompileError(
                 "unsupported_statement_kind",
@@ -1508,13 +1571,26 @@ def _validate_supported_statements(statements: List[Dict[str, Any]], path: str) 
                 [{
                     "code": "unsupported_statement_kind",
                     "path": f"{statement_path}.kind",
-                    "message": "Use call, set, set_property, let, control, or a supported delegate statement kind.",
+                    "message": "Use call, field, set, set_property, let, control, or a supported delegate statement kind.",
                 }],
             )
-        if kind in DELEGATE_STATEMENT_KIND_ALIASES:
+        if kind in PUBLIC_DELEGATE_STATEMENT_KIND_ALIASES:
             _validate_delegate_statement_shape(statement, statement_path)
         elif kind == "call":
             _validate_expression_map(statement.get("args"), f"{statement_path}.args")
+        elif kind == "field":
+            operation, _scope = _field_operation_scope(statement, statement_path)
+            if operation != "set":
+                raise TaskSpecCompileError(
+                    "unsupported_field_operation",
+                    "Field statements require field_operation=set.",
+                    [{
+                        "code": "unsupported_field_operation",
+                        "path": f"{statement_path}.field_operation",
+                        "message": "Field statements require field_operation=set.",
+                    }],
+                )
+            _validate_supported_expression(statement.get("value"), f"{statement_path}.value")
         elif kind in {"let", "set", "set_property"}:
             _validate_supported_expression(statement.get("value"), f"{statement_path}.value")
         elif kind == "control":
@@ -1611,9 +1687,21 @@ def _validate_supported_expression(expression: Any, path: str) -> None:
             [{
                 "code": "unsupported_expression_kind",
                 "path": f"{path}.kind",
-                "message": "Use literal, get, get_property, call, op, construct, deconstruct, or select.",
+                "message": "Use literal, field, get, get_property, call, op, construct, deconstruct, or select.",
             }],
         )
+    if kind == "field":
+        operation, _scope = _field_operation_scope(expression, path)
+        if operation != "get":
+            raise TaskSpecCompileError(
+                "unsupported_field_operation",
+                "Field expressions require field_operation=get.",
+                [{
+                    "code": "unsupported_field_operation",
+                    "path": f"{path}.field_operation",
+                    "message": "Field expressions require field_operation=get.",
+                }],
+            )
     if kind in {"call", "op", "construct", "deconstruct"}:
         _validate_expression_map(expression.get("args"), f"{path}.args")
     if kind == "op":
@@ -1662,7 +1750,21 @@ def _clone_logic_expression_with_compiled_ids(expression: Any, node_id: str) -> 
     out = dict(expression)
     out["id"] = node_id
 
-    if kind == "select":
+    if kind in FIELD_EXPRESSION_KIND_MAP:
+        operation, scope = FIELD_EXPRESSION_KIND_MAP[kind]
+        _apply_field_taxonomy(out, operation, scope)
+        if kind == "get_property":
+            property_path = _required_graph_body_property_path(expression, f"{node_id}.property_path")
+            out["property_path"] = property_path
+            out["property"] = property_path
+    elif kind == "field":
+        operation, scope = _field_operation_scope(expression, node_id)
+        _apply_field_taxonomy(out, operation, scope)
+        if scope == "property_path":
+            property_path = _required_graph_body_property_path(expression, f"{node_id}.property_path")
+            out["property_path"] = property_path
+            out["property"] = property_path
+    elif kind == "select":
         out["condition"] = _clone_logic_expression_with_compiled_ids(expression.get("condition"), f"{node_id}_index")
         options = expression.get("options")
         if isinstance(options, list):
@@ -1708,7 +1810,24 @@ def _clone_logic_statement_with_compiled_ids(statement: Dict[str, Any], statemen
     out = dict(statement)
     out["id"] = statement_id
     kind = statement.get("kind")
-    if kind == "component_bound_event":
+    if kind in FIELD_STATEMENT_KIND_MAP:
+        operation, scope = FIELD_STATEMENT_KIND_MAP[kind]
+        _apply_field_taxonomy(out, operation, scope)
+        if kind == "set_property":
+            property_path = _required_graph_body_property_path(statement, f"{statement_id}.property_path")
+            out["property_path"] = property_path
+            out["property"] = property_path
+        out["value"] = _clone_logic_expression_with_compiled_ids(statement.get("value"), f"{statement_id}_value")
+    elif kind == "field":
+        operation, scope = _field_operation_scope(statement, statement_id)
+        _apply_field_taxonomy(out, operation, scope)
+        if scope == "property_path":
+            property_path = _required_graph_body_property_path(statement, f"{statement_id}.property_path")
+            out["property_path"] = property_path
+            out["property"] = property_path
+        if "value" in statement:
+            out["value"] = _clone_logic_expression_with_compiled_ids(statement.get("value"), f"{statement_id}_value")
+    elif kind == "component_bound_event":
         out["kind"] = "component_bound_event"
         return out
     delegate_operation = _delegate_statement_operation(statement)
@@ -1727,8 +1846,6 @@ def _clone_logic_statement_with_compiled_ids(statement: Dict[str, Any], statemen
         return out
 
     if kind == "let":
-        out["value"] = _clone_logic_expression_with_compiled_ids(statement.get("value"), f"{statement_id}_value")
-    elif kind in {"set", "set_property"}:
         out["value"] = _clone_logic_expression_with_compiled_ids(statement.get("value"), f"{statement_id}_value")
     elif kind == "call" and isinstance(statement.get("args"), dict):
         out["args"] = {
@@ -1830,8 +1947,22 @@ def _compile_statement_flow(statement: Dict[str, Any], node_id: str, path: str, 
             node["inputs"] = input_values
         else:
             node["args"] = input_values
-    if kind in {"set", "set_property"}:
-        value_pin_name = _required_string(statement, "target", f"{path}.target") if kind == "set" else "value"
+    if kind in {"set", "set_property", "field"}:
+        if kind == "field":
+            operation, scope = _field_operation_scope(statement, path)
+            if operation != "set":
+                raise TaskSpecCompileError(
+                    "unsupported_field_operation",
+                    "Field statements require field_operation=set.",
+                    [{
+                        "code": "unsupported_field_operation",
+                        "path": f"{path}.field_operation",
+                        "message": "Field statements require field_operation=set.",
+                    }],
+                )
+            value_pin_name = _required_string(statement, "target", f"{path}.target") if scope == "variable" else "value"
+        else:
+            value_pin_name = _required_string(statement, "target", f"{path}.target") if kind == "set" else "value"
         value_flow = _compile_value_expression(statement.get("value"), f"{node_id}_value", f"{path}.value", context)
         nodes.extend(value_flow["nodes"])
         links.extend(value_flow["links"])
@@ -1936,19 +2067,34 @@ def _compile_value_expression(expression: Any, node_id: str, path: str, context:
             [{
                 "code": "unsupported_expression_kind",
                 "path": f"{path}.kind",
-                "message": "Use literal, get, get_property, call, op, construct, deconstruct, or select.",
+                "message": "Use literal, field, get, get_property, call, op, construct, deconstruct, or select.",
             }],
         )
 
-    if kind in {"get", "get_property"}:
+    if kind in {"get", "get_property", "field"}:
         target = _required_string(expression, "target", f"{path}.target")
-        if kind == "get":
+        if kind == "field":
+            operation, scope = _field_operation_scope(expression, path)
+            if operation != "get":
+                raise TaskSpecCompileError(
+                    "unsupported_field_operation",
+                    "Field expressions require field_operation=get.",
+                    [{
+                        "code": "unsupported_field_operation",
+                        "path": f"{path}.field_operation",
+                        "message": "Field expressions require field_operation=get.",
+                    }],
+                )
+        else:
+            operation, scope = FIELD_EXPRESSION_KIND_MAP[kind]
+        if scope == "variable":
             symbol = context.get("symbols", {}).get(target.lower())
             if symbol:
                 return {"nodes": [], "links": [], "output": symbol.get("output"), "default_value": symbol.get("default_value")}
-        output_pin = "value" if kind == "get_property" else target
-        node = {"id": node_id, "kind": kind, "var": target, "target": target}
-        if kind == "get_property":
+        output_pin = "value" if scope == "property_path" else target
+        node = {"id": node_id, "var": target, "target": target}
+        _apply_field_taxonomy(node, operation, scope)
+        if scope == "property_path":
             property_path = _required_graph_body_property_path(expression, path)
             node["property_path"] = property_path
             node["property"] = property_path
@@ -2711,23 +2857,54 @@ def _compile_statement_node(statement: Dict[str, Any], node_id: str, path: str) 
         }
 
     if kind == "set":
-        return {
+        operation, scope = FIELD_STATEMENT_KIND_MAP[kind]
+        node = {
             "id": node_id,
-            "kind": "set",
             "var": _required_string(statement, "target", f"{path}.target"),
+            "target": _required_string(statement, "target", f"{path}.target"),
             "value": _value_expr_to_string(statement.get("value")),
         }
+        _apply_field_taxonomy(node, operation, scope)
+        return node
 
     if kind == "set_property":
         property_path = _required_graph_body_property_path(statement, path)
-        return {
+        operation, scope = FIELD_STATEMENT_KIND_MAP[kind]
+        node = {
             "id": node_id,
-            "kind": "set_property",
             "target": _required_string(statement, "target", f"{path}.target"),
             "property_path": property_path,
             "property": property_path,
             "value": _value_expr_to_string(statement.get("value")),
         }
+        _apply_field_taxonomy(node, operation, scope)
+        return node
+
+    if kind == "field":
+        operation, scope = _field_operation_scope(statement, path)
+        if operation != "set":
+            raise TaskSpecCompileError(
+                "unsupported_field_operation",
+                "Field statements require field_operation=set.",
+                [{
+                    "code": "unsupported_field_operation",
+                    "path": f"{path}.field_operation",
+                    "message": "Field statements require field_operation=set.",
+                }],
+            )
+        target = _required_string(statement, "target", f"{path}.target")
+        node = {
+            "id": node_id,
+            "var": target,
+            "target": target,
+            "value": _value_expr_to_string(statement.get("value")),
+        }
+        if scope == "property_path":
+            property_path = _required_graph_body_property_path(statement, path)
+            node["property_path"] = property_path
+            node["property"] = property_path
+        _apply_field_taxonomy(node, operation, scope)
+        return node
 
     raise TaskSpecCompileError(
         "unsupported_statement_kind",

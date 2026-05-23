@@ -457,8 +457,8 @@ static FString GetSemanticStatementId(const FBlueprintHelperGraphStatementIR& St
 	case EBlueprintHelperGraphStatementKind::Call:
 		KindName = TEXT("call");
 		break;
-	case EBlueprintHelperGraphStatementKind::Set:
-		KindName = TEXT("set");
+	case EBlueprintHelperGraphStatementKind::Field:
+		KindName = TEXT("field");
 		break;
 	case EBlueprintHelperGraphStatementKind::Branch:
 		KindName = TEXT("branch");
@@ -502,11 +502,8 @@ static FString GetSemanticExpressionId(const FBlueprintHelperGraphExpressionIR& 
 	case EBlueprintHelperGraphExpressionKind::Literal:
 		KindName = TEXT("literal");
 		break;
-	case EBlueprintHelperGraphExpressionKind::Get:
-		KindName = TEXT("get");
-		break;
-	case EBlueprintHelperGraphExpressionKind::GetProperty:
-		KindName = TEXT("get_property");
+	case EBlueprintHelperGraphExpressionKind::Field:
+		KindName = TEXT("field");
 		break;
 	case EBlueprintHelperGraphExpressionKind::Call:
 		KindName = TEXT("call");
@@ -649,7 +646,7 @@ static void BuildSemanticExpressionFragments(
 	BuildSemanticExpressionFragments(TargetGraph, ActionContextScope, Expression->Right, GeneratedFragments, GeneratedFragmentIds, OutUnresolvedNodes, GeneratedNodeCount);
 
 	if (Expression->Kind == EBlueprintHelperGraphExpressionKind::Literal
-		|| (Expression->Kind == EBlueprintHelperGraphExpressionKind::Get
+		|| (Expression->Kind == EBlueprintHelperGraphExpressionKind::Field
 			&& Expression->ResolvedTarget.Kind == EBlueprintHelperGraphTargetKind::Temporary))
 	{
 		return;
