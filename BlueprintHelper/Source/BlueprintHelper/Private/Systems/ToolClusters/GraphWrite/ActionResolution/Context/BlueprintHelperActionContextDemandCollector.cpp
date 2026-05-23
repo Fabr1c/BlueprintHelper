@@ -181,6 +181,55 @@ static bool IsEventDelegateSemantic(const EBlueprintHelperActionSemanticKind Sem
 		|| SemanticKind == EBlueprintHelperActionSemanticKind::Delegate;
 }
 
+static EBlueprintHelperActionSemanticFamily ResolveSemanticFamily(
+	const EBlueprintHelperActionSemanticKind SemanticKind,
+	const FString& FieldScope)
+{
+	switch (SemanticKind)
+	{
+	case EBlueprintHelperActionSemanticKind::Call:
+		return EBlueprintHelperActionSemanticFamily::Callable;
+	case EBlueprintHelperActionSemanticKind::Field:
+		return EBlueprintHelperActionSemanticFamily::Field;
+	case EBlueprintHelperActionSemanticKind::Op:
+		return EBlueprintHelperActionSemanticFamily::Operator;
+	case EBlueprintHelperActionSemanticKind::Construct:
+	case EBlueprintHelperActionSemanticKind::Deconstruct:
+		return FieldScope.Equals(TEXT("type_structure"), ESearchCase::IgnoreCase)
+			? EBlueprintHelperActionSemanticFamily::TypeStructure
+			: EBlueprintHelperActionSemanticFamily::Struct;
+	case EBlueprintHelperActionSemanticKind::Event:
+	case EBlueprintHelperActionSemanticKind::ComponentBoundEvent:
+		return EBlueprintHelperActionSemanticFamily::Event;
+	case EBlueprintHelperActionSemanticKind::Delegate:
+		return EBlueprintHelperActionSemanticFamily::Delegate;
+	case EBlueprintHelperActionSemanticKind::Control:
+	case EBlueprintHelperActionSemanticKind::Select:
+		return EBlueprintHelperActionSemanticFamily::Control;
+	case EBlueprintHelperActionSemanticKind::Create:
+		return EBlueprintHelperActionSemanticFamily::Create;
+	case EBlueprintHelperActionSemanticKind::Convert:
+		return EBlueprintHelperActionSemanticFamily::Convert;
+	case EBlueprintHelperActionSemanticKind::Schedule:
+		return EBlueprintHelperActionSemanticFamily::Schedule;
+	default:
+		return EBlueprintHelperActionSemanticFamily::Unknown;
+	}
+}
+
+static EBlueprintHelperTypeOperation ResolveTypeOperation(const EBlueprintHelperActionSemanticKind SemanticKind)
+{
+	switch (SemanticKind)
+	{
+	case EBlueprintHelperActionSemanticKind::Construct:
+		return EBlueprintHelperTypeOperation::Construct;
+	case EBlueprintHelperActionSemanticKind::Deconstruct:
+		return EBlueprintHelperTypeOperation::Deconstruct;
+	default:
+		return EBlueprintHelperTypeOperation::None;
+	}
+}
+
 static void ApplyEventDelegateStatementEvidence(
 	const FBlueprintHelperGraphStatementIR& Statement,
 	FBlueprintHelperActionContextDemand& InOutDemand)
@@ -552,10 +601,20 @@ FBlueprintHelperActionContextDemand FBlueprintHelperActionContextDemandCollector
 	Demand.StatementId = StableId;
 	Demand.SourcePath = SourcePath;
 	Demand.SemanticKind = SemanticKind;
+	Demand.SemanticFamily = BlueprintHelperActionContextDemandCollector::ResolveSemanticFamily(SemanticKind, FieldScope);
+	Demand.TypeOperation = BlueprintHelperActionContextDemandCollector::ResolveTypeOperation(SemanticKind);
 	Demand.Query = Query;
 	Demand.TargetPath = TargetPath;
 	Demand.PropertyPath = PropertyPath;
 	Demand.TypeName = TypeName;
+	if (Demand.SemanticFamily == EBlueprintHelperActionSemanticFamily::Struct)
+	{
+		Demand.StructPath = TypeName;
+	}
+	else if (Demand.SemanticFamily == EBlueprintHelperActionSemanticFamily::TypeStructure)
+	{
+		Demand.TypeStructureId = TypeName;
+	}
 	Demand.FieldOperation = FieldOperation.TrimStartAndEnd().ToLower();
 	Demand.FieldScope = FieldScope.TrimStartAndEnd().ToLower();
 	Demand.ExpectedReturnType = TypeName;
@@ -595,6 +654,14 @@ FBlueprintHelperActionContextDemand FBlueprintHelperActionContextDemandCollector
 			if (Demand.TargetPath.IsEmpty())
 			{
 				Demand.TargetPath = Demand.TypeName;
+			}
+			if (Demand.StructPath.IsEmpty() && Demand.SemanticFamily == EBlueprintHelperActionSemanticFamily::Struct)
+			{
+				Demand.StructPath = Demand.TypeName;
+			}
+			if (Demand.TypeStructureId.IsEmpty() && Demand.SemanticFamily == EBlueprintHelperActionSemanticFamily::TypeStructure)
+			{
+				Demand.TypeStructureId = Demand.TypeName;
 			}
 		}
 	}

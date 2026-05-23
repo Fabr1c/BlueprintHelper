@@ -188,3 +188,12 @@ python -m unittest discover -s python/tests -t python
 ```
 
 如涉及运行时 GraphWrite 行为，还必须补充 Editor Bridge preview smoke，确认 public `kind:"control"` 输入在 TaskPlan/Bridge 中 lower 到 `BlueprintLogicSpec.v2` 的 internal `sequence` / `branch` / `return` body shape，并且不会触发 `statement_kind_unsupported`。
+
+## 2026-05-24 Struct / TypeStructure construct-deconstruct gap sync
+
+- [x] 已关闭：`construct/deconstruct` taxonomy 不再依赖 broad `create` 或旧 `make_struct/break_struct` AgentFace token；当前源码 GraphWrite active path grep `make_struct|break_struct|create_operation` 无命中。
+- [x] 已关闭：`GenericAssetStructControlActionResolver` 不再承载 construct/deconstruct 旧逻辑，当前仅保留 select/control NodeSpawner candidate 入口。
+- [x] 已关闭：新增 `FBlueprintHelperStructTypeStructureActionResolver`，以 `SemanticFamily=Struct|TypeStructure` + `TypeOperation=Construct|Deconstruct` 解析 UE evidence。
+- [x] 已验证：construct/deconstruct Vector CLI preview/execute/compile 均通过。
+- [ ] 剩余差距：linked typed pin 推断未做独立 smoke；当前验证覆盖显式 type 与 missing-type 阻断。
+- [ ] 剩余差距：ambiguity candidate list 未做独立 smoke；当前验证覆盖唯一成功和 `needs_more_semantic_context`。

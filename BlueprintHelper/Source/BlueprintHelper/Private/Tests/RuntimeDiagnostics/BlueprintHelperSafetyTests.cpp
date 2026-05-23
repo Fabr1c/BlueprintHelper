@@ -32,6 +32,7 @@
 #include "Systems/Debug/BlueprintHelperRuntimeProfileService.h"
 #include "Systems/Debug/BlueprintHelperDiagnosticsService.h"
 #include "Systems/Authorization/BlueprintHelperWriteAuthorizationService.h"
+#include "Systems/Config/BlueprintHelperProjectConfigPaths.h"
 #include "Systems/Debug/BlueprintHelperDebugCaseStoreService.h"
 #include "Systems/Debug/BlueprintHelperDebugEntryService.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicMdReadService.h"
@@ -63,6 +64,45 @@
 class FBlueprintHelperSafetyTestsLocalUtils
 {
 public:
+class FBlueprintHelperScopedSettingFileBackup
+{
+public:
+	explicit FBlueprintHelperScopedSettingFileBackup(const FString& InPath)
+		: Path(InPath)
+	{
+		bHadOriginal = FPaths::FileExists(Path) && FFileHelper::LoadFileToString(OriginalText, *Path);
+	}
+
+	~FBlueprintHelperScopedSettingFileBackup()
+	{
+		if (bHadOriginal)
+		{
+			IFileManager::Get().MakeDirectory(*FPaths::GetPath(Path), true);
+			FFileHelper::SaveStringToFile(OriginalText, *Path, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+		}
+		else if (FPaths::FileExists(Path))
+		{
+			IFileManager::Get().Delete(*Path, false, true);
+		}
+	}
+
+	bool Write(const FString& JsonText, FString& OutError) const
+	{
+		IFileManager::Get().MakeDirectory(*FPaths::GetPath(Path), true);
+		if (!FFileHelper::SaveStringToFile(JsonText, *Path, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
+		{
+			OutError = FString::Printf(TEXT("setting_test_write_failed:%s"), *Path);
+			return false;
+		}
+		return true;
+	}
+
+private:
+	FString Path;
+	FString OriginalText;
+	bool bHadOriginal = false;
+};
+
 class FBlueprintHelperScopedEnvVar
 {
 public:
@@ -731,6 +771,22 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperRequestValidatorRequiresWriteSessionTest::RunTest(const FString& Parameters)
 {
+	FString SettingError;
+	const FBlueprintHelperSafetyTestsLocalUtils::FBlueprintHelperScopedSettingFileBackup ProjectSettingBackup(
+		FBlueprintHelperProjectConfigPaths::GetProjectSettingPath());
+	const FBlueprintHelperSafetyTestsLocalUtils::FBlueprintHelperScopedSettingFileBackup UserSettingBackup(
+		FBlueprintHelperProjectConfigPaths::GetUserSettingOverridePath());
+	TestTrue(
+		TEXT("standard safety setting fixture writes"),
+		ProjectSettingBackup.Write(
+			TEXT("{")
+			TEXT("\"active_profile\":\"default\",")
+			TEXT("\"profiles\":{\"default\":{\"safety_profile\":\"standard\"}},")
+			TEXT("\"safety\":{\"write_approval_required\":true,\"approval_bypass\":false}")
+			TEXT("}"),
+			SettingError));
+	TestTrue(TEXT("user safety override fixture clears"), UserSettingBackup.Write(TEXT("{}"), SettingError));
+
 	FBlueprintHelperWriteAuthorizationService& AuthService = FBlueprintHelperWriteAuthorizationService::Get();
 	AuthService.ResetForTesting();
 
@@ -816,6 +872,22 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperRequestValidatorHighRiskDefaultTest::RunTest(const FString& Parameters)
 {
+	FString SettingError;
+	const FBlueprintHelperSafetyTestsLocalUtils::FBlueprintHelperScopedSettingFileBackup ProjectSettingBackup(
+		FBlueprintHelperProjectConfigPaths::GetProjectSettingPath());
+	const FBlueprintHelperSafetyTestsLocalUtils::FBlueprintHelperScopedSettingFileBackup UserSettingBackup(
+		FBlueprintHelperProjectConfigPaths::GetUserSettingOverridePath());
+	TestTrue(
+		TEXT("standard safety setting fixture writes"),
+		ProjectSettingBackup.Write(
+			TEXT("{")
+			TEXT("\"active_profile\":\"default\",")
+			TEXT("\"profiles\":{\"default\":{\"safety_profile\":\"standard\"}},")
+			TEXT("\"safety\":{\"write_approval_required\":true,\"approval_bypass\":false}")
+			TEXT("}"),
+			SettingError));
+	TestTrue(TEXT("user safety override fixture clears"), UserSettingBackup.Write(TEXT("{}"), SettingError));
+
 	FBlueprintHelperSafetyTestsLocalUtils::FBlueprintHelperScopedEnvVar HighRiskEnv(TEXT("BLUEPRINTHELPER_ENABLE_HIGH_RISK_COMMANDS"), TEXT(""));
 	FBlueprintHelperWriteAuthorizationService& AuthService = FBlueprintHelperWriteAuthorizationService::Get();
 	AuthService.ResetForTesting();
@@ -840,6 +912,55 @@ bool FBlueprintHelperRequestValidatorHighRiskDefaultTest::RunTest(const FString&
 	Error = FBlueprintHelperBridgeValidationError();
 	TestTrue(TEXT("close_editor is allowed as editor lifecycle by default"),
 		FBlueprintHelperRequestValidator::ValidateAuthorization(CloseRequest, Error));
+
+	AuthService.ResetForTesting();
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperRequestValidatorAutoRepairBypassTest,
+	"BlueprintHelper.Safety.RequestValidator.AutoRepairBypassesWriteAndHighRiskSession",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperRequestValidatorAutoRepairBypassTest::RunTest(const FString& Parameters)
+{
+	FString SettingError;
+	const FBlueprintHelperSafetyTestsLocalUtils::FBlueprintHelperScopedSettingFileBackup ProjectSettingBackup(
+		FBlueprintHelperProjectConfigPaths::GetProjectSettingPath());
+	const FBlueprintHelperSafetyTestsLocalUtils::FBlueprintHelperScopedSettingFileBackup UserSettingBackup(
+		FBlueprintHelperProjectConfigPaths::GetUserSettingOverridePath());
+	TestTrue(
+		TEXT("AutoRepair safety setting fixture writes"),
+		ProjectSettingBackup.Write(
+			TEXT("{")
+			TEXT("\"active_profile\":\"default\",")
+			TEXT("\"profiles\":{\"default\":{\"safety_profile\":\"AutoRepair\"}},")
+			TEXT("\"safety\":{\"write_approval_required\":false,\"approval_bypass\":true}")
+			TEXT("}"),
+			SettingError));
+	TestTrue(TEXT("user safety override fixture clears"), UserSettingBackup.Write(TEXT("{}"), SettingError));
+
+	FBlueprintHelperSafetyTestsLocalUtils::FBlueprintHelperScopedEnvVar HighRiskEnv(TEXT("BLUEPRINTHELPER_ENABLE_HIGH_RISK_COMMANDS"), TEXT(""));
+	FBlueprintHelperWriteAuthorizationService& AuthService = FBlueprintHelperWriteAuthorizationService::Get();
+	AuthService.ResetForTesting();
+
+	FBlueprintHelperBridgeRequest ExecRequest;
+	ExecRequest.Command = TEXT("exec_console_command");
+	ExecRequest.Payload = MakeShared<FJsonObject>();
+	ExecRequest.Payload->SetStringField(TEXT("command"), TEXT("stat fps"));
+
+	FBlueprintHelperBridgeValidationError Error;
+	TestTrue(TEXT("AutoRepair allows developer exec without auth_session"),
+		FBlueprintHelperRequestValidator::ValidateAuthorization(ExecRequest, Error));
+
+	FBlueprintHelperBridgeRequest WriteRequest;
+	WriteRequest.Command = TEXT("save_asset");
+	WriteRequest.Payload = MakeShared<FJsonObject>();
+	WriteRequest.Payload->SetStringField(TEXT("asset_path"), TEXT("/Game/Tests/BP_Door.BP_Door"));
+
+	Error = FBlueprintHelperBridgeValidationError();
+	TestTrue(TEXT("AutoRepair allows write command without auth_session"),
+		FBlueprintHelperRequestValidator::ValidateAuthorization(WriteRequest, Error));
 
 	AuthService.ResetForTesting();
 	return true;

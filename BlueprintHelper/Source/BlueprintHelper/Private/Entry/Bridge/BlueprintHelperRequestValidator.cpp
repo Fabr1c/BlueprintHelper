@@ -937,7 +937,8 @@ bool FBlueprintHelperRequestValidator::ValidateAuthorization(
 		return true;
 	}
 
-	if (IsWriteCommand(Request.Command) && FBlueprintHelperSafetyProfileResolver::IsApprovalBypassEnabled())
+	if ((IsWriteCommand(Request.Command) || IsHighRiskCommand(Request.Command))
+		&& FBlueprintHelperSafetyProfileResolver::IsApprovalBypassEnabled())
 	{
 		return true;
 	}

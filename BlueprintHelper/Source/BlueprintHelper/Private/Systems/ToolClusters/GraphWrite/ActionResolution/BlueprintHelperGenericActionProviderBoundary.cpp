@@ -5,27 +5,43 @@ FBlueprintHelperGenericActionProviderBoundary FBlueprintHelperGenericActionProvi
 {
 	FBlueprintHelperGenericActionProviderBoundary Boundary;
 	const bool bHasTypeName = !Request.Semantic.TypeName.TrimStartAndEnd().IsEmpty();
+	const bool bStructFamily = Request.Semantic.SemanticFamily == EBlueprintHelperActionSemanticFamily::Struct
+		|| Request.Semantic.SemanticFamily == EBlueprintHelperActionSemanticFamily::TypeStructure;
+	const bool bConstructOperation = Request.Semantic.TypeOperation == EBlueprintHelperTypeOperation::Construct;
+	const bool bDeconstructOperation = Request.Semantic.TypeOperation == EBlueprintHelperTypeOperation::Deconstruct;
 
 	switch (Request.Semantic.Kind)
 	{
 	case EBlueprintHelperActionSemanticKind::Construct:
+		if (!bStructFamily || !bConstructOperation)
+		{
+			Boundary.Mode = EBlueprintHelperGenericActionProviderMode::Unsupported;
+			Boundary.Reason = TEXT("construct must be projected as Struct or TypeStructure with TypeOperation=Construct before GenericAssetStructControl can resolve it.");
+			return Boundary;
+		}
 		Boundary.Mode = bHasTypeName
 			? EBlueprintHelperGenericActionProviderMode::NodeSpawnerCandidate
 			: EBlueprintHelperGenericActionProviderMode::NeedsMoreSemanticContext;
-		Boundary.RequiredBuilder = TEXT("ConstructFragmentBuilder");
+		Boundary.RequiredBuilder = TEXT("StructTypeStructureActionResolver");
 		Boundary.Reason = bHasTypeName
-			? TEXT("construct can query struct or generic NodeSpawner candidates by TypeName.")
-			: TEXT("construct requires Semantic.TypeName before resolving struct or generic action candidates.");
+			? TEXT("Struct/TypeStructure construct can resolve type-operation NodeSpawner evidence by TypeName.")
+			: TEXT("Struct/TypeStructure construct requires Semantic.TypeName before resolving type-operation candidates.");
 		return Boundary;
 
 	case EBlueprintHelperActionSemanticKind::Deconstruct:
+		if (!bStructFamily || !bDeconstructOperation)
+		{
+			Boundary.Mode = EBlueprintHelperGenericActionProviderMode::Unsupported;
+			Boundary.Reason = TEXT("deconstruct must be projected as Struct or TypeStructure with TypeOperation=Deconstruct before GenericAssetStructControl can resolve it.");
+			return Boundary;
+		}
 		Boundary.Mode = bHasTypeName
 			? EBlueprintHelperGenericActionProviderMode::NodeSpawnerCandidate
 			: EBlueprintHelperGenericActionProviderMode::NeedsMoreSemanticContext;
-		Boundary.RequiredBuilder = TEXT("DeconstructFragmentBuilder");
+		Boundary.RequiredBuilder = TEXT("StructTypeStructureActionResolver");
 		Boundary.Reason = bHasTypeName
-			? TEXT("deconstruct can query struct or generic NodeSpawner candidates by TypeName.")
-			: TEXT("deconstruct requires Semantic.TypeName before resolving struct or generic action candidates.");
+			? TEXT("Struct/TypeStructure deconstruct can resolve type-operation NodeSpawner evidence by TypeName.")
+			: TEXT("Struct/TypeStructure deconstruct requires Semantic.TypeName before resolving type-operation candidates.");
 		return Boundary;
 
 	case EBlueprintHelperActionSemanticKind::Select:

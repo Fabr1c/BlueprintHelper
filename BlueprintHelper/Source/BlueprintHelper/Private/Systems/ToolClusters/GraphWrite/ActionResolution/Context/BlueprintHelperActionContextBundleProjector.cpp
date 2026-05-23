@@ -27,6 +27,10 @@ static FString BuildSemanticConstraintsHash(const FBlueprintHelperActionSemantic
 	FString Stable;
 	Stable += FBlueprintHelperActionResolutionCore::SemanticKindToString(Semantic.Kind);
 	Stable += TEXT("|");
+	Stable += FBlueprintHelperActionResolutionCore::SemanticFamilyToString(Semantic.SemanticFamily);
+	Stable += TEXT("|");
+	Stable += FBlueprintHelperActionResolutionCore::TypeOperationToString(Semantic.TypeOperation);
+	Stable += TEXT("|");
 	Stable += Semantic.Query;
 	Stable += TEXT("|");
 	Stable += Semantic.StableId;
@@ -40,6 +44,10 @@ static FString BuildSemanticConstraintsHash(const FBlueprintHelperActionSemantic
 	Stable += Semantic.FieldScope;
 	Stable += TEXT("|");
 	Stable += Semantic.TypeName;
+	Stable += TEXT("|");
+	Stable += Semantic.StructPath;
+	Stable += TEXT("|");
+	Stable += Semantic.TypeStructureId;
 	Stable += TEXT("|");
 	Stable += Semantic.SearchMode;
 	Stable += TEXT("|");

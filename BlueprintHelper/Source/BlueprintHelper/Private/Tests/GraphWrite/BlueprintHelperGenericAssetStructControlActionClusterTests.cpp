@@ -61,6 +61,20 @@ static FBlueprintHelperActionResolutionRequest MakeGenericActionRequest(
 	Request.ProjectedContextHash = TEXT("generic_action_projected_context");
 	Request.SemanticConstraintsHash = TEXT("generic_action_semantic_constraints");
 	Request.Semantic.Kind = SemanticKind;
+	if (SemanticKind == EBlueprintHelperActionSemanticKind::Construct)
+	{
+		Request.Semantic.SemanticFamily = EBlueprintHelperActionSemanticFamily::Struct;
+		Request.Semantic.TypeOperation = EBlueprintHelperTypeOperation::Construct;
+		Request.Semantic.StructPath = TypeName;
+		Request.Semantic.TypeStructureId = TypeName;
+	}
+	else if (SemanticKind == EBlueprintHelperActionSemanticKind::Deconstruct)
+	{
+		Request.Semantic.SemanticFamily = EBlueprintHelperActionSemanticFamily::Struct;
+		Request.Semantic.TypeOperation = EBlueprintHelperTypeOperation::Deconstruct;
+		Request.Semantic.StructPath = TypeName;
+		Request.Semantic.TypeStructureId = TypeName;
+	}
 	Request.Semantic.Query = Query;
 	Request.Semantic.TargetPath = Query;
 	Request.Semantic.TypeName = TypeName;
@@ -168,7 +182,7 @@ bool FBlueprintHelperGenericActionProviderBoundaryMatrixTest::RunTest(const FStr
 		FBlueprintHelperGenericActionProviderBoundaryService::Classify(
 			MakeGenericActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Construct));
 	TestEqual(TEXT("Construct without type needs context"), ConstructNeedsContext.Mode, EBlueprintHelperGenericActionProviderMode::NeedsMoreSemanticContext);
-	TestEqual(TEXT("Construct builder seam"), ConstructNeedsContext.RequiredBuilder, FString(TEXT("ConstructFragmentBuilder")));
+	TestEqual(TEXT("Construct resolver seam"), ConstructNeedsContext.RequiredBuilder, FString(TEXT("StructTypeStructureActionResolver")));
 
 	const FBlueprintHelperGenericActionProviderBoundary ConstructCandidate =
 		FBlueprintHelperGenericActionProviderBoundaryService::Classify(
@@ -179,6 +193,7 @@ bool FBlueprintHelperGenericActionProviderBoundaryMatrixTest::RunTest(const FStr
 		FBlueprintHelperGenericActionProviderBoundaryService::Classify(
 			MakeGenericActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Deconstruct));
 	TestEqual(TEXT("Deconstruct without type needs context"), DeconstructNeedsContext.Mode, EBlueprintHelperGenericActionProviderMode::NeedsMoreSemanticContext);
+	TestEqual(TEXT("Deconstruct resolver seam"), DeconstructNeedsContext.RequiredBuilder, FString(TEXT("StructTypeStructureActionResolver")));
 
 	const FBlueprintHelperGenericActionProviderBoundary DeconstructCandidate =
 		FBlueprintHelperGenericActionProviderBoundaryService::Classify(
@@ -229,7 +244,7 @@ bool FBlueprintHelperGenericActionClusterBoundaryResultTest::RunTest(const FStri
 		FBlueprintHelperActionResolutionCore::Resolve(
 			MakeGenericActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Construct));
 	TestEqual(TEXT("Construct without TypeName is invalid request"), ConstructNeedsContext.Status, EBlueprintHelperActionResolutionStatus::InvalidRequest);
-	TestEqual(TEXT("Construct without TypeName reports missing required evidence"), ConstructNeedsContext.ErrorCode, FString(TEXT("missing_required_evidence")));
+	TestEqual(TEXT("Construct without TypeName reports semantic context gap"), ConstructNeedsContext.ErrorCode, FString(TEXT("needs_more_semantic_context")));
 
 	const FBlueprintHelperActionResolutionResult ConstructCandidate =
 		FBlueprintHelperActionResolutionCore::Resolve(
@@ -282,6 +297,9 @@ bool FBlueprintHelperGenericActionStructMakeBreakEvidenceTest::RunTest(const FSt
 	TestNotNull(TEXT("construct vector selected spawner"), ConstructVector.SelectedSpawner.Get());
 	TestTrue(TEXT("construct vector selected stable id includes struct identity"), ConstructVector.SelectedStableId.Contains(TEXT("Vector")));
 	TestTrue(TEXT("construct vector candidate records struct evidence"), HasStructCandidateEvidence(ConstructVector, TEXT("Vector")));
+	TestEqual(TEXT("construct vector canonical type operation"), ConstructVector.TypeOperation, FString(TEXT("construct")));
+	TestTrue(TEXT("construct vector canonical struct path"), ConstructVector.StructPath.Contains(TEXT("Vector")));
+	TestFalse(TEXT("construct vector does not resolve through broad create"), ConstructVector.MatchReason.Contains(TEXT("create")));
 
 	const FBlueprintHelperActionResolutionResult DeconstructRotator =
 		FBlueprintHelperActionResolutionCore::Resolve(
@@ -290,12 +308,15 @@ bool FBlueprintHelperGenericActionStructMakeBreakEvidenceTest::RunTest(const FSt
 	TestNotNull(TEXT("deconstruct rotator selected spawner"), DeconstructRotator.SelectedSpawner.Get());
 	TestTrue(TEXT("deconstruct rotator selected stable id includes struct identity"), DeconstructRotator.SelectedStableId.Contains(TEXT("Rotator")));
 	TestTrue(TEXT("deconstruct rotator candidate records struct evidence"), HasStructCandidateEvidence(DeconstructRotator, TEXT("Rotator")));
+	TestEqual(TEXT("deconstruct rotator canonical type operation"), DeconstructRotator.TypeOperation, FString(TEXT("deconstruct")));
+	TestTrue(TEXT("deconstruct rotator canonical struct path"), DeconstructRotator.StructPath.Contains(TEXT("Rotator")));
+	TestFalse(TEXT("deconstruct rotator does not resolve through broad create"), DeconstructRotator.MatchReason.Contains(TEXT("create")));
 
 	const FBlueprintHelperActionResolutionResult ConstructMissingType =
 		FBlueprintHelperActionResolutionCore::Resolve(
 			MakeGenericActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Construct));
 	TestEqual(TEXT("construct missing target type status"), ConstructMissingType.Status, EBlueprintHelperActionResolutionStatus::InvalidRequest);
-	TestEqual(TEXT("construct missing target type error"), ConstructMissingType.ErrorCode, FString(TEXT("missing_required_evidence")));
+	TestEqual(TEXT("construct missing target type error"), ConstructMissingType.ErrorCode, FString(TEXT("needs_more_semantic_context")));
 
 	const FBlueprintHelperActionResolutionResult DeconstructUnsupportedStruct =
 		FBlueprintHelperActionResolutionCore::Resolve(

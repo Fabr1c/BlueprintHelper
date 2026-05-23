@@ -140,6 +140,10 @@ bool FBlueprintHelperActionContextDtoSourceContractTest::RunTest(const FString& 
 		TEXT("bool IsCompatibleWith"),
 		TEXT("struct FBlueprintHelperActionContextDemand"),
 		TEXT("TSet<EBlueprintHelperActionContextDemandKind> RequiredKinds"),
+		TEXT("SemanticFamily"),
+		TEXT("TypeOperation"),
+		TEXT("StructPath"),
+		TEXT("TypeStructureId"),
 		TEXT("TMap<FString, FString> DefaultValues"),
 		TEXT("ArgumentPinTypes"),
 		TEXT("ComponentPath"),
@@ -447,6 +451,53 @@ bool FBlueprintHelperActionContextSingleDemandSelectMapsToGenericClusterTest::Ru
 	TestEqual(TEXT("Select semantic kind"), Demand.SemanticKind, EBlueprintHelperActionSemanticKind::Select);
 	TestEqual(TEXT("Select query"), Demand.Query, FString(TEXT("select")));
 	TestTrue(TEXT("Select requires typed pins"), Demand.RequiredKinds.Contains(EBlueprintHelperActionContextDemandKind::TypedPins));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionContextSingleDemandConstructMapsToStructTypeOperationTest,
+	"BlueprintHelper.GraphWrite.ActionContext.SingleDemand.ConstructMapsToStructTypeOperation",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionContextSingleDemandConstructMapsToStructTypeOperationTest::RunTest(const FString& Parameters)
+{
+	TArray<FString> CategoryPriority;
+	TArray<FString> ArgumentNames;
+	ArgumentNames.Add(TEXT("X"));
+	ArgumentNames.Add(TEXT("Y"));
+	ArgumentNames.Add(TEXT("Z"));
+
+	const FBlueprintHelperActionContextDemand Demand =
+		FBlueprintHelperActionContextDemandCollector::BuildSingleDemand(
+			TEXT("expr_construct_vector"),
+			TEXT("$.statements[0].value"),
+			EBlueprintHelperActionSemanticKind::Construct,
+			TEXT("Vector"),
+			TEXT(""),
+			TEXT(""),
+			TEXT("Vector"),
+			TEXT("contextual"),
+			TEXT("fail_on_ambiguity"),
+			CategoryPriority,
+			ArgumentNames);
+
+	TestEqual(TEXT("Construct cluster kind"), Demand.ClusterKind, EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction);
+	TestEqual(TEXT("Construct semantic kind"), Demand.SemanticKind, EBlueprintHelperActionSemanticKind::Construct);
+	TestEqual(TEXT("Construct semantic family"), Demand.SemanticFamily, EBlueprintHelperActionSemanticFamily::Struct);
+	TestEqual(TEXT("Construct type operation"), Demand.TypeOperation, EBlueprintHelperTypeOperation::Construct);
+	TestEqual(TEXT("Construct struct path evidence"), Demand.StructPath, FString(TEXT("Vector")));
+	TestTrue(TEXT("Construct requires typed pins"), Demand.RequiredKinds.Contains(EBlueprintHelperActionContextDemandKind::TypedPins));
+
+	FBlueprintHelperActionContextSnapshot Snapshot;
+	Snapshot.Graph.GraphName = TEXT("EventGraph");
+	const FBlueprintHelperResolvedActionContext Context =
+		FBlueprintHelperActionContextInferenceService::BuildContextForTest(Snapshot, Demand);
+
+	TestEqual(TEXT("Projected semantic family"), Context.Semantic.SemanticFamily, EBlueprintHelperActionSemanticFamily::Struct);
+	TestEqual(TEXT("Projected type operation"), Context.Semantic.TypeOperation, EBlueprintHelperTypeOperation::Construct);
+	TestEqual(TEXT("Projected type operation evidence"), Context.Evidence.FindRef(TEXT("type_operation")), FString(TEXT("construct")));
+	TestEqual(TEXT("Projected semantic family evidence"), Context.Evidence.FindRef(TEXT("semantic_family")), FString(TEXT("struct")));
+	TestEqual(TEXT("Projected struct path evidence"), Context.Evidence.FindRef(TEXT("struct_path")), FString(TEXT("Vector")));
 	return true;
 }
 

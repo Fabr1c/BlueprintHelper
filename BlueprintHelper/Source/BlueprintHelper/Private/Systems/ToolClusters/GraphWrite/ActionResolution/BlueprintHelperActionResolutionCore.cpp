@@ -102,6 +102,35 @@ FString FBlueprintHelperActionResolutionCore::SemanticKindToString(EBlueprintHel
 	}
 }
 
+FString FBlueprintHelperActionResolutionCore::SemanticFamilyToString(EBlueprintHelperActionSemanticFamily Family)
+{
+	switch (Family)
+	{
+	case EBlueprintHelperActionSemanticFamily::Callable: return TEXT("callable");
+	case EBlueprintHelperActionSemanticFamily::Field: return TEXT("field");
+	case EBlueprintHelperActionSemanticFamily::Operator: return TEXT("operator");
+	case EBlueprintHelperActionSemanticFamily::Struct: return TEXT("struct");
+	case EBlueprintHelperActionSemanticFamily::TypeStructure: return TEXT("type_structure");
+	case EBlueprintHelperActionSemanticFamily::Event: return TEXT("event");
+	case EBlueprintHelperActionSemanticFamily::Delegate: return TEXT("delegate");
+	case EBlueprintHelperActionSemanticFamily::Control: return TEXT("control");
+	case EBlueprintHelperActionSemanticFamily::Create: return TEXT("create");
+	case EBlueprintHelperActionSemanticFamily::Convert: return TEXT("convert");
+	case EBlueprintHelperActionSemanticFamily::Schedule: return TEXT("schedule");
+	default: return TEXT("unknown");
+	}
+}
+
+FString FBlueprintHelperActionResolutionCore::TypeOperationToString(EBlueprintHelperTypeOperation Operation)
+{
+	switch (Operation)
+	{
+	case EBlueprintHelperTypeOperation::Construct: return TEXT("construct");
+	case EBlueprintHelperTypeOperation::Deconstruct: return TEXT("deconstruct");
+	default: return TEXT("none");
+	}
+}
+
 FString FBlueprintHelperActionResolutionCore::ClusterKindToString(EBlueprintHelperSpawnerClusterKind ClusterKind)
 {
 	switch (ClusterKind)

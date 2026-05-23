@@ -1,0 +1,26 @@
+{
+  "schema": "BlueprintHelper.TaskSpec.v1",
+  "context_id": "ctx_struct_type_structure_create_actor_20260524_002",
+  "task_type": "create_asset",
+  "feature_name": "Create Struct TypeStructure smoke actor 002",
+  "target": {
+    "asset_path": "/Game/BlueprintHelperCliSmoke/StructTypeStructure_20260524/BP_STS_ConstructDeconstruct_20260524_002",
+    "target_type": "blueprint_class"
+  },
+  "behavior": {
+    "asset_strategy": "ensure_asset",
+    "asset": {
+      "asset_type": "blueprint_class",
+      "parent_class": "Actor",
+      "collision_policy": "reuse_if_exists"
+    }
+  },
+  "execution_policy": {
+    "dry_run_mode": "full",
+    "on_missing_capability": "stop_and_report"
+  },
+  "validation": {
+    "should_compile": true,
+    "should_save": true
+  }
+}
