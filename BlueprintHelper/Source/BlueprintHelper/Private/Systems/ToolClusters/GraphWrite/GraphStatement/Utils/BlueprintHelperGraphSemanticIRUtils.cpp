@@ -82,6 +82,8 @@ EBlueprintHelperGraphStatementKind FBlueprintHelperGraphSemanticIRUtils::ParseSt
 	if (Kind.Equals(TEXT("sequence"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Sequence;
 	if (Kind.Equals(TEXT("let"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Let;
 	if (Kind.Equals(TEXT("return"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Return;
+	if (Kind.Equals(TEXT("component_bound_event"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::ComponentBoundEvent;
+	if (Kind.Equals(TEXT("delegate"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Delegate;
 	return EBlueprintHelperGraphStatementKind::Unknown;
 }
 EBlueprintHelperGraphExpressionKind FBlueprintHelperGraphSemanticIRUtils::ParseExpressionKind(const FString& Kind)
@@ -248,6 +250,10 @@ FString FBlueprintHelperGraphSemanticIRUtils::StatementPatternName(EBlueprintHel
 		return TEXT("let");
 	case EBlueprintHelperGraphStatementKind::Return:
 		return TEXT("return");
+	case EBlueprintHelperGraphStatementKind::ComponentBoundEvent:
+		return TEXT("component_bound_event");
+	case EBlueprintHelperGraphStatementKind::Delegate:
+		return TEXT("delegate");
 	default:
 		return TEXT("unknown");
 	}

@@ -96,7 +96,7 @@ FString FBlueprintHelperActionResolutionCore::SemanticKindToString(EBlueprintHel
 	case EBlueprintHelperActionSemanticKind::Select: return TEXT("select");
 	case EBlueprintHelperActionSemanticKind::Event: return TEXT("event");
 	case EBlueprintHelperActionSemanticKind::ComponentBoundEvent: return TEXT("component_bound_event");
-	case EBlueprintHelperActionSemanticKind::Bind: return TEXT("bind");
+	case EBlueprintHelperActionSemanticKind::Delegate: return TEXT("delegate");
 	case EBlueprintHelperActionSemanticKind::Control: return TEXT("control");
 	case EBlueprintHelperActionSemanticKind::Create: return TEXT("create");
 	case EBlueprintHelperActionSemanticKind::Convert: return TEXT("convert");

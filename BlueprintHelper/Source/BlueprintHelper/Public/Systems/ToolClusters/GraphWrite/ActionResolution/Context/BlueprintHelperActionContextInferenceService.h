@@ -10,6 +10,12 @@ public:
 		const FBlueprintHelperActionContextSnapshot& Snapshot,
 		const TArray<FBlueprintHelperActionContextDemand>& Demands);
 
+#if WITH_DEV_AUTOMATION_TESTS
+	static FBlueprintHelperResolvedActionContext BuildContextForTest(
+		const FBlueprintHelperActionContextSnapshot& Snapshot,
+		const FBlueprintHelperActionContextDemand& Demand);
+#endif
+
 private:
 	static FBlueprintHelperResolvedActionContext BuildContext(
 		const FBlueprintHelperActionContextSnapshot& Snapshot,

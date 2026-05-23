@@ -158,11 +158,8 @@ UBlueprintBoundNodeSpawner
 event
 component_bound_event
 anim_notify_event
-bind
-unbind
-assign
-delegate_call
-delegate_clear
+delegate
+delegate_operation=bind|assign|unbind|call|clear
 ```
 
 职责：
@@ -219,11 +216,7 @@ AgentFace `kind` 不再定义底层簇边界，只作为 intent 输入。
 | `set_property` | FieldVariableActionCluster | 简单 property write；复杂 path 可组合 Struct/Generic |
 | `event` | EventDelegateActionCluster | 事件入口 |
 | `component_bound_event` | EventDelegateActionCluster | 组件绑定事件 |
-| `bind` | EventDelegateActionCluster | delegate 绑定 |
-| `assign` | EventDelegateActionCluster | delegate assign / create-event use-site |
-| `unbind` | EventDelegateActionCluster | delegate 解除指定 handler 绑定 |
-| `delegate_call` | EventDelegateActionCluster | delegate 调用 |
-| `delegate_clear` | EventDelegateActionCluster | delegate clear / clear-all use-site |
+| `delegate` | EventDelegateActionCluster | delegate use-site family; `bind/assign/unbind/call/clear` must be represented by second-stage `delegate_operation` |
 | `construct` | GenericAssetStructControlActionCluster | value/struct/container 构造 |
 | `deconstruct` | GenericAssetStructControlActionCluster | value/struct/container 拆解 |
 | `select` | GenericAssetStructControlActionCluster | 数据流选择 |
@@ -299,7 +292,7 @@ TaskSpec compact semantic
 4. ActionResolution layer 只负责解析并返回 spawner evidence，不负责创建节点、连线、应用默认值或触发 post-link lifecycle。
 5. Fragment / Composer layer 只消费 spawner evidence，并通过 shared adapter 调用 `UBlueprintNodeSpawner::Invoke`。
 6. Preview 是该架构的基线流程：低 token TaskSpec 先获得错误诊断、歧义候选或最小 success，再由 Agent 决定补充语义或执行。
-7. `call` 不是所有 graph action 的总入口；`call/get/set/op/construct/control/event/bind/create` 等都是 compact semantic intent，必须映射到对应 NodeSpawner-family cluster 后在簇内解析。
+7. `call` 不是所有 graph action 的总入口；`call/get/set/op/construct/control/event/delegate/create` 等都是 compact semantic intent，必须映射到对应 NodeSpawner-family cluster 后在簇内解析；`bind/assign/unbind/call/clear` 这类 delegate 动作属于 `delegate_operation` 二级语义。
 8. `FindFunctionByName`、手扫 `UFunction` / `FProperty`、直接 `NewObject<UK2Node_*>()` 不得作为主路径；若作为 evidence 重建或 ActionDatabase 不可表达的窄例外，必须在对应 resolver/builder 中写明原因。
 
 四大簇在该口径下的主路径：
@@ -315,7 +308,7 @@ FieldVariableActionCluster
 
 EventDelegateActionCluster
 -> UBlueprintEventNodeSpawner / UBlueprintBoundEventNodeSpawner / UAnimNotifyEventNodeSpawner / UBlueprintDelegateNodeSpawner / UBlueprintBoundNodeSpawner
--> event / component_bound_event / anim_notify_event / bind / unbind / assign / delegate_call / delegate_clear
+-> event / component_bound_event / anim_notify_event / delegate + delegate_operation=bind|assign|unbind|call|clear
 
 GenericAssetStructControlActionCluster
 -> UBlueprintNodeSpawner / UBlueprintFieldNodeSpawner / UBlueprintAssetNodeSpawner / struct-enum-generic registrar delegates
@@ -408,7 +401,7 @@ Implementation note 2026-05-22:
 - `set_property` FragmentDAG emission must invoke the selected UE `NodeSpawner` through the shared ActionResolution adapter. It must not fall back to parsed-node local spawning.
 - `op` belongs to `FunctionActionCluster`, but its semantic is operator constraints. It resolves to UE type-promotion operator spawners from `FTypePromotion::GetOperatorSpawner`, not to pseudo call-function lookup.
 - Generic construct/deconstruct may use a dedicated `UBlueprintFieldNodeSpawner` MakeStruct/BreakStruct boundary only when UE FunctionAction/native make-break lookup cannot express the struct operation. This boundary must be explicit in candidate evidence and must remain generic, not Vector-only or type-specific.
-- `EventDelegateActionCluster` follows the same projected-context rule. Custom events can resolve through `UBlueprintEventNodeSpawner` only as graph-node/body placement after Signature ownership is respected; component-bound events and delegate bind/assign/unbind/call/clear nodes require projected component/delegate/handler/signature evidence before they can invoke their UE spawner families.
+- `EventDelegateActionCluster` follows the same projected-context rule. Custom events can resolve through `UBlueprintEventNodeSpawner` only as graph-node/body placement after Signature ownership is respected; component-bound events and delegate bind/unbind/call/clear nodes require projected component/delegate/handler/signature evidence before they can invoke their UE spawner families. `delegate.assign` also requires the same projected evidence, but uses a manual assign factory because the UE AssignDelegate spawner can create Signature-owned custom-event declarations as a side effect.
 
 ## 2026-05-23 EventDelegate / Signature Ownership Boundary
 
@@ -423,11 +416,7 @@ Signature owns declaration and signature mutation:
 GraphWrite/EventDelegate owns existing-declaration use-site graph writing:
 
 - `component_bound_event`
-- `bind`
-- `assign`
-- `unbind`
-- `delegate_call`
-- `delegate_clear`
+- `delegate` use-site nodes with `delegate_operation=bind|assign|unbind|call|clear`
 - delegate reference nodes such as `Create Event`
 - graph links and body content around those use sites
 
@@ -444,7 +433,13 @@ AgentFace / lowering boundary:
 
 - `delegate.unbind` and `delegate.unbind_all` must stay explicit.
 - Missing callback evidence for `delegate.unbind` must not silently downgrade to `delegate.unbind_all`.
-- Positive EventDelegate support requires complete projected evidence, `SelectedSpawner != null`, stable candidate evidence, correct node family, execution/asset validation, and missing-evidence diagnostics that still fail deterministically when evidence is absent.
+- Positive EventDelegate support requires complete projected evidence, stable candidate evidence, correct node family, execution/asset validation, and missing-evidence diagnostics that still fail deterministically when evidence is absent. Component-bound, bind, unbind, call, and clear operations require `SelectedSpawner != null`; `delegate.assign` is the intentional exception and must expose `ue_delegate_manual_assign_factory` evidence while constructing `UK2Node_AssignDelegate` without auto-creating `UK2Node_CustomEvent`.
+
+Closure note 2026-05-23:
+
+- Gap5 first-stage EventDelegate use-site support is closed for `component_bound_event` and `delegate_operation=bind|assign|unbind|clear|call`.
+- The closed scope does not transfer declaration/signature ownership to GraphWrite/EventDelegate.
+- The closed scope does not mark broader `event_operation=custom_event/override/native` migration or Generic `create` / `convert` / `schedule` work complete.
 
 ## 2026-05-22 Canonical Singleton Direct Spawn Rule
 
@@ -485,3 +480,40 @@ Direct spawn requirements:
 - Builders, pipelines, and mutation coordinators must not directly create singleton `UK2Node_*` nodes; they must consume resolved evidence or call the shared singleton boundary.
 
 Therefore, direct spawn is a valid implementation strategy for canonical singleton nodes, but only inside the existing `SpawnerClusterKind -> cluster -> semantic constraint` architecture. It does not weaken the rule that wide-surface GraphWrite actions require projected ActionContext and ActionDatabase/ActionFilter-based candidate resolution.
+
+## 2026-05-23 Semantic Taxonomy Rule: First-Stage Semantic vs Second-Stage Operation
+
+GraphWrite must not use `EBlueprintHelperActionSemanticKind` as an ever-growing list of every AgentFace verb. A value should become first-stage semantic only when it changes at least one of these boundaries:
+
+- projected evidence shape
+- owning resolver / spawner family
+- candidate search strategy or singleton-evidence strategy
+- fragment composition paradigm
+- correctness-critical diagnostics and ambiguity policy
+
+If several operations share the same evidence family and resolver strategy, represent them as one first-stage semantic plus a second-stage operation field in SemanticIR / ActionContext evidence.
+
+Current approved example:
+
+```text
+EventDelegateActionCluster
+  ComponentBoundEvent
+  Delegate + delegate_operation=bind|assign|unbind|call|clear
+```
+
+This means GraphWrite/EventDelegate must not add top-level `Assign`, `Unbind`, `DelegateCall`, or `DelegateClear` action semantics. `delegate.unbind` and `delegate.unbind_all` remain explicit, but their distinction is held by `delegate_operation` and `unbind_mode`, not by separate first-stage Action semantic values.
+
+Recommended convergence order after Gap5:
+
+| Current kinds | Target first-stage semantic | Second-stage fields | Notes |
+|---|---|---|---|
+| `get`, `set`, `get_property`, `set_property` | `Field` | `field_operation=get/set`, `field_scope=variable/property_path` | Good first migration after Gap5 because they share FieldVariable evidence. |
+| `construct`, `deconstruct` | `Struct` or `TypeStructure` | `type_operation=construct/deconstruct` | Keep separate from broad `create` until struct evidence is clear. |
+| `convert` | `TypeTransform` or `Callable` | `transform_operation=cast/convert/promote` | Decide by whether evidence resolves through cast/type promotion or normal function search. |
+| `call`, `op` | possibly `Callable` | `callable_operation=function/operator` | Higher risk because function call is the wide-surface search core. |
+| `select` | `GenericExpression` or singleton evidence under Generic cluster | `expression_operation=select` | Only direct spawn if Select remains canonical singleton. |
+| `event` | `Event` | `event_operation=custom_event/override/native` | Must preserve Signature ownership. |
+| `create` | split after evidence audit | `create_operation=spawn_actor/create_widget/construct_object/asset_action` | Current name is too broad to normalize safely without an evidence audit. |
+| `schedule` | `AsyncFlow` or `Callable` | `schedule_operation=timer/latent/async` | Lifecycle/latent behavior may justify its own first-stage semantic. |
+
+This taxonomy does not change the top-level `SpawnerClusterKind` dispatch rule. Clusters remain the first dispatch boundary; semantic families and second-stage operations are constraints consumed inside the selected cluster.

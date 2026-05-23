@@ -34,8 +34,7 @@ static UK2Node* InvokeNodeSpawnerInternal(
 		return nullptr;
 	}
 
-	IBlueprintNodeBinder::FBindingSet Bindings;
-	UEdGraphNode* SpawnedNode = NodeSpawner->Invoke(TargetGraph, Bindings, Location);
+	UEdGraphNode* SpawnedNode = NodeSpawner->Invoke(TargetGraph, Options.Bindings, Location);
 	UK2Node* K2Node = Cast<UK2Node>(SpawnedNode);
 	if (!K2Node)
 	{

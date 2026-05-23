@@ -112,6 +112,33 @@ static bool ScanActionResolutionClusterFilesForForbiddenPipelineToken(
 	}
 	return bClean;
 }
+
+static bool ScanSpecificGraphWriteSourcesForForbiddenToken(
+	FAutomationTestBase& Test,
+	const TArray<FString>& SourcePaths,
+	const FString& Token)
+{
+	bool bClean = true;
+	for (const FString& SourcePath : SourcePaths)
+	{
+		FString Text;
+		if (!FFileHelper::LoadFileToString(Text, *SourcePath))
+		{
+			Test.AddError(FString::Printf(TEXT("GraphWrite source could not be read: %s"), *SourcePath));
+			bClean = false;
+			continue;
+		}
+		if (Text.Contains(Token))
+		{
+			Test.AddError(FString::Printf(
+				TEXT("GraphWrite/EventDelegate must not own declaration/signature mutation and must keep delegate suboperations as second-level semantics; forbidden token '%s' found in %s"),
+				*Token,
+				*SourcePath));
+			bClean = false;
+		}
+	}
+	return bClean;
+}
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -256,6 +283,60 @@ bool FBlueprintHelperActionResolutionClustersConsumeProjectedContextContractTest
 	}
 
 	TestTrue(TEXT("ActionResolution clusters consume projected context without rebuilding the pipeline"), bClean);
+	return bClean;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionResolutionEventDelegateUseSiteBoundaryContractTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.Contract.EventDelegateUseSiteBoundary",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionResolutionEventDelegateUseSiteBoundaryContractTest::RunTest(const FString& Parameters)
+{
+	const TArray<FString> SourcePaths = {
+		BuildGraphWritePrivateSourcePath(TEXT("ActionResolution"), TEXT("BlueprintHelperEventDelegateActionCluster.cpp")),
+		BuildGraphWritePrivateSourcePath(TEXT("ActionResolution"), TEXT("BlueprintHelperEventDelegateUseSiteEvidence.cpp")),
+		BuildGraphWritePrivateSourcePath(TEXT("GraphStatement"), TEXT("BlueprintHelperEventDelegateFragmentBuilder.cpp"))
+	};
+
+	const TArray<FString> ForbiddenTokens = {
+		TEXT("ensure_function"),
+		TEXT("ensure_custom_event"),
+		TEXT("ensure_event_dispatcher"),
+		TEXT("ensure_override_event"),
+		TEXT("BlueprintSignatureService"),
+		TEXT("SignatureTaskPlanAdapter"),
+		TEXT("EBlueprintHelperActionSemanticKind::Assign"),
+		TEXT("EBlueprintHelperActionSemanticKind::Unbind"),
+		TEXT("EBlueprintHelperActionSemanticKind::DelegateCall"),
+		TEXT("EBlueprintHelperActionSemanticKind::DelegateClear"),
+		TEXT("EBlueprintHelperGraphStatementKind::Assign"),
+		TEXT("EBlueprintHelperGraphStatementKind::Unbind"),
+		TEXT("EBlueprintHelperGraphStatementKind::DelegateCall"),
+		TEXT("EBlueprintHelperGraphStatementKind::DelegateClear")
+	};
+
+	bool bClean = true;
+	for (const FString& Token : ForbiddenTokens)
+	{
+		bClean &= ScanSpecificGraphWriteSourcesForForbiddenToken(*this, SourcePaths, Token);
+	}
+
+	FString ActionClusterSource;
+	if (FFileHelper::LoadFileToString(ActionClusterSource, *SourcePaths[0]))
+	{
+		bClean &= TestTrue(TEXT("EventDelegate uses ComponentBoundEvent first-stage semantic"), ActionClusterSource.Contains(TEXT("EBlueprintHelperActionSemanticKind::ComponentBoundEvent")));
+		bClean &= TestTrue(TEXT("EventDelegate uses Delegate first-stage semantic"), ActionClusterSource.Contains(TEXT("EBlueprintHelperActionSemanticKind::Delegate")));
+		bClean &= TestTrue(TEXT("EventDelegate uses delegate_operation evidence"), ActionClusterSource.Contains(TEXT("DelegateOperation")));
+		bClean &= TestTrue(TEXT("EventDelegate assign uses manual factory candidate"), ActionClusterSource.Contains(TEXT("ue_delegate_manual_assign_factory")));
+	}
+	else
+	{
+		AddError(FString::Printf(TEXT("EventDelegate action cluster source could not be read: %s"), *SourcePaths[0]));
+		bClean = false;
+	}
+
+	TestTrue(TEXT("EventDelegate GraphWrite boundary stays use-site only"), bClean);
 	return bClean;
 }
 

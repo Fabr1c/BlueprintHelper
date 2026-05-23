@@ -512,10 +512,13 @@ bool FBlueprintHelperEventDelegateDeclaredCapabilityContractTest::RunTest(const 
 	bool bClean = true;
 	const TArray<FString> RequiredTokens = {
 		TEXT("EBlueprintHelperActionSemanticKind::ComponentBoundEvent"),
-		TEXT("EBlueprintHelperActionSemanticKind::Bind"),
+		TEXT("EBlueprintHelperActionSemanticKind::Delegate"),
+		TEXT("delegate_operation"),
+		TEXT("bind"),
 		TEXT("missing_required_evidence"),
-		TEXT("unsupported_intent"),
-		TEXT("missing safe UE spawner-family routing")
+		TEXT("ue_bound_event_node_spawner"),
+		TEXT("ue_delegate_node_spawner"),
+		TEXT("ue_delegate_manual_assign_factory")
 	};
 	for (const FString& Token : RequiredTokens)
 	{

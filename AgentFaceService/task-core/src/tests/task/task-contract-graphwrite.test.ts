@@ -14,7 +14,19 @@ describe('GraphWrite TaskPlan contract metadata', () => {
         'merge_owned_graph',
       ],
       entry_types: ['custom_event'],
-      statement_kinds: ['call', 'set', 'set_property', 'let', 'control'],
+      statement_kinds: [
+        'call',
+        'set',
+        'set_property',
+        'let',
+        'control',
+        'component_bound_event',
+        'delegate.bind',
+        'delegate.assign',
+        'delegate.unbind',
+        'delegate.unbind_all',
+        'delegate.call',
+      ],
       expression_kinds: ['literal', 'get', 'get_property', 'call', 'op', 'construct', 'deconstruct', 'select'],
       task_plan_capability: 'graph_write',
       task_plan_dependency_capabilities: ['blueprint_signature'],
@@ -31,7 +43,19 @@ describe('GraphWrite TaskPlan contract metadata', () => {
   it('pins the AgentFace P1 statement and expression kind surface', () => {
     const firstSlice = TASK_PROTOCOL_CONTRACT_V1.supported_first_slice;
 
-    assert.deepEqual(firstSlice.statement_kinds, ['call', 'set', 'set_property', 'let', 'control']);
+    assert.deepEqual(firstSlice.statement_kinds, [
+      'call',
+      'set',
+      'set_property',
+      'let',
+      'control',
+      'component_bound_event',
+      'delegate.bind',
+      'delegate.assign',
+      'delegate.unbind',
+      'delegate.unbind_all',
+      'delegate.call',
+    ]);
     assert.equal(firstSlice.statement_kinds.includes('branch'), false);
     assert.equal(firstSlice.statement_kinds.includes('sequence'), false);
     assert.equal(firstSlice.statement_kinds.includes('return'), false);

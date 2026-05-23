@@ -2,6 +2,29 @@
 
 namespace BlueprintHelperActionContextInference
 {
+static bool MatchesToken(const FString& Value, const FString& Token)
+{
+	const FString CleanValue = Value.TrimStartAndEnd();
+	const FString CleanToken = Token.TrimStartAndEnd();
+	return !CleanValue.IsEmpty()
+		&& !CleanToken.IsEmpty()
+		&& (CleanValue.Equals(CleanToken, ESearchCase::IgnoreCase)
+			|| CleanValue.EndsWith(FString(TEXT(".")) + CleanToken, ESearchCase::IgnoreCase)
+			|| CleanToken.EndsWith(FString(TEXT(".")) + CleanValue, ESearchCase::IgnoreCase));
+}
+
+static void AddEvidenceIfPresent(
+	FBlueprintHelperResolvedActionContext& Context,
+	const FString& Key,
+	const FString& Value)
+{
+	const FString CleanValue = Value.TrimStartAndEnd();
+	if (!Key.IsEmpty() && !CleanValue.IsEmpty())
+	{
+		Context.Evidence.FindOrAdd(Key) = CleanValue;
+	}
+}
+
 static const FBlueprintHelperActionContextFieldSnapshot* FindField(
 	const FBlueprintHelperActionContextSnapshot& Snapshot,
 	const FBlueprintHelperActionContextDemand& Demand)
@@ -12,6 +35,42 @@ static const FBlueprintHelperActionContextFieldSnapshot* FindField(
 			return Field.Name == Demand.TargetPath
 				|| Field.Name == Demand.PropertyPath
 				|| (!Demand.TargetPath.IsEmpty() && Demand.TargetPath.EndsWith(FString(TEXT(".")) + Field.Name));
+		});
+}
+
+static const FBlueprintHelperActionContextFieldSnapshot* FindDelegateField(
+	const FBlueprintHelperActionContextSnapshot& Snapshot,
+	const FBlueprintHelperActionContextDemand& Demand)
+{
+	return Snapshot.Fields.FindByPredicate(
+		[&Demand](const FBlueprintHelperActionContextFieldSnapshot& Field)
+		{
+			if (!Field.bMulticastDelegate)
+			{
+				return false;
+			}
+			return MatchesToken(Field.Name, Demand.DelegateName)
+				|| MatchesToken(Field.Name, Demand.PropertyPath)
+				|| MatchesToken(Field.Name, Demand.Query)
+				|| MatchesToken(Field.FieldPath, Demand.PropertyPath);
+		});
+}
+
+static const FBlueprintHelperActionContextFieldSnapshot* FindComponentField(
+	const FBlueprintHelperActionContextSnapshot& Snapshot,
+	const FBlueprintHelperActionContextDemand& Demand)
+{
+	return Snapshot.Fields.FindByPredicate(
+		[&Demand](const FBlueprintHelperActionContextFieldSnapshot& Field)
+		{
+			if (!Field.bComponent)
+			{
+				return false;
+			}
+			return MatchesToken(Field.Name, Demand.ComponentPath)
+				|| MatchesToken(Field.FieldPath, Demand.ComponentPath)
+				|| MatchesToken(Field.Name, Demand.TargetPath)
+				|| MatchesToken(Field.FieldPath, Demand.TargetPath);
 		});
 }
 }
@@ -85,9 +144,25 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 	{
 		Context.Evidence.Add(TEXT("delegate_name"), Demand.DelegateName);
 	}
+	if (!Demand.DelegateOperation.IsEmpty())
+	{
+		Context.Evidence.Add(TEXT("delegate_operation"), Demand.DelegateOperation);
+	}
 	if (!Demand.DelegateSignature.IsEmpty())
 	{
 		Context.Evidence.Add(TEXT("delegate_signature"), Demand.DelegateSignature);
+	}
+	if (!Demand.HandlerName.IsEmpty())
+	{
+		Context.Evidence.Add(TEXT("handler_name"), Demand.HandlerName);
+		if (!Snapshot.Graph.BlueprintClassPath.IsEmpty())
+		{
+			Context.Evidence.Add(TEXT("handler_scope_class_path"), Snapshot.Graph.BlueprintClassPath);
+		}
+	}
+	if (!Demand.UnbindMode.IsEmpty())
+	{
+		Context.Evidence.Add(TEXT("unbind_mode"), Demand.UnbindMode);
 	}
 	if (!Demand.TargetObjectType.IsEmpty())
 	{
@@ -112,6 +187,31 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 		Context.Evidence.Add(TEXT("field_owner_class"), Field->OwnerClassPath);
 	}
 
+	if (const FBlueprintHelperActionContextFieldSnapshot* DelegateField =
+		BlueprintHelperActionContextInference::FindDelegateField(Snapshot, Demand))
+	{
+		Context.Semantic.PropertyPath = DelegateField->Name;
+		Context.Semantic.TargetObjectType = DelegateField->OwnerClassPath;
+		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("delegate_owner_class_path"), DelegateField->OwnerClassPath);
+		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("delegate_property_name"), DelegateField->Name);
+		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("delegate_property_path"), DelegateField->FieldPath);
+		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("delegate_signature_function_path"), DelegateField->DelegateSignatureFunctionPath);
+		if (Demand.DelegateSignature.IsEmpty())
+		{
+			BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("delegate_signature"), DelegateField->DelegateSignatureFunctionPath);
+		}
+		Context.Evidence.FindOrAdd(TEXT("delegate_blueprint_assignable")) = DelegateField->bBlueprintAssignable ? TEXT("true") : TEXT("false");
+		Context.Evidence.FindOrAdd(TEXT("delegate_blueprint_callable")) = DelegateField->bBlueprintCallable ? TEXT("true") : TEXT("false");
+	}
+
+	if (const FBlueprintHelperActionContextFieldSnapshot* ComponentField =
+		BlueprintHelperActionContextInference::FindComponentField(Snapshot, Demand))
+	{
+		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("component_binding_owner_class_path"), ComponentField->OwnerClassPath);
+		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("component_property_name"), ComponentField->Name);
+		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("component_binding_field_path"), ComponentField->FieldPath);
+	}
+
 	if (!Snapshot.Graph.GraphName.IsEmpty())
 	{
 		Context.Evidence.Add(TEXT("graph_name"), Snapshot.Graph.GraphName);
@@ -129,3 +229,12 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 
 	return Context;
 }
+
+#if WITH_DEV_AUTOMATION_TESTS
+FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceService::BuildContextForTest(
+	const FBlueprintHelperActionContextSnapshot& Snapshot,
+	const FBlueprintHelperActionContextDemand& Demand)
+{
+	return BuildContext(Snapshot, Demand);
+}
+#endif

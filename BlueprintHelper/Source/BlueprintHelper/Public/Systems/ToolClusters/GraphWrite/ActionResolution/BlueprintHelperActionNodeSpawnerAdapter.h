@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "BlueprintNodeBinder.h"
 
 class UEdGraph;
 class UBlueprintNodeSpawner;
@@ -23,6 +24,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperActionNodeSpawnOptions
 	using FNodeConfigurationHook = TFunction<bool(UK2Node& SpawnedNode, const FBlueprintHelperActionNodeSpawnContext& Context, FString& OutError)>;
 
 	FString NodeId;
+	IBlueprintNodeBinder::FBindingSet Bindings;
 	TMap<FString, FString> DefaultValues;
 	bool bApplyDefaultValues = true;
 	bool bReconstructAfterSpawn = true;
