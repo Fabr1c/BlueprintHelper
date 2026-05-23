@@ -4,6 +4,8 @@
 
 #include "CoreMinimal.h"
 #include "Dom/JsonObject.h"
+#include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonWriter.h"
 
 class UBlueprint;
 class UEdGraph;

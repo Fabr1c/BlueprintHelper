@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Brushes/SlateRoundedBoxBrush.h"
+#include "Widgets/Input/SButton.h"
 #include "Widgets/SCompoundWidget.h"
 
 class SBlueprintHelperReviewDiffFrame : public SCompoundWidget

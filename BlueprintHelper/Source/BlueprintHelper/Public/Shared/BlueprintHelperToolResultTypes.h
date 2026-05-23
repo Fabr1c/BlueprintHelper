@@ -5,6 +5,8 @@
 
 #include "CoreMinimal.h"
 #include "Dom/JsonObject.h"
+#include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonWriter.h"
 #include "Shared/BlueprintHelperServiceTypes.h"
 
 // ─── 协议常量 ───

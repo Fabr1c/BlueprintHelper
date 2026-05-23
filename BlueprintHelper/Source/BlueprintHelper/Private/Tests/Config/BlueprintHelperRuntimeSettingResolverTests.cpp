@@ -1,3 +1,4 @@
+#include "Dom/JsonValue.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"

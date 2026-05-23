@@ -12,6 +12,8 @@
 #include "UI/Review/BlueprintHelperReviewSurfaceViewCoordinator.h"
 #include "UI/Review/BlueprintHelperReviewSurfacePresenter.h"
 #include "Widgets/SCompoundWidget.h"
+#include "Widgets/Views/STableRow.h"
+#include "Widgets/Views/STreeView.h"
 
 class FBlueprintHelperReviewStoreService;
 class FBlueprintHelperReviewPanelPresenter;
@@ -22,7 +24,6 @@ class SNotificationItem;
 class SBox;
 class SMultiLineEditableTextBox;
 class UEdGraph;
-template <typename ItemType> class STreeView;
 
 class SBlueprintHelperReviewPanel : public SCompoundWidget
 {

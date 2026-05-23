@@ -3,6 +3,7 @@
 #include "Systems/Debug/BlueprintHelperAssetBrowseService.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
+#include "Blueprint/BlueprintSupport.h"
 #include "Editor.h"
 #include "FileHelpers.h"
 #include "Subsystems/AssetEditorSubsystem.h"

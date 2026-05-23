@@ -14,6 +14,7 @@ class FBlueprintHelperGraphSnapshotService;
 class UEdGraph;
 class UBlueprint;
 class FJsonObject;
+class UEdGraphNode;
 
 /**
  * ReplaceBlueprintGraph 核心服务。 * 替换指定目标的完整实现：owned block / function body / event body / custom event body。 */

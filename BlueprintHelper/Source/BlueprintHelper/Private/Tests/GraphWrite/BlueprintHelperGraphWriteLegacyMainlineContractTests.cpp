@@ -376,6 +376,15 @@ bool FBlueprintHelperSingletonControlDirectSpawnProviderBoundaryContractTest::Ru
 		*this,
 		TEXT("Private/Systems/ToolClusters/GraphWrite/Mutation/BlueprintHelperGraphWriteMutationCoordinator.cpp"),
 		ForbiddenSingletonControlDirectSpawnTokens);
+	bClean &= AssertNoTokens(
+		*this,
+		TEXT("Private/Systems/ToolClusters/GraphWrite/Mutation/BlueprintHelperGraphWriteMutationCoordinator.cpp"),
+		{
+			TEXT("Request.Semantic.Kind = EBlueprintHelperActionSemanticKind::Control"),
+			TEXT("Request.Semantic.Query = TEXT(\"sequence\")"),
+			TEXT("mutation_branch_fork_sequence_projected_context"),
+			TEXT("mutation_branch_fork_sequence_semantic_constraints")
+		});
 	bClean &= AssertNoSingletonControlDirectSpawnTokens(
 		*this,
 		TEXT("Private/Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphComposer.cpp"),

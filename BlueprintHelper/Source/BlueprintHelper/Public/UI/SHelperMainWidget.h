@@ -5,15 +5,16 @@
 #include "CoreMinimal.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 #include "Widgets/SCompoundWidget.h"
+#include "Widgets/Views/SListView.h"
+#include "Widgets/Views/STableRow.h"
 
-class SListViewBase;
 class SMultiLineEditableTextBox;
 class SSearchBox;
+class STableViewBase;
 class STextBlock;
 class FBlueprintHelperImportService;
 class FBlueprintHelperExportService;
 class FBlueprintHelperGraphResolver;
-template <typename ItemType> class SListView;
 
 /**
  * BlueprintHelper 主窗口，负责展示 Blueprint T3D 与 JSON 的双向转换及未匹配节点映射界面。

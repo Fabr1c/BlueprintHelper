@@ -3,15 +3,17 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "EdGraph/EdGraph.h"
+#include "Engine/Blueprint.h"
 #include "Input/Reply.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
+#include "Styling/SlateColor.h"
+#include "Templates/Function.h"
 #include "UI/Review/BlueprintHelperReviewPanelData.h"
 #include "UI/Review/BlueprintHelperReviewPanelSettings.h"
 #include "UObject/StrongObjectPtr.h"
 
 class SGraphEditor;
-class UBlueprint;
-class UEdGraph;
 struct FBlueprintHelperReviewAssetContext;
 
 /**

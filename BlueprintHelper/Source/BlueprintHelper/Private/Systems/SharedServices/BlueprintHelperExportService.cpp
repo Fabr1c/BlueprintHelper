@@ -3,6 +3,7 @@
 #include "Shared/Services/BlueprintHelperExportService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintTextConverter.h"
+#include "Dom/JsonObject.h"
 
 FBlueprintHelperExportService::FBlueprintHelperExportService(const FBlueprintHelperGraphResolver& InResolver)
 	: Resolver(InResolver)

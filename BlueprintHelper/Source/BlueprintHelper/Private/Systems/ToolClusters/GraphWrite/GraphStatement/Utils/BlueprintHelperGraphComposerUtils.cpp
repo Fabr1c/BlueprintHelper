@@ -4,6 +4,7 @@
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraph/EdGraphSchema.h"
+#include "K2Node.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphNodeLifecycle.h"
 
 UEdGraphPin* FBlueprintHelperGraphComposerUtils::FindPinRefInMap(
