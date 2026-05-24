@@ -125,6 +125,48 @@ void FBlueprintHelperGraphFragmentDagBuilderUtils::AddResolvedTargetMetadata(
 	AddMetadata(Fragment, TEXT("target.type"), Target.Type);
 	AddMetadata(Fragment, TEXT("target.verified"), BoolText(Target.bVerifiedByContext));
 }
+static FString FieldPathFull(const FString& Target, const FString& Property, const FString& FieldScope)
+{
+	const FString CleanTarget = Target.TrimStartAndEnd();
+	const FString CleanProperty = Property.TrimStartAndEnd();
+	if (FieldScope.Equals(TEXT("property_path"), ESearchCase::IgnoreCase)
+		&& !CleanTarget.IsEmpty()
+		&& !CleanProperty.IsEmpty()
+		&& !CleanTarget.Contains(TEXT(".")))
+	{
+		return CleanTarget + TEXT(".") + CleanProperty;
+	}
+	if (!CleanProperty.IsEmpty() && CleanTarget.IsEmpty())
+	{
+		return CleanProperty;
+	}
+	return !CleanTarget.IsEmpty() ? CleanTarget : CleanProperty;
+}
+static FString FieldPathRoot(const FString& FullPath)
+{
+	TArray<FString> Segments;
+	FullPath.ParseIntoArray(Segments, TEXT("."), true);
+	return Segments.Num() > 0 ? Segments[0].TrimStartAndEnd() : FullPath.TrimStartAndEnd();
+}
+static FString FieldPathLeaf(const FString& FullPath)
+{
+	TArray<FString> Segments;
+	FullPath.ParseIntoArray(Segments, TEXT("."), true);
+	return Segments.Num() > 0 ? Segments.Last().TrimStartAndEnd() : FullPath.TrimStartAndEnd();
+}
+static void AddFieldPathMetadata(
+	FBlueprintHelperGraphFragmentRef& Fragment,
+	const FString& Target,
+	const FString& Property,
+	const FString& FieldScope)
+{
+	const FString Role = FieldScope.TrimStartAndEnd();
+	const FString FullPath = FieldPathFull(Target, Property, Role);
+	FBlueprintHelperGraphFragmentDagBuilderUtils::AddMetadata(Fragment, TEXT("field.path.full"), FullPath);
+	FBlueprintHelperGraphFragmentDagBuilderUtils::AddMetadata(Fragment, TEXT("field.path.root"), FieldPathRoot(FullPath));
+	FBlueprintHelperGraphFragmentDagBuilderUtils::AddMetadata(Fragment, TEXT("field.path.leaf"), FieldPathLeaf(FullPath));
+	FBlueprintHelperGraphFragmentDagBuilderUtils::AddMetadata(Fragment, TEXT("field.path.role"), Role);
+}
 FString FBlueprintHelperGraphFragmentDagBuilderUtils::MakeUniqueFragmentId(FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagBuildState& State, const FString& PreferredId)
 {
 	FString Base = SanitizeIdPart(PreferredId);
@@ -412,6 +454,7 @@ FBlueprintHelperGraphFragmentRef& FBlueprintHelperGraphFragmentDagBuilderUtils::
 	AddMetadata(Fragment, TEXT("property"), Expression.Property);
 	AddMetadata(Fragment, TEXT("field_operation"), Expression.FieldOperation);
 	AddMetadata(Fragment, TEXT("field_scope"), Expression.FieldScope);
+	AddFieldPathMetadata(Fragment, Expression.Target, Expression.Property, Expression.FieldScope);
 	AddMetadata(Fragment, TEXT("type"), Expression.Type);
 	AddMetadata(Fragment, TEXT("operator"), Expression.Operator);
 	AddMetadata(Fragment, TEXT("literal"), Expression.LiteralValue);
@@ -667,10 +710,12 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagDataProducer FB
 		}
 
 		const bool bPropertyPathField = Expression->FieldScope.Equals(TEXT("property_path"), ESearchCase::IgnoreCase);
+		const bool bComponentRefField = Expression->FieldScope.Equals(TEXT("component_ref"), ESearchCase::IgnoreCase);
+		const bool bFieldAccessField = Expression->FieldScope.Equals(TEXT("field_access"), ESearchCase::IgnoreCase);
 		FBlueprintHelperGraphFragmentRef& Fragment = AddExpressionFragment(
 			*Expression,
-			bPropertyPathField ? TEXT("expr_get_property") : TEXT("expr_get"),
-			bPropertyPathField ? TEXT("get_property") : TEXT("get"),
+			bComponentRefField ? TEXT("expr_get_component_ref") : (bFieldAccessField ? TEXT("expr_get_field_access") : (bPropertyPathField ? TEXT("expr_get_property") : TEXT("expr_get"))),
+			bComponentRefField ? TEXT("get_component_ref") : (bFieldAccessField ? TEXT("get_field_access") : (bPropertyPathField ? TEXT("get_property") : TEXT("get"))),
 			State);
 		if (Expression->TargetObject.IsValid())
 		{
@@ -834,6 +879,7 @@ FBlueprintHelperGraphFragmentRef& FBlueprintHelperGraphFragmentDagBuilderUtils::
 	AddMetadata(Fragment, TEXT("property"), Statement.Property);
 	AddMetadata(Fragment, TEXT("field_operation"), Statement.FieldOperation);
 	AddMetadata(Fragment, TEXT("field_scope"), Statement.FieldScope);
+	AddFieldPathMetadata(Fragment, Statement.Target, Statement.Property, Statement.FieldScope);
 	AddMetadata(Fragment, TEXT("result_symbol"), Statement.ResultSymbolName);
 	AddMetadata(Fragment, TEXT("search_mode"), Statement.SearchMode);
 	AddMetadata(Fragment, TEXT("ambiguity"), Statement.AmbiguityPolicy);
@@ -1069,12 +1115,17 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagExecFlow FBluep
 		return BuildSimpleStatement(Statement, TEXT("statement_call"), TEXT("call"), State, SymbolScopes);
 
 	case EBlueprintHelperGraphStatementKind::Field:
+	{
+		const bool bPropertyPath = Statement->FieldScope.Equals(TEXT("property_path"), ESearchCase::IgnoreCase);
+		const bool bComponentRef = Statement->FieldScope.Equals(TEXT("component_ref"), ESearchCase::IgnoreCase);
+		const bool bFieldAccess = Statement->FieldScope.Equals(TEXT("field_access"), ESearchCase::IgnoreCase);
 		return BuildSimpleStatement(
 			Statement,
-			Statement->FieldScope.Equals(TEXT("property_path"), ESearchCase::IgnoreCase) ? TEXT("statement_set_property") : TEXT("statement_set"),
-			Statement->FieldScope.Equals(TEXT("property_path"), ESearchCase::IgnoreCase) ? TEXT("set_property") : TEXT("set"),
+			bComponentRef ? TEXT("statement_set_component_ref") : (bFieldAccess ? TEXT("statement_set_field_access") : (bPropertyPath ? TEXT("statement_set_property") : TEXT("statement_set"))),
+			bComponentRef ? TEXT("set_component_ref") : (bFieldAccess ? TEXT("set_field_access") : (bPropertyPath ? TEXT("set_property") : TEXT("set"))),
 			State,
 			SymbolScopes);
+	}
 
 	case EBlueprintHelperGraphStatementKind::Return:
 		return BuildSimpleStatement(Statement, TEXT("statement_return"), TEXT("return"), State, SymbolScopes);

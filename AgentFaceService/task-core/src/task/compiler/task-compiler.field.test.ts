@@ -93,3 +93,54 @@ test('get_property lowers to field property get inside a value expression', () =
   assert.equal(value.target, 'DoorMesh');
   assert.equal(value.property_path, 'RelativeRotation.Yaw');
 });
+
+test('explicit component_ref field scope is preserved', () => {
+  const statement = compileFirstStatement({
+    kind: 'field',
+    field_operation: 'set',
+    field_scope: 'variable',
+    target: 'CachedMesh',
+    value: {
+      kind: 'field',
+      field_operation: 'get',
+      field_scope: 'component_ref',
+      target: 'DoorMesh',
+    },
+  });
+
+  const value = statement.value as Record<string, unknown>;
+  assert.equal(value.kind, 'field');
+  assert.equal(value.field_operation, 'get');
+  assert.equal(value.field_scope, 'component_ref');
+  assert.equal(value.target, 'DoorMesh');
+});
+
+test('explicit field_access preserves member property path', () => {
+  const statement = compileFirstStatement({
+    kind: 'field',
+    field_operation: 'set',
+    field_scope: 'property_path',
+    target: 'DoorMesh',
+    property_path: 'RelativeRotation.Roll',
+    value: {
+      kind: 'field',
+      field_operation: 'get',
+      field_scope: 'field_access',
+      target: 'DoorState',
+      property_path: 'TargetRoll',
+    },
+  });
+
+  assert.equal(statement.kind, 'field');
+  assert.equal(statement.field_operation, 'set');
+  assert.equal(statement.field_scope, 'property_path');
+  assert.equal(statement.target, 'DoorMesh');
+  assert.equal(statement.property_path, 'RelativeRotation.Roll');
+
+  const value = statement.value as Record<string, unknown>;
+  assert.equal(value.kind, 'field');
+  assert.equal(value.field_operation, 'get');
+  assert.equal(value.field_scope, 'field_access');
+  assert.equal(value.target, 'DoorState');
+  assert.equal(value.property_path, 'TargetRoll');
+});

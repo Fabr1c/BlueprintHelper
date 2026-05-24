@@ -53,6 +53,9 @@ struct FBlueprintHelperActionContextDemand
 	FString PropertyPath;
 	FString FieldOperation;
 	FString FieldScope;
+	FString FunctionOperation;
+	FString TransformOperation;
+	FString ScheduleOperation;
 	FString TypeName;
 	FString StructPath;
 	FString TypeStructureId;
@@ -180,6 +183,18 @@ struct FBlueprintHelperResolvedActionContextBundle
 				if (Existing->Semantic.TypeStructureId.IsEmpty())
 				{
 					Existing->Semantic.TypeStructureId = MoveTemp(Context.Semantic.TypeStructureId);
+				}
+				if (Existing->Semantic.FunctionOperation.IsEmpty())
+				{
+					Existing->Semantic.FunctionOperation = MoveTemp(Context.Semantic.FunctionOperation);
+				}
+				if (Existing->Semantic.TransformOperation.IsEmpty())
+				{
+					Existing->Semantic.TransformOperation = MoveTemp(Context.Semantic.TransformOperation);
+				}
+				if (Existing->Semantic.ScheduleOperation.IsEmpty())
+				{
+					Existing->Semantic.ScheduleOperation = MoveTemp(Context.Semantic.ScheduleOperation);
 				}
 			}
 

@@ -1493,12 +1493,18 @@ FIELD_EXPRESSION_KIND_MAP = {
     "get": ("get", "variable"),
     "get_property": ("get", "property_path"),
 }
+SUPPORTED_FIELD_SCOPES = {"variable", "property_path", "component_ref", "field_access"}
+FIELD_SCOPES_WITH_PROPERTY_PATH = {"property_path", "field_access"}
 
 
 def _apply_field_taxonomy(out: Dict[str, Any], operation: str, scope: str) -> None:
     out["kind"] = "field"
     out["field_operation"] = operation
     out["field_scope"] = scope
+
+
+def _field_scope_uses_property_path(scope: str) -> bool:
+    return scope in FIELD_SCOPES_WITH_PROPERTY_PATH
 
 
 def _field_operation_scope(record: Dict[str, Any], path: str) -> tuple[str, str]:
@@ -1514,14 +1520,14 @@ def _field_operation_scope(record: Dict[str, Any], path: str) -> tuple[str, str]
                 "message": "Use get or set.",
             }],
         )
-    if scope not in {"variable", "property_path"}:
+    if scope not in SUPPORTED_FIELD_SCOPES:
         raise TaskSpecCompileError(
             "unsupported_field_scope",
             f"Unsupported field_scope: {scope}",
             [{
                 "code": "unsupported_field_scope",
                 "path": f"{path}.field_scope",
-                "message": "Use variable or property_path.",
+                "message": "Use variable, property_path, component_ref, or field_access.",
             }],
         )
     return operation, scope
@@ -1760,7 +1766,7 @@ def _clone_logic_expression_with_compiled_ids(expression: Any, node_id: str) -> 
     elif kind == "field":
         operation, scope = _field_operation_scope(expression, node_id)
         _apply_field_taxonomy(out, operation, scope)
-        if scope == "property_path":
+        if _field_scope_uses_property_path(scope):
             property_path = _required_graph_body_property_path(expression, f"{node_id}.property_path")
             out["property_path"] = property_path
             out["property"] = property_path
@@ -1821,7 +1827,7 @@ def _clone_logic_statement_with_compiled_ids(statement: Dict[str, Any], statemen
     elif kind == "field":
         operation, scope = _field_operation_scope(statement, statement_id)
         _apply_field_taxonomy(out, operation, scope)
-        if scope == "property_path":
+        if _field_scope_uses_property_path(scope):
             property_path = _required_graph_body_property_path(statement, f"{statement_id}.property_path")
             out["property_path"] = property_path
             out["property"] = property_path
@@ -2091,10 +2097,10 @@ def _compile_value_expression(expression: Any, node_id: str, path: str, context:
             symbol = context.get("symbols", {}).get(target.lower())
             if symbol:
                 return {"nodes": [], "links": [], "output": symbol.get("output"), "default_value": symbol.get("default_value")}
-        output_pin = "value" if scope == "property_path" else target
+        output_pin = "value" if _field_scope_uses_property_path(scope) else target
         node = {"id": node_id, "var": target, "target": target}
         _apply_field_taxonomy(node, operation, scope)
-        if scope == "property_path":
+        if _field_scope_uses_property_path(scope):
             property_path = _required_graph_body_property_path(expression, path)
             node["property_path"] = property_path
             node["property"] = property_path
@@ -2899,7 +2905,7 @@ def _compile_statement_node(statement: Dict[str, Any], node_id: str, path: str) 
             "target": target,
             "value": _value_expr_to_string(statement.get("value")),
         }
-        if scope == "property_path":
+        if _field_scope_uses_property_path(scope):
             property_path = _required_graph_body_property_path(statement, path)
             node["property_path"] = property_path
             node["property"] = property_path

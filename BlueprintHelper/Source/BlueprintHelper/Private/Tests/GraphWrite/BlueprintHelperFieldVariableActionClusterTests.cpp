@@ -107,6 +107,14 @@ static void AddProjectedPropertyEvidence(
 	Request.ContextEvidence.Add(TEXT("field_owner_class"), OwnerPath);
 	Request.ContextEvidence.Add(TEXT("property_path"), PropertyPath);
 }
+
+static FBlueprintHelperCallFunctionPinType MakeFieldVariableActionCallPinType(const FString& Category, const FString& ObjectPath = FString())
+{
+	FBlueprintHelperCallFunctionPinType PinType;
+	PinType.Category = Category;
+	PinType.ObjectPath = ObjectPath;
+	return PinType;
+}
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -462,6 +470,154 @@ bool FBlueprintHelperFieldVariableActionClusterRejectsBroadQueryWithoutProjected
 	TestEqual(TEXT("status"), Result.Status, EBlueprintHelperActionResolutionStatus::InvalidRequest);
 	TestEqual(TEXT("error code"), Result.ErrorCode, FString(TEXT("missing_required_evidence")));
 	TestEqual(TEXT("no selected id"), Result.SelectedStableId, FString());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperFieldVariableActionClusterComponentRefResolvesTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.FieldVariable.ComponentRefResolves",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperFieldVariableActionClusterComponentRefResolvesTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeFieldVariableActionTestBlueprint();
+	TestNotNull(TEXT("blueprint"), Blueprint);
+	TestTrue(TEXT("add component ref variable"), AddFieldVariableActionTestVariable(
+		Blueprint,
+		TEXT("DoorMesh"),
+		MakeFieldVariableActionTestPinType(UEdGraphSchema_K2::PC_Object)));
+
+	FBlueprintHelperActionResolutionRequest Request = MakeFieldVariableActionRequest(
+		Blueprint,
+		GetFieldVariableActionTestGraph(Blueprint),
+		TEXT("get"),
+		TEXT("component_ref"),
+		TEXT("DoorMesh"));
+	Request.ContextEvidence.Add(TEXT("component_property_name"), TEXT("DoorMesh"));
+	Request.ContextEvidence.Add(TEXT("component_binding_owner_class_path"), TEXT("/Game/Test/BP_Door.BP_Door_C"));
+
+	const FBlueprintHelperActionResolutionResult Result = FBlueprintHelperActionResolutionCore::Resolve(Request);
+	TestEqual(TEXT("status"), Result.Status, EBlueprintHelperActionResolutionStatus::Resolved);
+	TestTrue(TEXT("component ref stable id"), Result.SelectedStableId.StartsWith(TEXT("field_component_ref:")));
+	TestEqual(TEXT("one candidate"), Result.CandidateActions.Num(), 1);
+	if (Result.CandidateActions.Num() > 0)
+	{
+		TestEqual(TEXT("candidate category"), Result.CandidateActions[0].Category, FString(TEXT("field_component_ref")));
+		TestTrue(TEXT("match reason contains scope"), Result.CandidateActions[0].MatchReason.Contains(TEXT("field_scope=component_ref")));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperFieldVariableActionClusterFieldAccessRequiresOwnerTypeTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.FieldVariable.FieldAccessRequiresOwnerType",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperFieldVariableActionClusterFieldAccessRequiresOwnerTypeTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeFieldVariableActionTestBlueprint();
+	TestNotNull(TEXT("blueprint"), Blueprint);
+	TestTrue(TEXT("add field access variable"), AddFieldVariableActionTestVariable(
+		Blueprint,
+		TEXT("RelativeRotation"),
+		MakeFieldVariableActionTestStructPinType(TBaseStructure<FRotator>::Get())));
+
+	FBlueprintHelperActionResolutionRequest MissingOwnerRequest = MakeFieldVariableActionRequest(
+		Blueprint,
+		GetFieldVariableActionTestGraph(Blueprint),
+		TEXT("get"),
+		TEXT("field_access"),
+		TEXT("RelativeRotation"));
+	MissingOwnerRequest.Semantic.PropertyPath = TEXT("RelativeRotation");
+
+	const FBlueprintHelperActionResolutionResult MissingOwnerResult = FBlueprintHelperActionResolutionCore::Resolve(MissingOwnerRequest);
+	TestEqual(TEXT("missing owner status"), MissingOwnerResult.Status, EBlueprintHelperActionResolutionStatus::InvalidRequest);
+	TestEqual(TEXT("missing owner error"), MissingOwnerResult.ErrorCode, FString(TEXT("needs_more_semantic_context")));
+
+	FBlueprintHelperActionResolutionRequest Request = MissingOwnerRequest;
+	Request.Semantic.TargetObjectPinType = MakeFieldVariableActionCallPinType(TEXT("object"), TEXT("/Script/Engine.SceneComponent"));
+	Request.ContextEvidence.Add(TEXT("property_path"), TEXT("RelativeRotation"));
+
+	const FBlueprintHelperActionResolutionResult Result = FBlueprintHelperActionResolutionCore::Resolve(Request);
+	TestEqual(TEXT("status"), Result.Status, EBlueprintHelperActionResolutionStatus::Resolved);
+	TestTrue(TEXT("field access stable id"), Result.SelectedStableId.StartsWith(TEXT("field_access:")));
+	if (Result.CandidateActions.Num() > 0)
+	{
+		TestEqual(TEXT("candidate category"), Result.CandidateActions[0].Category, FString(TEXT("field_access")));
+		TestTrue(TEXT("match reason contains scope"), Result.CandidateActions[0].MatchReason.Contains(TEXT("field_scope=field_access")));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperFieldVariableActionClusterComplexPropertyPathKeepsFullPathEvidenceTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.FieldVariable.ComplexPropertyPathKeepsFullPathEvidence",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperFieldVariableActionClusterComplexPropertyPathKeepsFullPathEvidenceTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeFieldVariableActionTestBlueprint();
+	TestNotNull(TEXT("blueprint"), Blueprint);
+	TestTrue(TEXT("add complex leaf variable"), AddFieldVariableActionTestVariable(
+		Blueprint,
+		TEXT("Pitch"),
+		MakeFieldVariableActionTestPinType(UEdGraphSchema_K2::PC_Real, UEdGraphSchema_K2::PC_Float)));
+
+	FBlueprintHelperActionResolutionRequest Request = MakeFieldVariableActionRequest(
+		Blueprint,
+		GetFieldVariableActionTestGraph(Blueprint),
+		TEXT("set"),
+		TEXT("property_path"),
+		TEXT("DoorMesh"));
+	Request.Semantic.TargetPath = TEXT("DoorMesh");
+	Request.Semantic.PropertyPath = TEXT("RelativeRotation.Pitch");
+	Request.ContextEvidence.Add(TEXT("field_name"), TEXT("Pitch"));
+	Request.ContextEvidence.Add(TEXT("field_owner_class"), TEXT("/Script/Engine.SceneComponent"));
+	Request.ContextEvidence.Add(TEXT("property_path"), TEXT("RelativeRotation.Pitch"));
+
+	const FBlueprintHelperActionResolutionResult Result = FBlueprintHelperActionResolutionCore::Resolve(Request);
+	TestEqual(TEXT("status"), Result.Status, EBlueprintHelperActionResolutionStatus::Resolved);
+	TestTrue(TEXT("requires fragment builder"), Result.bRequiresDedicatedFragmentBuilder);
+	TestEqual(TEXT("match reason"), Result.MatchReason, FString(TEXT("complex_property_path_requires_field_path_fragment_builder")));
+	TestTrue(TEXT("stable id keeps property path scope"), Result.SelectedStableId.Contains(TEXT(":field:set:property_path")));
+	if (Result.CandidateActions.Num() > 0)
+	{
+		TestTrue(TEXT("candidate keeps composed full path"), Result.CandidateActions[0].MatchReason.Contains(TEXT("path=DoorMesh.RelativeRotation.Pitch")));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperFieldVariableActionClusterLinkedPinInfersExpectedReturnTypeTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.FieldVariable.LinkedPinInfersExpectedReturnType",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperFieldVariableActionClusterLinkedPinInfersExpectedReturnTypeTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeFieldVariableActionTestBlueprint();
+	TestNotNull(TEXT("blueprint"), Blueprint);
+	TestTrue(TEXT("add float variable"), AddFieldVariableActionTestVariable(
+		Blueprint,
+		TEXT("SmokeFloat"),
+		MakeFieldVariableActionTestPinType(UEdGraphSchema_K2::PC_Real, UEdGraphSchema_K2::PC_Float)));
+	TestTrue(TEXT("add string variable"), AddFieldVariableActionTestVariable(
+		Blueprint,
+		TEXT("SmokeString"),
+		MakeFieldVariableActionTestPinType(UEdGraphSchema_K2::PC_String)));
+
+	FBlueprintHelperActionResolutionRequest Request = MakeFieldVariableActionRequest(
+		Blueprint,
+		GetFieldVariableActionTestGraph(Blueprint),
+		TEXT("get"),
+		TEXT("variable"),
+		TEXT("Smoke"));
+	Request.ContextEvidence.Add(TEXT("field_owner_class"), TEXT("/Game/Test/BP_Door.BP_Door_C"));
+	Request.Semantic.ExpectedReturnPinType = MakeFieldVariableActionCallPinType(UEdGraphSchema_K2::PC_String.ToString());
+	Request.bAllowFuzzyUnique = true;
+
+	const FBlueprintHelperActionResolutionResult Result = FBlueprintHelperActionResolutionCore::Resolve(Request);
+	TestEqual(TEXT("status"), Result.Status, EBlueprintHelperActionResolutionStatus::Resolved);
+	TestEqual(TEXT("selected id"), Result.SelectedStableId.Contains(TEXT("SmokeString")), true);
 	return true;
 }
 

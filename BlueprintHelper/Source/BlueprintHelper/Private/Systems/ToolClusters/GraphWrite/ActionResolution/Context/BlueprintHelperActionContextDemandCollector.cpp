@@ -230,6 +230,44 @@ static EBlueprintHelperTypeOperation ResolveTypeOperation(const EBlueprintHelper
 	}
 }
 
+static FString GetDefaultValue(
+	const FBlueprintHelperActionContextDemand& Demand,
+	const TCHAR* Key)
+{
+	return Demand.DefaultValues.FindRef(Key).TrimStartAndEnd();
+}
+
+static void ApplyFunctionSemanticOperations(FBlueprintHelperActionContextDemand& InOutDemand)
+{
+	switch (InOutDemand.SemanticKind)
+	{
+	case EBlueprintHelperActionSemanticKind::Call:
+		InOutDemand.FunctionOperation = TEXT("function_call");
+		break;
+	case EBlueprintHelperActionSemanticKind::Op:
+		InOutDemand.FunctionOperation = TEXT("operator_function");
+		break;
+	case EBlueprintHelperActionSemanticKind::Convert:
+		InOutDemand.FunctionOperation = TEXT("convert_function");
+		InOutDemand.TransformOperation = TEXT("convert");
+		break;
+	case EBlueprintHelperActionSemanticKind::Schedule:
+		InOutDemand.FunctionOperation = GetDefaultValue(InOutDemand, TEXT("function_operation"));
+		if (InOutDemand.FunctionOperation.IsEmpty())
+		{
+			InOutDemand.FunctionOperation = TEXT("schedule_function");
+		}
+		InOutDemand.ScheduleOperation = GetDefaultValue(InOutDemand, TEXT("schedule_operation"));
+		if (InOutDemand.ScheduleOperation.IsEmpty())
+		{
+			InOutDemand.ScheduleOperation = TEXT("latent_or_async");
+		}
+		break;
+	default:
+		break;
+	}
+}
+
 static void ApplyEventDelegateStatementEvidence(
 	const FBlueprintHelperGraphStatementIR& Statement,
 	FBlueprintHelperActionContextDemand& InOutDemand)
@@ -419,6 +457,7 @@ void FBlueprintHelperActionContextDemandCollector::AppendDemandForStatement(
 		FieldOperation,
 		FieldScope);
 	BlueprintHelperActionContextDemandCollector::CopyExpressionMapContext(Statement.Args, Demand);
+	BlueprintHelperActionContextDemandCollector::ApplyFunctionSemanticOperations(Demand);
 	if (Statement.Value.IsValid() && Demand.ExpectedReturnType.IsEmpty())
 	{
 		Demand.ExpectedReturnType = Statement.Value->Type;
@@ -503,6 +542,7 @@ void FBlueprintHelperActionContextDemandCollector::AppendDemandForExpression(
 	BlueprintHelperActionContextDemandCollector::CopyNamedExpressionContext(TEXT("right"), Expression.Right, Demand);
 	BlueprintHelperActionContextDemandCollector::CopyNamedExpressionContext(TEXT("value"), Expression.Value, Demand);
 	BlueprintHelperActionContextDemandCollector::CopyNamedExpressionContext(TEXT("condition"), Expression.Condition, Demand);
+	BlueprintHelperActionContextDemandCollector::ApplyFunctionSemanticOperations(Demand);
 	Demand.ExpectedReturnType = Expression.Type;
 	if (Expression.TargetObject.IsValid())
 	{
@@ -623,6 +663,7 @@ FBlueprintHelperActionContextDemand FBlueprintHelperActionContextDemandCollector
 	Demand.CategoryPriority = CategoryPriority;
 	Demand.ArgumentNames = ArgumentNames;
 	ApplyDemandKinds(Demand);
+	BlueprintHelperActionContextDemandCollector::ApplyFunctionSemanticOperations(Demand);
 	if (Demand.ClusterKind == EBlueprintHelperSpawnerClusterKind::FieldVariableAction)
 	{
 		if (!Demand.FieldOperation.IsEmpty())

@@ -82,6 +82,14 @@ static bool RequireTokens(
 	return bComplete;
 }
 
+static FBlueprintHelperCallFunctionPinType MakeActionContextTestPinType(const FString& Category, const FString& ObjectPath = FString())
+{
+	FBlueprintHelperCallFunctionPinType PinType;
+	PinType.Category = Category;
+	PinType.ObjectPath = ObjectPath;
+	return PinType;
+}
+
 static bool CollectActionContextSourceFiles(FAutomationTestBase& Test, TArray<FString>& OutFiles)
 {
 	const FString PublicContextRoot = FPaths::GetPath(BuildActionContextPublicPath(TEXT("BlueprintHelperActionContextTypes.h")));
@@ -142,6 +150,9 @@ bool FBlueprintHelperActionContextDtoSourceContractTest::RunTest(const FString& 
 		TEXT("TSet<EBlueprintHelperActionContextDemandKind> RequiredKinds"),
 		TEXT("SemanticFamily"),
 		TEXT("TypeOperation"),
+		TEXT("FunctionOperation"),
+		TEXT("TransformOperation"),
+		TEXT("ScheduleOperation"),
 		TEXT("StructPath"),
 		TEXT("TypeStructureId"),
 		TEXT("TMap<FString, FString> DefaultValues"),
@@ -419,6 +430,74 @@ bool FBlueprintHelperActionContextSingleDemandSetPropertyMapsToFieldVariableTest
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionContextFieldScopesAndTypedPinInferenceTest,
+	"BlueprintHelper.GraphWrite.ActionContext.FieldScopesAndTypedPinInference",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionContextFieldScopesAndTypedPinInferenceTest::RunTest(const FString& Parameters)
+{
+	const FBlueprintHelperActionContextDemand ComponentDemand =
+		FBlueprintHelperActionContextDemandCollector::BuildSingleDemand(
+			TEXT("expr_component_ref"),
+			TEXT("$.statements[0].target_object"),
+			EBlueprintHelperActionSemanticKind::Field,
+			TEXT("DoorMesh"),
+			TEXT("DoorMesh"),
+			FString(),
+			FString(),
+			TEXT("contextual"),
+			TEXT("fail_on_ambiguity"),
+			TArray<FString>(),
+			TArray<FString>(),
+			TEXT("get"),
+			TEXT("component_ref"));
+	TestEqual(TEXT("component_ref cluster"), ComponentDemand.ClusterKind, EBlueprintHelperSpawnerClusterKind::FieldVariableAction);
+	TestEqual(TEXT("component_ref scope"), ComponentDemand.FieldScope, FString(TEXT("component_ref")));
+
+	FBlueprintHelperActionContextDemand FieldAccessDemand =
+		FBlueprintHelperActionContextDemandCollector::BuildSingleDemand(
+			TEXT("expr_field_access"),
+			TEXT("$.statements[0].value"),
+			EBlueprintHelperActionSemanticKind::Field,
+			TEXT("RelativeRotation"),
+			TEXT("DoorMesh"),
+			TEXT("RelativeRotation"),
+			FString(),
+			TEXT("contextual"),
+			TEXT("fail_on_ambiguity"),
+			TArray<FString>(),
+			TArray<FString>(),
+			TEXT("get"),
+			TEXT("field_access"));
+	FieldAccessDemand.SourceSymbolIds.Add(TEXT("symbol_owner"));
+	FieldAccessDemand.ConsumerSymbolIds.Add(TEXT("symbol_consumer"));
+
+	FBlueprintHelperActionContextSnapshot Snapshot;
+	Snapshot.Graph.GraphName = TEXT("EventGraph");
+	FBlueprintHelperActionContextFieldSnapshot ComponentField;
+	ComponentField.Name = TEXT("DoorMesh");
+	ComponentField.OwnerClassPath = TEXT("/Game/Test/BP_Door.BP_Door_C");
+	ComponentField.FieldPath = TEXT("/Game/Test/BP_Door.BP_Door_C.DoorMesh");
+	ComponentField.bComponent = true;
+	Snapshot.Fields.Add(ComponentField);
+	Snapshot.SymbolPinTypes.Add(TEXT("symbol_owner"), MakeActionContextTestPinType(TEXT("object"), TEXT("/Script/Engine.SceneComponent")));
+	Snapshot.SymbolPinTypes.Add(TEXT("symbol_consumer"), MakeActionContextTestPinType(TEXT("struct"), TEXT("/Script/CoreUObject.Rotator")));
+
+	const FBlueprintHelperResolvedActionContext ComponentContext =
+		FBlueprintHelperActionContextInferenceService::BuildContextForTest(Snapshot, ComponentDemand);
+	TestEqual(TEXT("component property evidence"), ComponentContext.Evidence.FindRef(TEXT("component_property_name")), FString(TEXT("DoorMesh")));
+
+	const FBlueprintHelperResolvedActionContext FieldAccessContext =
+		FBlueprintHelperActionContextInferenceService::BuildContextForTest(Snapshot, FieldAccessDemand);
+	TestEqual(TEXT("field_access scope"), FieldAccessContext.Semantic.FieldScope, FString(TEXT("field_access")));
+	TestTrue(TEXT("target object pin inferred"), FieldAccessContext.Semantic.TargetObjectPinType.IsValid());
+	TestTrue(TEXT("expected return pin inferred"), FieldAccessContext.Semantic.ExpectedReturnPinType.IsValid());
+	TestEqual(TEXT("linked source evidence"), FieldAccessContext.Evidence.FindRef(TEXT("linked_source_pin_type")), FString(TEXT("object|/Script/Engine.SceneComponent")));
+	TestEqual(TEXT("linked consumer evidence"), FieldAccessContext.Evidence.FindRef(TEXT("linked_consumer_pin_type")), FString(TEXT("struct|/Script/CoreUObject.Rotator")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperActionContextSingleDemandSelectMapsToGenericClusterTest,
 	"BlueprintHelper.GraphWrite.ActionContext.SingleDemand.SelectMapsToGenericCluster",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -451,6 +530,93 @@ bool FBlueprintHelperActionContextSingleDemandSelectMapsToGenericClusterTest::Ru
 	TestEqual(TEXT("Select semantic kind"), Demand.SemanticKind, EBlueprintHelperActionSemanticKind::Select);
 	TestEqual(TEXT("Select query"), Demand.Query, FString(TEXT("select")));
 	TestTrue(TEXT("Select requires typed pins"), Demand.RequiredKinds.Contains(EBlueprintHelperActionContextDemandKind::TypedPins));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionContextSingleDemandConvertMapsToFunctionActionTest,
+	"BlueprintHelper.GraphWrite.ActionContext.SingleDemand.ConvertMapsToFunctionAction",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionContextSingleDemandConvertMapsToFunctionActionTest::RunTest(const FString& Parameters)
+{
+	TArray<FString> CategoryPriority;
+	TArray<FString> ArgumentNames;
+	ArgumentNames.Add(TEXT("value"));
+
+	const FBlueprintHelperActionContextDemand Demand =
+		FBlueprintHelperActionContextDemandCollector::BuildSingleDemand(
+			TEXT("expr_convert"),
+			TEXT("$.statements[0].value"),
+			EBlueprintHelperActionSemanticKind::Convert,
+			TEXT("Conv_StringToName"),
+			TEXT(""),
+			TEXT(""),
+			TEXT("Name"),
+			TEXT("contextual"),
+			TEXT("fail_on_ambiguity"),
+			CategoryPriority,
+			ArgumentNames);
+
+	TestEqual(TEXT("Convert cluster kind"), Demand.ClusterKind, EBlueprintHelperSpawnerClusterKind::FunctionAction);
+	TestEqual(TEXT("Convert semantic kind"), Demand.SemanticKind, EBlueprintHelperActionSemanticKind::Convert);
+	TestEqual(TEXT("Convert function operation"), Demand.FunctionOperation, FString(TEXT("convert_function")));
+	TestEqual(TEXT("Convert transform operation"), Demand.TransformOperation, FString(TEXT("convert")));
+	TestTrue(TEXT("Convert requires typed pins"), Demand.RequiredKinds.Contains(EBlueprintHelperActionContextDemandKind::TypedPins));
+	TestTrue(TEXT("Convert requires target"), Demand.RequiredKinds.Contains(EBlueprintHelperActionContextDemandKind::Target));
+
+	FBlueprintHelperActionContextSnapshot Snapshot;
+	Snapshot.Graph.GraphName = TEXT("EventGraph");
+	const FBlueprintHelperResolvedActionContext Context =
+		FBlueprintHelperActionContextInferenceService::BuildContextForTest(Snapshot, Demand);
+
+	TestEqual(TEXT("Projected convert function operation"), Context.Semantic.FunctionOperation, FString(TEXT("convert_function")));
+	TestEqual(TEXT("Projected convert transform operation"), Context.Semantic.TransformOperation, FString(TEXT("convert")));
+	TestEqual(TEXT("Projected convert function evidence"), Context.Evidence.FindRef(TEXT("function_operation")), FString(TEXT("convert_function")));
+	TestEqual(TEXT("Projected convert transform evidence"), Context.Evidence.FindRef(TEXT("transform_operation")), FString(TEXT("convert")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionContextSingleDemandScheduleMapsToFunctionActionTest,
+	"BlueprintHelper.GraphWrite.ActionContext.SingleDemand.ScheduleMapsToFunctionAction",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionContextSingleDemandScheduleMapsToFunctionActionTest::RunTest(const FString& Parameters)
+{
+	TArray<FString> CategoryPriority;
+	TArray<FString> ArgumentNames;
+
+	const FBlueprintHelperActionContextDemand Demand =
+		FBlueprintHelperActionContextDemandCollector::BuildSingleDemand(
+			TEXT("expr_schedule"),
+			TEXT("$.statements[0].value"),
+			EBlueprintHelperActionSemanticKind::Schedule,
+			TEXT("Delay"),
+			TEXT(""),
+			TEXT(""),
+			TEXT(""),
+			TEXT("contextual"),
+			TEXT("fail_on_ambiguity"),
+			CategoryPriority,
+			ArgumentNames);
+
+	TestEqual(TEXT("Schedule cluster kind"), Demand.ClusterKind, EBlueprintHelperSpawnerClusterKind::FunctionAction);
+	TestEqual(TEXT("Schedule semantic kind"), Demand.SemanticKind, EBlueprintHelperActionSemanticKind::Schedule);
+	TestEqual(TEXT("Schedule function operation"), Demand.FunctionOperation, FString(TEXT("schedule_function")));
+	TestEqual(TEXT("Schedule operation"), Demand.ScheduleOperation, FString(TEXT("latent_or_async")));
+	TestTrue(TEXT("Schedule requires typed pins"), Demand.RequiredKinds.Contains(EBlueprintHelperActionContextDemandKind::TypedPins));
+	TestTrue(TEXT("Schedule requires target"), Demand.RequiredKinds.Contains(EBlueprintHelperActionContextDemandKind::Target));
+
+	FBlueprintHelperActionContextSnapshot Snapshot;
+	Snapshot.Graph.GraphName = TEXT("EventGraph");
+	const FBlueprintHelperResolvedActionContext Context =
+		FBlueprintHelperActionContextInferenceService::BuildContextForTest(Snapshot, Demand);
+
+	TestEqual(TEXT("Projected schedule function operation"), Context.Semantic.FunctionOperation, FString(TEXT("schedule_function")));
+	TestEqual(TEXT("Projected schedule operation"), Context.Semantic.ScheduleOperation, FString(TEXT("latent_or_async")));
+	TestEqual(TEXT("Projected schedule function evidence"), Context.Evidence.FindRef(TEXT("function_operation")), FString(TEXT("schedule_function")));
+	TestEqual(TEXT("Projected schedule evidence"), Context.Evidence.FindRef(TEXT("schedule_operation")), FString(TEXT("latent_or_async")));
 	return true;
 }
 
@@ -651,7 +817,10 @@ bool FBlueprintHelperActionContextBundleProjectionSourceContractTest::RunTest(co
 			TEXT("OutRequest.StatementId"),
 			TEXT("OutRequest.ProjectedContextHash"),
 			TEXT("OutRequest.SemanticConstraintsHash"),
-			TEXT("OutRequest.Semantic")
+			TEXT("OutRequest.Semantic"),
+			TEXT("Semantic.FunctionOperation"),
+			TEXT("Semantic.TransformOperation"),
+			TEXT("Semantic.ScheduleOperation")
 		});
 
 	TestTrue(TEXT("ActionContext bundle projection source contract is complete"), bComplete);

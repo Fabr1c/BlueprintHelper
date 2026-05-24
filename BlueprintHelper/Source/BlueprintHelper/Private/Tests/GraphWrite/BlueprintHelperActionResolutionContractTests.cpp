@@ -345,6 +345,67 @@ bool FBlueprintHelperActionResolutionEventDelegateUseSiteBoundaryContractTest::R
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionResolutionFunctionSemanticResolverBoundaryContractTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.Contract.FunctionSemanticResolverBoundary",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionResolutionFunctionSemanticResolverBoundaryContractTest::RunTest(const FString& Parameters)
+{
+	const FString FunctionClusterSourcePath = BuildGraphWritePrivateSourcePath(
+		TEXT("ActionResolution"),
+		TEXT("BlueprintHelperFunctionActionCluster.cpp"));
+	const FString GenericClusterSourcePath = BuildGraphWritePrivateSourcePath(
+		TEXT("ActionResolution"),
+		TEXT("BlueprintHelperGenericAssetStructControlActionCluster.cpp"));
+
+	FString FunctionClusterSource;
+	FString GenericClusterSource;
+	bool bClean = true;
+	if (!FFileHelper::LoadFileToString(FunctionClusterSource, *FunctionClusterSourcePath))
+	{
+		AddError(FString::Printf(TEXT("FunctionActionCluster source could not be read: %s"), *FunctionClusterSourcePath));
+		bClean = false;
+	}
+	if (!FFileHelper::LoadFileToString(GenericClusterSource, *GenericClusterSourcePath))
+	{
+		AddError(FString::Printf(TEXT("GenericAssetStructControlActionCluster source could not be read: %s"), *GenericClusterSourcePath));
+		bClean = false;
+	}
+	if (!bClean)
+	{
+		return false;
+	}
+
+	bClean &= TestTrue(
+		TEXT("FunctionActionCluster routes Convert/Schedule through the reusable function semantic resolver"),
+		FunctionClusterSource.Contains(TEXT("BlueprintHelperFunctionSemanticActionResolver"))
+		&& FunctionClusterSource.Contains(TEXT("IsSupportedSemanticKind"))
+		&& FunctionClusterSource.Contains(TEXT("FBlueprintHelperFunctionSemanticActionResolver::Resolve")));
+
+	const TArray<FString> GenericForbiddenTokens = {
+		TEXT("convert_function"),
+		TEXT("schedule_function"),
+		TEXT("latent_or_async_function"),
+		TEXT("FunctionSemanticActionResolver"),
+		TEXT("FBlueprintHelperCallFunctionResolver::Resolve")
+	};
+	for (const FString& Token : GenericForbiddenTokens)
+	{
+		if (GenericClusterSource.Contains(Token))
+		{
+			AddError(FString::Printf(
+				TEXT("GenericAssetStructControlActionCluster must not become the fallback success path for Convert/Schedule; forbidden token '%s' found in %s"),
+				*Token,
+				*GenericClusterSourcePath));
+			bClean = false;
+		}
+	}
+
+	TestTrue(TEXT("Convert/Schedule stay owned by FunctionAction semantic resolver boundary"), bClean);
+	return bClean;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperGraphWriteDelegatePublicInternalBoundaryContractTest,
 	"BlueprintHelper.GraphWrite.ActionResolution.Contract.DelegatePublicInternalBoundary",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
