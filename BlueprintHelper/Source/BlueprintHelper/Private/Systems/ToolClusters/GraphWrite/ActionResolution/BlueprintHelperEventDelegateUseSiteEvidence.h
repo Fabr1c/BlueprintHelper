@@ -4,7 +4,7 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.h"
 
 class FMulticastDelegateProperty;
-class FObjectProperty;
+class FObjectPropertyBase;
 class UClass;
 class UFunction;
 
@@ -26,7 +26,7 @@ struct FBlueprintHelperEventDelegateUseSiteEvidence
 	FString HandlerScopeClassPath;
 	FString UnbindMode;
 	FMulticastDelegateProperty* DelegateProperty = nullptr;
-	FObjectProperty* ComponentBindingProperty = nullptr;
+	FObjectPropertyBase* ComponentBindingProperty = nullptr;
 	UFunction* HandlerFunction = nullptr;
 };
 

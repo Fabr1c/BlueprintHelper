@@ -1,0 +1,107 @@
+{
+  "schema": "BlueprintHelper.TaskSpec.v1",
+  "context_id": "ctx_four_cluster_e2e_prepare_fixture_20260524",
+  "task_type": "create_blueprint_feature",
+  "feature_name": "GraphWriteFourClusterFixture",
+  "target": {
+    "asset_path": "/Game/BlueprintHelper/Smoke/BP_GraphWriteFourClusterSmoke_20260524_FixRun02",
+    "target_type": "blueprint"
+  },
+  "scope_policy": {
+    "prefer_new_graph": true,
+    "graph_name": "EG_FourClusterFixture_20260524",
+    "allow_modify_user_nodes": false,
+    "allow_create_assets": false
+  },
+  "asset_policy": {
+    "if_target_asset_missing": "fail",
+    "if_referenced_asset_missing": "fail",
+    "if_component_exists": "reuse_if_type_matches"
+  },
+  "components": [
+    {
+      "name": "SceneRoot",
+      "class": "SceneComponent",
+      "set_as_root": true
+    },
+    {
+      "name": "DoorMesh",
+      "class": "StaticMeshComponent",
+      "attach_to": "SceneRoot"
+    },
+    {
+      "name": "TriggerBox",
+      "class": "BoxComponent",
+      "attach_to": "SceneRoot"
+    }
+  ],
+  "variables": [
+    {
+      "name": "SmokeFloat",
+      "type": "float",
+      "default": 0.0,
+      "category": "GraphWriteSmoke"
+    },
+    {
+      "name": "TargetRoll",
+      "type": "float",
+      "default": 12.5,
+      "category": "GraphWriteSmoke"
+    },
+    {
+      "name": "CachedLabel",
+      "type": "string",
+      "default": "",
+      "category": "GraphWriteSmoke"
+    },
+    {
+      "name": "bSmokeReady",
+      "type": "bool",
+      "default": false,
+      "category": "GraphWriteSmoke"
+    }
+  ],
+  "behavior": {
+    "graph_strategy": "append_new_owned_graph",
+    "entries": [
+      {
+        "entry_type": "custom_event",
+        "name": "BH_FourClusterFixtureReady_20260524",
+        "body": {
+          "schema": "BlueprintLogicSpec.v1",
+          "statements": [
+            {
+              "kind": "set",
+              "target": "bSmokeReady",
+              "value": {
+                "kind": "literal",
+                "value_type": "bool",
+                "value": true
+              }
+            },
+            {
+              "kind": "call",
+              "target": "PrintString",
+              "args": {
+                "InString": {
+                  "kind": "literal",
+                  "value_type": "string",
+                  "value": "Four cluster fixture ready"
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "execution_policy": {
+    "dry_run_mode": "full",
+    "on_missing_capability": "stop_and_report",
+    "review_baseline_dirty_asset_policy": "save_before_archive"
+  },
+  "validation": {
+    "should_compile": true,
+    "should_save": true
+  }
+}

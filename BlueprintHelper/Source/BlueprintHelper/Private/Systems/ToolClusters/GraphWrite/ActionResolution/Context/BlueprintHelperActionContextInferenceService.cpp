@@ -118,7 +118,9 @@ static const FBlueprintHelperActionContextFieldSnapshot* FindComponentField(
 			return MatchesToken(Field.Name, Demand.ComponentPath)
 				|| MatchesToken(Field.FieldPath, Demand.ComponentPath)
 				|| MatchesToken(Field.Name, Demand.TargetPath)
-				|| MatchesToken(Field.FieldPath, Demand.TargetPath);
+				|| MatchesToken(Field.FieldPath, Demand.TargetPath)
+				|| MatchesToken(Field.Name, Demand.BindingObjectPath)
+				|| MatchesToken(Field.FieldPath, Demand.BindingObjectPath);
 		});
 }
 }

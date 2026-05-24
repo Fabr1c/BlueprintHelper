@@ -49,6 +49,14 @@ FString FBlueprintHelperGraphFragmentDagBuilderUtils::StatementKindName(const EB
 		return TEXT("return");
 	case EBlueprintHelperGraphStatementKind::Create:
 		return TEXT("create");
+	case EBlueprintHelperGraphStatementKind::Convert:
+		return TEXT("convert");
+	case EBlueprintHelperGraphStatementKind::Schedule:
+		return TEXT("schedule");
+	case EBlueprintHelperGraphStatementKind::ComponentBoundEvent:
+		return TEXT("component_bound_event");
+	case EBlueprintHelperGraphStatementKind::Delegate:
+		return TEXT("delegate");
 	default:
 		return TEXT("unknown");
 	}
@@ -1181,6 +1189,12 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagExecFlow FBluep
 
 	case EBlueprintHelperGraphStatementKind::Schedule:
 		return BuildSimpleStatement(Statement, TEXT("statement_schedule"), TEXT("schedule"), State, SymbolScopes);
+
+	case EBlueprintHelperGraphStatementKind::ComponentBoundEvent:
+		return BuildSimpleStatement(Statement, TEXT("statement_component_bound_event"), TEXT("component_bound_event"), State, SymbolScopes);
+
+	case EBlueprintHelperGraphStatementKind::Delegate:
+		return BuildSimpleStatement(Statement, TEXT("statement_delegate"), TEXT("delegate"), State, SymbolScopes);
 
 	case EBlueprintHelperGraphStatementKind::Unknown:
 	default:

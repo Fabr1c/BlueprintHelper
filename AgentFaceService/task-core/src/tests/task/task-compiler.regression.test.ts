@@ -1540,7 +1540,7 @@ describe('TaskSpec GraphWrite Append compiler', () => {
     const plan = compileTaskSpecToTaskPlan(TaskSpecSchema.parse(spec));
     const steps = plan.steps as Array<Record<string, unknown>>;
     const signatureSteps = steps.filter((step) => step.capability === 'blueprint_signature');
-    const graphWriteStep = steps.find((step) => step.capability === 'graph_write');
+    const graphWriteSteps = steps.filter((step) => step.capability === 'graph_write');
 
     assert.deepEqual(signatureSteps.map((step) => ({
       step_id: step.step_id,
@@ -1551,14 +1551,24 @@ describe('TaskSpec GraphWrite Append compiler', () => {
       { step_id: 'step_001', strategy: 'custom_event_signature', op: 'ensure_custom_event', name: 'ToggleDoor' },
       { step_id: 'step_002', strategy: 'custom_event_signature', op: 'ensure_custom_event', name: 'CloseDoor' },
     ]);
-    assert.ok(graphWriteStep);
-    assert.deepEqual((graphWriteStep as Record<string, unknown>).depends_on, ['step_001', 'step_002']);
-    assert.deepEqual(((graphWriteStep.write as Record<string, unknown>).ops as Array<Record<string, unknown>>).map((op) => ({
-      op: op.op,
-      name: op.name,
+    assert.deepEqual(graphWriteSteps.map((step) => ({
+      step_id: step.step_id,
+      depends_on: step.depends_on,
+      ops: ((step.write as Record<string, unknown>).ops as Array<Record<string, unknown>>).map((op) => ({
+        op: op.op,
+        name: op.name,
+      })),
     })), [
-      { op: 'ensure_entry', name: 'ToggleDoor' },
-      { op: 'ensure_entry', name: 'CloseDoor' },
+      {
+        step_id: 'step_003',
+        depends_on: ['step_001', 'step_002'],
+        ops: [{ op: 'ensure_entry', name: 'ToggleDoor' }],
+      },
+      {
+        step_id: 'step_004',
+        depends_on: ['step_001', 'step_002', 'step_003'],
+        ops: [{ op: 'ensure_entry', name: 'CloseDoor' }],
+      },
     ]);
   });
 

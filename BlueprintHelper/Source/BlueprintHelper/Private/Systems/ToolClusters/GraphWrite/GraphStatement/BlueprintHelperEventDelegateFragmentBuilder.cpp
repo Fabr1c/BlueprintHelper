@@ -11,6 +11,7 @@
 #include "K2Node_AssignDelegate.h"
 #include "K2Node_BaseMCDelegate.h"
 #include "K2Node_CreateDelegate.h"
+#include "K2Node_VariableGet.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionNodeSpawnerAdapter.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.h"
@@ -304,6 +305,70 @@ static bool ConnectCreateDelegateToPrimary(
 	return true;
 }
 
+static bool ConnectBindingObjectToPrimaryTarget(
+	UEdGraph* TargetGraph,
+	const FBlueprintHelperEventDelegateUseSiteEvidence& Evidence,
+	UK2Node* PrimaryNode,
+	FBlueprintHelperNodeFragment& OutFragment,
+	FString& OutError)
+{
+	if (!TargetGraph || !TargetGraph->GetSchema() || !Evidence.ComponentBindingProperty || !PrimaryNode)
+	{
+		return true;
+	}
+
+	UEdGraphPin* TargetPin = FBlueprintGraphWriteFacade::FindPinByAlias(PrimaryNode, TEXT("target"));
+	if (!TargetPin)
+	{
+		TargetPin = PrimaryNode->FindPin(UEdGraphSchema_K2::PN_Self);
+	}
+	if (!TargetPin || TargetPin->LinkedTo.Num() > 0)
+	{
+		return true;
+	}
+
+	UK2Node_VariableGet* ComponentGetNode = NewObject<UK2Node_VariableGet>(TargetGraph);
+	if (!ComponentGetNode)
+	{
+		OutError = TEXT("delegate target binding failed: could not allocate component getter.");
+		return false;
+	}
+
+	TargetGraph->Modify();
+	TargetGraph->AddNode(ComponentGetNode, /*bFromUI=*/true, /*bSelectNewNode=*/false);
+	ComponentGetNode->CreateNewGuid();
+	ComponentGetNode->SetFlags(RF_Transactional);
+	ComponentGetNode->VariableReference.SetSelfMember(Evidence.ComponentBindingProperty->GetFName());
+	ComponentGetNode->NodePosX = PrimaryNode->NodePosX - 220;
+	ComponentGetNode->NodePosY = PrimaryNode->NodePosY - 120;
+	ComponentGetNode->PostPlacedNewNode();
+	ComponentGetNode->AllocateDefaultPins();
+
+	UEdGraphPin* ComponentOutputPin = ComponentGetNode->GetValuePin();
+	if (!ComponentOutputPin)
+	{
+		OutError = TEXT("delegate target binding failed: component getter output pin is missing.");
+		return false;
+	}
+	if (!TargetGraph->GetSchema()->TryCreateConnection(ComponentOutputPin, TargetPin))
+	{
+		OutError = TEXT("delegate target binding failed: schema rejected component target connection.");
+		return false;
+	}
+
+	OutFragment.Nodes.Add(ComponentGetNode);
+	AddPinRef(OutFragment, TEXT("binding_object"), Evidence.ComponentPath, ComponentOutputPin);
+	AddPinRef(OutFragment, TEXT("delegate"), TEXT("target"), TargetPin);
+
+	FBlueprintHelperFragmentLink Link;
+	Link.From = FBlueprintHelperFragmentPinRef{ TEXT("binding_object"), ComponentOutputPin->PinName.ToString(), ComponentOutputPin->PinType.PinCategory.ToString(), ComponentOutputPin };
+	Link.To = FBlueprintHelperFragmentPinRef{ TEXT("delegate"), TargetPin->PinName.ToString(), TargetPin->PinType.PinCategory.ToString(), TargetPin };
+	OutFragment.InternalLinks.Add(Link);
+	OutFragment.PinBindings.Add(TEXT("binding_object.value"), Link.From);
+	OutFragment.PinBindings.Add(TEXT("delegate.target"), Link.To);
+	return true;
+}
+
 static UK2Node* SpawnResolvedPrimaryNode(
 	UEdGraph* TargetGraph,
 	const FBlueprintHelperActionResolutionResult& ActionResult,
@@ -322,7 +387,8 @@ static UK2Node* SpawnResolvedPrimaryNode(
 	FBlueprintHelperActionNodeSpawnOptions SpawnOptions;
 	SpawnOptions.NodeId = StatementId;
 	CollectLiteralDefaultValues(Statement, SpawnOptions.DefaultValues);
-	if (Evidence.SemanticKind == EBlueprintHelperActionSemanticKind::ComponentBoundEvent
+	if ((Evidence.SemanticKind == EBlueprintHelperActionSemanticKind::ComponentBoundEvent
+		|| Evidence.SemanticKind == EBlueprintHelperActionSemanticKind::Delegate)
 		&& Evidence.ComponentBindingProperty)
 	{
 		SpawnOptions.Bindings.Add(FBindingObject(Evidence.ComponentBindingProperty));
@@ -403,6 +469,12 @@ bool FBlueprintHelperEventDelegateFragmentBuilder::BuildStatement(
 		FBlueprintHelperActionResolutionCore::SemanticKindToString(SemanticKind),
 		Evidence,
 		OutFragment);
+
+	if (SemanticKind == EBlueprintHelperActionSemanticKind::Delegate
+		&& !ConnectBindingObjectToPrimaryTarget(TargetGraph, Evidence, PrimaryNode, OutFragment, OutError))
+	{
+		return false;
+	}
 
 	if (SemanticKind == EBlueprintHelperActionSemanticKind::Delegate
 		&& IsDelegateReferenceOperation(Evidence.DelegateOperation))
