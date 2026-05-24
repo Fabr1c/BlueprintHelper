@@ -1,8 +1,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
-
 class UEdGraphNode;
 class UEdGraphPin;
 
@@ -39,4 +37,3 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphWriteMutationIntent
 	TArray<FString> SequenceOrder;
 	UEdGraphNode** OutSequenceNode = nullptr;
 };
-

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteResultTypes.h"
 #include "Systems/ToolClusters/GraphWrite/Mutation/BlueprintHelperGraphWriteMutationIntent.h"
 
 class UEdGraph;
@@ -14,4 +14,3 @@ public:
 		const TArray<FBlueprintHelperGraphWriteMutationIntent>& Intents,
 		TArray<FString>& OutUnresolvedNodes);
 };
-

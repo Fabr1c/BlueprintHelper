@@ -1,7 +1,9 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
+
+class UEdGraph;
+class UK2Node;
 
 class BLUEPRINTHELPER_API FBlueprintGraphExistingNodeMapper
 {

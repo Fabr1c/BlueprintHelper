@@ -1,9 +1,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteResultTypes.h"
 
 class FBlueprintGraphWriteContext;
+class UK2Node;
+class UEdGraphPin;
 
 class BLUEPRINTHELPER_API FBlueprintGraphDefaultValueApplier
 {

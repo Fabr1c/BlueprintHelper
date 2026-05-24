@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteResultTypes.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphMutationPlan.h"
 
 class FJsonObject;

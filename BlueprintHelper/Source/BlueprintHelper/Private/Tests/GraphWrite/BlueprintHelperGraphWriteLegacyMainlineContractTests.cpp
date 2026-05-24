@@ -448,12 +448,29 @@ bool FBlueprintHelperPublicLegacyGraphWriteApiContractTest::RunTest(const FStrin
 		*this,
 		TEXT("Public/Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"),
 		{
+			TEXT("enum class EParsedBlueprintNodeType"),
+			TEXT("struct FParsedPinType"),
+			TEXT("struct FParsedLocalVariableDeclaration"),
+			TEXT("FParsedVariableReference"),
+			TEXT("FParsedEventReference"),
+			TEXT("GenerateBlueprintFromJson("),
+			TEXT("GenerateMultiGraphFromJson("),
+			TEXT("EnsureLocalVariableExists("),
+			TEXT("ConvertToEdGraphPinType("),
 			TEXT("SpawnMacroNode("),
 			TEXT("const FParsedNode& NodeData"),
 			TEXT("FParsedNode NodeData"),
 			TEXT("struct FParsedNode"),
 			TEXT("struct FParsedLink"),
 			TEXT("struct FParsedMacroReference")
+		});
+	bClean &= AssertMissingOrNoTokens(
+		*this,
+		TEXT("Public/Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphLocalVariableService.h"),
+		{
+			TEXT("FParsedPinType"),
+			TEXT("FParsedLocalVariableDeclaration"),
+			TEXT("FParsedVariableReference")
 		});
 	bClean &= AssertMissingOrNoTokens(
 		*this,

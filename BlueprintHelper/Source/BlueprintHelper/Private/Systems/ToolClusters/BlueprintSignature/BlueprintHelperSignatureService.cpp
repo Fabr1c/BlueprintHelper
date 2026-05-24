@@ -10,7 +10,8 @@
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutCoordinator.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
-#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
+#include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphLocalVariableService.h"
+#include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphParsedTypes.h"
 #include "Systems/ToolClusters/BlueprintSignature/Utils/BlueprintHelperSignatureMutationUtils.h"
 #include "Systems/ToolClusters/BlueprintSignature/Utils/BlueprintHelperSignatureReferenceContextUtils.h"
 #include "K2Node_CustomEvent.h"
@@ -522,7 +523,7 @@ public:
 
 			FEdGraphPinType PinType;
 			FString ConvertError;
-			if (!FBlueprintGraphWriteFacade::ConvertToEdGraphPinType(ParsedPinType, PinType, ConvertError))
+			if (!FBlueprintGraphLocalVariableService::ConvertToEdGraphPinType(ParsedPinType, PinType, ConvertError))
 			{
 				OutMessage = ConvertError.IsEmpty()
 					? FString::Printf(TEXT("Unable to convert signature parameter type: %s."), *ParamName)
