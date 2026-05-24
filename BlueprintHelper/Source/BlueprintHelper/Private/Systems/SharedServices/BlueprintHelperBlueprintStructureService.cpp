@@ -3,7 +3,8 @@
 #include "Shared/Services/BlueprintHelperBlueprintStructureService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
-#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
+#include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphLocalVariableService.h"
+#include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphParsedTypes.h"
 #include "Engine/Blueprint.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
@@ -55,7 +56,7 @@ static bool TryConvertPinTypeObject(
 	FEdGraphPinType& OutPinType,
 	FString& OutError)
 {
-	return FBlueprintGraphWriteFacade::ConvertToEdGraphPinType(ParsedPinTypeFromJson(PinTypeObject), OutPinType, OutError);
+	return FBlueprintGraphLocalVariableService::ConvertToEdGraphPinType(ParsedPinTypeFromJson(PinTypeObject), OutPinType, OutError);
 }
 
 static void ReadOptionalPinTypeOrDefault(
@@ -70,7 +71,7 @@ static void ReadOptionalPinTypeOrDefault(
 	if (Payload.IsValid() && Payload->TryGetObjectField(TEXT("pin_type"), PinTypeObject) && PinTypeObject && PinTypeObject->IsValid())
 	{
 		FString ConvertError;
-		FBlueprintGraphWriteFacade::ConvertToEdGraphPinType(ParsedPinTypeFromJson(*PinTypeObject), OutPinType, ConvertError);
+		FBlueprintGraphLocalVariableService::ConvertToEdGraphPinType(ParsedPinTypeFromJson(*PinTypeObject), OutPinType, ConvertError);
 	}
 }
 

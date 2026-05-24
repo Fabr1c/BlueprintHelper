@@ -1,7 +1,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphParsedTypes.h"
 
 struct FBlueprintGraphMutationNodePlan

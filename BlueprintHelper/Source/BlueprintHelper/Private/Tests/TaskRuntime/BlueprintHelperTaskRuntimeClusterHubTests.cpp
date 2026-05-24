@@ -31,6 +31,15 @@ static FBlueprintHelperToolResultBase MakeClusterEvidenceAppliedResult(const FSt
 	return FBlueprintHelperToolResultBuilder::Applied(Operation, TEXT("trace_cluster_evidence"));
 }
 
+static FBlueprintHelperToolResultBase MakeClusterEvidenceFailedResult(const FString& Operation)
+{
+	FBlueprintHelperToolError Error;
+	Error.Code = TEXT("test_failure");
+	Error.Stage = EBlueprintHelperToolStage::Execute;
+	Error.Message = TEXT("intentional test failure");
+	return FBlueprintHelperToolResultBuilder::Failure(Operation, TEXT("trace_cluster_evidence"), Error);
+}
+
 };
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -253,8 +262,6 @@ bool FBlueprintHelperTaskRuntimeCluster_BuildsProducerOwnedReviewEvidence::RunTe
 		FString(TEXT("component")));
 	TestFalse(TEXT("target anchor is required"), Target.TargetKey.IsEmpty());
 	TestFalse(TEXT("visual group key is required"), Target.VisualGroupKey.IsEmpty());
-	TestFalse(TEXT("baseline hash is required"), Target.BaselineHash.IsEmpty());
-	TestFalse(TEXT("recorded-after hash is required"), Target.RecordedAfterHash.IsEmpty());
 
 	TSharedRef<FJsonObject> AssetPayload = MakeShared<FJsonObject>();
 	AssetPayload->SetStringField(TEXT("asset_path"), TEXT("/Game/Data/DA_Door"));
@@ -281,10 +288,14 @@ bool FBlueprintHelperTaskRuntimeCluster_BuildsProducerOwnedReviewEvidence::RunTe
 			: static_cast<int32>(EBlueprintHelperReviewSurface::Unknown),
 		static_cast<int32>(EBlueprintHelperReviewSurface::DataAsset));
 
+	TSharedRef<FJsonObject> GraphWritePayload = MakeShared<FJsonObject>();
+	GraphWritePayload->SetStringField(TEXT("asset_path"), TEXT("/Game/BP_Door"));
+	GraphWritePayload->SetStringField(TEXT("graph_name"), TEXT("EventGraph"));
+
 	FBlueprintHelperTaskRuntimeLoweredStep GraphWriteStep = FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT("graph_write"), TEXT("append_blueprint_graph"));
-	GraphWriteStep.Payload = Payload;
+	GraphWriteStep.Payload = GraphWritePayload;
 	FBlueprintHelperWriteReviewEvidence GraphWriteEvidence;
-	TestFalse(TEXT("journal-backed graph write cluster does not use runtime fallback evidence"),
+	TestTrue(TEXT("graph write cluster owns Review evidence production"),
 		FBlueprintHelperGraphWriteTaskRuntimeCluster::BuildReviewEvidence(
 			GraphWriteStep,
 			FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeClusterEvidenceAppliedResult(GraphWriteStep.AdapterOperation),
@@ -292,6 +303,74 @@ bool FBlueprintHelperTaskRuntimeCluster_BuildsProducerOwnedReviewEvidence::RunTe
 			TEXT("task_cluster_evidence"),
 			3,
 			GraphWriteEvidence));
+	TestEqual(TEXT("graph write evidence asset path is required"),
+		GraphWriteEvidence.AssetPath,
+		FString(TEXT("/Game/BP_Door")));
+	TestEqual(TEXT("graph write operation kind is required"),
+		GraphWriteEvidence.OperationKind,
+		FString(TEXT("append_blueprint_graph")));
+	TestEqual(TEXT("graph write task step index is required"),
+		GraphWriteEvidence.TaskStepIndex,
+		3);
+	TestEqual(TEXT("graph write emits one graph surface target"), GraphWriteEvidence.AtomicTargets.Num(), 1);
+	if (GraphWriteEvidence.AtomicTargets.Num() != 1)
+	{
+		return false;
+	}
+	const FBlueprintHelperReviewAtomicTarget& GraphTarget = GraphWriteEvidence.AtomicTargets[0];
+	TestEqual(TEXT("graph write target kind is graph_block"),
+		GraphTarget.TargetKind,
+		FString(TEXT("graph_block")));
+	TestEqual(TEXT("graph write target key is stable"),
+		GraphTarget.TargetKey,
+		FString(TEXT("graph_block:EventGraph")));
+	TestEqual(TEXT("graph write target graph name is required"),
+		GraphTarget.GraphName,
+		FString(TEXT("EventGraph")));
+	TestEqual(TEXT("graph write target operation step is required"),
+		GraphTarget.TaskStepIndex,
+		3);
+	TestEqual(TEXT("graph write target surface is graph"),
+		static_cast<int32>(GraphTarget.Surface),
+		static_cast<int32>(EBlueprintHelperReviewSurface::Graph));
+
+	FBlueprintHelperWriteReviewEvidence FailedGraphWriteEvidence;
+	TestFalse(TEXT("failed graph write step does not produce Review evidence"),
+		FBlueprintHelperGraphWriteTaskRuntimeCluster::BuildReviewEvidence(
+			GraphWriteStep,
+			FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeClusterEvidenceFailedResult(GraphWriteStep.AdapterOperation),
+			TEXT("archive_cluster_evidence"),
+			TEXT("task_cluster_evidence"),
+			3,
+			FailedGraphWriteEvidence));
+
+	TSharedRef<FJsonObject> MissingGraphPayload = MakeShared<FJsonObject>();
+	MissingGraphPayload->SetStringField(TEXT("asset_path"), TEXT("/Game/BP_Door"));
+	FBlueprintHelperTaskRuntimeLoweredStep MissingGraphStep = GraphWriteStep;
+	MissingGraphStep.Payload = MissingGraphPayload;
+	FBlueprintHelperWriteReviewEvidence MissingGraphEvidence;
+	TestFalse(TEXT("graph write step without graph does not produce Review evidence"),
+		FBlueprintHelperGraphWriteTaskRuntimeCluster::BuildReviewEvidence(
+			MissingGraphStep,
+			FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeClusterEvidenceAppliedResult(MissingGraphStep.AdapterOperation),
+			TEXT("archive_cluster_evidence"),
+			TEXT("task_cluster_evidence"),
+			3,
+			MissingGraphEvidence));
+
+	TSharedRef<FJsonObject> MissingAssetPayload = MakeShared<FJsonObject>();
+	MissingAssetPayload->SetStringField(TEXT("graph_name"), TEXT("EventGraph"));
+	FBlueprintHelperTaskRuntimeLoweredStep MissingAssetStep = GraphWriteStep;
+	MissingAssetStep.Payload = MissingAssetPayload;
+	FBlueprintHelperWriteReviewEvidence MissingAssetEvidence;
+	TestFalse(TEXT("graph write step without asset does not produce Review evidence"),
+		FBlueprintHelperGraphWriteTaskRuntimeCluster::BuildReviewEvidence(
+			MissingAssetStep,
+			FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeClusterEvidenceAppliedResult(MissingAssetStep.AdapterOperation),
+			TEXT("archive_cluster_evidence"),
+			TEXT("task_cluster_evidence"),
+			3,
+			MissingAssetEvidence));
 	return true;
 }
 

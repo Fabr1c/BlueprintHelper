@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteResultTypes.h"
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/Views/SListView.h"
 #include "Widgets/Views/STableRow.h"
@@ -12,6 +12,8 @@ class SMultiLineEditableTextBox;
 class SSearchBox;
 class STableViewBase;
 class STextBlock;
+class UEdGraph;
+class UFunction;
 class FBlueprintHelperImportService;
 class FBlueprintHelperExportService;
 class FBlueprintHelperGraphResolver;

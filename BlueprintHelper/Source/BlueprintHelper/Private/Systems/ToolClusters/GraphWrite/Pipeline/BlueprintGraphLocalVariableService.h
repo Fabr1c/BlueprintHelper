@@ -1,7 +1,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
+#include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphParsedTypes.h"
+
+class UEdGraph;
+class UStruct;
+struct FEdGraphPinType;
 
 class BLUEPRINTHELPER_API FBlueprintGraphLocalVariableService
 {

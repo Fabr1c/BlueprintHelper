@@ -1,7 +1,10 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteResultTypes.h"
+
+class UBlueprint;
+class UEdGraph;
 
 class BLUEPRINTHELPER_API FBlueprintGraphGenerationPipeline
 {

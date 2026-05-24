@@ -5,6 +5,8 @@
 
 #include "Entry/BlueprintHelper.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintTextConverter.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
+#include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphGenerationPipeline.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Shared/Services/BlueprintHelperImportService.h"
 #include "HAL/PlatformApplicationMisc.h"
@@ -300,7 +302,7 @@ FReply SHelperMainWidget::OnGenerateFromTextClicked()
 		return FReply::Handled();
 	}
 
-	const FBlueprintGenerateResult GenerateResult = FBlueprintGraphWriteFacade::GenerateBlueprintFromJson(TargetGraph, JsonText, UnresolvedSource);
+	const FBlueprintGenerateResult GenerateResult = FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(TargetGraph, JsonText, UnresolvedSource);
 	RefreshUnresolvedList();
 	SetStatusMessage(GenerateResult.Message);
 	return FReply::Handled();
