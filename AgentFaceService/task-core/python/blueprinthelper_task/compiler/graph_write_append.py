@@ -1471,6 +1471,8 @@ SUPPORTED_GRAPH_BODY_STATEMENT_KINDS = {
     "let",
     "control",
     "create",
+    "convert",
+    "schedule",
     *PUBLIC_DELEGATE_STATEMENT_KIND_ALIASES.keys(),
 }
 SUPPORTED_GRAPH_BODY_CONTROL_KINDS = {"branch", "sequence", "return"}
@@ -1485,7 +1487,16 @@ SUPPORTED_GRAPH_BODY_EXPRESSION_KINDS = {
     "deconstruct",
     "select",
     "create",
+    "convert",
+    "schedule",
 }
+GRAPH_CONVERT_SCHEDULE_FIELDS = (
+    "function_operation",
+    "transform_operation",
+    "schedule_operation",
+    "target_class_path",
+    "graph_latent_allowed",
+)
 
 FIELD_STATEMENT_KIND_MAP = {
     "set": ("set", "variable"),
@@ -1503,6 +1514,12 @@ def _apply_field_taxonomy(out: Dict[str, Any], operation: str, scope: str) -> No
     out["kind"] = "field"
     out["field_operation"] = operation
     out["field_scope"] = scope
+
+
+def _copy_convert_schedule_semantic_fields(source: Dict[str, Any], target: Dict[str, Any]) -> None:
+    for field in GRAPH_CONVERT_SCHEDULE_FIELDS:
+        if field in source:
+            target[field] = source[field]
 
 
 def _field_scope_uses_property_path(scope: str) -> bool:
@@ -1579,7 +1596,7 @@ def _validate_supported_statements(statements: List[Dict[str, Any]], path: str) 
                 [{
                     "code": "unsupported_statement_kind",
                     "path": f"{statement_path}.kind",
-                    "message": "Use call, field, create, set, set_property, let, control, or a supported delegate statement kind.",
+                    "message": "Use call, field, create, convert, schedule, set, set_property, let, control, or a supported delegate statement kind.",
                 }],
             )
         if kind in PUBLIC_DELEGATE_STATEMENT_KIND_ALIASES:
@@ -1588,6 +1605,8 @@ def _validate_supported_statements(statements: List[Dict[str, Any]], path: str) 
             _validate_expression_map(statement.get("args"), f"{statement_path}.args")
         elif kind == "create":
             _validate_create_shape(statement, statement_path)
+            _validate_expression_map(statement.get("args"), f"{statement_path}.args")
+        elif kind in {"convert", "schedule"}:
             _validate_expression_map(statement.get("args"), f"{statement_path}.args")
         elif kind == "field":
             operation, _scope = _field_operation_scope(statement, statement_path)
@@ -1698,7 +1717,7 @@ def _validate_supported_expression(expression: Any, path: str) -> None:
             [{
                 "code": "unsupported_expression_kind",
                 "path": f"{path}.kind",
-                "message": "Use literal, field, get, get_property, call, op, construct, deconstruct, select, or create.",
+                "message": "Use literal, field, get, get_property, call, op, construct, deconstruct, select, create, convert, or schedule.",
             }],
         )
     if kind == "field":
@@ -1715,7 +1734,7 @@ def _validate_supported_expression(expression: Any, path: str) -> None:
             )
     if kind == "create":
         _validate_create_shape(expression, path)
-    if kind in {"call", "op", "construct", "deconstruct", "create"}:
+    if kind in {"call", "op", "construct", "deconstruct", "create", "convert", "schedule"}:
         _validate_expression_map(expression.get("args"), f"{path}.args")
     if kind == "op":
         if "left" in expression:
@@ -1864,7 +1883,7 @@ def _clone_logic_statement_with_compiled_ids(statement: Dict[str, Any], statemen
 
     if kind == "let":
         out["value"] = _clone_logic_expression_with_compiled_ids(statement.get("value"), f"{statement_id}_value")
-    elif kind in {"call", "create"} and isinstance(statement.get("args"), dict):
+    elif kind in {"call", "create", "convert", "schedule"} and isinstance(statement.get("args"), dict):
         out["args"] = {
             arg_name: _clone_logic_expression_with_compiled_ids(arg_value, f"{statement_id}_arg_{_to_id_segment(str(arg_name))}")
             for arg_name, arg_value in statement["args"].items()
@@ -1948,7 +1967,7 @@ def _compile_statement_flow(statement: Dict[str, Any], node_id: str, path: str, 
     node = _compile_statement_node(statement, node_id, path)
     nodes: List[Dict[str, Any]] = [node]
     links: List[Dict[str, Any]] = []
-    if kind in {"call", "create"} or delegate_operation == "call":
+    if kind in {"call", "create", "convert", "schedule"} or delegate_operation == "call":
         input_values: Dict[str, Any] = {}
         args = statement.get("args")
         if isinstance(args, dict):
@@ -1960,7 +1979,7 @@ def _compile_statement_flow(statement: Dict[str, Any], node_id: str, path: str, 
                     links.append({"kind": "data", "from": arg_flow["output"], "to": f"{node_id}.{arg_name}"})
                 else:
                     input_values[arg_name] = arg_flow.get("default_value")
-        if kind in {"call", "create"}:
+        if kind in {"call", "create", "convert", "schedule"}:
             node["inputs"] = input_values
         else:
             node["args"] = input_values
@@ -2084,7 +2103,7 @@ def _compile_value_expression(expression: Any, node_id: str, path: str, context:
             [{
                 "code": "unsupported_expression_kind",
                 "path": f"{path}.kind",
-                "message": "Use literal, field, get, get_property, call, op, construct, deconstruct, select, or create.",
+                "message": "Use literal, field, get, get_property, call, op, construct, deconstruct, select, create, convert, or schedule.",
             }],
         )
 
@@ -2184,12 +2203,21 @@ def _compile_value_expression(expression: Any, node_id: str, path: str, context:
         if isinstance(args, dict):
             for arg_name, arg_value in args.items():
                 _compile_expression_input(arg_value, str(arg_name), f"{node_id}_{_to_id_segment(str(arg_name))}", f"{path}.args.{arg_name}", node, nodes, links, context)
+    elif kind in {"convert", "schedule"}:
+        _copy_convert_schedule_semantic_fields(expression, node)
+        target = _optional_string(expression, "target")
+        if target:
+            node["target"] = target
+        args = expression.get("args")
+        if isinstance(args, dict):
+            for arg_name, arg_value in args.items():
+                _compile_expression_input(arg_value, str(arg_name), f"{node_id}_{_to_id_segment(str(arg_name))}", f"{path}.args.{arg_name}", node, nodes, links, context)
     elif isinstance(expression.get("args"), dict):
         for arg_name, arg_value in expression["args"].items():
             _compile_expression_input(arg_value, str(arg_name), f"{node_id}_{_to_id_segment(str(arg_name))}", f"{path}.args.{arg_name}", node, nodes, links, context)
     nodes.insert(0, node)
 
-    output_pin = "value" if kind in {"construct", "deconstruct", "select", "create"} else "ReturnValue"
+    output_pin = "value" if kind in {"construct", "deconstruct", "select", "create", "convert", "schedule"} else "ReturnValue"
     return {"nodes": nodes, "links": links, "output": f"{node_id}.{output_pin}"}
 
 
@@ -2910,6 +2938,16 @@ def _compile_statement_node(statement: Dict[str, Any], node_id: str, path: str) 
             node["key_pin_type"] = statement.get("key_pin_type")
         if "value_pin_type" in statement:
             node["value_pin_type"] = statement.get("value_pin_type")
+        return _omit_none(node)
+
+    if kind in {"convert", "schedule"}:
+        node = {
+            "id": node_id,
+            "kind": kind,
+            "target": _optional_string(statement, "target"),
+            "inputs": _compile_args(statement.get("args")),
+        }
+        _copy_convert_schedule_semantic_fields(statement, node)
         return _omit_none(node)
 
     if kind == "set":

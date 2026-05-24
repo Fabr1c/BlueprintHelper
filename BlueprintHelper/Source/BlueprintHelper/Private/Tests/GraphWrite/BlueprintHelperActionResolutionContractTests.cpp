@@ -402,6 +402,10 @@ bool FBlueprintHelperActionResolutionFunctionSemanticResolverBoundaryContractTes
 		&& FunctionClusterSource.Contains(TEXT("IsSupportedSemanticKind"))
 		&& FunctionClusterSource.Contains(TEXT("FBlueprintHelperFunctionSemanticActionResolver::Resolve")));
 
+	bClean &= TestTrue(
+		TEXT("GenericAssetStructControlActionCluster routes generic Convert/Schedule through the dedicated transform/schedule resolver"),
+		GenericClusterSource.Contains(TEXT("FBlueprintHelperGenericTransformScheduleActionResolver::Resolve")));
+
 	const TArray<FString> GenericForbiddenTokens = {
 		TEXT("convert_function"),
 		TEXT("schedule_function"),
@@ -421,7 +425,7 @@ bool FBlueprintHelperActionResolutionFunctionSemanticResolverBoundaryContractTes
 		}
 	}
 
-	TestTrue(TEXT("Convert/Schedule stay owned by FunctionAction semantic resolver boundary"), bClean);
+	TestTrue(TEXT("Convert/Schedule keep distinct FunctionAction and Generic transform/schedule boundaries"), bClean);
 	return bClean;
 }
 

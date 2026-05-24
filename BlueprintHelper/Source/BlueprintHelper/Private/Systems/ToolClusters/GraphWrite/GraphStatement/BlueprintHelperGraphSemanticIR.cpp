@@ -487,10 +487,21 @@ TSharedPtr<FBlueprintHelperGraphStatementIR> FBlueprintHelperGraphSemanticIRBuil
 	StatementObject->TryGetStringField(TEXT("field_scope"), Statement->FieldScope);
 	Statement->FieldOperation = NormalizeFieldToken(Statement->FieldOperation);
 	Statement->FieldScope = NormalizeFieldToken(Statement->FieldScope);
+	StatementObject->TryGetStringField(TEXT("function_operation"), Statement->FunctionOperation);
+	Statement->FunctionOperation = NormalizeFieldToken(Statement->FunctionOperation);
+	StatementObject->TryGetStringField(TEXT("transform_operation"), Statement->TransformOperation);
+	Statement->TransformOperation = NormalizeFieldToken(Statement->TransformOperation);
+	StatementObject->TryGetStringField(TEXT("schedule_operation"), Statement->ScheduleOperation);
+	Statement->ScheduleOperation = NormalizeFieldToken(Statement->ScheduleOperation);
 	StatementObject->TryGetStringField(TEXT("create_operation"), Statement->CreateOperation);
 	Statement->CreateOperation = NormalizeFieldToken(Statement->CreateOperation);
 	StatementObject->TryGetStringField(TEXT("class_path"), Statement->ClassPath);
+	if (Statement->ClassPath.IsEmpty())
+	{
+		StatementObject->TryGetStringField(TEXT("target_class_path"), Statement->ClassPath);
+	}
 	StatementObject->TryGetStringField(TEXT("asset_path"), Statement->AssetPath);
+	Statement->GraphLatentAllowed = ReadOptionalJsonValueAsString(StatementObject, TEXT("graph_latent_allowed")).ToLower();
 	Statement->PinType = ReadOptionalJsonValueAsString(StatementObject, TEXT("pin_type"));
 	Statement->KeyPinType = ReadOptionalJsonValueAsString(StatementObject, TEXT("key_pin_type"));
 	Statement->ValuePinType = ReadOptionalJsonValueAsString(StatementObject, TEXT("value_pin_type"));
@@ -611,10 +622,21 @@ TSharedPtr<FBlueprintHelperGraphExpressionIR> FBlueprintHelperGraphSemanticIRBui
 	ExpressionObject->TryGetStringField(TEXT("field_scope"), Expression->FieldScope);
 	Expression->FieldOperation = NormalizeFieldToken(Expression->FieldOperation);
 	Expression->FieldScope = NormalizeFieldToken(Expression->FieldScope);
+	ExpressionObject->TryGetStringField(TEXT("function_operation"), Expression->FunctionOperation);
+	Expression->FunctionOperation = NormalizeFieldToken(Expression->FunctionOperation);
+	ExpressionObject->TryGetStringField(TEXT("transform_operation"), Expression->TransformOperation);
+	Expression->TransformOperation = NormalizeFieldToken(Expression->TransformOperation);
+	ExpressionObject->TryGetStringField(TEXT("schedule_operation"), Expression->ScheduleOperation);
+	Expression->ScheduleOperation = NormalizeFieldToken(Expression->ScheduleOperation);
 	ExpressionObject->TryGetStringField(TEXT("create_operation"), Expression->CreateOperation);
 	Expression->CreateOperation = NormalizeFieldToken(Expression->CreateOperation);
 	ExpressionObject->TryGetStringField(TEXT("class_path"), Expression->ClassPath);
+	if (Expression->ClassPath.IsEmpty())
+	{
+		ExpressionObject->TryGetStringField(TEXT("target_class_path"), Expression->ClassPath);
+	}
 	ExpressionObject->TryGetStringField(TEXT("asset_path"), Expression->AssetPath);
+	Expression->GraphLatentAllowed = ReadOptionalJsonValueAsString(ExpressionObject, TEXT("graph_latent_allowed")).ToLower();
 	Expression->PinType = ReadOptionalJsonValueAsString(ExpressionObject, TEXT("pin_type"));
 	Expression->KeyPinType = ReadOptionalJsonValueAsString(ExpressionObject, TEXT("key_pin_type"));
 	Expression->ValuePinType = ReadOptionalJsonValueAsString(ExpressionObject, TEXT("value_pin_type"));
@@ -880,6 +902,11 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveStatement(
 		Statement->ResolvedTarget = FBlueprintHelperGraphSemanticIRUtils::ResolveTargetString(Statement->Target, Statement->Kind, EBlueprintHelperGraphExpressionKind::Unknown, Context);
 		break;
 
+	case EBlueprintHelperGraphStatementKind::Convert:
+	case EBlueprintHelperGraphStatementKind::Schedule:
+		Statement->ResolvedTarget = FBlueprintHelperGraphSemanticIRUtils::ResolveTargetString(Statement->Target, Statement->Kind, EBlueprintHelperGraphExpressionKind::Unknown, Context);
+		break;
+
 	case EBlueprintHelperGraphStatementKind::ComponentBoundEvent:
 		if (Statement->Target.TrimStartAndEnd().IsEmpty())
 		{
@@ -1132,6 +1159,11 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveExpression(
 		{
 			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("needs_more_semantic_context"), Expression->Path + TEXT(".target"), TEXT("create expression requires class_path, asset_path, pin_type, or target evidence."));
 		}
+		Expression->ResolvedTarget = FBlueprintHelperGraphSemanticIRUtils::ResolveTargetString(Expression->Target, EBlueprintHelperGraphStatementKind::Unknown, Expression->Kind, Context);
+		break;
+
+	case EBlueprintHelperGraphExpressionKind::Convert:
+	case EBlueprintHelperGraphExpressionKind::Schedule:
 		Expression->ResolvedTarget = FBlueprintHelperGraphSemanticIRUtils::ResolveTargetString(Expression->Target, EBlueprintHelperGraphStatementKind::Unknown, Expression->Kind, Context);
 		break;
 

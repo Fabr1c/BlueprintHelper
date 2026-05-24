@@ -305,6 +305,10 @@ static EBlueprintHelperActionSemanticKind ResolveActionSemanticKindForExpression
 		return EBlueprintHelperActionSemanticKind::Select;
 	case EBlueprintHelperGraphExpressionKind::Create:
 		return EBlueprintHelperActionSemanticKind::Create;
+	case EBlueprintHelperGraphExpressionKind::Convert:
+		return EBlueprintHelperActionSemanticKind::Convert;
+	case EBlueprintHelperGraphExpressionKind::Schedule:
+		return EBlueprintHelperActionSemanticKind::Schedule;
 	default:
 		return EBlueprintHelperActionSemanticKind::Unknown;
 	}
@@ -1141,6 +1145,77 @@ bool FBlueprintHelperGraphStatementBuilder::BuildCreateFragment(
 	PopulateCommonFragmentMetadata(Request, OutFragment);
 	OutFragment.OwnershipTags.Add(TEXT("semantic_kind"), TEXT("create"));
 	OutFragment.OwnershipTags.Add(TEXT("create_operation"), Request.CreateOperation);
+	return true;
+}
+
+bool FBlueprintHelperGraphStatementBuilder::BuildActionProviderFragment(
+	UEdGraph* TargetGraph,
+	const FBlueprintHelperGraphFragmentBuildRequest& Request,
+	EBlueprintHelperActionSemanticKind SemanticKind,
+	FBlueprintHelperNodeFragment& OutFragment,
+	FString& OutError,
+	const FBlueprintHelperActionContextScope* ActionContextScope)
+{
+	OutFragment = FBlueprintHelperNodeFragment();
+
+	FBlueprintHelperActionResolutionRequest ActionRequest;
+	TArray<FString> ArgumentNames;
+	Request.DefaultValues.GetKeys(ArgumentNames);
+	if (!TryBuildProjectedActionRequestFromContext(
+		TargetGraph,
+		ActionContextScope,
+		Request.ActionContextStatementId.IsEmpty()
+			? Request.FragmentId
+			: Request.ActionContextStatementId,
+		SemanticKind,
+		Request.Query,
+		Request.Target,
+		Request.PropertyPath,
+		Request.TypeName,
+		Request.SearchMode,
+		Request.AmbiguityPolicy,
+		Request.CategoryPriority,
+		ArgumentNames,
+		ActionRequest,
+		OutError))
+	{
+		return false;
+	}
+
+	const FBlueprintHelperActionResolutionResult ActionResult =
+		FBlueprintGraphWriteFacade::ResolveActionForGraph(ActionRequest);
+	if (!ActionResult.IsResolved())
+	{
+		OutError = ActionResult.Message.IsEmpty()
+			? FString::Printf(
+				TEXT("action provider unavailable: semantic=%s cluster=%s"),
+				*FBlueprintHelperActionResolutionCore::SemanticKindToString(SemanticKind),
+				*FBlueprintHelperActionResolutionCore::ClusterKindToString(ActionResult.ClusterKind))
+			: ActionResult.Message;
+		return false;
+	}
+
+	FBlueprintHelperActionNodeSpawnOptions SpawnOptions;
+	SpawnOptions.NodeId = Request.FragmentId;
+	SpawnOptions.DefaultValues = Request.DefaultValues;
+	UK2Node* SpawnedNode = FBlueprintHelperActionNodeSpawnerAdapter::InvokeSelectedSpawner(
+		TargetGraph,
+		ActionResult,
+		FVector2D(Request.Location.X, Request.Location.Y),
+		SpawnOptions,
+		OutError);
+	if (!SpawnedNode)
+	{
+		return false;
+	}
+
+	OutFragment.FragmentId = Request.FragmentId;
+	OutFragment.SourceStatementId = Request.SourceStatementId.IsEmpty() ? Request.FragmentId : Request.SourceStatementId;
+	OutFragment.PrimaryNode = SpawnedNode;
+	OutFragment.Nodes.Add(SpawnedNode);
+	PopulateActionProviderFragmentPins(SpawnedNode, OutFragment);
+	PopulateCommonFragmentMetadata(Request, OutFragment);
+	OutFragment.OwnershipTags.Add(TEXT("semantic_kind"), FBlueprintHelperActionResolutionCore::SemanticKindToString(SemanticKind));
 	return true;
 }
 

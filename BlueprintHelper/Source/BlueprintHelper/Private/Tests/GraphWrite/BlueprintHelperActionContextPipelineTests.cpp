@@ -153,6 +153,7 @@ bool FBlueprintHelperActionContextDtoSourceContractTest::RunTest(const FString& 
 		TEXT("FunctionOperation"),
 		TEXT("TransformOperation"),
 		TEXT("ScheduleOperation"),
+		TEXT("GraphLatentAllowed"),
 		TEXT("StructPath"),
 		TEXT("TypeStructureId"),
 		TEXT("TMap<FString, FString> DefaultValues"),
@@ -617,6 +618,86 @@ bool FBlueprintHelperActionContextSingleDemandScheduleMapsToFunctionActionTest::
 	TestEqual(TEXT("Projected schedule operation"), Context.Semantic.ScheduleOperation, FString(TEXT("latent_or_async")));
 	TestEqual(TEXT("Projected schedule function evidence"), Context.Evidence.FindRef(TEXT("function_operation")), FString(TEXT("schedule_function")));
 	TestEqual(TEXT("Projected schedule evidence"), Context.Evidence.FindRef(TEXT("schedule_operation")), FString(TEXT("latent_or_async")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionContextStatementConvertRoutesToGenericActionTest,
+	"BlueprintHelper.GraphWrite.ActionContext.Statement.ConvertRoutesToGenericAction",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionContextStatementConvertRoutesToGenericActionTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FBlueprintHelperGraphStatementIR> Statement = MakeShared<FBlueprintHelperGraphStatementIR>();
+	Statement->StatementId = TEXT("stmt_generic_convert");
+	Statement->Path = TEXT("$.statements[0]");
+	Statement->Kind = EBlueprintHelperGraphStatementKind::Convert;
+	Statement->TransformOperation = TEXT("dynamic_cast");
+	Statement->ClassPath = TEXT("/Script/Engine.Actor");
+	Statement->Target = TEXT("/Script/Engine.Actor");
+
+	TArray<TSharedPtr<FBlueprintHelperGraphStatementIR>> Statements;
+	Statements.Add(Statement);
+	const TArray<FBlueprintHelperActionContextDemand> Demands =
+		FBlueprintHelperActionContextDemandCollector::CollectFromStatements(Statements);
+
+	TestEqual(TEXT("one convert demand"), Demands.Num(), 1);
+	const FBlueprintHelperActionContextDemand& Demand = Demands[0];
+	TestEqual(TEXT("generic convert cluster"), Demand.ClusterKind, EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction);
+	TestEqual(TEXT("generic convert semantic"), Demand.SemanticKind, EBlueprintHelperActionSemanticKind::Convert);
+	TestEqual(TEXT("generic convert transform operation"), Demand.TransformOperation, FString(TEXT("dynamic_cast")));
+	TestEqual(TEXT("generic convert clears function operation"), Demand.FunctionOperation, FString());
+	TestEqual(TEXT("generic convert class path"), Demand.ClassPath, FString(TEXT("/Script/Engine.Actor")));
+
+	FBlueprintHelperActionContextSnapshot Snapshot;
+	Snapshot.Graph.GraphName = TEXT("EventGraph");
+	const FBlueprintHelperResolvedActionContext Context =
+		FBlueprintHelperActionContextInferenceService::BuildContextForTest(Snapshot, Demand);
+
+	TestEqual(TEXT("projected generic convert cluster"), Context.ClusterKind, EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction);
+	TestEqual(TEXT("projected generic convert transform"), Context.Semantic.TransformOperation, FString(TEXT("dynamic_cast")));
+	TestEqual(TEXT("projected generic convert no function op"), Context.Semantic.FunctionOperation, FString());
+	TestEqual(TEXT("projected generic convert class path evidence"), Context.Evidence.FindRef(TEXT("class_path")), FString(TEXT("/Script/Engine.Actor")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionContextStatementScheduleRoutesToGenericActionTest,
+	"BlueprintHelper.GraphWrite.ActionContext.Statement.ScheduleRoutesToGenericAction",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionContextStatementScheduleRoutesToGenericActionTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FBlueprintHelperGraphStatementIR> Statement = MakeShared<FBlueprintHelperGraphStatementIR>();
+	Statement->StatementId = TEXT("stmt_generic_schedule");
+	Statement->Path = TEXT("$.statements[0]");
+	Statement->Kind = EBlueprintHelperGraphStatementKind::Schedule;
+	Statement->ScheduleOperation = TEXT("timer_delegate_node");
+	Statement->GraphLatentAllowed = TEXT("true");
+
+	TArray<TSharedPtr<FBlueprintHelperGraphStatementIR>> Statements;
+	Statements.Add(Statement);
+	const TArray<FBlueprintHelperActionContextDemand> Demands =
+		FBlueprintHelperActionContextDemandCollector::CollectFromStatements(Statements);
+
+	TestEqual(TEXT("one schedule demand"), Demands.Num(), 1);
+	const FBlueprintHelperActionContextDemand& Demand = Demands[0];
+	TestEqual(TEXT("generic schedule cluster"), Demand.ClusterKind, EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction);
+	TestEqual(TEXT("generic schedule semantic"), Demand.SemanticKind, EBlueprintHelperActionSemanticKind::Schedule);
+	TestEqual(TEXT("generic schedule operation"), Demand.ScheduleOperation, FString(TEXT("timer_delegate_node")));
+	TestEqual(TEXT("generic schedule clears function operation"), Demand.FunctionOperation, FString());
+	TestEqual(TEXT("generic schedule latent evidence"), Demand.GraphLatentAllowed, FString(TEXT("true")));
+
+	FBlueprintHelperActionContextSnapshot Snapshot;
+	Snapshot.Graph.GraphName = TEXT("EventGraph");
+	Snapshot.Graph.bLatentAllowed = false;
+	const FBlueprintHelperResolvedActionContext Context =
+		FBlueprintHelperActionContextInferenceService::BuildContextForTest(Snapshot, Demand);
+
+	TestEqual(TEXT("projected generic schedule cluster"), Context.ClusterKind, EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction);
+	TestEqual(TEXT("projected generic schedule operation"), Context.Semantic.ScheduleOperation, FString(TEXT("timer_delegate_node")));
+	TestEqual(TEXT("projected generic schedule no function op"), Context.Semantic.FunctionOperation, FString());
+	TestEqual(TEXT("projected generic schedule explicit latent evidence wins"), Context.Evidence.FindRef(TEXT("graph_latent_allowed")), FString(TEXT("true")));
 	return true;
 }
 

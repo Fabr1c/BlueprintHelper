@@ -4,6 +4,7 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericActionProviderBoundary.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericAssetStructControlActionResolver.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericCreateActionResolver.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericTransformScheduleActionResolver.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperStructTypeStructureActionResolver.h"
 
 namespace
@@ -81,6 +82,12 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperGenericAssetStructControl
 	if (Context.GetSemantic().Kind == EBlueprintHelperActionSemanticKind::Create)
 	{
 		return FBlueprintHelperGenericCreateActionResolver::Resolve(Request, Context);
+	}
+
+	if (Context.GetSemantic().Kind == EBlueprintHelperActionSemanticKind::Convert
+		|| Context.GetSemantic().Kind == EBlueprintHelperActionSemanticKind::Schedule)
+	{
+		return FBlueprintHelperGenericTransformScheduleActionResolver::Resolve(Request, Context);
 	}
 
 	const FBlueprintHelperGenericActionProviderBoundary Boundary =

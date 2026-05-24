@@ -73,7 +73,7 @@ Out of scope:
 - Modify: `D:/UEProjects/Template/Plugins/BlueprintHelper/BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintHelperFunctionActionClusterTests.cpp`
 - Create: `D:/UEProjects/Template/Plugins/BlueprintHelper/BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintHelperGenericTransformScheduleActionResolverTests.cpp`
 
-- [ ] **Step 1.1: Add Function ownership regression**
+- [x] **Step 1.1: Add Function ownership regression**
 
 Add this assertion to the existing FunctionAction tests:
 
@@ -84,7 +84,7 @@ TestFalse(TEXT("function convert has no generic match reason"), ConvertResult.Ma
 TestFalse(TEXT("function schedule has no generic match reason"), ScheduleResult.MatchReason.Contains(TEXT("generic_schedule")));
 ```
 
-- [ ] **Step 1.2: Add RED Generic convert missing evidence test**
+- [x] **Step 1.2: Add RED Generic convert missing evidence test**
 
 ```cpp
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -112,7 +112,7 @@ bool FBlueprintHelperGenericConvertRequiresGenericOperationTest::RunTest(const F
 }
 ```
 
-- [ ] **Step 1.3: Add RED Generic schedule missing evidence test**
+- [x] **Step 1.3: Add RED Generic schedule missing evidence test**
 
 ```cpp
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -140,7 +140,7 @@ bool FBlueprintHelperGenericScheduleRequiresGenericOperationTest::RunTest(const 
 }
 ```
 
-- [ ] **Step 1.4: Run RED ownership tests**
+- [x] **Step 1.4: Run ownership tests**
 
 Run:
 
@@ -150,13 +150,15 @@ Run:
 
 Expected before implementation: Generic tests fail because Generic `Convert/Schedule` still use the old unsupported boundary; FunctionAction tests pass.
 
+Execution note: no separate pre-implementation RED artifact was retained in this pass. The ownership assertions are covered by the final GREEN `BlueprintHelper.GraphWrite.ActionResolution` and full `BlueprintHelper.GraphWrite` automation runs recorded below.
+
 ## Task 2: Add Routing Rules In ActionContext
 
 **Files:**
 - Modify: `D:/UEProjects/Template/Plugins/BlueprintHelper/BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextDemandCollector.cpp`
 - Modify: `D:/UEProjects/Template/Plugins/BlueprintHelper/BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextBundleProjector.cpp`
 
-- [ ] **Step 2.1: Route Function operations to FunctionAction**
+- [x] **Step 2.1: Route Function operations to FunctionAction**
 
 Keep this behavior:
 
@@ -175,7 +177,7 @@ if (Kind == EBlueprintHelperActionSemanticKind::Schedule
 }
 ```
 
-- [ ] **Step 2.2: Route Generic operations to Generic cluster**
+- [x] **Step 2.2: Route Generic operations to Generic cluster**
 
 Add:
 
@@ -199,7 +201,7 @@ if (Kind == EBlueprintHelperActionSemanticKind::Schedule
 }
 ```
 
-- [ ] **Step 2.3: Reject ambiguous second-stage ownership**
+- [x] **Step 2.3: Reject ambiguous second-stage ownership**
 
 If both Function and Generic operation fields are present, return invalid context:
 
@@ -209,7 +211,7 @@ Result.ErrorCode = TEXT("ambiguous_convert_schedule_owner");
 Result.Message = TEXT("Convert/Schedule must provide either FunctionOperation or Generic transform/schedule operation, not both.");
 ```
 
-- [ ] **Step 2.4: Run ActionContext routing tests**
+- [x] **Step 2.4: Run ActionContext routing tests**
 
 Run:
 
@@ -227,7 +229,7 @@ Expected: existing Function convert/schedule context tests remain green; new Gen
 - Modify: `D:/UEProjects/Template/Plugins/BlueprintHelper/BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericAssetStructControlActionCluster.cpp`
 - Modify: `D:/UEProjects/Template/Plugins/BlueprintHelper/BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericActionProviderBoundary.cpp`
 
-- [ ] **Step 3.1: Add resolver interface**
+- [x] **Step 3.1: Add resolver interface**
 
 ```cpp
 #pragma once
@@ -250,7 +252,7 @@ public:
 };
 ```
 
-- [ ] **Step 3.2: Implement Generic convert operation gate**
+- [x] **Step 3.2: Implement Generic convert operation gate**
 
 ```cpp
 static bool IsSupportedGenericTransformOperation(const FString& Operation)
@@ -270,7 +272,7 @@ Result.ErrorCode = TEXT("needs_more_semantic_context");
 Result.Message = TEXT("Generic Convert requires transform_operation.");
 ```
 
-- [ ] **Step 3.3: Implement cast node resolution**
+- [x] **Step 3.3: Implement cast node resolution**
 
 For `dynamic_cast` and `class_cast`, create a selected spawner for `UK2Node_DynamicCast` and expose target class evidence:
 
@@ -292,7 +294,7 @@ Result.ErrorCode = TEXT("needs_more_semantic_context");
 Result.Message = TEXT("Generic cast requires target class evidence.");
 ```
 
-- [ ] **Step 3.4: Keep type promotion honest**
+- [x] **Step 3.4: Keep type promotion honest**
 
 If UE type-promotion evidence cannot provide a selected spawner, return:
 
@@ -304,7 +306,7 @@ Result.Message = TEXT("type_promotion requires projected type-promotion spawner 
 
 Do not reuse `FBlueprintHelperOperatorActionResolver` unless the request is explicitly reclassified as FunctionAction/Operator by ActionContext.
 
-- [ ] **Step 3.5: Implement Generic schedule operation gate**
+- [x] **Step 3.5: Implement Generic schedule operation gate**
 
 ```cpp
 static bool IsSupportedGenericScheduleOperation(const FString& Operation)
@@ -317,7 +319,7 @@ static bool IsSupportedGenericScheduleOperation(const FString& Operation)
 
 Missing operation returns `needs_more_semantic_context`. Unsupported operation returns `unsupported_generic_schedule_operation`.
 
-- [ ] **Step 3.6: Route from Generic cluster**
+- [x] **Step 3.6: Route from Generic cluster**
 
 Add before the provider boundary fallback:
 
@@ -333,7 +335,7 @@ if (Context.GetSemantic().Kind == EBlueprintHelperActionSemanticKind::Schedule)
 }
 ```
 
-- [ ] **Step 3.7: Run resolver tests**
+- [x] **Step 3.7: Run resolver tests**
 
 Run:
 
@@ -350,7 +352,7 @@ Expected: Generic missing-context tests pass; concrete cast test passes if targe
 - Modify: `D:/UEProjects/Template/Plugins/BlueprintHelper/AgentFaceService/task-core/python/blueprinthelper_task/compiler/graph_write_append.py`
 - Modify: `D:/UEProjects/Template/Plugins/BlueprintHelper/BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintHelperActionResolutionContractTests.cpp`
 
-- [ ] **Step 4.1: Preserve Generic transform/schedule fields in TS**
+- [x] **Step 4.1: Preserve Generic transform/schedule fields in TS**
 
 For `kind:"convert"` and `kind:"schedule"` body nodes, preserve:
 
@@ -362,7 +364,7 @@ target_class_path: optionalString(record, 'target_class_path'),
 graph_latent_allowed: typeof record['graph_latent_allowed'] === 'boolean' ? record['graph_latent_allowed'] : undefined,
 ```
 
-- [ ] **Step 4.2: Mirror lowering in Python**
+- [x] **Step 4.2: Mirror lowering in Python**
 
 ```python
 copy_optional_string(record, node, "transform_operation")
@@ -372,7 +374,7 @@ copy_optional_string(record, node, "target_class_path")
 copy_optional_bool(record, node, "graph_latent_allowed")
 ```
 
-- [ ] **Step 4.3: Update source contract**
+- [x] **Step 4.3: Update source contract**
 
 The old contract that forbids all `Convert/Schedule` tokens in Generic must be narrowed to forbid only Function-owned tokens:
 
@@ -392,7 +394,7 @@ TestTrue(TEXT("Generic Convert/Schedule resolver is present"),
 	GenericClusterSource.Contains(TEXT("FBlueprintHelperGenericTransformScheduleActionResolver")));
 ```
 
-- [ ] **Step 4.4: Run compiler and contract tests**
+- [x] **Step 4.4: Run compiler and contract tests**
 
 Run:
 
@@ -413,7 +415,7 @@ Expected: Node tests pass, Python tests pass, contract automation has 0 failed.
 - Modify: `D:/UEProjects/Template/Plugins/BlueprintHelper/BlueprintHelper/Develop/Plan/BlueprintHelper_GraphWrite_FourClusterCompletionStatus_20260522_CN.md`
 - Modify: `D:/UEProjects/Template/Plugins/BlueprintHelper/BlueprintHelper/Develop/Gap/BlueprintHelper_GraphWrite_ArchitectureGaps_Audit_20260522_CN.md`
 
-- [ ] **Step 5.1: Run focused automation**
+- [x] **Step 5.1: Run focused automation**
 
 Run:
 
@@ -423,7 +425,7 @@ Run:
 
 Expected: 0 failed, 0 not run.
 
-- [ ] **Step 5.2: Run full GraphWrite regression**
+- [x] **Step 5.2: Run full GraphWrite regression**
 
 Run:
 
@@ -433,7 +435,7 @@ Run:
 
 Expected: 0 failed, 0 not run.
 
-- [ ] **Step 5.3: Compile UE 5.6 target**
+- [x] **Step 5.3: Compile UE 5.6 target**
 
 Run:
 
@@ -443,7 +445,7 @@ Run:
 
 Expected: `Result: Succeeded`.
 
-- [ ] **Step 5.4: Update docs after tests**
+- [x] **Step 5.4: Update docs after tests**
 
 Add this dated design note:
 
@@ -455,7 +457,7 @@ Add this dated design note:
 - Generic schedule support is only considered complete for operations that expose selected spawner evidence or deterministic missing-context diagnostics; normal Kismet timer calls remain FunctionAction.
 ```
 
-- [ ] **Step 5.5: Record manual commit suggestion without committing**
+- [x] **Step 5.5: Record manual commit suggestion without committing**
 
 Do not run `git add`, `git commit`, or `git push`. In the final implementation report, suggest:
 
@@ -468,10 +470,32 @@ Do not run `git add`, `git commit`, or `git push`. In the final implementation r
 1. 防止 Generic Convert/Schedule 通过 Function 或 struct fallback 假成功。
 ```
 
+## Execution Result - 2026-05-24
+
+Implemented:
+
+- Added first-level `Convert` / `Schedule` SemanticIR acceptance and statement/expression compiler lowering in UE, TypeScript, and Python.
+- Preserved `function_operation`, `transform_operation`, `schedule_operation`, `target_class_path`, and `graph_latent_allowed` through AgentFace lowering and ActionContext projection.
+- Kept function-owned `convert_function`, `schedule_function`, and `latent_or_async_function` in `FunctionActionCluster`.
+- Routed explicit Generic `dynamic_cast`, `class_cast`, `type_promotion`, `timer_delegate_node`, and `latent_or_async_node` operations to `GenericAssetStructControlActionCluster`.
+- Added `FBlueprintHelperGenericTransformScheduleActionResolver`; `dynamic_cast` / `class_cast` can select cast-node spawner evidence, while type-promotion and schedule operations return deterministic `needs_more_semantic_context` until projected spawner evidence exists.
+- Added ambiguous Function+Generic ownership rejection via `ambiguous_convert_schedule_owner`.
+
+Verification:
+
+- `npm.cmd run build`: PASS.
+- `npm.cmd run test:node`: PASS, 164 tests.
+- `npm.cmd run test:python`: PASS, 71 tests.
+- UE 5.6 `Build.bat TemplateEditor Win64 Development`: PASS, `Result: Succeeded`.
+- `BlueprintHelper.GraphWrite.ActionResolution`: PASS after fixing source-hygiene failure around direct `UBlueprintNodeSpawner::Create(NodeClass)` token.
+- `BlueprintHelper.GraphWrite.ActionContext`: PASS.
+- Full `BlueprintHelper.GraphWrite`: PASS, `Saved/Automation/GraphWrite_GenericConvertSchedule_Final_20260524_001/index.json` reports 155 succeeded, 11 succeeded with warnings, 0 failed, 0 not run.
+- Final `npm.cmd run test`: PASS.
+
 ## Self-Review Checklist
 
-- [ ] Function convert/schedule tests still pass and still report `FunctionAction`.
-- [ ] Generic convert/schedule tests require explicit second-stage evidence.
-- [ ] Generic resolver never calls `FBlueprintHelperCallFunctionResolver::Resolve`.
-- [ ] TS and Python compiler lowering preserve the same fields.
-- [ ] Documentation distinguishes Function-owned schedule from Generic-owned schedule.
+- [x] Function convert/schedule tests still pass and still report `FunctionAction`.
+- [x] Generic convert/schedule tests require explicit second-stage evidence.
+- [x] Generic resolver never calls `FBlueprintHelperCallFunctionResolver::Resolve`.
+- [x] TS and Python compiler lowering preserve the same fields.
+- [x] Documentation distinguishes Function-owned schedule from Generic-owned schedule.

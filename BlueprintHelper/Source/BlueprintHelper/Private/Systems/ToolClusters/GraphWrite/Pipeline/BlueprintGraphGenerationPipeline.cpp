@@ -472,6 +472,15 @@ static FString GetSemanticStatementId(const FBlueprintHelperGraphStatementIR& St
 	case EBlueprintHelperGraphStatementKind::Return:
 		KindName = TEXT("return");
 		break;
+	case EBlueprintHelperGraphStatementKind::Create:
+		KindName = TEXT("create");
+		break;
+	case EBlueprintHelperGraphStatementKind::Convert:
+		KindName = TEXT("convert");
+		break;
+	case EBlueprintHelperGraphStatementKind::Schedule:
+		KindName = TEXT("schedule");
+		break;
 	default:
 		break;
 	}
@@ -519,6 +528,15 @@ static FString GetSemanticExpressionId(const FBlueprintHelperGraphExpressionIR& 
 		break;
 	case EBlueprintHelperGraphExpressionKind::Select:
 		KindName = TEXT("select");
+		break;
+	case EBlueprintHelperGraphExpressionKind::Create:
+		KindName = TEXT("create");
+		break;
+	case EBlueprintHelperGraphExpressionKind::Convert:
+		KindName = TEXT("convert");
+		break;
+	case EBlueprintHelperGraphExpressionKind::Schedule:
+		KindName = TEXT("schedule");
 		break;
 	default:
 		break;

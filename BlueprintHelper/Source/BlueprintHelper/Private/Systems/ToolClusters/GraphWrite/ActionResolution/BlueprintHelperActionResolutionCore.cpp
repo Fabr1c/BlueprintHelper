@@ -4,6 +4,49 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionSettingsResolver.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperSpawnerClusterResolver.h"
 
+namespace
+{
+static FString NormalizeOperationToken(const FString& Operation)
+{
+	return Operation.TrimStartAndEnd().ToLower();
+}
+
+static bool IsGenericTransformOperation(const FString& Operation)
+{
+	const FString Normalized = NormalizeOperationToken(Operation);
+	return Normalized == TEXT("dynamic_cast")
+		|| Normalized == TEXT("class_cast")
+		|| Normalized == TEXT("type_promotion");
+}
+
+static bool IsGenericScheduleOperation(const FString& Operation)
+{
+	const FString Normalized = NormalizeOperationToken(Operation);
+	return Normalized == TEXT("timer_delegate_node")
+		|| Normalized == TEXT("latent_or_async_node");
+}
+
+static bool HasAmbiguousConvertScheduleOwner(const FBlueprintHelperActionSemanticConstraints& Semantic)
+{
+	if (Semantic.FunctionOperation.TrimStartAndEnd().IsEmpty())
+	{
+		return false;
+	}
+
+	if (Semantic.Kind == EBlueprintHelperActionSemanticKind::Convert)
+	{
+		return IsGenericTransformOperation(Semantic.TransformOperation);
+	}
+
+	if (Semantic.Kind == EBlueprintHelperActionSemanticKind::Schedule)
+	{
+		return IsGenericScheduleOperation(Semantic.ScheduleOperation);
+	}
+
+	return false;
+}
+}
+
 FBlueprintHelperActionResolutionResult FBlueprintHelperActionResolutionCore::Resolve(
 	const FBlueprintHelperActionResolutionRequest& Request)
 {
@@ -53,6 +96,16 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperActionResolutionCore::Res
 		Result.ClusterKind = EffectiveRequest.ClusterKind;
 		Result.ErrorCode = TEXT("action_context_identity_missing");
 		Result.Message = TEXT("Projected action context is missing statement/context identity.");
+		return Result;
+	}
+
+	if (HasAmbiguousConvertScheduleOwner(EffectiveRequest.Semantic))
+	{
+		FBlueprintHelperActionResolutionResult Result;
+		Result.Status = EBlueprintHelperActionResolutionStatus::InvalidRequest;
+		Result.ClusterKind = EffectiveRequest.ClusterKind;
+		Result.ErrorCode = TEXT("ambiguous_convert_schedule_owner");
+		Result.Message = TEXT("Convert/Schedule request contains both function_operation and a generic transform/schedule operation.");
 		return Result;
 	}
 

@@ -10,6 +10,8 @@ FBlueprintHelperGenericActionProviderBoundary FBlueprintHelperGenericActionProvi
 	const bool bConstructOperation = Request.Semantic.TypeOperation == EBlueprintHelperTypeOperation::Construct;
 	const bool bDeconstructOperation = Request.Semantic.TypeOperation == EBlueprintHelperTypeOperation::Deconstruct;
 	const FString CreateOperation = Request.Semantic.CreateOperation.TrimStartAndEnd();
+	const FString TransformOperation = Request.Semantic.TransformOperation.TrimStartAndEnd();
+	const FString ScheduleOperation = Request.Semantic.ScheduleOperation.TrimStartAndEnd();
 
 	switch (Request.Semantic.Kind)
 	{
@@ -69,6 +71,26 @@ FBlueprintHelperGenericActionProviderBoundary FBlueprintHelperGenericActionProvi
 		Boundary.Reason = CreateOperation.IsEmpty()
 			? TEXT("create requires Semantic.CreateOperation such as spawn_actor, create_widget, construct_object, make_array, make_map, make_set, or asset_action.")
 			: TEXT("create resolves through explicit broad-create operation evidence.");
+		return Boundary;
+
+	case EBlueprintHelperActionSemanticKind::Convert:
+		Boundary.Mode = TransformOperation.IsEmpty()
+			? EBlueprintHelperGenericActionProviderMode::NeedsMoreSemanticContext
+			: EBlueprintHelperGenericActionProviderMode::NodeSpawnerCandidate;
+		Boundary.RequiredBuilder = TEXT("GenericTransformScheduleActionResolver");
+		Boundary.Reason = TransformOperation.IsEmpty()
+			? TEXT("Generic Convert requires Semantic.TransformOperation such as dynamic_cast, class_cast, or type_promotion.")
+			: TEXT("Generic Convert resolves through explicit transform_operation evidence.");
+		return Boundary;
+
+	case EBlueprintHelperActionSemanticKind::Schedule:
+		Boundary.Mode = ScheduleOperation.IsEmpty()
+			? EBlueprintHelperGenericActionProviderMode::NeedsMoreSemanticContext
+			: EBlueprintHelperGenericActionProviderMode::NodeSpawnerCandidate;
+		Boundary.RequiredBuilder = TEXT("GenericTransformScheduleActionResolver");
+		Boundary.Reason = ScheduleOperation.IsEmpty()
+			? TEXT("Generic Schedule requires Semantic.ScheduleOperation such as timer_delegate_node or latent_or_async_node.")
+			: TEXT("Generic Schedule resolves through explicit schedule_operation evidence.");
 		return Boundary;
 
 	default:

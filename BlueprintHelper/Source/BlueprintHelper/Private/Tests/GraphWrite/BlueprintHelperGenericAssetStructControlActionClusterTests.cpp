@@ -281,6 +281,34 @@ bool FBlueprintHelperGenericActionProviderBoundaryMatrixTest::RunTest(const FStr
 	TestEqual(TEXT("Create with operation can query NodeSpawner"), CreateCandidate.Mode, EBlueprintHelperGenericActionProviderMode::NodeSpawnerCandidate);
 	TestEqual(TEXT("Create builder seam with operation"), CreateCandidate.RequiredBuilder, FString(TEXT("GenericCreateActionResolver")));
 
+	const FBlueprintHelperGenericActionProviderBoundary ConvertNeedsContext =
+		FBlueprintHelperGenericActionProviderBoundaryService::Classify(
+			MakeGenericActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Convert));
+	TestEqual(TEXT("Convert without transform operation needs context"), ConvertNeedsContext.Mode, EBlueprintHelperGenericActionProviderMode::NeedsMoreSemanticContext);
+	TestEqual(TEXT("Convert builder seam"), ConvertNeedsContext.RequiredBuilder, FString(TEXT("GenericTransformScheduleActionResolver")));
+
+	FBlueprintHelperActionResolutionRequest ConvertRequest =
+		MakeGenericActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Convert);
+	ConvertRequest.Semantic.TransformOperation = TEXT("dynamic_cast");
+	const FBlueprintHelperGenericActionProviderBoundary ConvertCandidate =
+		FBlueprintHelperGenericActionProviderBoundaryService::Classify(ConvertRequest);
+	TestEqual(TEXT("Convert with transform operation can query NodeSpawner"), ConvertCandidate.Mode, EBlueprintHelperGenericActionProviderMode::NodeSpawnerCandidate);
+	TestEqual(TEXT("Convert builder seam with operation"), ConvertCandidate.RequiredBuilder, FString(TEXT("GenericTransformScheduleActionResolver")));
+
+	const FBlueprintHelperGenericActionProviderBoundary ScheduleNeedsContext =
+		FBlueprintHelperGenericActionProviderBoundaryService::Classify(
+			MakeGenericActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Schedule));
+	TestEqual(TEXT("Schedule without schedule operation needs context"), ScheduleNeedsContext.Mode, EBlueprintHelperGenericActionProviderMode::NeedsMoreSemanticContext);
+	TestEqual(TEXT("Schedule builder seam"), ScheduleNeedsContext.RequiredBuilder, FString(TEXT("GenericTransformScheduleActionResolver")));
+
+	FBlueprintHelperActionResolutionRequest ScheduleRequest =
+		MakeGenericActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Schedule);
+	ScheduleRequest.Semantic.ScheduleOperation = TEXT("timer_delegate_node");
+	const FBlueprintHelperGenericActionProviderBoundary ScheduleCandidate =
+		FBlueprintHelperGenericActionProviderBoundaryService::Classify(ScheduleRequest);
+	TestEqual(TEXT("Schedule with schedule operation can query NodeSpawner"), ScheduleCandidate.Mode, EBlueprintHelperGenericActionProviderMode::NodeSpawnerCandidate);
+	TestEqual(TEXT("Schedule builder seam with operation"), ScheduleCandidate.RequiredBuilder, FString(TEXT("GenericTransformScheduleActionResolver")));
+
 	const FBlueprintHelperGenericActionProviderBoundary UnsupportedBoundary =
 		FBlueprintHelperGenericActionProviderBoundaryService::Classify(
 			MakeGenericActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Call, TEXT("SetActorLocation")));

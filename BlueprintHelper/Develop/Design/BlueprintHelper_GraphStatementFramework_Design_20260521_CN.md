@@ -188,6 +188,8 @@ deconstruct
 select
 control
 create
+convert + transform_operation
+schedule + schedule_operation
 asset_action
 container_action
 ```
@@ -199,6 +201,8 @@ container_action
 - Make/Break Struct。
 - Make Array / Map / Set 等容器构造。
 - SpawnActor / CreateWidget / ConstructObject 等 create 类 action。
+- DynamicCast / ClassCast 等显式 Generic transform action；type-promotion 只有在投影出稳定 spawner evidence 后才能成功。
+- Timer/delegate/latent node 等显式 Generic schedule action；普通 Kismet timer/latent function call 仍归 FunctionAction。
 - 资产驱动 node action。
 - UE ActionDatabase 无法细分到专用 spawner 家族的 generic K2Node action。
 
@@ -312,7 +316,7 @@ EventDelegateActionCluster
 
 GenericAssetStructControlActionCluster
 -> UBlueprintNodeSpawner / UBlueprintFieldNodeSpawner / UBlueprintAssetNodeSpawner / struct-enum-generic registrar delegates
--> construct / deconstruct / select / single-node control / create / asset_action / container_action
+-> construct / deconstruct / select / single-node control / create / convert+transform_operation / schedule+schedule_operation / asset_action / container_action
 -> multi-node control DAG and UE-unrepresentable semantic operations use dedicated FragmentBuilder
 ```
 
@@ -542,3 +546,12 @@ This taxonomy does not change the top-level `SpawnerClusterKind` dispatch rule. 
 - `asset_action` 暂不伪造成功；没有投影出的 ActionDatabase / selected spawner evidence 时保持可行动失败。
 - Struct `construct/deconstruct` 仍归 Struct / TypeStructure 语义，不计入 broad create。
 - 2026-05-24 verification: AgentFace TS/Python compiler tests、UE 5.6 compile、`BlueprintHelper.GraphWrite.ActionResolution.Contract`、`BlueprintHelper.GraphWrite.ActionResolution.Generic.Create`、`BlueprintHelper.GraphWrite.ActionResolution.Generic`、`BlueprintHelper.GraphWrite.LegacyMainline`、full `BlueprintHelper.GraphWrite` automation 均已通过。
+
+## 2026-05-24 Generic Convert/Schedule Ownership Closure
+
+- Function-owned `convert_function`, `schedule_function`, and `latent_or_async_function` remain in `FunctionActionCluster`.
+- Generic-owned `dynamic_cast`, `class_cast`, `type_promotion`, `timer_delegate_node`, and `latent_or_async_node` require explicit second-stage evidence and do not fallback through FunctionAction.
+- `dynamic_cast` and `class_cast` can select cast-node spawner evidence when `target_class_path` is projected; missing target class evidence returns `needs_more_semantic_context`.
+- `type_promotion`, `timer_delegate_node`, and `latent_or_async_node` are only considered success-capable after projected spawner evidence exists; until then they return deterministic missing-context diagnostics rather than fake success.
+- Generic schedule support is only considered complete for operations that expose selected spawner evidence or deterministic missing-context diagnostics; normal Kismet timer calls remain FunctionAction.
+- 2026-05-24 verification: AgentFace TS/Python compiler tests、UE 5.6 compile、`BlueprintHelper.GraphWrite.ActionResolution`、`BlueprintHelper.GraphWrite.ActionContext`、full `BlueprintHelper.GraphWrite` automation 均已通过；最新 full report 为 `Saved/Automation/GraphWrite_GenericConvertSchedule_Final_20260524_001/index.json`，155 succeeded + 11 succeeded with warnings，0 failed，0 not run。

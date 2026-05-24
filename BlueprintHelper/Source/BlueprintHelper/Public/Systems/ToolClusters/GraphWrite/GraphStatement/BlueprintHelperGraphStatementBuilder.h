@@ -82,6 +82,14 @@ public:
 		FString& OutError,
 		const FBlueprintHelperActionContextScope* ActionContextScope = nullptr);
 
+	static bool BuildActionProviderFragment(
+		UEdGraph* TargetGraph,
+		const FBlueprintHelperGraphFragmentBuildRequest& Request,
+		EBlueprintHelperActionSemanticKind SemanticKind,
+		FBlueprintHelperNodeFragment& OutFragment,
+		FString& OutError,
+		const FBlueprintHelperActionContextScope* ActionContextScope = nullptr);
+
 	static bool BuildSequenceFragment(
 		UEdGraph* TargetGraph,
 		const FString& FragmentId,
