@@ -62,6 +62,22 @@ static FString BuildGraphWritePrivateSourcePath(const TCHAR* Area, const TCHAR* 
 		FileName);
 }
 
+static FString BuildGraphWritePublicSourcePath(const TCHAR* Area, const TCHAR* FileName)
+{
+	return FPaths::Combine(
+		FPaths::ProjectPluginsDir(),
+		TEXT("BlueprintHelper"),
+		TEXT("BlueprintHelper"),
+		TEXT("Source"),
+		TEXT("BlueprintHelper"),
+		TEXT("Public"),
+		TEXT("Systems"),
+		TEXT("ToolClusters"),
+		TEXT("GraphWrite"),
+		Area,
+		FileName);
+}
+
 static bool IsAllowedActionContextPipelineImplementationFile(const FString& SourcePath)
 {
 	FString Normalized = FPaths::ConvertRelativePathToFull(SourcePath);
@@ -138,6 +154,28 @@ static bool ScanSpecificGraphWriteSourcesForForbiddenToken(
 		}
 	}
 	return bClean;
+}
+
+static bool TryExtractSourceSlice(
+	const FString& Source,
+	const FString& StartToken,
+	const FString& EndToken,
+	FString& OutSlice)
+{
+	const int32 StartIndex = Source.Find(StartToken, ESearchCase::CaseSensitive);
+	if (StartIndex == INDEX_NONE)
+	{
+		return false;
+	}
+
+	const int32 EndIndex = Source.Find(EndToken, ESearchCase::CaseSensitive, ESearchDir::FromStart, StartIndex + StartToken.Len());
+	if (EndIndex == INDEX_NONE || EndIndex <= StartIndex)
+	{
+		return false;
+	}
+
+	OutSlice = Source.Mid(StartIndex, EndIndex - StartIndex);
+	return true;
 }
 }
 
@@ -259,6 +297,175 @@ bool FBlueprintHelperActionResolutionGraphStatementProjectionContractTest::RunTe
 	}
 
 	TestTrue(TEXT("GraphStatementBuilder projects ActionResolutionRequest from ActionContextBundle"), bClean);
+	return bClean;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionResolutionFunctionFragmentLifecycleCoordinatorContractTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.Contract.FunctionFragmentLifecycleCoordinator",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionResolutionFunctionFragmentLifecycleCoordinatorContractTest::RunTest(const FString& Parameters)
+{
+	const FString GraphStatementBuilderPath = BuildGraphWritePrivateSourcePath(
+		TEXT("GraphStatement"),
+		TEXT("BlueprintHelperGraphStatementBuilder.cpp"));
+	const FString CoordinatorPath = BuildGraphWritePrivateSourcePath(
+		TEXT("GraphStatement"),
+		TEXT("BlueprintHelperActionFragmentSpawnCoordinator.cpp"));
+
+	FString GraphStatementBuilderSource;
+	FString CoordinatorSource;
+	bool bClean = true;
+	if (!FFileHelper::LoadFileToString(GraphStatementBuilderSource, *GraphStatementBuilderPath))
+	{
+		AddError(FString::Printf(TEXT("GraphStatementBuilder source could not be read: %s"), *GraphStatementBuilderPath));
+		bClean = false;
+	}
+	if (!FFileHelper::LoadFileToString(CoordinatorSource, *CoordinatorPath))
+	{
+		AddError(FString::Printf(TEXT("ActionFragmentSpawnCoordinator source could not be read: %s"), *CoordinatorPath));
+		bClean = false;
+	}
+	if (!bClean)
+	{
+		return false;
+	}
+
+	FString CallFragmentSlice;
+	FString CreateFragmentSlice;
+	FString ActionProviderSlice;
+	if (!TryExtractSourceSlice(
+		GraphStatementBuilderSource,
+		TEXT("BuildCallFunctionFragment("),
+		TEXT("BuildVariableSetFragment("),
+		CallFragmentSlice))
+	{
+		AddError(TEXT("Could not extract BuildCallFunctionFragment source slice."));
+		bClean = false;
+	}
+	if (!TryExtractSourceSlice(
+		GraphStatementBuilderSource,
+		TEXT("BuildCreateFragment("),
+		TEXT("BuildActionProviderFragment("),
+		CreateFragmentSlice))
+	{
+		AddError(TEXT("Could not extract BuildCreateFragment source slice."));
+		bClean = false;
+	}
+	if (!TryExtractSourceSlice(
+		GraphStatementBuilderSource,
+		TEXT("BuildActionProviderFragment("),
+		TEXT("BuildSequenceFragment("),
+		ActionProviderSlice))
+	{
+		AddError(TEXT("Could not extract BuildActionProviderFragment source slice."));
+		bClean = false;
+	}
+	if (!bClean)
+	{
+		return false;
+	}
+
+	const TArray<TPair<FString, FString>> FragmentSlices = {
+		TPair<FString, FString>(TEXT("BuildCallFunctionFragment"), CallFragmentSlice),
+		TPair<FString, FString>(TEXT("BuildActionProviderFragment"), ActionProviderSlice)
+	};
+	for (const TPair<FString, FString>& Slice : FragmentSlices)
+	{
+		bClean &= TestTrue(
+			*FString::Printf(TEXT("%s delegates lifecycle to coordinator"), *Slice.Key),
+			Slice.Value.Contains(TEXT("FBlueprintHelperActionFragmentSpawnCoordinator::BuildResolvedActionFragment")));
+		bClean &= TestFalse(
+			*FString::Printf(TEXT("%s does not resolve action locally"), *Slice.Key),
+			Slice.Value.Contains(TEXT("ResolveActionForGraph(")));
+		bClean &= TestFalse(
+			*FString::Printf(TEXT("%s does not invoke selected spawner locally"), *Slice.Key),
+			Slice.Value.Contains(TEXT("InvokeSelectedSpawner(")));
+	}
+	bClean &= TestTrue(
+		TEXT("BuildCallFunctionFragment appends semantic kind ownership tag"),
+		CallFragmentSlice.Contains(TEXT("CoordinatorRequest.bAppendSemanticKindOwnershipTag = true;")));
+	bClean &= TestTrue(
+		TEXT("BuildActionProviderFragment appends semantic kind ownership tag"),
+		ActionProviderSlice.Contains(TEXT("CoordinatorRequest.bAppendSemanticKindOwnershipTag = true;")));
+	bClean &= TestTrue(
+		TEXT("BuildCallFunctionFragment passes build request by scoped reference"),
+		CallFragmentSlice.Contains(TEXT("CoordinatorRequest.BuildRequest = &BoundRequest;")));
+	bClean &= TestTrue(
+		TEXT("BuildActionProviderFragment passes build request by scoped reference"),
+		ActionProviderSlice.Contains(TEXT("CoordinatorRequest.BuildRequest = &Request;")));
+	bClean &= TestTrue(
+		TEXT("BuildCallFunctionFragment appends context evidence to action request"),
+		CallFragmentSlice.Contains(TEXT("ActionRequest.ContextEvidence.Append(BoundRequest.ContextEvidence);")));
+	bClean &= TestTrue(
+		TEXT("BuildCreateFragment appends context evidence to action request"),
+		CreateFragmentSlice.Contains(TEXT("ActionRequest.ContextEvidence.Append(Request.ContextEvidence);")));
+	bClean &= TestTrue(
+		TEXT("BuildActionProviderFragment appends context evidence to action request"),
+		ActionProviderSlice.Contains(TEXT("ActionRequest.ContextEvidence.Append(Request.ContextEvidence);")));
+
+	bClean &= TestTrue(
+		TEXT("ActionFragmentSpawnCoordinator owns ActionResolution resolve"),
+		CoordinatorSource.Contains(TEXT("FBlueprintGraphWriteFacade::ResolveActionForGraph")));
+	bClean &= TestTrue(
+		TEXT("ActionFragmentSpawnCoordinator owns selected spawner invocation"),
+		CoordinatorSource.Contains(TEXT("FBlueprintHelperActionNodeSpawnerAdapter::InvokeSelectedSpawner")));
+	bClean &= TestTrue(
+		TEXT("ActionFragmentSpawnCoordinator owns common fragment pin/metadata population"),
+		CoordinatorSource.Contains(TEXT("FBlueprintHelperActionFragmentBuildUtils::PopulatePins"))
+		&& CoordinatorSource.Contains(TEXT("FBlueprintHelperActionFragmentBuildUtils::PopulateCommonMetadata")));
+
+	TestTrue(TEXT("Function call/action-provider fragment lifecycle is coordinator-owned"), bClean);
+	return bClean;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphFragmentBuildRequestRuntimePayloadContractTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.Contract.GraphFragmentBuildRequestRuntimePayload",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphFragmentBuildRequestRuntimePayloadContractTest::RunTest(const FString& Parameters)
+{
+	const FString BuildRequestHeaderPath = BuildGraphWritePublicSourcePath(
+		TEXT("GraphStatement"),
+		TEXT("BlueprintHelperGraphFragmentBuildRequest.h"));
+	const FString BuildRequestSourcePath = BuildGraphWritePrivateSourcePath(
+		TEXT("GraphStatement"),
+		TEXT("BlueprintHelperGraphFragmentBuildRequest.cpp"));
+
+	FString HeaderSource;
+	FString CppSource;
+	bool bClean = true;
+	if (!FFileHelper::LoadFileToString(HeaderSource, *BuildRequestHeaderPath))
+	{
+		AddError(FString::Printf(TEXT("GraphFragmentBuildRequest header could not be read: %s"), *BuildRequestHeaderPath));
+		bClean = false;
+	}
+	if (!FFileHelper::LoadFileToString(CppSource, *BuildRequestSourcePath))
+	{
+		AddError(FString::Printf(TEXT("GraphFragmentBuildRequest source could not be read: %s"), *BuildRequestSourcePath));
+		bClean = false;
+	}
+	if (!bClean)
+	{
+		return false;
+	}
+
+	bClean &= TestFalse(
+		TEXT("GraphFragmentBuildRequest does not store recursive statement payload"),
+		HeaderSource.Contains(TEXT("FBlueprintHelperGraphStatementIR Statement;")));
+	bClean &= TestFalse(
+		TEXT("GraphFragmentBuildRequest does not store recursive expression payload"),
+		HeaderSource.Contains(TEXT("FBlueprintHelperGraphExpressionIR Expression;")));
+	bClean &= TestFalse(
+		TEXT("FromStatement does not copy recursive statement payload"),
+		CppSource.Contains(TEXT("Request.Statement = Statement;")));
+	bClean &= TestFalse(
+		TEXT("FromExpression does not copy recursive expression payload"),
+		CppSource.Contains(TEXT("Request.Expression = Expression;")));
+
+	TestTrue(TEXT("GraphFragmentBuildRequest is a shallow runtime build payload"), bClean);
 	return bClean;
 }
 
@@ -540,6 +747,104 @@ bool FBlueprintHelperGraphWriteDelegatePublicInternalBoundaryContractTest::RunTe
 	}
 
 	TestTrue(TEXT("Delegate TS compiler/contract to C++ internal lowering boundary is source-guarded"), bClean);
+	return bClean;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionResolutionAssetActionNoSyntheticSpawnerContractTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.Contract.AssetActionNoSyntheticSpawner",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionResolutionAssetActionNoSyntheticSpawnerContractTest::RunTest(const FString& Parameters)
+{
+	const FString GenericCreateResolverPath = BuildGraphWritePrivateSourcePath(
+		TEXT("ActionResolution"),
+		TEXT("BlueprintHelperGenericCreateActionResolver.cpp"));
+	const FString GenericAssetResolverPath = BuildGraphWritePrivateSourcePath(
+		TEXT("ActionResolution"),
+		TEXT("BlueprintHelperGenericAssetActionResolver.cpp"));
+
+	FString GenericCreateResolverSource;
+	FString GenericAssetResolverSource;
+	bool bClean = true;
+	if (!FFileHelper::LoadFileToString(GenericCreateResolverSource, *GenericCreateResolverPath))
+	{
+		AddError(FString::Printf(TEXT("GenericCreateActionResolver source could not be read: %s"), *GenericCreateResolverPath));
+		bClean = false;
+	}
+	if (!FFileHelper::LoadFileToString(GenericAssetResolverSource, *GenericAssetResolverPath))
+	{
+		AddError(FString::Printf(TEXT("GenericAssetActionResolver source could not be read: %s"), *GenericAssetResolverPath));
+		bClean = false;
+	}
+	if (!bClean)
+	{
+		return false;
+	}
+
+	bClean &= TestTrue(
+		TEXT("Generic create routes asset_action through the dedicated asset action resolver"),
+		GenericCreateResolverSource.Contains(TEXT("FBlueprintHelperGenericAssetActionResolver::Resolve")));
+	bClean &= TestFalse(
+		TEXT("Dedicated asset_action resolver does not synthesize node spawners with UBlueprintNodeSpawner::Create"),
+		GenericAssetResolverSource.Contains(TEXT("UBlueprintNodeSpawner::Create")));
+	bClean &= TestTrue(
+		TEXT("Asset action resolver refreshes and consumes ActionDatabase registry"),
+		GenericAssetResolverSource.Contains(TEXT("FBlueprintActionDatabase::Get().RefreshAll()"))
+		&& GenericAssetResolverSource.Contains(TEXT("GetAllActions()")));
+
+	TestTrue(TEXT("asset_action keeps real ActionDatabase-only spawner resolution"), bClean);
+	return bClean;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionResolutionTypePromotionUsesRegisteredSpawnerContractTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.Contract.TypePromotionUsesRegisteredSpawner",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionResolutionTypePromotionUsesRegisteredSpawnerContractTest::RunTest(const FString& Parameters)
+{
+	const FString GenericTransformResolverPath = BuildGraphWritePrivateSourcePath(
+		TEXT("ActionResolution"),
+		TEXT("BlueprintHelperGenericTransformScheduleActionResolver.cpp"));
+	const FString TypePromotionResolverPath = BuildGraphWritePrivateSourcePath(
+		TEXT("ActionResolution"),
+		TEXT("BlueprintHelperTypePromotionSpawnerEvidenceResolver.cpp"));
+
+	FString GenericTransformResolverSource;
+	FString TypePromotionResolverSource;
+	bool bClean = true;
+	if (!FFileHelper::LoadFileToString(GenericTransformResolverSource, *GenericTransformResolverPath))
+	{
+		AddError(FString::Printf(TEXT("GenericTransformScheduleActionResolver source could not be read: %s"), *GenericTransformResolverPath));
+		bClean = false;
+	}
+	if (!FFileHelper::LoadFileToString(TypePromotionResolverSource, *TypePromotionResolverPath))
+	{
+		AddError(FString::Printf(TEXT("TypePromotionSpawnerEvidenceResolver source could not be read: %s"), *TypePromotionResolverPath));
+		bClean = false;
+	}
+	if (!bClean)
+	{
+		return false;
+	}
+
+	bClean &= TestTrue(
+		TEXT("Generic transform routes type_promotion through the dedicated resolver"),
+		GenericTransformResolverSource.Contains(TEXT("FBlueprintHelperTypePromotionSpawnerEvidenceResolver::Resolve")));
+	bClean &= TestFalse(
+		TEXT("Dedicated type_promotion resolver does not synthesize node spawners with UBlueprintNodeSpawner::Create"),
+		TypePromotionResolverSource.Contains(TEXT("UBlueprintNodeSpawner::Create")));
+	bClean &= TestTrue(
+		TEXT("Dedicated type_promotion resolver consumes registered FTypePromotion spawners"),
+		TypePromotionResolverSource.Contains(TEXT("FTypePromotion::GetOperatorSpawner"))
+		&& TypePromotionResolverSource.Contains(TEXT("FTypePromotion::Get()"))
+		&& TypePromotionResolverSource.Contains(TEXT("FBlueprintActionDatabase::Get().RefreshAll()")));
+	bClean &= TestTrue(
+		TEXT("Dedicated type_promotion resolver validates typed promotion compatibility"),
+		TypePromotionResolverSource.Contains(TEXT("FTypePromotion::IsValidPromotion")));
+
+	TestTrue(TEXT("type_promotion keeps registered FTypePromotion-only spawner resolution"), bClean);
 	return bClean;
 }
 

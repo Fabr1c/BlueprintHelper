@@ -5,6 +5,7 @@
 #include "K2Node_ClassDynamicCast.h"
 #include "K2Node_DynamicCast.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionClusterContextView.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperTypePromotionSpawnerEvidenceResolver.h"
 
 namespace
 {
@@ -160,9 +161,7 @@ static FBlueprintHelperActionResolutionResult ResolveConvert(
 
 	if (Operation == TEXT("type_promotion"))
 	{
-		return MakeInvalidResult(
-			TEXT("needs_more_semantic_context"),
-			TEXT("type_promotion requires projected type-promotion spawner evidence."));
+		return FBlueprintHelperTypePromotionSpawnerEvidenceResolver::Resolve(Request, Context);
 	}
 
 	const FString ClassEvidence = ResolveClassEvidence(Context.GetSemantic());

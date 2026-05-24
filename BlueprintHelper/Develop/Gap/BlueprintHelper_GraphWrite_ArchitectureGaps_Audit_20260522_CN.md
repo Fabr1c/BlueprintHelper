@@ -2,9 +2,9 @@
 
 ## Current Conclusion
 
-2026-05-24 update: the original audit Gap 1-5 records remain closed for their historical scope, but this file now also tracks follow-up Gap 3/4/5 entries added below. Do not read the historical closure statement as full four-cluster completion.
+2026-05-24 final update: the original audit Gap 1-5 records remain closed for their historical scope, and the follow-up entries tracked in this file are closed for the planned RemainingGaps repair scope. Do not read this as a guarantee that every future GraphWrite operation is complete; it means the named gaps below now have matching code, tests, Bridge smoke, docs, and UE 5.6 build evidence.
 
-当前代码在本审计文档列出的 GraphWrite 架构 gap 已全部关闭。该结论只表示本文档中的 Gap 1-5 已按各自边界收敛，不等同于四个工具簇全部达到“完全完成”；`asset_action` create、type-promotion spawner projection、timer/delegate/latent node evidence、Field real Bridge execute smoke、Event Signature collaboration smoke 和 Function shared adapter/lifecycle 仍按后续路线图继续推进。
+当前代码在本审计文档列出的 GraphWrite 架构 gap 已全部关闭。该结论只表示本文档中的 Gap 1-5 与 2026-05-24 follow-up rows 已按各自边界收敛，不等同于四个工具簇全部未来能力都完成；尚未拥有 honest projected spawner evidence 的 timer/delegate/latent 正向成功路径仍必须保持 missing-context diagnostics。
 
 当前期望主链路仍然是：
 
@@ -197,7 +197,7 @@ The historical Gap 1-5 records above remain closed for their original scope. The
 
 | Follow-up gap | Status | Exact scope | Evidence found | Required closure |
 |---|---|---|---|---|
-| Gap 3: Function shared adapter / lifecycle convergence | OPEN | Function-class spawner invocation still needs a stronger shared adapter/lifecycle boundary beyond the current resolver-level convergence. | `FBlueprintHelperFunctionSemanticActionResolver` reuses the call resolver and `FBlueprintHelperActionNodeSpawnerAdapter` exists, but `BlueprintHelperGraphStatementBuilder.cpp` still owns much of the call fragment spawning/lifecycle orchestration. | Add focused plan and implementation that moves Function call/convert/schedule spawn lifecycle into a reusable adapter/coordinator boundary, with source contract and runtime tests proving GraphStatementBuilder only composes fragments from projected evidence. |
+| Gap 3: Function shared adapter / lifecycle convergence | CLOSED | Function call/action-provider fragment resolve/spawn lifecycle now uses shared coordinator ownership for the planned scope. | `D:\UEProjects\Template\Saved\Automation\GraphWrite_FurtherFix_Focused_003\index.json` reports `succeeded=4`, `failed=0`; `FunctionFragmentLifecycleCoordinator` verifies coordinator ownership, semantic tag retention, scoped build-request reference, and context evidence append points. | Closed for call/action-provider shared coordinator lifecycle. Future Function taxonomy expansion should open a new row instead of reopening this scoped gap. |
 | Gap 4: Field real Bridge execute smoke | CLOSED | Field component property-path write now preserves owner root evidence for `DoorMesh.RelativeRotation.Roll` and completes real CLI/Bridge preview + execute. | `D:\UEProjects\Template\Saved\Automation\GraphWrite_Bug001_ActionContext_FieldPropertyPath_20260524_003\index.json` reports `succeeded=1`, `failed=0`; `BlueprintHelper/Develop/PlanArtifacts/GraphWriteFourClusterE2ESmoke_20260524/Results/02_function_field_graph.json.preview.json` reports `preview_passed`; `02_function_field_graph.json.execute.json` reports `executed` on `_FixRun02`. | Closed for the planned real Bridge execute smoke scope. Wider Field spawner adapter/lifecycle convergence remains tracked outside this gap. |
 | Gap 5: Event Signature collaboration smoke / taxonomy boundary | CLOSED | Public EventDelegate TaskSpec use-site aliases now lower through TS compiler while Signature remains owner of custom event declarations; real CLI/Bridge preview + execute passes. | `D:\UEProjects\Template\Saved\Automation\GraphWrite_Bug002_EventDelegateGraphStatement_20260524_005\index.json` reports `succeeded=6`, `failed=0`; `D:\UEProjects\Template\Saved\Automation\GraphWrite_Bug002_EventDelegateActionResolution_20260524_001\index.json` reports `succeeded=10`, `failed=0`; `D:\UEProjects\Template\Saved\Automation\GraphWrite_Bug002_DelegateBoundary_20260524_003\index.json` reports `succeeded=3`, `failed=0`; `03_event_delegate_graph.json` preview/execute both pass on `_FixRun02`. | Closed for public EventDelegate use-site and Signature collaboration smoke. Future `event` taxonomy changes must preserve the same Signature ownership boundary. |
 
@@ -205,18 +205,27 @@ The historical Gap 1-5 records above remain closed for their original scope. The
 
 - Closed for explicit broad-create first slice: `spawn_actor`, `create_widget`, `construct_object`, `make_array`, `make_map`, `make_set`.
 - Closure evidence: AgentFace TS compiler tests, UE 5.6 compile, `BlueprintHelper.GraphWrite.ActionResolution.Contract`, `BlueprintHelper.GraphWrite.ActionResolution.Generic.Create`, `BlueprintHelper.GraphWrite.ActionResolution.Generic`, `BlueprintHelper.GraphWrite.LegacyMainline`, and full `BlueprintHelper.GraphWrite` automation.
-- `asset_action` remains intentionally open unless projected ActionDatabase / selected spawner evidence exists; current behavior is `needs_more_semantic_context`, not fake success.
-- This closure does not change the open follow-up Gap 3/4/5 entries above.
+- 2026-05-24 RemainingGaps 修复已补齐 ActionDatabase-backed `asset_action` resolver scope：有 projected ActionDatabase / selected spawner evidence 时走真实 spawner；缺失或歧义 evidence 仍返回确定性诊断，不伪造成功。
+- 本历史 closure 记录的后续状态以后文 “2026-05-24 RemainingGaps Task 4 Smoke/Docs Sync” 为准。
 
 ## 2026-05-24 Generic Convert/Schedule Closure
 
 - Closed for explicit Generic-side ownership boundary: `Convert + transform_operation` and `Schedule + schedule_operation` now route through `GenericAssetStructControlActionCluster` instead of FunctionAction or struct fallback.
 - Function-owned `convert_function`, `schedule_function`, and `latent_or_async_function` remain in `FunctionActionCluster`.
 - `dynamic_cast` and `class_cast` can resolve to cast-node spawner evidence when target class evidence is present.
-- `type_promotion`, `timer_delegate_node`, and `latent_or_async_node` remain honest missing-context paths until projected type-promotion, timer/delegate, or latent node spawner evidence exists; current behavior is `needs_more_semantic_context`, not fake success.
+- `type_promotion` 已在 projected typed pin evidence 存在且 `FTypePromotion` 能返回 registered spawner 时闭合正向路径；缺失 evidence 仍返回 `needs_more_semantic_context`。`timer_delegate_node` 与更宽 latent/schedule node evidence 仍保持 honest missing-context path，直到各自 projected spawner evidence 可用。
 - Ambiguous Function+Generic second-stage ownership is rejected with `ambiguous_convert_schedule_owner`.
-- Closure evidence: AgentFace TS compiler tests, UE 5.6 compile, `BlueprintHelper.GraphWrite.ActionResolution`, `BlueprintHelper.GraphWrite.ActionContext`, and full `BlueprintHelper.GraphWrite` automation; latest full report is `Saved/Automation/GraphWrite_GenericConvertSchedule_Final_20260524_001/index.json` with 155 succeeded, 11 succeeded with warnings, 0 failed, 0 not run.
-- This closure does not change the open follow-up Gap 3/4/5 entries above.
+- Closure evidence at this stage: AgentFace TS compiler tests, UE 5.6 compile, `BlueprintHelper.GraphWrite.ActionResolution`, `BlueprintHelper.GraphWrite.ActionContext`, and full `BlueprintHelper.GraphWrite` automation; later four-cluster smoke supersedes that stage-specific full-automation count with `succeeded=157`, `succeededWithWarnings=11`, `failed=0`, `notRun=0`.
+- 本历史 closure 记录的后续状态以后文 “2026-05-24 RemainingGaps Task 4 Smoke/Docs Sync” 为准。
+
+## 2026-05-24 RemainingGaps Task 4 Smoke/Docs Sync
+
+| Follow-up gap | Updated status | Evidence paths | Scope note |
+|---|---|---|---|
+| Gap 3: Function shared adapter / lifecycle convergence | CLOSED | `D:\UEProjects\Template\Saved\Automation\GraphWrite_FunctionAction_AfterCoordinator_001\index.json` (`succeeded=6`, `failed=0`); `D:\UEProjects\Template\Saved\Automation\GraphWrite_FurtherFix_Focused_003\index.json` (`succeeded=4`, `failed=0`); `D:\UEProjects\Template\Saved\Automation\GraphWrite_FourClusterE2ESmoke_20260524_001\index.json` (`succeeded=157`, `succeededWithWarnings=11`, `failed=0`) | Shared function coordinator has direct runtime, source-contract, and four-cluster smoke evidence. `GraphFragmentBuildRequest` is shallow runtime payload and coordinator uses scoped request reference. |
+| Generic `asset_action` projected spawner evidence | CLOSED for ActionDatabase-backed resolver scope | `D:\UEProjects\Template\Saved\Automation\GraphWrite_AssetAction_GREEN_001\index.json` (`succeeded=2`, `succeededWithWarnings=1`, `failed=0`); `D:\UEProjects\Template\Saved\Automation\GraphWrite_FourClusterE2ESmoke_20260524_001\index.json` (`failed=0`) | Closed for no-fake-success and ActionDatabase-backed success. CLI smoke still intentionally avoids a positive `asset_action` row until a fixture can honestly project a real `asset_action_stable_id`; that absence is not a remaining defect for this scope. |
+| Generic `type_promotion` projected typed spawner evidence | CLOSED | `D:\UEProjects\Template\Saved\Automation\GraphWrite_TypePromotion_GREEN_002\index.json` (`succeeded=2`, `failed=0`); `BlueprintHelper/Develop/PlanArtifacts/GraphWriteFourClusterE2ESmoke_20260524/Results/04_generic_graph.json.preview.json` (`preview_passed`); `04_generic_graph.json.execute.json` (`executed`) | Positive resolution requires projected typed evidence and `FTypePromotion` registered spawner selection. No-evidence CLI smoke remains intentionally `preview_blocked`. |
+| Generic smoke fixture `context_evidence` projection | CLOSED | `D:\UEProjects\Template\Saved\Automation\GraphWrite_FurtherFix_Focused_003\index.json` (`succeeded=4`, `failed=0`); `BlueprintHelper/Develop/PlanArtifacts/GraphWriteFourClusterE2ESmoke_20260524/Results/04_generic_graph.json.preview.json` (`preview_passed`); `04_generic_graph.json.execute.json` (`executed`); `05_generic_expected_diagnostics.json.preview.json` (`preview_blocked`) | `context_evidence` now survives TS compiler output, append Bridge payload, UE SemanticIR, GraphFragmentBuildRequest, and ActionRequest append points. Live Bridge smoke now passes. |
 
 ## 2026-05-24 Struct / TypeStructure construct-deconstruct gap sync
 

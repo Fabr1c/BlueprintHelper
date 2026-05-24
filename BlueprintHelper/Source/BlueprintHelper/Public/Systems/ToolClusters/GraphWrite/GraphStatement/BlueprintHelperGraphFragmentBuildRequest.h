@@ -30,6 +30,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphFragmentBuildRequest
 	TMap<FString, FString> DefaultValues;
 	TMap<FString, FString> ArgumentTypes;
 	TMap<FString, FBlueprintHelperCallFunctionPinType> ArgumentPinTypes;
+	TMap<FString, FString> ContextEvidence;
 	FString ResolvedStableId;
 	FString SearchMode;
 	FString AmbiguityPolicy;
@@ -37,8 +38,6 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphFragmentBuildRequest
 	FString TargetObjectType;
 	FBlueprintHelperCallFunctionPinType TargetObjectPinType;
 	FBlueprintHelperCallFunctionPinType ExpectedReturnPinType;
-	FBlueprintHelperGraphStatementIR Statement;
-	FBlueprintHelperGraphExpressionIR Expression;
 	bool bIsExpression = false;
 
 	static FBlueprintHelperGraphFragmentBuildRequest FromStatement(const FBlueprintHelperGraphStatementIR& Statement);

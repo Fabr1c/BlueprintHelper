@@ -125,6 +125,28 @@ static FString ReadOptionalJsonValueAsString(const TSharedPtr<FJsonObject>& Obje
 
 	return FString();
 }
+
+static void ReadOptionalStringMapField(
+	const TSharedPtr<FJsonObject>& Object,
+	const TCHAR* FieldName,
+	TMap<FString, FString>& OutMap)
+{
+	OutMap.Reset();
+
+	const TSharedPtr<FJsonObject>* MapObject = nullptr;
+	if (!Object.IsValid()
+		|| !Object->TryGetObjectField(FieldName, MapObject)
+		|| !MapObject
+		|| !MapObject->IsValid())
+	{
+		return;
+	}
+
+	for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : (*MapObject)->Values)
+	{
+		OutMap.Add(Pair.Key, FBlueprintHelperGraphSemanticIRUtils::JsonValueToString(Pair.Value));
+	}
+}
 }
 bool FBlueprintHelperGraphResolvedTarget::IsResolved() const
 {
@@ -542,6 +564,7 @@ TSharedPtr<FBlueprintHelperGraphStatementIR> FBlueprintHelperGraphSemanticIRBuil
 	StatementObject->TryGetStringField(TEXT("ambiguity"), Statement->AmbiguityPolicy);
 	StatementObject->TryGetStringField(TEXT("ambiguity_policy"), Statement->AmbiguityPolicy);
 	FBlueprintHelperGraphSemanticIRUtils::ReadOptionalStringArrayField(StatementObject, TEXT("category_priority"), Statement->CategoryPriority);
+	ReadOptionalStringMapField(StatementObject, TEXT("context_evidence"), Statement->ContextEvidence);
 	ParseExpressionMap(StatementObject, TEXT("args"), Path + TEXT(".args"), Statement->Args, OutIR);
 	if (const TSharedPtr<FJsonValue>* TargetObject = StatementObject->Values.Find(TEXT("target_object")))
 	{
@@ -645,6 +668,7 @@ TSharedPtr<FBlueprintHelperGraphExpressionIR> FBlueprintHelperGraphSemanticIRBui
 	ExpressionObject->TryGetStringField(TEXT("ambiguity"), Expression->AmbiguityPolicy);
 	ExpressionObject->TryGetStringField(TEXT("ambiguity_policy"), Expression->AmbiguityPolicy);
 	FBlueprintHelperGraphSemanticIRUtils::ReadOptionalStringArrayField(ExpressionObject, TEXT("category_priority"), Expression->CategoryPriority);
+	ReadOptionalStringMapField(ExpressionObject, TEXT("context_evidence"), Expression->ContextEvidence);
 	ExpressionObject->TryGetStringField(TEXT("type"), Expression->Type);
 	if (Expression->Type.IsEmpty())
 	{

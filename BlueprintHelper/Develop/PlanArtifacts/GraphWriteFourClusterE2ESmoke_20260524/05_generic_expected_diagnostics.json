@@ -42,6 +42,18 @@
                   "value": 0.25
                 }
               }
+            },
+            {
+              "kind": "schedule",
+              "schedule_operation": "latent_or_async_node",
+              "graph_latent_allowed": true,
+              "args": {
+                "delay": {
+                  "kind": "literal",
+                  "value_type": "float",
+                  "value": 0.5
+                }
+              }
             }
           ]
         }

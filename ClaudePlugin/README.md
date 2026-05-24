@@ -9,7 +9,7 @@ BlueprintHelper is not a general source editing API. Use normal repository tools
 The current architecture uses a CLI-first task orchestration layer. Ordinary Agents author TaskSpec, not low-level Blueprint operation payloads:
 
 ```text
-Agent -> BlueprintHelper CLI -> task-core -> Python Task Compiler -> Bridge preview/execute/read -> UE Task Runtime -> Existing Capability Clusters
+Agent -> BlueprintHelper CLI -> AgentFace task-core TypeScript compiler -> Bridge preview/execute/read -> UE Task Runtime -> Existing Capability Clusters
 ```
 
 The intended default flow is:
@@ -25,7 +25,9 @@ bh blueprint_get_runtime_profile
 
 Existing tool clusters are not removed. They remain as UE Task Runtime capabilities, debug / expert tools, and automation test entry points. See [BlueprintHelper_Hybrid_TaskSpec_TaskPlan_Architecture_20260504.md](../BlueprintHelper/Develop/Plan/BlueprintHelper_Hybrid_TaskSpec_TaskPlan_Architecture_20260504.md).
 
-Agents submit `BlueprintHelper.TaskSpec.v1` only; they do not submit TaskPlan. task-core dispatches to the Python compiler, and UE Task Runtime executes the compiled TaskPlan.
+Agents submit `BlueprintHelper.TaskSpec.v1` only; they do not submit TaskPlan. The canonical AgentFace task-core TypeScript compiler owns TaskPlan generation, and UE Task Runtime executes the compiled TaskPlan.
+
+TaskSpec compiler ownership: AgentFace task-core TypeScript compiler is the canonical production compiler. Legacy fallback and parity-gate paths are retired; new TaskSpec capabilities must be implemented and tested in TS first.
 
 ## Version
 
