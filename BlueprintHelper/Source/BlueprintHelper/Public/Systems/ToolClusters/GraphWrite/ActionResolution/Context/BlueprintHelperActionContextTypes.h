@@ -59,6 +59,7 @@ struct FBlueprintHelperActionContextDemand
 	FString CreateOperation;
 	FString ClassPath;
 	FString AssetPath;
+	FString GraphLatentAllowed;
 	FString TypeName;
 	FString StructPath;
 	FString TypeStructureId;

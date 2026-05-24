@@ -856,6 +856,26 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagDataProducer FB
 			State,
 			SymbolScopes);
 
+	case EBlueprintHelperGraphExpressionKind::Convert:
+		return BuildResolvableExpressionFragment(
+			Expression,
+			TEXT("generic_action"),
+			TEXT("convert"),
+			TEXT("value"),
+			Expression->Type,
+			State,
+			SymbolScopes);
+
+	case EBlueprintHelperGraphExpressionKind::Schedule:
+		return BuildResolvableExpressionFragment(
+			Expression,
+			TEXT("generic_action"),
+			TEXT("schedule"),
+			TEXT("then"),
+			Expression->Type,
+			State,
+			SymbolScopes);
+
 	case EBlueprintHelperGraphExpressionKind::Unknown:
 	default:
 	{
@@ -1155,6 +1175,12 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagExecFlow FBluep
 
 	case EBlueprintHelperGraphStatementKind::Create:
 		return BuildSimpleStatement(Statement, TEXT("statement_create"), TEXT("create"), State, SymbolScopes);
+
+	case EBlueprintHelperGraphStatementKind::Convert:
+		return BuildSimpleStatement(Statement, TEXT("statement_convert"), TEXT("convert"), State, SymbolScopes);
+
+	case EBlueprintHelperGraphStatementKind::Schedule:
+		return BuildSimpleStatement(Statement, TEXT("statement_schedule"), TEXT("schedule"), State, SymbolScopes);
 
 	case EBlueprintHelperGraphStatementKind::Unknown:
 	default:

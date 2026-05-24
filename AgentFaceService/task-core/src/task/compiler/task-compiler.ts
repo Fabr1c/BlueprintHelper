@@ -1334,7 +1334,7 @@ function compileMergeGraphWriteOps(behavior: Record<string, unknown>): GraphWrit
   });
 }
 
-const SUPPORTED_GRAPH_BODY_STATEMENT_KINDS = new Set(['call', 'field', 'set', 'set_property', 'let', 'control', 'create']);
+const SUPPORTED_GRAPH_BODY_STATEMENT_KINDS = new Set(['call', 'field', 'set', 'set_property', 'let', 'control', 'create', 'convert', 'schedule']);
 const SUPPORTED_GRAPH_BODY_CONTROL_KINDS = new Set(['branch', 'sequence', 'return']);
 const SUPPORTED_GRAPH_BODY_EXPRESSION_KINDS = new Set([
   'literal',
@@ -1347,7 +1347,16 @@ const SUPPORTED_GRAPH_BODY_EXPRESSION_KINDS = new Set([
   'deconstruct',
   'select',
   'create',
+  'convert',
+  'schedule',
 ]);
+const GRAPH_CONVERT_SCHEDULE_FIELDS = [
+  'function_operation',
+  'transform_operation',
+  'schedule_operation',
+  'target_class_path',
+  'graph_latent_allowed',
+] as const;
 const FIELD_STATEMENT_KIND_MAP = new Map([
   ['set', { operation: 'set', scope: 'variable' }],
   ['set_property', { operation: 'set', scope: 'property_path' }],
@@ -1363,6 +1372,14 @@ function applyFieldTaxonomy(record: Record<string, unknown>, operation: string, 
   record.kind = 'field';
   record.field_operation = operation;
   record.field_scope = scope;
+}
+
+function copyConvertScheduleSemanticFields(source: Record<string, unknown>, target: Record<string, unknown>): void {
+  GRAPH_CONVERT_SCHEDULE_FIELDS.forEach((field) => {
+    if (Object.hasOwn(source, field)) {
+      target[field] = source[field];
+    }
+  });
 }
 
 function fieldScopeUsesPropertyPath(scope: string): boolean {
@@ -1403,7 +1420,7 @@ function validateSupportedStatements(statements: BlueprintLogicStatement[], path
         {
           code: 'unsupported_statement_kind',
           path: `${statementPath}.kind`,
-          message: 'Use call, field, create, set, set_property, let, or control.',
+          message: 'Use call, field, create, convert, schedule, set, set_property, let, or control.',
         },
       ]);
     }
@@ -1411,6 +1428,8 @@ function validateSupportedStatements(statements: BlueprintLogicStatement[], path
       validateExpressionMap(statementRecord.args, `${statementPath}.args`);
     } else if (kind === 'create') {
       validateCreateShape(statementRecord, statementPath);
+      validateExpressionMap(statementRecord.args, `${statementPath}.args`);
+    } else if (kind === 'convert' || kind === 'schedule') {
       validateExpressionMap(statementRecord.args, `${statementPath}.args`);
     } else if (kind === 'field') {
       const { operation } = fieldOperationScope(statementRecord, statementPath);
@@ -1484,7 +1503,7 @@ function validateSupportedExpression(expression: unknown, path: string): void {
       {
         code: 'unsupported_expression_kind',
         path: `${path}.kind`,
-        message: 'Use literal, field, get, get_property, call, op, construct, deconstruct, select, or create.',
+        message: 'Use literal, field, get, get_property, call, op, construct, deconstruct, select, create, convert, or schedule.',
       },
     ]);
   }
@@ -1503,7 +1522,7 @@ function validateSupportedExpression(expression: unknown, path: string): void {
   if (kind === 'create') {
     validateCreateShape(expression, path);
   }
-  if (kind === 'call' || kind === 'op' || kind === 'construct' || kind === 'deconstruct' || kind === 'create') {
+  if (kind === 'call' || kind === 'op' || kind === 'construct' || kind === 'deconstruct' || kind === 'create' || kind === 'convert' || kind === 'schedule') {
     validateExpressionMap(expression.args, `${path}.args`);
   }
   if (kind === 'op') {
@@ -1673,7 +1692,7 @@ function cloneLogicStatementWithCompiledIds(statement: BlueprintLogicStatement, 
     }
   } else if (kind === 'let') {
     out.value = cloneLogicExpressionWithCompiledIds(statementRecord.value, `${statementId}_value`);
-  } else if ((kind === 'call' || kind === 'create') && isRecord(statementRecord.args)) {
+  } else if ((kind === 'call' || kind === 'create' || kind === 'convert' || kind === 'schedule') && isRecord(statementRecord.args)) {
     const args = statementRecord.args as Record<string, unknown>;
     out.args = Object.fromEntries(
       Object.entries(args).map(([argName, argValue]) => [
@@ -1782,7 +1801,7 @@ function compileStatementFlow(statement: BlueprintLogicStatement, nodeId: string
   const node = compileStatementNode(statement, nodeId, path);
   const nodes: AgentImportNode[] = [node];
   const links: AgentImportLink[] = [];
-  if (kind === 'call' || kind === 'create') {
+  if (kind === 'call' || kind === 'create' || kind === 'convert' || kind === 'schedule') {
     const inputValues: Record<string, unknown> = {};
     if (isRecord(statementRecord['args'])) {
       for (const [argName, argValue] of Object.entries(statementRecord['args'])) {
@@ -1951,15 +1970,15 @@ function compileValueExpression(expression: unknown, nodeId: string, path: strin
     return { nodes: [], links: [], defaultValue: literalValue(expression) };
   }
 
-  if (!SUPPORTED_GRAPH_BODY_EXPRESSION_KINDS.has(kind)) {
-    throw new TaskSpecCompileError('unsupported_expression_kind', `Unsupported expression kind: ${kind}`, [
-      {
-        code: 'unsupported_expression_kind',
-        path: `${path}.kind`,
-        message: 'Use literal, field, get, get_property, call, op, construct, deconstruct, select, or create.',
-      },
-    ]);
-  }
+    if (!SUPPORTED_GRAPH_BODY_EXPRESSION_KINDS.has(kind)) {
+      throw new TaskSpecCompileError('unsupported_expression_kind', `Unsupported expression kind: ${kind}`, [
+        {
+          code: 'unsupported_expression_kind',
+          path: `${path}.kind`,
+          message: 'Use literal, field, get, get_property, call, op, construct, deconstruct, select, create, convert, or schedule.',
+        },
+      ]);
+    }
 
   if (kind === 'get' || kind === 'get_property' || kind === 'field') {
     const target = getRequiredString(expression, 'target', `${path}.target`);
@@ -2063,6 +2082,15 @@ function compileValueExpression(expression: unknown, nodeId: string, path: strin
         compileExpressionInput(argValue, argName, `${nodeId}_${toIdSegment(argName)}`, `${path}.args.${argName}`, node, nodes, links, context);
       }
     }
+  } else if (kind === 'convert' || kind === 'schedule') {
+    copyConvertScheduleSemanticFields(expression, node as Record<string, unknown>);
+    const target = optionalString(expression, 'target');
+    if (target) node.target = target;
+    if (isRecord(expression.args)) {
+      for (const [argName, argValue] of Object.entries(expression.args)) {
+        compileExpressionInput(argValue, argName, `${nodeId}_${toIdSegment(argName)}`, `${path}.args.${argName}`, node, nodes, links, context);
+      }
+    }
   } else if (isRecord(expression.args)) {
     for (const [argName, argValue] of Object.entries(expression.args)) {
       compileExpressionInput(argValue, argName, `${nodeId}_${toIdSegment(argName)}`, `${path}.args.${argName}`, node, nodes, links, context);
@@ -2070,7 +2098,7 @@ function compileValueExpression(expression: unknown, nodeId: string, path: strin
   }
   nodes.unshift(node);
 
-  const outputPin = kind === 'construct' || kind === 'deconstruct' || kind === 'select' || kind === 'create' ? 'value' : 'ReturnValue';
+  const outputPin = kind === 'construct' || kind === 'deconstruct' || kind === 'select' || kind === 'create' || kind === 'convert' || kind === 'schedule' ? 'value' : 'ReturnValue';
   return { nodes, links, output: `${nodeId}.${outputPin}` };
 }
 
@@ -2783,6 +2811,17 @@ function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string
     if (Object.hasOwn(statementRecord, 'pin_type')) node.pin_type = statementRecord.pin_type;
     if (Object.hasOwn(statementRecord, 'key_pin_type')) node.key_pin_type = statementRecord.key_pin_type;
     if (Object.hasOwn(statementRecord, 'value_pin_type')) node.value_pin_type = statementRecord.value_pin_type;
+    return omitUndefined(node) as AgentImportNode;
+  }
+
+  if (kind === 'convert' || kind === 'schedule') {
+    const node: Record<string, unknown> = {
+      id: nodeId,
+      kind,
+      target: optionalString(statementRecord, 'target'),
+      inputs: compileArgs(statement['args']),
+    };
+    copyConvertScheduleSemanticFields(statementRecord, node);
     return omitUndefined(node) as AgentImportNode;
   }
 

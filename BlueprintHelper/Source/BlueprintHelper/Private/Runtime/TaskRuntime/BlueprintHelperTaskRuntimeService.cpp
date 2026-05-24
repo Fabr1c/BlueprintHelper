@@ -728,8 +728,12 @@ public:
 			{ EBlueprintHelperGraphStatementKind::Call, TEXT("call") },
 			{ EBlueprintHelperGraphStatementKind::Field, TEXT("field") },
 			{ EBlueprintHelperGraphStatementKind::Branch, TEXT("branch") },
+			{ EBlueprintHelperGraphStatementKind::Sequence, TEXT("sequence") },
 			{ EBlueprintHelperGraphStatementKind::Let, TEXT("let") },
 			{ EBlueprintHelperGraphStatementKind::Return, TEXT("return") },
+			{ EBlueprintHelperGraphStatementKind::Create, TEXT("create") },
+			{ EBlueprintHelperGraphStatementKind::Convert, TEXT("convert") },
+			{ EBlueprintHelperGraphStatementKind::Schedule, TEXT("schedule") },
 		};
 
 		for (const FStatementKindRule& Rule : Rules)
@@ -759,6 +763,9 @@ public:
 			{ EBlueprintHelperGraphExpressionKind::Construct, TEXT("construct") },
 			{ EBlueprintHelperGraphExpressionKind::Deconstruct, TEXT("deconstruct") },
 			{ EBlueprintHelperGraphExpressionKind::Select, TEXT("select") },
+			{ EBlueprintHelperGraphExpressionKind::Create, TEXT("create") },
+			{ EBlueprintHelperGraphExpressionKind::Convert, TEXT("convert") },
+			{ EBlueprintHelperGraphExpressionKind::Schedule, TEXT("schedule") },
 		};
 
 		for (const FExpressionKindRule& Rule : Rules)

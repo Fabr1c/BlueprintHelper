@@ -93,6 +93,7 @@ bool FBlueprintHelperFunctionActionConvertRequiresEvidenceTest::RunTest(const FS
 	TestEqual(TEXT("convert missing evidence error"), Result.ErrorCode, FString(TEXT("needs_more_semantic_context")));
 	TestEqual(TEXT("convert result cluster"), Result.ClusterKind, EBlueprintHelperSpawnerClusterKind::FunctionAction);
 	TestFalse(TEXT("convert missing evidence has no selected spawner"), Result.SelectedSpawner.IsValid());
+	TestFalse(TEXT("convert does not report generic transform ownership"), Result.MatchReason.Contains(TEXT("generic_transform")));
 	return true;
 }
 
@@ -118,6 +119,7 @@ bool FBlueprintHelperFunctionActionScheduleRequiresEvidenceTest::RunTest(const F
 	TestEqual(TEXT("schedule missing evidence error"), Result.ErrorCode, FString(TEXT("needs_more_semantic_context")));
 	TestEqual(TEXT("schedule result cluster"), Result.ClusterKind, EBlueprintHelperSpawnerClusterKind::FunctionAction);
 	TestFalse(TEXT("schedule missing evidence has no selected spawner"), Result.SelectedSpawner.IsValid());
+	TestFalse(TEXT("schedule does not report generic schedule ownership"), Result.MatchReason.Contains(TEXT("generic_schedule")));
 	return true;
 }
 
@@ -154,6 +156,7 @@ bool FBlueprintHelperFunctionActionConvertDispatchesToCallResolverTest::RunTest(
 	TestTrue(TEXT("convert selected function preserved"), Result.SelectedFunction.IsValid());
 	TestFalse(TEXT("convert candidate diagnostics preserved"), Result.CandidateActions.IsEmpty());
 	TestFalse(TEXT("convert selected function candidate preserved"), Result.FunctionCandidate.StableId.IsEmpty());
+	TestFalse(TEXT("convert function path is not generic transform"), Result.MatchReason.Contains(TEXT("generic_transform")));
 	return true;
 }
 
@@ -180,6 +183,7 @@ bool FBlueprintHelperFunctionActionLatentScheduleRequiresLatentGraphTest::RunTes
 	TestEqual(TEXT("latent schedule error"), Result.ErrorCode, FString(TEXT("latent_function_not_allowed_in_graph")));
 	TestEqual(TEXT("latent schedule result cluster"), Result.ClusterKind, EBlueprintHelperSpawnerClusterKind::FunctionAction);
 	TestFalse(TEXT("latent schedule rejection has no selected spawner"), Result.SelectedSpawner.IsValid());
+	TestFalse(TEXT("latent function schedule is not generic schedule"), Result.MatchReason.Contains(TEXT("generic_schedule")));
 	return true;
 }
 

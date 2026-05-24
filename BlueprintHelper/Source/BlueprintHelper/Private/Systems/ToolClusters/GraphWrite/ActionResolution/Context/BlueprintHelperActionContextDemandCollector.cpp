@@ -237,6 +237,29 @@ static FString GetDefaultValue(
 	return Demand.DefaultValues.FindRef(Key).TrimStartAndEnd();
 }
 
+static FString NormalizeSemanticOperationToken(const FString& Operation)
+{
+	return Operation.TrimStartAndEnd().ToLower();
+}
+
+static bool ShouldRouteConvertToGeneric(const FString& ExplicitFunctionOperation, const FString& ExplicitTransformOperation)
+{
+	const FString FunctionOperation = NormalizeSemanticOperationToken(ExplicitFunctionOperation);
+	const FString TransformOperation = NormalizeSemanticOperationToken(ExplicitTransformOperation);
+	return FunctionOperation.IsEmpty()
+		&& !TransformOperation.IsEmpty()
+		&& TransformOperation != TEXT("convert");
+}
+
+static bool ShouldRouteScheduleToGeneric(const FString& ExplicitFunctionOperation, const FString& ExplicitScheduleOperation)
+{
+	const FString FunctionOperation = NormalizeSemanticOperationToken(ExplicitFunctionOperation);
+	const FString ScheduleOperation = NormalizeSemanticOperationToken(ExplicitScheduleOperation);
+	return FunctionOperation.IsEmpty()
+		&& !ScheduleOperation.IsEmpty()
+		&& ScheduleOperation != TEXT("latent_or_async");
+}
+
 static FBlueprintHelperCallFunctionPinType MakePinTypeFromToken(const FString& Token)
 {
 	FBlueprintHelperCallFunctionPinType PinType;
@@ -255,25 +278,48 @@ static FBlueprintHelperCallFunctionPinType MakePinTypeFromToken(const FString& T
 
 static void ApplyFunctionSemanticOperations(FBlueprintHelperActionContextDemand& InOutDemand)
 {
+	if (InOutDemand.ClusterKind != EBlueprintHelperSpawnerClusterKind::FunctionAction)
+	{
+		return;
+	}
+
 	switch (InOutDemand.SemanticKind)
 	{
 	case EBlueprintHelperActionSemanticKind::Call:
-		InOutDemand.FunctionOperation = TEXT("function_call");
+		if (InOutDemand.FunctionOperation.IsEmpty())
+		{
+			InOutDemand.FunctionOperation = TEXT("function_call");
+		}
 		break;
 	case EBlueprintHelperActionSemanticKind::Op:
-		InOutDemand.FunctionOperation = TEXT("operator_function");
+		if (InOutDemand.FunctionOperation.IsEmpty())
+		{
+			InOutDemand.FunctionOperation = TEXT("operator_function");
+		}
 		break;
 	case EBlueprintHelperActionSemanticKind::Convert:
-		InOutDemand.FunctionOperation = TEXT("convert_function");
-		InOutDemand.TransformOperation = TEXT("convert");
+		if (InOutDemand.FunctionOperation.IsEmpty())
+		{
+			InOutDemand.FunctionOperation = TEXT("convert_function");
+		}
+		if (InOutDemand.TransformOperation.IsEmpty())
+		{
+			InOutDemand.TransformOperation = TEXT("convert");
+		}
 		break;
 	case EBlueprintHelperActionSemanticKind::Schedule:
-		InOutDemand.FunctionOperation = GetDefaultValue(InOutDemand, TEXT("function_operation"));
+		if (InOutDemand.FunctionOperation.IsEmpty())
+		{
+			InOutDemand.FunctionOperation = GetDefaultValue(InOutDemand, TEXT("function_operation"));
+		}
 		if (InOutDemand.FunctionOperation.IsEmpty())
 		{
 			InOutDemand.FunctionOperation = TEXT("schedule_function");
 		}
-		InOutDemand.ScheduleOperation = GetDefaultValue(InOutDemand, TEXT("schedule_operation"));
+		if (InOutDemand.ScheduleOperation.IsEmpty())
+		{
+			InOutDemand.ScheduleOperation = GetDefaultValue(InOutDemand, TEXT("schedule_operation"));
+		}
 		if (InOutDemand.ScheduleOperation.IsEmpty())
 		{
 			InOutDemand.ScheduleOperation = TEXT("latent_or_async");
@@ -281,6 +327,78 @@ static void ApplyFunctionSemanticOperations(FBlueprintHelperActionContextDemand&
 		break;
 	default:
 		break;
+	}
+}
+
+static void RouteConvertScheduleDemandToGeneric(FBlueprintHelperActionContextDemand& InOutDemand)
+{
+	InOutDemand.ClusterKind = EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction;
+	InOutDemand.FunctionOperation.Reset();
+	InOutDemand.RequiredKinds.Add(EBlueprintHelperActionContextDemandKind::TypedPins);
+	InOutDemand.RequiredKinds.Add(EBlueprintHelperActionContextDemandKind::Target);
+}
+
+static void ApplyConvertScheduleEvidence(
+	const FString& ExplicitFunctionOperation,
+	const FString& ExplicitTransformOperation,
+	const FString& ExplicitScheduleOperation,
+	const FString& ExplicitClassPath,
+	const FString& ExplicitTarget,
+	const FString& ExplicitGraphLatentAllowed,
+	FBlueprintHelperActionContextDemand& InOutDemand)
+{
+	if (InOutDemand.SemanticKind != EBlueprintHelperActionSemanticKind::Convert
+		&& InOutDemand.SemanticKind != EBlueprintHelperActionSemanticKind::Schedule)
+	{
+		return;
+	}
+
+	const FString FunctionOperation = NormalizeSemanticOperationToken(ExplicitFunctionOperation);
+	const FString TransformOperation = NormalizeSemanticOperationToken(ExplicitTransformOperation);
+	const FString ScheduleOperation = NormalizeSemanticOperationToken(ExplicitScheduleOperation);
+	if (!FunctionOperation.IsEmpty())
+	{
+		InOutDemand.FunctionOperation = FunctionOperation;
+		InOutDemand.DefaultValues.Add(TEXT("function_operation"), FunctionOperation);
+	}
+	if (!TransformOperation.IsEmpty())
+	{
+		InOutDemand.TransformOperation = TransformOperation;
+		InOutDemand.DefaultValues.Add(TEXT("transform_operation"), TransformOperation);
+	}
+	if (!ScheduleOperation.IsEmpty())
+	{
+		InOutDemand.ScheduleOperation = ScheduleOperation;
+		InOutDemand.DefaultValues.Add(TEXT("schedule_operation"), ScheduleOperation);
+	}
+
+	const FString ClassPath = FirstNonEmpty(ExplicitClassPath, ExplicitTarget).TrimStartAndEnd();
+	if (!ClassPath.IsEmpty())
+	{
+		InOutDemand.ClassPath = ClassPath;
+		if (InOutDemand.TargetPath.IsEmpty())
+		{
+			InOutDemand.TargetPath = ClassPath;
+		}
+		InOutDemand.DefaultValues.Add(TEXT("target_class_path"), ClassPath);
+	}
+
+	const FString GraphLatentAllowed = ExplicitGraphLatentAllowed.TrimStartAndEnd().ToLower();
+	if (!GraphLatentAllowed.IsEmpty())
+	{
+		InOutDemand.GraphLatentAllowed = GraphLatentAllowed;
+		InOutDemand.DefaultValues.Add(TEXT("graph_latent_allowed"), GraphLatentAllowed);
+	}
+
+	if (InOutDemand.SemanticKind == EBlueprintHelperActionSemanticKind::Convert
+		&& ShouldRouteConvertToGeneric(FunctionOperation, TransformOperation))
+	{
+		RouteConvertScheduleDemandToGeneric(InOutDemand);
+	}
+	else if (InOutDemand.SemanticKind == EBlueprintHelperActionSemanticKind::Schedule
+		&& ShouldRouteScheduleToGeneric(FunctionOperation, ScheduleOperation))
+	{
+		RouteConvertScheduleDemandToGeneric(InOutDemand);
 	}
 }
 
@@ -542,6 +660,14 @@ void FBlueprintHelperActionContextDemandCollector::AppendDemandForStatement(
 		FieldScope);
 	BlueprintHelperActionContextDemandCollector::CopyExpressionMapContext(Statement.Args, Demand);
 	BlueprintHelperActionContextDemandCollector::ApplyCreateStatementEvidence(Statement, Demand);
+	BlueprintHelperActionContextDemandCollector::ApplyConvertScheduleEvidence(
+		Statement.FunctionOperation,
+		Statement.TransformOperation,
+		Statement.ScheduleOperation,
+		Statement.ClassPath,
+		BlueprintHelperActionContextDemandCollector::FirstNonEmpty(Statement.Target, Statement.Name),
+		Statement.GraphLatentAllowed,
+		Demand);
 	BlueprintHelperActionContextDemandCollector::ApplyFunctionSemanticOperations(Demand);
 	if (Statement.Value.IsValid() && Demand.ExpectedReturnType.IsEmpty())
 	{
@@ -628,6 +754,14 @@ void FBlueprintHelperActionContextDemandCollector::AppendDemandForExpression(
 	BlueprintHelperActionContextDemandCollector::CopyNamedExpressionContext(TEXT("value"), Expression.Value, Demand);
 	BlueprintHelperActionContextDemandCollector::CopyNamedExpressionContext(TEXT("condition"), Expression.Condition, Demand);
 	BlueprintHelperActionContextDemandCollector::ApplyCreateExpressionEvidence(Expression, Demand);
+	BlueprintHelperActionContextDemandCollector::ApplyConvertScheduleEvidence(
+		Expression.FunctionOperation,
+		Expression.TransformOperation,
+		Expression.ScheduleOperation,
+		Expression.ClassPath,
+		BlueprintHelperActionContextDemandCollector::FirstNonEmpty(Expression.Target, Expression.Name),
+		Expression.GraphLatentAllowed,
+		Demand);
 	BlueprintHelperActionContextDemandCollector::ApplyFunctionSemanticOperations(Demand);
 	Demand.ExpectedReturnType = Expression.Type;
 	if (Expression.TargetObject.IsValid())
@@ -861,6 +995,10 @@ EBlueprintHelperActionSemanticKind FBlueprintHelperActionContextDemandCollector:
 		return EBlueprintHelperActionSemanticKind::Control;
 	case EBlueprintHelperGraphStatementKind::Create:
 		return EBlueprintHelperActionSemanticKind::Create;
+	case EBlueprintHelperGraphStatementKind::Convert:
+		return EBlueprintHelperActionSemanticKind::Convert;
+	case EBlueprintHelperGraphStatementKind::Schedule:
+		return EBlueprintHelperActionSemanticKind::Schedule;
 	case EBlueprintHelperGraphStatementKind::Let:
 		return EBlueprintHelperActionSemanticKind::Field;
 	case EBlueprintHelperGraphStatementKind::ComponentBoundEvent:
@@ -891,6 +1029,10 @@ EBlueprintHelperActionSemanticKind FBlueprintHelperActionContextDemandCollector:
 		return EBlueprintHelperActionSemanticKind::Select;
 	case EBlueprintHelperGraphExpressionKind::Create:
 		return EBlueprintHelperActionSemanticKind::Create;
+	case EBlueprintHelperGraphExpressionKind::Convert:
+		return EBlueprintHelperActionSemanticKind::Convert;
+	case EBlueprintHelperGraphExpressionKind::Schedule:
+		return EBlueprintHelperActionSemanticKind::Schedule;
 	default:
 		return EBlueprintHelperActionSemanticKind::Unknown;
 	}

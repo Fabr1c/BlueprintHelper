@@ -263,6 +263,10 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 	{
 		Context.Evidence.Add(TEXT("asset_path"), Demand.AssetPath);
 	}
+	if (!Demand.GraphLatentAllowed.IsEmpty())
+	{
+		Context.Evidence.Add(TEXT("graph_latent_allowed"), Demand.GraphLatentAllowed);
+	}
 	if (!Demand.DelegateSignature.IsEmpty())
 	{
 		Context.Evidence.Add(TEXT("delegate_signature"), Demand.DelegateSignature);
@@ -357,7 +361,10 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 		Context.Evidence.Add(TEXT("graph_name"), Snapshot.Graph.GraphName);
 		Context.Evidence.Add(TEXT("target_graph"), Snapshot.Graph.GraphName);
 	}
-	Context.Evidence.Add(TEXT("graph_latent_allowed"), Snapshot.Graph.bLatentAllowed ? TEXT("true") : TEXT("false"));
+	if (!Context.Evidence.Contains(TEXT("graph_latent_allowed")))
+	{
+		Context.Evidence.Add(TEXT("graph_latent_allowed"), Snapshot.Graph.bLatentAllowed ? TEXT("true") : TEXT("false"));
+	}
 	if (!Demand.TargetGraphName.IsEmpty())
 	{
 		Context.Evidence.Add(TEXT("target_graph"), Demand.TargetGraphName);

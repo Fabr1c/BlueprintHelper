@@ -22,7 +22,7 @@
 | `FunctionActionCluster` | 部分完成 | 约 75%-80% | `call` 在 P6 能力行中已有 selected stable id、selected spawner、call node readback；`op` 有独立 resolver 入口；2026-05-24 已补齐 `Convert -> convert_function`、`Schedule -> schedule_function`、`Schedule -> latent_or_async_function` 的二级语义守卫、ActionContext 投影和 C++ smoke。 | 函数类 spawner 调用仍需继续统一收敛到共享 adapter/lifecycle；broad `create` 不属于本次 Function 收敛范围。 | 继续把函数类 spawner 调用收敛到共享 adapter/lifecycle，并保持 call/convert/schedule query 以 target/stable id、typed pin、latent graph evidence 为主的 evidence contract。 |
 | `FieldVariableActionCluster` | 部分完成 | 约 60%-65% | P6 readback 覆盖 variable get/set by field evidence；2026-05-24 已补齐复杂 `property_path` full/root/leaf metadata、linked typed pin 推断、`component_ref` 与 `field_access` 独立二级语义、SemanticIR/TaskSpec 编译器接受路径和 C++ smoke。 | 真实 Bridge execute smoke 停在计划 fixture `/Game/BlueprintHelper/Smoke/BP_GraphWriteFunctionFieldSmoke` 不存在；变量 spawner 到共享 adapter 的更宽生命周期收敛仍需继续。 | 准备或生成稳定 Smoke fixture 后重跑 execute；继续把 field variable/property/component access 的 spawner invocation 收敛到共享 adapter/lifecycle。 |
 | `EventDelegateActionCluster` | 部分完成 | 约 45%-55% | P6 readback 覆盖 custom event by event name；Gap5 已补齐 `component_bound_event` 与 `delegate.bind/assign/unbind/unbind_all/call` 的 projected-evidence 正向 resolver/fragment/readback 路径；`delegate.assign` 使用 `ue_delegate_manual_assign_factory`，避免 UE spawner 自动创建 Signature-owned custom event；2026-05-24 unified smoke 验证 Signature owns custom_event declaration and GraphWrite owns body/use-site boundary。 | Gap 5 已关闭；不迁移 GraphWrite public `custom_event/override/native` declaration taxonomy。剩余是更宽的 Signature 协作执行 smoke 和已有 use-site 的真实资产覆盖。 | 保持 GraphWrite/EventDelegate 只写 use-site；后续如迁移 `event` 到 `Event + event_operation`，必须继续保持 Signature ownership。 |
-| `GenericAssetStructControlActionCluster` | 部分完成 | 约 55%-60% | P6 readback 覆盖 select/control singleton stable id、struct make/break by struct type；P4 provider boundary 证据可用；2026-05-24 已接入 explicit `Create + create_operation` first slice：`spawn_actor`、`create_widget`、`construct_object`、`make_array`、`make_map`、`make_set`。 | Gap 2/3/4 closed for their documented scopes: GraphStatementBuilder demand/projection is owned by ActionContext, canonical singleton direct spawn is fixed behind `FBlueprintHelperSingletonControlFlowEvidenceProvider`, and mutation branch-fork sequence creation reuses provider evidence plus shared spawner adapter. Broad `convert` / `schedule` still need separate convergence; `asset_action` create still requires projected ActionDatabase/spawner evidence before it can succeed. | 保留一级分发到簇、簇内二级语义映射；继续让 remaining broad convert/schedule and asset-backed create 走完整 context -> provider/resolver -> spawner/evidence。 |
+| `GenericAssetStructControlActionCluster` | 部分完成 | 约 60%-65% | P6 readback 覆盖 select/control singleton stable id、struct make/break by struct type；P4 provider boundary 证据可用；2026-05-24 已接入 explicit `Create + create_operation` first slice：`spawn_actor`、`create_widget`、`construct_object`、`make_array`、`make_map`、`make_set`；同日已接入 explicit Generic-side `Convert + transform_operation` 与 `Schedule + schedule_operation` 二级语义边界，`dynamic_cast` / `class_cast` 可选中 cast node spawner，`type_promotion` / timer / latent-or-async node 在缺少投影 spawner evidence 时返回确定性 `needs_more_semantic_context`。 | Gap 2/3/4 closed for their documented scopes: GraphStatementBuilder demand/projection is owned by ActionContext, canonical singleton direct spawn is fixed behind `FBlueprintHelperSingletonControlFlowEvidenceProvider`, and mutation branch-fork sequence creation reuses provider evidence plus shared spawner adapter. `asset_action` create、type-promotion spawner projection、timer/delegate/latent node evidence 仍需要真实 ActionDatabase/spawner evidence 后才能扩展为成功路径。 | 保留一级分发到簇、簇内二级语义映射；继续让 asset-backed create、type-promotion 和 schedule-node success path 走完整 context -> provider/resolver -> spawner/evidence。 |
 
 ## 3. 分类汇总
 
@@ -55,7 +55,7 @@
 2. `branch`、`sequence`、`select` 等唯一控制流可以 direct spawn，但仍必须保留统一的一级分发规则和簇内次级语义映射路径。
 3. direct spawn 也应有明确 evidence provider / adapter 边界，不能重新变成 mutation helper 或 builder 内的散落硬编码。
 
-P6 已重新运行能力行、`BlueprintHelper.GraphWrite` 全量 regression 与 BuildPlugin，三者均通过；Gap 2/3/4/5 已按各自文档范围关闭。四簇仍全部保持“部分完成”，原因不是当前 gap 文档仍有开放项，而是 broad `create/convert/schedule`、Field property path 深化、Event taxonomy 迁移和函数类共享 adapter/lifecycle 等簇内能力还需继续完整走 context / resolver / evidence 链路。
+P6 已重新运行能力行、`BlueprintHelper.GraphWrite` 全量 regression 与 BuildPlugin，三者均通过；Gap 2/3/4/5 已按各自文档范围关闭。四簇仍全部保持“部分完成”，原因不是当前 gap 文档仍有开放项，而是 `asset_action` create、Generic type-promotion / schedule success evidence、Field real Bridge execute smoke、Event Signature 协作 smoke 和函数类共享 adapter/lifecycle 等簇内能力还需继续完整走 context / resolver / evidence 链路。
 
 ## 6. P6 同步记录
 
@@ -85,4 +85,14 @@ P6 已重新运行能力行、`BlueprintHelper.GraphWrite` 全量 regression 与
 | `BlueprintHelper.GraphWrite.ActionResolution.Generic` | PASS: 8 succeeded, 0 failed | Generic provider/boundary 覆盖 broad create cluster evidence、Convert/Schedule no-fallback、struct make/break 和 singleton control evidence。 |
 | `BlueprintHelper.GraphWrite.LegacyMainline` | PASS: 8 succeeded, 0 failed | 旧主线 smoke 未被 create 接入破坏。 |
 | `BlueprintHelper.GraphWrite` | PASS: 158 tests, 0 failed, exit code 0 | Generic broad create first slice 接入后 full GraphWrite regression 通过。 |
+| UE 5.6 `Build.bat TemplateEditor Win64 Development` | PASS: `Result: Succeeded` | 当前代码通过 UE 5.6 编译门禁。 |
+
+## 9. 2026-05-24 Generic Convert/Schedule 收敛同步记录
+
+| 验证 | 结果 | 影响 |
+|---|---|---|
+| AgentFace TS/Python compiler convert/schedule coverage | PASS | `kind:"convert"` / `kind:"schedule"` statement/expression 会保留 `function_operation`、`transform_operation`、`schedule_operation`、`target_class_path` 与 `graph_latent_allowed`。 |
+| `BlueprintHelper.GraphWrite.ActionResolution` | PASS | Function-owned convert/schedule 仍归 `FunctionActionCluster`；Generic-owned convert/schedule 进入 `GenericAssetStructControlActionCluster`，缺失或不完整 evidence 返回确定性 `needs_more_semantic_context`。 |
+| `BlueprintHelper.GraphWrite.ActionContext` | PASS | ActionContext 能把显式 Generic transform/schedule operation 投影到 Generic cluster，并拒绝 Function+Generic 二级语义混用。 |
+| `BlueprintHelper.GraphWrite` | PASS: 155 succeeded + 11 succeeded with warnings, 0 failed, 0 not run | Generic Convert/Schedule 接入后 full GraphWrite regression 通过；最新报告为 `Saved/Automation/GraphWrite_GenericConvertSchedule_Final_20260524_001/index.json`。 |
 | UE 5.6 `Build.bat TemplateEditor Win64 Development` | PASS: `Result: Succeeded` | 当前代码通过 UE 5.6 编译门禁。 |

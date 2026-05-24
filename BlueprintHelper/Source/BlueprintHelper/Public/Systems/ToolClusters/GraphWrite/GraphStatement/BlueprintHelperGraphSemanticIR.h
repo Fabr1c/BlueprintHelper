@@ -17,6 +17,8 @@ enum class EBlueprintHelperGraphStatementKind : uint8
 	Let,
 	Return,
 	Create,
+	Convert,
+	Schedule,
 	ComponentBoundEvent,
 	Delegate
 };
@@ -31,7 +33,9 @@ enum class EBlueprintHelperGraphExpressionKind : uint8
 	Construct,
 	Deconstruct,
 	Select,
-	Create
+	Create,
+	Convert,
+	Schedule
 };
 
 enum class EBlueprintHelperGraphTargetKind : uint8
@@ -108,9 +112,13 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphExpressionIR
 	FString Property;
 	FString FieldOperation;
 	FString FieldScope;
+	FString FunctionOperation;
+	FString TransformOperation;
+	FString ScheduleOperation;
 	FString CreateOperation;
 	FString ClassPath;
 	FString AssetPath;
+	FString GraphLatentAllowed;
 	FString PinType;
 	FString KeyPinType;
 	FString ValuePinType;
@@ -146,9 +154,13 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphStatementIR
 	FString Property;
 	FString FieldOperation;
 	FString FieldScope;
+	FString FunctionOperation;
+	FString TransformOperation;
+	FString ScheduleOperation;
 	FString CreateOperation;
 	FString ClassPath;
 	FString AssetPath;
+	FString GraphLatentAllowed;
 	FString PinType;
 	FString KeyPinType;
 	FString ValuePinType;

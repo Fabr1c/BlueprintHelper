@@ -104,6 +104,34 @@ bool FBlueprintHelperGraphFragmentBuilderRegistry::TryBuildStatement(
 			ActionContextScope);
 	}
 
+	if (Statement.Kind == EBlueprintHelperGraphStatementKind::Convert
+		|| Statement.Kind == EBlueprintHelperGraphStatementKind::Schedule)
+	{
+		FBlueprintHelperGraphFragmentBuildRequest Request = FBlueprintHelperGraphFragmentBuildRequest::FromStatement(Statement);
+		Request.FragmentId = StatementId;
+		Request.SourceStatementId = StatementId;
+		Request.ActionContextStatementId = StatementContextId;
+		Request.Query = !Statement.TransformOperation.IsEmpty()
+			? Statement.TransformOperation
+			: (!Statement.ScheduleOperation.IsEmpty() ? Statement.ScheduleOperation : Statement.PatternName);
+		Request.Target = !Statement.ClassPath.IsEmpty() ? Statement.ClassPath : Statement.Target;
+		Request.TypeName = !Statement.ClassPath.IsEmpty() ? Statement.ClassPath : Statement.ResolvedTarget.Type;
+		FillLiteralArgsAsDefaultsAndTypes(Statement.Args, Request.DefaultValues, Request.ArgumentTypes);
+		if (SemanticArgumentPinTypes)
+		{
+			Request.ArgumentPinTypes.Append(*SemanticArgumentPinTypes);
+		}
+		return FBlueprintHelperGraphStatementBuilder::BuildActionProviderFragment(
+			TargetGraph,
+			Request,
+			Statement.Kind == EBlueprintHelperGraphStatementKind::Convert
+				? EBlueprintHelperActionSemanticKind::Convert
+				: EBlueprintHelperActionSemanticKind::Schedule,
+			OutFragment,
+			OutError,
+			ActionContextScope);
+	}
+
 	if (Statement.Kind == EBlueprintHelperGraphStatementKind::Field
 		&& Statement.FieldOperation.Equals(TEXT("set"), ESearchCase::IgnoreCase)
 		&& Statement.FieldScope.Equals(TEXT("variable"), ESearchCase::IgnoreCase))

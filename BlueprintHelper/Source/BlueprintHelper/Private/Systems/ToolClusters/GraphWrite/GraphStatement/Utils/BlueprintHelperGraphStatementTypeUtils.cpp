@@ -50,6 +50,8 @@ FString FBlueprintHelperGraphStatementTypeUtils::ResolveExpressionKindName(
 		{ EBlueprintHelperGraphExpressionKind::Deconstruct, TEXT("deconstruct") },
 		{ EBlueprintHelperGraphExpressionKind::Select, TEXT("select") },
 		{ EBlueprintHelperGraphExpressionKind::Create, TEXT("create") },
+		{ EBlueprintHelperGraphExpressionKind::Convert, TEXT("convert") },
+		{ EBlueprintHelperGraphExpressionKind::Schedule, TEXT("schedule") },
 	};
 
 	for (const FExpressionKindRule& Rule : Rules)

@@ -4,7 +4,7 @@
 
 2026-05-24 update: the original audit Gap 1-5 records remain closed for their historical scope, but this file now also tracks follow-up Gap 3/4/5 entries added below. Do not read the historical closure statement as full four-cluster completion.
 
-当前代码在本审计文档列出的 GraphWrite 架构 gap 已全部关闭。该结论只表示本文档中的 Gap 1-5 已按各自边界收敛，不等同于四个工具簇全部达到“完全完成”；`create` / `convert` / `schedule` 等宽范围语义仍按后续路线图继续推进。
+当前代码在本审计文档列出的 GraphWrite 架构 gap 已全部关闭。该结论只表示本文档中的 Gap 1-5 已按各自边界收敛，不等同于四个工具簇全部达到“完全完成”；`asset_action` create、type-promotion spawner projection、timer/delegate/latent node evidence、Field real Bridge execute smoke、Event Signature collaboration smoke 和 Function shared adapter/lifecycle 仍按后续路线图继续推进。
 
 当前期望主链路仍然是：
 
@@ -81,7 +81,7 @@ Closure evidence:
 当前结论：
 - Gap 2 已关闭；GraphStatementBuilder 不再拥有本地 action-context demand 构造或 semantic kind 到 cluster kind 的局部投影职责。
 - 该闭环不改变四簇语义能力状态；Gap 5 已由 2026-05-23 EventDelegate use-site implementation 另行关闭。
-- 宽范围 `create/convert/schedule` 语义仍按各自簇后续计划继续收敛，不属于 Gap 2 closure scope。
+- At this Gap 2 closure point, wide `create/convert/schedule` semantics were outside scope; later 2026-05-24 closure records below cover explicit broad-create first slice and Generic Convert/Schedule ownership boundary.
 
 ### Gap 3. Canonical singleton direct spawn boundary is not explicit enough
 
@@ -92,7 +92,7 @@ Closure scope - 2026-05-23:
 - `FBlueprintHelperSingletonControlFlowEvidenceProvider::TryBuildCanonicalRequest` owns singleton kind -> semantic kind/query mapping.
 - `FBlueprintHelperSingletonControlFlowEvidenceProvider::ResolveCanonical` owns `ActionResolutionResult`, stable id, candidate evidence, and `SelectedSpawner` creation.
 - `GenericAssetStructControlActionResolver` continues to call the provider for `Select` / `Control`.
-- Wide-surface semantics still cannot use singleton direct spawn as fallback; broad create/convert/schedule semantics remain outside this closure.
+- Wide-surface semantics still cannot use singleton direct spawn as fallback; at this closure point, broad create/convert/schedule semantics remained outside this closure and were tracked by later 2026-05-24 records below.
 
 Closure evidence:
 - Task 1 API green: `D:\UEProjects\Template\Saved\Automation\GraphWrite_SingletonBoundary_API_GREEN_002\index.json`, 1 succeeded, 0 failed, 0 warnings.
@@ -100,7 +100,7 @@ Closure evidence:
 当前结论：
 - `branch`、`sequence`、`return`、以及确认唯一的 `select` 属于 canonical singleton semantic。
 - direct spawn 只发生在 `FBlueprintHelperSingletonControlFlowEvidenceProvider` 的 canonical secondary semantic mapping 内。
-- 该闭环不改变 `SpawnerClusterKind` 一级分发规则，也不关闭 Generic broad create/convert/schedule 语义缺口。
+- 该闭环不改变 `SpawnerClusterKind` 一级分发规则；当时未关闭的 Generic broad create/convert/schedule 后续由 2026-05-24 closure records 分别补充记录。
 - Gap 2 已按本地 demand/projection 职责收敛关闭；Gap 5 已由 2026-05-23 EventDelegate use-site implementation 另行关闭。
 
 ### Gap 4. MutationCoordinator bypasses singleton evidence boundary for sequence node
@@ -119,7 +119,7 @@ Closure evidence - 2026-05-23:
 - `sequence` 仍是 canonical singleton control node，direct spawn 策略合法，但策略所有权不再位于 MutationCoordinator。
 - branch fork 所需 sequence node 创建复用 singleton provider evidence，并通过 shared spawner adapter 实际生成节点。
 - candidate/debug/review evidence 能解释该 sequence node 是 mutation 编排产物，同时其 spawner strategy 来自统一 singleton boundary。
-- Gap 4 已关闭；不代表 Generic broad create/convert/schedule 语义完成。
+- Gap 4 已关闭；当时不代表 Generic broad create/convert/schedule 语义完成，后续状态以 2026-05-24 closure records 为准。
 
 ### Gap 5. EventDelegate use-site complete spawner boundary
 
@@ -206,6 +206,16 @@ The historical Gap 1-5 records above remain closed for their original scope. The
 - Closed for explicit broad-create first slice: `spawn_actor`, `create_widget`, `construct_object`, `make_array`, `make_map`, `make_set`.
 - Closure evidence: AgentFace TS/Python compiler tests, UE 5.6 compile, `BlueprintHelper.GraphWrite.ActionResolution.Contract`, `BlueprintHelper.GraphWrite.ActionResolution.Generic.Create`, `BlueprintHelper.GraphWrite.ActionResolution.Generic`, `BlueprintHelper.GraphWrite.LegacyMainline`, and full `BlueprintHelper.GraphWrite` automation.
 - `asset_action` remains intentionally open unless projected ActionDatabase / selected spawner evidence exists; current behavior is `needs_more_semantic_context`, not fake success.
+- This closure does not change the open follow-up Gap 3/4/5 entries above.
+
+## 2026-05-24 Generic Convert/Schedule Closure
+
+- Closed for explicit Generic-side ownership boundary: `Convert + transform_operation` and `Schedule + schedule_operation` now route through `GenericAssetStructControlActionCluster` instead of FunctionAction or struct fallback.
+- Function-owned `convert_function`, `schedule_function`, and `latent_or_async_function` remain in `FunctionActionCluster`.
+- `dynamic_cast` and `class_cast` can resolve to cast-node spawner evidence when target class evidence is present.
+- `type_promotion`, `timer_delegate_node`, and `latent_or_async_node` remain honest missing-context paths until projected type-promotion, timer/delegate, or latent node spawner evidence exists; current behavior is `needs_more_semantic_context`, not fake success.
+- Ambiguous Function+Generic second-stage ownership is rejected with `ambiguous_convert_schedule_owner`.
+- Closure evidence: AgentFace TS/Python compiler tests, UE 5.6 compile, `BlueprintHelper.GraphWrite.ActionResolution`, `BlueprintHelper.GraphWrite.ActionContext`, and full `BlueprintHelper.GraphWrite` automation; latest full report is `Saved/Automation/GraphWrite_GenericConvertSchedule_Final_20260524_001/index.json` with 155 succeeded, 11 succeeded with warnings, 0 failed, 0 not run.
 - This closure does not change the open follow-up Gap 3/4/5 entries above.
 
 ## 2026-05-24 Struct / TypeStructure construct-deconstruct gap sync

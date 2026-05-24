@@ -13,9 +13,13 @@ FBlueprintHelperGraphFragmentBuildRequest FBlueprintHelperGraphFragmentBuildRequ
 	Request.PropertyPath = Statement.Property;
 	Request.FieldOperation = Statement.FieldOperation;
 	Request.FieldScope = Statement.FieldScope;
+	Request.FunctionOperation = Statement.FunctionOperation;
+	Request.TransformOperation = Statement.TransformOperation;
+	Request.ScheduleOperation = Statement.ScheduleOperation;
 	Request.CreateOperation = Statement.CreateOperation;
 	Request.ClassPath = Statement.ClassPath;
 	Request.AssetPath = Statement.AssetPath;
+	Request.GraphLatentAllowed = Statement.GraphLatentAllowed;
 	Request.PinType = Statement.PinType;
 	Request.KeyPinType = Statement.KeyPinType;
 	Request.ValuePinType = Statement.ValuePinType;
@@ -52,9 +56,13 @@ FBlueprintHelperGraphFragmentBuildRequest FBlueprintHelperGraphFragmentBuildRequ
 	Request.PropertyPath = Expression.ResolvedTarget.PropertyPath;
 	Request.FieldOperation = Expression.FieldOperation;
 	Request.FieldScope = Expression.FieldScope;
+	Request.FunctionOperation = Expression.FunctionOperation;
+	Request.TransformOperation = Expression.TransformOperation;
+	Request.ScheduleOperation = Expression.ScheduleOperation;
 	Request.CreateOperation = Expression.CreateOperation;
 	Request.ClassPath = Expression.ClassPath;
 	Request.AssetPath = Expression.AssetPath;
+	Request.GraphLatentAllowed = Expression.GraphLatentAllowed;
 	Request.PinType = Expression.PinType;
 	Request.KeyPinType = Expression.KeyPinType;
 	Request.ValuePinType = Expression.ValuePinType;
