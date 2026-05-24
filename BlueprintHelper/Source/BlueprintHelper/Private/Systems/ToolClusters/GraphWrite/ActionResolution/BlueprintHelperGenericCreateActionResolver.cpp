@@ -9,6 +9,7 @@
 #include "K2Node_SpawnActorFromClass.h"
 #include "Modules/ModuleManager.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionClusterContextView.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericAssetActionResolver.h"
 
 namespace
 {
@@ -204,9 +205,7 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperGenericCreateActionResolv
 
 	if (Operation == TEXT("asset_action"))
 	{
-		return MakeInvalidResult(
-			TEXT("needs_more_semantic_context"),
-			TEXT("asset_action create requires projected asset action database evidence."));
+		return FBlueprintHelperGenericAssetActionResolver::Resolve(Request, Context);
 	}
 
 	if (Operation == TEXT("make_array"))

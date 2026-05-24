@@ -554,4 +554,26 @@ This taxonomy does not change the top-level `SpawnerClusterKind` dispatch rule. 
 - `dynamic_cast` and `class_cast` can select cast-node spawner evidence when `target_class_path` is projected; missing target class evidence returns `needs_more_semantic_context`.
 - `type_promotion`, `timer_delegate_node`, and `latent_or_async_node` are only considered success-capable after projected spawner evidence exists; until then they return deterministic missing-context diagnostics rather than fake success.
 - Generic schedule support is only considered complete for operations that expose selected spawner evidence or deterministic missing-context diagnostics; normal Kismet timer calls remain FunctionAction.
-- 2026-05-24 verification: AgentFace TS compiler tests、UE 5.6 compile、`BlueprintHelper.GraphWrite.ActionResolution`、`BlueprintHelper.GraphWrite.ActionContext`、full `BlueprintHelper.GraphWrite` automation 均已通过；最新 full report 为 `Saved/Automation/GraphWrite_GenericConvertSchedule_Final_20260524_001/index.json`，155 succeeded + 11 succeeded with warnings，0 failed，0 not run。
+
+## 2026-05-24 RemainingGaps Task 4 Smoke/Docs Sync
+
+- `context_evidence` is now treated as projected mainline data that must survive:
+
+```text
+TaskSpec statement/expression
+-> compiler lowering
+-> UE SemanticIR
+-> GraphFragmentBuildRequest
+-> FBlueprintHelperActionResolutionRequest::ContextEvidence
+```
+
+- Resolver success must consume projected `context_evidence`. A resolver must not invent missing projected values while claiming a success path.
+- Generic `asset_action` remains ActionDatabase-only. Success is valid only when projected selector evidence resolves to an existing `UBlueprintNodeSpawner` already registered in `FBlueprintActionDatabase`.
+- Generic `type_promotion` remains FTypePromotion-only. Success requires projected typed evidence for stable id, operator, source pin type, target pin type, and result pin type, then resolves through the registered `FTypePromotion` operator spawner.
+- Function call/action-provider resolve-spawn lifecycle has converged on `FBlueprintHelperActionFragmentSpawnCoordinator` for the planned scope. `GraphStatementBuilder` composes projected requests/evidence, while the coordinator owns shared resolve, selected-spawner invocation, pin population, common metadata, and `semantic_kind` ownership tagging.
+- `GraphFragmentBuildRequest` is a shallow runtime build payload. It no longer stores recursive `FBlueprintHelperGraphStatementIR` / `FBlueprintHelperGraphExpressionIR` payloads, and the action fragment coordinator receives the build request by scoped reference instead of copying it again.
+- Smoke policy after this closure:
+  - keep no-evidence diagnostics for `type_promotion`, `timer_delegate_node`, and `latent_or_async_node`
+  - add positive Generic smoke only when the fixture carries honest projected evidence
+  - do not add positive CLI `asset_action` smoke until the fixture can derive a real `asset_action_stable_id` from an ActionDatabase projection step
+- 2026-05-24 final verification: AgentFace task-core tests pass (`160` passed, `0` failed); UE 5.6 build reports `Result: Succeeded`; focused further-fix automation `D:\UEProjects\Template\Saved\Automation\GraphWrite_FurtherFix_Focused_003\index.json` reports `succeeded=4`, `failed=0`; four-cluster smoke completed with `00`-`04` preview/execute passing and `05` expected diagnostics remaining `preview_blocked`; full smoke-run GraphWrite automation `D:\UEProjects\Template\Saved\Automation\GraphWrite_FourClusterE2ESmoke_20260524_001\index.json` reports `succeeded=157`, `succeededWithWarnings=11`, `failed=0`, `notRun=0`.

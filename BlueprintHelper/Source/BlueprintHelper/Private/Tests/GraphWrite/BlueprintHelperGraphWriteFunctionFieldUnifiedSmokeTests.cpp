@@ -1,6 +1,10 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextDemandCollector.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextScope.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentBuilderRegistry.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphStatementBuilder.h"
 
 #include "BlueprintActionDatabase.h"
 #include "EdGraph/EdGraph.h"
@@ -122,6 +126,55 @@ static FBlueprintHelperActionResolutionRequest MakeUnifiedFieldRequest(
 	return Request;
 }
 
+static FBlueprintHelperGraphStatementIR MakeUnifiedCallStatement(
+	const FString& StatementId,
+	const FString& Target)
+{
+	FBlueprintHelperGraphStatementIR Statement;
+	Statement.StatementId = StatementId;
+	Statement.Path = TEXT("$.statements[0]");
+	Statement.Kind = EBlueprintHelperGraphStatementKind::Call;
+	Statement.Name = TEXT("call");
+	Statement.PatternName = TEXT("call_function");
+	Statement.Target = Target;
+	Statement.SearchMode = TEXT("contextual");
+	Statement.AmbiguityPolicy = TEXT("fail_on_ambiguity");
+	return Statement;
+}
+
+static bool BuildUnifiedSmokeActionContextScopeForStatement(
+	FAutomationTestBase& Test,
+	UBlueprint* Blueprint,
+	UEdGraph* Graph,
+	const FBlueprintHelperGraphStatementIR& Statement,
+	FBlueprintHelperActionContextScope& OutScope,
+	FString& OutError)
+{
+	TArray<TSharedPtr<FBlueprintHelperGraphStatementIR>> Statements;
+	Statements.Add(MakeShared<FBlueprintHelperGraphStatementIR>(Statement));
+
+	const TArray<FBlueprintHelperActionContextDemand> Demands =
+		FBlueprintHelperActionContextDemandCollector::CollectFromStatements(Statements);
+	Test.TestTrue(TEXT("action context demands exist"), Demands.Num() > 0);
+	if (Demands.Num() == 0)
+	{
+		OutError = TEXT("no_action_context_demands");
+		return false;
+	}
+
+	return FBlueprintHelperActionContextScope::Build(
+		Blueprint,
+		Graph,
+		Demands,
+		FBlueprintHelperActionContextScope::MakeRevision(
+			Blueprint,
+			Graph,
+			TEXT("function_field_unified_smoke_tests"),
+			TEXT("call_fragment_semantic_kind_ownership")),
+		OutScope,
+		OutError);
+}
+
 static FString BuildPluginRoot()
 {
 	return FPaths::Combine(FPaths::ProjectPluginsDir(), TEXT("BlueprintHelper"));
@@ -186,6 +239,98 @@ bool FBlueprintHelperGraphWriteUnifiedSmokeFunctionConvertAndScheduleTest::RunTe
 	TestEqual(TEXT("latent schedule status"), ScheduleResult.Status, EBlueprintHelperActionResolutionStatus::InvalidRequest);
 	TestEqual(TEXT("latent schedule error"), ScheduleResult.ErrorCode, FString(TEXT("latent_function_not_allowed_in_graph")));
 	TestNotEqual(TEXT("schedule is not unsupported"), ScheduleResult.ErrorCode, FString(TEXT("unsupported_function_cluster_semantic")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteUnifiedSmokeCallFragmentSemanticKindOwnershipTest,
+	"BlueprintHelper.GraphWrite.FunctionFieldUnifiedSmoke.CallFragmentSemanticKindOwnership",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteUnifiedSmokeCallFragmentSemanticKindOwnershipTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeUnifiedSmokeBlueprint();
+	UEdGraph* Graph = GetUnifiedSmokeGraph(Blueprint);
+	TestNotNull(TEXT("blueprint"), Blueprint);
+	TestNotNull(TEXT("graph"), Graph);
+	if (!Blueprint || !Graph)
+	{
+		return false;
+	}
+
+	FBlueprintActionDatabase::Get().RefreshAll();
+
+	const FString StatementId = MakeUnifiedSmokeObjectName(TEXT("Stmt"));
+	FBlueprintHelperGraphStatementIR Statement = MakeUnifiedCallStatement(StatementId, TEXT("PrintString"));
+	TSharedPtr<FBlueprintHelperGraphExpressionIR> InStringArg = MakeShared<FBlueprintHelperGraphExpressionIR>();
+	InStringArg->ExpressionId = StatementId + TEXT("_arg_InString");
+	InStringArg->Path = TEXT("$.statements[0].args.InString");
+	InStringArg->Kind = EBlueprintHelperGraphExpressionKind::Literal;
+	InStringArg->Type = TEXT("string");
+	InStringArg->LiteralValue = TEXT("hello");
+	Statement.Args.Add(TEXT("InString"), InStringArg);
+
+	FBlueprintHelperActionContextScope ActionContextScope;
+	FString ScopeError;
+	TestTrue(
+		TEXT("build action context scope"),
+		BuildUnifiedSmokeActionContextScopeForStatement(*this, Blueprint, Graph, Statement, ActionContextScope, ScopeError));
+	if (!ScopeError.IsEmpty())
+	{
+		AddInfo(FString::Printf(TEXT("action context scope detail: %s"), *ScopeError));
+	}
+	if (!ActionContextScope.IsValid())
+	{
+		return false;
+	}
+
+	FBlueprintHelperNodeFragment RegistryFragment;
+	FString RegistryError;
+	TArray<FBlueprintHelperCandidateFunctionGroup> RegistryCandidates;
+	TestTrue(
+		TEXT("registry builds call fragment with literal args"),
+		FBlueprintHelperGraphFragmentBuilderRegistry::TryBuildStatement(
+			Graph,
+			&ActionContextScope,
+			Statement,
+			RegistryFragment,
+			RegistryError,
+			&RegistryCandidates));
+	if (!RegistryError.IsEmpty())
+	{
+		AddInfo(FString::Printf(TEXT("registry call fragment detail: %s"), *RegistryError));
+	}
+	if (!RegistryFragment.IsValid())
+	{
+		return false;
+	}
+	TestEqual(TEXT("registry call fragment semantic kind ownership"), RegistryFragment.OwnershipTags.FindRef(TEXT("semantic_kind")), FString(TEXT("call")));
+
+	FBlueprintHelperGraphFragmentBuildRequest Request = FBlueprintHelperGraphFragmentBuildRequest::FromStatement(Statement);
+	Request.ResolvedStableId = TEXT("/Script/Engine.KismetSystemLibrary:PrintString");
+	Request.DefaultValues.Add(TEXT("InString"), TEXT("hello"));
+
+	FBlueprintHelperNodeFragment Fragment;
+	FString Error;
+	TestTrue(
+		TEXT("build call fragment"),
+		FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment(
+			Graph,
+			Request,
+			Fragment,
+			Error,
+			nullptr,
+			&ActionContextScope));
+	if (!Error.IsEmpty())
+	{
+		AddInfo(FString::Printf(TEXT("call fragment detail: %s"), *Error));
+	}
+	if (!Fragment.IsValid())
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("call fragment semantic kind ownership"), Fragment.OwnershipTags.FindRef(TEXT("semantic_kind")), FString(TEXT("call")));
 	return true;
 }
 

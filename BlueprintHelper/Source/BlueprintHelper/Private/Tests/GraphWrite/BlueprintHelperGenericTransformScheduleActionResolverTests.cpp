@@ -2,10 +2,15 @@
 
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.h"
 
+#include "BlueprintActionDatabase.h"
+#include "BlueprintFunctionNodeSpawner.h"
+#include "BlueprintTypePromotion.h"
 #include "EdGraph/EdGraph.h"
+#include "EdGraphSchema_K2.h"
 #include "Engine/Blueprint.h"
 #include "Engine/BlueprintGeneratedClass.h"
 #include "GameFramework/Actor.h"
+#include "K2Node_PromotableOperator.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Misc/AutomationTest.h"
 #include "UObject/Package.h"
@@ -81,6 +86,23 @@ static FBlueprintHelperActionResolutionRequest MakeFunctionOwnerRequest(
 		: EBlueprintHelperActionSemanticFamily::Schedule;
 	return Request;
 }
+
+static UBlueprintFunctionNodeSpawner* FindTypePromotionSpawnerForTest(FName OperatorName)
+{
+	if (OperatorName.IsNone())
+	{
+		return nullptr;
+	}
+
+	FTypePromotion::Get();
+	if (UBlueprintFunctionNodeSpawner* Spawner = FTypePromotion::GetOperatorSpawner(OperatorName))
+	{
+		return Spawner;
+	}
+
+	FBlueprintActionDatabase::Get().RefreshAll();
+	return FTypePromotion::GetOperatorSpawner(OperatorName);
+}
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -148,18 +170,97 @@ bool FBlueprintHelperGenericTransformTypePromotionRequiresEvidenceTest::RunTest(
 	TestNotNull(TEXT("blueprint"), Blueprint);
 	TestNotNull(TEXT("graph"), Graph);
 
+	struct FTypePromotionEvidenceCase
+	{
+		const TCHAR* Label = TEXT("");
+		const TCHAR* OperatorName = nullptr;
+		const TCHAR* SourcePinType = nullptr;
+		const TCHAR* TargetPinType = nullptr;
+	};
+
+	const TArray<FTypePromotionEvidenceCase> Cases = {
+		{ TEXT("no projected evidence"), nullptr, nullptr, nullptr },
+		{ TEXT("missing operator"), nullptr, TEXT("int"), TEXT("real") },
+		{ TEXT("missing source pin type"), TEXT("Add"), nullptr, TEXT("real") },
+		{ TEXT("missing target pin type"), TEXT("Add"), TEXT("int"), nullptr }
+	};
+
+	for (const FTypePromotionEvidenceCase& TestCase : Cases)
+	{
+		FBlueprintHelperActionResolutionRequest Request =
+			MakeGenericTransformScheduleRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Convert);
+		Request.Semantic.TransformOperation = TEXT("type_promotion");
+		if (TestCase.OperatorName)
+		{
+			Request.ContextEvidence.Add(TEXT("type_promotion_operator"), TestCase.OperatorName);
+		}
+		if (TestCase.SourcePinType)
+		{
+			Request.ContextEvidence.Add(TEXT("type_promotion_source_pin_type"), TestCase.SourcePinType);
+		}
+		if (TestCase.TargetPinType)
+		{
+			Request.ContextEvidence.Add(TEXT("type_promotion_target_pin_type"), TestCase.TargetPinType);
+		}
+
+		const FBlueprintHelperActionResolutionResult Result =
+			FBlueprintHelperActionResolutionCore::Resolve(Request);
+
+		TestEqual(FString::Printf(TEXT("%s status"), TestCase.Label), Result.Status, EBlueprintHelperActionResolutionStatus::InvalidRequest);
+		TestEqual(FString::Printf(TEXT("%s evidence code"), TestCase.Label), Result.ErrorCode, FString(TEXT("needs_more_semantic_context")));
+		TestTrue(FString::Printf(TEXT("%s message"), TestCase.Label), Result.Message.Contains(TEXT("type_promotion")));
+		TestFalse(FString::Printf(TEXT("%s has no fake spawner"), TestCase.Label), Result.SelectedSpawner.IsValid());
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGenericTransformTypePromotionUsesProjectedSpawnerEvidenceTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.Generic.Convert.TypePromotionUsesProjectedSpawnerEvidence",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGenericTransformTypePromotionUsesProjectedSpawnerEvidenceTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeGenericTransformScheduleTestBlueprint();
+	UEdGraph* Graph = GetGenericTransformScheduleTestGraph(Blueprint);
+	TestNotNull(TEXT("blueprint"), Blueprint);
+	TestNotNull(TEXT("graph"), Graph);
+
+	UBlueprintFunctionNodeSpawner* ExpectedSpawner = FindTypePromotionSpawnerForTest(TEXT("Add"));
+	if (!TestNotNull(TEXT("registered Add type promotion spawner"), ExpectedSpawner))
+	{
+		return false;
+	}
+
 	FBlueprintHelperActionResolutionRequest Request =
 		MakeGenericTransformScheduleRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Convert);
 	Request.Semantic.TransformOperation = TEXT("type_promotion");
+	Request.ContextEvidence.Add(TEXT("type_promotion_stable_id"), TEXT("type_promotion:Add:int:real"));
+	Request.ContextEvidence.Add(TEXT("type_promotion_operator"), TEXT("Add"));
+	Request.ContextEvidence.Add(TEXT("type_promotion_source_pin_type"), TEXT("int"));
+	Request.ContextEvidence.Add(TEXT("type_promotion_target_pin_type"), TEXT("real"));
+	Request.ContextEvidence.Add(TEXT("type_promotion_result_pin_type"), TEXT("real"));
 
 	const FBlueprintHelperActionResolutionResult Result =
 		FBlueprintHelperActionResolutionCore::Resolve(Request);
 
-	TestEqual(TEXT("type promotion status"), Result.Status, EBlueprintHelperActionResolutionStatus::InvalidRequest);
-	TestEqual(TEXT("type promotion evidence code"), Result.ErrorCode, FString(TEXT("needs_more_semantic_context")));
-	TestTrue(TEXT("type promotion message"), Result.Message.Contains(TEXT("type_promotion requires projected type-promotion spawner evidence")));
-	TestFalse(TEXT("type promotion has no fake spawner"), Result.SelectedSpawner.IsValid());
-	return true;
+	bool bPassed = true;
+	bPassed &= TestEqual(TEXT("type promotion status"), Result.Status, EBlueprintHelperActionResolutionStatus::Resolved);
+	bPassed &= TestEqual(TEXT("type promotion cluster"), Result.ClusterKind, EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction);
+	bPassed &= TestEqual(TEXT("type promotion stable id"), Result.SelectedStableId, FString(TEXT("type_promotion:Add:int:real")));
+	bPassed &= TestNotNull(TEXT("type promotion selected spawner"), Result.SelectedSpawner.Get());
+	bPassed &= TestTrue(TEXT("type promotion selected spawner uses FTypePromotion registration"), Result.SelectedSpawner.Get() == ExpectedSpawner);
+	bPassed &= TestTrue(TEXT("type promotion candidate count"), Result.CandidateActions.Num() == 1);
+	if (Result.CandidateActions.Num() == 1)
+	{
+		const FBlueprintHelperCallFunctionCandidateInfo& Candidate = Result.CandidateActions[0];
+		bPassed &= TestTrue(TEXT("type promotion candidate is database backed"), Candidate.bFromActionDatabase);
+		bPassed &= TestTrue(TEXT("type promotion candidate node class"), Candidate.NodeClassPath.Contains(UK2Node_PromotableOperator::StaticClass()->GetName()));
+		bPassed &= TestTrue(TEXT("type promotion candidate match reason"), Candidate.MatchReason.Contains(TEXT("type_promotion")) && Candidate.MatchReason.Contains(TEXT("FTypePromotion")));
+	}
+	bPassed &= TestTrue(TEXT("type promotion node class"), Result.NodeClass.Contains(UK2Node_PromotableOperator::StaticClass()->GetName()));
+	bPassed &= TestTrue(TEXT("type promotion match reason"), Result.MatchReason.Contains(TEXT("type_promotion")) && Result.MatchReason.Contains(TEXT("FTypePromotion")));
+	return bPassed;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(

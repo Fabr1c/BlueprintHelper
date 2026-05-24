@@ -1474,6 +1474,13 @@ function copyConvertScheduleSemanticFields(source: Record<string, unknown>, targ
   });
 }
 
+function copyContextEvidence(source: Record<string, unknown>, target: Record<string, unknown>): void {
+  const evidence = source['context_evidence'];
+  if (isRecord(evidence)) {
+    target['context_evidence'] = { ...evidence };
+  }
+}
+
 function fieldScopeUsesPropertyPath(scope: string): boolean {
   return FIELD_SCOPES_WITH_PROPERTY_PATH.has(scope);
 }
@@ -1729,6 +1736,7 @@ function cloneLogicExpressionWithCompiledIds(expression: unknown, nodeId: string
 
   const kind = typeof expression.kind === 'string' ? expression.kind : 'literal';
   const out: Record<string, unknown> = { ...expression, id: nodeId };
+  copyContextEvidence(expression, out);
 
   const fieldExpression = FIELD_EXPRESSION_KIND_MAP.get(kind);
   if (fieldExpression) {
@@ -1803,6 +1811,7 @@ function cloneLogicExpressionWithCompiledIds(expression: unknown, nodeId: string
 function cloneLogicStatementWithCompiledIds(statement: BlueprintLogicStatement, statementId: string): BlueprintLogicStatement {
   const statementRecord = statement as Record<string, unknown>;
   const out: Record<string, unknown> = { ...statementRecord, id: statementId };
+  copyContextEvidence(statementRecord, out);
   const kind = typeof statementRecord.kind === 'string'
     ? statementRecord.kind
     : '';
@@ -2158,6 +2167,7 @@ function compileValueExpression(expression: unknown, nodeId: string, path: strin
     }
     const outputPin = fieldScopeUsesPropertyPath(fieldExpression.scope) ? 'value' : target;
     const node = { id: nodeId, kind: 'field', var: target, target } as AgentImportNode;
+    copyContextEvidence(expression, node as Record<string, unknown>);
     applyFieldTaxonomy(node as Record<string, unknown>, fieldExpression.operation, fieldExpression.scope);
     if (fieldScopeUsesPropertyPath(fieldExpression.scope)) {
       const propertyPath = requiredGraphBodyPropertyPath(expression, path);
@@ -2174,6 +2184,7 @@ function compileValueExpression(expression: unknown, nodeId: string, path: strin
     kind,
     inputs: {},
   };
+  copyContextEvidence(expression, node as Record<string, unknown>);
   if (kind === 'call') {
     node.function = getRequiredString(expression, 'target', `${path}.target`);
   }
@@ -2946,12 +2957,14 @@ function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string
   const kind = typeof statementRecord.kind === 'string' ? statementRecord.kind : '';
   if (kind === 'call') {
     const functionName = getRequiredString(statementRecord, 'target', `${path}.target`);
-    return {
+    const node: Record<string, unknown> = {
       id: nodeId,
       kind: 'call',
       function: functionName,
       inputs: compileArgs(statement['args']),
     };
+    copyContextEvidence(statementRecord, node);
+    return node as AgentImportNode;
   }
 
   if (kind === 'create') {
@@ -2967,6 +2980,7 @@ function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string
     if (Object.hasOwn(statementRecord, 'pin_type')) node.pin_type = statementRecord.pin_type;
     if (Object.hasOwn(statementRecord, 'key_pin_type')) node.key_pin_type = statementRecord.key_pin_type;
     if (Object.hasOwn(statementRecord, 'value_pin_type')) node.value_pin_type = statementRecord.value_pin_type;
+    copyContextEvidence(statementRecord, node);
     return omitUndefined(node) as AgentImportNode;
   }
 
@@ -2978,6 +2992,7 @@ function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string
       inputs: compileArgs(statement['args']),
     };
     copyConvertScheduleSemanticFields(statementRecord, node);
+    copyContextEvidence(statementRecord, node);
     return omitUndefined(node) as AgentImportNode;
   }
 
@@ -2994,6 +3009,7 @@ function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string
     if (fieldStatement) {
       applyFieldTaxonomy(node as Record<string, unknown>, fieldStatement.operation, fieldStatement.scope);
     }
+    copyContextEvidence(statementRecord, node as Record<string, unknown>);
     return node;
   }
 
@@ -3012,6 +3028,7 @@ function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string
     if (fieldStatement) {
       applyFieldTaxonomy(node as Record<string, unknown>, fieldStatement.operation, fieldStatement.scope);
     }
+    copyContextEvidence(statementRecord, node as Record<string, unknown>);
     return node;
   }
 
@@ -3040,22 +3057,25 @@ function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string
       (node as Record<string, unknown>).property = propertyPath;
     }
     applyFieldTaxonomy(node as Record<string, unknown>, operation, scope);
+    copyContextEvidence(statementRecord, node as Record<string, unknown>);
     return node;
   }
 
   if (kind === 'component_bound_event') {
-    return omitUndefined({
+    const node: Record<string, unknown> = {
       id: nodeId,
       kind: 'component_bound_event',
       component: getRequiredString(statementRecord, 'component', `${path}.component`),
       delegate: getRequiredString(statementRecord, 'delegate', `${path}.delegate`),
       handler: getRequiredString(statementRecord, 'handler', `${path}.handler`),
-    }) as AgentImportNode;
+    };
+    copyContextEvidence(statementRecord, node);
+    return omitUndefined(node) as AgentImportNode;
   }
 
   const delegateOperation = delegateStatementOperation(statementRecord);
   if (delegateOperation) {
-    return omitUndefined({
+    const node: Record<string, unknown> = {
       id: nodeId,
       kind: 'delegate',
       target: getRequiredString(statementRecord, 'target', `${path}.target`),
@@ -3064,7 +3084,9 @@ function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string
       delegate_operation: delegateOperation,
       unbind_mode: delegateOperation === 'unbind' ? 'single' : (delegateOperation === 'clear' ? 'all' : undefined),
       inputs: delegateOperation === 'call' ? compileArgs(statementRecord.args) : undefined,
-    }) as AgentImportNode;
+    };
+    copyContextEvidence(statementRecord, node);
+    return omitUndefined(node) as AgentImportNode;
   }
 
   throw new TaskSpecCompileError('unsupported_statement_kind', `Unsupported statement kind: ${kind}`, [

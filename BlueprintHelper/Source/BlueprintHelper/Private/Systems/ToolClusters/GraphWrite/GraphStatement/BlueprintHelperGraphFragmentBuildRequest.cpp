@@ -4,7 +4,6 @@ FBlueprintHelperGraphFragmentBuildRequest FBlueprintHelperGraphFragmentBuildRequ
 	const FBlueprintHelperGraphStatementIR& Statement)
 {
 	FBlueprintHelperGraphFragmentBuildRequest Request;
-	Request.Statement = Statement;
 	Request.FragmentId = !Statement.StatementId.IsEmpty() ? Statement.StatementId : Statement.Path;
 	Request.SourceStatementId = Request.FragmentId;
 	Request.ActionContextStatementId = Request.FragmentId;
@@ -27,6 +26,7 @@ FBlueprintHelperGraphFragmentBuildRequest FBlueprintHelperGraphFragmentBuildRequ
 	Request.SearchMode = Statement.SearchMode;
 	Request.AmbiguityPolicy = Statement.AmbiguityPolicy;
 	Request.CategoryPriority = Statement.CategoryPriority;
+	Request.ContextEvidence = Statement.ContextEvidence;
 	Request.ResolvedStableId = Statement.ResolvedCallFunctionStableId;
 	if (Statement.ResolvedTarget.Kind == EBlueprintHelperGraphTargetKind::ComponentMemberFunction)
 	{
@@ -46,7 +46,6 @@ FBlueprintHelperGraphFragmentBuildRequest FBlueprintHelperGraphFragmentBuildRequ
 	const FBlueprintHelperGraphExpressionIR& Expression)
 {
 	FBlueprintHelperGraphFragmentBuildRequest Request;
-	Request.Expression = Expression;
 	Request.bIsExpression = true;
 	Request.FragmentId = Expression.ExpressionId;
 	Request.SourceStatementId = Expression.ExpressionId;
@@ -71,6 +70,7 @@ FBlueprintHelperGraphFragmentBuildRequest FBlueprintHelperGraphFragmentBuildRequ
 	Request.SearchMode = Expression.SearchMode;
 	Request.AmbiguityPolicy = Expression.AmbiguityPolicy;
 	Request.CategoryPriority = Expression.CategoryPriority;
+	Request.ContextEvidence = Expression.ContextEvidence;
 	if (Expression.TargetObject.IsValid())
 	{
 		Request.Target = Expression.TargetObject->Target;

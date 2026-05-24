@@ -4,74 +4,82 @@
 
 Status: PASS
 
-This rerun used the isolated smoke asset `/Game/BlueprintHelper/Smoke/BP_GraphWriteFourClusterSmoke_20260524_FixRun02`. All four positive cluster paths completed preview + execute; the expected Generic diagnostic blocked as planned; `BlueprintHelper.GraphWrite` automation and the UE 5.6 build both passed.
+Latest rerun command:
 
-## Fixture
-
-| Spec | Preview | Execute | Artifact |
-|---|---|---|---|
-| `00_create_smoke_actor.json` | `preview_passed` | `executed` | `Results/00_create_smoke_actor.json.preview.json`, `Results/00_create_smoke_actor.json.execute.json` |
-| `01_prepare_smoke_fixture.json` | `preview_passed` | `executed` | `Results/01_prepare_smoke_fixture.json.preview.json`, `Results/01_prepare_smoke_fixture.json.execute.json` |
-
-Fixture asset:
-
-```text
-/Game/BlueprintHelper/Smoke/BP_GraphWriteFourClusterSmoke_20260524_FixRun02
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "D:\UEProjects\Template\Plugins\BlueprintHelper\BlueprintHelper\Develop\PlanArtifacts\GraphWriteFourClusterE2ESmoke_20260524\run_four_cluster_smoke.ps1"
 ```
 
-## Positive Cluster Runs
-
-| Cluster | Spec | Preview | Execute | Result |
-|---|---|---|---|---|
-| Function + Field | `02_function_field_graph.json` | `preview_passed` | `executed` | PASS: function call plus component property path write completed. |
-| EventDelegate | `03_event_delegate_graph.json` | `preview_passed` | `executed` | PASS: Signature-owned handlers plus GraphWrite component-bound/delegate use-site writes completed. |
-| Generic | `04_generic_graph.json` | `preview_passed` | `executed` | PASS: branch/construct/dynamic_cast/make_array graph wrote successfully. |
-
-Readback:
+Latest result root:
 
 ```text
-Results/read_logic_flow.json
+D:\UEProjects\Template\Plugins\BlueprintHelper\BlueprintHelper\Develop\PlanArtifacts\GraphWriteFourClusterE2ESmoke_20260524\Results
 ```
 
-The readback targets `BH_GenericSmoke_20260524` on the `_FixRun02` asset and completed with `status=completed`.
+The latest run completed the full smoke script:
 
-## Expected Diagnostics
+- positive specs `00_create_smoke_actor.json` through `04_generic_graph.json` previewed and executed successfully
+- negative spec `05_generic_expected_diagnostics.json` remained `preview_blocked` with expected missing-context diagnostics
+- the script-ran `BlueprintHelper.GraphWrite` automation completed with `failed=0`
+- the script-ran UE 5.6 build completed with `Result: Succeeded`
 
-| Spec | Preview | Accepted reason | Artifact |
+## Result Matrix
+
+| Spec | Preview | Execute | Notes |
 |---|---|---|---|
-| `05_generic_expected_diagnostics.json` | `preview_blocked` | `type_promotion` requires projected spawner evidence. | `Results/05_generic_expected_diagnostics.json.preview.json` |
+| `00_create_smoke_actor.json` | `preview_passed` | `executed` | smoke actor asset created/reused |
+| `01_prepare_smoke_fixture.json` | `preview_passed` | `executed` | fixture components, variables, and baseline graph prepared |
+| `02_function_field_graph.json` | `preview_passed` | `executed` | Function + Field cluster smoke passed |
+| `03_event_delegate_graph.json` | `preview_passed` | `executed` | EventDelegate use-site smoke passed |
+| `04_generic_graph.json` | `preview_passed` | `executed` | Generic create/convert/type-promotion smoke passed |
+| `05_generic_expected_diagnostics.json` | `preview_blocked` | N/A | expected negative fixture remains blocked |
 
-This is an accepted diagnostic. The row did not fake success through FunctionAction, struct fallback, parsed-node mutation, or unsupported legacy path.
+## Automation Evidence
 
-## Automation And Build
-
-| Gate | Result | Artifact |
+| Scope | Artifact | Result |
 |---|---|---|
-| `BlueprintHelper.GraphWrite` automation | PASS: `succeeded=157`, `succeededWithWarnings=11`, `failed=0`, `notRun=0` | `D:\UEProjects\Template\Saved\Automation\GraphWrite_FourClusterE2ESmoke_20260524_001\index.json` |
-| UE 5.6 `TemplateEditor Win64 Development` build | PASS: `Result: Succeeded` | `C:\Users\CharlieNotFound\AppData\Local\UnrealBuildTool\Log.txt` |
+| Full GraphWrite automation from smoke script | `D:\UEProjects\Template\Saved\Automation\GraphWrite_FourClusterE2ESmoke_20260524_001\index.json` | PASS: `succeeded=157`, `succeededWithWarnings=11`, `failed=0`, `notRun=0` |
+| Focused further-fix automation | `D:\UEProjects\Template\Saved\Automation\GraphWrite_FurtherFix_Focused_003\index.json` | PASS: `succeeded=4`, `failed=0`; covers call `semantic_kind`, shallow runtime payload, context evidence BuildRequest, and coordinator contract |
+| Generic `asset_action` ActionDatabase-backed success | `D:\UEProjects\Template\Saved\Automation\GraphWrite_AssetAction_GREEN_001\index.json` | PASS: `succeeded=2`, `succeededWithWarnings=1`, `failed=0`; warning scope is EOS/network-only noise |
+| Generic `type_promotion` typed evidence success | `D:\UEProjects\Template\Saved\Automation\GraphWrite_TypePromotion_GREEN_002\index.json` | PASS: `succeeded=2`, `failed=0` |
+| UE 5.6 build | `C:\Users\CharlieNotFound\AppData\Local\UnrealBuildTool\Log.txt` | PASS: latest build reports `Result: Succeeded` |
 
-Automation warnings were existing non-fatal EOS/network/load warnings, not four-cluster assertion failures.
+## Fixture Update
 
-## Targeted Bug Closure Evidence
+| File | Change |
+|---|---|
+| `04_generic_graph.json` | Includes a positive Generic `type_promotion` statement with `context_evidence`: `type_promotion_stable_id=type_promotion:Add:int:real`, `type_promotion_operator=Add`, `source=int`, `target=real`, `result=real`. |
+| `05_generic_expected_diagnostics.json` | Keeps no-evidence diagnostics for `type_promotion`, `timer_delegate_node`, and `latent_or_async_node`. |
 
-| Bug | Verification | Result |
-|---|---|---|
-| BUG-001 | `D:\UEProjects\Template\Saved\Automation\GraphWrite_Bug001_ActionContext_FieldPropertyPath_20260524_003\index.json` | PASS: `succeeded=1`, `failed=0` |
-| BUG-002 | `D:\UEProjects\Template\Saved\Automation\GraphWrite_Bug002_EventDelegateGraphStatement_20260524_005\index.json` | PASS: `succeeded=6`, `failed=0` |
-| BUG-002 | `D:\UEProjects\Template\Saved\Automation\GraphWrite_Bug002_EventDelegateActionResolution_20260524_001\index.json` | PASS: `succeeded=10`, `failed=0` |
-| BUG-002 | `D:\UEProjects\Template\Saved\Automation\GraphWrite_Bug002_DelegateBoundary_20260524_003\index.json` | PASS: `succeeded=3`, `failed=0` |
+`asset_action` positive CLI smoke remains intentionally absent. The smoke fixture still does not have an honest ActionDatabase projection step that can generate a real `asset_action_stable_id`, so positive proof remains C++ automation instead of a fake CLI success row.
 
-## Non-Bug Smoke Harness Corrections
+## Crash Follow-Up
 
-These were fixed in the smoke artifacts and intentionally not recorded as plugin bugs:
+An intermediate rerun reached `01_prepare_smoke_fixture.json` and then the Editor process asserted in `BuildCallFunctionFragment` while copying `FBlueprintHelperGraphFragmentBuildRequest`. That failure was not recorded in the bug document as a smoke fixture bug. It was fixed in the code path and covered by:
 
-- Runner status expectations use current CLI statuses: `preview_passed`, `executed`, and accepted `preview_blocked`.
-- Direct `.ps1` execution used process-local `-ExecutionPolicy Bypass`.
-- Fixture component template property writes remain outside this GraphWrite smoke.
-- Public control-flow input uses `kind:"control", control:"branch"`.
-- ReadSpec uses `read_type:"blueprint_logic"` with `view.format:"logic_flow"`.
-- `_FixRun02` was used to isolate this rerun from earlier failed smoke assets.
+- `GraphFragmentBuildRequestRuntimePayload`: verifies BuildRequest no longer stores recursive SemanticIR payload
+- `CallFragmentSemanticKindOwnership`: now exercises registry-level call fragment construction with literal args
+- `FunctionFragmentLifecycleCoordinator`: verifies call/action-provider fragments pass the build request by scoped reference and retain shared coordinator ownership
+
+The final smoke rerun after that fix completed successfully.
+
+## Historical Harness Notes
+
+Earlier reruns failed before validating the updated fixtures because the Editor/Bridge was not running:
+
+```text
+bridge_unavailable
+Bridge connection error: connect ECONNREFUSED 127.0.0.1:54321
+```
+
+That was a harness lifecycle issue only and was not written to the bug document.
 
 ## Conclusion
 
-Four-cluster E2E smoke is no longer blocked by BUG-001 or BUG-002. Remaining Generic `type_promotion` behavior is an expected controlled diagnostic, not a smoke failure.
+The four-cluster end-to-end smoke is now closed for this plan:
+
+- Function, Field, EventDelegate, and Generic positive specs preview and execute
+- Generic no-evidence diagnostics remain honest negative coverage
+- `asset_action` and `type_promotion` positive evidence remains ActionDatabase / FTypePromotion backed
+- call fragment `semantic_kind` ownership and shallow runtime payload regressions are covered by focused automation
+- no non-plugin harness issue has been added to the bug document

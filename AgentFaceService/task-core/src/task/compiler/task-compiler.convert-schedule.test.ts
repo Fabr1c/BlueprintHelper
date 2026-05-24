@@ -103,3 +103,57 @@ test('schedule expression preserves operation and latent evidence', () => {
     assert.equal(nestedArgs.delay.id, 'ApplyConvertSchedule_stmt_1_arg_value_delay');
   }
 });
+
+test('convert and schedule preserve context_evidence through compiler outputs', () => {
+  const convertInput = {
+    kind: 'convert',
+    function_operation: 'convert_function',
+    transform_operation: 'type_promotion',
+    context_evidence: {
+      type_promotion_stable_id: 'type_promotion:Add:int:real',
+      type_promotion_operator: 'Add',
+      type_promotion_source_pin_type: 'int',
+      type_promotion_target_pin_type: 'real',
+      type_promotion_result_pin_type: 'real',
+    },
+    args: {
+      value: { kind: 'literal', value_type: 'number', value: 7 },
+    },
+  };
+
+  for (const statement of [compileTaskPlanStatement(convertInput), compileBridgeStatement(convertInput)]) {
+    assert.equal(statement.kind, 'convert');
+    assert.equal(statement.transform_operation, 'type_promotion');
+    assert.deepEqual(statement.context_evidence, convertInput.context_evidence);
+  }
+
+  const nestedScheduleInput = {
+    kind: 'call',
+    target: 'PrintString',
+    args: {
+      value: {
+        kind: 'schedule',
+        function_operation: 'schedule_function',
+        schedule_operation: 'latent_or_async_node',
+        context_evidence: {
+          graph_latent_allowed: 'false',
+          schedule_operation: 'latent_or_async_node',
+        },
+        args: {
+          delay: { kind: 'literal', value_type: 'number', value: 0.25 },
+        },
+      },
+    },
+  };
+
+  for (const statement of [compileTaskPlanStatement(nestedScheduleInput), compileBridgeStatement(nestedScheduleInput)]) {
+    const args = statement.args as Record<string, Record<string, unknown>>;
+    const value = args.value;
+    assert.equal(value.kind, 'schedule');
+    assert.equal(value.schedule_operation, 'latent_or_async_node');
+    assert.deepEqual(value.context_evidence, {
+      graph_latent_allowed: 'false',
+      schedule_operation: 'latent_or_async_node',
+    });
+  }
+});

@@ -5,6 +5,7 @@
 #include "Misc/AutomationTest.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDag.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDagBuilder.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentBuildRequest.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -43,6 +44,57 @@ public:
 		TSharedRef<FJsonObject> Statement = MakeShared<FJsonObject>();
 		Statement->SetStringField(TEXT("kind"), TEXT("call"));
 		Statement->SetStringField(TEXT("target"), TEXT("PrintString"));
+		Statement->SetObjectField(TEXT("args"), Args);
+
+		TArray<TSharedPtr<FJsonValue>> Statements;
+		Statements.Add(MakeShared<FJsonValueObject>(Statement));
+		LogicSpec->SetArrayField(TEXT("statements"), Statements);
+		return LogicSpec;
+	}
+
+	static TSharedRef<FJsonObject> MakeLogicSpecWithContextEvidence()
+	{
+		TSharedRef<FJsonObject> LogicSpec = MakeShared<FJsonObject>();
+		LogicSpec->SetStringField(TEXT("schema"), TEXT("BlueprintLogicSpec.v2"));
+
+		TSharedRef<FJsonObject> StatementEvidence = MakeShared<FJsonObject>();
+		StatementEvidence->SetStringField(TEXT("type_promotion_stable_id"), TEXT("type_promotion:Add:int:real"));
+		StatementEvidence->SetStringField(TEXT("type_promotion_operator"), TEXT("Add"));
+		StatementEvidence->SetStringField(TEXT("type_promotion_source_pin_type"), TEXT("int"));
+		StatementEvidence->SetStringField(TEXT("type_promotion_target_pin_type"), TEXT("real"));
+		StatementEvidence->SetStringField(TEXT("type_promotion_result_pin_type"), TEXT("real"));
+
+		TSharedRef<FJsonObject> ExpressionEvidence = MakeShared<FJsonObject>();
+		ExpressionEvidence->SetStringField(TEXT("graph_latent_allowed"), TEXT("false"));
+		ExpressionEvidence->SetStringField(TEXT("schedule_operation"), TEXT("latent_or_async_node"));
+
+		TSharedRef<FJsonObject> Delay = MakeShared<FJsonObject>();
+		Delay->SetStringField(TEXT("kind"), TEXT("literal"));
+		Delay->SetStringField(TEXT("type"), TEXT("real"));
+		Delay->SetNumberField(TEXT("value"), 0.25);
+
+		TSharedRef<FJsonObject> ScheduleArgs = MakeShared<FJsonObject>();
+		ScheduleArgs->SetObjectField(TEXT("delay"), Delay);
+
+		TSharedRef<FJsonObject> ScheduleExpression = MakeShared<FJsonObject>();
+		ScheduleExpression->SetStringField(TEXT("id"), TEXT("expr_schedule_context"));
+		ScheduleExpression->SetStringField(TEXT("kind"), TEXT("schedule"));
+		ScheduleExpression->SetStringField(TEXT("target"), TEXT("Delay"));
+		ScheduleExpression->SetStringField(TEXT("function_operation"), TEXT("schedule_function"));
+		ScheduleExpression->SetStringField(TEXT("schedule_operation"), TEXT("latent_or_async_node"));
+		ScheduleExpression->SetObjectField(TEXT("context_evidence"), ExpressionEvidence);
+		ScheduleExpression->SetObjectField(TEXT("args"), ScheduleArgs);
+
+		TSharedRef<FJsonObject> Args = MakeShared<FJsonObject>();
+		Args->SetObjectField(TEXT("value"), ScheduleExpression);
+
+		TSharedRef<FJsonObject> Statement = MakeShared<FJsonObject>();
+		Statement->SetStringField(TEXT("id"), TEXT("stmt_context_evidence"));
+		Statement->SetStringField(TEXT("kind"), TEXT("convert"));
+		Statement->SetStringField(TEXT("target"), TEXT("Add"));
+		Statement->SetStringField(TEXT("function_operation"), TEXT("convert_function"));
+		Statement->SetStringField(TEXT("transform_operation"), TEXT("type_promotion"));
+		Statement->SetObjectField(TEXT("context_evidence"), StatementEvidence);
 		Statement->SetObjectField(TEXT("args"), Args);
 
 		TArray<TSharedPtr<FJsonValue>> Statements;
@@ -187,6 +239,63 @@ bool FBlueprintHelperGraphSemanticIRRuntimeFact_ParsesExpressionResolvedStableId
 		}
 	}
 	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphSemanticIRRuntimeFact_ContextEvidenceSurvivesBuildRequest,
+	"BlueprintHelper.GraphWrite.GraphSemanticIR.RuntimeFact.ContextEvidenceSurvivesBuildRequest",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperGraphSemanticIRRuntimeFact_ContextEvidenceSurvivesBuildRequest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperGraphSemanticIR IR;
+	const bool bBuilt = FBlueprintHelperGraphSemanticIRBuilder::BuildFromLogicSpec(
+		FBlueprintHelperGraphSemanticIRRuntimeFactTestsLocalUtils::MakeLogicSpecWithContextEvidence(),
+		IR);
+
+	TestTrue(TEXT("logic spec builds"), bBuilt);
+	TestEqual(TEXT("one statement parsed"), IR.Statements.Num(), 1);
+	if (IR.Statements.Num() != 1 || !IR.Statements[0].IsValid())
+	{
+		return false;
+	}
+
+	const FBlueprintHelperGraphStatementIR& Statement = *IR.Statements[0];
+	bool bPassed = true;
+	bPassed &= TestEqual(
+		TEXT("statement evidence operator"),
+		Statement.ContextEvidence.FindRef(TEXT("type_promotion_operator")),
+		FString(TEXT("Add")));
+	bPassed &= TestEqual(
+		TEXT("statement evidence target pin type"),
+		Statement.ContextEvidence.FindRef(TEXT("type_promotion_target_pin_type")),
+		FString(TEXT("real")));
+
+	const FBlueprintHelperGraphFragmentBuildRequest StatementRequest =
+		FBlueprintHelperGraphFragmentBuildRequest::FromStatement(Statement);
+	bPassed &= TestEqual(
+		TEXT("build request evidence stable id"),
+		StatementRequest.ContextEvidence.FindRef(TEXT("type_promotion_stable_id")),
+		FString(TEXT("type_promotion:Add:int:real")));
+
+	const TSharedPtr<FBlueprintHelperGraphExpressionIR>* ExpressionPtr = Statement.Args.Find(TEXT("value"));
+	bPassed &= TestTrue(TEXT("nested expression exists"), ExpressionPtr && ExpressionPtr->IsValid());
+	if (ExpressionPtr && ExpressionPtr->IsValid())
+	{
+		const FBlueprintHelperGraphExpressionIR& Expression = *ExpressionPtr->Get();
+		bPassed &= TestEqual(
+			TEXT("expression evidence latent flag"),
+			Expression.ContextEvidence.FindRef(TEXT("graph_latent_allowed")),
+			FString(TEXT("false")));
+		const FBlueprintHelperGraphFragmentBuildRequest ExpressionRequest =
+			FBlueprintHelperGraphFragmentBuildRequest::FromExpression(Expression);
+		bPassed &= TestEqual(
+			TEXT("expression build request evidence schedule operation"),
+			ExpressionRequest.ContextEvidence.FindRef(TEXT("schedule_operation")),
+			FString(TEXT("latent_or_async_node")));
+	}
+
+	return bPassed;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(

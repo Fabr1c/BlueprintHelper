@@ -16,63 +16,13 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextScope.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextTypes.h"
 #include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperActionFragmentBuildUtils.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperActionFragmentSpawnCoordinator.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperControlFragmentBuilder.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphPatternRegistry.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperSelectFragmentBuilder.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphStatementTypeUtils.h"
-
-static void PopulateCallFragmentPins(UK2Node* CallNode, FBlueprintHelperNodeFragment& OutFragment)
-{
-	OutFragment.ExecEntryPin = FBlueprintGraphWriteFacade::FindPinByAlias(CallNode, TEXT("execute"));
-	OutFragment.ExecExitPin = FBlueprintGraphWriteFacade::FindPinByAlias(CallNode, TEXT("then"));
-	OutFragment.PinBindings.Add(TEXT("execute"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("execute"), TEXT("exec"), OutFragment.ExecEntryPin });
-	OutFragment.PinBindings.Add(TEXT("then"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("then"), TEXT("exec"), OutFragment.ExecExitPin });
-	if (!CallNode)
-	{
-		return;
-	}
-
-	for (UEdGraphPin* Pin : CallNode->Pins)
-	{
-		if (!Pin || Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
-		{
-			continue;
-		}
-
-		const FString PinName = Pin->PinName.ToString();
-		FBlueprintHelperFragmentPinRef PinRef{ TEXT("primary"), PinName, Pin->PinType.PinCategory.ToString(), Pin };
-		OutFragment.PinBindings.Add(PinName, PinRef);
-		if (Pin->Direction == EGPD_Input)
-		{
-			OutFragment.DataInputs.Add(PinName, PinRef);
-		}
-		else if (Pin->Direction == EGPD_Output)
-		{
-			OutFragment.DataOutputs.Add(PinName, PinRef);
-			if (!OutFragment.DataOutputs.Contains(TEXT("return")))
-			{
-				OutFragment.DataOutputs.Add(TEXT("return"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("return"), Pin->PinType.PinCategory.ToString(), Pin });
-				OutFragment.PinBindings.Add(TEXT("return"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("return"), Pin->PinType.PinCategory.ToString(), Pin });
-			}
-			if (!OutFragment.DataOutputs.Contains(TEXT("result")))
-			{
-				OutFragment.DataOutputs.Add(TEXT("result"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("result"), Pin->PinType.PinCategory.ToString(), Pin });
-				OutFragment.PinBindings.Add(TEXT("result"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("result"), Pin->PinType.PinCategory.ToString(), Pin });
-			}
-		}
-	}
-}
-
-static void PopulateCommonFragmentMetadata(const FBlueprintHelperGraphFragmentBuildRequest& Request, FBlueprintHelperNodeFragment& OutFragment)
-{
-	OutFragment.OwnershipTags.Add(TEXT("statement_id"), Request.FragmentId);
-	OutFragment.ReviewTargets.Add(Request.FragmentId);
-	// DEPRECATED_LAYOUT: these x/y hints are legacy spawn metadata only.
-	// Final node positions must come from the UE-side GraphLayout system.
-	OutFragment.LayoutHints.Add(TEXT("x"), LexToString(Request.Location.X));
-	OutFragment.LayoutHints.Add(TEXT("y"), LexToString(Request.Location.Y));
-}
 
 static void ApplyCallPatternBindings(FBlueprintHelperGraphFragmentBuildRequest& Request)
 {
@@ -103,22 +53,6 @@ static FString MakeCallFunctionResolveQuery(const FBlueprintHelperGraphFragmentB
 {
 	const FString StableId = Request.ResolvedStableId.TrimStartAndEnd();
 	return StableId.IsEmpty() ? Request.Query : StableId;
-}
-
-static void AppendCandidateActionGroup(
-	const FString& Target,
-	const FBlueprintHelperActionResolutionResult& ResolveResult,
-	TArray<FBlueprintHelperCandidateFunctionGroup>* OutCandidateFunctions)
-{
-	if (!OutCandidateFunctions || ResolveResult.CandidateActions.Num() == 0)
-	{
-		return;
-	}
-
-	FBlueprintHelperCandidateFunctionGroup Group;
-	Group.Target = Target;
-	Group.Candidates = ResolveResult.CandidateActions;
-	OutCandidateFunctions->Add(MoveTemp(Group));
 }
 
 static FString MakeActionContextStatementId(
@@ -408,96 +342,6 @@ static bool RequireResolvedActionProvider(
 		FieldScope);
 }
 
-static void PopulateActionProviderFragmentPins(UK2Node* Node, FBlueprintHelperNodeFragment& OutFragment)
-{
-	OutFragment.ExecEntryPin = FBlueprintGraphWriteFacade::FindPinByAlias(Node, TEXT("execute"));
-	OutFragment.ExecExitPin = FBlueprintGraphWriteFacade::FindPinByAlias(Node, TEXT("then"));
-	if (OutFragment.ExecEntryPin)
-	{
-		OutFragment.PinBindings.Add(TEXT("execute"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("execute"), TEXT("exec"), OutFragment.ExecEntryPin });
-	}
-	if (OutFragment.ExecExitPin)
-	{
-		OutFragment.PinBindings.Add(TEXT("then"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("then"), TEXT("exec"), OutFragment.ExecExitPin });
-	}
-	if (!Node)
-	{
-		return;
-	}
-
-	int32 DataInputIndex = 0;
-	for (UEdGraphPin* Pin : Node->Pins)
-	{
-		if (!Pin || Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
-		{
-			continue;
-		}
-
-		const FString PinName = Pin->PinName.ToString();
-		FBlueprintHelperFragmentPinRef PinRef{ TEXT("primary"), PinName, Pin->PinType.PinCategory.ToString(), Pin };
-		OutFragment.PinBindings.Add(PinName, PinRef);
-		if (!OutFragment.PinBindings.Contains(PinName.ToLower()))
-		{
-			OutFragment.PinBindings.Add(PinName.ToLower(), FBlueprintHelperFragmentPinRef{ TEXT("primary"), PinName.ToLower(), Pin->PinType.PinCategory.ToString(), Pin });
-		}
-		if (Pin->Direction == EGPD_Input)
-		{
-			OutFragment.DataInputs.Add(PinName, PinRef);
-			if (!OutFragment.DataInputs.Contains(PinName.ToLower()))
-			{
-				OutFragment.DataInputs.Add(PinName.ToLower(), FBlueprintHelperFragmentPinRef{ TEXT("primary"), PinName.ToLower(), Pin->PinType.PinCategory.ToString(), Pin });
-			}
-			if (!PinName.Equals(TEXT("self"), ESearchCase::IgnoreCase) && !OutFragment.DataInputs.Contains(TEXT("value")))
-			{
-				OutFragment.DataInputs.Add(TEXT("value"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("value"), Pin->PinType.PinCategory.ToString(), Pin });
-				OutFragment.PinBindings.Add(TEXT("value"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("value"), Pin->PinType.PinCategory.ToString(), Pin });
-			}
-			if (!PinName.Equals(TEXT("self"), ESearchCase::IgnoreCase))
-			{
-				if (DataInputIndex == 0 && !OutFragment.DataInputs.Contains(TEXT("left")))
-				{
-					OutFragment.DataInputs.Add(TEXT("left"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("left"), Pin->PinType.PinCategory.ToString(), Pin });
-					OutFragment.PinBindings.Add(TEXT("left"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("left"), Pin->PinType.PinCategory.ToString(), Pin });
-					if (!OutFragment.DataInputs.Contains(TEXT("condition")))
-					{
-						OutFragment.DataInputs.Add(TEXT("condition"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("condition"), Pin->PinType.PinCategory.ToString(), Pin });
-						OutFragment.PinBindings.Add(TEXT("condition"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("condition"), Pin->PinType.PinCategory.ToString(), Pin });
-					}
-				}
-				else if (DataInputIndex == 1 && !OutFragment.DataInputs.Contains(TEXT("right")))
-				{
-					OutFragment.DataInputs.Add(TEXT("right"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("right"), Pin->PinType.PinCategory.ToString(), Pin });
-					OutFragment.PinBindings.Add(TEXT("right"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("right"), Pin->PinType.PinCategory.ToString(), Pin });
-				}
-				++DataInputIndex;
-			}
-		}
-		else if (Pin->Direction == EGPD_Output)
-		{
-			OutFragment.DataOutputs.Add(PinName, PinRef);
-			if (!OutFragment.DataOutputs.Contains(PinName.ToLower()))
-			{
-				OutFragment.DataOutputs.Add(PinName.ToLower(), FBlueprintHelperFragmentPinRef{ TEXT("primary"), PinName.ToLower(), Pin->PinType.PinCategory.ToString(), Pin });
-			}
-			if (!OutFragment.DataOutputs.Contains(TEXT("value")))
-			{
-				OutFragment.DataOutputs.Add(TEXT("value"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("value"), Pin->PinType.PinCategory.ToString(), Pin });
-				OutFragment.PinBindings.Add(TEXT("value"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("value"), Pin->PinType.PinCategory.ToString(), Pin });
-			}
-			if (!OutFragment.DataOutputs.Contains(TEXT("result")))
-			{
-				OutFragment.DataOutputs.Add(TEXT("result"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("result"), Pin->PinType.PinCategory.ToString(), Pin });
-				OutFragment.PinBindings.Add(TEXT("result"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("result"), Pin->PinType.PinCategory.ToString(), Pin });
-			}
-			if (!OutFragment.DataOutputs.Contains(TEXT("return")))
-			{
-				OutFragment.DataOutputs.Add(TEXT("return"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("return"), Pin->PinType.PinCategory.ToString(), Pin });
-				OutFragment.PinBindings.Add(TEXT("return"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("return"), Pin->PinType.PinCategory.ToString(), Pin });
-			}
-		}
-	}
-}
-
 static UEdGraphPin* FindActionProviderDataInputPinByIndex(UK2Node* Node, const int32 RequestedIndex)
 {
 	if (!Node || RequestedIndex < 0)
@@ -775,7 +619,7 @@ static void PopulateStructExpressionFragment(
 	OutFragment.SourceStatementId = Expression.ExpressionId;
 	OutFragment.PrimaryNode = SpawnedNode;
 	OutFragment.Nodes.Add(SpawnedNode);
-	PopulateActionProviderFragmentPins(SpawnedNode, OutFragment);
+	FBlueprintHelperActionFragmentBuildUtils::PopulateActionProviderFragmentPins(SpawnedNode, OutFragment);
 	OutFragment.OwnershipTags.Add(TEXT("expression_id"), Expression.ExpressionId);
 	OutFragment.OwnershipTags.Add(TEXT("semantic_kind"), SemanticKind);
 	OutFragment.ReviewTargets.Add(Expression.ExpressionId);
@@ -922,42 +766,24 @@ bool FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment(
 		return false;
 	}
 	ApplyCallActionRequestOverrides(BoundRequest, ExplicitTargetObjectName, ArgumentNames, ActionRequest);
-	const FBlueprintHelperActionResolutionResult ActionResult =
-		FBlueprintGraphWriteFacade::ResolveActionForGraph(ActionRequest);
-
-	if (!ActionResult.IsResolved())
-	{
-		AppendCandidateActionGroup(BoundRequest.Query, ActionResult, OutCandidateFunctions);
-		OutError = ActionResult.Message.IsEmpty()
-			? FString::Printf(TEXT("call_function resolve failed: %s"), *BoundRequest.Query)
-			: ActionResult.Message;
-		return false;
-	}
-
+	ActionRequest.ContextEvidence.Append(BoundRequest.ContextEvidence);
 	ApplyCallPatternDefaults(BoundRequest);
 
-	FBlueprintHelperActionNodeSpawnOptions SpawnOptions;
-	SpawnOptions.NodeId = BoundRequest.FragmentId;
-	SpawnOptions.DefaultValues = BoundRequest.DefaultValues;
-	UK2Node* SpawnedNode = FBlueprintHelperActionNodeSpawnerAdapter::InvokeSelectedSpawner(
-		TargetGraph,
-		ActionResult,
-		FVector2D(BoundRequest.Location.X, BoundRequest.Location.Y),
-		SpawnOptions,
-		OutError);
+	FBlueprintHelperActionFragmentSpawnCoordinatorRequest CoordinatorRequest;
+	CoordinatorRequest.TargetGraph = TargetGraph;
+	CoordinatorRequest.BuildRequest = &BoundRequest;
+	CoordinatorRequest.ActionRequest = ActionRequest;
+	CoordinatorRequest.SemanticKind = EBlueprintHelperActionSemanticKind::Call;
+	CoordinatorRequest.PinProfile = EBlueprintHelperActionFragmentPinProfile::Call;
+	CoordinatorRequest.CandidateGroupTarget = BoundRequest.Query;
+	CoordinatorRequest.FailurePrefix = TEXT("call_function resolve failed");
+	CoordinatorRequest.bAppendSemanticKindOwnershipTag = true;
 
-	if (!SpawnedNode)
-	{
-		return false;
-	}
-
-	OutFragment.FragmentId = BoundRequest.FragmentId;
-	OutFragment.SourceStatementId = BoundRequest.FragmentId;
-	OutFragment.PrimaryNode = SpawnedNode;
-	OutFragment.Nodes.Add(SpawnedNode);
-	PopulateCallFragmentPins(SpawnedNode, OutFragment);
-	PopulateCommonFragmentMetadata(BoundRequest, OutFragment);
-	return true;
+	return FBlueprintHelperActionFragmentSpawnCoordinator::BuildResolvedActionFragment(
+		CoordinatorRequest,
+		OutFragment,
+		OutError,
+		OutCandidateFunctions);
 }
 
 bool FBlueprintHelperGraphStatementBuilder::BuildVariableSetFragment(
@@ -1010,8 +836,8 @@ bool FBlueprintHelperGraphStatementBuilder::BuildVariableSetFragment(
 	OutFragment.SourceStatementId = Request.FragmentId;
 	OutFragment.PrimaryNode = SpawnedNode;
 	OutFragment.Nodes.Add(SpawnedNode);
-	PopulateActionProviderFragmentPins(SpawnedNode, OutFragment);
-	PopulateCommonFragmentMetadata(Request, OutFragment);
+	FBlueprintHelperActionFragmentBuildUtils::PopulateActionProviderFragmentPins(SpawnedNode, OutFragment);
+	FBlueprintHelperActionFragmentBuildUtils::PopulateCommonMetadata(Request, OutFragment);
 	return true;
 }
 
@@ -1070,8 +896,8 @@ bool FBlueprintHelperGraphStatementBuilder::BuildSetPropertyFragment(
 	OutFragment.SourceStatementId = Request.FragmentId;
 	OutFragment.PrimaryNode = SpawnedNode;
 	OutFragment.Nodes.Add(SpawnedNode);
-	PopulateActionProviderFragmentPins(SpawnedNode, OutFragment);
-	PopulateCommonFragmentMetadata(Request, OutFragment);
+	FBlueprintHelperActionFragmentBuildUtils::PopulateActionProviderFragmentPins(SpawnedNode, OutFragment);
+	FBlueprintHelperActionFragmentBuildUtils::PopulateCommonMetadata(Request, OutFragment);
 	return true;
 }
 
@@ -1112,6 +938,7 @@ bool FBlueprintHelperGraphStatementBuilder::BuildCreateFragment(
 		return false;
 	}
 	ApplyCreateActionRequestOverrides(Request, ActionRequest);
+	ActionRequest.ContextEvidence.Append(Request.ContextEvidence);
 
 	const FBlueprintHelperActionResolutionResult ActionResult =
 		FBlueprintGraphWriteFacade::ResolveActionForGraph(ActionRequest);
@@ -1141,8 +968,8 @@ bool FBlueprintHelperGraphStatementBuilder::BuildCreateFragment(
 	OutFragment.SourceStatementId = Request.SourceStatementId.IsEmpty() ? Request.FragmentId : Request.SourceStatementId;
 	OutFragment.PrimaryNode = SpawnedNode;
 	OutFragment.Nodes.Add(SpawnedNode);
-	PopulateActionProviderFragmentPins(SpawnedNode, OutFragment);
-	PopulateCommonFragmentMetadata(Request, OutFragment);
+	FBlueprintHelperActionFragmentBuildUtils::PopulateActionProviderFragmentPins(SpawnedNode, OutFragment);
+	FBlueprintHelperActionFragmentBuildUtils::PopulateCommonMetadata(Request, OutFragment);
 	OutFragment.OwnershipTags.Add(TEXT("semantic_kind"), TEXT("create"));
 	OutFragment.OwnershipTags.Add(TEXT("create_operation"), Request.CreateOperation);
 	return true;
@@ -1181,42 +1008,25 @@ bool FBlueprintHelperGraphStatementBuilder::BuildActionProviderFragment(
 	{
 		return false;
 	}
+	ActionRequest.ContextEvidence.Append(Request.ContextEvidence);
 
-	const FBlueprintHelperActionResolutionResult ActionResult =
-		FBlueprintGraphWriteFacade::ResolveActionForGraph(ActionRequest);
-	if (!ActionResult.IsResolved())
-	{
-		OutError = ActionResult.Message.IsEmpty()
-			? FString::Printf(
-				TEXT("action provider unavailable: semantic=%s cluster=%s"),
-				*FBlueprintHelperActionResolutionCore::SemanticKindToString(SemanticKind),
-				*FBlueprintHelperActionResolutionCore::ClusterKindToString(ActionResult.ClusterKind))
-			: ActionResult.Message;
-		return false;
-	}
+	FBlueprintHelperActionFragmentSpawnCoordinatorRequest CoordinatorRequest;
+	CoordinatorRequest.TargetGraph = TargetGraph;
+	CoordinatorRequest.BuildRequest = &Request;
+	CoordinatorRequest.ActionRequest = ActionRequest;
+	CoordinatorRequest.SemanticKind = SemanticKind;
+	CoordinatorRequest.PinProfile = EBlueprintHelperActionFragmentPinProfile::ActionProvider;
+	CoordinatorRequest.CandidateGroupTarget = Request.Query;
+	CoordinatorRequest.FailurePrefix = FString::Printf(
+		TEXT("action provider unavailable: semantic=%s"),
+		*FBlueprintHelperActionResolutionCore::SemanticKindToString(SemanticKind));
+	CoordinatorRequest.bAppendSemanticKindOwnershipTag = true;
 
-	FBlueprintHelperActionNodeSpawnOptions SpawnOptions;
-	SpawnOptions.NodeId = Request.FragmentId;
-	SpawnOptions.DefaultValues = Request.DefaultValues;
-	UK2Node* SpawnedNode = FBlueprintHelperActionNodeSpawnerAdapter::InvokeSelectedSpawner(
-		TargetGraph,
-		ActionResult,
-		FVector2D(Request.Location.X, Request.Location.Y),
-		SpawnOptions,
-		OutError);
-	if (!SpawnedNode)
-	{
-		return false;
-	}
-
-	OutFragment.FragmentId = Request.FragmentId;
-	OutFragment.SourceStatementId = Request.SourceStatementId.IsEmpty() ? Request.FragmentId : Request.SourceStatementId;
-	OutFragment.PrimaryNode = SpawnedNode;
-	OutFragment.Nodes.Add(SpawnedNode);
-	PopulateActionProviderFragmentPins(SpawnedNode, OutFragment);
-	PopulateCommonFragmentMetadata(Request, OutFragment);
-	OutFragment.OwnershipTags.Add(TEXT("semantic_kind"), FBlueprintHelperActionResolutionCore::SemanticKindToString(SemanticKind));
-	return true;
+	return FBlueprintHelperActionFragmentSpawnCoordinator::BuildResolvedActionFragment(
+		CoordinatorRequest,
+		OutFragment,
+		OutError,
+		nullptr);
 }
 
 bool FBlueprintHelperGraphStatementBuilder::BuildSequenceFragment(
@@ -1383,7 +1193,7 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 		OutFragment.SourceStatementId = Expression.ExpressionId;
 		OutFragment.PrimaryNode = SpawnedNode;
 		OutFragment.Nodes.Add(SpawnedNode);
-		PopulateActionProviderFragmentPins(SpawnedNode, OutFragment);
+		FBlueprintHelperActionFragmentBuildUtils::PopulateActionProviderFragmentPins(SpawnedNode, OutFragment);
 		return true;
 	}
 
@@ -1438,7 +1248,7 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 		OutFragment.SourceStatementId = Expression.ExpressionId;
 		OutFragment.PrimaryNode = SpawnedNode;
 		OutFragment.Nodes.Add(SpawnedNode);
-		PopulateActionProviderFragmentPins(SpawnedNode, OutFragment);
+		FBlueprintHelperActionFragmentBuildUtils::PopulateActionProviderFragmentPins(SpawnedNode, OutFragment);
 		OutFragment.OwnershipTags.Add(TEXT("expression_id"), Expression.ExpressionId);
 		OutFragment.OwnershipTags.Add(TEXT("semantic_kind"), FBlueprintHelperActionResolutionCore::SemanticKindToString(SemanticKind));
 		OutFragment.ReviewTargets.Add(Expression.ExpressionId);
