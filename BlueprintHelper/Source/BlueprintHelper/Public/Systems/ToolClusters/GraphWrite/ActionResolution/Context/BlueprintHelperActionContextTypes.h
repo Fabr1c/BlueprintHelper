@@ -56,6 +56,9 @@ struct FBlueprintHelperActionContextDemand
 	FString FunctionOperation;
 	FString TransformOperation;
 	FString ScheduleOperation;
+	FString CreateOperation;
+	FString ClassPath;
+	FString AssetPath;
 	FString TypeName;
 	FString StructPath;
 	FString TypeStructureId;
@@ -69,6 +72,9 @@ struct FBlueprintHelperActionContextDemand
 	FBlueprintHelperCallFunctionPinType TargetObjectPinType;
 	FString ExpectedReturnType;
 	FBlueprintHelperCallFunctionPinType ExpectedReturnPinType;
+	FBlueprintHelperCallFunctionPinType ContainerElementPinType;
+	FBlueprintHelperCallFunctionPinType ContainerKeyPinType;
+	FBlueprintHelperCallFunctionPinType ContainerValuePinType;
 	FString ComponentPath;
 	FString BindingObjectPath;
 	FString DelegateName;
@@ -195,6 +201,30 @@ struct FBlueprintHelperResolvedActionContextBundle
 				if (Existing->Semantic.ScheduleOperation.IsEmpty())
 				{
 					Existing->Semantic.ScheduleOperation = MoveTemp(Context.Semantic.ScheduleOperation);
+				}
+				if (Existing->Semantic.CreateOperation.IsEmpty())
+				{
+					Existing->Semantic.CreateOperation = MoveTemp(Context.Semantic.CreateOperation);
+				}
+				if (Existing->Semantic.ClassPath.IsEmpty())
+				{
+					Existing->Semantic.ClassPath = MoveTemp(Context.Semantic.ClassPath);
+				}
+				if (Existing->Semantic.AssetPath.IsEmpty())
+				{
+					Existing->Semantic.AssetPath = MoveTemp(Context.Semantic.AssetPath);
+				}
+				if (!Existing->Semantic.ContainerElementPinType.IsValid())
+				{
+					Existing->Semantic.ContainerElementPinType = MoveTemp(Context.Semantic.ContainerElementPinType);
+				}
+				if (!Existing->Semantic.ContainerKeyPinType.IsValid())
+				{
+					Existing->Semantic.ContainerKeyPinType = MoveTemp(Context.Semantic.ContainerKeyPinType);
+				}
+				if (!Existing->Semantic.ContainerValuePinType.IsValid())
+				{
+					Existing->Semantic.ContainerValuePinType = MoveTemp(Context.Semantic.ContainerValuePinType);
 				}
 			}
 

@@ -49,6 +49,12 @@ static FString BuildSemanticConstraintsHash(const FBlueprintHelperActionSemantic
 	Stable += TEXT("|");
 	Stable += Semantic.ScheduleOperation;
 	Stable += TEXT("|");
+	Stable += Semantic.CreateOperation;
+	Stable += TEXT("|");
+	Stable += Semantic.ClassPath;
+	Stable += TEXT("|");
+	Stable += Semantic.AssetPath;
+	Stable += TEXT("|");
 	Stable += Semantic.TypeName;
 	Stable += TEXT("|");
 	Stable += Semantic.StructPath;
@@ -66,6 +72,12 @@ static FString BuildSemanticConstraintsHash(const FBlueprintHelperActionSemantic
 	AppendPinType(Stable, Semantic.TargetObjectPinType);
 	Stable += TEXT("|");
 	AppendPinType(Stable, Semantic.ExpectedReturnPinType);
+	Stable += TEXT("|");
+	AppendPinType(Stable, Semantic.ContainerElementPinType);
+	Stable += TEXT("|");
+	AppendPinType(Stable, Semantic.ContainerKeyPinType);
+	Stable += TEXT("|");
+	AppendPinType(Stable, Semantic.ContainerValuePinType);
 
 	TArray<FString> ArgumentTypeKeys;
 	Semantic.ArgumentTypes.GetKeys(ArgumentTypeKeys);

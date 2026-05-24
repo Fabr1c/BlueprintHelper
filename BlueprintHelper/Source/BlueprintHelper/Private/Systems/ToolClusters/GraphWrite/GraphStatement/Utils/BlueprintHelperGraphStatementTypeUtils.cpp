@@ -49,6 +49,7 @@ FString FBlueprintHelperGraphStatementTypeUtils::ResolveExpressionKindName(
 		{ EBlueprintHelperGraphExpressionKind::Construct, TEXT("construct") },
 		{ EBlueprintHelperGraphExpressionKind::Deconstruct, TEXT("deconstruct") },
 		{ EBlueprintHelperGraphExpressionKind::Select, TEXT("select") },
+		{ EBlueprintHelperGraphExpressionKind::Create, TEXT("create") },
 	};
 
 	for (const FExpressionKindRule& Rule : Rules)

@@ -245,6 +245,50 @@ static void ApplyExpressionActionRequestOverrides(
 	InOutRequest.Semantic.ExpectedReturnType = ExpectedReturnType;
 }
 
+static FBlueprintHelperCallFunctionPinType MakePinTypeFromCreateToken(const FString& Token)
+{
+	FBlueprintHelperCallFunctionPinType PinType;
+	TArray<FString> Parts;
+	Token.TrimStartAndEnd().ParseIntoArray(Parts, TEXT("|"), true);
+	if (Parts.Num() > 0)
+	{
+		PinType.Category = Parts[0];
+	}
+	if (Parts.Num() > 1)
+	{
+		PinType.ObjectPath = Parts[1];
+	}
+	return PinType;
+}
+
+static void ApplyCreateActionRequestOverrides(
+	const FBlueprintHelperGraphFragmentBuildRequest& BoundRequest,
+	FBlueprintHelperActionResolutionRequest& InOutRequest)
+{
+	InOutRequest.Semantic.CreateOperation = BoundRequest.CreateOperation.TrimStartAndEnd().ToLower();
+	InOutRequest.Semantic.ClassPath = BoundRequest.ClassPath.TrimStartAndEnd();
+	InOutRequest.Semantic.AssetPath = BoundRequest.AssetPath.TrimStartAndEnd();
+	if (!InOutRequest.Semantic.ClassPath.IsEmpty())
+	{
+		InOutRequest.Semantic.TargetPath = InOutRequest.Semantic.ClassPath;
+	}
+	if (!BoundRequest.PinType.TrimStartAndEnd().IsEmpty())
+	{
+		InOutRequest.Semantic.ArgumentTypes.Add(TEXT("element"), BoundRequest.PinType.TrimStartAndEnd());
+		InOutRequest.Semantic.ContainerElementPinType = MakePinTypeFromCreateToken(BoundRequest.PinType);
+	}
+	if (!BoundRequest.KeyPinType.TrimStartAndEnd().IsEmpty())
+	{
+		InOutRequest.Semantic.ArgumentTypes.Add(TEXT("key"), BoundRequest.KeyPinType.TrimStartAndEnd());
+		InOutRequest.Semantic.ContainerKeyPinType = MakePinTypeFromCreateToken(BoundRequest.KeyPinType);
+	}
+	if (!BoundRequest.ValuePinType.TrimStartAndEnd().IsEmpty())
+	{
+		InOutRequest.Semantic.ArgumentTypes.Add(TEXT("value"), BoundRequest.ValuePinType.TrimStartAndEnd());
+		InOutRequest.Semantic.ContainerValuePinType = MakePinTypeFromCreateToken(BoundRequest.ValuePinType);
+	}
+}
+
 static EBlueprintHelperActionSemanticKind ResolveActionSemanticKindForExpressionKind(EBlueprintHelperGraphExpressionKind Kind)
 {
 	switch (Kind)
@@ -259,6 +303,8 @@ static EBlueprintHelperActionSemanticKind ResolveActionSemanticKindForExpression
 		return EBlueprintHelperActionSemanticKind::Deconstruct;
 	case EBlueprintHelperGraphExpressionKind::Select:
 		return EBlueprintHelperActionSemanticKind::Select;
+	case EBlueprintHelperGraphExpressionKind::Create:
+		return EBlueprintHelperActionSemanticKind::Create;
 	default:
 		return EBlueprintHelperActionSemanticKind::Unknown;
 	}
@@ -1025,6 +1071,79 @@ bool FBlueprintHelperGraphStatementBuilder::BuildSetPropertyFragment(
 	return true;
 }
 
+bool FBlueprintHelperGraphStatementBuilder::BuildCreateFragment(
+	UEdGraph* TargetGraph,
+	const FBlueprintHelperGraphFragmentBuildRequest& Request,
+	FBlueprintHelperNodeFragment& OutFragment,
+	FString& OutError,
+	const FBlueprintHelperActionContextScope* ActionContextScope)
+{
+	OutFragment = FBlueprintHelperNodeFragment();
+
+	const FString CreateTarget = !Request.ClassPath.TrimStartAndEnd().IsEmpty()
+		? Request.ClassPath.TrimStartAndEnd()
+		: Request.Target.TrimStartAndEnd();
+
+	FBlueprintHelperActionResolutionRequest ActionRequest;
+	TArray<FString> ArgumentNames;
+	Request.DefaultValues.GetKeys(ArgumentNames);
+	if (!TryBuildProjectedActionRequestFromContext(
+		TargetGraph,
+		ActionContextScope,
+		Request.ActionContextStatementId.IsEmpty()
+			? Request.FragmentId
+			: Request.ActionContextStatementId,
+		EBlueprintHelperActionSemanticKind::Create,
+		Request.CreateOperation,
+		CreateTarget,
+		Request.PropertyPath,
+		Request.TypeName,
+		Request.SearchMode,
+		Request.AmbiguityPolicy,
+		Request.CategoryPriority,
+		ArgumentNames,
+		ActionRequest,
+		OutError))
+	{
+		return false;
+	}
+	ApplyCreateActionRequestOverrides(Request, ActionRequest);
+
+	const FBlueprintHelperActionResolutionResult ActionResult =
+		FBlueprintGraphWriteFacade::ResolveActionForGraph(ActionRequest);
+	if (!ActionResult.IsResolved())
+	{
+		OutError = ActionResult.Message.IsEmpty()
+			? FString::Printf(TEXT("create resolve failed: %s"), *Request.CreateOperation)
+			: ActionResult.Message;
+		return false;
+	}
+
+	FBlueprintHelperActionNodeSpawnOptions SpawnOptions;
+	SpawnOptions.NodeId = Request.FragmentId;
+	SpawnOptions.DefaultValues = Request.DefaultValues;
+	UK2Node* SpawnedNode = FBlueprintHelperActionNodeSpawnerAdapter::InvokeSelectedSpawner(
+		TargetGraph,
+		ActionResult,
+		FVector2D(Request.Location.X, Request.Location.Y),
+		SpawnOptions,
+		OutError);
+	if (!SpawnedNode)
+	{
+		return false;
+	}
+
+	OutFragment.FragmentId = Request.FragmentId;
+	OutFragment.SourceStatementId = Request.SourceStatementId.IsEmpty() ? Request.FragmentId : Request.SourceStatementId;
+	OutFragment.PrimaryNode = SpawnedNode;
+	OutFragment.Nodes.Add(SpawnedNode);
+	PopulateActionProviderFragmentPins(SpawnedNode, OutFragment);
+	PopulateCommonFragmentMetadata(Request, OutFragment);
+	OutFragment.OwnershipTags.Add(TEXT("semantic_kind"), TEXT("create"));
+	OutFragment.OwnershipTags.Add(TEXT("create_operation"), Request.CreateOperation);
+	return true;
+}
+
 bool FBlueprintHelperGraphStatementBuilder::BuildSequenceFragment(
 	UEdGraph* TargetGraph,
 	const FString& FragmentId,
@@ -1120,6 +1239,23 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 			return false;
 		}
 		return FBlueprintHelperSelectFragmentBuilder::Build(TargetGraph, Expression, ActionResult, OutFragment, OutError);
+	}
+
+	if (Expression.Kind == EBlueprintHelperGraphExpressionKind::Create)
+	{
+		FBlueprintHelperGraphFragmentBuildRequest Request = FBlueprintHelperGraphFragmentBuildRequest::FromExpression(Expression);
+		Request.FragmentId = FBlueprintHelperGraphStatementTypeUtils::MakeExpressionFragmentId(Expression);
+		Request.SourceStatementId = Expression.ExpressionId;
+		Request.ActionContextStatementId = MakeExpressionActionContextStatementId(Expression);
+		Request.Query = Expression.CreateOperation;
+		Request.Target = !Expression.ClassPath.IsEmpty() ? Expression.ClassPath : Expression.Target;
+		Request.TypeName = Expression.Type;
+		if (!BuildCreateFragment(TargetGraph, Request, OutFragment, OutError, ActionContextScope))
+		{
+			return false;
+		}
+		OutFragment.SourceStatementId = Expression.ExpressionId;
+		return true;
 	}
 
 	const EBlueprintHelperActionSemanticKind SemanticKind = ResolveActionSemanticKindForExpressionKind(Expression.Kind);

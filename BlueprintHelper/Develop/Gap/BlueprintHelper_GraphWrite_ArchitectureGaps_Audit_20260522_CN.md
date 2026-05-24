@@ -2,6 +2,8 @@
 
 ## Current Conclusion
 
+2026-05-24 update: the original audit Gap 1-5 records remain closed for their historical scope, but this file now also tracks follow-up Gap 3/4/5 entries added below. Do not read the historical closure statement as full four-cluster completion.
+
 当前代码在本审计文档列出的 GraphWrite 架构 gap 已全部关闭。该结论只表示本文档中的 Gap 1-5 已按各自边界收敛，不等同于四个工具簇全部达到“完全完成”；`create` / `convert` / `schedule` 等宽范围语义仍按后续路线图继续推进。
 
 当前期望主链路仍然是：
@@ -188,6 +190,23 @@ python -m unittest discover -s python/tests -t python
 ```
 
 如涉及运行时 GraphWrite 行为，还必须补充 Editor Bridge preview smoke，确认 public `kind:"control"` 输入在 TaskPlan/Bridge 中 lower 到 `BlueprintLogicSpec.v2` 的 internal `sequence` / `branch` / `return` body shape，并且不会触发 `statement_kind_unsupported`。
+
+## Open Follow-up Gaps Added 2026-05-24
+
+The historical Gap 1-5 records above remain closed for their original scope. The following entries are new follow-up gaps from the 2026-05-24 main-thread truth audit and must be tracked separately until code, tests, Bridge smoke, docs, and UE 5.6 compile agree.
+
+| Follow-up gap | Status | Exact scope | Evidence found | Required closure |
+|---|---|---|---|---|
+| Gap 3: Function shared adapter / lifecycle convergence | OPEN | Function-class spawner invocation still needs a stronger shared adapter/lifecycle boundary beyond the current resolver-level convergence. | `FBlueprintHelperFunctionSemanticActionResolver` reuses the call resolver and `FBlueprintHelperActionNodeSpawnerAdapter` exists, but `BlueprintHelperGraphStatementBuilder.cpp` still owns much of the call fragment spawning/lifecycle orchestration. | Add focused plan and implementation that moves Function call/convert/schedule spawn lifecycle into a reusable adapter/coordinator boundary, with source contract and runtime tests proving GraphStatementBuilder only composes fragments from projected evidence. |
+| Gap 4: Field real Bridge execute smoke | OPEN | Field complex property path, linked typed pin inference, `component_ref`, and `field_access` have C++ and compiler coverage, but the real CLI/Bridge execute smoke is blocked by missing fixture asset. | `Saved/BlueprintHelper/Cli/preview_1779602466387_0001/result.json` reports `target_blueprint_not_found`; `Saved/BlueprintHelper/Cli/cli_1779602489237/result.json` reports `task_preview_blocked` and `execute_task did not write assets`. | Create or generate `/Game/BlueprintHelper/Smoke/BP_GraphWriteFunctionFieldSmoke`, rerun preview and execute through BlueprintHelper CLI/Bridge, verify asset write/readback, and record passing artifact paths. |
+| Gap 5: Event Signature collaboration smoke / taxonomy boundary | OPEN | GraphWrite/EventDelegate must keep `custom_event`, `override_event`, and `native_event` declaration lifecycle Signature-owned, but broader Signature-to-GraphWrite collaboration still needs real execute smoke and existing-use-site asset coverage. | Contract tests forbid `ensure_custom_event`, `ensure_override_event`, and `native_event` lifecycle in EventDelegate source; compiler keeps `blueprint_signature.ensure_custom_event -> graph_write` dependency. | Add a Signature-owned declaration plus GraphWrite body/use-site execute smoke covering custom event, override/native event declaration, and delegate use-site references without moving declaration taxonomy into GraphWrite/EventDelegate. |
+
+## 2026-05-24 Generic Broad Create Closure
+
+- Closed for explicit broad-create first slice: `spawn_actor`, `create_widget`, `construct_object`, `make_array`, `make_map`, `make_set`.
+- Closure evidence: AgentFace TS/Python compiler tests, UE 5.6 compile, `BlueprintHelper.GraphWrite.ActionResolution.Contract`, `BlueprintHelper.GraphWrite.ActionResolution.Generic.Create`, `BlueprintHelper.GraphWrite.ActionResolution.Generic`, `BlueprintHelper.GraphWrite.LegacyMainline`, and full `BlueprintHelper.GraphWrite` automation.
+- `asset_action` remains intentionally open unless projected ActionDatabase / selected spawner evidence exists; current behavior is `needs_more_semantic_context`, not fake success.
+- This closure does not change the open follow-up Gap 3/4/5 entries above.
 
 ## 2026-05-24 Struct / TypeStructure construct-deconstruct gap sync
 

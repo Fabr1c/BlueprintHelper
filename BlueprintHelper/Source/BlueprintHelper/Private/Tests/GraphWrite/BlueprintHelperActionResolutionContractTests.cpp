@@ -162,6 +162,26 @@ bool FBlueprintHelperActionResolutionClusterKindContractTest::RunTest(const FStr
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionResolutionGenericCreateSecondLevelContractTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.Contract.GenericCreateUsesSecondLevelOperation",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionResolutionGenericCreateSecondLevelContractTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperActionResolutionRequest Request;
+	Request.ClusterKind = EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction;
+	Request.Semantic.Kind = EBlueprintHelperActionSemanticKind::Create;
+	Request.Semantic.SemanticFamily = EBlueprintHelperActionSemanticFamily::Create;
+	Request.Semantic.CreateOperation = TEXT("spawn_actor");
+
+	TestEqual(TEXT("Create stays under GenericAssetStructControlAction cluster"), Request.ClusterKind, EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction);
+	TestEqual(TEXT("Create is the first-stage semantic constraint"), Request.Semantic.Kind, EBlueprintHelperActionSemanticKind::Create);
+	TestEqual(TEXT("Create family is explicit"), Request.Semantic.SemanticFamily, EBlueprintHelperActionSemanticFamily::Create);
+	TestEqual(TEXT("Create operation is second-level evidence"), Request.Semantic.CreateOperation, FString(TEXT("spawn_actor")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperActionResolutionNoLegacyIntentTokensTest,
 	"BlueprintHelper.GraphWrite.ActionResolution.Contract.NoLegacyIntentTokens",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

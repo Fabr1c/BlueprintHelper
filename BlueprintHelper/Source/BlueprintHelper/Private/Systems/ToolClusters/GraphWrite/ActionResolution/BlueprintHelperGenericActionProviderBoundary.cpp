@@ -9,6 +9,7 @@ FBlueprintHelperGenericActionProviderBoundary FBlueprintHelperGenericActionProvi
 		|| Request.Semantic.SemanticFamily == EBlueprintHelperActionSemanticFamily::TypeStructure;
 	const bool bConstructOperation = Request.Semantic.TypeOperation == EBlueprintHelperTypeOperation::Construct;
 	const bool bDeconstructOperation = Request.Semantic.TypeOperation == EBlueprintHelperTypeOperation::Deconstruct;
+	const FString CreateOperation = Request.Semantic.CreateOperation.TrimStartAndEnd();
 
 	switch (Request.Semantic.Kind)
 	{
@@ -58,6 +59,16 @@ FBlueprintHelperGenericActionProviderBoundary FBlueprintHelperGenericActionProvi
 		Boundary.Reason = Request.Semantic.Query.TrimStartAndEnd().IsEmpty()
 			? TEXT("control requires Semantic.Query such as branch, return, or sequence.")
 			: TEXT("control resolves through the singleton control-flow evidence provider; ControlFragmentBuilder only performs flow composition and pin binding.");
+		return Boundary;
+
+	case EBlueprintHelperActionSemanticKind::Create:
+		Boundary.Mode = CreateOperation.IsEmpty()
+			? EBlueprintHelperGenericActionProviderMode::NeedsMoreSemanticContext
+			: EBlueprintHelperGenericActionProviderMode::NodeSpawnerCandidate;
+		Boundary.RequiredBuilder = TEXT("GenericCreateActionResolver");
+		Boundary.Reason = CreateOperation.IsEmpty()
+			? TEXT("create requires Semantic.CreateOperation such as spawn_actor, create_widget, construct_object, make_array, make_map, make_set, or asset_action.")
+			: TEXT("create resolves through explicit broad-create operation evidence.");
 		return Boundary;
 
 	default:

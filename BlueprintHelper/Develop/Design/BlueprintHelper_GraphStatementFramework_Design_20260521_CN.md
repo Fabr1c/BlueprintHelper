@@ -534,3 +534,11 @@ This taxonomy does not change the top-level `SpawnerClusterKind` dispatch rule. 
 - ActionContext Field 推断会从 linked source / consumer symbol pin 投影 `TargetObjectPinType` 与 `ExpectedReturnPinType`，并记录 `linked_source_pin_type` / `linked_consumer_pin_type` evidence，供 resolver 缩小候选空间。
 - TaskSpec TS/Python 编译器已接受 `component_ref` 与 `field_access`，并在 compiled body 中保留复杂 `property_path` 与 nested `field_access`。
 - Event lifecycle taxonomy 仍由 BlueprintSignature owning path 管理：`custom_event` / `override_event` / `native_event` 不作为 GraphWrite/EventDelegate public declaration taxonomy。GraphWrite 只消费 Signature 依赖后的 body 写入和 delegate use-site；统一 smoke 已验证 `blueprint_signature.ensure_custom_event -> graph_write` 的依赖边界。
+
+## 2026-05-24 Generic Broad Create Closure
+
+- `Create` 当前作为 `GenericAssetStructControlActionCluster` 的二级语义接入，必须携带显式 `create_operation`，缺少该 evidence 时返回 `needs_more_semantic_context`。
+- 已接入的 first slice 为 `spawn_actor`、`create_widget`、`construct_object`、`make_array`、`make_map`、`make_set`，均通过 selected NodeSpawner evidence 后由 `FBlueprintHelperActionNodeSpawnerAdapter` 执行。
+- `asset_action` 暂不伪造成功；没有投影出的 ActionDatabase / selected spawner evidence 时保持可行动失败。
+- Struct `construct/deconstruct` 仍归 Struct / TypeStructure 语义，不计入 broad create。
+- 2026-05-24 verification: AgentFace TS/Python compiler tests、UE 5.6 compile、`BlueprintHelper.GraphWrite.ActionResolution.Contract`、`BlueprintHelper.GraphWrite.ActionResolution.Generic.Create`、`BlueprintHelper.GraphWrite.ActionResolution.Generic`、`BlueprintHelper.GraphWrite.LegacyMainline`、full `BlueprintHelper.GraphWrite` automation 均已通过。

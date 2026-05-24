@@ -82,6 +82,28 @@ bool FBlueprintHelperGraphFragmentBuilderRegistry::TryBuildStatement(
 			ActionContextScope);
 	}
 
+	if (Statement.Kind == EBlueprintHelperGraphStatementKind::Create)
+	{
+		FBlueprintHelperGraphFragmentBuildRequest Request = FBlueprintHelperGraphFragmentBuildRequest::FromStatement(Statement);
+		Request.FragmentId = StatementId;
+		Request.SourceStatementId = StatementId;
+		Request.ActionContextStatementId = StatementContextId;
+		Request.Query = Statement.CreateOperation;
+		Request.Target = !Statement.ClassPath.IsEmpty() ? Statement.ClassPath : Statement.Target;
+		Request.TypeName = Statement.ClassPath;
+		FillLiteralArgsAsDefaultsAndTypes(Statement.Args, Request.DefaultValues, Request.ArgumentTypes);
+		if (SemanticArgumentPinTypes)
+		{
+			Request.ArgumentPinTypes.Append(*SemanticArgumentPinTypes);
+		}
+		return FBlueprintHelperGraphStatementBuilder::BuildCreateFragment(
+			TargetGraph,
+			Request,
+			OutFragment,
+			OutError,
+			ActionContextScope);
+	}
+
 	if (Statement.Kind == EBlueprintHelperGraphStatementKind::Field
 		&& Statement.FieldOperation.Equals(TEXT("set"), ESearchCase::IgnoreCase)
 		&& Statement.FieldScope.Equals(TEXT("variable"), ESearchCase::IgnoreCase))

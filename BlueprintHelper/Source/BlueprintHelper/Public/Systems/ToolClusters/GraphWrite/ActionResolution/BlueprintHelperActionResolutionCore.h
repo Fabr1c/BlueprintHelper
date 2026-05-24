@@ -89,6 +89,9 @@ struct FBlueprintHelperActionSemanticConstraints
 	FString FunctionOperation;
 	FString TransformOperation;
 	FString ScheduleOperation;
+	FString CreateOperation;
+	FString ClassPath;
+	FString AssetPath;
 	FString TypeName;
 	FString StructPath;
 	FString TypeStructureId;
@@ -103,6 +106,9 @@ struct FBlueprintHelperActionSemanticConstraints
 	FBlueprintHelperCallFunctionPinType TargetObjectPinType;
 	FString ExpectedReturnType;
 	FBlueprintHelperCallFunctionPinType ExpectedReturnPinType;
+	FBlueprintHelperCallFunctionPinType ContainerElementPinType;
+	FBlueprintHelperCallFunctionPinType ContainerKeyPinType;
+	FBlueprintHelperCallFunctionPinType ContainerValuePinType;
 };
 
 struct FBlueprintHelperActionResolutionRequest

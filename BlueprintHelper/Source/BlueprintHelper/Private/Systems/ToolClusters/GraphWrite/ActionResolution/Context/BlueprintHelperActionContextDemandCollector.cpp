@@ -237,6 +237,22 @@ static FString GetDefaultValue(
 	return Demand.DefaultValues.FindRef(Key).TrimStartAndEnd();
 }
 
+static FBlueprintHelperCallFunctionPinType MakePinTypeFromToken(const FString& Token)
+{
+	FBlueprintHelperCallFunctionPinType PinType;
+	TArray<FString> Parts;
+	Token.TrimStartAndEnd().ParseIntoArray(Parts, TEXT("|"), true);
+	if (Parts.Num() > 0)
+	{
+		PinType.Category = Parts[0];
+	}
+	if (Parts.Num() > 1)
+	{
+		PinType.ObjectPath = Parts[1];
+	}
+	return PinType;
+}
+
 static void ApplyFunctionSemanticOperations(FBlueprintHelperActionContextDemand& InOutDemand)
 {
 	switch (InOutDemand.SemanticKind)
@@ -265,6 +281,74 @@ static void ApplyFunctionSemanticOperations(FBlueprintHelperActionContextDemand&
 		break;
 	default:
 		break;
+	}
+}
+
+static void ApplyCreateStatementEvidence(
+	const FBlueprintHelperGraphStatementIR& Statement,
+	FBlueprintHelperActionContextDemand& InOutDemand)
+{
+	if (InOutDemand.SemanticKind != EBlueprintHelperActionSemanticKind::Create)
+	{
+		return;
+	}
+
+	InOutDemand.CreateOperation = Statement.CreateOperation.TrimStartAndEnd().ToLower();
+	InOutDemand.ClassPath = FirstNonEmpty(Statement.ClassPath, Statement.Target, Statement.Name);
+	InOutDemand.AssetPath = Statement.AssetPath.TrimStartAndEnd();
+	InOutDemand.Query = InOutDemand.CreateOperation;
+	if (!InOutDemand.ClassPath.IsEmpty())
+	{
+		InOutDemand.TargetPath = InOutDemand.ClassPath;
+	}
+	if (!Statement.PinType.TrimStartAndEnd().IsEmpty())
+	{
+		InOutDemand.ArgumentTypes.Add(TEXT("element"), Statement.PinType.TrimStartAndEnd());
+		InOutDemand.ContainerElementPinType = MakePinTypeFromToken(Statement.PinType);
+	}
+	if (!Statement.KeyPinType.TrimStartAndEnd().IsEmpty())
+	{
+		InOutDemand.ArgumentTypes.Add(TEXT("key"), Statement.KeyPinType.TrimStartAndEnd());
+		InOutDemand.ContainerKeyPinType = MakePinTypeFromToken(Statement.KeyPinType);
+	}
+	if (!Statement.ValuePinType.TrimStartAndEnd().IsEmpty())
+	{
+		InOutDemand.ArgumentTypes.Add(TEXT("value"), Statement.ValuePinType.TrimStartAndEnd());
+		InOutDemand.ContainerValuePinType = MakePinTypeFromToken(Statement.ValuePinType);
+	}
+}
+
+static void ApplyCreateExpressionEvidence(
+	const FBlueprintHelperGraphExpressionIR& Expression,
+	FBlueprintHelperActionContextDemand& InOutDemand)
+{
+	if (InOutDemand.SemanticKind != EBlueprintHelperActionSemanticKind::Create)
+	{
+		return;
+	}
+
+	InOutDemand.CreateOperation = Expression.CreateOperation.TrimStartAndEnd().ToLower();
+	InOutDemand.ClassPath = FirstNonEmpty(Expression.ClassPath, Expression.Target, Expression.Name);
+	InOutDemand.AssetPath = Expression.AssetPath.TrimStartAndEnd();
+	InOutDemand.Query = InOutDemand.CreateOperation;
+	if (!InOutDemand.ClassPath.IsEmpty())
+	{
+		InOutDemand.TargetPath = InOutDemand.ClassPath;
+	}
+	if (!Expression.PinType.TrimStartAndEnd().IsEmpty())
+	{
+		InOutDemand.ArgumentTypes.Add(TEXT("element"), Expression.PinType.TrimStartAndEnd());
+		InOutDemand.ContainerElementPinType = MakePinTypeFromToken(Expression.PinType);
+	}
+	if (!Expression.KeyPinType.TrimStartAndEnd().IsEmpty())
+	{
+		InOutDemand.ArgumentTypes.Add(TEXT("key"), Expression.KeyPinType.TrimStartAndEnd());
+		InOutDemand.ContainerKeyPinType = MakePinTypeFromToken(Expression.KeyPinType);
+	}
+	if (!Expression.ValuePinType.TrimStartAndEnd().IsEmpty())
+	{
+		InOutDemand.ArgumentTypes.Add(TEXT("value"), Expression.ValuePinType.TrimStartAndEnd());
+		InOutDemand.ContainerValuePinType = MakePinTypeFromToken(Expression.ValuePinType);
 	}
 }
 
@@ -457,6 +541,7 @@ void FBlueprintHelperActionContextDemandCollector::AppendDemandForStatement(
 		FieldOperation,
 		FieldScope);
 	BlueprintHelperActionContextDemandCollector::CopyExpressionMapContext(Statement.Args, Demand);
+	BlueprintHelperActionContextDemandCollector::ApplyCreateStatementEvidence(Statement, Demand);
 	BlueprintHelperActionContextDemandCollector::ApplyFunctionSemanticOperations(Demand);
 	if (Statement.Value.IsValid() && Demand.ExpectedReturnType.IsEmpty())
 	{
@@ -542,6 +627,7 @@ void FBlueprintHelperActionContextDemandCollector::AppendDemandForExpression(
 	BlueprintHelperActionContextDemandCollector::CopyNamedExpressionContext(TEXT("right"), Expression.Right, Demand);
 	BlueprintHelperActionContextDemandCollector::CopyNamedExpressionContext(TEXT("value"), Expression.Value, Demand);
 	BlueprintHelperActionContextDemandCollector::CopyNamedExpressionContext(TEXT("condition"), Expression.Condition, Demand);
+	BlueprintHelperActionContextDemandCollector::ApplyCreateExpressionEvidence(Expression, Demand);
 	BlueprintHelperActionContextDemandCollector::ApplyFunctionSemanticOperations(Demand);
 	Demand.ExpectedReturnType = Expression.Type;
 	if (Expression.TargetObject.IsValid())
@@ -773,6 +859,8 @@ EBlueprintHelperActionSemanticKind FBlueprintHelperActionContextDemandCollector:
 	case EBlueprintHelperGraphStatementKind::Sequence:
 	case EBlueprintHelperGraphStatementKind::Return:
 		return EBlueprintHelperActionSemanticKind::Control;
+	case EBlueprintHelperGraphStatementKind::Create:
+		return EBlueprintHelperActionSemanticKind::Create;
 	case EBlueprintHelperGraphStatementKind::Let:
 		return EBlueprintHelperActionSemanticKind::Field;
 	case EBlueprintHelperGraphStatementKind::ComponentBoundEvent:
@@ -801,6 +889,8 @@ EBlueprintHelperActionSemanticKind FBlueprintHelperActionContextDemandCollector:
 		return EBlueprintHelperActionSemanticKind::Deconstruct;
 	case EBlueprintHelperGraphExpressionKind::Select:
 		return EBlueprintHelperActionSemanticKind::Select;
+	case EBlueprintHelperGraphExpressionKind::Create:
+		return EBlueprintHelperActionSemanticKind::Create;
 	default:
 		return EBlueprintHelperActionSemanticKind::Unknown;
 	}

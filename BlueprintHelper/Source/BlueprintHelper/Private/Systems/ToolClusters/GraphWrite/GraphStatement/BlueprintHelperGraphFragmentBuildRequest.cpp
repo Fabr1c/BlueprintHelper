@@ -13,6 +13,12 @@ FBlueprintHelperGraphFragmentBuildRequest FBlueprintHelperGraphFragmentBuildRequ
 	Request.PropertyPath = Statement.Property;
 	Request.FieldOperation = Statement.FieldOperation;
 	Request.FieldScope = Statement.FieldScope;
+	Request.CreateOperation = Statement.CreateOperation;
+	Request.ClassPath = Statement.ClassPath;
+	Request.AssetPath = Statement.AssetPath;
+	Request.PinType = Statement.PinType;
+	Request.KeyPinType = Statement.KeyPinType;
+	Request.ValuePinType = Statement.ValuePinType;
 	Request.TypeName = Statement.Value.IsValid() ? Statement.Value->Type : Statement.ResolvedTarget.Type;
 	Request.SearchMode = Statement.SearchMode;
 	Request.AmbiguityPolicy = Statement.AmbiguityPolicy;
@@ -46,6 +52,12 @@ FBlueprintHelperGraphFragmentBuildRequest FBlueprintHelperGraphFragmentBuildRequ
 	Request.PropertyPath = Expression.ResolvedTarget.PropertyPath;
 	Request.FieldOperation = Expression.FieldOperation;
 	Request.FieldScope = Expression.FieldScope;
+	Request.CreateOperation = Expression.CreateOperation;
+	Request.ClassPath = Expression.ClassPath;
+	Request.AssetPath = Expression.AssetPath;
+	Request.PinType = Expression.PinType;
+	Request.KeyPinType = Expression.KeyPinType;
+	Request.ValuePinType = Expression.ValuePinType;
 	Request.TypeName = Expression.Type;
 	Request.ExpectedReturnType = Expression.Type;
 	Request.SearchMode = Expression.SearchMode;

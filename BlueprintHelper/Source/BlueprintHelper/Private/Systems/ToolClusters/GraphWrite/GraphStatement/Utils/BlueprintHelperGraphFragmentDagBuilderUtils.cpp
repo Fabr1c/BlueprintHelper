@@ -47,6 +47,8 @@ FString FBlueprintHelperGraphFragmentDagBuilderUtils::StatementKindName(const EB
 		return TEXT("let");
 	case EBlueprintHelperGraphStatementKind::Return:
 		return TEXT("return");
+	case EBlueprintHelperGraphStatementKind::Create:
+		return TEXT("create");
 	default:
 		return TEXT("unknown");
 	}
@@ -69,6 +71,8 @@ FString FBlueprintHelperGraphFragmentDagBuilderUtils::ExpressionKindName(const E
 		return TEXT("deconstruct");
 	case EBlueprintHelperGraphExpressionKind::Select:
 		return TEXT("select");
+	case EBlueprintHelperGraphExpressionKind::Create:
+		return TEXT("create");
 	default:
 		return TEXT("unknown");
 	}
@@ -842,6 +846,16 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagDataProducer FB
 			State,
 			SymbolScopes);
 
+	case EBlueprintHelperGraphExpressionKind::Create:
+		return BuildResolvableExpressionFragment(
+			Expression,
+			TEXT("generic_action"),
+			TEXT("create"),
+			TEXT("value"),
+			Expression->Type,
+			State,
+			SymbolScopes);
+
 	case EBlueprintHelperGraphExpressionKind::Unknown:
 	default:
 	{
@@ -1138,6 +1152,9 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagExecFlow FBluep
 
 	case EBlueprintHelperGraphStatementKind::Sequence:
 		return BuildSimpleStatement(Statement, TEXT("statement_sequence"), TEXT("sequence"), State, SymbolScopes);
+
+	case EBlueprintHelperGraphStatementKind::Create:
+		return BuildSimpleStatement(Statement, TEXT("statement_create"), TEXT("create"), State, SymbolScopes);
 
 	case EBlueprintHelperGraphStatementKind::Unknown:
 	default:
