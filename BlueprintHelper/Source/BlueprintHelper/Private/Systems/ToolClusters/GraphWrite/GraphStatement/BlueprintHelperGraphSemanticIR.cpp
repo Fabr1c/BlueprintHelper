@@ -110,6 +110,21 @@ static bool IsPropertyFieldScope(const FString& Scope)
 {
 	return NormalizeFieldToken(Scope) == TEXT("property_path");
 }
+
+static FString ReadOptionalJsonValueAsString(const TSharedPtr<FJsonObject>& Object, const TCHAR* FieldName)
+{
+	if (!Object.IsValid() || !FieldName)
+	{
+		return FString();
+	}
+
+	if (const TSharedPtr<FJsonValue>* Value = Object->Values.Find(FieldName))
+	{
+		return FBlueprintHelperGraphSemanticIRUtils::JsonValueToString(*Value).TrimStartAndEnd();
+	}
+
+	return FString();
+}
 }
 bool FBlueprintHelperGraphResolvedTarget::IsResolved() const
 {
@@ -472,6 +487,13 @@ TSharedPtr<FBlueprintHelperGraphStatementIR> FBlueprintHelperGraphSemanticIRBuil
 	StatementObject->TryGetStringField(TEXT("field_scope"), Statement->FieldScope);
 	Statement->FieldOperation = NormalizeFieldToken(Statement->FieldOperation);
 	Statement->FieldScope = NormalizeFieldToken(Statement->FieldScope);
+	StatementObject->TryGetStringField(TEXT("create_operation"), Statement->CreateOperation);
+	Statement->CreateOperation = NormalizeFieldToken(Statement->CreateOperation);
+	StatementObject->TryGetStringField(TEXT("class_path"), Statement->ClassPath);
+	StatementObject->TryGetStringField(TEXT("asset_path"), Statement->AssetPath);
+	Statement->PinType = ReadOptionalJsonValueAsString(StatementObject, TEXT("pin_type"));
+	Statement->KeyPinType = ReadOptionalJsonValueAsString(StatementObject, TEXT("key_pin_type"));
+	Statement->ValuePinType = ReadOptionalJsonValueAsString(StatementObject, TEXT("value_pin_type"));
 	StatementObject->TryGetStringField(TEXT("component"), Statement->ComponentName);
 	StatementObject->TryGetStringField(TEXT("delegate"), Statement->DelegateName);
 	StatementObject->TryGetStringField(TEXT("delegate_operation"), Statement->DelegateOperation);
@@ -589,6 +611,13 @@ TSharedPtr<FBlueprintHelperGraphExpressionIR> FBlueprintHelperGraphSemanticIRBui
 	ExpressionObject->TryGetStringField(TEXT("field_scope"), Expression->FieldScope);
 	Expression->FieldOperation = NormalizeFieldToken(Expression->FieldOperation);
 	Expression->FieldScope = NormalizeFieldToken(Expression->FieldScope);
+	ExpressionObject->TryGetStringField(TEXT("create_operation"), Expression->CreateOperation);
+	Expression->CreateOperation = NormalizeFieldToken(Expression->CreateOperation);
+	ExpressionObject->TryGetStringField(TEXT("class_path"), Expression->ClassPath);
+	ExpressionObject->TryGetStringField(TEXT("asset_path"), Expression->AssetPath);
+	Expression->PinType = ReadOptionalJsonValueAsString(ExpressionObject, TEXT("pin_type"));
+	Expression->KeyPinType = ReadOptionalJsonValueAsString(ExpressionObject, TEXT("key_pin_type"));
+	Expression->ValuePinType = ReadOptionalJsonValueAsString(ExpressionObject, TEXT("value_pin_type"));
 	ExpressionObject->TryGetStringField(TEXT("resolved_stable_id"), Expression->ResolvedCallFunctionStableId);
 	ExpressionObject->TryGetStringField(TEXT("search_mode"), Expression->SearchMode);
 	ExpressionObject->TryGetStringField(TEXT("ambiguity"), Expression->AmbiguityPolicy);
@@ -836,6 +865,21 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveStatement(
 	default:
 		break;
 
+	case EBlueprintHelperGraphStatementKind::Create:
+		if (Statement->CreateOperation.TrimStartAndEnd().IsEmpty())
+		{
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("needs_more_semantic_context"), Statement->Path + TEXT(".create_operation"), TEXT("create statement requires create_operation."));
+		}
+		if (Statement->Target.TrimStartAndEnd().IsEmpty()
+			&& Statement->ClassPath.TrimStartAndEnd().IsEmpty()
+			&& Statement->AssetPath.TrimStartAndEnd().IsEmpty()
+			&& Statement->PinType.TrimStartAndEnd().IsEmpty())
+		{
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("needs_more_semantic_context"), Statement->Path + TEXT(".target"), TEXT("create statement requires class_path, asset_path, pin_type, or target evidence."));
+		}
+		Statement->ResolvedTarget = FBlueprintHelperGraphSemanticIRUtils::ResolveTargetString(Statement->Target, Statement->Kind, EBlueprintHelperGraphExpressionKind::Unknown, Context);
+		break;
+
 	case EBlueprintHelperGraphStatementKind::ComponentBoundEvent:
 		if (Statement->Target.TrimStartAndEnd().IsEmpty())
 		{
@@ -1074,6 +1118,21 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveExpression(
 		{
 			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("deconstruct_value_missing"), Expression->Path + TEXT(".value"), TEXT("deconstruct expression requires value or target."));
 		}
+		break;
+
+	case EBlueprintHelperGraphExpressionKind::Create:
+		if (Expression->CreateOperation.TrimStartAndEnd().IsEmpty())
+		{
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("needs_more_semantic_context"), Expression->Path + TEXT(".create_operation"), TEXT("create expression requires create_operation."));
+		}
+		if (Expression->Target.TrimStartAndEnd().IsEmpty()
+			&& Expression->ClassPath.TrimStartAndEnd().IsEmpty()
+			&& Expression->AssetPath.TrimStartAndEnd().IsEmpty()
+			&& Expression->PinType.TrimStartAndEnd().IsEmpty())
+		{
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("needs_more_semantic_context"), Expression->Path + TEXT(".target"), TEXT("create expression requires class_path, asset_path, pin_type, or target evidence."));
+		}
+		Expression->ResolvedTarget = FBlueprintHelperGraphSemanticIRUtils::ResolveTargetString(Expression->Target, EBlueprintHelperGraphStatementKind::Unknown, Expression->Kind, Context);
 		break;
 
 	case EBlueprintHelperGraphExpressionKind::Literal:

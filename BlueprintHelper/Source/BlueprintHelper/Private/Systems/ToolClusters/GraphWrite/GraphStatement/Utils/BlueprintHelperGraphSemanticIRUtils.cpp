@@ -81,6 +81,7 @@ EBlueprintHelperGraphStatementKind FBlueprintHelperGraphSemanticIRUtils::ParseSt
 	if (Kind.Equals(TEXT("sequence"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Sequence;
 	if (Kind.Equals(TEXT("let"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Let;
 	if (Kind.Equals(TEXT("return"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Return;
+	if (Kind.Equals(TEXT("create"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Create;
 	if (Kind.Equals(TEXT("component_bound_event"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::ComponentBoundEvent;
 	if (Kind.Equals(TEXT("delegate"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Delegate;
 	return EBlueprintHelperGraphStatementKind::Unknown;
@@ -94,6 +95,7 @@ EBlueprintHelperGraphExpressionKind FBlueprintHelperGraphSemanticIRUtils::ParseE
 	if (Kind.Equals(TEXT("construct"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphExpressionKind::Construct;
 	if (Kind.Equals(TEXT("deconstruct"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphExpressionKind::Deconstruct;
 	if (Kind.Equals(TEXT("select"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphExpressionKind::Select;
+	if (Kind.Equals(TEXT("create"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphExpressionKind::Create;
 	return EBlueprintHelperGraphExpressionKind::Unknown;
 }
 void FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(
@@ -246,6 +248,8 @@ FString FBlueprintHelperGraphSemanticIRUtils::StatementPatternName(EBlueprintHel
 		return TEXT("let");
 	case EBlueprintHelperGraphStatementKind::Return:
 		return TEXT("return");
+	case EBlueprintHelperGraphStatementKind::Create:
+		return TEXT("create");
 	case EBlueprintHelperGraphStatementKind::ComponentBoundEvent:
 		return TEXT("component_bound_event");
 	case EBlueprintHelperGraphStatementKind::Delegate:
@@ -272,6 +276,8 @@ FString FBlueprintHelperGraphSemanticIRUtils::ExpressionPatternName(EBlueprintHe
 		return TEXT("deconstruct");
 	case EBlueprintHelperGraphExpressionKind::Select:
 		return TEXT("select");
+	case EBlueprintHelperGraphExpressionKind::Create:
+		return TEXT("create");
 	default:
 		return TEXT("unknown");
 	}

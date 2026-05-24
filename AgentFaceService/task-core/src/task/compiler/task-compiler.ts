@@ -1334,7 +1334,7 @@ function compileMergeGraphWriteOps(behavior: Record<string, unknown>): GraphWrit
   });
 }
 
-const SUPPORTED_GRAPH_BODY_STATEMENT_KINDS = new Set(['call', 'field', 'set', 'set_property', 'let', 'control']);
+const SUPPORTED_GRAPH_BODY_STATEMENT_KINDS = new Set(['call', 'field', 'set', 'set_property', 'let', 'control', 'create']);
 const SUPPORTED_GRAPH_BODY_CONTROL_KINDS = new Set(['branch', 'sequence', 'return']);
 const SUPPORTED_GRAPH_BODY_EXPRESSION_KINDS = new Set([
   'literal',
@@ -1346,6 +1346,7 @@ const SUPPORTED_GRAPH_BODY_EXPRESSION_KINDS = new Set([
   'construct',
   'deconstruct',
   'select',
+  'create',
 ]);
 const FIELD_STATEMENT_KIND_MAP = new Map([
   ['set', { operation: 'set', scope: 'variable' }],
@@ -1402,11 +1403,14 @@ function validateSupportedStatements(statements: BlueprintLogicStatement[], path
         {
           code: 'unsupported_statement_kind',
           path: `${statementPath}.kind`,
-          message: 'Use call, field, set, set_property, let, or control.',
+          message: 'Use call, field, create, set, set_property, let, or control.',
         },
       ]);
     }
     if (kind === 'call') {
+      validateExpressionMap(statementRecord.args, `${statementPath}.args`);
+    } else if (kind === 'create') {
+      validateCreateShape(statementRecord, statementPath);
       validateExpressionMap(statementRecord.args, `${statementPath}.args`);
     } else if (kind === 'field') {
       const { operation } = fieldOperationScope(statementRecord, statementPath);
@@ -1480,7 +1484,7 @@ function validateSupportedExpression(expression: unknown, path: string): void {
       {
         code: 'unsupported_expression_kind',
         path: `${path}.kind`,
-        message: 'Use literal, field, get, get_property, call, op, construct, deconstruct, or select.',
+        message: 'Use literal, field, get, get_property, call, op, construct, deconstruct, select, or create.',
       },
     ]);
   }
@@ -1496,7 +1500,10 @@ function validateSupportedExpression(expression: unknown, path: string): void {
       ]);
     }
   }
-  if (kind === 'call' || kind === 'op' || kind === 'construct' || kind === 'deconstruct') {
+  if (kind === 'create') {
+    validateCreateShape(expression, path);
+  }
+  if (kind === 'call' || kind === 'op' || kind === 'construct' || kind === 'deconstruct' || kind === 'create') {
     validateExpressionMap(expression.args, `${path}.args`);
   }
   if (kind === 'op') {
@@ -1511,6 +1518,10 @@ function validateSupportedExpression(expression: unknown, path: string): void {
     validateSupportedExpression(expression.condition, `${path}.condition`);
     validateExpressionList(expression.options, `${path}.options`);
   }
+}
+
+function validateCreateShape(record: Record<string, unknown>, path: string): void {
+  getRequiredString(record, 'create_operation', `${path}.create_operation`);
 }
 
 function compileLogicBodyToImportPayload(
@@ -1662,7 +1673,7 @@ function cloneLogicStatementWithCompiledIds(statement: BlueprintLogicStatement, 
     }
   } else if (kind === 'let') {
     out.value = cloneLogicExpressionWithCompiledIds(statementRecord.value, `${statementId}_value`);
-  } else if (kind === 'call' && isRecord(statementRecord.args)) {
+  } else if ((kind === 'call' || kind === 'create') && isRecord(statementRecord.args)) {
     const args = statementRecord.args as Record<string, unknown>;
     out.args = Object.fromEntries(
       Object.entries(args).map(([argName, argValue]) => [
@@ -1771,7 +1782,7 @@ function compileStatementFlow(statement: BlueprintLogicStatement, nodeId: string
   const node = compileStatementNode(statement, nodeId, path);
   const nodes: AgentImportNode[] = [node];
   const links: AgentImportLink[] = [];
-  if (kind === 'call') {
+  if (kind === 'call' || kind === 'create') {
     const inputValues: Record<string, unknown> = {};
     if (isRecord(statementRecord['args'])) {
       for (const [argName, argValue] of Object.entries(statementRecord['args'])) {
@@ -1945,7 +1956,7 @@ function compileValueExpression(expression: unknown, nodeId: string, path: strin
       {
         code: 'unsupported_expression_kind',
         path: `${path}.kind`,
-        message: 'Use literal, field, get, get_property, call, op, construct, deconstruct, or select.',
+        message: 'Use literal, field, get, get_property, call, op, construct, deconstruct, select, or create.',
       },
     ]);
   }
@@ -2036,6 +2047,22 @@ function compileValueExpression(expression: unknown, nodeId: string, path: strin
     } else if (Object.hasOwn(expression, 'value')) {
       compileExpressionInput(expression['value'], 'Input', `${nodeId}_value`, `${path}.value`, node, nodes, links, context);
     }
+  } else if (kind === 'create') {
+    node.create_operation = getRequiredString(expression, 'create_operation', `${path}.create_operation`);
+    const target = optionalString(expression, 'target');
+    const classPath = optionalString(expression, 'class_path');
+    const assetPath = optionalString(expression, 'asset_path');
+    if (target) node.target = target;
+    if (classPath) node.class_path = classPath;
+    if (assetPath) node.asset_path = assetPath;
+    if (Object.hasOwn(expression, 'pin_type')) node.pin_type = expression.pin_type;
+    if (Object.hasOwn(expression, 'key_pin_type')) node.key_pin_type = expression.key_pin_type;
+    if (Object.hasOwn(expression, 'value_pin_type')) node.value_pin_type = expression.value_pin_type;
+    if (isRecord(expression.args)) {
+      for (const [argName, argValue] of Object.entries(expression.args)) {
+        compileExpressionInput(argValue, argName, `${nodeId}_${toIdSegment(argName)}`, `${path}.args.${argName}`, node, nodes, links, context);
+      }
+    }
   } else if (isRecord(expression.args)) {
     for (const [argName, argValue] of Object.entries(expression.args)) {
       compileExpressionInput(argValue, argName, `${nodeId}_${toIdSegment(argName)}`, `${path}.args.${argName}`, node, nodes, links, context);
@@ -2043,7 +2070,7 @@ function compileValueExpression(expression: unknown, nodeId: string, path: strin
   }
   nodes.unshift(node);
 
-  const outputPin = kind === 'construct' || kind === 'deconstruct' || kind === 'select' ? 'value' : 'ReturnValue';
+  const outputPin = kind === 'construct' || kind === 'deconstruct' || kind === 'select' || kind === 'create' ? 'value' : 'ReturnValue';
   return { nodes, links, output: `${nodeId}.${outputPin}` };
 }
 
@@ -2741,6 +2768,22 @@ function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string
       function: functionName,
       inputs: compileArgs(statement['args']),
     };
+  }
+
+  if (kind === 'create') {
+    const node: Record<string, unknown> = {
+      id: nodeId,
+      kind: 'create',
+      create_operation: getRequiredString(statementRecord, 'create_operation', `${path}.create_operation`),
+      target: optionalString(statementRecord, 'target'),
+      class_path: optionalString(statementRecord, 'class_path'),
+      asset_path: optionalString(statementRecord, 'asset_path'),
+      inputs: compileArgs(statement['args']),
+    };
+    if (Object.hasOwn(statementRecord, 'pin_type')) node.pin_type = statementRecord.pin_type;
+    if (Object.hasOwn(statementRecord, 'key_pin_type')) node.key_pin_type = statementRecord.key_pin_type;
+    if (Object.hasOwn(statementRecord, 'value_pin_type')) node.value_pin_type = statementRecord.value_pin_type;
+    return omitUndefined(node) as AgentImportNode;
   }
 
   if (kind === 'set') {

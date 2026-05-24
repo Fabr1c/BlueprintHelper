@@ -1470,6 +1470,7 @@ SUPPORTED_GRAPH_BODY_STATEMENT_KINDS = {
     "set_property",
     "let",
     "control",
+    "create",
     *PUBLIC_DELEGATE_STATEMENT_KIND_ALIASES.keys(),
 }
 SUPPORTED_GRAPH_BODY_CONTROL_KINDS = {"branch", "sequence", "return"}
@@ -1483,6 +1484,7 @@ SUPPORTED_GRAPH_BODY_EXPRESSION_KINDS = {
     "construct",
     "deconstruct",
     "select",
+    "create",
 }
 
 FIELD_STATEMENT_KIND_MAP = {
@@ -1577,12 +1579,15 @@ def _validate_supported_statements(statements: List[Dict[str, Any]], path: str) 
                 [{
                     "code": "unsupported_statement_kind",
                     "path": f"{statement_path}.kind",
-                    "message": "Use call, field, set, set_property, let, control, or a supported delegate statement kind.",
+                    "message": "Use call, field, create, set, set_property, let, control, or a supported delegate statement kind.",
                 }],
             )
         if kind in PUBLIC_DELEGATE_STATEMENT_KIND_ALIASES:
             _validate_delegate_statement_shape(statement, statement_path)
         elif kind == "call":
+            _validate_expression_map(statement.get("args"), f"{statement_path}.args")
+        elif kind == "create":
+            _validate_create_shape(statement, statement_path)
             _validate_expression_map(statement.get("args"), f"{statement_path}.args")
         elif kind == "field":
             operation, _scope = _field_operation_scope(statement, statement_path)
@@ -1693,7 +1698,7 @@ def _validate_supported_expression(expression: Any, path: str) -> None:
             [{
                 "code": "unsupported_expression_kind",
                 "path": f"{path}.kind",
-                "message": "Use literal, field, get, get_property, call, op, construct, deconstruct, or select.",
+                "message": "Use literal, field, get, get_property, call, op, construct, deconstruct, select, or create.",
             }],
         )
     if kind == "field":
@@ -1708,7 +1713,9 @@ def _validate_supported_expression(expression: Any, path: str) -> None:
                     "message": "Field expressions require field_operation=get.",
                 }],
             )
-    if kind in {"call", "op", "construct", "deconstruct"}:
+    if kind == "create":
+        _validate_create_shape(expression, path)
+    if kind in {"call", "op", "construct", "deconstruct", "create"}:
         _validate_expression_map(expression.get("args"), f"{path}.args")
     if kind == "op":
         if "left" in expression:
@@ -1723,6 +1730,10 @@ def _validate_supported_expression(expression: Any, path: str) -> None:
     if kind == "select":
         _validate_supported_expression(expression.get("condition"), f"{path}.condition")
         _validate_expression_list(expression.get("options"), f"{path}.options")
+
+
+def _validate_create_shape(record: Dict[str, Any], path: str) -> None:
+    _required_string(record, "create_operation", f"{path}.create_operation")
 
 
 def _compile_logic_body_to_import_payload(
@@ -1853,7 +1864,7 @@ def _clone_logic_statement_with_compiled_ids(statement: Dict[str, Any], statemen
 
     if kind == "let":
         out["value"] = _clone_logic_expression_with_compiled_ids(statement.get("value"), f"{statement_id}_value")
-    elif kind == "call" and isinstance(statement.get("args"), dict):
+    elif kind in {"call", "create"} and isinstance(statement.get("args"), dict):
         out["args"] = {
             arg_name: _clone_logic_expression_with_compiled_ids(arg_value, f"{statement_id}_arg_{_to_id_segment(str(arg_name))}")
             for arg_name, arg_value in statement["args"].items()
@@ -1937,7 +1948,7 @@ def _compile_statement_flow(statement: Dict[str, Any], node_id: str, path: str, 
     node = _compile_statement_node(statement, node_id, path)
     nodes: List[Dict[str, Any]] = [node]
     links: List[Dict[str, Any]] = []
-    if kind == "call" or delegate_operation == "call":
+    if kind in {"call", "create"} or delegate_operation == "call":
         input_values: Dict[str, Any] = {}
         args = statement.get("args")
         if isinstance(args, dict):
@@ -1949,7 +1960,7 @@ def _compile_statement_flow(statement: Dict[str, Any], node_id: str, path: str, 
                     links.append({"kind": "data", "from": arg_flow["output"], "to": f"{node_id}.{arg_name}"})
                 else:
                     input_values[arg_name] = arg_flow.get("default_value")
-        if kind == "call":
+        if kind in {"call", "create"}:
             node["inputs"] = input_values
         else:
             node["args"] = input_values
@@ -2073,7 +2084,7 @@ def _compile_value_expression(expression: Any, node_id: str, path: str, context:
             [{
                 "code": "unsupported_expression_kind",
                 "path": f"{path}.kind",
-                "message": "Use literal, field, get, get_property, call, op, construct, deconstruct, or select.",
+                "message": "Use literal, field, get, get_property, call, op, construct, deconstruct, select, or create.",
             }],
         )
 
@@ -2152,12 +2163,33 @@ def _compile_value_expression(expression: Any, node_id: str, path: str, context:
             _compile_expression_input(expression.get("source"), "Input", f"{node_id}_source", f"{path}.source", node, nodes, links, context)
         elif "value" in expression:
             _compile_expression_input(expression.get("value"), "Input", f"{node_id}_value", f"{path}.value", node, nodes, links, context)
+    elif kind == "create":
+        node["create_operation"] = _required_string(expression, "create_operation", f"{path}.create_operation")
+        target = _optional_string(expression, "target")
+        class_path = _optional_string(expression, "class_path")
+        asset_path = _optional_string(expression, "asset_path")
+        if target:
+            node["target"] = target
+        if class_path:
+            node["class_path"] = class_path
+        if asset_path:
+            node["asset_path"] = asset_path
+        if "pin_type" in expression:
+            node["pin_type"] = expression.get("pin_type")
+        if "key_pin_type" in expression:
+            node["key_pin_type"] = expression.get("key_pin_type")
+        if "value_pin_type" in expression:
+            node["value_pin_type"] = expression.get("value_pin_type")
+        args = expression.get("args")
+        if isinstance(args, dict):
+            for arg_name, arg_value in args.items():
+                _compile_expression_input(arg_value, str(arg_name), f"{node_id}_{_to_id_segment(str(arg_name))}", f"{path}.args.{arg_name}", node, nodes, links, context)
     elif isinstance(expression.get("args"), dict):
         for arg_name, arg_value in expression["args"].items():
             _compile_expression_input(arg_value, str(arg_name), f"{node_id}_{_to_id_segment(str(arg_name))}", f"{path}.args.{arg_name}", node, nodes, links, context)
     nodes.insert(0, node)
 
-    output_pin = "value" if kind in {"construct", "deconstruct", "select"} else "ReturnValue"
+    output_pin = "value" if kind in {"construct", "deconstruct", "select", "create"} else "ReturnValue"
     return {"nodes": nodes, "links": links, "output": f"{node_id}.{output_pin}"}
 
 
@@ -2862,6 +2894,24 @@ def _compile_statement_node(statement: Dict[str, Any], node_id: str, path: str) 
             "inputs": _compile_args(statement.get("args")),
         }
 
+    if kind == "create":
+        node = {
+            "id": node_id,
+            "kind": "create",
+            "create_operation": _required_string(statement, "create_operation", f"{path}.create_operation"),
+            "target": _optional_string(statement, "target"),
+            "class_path": _optional_string(statement, "class_path"),
+            "asset_path": _optional_string(statement, "asset_path"),
+            "inputs": _compile_args(statement.get("args")),
+        }
+        if "pin_type" in statement:
+            node["pin_type"] = statement.get("pin_type")
+        if "key_pin_type" in statement:
+            node["key_pin_type"] = statement.get("key_pin_type")
+        if "value_pin_type" in statement:
+            node["value_pin_type"] = statement.get("value_pin_type")
+        return _omit_none(node)
+
     if kind == "set":
         operation, scope = FIELD_STATEMENT_KIND_MAP[kind]
         node = {
@@ -2992,6 +3042,11 @@ def _required_string(record: Dict[str, Any], field: str, path: str) -> str:
             "message": f"{path} must be a non-empty string.",
         }],
     )
+
+
+def _optional_string(record: Dict[str, Any], field: str) -> Optional[str]:
+    value = record.get(field)
+    return value if isinstance(value, str) and value.strip() else None
 
 
 def _required_logic_body(record: Dict[str, Any], field: str, path: str) -> Dict[str, List[Dict[str, Any]]]:

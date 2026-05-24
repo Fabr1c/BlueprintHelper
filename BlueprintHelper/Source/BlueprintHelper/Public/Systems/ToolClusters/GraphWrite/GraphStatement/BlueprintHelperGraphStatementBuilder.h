@@ -75,6 +75,13 @@ public:
 		FString& OutError,
 		const FBlueprintHelperActionContextScope* ActionContextScope = nullptr);
 
+	static bool BuildCreateFragment(
+		UEdGraph* TargetGraph,
+		const FBlueprintHelperGraphFragmentBuildRequest& Request,
+		FBlueprintHelperNodeFragment& OutFragment,
+		FString& OutError,
+		const FBlueprintHelperActionContextScope* ActionContextScope = nullptr);
+
 	static bool BuildSequenceFragment(
 		UEdGraph* TargetGraph,
 		const FString& FragmentId,

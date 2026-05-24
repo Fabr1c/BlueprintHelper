@@ -14,6 +14,12 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphFragmentBuildRequest
 	FString PropertyPath;
 	FString FieldOperation;
 	FString FieldScope;
+	FString CreateOperation;
+	FString ClassPath;
+	FString AssetPath;
+	FString PinType;
+	FString KeyPinType;
+	FString ValuePinType;
 	FString TypeName;
 	FString ExpectedReturnType;
 	FVector2D Location = FVector2D::ZeroVector;

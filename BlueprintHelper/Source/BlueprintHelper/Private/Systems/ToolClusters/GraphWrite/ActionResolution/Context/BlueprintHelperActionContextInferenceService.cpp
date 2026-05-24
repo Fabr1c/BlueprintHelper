@@ -165,6 +165,9 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 	Context.Semantic.FunctionOperation = Demand.FunctionOperation;
 	Context.Semantic.TransformOperation = Demand.TransformOperation;
 	Context.Semantic.ScheduleOperation = Demand.ScheduleOperation;
+	Context.Semantic.CreateOperation = Demand.CreateOperation;
+	Context.Semantic.ClassPath = Demand.ClassPath;
+	Context.Semantic.AssetPath = Demand.AssetPath;
 	Context.Semantic.TypeName = Demand.TypeName;
 	Context.Semantic.StructPath = Demand.StructPath;
 	Context.Semantic.TypeStructureId = Demand.TypeStructureId;
@@ -179,6 +182,9 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 	Context.Semantic.TargetObjectPinType = Demand.TargetObjectPinType;
 	Context.Semantic.ExpectedReturnType = Demand.ExpectedReturnType;
 	Context.Semantic.ExpectedReturnPinType = Demand.ExpectedReturnPinType;
+	Context.Semantic.ContainerElementPinType = Demand.ContainerElementPinType;
+	Context.Semantic.ContainerKeyPinType = Demand.ContainerKeyPinType;
+	Context.Semantic.ContainerValuePinType = Demand.ContainerValuePinType;
 
 	if (!Demand.TypeName.IsEmpty())
 	{
@@ -244,6 +250,18 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 	if (!Demand.ScheduleOperation.IsEmpty())
 	{
 		Context.Evidence.Add(TEXT("schedule_operation"), Demand.ScheduleOperation);
+	}
+	if (!Demand.CreateOperation.IsEmpty())
+	{
+		Context.Evidence.Add(TEXT("create_operation"), Demand.CreateOperation);
+	}
+	if (!Demand.ClassPath.IsEmpty())
+	{
+		Context.Evidence.Add(TEXT("class_path"), Demand.ClassPath);
+	}
+	if (!Demand.AssetPath.IsEmpty())
+	{
+		Context.Evidence.Add(TEXT("asset_path"), Demand.AssetPath);
 	}
 	if (!Demand.DelegateSignature.IsEmpty())
 	{
