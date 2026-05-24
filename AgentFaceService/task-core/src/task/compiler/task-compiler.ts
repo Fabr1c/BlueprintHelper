@@ -530,33 +530,43 @@ function makeGraphWriteTaskPlanSteps(
       write: {
         strategy: 'custom_event_signature',
         ops: [
-          {
+          omitUndefined({
             op: 'ensure_custom_event',
             event_name: String(op['name']),
             graph_name: taskSpec.scope_policy.graph_name,
+            inputs: (op as GraphWriteCompiledOp & { __signature_split?: GraphWriteSignatureSplit }).__signature_split?.inputs,
             name_collision_policy: 'reuse_if_exists',
-          },
+          }),
         ],
       },
     } as TaskPlanStep));
-    const graphWriteStep = {
-      step_id: `step_${String(signatureSteps.length + 1).padStart(3, '0')}`,
-      capability: 'graph_write',
-      target: {
-        asset_path: taskSpec.target.asset_path,
-        graph: taskSpec.scope_policy.graph_name,
-      },
-      write: {
-        strategy: 'owned_graph_edit',
-        ops: graphWriteOps.map(stripGraphWriteCompilerMetadata),
-      },
-      constraints: {
-        allow_modify_user_nodes: taskSpec.scope_policy.allow_modify_user_nodes,
-        ownership_scope: 'blueprinthelper_owned',
-      },
-      depends_on: signatureSteps.map((step) => step.step_id),
-    } as TaskPlanStep;
-    return [...signatureSteps, graphWriteStep];
+    const signatureStepIds = signatureSteps.map((step) => step.step_id);
+    const graphWriteSteps = graphWriteOps.map((op, index) => {
+      const stepId = `step_${String(signatureSteps.length + index + 1).padStart(3, '0')}`;
+      const previousGraphWriteStepId = index > 0
+        ? `step_${String(signatureSteps.length + index).padStart(3, '0')}`
+        : undefined;
+      return {
+        step_id: stepId,
+        capability: 'graph_write',
+        target: {
+          asset_path: taskSpec.target.asset_path,
+          graph: taskSpec.scope_policy.graph_name,
+        },
+        write: {
+          strategy: 'owned_graph_edit',
+          ops: [stripGraphWriteCompilerMetadata(op)],
+        },
+        constraints: {
+          allow_modify_user_nodes: taskSpec.scope_policy.allow_modify_user_nodes,
+          ownership_scope: 'blueprinthelper_owned',
+        },
+        depends_on: previousGraphWriteStepId
+          ? [...signatureStepIds, previousGraphWriteStepId]
+          : signatureStepIds,
+      } as TaskPlanStep;
+    });
+    return [...signatureSteps, ...graphWriteSteps];
   }
 
   if (strategy === 'replace_owned_graph' && graphWriteOps.length === 1) {
@@ -1179,11 +1189,22 @@ function compileAppendGraphWriteOps(behavior: Record<string, unknown>): GraphWri
     const body = getRequiredLogicBody(entry, 'body', `behavior.entries[${entryIndex}].body`);
     validateSupportedStatements(body.statements, `behavior.entries[${entryIndex}].body.statements`);
     const entryName = getRequiredString(entry, 'name', `behavior.entries[${entryIndex}].name`);
+    const entryInputs = Array.isArray(entry['inputs']) ? entry['inputs'] : undefined;
     return {
       op: 'ensure_entry',
       entry_type: entryType,
       name: entryName,
       body: compileLogicBodyToSemanticLogicSpec(body, entryName),
+      ...(entryInputs
+        ? {
+            __signature_split: {
+              op: 'ensure_custom_event',
+              event_name: entryName,
+              inputs: entryInputs,
+              name_collision_policy: 'reuse_if_exists',
+            } satisfies GraphWriteSignatureSplit,
+          }
+        : {}),
     };
   });
 }
@@ -1334,7 +1355,37 @@ function compileMergeGraphWriteOps(behavior: Record<string, unknown>): GraphWrit
   });
 }
 
-const SUPPORTED_GRAPH_BODY_STATEMENT_KINDS = new Set(['call', 'field', 'set', 'set_property', 'let', 'control', 'create', 'convert', 'schedule']);
+const PUBLIC_DELEGATE_STATEMENT_KIND_ALIASES = new Map<string, string>([
+  ['component_bound_event', 'component_bound_event'],
+  ['delegate.bind', 'bind'],
+  ['delegate.assign', 'assign'],
+  ['delegate.unbind', 'unbind'],
+  ['delegate.unbind_all', 'clear'],
+  ['delegate.call', 'call'],
+]);
+const INTERNAL_DELEGATE_STATEMENT_KIND = 'delegate';
+const DELEGATE_STATEMENT_OPERATION_KINDS = new Set(['bind', 'assign', 'unbind', 'clear', 'call']);
+const FORBIDDEN_AGENT_DELEGATE_INTERNAL_KINDS = new Set([
+  'delegate',
+  'bind',
+  'assign',
+  'unbind',
+  'unbind_all',
+  'delegate_call',
+  'delegate_clear',
+]);
+const SUPPORTED_GRAPH_BODY_STATEMENT_KINDS = new Set([
+  'call',
+  'field',
+  'set',
+  'set_property',
+  'let',
+  'control',
+  'create',
+  'convert',
+  'schedule',
+  ...PUBLIC_DELEGATE_STATEMENT_KIND_ALIASES.keys(),
+]);
 const SUPPORTED_GRAPH_BODY_CONTROL_KINDS = new Set(['branch', 'sequence', 'return']);
 const SUPPORTED_GRAPH_BODY_EXPRESSION_KINDS = new Set([
   'literal',
@@ -1410,21 +1461,66 @@ function fieldOperationScope(record: Record<string, unknown>, path: string): { o
   return { operation, scope };
 }
 
+function delegateStatementOperation(statement: Record<string, unknown>): string | undefined {
+  const kind = typeof statement.kind === 'string' ? statement.kind : '';
+  if (kind === INTERNAL_DELEGATE_STATEMENT_KIND) {
+    const operation = typeof statement.delegate_operation === 'string' ? statement.delegate_operation : '';
+    return DELEGATE_STATEMENT_OPERATION_KINDS.has(operation) ? operation : undefined;
+  }
+  const operation = PUBLIC_DELEGATE_STATEMENT_KIND_ALIASES.get(kind);
+  return operation && operation !== 'component_bound_event' ? operation : undefined;
+}
+
+function validateDelegateStatementShape(statement: Record<string, unknown>, path: string): void {
+  const kind = typeof statement.kind === 'string' ? statement.kind : '';
+  if (kind === 'component_bound_event') {
+    getRequiredString(statement, 'component', `${path}.component`);
+    getRequiredString(statement, 'delegate', `${path}.delegate`);
+    getRequiredString(statement, 'handler', `${path}.handler`);
+    return;
+  }
+
+  const operation = delegateStatementOperation(statement);
+  if (!operation) {
+    return;
+  }
+
+  getRequiredString(statement, 'target', `${path}.target`);
+  getRequiredString(statement, 'delegate', `${path}.delegate`);
+  if (operation === 'bind' || operation === 'assign' || operation === 'unbind') {
+    getRequiredString(statement, 'handler', `${path}.handler`);
+  }
+  if (operation === 'call') {
+    validateExpressionMap(statement.args, `${path}.args`);
+  }
+}
+
 function validateSupportedStatements(statements: BlueprintLogicStatement[], path: string): void {
   statements.forEach((statement, statementIndex) => {
     const statementRecord = statement as Record<string, unknown>;
     const kind = typeof statementRecord.kind === 'string' ? statementRecord.kind : '';
     const statementPath = `${path}[${statementIndex}]`;
+    if (FORBIDDEN_AGENT_DELEGATE_INTERNAL_KINDS.has(kind)) {
+      throw new TaskSpecCompileError('unsupported_statement_kind', 'Unsupported GraphWrite statement kind.', [
+        {
+          code: 'unsupported_statement_kind',
+          path: `${statementPath}.kind`,
+          message: 'Use component_bound_event or delegate.bind/delegate.assign/delegate.unbind/delegate.unbind_all/delegate.call in Agent-facing TaskSpec. The compiler owns kind=delegate + delegate_operation lowering.',
+        },
+      ]);
+    }
     if (!SUPPORTED_GRAPH_BODY_STATEMENT_KINDS.has(kind)) {
       throw new TaskSpecCompileError('unsupported_statement_kind', 'Unsupported GraphWrite statement kind.', [
         {
           code: 'unsupported_statement_kind',
           path: `${statementPath}.kind`,
-          message: 'Use call, field, create, convert, schedule, set, set_property, let, or control.',
+          message: 'Use call, field, create, convert, schedule, set, set_property, let, control, component_bound_event, or delegate.*.',
         },
       ]);
     }
-    if (kind === 'call') {
+    if (PUBLIC_DELEGATE_STATEMENT_KIND_ALIASES.has(kind)) {
+      validateDelegateStatementShape(statementRecord, statementPath);
+    } else if (kind === 'call') {
       validateExpressionMap(statementRecord.args, `${statementPath}.args`);
     } else if (kind === 'create') {
       validateCreateShape(statementRecord, statementPath);
@@ -1669,6 +1765,7 @@ function cloneLogicStatementWithCompiledIds(statement: BlueprintLogicStatement, 
   const kind = typeof statementRecord.kind === 'string'
     ? statementRecord.kind
     : '';
+  const delegateOperation = delegateStatementOperation(statementRecord);
 
   const fieldStatement = FIELD_STATEMENT_KIND_MAP.get(kind);
   if (fieldStatement) {
@@ -1689,6 +1786,23 @@ function cloneLogicStatementWithCompiledIds(statement: BlueprintLogicStatement, 
     }
     if (Object.hasOwn(statementRecord, 'value')) {
       out.value = cloneLogicExpressionWithCompiledIds(statementRecord.value, `${statementId}_value`);
+    }
+  } else if (kind === 'component_bound_event') {
+    out.kind = 'component_bound_event';
+  } else if (delegateOperation) {
+    out.kind = 'delegate';
+    out.delegate_operation = delegateOperation;
+    if (delegateOperation === 'unbind') {
+      out.unbind_mode = 'single';
+    } else if (delegateOperation === 'clear') {
+      out.unbind_mode = 'all';
+    } else if (delegateOperation === 'call' && isRecord(statementRecord.args)) {
+      out.args = Object.fromEntries(
+        Object.entries(statementRecord.args).map(([argName, argValue]) => [
+          argName,
+          cloneLogicExpressionWithCompiledIds(argValue, `${statementId}_arg_${toIdSegment(argName)}`),
+        ]),
+      );
     }
   } else if (kind === 'let') {
     out.value = cloneLogicExpressionWithCompiledIds(statementRecord.value, `${statementId}_value`);
@@ -1764,6 +1878,7 @@ function compileStatementSequence(
 function compileStatementFlow(statement: BlueprintLogicStatement, nodeId: string, path: string, context: CompileFlowContext): CompiledStatementFlow {
   const statementRecord = statement as Record<string, unknown>;
   const kind = typeof statementRecord.kind === 'string' ? statementRecord.kind : '';
+  const delegateOperation = delegateStatementOperation(statementRecord);
   if (kind === 'control') {
     const controlKind = getControlStatementKind(statementRecord, path);
     if (controlKind === 'branch') {
@@ -1801,7 +1916,7 @@ function compileStatementFlow(statement: BlueprintLogicStatement, nodeId: string
   const node = compileStatementNode(statement, nodeId, path);
   const nodes: AgentImportNode[] = [node];
   const links: AgentImportLink[] = [];
-  if (kind === 'call' || kind === 'create' || kind === 'convert' || kind === 'schedule') {
+  if (kind === 'call' || kind === 'create' || kind === 'convert' || kind === 'schedule' || delegateOperation === 'call') {
     const inputValues: Record<string, unknown> = {};
     if (isRecord(statementRecord['args'])) {
       for (const [argName, argValue] of Object.entries(statementRecord['args'])) {
@@ -2885,6 +3000,30 @@ function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string
     }
     applyFieldTaxonomy(node as Record<string, unknown>, operation, scope);
     return node;
+  }
+
+  if (kind === 'component_bound_event') {
+    return omitUndefined({
+      id: nodeId,
+      kind: 'component_bound_event',
+      component: getRequiredString(statementRecord, 'component', `${path}.component`),
+      delegate: getRequiredString(statementRecord, 'delegate', `${path}.delegate`),
+      handler: getRequiredString(statementRecord, 'handler', `${path}.handler`),
+    }) as AgentImportNode;
+  }
+
+  const delegateOperation = delegateStatementOperation(statementRecord);
+  if (delegateOperation) {
+    return omitUndefined({
+      id: nodeId,
+      kind: 'delegate',
+      target: getRequiredString(statementRecord, 'target', `${path}.target`),
+      delegate: getRequiredString(statementRecord, 'delegate', `${path}.delegate`),
+      handler: typeof statementRecord.handler === 'string' ? statementRecord.handler : undefined,
+      delegate_operation: delegateOperation,
+      unbind_mode: delegateOperation === 'unbind' ? 'single' : (delegateOperation === 'clear' ? 'all' : undefined),
+      inputs: delegateOperation === 'call' ? compileArgs(statementRecord.args) : undefined,
+    }) as AgentImportNode;
   }
 
   throw new TaskSpecCompileError('unsupported_statement_kind', `Unsupported statement kind: ${kind}`, [

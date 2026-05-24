@@ -431,6 +431,67 @@ bool FBlueprintHelperActionContextSingleDemandSetPropertyMapsToFieldVariableTest
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionContextPropertyPathStatementKeepsOwnerRootTargetTest,
+	"BlueprintHelper.GraphWrite.ActionContext.FieldPropertyPath.KeepsOwnerRootTarget",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionContextPropertyPathStatementKeepsOwnerRootTargetTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FBlueprintHelperGraphStatementIR> Statement = MakeShared<FBlueprintHelperGraphStatementIR>();
+	Statement->StatementId = TEXT("stmt_set_roll");
+	Statement->Path = TEXT("$.statements[0]");
+	Statement->Kind = EBlueprintHelperGraphStatementKind::Field;
+	Statement->Target = TEXT("DoorMesh");
+	Statement->Property = TEXT("RelativeRotation.Roll");
+	Statement->FieldOperation = TEXT("set");
+	Statement->FieldScope = TEXT("property_path");
+	Statement->ResolvedTarget.Raw = TEXT("DoorMesh.RelativeRotation.Roll");
+	Statement->ResolvedTarget.Owner = TEXT("DoorMesh");
+	Statement->ResolvedTarget.PropertyPath = TEXT("RelativeRotation.Roll");
+	Statement->ResolvedTarget.Type = TEXT("Rotator");
+
+	TArray<TSharedPtr<FBlueprintHelperGraphStatementIR>> Statements;
+	Statements.Add(Statement);
+	const TArray<FBlueprintHelperActionContextDemand> Demands =
+		FBlueprintHelperActionContextDemandCollector::CollectFromStatements(Statements);
+
+	TestEqual(TEXT("one field demand"), Demands.Num(), 1);
+	if (Demands.Num() == 0)
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("semantic"), Demands[0].SemanticKind, EBlueprintHelperActionSemanticKind::Field);
+	TestEqual(TEXT("cluster"), Demands[0].ClusterKind, EBlueprintHelperSpawnerClusterKind::FieldVariableAction);
+	TestEqual(TEXT("field operation"), Demands[0].FieldOperation, FString(TEXT("set")));
+	TestEqual(TEXT("field scope"), Demands[0].FieldScope, FString(TEXT("property_path")));
+	TestEqual(TEXT("target keeps owner root"), Demands[0].TargetPath, FString(TEXT("DoorMesh")));
+	TestEqual(TEXT("property path keeps member path"), Demands[0].PropertyPath, FString(TEXT("RelativeRotation.Roll")));
+	TestEqual(TEXT("query stays property path"), Demands[0].Query, FString(TEXT("RelativeRotation.Roll")));
+
+	FBlueprintHelperActionContextSnapshot Snapshot;
+	Snapshot.Graph.GraphName = TEXT("EventGraph");
+	FBlueprintHelperActionContextFieldSnapshot ComponentField;
+	ComponentField.Name = TEXT("DoorMesh");
+	ComponentField.OwnerClassPath = TEXT("/Game/Test/BP_Door.BP_Door_C");
+	ComponentField.FieldPath = TEXT("/Game/Test/BP_Door.BP_Door_C.DoorMesh");
+	ComponentField.PinCategory = TEXT("object");
+	ComponentField.PinSubCategory = TEXT("StaticMeshComponent");
+	ComponentField.bComponent = true;
+	Snapshot.Fields.Add(ComponentField);
+
+	const FBlueprintHelperResolvedActionContext Context =
+		FBlueprintHelperActionContextInferenceService::BuildContextForTest(Snapshot, Demands[0]);
+
+	TestEqual(TEXT("field_name evidence resolves owner root"), Context.Evidence.FindRef(TEXT("field_name")), FString(TEXT("DoorMesh")));
+	TestEqual(TEXT("field owner evidence projected"), Context.Evidence.FindRef(TEXT("field_owner_class")), FString(TEXT("/Game/Test/BP_Door.BP_Door_C")));
+	TestEqual(TEXT("component property evidence projected"), Context.Evidence.FindRef(TEXT("component_property_name")), FString(TEXT("DoorMesh")));
+	TestEqual(TEXT("semantic target root"), Context.Semantic.TargetPath, FString(TEXT("DoorMesh")));
+	TestEqual(TEXT("semantic property path"), Context.Semantic.PropertyPath, FString(TEXT("RelativeRotation.Roll")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperActionContextFieldScopesAndTypedPinInferenceTest,
 	"BlueprintHelper.GraphWrite.ActionContext.FieldScopesAndTypedPinInference",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

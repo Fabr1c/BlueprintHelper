@@ -20,6 +20,7 @@
 #include "K2Node_CreateDelegate.h"
 #include "K2Node_CustomEvent.h"
 #include "K2Node_RemoveDelegate.h"
+#include "K2Node_VariableGet.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Misc/AutomationTest.h"
 #include "UObject/Package.h"
@@ -103,12 +104,12 @@ static FMulticastDelegateProperty* FindRequiredDelegateProperty(
 	return Property;
 }
 
-static FObjectProperty* FindRequiredObjectProperty(
+static FObjectPropertyBase* FindRequiredObjectProperty(
 	FAutomationTestBase& Test,
 	UClass* OwnerClass,
 	const TCHAR* PropertyName)
 {
-	FObjectProperty* Property = FindFProperty<FObjectProperty>(OwnerClass, PropertyName);
+	FObjectPropertyBase* Property = FindFProperty<FObjectPropertyBase>(OwnerClass, PropertyName);
 	Test.TestNotNull(*FString::Printf(TEXT("object property %s"), PropertyName), Property);
 	return Property;
 }
@@ -128,7 +129,7 @@ static void AddDelegateEvidence(
 
 static void AddComponentEvidence(
 	FBlueprintHelperActionResolutionRequest& Request,
-	FObjectProperty* ComponentProperty)
+	FObjectPropertyBase* ComponentProperty)
 {
 	const UClass* OwnerClass = Cast<UClass>(ComponentProperty ? ComponentProperty->GetOwnerStruct() : nullptr);
 	Request.ContextEvidence.Add(TEXT("component_path"), ComponentProperty->GetName());
@@ -269,7 +270,7 @@ bool FBlueprintHelperEventDelegateComponentBoundPositiveTest::RunTest(const FStr
 
 	FMulticastDelegateProperty* DelegateProperty =
 		FindRequiredDelegateProperty(*this, UPrimitiveComponent::StaticClass(), TEXT("OnComponentBeginOverlap"));
-	FObjectProperty* ComponentProperty =
+	FObjectPropertyBase* ComponentProperty =
 		FindRequiredObjectProperty(*this, ATriggerBase::StaticClass(), TEXT("CollisionComponent"));
 	if (!DelegateProperty || !ComponentProperty)
 	{
@@ -316,7 +317,7 @@ bool FBlueprintHelperEventDelegateComponentBoundMissingHandlerTest::RunTest(cons
 
 	FMulticastDelegateProperty* DelegateProperty =
 		FindRequiredDelegateProperty(*this, UPrimitiveComponent::StaticClass(), TEXT("OnComponentBeginOverlap"));
-	FObjectProperty* ComponentProperty =
+	FObjectPropertyBase* ComponentProperty =
 		FindRequiredObjectProperty(*this, ATriggerBase::StaticClass(), TEXT("CollisionComponent"));
 	if (!DelegateProperty || !ComponentProperty)
 	{
@@ -783,8 +784,9 @@ bool FBlueprintHelperEventDelegateAssignFragmentBuildTest::RunTest(const FString
 		FindSingleFragmentNode<UK2Node_AssignDelegate>(*this, Fragment, TEXT("assign node"));
 	UK2Node_CreateDelegate* CreateDelegateNode =
 		FindSingleFragmentNode<UK2Node_CreateDelegate>(*this, Fragment, TEXT("create delegate node"));
-	TestEqual(TEXT("assign fragment node count"), Fragment.Nodes.Num(), 2);
-	TestEqual(TEXT("assign fragment internal link count"), Fragment.InternalLinks.Num(), 1);
+	FindSingleFragmentNode<UK2Node_VariableGet>(*this, Fragment, TEXT("assign binding object getter"));
+	TestEqual(TEXT("assign fragment node count"), Fragment.Nodes.Num(), 3);
+	TestEqual(TEXT("assign fragment internal link count"), Fragment.InternalLinks.Num(), 2);
 	TestTrue(TEXT("assign fragment review target includes statement id"), Fragment.ReviewTargets.Contains(Statement.StatementId));
 	TestEqual(TEXT("assign ownership semantic kind"), Fragment.OwnershipTags.FindRef(TEXT("semantic_kind")), FString(TEXT("delegate")));
 	TestEqual(TEXT("assign ownership delegate operation"), Fragment.OwnershipTags.FindRef(TEXT("delegate_operation")), FString(TEXT("assign")));
@@ -862,8 +864,9 @@ bool FBlueprintHelperEventDelegateBindFragmentBuildTest::RunTest(const FString& 
 		FindSingleFragmentNode<UK2Node_AddDelegate>(*this, Fragment, TEXT("bind node"));
 	UK2Node_CreateDelegate* CreateDelegateNode =
 		FindSingleFragmentNode<UK2Node_CreateDelegate>(*this, Fragment, TEXT("create delegate node"));
-	TestEqual(TEXT("bind fragment node count"), Fragment.Nodes.Num(), 2);
-	TestEqual(TEXT("bind fragment internal link count"), Fragment.InternalLinks.Num(), 1);
+	FindSingleFragmentNode<UK2Node_VariableGet>(*this, Fragment, TEXT("bind binding object getter"));
+	TestEqual(TEXT("bind fragment node count"), Fragment.Nodes.Num(), 3);
+	TestEqual(TEXT("bind fragment internal link count"), Fragment.InternalLinks.Num(), 2);
 	TestEqual(TEXT("bind ownership delegate operation"), Fragment.OwnershipTags.FindRef(TEXT("delegate_operation")), FString(TEXT("bind")));
 	if (CreateDelegateNode)
 	{
@@ -934,8 +937,9 @@ bool FBlueprintHelperEventDelegateUnbindFragmentBuildTest::RunTest(const FString
 		FindSingleFragmentNode<UK2Node_RemoveDelegate>(*this, Fragment, TEXT("unbind node"));
 	UK2Node_CreateDelegate* CreateDelegateNode =
 		FindSingleFragmentNode<UK2Node_CreateDelegate>(*this, Fragment, TEXT("create delegate node"));
-	TestEqual(TEXT("unbind fragment node count"), Fragment.Nodes.Num(), 2);
-	TestEqual(TEXT("unbind fragment internal link count"), Fragment.InternalLinks.Num(), 1);
+	FindSingleFragmentNode<UK2Node_VariableGet>(*this, Fragment, TEXT("unbind binding object getter"));
+	TestEqual(TEXT("unbind fragment node count"), Fragment.Nodes.Num(), 3);
+	TestEqual(TEXT("unbind fragment internal link count"), Fragment.InternalLinks.Num(), 2);
 	TestEqual(TEXT("unbind ownership delegate operation"), Fragment.OwnershipTags.FindRef(TEXT("delegate_operation")), FString(TEXT("unbind")));
 	if (CreateDelegateNode)
 	{
@@ -1001,8 +1005,9 @@ bool FBlueprintHelperEventDelegateCallFragmentBuildTest::RunTest(const FString& 
 	}
 
 	FindSingleFragmentNode<UK2Node_CallDelegate>(*this, Fragment, TEXT("call node"));
-	TestEqual(TEXT("call fragment node count"), Fragment.Nodes.Num(), 1);
-	TestEqual(TEXT("call fragment internal link count"), Fragment.InternalLinks.Num(), 0);
+	FindSingleFragmentNode<UK2Node_VariableGet>(*this, Fragment, TEXT("call binding object getter"));
+	TestEqual(TEXT("call fragment node count"), Fragment.Nodes.Num(), 2);
+	TestEqual(TEXT("call fragment internal link count"), Fragment.InternalLinks.Num(), 1);
 	TestEqual(TEXT("call ownership delegate operation"), Fragment.OwnershipTags.FindRef(TEXT("delegate_operation")), FString(TEXT("call")));
 	for (UEdGraphNode* Node : Fragment.Nodes)
 	{
@@ -1060,8 +1065,9 @@ bool FBlueprintHelperEventDelegateClearFragmentBuildTest::RunTest(const FString&
 	}
 
 	FindSingleFragmentNode<UK2Node_ClearDelegate>(*this, Fragment, TEXT("clear node"));
-	TestEqual(TEXT("clear fragment node count"), Fragment.Nodes.Num(), 1);
-	TestEqual(TEXT("clear fragment internal link count"), Fragment.InternalLinks.Num(), 0);
+	FindSingleFragmentNode<UK2Node_VariableGet>(*this, Fragment, TEXT("clear binding object getter"));
+	TestEqual(TEXT("clear fragment node count"), Fragment.Nodes.Num(), 2);
+	TestEqual(TEXT("clear fragment internal link count"), Fragment.InternalLinks.Num(), 1);
 	TestEqual(TEXT("clear ownership delegate operation"), Fragment.OwnershipTags.FindRef(TEXT("delegate_operation")), FString(TEXT("clear")));
 	for (UEdGraphNode* Node : Fragment.Nodes)
 	{

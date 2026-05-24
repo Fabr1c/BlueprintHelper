@@ -1,6 +1,7 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperEventDelegateUseSiteEvidence.h"
 
 #include "Engine/Blueprint.h"
+#include "K2Node_CustomEvent.h"
 #include "UObject/Class.h"
 #include "UObject/UObjectGlobals.h"
 #include "UObject/UnrealType.h"
@@ -127,7 +128,7 @@ static bool ResolveComponentBindingProperty(
 			OutMessage);
 	}
 
-	Evidence.ComponentBindingProperty = FindPropertyOnClass<FObjectProperty>(
+	Evidence.ComponentBindingProperty = FindPropertyOnClass<FObjectPropertyBase>(
 		ComponentOwnerClass,
 		Evidence.ComponentPath);
 	if (!Evidence.ComponentBindingProperty)
@@ -167,6 +168,24 @@ static bool ResolveHandlerFunction(
 	Evidence.HandlerFunction = HandlerScopeClass->FindFunctionByName(FName(*Evidence.HandlerName.TrimStartAndEnd()));
 	if (!Evidence.HandlerFunction)
 	{
+		if (UBlueprint* Blueprint = Cast<UBlueprint>(HandlerScopeClass->ClassGeneratedBy))
+		{
+			for (UEdGraph* Graph : Blueprint->UbergraphPages)
+			{
+				if (!Graph)
+				{
+					continue;
+				}
+				for (UEdGraphNode* Node : Graph->Nodes)
+				{
+					const UK2Node_CustomEvent* CustomEvent = Cast<UK2Node_CustomEvent>(Node);
+					if (CustomEvent && CustomEvent->CustomFunctionName.ToString().Equals(Evidence.HandlerName, ESearchCase::IgnoreCase))
+					{
+						return true;
+					}
+				}
+			}
+		}
 		return Missing(
 			TEXT("handler_function_unresolved"),
 			FString::Printf(TEXT("Could not resolve existing handler function '%s' on '%s'."), *Evidence.HandlerName, *Evidence.HandlerScopeClassPath),
@@ -239,7 +258,13 @@ bool FBlueprintHelperEventDelegateUseSiteEvidenceReader::TryRead(
 	OutEvidence.DelegatePropertyPath = EvidenceValue(Request, TEXT("delegate_property_path"));
 	OutEvidence.DelegateSignature = EvidenceValue(Request, TEXT("delegate_signature"));
 	OutEvidence.DelegateSignatureFunctionPath = EvidenceValue(Request, TEXT("delegate_signature_function_path"));
-	OutEvidence.ComponentPath = EvidenceValue(Request, TEXT("component_path"));
+	OutEvidence.ComponentPath = FirstNonEmpty({
+		EvidenceValue(Request, TEXT("component_path")),
+		EvidenceValue(Request, TEXT("component_property_name")),
+		SemanticKind == EBlueprintHelperActionSemanticKind::Delegate
+			? EvidenceValue(Request, TEXT("binding_object_path"))
+			: FString()
+	});
 	OutEvidence.ComponentBindingOwnerClassPath = EvidenceValue(Request, TEXT("component_binding_owner_class_path"));
 	OutEvidence.ComponentBindingFieldPath = EvidenceValue(Request, TEXT("component_binding_field_path"));
 	OutEvidence.BindingObjectPath = EvidenceValue(Request, TEXT("binding_object_path"));
@@ -357,7 +382,11 @@ bool FBlueprintHelperEventDelegateUseSiteEvidenceReader::TryRead(
 	{
 		return false;
 	}
-	if (SemanticKind == EBlueprintHelperActionSemanticKind::ComponentBoundEvent
+	const bool bCanResolveComponentBinding =
+		!OutEvidence.ComponentPath.IsEmpty()
+		&& !OutEvidence.ComponentBindingOwnerClassPath.IsEmpty()
+		&& !OutEvidence.ComponentBindingFieldPath.IsEmpty();
+	if ((SemanticKind == EBlueprintHelperActionSemanticKind::ComponentBoundEvent || bCanResolveComponentBinding)
 		&& !ResolveComponentBindingProperty(OutEvidence, OutMissingDetail, OutMessage))
 	{
 		return false;

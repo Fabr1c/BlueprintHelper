@@ -1,0 +1,60 @@
+{
+  "schema": "BlueprintHelper.TaskSpec.v1",
+  "context_id": "ctx_four_cluster_e2e_generic_expected_diagnostics_20260524",
+  "task_type": "edit_blueprint_graph",
+  "feature_name": "GraphWriteGenericExpectedDiagnostics",
+  "target": {
+    "asset_path": "/Game/BlueprintHelper/Smoke/BP_GraphWriteFourClusterSmoke_20260524_FixRun02",
+    "target_type": "blueprint"
+  },
+  "scope_policy": {
+    "graph_name": "EG_FourCluster_GenericDiagnostics_20260524",
+    "allow_modify_user_nodes": false
+  },
+  "behavior": {
+    "graph_strategy": "append_new_owned_graph",
+    "entries": [
+      {
+        "entry_type": "custom_event",
+        "name": "BH_GenericExpectedDiagnostics_20260524",
+        "body": {
+          "schema": "BlueprintLogicSpec.v1",
+          "statements": [
+            {
+              "kind": "convert",
+              "transform_operation": "type_promotion",
+              "args": {
+                "value": {
+                  "kind": "literal",
+                  "value_type": "float",
+                  "value": 1.5
+                }
+              }
+            },
+            {
+              "kind": "schedule",
+              "schedule_operation": "timer_delegate_node",
+              "graph_latent_allowed": true,
+              "args": {
+                "delay": {
+                  "kind": "literal",
+                  "value_type": "float",
+                  "value": 0.25
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "execution_policy": {
+    "dry_run_mode": "full",
+    "on_missing_capability": "stop_and_report",
+    "review_baseline_dirty_asset_policy": "save_before_archive"
+  },
+  "validation": {
+    "should_compile": true,
+    "should_save": false
+  }
+}

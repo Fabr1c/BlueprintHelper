@@ -96,3 +96,37 @@ P6 已重新运行能力行、`BlueprintHelper.GraphWrite` 全量 regression 与
 | `BlueprintHelper.GraphWrite.ActionContext` | PASS | ActionContext 能把显式 Generic transform/schedule operation 投影到 Generic cluster，并拒绝 Function+Generic 二级语义混用。 |
 | `BlueprintHelper.GraphWrite` | PASS: 155 succeeded + 11 succeeded with warnings, 0 failed, 0 not run | Generic Convert/Schedule 接入后 full GraphWrite regression 通过；最新报告为 `Saved/Automation/GraphWrite_GenericConvertSchedule_Final_20260524_001/index.json`。 |
 | UE 5.6 `Build.bat TemplateEditor Win64 Development` | PASS: `Result: Succeeded` | 当前代码通过 UE 5.6 编译门禁。 |
+
+## 10. 2026-05-24 Four Cluster End-to-End Smoke
+
+| 验证 | 结果 | 影响 |
+|---|---|---|
+| Fixture setup | PASS: `00_create_smoke_actor.json` preview=`preview_passed`, execute=`executed`; `01_prepare_smoke_fixture.json` preview=`preview_passed`, execute=`executed` | Stable fixture exists at `/Game/BlueprintHelper/Smoke/BP_GraphWriteFourClusterSmoke_20260524`; artifact root: `BlueprintHelper/Develop/PlanArtifacts/GraphWriteFourClusterE2ESmoke_20260524/Results`. |
+| Function + Field E2E | PASS: `02_function_field_graph.json` preview=`preview_passed`, execute=`executed` on `_FixRun02` | BUG-001 closed; component property write keeps owner evidence for `DoorMesh.RelativeRotation.Roll`. |
+| EventDelegate E2E | PASS: `03_event_delegate_graph.json` preview=`preview_passed`, execute=`executed` on `_FixRun02` | BUG-002 closed; public EventDelegate TaskSpec lowering and delegate target binding pass. |
+| Generic E2E | PASS: `04_generic_graph.json` preview=`preview_passed`, execute=`executed`; readback `read_generic_custom_event_logic_flow.json` completed | Generic branch/construct/dynamic_cast/make_array wrote and read back. |
+| Generic expected diagnostics | PASS as controlled blocker: `05_generic_expected_diagnostics.json` preview=`preview_blocked` | `type_promotion` requires projected type-promotion spawner evidence; no fake success through FunctionAction, struct fallback, parsed-node mutation, or legacy path. |
+| Full GraphWrite automation | PASS: `succeeded=156`, `succeededWithWarnings=10`, `failed=0`, `notRun=0` | `D:\UEProjects\Template\Saved\Automation\GraphWrite_FourClusterE2ESmoke_20260524_001\index.json`; warnings are non-fatal existing EOS/network/load warnings. |
+| UE 5.6 build | PASS: `Result: Succeeded` | `TemplateEditor Win64 Development` build remains green. |
+
+## 11. 2026-05-24 BUG-001/002 Closure Smoke Rerun
+
+This section supersedes the BLOCKED result in section 10 for BUG-001 and BUG-002. The four-cluster E2E smoke was rerun on `/Game/BlueprintHelper/Smoke/BP_GraphWriteFourClusterSmoke_20260524_FixRun02`.
+
+| Verification | Result | Evidence |
+|---|---|---|
+| Function + Field E2E | PASS: `02_function_field_graph.json` preview=`preview_passed`, execute=`executed` | `BlueprintHelper/Develop/PlanArtifacts/GraphWriteFourClusterE2ESmoke_20260524/Results/02_function_field_graph.json.*.json` |
+| EventDelegate E2E | PASS: `03_event_delegate_graph.json` preview=`preview_passed`, execute=`executed` | `BlueprintHelper/Develop/PlanArtifacts/GraphWriteFourClusterE2ESmoke_20260524/Results/03_event_delegate_graph.json.*.json` |
+| Generic E2E | PASS: `04_generic_graph.json` preview=`preview_passed`, execute=`executed` | `BlueprintHelper/Develop/PlanArtifacts/GraphWriteFourClusterE2ESmoke_20260524/Results/04_generic_graph.json.*.json` |
+| Generic expected diagnostics | PASS as controlled diagnostic: `05_generic_expected_diagnostics.json` preview=`preview_blocked` | `BlueprintHelper/Develop/PlanArtifacts/GraphWriteFourClusterE2ESmoke_20260524/Results/05_generic_expected_diagnostics.json.preview.json` |
+| Full GraphWrite automation | PASS: `succeeded=156`, `succeededWithWarnings=10`, `failed=0`, `notRun=0` | `D:\UEProjects\Template\Saved\Automation\GraphWrite_FourClusterE2ESmoke_20260524_001\index.json` |
+| UE 5.6 build | PASS: `Result: Succeeded` | `C:\Users\CharlieNotFound\AppData\Local\UnrealBuildTool\Log.txt` |
+
+Targeted bug evidence:
+
+- BUG-001: `D:\UEProjects\Template\Saved\Automation\GraphWrite_Bug001_ActionContext_FieldPropertyPath_20260524_003\index.json`, `succeeded=1`, `failed=0`.
+- BUG-002: `D:\UEProjects\Template\Saved\Automation\GraphWrite_Bug002_EventDelegateGraphStatement_20260524_005\index.json`, `succeeded=6`, `failed=0`.
+- BUG-002: `D:\UEProjects\Template\Saved\Automation\GraphWrite_Bug002_EventDelegateActionResolution_20260524_001\index.json`, `succeeded=10`, `failed=0`.
+- BUG-002: `D:\UEProjects\Template\Saved\Automation\GraphWrite_Bug002_DelegateBoundary_20260524_003\index.json`, `succeeded=3`, `failed=0`.
+
+Conclusion: four-cluster E2E smoke is no longer blocked by Field owner evidence or EventDelegate public TaskSpec lowering/target binding. The clusters still remain "partial completion" at the broad capability table level because wider asset-backed create, type-promotion, schedule-node evidence, and shared adapter/lifecycle convergence remain future capability work.

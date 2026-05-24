@@ -107,7 +107,7 @@ static void CaptureClassFields(const UClass* Class, FBlueprintHelperActionContex
 		Field.bReadable = true;
 		Field.bWritable = true;
 
-		if (const FObjectProperty* ObjectProperty = CastField<FObjectProperty>(Property))
+		if (const FObjectPropertyBase* ObjectProperty = CastField<FObjectPropertyBase>(Property))
 		{
 			Field.PinCategory = TEXT("object");
 			Field.PinSubCategoryObjectPath = ObjectProperty->PropertyClass

@@ -3,6 +3,8 @@
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Misc/AutomationTest.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDag.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDagBuilder.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -69,6 +71,33 @@ public:
 
 		TArray<TSharedPtr<FJsonValue>> Statements;
 		Statements.Add(MakeShared<FJsonValueObject>(Statement));
+		LogicSpec->SetArrayField(TEXT("statements"), Statements);
+		return LogicSpec;
+	}
+
+	static TSharedRef<FJsonObject> MakeLogicSpecWithEventDelegateStatements()
+	{
+		TSharedRef<FJsonObject> LogicSpec = MakeShared<FJsonObject>();
+		LogicSpec->SetStringField(TEXT("schema"), TEXT("BlueprintLogicSpec.v2"));
+
+		TSharedRef<FJsonObject> ComponentEvent = MakeShared<FJsonObject>();
+		ComponentEvent->SetStringField(TEXT("id"), TEXT("stmt_component_bound_event"));
+		ComponentEvent->SetStringField(TEXT("kind"), TEXT("component_bound_event"));
+		ComponentEvent->SetStringField(TEXT("component"), TEXT("TriggerBox"));
+		ComponentEvent->SetStringField(TEXT("delegate"), TEXT("OnComponentBeginOverlap"));
+		ComponentEvent->SetStringField(TEXT("handler"), TEXT("HandleSmokeOverlap"));
+
+		TSharedRef<FJsonObject> DelegateBind = MakeShared<FJsonObject>();
+		DelegateBind->SetStringField(TEXT("id"), TEXT("stmt_delegate_bind"));
+		DelegateBind->SetStringField(TEXT("kind"), TEXT("delegate"));
+		DelegateBind->SetStringField(TEXT("target"), TEXT("TriggerBox"));
+		DelegateBind->SetStringField(TEXT("delegate"), TEXT("OnComponentBeginOverlap"));
+		DelegateBind->SetStringField(TEXT("delegate_operation"), TEXT("bind"));
+		DelegateBind->SetStringField(TEXT("handler"), TEXT("HandleSmokeOverlap"));
+
+		TArray<TSharedPtr<FJsonValue>> Statements;
+		Statements.Add(MakeShared<FJsonValueObject>(ComponentEvent));
+		Statements.Add(MakeShared<FJsonValueObject>(DelegateBind));
 		LogicSpec->SetArrayField(TEXT("statements"), Statements);
 		return LogicSpec;
 	}
@@ -216,6 +245,34 @@ bool FBlueprintHelperGraphSemanticIRDelegateBoundary_AcceptsCanonicalInternalDel
 	}
 	TestFalse(TEXT("no unsupported kind diagnostic"),
 		FBlueprintHelperGraphSemanticIRRuntimeFactTestsLocalUtils::HasDiagnosticCode(IR, TEXT("statement_kind_unsupported")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphSemanticIRDelegateBoundary_FragmentDagAcceptsCanonicalEventDelegateKinds,
+	"BlueprintHelper.GraphWrite.GraphSemanticIR.DelegateBoundary.FragmentDagAcceptsCanonicalEventDelegateKinds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphSemanticIRDelegateBoundary_FragmentDagAcceptsCanonicalEventDelegateKinds::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperGraphSemanticIR IR;
+	const bool bBuilt = FBlueprintHelperGraphSemanticIRBuilder::BuildFromLogicSpec(
+		FBlueprintHelperGraphSemanticIRRuntimeFactTestsLocalUtils::MakeLogicSpecWithEventDelegateStatements(),
+		IR);
+
+	TestTrue(TEXT("event delegate logic spec builds"), bBuilt);
+	TestEqual(TEXT("statement count"), IR.Statements.Num(), 2);
+
+	FBlueprintHelperGraphFragmentDag Dag;
+	const bool bDagBuilt = FBlueprintHelperGraphFragmentDagBuilder::BuildFromSemanticIR(IR, Dag);
+	TestTrue(TEXT("event delegate fragment dag builds"), bDagBuilt);
+	TestFalse(TEXT("no placeholder unknown diagnostic"), Dag.HasErrors());
+	TestEqual(TEXT("fragment count"), Dag.Fragments.Num(), 2);
+	if (Dag.Fragments.Num() == 2)
+	{
+		TestEqual(TEXT("component event fragment kind"), Dag.Fragments[0].Kind, FString(TEXT("statement_component_bound_event")));
+		TestEqual(TEXT("delegate fragment kind"), Dag.Fragments[1].Kind, FString(TEXT("statement_delegate")));
+	}
 	return true;
 }
 

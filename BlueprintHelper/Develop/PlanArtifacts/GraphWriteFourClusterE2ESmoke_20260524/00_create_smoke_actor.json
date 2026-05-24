@@ -1,0 +1,27 @@
+{
+  "schema": "BlueprintHelper.TaskSpec.v1",
+  "context_id": "ctx_four_cluster_e2e_create_actor_20260524",
+  "task_type": "create_asset",
+  "feature_name": "GraphWriteFourClusterSmokeActor",
+  "target": {
+    "asset_path": "/Game/BlueprintHelper/Smoke/BP_GraphWriteFourClusterSmoke_20260524_FixRun02",
+    "target_type": "blueprint_class"
+  },
+  "behavior": {
+    "asset_strategy": "ensure_asset",
+    "asset": {
+      "asset_type": "blueprint_class",
+      "parent_class": "Actor",
+      "collision_policy": "reuse_if_exists"
+    }
+  },
+  "execution_policy": {
+    "dry_run_mode": "full",
+    "on_missing_capability": "stop_and_report",
+    "review_baseline_dirty_asset_policy": "save_before_archive"
+  },
+  "validation": {
+    "should_compile": true,
+    "should_save": true
+  }
+}

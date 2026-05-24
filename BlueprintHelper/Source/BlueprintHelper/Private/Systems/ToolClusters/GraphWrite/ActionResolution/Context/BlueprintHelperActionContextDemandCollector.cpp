@@ -73,6 +73,23 @@ static FString BuildStatementQuery(const FBlueprintHelperGraphStatementIR& State
 		Statement.PatternName);
 }
 
+static FString BuildStatementTargetPath(const FBlueprintHelperGraphStatementIR& Statement, const EBlueprintHelperActionSemanticKind SemanticKind)
+{
+	if (SemanticKind == EBlueprintHelperActionSemanticKind::Field
+		&& Statement.FieldScope.Equals(TEXT("property_path"), ESearchCase::IgnoreCase))
+	{
+		return FirstNonEmpty(
+			Statement.ResolvedTarget.Owner,
+			Statement.Target,
+			Statement.Name);
+	}
+
+	return FirstNonEmpty(
+		Statement.ResolvedTarget.Raw,
+		Statement.Target,
+		Statement.Name);
+}
+
 static FString BuildExpressionQuery(const FBlueprintHelperGraphExpressionIR& Expression, const EBlueprintHelperActionSemanticKind SemanticKind)
 {
 	if (SemanticKind == EBlueprintHelperActionSemanticKind::Field)
@@ -644,10 +661,7 @@ void FBlueprintHelperActionContextDemandCollector::AppendDemandForStatement(
 		Statement.Path,
 		SemanticKind,
 		BlueprintHelperActionContextDemandCollector::BuildStatementQuery(Statement, SemanticKind),
-		BlueprintHelperActionContextDemandCollector::FirstNonEmpty(
-			Statement.ResolvedTarget.Raw,
-			Statement.Target,
-			Statement.Name),
+		BlueprintHelperActionContextDemandCollector::BuildStatementTargetPath(Statement, SemanticKind),
 		BlueprintHelperActionContextDemandCollector::FirstNonEmpty(
 			Statement.Property,
 			Statement.ResolvedTarget.PropertyPath),
