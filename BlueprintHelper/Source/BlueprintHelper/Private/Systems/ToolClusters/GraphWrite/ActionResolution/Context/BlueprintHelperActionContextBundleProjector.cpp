@@ -43,6 +43,12 @@ static FString BuildSemanticConstraintsHash(const FBlueprintHelperActionSemantic
 	Stable += TEXT("|");
 	Stable += Semantic.FieldScope;
 	Stable += TEXT("|");
+	Stable += Semantic.FunctionOperation;
+	Stable += TEXT("|");
+	Stable += Semantic.TransformOperation;
+	Stable += TEXT("|");
+	Stable += Semantic.ScheduleOperation;
+	Stable += TEXT("|");
 	Stable += Semantic.TypeName;
 	Stable += TEXT("|");
 	Stable += Semantic.StructPath;

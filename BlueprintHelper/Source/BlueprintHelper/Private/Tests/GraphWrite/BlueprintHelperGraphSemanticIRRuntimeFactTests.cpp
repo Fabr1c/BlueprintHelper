@@ -84,6 +84,31 @@ public:
 		}
 		return false;
 	}
+
+	static TSharedRef<FJsonObject> MakeLogicSpecWithFieldScope(const FString& FieldScope)
+	{
+		TSharedRef<FJsonObject> LogicSpec = MakeShared<FJsonObject>();
+		LogicSpec->SetStringField(TEXT("schema"), TEXT("BlueprintLogicSpec.v2"));
+
+		TSharedRef<FJsonObject> Value = MakeShared<FJsonObject>();
+		Value->SetStringField(TEXT("kind"), TEXT("literal"));
+		Value->SetStringField(TEXT("type"), TEXT("bool"));
+		Value->SetStringField(TEXT("value"), TEXT("true"));
+
+		TSharedRef<FJsonObject> Statement = MakeShared<FJsonObject>();
+		Statement->SetStringField(TEXT("id"), TEXT("stmt_field_scope"));
+		Statement->SetStringField(TEXT("kind"), TEXT("field"));
+		Statement->SetStringField(TEXT("target"), TEXT("DoorMesh"));
+		Statement->SetStringField(TEXT("property_path"), TEXT("bVisible"));
+		Statement->SetStringField(TEXT("field_operation"), TEXT("set"));
+		Statement->SetStringField(TEXT("field_scope"), FieldScope);
+		Statement->SetObjectField(TEXT("value"), Value);
+
+		TArray<TSharedPtr<FJsonValue>> Statements;
+		Statements.Add(MakeShared<FJsonValueObject>(Statement));
+		LogicSpec->SetArrayField(TEXT("statements"), Statements);
+		return LogicSpec;
+	}
 };
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -191,6 +216,45 @@ bool FBlueprintHelperGraphSemanticIRDelegateBoundary_AcceptsCanonicalInternalDel
 	}
 	TestFalse(TEXT("no unsupported kind diagnostic"),
 		FBlueprintHelperGraphSemanticIRRuntimeFactTestsLocalUtils::HasDiagnosticCode(IR, TEXT("statement_kind_unsupported")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphSemanticIRFieldScopes_AcceptsComponentRefAndFieldAccess,
+	"BlueprintHelper.GraphWrite.GraphSemanticIR.FieldScopes.AcceptsComponentRefAndFieldAccess",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphSemanticIRFieldScopes_AcceptsComponentRefAndFieldAccess::RunTest(const FString& Parameters)
+{
+	bool bPassed = true;
+	for (const FString& Scope : { FString(TEXT("component_ref")), FString(TEXT("field_access")) })
+	{
+		FBlueprintHelperGraphSemanticIR IR;
+		const bool bBuilt = FBlueprintHelperGraphSemanticIRBuilder::BuildFromLogicSpec(
+			FBlueprintHelperGraphSemanticIRRuntimeFactTestsLocalUtils::MakeLogicSpecWithFieldScope(Scope),
+			IR);
+
+		bPassed &= TestTrue(*FString::Printf(TEXT("%s builds"), *Scope), bBuilt);
+		bPassed &= TestFalse(*FString::Printf(TEXT("%s has no unsupported scope diagnostic"), *Scope),
+			FBlueprintHelperGraphSemanticIRRuntimeFactTestsLocalUtils::HasDiagnosticCode(IR, TEXT("field_scope_unsupported")));
+	}
+	return bPassed;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphSemanticIRFieldScopes_RejectsUnsupportedScope,
+	"BlueprintHelper.GraphWrite.GraphSemanticIR.FieldScopes.RejectsUnsupportedScope",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphSemanticIRFieldScopes_RejectsUnsupportedScope::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperGraphSemanticIR IR;
+	FBlueprintHelperGraphSemanticIRBuilder::BuildFromLogicSpec(
+		FBlueprintHelperGraphSemanticIRRuntimeFactTestsLocalUtils::MakeLogicSpecWithFieldScope(TEXT("legacy_field")),
+		IR);
+
+	TestTrue(TEXT("unsupported field scope diagnostic"),
+		FBlueprintHelperGraphSemanticIRRuntimeFactTestsLocalUtils::HasDiagnosticCode(IR, TEXT("field_scope_unsupported")));
 	return true;
 }
 

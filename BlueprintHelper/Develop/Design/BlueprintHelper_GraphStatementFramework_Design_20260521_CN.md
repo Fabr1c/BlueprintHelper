@@ -526,3 +526,11 @@ This taxonomy does not change the top-level `SpawnerClusterKind` dispatch rule. 
 - 成功 evidence 必须暴露 `struct_path`、`type_structure_id`、`type_operation`、`spawner_class`、`node_class`、`stable_id`、`match_reason`。
 - broad `create`、`create_operation`、旧 `make_struct/break_struct` AgentFace token 不属于本路径，不能作为成功兜底。
 - UE `UBlueprintFieldNodeSpawner` MakeStruct/BreakStruct boundary 允许作为显式、通用的 Struct/TypeStructure NodeSpawner evidence；它不是旧 `make_struct/break_struct` AgentFace alias。
+
+## 2026-05-24 Function / Field 收敛与 Event Smoke 边界
+
+- `FunctionActionCluster` 当前覆盖 `Call`、`Op`、`Convert -> convert_function`、`Schedule -> schedule_function`，以及 evidence 允许时的 `Schedule -> latent_or_async_function`。`Convert` / `Schedule` 通过 `FBlueprintHelperFunctionSemanticActionResolver` 做二级语义守卫，再复用 call resolver 路径；缺少转换、调度或 latent graph evidence 时返回 `needs_more_semantic_context`，不再落入 `unsupported_function_cluster_semantic`。
+- `FieldVariableActionCluster` 当前覆盖 `field_scope=variable|property_path|component_ref|field_access`。复杂 `property_path` 保留 full/root/leaf/role metadata，并通过 dedicated fragment builder 标记交给 GraphWrite fragment 组合；`component_ref` 与 `field_access` 作为独立二级语义，不再被内部改写成普通 property path。
+- ActionContext Field 推断会从 linked source / consumer symbol pin 投影 `TargetObjectPinType` 与 `ExpectedReturnPinType`，并记录 `linked_source_pin_type` / `linked_consumer_pin_type` evidence，供 resolver 缩小候选空间。
+- TaskSpec TS/Python 编译器已接受 `component_ref` 与 `field_access`，并在 compiled body 中保留复杂 `property_path` 与 nested `field_access`。
+- Event lifecycle taxonomy 仍由 BlueprintSignature owning path 管理：`custom_event` / `override_event` / `native_event` 不作为 GraphWrite/EventDelegate public declaration taxonomy。GraphWrite 只消费 Signature 依赖后的 body 写入和 delegate use-site；统一 smoke 已验证 `blueprint_signature.ensure_custom_event -> graph_write` 的依赖边界。

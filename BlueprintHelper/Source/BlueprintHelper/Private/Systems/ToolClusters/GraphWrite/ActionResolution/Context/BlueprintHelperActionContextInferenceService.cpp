@@ -27,6 +27,52 @@ static void AddEvidenceIfPresent(
 	}
 }
 
+static FString DescribePinTypeEvidence(const FBlueprintHelperCallFunctionPinType& PinType)
+{
+	if (!PinType.IsValid())
+	{
+		return FString();
+	}
+
+	TArray<FString> Parts;
+	if (!PinType.Category.IsEmpty())
+	{
+		Parts.Add(PinType.Category);
+	}
+	if (!PinType.SubCategory.IsEmpty())
+	{
+		Parts.Add(PinType.SubCategory);
+	}
+	if (!PinType.ObjectPath.IsEmpty())
+	{
+		Parts.Add(PinType.ObjectPath);
+	}
+	if (!PinType.ContainerType.IsEmpty())
+	{
+		Parts.Add(PinType.ContainerType);
+	}
+	return FString::Join(Parts, TEXT("|"));
+}
+
+static bool FindFirstLinkedPinType(
+	const FBlueprintHelperActionContextSnapshot& Snapshot,
+	const TArray<FString>& SymbolIds,
+	FBlueprintHelperCallFunctionPinType& OutPinType)
+{
+	for (const FString& SymbolId : SymbolIds)
+	{
+		if (const FBlueprintHelperCallFunctionPinType* PinType = Snapshot.SymbolPinTypes.Find(SymbolId))
+		{
+			if (PinType->IsValid())
+			{
+				OutPinType = *PinType;
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 static const FBlueprintHelperActionContextFieldSnapshot* FindField(
 	const FBlueprintHelperActionContextSnapshot& Snapshot,
 	const FBlueprintHelperActionContextDemand& Demand)
@@ -116,6 +162,9 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 	Context.Semantic.PropertyPath = Demand.PropertyPath;
 	Context.Semantic.FieldOperation = Demand.FieldOperation;
 	Context.Semantic.FieldScope = Demand.FieldScope;
+	Context.Semantic.FunctionOperation = Demand.FunctionOperation;
+	Context.Semantic.TransformOperation = Demand.TransformOperation;
+	Context.Semantic.ScheduleOperation = Demand.ScheduleOperation;
 	Context.Semantic.TypeName = Demand.TypeName;
 	Context.Semantic.StructPath = Demand.StructPath;
 	Context.Semantic.TypeStructureId = Demand.TypeStructureId;
@@ -184,6 +233,18 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 	{
 		Context.Evidence.Add(TEXT("field_scope"), Demand.FieldScope);
 	}
+	if (!Demand.FunctionOperation.IsEmpty())
+	{
+		Context.Evidence.Add(TEXT("function_operation"), Demand.FunctionOperation);
+	}
+	if (!Demand.TransformOperation.IsEmpty())
+	{
+		Context.Evidence.Add(TEXT("transform_operation"), Demand.TransformOperation);
+	}
+	if (!Demand.ScheduleOperation.IsEmpty())
+	{
+		Context.Evidence.Add(TEXT("schedule_operation"), Demand.ScheduleOperation);
+	}
 	if (!Demand.DelegateSignature.IsEmpty())
 	{
 		Context.Evidence.Add(TEXT("delegate_signature"), Demand.DelegateSignature);
@@ -211,6 +272,31 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 	if (Demand.ArgumentTypes.Num() > 0)
 	{
 		Context.Evidence.Add(TEXT("argument_type_count"), LexToString(Demand.ArgumentTypes.Num()));
+	}
+
+	if (Demand.SemanticKind == EBlueprintHelperActionSemanticKind::Field)
+	{
+		FBlueprintHelperCallFunctionPinType LinkedSourcePinType;
+		if (!Context.Semantic.TargetObjectPinType.IsValid()
+			&& BlueprintHelperActionContextInference::FindFirstLinkedPinType(Snapshot, Demand.SourceSymbolIds, LinkedSourcePinType))
+		{
+			Context.Semantic.TargetObjectPinType = LinkedSourcePinType;
+			BlueprintHelperActionContextInference::AddEvidenceIfPresent(
+				Context,
+				TEXT("linked_source_pin_type"),
+				BlueprintHelperActionContextInference::DescribePinTypeEvidence(LinkedSourcePinType));
+		}
+
+		FBlueprintHelperCallFunctionPinType LinkedConsumerPinType;
+		if (!Context.Semantic.ExpectedReturnPinType.IsValid()
+			&& BlueprintHelperActionContextInference::FindFirstLinkedPinType(Snapshot, Demand.ConsumerSymbolIds, LinkedConsumerPinType))
+		{
+			Context.Semantic.ExpectedReturnPinType = LinkedConsumerPinType;
+			BlueprintHelperActionContextInference::AddEvidenceIfPresent(
+				Context,
+				TEXT("linked_consumer_pin_type"),
+				BlueprintHelperActionContextInference::DescribePinTypeEvidence(LinkedConsumerPinType));
+		}
 	}
 
 	if (const FBlueprintHelperActionContextFieldSnapshot* Field =
@@ -253,6 +339,7 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 		Context.Evidence.Add(TEXT("graph_name"), Snapshot.Graph.GraphName);
 		Context.Evidence.Add(TEXT("target_graph"), Snapshot.Graph.GraphName);
 	}
+	Context.Evidence.Add(TEXT("graph_latent_allowed"), Snapshot.Graph.bLatentAllowed ? TEXT("true") : TEXT("false"));
 	if (!Demand.TargetGraphName.IsEmpty())
 	{
 		Context.Evidence.Add(TEXT("target_graph"), Demand.TargetGraphName);

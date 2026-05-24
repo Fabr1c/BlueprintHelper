@@ -86,6 +86,9 @@ struct FBlueprintHelperActionSemanticConstraints
 	FString PropertyPath;
 	FString FieldOperation;
 	FString FieldScope;
+	FString FunctionOperation;
+	FString TransformOperation;
+	FString ScheduleOperation;
 	FString TypeName;
 	FString StructPath;
 	FString TypeStructureId;

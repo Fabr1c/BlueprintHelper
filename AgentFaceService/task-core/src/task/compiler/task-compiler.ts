@@ -1355,11 +1355,17 @@ const FIELD_EXPRESSION_KIND_MAP = new Map([
   ['get', { operation: 'get', scope: 'variable' }],
   ['get_property', { operation: 'get', scope: 'property_path' }],
 ]);
+const SUPPORTED_FIELD_SCOPES = new Set(['variable', 'property_path', 'component_ref', 'field_access']);
+const FIELD_SCOPES_WITH_PROPERTY_PATH = new Set(['property_path', 'field_access']);
 
 function applyFieldTaxonomy(record: Record<string, unknown>, operation: string, scope: string): void {
   record.kind = 'field';
   record.field_operation = operation;
   record.field_scope = scope;
+}
+
+function fieldScopeUsesPropertyPath(scope: string): boolean {
+  return FIELD_SCOPES_WITH_PROPERTY_PATH.has(scope);
 }
 
 function fieldOperationScope(record: Record<string, unknown>, path: string): { operation: string; scope: string } {
@@ -1374,12 +1380,12 @@ function fieldOperationScope(record: Record<string, unknown>, path: string): { o
       },
     ]);
   }
-  if (scope !== 'variable' && scope !== 'property_path') {
+  if (!SUPPORTED_FIELD_SCOPES.has(scope)) {
     throw new TaskSpecCompileError('unsupported_field_scope', `Unsupported field_scope: ${scope}`, [
       {
         code: 'unsupported_field_scope',
         path: `${path}.field_scope`,
-        message: 'Use variable or property_path.',
+        message: 'Use variable, property_path, component_ref, or field_access.',
       },
     ]);
   }
@@ -1568,7 +1574,7 @@ function cloneLogicExpressionWithCompiledIds(expression: unknown, nodeId: string
   } else if (kind === 'field') {
     const { operation, scope } = fieldOperationScope(expression, nodeId);
     applyFieldTaxonomy(out, operation, scope);
-    if (scope === 'property_path') {
+    if (fieldScopeUsesPropertyPath(scope)) {
       const propertyPath = requiredGraphBodyPropertyPath(expression, `${nodeId}.property_path`);
       out.property_path = propertyPath;
       out.property = propertyPath;
@@ -1646,7 +1652,7 @@ function cloneLogicStatementWithCompiledIds(statement: BlueprintLogicStatement, 
   } else if (kind === 'field') {
     const { operation, scope } = fieldOperationScope(statementRecord, statementId);
     applyFieldTaxonomy(out, operation, scope);
-    if (scope === 'property_path') {
+    if (fieldScopeUsesPropertyPath(scope)) {
       const propertyPath = requiredGraphBodyPropertyPath(statementRecord, `${statementId}.property_path`);
       out.property_path = propertyPath;
       out.property = propertyPath;
@@ -1964,10 +1970,10 @@ function compileValueExpression(expression: unknown, nodeId: string, path: strin
         return { nodes: [], links: [], output: symbol.output, defaultValue: symbol.defaultValue };
       }
     }
-    const outputPin = fieldExpression.scope === 'property_path' ? 'value' : target;
+    const outputPin = fieldScopeUsesPropertyPath(fieldExpression.scope) ? 'value' : target;
     const node = { id: nodeId, kind: 'field', var: target, target } as AgentImportNode;
     applyFieldTaxonomy(node as Record<string, unknown>, fieldExpression.operation, fieldExpression.scope);
-    if (fieldExpression.scope === 'property_path') {
+    if (fieldScopeUsesPropertyPath(fieldExpression.scope)) {
       const propertyPath = requiredGraphBodyPropertyPath(expression, path);
       (node as Record<string, unknown>).property_path = propertyPath;
       (node as Record<string, unknown>).property = propertyPath;
@@ -2790,7 +2796,7 @@ function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string
       target,
       value: valueExprToString(statementRecord['value']),
     } as AgentImportNode;
-    if (scope === 'property_path') {
+    if (fieldScopeUsesPropertyPath(scope)) {
       const propertyPath = requiredGraphBodyPropertyPath(statementRecord, path);
       (node as Record<string, unknown>).property_path = propertyPath;
       (node as Record<string, unknown>).property = propertyPath;

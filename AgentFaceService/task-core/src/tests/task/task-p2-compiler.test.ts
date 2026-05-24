@@ -227,6 +227,86 @@ test('compiles custom_event_definition into signature then graph body steps', ()
   assert.equal(graphStep.write.ops[0].selector.entry_name, 'OnInteract');
 });
 
+test('compiles append_new_owned_graph custom event into signature dependency before graph body', () => {
+  const taskSpec = TaskSpecSchema.parse({
+    schema: 'BlueprintHelper.TaskSpec.v1',
+    task_type: 'edit_blueprint_graph',
+    feature_name: 'P2AppendCustomEventBoundary',
+    target: {
+      asset_path: '/Game/BlueprintHelper/Smoke/BP_TaskSpecSmoke',
+      target_type: 'blueprint',
+    },
+    scope_policy: {
+      graph_name: 'EG_CustomEventBoundary',
+      allow_modify_user_nodes: false,
+    },
+    execution_policy: { dry_run_mode: 'full' },
+    validation: { should_compile: false, should_save: true },
+    behavior: {
+      graph_strategy: 'append_new_owned_graph',
+      entries: [{
+        entry_type: 'custom_event',
+        name: 'RunBoundarySmoke',
+        body: {
+          schema: 'BlueprintLogicSpec.v1',
+          statements: [],
+        },
+      }],
+    },
+  });
+
+  const taskPlan = compileTaskSpecToTaskPlan(taskSpec);
+  TaskPlanSchema.parse(taskPlan);
+
+  assert.equal(taskPlan.steps.length, 2);
+  const signatureStep = taskPlan.steps[0] as Record<string, any>;
+  const graphStep = taskPlan.steps[1] as Record<string, any>;
+  assert.equal(signatureStep.capability, 'blueprint_signature');
+  assert.equal(signatureStep.write.strategy, 'custom_event_signature');
+  assert.deepEqual(signatureStep.write.ops.map((op: Record<string, unknown>) => op.op), ['ensure_custom_event']);
+  assert.equal(signatureStep.write.ops[0].event_name, 'RunBoundarySmoke');
+  assert.equal(signatureStep.write.ops[0].graph_name, 'EG_CustomEventBoundary');
+  assert.equal(graphStep.capability, 'graph_write');
+  assert.deepEqual(graphStep.depends_on, ['step_001']);
+  assert.equal(graphStep.write.ops[0].op, 'ensure_entry');
+  assert.equal(graphStep.write.ops[0].entry_type, 'custom_event');
+});
+
+test('rejects append_new_owned_graph entry types outside GraphWrite custom event body boundary', () => {
+  const taskSpec = TaskSpecSchema.parse({
+    schema: 'BlueprintHelper.TaskSpec.v1',
+    task_type: 'edit_blueprint_graph',
+    feature_name: 'P2RejectNonCustomEventEntry',
+    target: {
+      asset_path: '/Game/BlueprintHelper/Smoke/BP_TaskSpecSmoke',
+      target_type: 'blueprint',
+    },
+    scope_policy: {
+      graph_name: 'EG_CustomEventBoundary',
+      allow_modify_user_nodes: false,
+    },
+    execution_policy: { dry_run_mode: 'full' },
+    validation: { should_compile: false, should_save: true },
+    behavior: {
+      graph_strategy: 'append_new_owned_graph',
+      entries: [{
+        entry_type: 'native_event',
+        name: 'ReceiveBeginPlay',
+        body: {
+          schema: 'BlueprintLogicSpec.v1',
+          statements: [],
+        },
+      }],
+    },
+  });
+
+  assert.throws(
+    () => compileTaskSpecToTaskPlan(taskSpec),
+    (error: unknown) => error instanceof Error
+      && error.message.includes('Only custom_event entries are supported'),
+  );
+});
+
 test('compiles override event create_if_missing policy into blueprint_signature IR', () => {
   const taskSpec = TaskSpecSchema.parse(baseTaskSpec('edit_blueprint_signature', {
     signature_strategy: 'signature_edit',

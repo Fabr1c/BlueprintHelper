@@ -100,7 +100,10 @@ static bool IsSupportedFieldOperation(const FString& Operation)
 static bool IsSupportedFieldScope(const FString& Scope)
 {
 	const FString Normalized = NormalizeFieldToken(Scope);
-	return Normalized == TEXT("variable") || Normalized == TEXT("property_path");
+	return Normalized == TEXT("variable")
+		|| Normalized == TEXT("property_path")
+		|| Normalized == TEXT("component_ref")
+		|| Normalized == TEXT("field_access");
 }
 
 static bool IsPropertyFieldScope(const FString& Scope)

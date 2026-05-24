@@ -142,3 +142,36 @@ No P6 regression blocker remains after `Saved/Automation/GraphWrite80_P6_GraphWr
 | `BlueprintHelper.GraphWrite.LegacyMainline.EventDelegateDeclaredCapabilityMatchesSuccessPath` | Contract now matches P5 Gap 5: `ComponentBoundEvent` and `Bind` are owned for precise diagnostics / `unsupported_intent`, not fake delegate success. |
 
 Residual architecture gaps remain tracked in `Develop/Gap/BlueprintHelper_GraphWrite_ArchitectureGaps_Audit_20260522_CN.md`; they are not P6 regression blockers.
+
+## 13. Function / Field Convergence Smoke - 2026-05-24
+
+本轮验证覆盖用户请求 1、2、4：扩展 FunctionActionCluster 的非 call callable kind，完整化 Field 的复杂 property path / linked typed pin / `component_ref` / `field_access` 语义，并在末尾统一 smoke。
+
+| Check | Status | Evidence |
+|---|---|---|
+| Project editor compile after Function implementation | PASS | `E:\UE_5.6\Engine\Build\BatchFiles\Build.bat TemplateEditor Win64 Development -Project='D:\UEProjects\Template\Template.uproject' -WaitMutex -NoHotReload` exited `0`. |
+| FunctionAction automation | PASS | `Saved/Automation/GraphWriteFunctionAction/index.json`; 6 succeeded, 0 failed. |
+| Function ActionContext automation | PASS | `Saved/Automation/GraphWriteFunctionActionContext/index.json`; 5 succeeded, 0 failed. |
+| Project editor compile after Field implementation | PASS | Same `Build.bat` command exited `0`. |
+| FieldVariable automation | PASS | `Saved/Automation/GraphWriteFunctionFieldTargetedAfterPathFix/index.json`; 15 succeeded, 0 failed. |
+| ActionContext full automation | PASS | `Saved/Automation/GraphWriteActionContextFull/index.json`; 17 succeeded, 0 failed. |
+| GraphSemanticIR automation | PASS | `Saved/Automation/GraphWriteGraphSemanticIR/index.json`; 6 succeeded, 0 failed. |
+| task-core TypeScript build | PASS | `AgentFaceService/task-core`: `npm.cmd run build` exited `0`. |
+| task-core Node tests | PASS | `AgentFaceService/task-core`: `npm.cmd run test:node`; 158 tests passed, 0 failed. |
+| task-core Python tests | PASS | `AgentFaceService/task-core`: `python -m unittest discover -s python/tests -t python`; 65 tests passed, 0 failed. |
+| CLI TypeScript build | PASS | `AgentFaceService/cli`: `npm.cmd run build` exited `0`. |
+| CLI Node tests | PASS | `AgentFaceService/cli`: `npm.cmd run test:node`; 44 tests passed, 0 failed. |
+| Unified Function/Field/Event smoke automation | PASS | `Saved/Automation/GraphWriteFunctionFieldUnifiedSmokeAfterPathFix/index.json`; 3 succeeded, 0 failed. |
+| Full GraphWrite regression | PASS_WITH_WARNINGS | `Saved/Automation/GraphWriteFullAfterFunctionFieldPathFix/index.json`; 142 succeeded, 11 succeeded with warnings, 0 failed, 0 not run. Warnings are existing UE/EOS or missing-package diagnostic noise and did not fail the regression. |
+| CLI TaskSpec preview smoke | PREVIEW_BLOCKED_EXPECTED_FIXTURE | `Saved/BlueprintHelper/Cli/preview_1779602466387_0001/task_plan.json` contains `step_001 capability=blueprint_signature`, `step_001.write.ops[0].op=ensure_custom_event`, `step_002 capability=graph_write`, and `step_002.depends_on=["step_001"]`; preview issue is `target_blueprint_not_found` for `/Game/BlueprintHelper/Smoke/BP_GraphWriteFunctionFieldSmoke`. |
+| CLI TaskSpec execute smoke | EXECUTE_BLOCKED_EXPECTED_FIXTURE | `Saved/BlueprintHelper/Cli/cli_1779602489237/result.json`; execute did not write assets and returned `task_preview_blocked` with issue `target_blueprint_not_found` for the same Smoke fixture. |
+
+Result:
+
+- `FunctionActionCluster` now covers `Call`, `Op`, `Convert` as `convert_function`, `Schedule` as `schedule_function`, and `Schedule` as `latent_or_async_function` when evidence permits.
+- `FieldVariableActionCluster` now covers `variable`, `property_path`, `component_ref`, and `field_access`, including complex property path metadata and linked typed pin inference.
+- Event lifecycle taxonomy remains Signature-owned; GraphWrite body/delegate boundary is smoke-verified through `blueprint_signature.ensure_custom_event -> graph_write`.
+
+Remaining blocker:
+
+- The planned real CLI execute smoke cannot write because the fixture asset `/Game/BlueprintHelper/Smoke/BP_GraphWriteFunctionFieldSmoke` is not present in the project. This is an environment/fixture blocker, not a Function/Field semantic compiler or resolver failure.
