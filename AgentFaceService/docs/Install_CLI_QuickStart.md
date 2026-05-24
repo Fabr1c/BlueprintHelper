@@ -5,8 +5,10 @@ This guide connects a local Unreal Editor project, the BlueprintHelper Bridge, t
 Task orchestration mainline:
 
 ```text
-Agent -> BlueprintHelper CLI -> task-core / Python Task Compiler -> UE Task Runtime -> Existing Capability Clusters
+Agent -> BlueprintHelper CLI -> AgentFace task-core TypeScript compiler -> Bridge preview/execute -> UE Task Runtime -> Existing Capability Clusters
 ```
+
+TaskSpec compiler ownership: AgentFace task-core TypeScript compiler is the canonical production compiler. Legacy fallback and parity-gate paths are retired; new TaskSpec capabilities must be implemented and tested in TS first.
 
 ## Prerequisites
 
@@ -207,7 +209,7 @@ For ordinary Agent editor-asset mutations, use the TaskSpec-first flow:
 - Run `bh blueprint_get_runtime_profile --json "{}" --select status,summary`.
 - Run `bh blueprinthelper_read_context --file .\read-spec.json --select status,summary,artifacts.full_result`.
 - Produce `BlueprintHelper.TaskSpec.v1` with exact `asset_path`, target graph when relevant, allowed scope, resource references, failure policy, `validation.should_compile`, and `validation.should_save`.
-- Do not submit TaskPlan directly; it is produced by the Python Task Compiler.
+- Do not submit TaskPlan directly; it is produced by the canonical AgentFace task-core TypeScript compiler.
 - Run `bh task preview --file .\task_spec.json --select status,preview_id,summary,artifacts.full_result` and stop on blocked / failed preview.
 - Run `bh task execute --file .\task_spec.json --select status,task_run_id,summary` only after preview passes.
 - Let UE Task Runtime handle TaskPlan execution, compile/save policy, transaction grouping, rollback, and diagnostics.

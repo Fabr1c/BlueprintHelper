@@ -33,9 +33,8 @@
   },
   "scripts": {
     "build": "node ../scripts/clean-build.mjs && node ../scripts/run-tsc.mjs",
-    "test": "npm run build && npm run test:python && npm run test:node",
+    "test": "npm run build && npm run test:node",
     "test:node": "node scripts/run-node-tests.mjs",
-    "test:python": "python -m unittest discover -s python/tests -t python",
     "dev": "tsc --watch"
   },
   "dependencies": {

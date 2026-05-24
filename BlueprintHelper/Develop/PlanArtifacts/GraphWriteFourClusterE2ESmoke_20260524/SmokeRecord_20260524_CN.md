@@ -4,7 +4,7 @@
 
 Status: PASS
 
-本轮 rerun 使用隔离资产 `/Game/BlueprintHelper/Smoke/BP_GraphWriteFourClusterSmoke_20260524_FixRun02`。四簇正向路径均完成 preview + execute，Generic 预期诊断按计划阻断，`BlueprintHelper.GraphWrite` 自动化和 UE 5.6 build 均通过。
+This rerun used the isolated smoke asset `/Game/BlueprintHelper/Smoke/BP_GraphWriteFourClusterSmoke_20260524_FixRun02`. All four positive cluster paths completed preview + execute; the expected Generic diagnostic blocked as planned; `BlueprintHelper.GraphWrite` automation and the UE 5.6 build both passed.
 
 ## Fixture
 
@@ -47,7 +47,7 @@ This is an accepted diagnostic. The row did not fake success through FunctionAct
 
 | Gate | Result | Artifact |
 |---|---|---|
-| `BlueprintHelper.GraphWrite` automation | PASS: `succeeded=156`, `succeededWithWarnings=10`, `failed=0`, `notRun=0` | `D:\UEProjects\Template\Saved\Automation\GraphWrite_FourClusterE2ESmoke_20260524_001\index.json` |
+| `BlueprintHelper.GraphWrite` automation | PASS: `succeeded=157`, `succeededWithWarnings=11`, `failed=0`, `notRun=0` | `D:\UEProjects\Template\Saved\Automation\GraphWrite_FourClusterE2ESmoke_20260524_001\index.json` |
 | UE 5.6 `TemplateEditor Win64 Development` build | PASS: `Result: Succeeded` | `C:\Users\CharlieNotFound\AppData\Local\UnrealBuildTool\Log.txt` |
 
 Automation warnings were existing non-fatal EOS/network/load warnings, not four-cluster assertion failures.

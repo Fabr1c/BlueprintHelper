@@ -41,6 +41,8 @@ UE 5.6 TemplateEditor build passes.
   - Responsibility: 停止导出 Python orchestrator 和 parity API。
 - Modify: `AgentFaceService/task-core/package.json`
   - Responsibility: 删除 `test:python`，`test` 只跑 build + node tests。
+- Modify: `AgentFaceService/mcp/package.json`
+  - Responsibility: 删除转发到 task-core `test:python` 的 MCP package script，避免安装/验证入口保留 Python 测试别名。
 - Delete: `AgentFaceService/task-core/python/`
   - Responsibility: 删除 Python compiler package、runtime orchestrator、tests、pycache。
 - Delete: `AgentFaceService/task-core/src/tests/task/task-python-orchestrator.regression.test.ts`
@@ -57,6 +59,25 @@ UE 5.6 TemplateEditor build passes.
   - Responsibility: EventDelegate boundary source guard 改读 TS contract/compiler，不再读 `graph_write_append.py`。
 - Modify: docs under `BlueprintHelper/Develop/Plan` and `BlueprintHelper/Develop/Gap` only where they describe live compiler ownership.
   - Responsibility: 将 live ownership 从 “TS fast path + Python canonical fallback” 改为 “canonical TS compiler”。
+- Modify: live docs under `AgentFaceService/docs/*.md` only where they describe current TaskSpec compiler ownership or current executable path.
+  - Responsibility: 将 `TaskSpec -> Python compiler`、`task-core/python`、`TS/Python compiler` 等 live truth 改为 canonical TS compiler；历史段落必须明确标注为 historical，不能作为当前状态。
+- Modify: current AgentFace documentation files that still describe Python compiler ownership:
+  - `AgentFaceService/docs/Install_CLI_QuickStart.md`
+  - `AgentFaceService/docs/TaskSpec_CLI_QuickStart.md`
+  - `AgentFaceService/docs/TaskSpec_TaskPlan_Contract_20260504.md`
+  - `AgentFaceService/docs/TaskSpec_UE_Editor_Capability_Matrix_20260521_CN.md`
+  - Responsibility: 当前 CLI/TaskSpec guidance 统一改为 canonical TS compiler。
+- Modify: current BlueprintHelper design/gap/status docs that still describe TS/Python compiler ownership:
+  - `BlueprintHelper/Develop/Design/BlueprintHelper_GraphStatementFramework_Design_20260521_CN.md`
+  - `BlueprintHelper/Develop/Design/BlueprintHelper_DataFlowCore_AgentFaceFields_20260520_CN.md`
+  - `BlueprintHelper/Develop/Gap/BlueprintHelper_GraphWrite_PublicSchemaDelegateLowering_CodingStyleGaps_20260524_CN.md`
+  - Responsibility: 当前设计/Gap/status truth 统一改为 canonical TS compiler；已完成历史 evidence 不得继续作为当前入口说明。
+- Modify: `ClaudePlugin/README.md`
+  - Responsibility: 将 Agent-facing TaskSpec-first 架构链路中的 `task-core -> Python Task Compiler` 与 “dispatches to the Python compiler” 改为 canonical TS compiler。
+- Archive or rewrite: non-archived historical implementation/smoke plans under `BlueprintHelper/Develop/Plan/*.md` that still contain Python compiler strategy/test paths.
+  - Responsibility: 若文档仍是当前计划/状态，改写为 canonical TS；若只是旧执行记录，移动到 `BlueprintHelper/Develop/ArchivedReference/TaskSpecPythonCompilerRetire_20260524/` 或用无 Python compiler 词面的历史指针替代 active copy，保证 active Plan 目录不再保留 Python compiler ownership 残留。
+- Audit only: root install/update scripts and setup docs (`install.ps1`, `install.cmd`, `update.ps1`, `update.cmd`, `upgrade.cmd`, `INSTALL.md`) plus plugin docs/scripts.
+  - Responsibility: 确认安装、更新、bootstrap、global MCP 安装路径没有 Python compiler / `test:python` / `task-core/python` 残留；若扫描发现残留，必须加入本计划修改范围。
 
 ## Task 1: Add Canonical TS Policy Tests
 
@@ -416,10 +437,11 @@ Expected:
 no matches
 ```
 
-## Task 4: Remove Python Package And Python Test Script
+## Task 4: Remove Python Package And Python Test Scripts
 
 **Files:**
 - Modify: `AgentFaceService/task-core/package.json`
+- Modify: `AgentFaceService/mcp/package.json`
 - Delete: `AgentFaceService/task-core/python/`
 
 - [ ] **Step 1: Remove Python test script from package.json**
@@ -447,7 +469,36 @@ with:
 }
 ```
 
-- [ ] **Step 2: Delete the Python compiler tree**
+- [ ] **Step 2: Remove MCP package Python test forwarding script**
+
+In `AgentFaceService/mcp/package.json`, replace:
+
+```json
+"scripts": {
+  "build": "node ../scripts/run-package-npm.mjs ../task-core run build && node ../scripts/clean-build.mjs && node ../scripts/run-tsc.mjs",
+  "build:mcp": "node ../scripts/clean-build.mjs && node ../scripts/run-tsc.mjs",
+  "test": "node ../scripts/run-package-npm.mjs ../task-core run test && npm run build:mcp && npm run test:node",
+  "test:node": "node scripts/run-node-tests.mjs",
+  "test:python": "node ../scripts/run-package-npm.mjs ../task-core run test:python",
+  "start": "node build/index.js",
+  "dev": "tsc --watch"
+}
+```
+
+with:
+
+```json
+"scripts": {
+  "build": "node ../scripts/run-package-npm.mjs ../task-core run build && node ../scripts/clean-build.mjs && node ../scripts/run-tsc.mjs",
+  "build:mcp": "node ../scripts/clean-build.mjs && node ../scripts/run-tsc.mjs",
+  "test": "node ../scripts/run-package-npm.mjs ../task-core run test && npm run build:mcp && npm run test:node",
+  "test:node": "node scripts/run-node-tests.mjs",
+  "start": "node build/index.js",
+  "dev": "tsc --watch"
+}
+```
+
+- [ ] **Step 3: Delete the Python compiler tree**
 
 Delete the directory:
 
@@ -469,12 +520,13 @@ D:\UEProjects\Template\Plugins\BlueprintHelper\AgentFaceService\task-core\python
 
 Use a controlled file deletion method inside the workspace. Do not run `git add`, `git commit`, or `git push`.
 
-- [ ] **Step 3: Verify package scripts**
+- [ ] **Step 4: Verify package scripts**
 
 Run:
 
 ```powershell
 npm.cmd --prefix D:\UEProjects\Template\Plugins\BlueprintHelper\AgentFaceService\task-core run test
+rg -n '"test:python"|python/tests|task-core run test:python' D:\UEProjects\Template\Plugins\BlueprintHelper\AgentFaceService\task-core\package.json D:\UEProjects\Template\Plugins\BlueprintHelper\AgentFaceService\mcp\package.json D:\UEProjects\Template\Plugins\BlueprintHelper\AgentFaceService\cli\package.json
 ```
 
 Expected:
@@ -483,6 +535,7 @@ Expected:
 build passes
 node tests pass
 no python unittest invocation appears
+package script search returns no matches
 ```
 
 ## Task 5: Update C++ Contract Guard Away From Python Source
@@ -662,19 +715,45 @@ all node tests pass
   - `BlueprintHelper/Develop/Gap/BlueprintHelper_GraphWrite_ArchitectureGaps_Audit_20260522_CN.md`
   - `BlueprintHelper/Develop/Plan/BlueprintHelper_GraphWrite_FourClusterCompletionStatus_20260522_CN.md`
   - any current non-archived `BlueprintHelper/Develop/Plan/*.md` that says Python compiler remains canonical fallback.
+  - `BlueprintHelper/Develop/Design/BlueprintHelper_GraphStatementFramework_Design_20260521_CN.md`
+  - `BlueprintHelper/Develop/Design/BlueprintHelper_DataFlowCore_AgentFaceFields_20260520_CN.md`
+  - `BlueprintHelper/Develop/Gap/BlueprintHelper_GraphWrite_PublicSchemaDelegateLowering_CodingStyleGaps_20260524_CN.md`
+  - `AgentFaceService/docs/Install_CLI_QuickStart.md`
+  - `AgentFaceService/docs/TaskSpec_CLI_QuickStart.md`
+  - `AgentFaceService/docs/TaskSpec_TaskPlan_Contract_20260504.md`
+  - `AgentFaceService/docs/TaskSpec_UE_Editor_Capability_Matrix_20260521_CN.md`
+  - `ClaudePlugin/README.md`
 
 - [ ] **Step 1: Search live source and docs**
 
 Run:
 
 ```powershell
-rg -n "canonical_python|python_worker|compileTaskSpecWithPython|task-python-orchestrator|task-plan-parity|Python compiler|ts_fast_path|TS fast path" D:\UEProjects\Template\Plugins\BlueprintHelper\AgentFaceService D:\UEProjects\Template\Plugins\BlueprintHelper\BlueprintHelper\Develop -g "*.ts" -g "*.md" -g "*.cpp" -g "*.h" -g "*.json"
+rg -n "canonical_python|python_worker|compileTaskSpecWithPython|task-python-orchestrator|task-plan-parity|Python compiler|Python Task Compiler|dispatches to the Python compiler|TaskSpec -> Python|task-core -> Python|task-core/python|blueprinthelper_task|compile-task-spec|test:python|ts_fast_path|TS fast path|TS/Python compiler|graph_write_append.py" `
+  D:\UEProjects\Template\Plugins\BlueprintHelper\AgentFaceService `
+  D:\UEProjects\Template\Plugins\BlueprintHelper\BlueprintHelper\Develop `
+  D:\UEProjects\Template\Plugins\BlueprintHelper\install.ps1 `
+  D:\UEProjects\Template\Plugins\BlueprintHelper\install.cmd `
+  D:\UEProjects\Template\Plugins\BlueprintHelper\update.ps1 `
+  D:\UEProjects\Template\Plugins\BlueprintHelper\update.cmd `
+  D:\UEProjects\Template\Plugins\BlueprintHelper\upgrade.cmd `
+  D:\UEProjects\Template\Plugins\BlueprintHelper\INSTALL.md `
+  D:\UEProjects\Template\Plugins\BlueprintHelper\CodexPlugin `
+  D:\UEProjects\Template\Plugins\BlueprintHelper\ClaudePlugin `
+  -g "*.ts" -g "*.md" -g "*.cpp" -g "*.h" -g "*.json" -g "*.ps1" -g "*.cmd" -g "*.bat" -g "*.cjs" -g "*.mjs" `
+  -g "!**/build/**" -g "!**/node_modules/**" `
+  -g "!**/v0.*/**" `
+  -g "!**/ArchivedReference/**" `
+  -g "!**/PlanArtifacts/**" `
+  -g "!**/BlueprintHelper_TaskSpec_PythonCompilerRetirePlan_20260524_CN.md"
 ```
 
 Expected after cleanup:
 
 ```text
 No source matches for canonical_python, python_worker, compileTaskSpecWithPython, task-python-orchestrator, task-plan-parity.
+No package, install, update, bootstrap, plugin README, or active documentation matches for test:python, task-core/python, blueprinthelper_task, compile-task-spec, TaskSpec -> Python, task-core -> Python, Python Task Compiler, or Python compiler as current ownership.
+The retire plan file itself, build output, node_modules, archived v0.* docs, ArchivedReference docs, and PlanArtifacts are excluded from this active-residual gate.
 Archived docs may still mention historical Python compiler decisions under BlueprintHelper/Develop/v0.*; do not rewrite archived references unless they are imported into current status docs.
 Current live docs state canonical TS compiler ownership.
 ```
@@ -689,13 +768,96 @@ TaskSpec compiler ownership: AgentFace task-core TypeScript compiler is the cano
 
 Do not edit archived historical reports unless a live status page links to them as current truth.
 
+- [ ] **Step 3: Explicitly audit install/update scripts and plugin docs**
+
+Run:
+
+```powershell
+rg -n "Python compiler|Python Task Compiler|dispatches to the Python compiler|TaskSpec -> Python|task-core -> Python|test:python|task-core/python|task-core\\python|blueprinthelper_task|compile-task-spec|canonical_python|ts_fast_path|task-python-orchestrator|task-plan-parity" D:\UEProjects\Template\Plugins\BlueprintHelper\install.ps1 D:\UEProjects\Template\Plugins\BlueprintHelper\install.cmd D:\UEProjects\Template\Plugins\BlueprintHelper\update.ps1 D:\UEProjects\Template\Plugins\BlueprintHelper\update.cmd D:\UEProjects\Template\Plugins\BlueprintHelper\upgrade.cmd D:\UEProjects\Template\Plugins\BlueprintHelper\INSTALL.md D:\UEProjects\Template\Plugins\BlueprintHelper\CodexPlugin D:\UEProjects\Template\Plugins\BlueprintHelper\ClaudePlugin -g "*.ps1" -g "*.cmd" -g "*.bat" -g "*.md" -g "*.cjs" -g "*.mjs" -g "*.json"
+```
+
+Expected:
+
+```text
+No Python compiler, Python Task Compiler, Python test, task-core/python, old strategy ownership, or `task-core -> Python` architecture path remains in install/update/bootstrap/plugin docs/scripts.
+Generic mentions that normal repository tools may edit Python source files are acceptable only if they do not describe TaskSpec compiler ownership or invoke Python compiler/test:python.
+```
+
+- [ ] **Step 4: Clear non-archived BlueprintHelper Develop doc residuals**
+
+Run:
+
+```powershell
+rg -l "canonical_python|python_worker|compileTaskSpecWithPython|task-python-orchestrator|task-plan-parity|Python compiler|Python Task Compiler|dispatches to the Python compiler|TaskSpec -> Python|task-core -> Python|task-core/python|blueprinthelper_task|compile-task-spec|test:python|ts_fast_path|TS fast path|TS/Python compiler|TS / Python compiler|graph_write_append.py" `
+  D:\UEProjects\Template\Plugins\BlueprintHelper\BlueprintHelper\Develop `
+  -g "*.md" `
+  -g "!**/v0.*/**" `
+  -g "!**/ArchivedReference/**" `
+  -g "!**/PlanArtifacts/**" `
+  -g "!**/BlueprintHelper_TaskSpec_PythonCompilerRetirePlan_20260524_CN.md"
+```
+
+Current audit baseline before cleanup lists these active docs and plans:
+
+```text
+BlueprintHelper/Develop/Gap/BlueprintHelper_GraphWrite_ArchitectureGaps_Audit_20260522_CN.md
+BlueprintHelper/Develop/Gap/BlueprintHelper_GraphWrite_PublicSchemaDelegateLowering_CodingStyleGaps_20260524_CN.md
+BlueprintHelper/Develop/Design/BlueprintHelper_GraphStatementFramework_Design_20260521_CN.md
+BlueprintHelper/Develop/Design/BlueprintHelper_DataFlowCore_AgentFaceFields_20260520_CN.md
+BlueprintHelper/Develop/Plan/BlueprintHelper_ActionResolution_P2P3_FunctionGeneric_ImplementationPlan_20260521_CN.md
+BlueprintHelper/Develop/Plan/BlueprintHelper_DataFlowCore_FirstBatch_ImplementationPlan_20260521_CN.md
+BlueprintHelper/Develop/Plan/BlueprintHelper_GraphWrite_FieldKindConvergence_Plan_20260523_CN.md
+BlueprintHelper/Develop/Plan/BlueprintHelper_GraphWrite_FourCluster_EndToEndSmokePlan_20260524_CN.md
+BlueprintHelper/Develop/Plan/BlueprintHelper_GraphWrite_Bug001_002_FixPlan_20260524_CN.md
+BlueprintHelper/Develop/Plan/BlueprintHelper_GraphWrite_FourClusterCompletionStatus_20260522_CN.md
+BlueprintHelper/Develop/Plan/BlueprintHelper_GraphWrite_FunctionFieldConvergence_SmokePlan_20260524_CN.md
+BlueprintHelper/Develop/Plan/BlueprintHelper_GraphWrite_Gap5_EventDelegateUseSite_ImplementationPlan_20260523_CN.md
+BlueprintHelper/Develop/Plan/BlueprintHelper_GraphWrite_GenericBroadCreate_ImplementationPlan_20260524_CN.md
+BlueprintHelper/Develop/Plan/BlueprintHelper_GraphWrite_GenericConvertSchedule_ImplementationPlan_20260524_CN.md
+BlueprintHelper/Develop/Plan/BlueprintHelper_GraphWrite_LegacyMainlineCleanup_ImplementationPlan_20260522_CN.md
+BlueprintHelper/Develop/Plan/BlueprintHelper_GraphWrite_PublicSchemaDelegateLoweringBoundary_Plan_20260523_CN.md
+BlueprintHelper/Develop/Plan/BlueprintHelper_GraphWrite_SemanticMainlineCleanup_ImplementationPlan_20260522_CN.md
+```
+
+For each baseline match:
+
+```text
+If the file is current guidance/status/design: replace Python compiler / TS fast path / parity wording with canonical TS compiler wording.
+If the file is a completed historical implementation or smoke plan: move it under BlueprintHelper/Develop/ArchivedReference/TaskSpecPythonCompilerRetire_20260524/ or replace the active copy with a short pointer that contains no retired compiler terms.
+Do not leave retired compiler strings in non-archived active docs or plans.
+```
+
+Expected after cleanup:
+
+```text
+No matches from the command above.
+```
+
 ## Final Verification Commands
 
 Run:
 
 ```powershell
 npm.cmd --prefix D:\UEProjects\Template\Plugins\BlueprintHelper\AgentFaceService\task-core run test
-rg -n "canonical_python|python_worker|compileTaskSpecWithPython|task-python-orchestrator|task-plan-parity|graph_write_append.py" D:\UEProjects\Template\Plugins\BlueprintHelper\AgentFaceService D:\UEProjects\Template\Plugins\BlueprintHelper\BlueprintHelper\Source
+npm.cmd --prefix D:\UEProjects\Template\Plugins\BlueprintHelper\AgentFaceService\mcp run test
+rg -n "canonical_python|python_worker|compileTaskSpecWithPython|task-python-orchestrator|task-plan-parity|graph_write_append.py|test:python|task-core/python|task-core\\python|blueprinthelper_task|compile-task-spec|TaskSpec -> Python|task-core -> Python|Python compiler|Python Task Compiler|dispatches to the Python compiler|ts_fast_path|TS fast path|TS/Python compiler" `
+  D:\UEProjects\Template\Plugins\BlueprintHelper\AgentFaceService `
+  D:\UEProjects\Template\Plugins\BlueprintHelper\BlueprintHelper\Source `
+  D:\UEProjects\Template\Plugins\BlueprintHelper\BlueprintHelper\Develop `
+  D:\UEProjects\Template\Plugins\BlueprintHelper\install.ps1 `
+  D:\UEProjects\Template\Plugins\BlueprintHelper\install.cmd `
+  D:\UEProjects\Template\Plugins\BlueprintHelper\update.ps1 `
+  D:\UEProjects\Template\Plugins\BlueprintHelper\update.cmd `
+  D:\UEProjects\Template\Plugins\BlueprintHelper\upgrade.cmd `
+  D:\UEProjects\Template\Plugins\BlueprintHelper\INSTALL.md `
+  D:\UEProjects\Template\Plugins\BlueprintHelper\CodexPlugin `
+  D:\UEProjects\Template\Plugins\BlueprintHelper\ClaudePlugin `
+  -g "*.ts" -g "*.md" -g "*.cpp" -g "*.h" -g "*.json" -g "*.ps1" -g "*.cmd" -g "*.bat" -g "*.cjs" -g "*.mjs" `
+  -g "!**/build/**" -g "!**/node_modules/**" `
+  -g "!**/v0.*/**" `
+  -g "!**/ArchivedReference/**" `
+  -g "!**/PlanArtifacts/**" `
+  -g "!**/BlueprintHelper_TaskSpec_PythonCompilerRetirePlan_20260524_CN.md"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "& 'E:\UE_5.6\Engine\Binaries\Win64\UnrealEditor-Cmd.exe' 'D:\UEProjects\Template\Template.uproject' -run=Automation -Test='BlueprintHelper.GraphWrite.ActionResolution.Contract.DelegatePublicInternalBoundary' -unattended -nop4 -nosplash -NullRHI"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "D:\UEProjects\Template\Plugins\BlueprintHelper\BlueprintHelper\Develop\PlanArtifacts\GraphWriteFourClusterE2ESmoke_20260524\run_four_cluster_smoke.ps1"
 & 'E:\UE_5.6\Engine\Build\BatchFiles\Build.bat' TemplateEditor Win64 Development -Project='D:\UEProjects\Template\Template.uproject' -WaitMutex
@@ -705,7 +867,8 @@ Expected:
 
 ```text
 task-core test uses build + node tests only
-source search finds no active Python compiler path
+mcp test does not expose or invoke test:python
+source/doc/script search finds no active Python compiler path, Python test script, old strategy id, plugin README stale compiler path, or current-doc Python compiler ownership after excluding build output, node_modules, historical archives, plan artifacts, and this retire plan file
 DelegatePublicInternalBoundary automation passes
 four-cluster smoke remains passing
 UE build Result: Succeeded
@@ -718,7 +881,7 @@ Workers must not run `git add`, `git commit`, or `git push` in this repository. 
 ```text
 变更需求：
 1. 将 TaskSpec compiler canonical ownership 收敛到 TypeScript task-core compiler。
-2. 移除 Python compiler fallback、parity oracle、Python tests 和相关 source contract 依赖。
+2. 移除 Python compiler fallback、parity oracle、Python tests、package script、安装/更新入口和相关 source/doc contract 依赖。
 ```
 
 Suggested manual commands for the user only:
@@ -730,21 +893,33 @@ git add AgentFaceService/task-core/src/task/compiler/task-compiler.ts `
         AgentFaceService/task-core/src/task/compiler/task-compiler-service.ts `
         AgentFaceService/task-core/src/index.ts `
         AgentFaceService/task-core/package.json `
+        AgentFaceService/mcp/package.json `
         AgentFaceService/task-core/src/tests/task/task-compiler-policy.test.ts `
         AgentFaceService/task-core/src/tests/task/task-spec-runner.regression.test.ts `
         BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintHelperActionResolutionContractTests.cpp `
+        AgentFaceService/docs/Install_CLI_QuickStart.md `
+        AgentFaceService/docs/TaskSpec_CLI_QuickStart.md `
+        AgentFaceService/docs/TaskSpec_TaskPlan_Contract_20260504.md `
+        AgentFaceService/docs/TaskSpec_UE_Editor_Capability_Matrix_20260521_CN.md `
+        ClaudePlugin/README.md `
+        BlueprintHelper/Develop/Design/BlueprintHelper_GraphStatementFramework_Design_20260521_CN.md `
+        BlueprintHelper/Develop/Design/BlueprintHelper_DataFlowCore_AgentFaceFields_20260520_CN.md `
         BlueprintHelper/Develop/Gap/BlueprintHelper_GraphWrite_ArchitectureGaps_Audit_20260522_CN.md `
+        BlueprintHelper/Develop/Gap/BlueprintHelper_GraphWrite_PublicSchemaDelegateLowering_CodingStyleGaps_20260524_CN.md `
         BlueprintHelper/Develop/Plan/BlueprintHelper_GraphWrite_FourClusterCompletionStatus_20260522_CN.md
 git add -u AgentFaceService/task-core/src/task/compiler/task-python-orchestrator.ts `
            AgentFaceService/task-core/src/task/compiler/task-plan-parity.ts `
            AgentFaceService/task-core/src/tests/task/task-python-orchestrator.regression.test.ts `
            AgentFaceService/task-core/src/tests/task/task-plan-parity.test.ts `
            AgentFaceService/task-core/python
+# If Task 7 Step 4 archives historical plans, also add only those moved files:
+git add BlueprintHelper/Develop/ArchivedReference/TaskSpecPythonCompilerRetire_20260524
+git add -u BlueprintHelper/Develop/Plan
 git commit -m "refactor: retire Python TaskSpec compiler"
 ```
 
 ## Self-Review
 
-- Spec coverage: plan covers strategy model, service/policy, exports, package scripts, Python tree deletion, tests, C++ contract guard, live docs, and smoke regression.
+- Spec coverage: plan covers strategy model, service/policy, exports, task-core and MCP package scripts, Python tree deletion, tests, C++ contract guard, AgentFaceService/BlueprintHelper/ClaudePlugin live docs, install/update/bootstrap script audit, and smoke regression.
 - Placeholder scan: no execution step depends on unspecified behavior; deletion and replacement steps name exact files and expected searches.
 - Type consistency: `canonical_ts` is the only new strategy id; `canonical_python`, `python_worker`, `ts_fast_path`, `parityStatus`, and `fallbackReason` are removed from active source expectations.

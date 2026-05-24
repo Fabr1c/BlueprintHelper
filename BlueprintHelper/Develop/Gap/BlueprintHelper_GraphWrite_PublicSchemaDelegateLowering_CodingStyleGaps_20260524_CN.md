@@ -5,7 +5,7 @@
 当前 public schema / compiler lowering / C++ parser 边界总体符合本轮架构取舍：
 
 - Agent-facing 仍允许 `delegate.bind` / `delegate.assign` / `delegate.unbind` / `delegate.unbind_all` / `delegate.call` 这类压缩输入。
-- Python compiler 负责 lowering 到 canonical internal shape：`kind="delegate"` + `delegate_operation`，并为 `unbind` / `clear` 补齐 `unbind_mode`。
+- AgentFace task-core TypeScript compiler 负责 lowering 到 canonical internal shape：`kind="delegate"` + `delegate_operation`，并为 `unbind` / `clear` 补齐 `unbind_mode`。
 - C++ SemanticIR parser 只消费 lowering 后的 internal schema，不接受 dotted public delegate kinds。
 - 当前实现保持强类型二级字段 `delegate_operation`，没有引入弱类型可选 `intent` 字段。
 
@@ -21,11 +21,11 @@
 
 - `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.cpp`
 - `BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintHelperGraphSemanticIRRuntimeFactTests.cpp`
-- `AgentFaceService/task-core/python/tests/test_graph_write_delegate_statements.py`
+- `AgentFaceService/task-core/src/task/compiler/task-compiler.event-delegate.test.ts`
 
 当前证据：
 
-- Python compiler 测试覆盖了 public `delegate.*` lowering 到 `kind="delegate"` + `delegate_operation`。
+- TS compiler 测试覆盖了 public `delegate.*` lowering 到 `kind="delegate"` + `delegate_operation`。
 - C++ runtime fact 测试覆盖了 dotted public kinds 被 parser 拒绝，以及 canonical `kind="delegate"` 被接受。
 - C++ parser 代码实际拥有 operation-specific invariant：`delegate_operation` 必填、operation 必须在支持集合内、`bind/assign/unbind` 需要 handler、`unbind` 需要 `unbind_mode=single`、`clear` 需要 `unbind_mode=all` 且不能携带 handler。
 
@@ -53,14 +53,14 @@
 涉及范围：
 
 - `AgentFaceService/task-core/src/task/schema/task-contract.ts`
-- `AgentFaceService/task-core/python/blueprinthelper_task/compiler/graph_write_append.py`
-- `AgentFaceService/task-core/python/tests/test_graph_write_delegate_statements.py`
+- `AgentFaceService/task-core/src/task/compiler/task-compiler.ts`
+- `AgentFaceService/task-core/src/task/compiler/task-compiler.event-delegate.test.ts`
 - `BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintHelperGraphSemanticIRRuntimeFactTests.cpp`
 - `BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintHelperActionResolutionContractTests.cpp`
 
 当前证据：
 
-- public delegate kinds、internal kind、operation kinds、forbidden top-level kinds 在 TypeScript contract、Python compiler、Python tests、C++ tests/source contract 中重复出现。
+- public delegate kinds、internal kind、operation kinds、forbidden top-level kinds 在 TypeScript contract、TS compiler、TS tests、C++ tests/source contract 中重复出现。
 - 当前重复是有意的边界冻结手段，短期可接受；但它不是长期的单一事实源。
 
 差距：
@@ -71,9 +71,9 @@
 关闭标准：
 
 - 建立一个单一事实源，至少满足以下之一：
-  - 由 TypeScript contract 中的 boundary spec 生成 Python compiler allow/forbid map 与测试 fixture。
+  - 由 TypeScript contract 中的 boundary spec 生成 TS compiler allow/forbid map 与测试 fixture。
   - 新增共享 manifest，例如 `GraphWriteSemanticBoundary.v1.json`，由 TS/Python/C++ source-contract tests 消费。
-  - 新增专门的 schema-export 验证，确保 TS contract、Python compiler、C++ parser test token sets 完全一致。
+  - 新增专门的 schema-export 验证，确保 TS contract、TS compiler、C++ parser test token sets 完全一致。
 - 保持强类型字段，不引入泛化可选 `intent`。
 - C++ parser 仍只消费 canonical internal schema，不直接消费 public dotted forms。
 

@@ -140,7 +140,7 @@ test('CLI and MCP production task paths depend on the task compiler service boun
     ...collectFiles(path.resolve(AGENT_FACE_ROOT, 'mcp', 'src', 'mcp'), ['.ts']),
   ];
   const directCompilerUsers = productionFiles
-    .filter((filePath) => /compileTaskSpecToTaskPlan|compileTaskSpecWithPython/u.test(fs.readFileSync(filePath, 'utf8')))
+    .filter((filePath) => /compileTaskSpecToTaskPlan/u.test(fs.readFileSync(filePath, 'utf8')))
     .map(toRepoRelativePath);
 
   assert.deepEqual(directCompilerUsers, []);

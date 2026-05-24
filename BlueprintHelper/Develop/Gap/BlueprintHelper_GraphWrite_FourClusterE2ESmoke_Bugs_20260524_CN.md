@@ -1,10 +1,10 @@
 # GraphWrite Four Cluster E2E Smoke Bug Record 2026-05-24
 
-## 记录规则
+## Recording Rules
 
-- 本文档只记录四簇端到端 smoke 发现或复现的插件实现缺陷、GraphWrite 语义缺陷、TaskSpec schema/compiler 缺陷、readback/automation/build 行为缺陷。
-- 不记录非插件问题，例如编辑器未启动、Bridge 前置条件未满足、本机 PowerShell ExecutionPolicy、命令调用方式错误、无关 dirty worktree 项。
-- 受控诊断如果符合计划预期，例如 Generic `type_promotion` 返回 `needs_more_semantic_context`，不记为 bug。
+- This document records only plugin implementation defects found or reproduced by the four-cluster E2E smoke: GraphWrite semantic defects, TaskSpec schema/compiler defects, readback defects, automation defects, and build behavior defects.
+- Do not record non-plugin issues here, including an editor not being started, unmet Bridge prerequisites, local PowerShell execution policy, command invocation mistakes, or unrelated dirty worktree items.
+- Controlled diagnostics are not bugs when they match the smoke plan. Example: Generic `type_promotion` returning `needs_more_semantic_context`.
 
 ## Bug Index
 
@@ -38,7 +38,7 @@
   - `D:\UEProjects\Template\Saved\Automation\GraphWrite_Bug002_EventDelegateGraphStatement_20260524_005\index.json`: `succeeded=6`, `failed=0`
   - `D:\UEProjects\Template\Saved\Automation\GraphWrite_Bug002_EventDelegateActionResolution_20260524_001\index.json`: `succeeded=10`, `failed=0`
   - `D:\UEProjects\Template\Saved\Automation\GraphWrite_Bug002_DelegateBoundary_20260524_003\index.json`: `succeeded=3`, `failed=0`
-  - `AgentFaceService/task-core` node tests: `169/169` passed after the final smoke rerun.
+  - `AgentFaceService/task-core` node tests: `159/159` passed after the final smoke rerun.
 - E2E evidence:
   - `BlueprintHelper/Develop/PlanArtifacts/GraphWriteFourClusterE2ESmoke_20260524/Results/03_event_delegate_graph.json.preview.json`
   - `BlueprintHelper/Develop/PlanArtifacts/GraphWriteFourClusterE2ESmoke_20260524/Results/03_event_delegate_graph.json.execute.json`

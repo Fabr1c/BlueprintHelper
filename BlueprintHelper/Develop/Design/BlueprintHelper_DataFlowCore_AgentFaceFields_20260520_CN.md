@@ -447,7 +447,7 @@ HitNormal = HitResult.ImpactNormal
 
 ```text
 AgentFace schema/docs
--> TS/Python compiler
+-> AgentFace task-core TypeScript compiler
 -> SemanticIR parser
 -> Resolver
 -> Pattern Registry
@@ -466,7 +466,7 @@ AgentFace schema/docs
 新增 Graph body 能力时必须按以下流程接入：
 
 1. AgentFace schema / docs 定义 canonical semantic shape。
-2. TS / Python compiler 只保留 canonical shape，不做旧字段 normalization。
+2. AgentFace task-core TypeScript compiler 只保留 canonical shape，不做旧字段 normalization。
 3. SemanticIR parser 解析 `kind` 和字段。
 4. Semantic Resolver 解析 scope、symbol、target、type、candidate。
 5. Pattern Registry 根据 semantic kind 和 typed context 选择 builder。
@@ -488,7 +488,7 @@ AgentFace schema/docs
 
 ```text
 AgentFace schema/docs
--> TS/Python compiler
+-> AgentFace task-core TypeScript compiler
 -> SemanticIR parser
 -> Resolver
 -> Pattern Registry
@@ -507,10 +507,10 @@ AgentFace schema/docs
 本节只同步文档，不重新读取或验证代码实现；因此除文档同步本身外，不把代码切片 A/B 标记为完成。
 
 [x] 已完成：文档明确旧 NodeHandler / parsed-node fallback 不允许保留，也不是 deprecated compatibility。
-[x] 已完成：文档明确 Graph body statement/expression canonical 路径为 AgentFace schema/docs -> TS/Python compiler -> SemanticIR parser -> Resolver -> Pattern Registry -> NodeFragment Builder -> FragmentDAG -> Composer/Linker -> UE Mutator -> Review/Debug -> ReadContext/LogicFlow。
+[x] 已完成：文档明确 Graph body statement/expression canonical 路径为 AgentFace schema/docs -> AgentFace task-core TypeScript compiler -> SemanticIR parser -> Resolver -> Pattern Registry -> NodeFragment Builder -> FragmentDAG -> Composer/Linker -> UE Mutator -> Review/Debug -> ReadContext/LogicFlow。
 [x] 已完成：文档明确旧 Graph body shapes `call_function` / `set_member_variable` / `ref` / `compare` / `make_struct` 必须作为 unsupported kind 报错，不允许 compiler normalization、alias、deprecated mapping 或 hidden fallback。
 [ ] 未完成/待验证：TS compiler canonical allowlist、old-shape rejection tests、fixture cleanup 的当前代码状态未在本次文档同步中验证。
-[ ] 未完成/待验证：Python compiler parity 与 interface integration 是否只生成 `call` / `target` 未在本次文档同步中验证。
+[ ] 未完成/待验证：canonical TS compiler 的 interface integration 是否只生成 `call` / `target` 未在本次文档同步中验证。
 [ ] 未完成/待验证：UE SemanticIR parser、Resolver、Pattern Registry、NodeFragment Builder、FragmentDAG、Composer/Linker、Mutator 是否已完整接入 first-batch kinds 未在本次文档同步中验证。
 [ ] 未完成/待验证：construct/deconstruct 两阶段 preview 是否返回 candidate field lists 且不写资产未在本次文档同步中验证。
 [ ] 未完成/待验证：Review/Debug evidence 与 ReadContext/LogicFlow 是否消费同一 canonical semantic/fragment evidence 未在本次文档同步中验证。

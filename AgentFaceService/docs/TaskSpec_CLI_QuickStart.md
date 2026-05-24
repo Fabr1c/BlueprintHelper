@@ -2,11 +2,13 @@
 
 This guide documents the BlueprintHelper CLI entry for shell-capable Agents.
 
-Task write mainline: Agent -> BlueprintHelper CLI -> task-core -> Python Task Compiler -> Bridge preview/execute -> UE Task Runtime -> Existing Capability Clusters.
+Task write mainline: Agent -> BlueprintHelper CLI -> AgentFace task-core TypeScript compiler -> Bridge preview/execute -> UE Task Runtime -> Existing Capability Clusters.
+
+TaskSpec compiler ownership: AgentFace task-core TypeScript compiler is the canonical production compiler. Legacy fallback and parity-gate paths are retired; new TaskSpec capabilities must be implemented and tested in TS first.
 
 ## Purpose
 
-Use the CLI when an Agent can run shell commands and should avoid large escaped JSON output. The CLI is the current Agent-facing surface for ordinary TaskSpec writes in shell-capable environments. It keeps Agent stdout compact, supports selected-field output, and still preserves TaskSpec-first writes, Python compilation, Bridge preview, and UE Task Runtime execution.
+Use the CLI when an Agent can run shell commands and should avoid large escaped JSON output. The CLI is the current Agent-facing surface for ordinary TaskSpec writes in shell-capable environments. It keeps Agent stdout compact, supports selected-field output, and still preserves TaskSpec-first writes, TypeScript compilation, Bridge preview, and UE Task Runtime execution.
 
 TaskSpec, ReadSpec, diagnostics, debug summaries, write-session requests, and result queries use the CLI in the current Agent workflow. MCP is restricted to editor open/close lifecycle in ordinary Agent workflows. Compatibility for `blueprint_open_editor` / `blueprint_close_editor` uses the global MCP lifecycle tools, not CLI lifecycle aliases.
 
@@ -85,7 +87,7 @@ node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js blueprinthelper_previ
 
 ## Execute
 
-Execute only after preview passes. This uses the same Python Task Compiler handoff, Bridge task execution, and UE Task Runtime execution path as `blueprinthelper_execute_task`.
+Execute only after preview passes. This uses the same canonical TypeScript compiler handoff, Bridge task execution, and UE Task Runtime execution path as `blueprinthelper_execute_task`.
 
 ```powershell
 node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js task execute --file .\task_spec.json --format summary
@@ -160,7 +162,7 @@ Example projected output:
 - Use bare TaskSpec files with `task preview` / `task execute`; use `task_spec` wrapper files with `blueprinthelper_preview_task` / `blueprinthelper_execute_task`.
 - Prefer `AgentFaceService/agent-guide/Templates/` copy-and-edit JSON templates or `--stdin` over inline PowerShell `--json` for complex inputs.
 - Preview before execute.
-- The CLI is the Agent-facing transport layer; it does not replace the Python Task Compiler or UE Task Runtime.
+- The CLI is the Agent-facing transport layer; it does not replace the canonical AgentFace task-core TypeScript compiler or UE Task Runtime.
 - The CLI is not a raw Bridge write surface for ordinary asset writes.
 - Use global MCP allowlist for Agent-owned Editor open/close; compatibility paths for `blueprint_open_editor` / `blueprint_close_editor` are MCP lifecycle paths, not CLI aliases.
 - Deprecated MCP ordinary tools are not fallback paths for ordinary Agent workflows.

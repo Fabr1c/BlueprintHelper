@@ -21,7 +21,7 @@ GraphStatement Framework 的目标不是让 AgentFace 直接描述 UE 节点，�
 ```text
 AgentFace TaskSpec
 -> BlueprintLogicSpec / Graph body canonical semantic statement
--> TS / Python compiler
+-> AgentFace task-core TypeScript compiler
 -> UE SemanticIR parser
 -> Semantic Resolver / typed resolver
 -> Semantic Resolver
@@ -545,7 +545,7 @@ This taxonomy does not change the top-level `SpawnerClusterKind` dispatch rule. 
 - 已接入的 first slice 为 `spawn_actor`、`create_widget`、`construct_object`、`make_array`、`make_map`、`make_set`，均通过 selected NodeSpawner evidence 后由 `FBlueprintHelperActionNodeSpawnerAdapter` 执行。
 - `asset_action` 暂不伪造成功；没有投影出的 ActionDatabase / selected spawner evidence 时保持可行动失败。
 - Struct `construct/deconstruct` 仍归 Struct / TypeStructure 语义，不计入 broad create。
-- 2026-05-24 verification: AgentFace TS/Python compiler tests、UE 5.6 compile、`BlueprintHelper.GraphWrite.ActionResolution.Contract`、`BlueprintHelper.GraphWrite.ActionResolution.Generic.Create`、`BlueprintHelper.GraphWrite.ActionResolution.Generic`、`BlueprintHelper.GraphWrite.LegacyMainline`、full `BlueprintHelper.GraphWrite` automation 均已通过。
+- 2026-05-24 verification: AgentFace TS compiler tests、UE 5.6 compile、`BlueprintHelper.GraphWrite.ActionResolution.Contract`、`BlueprintHelper.GraphWrite.ActionResolution.Generic.Create`、`BlueprintHelper.GraphWrite.ActionResolution.Generic`、`BlueprintHelper.GraphWrite.LegacyMainline`、full `BlueprintHelper.GraphWrite` automation 均已通过。
 
 ## 2026-05-24 Generic Convert/Schedule Ownership Closure
 
@@ -554,4 +554,4 @@ This taxonomy does not change the top-level `SpawnerClusterKind` dispatch rule. 
 - `dynamic_cast` and `class_cast` can select cast-node spawner evidence when `target_class_path` is projected; missing target class evidence returns `needs_more_semantic_context`.
 - `type_promotion`, `timer_delegate_node`, and `latent_or_async_node` are only considered success-capable after projected spawner evidence exists; until then they return deterministic missing-context diagnostics rather than fake success.
 - Generic schedule support is only considered complete for operations that expose selected spawner evidence or deterministic missing-context diagnostics; normal Kismet timer calls remain FunctionAction.
-- 2026-05-24 verification: AgentFace TS/Python compiler tests、UE 5.6 compile、`BlueprintHelper.GraphWrite.ActionResolution`、`BlueprintHelper.GraphWrite.ActionContext`、full `BlueprintHelper.GraphWrite` automation 均已通过；最新 full report 为 `Saved/Automation/GraphWrite_GenericConvertSchedule_Final_20260524_001/index.json`，155 succeeded + 11 succeeded with warnings，0 failed，0 not run。
+- 2026-05-24 verification: AgentFace TS compiler tests、UE 5.6 compile、`BlueprintHelper.GraphWrite.ActionResolution`、`BlueprintHelper.GraphWrite.ActionContext`、full `BlueprintHelper.GraphWrite` automation 均已通过；最新 full report 为 `Saved/Automation/GraphWrite_GenericConvertSchedule_Final_20260524_001/index.json`，155 succeeded + 11 succeeded with warnings，0 failed，0 not run。

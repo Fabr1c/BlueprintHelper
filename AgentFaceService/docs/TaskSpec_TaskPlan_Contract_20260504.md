@@ -21,10 +21,12 @@ AgentFaceService/task-core/src/task/fixtures/task-protocol.fixtures.ts
 The supported chain is:
 
 ```text
-Agent -> BlueprintHelper CLI -> task-core -> Python compiler -> TaskPlan structured IR -> Bridge/UE Task Runtime
+Agent -> BlueprintHelper CLI -> AgentFace task-core TypeScript compiler -> TaskPlan structured IR -> Bridge/UE Task Runtime
 ```
 
-Ordinary Agents submit `BlueprintHelper.TaskSpec.v1` only. They do not author `BlueprintHelper.TaskPlan.v1`. task-core dispatches to the Python Task Compiler, which owns TaskPlan generation; UE Task Runtime executes the lowered adapter work derived from that IR.
+Ordinary Agents submit `BlueprintHelper.TaskSpec.v1` only. They do not author `BlueprintHelper.TaskPlan.v1`. The canonical AgentFace task-core TypeScript compiler owns TaskPlan generation; UE Task Runtime executes the lowered adapter work derived from that IR.
+
+TaskSpec compiler ownership: AgentFace task-core TypeScript compiler is the canonical production compiler. Legacy fallback and parity-gate paths are retired; new TaskSpec capabilities must be implemented and tested in TS first.
 
 ## 2. Versioned Schemas
 
@@ -48,8 +50,8 @@ Ordinary Agents submit `BlueprintHelper.TaskSpec.v1` only. They do not author `B
 | Owner | Writes | Reads |
 |---|---|---|
 | Agent | `BlueprintHelper.TaskSpec.v1`, `BlueprintHelper.ReadSpec.v1` | AgentGuide index, ReadContextPack, preview summary, task result |
-| CLI/task-core/Python Read Router | ReadContextPack / LogicFlow / LogicMD / LogicJson views | ReadSpec |
-| CLI/task-core/Python Task Compiler | `BlueprintHelper.TaskPlan.v1` | TaskSpec |
+| CLI/task-core Read Router | ReadContextPack / LogicFlow / LogicMD / LogicJson views | ReadSpec |
+| CLI/task-core TypeScript Task Compiler | `BlueprintHelper.TaskPlan.v1` | TaskSpec |
 | UE Task Runtime | `BlueprintHelper.TaskRunJournal.v1` | TaskPlan |
 | Existing Capability Clusters | Bridge/UE operation result facts | TaskPlan step args |
 | Review System | `BlueprintHelper.ReviewRecord.v1` from `BlueprintHelper.WriteReviewEvidence.v1` | Producer-owned write evidence, transaction rollback refs |
@@ -67,7 +69,7 @@ Rules:
 - TaskRuntime execution policy is: dry-run all executable steps first, execute steps sequentially only after dry-run passes, record partial failure in TaskRunJournal if execution fails mid-run, and block dependent downstream steps by TaskPlan topology. It does not promise global rollback by default.
 - Every asset-mutating write cluster must provide producer-owned Review evidence. ReviewStore consumes evidence and does not invent missing atomic anchors.
 - DebugCase / DebugBundle are developer diagnostics. CLI/task-core may expose summary-only `debug_case_ids[]` and `get_debug_case`, but must not return DebugBundle artifact contents, local bundle paths, raw payloads, token/settings full values, or source content.
-- Python Orchestration owns TaskSpec validation, TaskPlan generation, TaskPlan summary, and compiler error normalization. It never writes UE assets and never creates ReviewRecord or DebugBundle artifacts.
+- task-core orchestration owns TaskSpec validation, TaskPlan generation, TaskPlan summary, and compiler error normalization. It never writes UE assets and never creates ReviewRecord or DebugBundle artifacts.
 - TaskPlan execution uses TaskRuntime as the main Review / Debug / Transaction convergence point.
 - Non-TaskPlan paths may call fixed System Entry points directly. Examples: malformed Bridge request -> DebugEntry, standalone compile/save failure -> DebugEntry, ReviewAction reject failure -> DebugEntry, rollback/cleanup expert failure -> DebugEntry, Debug export failure -> DebugEntry or DebugCaseStore failure result.
 - Non-TaskPlan access does not permit arbitrary persistence. Producers must still use ReviewStore / ReviewAction / TransactionJournal / DebugEntry instead of writing ReviewRecord, Transaction Journal, DebugCase, or DebugBundle files directly.
@@ -465,7 +467,7 @@ The first composite slice is Blueprint Feature composition:
 | `TaskSpec.integration.interface` | Ensure interface implementation entry and replace its function body |
 | `TaskPlan.steps[].capability` | `blueprint_component`, `blueprint_variable`, `blueprint_class_settings`, `blueprint_signature`, `graph_write` |
 
-`create_blueprint_feature` is not a new UE mega-tool. It is a compiler-owned decomposition layer: Agent writes one semantic feature TaskSpec, the Python compiler emits multiple existing capability steps, and UE Task Runtime lowers each step through the existing clusters. The current executable slice supports `integration.interface` by lowering it to class settings, function signature, and GraphWrite function-body steps. It rejects `integration.input` as an explicit out-of-scope area, matching the current UE-side capability boundary, and still rejects `scope_policy.allow_create_assets=true` so asset creation is not silently skipped.
+`create_blueprint_feature` is not a new UE mega-tool. It is a compiler-owned decomposition layer: Agent writes one semantic feature TaskSpec, the canonical TypeScript compiler emits multiple existing capability steps, and UE Task Runtime lowers each step through the existing clusters. The current executable slice supports `integration.interface` by lowering it to class settings, function signature, and GraphWrite function-body steps. It rejects `integration.input` as an explicit out-of-scope area, matching the current UE-side capability boundary, and still rejects `scope_policy.allow_create_assets=true` so asset creation is not silently skipped.
 
 Broader function/event signature management, DataAsset/ObjectProperty, Cleanup/Ownership, and large debug payload export remain future contract extensions. Input mapping integration is intentionally cut from the current roadmap until it is rechartered as a separate capability area.
 
@@ -821,7 +823,7 @@ Runtime adapter payloads such as `append_blueprint_graph` remain lowering target
 
 When UE Task Runtime lowers this GraphWrite IR to an existing command cluster, the `custom_event` `ensure_entry` lowers to `append_blueprint_graph` with generated nodes and links. That adapter payload is runtime-internal and is not the primary Agent-facing TaskPlan example. Replace/Patch/Merge TaskSpecs produce separate `graph_write` steps with one structural op each, for example `replace_body`, `set_pin_default`, or `insert_flow`.
 
-As of the 2026-05-06 Rerun 4 update, Level 5 GraphWrite Replace/Patch/Merge smoke verified the full TaskSpec -> Python compiler -> Bridge preview -> Bridge execute -> compile/read-back path for the supported owned-block cases listed in section 5.1. Treat `append_after + custom_event_call`, `branch_fork`, and non-BlueprintHelper-owned anchors as known gaps until their fixtures pass.
+As of the 2026-05-06 Rerun 4 update, Level 5 GraphWrite Replace/Patch/Merge smoke verified the full TaskSpec -> TypeScript compiler -> Bridge preview -> Bridge execute -> compile/read-back path for the supported owned-block cases listed in section 5.1. Treat `append_after + custom_event_call`, `branch_fork`, and non-BlueprintHelper-owned anchors as known gaps until their fixtures pass.
 
 ## 9.1 Partial Failure And Topology Blocking
 
@@ -914,7 +916,7 @@ Develop/v0.3.6/DoneImplementaion
 
 The directory name is intentionally kept as-is because it is the current repository path.
 
-Current UE TaskRuntime GraphWrite contract covers the operations listed below. The Agent-authored TaskSpec first slice may still gate which strategies the Python Task Compiler emits; this catalog is not permission for ordinary Agents to call low-level tools directly or author TaskPlan by hand.
+Current UE TaskRuntime GraphWrite contract covers the operations listed below. The Agent-authored TaskSpec first slice may still gate which strategies the canonical TypeScript compiler emits; this catalog is not permission for ordinary Agents to call low-level tools directly or author TaskPlan by hand.
 
 ### 11.0 GraphWrite TaskPlan IR And Lowering Adapter
 
@@ -1022,7 +1024,7 @@ Any new TaskSpec or TaskPlan capability must update all of these together:
 1. `AgentFaceService/task-core/src/task/schema/task-contract.ts`
 2. `AgentFaceService/task-core/src/tests/task/task-contract.test.ts`
 3. `AgentFaceService/task-core/src/task/fixtures/task-protocol.fixtures.ts`
-4. `AgentFaceService/task-core/python/blueprinthelper_task/*`
+4. `AgentFaceService/task-core/src/task/compiler/*`
 5. UE Task Runtime validation or execution code if the TaskPlan shape changes.
 6. This contract document.
 

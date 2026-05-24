@@ -33,12 +33,6 @@ export function createTaskSpecCompiler(options: TaskSpecCompilerOptions = {}): T
       return {
         ...compiled,
         strategyId: selection.strategyId,
-        diagnostics: {
-          ...(compiled.diagnostics ?? {}),
-          ...(selection.parityStatus ? { parityStatus: selection.parityStatus } : {}),
-          ...(selection.parityReason ? { parityReason: selection.parityReason } : {}),
-          ...(selection.fallbackReason ? { fallbackReason: selection.fallbackReason } : {}),
-        },
       };
     } catch (err) {
       if (err instanceof TaskSpecCompileError) {

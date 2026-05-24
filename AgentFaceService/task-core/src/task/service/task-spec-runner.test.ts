@@ -55,7 +55,7 @@ function createPreviewRunner() {
     bridge,
     taskCompiler: async () => createCompiledTaskPlan({
       taskPlan: graphWriteAppendExpectedTaskPlanFixture,
-      strategyId: 'ts_fast_path',
+      strategyId: 'canonical_ts',
     }),
   });
 }
