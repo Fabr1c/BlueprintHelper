@@ -10,7 +10,7 @@
 
 ```text
 AgentFace 编写 TaskSpec
--> task-core / Python compiler
+-> AgentFace task-core TypeScript compiler
 -> BlueprintHelper.TaskPlan.v1
 -> Bridge preview_task_plan / execute_task_plan
 -> UE TaskRuntime
@@ -334,8 +334,8 @@ TaskSpec execute 可能产生：
 
 - `AgentFaceService/task-core/src/task/schema/task-schemas.ts`
 - `AgentFaceService/task-core/src/task/compiler/task-compiler.ts`
-- `AgentFaceService/task-core/python/blueprinthelper_task/compiler/p1_capabilities.py`
-- `AgentFaceService/task-core/python/blueprinthelper_task/compiler/p2_capabilities.py`
+- `AgentFaceService/task-core/src/task/compiler/task-compiler.ts`
+- `AgentFaceService/task-core/src/task/compiler/task-compiler-service.ts`
 - `AgentFaceService/agent-guide/Templates/write/SEMANTIC_INDEX.md`
 - `BlueprintHelper/Source/BlueprintHelper/Public/Runtime/TaskRuntime/TaskPlanAdapters/*`
 - `BlueprintHelper/Source/BlueprintHelper/Public/Runtime/TaskRuntime/Clusters/*`
@@ -347,7 +347,7 @@ Canonical Graph body statement/expression path:
 
 ```text
 AgentFace schema/docs
--> TS/Python compiler
+-> AgentFace task-core TypeScript compiler
 -> SemanticIR parser
 -> Resolver
 -> Pattern Registry
@@ -361,9 +361,9 @@ AgentFace schema/docs
 
 - [x] 文档已记录：old NodeHandler / parsed-node fallback 不允许保留，也不是 deprecated compatibility。
 - [x] 文档已记录：legacy Graph body shapes `call_function` / `set_member_variable` / `ref` / `compare` / `make_struct` 必须作为 unsupported kind 报错，不允许 compiler normalization、alias、deprecated mapping 或 hidden fallback。
-- [x] 文档已记录：Graph body statement/expression canonical path 从 AgentFace schema/docs 经 TS/Python compiler、SemanticIR parser、Resolver、Pattern Registry、NodeFragment Builder、FragmentDAG、Composer/Linker、UE Mutator，到 Review/Debug 与 ReadContext/LogicFlow。
-- [ ] 未完成/待验证：本次 Slice C 未验证 TS/Python compiler、UE SemanticIR/Resolver/FragmentDAG/Mutator、Review/Debug、ReadContext/LogicFlow 的当前代码状态。
-- [o] 部分完成：UE compile、editor preview/execute smoke、construct/deconstruct Vector smoke 已记录；TS/Python tests、field-list/candidate preview、LogicFlow/readback 仍未在本次同步中验证。
+- [x] 文档已记录：Graph body statement/expression canonical path 从 AgentFace schema/docs 经 AgentFace task-core TypeScript compiler、SemanticIR parser、Resolver、Pattern Registry、NodeFragment Builder、FragmentDAG、Composer/Linker、UE Mutator，到 Review/Debug 与 ReadContext/LogicFlow。
+- [ ] 未完成/待验证：本次 Slice C 未验证 canonical TS compiler、UE SemanticIR/Resolver/FragmentDAG/Mutator、Review/Debug、ReadContext/LogicFlow 的当前代码状态。
+- [o] 部分完成：UE compile、editor preview/execute smoke、construct/deconstruct Vector smoke 已记录；TS tests、field-list/candidate preview、LogicFlow/readback 仍未在本次同步中验证。
 
 ## 2026-05-24 Struct / TypeStructure 能力同步
 

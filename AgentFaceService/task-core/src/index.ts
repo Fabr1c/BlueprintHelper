@@ -4,8 +4,6 @@ export * from './task/compiler/task-compiler.js';
 export * from './task/compiler/task-compiler-policy.js';
 export * from './task/compiler/task-compiler-registry.js';
 export * from './task/compiler/task-compiler-service.js';
-export * from './task/compiler/task-python-orchestrator.js';
-export * from './task/compiler/task-plan-parity.js';
 export * from './task/runtime/task-result-store.js';
 export * from './task/schema/task-schemas.js';
 export * from './task/service/task-spec-runner.js';

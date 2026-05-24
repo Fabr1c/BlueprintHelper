@@ -4,7 +4,7 @@
 
 **Goal:** 修复四簇 E2E smoke 中的两个 P1 blocker：Field component property path owner evidence 丢失，以及 EventDelegate public TaskSpec kind 未接入 TS compiler lowering。
 
-**Architecture:** 本计划只扩展现有边界：BUG-001 落在 ActionContext demand/inference 边界，BUG-002 落在 AgentFace TS TaskSpec compiler lowering 边界。不得放宽 FieldVariableActionResolver 的 owner evidence 要求，不得让 C++ GraphSemanticIR parser 直接接受 `delegate.bind` 等 public dotted kind，不得把 Python compiler retire 混入本修复。
+**Architecture:** 本计划只扩展现有边界：BUG-001 落在 ActionContext demand/inference 边界，BUG-002 落在 AgentFace TS TaskSpec compiler lowering 边界。不得放宽 FieldVariableActionResolver 的 owner evidence 要求，不得让 C++ GraphSemanticIR parser 直接接受 `delegate.bind` 等 public dotted kind，不得把退役编译器清理混入本修复。
 
 **Tech Stack:** UE 5.6 C++ automation tests, BlueprintHelper GraphWrite SemanticIR/ActionContext, TypeScript task-core compiler, Node test runner, BlueprintHelper CLI four-cluster smoke.
 
@@ -20,7 +20,7 @@ In scope:
 
 Out of scope:
 
-- Python compiler retire。
+- 退役编译器清理。
 - Event `custom_event` / `override` / `native` declaration taxonomy 重构。
 - C++ parser 直接支持 dotted public delegate kind。
 - 非插件问题写入 bug 文档。

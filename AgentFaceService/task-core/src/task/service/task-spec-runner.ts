@@ -256,9 +256,6 @@ async function compileTaskSpecForRunner(
 function recordTaskCompileTiming(timing: TaskTimingTrace | undefined, compiled: CompiledTaskPlan): void {
   addTaskTimingMarker(timing, 'taskspec_compile.strategy', {
     strategy: compiled.strategyId,
-    ...(compiled.diagnostics?.parityStatus ? { parity_status: compiled.diagnostics.parityStatus } : {}),
-    ...(compiled.diagnostics?.parityReason ? { parity_reason: compiled.diagnostics.parityReason } : {}),
-    ...(compiled.diagnostics?.fallbackReason ? { fallback_reason: compiled.diagnostics.fallbackReason } : {}),
     ...(typeof compiled.diagnostics?.compilerOutputBytes === 'number'
       ? { output_bytes: compiled.diagnostics.compilerOutputBytes }
       : {}),

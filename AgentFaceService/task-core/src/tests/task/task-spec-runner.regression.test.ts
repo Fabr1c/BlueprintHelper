@@ -109,7 +109,7 @@ test('executeTask propagates modified state from Bridge execution result', async
     taskCompiler: async () => ({
       schema: 'BlueprintHelper.TaskCompilerResult.v1',
       taskPlan,
-      strategyId: 'canonical_python',
+      strategyId: 'canonical_ts',
     }),
   });
 
@@ -375,7 +375,7 @@ test('previewTask develop timing records preview token request preparation', asy
   assert.equal(preview.toolResult.ok, true);
   assert.equal(stageNames.includes('preview_token.allocate_preview_id'), true);
   assert.equal(stageNames.includes('preview_token.prepare_request'), true);
-  assert.equal(strategyStage?.strategy, 'canonical_python');
+  assert.equal(strategyStage?.strategy, 'canonical_ts');
 });
 
 function makeSingleStepTaskPlan(taskName: string, dryRunMode: 'none' | 'quick' | 'full' = 'full'): TaskPlan {
@@ -452,7 +452,7 @@ function makeCompilerResult(taskPlan: TaskPlan) {
   return {
     schema: 'BlueprintHelper.TaskCompilerResult.v1',
     taskPlan,
-    strategyId: 'canonical_python',
+    strategyId: 'canonical_ts',
   } as const;
 }
 

@@ -436,15 +436,24 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperGraphWriteDelegatePublicInternalBoundaryContractTest::RunTest(const FString& Parameters)
 {
-	const FString PythonCompilerPath = FPaths::Combine(
+	const FString TsCompilerSourcePath = FPaths::Combine(
 		FPaths::ProjectPluginsDir(),
 		TEXT("BlueprintHelper"),
 		TEXT("AgentFaceService"),
 		TEXT("task-core"),
-		TEXT("python"),
-		TEXT("blueprinthelper_task"),
+		TEXT("src"),
+		TEXT("task"),
 		TEXT("compiler"),
-		TEXT("graph_write_append.py"));
+		TEXT("task-compiler.ts"));
+	const FString TsContractSourcePath = FPaths::Combine(
+		FPaths::ProjectPluginsDir(),
+		TEXT("BlueprintHelper"),
+		TEXT("AgentFaceService"),
+		TEXT("task-core"),
+		TEXT("src"),
+		TEXT("task"),
+		TEXT("schema"),
+		TEXT("task-contract.ts"));
 	const FString GraphSemanticIRSourcePath = BuildGraphWritePrivateSourcePath(
 		TEXT("GraphStatement"),
 		TEXT("BlueprintHelperGraphSemanticIR.cpp"));
@@ -452,13 +461,19 @@ bool FBlueprintHelperGraphWriteDelegatePublicInternalBoundaryContractTest::RunTe
 		TEXT("GraphStatement/Utils"),
 		TEXT("BlueprintHelperGraphSemanticIRUtils.cpp"));
 
-	FString PythonCompilerSource;
+	FString TsCompilerSource;
+	FString TsContractSource;
 	FString GraphSemanticIRSource;
 	FString GraphSemanticIRUtilsSource;
 	bool bClean = true;
-	if (!FFileHelper::LoadFileToString(PythonCompilerSource, *PythonCompilerPath))
+	if (!FFileHelper::LoadFileToString(TsCompilerSource, *TsCompilerSourcePath))
 	{
-		AddError(FString::Printf(TEXT("Python GraphWrite compiler source could not be read: %s"), *PythonCompilerPath));
+		AddError(FString::Printf(TEXT("TaskSpec TS compiler source could not be read: %s"), *TsCompilerSourcePath));
+		bClean = false;
+	}
+	if (!FFileHelper::LoadFileToString(TsContractSource, *TsContractSourcePath))
+	{
+		AddError(FString::Printf(TEXT("TaskSpec TS contract source could not be read: %s"), *TsContractSourcePath));
 		bClean = false;
 	}
 	if (!FFileHelper::LoadFileToString(GraphSemanticIRSource, *GraphSemanticIRSourcePath))
@@ -477,15 +492,26 @@ bool FBlueprintHelperGraphWriteDelegatePublicInternalBoundaryContractTest::RunTe
 		return false;
 	}
 
-	const TArray<FString> RequiredPythonTokens = {
+	const TArray<FString> RequiredTsCompilerTokens = {
 		TEXT("PUBLIC_DELEGATE_STATEMENT_KIND_ALIASES"),
 		TEXT("INTERNAL_DELEGATE_STATEMENT_KIND"),
 		TEXT("FORBIDDEN_AGENT_DELEGATE_INTERNAL_KINDS"),
 		TEXT("delegate_operation")
 	};
-	for (const FString& Token : RequiredPythonTokens)
+	for (const FString& Token : RequiredTsCompilerTokens)
 	{
-		bClean &= TestTrue(*FString::Printf(TEXT("Python compiler declares delegate boundary token %s"), *Token), PythonCompilerSource.Contains(Token));
+		bClean &= TestTrue(*FString::Printf(TEXT("TS compiler declares delegate boundary token %s"), *Token), TsCompilerSource.Contains(Token));
+	}
+
+	const TArray<FString> RequiredTsContractTokens = {
+		TEXT("event_delegate_use_site_boundary"),
+		TEXT("delegate.bind"),
+		TEXT("delegate.unbind_all"),
+		TEXT("public_to_internal_lowering")
+	};
+	for (const FString& Token : RequiredTsContractTokens)
+	{
+		bClean &= TestTrue(*FString::Printf(TEXT("TS contract declares delegate boundary token %s"), *Token), TsContractSource.Contains(Token));
 	}
 
 	bClean &= TestTrue(TEXT("C++ parser accepts canonical component_bound_event"), GraphSemanticIRUtilsSource.Contains(TEXT("TEXT(\"component_bound_event\")")));
@@ -513,7 +539,7 @@ bool FBlueprintHelperGraphWriteDelegatePublicInternalBoundaryContractTest::RunTe
 		}
 	}
 
-	TestTrue(TEXT("Delegate public schema/internal lowering boundary is source-guarded"), bClean);
+	TestTrue(TEXT("Delegate TS compiler/contract to C++ internal lowering boundary is source-guarded"), bClean);
 	return bClean;
 }
 

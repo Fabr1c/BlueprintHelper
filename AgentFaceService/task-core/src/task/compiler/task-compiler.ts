@@ -26,7 +26,7 @@ export class TaskSpecCompileError extends Error {
   }
 }
 
-export type TaskCompilerStrategyId = 'canonical_python' | 'ts_fast_path' | 'python_worker';
+export type TaskCompilerStrategyId = 'canonical_ts';
 
 export interface TaskCompileOptions {
   dryRun: boolean;
@@ -37,16 +37,13 @@ export interface TaskCompileDiagnostics {
   bridgePayload?: Record<string, unknown>;
   taskPlanSummary?: Record<string, unknown>;
   compilerOutputBytes?: number;
-  fallbackReason?: string;
-  parityStatus?: string;
-  parityReason?: string;
   [key: string]: unknown;
 }
 
 export interface CompiledTaskPlan {
   schema: typeof TASK_COMPILER_RESULT_SCHEMA;
   taskPlan: TaskPlan;
-  strategyId: TaskCompilerStrategyId | string;
+  strategyId: TaskCompilerStrategyId;
   diagnostics?: TaskCompileDiagnostics;
 }
 
@@ -58,7 +55,7 @@ export interface TaskCompilerStrategy {
 
 export function createCompiledTaskPlan(input: {
   taskPlan: TaskPlan;
-  strategyId: TaskCompilerStrategyId | string;
+  strategyId: TaskCompilerStrategyId;
   diagnostics?: TaskCompileDiagnostics;
 }): CompiledTaskPlan {
   return {
@@ -72,6 +69,9 @@ export function createCompiledTaskPlan(input: {
 type TaskPlanStep = TaskPlan['steps'][number];
 
 export function compileTaskSpecToTaskPlan(taskSpec: TaskSpec): TaskPlan {
+  if (taskSpec.task_type === 'create_asset') {
+    return compileAssetFactoryTaskSpecToTaskPlan(taskSpec);
+  }
   if (taskSpec.task_type === 'create_blueprint_feature') {
     return compileCompositeBlueprintFeatureTaskSpecToTaskPlan(taskSpec);
   }
@@ -89,7 +89,7 @@ export function compileTaskSpecToTaskPlan(taskSpec: TaskSpec): TaskPlan {
       {
         code: 'unsupported_task_type',
         path: 'task_type',
-        message: 'This TypeScript fallback compiler currently supports GraphWrite, Blueprint Variables, Signature, ObjectProperty, and composite feature slices; other capability compilation is owned by the Python compiler.',
+        message: 'The canonical TypeScript compiler currently supports AssetFactory, GraphWrite, Blueprint Variables, Signature, ObjectProperty, and composite feature slices.',
       },
     ]);
   }
@@ -111,6 +111,47 @@ export function compileTaskSpecToTaskPlan(taskSpec: TaskSpec): TaskPlan {
       review_baseline_dirty_asset_policy: taskSpec.execution_policy.review_baseline_dirty_asset_policy ?? 'block',
     },
     steps: makeGraphWriteTaskPlanSteps(taskSpec, graphWriteOps),
+  };
+}
+
+function compileAssetFactoryTaskSpecToTaskPlan(
+  taskSpec: Extract<TaskSpec, { task_type: 'create_asset' }>,
+): TaskPlan {
+  const asset = taskSpec.behavior.asset as Record<string, unknown>;
+  const op = omitUndefined({
+    op: 'create_asset',
+    asset_type: getRequiredString(asset, 'asset_type', 'behavior.asset.asset_type'),
+    parent_class: optionalString(asset, 'parent_class'),
+    value_type: optionalString(asset, 'value_type'),
+    fields: Array.isArray(asset['fields']) ? asset['fields'] : undefined,
+    row_struct: optionalString(asset, 'row_struct'),
+    data_asset_class: optionalString(asset, 'data_asset_class'),
+    collision: optionalString(asset, 'collision') ?? optionalString(asset, 'collision_policy'),
+  }) as { op: string; [key: string]: unknown };
+
+  return {
+    schema: TASK_PLAN_SCHEMA,
+    task_name: taskSpec.feature_name,
+    task_type: taskSpec.task_type,
+    context_id: taskSpec.context_id,
+    target_assets: [taskSpec.target.asset_path],
+    execution_policy: {
+      dry_run_mode: taskSpec.execution_policy.dry_run_mode,
+      should_compile: taskSpec.validation.should_compile,
+      should_save: taskSpec.validation.should_save,
+      review_baseline_dirty_asset_policy: taskSpec.execution_policy.review_baseline_dirty_asset_policy ?? 'block',
+    },
+    steps: [{
+      step_id: 'step_001',
+      capability: 'asset_factory',
+      target: {
+        asset_path: taskSpec.target.asset_path,
+      },
+      write: {
+        strategy: 'asset_create',
+        ops: [op],
+      },
+    }],
   };
 }
 

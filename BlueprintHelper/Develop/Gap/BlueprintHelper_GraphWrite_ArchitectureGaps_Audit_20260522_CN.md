@@ -144,7 +144,7 @@ Closure evidence:
 - `D:\UEProjects\Template\Saved\Automation\GraphWrite_Gap5_LegacyMainline_GREEN_001\index.json`, 8 succeeded, 0 failed, 0 not run.
 - `D:\UEProjects\Template\Saved\Automation\GraphWrite_Gap5_Capability80_GREEN_001\index.json`, 5 succeeded, 0 failed, 0 not run.
 - `D:\UEProjects\Template\Saved\Automation\GraphWrite_Gap5_Regression_FINAL_001\index.json`, 122 succeeded, 10 succeeded with warnings, 0 failed, 0 not run.
-- AgentFace Python tests: 57 OK.
+- AgentFace TS compiler tests and task-core Node tests are the current compiler evidence set.
 - AgentFace Node tests: 150 pass, 0 fail.
 - UE 5.6 `Build.bat TemplateEditor Win64 Development`, `Result: Succeeded`.
 
@@ -184,7 +184,7 @@ Closure evidence:
 ```powershell
 npm.cmd run build
 npm.cmd run test:node
-python -m unittest discover -s python/tests -t python
+npm.cmd run test:node
 & 'E:\UE_5.6\Engine\Build\BatchFiles\Build.bat' TemplateEditor Win64 Development -Project='D:\UEProjects\Template\Template.uproject' -WaitMutex -NoHotReloadFromIDE
 & 'E:\UE_5.6\Engine\Binaries\Win64\UnrealEditor-Cmd.exe' 'D:\UEProjects\Template\Template.uproject' -Unattended -NoSplash -NoSound -NullRHI -nop4 -ExecCmds='Automation RunTests BlueprintHelper.GraphWrite;Quit' -TestExit='Automation Test Queue Empty' -ReportOutputPath='D:\UEProjects\Template\Saved\Automation\GraphWrite_Gap5_Regression_FINAL_001'
 ```
@@ -204,7 +204,7 @@ The historical Gap 1-5 records above remain closed for their original scope. The
 ## 2026-05-24 Generic Broad Create Closure
 
 - Closed for explicit broad-create first slice: `spawn_actor`, `create_widget`, `construct_object`, `make_array`, `make_map`, `make_set`.
-- Closure evidence: AgentFace TS/Python compiler tests, UE 5.6 compile, `BlueprintHelper.GraphWrite.ActionResolution.Contract`, `BlueprintHelper.GraphWrite.ActionResolution.Generic.Create`, `BlueprintHelper.GraphWrite.ActionResolution.Generic`, `BlueprintHelper.GraphWrite.LegacyMainline`, and full `BlueprintHelper.GraphWrite` automation.
+- Closure evidence: AgentFace TS compiler tests, UE 5.6 compile, `BlueprintHelper.GraphWrite.ActionResolution.Contract`, `BlueprintHelper.GraphWrite.ActionResolution.Generic.Create`, `BlueprintHelper.GraphWrite.ActionResolution.Generic`, `BlueprintHelper.GraphWrite.LegacyMainline`, and full `BlueprintHelper.GraphWrite` automation.
 - `asset_action` remains intentionally open unless projected ActionDatabase / selected spawner evidence exists; current behavior is `needs_more_semantic_context`, not fake success.
 - This closure does not change the open follow-up Gap 3/4/5 entries above.
 
@@ -215,7 +215,7 @@ The historical Gap 1-5 records above remain closed for their original scope. The
 - `dynamic_cast` and `class_cast` can resolve to cast-node spawner evidence when target class evidence is present.
 - `type_promotion`, `timer_delegate_node`, and `latent_or_async_node` remain honest missing-context paths until projected type-promotion, timer/delegate, or latent node spawner evidence exists; current behavior is `needs_more_semantic_context`, not fake success.
 - Ambiguous Function+Generic second-stage ownership is rejected with `ambiguous_convert_schedule_owner`.
-- Closure evidence: AgentFace TS/Python compiler tests, UE 5.6 compile, `BlueprintHelper.GraphWrite.ActionResolution`, `BlueprintHelper.GraphWrite.ActionContext`, and full `BlueprintHelper.GraphWrite` automation; latest full report is `Saved/Automation/GraphWrite_GenericConvertSchedule_Final_20260524_001/index.json` with 155 succeeded, 11 succeeded with warnings, 0 failed, 0 not run.
+- Closure evidence: AgentFace TS compiler tests, UE 5.6 compile, `BlueprintHelper.GraphWrite.ActionResolution`, `BlueprintHelper.GraphWrite.ActionContext`, and full `BlueprintHelper.GraphWrite` automation; latest full report is `Saved/Automation/GraphWrite_GenericConvertSchedule_Final_20260524_001/index.json` with 155 succeeded, 11 succeeded with warnings, 0 failed, 0 not run.
 - This closure does not change the open follow-up Gap 3/4/5 entries above.
 
 ## 2026-05-24 Struct / TypeStructure construct-deconstruct gap sync

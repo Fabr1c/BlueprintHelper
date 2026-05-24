@@ -9,7 +9,6 @@
     "build:mcp": "node ../scripts/clean-build.mjs && node ../scripts/run-tsc.mjs",
     "test": "node ../scripts/run-package-npm.mjs ../task-core run test && npm run build:mcp && npm run test:node",
     "test:node": "node scripts/run-node-tests.mjs",
-    "test:python": "node ../scripts/run-package-npm.mjs ../task-core run test:python",
     "start": "node build/index.js",
     "dev": "tsc --watch"
   },

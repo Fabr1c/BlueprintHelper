@@ -79,7 +79,7 @@ P6 已重新运行能力行、`BlueprintHelper.GraphWrite` 全量 regression 与
 
 | 验证 | 结果 | 影响 |
 |---|---|---|
-| AgentFace TS/Python compiler create coverage | PASS | `kind:"create"` statement/expression 会保留 `create_operation`、class/asset/pin type evidence，并拒绝缺少 `create_operation` 的输入。 |
+| AgentFace TS compiler create coverage | PASS | `kind:"create"` statement/expression 会保留 `create_operation`、class/asset/pin type evidence，并拒绝缺少 `create_operation` 的输入。 |
 | `BlueprintHelper.GraphWrite.ActionResolution.Generic.Create` | PASS: 3 succeeded, 0 failed | 独立 create resolver 测试覆盖 missing operation、supported create operations 与 `asset_action` no-fake-success。 |
 | `BlueprintHelper.GraphWrite.ActionResolution.Contract` | PASS: 8 succeeded, 0 failed | Contract 测试固定 `Create` 仍位于 `GenericAssetStructControlActionCluster`，`create_operation` 是二级语义 evidence。 |
 | `BlueprintHelper.GraphWrite.ActionResolution.Generic` | PASS: 8 succeeded, 0 failed | Generic provider/boundary 覆盖 broad create cluster evidence、Convert/Schedule no-fallback、struct make/break 和 singleton control evidence。 |
@@ -91,7 +91,7 @@ P6 已重新运行能力行、`BlueprintHelper.GraphWrite` 全量 regression 与
 
 | 验证 | 结果 | 影响 |
 |---|---|---|
-| AgentFace TS/Python compiler convert/schedule coverage | PASS | `kind:"convert"` / `kind:"schedule"` statement/expression 会保留 `function_operation`、`transform_operation`、`schedule_operation`、`target_class_path` 与 `graph_latent_allowed`。 |
+| AgentFace TS compiler convert/schedule coverage | PASS | `kind:"convert"` / `kind:"schedule"` statement/expression 会保留 `function_operation`、`transform_operation`、`schedule_operation`、`target_class_path` 与 `graph_latent_allowed`。 |
 | `BlueprintHelper.GraphWrite.ActionResolution` | PASS | Function-owned convert/schedule 仍归 `FunctionActionCluster`；Generic-owned convert/schedule 进入 `GenericAssetStructControlActionCluster`，缺失或不完整 evidence 返回确定性 `needs_more_semantic_context`。 |
 | `BlueprintHelper.GraphWrite.ActionContext` | PASS | ActionContext 能把显式 Generic transform/schedule operation 投影到 Generic cluster，并拒绝 Function+Generic 二级语义混用。 |
 | `BlueprintHelper.GraphWrite` | PASS: 155 succeeded + 11 succeeded with warnings, 0 failed, 0 not run | Generic Convert/Schedule 接入后 full GraphWrite regression 通过；最新报告为 `Saved/Automation/GraphWrite_GenericConvertSchedule_Final_20260524_001/index.json`。 |
