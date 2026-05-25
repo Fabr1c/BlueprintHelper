@@ -24,6 +24,9 @@ struct FBlueprintHelperEventDelegateUseSiteEvidence
 	FString BindingObjectPath;
 	FString HandlerName;
 	FString HandlerScopeClassPath;
+	FString HandlerFunctionPath;
+	FString HandlerSourceCluster;
+	FString SignatureEvidenceId;
 	FString UnbindMode;
 	FMulticastDelegateProperty* DelegateProperty = nullptr;
 	FObjectPropertyBase* ComponentBindingProperty = nullptr;

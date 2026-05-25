@@ -2,6 +2,7 @@
 
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDag.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphEventReferenceUtils.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphFragmentDagBuilderUtils.h"
 bool FBlueprintHelperGraphFragmentDagBuilder::BuildFromSemanticIR(
 	const FBlueprintHelperGraphSemanticIR& SemanticIR,
@@ -13,6 +14,17 @@ bool FBlueprintHelperGraphFragmentDagBuilder::BuildFromSemanticIR(
 	OutDag.Metadata.Add(TEXT("source_schema"), SemanticIR.Schema);
 	OutDag.Metadata.Add(TEXT("statement_count"), LexToString(SemanticIR.Statements.Num()));
 	OutDag.Metadata.Add(TEXT("symbol_count"), LexToString(SemanticIR.Symbols.Num()));
+	if (!SemanticIR.Entry.IsEmpty())
+	{
+		FBlueprintHelperGraphEventReference EntryReference;
+		EntryReference.Kind = SemanticIR.Entry.Kind;
+		EntryReference.Name = SemanticIR.Entry.Name;
+		EntryReference.GraphName = SemanticIR.Entry.GraphName;
+		EntryReference.Taxonomy = FBlueprintHelperGraphEventReferenceUtils::ParseTaxonomy(SemanticIR.Entry.EventTaxonomy);
+		EntryReference.SourceCluster = SemanticIR.Entry.SourceCluster;
+		EntryReference.SignatureEvidenceId = SemanticIR.Entry.SignatureEvidenceId;
+		FBlueprintHelperGraphEventReferenceUtils::WriteMetadata(EntryReference, OutDag.Metadata);
+	}
 
 	FBlueprintHelperGraphFragmentDagBuilderUtils::CopySemanticDiagnostics(SemanticIR, OutDag);
 

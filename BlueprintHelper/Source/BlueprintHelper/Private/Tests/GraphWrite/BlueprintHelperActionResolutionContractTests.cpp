@@ -572,6 +572,41 @@ bool FBlueprintHelperActionResolutionEventDelegateUseSiteBoundaryContractTest::R
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionResolutionEventDelegateNoCustomEventScanContractTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.Contract.EventDelegateNoCustomEventScan",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionResolutionEventDelegateNoCustomEventScanContractTest::RunTest(const FString& Parameters)
+{
+	const FString SourcePath = BuildGraphWritePrivateSourcePath(
+		TEXT("ActionResolution"),
+		TEXT("BlueprintHelperEventDelegateUseSiteEvidence.cpp"));
+
+	FString Text;
+	if (!FFileHelper::LoadFileToString(Text, *SourcePath))
+	{
+		AddError(FString::Printf(TEXT("EventDelegate evidence source could not be read: %s"), *SourcePath));
+		return false;
+	}
+
+	bool bClean = true;
+	const TArray<FString> ForbiddenTokens = {
+		TEXT("#include \"K2Node_CustomEvent.h\""),
+		TEXT("UK2Node_CustomEvent"),
+		TEXT("UbergraphPages")
+	};
+	for (const FString& Token : ForbiddenTokens)
+	{
+		if (Text.Contains(Token))
+		{
+			AddError(FString::Printf(TEXT("EventDelegate resolver must consume projected handler evidence, not scan custom events; forbidden token '%s' found."), *Token));
+			bClean = false;
+		}
+	}
+	return bClean;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperActionResolutionFunctionSemanticResolverBoundaryContractTest,
 	"BlueprintHelper.GraphWrite.ActionResolution.Contract.FunctionSemanticResolverBoundary",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

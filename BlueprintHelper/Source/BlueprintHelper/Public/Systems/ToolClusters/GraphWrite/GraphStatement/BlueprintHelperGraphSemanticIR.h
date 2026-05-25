@@ -185,9 +185,27 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphStatementIR
 	TArray<TSharedPtr<FBlueprintHelperGraphStatementIR>> ElseStatements;
 };
 
+struct BLUEPRINTHELPER_API FBlueprintHelperGraphEntryIR
+{
+	FString Kind;
+	FString Name;
+	FString GraphName;
+	FString EventTaxonomy;
+	FString SourceCluster;
+	FString SignatureEvidenceId;
+	TMap<FString, FString> ContextEvidence;
+
+	bool IsEmpty() const
+	{
+		return Kind.TrimStartAndEnd().IsEmpty()
+			&& Name.TrimStartAndEnd().IsEmpty();
+	}
+};
+
 struct BLUEPRINTHELPER_API FBlueprintHelperGraphSemanticIR
 {
 	FString Schema;
+	FBlueprintHelperGraphEntryIR Entry;
 	TArray<TSharedPtr<FBlueprintHelperGraphStatementIR>> Statements;
 	TMap<FString, FBlueprintHelperGraphSymbol> Symbols;
 	TArray<FBlueprintHelperGraphSemanticDiagnostic> Diagnostics;

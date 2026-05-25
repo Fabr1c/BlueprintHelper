@@ -49,6 +49,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphFragmentEvidenceReviewScope
 	FString GraphName;
 	FString FunctionName;
 	FString EventName;
+	FString EventTaxonomy;
 	FString MacroName;
 	TArray<FString> SourceStatementIds;
 	TArray<FString> FragmentIds;

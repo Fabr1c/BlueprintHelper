@@ -144,6 +144,15 @@ static void AddHandlerEvidence(
 {
 	Request.ContextEvidence.Add(TEXT("handler_name"), HandlerName);
 	Request.ContextEvidence.Add(TEXT("handler_scope_class_path"), HandlerScopeClass ? HandlerScopeClass->GetPathName() : TEXT(""));
+	if (HandlerScopeClass)
+	{
+		if (UFunction* HandlerFunction = HandlerScopeClass->FindFunctionByName(FName(HandlerName)))
+		{
+			Request.ContextEvidence.Add(TEXT("handler_function_path"), HandlerFunction->GetPathName());
+			Request.ContextEvidence.Add(TEXT("handler_source_cluster"), TEXT("BlueprintSignature"));
+			Request.ContextEvidence.Add(TEXT("signature_evidence_id"), FString::Printf(TEXT("signature:handler:%s"), HandlerName));
+		}
+	}
 }
 
 static bool AssertMissingEvidenceDiagnostic(
@@ -157,6 +166,23 @@ static bool AssertMissingEvidenceDiagnostic(
 	bPassed &= Test.TestEqual(*FString::Printf(TEXT("%s error code"), *Label), Result.ErrorCode, FString(TEXT("missing_required_evidence")));
 	bPassed &= Test.TestTrue(*FString::Printf(TEXT("%s message names missing evidence"), *Label), Result.Message.Contains(ExpectedDetail));
 	return bPassed;
+}
+
+static void AddStatementHandlerEvidence(
+	FBlueprintHelperGraphStatementIR& Statement,
+	UClass* HandlerScopeClass,
+	const TCHAR* HandlerName)
+{
+	if (!HandlerScopeClass || !HandlerName)
+	{
+		return;
+	}
+	if (UFunction* HandlerFunction = HandlerScopeClass->FindFunctionByName(FName(HandlerName)))
+	{
+		Statement.ContextEvidence.Add(TEXT("handler_function_path"), HandlerFunction->GetPathName());
+		Statement.ContextEvidence.Add(TEXT("handler_source_cluster"), TEXT("BlueprintSignature"));
+		Statement.ContextEvidence.Add(TEXT("signature_evidence_id"), FString::Printf(TEXT("signature:handler:%s"), HandlerName));
+	}
 }
 
 static FBlueprintHelperGraphStatementIR MakeComponentBoundEventStatement(
@@ -175,6 +201,7 @@ static FBlueprintHelperGraphStatementIR MakeComponentBoundEventStatement(
 	Statement.Property = DelegateName;
 	Statement.Name = DelegateName;
 	Statement.HandlerName = HandlerName;
+	AddStatementHandlerEvidence(Statement, AActor::StaticClass(), *HandlerName);
 	return Statement;
 }
 
@@ -198,6 +225,10 @@ static FBlueprintHelperGraphStatementIR MakeDelegateStatement(
 	Statement.DelegateOperation = Operation;
 	Statement.HandlerName = HandlerName;
 	Statement.UnbindMode = UnbindMode;
+	if (!HandlerName.IsEmpty())
+	{
+		AddStatementHandlerEvidence(Statement, AActor::StaticClass(), *HandlerName);
+	}
 	return Statement;
 }
 
@@ -413,6 +444,41 @@ bool FBlueprintHelperEventDelegateBindMissingHandlerTest::RunTest(const FString&
 		TEXT("delegate bind missing handler"),
 		FBlueprintHelperActionResolutionCore::Resolve(Request),
 		TEXT("handler_missing"));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperEventDelegateBindMissingHandlerFunctionPathTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.EventDelegate.Delegate.BindMissingHandlerFunctionPath",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperEventDelegateBindMissingHandlerFunctionPathTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeEventDelegateActionTestBlueprint();
+	UEdGraph* Graph = GetEventDelegateActionTestGraph(Blueprint);
+	TestNotNull(TEXT("blueprint"), Blueprint);
+	TestNotNull(TEXT("graph"), Graph);
+
+	FMulticastDelegateProperty* DelegateProperty =
+		FindRequiredDelegateProperty(*this, UPrimitiveComponent::StaticClass(), TEXT("OnComponentBeginOverlap"));
+	if (!DelegateProperty)
+	{
+		return false;
+	}
+
+	FBlueprintHelperActionResolutionRequest Request =
+		MakeEventDelegateActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Delegate, DelegateProperty->GetName());
+	Request.ContextEvidence.Add(TEXT("binding_object_path"), TEXT("CollisionComponent"));
+	Request.ContextEvidence.Add(TEXT("delegate_operation"), TEXT("bind"));
+	AddDelegateEvidence(Request, DelegateProperty);
+	Request.ContextEvidence.Add(TEXT("handler_name"), TEXT("K2_DestroyActor"));
+	Request.ContextEvidence.Add(TEXT("handler_scope_class_path"), AActor::StaticClass()->GetPathName());
+
+	AssertMissingEvidenceDiagnostic(
+		*this,
+		TEXT("delegate bind missing handler function path"),
+		FBlueprintHelperActionResolutionCore::Resolve(Request),
+		TEXT("handler_function_path_missing"));
 	return true;
 }
 

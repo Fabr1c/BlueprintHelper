@@ -22,6 +22,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentBuilderRegistry.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphStatementBuilder.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphEventReferenceUtils.h"
 #include "BlueprintNodeSpawner.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Engine/Blueprint.h"
@@ -84,24 +85,6 @@ static bool IsDryRunPayload(const TSharedPtr<FJsonObject>& Object)
 		(*OptionsObject)->TryGetBoolField(TEXT("dry_run"), bDryRun);
 	}
 	return bDryRun;
-}
-
-static bool HasSignatureDependencyEntryFact(const TSharedPtr<FJsonObject>& EntryObject)
-{
-	if (!EntryObject.IsValid())
-	{
-		return false;
-	}
-
-	bool bSignatureDependency = false;
-	if (EntryObject->TryGetBoolField(TEXT("signature_dependency"), bSignatureDependency) && bSignatureDependency)
-	{
-		return true;
-	}
-
-	FString Source;
-	return EntryObject->TryGetStringField(TEXT("source"), Source)
-		&& Source.Equals(TEXT("signature_dependency"), ESearchCase::IgnoreCase);
 }
 
 static UK2Node_CustomEvent* FindExistingCustomEventNode(UEdGraph* Graph, const FString& EventName)
@@ -1146,12 +1129,6 @@ static FBlueprintGenerateResult GenerateSemanticGraphFromJsonObject(
 			EntryId = EntryName.IsEmpty() ? TEXT("semantic_entry") : EntryName + TEXT("_entry");
 		}
 
-		FParsedNode EntryNodeData;
-		EntryNodeData.Id = EntryId;
-		EntryNodeData.NodeType = EParsedBlueprintNodeType::CustomEvent;
-		EntryNodeData.SourceType = TEXT("K2Node_CustomEvent");
-		EntryNodeData.EventReference.EventName = EntryName;
-		FString EntryError;
 		UK2Node* EntryNode = ShouldReconstructExistingNodes(JsonObject)
 			? FindExistingCustomEventNode(TargetGraph, EntryName)
 			: nullptr;
@@ -1166,9 +1143,13 @@ static FBlueprintGenerateResult GenerateSemanticGraphFromJsonObject(
 		}
 		else
 		{
-			if (IsDryRunPayload(JsonObject) && HasSignatureDependencyEntryFact(*EntryObject))
+			FBlueprintHelperGraphEventReference EntryReference;
+			FBlueprintHelperGraphEventReferenceUtils::TryReadEntryReference(*EntryObject, EntryReference);
+			if (IsDryRunPayload(JsonObject)
+				&& EntryReference.Taxonomy == EBlueprintHelperGraphEventTaxonomy::CustomEvent
+				&& EntryReference.HasSignatureEvidence())
 			{
-				EntryNode = CreateDryRunSignatureDependencyCustomEventNode(TargetGraph, EntryName);
+				EntryNode = CreateDryRunSignatureDependencyCustomEventNode(TargetGraph, EntryReference.Name.IsEmpty() ? EntryName : EntryReference.Name);
 				if (EntryNode)
 				{
 					FBlueprintHelperNodeFragment EntryFragment = BuildDataOnlyFragment(EntryId, EntryNode);
@@ -1185,7 +1166,7 @@ static FBlueprintGenerateResult GenerateSemanticGraphFromJsonObject(
 			}
 			else
 			{
-				AddSemanticUnresolved(OutUnresolvedNodes, EntryId, TEXT("Semantic entry creation requires a Signature dependency or SemanticIR entry fact; legacy parsed-node entry spawning has been removed."));
+				AddSemanticUnresolved(OutUnresolvedNodes, EntryId, TEXT("custom_event entry requires BlueprintSignature signature_evidence_id before GraphWrite can write the body/use-site."));
 			}
 		}
 	}

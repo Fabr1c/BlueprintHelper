@@ -197,6 +197,7 @@ FBlueprintHelperGraphFragmentEvidenceReviewScope FBlueprintHelperGraphFragmentEv
 	Scope.GraphName = ReadFirstMetadata(Dag.Metadata, { TEXT("graph_name"), TEXT("graph") });
 	Scope.FunctionName = ReadFirstMetadata(Dag.Metadata, { TEXT("function_name"), TEXT("function") });
 	Scope.EventName = ReadFirstMetadata(Dag.Metadata, { TEXT("event_name"), TEXT("event"), TEXT("custom_event_name") });
+	Scope.EventTaxonomy = ReadFirstMetadata(Dag.Metadata, { TEXT("event_taxonomy") });
 	Scope.MacroName = ReadFirstMetadata(Dag.Metadata, { TEXT("macro_name"), TEXT("macro") });
 
 	if (!TryReadMetadata(Dag.Metadata, TEXT("review_scope_id"), Scope.ScopeId)
@@ -240,6 +241,11 @@ FBlueprintHelperGraphFragmentEvidenceReviewScope FBlueprintHelperGraphFragmentEv
 	if (Scope.EventName.IsEmpty())
 	{
 		Scope.EventName = ReadFirstMetadata(Dag.Metadata, { TEXT("event_name"), TEXT("event"), TEXT("custom_event_name") });
+	}
+
+	if (Scope.EventTaxonomy.IsEmpty())
+	{
+		Scope.EventTaxonomy = ReadFirstMetadata(Dag.Metadata, { TEXT("event_taxonomy") });
 	}
 
 	if (Scope.MacroName.IsEmpty())

@@ -260,6 +260,30 @@ public:
 		return Payload;
 	}
 
+	static TSharedRef<FJsonObject> MakeReplaceGraphScopeEntrySelectorPreviewPayload(const FString& AssetPath, const FString& GraphName)
+	{
+		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+
+		TSharedRef<FJsonObject> Target = MakeShared<FJsonObject>();
+		Target->SetStringField(TEXT("asset_path"), AssetPath);
+		Target->SetStringField(TEXT("graph"), GraphName);
+		Target->SetStringField(TEXT("replace_scope"), TEXT("graph"));
+		Payload->SetObjectField(TEXT("target"), Target);
+
+		TSharedRef<FJsonObject> Selector = MakeShared<FJsonObject>();
+		Selector->SetStringField(TEXT("entry_name"), TEXT("SmokeCustomEvent"));
+		Payload->SetObjectField(TEXT("selector"), Selector);
+
+		Payload->SetObjectField(
+			TEXT("logic_spec"),
+			MakeCallLogicSpec(FString(), TEXT("PrintString"), TEXT("replace graph with invalid entry selector")));
+
+		TSharedRef<FJsonObject> Options = MakeShared<FJsonObject>();
+		Options->SetBoolField(TEXT("dry_run"), true);
+		Payload->SetObjectField(TEXT("options"), Options);
+		return Payload;
+	}
+
 	static TSharedRef<FJsonObject> MakeReplaceExecutePayload(const FString& AssetPath, const FString& GraphName)
 	{
 		TSharedRef<FJsonObject> Payload = MakeReplacePreviewPayload(AssetPath, GraphName);
@@ -1945,6 +1969,50 @@ bool FBlueprintHelperGraphWriteReplaceBlockedDryRunErrorEnvelopeTest::RunTest(co
 		TEXT("target.graph"));
 	TestEqual(TEXT("blocked replace preview leaves graph count unchanged"), Blueprint->UbergraphPages.Num(), UbergraphCountBefore);
 	TestEqual(TEXT("blocked replace preview leaves package dirty flag unchanged"), Blueprint->GetOutermost()->IsDirty(), bDirtyBefore);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteReplaceGraphScopeEntrySelectorUnsupportedTest,
+	"BlueprintHelper.GraphWrite.ToolResultBase.ReplaceGraphScopeEntrySelectorUnsupported",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteReplaceGraphScopeEntrySelectorUnsupportedTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("ReplaceGraphEntrySelector"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	const UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	const int32 NodeCountBefore = Graph->Nodes.Num();
+	const bool bDirtyBefore = Blueprint->GetOutermost()->IsDirty();
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlockIdService BlockIdService;
+	FBlueprintHelperOwnershipService OwnershipService;
+	FBlueprintHelperGraphSnapshotService SnapshotService;
+	FBlueprintHelperReplaceBlueprintGraphService ReplaceService(
+		Resolver,
+		BlockIdService,
+		OwnershipService,
+		SnapshotService);
+
+	const FBlueprintHelperToolResultBase Result = ReplaceService.Execute(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeReplaceGraphScopeEntrySelectorPreviewPayload(
+			Blueprint->GetPathName(),
+			Graph->GetName()));
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AssertBlockedDryRunFailure(
+		*this,
+		Result,
+		TEXT("replace_blueprint_graph"),
+		TEXT("graph_scope_entry_selector_unsupported"),
+		TEXT("selector.entry_name"));
+	TestEqual(TEXT("blocked graph-scope replace leaves graph nodes unchanged"), Graph->Nodes.Num(), NodeCountBefore);
+	TestEqual(TEXT("blocked graph-scope replace leaves package dirty flag unchanged"), Blueprint->GetOutermost()->IsDirty(), bDirtyBefore);
 	return true;
 }
 

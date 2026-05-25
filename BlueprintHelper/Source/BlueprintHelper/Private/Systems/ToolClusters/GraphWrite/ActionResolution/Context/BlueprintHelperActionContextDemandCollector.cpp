@@ -33,6 +33,15 @@ static FString FirstNonEmpty(
 	return FirstNonEmpty(FirstNonEmpty(First, Second, Third, Fourth, Fifth), Sixth);
 }
 
+static FString EvidenceValue(const TMap<FString, FString>& Evidence, const FString& Key)
+{
+	if (const FString* Value = Evidence.Find(Key))
+	{
+		return Value->TrimStartAndEnd();
+	}
+	return FString();
+}
+
 static bool IsEventDelegateSemantic(const EBlueprintHelperActionSemanticKind SemanticKind);
 
 static FString BuildStatementQuery(const FBlueprintHelperGraphStatementIR& Statement, const EBlueprintHelperActionSemanticKind SemanticKind)
@@ -523,6 +532,18 @@ static void ApplyEventDelegateStatementEvidence(
 	{
 		InOutDemand.HandlerName = Statement.HandlerName.TrimStartAndEnd();
 	}
+	if (InOutDemand.HandlerFunctionPath.IsEmpty())
+	{
+		InOutDemand.HandlerFunctionPath = EvidenceValue(Statement.ContextEvidence, TEXT("handler_function_path"));
+	}
+	if (InOutDemand.HandlerSourceCluster.IsEmpty())
+	{
+		InOutDemand.HandlerSourceCluster = EvidenceValue(Statement.ContextEvidence, TEXT("handler_source_cluster"));
+	}
+	if (InOutDemand.SignatureEvidenceId.IsEmpty())
+	{
+		InOutDemand.SignatureEvidenceId = EvidenceValue(Statement.ContextEvidence, TEXT("signature_evidence_id"));
+	}
 	if (InOutDemand.UnbindMode.IsEmpty())
 	{
 		InOutDemand.UnbindMode = Statement.UnbindMode.TrimStartAndEnd();
@@ -530,6 +551,18 @@ static void ApplyEventDelegateStatementEvidence(
 	if (!InOutDemand.HandlerName.IsEmpty())
 	{
 		InOutDemand.DefaultValues.Add(TEXT("handler_name"), InOutDemand.HandlerName);
+	}
+	if (!InOutDemand.HandlerFunctionPath.IsEmpty())
+	{
+		InOutDemand.DefaultValues.Add(TEXT("handler_function_path"), InOutDemand.HandlerFunctionPath);
+	}
+	if (!InOutDemand.HandlerSourceCluster.IsEmpty())
+	{
+		InOutDemand.DefaultValues.Add(TEXT("handler_source_cluster"), InOutDemand.HandlerSourceCluster);
+	}
+	if (!InOutDemand.SignatureEvidenceId.IsEmpty())
+	{
+		InOutDemand.DefaultValues.Add(TEXT("signature_evidence_id"), InOutDemand.SignatureEvidenceId);
 	}
 	if (!InOutDemand.DelegateOperation.IsEmpty())
 	{
@@ -561,6 +594,18 @@ static void ApplyEventDelegateExpressionEvidence(
 	if (InOutDemand.DelegateSignature.IsEmpty() && !Expression.Type.TrimStartAndEnd().IsEmpty())
 	{
 		InOutDemand.DelegateSignature = Expression.Type.TrimStartAndEnd();
+	}
+	if (InOutDemand.HandlerFunctionPath.IsEmpty())
+	{
+		InOutDemand.HandlerFunctionPath = EvidenceValue(Expression.ContextEvidence, TEXT("handler_function_path"));
+	}
+	if (InOutDemand.HandlerSourceCluster.IsEmpty())
+	{
+		InOutDemand.HandlerSourceCluster = EvidenceValue(Expression.ContextEvidence, TEXT("handler_source_cluster"));
+	}
+	if (InOutDemand.SignatureEvidenceId.IsEmpty())
+	{
+		InOutDemand.SignatureEvidenceId = EvidenceValue(Expression.ContextEvidence, TEXT("signature_evidence_id"));
 	}
 }
 }

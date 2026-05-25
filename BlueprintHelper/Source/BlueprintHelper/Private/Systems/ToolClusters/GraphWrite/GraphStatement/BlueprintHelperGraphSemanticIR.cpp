@@ -12,6 +12,7 @@
 #include "UObject/UnrealType.h"
 #include "UObject/UObjectIterator.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphSemanticIRUtils.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphEventReferenceUtils.h"
 
 namespace
 {
@@ -145,6 +146,57 @@ static void ReadOptionalStringMapField(
 	for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : (*MapObject)->Values)
 	{
 		OutMap.Add(Pair.Key, FBlueprintHelperGraphSemanticIRUtils::JsonValueToString(Pair.Value));
+	}
+}
+
+static void ParseLogicSpecEntry(
+	const TSharedPtr<FJsonObject>& LogicSpecObject,
+	FBlueprintHelperGraphSemanticIR& OutIR)
+{
+	const TSharedPtr<FJsonObject>* EntryObject = nullptr;
+	if (!LogicSpecObject.IsValid()
+		|| !LogicSpecObject->TryGetObjectField(TEXT("entry"), EntryObject)
+		|| !EntryObject
+		|| !EntryObject->IsValid())
+	{
+		return;
+	}
+
+	FBlueprintHelperGraphEventReference EntryReference;
+	if (!FBlueprintHelperGraphEventReferenceUtils::TryReadEntryReference(*EntryObject, EntryReference))
+	{
+		return;
+	}
+
+	OutIR.Entry.Kind = EntryReference.Kind;
+	OutIR.Entry.Name = EntryReference.Name;
+	OutIR.Entry.GraphName = EntryReference.GraphName;
+	OutIR.Entry.EventTaxonomy = FBlueprintHelperGraphEventReferenceUtils::TaxonomyToString(EntryReference.Taxonomy);
+	OutIR.Entry.SourceCluster = EntryReference.SourceCluster;
+	OutIR.Entry.SignatureEvidenceId = EntryReference.SignatureEvidenceId;
+	OutIR.Entry.ContextEvidence = EntryReference.Metadata;
+
+	if (FBlueprintHelperGraphEventReferenceUtils::IsSignatureOwnedTaxonomy(EntryReference.Taxonomy))
+	{
+		if (EntryReference.SignatureEvidenceId.TrimStartAndEnd().IsEmpty())
+		{
+			const FString DiagnosticCode = EntryReference.Taxonomy == EBlueprintHelperGraphEventTaxonomy::CustomEvent
+				? TEXT("custom_event_signature_evidence_missing")
+				: TEXT("event_signature_evidence_missing");
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(
+				OutIR,
+				DiagnosticCode,
+				TEXT("$.entry.signature_evidence_id"),
+				TEXT("Signature-owned event entry requires BlueprintSignature signature_evidence_id; GraphWrite only writes the body/use-site."));
+		}
+		if (EntryReference.SourceCluster.TrimStartAndEnd().IsEmpty())
+		{
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(
+				OutIR,
+				TEXT("event_source_cluster_missing"),
+				TEXT("$.entry.source_cluster"),
+				TEXT("Signature-owned event entry requires source_cluster evidence."));
+		}
 	}
 }
 }
@@ -437,6 +489,8 @@ bool FBlueprintHelperGraphSemanticIRBuilder::BuildFromLogicSpec(
 			FString::Printf(TEXT("Unsupported BlueprintLogicSpec schema: %s."), *OutIR.Schema),
 			TEXT("warning"));
 	}
+
+	ParseLogicSpecEntry(LogicSpecObject, OutIR);
 
 	const TArray<TSharedPtr<FJsonValue>>* StatementValues = nullptr;
 	if (!LogicSpecObject->TryGetArrayField(TEXT("statements"), StatementValues) || !StatementValues)
