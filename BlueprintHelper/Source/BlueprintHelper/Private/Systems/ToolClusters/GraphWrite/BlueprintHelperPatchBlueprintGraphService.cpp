@@ -88,6 +88,10 @@ FBlueprintHelperPatchBlueprintGraphService::ParseRequest(const TSharedPtr<FJsonO
 	if (Payload->TryGetObjectField(TEXT("patch"), PatchObj) && PatchObj->IsValid())
 	{
 		Req.PatchPayload = *PatchObj;
+		(*PatchObj)->TryGetStringField(TEXT("source_node_ref"), Req.SourceNodeRef);
+		(*PatchObj)->TryGetStringField(TEXT("source_pin_ref"), Req.SourcePinRef);
+		(*PatchObj)->TryGetStringField(TEXT("source_node_path"), Req.SourceNodePath);
+		(*PatchObj)->TryGetStringField(TEXT("source_pin_path"), Req.SourcePinPath);
 	}
 
 	const TSharedPtr<FJsonObject>* LogicSpecObject = nullptr;
@@ -174,6 +178,26 @@ FBlueprintHelperPatchBlueprintGraphService::Preflight(
 		OutTarget.Pin = Pin;
 		OutTarget.PatchedRef.PinRef = Request.PinRef;
 		if (!Request.PinPath.IsEmpty()) { OutTarget.PatchedRef.PinPath = Request.PinPath; }
+	}
+
+	if (Request.PatchType == EBlueprintHelperPatchType::ConnectPins)
+	{
+		UEdGraphPin* SourcePin = nullptr;
+		FString SourceError;
+		FString SourceField;
+		FString SourceCode;
+		if (!ResolvePatchSourcePin(Graph, Request, SourcePin, SourceError, &SourceField, &SourceCode))
+		{
+			Result.bPassed = false;
+			Result.BlockedBy.Add(SourceCode.IsEmpty() ? TEXT("source_endpoint_invalid") : SourceCode);
+			Result.Conflicts.Add({
+				SourceCode.IsEmpty() ? TEXT("source_endpoint_invalid") : SourceCode,
+				SourceError,
+				SourceField.IsEmpty() ? TEXT("patch") : SourceField,
+				SourceField.IsEmpty() ? TEXT("patch") : SourceField
+			});
+			return Result;
+		}
 	}
 
 	// Resolve target link when required.
@@ -342,7 +366,15 @@ FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::Execu
 		FBlueprintHelperToolError Error;
 		Error.Code = PreflightResult.BlockedBy.Num() > 0 ? PreflightResult.BlockedBy[0] : TEXT("preflight_failed");
 		Error.Stage = EBlueprintHelperToolStage::Preflight;
-		Error.Message = PreflightResult.Conflicts.Num() > 0 ? PreflightResult.Conflicts[0].Message : TEXT("Preflight failed.");
+		const FBlueprintHelperGraphWriteIssue* FirstIssue = PreflightResult.Conflicts.Num() > 0
+			? &PreflightResult.Conflicts[0]
+			: (PreflightResult.Errors.Num() > 0 ? &PreflightResult.Errors[0] : nullptr);
+		Error.Message = FirstIssue && !FirstIssue->Message.IsEmpty()
+			? FirstIssue->Message
+			: TEXT("Preflight failed.");
+		Error.Field = FirstIssue && !FirstIssue->Source.IsEmpty()
+			? FirstIssue->Source
+			: (Error.Code == TEXT("target_blueprint_not_found") ? TEXT("target.asset_path") : TEXT("target.graph"));
 		Error.bRetryable = false;
 		Error.RollbackResult = EBlueprintHelperRollbackResult::NotNeeded;
 		FBlueprintHelperToolResultBase FailResult = FBlueprintHelperToolResultBuilder::Failure(TEXT("patch_blueprint_graph"), TraceId, Error);
@@ -471,6 +503,106 @@ bool FBlueprintHelperPatchBlueprintGraphService::PreflightLogicSpec(
 	return OutResult.bPassed;
 }
 
+bool FBlueprintHelperPatchBlueprintGraphService::ResolvePatchSourcePin(
+	UEdGraph* Graph,
+	const FPatchRequest& Request,
+	UEdGraphPin*& OutPin,
+	FString& OutError,
+	FString* OutField,
+	FString* OutCode) const
+{
+	OutPin = nullptr;
+	OutError.Reset();
+	if (OutField)
+	{
+		OutField->Reset();
+	}
+	if (OutCode)
+	{
+		OutCode->Reset();
+	}
+
+	if (!Graph)
+	{
+		OutError = TEXT("target_graph_invalid");
+		if (OutField)
+		{
+			*OutField = TEXT("target.graph");
+		}
+		if (OutCode)
+		{
+			*OutCode = TEXT("target_graph_invalid");
+		}
+		return false;
+	}
+
+	if (Request.SourceNodeRef.IsEmpty() && Request.SourceNodePath.IsEmpty())
+	{
+		OutError = TEXT("connect_pins requires patch.source_node_ref or patch.source_node_path.");
+		if (OutField)
+		{
+			*OutField = TEXT("patch.source_node_ref");
+		}
+		if (OutCode)
+		{
+			*OutCode = TEXT("source_node_required");
+		}
+		return false;
+	}
+
+	if (Request.SourcePinRef.IsEmpty() && Request.SourcePinPath.IsEmpty())
+	{
+		OutError = TEXT("connect_pins requires patch.source_pin_ref or patch.source_pin_path.");
+		if (OutField)
+		{
+			*OutField = TEXT("patch.source_pin_ref");
+		}
+		if (OutCode)
+		{
+			*OutCode = TEXT("source_pin_required");
+		}
+		return false;
+	}
+
+	const bool bResolvingNodePath = !Request.SourceNodePath.IsEmpty();
+	const bool bResolvingPinPath = !Request.SourcePinPath.IsEmpty();
+	const FString SourceNodeIdentifier = bResolvingNodePath ? Request.SourceNodePath : Request.SourceNodeRef;
+	const FString SourcePinIdentifier = bResolvingPinPath ? Request.SourcePinPath : Request.SourcePinRef;
+	const FString ResolveNodeRef = bResolvingNodePath ? FString() : Request.SourceNodeRef;
+	const FString ResolvePinRef = bResolvingPinPath ? FString() : Request.SourcePinRef;
+	FBlueprintHelperPatchResolveError ResolveError;
+	UEdGraphNode* SourceNode = nullptr;
+	if (!PathService.ResolveNode(Graph, ResolveNodeRef, Request.SourceNodePath, SourceNode, ResolveError))
+	{
+		OutError = FString::Printf(TEXT("Unable to resolve source node: %s"), *SourceNodeIdentifier);
+		if (OutField)
+		{
+			*OutField = bResolvingNodePath ? TEXT("patch.source_node_path") : TEXT("patch.source_node_ref");
+		}
+		if (OutCode)
+		{
+			*OutCode = TEXT("source_node_not_found");
+		}
+		return false;
+	}
+
+	if (!PathService.ResolvePin(Graph, SourceNode, ResolvePinRef, Request.SourcePinPath, OutPin, ResolveError))
+	{
+		OutError = FString::Printf(TEXT("Unable to resolve source pin: %s"), *SourcePinIdentifier);
+		if (OutField)
+		{
+			*OutField = bResolvingPinPath ? TEXT("patch.source_pin_path") : TEXT("patch.source_pin_ref");
+		}
+		if (OutCode)
+		{
+			*OutCode = TEXT("source_pin_not_found");
+		}
+		return false;
+	}
+
+	return true;
+}
+
 bool FBlueprintHelperPatchBlueprintGraphService::ApplyPatch(
 	UBlueprint* Blueprint, UEdGraph* Graph,
 	const FPatchRequest& Request, const FBlueprintHelperResolvedPatchTarget& Target,
@@ -482,8 +614,11 @@ bool FBlueprintHelperPatchBlueprintGraphService::ApplyPatch(
 	{
 		FString NewVal;
 		if (Request.PatchPayload.IsValid())
+		{
 			Request.PatchPayload->TryGetStringField(TEXT("value"), NewVal);
-				FBlueprintHelperGraphWriteMutationIntent Intent;
+		}
+
+		FBlueprintHelperGraphWriteMutationIntent Intent;
 		Intent.Kind = EBlueprintHelperGraphWriteMutationIntentKind::SetPinDefault;
 		Intent.IntentId = TEXT("patch_set_pin_default");
 		Intent.Target.Pin = Target.Pin;
@@ -507,27 +642,14 @@ bool FBlueprintHelperPatchBlueprintGraphService::ApplyPatch(
 			OutError = TEXT("connect_pins requires target pin_ref.");
 			return false;
 		}
-		// Resolve source pin from patch payload.
+
 		UEdGraphPin* FromPin = nullptr;
-		FString FromNodeRef, FromPinRef;
-		if (Request.PatchPayload.IsValid())
+		if (!ResolvePatchSourcePin(Graph, Request, FromPin, OutError))
 		{
-			OutError = FString::Printf(TEXT("Unable to resolve source node: %s"), *FromNodeRef);
-			OutError = FString::Printf(TEXT("Unable to resolve source pin: %s"), *FromPinRef);
-		}
-		FBlueprintHelperPatchResolveError Ignored;
-		UEdGraphNode* FromNode = nullptr;
-		if (!PathService.ResolveNode(Graph, FromNodeRef, FString(), FromNode, Ignored))
-		{
-			OutError = FString::Printf(TEXT("Unable to resolve source node: %s"), *FromNodeRef);
 			return false;
 		}
-		if (!PathService.ResolvePin(Graph, FromNode, FromPinRef, FString(), FromPin, Ignored))
-		{
-			OutError = FString::Printf(TEXT("Unable to resolve source pin: %s"), *FromPinRef);
-			return false;
-		}
-				FBlueprintHelperGraphWriteMutationIntent Intent;
+
+		FBlueprintHelperGraphWriteMutationIntent Intent;
 		Intent.Kind = EBlueprintHelperGraphWriteMutationIntentKind::ConnectPins;
 		Intent.IntentId = TEXT("patch_connect_pins");
 		Intent.Source.Pin = FromPin;
@@ -541,7 +663,8 @@ bool FBlueprintHelperPatchBlueprintGraphService::ApplyPatch(
 			OutError = TEXT("disconnect_link requires source and target pins.");
 			return false;
 		}
-				FBlueprintHelperGraphWriteMutationIntent Intent;
+
+		FBlueprintHelperGraphWriteMutationIntent Intent;
 		Intent.Kind = EBlueprintHelperGraphWriteMutationIntentKind::DisconnectPins;
 		Intent.IntentId = TEXT("patch_disconnect_link");
 		Intent.Source.Pin = Target.Link.SourcePin;
@@ -562,7 +685,8 @@ bool FBlueprintHelperPatchBlueprintGraphService::ApplyPatch(
 			OutError = TEXT("replace_link requires a new target pin.");
 			return false;
 		}
-				FBlueprintHelperGraphWriteMutationIntent Intent;
+
+		FBlueprintHelperGraphWriteMutationIntent Intent;
 		Intent.Kind = EBlueprintHelperGraphWriteMutationIntentKind::ReplacePinConnection;
 		Intent.IntentId = TEXT("patch_replace_link");
 		Intent.Source.Pin = Target.Link.SourcePin;

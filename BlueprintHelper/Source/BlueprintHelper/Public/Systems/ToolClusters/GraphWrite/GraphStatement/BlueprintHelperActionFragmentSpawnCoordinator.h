@@ -28,6 +28,12 @@ struct BLUEPRINTHELPER_API FBlueprintHelperActionFragmentSpawnCoordinatorRequest
 class BLUEPRINTHELPER_API FBlueprintHelperActionFragmentSpawnCoordinator
 {
 public:
+	static bool ValidateResolvedActionFragment(
+		const FBlueprintHelperActionFragmentSpawnCoordinatorRequest& Request,
+		FString& OutError,
+		FString* OutSelectedStableId = nullptr,
+		TArray<FBlueprintHelperCandidateFunctionGroup>* OutCandidateFunctions = nullptr);
+
 	static bool BuildResolvedActionFragment(
 		const FBlueprintHelperActionFragmentSpawnCoordinatorRequest& Request,
 		FBlueprintHelperNodeFragment& OutFragment,

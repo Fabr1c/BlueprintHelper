@@ -42,6 +42,8 @@ private:
 		FString BlockId, GroupEntryNodePath;
 		FString NodeRef, PinRef, LinkRef;
 		FString NodePath, PinPath, LinkPath;
+		FString SourceNodeRef, SourcePinRef;
+		FString SourceNodePath, SourcePinPath;
 		TSharedPtr<FJsonObject> PatchPayload;
 		TSharedPtr<FJsonObject> LogicSpec;
 		FString ExpectedOldValue;
@@ -72,8 +74,14 @@ private:
 	// 銆俻atch_type 瀹炵幇
 	bool ApplySetNodeComment(UEdGraphNode* Node, const FString& NewComment, bool& bOutChanged, FString& OutError) const;
 	bool ApplySetNodePosition(UEdGraphNode* Node, const TSharedPtr<FJsonObject>& Payload, bool& bOutChanged, FString& OutError) const;
-
-bool ExecuteMutationIntent(UEdGraph* Graph, const struct FBlueprintHelperGraphWriteMutationIntent& Intent, bool& bOutChanged, FString& OutError) const;
+	bool ResolvePatchSourcePin(
+		UEdGraph* Graph,
+		const FPatchRequest& Request,
+		UEdGraphPin*& OutPin,
+		FString& OutError,
+		FString* OutField = nullptr,
+		FString* OutCode = nullptr) const;
+	bool ExecuteMutationIntent(UEdGraph* Graph, const struct FBlueprintHelperGraphWriteMutationIntent& Intent, bool& bOutChanged, FString& OutError) const;
 
 	const FBlueprintHelperGraphResolver& Resolver;
 	const FBlueprintHelperLogicJsonPathService& PathService;

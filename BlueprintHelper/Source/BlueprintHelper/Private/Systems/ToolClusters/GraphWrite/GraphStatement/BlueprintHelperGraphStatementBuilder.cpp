@@ -787,6 +787,63 @@ bool FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment(
 		OutCandidateFunctions);
 }
 
+bool FBlueprintHelperGraphStatementBuilder::ValidateCallFunctionFragment(
+	UEdGraph* TargetGraph,
+	const FBlueprintHelperGraphFragmentBuildRequest& Request,
+	FString& OutError,
+	FString* OutResolvedStableId,
+	TArray<FBlueprintHelperCandidateFunctionGroup>* OutCandidateFunctions,
+	const FBlueprintHelperActionContextScope* ActionContextScope)
+{
+	FBlueprintHelperGraphFragmentBuildRequest BoundRequest = Request;
+	ApplyCallPatternBindings(BoundRequest);
+
+	const FString ExplicitTargetObjectName = BoundRequest.Target.TrimStartAndEnd();
+
+	FBlueprintHelperActionResolutionRequest ActionRequest;
+	TArray<FString> ArgumentNames;
+	BoundRequest.DefaultValues.GetKeys(ArgumentNames);
+	if (!TryBuildProjectedActionRequestFromContext(
+		TargetGraph,
+		ActionContextScope,
+		BoundRequest.ActionContextStatementId.IsEmpty()
+			? BoundRequest.FragmentId
+			: BoundRequest.ActionContextStatementId,
+		EBlueprintHelperActionSemanticKind::Call,
+		MakeCallFunctionResolveQuery(BoundRequest),
+		ExplicitTargetObjectName,
+		BoundRequest.PropertyPath,
+		BoundRequest.ExpectedReturnType,
+		BoundRequest.SearchMode,
+		BoundRequest.AmbiguityPolicy,
+		BoundRequest.CategoryPriority,
+		ArgumentNames,
+		ActionRequest,
+		OutError))
+	{
+		return false;
+	}
+	ApplyCallActionRequestOverrides(BoundRequest, ExplicitTargetObjectName, ArgumentNames, ActionRequest);
+	ActionRequest.ContextEvidence.Append(BoundRequest.ContextEvidence);
+	ApplyCallPatternDefaults(BoundRequest);
+
+	FBlueprintHelperActionFragmentSpawnCoordinatorRequest CoordinatorRequest;
+	CoordinatorRequest.TargetGraph = TargetGraph;
+	CoordinatorRequest.BuildRequest = &BoundRequest;
+	CoordinatorRequest.ActionRequest = ActionRequest;
+	CoordinatorRequest.SemanticKind = EBlueprintHelperActionSemanticKind::Call;
+	CoordinatorRequest.PinProfile = EBlueprintHelperActionFragmentPinProfile::Call;
+	CoordinatorRequest.CandidateGroupTarget = BoundRequest.Query;
+	CoordinatorRequest.FailurePrefix = TEXT("call_function resolve failed");
+	CoordinatorRequest.bAppendSemanticKindOwnershipTag = true;
+
+	return FBlueprintHelperActionFragmentSpawnCoordinator::ValidateResolvedActionFragment(
+		CoordinatorRequest,
+		OutError,
+		OutResolvedStableId,
+		OutCandidateFunctions);
+}
+
 bool FBlueprintHelperGraphStatementBuilder::BuildVariableSetFragment(
 	UEdGraph* TargetGraph,
 	const FBlueprintHelperGraphFragmentBuildRequest& Request,

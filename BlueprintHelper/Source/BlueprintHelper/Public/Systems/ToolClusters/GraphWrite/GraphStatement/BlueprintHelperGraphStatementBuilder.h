@@ -62,6 +62,14 @@ public:
 		TArray<FBlueprintHelperCandidateFunctionGroup>* OutCandidateFunctions = nullptr,
 		const FBlueprintHelperActionContextScope* ActionContextScope = nullptr);
 
+	static bool ValidateCallFunctionFragment(
+		UEdGraph* TargetGraph,
+		const FBlueprintHelperGraphFragmentBuildRequest& Request,
+		FString& OutError,
+		FString* OutResolvedStableId = nullptr,
+		TArray<FBlueprintHelperCandidateFunctionGroup>* OutCandidateFunctions = nullptr,
+		const FBlueprintHelperActionContextScope* ActionContextScope = nullptr);
+
 	static bool BuildVariableSetFragment(
 		UEdGraph* TargetGraph,
 		const FBlueprintHelperGraphFragmentBuildRequest& Request,
