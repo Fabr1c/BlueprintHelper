@@ -798,9 +798,13 @@ bool FBlueprintHelperActionResolutionAssetActionNoSyntheticSpawnerContractTest::
 	const FString GenericAssetResolverPath = BuildGraphWritePrivateSourcePath(
 		TEXT("ActionResolution"),
 		TEXT("BlueprintHelperGenericAssetActionResolver.cpp"));
+	const FString ProjectionServicePath = BuildGraphWritePrivateSourcePath(
+		TEXT("ActionResolution"),
+		TEXT("BlueprintHelperAssetActionProjectionService.cpp"));
 
 	FString GenericCreateResolverSource;
 	FString GenericAssetResolverSource;
+	FString ProjectionServiceSource;
 	bool bClean = true;
 	if (!FFileHelper::LoadFileToString(GenericCreateResolverSource, *GenericCreateResolverPath))
 	{
@@ -810,6 +814,11 @@ bool FBlueprintHelperActionResolutionAssetActionNoSyntheticSpawnerContractTest::
 	if (!FFileHelper::LoadFileToString(GenericAssetResolverSource, *GenericAssetResolverPath))
 	{
 		AddError(FString::Printf(TEXT("GenericAssetActionResolver source could not be read: %s"), *GenericAssetResolverPath));
+		bClean = false;
+	}
+	if (!FFileHelper::LoadFileToString(ProjectionServiceSource, *ProjectionServicePath))
+	{
+		AddError(FString::Printf(TEXT("AssetActionProjectionService source could not be read: %s"), *ProjectionServicePath));
 		bClean = false;
 	}
 	if (!bClean)
@@ -824,9 +833,18 @@ bool FBlueprintHelperActionResolutionAssetActionNoSyntheticSpawnerContractTest::
 		TEXT("Dedicated asset_action resolver does not synthesize node spawners with UBlueprintNodeSpawner::Create"),
 		GenericAssetResolverSource.Contains(TEXT("UBlueprintNodeSpawner::Create")));
 	bClean &= TestTrue(
-		TEXT("Asset action resolver refreshes and consumes ActionDatabase registry"),
-		GenericAssetResolverSource.Contains(TEXT("FBlueprintActionDatabase::Get().RefreshAll()"))
-		&& GenericAssetResolverSource.Contains(TEXT("GetAllActions()")));
+		TEXT("Asset action resolver uses projection service"),
+		GenericAssetResolverSource.Contains(TEXT("FBlueprintHelperAssetActionProjectionService::Project")));
+	bClean &= TestFalse(
+		TEXT("Asset action resolver does not directly refresh ActionDatabase after extraction"),
+		GenericAssetResolverSource.Contains(TEXT("FBlueprintActionDatabase::Get().RefreshAll()")));
+	bClean &= TestTrue(
+		TEXT("Projection service refreshes and consumes ActionDatabase registry"),
+		ProjectionServiceSource.Contains(TEXT("FBlueprintActionDatabase::Get().RefreshAll()"))
+		&& ProjectionServiceSource.Contains(TEXT("GetAllActions()")));
+	bClean &= TestFalse(
+		TEXT("Projection service does not synthesize node spawners with UBlueprintNodeSpawner::Create"),
+		ProjectionServiceSource.Contains(TEXT("UBlueprintNodeSpawner::Create")));
 
 	TestTrue(TEXT("asset_action keeps real ActionDatabase-only spawner resolution"), bClean);
 	return bClean;

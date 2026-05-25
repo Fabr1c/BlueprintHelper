@@ -1,6 +1,8 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperAssetActionProjectionService.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperProjectedSpawnerEvidence.h"
 
 #include "BlueprintActionDatabase.h"
 #include "BlueprintActionFilter.h"
@@ -116,6 +118,45 @@ static bool FindMakeArrayActionDatabaseEvidenceForTest(
 	return false;
 }
 
+static bool FindMakeArrayProjectedAssetActionEvidenceForTest(
+	UBlueprint* Blueprint,
+	UEdGraph* Graph,
+	FBlueprintHelperProjectedAssetActionEvidence& OutEvidence)
+{
+	FString StableId;
+	FString NodeClassPath;
+	FString MenuName;
+	if (!FindMakeArrayActionDatabaseEvidenceForTest(Blueprint, Graph, StableId, NodeClassPath, MenuName))
+	{
+		return false;
+	}
+
+	FBlueprintHelperAssetActionProjectionRequest ProjectionRequest;
+	ProjectionRequest.Blueprint = Blueprint;
+	ProjectionRequest.TargetGraph = Graph;
+	ProjectionRequest.RequiredEvidence.StableId = StableId;
+	ProjectionRequest.RequiredEvidence.NodeClassPath = NodeClassPath;
+	ProjectionRequest.RequiredEvidence.MenuName = MenuName;
+	ProjectionRequest.RequiredEvidence.Query = MenuName;
+
+	const FBlueprintHelperAssetActionProjectionResult Projection =
+		FBlueprintHelperAssetActionProjectionService::Project(ProjectionRequest);
+	if (Projection.Candidates.Num() != 1)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperAssetActionProjectedCandidate& Candidate = Projection.Candidates[0];
+	OutEvidence.StableId = Candidate.StableId;
+	OutEvidence.NodeClassPath = Candidate.NodeClassPath;
+	OutEvidence.SpawnerSignature = Candidate.SpawnerSignature;
+	OutEvidence.OwnerPath = Candidate.OwnerPath;
+	OutEvidence.Query = Candidate.Query;
+	OutEvidence.MenuName = Candidate.MenuName;
+	OutEvidence.Category = Candidate.Category;
+	return true;
+}
+
 static bool IsSpawnerPointerFromActionDatabaseForTest(const UBlueprintNodeSpawner* ExpectedSpawner)
 {
 	if (!ExpectedSpawner)
@@ -139,37 +180,15 @@ static bool IsSpawnerPointerFromActionDatabaseForTest(const UBlueprintNodeSpawne
 	return false;
 }
 
-static bool AssertAssetActionWeakSelectorResult(
+static bool AssertAssetActionWeakSelectorRejected(
 	FAutomationTestBase& Test,
 	const FBlueprintHelperActionResolutionResult& Result)
 {
 	bool bPassed = true;
-	bPassed &= Test.TestTrue(
-		TEXT("weak asset action selector is not classified as missing semantic context"),
-		!(Result.Status == EBlueprintHelperActionResolutionStatus::InvalidRequest
-			&& Result.ErrorCode == TEXT("needs_more_semantic_context")));
-
-	if (Result.Status == EBlueprintHelperActionResolutionStatus::Resolved)
-	{
-		bPassed &= Test.TestNotNull(TEXT("weak selector selected spawner"), Result.SelectedSpawner.Get());
-		bPassed &= Test.TestTrue(TEXT("weak selector spawner comes from ActionDatabase"), IsSpawnerPointerFromActionDatabaseForTest(Result.SelectedSpawner.Get()));
-		bPassed &= Test.TestTrue(TEXT("weak selector candidate is ActionDatabase-backed"), Result.CandidateActions.Num() == 1 && Result.CandidateActions[0].bFromActionDatabase);
-		return bPassed;
-	}
-
-	if (Result.Status == EBlueprintHelperActionResolutionStatus::Ambiguous)
-	{
-		bPassed &= Test.TestEqual(TEXT("weak selector ambiguous error"), Result.ErrorCode, FString(TEXT("asset_action_spawner_ambiguous")));
-		bPassed &= Test.TestFalse(TEXT("weak selector ambiguous has no selected spawner"), Result.SelectedSpawner.IsValid());
-		return bPassed;
-	}
-
-	Test.AddError(FString::Printf(
-		TEXT("Weak asset action selector must resolve or report ambiguity, but status=%d error=%s message=%s"),
-		static_cast<int32>(Result.Status),
-		*Result.ErrorCode,
-		*Result.Message));
-	return false;
+	bPassed &= Test.TestEqual(TEXT("weak selector rejected"), Result.Status, EBlueprintHelperActionResolutionStatus::InvalidRequest);
+	bPassed &= Test.TestEqual(TEXT("weak selector error"), Result.ErrorCode, FString(TEXT("needs_more_semantic_context")));
+	bPassed &= Test.TestNull(TEXT("weak selector has no selected spawner"), Result.SelectedSpawner.Get());
+	return bPassed;
 }
 
 static FBlueprintHelperActionResolutionRequest MakeGenericCreateResolverRequest(
@@ -319,6 +338,40 @@ bool FBlueprintHelperGenericCreateConcreteOperationsTest::RunTest(const FString&
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGenericCreateAssetActionProjectionWritesStableEvidenceTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.AssetAction.ProjectionWritesStableEvidence",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGenericCreateAssetActionProjectionWritesStableEvidenceTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeGenericCreateTestBlueprint();
+	UEdGraph* Graph = GetGenericCreateTestGraph(Blueprint);
+	TestNotNull(TEXT("blueprint"), Blueprint);
+	TestNotNull(TEXT("graph"), Graph);
+
+	FBlueprintHelperProjectedAssetActionEvidence Evidence;
+	if (!FindMakeArrayProjectedAssetActionEvidenceForTest(Blueprint, Graph, Evidence))
+	{
+		AddError(TEXT("MakeArray projected asset_action evidence was not available for the test graph."));
+		return false;
+	}
+
+	TMap<FString, FString> ContextEvidence;
+	FBlueprintHelperProjectedSpawnerEvidence::WriteAssetActionEvidence(Evidence, ContextEvidence);
+
+	bool bPassed = true;
+	bPassed &= TestTrue(TEXT("candidate stable id"), Evidence.StableId.StartsWith(TEXT("action_database:")));
+	bPassed &= TestEqual(TEXT("writer stable id"), ContextEvidence.FindRef(TEXT("asset_action_stable_id")), Evidence.StableId);
+	bPassed &= TestEqual(TEXT("writer node class"), ContextEvidence.FindRef(TEXT("asset_action_node_class")), Evidence.NodeClassPath);
+	bPassed &= TestEqual(TEXT("writer signature"), ContextEvidence.FindRef(TEXT("asset_action_spawner_signature")), Evidence.SpawnerSignature);
+	bPassed &= TestEqual(TEXT("writer owner path"), ContextEvidence.FindRef(TEXT("asset_action_owner_path")), Evidence.OwnerPath);
+	bPassed &= TestFalse(TEXT("candidate node class"), Evidence.NodeClassPath.IsEmpty());
+	bPassed &= TestFalse(TEXT("candidate signature"), Evidence.SpawnerSignature.IsEmpty());
+	bPassed &= TestFalse(TEXT("candidate owner"), Evidence.OwnerPath.IsEmpty());
+	return bPassed;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperGenericCreateAssetActionRequiresSpawnerEvidenceTest,
 	"BlueprintHelper.GraphWrite.ActionResolution.Generic.Create.AssetActionRequiresSpawnerEvidence",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -352,21 +405,15 @@ bool FBlueprintHelperGenericCreateAssetActionUsesActionDatabaseSpawnerEvidenceTe
 	TestNotNull(TEXT("blueprint"), Blueprint);
 	TestNotNull(TEXT("graph"), Graph);
 
-	FString StableId;
-	FString NodeClassPath;
-	FString MenuName;
-	if (!FindMakeArrayActionDatabaseEvidenceForTest(Blueprint, Graph, StableId, NodeClassPath, MenuName))
-	{
-		AddError(TEXT("MakeArray action database evidence was not available for the test graph."));
-		return false;
-	}
-
 	FBlueprintHelperActionResolutionRequest Request =
 		MakeGenericCreateResolverRequest(Blueprint, Graph, TEXT("asset_action"));
-	Request.ContextEvidence.Add(TEXT("asset_action_stable_id"), StableId);
-	Request.ContextEvidence.Add(TEXT("asset_action_node_class"), NodeClassPath);
-	Request.ContextEvidence.Add(TEXT("asset_action_menu_name"), MenuName);
-	Request.ContextEvidence.Add(TEXT("asset_action_query"), MenuName);
+	FBlueprintHelperProjectedAssetActionEvidence Evidence;
+	if (!FindMakeArrayProjectedAssetActionEvidenceForTest(Blueprint, Graph, Evidence))
+	{
+		AddError(TEXT("MakeArray projected asset_action evidence was not available for the test graph."));
+		return false;
+	}
+	FBlueprintHelperProjectedSpawnerEvidence::WriteAssetActionEvidence(Evidence, Request.ContextEvidence);
 
 	const FBlueprintHelperActionResolutionResult Result =
 		FBlueprintHelperActionResolutionCore::Resolve(Request);
@@ -374,7 +421,7 @@ bool FBlueprintHelperGenericCreateAssetActionUsesActionDatabaseSpawnerEvidenceTe
 	bool bPassed = true;
 	bPassed &= TestEqual(TEXT("asset action status"), Result.Status, EBlueprintHelperActionResolutionStatus::Resolved);
 	bPassed &= TestEqual(TEXT("asset action cluster"), Result.ClusterKind, EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction);
-	bPassed &= TestEqual(TEXT("asset action stable id"), Result.SelectedStableId, StableId);
+	bPassed &= TestEqual(TEXT("asset action stable id"), Result.SelectedStableId, Evidence.StableId);
 	bPassed &= TestNotNull(TEXT("asset action selected spawner"), Result.SelectedSpawner.Get());
 	bPassed &= TestTrue(TEXT("selected spawner comes from ActionDatabase"), IsSpawnerPointerFromActionDatabaseForTest(Result.SelectedSpawner.Get()));
 	bPassed &= TestTrue(TEXT("asset action candidate is database backed"), Result.CandidateActions.Num() == 1 && Result.CandidateActions[0].bFromActionDatabase);
@@ -383,11 +430,45 @@ bool FBlueprintHelperGenericCreateAssetActionUsesActionDatabaseSpawnerEvidenceTe
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperGenericCreateAssetActionAllowsNodeClassOnlySelectorTest,
-	"BlueprintHelper.GraphWrite.ActionResolution.Generic.Create.AssetActionAllowsNodeClassOnlySelector",
+	FBlueprintHelperGenericCreateAssetActionRejectsStaleProjectedStableIdTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.AssetAction.ExecuteRejectsStaleProjectedStableId",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FBlueprintHelperGenericCreateAssetActionAllowsNodeClassOnlySelectorTest::RunTest(const FString& Parameters)
+bool FBlueprintHelperGenericCreateAssetActionRejectsStaleProjectedStableIdTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeGenericCreateTestBlueprint();
+	UEdGraph* Graph = GetGenericCreateTestGraph(Blueprint);
+	TestNotNull(TEXT("blueprint"), Blueprint);
+	TestNotNull(TEXT("graph"), Graph);
+
+	FBlueprintHelperProjectedAssetActionEvidence Evidence;
+	if (!FindMakeArrayProjectedAssetActionEvidenceForTest(Blueprint, Graph, Evidence))
+	{
+		AddError(TEXT("MakeArray projected asset_action evidence was not available for the test graph."));
+		return false;
+	}
+
+	FBlueprintHelperActionResolutionRequest Request =
+		MakeGenericCreateResolverRequest(Blueprint, Graph, TEXT("asset_action"));
+	FBlueprintHelperProjectedSpawnerEvidence::WriteAssetActionEvidence(Evidence, Request.ContextEvidence);
+	Request.ContextEvidence.Add(TEXT("asset_action_stable_id"), TEXT("action_database:stale:none:none"));
+
+	const FBlueprintHelperActionResolutionResult Result =
+		FBlueprintHelperActionResolutionCore::Resolve(Request);
+
+	bool bPassed = true;
+	bPassed &= TestEqual(TEXT("stale projected evidence rejected"), Result.Status, EBlueprintHelperActionResolutionStatus::NotFound);
+	bPassed &= TestEqual(TEXT("stale projected evidence error"), Result.ErrorCode, FString(TEXT("asset_action_spawner_not_found")));
+	bPassed &= TestNull(TEXT("stale projected evidence has no spawner"), Result.SelectedSpawner.Get());
+	return bPassed;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGenericCreateAssetActionRejectsNodeClassOnlySelectorTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.AssetAction.ExecuteRejectsNodeClassOnlySelector",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGenericCreateAssetActionRejectsNodeClassOnlySelectorTest::RunTest(const FString& Parameters)
 {
 	UBlueprint* Blueprint = MakeGenericCreateTestBlueprint();
 	UEdGraph* Graph = GetGenericCreateTestGraph(Blueprint);
@@ -407,15 +488,15 @@ bool FBlueprintHelperGenericCreateAssetActionAllowsNodeClassOnlySelectorTest::Ru
 		MakeGenericCreateResolverRequest(Blueprint, Graph, TEXT("asset_action"));
 	Request.ContextEvidence.Add(TEXT("asset_action_node_class"), NodeClassPath);
 
-	return AssertAssetActionWeakSelectorResult(*this, FBlueprintHelperActionResolutionCore::Resolve(Request));
+	return AssertAssetActionWeakSelectorRejected(*this, FBlueprintHelperActionResolutionCore::Resolve(Request));
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperGenericCreateAssetActionAllowsQueryOnlySelectorTest,
-	"BlueprintHelper.GraphWrite.ActionResolution.Generic.Create.AssetActionAllowsQueryOnlySelector",
+	FBlueprintHelperGenericCreateAssetActionRejectsQueryOnlySelectorTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.AssetAction.ExecuteRejectsQueryOnlySelector",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FBlueprintHelperGenericCreateAssetActionAllowsQueryOnlySelectorTest::RunTest(const FString& Parameters)
+bool FBlueprintHelperGenericCreateAssetActionRejectsQueryOnlySelectorTest::RunTest(const FString& Parameters)
 {
 	UBlueprint* Blueprint = MakeGenericCreateTestBlueprint();
 	UEdGraph* Graph = GetGenericCreateTestGraph(Blueprint);
@@ -435,7 +516,7 @@ bool FBlueprintHelperGenericCreateAssetActionAllowsQueryOnlySelectorTest::RunTes
 		MakeGenericCreateResolverRequest(Blueprint, Graph, TEXT("asset_action"));
 	Request.ContextEvidence.Add(TEXT("asset_action_query"), MenuName);
 
-	return AssertAssetActionWeakSelectorResult(*this, FBlueprintHelperActionResolutionCore::Resolve(Request));
+	return AssertAssetActionWeakSelectorRejected(*this, FBlueprintHelperActionResolutionCore::Resolve(Request));
 }
 
 #endif

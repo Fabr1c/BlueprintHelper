@@ -4,6 +4,27 @@
 
 **Goal:** 在 GraphWrite 最终总测试前新增一个通用性前置门禁：GraphWrite 内每个 `kind + operation` 都通过 TaskSpec 生成 10 个同类型不同名节点，10 个全通过才算该 operation 通过，并输出带统计图的通用性测试报告。
 
+## 2026-05-25 Current Status Sync
+
+- Status: OPEN / NOT IMPLEMENTED.
+- 当前源码树未发现 `graphwrite-generality-*` TaskSpec matrix、spec factory、report writer、PowerShell runner 或 `Run-GraphWriteFinalWithGenerality.ps1` 的实际实现文件；本文件仍是待执行计划。
+- 该计划应在 GraphWrite 当前稳定性收敛后统一执行，用于最终能力面验收；它不是当前 GraphWrite 修复闭环前必须先完成的前置条件。
+- 完成标准仍以本文 Exit Criteria 为准：45 个 normalized operations、450 个 variants、TaskSpec preview/execute/readback、JSON/CSV/Markdown/SVG report、`allOperationsPassed=true` final gate。
+
+## 2026-05-25 Stability Closure Input
+
+本节记录 GraphWrite stability closure 已完成的 focused gates，作为后续实现本 generality preflight 的输入证据；它不替代本文 45-operation / 450-variant 最终验收。
+
+| Cluster / Gate | Focused status | Evidence |
+|---|---|---|
+| function_action + field | PASS | Focused gate id `BlueprintHelper.GraphWrite.FunctionFieldUnifiedSmoke`; covered by the full `Automation RunTests BlueprintHelper.GraphWrite` suite. |
+| event taxonomy | PASS | Focused gate id `BlueprintHelper.GraphWrite.EventTaxonomy`; covered by the full `Automation RunTests BlueprintHelper.GraphWrite` suite. |
+| asset_action | PASS | `Automation RunTests BlueprintHelper.GraphWrite.ActionResolution.AssetAction`; `Automation RunTests BlueprintHelper.GraphWrite.ActionResolution.Contract.AssetActionNoSyntheticSpawner`; weak query/node-class execute selectors rejected. |
+| Review evidence | PASS | `Automation RunTests BlueprintHelper.Review.Producer.ClusterBuildsProducerOwnedEvidence`; `Automation RunTests BlueprintHelper.TaskRuntime.PostIO`。 |
+| legacy parsed-plan removal | PASS | `Automation RunTests BlueprintHelper.GraphWrite.LegacyMainline`; `rg -n "parsed_node_plan_unsupported|FBlueprintGraphMutationPlan|FBlueprintGraphMutationNodePlan|FBlueprintGraphMutationLinkPlan|MakeNodePlanFromParsedNode|MakeLinkPlanFromParsedLink" BlueprintHelper/Source/BlueprintHelper` 仅命中 contract test 禁止词。 |
+| full GraphWrite suite | PASS | `Automation RunTests BlueprintHelper.GraphWrite`；该套件通过说明当前核心 GraphWrite automation gates 已绿，但不替代 45-operation / 450-variant 泛化验收。 |
+| full generality preflight | PENDING | 本文件下方的 matrix、factory、runner、report writer 仍未实现，不能标记 stable final。 |
+
 **Architecture:** 通用性测试以 Agent-facing TaskSpec 为唯一计分入口，执行链路必须经过 `TaskSpec -> compiler lowering -> TaskPlan graph_write -> UE GraphWrite runtime -> graph readback`。Operation 矩阵是数据驱动的公共测试目录；fixture/setup 负责创建资产、变量、组件、签名和 handler 证据，但不计入 GraphWrite 正确率。报告生成器消费每个 operation 的 10 个 variant 结果，输出 JSON/CSV/Markdown/SVG，并作为最终 80% 总测的前置 gate。
 
 **Tech Stack:** TypeScript task-core/CLI, BlueprintHelper TaskSpec v1, UE 5.6 GraphWrite runtime, PowerShell orchestration, JSON/CSV/Markdown/SVG reports.

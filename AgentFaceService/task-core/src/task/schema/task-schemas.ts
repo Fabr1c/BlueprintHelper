@@ -1,5 +1,15 @@
 import { z } from 'zod';
 
+export { GRAPHWRITE_CAPABILITY_CONTRACT } from './graphwrite-capability-contract.js';
+export type {
+  GraphWriteCapabilityContract,
+  GraphWriteClusterContract,
+  GraphWriteEvidenceProjectionSource,
+  GraphWriteOperationContract,
+  GraphWriteReviewEvidencePolicy,
+  GraphWriteSupportStatus,
+} from './graphwrite-capability-contract.js';
+
 export const TASK_SPEC_SCHEMA = 'BlueprintHelper.TaskSpec.v1';
 export const TASK_PLAN_SCHEMA = 'BlueprintHelper.TaskPlan.v1';
 export const TASK_PREVIEW_SCHEMA = 'BlueprintHelper.TaskPreview.v1';
