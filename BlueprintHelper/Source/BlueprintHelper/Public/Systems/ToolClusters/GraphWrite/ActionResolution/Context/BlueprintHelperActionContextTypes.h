@@ -82,6 +82,9 @@ struct FBlueprintHelperActionContextDemand
 	FString DelegateOperation;
 	FString DelegateSignature;
 	FString HandlerName;
+	FString HandlerFunctionPath;
+	FString HandlerSourceCluster;
+	FString SignatureEvidenceId;
 	FString UnbindMode;
 	FString TargetGraphName;
 	TArray<FString> SelectedObjectPaths;

@@ -42,6 +42,8 @@ private:
 		FString BlockId;
 		FString TargetRef;
 		FString EntryName;
+		FString EventTaxonomy;
+		FString SignatureEvidenceId;
 		FString NodePath;
 
 		TSharedPtr<FJsonObject> LogicSpec;

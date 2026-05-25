@@ -241,6 +241,9 @@ bool FBlueprintHelperActionContextDelegateProjectionTest::RunTest(const FString&
 	Demand.DelegateOperation = TEXT("bind");
 	Demand.DelegateSignature = TEXT("FDoorStateChangedSignature");
 	Demand.HandlerName = TEXT("HandleDoorStateChanged");
+	Demand.HandlerFunctionPath = TEXT("/Game/Test/BP_Door.BP_Door_C:HandleDoorStateChanged");
+	Demand.HandlerSourceCluster = TEXT("BlueprintSignature");
+	Demand.SignatureEvidenceId = TEXT("signature:custom_event:HandleDoorStateChanged");
 	Demand.ArgumentNames = { TEXT("NewState") };
 
 	FBlueprintHelperActionContextSnapshot Snapshot;
@@ -257,6 +260,9 @@ bool FBlueprintHelperActionContextDelegateProjectionTest::RunTest(const FString&
 	TestEqual(TEXT("binding object"), Context.Evidence.FindRef(TEXT("binding_object_path")), FString(TEXT("self")));
 	TestEqual(TEXT("handler"), Context.Evidence.FindRef(TEXT("handler_name")), FString(TEXT("HandleDoorStateChanged")));
 	TestEqual(TEXT("handler scope"), Context.Evidence.FindRef(TEXT("handler_scope_class_path")), FString(TEXT("/Game/Test/BP_Door.BP_Door_C")));
+	TestEqual(TEXT("handler function path"), Context.Evidence.FindRef(TEXT("handler_function_path")), FString(TEXT("/Game/Test/BP_Door.BP_Door_C:HandleDoorStateChanged")));
+	TestEqual(TEXT("handler source cluster"), Context.Evidence.FindRef(TEXT("handler_source_cluster")), FString(TEXT("BlueprintSignature")));
+	TestEqual(TEXT("signature evidence id"), Context.Evidence.FindRef(TEXT("signature_evidence_id")), FString(TEXT("signature:custom_event:HandleDoorStateChanged")));
 	return true;
 }
 

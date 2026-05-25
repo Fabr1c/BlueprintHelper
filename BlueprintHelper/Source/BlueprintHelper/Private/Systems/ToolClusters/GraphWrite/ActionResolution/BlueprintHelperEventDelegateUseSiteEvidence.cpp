@@ -1,7 +1,5 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperEventDelegateUseSiteEvidence.h"
 
-#include "Engine/Blueprint.h"
-#include "K2Node_CustomEvent.h"
 #include "UObject/Class.h"
 #include "UObject/UObjectGlobals.h"
 #include "UObject/UnrealType.h"
@@ -155,40 +153,21 @@ static bool ResolveHandlerFunction(
 	FString& OutMissingDetail,
 	FString& OutMessage)
 {
-	UClass* HandlerScopeClass = FindClassByPath(Evidence.HandlerScopeClassPath);
-	if (!HandlerScopeClass)
+	Evidence.HandlerFunction = FindObject<UFunction>(nullptr, *Evidence.HandlerFunctionPath.TrimStartAndEnd());
+	if (!Evidence.HandlerFunction)
 	{
 		return Missing(
-			TEXT("handler_scope_unresolved"),
-			FString::Printf(TEXT("Could not resolve handler scope class '%s'."), *Evidence.HandlerScopeClassPath),
+			TEXT("handler_function_unresolved"),
+			FString::Printf(TEXT("Could not resolve projected handler function '%s'."), *Evidence.HandlerFunctionPath),
 			OutMissingDetail,
 			OutMessage);
 	}
-
-	Evidence.HandlerFunction = HandlerScopeClass->FindFunctionByName(FName(*Evidence.HandlerName.TrimStartAndEnd()));
-	if (!Evidence.HandlerFunction)
+	if (!Evidence.HandlerName.IsEmpty()
+		&& !Evidence.HandlerFunction->GetName().Equals(Evidence.HandlerName, ESearchCase::IgnoreCase))
 	{
-		if (UBlueprint* Blueprint = Cast<UBlueprint>(HandlerScopeClass->ClassGeneratedBy))
-		{
-			for (UEdGraph* Graph : Blueprint->UbergraphPages)
-			{
-				if (!Graph)
-				{
-					continue;
-				}
-				for (UEdGraphNode* Node : Graph->Nodes)
-				{
-					const UK2Node_CustomEvent* CustomEvent = Cast<UK2Node_CustomEvent>(Node);
-					if (CustomEvent && CustomEvent->CustomFunctionName.ToString().Equals(Evidence.HandlerName, ESearchCase::IgnoreCase))
-					{
-						return true;
-					}
-				}
-			}
-		}
 		return Missing(
-			TEXT("handler_function_unresolved"),
-			FString::Printf(TEXT("Could not resolve existing handler function '%s' on '%s'."), *Evidence.HandlerName, *Evidence.HandlerScopeClassPath),
+			TEXT("handler_function_name_mismatch"),
+			FString::Printf(TEXT("Projected handler function '%s' does not match handler_name '%s'."), *Evidence.HandlerFunction->GetName(), *Evidence.HandlerName),
 			OutMissingDetail,
 			OutMessage);
 	}
@@ -270,6 +249,9 @@ bool FBlueprintHelperEventDelegateUseSiteEvidenceReader::TryRead(
 	OutEvidence.BindingObjectPath = EvidenceValue(Request, TEXT("binding_object_path"));
 	OutEvidence.HandlerName = EvidenceValue(Request, TEXT("handler_name"));
 	OutEvidence.HandlerScopeClassPath = EvidenceValue(Request, TEXT("handler_scope_class_path"));
+	OutEvidence.HandlerFunctionPath = EvidenceValue(Request, TEXT("handler_function_path"));
+	OutEvidence.HandlerSourceCluster = EvidenceValue(Request, TEXT("handler_source_cluster"));
+	OutEvidence.SignatureEvidenceId = EvidenceValue(Request, TEXT("signature_evidence_id"));
 	OutEvidence.UnbindMode = EvidenceValue(Request, TEXT("unbind_mode"));
 
 	if (SemanticKind != EBlueprintHelperActionSemanticKind::ComponentBoundEvent
@@ -347,6 +329,18 @@ bool FBlueprintHelperEventDelegateUseSiteEvidenceReader::TryRead(
 		{
 			return Missing(TEXT("handler_scope_missing"), TEXT("Delegate bind/assign/unbind resolution requires ContextEvidence.handler_scope_class_path."), OutMissingDetail, OutMessage);
 		}
+		if (OutEvidence.HandlerFunctionPath.IsEmpty())
+		{
+			return Missing(TEXT("handler_function_path_missing"), TEXT("EventDelegate resolution requires projected ContextEvidence.handler_function_path from BlueprintSignature."), OutMissingDetail, OutMessage);
+		}
+		if (OutEvidence.HandlerSourceCluster.IsEmpty())
+		{
+			return Missing(TEXT("handler_source_cluster_missing"), TEXT("EventDelegate resolution requires projected ContextEvidence.handler_source_cluster."), OutMissingDetail, OutMessage);
+		}
+		if (OutEvidence.SignatureEvidenceId.IsEmpty())
+		{
+			return Missing(TEXT("signature_evidence_id_missing"), TEXT("EventDelegate resolution requires projected ContextEvidence.signature_evidence_id."), OutMissingDetail, OutMessage);
+		}
 	}
 	if (SemanticKind == EBlueprintHelperActionSemanticKind::ComponentBoundEvent)
 	{
@@ -357,6 +351,18 @@ bool FBlueprintHelperEventDelegateUseSiteEvidenceReader::TryRead(
 		if (OutEvidence.HandlerScopeClassPath.IsEmpty())
 		{
 			return Missing(TEXT("handler_scope_missing"), TEXT("Component-bound event resolution requires ContextEvidence.handler_scope_class_path."), OutMissingDetail, OutMessage);
+		}
+		if (OutEvidence.HandlerFunctionPath.IsEmpty())
+		{
+			return Missing(TEXT("handler_function_path_missing"), TEXT("EventDelegate resolution requires projected ContextEvidence.handler_function_path from BlueprintSignature."), OutMissingDetail, OutMessage);
+		}
+		if (OutEvidence.HandlerSourceCluster.IsEmpty())
+		{
+			return Missing(TEXT("handler_source_cluster_missing"), TEXT("EventDelegate resolution requires projected ContextEvidence.handler_source_cluster."), OutMissingDetail, OutMessage);
+		}
+		if (OutEvidence.SignatureEvidenceId.IsEmpty())
+		{
+			return Missing(TEXT("signature_evidence_id_missing"), TEXT("EventDelegate resolution requires projected ContextEvidence.signature_evidence_id."), OutMissingDetail, OutMessage);
 		}
 	}
 	if (SemanticKind == EBlueprintHelperActionSemanticKind::Delegate

@@ -281,6 +281,9 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 			Context.Evidence.Add(TEXT("handler_scope_class_path"), Snapshot.Graph.BlueprintClassPath);
 		}
 	}
+	BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("handler_function_path"), Demand.HandlerFunctionPath);
+	BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("handler_source_cluster"), Demand.HandlerSourceCluster);
+	BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("signature_evidence_id"), Demand.SignatureEvidenceId);
 	if (!Demand.UnbindMode.IsEmpty())
 	{
 		Context.Evidence.Add(TEXT("unbind_mode"), Demand.UnbindMode);

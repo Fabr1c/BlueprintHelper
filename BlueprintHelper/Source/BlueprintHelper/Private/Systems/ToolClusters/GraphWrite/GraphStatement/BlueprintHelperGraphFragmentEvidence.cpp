@@ -215,6 +215,7 @@ TSharedRef<FJsonObject> FBlueprintHelperGraphFragmentEvidenceReviewScope::ToJson
 	if (!GraphName.IsEmpty()) Json->SetStringField(TEXT("graph_name"), GraphName);
 	if (!FunctionName.IsEmpty()) Json->SetStringField(TEXT("function_name"), FunctionName);
 	if (!EventName.IsEmpty()) Json->SetStringField(TEXT("event_name"), EventName);
+	if (!EventTaxonomy.IsEmpty()) Json->SetStringField(TEXT("event_taxonomy"), EventTaxonomy);
 	if (!MacroName.IsEmpty()) Json->SetStringField(TEXT("macro_name"), MacroName);
 	if (SourceStatementIds.Num() > 0) Json->SetArrayField(TEXT("source_statement_ids"), FBlueprintHelperGraphFragmentEvidenceUtils::StringArrayToJson(SourceStatementIds));
 	if (FragmentIds.Num() > 0) Json->SetArrayField(TEXT("fragment_ids"), FBlueprintHelperGraphFragmentEvidenceUtils::StringArrayToJson(FragmentIds));

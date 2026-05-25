@@ -6,6 +6,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphSnapshotService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintHelperReplaceEntryResolver.h"
 #include "Systems/Review/BlueprintHelperReviewBaselineSnapshotService.h"
 #include "Systems/ToolClusters/BlueprintHelperToolClusterConfigResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
@@ -24,9 +25,6 @@
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraphSchema_K2.h"
 #include "HAL/PlatformTime.h"
-#include "K2Node_CustomEvent.h"
-#include "K2Node_Event.h"
-#include "K2Node_FunctionEntry.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
 #include "UObject/MetaData.h"
@@ -54,49 +52,6 @@ public:
 			}
 		}
 		return nullptr;
-	}
-
-	static bool NodeMatchesEntryName(UEdGraphNode* Node, const FString& EntryName)
-	{
-		if (!Node)
-		{
-			return false;
-		}
-		if (EntryName.IsEmpty())
-		{
-			return true;
-		}
-
-		if (UK2Node_CustomEvent* CustomEvent = Cast<UK2Node_CustomEvent>(Node))
-		{
-			if (CustomEvent->CustomFunctionName.ToString().Equals(EntryName, ESearchCase::IgnoreCase))
-			{
-				return true;
-			}
-		}
-
-		if (UK2Node_Event* EventNode = Cast<UK2Node_Event>(Node))
-		{
-			if (EventNode->GetFunctionName().ToString().Equals(EntryName, ESearchCase::IgnoreCase) ||
-				EventNode->EventReference.GetMemberName().ToString().Equals(EntryName, ESearchCase::IgnoreCase))
-			{
-				return true;
-			}
-		}
-
-		if (UK2Node_FunctionEntry* FunctionEntry = Cast<UK2Node_FunctionEntry>(Node))
-		{
-			if (FunctionEntry->FunctionReference.GetMemberName().ToString().Equals(EntryName, ESearchCase::IgnoreCase) ||
-				FunctionEntry->CustomGeneratedFunctionName.ToString().Equals(EntryName, ESearchCase::IgnoreCase))
-			{
-				return true;
-			}
-		}
-
-		const FString NodeName = Node->GetName();
-		const FString NodeTitle = Node->GetNodeTitle(ENodeTitleType::FullTitle).ToString();
-		return NodeName.Equals(EntryName, ESearchCase::IgnoreCase) ||
-			NodeTitle.Equals(EntryName, ESearchCase::IgnoreCase);
 	}
 
 	static bool TryReadBlueprintHelperBlockId(UEdGraphNode* Node, FString& OutBlockId)
@@ -315,6 +270,8 @@ FBlueprintHelperReplaceBlueprintGraphService::ParseRequest(const TSharedPtr<FJso
 		(*SelectorObject)->TryGetStringField(TEXT("block_id"), Request.BlockId);
 		(*SelectorObject)->TryGetStringField(TEXT("target_ref"), Request.TargetRef);
 		(*SelectorObject)->TryGetStringField(TEXT("entry_name"), Request.EntryName);
+		(*SelectorObject)->TryGetStringField(TEXT("event_taxonomy"), Request.EventTaxonomy);
+		(*SelectorObject)->TryGetStringField(TEXT("signature_evidence_id"), Request.SignatureEvidenceId);
 		(*SelectorObject)->TryGetStringField(TEXT("node_path"), Request.NodePath);
 	}
 
@@ -379,6 +336,16 @@ FBlueprintHelperReplaceBlueprintGraphService::Preflight(const FReplaceRequest& R
 
 
 	// 5. 钃濆浘鏍￠獙
+	if (Request.Scope == EBlueprintHelperReplaceScope::Graph && !Request.EntryName.IsEmpty())
+	{
+		Result.bPassed = false;
+		Result.BlockedBy.Add(TEXT("graph_scope_entry_selector_unsupported"));
+		Result.Conflicts.Add({TEXT("graph_scope_entry_selector_unsupported"),
+			TEXT("replace_scope=graph does not accept selector.entry_name; use custom_event_body or event_body for entry-body replacement."),
+			Request.EntryName, TEXT("selector.entry_name")});
+		return Result;
+	}
+
 	UBlueprint* Blueprint = nullptr;
 	if (!PreflightBlueprint(Request.AssetPath, Blueprint, Result))
 	{
@@ -605,6 +572,8 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 		Error.Stage = EBlueprintHelperToolStage::Preflight;
 		Error.Message = PreflightResult.Conflicts.Num() > 0
 			? PreflightResult.Conflicts[0].Message : TEXT("Preflight failed.");
+		Error.Field = PreflightResult.Conflicts.Num() > 0
+			? PreflightResult.Conflicts[0].Source : FString();
 		Error.bRetryable = false;
 		Error.RollbackResult = EBlueprintHelperRollbackResult::NotNeeded;
 		FBlueprintHelperToolResultBase FailResult = FBlueprintHelperToolResultBuilder::Failure(TEXT("replace_blueprint_graph"), TraceId, Error);
@@ -870,16 +839,25 @@ bool FBlueprintHelperReplaceBlueprintGraphService::ResolveReplaceTarget(
 	if (Request.Scope == EBlueprintHelperReplaceScope::FunctionBody)
 	{
 		OutTarget.TargetRef = Request.GraphName;
+		FBlueprintHelperReplaceEntryResolveRequest EntryResolveRequest;
+		EntryResolveRequest.Scope = Request.Scope;
+		EntryResolveRequest.EntryName = Request.EntryName;
+		EntryResolveRequest.EventTaxonomy = Request.EventTaxonomy;
+		EntryResolveRequest.SignatureEvidenceId = Request.SignatureEvidenceId;
 		// 鏀堕泦 body 鑺傜偣锛堜繚鐣?FunctionEntry/Result锛?
 		for (UEdGraphNode* Node : Graph->Nodes)
 		{
-			if (Node && !Node->IsA<UK2Node_FunctionEntry>())
+			if (!Node)
 			{
-				OutTarget.NodesToDelete.Add(Node);
+				continue;
 			}
-			else if (Node)
+			if (FBlueprintHelperReplaceEntryResolver::ShouldPreserveEntryNode(EntryResolveRequest, Node->GetClass()))
 			{
 				OutTarget.NodesToPreserve.Add(Node);
+			}
+			else
+			{
+				OutTarget.NodesToDelete.Add(Node);
 			}
 		}
 		OutTarget.bExternalDependentsMayBreak = false;
@@ -893,16 +871,19 @@ bool FBlueprintHelperReplaceBlueprintGraphService::ResolveReplaceTarget(
 	{
 		// 绠€鍖栵細鍒犻櫎鎵€鏈夐潪 entry 鑺傜偣
 		OutTarget.TargetRef = Request.EntryName.IsEmpty() ? Request.GraphName : Request.EntryName;
+		FBlueprintHelperReplaceEntryResolveRequest EntryResolveRequest;
+		EntryResolveRequest.Scope = Request.Scope;
+		EntryResolveRequest.EntryName = Request.EntryName;
+		EntryResolveRequest.EventTaxonomy = Request.EventTaxonomy;
+		EntryResolveRequest.SignatureEvidenceId = Request.SignatureEvidenceId;
 		for (UEdGraphNode* Node : Graph->Nodes)
 		{
 			if (Node)
 			{
-				bool bIsCustomEventNode = Node->GetClass()->GetName().Contains(TEXT("K2Node_CustomEvent"));
-				bool bIsEventNode = Node->GetClass()->GetName().Contains(TEXT("K2Node_Event"));
-				if (bIsCustomEventNode || bIsEventNode)
+				if (FBlueprintHelperReplaceEntryResolver::ShouldPreserveEntryNode(EntryResolveRequest, Node->GetClass()))
 				{
 					OutTarget.NodesToPreserve.Add(Node);
-					if (FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::NodeMatchesEntryName(Node, Request.EntryName))
+					if (FBlueprintHelperReplaceEntryResolver::NodeMatchesEntry(EntryResolveRequest, Node))
 					{
 						FString EntryBlockId;
 						if (FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::TryReadBlueprintHelperBlockId(Node, EntryBlockId))
@@ -1032,6 +1013,11 @@ bool FBlueprintHelperReplaceBlueprintGraphService::ReconnectPreservedEntryToNewB
 	}
 
 	UEdGraphNode* EntryNode = nullptr;
+	FBlueprintHelperReplaceEntryResolveRequest EntryResolveRequest;
+	EntryResolveRequest.Scope = Request.Scope;
+	EntryResolveRequest.EntryName = Request.EntryName;
+	EntryResolveRequest.EventTaxonomy = Request.EventTaxonomy;
+	EntryResolveRequest.SignatureEvidenceId = Request.SignatureEvidenceId;
 	for (UEdGraphNode* Node : Resolved.NodesToPreserve)
 	{
 		if (!Node)
@@ -1039,10 +1025,7 @@ bool FBlueprintHelperReplaceBlueprintGraphService::ReconnectPreservedEntryToNewB
 			continue;
 		}
 
-		const bool bMatchesScope =
-			(Request.Scope == EBlueprintHelperReplaceScope::FunctionBody && Node->IsA<UK2Node_FunctionEntry>()) ||
-			(Request.Scope != EBlueprintHelperReplaceScope::FunctionBody && FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::FindFirstExecPin(Node, EGPD_Output) != nullptr);
-		if (bMatchesScope && FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::NodeMatchesEntryName(Node, Request.EntryName))
+		if (FBlueprintHelperReplaceEntryResolver::NodeMatchesEntry(EntryResolveRequest, Node))
 		{
 			EntryNode = Node;
 			break;
