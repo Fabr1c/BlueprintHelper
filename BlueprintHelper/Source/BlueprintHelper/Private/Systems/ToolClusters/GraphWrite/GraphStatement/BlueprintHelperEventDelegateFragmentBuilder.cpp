@@ -1,7 +1,6 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperEventDelegateFragmentBuilder.h"
 
 #include "BlueprintNodeBinder.h"
-#include "BlueprintNodeSpawner.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraph/EdGraphSchema.h"
@@ -10,7 +9,6 @@
 #include "K2Node.h"
 #include "K2Node_AssignDelegate.h"
 #include "K2Node_BaseMCDelegate.h"
-#include "K2Node_CreateDelegate.h"
 #include "K2Node_VariableGet.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionNodeSpawnerAdapter.h"
@@ -18,6 +16,7 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperEventDelegateUseSiteEvidence.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextScope.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperDelegateLinkFragmentUtils.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "UObject/UnrealType.h"
 
@@ -227,84 +226,6 @@ static UK2Node_AssignDelegate* SpawnAssignDelegateNodeManually(
 	return AssignNode;
 }
 
-static UK2Node_CreateDelegate* SpawnCreateDelegateNode(
-	UEdGraph* TargetGraph,
-	const FBlueprintHelperEventDelegateUseSiteEvidence& Evidence,
-	const FString& StatementId,
-	const FVector2D& Location,
-	FString& OutError)
-{
-	UBlueprintNodeSpawner* CreateDelegateSpawner = UBlueprintNodeSpawner::Create(UK2Node_CreateDelegate::StaticClass());
-	if (!CreateDelegateSpawner)
-	{
-		OutError = TEXT("create delegate spawn failed: node spawner unavailable.");
-		return nullptr;
-	}
-
-	FBlueprintHelperActionNodeSpawnOptions Options;
-	Options.NodeId = StatementId + TEXT(":create_delegate");
-	Options.bReconstructAfterSpawn = false;
-	UK2Node* SpawnedNode = FBlueprintHelperActionNodeSpawnerAdapter::InvokeNodeSpawner(
-		TargetGraph,
-		CreateDelegateSpawner,
-		Options.NodeId,
-		Location,
-		Options,
-		OutError);
-	UK2Node_CreateDelegate* CreateDelegateNode = Cast<UK2Node_CreateDelegate>(SpawnedNode);
-	if (!CreateDelegateNode)
-	{
-		if (OutError.IsEmpty())
-		{
-			OutError = TEXT("create delegate spawn failed: spawner did not create UK2Node_CreateDelegate.");
-		}
-		return nullptr;
-	}
-
-	CreateDelegateNode->SetFunction(FName(*Evidence.HandlerName));
-	return CreateDelegateNode;
-}
-
-static bool ConnectCreateDelegateToPrimary(
-	UEdGraph* TargetGraph,
-	UK2Node_BaseMCDelegate* PrimaryDelegateNode,
-	UK2Node_CreateDelegate* CreateDelegateNode,
-	FBlueprintHelperNodeFragment& OutFragment,
-	FString& OutError)
-{
-	if (!TargetGraph || !TargetGraph->GetSchema())
-	{
-		OutError = TEXT("create delegate link failed: graph schema is invalid.");
-		return false;
-	}
-	if (!PrimaryDelegateNode || !CreateDelegateNode)
-	{
-		OutError = TEXT("create delegate link failed: delegate nodes are invalid.");
-		return false;
-	}
-
-	UEdGraphPin* DelegateOutPin = CreateDelegateNode->GetDelegateOutPin();
-	UEdGraphPin* DelegateInPin = PrimaryDelegateNode->GetDelegatePin();
-	if (!DelegateOutPin || !DelegateInPin)
-	{
-		OutError = TEXT("create delegate link failed: delegate pins are missing.");
-		return false;
-	}
-	if (!TargetGraph->GetSchema()->TryCreateConnection(DelegateOutPin, DelegateInPin))
-	{
-		OutError = TEXT("create delegate link failed: schema rejected delegate pin connection.");
-		return false;
-	}
-
-	FBlueprintHelperFragmentLink Link;
-	Link.From = FBlueprintHelperFragmentPinRef{ TEXT("create_delegate"), DelegateOutPin->PinName.ToString(), DelegateOutPin->PinType.PinCategory.ToString(), DelegateOutPin };
-	Link.To = FBlueprintHelperFragmentPinRef{ TEXT("primary"), DelegateInPin->PinName.ToString(), DelegateInPin->PinType.PinCategory.ToString(), DelegateInPin };
-	OutFragment.InternalLinks.Add(Link);
-	OutFragment.PinBindings.Add(TEXT("create_delegate.event"), Link.From);
-	OutFragment.PinBindings.Add(TEXT("delegate.event"), Link.To);
-	return true;
-}
-
 static bool ConnectBindingObjectToPrimaryTarget(
 	UEdGraph* TargetGraph,
 	const FBlueprintHelperEventDelegateUseSiteEvidence& Evidence,
@@ -486,19 +407,16 @@ bool FBlueprintHelperEventDelegateFragmentBuilder::BuildStatement(
 			return false;
 		}
 
-		UK2Node_CreateDelegate* CreateDelegateNode = SpawnCreateDelegateNode(
+		FBlueprintHelperDelegateLinkRequest LinkRequest;
+		LinkRequest.FragmentId = StatementId;
+		LinkRequest.HandlerName = Evidence.HandlerName;
+		LinkRequest.CreateDelegateLocation = FVector2D(-220.0, 120.0);
+		if (!FBlueprintHelperDelegateLinkFragmentUtils::AttachCreateDelegateToPrimary(
 			TargetGraph,
-			Evidence,
-			StatementId,
-			FVector2D(-220.0, 120.0),
-			OutError);
-		if (!CreateDelegateNode)
-		{
-			return false;
-		}
-
-		OutFragment.Nodes.Add(CreateDelegateNode);
-		if (!ConnectCreateDelegateToPrimary(TargetGraph, PrimaryDelegateNode, CreateDelegateNode, OutFragment, OutError))
+			PrimaryDelegateNode,
+			LinkRequest,
+			OutFragment,
+			OutError))
 		{
 			return false;
 		}

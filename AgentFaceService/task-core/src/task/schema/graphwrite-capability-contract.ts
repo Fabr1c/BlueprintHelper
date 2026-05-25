@@ -13,7 +13,7 @@ export interface GraphWriteOperationContract {
 }
 
 export interface GraphWriteClusterContract {
-  readonly id: 'function_action' | 'field' | 'event' | 'asset_action' | 'container_action';
+  readonly id: 'function_action' | 'field' | 'event' | 'asset_action' | 'container_action' | 'generic_schedule';
   readonly responsibility: string;
   readonly operations: readonly GraphWriteOperationContract[];
   readonly evidence: {
@@ -38,6 +38,26 @@ const ASSET_ACTION_REQUIRED_EVIDENCE_KEYS = [
   'asset_action_node_class',
   'asset_action_spawner_signature',
   'asset_action_owner_path',
+] as const;
+
+const GENERIC_SCHEDULE_REQUIRED_EVIDENCE_KEYS = [
+  'schedule_action_stable_id',
+  'schedule_node_class',
+  'schedule_spawner_signature',
+  'schedule_owner_path',
+] as const;
+
+const TIMER_DELEGATE_REQUIRED_EVIDENCE_KEYS = [
+  ...GENERIC_SCHEDULE_REQUIRED_EVIDENCE_KEYS,
+  'handler_name',
+  'handler_function_path',
+  'handler_source_cluster',
+  'signature_evidence_id',
+] as const;
+
+const LATENT_OR_ASYNC_REQUIRED_EVIDENCE_KEYS = [
+  ...GENERIC_SCHEDULE_REQUIRED_EVIDENCE_KEYS,
+  'graph_latent_allowed',
 ] as const;
 
 export const GRAPHWRITE_CAPABILITY_CONTRACT: GraphWriteCapabilityContract = {
@@ -179,6 +199,32 @@ export const GRAPHWRITE_CAPABILITY_CONTRACT: GraphWriteCapabilityContract = {
         requiredKeys: [],
       },
       executeRevalidation: 'not-required',
+    },
+    {
+      id: 'generic_schedule',
+      responsibility:
+        'GraphWrite owns Generic schedule use-site nodes only when selected ActionDatabase spawner evidence and external handler/signature evidence are projected.',
+      operations: [
+        {
+          id: 'schedule.timer_delegate_node',
+          kind: 'schedule',
+          supportStatus: 'supported',
+          reviewEvidence: 'graph_surface_atomic_target',
+          requiredEvidenceKeys: TIMER_DELEGATE_REQUIRED_EVIDENCE_KEYS,
+        },
+        {
+          id: 'schedule.latent_or_async_node',
+          kind: 'schedule',
+          supportStatus: 'supported',
+          reviewEvidence: 'graph_surface_atomic_target',
+          requiredEvidenceKeys: LATENT_OR_ASYNC_REQUIRED_EVIDENCE_KEYS,
+        },
+      ],
+      evidence: {
+        projectionSource: 'UE ActionDatabase',
+        requiredKeys: GENERIC_SCHEDULE_REQUIRED_EVIDENCE_KEYS,
+      },
+      executeRevalidation: 'required',
     },
   ],
   finalAcceptance: {

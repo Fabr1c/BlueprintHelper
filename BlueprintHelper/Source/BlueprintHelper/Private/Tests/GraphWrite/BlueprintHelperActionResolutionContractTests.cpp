@@ -801,10 +801,14 @@ bool FBlueprintHelperActionResolutionAssetActionNoSyntheticSpawnerContractTest::
 	const FString ProjectionServicePath = BuildGraphWritePrivateSourcePath(
 		TEXT("ActionResolution"),
 		TEXT("BlueprintHelperAssetActionProjectionService.cpp"));
+	const FString NeutralProjectionServicePath = BuildGraphWritePrivateSourcePath(
+		TEXT("ActionResolution"),
+		TEXT("BlueprintHelperActionDatabaseProjectionService.cpp"));
 
 	FString GenericCreateResolverSource;
 	FString GenericAssetResolverSource;
 	FString ProjectionServiceSource;
+	FString NeutralProjectionServiceSource;
 	bool bClean = true;
 	if (!FFileHelper::LoadFileToString(GenericCreateResolverSource, *GenericCreateResolverPath))
 	{
@@ -821,6 +825,11 @@ bool FBlueprintHelperActionResolutionAssetActionNoSyntheticSpawnerContractTest::
 		AddError(FString::Printf(TEXT("AssetActionProjectionService source could not be read: %s"), *ProjectionServicePath));
 		bClean = false;
 	}
+	if (!FFileHelper::LoadFileToString(NeutralProjectionServiceSource, *NeutralProjectionServicePath))
+	{
+		AddError(FString::Printf(TEXT("ActionDatabaseProjectionService source could not be read: %s"), *NeutralProjectionServicePath));
+		bClean = false;
+	}
 	if (!bClean)
 	{
 		return false;
@@ -835,18 +844,62 @@ bool FBlueprintHelperActionResolutionAssetActionNoSyntheticSpawnerContractTest::
 	bClean &= TestTrue(
 		TEXT("Asset action resolver uses projection service"),
 		GenericAssetResolverSource.Contains(TEXT("FBlueprintHelperAssetActionProjectionService::Project")));
+	bClean &= TestTrue(
+		TEXT("Asset action projection delegates to neutral ActionDatabase projection service"),
+		ProjectionServiceSource.Contains(TEXT("FBlueprintHelperActionDatabaseProjectionService::Project")));
 	bClean &= TestFalse(
 		TEXT("Asset action resolver does not directly refresh ActionDatabase after extraction"),
 		GenericAssetResolverSource.Contains(TEXT("FBlueprintActionDatabase::Get().RefreshAll()")));
 	bClean &= TestTrue(
-		TEXT("Projection service refreshes and consumes ActionDatabase registry"),
-		ProjectionServiceSource.Contains(TEXT("FBlueprintActionDatabase::Get().RefreshAll()"))
-		&& ProjectionServiceSource.Contains(TEXT("GetAllActions()")));
+		TEXT("Neutral projection service refreshes and consumes ActionDatabase registry"),
+		NeutralProjectionServiceSource.Contains(TEXT("FBlueprintActionDatabase::Get().RefreshAll()"))
+		&& NeutralProjectionServiceSource.Contains(TEXT("GetAllActions()")));
 	bClean &= TestFalse(
-		TEXT("Projection service does not synthesize node spawners with UBlueprintNodeSpawner::Create"),
-		ProjectionServiceSource.Contains(TEXT("UBlueprintNodeSpawner::Create")));
+		TEXT("Neutral projection service does not synthesize node spawners with UBlueprintNodeSpawner::Create"),
+		NeutralProjectionServiceSource.Contains(TEXT("UBlueprintNodeSpawner::Create")));
 
 	TestTrue(TEXT("asset_action keeps real ActionDatabase-only spawner resolution"), bClean);
+	return bClean;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionResolutionGenericScheduleNoSyntheticSpawnerContractTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.Contract.GenericScheduleNoSyntheticSpawner",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionResolutionGenericScheduleNoSyntheticSpawnerContractTest::RunTest(const FString& Parameters)
+{
+	const FString GenericTransformResolverPath = BuildGraphWritePrivateSourcePath(
+		TEXT("ActionResolution"),
+		TEXT("BlueprintHelperGenericTransformScheduleActionResolver.cpp"));
+
+	FString GenericTransformResolverSource;
+	if (!FFileHelper::LoadFileToString(GenericTransformResolverSource, *GenericTransformResolverPath))
+	{
+		AddError(FString::Printf(TEXT("GenericTransformScheduleActionResolver source could not be read: %s"), *GenericTransformResolverPath));
+		return false;
+	}
+
+	const int32 ScheduleStart = GenericTransformResolverSource.Find(TEXT("static FBlueprintHelperActionResolutionResult ResolveSchedule"));
+	const int32 ScheduleEnd = GenericTransformResolverSource.Find(TEXT("bool FBlueprintHelperGenericTransformScheduleActionResolver::IsSupportedTransformOperation"));
+	if (ScheduleStart == INDEX_NONE || ScheduleEnd == INDEX_NONE || ScheduleEnd <= ScheduleStart)
+	{
+		AddError(TEXT("Could not isolate ResolveSchedule source section."));
+		return false;
+	}
+
+	const FString ScheduleSource = GenericTransformResolverSource.Mid(ScheduleStart, ScheduleEnd - ScheduleStart);
+	bool bClean = true;
+	bClean &= TestTrue(
+		TEXT("Generic schedule resolver reads projected schedule evidence"),
+		ScheduleSource.Contains(TEXT("ReadScheduleActionEvidence")));
+	bClean &= TestTrue(
+		TEXT("Generic schedule resolver revalidates through neutral ActionDatabase projection service"),
+		ScheduleSource.Contains(TEXT("FBlueprintHelperActionDatabaseProjectionService::Project")));
+	bClean &= TestFalse(
+		TEXT("Generic schedule resolver does not synthesize schedule spawners with UBlueprintNodeSpawner::Create"),
+		ScheduleSource.Contains(TEXT("UBlueprintNodeSpawner::Create")));
+	TestTrue(TEXT("Generic schedule uses projected ActionDatabase spawner resolution only"), bClean);
 	return bClean;
 }
 

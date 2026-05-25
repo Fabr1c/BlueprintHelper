@@ -42,6 +42,39 @@ bool FBlueprintHelperProjectedTypePromotionEvidence::IsComplete() const
 		&& !TargetPinType.IsEmpty();
 }
 
+bool FBlueprintHelperProjectedScheduleActionEvidence::HasSelector() const
+{
+	return !StableId.IsEmpty()
+		|| !NodeClassPath.IsEmpty()
+		|| !SpawnerSignature.IsEmpty()
+		|| !OwnerPath.IsEmpty()
+		|| !Query.IsEmpty()
+		|| !MenuName.IsEmpty()
+		|| !Category.IsEmpty();
+}
+
+bool FBlueprintHelperProjectedScheduleActionEvidence::HasProjectedIdentity() const
+{
+	return !StableId.IsEmpty()
+		&& !NodeClassPath.IsEmpty()
+		&& !SpawnerSignature.IsEmpty()
+		&& !OwnerPath.IsEmpty();
+}
+
+bool FBlueprintHelperProjectedScheduleActionEvidence::HasTimerHandlerEvidence() const
+{
+	return !HandlerName.IsEmpty()
+		&& !HandlerFunctionPath.IsEmpty()
+		&& !HandlerSourceCluster.IsEmpty()
+		&& !SignatureEvidenceId.IsEmpty();
+}
+
+bool FBlueprintHelperProjectedScheduleActionEvidence::IsGraphLatentAllowed() const
+{
+	const FString Normalized = GraphLatentAllowed.TrimStartAndEnd().ToLower();
+	return Normalized == TEXT("true") || Normalized == TEXT("1") || Normalized == TEXT("yes");
+}
+
 FBlueprintHelperProjectedAssetActionEvidence FBlueprintHelperProjectedSpawnerEvidence::ReadAssetActionEvidence(
 	const FBlueprintHelperActionResolutionRequest& Request)
 {
@@ -81,6 +114,45 @@ FBlueprintHelperProjectedTypePromotionEvidence FBlueprintHelperProjectedSpawnerE
 	return Evidence;
 }
 
+FBlueprintHelperProjectedScheduleActionEvidence FBlueprintHelperProjectedSpawnerEvidence::ReadScheduleActionEvidence(
+	const FBlueprintHelperActionResolutionRequest& Request)
+{
+	FBlueprintHelperProjectedScheduleActionEvidence Evidence;
+	Evidence.StableId = ReadTrimmedEvidenceValue(Request, TEXT("schedule_action_stable_id"));
+	Evidence.NodeClassPath = ReadTrimmedEvidenceValue(Request, TEXT("schedule_node_class"));
+	Evidence.SpawnerSignature = ReadTrimmedEvidenceValue(Request, TEXT("schedule_spawner_signature"));
+	Evidence.OwnerPath = ReadTrimmedEvidenceValue(Request, TEXT("schedule_owner_path"));
+	Evidence.Query = ReadTrimmedEvidenceValue(Request, TEXT("schedule_query"));
+	Evidence.MenuName = ReadTrimmedEvidenceValue(Request, TEXT("schedule_menu_name"));
+	Evidence.Category = ReadTrimmedEvidenceValue(Request, TEXT("schedule_category"));
+	Evidence.DelegatePinName = ReadTrimmedEvidenceValue(Request, TEXT("schedule_delegate_pin_name"));
+	Evidence.HandlerName = ReadTrimmedEvidenceValue(Request, TEXT("handler_name"));
+	Evidence.HandlerFunctionPath = ReadTrimmedEvidenceValue(Request, TEXT("handler_function_path"));
+	Evidence.HandlerSourceCluster = ReadTrimmedEvidenceValue(Request, TEXT("handler_source_cluster"));
+	Evidence.SignatureEvidenceId = ReadTrimmedEvidenceValue(Request, TEXT("signature_evidence_id"));
+	Evidence.GraphLatentAllowed = ReadTrimmedEvidenceValue(Request, TEXT("graph_latent_allowed"));
+	return Evidence;
+}
+
+void FBlueprintHelperProjectedSpawnerEvidence::WriteScheduleActionEvidence(
+	const FBlueprintHelperProjectedScheduleActionEvidence& Evidence,
+	TMap<FString, FString>& OutContextEvidence)
+{
+	OutContextEvidence.Add(TEXT("schedule_action_stable_id"), Evidence.StableId);
+	OutContextEvidence.Add(TEXT("schedule_node_class"), Evidence.NodeClassPath);
+	OutContextEvidence.Add(TEXT("schedule_spawner_signature"), Evidence.SpawnerSignature);
+	OutContextEvidence.Add(TEXT("schedule_owner_path"), Evidence.OwnerPath);
+	OutContextEvidence.Add(TEXT("schedule_query"), Evidence.Query);
+	OutContextEvidence.Add(TEXT("schedule_menu_name"), Evidence.MenuName);
+	OutContextEvidence.Add(TEXT("schedule_category"), Evidence.Category);
+	OutContextEvidence.Add(TEXT("schedule_delegate_pin_name"), Evidence.DelegatePinName);
+	OutContextEvidence.Add(TEXT("handler_name"), Evidence.HandlerName);
+	OutContextEvidence.Add(TEXT("handler_function_path"), Evidence.HandlerFunctionPath);
+	OutContextEvidence.Add(TEXT("handler_source_cluster"), Evidence.HandlerSourceCluster);
+	OutContextEvidence.Add(TEXT("signature_evidence_id"), Evidence.SignatureEvidenceId);
+	OutContextEvidence.Add(TEXT("graph_latent_allowed"), Evidence.GraphLatentAllowed);
+}
+
 FString FBlueprintHelperProjectedSpawnerEvidence::MakeAssetActionStableId(
 	const UObject* ActionOwner,
 	const UBlueprintNodeSpawner* Spawner,
@@ -103,4 +175,12 @@ FString FBlueprintHelperProjectedSpawnerEvidence::MakeTypePromotionStableId(
 		*OperatorName.TrimStartAndEnd(),
 		*SourcePinType.TrimStartAndEnd(),
 		*TargetPinType.TrimStartAndEnd());
+}
+
+FString FBlueprintHelperProjectedSpawnerEvidence::MakeScheduleActionStableId(
+	const UObject* ActionOwner,
+	const UBlueprintNodeSpawner* Spawner,
+	const UClass* NodeClass)
+{
+	return MakeAssetActionStableId(ActionOwner, Spawner, NodeClass);
 }

@@ -12,7 +12,7 @@ describe('GraphWrite capability contract', () => {
     assert.equal(GRAPHWRITE_CAPABILITY_CONTRACT.version, 1);
     assert.equal(GRAPHWRITE_CAPABILITY_CONTRACT.status, 'stable-candidate');
 
-    for (const id of ['function_action', 'field', 'event', 'asset_action', 'container_action'] as const) {
+    for (const id of ['function_action', 'field', 'event', 'asset_action', 'container_action', 'generic_schedule'] as const) {
       assert.ok(clusters.has(id), `missing GraphWrite cluster contract: ${id}`);
     }
   });
@@ -55,6 +55,28 @@ describe('GraphWrite capability contract', () => {
     assert.ok(containerAction.operations.some((operation) => operation.id === 'container.map.contains'));
     assert.ok(containerAction.operations.some((operation) => operation.id === 'container.set.to_array'));
     assert.ok(containerAction.operations.every((operation) => operation.reviewEvidence === 'graph_surface_atomic_target'));
+  });
+
+  it('pins Generic schedule to projected spawner evidence and graph-level review evidence', () => {
+    const genericSchedule = GRAPHWRITE_CAPABILITY_CONTRACT.clusters.find((cluster) => cluster.id === 'generic_schedule');
+
+    assert.ok(genericSchedule);
+    assert.equal(genericSchedule.evidence.projectionSource, 'UE ActionDatabase');
+    assert.equal(genericSchedule.executeRevalidation, 'required');
+    assert.deepEqual(genericSchedule.evidence.requiredKeys, [
+      'schedule_action_stable_id',
+      'schedule_node_class',
+      'schedule_spawner_signature',
+      'schedule_owner_path',
+    ]);
+    assert.equal(
+      genericSchedule.operations.find((operation) => operation.id === 'schedule.timer_delegate_node')?.reviewEvidence,
+      'graph_surface_atomic_target',
+    );
+    assert.equal(
+      genericSchedule.operations.find((operation) => operation.id === 'schedule.latent_or_async_node')?.reviewEvidence,
+      'graph_surface_atomic_target',
+    );
   });
 
   it('keeps discussion-gated event overlap out of supported GraphWrite ownership', () => {
