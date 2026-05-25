@@ -554,7 +554,7 @@ AgentFace intent 到底层簇的路由：
 | `deconstruct` | GenericAssetStructControlActionCluster | struct/value 拆解和字段发现 |
 | `select` | GenericAssetStructControlActionCluster | 数据流值选择 |
 | `control` | GenericAssetStructControlActionCluster | exec flow control |
-| `event` | EventDelegateActionCluster | event entry / custom event |
+| `event` | BlueprintSignature dependency + GraphWrite body entry | custom/override/native declaration and signature belong to `BlueprintSignature`; GraphWrite may only write body content for an already declared/projected event entry. |
 | `component_bound_event` | EventDelegateActionCluster | component-bound event |
 | `bind` | EventDelegateActionCluster | delegate binding |
 | `create` | GenericAssetStructControlActionCluster | Actor/Object/Widget 等实例创建 |
@@ -616,7 +616,7 @@ AgentFace kind
 
 | AgentFace kind | 默认 Spawner-Oriented Cluster |
 |---|---|
-| `event` | `EventDelegateActionCluster` |
+| `event` | `BlueprintSignature` upstream dependency + GraphWrite body writer; not `EventDelegateActionCluster` |
 | `component_bound_event` | `EventDelegateActionCluster` |
 | `bind` / `unbind` / `assign` | `EventDelegateActionCluster` |
 | `control` | `GenericAssetStructControlActionCluster` |

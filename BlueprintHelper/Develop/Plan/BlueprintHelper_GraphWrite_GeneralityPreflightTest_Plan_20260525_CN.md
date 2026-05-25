@@ -23,6 +23,7 @@
 | Review evidence | PASS | `Automation RunTests BlueprintHelper.Review.Producer.ClusterBuildsProducerOwnedEvidence`; `Automation RunTests BlueprintHelper.TaskRuntime.PostIO`。 |
 | legacy parsed-plan removal | PASS | `Automation RunTests BlueprintHelper.GraphWrite.LegacyMainline`; `rg -n "parsed_node_plan_unsupported|FBlueprintGraphMutationPlan|FBlueprintGraphMutationNodePlan|FBlueprintGraphMutationLinkPlan|MakeNodePlanFromParsedNode|MakeLinkPlanFromParsedLink" BlueprintHelper/Source/BlueprintHelper` 仅命中 contract test 禁止词。 |
 | container_action V1 | PASS | `Automation RunTests BlueprintHelper.GraphWrite.ContainerAction`；first-class TaskSpec public shape、C++ contract validation、FunctionAction-backed resolver、fragment role links、typed readback verifier、array-shaped result-symbol DAG metadata、endpoint pin_type JSON round-trip、array/map/set focused E2E 已落地。 |
+| generic_schedule | PASS | `timer_delegate_node` / `latent_or_async_node` success path 已落地；focused gates 为 `Automation RunTests BlueprintHelper.GraphWrite.ActionResolution.Generic.Schedule` 和 `Automation RunTests BlueprintHelper.GraphWrite.GenericSchedule`。最终 preflight 仍需生成 10-variant ownership-filtered TaskSpec/readback coverage。 |
 | full GraphWrite suite | PASS | `Automation RunTests BlueprintHelper.GraphWrite`；该套件通过说明当前核心 GraphWrite automation gates 已绿，但不替代 ownership-filtered 泛化验收。 |
 | full generality preflight | PENDING | 本文件下方的 matrix、factory、runner、report writer 仍未实现，不能标记 stable final。 |
 
@@ -36,7 +37,7 @@
 | Delegate/component handler lookup or declaration creation | 作为 Signature/ActionContext projection 前置条件；GraphWrite 缺 evidence 时应返回 deterministic diagnostic。 |
 | EventDelegate use-site: `component_bound_event`、`delegate bind/assign/unbind/clear/call` | 只在已有声明/evidence 完整时作为 use-site graph writing 验证；不把声明缺口算作 GraphWrite failure。 |
 | Merge/Patch/ConnectPins mutation ownership | 不计入 Spawner-Oriented GraphStatement preflight，除非后续明确迁入 GraphStatement 主线。 |
-| Evidence-heavy Generic paths | `type_promotion` 的 TaskSpec passthrough 与 resolver consumption 已存在，作为 final preflight coverage；`asset_action` Review policy 已收窄为 graph-level `graph_block`，由 `BlueprintHelper_GraphWrite_AssetActionReviewPolicy_GraphBlockPlan_20260525_CN.md` 固化，不进入 action-level Review target；`timer_delegate_node`、`latent_or_async_node` 已决定保留为 GraphWrite Generic schedule success path，并由 `BlueprintHelper_GraphWrite_GenericScheduleSuccessPathPlan_20260525_CN.md` 补齐 success evidence/readback。 |
+| Evidence-heavy Generic paths | `type_promotion` 的 TaskSpec passthrough 与 resolver consumption 已存在，作为 final preflight coverage；`asset_action` Review policy 已收窄为 graph-level `graph_block`，由 `BlueprintHelper_GraphWrite_AssetActionReviewPolicy_GraphBlockPlan_20260525_CN.md` 固化，不进入 action-level Review target；`timer_delegate_node`、`latent_or_async_node` 已保留并落地为 GraphWrite Generic schedule success path，后续 preflight 只需按 projected evidence fixture 生成泛化用例。 |
 | `anim_notify_event` | 归 Animation Blueprint / Animation tooling；当前 GraphWrite 只关注普通 Blueprint，不进入最终矩阵。 |
 | broad `container_action` | `BlueprintHelper_GraphWrite_ContainerAction_FirstClassPlan_20260525_CN.md` 已实现 V1 first-class 范围：核心 array/map/set 操作进入 `container_action` public shape，执行复用 FunctionAction-backed callable evidence；`make_*` 仍归 Generic create，`foreach` 归后续 control-flow。focused readback 已覆盖 wildcard 被替换成目标类型、target link 正确、编译无报错；最终矩阵仍需按 owned operation 生成 10 variants。 |
 | FunctionAction overlap | 容器操作会与 FunctionAction 高度重叠；最终矩阵前必须明确哪些作为普通 callable 计入 FunctionAction，哪些需要 first-class `container_action` 语义。 |
@@ -97,7 +98,7 @@
 | `control.branch` | `kind=control, control=branch` | internal `kind=branch` | `K2Node_IfThenElse` |
 | `control.sequence` | `kind=control, control=sequence` | internal `kind=sequence` | `K2Node_ExecutionSequence` |
 | `control.return` | `kind=control, control=return` | internal `kind=return` | return node |
-| `event.custom_event` | existing custom event entry/body | EventDelegate use-site evidence | custom event body graph entry |
+| `body.custom_event` | existing Signature-owned custom event body | projected `BlueprintSignature` entry evidence; not EventDelegateActionCluster | body graph content under an existing custom event entry |
 | `component_bound_event.bind` | `kind=component_bound_event` | `kind=component_bound_event` | `K2Node_ComponentBoundEvent` |
 | `delegate.bind` | `kind=delegate.bind` | `kind=delegate, delegate_operation=bind` | `K2Node_AddDelegate` + `K2Node_CreateDelegate` |
 | `delegate.assign` | `kind=delegate.assign` | `kind=delegate, delegate_operation=assign` | `K2Node_AssignDelegate` |
@@ -248,6 +249,7 @@ export type GraphWriteGeneralityCluster =
   | 'FunctionActionCluster'
   | 'FieldVariableActionCluster'
   | 'EventDelegateActionCluster'
+  | 'GraphWriteBodyWriter'
   | 'GenericAssetStructControlActionCluster';
 
 export type GraphWriteGeneralityFixture =
@@ -293,7 +295,7 @@ export const GRAPHWRITE_GENERALITY_OPERATION_MATRIX: GraphWriteGeneralityOperati
   op({ operationId: 'deconstruct.deconstruct', publicKind: 'deconstruct', normalizedKind: 'deconstruct', operationField: 'type_operation', operationValue: 'deconstruct', cluster: 'GenericAssetStructControlActionCluster', expectedNodeClass: 'K2Node_BreakStruct', fixtures: ['actor_blueprint'] }),
   op({ operationId: 'select.select', publicKind: 'select', normalizedKind: 'select', operationField: 'control_operation', operationValue: 'select', cluster: 'GenericAssetStructControlActionCluster', expectedNodeClass: 'K2Node_Select', fixtures: ['actor_blueprint'] }),
   ...['branch', 'sequence', 'return'].map((operation) => op({ operationId: `control.${operation}`, publicKind: 'control', normalizedKind: operation, operationField: 'control', operationValue: operation, cluster: 'GenericAssetStructControlActionCluster', expectedNodeClass: operation === 'branch' ? 'K2Node_IfThenElse' : operation === 'sequence' ? 'K2Node_ExecutionSequence' : 'K2Node_FunctionResult', fixtures: ['actor_blueprint'] })),
-  op({ operationId: 'event.custom_event', publicKind: 'custom_event_entry', normalizedKind: 'event', operationField: 'event_operation', operationValue: 'custom_event', cluster: 'EventDelegateActionCluster', expectedNodeClass: 'K2Node_CustomEvent', fixtures: ['actor_blueprint', 'custom_events'] }),
+  op({ operationId: 'body.custom_event', publicKind: 'custom_event_body', normalizedKind: 'graph_body', operationField: 'entry_taxonomy', operationValue: 'custom_event', cluster: 'GraphWriteBodyWriter', expectedNodeClass: 'Existing K2Node_CustomEvent', fixtures: ['actor_blueprint', 'custom_events'] }),
   op({ operationId: 'component_bound_event.bind', publicKind: 'component_bound_event', normalizedKind: 'component_bound_event', cluster: 'EventDelegateActionCluster', expectedNodeClass: 'K2Node_ComponentBoundEvent', fixtures: ['actor_blueprint', 'components', 'delegate_handlers'] }),
   ...['bind', 'assign', 'unbind', 'clear', 'call'].map((operation) => op({ operationId: `delegate.${operation}`, publicKind: operation === 'clear' ? 'delegate.unbind_all' : `delegate.${operation}`, normalizedKind: 'delegate', operationField: 'delegate_operation', operationValue: operation, cluster: 'EventDelegateActionCluster', expectedNodeClass: operation === 'bind' ? 'K2Node_AddDelegate' : operation === 'assign' ? 'K2Node_AssignDelegate' : operation === 'unbind' ? 'K2Node_RemoveDelegate' : operation === 'clear' ? 'K2Node_ClearDelegate' : 'K2Node_CallDelegate', fixtures: ['actor_blueprint', 'event_dispatchers', ...(operation === 'call' || operation === 'clear' ? [] : ['delegate_handlers'])] })),
   ...['spawn_actor', 'create_widget', 'construct_object', 'make_array', 'make_map', 'make_set', 'asset_action'].map((operation) => op({ operationId: `create.${operation}`, publicKind: 'create', normalizedKind: 'create', operationField: 'create_operation', operationValue: operation, cluster: 'GenericAssetStructControlActionCluster', expectedNodeClass: operation === 'spawn_actor' ? 'K2Node_SpawnActorFromClass' : operation === 'create_widget' ? 'K2Node_CreateWidget' : operation === 'construct_object' ? 'K2Node_GenericCreateObject' : operation === 'make_array' ? 'K2Node_MakeArray' : operation === 'make_map' ? 'K2Node_MakeMap' : operation === 'make_set' ? 'K2Node_MakeSet' : 'ActionDatabase', fixtures: operation === 'create_widget' ? ['actor_blueprint', 'widget_class'] : operation === 'asset_action' ? ['actor_blueprint', 'asset_action_evidence'] : ['actor_blueprint'] })),
@@ -594,7 +596,7 @@ function makeGenericExpressionStatement(operation: GraphWriteGeneralityOperation
   if (operation.publicKind === 'schedule') {
     return { id: name, kind: 'call', target: 'PrintString', args: { InString: { kind: 'schedule', schedule_operation: operation.operationValue, args: { delay: { kind: 'literal', value_type: 'number', value: 0.1 } } } } };
   }
-  if (operation.operationId === 'event.custom_event') {
+  if (operation.operationId === 'body.custom_event') {
     return { id: name, kind: 'call', target: 'PrintString', args: { InString: `${name}_event_body` } };
   }
   if (operation.operationId === 'component_bound_event.bind') {

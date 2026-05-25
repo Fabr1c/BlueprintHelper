@@ -150,7 +150,7 @@ TaskSpec compact semantic
 | FunctionActionCluster | 约 70%-75% | call/action resolver 已具备基础链路，仍需把 op/schedule/latent/convert 的语义约束并入同一 evidence 模型。 |
 | FieldVariableActionCluster | 约 45%-55% | 变量/属性上下文可从 Blueprint/metadata 获取，但 selected/binding 等价上下文和 field spawner evidence 仍需补齐。 |
 | GenericAssetStructControlActionCluster | 约 45%-55% | construct/deconstruct/select/control 可获得部分类型上下文，但 struct/action payload、wildcard promotion、post-link evidence 仍需统一。 |
-| EventDelegateActionCluster | 约 20%-30% | 事件/委托/组件绑定最依赖 selected object / binding context，目前缺少稳定合成入口。 |
+| EventDelegateActionCluster | 历史口径：约 20%-30%；当前 use-site scoped gap 已由 Gap5 后续闭环 | 本行原本混合了 event declaration、handler/signature、component-bound/delegate use-site。当前职责边界已拆分：`BlueprintSignature` owns declaration/signature；GraphWrite/EventDelegate 只消费 projected evidence 写 component-bound/delegate use-site；更宽真实资产覆盖仍是后续测试矩阵问题。 |
 
 ## 2. FunctionActionCluster 上下文
 
@@ -218,9 +218,7 @@ field_access
 覆盖语义：
 
 ```text
-event
 component_bound_event
-anim_notify_event
 bind
 unbind
 assign
@@ -230,17 +228,16 @@ delegate_clear
 
 | 上下文字段 | 用途 | 是否必须 | 如何获取 | 备注 |
 |---|---|---:|---|---|
-| `EventName` | custom event / implementable event | 条件必须 |  |  |
-| `EventFunction` | engine event / override event / interface event | 条件必须 |  |  |
-| `EventUniquenessPolicy` | reuse / focus_existing / create_new | 是 |  |  |
 | `DelegateProperty` | delegate node spawner / bound event spawner | 条件必须 |  |  |
 | `DelegateOwnerClass` | delegate visibility and binding compatibility | 条件必须 |  |  |
 | `BindingObject` | component / actor / selected object binding | 条件必须 |  |  |
 | `ComponentProperty` | component bound event | 条件必须 |  |  |
 | `ComponentName` | 从 TaskSpec 名称定位组件 | 条件必须 |  |  |
 | `DelegateSignaturePinTypes` | bind/assign/call pin 兼容 | 条件必须 |  |  |
-| `AnimSkeletonPath` | anim notify event | 条件必须 |  |  |
-| `AnimNotifyName` | anim notify event 名称 | 条件必须 |  |  |
+
+排除项：`event`、`EventName`、`EventFunction`、`EventUniquenessPolicy` 属于 Signature-owned event entry / GraphWrite body target resolution，不进入 `EventDelegateActionCluster`。GraphWrite 只能消费上游 `BlueprintSignature` 投影出的 entry/signature evidence 后写 body/use-site。
+
+排除项：`anim_notify_event`、`AnimSkeletonPath`、`AnimNotifyName` 属于 Animation Blueprint / Animation tooling，不进入当前 GraphWrite/EventDelegateActionCluster 的 ActionContext 输入矩阵。
 
 ---
 

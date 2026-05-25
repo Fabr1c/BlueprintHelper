@@ -376,22 +376,22 @@ Candidate metadata from UE ActionDatabase
 
 - [ ] **Step 2: Use UE NodeSpawner families**
 
-Allowed spawner families:
+Allowed spawner / factory families:
 
 ```text
-UBlueprintEventNodeSpawner
 UBlueprintBoundEventNodeSpawner
-UAnimNotifyEventNodeSpawner
 UBlueprintDelegateNodeSpawner
-UBlueprintBoundNodeSpawner
+manual AssignDelegate / delegate-reference factory with projected Signature evidence
 ```
+
+Explicitly excluded: `UBlueprintEventNodeSpawner` event-entry declaration paths belong to `BlueprintSignature` plus GraphWrite body-target resolution, not `EventDelegateActionCluster`. `UAnimNotifyEventNodeSpawner` belongs to Animation Blueprint / Animation tooling and is not part of the current GraphWrite/EventDelegateActionCluster responsibility boundary.
 
 - [ ] **Step 3: Normalize missing context**
 
 Return:
 
 ```text
-event_context_missing
+component_bound_event_context_missing
 binding_object_missing
 delegate_signature_missing
 event_action_unresolvable
@@ -679,7 +679,7 @@ Suggested commit message shape:
 - [x] `op` now consumes operator intent from `Semantic.Query` first, then projected `ContextEvidence.operator_token/operator/op/op_name`; missing operator context returns explicit `operator_context_missing`.
 - [x] `op` remains a UE type-promotion path through `FTypePromotion::GetOperatorSpawner`; it is not represented as a pseudo `call`.
 - [x] Generic construct/deconstruct direct MakeStruct/BreakStruct creation is now labeled as a dedicated `GenericAssetStructControl` boundary in candidate evidence and result messages.
-- [x] `EventDelegateActionCluster` now resolves custom `event` semantics through `UBlueprintEventNodeSpawner` when an event name is projected.
+- [x] Superseded by the Signature boundary: custom `event` declaration/body-entry semantics are not owned by `EventDelegateActionCluster`; `BlueprintSignature` creates or confirms the event entry/signature first, then GraphWrite writes body content against projected entry evidence.
 - [x] `EventDelegateActionCluster` now returns specific diagnostics for missing `component_bound_event` and `bind` projected evidence instead of the previous generic `needs_more_semantic_context`.
 - [x] Compile passed with `Build.bat TemplateEditor Win64 Development`.
 - [x] Full graphwrite preview passed for `D:/UEProjects/Template/Saved/BlueprintHelper/CodexSmoke/ActionContextPipeline_20260522_025331/full_graph_20260522_025331.json`.
@@ -688,10 +688,10 @@ Suggested commit message shape:
 距离期望差距：
 
 - [ ] `set_property` is migrated for simple graph-body field/property writes. Complex object-path or struct-member writes still need a composed DAG path once the schema carries enough typed target/member evidence.
-- [ ] `EventDelegateActionCluster` still does not fully resolve `component_bound_event` or `bind`; the ActionContextPipeline must first project component name/class, delegate owner/property, and signature evidence.
+- [ ] Historical note: the original 2026-05-22 gap for `component_bound_event` / `bind` projected evidence was later closed by Gap5. Future work should add broader real-asset coverage, not re-open custom event declaration ownership under EventDelegate.
 - [ ] Generic direct MakeStruct/BreakStruct remains a deliberate dedicated boundary because UE ActionDatabase cannot always express the operation through FunctionAction. It is now explicitly marked, but should stay narrow and covered by tests.
 - [ ] The full graphwrite smoke covers the current P0-P3 graphwrite path, but not the missing component-bound/bind delegate evidence path.
 
 阻塞内容：
 
-- `component_bound_event` / `bind` completion is blocked on projected delegate/component evidence fields, not on `EventDelegateActionCluster` dispatch itself.
+- Historical blocker superseded by later Gap5 closure: `component_bound_event` / `bind` require projected delegate/component/signature evidence, and EventDelegate must fail deterministically when that evidence is absent.

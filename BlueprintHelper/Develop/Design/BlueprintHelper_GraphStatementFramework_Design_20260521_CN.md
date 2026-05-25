@@ -64,7 +64,7 @@ AgentFace semantic statement
 
 出现上述例外时，必须在 resolver / builder / singleton evidence 边界写清楚原因，且仍要复用统一 typed target、typed pin、candidate reporting、Review/Debug evidence 模型。
 
-## 3. UE 5.6 NodeSpawner 清单
+## 3. GraphWrite 允许的 UE 5.6 NodeSpawner 清单
 
 | Spawner 类 | 角色 | 主要覆盖能力 |
 |---|---|---|
@@ -72,15 +72,15 @@ AgentFace semantic statement
 | `UBlueprintFieldNodeSpawner` | 字段节点公共基类 | 字段相关节点，关联 `FFieldVariant` |
 | `UBlueprintFunctionNodeSpawner` | 函数节点 spawner | callable function / Kismet library / Blueprint function |
 | `UBlueprintVariableNodeSpawner` | 变量节点 spawner | 成员变量、本地变量、参数 get/set |
-| `UBlueprintEventNodeSpawner` | 事件节点 spawner | 普通事件、自定义事件、函数事件入口 |
 | `UBlueprintBoundEventNodeSpawner` | 绑定事件 spawner | delegate/component bound event |
-| `UAnimNotifyEventNodeSpawner` | 动画通知事件 spawner | Animation Notify 事件 |
 | `UBlueprintDelegateNodeSpawner` | delegate 节点 spawner | multicast delegate bind/assign/unbind/call/clear |
 | `UBlueprintComponentNodeSpawner` | 组件节点 spawner | component reference / component action |
 | `UBlueprintAssetNodeSpawner` | 资产节点 spawner | asset-backed node creation |
 | `UBlueprintBoundNodeSpawner` | 绑定对象上下文 spawner | bound generic node action |
 
 补充：UE 右键菜单还会通过 `UBlueprintNodeSpawner::Create(NodeClass)`、`K2Node::GetMenuActions()`、`FBlueprintActionDatabaseRegistrar` 的 struct / enum / function spawner delegate、`UBlueprintTypePromotion` operator spawner map 提供更多 action。
+
+明确排除：`UBlueprintEventNodeSpawner` 的 event declaration / custom event entry 创建路径属于 `BlueprintSignature`，不是 GraphWrite/EventDelegateActionCluster 的职责；GraphWrite 只消费 projected entry evidence 写 body。`UAnimNotifyEventNodeSpawner` 属于 Animation Blueprint / Animation tooling 的动画通知事件入口，不符合当前 GraphWrite 普通 Blueprint 写图职责；它不作为 GraphWrite/EventDelegateActionCluster 的输入，也不计入 GraphWrite capability gap。
 
 ## 4. 四大 Spawner-Oriented Clusters
 
@@ -142,33 +142,28 @@ field_access
 
 ### 4.3 EventDelegateActionCluster
 
-底层：
+底层 spawner / factory boundary：
 
 ```text
-UBlueprintEventNodeSpawner
 UBlueprintBoundEventNodeSpawner
-UAnimNotifyEventNodeSpawner
 UBlueprintDelegateNodeSpawner
-UBlueprintBoundNodeSpawner
+manual AssignDelegate / delegate-reference factory with projected Signature evidence
 ```
 
 覆盖 SemanticConstraints：
 
 ```text
-event
 component_bound_event
-anim_notify_event
 delegate
 delegate_operation=bind|assign|unbind|call|clear
 ```
 
 职责：
 
-- 事件入口。
-- 组件绑定事件。
-- 动画通知事件。
+- 组件绑定事件 use-site。
 - delegate bind/assign/unbind/call/clear。
-- 绑定对象上下文 action。
+- delegate reference nodes such as `Create Event`, but only when handler/signature evidence has already been projected.
+- 不创建、不迁移、不修补 custom/override/native event declaration 或 handler signature；这些归 `BlueprintSignature`。
 
 ### 4.4 GenericAssetStructControlActionCluster
 
@@ -218,7 +213,7 @@ AgentFace `kind` 不再定义底层簇边界，只作为 intent 输入。
 | `set` | FieldVariableActionCluster | 符号写入 |
 | `get_property` | FieldVariableActionCluster | 简单 property path；复杂 path 可组合 Struct/Generic |
 | `set_property` | FieldVariableActionCluster | 简单 property write；复杂 path 可组合 Struct/Generic |
-| `event` | EventDelegateActionCluster | 事件入口 |
+| `event` | BlueprintSignature dependency + GraphWrite body entry | Signature owns custom/override/native declaration and signature; GraphWrite may only write body content for an already declared/projected event entry. This is not routed to EventDelegateActionCluster. |
 | `component_bound_event` | EventDelegateActionCluster | 组件绑定事件 |
 | `delegate` | EventDelegateActionCluster | delegate use-site family; `bind/assign/unbind/call/clear` must be represented by second-stage `delegate_operation` |
 | `construct` | GenericAssetStructControlActionCluster | value/struct/container 构造 |
@@ -311,8 +306,8 @@ FieldVariableActionCluster
 -> get / set / get_property / set_property / component_ref / field_access
 
 EventDelegateActionCluster
--> UBlueprintEventNodeSpawner / UBlueprintBoundEventNodeSpawner / UAnimNotifyEventNodeSpawner / UBlueprintDelegateNodeSpawner / UBlueprintBoundNodeSpawner
--> event / component_bound_event / anim_notify_event / delegate + delegate_operation=bind|assign|unbind|call|clear
+-> UBlueprintBoundEventNodeSpawner / UBlueprintDelegateNodeSpawner / manual AssignDelegate/delegate-reference factory
+-> component_bound_event / delegate + delegate_operation=bind|assign|unbind|call|clear
 
 GenericAssetStructControlActionCluster
 -> UBlueprintNodeSpawner / UBlueprintFieldNodeSpawner / UBlueprintAssetNodeSpawner / struct-enum-generic registrar delegates
@@ -405,7 +400,7 @@ Implementation note 2026-05-22:
 - `set_property` FragmentDAG emission must invoke the selected UE `NodeSpawner` through the shared ActionResolution adapter. It must not fall back to parsed-node local spawning.
 - `op` belongs to `FunctionActionCluster`, but its semantic is operator constraints. It resolves to UE type-promotion operator spawners from `FTypePromotion::GetOperatorSpawner`, not to pseudo call-function lookup.
 - Generic construct/deconstruct may use a dedicated `UBlueprintFieldNodeSpawner` MakeStruct/BreakStruct boundary only when UE FunctionAction/native make-break lookup cannot express the struct operation. This boundary must be explicit in candidate evidence and must remain generic, not Vector-only or type-specific.
-- `EventDelegateActionCluster` follows the same projected-context rule. Custom events can resolve through `UBlueprintEventNodeSpawner` only as graph-node/body placement after Signature ownership is respected; component-bound events and delegate bind/unbind/call/clear nodes require projected component/delegate/handler/signature evidence before they can invoke their UE spawner families. `delegate.assign` also requires the same projected evidence, but uses a manual assign factory because the UE AssignDelegate spawner can create Signature-owned custom-event declarations as a side effect.
+- `EventDelegateActionCluster` follows the same projected-context rule, but it does not own `event` / custom-event / override / native declaration semantics. Signature-owned event entries must be created or confirmed before GraphWrite runs; GraphWrite may then write body content around that projected entry. Component-bound events and delegate bind/unbind/call/clear nodes require projected component/delegate/handler/signature evidence before they can invoke their UE spawner families. `delegate.assign` also requires the same projected evidence and uses a manual assign factory specifically to avoid UE spawner side effects that would create Signature-owned custom-event declarations.
 
 ## 2026-05-23 EventDelegate / Signature Ownership Boundary
 
@@ -516,7 +511,7 @@ Recommended convergence order after Gap5:
 | `convert` | `TypeTransform` or `Callable` | `transform_operation=cast/convert/promote` | Decide by whether evidence resolves through cast/type promotion or normal function search. |
 | `call`, `op` | possibly `Callable` | `callable_operation=function/operator` | Higher risk because function call is the wide-surface search core. |
 | `select` | `GenericExpression` or singleton evidence under Generic cluster | `expression_operation=select` | Only direct spawn if Select remains canonical singleton. |
-| `event` | `Event` | `event_operation=custom_event/override/native` | Must preserve Signature ownership. |
+| `event` | Signature-owned event entry + GraphWrite body writer | `event_operation=custom_event/override/native` as upstream dependency evidence only | Not an EventDelegateActionCluster semantic. Signature owns declaration/signature; GraphWrite only writes body content when projected entry evidence exists. |
 | `create` | split after evidence audit | `create_operation=spawn_actor/create_widget/construct_object/asset_action` | Current name is too broad to normalize safely without an evidence audit. |
 | `schedule` | `AsyncFlow` or `Callable` | `schedule_operation=timer/latent/async` | Lifecycle/latent behavior may justify its own first-stage semantic. |
 
@@ -592,7 +587,7 @@ TaskSpec statement/expression
 | delegate handler 查找/创建、dispatcher 创建、handler function/custom-event signature | `BlueprintSignature` / ActionContext projection | GraphWrite/EventDelegate 不扫描资产修复缺失 handler；缺 evidence 必须确定性失败。 |
 | `component_bound_event` 与 `delegate_operation=bind|assign|unbind|clear|call` 的声明依赖 | `BlueprintSignature` owns declarations; EventDelegate owns use-site | 只把 existing-declaration use-site 计入 EventDelegate graph writing，不把声明缺口算作 GraphWrite gap。 |
 | Merge/Patch/ConnectPins 的 mutation ownership | Merge/Patch mutation services | 除非后续决定迁入 GraphStatement 主线，否则不作为 Spawner-Oriented Cluster 未完成项。 |
-| `anim_notify_event` / animation notify event entry | Animation Blueprint / Animation tooling | 该入口面向动画蓝图/动画资产事件；当前 GraphWrite 范围限定普通 Blueprint，不计入 GraphWrite gap。 |
+| `anim_notify_event` / animation notify event entry | Animation Blueprint / Animation tooling | 已从 GraphWrite/EventDelegateActionCluster 移除；该入口面向动画蓝图/动画资产事件，不符合当前 GraphWrite 普通 Blueprint 写图职责，不计入 GraphWrite capability gap。 |
 
 ### 当前 GraphWrite 已闭合的核心能力
 
@@ -622,15 +617,15 @@ TaskSpec statement/expression
 |---|---|---|---|
 | `asset_action` 缺 Agent-facing 正向 TaskSpec fixture/readback | 现有 resolver 已能校验 projected identity，但未发现完整 positive TaskSpec fixture 使用真实 ActionDatabase projection evidence 并执行 readback。 | 只能证明 resolver，不足以证明 Agent-facing GraphWrite 成功路径。 | 增加真实 projection -> TaskSpec -> preview/execute -> readback fixture，不能手写 stable id 伪造成功。 |
 | `asset_action` Review evidence policy | DECIDED / graph_block | public contract 收窄为 `graph_surface_atomic_target`；runtime `BuildReviewEvidence` 继续产出 graph-level `graph_block` target；执行计划为 `BlueprintHelper_GraphWrite_AssetActionReviewPolicy_GraphBlockPlan_20260525_CN.md`。 | Review/DebugBundle 粒度保持图级，不追踪 asset-action atomic target；若未来需要 action 级 DebugBundle，再作为增强项立项。 |
-| `timer_delegate_node` success path 未实现 | TaskSpec/schedule fields 已透传，但 Generic schedule resolver 当前直接返回 `needs_more_semantic_context`。 | 不能声明 timer delegate schedule node 已完成；但 ownership 已确定，GraphWrite 负责 use-site node/link，不负责 handler/signature declaration。 | 执行 `BlueprintHelper_GraphWrite_GenericScheduleSuccessPathPlan_20260525_CN.md`：增加 projected ActionDatabase schedule spawner evidence consumer、BlueprintSignature handler evidence 消费、CreateDelegate link readback。 |
-| `latent_or_async_node` success path 未实现 | TaskSpec/context evidence 已透传，但 resolver 当前直接返回 `needs_more_semantic_context`。 | 不能声明 latent/async schedule node 已完成；但 ownership 已确定，GraphWrite 负责 selected node spawn，不负责 handler/signature declaration。 | 执行 `BlueprintHelper_GraphWrite_GenericScheduleSuccessPathPlan_20260525_CN.md`：增加 projected latent/async selected-spawner evidence、`graph_latent_allowed=true` 消费与 readback。 |
+| `timer_delegate_node` success path | IMPLEMENTED：TaskSpec ownership guard、projected ActionDatabase schedule spawner evidence、BlueprintSignature handler evidence、resolver revalidation、CreateDelegate link readback 已落地。 | GraphWrite 只负责 timer/delegate schedule use-site node/link，不负责 handler/signature declaration。 | 覆盖 `BlueprintHelper.GraphWrite.ActionResolution.Generic.Schedule` 与 `BlueprintHelper.GraphWrite.GenericSchedule`；后续进入 ownership-filtered generality preflight。 |
+| `latent_or_async_node` success path | IMPLEMENTED：TaskSpec ownership guard、projected ActionDatabase schedule spawner evidence、`graph_latent_allowed=true`、resolver revalidation、fragment readback 已落地。 | GraphWrite 只负责 selected latent/async node spawn，不负责 handler/signature declaration。 | 覆盖 `BlueprintHelper.GraphWrite.ActionResolution.Generic.Schedule` 与 `BlueprintHelper.GraphWrite.GenericSchedule`；后续进入 ownership-filtered generality preflight。 |
 | non-make `container_action` first-class 能力 | make-family 仍由 Generic create 负责；核心 array/map/set 普通容器操作已进入 first-class `container_action` public shape，并通过 FunctionAction-backed callable evidence 解析执行。 | broad container_action focused gate 已关闭；最终仍需进入 ownership-filtered generality preflight 独立计数。 | 保持 `BlueprintHelper_GraphWrite_ContainerAction_FirstClassPlan_20260525_CN.md` 的 V1 边界：`make_*` 归 Generic create，`foreach` 归后续 control-flow。 |
 
 ### 真正剩余的 GraphWrite 未完成项
 
 | Remaining item | 为什么仍是 GraphWrite gap |
 |---|---|
-| Real evidence / BuildEvidence defects | 见上方真实缺陷表；当前只剩 `asset_action` 正向 TaskSpec/readback，以及已计划化的 `timer_delegate_node` / `latent_or_async_node` Generic schedule success evidence/readback。 |
+| Real evidence / BuildEvidence defects | 见上方真实缺陷表；`timer_delegate_node` / `latent_or_async_node` Generic schedule success evidence/readback 已关闭，当前剩余为 `asset_action` 正向 Agent-facing TaskSpec/readback 与最终泛化验收。 |
 | `container_action` final matrix coverage | V1 operation vocabulary、FunctionAction-backed 边界、TaskSpec 输入 shape、readback verifier 和 focused E2E 已实现；剩余是 ownership-filtered generality preflight 中的 10-variant coverage。 |
 | Full capability contract expansion | 当前能力面仍会随上面几项变化；该项放到 evidence defects 与 `container_action` public shape 确定/完成后再对齐。 |
 | Ownership-filtered final generality preflight | 最终验收门禁；放到 capability contract expansion 之后执行，用过滤后的 contract/matrix 重新计算 operation/variant 计数。 |
