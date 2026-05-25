@@ -10,6 +10,10 @@ For normal user setup, run the repository-root installer:
 
 See `INSTALL.md` at the repository root for Codex Desktop, CLI, lifecycle MCP, and UE engine-install options.
 
+交互式安装会在安装 Codex subagents 时显示模型/思考等级表单，只列出推荐组合 `gpt-5.4-mini / high`、`gpt-5.3-codex-spark / xhigh` 和 `gpt-5.4 / high`。
+
+Interactive install shows a Codex subagent model/reasoning form and only lists the recommended `gpt-5.4-mini / high`, `gpt-5.3-codex-spark / xhigh`, and `gpt-5.4 / high` profiles.
+
 The root installer uses the official Codex plugin install entry for this local marketplace:
 
 ```text
@@ -65,6 +69,10 @@ Install the subagent definitions globally from the source checkout:
 ```powershell
 node <BLUEPRINTHELPER_ROOT>\CodexPlugin\scripts\install-codex-agents.cjs
 ```
+
+默认推荐配置：`blueprint-explorer` 使用 `gpt-5.4-mini / high`，`sourcecode-explorer` 使用 `gpt-5.3-codex-spark / xhigh`，`task-worker` 使用 `gpt-5.4 / high`。
+
+Recommended defaults: `blueprint-explorer` uses `gpt-5.4-mini / high`; `sourcecode-explorer` uses `gpt-5.3-codex-spark / xhigh`; `task-worker` uses `gpt-5.4 / high`.
 
 ## CLI Entry
 
