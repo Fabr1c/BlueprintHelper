@@ -7,6 +7,8 @@
 
 > 注意：本文只给出源码调用链、路径和行号引用，不复制 Unreal Engine 源码正文。
 
+> 当前 GraphWrite v2 边界说明（2026-05-25）：本文是 UE 右键菜单 / NodeSpawner 源码参考，不是当前 GraphWrite 职责清单。当前 `GraphWrite/EventDelegateActionCluster` 不拥有 `event` / `custom_event` / `override_event` / `native_event` declaration，也不包含 `UAnimNotifyEventNodeSpawner`。`BlueprintSignature` owns declaration/signature；GraphWrite 只写已投影 entry 的 body 或 delegate/component-bound use-site。
+
 ---
 
 ## 0. 核心结论
@@ -31,7 +33,7 @@ GraphContext + TypedPins + TargetContext + SemanticConstraints
 -> Invoke / SpawnEdGraphNode
 ```
 
-设计文档要求的四大簇，本质上应映射到 UE 的 NodeSpawner 家族边界：
+历史设计文档中的四大簇曾按 UE NodeSpawner 家族做宽映射；当前 GraphWrite v2 已收窄 EventDelegate 边界，下面映射仅作为 UE 源码分析背景：
 
 ```text
 FunctionActionCluster
@@ -44,11 +46,14 @@ FieldVariableActionCluster
   -> UBlueprintComponentNodeSpawner
 
 EventDelegateActionCluster
-  -> UBlueprintEventNodeSpawner
   -> UBlueprintBoundEventNodeSpawner
-  -> UAnimNotifyEventNodeSpawner
   -> UBlueprintDelegateNodeSpawner
-  -> UBlueprintBoundNodeSpawner
+  -> manual AssignDelegate / delegate-reference factory with projected Signature evidence
+
+Excluded from current GraphWrite/EventDelegate responsibility:
+  -> UBlueprintEventNodeSpawner event declaration path
+  -> UAnimNotifyEventNodeSpawner
+  -> UBlueprintBoundNodeSpawner generic bound actions unless separately projected as GraphWrite-owned use-site evidence
 
 GenericAssetStructControlActionCluster
   -> UBlueprintNodeSpawner
@@ -921,12 +926,12 @@ Component: component variable name/type or component asset/class
 
 ### 7.3 EventDelegateActionCluster
 
+> Current GraphWrite v2 note: this section preserves the UE right-click source-chain taxonomy. For current GraphWrite, `event` / custom-event / override / native declaration is Signature-owned and `anim_notify_event` is excluded. EventDelegateActionCluster covers only component-bound/delegate use-site writing with projected evidence.
+
 覆盖 semantic：
 
 ```text
-event
 component_bound_event
-anim_notify_event
 bind
 unbind
 assign
@@ -1182,7 +1187,7 @@ SemanticConstraints
 #### `event`
 
 ```text
-默认簇: EventDelegateActionCluster
+当前 GraphWrite v2: BlueprintSignature upstream dependency + GraphWrite body writer, not EventDelegateActionCluster
 核心上下文交集:
   Event UFunction or custom event name
   Blueprint can implement/override event
@@ -1204,7 +1209,7 @@ SemanticConstraints
 #### `anim_notify_event`
 
 ```text
-默认簇: EventDelegateActionCluster
+当前 GraphWrite v2: excluded, owned by Animation Blueprint / Animation tooling
 核心上下文交集:
   Skeleton object path
   Notify name

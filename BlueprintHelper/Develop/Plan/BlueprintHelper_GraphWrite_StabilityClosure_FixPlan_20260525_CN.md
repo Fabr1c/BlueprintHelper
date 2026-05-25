@@ -85,7 +85,7 @@ const clusters = new Map(
 assert.equal(GRAPHWRITE_CAPABILITY_CONTRACT.version, 1);
 assert.equal(GRAPHWRITE_CAPABILITY_CONTRACT.status, "stable-candidate");
 
-for (const id of ["function_action", "field", "event", "asset_action"]) {
+for (const id of ["function_action", "field", "event_body", "asset_action"]) {
   assert.ok(clusters.has(id), `missing GraphWrite cluster contract: ${id}`);
 }
 
@@ -139,7 +139,7 @@ export interface GraphWriteOperationContract {
 }
 
 export interface GraphWriteClusterContract {
-  readonly id: "function_action" | "field" | "event" | "asset_action";
+  readonly id: "function_action" | "field" | "event_body" | "asset_action";
   readonly responsibility: string;
   readonly operations: readonly GraphWriteOperationContract[];
   readonly evidence: {
@@ -184,15 +184,14 @@ export const GRAPHWRITE_CAPABILITY_CONTRACT: GraphWriteCapabilityContract = {
       executeRevalidation: "not-required",
     },
     {
-      id: "event",
-      responsibility: "GraphWrite owns only custom event statement creation/reference; override/native and delegate-bound events stay with their dedicated tools.",
+      id: "event_body",
+      responsibility: "BlueprintSignature owns custom/override/native event declaration and signature; GraphWrite only writes body content against projected Signature-owned entry evidence. Delegate/component-bound use-sites stay in EventDelegateActionCluster.",
       operations: [
-        { id: "custom_event", kind: "event", supportStatus: "supported", reviewEvidence: "graph_surface_atomic_target" },
-        { id: "override_native_event", kind: "event", supportStatus: "discussion-gated", reviewEvidence: "graph_surface_atomic_target" },
-        { id: "delegate_component_bound_event", kind: "event", supportStatus: "discussion-gated", reviewEvidence: "graph_surface_atomic_target" },
+        { id: "custom_event_body", kind: "graph_body", supportStatus: "supported", reviewEvidence: "graph_surface_atomic_target" },
+        { id: "override_native_body", kind: "graph_body", supportStatus: "discussion-gated", reviewEvidence: "graph_surface_atomic_target" },
       ],
-      evidence: { projectionSource: "SemanticStatement", requiredKeys: [] },
-      executeRevalidation: "not-required",
+      evidence: { projectionSource: "BlueprintSignature dependency + SemanticStatement", requiredKeys: ["signature_evidence_id"] },
+      executeRevalidation: "entry evidence must still resolve; GraphWrite must not create declarations",
     },
     {
       id: "asset_action",
@@ -748,7 +747,7 @@ Minimum coverage required by the smoke report:
 ```text
 function_action: supported function/macro-like statements through shared ActionContext/adapter path
 field: property path, linked typed pin, component_ref, field_access
-event: custom_event only in GraphWrite; override/native/delegate-bound entries routed to their owning tools
+event_body: GraphWrite writes body content for Signature-owned event entries only; declaration/signature remain upstream
 asset_action: create.asset_action with ActionDatabase-projected stable evidence and execute-time revalidation
 ```
 
@@ -761,7 +760,7 @@ In `BlueprintHelper_GraphWrite_GeneralityPreflightTest_Plan_20260525_CN.md`, add
 | --- | --- | --- |
 | function_action | PASS | Automation/test report path or CLI output id |
 | field | PASS | Automation/test report path or CLI output id |
-| event | PASS | Automation/test report path or CLI output id |
+| event_body | PASS | Automation/test report path or CLI output id |
 | asset_action | PASS | Automation/test report path or CLI output id |
 ```
 

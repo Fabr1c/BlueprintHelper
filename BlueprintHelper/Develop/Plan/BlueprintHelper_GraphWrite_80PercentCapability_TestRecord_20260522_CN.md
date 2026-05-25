@@ -2,6 +2,8 @@
 
 日期：2026-05-22
 
+> Historical note 2026-05-25: 本文档保留 2026-05-22 的阶段性测试记录。凡涉及 custom event、missing event name、EventDelegate `unsupported_intent`、旧 Event taxonomy 的条目，均按 Gap5 / ownership-filter closure 前的历史口径理解，不代表当前职责边界。当前边界为：`BlueprintSignature` owns custom/override/native declaration and signature；GraphWrite 只写 projected event entry 的 body；`EventDelegateActionCluster` 只负责 component-bound/delegate use-site；`UAnimNotifyEventNodeSpawner` 不属于当前 GraphWrite 范围。
+
 ## 1. 计分口径
 
 | 指标 | 口径 |
@@ -19,7 +21,7 @@
 | PhysicalDoor_InteractableOnly | Setup | 创建 Actor Blueprint 和 Root/Hinge/DoorMesh | 未运行 | not_run | N/A | N/A | 未生成 | 不需要 |
 | PhysicalDoor_InteractableOnly | GraphWrite | 物理门内部逻辑 | 未运行 | not_run | 未统计 | 未统计 | 未生成 | 未判断 |
 | TimedAccessGate_StateMachine | GraphWrite | Function / Field / Control | 未运行 | not_run | 未统计 | 未统计 | 未生成 | 未判断 |
-| EventDrivenConfigApplier | GraphWrite | Struct make/break + custom event action resolution | P5 executed | none | yes | yes | `Saved/Automation/GraphWrite80_P5_GenericStruct_001/index.json`; `Saved/Automation/GraphWrite80_P5_EventDelegate_001/index.json` | not needed |
+| EventDrivenConfigApplier | GraphWrite | Struct make/break + custom event body write (Signature-owned entry dependency) | P5 executed | none | yes | yes | `Saved/Automation/GraphWrite80_P5_GenericStruct_001/index.json`; `Saved/Automation/GraphWrite80_P5_EventDelegate_001/index.json` | historical pre-closure record; current ownership is BlueprintSignature declaration/signature + GraphWrite body writing |
 | EventDrivenConfigApplier | GraphWrite | Component-bound event / delegate bind diagnostics | P5 executed | missing_required_evidence | no | no | `Saved/Automation/GraphWrite80_P5_EventDelegate_001/index.json` | not needed; controlled diagnostic is expected |
 
 ## 3. 错误分类
@@ -97,15 +99,15 @@
 
 | Check | Status | Evidence |
 |---|---|---|
-| EventDelegate RED automation | FAIL expected | `Saved/Automation/GraphWrite80_P5_EventDelegate_Before_001/index.json`; custom event positive passed, missing event name / component-bound / bind diagnostics failed on old `event_name_missing` or `unsupported_event_delegate_cluster_semantic` codes. |
+| EventDelegate RED automation | HISTORICAL_PRE_GAP5_CLOSURE | `Saved/Automation/GraphWrite80_P5_EventDelegate_Before_001/index.json`; pre-closure run mixed custom-event body coverage with component-bound/bind diagnostics and still used old `event_name_missing` / `unsupported_event_delegate_cluster_semantic` codes. Current ownership is BlueprintSignature declaration/signature + GraphWrite body writing; EventDelegateActionCluster only covers component-bound/delegate use-site. |
 | Generic struct RED automation | FAIL expected | `Saved/Automation/GraphWrite80_P5_GenericStruct_Before_001/index.json`; positive struct make/break passed, missing target type still returned `needs_more_semantic_context`, and unsupported struct returned `generic_action_struct_type_not_found`. |
 | ActionContext evidence RED automation | FAIL expected | `Saved/Automation/GraphWrite80_P5_ActionContext_Before_001/index.json`; delegate evidence projection tokens were absent before P5 implementation. |
 | Project editor compile after implementation | PASS | `E:\UE_5.6\Engine\Build\BatchFiles\Build.bat TemplateEditor Win64 Development -Project='D:\UEProjects\Template\Template.uproject' -WaitMutex -NoHotReload` exited `0`. |
 | Generic struct automation | PASS_WITH_WARNINGS | `Saved/Automation/GraphWrite80_P5_GenericStruct_001/index.json`; 5 succeeded, 2 succeeded with warnings, 0 failed. Warnings are expected `FindObject` struct lookup noise for alias/missing-struct probes. Covered struct make/break success, missing target type as `missing_required_evidence`, unsupported struct as `not_found`, and no create/convert/schedule fallback success. |
-| EventDelegate automation | PASS | `Saved/Automation/GraphWrite80_P5_EventDelegate_002/index.json`; 5 succeeded, 0 failed. Covered custom event positive, missing event name/component/binding/signature diagnostics as `missing_required_evidence`, and complete component-bound/bind unsupported-boundary evidence as `unsupported_intent` with no `SelectedSpawner` success. |
+| EventDelegate automation | HISTORICAL_PRE_GAP5_CLOSURE | `Saved/Automation/GraphWrite80_P5_EventDelegate_002/index.json`; retained as pre-closure evidence only. It covered custom-event body checks plus component-bound/delegate diagnostics under the old taxonomy; current ownership keeps declaration/signature in `BlueprintSignature` and limits `EventDelegateActionCluster` to component-bound/delegate use-site. |
 | ActionContext evidence projection automation | PASS | `Saved/Automation/GraphWrite80_P5_ActionContext_001/index.json`; 1 succeeded, 0 failed. |
 | P5 UE 5.6 BuildPlugin | PASS | `Saved/BlueprintHelperBuildTest_GraphWrite80_P5`; AutomationTool `BUILD SUCCESSFUL`, exit `0`. |
-| Complete component-bound/bind spawner boundary | PASS_WITH_GAP_RECORDED | `Saved/Automation/GraphWrite80_P5_EventDelegate_002/index.json` includes `BlueprintHelper.GraphWrite.ActionResolution.EventDelegate.P5.CompleteBoundaryUnsupported`; complete projected evidence currently returns `unsupported_intent`, has no `SelectedSpawner` / selected stable id / candidate success, and keeps the gap recorded in `Develop/Gap/BlueprintHelper_GraphWrite_ArchitectureGaps_Audit_20260522_CN.md`. |
+| Complete component-bound/bind spawner boundary | HISTORICAL_PRE_GAP5_CLOSURE | `Saved/Automation/GraphWrite80_P5_EventDelegate_002/index.json` recorded the pre-closure state where complete projected evidence still returned `unsupported_intent`. This row is retained as historical evidence only; later Gap5 closure superseded it by adding supported component-bound/delegate use-site resolution while keeping declaration/signature ownership in `BlueprintSignature`. |
 
 ## 10. Final P6 Summary - 2026-05-22
 
@@ -139,7 +141,7 @@ No P6 regression blocker remains after `Saved/Automation/GraphWrite80_P6_GraphWr
 | `BlueprintHelper.GraphWrite.ActionResolution.FunctionAction.OperatorDispatch` | Operator path now initializes UE type-promotion state and the test supplies projected graph/identity context before requiring a real UE spawner. |
 | `BlueprintHelper.GraphWrite.CallFunctionResolver.Generator*` and direct append/replace service rows | Call demand query now prefers `target` over literal `call`; direct service tests use valid current SemanticIR payloads and existing signature-entry reuse where ownership block refs are required. |
 | `BlueprintHelper.GraphWrite.CallFunctionResolver.Stress.*` Blueprint-authored supplemental rows | Stale supplemental-only selection expectations were replaced with guards that require spawner/action evidence before success. |
-| `BlueprintHelper.GraphWrite.LegacyMainline.EventDelegateDeclaredCapabilityMatchesSuccessPath` | Contract now matches P5 Gap 5: `ComponentBoundEvent` and `Bind` are owned for precise diagnostics / `unsupported_intent`, not fake delegate success. |
+| `BlueprintHelper.GraphWrite.LegacyMainline.EventDelegateDeclaredCapabilityMatchesSuccessPath` | Historical closure evidence only: this row captured the interim contract where `ComponentBoundEvent` / `Bind` still stopped at precise diagnostics / `unsupported_intent`. Current ownership is BlueprintSignature declaration/signature plus supported projected-evidence component-bound/delegate use-site resolution. |
 
 Residual architecture gaps remain tracked in `Develop/Gap/BlueprintHelper_GraphWrite_ArchitectureGaps_Audit_20260522_CN.md`; they are not P6 regression blockers.
 

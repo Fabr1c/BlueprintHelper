@@ -2,11 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 补齐 struct make/break、custom event、component-bound event、delegate bind/assign 的 evidence 链路，并让缺上下文时返回可执行的细分诊断。
+**Historical note 2026-05-25:** 本计划保留 P5 执行前的旧口径。后续 Event taxonomy / Signature boundary 已收敛：custom/override/native event declaration 与 signature 归 `BlueprintSignature`；GraphWrite 只写 projected event entry 的 body；EventDelegateActionCluster 只负责 component-bound/delegate use-site。下方涉及旧 custom event / EventDelegate / `UBlueprintEventNodeSpawner` 的语句均按历史任务背景理解，不代表当前职责边界。
 
-**Architecture:** Struct 属于 GenericAssetStructControlActionCluster 的 value/struct action resolution；custom event 属于 EventDelegateActionCluster 的已支持路径；component-bound event 和 delegate bind/assign 只有在 component、binding object、delegate signature evidence 完整时才能进入 UE spawner family。缺 evidence 必须返回 `NeedsMoreSemanticContext`，不能退回旧 fallback 或泛化 unsupported。
+**Goal:** 补齐 struct make/break、custom event body、component-bound event、delegate bind/assign 的 evidence 链路，并让缺上下文时返回可执行的细分诊断。
 
-**Tech Stack:** UE 5.6 C++、GenericAssetStructControlActionCluster、EventDelegateActionCluster、ActionContextPipeline、UBlueprintEventNodeSpawner、delegate spawner families、Automation Tests。
+**Architecture:** Struct 属于 GenericAssetStructControlActionCluster 的 value/struct action resolution；custom event declaration/signature belongs to `BlueprintSignature` and GraphWrite only writes body content after projected entry evidence exists；component-bound event 和 delegate bind/assign 只有在 component、binding object、delegate signature evidence 完整时才能进入 UE spawner family。缺 evidence 必须返回 `NeedsMoreSemanticContext`，不能退回旧 fallback 或泛化 unsupported。
+
+**Tech Stack:** UE 5.6 C++、GenericAssetStructControlActionCluster、EventDelegateActionCluster、ActionContextPipeline、BlueprintSignature-projected event entry evidence、delegate spawner families、Automation Tests。
 
 ---
 
@@ -79,21 +81,21 @@ no make/break candidate -> not_found
 Create `BlueprintHelperEventDelegateActionClusterTests.cpp` with tests:
 
 ```text
-custom event with event name -> Resolved
-custom event missing event name -> missing_required_evidence
+custom event body with projected BlueprintSignature entry evidence -> Resolved
+custom event body missing projected Signature entry evidence -> missing_required_evidence
 component_bound_event missing component -> missing_required_evidence
 component_bound_event missing delegate signature -> missing_required_evidence
 bind missing binding object -> missing_required_evidence
 bind missing delegate signature -> missing_required_evidence
 ```
 
-Positive custom event assertions:
+Positive custom event body assertions:
 
 ```text
 Status == Resolved
-SelectedSpawner != null
-SelectedStableId contains event name
-CandidateActions include UBlueprintEventNodeSpawner evidence
+Body target / Review evidence != null
+SelectedStableId or body target evidence contains event name
+CandidateActions or body target evidence includes projected BlueprintSignature entry evidence
 ```
 
 Negative delegate assertions:
@@ -155,15 +157,15 @@ If a key cannot be inferred, leave it absent; do not fabricate defaults.
 
 ## Task 4: Implement EventDelegate Diagnostics and Success Paths
 
-- [ ] **Step 1: Custom event remains success path**
+- [ ] **Step 1: Custom event body remains Signature-gated success path**
 
-Keep current custom event behavior:
+Keep current custom event body behavior:
 
 ```text
-event + event_name -> UBlueprintEventNodeSpawner::Create(...)
+BlueprintSignature projected entry evidence + body graph content -> GraphWrite body writer
 ```
 
-Add explicit missing event name diagnostic if no event name exists.
+Add explicit missing Signature entry evidence diagnostic if no event entry evidence exists. Do not create event declarations in EventDelegateActionCluster.
 
 - [ ] **Step 2: Component-bound and bind missing evidence diagnostics**
 

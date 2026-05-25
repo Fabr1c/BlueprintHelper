@@ -10,6 +10,34 @@
 
 ---
 
+## 2026-05-25 Execution Status
+
+Status: IMPLEMENTED / FOCUSED GATES PASS.
+
+Implemented scope:
+
+| Area | Result |
+|---|---|
+| TaskSpec contract/compiler | `generic_schedule` contract added; `timer_delegate_node` / `latent_or_async_node` require projected evidence; public schedule statements/expressions reject `function_operation` owner mixing. |
+| Schedule evidence/resolver | `FBlueprintHelperProjectedScheduleActionEvidence` added; `timer_delegate_node` and `latent_or_async_node` revalidate selected current ActionDatabase spawners through `FBlueprintHelperActionDatabaseProjectionService`; missing/false evidence returns deterministic errors. |
+| Fragment/readback | `FBlueprintHelperDelegateLinkFragmentUtils` owns CreateDelegate spawn/link readback; EventDelegate and Generic timer schedule reuse it; latent/async schedule spawns through the shared action fragment adapter. |
+| Boundary preservation | GraphWrite consumes BlueprintSignature/ActionContext handler evidence only; it does not create handler functions, custom events, dispatchers, or signatures. |
+
+Focused evidence collected during implementation:
+
+```text
+npm.cmd --prefix AgentFaceService/task-core run test:node -- graphwrite-capability-contract convert-schedule
+& "E:\UE_5.6\Engine\Build\BatchFiles\Build.bat" TemplateEditor Win64 Development -Project="D:\UEProjects\Template\Template.uproject" -WaitMutex -NoHotReloadFromIDE
+Automation RunTests BlueprintHelper.GraphWrite.ActionResolution.Generic.Schedule
+Automation RunTests BlueprintHelper.GraphWrite.GenericSchedule
+rg -n "function_operation.*timer_delegate_node|function_operation.*latent_or_async_node|timer_delegate_node.*function_operation|latent_or_async_node.*function_operation" AgentFaceService/task-core/src BlueprintHelper/Source/BlueprintHelper
+rg -n "UBlueprintNodeSpawner::Create\(" BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericTransformScheduleActionResolver.cpp
+```
+
+The full verification suite still needs to be run after final edits: full TS test suite, full `BlueprintHelper.GraphWrite` automation suite, `git diff --check`, and final read-only review.
+
+---
+
 ## Decision Record
 
 | Topic | Decision |
@@ -960,7 +988,7 @@ Run:
 npm.cmd --prefix AgentFaceService/task-core run build
 npm.cmd --prefix AgentFaceService/task-core run test:node
 & "E:\UE_5.6\Engine\Build\BatchFiles\Build.bat" TemplateEditor Win64 Development -Project="D:\UEProjects\Template\Template.uproject" -WaitMutex -NoHotReload
-& "E:\UE_5.6\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" "D:\UEProjects\Template\Template.uproject" -unattended -nop4 -nosplash -NullRHI -ExecCmds="Automation RunTests BlueprintHelper.GraphWrite.ActionResolution.Generic.Schedule;BlueprintHelper.GraphWrite.GenericSchedule;BlueprintHelper.GraphWrite;Quit"
+& "E:\UE_5.6\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" "D:\UEProjects\Template\Template.uproject" -unattended -nop4 -nosplash -NullRHI -ExecCmds="Automation RunTests BlueprintHelper.GraphWrite.ActionResolution.Generic.Schedule;Automation RunTests BlueprintHelper.GraphWrite.GenericSchedule;Automation RunTests BlueprintHelper.GraphWrite;Quit"
 rg -n "function_operation.*timer_delegate_node|function_operation.*latent_or_async_node|timer_delegate_node.*function_operation|latent_or_async_node.*function_operation" AgentFaceService/task-core/src BlueprintHelper/Source/BlueprintHelper
 rg -n "UBlueprintNodeSpawner::Create\\(" BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericTransformScheduleActionResolver.cpp
 git diff --check
