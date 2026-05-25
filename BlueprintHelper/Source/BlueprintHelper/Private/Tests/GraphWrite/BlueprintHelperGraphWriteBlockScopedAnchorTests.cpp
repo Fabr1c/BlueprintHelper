@@ -299,6 +299,34 @@ public:
 		return Payload;
 	}
 
+	static TSharedRef<FJsonObject> MakeInsertCustomEventCallPayload(
+		const FBlockScopedGraph& Fixture,
+		const FString& EventName,
+		bool bDryRun = false)
+	{
+		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+
+		TSharedRef<FJsonObject> Target = MakeShared<FJsonObject>();
+		Target->SetStringField(TEXT("asset_path"), Fixture.Blueprint->GetPathName());
+		Target->SetStringField(TEXT("graph"), Fixture.Graph->GetName());
+		Target->SetStringField(TEXT("merge_scope"), TEXT("custom_event_call"));
+		Target->SetStringField(TEXT("insert_strategy"), TEXT("append_after"));
+		Payload->SetObjectField(TEXT("target"), Target);
+
+		TSharedRef<FJsonObject> Anchor = MakeShared<FJsonObject>();
+		Anchor->SetStringField(TEXT("block_id"), Fixture.BlockId);
+		Anchor->SetStringField(TEXT("group_entry_node_path"), Fixture.OwnedEntry->GetName());
+		Anchor->SetStringField(TEXT("node_ref"), TEXT("nodes[0]"));
+		Anchor->SetStringField(TEXT("pin_ref"), TEXT("Then"));
+		Payload->SetObjectField(TEXT("anchor"), Anchor);
+
+		TSharedRef<FJsonObject> Inserted = MakeShared<FJsonObject>();
+		Inserted->SetStringField(TEXT("custom_event"), EventName);
+		Payload->SetObjectField(TEXT("inserted"), Inserted);
+		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
+		return Payload;
+	}
+
 	static TSharedRef<FJsonObject> MakeInsertBetweenFlowPayload(const FBlockScopedGraph& Fixture)
 	{
 		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
@@ -740,6 +768,7 @@ bool FBlueprintHelperGraphWriteMergeMemberPrefixBlocksTest::RunTest(const FStrin
 	FBlueprintHelperGraphResolver Resolver;
 	FBlueprintHelperLogicJsonPathService PathService;
 	FBlueprintHelperMergeBlueprintGraphService MergeService(Resolver, PathService);
+	const int32 NodeCountBeforePreview = Fixture.Graph->Nodes.Num();
 
 	const FBlueprintHelperToolResultBase Result = MergeService.Execute(
 		FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeInsertFlowPayload(
@@ -756,7 +785,8 @@ bool FBlueprintHelperGraphWriteMergeMemberPrefixBlocksTest::RunTest(const FStrin
 	TestTrue(TEXT("member-prefix block returns top-level error"),
 		Result.Error.IsSet() &&
 		Result.Error->Code == TEXT("inserted_logic_not_found") &&
-		Result.Error->Message.Contains(TEXT("explicit_member_call_not_supported")));
+		Result.Error->Message.Contains(TEXT("explicit member prefix")));
+	TestEqual(TEXT("dry-run does not leave preview callable nodes behind"), Fixture.Graph->Nodes.Num(), NodeCountBeforePreview);
 
 	FString FirstErrorCode;
 	FString FirstErrorMessage;
@@ -764,7 +794,112 @@ bool FBlueprintHelperGraphWriteMergeMemberPrefixBlocksTest::RunTest(const FStrin
 		FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::GetFirstMergeDryRunError(Result, FirstErrorCode, FirstErrorMessage));
 	TestEqual(TEXT("dry-run error code is stable"), FirstErrorCode, FString(TEXT("inserted_logic_not_found")));
 	TestTrue(TEXT("dry-run error message names resolver block"),
-		FirstErrorMessage.Contains(TEXT("explicit_member_call_not_supported")));
+		FirstErrorMessage.Contains(TEXT("explicit member prefix")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteMergeInsertFlowCustomEventCallDryRunTest,
+	"BlueprintHelper.GraphWrite.BlockScopedAnchors.MergeInsertFlowCustomEventCallDryRun",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteMergeInsertFlowCustomEventCallDryRunTest::RunTest(const FString& Parameters)
+{
+	const FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FBlockScopedGraph Fixture =
+		FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeBlockScopedGraph(TEXT("MergeInsertFlowCustomEventCallDryRun"));
+	TestNotNull(TEXT("test blueprint is created"), Fixture.Blueprint);
+	TestNotNull(TEXT("owned entry node is created"), Fixture.OwnedEntry);
+	if (!Fixture.Blueprint || !Fixture.OwnedEntry)
+	{
+		return false;
+	}
+
+	const FString EventName = TEXT("MergeCallableDryRunCustomEvent");
+	UK2Node_CustomEvent* InsertedEvent =
+		FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::AddCustomEventNode(Fixture.Graph, EventName);
+	TestNotNull(TEXT("custom event target is created"), InsertedEvent);
+	if (!InsertedEvent)
+	{
+		return false;
+	}
+
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Fixture.Blueprint);
+	FKismetEditorUtilities::CompileBlueprint(Fixture.Blueprint);
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperLogicJsonPathService PathService;
+	FBlueprintHelperMergeBlueprintGraphService MergeService(Resolver, PathService);
+	const int32 NodeCountBeforePreview = Fixture.Graph->Nodes.Num();
+
+	const FBlueprintHelperToolResultBase Result = MergeService.Execute(
+		FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeInsertCustomEventCallPayload(
+			Fixture,
+			EventName,
+			true));
+
+	FString DryRunResult;
+	bool bCanExecute = false;
+	TestTrue(TEXT("custom event dry-run status is present"),
+		FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::GetMergeDryRunStatus(Result, DryRunResult, bCanExecute));
+	TestTrue(TEXT("custom_event_call dry-run can execute"), Result.bOk);
+	TestEqual(TEXT("custom_event_call dry-run passed"), DryRunResult, FString(TEXT("passed")));
+	TestTrue(TEXT("custom_event_call dry-run can execute flag is true"), bCanExecute);
+	TestEqual(TEXT("custom_event_call dry-run does not leave preview callable nodes behind"), Fixture.Graph->Nodes.Num(), NodeCountBeforePreview);
+	TestNull(TEXT("custom event dry-run does not create call node"),
+		FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindCallFunctionNode(Fixture.Graph, FName(*EventName)));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteMergeInsertFlowCustomEventCallTest,
+	"BlueprintHelper.GraphWrite.BlockScopedAnchors.MergeInsertFlowCustomEventCall",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteMergeInsertFlowCustomEventCallTest::RunTest(const FString& Parameters)
+{
+	const FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FBlockScopedGraph Fixture =
+		FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeBlockScopedGraph(TEXT("MergeInsertFlowCustomEventCall"));
+	TestNotNull(TEXT("test blueprint is created"), Fixture.Blueprint);
+	TestNotNull(TEXT("owned entry node is created"), Fixture.OwnedEntry);
+	if (!Fixture.Blueprint || !Fixture.OwnedEntry)
+	{
+		return false;
+	}
+
+	const FString EventName = TEXT("MergeCallableInsertedCustomEvent");
+	UK2Node_CustomEvent* InsertedEvent =
+		FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::AddCustomEventNode(Fixture.Graph, EventName);
+	TestNotNull(TEXT("custom event target is created"), InsertedEvent);
+	if (!InsertedEvent)
+	{
+		return false;
+	}
+
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Fixture.Blueprint);
+	FKismetEditorUtilities::CompileBlueprint(Fixture.Blueprint);
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperLogicJsonPathService PathService;
+	FBlueprintHelperMergeBlueprintGraphService MergeService(Resolver, PathService);
+
+	const FBlueprintHelperToolResultBase Result = MergeService.Execute(
+		FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeInsertCustomEventCallPayload(
+			Fixture,
+			EventName));
+
+	UEdGraphPin* OwnedThenPin = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindPinByName(Fixture.OwnedEntry, TEXT("Then"));
+	UK2Node_CallFunction* InsertedCall =
+		FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindCallFunctionNode(Fixture.Graph, FName(*EventName));
+	UEdGraphPin* InsertedExecIn =
+		FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindExecPin(InsertedCall, EGPD_Input);
+
+	TestTrue(TEXT("custom_event_call resolves through merge callable path"), Result.bOk);
+	if (!Result.bOk && Result.Error.IsSet())
+	{
+		TestFalse(TEXT("custom event resolve failure is diagnosable"), Result.Error->Message.IsEmpty());
+	}
+	TestNotNull(TEXT("custom event call node is created"), InsertedCall);
+	TestTrue(TEXT("owned anchor links to custom event call"), OwnedThenPin && InsertedExecIn && OwnedThenPin->LinkedTo.Contains(InsertedExecIn));
 	return true;
 }
 
@@ -906,6 +1041,7 @@ bool FBlueprintHelperGraphWriteMergeBranchForkMissingOwnedBlockPreviewBlocksTest
 	FBlueprintHelperMergeBlueprintGraphService MergeService(Resolver, PathService);
 
 	const FString MissingBlockId = FString::Printf(TEXT("%s_MissingInsertedBlock0"), *Fixture.Graph->GetName());
+	const int32 NodeCountBeforePreview = Fixture.Graph->Nodes.Num();
 	const FBlueprintHelperToolResultBase Result = MergeService.Execute(
 		FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeBranchForkOwnedBlockCallPayload(Fixture, MissingBlockId, true));
 
@@ -919,6 +1055,9 @@ bool FBlueprintHelperGraphWriteMergeBranchForkMissingOwnedBlockPreviewBlocksTest
 		Result.Error.IsSet() &&
 		Result.Error->Code == TEXT("inserted_logic_not_found") &&
 		!Result.Error->Message.IsEmpty());
+	TestEqual(TEXT("missing owned block preview does not leave nodes behind"), Fixture.Graph->Nodes.Num(), NodeCountBeforePreview);
+	TestNull(TEXT("missing owned block preview does not create sequence node"),
+		FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FindSequenceNode(Fixture.Graph));
 	return true;
 }
 

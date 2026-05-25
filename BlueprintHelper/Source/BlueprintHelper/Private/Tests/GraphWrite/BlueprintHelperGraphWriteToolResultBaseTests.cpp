@@ -774,6 +774,49 @@ public:
 		return Payload;
 	}
 
+	static TSharedRef<FJsonObject> MakePatchConnectPinsPayload(
+		const FString& AssetPath,
+		const FString& GraphName,
+		const FString& SourceNodeRef,
+		const FString& SourcePinRef,
+		const FString& TargetNodeRef,
+		const FString& TargetPinRef,
+		bool bDryRun,
+		const FString& SourceNodePath = FString(),
+		const FString& SourcePinPath = FString())
+	{
+		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+
+		TSharedRef<FJsonObject> Target = MakeShared<FJsonObject>();
+		Target->SetStringField(TEXT("asset_path"), AssetPath);
+		Target->SetStringField(TEXT("graph"), GraphName);
+		Target->SetStringField(TEXT("patch_scope"), TEXT("pin"));
+		Payload->SetObjectField(TEXT("target"), Target);
+
+		Payload->SetStringField(TEXT("patch_type"), TEXT("connect_pins"));
+		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
+
+		TSharedRef<FJsonObject> PatchedRef = MakeShared<FJsonObject>();
+		PatchedRef->SetStringField(TEXT("node_ref"), TargetNodeRef);
+		PatchedRef->SetStringField(TEXT("pin_ref"), TargetPinRef);
+		Payload->SetObjectField(TEXT("patched_ref"), PatchedRef);
+
+		TSharedRef<FJsonObject> Patch = MakeShared<FJsonObject>();
+		Patch->SetStringField(TEXT("source_node_ref"), SourceNodeRef);
+		Patch->SetStringField(TEXT("source_pin_ref"), SourcePinRef);
+		if (!SourceNodePath.IsEmpty())
+		{
+			Patch->SetStringField(TEXT("source_node_path"), SourceNodePath);
+		}
+		if (!SourcePinPath.IsEmpty())
+		{
+			Patch->SetStringField(TEXT("source_pin_path"), SourcePinPath);
+		}
+		Payload->SetObjectField(TEXT("patch"), Patch);
+
+		return Payload;
+	}
+
 	static TSharedRef<FJsonObject> MakeMergePreviewPayload(const FString& AssetPath, const FString& GraphName)
 	{
 		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
@@ -1937,6 +1980,296 @@ bool FBlueprintHelperGraphWritePatchBlockedDryRunErrorEnvelopeTest::RunTest(cons
 		TEXT("target.graph"));
 	TestEqual(TEXT("blocked patch preview leaves graph count unchanged"), Blueprint->UbergraphPages.Num(), UbergraphCountBefore);
 	TestEqual(TEXT("blocked patch preview leaves package dirty flag unchanged"), Blueprint->GetOutermost()->IsDirty(), bDirtyBefore);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWritePatchConnectPinsDryRunResolvesEndpointsTest,
+	"BlueprintHelper.GraphWrite.ToolResultBase.PatchConnectPinsDryRunResolvesEndpoints",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWritePatchConnectPinsDryRunResolvesEndpointsTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("PatchConnectPinsDryRun"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* Source = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, TEXT("PatchConnectSource"));
+	UK2Node_CallFunction* Target = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWritePrintStringCall(Graph);
+	TestNotNull(TEXT("source node exists"), Source);
+	TestNotNull(TEXT("target node exists"), Target);
+	if (!Source || !Target)
+	{
+		return false;
+	}
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperLogicJsonPathService PathService;
+	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService);
+
+	const FBlueprintHelperToolResultBase Result = PatchService.Execute(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakePatchConnectPinsPayload(
+			Blueprint->GetPathName(),
+			Graph->GetName(),
+			Source->GetName(),
+			TEXT("then"),
+			Target->GetName(),
+			TEXT("execute"),
+			true));
+
+	TestTrue(TEXT("connect_pins dry-run succeeds"), Result.bOk);
+	TestEqual(TEXT("operation is patch_blueprint_graph"), Result.Operation, FString(TEXT("patch_blueprint_graph")));
+	TestFalse(TEXT("dry-run does not create source links"), Source->FindPin(TEXT("then")) && Source->FindPin(TEXT("then"))->LinkedTo.Num() > 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWritePatchConnectPinsDryRunRequiresSourceEndpointTest,
+	"BlueprintHelper.GraphWrite.ToolResultBase.PatchConnectPinsDryRunRequiresSourceEndpoint",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWritePatchConnectPinsDryRunRequiresSourceEndpointTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("PatchConnectPinsDryRunMissingSource"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* Source = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, TEXT("PatchConnectMissingSource"));
+	UK2Node_CallFunction* Target = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWritePrintStringCall(Graph);
+	TestNotNull(TEXT("source node exists"), Source);
+	TestNotNull(TEXT("target node exists"), Target);
+	if (!Source || !Target)
+	{
+		return false;
+	}
+
+	TSharedRef<FJsonObject> Payload = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakePatchConnectPinsPayload(
+		Blueprint->GetPathName(),
+		Graph->GetName(),
+		TEXT(""),
+		TEXT(""),
+		Target->GetName(),
+		TEXT("execute"),
+		true);
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperLogicJsonPathService PathService;
+	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService);
+
+	const FBlueprintHelperToolResultBase Result = PatchService.Execute(Payload);
+
+	TestFalse(TEXT("connect_pins dry-run fails without source endpoint"), Result.bOk);
+	TestTrue(TEXT("dry-run carries source endpoint error"), Result.Error.IsSet());
+	if (Result.Error.IsSet())
+	{
+		TestEqual(TEXT("dry-run source endpoint code"), Result.Error->Code, FString(TEXT("source_node_required")));
+		TestEqual(TEXT("dry-run source endpoint field"), Result.Error->Field, FString(TEXT("patch.source_node_ref")));
+	}
+	TestTrue(TEXT("dry-run reports source endpoint requirement"),
+		Result.Error.IsSet() && Result.Error->Message.Contains(TEXT("patch.source_node_ref")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWritePatchConnectPinsExecuteRequiresSourceEndpointTest,
+	"BlueprintHelper.GraphWrite.ToolResultBase.PatchConnectPinsExecuteRequiresSourceEndpoint",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWritePatchConnectPinsExecuteRequiresSourceEndpointTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("PatchConnectPinsExecuteMissingSource"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CallFunction* Target = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWritePrintStringCall(Graph);
+	TestNotNull(TEXT("target node exists"), Target);
+	if (!Target)
+	{
+		return false;
+	}
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperLogicJsonPathService PathService;
+	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService);
+
+	const FBlueprintHelperToolResultBase Result = PatchService.Execute(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakePatchConnectPinsPayload(
+			Blueprint->GetPathName(),
+			Graph->GetName(),
+			TEXT(""),
+			TEXT(""),
+			Target->GetName(),
+			TEXT("execute"),
+			false));
+
+	TestFalse(TEXT("connect_pins execute fails without source endpoint"), Result.bOk);
+	TestTrue(TEXT("execute carries source endpoint error"), Result.Error.IsSet());
+	if (Result.Error.IsSet())
+	{
+		TestEqual(TEXT("execute source endpoint code"), Result.Error->Code, FString(TEXT("source_node_required")));
+		TestEqual(TEXT("execute source endpoint stage"), Result.Error->Stage, EBlueprintHelperToolStage::Preflight);
+		TestEqual(TEXT("execute source endpoint field"), Result.Error->Field, FString(TEXT("patch.source_node_ref")));
+		TestTrue(TEXT("execute source endpoint message mentions missing source"), Result.Error->Message.Contains(TEXT("patch.source_node_ref")));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWritePatchConnectPinsDryRunReportsInvalidSourceNodePathTest,
+	"BlueprintHelper.GraphWrite.ToolResultBase.PatchConnectPinsDryRunReportsInvalidSourceNodePath",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWritePatchConnectPinsDryRunReportsInvalidSourceNodePathTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("PatchConnectPinsInvalidSourceNodePath"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* Source = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, TEXT("PatchConnectSourcePath"));
+	UK2Node_CallFunction* Target = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWritePrintStringCall(Graph);
+	TestNotNull(TEXT("source node exists"), Source);
+	TestNotNull(TEXT("target node exists"), Target);
+	if (!Source || !Target)
+	{
+		return false;
+	}
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperLogicJsonPathService PathService;
+	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService);
+
+	const FBlueprintHelperToolResultBase Result = PatchService.Execute(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakePatchConnectPinsPayload(
+			Blueprint->GetPathName(),
+			Graph->GetName(),
+			Source->GetName(),
+			TEXT("then"),
+			Target->GetName(),
+			TEXT("execute"),
+			true,
+			TEXT("MissingSourcePath")));
+
+	TestFalse(TEXT("connect_pins dry-run fails on invalid source node path"), Result.bOk);
+	TestTrue(TEXT("dry-run carries invalid source node path error"), Result.Error.IsSet());
+	if (Result.Error.IsSet())
+	{
+		TestEqual(TEXT("invalid source node code"), Result.Error->Code, FString(TEXT("source_node_not_found")));
+		TestEqual(TEXT("invalid source node field"), Result.Error->Field, FString(TEXT("patch.source_node_path")));
+		TestTrue(TEXT("invalid source node message mentions path"), Result.Error->Message.Contains(TEXT("MissingSourcePath")));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWritePatchConnectPinsDryRunReportsInvalidSourcePinPathTest,
+	"BlueprintHelper.GraphWrite.ToolResultBase.PatchConnectPinsDryRunReportsInvalidSourcePinPath",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWritePatchConnectPinsDryRunReportsInvalidSourcePinPathTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("PatchConnectPinsInvalidSourcePinPath"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* Source = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, TEXT("PatchConnectSourcePinPath"));
+	UK2Node_CallFunction* Target = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWritePrintStringCall(Graph);
+	TestNotNull(TEXT("source node exists"), Source);
+	TestNotNull(TEXT("target node exists"), Target);
+	if (!Source || !Target)
+	{
+		return false;
+	}
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperLogicJsonPathService PathService;
+	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService);
+
+	const FBlueprintHelperToolResultBase Result = PatchService.Execute(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakePatchConnectPinsPayload(
+			Blueprint->GetPathName(),
+			Graph->GetName(),
+			Source->GetName(),
+			TEXT("then"),
+			Target->GetName(),
+			TEXT("execute"),
+			true,
+			FString(),
+			TEXT("MissingSourcePinPath")));
+
+	TestFalse(TEXT("connect_pins dry-run fails on invalid source pin path"), Result.bOk);
+	TestTrue(TEXT("dry-run carries invalid source pin path error"), Result.Error.IsSet());
+	if (Result.Error.IsSet())
+	{
+		TestEqual(TEXT("invalid source pin code"), Result.Error->Code, FString(TEXT("source_pin_not_found")));
+		TestEqual(TEXT("invalid source pin field"), Result.Error->Field, FString(TEXT("patch.source_pin_path")));
+		TestTrue(TEXT("invalid source pin message mentions path"), Result.Error->Message.Contains(TEXT("MissingSourcePinPath")));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWritePatchConnectPinsExecutesViaCoordinatorTest,
+	"BlueprintHelper.GraphWrite.ToolResultBase.PatchConnectPinsExecutesViaCoordinator",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWritePatchConnectPinsExecutesViaCoordinatorTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("PatchConnectPinsExecute"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* Source = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, TEXT("PatchConnectExecSource"));
+	UK2Node_CallFunction* Target = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWritePrintStringCall(Graph);
+	UEdGraphPin* SourceThen = Source ? Source->FindPin(TEXT("then")) : nullptr;
+	UEdGraphPin* TargetExec = Target ? Target->FindPin(TEXT("execute")) : nullptr;
+	TestNotNull(TEXT("source then pin exists"), SourceThen);
+	TestNotNull(TEXT("target execute pin exists"), TargetExec);
+	if (!SourceThen || !TargetExec)
+	{
+		return false;
+	}
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperLogicJsonPathService PathService;
+	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService);
+
+	const FBlueprintHelperToolResultBase Result = PatchService.Execute(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakePatchConnectPinsPayload(
+			Blueprint->GetPathName(),
+			Graph->GetName(),
+			Source->GetName(),
+			TEXT("then"),
+			Target->GetName(),
+			TEXT("execute"),
+			false));
+
+	TestTrue(TEXT("connect_pins execute succeeds"), Result.bOk);
+	TestEqual(TEXT("source then has one linked pin"), SourceThen->LinkedTo.Num(), 1);
+	TestTrue(TEXT("source then links to target execute"), SourceThen->LinkedTo.Contains(TargetExec));
 	return true;
 }
 

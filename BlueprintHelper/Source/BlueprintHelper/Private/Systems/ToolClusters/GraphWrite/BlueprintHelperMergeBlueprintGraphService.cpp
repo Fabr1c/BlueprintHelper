@@ -1,14 +1,12 @@
 // BlueprintHelper Service Layer - MergeBlueprintGraph implementation
 
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperMergeBlueprintGraphService.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintHelperMergeCallableFragmentService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicJsonPathService.h"
-#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
-#include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperGraphWriteBlockScopedResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
-#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionNodeSpawnerAdapter.h"
 #include "Systems/ToolClusters/GraphWrite/Mutation/BlueprintHelperGraphWriteMutationCoordinator.h"
 #include "Systems/ToolClusters/GraphWrite/Mutation/BlueprintHelperGraphWriteMutationIntent.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDebugData.h"
@@ -20,8 +18,6 @@
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraphSchema_K2.h"
-#include "K2Node_CallFunction.h"
-#include "BlueprintFunctionNodeSpawner.h"
 #include "K2Node_CustomEvent.h"
 #include "K2Node_ExecutionSequence.h"
 #include "Kismet2/BlueprintEditorUtils.h"
@@ -45,123 +41,7 @@ FBlueprintHelperMergeBlueprintGraphService::FBlueprintHelperMergeBlueprintGraphS
 class FBlueprintHelperMergeBlueprintGraphServiceLocalUtils
 {
 public:
-	static UFunction* ResolveMergeCallableFunction(
-		UBlueprint* Blueprint,
-		UEdGraph* Graph,
-		const FString& FunctionName,
-		FString* OutErrorCode = nullptr,
-		FString* OutMessage = nullptr,
-		FBlueprintHelperCallFunctionCandidate* OutCandidate = nullptr)
-	{
-		if (OutErrorCode)
-		{
-			OutErrorCode->Reset();
-		}
-		if (OutMessage)
-		{
-			OutMessage->Reset();
-		}
-		if (OutCandidate)
-		{
-			*OutCandidate = FBlueprintHelperCallFunctionCandidate();
-		}
-
-		if (FunctionName.IsEmpty())
-		{
-			if (OutErrorCode)
-			{
-				*OutErrorCode = TEXT("function_call_not_found");
-			}
-			if (OutMessage)
-			{
-				*OutMessage = TEXT("call_function.name is empty.");
-			}
-			return nullptr;
-		}
-
-		FBlueprintHelperCallFunctionResolveRequest ResolveRequest;
-		ResolveRequest.Blueprint = Blueprint;
-		ResolveRequest.Graph = Graph;
-		ResolveRequest.Query = FunctionName;
-		const FBlueprintHelperCallFunctionResolveResult ResolveResult =
-			FBlueprintHelperCallFunctionResolver::Resolve(ResolveRequest);
-		if (!ResolveResult.IsResolved())
-		{
-			if (OutErrorCode)
-			{
-				*OutErrorCode = ResolveResult.ErrorCode;
-			}
-			if (OutMessage)
-			{
-				*OutMessage = ResolveResult.Message;
-			}
-			return nullptr;
-		}
-
-		if (OutCandidate)
-		{
-			*OutCandidate = ResolveResult.Selected;
-		}
-		return ResolveResult.Selected.Function.Get();
-	}
-
-	static FString FormatResolverFailure(const FString& ResolveCode, const FString& ResolveMessage, const FString& FunctionName)
-	{
-		if (ResolveMessage.IsEmpty())
-		{
-			return FString::Printf(TEXT("%s: %s"), *ResolveCode, *FunctionName);
-		}
-
-		return ResolveCode.IsEmpty()
-			? ResolveMessage
-			: FString::Printf(TEXT("%s: %s"), *ResolveCode, *ResolveMessage);
-	}
-
-	static UK2Node* CreateMergeCallableNode(
-	UEdGraph* Graph,
-	const FBlueprintHelperCallFunctionCandidate& Candidate)
-{
-	if (!Graph || !Candidate.Function.IsValid())
-	{
-		return nullptr;
-	}
-
-	UBlueprintNodeSpawner* NodeSpawner = Candidate.NodeSpawner.Get();
-	if (!NodeSpawner)
-	{
-		NodeSpawner = UBlueprintFunctionNodeSpawner::Create(Candidate.Function.Get());
-	}
-	if (!NodeSpawner)
-	{
-		return nullptr;
-	}
-
-	FBlueprintHelperActionNodeSpawnOptions Options;
-	Options.NodeId = Candidate.StableId.IsEmpty() ? Candidate.Function->GetName() : Candidate.StableId;
-	FString Error;
-	return FBlueprintHelperActionNodeSpawnerAdapter::InvokeNodeSpawner(
-		Graph,
-		NodeSpawner,
-		Candidate.StableId.IsEmpty() ? FBlueprintHelperCallFunctionResolver::MakeStableId(Candidate.Function.Get()) : Candidate.StableId,
-		FVector2D::ZeroVector,
-		Options,
-		Error);
-}
-
-static UK2Node* CreateMergeCallableNode(UEdGraph* Graph, UFunction* Function)
-{
-	if (!Graph || !Function)
-	{
-		return nullptr;
-	}
-
-	FBlueprintHelperCallFunctionCandidate Candidate;
-	Candidate.Function = Function;
-	Candidate.StableId = FBlueprintHelperCallFunctionResolver::MakeStableId(Function);
-	Candidate.NodeSpawner = UBlueprintFunctionNodeSpawner::Create(Function);
-	return CreateMergeCallableNode(Graph, Candidate);
-}
-static void MarkMergeNodeAsBlueprintHelperOwned(UEdGraphNode* Node, const FString& BlockId)
+	static void MarkMergeNodeAsBlueprintHelperOwned(UEdGraphNode* Node, const FString& BlockId)
 	{
 		if (!Node || BlockId.IsEmpty())
 		{
@@ -288,7 +168,6 @@ static void MarkMergeNodeAsBlueprintHelperOwned(UEdGraphNode* Node, const FStrin
 		FString EventName;
 		UK2Node_CustomEvent* EventNode = nullptr;
 		UFunction* Function = nullptr;
-		FBlueprintHelperCallFunctionCandidate Candidate;
 	};
 
 	static FOwnedBlockCallableCheck CheckOwnedBlockCallable(
@@ -350,6 +229,48 @@ static void MarkMergeNodeAsBlueprintHelperOwned(UEdGraphNode* Node, const FStrin
 	}
 
 };
+
+namespace
+{
+static FBlueprintHelperMergeCallableFragmentRequest MakeMergeCallableRequest(
+	UBlueprint* Blueprint,
+	UEdGraph* Graph,
+	const FString& Query,
+	const FString& FragmentId,
+	const FString& SearchMode = FString(),
+	const FString& AmbiguityPolicy = FString(),
+	const TArray<FString>& CategoryPriority = {})
+{
+	FBlueprintHelperMergeCallableFragmentRequest CallableRequest;
+	CallableRequest.Blueprint = Blueprint;
+	CallableRequest.Graph = Graph;
+	CallableRequest.Query = Query;
+	CallableRequest.FragmentId = FragmentId;
+	CallableRequest.SourceStatementId = FragmentId;
+	CallableRequest.ActionContextStatementId = FragmentId;
+	CallableRequest.SearchMode = SearchMode;
+	CallableRequest.AmbiguityPolicy = AmbiguityPolicy;
+	CallableRequest.CategoryPriority = CategoryPriority;
+	CallableRequest.ContextEvidence.Add(TEXT("merge_scope"), TEXT("callable_insert"));
+	return CallableRequest;
+}
+
+static FString FormatMergeCallableFailure(
+	const FBlueprintHelperMergeCallableFragmentResult& Result,
+	const FString& FallbackQuery)
+{
+	if (!Result.Message.IsEmpty())
+	{
+		return Result.Code.IsEmpty()
+			? Result.Message
+			: FString::Printf(TEXT("%s: %s"), *Result.Code, *Result.Message);
+	}
+
+	return Result.Code.IsEmpty()
+		? FallbackQuery
+		: FString::Printf(TEXT("%s: %s"), *Result.Code, *FallbackQuery);
+}
+}
 
 FBlueprintHelperToolResultBase FBlueprintHelperMergeBlueprintGraphService::Execute(
 	const TSharedPtr<FJsonObject>& Payload) const
@@ -504,36 +425,45 @@ FBlueprintHelperMergeBlueprintGraphService::Preflight(
 		}
 	}
 
-	if (Request.MergeScope == EBlueprintHelperMergeScope::FunctionCall)
+	if (Request.MergeScope == EBlueprintHelperMergeScope::FunctionCall ||
+		Request.MergeScope == EBlueprintHelperMergeScope::CustomEventCall)
 	{
-		if (Request.InsertedFunctionName.IsEmpty())
+		const bool bIsFunctionCall = Request.MergeScope == EBlueprintHelperMergeScope::FunctionCall;
+		const FString CallableQuery = bIsFunctionCall
+			? Request.InsertedFunctionName
+			: Request.InsertedCustomEventName;
+		const FString SourceField = bIsFunctionCall
+			? TEXT("inserted.function")
+			: TEXT("inserted.custom_event");
+		const FString MissingFieldMessage = bIsFunctionCall
+			? TEXT("inserted_logic_not_found: missing inserted.function.")
+			: TEXT("inserted_logic_not_found: missing inserted.custom_event.");
+
+		if (CallableQuery.IsEmpty())
 		{
 			Result.bPassed = false;
 			Result.BlockedBy.Add(TEXT("inserted_logic_not_found"));
 			Result.Errors.Add({TEXT("inserted_logic_not_found"),
-				TEXT("inserted_logic_not_found: missing inserted.function."),
-				TEXT("inserted.function"), TEXT("payload")});
+				MissingFieldMessage,
+				SourceField, TEXT("payload")});
 			return Result;
 		}
 
-		FString ResolveCode;
-		FString ResolveMessage;
-		if (!FBlueprintHelperMergeBlueprintGraphServiceLocalUtils::ResolveMergeCallableFunction(
-			Context.Blueprint,
-			Context.Graph,
-			Request.InsertedFunctionName,
-			&ResolveCode,
-			&ResolveMessage))
+		const FBlueprintHelperMergeCallableFragmentResult CallableResult =
+			FBlueprintHelperMergeCallableFragmentService::ValidateCallable(
+				MakeMergeCallableRequest(
+					Context.Blueprint,
+					Context.Graph,
+					CallableQuery,
+					CallableQuery));
+		if (!CallableResult.bOk)
 		{
-			const FString ResolverMessage = FBlueprintHelperMergeBlueprintGraphServiceLocalUtils::FormatResolverFailure(
-				ResolveCode,
-				ResolveMessage,
-				Request.InsertedFunctionName);
+			const FString ResolverMessage = FormatMergeCallableFailure(CallableResult, CallableQuery);
 			Result.bPassed = false;
 			Result.BlockedBy.Add(TEXT("inserted_logic_not_found"));
 			Result.Errors.Add({TEXT("inserted_logic_not_found"),
 				FString::Printf(TEXT("inserted_logic_not_found: call_function resolve failed: %s"), *ResolverMessage),
-				TEXT("inserted.function"), TEXT("payload")});
+				SourceField, TEXT("payload")});
 			return Result;
 		}
 	}
@@ -912,91 +842,84 @@ bool FBlueprintHelperMergeBlueprintGraphService::ResolveInsertedLogic(
 				return false;
 			}
 
-			UK2Node* CallNode = FBlueprintHelperMergeBlueprintGraphServiceLocalUtils::CreateMergeCallableNode(Context.Graph, InsertedCheck.Function);
-			if (!CallNode)
+			const FBlueprintHelperMergeCallableFragmentResult CallableResult =
+				FBlueprintHelperMergeCallableFragmentService::BuildCallableFragment(
+					MakeMergeCallableRequest(
+						Context.Blueprint,
+						Context.Graph,
+						InsertedCheck.EventName,
+						Context.InsertedRef));
+			if (!CallableResult.bOk || !CallableResult.PrimaryNode)
 			{
 				OutErrorCode = TEXT("inserted_logic_not_callable");
 				OutError = FString::Printf(
-					TEXT("inserted_logic_not_callable: unable to create owned block call '%s'."),
-					*InsertedCheck.EventName);
+					TEXT("inserted_logic_not_callable: unable to create owned block call '%s': %s"),
+					*InsertedCheck.EventName,
+					*FormatMergeCallableFailure(CallableResult, InsertedCheck.EventName));
 				return false;
 			}
 
-			Context.InsertedNode = CallNode;
+			Context.InsertedNode = CallableResult.PrimaryNode;
 			FBlueprintHelperMergeBlueprintGraphServiceLocalUtils::MarkMergeNodeAsBlueprintHelperOwned(Context.InsertedNode, Request.AnchorBlockId);
 			return true;
 		}
 	}
 	case EBlueprintHelperMergeScope::CustomEventCall:
 	{
-		if (Request.InsertedCustomEventName.IsEmpty()) { OutError = TEXT("inserted_logic_not_found: missing custom_event name."); return false; }
+		if (Request.InsertedCustomEventName.IsEmpty())
+		{
+			OutErrorCode = TEXT("inserted_logic_not_found");
+			OutError = TEXT("inserted_logic_not_found: missing inserted.custom_event.");
+			return false;
+		}
 		Context.InsertedRef = Request.InsertedCustomEventName;
 
-		FString ResolveCode;
-		FString ResolveMessage;
-		FBlueprintHelperCallFunctionCandidate ResolveCandidate;
-		UFunction* TargetFunc = FBlueprintHelperMergeBlueprintGraphServiceLocalUtils::ResolveMergeCallableFunction(
-			Context.Blueprint,
-			Context.Graph,
-			Request.InsertedCustomEventName,
-			&ResolveCode,
-			&ResolveMessage,
-			&ResolveCandidate);
-		if (!TargetFunc)
+		const FBlueprintHelperMergeCallableFragmentResult CallableResult =
+			FBlueprintHelperMergeCallableFragmentService::BuildCallableFragment(
+				MakeMergeCallableRequest(
+					Context.Blueprint,
+					Context.Graph,
+					Request.InsertedCustomEventName,
+					Context.InsertedRef));
+		if (!CallableResult.bOk || !CallableResult.PrimaryNode)
 		{
-			const FString ResolverMessage = FBlueprintHelperMergeBlueprintGraphServiceLocalUtils::FormatResolverFailure(
-				ResolveCode,
-				ResolveMessage,
-				Request.InsertedCustomEventName);
+			OutErrorCode = TEXT("inserted_logic_not_found");
+			const FString ResolverMessage = FormatMergeCallableFailure(CallableResult, Request.InsertedCustomEventName);
 			OutError = FString::Printf(TEXT("inserted_logic_not_found: call_function resolve failed: %s"), *ResolverMessage);
 			return false;
 		}
 
-		UK2Node* CallNode = FBlueprintHelperMergeBlueprintGraphServiceLocalUtils::CreateMergeCallableNode(Context.Graph, ResolveCandidate);
-		if (!CallNode)
-		{
-			OutError = FString::Printf(TEXT("inserted_logic_not_found: unable to create custom_event call '%s'."), *Request.InsertedCustomEventName);
-			return false;
-		}
-
-		Context.InsertedNode = CallNode;
+		Context.InsertedNode = CallableResult.PrimaryNode;
 		FBlueprintHelperMergeBlueprintGraphServiceLocalUtils::MarkMergeNodeAsBlueprintHelperOwned(Context.InsertedNode, Request.AnchorBlockId);
 		return true;
 	}
 
 	case EBlueprintHelperMergeScope::FunctionCall:
 	{
-		if (Request.InsertedFunctionName.IsEmpty()) { OutError = TEXT("inserted_logic_not_found: missing function name."); return false; }
+		if (Request.InsertedFunctionName.IsEmpty())
+		{
+			OutErrorCode = TEXT("inserted_logic_not_found");
+			OutError = TEXT("inserted_logic_not_found: missing inserted.function.");
+			return false;
+		}
 		Context.InsertedRef = Request.InsertedFunctionName;
 
-		FString ResolveCode;
-		FString ResolveMessage;
-		FBlueprintHelperCallFunctionCandidate ResolveCandidate;
-		UFunction* TargetFunc = FBlueprintHelperMergeBlueprintGraphServiceLocalUtils::ResolveMergeCallableFunction(
-			Context.Blueprint,
-			Context.Graph,
-			Request.InsertedFunctionName,
-			&ResolveCode,
-			&ResolveMessage,
-			&ResolveCandidate);
-		if (!TargetFunc)
+		const FBlueprintHelperMergeCallableFragmentResult CallableResult =
+			FBlueprintHelperMergeCallableFragmentService::BuildCallableFragment(
+				MakeMergeCallableRequest(
+					Context.Blueprint,
+					Context.Graph,
+					Request.InsertedFunctionName,
+					Context.InsertedRef));
+		if (!CallableResult.bOk || !CallableResult.PrimaryNode)
 		{
-			const FString ResolverMessage = FBlueprintHelperMergeBlueprintGraphServiceLocalUtils::FormatResolverFailure(
-				ResolveCode,
-				ResolveMessage,
-				Request.InsertedFunctionName);
+			OutErrorCode = TEXT("inserted_logic_not_found");
+			const FString ResolverMessage = FormatMergeCallableFailure(CallableResult, Request.InsertedFunctionName);
 			OutError = FString::Printf(TEXT("inserted_logic_not_found: call_function resolve failed: %s"), *ResolverMessage);
 			return false;
 		}
 
-		UK2Node* CallNode = FBlueprintHelperMergeBlueprintGraphServiceLocalUtils::CreateMergeCallableNode(Context.Graph, ResolveCandidate);
-		if (!CallNode)
-		{
-			OutError = FString::Printf(TEXT("inserted_logic_not_found: unable to create function call '%s'."), *Request.InsertedFunctionName);
-			return false;
-		}
-
-		Context.InsertedNode = CallNode;
+		Context.InsertedNode = CallableResult.PrimaryNode;
 		FBlueprintHelperMergeBlueprintGraphServiceLocalUtils::MarkMergeNodeAsBlueprintHelperOwned(Context.InsertedNode, Request.AnchorBlockId);
 		return true;
 	}

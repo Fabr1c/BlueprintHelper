@@ -872,6 +872,12 @@ void FBlueprintHelperCallFunctionResolverUtils::AddCandidateForFunction(
 
 	FBlueprintHelperCallFunctionCandidate Candidate;
 	const FBlueprintHelperK2CallContext Context = BuildEffectiveContext(Request);
+	const bool bGraphCompatible = NodeSpawner != nullptr || IsGraphCompatible(Function, Context.Blueprint, Context.Graph);
+	UBlueprintNodeSpawner* EffectiveNodeSpawner = NodeSpawner;
+	if (!EffectiveNodeSpawner && bGraphCompatible)
+	{
+		EffectiveNodeSpawner = UBlueprintFunctionNodeSpawner::Create(Function);
+	}
 	Candidate.StableId = StableId;
 	Candidate.OwnerClassPath = GetOwnerClassPath(Function);
 	Candidate.NativeFunctionName = Function->GetName();
@@ -880,7 +886,7 @@ void FBlueprintHelperCallFunctionResolverUtils::AddCandidateForFunction(
 	Candidate.NodeClass = UK2Node_CallFunction::StaticClass();
 	Candidate.NodeClassPath = UK2Node_CallFunction::StaticClass()->GetPathName();
 	Candidate.bFromActionDatabase = NodeSpawner != nullptr;
-	Candidate.bGraphCompatible = Candidate.bFromActionDatabase || IsGraphCompatible(Function, Context.Blueprint, Context.Graph);
+	Candidate.bGraphCompatible = bGraphCompatible;
 	Candidate.bBlueprintCallable = Function->HasAnyFunctionFlags(FUNC_BlueprintCallable);
 	Candidate.bBlueprintPure = Function->HasAnyFunctionFlags(FUNC_BlueprintPure);
 	Candidate.bLatent = Function->HasMetaData(TEXT("Latent")) || Function->HasMetaData(TEXT("LatentInfo"));
@@ -905,7 +911,7 @@ void FBlueprintHelperCallFunctionResolverUtils::AddCandidateForFunction(
 		}
 	}
 	Candidate.Function = Function;
-	Candidate.NodeSpawner = NodeSpawner;
+	Candidate.NodeSpawner = EffectiveNodeSpawner;
 	InOutCandidates.Add(StableId, Candidate);
 }
 

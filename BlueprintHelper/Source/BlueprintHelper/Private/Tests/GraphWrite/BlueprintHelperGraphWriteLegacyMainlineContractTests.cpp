@@ -219,6 +219,29 @@ static bool AssertNoTokens(
 	return bClean;
 }
 
+static bool AssertSourceContainsTokens(
+	FAutomationTestBase& Test,
+	const FString& RelativePath,
+	const TArray<FString>& RequiredTokens)
+{
+	FString Source;
+	if (!LoadSource(Test, RelativePath, Source))
+	{
+		return false;
+	}
+
+	bool bClean = true;
+	for (const FString& Token : RequiredTokens)
+	{
+		if (!Source.Contains(Token))
+		{
+			Test.AddError(FString::Printf(TEXT("%s must contain current ownership token: %s"), *RelativePath, *Token));
+			bClean = false;
+		}
+	}
+	return bClean;
+}
+
 static bool AssertMissingOrNoTokens(
 	FAutomationTestBase& Test,
 	const FString& RelativePath,
@@ -293,11 +316,11 @@ bool FBlueprintHelperActiveGraphWriteSourceLegacyTokenGateContractTest::RunTest(
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperMergePatchUseMutationCoordinatorContractTest,
-	"BlueprintHelper.GraphWrite.LegacyMainline.MergePatchUseMutationCoordinator",
+	FBlueprintHelperMergePatchUsesMutationCoordinatorContractTest,
+	"BlueprintHelper.GraphWrite.LegacyMainline.MergePatchUsesMutationCoordinator",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FBlueprintHelperMergePatchUseMutationCoordinatorContractTest::RunTest(const FString& Parameters)
+bool FBlueprintHelperMergePatchUsesMutationCoordinatorContractTest::RunTest(const FString& Parameters)
 {
 	using namespace BlueprintHelperGraphWriteLegacyMainlineContractTests;
 	bool bClean = true;
@@ -322,6 +345,66 @@ bool FBlueprintHelperMergePatchUseMutationCoordinatorContractTest::RunTest(const
 			TEXT("ApplyReplaceLink("),
 			TEXT("BreakLinkTo"),
 			TEXT("TryCreateConnection")
+		});
+	bClean &= AssertSourceContainsTokens(
+		*this,
+		TEXT("Private/Systems/ToolClusters/GraphWrite/BlueprintHelperPatchBlueprintGraphService.cpp"),
+		{
+			TEXT("EBlueprintHelperGraphWriteMutationIntentKind::ConnectPins"),
+			TEXT("EBlueprintHelperGraphWriteMutationIntentKind::DisconnectPins"),
+			TEXT("EBlueprintHelperGraphWriteMutationIntentKind::ReplacePinConnection"),
+			TEXT("FBlueprintHelperGraphWriteMutationCoordinator::ExecuteIntents")
+		});
+	bClean &= AssertSourceContainsTokens(
+		*this,
+		TEXT("Private/Systems/ToolClusters/GraphWrite/BlueprintHelperMergeBlueprintGraphService.cpp"),
+		{
+			TEXT("FBlueprintHelperGraphWriteMutationCoordinator::ExecuteIntents"),
+			TEXT("EBlueprintHelperGraphWriteMutationIntentKind::AppendSemanticBody"),
+			TEXT("EBlueprintHelperGraphWriteMutationIntentKind::InsertSemanticBodyBetweenPins"),
+			TEXT("EBlueprintHelperGraphWriteMutationIntentKind::BranchForkSemanticBody")
+		});
+	return bClean;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperNoLocalMergeCallableSpawnerContractTest,
+	"BlueprintHelper.GraphWrite.LegacyMainline.NoLocalMergeCallableSpawner",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperNoLocalMergeCallableSpawnerContractTest::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphWriteLegacyMainlineContractTests;
+	bool bClean = true;
+	bClean &= AssertNoTokens(
+		*this,
+		TEXT("Private/Systems/ToolClusters/GraphWrite/BlueprintHelperMergeBlueprintGraphService.cpp"),
+		{
+			TEXT("ResolveMergeCallableFunction"),
+			TEXT("CreateMergeCallableNode"),
+			TEXT("UBlueprintFunctionNodeSpawner::Create"),
+			TEXT("FBlueprintHelperActionNodeSpawnerAdapter::InvokeNodeSpawner"),
+			TEXT("#include \"BlueprintGraphWriteFacade.h\""),
+			TEXT("#include \"BlueprintHelperCallFunctionResolver.h\""),
+			TEXT("#include \"BlueprintHelperActionNodeSpawnerAdapter.h\"")
+		});
+	bClean &= AssertNoTokens(
+		*this,
+		TEXT("Private/Systems/ToolClusters/GraphWrite/BlueprintHelperMergeCallableFragmentService.cpp"),
+		{
+			TEXT("UBlueprintFunctionNodeSpawner::Create"),
+			TEXT("FBlueprintHelperActionNodeSpawnerAdapter"),
+			TEXT("InvokeNodeSpawner"),
+			TEXT("InvokeSelectedSpawner"),
+			TEXT("#include \"BlueprintHelperCallFunctionResolver.h\""),
+			TEXT("#include \"BlueprintGraphWriteFacade.h\"")
+		});
+	bClean &= AssertSourceContainsTokens(
+		*this,
+		TEXT("Private/Systems/ToolClusters/GraphWrite/BlueprintHelperMergeCallableFragmentService.cpp"),
+		{
+			TEXT("FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment"),
+			TEXT("FBlueprintHelperGraphFragmentBuildRequest")
 		});
 	return bClean;
 }
