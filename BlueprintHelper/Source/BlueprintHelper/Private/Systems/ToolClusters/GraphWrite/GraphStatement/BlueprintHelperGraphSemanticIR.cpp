@@ -11,8 +11,10 @@
 #include "UObject/FieldIterator.h"
 #include "UObject/UnrealType.h"
 #include "UObject/UObjectIterator.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperContainerActionVocabulary.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphSemanticIRUtils.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphEventReferenceUtils.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphStatementTypeUtils.h"
 
 namespace
 {
@@ -62,6 +64,80 @@ static TSharedPtr<FBlueprintHelperGraphExpressionIR> FindFirstExpression(
 		}
 	}
 	return nullptr;
+}
+
+static bool ContainerActionHasRole(
+	const FBlueprintHelperContainerActionSpec& Spec,
+	const TMap<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& Args,
+	const TSharedPtr<FBlueprintHelperGraphExpressionIR>& TargetObject,
+	const FString& Target,
+	const FString& Role)
+{
+	if (Role.Equals(TEXT("target"), ESearchCase::IgnoreCase))
+	{
+		return TargetObject.IsValid() || !Target.TrimStartAndEnd().IsEmpty();
+	}
+	return Args.Contains(Role);
+}
+
+static void ValidateContainerActionContract(
+	FBlueprintHelperGraphSemanticIR& OutIR,
+	const FString& Path,
+	const FString& ContainerKind,
+	const FString& ContainerOperation,
+	const TMap<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& Args,
+	const TSharedPtr<FBlueprintHelperGraphExpressionIR>& TargetObject,
+	const FString& Target,
+	const FString& ResultSymbolName,
+	const bool bExpression)
+{
+	const FString Kind = ContainerKind.TrimStartAndEnd();
+	const FString Operation = ContainerOperation.TrimStartAndEnd();
+	if (Kind.IsEmpty() || Operation.IsEmpty())
+	{
+		return;
+	}
+
+	const FBlueprintHelperContainerActionSpec* Spec = FBlueprintHelperContainerActionVocabulary::Find(Kind, Operation);
+	if (!Spec)
+	{
+		FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(
+			OutIR,
+			TEXT("unsupported_container_operation"),
+			Path + TEXT(".container_operation"),
+			FString::Printf(TEXT("Unsupported container_action operation: %s.%s."), *Kind, *Operation));
+		return;
+	}
+
+	for (const FString& Role : Spec->RequiredRoles)
+	{
+		if (!ContainerActionHasRole(*Spec, Args, TargetObject, Target, Role))
+		{
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(
+				OutIR,
+				TEXT("container_role_missing"),
+				Path + TEXT(".") + Role,
+				FString::Printf(TEXT("container_action %s requires role %s."), *Spec->OperationId, *Role));
+		}
+	}
+
+	if (!ResultSymbolName.TrimStartAndEnd().IsEmpty() && (!Spec->bReturnsValue || Spec->bMutatesTarget))
+	{
+		FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(
+			OutIR,
+			TEXT("container_result_symbol_invalid"),
+			Path + TEXT(".result_symbol"),
+			FString::Printf(TEXT("container_action %s cannot bind result_symbol because it is not a pure query operation."), *Spec->OperationId));
+	}
+
+	if (bExpression && (!Spec->bReturnsValue || Spec->bMutatesTarget))
+	{
+		FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(
+			OutIR,
+			TEXT("container_expression_operation_invalid"),
+			Path + TEXT(".container_operation"),
+			FString::Printf(TEXT("container_action expression requires a pure query operation, got %s."), *Spec->OperationId));
+	}
 }
 
 static FString NormalizeDelegateOperation(const FString& Operation)
@@ -571,6 +647,10 @@ TSharedPtr<FBlueprintHelperGraphStatementIR> FBlueprintHelperGraphSemanticIRBuil
 	Statement->ScheduleOperation = NormalizeFieldToken(Statement->ScheduleOperation);
 	StatementObject->TryGetStringField(TEXT("create_operation"), Statement->CreateOperation);
 	Statement->CreateOperation = NormalizeFieldToken(Statement->CreateOperation);
+	StatementObject->TryGetStringField(TEXT("container_kind"), Statement->ContainerKind);
+	StatementObject->TryGetStringField(TEXT("container_operation"), Statement->ContainerOperation);
+	Statement->ContainerKind = NormalizeFieldToken(Statement->ContainerKind);
+	Statement->ContainerOperation = NormalizeFieldToken(Statement->ContainerOperation);
 	StatementObject->TryGetStringField(TEXT("class_path"), Statement->ClassPath);
 	if (Statement->ClassPath.IsEmpty())
 	{
@@ -581,11 +661,39 @@ TSharedPtr<FBlueprintHelperGraphStatementIR> FBlueprintHelperGraphSemanticIRBuil
 	Statement->PinType = ReadOptionalJsonValueAsString(StatementObject, TEXT("pin_type"));
 	Statement->KeyPinType = ReadOptionalJsonValueAsString(StatementObject, TEXT("key_pin_type"));
 	Statement->ValuePinType = ReadOptionalJsonValueAsString(StatementObject, TEXT("value_pin_type"));
+	Statement->ElementType = ReadOptionalJsonValueAsString(StatementObject, TEXT("element_type"));
+	Statement->KeyType = ReadOptionalJsonValueAsString(StatementObject, TEXT("key_type"));
+	Statement->ValueType = ReadOptionalJsonValueAsString(StatementObject, TEXT("value_type"));
+	if (Statement->PinType.IsEmpty())
+	{
+		Statement->PinType = Statement->ElementType;
+	}
+	else if (Statement->ElementType.IsEmpty())
+	{
+		Statement->ElementType = Statement->PinType;
+	}
+	if (Statement->KeyPinType.IsEmpty())
+	{
+		Statement->KeyPinType = Statement->KeyType;
+	}
+	else if (Statement->KeyType.IsEmpty())
+	{
+		Statement->KeyType = Statement->KeyPinType;
+	}
+	if (Statement->ValuePinType.IsEmpty())
+	{
+		Statement->ValuePinType = Statement->ValueType;
+	}
+	else if (Statement->ValueType.IsEmpty())
+	{
+		Statement->ValueType = Statement->ValuePinType;
+	}
 	StatementObject->TryGetStringField(TEXT("component"), Statement->ComponentName);
 	StatementObject->TryGetStringField(TEXT("delegate"), Statement->DelegateName);
 	StatementObject->TryGetStringField(TEXT("delegate_operation"), Statement->DelegateOperation);
 	StatementObject->TryGetStringField(TEXT("handler"), Statement->HandlerName);
 	StatementObject->TryGetStringField(TEXT("unbind_mode"), Statement->UnbindMode);
+	StatementObject->TryGetStringField(TEXT("result_symbol"), Statement->ResultSymbolName);
 	if (Statement->Kind == EBlueprintHelperGraphStatementKind::ComponentBoundEvent)
 	{
 		if (Statement->Target.TrimStartAndEnd().IsEmpty())
@@ -620,6 +728,29 @@ TSharedPtr<FBlueprintHelperGraphStatementIR> FBlueprintHelperGraphSemanticIRBuil
 	FBlueprintHelperGraphSemanticIRUtils::ReadOptionalStringArrayField(StatementObject, TEXT("category_priority"), Statement->CategoryPriority);
 	ReadOptionalStringMapField(StatementObject, TEXT("context_evidence"), Statement->ContextEvidence);
 	ParseExpressionMap(StatementObject, TEXT("args"), Path + TEXT(".args"), Statement->Args, OutIR);
+	if (Statement->Kind == EBlueprintHelperGraphStatementKind::ContainerAction)
+	{
+		if (const TSharedPtr<FJsonValue>* Target = StatementObject->Values.Find(TEXT("target")))
+		{
+			if (Target->IsValid() && (*Target)->Type == EJson::Object)
+			{
+				Statement->TargetObject = ParseExpression(*Target, Path + TEXT(".target"), OutIR);
+			}
+		}
+
+		auto ReadContainerRole = [&](const TCHAR* FieldName)
+		{
+			if (const TSharedPtr<FJsonValue>* RoleValue = StatementObject->Values.Find(FieldName))
+			{
+				Statement->Args.Add(FieldName, ParseExpression(*RoleValue, Path + TEXT(".") + FieldName, OutIR));
+			}
+		};
+		ReadContainerRole(TEXT("item"));
+		ReadContainerRole(TEXT("items"));
+		ReadContainerRole(TEXT("key"));
+		ReadContainerRole(TEXT("value"));
+		ReadContainerRole(TEXT("index"));
+	}
 	if (const TSharedPtr<FJsonValue>* TargetObject = StatementObject->Values.Find(TEXT("target_object")))
 	{
 		Statement->TargetObject = ParseExpression(*TargetObject, Path + TEXT(".target_object"), OutIR);
@@ -627,7 +758,10 @@ TSharedPtr<FBlueprintHelperGraphStatementIR> FBlueprintHelperGraphSemanticIRBuil
 
 	if (const TSharedPtr<FJsonValue>* Value = StatementObject->Values.Find(TEXT("value")))
 	{
-		Statement->Value = ParseExpression(*Value, Path + TEXT(".value"), OutIR);
+		if (Statement->Kind != EBlueprintHelperGraphStatementKind::ContainerAction)
+		{
+			Statement->Value = ParseExpression(*Value, Path + TEXT(".value"), OutIR);
+		}
 	}
 	if (const TSharedPtr<FJsonValue>* Condition = StatementObject->Values.Find(TEXT("condition")))
 	{
@@ -699,6 +833,25 @@ TSharedPtr<FBlueprintHelperGraphExpressionIR> FBlueprintHelperGraphSemanticIRBui
 	ExpressionObject->TryGetStringField(TEXT("field_scope"), Expression->FieldScope);
 	Expression->FieldOperation = NormalizeFieldToken(Expression->FieldOperation);
 	Expression->FieldScope = NormalizeFieldToken(Expression->FieldScope);
+	const FString NormalizedExpressionKind = NormalizeFieldToken(KindString);
+	if (Expression->Kind == EBlueprintHelperGraphExpressionKind::Field
+		&& Expression->FieldOperation.IsEmpty()
+		&& (NormalizedExpressionKind == TEXT("get") || NormalizedExpressionKind == TEXT("get_property")))
+	{
+		Expression->FieldOperation = TEXT("get");
+	}
+	if (Expression->Kind == EBlueprintHelperGraphExpressionKind::Field
+		&& Expression->FieldScope.IsEmpty()
+		&& NormalizedExpressionKind == TEXT("get_property"))
+	{
+		Expression->FieldScope = TEXT("property_path");
+	}
+	else if (Expression->Kind == EBlueprintHelperGraphExpressionKind::Field
+		&& Expression->FieldScope.IsEmpty()
+		&& NormalizedExpressionKind == TEXT("get"))
+	{
+		Expression->FieldScope = TEXT("variable");
+	}
 	ExpressionObject->TryGetStringField(TEXT("function_operation"), Expression->FunctionOperation);
 	Expression->FunctionOperation = NormalizeFieldToken(Expression->FunctionOperation);
 	ExpressionObject->TryGetStringField(TEXT("transform_operation"), Expression->TransformOperation);
@@ -707,6 +860,10 @@ TSharedPtr<FBlueprintHelperGraphExpressionIR> FBlueprintHelperGraphSemanticIRBui
 	Expression->ScheduleOperation = NormalizeFieldToken(Expression->ScheduleOperation);
 	ExpressionObject->TryGetStringField(TEXT("create_operation"), Expression->CreateOperation);
 	Expression->CreateOperation = NormalizeFieldToken(Expression->CreateOperation);
+	ExpressionObject->TryGetStringField(TEXT("container_kind"), Expression->ContainerKind);
+	ExpressionObject->TryGetStringField(TEXT("container_operation"), Expression->ContainerOperation);
+	Expression->ContainerKind = NormalizeFieldToken(Expression->ContainerKind);
+	Expression->ContainerOperation = NormalizeFieldToken(Expression->ContainerOperation);
 	ExpressionObject->TryGetStringField(TEXT("class_path"), Expression->ClassPath);
 	if (Expression->ClassPath.IsEmpty())
 	{
@@ -717,6 +874,33 @@ TSharedPtr<FBlueprintHelperGraphExpressionIR> FBlueprintHelperGraphSemanticIRBui
 	Expression->PinType = ReadOptionalJsonValueAsString(ExpressionObject, TEXT("pin_type"));
 	Expression->KeyPinType = ReadOptionalJsonValueAsString(ExpressionObject, TEXT("key_pin_type"));
 	Expression->ValuePinType = ReadOptionalJsonValueAsString(ExpressionObject, TEXT("value_pin_type"));
+	Expression->ElementType = ReadOptionalJsonValueAsString(ExpressionObject, TEXT("element_type"));
+	Expression->KeyType = ReadOptionalJsonValueAsString(ExpressionObject, TEXT("key_type"));
+	Expression->ValueType = ReadOptionalJsonValueAsString(ExpressionObject, TEXT("value_type"));
+	if (Expression->PinType.IsEmpty())
+	{
+		Expression->PinType = Expression->ElementType;
+	}
+	else if (Expression->ElementType.IsEmpty())
+	{
+		Expression->ElementType = Expression->PinType;
+	}
+	if (Expression->KeyPinType.IsEmpty())
+	{
+		Expression->KeyPinType = Expression->KeyType;
+	}
+	else if (Expression->KeyType.IsEmpty())
+	{
+		Expression->KeyType = Expression->KeyPinType;
+	}
+	if (Expression->ValuePinType.IsEmpty())
+	{
+		Expression->ValuePinType = Expression->ValueType;
+	}
+	else if (Expression->ValueType.IsEmpty())
+	{
+		Expression->ValueType = Expression->ValuePinType;
+	}
 	ExpressionObject->TryGetStringField(TEXT("resolved_stable_id"), Expression->ResolvedCallFunctionStableId);
 	ExpressionObject->TryGetStringField(TEXT("search_mode"), Expression->SearchMode);
 	ExpressionObject->TryGetStringField(TEXT("ambiguity"), Expression->AmbiguityPolicy);
@@ -736,7 +920,11 @@ TSharedPtr<FBlueprintHelperGraphExpressionIR> FBlueprintHelperGraphSemanticIRBui
 
 	if (const TSharedPtr<FJsonValue>* LiteralValue = ExpressionObject->Values.Find(TEXT("value")))
 	{
-		if (Expression->Kind == EBlueprintHelperGraphExpressionKind::Literal
+		if (Expression->Kind == EBlueprintHelperGraphExpressionKind::ContainerAction)
+		{
+			Expression->Args.Add(TEXT("value"), ParseExpression(*LiteralValue, Path + TEXT(".value"), OutIR));
+		}
+		else if (Expression->Kind == EBlueprintHelperGraphExpressionKind::Literal
 			|| !LiteralValue->IsValid()
 			|| (*LiteralValue)->Type != EJson::Object)
 		{
@@ -762,6 +950,32 @@ TSharedPtr<FBlueprintHelperGraphExpressionIR> FBlueprintHelperGraphSemanticIRBui
 
 	ParseExpressionMap(ExpressionObject, TEXT("args"), Path + TEXT(".args"), Expression->Args, OutIR);
 	ParseExpressionMap(ExpressionObject, TEXT("fields"), Path + TEXT(".fields"), Expression->Fields, OutIR);
+	if (Expression->Kind == EBlueprintHelperGraphExpressionKind::ContainerAction)
+	{
+		if (const TSharedPtr<FJsonValue>* Target = ExpressionObject->Values.Find(TEXT("target")))
+		{
+			if (Target->IsValid() && (*Target)->Type == EJson::Object)
+			{
+				Expression->TargetObject = ParseExpression(*Target, Path + TEXT(".target"), OutIR);
+			}
+		}
+
+		auto ReadContainerRole = [&](const TCHAR* FieldName)
+		{
+			if (const TSharedPtr<FJsonValue>* RoleValue = ExpressionObject->Values.Find(FieldName))
+			{
+				if (!Expression->Args.Contains(FieldName))
+				{
+					Expression->Args.Add(FieldName, ParseExpression(*RoleValue, Path + TEXT(".") + FieldName, OutIR));
+				}
+			}
+		};
+		ReadContainerRole(TEXT("item"));
+		ReadContainerRole(TEXT("items"));
+		ReadContainerRole(TEXT("key"));
+		ReadContainerRole(TEXT("index"));
+		ReadContainerRole(TEXT("value"));
+	}
 	if (Expression->Fields.Num() > 0)
 	{
 		Expression->Fields.GetKeys(Expression->FieldNames);
@@ -803,10 +1017,13 @@ TSharedPtr<FBlueprintHelperGraphExpressionIR> FBlueprintHelperGraphSemanticIRBui
 		Expression->Condition = ParseExpression(*Condition, Path + TEXT(".condition"), OutIR);
 		Expression->Args.Add(TEXT("condition"), Expression->Condition);
 	}
-	else if (const TSharedPtr<FJsonValue>* Index = ExpressionObject->Values.Find(TEXT("index")))
+	else if (Expression->Kind != EBlueprintHelperGraphExpressionKind::ContainerAction)
 	{
-		Expression->Condition = ParseExpression(*Index, Path + TEXT(".index"), OutIR);
-		Expression->Args.Add(TEXT("condition"), Expression->Condition);
+		if (const TSharedPtr<FJsonValue>* Index = ExpressionObject->Values.Find(TEXT("index")))
+		{
+			Expression->Condition = ParseExpression(*Index, Path + TEXT(".index"), OutIR);
+			Expression->Args.Add(TEXT("condition"), Expression->Condition);
+		}
 	}
 	if (const TSharedPtr<FJsonValue>* Then = ExpressionObject->Values.Find(TEXT("then")))
 	{
@@ -983,6 +1200,33 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveStatement(
 	case EBlueprintHelperGraphStatementKind::Convert:
 	case EBlueprintHelperGraphStatementKind::Schedule:
 		Statement->ResolvedTarget = FBlueprintHelperGraphSemanticIRUtils::ResolveTargetString(Statement->Target, Statement->Kind, EBlueprintHelperGraphExpressionKind::Unknown, Context);
+		break;
+
+	case EBlueprintHelperGraphStatementKind::ContainerAction:
+		if (Statement->ContainerKind.TrimStartAndEnd().IsEmpty())
+		{
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("container_kind_missing"), Statement->Path + TEXT(".container_kind"), TEXT("container_action statement requires container_kind."));
+		}
+		if (Statement->ContainerOperation.TrimStartAndEnd().IsEmpty())
+		{
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("container_operation_missing"), Statement->Path + TEXT(".container_operation"), TEXT("container_action statement requires container_operation."));
+		}
+		if (!Statement->TargetObject.IsValid() && Statement->Target.TrimStartAndEnd().IsEmpty())
+		{
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("container_target_missing"), Statement->Path + TEXT(".target"), TEXT("container_action statement requires target."));
+		}
+		ValidateContainerActionContract(
+			OutIR,
+			Statement->Path,
+			Statement->ContainerKind,
+			Statement->ContainerOperation,
+			Statement->Args,
+			Statement->TargetObject,
+			Statement->Target,
+			Statement->ResultSymbolName,
+			false);
+		Statement->ResolvedTarget = FBlueprintHelperGraphSemanticIRUtils::ResolveTargetString(Statement->Target, Statement->Kind, EBlueprintHelperGraphExpressionKind::Unknown, Context);
+		FBlueprintHelperGraphSemanticIRUtils::AddUnverifiedTargetDiagnostic(OutIR, Context, Statement->ResolvedTarget, Statement->Path + TEXT(".target"));
 		break;
 
 	case EBlueprintHelperGraphStatementKind::ComponentBoundEvent:
@@ -1243,6 +1487,48 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveExpression(
 	case EBlueprintHelperGraphExpressionKind::Convert:
 	case EBlueprintHelperGraphExpressionKind::Schedule:
 		Expression->ResolvedTarget = FBlueprintHelperGraphSemanticIRUtils::ResolveTargetString(Expression->Target, EBlueprintHelperGraphStatementKind::Unknown, Expression->Kind, Context);
+		break;
+
+	case EBlueprintHelperGraphExpressionKind::ContainerAction:
+		if (Expression->ContainerKind.TrimStartAndEnd().IsEmpty())
+		{
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("container_kind_missing"), Expression->Path + TEXT(".container_kind"), TEXT("container_action expression requires container_kind."));
+		}
+		if (Expression->ContainerOperation.TrimStartAndEnd().IsEmpty())
+		{
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("container_operation_missing"), Expression->Path + TEXT(".container_operation"), TEXT("container_action expression requires container_operation."));
+		}
+		if (!Expression->TargetObject.IsValid() && Expression->Target.TrimStartAndEnd().IsEmpty())
+		{
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("container_target_missing"), Expression->Path + TEXT(".target"), TEXT("container_action expression requires target."));
+		}
+		ValidateContainerActionContract(
+			OutIR,
+			Expression->Path,
+			Expression->ContainerKind,
+			Expression->ContainerOperation,
+			Expression->Args,
+			Expression->TargetObject,
+			Expression->Target,
+			FString(),
+			true);
+		{
+			const FString ResultType = FBlueprintHelperGraphStatementTypeUtils::ResolveContainerActionResultTypeToken(
+				Expression->ContainerKind,
+				Expression->ContainerOperation,
+				Expression->ElementType,
+				Expression->KeyType,
+				Expression->ValueType,
+				Expression->PinType,
+				Expression->KeyPinType,
+				Expression->ValuePinType);
+			if (!ResultType.IsEmpty())
+			{
+				Expression->Type = ResultType;
+			}
+		}
+		Expression->ResolvedTarget = FBlueprintHelperGraphSemanticIRUtils::ResolveTargetString(Expression->Target, EBlueprintHelperGraphStatementKind::Unknown, Expression->Kind, Context);
+		FBlueprintHelperGraphSemanticIRUtils::AddUnverifiedTargetDiagnostic(OutIR, Context, Expression->ResolvedTarget, Expression->Path + TEXT(".target"));
 		break;
 
 	case EBlueprintHelperGraphExpressionKind::Literal:

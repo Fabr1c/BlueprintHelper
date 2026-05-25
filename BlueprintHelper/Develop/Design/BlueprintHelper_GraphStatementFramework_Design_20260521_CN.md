@@ -554,6 +554,7 @@ This taxonomy does not change the top-level `SpawnerClusterKind` dispatch rule. 
 - `dynamic_cast` and `class_cast` can select cast-node spawner evidence when `target_class_path` is projected; missing target class evidence returns `needs_more_semantic_context`.
 - `type_promotion`, `timer_delegate_node`, and `latent_or_async_node` are only considered success-capable after projected spawner evidence exists; until then they return deterministic missing-context diagnostics rather than fake success.
 - Generic schedule support is only considered complete for operations that expose selected spawner evidence or deterministic missing-context diagnostics; normal Kismet timer calls remain FunctionAction.
+- 2026-05-25 decision: `timer_delegate_node` / `latent_or_async_node` 保留为 GraphWrite Generic schedule success path，但 handler/signature declaration 不归 GraphWrite；执行计划为 `BlueprintHelper_GraphWrite_GenericScheduleSuccessPathPlan_20260525_CN.md`。
 
 ## 2026-05-24 RemainingGaps Task 4 Smoke/Docs Sync
 
@@ -577,3 +578,59 @@ TaskSpec statement/expression
   - add positive Generic smoke only when the fixture carries honest projected evidence
   - do not add positive CLI `asset_action` smoke until the fixture can derive a real `asset_action_stable_id` from an ActionDatabase projection step
 - 2026-05-24 final verification: AgentFace task-core tests pass (`160` passed, `0` failed); UE 5.6 build reports `Result: Succeeded`; focused further-fix automation `D:\UEProjects\Template\Saved\Automation\GraphWrite_FurtherFix_Focused_003\index.json` reports `succeeded=4`, `failed=0`; four-cluster smoke completed with `00`-`04` preview/execute passing and `05` expected diagnostics remaining `preview_blocked`; full smoke-run GraphWrite automation `D:\UEProjects\Template\Saved\Automation\GraphWrite_FourClusterE2ESmoke_20260524_001\index.json` reports `succeeded=157`, `succeededWithWarnings=11`, `failed=0`, `notRun=0`.
+
+## 2026-05-25 Ownership-Filtered Remaining Scope
+
+本节把设计文档中列出的目标能力按当前职责归属重新过滤，避免把已有工具负责的能力继续算作 GraphWrite 未完成项。
+
+### 不再计入 GraphWrite 未完成项
+
+| 能力/入口 | 当前归属 | GraphWrite 边界 |
+|---|---|---|
+| `ensure_custom_event`、`ensure_override_event`、`native_event` declaration、function signature、event dispatcher、handler declaration | `BlueprintSignature` | GraphWrite 只消费 Signature 产出的声明/签名 evidence 写入 graph body 或 use-site，不创建/修改声明。 |
+| `override_event` / `native_event` taxonomy | `BlueprintSignature` / UE native event ownership | 不作为 GraphWrite/EventDelegate declaration taxonomy 继续扩展。 |
+| delegate handler 查找/创建、dispatcher 创建、handler function/custom-event signature | `BlueprintSignature` / ActionContext projection | GraphWrite/EventDelegate 不扫描资产修复缺失 handler；缺 evidence 必须确定性失败。 |
+| `component_bound_event` 与 `delegate_operation=bind|assign|unbind|clear|call` 的声明依赖 | `BlueprintSignature` owns declarations; EventDelegate owns use-site | 只把 existing-declaration use-site 计入 EventDelegate graph writing，不把声明缺口算作 GraphWrite gap。 |
+| Merge/Patch/ConnectPins 的 mutation ownership | Merge/Patch mutation services | 除非后续决定迁入 GraphStatement 主线，否则不作为 Spawner-Oriented Cluster 未完成项。 |
+| `anim_notify_event` / animation notify event entry | Animation Blueprint / Animation tooling | 该入口面向动画蓝图/动画资产事件；当前 GraphWrite 范围限定普通 Blueprint，不计入 GraphWrite gap。 |
+
+### 当前 GraphWrite 已闭合的核心能力
+
+| Area | 状态 |
+|---|---|
+| Function / Field core | `BlueprintHelper.GraphWrite` full automation 覆盖；Function real-spawner evidence 与 Field complex path/component_ref/field_access 已收敛。 |
+| Event body/use-site 边界 | `custom_event` body 通过 Signature dependency 后写入；EventDelegate use-site 已闭合到 projected evidence 边界。 |
+| Generic create first slice | `spawn_actor`、`create_widget`、`construct_object`、`make_array`、`make_map`、`make_set` 通过 selected NodeSpawner evidence 执行。 |
+| `asset_action` | 已改为 ActionDatabase projection service + execute-time projected identity revalidation；query-only/node-class-only execute selector 被拒绝。 |
+| Review evidence | GraphWrite producer-owned evidence 到 PostIO/ReviewStore 已有自动化验证。 |
+
+### Evidence 口径复核
+
+以下 evidence 已能从 TaskSpec 到当前 GraphWrite 链路直接获取或已被 resolver 使用，不再作为真实缺陷统计：
+
+| Evidence | 当前状态 | 结论 |
+|---|---|---|
+| `context_evidence` passthrough | TypeScript compiler 会原样复制到 GraphWrite statement/expression；C++ ActionContext 会继续带入 resolution request。 | 不算缺陷。 |
+| `asset_action_stable_id`、`asset_action_node_class`、`asset_action_spawner_signature`、`asset_action_owner_path` | `asset_action` resolver 已读取并执行 ActionDatabase projected identity revalidation；Review policy 已决策收窄为 graph-level `graph_block` / `graph_surface_atomic_target`。 | action resolution 侧不算缺陷；缺的是正向 TaskSpec fixture/readback。 |
+| `type_promotion_stable_id`、operator、source/target/result pin type | TaskSpec compiler 已透传；`FBlueprintHelperTypePromotionSpawnerEvidenceResolver` 已消费并校验。 | 不再列入 evidence-heavy 缺陷；后续只作为 final preflight 覆盖项。 |
+| `make_array`/`make_map`/`make_set` 的 element/key/value pin type | TaskSpec pin_type/key_pin_type/value_pin_type 会进入 ActionContext demand；Generic create resolver 已使用。 | make-family 不算 container_action 缺陷。 |
+| GraphWrite graph surface Review evidence | runtime `BuildReviewEvidence` 已在成功 step 且 payload 有 asset/graph 时生成 `graph_block` target。 | graph surface 级 evidence 不算缺陷。 |
+
+真实缺陷表：
+
+| Defect | 当前证据 | 影响 | 期望处理 |
+|---|---|---|---|
+| `asset_action` 缺 Agent-facing 正向 TaskSpec fixture/readback | 现有 resolver 已能校验 projected identity，但未发现完整 positive TaskSpec fixture 使用真实 ActionDatabase projection evidence 并执行 readback。 | 只能证明 resolver，不足以证明 Agent-facing GraphWrite 成功路径。 | 增加真实 projection -> TaskSpec -> preview/execute -> readback fixture，不能手写 stable id 伪造成功。 |
+| `asset_action` Review evidence policy | DECIDED / graph_block | public contract 收窄为 `graph_surface_atomic_target`；runtime `BuildReviewEvidence` 继续产出 graph-level `graph_block` target；执行计划为 `BlueprintHelper_GraphWrite_AssetActionReviewPolicy_GraphBlockPlan_20260525_CN.md`。 | Review/DebugBundle 粒度保持图级，不追踪 asset-action atomic target；若未来需要 action 级 DebugBundle，再作为增强项立项。 |
+| `timer_delegate_node` success path 未实现 | TaskSpec/schedule fields 已透传，但 Generic schedule resolver 当前直接返回 `needs_more_semantic_context`。 | 不能声明 timer delegate schedule node 已完成；但 ownership 已确定，GraphWrite 负责 use-site node/link，不负责 handler/signature declaration。 | 执行 `BlueprintHelper_GraphWrite_GenericScheduleSuccessPathPlan_20260525_CN.md`：增加 projected ActionDatabase schedule spawner evidence consumer、BlueprintSignature handler evidence 消费、CreateDelegate link readback。 |
+| `latent_or_async_node` success path 未实现 | TaskSpec/context evidence 已透传，但 resolver 当前直接返回 `needs_more_semantic_context`。 | 不能声明 latent/async schedule node 已完成；但 ownership 已确定，GraphWrite 负责 selected node spawn，不负责 handler/signature declaration。 | 执行 `BlueprintHelper_GraphWrite_GenericScheduleSuccessPathPlan_20260525_CN.md`：增加 projected latent/async selected-spawner evidence、`graph_latent_allowed=true` 消费与 readback。 |
+| non-make `container_action` first-class 能力 | make-family 仍由 Generic create 负责；核心 array/map/set 普通容器操作已进入 first-class `container_action` public shape，并通过 FunctionAction-backed callable evidence 解析执行。 | broad container_action focused gate 已关闭；最终仍需进入 ownership-filtered generality preflight 独立计数。 | 保持 `BlueprintHelper_GraphWrite_ContainerAction_FirstClassPlan_20260525_CN.md` 的 V1 边界：`make_*` 归 Generic create，`foreach` 归后续 control-flow。 |
+
+### 真正剩余的 GraphWrite 未完成项
+
+| Remaining item | 为什么仍是 GraphWrite gap |
+|---|---|
+| Real evidence / BuildEvidence defects | 见上方真实缺陷表；当前只剩 `asset_action` 正向 TaskSpec/readback，以及已计划化的 `timer_delegate_node` / `latent_or_async_node` Generic schedule success evidence/readback。 |
+| `container_action` final matrix coverage | V1 operation vocabulary、FunctionAction-backed 边界、TaskSpec 输入 shape、readback verifier 和 focused E2E 已实现；剩余是 ownership-filtered generality preflight 中的 10-variant coverage。 |
+| Full capability contract expansion | 当前能力面仍会随上面几项变化；该项放到 evidence defects 与 `container_action` public shape 确定/完成后再对齐。 |
+| Ownership-filtered final generality preflight | 最终验收门禁；放到 capability contract expansion 之后执行，用过滤后的 contract/matrix 重新计算 operation/variant 计数。 |

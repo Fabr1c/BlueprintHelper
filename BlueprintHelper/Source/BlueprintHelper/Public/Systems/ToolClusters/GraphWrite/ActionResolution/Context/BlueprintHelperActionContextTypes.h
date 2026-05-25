@@ -57,9 +57,14 @@ struct FBlueprintHelperActionContextDemand
 	FString TransformOperation;
 	FString ScheduleOperation;
 	FString CreateOperation;
+	FString ContainerKind;
+	FString ContainerOperation;
 	FString ClassPath;
 	FString AssetPath;
 	FString GraphLatentAllowed;
+	FString ElementType;
+	FString KeyType;
+	FString ValueType;
 	FString TypeName;
 	FString StructPath;
 	FString TypeStructureId;
@@ -113,6 +118,7 @@ struct FBlueprintHelperActionContextFieldSnapshot
 	FString PinCategory;
 	FString PinSubCategory;
 	FString PinSubCategoryObjectPath;
+	FString PinContainerType;
 	bool bReadable = true;
 	bool bWritable = true;
 	bool bComponent = false;
@@ -210,6 +216,14 @@ struct FBlueprintHelperResolvedActionContextBundle
 				{
 					Existing->Semantic.CreateOperation = MoveTemp(Context.Semantic.CreateOperation);
 				}
+				if (Existing->Semantic.ContainerKind.IsEmpty())
+				{
+					Existing->Semantic.ContainerKind = MoveTemp(Context.Semantic.ContainerKind);
+				}
+				if (Existing->Semantic.ContainerOperation.IsEmpty())
+				{
+					Existing->Semantic.ContainerOperation = MoveTemp(Context.Semantic.ContainerOperation);
+				}
 				if (Existing->Semantic.ClassPath.IsEmpty())
 				{
 					Existing->Semantic.ClassPath = MoveTemp(Context.Semantic.ClassPath);
@@ -217,6 +231,18 @@ struct FBlueprintHelperResolvedActionContextBundle
 				if (Existing->Semantic.AssetPath.IsEmpty())
 				{
 					Existing->Semantic.AssetPath = MoveTemp(Context.Semantic.AssetPath);
+				}
+				if (Existing->Semantic.ElementType.IsEmpty())
+				{
+					Existing->Semantic.ElementType = MoveTemp(Context.Semantic.ElementType);
+				}
+				if (Existing->Semantic.KeyType.IsEmpty())
+				{
+					Existing->Semantic.KeyType = MoveTemp(Context.Semantic.KeyType);
+				}
+				if (Existing->Semantic.ValueType.IsEmpty())
+				{
+					Existing->Semantic.ValueType = MoveTemp(Context.Semantic.ValueType);
 				}
 				if (!Existing->Semantic.ContainerElementPinType.IsValid())
 				{

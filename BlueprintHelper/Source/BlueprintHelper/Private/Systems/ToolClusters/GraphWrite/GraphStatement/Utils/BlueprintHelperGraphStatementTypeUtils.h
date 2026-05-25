@@ -11,6 +11,15 @@ class FBlueprintHelperGraphStatementTypeUtils
 {
 public:
 	static FString MakeExpressionFragmentId(const FBlueprintHelperGraphExpressionIR& Expression);
+	static FString ResolveContainerActionResultTypeToken(
+		const FString& ContainerKind,
+		const FString& ContainerOperation,
+		const FString& ElementType,
+		const FString& KeyType,
+		const FString& ValueType,
+		const FString& PinType,
+		const FString& KeyPinType,
+		const FString& ValuePinType);
 	static FString ResolveOperatorFunctionName(const FBlueprintHelperGraphExpressionIR& Expression);
 
 private:

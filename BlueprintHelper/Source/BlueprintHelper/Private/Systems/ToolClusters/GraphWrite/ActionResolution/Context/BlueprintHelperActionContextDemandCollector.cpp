@@ -66,6 +66,14 @@ static FString BuildStatementQuery(const FBlueprintHelperGraphStatementIR& State
 			Statement.PatternName);
 	}
 
+	if (SemanticKind == EBlueprintHelperActionSemanticKind::ContainerAction)
+	{
+		const FString ContainerQuery = Statement.ContainerKind.TrimStartAndEnd().ToLower()
+			+ TEXT(".")
+			+ Statement.ContainerOperation.TrimStartAndEnd().ToLower();
+		return ContainerQuery == TEXT(".") ? Statement.PatternName : ContainerQuery;
+	}
+
 	if (IsEventDelegateSemantic(SemanticKind))
 	{
 		return FirstNonEmpty(
@@ -84,6 +92,16 @@ static FString BuildStatementQuery(const FBlueprintHelperGraphStatementIR& State
 
 static FString BuildStatementTargetPath(const FBlueprintHelperGraphStatementIR& Statement, const EBlueprintHelperActionSemanticKind SemanticKind)
 {
+	if (SemanticKind == EBlueprintHelperActionSemanticKind::ContainerAction
+		&& Statement.TargetObject.IsValid())
+	{
+		return FirstNonEmpty(
+			Statement.TargetObject->ResolvedTarget.Raw,
+			Statement.TargetObject->Target,
+			Statement.TargetObject->Name,
+			Statement.TargetObject->ResolvedTarget.Member);
+	}
+
 	if (SemanticKind == EBlueprintHelperActionSemanticKind::Field
 		&& Statement.FieldScope.Equals(TEXT("property_path"), ESearchCase::IgnoreCase))
 	{
@@ -124,6 +142,14 @@ static FString BuildExpressionQuery(const FBlueprintHelperGraphExpressionIR& Exp
 			Expression.Target,
 			Expression.Name,
 			Expression.PatternName);
+	}
+
+	if (SemanticKind == EBlueprintHelperActionSemanticKind::ContainerAction)
+	{
+		const FString ContainerQuery = Expression.ContainerKind.TrimStartAndEnd().ToLower()
+			+ TEXT(".")
+			+ Expression.ContainerOperation.TrimStartAndEnd().ToLower();
+		return ContainerQuery == TEXT(".") ? Expression.PatternName : ContainerQuery;
 	}
 
 	return FirstNonEmpty(
@@ -214,6 +240,7 @@ static EBlueprintHelperActionSemanticFamily ResolveSemanticFamily(
 	switch (SemanticKind)
 	{
 	case EBlueprintHelperActionSemanticKind::Call:
+	case EBlueprintHelperActionSemanticKind::ContainerAction:
 		return EBlueprintHelperActionSemanticFamily::Callable;
 	case EBlueprintHelperActionSemanticKind::Field:
 		return EBlueprintHelperActionSemanticFamily::Field;
@@ -349,6 +376,12 @@ static void ApplyFunctionSemanticOperations(FBlueprintHelperActionContextDemand&
 		if (InOutDemand.ScheduleOperation.IsEmpty())
 		{
 			InOutDemand.ScheduleOperation = TEXT("latent_or_async");
+		}
+		break;
+	case EBlueprintHelperActionSemanticKind::ContainerAction:
+		if (InOutDemand.FunctionOperation.IsEmpty())
+		{
+			InOutDemand.FunctionOperation = TEXT("container_action");
 		}
 		break;
 	default:
@@ -494,6 +527,148 @@ static void ApplyCreateExpressionEvidence(
 		InOutDemand.ArgumentTypes.Add(TEXT("value"), Expression.ValuePinType.TrimStartAndEnd());
 		InOutDemand.ContainerValuePinType = MakePinTypeFromToken(Expression.ValuePinType);
 	}
+}
+
+static FString ResolveExpressionTargetPath(const FBlueprintHelperGraphExpressionIR& Expression)
+{
+	return FirstNonEmpty(
+		Expression.ResolvedTarget.Raw,
+		Expression.Target,
+		Expression.Name,
+		Expression.ResolvedTarget.Member);
+}
+
+static void ApplyContainerTypeEvidence(
+	const FString& ExplicitElementType,
+	const FString& ExplicitKeyType,
+	const FString& ExplicitValueType,
+	const FString& ExplicitPinType,
+	const FString& ExplicitKeyPinType,
+	const FString& ExplicitValuePinType,
+	FBlueprintHelperActionContextDemand& InOutDemand)
+{
+	const FString ElementType = FirstNonEmpty(ExplicitElementType, ExplicitPinType).TrimStartAndEnd();
+	const FString KeyType = FirstNonEmpty(ExplicitKeyType, ExplicitKeyPinType).TrimStartAndEnd();
+	const FString ValueType = FirstNonEmpty(ExplicitValueType, ExplicitValuePinType).TrimStartAndEnd();
+
+	if (!ElementType.IsEmpty())
+	{
+		InOutDemand.ElementType = ElementType;
+		InOutDemand.ArgumentTypes.Add(TEXT("element"), ElementType);
+		InOutDemand.ContainerElementPinType = MakePinTypeFromToken(ElementType);
+		InOutDemand.ArgumentPinTypes.Add(TEXT("element"), InOutDemand.ContainerElementPinType);
+		InOutDemand.DefaultValues.Add(TEXT("element_type"), ElementType);
+	}
+	if (!KeyType.IsEmpty())
+	{
+		InOutDemand.KeyType = KeyType;
+		InOutDemand.ArgumentTypes.Add(TEXT("key"), KeyType);
+		InOutDemand.ContainerKeyPinType = MakePinTypeFromToken(KeyType);
+		InOutDemand.ArgumentPinTypes.Add(TEXT("key"), InOutDemand.ContainerKeyPinType);
+		InOutDemand.DefaultValues.Add(TEXT("key_type"), KeyType);
+	}
+	if (!ValueType.IsEmpty())
+	{
+		InOutDemand.ValueType = ValueType;
+		InOutDemand.ArgumentTypes.Add(TEXT("value"), ValueType);
+		InOutDemand.ContainerValuePinType = MakePinTypeFromToken(ValueType);
+		InOutDemand.ArgumentPinTypes.Add(TEXT("value"), InOutDemand.ContainerValuePinType);
+		InOutDemand.DefaultValues.Add(TEXT("value_type"), ValueType);
+	}
+}
+
+static void ApplyContainerActionStatementEvidence(
+	const FBlueprintHelperGraphStatementIR& Statement,
+	FBlueprintHelperActionContextDemand& InOutDemand)
+{
+	if (InOutDemand.SemanticKind != EBlueprintHelperActionSemanticKind::ContainerAction)
+	{
+		return;
+	}
+
+	InOutDemand.ContainerKind = Statement.ContainerKind.TrimStartAndEnd().ToLower();
+	InOutDemand.ContainerOperation = Statement.ContainerOperation.TrimStartAndEnd().ToLower();
+	if (!InOutDemand.ContainerKind.IsEmpty())
+	{
+		InOutDemand.DefaultValues.Add(TEXT("container_kind"), InOutDemand.ContainerKind);
+	}
+	if (!InOutDemand.ContainerOperation.IsEmpty())
+	{
+		InOutDemand.DefaultValues.Add(TEXT("container_operation"), InOutDemand.ContainerOperation);
+	}
+	if (!InOutDemand.ContainerKind.IsEmpty() || !InOutDemand.ContainerOperation.IsEmpty())
+	{
+		InOutDemand.Query = InOutDemand.ContainerKind + TEXT(".") + InOutDemand.ContainerOperation;
+	}
+	if (InOutDemand.FunctionOperation.IsEmpty())
+	{
+		InOutDemand.FunctionOperation = TEXT("container_action");
+	}
+	if (Statement.TargetObject.IsValid())
+	{
+		CopyNamedExpressionContext(TEXT("target"), Statement.TargetObject, InOutDemand);
+		const FString TargetPath = ResolveExpressionTargetPath(*Statement.TargetObject);
+		if (!TargetPath.IsEmpty())
+		{
+			InOutDemand.TargetPath = TargetPath;
+			InOutDemand.BindingObjectPath = TargetPath;
+		}
+	}
+	ApplyContainerTypeEvidence(
+		Statement.ElementType,
+		Statement.KeyType,
+		Statement.ValueType,
+		Statement.PinType,
+		Statement.KeyPinType,
+		Statement.ValuePinType,
+		InOutDemand);
+}
+
+static void ApplyContainerActionExpressionEvidence(
+	const FBlueprintHelperGraphExpressionIR& Expression,
+	FBlueprintHelperActionContextDemand& InOutDemand)
+{
+	if (InOutDemand.SemanticKind != EBlueprintHelperActionSemanticKind::ContainerAction)
+	{
+		return;
+	}
+
+	InOutDemand.ContainerKind = Expression.ContainerKind.TrimStartAndEnd().ToLower();
+	InOutDemand.ContainerOperation = Expression.ContainerOperation.TrimStartAndEnd().ToLower();
+	if (!InOutDemand.ContainerKind.IsEmpty())
+	{
+		InOutDemand.DefaultValues.Add(TEXT("container_kind"), InOutDemand.ContainerKind);
+	}
+	if (!InOutDemand.ContainerOperation.IsEmpty())
+	{
+		InOutDemand.DefaultValues.Add(TEXT("container_operation"), InOutDemand.ContainerOperation);
+	}
+	if (!InOutDemand.ContainerKind.IsEmpty() || !InOutDemand.ContainerOperation.IsEmpty())
+	{
+		InOutDemand.Query = InOutDemand.ContainerKind + TEXT(".") + InOutDemand.ContainerOperation;
+	}
+	if (InOutDemand.FunctionOperation.IsEmpty())
+	{
+		InOutDemand.FunctionOperation = TEXT("container_action");
+	}
+	if (Expression.TargetObject.IsValid())
+	{
+		CopyNamedExpressionContext(TEXT("target"), Expression.TargetObject, InOutDemand);
+		const FString TargetPath = ResolveExpressionTargetPath(*Expression.TargetObject);
+		if (!TargetPath.IsEmpty())
+		{
+			InOutDemand.TargetPath = TargetPath;
+			InOutDemand.BindingObjectPath = TargetPath;
+		}
+	}
+	ApplyContainerTypeEvidence(
+		Expression.ElementType,
+		Expression.KeyType,
+		Expression.ValueType,
+		Expression.PinType,
+		Expression.KeyPinType,
+		Expression.ValuePinType,
+		InOutDemand);
 }
 
 static void ApplyEventDelegateStatementEvidence(
@@ -718,6 +893,7 @@ void FBlueprintHelperActionContextDemandCollector::AppendDemandForStatement(
 		FieldOperation,
 		FieldScope);
 	BlueprintHelperActionContextDemandCollector::CopyExpressionMapContext(Statement.Args, Demand);
+	BlueprintHelperActionContextDemandCollector::ApplyContainerActionStatementEvidence(Statement, Demand);
 	BlueprintHelperActionContextDemandCollector::ApplyCreateStatementEvidence(Statement, Demand);
 	BlueprintHelperActionContextDemandCollector::ApplyConvertScheduleEvidence(
 		Statement.FunctionOperation,
@@ -812,6 +988,7 @@ void FBlueprintHelperActionContextDemandCollector::AppendDemandForExpression(
 	BlueprintHelperActionContextDemandCollector::CopyNamedExpressionContext(TEXT("right"), Expression.Right, Demand);
 	BlueprintHelperActionContextDemandCollector::CopyNamedExpressionContext(TEXT("value"), Expression.Value, Demand);
 	BlueprintHelperActionContextDemandCollector::CopyNamedExpressionContext(TEXT("condition"), Expression.Condition, Demand);
+	BlueprintHelperActionContextDemandCollector::ApplyContainerActionExpressionEvidence(Expression, Demand);
 	BlueprintHelperActionContextDemandCollector::ApplyCreateExpressionEvidence(Expression, Demand);
 	BlueprintHelperActionContextDemandCollector::ApplyConvertScheduleEvidence(
 		Expression.FunctionOperation,
@@ -1005,6 +1182,7 @@ void FBlueprintHelperActionContextDemandCollector::ApplyDemandKinds(FBlueprintHe
 	case EBlueprintHelperActionSemanticKind::Op:
 	case EBlueprintHelperActionSemanticKind::Convert:
 	case EBlueprintHelperActionSemanticKind::Schedule:
+	case EBlueprintHelperActionSemanticKind::ContainerAction:
 		Demand.ClusterKind = EBlueprintHelperSpawnerClusterKind::FunctionAction;
 		Demand.RequiredKinds.Add(EBlueprintHelperActionContextDemandKind::TypedPins);
 		Demand.RequiredKinds.Add(EBlueprintHelperActionContextDemandKind::Target);
@@ -1058,6 +1236,8 @@ EBlueprintHelperActionSemanticKind FBlueprintHelperActionContextDemandCollector:
 		return EBlueprintHelperActionSemanticKind::Convert;
 	case EBlueprintHelperGraphStatementKind::Schedule:
 		return EBlueprintHelperActionSemanticKind::Schedule;
+	case EBlueprintHelperGraphStatementKind::ContainerAction:
+		return EBlueprintHelperActionSemanticKind::ContainerAction;
 	case EBlueprintHelperGraphStatementKind::Let:
 		return EBlueprintHelperActionSemanticKind::Field;
 	case EBlueprintHelperGraphStatementKind::ComponentBoundEvent:
@@ -1092,6 +1272,8 @@ EBlueprintHelperActionSemanticKind FBlueprintHelperActionContextDemandCollector:
 		return EBlueprintHelperActionSemanticKind::Convert;
 	case EBlueprintHelperGraphExpressionKind::Schedule:
 		return EBlueprintHelperActionSemanticKind::Schedule;
+	case EBlueprintHelperGraphExpressionKind::ContainerAction:
+		return EBlueprintHelperActionSemanticKind::ContainerAction;
 	default:
 		return EBlueprintHelperActionSemanticKind::Unknown;
 	}

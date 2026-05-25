@@ -1,4 +1,4 @@
-# BlueprintHelper GraphWrite 架构偏离审计
+# BlueprintHelper GraphWrite 架构偏离审计与闭环状态
 
 审计日期：2026-05-25
 
@@ -6,7 +6,9 @@
 - 设计基线：`BlueprintHelper/Develop/Design/BlueprintHelper_GraphStatementFramework_Design_20260521_CN.md`
 - 实现范围：GraphWrite bridge routes、TaskRuntime cluster、GraphStatement、ActionResolution、Merge/Patch/MutationCoordinator、EventDelegate、Review evidence 集成路径
 
-结论：现有 GraphWrite 主路径已经部分具备 `SemanticIR -> ActionContextPipeline -> ActionResolutionCore -> GraphStatement fragment -> UE mutator` 的新架构形态，但 `merge_blueprint_graph`、`patch_blueprint_graph`、EventDelegate handler 解析、Review evidence 接入仍存在明确偏离。其中 Merge/Patch 独立执行链路是最高风险偏离，因为它绕开了设计文档要求的一致 GraphStatement/ActionContext/ActionResolution 主线。
+文档状态：本文已从原始偏离审计更新为“偏离来源 + 当前闭环状态”台账；下方 P0/P1/P2/P3 段落保留历史问题来源和收敛依据，不再全部代表当前实现状态。
+
+结论：截至 2026-05-25 状态同步，原审计中的 Merge/Patch ownership、Merge callable convergence、EventDelegate handler scan / event taxonomy、GraphWrite runtime Review evidence、Patch ConnectPins 均已关闭；public parsed DTO 清理在 Facade 层已关闭。当前仍需要跟踪的是“完全稳定 / 能力齐全”门禁：GraphWrite generality preflight 未执行，Agent-facing TaskSpec public contract 仍是 first-slice 子集，`asset_action` 仍缺 CLI/TaskSpec positive smoke，legacy parsed-plan 路径仍是执行层禁用而非完全移除，Review evidence 仍缺 TaskRuntime -> Review model 端到端消费断言，最终统一 E2E 尚未重跑。
 
 ## 2026-05-25 状态同步
 
@@ -30,7 +32,9 @@
 5. Review evidence 仍缺少更上层的 TaskRuntime -> Review model 端到端消费断言；当前已有 cluster-owned evidence 构建证据，但 Merge/Patch/ConnectPins 的 Review metadata、`EvidenceId`/`ChangeId` 父子关系仍建议补链路级测试。
 6. GraphWrite 稳定性修复完成后，需要再跑一次统一最终 E2E：TaskSpec build/node tests、GraphWrite generality preflight、四簇/GraphWrite automation、UE 5.6 build、source hygiene scans。
 
-## 严重等级
+## 严重等级（历史审计口径）
+
+以下等级用于解释后续原审计段落的历史严重度，不等同于当前 open blocker 状态。当前剩余项以“当前距离‘完全稳定 / 能力齐全’的剩余门禁”为准。
 
 - P0：主架构路径偏离，导致同一类 GraphWrite 写入存在两套事实上的执行模型。
 - P1：局部核心能力偏离 projected ActionContext、ActionResolution、Review/Debug evidence 等硬约束，可能破坏可解释性、一致预览、回滚或诊断。

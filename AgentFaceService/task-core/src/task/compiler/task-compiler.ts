@@ -10,7 +10,16 @@ import type {
   TaskPlan,
   TaskSpec,
 } from '../schema/task-schemas.js';
-import { TASK_PLAN_SCHEMA } from '../schema/task-schemas.js';
+import {
+  CONTAINER_ACTION_OPERATIONS_BY_KIND,
+  CONTAINER_ACTION_ROLE_FIELDS,
+  CONTAINER_ACTION_TYPE_FIELDS,
+  TASK_PLAN_SCHEMA,
+  getRequiredContainerActionRoles,
+  isExpressionContainerActionOperation,
+  isSupportedContainerActionKind,
+  isSupportedContainerActionOperation,
+} from '../schema/task-schemas.js';
 
 export const TASK_COMPILER_RESULT_SCHEMA = 'BlueprintHelper.TaskCompilerResult.v1';
 
@@ -1406,6 +1415,29 @@ const PUBLIC_DELEGATE_STATEMENT_KIND_ALIASES = new Map<string, string>([
 ]);
 const INTERNAL_DELEGATE_STATEMENT_KIND = 'delegate';
 const DELEGATE_STATEMENT_OPERATION_KINDS = new Set(['bind', 'assign', 'unbind', 'clear', 'call']);
+const CONTAINER_ACTION_KIND = 'container_action';
+const GRAPH_CONTAINER_ACTION_FIELDS = [
+  'container_kind',
+  'container_operation',
+  'element_type',
+  'key_type',
+  'value_type',
+  'target',
+  'item',
+  'items',
+  'key',
+  'value',
+  'index',
+  'result_symbol',
+  'context_evidence',
+] as const;
+const SUPPORTED_CONTAINER_KINDS = new Set(Object.keys(CONTAINER_ACTION_OPERATIONS_BY_KIND));
+const SUPPORTED_CONTAINER_OPERATIONS = new Map<string, ReadonlySet<string>>(
+  Object.entries(CONTAINER_ACTION_OPERATIONS_BY_KIND).map(([containerKind, operations]) => [
+    containerKind,
+    new Set(operations),
+  ]),
+);
 const FORBIDDEN_AGENT_DELEGATE_INTERNAL_KINDS = new Set([
   'delegate',
   'bind',
@@ -1425,6 +1457,7 @@ const SUPPORTED_GRAPH_BODY_STATEMENT_KINDS = new Set([
   'create',
   'convert',
   'schedule',
+  CONTAINER_ACTION_KIND,
   ...PUBLIC_DELEGATE_STATEMENT_KIND_ALIASES.keys(),
 ]);
 const SUPPORTED_GRAPH_BODY_CONTROL_KINDS = new Set(['branch', 'sequence', 'return']);
@@ -1441,6 +1474,7 @@ const SUPPORTED_GRAPH_BODY_EXPRESSION_KINDS = new Set([
   'create',
   'convert',
   'schedule',
+  CONTAINER_ACTION_KIND,
 ]);
 const GRAPH_CONVERT_SCHEDULE_FIELDS = [
   'function_operation',
@@ -1468,6 +1502,14 @@ function applyFieldTaxonomy(record: Record<string, unknown>, operation: string, 
 
 function copyConvertScheduleSemanticFields(source: Record<string, unknown>, target: Record<string, unknown>): void {
   GRAPH_CONVERT_SCHEDULE_FIELDS.forEach((field) => {
+    if (Object.hasOwn(source, field)) {
+      target[field] = source[field];
+    }
+  });
+}
+
+function copyContainerActionSemanticFields(source: Record<string, unknown>, target: Record<string, unknown>): void {
+  GRAPH_CONTAINER_ACTION_FIELDS.forEach((field) => {
     if (Object.hasOwn(source, field)) {
       target[field] = source[field];
     }
@@ -1543,6 +1585,131 @@ function validateDelegateStatementShape(statement: Record<string, unknown>, path
   }
 }
 
+function normalizeContainerActionKind(value: unknown, path: string): string {
+  const containerKind = getRequiredString({ value }, 'value', path).trim().toLowerCase();
+  if (!SUPPORTED_CONTAINER_KINDS.has(containerKind) || !isSupportedContainerActionKind(containerKind)) {
+    throw new TaskSpecCompileError('unsupported_container_kind', `Unsupported container_kind: ${containerKind}`, [
+      {
+        code: 'unsupported_container_kind',
+        path,
+        message: 'Use array, map, or set.',
+      },
+    ]);
+  }
+  return containerKind;
+}
+
+function normalizeContainerActionOperation(containerKind: string, value: unknown, path: string): string {
+  const containerOperation = getRequiredString({ value }, 'value', path).trim().toLowerCase();
+  if (!SUPPORTED_CONTAINER_OPERATIONS.get(containerKind)?.has(containerOperation) || !isSupportedContainerActionOperation(containerKind, containerOperation)) {
+    throw new TaskSpecCompileError('unsupported_container_operation', `Unsupported container_operation: ${containerKind}.${containerOperation}`, [
+      {
+        code: 'unsupported_container_operation',
+        path,
+        message: 'Unsupported container_operation in first-class V1 container_action.',
+      },
+    ]);
+  }
+  return containerOperation;
+}
+
+function validateContainerActionShape(
+  record: Record<string, unknown>,
+  path: string,
+  usage: 'statement' | 'expression',
+): { containerKind: string; containerOperation: string } {
+  const containerKind = normalizeContainerActionKind(record.container_kind, `${path}.container_kind`);
+  const containerOperation = normalizeContainerActionOperation(containerKind, record.container_operation, `${path}.container_operation`);
+  if (usage === 'expression' && !isExpressionContainerActionOperation(containerKind, containerOperation)) {
+    throw new TaskSpecCompileError('unsupported_container_operation', `Unsupported container_operation: ${containerKind}.${containerOperation}`, [
+      {
+        code: 'unsupported_container_operation',
+        path: `${path}.container_operation`,
+        message: 'Unsupported container_operation for expression container_action.',
+      },
+    ]);
+  }
+  if (!Object.hasOwn(record, 'target')) {
+    throw new TaskSpecCompileError('taskspec_semantic_invalid', 'container_action requires target.', [
+      {
+        code: 'taskspec_semantic_invalid',
+        path: `${path}.target`,
+        message: 'Provide the target container expression.',
+      },
+    ]);
+  }
+  getRequiredContainerActionRoles(containerKind, containerOperation).forEach((role) => {
+    if (!Object.hasOwn(record, role)) {
+      throw new TaskSpecCompileError('taskspec_semantic_invalid', `container_action ${containerKind}.${containerOperation} requires ${role}.`, [
+        {
+          code: 'taskspec_semantic_invalid',
+          path: `${path}.${role}`,
+          message: `container_action ${containerKind}.${containerOperation} requires ${role}.`,
+        },
+      ]);
+    }
+  });
+  CONTAINER_ACTION_TYPE_FIELDS.forEach((field) => {
+    if (!Object.hasOwn(record, field)) return;
+    const value = record[field];
+    if (typeof value !== 'string' || value.trim().length === 0) {
+      throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path}.${field} must be a non-empty string.`, [
+        {
+          code: 'taskspec_semantic_invalid',
+          path: `${path}.${field}`,
+          message: `${path}.${field} must be a non-empty string.`,
+        },
+      ]);
+    }
+  });
+  if (Object.hasOwn(record, 'result_symbol')) {
+    getRequiredString(record, 'result_symbol', `${path}.result_symbol`);
+    if (!isExpressionContainerActionOperation(containerKind, containerOperation)) {
+      throw new TaskSpecCompileError('taskspec_semantic_invalid', 'result_symbol is only supported for query container_action operations.', [
+        {
+          code: 'taskspec_semantic_invalid',
+          path: `${path}.result_symbol`,
+          message: 'result_symbol is only supported for query container_action operations.',
+        },
+      ]);
+    }
+  }
+  return { containerKind, containerOperation };
+}
+
+function normalizeContainerActionRoleValue(role: (typeof CONTAINER_ACTION_ROLE_FIELDS)[number], value: unknown): unknown {
+  if (role === 'target' && typeof value === 'string' && value.trim().length > 0) {
+    return { kind: 'get', name: value.trim() };
+  }
+  return value;
+}
+
+function normalizeContainerActionRoleValueForFlow(role: (typeof CONTAINER_ACTION_ROLE_FIELDS)[number], value: unknown): unknown {
+  const normalizedValue = normalizeContainerActionRoleValue(role, value);
+  if (
+    isRecord(normalizedValue)
+    && (normalizedValue.kind === 'get' || normalizedValue.kind === 'field')
+    && typeof normalizedValue.name === 'string'
+    && normalizedValue.name.trim().length > 0
+    && !Object.hasOwn(normalizedValue, 'target')
+  ) {
+    return { ...normalizedValue, target: normalizedValue.name.trim() };
+  }
+  return normalizedValue;
+}
+
+function validateContainerActionRoleExpressions(record: Record<string, unknown>, path: string): void {
+  CONTAINER_ACTION_ROLE_FIELDS.forEach((role) => {
+    if (!Object.hasOwn(record, role)) return;
+    const value = normalizeContainerActionRoleValue(role, record[role]);
+    if (role === 'items' && Array.isArray(value)) {
+      validateExpressionList(value, `${path}.${role}`);
+      return;
+    }
+    validateSupportedExpression(value, `${path}.${role}`);
+  });
+}
+
 function validateSupportedStatements(statements: BlueprintLogicStatement[], path: string): void {
   statements.forEach((statement, statementIndex) => {
     const statementRecord = statement as Record<string, unknown>;
@@ -1562,12 +1729,15 @@ function validateSupportedStatements(statements: BlueprintLogicStatement[], path
         {
           code: 'unsupported_statement_kind',
           path: `${statementPath}.kind`,
-          message: 'Use call, field, create, convert, schedule, set, set_property, let, control, component_bound_event, or delegate.*.',
+          message: 'Use call, field, create, convert, schedule, set, set_property, let, control, container_action, component_bound_event, or delegate.*.',
         },
       ]);
     }
     if (PUBLIC_DELEGATE_STATEMENT_KIND_ALIASES.has(kind)) {
       validateDelegateStatementShape(statementRecord, statementPath);
+    } else if (kind === CONTAINER_ACTION_KIND) {
+      validateContainerActionShape(statementRecord, statementPath, 'statement');
+      validateContainerActionRoleExpressions(statementRecord, statementPath);
     } else if (kind === 'call') {
       validateExpressionMap(statementRecord.args, `${statementPath}.args`);
     } else if (kind === 'create') {
@@ -1647,9 +1817,14 @@ function validateSupportedExpression(expression: unknown, path: string): void {
       {
         code: 'unsupported_expression_kind',
         path: `${path}.kind`,
-        message: 'Use literal, field, get, get_property, call, op, construct, deconstruct, select, create, convert, or schedule.',
+        message: 'Use literal, field, get, get_property, call, op, construct, deconstruct, select, create, convert, schedule, or container_action.',
       },
     ]);
+  }
+  if (kind === CONTAINER_ACTION_KIND) {
+    validateContainerActionShape(expression, path, 'expression');
+    validateContainerActionRoleExpressions(expression, path);
+    return;
   }
   if (kind === 'field') {
     const { operation } = fieldOperationScope(expression, path);
@@ -1729,18 +1904,67 @@ function makeCompileFlowContext(parent?: CompileFlowContext): CompileFlowContext
   };
 }
 
+function cloneContainerActionRoleExpressionWithCompiledIds(expression: unknown, nodeId: string): unknown {
+  if (!isRecord(expression)) {
+    return expression;
+  }
+  if (expression.kind === 'get') {
+    const out: Record<string, unknown> = { ...expression, id: nodeId };
+    copyContextEvidence(expression, out);
+    return out;
+  }
+  return cloneLogicExpressionWithCompiledIds(expression, nodeId);
+}
+
+function cloneContainerActionRoleValue(role: (typeof CONTAINER_ACTION_ROLE_FIELDS)[number], value: unknown, nodeId: string): unknown {
+  const normalizedValue = normalizeContainerActionRoleValue(role, value);
+  if (Array.isArray(normalizedValue)) {
+    return normalizedValue.map((entry, index) => cloneContainerActionRoleExpressionWithCompiledIds(entry, `${nodeId}_${index + 1}`));
+  }
+  return cloneContainerActionRoleExpressionWithCompiledIds(normalizedValue, nodeId);
+}
+
+function cloneContainerActionWithCompiledIds(record: Record<string, unknown>, nodeId: string): Record<string, unknown> {
+  const { containerKind, containerOperation } = validateContainerActionShape(
+    record,
+    record.kind === CONTAINER_ACTION_KIND ? nodeId : `${nodeId}.container_action`,
+    'statement',
+  );
+  const out: Record<string, unknown> = { kind: CONTAINER_ACTION_KIND, id: nodeId };
+  copyContainerActionSemanticFields(record, out);
+  out.container_kind = containerKind;
+  out.container_operation = containerOperation;
+  CONTAINER_ACTION_ROLE_FIELDS.forEach((role) => {
+    if (Object.hasOwn(record, role)) {
+      out[role] = cloneContainerActionRoleValue(role, record[role], `${nodeId}_${role}`);
+    }
+  });
+  copyContextEvidence(record, out);
+  return out;
+}
+
 function cloneLogicExpressionWithCompiledIds(expression: unknown, nodeId: string): unknown {
   if (!isRecord(expression)) {
     return expression;
   }
 
   const kind = typeof expression.kind === 'string' ? expression.kind : 'literal';
+  if (kind === CONTAINER_ACTION_KIND) {
+    const { containerKind, containerOperation } = validateContainerActionShape(expression, nodeId, 'expression');
+    const out = cloneContainerActionWithCompiledIds(expression, nodeId);
+    out.container_kind = containerKind;
+    out.container_operation = containerOperation;
+    return out;
+  }
   const out: Record<string, unknown> = { ...expression, id: nodeId };
   copyContextEvidence(expression, out);
 
   const fieldExpression = FIELD_EXPRESSION_KIND_MAP.get(kind);
   if (fieldExpression) {
     applyFieldTaxonomy(out, fieldExpression.operation, fieldExpression.scope);
+    if (kind === 'get' && !Object.hasOwn(out, 'target') && typeof out.name === 'string' && out.name.trim().length > 0) {
+      out.target = out.name.trim();
+    }
     if (kind === 'get_property') {
       const propertyPath = requiredGraphBodyPropertyPath(expression, `${nodeId}.property_path`);
       out.property_path = propertyPath;
@@ -1810,11 +2034,14 @@ function cloneLogicExpressionWithCompiledIds(expression: unknown, nodeId: string
 
 function cloneLogicStatementWithCompiledIds(statement: BlueprintLogicStatement, statementId: string): BlueprintLogicStatement {
   const statementRecord = statement as Record<string, unknown>;
-  const out: Record<string, unknown> = { ...statementRecord, id: statementId };
-  copyContextEvidence(statementRecord, out);
   const kind = typeof statementRecord.kind === 'string'
     ? statementRecord.kind
     : '';
+  if (kind === CONTAINER_ACTION_KIND) {
+    return cloneContainerActionWithCompiledIds(statementRecord, statementId) as BlueprintLogicStatement;
+  }
+  const out: Record<string, unknown> = { ...statementRecord, id: statementId };
+  copyContextEvidence(statementRecord, out);
   const delegateOperation = delegateStatementOperation(statementRecord);
 
   const fieldStatement = FIELD_STATEMENT_KIND_MAP.get(kind);
@@ -1925,6 +2152,42 @@ function compileStatementSequence(
   return { nodes, links, entry, exits: previousExits };
 }
 
+function compileContainerActionRoleInputs(
+  statementRecord: Record<string, unknown>,
+  nodeId: string,
+  path: string,
+  node: AgentImportNode,
+  nodes: AgentImportNode[],
+  links: AgentImportLink[],
+  context: CompileFlowContext,
+): void {
+  const inputValues: Record<string, unknown> = {};
+  CONTAINER_ACTION_ROLE_FIELDS.forEach((role) => {
+    if (!Object.hasOwn(statementRecord, role)) return;
+    const rawValue = normalizeContainerActionRoleValueForFlow(role, statementRecord[role]);
+    if (role === 'items' && Array.isArray(rawValue)) {
+      inputValues[role] = rawValue.map((entry) => literalValue(normalizeContainerActionRoleValueForFlow(role, entry)));
+      return;
+    }
+    const roleFlow = compileValueExpression(rawValue, `${nodeId}_${role}`, `${path}.${role}`, context);
+    nodes.push(...roleFlow.nodes);
+    links.push(...roleFlow.links);
+    if (roleFlow.output) {
+      links.push({ kind: 'data', from: roleFlow.output, to: `${nodeId}.${role}` });
+    } else {
+      inputValues[role] = roleFlow.defaultValue;
+    }
+  });
+  node.inputs = {
+    ...(node.inputs ?? {}),
+    ...inputValues,
+  };
+}
+
+function isContainerActionPureOperation(containerKind: string, containerOperation: string): boolean {
+  return isExpressionContainerActionOperation(containerKind, containerOperation);
+}
+
 function compileStatementFlow(statement: BlueprintLogicStatement, nodeId: string, path: string, context: CompileFlowContext): CompiledStatementFlow {
   const statementRecord = statement as Record<string, unknown>;
   const kind = typeof statementRecord.kind === 'string' ? statementRecord.kind : '';
@@ -1960,6 +2223,31 @@ function compileStatementFlow(statement: BlueprintLogicStatement, nodeId: string
       links: valueFlow.links,
       exits: [],
       preservePreviousExits: true,
+    };
+  }
+  if (kind === CONTAINER_ACTION_KIND) {
+    const { containerKind, containerOperation } = validateContainerActionShape(statementRecord, path, 'statement');
+    const node = compileStatementNode(statement, nodeId, path);
+    const nodes: AgentImportNode[] = [node];
+    const links: AgentImportLink[] = [];
+    compileContainerActionRoleInputs(statementRecord, nodeId, path, node, nodes, links, context);
+    const resultSymbol = optionalString(statementRecord, 'result_symbol');
+    if (resultSymbol) {
+      context.symbols.set(resultSymbol.toLowerCase(), { output: `${nodeId}.ReturnValue` });
+    }
+    if (isContainerActionPureOperation(containerKind, containerOperation)) {
+      return {
+        nodes,
+        links,
+        exits: [],
+        preservePreviousExits: true,
+      };
+    }
+    return {
+      nodes,
+      links,
+      entry: `${nodeId}.execute`,
+      exits: [`${nodeId}.then`],
     };
   }
 
@@ -2135,15 +2423,32 @@ function compileValueExpression(expression: unknown, nodeId: string, path: strin
     return { nodes: [], links: [], defaultValue: literalValue(expression) };
   }
 
-    if (!SUPPORTED_GRAPH_BODY_EXPRESSION_KINDS.has(kind)) {
-      throw new TaskSpecCompileError('unsupported_expression_kind', `Unsupported expression kind: ${kind}`, [
-        {
-          code: 'unsupported_expression_kind',
-          path: `${path}.kind`,
-          message: 'Use literal, field, get, get_property, call, op, construct, deconstruct, select, create, convert, or schedule.',
-        },
-      ]);
-    }
+  if (!SUPPORTED_GRAPH_BODY_EXPRESSION_KINDS.has(kind)) {
+    throw new TaskSpecCompileError('unsupported_expression_kind', `Unsupported expression kind: ${kind}`, [
+      {
+        code: 'unsupported_expression_kind',
+        path: `${path}.kind`,
+        message: 'Use literal, field, get, get_property, call, op, construct, deconstruct, select, create, convert, schedule, or container_action.',
+      },
+    ]);
+  }
+
+  if (kind === CONTAINER_ACTION_KIND) {
+    const { containerKind, containerOperation } = validateContainerActionShape(expression, path, 'expression');
+    const node: AgentImportNode = {
+      id: nodeId,
+      kind: CONTAINER_ACTION_KIND,
+      inputs: {},
+    };
+    copyContainerActionSemanticFields(expression, node as Record<string, unknown>);
+    (node as Record<string, unknown>).container_kind = containerKind;
+    (node as Record<string, unknown>).container_operation = containerOperation;
+    copyContextEvidence(expression, node as Record<string, unknown>);
+    const nodes: AgentImportNode[] = [node];
+    const links: AgentImportLink[] = [];
+    compileContainerActionRoleInputs(expression, nodeId, path, node, nodes, links, context);
+    return { nodes, links, output: `${nodeId}.ReturnValue` };
+  }
 
   if (kind === 'get' || kind === 'get_property' || kind === 'field') {
     const target = getRequiredString(expression, 'target', `${path}.target`);
@@ -3059,6 +3364,20 @@ function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string
     applyFieldTaxonomy(node as Record<string, unknown>, operation, scope);
     copyContextEvidence(statementRecord, node as Record<string, unknown>);
     return node;
+  }
+
+  if (kind === CONTAINER_ACTION_KIND) {
+    const { containerKind, containerOperation } = validateContainerActionShape(statementRecord, path, 'statement');
+    const node: Record<string, unknown> = {
+      id: nodeId,
+      kind: CONTAINER_ACTION_KIND,
+      inputs: {},
+    };
+    copyContainerActionSemanticFields(statementRecord, node);
+    node.container_kind = containerKind;
+    node.container_operation = containerOperation;
+    copyContextEvidence(statementRecord, node);
+    return node as AgentImportNode;
   }
 
   if (kind === 'component_bound_event') {

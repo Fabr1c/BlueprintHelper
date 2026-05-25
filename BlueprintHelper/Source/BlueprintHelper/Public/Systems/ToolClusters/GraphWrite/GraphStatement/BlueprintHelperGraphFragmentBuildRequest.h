@@ -18,9 +18,14 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphFragmentBuildRequest
 	FString TransformOperation;
 	FString ScheduleOperation;
 	FString CreateOperation;
+	FString ContainerKind;
+	FString ContainerOperation;
 	FString ClassPath;
 	FString AssetPath;
 	FString GraphLatentAllowed;
+	FString ElementType;
+	FString KeyType;
+	FString ValueType;
 	FString PinType;
 	FString KeyPinType;
 	FString ValuePinType;

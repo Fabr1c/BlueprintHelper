@@ -44,6 +44,22 @@ static FBlueprintHelperActionContextFieldSnapshot& FindOrAddFieldSnapshot(
 	return Added;
 }
 
+static FString ContainerTypeToString(const EPinContainerType ContainerType)
+{
+	switch (ContainerType)
+	{
+	case EPinContainerType::Array:
+		return TEXT("array");
+	case EPinContainerType::Set:
+		return TEXT("set");
+	case EPinContainerType::Map:
+		return TEXT("map");
+	default:
+		break;
+	}
+	return FString();
+}
+
 static void CaptureDelegateFields(const UClass* Class, FBlueprintHelperActionContextSnapshot& Snapshot)
 {
 	if (!Class)
@@ -207,6 +223,7 @@ void FBlueprintHelperActionContextSnapshotBuilder::CaptureFields(
 		Field.PinSubCategoryObjectPath = Variable.VarType.PinSubCategoryObject.Get()
 			? Variable.VarType.PinSubCategoryObject->GetPathName()
 			: FString();
+		Field.PinContainerType = ContainerTypeToString(Variable.VarType.ContainerType);
 		Field.bReadable = true;
 		Field.bWritable = true;
 		Snapshot.Fields.Add(MoveTemp(Field));

@@ -2,18 +2,18 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 在 GraphWrite 最终总测试前新增一个通用性前置门禁：GraphWrite 内每个 `kind + operation` 都通过 TaskSpec 生成 10 个同类型不同名节点，10 个全通过才算该 operation 通过，并输出带统计图的通用性测试报告。
+**Goal:** 在 GraphWrite 最终总测试前新增一个通用性前置门禁：GraphWrite-owned、ownership-filtered 的每个 `kind + operation` 都通过 TaskSpec 生成 10 个同类型不同名节点，10 个全通过才算该 operation 通过，并输出带统计图的通用性测试报告。
 
 ## 2026-05-25 Current Status Sync
 
 - Status: OPEN / NOT IMPLEMENTED.
 - 当前源码树未发现 `graphwrite-generality-*` TaskSpec matrix、spec factory、report writer、PowerShell runner 或 `Run-GraphWriteFinalWithGenerality.ps1` 的实际实现文件；本文件仍是待执行计划。
-- 该计划应在 GraphWrite 当前稳定性收敛后统一执行，用于最终能力面验收；它不是当前 GraphWrite 修复闭环前必须先完成的前置条件。
-- 完成标准仍以本文 Exit Criteria 为准：45 个 normalized operations、450 个 variants、TaskSpec preview/execute/readback、JSON/CSV/Markdown/SVG report、`allOperationsPassed=true` final gate。
+- 该计划应在 remaining evidence defects、capability contract expansion 完成后统一执行，用于最终能力面验收；`container_action` public shape 已在 `BlueprintHelper_GraphWrite_ContainerAction_FirstClassPlan_20260525_CN.md` 中实现并通过 focused gate，但它不替代本文件的 ownership-filtered 泛化验收。
+- 完成标准仍以本文 Exit Criteria 为准，但 operation 数量必须先按 `BlueprintHelper_GraphStatementFramework_Design_20260521_CN.md` 的 ownership filter 重算；原 45 个 normalized operations / 450 个 variants 是未过滤草案，不再作为最终计数口径。最终仍必须覆盖 ownership-filtered operations、每项 10 variants、TaskSpec preview/execute/readback、JSON/CSV/Markdown/SVG report、`allOperationsPassed=true` final gate。
 
 ## 2026-05-25 Stability Closure Input
 
-本节记录 GraphWrite stability closure 已完成的 focused gates，作为后续实现本 generality preflight 的输入证据；它不替代本文 45-operation / 450-variant 最终验收。
+本节记录 GraphWrite stability closure 已完成的 focused gates，作为后续实现本 generality preflight 的输入证据；它不替代本文 ownership-filtered 泛化验收。
 
 | Cluster / Gate | Focused status | Evidence |
 |---|---|---|
@@ -22,8 +22,26 @@
 | asset_action | PASS | `Automation RunTests BlueprintHelper.GraphWrite.ActionResolution.AssetAction`; `Automation RunTests BlueprintHelper.GraphWrite.ActionResolution.Contract.AssetActionNoSyntheticSpawner`; weak query/node-class execute selectors rejected. |
 | Review evidence | PASS | `Automation RunTests BlueprintHelper.Review.Producer.ClusterBuildsProducerOwnedEvidence`; `Automation RunTests BlueprintHelper.TaskRuntime.PostIO`。 |
 | legacy parsed-plan removal | PASS | `Automation RunTests BlueprintHelper.GraphWrite.LegacyMainline`; `rg -n "parsed_node_plan_unsupported|FBlueprintGraphMutationPlan|FBlueprintGraphMutationNodePlan|FBlueprintGraphMutationLinkPlan|MakeNodePlanFromParsedNode|MakeLinkPlanFromParsedLink" BlueprintHelper/Source/BlueprintHelper` 仅命中 contract test 禁止词。 |
-| full GraphWrite suite | PASS | `Automation RunTests BlueprintHelper.GraphWrite`；该套件通过说明当前核心 GraphWrite automation gates 已绿，但不替代 45-operation / 450-variant 泛化验收。 |
+| container_action V1 | PASS | `Automation RunTests BlueprintHelper.GraphWrite.ContainerAction`；first-class TaskSpec public shape、C++ contract validation、FunctionAction-backed resolver、fragment role links、typed readback verifier、array-shaped result-symbol DAG metadata、endpoint pin_type JSON round-trip、array/map/set focused E2E 已落地。 |
+| full GraphWrite suite | PASS | `Automation RunTests BlueprintHelper.GraphWrite`；该套件通过说明当前核心 GraphWrite automation gates 已绿，但不替代 ownership-filtered 泛化验收。 |
 | full generality preflight | PENDING | 本文件下方的 matrix、factory、runner、report writer 仍未实现，不能标记 stable final。 |
+
+## 2026-05-25 Ownership Filter Update
+
+本计划的 operation matrix 必须先排除已有工具职责重合项，再作为 GraphWrite 最终验收矩阵：
+
+| Category | Treatment in preflight |
+|---|---|
+| `BlueprintSignature` declarations: custom/override/native event declaration, function signature, event dispatcher, handler declaration | 作为 fixture/dependency；不计入 GraphWrite operation 成败。 |
+| Delegate/component handler lookup or declaration creation | 作为 Signature/ActionContext projection 前置条件；GraphWrite 缺 evidence 时应返回 deterministic diagnostic。 |
+| EventDelegate use-site: `component_bound_event`、`delegate bind/assign/unbind/clear/call` | 只在已有声明/evidence 完整时作为 use-site graph writing 验证；不把声明缺口算作 GraphWrite failure。 |
+| Merge/Patch/ConnectPins mutation ownership | 不计入 Spawner-Oriented GraphStatement preflight，除非后续明确迁入 GraphStatement 主线。 |
+| Evidence-heavy Generic paths | `type_promotion` 的 TaskSpec passthrough 与 resolver consumption 已存在，作为 final preflight coverage；`asset_action` Review policy 已收窄为 graph-level `graph_block`，由 `BlueprintHelper_GraphWrite_AssetActionReviewPolicy_GraphBlockPlan_20260525_CN.md` 固化，不进入 action-level Review target；`timer_delegate_node`、`latent_or_async_node` 已决定保留为 GraphWrite Generic schedule success path，并由 `BlueprintHelper_GraphWrite_GenericScheduleSuccessPathPlan_20260525_CN.md` 补齐 success evidence/readback。 |
+| `anim_notify_event` | 归 Animation Blueprint / Animation tooling；当前 GraphWrite 只关注普通 Blueprint，不进入最终矩阵。 |
+| broad `container_action` | `BlueprintHelper_GraphWrite_ContainerAction_FirstClassPlan_20260525_CN.md` 已实现 V1 first-class 范围：核心 array/map/set 操作进入 `container_action` public shape，执行复用 FunctionAction-backed callable evidence；`make_*` 仍归 Generic create，`foreach` 归后续 control-flow。focused readback 已覆盖 wildcard 被替换成目标类型、target link 正确、编译无报错；最终矩阵仍需按 owned operation 生成 10 variants。 |
+| FunctionAction overlap | 容器操作会与 FunctionAction 高度重叠；最终矩阵前必须明确哪些作为普通 callable 计入 FunctionAction，哪些需要 first-class `container_action` 语义。 |
+| capability contract expansion | `container_action` slice 已对齐到 contract；完整 contract expansion 仍需等 remaining evidence defects 关闭后再统一重算最终矩阵。 |
+| ownership-filtered final generality preflight | 放到 capability contract expansion 之后执行，作为最终门禁。 |
 
 **Architecture:** 通用性测试以 Agent-facing TaskSpec 为唯一计分入口，执行链路必须经过 `TaskSpec -> compiler lowering -> TaskPlan graph_write -> UE GraphWrite runtime -> graph readback`。Operation 矩阵是数据驱动的公共测试目录；fixture/setup 负责创建资产、变量、组件、签名和 handler 证据，但不计入 GraphWrite 正确率。报告生成器消费每个 operation 的 10 个 variant 结果，输出 JSON/CSV/Markdown/SVG，并作为最终 80% 总测的前置 gate。
 
@@ -96,8 +114,8 @@
 | `convert.dynamic_cast` | `kind=convert, transform_operation=dynamic_cast` | transform operation evidence | `K2Node_DynamicCast` |
 | `convert.class_cast` | `kind=convert, transform_operation=class_cast` | transform operation evidence | `K2Node_ClassDynamicCast` |
 | `convert.type_promotion` | `kind=convert, transform_operation=type_promotion` | type promotion evidence | promotion-backed node |
-| `schedule.timer_delegate_node` | `kind=schedule, schedule_operation=timer_delegate_node` | schedule operation evidence | timer/delegate schedule node |
-| `schedule.latent_or_async_node` | `kind=schedule, schedule_operation=latent_or_async_node` | latent/async schedule evidence | latent/async callable node |
+| `schedule.timer_delegate_node` | `kind=schedule, schedule_operation=timer_delegate_node` | projected ActionDatabase schedule spawner evidence + BlueprintSignature handler evidence | timer/delegate schedule node linked to existing handler |
+| `schedule.latent_or_async_node` | `kind=schedule, schedule_operation=latent_or_async_node` | projected ActionDatabase schedule spawner evidence + `graph_latent_allowed=true` | latent/async callable node |
 
 The matrix must not silently skip an operation. If an operation is still unsupported in runtime, the preflight records `unsupported_intent` and fails that operation. Only a value not present in the public GraphWrite contract may be excluded.
 
@@ -244,6 +262,7 @@ export type GraphWriteGeneralityFixture =
 
 export interface GraphWriteGeneralityOperationCase {
   operationId: string;
+  owner: 'graph_write';
   publicKind: string;
   normalizedKind: string;
   operationField?: string;
@@ -255,8 +274,8 @@ export interface GraphWriteGeneralityOperationCase {
   variantCount: number;
 }
 
-function op(input: Omit<GraphWriteGeneralityOperationCase, 'variantCount'>): GraphWriteGeneralityOperationCase {
-  return { ...input, variantCount: GRAPHWRITE_GENERALITY_VARIANT_COUNT };
+function op(input: Omit<GraphWriteGeneralityOperationCase, 'owner' | 'variantCount'>): GraphWriteGeneralityOperationCase {
+  return { owner: 'graph_write', ...input, variantCount: GRAPHWRITE_GENERALITY_VARIANT_COUNT };
 }
 
 export const GRAPHWRITE_GENERALITY_OPERATION_MATRIX: GraphWriteGeneralityOperationCase[] = [
@@ -296,7 +315,8 @@ import {
 test('GraphWrite generality matrix has stable unique operation ids and exactly ten variants per operation', () => {
   const ids = GRAPHWRITE_GENERALITY_OPERATION_MATRIX.map((entry) => entry.operationId);
   assert.equal(ids.length, new Set(ids).size);
-  assert.ok(ids.length >= 45);
+  assert.ok(ids.length > 0);
+  assert.ok(GRAPHWRITE_GENERALITY_OPERATION_MATRIX.every((entry) => entry.owner === 'graph_write'));
   for (const entry of GRAPHWRITE_GENERALITY_OPERATION_MATRIX) {
     assert.equal(entry.variantCount, GRAPHWRITE_GENERALITY_VARIANT_COUNT, entry.operationId);
     assert.match(entry.operationId, /^[a-z0-9_]+\.[a-z0-9_]+(\.[a-z0-9_]+)?$/);
@@ -1134,12 +1154,12 @@ Expected: `BlueprintHelper/Develop/Report/BlueprintHelper_GraphWrite_GeneralityP
 
 ```json
 {
-  "totalOperations": 45,
-  "totalVariants": 450
+  "totalOperations": "<ownership-filtered operation count>",
+  "totalVariants": "<totalOperations * 10>"
 }
 ```
 
-If any operation fails, the report must still include all 45 operations and all 450 variants.
+If any operation fails, the report must still include every ownership-filtered operation and all generated variants. Non-GraphWrite-owned fixture/dependency rows must be reported separately and must not inflate the GraphWrite operation count.
 
 - [ ] **Step 3: Run final gate**
 
@@ -1168,7 +1188,7 @@ Expected: source scan has no active legacy mainline hits except intentional diag
 ## Exit Criteria
 
 - [ ] Public TaskSpec contract and compiler-supported GraphWrite shapes are synchronized.
-- [ ] Operation matrix covers all 45 normalized GraphWrite operations listed in this plan.
+- [ ] Operation matrix covers all ownership-filtered normalized GraphWrite operations listed in this plan after excluding existing-tool-owned declarations, fixtures, and mutation-service-owned operations.
 - [ ] Every operation generates exactly 10 variant names and one TaskSpec body containing exactly 10 GraphWrite statements or expression-backed nodes.
 - [ ] Runtime preflight executes through TaskSpec preview/execute/readback; ActionResolution direct tests are not counted as score.
 - [ ] Report artifacts include JSON, CSV, Markdown, operation pass/fail SVG, and failure distribution SVG.

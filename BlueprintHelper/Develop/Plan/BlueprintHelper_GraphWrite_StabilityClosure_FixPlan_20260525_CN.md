@@ -134,7 +134,7 @@ export interface GraphWriteOperationContract {
   readonly id: string;
   readonly kind: string;
   readonly supportStatus: GraphWriteSupportStatus;
-  readonly reviewEvidence: "graph_surface_atomic_target" | "asset_action_atomic_target";
+  readonly reviewEvidence: "graph_surface_atomic_target";
   readonly requiredEvidenceKeys?: readonly string[];
 }
 
@@ -202,7 +202,7 @@ export const GRAPHWRITE_CAPABILITY_CONTRACT: GraphWriteCapabilityContract = {
           id: "create.asset_action",
           kind: "create",
           supportStatus: "supported",
-          reviewEvidence: "asset_action_atomic_target",
+          reviewEvidence: "graph_surface_atomic_target",
           requiredEvidenceKeys: [
             "asset_action_stable_id",
             "asset_action_node_class",

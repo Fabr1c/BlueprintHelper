@@ -1,4 +1,5 @@
 import {
+  CONTAINER_ACTION_OPERATION_IDS,
   TASK_PLAN_SCHEMA,
   TASK_RUN_JOURNAL_SCHEMA,
   TASK_SPEC_SCHEMA,
@@ -71,6 +72,7 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       'set_property',
       'let',
       'control',
+      'container_action',
       'component_bound_event',
       'delegate.bind',
       'delegate.assign',
@@ -78,7 +80,7 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       'delegate.unbind_all',
       'delegate.call',
     ],
-    expression_kinds: ['literal', 'get', 'get_property', 'call', 'op', 'construct', 'deconstruct', 'select'],
+    expression_kinds: ['literal', 'get', 'get_property', 'call', 'op', 'construct', 'deconstruct', 'select', 'container_action'],
     task_plan_capability: 'graph_write',
     task_plan_dependency_capabilities: ['blueprint_signature'],
     runtime_lowering_adapters: [
@@ -211,6 +213,19 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
         'delegate.call',
         'delegate_call',
         'delegate_clear',
+      ],
+    },
+    container_action_v1: {
+      public_shape: 'kind=container_action with container_kind, container_operation, target, and typed role expressions',
+      runtime_owner: 'FunctionAction-backed container resolver',
+      review_evidence: 'graph_surface_atomic_target',
+      first_class_operations: CONTAINER_ACTION_OPERATION_IDS,
+      excluded_operations: [
+        'make_array',
+        'make_map',
+        'make_set',
+        'foreach',
+        'custom predicate operations',
       ],
     },
   },

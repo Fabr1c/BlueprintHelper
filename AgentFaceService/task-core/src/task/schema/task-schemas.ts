@@ -17,6 +17,141 @@ export const TASK_EXECUTION_SCHEMA = 'BlueprintHelper.TaskExecution.v1';
 export const TASK_RUN_JOURNAL_SCHEMA = 'BlueprintHelper.TaskRunJournal.v1';
 export const TASK_ERROR_SCHEMA = 'BlueprintHelper.TaskError.v1';
 
+export const CONTAINER_ACTION_OPERATIONS_BY_KIND = {
+  array: ['get', 'set', 'add', 'add_unique', 'append', 'insert', 'remove_item', 'remove_index', 'clear', 'contains', 'find', 'length'],
+  map: ['add', 'remove', 'find', 'contains', 'keys', 'values', 'clear', 'length'],
+  set: ['add', 'remove', 'contains', 'clear', 'length', 'to_array'],
+} as const;
+
+export const CONTAINER_ACTION_EXPRESSION_OPERATIONS_BY_KIND = {
+  array: ['get', 'contains', 'find', 'length'],
+  map: ['find', 'contains', 'keys', 'values', 'length'],
+  set: ['contains', 'length', 'to_array'],
+} as const;
+
+export const CONTAINER_ACTION_ROLE_FIELDS = ['target', 'item', 'items', 'key', 'value', 'index'] as const;
+export const CONTAINER_ACTION_TYPE_FIELDS = ['element_type', 'key_type', 'value_type'] as const;
+
+export const CONTAINER_ACTION_REQUIRED_ROLES_BY_KIND_OPERATION = {
+  array: {
+    get: ['target', 'index'],
+    set: ['target', 'index', 'item'],
+    add: ['target', 'item'],
+    add_unique: ['target', 'item'],
+    append: ['target', 'items'],
+    insert: ['target', 'index', 'item'],
+    remove_item: ['target', 'item'],
+    remove_index: ['target', 'index'],
+    clear: ['target'],
+    contains: ['target', 'item'],
+    find: ['target', 'item'],
+    length: ['target'],
+  },
+  map: {
+    add: ['target', 'key', 'value'],
+    remove: ['target', 'key'],
+    find: ['target', 'key'],
+    contains: ['target', 'key'],
+    keys: ['target'],
+    values: ['target'],
+    clear: ['target'],
+    length: ['target'],
+  },
+  set: {
+    add: ['target', 'item'],
+    remove: ['target', 'item'],
+    contains: ['target', 'item'],
+    clear: ['target'],
+    length: ['target'],
+    to_array: ['target'],
+  },
+} as const;
+
+export const CONTAINER_ACTION_OPERATION_IDS = Object.entries(CONTAINER_ACTION_OPERATIONS_BY_KIND)
+  .flatMap(([containerKind, operations]) => operations.map((operation) => `container.${containerKind}.${operation}`));
+
+export function isSupportedContainerActionKind(value: string): value is keyof typeof CONTAINER_ACTION_OPERATIONS_BY_KIND {
+  return Object.hasOwn(CONTAINER_ACTION_OPERATIONS_BY_KIND, value);
+}
+
+export function getSupportedContainerActionOperations(containerKind: string): readonly string[] {
+  return isSupportedContainerActionKind(containerKind)
+    ? CONTAINER_ACTION_OPERATIONS_BY_KIND[containerKind]
+    : [];
+}
+
+export function isSupportedContainerActionOperation(containerKind: string, containerOperation: string): boolean {
+  return getSupportedContainerActionOperations(containerKind).includes(containerOperation);
+}
+
+export function isExpressionContainerActionOperation(containerKind: string, containerOperation: string): boolean {
+  return isSupportedContainerActionKind(containerKind)
+    ? CONTAINER_ACTION_EXPRESSION_OPERATIONS_BY_KIND[containerKind].includes(containerOperation as never)
+    : false;
+}
+
+export function getRequiredContainerActionRoles(
+  containerKind: string,
+  containerOperation: string,
+): readonly (typeof CONTAINER_ACTION_ROLE_FIELDS)[number][] {
+  if (!isSupportedContainerActionKind(containerKind)) {
+    return [];
+  }
+  return CONTAINER_ACTION_REQUIRED_ROLES_BY_KIND_OPERATION[containerKind][containerOperation as keyof typeof CONTAINER_ACTION_REQUIRED_ROLES_BY_KIND_OPERATION[typeof containerKind]] ?? [];
+}
+
+export const ContainerActionShapeSchema = z.object({
+  kind: z.literal('container_action'),
+  container_kind: z.string().min(1),
+  container_operation: z.string().min(1),
+  target: z.unknown().optional(),
+  item: z.unknown().optional(),
+  items: z.unknown().optional(),
+  key: z.unknown().optional(),
+  value: z.unknown().optional(),
+  index: z.unknown().optional(),
+  element_type: z.string().min(1).optional(),
+  key_type: z.string().min(1).optional(),
+  value_type: z.string().min(1).optional(),
+  result_symbol: z.string().min(1).optional(),
+  context_evidence: z.record(z.unknown()).optional(),
+}).passthrough().superRefine((value, ctx) => {
+  const containerKind = value.container_kind.trim().toLowerCase();
+  const containerOperation = value.container_operation.trim().toLowerCase();
+  if (!isSupportedContainerActionKind(containerKind)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['container_kind'],
+      message: 'Use array, map, or set.',
+    });
+    return;
+  }
+  if (!isSupportedContainerActionOperation(containerKind, containerOperation)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['container_operation'],
+      message: 'Use a first-class V1 container operation.',
+    });
+    return;
+  }
+  getRequiredContainerActionRoles(containerKind, containerOperation).forEach((role) => {
+    if (value[role] === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [role],
+        message: `container_action ${containerKind}.${containerOperation} requires ${role}.`,
+      });
+    }
+  });
+  if (value.result_symbol !== undefined && !isExpressionContainerActionOperation(containerKind, containerOperation)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['result_symbol'],
+      message: 'result_symbol is only supported for query container_action operations.',
+    });
+  }
+});
+
 const LiteralValueExprSchema = z.object({
   kind: z.literal('literal'),
   value_type: z.string(),

@@ -2,7 +2,7 @@ export type GraphWriteSupportStatus = 'supported' | 'discussion-gated' | 'retire
 
 export type GraphWriteEvidenceProjectionSource = 'SemanticStatement' | 'ActionContext' | 'UE ActionDatabase';
 
-export type GraphWriteReviewEvidencePolicy = 'graph_surface_atomic_target' | 'asset_action_atomic_target';
+export type GraphWriteReviewEvidencePolicy = 'graph_surface_atomic_target';
 
 export interface GraphWriteOperationContract {
   readonly id: string;
@@ -13,7 +13,7 @@ export interface GraphWriteOperationContract {
 }
 
 export interface GraphWriteClusterContract {
-  readonly id: 'function_action' | 'field' | 'event' | 'asset_action';
+  readonly id: 'function_action' | 'field' | 'event' | 'asset_action' | 'container_action';
   readonly responsibility: string;
   readonly operations: readonly GraphWriteOperationContract[];
   readonly evidence: {
@@ -127,7 +127,7 @@ export const GRAPHWRITE_CAPABILITY_CONTRACT: GraphWriteCapabilityContract = {
           id: 'create.asset_action',
           kind: 'create',
           supportStatus: 'supported',
-          reviewEvidence: 'asset_action_atomic_target',
+          reviewEvidence: 'graph_surface_atomic_target',
           requiredEvidenceKeys: ASSET_ACTION_REQUIRED_EVIDENCE_KEYS,
         },
       ],
@@ -136,6 +136,49 @@ export const GRAPHWRITE_CAPABILITY_CONTRACT: GraphWriteCapabilityContract = {
         requiredKeys: ASSET_ACTION_REQUIRED_EVIDENCE_KEYS,
       },
       executeRevalidation: 'required',
+    },
+    {
+      id: 'container_action',
+      responsibility:
+        'GraphWrite owns first-class ordinary Blueprint array/map/set container semantics; execution resolves through ActionContext and FunctionAction-backed callable evidence.',
+      operations: [
+        'container.array.get',
+        'container.array.set',
+        'container.array.add',
+        'container.array.add_unique',
+        'container.array.append',
+        'container.array.insert',
+        'container.array.remove_item',
+        'container.array.remove_index',
+        'container.array.clear',
+        'container.array.contains',
+        'container.array.find',
+        'container.array.length',
+        'container.map.add',
+        'container.map.remove',
+        'container.map.find',
+        'container.map.contains',
+        'container.map.keys',
+        'container.map.values',
+        'container.map.clear',
+        'container.map.length',
+        'container.set.add',
+        'container.set.remove',
+        'container.set.contains',
+        'container.set.clear',
+        'container.set.length',
+        'container.set.to_array',
+      ].map((id) => ({
+        id,
+        kind: 'container_action',
+        supportStatus: 'supported' as const,
+        reviewEvidence: 'graph_surface_atomic_target' as const,
+      })),
+      evidence: {
+        projectionSource: 'ActionContext',
+        requiredKeys: [],
+      },
+      executeRevalidation: 'not-required',
     },
   ],
   finalAcceptance: {

@@ -23,6 +23,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphStatementBuilder.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphEventReferenceUtils.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphStatementTypeUtils.h"
 #include "BlueprintNodeSpawner.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Engine/Blueprint.h"
@@ -160,21 +161,7 @@ static void ReadFragmentEndpointRef(
 	const TSharedPtr<FJsonObject>& Object,
 	FBlueprintHelperGraphFragmentEndpointRef& OutEndpoint)
 {
-	if (!Object.IsValid())
-	{
-		return;
-	}
-
-	if (!TryReadStringField(Object, TEXT("fragment_id"), OutEndpoint.FragmentId))
-	{
-		TryReadStringField(Object, TEXT("fragment"), OutEndpoint.FragmentId);
-	}
-	if (!TryReadStringField(Object, TEXT("port_id"), OutEndpoint.PortId))
-	{
-		TryReadStringField(Object, TEXT("port"), OutEndpoint.PortId);
-	}
-	TryReadStringField(Object, TEXT("pin_name"), OutEndpoint.PinName);
-	TryReadStringField(Object, TEXT("type"), OutEndpoint.Type);
+	OutEndpoint = FBlueprintHelperGraphFragmentEndpointRef::FromJson(Object);
 }
 
 static void ReadFragmentDataEdgesFromObject(
@@ -482,50 +469,7 @@ static FString GetSemanticStatementContextId(const FBlueprintHelperGraphStatemen
 
 static FString GetSemanticExpressionId(const FBlueprintHelperGraphExpressionIR& Expression)
 {
-	const FString SourceId = !Expression.ExpressionId.IsEmpty() ? Expression.ExpressionId : Expression.Path;
-	if (!SourceId.Contains(TEXT("$")) && !SourceId.Contains(TEXT(".")) && !SourceId.Contains(TEXT("[")) && !SourceId.Contains(TEXT("]")))
-	{
-		return SanitizeGraphFragmentIdPart(SourceId);
-	}
-
-	FString KindName = TEXT("unknown");
-	switch (Expression.Kind)
-	{
-	case EBlueprintHelperGraphExpressionKind::Literal:
-		KindName = TEXT("literal");
-		break;
-	case EBlueprintHelperGraphExpressionKind::Field:
-		KindName = TEXT("field");
-		break;
-	case EBlueprintHelperGraphExpressionKind::Call:
-		KindName = TEXT("call");
-		break;
-	case EBlueprintHelperGraphExpressionKind::Op:
-		KindName = TEXT("op");
-		break;
-	case EBlueprintHelperGraphExpressionKind::Construct:
-		KindName = TEXT("construct");
-		break;
-	case EBlueprintHelperGraphExpressionKind::Deconstruct:
-		KindName = TEXT("deconstruct");
-		break;
-	case EBlueprintHelperGraphExpressionKind::Select:
-		KindName = TEXT("select");
-		break;
-	case EBlueprintHelperGraphExpressionKind::Create:
-		KindName = TEXT("create");
-		break;
-	case EBlueprintHelperGraphExpressionKind::Convert:
-		KindName = TEXT("convert");
-		break;
-	case EBlueprintHelperGraphExpressionKind::Schedule:
-		KindName = TEXT("schedule");
-		break;
-	default:
-		break;
-	}
-
-	return SanitizeGraphFragmentIdPart(TEXT("expr_") + KindName + TEXT("_") + SourceId + TEXT("_") + KindName);
+	return FBlueprintHelperGraphStatementTypeUtils::MakeExpressionFragmentId(Expression);
 }
 
 static void AddSemanticUnresolved(
@@ -638,6 +582,7 @@ static void BuildSemanticExpressionFragments(
 		return;
 	}
 
+	BuildSemanticExpressionFragments(TargetGraph, ActionContextScope, Expression->TargetObject, GeneratedFragments, GeneratedFragmentIds, OutUnresolvedNodes, GeneratedNodeCount);
 	BuildSemanticExpressionMapFragments(TargetGraph, ActionContextScope, Expression->Args, GeneratedFragments, GeneratedFragmentIds, OutUnresolvedNodes, GeneratedNodeCount);
 	for (const TSharedPtr<FBlueprintHelperGraphExpressionIR>& Option : Expression->Options)
 	{
@@ -875,6 +820,7 @@ static FSemanticStatementExecFlow BuildSemanticStatement(
 		return Flow;
 	}
 
+	BuildSemanticExpressionFragments(TargetGraph, ActionContextScope, Statement->TargetObject, GeneratedFragments, GeneratedFragmentIds, OutUnresolvedNodes, GeneratedNodeCount);
 	BuildSemanticExpressionMapFragments(TargetGraph, ActionContextScope, Statement->Args, GeneratedFragments, GeneratedFragmentIds, OutUnresolvedNodes, GeneratedNodeCount);
 	BuildSemanticExpressionFragments(TargetGraph, ActionContextScope, Statement->Value, GeneratedFragments, GeneratedFragmentIds, OutUnresolvedNodes, GeneratedNodeCount);
 	BuildSemanticExpressionFragments(TargetGraph, ActionContextScope, Statement->Condition, GeneratedFragments, GeneratedFragmentIds, OutUnresolvedNodes, GeneratedNodeCount);

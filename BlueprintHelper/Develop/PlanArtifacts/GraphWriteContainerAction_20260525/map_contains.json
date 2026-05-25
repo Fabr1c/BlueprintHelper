@@ -1,0 +1,37 @@
+{
+  "schema": "BlueprintHelper.TaskSpec.v1",
+  "task_type": "edit_blueprint_graph",
+  "target": {
+    "asset_path": "/Game/BH_Tests/BP_GraphWriteContainer",
+    "asset_type": "blueprint"
+  },
+  "scope_policy": {
+    "graph_name": "EventGraph",
+    "allow_modify_user_nodes": false
+  },
+  "behavior": {
+    "graph_strategy": "append_new_owned_graph",
+    "entries": [
+      {
+        "kind": "custom_event",
+        "name": "GW_MapContains",
+        "body": [
+          {
+            "kind": "container_action",
+            "container_kind": "map",
+            "container_operation": "contains",
+            "target": { "kind": "get", "name": "Scores" },
+            "key": { "kind": "literal", "value": "PlayerA", "type": "string" },
+            "key_type": "string",
+            "value_type": "int",
+            "result_symbol": "bHasScore"
+          }
+        ]
+      }
+    ]
+  },
+  "validation": {
+    "should_compile": true,
+    "should_save": true
+  }
+}
