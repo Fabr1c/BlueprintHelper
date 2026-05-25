@@ -1483,6 +1483,7 @@ const GRAPH_CONVERT_SCHEDULE_FIELDS = [
   'target_class_path',
   'graph_latent_allowed',
 ] as const;
+const GENERIC_SCHEDULE_OPERATIONS = new Set(['timer_delegate_node', 'latent_or_async_node']);
 const FIELD_STATEMENT_KIND_MAP = new Map([
   ['set', { operation: 'set', scope: 'variable' }],
   ['set_property', { operation: 'set', scope: 'property_path' }],
@@ -1506,6 +1507,25 @@ function copyConvertScheduleSemanticFields(source: Record<string, unknown>, targ
       target[field] = source[field];
     }
   });
+}
+
+function validateConvertScheduleOwnership(record: Record<string, unknown>, path: string): void {
+  const kind = typeof record.kind === 'string' ? record.kind : '';
+  if (kind !== 'schedule') {
+    return;
+  }
+
+  const functionOperation = typeof record.function_operation === 'string' ? record.function_operation.trim() : '';
+  const scheduleOperation = typeof record.schedule_operation === 'string' ? record.schedule_operation.trim().toLowerCase() : '';
+  if (functionOperation.length > 0 && GENERIC_SCHEDULE_OPERATIONS.has(scheduleOperation)) {
+    throw new TaskSpecCompileError('unsupported_schedule_owner_mix', 'unsupported_schedule_owner_mix: Generic schedule operations must not specify function_operation.', [
+      {
+        code: 'unsupported_schedule_owner_mix',
+        path: `${path}.function_operation`,
+        message: 'Remove the FunctionAction operation field for Generic Schedule timer or latent nodes. Use it only for FunctionAction-owned schedule functions.',
+      },
+    ]);
+  }
 }
 
 function copyContainerActionSemanticFields(source: Record<string, unknown>, target: Record<string, unknown>): void {
@@ -1744,6 +1764,7 @@ function validateSupportedStatements(statements: BlueprintLogicStatement[], path
       validateCreateShape(statementRecord, statementPath);
       validateExpressionMap(statementRecord.args, `${statementPath}.args`);
     } else if (kind === 'convert' || kind === 'schedule') {
+      validateConvertScheduleOwnership(statementRecord, statementPath);
       validateExpressionMap(statementRecord.args, `${statementPath}.args`);
     } else if (kind === 'field') {
       const { operation } = fieldOperationScope(statementRecord, statementPath);
@@ -1840,6 +1861,9 @@ function validateSupportedExpression(expression: unknown, path: string): void {
   }
   if (kind === 'create') {
     validateCreateShape(expression, path);
+  }
+  if (kind === 'convert' || kind === 'schedule') {
+    validateConvertScheduleOwnership(expression, path);
   }
   if (kind === 'call' || kind === 'op' || kind === 'construct' || kind === 'deconstruct' || kind === 'create' || kind === 'convert' || kind === 'schedule') {
     validateExpressionMap(expression.args, `${path}.args`);

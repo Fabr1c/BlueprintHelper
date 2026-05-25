@@ -13,6 +13,8 @@
 #include "K2Node_PromotableOperator.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Misc/AutomationTest.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionDatabaseProjectionService.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperProjectedSpawnerEvidence.h"
 #include "UObject/Package.h"
 
 namespace
@@ -102,6 +104,77 @@ static UBlueprintFunctionNodeSpawner* FindTypePromotionSpawnerForTest(FName Oper
 
 	FBlueprintActionDatabase::Get().RefreshAll();
 	return FTypePromotion::GetOperatorSpawner(OperatorName);
+}
+
+static bool TryProjectScheduleEvidence(
+	UBlueprint* Blueprint,
+	UEdGraph* Graph,
+	const FString& Query,
+	FBlueprintHelperProjectedScheduleActionEvidence& OutEvidence)
+{
+	FBlueprintHelperActionDatabaseProjectionRequest ProjectionRequest;
+	ProjectionRequest.Blueprint = Blueprint;
+	ProjectionRequest.TargetGraph = Graph;
+	ProjectionRequest.RequiredEvidence.Query = Query;
+	ProjectionRequest.Query = Query;
+	ProjectionRequest.ErrorPrefix = TEXT("schedule");
+
+	const FBlueprintHelperActionDatabaseProjectionResult Projection =
+		FBlueprintHelperActionDatabaseProjectionService::Project(ProjectionRequest);
+	if ((Projection.Status != EBlueprintHelperActionResolutionStatus::Resolved
+		&& Projection.Status != EBlueprintHelperActionResolutionStatus::Ambiguous)
+		|| Projection.Candidates.Num() == 0)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperActionDatabaseProjectedCandidate& Candidate = Projection.Candidates[0];
+	OutEvidence.StableId = Candidate.StableId;
+	OutEvidence.NodeClassPath = Candidate.NodeClassPath;
+	OutEvidence.SpawnerSignature = Candidate.SpawnerSignature;
+	OutEvidence.OwnerPath = Candidate.OwnerPath;
+	OutEvidence.Query = Candidate.Query;
+	OutEvidence.MenuName = Candidate.MenuName;
+	OutEvidence.Category = Candidate.Category;
+
+	FBlueprintHelperActionDatabaseProjectionRequest ExactProjectionRequest;
+	ExactProjectionRequest.Blueprint = Blueprint;
+	ExactProjectionRequest.TargetGraph = Graph;
+	ExactProjectionRequest.RequiredEvidence.StableId = OutEvidence.StableId;
+	ExactProjectionRequest.RequiredEvidence.NodeClassPath = OutEvidence.NodeClassPath;
+	ExactProjectionRequest.RequiredEvidence.SpawnerSignature = OutEvidence.SpawnerSignature;
+	ExactProjectionRequest.RequiredEvidence.OwnerPath = OutEvidence.OwnerPath;
+	ExactProjectionRequest.RequiredEvidence.Query = OutEvidence.Query;
+	ExactProjectionRequest.RequiredEvidence.MenuName = OutEvidence.MenuName;
+	ExactProjectionRequest.RequiredEvidence.Category = OutEvidence.Category;
+	ExactProjectionRequest.ErrorPrefix = TEXT("schedule");
+	const FBlueprintHelperActionDatabaseProjectionResult ExactProjection =
+		FBlueprintHelperActionDatabaseProjectionService::Project(ExactProjectionRequest);
+	return ExactProjection.Status == EBlueprintHelperActionResolutionStatus::Resolved
+		&& ExactProjection.Candidates.Num() == 1;
+}
+
+static bool TryProjectScheduleEvidenceFromQueries(
+	UBlueprint* Blueprint,
+	UEdGraph* Graph,
+	const TArray<FString>& Queries,
+	FBlueprintHelperProjectedScheduleActionEvidence& OutEvidence)
+{
+	for (const FString& Query : Queries)
+	{
+		if (TryProjectScheduleEvidence(Blueprint, Graph, Query, OutEvidence))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+static void AddScheduleEvidence(
+	const FBlueprintHelperProjectedScheduleActionEvidence& Evidence,
+	FBlueprintHelperActionResolutionRequest& Request)
+{
+	FBlueprintHelperProjectedSpawnerEvidence::WriteScheduleActionEvidence(Evidence, Request.ContextEvidence);
 }
 }
 
@@ -309,10 +382,200 @@ bool FBlueprintHelperGenericScheduleRequiresSpawnerEvidenceTest::RunTest(const F
 			FBlueprintHelperActionResolutionCore::Resolve(Request);
 
 		TestEqual(FString::Printf(TEXT("%s status"), *Operation), Result.Status, EBlueprintHelperActionResolutionStatus::InvalidRequest);
-		TestEqual(FString::Printf(TEXT("%s code"), *Operation), Result.ErrorCode, FString(TEXT("needs_more_semantic_context")));
+		TestEqual(FString::Printf(TEXT("%s code"), *Operation), Result.ErrorCode, FString(TEXT("schedule_spawner_evidence_missing")));
 		TestFalse(FString::Printf(TEXT("%s has no fake spawner"), *Operation), Result.SelectedSpawner.IsValid());
 	}
 	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGenericScheduleTimerRequiresHandlerEvidenceTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.Generic.Schedule.TimerRequiresHandlerEvidence",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGenericScheduleTimerRequiresHandlerEvidenceTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeGenericTransformScheduleTestBlueprint();
+	UEdGraph* Graph = GetGenericTransformScheduleTestGraph(Blueprint);
+	TestNotNull(TEXT("blueprint"), Blueprint);
+	TestNotNull(TEXT("graph"), Graph);
+
+	FBlueprintHelperProjectedScheduleActionEvidence Evidence;
+	Evidence.StableId = TEXT("missing");
+	Evidence.NodeClassPath = TEXT("/Script/BlueprintGraph.K2Node_CallFunction");
+	Evidence.SpawnerSignature = TEXT("missing");
+	Evidence.OwnerPath = TEXT("/Script/Engine.KismetSystemLibrary");
+
+	FBlueprintHelperActionResolutionRequest Request =
+		MakeGenericTransformScheduleRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Schedule);
+	Request.Semantic.ScheduleOperation = TEXT("timer_delegate_node");
+	AddScheduleEvidence(Evidence, Request);
+
+	const FBlueprintHelperActionResolutionResult Result =
+		FBlueprintHelperActionResolutionCore::Resolve(Request);
+
+	TestEqual(TEXT("timer handler evidence status"), Result.Status, EBlueprintHelperActionResolutionStatus::InvalidRequest);
+	TestEqual(TEXT("timer handler evidence code"), Result.ErrorCode, FString(TEXT("handler_evidence_missing")));
+	TestFalse(TEXT("timer missing handler has no selected spawner"), Result.SelectedSpawner.IsValid());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGenericScheduleLatentRequiresGraphPermissionTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.Generic.Schedule.LatentRequiresGraphPermission",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGenericScheduleLatentRequiresGraphPermissionTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeGenericTransformScheduleTestBlueprint();
+	UEdGraph* Graph = GetGenericTransformScheduleTestGraph(Blueprint);
+	TestNotNull(TEXT("blueprint"), Blueprint);
+	TestNotNull(TEXT("graph"), Graph);
+
+	FBlueprintHelperProjectedScheduleActionEvidence Evidence;
+	Evidence.StableId = TEXT("missing");
+	Evidence.NodeClassPath = TEXT("/Script/BlueprintGraph.K2Node_AsyncAction");
+	Evidence.SpawnerSignature = TEXT("missing");
+	Evidence.OwnerPath = TEXT("/Script/Engine");
+	Evidence.GraphLatentAllowed = TEXT("false");
+
+	FBlueprintHelperActionResolutionRequest Request =
+		MakeGenericTransformScheduleRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Schedule);
+	Request.Semantic.ScheduleOperation = TEXT("latent_or_async_node");
+	AddScheduleEvidence(Evidence, Request);
+
+	const FBlueprintHelperActionResolutionResult Result =
+		FBlueprintHelperActionResolutionCore::Resolve(Request);
+
+	TestEqual(TEXT("latent permission status"), Result.Status, EBlueprintHelperActionResolutionStatus::InvalidRequest);
+	TestEqual(TEXT("latent permission code"), Result.ErrorCode, FString(TEXT("latent_function_not_allowed_in_graph")));
+	TestFalse(TEXT("latent not allowed has no selected spawner"), Result.SelectedSpawner.IsValid());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGenericScheduleProjectedEvidenceNotFoundTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.Generic.Schedule.ProjectedEvidenceNotFound",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGenericScheduleProjectedEvidenceNotFoundTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeGenericTransformScheduleTestBlueprint();
+	UEdGraph* Graph = GetGenericTransformScheduleTestGraph(Blueprint);
+	TestNotNull(TEXT("blueprint"), Blueprint);
+	TestNotNull(TEXT("graph"), Graph);
+
+	FBlueprintHelperProjectedScheduleActionEvidence Evidence;
+	Evidence.StableId = TEXT("action_database:/missing:/missing:/missing");
+	Evidence.NodeClassPath = TEXT("/Script/BlueprintGraph.K2Node_CallFunction");
+	Evidence.SpawnerSignature = TEXT("missing");
+	Evidence.OwnerPath = TEXT("/Script/Engine.KismetSystemLibrary");
+	Evidence.HandlerName = TEXT("HandleTimerElapsed");
+	Evidence.HandlerFunctionPath = TEXT("/Game/BP/BP_Timer.HandleTimerElapsed");
+	Evidence.HandlerSourceCluster = TEXT("BlueprintSignature");
+	Evidence.SignatureEvidenceId = TEXT("signature:function:HandleTimerElapsed");
+
+	FBlueprintHelperActionResolutionRequest Request =
+		MakeGenericTransformScheduleRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Schedule);
+	Request.Semantic.ScheduleOperation = TEXT("timer_delegate_node");
+	AddScheduleEvidence(Evidence, Request);
+
+	const FBlueprintHelperActionResolutionResult Result =
+		FBlueprintHelperActionResolutionCore::Resolve(Request);
+
+	TestEqual(TEXT("projected evidence not found status"), Result.Status, EBlueprintHelperActionResolutionStatus::NotFound);
+	TestEqual(TEXT("projected evidence not found code"), Result.ErrorCode, FString(TEXT("schedule_spawner_not_found")));
+	TestFalse(TEXT("not found has no selected spawner"), Result.SelectedSpawner.IsValid());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGenericScheduleLatentUsesProjectedSpawnerEvidenceTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.Generic.Schedule.LatentUsesProjectedSpawnerEvidence",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGenericScheduleLatentUsesProjectedSpawnerEvidenceTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeGenericTransformScheduleTestBlueprint();
+	UEdGraph* Graph = GetGenericTransformScheduleTestGraph(Blueprint);
+	TestNotNull(TEXT("blueprint"), Blueprint);
+	TestNotNull(TEXT("graph"), Graph);
+
+	FBlueprintHelperProjectedScheduleActionEvidence Evidence;
+	if (!TryProjectScheduleEvidence(Blueprint, Graph, TEXT("Async Load Primary Asset"), Evidence))
+	{
+		AddError(TEXT("Unable to project a unique Async Load Primary Asset ActionDatabase schedule candidate."));
+		return false;
+	}
+	Evidence.GraphLatentAllowed = TEXT("true");
+
+	FBlueprintHelperActionResolutionRequest Request =
+		MakeGenericTransformScheduleRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Schedule);
+	Request.Semantic.ScheduleOperation = TEXT("latent_or_async_node");
+	AddScheduleEvidence(Evidence, Request);
+
+	const FBlueprintHelperActionResolutionResult Result =
+		FBlueprintHelperActionResolutionCore::Resolve(Request);
+
+	bool bPassed = true;
+	bPassed &= TestEqual(TEXT("latent schedule status"), Result.Status, EBlueprintHelperActionResolutionStatus::Resolved);
+	bPassed &= TestTrue(TEXT("latent schedule spawner is current ActionDatabase spawner"), Result.SelectedSpawner.IsValid());
+	bPassed &= TestTrue(TEXT("latent schedule candidate count"), Result.CandidateActions.Num() == 1);
+	if (Result.CandidateActions.Num() == 1)
+	{
+		bPassed &= TestTrue(TEXT("latent schedule candidate is database backed"), Result.CandidateActions[0].bFromActionDatabase);
+	}
+	bPassed &= TestTrue(TEXT("latent schedule match reason"), Result.MatchReason.Contains(TEXT("latent_or_async_node")));
+	bPassed &= TestEqual(TEXT("latent schedule stable id"), Result.SelectedStableId, Evidence.StableId);
+	return bPassed;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGenericScheduleTimerUsesProjectedSpawnerEvidenceTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.Generic.Schedule.TimerUsesProjectedSpawnerEvidence",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGenericScheduleTimerUsesProjectedSpawnerEvidenceTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeGenericTransformScheduleTestBlueprint();
+	UEdGraph* Graph = GetGenericTransformScheduleTestGraph(Blueprint);
+	TestNotNull(TEXT("blueprint"), Blueprint);
+	TestNotNull(TEXT("graph"), Graph);
+
+	FBlueprintHelperProjectedScheduleActionEvidence Evidence;
+	if (!TryProjectScheduleEvidenceFromQueries(
+		Blueprint,
+		Graph,
+		{ TEXT("Set Timer by Event"), TEXT("Set Timer by Delegate"), TEXT("Set Timer") },
+		Evidence))
+	{
+		AddError(TEXT("Unable to project a timer ActionDatabase schedule candidate."));
+		return false;
+	}
+	Evidence.HandlerName = TEXT("HandleTimerElapsed");
+	Evidence.HandlerFunctionPath = TEXT("/Game/BP/BP_Timer.HandleTimerElapsed");
+	Evidence.HandlerSourceCluster = TEXT("BlueprintSignature");
+	Evidence.SignatureEvidenceId = TEXT("signature:function:HandleTimerElapsed");
+
+	FBlueprintHelperActionResolutionRequest Request =
+		MakeGenericTransformScheduleRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Schedule);
+	Request.Semantic.ScheduleOperation = TEXT("timer_delegate_node");
+	AddScheduleEvidence(Evidence, Request);
+
+	const FBlueprintHelperActionResolutionResult Result =
+		FBlueprintHelperActionResolutionCore::Resolve(Request);
+
+	bool bPassed = true;
+	bPassed &= TestEqual(TEXT("timer schedule status"), Result.Status, EBlueprintHelperActionResolutionStatus::Resolved);
+	bPassed &= TestTrue(TEXT("timer schedule spawner is current ActionDatabase spawner"), Result.SelectedSpawner.IsValid());
+	bPassed &= TestTrue(TEXT("timer schedule candidate count"), Result.CandidateActions.Num() == 1);
+	if (Result.CandidateActions.Num() == 1)
+	{
+		bPassed &= TestTrue(TEXT("timer schedule candidate is database backed"), Result.CandidateActions[0].bFromActionDatabase);
+	}
+	bPassed &= TestTrue(TEXT("timer schedule match reason"), Result.MatchReason.Contains(TEXT("timer_delegate_node")));
+	bPassed &= TestEqual(TEXT("timer schedule stable id"), Result.SelectedStableId, Evidence.StableId);
+	return bPassed;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(

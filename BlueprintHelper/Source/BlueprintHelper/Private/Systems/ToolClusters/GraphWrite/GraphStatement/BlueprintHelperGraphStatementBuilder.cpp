@@ -21,6 +21,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperActionFragmentBuildUtils.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperActionFragmentSpawnCoordinator.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperControlFragmentBuilder.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperDelegateLinkFragmentUtils.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphPatternRegistry.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperSelectFragmentBuilder.h"
@@ -89,6 +90,48 @@ static FString MakeExpressionActionContextStatementId(const FBlueprintHelperGrap
 		return Expression.ExpressionId;
 	}
 	return FString::Printf(TEXT("expression:%s"), *Expression.Path);
+}
+
+static FString ContextEvidenceValue(
+	const TMap<FString, FString>& ContextEvidence,
+	const FString& Key)
+{
+	const FString* Value = ContextEvidence.Find(Key);
+	return Value ? Value->TrimStartAndEnd() : FString();
+}
+
+static FString FirstNonEmptyString(const FString& First, const FString& Second)
+{
+	return First.TrimStartAndEnd().IsEmpty()
+		? Second.TrimStartAndEnd()
+		: First.TrimStartAndEnd();
+}
+
+static FString FirstNonEmptyString(const FString& First, const FString& Second, const FString& Third)
+{
+	return FirstNonEmptyString(FirstNonEmptyString(First, Second), Third);
+}
+
+static FString NormalizeScheduleOperationToken(const FString& ScheduleOperation)
+{
+	return ScheduleOperation.TrimStartAndEnd().ToLower();
+}
+
+static bool IsTimerDelegateScheduleOperation(const FString& ScheduleOperation)
+{
+	return NormalizeScheduleOperationToken(ScheduleOperation) == TEXT("timer_delegate_node");
+}
+
+static void AddOwnershipTagIfPresent(
+	FBlueprintHelperNodeFragment& OutFragment,
+	const FString& Key,
+	const FString& Value)
+{
+	const FString TrimmedValue = Value.TrimStartAndEnd();
+	if (!TrimmedValue.IsEmpty())
+	{
+		OutFragment.OwnershipTags.Add(Key, TrimmedValue);
+	}
 }
 
 static bool TryBuildProjectedActionRequestFromContext(
@@ -1445,6 +1488,45 @@ bool FBlueprintHelperGraphStatementBuilder::BuildActionProviderFragment(
 		OutFragment,
 		OutError,
 		nullptr);
+	if (bBuilt && SemanticKind == EBlueprintHelperActionSemanticKind::Schedule)
+	{
+		const FString ScheduleOperation = NormalizeScheduleOperationToken(FirstNonEmptyString(
+			BoundRequest.ScheduleOperation,
+			ActionRequest.Semantic.ScheduleOperation,
+			ContextEvidenceValue(ActionRequest.ContextEvidence, TEXT("schedule_operation"))));
+		AddOwnershipTagIfPresent(OutFragment, TEXT("schedule_operation"), ScheduleOperation);
+
+		if (IsTimerDelegateScheduleOperation(ScheduleOperation))
+		{
+			FBlueprintHelperDelegateLinkRequest LinkRequest;
+			LinkRequest.FragmentId = BoundRequest.FragmentId;
+			LinkRequest.HandlerName = ContextEvidenceValue(ActionRequest.ContextEvidence, TEXT("handler_name"));
+			LinkRequest.DiagnosticPrefix = TEXT("timer_delegate");
+			LinkRequest.DelegateInputPinName = FirstNonEmptyString(
+				ContextEvidenceValue(ActionRequest.ContextEvidence, TEXT("schedule_delegate_pin_name")),
+				ContextEvidenceValue(ActionRequest.ContextEvidence, TEXT("delegate_pin_name")));
+			LinkRequest.CreateDelegateLocation = FVector2D(BoundRequest.Location.X + 240.0, BoundRequest.Location.Y);
+			if (!FBlueprintHelperDelegateLinkFragmentUtils::AttachCreateDelegateToPrimary(
+				TargetGraph,
+				OutFragment.PrimaryNode,
+				LinkRequest,
+				OutFragment,
+				OutError))
+			{
+				return false;
+			}
+
+			AddOwnershipTagIfPresent(OutFragment, TEXT("handler_name"), LinkRequest.HandlerName);
+			AddOwnershipTagIfPresent(
+				OutFragment,
+				TEXT("handler_source_cluster"),
+				ContextEvidenceValue(ActionRequest.ContextEvidence, TEXT("handler_source_cluster")));
+			AddOwnershipTagIfPresent(
+				OutFragment,
+				TEXT("signature_evidence_id"),
+				ContextEvidenceValue(ActionRequest.ContextEvidence, TEXT("signature_evidence_id")));
+		}
+	}
 	if (bBuilt && SemanticKind == EBlueprintHelperActionSemanticKind::ContainerAction)
 	{
 		ApplyContainerActionRolePinAliases(BoundRequest, OutFragment);

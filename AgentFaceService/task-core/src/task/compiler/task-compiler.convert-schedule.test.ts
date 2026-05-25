@@ -82,7 +82,6 @@ test('schedule expression preserves operation and latent evidence', () => {
     args: {
       value: {
         kind: 'schedule',
-        function_operation: 'schedule_function',
         schedule_operation: 'timer_delegate_node',
         graph_latent_allowed: true,
         args: {
@@ -96,8 +95,8 @@ test('schedule expression preserves operation and latent evidence', () => {
     const args = statement.args as Record<string, Record<string, unknown>>;
     const value = args.value;
     assert.equal(value.kind, 'schedule');
-    assert.equal(value.function_operation, 'schedule_function');
     assert.equal(value.schedule_operation, 'timer_delegate_node');
+    assert.equal(Object.hasOwn(value, 'function_operation'), false);
     assert.equal(value.graph_latent_allowed, true);
     const nestedArgs = value.args as Record<string, Record<string, unknown>>;
     assert.equal(nestedArgs.delay.id, 'ApplyConvertSchedule_stmt_1_arg_value_delay');
@@ -133,7 +132,6 @@ test('convert and schedule preserve context_evidence through compiler outputs', 
     args: {
       value: {
         kind: 'schedule',
-        function_operation: 'schedule_function',
         schedule_operation: 'latent_or_async_node',
         context_evidence: {
           graph_latent_allowed: 'false',
@@ -156,4 +154,65 @@ test('convert and schedule preserve context_evidence through compiler outputs', 
       schedule_operation: 'latent_or_async_node',
     });
   }
+});
+
+test('generic schedule statement compiles without function_operation ownership mixing', () => {
+  const input = {
+    kind: 'schedule',
+    schedule_operation: 'timer_delegate_node',
+    context_evidence: {
+      schedule_action_stable_id: 'action_database:/Script/Engine.KismetSystemLibrary:/Script/BlueprintGraph.K2Node_CallFunction:sig',
+      schedule_node_class: '/Script/BlueprintGraph.K2Node_CallFunction',
+      schedule_spawner_signature: 'sig',
+      schedule_owner_path: '/Script/Engine.KismetSystemLibrary',
+      handler_name: 'HandleTimerElapsed',
+      handler_function_path: '/Game/BP/BP_Timer.HandleTimerElapsed',
+      handler_source_cluster: 'BlueprintSignature',
+      signature_evidence_id: 'signature:function:HandleTimerElapsed',
+    },
+    args: {
+      time: { kind: 'literal', value_type: 'number', value: 0.25 },
+    },
+  };
+
+  for (const statement of [compileTaskPlanStatement(input), compileBridgeStatement(input)]) {
+    assert.equal(statement.kind, 'schedule');
+    assert.equal(statement.schedule_operation, 'timer_delegate_node');
+    assert.equal(Object.hasOwn(statement, 'function_operation'), false);
+    assert.deepEqual(statement.context_evidence, input.context_evidence);
+  }
+});
+
+test('generic schedule rejects function_operation ownership mixing', () => {
+  const input = {
+    kind: 'schedule',
+    function_operation: 'schedule_function',
+    schedule_operation: 'timer_delegate_node',
+    args: {},
+  };
+
+  assert.throws(
+    () => compileTaskPlanStatement(input),
+    /unsupported_schedule_owner_mix/,
+  );
+});
+
+test('generic schedule expression rejects function_operation ownership mixing', () => {
+  const input = {
+    kind: 'call',
+    target: 'PrintString',
+    args: {
+      value: {
+        kind: 'schedule',
+        function_operation: 'latent_or_async_function',
+        schedule_operation: 'latent_or_async_node',
+        args: {},
+      },
+    },
+  };
+
+  assert.throws(
+    () => compileTaskPlanStatement(input),
+    /unsupported_schedule_owner_mix/,
+  );
 });
