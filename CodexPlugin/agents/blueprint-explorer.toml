@@ -2,7 +2,7 @@ name = "blueprint-explorer"
 description = "Collect BlueprintHelper editor-asset context for Blueprint, UMG, DataAsset, DataTable, graph, variable, component, and Bridge/runtime scoped reads. Does not write, preview, execute, or call MCP lifecycle tools."
 
 model = "gpt-5.4-mini"
-reasoning_effort = "xhigh"
+reasoning_effort = "high"
 
 developer_instructions = """
 You are BlueprintHelper's Blueprint context explorer.

@@ -95,6 +95,8 @@ cd <PLUGIN_ROOT>
 
 `install.cmd` 会调用底层 PowerShell 安装脚本并规避普通用户直接运行 `.ps1` 时常见的 ExecutionPolicy 问题。安装器会构建 AgentFaceService、链接 `bh` CLI、通过 Codex 官方插件入口注册本地 marketplace 并安装 `blueprint-helper@blueprint-helper-local`、安装 Codex subagents 和全局 MCP allowlist 入口，并在能确认项目和 UE 根目录时写入 `<ProjectDir>/.blueprinthelper/agent-profile.json`。需要 Claude 插件支持时追加 `-InstallClaudePlugin`；只需要 Claude sideAgents 时追加 `-InstallClaudeAgents`；需要引擎级安装 UE 插件时追加 `-InstallUePluginToEngine`。
 
+交互式安装在安装 Codex subagents 或 Claude sideAgents 时会显示模型/思考等级表单。Codex 只显示推荐组合 `gpt-5.4-mini / high`、`gpt-5.3-codex-spark / xhigh` 与 `gpt-5.4 / high`；Claude 只显示推荐组合 `haiku / high` 与 `sonnet / high`。非交互安装会自动使用推荐默认值，其中两个 explorer 默认轻量模型，`task-worker` 默认更强模型。
+
 安装脚本会在 `npm link` 后移除 npm 生成的 `bh.ps1` / `blueprinthelper-cli.ps1` shim，让 PowerShell 解析到 `.cmd` 启动器，避免 ExecutionPolicy 拦截 `bh`。
 
 4. 启动目标 Unreal Editor 项目；Agent 工作流需要代管启动/关闭时使用全局 MCP allowlist 中的生命周期工具。
@@ -137,6 +139,8 @@ Double-click `upgrade.cmd` to check the latest GitHub Release and update only af
 Before replacing files, the updater backs up the current plugin directory next to it, for example `BlueprintHelper.backup-v0.5.3-20260520-153000`. It then downloads the Release zip and mirrors it into the current plugin directory. If the replacement or post-update refresh fails, it attempts to roll the plugin directory back from that backup.
 
 After a successful update, the updater rebuilds AgentFaceService, relinks the `bh` CLI, and refreshes the Codex marketplace, Codex plugin install, Codex subagents, and global MCP allowlist through the official entries. If existing Claude sideAgents are detected, or `-InstallClaudePlugin` is passed explicitly, the updater also refreshes the Claude plugin through the official Claude entry and syncs Claude sideAgents. User preference files and project `.blueprinthelper/agent-profile.json` are not overwritten. Engine-level UE plugin copies are updated only when `-InstallUePluginToEngine` is explicitly passed.
+
+Interactive install shows model/reasoning forms when installing Codex subagents or Claude sideAgents. Codex only shows the recommended `gpt-5.4-mini / high`, `gpt-5.3-codex-spark / xhigh`, and `gpt-5.4 / high` profiles; Claude only shows the recommended `haiku / high` and `sonnet / high` profiles. Non-interactive install uses the recommended defaults automatically, with lighter explorer models and a stronger `task-worker` model.
 
 ## 参与贡献
 

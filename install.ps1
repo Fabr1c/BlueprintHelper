@@ -34,6 +34,8 @@ trap {
 $script:ThisCmdlet = $PSCmdlet
 $script:NodeCommand = $null
 $script:NpmCommand = $null
+$script:CodexSubagentProfiles = $null
+$script:ClaudeSubagentProfiles = $null
 
 $Root = $PSScriptRoot
 $CodexPluginRoot = Join-Path $Root 'CodexPlugin'
@@ -142,6 +144,33 @@ function Invoke-External {
     }
     if ($LASTEXITCODE -ne 0) {
       throw "$Description failed with exit code $LASTEXITCODE."
+    }
+  }
+}
+
+function Invoke-ExternalWithEnvironment {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Description,
+    [Parameter(Mandatory = $true)]
+    [string]$FilePath,
+    [Parameter(Mandatory = $true)]
+    [string[]]$Arguments,
+    [hashtable]$Environment = @{}
+  )
+
+  $PreviousValues = @{}
+  foreach ($Name in $Environment.Keys) {
+    $PreviousValues[$Name] = [Environment]::GetEnvironmentVariable($Name, 'Process')
+    [Environment]::SetEnvironmentVariable($Name, [string]$Environment[$Name], 'Process')
+  }
+
+  try {
+    Invoke-External -Description $Description -FilePath $FilePath -Arguments $Arguments
+  } finally {
+    foreach ($Name in $Environment.Keys) {
+      $PreviousValue = $PreviousValues[$Name]
+      [Environment]::SetEnvironmentVariable($Name, $PreviousValue, 'Process')
     }
   }
 }
@@ -293,6 +322,198 @@ function Read-InstallYesNo {
       '^(n|no|N|NO|否|不|0)$' { return $false }
       default { Write-Host 'Please answer y or n.' }
     }
+  }
+}
+
+function Get-SubagentInstallNames {
+  return @(
+    'blueprint-explorer',
+    'sourcecode-explorer',
+    'task-worker'
+  )
+}
+
+function New-SubagentInstallProfile {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Model,
+    [Parameter(Mandatory = $true)]
+    [string]$Reasoning
+  )
+
+  return [pscustomobject]@{
+    model = $Model
+    reasoning = $Reasoning
+    reasoning_effort = $Reasoning
+  }
+}
+
+function Get-DefaultCodexSubagentProfiles {
+  $Agents = [ordered]@{}
+  $Agents['blueprint-explorer'] = New-SubagentInstallProfile -Model 'gpt-5.4-mini' -Reasoning 'high'
+  $Agents['sourcecode-explorer'] = New-SubagentInstallProfile -Model 'gpt-5.3-codex-spark' -Reasoning 'xhigh'
+  $Agents['task-worker'] = New-SubagentInstallProfile -Model 'gpt-5.4' -Reasoning 'high'
+
+  return [pscustomobject]@{
+    agents = $Agents
+  }
+}
+
+function Get-DefaultClaudeSubagentProfiles {
+  $Agents = [ordered]@{}
+  $Agents['blueprint-explorer'] = New-SubagentInstallProfile -Model 'haiku' -Reasoning 'high'
+  $Agents['sourcecode-explorer'] = New-SubagentInstallProfile -Model 'haiku' -Reasoning 'high'
+  $Agents['task-worker'] = New-SubagentInstallProfile -Model 'sonnet' -Reasoning 'high'
+
+  return [pscustomobject]@{
+    agents = $Agents
+  }
+}
+
+function Read-SubagentProfileChoice {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$AgentName,
+    [Parameter(Mandatory = $true)]
+    [object[]]$Choices,
+    [Parameter(Mandatory = $true)]
+    [int]$DefaultNumber
+  )
+
+  while ($true) {
+    $Raw = Read-Host "  $AgentName profile [$DefaultNumber]"
+    if ([string]::IsNullOrWhiteSpace($Raw)) {
+      foreach ($Choice in $Choices) {
+        if ($Choice.Number -eq $DefaultNumber) {
+          return $Choice
+        }
+      }
+    }
+
+    $SelectedNumber = 0
+    if ([int]::TryParse($Raw.Trim(), [ref]$SelectedNumber)) {
+      foreach ($Choice in $Choices) {
+        if ($Choice.Number -eq $SelectedNumber) {
+          return $Choice
+        }
+      }
+    }
+
+    $ValidChoices = ($Choices | ForEach-Object { $_.Number }) -join '/'
+    Write-Host "Please choose $ValidChoices, or press Enter for the default."
+  }
+}
+
+function Read-CodexSubagentProfiles {
+  $Choices = @(
+    [pscustomobject]@{ Number = 1; Model = 'gpt-5.4-mini'; Reasoning = 'high'; Label = 'gpt-5.4-mini / high' },
+    [pscustomobject]@{ Number = 2; Model = 'gpt-5.3-codex-spark'; Reasoning = 'xhigh'; Label = 'gpt-5.3-codex-spark / xhigh' },
+    [pscustomobject]@{ Number = 3; Model = 'gpt-5.4'; Reasoning = 'high'; Label = 'gpt-5.4 / high' }
+  )
+  $DefaultNumbers = @{
+    'blueprint-explorer' = 1
+    'sourcecode-explorer' = 2
+    'task-worker' = 3
+  }
+  $Agents = [ordered]@{}
+
+  Write-Host ''
+  Write-Host 'Codex subagent model form'
+  Write-Host 'Tips: only recommended Codex profiles are shown. Press Enter on each row to use the default.'
+  foreach ($Choice in $Choices) {
+    Write-Host "  $($Choice.Number). $($Choice.Label)"
+  }
+  Write-Host ''
+
+  foreach ($Name in Get-SubagentInstallNames) {
+    $Choice = Read-SubagentProfileChoice -AgentName $Name -Choices $Choices -DefaultNumber $DefaultNumbers[$Name]
+    $Agents[$Name] = New-SubagentInstallProfile -Model $Choice.Model -Reasoning $Choice.Reasoning
+  }
+
+  return [pscustomobject]@{
+    agents = $Agents
+  }
+}
+
+function Read-ClaudeSubagentProfiles {
+  $Choices = @(
+    [pscustomobject]@{ Number = 1; Model = 'haiku'; Reasoning = 'high'; Label = 'haiku / high' },
+    [pscustomobject]@{ Number = 2; Model = 'sonnet'; Reasoning = 'high'; Label = 'sonnet / high' }
+  )
+  $DefaultNumbers = @{
+    'blueprint-explorer' = 1
+    'sourcecode-explorer' = 1
+    'task-worker' = 2
+  }
+  $Agents = [ordered]@{}
+
+  Write-Host ''
+  Write-Host 'Claude sideAgent model form'
+  Write-Host 'Tips: Claude shows only recommended profiles. Press Enter on each row to use the default.'
+  foreach ($Choice in $Choices) {
+    Write-Host "  $($Choice.Number). $($Choice.Label)"
+  }
+  Write-Host ''
+
+  foreach ($Name in Get-SubagentInstallNames) {
+    $Choice = Read-SubagentProfileChoice -AgentName $Name -Choices $Choices -DefaultNumber $DefaultNumbers[$Name]
+    $Agents[$Name] = New-SubagentInstallProfile -Model $Choice.Model -Reasoning $Choice.Reasoning
+  }
+
+  return [pscustomobject]@{
+    agents = $Agents
+  }
+}
+
+function Convert-SubagentProfilesToJson {
+  param([Parameter(Mandatory = $true)][object]$Profiles)
+
+  return ($Profiles | ConvertTo-Json -Depth 6 -Compress)
+}
+
+function Format-SubagentProfileSummary {
+  param([Parameter(Mandatory = $true)][object]$Profiles)
+
+  $Parts = @()
+  foreach ($Name in Get-SubagentInstallNames) {
+    if ($Profiles.agents.Contains($Name)) {
+      $Profile = $Profiles.agents[$Name]
+      $Reasoning = if ($Profile.reasoning) { $Profile.reasoning } else { $Profile.reasoning_effort }
+      $Parts += "$Name=$($Profile.model)/$Reasoning"
+    }
+  }
+
+  return ($Parts -join '; ')
+}
+
+function Initialize-SubagentInstallProfiles {
+  param([bool]$PromptUser = $false)
+
+  if (-not $script:SkipCodexAgents) {
+    if ($PromptUser) {
+      $script:CodexSubagentProfiles = Read-CodexSubagentProfiles
+    } else {
+      $script:CodexSubagentProfiles = Get-DefaultCodexSubagentProfiles
+    }
+  } else {
+    $script:CodexSubagentProfiles = $null
+  }
+
+  if ($script:InstallClaudeAgents -or $script:InstallClaudePlugin) {
+    if ($PromptUser) {
+      $script:ClaudeSubagentProfiles = Read-ClaudeSubagentProfiles
+    } else {
+      $script:ClaudeSubagentProfiles = Get-DefaultClaudeSubagentProfiles
+    }
+  } else {
+    $script:ClaudeSubagentProfiles = $null
+  }
+
+  if ($script:CodexSubagentProfiles) {
+    Write-Host "Codex subagent profiles: $(Format-SubagentProfileSummary -Profiles $script:CodexSubagentProfiles)"
+  }
+  if ($script:ClaudeSubagentProfiles) {
+    Write-Host "Claude sideAgent profiles: $(Format-SubagentProfileSummary -Profiles $script:ClaudeSubagentProfiles)"
   }
 }
 
@@ -1167,6 +1388,8 @@ if ($Interactive) {
   Invoke-InteractiveInstallWizard
 }
 
+Initialize-SubagentInstallProfiles -PromptUser:$Interactive
+
 if (-not $SkipBuild) {
   Invoke-Npm -PackageDir (Join-Path $AgentFaceServiceRoot 'task-core') -Arguments @('install')
   Invoke-Npm -PackageDir (Join-Path $AgentFaceServiceRoot 'task-core') -Arguments @('run', 'build')
@@ -1203,7 +1426,11 @@ if (-not $SkipCodexMarketplace) {
 }
 
 if (-not $SkipCodexAgents) {
-  Invoke-External -Description 'Install Codex subagents' -FilePath (Get-NodeCommand) -Arguments @((Join-Path $CodexPluginRoot 'scripts\install-codex-agents.cjs'))
+  $CodexAgentEnvironment = @{}
+  if ($script:CodexSubagentProfiles) {
+    $CodexAgentEnvironment['BLUEPRINTHELPER_CODEX_AGENT_PROFILE_JSON'] = Convert-SubagentProfilesToJson -Profiles $script:CodexSubagentProfiles
+  }
+  Invoke-ExternalWithEnvironment -Description 'Install Codex subagents' -FilePath (Get-NodeCommand) -Arguments @((Join-Path $CodexPluginRoot 'scripts\install-codex-agents.cjs')) -Environment $CodexAgentEnvironment
 }
 
 if (-not $SkipLifecycleMcp) {
@@ -1244,7 +1471,11 @@ if ($InstallClaudePlugin) {
 }
 
 if ($InstallClaudeAgents -or $InstallClaudePlugin) {
-  Invoke-External -Description 'Install Claude subagents' -FilePath (Get-NodeCommand) -Arguments @((Join-Path $CodexPluginRoot 'scripts\install-claude-agents.cjs'))
+  $ClaudeAgentEnvironment = @{}
+  if ($script:ClaudeSubagentProfiles) {
+    $ClaudeAgentEnvironment['BLUEPRINTHELPER_CLAUDE_AGENT_PROFILE_JSON'] = Convert-SubagentProfilesToJson -Profiles $script:ClaudeSubagentProfiles
+  }
+  Invoke-ExternalWithEnvironment -Description 'Install Claude subagents' -FilePath (Get-NodeCommand) -Arguments @((Join-Path $CodexPluginRoot 'scripts\install-claude-agents.cjs')) -Environment $ClaudeAgentEnvironment
   $ClaudeAgentsStatus = if ($WhatIfPreference) { 'whatif' } else { 'installed' }
 }
 
@@ -1270,6 +1501,9 @@ if ($CodexPluginResult.command) {
   Write-Host "Codex marketplace command: $($CodexPluginResult.marketplace_command)"
   Write-Host "Codex install command: $($CodexPluginResult.install_command)"
 }
+if ($script:CodexSubagentProfiles) {
+  Write-Host "Codex subagent profiles: $(Format-SubagentProfileSummary -Profiles $script:CodexSubagentProfiles)"
+}
 Write-Host "Claude plugin: $($ClaudePluginResult.status)"
 if ($ClaudePluginResult.source_path) {
   Write-Host "Claude plugin source: $($ClaudePluginResult.source_path)"
@@ -1284,6 +1518,9 @@ if ($ClaudePluginResult.command) {
   Write-Host "Claude install command: $($ClaudePluginResult.install_command)"
 }
 Write-Host "Claude agents: $ClaudeAgentsStatus"
+if ($script:ClaudeSubagentProfiles) {
+  Write-Host "Claude sideAgent profiles: $(Format-SubagentProfileSummary -Profiles $script:ClaudeSubagentProfiles)"
+}
 Write-Host "Project profile: $($ProjectProfileResult.status)"
 if ($ProjectProfileResult.path) {
   Write-Host "Project profile path: $($ProjectProfileResult.path)"

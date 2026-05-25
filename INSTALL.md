@@ -48,6 +48,8 @@ install.cmd
 
 ### Codex Desktop
 
+交互式安装在启用 Codex subagents 时会显示 subagent 模型表单。表单只列出推荐组合：`gpt-5.4-mini / high`、`gpt-5.3-codex-spark / xhigh` 和 `gpt-5.4 / high`，并允许分别为 `blueprint-explorer`、`sourcecode-explorer`、`task-worker` 选择。非交互安装会自动使用推荐默认值：两个 explorer 使用轻量模型，`task-worker` 使用 `gpt-5.4 / high`。
+
 当前安装脚本会通过 Codex 官方插件入口注册仓库本地 marketplace，并安装 `blueprint-helper@blueprint-helper-local`。如果当前机器没有可调用的 Codex 官方插件 CLI，脚本会打印可在 Codex Desktop 或官方 CLI 中继续执行的 marketplace/install 命令。
 
 仓库包含本地 marketplace：
@@ -84,6 +86,8 @@ Claude Code 插件支持是可选项：
 ```powershell
 .\install.cmd -InstallClaudeAgents
 ```
+
+交互式安装在安装 Claude sideAgents 时会显示 sideAgent 模型表单。当前只显示推荐组合 `haiku / high` 与 `sonnet / high`，并分别确认三个 sideAgent。非交互安装会自动使用推荐默认值：两个 explorer 使用 `haiku / high`，`task-worker` 使用 `sonnet / high`。
 
 ### Unreal Engine 插件
 
@@ -167,6 +171,8 @@ install.cmd
 
 ### Codex Desktop
 
+When Codex subagents are selected in interactive install, the installer shows a subagent model form. It only lists the recommended profiles: `gpt-5.4-mini / high`, `gpt-5.3-codex-spark / xhigh`, and `gpt-5.4 / high`, then lets you choose a profile for `blueprint-explorer`, `sourcecode-explorer`, and `task-worker`. Non-interactive install uses the recommended defaults automatically: lighter models for the two explorers, and `gpt-5.4 / high` for `task-worker`.
+
 The repository includes a local marketplace:
 
 ```text
@@ -206,6 +212,8 @@ If you only want to copy the sideAgent definitions without validating the Claude
 ```powershell
 .\install.cmd -InstallClaudeAgents
 ```
+
+When Claude sideAgents are selected in interactive install, the installer shows a sideAgent model form. The displayed recommendations are `haiku / high` and `sonnet / high`, confirmed separately for the three sideAgents. Non-interactive install uses the recommended defaults automatically: `haiku / high` for the two explorers, and `sonnet / high` for `task-worker`.
 
 ### Unreal Engine Plugin
 

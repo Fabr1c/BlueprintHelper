@@ -14,14 +14,21 @@ sourcecode-explorer  -> repository source-code/schema/template context collectio
 task-worker          -> template-first TaskSpec construction, preview, execute, result filtering
 ```
 
-All sideAgents are configured with:
+Default sideAgent profiles are configured with:
 
 ```yaml
-model: haiku
-reasoning: maximum_available
+blueprint-explorer:
+  model: haiku
+  reasoning: high
+sourcecode-explorer:
+  model: haiku
+  reasoning: high
+task-worker:
+  model: sonnet
+  reasoning: high
 ```
 
-Claude agent frontmatter uses `model: haiku`. Reasoning depth is expressed in the sideAgent instructions and compact task package as `reasoning: maximum_available`; do not add undocumented frontmatter fields unless the installed Claude Code version explicitly supports them.
+Claude agent frontmatter uses `model: haiku` for explorer sideAgents and `model: sonnet` for `task-worker`. Reasoning depth is expressed in the sideAgent instructions and compact task package as `reasoning: high`; do not add undocumented frontmatter fields unless the installed Claude Code version explicitly supports them.
 
 ## Main Agent ownership
 
