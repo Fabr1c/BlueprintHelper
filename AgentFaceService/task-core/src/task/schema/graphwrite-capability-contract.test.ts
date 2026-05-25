@@ -4,7 +4,7 @@ import { describe, it } from 'node:test';
 import { GRAPHWRITE_CAPABILITY_CONTRACT } from './graphwrite-capability-contract.js';
 
 describe('GraphWrite capability contract', () => {
-  it('covers the four stability clusters', () => {
+  it('covers the stability clusters', () => {
     const clusters = new Map(
       GRAPHWRITE_CAPABILITY_CONTRACT.clusters.map((cluster) => [cluster.id, cluster]),
     );
@@ -12,7 +12,7 @@ describe('GraphWrite capability contract', () => {
     assert.equal(GRAPHWRITE_CAPABILITY_CONTRACT.version, 1);
     assert.equal(GRAPHWRITE_CAPABILITY_CONTRACT.status, 'stable-candidate');
 
-    for (const id of ['function_action', 'field', 'event', 'asset_action'] as const) {
+    for (const id of ['function_action', 'field', 'event', 'asset_action', 'container_action'] as const) {
       assert.ok(clusters.has(id), `missing GraphWrite cluster contract: ${id}`);
     }
   });
@@ -30,6 +30,10 @@ describe('GraphWrite capability contract', () => {
     ]);
     assert.equal(assetAction.evidence.projectionSource, 'UE ActionDatabase');
     assert.equal(assetAction.executeRevalidation, 'required');
+    assert.equal(
+      assetAction.operations.find((operation) => operation.id === 'create.asset_action')?.reviewEvidence,
+      'graph_surface_atomic_target',
+    );
   });
 
   it('keeps every operation explicit about support and review evidence', () => {
@@ -39,6 +43,18 @@ describe('GraphWrite capability contract', () => {
         assert.ok(operation.reviewEvidence, `${cluster.id}.${operation.id} lacks review evidence policy`);
       }
     }
+  });
+
+  it('publishes first-class container_action operations with graph-level review evidence', () => {
+    const containerAction = GRAPHWRITE_CAPABILITY_CONTRACT.clusters.find((cluster) => cluster.id === 'container_action');
+
+    assert.ok(containerAction);
+    assert.equal(containerAction.executeRevalidation, 'not-required');
+    assert.equal(containerAction.evidence.projectionSource, 'ActionContext');
+    assert.ok(containerAction.operations.some((operation) => operation.id === 'container.array.add'));
+    assert.ok(containerAction.operations.some((operation) => operation.id === 'container.map.contains'));
+    assert.ok(containerAction.operations.some((operation) => operation.id === 'container.set.to_array'));
+    assert.ok(containerAction.operations.every((operation) => operation.reviewEvidence === 'graph_surface_atomic_target'));
   });
 
   it('keeps discussion-gated event overlap out of supported GraphWrite ownership', () => {

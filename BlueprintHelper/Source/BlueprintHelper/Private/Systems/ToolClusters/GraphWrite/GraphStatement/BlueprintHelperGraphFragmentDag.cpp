@@ -3,6 +3,42 @@
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphFragmentDagUtils.h"
+
+namespace
+{
+static bool TryReadStringField(const TSharedPtr<FJsonObject>& Object, const TCHAR* FieldName, FString& OutValue)
+{
+	return Object.IsValid() && Object->TryGetStringField(FieldName, OutValue) && !OutValue.IsEmpty();
+}
+
+static bool TryReadBoolField(const TSharedPtr<FJsonObject>& Object, const TCHAR* FieldName, bool& OutValue)
+{
+	return Object.IsValid() && Object->TryGetBoolField(FieldName, OutValue);
+}
+
+static EBlueprintHelperGraphFragmentPortDirection ParseFragmentPortDirection(const FString& Direction)
+{
+	const FString Normalized = Direction.TrimStartAndEnd().ToLower();
+	if (Normalized == TEXT("exec_input"))
+	{
+		return EBlueprintHelperGraphFragmentPortDirection::ExecInput;
+	}
+	if (Normalized == TEXT("exec_output"))
+	{
+		return EBlueprintHelperGraphFragmentPortDirection::ExecOutput;
+	}
+	if (Normalized == TEXT("data_input"))
+	{
+		return EBlueprintHelperGraphFragmentPortDirection::DataInput;
+	}
+	if (Normalized == TEXT("data_output"))
+	{
+		return EBlueprintHelperGraphFragmentPortDirection::DataOutput;
+	}
+	return EBlueprintHelperGraphFragmentPortDirection::Unknown;
+}
+}
+
 TSharedRef<FJsonObject> FBlueprintHelperGraphFragmentDiagnostic::ToJson() const
 {
 	TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
@@ -38,6 +74,34 @@ TSharedRef<FJsonObject> FBlueprintHelperGraphFragmentPinTypeRef::ToJson() const
 	Json->SetBoolField(TEXT("is_reference"), bIsReference);
 	Json->SetBoolField(TEXT("is_const"), bIsConst);
 	return Json;
+}
+
+FBlueprintHelperGraphFragmentPinTypeRef FBlueprintHelperGraphFragmentPinTypeRef::FromJson(
+	const TSharedPtr<FJsonObject>& Object)
+{
+	FBlueprintHelperGraphFragmentPinTypeRef Result;
+	if (!Object.IsValid())
+	{
+		return Result;
+	}
+
+	TryReadStringField(Object, TEXT("category"), Result.Category);
+	if (!TryReadStringField(Object, TEXT("subcategory"), Result.SubCategory))
+	{
+		TryReadStringField(Object, TEXT("sub_category"), Result.SubCategory);
+	}
+	if (!TryReadStringField(Object, TEXT("object_path"), Result.ObjectPath))
+	{
+		TryReadStringField(Object, TEXT("sub_category_object_path"), Result.ObjectPath);
+	}
+	if (!TryReadStringField(Object, TEXT("container_type"), Result.ContainerType))
+	{
+		TryReadStringField(Object, TEXT("container"), Result.ContainerType);
+	}
+	TryReadStringField(Object, TEXT("value_type"), Result.ValueType);
+	TryReadBoolField(Object, TEXT("is_reference"), Result.bIsReference);
+	TryReadBoolField(Object, TEXT("is_const"), Result.bIsConst);
+	return Result;
 }
 
 TSharedRef<FJsonObject> FBlueprintHelperGraphFragmentLayoutRef::ToJson() const
@@ -79,6 +143,48 @@ TSharedRef<FJsonObject> FBlueprintHelperGraphFragmentEndpointRef::ToJson() const
 	Json->SetStringField(TEXT("direction"), FBlueprintHelperGraphFragmentDagUtils::DirectionToString(Direction));
 	if (PinType.IsValid()) Json->SetObjectField(TEXT("pin_type"), PinType.ToJson());
 	return Json;
+}
+
+FBlueprintHelperGraphFragmentEndpointRef FBlueprintHelperGraphFragmentEndpointRef::FromJson(
+	const TSharedPtr<FJsonObject>& Object)
+{
+	FBlueprintHelperGraphFragmentEndpointRef Result;
+	if (!Object.IsValid())
+	{
+		return Result;
+	}
+
+	if (!TryReadStringField(Object, TEXT("fragment_id"), Result.FragmentId))
+	{
+		TryReadStringField(Object, TEXT("fragment"), Result.FragmentId);
+	}
+	if (!TryReadStringField(Object, TEXT("port_id"), Result.PortId))
+	{
+		TryReadStringField(Object, TEXT("port"), Result.PortId);
+	}
+	TryReadStringField(Object, TEXT("pin_name"), Result.PinName);
+	TryReadStringField(Object, TEXT("type"), Result.Type);
+
+	FString DirectionString;
+	if (TryReadStringField(Object, TEXT("direction"), DirectionString))
+	{
+		Result.Direction = ParseFragmentPortDirection(DirectionString);
+	}
+
+	FString PinTypeCategory;
+	if (TryReadStringField(Object, TEXT("pin_type"), PinTypeCategory))
+	{
+		Result.PinType.Category = PinTypeCategory;
+	}
+	else
+	{
+		const TSharedPtr<FJsonObject>* PinTypeObject = nullptr;
+		if (Object->TryGetObjectField(TEXT("pin_type"), PinTypeObject) && PinTypeObject)
+		{
+			Result.PinType = FBlueprintHelperGraphFragmentPinTypeRef::FromJson(*PinTypeObject);
+		}
+	}
+	return Result;
 }
 
 TSharedRef<FJsonObject> FBlueprintHelperGraphFragmentExecEdge::ToJson() const

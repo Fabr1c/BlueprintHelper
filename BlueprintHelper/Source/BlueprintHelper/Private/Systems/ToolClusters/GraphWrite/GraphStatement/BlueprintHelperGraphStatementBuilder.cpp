@@ -13,6 +13,7 @@
 #include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionNodeSpawnerAdapter.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperContainerActionVocabulary.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextDemandCollector.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextScope.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextTypes.h"
@@ -224,6 +225,346 @@ static void ApplyCreateActionRequestOverrides(
 	}
 }
 
+static FString NormalizeContainerToken(const FString& Token)
+{
+	return Token.TrimStartAndEnd().ToLower();
+}
+
+static FString FirstNonEmptyContainerType(const FString& Primary, const FString& Secondary)
+{
+	const FString PrimaryValue = Primary.TrimStartAndEnd();
+	return PrimaryValue.IsEmpty() ? Secondary.TrimStartAndEnd() : PrimaryValue;
+}
+
+static void ApplyContainerActionRequestOverrides(
+	const FBlueprintHelperGraphFragmentBuildRequest& BoundRequest,
+	FBlueprintHelperActionResolutionRequest& InOutRequest)
+{
+	InOutRequest.Semantic.Kind = EBlueprintHelperActionSemanticKind::ContainerAction;
+	InOutRequest.Semantic.SemanticFamily = EBlueprintHelperActionSemanticFamily::Callable;
+	InOutRequest.Semantic.FunctionOperation = TEXT("container_action");
+	InOutRequest.Semantic.ContainerKind = NormalizeContainerToken(BoundRequest.ContainerKind);
+	InOutRequest.Semantic.ContainerOperation = NormalizeContainerToken(BoundRequest.ContainerOperation);
+	if (!BoundRequest.Target.TrimStartAndEnd().IsEmpty())
+	{
+		InOutRequest.Semantic.TargetPath = BoundRequest.Target.TrimStartAndEnd();
+	}
+
+	const FString ElementType = FirstNonEmptyContainerType(BoundRequest.ElementType, BoundRequest.PinType);
+	if (!ElementType.IsEmpty())
+	{
+		InOutRequest.Semantic.ElementType = ElementType;
+		InOutRequest.Semantic.ArgumentTypes.Add(TEXT("element"), ElementType);
+		InOutRequest.Semantic.ContainerElementPinType = MakePinTypeFromCreateToken(ElementType);
+		InOutRequest.Semantic.ArgumentPinTypes.Add(TEXT("element"), InOutRequest.Semantic.ContainerElementPinType);
+	}
+
+	const FString KeyType = FirstNonEmptyContainerType(BoundRequest.KeyType, BoundRequest.KeyPinType);
+	if (!KeyType.IsEmpty())
+	{
+		InOutRequest.Semantic.KeyType = KeyType;
+		InOutRequest.Semantic.ArgumentTypes.Add(TEXT("key"), KeyType);
+		InOutRequest.Semantic.ContainerKeyPinType = MakePinTypeFromCreateToken(KeyType);
+		InOutRequest.Semantic.ArgumentPinTypes.Add(TEXT("key"), InOutRequest.Semantic.ContainerKeyPinType);
+	}
+
+	const FString ValueType = FirstNonEmptyContainerType(BoundRequest.ValueType, BoundRequest.ValuePinType);
+	if (!ValueType.IsEmpty())
+	{
+		InOutRequest.Semantic.ValueType = ValueType;
+		InOutRequest.Semantic.ArgumentTypes.Add(TEXT("value"), ValueType);
+		InOutRequest.Semantic.ContainerValuePinType = MakePinTypeFromCreateToken(ValueType);
+		InOutRequest.Semantic.ArgumentPinTypes.Add(TEXT("value"), InOutRequest.Semantic.ContainerValuePinType);
+	}
+}
+
+static void AddPinAlias(
+	const FString& Alias,
+	const FString& CanonicalPinName,
+	TMap<FString, FBlueprintHelperFragmentPinRef>& PinMap)
+{
+	if (Alias.IsEmpty() || CanonicalPinName.IsEmpty() || PinMap.Contains(Alias))
+	{
+		return;
+	}
+	if (const FBlueprintHelperFragmentPinRef* Canonical = PinMap.Find(CanonicalPinName))
+	{
+		FBlueprintHelperFragmentPinRef AliasRef = *Canonical;
+		PinMap.Add(Alias, MoveTemp(AliasRef));
+		return;
+	}
+	for (const TPair<FString, FBlueprintHelperFragmentPinRef>& Pair : PinMap)
+	{
+		if (Pair.Key.Equals(CanonicalPinName, ESearchCase::IgnoreCase))
+		{
+			FBlueprintHelperFragmentPinRef AliasRef = Pair.Value;
+			PinMap.Add(Alias, MoveTemp(AliasRef));
+			return;
+		}
+	}
+}
+
+static void ApplyContainerActionRolePinAliases(
+	const FBlueprintHelperGraphFragmentBuildRequest& Request,
+	FBlueprintHelperNodeFragment& InOutFragment)
+{
+	const FBlueprintHelperContainerActionSpec* Spec =
+		FBlueprintHelperContainerActionVocabulary::Find(Request.ContainerKind, Request.ContainerOperation);
+	if (!Spec)
+	{
+		return;
+	}
+	for (const FBlueprintHelperContainerActionRoleBinding& Binding : Spec->RoleBindings)
+	{
+		AddPinAlias(Binding.RoleName, Binding.FunctionPinName, InOutFragment.PinBindings);
+		AddPinAlias(Binding.RoleName, Binding.FunctionPinName, InOutFragment.DataInputs);
+	}
+}
+
+static bool TryBuildLiteralPromotablePinType(const FString& Type, FEdGraphPinType& OutPinType);
+
+static bool TryBuildBasicContainerActionPinType(const FString& Type, FEdGraphPinType& OutPinType)
+{
+	return TryBuildLiteralPromotablePinType(Type, OutPinType);
+}
+
+static void CopyPinTypeToTerminal(const FEdGraphPinType& PinType, FEdGraphTerminalType& OutTerminalType)
+{
+	OutTerminalType.TerminalCategory = PinType.PinCategory;
+	OutTerminalType.TerminalSubCategory = PinType.PinSubCategory;
+	OutTerminalType.TerminalSubCategoryObject = PinType.PinSubCategoryObject;
+}
+
+static FString ContainerActionElementType(const FBlueprintHelperGraphFragmentBuildRequest& Request)
+{
+	return FirstNonEmptyContainerType(Request.ElementType, Request.PinType);
+}
+
+static bool TryBuildContainerActionTargetPinType(
+	const FBlueprintHelperGraphFragmentBuildRequest& Request,
+	FEdGraphPinType& OutPinType)
+{
+	const FString Kind = NormalizeContainerToken(Request.ContainerKind);
+	if (Kind == TEXT("array") || Kind == TEXT("set"))
+	{
+		if (!TryBuildBasicContainerActionPinType(ContainerActionElementType(Request), OutPinType))
+		{
+			return false;
+		}
+		OutPinType.ContainerType = Kind == TEXT("array") ? EPinContainerType::Array : EPinContainerType::Set;
+		return true;
+	}
+	if (Kind == TEXT("map"))
+	{
+		if (!TryBuildBasicContainerActionPinType(FirstNonEmptyContainerType(Request.KeyType, Request.KeyPinType), OutPinType))
+		{
+			return false;
+		}
+		OutPinType.ContainerType = EPinContainerType::Map;
+
+		FEdGraphPinType ValuePinType;
+		if (TryBuildBasicContainerActionPinType(FirstNonEmptyContainerType(Request.ValueType, Request.ValuePinType), ValuePinType))
+		{
+			CopyPinTypeToTerminal(ValuePinType, OutPinType.PinValueType);
+		}
+		return true;
+	}
+	return false;
+}
+
+static bool TryBuildContainerActionRolePinType(
+	const FBlueprintHelperGraphFragmentBuildRequest& Request,
+	const FString& RoleName,
+	FEdGraphPinType& OutPinType)
+{
+	const FString Role = NormalizeContainerToken(RoleName);
+	if (Role == TEXT("target"))
+	{
+		return TryBuildContainerActionTargetPinType(Request, OutPinType);
+	}
+	if (Role == TEXT("item") || Role == TEXT("value"))
+	{
+		return TryBuildBasicContainerActionPinType(
+			Role == TEXT("value")
+				? FirstNonEmptyContainerType(Request.ValueType, Request.ValuePinType)
+				: ContainerActionElementType(Request),
+			OutPinType);
+	}
+	if (Role == TEXT("items"))
+	{
+		if (!TryBuildBasicContainerActionPinType(ContainerActionElementType(Request), OutPinType))
+		{
+			return false;
+		}
+		OutPinType.ContainerType = EPinContainerType::Array;
+		return true;
+	}
+	if (Role == TEXT("key"))
+	{
+		return TryBuildBasicContainerActionPinType(FirstNonEmptyContainerType(Request.KeyType, Request.KeyPinType), OutPinType);
+	}
+	if (Role == TEXT("index"))
+	{
+		OutPinType.PinCategory = UEdGraphSchema_K2::PC_Int;
+		return true;
+	}
+	return false;
+}
+
+static bool TryBuildContainerActionReturnPinType(
+	const FBlueprintHelperGraphFragmentBuildRequest& Request,
+	FEdGraphPinType& OutPinType)
+{
+	const FString Kind = NormalizeContainerToken(Request.ContainerKind);
+	const FString Operation = NormalizeContainerToken(Request.ContainerOperation);
+	if (Operation == TEXT("contains"))
+	{
+		OutPinType.PinCategory = UEdGraphSchema_K2::PC_Boolean;
+		return true;
+	}
+	if (Operation == TEXT("length") || (Kind == TEXT("array") && Operation == TEXT("find")))
+	{
+		OutPinType.PinCategory = UEdGraphSchema_K2::PC_Int;
+		return true;
+	}
+	if (Kind == TEXT("array") && Operation == TEXT("get"))
+	{
+		return TryBuildBasicContainerActionPinType(ContainerActionElementType(Request), OutPinType);
+	}
+	if (Kind == TEXT("map") && Operation == TEXT("find"))
+	{
+		return TryBuildBasicContainerActionPinType(FirstNonEmptyContainerType(Request.ValueType, Request.ValuePinType), OutPinType);
+	}
+	if (Kind == TEXT("map") && Operation == TEXT("keys"))
+	{
+		if (!TryBuildBasicContainerActionPinType(FirstNonEmptyContainerType(Request.KeyType, Request.KeyPinType), OutPinType))
+		{
+			return false;
+		}
+		OutPinType.ContainerType = EPinContainerType::Array;
+		return true;
+	}
+	if (Kind == TEXT("map") && Operation == TEXT("values"))
+	{
+		if (!TryBuildBasicContainerActionPinType(FirstNonEmptyContainerType(Request.ValueType, Request.ValuePinType), OutPinType))
+		{
+			return false;
+		}
+		OutPinType.ContainerType = EPinContainerType::Array;
+		return true;
+	}
+	if (Kind == TEXT("set") && Operation == TEXT("to_array"))
+	{
+		if (!TryBuildBasicContainerActionPinType(ContainerActionElementType(Request), OutPinType))
+		{
+			return false;
+		}
+		OutPinType.ContainerType = EPinContainerType::Array;
+		return true;
+	}
+	return false;
+}
+
+static void ApplyPinTypeToNodePin(UEdGraphPin* Pin, const FEdGraphPinType& PinType)
+{
+	if (!Pin || PinType.PinCategory.IsNone())
+	{
+		return;
+	}
+	Pin->PinType = PinType;
+}
+
+static void ApplyContainerActionResolvedPinTypes(
+	const FBlueprintHelperGraphFragmentBuildRequest& Request,
+	FBlueprintHelperNodeFragment& InOutFragment)
+{
+	UK2Node* Node = InOutFragment.PrimaryNode;
+	if (!Node)
+	{
+		return;
+	}
+
+	const FBlueprintHelperContainerActionSpec* Spec =
+		FBlueprintHelperContainerActionVocabulary::Find(Request.ContainerKind, Request.ContainerOperation);
+	if (!Spec)
+	{
+		return;
+	}
+
+	for (const FBlueprintHelperContainerActionRoleBinding& Binding : Spec->RoleBindings)
+	{
+		FEdGraphPinType PinType;
+		if (TryBuildContainerActionRolePinType(Request, Binding.RoleName, PinType))
+		{
+			ApplyPinTypeToNodePin(Node->FindPin(FName(*Binding.FunctionPinName)), PinType);
+		}
+	}
+
+	if (Spec->bReturnsValue)
+	{
+		FEdGraphPinType ReturnPinType;
+		if (TryBuildContainerActionReturnPinType(Request, ReturnPinType))
+		{
+			for (UEdGraphPin* Pin : Node->Pins)
+			{
+				if (Pin
+					&& Pin->Direction == EGPD_Output
+					&& Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec)
+				{
+					ApplyPinTypeToNodePin(Pin, ReturnPinType);
+				}
+			}
+		}
+	}
+}
+
+static void ApplyContainerActionRoleBindingDefaults(
+	FBlueprintHelperGraphFragmentBuildRequest& InOutRequest)
+{
+	const FBlueprintHelperContainerActionSpec* Spec =
+		FBlueprintHelperContainerActionVocabulary::Find(InOutRequest.ContainerKind, InOutRequest.ContainerOperation);
+	if (!Spec)
+	{
+		return;
+	}
+	for (const FBlueprintHelperContainerActionRoleBinding& Binding : Spec->RoleBindings)
+	{
+		if (const FString* DefaultValue = InOutRequest.DefaultValues.Find(Binding.RoleName))
+		{
+			InOutRequest.DefaultValues.FindOrAdd(Binding.FunctionPinName, *DefaultValue);
+		}
+		if (const FString* ArgumentType = InOutRequest.ArgumentTypes.Find(Binding.RoleName))
+		{
+			InOutRequest.ArgumentTypes.FindOrAdd(Binding.FunctionPinName, *ArgumentType);
+		}
+		if (const FBlueprintHelperCallFunctionPinType* ArgumentPinType = InOutRequest.ArgumentPinTypes.Find(Binding.RoleName))
+		{
+			InOutRequest.ArgumentPinTypes.FindOrAdd(Binding.FunctionPinName, *ArgumentPinType);
+		}
+	}
+}
+
+static void FillExpressionMapDefaultsAndTypes(
+	const TMap<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& Args,
+	FBlueprintHelperGraphFragmentBuildRequest& InOutRequest)
+{
+	for (const TPair<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& ArgPair : Args)
+	{
+		if (!ArgPair.Value.IsValid())
+		{
+			continue;
+		}
+		if (ArgPair.Value->Kind == EBlueprintHelperGraphExpressionKind::Literal)
+		{
+			InOutRequest.DefaultValues.Add(ArgPair.Key, ArgPair.Value->LiteralValue);
+		}
+		if (!ArgPair.Value->Type.TrimStartAndEnd().IsEmpty())
+		{
+			InOutRequest.ArgumentTypes.Add(ArgPair.Key, ArgPair.Value->Type.TrimStartAndEnd());
+		}
+	}
+}
+
 static EBlueprintHelperActionSemanticKind ResolveActionSemanticKindForExpressionKind(EBlueprintHelperGraphExpressionKind Kind)
 {
 	switch (Kind)
@@ -244,6 +585,8 @@ static EBlueprintHelperActionSemanticKind ResolveActionSemanticKindForExpression
 		return EBlueprintHelperActionSemanticKind::Convert;
 	case EBlueprintHelperGraphExpressionKind::Schedule:
 		return EBlueprintHelperActionSemanticKind::Schedule;
+	case EBlueprintHelperGraphExpressionKind::ContainerAction:
+		return EBlueprintHelperActionSemanticKind::ContainerAction;
 	default:
 		return EBlueprintHelperActionSemanticKind::Unknown;
 	}
@@ -1042,49 +1385,74 @@ bool FBlueprintHelperGraphStatementBuilder::BuildActionProviderFragment(
 	const FBlueprintHelperActionContextScope* ActionContextScope)
 {
 	OutFragment = FBlueprintHelperNodeFragment();
+	FBlueprintHelperGraphFragmentBuildRequest ContainerBoundRequest;
+	const FBlueprintHelperGraphFragmentBuildRequest* EffectiveRequest = &Request;
+	if (SemanticKind == EBlueprintHelperActionSemanticKind::ContainerAction)
+	{
+		ContainerBoundRequest = Request;
+		ApplyContainerActionRoleBindingDefaults(ContainerBoundRequest);
+		EffectiveRequest = &ContainerBoundRequest;
+	}
+	const FBlueprintHelperGraphFragmentBuildRequest& BoundRequest = *EffectiveRequest;
 
 	FBlueprintHelperActionResolutionRequest ActionRequest;
 	TArray<FString> ArgumentNames;
-	Request.DefaultValues.GetKeys(ArgumentNames);
+	BoundRequest.DefaultValues.GetKeys(ArgumentNames);
 	if (!TryBuildProjectedActionRequestFromContext(
 		TargetGraph,
 		ActionContextScope,
-		Request.ActionContextStatementId.IsEmpty()
-			? Request.FragmentId
-			: Request.ActionContextStatementId,
+		BoundRequest.ActionContextStatementId.IsEmpty()
+			? BoundRequest.FragmentId
+			: BoundRequest.ActionContextStatementId,
 		SemanticKind,
-		Request.Query,
-		Request.Target,
-		Request.PropertyPath,
-		Request.TypeName,
-		Request.SearchMode,
-		Request.AmbiguityPolicy,
-		Request.CategoryPriority,
+		BoundRequest.Query,
+		BoundRequest.Target,
+		BoundRequest.PropertyPath,
+		BoundRequest.TypeName,
+		BoundRequest.SearchMode,
+		BoundRequest.AmbiguityPolicy,
+		BoundRequest.CategoryPriority,
 		ArgumentNames,
 		ActionRequest,
 		OutError))
 	{
 		return false;
 	}
+	if (SemanticKind == EBlueprintHelperActionSemanticKind::ContainerAction)
+	{
+		ApplyContainerActionRequestOverrides(BoundRequest, ActionRequest);
+	}
 	ActionRequest.ContextEvidence.Append(Request.ContextEvidence);
 
 	FBlueprintHelperActionFragmentSpawnCoordinatorRequest CoordinatorRequest;
 	CoordinatorRequest.TargetGraph = TargetGraph;
 	CoordinatorRequest.BuildRequest = &Request;
+	if (EffectiveRequest != &Request)
+	{
+		CoordinatorRequest.BuildRequest = EffectiveRequest;
+	}
 	CoordinatorRequest.ActionRequest = ActionRequest;
 	CoordinatorRequest.SemanticKind = SemanticKind;
 	CoordinatorRequest.PinProfile = EBlueprintHelperActionFragmentPinProfile::ActionProvider;
-	CoordinatorRequest.CandidateGroupTarget = Request.Query;
+	CoordinatorRequest.CandidateGroupTarget = BoundRequest.Query;
 	CoordinatorRequest.FailurePrefix = FString::Printf(
 		TEXT("action provider unavailable: semantic=%s"),
 		*FBlueprintHelperActionResolutionCore::SemanticKindToString(SemanticKind));
 	CoordinatorRequest.bAppendSemanticKindOwnershipTag = true;
 
-	return FBlueprintHelperActionFragmentSpawnCoordinator::BuildResolvedActionFragment(
+	const bool bBuilt = FBlueprintHelperActionFragmentSpawnCoordinator::BuildResolvedActionFragment(
 		CoordinatorRequest,
 		OutFragment,
 		OutError,
 		nullptr);
+	if (bBuilt && SemanticKind == EBlueprintHelperActionSemanticKind::ContainerAction)
+	{
+		ApplyContainerActionRolePinAliases(BoundRequest, OutFragment);
+		ApplyContainerActionResolvedPinTypes(BoundRequest, OutFragment);
+		OutFragment.OwnershipTags.Add(TEXT("container_kind"), NormalizeContainerToken(BoundRequest.ContainerKind));
+		OutFragment.OwnershipTags.Add(TEXT("container_operation"), NormalizeContainerToken(BoundRequest.ContainerOperation));
+	}
+	return bBuilt;
 }
 
 bool FBlueprintHelperGraphStatementBuilder::BuildSequenceFragment(
@@ -1198,6 +1566,29 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 			return false;
 		}
 		OutFragment.SourceStatementId = Expression.ExpressionId;
+		return true;
+	}
+
+	if (Expression.Kind == EBlueprintHelperGraphExpressionKind::ContainerAction)
+	{
+		FBlueprintHelperGraphFragmentBuildRequest Request = FBlueprintHelperGraphFragmentBuildRequest::FromExpression(Expression);
+		Request.FragmentId = FBlueprintHelperGraphStatementTypeUtils::MakeExpressionFragmentId(Expression);
+		Request.SourceStatementId = Expression.ExpressionId;
+		Request.ActionContextStatementId = MakeExpressionActionContextStatementId(Expression);
+		Request.Query = NormalizeContainerToken(Expression.ContainerKind) + TEXT(".") + NormalizeContainerToken(Expression.ContainerOperation);
+		Request.Target = Expression.TargetObject.IsValid()
+			? (!Expression.TargetObject->Target.IsEmpty() ? Expression.TargetObject->Target : Expression.TargetObject->Name)
+			: Expression.Target;
+		Request.TypeName = Expression.Type;
+		Request.ExpectedReturnType = Expression.Type;
+		FillExpressionMapDefaultsAndTypes(Expression.Args, Request);
+		if (!BuildActionProviderFragment(TargetGraph, Request, EBlueprintHelperActionSemanticKind::ContainerAction, OutFragment, OutError, ActionContextScope))
+		{
+			return false;
+		}
+		OutFragment.SourceStatementId = Expression.ExpressionId;
+		OutFragment.OwnershipTags.Add(TEXT("expression_id"), Expression.ExpressionId);
+		OutFragment.ReviewTargets.Add(Expression.ExpressionId);
 		return true;
 	}
 

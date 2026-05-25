@@ -3,6 +3,7 @@
 #include "EdGraph/EdGraph.h"
 #include "Engine/Blueprint.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionClusterContextView.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperContainerActionResolver.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperFunctionSemanticActionResolver.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperOperatorActionResolver.h"
 #include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
@@ -50,6 +51,11 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperFunctionActionCluster::Re
 	if (Semantic.Kind == EBlueprintHelperActionSemanticKind::Op)
 	{
 		return FBlueprintHelperOperatorActionResolver::Resolve(Request, Context);
+	}
+
+	if (Semantic.Kind == EBlueprintHelperActionSemanticKind::ContainerAction)
+	{
+		return FBlueprintHelperContainerActionResolver::Resolve(Request, Context);
 	}
 
 	if (FBlueprintHelperFunctionSemanticActionResolver::IsSupportedSemanticKind(Semantic)

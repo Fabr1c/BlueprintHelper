@@ -62,6 +62,7 @@ enum class EBlueprintHelperActionSemanticKind : uint8
 	Create,
 	Convert,
 	Schedule,
+	ContainerAction,
 	Unknown
 };
 
@@ -90,8 +91,13 @@ struct FBlueprintHelperActionSemanticConstraints
 	FString TransformOperation;
 	FString ScheduleOperation;
 	FString CreateOperation;
+	FString ContainerKind;
+	FString ContainerOperation;
 	FString ClassPath;
 	FString AssetPath;
+	FString ElementType;
+	FString KeyType;
+	FString ValueType;
 	FString TypeName;
 	FString StructPath;
 	FString TypeStructureId;

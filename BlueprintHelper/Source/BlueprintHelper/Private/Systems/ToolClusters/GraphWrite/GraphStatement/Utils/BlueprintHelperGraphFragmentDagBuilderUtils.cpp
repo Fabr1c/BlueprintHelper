@@ -4,6 +4,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDagBuilder.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDag.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphStatementTypeUtils.h"
 
 FString FBlueprintHelperGraphFragmentDagBuilderUtils::BoolText(const bool bValue)
 {
@@ -53,6 +54,8 @@ FString FBlueprintHelperGraphFragmentDagBuilderUtils::StatementKindName(const EB
 		return TEXT("convert");
 	case EBlueprintHelperGraphStatementKind::Schedule:
 		return TEXT("schedule");
+	case EBlueprintHelperGraphStatementKind::ContainerAction:
+		return TEXT("container_action");
 	case EBlueprintHelperGraphStatementKind::ComponentBoundEvent:
 		return TEXT("component_bound_event");
 	case EBlueprintHelperGraphStatementKind::Delegate:
@@ -81,6 +84,12 @@ FString FBlueprintHelperGraphFragmentDagBuilderUtils::ExpressionKindName(const E
 		return TEXT("select");
 	case EBlueprintHelperGraphExpressionKind::Create:
 		return TEXT("create");
+	case EBlueprintHelperGraphExpressionKind::Convert:
+		return TEXT("convert");
+	case EBlueprintHelperGraphExpressionKind::Schedule:
+		return TEXT("schedule");
+	case EBlueprintHelperGraphExpressionKind::ContainerAction:
+		return TEXT("container_action");
 	default:
 		return TEXT("unknown");
 	}
@@ -268,6 +277,53 @@ FBlueprintHelperGraphFragmentEndpointRef FBlueprintHelperGraphFragmentDagBuilder
 		Type,
 		EBlueprintHelperGraphFragmentPortDirection::DataOutput);
 }
+
+static FString ResolveContainerActionResultContainerType(
+	const FString& ContainerKind,
+	const FString& ContainerOperation)
+{
+	const FString Kind = ContainerKind.TrimStartAndEnd().ToLower();
+	const FString Operation = ContainerOperation.TrimStartAndEnd().ToLower();
+	if ((Kind == TEXT("map") && (Operation == TEXT("keys") || Operation == TEXT("values")))
+		|| (Kind == TEXT("set") && Operation == TEXT("to_array")))
+	{
+		return TEXT("array");
+	}
+	return FString();
+}
+
+static void ApplyContainerActionResultEndpointType(
+	const FString& ContainerKind,
+	const FString& ContainerOperation,
+	const FString& ElementType,
+	const FString& KeyType,
+	const FString& ValueType,
+	const FString& PinType,
+	const FString& KeyPinType,
+	const FString& ValuePinType,
+	FBlueprintHelperGraphFragmentEndpointRef& InOutEndpoint)
+{
+	const FString ResultType = FBlueprintHelperGraphStatementTypeUtils::ResolveContainerActionResultTypeToken(
+		ContainerKind,
+		ContainerOperation,
+		ElementType,
+		KeyType,
+		ValueType,
+		PinType,
+		KeyPinType,
+		ValuePinType);
+	if (!ResultType.IsEmpty())
+	{
+		InOutEndpoint.Type = ResultType;
+		InOutEndpoint.PinType.Category = ResultType;
+	}
+
+	const FString ContainerType = ResolveContainerActionResultContainerType(ContainerKind, ContainerOperation);
+	if (!ContainerType.IsEmpty())
+	{
+		InOutEndpoint.PinType.ContainerType = ContainerType;
+	}
+}
 void FBlueprintHelperGraphFragmentDagBuilderUtils::AddBuilderDiagnostic(
 	FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagBuildState& State,
 	const FString& Code,
@@ -339,14 +395,9 @@ FString FBlueprintHelperGraphFragmentDagBuilderUtils::MakeStatementFragmentId(
 }
 FString FBlueprintHelperGraphFragmentDagBuilderUtils::MakeExpressionFragmentId(
 	const FBlueprintHelperGraphExpressionIR& Expression,
-	const FString& Suffix)
+	const FString& /*Suffix*/)
 {
-	const FString SourceId = !Expression.ExpressionId.IsEmpty() ? Expression.ExpressionId : Expression.Path;
-	if (!SourceId.Contains(TEXT("$")) && !SourceId.Contains(TEXT(".")) && !SourceId.Contains(TEXT("[")) && !SourceId.Contains(TEXT("]")))
-	{
-		return SourceId;
-	}
-	return TEXT("expr_") + ExpressionKindName(Expression.Kind) + TEXT("_") + SourceId + TEXT("_") + Suffix;
+	return FBlueprintHelperGraphStatementTypeUtils::MakeExpressionFragmentId(Expression);
 }
 bool FBlueprintHelperGraphFragmentDagBuilderUtils::FindSymbolProducer(
 	const FString& Name,
@@ -467,6 +518,11 @@ FBlueprintHelperGraphFragmentRef& FBlueprintHelperGraphFragmentDagBuilderUtils::
 	AddMetadata(Fragment, TEXT("field_operation"), Expression.FieldOperation);
 	AddMetadata(Fragment, TEXT("field_scope"), Expression.FieldScope);
 	AddFieldPathMetadata(Fragment, Expression.Target, Expression.Property, Expression.FieldScope);
+	AddMetadata(Fragment, TEXT("container_kind"), Expression.ContainerKind);
+	AddMetadata(Fragment, TEXT("container_operation"), Expression.ContainerOperation);
+	AddMetadata(Fragment, TEXT("element_type"), Expression.ElementType);
+	AddMetadata(Fragment, TEXT("key_type"), Expression.KeyType);
+	AddMetadata(Fragment, TEXT("value_type"), Expression.ValueType);
 	AddMetadata(Fragment, TEXT("type"), Expression.Type);
 	AddMetadata(Fragment, TEXT("operator"), Expression.Operator);
 	AddMetadata(Fragment, TEXT("literal"), Expression.LiteralValue);
@@ -700,6 +756,18 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagDataProducer FB
 
 	case EBlueprintHelperGraphExpressionKind::Field:
 	{
+		const bool bPropertyPathField = Expression->FieldScope.Equals(TEXT("property_path"), ESearchCase::IgnoreCase);
+		const bool bComponentRefField = Expression->FieldScope.Equals(TEXT("component_ref"), ESearchCase::IgnoreCase);
+		const bool bFieldAccessField = Expression->FieldScope.Equals(TEXT("field_access"), ESearchCase::IgnoreCase);
+		if (!bPropertyPathField && !bComponentRefField && !bFieldAccessField)
+		{
+			FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagDataProducer Producer;
+			const FString SymbolName = !Expression->Target.IsEmpty() ? Expression->Target : Expression->Name;
+			if (FindSymbolProducer(SymbolName, SymbolScopes, Producer))
+			{
+				return Producer;
+			}
+		}
 		if (Expression->ResolvedTarget.Kind == EBlueprintHelperGraphTargetKind::Temporary)
 		{
 			FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagDataProducer Producer;
@@ -721,9 +789,6 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagDataProducer FB
 			return MakeExpressionProducerFromId(*Expression, FragmentId, TEXT("value"), Expression->Type);
 		}
 
-		const bool bPropertyPathField = Expression->FieldScope.Equals(TEXT("property_path"), ESearchCase::IgnoreCase);
-		const bool bComponentRefField = Expression->FieldScope.Equals(TEXT("component_ref"), ESearchCase::IgnoreCase);
-		const bool bFieldAccessField = Expression->FieldScope.Equals(TEXT("field_access"), ESearchCase::IgnoreCase);
 		FBlueprintHelperGraphFragmentRef& Fragment = AddExpressionFragment(
 			*Expression,
 			bComponentRefField ? TEXT("expr_get_component_ref") : (bFieldAccessField ? TEXT("expr_get_field_access") : (bPropertyPathField ? TEXT("expr_get_property") : TEXT("expr_get"))),
@@ -884,6 +949,30 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagDataProducer FB
 			State,
 			SymbolScopes);
 
+	case EBlueprintHelperGraphExpressionKind::ContainerAction:
+	{
+		FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagDataProducer Producer = BuildResolvableExpressionFragment(
+			Expression,
+			TEXT("function_action"),
+			TEXT("container_action"),
+			TEXT("result"),
+			Expression->Type,
+			State,
+			SymbolScopes);
+		ApplyContainerActionResultEndpointType(
+			Expression->ContainerKind,
+			Expression->ContainerOperation,
+			Expression->ElementType,
+			Expression->KeyType,
+			Expression->ValueType,
+			Expression->PinType,
+			Expression->KeyPinType,
+			Expression->ValuePinType,
+			Producer.Endpoint);
+		Producer.Type = Producer.Endpoint.Type;
+		return Producer;
+	}
+
 	case EBlueprintHelperGraphExpressionKind::Unknown:
 	default:
 	{
@@ -922,6 +1011,11 @@ FBlueprintHelperGraphFragmentRef& FBlueprintHelperGraphFragmentDagBuilderUtils::
 	AddMetadata(Fragment, TEXT("field_operation"), Statement.FieldOperation);
 	AddMetadata(Fragment, TEXT("field_scope"), Statement.FieldScope);
 	AddFieldPathMetadata(Fragment, Statement.Target, Statement.Property, Statement.FieldScope);
+	AddMetadata(Fragment, TEXT("container_kind"), Statement.ContainerKind);
+	AddMetadata(Fragment, TEXT("container_operation"), Statement.ContainerOperation);
+	AddMetadata(Fragment, TEXT("element_type"), Statement.ElementType);
+	AddMetadata(Fragment, TEXT("key_type"), Statement.KeyType);
+	AddMetadata(Fragment, TEXT("value_type"), Statement.ValueType);
 	AddMetadata(Fragment, TEXT("result_symbol"), Statement.ResultSymbolName);
 	AddMetadata(Fragment, TEXT("search_mode"), Statement.SearchMode);
 	AddMetadata(Fragment, TEXT("ambiguity"), Statement.AmbiguityPolicy);
@@ -980,6 +1074,42 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagExecFlow FBluep
 			FragmentId,
 			State,
 			SymbolScopes);
+	}
+
+	if (!Statement->ResultSymbolName.TrimStartAndEnd().IsEmpty())
+	{
+		const FString ResultType = FBlueprintHelperGraphStatementTypeUtils::ResolveContainerActionResultTypeToken(
+			Statement->ContainerKind,
+			Statement->ContainerOperation,
+			Statement->ElementType,
+			Statement->KeyType,
+			Statement->ValueType,
+			Statement->PinType,
+			Statement->KeyPinType,
+			Statement->ValuePinType);
+		FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagDataProducer ResultProducer;
+		ResultProducer.Endpoint = MakeDataOutput(
+			FragmentId,
+			TEXT("result"),
+			!ResultType.IsEmpty()
+				? ResultType
+				: (!Statement->ValueType.IsEmpty()
+				? Statement->ValueType
+				: (!Statement->ElementType.IsEmpty() ? Statement->ElementType : Statement->PinType)));
+		ApplyContainerActionResultEndpointType(
+			Statement->ContainerKind,
+			Statement->ContainerOperation,
+			Statement->ElementType,
+			Statement->KeyType,
+			Statement->ValueType,
+			Statement->PinType,
+			Statement->KeyPinType,
+			Statement->ValuePinType,
+			ResultProducer.Endpoint);
+		ResultProducer.SymbolId = NormalizeSymbolKey(Statement->ResultSymbolName);
+		ResultProducer.Type = ResultProducer.Endpoint.Type;
+		ResultProducer.Path = Statement->Path;
+		RegisterSymbolProducer(Statement->ResultSymbolName, ResultProducer, Statement->Path, State, SymbolScopes);
 	}
 
 	return Flow;
@@ -1189,6 +1319,9 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagExecFlow FBluep
 
 	case EBlueprintHelperGraphStatementKind::Schedule:
 		return BuildSimpleStatement(Statement, TEXT("statement_schedule"), TEXT("schedule"), State, SymbolScopes);
+
+	case EBlueprintHelperGraphStatementKind::ContainerAction:
+		return BuildSimpleStatement(Statement, TEXT("statement_container_action"), TEXT("container_action"), State, SymbolScopes);
 
 	case EBlueprintHelperGraphStatementKind::ComponentBoundEvent:
 		return BuildSimpleStatement(Statement, TEXT("statement_component_bound_event"), TEXT("component_bound_event"), State, SymbolScopes);

@@ -132,6 +132,33 @@ bool FBlueprintHelperGraphFragmentBuilderRegistry::TryBuildStatement(
 			ActionContextScope);
 	}
 
+	if (Statement.Kind == EBlueprintHelperGraphStatementKind::ContainerAction)
+	{
+		FBlueprintHelperGraphFragmentBuildRequest Request = FBlueprintHelperGraphFragmentBuildRequest::FromStatement(Statement);
+		Request.FragmentId = StatementId;
+		Request.SourceStatementId = StatementId;
+		Request.ActionContextStatementId = StatementContextId;
+		Request.Query = Statement.ContainerKind + TEXT(".") + Statement.ContainerOperation;
+		Request.Target = Statement.TargetObject.IsValid()
+			? (!Statement.TargetObject->Target.IsEmpty() ? Statement.TargetObject->Target : Statement.TargetObject->Name)
+			: Statement.Target;
+		Request.TypeName = !Statement.ValueType.IsEmpty()
+			? Statement.ValueType
+			: (!Statement.ElementType.IsEmpty() ? Statement.ElementType : Statement.ResolvedTarget.Type);
+		FillLiteralArgsAsDefaultsAndTypes(Statement.Args, Request.DefaultValues, Request.ArgumentTypes);
+		if (SemanticArgumentPinTypes)
+		{
+			Request.ArgumentPinTypes.Append(*SemanticArgumentPinTypes);
+		}
+		return FBlueprintHelperGraphStatementBuilder::BuildActionProviderFragment(
+			TargetGraph,
+			Request,
+			EBlueprintHelperActionSemanticKind::ContainerAction,
+			OutFragment,
+			OutError,
+			ActionContextScope);
+	}
+
 	if (Statement.Kind == EBlueprintHelperGraphStatementKind::Field
 		&& Statement.FieldOperation.Equals(TEXT("set"), ESearchCase::IgnoreCase)
 		&& Statement.FieldScope.Equals(TEXT("variable"), ESearchCase::IgnoreCase))

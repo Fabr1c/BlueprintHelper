@@ -57,6 +57,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphFragmentPinTypeRef
 
 	bool IsValid() const;
 	TSharedRef<FJsonObject> ToJson() const;
+	static FBlueprintHelperGraphFragmentPinTypeRef FromJson(const TSharedPtr<FJsonObject>& Object);
 };
 
 struct BLUEPRINTHELPER_API FBlueprintHelperGraphFragmentLayoutRef
@@ -99,6 +100,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphFragmentEndpointRef
 
 	bool IsValid() const;
 	TSharedRef<FJsonObject> ToJson() const;
+	static FBlueprintHelperGraphFragmentEndpointRef FromJson(const TSharedPtr<FJsonObject>& Object);
 };
 
 struct BLUEPRINTHELPER_API FBlueprintHelperGraphFragmentExecEdge

@@ -151,6 +151,7 @@ FString FBlueprintHelperActionResolutionCore::SemanticKindToString(EBlueprintHel
 	case EBlueprintHelperActionSemanticKind::Create: return TEXT("create");
 	case EBlueprintHelperActionSemanticKind::Convert: return TEXT("convert");
 	case EBlueprintHelperActionSemanticKind::Schedule: return TEXT("schedule");
+	case EBlueprintHelperActionSemanticKind::ContainerAction: return TEXT("container_action");
 	default: return TEXT("unknown");
 	}
 }

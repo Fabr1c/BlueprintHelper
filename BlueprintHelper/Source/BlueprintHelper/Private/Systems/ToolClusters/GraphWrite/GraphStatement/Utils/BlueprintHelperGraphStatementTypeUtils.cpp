@@ -52,6 +52,7 @@ FString FBlueprintHelperGraphStatementTypeUtils::ResolveExpressionKindName(
 		{ EBlueprintHelperGraphExpressionKind::Create, TEXT("create") },
 		{ EBlueprintHelperGraphExpressionKind::Convert, TEXT("convert") },
 		{ EBlueprintHelperGraphExpressionKind::Schedule, TEXT("schedule") },
+		{ EBlueprintHelperGraphExpressionKind::ContainerAction, TEXT("container_action") },
 	};
 
 	for (const FExpressionKindRule& Rule : Rules)
@@ -245,6 +246,58 @@ FString FBlueprintHelperGraphStatementTypeUtils::MakeExpressionFragmentId(
 	const FString Suffix = ResolveExpressionKindName(Expression.Kind);
 	return SanitizeFragmentIdPart(
 		TEXT("expr_") + Suffix + TEXT("_") + SourceId + TEXT("_") + Suffix);
+}
+
+FString FBlueprintHelperGraphStatementTypeUtils::ResolveContainerActionResultTypeToken(
+	const FString& ContainerKind,
+	const FString& ContainerOperation,
+	const FString& ElementType,
+	const FString& KeyType,
+	const FString& ValueType,
+	const FString& PinType,
+	const FString& KeyPinType,
+	const FString& ValuePinType)
+{
+	const FString Kind = ContainerKind.TrimStartAndEnd().ToLower();
+	const FString Operation = ContainerOperation.TrimStartAndEnd().ToLower();
+	auto FirstNonEmpty = [](const FString& Primary, const FString& Secondary)
+	{
+		const FString PrimaryTrimmed = Primary.TrimStartAndEnd();
+		return !PrimaryTrimmed.IsEmpty() ? PrimaryTrimmed : Secondary.TrimStartAndEnd();
+	};
+	const FString Element = FirstNonEmpty(ElementType, PinType);
+	const FString Key = FirstNonEmpty(KeyType, KeyPinType);
+	const FString Value = FirstNonEmpty(ValueType, ValuePinType);
+
+	if (Operation == TEXT("contains"))
+	{
+		return TEXT("bool");
+	}
+	if (Operation == TEXT("length") || (Kind == TEXT("array") && Operation == TEXT("find")))
+	{
+		return TEXT("int");
+	}
+	if (Kind == TEXT("array") && Operation == TEXT("get"))
+	{
+		return Element;
+	}
+	if (Kind == TEXT("map") && Operation == TEXT("find"))
+	{
+		return Value;
+	}
+	if (Kind == TEXT("map") && Operation == TEXT("keys"))
+	{
+		return Key;
+	}
+	if (Kind == TEXT("map") && Operation == TEXT("values"))
+	{
+		return Value;
+	}
+	if (Kind == TEXT("set") && Operation == TEXT("to_array"))
+	{
+		return Element;
+	}
+	return FString();
 }
 
 FString FBlueprintHelperGraphStatementTypeUtils::ResolveOperatorFunctionName(

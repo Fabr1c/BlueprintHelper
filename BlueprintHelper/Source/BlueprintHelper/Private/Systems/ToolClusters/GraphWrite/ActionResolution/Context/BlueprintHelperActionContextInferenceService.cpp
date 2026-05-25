@@ -54,6 +54,17 @@ static FString DescribePinTypeEvidence(const FBlueprintHelperCallFunctionPinType
 	return FString::Join(Parts, TEXT("|"));
 }
 
+static FBlueprintHelperCallFunctionPinType MakeFieldPinType(
+	const FBlueprintHelperActionContextFieldSnapshot& Field)
+{
+	FBlueprintHelperCallFunctionPinType PinType;
+	PinType.Category = Field.PinCategory;
+	PinType.SubCategory = Field.PinSubCategory;
+	PinType.ObjectPath = Field.PinSubCategoryObjectPath;
+	PinType.ContainerType = Field.PinContainerType;
+	return PinType;
+}
+
 static bool FindFirstLinkedPinType(
 	const FBlueprintHelperActionContextSnapshot& Snapshot,
 	const TArray<FString>& SymbolIds,
@@ -168,8 +179,13 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 	Context.Semantic.TransformOperation = Demand.TransformOperation;
 	Context.Semantic.ScheduleOperation = Demand.ScheduleOperation;
 	Context.Semantic.CreateOperation = Demand.CreateOperation;
+	Context.Semantic.ContainerKind = Demand.ContainerKind;
+	Context.Semantic.ContainerOperation = Demand.ContainerOperation;
 	Context.Semantic.ClassPath = Demand.ClassPath;
 	Context.Semantic.AssetPath = Demand.AssetPath;
+	Context.Semantic.ElementType = Demand.ElementType;
+	Context.Semantic.KeyType = Demand.KeyType;
+	Context.Semantic.ValueType = Demand.ValueType;
 	Context.Semantic.TypeName = Demand.TypeName;
 	Context.Semantic.StructPath = Demand.StructPath;
 	Context.Semantic.TypeStructureId = Demand.TypeStructureId;
@@ -257,6 +273,14 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 	{
 		Context.Evidence.Add(TEXT("create_operation"), Demand.CreateOperation);
 	}
+	if (!Demand.ContainerKind.IsEmpty())
+	{
+		Context.Evidence.Add(TEXT("container_kind"), Demand.ContainerKind);
+	}
+	if (!Demand.ContainerOperation.IsEmpty())
+	{
+		Context.Evidence.Add(TEXT("container_operation"), Demand.ContainerOperation);
+	}
 	if (!Demand.ClassPath.IsEmpty())
 	{
 		Context.Evidence.Add(TEXT("class_path"), Demand.ClassPath);
@@ -264,6 +288,18 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 	if (!Demand.AssetPath.IsEmpty())
 	{
 		Context.Evidence.Add(TEXT("asset_path"), Demand.AssetPath);
+	}
+	if (!Demand.ElementType.IsEmpty())
+	{
+		Context.Evidence.Add(TEXT("element_type"), Demand.ElementType);
+	}
+	if (!Demand.KeyType.IsEmpty())
+	{
+		Context.Evidence.Add(TEXT("key_type"), Demand.KeyType);
+	}
+	if (!Demand.ValueType.IsEmpty())
+	{
+		Context.Evidence.Add(TEXT("value_type"), Demand.ValueType);
 	}
 	if (!Demand.GraphLatentAllowed.IsEmpty())
 	{
@@ -329,10 +365,27 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 	if (const FBlueprintHelperActionContextFieldSnapshot* Field =
 		BlueprintHelperActionContextInference::FindField(Snapshot, Demand))
 	{
-		Context.Semantic.TargetObjectType = Field->OwnerClassPath;
+		if (Demand.SemanticKind == EBlueprintHelperActionSemanticKind::ContainerAction)
+		{
+			const FBlueprintHelperCallFunctionPinType TargetPinType =
+				BlueprintHelperActionContextInference::MakeFieldPinType(*Field);
+			if (TargetPinType.IsValid())
+			{
+				Context.Semantic.ArgumentPinTypes.Add(TEXT("target"), TargetPinType);
+				BlueprintHelperActionContextInference::AddEvidenceIfPresent(
+					Context,
+					TEXT("container_target_pin_type"),
+					BlueprintHelperActionContextInference::DescribePinTypeEvidence(TargetPinType));
+			}
+		}
+		else
+		{
+			Context.Semantic.TargetObjectType = Field->OwnerClassPath;
+		}
 		Context.Evidence.Add(TEXT("field_name"), Field->Name);
 		Context.Evidence.Add(TEXT("field_pin_category"), Field->PinCategory);
 		Context.Evidence.Add(TEXT("field_pin_sub_category"), Field->PinSubCategory);
+		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("field_pin_container"), Field->PinContainerType);
 		Context.Evidence.Add(TEXT("field_owner_class"), Field->OwnerClassPath);
 	}
 

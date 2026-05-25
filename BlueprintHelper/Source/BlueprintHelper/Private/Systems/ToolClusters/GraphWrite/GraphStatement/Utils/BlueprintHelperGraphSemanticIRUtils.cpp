@@ -84,6 +84,7 @@ EBlueprintHelperGraphStatementKind FBlueprintHelperGraphSemanticIRUtils::ParseSt
 	if (Kind.Equals(TEXT("create"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Create;
 	if (Kind.Equals(TEXT("convert"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Convert;
 	if (Kind.Equals(TEXT("schedule"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Schedule;
+	if (Kind.Equals(TEXT("container_action"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::ContainerAction;
 	if (Kind.Equals(TEXT("component_bound_event"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::ComponentBoundEvent;
 	if (Kind.Equals(TEXT("delegate"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Delegate;
 	return EBlueprintHelperGraphStatementKind::Unknown;
@@ -100,6 +101,9 @@ EBlueprintHelperGraphExpressionKind FBlueprintHelperGraphSemanticIRUtils::ParseE
 	if (Kind.Equals(TEXT("create"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphExpressionKind::Create;
 	if (Kind.Equals(TEXT("convert"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphExpressionKind::Convert;
 	if (Kind.Equals(TEXT("schedule"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphExpressionKind::Schedule;
+	if (Kind.Equals(TEXT("container_action"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphExpressionKind::ContainerAction;
+	if (Kind.Equals(TEXT("get"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphExpressionKind::Field;
+	if (Kind.Equals(TEXT("get_property"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphExpressionKind::Field;
 	return EBlueprintHelperGraphExpressionKind::Unknown;
 }
 void FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(
@@ -258,6 +262,8 @@ FString FBlueprintHelperGraphSemanticIRUtils::StatementPatternName(EBlueprintHel
 		return TEXT("convert");
 	case EBlueprintHelperGraphStatementKind::Schedule:
 		return TEXT("schedule");
+	case EBlueprintHelperGraphStatementKind::ContainerAction:
+		return TEXT("container_action");
 	case EBlueprintHelperGraphStatementKind::ComponentBoundEvent:
 		return TEXT("component_bound_event");
 	case EBlueprintHelperGraphStatementKind::Delegate:
@@ -290,6 +296,8 @@ FString FBlueprintHelperGraphSemanticIRUtils::ExpressionPatternName(EBlueprintHe
 		return TEXT("convert");
 	case EBlueprintHelperGraphExpressionKind::Schedule:
 		return TEXT("schedule");
+	case EBlueprintHelperGraphExpressionKind::ContainerAction:
+		return TEXT("container_action");
 	default:
 		return TEXT("unknown");
 	}
